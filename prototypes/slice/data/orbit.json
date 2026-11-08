@@ -31,6 +31,10 @@
     // A temperate world's year, game days: every orbit's period follows from it, so this one number
     // is how fast the system runs. Short enough that planets can be seen to move in play.
     "temperateYearDays": 24,
+    // How much bigger stars stand in the sky than at the chart's plain scale: a yellow star from a
+    // temperate world about 3 degrees across, a scorched world's about three times that, an ice
+    // world's smaller. Its light stays the world's own.
+    "starSkyScale": 3.0,
     // The globe is painted once, from the sky's clouds as they stand, but a clear spell under you
     // shouldn't leave the whole world bare: its share of cloud is at least this.
     "cloudCoverAtLeast": 0.38,

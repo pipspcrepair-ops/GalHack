@@ -45,7 +45,6 @@ public sealed record SkySystem
 {
     public StarClass Star { get; init; }
     public Rgb StarColor { get; init; }
-    public float SunRadius { get; init; }        // angular radius, radians
     public float SunEnergy { get; init; }
     public AirKind Air { get; init; }
     public float Density { get; init; }          // 0.3 thin .. 2 thick: haze, horizon brightness, sunset strength
@@ -147,10 +146,6 @@ public sealed record SkySystem
         }
 
         var bodies = MakeBodies(spec, ref rng, air);
-        float sunRadius = star switch
-        {
-            StarClass.RedDwarf => 0.028f, StarClass.Orange => 0.016f, StarClass.Yellow => 0.0095f, StarClass.White => 0.008f, _ => 0.006f,
-        };
         float energy = star switch
         {
             StarClass.RedDwarf => 1.1f, StarClass.Orange => 1.25f, StarClass.Yellow => 1.35f, StarClass.White => 1.5f, _ => 1.6f,
@@ -160,7 +155,7 @@ public sealed record SkySystem
         string body = bodies.Count == 0 ? "no moons" : string.Join(", ", bodies.ConvertAll(b => b.Name));
         return new SkySystem
         {
-            Star = star, StarColor = starColor, SunRadius = sunRadius, SunEnergy = energy,
+            Star = star, StarColor = starColor, SunEnergy = energy, // its disc's size is the system's (StarSystem.SunAngular)
             Air = air, Density = density, Zenith = zenith, Horizon = horizon, Sunset = sunset, Haze = haze,
             NightZenith = Rgb.Lerp(new Rgb(0.01f, 0.012f, 0.025f), zenith * 0.05f, 0.5f),
             CloudTint = cloudTint,

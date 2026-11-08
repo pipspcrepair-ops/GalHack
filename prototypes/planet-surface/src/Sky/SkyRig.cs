@@ -94,6 +94,39 @@ public partial class SkyRig : Node3D
         Sun.GlobalBasis = ShadowSkew * Sun.GlobalBasis;
     }
     public Vector3 ToSun { get; private set; } = Vector3.Up;
+
+    /// <summary>The share of the sun's disc in sight from where you stand, 0 to 1 (an eclipse hides the rest): its light, the sky's and the shadows go with it.</summary>
+    public float SunLit { get; private set; } = 1f;
+
+    /// <summary>Where this sky is seen from, in the home globe's frame, m from its centre.</summary>
+    public D3 Eye => _eye;
+
+    /// <summary>
+    /// The deepest eclipse seen from here with the sun up (its light at least <paramref name="up"/>
+    /// over the horizon), searched over <paramref name="days"/> from now: when, and how much of the
+    /// sun is hidden then (0: none found).
+    /// </summary>
+    public (double Days, double Covered) NextEclipse(double days, double up = 0.2)
+    {
+        StarSystem m = Model;
+        if (m == null) return (Days, 0.0);
+        double from = Days, best = from, most = 0.0;
+        D3 zenith = _eye.Normalized;
+        double Seen(double t) => m.See(m.Star, t, _eye).Direction.Dot(zenith) >= up ? m.Eclipse(t, _eye).Covered : 0.0;
+        for (double t = from; t < from + days; t += 0.002)
+        {
+            double c = Seen(t);
+            if (c > most) (most, best) = (c, t);
+        }
+        // Refined to its deepest.
+        for (double step = 0.0005; step > 1e-6; step *= 0.5)
+            foreach (double t in new[] { best - step, best + step })
+                if (Seen(t) > most) (most, best) = (Seen(t), t);
+        return (best, most);
+    }
+
+    /// <summary>Tests: false leaves eclipses out of the light, to measure against.</summary>
+    public static bool Eclipses = true;
     public float Daylight { get; private set; } = 1f;
     public AtmosphereState Air { get; private set; }
 
@@ -107,7 +140,7 @@ public partial class SkyRig : Node3D
     readonly List<Sighting> _seen = new(), _inSlots = new();
     readonly List<(Orbiter Body, Vector3 Direction, float Angular)> _drawn = new();
     readonly Vector3[] _bodyDirs = new Vector3[BodySlots], _bodyLights = new Vector3[BodySlots], _bodyColors = new Vector3[BodySlots];
-    readonly float[] _bodyRadii = new float[BodySlots];
+    readonly float[] _bodyRadii = new float[BodySlots], _bodyShade = new float[BodySlots], _bodyRed = new float[BodySlots];
     readonly int[] _bodyLayers = new int[BodySlots];
     readonly Vector3[] _bodyAxes = new Vector3[BodySlots], _bodyZeros = new Vector3[BodySlots];
     Vector3 _brightest = Vector3.Up;
@@ -252,7 +285,7 @@ public partial class SkyRig : Node3D
         _sky.SetShaderParameter("sunset", C(s.Sunset));
         _sky.SetShaderParameter("haze", C(s.Haze));
         _sky.SetShaderParameter("star_color", C(s.StarColor));
-        _sky.SetShaderParameter("sun_radius", world.StarSystem.See(world.StarSystem.Star, 0.0, new D3(0, world.StarSystem.Home.Radius, 0)).Angular);
+        ShowSun(_sky, world.StarSystem, s);
         _sky.SetShaderParameter("sun_energy", s.SunEnergy);
         _sky.SetShaderParameter("density", s.Density);
         _sky.SetShaderParameter("stars_by_day", s.StarsByDay);
@@ -383,6 +416,7 @@ public partial class SkyRig : Node3D
         SkyToStars = system * _skyToGlobe;
         Vector3 toSun = InSky(m.See(m.Star, days, _eye, o).Direction);
         ToSun = toSun;
+        SunLit = (float)(1.0 - m.EclipseAt(days, m.Position(m.Home, days) + o.ToSystem(_eye), m.Home).Covered);
         StarInField = (V(m.Position(m.Star, days) - m.Position(m.Home, days))).Normalized();
         Sun.LookAt(Sun.GlobalPosition - toSun, MathF.Abs(toSun.Y) > 0.99f ? Vector3.Forward : Vector3.Up);
         Skew();
@@ -433,6 +467,10 @@ public partial class SkyRig : Node3D
             _bodyRadii[slot] = s.Angular;
             (_bodyAxes[slot], _bodyZeros[slot]) = Turned(s.Body);
             _bodyLayers[slot] = Surfaces?.LayerOf(s.Body) ?? -1;
+            // In another body's shadow it darkens, and behind a world with air it glows dull red.
+            var (hidden, by) = m.EclipseAt(days, m.Position(s.Body, days), s.Body);
+            _bodyShade[slot] = (float)(1.0 - hidden);
+            _bodyRed[slot] = StarSystem.HasAir(by) ? (float)hidden : 0f;
             _bodyColors[slot++] = new Vector3(s.Body.Color.R, s.Body.Color.G, s.Body.Color.B);
             float phase = Math.Clamp(-dir.Dot(light) * 0.5f + 0.5f, 0f, 1f); // full when opposite the sun
             float e = 0.22f * phase * Smooth(-0.02f, 0.2f, dir.Y) * (s.Angular / 0.03f);
@@ -448,6 +486,8 @@ public partial class SkyRig : Node3D
         _sky.SetShaderParameter("moon_layer", _bodyLayers);
         _sky.SetShaderParameter("moon_axis", _bodyAxes);
         _sky.SetShaderParameter("moon_zero", _bodyZeros);
+        _sky.SetShaderParameter("moon_shade", _bodyShade);
+        _sky.SetShaderParameter("moon_red", _bodyRed);
     }
 
     /// <summary>Recomputes lights and the sky from the current time and air (screenshots call it directly).</summary>
@@ -464,9 +504,14 @@ public partial class SkyRig : Node3D
         // the long path its light takes through the air (to under half near the horizon).
         float low = Smooth(0.35f, 0f, toSun.Y);
         Rgb light = Rgb.Lerp(s.StarColor, s.Sunset, low * 0.7f);
+        // An eclipse: the light goes with the share of the disc still in sight, cooler as it goes,
+        // and the shadows fade as the sun thins to a ring.
+        float lit = Eclipses ? SunLit : 1f;
+        light = Rgb.Lerp(light, new Rgb(0.6f, 0.68f, 0.86f), (1f - lit) * 0.55f);
         Sun.LightColor = C(light);
-        Sun.LightEnergy = s.SunEnergy * Smooth(-0.05f, 0.1f, toSun.Y) * AirMass(toSun.Y) * air.SunScale;
-        Sun.ShadowOpacity = Math.Clamp(0.25f + air.SunScale, 0f, 1f);
+        Sun.LightEnergy = s.SunEnergy * Smooth(-0.05f, 0.1f, toSun.Y) * AirMass(toSun.Y) * air.SunScale * lit;
+        Sun.ShadowOpacity = Math.Clamp(0.25f + air.SunScale, 0f, 1f) * Smooth(0.02f, 0.35f, lit);
+        _sky.SetShaderParameter("sun_lit", lit);
         // The sun stays the sky's light even below the horizon (the shader reads its direction for
         // twilight); it just gives no light and casts no shadows then.
         Sun.ShadowEnabled = toSun.Y > -0.03f;
@@ -480,6 +525,7 @@ public partial class SkyRig : Node3D
         NightLight.LookAt(NightLight.GlobalPosition - (_brightest.Y > 0.1f ? _brightest : new Vector3(0.3f, 1f, 0.2f).Normalized()), Vector3.Forward);
         Stars.Poll();
         GalaxySky.SetPixel(_sky, IsInsideTree() ? GetViewport() : null);
+        _sky.SetShaderParameter("sun_time", SunTime);
 
         // Clouds and overcast from the weather.
         _sky.SetShaderParameter("cloud_cover", air.CloudCover);
@@ -550,6 +596,76 @@ public partial class SkyRig : Node3D
     public static float AirMass(float sunY) => 0.45f + 0.55f * Smooth(0.02f, 0.3f, sunY);
 
     static Color C(Rgb c) => new(c.R, c.G, c.B);
+
+    /// <summary>How bright the sun's disc is high in a clear sky, times its energy: the same with no air in the way.</summary>
+    public const float DiscEnergy = 18f;
+
+    /// <summary>
+    /// The sun as a sky draws it, this sky or space's (GalaxyShader's <c>sun_disc</c> and
+    /// <c>sun_in_space</c>): one size, its real one (<see cref="StarSystem.SunAngular"/>), and with
+    /// no air in the way one light, the star's colour as bright as a high sun's disc here. The
+    /// air's glow round it and the screen's bloom go on top.
+    /// </summary>
+    public static void ShowSun(ShaderMaterial sky, StarSystem model, SkySystem system)
+    {
+        sky.SetShaderParameter("sun_radius", model.SunAngular);
+        sky.SetShaderParameter("sun_disc_light", new Vector3(system.StarColor.R, system.StarColor.G, system.StarColor.B) * system.SunEnergy * DiscEnergy);
+        sky.SetShaderParameter("sun_rim", RimOf(system.Star));
+        sky.SetShaderParameter("sun_heat", model.SunHeat);
+    }
+
+    /// <summary>The colour at a star's limb, round its white-hot core: deep orange-red for a cool star, pale for a hot one.</summary>
+    public static Vector3 RimOf(StarClass star) => star switch
+    {
+        StarClass.RedDwarf => new Vector3(1f, 0.32f, 0.12f),
+        StarClass.Orange => new Vector3(1f, 0.46f, 0.18f),
+        StarClass.Yellow => new Vector3(1f, 0.6f, 0.28f),
+        StarClass.White => new Vector3(1f, 0.86f, 0.68f),
+        _ => new Vector3(0.78f, 0.88f, 1f),
+    };
+
+    /// <summary>
+    /// What could shadow this world now, for its globe seen from orbit: the bodies nearest the
+    /// sun's direction from it, up to <paramref name="into"/>'s length, each where it stands from
+    /// the globe's centre in this sky's directions in globe radii (xyz) and its radius in globe
+    /// radii (w); <paramref name="sun"/> the sun's angular radius. The globe darkens under each
+    /// by the share of the sun it hides there (the eclipse's own sum, <see cref="StarSystem.Covered"/>).
+    /// </summary>
+    public int Umbrae(Vector4[] into, out float sun)
+    {
+        sun = 0f;
+        StarSystem m = Model;
+        if (m == null) return 0;
+        double days = Days, R = m.Home.Radius;
+        StarSystem.Orientation o = m.Orient(days);
+        D3 home = m.Position(m.Home, days), toStar = m.Position(m.Star, days) - home;
+        double starDistance = toStar.Length;
+        D3 sunDir = toStar * (1.0 / starDistance);
+        sun = (float)Math.Asin(Math.Min(m.Star.Radius / starDistance, 1.0));
+        var near = new List<(double Gap, Orbiter Body)>();
+        foreach (Orbiter b in m.Bodies)
+        {
+            if (b.Kind is OrbiterKind.Star or OrbiterKind.Belt || b == m.Home || b.Radius <= 0.0) continue;
+            D3 to = m.Position(b, days) - home;
+            double distance = to.Length;
+            if (distance >= starDistance || distance <= R) continue;
+            // Its shadow can reach somewhere on the globe: within the sun's radius plus the body's and the globe's own size from there.
+            double gap = Math.Acos(Math.Clamp(to.Dot(sunDir) / distance, -1.0, 1.0)) - Math.Asin(Math.Min((b.Radius + R) / distance, 1.0));
+            if (gap < sun) near.Add((gap, b));
+        }
+        near.Sort((a, b) => a.Gap.CompareTo(b.Gap));
+        int n = Math.Min(near.Count, into.Length);
+        for (int i = 0; i < n; i++)
+        {
+            Orbiter b = near[i].Body;
+            Vector3 at = _skyToGlobe.Inverse() * V(o.ToGlobe(m.Position(b, days) - home) * (1.0 / R));
+            into[i] = new Vector4(at.X, at.Y, at.Z, (float)(b.Radius / R));
+        }
+        return n;
+    }
+
+    /// <summary>The sun's slow churn, seconds: wrapped so the shader never loses its precision.</summary>
+    public static float SunTime => (float)(Time.GetTicksMsec() % 3_600_000UL) / 1000f;
 
     /// <summary>The catalogue's name for the world's own star class.</summary>
     public static StarKind KindOf(StarClass c) => c switch

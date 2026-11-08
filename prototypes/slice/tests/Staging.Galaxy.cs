@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using GalHack.Physics.Engine;
 using GalHack.Stars;
 using Godot;
 using Slice.Game;
@@ -25,6 +26,12 @@ public sealed partial class Staging
         "galaxy-climb" => GalaxyClimb(),
         "night-ground" => NightGround(),
         "night-space" => NightSpace(),
+        "night-core" => NightCore(space: false),
+        "night-core-space" => NightCore(space: true),
+        "sun-climb" => SunClimb(),
+        "ringed-giant" => RingedGiant(),
+        "sun-look" => SunLook(),
+        "eclipse" => EclipseView(),
         "galaxy-map" => GalaxyMap(),
         "world-map" => WorldMapShots(),
         "galaxy-lanes" => GalaxyLanes(),
@@ -238,6 +245,261 @@ public sealed partial class Staging
     }
 
     /// <summary>The way in: the galaxy's band and its core, from space, where no ground is in the way.</summary>
+    /// <summary>
+    /// The galaxy's heart, the central black hole, where the sky really has it: the night held at
+    /// the hour it stands about 30 degrees up with the sun well down (--time picks another), seen
+    /// from the ground over the land, or from orbit straight at it, with nothing on the screen but
+    /// the view. Prints how far off it is and how big it looks.
+    /// </summary>
+    IEnumerable<int> NightCore(bool space)
+    {
+        if (space) foreach (int x in Seated()) yield return x;
+        Stars.Finish();
+        PlanetSurface.Skies.SkyRig sky = _game.Surface.Sky;
+        sky.Paused = true;
+        _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
+        double best = 0.0;
+        float bestScore = float.MaxValue;
+        for (int k = 0; k < 288; k++)
+        {
+            double t = k / 288.0;
+            sky.TimeOfDay = t;
+            sky.Track();
+            float up = Mathf.RadToDeg(MathF.Asin(Math.Clamp(_game.Spaceflight.LookAlong(Stars.ToHole).Y, -1f, 1f)));
+            float sun = sky.SunAt(t).Y;
+            float score = MathF.Abs(up - 30f) + (sun < -0.3f ? 0f : 200f + sun * 100f);
+            if (score < bestScore) (bestScore, best) = (score, t);
+        }
+        sky.TimeOfDay = Num("time", best);
+        sky.Track();
+        foreach (int x in _drive.Wait(30)) yield return x;
+        Galaxy g = Stars.Galaxy;
+        Heart hole = g.Hole;
+        float far = N.Vector3.Distance(hole.Position, Stars.View.Eye);
+        GD.Print($"(core: home {g.Name(Stars.Here)}, depth {g.DepthOf(Stars.Here):0.000}, {far:F1} LY from the hole; its disc {2f * Mathf.RadToDeg(MathF.Atan(hole.Outer / far)):F2} degrees across; " +
+                 $"the bulge's light in front of it {Stars.View.HoleFront:F2}; time {sky.TimeOfDay:F3}, sun {Mathf.RadToDeg(MathF.Asin(sky.SunAt(sky.TimeOfDay).Y)):F0} degrees up)");
+        if (space) foreach (int x in UpAndOut()) yield return x;
+        Vector3 to = _game.Spaceflight.LookAlong(Stars.ToHole);
+        GD.Print($"(core: the hole is {Mathf.RadToDeg(MathF.Asin(Math.Clamp(to.Y, -1f, 1f))):F1} degrees up, {(space ? "from orbit" : "from the ground")})");
+        if (space) Face(to);
+        else
+        {
+            // Under it, with the land along the bottom of the picture: the hole a little over the
+            // middle, from a little over the ground (--lift, m) so no tree stands in front.
+            var flat = new Vector3(to.X, 0f, to.Z).Normalized();
+            float pitch = Math.Clamp(MathF.Asin(Math.Clamp(to.Y, -1f, 1f)) - Mathf.DegToRad(12f), Mathf.DegToRad(4f), Mathf.DegToRad(40f));
+            Vector3 dir = flat * MathF.Cos(pitch) + Vector3.Up * MathF.Sin(pitch);
+            Vector3 eye = _game.Camera.GlobalPosition + Vector3.Up * (float)Num("lift", 24);
+            _game.FixedCamera = new Transform3D(Basis.LookingAt(dir, Vector3.Up), eye);
+            foreach (int x in _drive.UntilSettled()) yield return x;
+        }
+        foreach (int x in _drive.Wait(40)) yield return x;
+        foreach (Node n in _game.GetTree().Root.FindChildren("*", nameof(CanvasLayer), true, false)) ((CanvasLayer)n).Visible = false;
+        foreach (int x in _drive.Wait(4)) yield return x;
+    }
+
+    /// <summary>
+    /// The sun at one zoom on the way up (--fov, degrees; 8 by default), the clock held at
+    /// mid-morning (--time): from the Skiff's seat on the ground, at the top of the climb with the
+    /// air gone (the surface's sky still drawing it, --top m), and high in orbit (space's own sky).
+    /// Its disc is the one size in all three (StarSystem.SunAngular); only the air's glow differs.
+    /// Each shot from just outside the hull, toward the sun as that zone's light has it.
+    /// </summary>
+    IEnumerable<int> SunClimb()
+    {
+        foreach (int x in Seated()) yield return x;
+        Vessel v = Skiff;
+        PlanetSurface.Skies.SkyRig sky = _game.Surface.Sky;
+        sky.TimeOfDay = Num("time", 0.40);
+        sky.Paused = true;
+        _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
+        _game.Visor.Visible = false;
+        float zoom = (float)Num("fov", 8), wide = _game.Settings.Fov;
+        float angular = _game.Surface.Planet.StarSystem.SunAngular;
+        GD.Print($"(sun: its disc {2f * Mathf.RadToDeg(angular):F3} degrees across, as the system has it; every shot at {zoom:F1} degrees, {2f * MathF.Tan(angular) / (2f * MathF.Tan(Mathf.DegToRad(zoom) * 0.5f)) * 900f:F0} pixels across in a 900-row picture)");
+        IEnumerable<int> Shoot(string tag, bool space)
+        {
+            _game.Controls.ReleaseAll();
+            Hurry(1);
+            _game.FixedCamera = null;
+            for (int i = 0; i < 3; i++) yield return 0;
+            Vector3 toSun = (space ? _game.Orbit.Space.Sun : sky.Sun).GlobalBasis.Z.Normalized();
+            Vector3 eye = _game.Camera.GlobalPosition + toSun * 3f + Vector3.Up * 2f;
+            _game.Settings.Fov = zoom;
+            _game.Camera.Fov = zoom;
+            _game.FixedCamera = new Transform3D(Basis.LookingAt(toSun, MathF.Abs(toSun.Y) > 0.95f ? Vector3.Forward : Vector3.Up), eye);
+            for (int i = 0; i < 20; i++) yield return 0;
+            GD.Print($"(sun: {tag} at {v.Body.Position.Y:F0} m, the air {_game.Spaceflight.AirGone:P0} gone, {(_game.InOrbit ? $"in orbit, band {_game.Spaceflight.Band:F2}" : "the surface's sky")}; the sun {Mathf.RadToDeg(MathF.Asin(Math.Clamp(toSun.Y, -1f, 1f))):F0} degrees up)");
+            Snap(tag);
+            _game.FixedCamera = null;
+            _game.Settings.Fov = wide;
+            _game.Camera.Fov = wide;
+        }
+        foreach (int x in Shoot("a-ground", false)) yield return x;
+        Hurry(3);
+        _game.Controls.Hold(Key.Space);
+        for (int i = 0; i < 60 * 120 && v.Body.Position.Y < (float)Num("top", 1035); i++) yield return 0;
+        foreach (int x in Shoot("b-climb", false)) yield return x;
+        Hurry(4);
+        _game.Controls.Hold(Key.Space);
+        for (int i = 0; i < 60 * 240 && _game.Spaceflight.Band < 1f; i++) yield return 0;
+        for (int i = 0; i < 30; i++) yield return 0;
+        foreach (int x in Shoot("c-orbit", true)) yield return x;
+    }
+
+    /// <summary>
+    /// A ringed body from orbit at several distances (--ringed=1 picks a world whose giant has
+    /// rings): from where you are, then from 40, 12 and 4 of its radii, each zoomed so its rings fill
+    /// the middle of the picture. Its sphere is whole in every one, its ring passing in front of it
+    /// and behind it. Prints how far off it is and how big it looks.
+    /// </summary>
+    IEnumerable<int> RingedGiant()
+    {
+        foreach (int x in ToOrbit()) yield return x;
+        foreach (int x in UntilSurfaces()) yield return x;
+        Vector3 world = _game.Orbit.ToWorld(N.Vector3.Zero).ToGodot(), out0 = (Skiff.Body.Position.ToGodot() - world).Normalized();
+        Hurry(3);
+        foreach (int x in _pilot.FlyTo(Skiff, () => world + out0 * (_game.Orbit.ShellRadius + 2500f), 60f, 120f)) yield return x;
+        Hurry(1);
+        _game.Controls.ReleaseAll();
+        _game.Visor.Visible = false;
+        PlanetSurface.Skies.SkyRig sky = _game.Surface.Sky;
+        sky.Paused = true;
+        OrbitZone o = _game.Orbit;
+        PlanetSurface.Skies.StarSystem model = _game.Surface.Planet.StarSystem;
+        double days = sky.Days;
+        PlanetSurface.Skies.StarSystem.Orientation turned = model.Orient(days);
+        Basis turn = o.Turn.ToBasis();
+        PlanetSurface.Skies.Orbiter giant = model.Bodies.FirstOrDefault(b => b.Rings && b != model.Home) ?? model.Bodies.FirstOrDefault(b => b.Kind == PlanetSurface.Skies.OrbiterKind.GasGiant);
+        if (giant == null)
+        {
+            GD.Print("(ringed: no giant in this system)");
+            yield break;
+        }
+        PlanetSurface.Skies.D3 at = model.Position(giant, days) - model.Position(model.Home, days);
+        PlanetSurface.Skies.D3 toStar = (model.Position(model.Star, days) - model.Position(giant, days)).Normalized;
+        PlanetSurface.Skies.D3 side = toStar.Cross(new PlanetSurface.Skies.D3(0, 1, 0)).Normalized;
+        float wide = _game.Camera.Fov;
+        foreach (double r in new[] { 0.0, 40.0, 12.0, 4.0, -40.0, -12.0 })
+        {
+            PlanetSurface.Skies.D3 eye;
+            if (r == 0.0)
+            {
+                _game.Spaceflight.ViewFrom = null;
+                N.Vector3 g = o.ToGlobe(_game.Camera.GlobalPosition.ToNumerics());
+                eye = new PlanetSurface.Skies.D3(g.X, g.Y, g.Z);
+            }
+            else
+            {
+                // A negative distance: from its night side, the star behind it.
+                PlanetSurface.Skies.D3 from = r > 0.0
+                    ? at + (toStar * 0.5 + side * 0.8 + new PlanetSurface.Skies.D3(0, 0.25, 0)).Normalized * (giant.Radius * r)
+                    : at + (toStar * -0.85 + side * 0.45 + new PlanetSurface.Skies.D3(0, 0.25, 0)).Normalized * (giant.Radius * -r);
+                eye = turned.ToGlobe(from);
+                _game.Spaceflight.ViewFrom = eye;
+                o.Globe.Hidden = true; // the sky as from out there: your own world (and its ring) is not where the camera is
+            }
+            PlanetSurface.Skies.Sighting s = model.See(giant, days, eye, turned);
+            Vector3 look = (turn * new Vector3((float)s.Direction.X, (float)s.Direction.Y, (float)s.Direction.Z)).Normalized();
+            float fov = Math.Clamp(2f * Mathf.RadToDeg(MathF.Atan(MathF.Tan(s.Angular) * 2.6f / 0.62f)), 0.3f, 75f);
+            _game.Camera.Fov = fov;
+            _game.FixedCamera = new Transform3D(Basis.LookingAt(look, Mathf.Abs(look.Y) > 0.95f ? Vector3.Forward : Vector3.Up), Skiff.Body.Position.ToGodot() + look * 30f);
+            for (int i = 0; i < 10; i++) yield return 0;
+            string tag = r == 0.0 ? "a-from-orbit" : r > 0.0 ? $"b-{r:00}r" : $"c-night-{-r:00}r";
+            Snap(tag);
+            GD.Print($"(ringed: {tag}: {giant.Name}{(giant.Rings ? ", ringed" : ", no rings")} from {s.Distance / 1000:F0} km, {Mathf.RadToDeg(s.Angular):F3} degrees radius, the view {fov:F2} degrees)");
+        }
+        _game.Spaceflight.ViewFrom = null;
+        o.Globe.Hidden = false;
+        _game.FixedCamera = null;
+        _game.Camera.Fov = wide;
+    }
+
+    /// <summary>
+    /// The sun from the ground at one zoom (--fov, degrees; 40 by default), the clock at the hour
+    /// it stands about 12 degrees up (--up), clear, from a little over the ground (--lift): its size
+    /// and look on this kind of world, the land along the bottom of the picture.
+    /// </summary>
+    IEnumerable<int> SunLook()
+    {
+        PlanetSurface.Skies.SkyRig sky = _game.Surface.Sky;
+        sky.Paused = true;
+        _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
+        float want = Mathf.DegToRad((float)Num("up", 12));
+        double best = 0.3;
+        for (double t = 0.15; t < 0.5; t += 0.0025)
+            if (MathF.Abs(MathF.Asin(sky.SunAt(t).Y) - want) < MathF.Abs(MathF.Asin(sky.SunAt(best).Y) - want)) best = t;
+        sky.TimeOfDay = best;
+        sky.Track();
+        foreach (int x in _drive.Wait(30)) yield return x;
+        _game.Visor.Visible = false;
+        PlanetSurface.Skies.StarSystem model = _game.Surface.Planet.StarSystem;
+        Vector3 toSun = sky.Sun.GlobalBasis.Z.Normalized();
+        float zoom = (float)Num("fov", 40), up = MathF.Asin(Math.Clamp(toSun.Y, -1f, 1f));
+        float pitch = MathF.Max(up - Mathf.DegToRad(zoom * 0.12f), Mathf.DegToRad(1f));
+        Vector3 flat = new Vector3(toSun.X, 0f, toSun.Z).Normalized();
+        _game.Settings.Fov = zoom;
+        _game.Camera.Fov = zoom;
+        _game.FixedCamera = new Transform3D(Basis.LookingAt(flat * MathF.Cos(pitch) + Vector3.Up * MathF.Sin(pitch), Vector3.Up), _game.Camera.GlobalPosition + Vector3.Up * (float)Num("lift", 20));
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        foreach (int x in _drive.Wait(40)) yield return x;
+        foreach (Node n in _game.GetTree().Root.FindChildren("*", nameof(CanvasLayer), true, false)) ((CanvasLayer)n).Visible = false;
+        foreach (int x in _drive.Wait(4)) yield return x;
+        GD.Print($"(sun: a {_game.Surface.Planet.Spec.Archetype} world round a {_game.Surface.Planet.Sky.Star} star, {model.Home.Habitable:F2} of its habitable distance: its disc {2f * Mathf.RadToDeg(model.SunAngular):F2} degrees across, heat {model.SunHeat:F2}; {Mathf.RadToDeg(up):F0} degrees up, the view {zoom:F0} degrees)");
+    }
+
+    /// <summary>
+    /// A real eclipse from the start site (the deepest with the sun up in --days, 400 by default):
+    /// the sun from the ground as it builds (nothing hidden yet, a half, nine tenths, its deepest),
+    /// then from orbit at its deepest, the moon's shadow on the globe.
+    /// </summary>
+    IEnumerable<int> EclipseView()
+    {
+        PlanetSurface.Skies.SkyRig sky = _game.Surface.Sky;
+        sky.Paused = true;
+        _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
+        _game.Visor.Visible = false;
+        PlanetSurface.Skies.StarSystem model = _game.Surface.Planet.StarSystem;
+        var (peak, most) = sky.NextEclipse(Num("days", 400));
+        var (_, by) = model.Eclipse(peak, sky.Eye);
+        GD.Print($"(eclipse: the deepest in sight hides {most:P1} of the sun, by {by?.Name ?? "nothing"}, day {peak:F3}; its disc {2f * Mathf.RadToDeg(model.SunAngular):F2} degrees across)");
+        if (most <= 0.0) yield break;
+        // On its way in: when it hides each share.
+        double When(double share)
+        {
+            double t = peak;
+            while (t > peak - 0.5 && model.Eclipse(t, sky.Eye).Covered > share) t -= 0.0002;
+            return t;
+        }
+        float zoom = (float)Num("fov", 40), wide = _game.Settings.Fov;
+        foreach (var (tag, at) in new[] { ("a-before", When(0.0) - 0.01), ("b-half", When(0.5)), ("c-nine-tenths", When(0.9)), ("d-deepest", peak) })
+        {
+            sky.Days = at;
+            foreach (int x in _drive.Wait(8)) yield return x;
+            _game.FixedCamera = null;
+            foreach (int x in _drive.Wait(2)) yield return x;
+            Vector3 toSun = sky.Sun.GlobalBasis.Z.Normalized();
+            _game.Settings.Fov = zoom;
+            _game.Camera.Fov = zoom;
+            _game.FixedCamera = new Transform3D(Basis.LookingAt(toSun, MathF.Abs(toSun.Y) > 0.95f ? Vector3.Forward : Vector3.Up), _game.Camera.GlobalPosition + Vector3.Up * (float)Num("lift", 30));
+            foreach (int x in _drive.Wait(20)) yield return x;
+            GD.Print($"(eclipse: {tag}, day {at:F4}: {model.Eclipse(at, sky.Eye).Covered:P1} hidden; the sun's light {sky.Sun.LightEnergy:F3}, its share {sky.SunLit:F3}; {Mathf.RadToDeg(MathF.Asin(Math.Clamp(toSun.Y, -1f, 1f))):F0} degrees up)");
+            Snap(tag);
+        }
+        _game.FixedCamera = null;
+        _game.Settings.Fov = wide;
+        _game.Camera.Fov = wide;
+        foreach (int x in Seated()) yield return x;
+        sky.Days = peak;
+        foreach (int x in UpAndOut()) yield return x;
+        // From up here, down at the globe: the moon's shadow on it.
+        Vector3 centre = _game.Orbit.ToWorld(N.Vector3.Zero).ToGodot(), eye = _game.Camera.GlobalPosition;
+        _game.Camera.Fov = (float)Num("orbitfov", 70);
+        _game.FixedCamera = new Transform3D(Basis.LookingAt((centre - eye).Normalized(), Vector3.Up), eye);
+        foreach (int x in _drive.Wait(30)) yield return x;
+        GD.Print($"(eclipse: from orbit at day {sky.Days:F4}, {(_game.InOrbit ? "in orbit" : "not in orbit")}, the sun's light up here {_game.Orbit.Space.SunLit:F3} of its own)");
+    }
+
     IEnumerable<int> GalaxyCore()
     {
         foreach (int x in Seated()) yield return x;

@@ -82,7 +82,7 @@ public static class Peoples
 
         // The frame: cold thickens and shortens, heat draws out (the wildlife fit rule's numbers).
         float limbs = band switch { ClimateBand.Frozen => 0.82f, ClimateBand.Cold => 0.92f, ClimateBand.Hot => 1.08f, ClimateBand.Scorching => 1.14f, _ => 1f };
-        f.HeightScale = rng.Chance(0.25f) ? rng.Range(1.12f, 1.35f) : rng.Range(0.9f, 1.12f); // now and then a genuinely tall folk
+        f.HeightScale = rng.Range(0.9f, 1.12f); // (fitted under the doorway below: tall folk stand just under it, the rest vary beneath)
         f.LimbScale = 1f;
         f.LegScale = Math.Clamp(rng.Range(0.92f, 1.1f) * MathF.Sqrt(limbs), 0.86f, 1.16f);
         f.ArmScale = Math.Clamp(rng.Range(0.9f, 1.2f) * MathF.Sqrt(limbs), 0.8f, 1.28f);

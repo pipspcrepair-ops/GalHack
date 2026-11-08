@@ -118,6 +118,10 @@ public sealed partial class Town
         public bool Robbed;
         /// <summary>Waiting a moment for someone to pass (a doorway); how long since you last pushed them.</summary>
         public float Yield, ShovedFor;
+        /// <summary>When a vessel last hit them (clock).</summary>
+        public float StruckAt = -9f;
+        /// <summary>How long you've been leaning on them.</summary>
+        public float PressFor;
         public float Pursue;
         public BodyAct Answer;
         public float AnswerAt, AnswerFor, LookFor;
@@ -219,6 +223,7 @@ public sealed partial class Town
             patch.Sim.StrayEntered -= OnStray;
         }
         _animals.Clear();
+        DropSolids();
         foreach (Person p in People) p.View = null;
         _view = null;
         _place = null;
@@ -449,6 +454,14 @@ public sealed partial class Town
                 Pose(p, who, away, dt);
                 continue;
             }
+            // Unwelcome, you: off their post, they make for it before anything else (watching you on the way).
+            if (guard && mood != Mood.Hostile && Unwelcome && (p.Pos - Walk(Data.Spots[p.Spawn.Spot].Cell)).Length() > 2f)
+            {
+                if (p.Spot != p.Spawn.Spot || p.Path == null || p.Step >= p.Path.Count) GoTo(p, p.Spawn.Spot);
+                Move(p, dt);
+                Pose(p, who, away, dt);
+                continue;
+            }
             if (guard && mood != Mood.Peaceful && (player - p.Pos).Length() < 40f)
             {
                 Guard(p, player, mood, dt);
@@ -464,6 +477,7 @@ public sealed partial class Town
             Pose(p, who, away, dt);
         }
         KeepApart(player, tickDt);
+        Solids(player, tickDt);
     }
 
     /// <summary>Walks a person along their path; true once they are there (or have no path).</summary>

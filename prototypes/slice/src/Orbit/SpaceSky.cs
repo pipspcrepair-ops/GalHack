@@ -79,7 +79,10 @@ public partial class SpaceSky : Node3D
         uniform sampler2DArray surfaces : source_color, filter_linear_mipmap, repeat_enable;
         uniform int layer = -1;
         uniform vec3 zero = vec3(1.0, 0.0, 0.0);
+        uniform float shade = 1.0;   // the share of the sun it sees: another body's shadow hides the rest
+        uniform float red = 0.0;     // how deep it stands in a shadow reddened by a world's air
         varying vec3 normal_w;
+        varying vec3 view_w;
         void vertex() {
             normal_w = NORMAL;
             if (behind > 0.0) {
@@ -87,10 +90,15 @@ public partial class SpaceSky : Node3D
                 float d = length(to), from = behind * 1.02;
                 VERTEX = CAMERA_POSITION_WORLD + to / d * (from + (59000.0 - from) * d / (d + 20000.0));
             }
+            view_w = VERTEX - CAMERA_POSITION_WORLD;
         }
         void fragment() {
             vec3 n = normalize(normal_w);
-            float lit = clamp(dot(n, to_light), 0.0, 1.0);
+            float lit = clamp(dot(n, to_light), 0.0, 1.0) * shade;
+            // The night side is never quite black (the ring's and the stars' light), and a giant's air
+            // lights its limb faintly all round: a whole sphere, even dark against dark space. The sky's
+            // own shader draws them with the same numbers (sky.gdshader's bodies()).
+            float limb = pow(1.0 - clamp(dot(n, -normalize(view_w)), 0.0, 1.0), 3.0) * (0.35 + 0.65 * smoothstep(-0.3, 0.6, dot(n, to_light)));
             vec3 surface = color;
             if (banded) {
                 float lat = dot(n, axis);
@@ -105,7 +113,7 @@ public partial class SpaceSky : Node3D
                 surface = own.rgb;
                 glows = own.a;
             }
-            ALBEDO = surface * (banded ? 0.03 + 0.97 * lit : 0.025 + 1.1 * lit + glows * 0.8);
+            ALBEDO = surface * (banded ? 0.07 + 0.93 * lit + 0.22 * limb : 0.05 + 1.1 * lit + glows * 0.8) + vec3(0.32, 0.06, 0.025) * red;
             ALPHA = 1.0; // in the transparent queue, for its order against the rings, which write no depth
         }
         """;
@@ -118,7 +126,11 @@ public partial class SpaceSky : Node3D
         uniform vec3 to_light = vec3(0.0, 1.0, 0.0);
         uniform vec3 axis = vec3(0.0, 1.0, 0.0);
         uniform float behind = 0.0;
+        uniform vec3 centre = vec3(0.0);   // its giant's, as drawn
+        uniform float radius = 1.0;
+        varying vec3 from_giant;           // where on the ring, from the giant's centre in its radii
         void vertex() {
+            from_giant = (VERTEX - centre) / radius;
             if (behind > 0.0) {
                 vec3 to = VERTEX - CAMERA_POSITION_WORLD;
                 float d = length(to), from = behind * 1.02;
@@ -126,11 +138,14 @@ public partial class SpaceSky : Node3D
             }
         }
         void fragment() {
+            // The giant's own shadow across its ring, soft at the edge (the sky's ring has the same).
+            float along = dot(from_giant, to_light);
+            float shadow = along < 0.0 ? mix(0.06, 1.0, smoothstep(0.96, 1.04, length(from_giant - to_light * along))) : 1.0;
             float rr = mix(1.45, 2.42, UV.x);
             float ring = smoothstep(1.45, 1.5, rr) * (1.0 - smoothstep(2.35, 2.42, rr));
             ring *= 1.0 - (smoothstep(1.93, 1.97, rr) - smoothstep(2.03, 2.07, rr)) * 0.85;
             float tone = 0.6 + 0.4 * sin(rr * 41.0) * sin(rr * 13.0);
-            ALBEDO = color * tone * (0.6 + 0.4 * clamp(abs(dot(axis, to_light)) * 1.5, 0.0, 1.0));
+            ALBEDO = color * tone * (0.6 + 0.4 * clamp(abs(dot(axis, to_light)) * 1.5, 0.0, 1.0)) * shadow;
             ALPHA = ring;
         }
         """;
@@ -140,7 +155,7 @@ public partial class SpaceSky : Node3D
         _surfaces = surfaces;
         _rules = rules;
         _sky = new ShaderMaterial { Shader = Planets.Shaders.Space };
-        _sky.SetShaderParameter("sun_radius", model.See(model.Star, 0.0, new D3(0, model.Home.Radius, 0)).Angular);
+        SkyRig.ShowSun(_sky, model, system); // the disc at the size and light the surface's sky has for it
         Environment = new Godot.Environment
         {
             BackgroundMode = Godot.Environment.BGMode.Sky,
@@ -220,12 +235,16 @@ public partial class SpaceSky : Node3D
     public void Track(StarSystem model, double days, Basis turn, D3 eyeGlobe, Vector3 eye, float behind = 0f)
     {
         _eye = eye;
+        // An eclipse from up here: the one answer the ground's sky takes too (StarSystem.EclipseAt).
+        SunLit = (float)(1.0 - model.Eclipse(days, eyeGlobe).Covered);
+        Sun.LightEnergy = SunEnergy * _share * SunLit;
         StarSystem.Orientation o = model.Orient(days);
         Vector3 W(D3 d) => turn * new Vector3((float)d.X, (float)d.Y, (float)d.Z);
         ToSun = V(model.See(model.Star, days, eyeGlobe, o).Direction);
         Sun.Basis = Facing((turn * ToSun).Normalized());
         // The star field stands in the system's frame: the world turns under it with the day.
         Environment.SkyRotation = (turn * new Basis(V(o.X), V(o.Y), V(o.Z)).Transposed()).GetEuler();
+        _sky.SetShaderParameter("sun_time", SkyRig.SunTime);
         Vector3 field = V(model.Position(model.Star, days) - model.Position(model.Home, days)).Normalized();
         if (field.Dot(_fieldSun) < 0.99995f) // the sky's shader is worked again whenever its light moves
         {
@@ -259,6 +278,9 @@ public partial class SpaceSky : Node3D
             material.SetShaderParameter("axis", axis);
             material.SetShaderParameter("zero", W(o.ToGlobe(bodyZero)).Normalized());
             material.SetShaderParameter("layer", _surfaces?.LayerOf(body) ?? -1);
+            var (hidden, by) = model.EclipseAt(days, model.Position(body, days), body);
+            material.SetShaderParameter("shade", (float)(1.0 - hidden));
+            material.SetShaderParameter("red", StarSystem.HasAir(by) ? (float)hidden : 0f);
             if (body.Kind != OrbiterKind.GasGiant) continue;
             if (body.Rings && node.GetChild(0) is MeshInstance3D ring)
             {
@@ -267,6 +289,8 @@ public partial class SpaceSky : Node3D
                 m.SetShaderParameter("to_light", light);
                 m.SetShaderParameter("axis", axis);
                 m.SetShaderParameter("behind", behind);
+                m.SetShaderParameter("centre", node.GlobalPosition);
+                m.SetShaderParameter("radius", node.Scale.X);
             }
         }
     }
@@ -287,7 +311,16 @@ public partial class SpaceSky : Node3D
     bool _galaxyBound;
 
     /// <summary>The star's share of the light, 0 to 1 (the surface's sun has the rest).</summary>
-    public void Light(float share) => Sun.LightEnergy = SunEnergy * share;
+    public void Light(float share)
+    {
+        _share = share;
+        Sun.LightEnergy = SunEnergy * share * SunLit;
+    }
+
+    float _share;
+
+    /// <summary>The share of the sun's disc in sight from the eye up here, 0 to 1.</summary>
+    public float SunLit { get; private set; } = 1f;
 
     /// <summary>Space's sky on or off (only one environment at a time), and how bright its sky is, 0 to 1.</summary>
     public void Show(bool active, float brightness)

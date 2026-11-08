@@ -35,6 +35,7 @@ public sealed class PersonalSpace
 
     /// <summary>The deepest two bodies that give way sat in each other after the last pass, m (tests).</summary>
     public float WorstOverlap { get; private set; }
+    public (int A, int B) WorstPair { get; private set; }
 
     static long Key(int x, int z) => ((long)x << 32) ^ (uint)z;
 
@@ -128,7 +129,10 @@ public sealed class PersonalSpace
                     if (_grid.TryGetValue(Key(cx + dx, cz + dz), out List<int> near))
                         foreach (int j in near)
                             if (j > i && a.Give > 0f && Bodies[j].Give > 0f && MathF.Abs(a.Pos.Y - Bodies[j].Pos.Y) < 1.5f)
-                                worst = MathF.Max(worst, a.Radius + Bodies[j].Radius - new Vector2(a.Pos.X - Bodies[j].Pos.X, a.Pos.Z - Bodies[j].Pos.Z).Length());
+                            {
+                                float o = a.Radius + Bodies[j].Radius - new Vector2(a.Pos.X - Bodies[j].Pos.X, a.Pos.Z - Bodies[j].Pos.Z).Length();
+                                if (o > worst) { worst = o; WorstPair = (i, j); }
+                            }
         }
         WorstOverlap = worst;
     }

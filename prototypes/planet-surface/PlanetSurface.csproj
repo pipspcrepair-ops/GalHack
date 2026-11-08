@@ -27,6 +27,8 @@
     <Compile Include="..\planet-generator\src\Gen\**\*.cs" />
     <Compile Include="..\planet-generator\src\Look\**\*.cs" />
     <Compile Include="..\planet-generator\src\Surface\FloraMeshes.cs" />
+    <!-- The orbit's sky shader, as plain source: the sky test draws the sun in it as the climb and the ground do. -->
+    <Compile Include="..\planet-generator\src\Shaders.cs" />
     <Compile Include="..\weather\src\Model\**\*.cs" />
     <Compile Include="..\weather\src\Forces\**\*.cs" />
     <Compile Include="..\weather\src\Glue.cs" />

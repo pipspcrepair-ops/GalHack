@@ -79,6 +79,11 @@ public readonly record struct WorldView
 {
     /// <summary>The drawing frame at the point under you, in the world.</summary>
     public Vector3 Up { get; init; }
+
+    /// <summary>What can shadow the globe now (SkyRig.Umbrae): each body's place from its centre and radius, in its radii; how many; the sun's angular radius.</summary>
+    public Vector4[] Umbra { get; init; }
+    public int UmbraCount { get; init; }
+    public float UmbraSun { get; init; }
     public Vector3 East { get; init; }
     public Vector3 South { get; init; }
     /// <summary>The same place's frame on the globe, for the map lookup.</summary>
@@ -253,6 +258,38 @@ public partial class Globe : Node3D
         }
         """;
 
+    /// <summary>
+    /// A moon's shadow on the globe: at each point the share of the sun the bodies in front of it
+    /// hide there (two discs' overlap, StarSystem.Covered's sum), so a dark umbra with a soft
+    /// penumbra round it, moving as they move.
+    /// </summary>
+    const string UmbraCode = """
+        uniform vec4 umbra[4];
+        uniform int umbra_count = 0;
+        uniform float umbra_sun = 0.0;
+        float sun_hidden(float a, float b, float c) {
+            if (a <= 0.0 || b <= 0.0 || c >= a + b) return 0.0;
+            if (c <= abs(b - a)) return b >= a ? 1.0 : b * b / (a * a);
+            float a2 = a * a, b2 = b * b, c2 = c * c;
+            float lens = a2 * acos(clamp((c2 + a2 - b2) / (2.0 * c * a), -1.0, 1.0)) + b2 * acos(clamp((c2 + b2 - a2) / (2.0 * c * b), -1.0, 1.0))
+                       - 0.5 * sqrt(max(0.0, (-c + a + b) * (c + a - b) * (c - a + b) * (c + a + b)));
+            return clamp(lens / (3.14159265 * a2), 0.0, 1.0);
+        }
+        // The sunlight reaching a point of the globe (in its radii from its centre), 0 to 1.
+        float sunlight_at(vec3 g, vec3 to_sun) {
+            float open = 1.0;
+            for (int i = 0; i < umbra_count; i++) {
+                vec3 v = umbra[i].xyz - g;
+                float dist = length(v);
+                if (dot(v, to_sun) <= 0.0) continue;
+                float size = asin(min(umbra[i].w / dist, 1.0));
+                float apart = atan(length(cross(v, to_sun)), dot(v, to_sun));
+                open *= 1.0 - sun_hidden(umbra_sun, size, apart);
+            }
+            return open;
+        }
+        """;
+
     const string GroundSource = $$"""
         shader_type spatial;
         render_mode world_vertex_coords, blend_mix, depth_draw_always, cull_back, diffuse_burley, specular_schlick_ggx, shadows_disabled;
@@ -265,6 +302,7 @@ public partial class Globe : Node3D
         uniform float relief = 1.0;
         {{SheetCode}}
         {{Paint}}
+        {{UmbraCode}}
         varying vec3 round_normal;
 
         float ground_at(vec2 o, float lod) {
@@ -302,7 +340,7 @@ public partial class Globe : Node3D
         void fragment() {
             MapPoint m = map_point(offset);
             vec4 a = paint(albedo_map, m);
-            ALBEDO = a.rgb;
+            ALBEDO = a.rgb * sunlight_at(normalize(round_normal), sun_dir);
             ROUGHNESS = mix(0.9, 0.42, a.a);
             SPECULAR = mix(0.1, 0.45, a.a);
             float night = smoothstep(0.15, -0.25, dot(normalize(round_normal), sun_dir));
@@ -312,33 +350,219 @@ public partial class Globe : Node3D
         }
         """;
 
+    /// <summary>
+    /// The clouds: the sky's own cloud noise, drifted as the sky drifts it, under the live weather
+    /// (<see cref="GlobeWeather"/>), worked out with the sky's sums laid flat (sky.gdshader's
+    /// cloud_density), so a place's clouds from orbit are the ones over it on the ground: its region's
+    /// cover, a front's deck behind its edge and the open air ahead with its anvils' sheet up high,
+    /// the storm cells' towers and anvils standing up bright, dust, blowing snow and fog low under
+    /// them, and lightning flickering in the storms and flashing where strikes come down, which shows
+    /// on the night side. Until the weather is bound it is the paint's own cloud map.
+    /// </summary>
     const string CloudSource = $$"""
         shader_type spatial;
         render_mode world_vertex_coords, blend_mix, depth_draw_never, cull_back, diffuse_lambert_wrap, specular_disabled, shadows_disabled;
         uniform sampler2D cloud_map : source_color, filter_linear_mipmap, repeat_enable;
         uniform float cloud_lift = 30.0;
+        uniform float live = 0.0;
+        uniform sampler2D cloud_noise : filter_linear_mipmap, repeat_enable;
+        uniform vec2 cloud_scale = vec2(8000.0);
+        uniform vec2 cloud_drift = vec2(0.0);
+        uniform sampler2D weather_was : filter_linear, repeat_enable;
+        uniform sampler2D weather_now : filter_linear, repeat_enable;
+        uniform sampler2D haze_was : filter_linear, repeat_enable;
+        uniform sampler2D haze_now : filter_linear, repeat_enable;
+        uniform float weather_blend = 1.0;
+        uniform vec3 cloud_color : source_color = vec3(1.0);
+        uniform vec3 dust_color : source_color = vec3(0.61, 0.49, 0.35);
+        uniform vec3 sun_dir = vec3(0.0, 1.0, 0.0);
+        uniform float clock = 0.0;
+        uniform vec4 strikes[4];
+        uniform float tower_lift = 16.0;
         {{SheetCode}}
         {{Paint}}
+        {{UmbraCode}}
+        varying vec3 round_normal;
+
+        struct Cloud { vec3 color; float alpha; float top; float storm; float lightning; float billow; };
+
+        // The weather layer is coarse: read it smoothly (a cubic B-spline from four bilinear taps), so
+        // neither its texels nor the light on its towers show.
+        vec4 smooth_tap(sampler2D map, vec2 uv) {
+            vec2 size = vec2(textureSize(map, 0));
+            vec2 t = uv * size - 0.5, f = fract(t);
+            t -= f;
+            vec2 f2 = f * f, f3 = f2 * f;
+            vec2 w0 = (1.0 - 3.0 * f + 3.0 * f2 - f3) / 6.0, w1 = (4.0 - 6.0 * f2 + 3.0 * f3) / 6.0;
+            vec2 w2 = (1.0 + 3.0 * f + 3.0 * f2 - 3.0 * f3) / 6.0, w3 = f3 / 6.0;
+            vec2 s0 = w0 + w1, s1 = w2 + w3;
+            vec2 c0 = (t - 0.5 + w1 / s0) / size, c1 = (t + 1.5 + w3 / s1) / size;
+            return (textureLod(map, vec2(c0.x, c0.y), 0.0) * s0.x + textureLod(map, vec2(c1.x, c0.y), 0.0) * s1.x) * s0.y
+                + (textureLod(map, vec2(c0.x, c1.y), 0.0) * s0.x + textureLod(map, vec2(c1.x, c1.y), 0.0) * s1.x) * s1.y;
+        }
+
+        float noise_at(vec2 uv, vec2 dx, vec2 dy) { return textureGrad(cloud_noise, uv, dx, dy).r; }
+
+        Cloud cloud_at(vec2 uv, vec2 dx, vec2 dy) {
+            vec2 k = map_size / cloud_scale;
+            vec2 q = (uv * map_size + cloud_drift) / cloud_scale, qx = dx * k, qy = dy * k;
+            // The weather is read a little off where it is, by the clouds' own noise, so nothing it holds
+            // has a clean edge: a front's edge, a storm's rim, one region's weather against the next, all
+            // feather out into broken cloud a few hundred metres either way.
+            // Every noise here is read at a whole number of its tiles to the map's, so it repeats exactly
+            // round the globe and from pole to pole: the map's edge (u = ±0.5 in the lookup) never shows.
+            vec2 warp = vec2(noise_at(q * 3.0 + 0.13, qx * 3.0, qy * 3.0), noise_at(q * 3.0 + 0.61, qx * 3.0, qy * 3.0)) - 0.5;
+            warp += (vec2(noise_at(q * 9.0 + 0.37, qx * 9.0, qy * 9.0), noise_at(q * 9.0 + 0.83, qx * 9.0, qy * 9.0)) - 0.5) * 0.6;
+            vec2 wuv = uv + warp * 900.0 / map_size;
+            vec4 w = mix(smooth_tap(weather_was, wuv), smooth_tap(weather_now, wuv), weather_blend);
+            vec4 hz = mix(smooth_tap(haze_was, wuv), smooth_tap(haze_now, wuv), weather_blend);
+            // The sky's coverage (cloud_density laid flat): its noise, its cover, what the front and the cells add.
+            float n = noise_at(q, qx, qy) * 0.65 + noise_at(q * 2.0 + 0.31, qx * 2.0, qy * 2.0) * 0.35;
+            float extra = w.g * 2.0 - 1.0;
+            float coverage = n - (1.0 - mix(0.12, 1.05, w.r)) + extra;
+            // Its erosion into billows and rags (the sky's detail noise, at a kilometre and a third of one).
+            float detail = noise_at(q * 8.0 + 0.11, qx * 8.0, qy * 8.0) * 0.65 + noise_at(q * 24.0 + 0.47, qx * 24.0, qy * 24.0) * 0.35;
+            float sheet = w.a * 2.0 - 1.0, trail = max(-sheet, 0.0);
+            coverage -= (detail - 0.45) * (0.7 + 0.5 * trail) * (1.0 - w.r * 0.4);
+            // A storm's tower in cauliflower lobes, at its own scale (storm_at's lump).
+            float lump = noise_at(q * 4.0, qx * 4.0, qy * 4.0) * 0.6 + noise_at(q * 8.0 + 0.2, qx * 8.0, qy * 8.0) * 0.4;
+            float tower = w.b * smoothstep(0.0, 0.3, w.b + (lump - 0.55) * 0.8);
+            // How thick the cloud is: thin cloud lets the ground through, thick cloud doesn't; a front's deck
+            // trailing far behind its edge is a thinner grey sheet.
+            float thick = max(coverage, 0.0) * (1.0 - 0.6 * trail) + tower * (0.6 + 0.8 * lump);
+            float a = (1.0 - exp(-3.0 * thick)) * 0.96;
+            // The anvils' thin sheet spread ahead of a front, up high: soft, combed out, never solid.
+            float comb = noise_at(q * vec2(1.0, 3.0) + 0.21, qx * 3.0, qy * 3.0) * 0.6 + noise_at(q + 0.57, qx, qy) * 0.4;
+            float veil = max(sheet, 0.0) * 0.3 * smoothstep(0.3, 0.7, comb);
+            a = a + veil * (1.0 - a);
+            vec3 col = cloud_color * mix(0.74, 1.0, smoothstep(0.0, 0.9, thick)) * (1.0 - 0.22 * trail) * (1.0 + 0.18 * tower);
+            // Low under the clouds: dust lifted off dry ground, blowing snow on cold ground, fog in damp low ground.
+            float rag = smoothstep(0.2, 0.75, detail * 0.6 + n * 0.4);
+            float dust = hz.r * 0.75 * (0.55 + 0.45 * rag), snow = hz.g * 0.55 * (0.5 + 0.5 * rag), fog = hz.b * 0.7 * smoothstep(0.25, 0.7, detail);
+            float low = max(dust, max(snow, fog));
+            // Dust a shade darker and redder than the dry ground it lifts from, so it shows over it.
+            vec3 low_col = (dust_color * vec3(0.82, 0.7, 0.58) * (0.8 + 0.3 * rag) * dust + vec3(0.92, 0.94, 0.98) * snow + vec3(0.74, 0.76, 0.78) * fog) / max(dust + snow + fog, 1e-3);
+            float alpha = a + low * (1.0 - a);
+            Cloud c;
+            c.color = (col * a + low_col * low * (1.0 - a)) / max(alpha, 1e-4);
+            c.alpha = alpha;
+            // The tops: thick cloud stands higher, lumpy with its own billows; the towers well over the deck.
+            c.top = min(thick, 1.6) * (0.5 + 0.3 * n + 0.2 * lump) * (1.0 - 0.4 * trail) + tower * (1.2 + 1.8 * lump) + (dust + snow) * (0.2 + 0.4 * rag) * (1.0 - a);
+            c.storm = max(tower, smoothstep(0.9, 1.6, thick) * step(0.15, w.r));
+            c.lightning = hz.a * 12.0;
+            c.billow = detail;
+            return c;
+        }
+
+        Cloud blend(Cloud a, Cloud b, float t) {
+            Cloud c;
+            c.alpha = mix(a.alpha, b.alpha, t);
+            c.color = (a.color * a.alpha * (1.0 - t) + b.color * b.alpha * t) / max(c.alpha, 1e-4);
+            c.top = mix(a.top, b.top, t);
+            c.storm = mix(a.storm, b.storm, t);
+            c.lightning = mix(a.lightning, b.lightning, t);
+            c.billow = mix(a.billow, b.billow, t);
+            return c;
+        }
+
+        float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+
+        // Lightning inside the storms: patches of cloud lit from within for a moment, as often as the
+        // weather there strikes, and a bright flash where a strike has just come down.
+        float flashes(vec2 xz, float rate, float storm, float billow) {
+            float g = 0.0;
+            if (rate * storm > 0.02) {
+                // Patches a whole number of them to the map, so they too repeat round the globe.
+                vec2 cells = max(floor(map_size / 320.0 + 0.5), vec2(1.0));
+                vec2 size = map_size / cells;
+                vec2 base = floor(xz / size);
+                for (int j = -1; j <= 1; j++) {
+                    for (int i = -1; i <= 1; i++) {
+                        vec2 c = base + vec2(float(i), float(j)), k = mod(c, cells);
+                        float t = clock * 3.0 + hash(k) * 17.0;
+                        float tick = floor(t);
+                        float on = step(hash(k + tick * vec2(1.73, 9.21)), rate / 60.0 / 3.0 * 0.6);
+                        vec2 centre = (c + 0.2 + 0.6 * vec2(hash(k + 3.1), hash(k + 7.7))) * size;
+                        // Ragged, not round: the glow reaches further through the thicker billows.
+                        float spread = size.x * (0.45 + 0.9 * billow);
+                        g += on * exp(-fract(t) * 7.0) * smoothstep(spread, 0.0, length(xz - centre));
+                    }
+                }
+                g *= smoothstep(0.05, 0.4, storm);
+            }
+            for (int i = 0; i < 4; i++) {
+                float age = clock - strikes[i].z;
+                if (strikes[i].w <= 0.0 || age < 0.0 || age > 1.2) continue;
+                vec2 d = xz - strikes[i].xy;
+                d -= map_size * round(d / map_size);
+                g += 1.2 * strikes[i].w * exp(-age * 7.0) * smoothstep(250.0 + 400.0 * billow, 0.0, length(d));
+            }
+            // Lit from within: the billows, not a disc.
+            return g * (0.15 + 0.85 * smoothstep(0.35, 0.8, billow));
+        }
+
         void vertex() {
             float s = arc(VERTEX.y);
             offset = VERTEX.xz * s;
+            float turned = round_angle(s);
+            round_normal = (eye_east * VERTEX.x + eye_south * VERTEX.z) * sin(turned) + eye_up * cos(turned);
             vec3 n;
-            vec3 p = sheet_point(s, eye_east * VERTEX.x + eye_south * VERTEX.z, cloud_lift, n);
+            vec3 t = eye_east * VERTEX.x + eye_south * VERTEX.z;
+            vec3 p = sheet_point(s, t, cloud_lift, n);
+            float a = round_angle(s);
+            round_normal = t * sin(a) + eye_up * cos(a);
             distance = length(p);
             // Just nearer along the ray than the ground, whose hills would otherwise poke through it.
             VERTEX = CAMERA_POSITION_WORLD + p / distance * stand(distance) * 0.92;
             NORMAL = n;
         }
         void fragment() {
-            vec4 c = paint(cloud_map, map_point(offset));
-            ALBEDO = c.rgb;
+            MapPoint m = map_point(offset);
+            vec4 base = vec4(0.0);
+            Cloud c;
+            if (live < 0.5) {
+                base = paint(cloud_map, m);
+                c.color = base.rgb; c.alpha = base.a; c.top = 0.0; c.storm = 0.0; c.lightning = 0.0; c.billow = 0.0;
+            } else {
+                vec2 dx = dFdx(m.uv), dy = dFdy(m.uv);
+                dx -= round(dx);
+                dy -= round(dy);
+                vec2 cx = dFdx(m.cap_uv), cy = dFdy(m.cap_uv), tx = dFdx(m.tile_uv), ty = dFdy(m.tile_uv);
+                c.color = vec3(1.0); c.alpha = 0.0; c.top = 0.0; c.storm = 0.0; c.lightning = 0.0; c.billow = 0.0;
+                if (m.tile < 1.0) c = cloud_at(m.uv, dx, dy);
+                if (m.cap > 0.0) c = blend(c, cloud_at(m.cap_uv, cx, cy), m.cap);
+                if (m.tile > 0.0) c = blend(c, cloud_at(m.tile_uv, tx, ty), m.tile);
+            }
+            ALBEDO = c.color;
+            // The storms stand up out of the deck: their tops lit on the sun's side, shaded on the other.
+            float drawn = stand(distance) * 0.92 / max(distance, 1.0);
+            // Seen edge on, near the limb, relief from screen-space slopes only streaks: it lies down there.
+            float facing = abs(dot(normalize(NORMAL), normalize(VERTEX)));
+            float h = c.top * tower_lift * drawn * smoothstep(0.15, 0.45, facing);
+            vec3 dpx = dFdx(VERTEX), dpy = dFdy(VERTEX);
+            vec3 r1 = cross(dpy, NORMAL), r2 = cross(NORMAL, dpx);
+            float det = dot(dpx, r1);
+            vec3 grad = sign(det) * (dFdx(h) * r1 + dFdy(h) * r2);
+            NORMAL = normalize(abs(det) * NORMAL - grad);
+            float night = smoothstep(0.1, -0.2, dot(normalize(round_normal), sun_dir));
+            vec2 xz = (m.tile > 0.5 ? m.tile_uv : m.uv) * map_size;
+            float flash = live > 0.5 ? flashes(xz, c.lightning, c.storm, c.billow) : 0.0;
+            EMISSION = vec3(0.72, 0.78, 1.0) * flash * 1.6 * night * c.alpha;
+            // Lit softly round the terminator, and dark past it: the night side's clouds are seen by their lightning.
+            ALBEDO *= 1.0 - 0.7 * night;
+            // An eclipse: a moon's shadow on the globe dims what lies under it.
+            ALBEDO *= sunlight_at(normalize(round_normal), sun_dir);
+            ROUGHNESS = 0.4;
             // Under the layer (or level with it) the sky draws the clouds: a flat sheet seen edge-on
             // stands along the horizon as a fence of slivers. It shows once the eye is over it.
             float over_layer = max(over_land, smoothstep(cloud_lift, cloud_lift + 200.0, height));
-            ALPHA = c.a * over_layer * mix(over_land, 1.0, smoothstep(4800.0, 5800.0, max(abs(offset.x), abs(offset.y))));
+            ALPHA = c.alpha * over_layer * mix(over_land, 1.0, smoothstep(4800.0, 5800.0, max(abs(offset.x), abs(offset.y))));
             FOG = vec4(fog_color, 1.0 - exp(-fog_density * distance));
         }
         """;
+
+    /// <summary>The clouds' shader code (tests read its noise scales).</summary>
+    public static string CloudShader => CloudSource;
 
     /// <summary>
     /// The air seen from outside, worked out from each eye ray against the sheet's own sphere, so
@@ -487,6 +711,9 @@ public partial class Globe : Node3D
 
     public float Radius { get; private set; }
 
+    /// <summary>The live weather the clouds are drawn from.</summary>
+    public GlobeWeather Weather { get; private set; }
+
     /// <summary>How far along the map the sheet reaches this frame, m.</summary>
     public float Reach { get; private set; }
 
@@ -513,6 +740,8 @@ public partial class Globe : Node3D
         _clouds.SetShaderParameter("cloud_map", ImageTexture.CreateFromImage(paint.Clouds));
         _clouds.SetShaderParameter("radius", radius);
         _clouds.SetShaderParameter("map_size", mapSize);
+        Weather = new GlobeWeather(mapSize);
+        Weather.Bind(_clouds, C(look.CloudColor));
         AddChild(Instance("Clouds", grid, _clouds));
         yield return 0;
         var shell = new SphereMesh { Radius = 1f, Height = 2f, RadialSegments = 48, Rings = 24, CustomAabb = Everywhere };
@@ -586,7 +815,15 @@ public partial class Globe : Node3D
         _clouds.RenderPriority = _ground.RenderPriority + 1;
         _ground.SetShaderParameter("relief", v.Relief);
         _ground.SetShaderParameter("sun_dir", v.ToSun);
+        _clouds.SetShaderParameter("sun_dir", v.ToSun);
+        foreach (ShaderMaterial m in new[] { _ground, _clouds })
+        {
+            m.SetShaderParameter("umbra_count", v.Umbra == null ? 0 : v.UmbraCount);
+            if (v.Umbra != null) m.SetShaderParameter("umbra", v.Umbra);
+            m.SetShaderParameter("umbra_sun", v.UmbraSun);
+        }
         _clouds.SetShaderParameter("cloud_lift", v.CloudLift);
+        _clouds.SetShaderParameter("sun_dir", v.ToSun);
         _air.SetShaderParameter("sun_dir", v.ToSun);
         _ring.Visible = _hasRing && v.RingShown > 0.002f;
         if (_ring.Visible)

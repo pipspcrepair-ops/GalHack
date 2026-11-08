@@ -27,6 +27,7 @@ public sealed class OrbitRules
         public double SphereReach { get; set; } = 105;
         public double MapDaysPerTurn { get; set; } = 1.0;
         public double TemperateYearDays { get; set; } = 24.0;
+        public double StarSkyScale { get; set; } = 3.0;
         public double CloudOpacity { get; set; } = 0.55;
         public double CloudCoverAtLeast { get; set; } = 0.38;
     }

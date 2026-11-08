@@ -96,6 +96,7 @@ public partial class Spaceflight
         _laps.Clear();
         _lapAt = started;
         TimeSpan paused = GC.GetTotalPauseDuration();
+        _frameDelta = (float)delta;
         ProcessSeam(delta);
         double ms = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
         if (ms > WorstSeamMs)
@@ -280,6 +281,8 @@ public partial class Spaceflight
         Game.Camera.Far = shown ? _surfaceFar : Rules.Space.CameraFar;
     }
 
+    readonly Vector4[] _umbra = new Vector4[4];
+
     const int ManyKids = 24;
     const double GroundTurnMs = 1.5;
     readonly Queue<Action> _groundTurns = new();
@@ -342,6 +345,8 @@ public partial class Spaceflight
         Vector3 eye = Game.Camera.GlobalPosition;
         bool orbit = Game.InOrbit;
         float cap = Ceiling, R = o.GlobeRadius;
+        // The weather it shows: often while its clouds are in sight, now and then while they're under the sky's own.
+        o.Globe.Weather?.Update(_frameDelta, s.Weather?.Sim, s.Sky, s.Planet.Look.Dust, orbit || y > s.Sky.Air.CloudBase ? GlobeWeather.LeastPeriod : 15.0);
         double w = s.Planet.Width, h = s.Planet.Height;
 
         // Where the sheet stands: under you on the flat map, turning into under you on the globe up the band.
@@ -389,8 +394,10 @@ public partial class Spaceflight
         float haze = MathF.Max(sky.Haze.R + sky.Haze.G + sky.Haze.B, 0.01f);
         float day = Mathf.Clamp((fog.R + fog.G + fog.B) / haze, 0f, 1.2f);
         Color airFar = fog.Lerp(new Color(sky.Horizon.R * day, sky.Horizon.G * day, sky.Horizon.B * day), env.FogAerialPerspective);
+        int umbrae = s.Sky.Umbrae(_umbra, out float umbraSun);
         o.Globe.Draw(new WorldView
         {
+            Umbra = _umbra, UmbraCount = umbrae, UmbraSun = umbraSun,
             Up = up, East = east, South = south,
             MapUp = MathX.Rotate(map, N.Vector3.UnitY).ToGodot(),
             MapEast = MathX.Rotate(map, N.Vector3.UnitX).ToGodot(),
