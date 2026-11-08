@@ -118,6 +118,7 @@ public partial class BuildTest : Node
         _game.Zone.Weather.Sim.Snap(Weather.Model.WeatherKind.Clear);
         _game.Zone.Wildlife.Frozen = true;
         GD.Print("  (systems test: items are handed over and the castaway teleported where a playthrough would spend minutes)");
+        CompassAtStart();
         Check(Pack.Hand == HandKind.Empty && _game.ToolHint != null && Items.Item("survival-tool").Recipe.Inputs.Count == 0, "empty-handed, and the survival tool's recipe is free");
         Check(_game.Controls.Primary == false && Pack.Storage.IsEmpty, "nothing carried at the start");
         foreach (int x in _play.MakeTool()) yield return x;

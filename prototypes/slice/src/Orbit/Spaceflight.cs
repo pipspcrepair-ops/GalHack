@@ -186,12 +186,11 @@ public partial class Spaceflight : Node
         var planet = g.Surface.Planet;
         double x = Mathx.WrapX(at.X, planet.Width), z = Mathx.Wrap(at.Z, planet.Height);
         Charts.LookAround(planet.Pois.Select((p, i) => ($"poi{i}", p.Name, (double)p.Origin.X, (double)p.Origin.Z)), x, z, planet.Width, planet.Height);
-        // The place in view from the bunker's way out is known from the start; every other place waits to be come near.
-        if (g.Bunker?.Poi is { } seen && g.Bunker.Landmark != null)
-            for (int i = 0; i < planet.Pois.Count; i++)
-                if (planet.Pois[i] == seen) Charts.Find($"poi{i}", seen.Name, seen.Origin.X, seen.Origin.Z, "place");
+        // Every place waits to be come near (the one in view from the bunker's way out too: you see it, the compass doesn't).
+        // A deposit is charted once you have been near it (a ping only marks it for a while).
+        float near = g.Surface.Data.Progress.Xp.DepositRadius;
         foreach (var (kind, d) in _deposits.Near(g.Surface, at))
-            Charts.Find($"deposit:{Mathf.RoundToInt(d.X)},{Mathf.RoundToInt(d.Z)}", kind, Mathx.WrapX(d.X, planet.Width), Mathx.Wrap(d.Z, planet.Height), "deposit");
+            if (new Vector2(d.X - at.X, d.Z - at.Z).Length() <= near) Charts.Find($"deposit:{Mathf.RoundToInt(d.X)},{Mathf.RoundToInt(d.Z)}", kind, Mathx.WrapX(d.X, planet.Width), Mathx.Wrap(d.Z, planet.Height), "deposit");
     }
 
     /// <summary>
@@ -350,7 +349,7 @@ public partial class Spaceflight : Node
     string Where(double x, double z)
     {
         double latitude = 90 - z / Game.Surface.Planet.Height * 180, longitude = x / Game.Surface.Planet.Width * 360;
-        return $"{Math.Abs(latitude):F0}°{(latitude >= 0 ? "N" : "S")} {longitude:F0}°E";
+        return $"{Math.Abs(latitude):F0}Â°{(latitude >= 0 ? "N" : "S")} {longitude:F0}Â°E";
     }
 
     static void Wake(SurfaceZone zone)

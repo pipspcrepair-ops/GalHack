@@ -320,8 +320,9 @@ public partial class Visor : CanvasLayer
         Vector3 feet = survivor.WorldFeet;
         var labels = new List<(float x, int row)>();
         _compassBottom = (y + 44 * s + 16 * s); // grows below with each row of contact labels
-        void Mark(Vector3 at, string tag, Color colour)
+        void Mark(Vector3 at, string tag, Color colour, float alpha)
         {
+            colour = new Color(colour, alpha);
             Vector3 to = Game.Spaceflight.Local(at - feet);
             float bearing = Mathf.PosMod(Mathf.RadToDeg(Mathf.Atan2(to.X, -to.Z)), 360f);
             float off = Mathf.Clamp(Mathf.Wrap(bearing - heading, -180f, 180f), -60f, 60f);
@@ -336,21 +337,44 @@ public partial class Visor : CanvasLayer
             _compassBottom = MathF.Max(_compassBottom, y + (44 + (row + 1) * 16) * s);
             _hud.TextIn(UiTheme.Label, (int)(13 * s), new Rect2(x - 110 * s, y + (44 + row * 16) * s, 220 * s, 16 * s), $"{(tag.Length > 20 ? tag[..19] + ".." : tag)} {d:F0}m", colour, HorizontalAlignment.Center);
         }
-        if (Game.Bunker != null) Mark(Game.Start, "BUNKER", C.Accent2);
-        // Places you have found (coming near one finds it for good; the one seen from the bunker's way out starts found): the nearest few.
-        if (!Game.InOrbit)
-            foreach (var (label, at) in Game.Spaceflight.Charts.OfKind("place")
-                .Select(m => (m.Label, At: Game.Zone.Planet.NearestCopy(new Vector3((float)m.X, feet.Y, (float)m.Z), feet)))
-                .OrderBy(x => new Vector2(x.At.X - feet.X, x.At.Z - feet.Z).LengthSquared()).Take(NearestPlaces).ToList())
-                Mark(at, label.ToUpperInvariant(), C.Accent);
-        foreach (Vessel v in Game.Zone.Vessels)
-            if (!v.IsRuin && !v.IsWreck && (v.Seat != null || v.IsBase) && survivor.Aboard != v) Mark(v.Body.Position.ToGodot(), v.Name.ToUpperInvariant(), C.Good);
-        if (Game.Backpack != null) Mark(Game.Backpack.Position, "BACKPACK", C.Danger);
-        if (survivor.Seated == null)
-            foreach (var (kind, at) in Deposits.Near(Game.Zone, feet))
-                Mark(at, kind.ToUpperInvariant(), C.Holo);
+        foreach (CompassMark m in CompassMarks()) Mark(m.At, m.Tag, m.Colour, m.Alpha);
     }
 
+    /// <summary>One mark on the compass: its label, where it is, its colour and how strongly it shows.</summary>
+    public readonly record struct CompassMark(string Tag, Vector3 At, Color Colour, float Alpha, string Kind);
+
+    /// <summary>
+    /// What the compass shows: your bunker; then only what you have found by going near it (places,
+    /// deposits: the nearest few of each), your own vessels and backpack, and the scanner's pings
+    /// for as long as they last.
+    /// </summary>
+    public List<CompassMark> CompassMarks()
+    {
+        var marks = new List<CompassMark>();
+        Survivor survivor = Game.Survivor;
+        if (survivor == null) return marks;
+        Vector3 feet = survivor.WorldFeet;
+        if (Game.Bunker != null) marks.Add(new("BUNKER", Game.Start, C.Accent2, 1f, "bunker"));
+        if (!Game.InOrbit && Game.Zone.Planet != null)
+        {
+            IEnumerable<(string Label, Vector3 At)> Found(string kind, int take) => Game.Spaceflight.Charts.OfKind(kind)
+                .Select(m => (m.Label, At: Game.Zone.Planet.NearestCopy(new Vector3((float)m.X, feet.Y, (float)m.Z), feet)))
+                .Where(x => new Vector2(x.At.X - feet.X, x.At.Z - feet.Z).Length() < Slice.Game.Game.ScanRange)
+                .OrderBy(x => new Vector2(x.At.X - feet.X, x.At.Z - feet.Z).LengthSquared()).Take(take);
+            foreach (var (label, at) in Found("place", NearestPlaces)) marks.Add(new(label.ToUpperInvariant(), at, C.Accent, 1f, "place"));
+            if (survivor.Seated == null)
+                foreach (var (label, at) in Found("deposit", NearestDeposits)) marks.Add(new(label.ToUpperInvariant(), at, C.Holo, 1f, "deposit"));
+        }
+        foreach (Vessel v in Game.Zone.Vessels)
+            if (!v.IsRuin && !v.IsWreck && (v.Seat != null || v.IsBase) && survivor.Aboard != v) marks.Add(new(v.Name.ToUpperInvariant(), v.Body.Position.ToGodot(), C.Good, 1f, "vessel"));
+        if (Game.Backpack != null) marks.Add(new("BACKPACK", Game.Backpack.Position, C.Danger, 1f, "backpack"));
+        foreach (Game.Game.Ping p in Game.Pings)
+            marks.Add(new(p.Place ? "?" : p.Label.ToUpperInvariant(), p.At, p.Place ? C.Accent : C.Holo, Game.PingAlpha(p), "ping"));
+        return marks;
+    }
+
+    /// <summary>How many found deposits the compass shows (the nearest).</summary>
+    public const int NearestDeposits = 3;
     // ---- Lines, warnings, aim -------------------------------------------------------------------
 
     void DrawLines()
@@ -401,6 +425,7 @@ public partial class Visor : CanvasLayer
             HandKind.Block or HandKind.Core or HandKind.Device or HandKind.Blueprint => Game.Builder.Verdict,
             HandKind.Consumable => "[LMB] USE",
             HandKind.Vehicle => "[LMB] SET DOWN",
+            HandKind.Scanner => Game.ScanWait > 0 ? $"{Game.ScanWait:F0}" : "[LMB] PING",
             _ => "",
         };
         if (!string.IsNullOrEmpty(label))

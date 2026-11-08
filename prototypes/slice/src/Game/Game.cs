@@ -617,6 +617,8 @@ public partial class Game : Node3D
             Builder.Tick(dt, hand, Pack.InHand, Pack.Selected, primary, pressed, hands && Controls.SecondaryPressed);
         else if (hands && hand == HandKind.Consumable && pressed) Consume(Pack.Selected);
         else if (hands && hand == HandKind.Vehicle && pressed) PlaceBike();
+        else if (hands && hand == HandKind.Scanner && pressed) Scan();
+        TickPings();
         if (!hands || !(building || deconstruct)) Builder.Hide();
         TickMachines(dt);
         CheckDeath();

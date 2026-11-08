@@ -39,6 +39,9 @@ public sealed class Charts
     public IEnumerable<ChartMark> Marks => _marks.Values;
     public IEnumerable<ChartMark> OfKind(string kind) => _marks.Values.Where(m => m.Kind == kind);
 
+    /// <summary>Whether something is on the chart.</summary>
+    public bool Has(string key) => _marks.ContainsKey(key);
+
     /// <summary>The wrecks found so far, on the system map.</summary>
     public IReadOnlyList<SystemEntry> Wrecks => _wrecks;
 
