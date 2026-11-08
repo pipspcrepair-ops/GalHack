@@ -1197,7 +1197,7 @@ public partial class PlaceTest : Node
             if (keepBraced) who.Halt = 1f;
             Vector3 you = place.FromWorld(game.Survivor.WorldFeet);
             closest = MathF.Min(closest, new Vector2(you.X - who.Pos.X, you.Z - who.Pos.Z).Length());
-            if (clear < 0 && tick > 0 && new Vector2(who.Pos.X - doorAt.X, who.Pos.Z - doorAt.Z).Length() > 0.6f) clear = tick;
+            if (clear < 0 && tick > 0 && new Vector2(who.Pos.X - doorAt.X, who.Pos.Z - doorAt.Z).Length() > 0.4f) clear = tick; // (out of the middle of the way)
             // (Timed from when you first touch them.)
             if (tick > 0 || new Vector2(you.X - who.Pos.X, you.Z - who.Pos.Z).Length() < who.Looks.Stats.Radius * 0.78f + Slice.Player.Survivor.Radius + 0.15f) tick++;
             yield return walking.Current;
