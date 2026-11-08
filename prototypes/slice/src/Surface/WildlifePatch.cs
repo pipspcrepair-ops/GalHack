@@ -87,6 +87,9 @@ public partial class WildlifePatch : Node3D
         }
     }
 
+    /// <summary>The world's fish, or null where its water is tainted.</summary>
+    public Schools Fish { get; private set; }
+
     /// <summary>How livable this world is, 0..1.</summary>
     public float Livable { get; private set; } = 1f;
 
@@ -123,6 +126,12 @@ public partial class WildlifePatch : Node3D
         Livable *= Mathf.Lerp(1f, layers.Density, rules.LayerWeight);
         MeasureRichness();
         Life = Bestiary.Roll(Zone.Data.Wildlife, world);
+        // Fish in its waters, where the water is clean.
+        if (Schools.Clean(planet.Spec.Archetype, world, planet.Roll))
+        {
+            Fish = new Schools { Name = "Fish", Planet = planet, Seed = Life.Seed, Eye = () => Zone.Camera?.GlobalPosition ?? (Player != null ? FromPatch(Player.Position) : Origin) };
+            AddChild(Fish);
+        }
         View = new WildlifeView { Name = "Creatures", MostNew = 2 };
         View.Shown = (c, d, shown, jump) => PlanetSurface.Fx.PopLog.Note("creature", shown ? "comes into view" : "goes from view", d, c.Species.BodyLength, jump);
         View.Fader = (n, shows) =>

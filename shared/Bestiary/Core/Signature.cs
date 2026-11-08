@@ -80,6 +80,10 @@ public sealed class SignatureTables
     public Dictionary<string, Dictionary<string, float>> EraDress { get; set; } = new();
     /// <summary>What each era wears in place of another's (a low-tech world's head wrap for a helmet, a high one's sealed helmet).</summary>
     public Dictionary<string, Dictionary<string, string>> EraSwap { get; set; } = new();
+    /// <summary>Kinds every world where people survive has, whatever its story, by weight (hunting parties).</summary>
+    public Dictionary<string, float> Always { get; set; } = new();
+    /// <summary>People who pick through ruins, by weight, on worlds where people survive.</summary>
+    public Dictionary<string, float> Ruins { get; set; } = new();
     /// <summary>Groups of the world's own kinds kept within reach of you as you go.</summary>
     public float Want { get; set; } = 2f;
     /// <summary>The most kinds of its own a world has.</summary>
@@ -115,6 +119,58 @@ public sealed class WorldSignature
 public sealed partial class WorldLife
 {
     WorldSignature _signature;
+    List<(Species Species, float Weight)> _ruinCast;
+
+    /// <summary>
+    /// Who picks through the world's ruins (every ruin has someone): its scavengers and drifters where
+    /// people survive, and its small pack animals and scavenging beasts, in small groups, anywhere.
+    /// </summary>
+    public IReadOnlyList<(Species Species, float Weight)> RuinCast => _ruinCast ??= MakeRuinCast();
+
+    List<(Species, float)> MakeRuinCast()
+    {
+        var cast = new List<(Species, float)>();
+        SignatureTables t = Data.Signature;
+        if (World.Peopled)
+        {
+            int n = 30;
+            foreach (var (id, w) in t.Ruins)
+                if (w > 0f && t.Kinds.TryGetValue(id, out SignatureKind k) && MakeKind(id, k, n++) is { } s) cast.Add((s, w));
+        }
+        // Small beasts that go about in packs or live on leavings: the world's own, a ruin's roamers.
+        var small = Fauna.Species.FindAll(x => Walks(x) && !x.Corrupted && x.Body.Size <= 1.3f && x.Behaviour is Behaviour.PackHunter or Behaviour.Scavenger or Behaviour.Predator or Behaviour.Grazer or Behaviour.Herd);
+        small.Sort((a, b) => Roamer(b).CompareTo(Roamer(a)));
+        // A world with nothing small of its own: the smallest of its walkers, as a smaller kind of it.
+        if (small.Count == 0 && Fauna.Species.FindAll(x => Walks(x) && !x.Corrupted) is { Count: > 0 } any)
+        {
+            any.Sort((a, b) => a.Body.Size.CompareTo(b.Body.Size));
+            Species least = any[0].Copy();
+            float k = 1f / MathF.Max(1f, least.Body.Size);
+            Proportions b = least.Body;
+            b.Size *= k; b.Width *= k; b.Height *= k; b.LegLength *= k; b.LegThickness *= k; b.NeckLength *= k; b.HeadSize *= k; b.TailLength *= k;
+            least.Stats.Radius *= k;
+            least.Stats.MaxHealth = MathF.Round(least.Stats.MaxHealth * k * k);
+            small.Add(least);
+        }
+        float beasts = World.Peopled ? 1.4f : 3f;
+        for (int i = 0; i < small.Count && i < 3; i++)
+        {
+            Species r = small[i].Copy();
+            r.Mate = null;
+            r.Young = null;
+            r.Id = small[i].Id + "-ruins";
+            r.Index = 560 + i;
+            r.Behaviour = Behaviour.Scavenger;
+            r.Temperament = small[i].Behaviour is Behaviour.PackHunter or Behaviour.Predator ? Temperament.Bold : Temperament.Skittish;
+            r.GroupMin = 3;
+            r.GroupMax = 5;
+            r.Stats.FleeRadius = MathF.Max(r.Stats.FleeRadius, 10f);
+            cast.Add((r, beasts / Math.Min(3, small.Count)));
+        }
+        return cast;
+    }
+
+    static int Roamer(Species s) => s.Behaviour is Behaviour.PackHunter or Behaviour.Scavenger ? 2 : s.Behaviour == Behaviour.Predator ? 1 : 0;
     Species _settlers;
     bool _settlersMade;
 
@@ -157,6 +213,13 @@ public sealed partial class WorldLife
             // Nobody left alive: no living people of its own, only what has gone wild, its machines and its beasts.
             if (!World.Peopled && k.Body == "person" && k.Occupancy != "Feral") continue;
             if (MakeKind(order[i].Id, k, i) is { } s) sig.Add(s, k, order[i].W);
+        }
+        // And what every world where people survive has: hunting parties out in the wild.
+        if (World.Peopled)
+        {
+            int n = 20;
+            foreach (var (id, w) in t.Always)
+                if (w > 0f && t.Kinds.TryGetValue(id, out SignatureKind k) && !sig.Kinds.Exists(x => x.Kind == k) && MakeKind(id, k, n++) is { } s) sig.Add(s, k, w);
         }
         return sig;
     }
