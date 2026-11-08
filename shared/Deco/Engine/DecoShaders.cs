@@ -162,7 +162,11 @@ void steel(vec2 uv, float e, int wear, float seed, vec3 wp, float low, float px,
     float sv = vis(240.0, px);
     shade *= 1.0 + (st - 0.5) * 0.2 * sv;
     shade *= 1.0 + (noise3(wp * 3.0 + 5.0) - 0.5) * 0.1;
-    rough = 0.3 + 0.16 * mix(0.5, st, sv) + 0.1 * noise3(wp * 6.0);
+    // The brushing's coarser bands, seen from further off.
+    float band = noise3(vec3(uv.x * 2.0, uv.y * 55.0, seed * 5.0 + 2.0));
+    float bv = vis(55.0, px);
+    shade *= 1.0 + (band - 0.5) * 0.14 * bv;
+    rough = 0.3 + 0.16 * mix(0.5, st, sv) + 0.1 * noise3(wp * 6.0) + (band - 0.5) * 0.12 * bv;
     metal = 0.85;
     if (wear > 0) {
         float w = float(wear);
@@ -170,7 +174,7 @@ void steel(vec2 uv, float e, int wear, float seed, vec3 wp, float low, float px,
         rough = mix(rough, 0.62, smoothstep(0.45, 0.7, noise3(wp * 7.0 + 9.0)) * 0.6);
         if (wear >= 2) {
             float r = fbm3(wp * 4.5 + seed * 3.0) + (1.0 - smoothstep(0.0, 0.025, e)) * 0.22 + low * 0.15;
-            float rust = smoothstep(0.86 - w * 0.13, 0.93 - w * 0.13, r);
+            float rust = smoothstep(0.86 - (w - 1.0) * 0.17, 0.93 - (w - 1.0) * 0.17, r);
             float grain = noise3(vec3(uv * 120.0, seed));
             vec3 rc = mix(vec3(0.15, 0.05, 0.018), vec3(0.32, 0.12, 0.035), mix(0.5, grain, vis(120.0, px)));
             col = mix(col, rc, rust);
