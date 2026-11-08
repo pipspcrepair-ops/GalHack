@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using GalHack.Plants;
@@ -36,7 +36,16 @@ public partial class FloraTest : Node
 
     ulong Fresh() => _seeds = Planets.Gen.Hash.Mix(_seeds + 0x9E37);
 
-    public override void _Ready() => CallDeferred(nameof(RunAll));
+    public override void _Ready()
+    {
+        // A hung run quits on its own after 20 minutes rather than wait for someone to kill it.
+        _ = System.Threading.Tasks.Task.Delay(TimeSpan.FromMinutes(20)).ContinueWith(_ =>
+        {
+            GD.PrintErr("TIMED OUT after 20 minutes: the run quits itself");
+            System.Environment.Exit(2);
+        });
+        CallDeferred(nameof(RunAll));
+    }
 
     async void RunAll()
     {
@@ -431,7 +440,8 @@ public partial class FloraTest : Node
                         if (w.Palette.Planted != null && w.Palette.Planted.ContainsKey(FarBuilder.ScatterIdAt(x, z))) continue;
                         stood++;
                         if (b.Buffer[o + 7] > w.Source.SurfaceHeight(x, z) - FloraSolidRules.Sink + 0.01f) proud++;
-                        if (w.Source.StampWeight(x, z) > 0f && p.Large) onWork++;
+                        // Trees come in only over the outer blend round a place: none on its apron or footprint, nor on a road.
+                        if (p.Large && (w.Source.Built(x, z, out bool road) >= 0.55f || road) && !w.Source.OnWild(x, z, out _)) onWork++;
                     }
                 }
                 solids += job.Solids.Count;
@@ -455,7 +465,8 @@ public partial class FloraTest : Node
                         int o = k * 16;
                         double x = cx * (double)CoverBuilder.CellSize + buffer[o + 3], z = cz * (double)CoverBuilder.CellSize + buffer[o + 11];
                         covered++;
-                        if (w.Source.StampWeight(x, z) > 0f && !w.Source.OnRoad(x, z, out _)) coverOnBuilt++;
+                        // Ground cover thins out over a place's blend, but never stands on its apron or footprint.
+                        if (w.Source.Built(x, z, out _) >= 1f && !w.Source.OnWild(x, z, out _)) coverOnBuilt++;
                         if (buffer[o + 7] > w.Source.SurfaceHeight(x, z) + 0.02f) coverProud++;
                     }
                 }
@@ -465,7 +476,7 @@ public partial class FloraTest : Node
             Check(unset == 0 && solids > 0, $"{a}: every fellable trunk is a species ({solids} solids, {unset} not)");
             Check(felled > 0 && unfelled == 0, $"{a}: felled trees are gone, trunk and all: {felled} felled, {unfelled} still standing");
             Check(different == 0, $"{a}: chunks scatter the same plants each time ({different} differ)");
-            Check(covered > 200 && coverOnBuilt == 0 && coverProud == 0, $"{a}: ground cover is rooted and off pads: {covered} tufts, {coverOnBuilt} on pads, {coverProud} proud of the ground; {species.Count} species seen");
+            Check(covered > 200 && coverOnBuilt == 0 && coverProud == 0, $"{a}: ground cover is rooted and off aprons and footprints: {covered} tufts, {coverOnBuilt} on them, {coverProud} proud of the ground; {species.Count} species seen");
         }
     }
 }

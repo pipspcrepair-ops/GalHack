@@ -224,6 +224,8 @@ public partial class TerrainStreamer : Node3D
         _felledSnapshot = new HashSet<long>(world.Felled); // trees felled here before stay felled
         _waterMaterial = water;
         _roads = RoadField.Build(world.Source, world.Width, world.Height);
+        _grounds = GroundField.Build(world.Source.Grounds, world.Width, world.Height);
+        if (_grounds.Crowded > 0) GD.Print($"made ground: {_grounds.PatchCount} patches, {_grounds.Crowded} cells over {GroundField.MostPerCell}");
         VoxelMaterial = TerrainMaterial(far: false);
         FarMaterial = TerrainMaterial(far: true);
         _horizonMaterial = TerrainMaterial(far: true);
@@ -251,6 +253,9 @@ public partial class TerrainStreamer : Node3D
 
     /// <summary>The roads the terrain shader paints, for the planet being streamed.</summary>
     RoadField _roads;
+
+    /// <summary>The made ground round the places the terrain shader paints (yards, aprons, car parks, paths).</summary>
+    GroundField _grounds;
 
     /// <summary>The world's plants, once, as meshes: a bounded set every chunk then instances, so nothing is built at chunk load.</summary>
     void BuildPlantMeshes()
@@ -286,6 +291,10 @@ public partial class TerrainStreamer : Node3D
         m.SetShaderParameter("road_index", _roads.Index);
         m.SetShaderParameter("road_grid", _roads.Grid);
         m.SetShaderParameter("road_tolerance", far ? 12f : 1.2f);
+        m.SetShaderParameter("ground_patches", _grounds.Patches);
+        m.SetShaderParameter("ground_cells", _grounds.Cells);
+        m.SetShaderParameter("ground_index", _grounds.Index);
+        m.SetShaderParameter("ground_grid", _grounds.Grid);
         // The prevailing wind that drifts sand over the roads: one of the map's four ways, by the world.
         int wind = (int)(World.Spec.Seed % 4);
         // The world's road paint: yellow or white centre lines, dashed or solid, by its culture; none where

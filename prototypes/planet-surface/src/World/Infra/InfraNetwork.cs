@@ -119,6 +119,9 @@ public sealed class InfraNetwork
     public readonly List<CityLotPlan> Lots = new();
     /// <summary>Flavour ruins along the roads and in the countryside (planned on the bare land: <see cref="FlavourRuins.Plan"/>).</summary>
     public List<FlavourRuin> Ruins = new();
+
+    /// <summary>The made ground round the places (yards, aprons, car parks, footpaths, paths), for the terrain shader (<see cref="MadeGrounds"/>).</summary>
+    public List<GalHack.Terrain.GroundPatch> Grounds = new();
     /// <summary>What the world's plan says each region was for (null on a world laid out without one).</summary>
     public RegionPlan RegionPlan;
     /// <summary>Links the plan asked for, kept with why, for tests: (from, to, why).</summary>
@@ -275,6 +278,7 @@ public sealed class InfraNetwork
             }
         }
         if (net.RegionPlan != null) net.Branches(router, branches, rng);
+        net.JoinNeighbours(router, rng);
         foreach (PoiSite p in places)
             if (!net.Routes.Any(r => r.From == p || r.To == p)) net.Isolated.Add(p);
 
@@ -552,6 +556,70 @@ public sealed class InfraNetwork
         }
         return any;
     }
+
+    /// <summary>Lanes laid between neighbouring places and from places no road reached (tests).</summary>
+    public int NeighbourLanes, Spurs;
+
+    /// <summary>Proof frames: lay no lanes between neighbours (--lanes=0, the network as it was).</summary>
+    public static bool NoLanes;
+
+    /// <summary>
+    /// A cluster of places reads as one place: neighbours under a kilometre apart get a lane between their gates,
+    /// a paved one on a world that paved its roads (a track on a frontier world), unless a road of the network
+    /// already runs gate to gate between them; and a place no road reached gets a lane out to the nearest road.
+    /// Each lane is laid like any other link (round bends, merging where it meets a road), at a lane's width.
+    /// </summary>
+    void JoinNeighbours(Router router, PoiGenerator.Gen.Rng rng)
+    {
+        if (NoLanes) return;
+        RouteKind lane = Profile.Before == TechLevel.Low ? RouteKind.Track : RouteKind.Road;
+        bool Direct(PoiSite a, PoiSite b) => Routes.Any(r => r.From == a && r.To == b || r.From == b && r.To == a);
+        int Out(PoiSite p) => Routes.Count(r => r.From == p || r.To == p);
+        var joins = new Dictionary<PoiSite, int>();
+        var pairs = new List<(PoiSite A, PoiSite B, double Gap)>();
+        for (int i = 0; i < Places.Count; i++)
+        for (int j = i + 1; j < Places.Count; j++)
+        {
+            PoiSite a = Places[i], b = Places[j];
+            if (a.Siting == "city" || b.Siting == "city") continue;
+            double d = Dist(a.Center, b.Center);
+            double gap = d - Math.Max(a.Stamp.ReachX, a.Stamp.ReachZ) - Math.Max(b.Stamp.ReachX, b.Stamp.ReachZ);
+            if (d < 900 && gap < 450) pairs.Add((a, b, gap));
+        }
+        int direct = 0, failed = 0;
+        foreach (var (a, b, _) in pairs.OrderBy(p => p.Gap))
+        {
+            if (Direct(a, b)) direct++;
+            // Never a star: a place with roads enough out of it already gets no more.
+            if (Direct(a, b) || joins.GetValueOrDefault(a) >= 2 || joins.GetValueOrDefault(b) >= 2 || Out(a) >= 4 || Out(b) >= 4) continue;
+            int before = Routes.Count;
+            if (!Link(router, a, b, lane, rng)) { failed++; continue; }
+            for (int k = before; k < Routes.Count; k++) if (Routes[k].Kind == RouteKind.Road) Routes[k].HalfWidth = 2.6f;
+            joins[a] = joins.GetValueOrDefault(a) + 1;
+            joins[b] = joins.GetValueOrDefault(b) + 1;
+            NeighbourLanes++;
+        }
+        // Anything still on its own: out from its way in to the nearest road within reach.
+        foreach (PoiSite p in Places.Where(p => p.Siting != "city" && !Routes.Any(r => r.From == p || r.To == p)).ToList())
+        {
+            var g = GateToward(p, p.Center);
+            int before = Routes.Count;
+            if (!Spur((g.X + g.OutX * 3, g.Z + g.OutZ * 3), lane, 3000)) continue;
+            for (int k = before; k < Routes.Count; k++)
+            {
+                if (Routes[k].Kind == RouteKind.Road) Routes[k].HalfWidth = 2.6f;
+                Routes[k].From ??= p;
+            }
+            Spurs++;
+        }
+        double closest = double.MaxValue;
+        for (int i = 0; i < Places.Count; i++)
+            for (int j = i + 1; j < Places.Count; j++) closest = Math.Min(closest, Dist(Places[i].Center, Places[j].Center));
+        LaneLog = $"{Places.Count} places, closest two {closest:F0} m apart, {pairs.Count} neighbour pairs ({direct} joined directly already, {failed} found no way)";
+    }
+
+    /// <summary>What joining the neighbours found (tests).</summary>
+    public string LaneLog = "";
 
     /// <summary>
     /// The network below the spine. Each place the plan wants joined comes off the nearest road of its

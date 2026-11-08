@@ -113,7 +113,8 @@ public partial class PoiLayer : Node3D
             if (chunk.Collision.Count > 0) body.AddChild(new CollisionShape3D { Shape = MeshBuild.ToShape(chunk) });
         }
         AddLights(node, inst);
-        AddSmoke(node, inst);
+        // A city fell long ago: nothing in it still burns (its smoke stood as bright threads over the skyline).
+        if (site.Siting != "city") AddSmoke(node, inst);
         DressFromDecoLibrary(node, inst);
         return node;
     }

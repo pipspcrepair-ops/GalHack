@@ -136,8 +136,8 @@ public partial class PoiLayer
                     l.DistanceFadeBegin = 500f;
                     l.DistanceFadeLength = 120f;
                 }
-            // A few fires still smoking over a city, not one in every building.
-            if (Hash.Cell(new Int3(p.Site.Origin.X, 0, p.Site.Origin.Z), 0x5E0) % 6 == 0) AddSmoke(p.Node, inst);
+            // (No smoke: a city fell long ago, and nothing in it still burns.)
+
             DressFromDecoLibrary(p.Node, inst);
             AddChild(p.Node);
         }

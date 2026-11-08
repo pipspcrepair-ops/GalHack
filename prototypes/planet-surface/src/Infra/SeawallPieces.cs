@@ -96,14 +96,33 @@ public partial class InfraLayer
             NV centre = new NV(mid.X, (top - slump + foot) * 0.5f, mid.Z) + outward * (Thick + slump * 0.15f);
             if (Wall.Tech == TechLevel.Low)
             {
-                // Timber piling: posts driven along the line, planks between them, a rail on top.
-                foreach (float t in new[] { 0f, 0.5f })
+                // A timber revetment holding the bank: heavy planks laid edge on edge from the foot to the top, each
+                // its own shade and the face leaning back a little into the bank, king piles driven in front of them
+                // every two metres and cut off at the top, a capping beam over all. Nothing stands above the bank (a
+                // rail along the top read as a fence).
+                float h = top - slump - foot;
+                const float Batter = 0.12f;
+                // The backing the bank leans on (and what you bump into), behind the planks' faces.
+                b.Box(new NV(mid.X, foot + h * 0.5f, mid.Z) - outward * 0.06f, dir * (len * 0.5f + 0.04f), NV.UnitY * (h * 0.5f), outward * 0.08f, TimberDark, DecoSurface.Matte, collide: true);
+                int courses = Math.Clamp((int)MathF.Ceiling(h / 0.45f), 1, 10);
+                float course = h / courses;
+                for (int c = 0; c < courses; c++)
                 {
-                    NV p = ta + along * t + outward * 0.3f;
-                    b.Box(new NV(p.X, (top + foot) * 0.5f, p.Z), dir * 0.18f, NV.UnitY * ((top - foot) * 0.5f + 0.3f), outward * 0.18f, TimberDark, DecoSurface.Matte, collide: true);
+                    float y = foot + (c + 0.5f) * course, back = Batter * (c + 0.5f) / courses;
+                    ulong ch = Planets.Gen.Hash.Of(hash, c);
+                    DecoRgb tone = Timber.Scale(0.82f + (ch % 100) / 400f);
+                    // The waterline courses rot darker and greener.
+                    if (waterA is float lv && y < lv + 0.4f) tone = tone.Lerp(Weed, 0.45f);
+                    b.Box(new NV(mid.X, y, mid.Z) + outward * (0.24f - back), dir * (len * 0.5f + 0.02f), NV.UnitY * (course * 0.45f), outward * 0.06f, tone, DecoSurface.Matte, collide: false);
                 }
-                b.Box(new NV(mid.X, (top + foot) * 0.5f, mid.Z) + outward * 0.15f, dir * (len * 0.5f + 0.05f), NV.UnitY * ((top - foot) * 0.5f), outward * 0.08f, Timber, DecoSurface.Matte, collide: true);
-                if (roll2 > Wall.Fall * 0.4f) b.Box(mid + NV.UnitY * 0.9f, dir * (len * 0.5f), NV.UnitY * 0.06f, outward * 0.06f, TimberDark, DecoSurface.Matte, collide: false);
+                foreach (float t in new[] { 0.25f, 0.75f })
+                {
+                    NV p = ta + along * t + outward * 0.36f;
+                    float cut = top - slump - 0.08f - ((hash >> (int)(t * 8)) & 3) * 0.06f;
+                    b.Box(new NV(p.X, (cut + foot - 0.4f) * 0.5f, p.Z), dir * 0.13f, NV.UnitY * ((cut - foot + 0.4f) * 0.5f), outward * 0.13f, TimberDark, DecoSurface.Matte, collide: true);
+                }
+                if (roll2 > Wall.Fall * 0.3f)
+                    b.Box(new NV(mid.X, top - slump - 0.06f, mid.Z) + outward * 0.2f, dir * (len * 0.5f + 0.03f), NV.UnitY * 0.09f, outward * 0.24f, TimberDark, DecoSurface.Matte, collide: true);
                 return;
             }
             DecoRgb face = Wall.Tech == TechLevel.High ? Composite : (hash & 1) == 0 ? Concrete : Stone;

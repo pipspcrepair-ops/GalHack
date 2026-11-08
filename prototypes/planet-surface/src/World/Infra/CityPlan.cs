@@ -67,6 +67,8 @@ public sealed class CityPlan
     /// <summary>Tests and proof frames: plan a city on any lived-in world, whatever its layers; and, if set, how far it fell.</summary>
     public static bool Force;
     public static float? ForceFall;
+    /// <summary>Proof frames: build its waterfronts as a world of this tech would.</summary>
+    public static TechLevel? ForceTech;
 
     public double CenterX, CenterZ, Radius;
     /// <summary>Which way from the middle the most water lies (a unit vector; zero with no water near).</summary>
@@ -138,6 +140,8 @@ public sealed class CityPlan
                         else { coastN++; if (Wet(g)) coast++; }
                     }
                 if (G(x, z) is var mid && Wet(mid) || land < n * 0.62) continue;
+                // A city stands on firm ground: not on a beach or in the dunes.
+                if (PlanetSurface.World.Footing.SandShare(map, x, z, radius * 0.7, radius * 0.7, 7) > 0.2f) continue;
                 double mean = sum / land, rough = Math.Sqrt(Math.Max(0, sq / land - mean * mean));
                 double wetEdge = coastN == 0 ? 0 : coast / (double)coastN;
                 // Water at the edge is the point: a city by a river or a bay. Too much and it's a peninsula of nothing.
@@ -227,7 +231,7 @@ public sealed class CityPlan
         if (city.Streets.Count == 0) { city.Why = "no street would lie"; return city; }
 
         // ---- the waterfronts: a highway along the main bank and promenades along the rest, each on a wall over the water.
-        Waterfronts(city, net, cx, cz, radius, WetAt, (x, z) => G(x, z).Height, Dist, w, h, profile.Before, seed);
+        Waterfronts(city, net, cx, cz, radius, WetAt, (x, z) => G(x, z).Height, Dist, w, h, ForceTech ?? profile.Before, seed);
         // The city joined to the old network: from the far ends of its two longest avenues out to the nearest road.
         var own = new HashSet<InfraRoute>(city.Streets);
         foreach (Seawall s in city.Waterfront) own.Add(s.Road);
@@ -265,6 +269,8 @@ public sealed class CityPlan
                 for (int k = 0; k < 8 && !shore; k++)
                     shore = WetAt(mx + Math.Cos(k * Math.PI / 4) * Block * 0.55, mz + Math.Sin(k * Math.PI / 4) * Block * 0.55);
                 string district = shore ? "park" : r < 0.36 ? "downtown" : r < 0.6 ? "midrise" : side(mx, mz) < 0 && r > 0.62 ? "works" : "homes";
+                // Towers, blocks of flats and works want firm ground: a block on sand is left open; houses, being light, may stand on it.
+                if (district is not ("park" or "homes") && PlanetSurface.World.Footing.SandShare(map, mx, mz, Block * 0.45, Block * 0.45, 4) > 0.2f) district = "park";
                 blocks.Add((a, b, x0, z0, r, district));
             }
         // What else stands on the ground: the network's roads not the city's own, and the other places.

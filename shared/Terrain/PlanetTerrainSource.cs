@@ -53,6 +53,9 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
     public float WaterLevel => 0f;
     public IReadOnlyList<PoiSite> PointsOfInterest { get; }
 
+    /// <summary>The made ground the terrain shader paints round the places (yards, aprons, car parks, paths), planned with the world; empty without it.</summary>
+    public IReadOnlyList<GroundPatch> Grounds { get; set; } = Array.Empty<GroundPatch>();
+
     readonly PeriodicNoise _caveA, _caveB, _caveRegion, _soil, _ore;
     readonly float _soilBase;
     readonly ConcurrentDictionary<long, Lazy<Column>> _columns = new();
@@ -228,7 +231,7 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
         foreach (int i in StampsAt(x, z))
         {
             TerrainStamp t = Stamps[i];
-            if (t.Shape is not (StampShape.Pad or StampShape.Road) || !roads && t.Shape == StampShape.Road) continue;
+            if (t.Shape is not (StampShape.Pad or StampShape.Road) || !roads && t.Shape == StampShape.Road || t.Painted) continue;
             float w = t.Weight(x, z);
             if (w <= weight) continue;
             weight = w;
@@ -269,6 +272,33 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
             wear = Math.Max(wear, t.Wear);
         }
         return wild;
+    }
+
+    /// <summary>
+    /// How far into a place's ground a point lies, for what may grow there: 2 on a place's footprint (where it stands),
+    /// its pads' weight elsewhere (1 on the apron, easing to 0 across the blend, whose outer reaches are the land's
+    /// own, only cut and filled), 0 off every pad; and whether a road's deck or shoulder covers it. Parks (wild pads)
+    /// and buried works don't count: plants go on over them as they were.
+    /// </summary>
+    public float Built(double x, double z, out bool road)
+    {
+        road = false;
+        float pad = 0f;
+        foreach (int i in StampsAt(x, z))
+        {
+            TerrainStamp t = Stamps[i];
+            if (t.Shape == StampShape.Road)
+            {
+                if (!road && t.Weight(x, z) > 0f) road = true;
+                continue;
+            }
+            if (t.Wild || t.Shape == StampShape.Buried) continue;
+            float w = t.Weight(x, z);
+            if (w <= 0f) continue;
+            if (t.Shape == StampShape.Pad && t.OnFootprint(x - 0.5, z - 0.5)) return 2f;
+            pad = Math.Max(pad, w);
+        }
+        return pad;
     }
 
     /// <summary>How much any stamp covers a point (0 none, 1 on a pad).</summary>
