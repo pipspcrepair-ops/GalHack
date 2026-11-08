@@ -52,7 +52,7 @@ public static class CrossReactions
 
     /// <summary>How far a species keeps from people, as a share of its flight distance: the skittish more, the bold less, the big least.</summary>
     public static float Shyness(Species s) => s.Domestic != DomesticKind.None ? 0f
-        : (s.Temperament switch { Temperament.Skittish => 1.5f, Temperament.Calm => 0.9f, Temperament.Aggressive => 0.35f, _ => 1f }) * Math.Clamp(1.3f - 0.3f * s.Body.Size, 0.4f, 1.3f);
+        : (s.Temperament switch { Temperament.Skittish => 1.5f, Temperament.Calm => 0.9f, Temperament.Aggressive => 0.35f, _ => 1f }) * Math.Clamp(1.3f - 0.3f * s.Body.Size, 0.7f, 1.3f);
 
     /// <summary>Nobody else within reach of them: a straggler, what a hunter waits for.</summary>
     public static bool Alone(IReadOnlyList<ITarget> all, ITarget who, float reach)
