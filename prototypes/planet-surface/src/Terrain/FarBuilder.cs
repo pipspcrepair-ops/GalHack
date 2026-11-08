@@ -405,8 +405,7 @@ public static class FarBuilder
                 if (Dug(dug, (int)Math.Floor(tree.X), (int)Math.Floor(tree.Z))) continue; // the ground went from under it: gone, as any tree
                 float tx = (float)(tree.X - x0), tz = (float)(tree.Z - z0), treeY = tree.Foot - FloraSolidRules.Sink;
                 Add(tree.Kind, tree.Species, job.Lod > 0 ? -1 : 0, tx, treeY, tz, new Basis(Vector3.Up, tree.Angle).Scaled(new Vector3(tree.Scale, tree.Scale, tree.Scale)), tree.Tint, 0f);
-                if (solids != null && solids.TryMake(tree.Kind, tree.Species, id, new Vector3((float)tree.X, treeY, (float)tree.Z), tree.Scale, tree.Angle, out FloraSolid trunk))
-                    job.Solids.Add(trunk);
+                solids?.MakeAll(tree.Kind, tree.Species, 0, id, new Vector3((float)tree.X, treeY, (float)tree.Z), tree.Scale, tree.Angle, job.Solids);
                 continue;
             }
 
@@ -474,9 +473,9 @@ public static class FarBuilder
             int variant = plant == null ? 0 : job.Lod > 0 ? -1 : (int)(kin * 977f) % plant.Near.Length;
             Add(rule.Kind, plant, variant, lx, rootY, lz, basis, tint, glow);
 
-            // Trunks and boulders are solid: their colliders, in planet coordinates.
-            if (solids != null && solids.TryMake(rule.Kind, plant, id, new Vector3((float)x, rootY, (float)z), scale, angle, out FloraSolid solid))
-                job.Solids.Add(solid);
+            // Trunks, stalks, pipes, shards and boulders are solid: their colliders, in planet coordinates, round
+            // the parts of the near mesh this one draws (whatever the level of detail draws from here).
+            solids?.MakeAll(rule.Kind, plant, plant == null ? 0 : (int)(kin * 977f) % plant.Near.Length, id, new Vector3((float)x, rootY, (float)z), scale, angle, job.Solids);
         }
         foreach (var (key, list) in buffers) job.Flora.Add(new FloraBatch(key.Kind, key.Plant, key.Variant, list.ToArray(), list.Count / 16));
 

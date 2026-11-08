@@ -84,7 +84,14 @@ public partial class Lootables : Node3D
         return near;
     }
 
-    /// <summary>The container nearest along a ray within reach, or null.</summary>
+    /// <summary>
+    /// The container whose body a ray meets first within reach, or null. Each is a ball round its middle a
+    /// little bigger than what's drawn (a cache with its lid, a body's bulk): wherever the look lands on it,
+    /// from any side or from above, it's that container, as long as nothing solid stands nearer. The ball is
+    /// met where the ray enters it, not at its middle: a look that stops on a cache's own lid (a fifth of a
+    /// metre short of its middle and more) is a look at the cache. <paramref name="reach"/> is how far the
+    /// look goes before something solid stops it; distance is where it meets the container.
+    /// </summary>
     public Lootable Pick(Vector3 eye, Vector3 dir, float reach, out float distance)
     {
         Lootable best = null;
@@ -92,10 +99,12 @@ public partial class Lootables : Node3D
         foreach (Lootable l in All)
         {
             Vector3 c = l.Position + Vector3.Up * (l.Kind == LootKind.Corpse ? l.Radius * 0.6f : 0.25f);
-            float along = (c - eye).Dot(dir);
-            if (along < 0f || along > distance + l.Radius) continue;
-            if ((eye + dir * along - c).Length() > l.Radius + 0.25f) continue;
-            if (along < distance) { distance = along; best = l; }
+            float r = l.Radius + 0.25f, along = (c - eye).Dot(dir), off = (eye + dir * along - c).Length();
+            if (off > r) continue;
+            float enter = along - MathF.Sqrt(r * r - off * off);
+            if (along < 0f || enter > distance) continue;
+            distance = MathF.Max(0f, enter);
+            best = l;
         }
         return best;
     }

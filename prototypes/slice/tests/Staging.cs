@@ -113,7 +113,7 @@ public sealed partial class Staging
             "loadrun" => LoadRun(),
             "approach" => ApproachView(),
             "husk-grab" => HuskGrab(),
-            _ => OrbitViews(view),
+            _ => ProofViews(view),
         };
         foreach (int x in script) yield return x;
         if (_args.TryGetValue("hud", out string hud)) _game.Visor.Visible = hud != "0";

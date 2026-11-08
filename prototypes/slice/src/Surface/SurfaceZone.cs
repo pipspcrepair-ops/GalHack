@@ -253,6 +253,7 @@ public partial class SurfaceZone : Node3D
         {
             water.SetShaderParameter("sea", true);
             water.SetShaderParameter("sea_map", Planet.SeaTexture());
+            water.SetShaderParameter("sea_mask", GalHack.Terrain.PlanetTerrainSource.SeaMaskDepth);
         }
         return water;
     }

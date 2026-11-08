@@ -59,7 +59,47 @@ public partial class Game
         Tool.Salvaged += () => Progress.Earn(2, "salvage");
         Places.WallBroken += (p, s) => Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Clank, p.WorldOf(s.WallCells[0], 1f), 0.5f, -2f);
         Places.Stood += OnPlaceStood;
+        Places.Exploded += OnExploded;
         Places.WarmUp(); // still loading: the first build's one-off costs are paid now
+    }
+
+    /// <summary>The share of a hazard's damage the survivor takes: a suit stands it better than a wall.</summary>
+    const float BlastOnSurvivor = 0.5f;
+
+    /// <summary>
+    /// A hazard went up in a place (a blasting crate, a fuel drum, gas): a flash, a bang and a cloud of grit,
+    /// and the survivor, the creatures and the structures within its reach take it by how near they are, as
+    /// a structure's blocks do (the place's own blocks already have). Its neighbours follow on their own.
+    /// </summary>
+    void OnExploded(Vector3 at, float radius, float damage)
+    {
+        float Falloff(float d) => 1f - d / radius * 0.75f;
+        float near = (Survivor.WorldFeet + Vector3.Up * 0.9f).DistanceTo(at);
+        if (near < radius)
+        {
+            Suit.Hit(damage * BlastOnSurvivor * Falloff(near), SurvivalVitals.Model.DamageKind.Hit);
+            Hands?.Jolt(at, 0.6f * Falloff(near));
+        }
+        if (Zone.Wildlife?.Sim is { } sim)
+            foreach (var c in sim.Creatures.Concat(Zone.Wildlife.Sites.SelectMany(s => s.Sim.Creatures)).ToList())
+            {
+                float d = Zone.Wildlife.WorldOf(c).DistanceTo(at);
+                if (!c.Dead && d < radius) Zone.Wildlife.Damage(c, damage * Falloff(d));
+            }
+        var point = new System.Numerics.Vector3(at.X, at.Y, at.Z);
+        foreach (Vessel v in Zone.Vessels)
+            if (v.DistanceFromHull(v.Body.ToLocal(point), radius) < radius) v.Hits.Blast(point, radius, damage);
+        var rng = new RandomNumberGenerator();
+        for (int i = 0; i < 5; i++)
+            Zone.Dust?.Puff(at + new Vector3(rng.RandfRange(-1f, 1f), rng.RandfRange(-0.3f, 0.8f), rng.RandfRange(-1f, 1f)) * radius * 0.25f, new Color(0.32f, 0.28f, 0.24f, 0.85f), 1.2f + radius * 0.2f);
+        Zone.Dust?.Sparks(at, Vector3.Up, new Color(1f, 0.62f, 0.25f));
+        Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Boom, at, 0.75f, 6f);
+        var flash = new OmniLight3D { Name = "Blast flash", LightColor = new Color(1f, 0.72f, 0.4f), LightEnergy = 10f, OmniRange = radius * 3f };
+        Zone.AddChild(flash);
+        flash.GlobalPosition = at;
+        Tween fade = flash.CreateTween();
+        fade.TweenProperty(flash, "light_energy", 0f, 0.45f);
+        fade.TweenCallback(Callable.From(flash.QueueFree));
     }
 
     void OnPlaceStood(Place p)
