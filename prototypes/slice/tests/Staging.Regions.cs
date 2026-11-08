@@ -357,4 +357,56 @@ public partial class Staging
             Hurry(1);
         }
     }
+
+    /// <summary>
+    /// The clouds' growth from the ground and from --high (300) metres over the same spot: FrontGrowth's clear
+    /// sky to storm front, a frame every --every game seconds (8) for --frames (8), each from both heights; with
+    /// --cost=1 the frame's GPU time at the forming frame and in the storm.
+    /// </summary>
+    IEnumerable<int> CloudGrain()
+    {
+        var sky = _game.Zone.Sky;
+        sky.Paused = true;
+        double noon = 0.5;
+        for (double t = 0.2; t < 0.8; t += 0.002) if (sky.SunAt(t).Y > sky.SunAt(noon).Y) noon = t;
+        sky.TimeOfDay = noon;
+        _game.Visor.Visible = false;
+        _game.Hands.Visible = false;
+        _game.Alerts.Visible = false;
+        WeatherSim sim = WeatherNow;
+        sim.Snap(WeatherKind.Clear);
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        sim.Force(WeatherKind.Thunderstorm);
+        Vector2 wind = sim.SegmentAt(sim.Time).To.Wind;
+        Vector3 upwind = new Vector3(-wind.X, 0f, -wind.Y).Normalized();
+        Vector3 eye = Lookout(_game.Survivor.WorldFeet, upwind, 2f);
+        float ground = _game.Zone.GroundAt(eye.X, eye.Z).Y;
+        _game.Zone.Weather.ShaftsHidden = true;
+        int frames = (int)Num("frames", 8);
+        double every = Num("every", 8);
+        string dir = _args.GetValueOrDefault("out", "cloudgrain");
+        System.IO.Directory.CreateDirectory(dir);
+        Transform3D Look(float up, float pitch) =>
+            new(Basis.LookingAt(upwind * MathF.Cos(pitch) + Vector3.Up * MathF.Sin(pitch), Vector3.Up), new Vector3(eye.X, ground + up, eye.Z));
+        for (int f = 0; f < frames; f++)
+        {
+            foreach (float up in new[] { 2f, (float)Num("high", 300) })
+            {
+                _game.FixedCamera = Look(up, up > 50f ? 0.1f : 0.18f);
+                foreach (int x in _drive.Wait(2)) yield return x;
+                foreach (int x in Shot(System.IO.Path.Combine(dir, $"{(up > 50f ? "high" : "ground")}-{f:D2}.png"))) yield return x;
+            }
+            GD.Print($"(cloudgrain {f}: {sim.Time:F0} s, cover here {sim.LocalAt(eye).CloudCover:F2}, front {(sim.Front == null ? "none" : $"{sim.Front.Ahead(eye):F0} m off, strength {sim.Front.Strength:F2}")})");
+            if (Num("cost", 0) == 1 && (f == 1 || f == 5))
+            {
+                _game.FixedCamera = Look(2f, 0.18f);
+                var cost = new FrameCost(_game);
+                foreach (int x in cost.Sample(240)) yield return x;
+                GD.Print($"(cloudgrain cost at frame {f}: {cost})");
+            }
+            Hurry(4);
+            for (int i = 0; i < every * 60 / 4; i++) yield return 0;
+            Hurry(1);
+        }
+    }
 }

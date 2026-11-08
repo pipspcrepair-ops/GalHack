@@ -302,13 +302,16 @@ public partial class SkyRig : Node3D
     }
 
     /// <summary>
-    /// The noise the clouds are cut from: smooth simplex, warped. Perlin's square lattice showed through as
-    /// square clouds where thin cover first breaks the threshold; these heaps are round and ragged at every cover.
+    /// The noise the clouds are cut from: smooth simplex under one gentle warp, with nothing in it finer than
+    /// about sixteen texels (the 3D detail is the fine grain, and it varies with height). The warp is one octave:
+    /// FastNoiseLite's default is five, each six times the last, and the top three ran far past the texture's
+    /// own resolution and scratched it at every texel, wrinkles the sky drew straight up into columns.
     /// </summary>
     public static FastNoiseLite CloudNoiseSource() => new()
     {
-        Seed = 11, Frequency = 0.008f, FractalOctaves = 5, FractalGain = 0.5f, NoiseType = FastNoiseLite.NoiseTypeEnum.SimplexSmooth,
+        Seed = 11, Frequency = 0.008f, FractalOctaves = 4, FractalGain = 0.5f, NoiseType = FastNoiseLite.NoiseTypeEnum.SimplexSmooth,
         DomainWarpEnabled = true, DomainWarpType = FastNoiseLite.DomainWarpTypeEnum.SimplexReduced, DomainWarpAmplitude = 30f, DomainWarpFrequency = 0.012f,
+        DomainWarpFractalType = FastNoiseLite.DomainWarpFractalTypeEnum.None,
     };
 
     /// <summary>Growing cumulus to swell over fair-weather waterspouts: (x, z, radius, how far grown), up to two.</summary>

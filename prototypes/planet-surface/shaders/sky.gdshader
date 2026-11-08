@@ -364,8 +364,9 @@ float cumulus_at(vec2 xz, float n) {
 
 float cloud_density(vec3 p, bool cheap) {
 	vec2 uv = (p.xz + cloud_drift) / cloud_scale;
-	// The second octave turned against the first, so no direction of the texture's own lines adds up.
-	float n = textureLod(cloud_noise, uv, 0.0).r * 0.65 + textureLod(cloud_noise, mat2(vec2(0.8, 0.6), vec2(-0.6, 0.8)) * uv * 2.0 + 0.31, 0.0).r * 0.35;
+	// Two octaves of the same noise, as CloudCoverage.Coverage and the globe read them, so the clouds you see
+	// from the ground are the ones on the globe (a turned second octave matched neither, nor wrapped with the planet).
+	float n = textureLod(cloud_noise, uv, 0.0).r * 0.65 + textureLod(cloud_noise, uv * 2.0 + 0.31, 0.0).r * 0.35;
 	bool stormy = tower_count > 0 || front_shape.x > 0.001;
 	// Stratus: the same noise pulled out flat along one way, an even sheet with long seams in it.
 	// Flat layers come in broad patches that drift across the map: some places heaped, some layered.
@@ -398,7 +399,11 @@ float cloud_density(vec3 p, bool cheap) {
 		float half_thick = 0.42 * lens;
 		float sheet = fr.z * smoothstep(-1500.0, 0.0, fr.y) * smoothstep(min(9000.0 + 5000.0 * front_kind.w, front_reach() - 300.0), 1000.0, fr.y)
 			* smoothstep(half_thick, half_thick * 0.3, abs(hh - 2.47)) * front_kind.x;
-		extra = max(shelf_cloud(p, fr, cheap), sheet * 0.45 * lens);
+		// Seen from below it is looked through slantwise for kilometres, and as a lens cut from the ground's field
+		// alone that drew it out into fans of streaks: the detail breaks it up with height as well.
+		float veil = sheet * 0.45 * lens;
+		if (!cheap && veil > 0.001) veil *= smoothstep(0.25, 0.65, textureLod(cloud_detail, (p + vec3(cloud_drift.x, 0.0, cloud_drift.y) * 1.3) / (cloud_scale.x * 0.125), 0.0).r);
+		extra = max(shelf_cloud(p, fr, cheap), veil);
 	}
 	coverage += halo * 0.4;
 	float swell = cumulus_count > 0 ? cumulus_at(p.xz, n) : 0.0;
@@ -410,15 +415,20 @@ float cloud_density(vec3 p, bool cheap) {
 	top = mix(top, 1.3 + 1.3 * n, behind * (1.0 - storm)); // behind a front the deck stands thick
 	top = mix(top, st_.y, storm); // the storm stands up through the deck
 	top = mix(top, 1.5 + 0.8 * n, swell); // a cumulus growing tall over the spouts
-	float profile = smoothstep(0.0, mix(0.07, 0.2, max(storm, behind)), h) * (1.0 - smoothstep(top * mix(0.55, 0.82, max(storm, behind)), top, h)); // flat topped
+	// A heap, not a prism. The coverage is a field over the ground: a cloud cut from it alone stood on its
+	// outline with sheer walls as tall as its middle (square-sided blocks from the side), and every wrinkle
+	// in the field ran straight up the wall as a column (streaks hanging under every cloud). Its top is
+	// domed instead, falling to nothing at its edge: a new cloud buds as a low round heap and swells, its
+	// outline at each height its own, and the base stays flat.
+	top *= sqrt(clamp(coverage * 6.0, 0.0, 1.0));
+	float up = clamp(h / top, 0.0, 1.0);
+	float profile = smoothstep(0.0, min(mix(0.07, 0.2, max(storm, behind)), top * 0.4), h) * (1.0 - smoothstep(mix(0.55, 0.82, max(storm, behind)), 1.0, up));
 	float d = coverage * 3.2 * profile;
-	// Rounded shoulders, not walls: the coverage is a field over the ground, so on its own every cloud
-	// stood as a prism with sheer sides; near its edge it now thins the higher it goes, a heap.
-	d *= smoothstep(0.0, 0.06 + 0.5 * h * h, coverage);
 	if (!cheap) {
 		vec3 q = (p + vec3(cloud_drift.x, 0.0, cloud_drift.y) * 1.3) / (cloud_scale.x * 0.125);
 		float detail = textureLod(cloud_detail, q, 0.0).r * 0.65 + textureLod(cloud_detail, q * 3.0, 0.0).r * 0.35;
-		d -= detail * (0.55 - 0.25 * h) * (1.0 - cloud_cover * 0.5);
+		// Bases flat-ish, tops billowing: the detail bites deeper the higher up the heap.
+		d -= detail * mix(0.3, 0.75, up) * (1.0 - cloud_cover * 0.5);
 		if (storm > 0.01) d -= detail * 0.5 * (1.0 - smoothstep(0.15, 0.7, storm)); // billows and curling lobes where it meets the open sky
 	}
 	return clamp(max(d, extra) * 1.8, 0.0, 1.0);
