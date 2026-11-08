@@ -519,6 +519,8 @@ public sealed class HuskRules
     /// <summary>How far a broken hold throws the Husk back, m, and how long it takes to come on again, s.</summary>
     public float Shove { get; set; } = 1.8f;
     public float Stagger { get; set; } = 1.6f;
+    /// <summary>After a hold on someone ends, how long before anything can seize them again, s: a ring of Husks can't pass them hand to hand.</summary>
+    public float SeizeCooldown { get; set; } = 4f;
     /// <summary>Maggot vomit: how far it reaches, m, and how long between, s.</summary>
     public float VomitReach { get; set; } = 6f;
     public float VomitEvery { get; set; } = 7f;

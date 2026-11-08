@@ -177,6 +177,7 @@ public static class Seizing
         c.PhaseTime = 0f;
         HuskRules r = w.Data.Husks;
         c.PhaseLength = broken ? r.Stagger : w.Combat.AttackCooldown;
+        if (t != null) Spare(w, t, r.SeizeCooldown);
         if (broken && t != null)
         {
             Vector3 back = WildSim.Flat(c.Position - t.Position);
@@ -187,6 +188,20 @@ public static class Seizing
             c.Rear = 1f;
         }
         if (t != null) w.RaiseLetGo(new SeizeEvent { Husk = c, Victim = t, Time = w.Time, Broken = broken });
+    }
+
+    /// <summary>Whether a target may be seized now: not while the cooldown after the last hold on them runs.</summary>
+    public static bool Free(WildSim w, ITarget t) => t == null || !w.Spared.TryGetValue(t, out float until) || w.Time >= until;
+
+    /// <summary>Nothing seizes this target for a while (a hold on them just ended, here or in another sim the game keeps).</summary>
+    public static void Spare(WildSim w, ITarget t, float seconds)
+    {
+        if (w == null || t == null) return;
+        float until = w.Time + seconds;
+        if (!w.Spared.TryGetValue(t, out float was) || was < until) w.Spared[t] = until;
+        if (w.Spared.Count > 32)
+            foreach (ITarget old in new System.Collections.Generic.List<ITarget>(w.Spared.Keys))
+                if (w.Spared[old] < w.Time) w.Spared.Remove(old);
     }
 
     /// <summary>The player broke free (the game's struggle): the Husk is shoved off and staggers.</summary>

@@ -133,6 +133,8 @@ public sealed class WildSim
 
     /// <summary>Husk dens' worm masses on the floors and walls, and one destroyed.</summary>
     public readonly List<WormMass> Masses = new();
+    /// <summary>Whoever was just let go of, and until when (this sim's clock) nothing may seize them again (<see cref="Seizing.Spare"/>).</summary>
+    public readonly Dictionary<ITarget, float> Spared = new();
     public event Action<WormMass> MassDied;
     internal void RaiseMassDied(WormMass m) => MassDied?.Invoke(m);
 

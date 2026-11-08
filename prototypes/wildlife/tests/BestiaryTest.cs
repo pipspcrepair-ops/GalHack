@@ -54,6 +54,7 @@ public partial class BestiaryTest : Node
             HusksAreTheirOwnPeople();
             SeizedPeopleTurn();
             ThePlayerIsNeverInfected();
+            TheCooldownHolds();
             HollowsAreLesserAndScarce();
             NothingLivesInsideWalls();
             HuskDensHaveNoEggs();
@@ -418,6 +419,45 @@ public partial class BestiaryTest : Node
         Vector3 before = h.Position;
         Seizing.Break(sim, h);
         Check(letGo is { Broken: true } && WildSim.Flat(h.Position - you.Position).Length() > 1.5f, $"broken free, it's thrown back {WildSim.Flat(h.Position - before).Length():F1} m and staggers");
+    }
+
+    /// <summary>A ring of Husks can't pass you hand to hand: once a hold breaks, nothing seizes you again for the cooldown, though they still strike.</summary>
+    void TheCooldownHolds()
+    {
+        var w = World(15f);
+        WorldLife life = Bestiary.Roll(_data, w);
+        var sim = new WildSim(_data, new Terrain((x, z) => 0f, 120f), new NavGrid(120f, 3f));
+        var you = new DummyTarget { Position = Vector3.Zero, Health = new Health(1e9f) };
+        sim.Targets.Add(you);
+        for (int i = 0; i < 4; i++)
+        {
+            float a = i * MathF.Tau / 4f;
+            sim.Spawn(TallHusk(life), new Vector3(MathF.Cos(a), 0f, MathF.Sin(a)) * 2.2f);
+        }
+        var seizedAt = new List<float>();
+        sim.Seized += e => seizedAt.Add(e.Time);
+        float cooldown = _data.Husks.SeizeCooldown;
+        int breaks = 0, early = 0, again = 0;
+        for (int i = 0; i < 30 * 90 && breaks < 3; i++)
+        {
+            sim.Step(1f / 30f);
+            Creature h = Seizing.Holder(sim, you);
+            if (h == null || h.HeldFor < 0.5f) continue;
+            // Thrown off: who takes you again, and how soon.
+            Seizing.Break(sim, h);
+            breaks++;
+            float at = sim.Time;
+            int before = seizedAt.Count;
+            for (int k = 0; k < 30 * 12 && seizedAt.Count == before; k++) sim.Step(1f / 30f);
+            if (seizedAt.Count > before)
+            {
+                if (seizedAt[before] - at < cooldown - 0.05f) early++;
+                else again++;
+            }
+        }
+        Check(breaks >= 2, $"a ring of four Husks seizes you {breaks} times, once each hold is thrown off");
+        Check(early == 0, $"and none takes you within the {cooldown:F0} s after a hold breaks ({early} too soon)");
+        Check(again > 0, $"after it they can again ({again} times)");
     }
 
     /// <summary>Hollows: a lesser thing than the animal, scarce off a Hollow world, common on one; only animals.</summary>
