@@ -47,15 +47,47 @@ public enum WeatherEventKind { LightningStrike, DebrisImpact, TornadoForming, To
 public readonly record struct WeatherEvent(
     WeatherEventKind Kind, int Id, Vector3 Position, StrikePoint Target, float Damage, float DamageRadius);
 
+/// <summary>What kind of whirl a <see cref="Tornado"/> is.</summary>
+public enum TornadoKind
+{
+    /// <summary>A land tornado out of a storm cell.</summary>
+    Tornado,
+    /// <summary>A thin pale rope over open water, out of growing cumulus or a storm's cell.</summary>
+    Waterspout,
+    /// <summary>A fair-weather whirl of dust off hot dry ground: never joined to a cloud.</summary>
+    DustDevil,
+}
+
 /// <summary>
 /// A tornado: a vortex that forms under the cloud base, touches down, wanders across the
 /// plain (steering toward whoever it is homing on) and dissipates. Its lift profile comes
-/// from <see cref="TornadoRules"/>; the force module turns it into pushes and lifts.
+/// from <see cref="TornadoRules"/>; the force module turns it into pushes and lifts. Waterspouts
+/// and dust devils are whirls of the same kind, weaker (<see cref="Kind"/>).
 /// </summary>
 public sealed class Tornado
 {
     public int Id { get; }
-    public TornadoRules Rules { get; }
+    public TornadoRules Rules { get; internal set; }
+
+    public TornadoKind Kind { get; internal set; }
+
+    /// <summary>How far down its funnel ever reaches, 0..1: a waterspout may stop short of the water while its whirl still spins there.</summary>
+    public float Reach { get; init; } = 1f;
+
+    /// <summary>The whirls that hang from one base share this (0 for a lone one).</summary>
+    public int Group { get; init; }
+
+    /// <summary>Out of a storm's cell (a waterspout or a tornado), not a fair-weather cloud.</summary>
+    public bool Storm { get; init; } = true;
+
+    /// <summary>A waterspout that has come ashore has decided its fate (dies, or goes on as a tornado).</summary>
+    internal bool Ashore { get; set; }
+
+    /// <summary>A dust devil's height, metres (whirls that never reach a cloud).</summary>
+    public float Height { get; init; }
+
+    /// <summary>Starts it this many seconds later (whirls from one base come down at different times).</summary>
+    public void Delay(float seconds) => Age -= seconds;
 
     /// <summary>Base of the funnel, on the ground.</summary>
     public Vector3 Position { get; private set; }
@@ -91,7 +123,7 @@ public sealed class Tornado
     public bool Touchdown => Age >= Rules.FormSeconds;
 
     /// <summary>0..1 as the funnel lowers from the cloud base: the visible build-up before touchdown.</summary>
-    public float Formation => Math.Clamp(Age / Rules.FormSeconds, 0f, 1f);
+    public float Formation => Math.Clamp(Age / Rules.FormSeconds, 0f, Reach);
 
     /// <summary>How hard it pulls, 0..1: nothing until touchdown, fading as it dissipates.</summary>
     public float Strength => Touchdown ? 1f - SmoothStep(_lifetime - Rules.DissipateSeconds, _lifetime, Age) : 0f;

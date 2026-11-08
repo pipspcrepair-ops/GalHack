@@ -144,6 +144,64 @@ public partial class Staging
             $"{sim.Cells.Count(c => c.OnFront)} cells on it, storm over the camera {sim.CellCover(eye):F2}, rain here {_game.Zone.Weather.RainHere:F2}, sun y {sky.ToSun.Y:F2}");
     }
 
+    /// <summary>
+    /// Waterspouts over the nearest open water, from its shore: a fair day's under growing cumulus, or
+    /// (--storm=1) a storm cell's. --wait is how long they grow first, seconds.
+    /// </summary>
+    IEnumerable<int> SpoutShot()
+    {
+        var sky = _game.Zone.Sky;
+        sky.Paused = true;
+        sky.TimeOfDay = Num("time", 0.42);
+        _game.Visor.Visible = false;
+        _game.Hands.Visible = false;
+        var sim = _game.Zone.Weather.Sim;
+        bool storm = Num("storm", 0) != 0;
+        sim.FrontsOff = true;
+        sim.ClearFront();
+        sim.Snap(storm ? WeatherKind.Thunderstorm : WeatherKind.Clouds);
+        sim.ClearTornadoes();
+        sim.ClearCells();
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        // A wide stretch of open water, and a place out on it 650 m from where they form: the camera floats there over the water.
+        Vector3 water = Vector3.Zero, shore = Vector3.Zero;
+        bool found = false;
+        bool Open(Vector3 p) => sim.OpenWater != null && sim.OpenWater(p.X, p.Z);
+        for (int i = 0; i < 600 && !found; i++)
+        {
+            float r = 150f + i * 15f;
+            Vector3 w = _game.Survivor.WorldFeet + new Vector3(MathF.Cos(i * 0.61f) * r, 0f, MathF.Sin(i * 0.61f) * r);
+            if (!Open(w)) continue;
+            bool wide = true;
+            for (int k = 0; k < 8 && wide; k++) wide = Open(w + new Vector3(MathF.Cos(k * 0.785f), 0f, MathF.Sin(k * 0.785f)) * 450f);
+            if (!wide) continue;
+            for (int k = 0; k < 12 && !found; k++)
+            {
+                Vector3 c = w + new Vector3(MathF.Cos(k * 0.52f), 0f, MathF.Sin(k * 0.52f)) * 650f;
+                if (Open(c)) (water, shore, found) = (w, c, true);
+            }
+        }
+        if (!found) { GD.Print("spout: no wide open water near the start: try another world"); yield break; }
+        Vector3 land = Clearing(shore);
+        _game.Survivor.PlaceOutside((land + Vector3.Up).ToNumerics());
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        if (storm) sim.AddCell(water, 1f);
+        IReadOnlyList<Tornado> spouts = sim.SpawnSpouts(water, storm);
+        Hurry(6);
+        float wait = (float)Num("wait", 40);
+        for (int i = 0; i < 60 * 60 && spouts[0].Age < wait && sim.Tornadoes.Contains(spouts[0]); i++) yield return 0;
+        Hurry(1);
+        Vector3 eye = new Vector3(shore.X, sim.GroundHeight(shore.X, shore.Z) + (float)Num("up", 5), shore.Z);
+        Vector3 to = water - eye;
+        to.Y = 0f;
+        float pitch = (float)Num("lookup", 0.22);
+        _game.FixedCamera = new Transform3D(Basis.LookingAt(to.Normalized() * MathF.Cos(pitch) + Vector3.Up * MathF.Sin(pitch), Vector3.Up), eye);
+        foreach (int x in _drive.Wait(60)) yield return x;
+        foreach (Tornado t in spouts)
+            GD.Print($"spout {t.Id}: {t.Kind}, age {t.Age:F0} s, reaches {t.Formation:F2} of the way down (stops at {t.Reach:F2}), touchdown {t.Touchdown}, " +
+                $"{new Vector2(t.Position.X - eye.X, t.Position.Z - eye.Z).Length():F0} m off, over open water {sim.OpenWater(t.Position.X, t.Position.Z)}");
+    }
+
     /// <summary>Prints the cirrus and stratus weights over 40 rolled world and weather pairs.</summary>
     IEnumerable<int> CirrusLog()
     {

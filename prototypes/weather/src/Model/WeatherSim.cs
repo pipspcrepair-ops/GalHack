@@ -89,6 +89,9 @@ public sealed class WeatherSim
     /// <summary>The ground can be lifted as dust here (dry loose ground): a dust storm comes as a wall. Null: everywhere.</summary>
     public Func<bool> LooseGround { get; set; }
 
+    /// <summary>Open water at a point (a sea or a lake, not a stream): waterspouts form only over it. Null: none anywhere.</summary>
+    public Func<float, float, bool> OpenWater { get; set; }
+
     /// <summary>What happened during the last <see cref="Step"/>.</summary>
     public IReadOnlyList<WeatherEvent> Events => _events;
 
@@ -101,7 +104,7 @@ public sealed class WeatherSim
     readonly List<WeatherEvent> _events = new();
     readonly Rng _timelineRng, _hazardRng;
     readonly uint _gustSeed;
-    float _lightningCharge, _lightningNext, _debrisCharge, _debrisNext, _tornadoCharge, _tornadoNext;
+    float _lightningCharge, _lightningNext, _debrisCharge, _debrisNext, _tornadoCharge, _tornadoNext, _spoutCharge, _spoutNext = 1f;
     int _nextId = 1;
 
     public WeatherSim(WeatherData data, string archetypeId, ulong seed, WeatherKind? start = null)
@@ -333,6 +336,13 @@ public sealed class WeatherSim
         foreach (Tornado t in _tornadoes)
         {
             float distance = Flat(t.Position - observer).Length();
+            if (t.Kind != TornadoKind.Tornado)
+            {
+                // A waterspout coming in is worth a word; a dust devil is not.
+                if (t.Kind == TornadoKind.Waterspout && t.Touchdown && distance < 400f)
+                    into.Add(new WarningEntry(WarningLevel.Advisory, $"Waterspout {distance:F0} m {Bearing(observer, t.Position)}", 0));
+                continue;
+            }
             if (!t.Touchdown)
                 into.Add(new WarningEntry(WarningLevel.Danger,
                     $"Funnel forming {distance:F0} m {Bearing(observer, t.Position)}, touchdown in {t.Rules.FormSeconds - t.Age:F0} s",
@@ -718,7 +728,8 @@ public sealed class WeatherSim
     {
         TornadoRules rules = Data.Tornado;
         int active = 0;
-        foreach (Tornado t in _tornadoes) if (!t.Dissipating) active++;
+        foreach (Tornado t in _tornadoes) if (!t.Dissipating && t.Kind == TornadoKind.Tornado) active++;
+        if (OpenWater != null) StepSpouts(dt, observer);
         if (Accumulate(ref _tornadoCharge, ref _tornadoNext, Current.TornadoesPerMinute, dt) && active < rules.MaxActive)
         {
             float angle = _hazardRng.Range(0f, MathF.Tau);
@@ -728,11 +739,16 @@ public sealed class WeatherSim
             var at = cell != null && Flat(cell.Position - observer).Length() < Data.Cells.Range * 0.6f
                 ? cell.Position + away * MathF.Min(rules.SpawnDistance, cell.Radius * 0.5f)
                 : observer + away * rules.SpawnDistance;
-            // Natural tornadoes do not chase the player: a random heading, no homing, a slow wander.
-            Tornado born = SpawnTornado(at, observer);
-            born.Homing = false;
-            born.SetHeading(_hazardRng.Range(0f, MathF.Tau));
-            born.WanderRate = 0.12f;
+            // Over open water the same storm lets down waterspouts instead.
+            if (OpenWater != null && OpenWater(at.X, at.Z)) SpawnSpouts(at, storm: true);
+            else
+            {
+                // Natural tornadoes do not chase the player: a random heading, no homing, a slow wander.
+                Tornado born = SpawnTornado(at, observer);
+                born.Homing = false;
+                born.SetHeading(_hazardRng.Range(0f, MathF.Tau));
+                born.WanderRate = 0.12f;
+            }
         }
 
         bool stormGone = Current.TornadoesPerMinute < 0.05f;
@@ -740,7 +756,12 @@ public sealed class WeatherSim
         {
             Tornado t = _tornadoes[i];
             bool wasDown = t.Touchdown;
-            if (stormGone && !t.Homing) t.Dissipate();
+            if (stormGone && !t.Homing && t.Kind == TornadoKind.Tornado) t.Dissipate();
+            if (t.Kind == TornadoKind.Waterspout)
+            {
+                SpoutFate(t);
+                if (t.Storm && Current.LightningPerMinute < 0.1f && Current.TornadoesPerMinute < 0.05f) t.Dissipate();
+            }
             t.Step(dt, observer, GroundHeight);
             if (t.Touchdown && !wasDown)
                 _events.Add(new WeatherEvent(WeatherEventKind.TornadoTouchdown, t.Id, t.Position, null, 0f, 0f));
@@ -750,6 +771,89 @@ public sealed class WeatherSim
         }
     }
 
+    // ---- Waterspouts --------------------------------------------------------------------
+
+    /// <summary>
+    /// Waterspouts form only over open water: under growing cumulus on warm fair days with little wind
+    /// (short, mostly harmless), or out of a storm's cells. Two to four hang from one base at different
+    /// stages, some never reaching the water.
+    /// </summary>
+    void StepSpouts(float dt, Vector3 observer)
+    {
+        Conditions c = Current;
+        float fair = c.Rain < 0.05f && c.LightningPerMinute < 0.1f && c.CloudCover > 0.25f && c.CloudCover < 0.85f
+            ? Front.Smooth(12f, 26f, c.Temperature) * Front.Smooth(11f, 4f, c.WindSpeed) : 0f;
+        float stormy = MathF.Min(1f, c.LightningPerMinute / 4f) * c.Cellular;
+        if (!Accumulate(ref _spoutCharge, ref _spoutNext, fair * 0.3f + stormy * 0.35f, dt)) return;
+        var groups = new HashSet<int>();
+        foreach (Tornado t in _tornadoes) if (t.Kind == TornadoKind.Waterspout) groups.Add(t.Group);
+        if (groups.Count >= 2) return;
+        if (stormy > fair)
+            foreach (StormCell cell in _cells)
+            {
+                if (cell.Strength < 0.6f || cell.Funnel != null) continue;
+                Vector3 p = cell.Position + RandomOffset(cell.Radius * 0.5f);
+                if (OpenWater(p.X, p.Z)) { SpawnSpouts(p, storm: true); return; }
+            }
+        if (fair <= 0f) return;
+        for (int k = 0; k < 12; k++)
+        {
+            Vector3 p = observer + RandomOffset(1800f);
+            if (Flat(p - observer).Length() > 250f && OpenWater(p.X, p.Z)) { SpawnSpouts(p, storm: false); return; }
+        }
+    }
+
+    /// <summary>
+    /// Two to four spouts from one base, coming down at different times, a few stopping short of the
+    /// water. A storm's base is the cell over them; a fair day's is the cumulus they grow under.
+    /// </summary>
+    public IReadOnlyList<Tornado> SpawnSpouts(Vector3 at, bool storm)
+    {
+        var made = new List<Tornado>();
+        int n = 2 + Math.Min(2, (int)(_hazardRng.NextFloat() * 3f));
+        int group = _nextId++;
+        Vector2 wind = Current.Wind;
+        float heading = wind.LengthSquared() > 0.01f ? MathF.Atan2(wind.Y, wind.X) : _hazardRng.Range(0f, MathF.Tau);
+        for (int k = 0; k < n; k++)
+        {
+            Vector3 p = k == 0 ? at : at + RandomOffset(storm ? 260f : 170f);
+            if (OpenWater != null && !OpenWater(p.X, p.Z)) p = at;
+            float life = storm ? _hazardRng.Range(70f, 160f) : _hazardRng.Range(45f, 110f);
+            TornadoRules rules = storm ? Data.Tornado.Scaled(0.7f, 0.5f, 0.6f, 18f, life, 14f) : Data.Tornado.Scaled(0.35f, 0.15f, 0.45f, 22f, life, 16f);
+            rules.Speed = MathF.Max(1f, Current.WindSpeed * 0.25f);
+            var spout = new Tornado(_nextId++, rules, new Vector3(p.X, GroundHeight(p.X, p.Z), p.Z), heading, homing: false, _hazardRng.Range(0f, MathF.Tau))
+            {
+                Kind = TornadoKind.Waterspout, Group = group, Storm = storm,
+                Reach = k > 0 && _hazardRng.NextFloat() < 0.45f ? _hazardRng.Range(0.3f, 0.75f) : 1f,
+                WanderRate = 0.1f,
+            };
+            spout.Delay(k == 0 ? 0f : _hazardRng.Range(4f, 30f));
+            _tornadoes.Add(spout);
+            made.Add(spout);
+            _events.Add(new WeatherEvent(WeatherEventKind.TornadoForming, spout.Id, spout.Position, null, 0f, 0f));
+        }
+        if (storm)
+        {
+            StormCell parent = null;
+            foreach (StormCell c in _cells)
+                if (c.Funnel == null && Flat(c.Position - at).Length() < c.Radius * 1.2f && (parent == null || c.Strength > parent.Strength)) parent = c;
+            (parent ?? AddCell(at, 1f, first: true)).Funnel = made[0];
+        }
+        return made;
+    }
+
+    /// <summary>A spout that drifts ashore decays, unless a storm's strong one goes on over the land as a tornado.</summary>
+    void SpoutFate(Tornado t)
+    {
+        if (t.Ashore || !t.Touchdown || OpenWater == null || OpenWater(t.Position.X, t.Position.Z)) return;
+        t.Ashore = true;
+        if (t.Storm && t.Strength > 0.6f && t.Reach >= 1f && _hazardRng.NextFloat() < 0.35f)
+        {
+            t.Kind = TornadoKind.Tornado;
+            t.Rules = Data.Tornado;
+        }
+        else t.Dissipate();
+    }
     /// <summary>Starts a tornado forming at <paramref name="at"/>, heading for <paramref name="homeOn"/>.</summary>
     public Tornado SpawnTornado(Vector3 at, Vector3 homeOn)
     {

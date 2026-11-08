@@ -98,6 +98,7 @@ public sealed partial class Staging
             "cirruslog" => CirrusLog(),
             "storm" => StormShot(),
             "front" => FrontShot(),
+            "spout" => SpoutShot(),
             "skylevel" => SkyLevel(),
             "sunset" => Sunset(),
             "underwater" => UnderwaterShot(),

@@ -16,6 +16,12 @@ public partial class TornadoFx : Node3D
     public IWeatherScene Fx;
     public TornadoRules Rules;
 
+    /// <summary>The ground's own colour where it whirls: a dust devil and a tornado's skirt are made of it.</summary>
+    public Color Soil = new(0.42f, 0.36f, 0.3f);
+
+    TornadoKind _kind = TornadoKind.Tornado;
+    bool _dressed;
+
     const int DebrisCount = 160, DustCount = 220;
 
     ShaderMaterial _outer, _inner, _debrisProcess, _dustProcess;
@@ -103,8 +109,14 @@ public partial class TornadoFx : Node3D
     public void ReachTo(float top)
     {
         if (_outerMesh == null) return;
-        float k = Mathf.Max(top, 20f) / Mathf.Max(Rules.VisualHeight, 1f);
-        float wide = Mathf.Clamp(MathF.Sqrt(k), 0.6f, 2.5f);
+        float k = Mathf.Max(top, _kind == TornadoKind.DustDevil ? 3f : 20f) / Mathf.Max(Rules.VisualHeight, 1f);
+        // A waterspout stays a thin rope however tall; a dust devil is as wide as its whirl, a few metres to some tens.
+        float wide = _kind switch
+        {
+            TornadoKind.Waterspout => Mathf.Clamp(MathF.Sqrt(k) * 0.55f, 0.35f, 0.9f),
+            TornadoKind.DustDevil => Mathf.Clamp(k * 1.1f, 0.12f, 1.1f),
+            _ => Mathf.Clamp(MathF.Sqrt(k), 0.6f, 2.5f),
+        };
         var scale = new Vector3(wide, k, wide);
         _outerMesh.Scale = scale;
         _innerMesh.Scale = scale;
@@ -115,9 +127,54 @@ public partial class TornadoFx : Node3D
 
     static float Fract(float x) => x - MathF.Floor(x);
 
+    /// <summary>
+    /// Its looks by kind: a tornado dark with dust and debris; a waterspout a pale rope over a white ring of
+    /// spray (there even where the funnel stops short); a dust devil the soil's own colour, a whirling skirt
+    /// at its foot and the column thinning out into clear air.
+    /// </summary>
+    void Dress(TornadoKind kind)
+    {
+        _kind = kind;
+        _dressed = true;
+        Color soil = Soil;
+        (Color, Color, Color, Color) looks = kind switch
+        {
+            TornadoKind.Waterspout => (new Color(0.74f, 0.77f, 0.8f), new Color(0.6f, 0.63f, 0.67f), new Color(0.64f, 0.67f, 0.7f), new Color(0.52f, 0.55f, 0.59f)),
+            TornadoKind.DustDevil => (soil * 0.95f, soil.Lerp(Colors.White, 0.15f), soil * 0.8f, soil),
+            _ => (new Color("4a3e32"), new Color("6a6e66"), new Color("261c14"), new Color("3c3e3a")),
+        };
+        _outer.SetShaderParameter("color_low", looks.Item1);
+        _outer.SetShaderParameter("color_high", looks.Item2);
+        _inner.SetShaderParameter("color_low", looks.Item3);
+        _inner.SetShaderParameter("color_high", looks.Item4);
+        foreach (ShaderMaterial m in new[] { _outer, _inner })
+        {
+            m.SetShaderParameter("s_bend", kind == TornadoKind.Tornado ? 0.4f : kind == TornadoKind.Waterspout ? 1.1f : 0.7f);
+            m.SetShaderParameter("top_fade", kind == TornadoKind.DustDevil ? 1f : 0f);
+        }
+        switch (kind)
+        {
+            case TornadoKind.Waterspout:
+                // The spray ring on the water at its foot.
+                Set(_dustProcess, ("radius_min", 5f), ("radius_max", 24f), ("height_max", 7f), ("spin", 1.9f), ("rise", 0.2f), ("size_min", 3f), ("size_max", 7f), ("flare", 0.25f));
+                _dustProcess.SetShaderParameter("tint", new Color(0.92f, 0.95f, 0.97f, 0.55f));
+                break;
+            case TornadoKind.DustDevil:
+                // The whirling skirt of lifted soil at its foot, dense and low.
+                Set(_dustProcess, ("radius_min", 1.2f), ("radius_max", 9f), ("height_max", 9f), ("spin", 2.6f), ("rise", 0.18f), ("size_min", 1.6f), ("size_max", 4.5f), ("flare", 0.8f));
+                _dustProcess.SetShaderParameter("tint", new Color(soil.R, soil.G, soil.B, 0.7f));
+                break;
+            default:
+                Set(_dustProcess, ("radius_min", 5f), ("radius_max", 26f), ("height_max", 16f), ("spin", 1.6f), ("rise", 0.12f), ("size_min", 5f), ("size_max", 11f), ("flare", 0.5f));
+                _dustProcess.SetShaderParameter("tint", new Color(0.36f, 0.3f, 0.24f, 0.6f));
+                break;
+        }
+    }
+
     /// <summary>Called every physics tick, so the node rides physics interpolation like everything else.</summary>
     public void Follow(Tornado t)
     {
+        if (!_dressed || t.Kind != _kind) Dress(t.Kind);
         Vector3 moved = t.Position - _lastPosition;
         _lastPosition = t.Position;
         GlobalPosition = t.Position;
@@ -132,12 +189,20 @@ public partial class TornadoFx : Node3D
         // Some are smooth pale cones instead of ragged ones: wide at the top, a clean curving taper, bright in side light.
         float clean = Fract(MathF.Sin(t.Id * 7.31f + 1.3f) * 9631.7f) > 0.55f ? 1f : 0f;
         if (clean > 0f) roll = 0.6f + 0.3f * roll;
+        // A waterspout is a rope all its life; a dust devil a column widening upward.
+        if (_kind == TornadoKind.Waterspout) { roll = 0f; clean = 0f; }
+        if (_kind == TornadoKind.DustDevil) { roll = 0.5f; clean = 0f; }
         float form = Math.Clamp((formation - 0.5f) / 0.5f, 0f, 1f);
         float shape = Mathf.Lerp(0f, roll, form * form * (3f - 2f * form));
         float decay = t.Dissipating ? 1f - strength : 0f;
         shape = Mathf.Lerp(shape, 0f, decay);
         float seed = t.Id * 1.7f;
-        var bow = new Vector2(MathF.Cos(t.Id * 2.1f), MathF.Sin(t.Id * 2.1f)) * Mathf.Lerp(110f, 30f, shape);
+        var bow = new Vector2(MathF.Cos(t.Id * 2.1f), MathF.Sin(t.Id * 2.1f)) * (_kind switch
+        {
+            TornadoKind.Waterspout => 25f + 50f * Fract(t.Id * 0.618f),
+            TornadoKind.DustDevil => 1.5f + 3f * Fract(t.Id * 0.618f),
+            _ => Mathf.Lerp(110f, 30f, shape),
+        });
         foreach (ShaderMaterial m in new[] { _outer, _inner })
         {
             m.SetShaderParameter("shape", shape);
@@ -150,7 +215,7 @@ public partial class TornadoFx : Node3D
         }
         _outer.SetShaderParameter("opacity", 0.85f * (t.Touchdown ? strength : 0.6f));
         _inner.SetShaderParameter("opacity", 0.95f * (t.Touchdown ? strength : 0.5f * formation));
-        _debris.AmountRatio = t.Touchdown ? strength : 0f;
+        _debris.AmountRatio = t.Touchdown && _kind == TornadoKind.Tornado ? strength : 0f;
         _dust.AmountRatio = t.Touchdown ? strength : 0f;
         _debrisProcess.SetShaderParameter("strength", strength);
         _dustProcess.SetShaderParameter("strength", strength);

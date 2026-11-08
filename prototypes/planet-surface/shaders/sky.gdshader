@@ -342,6 +342,18 @@ float shelf_cloud(vec3 p, vec3 fr, bool cheap) {
 	}
 	return clamp(d, 0.0, 1.0) * smoothstep(0.0, 0.25, fr.z);
 }
+// Growing cumulus over a fair-weather waterspout's base (WeatherSim.SpawnSpouts): a swelling of the deck,
+// tall and with a flat darker base, where the spouts hang.
+uniform int cumulus_count = 0;
+uniform vec4 cumulus[2];   // x, z, radius, how far grown 0..1
+
+float cumulus_at(vec2 xz, float n) {
+	float s = 0.0;
+	for (int i = 0; i < cumulus_count; i++)
+		s = max(s, cumulus[i].w * smoothstep(cumulus[i].z, cumulus[i].z * 0.2, length(xz - cumulus[i].xy) * (0.35 + 1.3 * n)));
+	return s;
+}
+
 float cloud_density(vec3 p, bool cheap) {
 	vec2 uv = (p.xz + cloud_drift) / cloud_scale;
 	float n = texture(cloud_noise, uv).r * 0.65 + texture(cloud_noise, uv * 2.0 + 0.31).r * 0.35;
@@ -372,12 +384,15 @@ float cloud_density(vec3 p, bool cheap) {
 		extra = max(shelf_cloud(p, fr, cheap), sheet * 0.45 * smoothstep(0.3, 0.65, texture(cloud_noise, uv * 0.7 + 0.21).r));
 	}
 	coverage += halo * 0.4;
+	float swell = cumulus_count > 0 ? cumulus_at(p.xz, n) : 0.0;
+	coverage += swell * 0.6;
 	if (coverage <= 0.0) return clamp(extra * 1.8, 0.0, 1.0);
 	float h = (p.y - cloud_base + (tower_count > 0 ? base_sag(p, st_) : 0.0)) / cloud_thick; // a dark ragged base under the storm
 	float top = clamp(0.2 + coverage * 2.6, 0.2, 1.0);
 	top = mix(top, 0.4, st);
 	top = mix(top, 1.3 + 1.3 * n, behind * (1.0 - storm)); // behind a front the deck stands thick
 	top = mix(top, st_.y, storm); // the storm stands up through the deck
+	top = mix(top, 1.5 + 0.8 * n, swell); // a cumulus growing tall over the spouts
 	float profile = smoothstep(0.0, mix(0.07, 0.2, max(storm, behind)), h) * (1.0 - smoothstep(top * mix(0.55, 0.82, max(storm, behind)), top, h)); // flat topped
 	float d = coverage * 3.2 * profile;
 	if (!cheap) {
@@ -479,6 +494,7 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter) 
 					lum -= cloud_lit * sun_light * beer * mix(0.55, 1.0, powder) * 0.6 * max(sides.x, shelf);
 					rim = shelf * smoothstep(-260.0, -20.0, fr.y) * beer * front_kind.x;
 				}
+				if (cumulus_count > 0) dark = max(dark, 0.55 * cumulus_at(p.xz, 0.5) * (1.0 - hgt)); // its flat base, dark over the water
 				lum *= 1.0 - dark * 0.78 * (1.0 - hgt * 0.4);
 				lum += cloud_lit * sun_light * rim * 0.9;
 				lum += cloud_lit * sun_light * flank * (0.25 + 0.4 * hgt); // lit flanks: lighter toward the edges

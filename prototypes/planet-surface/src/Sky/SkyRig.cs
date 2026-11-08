@@ -269,6 +269,13 @@ public partial class SkyRig : Node3D
         _sky.SetShaderParameter("front_kind", kind);
     }
 
+    /// <summary>Growing cumulus to swell over fair-weather waterspouts: (x, z, radius, how far grown), up to two.</summary>
+    public void SetCumulus(Vector4[] cells, int count)
+    {
+        _sky.SetShaderParameter("cumulus", cells);
+        _sky.SetShaderParameter("cumulus_count", count);
+    }
+
     /// <summary>Hands a rain shaft the sky's own cloud-base inputs, so its top meets the underside the sky draws.</summary>
     public void ShareCloudBase(ShaderMaterial m)
     {

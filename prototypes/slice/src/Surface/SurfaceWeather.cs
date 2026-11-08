@@ -362,11 +362,29 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
                 if (s.Start < CalmOpening && data.State(s.Kind).Severe) calm = false;
             if (calm) break;
         }
-        sim.GroundHeight = (x, z) => planet.GroundHeight(Mathx.WrapX(x, planet.Width), Mathx.Wrap(z, planet.Height));
+        // The surface a strike or a whirl stands on: the water's where there is water over the ground.
+        sim.GroundHeight = (x, z) =>
+        {
+            float ground = planet.GroundHeight(Mathx.WrapX(x, planet.Width), Mathx.Wrap(z, planet.Height));
+            return planet.WaterSurfaceAt(new Vector3(x, 0f, z)) is float water && water > ground ? water : ground;
+        };
         sim.WorldSize = new Vector2((float)planet.Width, (float)planet.Height);
+        sim.OpenWater = (x, z) => OpenWater(planet, x, z);
         Bridge = new WeatherBridge(sim) { Observer = () => Observer().ToNumerics() };
         Zone.Physics.ForceProviders.Clear();
         Zone.Physics.ForceProviders.Add(Bridge);
+    }
+
+    /// <summary>A sea or a lake at a point, not a stream: water a metre and a half deep there and 60 m round it.</summary>
+    static bool OpenWater(PlanetWorld planet, float x, float z)
+    {
+        for (int k = 0; k < 5; k++)
+        {
+            float px = x + (k == 1 ? 60f : k == 2 ? -60f : 0f), pz = z + (k == 3 ? 60f : k == 4 ? -60f : 0f);
+            if (planet.WaterSurfaceAt(new Vector3(px, 0f, pz)) is not float water) return false;
+            if (water - planet.GroundHeight(Mathx.WrapX(px, planet.Width), Mathx.Wrap(pz, planet.Height)) < 1.5f) return false;
+        }
+        return true;
     }
 
     /// <summary>The air right now, for the sky.</summary>
@@ -416,7 +434,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
         {
             _ravageTimer = 0.2f;
             foreach (Tornado t in Sim.Tornadoes)
-                if (t.Touchdown && t.Strength > 0.25f) Ravage(t);
+                if (t.Touchdown && t.Strength > 0.25f && t.Kind != TornadoKind.DustDevil) Ravage(t);
         }
     }
 
@@ -501,13 +519,15 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
             alive.Add(t.Id);
             if (!_tornadoes.TryGetValue(t.Id, out TornadoFx fx))
             {
-                fx = new TornadoFx { Name = $"Tornado{t.Id}", Fx = this, Rules = t.Rules };
+                fx = new TornadoFx { Name = $"Tornado{t.Id}", Fx = this, Rules = t.Rules, Soil = _planet.Look.Dust };
                 AddChild(fx);
                 _tornadoes[t.Id] = fx;
             }
             fx.Follow(t);
             fx.GlobalPosition = _planet.NearestCopy(_planet.Canonical(t.Position), eye);
-            fx.ReachTo(CloudBaseY - 150f - fx.GlobalPosition.Y); // up into the lumpy bulge of the storm's dark base, at any distance and as it lowers
+            // Up into the lumpy bulge of the storm's dark base, at any distance and as it lowers; a fair-weather
+            // spout into the flat base of its cumulus; a dust devil only as high as it whirls, into clear air.
+            fx.ReachTo(t.Kind == TornadoKind.DustDevil ? t.Height : CloudBaseY - (t.Storm ? 150f : 10f) - fx.GlobalPosition.Y);
             Uproot(t, fx.GlobalPosition);
         }
         var gone = new List<int>();
@@ -517,6 +537,24 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
             _tornadoes[id].QueueFree();
             _tornadoes.Remove(id);
         }
+        SyncCumulus(eye);
+    }
+
+    readonly Vector4[] _cumulus = new Vector4[2];
+
+    /// <summary>The growing cumulus a fair-weather waterspout hangs from: the sky swells a cloud with a flat dark base over each base of them.</summary>
+    void SyncCumulus(Vector3 eye)
+    {
+        int n = 0;
+        var seen = new HashSet<int>();
+        foreach (Tornado t in Sim.Tornadoes)
+        {
+            if (t.Kind != TornadoKind.Waterspout || t.Storm || n >= _cumulus.Length || !seen.Add(t.Group)) continue;
+            Vector3 at = _planet.NearestCopy(_planet.Canonical(t.Position), eye);
+            float grown = Mathf.Clamp(0.4f + t.Age / 30f, 0f, 1f) * (t.Dissipating ? MathF.Max(t.Strength, 0.4f) : 1f);
+            _cumulus[n++] = new Vector4(at.X, at.Z, 520f, grown);
+        }
+        Zone.Sky.SetCumulus(_cumulus, n);
     }
 
     /// <summary>

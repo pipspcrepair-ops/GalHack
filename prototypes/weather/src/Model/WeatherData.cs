@@ -142,6 +142,23 @@ public sealed class TornadoRules
     public float LiftMassLimit { get; set; }
     public float Response { get; set; }
     public float VisualHeight { get; set; }
+
+    /// <summary>A copy to scale for a weaker kind of whirl (a waterspout, a dust devil).</summary>
+    public TornadoRules Copy() => (TornadoRules)MemberwiseClone();
+
+    /// <summary>
+    /// The same whirl scaled to a weaker kind: its pulls by <paramref name="pull"/>, its lift by
+    /// <paramref name="lift"/>, its reach by <paramref name="reach"/>, its life as given, seconds.
+    /// </summary>
+    public TornadoRules Scaled(float pull, float lift, float reach, float form, float life, float dissipate)
+    {
+        TornadoRules r = Copy();
+        r.OrbitSpeed *= pull; r.InflowSpeed *= pull; r.FlingSpeed *= pull;
+        r.LiftSpeed *= lift; r.LiftMassLimit *= lift; r.ReleaseHeight *= lift;
+        r.CoreRadius *= reach; r.CaptureRadius *= reach; r.InfluenceRadius *= reach; r.OrbitRadius *= reach;
+        r.FormSeconds = form; r.Lifetime = life; r.DissipateSeconds = dissipate;
+        return r;
+    }
 }
 
 /// <summary>Everything in data/weather.json.</summary>
