@@ -1392,8 +1392,8 @@ public partial class BestiaryTest : Node
                 }
             tallest = MathF.Max(tallest, g.Person(Seed(), PersonRole.Guard, founders: g.FoundersOf(Seed(), vharn: true)).Figure.Top);
         }
-        Check(tallest <= Figure.HeightCap + 0.001f && tallest > 2.0f, $"the tallest of 2,000 people of every folk, crown and all, is {tallest:F2} m: tall folk are tall, and under the 3 m doorway (cap {Figure.HeightCap:F2} m)");
-        Check(widest <= 0.5f && widest * 2f < 1.9f, $"and the widest needs {widest * 2f:F2} m to pass (radius {widest:F2} m): through any doorway");
+        Check(tallest <= Figure.HeightCap + 0.001f && tallest > 1.75f, $"the tallest of 2,000 people of every folk, crown and all, is {tallest:F2} m: under the 2 m doorway (cap {Figure.HeightCap:F2} m)");
+        Check(widest <= 0.5f && widest * 2f < 1.9f, $"and the widest needs {widest * 2f:F2} m to pass (radius {widest:F2} m): through a one-block (2 m) doorway");
     }
 
     /// <summary>
