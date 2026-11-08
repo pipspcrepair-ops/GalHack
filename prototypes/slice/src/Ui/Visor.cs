@@ -483,7 +483,7 @@ public partial class Visor : CanvasLayer
                 return $"{bar}{item.Name}{shape} · {where}";
             case HandKind.Core: return $"{bar}{items.Item(pack.HandItem).Name}: set it down on open ground";
             case HandKind.Device: return $"{bar}{items.Item(pack.HandItem).Name}: set it down on open ground";
-            case HandKind.Blueprint: return Game.Builder.Underway != null ? $"{Game.Builder.Underway.Name}: {Game.Builder.Remaining.Count} blocks to go" : "BLUEPRINT PROJECTOR: set the Skiff down";
+            case HandKind.Blueprint: return Game.Builder.Underway != null ? $"{Game.Builder.Underway.Name}: {Game.Builder.Remaining.Count} blocks to go" : $"BLUEPRINT PROJECTOR: set the {Game.Builder.Plan?.Name ?? "blueprint"} down";
             case HandKind.Consumable: return $"{bar}{items.Item(pack.HandItem).Name}: click to use";
             default: return pack.HandItem != null && items.TryGet(pack.HandItem, out var other) ? $"{bar}{other.Name}" : bar;
         }

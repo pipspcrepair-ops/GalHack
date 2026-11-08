@@ -83,6 +83,10 @@
     // Holding the button on a blueprint places its blocks one at a time, in order, at this rate.
     "blueprintPlacesPerSecond": 8,
     "starterBlueprint": "starter.gbp",
+    // The BLUEPRINTS tab's starter set, in data/blueprints: shown under Large and Small by grid.
+    "library": ["starter.gbp", "rover.gbp", "dart.gbp", "shuttle.gbp", "outpost.gbp", "tank.gbp", "hauler.gbp", "frigate.gbp"],
+    // Blueprints the player saves, shown under Yours.
+    "saved": "user://blueprints",
     // Small vessels turn no faster than this, °/s, however light they are (the handling model's
     // turn rate is gyro torque over mass, so a light first vessel spins too fast to fly well).
     "smallVesselMaxTurn": 110,

@@ -49,8 +49,18 @@ public partial class BuildTest : Node
     PlayerInventory Pack => _game.Pack;
     string Item(string block, bool small) => Items.BlockItem(block, small).Id;
 
+    const int WatchdogMinutes = 20;
+
     public override void _Ready()
     {
+        // The run quits itself, however it goes.
+        var thread = new System.Threading.Thread(() =>
+        {
+            System.Threading.Thread.Sleep(TimeSpan.FromMinutes(WatchdogMinutes));
+            Console.Error.WriteLine($"FAIL  the run took over {WatchdogMinutes} minutes: watchdog");
+            System.Environment.Exit(1);
+        }) { IsBackground = true };
+        thread.Start();
         ProcessPhysicsPriority = 100;
         _run = Scenarios().GetEnumerator();
     }
@@ -98,6 +108,8 @@ public partial class BuildTest : Node
         OrientationChecks();
         GD.Print("-- lights: colour, animation and glowing paint --");
         LightChecks();
+        GD.Print("-- the starter blueprints, and saving one --");
+        BlueprintChecks();
 
         _game = new Game.Game { Interactive = false, SkipIntro = true, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), WorldChoice.Tested) };
         AddChild(_game);
@@ -118,6 +130,12 @@ public partial class BuildTest : Node
         Check(Pack.Hand == HandKind.Empty, "a lost tool leaves your hands empty");
         foreach (int x in _play.MakeTool()) yield return x;
         Check(Pack.Hand == HandKind.Tool, "and the free recipe replaces it");
+        // "-- --blueprints-only": straight to the BLUEPRINTS tab's scenario (a quicker run while working on it).
+        if (System.Array.IndexOf(OS.GetCmdlineUserArgs(), "--blueprints-only") >= 0)
+        {
+            foreach (int x in Blueprints()) yield return x;
+            yield break;
+        }
         foreach (int x in Founding()) yield return x;
         foreach (int x in Sources()) yield return x;
         foreach (int x in BackIntoInventories()) yield return x;
@@ -128,6 +146,7 @@ public partial class BuildTest : Node
         LatticeGate();
         foreach (int x in MenuChecks()) yield return x;
         foreach (int x in Creative()) yield return x;
+        foreach (int x in Blueprints()) yield return x;
     }
 
     // ---- Pure checks ---------------------------------------------------------------------------

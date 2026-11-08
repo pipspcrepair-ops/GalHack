@@ -137,12 +137,6 @@ public sealed class CoreSection : IMenuSection
         {
             Title = $"{v2.Name} storage", Grid = v2.StorageGrid, Vessel = v2, Where = () => v2.Body.Position.ToGodot(),
         }));
-        // Blueprints live here in the menu, never on the toolbar: building by hand is the game.
-        if (g.Button("core:blueprint", new Rect2(column.Position.X, column.End.Y - 40, column.Size.X, 30), "BLUEPRINTS: PROJECT THE SKIFF", C.Holo, size: 13))
-        {
-            _game.Builder.Project();
-            _game.Menu.Close();
-        }
     }
 
     void DeviceStorage(Gui g, Rect2 r, Device d) =>
