@@ -319,7 +319,8 @@ public static partial class Homes
             foreach (var (u, v) in Foot)
             {
                 if (!Edge(u, v)) continue;
-                for (int y = 1; y <= (v == v0 ? front : parapet); y++) C.Set(P(u, Eave + y, v), Cube(S.WallM, S.Wall, Role.Wall));
+                // A house's parapet is its own cladding.
+                for (int y = 1; y <= (v == v0 ? front : parapet); y++) C.Set(P(u, Eave + y, v), Skin?.Invoke(u, Eave + y, v) ?? Cube(S.WallM, S.Wall, Role.Wall));
             }
         }
 

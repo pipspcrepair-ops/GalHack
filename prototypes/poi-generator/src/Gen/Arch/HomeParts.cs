@@ -53,6 +53,11 @@ public static partial class Homes
         /// <summary>Columns its roof keeps off: a lower garage against it with a roof of its own.</summary>
         public HashSet<(int U, int V)>? Avoid;
 
+        /// <summary>The finish its roof is drawn with (<see cref="Surfaces.HouseVariant"/> of its cover), 0 for plain.</summary>
+        public byte RoofFinish;
+        Block RoofCube(float shade) => new(BlockType.Cube, S.RoofM, S.Roof.Scale(shade), Role.Roof, Dir.North, RoofFinish);
+        Block RoofRamp(Dir d) => new(BlockType.Ramp, S.RoofM, S.Roof, Role.Roof, d, RoofFinish);
+
         /// <summary>Every door out of it a person walks through: its first cell, the way out, its storey.</summary>
         public readonly List<(int U, int V, Dir Out, int Storey)> Exits = new();
 
@@ -104,7 +109,7 @@ public static partial class Homes
                 {
                     int cu = u + a * k + o.X * d, cv = v + b * k + o.Z * d;
                     if (Empty(cu, top + 1, cv))
-                        Put(cu, top + 1, cv, d < DoorSize.Approach ? new Block(BlockType.Cube, S.RoofM, S.Roof.Scale(0.9f), Role.Roof) : new Block(BlockType.Ramp, S.RoofM, S.Roof, Role.Roof, outward.Opposite()));
+                        Put(cu, top + 1, cv, d < DoorSize.Approach ? RoofCube(1f) : RoofRamp(outward.Opposite()));
                     if (d != DoorSize.Approach || k != -1 && k != wide) continue;
                     Block post = C.Get(P(cu, floor, cv));
                     if (post.Type is not (BlockType.Pillar or BlockType.Rib)) continue;
@@ -133,7 +138,8 @@ public static partial class Homes
                 Int3 p = P(u, y, v);
                 if (!C.Blocks.TryGetValue(p, out Block b) || b.Role != Role.Roof) continue;
                 b.Material = w.Material;
-                b.Color = w.Color.Scale(0.92f);
+                b.Color = w.Color;
+                b.Variant = w.Variant;
                 C.Blocks[p] = b;
             }
         }
@@ -164,12 +170,14 @@ public static partial class Homes
                 if (cs == null) continue;
                 var (nw, ne, sw, se) = cs.Value;
                 int lo = Math.Min(Math.Min(nw, ne), Math.Min(sw, se)), hi = Math.Max(Math.Max(nw, ne), Math.Max(sw, se));
-                Rgb col = paint?.Invoke(u, v) ?? c.Scale(0.96f + (Hash.Cell(new Int3(u, 0, v), 0x7EEu) % 8) / 100f);
+                Rgb col = paint?.Invoke(u, v) ?? c;
                 var stuff = new Stuff2(m, col);
                 int bottom = int.MaxValue, top = int.MinValue;
                 void Lay(int y, Block b)
                 {
                     if (skip != null && skip(u, y, v)) return;
+                    // The cover's own finish on every piece of it (the place shader draws the tiles, slates or seams).
+                    if (b.Role == Role.Roof && m is not (Material.Plant or Material.Glass)) b.Variant = h0.RoofFinish;
                     h0.Put(u, y, v, b);
                     bottom = Math.Min(bottom, y);
                     top = Math.Max(top, y);
@@ -190,7 +198,7 @@ public static partial class Homes
                 {
                     int eave = foot ? huts.Where(x => x.Foot.Contains((u, v))).Max(x => x.TopEave) : int.MinValue;
                     if ((foot ? bottom - 1 > eave : bottom - 1 >= low) && bottom - 1 >= -h0.Lift && (skip == null || !skip(u, bottom - 1, v)))
-                        h0.Put(u, bottom - 1, v, new Block(BlockType.Cube, m, col.Scale(0.8f), Role.Roof));
+                        h0.Put(u, bottom - 1, v, new Block(BlockType.Cube, m, col.Scale(0.8f), Role.Roof, Dir.North, m is Material.Plant or Material.Glass ? (byte)0 : h0.RoofFinish));
                 }
                 foreach (Hut x in huts)
                 {
@@ -559,12 +567,12 @@ public static partial class Homes
                             else Put(u + du, y, v + dv, WallAt(u + du, y, v + dv));
                         }
                     // Its little gable: two slopes and the ridge between.
-                    Put(u, e + 3, v + dv, new Block(BlockType.Ramp, S.RoofM, S.Roof, Role.Roof, Dir.East));
-                    Put(u + 3, e + 3, v + dv, new Block(BlockType.Ramp, S.RoofM, S.Roof, Role.Roof, Dir.West));
-                    Put(u + 1, e + 3, v + dv, new Block(BlockType.Cube, S.RoofM, S.Roof.Scale(0.85f), Role.Roof));
-                    Put(u + 2, e + 3, v + dv, new Block(BlockType.Cube, S.RoofM, S.Roof.Scale(0.85f), Role.Roof));
-                    Put(u + 1, e + 4, v + dv, new Block(BlockType.Ramp, S.RoofM, S.Roof, Role.Roof, Dir.East));
-                    Put(u + 2, e + 4, v + dv, new Block(BlockType.Ramp, S.RoofM, S.Roof, Role.Roof, Dir.West));
+                    Put(u, e + 3, v + dv, RoofRamp(Dir.East));
+                    Put(u + 3, e + 3, v + dv, RoofRamp(Dir.West));
+                    Put(u + 1, e + 3, v + dv, RoofCube(1f));
+                    Put(u + 2, e + 3, v + dv, RoofCube(1f));
+                    Put(u + 1, e + 4, v + dv, RoofRamp(Dir.East));
+                    Put(u + 2, e + 4, v + dv, RoofRamp(Dir.West));
                     if (C.Blocks.ContainsKey(P(u + 1, e + 5, v + dv)) && dv < 2) C.Remove(P(u + 1, e + 5, v + dv));
                 }
             }
@@ -647,12 +655,12 @@ public static partial class Homes
                 if (Lowest(u, frontV - 2) != null) continue;
                 if (Lowest(u, frontV - 1) is int eave)
                 {
-                    if (C.Get(P(u, eave, frontV - 1)).Type != BlockType.Ramp) { if (Empty(u, eave, frontV - 2)) Put(u, eave, frontV - 2, new Block(BlockType.Cube, S.RoofM, S.Roof, Role.Roof)); }
-                    else if (eave - 1 >= 1 && Empty(u, eave - 1, frontV - 2)) Put(u, eave - 1, frontV - 2, new Block(BlockType.Ramp, S.RoofM, S.Roof, Role.Roof, Dir.South));
+                    if (C.Get(P(u, eave, frontV - 1)).Type != BlockType.Ramp) { if (Empty(u, eave, frontV - 2)) Put(u, eave, frontV - 2, RoofCube(1f)); }
+                    else if (eave - 1 >= 1 && Empty(u, eave - 1, frontV - 2)) Put(u, eave - 1, frontV - 2, RoofRamp(Dir.South));
                     continue;
                 }
-                if (Empty(u, head, frontV - 1)) Put(u, head, frontV - 1, new Block(BlockType.Cube, S.RoofM, S.Roof.Scale(0.85f), Role.Roof));
-                if (Empty(u, head, frontV - 2)) Put(u, head, frontV - 2, new Block(BlockType.Ramp, S.RoofM, S.Roof, Role.Roof, Dir.South));
+                if (Empty(u, head, frontV - 1)) Put(u, head, frontV - 1, RoofCube(1f));
+                if (Empty(u, head, frontV - 2)) Put(u, head, frontV - 2, RoofRamp(Dir.South));
             }
             var posts = new HashSet<int>();
             for (int u = u0; u <= u1; u++)
@@ -712,7 +720,7 @@ public static partial class Homes
                         if (glass) { C.Clear(P(u + du, y, frontV)); _open.Add((u + du, frontV, 0)); }
                     }
                 for (int du = 0; du <= 3; du++)
-                    if (Empty(u + du, 3, v) || C.Get(P(u + du, 3, v)).Role == Role.Roof) Put(u + du, 3, v, new Block(BlockType.Ramp, S.RoofM, S.Roof, Role.Roof, Dir.South));
+                    if (Empty(u + du, 3, v) || C.Get(P(u + du, 3, v)).Role == Role.Roof) Put(u + du, 3, v, RoofRamp(Dir.South));
             }
         }
 
@@ -726,7 +734,7 @@ public static partial class Homes
                 {
                     Put(u, y, frontV - d, new Block(BlockType.Cube, S.BaseM, S.Floor.Scale(1.1f), Role.Floor));
                     // A porch roof under it becomes its soffit, not a slope under a slab.
-                    if (C.Get(P(u, y - 1, frontV - d)).Type == BlockType.Ramp) Put(u, y - 1, frontV - d, new Block(BlockType.Cube, S.RoofM, S.Roof.Scale(0.8f), Role.Roof));
+                    if (C.Get(P(u, y - 1, frontV - d)).Type == BlockType.Ramp) Put(u, y - 1, frontV - d, RoofCube(0.8f));
                     bool edge = d == 2 || u == u0 - 1 || u == u0 + wide;
                     if (edge) Put(u, y + 1, frontV - d, rail);
                     else if (!Empty(u, y + 1, frontV - d)) C.Clear(P(u, y + 1, frontV - d));
