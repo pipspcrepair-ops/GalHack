@@ -521,7 +521,7 @@ public partial class CapitalTest : Node
         if (run == null) yield break;
         GroundEdit cut = _w.Ground.History[edits];
         Check(cut.Why == Cut.LiftOff && cut.Removed == first.Cells.Count && first.Cells.All(c => !_w.Ground.Store.IsSolid(c)),
-            $"every cell of the plan was cut through the edit API and logged ({cut.Removed} cells: {Ground.Describe(cut.Materials)})");
+            $"every cell of the plan was cut through the edit API and logged ({cut.Removed} cells: {CapitalBase.World.Ground.Describe(cut.Materials)})");
         if (n == 1) Check(cut.Removed > 0, "the first lift-off had ground to cut: the foundation was keyed into it");
         int t = 0;
         for (; t < 1800 && _w.IsLiftingOff(b); t++)
