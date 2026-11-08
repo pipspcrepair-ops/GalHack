@@ -1,18 +1,23 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using GalHack.Physics;
 using GalHack.Physics.Engine;
+using GalHack.Structures;
 using Godot;
+using PhysicsSandbox.Bridges;
 using PlanetSurface.Poi;
 using PoiGenerator.Gen;
 using Slice.Places;
+using Slice.Vessels;
+using N = System.Numerics;
 
 namespace Slice.Tests;
 
 /// <summary>
-/// A capital hulk on the world as it rolled, weather and all (run with --force=crashed_freighter so one lies
-/// near the start): from the ground at a distance, from the air, then its bridge, its engine room and a
-/// hold from inside, frame by frame into --dir, each name led by --tag.
+/// A crashed capital ship, a real vessel, on the world as it rolled (run with --force=crashed_freighter; HulkTest.Force
+/// picks a long hauler): from the ground at a distance, its engine room inside, its stern's thruster banks, then claimed
+/// with a core, filled in (Creative) and lifting off out of the ground it came down in. Frames into --dir, led by --tag.
 /// </summary>
 public sealed partial class Staging
 {
@@ -22,32 +27,30 @@ public sealed partial class Staging
         System.IO.Directory.CreateDirectory(dir);
         _game.Zone.Wildlife.Frozen = true;
         _game.Visor.Visible = false;
-        PoiSite site = Named();
-        GD.Print($"hulk: {site.Family.Id} '{site.Instance.Layout.Variant?.Name}' {site.Instance.State}");
+        PoiSite site = HulkTest.SiteOf(_game);
+        CapitalHull.HullPlan plan = CapitalHull.Of(site.Instance.Layout);
+        GD.Print($"hulk: {site.Family.Name} '{site.Instance.Layout.Variant?.Name}' {site.Instance.State}");
         foreach (int x in GoTo(site, Gate(site) + Vector3.Up * 0.1f)) yield return x;
-        Place p = _game.Places.PlaceOf(site);
-        PoiInstance inst = p.Inst;
-        var hull = inst.Blocks.Blocks().Where(b => b.Block.Role is Role.Wall or Role.Roof).Select(b => b.Cell).ToList();
-        Vector3 lo = new(hull.Min(c => c.X), hull.Min(c => c.Y), hull.Min(c => c.Z)), hi = new(hull.Max(c => c.X), hull.Max(c => c.Y), hull.Max(c => c.Z));
-        Vector3 mid = p.ToWorld((lo + hi) * 0.5f);
-        bool alongZ = hi.Z - lo.Z >= hi.X - lo.X;
-        float span = alongZ ? hi.Z - lo.Z : hi.X - lo.X;
-        Vector3 along = alongZ ? Vector3.Back : Vector3.Right, side = alongZ ? Vector3.Right : Vector3.Back;
-        Vector3 Ground(Vector3 v, float up) => v with { Y = _game.Zone.GroundAt(v.X, v.Z).Y + up };
-        // From the ground, a long walk off its flank, three-quarters on: dry land with the hull in sight.
+        for (int i = 0; i < 1200 && !_game.Hulks.Down.ContainsKey(site); i++) yield return 0;
+        foreach (int x in _drive.Wait(240)) yield return x;
+        Vessel v = _game.Hulks.Down[site][0];
+        var (lo, hi) = v.Structure.Bounds();
+        Vector3 Local(float x, float y, float z) => v.ToWorld(new N.Vector3(x, y, z));
+        Vector3 mid = Local(lo.X + hi.X, lo.Y + hi.Y, lo.Z + hi.Z); // the middle of the blocks' bounds: (lo + hi) / 2 cells of 2 m
+        float span = (hi.Z - lo.Z) * 2f;
+        Vector3 Ground(Vector3 p, float up) => p with { Y = _game.Zone.GroundAt(p.X, p.Z).Y + up };
         float sea = _game.Zone.Planet.Source.WaterLevel;
-        var space = _game.Zone.GetWorld3D().DirectSpaceState;
-        Vector3 far = Ground(mid + side * span * 0.85f + along * span * 0.45f, 1.7f);
+
+        // From the ground, off its flank, three-quarters on: dry land with the hull in sight.
+        Vector3 along = (Local(0, 0, 10) - Local(0, 0, 0)).Normalized(), side = along.Cross(Vector3.Up).Normalized();
+        Vector3 far = Ground(mid + side * span * 0.8f + along * span * 0.35f, 1.7f);
         float best = float.MinValue;
         for (int k = 0; k < 24; k++)
-            foreach (float r in new[] { 0.7f, 0.9f, 1.1f })
+            foreach (float r in new[] { 0.65f, 0.85f, 1.05f })
             {
                 float a = k * MathF.Tau / 24f;
                 Vector3 c = Ground(mid + (side * MathF.Cos(a) + along * MathF.Sin(a)) * span * r, 1.7f);
-                if (c.Y - 1.7f < sea + 0.5f) continue;
-                var hit = space.IntersectRay(PhysicsRayQueryParameters3D.Create(c, mid + Vector3.Up * 6f, PlanetSurface.World.Layers.Flora));
-                // Broadside reads best: more across than along, nothing in the way.
-                // The land itself between: a hill in the way puts it out of sight.
+                if (c.Y - 1.7f < sea + 0.5f || _game.Zone.Streamer.FloraNear(c, 4f).Any()) continue;
                 bool hidden = false;
                 for (float s = 0.05f; s < 0.7f && !hidden; s += 0.05f)
                 {
@@ -55,55 +58,56 @@ public sealed partial class Staging
                     hidden = _game.Zone.GroundAt(q.X, q.Z).Y > q.Y - 0.5f;
                 }
                 if (hidden) continue;
-                float score = MathF.Abs(MathF.Cos(a)) * 2f - MathF.Abs(MathF.Sin(a) - 0.5f) - (hit.Count > 0 ? 4f : 0f) - r;
+                float score = MathF.Abs(MathF.Cos(a)) * 2f - MathF.Abs(MathF.Sin(a) - 0.5f) - r;
                 if (score > best) { best = score; far = c; }
             }
         foreach (int x in Frame(far, mid + Vector3.Up * 6f, $"{dir}/{tag}-ground.png", 240)) yield return x;
-        // From the air, over the other quarter.
-        Vector3 air = mid - side * span * 0.55f - along * span * 0.5f + Vector3.Up * span * 0.42f;
-        foreach (int x in Frame(air, mid, $"{dir}/{tag}-air.png", 180)) yield return x;
-        // Inside: a room's far corner at eye height looking down its length, the torch on.
+
+        // Inside its engine room: down the aisle to the drive machinery against the stern bulkhead, the torch on.
+        // The stern's thrusters stand on nacelles four blocks deep; the engine room's back wall is just inside them.
+        int aft = v.Structure.Blocks().Where(b => v.Structure.TypeOf(b.block).Id == "thruster").Select(b => b.pos.Z).DefaultIfEmpty(hi.Z).Max();
+        int back = aft - 6;
+        Vector3 eye = Local(0f, 3.4f, (back - 8) * 2f), look = Local(0f, 3f, back * 2f);
+        _game.Survivor.PlaceOutside((eye + Vector3.Down * 1.6f - (look - eye).Normalized() * 1.2f).ToNumerics());
         _game.Torch.Visible = true;
-        foreach (string purpose in new[] { "bridge", "engine-room", "hold" })
+        foreach (int x in _drive.Wait(60)) yield return x;
+        _game.FixedCamera = new Transform3D(Basis.LookingAt(look - eye, Vector3.Up), eye);
+        foreach (int x in _drive.Wait(90)) yield return x;
+        foreach (int x in Shot($"{dir}/{tag}-engine-room.png")) yield return x;
+        _game.FixedCamera = null;
+        _game.Torch.Visible = false;
+
+        // Its stern: the thruster banks on the nacelles.
+        Vector3 stern = Local(0f, 9f, hi.Z * 2f);
+        Vector3 from = Ground(stern + along * 34f + side * 20f, 1.7f) + Vector3.Up * 6f;
+        foreach (int x in Frame(from, stern, $"{dir}/{tag}-stern.png", 120)) yield return x;
+
+        // Claimed, filled in, lifted off: the ground it lay in cut and crumbling, the hull rising out of its bed.
+        CapitalHull.HullPiece piece = plan.Pieces[0];
+        string why = piece.CoreSlot is PoiGenerator.Gen.Int3 slot ? v.ClaimWith(new GalHack.Structures.Int3(slot.X, slot.Y, slot.Z)) : "no seat";
+        int put = HulkTest.Fill(v, piece, _game.Zone.Data.Catalogue);
+        v.SwitchMode(CoreMode.Capital);
+        foreach (int x in _drive.Wait(30)) yield return x;
+        // Watched from the ground off its flank, low, where its keel leaves the ground it lay in.
+        float beam = (hi.X - lo.X) * 2f;
+        Vector3 watch = Ground(mid + side * (beam * 0.5f + 46f) - along * span * 0.1f, 4f);
+        for (int k = 0; k < 12 && _game.Zone.Streamer.FloraNear(watch, 4f).Any(); k++) watch = Ground(watch + along * 6f, 4f);
+        _game.Survivor.PlaceOutside((watch + side * 4f + Vector3.Down * 1.5f).ToNumerics());
+        foreach (int x in _drive.Wait(60)) yield return x;
+        var cut = v.LiftOff();
+        GD.Print($"hulk: claimed {(why ?? "ok")}, {put} blocks put back, cut {cut.Cells.Count} cells, climb {cut.Climb:F1} m {(cut.Ok ? "" : cut.Refusal)}");
+        Vector3 keel = Local(lo.X + hi.X, lo.Y * 2f, lo.Z + hi.Z) + side * beam * 0.5f;
+        _game.FixedCamera = new Transform3D(Basis.LookingAt(keel + Vector3.Up * 3f - watch, Vector3.Up), watch);
+        for (int i = 0; i < 900 && v.Lifting != null && v.Lifting.Climbed < 3f; i++) yield return 0;
+        foreach (int x in Shot($"{dir}/{tag}-liftoff.png")) yield return x;
+        // Clear of the cut, its pilot keeps it climbing: up and away out of the bed it lay in.
+        for (int i = 0; i < 900 && v.Lifting != null && v.Lifting.Phase != CapitalBase.World.LiftOffPhase.Done; i++) yield return 0;
+        for (int i = 0; i < 300; i++)
         {
-            PlacedModule m = inst.Layout.Modules.Where(x => x.Purpose == purpose).OrderByDescending(x => x.Cells.Count()).FirstOrDefault();
-            if (m == null) { GD.Print($"hulk: no {purpose}"); continue; }
-            int floor = m.Cells.GroupBy(c => c.Y).OrderByDescending(g => g.Count()).First().Key;
-            var cells = m.Cells.Where(c => c.Y == floor && !BlockInfo.Collides(inst.Blocks.Get(c).Type)).ToList();
-            Vector3 c0 = new((float)cells.Average(c => c.X), floor, (float)cells.Average(c => c.Z));
-            // Down the middle aisle from one end of the room to the other.
-            float midAcross = alongZ ? (lo.X + hi.X) * 0.5f : (lo.Z + hi.Z) * 0.5f;
-            float Across(Int3 c) => MathF.Abs((alongZ ? c.X : c.Z) - midAcross);
-            int Al(Int3 c) => alongZ ? c.Z : c.X;
-            var aisle = cells.Where(c => Across(c) <= 2f).ToList();
-            if (aisle.Count == 0) aisle = cells;
-            Int3 end = aisle.OrderBy(Al).First(), other = aisle.OrderBy(Al).Last();
-            Vector3 eye = p.WorldOf(end, 1.65f), look = p.WorldOf(other, purpose == "hold" ? 3f : 1.4f);
-            if (purpose == "bridge")
-            {
-                // From the back of the bridge toward its windows.
-                Dir bow = inst.Blocks.Blocks().Where(b => b.Block.Type == BlockType.Thruster).GroupBy(b => b.Block.Facing).OrderByDescending(g => g.Count()).First().Key.Opposite();
-                var glazed = cells.Where(c => inst.Blocks.Get(c + Int3.Up * 2 + bow.Vec()).Type == BlockType.Pane || inst.Blocks.Get(c + Int3.Up * 2 + bow.Vec() * 2).Type == BlockType.Pane).ToList();
-                if (glazed.Count == 0) glazed = cells.Where(c => Dirs.Horizontal.Any(h => inst.Blocks.Get(c + Int3.Up * 2 + h.Vec()).Type == BlockType.Pane)).ToList();
-                Int3 window = glazed.Count > 0 ? glazed.OrderBy(c => Math.Abs(c.X - c0.X) + Math.Abs(c.Z - c0.Z)).First() : end;
-                look = p.WorldOf(window, 2.2f);
-                // The farthest spot that still sees the windows past the stair's block.
-                foreach (Int3 c in cells.OrderByDescending(c => c.Manhattan(window)))
-                {
-                    Vector3 e = p.WorldOf(c, 1.65f);
-                    var hit = space.IntersectRay(PhysicsRayQueryParameters3D.Create(e, look, GalHack.Physics.Layers.World));
-                    if (hit.Count > 0 && ((Vector3)hit["position"]).DistanceTo(look) > 1.5f) continue;
-                    eye = e;
-                    break;
-                }
-            }
-            GD.Print($"hulk: {purpose} {m.Cells.Count()} cells, eye {eye}, look {look}");
-            _game.Survivor.PlaceOutside((eye + Vector3.Down * 1.6f - (look - eye).Normalized() * 1.2f).ToNumerics());
-            foreach (int x in _drive.Wait(60)) yield return x;
-            _game.FixedCamera = new Transform3D(Basis.LookingAt(look - eye, Vector3.Up), eye);
-            foreach (int x in _drive.Wait(90)) yield return x;
-            foreach (int x in Shot($"{dir}/{tag}-{purpose}.png")) yield return x;
-            _game.FixedCamera = null;
+            v.Flight.Input = ShipHandling.Handling.PilotInput.Hands(MathX.Unrotate(v.Body.Rotation, N.Vector3.UnitY * 0.04f).ToGodot());
+            yield return 0;
         }
+        foreach (int x in Shot($"{dir}/{tag}-airborne.png")) yield return x;
+        _game.FixedCamera = null;
     }
 }

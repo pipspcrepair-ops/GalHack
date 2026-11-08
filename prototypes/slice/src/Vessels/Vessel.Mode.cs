@@ -96,6 +96,9 @@ public sealed partial class Vessel
     /// <summary>The metres a hull rises off its footings before the ground it held is let go.</summary>
     const float LetGoAfter = 1f;
 
+    N.Vector3? _lies;
+    int _refused;
+
     /// <summary>Changes the core's mode, whatever the structure is doing. Every block stays exactly as it was.</summary>
     public void SwitchMode(CoreMode mode)
     {
@@ -115,6 +118,24 @@ public sealed partial class Vessel
     public void TickMode()
     {
         BuildPendingShapes();
+        // A claimed wreck lies where it came down until it lifts off: nothing settles it on legs it hasn't got.
+        if (_lies is N.Vector3 lies)
+        {
+            if (Lifting != null) _lies = null;
+            else if (Flight != null && Flight.Input.Seated && Flight.Input.Move.Y > 0.1f && _refused == 0)
+            {
+                // Its pilot asks it up: the ground it lies in is cut along the straight climb and it rises, or the console says why not.
+                CapitalBase.Core.CutPlan plan = LiftOff();
+                if (!plan.Ok) { Controller?.Say(plan.Refusal); _refused = 600; }
+            }
+            else
+            {
+                if (_refused > 0) _refused--;
+                Body.Position = lies;
+                Body.Velocity = N.Vector3.Zero;
+            }
+        }
+        TickLift(1f / 60f);
         if (_liftedFrom is N.Vector3 from && N.Vector3.DistanceSquared(Body.Position, from) > LetGoAfter * LetGoAfter)
         {
             _liftedFrom = null;
@@ -149,9 +170,12 @@ public sealed partial class Vessel
         Flight = new HandlingFlight(Spec, Zone.Data.Handling);
         _legsKey = LegsKey();
         N.Quaternion rotation = Body.Rotation;
+        N.Vector3 position = Body.Position;
         Body.Controller = new VesselController(Flight, Spec.HoverPoints, Spec.Legs);
         Controller.PlaceLanded(Body, Body.Position, MathX.Heading(rotation));
         Body.Rotation = rotation;
+        // A claimed wreck stays where it lies (in the ground it came down in, if it did) until it lifts off.
+        if (Derelict != null) Body.Position = (_lies = position).Value;
         Binding.Teleport();
         FollowPilot();
         Fx.Setup(this);

@@ -31,7 +31,7 @@ namespace CapitalBase.World;
 ///
 /// The playable scene, the tests and the screenshots all build on this; it has no camera, HUD or input.
 /// </summary>
-public partial class CapitalWorld : Node3D
+public partial class CapitalWorld : Node3D, ILiftGround
 {
     /// <summary>False in headless tests: colliders and physics only.</summary>
     public bool Visuals = true;
@@ -315,6 +315,11 @@ public partial class CapitalWorld : Node3D
     }
 
     /// <summary>The wind rules: bases and parked or keyed hulls are never pushed; anything flying or simply landed is.</summary>
+    int ILiftGround.Pending => Patch.Pending;
+    float ILiftGround.ClimbSpeed => Rules.Liftoff.ClimbSpeed;
+    float ILiftGround.TopSpeed(ILiftHull hull) => hull.Flight.Stats?.TopSpeed ?? Handling.Class(((Craft)hull).Spec.Class).TopSpeedAir;
+    void ILiftGround.Settle(ILiftHull hull) => UpdateWind((Craft)hull);
+
     public void UpdateWind(Craft c)
     {
         if (c.Pin == null) Weather.Track(c.Body);
@@ -639,8 +644,8 @@ public partial class CapitalWorld : Node3D
             run.Step(this, dt);
             if (run.Phase == LiftOffPhase.Done)
             {
-                _liftoffs.Remove(run.Craft);
-                Say($"{run.Craft.Name} is clear of the ground: {run.Climbed:F1} m up, {run.Edit.Removed.Count} cells cut, top climb speed {run.TopRise:F2} m/s.");
+                _liftoffs.Remove((Craft)run.Hull);
+                Say($"{((Craft)run.Hull).Name} is clear of the ground: {run.Climbed:F1} m up, {run.Edit.Removed.Count} cells cut, top climb speed {run.TopRise:F2} m/s.");
             }
         }
 

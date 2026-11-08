@@ -343,6 +343,7 @@ public sealed partial class BuildTool
         _planGhost.Visible = false;
         _ghosts.HideOutline();
         Aim();
+        if (what != NewThing.Device && ClaimAim(what, itemId, slotIndex, place)) return;
         if (!_onGround)
         {
             Hide();
@@ -392,6 +393,37 @@ public sealed partial class BuildTool
         if (!Creative && !TakeHand(itemId, slotIndex)) return;
         Vessel v = StartStructure(frame, what);
         if (v == null && !Creative) { if (FromStructure) _pack.HandSource.Add(itemId, 1); else _pack.Add(itemId, 1); }
+    }
+
+    /// <summary>
+    /// A core in hand aimed at a wreck with no core (a crashed hulk, a severed section): set into it, it claims it
+    /// (design: "Any wreck with no core ... can be claimed by placing a core in it"), a Big Core a large wreck and a
+    /// Small Core a small one. True while a wreck is under the crosshair.
+    /// </summary>
+    bool ClaimAim(NewThing what, string itemId, int slotIndex, bool place)
+    {
+        if (!WorldRay.Cast(_zone, _survivor, Slice.Game.Game.UseReach + 1f, Layers.Hull, out LookHit look) || look.Vessel is not { } wreck || wreck.Structure.Core != null)
+            return false;
+        Hide();
+        bool large = wreck.Structure.Grid.Id == "large", fits = large == (what == NewThing.Base);
+        Verdict = fits ? $"{Items.Item(itemId).Name}: click to set it into the {wreck.Name} and claim it" : large ? "A big wreck takes a Big Core" : "A small wreck takes a Small Core";
+        if (!place) return true;
+        if (!fits) { Said?.Invoke(Verdict, Tones.Caution); return true; }
+        if (!Creative && !TakeHand(itemId, slotIndex)) return true;
+        N.Vector3 n = MathX.Unrotate(wreck.Body.Rotation, look.Normal.ToNumerics());
+        N.Vector3 a = N.Vector3.Abs(n);
+        Int3 face = a.X >= a.Y && a.X >= a.Z ? new Int3(Math.Sign(n.X), 0, 0) : a.Y >= a.Z ? new Int3(0, Math.Sign(n.Y), 0) : new Int3(0, 0, Math.Sign(n.Z));
+        string why = wreck.ClaimWith(new Int3(look.Cell.X + face.X, look.Cell.Y + face.Y, look.Cell.Z + face.Z));
+        if (why != null)
+        {
+            if (!Creative) { if (FromStructure) _pack.HandSource.Add(itemId, 1); else _pack.Add(itemId, 1); }
+            Said?.Invoke($"{why}: try a flat face inside", Tones.Caution);
+            return true;
+        }
+        _zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Place, look.Point, 0.7f, -2f);
+        Said?.Invoke($"Claimed: {wreck.Name}", Tones.Good);
+        Started?.Invoke(wreck);
+        return true;
     }
 
     /// <summary>A new structure where a core item was set down. The item is its price.</summary>

@@ -37,8 +37,7 @@ public sealed class DerelictPlan
 /// structure model, large grid) so it can be boarded, looted, salvaged block by block and claimed
 /// with a core:
 /// <list type="bullet">
-/// <item>a derelict ship (wreck): a hull with a bridge, a crew deck and a hold behind bulkheads, a hull door amidships, a breach in its back, engines dead</item>
-/// <item>a drifting hulk (hulk): a long liner broken in two at its spine, open where it parted</item>
+/// <item>a capital ship (any site orbit.txt gives a "hull": derelict freighters, warships, drifting and generation hulks): the planet's crash-site hull builder's vessel, adrift</item>
 /// <item>a broken station (broken, and any dead station or outpost: a start system holds no live faction): modules on truss tubes, a hull door, one module torn off and drifting</item>
 /// <item>a wreck field (field): hull fragments and loose cargo boxes tumbling apart</item>
 /// <item>an escape pod cluster (field): pods that launched and were never picked up</item>
@@ -65,10 +64,8 @@ public static class Derelicts
             float above = Altitude(poi, rules.Wrecks);
             N.Vector3 centre = globe.Direction(x, z) * (float)(atmosphereRadius + above);
             string id = $"site{site}-{poi.Site.Id.Replace('_', '-')}";
-            List<DerelictPlan> pieces = poi.Site.Kind switch
+            List<DerelictPlan> pieces = poi.Site.Hull != null && library.Sites.TryGetValue(poi.Site.Hull, out SiteDef hull) ? Capital(library, hull, poi, id, catalogue, items, rules) : poi.Site.Kind switch
             {
-                "wreck" => Ship(rng, poi, id, catalogue),
-                "hulk" => Hulk(rng, poi, id, catalogue),
                 "field" when poi.Site.Id.Contains("pod") => Pods(rng, poi, id, catalogue),
                 "field" => Field(rng, poi, id, catalogue),
                 _ => Station(rng, poi, id, catalogue),
@@ -82,7 +79,7 @@ public static class Derelicts
                 p.Zone = poi.Zone;
                 p.Position = centre + N.Vector3.Transform(p.Position, siteTurn);
                 p.Rotation = N.Quaternion.Normalize(siteTurn * p.Rotation);
-                Stock(p, rng, poi.Site.Salvage, rules, items);
+                if (p.Loot.IsEmpty) Stock(p, rng, poi.Site.Salvage, rules, items);
                 plans.Add(p);
             }
         }
@@ -124,68 +121,42 @@ public static class Derelicts
 
     // ---- Kinds ---------------------------------------------------------------------------------
 
-    /// <summary>A derelict ship: a boxy hull, bridge forward, crew deck, hold aft behind bulkheads, a hull door amidships to starboard, a breach in the hold's roof.</summary>
-    static List<DerelictPlan> Ship(Random rng, OrbitPoi poi, string id, Catalogue catalogue)
+    /// <summary>
+    /// A capital ship adrift: the same hull the planet's crash sites have (poi-generator's CapitalHull, the site
+    /// named by orbit.txt's "hull"), of the player's own blocks, damaged as its state says, no core; its pieces
+    /// float apart as the break left them. Its holds carry a few rolls of its salvage grade.
+    /// </summary>
+    static List<DerelictPlan> Capital(PoiLibrary library, SiteDef site, OrbitPoi poi, string id, Catalogue catalogue, ItemCatalogue items, OrbitRules rules)
     {
-        bool military = poi.Site.Salvage == "military";
-        int w = 2 + rng.Next(0, 2), h = 2, l = 7 + rng.Next(0, 3);
-        var b = new Cells(rng, military ? "4a4e45" : HullColour(rng));
-        b.Box(-w - 1, 0, -l - 1, w + 1, h + 1, l + 1, "hull", hollow: true);
-        // The bridge: windows across its front, a dead pilot's seat.
-        for (int x = -w; x <= w; x++) b.Set(x, h, -l - 1, "glass");
-        b.Set(0, 1, -l, "cockpit");
-        // Bulkheads between bridge, crew deck and hold, each with an open door.
-        foreach (int z in new[] { -l + 3, l - 5 })
+        SitePart part = site.Parts[0];
+        CapitalHull.HullPlan plan = CapitalHull.Plan(library.Kits[site.Style], WorldProfile.Parse(part.Arg("tech", "mid")), CapitalHull.SpecOf(part), poi.Seed);
+        var pieces = new List<DerelictPlan>();
+        var rng = new Random(unchecked((int)(poi.Seed ^ (poi.Seed >> 17))));
+        N.Vector3 first = plan.Pieces[0].Origin;
+        for (int i = 0; i < plan.Pieces.Count; i++)
         {
-            b.Box(-w, 1, z, w, h, z, "wall");
-            b.Set(0, 1, z, "door", open: true);
+            CapitalHull.HullPiece piece = plan.Pieces[i];
+            var gone = piece.Damage(poi.State, poi.Seed + (ulong)i);
+            Structure s = Slice.Places.Hulks.Build(piece.Text(poi.Site.Name, gone), catalogue, poi.Site.Name + piece.Name);
+            if (s == null) continue;
+            var p = new DerelictPlan
+            {
+                Id = plan.Pieces.Count == 1 ? id : $"{id}-{i + 1}", Name = s.Name, Structure = s,
+                Position = piece.Origin - first, Rotation = piece.Rotation,
+                Door = piece.Door is PoiGenerator.Gen.Int3 d ? new Int3(d.X, d.Y, d.Z) : null,
+            };
+            int containers = s.Blocks().Count(b => s.TypeOf(b.block).IsContainer);
+            for (int r = 0; r < Math.Min(24, containers / 12 + 2); r++)
+                foreach (var (item, least, most) in rules.LootFor(poi.Site.Salvage))
+                {
+                    if (!items.Has(item)) continue;
+                    int n = rng.Next(least, most + 1);
+                    if (n > 0) p.Loot.Add(item, n);
+                }
+            pieces.Add(p);
         }
-        b.HullDoor(w + 1, 0);
-        // The hold: cargo boxes along both walls.
-        for (int z = l - 3; z <= l - 1; z++)
-        {
-            b.Set(-w, 1, z, "container", paint: "cargo");
-            if (z != l - 2) b.Set(w, 1, z, "container", paint: "cargo");
-        }
-        // The engine room's dead machinery, and the engines out behind.
-        b.Set(-w, 1, l - 4, "generator");
-        b.Set(w, 1, l - 4, "fueltank");
-        for (int x = -w + 1; x <= w - 1; x += 2) b.Set(x, 1, l + 2, "thruster", rot: "+y+z");
-        // The breach: something tore the hold's roof open.
-        b.Hole(0, h + 1, l - 2, 1);
-        b.Scars(6);
-        return new List<DerelictPlan> { b.Plan(id, poi.Site.Name, catalogue) };
+        return pieces;
     }
-
-    /// <summary>A drifting hulk: a long liner broken at its spine, the two halves drifting apart, each open where it parted.</summary>
-    static List<DerelictPlan> Hulk(Random rng, OrbitPoi poi, string id, Catalogue catalogue)
-    {
-        int w = 3, h = 3, l = 13;
-        string colour = HullColour(rng);
-        var fore = new Cells(rng, colour);
-        fore.Box(-w - 1, 0, -l - 1, w + 1, h + 1, 0, "hull", hollow: true);
-        fore.Clear(-w, 1, 0, w, h, 0); // the break
-        for (int x = -w; x <= w; x++) fore.Set(x, h, -l - 1, "glass");
-        fore.Box(-w, 2, -l + 4, w, 2, -2, "deck");
-        fore.Clear(-1, 2, -6, 1, 2, -5);
-        fore.HullDoor(w + 1, -l + 6);
-        foreach (int z in new[] { -l + 2, -8, -4 }) fore.Set(-w, 1, z, "container", paint: "cargo");
-        fore.Scars(8);
-        var aft = new Cells(rng, colour);
-        aft.Box(-w - 1, 0, 0, w + 1, h + 1, l - 4, "hull", hollow: true);
-        aft.Clear(-w, 1, 0, w, h, 0);
-        for (int x = -w + 1; x <= w - 1; x += 2) aft.Set(x, 2, l - 3, "thruster", rot: "+y+z");
-        foreach (int z in new[] { 3, 6 }) aft.Set(w, 1, z, "container", paint: "cargo");
-        aft.Set(-w, 1, 5, "generator");
-        aft.Scars(6);
-        DerelictPlan a = fore.Plan(id + "-fore", poi.Site.Name + " (fore)", catalogue);
-        DerelictPlan c = aft.Plan(id + "-aft", poi.Site.Name + " (aft)", catalogue);
-        a.Position = new N.Vector3(0, 0, -6);
-        c.Position = new N.Vector3(1.5f, -2f, 14f);
-        c.Rotation = N.Quaternion.CreateFromYawPitchRoll(0.25f, 0.18f, 0.1f);
-        return new List<DerelictPlan> { a, c };
-    }
-
     /// <summary>A broken station: a hub with an airlock, modules out on truss tubes, one module torn off and drifting.</summary>
     static List<DerelictPlan> Station(Random rng, OrbitPoi poi, string id, Catalogue catalogue)
     {

@@ -42,8 +42,12 @@ public enum CraftState
 /// model has any thrust, and a <see cref="Pinned"/> controller stands in for the vessel controller
 /// while it is anchored or parked. No block ever changes when it switches.
 /// </summary>
-public sealed class Craft
+public sealed class Craft : ILiftHull
 {
+    Body ILiftHull.Body => Body;
+    HandlingFlight ILiftHull.Flight => Flight;
+    void ILiftHull.LetGoOfGround() { if (Pin is { Docked: false }) Release(); }
+
     public readonly CapitalWorld World;
 
     /// <summary>The save record's id: lower case, digits and dashes.</summary>

@@ -39,11 +39,106 @@ public static class CapitalHull
 
     public static void Compose(Canvas c, Rng rng, LayoutHints? hints, TechLevel tech, SitePart part)
     {
-        var p = new Plot(c, rng, tech, hints?.Front ?? Dir.North);
+        Dir front = hints?.Front ?? Dir.North;
+        var p = new Plot(c, rng, tech, front);
         Civic.Wear(p);
-        new Hulk(p, new Spec(part.Arg("role", "freighter"), part.Arg("size", "large"), part.Arg("crash", "broken")), rng.Fork("hull")).Build();
+        new Hulk(p, SpecOf(part), rng.Fork("hull"), front is Dir.North or Dir.East or Dir.South or Dir.West ? (int)front : 0).Build();
         p.Finish();
     }
+
+    public static Spec SpecOf(SitePart part) => new(part.Arg("role", "freighter"), part.Arg("size", "large"), part.Arg("crash", "broken"));
+
+    /// <summary>
+    /// A capital hull with no place round it (a derelict adrift): the same rules, the vessel only. Its pieces lie
+    /// as the crash left them relative to one another, in the frame the plan would have had.
+    /// </summary>
+    public static HullPlan Plan(Kit kit, TechLevel tech, Spec spec, ulong seed)
+    {
+        var canvas = new Canvas(kit);
+        var rng = new Rng(seed);
+        var p = new Plot(canvas, rng, tech, Dir.North);
+        Civic.Wear(p);
+        var hulk = new Hulk(p, spec, rng.Fork("hull"));
+        hulk.Build();
+        return hulk.Result!;
+    }
+
+    /// <summary>One structure of a hulk: its blocks as the player's large grid, block statements by cell (no core).</summary>
+    public sealed class HullPiece
+    {
+        public string Name = "";
+        /// <summary>Every block as built, before the crash (what a full repair puts back).</summary>
+        public readonly Dictionary<Int3, string> Intact = new();
+        /// <summary>The blocks the crash itself tore away or crushed.</summary>
+        public readonly HashSet<Int3> Torn = new();
+        /// <summary>The hull door from outside (the boarding way in), if this piece has it.</summary>
+        public Int3? Door;
+        /// <summary>The core room's empty seat: where a core claims it.</summary>
+        public Int3? CoreSlot;
+        /// <summary>Where its origin (the middle of its block 0, 0, 0) lies, metres in the place's frame, and its turn.</summary>
+        public System.Numerics.Vector3 Origin;
+        public System.Numerics.Quaternion Rotation = System.Numerics.Quaternion.Identity;
+        public string Header = "";
+
+        /// <summary>The blueprint text (galhack.blueprint) of what stands: the intact plan less the blocks given.</summary>
+        public string Text(string name, ISet<Int3> without)
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.Append("schema galhack.blueprint\nversion 1\n").Append($"name \"{name}{Name}\"\n").Append("grid large\nmode capital\ngravity on\n").Append(Header);
+            foreach (var (c, s) in Intact.OrderBy(kv => kv.Key.Y).ThenBy(kv => kv.Key.Z).ThenBy(kv => kv.Key.X))
+                if (!without.Contains(c))
+                {
+                    int sp = s.IndexOf(' ');
+                    string type = sp < 0 ? s : s[..sp], rest = sp < 0 ? "" : s[sp..];
+                    sb.Append(System.FormattableString.Invariant($"block {c.X} {c.Y} {c.Z} {type}{rest}\n"));
+                }
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// What is gone, by how it came down and what the years did since: the crash's own tears, then a share of
+        /// the devices wrecked (the more so the worse its state) and holes knocked in the shell. Never all of
+        /// anything that matters: a third of the thrusters, generators, chairs and fuel tanks come through, so it
+        /// is worth the work.
+        /// </summary>
+        public HashSet<Int3> Damage(PoiState state, ulong seed)
+        {
+            var gone = new HashSet<Int3>(Torn);
+            var rng = new Rng(seed);
+            float devices = state switch { PoiState.Active => 0.1f, PoiState.Abandoned => 0.3f, PoiState.Infested => 0.4f, _ => 0.55f };
+            float shell = state switch { PoiState.Active => 0.005f, PoiState.Abandoned => 0.015f, PoiState.Infested => 0.02f, _ => 0.05f };
+            foreach (string kind in new[] { "thruster", "generator", "fueltank", "warptank", "warpdrive", "gyro", "chair", "cpuext3", "light", "door", "smallfab", "largefab" })
+            {
+                var all = Intact.Where(kv => kv.Value == kind || kv.Value.StartsWith(kind + " ")).Select(kv => kv.Key).Where(c => !gone.Contains(c)).ToList();
+                int keep = kind is "thruster" or "generator" or "chair" or "fueltank" ? Math.Max(1, all.Count / 3) : 0;
+                foreach (Int3 c in all.OrderBy(_ => rng.Float()).Take(Math.Max(0, Math.Min(all.Count - keep, (int)MathF.Round(all.Count * devices))))) gone.Add(c);
+            }
+            // Holes in the shell, a few blocks round each.
+            var skin = Intact.Where(kv => kv.Value.StartsWith("steel") && kv.Value.Contains("paint=hull")).Select(kv => kv.Key).ToList();
+            int holes = (int)(skin.Count * shell / 6f);
+            for (int h = 0; h < holes && skin.Count > 0; h++)
+            {
+                Int3 at = skin[rng.Range(0, skin.Count)];
+                foreach (Int3 c in skin.Where(c => Math.Abs(c.X - at.X) + Math.Abs(c.Y - at.Y) + Math.Abs(c.Z - at.Z) <= 1)) gone.Add(c);
+            }
+            if (CoreSlot is Int3 slot) gone.Remove(slot);
+            if (Door is Int3 door) gone.Remove(door);
+            return gone;
+        }
+    }
+
+    public sealed class HullPlan
+    {
+        public string Role = "", Size = "", Crash = "";
+        public List<HullPiece> Pieces = new();
+    }
+
+    static readonly System.Runtime.CompilerServices.ConditionalWeakTable<LayoutExtras, HullPlan> Plans = new();
+
+    internal static void Remember(LayoutExtras x, HullPlan plan) => Plans.AddOrUpdate(x, plan);
+
+    /// <summary>The vessel a crash site's place was laid out round, or null when the place is no hulk.</summary>
+    public static HullPlan? Of(Layout layout) => Plans.TryGetValue(layout.Extras, out HullPlan? plan) ? plan : null;
 }
 
 /// <summary>One hulk, built in its own frame (u across, centred; v from the bow aft; y up from the keel) and set down in its pose.</summary>
@@ -72,6 +167,9 @@ sealed class Hulk
     sealed class Piece
     {
         public int V0, V1, OffU, OffV;
+        public float Pitch;
+        public System.Numerics.Vector3 Pivot, At;
+        /// <summary>Floors are level in the hull's own frame: nothing steps.</summary>
         public Func<int, int> Dy = _ => 0;
     }
 
@@ -103,13 +201,21 @@ sealed class Hulk
     readonly List<(int U0, int U1)> Nacelles = new();
     int[] Spine = new int[D];
     int Vault = -1, BridgeRoom = -1, Cut = -1, Break = -1;
+    /// <summary>The hull door's block, if it has one.</summary>
+    Int3? HullDoor;
     bool Round, Spiked, Pods;
 
     Stuff2 Plate, Trim, InnerS, FloorS, Orange, Teal, Dark, MachineS, Grate;
     Rgb Hazard, Black;
 
-    public Hulk(Plot p, CapitalHull.Spec s, Rng r)
+    public CapitalHull.HullPlan? Result;
+    readonly int Q;
+    /// <summary>Devices by cell: thrusters on the nacelles and pods (facing their exhaust), command chairs (facing forward).</summary>
+    readonly Dictionary<Int3, (string Id, Dir Facing)> Devices = new();
+
+    public Hulk(Plot p, CapitalHull.Spec s, Rng r, int q = 0)
     {
+        Q = q;
         P = p;
         S = s;
         R = r;
@@ -130,10 +236,15 @@ sealed class Hulk
         Fill();
         Decks();
         Openings();
-        Tear();
         Furnish();
         Exterior();
-        Emit();
+        var intact = Blocks();
+        Tear();
+        var after = Blocks();
+        var plan = new CapitalHull.HullPlan { Role = S.Role, Size = S.Size, Crash = S.Crash, Pieces = Vessel(intact, after, Q) };
+        CapitalHull.Remember(P.C.X, plan);
+        Result = plan;
+        EmitPlace();
     }
 
     // ---- what it is made of ------------------------------------------------------------------------
@@ -214,18 +325,25 @@ sealed class Hulk
 
     // ---- how it came down -----------------------------------------------------------------------------
 
+    /// <summary>
+    /// How it came down, as a real pose: each piece of the hull a rigid body pitched about its keel and
+    /// sunk into the ground, the way the vessel structure is set down. Rise is the keel's climb a metre
+    /// aft; the pivot (a keel point) is set at a depth under the ground.
+    /// </summary>
     void Pose()
     {
         int u0 = 0, v0 = 24;
+        Piece Make(int a, int b, int pivotV, float rise, float depth, int du = 0, int dv = 0) => new()
+        {
+            V0 = a, V1 = b, OffU = u0 + du, OffV = v0 + dv, Pitch = -MathF.Atan(rise),
+            Pivot = new System.Numerics.Vector3(0, 0, pivotV), At = new System.Numerics.Vector3(u0 + du, depth, v0 + dv + pivotV),
+        };
         switch (S.Crash)
         {
             case "nose":
-            {
                 // Nose down: the bow ploughed in nine metres deep, the stern up on it at about four degrees.
-                int bow = -9 - R.Range(0, 2);
-                Pieces.Add(new Piece { V0 = 0, V1 = L, OffU = u0, OffV = v0, Dy = v => bow + (int)Math.Floor(0.075 * v) });
+                Pieces.Add(Make(0, L, 0, 0.075f, -9f - R.Range(0, 2)));
                 break;
-            }
             case "scattered":
             {
                 // Broken apart: the fore hull lies nearly level where it stopped, the stern section with the
@@ -233,31 +351,36 @@ sealed class Hulk
                 int bay = Bays.FindIndex(b => b.Kind == Bay.Hangar);
                 if (bay < 0) bay = Bays.FindLastIndex(b => IsHall(b.Kind) && b.Kind != Bay.Engine);
                 Cut = Bays[bay].V0;
-                int a = -2 - (int)Math.Floor(0.03 * (Cut - 1));
-                int bv = Cut + 2, gap = 34 + R.Range(0, 10), side = R.Chance(0.5f) ? 1 : -1;
-                Pieces.Add(new Piece { V0 = 0, V1 = Cut, OffU = u0, OffV = v0, Dy = v => a + (int)Math.Floor(0.03 * v) });
-                Pieces.Add(new Piece { V0 = bv, V1 = L, OffU = u0 + side * (6 + R.Range(0, 6)), OffV = v0 + gap, Dy = v => -2 - (int)Math.Floor(0.05 * (v - bv) + 0.5) });
+                int gap = 34 + 2 * R.Range(0, 5), side = R.Chance(0.5f) ? 1 : -1;
+                Pieces.Add(Make(0, Cut, Cut, 0.03f, -2f));
+                Pieces.Add(Make(Cut + 2, L, Cut + 2, -0.05f, -2f, side * (6 + 2 * R.Range(0, 3)), gap));
                 break;
             }
             case "long":
-            {
-                // A long hauler down on its belly: buried six metres or so along its length, its bow a little up.
-                int stern = -7;
-                Pieces.Add(new Piece { V0 = 0, V1 = L, OffU = u0, OffV = v0, Dy = v => stern + (int)Math.Floor(0.02 * (L - v)) });
+                // A long hauler that came down flat on its belly and slid: level, buried seven metres along its whole
+                // length at the end of a long furrow. (Level is also what lets it lift off without digging: a tilt widens
+                // every block's margin in the lift-off's cut.)
+                Pieces.Add(Make(0, L, L, 0f, -7f));
                 break;
-            }
             default:
             {
-                // Broken back: it came down on its belly and its keel gave amidships, the middle sunk into the
-                // ground with the hull torn open over it, bow and stern up either side.
-                int mid = Bays.Where(b => IsHall(b.Kind) && b.Kind != Bay.Engine).Select(b => (b.V0 + b.V1) / 2).OrderBy(m => Math.Abs(m - L / 2)).FirstOrDefault(L / 2);
+                // Broken back: it came down on its belly and its keel gave amidships, both halves sunk at the
+                // break with the hull torn open over it, bow and stern up either side.
+                int mid = Bays.Where(b => IsHall(b.Kind) && b.Kind != Bay.Engine).Select(b => (b.V0 + b.V1) / 2).OrderBy(m => Math.Abs(m - L / 2)).FirstOrDefault(L / 2) & ~1;
                 Break = mid;
-                Pieces.Add(new Piece { V0 = 0, V1 = L, OffU = u0, OffV = v0, Dy = v => -6 + (int)Math.Floor(0.07 * Math.Abs(v - mid - 0.5)) });
+                Pieces.Add(Make(0, mid, mid, -0.07f, -6f));
+                Pieces.Add(Make(mid, L, mid, 0.07f, -6f));
                 break;
             }
         }
     }
 
+    /// <summary>A point of the hull's frame (metres from the bow keel's centre line) where it lies in the plan's frame.</summary>
+    System.Numerics.Vector3 ToPlot(Piece p, System.Numerics.Vector3 ship) =>
+        p.At + System.Numerics.Vector3.Transform(ship - p.Pivot, System.Numerics.Quaternion.CreateFromAxisAngle(System.Numerics.Vector3.UnitX, p.Pitch));
+
+    System.Numerics.Vector3 FromPlot(Piece p, System.Numerics.Vector3 plot) =>
+        p.Pivot + System.Numerics.Vector3.Transform(plot - p.At, System.Numerics.Quaternion.CreateFromAxisAngle(System.Numerics.Vector3.UnitX, -p.Pitch));
     Piece? PieceOf(int v)
     {
         if (v >= L) v = L - 1;
@@ -288,7 +411,7 @@ sealed class Hulk
         {
             BayRec bay = Bays[i];
             int sv = bay.V0 + 2;
-            for (int s = 0; s < 8; s++)
+            for (int s = 0; s < 8; s += 2)
                 if (Flat(bay.V0 + 2 + s - 2, bay.V0 + 2 + s + 8) && !NearTear(bay.V0 + 2 + s, 2)) { sv = bay.V0 + 2 + s; break; }
             StairAt[i] = sv;
         }
@@ -665,6 +788,15 @@ sealed class Hulk
 
     void Openings()
     {
+        // A hull door: through the starboard flank into the crew bay's first room, the way a boarding party comes in.
+        {
+            int crew = Bays.FindIndex(b => b.Kind == Bay.Crew);
+            int y = Walk(0), u = Half - 2;
+            var room = Owner.Where(kv => kv.Key.X == u - 1 && kv.Key.Y == y && kv.Key.Z >= Bays[crew].V0 && kv.Key.Z < Bays[crew].V1 && (kv.Key.Z & 1) == 0
+                    && Owner.GetValueOrDefault(kv.Key + new Int3(0, 0, 1), -1) == kv.Value && Rooms[kv.Value].Kind == ModuleKind.Room)
+                .OrderBy(kv => kv.Key.Z).Select(kv => (Z: kv.Key.Z, Room: kv.Value)).FirstOrDefault((Z: -1, Room: -1));
+            if (room.Room >= 0) { MakeDoor(room.Room, room.Room, 0, u, room.Z, alongV: true); HullDoor = new Int3(u >> 1, y >> 1, room.Z >> 1); }
+        }
         // The cargo ramp: down from a hangar or a hold onto the ground, its bay door open.
         int bay = Bays.FindIndex(b => b.Kind == Bay.Hangar && (Cut < 0 || b.V0 >= Cut));
         if (bay < 0) bay = Bays.FindLastIndex(b => IsHall(b.Kind) && b.Kind != Bay.Engine);
@@ -949,10 +1081,10 @@ sealed class Hulk
         {
             Props[c] = Dev(BlockType.Terminal, MachineS, Dir.South);
             Int3 seat = c + new Int3(0, 0, 2);
-            if (set.Contains(seat)) Props[seat] = Dev(BlockType.Seat, new Stuff2(Material.Cloth, Dark.C.Scale(1.4f)));
+            if (set.Contains(seat)) Devices[seat] = ("chair", Dir.North);
         }
         Int3 command = free.Where(c => c.Z == front + 6).OrderBy(c => Math.Abs(c.X - 2)).FirstOrDefault(new Int3(int.MinValue, 0, 0));
-        if (command.X != int.MinValue) Props[command] = Dev(BlockType.Seat, new Stuff2(Material.Cloth, Orange.C.Scale(0.6f)));
+        if (command.X != int.MinValue) Devices[command] = ("chair", Dir.North);
         foreach (Int3 c in free.Where(c => c.Z == front + 9 && c.X >= -2 && c.X <= 0)) Props[c] = Fur(BlockType.Table, MachineS);
         var walls = free.Where(c => ByWall(c) && !Props.ContainsKey(c) && c.Z > front + 4).ToList();
         if (walls.Count > 0) Slots.Add((SlotKind.Terminal, walls[0], i));
@@ -1159,7 +1291,7 @@ sealed class Hulk
             for (int u = u0; u < u1; u++) B[new Int3(u, yt, L + Nac / 2)] = new Block(BlockType.Pipe, Material.Steel, MachineS.C, Role.Decor, Dir.East);
             for (int u = u0 + 1; u + 1 < u1; u += 2)
                 for (int y = yb + 1; y + 1 < yt; y += 2)
-                    B[new Int3(u, y, L + Nac)] = new Block(BlockType.Thruster, Material.Steel, Dark.C.Scale(1.5f), Role.Decor, Dir.South);
+                    Devices[new Int3(u, y, L + Nac)] = ("thruster", Dir.South);
         }
         // Manoeuvring thrusters in pods on both flanks just aft of the bow.
         foreach (int s in new[] { 1, -1 })
@@ -1170,9 +1302,7 @@ sealed class Hulk
                     for (int k = 0; k < 2; k++) B[new Int3(s > 0 ? Half + k : -Half - 1 - k, y, v)] = new Block(BlockType.Cube, Trim.M, Trim.C, Role.Wall);
             for (int y = 8; y < 12; y += 2)
             {
-                B[new Int3(s > 0 ? Half + 2 : -Half - 4, y, v0 + 1)] = new Block(BlockType.Thruster, Material.Steel, Dark.C.Scale(1.5f), Role.Decor, s > 0 ? Dir.East : Dir.West);
-                // A thruster is drawn from its lowest corner: facing west its housing is the cell beyond, so a mount inside the housing holds it to the pod.
-                if (s < 0) B[new Int3(-Half - 3, y, v0 + 1)] = new Block(BlockType.Pipe, Material.Steel, Dark.C, Role.Decor, Dir.East);
+                Devices[new Int3(s > 0 ? Half + 2 : -Half - 4, y, v0 + 1)] = ("thruster", s > 0 ? Dir.East : Dir.West);
             }
         }
     }
@@ -1252,175 +1382,338 @@ sealed class Hulk
                 }
     }
 
-    // ---- setting it down --------------------------------------------------------------------------------------------
+    // ---- the vessel: the player's own blocks ----------------------------------------------------------------------
 
-    Int3 Map(Int3 c)
+    /// <summary>
+    /// The hull as the player's large-grid blocks (2 m), each piece its own structure with no core: every block of the
+    /// plan read off the hull's 1 m drawing, eight cells a block. Shell, decks and bulkheads are steel in the livery's
+    /// paint, the windows glass, slopes on the bow and shoulders, a door wherever a person goes through a wall, lights
+    /// in the ceilings, and the devices where the rooms have them: thrusters on the nacelles and under the keel,
+    /// generators in the reactor and generator rooms, fuel tanks, containers in the holds, gyros by the drives,
+    /// command chairs on the bridge, CPU extenders and an empty seat for the core in the core room. A mass of solid
+    /// fill nobody can reach is left hollow, as a builder would.
+    /// </summary>
+    Dictionary<Int3, string> Blocks()
     {
-        Piece p = PieceOf(c.Z)!;
-        return new Int3(c.X + p.OffU, c.Y + p.Dy(c.Z), c.Z + p.OffV);
+        var paints = new (string Id, Rgb C)[]
+        {
+            ("hull", Plate.C), ("trim", Trim.C), ("wall", InnerS.C), ("deck", FloorS.C), ("orange", Orange.C), ("teal", Teal.C),
+            ("dark", Dark.C), ("machine", MachineS.C), ("hazard", Hazard), ("hazard", Black), ("blue", new Rgb(0x3a, 0x5a, 0x9a)), ("red", new Rgb(0x8a, 0x2a, 0x22)),
+        };
+        string PaintOf(Rgb c) => paints.OrderBy(p => Math.Abs(p.C.R - c.R) + Math.Abs(p.C.G - c.G) + Math.Abs(p.C.B - c.B)).First().Id;
+        var doorAt = new Dictionary<Int3, DoorRec>();
+        foreach (DoorRec d in Doors) doorAt[Bk(d.Cells[0])] = d;
+        var lo = new Int3(int.MaxValue, int.MaxValue, int.MaxValue);
+        var hi = new Int3(int.MinValue, int.MinValue, int.MinValue);
+        foreach (Int3 c in B.Keys.Concat(Props.Keys).Concat(Devices.Keys)) { lo = Int3.Min(lo, Bk(c)); hi = Int3.Max(hi, Bk(c)); }
+        var map = new Dictionary<Int3, string>();
+        for (int bz = lo.Z; bz <= hi.Z; bz++)
+            for (int by = lo.Y; by <= hi.Y; by++)
+                for (int bx = lo.X; bx <= hi.X; bx++)
+                {
+                    var b = new Int3(bx, by, bz);
+                    if (Read(b, doorAt, PaintOf) is { } s) map[b] = s;
+                }
+        // Hollow: steel shut in on all six sides by more steel is mass nobody needs.
+        var keep = new Dictionary<Int3, string>();
+        foreach (var (b, s) in map)
+        {
+            bool shut = s.StartsWith("steel ") && !s.Contains("slope") && new[] { Int3.Up, Int3.Down, new Int3(1, 0, 0), new Int3(-1, 0, 0), new Int3(0, 0, 1), new Int3(0, 0, -1) }
+                .All(n => map.TryGetValue(b + n, out string o) && o.StartsWith("steel ") && !o.Contains("slope"));
+            if (!shut) keep[b] = s;
+        }
+        return keep;
     }
 
-    void Emit()
+    static Int3 Bk(Int3 c) => new(c.X >> 1, c.Y >> 1, c.Z >> 1);
+
+    IEnumerable<Int3> CellsOf(Int3 b)
     {
-        // Ramps where a floor steps with the tilt, so every deck is walked.
-        var ramps = new Dictionary<Int3, Dir>();
-        foreach (Int3 c in Open)
+        for (int z = 0; z < 2; z++) for (int y = 0; y < 2; y++) for (int x = 0; x < 2; x++) yield return new Int3(2 * b.X + x, 2 * b.Y + y, 2 * b.Z + z);
+    }
+
+    /// <summary>One block of the plan from the eight cells it covers, or none.</summary>
+    string? Read(Int3 b, Dictionary<Int3, DoorRec> doorAt, Func<Rgb, string> paintOf)
+    {
+        if (doorAt.TryGetValue(b, out DoorRec? door)) return door.Facing == Dir.East ? "door rot=+y+x" : "door";
+        var cells = CellsOf(b).ToList();
+        // Devices, from what the rooms were fitted with.
+        foreach (Int3 c in cells)
         {
-            if (!Owner.TryGetValue(c, out int own) || Rooms[own].WalkY != c.Y || !Open.Contains(c + Int3.Up) || !Open.Contains(c + Int3.Up * 2) || !Open.Contains(c + Int3.Up * 3) || !Supports(c + Int3.Down) || Props.ContainsKey(c) || B.ContainsKey(c)) continue;
-            Piece? p = PieceOf(c.Z);
-            if (p == null) continue;
-            foreach (Dir h in new[] { Dir.North, Dir.South })
+            if (Devices.TryGetValue(c, out var dev)) return dev.Id != "thruster" ? dev.Id : dev.Facing switch
             {
-                Int3 n = c + h.Vec();
-                if (PieceOf(n.Z) != p || p.Dy(n.Z) != p.Dy(c.Z) + 1) continue;
-                if (Open.Contains(n) && Open.Contains(n + Int3.Up) && Open.Contains(n + Int3.Up * 2) && Supports(n + Int3.Down) && !Props.ContainsKey(n)) ramps[c] = h;
-            }
+                Dir.East => "thruster rot=+y-x", Dir.West => "thruster rot=+y+x", Dir.Down => "thruster rot=+z+y", _ => "thruster",
+            };
         }
-        foreach (var (c, h) in ramps) B[c] = new Block(BlockType.Ramp, FloorS.M, FloorS.C.Scale(1.05f), Role.Floor, h);
-        foreach (Int3 c in ramps.Keys) Open.Remove(c);
-        Slots.RemoveAll(s => ramps.ContainsKey(s.C));
-        // The blocks, each in its piece's place; the lost strip between pieces never was.
-        foreach (var (c, b) in B)
+        foreach (Int3 c in cells)
         {
-            if (PieceOf(c.Z) == null || c.Z < -6) continue;
-            Int3 m = Map(c);
-            // A slope of the hull's back buried in the ground is a plain block: nothing walks it, the ground lies on it.
-            Block put = b;
-            if (BlockInfo.IsSlope(b.Type) && b.Role == Role.Roof && m.Y <= -2 && !B.ContainsKey(c + Int3.Up) && !Open.Contains(c + Int3.Up)) put = new Block(BlockType.Cube, b.Material, b.Color, Role.Wall);
-            P.Put(m.X, m.Y, m.Z, put);
-        }
-        // Rooms: one module a piece they lie in.
-        var modules = new Dictionary<(int Room, Piece Piece), int>();
-        var primary = new int[Rooms.Count];
-        for (int i = 0; i < Rooms.Count; i++)
-        {
-            primary[i] = -1;
-            Room r = Rooms[i];
-            foreach (var g in r.Cells.Where(c => PieceOf(c.Z) != null).GroupBy(c => PieceOf(c.Z)!).OrderByDescending(g => g.Count()))
+            if (!Props.TryGetValue(c, out Block p)) continue;
+            string room = Owner.TryGetValue(c, out int r) ? Rooms[r].Purpose : "";
+            string? device = (p.Type, room) switch
             {
-                var cells = g.Select(Map).Select(m => (m.X, m.Y, m.Z)).ToList();
-                int m = P.RoomOf(r.Kind, r.Purpose, r.Deck, cells);
-                modules[(i, g.Key)] = m;
-                if (primary[i] < 0) primary[i] = m;
-            }
+                (BlockType.Machine, "core-room") => "cpuext3",
+                (BlockType.Machine or BlockType.Tank, "reactor" or "generator-room") => "steel paint=machine",
+                (BlockType.Machine, "engine-room") => Mod(b.X + b.Z, 4) == 0 ? "gyro" : Mod(b.X + b.Z, 4) == 1 ? "warpdrive" : "steel paint=machine",
+                (BlockType.Tank, "fuel-tanks" or "engine-room" or "hangar") => (b.X & 1) == 0 ? "fueltank" : "warptank",
+                // A container where each stack stands on the hold's floor; the rest of the stack is its painted steel.
+                (BlockType.Cube, "hold") when b.Y == Walk(0) / 2 && Mod(b.Z, 3) == 0 => "container",
+                (BlockType.Cube, "hold") => $"steel paint={paintOf(p.Color)}",
+                (BlockType.Crate, "magazine") => "container",
+                (BlockType.Machine, "refinery") => "largefab",
+                (BlockType.Bench, "workshop") => "smallfab",
+                (BlockType.Cube, _) when p.Material == Material.Lumen => "light",
+                _ => null,
+            };
+            if (device != null) return device;
         }
-        int ModuleAt(int room, Int3 c) => PieceOf(c.Z) is { } p && modules.TryGetValue((room, p), out int m) ? m : room >= 0 ? primary[room] : -1;
-        foreach (Int3 c in Open)
-            if (!Owner.ContainsKey(c) && PieceOf(c.Z) != null) { Int3 m = Map(c); P.Air(m.X, m.Y, m.Z); }
-        foreach (DoorRec d in Doors)
+        if (cells.Any(c => B.TryGetValue(c, out Block l) && l.Role == Role.Light && l.Material == Material.Lumen) && cells.Count(c => B.TryGetValue(c, out Block x) && BlockInfo.IsFullCube(x.Type)) >= 4)
+            return "light";
+        int panes = cells.Count(c => B.TryGetValue(c, out Block x) && x.Type == BlockType.Pane);
+        if (panes >= 2) return "glass";
+        if (cells.Any(c => B.TryGetValue(c, out Block x) && x.Type == BlockType.Lattice && x.Role == Role.Floor)) return "steel paint=deck";
+        if (cells.FirstOrDefault(c => B.TryGetValue(c, out Block x) && x.Type == BlockType.Stair) is var st && B.TryGetValue(st, out Block stair) && stair.Type == BlockType.Stair)
+            return stair.Facing == Dir.East ? "steel slope rot=+y-x paint=deck" : "steel slope rot=+y+x paint=deck";
+        if (cells.Any(c => B.TryGetValue(c, out Block x) && x.Type == BlockType.Rib)) return "steel cylinder paint=machine";
+        // Structure: how much of the block is solid, and which way a sloped top faces.
+        float solid = 0f;
+        var lean = System.Numerics.Vector3.Zero;
+        var colors = new Dictionary<string, int>();
+        bool roof = false;
+        foreach (Int3 c in cells)
         {
-            if (d.Cells.Any(c => PieceOf(c.Z) == null)) continue;
-            var cells = d.Cells.Select(Map).Select(m => P.Cell(m.X, m.Y, m.Z)).ToList();
-            foreach (Int3 c in d.Back) { Int3 m = Map(c); P.Air(m.X, m.Y, m.Z); }
-            P.C.AddDoorway(cells, P.Turn(d.Facing), ModuleAt(d.A, d.Cells[0]), ModuleAt(d.B, d.Cells[0]));
+            if (!B.TryGetValue(c, out Block x) || !BlockInfo.Collides(x.Type) || x.Role is Role.Prop or Role.Debris) continue;
+            float w = x.Type switch { BlockType.Ramp => 0.5f, BlockType.Corner => 0.17f, BlockType.InvCorner => 0.83f, BlockType.Cube or BlockType.Breakable or BlockType.Machine => 1f, _ => 0f };
+            if (w == 0f) continue;
+            roof |= x.Type is BlockType.Ramp or BlockType.Corner or BlockType.InvCorner;
+            solid += w;
+            lean += w * new System.Numerics.Vector3(c.X - 2 * b.X - 0.5f, c.Y - 2 * b.Y - 0.5f, c.Z - 2 * b.Z - 0.5f);
+            string id = paintOf(x.Color);
+            colors[id] = colors.GetValueOrDefault(id) + 1;
         }
-        foreach (var (c, b) in Props)
+        if (solid < 2.5f) return null;
+        string paint = colors.OrderByDescending(kv => kv.Value).First().Key;
+        if (solid >= 5.5f || !roof) return $"steel paint={paint}";
+        // A slope: high where the solid leans, its sloped face toward where it is empty.
+        var flat = new System.Numerics.Vector2(lean.X, lean.Z);
+        if (flat.Length() < 0.3f) return $"steel paint={paint}";
+        string forward = MathF.Abs(flat.X) >= MathF.Abs(flat.Y) ? (flat.X > 0 ? "-x" : "+x") : (flat.Y > 0 ? "-z" : "+z");
+        return forward == "-z" ? $"steel slope paint={paint}" : $"steel slope rot=+y{forward} paint={paint}";
+    }
+
+    /// <summary>The blueprint's paints: the livery's colours by name, as the blocks use them.</summary>
+    string PaintLines() =>
+        $"paint hull base={Hex(Plate.C)} grime=3 texture=plates\npaint trim base={Hex(Trim.C)} grime=3\npaint wall base={Hex(InnerS.C)} grime=2\n" +
+        $"paint deck base={Hex(FloorS.C)} grime=3 texture=ribbed\npaint orange base={Hex(Orange.C)} grime=2\npaint teal base={Hex(Teal.C)} grime=2\n" +
+        $"paint dark base={Hex(Dark.C)} grime=2\npaint machine base={Hex(MachineS.C)} grime=2\npaint hazard base={Hex(Hazard)} accent={Hex(Black)} pattern=hazard grime=2\n" +
+        "paint blue base=3a5a9a grime=2\npaint red base=8a2a22 grime=2\n";
+
+    static string Hex(Rgb c) => $"{c.R:x2}{c.G:x2}{c.B:x2}";
+
+    /// <summary>
+    /// Thrust to lift it: down-firing thrusters set into the keel under the engine room, the hangar and the holds
+    /// until their push is half again the hull's weight at a heavy world's gravity, generators enough to run every
+    /// thruster, and CPU extenders enough for their load. All of it is in the plan, and the crash takes its share.
+    /// </summary>
+    void Lift(Dictionary<Int3, string> map, Piece piece)
+    {
+        const double g = 9.81 * 1.3, kn = 1200, draw = 1.5, mw = 12;
+        double Mass() => map.Values.Sum(s => s.StartsWith("steel") ? 1 : s.StartsWith("glass") ? 0.6 : s.StartsWith("generator") ? 6 : s.StartsWith("thruster") ? 3 : 2);
+        int Count(string id) => map.Values.Count(s => s.StartsWith(id + " ") || s == id);
+        var keel = map.Where(kv => kv.Key.Y == 0 && kv.Value.StartsWith("steel") && !kv.Value.Contains("slope")).Select(kv => kv.Key)
+            .Where(b => Bays.Any(bay => IsHall(bay.Kind) && 2 * b.Z >= bay.V0 + 4 && 2 * b.Z < bay.V1 - 2) && Math.Abs(2 * b.X) < Half - 4)
+            .OrderBy(b => (b.X + b.Z) & 1).ThenBy(b => Math.Abs(b.X)).ThenBy(b => b.Z).ToList();
+        int at = 0;
+        // One warp drive and its two cell tanks, a few gyros: the rest of the engine room's machinery is plain.
+        foreach (var (kind, keep) in new[] { ("warpdrive", 1), ("warptank", 2), ("gyro", 6) })
+            foreach (Int3 b in map.Where(kv => kv.Value == kind).Select(kv => kv.Key).OrderBy(b => b.Z).ThenBy(b => b.X).Skip(keep).ToList()) map[b] = "steel paint=machine";
+        while (Count("thruster rot=+z+y") * kn < 1.3 * Mass() * g && at < keel.Count) map[keel[at++]] = "thruster rot=+z+y";
+        // Power for them all: more generators in the power rooms' free floor.
+        var floor = Rooms.Where(r => r.Purpose is "generator-room" or "reactor" or "engine-room" or "fuel-tanks" or "hangar" or "workshop" or "stores" or "hold").OrderBy(r => r.Purpose is "generator-room" or "reactor" ? 0 : 1).SelectMany(r => r.Cells.Where(c => c.Y == r.WalkY))
+            .Select(Bk).Distinct().Where(b => !map.ContainsKey(b) && map.TryGetValue(b + Int3.Down, out string u) && u.StartsWith("steel") && PieceOf(2 * b.Z) == piece)
+            .Where(b => ((b.X ^ b.Z) & 1) == 0).ToList();
+        int f = 0;
+        double Draw() => Count("thruster") * draw + Count("warpdrive") * 4 + Count("gyro") * 0.5 + Count("door") * 0.01 + Count("light") * 0.005 + Count("chair") * 0.05 + 2;
+        while (Count("generator") * mw < Draw() * 1.1 && f < floor.Count) map[floor[f++]] = "generator";
+        // CPU for it all: two lattice extenders in the core room lift it to tier 3 (found in wrecks like this, design 883).
+        var room = Vault >= 0 ? Rooms[Vault].Cells.Where(c => c.Y == Rooms[Vault].WalkY).Select(Bk).Distinct()
+            .Where(b => PieceOf(2 * b.Z) == piece && map.TryGetValue(b + Int3.Down, out string fl) && fl.StartsWith("steel")).ToList() : new List<Int3>();
+        foreach (Int3 b in room.Where(b => !map.ContainsKey(b) || map[b] != "cpuext3").OrderBy(b => b.X).ThenBy(b => b.Z).Take(Math.Max(0, 2 - Count("cpuext3"))).ToList()) map[b] = "cpuext3";
+    }
+
+    /// <summary>The plan's vessel pieces, before the crash: the hull as a builder made it, ready to be claimed once fixed.</summary>
+    List<CapitalHull.HullPiece> Vessel(Dictionary<Int3, string> intact, Dictionary<Int3, string> after, int q)
+    {
+        var pieces = new List<CapitalHull.HullPiece>();
+        foreach (Piece p in Pieces)
         {
-            if (PieceOf(c.Z) == null || ramps.ContainsKey(c)) continue;
-            Int3 m = Map(c);
-            P.Lay(m.X, m.Y, m.Z, b);
-        }
-        foreach (var (a, b) in Links)
-            if (primary[a] >= 0 && primary[b] >= 0) P.C.Link(primary[a], primary[b]);
-        // Pieces of one room torn apart still belong together in the plan.
-        foreach (var group in modules.GroupBy(kv => kv.Key.Room))
-            foreach (var kv in group) if (kv.Value != primary[group.Key]) P.C.Link(kv.Value, primary[group.Key]);
-        foreach (var (k, c, room) in Slots)
-        {
-            if (PieceOf(c.Z) == null) continue;
-            Int3 m = Map(c);
-            int mod = ModuleAt(room, c);
-            if (mod < 0) continue;
-            switch (k)
+            var mine = new Dictionary<Int3, string>();
+            foreach (var (b, s) in intact)
+                if (PieceOf(2 * b.Z) == p && !(Cut >= 0 && 2 * b.Z >= Cut && 2 * b.Z < Cut + 2)) mine[b] = s;
+            var planned = new Dictionary<Int3, string>(mine);
+            Lift(mine, p);
+            int oz = p.V0 >> 1;
+            var piece = new CapitalHull.HullPiece
             {
-                case SlotKind.Loot: P.Cache(m.X, m.Y, m.Z, mod); break;
-                case SlotKind.Spawn: P.Spawn(m.X, m.Y, m.Z, mod); break;
-                case SlotKind.Terminal: P.Terminal(m.X, m.Y, m.Z, mod); break;
+                Name = Pieces.Count == 1 ? "" : p == Pieces[0] ? " (fore)" : " (aft)",
+                Header = PaintLines(),
+            };
+            foreach (var (b, s) in mine)
+            {
+                var local = new Int3(b.X, b.Y, b.Z - oz);
+                piece.Intact[local] = s;
+                // What lift and power the plan needed was fitted to it; the crash took what it tore from the hull as drawn.
+                bool fitted = !planned.TryGetValue(b, out string? drawn) || drawn != s;
+                if (!fitted && (!after.TryGetValue(b, out string? now) || now != s)) piece.Torn.Add(local);
             }
+            if (HullDoor is Int3 hd && PieceOf(2 * hd.Z) == p) piece.Door = new Int3(hd.X, hd.Y, hd.Z - oz);
+            // The empty seat for a core: the core room's middle, on its floor.
+            Room? core = Vault >= 0 ? Rooms[Vault] : null;
+            if (core != null && core.Cells.Count > 0 && PieceOf(core.Cells.First().Z) == p)
+            {
+                var floorBlocks = core.Cells.Where(c => c.Y == core.WalkY).Select(Bk).Distinct().Where(b => !mine.ContainsKey(b) && mine.ContainsKey(b + Int3.Down)).ToList();
+                if (floorBlocks.Count > 0)
+                {
+                    double mx = floorBlocks.Average(b => b.X), mz = floorBlocks.Average(b => b.Z);
+                    Int3 slot = floorBlocks.OrderBy(b => Math.Abs(b.X - mx) + Math.Abs(b.Z - mz)).First();
+                    piece.CoreSlot = new Int3(slot.X, slot.Y, slot.Z - oz);
+                }
+            }
+            // Where it lies: the structure's origin (the middle of its first block) and its turn, in the place's frame.
+            var origin = new System.Numerics.Vector3(1f, 1f, 2 * oz + 1f);
+            System.Numerics.Vector3 plot = ToPlot(p, origin);
+            var turn = System.Numerics.Quaternion.CreateFromAxisAngle(System.Numerics.Vector3.UnitY, -q * MathF.PI / 2f);
+            piece.Origin = Turn(plot, q);
+            piece.Rotation = System.Numerics.Quaternion.Normalize(turn * System.Numerics.Quaternion.CreateFromAxisAngle(System.Numerics.Vector3.UnitX, p.Pitch));
+            pieces.Add(piece);
         }
-        foreach (var (c, room) in Lamps)
+        return pieces;
+    }
+
+    /// <summary>A point of the plan's frame (u along its front, v back from it) in the place's own frame, its front turned q quarters.</summary>
+    static System.Numerics.Vector3 Turn(System.Numerics.Vector3 p, int q) => q switch
+    {
+        1 => new(-p.Z, p.Y, p.X),
+        2 => new(-p.X, p.Y, -p.Z),
+        3 => new(p.Z, p.Y, -p.X),
+        _ => p,
+    };
+
+    // ---- setting it down --------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// The place round the vessel: the ground cut away where the hull lies buried (occupied cells, which the planet
+    /// carves), the ramps and cuttings up to its ways in, the yard you arrive at, a heap of wreckage with the best
+    /// of what was thrown clear, and the debris down the furrow. The vessel itself is set down by the world.
+    /// </summary>
+    void EmitPlace()
+    {
+        var plot = P;
+        // The ground's hollow where the hull lies in it.
+        foreach (Piece p in Pieces)
         {
-            if (PieceOf(c.Z) == null || !B.ContainsKey(c)) continue;
-            Int3 m = Map(c);
-            if (ModuleAt(room, c) is int lm and >= 0) P.Lamp(m.X, m.Y, m.Z, lm, 1.3f, 12f);
-        }
-        // The levels, at each deck's height by its stair.
-        int sv = StairAt[TowerBay];
-        for (int d = 1; d < D + TDecks; d++)
-        {
-            Int3 at = Map(new Int3(4, Walk(d), sv));
-            if (P.C.X.Levels.All(l => l.Storey != d)) P.C.X.Levels.Add(new LevelInfo { Storey = d, WalkY = at.Y, Name = d < D ? $"deck {d}" : d == D ? "officers' deck" : "bridge" });
+            int v1 = p == Pieces[^1] ? L + Nac + 4 : p.V1;
+            var corners = new List<System.Numerics.Vector3>();
+            foreach (float u in new[] { -Half - 6f, Half + 6f })
+                foreach (float y in new[] { 0f, TowerTop + 16f })
+                    foreach (float v in new[] { (float)p.V0, (float)v1 }) corners.Add(ToPlot(p, new System.Numerics.Vector3(u, y, v)));
+            int x0 = (int)MathF.Floor(corners.Min(c => c.X)), x1 = (int)MathF.Ceiling(corners.Max(c => c.X));
+            int y0 = (int)MathF.Floor(corners.Min(c => c.Y)), z0 = (int)MathF.Floor(corners.Min(c => c.Z)), z1 = (int)MathF.Ceiling(corners.Max(c => c.Z));
+            for (int z = z0; z <= z1; z++)
+                for (int y = y0; y < 0; y++)
+                    for (int x = x0; x <= x1; x++)
+                    {
+                        System.Numerics.Vector3 s = FromPlot(p, new System.Numerics.Vector3(x + 0.5f, y + 0.5f, z + 0.5f));
+                        int u = (int)MathF.Floor(s.X), sy = (int)MathF.Floor(s.Y), v = (int)MathF.Floor(s.Z);
+                        if (v < p.V0 - 1 || v > v1 || sy < 0) continue;
+                        // A metre clear of the hull all round: the ground broke away from it, and nothing holds it as it lifts.
+                        bool Hull(int hu, int hv) { var c = new Int3(hu, sy, hv); return B.ContainsKey(c) || Open.Contains(c) || Col(Hmin, hu, hv) > sy; }
+                        if (Hull(u, v) || Hull(u + 1, v) || Hull(u - 1, v) || Hull(u, v + 1) || Hull(u, v - 1)) plot.Air(x, y, z);
+                    }
         }
         // The ways in from the ground: ramps up, cuts down.
         var clear = new HashSet<(int, int)>();
+        var outside = new List<int>();
         int yardU = int.MinValue, yardV = 0;
         foreach (Way w in Ways)
         {
-            if (w.Room < 0 || PieceOf(w.V0) is not { } p) continue;
-            int room = ModuleAt(w.Room, new Int3(0, 0, w.V0));
+            if (PieceOf(w.V0) is not { } p) continue;
             if (w.Side == 0)
             {
-                // An open face: the ground runs straight in.
-                ways.Add((room, Map(new Int3(0, Walk(0), w.V0)), w.What == "fore-face" ? Dir.South : Dir.North));
+                System.Numerics.Vector3 face = ToPlot(p, new System.Numerics.Vector3(0, Walk(0), w.V0));
+                int fv = (int)MathF.Round(face.Z), fu = (int)MathF.Round(face.X), dir = w.What == "fore-face" ? 1 : -1;
+                for (int k = -2; k < 10; k++)
+                    for (int u = fu - Half - 2; u < fu + Half + 2; u++) clear.Add((u, fv + dir * k));
+                if (yardU == int.MinValue) { yardU = fu + Half + 6; yardV = fv + dir * 6; }
                 continue;
             }
-            int walk = Walk(0) + p.Dy(w.V0);
-            int uo = (w.Side > 0 ? Half : -Half - 1) + p.OffU, s = w.Side;
+            System.Numerics.Vector3 sill = ToPlot(p, new System.Numerics.Vector3(w.Side > 0 ? Half : -Half, Walk(0), w.V0 + w.Width / 2f));
+            int walk = (int)MathF.Round(sill.Y);
+            int s = w.Side, uo = (int)MathF.Round(sill.X) + (s > 0 ? 0 : -1), vs = (int)MathF.Round(sill.Z) - w.Width / 2;
             var cells = new List<(int, int, int)>();
             int n = Math.Abs(walk);
             for (int i = 0; i < n; i++)
             {
                 int u = uo + s * i;
-                for (int v = w.V0 + p.OffV; v < w.V0 + w.Width + p.OffV; v++)
+                for (int v = vs; v < vs + w.Width; v++)
                 {
                     if (walk > 0)
                     {
                         int y = walk - 1 - i;
-                        P.Put(u, y, v, new Block(BlockType.Ramp, Material.Steel, Trim.C.Scale(1.1f), Role.Floor, s > 0 ? Dir.West : Dir.East));
-                        for (int f = 0; f < y; f++) P.Put(u, f, v, new Block(BlockType.Cube, Trim.M, Trim.C.Scale(0.8f), Role.Wall));
+                        plot.Put(u, y, v, new Block(BlockType.Ramp, Material.Steel, Trim.C.Scale(1.1f), Role.Floor, s > 0 ? Dir.West : Dir.East));
+                        for (int fy = 0; fy < y; fy++) plot.Put(u, fy, v, new Block(BlockType.Cube, Trim.M, Trim.C.Scale(0.8f), Role.Wall));
                         cells.Add((u, y, v));
                         for (int up = 1; up <= 3; up++) cells.Add((u, y + up, v));
                     }
                     else
                     {
                         int y = walk + i;
-                        P.Put(u, y, v, new Block(BlockType.Ramp, Material.Rock, new Rgb(0x5a, 0x52, 0x48), Role.Floor, s > 0 ? Dir.East : Dir.West));
+                        plot.Put(u, y, v, new Block(BlockType.Ramp, Material.Rock, new Rgb(0x5a, 0x52, 0x48), Role.Floor, s > 0 ? Dir.East : Dir.West));
                         cells.Add((u, y, v));
-                        for (int up = y + 1; up < Math.Max(0, y + 4); up++) { if (up < 0) P.Air(u, up, v); cells.Add((u, up, v)); }
+                        for (int up = y + 1; up < Math.Max(0, y + 4); up++) { if (up < 0) plot.Air(u, up, v); cells.Add((u, up, v)); }
                     }
                 }
             }
-            int foot = uo + s * n;
             for (int k = -2; k < n + 6; k++)
-                for (int v = w.V0 - 3; v < w.V0 + w.Width + 3; v++) clear.Add((uo + s * k, v + p.OffV));
-            if (cells.Count > 0)
-            {
-                int m = P.RoomOf(ModuleKind.Outdoor, walk > 0 ? "cargo-ramp" : "cutting", 0, cells.Distinct());
-                outside.Add(m);
-                P.C.Link(m, room);
-            }
-            else outside.Add(room);
-            if (w.What == "cargo" || yardU == int.MinValue) { yardU = foot + s * 6; yardV = w.V0 + p.OffV + w.Width / 2; }
+                for (int v = vs - 3; v < vs + w.Width + 3; v++) clear.Add((uo + s * k, v));
+            if (cells.Count > 0) outside.Add(plot.RoomOf(ModuleKind.Outdoor, walk > 0 ? "cargo-ramp" : "cutting", 0, cells.Distinct()));
+            if (w.What == "cargo" || yardU == int.MinValue) { yardU = uo + s * (n + 6); yardV = vs + w.Width / 2; }
         }
-        foreach (var (room, at, face) in ways)
-        {
-            outside.Add(room);
-            for (int k = -2; k < 10; k++)
-                for (int u = at.X - Half - 2; u < at.X + Half + 2; u++) clear.Add((u, at.Z + (face == Dir.North ? -k : k)));
-            if (yardU == int.MinValue) { yardU = at.X + Half + 6; yardV = at.Z + (face == Dir.North ? -6 : 6); }
-        }
-        P.Approach(Div2(yardU), Div2(yardV), Dir.North);
-        P.Yards(outside.Distinct().ToArray());
+        plot.Approach(Div2(yardU), Div2(yardV), Dir.North);
         for (int du = -4; du <= 4; du++) for (int dv = -4; dv <= 4; dv++) clear.Add((yardU + du, yardV + dv));
-        P.C.VaultModule = primary[Vault];
-        // No weather box: a steel hull is no house whose roof the years bring in; the states' own decay takes it.
+        // A heap of what was thrown clear, by the yard: the crates that came out of the holds, the best of them.
+        int hu = yardU + (yardU > 0 ? 6 : -6), hv = yardV + 6;
+        var heap = new List<(int, int, int)>();
+        for (int dv = -3; dv <= 3; dv++)
+            for (int du = -3; du <= 3; du++)
+                for (int y = 0; y < 3; y++) heap.Add((hu + du, y, hv + dv));
+        int wreckage = plot.RoomOf(ModuleKind.Vault, "wreckage", 0, heap);
+        plot.Yards(outside.Append(wreckage).ToArray());
+        foreach (var (du, dv) in new[] { (-3, -3), (3, -3), (-3, 3), (3, 3), (0, 3) })
+            plot.Prop(hu + du, 0, hv + dv, BlockType.Crate, Material.Scrap, new[] { Orange.C, Teal.C, Hazard }[(du + dv + 9) % 3].Scale(0.8f));
+        plot.Cache(hu, 0, hv, wreckage);
+        plot.Cache(hu + 2, 0, hv - 2, wreckage);
+        plot.Spawn(hu - 2, 0, hv, wreckage);
+        plot.Spawn(yardU, 0, yardV + 2, plot.Yard);
+        for (int du = -5; du <= 5; du++) for (int dv = -5; dv <= 5; dv++) clear.Add((hu + du, hv + dv));
+        plot.C.VaultModule = wreckage;
         Debris(clear);
     }
 
-    readonly List<(int Room, Int3 At, Dir Face)> ways = new();
-    readonly List<int> outside = new();
-
     static int Div2(int a) => a >= 0 ? a / 2 : (a - 1) / 2;
+
+    /// <summary>Is the plan's ground cell (u, v) under the hull, or within two metres of it (nothing is laid there: the vessel stands there)?</summary>
+    bool UnderHull(int u, int v)
+    {
+        foreach (Piece p in Pieces)
+            for (float y = -16f; y <= TowerTop; y += 2f)
+            {
+                System.Numerics.Vector3 s = FromPlot(p, new System.Numerics.Vector3(u + 0.5f, y, v + 0.5f));
+                int su = (int)MathF.Floor(s.X), sv = (int)MathF.Floor(s.Z);
+                if (sv < p.V0 - 2 || sv > (p == Pieces[^1] ? L + Nac + 4 : p.V1 + 1)) continue;
+                if (Math.Abs(su) <= Half + 6 && (sv >= L || InHull(su, Math.Clamp(sv, 0, L - 1)) || InHull(su - 2, Math.Clamp(sv, 0, L - 1)) || InHull(su + 2, Math.Clamp(sv, 0, L - 1)))) return true;
+            }
+        return false;
+    }
 
     /// <summary>What the crash threw about: torn plates, a spill of cargo, scrap down the furrow behind it.</summary>
     void Debris(HashSet<(int, int)> clear)
@@ -1451,7 +1744,7 @@ sealed class Hulk
             for (int k = 0; k < n; k++)
             {
                 int cu = u + rng.Range(-2, 3), cv = v + rng.Range(-2, 3);
-                if (clear.Contains((cu, cv)) || P.C.Occ.Contains(P.Cell(cu, 0, cv)) || P.C.Blocks.ContainsKey(P.Cell(cu, 0, cv))) continue;
+                if (clear.Contains((cu, cv)) || P.C.Occ.Contains(P.Cell(cu, 0, cv)) || P.C.Blocks.ContainsKey(P.Cell(cu, 0, cv)) || UnderHull(cu, cv)) continue;
                 if (P.C.Occ.Contains(P.Cell(cu, -1, cv))) continue;
                 int pick = rng.Range(0, 10);
                 Block b = pick switch
