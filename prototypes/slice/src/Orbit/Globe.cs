@@ -506,7 +506,7 @@ public partial class Globe : Node3D
             float night = smoothstep(0.1, -0.2, dot(normalize(round_normal), sun_dir));
             vec2 xz = (m.tile > 0.5 ? m.tile_uv : m.uv) * map_size;
             float flash = live > 0.5 ? flashes(xz, c.lightning, c.storm, c.billow) : 0.0;
-            EMISSION = vec3(0.72, 0.78, 1.0) * flash * (0.05 + 1.6 * night) * c.alpha;
+            EMISSION = vec3(0.72, 0.78, 1.0) * flash * 1.6 * night * c.alpha;
             // Lit softly round the terminator, and dark past it: the night side's clouds are seen by their lightning.
             ALBEDO *= 1.0 - 0.7 * night;
             ROUGHNESS = 0.4;

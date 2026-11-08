@@ -190,6 +190,15 @@ public sealed partial class Staging
         Vector3 eye = _game.Camera.GlobalPosition;
         string where = _game.InOrbit ? $"over map {_game.Spaceflight.Orbit.Under(eye)}" : $"at {eye}";
         string front = f == null ? "none" : $"{f.Kind} {f.Strength:F2}, heading {f.Heading}, {f.Speed:F1} m/s, {f.Depth:F0} m deep";
+        if (layer != null)
+        {
+            var (ux, uz) = _game.InOrbit ? _game.Spaceflight.Orbit.Under(eye) : ((double)eye.X, (double)eye.Z);
+            var (ti, tj) = layer.TexelOf((float)ux, (float)uz);
+            GlobeWeather.Texel t = layer.Read(ti, tj);
+            float dusty = 0f;
+            for (int j = 0; j < layer.Height; j++) for (int i = 0; i < layer.Width; i++) dusty += layer.Read(i, j).Dust > 0.3f ? 1f : 0f;
+            where += $"; the layer under it: cover {t.Cover:F2}, extra {t.Extra:F2}, tower {t.Tower:F2}, dust {t.Dust:F2}, snow {t.Snow:F2}, fog {t.Fog:F2}, lightning {t.Lightning:F1}; dust on {dusty / (layer.Width * layer.Height):P0} of the map";
+        }
         GD.Print($"(weather shot {tag}: {sim.Dominant}, front {front}, {sim.Cells.Count} cells ({string.Join(", ", sim.Cells.Select(c => $"{c.Strength:F2}"))}), " +
             $"weather time {sim.Time:F0} s, layer passes {layer?.Passes}, every {layer?.Period:F1} s, worst {layer?.WorstFrameMs:F2} ms, {where})");
     }
