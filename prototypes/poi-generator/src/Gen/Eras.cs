@@ -142,7 +142,9 @@ public static class EraPass
     public static void Apply(Layout layout, TechLevel tech)
     {
         layout.Tech = tech;
-        if (!Applies(layout) || EraBook.Current.Of(tech) is not { } era || !era.Reshapes) return;
+        if (EraBook.Current.Of(tech) is not { } era || !era.Reshapes || WorldProfile.Unbuilt(layout.Family) || layout.Extras.InSpace || (layout.Family.Style?.StartsWith("alien", StringComparison.Ordinal) ?? false)) return;
+        // A house is put together in its age already (its cladding, roof and windows, its fixings): it takes only its age's lamps.
+        bool house = !Applies(layout);
         layout.Lamp = era.Lamp;
         var rng = new Rng(Hash.Combine(layout.Seed, 0xE7A5UL + (ulong)tech));
         BlockGrid g = layout.Blocks;
@@ -171,7 +173,7 @@ public static class EraPass
         var sum = new Dictionary<(Material, bool), (float L, int N)>();
         foreach (var (p, b) in g.Blocks())
         {
-            if (!Fabric.Contains(b.Type) || era.Keep.Contains(b.Type) || !Rebuilt(b.Role)) continue;
+            if (house || !Fabric.Contains(b.Type) || era.Keep.Contains(b.Type) || !Rebuilt(b.Role)) continue;
             if (b.Type == BlockType.Pane && b.Material == Material.Glass) continue;
             bool roof = b.Role == Role.Roof && roofing != null;
             if (!roof && !era.Swaps.ContainsKey(b.Material)) continue;
@@ -221,7 +223,7 @@ public static class EraPass
         }
 
         // ---- its windows: few in a low age, banded in a stellar one
-        if (era.Windows < 1f)
+        if (era.Windows < 1f && !house)
             foreach (var (p, b) in g.Blocks().Where(x => x.Block.Type == BlockType.Pane && x.Block.Material == Material.Glass && x.Block.Role == Role.Window).ToList())
             {
                 uint h = Hash.Cell(new Int3(Floor(p.X, lattice), 0, Floor(p.Z, lattice)), 0x3A11);
@@ -233,7 +235,7 @@ public static class EraPass
                         if (g.Get(p + d.Vec() * k) is { Type: BlockType.Cube, Role: Role.Wall } wall) fill = wall;
                 if (fill is Block w) g.Set(p, w);
             }
-        if (era.Ribbon > 0f && lattice == 1)
+        if (era.Ribbon > 0f && lattice == 1 && !house)
             foreach (var (p, pane) in g.Blocks().Where(x => x.Block.Type == BlockType.Pane && x.Block.Material == Material.Glass && x.Block.Role == Role.Window).ToList())
             {
                 foreach (Dir d in new[] { Dir.East, Dir.South })
@@ -257,7 +259,7 @@ public static class EraPass
             }
 
         // ---- its corners, cut on the diagonal
-        if (era.Chamfer && lattice == 1)
+        if (era.Chamfer && lattice == 1 && !house)
         {
             var cut = new List<Int3>();
             foreach (var (p, b) in g.Blocks())
@@ -275,11 +277,12 @@ public static class EraPass
         }
 
         // ---- its roofs: pitched in a low age, rounded off at the edge in a stellar one
-        if (era.Gable > 0) Gables(layout, g, top, era, roofing, lattice);
+        if (house) { }
+        else if (era.Gable > 0) Gables(layout, g, top, era, roofing, lattice);
         else if (era.RoundEdge) RoundEdges(g, top, Clear, Sky);
 
         // ---- light strips along each floor line and the wall tops
-        if (era.Strips is Rgb strip)
+        if (era.Strips is Rgb strip && !house)
         {
             var rows = new HashSet<int>(layout.Extras.Levels.Where(l => l.Storey > 0).Select(l => l.WalkY - 1));
             foreach (var (p, b) in g.Blocks().ToList())

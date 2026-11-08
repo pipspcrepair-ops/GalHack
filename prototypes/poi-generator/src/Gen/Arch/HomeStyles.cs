@@ -304,8 +304,8 @@ public sealed class HomeCulture
         var fit = book.Families.Where(f => f.Odd == c.Strange && f.Techs.Contains(tech) && f.Climates.Contains(hints.Climate)).ToList();
         if (fit.Count == 0) fit = book.Families.Where(f => f.Odd == c.Strange && f.Techs.Contains(tech)).ToList();
         if (fit.Count == 0) fit = book.Families.Where(f => f.Odd == c.Strange).ToList();
-        // A main family, and one or two more it builds less of.
-        int n = Math.Min(fit.Count, 2 + (r.Chance(0.5f) ? 1 : 0));
+        // A main family, and two or three more it builds less of (a regular street has no strange one-offs to vary it).
+        int n = Math.Min(fit.Count, 3 + (r.Chance(0.5f) ? 1 : 0));
         var order = r.WeightedOrder(fit, Weight);
         for (int i = 0; i < n; i++) c.Families.Add((order[i], i == 0 ? 3f : 1.2f));
         c.Age = age;
