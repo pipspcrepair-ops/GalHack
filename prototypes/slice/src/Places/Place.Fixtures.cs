@@ -184,6 +184,7 @@ public partial class Place
     {
         foreach (Door d in _doors)
         {
+            if (Memory.Town is { GatesShut: true } && d.Target > 0.5f) { d.Target = 0f; Memory.DoorsOpen[d.Index] = false; }
             float target = d.Jammed ? 0.5f : d.Target;
             // A shaft door stays shut unless the car is at its stop.
             if (d.Lift >= 0 && !CarAt(d.Lift, d.Stop)) target = 0f;
@@ -208,6 +209,8 @@ public partial class Place
     public (bool Ok, string Message) UseDoor(Door d)
     {
         if (d.Jammed) return (false, "Jammed: it won't move further, but there's room to squeeze through");
+        // A settlement that won't have you keeps its doors shut.
+        if (Memory.Town is { GatesShut: true } && d.Target < 0.5f) return (false, "BARRED");
         if (d.Clearance != null && !Places.HasClearance(d.Clearance))
             return (false, $"LOCKED: needs a {d.Clearance.ToUpperInvariant()} keycard");
         if (d.Lift >= 0 && !CarAt(d.Lift, d.Stop))
@@ -444,6 +447,30 @@ public partial class Place
         foreach (Int3 c in s.WallCells) Inst.Blocks.Set(c, Block.Air);
         Remesh(s.WallCells);
         if (_drafts.Remove(s, out Node3D draft)) draft.QueueFree();
+    }
+
+    // ---- Small fittings -------------------------------------------------------------------------
+
+    /// <summary>
+    /// The small fittings no block can be: each house's service fitting (<see cref="ServicePoint"/>), an insulator on a
+    /// short bracket at its roof's corner where the drop from the street ends, drawn from its parts, and only where what
+    /// holds it still stands (an eave fallen in took its fitting with it).
+    /// </summary>
+    void BuildFittings()
+    {
+        foreach (ServicePoint p in Inst.Layout.Extras.Service)
+        {
+            if (Inst.Blocks.Get(p.Anchor).IsAir) continue;
+            var root = new Node3D { Name = "Service fitting" };
+            foreach (var (x, y, z, w, h, d, round, c) in p.Parts())
+                root.AddChild(new MeshInstance3D
+                {
+                    Mesh = round ? new CylinderMesh { TopRadius = w / 2f, BottomRadius = w / 2f, Height = h, RadialSegments = 10, Rings = 1 } : new BoxMesh { Size = new Vector3(w, h, d) },
+                    Position = new Vector3(x, y, z),
+                    MaterialOverride = new StandardMaterial3D { AlbedoColor = new Color(c.R / 255f, c.G / 255f, c.B / 255f), Roughness = round ? 0.25f : 0.5f, Metallic = round ? 0f : 0.5f },
+                });
+            AddChild(root);
+        }
     }
 
     // ---- Lights -------------------------------------------------------------------------------

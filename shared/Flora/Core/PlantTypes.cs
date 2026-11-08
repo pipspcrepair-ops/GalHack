@@ -79,7 +79,21 @@ public enum PlantForm
 /// Light is the sunlight's colour; Alien 0..1 pulls forms from the familiar to the strange; Life 0..1
 /// is how much grows at all, and 0 means nothing does.
 /// </summary>
-public sealed record FloraClimate(ulong Seed, float Warmth, float Wetness, float Air, Tone Light, float Alien, float Life);
+public sealed record FloraClimate(ulong Seed, float Warmth, float Wetness, float Air, Tone Light, float Alien, float Life, FloraMood Mood = null)
+{
+    /// <summary>What the world's history has done to its plants (none where nothing says).</summary>
+    public FloraMood Moods => Mood ?? FloraMood.None;
+}
+
+/// <summary>
+/// What a world's history has done to what grows on it, each 0..1: overgrown through everything,
+/// dead and grey, swollen and wrongly coloured (mutagenic), fungal, burned off and coming back thin,
+/// or simply sparse. The world's own layers decide; the module only answers them.
+/// </summary>
+public sealed record FloraMood(float Overgrown = 0f, float Dead = 0f, float Swollen = 0f, float Fungal = 0f, float Burnt = 0f, float Sparse = 0f)
+{
+    public static readonly FloraMood None = new();
+}
 
 /// <summary>A kind of ground on a world (a biome, to the planet): its own climate, how much of the world it covers, and the families it wants.</summary>
 public sealed record Habitat(int Id, float Warmth, float Wetness, float Share, IReadOnlyList<PlantFamily> Families);

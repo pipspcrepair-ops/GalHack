@@ -189,24 +189,28 @@ public partial class Screenshot
             else GD.Print("no cross-gabled house with a carport came up");
         }
 
-        // The service fixing close up: a slim mast clamped to a wall, its insulator, the door off to one side.
-        if (Want("bracket"))
+        // The service fitting at the roof's corner on the street side, close up from the street off that corner, the figure
+        // standing at the corner and the meter box on the side wall: a pitched roof (under the eave's corner) and a flat roof
+        // (on the parapet's corner).
+        foreach (var (name, flat) in new[] { ("corner-pitched", false), ("corner-flat", true) })
         {
-            bool Mast(Layout l) => l.Extras.Service.Any(p => l.Blocks.Get(p.Cell - Int3.Up) is { Type: BlockType.Pillar, Material: PoiGenerator.Gen.Material.Steel });
-            var one = Row(_ => new LayoutHints(Dir.North, TechLevel.Mid, null, new HomeHints(rand.Next(), Climate.Temperate, 0.6f, "suburban")), 1,
-                l => Mast(l) && l.Extras.Service.Any(p => p.Facing == Dir.North), 800);
-            if (one.Count > 0)
-            {
-                ServicePoint p = one[0].L.Extras.Service.First(x => one[0].L.Blocks.Get(x.Cell - Int3.Up).Type == BlockType.Pillar);
-                GD.Print($"bracket at {p.Cell} facing {p.Facing}: {Says(one)}");
-                var at = new Vector3(one[0].X + p.Cell.X + 0.5f, p.Cell.Y, p.Cell.Z + 0.5f);
-                Int3 fv = p.Facing.Vec();
-                var o = new Vector3(fv.X, 0, fv.Z);
-                var side = new Vector3(-o.Z, 0, o.X);
-                var person = Door(one[0]) is var (mid, dout, _) ? Figure(mid + dout * 1.1f) : null;
-                await Shot("bracket", at + o * 9f + side * 3f + new Vector3(0, -2.5f, 0), at + new Vector3(0, -2.5f, 0));
-                person?.QueueFree();
-            }
+            if (!Want(name)) continue;
+            bool flatLocal = flat;
+            ServiceMount want = flat ? ServiceMount.Parapet : ServiceMount.Eave;
+            var one = Row(_ => new LayoutHints(Dir.North, TechLevel.Mid, null, new HomeHints(rand.Next(), flatLocal ? Climate.Hot : Climate.Temperate, 0.6f, flatLocal ? (rand.Next(2) == 0 ? "modern" : "courtyard") : rand.Next(2) == 0 ? "suburban" : "bungalow")), 1,
+                l => l.Extras.Homes.FirstOrDefault() is { } h && (flatLocal ? h.Roof == "flat" : h.Roof is "gable" or "hip" or "cross") && l.Extras.Service.Any(p => p.Mount == want), 1200);
+            if (one.Count == 0) { GD.Print($"no {name} came up"); continue; }
+            ServicePoint p = one[0].L.Extras.Service.First(x => x.Mount == want);
+            GD.Print($"{name}: fitting at {p.Point} ({p.Mount}), held by {one[0].L.Blocks.Get(p.Anchor)}: {Says(one)}");
+            PlainBox box = one[0].L.Extras.Plain.OrderByDescending(x => (x.Max.X - x.Min.X) * (x.Max.Z - x.Min.Z)).First();
+            var at = new Vector3(one[0].X + p.Point.X, p.Point.Y, p.Point.Z);
+            float sx = Math.Sign(at.X - one[0].X - (box.Min.X + box.Max.X + 1) * 0.5f);
+            if (sx == 0) sx = 1;
+            // The figure by the front wall just in from the corner, clear of the fitting and the box; the eye a little lower than the fitting, five or six metres out.
+            var person = Figure(new Vector3(at.X - sx * 1.6f, 0, at.Z - 0.9f));
+            float up = Math.Max(1.6f, at.Y - 1.2f);
+            await Shot(name, new Vector3(at.X + sx * 4.5f, up, at.Z - 5.5f), new Vector3(at.X - sx * 0.6f, at.Y * 0.55f, at.Z + 1.2f));
+            person.QueueFree();
         }
 
         // A row of terraces.

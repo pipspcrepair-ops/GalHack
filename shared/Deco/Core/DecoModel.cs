@@ -22,6 +22,48 @@ public enum DecoSlot
 /// <summary>The six materials a deco mesh is drawn with; colour lives in the vertices.</summary>
 public enum DecoSurface { Matte, Metal, Glow, Glass, Flesh, Leaf }
 
+/// <summary>
+/// What a part is made of: the surface the deco shader draws on it (grain, weave, seams, glaze,
+/// brushing, rust...). A part says so with <see cref="DecoPart.As"/>; otherwise it follows from its
+/// slot and flags (<see cref="DecoFinishes.Of"/>). Colour still comes from the slot, so a place's
+/// pieces share their handful of materials.
+/// </summary>
+public enum DecoFinish : byte
+{
+    /// <summary>From the part's slot and flags.</summary>
+    Auto,
+    /// <summary>Painted metal or board: a fine orange peel; chips at the edges and scratches as it wears, peeling over rust when weathered.</summary>
+    Paint,
+    /// <summary>Bare or brushed metal: brushed along its length; blooms of rust as it ages.</summary>
+    Steel,
+    /// <summary>Chrome, brass, bronze, gold: smooth and bright; tarnish and patina with age.</summary>
+    Polished,
+    /// <summary>Timber: grain along its length, rings on its ends, boards across a wide face; greys and splits in the weather.</summary>
+    Wood,
+    /// <summary>Moulded plastic: a fine stipple and a soft sheen; scuffs, chalky when old.</summary>
+    Plastic,
+    /// <summary>Cloth and upholstery: a weave, stitched seams and soft edges; fades and stains.</summary>
+    Fabric,
+    /// <summary>Leather and vinyl: pebbled, creased, stitched; scuffed and cracked with age.</summary>
+    Leather,
+    /// <summary>Paper and card: fibres; foxed and yellowed at the edges with age.</summary>
+    Paper,
+    /// <summary>Glazed ceramic: tiles and grout on a wide face, plain glaze on a small one; crazing with age.</summary>
+    Ceramic,
+    /// <summary>Rubber: a dull stipple; a tyre's tread.</summary>
+    Rubber,
+    /// <summary>Concrete and stone: mottle, aggregate and pits; chipped edges with age.</summary>
+    Stone,
+    /// <summary>A screen: a pixel grid and a darker border when lit, dark glass when dead.</summary>
+    Screen,
+    /// <summary>Glass: smudges and a gasket at the edges; dirt with age.</summary>
+    Glass,
+    /// <summary>Living or grown stuff (plants, chitin, bone, resin): cells and mottle.</summary>
+    Organic,
+    /// <summary>No surface detail (marks, cracks and stains drawn over a piece).</summary>
+    Plain,
+}
+
 public enum DecoPrim { Hex, Cylinder, Sphere, Dome }
 
 [Flags]
@@ -67,8 +109,12 @@ public sealed class DecoPart
     public float Taper = 1f;
     public DecoSlot Slot;
     public PartFlags Flags;
+    /// <summary>What it is made of, when its slot doesn't say (a ceramic pot in the trim colour, a leather seat).</summary>
+    public DecoFinish Finish;
 
     public bool Is(PartFlags f) => (Flags & f) != 0;
+    /// <summary>Says what the part is made of.</summary>
+    public DecoPart As(DecoFinish f) { Finish = f; return this; }
     public DecoPart Loose() { Flags |= PartFlags.Loose; return this; }
     public DecoPart Soft() { Flags |= PartFlags.Soft; return this; }
     public DecoPart Screen() { Flags |= PartFlags.Screen | PartFlags.Lit; return this; }
@@ -84,7 +130,7 @@ public sealed class DecoPart
     /// <summary>A hatch or door on any hinge line through <paramref name="hinge"/> along <paramref name="axis"/>.</summary>
     public DecoPart Door(Vector3 hinge, Vector3 axis, float angle) { Flags |= PartFlags.Door; Hinge = hinge; HingeAxis = Vector3.Normalize(axis); OpenAngle = angle; return this; }
 
-    public DecoPart Clone() => new() { Kind = Kind, M = M, Corners = Corners, Segments = Segments, Taper = Taper, Slot = Slot, Flags = Flags, Hinge = Hinge, HingeAxis = HingeAxis, OpenAngle = OpenAngle };
+    public DecoPart Clone() => new() { Kind = Kind, M = M, Corners = Corners, Segments = Segments, Taper = Taper, Slot = Slot, Flags = Flags, Finish = Finish, Hinge = Hinge, HingeAxis = HingeAxis, OpenAngle = OpenAngle };
 
     public Vector3 Centre => Vector3.Transform(Vector3.Zero, M);
 

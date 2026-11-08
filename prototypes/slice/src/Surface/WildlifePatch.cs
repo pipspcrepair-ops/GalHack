@@ -106,7 +106,17 @@ public partial class WildlifePatch : Node3D
         if (climate.RadiationByArchetype.TryGetValue(planet.Spec.Archetype.ToString(), out double radiation)) world.Radiation = (float)radiation;
         // Its depth in the galaxy: the Husks spread outward from the core. And a world whose roll has the Bloom's country is a Hollow world.
         world.Coreward = Math.Max(0f, planet.Depth);
-        world.Bloom = planet.Roll?.Orbit.Contains("bloom") == true;
+        // What its layers say of what lives here: a Hollow world's fungus has its wildlife; its history
+        // sets loose stock, feral packs and twisted predators, thins it out or twists it.
+        PoiGenerator.Gen.WorldReading layers = planet.Reading;
+        world.Bloom = layers.HollowWorld;
+        world.Stock = layers.Stock;
+        world.Working = layers.Working;
+        world.Ferals = layers.Ferals;
+        world.Predators = layers.Predators;
+        world.Density = layers.Density;
+        world.Mutagen = Math.Max(world.Mutagen, layers.Mutagen);
+        Livable *= layers.Density;
         Life = Bestiary.Roll(Zone.Data.Wildlife, world);
         View = new WildlifeView { Name = "Creatures", MostNew = 2 };
         View.Shown = (c, d, shown, jump) => PlanetSurface.Fx.PopLog.Note("creature", shown ? "comes into view" : "goes from view", d, c.Species.BodyLength, jump);
@@ -179,9 +189,10 @@ public partial class WildlifePatch : Node3D
         sim.Telegraph += e =>
         {
             Audio.Telegraph(e.Creature);
+            Slice.Game.SoundCues.Cue(WorldOf(e.Creature), 1f);
             if (e.Target == Player) Telegraphed?.Invoke(e);
         };
-        sim.Warned += c => Audio.Telegraph(c);
+        sim.Warned += c => { Audio.Telegraph(c); Slice.Game.SoundCues.Cue(WorldOf(c), 0.8f); };
         sim.Attacked += e => { if (e.Target == Player) Attacked?.Invoke(e); else Bitten?.Invoke(e); };
         sim.Died += (c, killer) => Died?.Invoke(c, killer);
         sim.Seized += e => { if (e.Victim == Player) Seized?.Invoke(e, sim); };

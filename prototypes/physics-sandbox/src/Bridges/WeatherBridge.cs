@@ -15,9 +15,6 @@ namespace PhysicsSandbox.Bridges;
 /// weather's own Glue), and lets the force module push every tracked body, its pushes landing
 /// on the one force path as <see cref="ForceKind.Weather"/>.
 ///
-/// The tornado fling's health floor stays the weather code's: <see cref="FlingFloor"/> asks
-/// weather's force module, and the player's health sink passes it on.
-///
 /// Riders on an outer hull live in their ship's cabin world, and the weather reaches them there:
 /// the wind acts against their velocity relative to the hull, not the ship's airspeed (they ride
 /// in its frame, so a ship can fly with someone on its roof), and its push is turned into the
@@ -28,13 +25,16 @@ namespace PhysicsSandbox.Bridges;
 /// </summary>
 public sealed class WeatherBridge : IForceProvider
 {
+    /// <summary>The vessel rules' own limits on what its thrusters hold against the weather (<see cref="VesselController.TossShare"/>).</summary>
+    public const float TossShare = VesselController.TossShare, TossSeconds = VesselController.TossSeconds;
+
     public WeatherSim Sim { get; }
     public ForceModule Forces { get; } = new();
 
     /// <summary>Where hazards happen: around the player.</summary>
     public System.Func<N.Vector3> Observer = static () => N.Vector3.Zero;
 
-    /// <summary>Weather off: no wind, no tornadoes (the force module still steps, so fling floors keep working).</summary>
+    /// <summary>Weather off: no wind, no tornadoes (the force module still steps).</summary>
     public bool Calm;
 
     /// <summary>The game's own shelter (a hole deep enough, a place's roof): no wind or tornado reaches such a body.</summary>
@@ -70,15 +70,6 @@ public sealed class WeatherBridge : IForceProvider
         Glue.Sync(Sim, Forces);
         if (Calm) Forces.Vortices.Clear();
         Forces.Step(dt);
-    }
-
-    /// <summary>The share of max health a fling's landing must leave this body, or 0. Weather's own rule.</summary>
-    public float FlingFloor(Body body) => _tracked.TryGetValue(body, out Pushed p) ? Forces.FlingFloor(p) : 0f;
-
-    /// <summary>The body has touched down: a fling's protection ends.</summary>
-    public void Landed(Body body)
-    {
-        if (_tracked.TryGetValue(body, out Pushed p)) Forces.Landed(p);
     }
 
     public VortexPhase PhaseOf(Body body) => _tracked.TryGetValue(body, out Pushed p) ? Forces.PhaseOf(p) : VortexPhase.Free;
@@ -130,7 +121,7 @@ public sealed class WeatherBridge : IForceProvider
             {
                 if (_body.Frame != null) return MathX.Rotate(_body.Frame.Rotation, _body.Velocity).ToGodot();
                 if (_body.Kind == BodyKind.Vessel && _body.Motion == GalHack.Physics.Motion.Kinematic
-                    && _bridge.Forces.PhaseOf(this) != VortexPhase.Caught)
+                    && _bridge.Forces.PhaseOf(this) != VortexPhase.Caught && _body.Tossed <= 0f)
                     return GVector3.Zero;
                 return _body.Velocity.ToGodot();
             }
@@ -139,12 +130,19 @@ public sealed class WeatherBridge : IForceProvider
         // The world itself drops weather on sheltered bodies, tornado pulls and flings included.
         public void ApplyForce(GVector3 force)
         {
-            if (!InShelter) _bridge._world?.AddForce(_body, IntoFrame(force), ForceKind.Weather);
+            if (InShelter || _bridge._world == null) return;
+            // A vessel the weather (a tornado's grip, a hurricane's gust) pulls harder than its thrusters can hold is at its mercy until it has come down.
+            if (_body.Kind == BodyKind.Vessel && !_bridge._world.IsSheltered(_body)
+                && force.Length() > TossShare * _body.Mass * _bridge._world.Zone.Strength)
+                _body.Tossed = TossSeconds;
+            _bridge._world.AddForce(_body, IntoFrame(force), ForceKind.Weather);
         }
 
         public void ApplyImpulse(GVector3 impulse)
         {
-            if (!InShelter) _bridge._world?.AddImpulse(_body, IntoFrame(impulse), ForceKind.Weather);
+            if (InShelter || _bridge._world == null) return;
+            if (_body.Kind == BodyKind.Vessel && _body.Tossed > 0f) _body.Tossed = TossSeconds; // flung: the fall that follows is the tornado's too
+            _bridge._world.AddImpulse(_body, IntoFrame(impulse), ForceKind.Weather);
         }
 
         /// <summary>A world push in the axes the body integrates in (its ship's, out on a hull).</summary>
@@ -154,23 +152,13 @@ public sealed class WeatherBridge : IForceProvider
 
 /// <summary>
 /// A player's health as the physics module's damage sink: every impact hits it in full
-/// (weather's <see cref="Health.Hit"/>), with the floor weather says applies: the tornado
-/// fling's share, or none. Nothing else ever lowers damage.
+/// (weather's <see cref="Health.Hit"/>), a tornado's fling or not. Nothing ever lowers damage.
 /// </summary>
 public sealed class HealthSink : IDamageSink
 {
     public readonly Health Health;
-    readonly WeatherBridge _weather;
 
-    public HealthSink(Health health, WeatherBridge weather)
-    {
-        Health = health;
-        _weather = weather;
-    }
+    public HealthSink(Health health) => Health = health;
 
-    public float Take(Body body, float raw)
-    {
-        float floor = _weather?.FlingFloor(body) ?? 0f;
-        return Health.Hit(raw, floor * Health.Max);
-    }
+    public float Take(Body body, float raw) => Health.Hit(raw);
 }

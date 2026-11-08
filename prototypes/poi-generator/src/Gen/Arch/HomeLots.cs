@@ -331,8 +331,8 @@ public static partial class Homes
         shaft.Headroom(tw / 2 - 1, 0, Dir.North, 0);
         shaft.FrontDoor(tw / 2 - 1, 0, halls[0], DoorSize.Tall);
         l.C.Link(l.C.EntranceModule, halls[0].Module);
-        // The drop comes in on a bracket up the shaft, not to the house up top.
-        shaft.Service(tw / 2 - 1, 0, null);
+        // The drop comes in to the corner of the house up top.
+        house.Service(tw / 2 - 1, 0, null);
         for (int v = -(front + margin); v < 0; v++)
             for (int k = 0; k < 2; k++) l.Plate(f, tw / 2 - 1 + k, v, l.S.Base.Scale(1.15f), Role.Floor);
         l.C.X.Homes.Add(new HomeNote(s.Family.Id, $"tower/{storeys}/{top}/{s.Roof}/{s.Wall}", storeys + 1, s.Roof, "none", "", 0, 0, default, Dir.North, false) { Exits = shaft.ExitCells().ToList() });

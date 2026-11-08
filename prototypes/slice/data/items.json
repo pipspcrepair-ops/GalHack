@@ -46,7 +46,50 @@
     { "id": "keycard-command", "name": "Command keycard", "short": "KEY-CMD", "category": "unique", "rarity": "exotic", "source": "explore", "mass": 0.02, "volume": 0.02, "stack": 4,
       "where": "Places: on their dead", "uses": "Opens every door" },
     { "id": "rare-tissue", "name": "Rare tissue", "short": "TISSUE", "category": "raw", "rarity": "uncommon", "source": "harvest", "mass": 0.2, "volume": 0.2, "stack": 50,
-      "where": "Some creatures", "uses": "Research (later)" }
+      "where": "Some creatures", "uses": "Research (later); grown weapons" },
+
+    // ---- Weapons: the first twelve (docs/weapon-ideas.md section 8). Each is a row in
+    // shared/Arms/data/weapons.json; here are its item, its tech-tree node (level, tab and cost from
+    // docs/tech-tree-pacing.md section 3b) and below its recipe. A weapon's own new ammo costs
+    // nothing and opens with it: unlocking a weapon unlocks its ammo. Living weapons eat plain biomass.
+    { "id": "tack-pistol", "name": "Tack Pistol", "short": "TACK", "category": "weapon", "rarity": "common", "mass": 1.1, "volume": 1.5,
+      "uses": "Sidearm", "unlock": { "level": 2, "cost": 1, "tab": "weapons" } },
+    { "id": "pump-scattergun", "name": "Pump Scattergun", "short": "PUMP", "category": "weapon", "rarity": "common", "mass": 3.4, "volume": 4,
+      "uses": "Close range · buck / slug", "unlock": { "level": 6, "cost": 2, "tab": "weapons" } },
+    { "id": "line-rifle", "name": "Line Rifle", "short": "LINE", "category": "weapon", "rarity": "common", "mass": 3.6, "volume": 4,
+      "uses": "Auto · burst · single", "unlock": { "level": 7, "cost": 2, "tab": "weapons" } },
+    { "id": "pressure-thrower", "name": "Pressure Thrower", "short": "FLAME", "category": "weapon", "rarity": "common", "mass": 7, "volume": 6,
+      "uses": "Burning cone · burnstone", "unlock": { "level": 7, "cost": 2, "tab": "weapons" } },
+    { "id": "break-launcher", "name": "Break Launcher", "short": "BREAK", "category": "weapon", "rarity": "uncommon", "mass": 4.2, "volume": 5,
+      "uses": "Grenades · impact / bounce", "unlock": { "level": 8, "cost": 2, "tab": "weapons" } },
+    { "id": "shoulder-tube", "name": "Shoulder Tube", "short": "TUBE", "category": "weapon", "rarity": "uncommon", "mass": 6.5, "volume": 7,
+      "uses": "Rockets · backblast", "unlock": { "level": 9, "cost": 2, "tab": "weapons" } },
+    { "id": "prox-mine", "name": "Prox Mine", "short": "MINE", "category": "weapon", "rarity": "uncommon", "mass": 0.9, "volume": 0.6, "stack": 10,
+      "uses": "Sticks · 2 m trigger", "unlock": { "level": 10, "cost": 2, "tab": "weapons" } },
+    { "id": "hornet-hive", "name": "Hornet Hive", "short": "HIVE", "category": "weapon", "rarity": "uncommon", "mass": 2.2, "volume": 3,
+      "uses": "Seeking swarm · biomass", "unlock": { "level": 11, "cost": 3, "tab": "weapons" } },
+    { "id": "stage-rifle", "name": "Stage Rifle", "short": "STAGE", "category": "weapon", "rarity": "uncommon", "mass": 4.8, "volume": 5,
+      "uses": "Charge · 4 stages · pierce", "unlock": { "level": 14, "cost": 3, "tab": "weapons" } },
+    { "id": "wormspitter", "name": "Wormspitter", "short": "WORMS", "category": "weapon", "rarity": "uncommon", "mass": 3.0, "volume": 4,
+      "uses": "Sticks · burrows · biomass", "unlock": { "level": 14, "cost": 3, "parent": "hornet-hive", "tab": "weapons" } },
+    { "id": "fork-gun", "name": "Fork Gun", "short": "FORK", "category": "weapon", "rarity": "uncommon", "mass": 3.2, "volume": 4,
+      "uses": "Arc · 3 jumps · cells", "unlock": { "level": 16, "cost": 3, "tab": "weapons" } },
+    { "id": "bend-rounds", "name": "Bend Rounds", "short": "BEND", "category": "weapon", "rarity": "uncommon", "mass": 3.0, "volume": 4,
+      "uses": "Homing rounds", "unlock": { "level": 16, "cost": 3, "tab": "weapons" } },
+
+    // ---- Their ammo (pistol rounds, rockets, energy cells and burnstone packs are the catalogue's own) ----
+    { "id": "rifle-rounds", "name": "Rifle rounds", "short": "RIFLE", "category": "ammo", "rarity": "common", "mass": 0.9, "volume": 0.5, "rounds": 30, "restock": 4,
+      "unlock": { "level": 7, "cost": 0, "parent": "line-rifle", "tab": "weapons" } },
+    { "id": "buck-shells", "name": "Buckshot shells", "short": "BUCK", "category": "ammo", "rarity": "common", "mass": 0.8, "volume": 0.5, "rounds": 12, "restock": 4,
+      "unlock": { "level": 6, "cost": 0, "parent": "pump-scattergun", "tab": "weapons" } },
+    { "id": "slug-shells", "name": "Slug shells", "short": "SLUG", "category": "ammo", "rarity": "common", "mass": 0.9, "volume": 0.5, "rounds": 8, "restock": 4,
+      "unlock": { "level": 6, "cost": 0, "parent": "pump-scattergun", "tab": "weapons" } },
+    { "id": "launcher-grenades", "name": "Launcher grenades", "short": "GRENADE", "category": "ammo", "rarity": "uncommon", "mass": 2.0, "volume": 1, "rounds": 4, "restock": 4,
+      "unlock": { "level": 8, "cost": 0, "parent": "break-launcher", "tab": "weapons" } },
+    { "id": "rail-slugs", "name": "Rail slugs", "short": "SLUGS", "category": "ammo", "rarity": "common", "mass": 1.6, "volume": 0.5, "rounds": 16, "restock": 4,
+      "unlock": { "level": 14, "cost": 0, "parent": "stage-rifle", "tab": "weapons" } },
+    { "id": "smart-rounds", "name": "Smart rounds", "short": "SMART", "category": "ammo", "rarity": "common", "mass": 0.8, "volume": 0.5, "rounds": 24, "restock": 4,
+      "unlock": { "level": 16, "cost": 0, "parent": "bend-rounds", "tab": "weapons" } }
   ],
   "recipes": [
     // Free, always: you wake empty-handed and make it first. Once made it is never dropped on death.
@@ -60,7 +103,27 @@
     { "make": "plasma-drill",  "count": 1, "from": { "mining-drill": 1, "hull-plate": 4, "circuit-board": 3, "winding": 2 }, "seconds": 24, "tier": 1 },
     { "make": "trail-ration",  "count": 1, "from": { "biomass": 2 },                                     "seconds": 3,  "tier": -1 },
     { "make": "patch-kit",     "count": 1, "from": { "biomass": 2, "silicon-ore": 1 },                   "seconds": 4,  "tier": -1 },
-    { "make": "air-cell",      "count": 1, "from": { "biomass": 3 },                                     "seconds": 4,  "tier": -1 }
+    { "make": "air-cell",      "count": 1, "from": { "biomass": 3 },                                     "seconds": 4,  "tier": -1 },
+    // Weapons: low-tech in the survival constructor, mid in the small and portable ones, high in the large.
+    { "make": "tack-pistol",      "count": 1, "from": { "iron-bar": 6, "copper-wire": 2 },                         "seconds": 8,  "tier": 0 },
+    { "make": "pressure-thrower", "count": 1, "from": { "hull-plate": 4, "iron-bar": 4, "copper-wire": 4, "polymer": 2 }, "seconds": 14, "tier": 1 },
+    { "make": "pump-scattergun",  "count": 1, "from": { "gun-barrel": 1, "iron-bar": 6, "polymer": 2 },            "seconds": 12, "tier": 1 },
+    { "make": "line-rifle",       "count": 1, "from": { "gun-barrel": 1, "iron-bar": 8, "circuit-board": 1, "polymer": 2 }, "seconds": 14, "tier": 1 },
+    { "make": "break-launcher",   "count": 1, "from": { "gun-barrel": 1, "hull-plate": 4, "circuit-board": 1 },     "seconds": 14, "tier": 1 },
+    { "make": "shoulder-tube",    "count": 1, "from": { "hull-plate": 6, "circuit-board": 2, "gun-barrel": 1 },     "seconds": 16, "tier": 1 },
+    { "make": "prox-mine",        "count": 1, "from": { "explosive-charge": 1, "circuit-board": 1, "hull-plate": 1 }, "seconds": 5, "tier": 1 },
+    { "make": "hornet-hive",      "count": 1, "from": { "hide": 6, "rare-tissue": 2, "polymer": 2 },              "seconds": 16, "tier": 1 },
+    { "make": "stage-rifle",      "count": 1, "from": { "gun-barrel": 2, "magnet": 4, "circuit-board": 3, "hull-plate": 3 }, "seconds": 24, "tier": 2 },
+    { "make": "wormspitter",      "count": 1, "from": { "hide": 8, "rare-tissue": 3, "polymer": 3 },              "seconds": 20, "tier": 2 },
+    { "make": "fork-gun",         "count": 1, "from": { "winding": 4, "magnet": 2, "circuit-board": 3, "hull-plate": 2 }, "seconds": 24, "tier": 2 },
+    { "make": "bend-rounds",      "count": 1, "from": { "gun-barrel": 1, "logic-module": 2, "circuit-board": 2, "hull-plate": 2 }, "seconds": 24, "tier": 2 },
+    // Their ammo: one box a run, as every ammo recipe.
+    { "make": "rifle-rounds",      "count": 1, "from": { "iron-bar": 1, "propellant": 2 },                       "seconds": 3, "tier": 0 },
+    { "make": "buck-shells",       "count": 1, "from": { "iron-bar": 1, "propellant": 1 },                       "seconds": 2, "tier": 0 },
+    { "make": "slug-shells",       "count": 1, "from": { "iron-bar": 2, "propellant": 1 },                       "seconds": 2, "tier": 0 },
+    { "make": "launcher-grenades", "count": 1, "from": { "explosive-charge": 1, "iron-bar": 1 },                 "seconds": 4, "tier": 1 },
+    { "make": "rail-slugs",        "count": 1, "from": { "iron-bar": 3, "graphite": 1 },                         "seconds": 4, "tier": 2 },
+    { "make": "smart-rounds",      "count": 1, "from": { "iron-bar": 1, "propellant": 1, "circuit-board": 1 },   "seconds": 4, "tier": 1 }
   ],
   "replaceRecipes": [
     { "make": "survival-constructor", "count": 1, "from": { "iron-ore": 16, "copper-ore": 8, "silicon-ore": 4 }, "seconds": 20, "tier": -1 }

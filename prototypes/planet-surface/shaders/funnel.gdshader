@@ -19,6 +19,8 @@ uniform float seed = 0.0;
 uniform float clean = 0.0;        // 1: a smooth pale cone, lit from the side
 uniform float decay = 0.0;        // 0..1: stretching into a contorted rope that breaks up
 uniform vec2 bow = vec2(0.0);     // metres the middle of the funnel stands off the straight line
+uniform float s_bend = 0.4;       // how far its centre line snakes in an S on top of the bow (a waterspout's rope, a dust devil)
+uniform float top_fade = 0.0;     // 1: it thins out into clear air toward its top instead of entering a cloud (a dust devil)
 
 varying float h;
 varying vec3 local;
@@ -35,10 +37,12 @@ void vertex() {
 	prof *= 1.0 + (0.18 * sin(h * 11.0 + seed) + 0.1 * sin(h * 23.0 + seed * 2.0)) * smoothstep(0.1, 0.4, shape + 0.15);
 	VERTEX.xz *= prof / base;
 	local = VERTEX;
-	float bowed = sin(3.14159 * h) + 0.4 * sin(6.2832 * h + TIME * 0.2 + seed);
+	// Every bend is measured from the ground: the funnel's foot stays on the point the model says it
+	// touches (TornadoFx.CentreLine, the same sums), and it bends up from there to the cloud.
+	float bowed = sin(3.14159 * h) + s_bend * (sin(6.2832 * h + TIME * 0.2 + seed) - sin(TIME * 0.2 + seed));
 	VERTEX.xz += bow * bowed * (1.0 + 3.0 * decay);
-	VERTEX.xz += vec2(cos(seed), sin(seed)) * decay * 50.0 * sin(h * 14.0 + TIME * 0.8) * (1.0 - h);
-	float snake = sin(TIME * 0.7 + h * 5.0) * 3.5 * (1.0 - h) + sin(TIME * 0.31 + h * 2.0) * 6.0 * h;
+	VERTEX.xz += vec2(cos(seed), sin(seed)) * decay * 50.0 * (sin(h * 14.0 + TIME * 0.8) - sin(TIME * 0.8)) * (1.0 - h);
+	float snake = (sin(TIME * 0.7 + h * 5.0) - sin(TIME * 0.7)) * 3.5 * (1.0 - h) + sin(TIME * 0.31 + h * 2.0) * 6.0 * h;
 	VERTEX.xz += lean * h * h + vec2(snake, snake * 0.6);
 }
 
@@ -59,7 +63,7 @@ void fragment() {
 	float edge = 1.0 - abs(dot(NORMAL, VIEW));
 	float alpha = (0.6 + 0.4 * pow(edge, 1.2)) * (0.6 + 0.4 * streaks);
 	alpha *= smoothstep(reach - rope, reach - rope + 0.05, h);        // soft rope tip
-	alpha *= 1.0 - smoothstep(0.82, 1.0, h) * 0.85;                    // melts into the cloud base
+	alpha *= mix(1.0 - smoothstep(0.82, 1.0, h) * 0.85, 1.0 - smoothstep(0.1, 0.95, h), top_fade); // melts into the cloud base, or into clear air
 	alpha *= smoothstep(0.0, 0.04, h + 0.02);
 
 	vec3 side = normalize(vec3(local.x, 0.0, local.z) + vec3(0.0001));

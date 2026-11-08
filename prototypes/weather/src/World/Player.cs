@@ -177,19 +177,15 @@ public partial class Player : CharacterBody3D, IForceBody
         if (!onFloor && IsOnFloor()) Land(fallSpeed);
     }
 
-    /// <summary>
-    /// Touching down: fall damage, unless you're coming down from a tornado fling, in which
-    /// case the force module's fling floor keeps you alive however hard you land.
-    /// </summary>
+    /// <summary>Touching down: fall damage, a tornado's fling or not.</summary>
     void Land(float speed)
     {
-        float floor = Forces?.FlingFloor(this) ?? 0f;
-        float dealt = Health.Hit(DamageRules.FallDamage(speed), floor * Health.Max);
-        Forces?.Landed(this);
+        bool flung = Forces?.PhaseOf(this) == VortexPhase.Released;
+        float dealt = Health.Hit(DamageRules.FallDamage(speed));
         if (dealt > 0f)
         {
             Shake += Mathf.Clamp(dealt / 20f, 0.3f, 2f);
-            Landed?.Invoke(dealt, floor > 0f);
+            Landed?.Invoke(dealt, flung);
         }
         if (Health.Dead) Die();
     }

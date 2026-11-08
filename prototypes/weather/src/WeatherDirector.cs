@@ -63,7 +63,7 @@ public partial class WeatherDirector : Node
         Forces.Register(rover);
         Forces.PhaseChanged += OnPhase;
         Player.Landed += (dealt, flung) =>
-            Say(flung ? $"Thrown down hard: -{dealt:F0}. The fall can't kill you." : $"Hard landing: -{dealt:F0}", danger: true);
+            Say(flung ? $"Thrown down hard: -{dealt:F0}" : $"Hard landing: -{dealt:F0}", danger: true);
         UpdateMovingPoints();
     }
 

@@ -337,6 +337,11 @@ public sealed class WildSim
         c.Thrown = true;
         c.Velocity = velocity;
         c.Position += Vector3.Up * 0.3f;
+        // Thrown unevenly, it turns end over end about the way it flies, and round with the throw; the
+        // smaller it is the faster.
+        var flat = new Vector3(velocity.X, 0f, velocity.Z);
+        float size = MathF.Max(0.3f, c.Species.Body.Size);
+        c.TumbleSpin = (Vector3.Up.Cross(flat) * 0.35f + Vector3.Up * flat.Length() * 0.15f) / size;
     }
 
     /// <summary>
@@ -499,6 +504,39 @@ public sealed class WildSim
 
     // ---- Stepping ---------------------------------------------------------------------
 
+    /// <summary>Personal space: no two bodies on the ground pass through each other, nor through you (<see cref="PersonalSpace"/>).</summary>
+    public readonly PersonalSpace Space = new();
+    readonly List<Creature> _spaced = new();
+
+    void KeepApart(float dt)
+    {
+        Space.Bodies.Clear();
+        _spaced.Clear();
+        foreach (Creature c in Creatures)
+        {
+            // (Not one closing to strike or seize: an attack needs its reach.)
+            if (c.Removed || c.Dead || c.Dormant || c.HeldBy != null || c.Holding != null || c.Attacking || c.Space != null || c.Thrown || c.InWalls
+                || c.Species.Rig is RigKind.Swarm or RigKind.GasBag || c.Species.Flies && !c.Landed) continue; // (a swarm is a cloud, a gas bag floats)
+            Vector3 v = Flat(c.Velocity);
+            Space.Bodies.Add(new PersonalSpace.Body { Pos = c.Position, Radius = c.Radius, Heading = v.LengthSquared() > 0.04f ? v.Normalized() : Vector3.Zero, Give = c.Attacking ? 0.4f : 1f });
+            _spaced.Add(c);
+        }
+        if (_spaced.Count == 0) return;
+        // Whoever the creatures meet on foot (you, a town's people) gives nothing here: they are stepped round.
+        foreach (ITarget t in Targets)
+            if (t.Attackable) Space.Bodies.Add(new PersonalSpace.Body { Pos = t.Position, Radius = 0.35f, Give = 0f });
+        Space.Resolve(dt, SolidAt == null ? null : p => !SolidAt(p + Vector3.Up * 0.4f), 4);
+        for (int i = 0; i < _spaced.Count; i++)
+        {
+            Vector3 moved = Space.Bodies[i].Moved;
+            if (moved.LengthSquared() <= 1e-8f) continue;
+            Creature c = _spaced[i];
+            Vector3 was = c.Position;
+            c.Position += new Vector3(moved.X, 0f, moved.Z);
+            if (Interpenetration.Inside(this, c)) c.Position = was; // never shoved into a wall
+        }
+    }
+
     public void Step(float dt)
     {
         Time += dt;
@@ -568,6 +606,7 @@ public sealed class WildSim
             RigMs += rigTicks * ms;
         }
 
+        if (!Frozen) KeepApart(dt);
         if (Colonies.Count > 0) Colony.StepAll(this, dt);
         if (Masses.Count > 0) WormMasses.Step(this, dt);
         if (Settlements.Count > 0 && Frame % 15 == 0) WatchTowns();
@@ -642,6 +681,17 @@ public sealed class WildSim
         if (c.Species.Rig == RigKind.Swarm)
             c.SwarmAlive = Math.Max(0, (int)MathF.Ceiling(c.Species.Body.Members * MathF.Max(0f, c.Health) / c.Stats.MaxHealth));
         if (c.Health <= 0f) Kill(c, source);
+    }
+
+    /// <summary>Something it can't face (a flame) sends it running from a point for so many seconds, whatever its temper; it thinks again at once.</summary>
+    public void Scare(Creature c, Vector3 from, float seconds)
+    {
+        if (c.Dead || seconds <= 0f) return;
+        c.ScaredUntil = MathF.Max(c.ScaredUntil, Time + seconds);
+        c.ScaredFrom = from;
+        c.Think = 0f;
+        c.ThinkEvery = 0f;
+        c.Herd?.Alarm(from, Time);
     }
 
     public void Kill(Creature c, ITarget killer)

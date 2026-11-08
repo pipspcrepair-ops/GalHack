@@ -12,8 +12,9 @@ namespace Slice.Ui;
 
 /// <summary>
 /// One constructor's manufacturing panel (shared/Items' constructor, as the manufacturing
-/// prototype's screens read it): what it can make, with a filter bar over the list (text,
-/// categories, sort) and a tooltip on every row, ordered 1, 5 or 10 at a time; your orders with
+/// prototype's screens read it): what it can make, each with its inputs' icons and counts (see
+/// <see cref="Ingredients"/>), with a filter bar over the list (text, categories, sort) and a
+/// tooltip on every row, ordered 1, 5 or 10 at a time; your orders with
 /// the sub-parts it planned by itself under each; exactly what is stopping it (a material short,
 /// a part a bigger constructor makes, a lock); and its ammo restock lane. Things the tech tree
 /// hasn't unlocked, or that need a bigger constructor, are greyed out with the reason. The same
@@ -86,7 +87,11 @@ public sealed class ConstructorSection : IMenuSection
         int perPage = Math.Max(3, (int)((area.End.Y - QueueH - 40 - listTop) / (RowH + RowGap)));
         _scroll = Math.Clamp(_scroll, 0, Math.Max(0, (list.Count - 1) / perPage));
         float y = listTop;
-        const float ButtonW = 42, TimeW = 44, NameW = 168;
+        const float ButtonW = 42, TimeW = 44;
+        // The inputs' slots line up down the list; the name takes what they leave (narrow on an in-world screen).
+        float slot = Ingredients.Slot(RowH, list);
+        float room = area.Size.X - (RowH + 8) - 6 - TimeW - 6 - 3 * (ButtonW + 3);
+        float nameW = Math.Clamp(room - Ingredients.Room(slot, list), 130, 220);
         for (int i = 0; i < perPage; i++)
         {
             int k = _scroll * perPage + i;
@@ -96,18 +101,19 @@ public sealed class ConstructorSection : IMenuSection
             var row = new Rect2(o.X, y, area.Size.X, RowH);
             g.Fill(row, g.Back(new Color(known && allowed ? C.Panel : C.Glass, 0.75f)));
             g.Fill(new Rect2(row.Position, new Vector2(4, row.Size.Y)), new Color(Rarities.Color(item.Rarity) << 8 | 0xff));
-            if (g.Drawing && ItemIcons.Shared?.Get(item) is Texture2D icon)
-                g.Canvas.DrawTextureRect(icon, new Rect2(row.Position + new Vector2(7, 2), new Vector2(RowH - 4, RowH - 4)), false, new Color(1, 1, 1, known && allowed ? 1f : 0.45f));
+            if (ItemIcons.Shared?.Get(item) is Texture2D icon)
+                g.Image(icon, new Rect2(row.Position + new Vector2(7, 2), new Vector2(RowH - 4, RowH - 4)), new Color(1, 1, 1, known && allowed ? 1f : 0.45f));
             float x = row.Position.X + RowH + 8;
-            g.TextIn(HudLayout.Fit(UiTheme.Label, 14, $"{item.Name}{(item.Recipe.Count > 1 ? $" ×{item.Recipe.Count}" : "")}", NameW), new Rect2(x, y, NameW, RowH), known && allowed ? C.Text : C.Dim, 14);
-            x += NameW + 6;
+            g.TextIn(HudLayout.Fit(UiTheme.Label, 14, $"{item.Name}{(item.Recipe.Count > 1 ? $" ×{item.Recipe.Count}" : "")}", nameW), new Rect2(x, y, nameW, RowH), known && allowed ? C.Text : C.Dim, 14);
+            x += nameW + 6;
             float buttons = row.End.X - 3 * (ButtonW + 3);
             float inputsW = buttons - TimeW - 6 - x;
+            // The row's tooltip first: an input's own, over its icon, wins.
+            g.SetTip(new Rect2(row.Position, new Vector2(buttons - row.Position.X, row.Size.Y)), () => Tooltips.For(_game, item, 0));
             if (!known || !allowed)
                 g.TextIn(HudLayout.Fit(UiTheme.Label, 12, !known ? $"{c.Items.Machines.TierName(item.Recipe.Tier).ToUpperInvariant()} CONSTRUCTOR" : $"LV {p.Node(item.Id)?.Level}", inputsW), new Rect2(x, y, inputsW, RowH), C.Warn, 12);
-            else Inputs(g, c, item, new Rect2(x, y, inputsW, RowH));
+            else Ingredients.Draw(g, _game, new Rect2(x, y, inputsW, RowH), item.Recipe.Inputs, slot, input => c.Storage.Count(input.Id), c.Knows);
             g.TextIn($"{c.RunSeconds(item.Recipe):0.#}s", new Rect2(buttons - TimeW - 4, y, TimeW, RowH), C.Dim, 12, HorizontalAlignment.Right, UiTheme.Mono);
-            g.SetTip(new Rect2(row.Position, new Vector2(buttons - row.Position.X, row.Size.Y)), () => Tooltips.For(_game, item, 0));
             int[] counts = { 1, 5, 10 };
             for (int n = 0; n < counts.Length; n++)
             {
@@ -163,26 +169,6 @@ public sealed class ConstructorSection : IMenuSection
             if (g.Button($"restock:{_key}", new Rect2(o.X, y + 6, 200, 30), c.Restock.Enabled ? "AMMO RESTOCK ON" : "AMMO RESTOCK OFF", C.Accent2, lit: c.Restock.Enabled))
                 c.Restock.Enabled = !c.Restock.Enabled;
             g.Text(c.Restock.Status, new Vector2(o.X + 210, y + 12), C.Dim, 12);
-        }
-    }
-
-    /// <summary>
-    /// A recipe's inputs on one line, each "count NAME": plain when it is in store, amber when short
-    /// but this constructor makes it as a sub-part, red when short and it can't.
-    /// </summary>
-    static void Inputs(Gui g, Constructor c, ItemDef item, Rect2 r)
-    {
-        float x = r.Position.X;
-        foreach (var (id, need) in item.Recipe.InputsFor(1))
-        {
-            ItemDef input = c.Items.Item(id);
-            int have = c.Storage.Count(id);
-            Color tone = have >= need ? C.Text : c.Knows(input) ? C.Warn : C.Danger;
-            string text = $"{need} {input.ShortName}";
-            float w = Paint.TextWidth(UiTheme.Label, 12, text);
-            if (x + w > r.End.X) { g.TextIn("…", new Rect2(x, r.Position.Y, r.End.X - x, r.Size.Y), C.Dim, 12); break; }
-            g.TextIn(text, new Rect2(x, r.Position.Y, w + 1, r.Size.Y), tone, 12);
-            x += w + 10;
         }
     }
 

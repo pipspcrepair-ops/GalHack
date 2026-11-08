@@ -1551,7 +1551,71 @@ public partial class SurfaceTest : Node
         float dawn = Atmosphere.Compute(sky, sim.Current, 0.02f).ValleyFog, noon = Atmosphere.Compute(sky, sim.Current, 0.8f).ValleyFog;
         float dry = Atmosphere.Compute(SkySystem.For(PlanetSpec.Roll(1, Archetype.Arid, 0)), sim.Current, 0.02f).ValleyFog;
         Check(dawn > 0.5f && noon < 0.05f && dry < 0.2f, $"valley fog pools at dawn on a humid world ({dawn:F2}), burns off by noon ({noon:F2}), stays thin in dusty air ({dry:F2})");
+        FrontChecks(data);
         await Frames(1);
+    }
+
+    /// <summary>
+    /// Storms come on a front (fresh seeds every run): it forms upwind in sight before it arrives, advances
+    /// with the storm's wind at its own pace, reaches the observer, and is the same at every copy of a point
+    /// on the wrapping world (no seam), its cells lined up just behind its edge.
+    /// </summary>
+    void FrontChecks(WeatherData data)
+    {
+        var rng = new Random();
+        int formed = 0, reached = 0, seamless = 0, probes = 0, cellsOnEdge = 0, cells = 0;
+        float worstAlign = 1f, worstPace = 0f;
+        double shortestLead = double.MaxValue;
+        for (int run = 0; run < 8; run++)
+        {
+            var sim = new WeatherSim(data, "storm", (ulong)rng.NextInt64(1, long.MaxValue), WeatherKind.Clear);
+            float width = rng.Next(3) switch { 0 => 16000f, 1 => 32000f, _ => 64000f };
+            sim.WorldSize = new Vector2(width, width / 2f);
+            var me = new Vector3(rng.NextSingle() * width, 0f, rng.NextSingle() * width / 2f);
+            Front seen = null;
+            float startAhead = 0f;
+            double startTime = 0;
+            for (int i = 0; i < 4 * 3600; i++)
+            {
+                sim.Step(1f, me);
+                Front f = sim.Front;
+                if (f != null && f != seen)
+                {
+                    seen = f;
+                    formed++;
+                    startAhead = f.Ahead(me);
+                    startTime = sim.Time;
+                    Segment s = sim.SegmentAt(sim.Time + startAhead / f.Speed);
+                    Vector2 wind = s.To.Wind.LengthSquared() > 0.01f ? s.To.Wind.Normalized() : f.Heading;
+                    worstAlign = MathF.Min(worstAlign, f.Heading.Dot(wind));
+                    shortestLead = Math.Min(shortestLead, startAhead / f.Speed);
+                    // The same front at every copy of a point across the wrap.
+                    for (int k = 0; k < 20; k++)
+                    {
+                        var p = new Vector3(rng.NextSingle() * width, 0f, rng.NextSingle() * width / 2f);
+                        var q = p + new Vector3(width * rng.Next(-2, 3), 0f, width / 2f * rng.Next(-2, 3));
+                        probes++;
+                        if (MathF.Abs(f.Ahead(p) - f.Ahead(q)) < 0.5f && MathF.Abs(f.Cover(p) - f.Cover(q)) < 1e-3f) seamless++;
+                    }
+                }
+                if (f != null && f == seen && sim.Time - startTime == 10)
+                    worstPace = MathF.Max(worstPace, MathF.Abs((startAhead - f.Ahead(me)) / 10f - f.Speed) / f.Speed);
+                if (f != null && f.Kind == FrontKind.Storm && f.Strength > 0.9f && i % 60 == 0)
+                    foreach (StormCell c in sim.Cells)
+                    {
+                        if (!c.OnFront || c.Funnel != null || c.Strength < 0.5f) continue;
+                        cells++;
+                        float a = f.Ahead(c.Position);
+                        if (a < 0f && a > -c.Radius * 1.6f) cellsOnEdge++;
+                    }
+                if (f != null && f.Ahead(me) < 0f && f.Strength > 0.5f) { reached++; seen = f; }
+            }
+        }
+        Check(formed >= 3 && shortestLead >= 60.0, $"storms come on fronts that form in sight before they arrive: {formed} fronts in 32 hours of storm-world weather, the shortest lead {shortestLead:F0} s");
+        Check(worstAlign > 0.9f && worstPace < 0.02f, $"a front advances with its storm's wind: heading within {MathF.Acos(MathF.Min(1f, worstAlign)) * 57.3f:F0} degrees of it, its pace off by at most {worstPace * 100f:F1}%");
+        Check(reached > 0, $"a front reaches the observer and passes over ({reached} seconds under its storm)");
+        Check(probes > 0 && seamless == probes, $"a front is the same at every copy of a point across the wrap: {seamless} of {probes} points");
+        Check(cells > 0 && cellsOnEdge == cells, $"a front's cells line up just behind its edge: {cellsOnEdge} of {cells} looks");
     }
 
     // ---- Reporting ---------------------------------------------------------------------------

@@ -40,25 +40,68 @@ public static partial class DecoModels
         b.Cyl(0, 0.06f, 0, 0.03f, seatY - 0.06f, DecoSlot.Metal, 6);
     }
 
-    /// <summary>A row of books on a shelf from x0 to x1, in assorted colours and heights.</summary>
+    /// <summary>
+    /// A row of books on a shelf between x0 and x1, the faces of what bounds it (the case's sides,
+    /// taller than any book), in assorted colours and heights. Most stand upright side by side. Now
+    /// and then a run leans over from the last upright book (or from the side, when the shelf starts
+    /// with it): each book rests against the one before, its foot on the shelf, at the angle at which
+    /// it touches. Now and then a few lie flat in a stack. Across a gap nothing leans: it would lean on air.
+    /// </summary>
     static void Books(DecoBuilder b, float x0, float x1, float y, float z0, float z1, float maxH)
     {
         DecoSlot[] covers = { DecoSlot.Trim, DecoSlot.Fabric, DecoSlot.Paper, DecoSlot.Alert, DecoSlot.Dark, DecoSlot.Wood };
+        DecoSlot Cover() => covers[b.Rng.Int(covers.Length)];
         float x = x0;
+        // What a leaning book would rest on: its face and how tall it stands. The side to begin with, then
+        // the last upright book; nothing (0) after a gap or a stack.
+        float holdX = x0, holdH = maxH * 10;
         while (x < x1 - 0.03f)
         {
             float w = b.Rng.Range(0.025f, 0.06f), h = maxH * b.Rng.Range(0.65f, 1f);
             if (x + w > x1) break;
-            if (b.Rng.Chance(0.12f) && x + h * 0.7f < x1)
+            if (b.Rng.Chance(0.05f) && x + maxH + 0.02f < x1)
             {
-                // One leaning over.
-                using (b.Turn(new System.Numerics.Vector3(x, y, 0), 0, 0, -35))
-                    b.Box(x, y, z0 + 0.02f, x + w, y + h, z1 - 0.02f, covers[b.Rng.Int(covers.Length)]).Soft().Ghost();
-                break;
+                // A stack lying flat, each on the one below.
+                int n = 2 + b.Rng.Int(3);
+                float sy = y, len = maxH * b.Rng.Range(0.65f, 0.95f), x2 = x + 0.01f + len;
+                for (int i = 0; i < n; i++)
+                {
+                    float t = b.Rng.Range(0.025f, 0.05f), l = len * b.Rng.Range(0.85f, 1f);
+                    b.Box(x + 0.01f, sy, z0 + b.Rng.Range(0f, 0.03f), x + 0.01f + l, sy + t, z1 - 0.01f, Cover()).Soft().Ghost().As(DecoFinish.Paper);
+                    sy += t;
+                }
+                x = x2 + 0.01f;
+                holdH = 0;
+                continue;
             }
-            b.Box(x, y, z0 + b.Rng.Range(0f, 0.04f), x + w, y + h, z1 - 0.01f, covers[b.Rng.Int(covers.Length)]).Soft().Ghost();
+            if (holdH > 0 && b.Rng.Chance(0.12f))
+            {
+                // A run leaning over: the first against what stands at x, the rest each against the one before.
+                float gap = b.Rng.Range(0.04f, 0.1f);
+                float angle = MathF.Asin(MathF.Min(gap / h, MathF.Sin(40 * DecoGeo.Deg)));
+                // Its top corner touches a support that reaches that high; a shorter one it rests on by its top edge.
+                if (holdH < h * MathF.Cos(angle)) angle = MathF.Atan2(gap, holdH);
+                float foot = holdX + (holdH < h * MathF.Cos(angle) ? holdH * MathF.Tan(angle) : h * MathF.Sin(angle));
+                int run = 1 + b.Rng.Int(3);
+                for (int i = 0; i < run; i++)
+                {
+                    float bw = i == 0 ? w : b.Rng.Range(0.025f, 0.06f), bh = i == 0 ? h : MathF.Min(h, maxH * b.Rng.Range(0.65f, 1f));
+                    if (foot + bw * MathF.Cos(angle) > x1) break;
+                    // Pivot on its foot (the corner nearest the support), turned until it lies against the support.
+                    using (b.Turn(new System.Numerics.Vector3(foot, y, 0), 0, 0, angle / DecoGeo.Deg))
+                        b.Box(foot, y, z0 + 0.02f, foot + bw, y + bh, z1 - 0.02f, Cover()).Soft().Ghost().As(DecoFinish.Paper);
+                    x = foot + bw * MathF.Cos(angle) + 0.004f;
+                    // The next lies along this one's face: its foot where that face meets the shelf.
+                    foot += bw / MathF.Cos(angle);
+                }
+                holdH = 0;
+                continue;
+            }
+            b.Box(x, y, z0 + b.Rng.Range(0f, 0.04f), x + w, y + h, z1 - 0.01f, Cover()).Soft().Ghost().As(DecoFinish.Paper);
+            holdX = x + w;
+            holdH = h;
             x += w + 0.004f;
-            if (b.Rng.Chance(0.08f)) x += 0.08f;
+            if (b.Rng.Chance(0.08f)) { x += 0.08f; holdH = 0; }
         }
     }
 

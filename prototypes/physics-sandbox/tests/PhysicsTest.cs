@@ -1690,19 +1690,16 @@ public partial class PhysicsTest : Node
     sealed class FlingRun
     {
         public bool Caught, Released, Landed, Dead, CrateKept;
-        public float Peak, LandingSpeed, Raw, Share, FloorSeen, CratePeak, CrateDamage, NoFlingShare;
+        public float Peak, LandingSpeed, Raw, Share, CratePeak, CrateDamage, NoFlingShare;
         public int Ticks;
 
         /// <summary>Every number, exactly, for comparing runs.</summary>
         public string Key =>
-            $"{Caught} {Released} {Landed} {Dead} {CrateKept} {Ticks} {Peak:R} {LandingSpeed:R} {Raw:R} {Share:R} {FloorSeen:R} {CratePeak:R} {CrateDamage:R} {NoFlingShare:R}";
+            $"{Caught} {Released} {Landed} {Dead} {CrateKept} {Ticks} {Peak:R} {LandingSpeed:R} {Raw:R} {Share:R} {CratePeak:R} {CrateDamage:R} {NoFlingShare:R}";
     }
 
-    /// <summary>
-    /// The player's health when the tornado catches them: low enough that the fling's landing would
-    /// take them under the 15% floor (a player lands on their legs, so it takes a hard landing).
-    /// </summary>
-    const float FlingStartShare = 0.2f;
+    /// <summary>The player's health when the tornado catches them: the landing takes what it takes, with nothing held back.</summary>
+    const float FlingStartShare = 0.6f;
 
     /// <summary>
     /// The tornado fling, run twice, each time in a fresh world of its own: its numbers depend on
@@ -1728,13 +1725,13 @@ public partial class PhysicsTest : Node
         }
 
         FlingRun a = runs[0];
-        Check(a.Caught && a.Released && a.Landed && !a.Dead && MathF.Abs(a.Share - 0.15f) < 1e-5f && a.Raw > FlingStartShare - 0.15f && a.FloorSeen == 0.15f,
-            $"a tornado catches the player at {FlingStartShare:P0} health, carries them {a.Peak:F0} m up and flings them; the landing at {a.LandingSpeed:F0} m/s would cost " +
-            $"{a.Raw:P0} of their health, and they survive at exactly {a.Share:P2}: the fling floor, which belongs to the weather code");
+        Check(a.Caught && a.Released && a.Landed && a.Raw > 0f && a.Share <= MathF.Max(0f, FlingStartShare - a.Raw) + 1e-4f,
+            $"a tornado catches the player at {FlingStartShare:P0} health, carries them {a.Peak:F0} m up and flings them; the landing at {a.LandingSpeed:F0} m/s costs " +
+            $"{a.Raw:P0} of their health in full, leaving {a.Share:P1}{(a.Dead ? " (dead)" : "")}: no floor");
         Check(a.CratePeak > 8f && a.CrateKept && a.CrateDamage >= 0f,
             $"the crate beside them is flung {a.CratePeak:F0} m up too, and is still there when it lands ({a.CrateDamage:P0} damage)");
-        Check(a.NoFlingShare < 0.15f,
-            $"the same fall without a fling leaves them at {a.NoFlingShare:P0}: the 15% floor is the tornado's alone");
+        Check(MathF.Abs(a.NoFlingShare - a.Share) < 0.05f || a.NoFlingShare < FlingStartShare,
+            $"the same fall without a fling hurts the same way, by the one impact rule ({a.NoFlingShare:P0} left)");
         Check(a.Key == runs[1].Key,
             $"two separate fresh worlds, one after the other, run the tornado scenario to identical numbers, bit for bit ({a.Ticks} ticks: " +
             $"{a.Peak:F2} m up, landing at {a.LandingSpeed:F3} m/s, {a.Raw:P2} of their health, the crate {a.CratePeak:F2} m up)");
@@ -1772,7 +1769,6 @@ public partial class PhysicsTest : Node
                 run.Released = true;
                 w.Weather.Sim.ClearTornadoes(); // gone once it has thrown you: no second catch
             }
-            run.FloorSeen = MathF.Max(run.FloorSeen, w.Weather.FlingFloor(p.Body));
             peak = MathF.Max(peak, p.Body.Position.Y);
             cratePeak = MathF.Max(cratePeak, crate.Body.Position.Y);
             run.Landed = run.Released && p.Body.OnFloor && p.Body.WorldVelocity.Length() < 1f;

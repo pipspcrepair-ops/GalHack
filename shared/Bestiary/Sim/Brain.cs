@@ -62,6 +62,13 @@ public static partial class Brain
             return;
         }
 
+        // Fire: whatever it is and whatever it wanted, it runs until the fright wears off.
+        if (w.Time < c.ScaredUntil && c.Space == null)
+        {
+            Flee(w, c, c.ScaredFrom);
+            return;
+        }
+
         // A settlement's own animals keep to their pens and their people.
         if (c.Species.Domestic != DomesticKind.None)
         {
@@ -270,8 +277,15 @@ public static partial class Brain
                     break;
                 }
                 c.WantCrouch = 1f;
-                Steer(w, c, near.Position, c.Stats.WalkSpeed * 0.55f);
                 c.FacePoint = near.Position;
+                // Someone of a town in company is watched from cover, not taken: it waits for a straggler.
+                if (near is IHost && !CrossReactions.Alone(w.Targets, near, 9f))
+                {
+                    c.Desired = dist < 16f ? WildSim.Flat(c.Position - near.Position).Normalized() * c.Stats.WalkSpeed * 0.4f : dist > 24f ? SteerDir(w, c, near.Position) * c.Stats.WalkSpeed * 0.5f : Vector3.Zero;
+                    if (c.StateTime > 9f) c.StateTime = 2f; // still stalking
+                    break;
+                }
+                Steer(w, c, near.Position, c.Stats.WalkSpeed * 0.55f);
                 if (dist < Math.Max(8f, c.Stats.AttackRange * 3f) || c.StateTime > 10f) c.SetState(CState.Chase);
                 break;
             case CState.Chase:
@@ -812,7 +826,8 @@ public static partial class Brain
     static bool ShouldFlee(WildSim w, Creature c, ITarget near, float dist)
     {
         if (near == null) return false;
-        float radius = c.Stats.FleeRadius * near.ThreatScale;
+        // Townsfolk are kept off by each species' own shyness of people.
+        float radius = c.Stats.FleeRadius * near.ThreatScale * (near is IHost ? CrossReactions.Shyness(c.Species) : 1f);
         if (c.State == CState.Flee && dist < radius * 1.8f && c.StateTime < 8f) return true;
         return dist < radius;
     }
