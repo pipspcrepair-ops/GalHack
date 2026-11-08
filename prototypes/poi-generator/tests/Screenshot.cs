@@ -300,6 +300,32 @@ public partial class Screenshot : Node
             Frame(a[3]);
             return;
         }
+        // door:<family>:<state>: a fresh layout's way in, a 1.8 m figure beside it, from 7.5 m out at eye height, by day.
+        if (view.StartsWith("door:"))
+        {
+            string[] a = view.Split(':');
+            FamilyDef fam = m.Library.Families.First(f => f.Id == a[1]);
+            m.Inspect(a[1], (int)(System.Random.Shared.NextInt64() % fam.Variants.Count), Rarity.Common, System.Enum.Parse<PoiState>(a.Length > 2 ? a[2] : "Abandoned", true), (ulong)System.Random.Shared.NextInt64(), (ulong)System.Random.Shared.NextInt64());
+            Layout l = m.Stage.Poi.Layout;
+            var cells = l.ExitCells.Count > 0 ? l.ExitCells : l.Doorways.First(d => d.ModuleA == l.EntranceModule || d.ModuleB == l.EntranceModule).Cells;
+            Int3 lo = cells.Aggregate(Int3.Min), hi = cells.Aggregate(Int3.Max), o = l.EntranceFacing.Vec();
+            Vector3 outward = new(o.X, 0, o.Z), along = new(Mathf.Abs(o.Z), 0, Mathf.Abs(o.X));
+            Vector3 local = new((lo.X + hi.X + 1) * 0.5f, lo.Y, (lo.Z + hi.Z + 1) * 0.5f), foot = m.Stage.ToGlobal(local);
+            float wide = Mathf.Max(hi.X - lo.X, hi.Z - lo.Z) + 1;
+            m.Stage.AddChild(new MeshInstance3D
+            {
+                Name = "Figure 1.8 m", Mesh = new CapsuleMesh { Radius = 0.25f, Height = 1.8f }, Position = local + outward * 1.5f + along * (wide * 0.3f) + Vector3.Up * 0.9f,
+                MaterialOverride = new StandardMaterial3D { AlbedoColor = new Color(0.85f, 0.35f, 0.2f) },
+            });
+            m.HideHud(true);
+            GD.Print($"door: {l.Name} ({a[1]}), {hi.Y - lo.Y + 1} m tall, {wide} m wide");
+            Basis turn = m.Stage.GlobalTransform.Basis;
+            Vector3 eye = foot + turn * (outward * 7.5f - along * 2.5f) + Vector3.Up * 1.7f;
+            m.Camera.GlobalTransform = new Transform3D(Basis.Identity, eye).LookingAt(foot + Vector3.Up * 1.6f, Vector3.Up);
+            m.FreezeCamera = true;
+            m.Sky.Apply(Look.Day, 260f);
+            return;
+        }
         // inspect:<family>:<variant>:<rarity>:<state>:<seed>:<yaw>:<pitch>:<distance> frames anything.
         if (view.StartsWith("inspect:"))
         {

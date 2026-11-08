@@ -124,7 +124,7 @@ public sealed partial class Staging
             "icons-sheet" => IconSheetView(),
             "icons-hands" => IconHandsView(),
             "blockdetail" => BlockDetailView(),
-            _ => ProofViews(view),
+            _ => DoorViews(view),
         };
         foreach (int x in script) yield return x;
         if (_args.TryGetValue("hud", out string hud)) _game.Visor.Visible = hud != "0";
