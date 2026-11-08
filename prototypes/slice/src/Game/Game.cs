@@ -125,7 +125,7 @@ public partial class Game : Node3D
         // The world stops with the escape menu open, whatever runs it (a test's or the screenshots' node runs on through a pause).
         ProcessMode = ProcessModeEnum.Pausable;
         LoadSettings();
-        // The command line pins the world and the mode: -- --seed 123 --planet ice --creative
+        // The command line pins the world and the mode: -- --seed 123 --type meadow --depth 0.7 --fall famine --creative (WorldChoice.FromArgs)
         string[] args = OS.GetCmdlineUserArgs();
         if (Array.IndexOf(args, "--creative") >= 0) _mode = GameMode.Creative;
         World ??= WorldChoice.FromArgs(args);
