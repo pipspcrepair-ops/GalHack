@@ -147,13 +147,7 @@ public static class Seizing
                 w.Damage(v, v.Health + 1f, c.AsTarget);
             }
         }
-        else if (t is IHost h && h.Body is { } body && Husks.CanTurn(body))
-        {
-            Species s = w.TurnHost(body, seed);
-            made = w.Spawn(s, h.Position);
-            made.Yaw = MathF.Atan2(-h.Forward.X, -h.Forward.Z);
-            h.Taken();
-        }
+        else if (t is IHost h) made = Rise(w, h, seed);
         if (made != null)
         {
             // It stands a moment, as if listening, before it moves on its own.
@@ -162,6 +156,22 @@ public static class Seizing
             w.RaiseTurned(new SeizeEvent { Husk = c, Victim = t, Time = w.Time, Turned = made });
         }
         Release(w, c, false);
+    }
+
+    /// <summary>
+    /// A townsperson the game keeps is a Husk now, standing where they stood: seized long enough,
+    /// or a silent carrier dropping the act (<see cref="Carriers"/>). The game's person is taken out
+    /// of its keeping. One that rises inside a town is of it: no stray for its guards to cull.
+    /// </summary>
+    public static Creature Rise(WildSim w, IHost h, ulong seed)
+    {
+        if (h?.Body is not { } body || !Husks.CanTurn(body)) return null;
+        Species s = w.TurnHost(body, seed);
+        Creature made = w.Spawn(s, h.Position);
+        made.Yaw = MathF.Atan2(-h.Forward.X, -h.Forward.Z);
+        made.InTown = w.InTown(made.Position);
+        h.Taken();
+        return made;
     }
 
     /// <summary>Lets go: the hold ended. Broken, the Husk is thrown back and comes again only after a stagger.</summary>
@@ -253,7 +263,8 @@ public static class Seizing
         if (noticed != null && noticed.Attackable) Consider(noticed, WildSim.Flat(noticed.Position - c.Position).Length() * 0.8f);
         foreach (ITarget t in w.Targets)
         {
-            if (!t.Attackable || w.InTown(t.Position)) continue;
+            // Nobody in a town is hunted from outside it; one that rose inside goes for whoever is there.
+            if (!t.Attackable || !c.InTown && w.InTown(t.Position)) continue;
             float d = WildSim.Flat(t.Position - c.Position).Length();
             if (d < sense) Consider(t, d);
         }
@@ -267,7 +278,7 @@ public static class Seizing
                 if (d < r.Gather && o.Quarry != null && o.Quarry.Attackable && o.Quarry != c.AsTarget) Consider(o.Quarry, WildSim.Flat(o.Quarry.Position - c.Position).Length() * 0.9f);
                 continue;
             }
-            if (d > sense || w.InTown(o.Position)) continue;
+            if (d > sense || !c.InTown && w.InTown(o.Position)) continue;
             Consider(o.AsTarget, o.Species.Figure != null ? d : d * 1.8f);
         }
         return best;
