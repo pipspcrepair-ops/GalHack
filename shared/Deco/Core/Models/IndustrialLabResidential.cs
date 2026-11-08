@@ -216,7 +216,7 @@ public static partial class DecoModels
                 b.Box(x + 0.02f, 0.12f, -0.43f, x + 0.455f, 0.82f, -0.42f, Body).Loose();
                 b.Box(x + 0.2f, 0.7f, -0.44f, x + 0.27f, 0.72f, -0.43f, Chrome).Ghost();
             }
-            b.Box(-0.99f, 0.86f, -0.45f, 0.99f, 0.9f, 0.47f, Dark);
+            b.Box(-0.99f, 0.86f, -0.45f, 0.99f, 0.9f, 0.47f, Dark).As(DecoFinish.Stone);
             b.Box(0.55f, 0.88f, -0.2f, 0.9f, 0.905f, 0.25f, Metal).Ghost();
             b.Tube(0.72f, 0.9f, 0.35f, 0.72f, 0.99f, 0.3f, 0.01f, Chrome).Ghost();
             for (int i = 0; i < 4; i++)
@@ -377,11 +377,11 @@ public static partial class DecoModels
         {
             b.Box(-0.45f, 0.06f, -0.4f, 0.45f, 0.2f, 0.45f, Wood);
             foreach (float x in new[] { -0.4f, 0.4f }) foreach (float z in new[] { -0.36f, 0.4f }) b.Box(x - 0.03f, 0, z - 0.03f, x + 0.03f, 0.06f, z + 0.03f, Wood).Ghost();
-            b.Box(-0.3f, 0.2f, -0.38f, 0.3f, 0.43f, 0.25f, Fabric).Soft();
-            b.Box(-0.3f, 0.43f, 0.22f, 0.3f, 0.95f, 0.38f, Fabric).Soft();
-            b.Box(-0.45f, 0.2f, 0.32f, 0.45f, 0.98f, 0.45f, Fabric).Soft();
-            b.Box(-0.45f, 0.2f, -0.4f, -0.3f, 0.66f, 0.45f, Fabric).Soft();
-            b.Box(0.3f, 0.2f, -0.4f, 0.45f, 0.66f, 0.45f, Fabric).Soft();
+            b.Box(-0.3f, 0.2f, -0.38f, 0.3f, 0.43f, 0.25f, Fabric).Soft().As(DecoFinish.Leather);
+            b.Box(-0.3f, 0.43f, 0.22f, 0.3f, 0.95f, 0.38f, Fabric).Soft().As(DecoFinish.Leather);
+            b.Box(-0.45f, 0.2f, 0.32f, 0.45f, 0.98f, 0.45f, Fabric).Soft().As(DecoFinish.Leather);
+            b.Box(-0.45f, 0.2f, -0.4f, -0.3f, 0.66f, 0.45f, Fabric).Soft().As(DecoFinish.Leather);
+            b.Box(0.3f, 0.2f, -0.4f, 0.45f, 0.66f, 0.45f, Fabric).Soft().As(DecoFinish.Leather);
             b.Box(-0.44f, 0.66f, -0.38f, -0.31f, 0.69f, 0.0f, Wood).Loose().Ghost();
         };
 

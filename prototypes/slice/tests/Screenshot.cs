@@ -71,8 +71,8 @@ public partial class Screenshot : Node
             PlanetSurface.Infra.CityPlan.Force = true;
             PlanetSurface.Poi.PoiSiting.ForceFamily = _args.GetValueOrDefault("force", "alien_cathedral");
         }
-        // A place of a family near the landing, and who is in it (--force-family, --force-occupant=Keepers).
-        if (_args.TryGetValue("force-family", out string ff)) PlanetSurface.Poi.PoiSiting.ForceFamily = ff;
+        // A place of a family near the landing, and who is in it (--force-family or --force, --force-occupant=Keepers).
+        if (_args.TryGetValue("force-family", out string ff) || _args.TryGetValue("force", out ff)) PlanetSurface.Poi.PoiSiting.ForceFamily = ff;
         if (_args.TryGetValue("force-occupant", out string fo) && Enum.TryParse(fo, true, out PoiGenerator.Gen.Occupant who))
         {
             PlanetSurface.Poi.PoiSiting.ForceOccupancy = new PoiGenerator.Gen.OccupancyRoll(who);
