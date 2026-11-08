@@ -70,6 +70,13 @@ public sealed class PersonalSpace
                             bool aOk = open == null || open(a.Pos + pa), bOk = open == null || open(b.Pos + pb);
                             if (!aOk && b.Give > 0f) { pb = dir * overlap; bOk = open == null || open(b.Pos + pb); }
                             else if (!bOk && a.Give > 0f) { pa = -dir * overlap; aOk = open == null || open(a.Pos + pa); }
+                            // Both against something: the one who gives more steps off to the side instead.
+                            if (!aOk && !bOk)
+                            {
+                                Vector3 side = new Vector3(-dir.Z, 0f, dir.X) * overlap * ((i + j) % 2 == 0 ? 1f : -1f);
+                                if (a.Give >= b.Give && (open == null || open(a.Pos + side))) { pa = side; aOk = true; }
+                                else if (open == null || open(b.Pos - side)) { pb = -side; bOk = true; }
+                            }
                             if (aOk) { a.Pos += pa; a.Moved += pa; }
                             if (bOk) { b.Pos += pb; b.Moved += pb; }
                             // Face to face on a narrow way: the one who gives more waits a moment.

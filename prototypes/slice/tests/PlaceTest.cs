@@ -1007,7 +1007,7 @@ public partial class PlaceTest : Node
         Mood was = place.Memory.Mood;
         place.Memory.Mood = Mood.Wary;
         GD.Print("  (TEST: the place made wary of you, to meet its checkpoint)");
-        Town.Person post = town.People.Where(q => q.Role == "guard" && !q.Dead && q.Figure.Prop == "rifle").OrderBy(q => q.Pos.DistanceTo(place.FromWorld(game.Survivor.WorldFeet))).FirstOrDefault();
+        Town.Person post = town.People.Where(q => q.Role == "guard" && !q.Dead && q.Figure.Prop == "rifle" && q.Threat == null).OrderBy(q => q.Pos.DistanceTo(place.FromWorld(game.Survivor.WorldFeet))).FirstOrDefault();
         int halts = town.Halts, holds = town.HoldAims, shots = town.GuardShots;
         if (post != null)
         {

@@ -500,7 +500,14 @@ public sealed partial class Town
 
     void GoTo(Person p, int spot)
     {
-        if (spot == p.Spot && p.Path != null && p.Step >= p.Path.Count) return;
+        if (spot == p.Spot && p.Path != null && p.Step >= p.Path.Count && (p.Pos - Walk(Data.Spots[spot].Cell)).Length() < 1.5f) return;
+        if (spot == p.Spot && p.Path != null && p.Step >= p.Path.Count)
+        {
+            // Moved off it (pushed, or after something): straight back to it.
+            p.Path = new List<Vector3> { Walk(Data.Spots[spot].Cell) };
+            p.Step = 0;
+            return;
+        }
         p.Path = PathFrom(p, spot);
         p.Step = 0;
         p.Spot = spot;
