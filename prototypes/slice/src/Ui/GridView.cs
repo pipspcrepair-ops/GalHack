@@ -319,7 +319,7 @@ public static class FilterBar
         float sortW = sort ? 170 : 0;
         var box = new Rect2(r.Position, new Vector2(r.Size.X - sortW - (sort ? 8 : 0), 28));
         bool focused = ItemViews.Focused == key;
-        if (g.TextBox($"{key}:filter", box, view.Text, readOnly ? "filter (Tab menu)" : "filter: type a name or category", focused, readOnly))
+        if (g.TextBox($"{key}:filter", box, view.Text, readOnly ? "FILTER" : "FILTER [/]", focused, readOnly))
             ItemViews.Focused = key;
         if (sort && g.Button($"{key}:sort", new Rect2(box.End.X + 8, r.Position.Y, sortW, 28), $"SORT: {ItemView.SortName(view.Sort)}", C.Holo, size: 13))
             view.NextSort();

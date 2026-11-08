@@ -36,6 +36,9 @@ public sealed class YouSection : IMenuSection
 
     public Vector2 PreferredSize => new(1560, 790);
 
+    /// <summary>The left column (you, your gear and vitals).</summary>
+    const float LeftW = 300;
+
     public void Build(Gui g, Rect2 area)
     {
         Vector2 o = area.Position;
@@ -48,9 +51,9 @@ public sealed class YouSection : IMenuSection
         if (!g.Drawing) pack.Dragging = g.DragPayload is SlotRef dragged && dragged.Grid != pack.Grid && CoreOf(dragged.Grid) != null;
         ItemGrid other = active?.Grid;
 
-        // ---- Paperdoll, equipment, vitals and level -------------------------------------------
-        var doll = new Rect2(o + new Vector2(70, 26), new Vector2(240, 380));
-        g.Caption("YOU", o, 420);
+        // ---- Paperdoll, equipment, vitals and level: a narrow column at the left -------------------
+        var doll = new Rect2(o + new Vector2(62, 30), new Vector2(170, 280));
+        g.Caption("YOU", o, LeftW);
         g.Fill(doll, new Color(C.Panel, 0.6f));
         if (g.Drawing)
         {
@@ -70,46 +73,47 @@ public sealed class YouSection : IMenuSection
         };
         for (int i = 0; i < equipment.Length; i++)
         {
-            float x = i < 2 ? 0 : 320, y = 52 + (i < 2 ? i : i - 2) * 92;
-            var r = new Rect2(o + new Vector2(x, y), new Vector2(64, 64));
+            float x = i < 2 ? 0 : 242, y = 50 + (i < 2 ? i : i - 2) * 86;
+            var r = new Rect2(o + new Vector2(x, y), new Vector2(56, 56));
             g.Fill(r, new Color(C.Glass, 0.9f));
             g.Outline(r, string.IsNullOrEmpty(equipment[i].value) ? new Color(C.Rule, 0.6f) : C.Accent2, 1.5f);
-            g.TextIn(equipment[i].label, new Rect2(r.Position + new Vector2(0, -18), new Vector2(64, 16)), C.Dim, 11, HorizontalAlignment.Center);
+            g.TextIn(equipment[i].label, new Rect2(r.Position + new Vector2(-4, -17), new Vector2(64, 15)), C.Dim, 11, HorizontalAlignment.Center);
             g.TextIn(equipment[i].value, r.Grow(-3), C.Text, 11, HorizontalAlignment.Center);
         }
-        VitalsBlock(g, new Rect2(o + new Vector2(0, 420), new Vector2(420, 360)));
+        VitalsBlock(g, new Rect2(o + new Vector2(0, 330), new Vector2(LeftW, 440)));
 
-        // ---- Bag (with its filter) and toolbars ------------------------------------------------
-        Vector2 b = o + new Vector2(450 * sx, 0);
-        g.Caption("BAG", b, 560);
-        ItemView bagView = FilterBar.Build(g, "bag", new Rect2(b + new Vector2(0, 30), new Vector2(560, FilterBar.Height)));
-        var bagArea = new Rect2(b + new Vector2(0, 96), new Vector2(560, 6 * 60 - 6));
+        // ---- Bag (with its filter) and toolbars: every slot in view, no scrolling ---------------
+        Vector2 b = o + new Vector2(LeftW + 20, 0);
+        const float Cell = 50, Step = Cell + 6, BagW = PlayerInventory.Columns * Step - 6; // the grid's own gap is 6
+        g.Caption("BAG", b, BagW);
+        ItemView bagView = FilterBar.Build(g, "bag", new Rect2(b + new Vector2(0, 30), new Vector2(BagW, FilterBar.Height)));
+        var bagArea = new Rect2(b + new Vector2(0, 96), new Vector2(BagW, PlayerInventory.Rows * Step - 6));
         int shownStacks = Slots.Grid(g, _game, "bag", pack.Grid, PlayerInventory.ToolbarSlots, PlayerInventory.Columns * PlayerInventory.Rows, PlayerInventory.Columns,
-            bagArea, 54, other ?? pack.Grid, _bagScroll, bagView);
+            bagArea, Cell, other ?? pack.Grid, _bagScroll, bagView);
         if (bagView.Filtering || bagView.Sort != ItemSort.Slot)
-            g.Text($"{shownStacks} shown{(bagView.Filtering ? " · filtered" : "")}", b + new Vector2(480, 4), C.Dim, 13);
+            g.TextIn($"{shownStacks} SHOWN", new Rect2(b.X + BagW - 160, b.Y, 160, 22), C.Dim, 13, HorizontalAlignment.Right);
         double used = pack.Grid.UsedSu, cap = pack.Storage.CapacitySu;
-        g.Text($"{pack.Grid.MassKg:F1} kg   {used:F1} / {cap:F0} SU   {pack.Grid.Used - pack.Grid.Slots.Take(9).Count(s => !s.IsEmpty)}/{pack.Grid.BagSlots} slots",
-            b + new Vector2(0, 454), C.Text, 15, UiTheme.Mono);
-        g.Bar(new Rect2(b + new Vector2(0, 476), new Vector2(560, 10)), used, cap, used > cap * 0.9 ? C.Warn : C.Good, 20);
+        float statsY = bagArea.End.Y + 6;
+        g.Text($"{pack.Grid.MassKg:F1} kg   {used:F1} / {cap:F0} SU   {pack.Grid.Used - pack.Grid.Slots.Take(9).Count(s => !s.IsEmpty)}/{pack.Grid.BagSlots}",
+            new Vector2(b.X, statsY), C.Text, 14, UiTheme.Mono);
+        g.Bar(new Rect2(b.X, statsY + 20, BagW, 8), used, cap, used > cap * 0.9 ? C.Warn : C.Good, 24);
         bool mine = pack.Bar == BarSource.Personal;
-        g.Caption($"YOUR TOOLBAR [1-9]{(mine ? " · IN USE" : "")}", b + new Vector2(0, 494), 560, mine ? C.Accent : C.Dim);
+        float barY = statsY + 36;
+        g.Caption($"YOUR TOOLBAR [1-9]{(mine ? " · IN USE" : "")}", new Vector2(b.X, barY), BagW, mine ? C.Accent : C.Dim);
         for (int i = 0; i < PlayerInventory.ToolbarSlots; i++)
         {
-            var r = new Rect2(b + new Vector2(i * 62, 526), new Vector2(56, 56));
+            var r = new Rect2(new Vector2(b.X + i * Step, barY + 28), new Vector2(Cell, Cell));
             Slots.Slot(g, _game, $"bar:{i}", pack.Grid, i, r, other ?? pack.Grid, selected: mine && i == pack.Selected);
         }
-        RemoteBar(g, new Rect2(b + new Vector2(0, 590), new Vector2(560, 90)));
-        var dropZone = new Rect2(b + new Vector2(0, 690), new Vector2(560, 40));
+        RemoteBar(g, new Rect2(new Vector2(b.X, barY + 86), new Vector2(BagW, 86)));
+        var dropZone = new Rect2(new Vector2(b.X, barY + 178), new Vector2(BagW, 30));
         g.Fill(dropZone, new Color(C.Panel, 0.5f));
         g.TextIn("SET DOWN", dropZone, C.Dim, 13, HorizontalAlignment.Center);
         if (g.DropTarget("drop-ground", dropZone, out object d) && d is SlotRef sr) _game.Drop(sr.Grid, sr.Index);
-        if (g.Button("bag:up", new Rect2(b.X + 400, b.Y + 450, 70, 22), "UP", C.Accent2, _bagScroll > 0, size: 12)) _bagScroll--;
-        if (g.Button("bag:down", new Rect2(b.X + 480, b.Y + 450, 80, 22), "DOWN", C.Accent2, (_bagScroll + 6) * PlayerInventory.Columns < shownStacks, size: 12)) _bagScroll++;
-        _bagScroll = Math.Clamp(_bagScroll, 0, Math.Max(0, (shownStacks - 1) / PlayerInventory.Columns - 5));
+        _bagScroll = 0; // the whole bag is in view
 
         // ---- The right panel: the fabricator, the blocks, and one tab for every storage in reach --------
-        Vector2 c = o + new Vector2(1030 * sx, 0);
+        Vector2 c = new(b.X + BagW + 20, o.Y);
         var right = new Rect2(c, new Vector2(area.End.X - c.X, area.Size.Y));
         if (_tab is "fab" or "blocks") _tab = ShowBlocks ? "blocks" : "fab";
         int count = 2 + tabs.Count;
@@ -137,7 +141,7 @@ public sealed class YouSection : IMenuSection
         else if (active != null) Container(g, inner, active, bagView);
         else _fabricator.Build(g, inner);
         // Released outside every panel: set down too.
-        var panels = new Rect2(b, new Vector2(560, 740)).Merge(right);
+        var panels = new Rect2(b, new Vector2(BagW, dropZone.End.Y - b.Y)).Merge(right);
         if (g.DroppedOutside(panels, out object outside) && outside is SlotRef s2) _game.Drop(s2.Grid, s2.Index);
     }
 
@@ -216,7 +220,7 @@ public sealed class YouSection : IMenuSection
             g.TextIn(chosen.Origin.ToUpperInvariant(), new Rect2(r.Position.X + 300, r.Position.Y, r.Size.X - 300, 22), PipOf(pack.ColourOf(chosen.Source)), 15, HorizontalAlignment.Right);
         for (int i = 0; i < PlayerInventory.ToolbarSlots; i++)
         {
-            var s = new Rect2(r.Position + new Vector2(i * 62, 32), new Vector2(56, 56));
+            var s = new Rect2(r.Position + new Vector2(i * 56, 30), new Vector2(52, 52));
             RemoteSlot rs = pack.Remote[i];
             ItemDef item = rs != null && items.TryGet(rs.ItemId, out ItemDef it) ? it : null;
             int n = rs?.Count ?? 0;
@@ -286,18 +290,19 @@ public sealed class YouSection : IMenuSection
         for (int i = 0; i < rows.Length; i++)
         {
             var (label, value, share, colour) = rows[i];
-            float y = r.Position.Y + i * 30;
-            g.Text(label, new Vector2(r.Position.X, y), C.Dim, 15);
-            g.Text(value, new Vector2(r.Position.X + 120, y), C.Text, 16, UiTheme.Mono);
-            g.Bar(new Rect2(r.Position.X + 230, y + 4, 180, 12), Math.Clamp(share, 0, 1), 1, colour, 10);
+            float y = r.Position.Y + i * 28;
+            g.Text(label, new Vector2(r.Position.X, y), C.Dim, 14);
+            g.Text(value, new Vector2(r.Position.X + 104, y), C.Text, 15, UiTheme.Mono);
+            g.Bar(new Rect2(r.Position.X + 190, y + 4, r.Size.X - 190, 11), Math.Clamp(share, 0, 1), 1, colour, 8);
         }
-        float yy = r.Position.Y + rows.Length * 30 + 8;
-        g.Text($"ARMOUR {mods.Armor:F0}   COLD {mods.ColdProtection:F0}   HEAT {mods.HeatProtection:F0}   RAD {mods.RadiationShielding:F0}", new Vector2(r.Position.X, yy), C.Text, 14, UiTheme.Mono);
+        float yy = r.Position.Y + rows.Length * 28 + 6;
+        g.Text($"ARM {mods.Armor:F0}  COLD {mods.ColdProtection:F0}  HEAT {mods.HeatProtection:F0}  RAD {mods.RadiationShielding:F0}", new Vector2(r.Position.X, yy), C.Text, 13, UiTheme.Mono);
         Progress p = _game.Progress;
         var (into, span) = p.ToNext;
-        g.Text($"LEVEL {p.Level} · {p.Xp} XP · {p.Points} POINTS", new Vector2(r.Position.X, yy + 30), C.Accent2, 17, UiTheme.Display);
-        g.Bar(new Rect2(r.Position.X, yy + 58, 410, 12), into, span, C.Accent2, 20);
-        g.Text(p.Level >= p.Rules.Cap ? $"past the cap: a point every {p.Rules.PastCap} XP" : $"{span - into} XP to level {p.Level + 1}", new Vector2(r.Position.X, yy + 76), C.Dim, 14);
+        g.Text($"LEVEL {p.Level}", new Vector2(r.Position.X, yy + 28), C.Accent2, 17, UiTheme.Display);
+        g.TextIn($"{p.Xp} XP  {p.Points} PTS", new Rect2(r.Position.X + 120, yy + 28, r.Size.X - 120, 22), C.Accent2, 14, HorizontalAlignment.Right, UiTheme.Mono);
+        g.Bar(new Rect2(r.Position.X, yy + 56, r.Size.X, 10), into, span, C.Accent2, 20);
+        g.Text(p.Level >= p.Rules.Cap ? $"+1 PT / {p.Rules.PastCap} XP" : $"{span - into} XP TO LV {p.Level + 1}", new Vector2(r.Position.X, yy + 72), C.Dim, 13);
     }
 
     void Container(Gui g, Rect2 r, StorageTab tab, ItemView bagView)
@@ -307,14 +312,15 @@ public sealed class YouSection : IMenuSection
         ItemGrid grid = open.Grid;
         grid.Reconcile();
         ItemView view = FilterBar.Build(g, "box", new Rect2(r.Position + new Vector2(0, 30), new Vector2(r.Size.X, FilterBar.Height)));
-        int columns = 7;
-        float cell = 58;
-        int visible = 6;
+        // As wide and as tall as the panel allows.
+        float cell = 54;
+        int columns = Math.Max(1, (int)((r.Size.X + 6) / (cell + 6)));
+        int visible = Math.Max(3, (int)((r.Size.Y - 98 - 150) / (cell + 6)));
         IReadOnlyList<int> shown = view.Visible(grid);
         int rows = Math.Max(1, (shown.Count + columns - 1) / columns);
         _containerScroll = Math.Clamp(_containerScroll, 0, Math.Max(0, rows - visible));
         Slots.Grid(g, _game, "box", grid, 0, grid.Count, columns, new Rect2(r.Position + new Vector2(0, 98), new Vector2(columns * (cell + 6), visible * (cell + 6))), cell, _game.Pack.Grid, _containerScroll, view);
-        float y = r.Position.Y + 98 + visible * 64 + 8;
+        float y = r.Position.Y + 98 + visible * (cell + 6) + 8;
         if (rows > visible)
         {
             if (g.Button("box:up", new Rect2(r.Position.X, y, 60, 30), "UP", C.Accent2)) _containerScroll--;

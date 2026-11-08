@@ -54,6 +54,7 @@ public sealed partial class Staging
             "menu" => Menu(),
             "settings" => SettingsView(),
             "escmenu" => EscapeMenuShots(),
+            "uiround" => UiRoundShots(),
             "loot" => Loot(),
             "bolt" => Bolt(),
             "bunkershot" => BunkerShot(),

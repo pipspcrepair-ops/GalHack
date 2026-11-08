@@ -268,7 +268,7 @@ public sealed class TechSection : IMenuSection
             var k = levels.ToDictionary(l => l, l => Enumerable.Range(0, lanes.Count).Max(li => (Count(li, l) + rows - 1) / rows));
             var lr = Enumerable.Range(0, lanes.Count).Select(li => Math.Max(1, levels.Max(l => (Count(li, l) + k[l] - 1) / k[l]))).ToList();
             float w = Math.Min(MaxTileW, (area.Size.X - LaneW) / k.Values.Sum() - Gap), h = Math.Min(MaxTileH, rowsH / lr.Sum() - Gap);
-            float score = Math.Min(h / 40f, w / 170f);
+            float score = Math.Min(h / 44f, w / 150f);
             if (score > best) { best = score; span = k; laneRows = lr; tileW = w; tileH = h; }
         }
         var colOf = new Dictionary<int, int>();
@@ -327,21 +327,34 @@ public sealed class TechSection : IMenuSection
         }
     }
 
-    /// <summary>One tile: the state's colour down its edge, the item's icon, its name, and its cost or what it waits for.</summary>
+    /// <summary>A name on up to two lines: the largest size (down to <paramref name="min"/>) at which it fits, the second line cut if it still doesn't.</summary>
+    static (string One, string Two, int Size) Wrap(string text, int size, int min, float width, Font font)
+    {
+        string[] words = text.Split(' ');
+        for (int s = size; s >= min; s--)
+        {
+            string one = words[0];
+            int k = 1;
+            while (k < words.Length && Paint.TextWidth(font, s, one + " " + words[k]) <= width) one += " " + words[k++];
+            string two = string.Join(" ", words.Skip(k));
+            if (Paint.TextWidth(font, s, one) <= width && Paint.TextWidth(font, s, two) <= width) return (one, two, s);
+            if (s == min) return (Fit(one, s, s, width, font).Text, Fit(two, s, s, width, font).Text, s);
+        }
+        return (text, "", min);
+    }
+
+    /// <summary>One tile: the state's colour down its edge, the item's icon, its name (two lines when it is tall enough), and its cost or what it waits for.</summary>
     void Tile(Gui g, Progress p, TechLayout.Cell c, Rect2 r, bool lit, bool hot)
     {
         TechNode n = c.Node;
         UnlockState state = p.StateOf(n);
         Color tone = state switch { UnlockState.Unlocked => C.Good, UnlockState.Affordable => C.Accent, UnlockState.NeedsPoints => C.Accent2, _ => C.Dim };
         if (g.Button($"tech:{n.Id}", r, "", tone, enabled: state == UnlockState.Affordable, lit: false) && p.Unlock(n.Id)) g.Sound = "unlock";
-        string name = Plain(n, out string tag);
-        float icon = r.Size.Y - 6;
-        float textX = r.Position.X + 10 + icon + 4, badgeW = 30;
-        float textW = r.End.X - badgeW - 4 - textX;
-        var (nt, ns) = Fit(name, 13, 10, textW, UiTheme.Label);
-        bool twoLines = r.Size.Y >= 38;
-        // Text is laid out in both passes, so the tests can measure it.
-        float nameY = twoLines ? r.Position.Y + 3 : r.Position.Y + (r.Size.Y - ns) / 2f - 1;
+        string name = Plain(n, out _);
+        bool tall = r.Size.Y >= 42;
+        float icon = Math.Min(r.Size.Y - 6, 40);
+        float textX = r.Position.X + 9 + icon + 5, textW = r.End.X - 4 - textX;
+        const float BadgeW = 24, BadgeH = 14;
         string status = state switch
         {
             UnlockState.Unlocked => "",
@@ -351,11 +364,20 @@ public sealed class TechSection : IMenuSection
             _ => "POINTS",
         };
         string cost = state == UnlockState.Unlocked ? "" : $"{n.Cost}";
+        // Tall: the name on two lines, the status and the cost under it. Short: the name on one line and the cost beside it.
+        var (one, two, ns) = tall ? Wrap(name, 12, 9, textW, UiTheme.Label) : (Fit(name, 12, 9, textW - BadgeW - 4, UiTheme.Label).Text, "", Fit(name, 12, 9, textW - BadgeW - 4, UiTheme.Label).Size);
+        var badge = tall ? new Rect2(r.End.X - BadgeW - 3, r.End.Y - BadgeH - 3, BadgeW, BadgeH) : new Rect2(r.End.X - BadgeW - 3, r.Position.Y + (r.Size.Y - BadgeH) / 2f, BadgeW, BadgeH);
+        var line1 = new Rect2(textX, r.Position.Y + 2, tall ? textW : textW - BadgeW - 4, tall ? 14 : r.Size.Y - 4);
+        var line2 = new Rect2(textX, r.Position.Y + 15, textW, 14);
+        var line3 = new Rect2(textX, r.End.Y - BadgeH - 3, badge.Position.X - 4 - textX, BadgeH);
+        var (st, ss) = Fit(status, 10, 8, line3.Size.X, UiTheme.Label);
         if (!g.Drawing)
         {
-            g.Text(nt, new Vector2(textX, nameY), C.Text, ns);
-            if (twoLines && status != "") { var (sx, sz) = Fit(status, 10, 8, textW, UiTheme.Label); g.TextIn(sx, new Rect2(textX, r.Position.Y + 21, textW, 14), C.Dim, sz); }
-            if (cost != "") g.TextIn(cost, new Rect2(r.End.X - badgeW - 2, r.Position.Y + 2, badgeW, Math.Min(18, r.Size.Y - 4)), C.Text, 12, HorizontalAlignment.Center, UiTheme.Mono);
+            // Laid out in the input pass too, so the tests can measure it.
+            g.TextIn(one, line1, C.Text, ns);
+            if (tall && two != "") g.TextIn(two, line2, C.Text, ns);
+            if (tall && st != "") g.TextIn(st, line3, C.Dim, ss);
+            if (cost != "") g.TextIn(cost, badge, C.Text, 11, HorizontalAlignment.Center, UiTheme.Mono);
             return;
         }
         float fade = lit ? 1f : 0.28f;
@@ -364,20 +386,19 @@ public sealed class TechSection : IMenuSection
         g.Fill(new Rect2(r.Position, new Vector2(5, r.Size.Y)), F(tone));
         if (hot || state == UnlockState.Affordable) g.Outline(r, F(hot ? C.Text : tone), hot ? 3f : 2f);
         Texture2D tex = ItemIcons.Shared?.Get(n.ItemId);
-        var iconBox = new Rect2(r.Position.X + 9, r.Position.Y + 3, icon, icon);
+        var iconBox = new Rect2(r.Position.X + 9, r.Position.Y + (r.Size.Y - icon) / 2f, icon, icon);
         if (tex != null) g.Canvas.DrawTextureRect(tex, iconBox, false, new Color(1, 1, 1, (state == UnlockState.Unlocked || state == UnlockState.Affordable ? 1f : 0.45f) * fade));
         else g.Fill(iconBox, F(new Color(tone, 0.25f)));
-        g.Text(nt, new Vector2(textX, nameY), F(state == UnlockState.Unlocked ? C.Text : state == UnlockState.Affordable ? C.Text : C.Dim), ns);
-        if (twoLines && status != "") { var (sx, sz) = Fit(status, 10, 8, textW, UiTheme.Label); g.TextIn(sx, new Rect2(textX, r.Position.Y + 21, textW, 14), F(state == UnlockState.Affordable ? C.Accent : C.Warn), sz); }
+        Color ink = F(state is UnlockState.Unlocked or UnlockState.Affordable ? C.Text : C.Dim);
+        g.TextIn(one, line1, ink, ns);
+        if (tall && two != "") g.TextIn(two, line2, ink, ns);
+        if (tall && st != "") g.TextIn(st, line3, F(state == UnlockState.Affordable ? C.Accent : C.Warn), ss);
         // The cost on its badge, or a tick once unlocked.
-        var badge = new Rect2(r.End.X - badgeW - 2, r.Position.Y + 2, badgeW, Math.Min(18, r.Size.Y - 4));
         g.Fill(badge, F(new Color(state == UnlockState.Unlocked ? C.Good : state == UnlockState.Affordable ? C.Accent : C.Rule, 0.85f)));
-        if (cost != "") g.TextIn(cost, badge, F(C.Glass), 12, HorizontalAlignment.Center, UiTheme.Mono);
+        if (cost != "") g.TextIn(cost, badge, F(C.Glass), 11, HorizontalAlignment.Center, UiTheme.Mono);
         else
         {
-            // Unlocked: a tick.
             Vector2 m = badge.GetCenter();
-            g.Canvas.DrawPolyline(new[] { m + new Vector2(-6, 0), m + new Vector2(-2, 4), m + new Vector2(6, -5) }, F(C.Glass), 2.5f);
+            g.Canvas.DrawPolyline(new[] { m + new Vector2(-5, 0), m + new Vector2(-2, 3), m + new Vector2(5, -4) }, F(C.Glass), 2f);
         }
-    }
-}
+    }}

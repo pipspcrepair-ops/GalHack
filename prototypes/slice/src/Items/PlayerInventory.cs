@@ -39,7 +39,7 @@ public sealed class RemoteSlot
 /// </summary>
 public sealed class PlayerInventory
 {
-    public const int ToolbarSlots = 9, Columns = 8, Rows = 6;
+    public const int ToolbarSlots = 9, Columns = 10, Rows = 7;
 
     /// <summary>The bag's room, storage units (a big suit pack: the grid's slots are usually the limit).</summary>
     public const double Capacity = 1500;
