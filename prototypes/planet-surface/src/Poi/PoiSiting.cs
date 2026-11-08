@@ -181,7 +181,7 @@ public static partial class PoiSiting
     public static WorldProfile WithRules(PoiLibrary lib, WorldMap map, WorldProfile profile, bool? startWorld = null, float depth = -1f)
     {
         WorldRoll roll = RollOf(lib, map, profile, startWorld, depth);
-        return roll == null ? profile : profile with { Barred = roll.Barred };
+        return roll == null ? profile : profile with { Barred = roll.Barred, Ruin = RuinAge.Of(roll) };
     }
 
     /// <summary>
@@ -205,7 +205,7 @@ public static partial class PoiSiting
         ThemeDef theme = ThemeParser.For(lib, spec.Archetype.ToString(), map.Def.VariantName.Replace(' ', '_'), start);
         // A world that was ever lived in is laid out by its plan; only the wild is scattered.
         WorldRoll roll = RollOf(lib, map, profile, start, depth);
-        if (roll != null) profile = profile with { Barred = roll.Barred };
+        if (roll != null) profile = profile with { Barred = roll.Barred, Ruin = RuinAge.Of(roll) };
         RegionPlan plan = null;
         if (roll != null) plan = RegionPlan.Make(lib, new PlanetLand(map, bare, pmap), roll, profile, GHash.Of(spec.Seed, 0x4E41), (landing.X, landing.Y), start);
         var world = WorldPlacement.Place(lib, pmap, theme, GHash.Of(spec.Seed, 0x504C4143), profile: profile);
