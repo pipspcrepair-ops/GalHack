@@ -274,10 +274,15 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
             road = true;
             if (t.Wear > 0.6f) continue;
             if (t.Name.StartsWith("Track") && t.NearestOnPath(x, z, out float d, out _, out _) && (d < TrackCrown || d > t.HalfWidth - 0.35f)) continue;
+            // A highway's grass median grows what grass grows; one nobody mows any more, scrub too.
+            if (t.Median is 1 or 3 && t.NearestOnPath(x, z, out float dm, out _, out _) && dm < MedianHalf - 0.3f) continue;
             return false;
         }
         return road;
     }
+
+    /// <summary>Half a highway's grass median, m (the shader paints it the same).</summary>
+    public const float MedianHalf = 1.3f;
 
     /// <summary>Half the crown a track keeps between its wheel ruts, m (the shader's ruts run either side of it).</summary>
     public const float TrackCrown = 0.4f;

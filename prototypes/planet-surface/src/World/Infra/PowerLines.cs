@@ -385,25 +385,36 @@ public sealed class PowerLines
                     if (d < nearest) { nearest = d; from = j; }
                 }
                 if (from < 0) { Without(house, "nothing fed to come from"); continue; }
-                // Toward the wall it will be fixed to, stopping within a drop's reach of it.
-                if (!Fixing(house, Poles[from].X, Poles[from].Z, w, h, out Vector3 aim, out _, standing)) { Without(house, NoWall); continue; }
-                // Straight there, or else the land's way round whatever is between (a bay, a lake, a hill); a spur that
-                // can't get there is never begun.
-                int pm = Poles.Count, wm = Wires.Count, lm = Links.Count;
-                int end = Spur(from, aim.X, aim.Z, DropReach * 0.7, net, source, ground, rng, wear, kept, toHouse: true);
-                if (end < 0)
+                // Toward a wall it will be fixed to (the face toward the line first, then the others the house allows),
+                // straight there or else the land's way round whatever is between (a bay, a lake, a hill, the lot itself),
+                // stopping within a drop's reach of it; a spur that can't get there is never begun.
+                var aims = Fixings(house, Poles[from].X, Poles[from].Z, w, h, standing);
+                if (aims.Count == 0) { Without(house, NoWall); continue; }
+                int end = -1;
+                string why = "";
+                foreach (var (aim, aimCell) in aims)
                 {
-                    string straight = _spurWhy;
+                    int pm = Poles.Count, wm = Wires.Count, lm = Links.Count;
+                    end = Spur(from, aim.X, aim.Z, DropReach * 0.7, net, source, ground, rng, wear, kept, toHouse: true);
+                    if (end < 0)
+                    {
+                        Undo(pm, wm, lm);
+                        end = SpurWay(from, aim.X, aim.Z, DropReach * 0.7, net, source, ground, rng, wear, kept, true);
+                    }
+                    if (end >= 0 && Poles[end].Role == PowerRole.Line && Vector3.Distance(Poles[end].DropAnchor(aim.X, aim.Z) with { Y = 0 }, aim with { Y = 0 }) <= DropLongest)
+                    {
+                        at = aim;
+                        cell = aimCell;
+                        break;
+                    }
+                    why = end < 0 ? $"no spur: {_spurWhy}" : Poles[end].Role != PowerRole.Line ? "the spur ended at a substation" : "the pole too far from the wall";
                     Undo(pm, wm, lm);
-                    end = SpurWay(from, aim.X, aim.Z, DropReach * 0.7, net, source, ground, rng, wear, kept, true);
-                    if (end < 0) { Undo(pm, wm, lm); _spurWhy = $"{straight}, and {_spurWhy}"; }
+                    end = -1;
                 }
                 fed = Fed();
-                if (end < 0 || Poles[end].Role != PowerRole.Line) { Without(house, end < 0 ? $"no spur: {_spurWhy}" : "the spur ended at a substation"); continue; }
+                if (end < 0) { Without(house, why); continue; }
                 pole = end;
-                if (!Reaches(pole, DropLongest)) { Without(house, Fixing(house, Poles[pole].X, Poles[pole].Z, w, h, out _, out _, standing) ? "the pole too far from the wall" : NoWall); continue; }
-            }
-            PowerPole pp = Poles[pole];
+            }            PowerPole pp = Poles[pole];
             Vector3 anchor = pp.DropAnchor(at.X, at.Z);
             DropState state = pp.Fallen ? (broken ? DropState.Lying : DropState.FromHouse)
                 : broken ? DropState.FromPole
@@ -698,6 +709,22 @@ public sealed class PowerLines
         return false;
     }
 
+    /// <summary>Every fixing a drop from (tx, tz) could take, one per face in <see cref="Fixing"/>'s order.</summary>
+    public static List<(Vector3 At, (int X, int Y, int Z) Cell)> Fixings(FlavourRuin house, double tx, double tz, double w, double h, BlockGrid standing = null)
+    {
+        var (cx, cz) = house.Center;
+        double dx = Mathx.WrapDelta(tx - cx, w), dz = Mathx.WrapDelta(tz - cz, h);
+        Dir toward = FlavourRuins.Facing(dx, dz);
+        Dir[] beside = toward is Dir.North or Dir.South ? (dx >= 0 ? new[] { Dir.East, Dir.West } : new[] { Dir.West, Dir.East })
+            : (dz >= 0 ? new[] { Dir.South, Dir.North } : new[] { Dir.North, Dir.South });
+        var order = new List<Dir>(4);
+        if (house.FixingSide is Dir given) order.Add(given);
+        foreach (Dir d in new[] { toward, beside[0], beside[1] }) if (!order.Contains(d)) order.Add(d);
+        var found = new List<(Vector3, (int, int, int))>();
+        foreach (Dir side in order)
+            if (FixingOn(house, side, standing, out Vector3 at, out var cell)) found.Add((at, cell));
+        return found;
+    }
     static bool FixingOn(FlavourRuin house, Dir side, BlockGrid standing, out Vector3 at, out (int X, int Y, int Z) cell)
     {
         at = default;

@@ -21,7 +21,10 @@ namespace PlanetSurface.Terrain;
 ///   3: how much a place's pad covers a and b (markings stop there), whether a and b lie on a place's footprint (the road stops there)
 ///   4: how much a pad covers any of the deck's width at a and b (the ground there may be the pad's, not the deck's),
 ///      and whether a and b lie near an end that runs into a place's lot (where it leaves a street, that is a crossover)
-///   5 to 7: unused
+///   5: the junction form a and b lie near (the network's JunctionForm, at the nearer end within 80 m; 0 none),
+///      and how far along the road that junction is from a and from b (positive ahead the way it was laid, negative behind)
+///   6: the median dividing a highway's carriageways (0 none, 1 grass, 2 barrier, 3 grown over), then unused
+///   7: unused
 /// <see cref="Cells"/> holds each cell's first entry in <see cref="Index"/> and its count; the index lists segments.
 /// </summary>
 public sealed class RoadField
@@ -33,7 +36,7 @@ public sealed class RoadField
     public const float Reach = 8f;
 
     /// <summary>Road styles: how its markings run (plus <see cref="Town"/> on a town's street).</summary>
-    public const int Street = 0, Highway = 1, Track = 2, Rail = 3, Drive = 4, Graded = 5;
+    public const int Street = 0, Highway = 1, Track = 2, Rail = 3, Drive = 4, Graded = 5, Ring = 6;
 
     public ImageTexture Segments, Cells, Index;
     /// <summary>Cell size, cells across, cells down, segment count.</summary>
@@ -43,7 +46,7 @@ public sealed class RoadField
     float[] _segs, _cells, _index;
     double _width, _height;
 
-    readonly record struct Point(double X, double Z, float Y, float S, float Pad, float Core, float Wide, float Lot = 0f);
+    readonly record struct Point(double X, double Z, float Y, float S, float Pad, float Core, float Wide, float Lot = 0f, float JForm = 0f, float JDist = 0f, float PaintHw = 0f, float Seam = 0f);
 
     /// <summary>How far from an end that runs into a place's lot a road counts as that lot's way in (a crossover where it leaves the street), m.</summary>
     const float LotReach = 30f;
@@ -109,11 +112,42 @@ public sealed class RoadField
         {
             var (start, end, length) = ends[rid];
             for (int i = 0; i < pts.Count; i++)
+            {
                 if (start && pts[i].S < LotReach || end && length - pts[i].S < LotReach) pts[i] = pts[i] with { Lot = 1f };
+                // The junction it comes to: the nearer end's, within 80 m.
+                float toStart = pts[i].S, toEnd = length - pts[i].S;
+                if (t.JoinStart != 0 && toStart < JunctionReach && (t.JoinEnd == 0 || toStart <= toEnd)) pts[i] = pts[i] with { JForm = t.JoinStart, JDist = -toStart };
+                else if (t.JoinEnd != 0 && toEnd < JunctionReach) pts[i] = pts[i] with { JForm = t.JoinEnd, JDist = toEnd };
+                // Where it runs on into a way of another class, its painted width eases to meet that way's over a taper.
+                var (paint, seam) = Seam(t, toStart, toEnd);
+                pts[i] = pts[i] with { PaintHw = paint, Seam = seam };
+            }
             n += Emit(segs, pts, t, st, rid, width, height);
         }
         return Pack(segs, n, width, height);
     }
+
+    /// <summary>
+    /// A road's painted half width at a point, and how near a class-change seam it is (1 at the seam, 0 past its taper):
+    /// <see cref="PlanetSurface.Infra.InfraNetwork.SeamWidth"/> from the nearer end that runs on into another class.
+    /// </summary>
+    public static (float PaintHw, float Seam) Seam(TerrainStamp t, double toStart, double toEnd)
+    {
+        float hw = t.HalfWidth, seam = 0f;
+        bool atStart = t.MeetStartHw > 0f && toStart < t.MeetStartTaper && (t.MeetEndHw <= 0f || toStart <= toEnd);
+        bool atEnd = !atStart && t.MeetEndHw > 0f && toEnd < t.MeetEndTaper;
+        if (atStart || atEnd)
+        {
+            double d = atStart ? toStart : toEnd, taper = atStart ? t.MeetStartTaper : t.MeetEndTaper;
+            hw = PlanetSurface.Infra.InfraNetwork.SeamWidth(t.HalfWidth, atStart ? t.MeetStartHw : t.MeetEndHw, d, taper);
+            double k = Math.Clamp(d / taper, 0, 1);
+            seam = (float)(1 - k * k * (3 - 2 * k));
+        }
+        return (hw, seam);
+    }
+
+    /// <summary>How far from a junction a road carries its form (for its approach paint), m.</summary>
+    const float JunctionReach = 80f;
 
     /// <summary>A town's street: its stamp's name says so (InfraNetwork names them), and its style is raised by <see cref="Town"/>.</summary>
     public const int Town = 8;
@@ -125,6 +159,7 @@ public sealed class RoadField
         if (name.StartsWith("Rail")) return Rail;
         if (name.StartsWith("Track")) return Track;
         if (name.StartsWith("Graded")) return Graded;
+        if (name.StartsWith("Ring")) return Ring;
         if (name.StartsWith("Road")) return halfWidth >= 3.5f ? Street : Track;
         return Drive;
     }
@@ -175,7 +210,9 @@ public sealed class RoadField
             segs.Add(t.HalfWidth); segs.Add(t.Wear); segs.Add((float)t.Surface); segs.Add(style + 16f * id);
             segs.Add(a.Pad); segs.Add(b.Pad); segs.Add(a.Core); segs.Add(b.Core);
             segs.Add(a.Wide); segs.Add(b.Wide); segs.Add(a.Lot); segs.Add(b.Lot);
-            for (int k2 = 5 * 4; k2 < Stride; k2++) segs.Add(0f);
+            segs.Add(a.JForm); segs.Add(b.JForm); segs.Add(a.JDist); segs.Add(b.JDist);
+            segs.Add(t.Median); segs.Add((a.PaintHw + b.PaintHw) * 0.5f); segs.Add(a.Seam); segs.Add(b.Seam);
+            for (int k2 = 7 * 4; k2 < Stride; k2++) segs.Add(0f);
             count++;
         }
         return count;
@@ -196,6 +233,9 @@ public sealed class RoadField
             float err = MathF.Max((float)side / 0.03f, MathF.Abs(r.Y - (p.Y + (q.Y - p.Y) * u)) / 0.2f);
             err = MathF.Max(err, MathF.Max(MathF.Abs(r.Pad - (p.Pad + (q.Pad - p.Pad) * u)), MathF.Abs(r.Core - (p.Core + (q.Core - p.Core) * u))) / 0.1f);
             err = MathF.Max(err, MathF.Max(MathF.Abs(r.Wide - (p.Wide + (q.Wide - p.Wide) * u)), MathF.Abs(r.Lot - (p.Lot + (q.Lot - p.Lot) * u))) / 0.1f);
+            if (r.JForm != p.JForm || r.JForm != q.JForm) err = MathF.Max(err, 100f);
+            err = MathF.Max(err, MathF.Abs(r.JDist - (p.JDist + (q.JDist - p.JDist) * u)) / 0.2f);
+            err = MathF.Max(err, MathF.Max(MathF.Abs(r.PaintHw - (p.PaintHw + (q.PaintHw - p.PaintHw) * u)) / 0.05f, MathF.Abs(r.Seam - (p.Seam + (q.Seam - p.Seam) * u)) / 0.1f));
             if (err > worst) { worst = err; at = i; }
         }
         // Long segments are split anyway, so a cell's list stays short and the deck follows the grade.

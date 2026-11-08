@@ -51,6 +51,19 @@ public static class InfraViews
             PlanetSurface.Poi.PoiSiting.StartWorld = true;
             return new(PlanetSpec.Roll(seed, arch, 0), m => default, 0.4, WeatherKind.Clear, Ground: what == "ways-wet" ? new GroundCover { Wetness = 0.75f } : null, Series: WaySeries);
         }
+        // The junctions: the nearest of each form, from above and close on its way in.
+        // Where classes meet: a dirt way's mouth on a paved road, and a way running on into one of another kind.
+        if (what == "seams")
+        {
+            PlanetSurface.Poi.PoiSiting.StartWorld = true;
+            return new(PlanetSpec.Roll(seed, arch, 0), m => default, 0.4, WeatherKind.Clear, Series: SeamSeries);
+        }
+        if (what is "junctions" or "roundabout")
+        {
+            PlanetSurface.Poi.PoiSiting.StartWorld = true;
+            InfraNetwork.ForceRoundabouts = what == "roundabout";
+            return new(PlanetSpec.Roll(seed, arch, 0), m => default, 0.4, WeatherKind.Clear, Series: JunctionSeries);
+        }
         // The grid: a substation and its lines, a house's drop close, and a street of drops from above.
         if (what == "power")
         {
@@ -284,12 +297,13 @@ public static class InfraViews
             }
         }
         // A route: the nearest ground stretch of its kind, looking along it from a little above the deck.
-        RouteKind want = what switch { "highway" => RouteKind.Highway, "track" => RouteKind.Track, "rail" => RouteKind.Rail, _ => RouteKind.Road };
+        // (infra:median: a divided highway's, well away from its junctions, from a little higher.)
+        RouteKind want = what switch { "highway" or "median" => RouteKind.Highway, "track" => RouteKind.Track, "rail" => RouteKind.Rail, _ => RouteKind.Road };
         InfraRoute best = null;
         int bestI = 0;
         double bestD = double.MaxValue;
-        foreach (InfraRoute r in net.Routes.Where(r => r.Kind == want || what == "road" && r.Kind == RouteKind.Highway))
-            for (int i = 10; i + 10 < r.Count; i += 5)
+        foreach (InfraRoute r in net.Routes.Where(r => (r.Kind == want || what == "road" && r.Kind == RouteKind.Highway) && (what != "median" || net.MedianOf(r) > 0)))
+            for (int i = what == "median" ? 40 : 10; i + (what == "median" ? 40 : 10) < r.Count; i += 5)
             {
                 if (r.Span[i] != RoadSpan.Ground || r.Span[i + 8] != RoadSpan.Ground) continue;
                 double d = Away(r.X[i], r.Z[i]);
@@ -297,7 +311,8 @@ public static class InfraViews
             }
         if (best == null) return (new Vector3((float)lx, w.GroundHeight(lx, lz) + 20f, (float)lz), 0f, -8f);
         int ahead = Math.Min(best.Count - 1, bestI + 14);
-        return Look(w, best.X[bestI], best.Z[bestI], best.Y[bestI] + 2.2f, best.X[ahead], best.Z[ahead], best.Y[ahead] + 1f);
+        if (what == "median") GD.Print($"MEDIAN: {net.MedianOf(best)} on highway {best.Id}");
+        return Look(w, best.X[bestI], best.Z[bestI], best.Y[bestI] + (what == "median" ? 5f : 2.2f), best.X[ahead], best.Z[ahead], best.Y[ahead] + 1f);
     }
 
     /// <summary>
@@ -475,6 +490,64 @@ public static class InfraViews
             Add($"{name}-ground", sx, sz, G(sx, sz) + 1.7f, best.X[at + 6], best.Z[at + 6], best.Y[at + 6]);
             Add($"{name}-close", best.X[at] - dx * 3 + dz * 1.5, best.Z[at] - dz * 3 - dx * 1.5, best.Y[at] + 3.2f, best.X[at] + dx * 3, best.Z[at] + dz * 3, best.Y[at]);
             if (name != "steep") Add($"{name}-high", best.X[at] - dx * 120 + dz * 90, best.Z[at] - dz * 120 - dx * 90, best.Y[at] + 160f, best.X[at], best.Z[at], best.Y[at]);
+        }
+        return shots;
+    }
+
+    /// <summary>infra:seams: the nearest dirt way meeting a paved road, and the nearest way running on into one of another class, each from the ground and from about 30 m up.</summary>
+    static System.Collections.Generic.List<Screenshot.Shot> SeamSeries(Main m)
+    {
+        var w = m.World;
+        var shots = new System.Collections.Generic.List<Screenshot.Shot>();
+        float G(double x, double z) => w.GroundHeight(Mathx.WrapX(x, w.Width), Mathx.Wrap(z, w.Height));
+        double Away(double x, double z) => Math.Sqrt(Math.Pow(Mathx.WrapDelta(x - w.Landing.X, w.Width), 2) + Math.Pow(Mathx.WrapDelta(z - w.Landing.Y, w.Height), 2));
+        void Pair(string name, InfraJunction j, JunctionArm arm)
+        {
+            var (p, h, pitch) = Look(w, j.X + arm.DirX * 30 + arm.DirZ * 14, j.Z + arm.DirZ * 30 - arm.DirX * 14, j.Y + 30f, j.X, j.Z, j.Y);
+            shots.Add(new Screenshot.Shot($"{name}-high", p, h, pitch));
+            double gx = j.X + arm.DirX * 22 - arm.DirZ * 3, gz = j.Z + arm.DirZ * 22 + arm.DirX * 3;
+            (p, h, pitch) = Look(w, gx, gz, G(gx, gz) + 1.7f, j.X, j.Z, j.Y + 0.5f);
+            shots.Add(new Screenshot.Shot($"{name}-ground", p, h, pitch));
+        }
+        var joins = w.Infra.Joins.Where(j => j.Arms.Count >= 2).OrderBy(j => Away(j.X, j.Z)).ToList();
+        InfraJunction mouth = joins.FirstOrDefault(j => !j.Through.Soil && j.Arms.Any(a => a.Route != j.Through && a.Route.Soil));
+        if (mouth != null) Pair("mouth", mouth, mouth.Arms.First(a => a.Route != mouth.Through && a.Route.Soil));
+        InfraJunction change = joins.FirstOrDefault(j => j.Form == JunctionForm.RunOn && j.Arms.Count == 2 && j.Arms[0].Route.Soil && j.Arms[1].Route.Soil && InfraNetwork.ClassChange(j.Arms[0].Route, j.Arms[1].Route))
+            ?? joins.FirstOrDefault(j => j.Form == JunctionForm.RunOn && j.Arms.Count == 2 && InfraNetwork.ClassChange(j.Arms[0].Route, j.Arms[1].Route));
+        if (change != null) Pair("change", change, change.Arms.OrderBy(a => a.Route.HalfWidth).First());
+        GD.Print($"SEAMS: mouth {(mouth == null ? "none" : $"{string.Join("/", mouth.Arms.Select(a => a.Route.Graded ? "Graded" : a.Route.Kind.ToString()))} at {mouth.X:F0},{mouth.Z:F0}")}; change {(change == null ? "none" : $"{string.Join("/", change.Arms.Select(a => a.Route.Graded ? "Graded" : a.Route.Kind.ToString()))} at {change.X:F0},{change.Z:F0}")}");
+        return shots;
+    }
+
+    /// <summary>infra:junctions: the nearest junction of each form, from 40 m up and close along one of its ways in.</summary>
+    static System.Collections.Generic.List<Screenshot.Shot> JunctionSeries(Main m)
+    {
+        var w = m.World;
+        var shots = new System.Collections.Generic.List<Screenshot.Shot>();
+        float G(double x, double z) => w.GroundHeight(Mathx.WrapX(x, w.Width), Mathx.Wrap(z, w.Height));
+        double Away(double x, double z) => Math.Sqrt(Math.Pow(Mathx.WrapDelta(x - w.Landing.X, w.Width), 2) + Math.Pow(Mathx.WrapDelta(z - w.Landing.Y, w.Height), 2));
+        void Add(string name, double x, double z, float y, double tx, double tz, float ty)
+        {
+            var (p, h, pitch) = Look(w, x, z, Math.Max(y, G(x, z) + 1.7f), tx, tz, ty);
+            shots.Add(new Screenshot.Shot(name, p, h, pitch));
+        }
+        GD.Print($"JUNC: {string.Join(", ", w.Infra.Joins.GroupBy(j => j.Form).Select(g => $"{g.Count()} {g.Key}"))}");
+        foreach (JunctionForm form in new[] { JunctionForm.Roundabout, JunctionForm.Tee, JunctionForm.Crossroads, JunctionForm.Slip, JunctionForm.Fork })
+        {
+            InfraJunction j = w.Infra.Joins.Where(q => q.Form == form && q.Arms.Any(a => a.Route.Kind != RouteKind.Track)).OrderBy(q => Away(q.X, q.Z)).FirstOrDefault();
+            if (j == null) continue;
+            JunctionArm arm = j.Arms.Where(a => a.Route != j.Through).OrderByDescending(a => a.Route.HalfWidth).FirstOrDefault() ?? j.Arms[0];
+            GD.Print($"JUNC: {form} at {j.X:F0},{j.Z:F0}, {j.Arms.Count} ways ({string.Join(", ", j.Arms.Select(a => $"{a.Route.Kind}{(a.Route.Laid.Length == 0 ? " street" : "")}"))}), {j.Why}");
+            string name = form.ToString().ToLowerInvariant();
+            Add($"{name}-high", j.X + arm.DirX * 45 + arm.DirZ * 20, j.Z + arm.DirZ * 45 - arm.DirX * 20, j.Y + 38f, j.X, j.Z, j.Y);
+            Add($"{name}-close", j.X + arm.DirX * 26 - arm.DirZ * 2.5, j.Z + arm.DirZ * 26 + arm.DirX * 2.5, j.Y + 2.2f, j.X, j.Z, j.Y);
+        }
+        // A town street's mid-block crossing: along the longest street, from its middle.
+        InfraRoute street = w.Infra.Routes.Where(r => r.Laid.Length == 0 && r.Kind == RouteKind.Road && !r.Ring).OrderByDescending(r => r.Length).FirstOrDefault();
+        if (street != null && street.Count > 20)
+        {
+            int i = street.Count / 2;
+            Add("street-high", street.X[i] + 30, street.Z[i] + 30, street.Y[i] + 45f, street.X[i], street.Z[i], street.Y[i]);
         }
         return shots;
     }

@@ -349,6 +349,11 @@ public partial class SurfaceTest
         double sharpest = 0;
         string firstSharp = "";
         float worst = 0;
+        int joins = 0, badJoins = 0, seams = 0, hardSeams = 0, seamStamps = 0, mouths = 0;
+        string firstHardSeam = "";
+        var kindsMet = new Dictionary<string, int>();
+        var forms = new Dictionary<JunctionForm, int>();
+        string firstBadJoin = "";
         int gridWorlds = 0, powered = 0, dropped = 0, unfed = 0, strungDrops = 0, downDrops = 0, wallsChecked = 0, offWall = 0, dropLow = 0, substations = 0, plantsSeen = 0;
         string firstUnserved = "", firstUnfed = "", firstOffWall = "", firstLow = "";
         var unservedWhy = new Dictionary<string, int>();
@@ -437,6 +442,49 @@ public partial class SurfaceTest
                         tightHow[r.Laid] = tightHow.GetValueOrDefault(r.Laid) + 1;
                         i += 10;
                     }
+                }
+            }
+            // Every change of class where one way runs on into another is tapered, never a hard edge: each side's painted
+            // width eases to meet the other's (both at the mean at the seam) and changes gently over its taper, and the
+            // road stamps carry it to the road field; and a dirt way meeting a paved road has its apron.
+            foreach (InfraJunction j in (w.Infra?.Joins ?? new List<InfraJunction>()).Where(j => j.Form == JunctionForm.RunOn && j.Arms.Count == 2 && j.Arms[0].Route != j.Arms[1].Route))
+            {
+                JunctionArm a = j.Arms[0], b = j.Arms[1];
+                if (!InfraNetwork.ClassChange(a.Route, b.Route)) continue;
+                seams++;
+                float MeetOf(JunctionArm m) => m.Forward ? m.Route.StartMeetHw : m.Route.EndMeetHw;
+                bool SoilOf(JunctionArm m) => m.Forward ? m.Route.StartMeetSoil : m.Route.EndMeetSoil;
+                float ma = MeetOf(a), mb = MeetOf(b);
+                double ta = InfraNetwork.SeamTaper(a.Route.Soil, SoilOf(a), a.Route.HalfWidth, ma), tb = InfraNetwork.SeamTaper(b.Route.Soil, SoilOf(b), b.Route.HalfWidth, mb);
+                bool hard = ma <= 0 || mb <= 0 || Math.Abs(InfraNetwork.SeamWidth(a.Route.HalfWidth, ma, 0, ta) - InfraNetwork.SeamWidth(b.Route.HalfWidth, mb, 0, tb)) > 0.25f;
+                for (double sAlong = 0; sAlong < Math.Max(ta, tb) && !hard; sAlong += 4)
+                    hard = Math.Abs(InfraNetwork.SeamWidth(a.Route.HalfWidth, ma, sAlong + 4, ta) - InfraNetwork.SeamWidth(a.Route.HalfWidth, ma, sAlong, ta)) > 0.5f
+                        || Math.Abs(InfraNetwork.SeamWidth(b.Route.HalfWidth, mb, sAlong + 4, tb) - InfraNetwork.SeamWidth(b.Route.HalfWidth, mb, sAlong, tb)) > 0.5f;
+                if (hard) { hardSeams++; if (firstHardSeam.Length == 0) firstHardSeam = $" (first: {a.Route.Kind}{(a.Route.Graded ? " graded" : "")} into {b.Route.Kind}{(b.Route.Graded ? " graded" : "")} at {j.X:F0},{j.Z:F0})"; }
+                kindsMet[$"{(a.Route.Graded ? "Graded" : a.Route.Kind)}/{(b.Route.Graded ? "Graded" : b.Route.Kind)}"] = kindsMet.GetValueOrDefault($"{(a.Route.Graded ? "Graded" : a.Route.Kind)}/{(b.Route.Graded ? "Graded" : b.Route.Kind)}") + 1;
+            }
+            seamStamps += w.Source.Stamps.Count(t => t.MeetStartHw > 0 || t.MeetEndHw > 0);
+            mouths += (w.Infra?.Joins ?? new List<InfraJunction>()).Count(j => !j.Through.Soil && j.Arms.Any(a => a.Route != j.Through && a.Route.Soil));
+            // Every junction is one of the defined forms, and one its ways and the world's tech allow.
+            foreach (InfraJunction j in w.Infra?.Joins ?? new List<InfraJunction>())
+            {
+                joins++;
+                forms[j.Form] = forms.GetValueOrDefault(j.Form) + 1;
+                bool low = w.Infra.Profile.Before == PoiGenerator.Gen.TechLevel.Low;
+                bool ok = j.Form switch
+                {
+                    JunctionForm.RunOn => j.Arms.Count <= 2,
+                    JunctionForm.Tee => j.Arms.Count == 3,
+                    JunctionForm.Crossroads => j.Arms.Count >= 4,
+                    JunctionForm.Roundabout => !low && j.Arms.Count >= 3 && j.Ring != null && j.Ring.Span.All(s => s == RoadSpan.Ground) && j.Arms.All(a => a.Route.Kind == RouteKind.Road),
+                    JunctionForm.Slip => !low && j.Arms.Count >= 3,
+                    JunctionForm.Fork => low && j.Arms.Count >= 3,
+                    _ => false,
+                };
+                if (!ok)
+                {
+                    badJoins++;
+                    if (firstBadJoin.Length == 0) firstBadJoin = $" (first: a {j.Form} of {j.Arms.Count} ways at {j.X:F0},{j.Z:F0}, {w.Infra.Profile.Before} tech)";
                 }
             }
             PowerLines power = w.Infra?.Power;
@@ -552,6 +600,8 @@ public partial class SurfaceTest
         int noWall = unservedWhy.GetValueOrDefault(PowerLines.NoWall);
         Check(gridWorlds > 0 && powered > 0 && dropped + noWall == powered && unfed == 0 && plantsSeen > 0 && substations >= gridWorlds,
             $"every powered house has its drop back to a plant: {gridWorlds} worlds with a grid, {plantsSeen} plants, {substations} substations; {powered} houses that would have had power, {dropped} with a drop ({strungDrops} strung, {downDrops} down), {noWall} with no wall left standing to fix one to{firstUnserved} [{string.Join(", ", unservedWhy.Where(k => k.Key != PowerLines.NoWall).Select(k => $"{k.Value} {k.Key}"))}], {unfed} on a pole not fed through a substation from a plant{firstUnfed}");
+        Check(hardSeams == 0 && (seams == 0 || seamStamps > 0), $"no way changes class across a hard edge: {seams} places on {sweepWorlds} fresh worlds where a way runs on into another class ({string.Join(", ", kindsMet.Select(k => $"{k.Value} {k.Key}"))}), {hardSeams} without a taper{firstHardSeam}; {seamStamps} road stamps carrying a taper; {mouths} dirt ways meeting a paved road, each with its apron");
+        Check(joins > 0 && badJoins == 0, $"every junction is a defined form its ways and tech allow: {joins} on {sweepWorlds} fresh worlds ({string.Join(", ", forms.OrderBy(f => f.Key).Select(f => $"{f.Value} {f.Key}"))}), {badJoins} not{firstBadJoin}");
         Check(wallsChecked > 0 && offWall == 0 && dropLow == 0,
             $"service drops are anchored: {wallsChecked} fixings checked against the house as spawned, {offWall} not on a standing wall{firstOffWall}; {dropLow} drops through or under the ground{firstLow}");
         Check(feetChecked >= 120 && floating == 0, $"every pylon foot meets the ground: {feetChecked} feet, {floating} floating or buried (worst {worst:F2} m above)");

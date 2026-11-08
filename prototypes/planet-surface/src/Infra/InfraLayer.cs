@@ -323,6 +323,15 @@ public partial class InfraLayer : Node3D
             if (power.Poles[i].Role != PowerRole.Plant) yield return new PolePiece { Lines = power, Index = i, X = power.Poles[i].X, Z = power.Poles[i].Z };
         foreach (PowerWire wire in power.Wires)
             yield return new WirePiece { Lines = power, Wire = wire, X = power.Poles[wire.A].X, Z = power.Poles[wire.A].Z };
+        foreach (StreetItem item in net.Furniture.Where(f => f.Thing != StreetThing.Tree))
+            yield return new FurniturePiece { Item = item, Tech = net.Profile?.Before ?? TechLevel.Mid, X = item.X, Z = item.Z };
+        foreach (InfraJunction j in net.Joins.Where(j => j.Form == JunctionForm.Roundabout))
+            yield return new IslandKerb { Junction = j, X = j.X, Z = j.Z };
+        // A divided highway's barrier down its median, stopping short of its junctions and any span that fell.
+        var down = new HashSet<(int, int)>(net.Structures.SelectMany(st => st.Fallen.Select(k => (st.Route.Id, k))));
+        foreach (InfraRoute r in net.Routes.Where(r => net.MedianOf(r) == 2))
+            for (int k = 6; k + 7 < r.Count; k++)
+                if (!down.Contains((r.Id, k))) yield return new MedianBarrier { Route = r, K = k, X = r.X[k], Z = r.Z[k] };
         foreach (ServiceDrop drop in power.Drops)
             yield return new DropPiece { Lines = power, Drop = drop, X = power.Poles[drop.Pole].X, Z = power.Poles[drop.Pole].Z };
         // A station at each end of a line: a platform, a shelter and the buffers the track stops at.
@@ -633,6 +642,113 @@ public partial class InfraLayer : Node3D
             {
                 var a = p.Anchor(k, Lines.WiresOn(p));
                 b.Box(b.Local(a.X, a.Y + 0.6f, a.Z), NV.UnitX * 0.08f, NV.UnitY * 0.6f, NV.UnitZ * 0.08f, Insulator, DecoSurface.Matte, collide: false);
+            }
+        }
+    }
+
+    internal static readonly DecoRgb LampGrey = DecoRgb.Hex("6c6f70"), SignalBlack = DecoRgb.Hex("1c1d1e"), DeadLens = DecoRgb.Hex("3a2c22"),
+        SignWhite = DecoRgb.Hex("d8d6cf"), SignRed = DecoRgb.Hex("9a2a22"), SignBlue = DecoRgb.Hex("2a4f8a");
+
+    /// <summary>
+    /// A street lamp (a pole leaning its arm out over the road, its head dark), a signal pole at a corner (a post
+    /// and a head of three dead lenses facing the junction) or a sign post (a symbol plate facing whoever comes:
+    /// give way, a red-rimmed triangle; a roundabout, a blue disc with a white ring).
+    /// </summary>
+    sealed class FurniturePiece : Piece
+    {
+        public StreetItem Item;
+        public TechLevel Tech;
+
+        public override void Emit(TileBuilder b)
+        {
+            NV foot = b.Local(Item.X, Item.Y, Item.Z), face = new(Item.FaceX, 0, Item.FaceZ), side = new(-Item.FaceZ, 0, Item.FaceX);
+            DecoRgb pole = Tech == TechLevel.High ? PylonConcrete : LampGrey;
+            switch (Item.Thing)
+            {
+                case StreetThing.Lamp:
+                {
+                    float hgt = Tech == TechLevel.High ? 8f : 6.5f;
+                    b.Box(foot + NV.UnitY * (hgt * 0.5f - 0.3f), NV.UnitX * 0.08f, NV.UnitY * (hgt * 0.5f + 0.3f), NV.UnitZ * 0.08f, pole, DecoSurface.Metal, collide: true);
+                    b.Box(foot + face * 0.8f + NV.UnitY * (hgt - 0.05f), face * 0.85f, NV.UnitY * 0.05f, side * 0.05f, pole, DecoSurface.Metal, collide: false);
+                    b.Box(foot + face * 1.55f + NV.UnitY * (hgt - 0.16f), face * 0.32f, NV.UnitY * 0.08f, side * 0.16f, SignalBlack, DecoSurface.Metal, collide: false);
+                    break;
+                }
+                case StreetThing.Signal:
+                {
+                    b.Box(foot + NV.UnitY * 1.6f, NV.UnitX * 0.07f, NV.UnitY * 1.9f, NV.UnitZ * 0.07f, LampGrey, DecoSurface.Metal, collide: true);
+                    NV head = foot + NV.UnitY * 3.3f + face * 0.12f;
+                    b.Box(head, face * 0.13f, NV.UnitY * 0.5f, side * 0.17f, SignalBlack, DecoSurface.Metal, collide: false);
+                    for (int k = -1; k <= 1; k++)
+                        b.Box(head + face * 0.14f + NV.UnitY * (k * 0.32f), face * 0.02f, NV.UnitY * 0.1f, side * 0.1f, DeadLens, DecoSurface.Glass, collide: false);
+                    break;
+                }
+                default:
+                {
+                    b.Box(foot + NV.UnitY * 1.1f, NV.UnitX * 0.04f, NV.UnitY * 1.4f, NV.UnitZ * 0.04f, LampGrey, DecoSurface.Metal, collide: true);
+                    NV c = foot + NV.UnitY * 2.2f + face * 0.06f, behind = c - face;
+                    if (Item.Symbol == StreetFurniture.GiveWay)
+                    {
+                        // An upside-down triangle: red rim, white within.
+                        NV up = NV.UnitY;
+                        b.Quad(c + up * 0.4f - side * 0.46f, c + up * 0.4f + side * 0.46f, c - up * 0.4f, c - up * 0.4f, SignRed, DecoSurface.Matte, 1f, behind);
+                        NV c2 = c + face * 0.01f + up * 0.06f;
+                        b.Quad(c2 + up * 0.26f - side * 0.3f, c2 + up * 0.26f + side * 0.3f, c2 - up * 0.26f, c2 - up * 0.26f, SignWhite, DecoSurface.Matte, 1f, behind);
+                    }
+                    else
+                    {
+                        // A disc of eight sides, blue, with a white ring of three arrows' worth.
+                        for (int k = 0; k < 8; k++)
+                        {
+                            double a0 = k * Math.Tau / 8, a1 = (k + 1) * Math.Tau / 8;
+                            NV p0 = c + (side * (float)Math.Cos(a0) + NV.UnitY * (float)Math.Sin(a0)) * 0.38f, p1 = c + (side * (float)Math.Cos(a1) + NV.UnitY * (float)Math.Sin(a1)) * 0.38f;
+                            b.Quad(c, p0, p1, p1, SignBlue, DecoSurface.Matte, 1f, behind);
+                            NV q0 = c + face * 0.01f + (side * (float)Math.Cos(a0) + NV.UnitY * (float)Math.Sin(a0)) * 0.24f, q1 = c + face * 0.01f + (side * (float)Math.Cos(a0 + 0.55) + NV.UnitY * (float)Math.Sin(a0 + 0.55)) * 0.24f;
+                            if (k % 3 != 2) b.Quad(q0, q1, q1 - (q1 - c) * 0.3f, q0 - (q0 - c) * 0.3f, SignWhite, DecoSurface.Matte, 1f, behind);
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    /// <summary>One 4 m stretch of a highway's median barrier: a concrete safety barrier, wide at its foot and narrowing up, on the deck.</summary>
+    sealed class MedianBarrier : Piece
+    {
+        public InfraRoute Route;
+        public int K;
+
+        public override void Emit(TileBuilder b)
+        {
+            InfraRoute r = Route;
+            NV a = b.Local(r.X[K], r.Y[K], r.Z[K]), c = b.Local(r.X[K + 1], r.Y[K + 1], r.Z[K + 1]);
+            NV along = c - a;
+            float len = along.Length();
+            if (len < 1e-3f) return;
+            NV dir = along / len, side = NV.Normalize(new NV(-dir.Z, 0, dir.X)), up = NV.Normalize(NV.Cross(side, dir));
+            if (up.Y < 0) up = -up;
+            NV mid = (a + c) * 0.5f;
+            DecoRgb col = r.Kept ? PylonConcrete : ConcreteDark;
+            b.Box(mid + up * 0.16f, dir * (len * 0.5f + 0.02f), up * 0.18f, side * 0.3f, col, DecoSurface.Matte, collide: true);
+            b.Box(mid + up * 0.6f, dir * (len * 0.5f + 0.02f), up * 0.27f, side * 0.13f, col, DecoSurface.Matte, collide: true);
+        }
+    }
+
+    /// <summary>A roundabout island's kerb: a ring of low kerbstones round its edge, on the deck.</summary>
+    sealed class IslandKerb : Piece
+    {
+        public InfraJunction Junction;
+
+        public override void Emit(TileBuilder b)
+        {
+            float r = (float)InfraNetwork.RingRadius - 4f + 0.12f;
+            const int N = 32;
+            for (int k = 0; k < N; k++)
+            {
+                double a = (k + 0.5) * Math.Tau / N;
+                double x = Junction.X + Math.Cos(a) * r, z = Junction.Z + Math.Sin(a) * r;
+                NV at = b.Local(x, Junction.Y + 0.06f, z), across = new((float)Math.Cos(a), 0, (float)Math.Sin(a)), along = new(-across.Z, 0, across.X);
+                b.Box(at, along * (MathF.PI * r / N + 0.02f), NV.UnitY * 0.12f, across * 0.13f, PylonConcrete, DecoSurface.Matte, collide: true);
             }
         }
     }

@@ -52,8 +52,45 @@ public sealed class InfraRoute
     public bool Graded;
     /// <summary>A waterfront road: the side its seawall stands on (+1 left of its way, -1 right, 0 none); the ground past the wall drops to the water.</summary>
     public int WallSide;
+    /// <summary>The form of the junction at each end (None at a place's gate or a dead end).</summary>
+    public JunctionForm StartJoin, EndJoin;
+    /// <summary>A roundabout's ring: a closed street round its island.</summary>
+    public bool Ring;
+    /// <summary>
+    /// Where it runs on at an end into a way of another class (a track into a graded road, a highway into a road):
+    /// that way's half width there, 0 where it doesn't. Its painted width tapers to meet it (<see cref="SeamWidth"/>).
+    /// </summary>
+    public float StartMeetHw, EndMeetHw;
+    /// <summary>And whether that way is of the dirt family or paved (its taper's length follows the two).</summary>
+    public bool StartMeetSoil, EndMeetSoil;
+
+    /// <summary>A way of the land's own ground (a track or a graded dirt road), not paved.</summary>
+    public bool Soil => Kind == RouteKind.Track || Graded || Surface is StampSurface.Dirt or StampSurface.Gravel;
 
     public int Count => X.Length;
+}
+
+/// <summary>The forms a junction is built in (design doc "Infrastructure"): chosen from the ways that meet, their class, the angle, the ground and the world's tech.</summary>
+public enum JunctionForm { None, RunOn, Tee, Crossroads, Roundabout, Slip, Fork, DeadEnd }
+
+/// <summary>One way out of a junction: its route, whether it leaves along the route's points or back along them, and its heading (unit x, z).</summary>
+public sealed record JunctionArm(InfraRoute Route, bool Forward, (double X, double Z) Dir)
+{
+    public double DirX => Dir.X;
+    public double DirZ => Dir.Z;
+}
+
+/// <summary>A junction: where it is, the way the others join, every way out of it, and its form.</summary>
+public sealed class InfraJunction
+{
+    public double X, Z;
+    public float Y;
+    public InfraRoute Through;
+    public readonly List<JunctionArm> Arms = new();
+    public JunctionForm Form;
+    public string Why = "";
+    /// <summary>A roundabout's ring (null for any other form).</summary>
+    public InfraRoute Ring;
 }
 
 /// <summary>A flattened clearing a vessel can set down on, and the town it serves.</summary>
@@ -1689,6 +1726,170 @@ public sealed class InfraNetwork
     /// 100 m (each a road stamp), so a height query composes only the stretches near it. Maglevs touch
     /// the ground only at their stations; everything else is cut and filled to its deck.
     /// </summary>
+    /// <summary>The streets' lamps, verge trees, signal poles and sign posts (<see cref="StreetFurniture.Plan"/>).</summary>
+    public List<StreetItem> Furniture = new();
+
+    /// <summary>Every place two or more ways meet, and the form each was built in (<see cref="PlanJunctions"/>).</summary>
+    public readonly List<InfraJunction> Joins = new();
+
+    /// <summary>Proof frames and tests: build a roundabout wherever one could go.</summary>
+    public static bool ForceRoundabouts;
+
+    /// <summary>
+    /// The junctions, once every road, street and lane is laid: each end that joins another way, grouped where
+    /// they meet, and given the form the roads that meet ask for (design doc "Infrastructure"). A way running
+    /// on into another is one road; a branch leaving at a shallow angle leaves by a slip road, its lane tapering
+    /// off with a chevron gore in the fork (a low-tech world's is a plain fork); three ways make a T and four a
+    /// crossroads; and on a world that built them, where roads alike meet on level open ground out of town, a
+    /// roundabout: a ring round a kerbed island the ways come into. Low-tech worlds build only the simple forms.
+    /// </summary>
+    public void PlanJunctions(Func<double, double, float> ground, Func<double, double, double, bool> clear, PoiGenerator.Gen.Rng rng)
+    {
+        Joins.Clear();
+        if (Profile == null) return;
+        bool low = Profile.Before == TechLevel.Low;
+        bool roundabouts = !low && (ForceRoundabouts || rng.Chance(0.55f));
+        var roads = Routes.Where(r => r.Kind != RouteKind.Rail && r.Count >= 4).ToList();
+        foreach (InfraRoute r in roads)
+            foreach (bool atStart in new[] { true, false })
+            {
+                // An end at a place's gate is no junction.
+                if (atStart ? r.From != null : r.To != null) continue;
+                int e = atStart ? 0 : r.Count - 1;
+                double x = r.X[e], z = r.Z[e];
+                InfraRoute o = Nearest(Mathx.WrapX(x, _w), Mathx.Wrap(z, _h), 16, out int idx, out double d, new[] { r });
+                if (o == null || o.Kind == RouteKind.Rail || d > o.HalfWidth + 1.5)
+                {
+                    // A town street that just stops ends in a turning bulb (not a junction: no other way meets it there).
+                    if (o == null && r.Kind == RouteKind.Road && r.Laid.Length == 0 && !r.Ring && !low)
+                        if (atStart) r.StartJoin = JunctionForm.DeadEnd; else r.EndJoin = JunctionForm.DeadEnd;
+                    continue;
+                }
+                InfraJunction j = Joins.FirstOrDefault(q => Dist((q.X, q.Z), (x, z)) < 18 && q.Arms.Any(a => a.Route == o));
+                if (j == null)
+                {
+                    j = new InfraJunction { X = Mathx.WrapX(o.X[idx], _w), Z = Mathx.Wrap(o.Z[idx], _h), Y = o.Y[idx], Through = o };
+                    // The way it joins runs on either side of it, or ends there too.
+                    if (idx >= 3) j.Arms.Add(new JunctionArm(o, false, Away(o, idx, -1)));
+                    if (idx + 3 < o.Count) j.Arms.Add(new JunctionArm(o, true, Away(o, idx, 1)));
+                    Joins.Add(j);
+                }
+                if (j.Arms.Any(a => a.Route == r && a.Forward == atStart)) continue;
+                j.Arms.Add(new JunctionArm(r, atStart, Away(r, e, atStart ? 1 : -1)));
+            }
+        foreach (InfraJunction j in Joins)
+        {
+            var through = j.Arms.Where(a => a.Route == j.Through).ToList();
+            var branches = j.Arms.Where(a => a.Route != j.Through).ToList();
+            // How sharply each branch leaves the way it joins: a slip road leaves within 35 degrees of it.
+            bool shallow = branches.Count > 0 && branches.All(b => through.Any(t => Math.Acos(Math.Clamp(b.DirX * t.DirX + b.DirZ * t.DirZ, -1, 1)) < 35 * Math.PI / 180));
+            if (j.Arms.Count <= 2) { j.Form = JunctionForm.RunOn; j.Why = "a way running on into another"; }
+            else if (shallow) { j.Form = low ? JunctionForm.Fork : JunctionForm.Slip; j.Why = low ? "a branch forking off" : "a branch leaving at a shallow angle"; }
+            else if (j.Arms.Count == 3) { j.Form = JunctionForm.Tee; j.Why = "three ways"; }
+            else { j.Form = JunctionForm.Crossroads; j.Why = $"{j.Arms.Count} ways"; }
+            if (!roundabouts || j.Form is not (JunctionForm.Tee or JunctionForm.Crossroads)) continue;
+            // A roundabout: roads alike (no highway, no track, no town's grid street), level open ground, room for the ring.
+            if (j.Arms.Any(a => a.Route.Kind != RouteKind.Road || a.Route.Laid.Length == 0 || a.Route.Graded)) continue;
+            double radius = RingRadius;
+            bool level = true;
+            for (int k = 0; k < 16 && level; k++)
+            {
+                double a = k * Math.Tau / 16, px = j.X + Math.Cos(a) * (radius + 6), pz = j.Z + Math.Sin(a) * (radius + 6);
+                level = Math.Abs(ground(px, pz) - j.Y) < 1.2f;
+            }
+            if (!level || !clear(j.X, j.Z, radius + 10) || !(ForceRoundabouts || rng.Chance(0.75f))) continue;
+            if (Joins.Any(q => q != j && q.Form == JunctionForm.Roundabout && Dist((q.X, q.Z), (j.X, j.Z)) < 200)) continue;
+            j.Form = JunctionForm.Roundabout;
+            j.Why = "roads alike meeting on level open ground";
+            j.Ring = Ring(j);
+        }
+        foreach (InfraJunction j in Joins)
+            foreach (JunctionArm a in j.Arms.Where(a => a.Route != j.Through || j.Form == JunctionForm.Roundabout))
+            {
+                if (a.Route == j.Through) continue;
+                if (a.Forward) a.Route.StartJoin = j.Form; else a.Route.EndJoin = j.Form;
+            }
+        // Where a way runs on into one of another class, each tapers to meet the other: never a hard edge between them.
+        foreach (InfraJunction j in Joins.Where(j => j.Form == JunctionForm.RunOn && j.Arms.Count == 2 && j.Arms[0].Route != j.Arms[1].Route))
+        {
+            JunctionArm a = j.Arms[0], b = j.Arms[1];
+            if (!ClassChange(a.Route, b.Route)) continue;
+            foreach (var (me, other) in new[] { (a, b), (b, a) })
+                if (me.Forward) { me.Route.StartMeetHw = other.Route.HalfWidth; me.Route.StartMeetSoil = other.Route.Soil; }
+                else { me.Route.EndMeetHw = other.Route.HalfWidth; me.Route.EndMeetSoil = other.Route.Soil; }
+        }
+    }
+
+    /// <summary>Whether two ways that meet are of different classes: kind, graded or not, or their widths.</summary>
+    public static bool ClassChange(InfraRoute a, InfraRoute b) => a.Kind != b.Kind || a.Graded != b.Graded || a.Soil != b.Soil || Math.Abs(a.HalfWidth - b.HalfWidth) > 0.3f;
+
+    /// <summary>
+    /// How long a seam's taper runs, m: a few tens of metres within the dirt family, a lane drop's length between
+    /// paved ways, shorter where dirt meets a paved road; and never shorter than sixteen times the difference in their widths
+    /// (a lane drop's gentle slant).
+    /// </summary>
+    public static double SeamTaper(bool soil, bool otherSoil, float hw, float otherHw) => Math.Max(soil && otherSoil ? 30 : !soil && !otherSoil ? 60 : 20, 16 * Math.Abs(hw - otherHw));
+
+    /// <summary>
+    /// A way's painted half width <paramref name="along"/> metres from a seam where it runs on into a way of another
+    /// class: the two meet at the mean of their widths and each eases back to its own over the taper (smoothly, no step).
+    /// </summary>
+    public static float SeamWidth(float own, float other, double along, double taper)
+    {
+        double t = Math.Clamp(along / taper, 0, 1);
+        t = t * t * (3 - 2 * t);
+        return (float)((own + other) * 0.5 + (own - (own + other) * 0.5) * t);
+    }
+
+    /// <summary>
+    /// A highway's median: its carriageways divided by a strip of grass (most mid-tech worlds) or a concrete
+    /// barrier (most high-tech ones), a grass one grown over where nobody has kept the road for a century.
+    /// </summary>
+    public int MedianOf(InfraRoute r)
+    {
+        if (r.Kind != RouteKind.Highway || Profile == null || Profile.Before == TechLevel.Low) return 0;
+        float roll = (float)((PoiGenerator.Gen.Hash.Combine((ulong)r.Id, 0x3ED1A0UL) >> 11) / (double)(1UL << 53));
+        bool barrier = roll < (Profile.Before == TechLevel.High ? 0.6f : 0.3f);
+        return barrier ? 2 : !r.Kept && r.Wear > 0.8f ? 3 : 1;
+    }
+
+    /// <summary>A roundabout's ring: the radius of its centre line, m (its island's edge lies a road's half width inside).</summary>
+    public const double RingRadius = 11.5;
+
+    /// <summary>The way an arm leaves a junction from point <paramref name="i"/> of its route, a step at a time along it (unit, x and z).</summary>
+    static (double X, double Z) Away(InfraRoute r, int i, int step)
+    {
+        int k = Math.Clamp(i + step * 3, 0, r.Count - 1);
+        double dx = r.X[k] - r.X[i], dz = r.Z[k] - r.Z[i], l = Math.Max(1e-6, Math.Sqrt(dx * dx + dz * dz));
+        return (dx / l, dz / l);
+    }
+
+    /// <summary>A roundabout's ring: a closed street round the junction at its deck's height, its island on its left (the shader's inside).</summary>
+    InfraRoute Ring(InfraJunction j)
+    {
+        int n = (int)Math.Ceiling(Math.Tau * RingRadius / 3.0);
+        var xs = new double[n + 1];
+        var zs = new double[n + 1];
+        for (int k = 0; k <= n; k++)
+        {
+            // Turning so the middle lies to the left of the way it runs: (dir x to) > 0 in the shader's sense.
+            double a = -k * Math.Tau / n;
+            xs[k] = j.X + Math.Cos(a) * RingRadius;
+            zs[k] = j.Z + Math.Sin(a) * RingRadius;
+        }
+        double tx = xs[1] - xs[0], tz = zs[1] - zs[0], cx = j.X - xs[0], cz = j.Z - zs[0];
+        if (tx * cz - tz * cx < 0) { Array.Reverse(xs); Array.Reverse(zs); }
+        var ring = new InfraRoute
+        {
+            Id = Routes.Count, Kind = RouteKind.Road, Tech = Profile.Before, HalfWidth = 4f, Surface = j.Through.Surface,
+            Kept = j.Through.Kept, Wear = j.Through.Wear, X = xs, Z = zs, Y = Enumerable.Repeat(j.Y, n + 1).ToArray(),
+            Span = Enumerable.Repeat(RoadSpan.Ground, n).ToArray(), Laid = "", Ring = true,
+        };
+        for (int i = 0; i < n; i++) ring.Length += Math.Sqrt(Math.Pow(xs[i + 1] - xs[i], 2) + Math.Pow(zs[i + 1] - zs[i], 2));
+        Routes.Add(ring);
+        return ring;
+    }
+
     public List<TerrainStamp> Stamps()
     {
         var list = new List<TerrainStamp>();
@@ -1704,11 +1905,18 @@ public sealed class InfraNetwork
                 bool ground = false;
                 for (int i = s; i < e; i++) { spans.Add(r.Span[i]); ground |= r.Span[i] != RoadSpan.Bridge; }
                 if (!ground) continue;
-                list.Add(TerrainStamp.Road($"{(r.Graded ? "Graded" : r.Kind.ToString())} {r.Id}{(r.Laid.Length == 0 ? " street" : "")}", new ArraySegment<double>(r.X, s, e - s + 1), new ArraySegment<double>(r.Z, s, e - s + 1),
+                list.Add(TerrainStamp.Road($"{(r.Ring ? "Ring" : r.Graded ? "Graded" : r.Kind.ToString())} {r.Id}{(r.Laid.Length == 0 ? " street" : "")}", new ArraySegment<double>(r.X, s, e - s + 1), new ArraySegment<double>(r.Z, s, e - s + 1),
                     new ArraySegment<float>(r.Y, s, e - s + 1), spans, r.HalfWidth, r.Surface, r.Wear, _w, _h,
                     boreHalfWidth: r.HalfWidth + 1.2f, boreHeight: r.Kind == RouteKind.Rail ? 7f : 6.5f,
                     buckle: r.Kept || r.Kind == RouteKind.Rail || r.Surface is StampSurface.Dirt or StampSurface.Gravel ? 0f : 0.22f * r.Wear,
                     mouth: new ArraySegment<float>(mouth, s, e - s + 1), wallSide: r.WallSide));
+                list[^1].JoinStart = (int)r.StartJoin;
+                list[^1].JoinEnd = (int)r.EndJoin;
+                list[^1].Median = MedianOf(r);
+                list[^1].MeetStartHw = r.StartMeetHw;
+                list[^1].MeetEndHw = r.EndMeetHw;
+                list[^1].MeetStartTaper = (float)SeamTaper(r.Soil, r.StartMeetSoil, r.HalfWidth, r.StartMeetHw);
+                list[^1].MeetEndTaper = (float)SeamTaper(r.Soil, r.EndMeetSoil, r.HalfWidth, r.EndMeetHw);
             }
         }
         return list;

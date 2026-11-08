@@ -177,6 +177,16 @@ public sealed class TerrainStamp
     public StampSurface Surface { get; init; } = StampSurface.Natural;
     /// <summary>How long it has been left: 0 kept up, 1 a century of weather (cracked, sand and weeds drifted over).</summary>
     public float Wear { get; init; }
+    /// <summary>A road's junction forms at its route's start and end (the network's JunctionForm, 0 none): the shader paints by them.</summary>
+    public int JoinStart { get; set; }
+    public int JoinEnd { get; set; }
+    /// <summary>A highway's median (0 none, 1 grass, 2 a concrete barrier, 3 grown over): its carriageways are divided by it.</summary>
+    public int Median { get; set; }
+    /// <summary>A road that runs on at its route's start or end into a way of another class: that way's half width (0 none) and the taper's length, m; its painted width eases to meet it.</summary>
+    public float MeetStartHw { get; set; }
+    public float MeetEndHw { get; set; }
+    public float MeetStartTaper { get; set; }
+    public float MeetEndTaper { get; set; }
     /// <summary>Open ground with nothing built on it (a park): the land's plants grow on it, grass always, trees once it's worn past keeping.</summary>
     public bool Wild { get; init; }
     /// <summary>Its made ground is drawn by the terrain shader from <see cref="GroundPatch"/>es (set when they are planned): the mesh's colours leave it to them.</summary>

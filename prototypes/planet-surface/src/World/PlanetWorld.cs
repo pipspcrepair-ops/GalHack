@@ -172,6 +172,8 @@ public sealed partial class PlanetWorld
                 Palette.DeadZones.Add((gx, gz, zone.Dead * 3f, zone.Fade * 4f));
         // The land comes back through the ruins as the planet's own flora, and their rubble is its rock.
         Palette.Planted = RuinGrowth.Plan(pois, source, Palette, map.WidthMeters, map.HeightMeters);
+        // And the trees planted in the streets' verges, of the same species.
+        if (Infra != null) PlanetSurface.Infra.StreetFurniture.PlantTrees(Infra.Furniture, Palette);
         foreach (PoiSite p in pois) PoiGenerator.Gen.Growth.Earthen(p.Instance, RubbleRock, Weed);
         Look = WorldLook.For(map, Sky);
         BuildMs = ms;

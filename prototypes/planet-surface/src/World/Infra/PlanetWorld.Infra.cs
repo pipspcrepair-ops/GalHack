@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using GalHack.Terrain;
 using Planets.Gen;
 using PlanetSurface.Infra;
@@ -37,6 +38,11 @@ public sealed partial class PlanetWorld
         // Flavour ruins by the roads and in the country, their pads laid before the roads.
         infra.Ruins = FlavourRuins.Plan(infra, catalog?.Library, map, bare, pois, profile, Hash.Of(spec.Seed, 0xF1A7), ruins);
         foreach (FlavourRuin ruin in infra.Ruins) stamps.Add(ruin.Stamp);
+        // The junctions, every way laid: each given its form, a roundabout its ring, before the roads are stamped.
+        double mw = map.WidthMeters, mh = map.HeightMeters;
+        infra.PlanJunctions((x, z) => bare.Sampler.Sample(Mathx.WrapX(x, mw), Mathx.Wrap(z, mh), 2).Height,
+            (x, z, r) => !stamps.Any(s => s.Shape == StampShape.Pad && x + r > s.MinX && x - r < s.MaxX && z + r > s.MinZ && z - r < s.MaxZ),
+            new PoiGenerator.Gen.Rng(Hash.Of(spec.Seed, 0x7C7A)));
         stamps.AddRange(infra.Stamps());
         foreach (FlavourRuin ruin in infra.Ruins) if (ruin.Drive != null) stamps.Add(ruin.Drive);
         // What runs under a town: its ways in on pads of their own, after the roads so they win there.
@@ -62,5 +68,7 @@ public sealed partial class PlanetWorld
         // Power lines and wrecked traffic stand on the finished ground, beside the roads.
         infra.Power = PowerLines.Plan(infra, source, Hash.Of(spec.Seed, 0x90E7));
         infra.Wrecks = Wrecks.Plan(infra, source, pois, Hash.Of(spec.Seed, 0x3EC5));
+        // The streets' lamps, trees, signals and signs, in their verges and at their junctions.
+        infra.Furniture = StreetFurniture.Plan(infra, source, Hash.Of(spec.Seed, 0x57EE));
     }
 }
