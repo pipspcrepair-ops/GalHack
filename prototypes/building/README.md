@@ -108,6 +108,14 @@ single-block edit: 6.21 ms average, 14.69 ms worst (1.3 chunks rebuilt per edit)
 - To draw one, `src/Presentation/StructureView` is a ready RigidBody3D (frozen while it has a core), or call `ChunkMesher.Build` per dirty chunk for your own nodes. The walkable ship's cabin world can take the same box and hull colliders.
 - `Structure.Version` and `Structure.DirtyChunks` tell a view what changed; nothing in the core calls back into the engine.
 
+## How blocks and devices look
+
+Armour draws its material in the shader, from what the vertex data already carries: steel has seams, a row of rivets and a faint brushed grain; hardened steel two heavy bevelled plates a block with armour bolts; combat steel half-height plates laid like bricks with deep bevels and big bolts; concrete a cast joint, pour lines, form-tie holes and speckle; glass a framed edge with corner bolts. The fine work (rivets, grain, speckle) fades out first as a block shrinks on screen and the seams and plates later, so walls stop looking blank close up and never shimmer far off. Grime and damage still go on top.
+
+Devices get their detail from one rule per function (`src/Structures/DeviceDetail.cs`): a core's armoured housing, beating heart, data ports and hazard trim (the Big Core heavier, with towers and a crown of fins); a constructor's framed bay, gantry and nozzles, status screen, vents and hopper; a generator's fins, exhaust and pulsing core light; and so on for every function. The rules read the type's own numbers (a heavier constructor gets a bigger hopper and more nozzles), so nothing is drawn per device by hand. The detail is a few boxes, discs and bands merged into the chunk mesh, looks only: never solid, never covering or sealing a face, and left out with the face it sits on when a neighbour covers it. A part can carry a finish (colour, fine hazard trim, a grille, a symbol on a screen or a stencil, a pulse or blink) in the data too.
+
+A device's own lights and screens show its state: they flicker while the block is damaged, scorches and cracks dim them, they go out when it is wrecked, and they dim without power (the `powered` instance uniform per chunk, so switching power redraws nothing).
+
 ## How damage looks
 
 A block's health picks its stage (`Damage.Bucket`): over 75% whole, then scuffed, cracked and dented, and holed under 25%. Its material picks how that looks (`damageLook` in `materials.json`).

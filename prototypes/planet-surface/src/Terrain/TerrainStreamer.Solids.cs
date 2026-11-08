@@ -31,6 +31,9 @@ public partial class TerrainStreamer
     /// <summary>Solid colliders (trunks and boulders) in the near columns right now.</summary>
     public int SolidColliders { get; private set; }
 
+    /// <summary>Main-thread time spent on the solid flora's bodies since the game began, ms (tests read the difference over a stretch of frames).</summary>
+    public double SolidsTotalMs { get; private set; }
+
     /// <summary>Near columns with a solid-flora body, and the farthest of them from the focus (columns).</summary>
     public int SolidBodies { get; private set; }
     public int SolidReach { get; private set; }

@@ -165,6 +165,23 @@ public partial class Spaceflight : Node
     int _chartTick;
     readonly DepositFinder _deposits = new();
 
+    /// <summary>The chart key of the place in view from the bunker's way out (found from the start, alongside the bunker), or null if the start has none in view.</summary>
+    public string StartPlaceKey { get; private set; }
+
+    /// <summary>Charts the place in view from the bunker's way out, for good and from the first moment. Does nothing twice.</summary>
+    public void ChartStartPlace()
+    {
+        var planet = Game.Surface?.Planet;
+        if (planet == null || Game.Bunker?.Poi is not { } seen || Game.Bunker.Landmark == null) return;
+        for (int i = 0; i < planet.Pois.Count; i++)
+            if (planet.Pois[i] == seen)
+            {
+                Charts.Find($"poi{i}", seen.Name, seen.Origin.X, seen.Origin.Z, "place");
+                StartPlaceKey = $"poi{i}";
+                return;
+            }
+    }
+
     /// <summary>A couple of times a second: what is near you comes onto the charts.</summary>
     void Chart()
     {
@@ -186,7 +203,8 @@ public partial class Spaceflight : Node
         var planet = g.Surface.Planet;
         double x = Mathx.WrapX(at.X, planet.Width), z = Mathx.Wrap(at.Z, planet.Height);
         Charts.LookAround(planet.Pois.Select((p, i) => ($"poi{i}", p.Name, (double)p.Origin.X, (double)p.Origin.Z)), x, z, planet.Width, planet.Height);
-        // Every place waits to be come near (the one in view from the bunker's way out too: you see it, the compass doesn't).
+        // The place in view from the bunker's way out is known from the first moment; every other place waits to be come near (or pinged).
+        ChartStartPlace();
         // A deposit is charted once you have been near it (a ping only marks it for a while).
         float near = g.Surface.Data.Progress.Xp.DepositRadius;
         foreach (var (kind, d) in _deposits.Near(g.Surface, at))

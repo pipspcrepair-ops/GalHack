@@ -162,6 +162,10 @@ public sealed class LayoutExtras
     public bool PlainDoorSteel;
     /// <summary>Where a plain lot meets the road: the cell its path or forecourt ends at, on the lot's front edge.</summary>
     public Int3 Gate;
+    /// <summary>Where each house's service drop is fixed (a mast on the street side of its roof, facing the street), for the street's power line to run a wire to.</summary>
+    public List<ServicePoint> Service = new();
+    /// <summary>What each generated house turned out as (family, silhouette, garage door), for the tests.</summary>
+    public List<HomeNote> Homes = new();
     /// <summary>A blast site: ground zero and the radii of its crater, blown-down ring, dead zone and fade.</summary>
     public BlastZone? Blast;
 }

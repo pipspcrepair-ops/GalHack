@@ -77,7 +77,7 @@ public static class Decay
     {
         var layout = inst.Layout;
         var x = layout.Extras;
-        bool powered = inst.State == PoiState.Active, plain = x.Plain.Count > 0;
+        bool powered = inst.State == PoiState.Active || inst.Ruin.Falling && inst.State != PoiState.Infested, plain = x.Plain.Count > 0; // mid-collapse the lights are still on
         foreach (var spot in x.Lights)
         {
             var lvl = LevelAt(layout, spot.Cell.Y);

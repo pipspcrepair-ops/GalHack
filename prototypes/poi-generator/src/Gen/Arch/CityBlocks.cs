@@ -15,7 +15,7 @@ namespace PoiGenerator.Gen;
 /// decides all of it from the district, the land and the world's fall; nothing is placed by hand.
 /// </summary>
 public sealed record CityLot(string Kind, int W, int D, int Storeys, int Style, float Fall,
-    bool Lean = false, bool Toppled = false, int Back = 0, int Left = 0, int Right = 0, bool EndRight = false);
+    bool Lean = false, bool Toppled = false, int Back = 0, int Left = 0, int Right = 0, bool EndRight = false, HomeHints? Home = null);
 
 /// <summary>
 /// A city's lots on the 2 m grid, built as a player builds: storeys of floor slab and walls, stairs, curtain
@@ -328,162 +328,19 @@ public static class CityBlocks
     // ---- houses -----------------------------------------------------------------------------------
 
     /// <summary>
-    /// A terrace: narrow houses four blocks apart sharing their side walls, two or three storeys under one gable
-    /// along the street, each front its own colour, a chimney on each party wall. A front garden each with a path
-    /// to its door through a low wall; a back garden each, fenced from its neighbours, behind a back door. Where
-    /// the lot is wider than the row, a passage down the side to the gardens.
+    /// A row of terraced houses sharing their side walls, or a detached house, each from the house rules
+    /// (<see cref="Homes.CityHouse"/>) in the city's own culture: set back behind a front garden, a drive to
+    /// its garage where it has one, a path to every front door. Fenced, a low wall at the front with gaps
+    /// where the drive and paths come through.
     /// </summary>
-    static void Terrace(Plot p, CityLot lot)
-    {
-        Fab f = p.F;
-        int W = Math.Max(5, lot.W), D = Math.Max(14, lot.D), storeys = Math.Clamp(lot.Storeys, 1, 3);
-        int n = Math.Max(1, (W - 1) / 4), right = 4 * n;
-        int s = D >= 16 ? 3 : 2, k0 = s, k1 = s + 6;
-        Rgb paint = Facades[(lot.Style * 3 + W) % Facades.Length];
-        var face = new Stuff2(f.Wall.M, paint);
-        Rgb Front(int m) => Facades[(lot.Style * 3 + W + m * 5) % Facades.Length];
-        for (int st = 0; st < storeys; st++)
-        {
-            int j = st * Pitch;
-            p.Shell(0, k0, right, k1, j, H, face, f.Roof);
-            for (int m = 1; m < n; m++) p.Fill(4 * m, j, k0 + 1, 4 * m, j + H - 1, k1 - 1, Solid(face));
-        }
-        var rooms = new int[n, storeys];
-        var flights = new int[n, Math.Max(1, storeys - 1)];
-        for (int m = 0; m < n; m++)
-        {
-            // Up the house along one party wall, the next flight back down the depth along the other: 1 block wide.
-            if (storeys > 1) flights[m, 0] = p.Flight(4 * m + 1, k0 + 2, Dir.South, 0, Pitch, 1, "stair", 0);
-            if (storeys > 2) flights[m, 1] = p.Flight(4 * m + 3, k0 + 4, Dir.North, Pitch, Pitch, 1, "stair", 1);
-        }
-        for (int st = 1; st < storeys; st++) p.Level(st, st * Pitch, $"floor {st + 1}");
-        for (int m = 0; m < n; m++)
-            for (int st = 0; st < storeys; st++)
-            {
-                int j = st * Pitch;
-                rooms[m, st] = p.Room(ModuleKind.Room, st == 0 ? "hall" : "quarters", st, 4 * m + 1, j, k0 + 1, 4 * m + 3, j + H - 1, k1 - 1);
-                foreach (int i in new[] { 4 * m + 1, 4 * m + 3 })
-                {
-                    p.Glazed(i, j + 1, k0, i, k0);
-                    p.Glazed(i, j + 1, k1, i, k1);
-                }
-                if (st > 0) p.Glazed(4 * m + 2, j + 1, k0, 4 * m + 2, k0);
-                p.Lamp(2 * (4 * m + 3), 2 * j + 3, 2 * (k0 + 1), rooms[m, st], 1f, 9f);
-            }
-        for (int m = 0; m < n; m++)
-        {
-            for (int st = 0; st + 1 < storeys; st++)
-            {
-                p.C.Link(rooms[m, st], flights[m, st]);
-                p.C.Link(flights[m, st], rooms[m, st + 1]);
-            }
-            // Each front its own paint, its windows left alone.
-            Rgb c = Front(m);
-            for (int u = 8 * m + 1; u <= 8 * m + 8; u++)
-                for (int y = 0; y < 2 * storeys * Pitch; y++)
-                {
-                    Int3 at = p.Cell(u, y, 2 * k0);
-                    if (p.C.Blocks.TryGetValue(at, out Block b) && b.Role == Role.Wall) { b.Color = c; p.C.Blocks[at] = b; }
-                }
-        }
-        Gate(p, 2, 4);
-        int garden = -1;
-        for (int m = 0; m < n; m++)
-        {
-            p.Door(4 * m + 2, 0, k0, true, p.Yard, rooms[m, 0]);
-            // The path to the door through the front garden.
-            p.Pave(4 * m + 2, 1, 4 * m + 2, k0 - 1, f.Floor.Scale(1.1f));
-            int yard = p.Room(ModuleKind.Outdoor, "garden", 0, 4 * m + 1, 0, k1 + 1, 4 * m + 3, 1, D - 2);
-            p.Door(4 * m + 2, 0, k1, true, rooms[m, 0], yard);
-            garden = yard;
-        }
-        int roofJ = storeys * Pitch - 1;
-        // The gable runs along the street, so the fronts are eaves, as a terrace's are; a chimney on each party wall.
-        p.Gable(0, k0, right, k1, roofJ + 1, true, f.Roof, face);
-        int ridge = 2 * (roofJ + 1) + 8;
-        for (int m = 1; m < n; m++)
-            for (int y = ridge; y <= ridge + 2; y++) p.Put(8 * m, y, 2 * k0 + 6, Solid(f.Plinth.Scale(1.1f)));
-        // A passage down the side, where the row leaves room, to the back gardens.
-        bool passage = W - 1 - right >= 1;
-        if (passage) p.Pave(right + 1, 1, W - 1, D - 2, f.Floor.Scale(1.05f));
-        // Fences between the back gardens, and between the last garden and the passage.
-        Block rail = Rail(p);
-        for (int m = 1; m <= (passage ? n : n - 1); m++)
-            for (int v = 2 * (k1 + 1); v < 2 * D - 1; v++)
-                if (p.Get(8 * m, 0, v).IsAir && Hash.Cell(new Int3(m, 0, v / 2), 0xBA7u) % 100 >= 10 + lot.Fall * 40) p.Put(8 * m, 0, v, rail);
-        Edges(p, lot, u => u % 8 is 4 or 5 && u < 8 * n || passage && u > 2 * right + 1, true);
-        p.Weathers(0, 0, k0, right, roofJ + 2 + 4, k1, roofJ);
-        Broken(p, lot, 0, k0, right, k1, roofJ);
-        p.C.VaultModule = garden >= 0 ? rooms[n - 1, storeys - 1] : rooms[0, 0];
-    }
+    static void Terrace(Plot p, CityLot lot) => HouseLot(p, lot, true);
 
-    /// <summary>
-    /// A detached house: set back behind its lawn, a drive along one side to a carport against it, a path from
-    /// the drive to the front door, the hall and the kitchen downstairs with a stair up to the rooms over them,
-    /// a back door to the garden. Fenced, a low wall at the front with the drive's gap in it.
-    /// </summary>
-    static void House(Plot p, CityLot lot)
-    {
-        Fab f = p.F;
-        int W = Math.Max(10, lot.W), D = Math.Max(14, lot.D), storeys = Math.Clamp(lot.Storeys, 1, 2);
-        int s = D >= 17 ? 4 : 3, k0 = s, k1 = s + 6;
-        bool driveLeft = (lot.Style & 1) == 0;
-        int dr = driveLeft ? 1 : W - 3;
-        int h0 = driveLeft ? 4 : 1, h1 = driveLeft ? W - 2 : W - 5;
-        Rgb paint = Facades[(lot.Style * 5 + W) % Facades.Length];
-        var face = new Stuff2(f.Wall.M, lot.Style % 3 == 0 ? f.Wall.C : paint);
-        for (int st = 0; st < storeys; st++) p.Shell(h0, k0, h1, k1, st * Pitch, H, face, f.Roof);
-        // The stair along the side away from the drive, up from the hall.
-        int lane = driveLeft ? h1 - 1 : h0 + 1;
-        int flight = storeys > 1 ? p.Flight(lane, k0 + 2, Dir.South, 0, Pitch, 1, "stair", 0) : -1;
-        // The kitchen behind the hall, a wall between them all but where the stair goes up.
-        for (int i = h0 + 1; i < h1; i++)
-            if (i != lane) p.Fill(i, 0, k0 + 3, i, H - 1, k0 + 3, Solid(f.Panel));
-        int doorI = driveLeft ? h0 + 1 : h1 - 1, inner = (h0 + h1) / 2 == lane ? (h0 + h1) / 2 + (driveLeft ? -1 : 1) : (h0 + h1) / 2;
-        int hall = p.Room(ModuleKind.Room, "hall", 0, h0 + 1, 0, k0 + 1, h1 - 1, H - 1, k0 + 2);
-        int mess = p.Room(ModuleKind.Room, "mess", 0, h0 + 1, 0, k0 + 4, h1 - 1, H - 1, k1 - 1);
-        p.Door(inner, 0, k0 + 3, true, hall, mess);
-        int upper = -1;
-        if (storeys > 1)
-        {
-            p.Level(1, Pitch, "floor 2");
-            upper = p.Room(ModuleKind.Room, "quarters", 1, h0 + 1, Pitch, k0 + 1, h1 - 1, Pitch + H - 1, k1 - 1);
-            p.C.Link(hall, flight);
-            p.C.Link(flight, upper);
-            p.Lamp(2 * (h0 + 1) + 1, 2 * Pitch + 3, 2 * (k0 + 1) + 1, upper, 1f, 9f);
-        }
-        for (int st = 0; st < storeys; st++)
-        {
-            int j = st * Pitch;
-            for (int i = h0 + 1; i < h1; i += 2)
-            {
-                if (st == 0 && i == doorI) continue;
-                p.Glazed(i, j + 1, k0, i, k0);
-                p.Glazed(i, j + 1, k1, i, k1);
-            }
-        }
-        p.Lamp(2 * (h1 - 1), 3, 2 * (k0 + 1), hall, 1f, 9f);
+    static void House(Plot p, CityLot lot) => HouseLot(p, lot, false);
 
-        // The drive from the lot line to the carport, the path to the door, the door and the back door.
-        Gate(p, dr + 1, 2 * dr + 2);
-        p.Pave(dr, 0, dr + 1, k1 - 1, new Stuff2(f.Floor.M, f.Floor.C.Scale(0.85f)));
-        p.Pave(driveLeft ? dr + 2 : doorI, k0 - 1, driveLeft ? doorI : dr - 1, k0 - 1, f.Floor.Scale(1.1f));
-        p.Door(doorI, 0, k0, true, p.Yard, hall);
-        int yard = p.Room(ModuleKind.Outdoor, "garden", 0, 1, 0, k1 + 1, W - 2, 1, D - 2);
-        p.Door(inner, 0, k1, true, mess, yard);
-        // The carport: a slab on two posts over the drive's end, against the house's side.
-        int c0 = Math.Min(dr, driveLeft ? h0 - 1 : dr), c1 = driveLeft ? h0 - 1 : dr + 1;
-        if (!driveLeft) c0 = h1 + 1;
-        p.Fill(c0, 1, k0 + 2, c1, 1, k1 - 1, Solid(f.Roof, Role.Roof));
-        int postU = driveLeft ? 2 * dr : 2 * (dr + 1) + 1;
-        p.Post(postU, 1, 2 * (k0 + 2), f.Steel);
-        p.Post(postU, 1, 2 * (k1 - 1) + 1, f.Steel);
-        int roofJ = storeys * Pitch - 1;
-        p.Gable(h0, k0, h1, k1, roofJ + 1, (lot.Style & 2) == 0, f.Roof, face);
-        Edges(p, lot, u => u >= 2 * dr && u <= 2 * dr + 3, lot.Style % 3 == 1);
-        p.Weathers(h0 - 1, 0, k0 - 1, h1 + 1, roofJ + 2 + 5, k1 + 1, roofJ);
-        Broken(p, lot, h0, k0, h1, k1, roofJ);
-        p.C.VaultModule = upper >= 0 ? upper : mess;
+    static void HouseLot(Plot p, CityLot lot, bool terrace)
+    {
+        var (paths, d0, d1) = Homes.CityHouse(p, lot, terrace);
+        Edges(p, lot, u => paths.Any(x => u >= x - 1 && u <= x + 2) || d0 is int a && u >= a - 1 && u <= d1!.Value + 1, lot.Style % 3 != 2);
     }
 
     // ---- works, hall and station ------------------------------------------------------------------

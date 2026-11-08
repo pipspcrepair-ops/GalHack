@@ -78,6 +78,7 @@ public partial class Game
         bool orbit = Spaceflight.LoadOrbit();
         if ((Zone.Infra.Hurry || !orbit) && _waiting.Elapsed.TotalSeconds < MostWait) return;
         Zone.Infra.Hurry = false;
+        Spaceflight.ChartStartPlace(); // on the compass and the map with the bunker, from the first moment
         Phase = Phase.Playing;
         Woke?.Invoke();
     }

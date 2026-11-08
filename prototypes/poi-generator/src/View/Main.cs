@@ -127,6 +127,20 @@ public partial class Main : Node3D
         SetMode(Mode.Inspect);
     }
 
+    /// <summary>Shows a place spawned elsewhere (a city lot from its planner's hints, a spawn on a given world) in the inspector stage.</summary>
+    public void Show(PoiInstance poi)
+    {
+        _family = Library.Families.FindIndex(f => f.Id == poi.Family.Id);
+        _state = poi.State;
+        _biome = Library.Families[_family].Biomes[0];
+        _given = poi;
+        Rebuild();
+        _given = null;
+        SetMode(Mode.Inspect);
+    }
+
+    PoiInstance _given;
+
     /// <summary>Plain daylight whatever the state (proof frames): otherwise each state keeps its own hour.</summary>
     public static bool Daylight;
 
@@ -137,7 +151,7 @@ public partial class Main : Node3D
     {
         foreach (Node n in _stageRoot.GetChildren()) n.QueueFree();
         var family = Library.Families[_family];
-        var poi = PoiFactory.Generate(Library, family, _variant, _rarity, _state, _spawnSeed, _useCustom ? _customSeed : null);
+        var poi = _given ?? PoiFactory.Generate(Library, family, _variant, _rarity, _state, _spawnSeed, _useCustom ? _customSeed : null);
         var ground = Look.ToColor(Look.Ground(_biome));
         Stage = PoiView.Build(poi, _biome, new PoiView.Options(), (x, z) => ground);
         _stageRoot.AddChild(Stage);

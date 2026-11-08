@@ -34,7 +34,7 @@ public partial class SkyTest : Node
     {
         if (SkySeams.RelaunchWindowed(this, 600) is int code)
         {
-            GetTree().Quit(code);
+            GalHack.Testing.Backstop.Quit(this, code);
             return;
         }
         PlanetWorld.SaveDirectory = $"user://test-planets/{OS.GetProcessId()}";
@@ -52,7 +52,7 @@ public partial class SkyTest : Node
         try { if (System.IO.Directory.Exists(saves)) System.IO.Directory.Delete(saves, recursive: true); }
         catch (Exception) { } // this run's own folder: nothing else reads it
         GD.Print(_failures == 0 ? "ALL PASSED" : $"{_failures} CHECK(S) FAILED");
-        GetTree().Quit(_failures == 0 ? 0 : 1);
+        GalHack.Testing.Backstop.Quit(this, _failures == 0 ? 0 : 1);
     }
 
     void Check(bool ok, string what)

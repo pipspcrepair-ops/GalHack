@@ -117,7 +117,7 @@ public partial class Visor : CanvasLayer
         Suit suit = Game.Suit;
         if (suit != null)
         {
-            bool calm = suit.Last.Warnings == Alert.None && !ThreatShowing;
+            bool calm = (suit.Last.Warnings & ~Alert.Fall) == Alert.None && !ThreatShowing; // a fall's alert is the suit's own: nothing on the glass
             _calm = calm ? _calm + dt : 0f;
             _vitalsAlpha = Mathf.MoveToward(_vitalsAlpha, _calm > 3f ? 0.25f : 1f, dt * (calm ? 0.8f : 4f));
             _harm = Mathf.MoveToward(_harm, suit.Last.Harm != Alert.None || _time < _hurtUntil ? 1f : 0f, dt * 2f);
@@ -237,8 +237,49 @@ public partial class Visor : CanvasLayer
             _hud.Text(UiTheme.Mono, (int)(20 * s), at + new Vector2(14 * s, 22 * s), value, ink);
             _hud.Segments(new Rect2(at + new Vector2(80 * s, 30 * s), new Vector2(w - 90 * s, 12 * s)), Math.Clamp(share, 0, 1), 1, new Color(tone, a), count: 8, gap: 2 * s, alpha: a);
         }
-        if ((warn & Alert.Fall) != 0 && Mathf.PosMod((float)_time * 4f, 1f) < 0.6f)
-            _hud.TextIn(UiTheme.Display, (int)(34 * s), new Rect2(0, size.Y * 0.6f, size.X, 50 * s), "IMPACT", C.Danger, HorizontalAlignment.Center);
+        // No impact warning on foot (falling, flung, on the jetpack or the hover bike): the suit still takes a fall's damage by its
+        // own rules, but the flash belongs to piloting: see CockpitImpact.
+    }
+
+    /// <summary>How soon, seconds, a vessel coming down at an unsafe speed must be from the ground for the cockpit to warn of the impact.</summary>
+    public const float ImpactSeconds = 4f;
+
+    /// <summary>
+    /// The cockpit's impact warning: the pilot of a vessel under way over the ground, coming down faster than it can safely touch
+    /// it, within <see cref="ImpactSeconds"/> of it. Only a pilot gets it (seated, flying, not in space and not landed); on foot
+    /// there is none.
+    /// </summary>
+    public bool CockpitImpact(Vessel v, out float seconds)
+    {
+        seconds = float.PositiveInfinity;
+        if (Game.InOrbit || v?.Flight == null || v.Controller == null || v.Controller.Frozen || Game.Survivor?.Seated != v) return false;
+        return ImpactSoon(-v.Body.Velocity.Y, v.AboveGround, Game.Zone.Physics.Rules.Contacts.SafeSpeed, out seconds);
+    }
+
+    /// <summary>Coming down at <paramref name="down"/> m/s, faster than the safe speed, with <paramref name="aboveGround"/> m left: how long, and whether that is within <see cref="ImpactSeconds"/>.</summary>
+    public static bool ImpactSoon(float down, float aboveGround, float safeSpeed, out float seconds)
+    {
+        seconds = float.PositiveInfinity;
+        if (down <= safeSpeed) return false;
+        seconds = MathF.Max(0f, aboveGround) / down;
+        return seconds < ImpactSeconds;
+    }
+
+    /// <summary>Whether the cockpit's impact warning is up right now (never on foot).</summary>
+    public bool ImpactWarning => Game.Survivor?.Seated is Vessel v && CockpitImpact(v, out _);
+
+    /// <summary>The cockpit warning: the sign of an impact (data/signs/impact.png) where the set has one, flashing under the flight line; the word until it does.</summary>
+    void DrawCockpitImpact(Vessel v)
+    {
+        if (!CockpitImpact(v, out _) || Mathf.PosMod((float)_time * 4f, 1f) >= 0.6f) return;
+        float s = S;
+        Vector2 size = _hud.Size;
+        if (Alerts.Specific("impact") && Alerts.Sign("impact") is Texture2D sign)
+        {
+            float icon = 96 * s;
+            _hud.DrawTextureRect(sign, new Rect2(size.X / 2f - icon / 2f, size.Y * 0.6f - icon / 2f, icon, icon), false);
+        }
+        else _hud.TextIn(UiTheme.Display, (int)(34 * s), new Rect2(0, size.Y * 0.6f, size.X, 50 * s), "IMPACT", C.Danger, HorizontalAlignment.Center);
     }
 
     /// <summary>
@@ -358,7 +399,8 @@ public partial class Visor : CanvasLayer
     public readonly record struct CompassMark(string Tag, Vector3 At, Color Colour, float Alpha, string Kind);
 
     /// <summary>
-    /// What the compass shows: your bunker; then only what you have found by going near it (places,
+    /// What the compass shows: your bunker and the place in view from its way out (both known from the
+    /// first moment, at any distance); then only what you have found by going near it (places,
     /// deposits: the nearest few of each), your own vessels and backpack, and the scanner's pings
     /// for as long as they last.
     /// </summary>
@@ -371,10 +413,13 @@ public partial class Visor : CanvasLayer
         if (Game.Bunker != null) marks.Add(new("BUNKER", Game.Start, C.Accent2, 1f, "bunker"));
         if (!Game.InOrbit && Game.Zone.Planet != null)
         {
+            string startPlace = Game.Spaceflight.StartPlaceKey;
+            // The start place always shows (first in line, whatever its distance); other finds only while within the scanner's reach.
             IEnumerable<(string Label, Vector3 At)> Found(string kind, int take) => Game.Spaceflight.Charts.OfKind(kind)
-                .Select(m => (m.Label, At: Game.Zone.Planet.NearestCopy(new Vector3((float)m.X, feet.Y, (float)m.Z), feet)))
-                .Where(x => new Vector2(x.At.X - feet.X, x.At.Z - feet.Z).Length() < Slice.Game.Game.ScanRange)
-                .OrderBy(x => new Vector2(x.At.X - feet.X, x.At.Z - feet.Z).LengthSquared()).Take(take);
+                .Select(m => (m.Label, m.Key, At: Game.Zone.Planet.NearestCopy(new Vector3((float)m.X, feet.Y, (float)m.Z), feet)))
+                .Where(x => x.Key == startPlace || new Vector2(x.At.X - feet.X, x.At.Z - feet.Z).Length() < Slice.Game.Game.ScanRange)
+                .OrderBy(x => x.Key == startPlace ? 0 : 1).ThenBy(x => new Vector2(x.At.X - feet.X, x.At.Z - feet.Z).LengthSquared())
+                .Take(take).Select(x => (x.Label, x.At));
             foreach (var (label, at) in Found("place", NearestPlaces)) marks.Add(new(label.ToUpperInvariant(), at, C.Accent, 1f, "place"));
             if (survivor.Seated == null)
                 foreach (var (label, at) in Found("deposit", NearestDeposits)) marks.Add(new(label.ToUpperInvariant(), at, C.Holo, 1f, "deposit"));
@@ -633,6 +678,7 @@ public partial class Visor : CanvasLayer
         float s = S;
         Vector2 size = _hud.Size;
         DrawMode(v);
+        DrawCockpitImpact(v);
         if (v.Flight == null || v.Stats == null) return;
         var c = v.Controller;
         string gear = c?.Gear == null ? "NO GEAR" : c.Gear.Deployed ? "GEAR DOWN" : "GEAR UP";

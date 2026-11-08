@@ -51,6 +51,40 @@ public sealed class Part
 
     /// <summary>Drawn (and solid) only while a door is closed: the door leaf.</summary>
     public bool ClosedOnly;
+
+    /// <summary>How its faces depart from the style's look (colour, pattern, a screen's symbol, a pulse), or null.</summary>
+    public PartFinish Finish;
+
+    // Detail parts only (see BlockType.Detail).
+    /// <summary>Drawn on this grid only, or on both.</summary>
+    public GridSize? Grid;
+    /// <summary>The face it sits on: hidden, with all of it, when a neighbour hides that face.</summary>
+    public Dir? Mount;
+}
+
+/// <summary>
+/// What a part changes about its style's look. Unset values keep the style's: a body part keeps
+/// the block's paint, a dark part the housing grey, a glow its type's colour.
+/// </summary>
+public sealed class PartFinish
+{
+    public uint? Color, Accent;
+    /// <summary>A <see cref="Structures.Pattern"/> or one of the detail patterns (<see cref="DetailPattern"/>).</summary>
+    public int Pattern;
+    public FaceTexture? Texture;
+    /// <summary>0..3 like a material's; -1 keeps the style's.</summary>
+    public int Metal = -1;
+    /// <summary>A symbol shown on the part's faces: lit on a screen (a glow part), stencilled on anything else.</summary>
+    public DeviceSymbol Symbol;
+    /// <summary>A glow that moves: a slow pulse, a blinking lamp.</summary>
+    public LightAnim Anim;
+    public float Speed = 0.5f;
+}
+
+/// <summary>Patterns only parts use, beyond the paint patterns: fine hazard trim, slotted grilles, a symbol.</summary>
+public static class DetailPattern
+{
+    public const int FineHazard = 5, Grille = 6, Symbol = 7;
 }
 
 /// <summary>
@@ -87,6 +121,12 @@ public sealed class BlockType
     public int AirtightFacesOpen, CoverFacesOpen;
     public Collide Collide = Collide.Cell;
     public List<Part> Parts = new();
+
+    /// <summary>
+    /// Looks only: the bolts, vents, screens, fins and trim that make a device read as a machine
+    /// (<see cref="DeviceDetail"/>). Never solid, never covering a face, never sealing one.
+    /// </summary>
+    public List<Part> Detail = new();
 
     public bool IsArmor => Kind == BlockKind.Armor;
     public bool IsCore => Function == "core";
@@ -154,6 +194,8 @@ public sealed class Catalogue
         c.LoadComponents(Parse(readFile(ComponentsFile), "galhack.components"));
         foreach (BlockType t in c._types.Skip(1))
             if (t.UpgradesTo != null) t.Upgrade = c.Type(t.UpgradesTo);
+        foreach (BlockType t in c._types.Skip(1))
+            if (!t.IsArmor) t.Detail = DeviceDetail.For(t);
         c.CoreType = c._types.Skip(1).FirstOrDefault(t => t.IsCore) ?? throw new InvalidDataException("no core component in components.json");
         // Old blueprints name the command chair by its old id.
         if (c._typeById.TryGetValue("chair", out BlockType chair)) c._typeById["cockpit"] = chair;
@@ -355,11 +397,37 @@ public sealed class Catalogue
             Max = max,
             Style = Enum.Parse<PartStyle>(Str(p, "style", "body"), ignoreCase: true),
             ClosedOnly = Bool(p, "closedOnly", false),
+            Finish = LoadFinish(p),
         };
         part.Polygons = p.TryGetProperty("cylinder", out JsonElement axis)
             ? Geometry.Cylinder(AxisIndex(axis.GetString()), min, max, Int(p, "segments", 12))
             : Geometry.ConvexHull(Geometry.BoxPoints(min, max).ToList());
         return part;
+    }
+
+    /// <summary>A part's finish from its optional fields: color, accent, pattern, texture, metal, symbol, anim, speed.</summary>
+    static PartFinish LoadFinish(JsonElement p)
+    {
+        string[] keys = { "color", "accent", "pattern", "texture", "metal", "symbol", "anim" };
+        if (!keys.Any(k => p.TryGetProperty(k, out _))) return null;
+        var f = new PartFinish
+        {
+            Metal = Int(p, "metal", -1),
+            Speed = Num(p, "speed", 0.5f),
+        };
+        if (p.TryGetProperty("color", out JsonElement c) && Paint.TryParseHex(c.GetString(), out uint cv)) f.Color = cv;
+        if (p.TryGetProperty("accent", out JsonElement a) && Paint.TryParseHex(a.GetString(), out uint av)) f.Accent = av;
+        if (p.TryGetProperty("pattern", out JsonElement pat))
+            f.Pattern = pat.GetString() switch
+            {
+                "fine-hazard" => DetailPattern.FineHazard,
+                "grille" => DetailPattern.Grille,
+                var name => (int)Enum.Parse<Pattern>(name, ignoreCase: true),
+            };
+        if (p.TryGetProperty("texture", out JsonElement tex)) f.Texture = Enum.Parse<FaceTexture>(tex.GetString(), ignoreCase: true);
+        if (p.TryGetProperty("symbol", out JsonElement sym)) f.Symbol = Enum.Parse<DeviceSymbol>(sym.GetString(), ignoreCase: true);
+        if (p.TryGetProperty("anim", out JsonElement anim)) f.Anim = Enum.Parse<LightAnim>(anim.GetString(), ignoreCase: true);
+        return f;
     }
 
     BlockType Common(JsonElement e, BlockKind kind)

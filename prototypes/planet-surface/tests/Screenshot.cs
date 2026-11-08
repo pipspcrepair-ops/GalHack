@@ -60,7 +60,7 @@ public partial class Screenshot : Node
         if (_spec == null)
         {
             GD.PrintErr($"no view '{_view}'");
-            GetTree().Quit(1);
+            GalHack.Testing.Backstop.Quit(this, 1);
             return;
         }
         PlanetSurface.Poi.PoiSiting.ForceFamily = _spec.Force;
@@ -409,7 +409,7 @@ public partial class Screenshot : Node
         if ((_elapsed += delta) > TimeoutSeconds)
         {
             GD.PrintErr($"timed out (stage {_stage}, streamer pending {_main.Streamer.Pending}, settled {_main.Streamer.Settled})");
-            GetTree().Quit(1);
+            GalHack.Testing.Backstop.Quit(this, 1);
             return;
         }
         switch (_stage)
@@ -475,7 +475,7 @@ public partial class Screenshot : Node
             _stage = 1;
             return;
         }
-        GetTree().Quit(result == Error.Ok ? 0 : 1);
+        GalHack.Testing.Backstop.Quit(this, result == Error.Ok ? 0 : 1);
     }
 }
 

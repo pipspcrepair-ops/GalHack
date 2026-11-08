@@ -351,35 +351,13 @@ site survivor_town
 
 # ---- plain ruins: drawn by hand in Homes.cs on the player's 2 m lattice (planet surface FlavourRuins) ----
 
-site home_bungalow
-  name Bungalow
+# A house is put together from parts by the house rules (data/homes.txt, HomeStyles.cs, HomeBuild.cs):
+# its street's culture picks its family and each family its parts. "family" names one to build.
+site home_house
+  name House
   style concrete
   entrance 0 0 north
-  part plain 0 0 what bungalow
-
-site home_ell
-  name Gabled Ell
-  style concrete
-  entrance 0 0 north
-  part plain 0 0 what ell
-
-site home_twostorey
-  name Two-Storey House
-  style concrete
-  entrance 0 0 north
-  part plain 0 0 what twostorey
-
-site home_cottage
-  name Cottage
-  style concrete
-  entrance 0 0 north
-  part plain 0 0 what cottage
-
-site home_townhouse
-  name Town House
-  style concrete
-  entrance 0 0 north
-  part plain 0 0 what townhouse
+  part plain 0 0 what house
 
 site farm_homestead
   name Homestead
@@ -446,12 +424,6 @@ site inn_cart
   style concrete
   entrance 0 0 north
   part plain 0 0 what cartstop
-
-site home_prefab
-  name Prefab House
-  style concrete
-  entrance 0 0 north
-  part plain 0 0 what prefab
 
 site fuel_truck
   name Truck Stop

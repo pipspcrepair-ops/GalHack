@@ -11,8 +11,8 @@ namespace Slice.Tests;
 
 /// <summary>
 /// The UI round's proof, one run, daylight: <c>--view=uiround --dir=folder</c> writes ui-hud-alert (a
-/// tornado forming and a beast's attack), ui-compass (out of the bunker, nothing found yet),
-/// ui-scanner (a ping), ui-tech-TAB for every tech tab, ui-fabricator, ui-inventory (a container open
+/// tornado forming and a beast's attack), ui-compass (out of the bunker: the bunker and the place in view, nothing else found yet),
+/// ui-menu-alert (the same alerts with the Tab menu open), ui-scanner (a ping), ui-tech-TAB for every tech tab, ui-fabricator, ui-inventory (a container open
 /// beside the bag), ui-core (a survival constructor's page) and ui-galaxy. Anything newer than the
 /// game it runs in is reached by name, so the same view shoots the game from before the round.
 /// </summary>
@@ -76,6 +76,11 @@ public sealed partial class Staging
         Call(Get(_game, "Alerts"), "Attack", "wildlife", feet - side * 6f);
         Call(_game.Visor, "Hurt", feet - side * 6f);
         foreach (int x in Frame("hud-alert")) yield return x;
+        // With the Tab menu open the same alerts stay on the toolbar's line at the far left, clear of the paperdoll and the slots.
+        foreach (int x in Play.OpenMenu(MenuTab.You)) yield return x;
+        Call(Get(_game, "Alerts"), "Attack", "wildlife", feet - side * 6f);
+        foreach (int x in Frame("menu-alert")) yield return x;
+        foreach (int x in Play.CloseMenu()) yield return x;
         _game.Zone.Weather.Sim.ClearTornadoes();
 
         // The Tab menu: the fabricator and bag, a container beside the bag, the core page, every tech tab, the galaxy.

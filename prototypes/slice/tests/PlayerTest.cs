@@ -814,10 +814,10 @@ public partial class PlayerTest : Node
         foreach (int x in _drive.Tap(Key.L)) yield return x;
     }
 
-    /// <summary>The jetpack up off the ground: rising fast is never a fall, so IMPACT stays off until the castaway comes down.</summary>
+    /// <summary>The jetpack up off the ground: rising fast is never a fall, so the suit's fall alert stays off until the castaway comes down (on foot it is the suit's own, never shown on the glass).</summary>
     IEnumerable<int> JetpackLiftOff()
     {
-        GD.Print("-- the jetpack: IMPACT only when falling --");
+        GD.Print("-- the jetpack: the fall alert only when falling --");
         bool warnedRising = false;
         float top = 0f;
         // Full tanks first: the walk here may have burned them.
@@ -832,7 +832,7 @@ public partial class PlayerTest : Node
         }
         _game.Controls.Hold(Key.Space, false);
         foreach (int x in _play.WaitFor(() => _game.Survivor.Body.OnFloor, 10)) yield return x;
-        Check(!warnedRising && top > 2f, $"lifting off on the jetpack (up to {top:F1} m/s) never flashes IMPACT");
+        Check(!warnedRising && top > 2f, $"lifting off on the jetpack (up to {top:F1} m/s) never raises the fall alert");
 
         // An empty pack with Space held: fuel never dips below nothing, the pack does not stutter on and
         // off a tick at a time, and it stays off until it has taken a little back on the ground.

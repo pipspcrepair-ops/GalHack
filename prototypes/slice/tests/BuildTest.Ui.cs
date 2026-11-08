@@ -2,16 +2,22 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using GalHack.Items;
+using GalHack.Physics;
+using GalHack.Physics.Engine;
 using Godot;
 using Slice.Items;
 using Slice.Ui;
+using SurvivalVitals.Model;
+using Weather.Model;
+using WeatherKind = Weather.Model.WeatherKind;
 
 namespace Slice.Tests;
 
 /// <summary>
-/// The UI round: hazards as symbols with a timer and no words, a compass that starts with only the
-/// bunker, the scanner's ping marking it for ten seconds, every tech tab on one 1080p screen, and
-/// no two HUD labels on top of each other.
+/// The UI round: hazards as symbols with a timer and no words, each by a sign of its own and never a
+/// generic one, kept off every menu page's panels by a strip of the menu's header, a compass that starts
+/// with only the bunker and the place in view from its way out, the scanner's ping marking it for ten
+/// seconds, every tech tab on one 1080p screen, and no two HUD labels on top of each other.
 /// </summary>
 public partial class BuildTest
 {
@@ -19,13 +25,42 @@ public partial class BuildTest
     {
         GD.Print("-- the UI round --");
         foreach (int x in AlertChecks()) yield return x;
+        AlertSignChecks();
+        foreach (int x in ImpactChecks()) yield return x;
         foreach (int x in ScannerChecks()) yield return x;
         foreach (int x in HeldModelChecks()) yield return x;
         foreach (int x in MenuTextChecks()) yield return x;
+        foreach (int x in EscapeRowChecks()) yield return x;
         HudBoxChecks();
         foreach (int x in TechFitChecks()) yield return x;
         foreach (int x in GalaxyNameChecks()) yield return x;
         Check(MenuRoot.Glass <= 0.6f && _game.Menu.Root.Gui.Backing < 1f && !_game.GetTree().Paused, $"the Tab menu is see-through (glass {MenuRoot.Glass:0.00}, backings {_game.Menu.Root.Gui.Backing:0.00}) and the world runs behind it");
+    }
+
+    /// <summary>
+    /// The impact warning belongs to piloting: dropped from height on foot the suit raises its fall alert (its damage rules are
+    /// unchanged) and the glass shows no IMPACT; in a cockpit it shows only for a vessel coming down fast, close to the ground.
+    /// </summary>
+    IEnumerable<int> ImpactChecks()
+    {
+        var s = _game.Survivor;
+        Vector3 ground = _game.Zone.GroundAt(s.WorldFeet.X, s.WorldFeet.Z);
+        s.PlaceOutside((ground + Vector3.Up * 40f).ToNumerics());
+        bool alerted = false, shown = false;
+        float fastest = 0f;
+        for (int i = 0; i < 180 && s.WorldFeet.Y > ground.Y + 8f; i++)
+        {
+            yield return 0;
+            alerted |= (_game.Suit.Last.Warnings & Alert.Fall) != 0;
+            shown |= _game.Visor.ImpactWarning;
+            fastest = MathF.Max(fastest, s.ImpactSpeed);
+        }
+        s.PlaceOutside((ground + Vector3.Up * 0.3f).ToNumerics()); // back down before it lands
+        foreach (int x in _drive.Wait(30)) yield return x;
+        Check(alerted && !shown, $"on foot, falling at up to {fastest:F0} m/s the suit raises its fall alert (its damage rules stand) and the glass shows no IMPACT");
+        Check(Visor.ImpactSoon(20f, 50f, 8f, out float seconds) && seconds < Visor.ImpactSeconds
+              && !Visor.ImpactSoon(6f, 10f, 8f, out _) && !Visor.ImpactSoon(20f, 400f, 8f, out _) && !Visor.ImpactSoon(-5f, 10f, 8f, out _),
+            $"a pilot's impact warning needs a vessel coming down faster than it can land (8 m/s) within {Visor.ImpactSeconds:F0} s of the ground: 20 m/s at 50 m is {seconds:F1} s away, slower, higher or rising is not");
     }
 
     /// <summary>The galaxy map: every star drawn, names off but for the picked star, a toggle for the near ones.</summary>
@@ -85,8 +120,127 @@ public partial class BuildTest
         {
             HudLayout l = HudLayout.Compute(size, 1f);
             string problem = l.Problem(size);
-            Check(problem == null && l.Alerts.Size.Y >= HudLayout.AlertIcon * l.Scale * 2, $"HUD at {size.X}x{size.Y}: {l.Boxes.Count()} label boxes, none overlapping, room for two alerts{(problem == null ? "" : ": " + problem)}");
+            var cells = Alerts.RowCells(l.Alerts, l.Scale, Alerts.MostHazards);
+            bool apart = cells.Select((c, i) => cells.Skip(i + 1).All(d => !c.Sign.Intersects(d.Sign) && !c.Timer.Intersects(d.Timer))).All(x => x);
+            bool onLine = cells.All(c => MathF.Abs(c.Sign.Position.Y - l.Toolbar.Position.Y) < 0.5f && c.Sign.Position.X < l.Toolbar.Position.X);
+            Check(problem == null && cells.Count == Alerts.MostHazards && apart && onLine, $"HUD at {size.X}x{size.Y}: {l.Boxes.Count()} label boxes, none overlapping; room for {cells.Count} of {Alerts.MostHazards} alerts on the toolbar's line at the far left, none on another{(problem == null ? "" : ": " + problem)}");
         }
+    }
+
+    /// <summary>
+    /// The alerts' row (the visor's, which stays put over menus) against a menu panel on the page it is showing, at 1080p
+    /// and 1440p: no line of text, widget or panel of the menu on it.
+    /// </summary>
+    static List<string> RowProblems(MenuPanel panel)
+    {
+        var problems = new List<string>();
+        var design = new Vector2(Gui.Width, Gui.Height);
+        foreach (Vector2 size in new[] { new Vector2(1920, 1080), new Vector2(2560, 1440) })
+        {
+            float k = MathF.Min(size.X / design.X, size.Y / design.Y);
+            Vector2 offset = (size - design * k) * 0.5f;
+            Rect2 Px(Rect2 r) => new(offset + r.Position * k, r.Size * k);
+            Rect2 box = HudLayout.Compute(size, 1f).Alerts;
+            string at = $"{size.X:0}x{size.Y:0}";
+            foreach (var (text, rect, _) in panel.Gui.Texts)
+                if (Px(rect).Grow(-1f).Intersects(box)) problems.Add($"{at}: \"{text}\" is on the alerts' row");
+            foreach (var (id, rect) in panel.Gui.Rects)
+                if (Px(rect).Intersects(box)) problems.Add($"{at}: widget {id} is on the alerts' row");
+            foreach (Rect2 fill in panel.Gui.Fills)
+                if (!Px(fill).Encloses(box) && Px(fill).Intersects(box)) problems.Add($"{at}: a panel {fill} is on the alerts' row");
+        }
+        return problems;
+    }
+
+    /// <summary>The escape menu's pages and its quit question: the alerts' row clear of every panel.</summary>
+    IEnumerable<int> EscapeRowChecks()
+    {
+        Gui.Measure = true;
+        EscapeMenu esc = _game.Escape;
+        var pages = new List<(string name, Action set)> { ("the world", () => { esc.Root.Page = EscapePage.World; esc.Root.Confirming = false; }) };
+        foreach (OptionsTab tab in Enum.GetValues<OptionsTab>())
+            pages.Add(($"options: {tab}", () => { esc.Root.Page = EscapePage.Options; esc.Root.Options.Tab = tab; esc.Root.Confirming = false; }));
+        pages.Add(("the quit question", () => { esc.Root.Page = EscapePage.World; esc.Root.Confirming = true; }));
+        esc.Open();
+        foreach (var (name, set) in pages)
+        {
+            set();
+            foreach (int x in _drive.Wait(3)) yield return x;
+            List<string> problems = RowProblems(esc.Root);
+            Check(problems.Count == 0 && esc.Root.Gui.Texts.Count > 0, $"the escape menu, {name}: the alerts' row is clear of every panel at 1080p and 1440p{(problems.Count == 0 ? "" : ": " + string.Join("; ", problems.Take(6)))}");
+        }
+        esc.Root.Confirming = false;
+        esc.Root.Page = EscapePage.World;
+        esc.Close();
+        Gui.Measure = false;
+        _game.Menu.Open(MenuTab.You);
+        foreach (int x in _drive.Wait(2)) yield return x;
+        Gui.Measure = true;
+        _game.Menu.Root.Tab = MenuTab.Stats;
+        foreach (int x in _drive.Wait(3)) yield return x;
+        Gui.Measure = false;
+        var title = _game.Menu.Root.Gui.Texts.FirstOrDefault(t => t.Text == "SUIT TERMINAL");
+        float firstTab = _game.Menu.Root.Gui.Rects.Where(r => r.Key.StartsWith("tab:")).Select(r => r.Value.Position.X).DefaultIfEmpty(0f).Min();
+        Check(title.Text != null && title.Box.End.X + 8f <= firstTab, $"the header's title ends ({title.Box.End.X:F0}) before the first tab ({firstTab:F0}) that now starts further left");
+        _game.Menu.Close();
+        foreach (int x in _drive.Wait(2)) yield return x;
+    }
+
+    /// <summary>
+    /// Every weather kind and every other kind of alert: it warns by a sign of its own (in the sign set, never the generic "!"),
+    /// or it never warns. Clear skies, clouds and fog are no danger on foot and never do; an alert with no sign of its own is not shown.
+    /// </summary>
+    void AlertSignChecks()
+    {
+        var sim = _game.Zone.Weather.Sim;
+        Vector3 feet = _game.Survivor.WorldFeet;
+        var problems = new List<string>();
+        int warns = 0, silent = 0;
+        foreach (WeatherKind kind in Enum.GetValues<WeatherKind>())
+        {
+            bool severe = _game.Zone.Data.Weather.State(kind).Severe;
+            string sign = WeatherSim.SignOf(kind);
+            sim.Snap(kind);
+            var list = new List<WarningEntry>();
+            sim.GetWarnings(list, feet);
+            var own = list.Where(w => w.Kind == kind).ToList();
+            if (severe)
+            {
+                if (!Alerts.Specific(sign)) problems.Add($"{kind} is severe but its sign '{sign ?? "none"}' is not a sign of its own");
+                else if (own.Count != 1 || own[0].Sign != sign) problems.Add($"{kind} should raise one '{sign}' warning, raised {own.Count}");
+                else warns++;
+            }
+            else if (own.Count > 0) problems.Add($"{kind} is no hazard but warns ('{own[0].Sign ?? "none"}')");
+            else silent++;
+            foreach (WarningEntry w in list)
+                if (w.Level != WarningLevel.Advisory && !Alerts.Specific(w.Sign)) problems.Add($"{kind}: a warning with the sign '{w.Sign ?? "none"}'");
+        }
+        sim.Snap(WeatherKind.Clear);
+        sim.ClearTornadoes();
+        sim.ClearHazards();
+        sim.ClearCells();
+        Check(problems.Count == 0 && warns > 0, $"every weather kind warns by a sign of its own or not at all: {warns} warn, {silent} never do{(problems.Count == 0 ? "" : ": " + string.Join("; ", problems))}");
+        Check(WeatherSim.SignOf(WeatherKind.Clear) == null && WeatherSim.SignOf(WeatherKind.Clouds) == null && WeatherSim.SignOf(WeatherKind.Fog) == null,
+            "clear skies, clouds and fog name no sign: they cannot raise an alert");
+
+        // The strikes, the funnel, lava and every attacker.
+        var strikes = new List<WarningEntry>();
+        sim.StartStrike(HazardKind.Lightning, feet + new Vector3(20f, 0f, 0f));
+        sim.StartStrike(HazardKind.Debris, feet + new Vector3(10f, 0f, 0f));
+        sim.SpawnTornado(feet + new Vector3(0f, 0f, 220f), feet);
+        sim.GetWarnings(strikes, feet);
+        sim.ClearTornadoes();
+        sim.ClearHazards();
+        sim.ClearCells();
+        var badStrike = strikes.Where(w => !Alerts.Specific(w.Sign)).Select(w => w.Sign ?? "none").ToList();
+        Check(strikes.Count >= 3 && badStrike.Count == 0, $"lightning, falling debris and a tornado each warn by their own sign ({string.Join(", ", strikes.Select(w => w.Sign))}){(badStrike.Count == 0 ? "" : $", but {string.Join(", ", badStrike)} is not one")}");
+        var badAttackers = _game.Zone.Wildlife.Fauna.Species.Where(s => !Alerts.Specific(Alerts.SignFor(s))).Select(s => s.CommonName).ToList();
+        string[] others = { "storm", "lava", "husk_hazard", "hostile", "wildlife" };
+        Check(badAttackers.Count == 0 && others.All(Alerts.Specific), $"every attacker of this world and the lightning strike and lava alerts have a sign of their own{(badAttackers.Count == 0 ? "" : $" (not {string.Join(", ", badAttackers)})")}");
+        Check(!Alerts.Specific("hazard") && !Alerts.Specific(null) && !Alerts.Specific("no-such-sign"), "the generic hazard sign, no sign and a sign that is not there are not signs of their own");
+        _game.Alerts.Attack("hazard", feet);
+        _game.Alerts.Attack("no-such-sign", feet);
+        Check(!_game.Alerts.Attacks.Any(), "and an alert asked for with one of those is skipped, not shown");
     }
 
     /// <summary>Every page of the Tab menu: no two lines of text on top of each other, and none cut short by its box.</summary>
@@ -109,18 +263,28 @@ public partial class BuildTest
             open();
             foreach (int x in _drive.Wait(3)) yield return x;
             List<string> problems = _game.Menu.Root.Gui.TextProblems();
-            Check(problems.Count == 0 && _game.Menu.Root.Gui.Texts.Count > 0, $"the menu's {name} page: {_game.Menu.Root.Gui.Texts.Count} lines, none overlapping or cut short{(problems.Count == 0 ? "" : ": " + string.Join("; ", problems.Take(6)))}");
+            List<string> strip = RowProblems(_game.Menu.Root);
+            Check(problems.Count == 0 && strip.Count == 0 && _game.Menu.Root.Gui.Texts.Count > 0,
+                $"the menu's {name} page: {_game.Menu.Root.Gui.Texts.Count} lines, none overlapping or cut short, and the alerts' row clear of every panel at 1080p and 1440p{(problems.Count + strip.Count == 0 ? "" : ": " + string.Join("; ", problems.Concat(strip).Take(6)))}");
         }
         _game.Menu.Root.You.ShowBlocks = false;
         _game.Menu.Close();
         Gui.Measure = false;
     }
 
-    /// <summary>At the start, before anything is found or pinged, the compass holds the bunker and nothing else.</summary>
+    /// <summary>At the start, before anything else is found or pinged, the compass holds the bunker and the place in view from its way out, and nothing else.</summary>
     void CompassAtStart()
     {
-        var kinds = _game.Visor.CompassMarks().Select(m => m.Kind).ToList();
-        Check(kinds.SequenceEqual(new[] { "bunker" }), $"at the start the compass shows only the bunker ({string.Join(", ", kinds)})");
+        var marks = _game.Visor.CompassMarks();
+        var kinds = marks.Select(m => m.Kind).ToList();
+        var seen = _game.Bunker?.Poi;
+        bool landmark = seen != null && _game.Bunker.Landmark != null;
+        string[] want = landmark ? new[] { "bunker", "place" } : new[] { "bunker" };
+        Check(kinds.SequenceEqual(want) && (!landmark || marks[1].Tag == seen.Name.ToUpperInvariant()),
+            $"at the start the compass shows the bunker{(landmark ? $" and {seen.Name}, the place in view from its way out" : "")} and nothing else ({string.Join(", ", marks.Select(m => $"{m.Kind} {m.Tag}"))})");
+        if (landmark)
+            Check(_game.Spaceflight.Charts.Has(_game.Spaceflight.StartPlaceKey ?? "") && _game.Spaceflight.Charts.OfKind("place").Count() == 1,
+                $"it is found from the first moment, on the map too, and it is the only place found ({_game.Spaceflight.Charts.OfKind("place").Count()})");
     }
 
     /// <summary>The handheld scanner: free in the suit fabricator; a click pings what is far off onto the compass for ten seconds, fading, and nothing stays.</summary>
@@ -172,6 +336,8 @@ public partial class BuildTest
         Check(_game.Alerts.Hazards.Any(h => h.Sign == "tornado"), "with the Tab menu open the tornado's sign is still up");
         _game.Menu.Close();
         sim.ClearTornadoes();
+        sim.ClearHazards();
+        sim.ClearCells();
         foreach (int x in _drive.Wait(3)) yield return x;
         Check(_game.Alerts.Hazards.All(h => h.Sign != "tornado"), "and goes once the tornado has");
         _game.Said -= Hear;

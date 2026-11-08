@@ -62,6 +62,8 @@ public enum BlockType : byte
     // The player's corner slopes, so a roof turns a corner or a cone a diagonal in planes, never in steps.
     Corner,     // outer corner slope: a single raised corner, at the corner between Facing and the next direction anticlockwise (North: north-west)
     InvCorner,  // inner corner slope: three raised corners, the low one opposite Corner's raised one
+    // Added with the decay pass.
+    Rebar,      // bent bars standing out of a torn concrete face, the face toward Facing; never blocks
 }
 
 /// <summary>What a block is made of. Drives how it renders and what salvage it gives.</summary>
@@ -126,7 +128,7 @@ public static class BlockInfo
     {
         BlockType.Air or BlockType.Door or BlockType.Scorch or BlockType.Scatter or BlockType.Tendril
             or BlockType.Plant or BlockType.Vine or BlockType.Ash or BlockType.Remains
-            or BlockType.Ladder or BlockType.Sign or BlockType.Puddle or BlockType.Cable or BlockType.Plate => false,
+            or BlockType.Ladder or BlockType.Sign or BlockType.Puddle or BlockType.Cable or BlockType.Plate or BlockType.Rebar => false,
         _ => true,
     };
 

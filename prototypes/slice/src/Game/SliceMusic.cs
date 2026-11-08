@@ -115,7 +115,7 @@ public partial class SliceMusic : Node
     public override void _ExitTree()
     {
         _running = false;
-        _worker?.Join();
+        _worker?.Join(2000); // a worker that is stuck must not hold the way out
         _worker = null;
         _playback?.Dispose();
         _playback = null;

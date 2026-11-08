@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -52,9 +52,83 @@ public partial class BuildTest : Node
         Run("Early-game recipes", TestSmallRecipes);
         Run("Navigation", TestNav);
         Run("Meshing performance", TestMeshing);
+        Run("Device detail", TestDeviceDetail);
 
         GD.Print($"\n{_passes} passed, {_failures} failed");
         GetTree().Quit(_failures == 0 ? 0 : 1);
+    }
+
+    // ---- Device detail --------------------------------------------------------------------
+
+    /// <summary>
+    /// Every device gets detail from its function's rule, looks only (no solids, no cover); a screen's
+    /// symbol is placed on its own face; detail on a covered face is left out; the Big Core is heavier
+    /// than the Small Core; the detail costs a few hundred triangles a device at most.
+    /// </summary>
+    void TestDeviceDetail()
+    {
+        foreach (BlockType t in _cat.Types.Skip(1).Where(t => !t.IsArmor && !t.IsLadder))
+            Check(t.Detail.Count > 0, $"{t.Id} has detail from its rule ({t.Detail.Count} parts)");
+
+        // A screen's symbol: pattern 7, the symbol in the stencil bits, and the accent's centre inside the polygon.
+        BlockType chair = _cat.Type("chair");
+        var s = new Structure(_cat, _cat.Grid(GridSize.Large));
+        s.Set(Int3.Zero, Building.Make(s, chair));
+        MeshBuffers m = ChunkMesher.Build(s, Int3.Zero).Opaque;
+        int screens = 0, centred = 0;
+        for (int i = 0; i < m.Indices.Count; i += 3)
+        {
+            int v0 = m.Indices[i];
+            int flags = (int)m.UV2s[v0].Y, accent = (int)m.UV2s[v0].X;
+            if ((flags & 7) != DetailPattern.Symbol || ((flags >> BlockMaterials.StencilShift) & 15) != (int)DeviceSymbol.Chevron) continue;
+            screens++;
+            float cu = ((accent >> 16) & 255) / 255f, cv = ((accent >> 8) & 255) / 255f;
+            Vector2 a = Frac(m.UVs[v0]), b = Frac(m.UVs[m.Indices[i + 1]]), c = Frac(m.UVs[m.Indices[i + 2]]);
+            float u0 = Mathf.Min(a.X, Mathf.Min(b.X, c.X)) - 0.01f, u1 = Mathf.Max(a.X, Mathf.Max(b.X, c.X)) + 0.01f;
+            float w0 = Mathf.Min(a.Y, Mathf.Min(b.Y, c.Y)) - 0.01f, w1 = Mathf.Max(a.Y, Mathf.Max(b.Y, c.Y)) + 0.01f;
+            if (cu >= u0 && cu <= u1 && cv >= w0 && cv <= w1) centred++;
+        }
+        Check(screens > 0 && centred == screens, $"the chair's console shows its symbol on its own faces ({centred} of {screens} triangles)");
+
+        // Detail on a face a neighbour covers is left out.
+        BlockType generator = _cat.Type("generator");
+        var lone = new Structure(_cat, _cat.Grid(GridSize.Large));
+        lone.Set(Int3.Zero, Building.Make(lone, generator));
+        int alone = Triangles(lone);
+        lone.Set(new Int3(1, 0, 0), Building.Make(lone, _steel));
+        lone.Set(new Int3(-1, 0, 0), Building.Make(lone, _steel));
+        int flanked = Triangles(lone) - 2 * 10;
+        Check(flanked < alone - 100, $"a generator's fins go when steel covers its flanks ({alone} triangles alone, {flanked} flanked)");
+
+        // The Big Core is the heavier machine.
+        int Of(GridSize g)
+        {
+            var c = new Structure(_cat, _cat.Grid(g));
+            c.Set(Int3.Zero, Building.Make(c, _core));
+            return Triangles(c);
+        }
+        int big = Of(GridSize.Large), small = Of(GridSize.Small);
+        Check(big > small, $"the Big Core carries more detail than the Small Core ({big} against {small} triangles)");
+        foreach (BlockType t in _cat.Types.Skip(1).Where(t => !t.IsArmor))
+        {
+            var one = new Structure(_cat, _cat.Grid(GridSize.Large));
+            one.Set(Int3.Zero, Building.Make(one, t));
+            int n = Triangles(one);
+            Check(n <= 1000, $"{t.Id} stays cheap: {n} triangles");
+        }
+    }
+
+    static Vector2 Frac(Vector2 v) => new(v.X - Mathf.Floor(v.X), v.Y - Mathf.Floor(v.Y));
+
+    static int Triangles(Structure s)
+    {
+        int n = 0;
+        foreach (Int3 c in s.Chunks.Keys)
+        {
+            ChunkMeshData d = ChunkMesher.Build(s, c);
+            n += (d.Opaque.Indices.Count + d.Glass.Indices.Count) / 3;
+        }
+        return n;
     }
 
     // ---- Placement ------------------------------------------------------------------------
@@ -263,7 +337,7 @@ public partial class BuildTest : Node
         foreach (var (id, v) in volumes)
             Check(Near(_cat.Shape(id).Volume, v, 1e-4), $"{id} has volume {v:0.###}");
         float cyl = _cat.Shape("cylinder").Volume;
-        Check(cyl > 0.76f && cyl < 0.786f, $"cylinder volume is about π/4 ({cyl:0.###})");
+        Check(cyl > 0.76f && cyl < 0.786f, $"cylinder volume is about Ï€/4 ({cyl:0.###})");
 
         bool scaled = true, same = true;
         foreach (ShapeDef shape in _cat.Shapes)
@@ -342,7 +416,7 @@ public partial class BuildTest : Node
         Structure s = HollowBox();
         RoomReport r = Rooms.Detect(s);
         Check(r.Sealed.Count() == 1 && r.Sealed.First().Cells.Count == 27 && !r.Leaking.Any(),
-            $"a closed 5×5×5 box holds one sealed 27-cell room ({r.Sealed.Count()} sealed)");
+            $"a closed 5Ã—5Ã—5 box holds one sealed 27-cell room ({r.Sealed.Count()} sealed)");
 
         var hole = new Int3(4, 2, 2);
         Block wall = s.Get(hole);
@@ -379,7 +453,7 @@ public partial class BuildTest : Node
         Check(Rooms.Detect(s).Sealed.Count() == 1, "a glass window is airtight");
     }
 
-    /// <summary>A hollow 5×5×5 steel box from (0,0,0) to (4,4,4) with its core in the floor.</summary>
+    /// <summary>A hollow 5Ã—5Ã—5 steel box from (0,0,0) to (4,4,4) with its core in the floor.</summary>
     Structure HollowBox()
     {
         var s = new Structure(_cat, _cat.Grid(GridSize.Large));
@@ -539,7 +613,7 @@ public partial class BuildTest : Node
             allSame &= st.Blocks == statsBefore.Blocks && Near(st.Mass, statsBefore.Mass) && Near(st.CpuUsed, statsBefore.CpuUsed)
                 && st.StorageCapacity == statsBefore.StorageCapacity && Near(st.PowerOut, statsBefore.PowerOut);
         }
-        Check(allSame, $"switching base → capital → base → capital keeps all {before.Count} blocks exactly as they were");
+        Check(allSame, $"switching base â†’ capital â†’ base â†’ capital keeps all {before.Count} blocks exactly as they were");
         Check(allValid, "and the structure validates in both modes");
         Check(s.Mode == CoreMode.Capital && StructureStats.Compute(s).Thrust.Sum() > 0,
             "the same thrusters push once it is a capital ship (only flying depends on the mode)");
@@ -589,7 +663,7 @@ public partial class BuildTest : Node
         for (int x = -2; x <= 2; x++)
             for (int z = -2; z <= 2; z++)
                 floors &= nav.Nodes.TryGetValue(new Int3(x, 1, z), out NavKind k) && k == NavKind.Floor;
-        Check(floors && nav.Nodes.Count == 25, $"the 25 cells above a 5×5 floor are walkable, nothing else ({nav.Nodes.Count} nodes)");
+        Check(floors && nav.Nodes.Count == 25, $"the 25 cells above a 5Ã—5 floor are walkable, nothing else ({nav.Nodes.Count} nodes)");
 
         s.Set(new Int3(0, 1, 0), Block(s, _steel));
         nav = NavGrid.Build(s);

@@ -95,6 +95,9 @@ public static class Facade
             void Frame(Int3 p)
             {
                 if (hole.Contains(p) || g.Get(p) is not { Type: BlockType.Cube, Role: Role.Wall } w) return;
+                // A house is clad in its own paint, not a kit's: it frames its doors in its own trim where its style
+                // calls for one (Homes), never in a kit's hazard colour.
+                if (layout.Extras.Homes.Count > 0) return;
                 Kit kit = owners.TryGetValue(w.Color, out Kit? k) ? k : layout.Kit;
                 if (kit.DoorFrame is Rgb frame) Paint(g, p, frame);
             }

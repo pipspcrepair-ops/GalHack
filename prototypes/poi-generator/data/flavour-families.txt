@@ -1,7 +1,8 @@
 # Flavour ruins: small places that are not POIs (design doc "Infrastructure"). Houses along a street
 # near a junction, a fuel station on a highway, a farmstead out in the fields, a shed, a row of shops:
 # set down by the planet surface's flavour pass (FlavourRuins), never placed as places of their own
-# (tag flavour). Each is drawn by hand (Homes.cs) at the world's tech level, turned to face its road.
+# (tag flavour). Each is drawn by Homes.cs at the world's tech level, turned to face its road; a house is
+# put together from parts by the house rules (homes.txt), in its street's culture.
 
 family flavour_house
   tier site
@@ -11,7 +12,7 @@ family flavour_house
   pitch A family's home by the road, a century gone.
   faction none
   roster raiders
-  site home_bungalow
+  site home_house
   core none
   owner none
   rarity common
@@ -24,28 +25,19 @@ family flavour_house
   tags flavour house
   is open
   states active 0 abandoned 2 infested 0 ruined 6
-  variant Bungalow
+  # Every house is put together by the house rules from its street's culture (data/homes.txt); the
+  # variants only name the age that built it.
+  variant Old House
     seed 9701
-    site home_bungalow
-    tech mid
-  variant Gabled Ell
+    site home_house
+    tech low
+  variant House
     seed 9702
-    site home_ell
-    tech low
-  variant Two-Storey House
-    seed 9703
-    site home_twostorey
+    site home_house
     tech mid
-  variant Cottage
-    seed 9704
-    site home_cottage
-    tech low
-  variant Town House
-    seed 9705
-    site home_townhouse
-  variant Prefab
-    seed 9706
-    site home_prefab
+  variant Modern House
+    seed 9703
+    site home_house
     tech high
 
 family flavour_farmstead

@@ -55,7 +55,7 @@ public static class Growth
         foreach (Int3 p in g.Cells())
         {
             ref Block b = ref g.At(p);
-            if (b.Role != Role.Debris || b.Type is BlockType.Ash or BlockType.Scorch or BlockType.Puddle) continue;
+            if (b.Role != Role.Debris || b.Type is BlockType.Ash or BlockType.Scorch or BlockType.Puddle or BlockType.Rebar) continue;
             int l = (b.Color.R * 77 + b.Color.G * 150 + b.Color.B * 29) >> 8;
             var grey = new Rgb((byte)l, (byte)l, (byte)l);
             if (b.Type == BlockType.Plant)
@@ -63,6 +63,8 @@ public static class Growth
                 if (weed is Rgb w) b.Color = w.Scale(0.82f + 0.08f * (Hash.Cell(p, 117) % 4));
                 else b = Block.Air;
             }
+            // What a building dropped keeps its own stuff's colour under the dust; loose stone is the planet's rock.
+            else if (b.Type == BlockType.Rubble && b.Variant != Debris.Lumps) b.Color = b.Color.Lerp(grey, 0.2f).Lerp(rock, 0.1f);
             else if (b.Type == BlockType.Rubble || b.Material == Material.Rock) b.Color = rock.Scale(0.78f + 0.1f * (Hash.Cell(p, 113) % 4)).Lerp(grey, 0.22f);
             else b.Color = b.Color.Lerp(grey, 0.55f);
         }

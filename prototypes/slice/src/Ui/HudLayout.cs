@@ -23,8 +23,8 @@ public readonly record struct HudLayout(float Scale, Rect2 Vitals, Rect2 Toolbar
     public const int CompassRows = 2;
     /// <summary>The suit's lines shown at once.</summary>
     public const int LinesShown = 3;
-    /// <summary>An alert's sign and the timer to its left.</summary>
-    public const float AlertIcon = 64, AlertTimer = 76;
+    /// <summary>An alert's sign (the toolbar's height), the room for its timer above it, and the width each alert takes in the row.</summary>
+    public const float AlertIcon = Cell, AlertTimerH = 22, AlertCell = Cell + 14;
 
     /// <summary>Every box, by name, for the overlap check.</summary>
     public IEnumerable<(string Name, Rect2 Box)> Boxes => new[]
@@ -48,8 +48,7 @@ public readonly record struct HudLayout(float Scale, Rect2 Vitals, Rect2 Toolbar
         Rect2 shapes = Row(hints.Position.Y - (4 + 58) * s, barW, 58);
         float linesH = LinesShown * 26 * s;
         var jet = new Rect2(size.X - (24 + JetW) * s, size.Y * 0.45f - JetH * s / 2f, JetW * s, JetH * s);
-        float alertsW = (AlertTimer + AlertIcon + 50) * s;
-        float linesX = 24 * s + alertsW + 12 * s; // right of the alerts' column
+        float linesX = 24 * s;
         var lines = new Rect2(linesX, shapes.Position.Y - 8 * s - linesH, jet.Position.X - 12 * s - linesX, linesH);
         // The compass strip and its labels (a label is 220 wide, centred on a mark that may sit at the strip's end).
         float compassW = CompassW + 220;
@@ -58,9 +57,9 @@ public readonly record struct HudLayout(float Scale, Rect2 Vitals, Rect2 Toolbar
         // Seated: the flight line, its message under it, and the mode plate under that (beside it, it ran off a narrow window).
         var flight = new Rect2(cx - 360 * s, compass.End.Y + 14 * s, 720 * s, 68 * s);
         var mode = new Rect2(cx - 96 * s, flight.End.Y + 6 * s, 192 * s, 34 * s);
-        // Alerts down the left edge, under all of that, beside the suit's lines.
-        float alertsTop = mode.End.Y + 10 * s;
-        var alerts = new Rect2(24 * s, alertsTop, alertsW, MathF.Max(0f, shapes.Position.Y - 8 * s - alertsTop));
+        // Alerts in a row along the toolbar's line, from the far left edge to the bar's name, each sign
+        // the toolbar's height with its timer above it: a corner no menu uses, so they stay put over menus too.
+        var alerts = new Rect2(24 * s, toolbar.Position.Y - AlertTimerH * s, MathF.Max(0f, barName.Position.X - 8 * s - 24 * s), (Cell + AlertTimerH) * s);
         return new HudLayout(s, vitals, toolbar, item, hints, shapes, lines, jet, compass, alerts, barName, flight, mode);
     }
 

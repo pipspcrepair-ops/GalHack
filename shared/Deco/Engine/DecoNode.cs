@@ -64,12 +64,24 @@ public partial class DecoNode : Node3D
         };
         if (node._anim == "spark") node.AddSparks(DecoGodot.V(data.Spark.Value));
         node._phase = (node._seed % 1000) / 1000f * Mathf.Tau;
-        node.SetProcess(node._anim != null);
         return node;
     }
 
-    // A node with _Process is switched on when it joins the tree, whatever was said before: only what moves stays on.
-    public override void _Ready() => SetProcess(_anim != null);
+    // What moves is moved by the DecoAnimator: one call a frame for all of them, and only near the eye. A node
+    // of its own would be a call into this code every frame for every piece in every place standing.
+    internal int AnimIndex = -1;
+    internal byte AnimBand;
+    internal float AnimOwed;
+
+    public override void _EnterTree()
+    {
+        if (_anim != null) DecoAnimator.Join(this);
+    }
+
+    public override void _ExitTree()
+    {
+        if (_anim != null) DecoAnimator.Leave(this);
+    }
 
     void AddSparks(Vector3 at)
     {
@@ -96,9 +108,11 @@ public partial class DecoNode : Node3D
         return (_seed >> 40) / (float)(1UL << 24);
     }
 
-    public override void _Process(double delta)
+    /// <summary>One step of the animation, <paramref name="delta"/> seconds on from the last (the animator calls it; a farther piece is stepped seldom, and by a longer time).</summary>
+    internal void Animate(float delta)
     {
-        _t += (float)delta;
+        delta = Mathf.Min(delta, 1f);
+        _t += delta;
         float e = 1f;
         switch (_anim)
         {
@@ -120,7 +134,7 @@ public partial class DecoNode : Node3D
                     _flash.LightEnergy = 1.6f;
                     _next = _t + 1.2f + 3.5f * Rand();
                 }
-                _flash.LightEnergy = Mathf.MoveToward(_flash.LightEnergy, 0, (float)delta * 12f);
+                _flash.LightEnergy = Mathf.MoveToward(_flash.LightEnergy, 0, delta * 12f);
                 return;
         }
         MeshInstance.SetInstanceShaderParameter("energy", e);
