@@ -760,21 +760,17 @@ public static partial class Homes
             for (int d = 1; d <= 2; d++) Put(u, top - 1, frontV - d, new Block(BlockType.Pipe, Material.Timber, new Rgb(0x4a, 0x3c, 0x30), Role.Decor, Dir.North));
         }
 
-        /// <summary>The fixing's insulator: a glazed ceramic cap in brown or white.</summary>
-        static Block Insulator(int salt) => new(BlockType.Pillar, Material.Ceramic, salt % 3 == 0 ? new Rgb(0xd8, 0xd4, 0xc8) : new Rgb(0x7a, 0x3e, 0x2c), Role.Decor);
-
         /// <summary>
         /// Where the street's service drop is fixed: at the roof's corner on the street side, where the line from the pole
-        /// comes in. By the street's way of building (<paramref name="bracket"/>), an insulator bracket under the eave's
-        /// corner where the eave stands over a door's headroom, or else a short steel mast rising through the roof's edge
-        /// at the walls' corner, a collar of the roof's own stuff round it; on a flat roof, on the parapet's corner. Never
-        /// within two metres of a door; the insulator is the fixing point, facing the street. A terrace house takes its
-        /// own front's end or a party wall (every <paramref name="pitch"/> along). Only where no roof corner faces the
-        /// street, a pole in the front garden away from the path. The meter box stands at the foot of the wall below.
+        /// comes in, as a small fitting and no block (<see cref="ServicePoint"/>): a ceramic insulator on a short bracket
+        /// under the eave's very corner, or on a flat roof on the parapet's corner. Never within two metres of a door, the
+        /// insulator facing the street. A terrace house takes its own front's end or a party wall (every
+        /// <paramref name="pitch"/> along). Only where no roof corner faces the street, a pole in the front garden away
+        /// from the path, the fitting on its top. The meter box stands at the foot of a side wall just back from the front
+        /// corner, under no window and clear of doors and the drive; on the front by the corner only where no side wall is free.
         /// </summary>
-        public void Service(int doorU, int frontV, List<int>? units, bool bracket = false, int pitch = 0)
+        public void Service(int doorU, int frontV, List<int>? units, int pitch = 0)
         {
-            var steel = new Rgb(0x4c, 0x50, 0x54);
             var doors = new HashSet<Int3>(C.Doorways.SelectMany(d => d.Cells));
             bool NearDoor(int u, int v) => Enumerable.Range(-2, 5).Any(du => Enumerable.Range(-2, 5).Any(dv => doors.Contains(_f.At(u + du, Lift, v + dv)) || doors.Contains(_f.At(u + du, 0, v + dv))))
                 || _door.Any(d => d.S == 0 && Math.Abs(d.U - u) <= 1 && Math.Abs(d.V - v) <= 1);
@@ -782,32 +778,36 @@ public static partial class Homes
             var exits = Exits.SelectMany(e => Enumerable.Range(0, DoorSize.Wide).Select(k => (U: e.U + Along(e.Out).A * k, V: e.V + Along(e.Out).B * k))).ToList();
             if (exits.Count == 0) exits.Add((doorU, frontV));
             int FromDoor(int u, int v) => exits.Min(e => Math.Max(Math.Abs(e.U - u), Math.Abs(e.V - v)));
+            // The fitting by the tech that put it up: a brown-glazed insulator on a dark iron strap, or white on galvanised steel.
+            TechLevel tech = _l.Tech;
+            Rgb glaze = tech == TechLevel.Low ? new Rgb(0x7a, 0x3e, 0x2c) : tech == TechLevel.High ? new Rgb(0xc8, 0xcc, 0xcc) : new Rgb(0xd8, 0xd4, 0xc8);
+            Rgb metal = tech == TechLevel.Low ? new Rgb(0x3c, 0x3a, 0x38) : new Rgb(0x9a, 0x9e, 0xa0);
+            (float X, float Z) Rot(float a, float b) => _f.Q switch { 0 => (a, b), 1 => (-b, a), 2 => (-a, -b), _ => (b, -a) };
+            void Fit(int u, int y, int v, ServiceMount mount, float ou, float ov, float dy)
+            {
+                Int3 c = P(u, y, v);
+                var (ox, oz) = Rot(ou, ov);
+                C.X.Service.Add(new ServicePoint(c, _f.Turn(Dir.North)) { Mount = mount, Point = (c.X + 0.5f + ox, c.Y + dy, c.Z + 0.5f + oz), Insulator = glaze, Bracket = metal });
+            }
+            bool Window(int u, int y, int v) => C.Get(P(u, y, v)).Role == Role.Window;
             void Meter(int u, int v, int side)
             {
-                // The meter box at the foot of the wall below the fixing: in front of the corner, or round it on the side.
                 if (Lift != 0) return;
-                foreach (var (mu, mv, d) in new[] { (u, v - 1, Dir.North), (u + side, v, side < 0 ? Dir.West : Dir.East) })
-                    if (side != 0 || d == Dir.North)
-                        if (Empty(mu, 0, mv) && !Foot.Contains((mu, mv)) && !NearDoor(mu, mv)) { Put(mu, 0, mv, new Block(BlockType.Locker, Material.Steel, new Rgb(0x8c, 0x90, 0x8c), Role.Decor, d)); return; }
+                var box = new Block(BlockType.Locker, Material.Steel, new Rgb(0x8c, 0x90, 0x8c), Role.Decor, Dir.North);
+                // On the side wall just back from the front corner, under no window, clear of doors and the drive.
+                if (side != 0)
+                    for (int k = 1; k <= 3; k++)
+                    {
+                        int mu = u + side, mv = v + k;
+                        if (!Foot.Contains((u, mv)) || Foot.Contains((mu, mv)) || !Empty(mu, 0, mv) || NearDoor(mu, mv) || Window(u, 0, mv) || Window(u, 1, mv) || Window(u, 2, mv)) continue;
+                        Put(mu, 0, mv, box with { Facing = side < 0 ? Dir.West : Dir.East });
+                        return;
+                    }
+                // Else on the front by the corner.
+                if (Empty(u, 0, v - 1) && !Foot.Contains((u, v - 1)) && !NearDoor(u, v - 1)) Put(u, 0, v - 1, box);
             }
-            // A short mast up through the roof's edge (or off the parapet) at the walls' corner, a collar where it goes through.
-            bool Mast(int u, int v, int side)
-            {
-                int top = Enumerable.Range(0, Ring(Storeys - 1) + 14).Reverse().FirstOrDefault(y => BlockInfo.Collides(C.Get(P(u, y, v)).Type), -1);
-                if (top < DoorSize.Headroom - 1) return false;
-                Block b = C.Get(P(u, top, v));
-                if (b.Role is not (Role.Roof or Role.Wall)) return false;
-                if (!Empty(u, top + 1, v) || !Empty(u, top + 2, v) || !Empty(u, top + 3, v)) return false;
-                for (int k = 1; k <= 3; k++) if (!Empty(u, top + 2, v - k)) return false;
-                if (b.Role == Role.Roof && b.Type != BlockType.Cube) C.Blocks[P(u, top, v)] = new Block(BlockType.Cube, b.Material, b.Color.Scale(0.85f), Role.Roof);
-                Put(u, top + 1, v, new Block(BlockType.Pillar, Material.Steel, steel, Role.Decor));
-                Put(u, top + 2, v, Insulator(u + v));
-                C.X.Service.Add(new ServicePoint(P(u, top + 2, v), _f.Turn(Dir.North)));
-                Meter(u, v, side);
-                return true;
-            }
-            // An insulator hung under the eave's corner: the roof column furthest out on the diagonal from the walls' corner.
-            bool Bracket(int u, int v, int side)
+            // Under the eave's very corner: the roof column furthest out on the diagonal from the walls' corner, its underside.
+            bool Eave(int u, int v, int side)
             {
                 (int U, int V, int Y)? tip = null;
                 int far = -1;
@@ -821,10 +821,18 @@ public static partial class Homes
                         far = a + b;
                         tip = (cu, cv, low);
                     }
-                if (tip is not var (tu, tv, ty) || ty - 1 < DoorSize.Headroom || FromDoor(tu, tv) <= 2) return false;
-                if (!Empty(tu, ty - 1, tv) || !Empty(tu, ty - 2, tv) || !Empty(tu, ty - 1, tv - 1)) return false;
-                Put(tu, ty - 1, tv, Insulator(tu + tv));
-                C.X.Service.Add(new ServicePoint(P(tu, ty - 1, tv), _f.Turn(Dir.North)));
+                // A verandah's corner post may stand under it: the fitting hangs at the cell's outer corner, clear of a post's middle.
+                if (tip is not var (tu, tv, ty) || ty < 2 || FromDoor(tu, tv) <= 2 || !Empty(tu, ty - 1, tv) && C.Get(P(tu, ty - 1, tv)).Type != BlockType.Pillar) return false;
+                Fit(tu, ty - 1, tv, ServiceMount.Eave, side * 0.32f, -0.32f, 0.8f);
+                Meter(u, v, side);
+                return true;
+            }
+            // On a flat roof's parapet, at its corner on the street side.
+            bool Parapet(int u, int v, int side)
+            {
+                int top = Enumerable.Range(0, Ring(Storeys - 1) + 14).Reverse().FirstOrDefault(y => BlockInfo.Collides(C.Get(P(u, y, v)).Type), -1);
+                if (top <= TopEave || C.Get(P(u, top, v)) is not { Type: BlockType.Cube, Role: Role.Wall } || !Empty(u, top + 1, v)) return false;
+                Fit(u, top + 1, v, ServiceMount.Parapet, side * 0.3f, -0.3f, 0.22f);
                 Meter(u, v, side);
                 return true;
             }
@@ -846,9 +854,9 @@ public static partial class Homes
                 var order = corners.Where(c => !taken.Contains((c.U, c.V)) && FromDoor(c.U, c.V) > 2 && (units == null || Math.Abs(c.U - du) <= Math.Max(pitch, 4)))
                     .OrderBy(c => c.V).ThenBy(c => units == null ? -FromDoor(c.U, c.V) : Math.Abs(c.U - du)).ToList();
                 foreach (var (u, v, side) in order)
-                    if (bracket && Bracket(u, v, side) || Mast(u, v, side)) { taken.Add((u, v)); placed = true; break; }
+                    if (Parapet(u, v, side) || Eave(u, v, side)) { taken.Add((u, v)); placed = true; break; }
                 if (placed) continue;
-                // Every wall under eaves: a service pole in the front garden at the corner, away from the path, its insulator the fixing.
+                // No roof corner faces the street: a service pole in the front garden at the corner, away from the path, the fitting on its top.
                 int fv = Foot.Min(x => x.V);
                 var row = Foot.Where(c => c.V == fv).Select(c => c.U).ToList();
                 int pv = fv - 3, top = Ring(Storeys - 1) + 1;
@@ -865,8 +873,7 @@ public static partial class Homes
                 }
                 if (pu == int.MinValue) continue;
                 for (int y = -Lift; y < top; y++) Put(pu, y, pv, new Block(BlockType.Pillar, Material.Timber, new Rgb(0x5a, 0x4c, 0x3e), Role.Decor));
-                Put(pu, top, pv, Insulator(pu + pv));
-                C.X.Service.Add(new ServicePoint(P(pu, top, pv), _f.Turn(Dir.North)));
+                Fit(pu, top, pv, ServiceMount.Pole, 0f, 0f, 0.22f);
                 if (Lift == 0 && !NearDoor(pu, pv - 1) && Empty(pu, 0, pv - 1)) Put(pu, 0, pv - 1, new Block(BlockType.Locker, Material.Steel, new Rgb(0x8c, 0x90, 0x8c), Role.Decor, Dir.North));
             }
         }
