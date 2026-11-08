@@ -93,7 +93,8 @@ Owner ideas, 8 November (design doc rev 664):
 - [ ] New iconography for Husks and Hollows, final picks (owner, 8 Nov): no Husk sigil; Something wrong here = the scribble plus room, needle and two shadows; Husks here = six regional marks; Hollow traveller marks = all four cap-bearing beasts; Hollow hazard G (beast gone to mould); spread-on-boots A; Husk hazard C and D; Husk group C; all five screening signs [finalising: docs/signs; then into the game's sign placement]
 
 - [ ] Polar ice reads as a straight band from high, not a cap: needs a lobed, meandering edge with glaciers down valleys, sea ice breaking into floes, a gradual tundra-to-ice change, rounded off by the horizon sink (owner, 8 Nov) [queued: farland2 follow-on]
-- [ ] Distant land doesn't draw: toward the horizon from the air the land turns to a flat smear and grey void (owner's annotated shot, 8 Nov) [running: proto/farland2]
+- [ ] Distant land doesn't draw: toward the horizon from the air the land turns to a flat smear and grey void (owner's annotated shot, 8 Nov) [batch: the land was there but haze erased it; haze now thins with height and land, sea and clouds share one curve past 2 km; horizon test added]
+- [ ] With lighter haze, the world's north-south repeat shows on the horizon (the same hill about 8 km apart); the design has poles at north and south, not a wrap, so the pole edge needs handling with the polar ice work [queued: polar ice job]
 - [ ] Cities: big buildings must not stand on sandy soil; towers and dense blocks need firm ground (rock, clay, firm soil), so sand, beaches and dunes stay open or get only light buildings on piles [queued: cities follow-up]
 - [ ] Cities: each lot sits on a bare brown pad that reads as squares from the air; low-tech river piling reads as a fence; a thin bright column rises into the sky in two frames [queued: cities follow-up]
 
@@ -105,20 +106,20 @@ Owner ideas, 8 November (design doc rev 664):
 
 Galaxy and map:
 - [ ] Starting worlds at the tip of a spiral arm [not started]
-- [ ] Galaxy map: keep every star, but declutter; labels off except the selected one [UI round]
+- [ ] Galaxy map: keep every star, but declutter; labels off except the selected one [running: proto/ui-round]
 
 UI (after world, POIs and bestiary):
 - [ ] Our sign set isn't in the game yet (checked 8 Nov): places show a generic box-built warning plate (a stripe or a crude radiation mark), and the HUD still uses text toasts for hazards ("Tornado on the ground", "STRUCK BY LIGHTNING..."). Needs: the approved signs, traveller marks, sigils and the Husk and Hollow set drawn as decals or textured plates in places, chosen from real room data and the place's occupants, worn and tilted by age, survivors' marks chalked near what they warn of; and the HUD hazard alerts as the matching icon with a timer and direction [queued: signs in the world and HUD]
 - [ ] Blueprints tab in the Tab menu (owner, 8 Nov): the library of blueprints, Large and Small, with a 3D preview, its four numbers, cost and unlocks; project one to build (in Creative it places at once); save any owned structure as a blueprint; a starter set: Small (the skiff, a hover rover, a light fighter, a shuttle) and Large (a starter base, a hover tank, a hauler, a small capital ship), all built from blocks that exist, as data files. Design rule kept: blueprints live in the menu, never on the toolbar, and nothing in the early game steers toward them [running: proto/blueprints]
 - [ ] Escape menu soon: save, load, quit, options for graphics, sound, keys and mouse sensitivity (even before save and load work) [batch: resume, save and load marked not yet, options, quit; graphics, sound, rebindable keys and mouse saved between sessions; real window and input not yet checked by hand]
-- [ ] Handheld scanner, so the compass isn't cluttered with every ore [UI round; ore halving now]
-- [ ] Hazard warnings as a symbol with a timer and direction, not a sentence [UI round]
-- [ ] Menus waste space; more slots, more lists, more information [UI round]
-- [ ] Broken characters (Â·, Â°C) in the suit terminal [batch: fixed], and labels overlapping (remote toolbar line, set-down hint) [UI round]
-- [ ] Tech tree too spread out and too empty: each category's unlocks visible on one screen [UI round]
+- [ ] Handheld scanner, so the compass isn't cluttered with every ore [running: proto/ui-round]
+- [ ] Hazard warnings as a symbol with a timer and direction, not a sentence [running: proto/ui-round]
+- [ ] Menus waste space; more slots, more lists, more information [running: proto/ui-round]
+- [ ] Broken characters (Â·, Â°C) in the suit terminal [batch: fixed], and labels overlapping (remote toolbar line, set-down hint) [running: proto/ui-round]
+- [ ] Tech tree too spread out and too empty: each category's unlocks visible on one screen [running: proto/ui-round]
 - [ ] Too few weapons and tech options overall [running: first 12 weapons, paused by the weekly limit]
 - [ ] Two classes, Large and Small (doc rev 658): Large (Big Core) has Base, Hover and Flight modes; Small (Small Core) has Hover and Flight; tech tabs become Large and Small, with large hover tech a branch parallel to flight; large hover plates then work on a Big Core in Hover Mode (hover tanks, land carriers, mobile bases) [queued: with the UI round]
-- [ ] Owner hasn't built much because the menus feel bad and present data poorly [UI round]
+- [ ] Owner hasn't built much because the menus feel bad and present data poorly [running: proto/ui-round]
 
 Sound:
 - [ ] Wind and drone are sometimes perfect, sometimes grating or too droney: narrow their ranges [not started]
