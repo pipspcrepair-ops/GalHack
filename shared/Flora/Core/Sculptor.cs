@@ -19,6 +19,33 @@ internal sealed class Sculptor
 
     public int Triangles => _p.Count / 3;
 
+    /// <summary>The solid parts laid down so far, as columns for colliders (twigs, wands and leaves aren't: they're walked through).</summary>
+    public readonly List<PlantColumn> Columns = new();
+
+    /// <summary>A part thinner than this is walked through: a twig, a cactus's wand, a frond's rib.</summary>
+    public const float SolidRadius = 0.06f;
+
+    /// <summary>How deep under the foot a column reaches: an instance stands sunk a little into its ground.</summary>
+    const float ColumnFloor = -0.3f;
+
+    /// <summary>How far a point lies from the segment a to b.</summary>
+    static float OffLine(Vector3 p, Vector3 a, Vector3 b)
+    {
+        Vector3 e = b - a;
+        float t = Math.Clamp(Vector3.Dot(p - a, e) / MathF.Max(e.LengthSquared(), 1e-9f), 0f, 1f);
+        return Vector3.Distance(p, a + e * t);
+    }
+
+    /// <summary>A stretch of a part as a column, cut off below the ground; nothing if it's too thin or wholly underground.</summary>
+    void Column(Vector3 a, Vector3 b, float radius)
+    {
+        if (radius < SolidRadius || a.Y < ColumnFloor && b.Y < ColumnFloor) return;
+        if (a.Y < ColumnFloor) a = Vector3.Lerp(a, b, (ColumnFloor - a.Y) / (b.Y - a.Y));
+        if (b.Y < ColumnFloor) b = Vector3.Lerp(b, a, (ColumnFloor - b.Y) / (a.Y - b.Y));
+        if (Vector3.Distance(a, b) < 0.02f) return;
+        Columns.Add(new PlantColumn(a, b, radius, _part));
+    }
+
     /// <summary>Each primitive is a part, numbered from 1; one made of others (a tube is quads, a quad is triangles) is still one part.</summary>
     void Begin(PartKind kind)
     {
@@ -181,6 +208,15 @@ internal sealed class Sculptor
     {
         Begin(PartKind.Wood);
         TubeCore(path, radii, sides, from, to, cap);
+        // Its columns: a straight run every two nodes, wide enough to hold the tube there however it bends
+        // (each node's ring, wherever the node strays from the run's line).
+        for (int i = 0; i + 1 < path.Count; i += 2)
+        {
+            int j = Math.Min(i + 2, path.Count - 1);
+            float r = 0f;
+            for (int k = i; k <= j; k++) r = MathF.Max(r, radii[k] + OffLine(path[k], path[i], path[j]));
+            Column(path[i], path[j], r);
+        }
         End();
     }
 
@@ -226,6 +262,15 @@ internal sealed class Sculptor
     {
         Begin(PartKind.Body);
         LatheCore(at, axis, profile, sides, band, ribs, wobble, dice, squash, phase);
+        // Its columns: each step of the profile up its axis, as wide as the step's widest (ribbed and wobbled outward).
+        Vector3 up = Vector3.Normalize(axis);
+        float grow = (1f + ribs) * (1f + wobble) * MathF.Max(1f, squash);
+        for (int i = 0; i + 1 < profile.Length; i++)
+        {
+            float y0 = MathF.Min(profile[i].Y, profile[i + 1].Y), y1 = MathF.Max(profile[i].Y, profile[i + 1].Y);
+            if (y1 - y0 < 0.02f) y1 = y0 + 0.02f; // a flat step (a cap's rim) is a thin disc
+            Column(at + up * y0, at + up * y1, MathF.Max(profile[i].R, profile[i + 1].R) * grow);
+        }
         End();
     }
 

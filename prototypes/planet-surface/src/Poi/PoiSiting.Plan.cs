@@ -93,7 +93,9 @@ public static partial class PoiSiting
             Dir front = served == null ? Dir.North
                 : Toward(Mathx.WrapDelta(served.X - j.Place.X, map.WidthMeters), Mathx.WrapDelta(served.Z - j.Place.Z, map.HeightMeters));
             bool large = j.Family.Tags.Contains("grand");
-            Layout layout = PoiFactory.BuildLayout(lib, j.Family, j.Variant, j.Family.Rarity, large ? PoiGenerator.Gen.Hash.Combine(j.Spawn, 0x6A11UL) : null, new LayoutHints(front, profile.Before));
+            Layout layout = PoiFactory.TryLayout(lib, j.Family, j.Variant, Deeper(j.Family.Rarity, roll.Depth, j.Spawn), large ? PoiGenerator.Gen.Hash.Combine(j.Spawn, 0x6A11UL) : null, new LayoutHints(front, profile.Before), out string why);
+            // A place that won't lay out is left off the map with a warning, never a crash.
+            if (layout == null) { Godot.GD.PushWarning($"place skipped: {why}"); return; }
             if (large) layout.Name = j.Family.Variants[j.Variant].Name;
             made[i] = PoiFactory.Spawn(lib, layout, j.State, j.Spawn, profile, j.Occ);
         });
@@ -101,6 +103,7 @@ public static partial class PoiSiting
         for (int i = 0; i < jobs.Count; i++)
         {
             var j = jobs[i];
+            if (made[i] == null) continue;
             double x = Mathx.WrapX(j.Place.X, map.WidthMeters), z = Mathx.Wrap(j.Place.Z, map.HeightMeters);
             PoiSite site = Seat(made[i], j.Family, bare, map, x, z, landing, sites);
             int retries = j.Place.Primary ? 64 : j.Place.Role is "hub" or "port" or "need" or "industry" or "plant" ? 12 : 4;

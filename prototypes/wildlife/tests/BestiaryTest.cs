@@ -50,6 +50,22 @@ public partial class BestiaryTest : Node
             TempersByTech();
             TwentyPeopleAreCheap();
             LooksClusterBySettlement();
+            HusksSpreadFromTheCore();
+            HusksAreTheirOwnPeople();
+            SeizedPeopleTurn();
+            ThePlayerIsNeverInfected();
+            TheCooldownHolds();
+            DensHideFromOutside();
+            MassesHoldBodyParts();
+            MassesTakeHold();
+            CarriersLookNormalUntilAlone();
+            CarriersTurnPastTheShare();
+            WrongnessRisesWithHusks();
+            HollowsAreLesserAndScarce();
+            NothingLivesInsideWalls();
+            HuskDensHaveNoEggs();
+            ShortHusksNeverSeize();
+            TwentyHusksAreCheap();
         }
         catch (Exception e)
         {
@@ -247,7 +263,7 @@ public partial class BestiaryTest : Node
         var kinds = new List<Species>();
         foreach (WorldConditions w in worlds)
         {
-            w.Bloom = w.Mutagen > 0f;
+            w.Coreward = w.Mutagen > 0f ? 1f : 0f;
             WorldLife life = Bestiary.Roll(_data, w);
             kinds.AddRange(life.Moving);
             kinds.Add(Robots.Roll(w, 0));
@@ -262,8 +278,633 @@ public partial class BestiaryTest : Node
             foreach (Creature c in sim.Creatures) foreach (Transform3D t in c.Rig.Pose) finite &= Geo.Finite(t);
         }
         Check(finite, $"{sim.Creatures.Count} walkers, machines, ferals and husks run in the sim for 20 s with every pose finite");
-        Check(kinds.Any(s => s.Figure?.Husk == true), "a Bloom world has husks walking in it");
-        Check(kinds.Where(s => s.Figure?.Husk == true).All(s => !s.CommonName.Contains("hollow", StringComparison.OrdinalIgnoreCase) && !s.CommonName.Contains("husk", StringComparison.OrdinalIgnoreCase)), "and nothing labels them");
+    }
+
+    // ---- The Husks ----------------------------------------------------------------------------
+
+    static IEnumerable<Species> HusksOf(WorldLife life) => life.Moving.Where(s => s.Husk).SelectMany(s => s.Hosts ?? new List<Species> { s });
+
+    /// <summary>The Husks spread outward from the core: scarce on the rim, common coreward, and more of them there.</summary>
+    void HusksSpreadFromTheCore()
+    {
+        int rim = 0, core = 0, worlds = 150;
+        float rimScarcity = 0f, coreScarcity = 0f;
+        for (int i = 0; i < worlds; i++)
+        {
+            var w = World(_fresh.Range(-10f, 35f));
+            var c = World(_fresh.Range(-10f, 35f));
+            c.Coreward = 1f;
+            if (Bestiary.Roll(_data, w).Moving.FirstOrDefault(s => s.Husk) is { } a) { rim++; rimScarcity = a.Scarcity; }
+            if (Bestiary.Roll(_data, c).Moving.FirstOrDefault(s => s.Husk) is { } b) { core++; coreScarcity = b.Scarcity; }
+        }
+        Check(rim < worlds * 0.35f && rim > 0, $"Husks walk {rim} of {worlds} rim worlds: there, but scarce");
+        Check(core > worlds * 0.85f, $"and {core} of {worlds} worlds at the core");
+        Check(coreScarcity > rimScarcity * 2f, $"with more of them coreward ({coreScarcity:F2} against {rimScarcity:F2} of an animal's groups)");
+    }
+
+    /// <summary>
+    /// A Husk is a person of its world, taken: torn clothes of their own job, worms at every opening,
+    /// one or two wrong shapes, a voice, no two alike, called what it is. And nothing fungal on a person.
+    /// </summary>
+    void HusksAreTheirOwnPeople()
+    {
+        var husks = new List<Species>();
+        int worlds = 0;
+        while (husks.Count < 60 && worlds < 200)
+        {
+            var w = World(_fresh.Range(-20f, 45f));
+            w.Coreward = 1f;
+            husks.AddRange(HusksOf(Bestiary.Roll(_data, w)));
+            worlds++;
+        }
+        Check(husks.Count >= 60, $"{husks.Count} Husks from {worlds} core worlds");
+        int Worms(Species s) => new HumanRig(s).Layout.Pieces.First(p => p.Name == "head").Prims.Count(m => m.Material == Mat.Worm);
+        var worms = husks.Select(Worms).ToList();
+        Check(worms.Min() >= 4 * 9, $"worms out of the mouth, nostrils, eyes and ears of every one ({worms.Min() / 4}-{worms.Max() / 4} worms each)");
+        Check(husks.All(s => s.Figure.Torn && s.Figure.Prop == "" && !s.Figure.Has("suit_helmet")), "all in their own clothes, torn, hands empty, nothing over the face");
+        var wrongs = husks.Select(s => System.Numerics.BitOperations.PopCount((uint)s.Figure.Wrongs)).ToList();
+        Check(wrongs.All(n => n is 1 or 2), "each with one or two of the wrong shapes");
+        foreach (Wrong k in new[] { Wrong.Jaw, Wrong.Arm, Wrong.Hunch, Wrong.Head })
+            Check(husks.Count(s => s.Figure.Wrongs.HasFlag(k)) > husks.Count / 10, $"{husks.Count(s => s.Figure.Wrongs.HasFlag(k))} with {k.ToString().ToLowerInvariant()} wrong");
+        Check(husks.Where(s => s.Figure.Wrongs.HasFlag(Wrong.Arm)).All(s => s.Figure.UpperArmOf(s.Figure.LongArm) > s.Figure.UpperArmOf(1 - s.Figure.LongArm) * 1.2f), "a long arm is a fifth longer than the other at least");
+        Check(husks.Select(s => (s.Figure.Role, s.Figure.Dress)).Distinct().Count() >= 6, $"taken from {husks.Select(s => s.Figure.Role).Distinct().Count()} jobs and {husks.Select(s => s.Figure.Dress).Distinct().Count()} kinds of dress");
+        var oneWorld = HusksOf(Bestiary.Roll(_data, new WorldConditions { Seed = Seed(), Coreward = 1f, Alienness = 0.2f })).ToList();
+        Check(oneWorld.Count == 0 || oneWorld.Select(s => $"{s.Figure.Height:F3}{s.Figure.Cloth}{s.Figure.Wrongs}").Distinct().Count() == oneWorld.Count, $"a world's Husks are {oneWorld.Count} different people");
+        Check(husks.All(s => s.CommonName == "husk" && s.Figure.Voice != null && s.Spit == SpitKind.Maggots && s.Attack.Style == AttackStyle.Seize), "called husks, murmuring, with maggots in the throat and the seize for an attack");
+        Check(husks.All(s => !s.Corrupted), "and no person carries the fungus");
+    }
+
+    /// <summary>A Husk seizes a person and they turn; an animal dies of it; only people turn.</summary>
+    void SeizedPeopleTurn()
+    {
+        var w = World(15f);
+        w.Coreward = 1f;
+        WorldLife life = Bestiary.Roll(_data, w);
+        Species husk = TallHusk(life);
+        int turned = 0, killed = 0, seized = 0, tries = 0, outOfReach = 0;
+        for (int t = 0; t < 6; t++)
+        {
+            var sim = new WildSim(_data, new Terrain((x, z) => 0f, 120f), new NavGrid(120f, 3f));
+            sim.Seized += _ => seized++;
+            sim.Turned += _ => turned++;
+            bool person = t % 2 == 0;
+            Species prey = person ? life.People.Person(Seed(), PersonRole.Farmer) : life.Moving.Where(s => !s.Mechanical && s.Figure == null && !s.Flies && s.Rig == RigKind.Legged).OrderBy(s => s.BodyHeight).First(); // one whose head it can reach
+            if (!person && prey.BodyHeight > husk.Figure.Height + Seizing.ReachAbove) { GD.Print($"    (this world's smallest walker stands {prey.BodyHeight:F2} m: out of a Husk's reach, so not tried)"); outOfReach++; continue; }
+            Creature h = sim.Spawn(husk, new Vector3(0f, 0f, 0f));
+            Creature v = sim.Spawn(prey, new Vector3(1.6f, 0f, 0f));
+            v.Health = v.Stats.MaxHealth = 10000f; // only the seize may end it
+            Vector3 stay = v.Position;
+            for (int i = 0; i < 30 * 40 && !v.Removed && !v.Dead; i++)
+            {
+                // Keep the prey within reach, cornered (an animal would keep off a Husk if it could).
+                if (h.Phase == AttackPhase.None && h.Holding == null && !h.Attacking) stay = h.Position + new Vector3(1.4f, 0f, 0f);
+                if (v.HeldBy == null)
+                {
+                    v.Position = stay;
+                    v.Velocity = Vector3.Zero;
+                }
+                sim.Step(1f / 30f);
+            }
+            tries++;
+            if (person && v.Removed) Check(sim.Creatures.Any(c => c.Species.Husk && c != h && c.Species.Figure.Height == prey.Figure.Height), "a seized person turns into a Husk of the same body");
+            if (!person && v.Dead) killed++;
+        }
+        Check(seized > 0, $"Husks seize the living ({seized} holds)");
+        Check(turned > 0 && turned <= 3, $"{turned} seized people turned");
+        Check(killed > 0 || outOfReach == 3, $"{killed} seized animals died and none turned");
+    }
+
+    /// <summary>A Husk of this world tall enough to seize a head.</summary>
+    Species TallHusk(WorldLife life)
+    {
+        for (int i = 0; i < 200; i++)
+        {
+            Species s = life.People.Person(Seed(), PersonRole.Worker, Occupancy.Friendly, 0.2f, husk: true);
+            if (s.Figure.Height + Seizing.ReachAbove >= Seizing.StandingHead + 0.05f) return s;
+        }
+        throw new InvalidOperationException("no tall Husk in 200 rolls");
+    }
+
+    /// <summary>A Husk too short to bring its face to a standing head (a child) strikes and retches instead; crouch near it, and it can.</summary>
+    void ShortHusksNeverSeize()
+    {
+        WorldLife life = Bestiary.Roll(_data, World(15f));
+        int seized = 0, seizedCrouched = 0, blows = 0;
+        for (int t = 0; t < 4; t++)
+        {
+            Species child = life.People.Person(Seed(), PersonRole.Child, Occupancy.Friendly, 0.2f, husk: true);
+            var sim = new WildSim(_data, new Terrain((x, z) => 0f, 120f), new NavGrid(120f, 3f));
+            var you = new DummyTarget { Position = new Vector3(0f, 0f, -3f), Health = new Health(1e9f), Crouched = t % 2 == 1 };
+            sim.Targets.Add(you);
+            bool crouched = t % 2 == 1;
+            sim.Seized += _ => { if (crouched) seizedCrouched++; else seized++; };
+            sim.Attacked += e => { if (e.Target == you) blows++; };
+            sim.Spawn(child, Vector3.Zero);
+            for (int i = 0; i < 30 * 25; i++) sim.Step(1f / 30f);
+        }
+        Check(seized == 0 && blows > 0, $"a Husked child never takes a standing head ({blows} blows and retches instead)");
+        Check(seizedCrouched > 0, $"but takes a crouched one ({seizedCrouched} holds)");
+    }
+
+    /// <summary>The player is held for the game to settle (death or a struggle), and never infected: a broken hold throws the Husk back.</summary>
+    void ThePlayerIsNeverInfected()
+    {
+        var w = World(15f);
+        WorldLife life = Bestiary.Roll(_data, w);
+        Species husk = TallHusk(life);
+        var sim = new WildSim(_data, new Terrain((x, z) => 0f, 120f), new NavGrid(120f, 3f));
+        var you = new DummyTarget { Position = new Vector3(0f, 0f, -6f), Health = new Health(1e6f) };
+        sim.Targets.Add(you);
+        SeizeEvent held = null, letGo = null;
+        int turned = 0;
+        sim.Seized += e => held ??= e;
+        sim.LetGo += e => letGo = e;
+        sim.Turned += _ => turned++;
+        Creature h = sim.Spawn(husk, Vector3.Zero);
+        for (int i = 0; i < 30 * 60 && held == null; i++) sim.Step(1f / 30f);
+        Check(held != null && held.Victim == you, "a Husk comes for you and seizes you");
+        float heldFor = 0f;
+        for (int i = 0; i < 30 * 8 && h.Phase == AttackPhase.Hold; i++) { sim.Step(1f / 30f); heldFor += 1f / 30f; }
+        Check(held == null || heldFor >= 7.9f && turned == 0, $"it holds you face to face for the game to settle ({heldFor:F1} s), and you never turn");
+        Vector3 before = h.Position;
+        Seizing.Break(sim, h);
+        Check(letGo is { Broken: true } && WildSim.Flat(h.Position - you.Position).Length() > 1.5f, $"broken free, it's thrown back {WildSim.Flat(h.Position - before).Length():F1} m and staggers");
+    }
+
+    /// <summary>A ring of Husks can't pass you hand to hand: once a hold breaks, nothing seizes you again for the cooldown, though they still strike.</summary>
+    void TheCooldownHolds()
+    {
+        var w = World(15f);
+        WorldLife life = Bestiary.Roll(_data, w);
+        var sim = new WildSim(_data, new Terrain((x, z) => 0f, 120f), new NavGrid(120f, 3f));
+        var you = new DummyTarget { Position = Vector3.Zero, Health = new Health(1e9f) };
+        sim.Targets.Add(you);
+        for (int i = 0; i < 4; i++)
+        {
+            float a = i * MathF.Tau / 4f;
+            sim.Spawn(TallHusk(life), new Vector3(MathF.Cos(a), 0f, MathF.Sin(a)) * 2.2f);
+        }
+        var seizedAt = new List<float>();
+        sim.Seized += e => seizedAt.Add(e.Time);
+        float cooldown = _data.Husks.SeizeCooldown;
+        int breaks = 0, early = 0, again = 0;
+        for (int i = 0; i < 30 * 90 && breaks < 3; i++)
+        {
+            sim.Step(1f / 30f);
+            Creature h = Seizing.Holder(sim, you);
+            if (h == null || h.HeldFor < 0.5f) continue;
+            // Thrown off: who takes you again, and how soon.
+            Seizing.Break(sim, h);
+            breaks++;
+            float at = sim.Time;
+            int before = seizedAt.Count;
+            for (int k = 0; k < 30 * 12 && seizedAt.Count == before; k++) sim.Step(1f / 30f);
+            if (seizedAt.Count > before)
+            {
+                if (seizedAt[before] - at < cooldown - 0.05f) early++;
+                else again++;
+            }
+        }
+        Check(breaks >= 2, $"a ring of four Husks seizes you {breaks} times, once each hold is thrown off");
+        Check(early == 0, $"and none takes you within the {cooldown:F0} s after a hold breaks ({early} too soon)");
+        Check(again > 0, $"after it they can again ({again} times)");
+    }
+
+    /// <summary>Hollows: a lesser thing than the animal, scarce off a Hollow world, common on one; only animals.</summary>
+    void HollowsAreLesserAndScarce()
+    {
+        int with = 0, worlds = 120;
+        bool lesser = true, scarce = true, animals = true;
+        for (int i = 0; i < worlds; i++)
+        {
+            WorldLife life = Bestiary.Roll(_data, World(_fresh.Range(-10f, 35f)));
+            var hollows = life.Moving.Where(s => s.Corrupted).ToList();
+            if (hollows.Count > 0) with++;
+            foreach (Species h in hollows)
+            {
+                Species host = life.Moving.FirstOrDefault(s => !s.Corrupted && s.Seed == h.Seed);
+                animals &= h.Figure == null;
+                if (host == null) continue;
+                lesser &= h.Stats.MaxHealth < host.Stats.MaxHealth && h.Stats.RunSpeed < host.Stats.RunSpeed;
+                scarce &= h.Scarcity <= host.Scarcity * 0.2f;
+            }
+        }
+        Check(with > 0 && with < worlds * 0.5f, $"{with} of {worlds} ordinary worlds have a few Hollows");
+        Check(lesser && scarce, "beside their healthy kind, slower, weaker and far fewer");
+        Check(animals, "and only animals carry the fungus");
+        var bloom = World(15f);
+        bloom.Bloom = true;
+        var all = Bestiary.Roll(_data, bloom).Moving.Where(s => s.Figure == null && !s.Mechanical).ToList();
+        Check(all.Count(s => s.Corrupted) > all.Count / 2, $"on a Hollow world most kinds are Hollows ({all.Count(s => s.Corrupted)} of {all.Count})");
+        Check(all.Where(s => s.Corrupted).All(s => s.Name.StartsWith(_data.Fauna.Corruption.Prefix)), "and they're called Hollows");
+    }
+
+    /// <summary>Nothing spawned in a place is inside its walls, pillars or stairs; nothing out on the surface walks into one.</summary>
+    void NothingLivesInsideWalls()
+    {
+        // A room with pillars, a stair and a raised step: what the bug was found in.
+        bool Solid(int x, int y, int z) => y < 0 || y >= 4 || x is < -8 or >= 8 || z is < -8 or >= 8
+            || (x % 4 == 0 && z % 4 == 0 && y < 3) || (z == 5 && x >= 0 && y < x / 2) || (x < -5 && y < 1);
+        var space = new BlockSpace(Solid, new Vector3I(-9, -2, -9), new Vector3I(9, 6, 9));
+        var sim = new WildSim(_data, new Terrain((x, z) => 0f, 40f), new NavGrid(40f, 3f));
+        WorldLife life = Bestiary.Roll(_data, World(15f));
+        var kinds = life.Moving.Where(s => !s.Flies && s.Rig != RigKind.Swarm).Take(6).ToList();
+        int made = 0;
+        for (int i = 0; i < 160; i++)
+        {
+            var at = new Vector3(_fresh.Range(-7.5f, 7.5f), _fresh.Range(0f, 2.5f), _fresh.Range(-7.5f, 7.5f));
+            Creature c = sim.SpawnIn(kinds[i % kinds.Count], space, at);
+            if (!c.Removed) made++;
+        }
+        Check(Interpenetration.Scan(sim).Count == 0, $"{made} of 160 creatures put down at random in a room of pillars and stairs, none inside them (the rest found no room)");
+        for (int i = 0; i < 30 * 20; i++) sim.Step(1f / 30f);
+        Check(Interpenetration.Scan(sim).Count == 0 && sim.Freed == 0, $"and after 20 s none has walked into one ({sim.Freed} freed)");
+
+        // Out on the surface: a block standing on the ground.
+        var open = new WildSim(_data, new Terrain((x, z) => 0f, 60f), new NavGrid(60f, 3f));
+        open.SolidAt = p => MathF.Abs(p.X) < 6f && MathF.Abs(p.Z) < 6f && p.Y < 4f;
+        open.Targets.Add(new DummyTarget { Position = new Vector3(9f, 0f, 0f) });
+        var walkers = life.Moving.Where(s => !s.Flies && s.Rig is RigKind.Legged or RigKind.Humanoid && !s.Mechanical).ToList();
+        int spawned = 0;
+        foreach (Species s in walkers) spawned += open.SpawnGroup(s, new Vector3(_fresh.Range(-10f, 10f), 0f, _fresh.Range(-10f, 10f)), 4).Count;
+        bool inside = false;
+        for (int i = 0; i < 30 * 30; i++)
+        {
+            open.Step(1f / 30f);
+            if (i % 15 == 0) inside |= open.Creatures.Any(c => !c.Removed && !c.Dead && Interpenetration.Inside(open, c));
+        }
+        Check(!inside, $"{spawned} walkers spawned round a building on the surface: none spawns or walks inside it in 30 s");
+    }
+
+    /// <summary>
+    /// A Husk den spreads by the worms alone: Husks and worm masses, never an egg. A den the Turned
+    /// hold alone has no nest anywhere; one shared with others keeps their nests out of its rooms.
+    /// </summary>
+    void HuskDensHaveNoEggs()
+    {
+        var w = World(15f);
+        w.Coreward = 1f;
+        DeepFauna fauna = Bestiary.Roll(_data, w).Deep();
+        int dens = 0, eggs = 0, mixed = 0, husks = 0, masses = 0;
+        foreach (bool shared in new[] { false, true })
+            for (int i = 0; i < 40; i++)
+            {
+                var plan = new PoiPlan { Seed = Seed(), State = (PlaceState)_fresh.Int(1, 3), Theme = (PoiTheme)_fresh.Int(0, 2), Husks = true, Shared = shared, Derelict = _fresh.Chance(0.2f) };
+                for (int r = 0; r < 9; r++)
+                {
+                    int depth = r / 3;
+                    var room = new PoiRoom
+                    {
+                        Index = r, Depth = depth, Dark = depth > 0,
+                        Kind = r % 3 == 0 ? RoomKind.Corridor : r % 3 == 1 ? RoomKind.Room : RoomKind.Hall,
+                        Min = new Vector3(r * 12f, -depth * 4f, 0f), Max = new Vector3(r * 12f + (r % 3 == 0 ? 3f : 8f), -depth * 4f + 3f, r % 3 == 0 ? 10f : 8f),
+                    };
+                    if (r > 0) { room.Links.Add(r - 1); plan.Rooms[r - 1].Links.Add(r); }
+                    plan.Rooms.Add(room);
+                }
+                PoiPopulation pop = PoiFauna.Populate(plan, fauna, _data.Deep);
+                dens++;
+                husks += pop.Spawns.Count(s => s.Species.Husk);
+                masses += pop.Masses.Count;
+                if (!shared) eggs += pop.Nests.Count;
+                var nestRooms = pop.Spawns.Where(s => s.Nest >= 0).Select(s => s.Room).ToHashSet();
+                mixed += pop.Masses.Count(m => nestRooms.Contains(m.Room)) + pop.Spawns.Count(s => s.Species.Husk && nestRooms.Contains(s.Room));
+            }
+        Check(husks > dens && masses > dens * 2, $"{dens} dens hold {husks} Husks and {masses} worm masses");
+        Check(eggs == 0, $"a den the Turned hold alone has no egg nest ({eggs} found)");
+        Check(mixed == 0, $"and a shared den keeps others' nests out of its rooms ({mixed} Husks or masses among eggs)");
+    }
+
+    /// <summary>A den's rooms on fresh seeds: a way in, then rooms branching off it, some a level or two down, each its own box of open air.</summary>
+    PoiPlan DenPlan(float severity, out BlockSpace space)
+    {
+        var plan = new PoiPlan { Seed = Seed(), State = PlaceState.Abandoned, Theme = (PoiTheme)_fresh.Int(0, 2), Husks = true, Severity = severity };
+        int rooms = _fresh.Int(7, 13);
+        for (int r = 0; r < rooms; r++)
+        {
+            int parent = r == 0 ? -1 : _fresh.Int(Math.Max(0, r - 3), r - 1);
+            int depth = parent < 0 ? 0 : plan.Rooms[parent].Depth + (_fresh.Chance(0.25f) ? 1 : 0);
+            RoomKind kind = r == 0 ? RoomKind.Entrance : _fresh.Chance(0.3f) ? RoomKind.Corridor : _fresh.Chance(0.3f) ? RoomKind.Hall : RoomKind.Room;
+            var min = new Vector3((r % 5) * 14f, -depth * 5f, (r / 5) * 14f);
+            var room = new PoiRoom { Index = r, Depth = depth, Dark = depth > 0, Kind = kind, Min = min, Max = min + new Vector3(kind == RoomKind.Corridor ? 3f : 8f, 3f, kind == RoomKind.Corridor ? 10f : 8f) };
+            if (parent >= 0) { room.Links.Add(parent); plan.Rooms[parent].Links.Add(r); }
+            plan.Rooms.Add(room);
+        }
+        // Some rooms' real space runs past the box the place gives for them (as an odd-shaped room's does).
+        var past = plan.Rooms.Select(_ => _fresh.Chance(0.35f) ? 3f : 0f).ToArray();
+        bool Solid(int x, int y, int z)
+        {
+            foreach (PoiRoom r in plan.Rooms)
+                if (x >= r.Min.X && x < r.Max.X + past[r.Index] && y >= r.Min.Y && y < r.Max.Y && z >= r.Min.Z && z < r.Max.Z) return false;
+            return true;
+        }
+        space = new BlockSpace(Solid, new Vector3I(-2, -16, -2), new Vector3I(72, 6, 44));
+        return plan;
+    }
+
+    /// <summary>
+    /// A den is never plain from outside: nothing in the way in or what opens off it, at any
+    /// severity. Light, almost nothing shows (a Husk or two in the furthest rooms, a faint vein,
+    /// hardly a mass); severe, masses and veins room after room once past the way in.
+    /// </summary>
+    void DensHideFromOutside()
+    {
+        var w = World(15f);
+        w.Coreward = 1f;
+        DeepFauna fauna = Bestiary.Roll(_data, w).Deep();
+        int dens = 0, front = 0, lightMasses = 0, severeMasses = 0, lightVeins = 0, severeVeins = 0, lightDens = 0, severeDens = 0, lightNear = 0, lightHusks = 0, severeRooms = 0, severeFilled = 0;
+        bool veinsOnSurfaces = true, veinsInRooms = true, facing = true;
+        int walls = 0, floors = 0;
+        float widest = 0f;
+        for (int i = 0; i < 60; i++)
+        {
+            bool light = i % 2 == 0;
+            float sev = light ? _fresh.Range(0.03f, 0.15f) : _fresh.Range(0.75f, 1f);
+            PoiPlan plan = DenPlan(sev, out BlockSpace space);
+            PoiPopulation pop = PoiFauna.Populate(plan, fauna, _data.Deep);
+            var hops = PoiFauna.Hops(plan);
+            dens++;
+            bool Front(int room) => hops.TryGetValue(room, out int h) && h <= 1;
+            front += pop.Masses.Count(m => Front(m.Room)) + pop.Spawns.Count(s => s.Species.Husk && Front(s.Room))
+                     + pop.VeinRoots.Count(v => plan.Rooms.Where(r => Front(r.Index)).Any(r => Inside(r, v.At)));
+            var sim = new WildSim(_data, new Terrain((x, z) => 0f, 80f), new NavGrid(80f, 3f));
+            PoiFauna.Spawn(sim, pop, space);
+            foreach (WormMass m in sim.Masses)
+            {
+                facing &= PoiFauna.Faces(space, m);
+                if (m.Normal.Y > 0.9f) floors++;
+                else if (MathF.Abs(m.Normal.Y) < 0.4f) walls++;
+            }
+            foreach (Vein v in sim.Veins) widest = MathF.Max(widest, v.Width);
+            foreach (Vein v in sim.Veins)
+                foreach (Vector3 p in v.Points)
+                {
+                    float d = space.Density(p);
+                    veinsOnSurfaces &= d < 0.05f && d > -0.12f;
+                    veinsInRooms &= !plan.Rooms.Where(r => hops.GetValueOrDefault(r.Index, 9) == 0).Any(r => Inside(r, p));
+                }
+            if (light)
+            {
+                lightDens++;
+                lightMasses += pop.Masses.Count;
+                lightVeins += sim.Veins.Count;
+                var husks = pop.Spawns.Where(s => s.Species.Husk).ToList();
+                lightHusks += husks.Count;
+                lightNear += husks.Select(s => s.Room).Distinct().Count();
+            }
+            else
+            {
+                severeDens++;
+                severeMasses += pop.Masses.Count;
+                severeVeins += sim.Veins.Count;
+                var inner = plan.Rooms.Where(r => hops.GetValueOrDefault(r.Index, 0) >= 2 && r.Kind != RoomKind.Corridor).ToList();
+                severeRooms += inner.Count;
+                severeFilled += inner.Count(r => pop.Masses.Any(m => m.Room == r.Index));
+            }
+        }
+        Check(front == 0, $"{dens} dens: nothing in the way in or the rooms off it ({front} Husks, masses or veins there)");
+        Check(veinsOnSurfaces && veinsInRooms, "every vein lies on a floor, a wall or a ceiling, and none reaches the way in");
+        Check(facing && walls > 0 && floors > 0, $"every mass is rooted in its surface, its open side away from it ({floors} on floors, {walls} on walls, some rooms running past their boxes)");
+        Check(widest <= Veins.Widest + 1e-4f, $"no vein thicker than {Veins.Widest * 100f:F1} cm at its root ({widest * 100f:F1} cm the thickest)");
+        // A mass's open side is its +Y: its worms stand out past its lobes.
+        var probe = WormMasses.Build(new WormMass { Size = 1f, Seed = Seed() });
+        float wormsUp = probe.Prims.Where(p => p.Material == Mat.Worm).Average(p => p.Local.Origin.Y), lobesUp = probe.Prims.Where(p => p.Material != Mat.Worm).Average(p => p.Local.Origin.Y);
+        Check(wormsUp > lobesUp + 0.1f, $"and a mass's worms stand out on its open side ({wormsUp:F2} m out, its lobes {lobesUp:F2})");
+        Check(lightHusks >= lightDens && lightNear <= lightDens * 2, $"light dens: {lightHusks} Husks in {lightDens}, in {lightNear} rooms between them (the furthest few)");
+        Check(lightMasses <= lightDens / 2 && lightVeins >= lightDens / 2 && lightVeins <= lightDens * 4, $"and hardly a mass ({lightMasses}), a faint vein or two ({lightVeins})");
+        Check(severeFilled >= severeRooms * 0.7f && severeMasses > lightMasses * 4 + severeDens * 2, $"severe dens: masses in {severeFilled} of {severeRooms} inner rooms ({severeMasses} in {severeDens} dens)");
+        Check(severeVeins > Math.Max(1, lightVeins) * 6, $"and veins room after room ({severeVeins}, against {lightVeins} in the light ones)");
+    }
+
+    static bool Inside(PoiRoom r, Vector3 p) => p.X >= r.Min.X - 0.3f && p.X <= r.Max.X + 0.3f && p.Y >= r.Min.Y - 0.3f && p.Y <= r.Max.Y + 0.3f && p.Z >= r.Min.Z - 0.3f && p.Z <= r.Max.Z + 0.3f;
+
+    /// <summary>
+    /// Silent carriers look like everyone else (they are rolled as anyone is) and give nothing away
+    /// in company: only alone with you does one rise a Husk; alone long enough with one of their own,
+    /// the worms pass on.
+    /// </summary>
+    void CarriersLookNormalUntilAlone()
+    {
+        var w = World(15f);
+        w.Coreward = 1f;
+        WorldLife life = Bestiary.Roll(_data, w);
+        HuskRules r = _data.Husks;
+        Species person = life.People.Person(Seed(), PersonRole.Worker);
+        Species risen = Husks.Turn(person, Seed(), r);
+        Check(!person.Husk && !person.Figure.Torn && person.Figure.Wrongs == Wrong.None && risen.Husk && risen.Figure.Height == person.Figure.Height,
+            "a carrier is one of the town's people to look at; risen, the same body is a Husk");
+        int notHere = 0, nobody = 0;
+        for (int i = 0; i < 200; i++) notHere += Carriers.Roll(r, false, 1f, 12, new Rng(Seed()));
+        for (int i = 0; i < 200; i++) nobody += Carriers.Roll(r, true, 1f, 12, new Rng(Seed())) > 0 ? 1 : 0;
+        Check(notHere == 0 && nobody > 20 && nobody < 180, $"no carriers on a world without Husks; on a core world {nobody} of 200 towns have some");
+
+        // In company: you right beside it, the town about.
+        var town = new List<Carried>();
+        for (int i = 0; i < 9; i++) town.Add(new Carried { At = new Vector3(_fresh.Range(-4f, 4f), 0f, _fresh.Range(-4f, 4f)), Out = true });
+        town[0].Carrier = true;
+        var rise = new List<int>();
+        for (int k = 0; k < 40; k++) Carriers.Step(r, town, town[0].At + Vector3.Right, 0.25f, rise);
+        Check(rise.Count == 0, "beside you in company it gives nothing away");
+        // Alone: the others gone off down the street.
+        for (int i = 1; i < town.Count; i++) town[i].At += new Vector3(30f, 0f, 0f);
+        Carriers.Step(r, town, town[0].At + Vector3.Right, 0.25f, rise);
+        Check(rise.Count == 1 && rise[0] == 0, "alone with you, it rises");
+
+        // Alone with one of its own, long enough: the worms pass; with someone else there, they don't.
+        var pair = new List<Carried> { new() { At = Vector3.Zero, Out = true, Carrier = true }, new() { At = Vector3.Right, Out = true }, new() { At = new Vector3(4f, 0f, 0f), Out = true } };
+        for (int i = 0; i < 7; i++) pair.Add(new Carried { At = new Vector3(60f + i, 0f, 60f), Out = true }); // the rest of the town, across it
+        rise.Clear();
+        for (float t = 0f; t < r.CarrierPass * 2f; t += 0.25f) Carriers.Step(r, pair, null, 0.25f, rise);
+        bool watched = !pair[1].Carrier;
+        pair[2].At = new Vector3(40f, 0f, 0f);
+        for (float t = 0f; t < r.CarrierPass + 1f; t += 0.25f) Carriers.Step(r, pair, null, 0.25f, rise);
+        Check(watched && pair[1].Carrier && rise.Count == 0, "the worms pass to one of its own only when the two of them are alone, and nothing shows");
+    }
+
+    /// <summary>Once carriers are past the share of a settlement, they all drop the act; short of it, none does in company.</summary>
+    void CarriersTurnPastTheShare()
+    {
+        HuskRules r = _data.Husks;
+        var town = new List<Carried>();
+        for (int i = 0; i < 20; i++) town.Add(new Carried { At = new Vector3(_fresh.Range(-5f, 5f), 0f, _fresh.Range(-5f, 5f)), Out = true });
+        int under = (int)MathF.Ceiling(r.CarrierOpenShare * town.Count) - 1;
+        for (int i = 0; i < under; i++) town[i].Carrier = true;
+        var rise = new List<int>();
+        Carriers.Step(r, town, null, 0.25f, rise);
+        Check(rise.Count == 0 && !Carriers.Open(r, town), $"{under} carriers of {town.Count} keep up the act");
+        town[under].Carrier = true;
+        Carriers.Step(r, town, null, 0.25f, rise);
+        Check(Carriers.Open(r, town) && rise.Count == under + 1, $"one more, past the {r.CarrierOpenShare:P0}, and all {rise.Count} drop it at once");
+    }
+
+    /// <summary>The wrongness rises with how many Husks there are and how near, and a deep den adds to it; animals keep off them.</summary>
+    void WrongnessRisesWithHusks()
+    {
+        var w = World(15f);
+        w.Coreward = 1f;
+        WorldLife life = Bestiary.Roll(_data, w);
+        Species husk = TallHusk(life);
+        var felt = new List<float>();
+        foreach (int n in new[] { 0, 1, 3, 6, 12 })
+        {
+            var sim = new WildSim(_data, new Terrain((x, z) => 0f, 120f), new NavGrid(120f, 3f)) { Frozen = true };
+            for (int i = 0; i < n; i++) sim.Spawn(husk, new Vector3(_fresh.Range(-3f, 3f), 0f, 14f + _fresh.Range(-3f, 3f)));
+            felt.Add(Wrongness.At(sim, Vector3.Zero));
+        }
+        bool rises = true;
+        for (int i = 1; i < felt.Count; i++) rises &= felt[i] > felt[i - 1];
+        Check(felt[0] == 0f && rises && felt[1] < 0.15f && felt[^1] > 0.5f, $"felt 14 m from 0, 1, 3, 6 and 12 Husks: {string.Join(", ", felt.Select(f => f.ToString("F2")))} (faint near one, strong near many)");
+        var near = new WildSim(_data, new Terrain((x, z) => 0f, 120f), new NavGrid(120f, 3f)) { Frozen = true };
+        for (int i = 0; i < 5; i++) near.Spawn(husk, new Vector3(i * 0.8f, 0f, 0f));
+        float at5 = Wrongness.At(near, new Vector3(0f, 0f, 5f)), at20 = Wrongness.At(near, new Vector3(0f, 0f, 20f)), at40 = Wrongness.At(near, new Vector3(0f, 0f, 40f));
+        near.DenSeverity = 1f;
+        float den = Wrongness.At(near, new Vector3(0f, 0f, 20f));
+        Check(at5 > at20 && at20 > at40 && at40 == 0f, $"it builds as you come near five of them: {at40:F2} at 40 m, {at20:F2} at 20, {at5:F2} at 5");
+        Check(den > at20, $"and a deep den's are felt more ({den:F2} against {at20:F2} at 20 m)");
+
+        // Animals won't go near: a herd grazing round a den's spot keeps off it; without it they wander anywhere.
+        float Closest(bool den)
+        {
+            var sim = new WildSim(_data, new Terrain((x, z) => 0f, 120f), new NavGrid(120f, 3f));
+            if (den) sim.WrongPlaces.Add(Vector3.Zero);
+            Species grazer = life.Moving.First(s => s.Behaviour is Behaviour.Grazer or Behaviour.Herd && s.Figure == null && !s.Flies && !s.Mechanical && !s.Husk);
+            for (int i = 0; i < 6; i++) sim.Spawn(grazer, new Vector3(_fresh.Range(-12f, 12f), 0f, _fresh.Range(-12f, 12f)));
+            float closest = float.MaxValue;
+            for (int i = 0; i < 30 * 40; i++)
+            {
+                sim.Step(1f / 30f);
+                if (i > 30 * 15) foreach (Creature c in sim.Creatures) closest = MathF.Min(closest, WildSim.Flat(c.Position).Length());
+            }
+            return closest;
+        }
+        float kept = Closest(true), free = Closest(false);
+        Check(kept > _data.Husks.AnimalShun * 0.7f && kept > free, $"animals keep off a Husk: the nearest came {kept:F1} m, against {free:F1} m with nothing there");
+    }
+
+    /// <summary>
+    /// A worm mass's worms are calm far off, eager close to, and take hold within reach: the one
+    /// held is hauled in and stung a little at a time, gets free by getting away or when the mass
+    /// is shot; an animal that blunders in is held the same; standing on its veins does nothing.
+    /// </summary>
+    void MassesTakeHold()
+    {
+        HuskRules r = _data.Husks;
+        var sim = new WildSim(_data, new Terrain((x, z) => 0f, 60f), new NavGrid(60f, 3f));
+        var mass = new WormMass { Position = Vector3.Zero, Normal = Vector3.Up, Size = 1f, Seed = Seed() };
+        sim.Masses.Add(mass);
+        var you = new DummyTarget { Position = new Vector3(12f, 0f, 0f), Health = new Health(1e6f) };
+        sim.Targets.Add(you);
+        float grab = WormMasses.Grab(r, mass);
+        for (int i = 0; i < 60; i++) sim.Step(1f / 30f);
+        float calm = mass.Eager;
+        you.Position = new Vector3(grab + 1.2f, 0f, 0f);
+        for (int i = 0; i < 60; i++) sim.Step(1f / 30f);
+        float keen = mass.Eager;
+        Check(calm == 0f && keen > 0.2f && !WormMasses.Held(sim, you, out _, out _), $"calm with nobody near (eager {calm:F2}); eager a step out of reach ({keen:F2}), and not holding");
+        you.Position = new Vector3(grab * 0.8f, 0f, 0f);
+        sim.Step(1f / 30f);
+        bool held = WormMasses.Held(sim, you, out Vector3 toward, out _);
+        Check(held && toward.Dot(-you.Position.Normalized()) > 0.9f && mass.Eager > keen, "within reach the worms take hold and haul toward the mass");
+        // Pulling against it: a step a tick away, at the share of pace it leaves; past its reach it lets go.
+        float t0 = sim.Time;
+        while (WormMasses.Held(sim, you, out _, out _) && sim.Time - t0 < 20f)
+        {
+            you.Position += new Vector3(5.5f * r.MassSlow - r.MassPull, 0f, 0f) / 30f;
+            sim.Step(1f / 30f);
+        }
+        Check(!WormMasses.Held(sim, you, out _, out _) && sim.Time - t0 < 20f, $"walking out against the pull tears free in {sim.Time - t0:F1} s");
+        you.Position = new Vector3(grab * 0.8f, 0f, 0f);
+        sim.Step(1f / 30f);
+        Check(!WormMasses.Held(sim, you, out _, out _), "and it can't take you straight back");
+        for (int i = 0; i < (int)(r.MassRegrab * 30f) + 5; i++) sim.Step(1f / 30f);
+        Check(WormMasses.Held(sim, you, out _, out _), "after a moment it can");
+        WormMasses.Damage(sim, mass, 1f);
+        Check(!WormMasses.Held(sim, you, out _, out _), "a shot into the mass makes it let go");
+
+        // An animal that blunders in: held, hauled, stung; a player on its veins, nothing.
+        WorldLife life = Bestiary.Roll(_data, World(15f));
+        Species beast = life.Moving.First(s => s.Figure == null && !s.Flies && !s.Mechanical && s.Rig == RigKind.Legged);
+        var zoo = new WildSim(_data, new Terrain((x, z) => 0f, 60f), new NavGrid(60f, 3f)) { Frozen = true };
+        var lump = new WormMass { Position = Vector3.Zero, Normal = Vector3.Up, Size = 1f, Seed = Seed() };
+        zoo.Masses.Add(lump);
+        Creature c = zoo.Spawn(beast, new Vector3(WormMasses.Grab(r, lump) * 0.85f + beast.Stats.Radius * 0.8f, 0f, 0f));
+        float before = c.Health, startAt = WildSim.Flat(c.Position).Length();
+        for (int i = 0; i < 90; i++) zoo.Step(1f / 30f);
+        Check(lump.Latches.Any(l => l.Creature == c) && c.Health < before && WildSim.Flat(c.Position).Length() < startAt - 0.25f,
+            $"an animal that blunders in is held, hauled in ({startAt:F1} to {WildSim.Flat(c.Position).Length():F1} m) and stung ({before:F0} to {c.Health:F0})");
+        var veins = new List<Vein>();
+        var floor = new BlockSpace((x, y, z) => y < 0 || y > 4, new Vector3I(-20, -2, -20), new Vector3I(20, 6, 20));
+        var root = new WormMass { Position = Vector3.Zero, Normal = Vector3.Up, Size = 1.2f, Seed = Seed() };
+        Veins.Grow(veins, floor, new List<WormMass> { root }, new(), 1f, Seed());
+        var walker = new DummyTarget { Health = new Health(100f) };
+        var open = new WildSim(_data, new Terrain((x, z) => 0f, 60f), new NavGrid(60f, 3f));
+        open.Masses.Add(root);
+        open.Targets.Add(walker);
+        int touched = 0, onVeins = 0;
+        foreach (Vein v in veins)
+            foreach (Vector3 p in v.Points)
+            {
+                if (p.Length() < 2.5f) continue; // the mass itself isn't here: only its veins
+                onVeins++;
+                walker.Position = p;
+                open.Step(1f / 30f);
+                touched += WormMasses.Held(open, walker, out _, out _) ? 1 : 0;
+            }
+        Check(onVeins > 20 && touched == 0 && walker.Health.Current >= 100f, $"standing on its veins ({onVeins} spots along them) does nothing");
+    }
+
+    /// <summary>A worm mass made of someone shows them: a hand, a foot or part of a face, from their own body.</summary>
+    void MassesHoldBodyParts()
+    {
+        var w = World(15f);
+        w.Coreward = 1f;
+        WorldLife life = Bestiary.Roll(_data, w);
+        Species host = life.People.Person(Seed(), PersonRole.Worker, Occupancy.Friendly, 0.2f, husk: true);
+        var kinds = new HashSet<int>();
+        bool more = true, skin = true;
+        for (int i = 0; i < 12; i++)
+        {
+            var bare = new WormMass { Size = _fresh.Range(0.7f, 1.3f), Seed = Seed() };
+            var made = new WormMass { Size = bare.Size, Seed = bare.Seed, Host = host };
+            Piece a = WormMasses.Build(bare), b = WormMasses.Build(made);
+            more &= b.Prims.Count >= a.Prims.Count + 2;
+            var own = HumanBody.Build(host).Pieces.SelectMany(q => q.Prims).Select(q => q.Color).ToList();
+            skin &= b.Prims.Skip(a.Prims.Count).All(p => own.Any(c => c.IsEqualApprox(p.Color)));
+            kinds.Add(WormMasses.RemnantKind(made));
+        }
+        Check(more && skin, "a mass made of someone has part of their own body (their skin, their boots) sticking out of it");
+        Check(kinds.Count == 3, $"a hand, a foot or a face ({kinds.Count} of the three kinds in 12 masses)");
+    }
+
+    /// <summary>Twenty Husks in view, worms and all, cost under 2 ms a frame to think, move and pose.</summary>
+    void TwentyHusksAreCheap()
+    {
+        var w = World(15f);
+        w.Coreward = 1f;
+        WorldLife life = Bestiary.Roll(_data, w);
+        var sim = new WildSim(_data, new Terrain((x, z) => 0f, 120f), new NavGrid(120f, 3f));
+        sim.Targets.Add(new DummyTarget { Position = new Vector3(0f, 0f, -30f) });
+        var holder = new Node3D();
+        AddChild(holder);
+        var views = new List<CreatureView>();
+        for (int i = 0; i < 20; i++)
+        {
+            Creature c = sim.Spawn(life.People.Person(Seed(), (PersonRole)(i % 9), Occupancy.Friendly, 0.2f, husk: true), new Vector3((i % 5) * 2.5f, 0f, (i / 5) * 2.5f));
+            var view = new CreatureView();
+            holder.AddChild(view);
+            view.Build(c);
+            views.Add(view);
+        }
+        double worst = 0;
+        for (int f = 0; f < 150; f++)
+        {
+            long from = System.Diagnostics.Stopwatch.GetTimestamp();
+            sim.Step(1f / 60f);
+            foreach (CreatureView v in views) v.Sync();
+            if (f > 20) worst = Math.Max(worst, System.Diagnostics.Stopwatch.GetElapsedTime(from).TotalMilliseconds);
+        }
+        Check(worst < 2.0, $"twenty Husks think, move, pose and sync in {worst:F2} ms a frame at worst (budget 2 ms)");
+        holder.QueueFree();
     }
 
     void MutationIsALayer()

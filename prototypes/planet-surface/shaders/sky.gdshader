@@ -70,6 +70,7 @@ uniform float stratus = 0.0;     // cumulus heaps (0) to flat layers of grey (1)
 uniform float cirrus = 0.0;      // thin high streaks
 uniform int tower_count = 0;      // storm towers: their deck is thick and dark, whatever the sky around them
 uniform vec4 tower[4];           // x, z, radius, strength
+uniform vec2 storm_wind = vec2(1.0, 0.0);  // which way the anvils spread
 uniform int debug_view = 0;   // 1: cloud coverage, 2: cloud colour, 3: the night backdrop alone, brightened
 
 // How much of the sun's light gets through the air, by its height: all of it from about 17° up,
@@ -226,13 +227,47 @@ uniform sampler3D cloud_detail : filter_linear_mipmap, repeat_enable;
 // Cloud density at a point: a coverage map from 2D noise (where clouds are, and how tall), a
 // height profile with flat bases and rounded tops that rise higher where the cloud is denser,
 // and 3D noise eroding the edges into billows so nothing reads as an extruded pillar.
-float storm_at(vec2 xz) {
-	float s = 0.0;
+// One storm, built of the same cloud noise as the deck so it is part of it and never a thing on its
+// own: a huge lumpy mass, cauliflower at the edge and the top, growing out of a deck that thickens
+// toward it for many kilometres. A weak cell is a modest swelling; a strong one towers and spreads
+// into a broad flat anvil downwind, over a dark ragged base that sags across a wide area.
+// x: how much storm is here (0..1), y: how tall it stands here (layer thicknesses), z: lump (0..1),
+// w: the deck's thickening toward it.
+uniform float tower_wall[4];     // 0..1: a funnel hangs from this cell's base (a lumpy lowered bulge of it)
+float lump(vec3 p, float k) {
+	vec2 uv = (p.xz + cloud_drift * 0.35) / cloud_scale * k + vec2(p.y, -p.y) * 0.0009;
+	return texture(cloud_noise, uv).r * 0.6 + texture(cloud_noise, uv * 2.3 + 0.2).r * 0.4;
+}
+
+vec4 storm_at(vec3 p) {
+	float h = (p.y - cloud_base) / cloud_thick;
+	vec4 best = vec4(0.0);
+	float lp = lump(p, 3.5);
+	float lq = lump(p, 8.0);
 	for (int i = 0; i < tower_count; i++) {
-		float d = length(xz - tower[i].xy);
-		s = max(s, tower[i].w * smoothstep(tower[i].z, tower[i].z * 0.5, d));
+		float w = tower[i].w;
+		float reach = tower[i].z * (1.2 + 3.0 * w);
+		float topH = 0.7 + 3.2 * w * w;
+		float ah = smoothstep(topH * 0.5, topH * 0.85, h);          // the anvil: up near the top it spreads
+		vec2 centre = tower[i].xy + storm_wind * ah * reach * 1.1;
+		float r = reach * (1.0 + 0.9 * ah) * (0.5 + 1.0 * lp);      // a cauliflower edge, in lobes
+		float d = length(p.xz - centre);
+		float s = w * smoothstep(r, r * 0.2, d);
+		float halo = w * smoothstep(reach * 1.9, reach * 0.4, length(p.xz - tower[i].xy));
+		best.w = max(best.w, halo);
+		if (s > best.x) best = vec4(s, topH * (0.7 + 0.6 * lq), lp, best.w);
 	}
-	return s;
+	return best;
+}
+
+// How far the base sags here, metres: ragged over the whole storm, and a lumpy bulge where a funnel hangs.
+float base_sag(vec3 p, vec4 st) {
+	float sag = st.x * (40.0 + 60.0 * st.z) + st.x * st.x * 110.0; // deeper the stronger
+	for (int i = 0; i < tower_count; i++) {
+		float rw = tower[i].z * (0.45 + 0.5 * st.z);
+		sag += tower_wall[i] * 130.0 * smoothstep(rw, rw * 0.15, length(p.xz - tower[i].xy)) * (0.6 + 0.8 * st.z);
+	}
+	return sag;
 }
 
 float cloud_density(vec3 p, bool cheap) {
@@ -240,22 +275,24 @@ float cloud_density(vec3 p, bool cheap) {
 	float n = texture(cloud_noise, uv).r * 0.65 + texture(cloud_noise, uv * 2.0 + 0.31).r * 0.35;
 	// Stratus: the same noise pulled out flat along one way, an even sheet with long seams in it.
 	// Flat layers come in broad patches that drift across the map: some places heaped, some layered.
-	float st = stratus > 0.001 ? stratus * smoothstep(0.3, 0.55, texture(cloud_noise, uv * 0.06 + 0.77).r + stratus * 0.25) : 0.0;
+	float st = (stratus > 0.001 && tower_count == 0) ? stratus * smoothstep(0.3, 0.55, texture(cloud_noise, uv * 0.06 + 0.77).r + stratus * 0.25) : 0.0;
 	if (st > 0.001) n = mix(n, 0.32 + 0.42 * texture(cloud_noise, uv * vec2(0.3, 1.3) + 0.47).r, st);
-	float storm = tower_count > 0 ? storm_at(p.xz) : 0.0;
+	vec4 st_ = tower_count > 0 ? storm_at(p) : vec4(0.0);
+	float storm = st_.x;
 	float cover = mix(0.12, 1.05, cloud_cover);
-	float coverage = n - (1.0 - cover) + storm * 0.55;
+	float coverage = n - (1.0 - cover) + storm * 0.55 + st_.w * 0.4; // the deck thickens toward the storm
 	if (coverage <= 0.0) return 0.0;
-	float h = (p.y - cloud_base) / cloud_thick;
+	float h = (p.y - cloud_base + (tower_count > 0 ? base_sag(p, st_) : 0.0)) / cloud_thick; // a dark ragged base under the storm
 	float top = clamp(0.2 + coverage * 2.6, 0.2, 1.0);
 	top = mix(top, 0.4, st);
-	top = mix(top, 2.8, storm); // the tower stands up through the deck
-	float profile = smoothstep(0.0, 0.07, h) * (1.0 - smoothstep(top * 0.55, top, h));
+	top = mix(top, st_.y, storm); // the storm stands up through the deck
+	float profile = smoothstep(0.0, mix(0.07, 0.2, storm), h) * (1.0 - smoothstep(top * mix(0.55, 0.82, storm), top, h)); // flat topped
 	float d = coverage * 3.2 * profile;
 	if (!cheap) {
 		vec3 q = (p + vec3(cloud_drift.x, 0.0, cloud_drift.y) * 1.3) / (cloud_scale.x * 0.125);
 		float detail = texture(cloud_detail, q).r * 0.65 + texture(cloud_detail, q * 3.0).r * 0.35;
 		d -= detail * (0.55 - 0.25 * h) * (1.0 - cloud_cover * 0.5);
+		if (storm > 0.01) d -= detail * 0.5 * (1.0 - smoothstep(0.15, 0.7, storm)); // billows and curling lobes where it meets the open sky
 	}
 	return clamp(d * 1.8, 0.0, 1.0);
 }
@@ -272,7 +309,7 @@ float march_jitter(vec2 pixel) {
 // lit false only the opacity is marched (no light samples): the cheap pass for occlusion.
 vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter) {
 	if (cloud_cover < 0.02) return vec4(sky, 0.0);
-	float base = cloud_base, top = cloud_base + cloud_thick * (tower_count > 0 ? 2.8 : 1.0);
+	float base = cloud_base - (tower_count > 0 ? 280.0 : 0.0), top = cloud_base + cloud_thick * (tower_count > 0 ? 4.0 : 1.0);
 	float t0, t1;
 	if (abs(rd.y) < 1e-3) {
 		if (ro.y < base || ro.y > top) return vec4(sky, 0.0);
@@ -285,10 +322,11 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter) 
 	}
 	// The layer sits low, so its far reach is scaled to its height: about 16 km and 2 km of path.
 	if (t1 <= 0.0 || t0 > 16000.0) return vec4(sky, 0.0);
-	t1 = min(t1, t0 + 2000.0);
+	// A storm is long to look through at a low angle: cutting its path short drew a hard straight underside.
+	t1 = min(t1, t0 + (tower_count > 0 ? 9000.0 : 2000.0));
 	// Steps by the length of the path through the slab: a few dozen straight up, more toward the
 	// horizon, where the path is long and too few would slice the clouds into layers.
-	int steps = int(clamp((t1 - t0) / 28.0, 24.0, 64.0));
+	int steps = int(clamp((t1 - t0) / 28.0, 24.0, tower_count > 0 ? 112.0 : 64.0));
 	float dt = (t1 - t0) / float(steps);
 	float t = t0 + dt * jitter;
 	float trans = 1.0;
@@ -301,6 +339,11 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter) 
 	float flash = weather_flash.w * (0.12 + 1.4 * pow(max(dot(rd, weather_flash.xyz), 0.0), 7.0));
 	for (int i = 0; i < steps; i++) {
 		vec3 p = ro + rd * t;
+		// The world is round: far clouds follow the land over the horizon (the same slow curve from the
+		// same distance as the far land, round_sink in noise.gdshaderinc: 1 / 300 km past 2,000 m), so
+		// distant bases sink out of sight and only the upper bulk shows. Overhead it is flat.
+		float away = max(length(p.xz - ro.xz) - 2000.0, 0.0);
+		p.y += away * away * 1.667e-6;
 		float d = cloud_density(p, false);
 		if (d > 0.01) {
 			// A thinner slab packs the same cloud into less path: as solid, seen through.
@@ -314,8 +357,10 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter) 
 				float hgt = clamp((p.y - cloud_base) / cloud_thick, 0.0, 1.0);
 				vec3 lum = ambient * (0.4 + 0.6 * hgt) + cloud_lit * sun_light * beer * mix(0.55, 1.0, powder);
 				float dark = cloud_dark;
-				if (tower_count > 0) dark = max(dark, 0.92 * storm_at(p.xz));
+				float flank = 0.0;
+				if (tower_count > 0) { vec4 sd = storm_at(p); flank = (1.0 - smoothstep(0.12, 0.65, sd.x)) * smoothstep(0.0, 0.12, sd.x); dark = max(dark, max(mix(0.4, 0.92, sd.x) * smoothstep(0.0, 0.3, sd.x), sd.w * 0.35)) * (1.0 - 0.5 * flank); }
 				lum *= 1.0 - dark * 0.78 * (1.0 - hgt * 0.4);
+				lum += cloud_lit * sun_light * flank * (0.25 + 0.4 * hgt); // lit flanks: lighter toward the edges
 				lum += cloud_underglow * (1.0 - hgt) * (1.0 - hgt);
 				lum += vec3(0.75, 0.72, 1.0) * flash * 2.5 * (1.0 - hgt * 0.3);
 				light += trans * lum * (1.0 - exp(-ext));
@@ -330,6 +375,8 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter) 
 	// behind them (a moon, a giant) shows through properly; their colour leans toward the sky's.
 	float fade = exp(-t0 / (6500.0 * density)) * (1.0 - smoothstep(9000.0, 16000.0, t0));
 	// The low layer's far clouds would close to thin streaks along the horizon: they thin out first.
+	// A storm stands out through the haze: its far parts keep their body.
+	if (tower_count > 0) fade = max(fade, exp(-t0 / 14000.0) * (1.0 - smoothstep(9000.0, 16000.0, t0)));
 	if (ro.y < base) fade *= smoothstep(0.015, 0.09, rd.y);
 	else fade *= 0.3 + 0.7 * smoothstep(0.0, 0.07, abs(rd.y)); // in or over the layer, its edge on the horizon stays soft
 	vec3 col = alpha > 0.001 ? light / alpha : sky;
@@ -404,7 +451,7 @@ void sky() {
 		}
 		// Cirrus: high thin streaks, a texture far overhead rather than a volume, combed along the
 		// wind's way; they sit on top of the clouds below them only where those let the sky through.
-		if (cirrus > 0.01 && dir.y > 0.02 && !AT_CUBEMAP_PASS) {
+		if (cirrus > 0.01 && tower_count == 0 && dir.y > 0.02 && !AT_CUBEMAP_PASS) {
 			// The deck's perspective is eased (the streaks used to fan out to a point on the horizon) and the
 			// combing warped, so they wander like real cirrus; patches of it come and go across the sky.
 			vec2 q = dir.xz / (dir.y + 0.55) + cloud_drift * 0.00002;

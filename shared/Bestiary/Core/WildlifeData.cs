@@ -63,6 +63,8 @@ public enum AttackStyle
     Sting,
     /// <summary>Lets go of a ceiling and drops onto where you stood.</summary>
     Drop,
+    /// <summary>A Husk's: arms out for the head, to pull it face to face (or, as often, a swing of the arm).</summary>
+    Seize,
 }
 
 public sealed class WildlifeData
@@ -76,6 +78,8 @@ public sealed class WildlifeData
     public ActivityRules Activity { get; set; } = new();
     /// <summary>The fauna of caves, tunnels and places: roles, themes, tells and how places are populated.</summary>
     public DeepTables Deep { get; set; } = new();
+    /// <summary>The Husks: people taken by the worms. Where they are, how they move and how they seize.</summary>
+    public HuskRules Husks { get; set; } = new();
     /// <summary>How people look: heights, what each climate and hazard dresses them in, what each job wears.</summary>
     public PeopleTables People { get; set; } = new();
     /// <summary>What each climate does to bodies.</summary>
@@ -464,19 +468,134 @@ public sealed class PaletteRules
     public float[] GlowChance { get; set; } = { 0.08f, 0.85f };
 }
 
+/// <summary>The Hollows: wildlife taken by the parasitic fungus. Its look, how much less it is for it, and where it's found.</summary>
 public sealed class CorruptionRules
 {
     public string Prefix { get; set; } = "Hollow";
-    public string Base { get; set; } = "#2a1230";
-    public string Veins { get; set; } = "#ff3cac";
-    public string Glow { get; set; } = "#ff4fd8";
-    /// <summary>How far the body colour is pulled towards the Bloom's.</summary>
-    public float Mix { get; set; } = 0.6f;
-    public float WeirdnessBonus { get; set; } = 0.25f;
-    public float HealthScale { get; set; } = 1.3f;
-    public float DamageScale { get; set; } = 1.3f;
-    public float SpeedScale { get; set; } = 1.1f;
-    public RareDef Rare { get; set; } = new() { Name = "Hollow node", Chance = 0.5f, Value = 220 };
+    /// <summary>The fungus's own colour, what mould looks like, and the faint light of its fruiting bodies.</summary>
+    public string Base { get; set; } = "#6b5a44";
+    public string Veins { get; set; } = "#d9d6b8";
+    public string Glow { get; set; } = "#c8f08a";
+    /// <summary>How far the body colour is pulled towards the fungus's.</summary>
+    public float Mix { get; set; } = 0.38f;
+    public float WeirdnessBonus { get; set; } = 0.2f;
+    /// <summary>A lesser threat than the animal was.</summary>
+    public float HealthScale { get; set; } = 0.75f;
+    public float DamageScale { get; set; } = 0.8f;
+    public float SpeedScale { get; set; } = 0.85f;
+    /// <summary>Away from a Hollow world: the chance a world has any, and how many of a species' groups they are.</summary>
+    public float ScarceChance { get; set; } = 0.35f;
+    public float ScarceShare { get; set; } = 0.12f;
+    /// <summary>How it travels: on boots, from world to world (kept as data for later).</summary>
+    public FungalSpread Spread { get; set; } = new();
+    public RareDef Rare { get; set; } = new() { Name = "Hollow cap", Chance = 0.5f, Value = 160 };
+}
+
+/// <summary>The Husks' numbers: where they live, how hard they come on, how a seizing goes.</summary>
+public sealed class HuskRules
+{
+    /// <summary>Chance a world has Husks walking it, on the rim and at the core (coreward in between).</summary>
+    public float[] WorldChance { get; set; } = { 0.2f, 0.95f };
+    /// <summary>How many of their groups there are against an animal's, on the rim and at the core.</summary>
+    public float[] Scarcity { get; set; } = { 0.35f, 1.4f };
+    /// <summary>How many different hosts a world's Husks are drawn from (no two in a group alike).</summary>
+    public int Hosts { get; set; } = 8;
+    /// <summary>How twisted the host's body is, at least and at most (the off-putting mutations come on top).</summary>
+    public float[] Mutation { get; set; } = { 0.1f, 0.3f };
+    /// <summary>Wind-up of a seize, s: short, they're eager (a telegraph all the same).</summary>
+    public float Telegraph { get; set; } = 0.7f;
+    /// <summary>Share of close attacks on someone with a head to take that are the seize; the rest are arm strikes.</summary>
+    public float SeizeShare { get; set; } = 0.6f;
+    /// <summary>How long a seized person takes to turn (an animal is killed in the same time), s.</summary>
+    public float TurnSeconds { get; set; } = 4f;
+    /// <summary>The most a hold lasts before it lets go of its own accord, s (a game ends it sooner).</summary>
+    public float MostHold { get; set; } = 14f;
+    /// <summary>Health a sealed helmet still loses a second while held, and how long an open one lasts, s.</summary>
+    public float HoldDamage { get; set; } = 9f;
+    public float OpenHelmetSeconds { get; set; } = 1.4f;
+    /// <summary>How much of a struggle each key press is worth (1 frees you), and each second looking away.</summary>
+    public float StrugglePerPress { get; set; } = 0.12f;
+    public float StrugglePerSecondAway { get; set; } = 0.55f;
+    /// <summary>How far a broken hold throws the Husk back, m, and how long it takes to come on again, s.</summary>
+    public float Shove { get; set; } = 1.8f;
+    public float Stagger { get; set; } = 1.6f;
+    /// <summary>After a hold on someone ends, how long before anything can seize them again, s: a ring of Husks can't pass them hand to hand.</summary>
+    public float SeizeCooldown { get; set; } = 4f;
+    /// <summary>
+    /// A worm mass's grip (<see cref="WormMasses.Step"/>): how far its worms reach to take hold, m
+    /// (and more per metre of its size); how much further off the one held must get to tear free, m;
+    /// what share of their own pace they keep while held; how fast they are hauled in, m/s; what
+    /// they lose a second (a share of their health in hundredths, a steady sting, nothing like the
+    /// face grab); and how long before it can take the same one again, s. Never an infection.
+    /// </summary>
+    public float MassGrab { get; set; } = 0.55f;
+    public float MassGrabPerSize { get; set; } = 0.75f;
+    public float MassLetGo { get; set; } = 0.5f;
+    public float MassSlow { get; set; } = 0.3f;
+    public float MassPull { get; set; } = 0.9f;
+    public float MassDamage { get; set; } = 3f;
+    public float MassRegrab { get; set; } = 2.5f;
+    /// <summary>
+    /// How far gone a den is (0 light to 1 severe), at least and at most, by how the place's
+    /// occupancy has them: holding it alone, sharing it, the second group in it, or only a trace.
+    /// </summary>
+    public float[] SeverityAlone { get; set; } = { 0.7f, 1f };
+    public float[] SeverityShared { get; set; } = { 0.4f, 0.75f };
+    public float[] SeveritySecond { get; set; } = { 0.2f, 0.45f };
+    public float[] SeverityTrace { get; set; } = { 0.03f, 0.15f };
+
+    /// <summary>Chance a settlement on a world with Husks has silent carriers among its people, on the rim and at the core.</summary>
+    public float[] CarrierTownChance { get; set; } = { 0.12f, 0.5f };
+    /// <summary>What share of such a settlement's people carry the worms to begin with, at least and at most.</summary>
+    public float[] CarrierShare { get; set; } = { 0.05f, 0.18f };
+    /// <summary>Once this share of a settlement's people carry them, the carriers drop the act and are Husks.</summary>
+    public float CarrierOpenShare { get; set; } = 0.35f;
+    /// <summary>Within this of someone, m, a carrier is with them; with nobody else of theirs within this, m, they are alone.</summary>
+    public float CarrierReach { get; set; } = 2.2f;
+    public float CarrierAlone { get; set; } = 10f;
+    /// <summary>How long a carrier has to be alone with one of its own people for the worms to pass to them, s.</summary>
+    public float CarrierPass { get; set; } = 8f;
+
+    /// <summary>
+    /// Their wrongness (<see cref="Wrongness"/>): how far off a Husk is felt, m; how much one near
+    /// counts, and a worm mass for its size; how fast a cluster grows past the sum of its Husks;
+    /// how much a den's severity adds; and how far animals keep from a Husk, m.
+    /// </summary>
+    public float WrongReach { get; set; } = 36f;
+    public float WrongPerHusk { get; set; } = 0.22f;
+    public float WrongPerMass { get; set; } = 0.12f;
+    public float WrongCluster { get; set; } = 1.35f;
+    public float WrongDen { get; set; } = 1.2f;
+    public float AnimalShun { get; set; } = 18f;
+
+    /// <summary>A den's severity from its occupancy, rolled (0..1) within the range for how they hold it.</summary>
+    public float SeverityOf(bool main, bool alone, bool trace, float roll) =>
+        Lerp(trace ? SeverityTrace : !main ? SeveritySecond : alone ? SeverityAlone : SeverityShared, roll);
+    /// <summary>Maggot vomit: how far it reaches, m, and how long between, s.</summary>
+    public float VomitReach { get; set; } = 6f;
+    public float VomitEvery { get; set; } = 7f;
+    /// <summary>How near something moving has to be for the worms to reach for it, m.</summary>
+    public float StirReach { get; set; } = 7f;
+    /// <summary>How far a Husk that sees prey brings the others of its kind round it, m.</summary>
+    public float Gather { get; set; } = 28f;
+
+    public float WorldChanceAt(float coreward) => Lerp(WorldChance, coreward);
+    public float ScarcityAt(float coreward) => Lerp(Scarcity, coreward);
+    static float Lerp(float[] r, float t) => r[0] + (r[1] - r[0]) * Math.Clamp(t, 0f, 1f);
+}
+
+/// <summary>
+/// The hook for the fungus travelling on travellers' boots, kept as data until worlds remember it:
+/// each visit from a world with Hollows may seed an infected patch on the next world, and round an
+/// infected patch Hollows are a share of the wildlife. Nothing reads it yet.
+/// </summary>
+public sealed class FungalSpread
+{
+    /// <summary>Chance per visit from a world with Hollows that one is carried to the next.</summary>
+    public float PerVisit { get; set; } = 0.04f;
+    /// <summary>How far round an infected patch the Hollows live, m, and what share of the wildlife there they are.</summary>
+    public float PatchRadius { get; set; } = 60f;
+    public float PatchShare { get; set; } = 0.6f;
 }
 
 public sealed class SyllableTables

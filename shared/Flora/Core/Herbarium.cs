@@ -329,12 +329,14 @@ public sealed class Herbarium
         bool cover = p.Cover || family == PlantFamily.Crop;
         int meshes = cover ? 1 : NearMeshes;
         p.Near = new PlantMesh[meshes];
+        p.Columns = new PlantColumn[meshes][];
         var body = new Anatomy();
         for (int i = 0; i < meshes; i++)
         {
             var s = new Sculptor();
             PlantForms.Build(p, s, new Dice(Dice.Of(seed, i)), paints, false, i == 0 ? body : new Anatomy());
             p.Near[i] = s.Finish();
+            p.Columns[i] = s.Columns.ToArray();
         }
         if (p.Large)
         {

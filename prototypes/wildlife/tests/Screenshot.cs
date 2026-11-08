@@ -43,6 +43,7 @@ public partial class Screenshot : Node
             else if (arg == "--hud") _hud = true;
             else if (arg.StartsWith("--worlds=")) _worlds = arg["--worlds=".Length..];
             else if (arg.StartsWith("--pick=")) _pick = arg["--pick=".Length..];
+            else if (arg.StartsWith("--frames=")) _frames = int.Parse(arg["--frames=".Length..]);
             else if (arg.StartsWith("--time=")) _time = float.Parse(arg["--time=".Length..], System.Globalization.CultureInfo.InvariantCulture);
         }
         ProcessPhysicsPriority = 100; // after Main has stepped the world
@@ -79,7 +80,17 @@ public partial class Screenshot : Node
                 camera.LookAt(at, Vector3.Up);
             }
         }
-        if (_tick == _captureTick && !_captured) Capture();
+        if (_frames > 0)
+        {
+            if (_tick >= _captureTick && (_tick - _captureTick) % _frameEvery == 0 && _framesAsked < _frames)
+            {
+                _framesAsked++;
+                CaptureFrame();
+            }
+        }
+        else if (_tick == _captureTick && !_captured) Capture();
+        // Its own time limit: a view that never gets to its shot still quits.
+        if (_tick > _captureTick + _frames * _frameEvery + 900) Shutdown.Quit(this, 1);
     }
 
     /// <summary>
@@ -174,6 +185,7 @@ public partial class Screenshot : Node
         m.Hud.ClearCards();
         m.Player.Muzzle.Visible = false;
         Player p = m.Player;
+        if (HuskSetup()) return;
         switch (_view)
         {
             case "discovery":

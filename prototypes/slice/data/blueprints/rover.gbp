@@ -1,0 +1,81 @@
+# Hover Rover: a Small Core in Hover Mode. A low, wide ground runner on four hover plates, an open
+# cockpit behind a raked windscreen, a roll bar, and the engine bay behind it.
+#
+# Small grid (0.5 m cells). x is starboard, y up, -z forward. The core sits in the deck.
+# Two mains in the tail push it along; retros at the bow brake it; a side jet each side; two
+# generators, a gyro and two containers in the bay. Hover plates lift it; thrusters never climb.
+
+schema galhack.blueprint
+version 1
+name "Hover Rover"
+grid small
+mode hover
+gravity on
+
+# Livery: amber body, charcoal belly, black racing stripes, hazard bars front and back.
+paint body base=f4a100 grime=1
+paint belly base=2b2d42 grime=2
+paint stripe base=f4a100 accent=2b2d42 pattern=stripes grime=1
+paint hazard base=f4a100 accent=2b2d42 pattern=hazard grime=2
+paint dark base=3a3f47 grime=1
+paint cream base=ece3c8 grime=1
+
+# --- Belly (y -1): four hover plates, a keel, and chamfered skirts ----------------------------
+block -2 -1 -4 hover
+block 2 -1 -4 hover
+block -2 -1 4 hover
+block 2 -1 4 hover
+block -1..1 -1 -3..3 steel paint=belly
+block -3 -1 -4..4 steel slope rot=-y-x paint=belly
+block 3 -1 -4..4 steel slope rot=-y+x paint=belly
+
+# --- Deck (y 0), the core in the middle --------------------------------------------------------
+block -3..3 0 -4..-1 steel paint=belly
+block -3..-1 0 0 steel paint=belly
+block 0 0 0 core
+block 1..3 0 0 steel paint=belly
+block -3..3 0 1..5 steel paint=belly
+block -3..3 0 -5 hardened slope paint=hazard
+
+# --- Body (y 1): bumper corners, a raked nose, stripes down the sides --------------------------
+block -3 1 -4 steel paint=body
+block -2..2 1 -4 steel slope paint=body
+block 3 1 -4 steel paint=body
+block -3 1 -3..4 steel paint=body -x=stripe
+block 3 1 -3..4 steel paint=body +x=stripe
+block 0 1 -2 chair
+
+# --- Engine bay (y 1, z 2..5): generators, gyro and containers; the mains in the tail ----------
+block -2..2 1 2 steel paint=dark
+block -2 1 3 generator
+block -1 1 3 container
+block 0 1 3 gyro
+block 1 1 3 container
+block 2 1 3 generator
+block -2..2 1 4 steel paint=dark
+block -3 1 5 steel paint=hazard
+block -2 1 5 thruster
+block -1..1 1 5 steel paint=hazard
+block 2 1 5 thruster
+block 3 1 5 steel paint=hazard
+
+# --- Hump over the bay (y 2), a windscreen on two pillars, the roll bar -----------------------
+block -3..3 2 2 steel slope paint=body
+block -3..3 2 3..4 steel paint=cream
+block -3..3 2 5 steel slope rot=+y+z paint=dark
+block -3 2 -3 steel slope paint=body
+block -2..2 2 -3 glass slope
+block 3 2 -3 steel slope paint=body
+block -3 2 -2..1 steel paint=body
+block 3 2 -2..1 steel paint=body
+block -3 3 0..1 steel paint=dark
+block 3 3 0..1 steel paint=dark
+block -2..2 3 1 steel paint=dark
+
+# --- Headlights on the bumper corners, retros and side jets -----------------------------------
+block -3 1 -5 light
+block 3 1 -5 light
+block -4 0 -3 thruster rot=+y+z
+block 4 0 -3 thruster rot=+y+z
+block 4 1 1 thruster rot=+y-x
+block -4 1 1 thruster rot=+y+x

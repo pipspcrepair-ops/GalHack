@@ -59,6 +59,9 @@ public enum BlockType : byte
     Pump,       // a fuel pump on a forecourt
     Plate,      // a thin slab laid on the ground: boards, a path, a painted line; never blocks
     Pipe,       // a round pipe along Facing's axis (Up: standing); Variant 1 is a 2 m main drawn from this cell across the next
+    // The player's corner slopes, so a roof turns a corner or a cone a diagonal in planes, never in steps.
+    Corner,     // outer corner slope: a single raised corner, at the corner between Facing and the next direction anticlockwise (North: north-west)
+    InvCorner,  // inner corner slope: three raised corners, the low one opposite Corner's raised one
 }
 
 /// <summary>What a block is made of. Drives how it renders and what salvage it gives.</summary>
@@ -135,6 +138,9 @@ public static class BlockInfo
 
     /// <summary>Walked like a ramp: a 45-degree slope rising toward the block's facing.</summary>
     public static bool IsSlope(BlockType t) => t is BlockType.Ramp or BlockType.Stair;
+
+    /// <summary>The player's slope pieces that aren't walked: corner and inner corner, drawn and collided as their own shapes.</summary>
+    public static bool IsCornerSlope(BlockType t) => t is BlockType.Corner or BlockType.InvCorner;
 
     public static bool IsTransparent(Material m) => m == Material.Glass;
 

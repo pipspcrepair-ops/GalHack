@@ -119,7 +119,7 @@ public partial class CreatureBodies : Node3D
             // its own and knows nothing of the player's body).
             float radius = Mathf.Clamp(c.Species.Stats.Radius, 0.2f, 2.5f);
             float clear = radius + Slice.Player.Survivor.Radius;
-            if (!deep && onFoot && !c.Species.Flies && d < clear && d > 1e-3f && MathF.Abs(c.Position.Y + origin.Y - feet.Y) < 2.5f)
+            if (!deep && onFoot && !c.Species.Flies && c.Phase != AttackPhase.Hold && d < clear && d > 1e-3f && MathF.Abs(c.Position.Y + origin.Y - feet.Y) < 2.5f)
                 c.Position += flat / d * (clear - d);
             Shape(c, origin);
         }
@@ -271,6 +271,5 @@ public partial class CreatureBodies : Node3D
         Game.Zone.Physics.AddImpulse(v.Body, -(dir * mu * closing * 0.5f).ToNumerics(), ForceKind.Contact);
         sim.Damage(c, MathF.Max(share * c.Species.Stats.MaxHealth, closing * 0.5f), null);
         VesselHits++;
-        Game.Say($"Struck a {c.Species.CommonName} at {closing:F0} m/s", Tones.Caution);
     }
 }

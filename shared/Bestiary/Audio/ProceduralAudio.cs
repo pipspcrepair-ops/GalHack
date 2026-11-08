@@ -124,6 +124,12 @@ public partial class ProceduralAudio : Node3D
             _ => c.Species.Attack.Sound,
         };
         if (!_clips.ContainsKey(clip)) clip = "growl";
+        // A Husk makes almost no sound coming for you: what's left of a voice, murmured through the worms.
+        if (c.Species.Husk)
+        {
+            Murmur(c);
+            return;
+        }
         // A person shouts; a machine and an animal sound what they weigh.
         if (c.Species.Figure is { Voice: not null } && c.Species.Spit == SpitKind.None)
         {
@@ -132,6 +138,9 @@ public partial class ProceduralAudio : Node3D
         }
         Play(clip, c.Position + Vector3.Up, Heft.Pitch(c.Species), Heft.Loudness(c.Species));
     }
+
+    /// <summary>A Husk's murmur: its host's own voice, low and wet, heard only close to.</summary>
+    public void Murmur(Creature c) => Say(c.Species, VoiceMood.Whisper, c.Position + Vector3.Up * c.Species.Figure.Height * 0.9f, -15f);
 
     /// <summary>The dry click of something that hunts by its voice.</summary>
     public void Click(Creature c) => Play("click", c.Position + Vector3.Up * c.Species.BodyHeight * 0.8f, Heft.Pitch(c.Species), -6f);

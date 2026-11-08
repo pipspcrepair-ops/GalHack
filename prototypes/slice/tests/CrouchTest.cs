@@ -14,7 +14,8 @@ namespace Slice.Tests;
 /// Crouching, on a fresh random world, through the game's own keys: hold Ctrl and the eye eases
 /// down while the capsule shortens and the walk slows; a 1.2 m passage can't be walked standing and
 /// is walked crouched; under it, letting go of Ctrl doesn't stand you up (no room) until you are out
-/// from under; a crouched hop is low, and the jetpack still lifts a crouched body.
+/// from under; a crouched hop is low, and the jetpack still lifts a crouched body; and in shallow
+/// water a crouch goes down and stays there, steady, never setting you swimming.
 ///
 /// Run: .\tools\test.ps1 -Project prototypes/slice -Scene res://tests/CrouchTest.tscn
 /// </summary>
@@ -204,6 +205,44 @@ public partial class CrouchTest : Node
         foreach (int x in Until(() => S.Body.OnFloor, 600)) yield return x;
         foreach (int x in _drive.Wait(60)) yield return x;
         Check(S.Body.OnFloor && !S.Crouched && Mathf.IsEqualApprox(S.CapsuleHeight, Survivor.Height), "landed with Ctrl let go: standing, nothing stuck");
+
+        // ---- Crouching in shallow water: down and steady, never set swimming or floated off ----------------
+        GalHack.Physics.IWaterField dry = _game.Zone.Physics.Water;
+        foreach (float depth in new[] { 0.6f, 0.85f, 1.05f })
+        {
+            _game.Zone.Physics.Water = new StillWater(rig.Top + depth);
+            S.PlaceOutside(rig.Start.ToNumerics());
+            foreach (int x in _drive.Wait(60)) yield return x;
+            Keys.Hold(Key.Ctrl);
+            foreach (int x in _drive.Wait(90)) yield return x;
+            float eyeLo = float.MaxValue, eyeHi = float.MinValue, feetLo = float.MaxValue, feetHi = float.MinValue;
+            bool down = true, swam = false;
+            for (int i = 0; i < 120; i++)
+            {
+                yield return 0;
+                down &= S.Crouched;
+                swam |= S.Legs.Swimming;
+                eyeLo = MathF.Min(eyeLo, S.EyeAbove); eyeHi = MathF.Max(eyeHi, S.EyeAbove);
+                feetLo = MathF.Min(feetLo, S.WorldFeet.Y); feetHi = MathF.Max(feetHi, S.WorldFeet.Y);
+            }
+            Keys.ReleaseAll();
+            foreach (int x in _drive.Wait(30)) yield return x;
+            Check(down && !swam && eyeHi - eyeLo < 0.01f && feetHi - feetLo < 0.02f && Mathf.Abs(eyeHi - Survivor.CrouchEyeHeight) < 0.03f,
+                $"crouched in {depth:F2} m of still water it stays down and steady: never swimming, the eye at {eyeLo:F2} to {eyeHi:F2} m, the feet within {(feetHi - feetLo) * 100f:F1} cm");
+        }
+        _game.Zone.Physics.Water = dry;
+    }
+
+    /// <summary>A sheet of still water at one level everywhere (the shallows a crouch is tried in).</summary>
+    sealed class StillWater : GalHack.Physics.IWaterField
+    {
+        readonly float _level;
+        public StillWater(float level) => _level = level;
+        public bool SurfaceAt(System.Numerics.Vector3 point, out float surface)
+        {
+            surface = _level;
+            return true;
+        }
     }
 
     /// <summary>Taps jump on the ground and reports how high the feet rose.</summary>

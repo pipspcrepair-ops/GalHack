@@ -125,6 +125,8 @@ public sealed class PoiInstance
     public List<LightSpot> Lights = new();
     /// <summary>Faces painted to glow (a strip, a panel, a border): see PoiLights.PaintFace.</summary>
     public List<LitFace> LitFaces = new();
+    /// <summary>The crops standing now: all of them where somebody farms, the hardiest third gone wild in a dead place.</summary>
+    public List<CropSpot> Crops = new();
     public List<SoundHook> Sounds = new();
     /// <summary>Tags for the view and a later pass: smoke, vents, spawn and patrol points.</summary>
     public List<Marker> Markers = new();
@@ -156,6 +158,24 @@ public static class PoiFactory
         Facade.Apply(layout, lib);
         return layout;
     }
+
+    /// <summary>
+    /// A layout for the world, which never throws: the rolled variant, then each of the family's others in
+    /// turn as the simpler fallback, and if none lays out (a broken roll, or data newer than the code that
+    /// reads it), nothing: the caller leaves the site out and <paramref name="why"/> says what went wrong.
+    /// </summary>
+    public static Layout? TryLayout(PoiLibrary lib, FamilyDef family, int variant, Rarity rarity, ulong? customSeed, LayoutHints? hints, out string? why)
+    {
+        why = null;
+        int n = System.Math.Max(1, family.Variants.Count);
+        for (int k = 0; k < n; k++)
+            try { return BuildLayout(lib, family, (variant + k) % n, rarity, customSeed, hints); }
+            catch (System.Exception e) { why ??= e.Message; System.Threading.Interlocked.Increment(ref Skipped); }
+        return null;
+    }
+
+    /// <summary>How many layouts the world asked for failed and fell back or were left out (tests read it).</summary>
+    public static int Skipped;
 
     /// <summary>How many spawns were rolled again because decay cut the way to the vault or the core (tests read it).</summary>
     public static int Respawns;
@@ -298,6 +318,8 @@ public static class PoiFactory
         if (layout.Extras.Plain.Count > 0 && state != PoiState.Active) StateTransforms.Overgrow(inst, rng.Fork("overgrow"));
         if (state != PoiState.Active) StateTransforms.Rest(inst);
         inst.Growth.RemoveAll(s => !Growth.Rootable(inst, s.Cell));
+        foreach (CropSpot c in layout.Extras.Crops)
+            if (inst.Blocks.Get(c.Cell).IsAir && (state == PoiState.Active || Hash.Cell(c.Cell, 0xC409) % 3 == 0)) inst.Crops.Add(c);
         // Who's in it comes last, on the place as the years left it: the layout is whoever's.
         if (occupancy != null) OccupancyLayer.Apply(lib, inst, occupancy, rng.Fork("occupancy"));
         PlaceLights.Tune(inst);

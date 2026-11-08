@@ -30,12 +30,12 @@
     <Compile Include="..\weather\src\Glue.cs" />
     <Compile Include="..\poi-generator\src\Gen\**\*.cs" />
     <Compile Include="..\poi-generator\src\View\MeshBuild.cs" />
+    <!-- Light colour and animation, shared with the player's light blocks: the POI generator's lights read it. -->
+    <Compile Include="..\building\src\Structures\LightSettings.cs" />
     <!-- The decorations library: alien places are dressed from its alien set, as in the POI viewer. -->
     <Compile Include="..\..\shared\Items\Core\**\*.cs" />
     <Compile Include="..\..\shared\Deco\**\*.cs" />
     <!-- Every plant in the game: the flora module. -->
     <Compile Include="..\..\shared\Flora\**\*.cs" />
-    <!-- A place's lights take the building prototype's light settings (as the POI generator does). -->
-    <Compile Include="..\building\src\Structures\LightSettings.cs" />
   </ItemGroup>
 </Project>

@@ -510,8 +510,8 @@ public sealed class Playthrough
             if (d.Kind != kind) continue;
             zone.Planet.Source.OreCentre(d, out double ox, out double oy, out double oz);
             Vector3 at = zone.Planet.NearestCopy(new Vector3((float)ox, (float)oy, (float)oz), from);
-            // Dry, and near enough the surface for the survival tool (it can't cut deep rock).
-            if ((!retry && _triedDeposits.Contains(((int)at.X, (int)at.Z))) || zone.GroundAt(at.X, at.Z).Y < 0.5f || zone.GroundAt(at.X, at.Z).Y - at.Y > 5f) continue;
+            // Dry, and near enough the surface for the survival tool (it can't cut deep rock): what the scanner shows.
+            if ((!retry && _triedDeposits.Contains(((int)at.X, (int)at.Z))) || zone.GroundAt(at.X, at.Z).Y < 0.5f || zone.GroundAt(at.X, at.Z).Y - at.Y > Slice.Surface.DepositFinder.MaxDepth) continue;
             if (retry && NearestOre(at, at, kind) == null) continue; // dug out
             // Not in or beside a place (its rooms are dug into the ground under it).
             if (zone.Planet.Pois.Any(poi => new Vector2(poi.Origin.X - at.X, poi.Origin.Z - at.Z).Length() < 60f)) continue;
@@ -531,11 +531,13 @@ public sealed class Playthrough
         {
             if (NextDeposit(kind, within, retry) is not Vector3 at)
             {
-                Log($"no more {kind} deposits within 700 m");
+                Log($"no more {kind} deposits within {within:F0} m");
                 yield break;
             }
             _triedDeposits.Add(((int)at.X, (int)at.Z));
-            foreach (int x in Drive.WalkTo(at, 3.5f, 90f)) yield return x;
+            // The uncommon ores lie a kilometre apart and more: as long as a walk there takes.
+            float far = new Vector2(at.X - Game.Survivor.WorldFeet.X, at.Z - Game.Survivor.WorldFeet.Z).Length();
+            foreach (int x in Drive.WalkTo(at, 3.5f, MathF.Max(90f, 30f + far / 3f))) yield return x;
             int idle = 0, got0 = Pack[ore.Id];
             var store = Game.Zone.Planet.Terrain.Store;
             for (int pulse = 0; pulse < 240 && idle < 12 && Pack[ore.Id] < enough; pulse++)

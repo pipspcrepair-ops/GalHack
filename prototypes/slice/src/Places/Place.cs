@@ -384,7 +384,8 @@ public partial class Place
         public Block Get(Int3 p)
         {
             Block b = _g.Get(p);
-            return _blocked.Contains(p) && (b.IsAir || b.Type == BlockType.Growth) ? Crate : b;
+            // A piece stands in its cell over whatever doesn't stop a walker there (air, a floor plate, litter).
+            return _blocked.Contains(p) && (!BlockInfo.Collides(b.Type) || b.Type == BlockType.Growth) ? Crate : b;
         }
         public void Set(Int3 p, Block b) => _g.Set(p, b);
         public int CountBlocks() => _g.CountBlocks();

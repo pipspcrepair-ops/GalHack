@@ -44,6 +44,9 @@ public partial class Place
 
     static StandardMaterial3D _band, _seam;
 
+    /// <summary>How far a door leaf's band and seam stop short of its ends, top and bottom.</summary>
+    const float Inset = 0.006f;
+
     IEnumerable<int> BuildDoors()
     {
         Layout layout = Inst.Layout;
@@ -103,16 +106,19 @@ public partial class Place
                 var leaf = new AnimatableBody3D { Name = side == 0 ? "Leaf A" : "Leaf B", CollisionLayer = Layers.World, CollisionMask = 0, SyncToPhysics = true };
                 leaf.AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = size } });
                 leaf.AddChild(new MeshInstance3D { Mesh = new BoxMesh { Size = size }, MaterialOverride = paint });
-                // A hazard band across the middle, and the dark edge where the leaves meet.
+                // A hazard band across the middle, and the dark edge where the leaves meet. Each stands proud of
+                // the leaf's faces (the seam prouder than the band it crosses) and stops short of its ends, top
+                // and bottom: no face of one lies in a face of another, where the two would flicker.
+                float band = half - 2f * Inset;
                 leaf.AddChild(new MeshInstance3D
                 {
-                    Mesh = new BoxMesh { Size = alongX ? new Vector3(half, blast ? 0.4f : 0.2f, thick + 0.02f) : new Vector3(thick + 0.02f, blast ? 0.4f : 0.2f, half) },
+                    Mesh = new BoxMesh { Size = alongX ? new Vector3(band, blast ? 0.4f : 0.2f, thick + 0.02f) : new Vector3(thick + 0.02f, blast ? 0.4f : 0.2f, band) },
                     MaterialOverride = _band, Position = new Vector3(0f, -0.4f, 0f),
                 });
-                float edge = (side == 0 ? 1f : -1f) * (half / 2f - 0.02f);
+                float edge = (side == 0 ? 1f : -1f) * (half / 2f - 0.02f - 2f * Inset);
                 leaf.AddChild(new MeshInstance3D
                 {
-                    Mesh = new BoxMesh { Size = alongX ? new Vector3(0.04f, height, thick + 0.015f) : new Vector3(thick + 0.015f, height, 0.04f) },
+                    Mesh = new BoxMesh { Size = alongX ? new Vector3(0.04f, height - 2f * Inset, thick + 0.04f) : new Vector3(thick + 0.04f, height - 2f * Inset, 0.04f) },
                     MaterialOverride = _seam, Position = along * edge,
                 });
                 door.Shut[side] = centre + along * ((side == 0 ? -1f : 1f) * half / 2f);
@@ -484,6 +490,13 @@ public partial class Place
             if (!l.Visible || !_poolSpot.TryGetValue(l, out int i) || i < 0) continue;
             var (spot, phase) = _spots[i];
             float t = _time + phase;
+            if (spot.Style is { } style)
+            {
+                (float energy, Color colour) = PlanetSurface.Poi.PoiLitFaces.At(style, spot.Energy, _time);
+                l.LightEnergy = energy;
+                l.LightColor = colour;
+                continue;
+            }
             float wave = spot.Mode switch
             {
                 LightMode.Flicker => Mathf.Sin(t * 3.1f) + Mathf.Sin(t * 11.7f) * 0.6f > 0.2f ? 0.9f : 0.04f,

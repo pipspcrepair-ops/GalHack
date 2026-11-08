@@ -306,7 +306,8 @@ public sealed class Plot
                 Stuff2 s = end ? gable : roof;
                 Put(u, y, v, left == right ? Cube(s, Role.Roof) : new Block(BlockType.Ramp, s.M, s.C, Role.Roof, left < right ? up : down));
                 // The deck under the slope holds it together.
-                if (n > 0) Put(u, y - 1, v, Cube(s.Scale(0.8f), Role.Roof));
+                // At the gable ends the course under the slope wears the gable's own paint, so the verge reads as one line.
+                if (n > 0) Put(u, y - 1, v, Cube(end ? s : s.Scale(0.8f), Role.Roof));
                 // Gable walls fill up to it, two cells thick.
                 bool inside = a >= 2 * (ridgeAlongI ? k0 : i0) && a <= 2 * (ridgeAlongI ? k1 : i1) + 1;
                 if (inside && (b <= b0 + 1 || b >= b1 - 1))
@@ -514,28 +515,59 @@ public sealed class Plot
                 if (In(ci, ck, r, i, k)) Fill(i, j, k, i, j, k, b);
     }
 
-    /// <summary>A cone of slopes on a drum: a height for every cell, about 45 degrees, each cell a slope up toward the point and a deck under it.</summary>
+    /// <summary>
+    /// A faceted dome of the player's slopes on a drum: an eight-sided pyramid round the drum, four faces of plain
+    /// slopes square to the axes and four steeper ones on the diagonals, each a smooth plane of corner pieces,
+    /// meeting in straight ridges. At one cell a cell (step 1) every corner height is whole, so every cell is
+    /// exactly one piece, or an inner corner under a corner on the diagonals, with no flats or steps.
+    /// </summary>
     public void Cap(double ci, double ck, double r, int j, Stuff2 s, float step = 1f)
     {
-        double cu = 2 * ci, cv = 2 * ck, big = 2 * r;
+        bool facets = step == 1f;
+        double cu = facets ? Math.Round(2 * ci) : 2 * ci, cv = facets ? Math.Round(2 * ck) : 2 * ck, big = facets ? Math.Round(2 * r) : 2 * r;
+        double chamfer = Math.Round(big * (Math.Sqrt(2) - 1));
         int reach = (int)Math.Ceiling(big) + 1, low = 2 * j;
-        int Height(int u, int v)
+        // The height at a cell corner, in cells over the rim, never below it: the lower of the square faces and the diagonal ones.
+        int At(int u, int v)
         {
-            double d = Math.Sqrt((u + 0.5 - cu) * (u + 0.5 - cu) + (v + 0.5 - cv) * (v + 0.5 - cv));
-            return d > big ? -1 : (int)((big - d) / step);
+            double x = Math.Abs(u - cu), z = Math.Abs(v - cv);
+            // Any other pitch (a works' low tank roof) stays a plain cone: its heights aren't whole, so it would terrace either way.
+            if (!facets) return (int)Math.Round(Math.Max(0, (big - Math.Sqrt(x * x + z * z)) / step));
+            return (int)Math.Max(0, Math.Min(big - Math.Max(x, z), big + chamfer - x - z));
         }
         for (int v = (int)cv - reach; v <= (int)cv + reach; v++)
             for (int u = (int)cu - reach; u <= (int)cu + reach; u++)
             {
-                int h = Height(u, v);
-                if (h < 0) continue;
-                Dir? up = null;
-                int best = h;
-                foreach (var (d, du, dv) in new[] { (Dir.East, 1, 0), (Dir.West, -1, 0), (Dir.South, 0, 1), (Dir.North, 0, -1) })
-                    if (Height(u + du, v + dv) > best) { best = Height(u + du, v + dv); up = d; }
-                Put(u, low + h, v, up is { } facing ? new Block(BlockType.Ramp, s.M, s.C, Role.Roof, facing) : Cube(s, Role.Roof));
-                if (h > 0) Put(u, low + h - 1, v, Cube(s.Scale(0.8f), Role.Roof));
+                if ((u + 0.5 - cu) * (u + 0.5 - cu) + (v + 0.5 - cv) * (v + 0.5 - cv) > big * big) continue;
+                int nw = At(u, v), ne = At(u + 1, v), sw = At(u, v + 1), se = At(u + 1, v + 1);
+                int h = Math.Min(Math.Min(nw, ne), Math.Min(sw, se)), top = Math.Max(Math.Max(nw, ne), Math.Max(sw, se));
+                // Solid in the roof's own colour to the lowest corner (a flat where the corners round alike), then
+                // one piece a level while any corner rises past it: a steep diagonal stacks a corner on an inner corner.
+                for (int y = low; y < low + h; y++) Put(u, y, v, Cube(s, Role.Roof));
+                for (int y = h; y < (facets ? top : Math.Min(top, h + 1)); y++)
+                    if (Piece(nw > y, ne > y, sw > y, se > y, s) is { } piece) Put(u, low + y, v, piece);
+                if (top == 0) Put(u, low, v, Cube(s, Role.Roof));
             }
+    }
+
+    /// <summary>
+    /// The player's slope piece whose top runs through these raised corners (frame directions): none raised,
+    /// nothing (the cell's floor is the surface); one, a corner slope; two along a side, a slope; three, an
+    /// inner corner; all four, a cube. Two across a diagonal is a saddle no piece makes: the higher reading wins.
+    /// </summary>
+    public static Block? Piece(bool nw, bool ne, bool sw, bool se, Stuff2 s)
+    {
+        int n = (nw ? 1 : 0) + (ne ? 1 : 0) + (sw ? 1 : 0) + (se ? 1 : 0);
+        Block Make(BlockType t, Dir d) => new(t, s.M, s.C, Role.Roof, d);
+        return n switch
+        {
+            0 => null,
+            4 => Cube(s, Role.Roof),
+            1 => Make(BlockType.Corner, nw ? Dir.North : ne ? Dir.East : se ? Dir.South : Dir.West),
+            3 => Make(BlockType.InvCorner, !se ? Dir.North : !sw ? Dir.East : !nw ? Dir.South : Dir.West),
+            _ => nw && ne ? Make(BlockType.Ramp, Dir.North) : ne && se ? Make(BlockType.Ramp, Dir.East)
+                : sw && se ? Make(BlockType.Ramp, Dir.South) : nw && sw ? Make(BlockType.Ramp, Dir.West) : Cube(s, Role.Roof),
+        };
     }
 
     // ---- paint and marks -----------------------------------------------------------------------
@@ -624,6 +656,9 @@ public sealed class Plot
         // A dark casing band, so it reads as a machine and not a plinth.
         Repaint(2 * i0, 2 * (j + h) - 2, 2 * k0, 2 * i1 + 1, 2 * (j + h) - 2, 2 * k1 + 1, (_, _, _) => s.C.Scale(0.6f));
     }
+
+    /// <summary>A crop sown in a cell: the game grows one of the world's own crop species there.</summary>
+    public void Sow(int u, int y, int v, int kind) => C.X.Crops.Add(new CropSpot(Cell(u, y, v), (byte)kind));
 
     /// <summary>A loot cache in a room, on an open floor cell.</summary>
     public void Cache(int u, int y, int v, int module)

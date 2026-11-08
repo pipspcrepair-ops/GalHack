@@ -70,6 +70,9 @@ public sealed record ArchetypeDef
 
     /// <summary>The resource this variant is known for, scattered on top of the common materials.</summary>
     public DepositKind Signature { get; init; } = DepositKind.Magnesium;
+    /// <summary>The world type's deposits against the ore table's: more of them (above 1) or fewer, and bigger or smaller.</summary>
+    public float DepositCount { get; init; } = 1f;
+    public float DepositSize { get; init; } = 1f;
 
     // Landforms (see LANDFORMS.md): which this variant's worlds can roll and how likely each is,
     // which may make up a whole world on their own, and how often a world is one landform throughout.

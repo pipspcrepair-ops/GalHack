@@ -79,6 +79,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
 
     /// <summary>The storm towers this frame, and their rain shafts.</summary>
     readonly Vector4[] _towers = new Vector4[MostTowers];
+    readonly float[] _funnels = new float[MostTowers];
     /// <summary>For tests: draw the towers without their rain shafts.</summary>
     public bool ShaftsHidden;
     readonly List<(MeshInstance3D node, ShaderMaterial draw)> _shafts = new();
@@ -131,9 +132,10 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
             if (strength < 0.04f) continue;
             Vector3 at = _planet.NearestCopy(_planet.Canonical(cell.Position), camera);
             _towers[count] = new Vector4(at.X, at.Z, cell.Radius, strength);
+            _funnels[count] = cell.Funnel != null ? 1f : 0f;
             if (count >= _shafts.Count) _shafts.Add(AddShaft());
             var (node, draw) = _shafts[count];
-            float baseY = at.Y - 10f, height = CloudBaseY - baseY, reach = cell.Radius * 0.85f;
+            float baseY = at.Y - 10f, height = CloudBaseY + 100f - baseY, reach = cell.Radius * 0.85f; // up into the cloud: the shader ends the veil at the sky's own base
             Vector2 wind2 = Sim.Current.Wind;
             Vector2 lean = wind2 * 6f; if (lean.Length() > height * 0.3f) lean = lean.Normalized() * height * 0.3f;
             float bound = reach * 1.9f + lean.Length();
@@ -146,14 +148,22 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
             draw.SetShaderParameter("bound", bound);
             draw.SetShaderParameter("lean", lean);
             draw.SetShaderParameter("drift", wind2 * 0.04f);
+            Zone.Sky.ShareCloudBase(draw);
+            draw.SetShaderParameter("towers", _towers);
+            draw.SetShaderParameter("tower_n", Mathf.Min(MostTowers, 4));
+            draw.SetShaderParameter("tower_wall", _funnels);
+            draw.SetShaderParameter("skirt_amount", Mathf.Clamp((c.Rain - 0.5f) * 2f, 0f, 1f) * strength);
             draw.SetShaderParameter("seed", (cell.Id * 0.6180339f) % 1f);
             // Standing in it there's nothing to see of it: the falling rain has taken over.
             float away = new Vector2(camera.X - at.X, camera.Z - at.Z).Length();
             draw.SetShaderParameter("amount", 0.9f * strength * Mathf.Clamp((c.Rain + 0.25f) * 1.2f, 0f, 1f) * Mathf.Clamp((away - reach * 0.9f) / (reach * 0.4f), 0f, 1f));
-            draw.SetShaderParameter("tint", new Color(0.24f, 0.26f, 0.3f) * (0.2f + 0.8f * Zone.Sky.Daylight));
+            draw.SetShaderParameter("to_sun", ToSun);
+            draw.SetShaderParameter("sun_glow", new Color(1f, 0.82f, 0.55f).Lerp(new Color(1f, 1f, 1f), Mathf.Clamp(ToSun.Y * 3f, 0f, 1f)));
+            draw.SetShaderParameter("sun_amount", Mathf.Clamp(ToSun.Y * 6f + 0.4f, 0f, 1f) * (0.3f + 0.7f * Zone.Sky.Daylight));
+            draw.SetShaderParameter("tint", new Color(0.3f, 0.33f, 0.38f) * (0.12f + 0.88f * Zone.Sky.Daylight));
             count++;
         }
-        Zone.Sky.SetCells(_towers, count);
+        Zone.Sky.SetCells(_towers, count, _funnels);
         for (int i = count; i < _shafts.Count; i++) _shafts[i].node.Visible = false;
 
         if (count == 0 || c.LightningPerMinute < 0.1f || (_flicker -= dt) > 0f) return;
@@ -474,7 +484,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
             }
             fx.Follow(t);
             fx.GlobalPosition = _planet.NearestCopy(_planet.Canonical(t.Position), eye);
-            fx.ReachTo(CloudBaseY + 25f - fx.GlobalPosition.Y); // up into the tower's dark base, at any distance and as it lowers
+            fx.ReachTo(CloudBaseY - 150f - fx.GlobalPosition.Y); // up into the lumpy bulge of the storm's dark base, at any distance and as it lowers
             Uproot(t, fx.GlobalPosition);
         }
         var gone = new List<int>();

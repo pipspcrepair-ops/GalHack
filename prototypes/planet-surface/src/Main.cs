@@ -128,7 +128,7 @@ public partial class Main : Node3D
         Weather = new WeatherRig { Name = "Weather", Main = this };
         AddChild(Weather);
 
-        Sea = new MeshInstance3D { Name = "Sea", Mesh = new PlaneMesh { Size = new Vector2(24000f, 24000f), SubdivideWidth = 0, SubdivideDepth = 0 }, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
+        Sea = new MeshInstance3D { Name = "Sea", Mesh = new PlaneMesh { Size = new Vector2(24000f, 24000f), SubdivideWidth = 95, SubdivideDepth = 95 }, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, ExtraCullMargin = TerrainStreamer.RoundSink(17000f) }; // subdivided to sink over the horizon with the land
         AddChild(Sea);
 
         // Under water the view closes in: the liquid's own murk instead of the sky, and a tint.
@@ -186,6 +186,7 @@ public partial class Main : Node3D
         _seaMaterial = (ShaderMaterial)_water.Duplicate();
         _seaMaterial.SetShaderParameter("sea", true);
         _seaMaterial.SetShaderParameter("sea_map", world.SeaTexture());
+        _seaMaterial.SetShaderParameter("sea_mask", GalHack.Terrain.PlanetTerrainSource.SeaMaskDepth);
         Sea.MaterialOverride = _seaMaterial;
         _underwater = new Godot.Environment
         {

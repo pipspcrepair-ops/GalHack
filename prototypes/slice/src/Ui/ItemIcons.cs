@@ -7,17 +7,21 @@ using GalHack.Structures;
 using GalHack.Structures.Presentation;
 using Godot;
 using Slice.Game;
+using Slice.Items;
 using Slice.Places;
 using Structure = GalHack.Structures.Structure;
 
 namespace Slice.Ui;
 
 /// <summary>
-/// Small 3D icons for items: each object's model (a block's real mesh from building's mesher, a deco
-/// piece's from the decorations library, or a simple model by kind for ore, bars, parts, food, ammo
-/// and tools) rendered once in its own tiny viewport, then kept as a plain texture. Slots draw the
-/// texture, so a full bag costs nothing per frame. A headless run, which cannot render, has no icons
-/// and the slots keep their text labels.
+/// Small 3D icons for items: each object's own model (a block's real mesh from building's mesher, a deco
+/// piece's from the decorations library, and whatever <see cref="ItemModels"/> has a model for: the
+/// tools and the scanner as they are held, the hover bike, the placed devices) rendered once in its
+/// own tiny viewport, then kept as a plain texture; only ore, bars, parts, food and ammo, which
+/// have no model of their own, get a simple stand-in by kind. A held, driven or placed model is
+/// shown at one fixed angle: its front toward the right, a little toward you, from above, filling
+/// the icon. Slots draw the texture, so a full bag costs nothing per frame. A headless run, which
+/// cannot render, has no icons and the slots keep their text labels.
 /// </summary>
 public partial class ItemIcons : Node
 {
@@ -39,14 +43,30 @@ public partial class ItemIcons : Node
     /// <summary>Icons made so far (tests, screenshots).</summary>
     public int Count => _done.Count;
 
+    /// <summary>Where an item's icon model comes from.</summary>
+    public enum Source { Block, Piece, Held, Vehicle, Placed, StandIn }
+
+    /// <summary>Where an item's icon model comes from, without rendering it (tests, the icon sheet).</summary>
+    public Source SourceOf(ItemDef item)
+    {
+        if (item.Id.StartsWith("piece:", StringComparison.Ordinal)) return Source.Piece;
+        if (item.Id == "deco-block") return Source.StandIn;
+        if (item.IsBlock && _blocks != null && _blocks.TryGetType(item.BlockId, out _)) return Source.Block;
+        if (ItemModels.Has(item, out ModelSource origin)) return origin switch { ModelSource.Held => Source.Held, ModelSource.Vehicle => Source.Vehicle, _ => Source.Placed };
+        return Source.StandIn;
+    }
+
+    /// <summary>An icon that has been rendered, or null (tests and the icon sheet).</summary>
+    public Texture2D Rendered(string itemId) => itemId != null && _done.TryGetValue(itemId, out Texture2D t) ? t : null;
+
+    /// <summary>Did making this item's icon fail (tests)?</summary>
+    public bool Failed(string itemId) => _failed.Contains(itemId);
+
     public void Setup(ItemCatalogue items, Catalogue blocks)
     {
         _items = items;
         _blocks = blocks;
     }
-
-    /// <summary>An icon that has been rendered, or null (tests and the icon sheet).</summary>
-    public Texture2D Rendered(string itemId) => itemId != null && _done.TryGetValue(itemId, out Texture2D t) ? t : null;
 
     /// <summary>The icon of an item once it is rendered, else null (and it is queued to be).</summary>
     public Texture2D Get(ItemDef item)
@@ -85,9 +105,9 @@ public partial class ItemIcons : Node
         while (_waiting.Count > 0 && _active.Count < 4)
         {
             ItemDef item = _waiting.Dequeue();
-            Node3D model = ModelOf(item);
+            Node3D model = ModelOf(item, out ModelSource? origin);
             if (model == null) { _failed.Add(item.Id); continue; }
-            _active.Add((item, Render(model), 0));
+            _active.Add((item, Render(model, origin), 0));
         }
     }
 
@@ -101,19 +121,27 @@ public partial class ItemIcons : Node
 
     // ---- Rendering ---------------------------------------------------------------------------
 
-    SubViewport Render(Node3D model)
+    /// <summary>Where the icon camera sits, looking at the origin: above, to the right and in front of the origin.</summary>
+    static readonly Vector3 CameraAt = new(1.55f, 1.25f, -2.2f);
+
+    /// <summary>How wide the longest side of a model should look: 1.3 of the 1.48 the camera sees across the origin.</summary>
+    const float Fill = 1.3f;
+
+    /// <summary>
+    /// How far a model's front turns from the icon's right toward the viewer, degrees: a gun, a tool or a
+    /// bike shows its side with its muzzle or nose a little toward you; a device, whose face is its front,
+    /// shows more of that face.
+    /// </summary>
+    static float TurnToward(ModelSource source) => source == ModelSource.Placed ? 40f : 22f;
+
+    SubViewport Render(Node3D model, ModelSource? source = null)
     {
         var view = new SubViewport
         {
             Size = new Vector2I(Size, Size), TransparentBg = true, OwnWorld3D = true,
             RenderTargetUpdateMode = SubViewport.UpdateMode.Once, Msaa3D = Viewport.Msaa.Msaa4X,
         };
-        // Fit the model into a unit box at the origin.
-        Aabb box = BoundsOf(model);
-        float longest = Math.Max(0.001f, Math.Max(box.Size.X, Math.Max(box.Size.Y, box.Size.Z)));
-        var holder = new Node3D { Scale = Vector3.One * (1.3f / longest) };
-        holder.Position = -(box.Position + box.Size * 0.5f) * holder.Scale.X;
-        holder.AddChild(model);
+        Node3D holder = source is ModelSource shown ? FaceRight(model, shown) : Boxed(model);
         view.AddChild(holder);
         view.AddChild(new WorldEnvironment
         {
@@ -128,9 +156,65 @@ public partial class ItemIcons : Node
         sun.LookAtFromPosition(new Vector3(-2, 3, -3), Vector3.Zero);
         var cam = new Camera3D { Fov = 28, Current = true };
         view.AddChild(cam);
-        cam.LookAtFromPosition(new Vector3(1.55f, 1.25f, -2.2f), Vector3.Zero);
+        cam.LookAtFromPosition(CameraAt, Vector3.Zero);
         AddChild(view);
         return view;
+    }
+
+    /// <summary>A block or stand-in: fitted into a unit box at the origin, as it comes.</summary>
+    static Node3D Boxed(Node3D model)
+    {
+        Aabb box = BoundsOf(model);
+        float longest = Math.Max(0.001f, Math.Max(box.Size.X, Math.Max(box.Size.Y, box.Size.Z)));
+        var holder = new Node3D { Scale = Vector3.One * (1.3f / longest) };
+        holder.Position = -(box.Position + box.Size * 0.5f) * holder.Scale.X;
+        holder.AddChild(model);
+        return holder;
+    }
+
+    /// <summary>
+    /// A held, driven or placed model (front -Z, up +Y): turned so its front points to the right of the
+    /// icon and a little toward the viewer, then scaled and centred by how it looks from the camera, so
+    /// every one fills the icon the same way whatever its shape.
+    /// </summary>
+    static Node3D FaceRight(Node3D model, ModelSource source)
+    {
+        Basis look = Basis.LookingAt(-CameraAt, Vector3.Up);
+        Vector3 right = look.X, up = look.Y, back = look.Z;
+        Vector3 toward = new Vector3(CameraAt.X, 0f, CameraAt.Z).Normalized();
+        float turn = Mathf.DegToRad(TurnToward(source));
+        Vector3 front = right * Mathf.Cos(turn) + toward * Mathf.Sin(turn);
+        float yaw = Mathf.Atan2(-front.X, -front.Z);
+        var spin = new Basis(Vector3.Up, yaw);
+        Vector3 lo = new(float.MaxValue, float.MaxValue, float.MaxValue), hi = -lo;
+        foreach (Vector3 corner in Corners(model, Transform3D.Identity))
+        {
+            Vector3 p = spin * corner;
+            var seen = new Vector3(p.Dot(right), p.Dot(up), p.Dot(back));
+            lo = new Vector3(Math.Min(lo.X, seen.X), Math.Min(lo.Y, seen.Y), Math.Min(lo.Z, seen.Z));
+            hi = new Vector3(Math.Max(hi.X, seen.X), Math.Max(hi.Y, seen.Y), Math.Max(hi.Z, seen.Z));
+        }
+        if (lo.X > hi.X) return Boxed(model);
+        float scale = Fill / Math.Max(0.001f, Math.Max(hi.X - lo.X, hi.Y - lo.Y));
+        Vector3 mid = (lo + hi) * 0.5f;
+        var holder = new Node3D { Rotation = new Vector3(0f, yaw, 0f), Scale = Vector3.One * scale };
+        holder.Position = -(right * mid.X + up * mid.Y + back * mid.Z) * scale;
+        holder.AddChild(model);
+        return holder;
+    }
+
+    /// <summary>Every corner of every mesh's bounds in a model, in the model's own frame.</summary>
+    static IEnumerable<Vector3> Corners(Node node, Transform3D parent)
+    {
+        Transform3D t = node is Node3D d ? parent * d.Transform : parent;
+        if (node is MeshInstance3D m && m.Mesh != null)
+        {
+            Aabb a = m.Mesh.GetAabb();
+            for (int i = 0; i < 8; i++)
+                yield return t * (a.Position + a.Size * new Vector3(i & 1, (i >> 1) & 1, (i >> 2) & 1));
+        }
+        foreach (Node c in node.GetChildren())
+            foreach (Vector3 v in Corners(c, t)) yield return v;
     }
 
     static Aabb BoundsOf(Node3D root)
@@ -154,13 +238,27 @@ public partial class ItemIcons : Node
 
     // ---- Models ------------------------------------------------------------------------------
 
-    Node3D ModelOf(ItemDef item)
+    /// <summary>The model an item's icon shows; <paramref name="origin"/> is set when it is a held, driven or placed model.</summary>
+    Node3D ModelOf(ItemDef item, out ModelSource? origin)
     {
+        origin = null;
         try
         {
             if (item.Id.StartsWith("piece:", StringComparison.Ordinal)) return PieceModel(item.Id[6..]);
             if (item.Id == "deco-block") return DecoBlockModel();
             if (item.IsBlock && _blocks != null && _blocks.TryGetType(item.BlockId, out BlockType type)) return BlockModel(item, type);
+            // Anything with a real model of its own (the one in the hands, on the road or on the ground) is drawn from that.
+            if (ItemModels.Build(item) is ItemModel own)
+            {
+                origin = own.Source;
+                // The icon has its own light: a model's lamps would only wash it out.
+                foreach (Node n in Walk(own.Root).Where(n => n is Light3D).ToList())
+                {
+                    n.GetParent().RemoveChild(n);
+                    n.Free();
+                }
+                return own.Root;
+            }
             return Simple(item);
         }
         catch (Exception e)

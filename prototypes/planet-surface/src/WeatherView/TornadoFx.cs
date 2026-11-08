@@ -22,7 +22,8 @@ public partial class TornadoFx : Node3D
     GpuParticles3D _debris, _dust;
     Vector3 _lastPosition;
     Vector2 _lean;
-    MeshInstance3D _outerMesh, _innerMesh;
+    MeshInstance3D _outerMesh, _innerMesh, _wall;
+    ShaderMaterial _wallMaterial;
 
     public override void _Ready()
     {
@@ -32,6 +33,14 @@ public partial class TornadoFx : Node3D
         _inner = FunnelMaterial(funnel, spin: 1.6f, opacity: 0.95f, new Color("261c14"), new Color("3c3e3a"));
         AddChild(_outerMesh = new MeshInstance3D { Mesh = Lathe(height, 1f), MaterialOverride = _outer, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
         AddChild(_innerMesh = new MeshInstance3D { Mesh = Lathe(height, 0.62f), MaterialOverride = _inner, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
+
+        _wallMaterial = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/wallcloud.gdshader") };
+        _wallMaterial.SetShaderParameter("noise_tex", Fx.CloudNoise);
+        AddChild(_wall = new MeshInstance3D
+        {
+            Name = "WallCloud", Mesh = new SphereMesh { Radius = 1f, Height = 2f, RadialSegments = 32, Rings = 16 }, MaterialOverride = _wallMaterial,
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, Visible = false,
+        });
 
         Shader orbit = GD.Load<Shader>("res://shaders/vortex_particles.gdshader");
         _debrisProcess = new ShaderMaterial { Shader = orbit };
@@ -99,8 +108,12 @@ public partial class TornadoFx : Node3D
         var scale = new Vector3(wide, k, wide);
         _outerMesh.Scale = scale;
         _innerMesh.Scale = scale;
+        // Its top enters the storm's own lowered base: the sky draws that bulge, so there is no separate cloud here.
+        _wall.Visible = false;
         // The lean and snake are in the funnel's own metres: they stretch with it, so its top still sits over the tower.
     }
+
+    static float Fract(float x) => x - MathF.Floor(x);
 
     /// <summary>Called every physics tick, so the node rides physics interpolation like everything else.</summary>
     public void Follow(Tornado t)
@@ -114,8 +127,24 @@ public partial class TornadoFx : Node3D
 
         float strength = t.Strength;
         float formation = t.Formation;
+        // Each tornado rolls its own shape; it is a thin rope as it forms, matures into that shape and dies as a contorted rope.
+        float roll = Fract(MathF.Sin(t.Id * 12.9898f) * 43758.5453f);
+        // Some are smooth pale cones instead of ragged ones: wide at the top, a clean curving taper, bright in side light.
+        float clean = Fract(MathF.Sin(t.Id * 7.31f + 1.3f) * 9631.7f) > 0.55f ? 1f : 0f;
+        if (clean > 0f) roll = 0.6f + 0.3f * roll;
+        float form = Math.Clamp((formation - 0.5f) / 0.5f, 0f, 1f);
+        float shape = Mathf.Lerp(0f, roll, form * form * (3f - 2f * form));
+        float decay = t.Dissipating ? 1f - strength : 0f;
+        shape = Mathf.Lerp(shape, 0f, decay);
+        float seed = t.Id * 1.7f;
+        var bow = new Vector2(MathF.Cos(t.Id * 2.1f), MathF.Sin(t.Id * 2.1f)) * Mathf.Lerp(110f, 30f, shape);
         foreach (ShaderMaterial m in new[] { _outer, _inner })
         {
+            m.SetShaderParameter("shape", shape);
+            m.SetShaderParameter("clean", clean * (1f - decay));
+            m.SetShaderParameter("seed", seed);
+            m.SetShaderParameter("decay", decay);
+            m.SetShaderParameter("bow", bow);
             m.SetShaderParameter("formation", Mathf.Lerp(0.15f, 1f, formation));
             m.SetShaderParameter("lean", _lean);
         }
@@ -133,7 +162,7 @@ public partial class TornadoFx : Node3D
     /// </summary>
     static ArrayMesh Lathe(float height, float scale)
     {
-        const int rings = 28, sides = 28;
+        const int rings = 72, sides = 36;
         var vertices = new Vector3[(rings + 1) * (sides + 1)];
         var normals = new Vector3[vertices.Length];
         var uvs = new Vector2[vertices.Length];

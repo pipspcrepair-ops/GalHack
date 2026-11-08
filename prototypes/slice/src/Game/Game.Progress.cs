@@ -21,13 +21,8 @@ public partial class Game
         Tool.OreDug += cells => Progress.Earn(cells * xp.OreCell, "ore");
         Tool.PlantCut += () => Progress.Earn(xp.Plant, "plant cut");
         Builder.BlockPlaced += (v, small) => { Stats.Placed++; Progress.Earn(small ? xp.BlockSmall : xp.BlockLarge, "building"); };
-        Progress.Earned += (n, why) => Visor.Xp(n, why);
-        Progress.LevelledUp += (level, points) =>
-        {
-            Visor.LevelUp(level, points);
-            Say($"LEVEL {level}: +{points} unlock point{(points == 1 ? "" : "s")} (Tab, Tech)", Tones.Good);
-        };
-        Progress.Unlocked += n => Say($"Unlocked: {n.Name}", Tones.Good);
+        // Experience counts quietly (the Tab menu shows it); only a new level gets its banner.
+        Progress.LevelledUp += (level, points) => Visor.LevelUp(level, points);
     }
 
     /// <summary>Exploring experience, a few times a second: deposits you come near, species you meet.</summary>

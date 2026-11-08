@@ -34,15 +34,25 @@ public partial class SpitView : Node3D
         if (_blobs == null) return;
         MultiMesh mm = _blobs.Multimesh;
         int n = 0;
+        float t = Time.GetTicksMsec() / 1000f;
         foreach (Gob g in sim.Gobs)
         {
             if (n / DropsEach >= MostGobs) break;
+            // A Husk's maggots: pale grubs strung out loose, each one writhing as it flies.
+            bool maggots = g.From?.Species.Spit == SpitKind.Maggots;
             for (int i = 0; i < DropsEach; i++)
             {
-                float back = i * 0.045f;
+                float back = i * (maggots ? 0.06f : 0.045f);
                 float scale = 1f - i * 0.17f;
                 Vector3 at = g.Position - g.Velocity * back + Vector3.Up * 4.5f * back * back;
-                mm.SetInstanceTransform(n, new Transform3D(Basis.Identity.Scaled(Vector3.One * scale), at));
+                Basis b = Basis.Identity.Scaled(Vector3.One * scale);
+                if (maggots)
+                {
+                    float w = t * (9f + i * 1.7f) + i * 2.1f;
+                    at += new Vector3(MathF.Sin(w * 0.7f + i), MathF.Cos(w * 0.5f), MathF.Sin(w * 0.6f + i * 3f)) * 0.06f * i;
+                    b = new Basis(new Vector3(MathF.Sin(i * 1.3f), 1f, MathF.Cos(i * 2.1f)).Normalized(), w) * Basis.FromScale(new Vector3(0.38f, 0.38f, 1.25f) * scale * 0.8f);
+                }
+                mm.SetInstanceTransform(n, new Transform3D(b, at));
                 mm.SetInstanceColor(n, g.Colour);
                 n++;
             }

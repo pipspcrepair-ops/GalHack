@@ -3,9 +3,9 @@
 # A world is whatever its layers add up to, and no generator names a value from here.
 
 zone rim | name on the quiet rim | weight 38 | occ EMP 8
-zone arm | name in the outer arms | weight 34 | is rough | occ SCV 3
-zone inner | name in the inner arms | weight 20 | is rough
-zone core | name near the core | weight 8 | is rough | occ HOL 8 | like theme.wrong_stars*2
+zone arm | name in the outer arms | weight 34 | is rough | occ SCV 3 HSK 3 | like fall.husks_fall*2 presence.husk_nights*2
+zone inner | name in the inner arms | weight 20 | is rough | occ HSK 6 HOL 3 | like fall.husks_fall*4 presence.husk_nights*4 feature.precursor_plates*1.5 feature.vault_field*1.5 hazard.night_swarms*1.5
+zone core | name near the core | weight 8 | is rough | occ HOL 8 HSK 10 | like theme.wrong_stars*2 fall.husks_fall*8 presence.husk_nights*8 feature.precursor_plates*2.5 feature.vault_field*2.5 hazard.night_swarms*2.5 sky.seam*2
 
 type meadow | name a meadow world | was 1 | arch temperate.meadow | zones Z4 | weight 8 | air open | temp mild | water some wet | life mid high | land plains hills river_valleys lake_district coastal_cliffs terraces | settle 0.96 | start yes
 type rainforest | name a rainforest world | was 2 | arch temperate.rainforest | zones Z3 Z4 | weight 7 | air open | temp mild hot | water wet | life high | land hills wetlands karst delta | settle 0.85 | start yes
@@ -1166,7 +1166,7 @@ rule bigport | req port=A,B,C | why needs a big port
 rule living | req people!=none | why needs somebody alive now
 rule settled | req settled=yes | why needs someone to have lived here
 rule faction | req zone!=rim start=no | why the rim has no factions, and start worlds never have a faction holding ground
-rule rough | req start=no | why too hostile for a start world
+rule rough | req sheltered=no | why too hostile for a start world on the rim; a game begun deeper in takes its chances
 rule hollow | soft yes | req zone=inner,core | why the Hollow rises toward the core; a trace of it further out is a rare break
 rule bloom | soft yes | req zone=inner,core | why the Bloom is rare near the rim
 rule deep | soft yes | req zone=inner,core | why the greatest old works lie deep in the galaxy

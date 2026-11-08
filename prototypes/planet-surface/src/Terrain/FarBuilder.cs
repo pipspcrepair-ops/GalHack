@@ -139,7 +139,7 @@ public static class FarBuilder
                 double x = x0 + i * step, z = z0 + j * step;
                 job.Vertices[k] = new Vector3(i * step, h, j * step);
                 job.Normals[k] = normal;
-                job.Colors[k] = GroundColor(source, palette, x, z, h, CliffSlope2(height, s, g, step, gx * gx + gz * gz), river[s], out job.Flags[k]);
+                job.Colors[k] = GroundColor(source, palette, x, z, h, CliffSlope2(height, s, g, step, gx * gx + gz * gz), river[s], out job.Flags[k], step);
                 up[k] = normal.Y;
             }
 
@@ -191,11 +191,11 @@ public static class FarBuilder
     const float CliffFrom = 0.75f;
 
     /// <summary>The same soil-to-rock rule as the voxel source: soil thins out and slides off as slopes steepen.</summary>
-    static Color GroundColor(PlanetTerrainSource source, GroundPalette pal, double x, double z, float h, float slope2, bool inRiver, out Vector2 flags)
+    static Color GroundColor(PlanetTerrainSource source, GroundPalette pal, double x, double z, float h, float slope2, bool inRiver, out Vector2 flags, float spacing = 1f)
     {
         Color c = pal.Natural(x, z, h, source.SoilCover(x, z, slope2), out flags);
         StampSurface made = source.MadeGround(x, z, out float madeWeight, out float wear, roads: false);
-        if (madeWeight > 0f) c = pal.Made(c, made, madeWeight, wear, x, z);
+        if (madeWeight > 0f) c = pal.Made(c, made, madeWeight, wear, x, z, spacing);
         if (inRiver)
         {
             Rgb bed = pal.RiverBed;
@@ -405,8 +405,7 @@ public static class FarBuilder
                 if (Dug(dug, (int)Math.Floor(tree.X), (int)Math.Floor(tree.Z))) continue; // the ground went from under it: gone, as any tree
                 float tx = (float)(tree.X - x0), tz = (float)(tree.Z - z0), treeY = tree.Foot - FloraSolidRules.Sink;
                 Add(tree.Kind, tree.Species, job.Lod > 0 ? -1 : 0, tx, treeY, tz, new Basis(Vector3.Up, tree.Angle).Scaled(new Vector3(tree.Scale, tree.Scale, tree.Scale)), tree.Tint, 0f);
-                if (solids != null && solids.TryMake(tree.Kind, tree.Species, id, new Vector3((float)tree.X, treeY, (float)tree.Z), tree.Scale, tree.Angle, out FloraSolid trunk))
-                    job.Solids.Add(trunk);
+                solids?.MakeAll(tree.Kind, tree.Species, 0, id, new Vector3((float)tree.X, treeY, (float)tree.Z), tree.Scale, tree.Angle, job.Solids);
                 continue;
             }
 
@@ -441,8 +440,15 @@ public static class FarBuilder
             if (pal.DeadZones.Count > 0 && turn < pal.Deadness(x, z)) continue;
             // Pads and their aprons stay clear, and roads, except that grass and shrubs push back
             // through a road nobody has kept up for a century (never a tree: the way stays open).
-            if (source.StampWeight(x, z) > 0f
-                && !(!FloraMeshes.IsLarge(rule.Kind) && shade < 0.4f && source.OnRoad(x, z, out float wear) && wear > 0.6f)) continue;
+            // A park grows back: grass and shrubs always, trees once nobody has kept it.
+            // Round a place the growth thins out into its made ground instead of stopping in a line: trees come in
+            // across the outer blend, shrubs and rocks further, ever fewer the nearer the apron.
+            float built = source.Built(x, z, out bool onRoad);
+            bool large = FloraMeshes.IsLarge(rule.Kind);
+            if ((onRoad || built > 0f)
+                && !(onRoad && built <= 0f && !large && shade < 0.4f && source.OnRoad(x, z, out float wear) && wear > 0.6f)
+                && !(source.OnWild(x, z, out float wild) && (!large || wild > 0.7f))
+                && !(!onRoad && built < 1f && Feather(turn) >= Smooth(large ? 0.1f : 0.4f, large ? 0.55f : 0.95f, built))) continue;
 
             // Exact ground under the trunk (the voxel surface), not the coarse grid's.
             int cx = (int)Math.Floor(x), cz = (int)Math.Floor(z);
@@ -472,9 +478,9 @@ public static class FarBuilder
             int variant = plant == null ? 0 : job.Lod > 0 ? -1 : (int)(kin * 977f) % plant.Near.Length;
             Add(rule.Kind, plant, variant, lx, rootY, lz, basis, tint, glow);
 
-            // Trunks and boulders are solid: their colliders, in planet coordinates.
-            if (solids != null && solids.TryMake(rule.Kind, plant, id, new Vector3((float)x, rootY, (float)z), scale, angle, out FloraSolid solid))
-                job.Solids.Add(solid);
+            // Trunks, stalks, pipes, shards and boulders are solid: their colliders, in planet coordinates, round
+            // the parts of the near mesh this one draws (whatever the level of detail draws from here).
+            solids?.MakeAll(rule.Kind, plant, plant == null ? 0 : (int)(kin * 977f) % plant.Near.Length, id, new Vector3((float)x, rootY, (float)z), scale, angle, job.Solids);
         }
         foreach (var (key, list) in buffers) job.Flora.Add(new FloraBatch(key.Kind, key.Plant, key.Variant, list.ToArray(), list.Count / 16));
 
@@ -513,13 +519,16 @@ public static class FarBuilder
         }
     }
 
-    /// <summary>Whether anything built lies under a crown's reach of a point: four spots round its rim.</summary>
+    /// <summary>Whether anything built lies under a crown's reach of a point: four spots round its rim (a road, or a place's ground well in from its blend).</summary>
     static bool CrownOver(PlanetTerrainSource source, GroundPalette pal, double x, double z, float reach)
     {
         double w = pal.Map.WidthMeters, h = pal.Map.HeightMeters;
-        return source.StampWeight(Mathx.WrapX(x + reach, w), z) > 0f || source.StampWeight(Mathx.WrapX(x - reach, w), z) > 0f
-            || source.StampWeight(x, Mathx.Wrap(z + reach, h)) > 0f || source.StampWeight(x, Mathx.Wrap(z - reach, h)) > 0f;
+        bool Over(double px, double pz) => source.Built(px, pz, out bool road) >= 0.5f || road;
+        return Over(Mathx.WrapX(x + reach, w), z) || Over(Mathx.WrapX(x - reach, w), z) || Over(x, Mathx.Wrap(z + reach, h)) || Over(x, Mathx.Wrap(z - reach, h));
     }
+
+    /// <summary>A plant's own roll for how far it may come into a place's ground, unrelated to its other rolls.</summary>
+    internal static float Feather(float roll) => roll * 7.31f % 1f;
 
     /// <summary>Whether the ground has been dug under a root or beside it.</summary>
     internal static bool Dug(IReadOnlySet<long> dug, int x, int z) => dug != null && (dug.Contains(Key(x, z)) || dug.Contains(Key(x + 1, z)) || dug.Contains(Key(x, z + 1)) || dug.Contains(Key(x - 1, z)) || dug.Contains(Key(x, z - 1)));
@@ -539,7 +548,7 @@ public static class FarBuilder
     /// <summary>A canonical column (x, z in metres) as a set key.</summary>
     public static long Key(int x, int z) => (long)x << 32 | (uint)z;
 
-    static float Smooth(float e0, float e1, float x)
+    internal static float Smooth(float e0, float e1, float x)
     {
         float t = Math.Clamp((x - e0) / (e1 - e0), 0f, 1f);
         return t * t * (3f - 2f * t);

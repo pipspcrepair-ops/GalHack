@@ -185,8 +185,9 @@ public partial class PlayerTest : Node
             int want = raw[ore] + 6;
             if (want <= 6) continue;
             int cells = _game.Tool.OreCells, before = _game.Pack[ore], rock = _game.Tool.TellOre;
-            foreach (int x in _play.Gather(kind, want)) yield return x;
-            GD.Print($"  {ore}: {_game.Pack[ore]}/{want} ({_game.Tool.OreCells - cells} cells), level {_game.Progress.Level}, {_game.Progress.Xp} XP");
+            int ticks = 0;
+            foreach (int x in _play.Gather(kind, want)) { ticks++; yield return x; }
+            GD.Print($"  {ore}: {_game.Pack[ore]}/{want} ({_game.Tool.OreCells - cells} cells) in {ticks / 60f:F0} s of play with the walk, level {_game.Progress.Level}, {_game.Progress.Xp} XP");
             if (firstCells < 0)
             {
                 firstCells = _game.Tool.OreCells - cells;

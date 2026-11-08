@@ -61,6 +61,38 @@ public partial class SkyRig : Node3D
     public Godot.Environment Environment { get; private set; }
     public DirectionalLight3D Sun { get; private set; }
     public DirectionalLight3D NightLight { get; private set; }
+
+    /// <summary>
+    /// A small turn of the light that casts the shadows off the sun's true way (a game sets it, for
+    /// something wrong nearby): the sun stays where it truly is in the sky, drawn by a light of its
+    /// own that lights nothing, and only the shadows fall a little wrong. Identity is no turn.
+    /// </summary>
+    public Basis ShadowSkew = Basis.Identity;
+    DirectionalLight3D _skySun;
+
+    void Skew()
+    {
+        if (ShadowSkew.IsEqualApprox(Basis.Identity))
+        {
+            if (_skySun is { Visible: true })
+            {
+                _skySun.Visible = false;
+                Sun.SkyMode = DirectionalLight3D.SkyModeEnum.LightAndSky;
+            }
+            return;
+        }
+        if (_skySun == null)
+        {
+            _skySun = new DirectionalLight3D { Name = "SkySun", SkyMode = DirectionalLight3D.SkyModeEnum.SkyOnly, ShadowEnabled = false };
+            AddChild(_skySun);
+        }
+        _skySun.Visible = true;
+        _skySun.GlobalBasis = Sun.GlobalBasis;
+        _skySun.LightEnergy = Sun.LightEnergy;
+        _skySun.LightColor = Sun.LightColor;
+        Sun.SkyMode = DirectionalLight3D.SkyModeEnum.LightOnly;
+        Sun.GlobalBasis = ShadowSkew * Sun.GlobalBasis;
+    }
     public Vector3 ToSun { get; private set; } = Vector3.Up;
     public float Daylight { get; private set; } = 1f;
     public AtmosphereState Air { get; private set; }
@@ -248,10 +280,20 @@ public partial class SkyRig : Node3D
     }
 
     /// <summary>The storm towers to draw: (x, z, radius, strength) in the frame, up to four.</summary>
-    public void SetCells(Vector4[] cells, int count)
+    public void SetCells(Vector4[] cells, int count, float[] funnels = null)
     {
+        _sky.SetShaderParameter("tower_wall", funnels ?? new float[4]);
         _sky.SetShaderParameter("tower", cells);
         _sky.SetShaderParameter("tower_count", count);
+    }
+
+    /// <summary>Hands a rain shaft the sky's own cloud-base inputs, so its top meets the underside the sky draws.</summary>
+    public void ShareCloudBase(ShaderMaterial m)
+    {
+        m.SetShaderParameter("cloud_noise", _noise);
+        m.SetShaderParameter("cloud_scale", _sky.GetShaderParameter("cloud_scale"));
+        m.SetShaderParameter("cloud_drift", _sky.GetShaderParameter("cloud_drift"));
+        m.SetShaderParameter("cloud_base", _sky.GetShaderParameter("cloud_base"));
     }
 
     /// <summary>Screenshots: 1 shows cloud coverage, 2 cloud colour, 0 the normal sky.</summary>
@@ -265,6 +307,7 @@ public partial class SkyRig : Node3D
         Air = air;
         RunClock(delta);
         _cloudDrift += wind * (float)delta * 1.8f;
+        if (wind.LengthSquared() > 0.01f) _sky.SetShaderParameter("storm_wind", wind.Normalized());
         Apply();
     }
 
@@ -321,6 +364,7 @@ public partial class SkyRig : Node3D
         ToSun = toSun;
         StarInField = (V(m.Position(m.Star, days) - m.Position(m.Home, days))).Normalized();
         Sun.LookAt(Sun.GlobalPosition - toSun, MathF.Abs(toSun.Y) > 0.99f ? Vector3.Forward : Vector3.Up);
+        Skew();
         _sky.SetShaderParameter("star_turn", Stars.Field * SkyToStars);
         _sky.SetShaderParameter("sky_to_globe", _skyToGlobe);
         // The eye against the sphere the ring stands round, at the height it really is over it.
@@ -473,7 +517,9 @@ public partial class SkyRig : Node3D
         float layer = 1f - Smooth(0f, 0.3f, inside);
         Environment.FogHeight = top;
         Environment.FogHeightDensity = valley * 0.09f * layer;
-        Environment.FogDensity = air.FogDensity + valley * 0.004f * (1f - layer);
+        // The haze lies low: from high up the far land is seen through less of it (Atmosphere.FogFrom).
+        float over = camera == null ? 0f : camera.GlobalPosition.Y - floor;
+        Environment.FogDensity = Atmosphere.FogFrom(air.FogDensity, over) + valley * 0.004f * (1f - layer);
     }
 
     /// <summary>

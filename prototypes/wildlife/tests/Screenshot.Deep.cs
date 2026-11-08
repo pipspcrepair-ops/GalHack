@@ -19,7 +19,7 @@ public partial class Screenshot
 {
     Showroom _room;
 
-    bool IsDeep(string view) => view.StartsWith("deep-") || view is "mutation" or "domestic";
+    bool IsDeep(string view) => view.StartsWith("deep-") || view is "mutation" or "domestic" or "husk-den";
 
     /// <summary>A point in the open near <paramref name="around"/> with a clear view of <paramref name="at"/>.</summary>
     static Vector3 OpenSpot(ISolidSpace s, Vector3 around, Vector3 at, float radius, float height, bool sameFloor = false)
@@ -49,6 +49,7 @@ public partial class Screenshot
         r.Hud.ShowCards = false;
         r.Hud.ClearCards();
         r.Player.Muzzle.Visible = false;
+        if (DenSetup()) return;
         switch (_view)
         {
             case "deep-ceiling":

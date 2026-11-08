@@ -62,7 +62,7 @@ public sealed partial class Staging
         foreach (int x in _drive.DragWidget($"bag:{Play.BagSlotOf("biomass")}", "bar:4")) yield return x;
         var target = Enum.Parse<MenuTab>(_args.TryGetValue("tab", out string t) ? t : "you", true);
         if (target != MenuTab.You) foreach (int x in Play.OpenMenu(target)) yield return x;
-        if (target == MenuTab.Tech) foreach (int x in _drive.ClickWidget($"tech:tab:{(_args.TryGetValue("techtab", out string tt) ? tt : "base")}")) yield return x;
+        if (target == MenuTab.Tech) foreach (int x in _drive.ClickWidget($"tech:tab:{(_args.TryGetValue("techtab", out string tt) ? tt : "large")}")) yield return x;
         // --scroll=end: the tech tree scrolled to its far corner (a screenshot of the long tabs' far end).
         if (target == MenuTab.Tech && _args.TryGetValue("scroll", out string sc) && sc == "end") _game.Menu.Root.Tech.ColOff = _game.Menu.Root.Tech.RowOff = 999;
         if (target == MenuTab.Tech && _args.TryGetValue("coloff", out string co) && int.TryParse(co, out int cols)) _game.Menu.Root.Tech.ColOff = cols;

@@ -315,6 +315,10 @@ public static class InfraViews
             Add("town-low", bx, bz, c + 45f, town.CenterX, town.CenterZ, c);
             double hx = town.CenterX + (town.AlongX * 0.6 + town.AlongZ * 0.8) * 520, hz = town.CenterZ + (town.AlongZ * 0.6 - town.AlongX * 0.8) * 520;
             Add("town-high", hx, hz, c + 400f, town.CenterX, town.CenterZ, c);
+            // A corner of the grid from above, where the back street turns into a cross street.
+            double sx0 = -town.AlongZ, sz0 = town.AlongX;
+            double kx = town.CenterX + town.AlongX * town.Block + sx0 * town.BackSide * town.Arm, kz = town.CenterZ + town.AlongZ * town.Block + sz0 * town.BackSide * town.Arm;
+            Add("town-corner", kx - town.AlongX * 14 - sx0 * town.BackSide * 14, kz - town.AlongZ * 14 - sz0 * town.BackSide * 14, G(kx, kz) + 55f, kx, kz, G(kx, kz));
         }
         else GD.Print("ROADS: no start town on this world");
         // A ground stretch that bends and runs off the map's axes, a little way from the town.
@@ -347,6 +351,29 @@ public static class InfraViews
             Add("road-high", best.X[at] - dx * 380 + dz * 300, best.Z[at] - dz * 380 - dx * 300, best.Y[at] + 400f, best.X[at], best.Z[at], best.Y[at]);
         }
         else GD.Print("ROADS: no country road found");
+        // A paved road out in the country, from its own deck: its joints, cracks, patches and holes up close.
+        InfraRoute paved = null;
+        int pavedAt = 0;
+        double pavedAway = double.MaxValue;
+        foreach (InfraRoute r in w.Infra.Routes.Where(r => r.Kind is RouteKind.Road or RouteKind.Highway && (w.StartTown == null || !w.StartTown.Streets.Contains(r))))
+            for (int i = 20; i + 20 < r.Count; i += 4)
+            {
+                if (r.Span[i - 20] != RoadSpan.Ground || r.Span[i + 19] != RoadSpan.Ground) continue;
+                double d = Math.Sqrt(Math.Pow(Mathx.WrapDelta(r.X[i] - ox, w.Width), 2) + Math.Pow(Mathx.WrapDelta(r.Z[i] - oz, w.Height), 2));
+                if (d < 400 || d >= pavedAway) continue;
+                // Out on its own, not by a place (whose pad would fill the view).
+                if (w.Pois.Any(q => Math.Sqrt(Math.Pow(Mathx.WrapDelta(q.Center.X - r.X[i], w.Width), 2) + Math.Pow(Mathx.WrapDelta(q.Center.Z - r.Z[i], w.Height), 2)) < Math.Max(q.Stamp.ReachX, q.Stamp.ReachZ) + 80)) continue;
+                pavedAway = d;
+                paved = r;
+                pavedAt = i;
+            }
+        if (paved != null)
+        {
+            GD.Print($"ROADS: paved {paved.Kind} {paved.Id} ({paved.Surface}, wear {paved.Wear:F2}) at {paved.X[pavedAt]:F0}, {paved.Z[pavedAt]:F0}");
+            double dx = paved.X[pavedAt + 6] - paved.X[pavedAt - 6], dz = paved.Z[pavedAt + 6] - paved.Z[pavedAt - 6], len = Math.Max(1e-6, Math.Sqrt(dx * dx + dz * dz));
+            double sx = paved.X[pavedAt] + dz / len * paved.HalfWidth * 0.4, sz = paved.Z[pavedAt] - dx / len * paved.HalfWidth * 0.4;
+            Add("paved-ground", sx, sz, paved.Y[pavedAt] + 1.7f, paved.X[pavedAt + 10], paved.Z[pavedAt + 10], paved.Y[pavedAt + 10] - 0.6f);
+        }
         // The tightest bend on a paved road near the landing, close up from above its inside.
         InfraRoute bent = null;
         int bentAt = 0;
@@ -388,6 +415,7 @@ public static class InfraViews
         {
             GD.Print($"ROADS: junction of {jr.Kind} {jr.Id} at {jr.X[ji]:F0}, {jr.Z[ji]:F0}");
             Add("junction-low", jr.X[ji] + 60, jr.Z[ji] + 45, jr.Y[ji] + 40f, jr.X[ji], jr.Z[ji], jr.Y[ji]);
+            Add("junction-close", jr.X[ji] + 10, jr.Z[ji] + 8, jr.Y[ji] + 38f, jr.X[ji], jr.Z[ji], jr.Y[ji]);
             Add("junction-high", jr.X[ji] + 330, jr.Z[ji] + 250, jr.Y[ji] + 400f, jr.X[ji], jr.Z[ji], jr.Y[ji]);
         }
         else GD.Print("ROADS: no junction found");

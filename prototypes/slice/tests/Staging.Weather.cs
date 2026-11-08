@@ -34,7 +34,17 @@ public partial class Staging
         sim.ClearTornadoes();
         Tornado t = sim.SpawnTornado(eye + new Vector3(dist, 0f, 0f), eye);
         t.Homing = false;
-        foreach (int x in _drive.Wait(240)) yield return x;
+        Hurry(6);
+        string stage = _args.GetValueOrDefault("stage", "mature");
+        for (int i = 0; i < 60 * 60 && (stage == "forming" ? t.Formation < 0.55f : !t.Touchdown); i++) yield return 0; // until it is down
+        if (stage == "decay")
+        {
+            t.Dissipate();
+            for (int i = 0; i < 60 * 60 && t.Strength > 0.45f; i++) yield return 0;
+        }
+        Hurry(1);
+        GD.Print($"(funnel touchdown {t.Touchdown}, formation {t.Formation:F2})");
+        foreach (int x in _drive.Wait(60)) yield return x;
         float pitch = (float)Num("lookup", 0.35);
         Vector3 look = new Vector3(1f, MathF.Tan(pitch) , 0f).Normalized();
         _game.FixedCamera = new Transform3D(Basis.LookingAt(look, Vector3.Up), eye);
@@ -44,9 +54,101 @@ public partial class Staging
         if (Num("hide", 0) == 3) foreach (Node n in _game.Zone.Sky.GetChildren()) GD.Print($"SKYKID {n.Name} {n.GetType().Name} {(n as Node3D)?.Visible}");
         foreach (int x in _drive.Wait(5)) yield return x;
         GD.Print($"funnel at {t.Position}, formation {t.Formation:F2}");
+        foreach (Tornado o in sim.Tornadoes) GD.Print($"(tornado {o.Id} {new Vector2(o.Position.X - eye.X, o.Position.Z - eye.Z).Length():F0} m from the camera, touchdown {o.Touchdown})");
         foreach (Node n in _game.GetTree().Root.FindChildren("*", "MeshInstance3D", true, false))
             if (n is MeshInstance3D m && m.IsVisibleInTree() && m.Mesh is BoxMesh or CylinderMesh && m.GetAabb().Size.Length() > 2f)
                 GD.Print($"BOX {m.GetPath()} {m.Mesh.GetType().Name} rel {m.GlobalPosition - eye} size {m.GetAabb().Size * m.GlobalTransform.Basis.Scale}");
+    }
+
+    /// <summary>A storm cell from outside (--under=1: from right under it), looking at the strongest one. --weather picks the strength.</summary>
+    IEnumerable<int> StormShot()
+    {
+        _game.Zone.Sky.Paused = true;
+        _game.Zone.Sky.TimeOfDay = Num("time", 0.5);
+        _game.Visor.Visible = false;
+        _game.Hands.Visible = false;
+        var sim = _game.Zone.Weather.Sim;
+        sim.Snap(Enum.Parse<WeatherKind>(_args.GetValueOrDefault("weather", "Thunderstorm")));
+        _game.Zone.Weather.Sim.ClearTornadoes();
+        Hurry(6);
+        for (int i = 0; i < 60 * 25; i++) yield return 0; // the cells grow
+        Hurry(1);
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        Vector3 start = Clearing(_game.Survivor.WorldFeet);
+        StormCell cell = sim.Cells.OrderByDescending(c => c.Strength).FirstOrDefault();
+        if (cell == null) { GD.Print("(no cell)"); yield break; }
+        float far = Num("under", 0) == 1 ? 0f : (float)Num("dist", 3000);
+        Vector3 toward = new Vector3(cell.Position.X - start.X, 0f, cell.Position.Z - start.Z);
+        float away = toward.Length();
+        Vector3 dir = toward.Normalized().Rotated(Vector3.Up, Mathf.DegToRad((float)Num("bearing", 0)));
+        Vector3 eye = Num("under", 0) == 1 ? new Vector3(cell.Position.X, 0f, cell.Position.Z) + dir * 150f : new Vector3(cell.Position.X, 0f, cell.Position.Z) - dir * far;
+        float groundY = _game.Zone.GroundAt(eye.X, eye.Z).Y;
+        eye.Y = MathF.Max(MathF.Max(groundY, start.Y + 150f), 0f) + (float)Num("up", 40); // well clear of any hill
+        GD.Print($"(storm: strength {cell.Strength:F2}, radius {cell.Radius:F0}, camera {(new Vector2(eye.X - cell.Position.X, eye.Z - cell.Position.Z)).Length():F0} m from it, {eye.Y - groundY:F0} m over the ground; start {away:F0} m from it)");
+        Vector3 look = (dir * MathF.Cos((float)Num("lookup", 0.15)) + Vector3.Up * MathF.Sin((float)Num("lookup", 0.15)));
+        _game.FixedCamera = new Transform3D(Basis.LookingAt(look, Vector3.Up), eye);
+        foreach (int x in _drive.Wait(90)) yield return x;
+    }
+
+    /// <summary>Prints the cirrus and stratus weights over 40 rolled world and weather pairs.</summary>
+    IEnumerable<int> CirrusLog()
+    {
+        var rng = new Random();
+        WeatherData data = _game.Zone.Data.Weather;
+        string[] ids = { "temperate", "arid", "ice", "storm", "swamp", "ocean", "lava" };
+        var kinds = new[] { WeatherKind.Clear, WeatherKind.Clear, WeatherKind.Clear, WeatherKind.Clouds, WeatherKind.Clouds, WeatherKind.Clouds, WeatherKind.Clouds, WeatherKind.Rain, WeatherKind.Rain, WeatherKind.Rain, WeatherKind.Fog, WeatherKind.Snow, WeatherKind.Thunderstorm, WeatherKind.DustStorm, WeatherKind.Monsoon };
+        var cir = new List<float>();
+        for (int i = 0; i < 40; i++)
+        {
+            var arch = (Planets.Gen.Archetype)rng.Next(5);
+            var sky = PlanetSurface.Skies.SkySystem.For(Planets.Gen.PlanetSpec.Roll((ulong)rng.Next(), arch, 0));
+            var sim = new WeatherSim(data, ids[rng.Next(ids.Length)], (ulong)rng.Next());
+            WeatherKind k = kinds[rng.Next(kinds.Length)];
+            sim.Snap(k);
+            var a = PlanetSurface.Skies.Atmosphere.Compute(sky, sim.Current, 0.8f);
+            cir.Add(a.Cirrus);
+            GD.Print($"CIRRUS {i,2} {arch,-9} {sky.Air,-10} {k,-12} wind {sim.Current.WindSpeed,4:F1} temp {sim.Current.Temperature,5:F1} cover {a.CloudCover:F2} cirrus {a.Cirrus:F2} stratus {a.Stratus:F2}");
+        }
+        cir.Sort();
+        GD.Print($"CIRRUS spread: <0.1 {cir.Count(c => c < 0.1f)}, 0.1-0.3 {cir.Count(c => c >= 0.1f && c < 0.3f)}, 0.3-0.6 {cir.Count(c => c >= 0.3f && c < 0.6f)}, >=0.6 {cir.Count(c => c >= 0.6f)}; median {cir[20]:F2}");
+        yield return 0;
+    }
+
+    /// <summary>The sky at ground level: --weather, level (--lookup 0) and 30 degrees up, for the cloud ceiling.</summary>
+    IEnumerable<int> SkyLevel()
+    {
+        _game.Zone.Sky.Paused = true;
+        _game.Zone.Sky.TimeOfDay = Num("time", 0.5);
+        _game.Visor.Visible = false;
+        _game.Hands.Visible = false;
+        _game.Zone.Weather.Sim.Snap(Enum.Parse<WeatherKind>(_args.GetValueOrDefault("weather", "Clouds")));
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        Vector3 eye = Clearing(_game.Survivor.WorldFeet);
+        float groundY = _game.Zone.GroundAt(eye.X, eye.Z).Y;
+        eye.Y = MathF.Max(eye.Y, groundY) + (float)Num("up", 1.6);
+        GD.Print($"(sky camera {eye.Y - groundY:F1} m over the ground, moved out of the start bunker)");
+        foreach (float deg in new[] { 0f, 30f })
+        {
+            Vector3 look = new Vector3(1f, MathF.Tan(Mathf.DegToRad(deg)), 0f).Normalized();
+            _game.FixedCamera = new Transform3D(Basis.LookingAt(look, Vector3.Up), eye);
+            foreach (int x in _drive.Wait(40)) yield return x;
+            Snap($"up{deg:0}");
+        }
+        // Horizon check: no hard horizontal cloud edge, nor a bright gap under a sheet, in the sky just above the land.
+        Vector3 level = new Vector3(1f, MathF.Tan(Mathf.DegToRad(6f)), 0f).Normalized();
+        foreach (float yaw in new[] { 0f, 90f, 180f, 270f })
+        {
+            Vector3 dir = level.Rotated(Vector3.Up, Mathf.DegToRad(yaw));
+            _game.FixedCamera = new Transform3D(Basis.LookingAt(dir, Vector3.Up), eye);
+            foreach (int x in _drive.Wait(30)) yield return x;
+            Image img = _game.GetViewport().GetTexture().GetImage();
+            int w = img.GetWidth(), h = img.GetHeight(), r0 = (int)(h * 0.12f), r1 = (int)(h * 0.5f);
+            float worst = 0f; int worstRow = 0;
+            float Row(int y) { float s = 0; for (int xx = 0; xx < w; xx += 8) { Color c = img.GetPixel(xx, y); s += 0.3f * c.R + 0.59f * c.G + 0.11f * c.B; } return s / (w / 8); }
+            float prev = Row(r0);
+            for (int y = r0 + 2; y < r1; y += 2) { float cur = Row(y); if (MathF.Abs(cur - prev) > worst) { worst = MathF.Abs(cur - prev); worstRow = y; } prev = cur; }
+            GD.Print($"HORIZON CHECK yaw {yaw:0}: biggest step between sky rows {worst:F3} at row {worstRow} of {h} {(worst > 0.04f ? "FAIL" : "ok")}");
+        }
     }
 
     /// <summary>Stands in a monsoon and prints the frame's cost, with the rain, over a few hundred drawn frames.</summary>
@@ -190,14 +292,84 @@ public partial class Staging
         sky.Snap(_args.TryGetValue("kind", out string kind) ? Enum.Parse<WeatherKind>(kind) : WeatherKind.Thunderstorm);
         _game.Visor.Visible = false;
         _game.Hands.Visible = false;
-        Vector3 hill = Hilltop(_game.Survivor.WorldFeet, 300f);
+        bool ridge = Num("ridge", 0) != 0, slope = Num("slope", 0) != 0;
+        Vector3 hill = ridge ? _game.Survivor.WorldFeet : Num("clear", 0) != 0 ? Clearing(_game.Survivor.WorldFeet) : Hilltop(_game.Survivor.WorldFeet, 300f);
         _game.Survivor.PlaceOutside(hill.ToNumerics());
         foreach (int x in _drive.UntilSettled()) yield return x;
         sky.ClearCells();
         float ang = (float)Num("ang", 0) * Mathf.Pi / 180f;
         Vector3 toward = new Vector3(1f, 0f, 0.35f).Normalized().Rotated(Vector3.Up, ang);
-        var cell = sky.AddCell(hill + toward * (float)Num("off", 1500), 1f);
-        Vector3 eye = hill + Vector3.Up * 16f;
+        float off = (float)Num("off", 1500);
+        float eyeUp = ridge ? 1.7f : Num("clear", 0) != 0 ? 2f : (float)Num("up", 16);
+        if (ridge)
+        {
+            // Stand 350 m short of the highest hill about, on its lowest side, and put the cell a kilometre behind it.
+            Vector3 top = Hilltop(_game.Survivor.WorldFeet, 900f);
+            float low = -1f;
+            for (int k = 0; k < 24; k++)
+            {
+                Vector3 dir = Vector3.Right.Rotated(Vector3.Up, k * Mathf.Tau / 24f);
+                Vector3 foot = _game.Zone.GroundAt(top.X - dir.X * 350f, top.Z - dir.Z * 350f);
+                if (foot.Y < 3f || _game.Zone.Water.LiquidAt(foot.X, foot.Z, out _) || _game.Zone.Streamer.SolidsNear(foot, 12f).Any()) continue;
+                float rise = top.Y - foot.Y;
+                if (rise > low) { low = rise; toward = dir; }
+            }
+            hill = _game.Zone.GroundAt(top.X - toward.X * 350f, top.Z - toward.Z * 350f);
+            _game.Survivor.PlaceOutside(hill.ToNumerics());
+            foreach (int x in _drive.UntilSettled()) yield return x;
+            hill = _game.Zone.GroundAt(hill.X, hill.Z);
+            off = 1350f;
+            GD.Print($"staging: hill {low:F0} m high between camera and cell");
+        }
+        if (slope)
+        {
+            // Ridge: the direction with the tallest rise to a ridge 200 m or more out, the cell a kilometre past it.
+            // Slope: the direction whose cell ground is steepest.
+            float best = -1f;
+            for (int k = 0; k < 24; k++)
+            {
+                Vector3 dir = Vector3.Right.Rotated(Vector3.Up, k * Mathf.Tau / 24f);
+                float score;
+                float at = off;
+                if (ridge)
+                {
+                    float rise = 0f, where = 300f;
+                    for (float d = 200f; d <= 800f; d += 25f)
+                    {
+                        float r = _game.Zone.GroundAt(hill.X + dir.X * d, hill.Z + dir.Z * d).Y - hill.Y - 1.7f;
+                        if (r > rise) { rise = r; where = d; }
+                    }
+                    score = rise; at = where + 1000f;
+                }
+                else
+                {
+                    Vector3 c = hill + dir * off;
+                    float s = 0f;
+                    for (float d = -150f; d <= 150f; d += 50f) s += MathF.Abs(_game.Zone.GroundAt(c.X + dir.X * d, c.Z + dir.Z * d).Y - _game.Zone.GroundAt(c.X, c.Z).Y);
+                    score = s;
+                }
+                if (score > best) { best = score; toward = dir; off = at; }
+            }
+            GD.Print($"staging: {(ridge ? "ridge rise" : "slope relief")} {best:F0} m, cell {off:F0} m out");
+        }
+        var cell = sky.AddCell(_game.Zone.GroundAt(hill.X + toward.X * off, hill.Z + toward.Z * off), 1f);
+        Vector3 eye = hill + Vector3.Up * eyeUp;
+        if (Num("mound", 0) != 0)
+        {
+            // A smooth green hill (a flattened ball) in front of the cell, or under it so the shaft stands on a slope:
+            // the same depth test as terrain, with a known shape. Never in a shipped scene.
+            bool under = Num("mound", 0) == 2;
+            float dist = under ? off : 450f, wide = under ? 260f : 380f, tall = under ? 110f : 95f;
+            Vector3 c = _game.Zone.GroundAt(hill.X + toward.X * dist, hill.Z + toward.Z * dist);
+            if (under) c = new Vector3(c.X, c.Y - 20f, c.Z);
+            var ball = new MeshInstance3D
+            {
+                Mesh = new SphereMesh { Radius = 1f, Height = 2f, RadialSegments = 48, Rings = 24 },
+                MaterialOverride = new StandardMaterial3D { AlbedoColor = new Color(0.32f, 0.5f, 0.2f), Roughness = 1f },
+                GlobalTransform = new Transform3D(Basis.Identity.Scaled(new Vector3(wide, tall, wide)), c),
+            };
+            _game.AddChild(ball);
+        }
         _game.FixedCamera = new Transform3D(Basis.LookingAt(toward + Vector3.Up * (float)Num("pitch", 0.12), Vector3.Up), eye);
         foreach (int x in _drive.Wait(90)) yield return x;
         if (Num("bolt", 0) != 0)

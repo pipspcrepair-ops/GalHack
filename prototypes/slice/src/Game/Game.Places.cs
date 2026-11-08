@@ -54,12 +54,52 @@ public partial class Game
         Doors = new BlockDoors { Name = "BlockDoors", Zone = Zone, Feet = () => Survivor.WorldFeet };
         Zone.AddChild(Doors);
         Tool.Places = Places;
+        Zone.Wildlife.SolidAt = Places.SolidAt;
         Zone.Light.Places = () => Places.Standing;
         Tool.Salvaged += () => Progress.Earn(2, "salvage");
         Places.WallBroken += (p, s) => Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Clank, p.WorldOf(s.WallCells[0], 1f), 0.5f, -2f);
         Places.Stood += OnPlaceStood;
-        Places.CoreDestroyed += p => Say($"{p.Site.Name.ToUpperInvariant()}: ITS CORE IS DESTROYED", Tones.Good);
+        Places.Exploded += OnExploded;
         Places.WarmUp(); // still loading: the first build's one-off costs are paid now
+    }
+
+    /// <summary>The share of a hazard's damage the survivor takes: a suit stands it better than a wall.</summary>
+    const float BlastOnSurvivor = 0.5f;
+
+    /// <summary>
+    /// A hazard went up in a place (a blasting crate, a fuel drum, gas): a flash, a bang and a cloud of grit,
+    /// and the survivor, the creatures and the structures within its reach take it by how near they are, as
+    /// a structure's blocks do (the place's own blocks already have). Its neighbours follow on their own.
+    /// </summary>
+    void OnExploded(Vector3 at, float radius, float damage)
+    {
+        float Falloff(float d) => 1f - d / radius * 0.75f;
+        float near = (Survivor.WorldFeet + Vector3.Up * 0.9f).DistanceTo(at);
+        if (near < radius)
+        {
+            Suit.Hit(damage * BlastOnSurvivor * Falloff(near), SurvivalVitals.Model.DamageKind.Hit);
+            Hands?.Jolt(at, 0.6f * Falloff(near));
+        }
+        if (Zone.Wildlife?.Sim is { } sim)
+            foreach (var c in sim.Creatures.Concat(Zone.Wildlife.Sites.SelectMany(s => s.Sim.Creatures)).ToList())
+            {
+                float d = Zone.Wildlife.WorldOf(c).DistanceTo(at);
+                if (!c.Dead && d < radius) Zone.Wildlife.Damage(c, damage * Falloff(d));
+            }
+        var point = new System.Numerics.Vector3(at.X, at.Y, at.Z);
+        foreach (Vessel v in Zone.Vessels)
+            if (v.DistanceFromHull(v.Body.ToLocal(point), radius) < radius) v.Hits.Blast(point, radius, damage);
+        var rng = new RandomNumberGenerator();
+        for (int i = 0; i < 5; i++)
+            Zone.Dust?.Puff(at + new Vector3(rng.RandfRange(-1f, 1f), rng.RandfRange(-0.3f, 0.8f), rng.RandfRange(-1f, 1f)) * radius * 0.25f, new Color(0.32f, 0.28f, 0.24f, 0.85f), 1.2f + radius * 0.2f);
+        Zone.Dust?.Sparks(at, Vector3.Up, new Color(1f, 0.62f, 0.25f));
+        Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Boom, at, 0.75f, 6f);
+        var flash = new OmniLight3D { Name = "Blast flash", LightColor = new Color(1f, 0.72f, 0.4f), LightEnergy = 10f, OmniRange = radius * 3f };
+        Zone.AddChild(flash);
+        flash.GlobalPosition = at;
+        Tween fade = flash.CreateTween();
+        fade.TweenProperty(flash, "light_energy", 0f, 0.45f);
+        fade.TweenCallback(Callable.From(flash.QueueFree));
     }
 
     void OnPlaceStood(Place p)
@@ -68,7 +108,7 @@ public partial class Game
         t.Aimed += from =>
         {
             Visor.Threat(from);
-            Say("A GUARD IS TAKING AIM", Tones.Warning);
+            Alerts.Attack("hostile", from);
             Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Ping, from, 0.5f, -4f);
         };
         t.Fired += (from, to, clear) =>
@@ -77,9 +117,8 @@ public partial class Game
             if (!clear || Suit.Dead) return;
             double lost = Suit.Hit(12, SurvivalVitals.Model.DamageKind.Hit);
             Visor.Hurt(from);
-            Say($"Shot by a guard: -{lost:F0} health", Tones.Warning);
+            Alerts.Attack("hostile", from);
         };
-        t.TurnedHostile += () => Say($"{p.Site.Name.ToUpperInvariant()} TURNS ON YOU: its people run for cover", Tones.Warning);
     }
 
     /// <summary>Whether the bag holds a keycard of this clearance or a higher one.</summary>
@@ -145,7 +184,6 @@ public partial class Game
             Bill left = Pack.Add($"keycard-{k.Clearance}", 1);
             if (!left.IsEmpty) { Say("No room in the bag", Tones.Caution); return true; }
             p.TakeKey(k);
-            Say($"Taken: a {k.Clearance.ToUpperInvariant()} keycard. Doors marked {k.Clearance} open for you now", Tones.Good);
             Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Ping, eye + dir, 1.8f, -12f);
             return true;
         }
@@ -159,7 +197,7 @@ public partial class Game
         if (h.Door != null)
         {
             var (ok, message) = h.Place.UseDoor(h.Door);
-            if (message != "") Say(message, ok ? Tones.Good : Tones.Caution);
+            if (!ok && message != "") Say(message, Tones.Caution); // only what stops you
             h.Place.Memory.Entered = true;
             return true;
         }
@@ -172,12 +210,10 @@ public partial class Game
         }
         if (b.Type == BlockType.Core)
         {
-            Say("A faction's core: shoot it out to free the place (hijacking waits for the factions)", Tones.Caution);
             return true;
         }
         if (b.Type == BlockType.Terminal)
         {
-            Say(h.Place.Inst.State == PoiState.Active ? "The terminal hums; its screen shows the doors on this level" : "The terminal is dead", Tones.Text);
             return true;
         }
         return false;

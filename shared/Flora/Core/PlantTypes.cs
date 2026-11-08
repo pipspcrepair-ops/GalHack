@@ -85,6 +85,12 @@ public sealed record FloraClimate(ulong Seed, float Warmth, float Wetness, float
 public sealed record Habitat(int Id, float Warmth, float Wetness, float Share, IReadOnlyList<PlantFamily> Families);
 
 /// <summary>A built mesh as plain arrays: three vertices a triangle, flat shaded. Colour alpha 1 takes the instance's tint.</summary>
+/// <summary>
+/// A solid part of a plant as a collider sees it: a straight column from <see cref="A"/> to <see cref="B"/>
+/// (plant frame, the foot at the origin) of a radius, round the part <see cref="Part"/> of its mesh.
+/// </summary>
+public readonly record struct PlantColumn(Vector3 A, Vector3 B, float Radius, int Part);
+
 public sealed class PlantMesh
 {
     public Vector3[] Positions, Normals;
@@ -133,6 +139,8 @@ public sealed class Plant
 
     /// <summary>The near meshes (a few per species), and the one low-detail mesh for the distance. Cover has one near mesh and no far one.</summary>
     public PlantMesh[] Near;
+    /// <summary>Each near mesh's solid parts as columns (a trunk and its thick limbs, every pipe of a cluster, a stalk and its cap, a crystal's shards): what its colliders are.</summary>
+    public PlantColumn[][] Columns;
     public PlantMesh Far;
 
     /// <summary>A trunk, for a collider. Off for what you walk through.</summary>

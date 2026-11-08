@@ -35,6 +35,8 @@ public partial class PoiLayer : Node3D
     readonly List<Place> _places = new();
     readonly List<Task<(Place, List<ChunkMesh>)>> _building = new();
     readonly List<(OmniLight3D Light, float Energy, LightMode Mode, float Phase, MeshInstance3D Glow)> _animated = new();
+    /// <summary>Lamps with a colour and an animation of their own (PoiLights): their light and glow follow it.</summary>
+    readonly List<(OmniLight3D Light, float Energy, GalHack.Structures.LightSettings Style, MeshInstance3D Glow)> _styled = new();
     double _time;
     PlanetWorld _world;
 
@@ -111,7 +113,8 @@ public partial class PoiLayer : Node3D
             if (chunk.Collision.Count > 0) body.AddChild(new CollisionShape3D { Shape = MeshBuild.ToShape(chunk) });
         }
         AddLights(node, inst);
-        AddSmoke(node, inst);
+        // A city fell long ago: nothing in it still burns (its smoke stood as bright threads over the skyline).
+        if (site.Siting != "city") AddSmoke(node, inst);
         DressFromDecoLibrary(node, inst);
         return node;
     }
@@ -122,9 +125,8 @@ public partial class PoiLayer : Node3D
     /// glow, and the core's glow only where a faction holds the place. Lights above ground and
     /// beacons come first so the place carries from a distance; the count is capped for the frame.
     /// </summary>
-    void AddLights(Node3D node, PoiInstance inst)
+    void AddLights(Node3D node, PoiInstance inst, int MaxLights = 20)
     {
-        const int MaxLights = 20;
         var chosen = inst.Lights
             .OrderByDescending(l => l.Mode == LightMode.Beacon)
             .ThenByDescending(l => l.Cell.Y >= 0)
@@ -140,9 +142,13 @@ public partial class PoiLayer : Node3D
             };
             node.AddChild(light);
             MeshInstance3D glow = Glow(node, inst, spot);
-            if (spot.Mode is LightMode.Flicker or LightMode.Beacon or LightMode.Pulse or LightMode.Bloom)
+            if (spot.Style is { } style) _styled.Add((light, spot.Energy, style, glow));
+            else if (spot.Mode is LightMode.Flicker or LightMode.Beacon or LightMode.Pulse or LightMode.Bloom)
                 _animated.Add((light, spot.Energy, spot.Mode, (float)(Hash.Cell(spot.Cell, 7) % 1000) / 160f, glow));
         }
+        // Glowing paint: strips and panels that only glow.
+        PoiLitFaces.Build(node, inst);
+        AddCrops(node, inst);
         if (inst.HasCore)
         {
             Int3 core = inst.CoreCell;
@@ -151,6 +157,45 @@ public partial class PoiLayer : Node3D
                 LightColor = new Color("3de8ff"), LightEnergy = inst.State == PoiState.Active ? 1.4f : 0.4f, OmniRange = 6f,
                 Position = new Vector3(core.X + 0.5f, core.Y + 1.6f, core.Z + 0.5f),
             });
+        }
+    }
+
+    readonly Dictionary<int, Mesh> _cropMeshes = new();
+    ShaderMaterial _cropMaterial;
+
+    /// <summary>
+    /// A place's crops as the world's own crop species (the flora module's grain, leaf and vine forms), one
+    /// multimesh a species: rows in the fields and beds under glass. A world whose herbarium grows no crops
+    /// shows bare soil. Each plant leans and turns a little, so a row isn't stamped.
+    /// </summary>
+    void AddCrops(Node3D node, PoiInstance inst)
+    {
+        if (inst.Crops.Count == 0 || _world?.Flora?.Book is not { } book) return;
+        var crops = book.Plants.Where(p => p.Family == GalHack.Plants.PlantFamily.Crop).ToArray();
+        if (crops.Length == 0) return;
+        _cropMaterial ??= new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/flora.gdshader") };
+        foreach (var group in inst.Crops.GroupBy(c => c.Kind % crops.Length))
+        {
+            GalHack.Plants.Plant plant = crops[group.Key];
+            if (!_cropMeshes.TryGetValue(plant.Index, out Mesh mesh)) _cropMeshes[plant.Index] = mesh = GalHack.Plants.PlantMeshes.ToGodot(plant.Near[0]);
+            var spots = group.ToList();
+            var buffer = new float[spots.Count * 16];
+            for (int i = 0; i < spots.Count; i++)
+            {
+                Int3 c = spots[i].Cell;
+                uint h = Hash.Cell(c, 0xC40);
+                float turn = (h % 628) / 100f, scale = 0.85f + (h >> 10) % 30 / 100f;
+                var basis = new Basis(Vector3.Up, turn).Scaled(Vector3.One * scale);
+                double x = node.Position.X + c.X + 0.5, z = node.Position.Z + c.Z + 0.5;
+                var tint = _world.Flora.Tint(plant, (h >> 4) % 100 / 100f, x, z);
+                int o = i * 16;
+                buffer[o] = basis.X.X; buffer[o + 1] = basis.Y.X; buffer[o + 2] = basis.Z.X; buffer[o + 3] = c.X + 0.5f;
+                buffer[o + 4] = basis.X.Y; buffer[o + 5] = basis.Y.Y; buffer[o + 6] = basis.Z.Y; buffer[o + 7] = c.Y;
+                buffer[o + 8] = basis.X.Z; buffer[o + 9] = basis.Y.Z; buffer[o + 10] = basis.Z.Z; buffer[o + 11] = c.Z + 0.5f;
+                buffer[o + 12] = tint.R; buffer[o + 13] = tint.G; buffer[o + 14] = tint.B; buffer[o + 15] = 0f;
+            }
+            var mm = new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, UseCustomData = true, Mesh = mesh, InstanceCount = spots.Count, Buffer = buffer };
+            node.AddChild(new MultiMeshInstance3D { Name = "Crops", Multimesh = mm, MaterialOverride = _cropMaterial, VisibilityRangeEnd = 420f, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
         }
     }
 
@@ -269,14 +314,24 @@ public partial class PoiLayer : Node3D
             };
             if (glow != null && IsInstanceValid(glow)) glow.Visible = light.LightEnergy > energy * 0.3f;
         }
+        foreach (var (light, energy, style, glow) in _styled)
+        {
+            if (!IsInstanceValid(light)) continue;
+            (light.LightEnergy, light.LightColor) = PoiLitFaces.At(style, energy, t);
+            if (glow != null && IsInstanceValid(glow)) glow.Visible = light.LightEnergy > energy * 0.3f;
+        }
     }
 
     public void Clear()
     {
         foreach (Place p in _places) p.Node?.QueueFree();
         _places.Clear();
+        foreach (Tile t in _tiles) t.Node?.QueueFree();
+        _tiles.Clear();
+        _tileOf.Clear();
         _building.Clear();
         _animated.Clear();
+        _styled.Clear();
         _midJob = null;
         _world = null;
     }

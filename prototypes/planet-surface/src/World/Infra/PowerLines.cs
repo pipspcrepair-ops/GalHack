@@ -147,7 +147,8 @@ public sealed class PowerLines
             double cx = Mathx.WrapX(x, net.Width), cz = Mathx.Wrap(z, net.Height);
             if (source.StampWeight(cx, cz) > 0.05f || source.WaterSurfaceAt(cx, cz, out _)) return false;
             // A pylon's whole footing stands clear of every road and railway, shoulders and junctions too.
-            if (!net.OffRoad(x, z, 9)) return false;
+            // (A 50 m pylon's feet stand 9.2 m from its middle: the margin covers the tallest.)
+            if (!net.OffRoad(x, z, 11)) return false;
             float h = ground(x, z);
             return MathF.Abs(ground(x + 8, z) - h) < 7f && MathF.Abs(ground(x, z + 8) - h) < 7f;
         }

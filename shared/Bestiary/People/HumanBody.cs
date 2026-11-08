@@ -48,11 +48,14 @@ public static class HumanBody
         float b = 0.85f + 0.5f * f.Build;
         for (int side = 0; side < 2; side++)
         {
+            // A Husk's long arm: longer bones (the rig reaches with them), the sleeve torn off it.
+            bool longArm = f.Wrongs.HasFlag(Wrong.Arm) && side == f.LongArm;
+            float upper = f.UpperArmOf(side), fore = f.ForearmOf(side);
             var au = new Piece($"arm{side}u");
-            au.Taper(Vector3.Zero, Vector3.Up * f.UpperArm, 0.05f * u * b * pad, 0.04f * u * b * pad, sleeve, 0f, 0f, Mat.Skin, 7);
+            au.Taper(Vector3.Zero, Vector3.Up * upper, 0.05f * u * b * pad, 0.04f * u * b * pad, longArm ? f.Skin : sleeve, 0f, 0f, Mat.Skin, 7);
             var al = new Piece($"arm{side}l");
-            al.Taper(Vector3.Zero, Vector3.Up * f.Forearm * 0.86f, 0.04f * u * b * pad, 0.03f * u * pad, forearm, 0f, 0f, Mat.Skin, 7);
-            al.Add(Shape.Sphere, new Vector3(0.062f, 0.11f, 0.045f) * u * f.HandK * (f.Dress is "furs" or "suit" ? 1.25f : 1f), Vector3.Up * f.Forearm * 0.95f, hand, 0f, 0f, null, 7);
+            al.Taper(Vector3.Zero, Vector3.Up * fore * 0.86f, 0.04f * u * b * pad, 0.03f * u * pad, longArm ? f.Skin : forearm, 0f, 0f, Mat.Skin, 7);
+            al.Add(Shape.Sphere, new Vector3(0.062f, 0.11f, 0.045f) * u * f.HandK * (longArm ? 1.25f : f.Dress is "furs" or "suit" ? 1.25f : 1f), Vector3.Up * fore * 0.95f, longArm ? f.Skin : hand, 0f, 0f, null, 7);
             var lu = new Piece($"leg{side}u");
             lu.Taper(Vector3.Zero, Vector3.Up * f.UpperLeg, 0.082f * u * b * pad, 0.056f * u * b * pad, trouser, 0f, 0f, Mat.Skin, 8);
             var ll = new Piece($"leg{side}l");
@@ -115,6 +118,8 @@ public static class HumanBody
         if (f.Dress == "suit") SuitLines(p, f);
         if (f.Dress == "rags") Tatters(p, f);
         foreach (string w in f.Wear) Garment(p, f, w);
+        if (f.Torn) Rents(p, f);
+        if (f.Wrongs.HasFlag(Wrong.Hunch)) Hump(p, f);
     }
 
     static void FurTrim(Piece p, Figure f, float y, float r, Color c)
@@ -273,7 +278,9 @@ public static class HumanBody
         p.Add(Shape.Sphere, new Vector3(R * 1.68f, R * 1.95f, R * 2f), c + new Vector3(0f, R * 0.08f, 0f), skin, 0f, 0f, null, 10);
         // Jaw: heavier in men, narrow in women and the young.
         float jaw = (f.Sex == Sex.Male && !child ? 1.06f : 0.92f) + f.Jaw;
-        p.Add(Shape.Sphere, new Vector3(R * 1.34f * jaw, R * 1.15f, R * 1.42f), c + new Vector3(0f, -R * 0.56f, -R * 0.2f), skin.Darkened(0.03f), 0f, 0f, null, 9);
+        // (A Husk's jaw may hang far too low: stretched down, the mouth with it.)
+        float drop = f.JawDrop;
+        p.Add(Shape.Sphere, new Vector3(R * 1.34f * jaw * (1f - 0.15f * drop), R * 1.15f * (1f + 1.2f * drop), R * 1.42f), c + new Vector3(0f, -R * (0.56f + 0.5f * drop), -R * 0.2f), skin.Darkened(0.03f), 0f, 0f, null, 9);
         p.Taper(c + new Vector3(0f, R * 0.12f, -R * 0.92f), c + new Vector3(0f, -R * 0.2f, -R * 1.05f), R * 0.1f, R * 0.13f, skin.Darkened(0.04f), 0f, 0f, Mat.Skin, 6);
         // Brows: a folk's ridge sets how far they stand out.
         float ridge = MathF.Max(0.08f, 0.18f + 0.22f * (f.Folk?.BrowRidge ?? 0f) + f.Brow);
@@ -283,8 +290,11 @@ public static class HumanBody
             p.Add(Shape.Sphere, new Vector3(R * 0.5f, R * 0.28f, R * 0.22f), eye + new Vector3(0f, -R * 0.03f, R * 0.07f), skin.Darkened(0.22f), 0f, 0f, null, 6);
             if (f.Husk)
             {
-                p.Add(Shape.Sphere, Vector3.One * R * 0.26f, eye, new Color(0.05f, 0.03f, 0.03f), 0f, 0f, null, 6);
-                Worm(p, f, eye + new Vector3(0f, 0f, -R * 0.05f), new Vector3(s * 0.25f, -0.55f, -0.8f), 0.55f, 1);
+                // The eye is gone: a dark socket, and what took its place coming out of it.
+                p.Add(Shape.Sphere, Vector3.One * R * 0.3f, eye, new Color(0.05f, 0.03f, 0.03f), 0f, 0f, null, 6);
+                int n = 1 + (s > 0 ? 1 : 0);
+                for (int i = 0; i < n; i++)
+                    Worm(p, f, eye + new Vector3(s * R * 0.04f * i, -R * 0.03f * i, -R * 0.08f), new Vector3(s * (0.2f + 0.3f * i), -0.25f - 0.3f * i, -0.9f), 0.7f + 0.25f * i, 20 + (s > 0 ? 2 : 0) + i);
             }
             else Parts.Eye(p, k, eye + new Vector3(0f, 0f, -R * 0.05f), R * 0.17f);
             p.Add(Shape.Sphere, new Vector3(R * 0.62f, R * ridge, R * 0.3f), eye + new Vector3(0f, R * 0.2f, R * 0.03f), skin.Darkened(0.08f), 0f, 0f, null, 6);
@@ -292,14 +302,23 @@ public static class HumanBody
         }
         if (f.Husk)
         {
-            // What's in them comes out of the mouth, the nose and the ears, and doesn't hurry.
-            p.Add(Shape.Sphere, new Vector3(R * 0.5f, R * 0.32f, R * 0.2f), c + new Vector3(0f, -R * 0.62f, -R * 0.82f), new Color(0.07f, 0.03f, 0.03f), 0f, 0f, null, 6);
-            for (int i = 0; i < 5; i++)
-                Worm(p, f, c + new Vector3((i - 2) * R * 0.1f, -R * 0.62f, -R * 0.9f), new Vector3((i - 2) * 0.28f, -0.75f - (i % 2) * 0.3f, -0.55f), 0.8f + (i % 3) * 0.35f, 2 + i);
+            // What's in them comes out of every opening: the mouth (hanging open, too far if the
+            // jaw has gone), the nostrils and the ears, and moves on its own.
+            Vector3 mouth = c + new Vector3(0f, -R * (0.62f + drop * 0.55f), -R * (0.86f - drop * 0.08f));
+            p.Add(Shape.Sphere, new Vector3(R * 0.56f, R * (0.34f + drop * 0.6f), R * 0.24f), mouth, new Color(0.07f, 0.03f, 0.03f), 0f, 0f, null, 7);
+            var rng = new Rng((ulong)(f.Height * 1000f) * 977UL + (ulong)(f.Skin.R * 1000f));
+            int many = rng.Int(5, 8);
+            for (int i = 0; i < many; i++)
+            {
+                float spread = many == 1 ? 0f : i / (many - 1f) - 0.5f;
+                Worm(p, f, mouth + new Vector3(spread * R * 0.42f, rng.Range(-0.1f, 0.1f) * R, -R * 0.06f), new Vector3(spread * 0.9f + rng.Range(-0.2f, 0.2f), rng.Range(-0.6f, 0.15f), -1f), rng.Range(0.8f, 1.35f), 2 + i);
+            }
             for (int s = -1; s <= 1; s += 2)
             {
-                Worm(p, f, c + new Vector3(s * R * 0.08f, -R * 0.12f, -R * 1.02f), new Vector3(s * 0.2f, -0.8f, -0.4f), 0.5f, 9 + s);
-                Worm(p, f, c + new Vector3(s * R * 0.92f, 0f, R * 0.08f), new Vector3(s * 0.8f, -0.55f, 0.1f), 0.6f, 12 + s);
+                Worm(p, f, c + new Vector3(s * R * 0.08f, -R * 0.18f, -R * 1.04f), new Vector3(s * 0.25f, -0.6f, -0.7f), rng.Range(0.5f, 0.75f), 12 + s);
+                int ear = rng.Int(1, 2);
+                for (int i = 0; i < ear; i++)
+                    Worm(p, f, c + new Vector3(s * R * 0.94f, R * 0.04f * i, R * 0.08f), new Vector3(s * 0.9f, -0.2f + 0.35f * i, 0.15f - 0.3f * i), rng.Range(0.55f, 0.9f), 15 + s * 3 + i);
             }
         }
         else p.Add(Shape.Box, new Vector3(R * 0.5f, R * 0.05f, R * 0.04f), c + new Vector3(0f, -R * 0.6f, -R * 0.84f), skin.Darkened(0.4f));
@@ -310,23 +329,55 @@ public static class HumanBody
         foreach (string w in f.Wear) HeadWear(p, f, w, c);
     }
 
-    /// <summary>A pale worm-thing coming out of an opening: a thin, drooping curve of a few joints, tapering to nothing.</summary>
+    /// <summary>A worm coming out of an opening: a wet, ringed curve of a few joints, tapering to nothing, that moves on its own (<see cref="Piece.Worm"/>).</summary>
     static void Worm(Piece p, Figure f, Vector3 from, Vector3 dir, float length, int salt)
     {
         var rng = new Rng((ulong)(f.Height * 1000f) * 131UL + (ulong)salt);
-        float R = f.HeadRadius, seg = R * 0.42f * length;
-        Color flesh = new Color(0.62f, 0.5f, 0.44f).Lerp(new Color(0.36f, 0.16f, 0.2f), rng.Float());
-        Vector3 at = from, d = dir.Normalized();
-        float r = R * 0.075f;
-        for (int i = 0; i < 4; i++)
+        float R = f.HeadRadius;
+        // Pale flesh to the dark red of something that lives inside.
+        Color flesh = new Color(0.78f, 0.66f, 0.58f).Lerp(new Color(0.42f, 0.14f, 0.16f), rng.Range(0.1f, 0.9f));
+        p.Worm(from, dir, R * 1.75f * length, R * rng.Range(0.075f, 0.1f), flesh, salt + (int)(f.Height * 100f), rng, 4, 0.28f, 0.4f);
+    }
+
+    /// <summary>
+    /// Their clothes torn: rents in the cloth with skin showing through, each with a dark frayed
+    /// edge, at the chest, the back and the belly. Lies on the body's own surface.
+    /// </summary>
+    static void Rents(Piece p, Figure f)
+    {
+        var rng = new Rng((ulong)(f.Height * 1000f) ^ 0x7E47UL ^ (ulong)(f.Cloth.R * 997f));
+        float T = f.Torso, u = Scale(f), pad = f.Padding, d = f.ChestD * pad;
+        int n = rng.Int(4, 7);
+        for (int i = 0; i < n; i++)
         {
-            Vector3 next = at + d * seg;
-            float r2 = r * (i == 3 ? 0.35f : 0.8f);
-            p.Taper(at, next, r, r2, flesh, 0f, 0f, Mat.Membrane, 5);
-            at = next;
-            r = r2;
-            d = (d + new Vector3(rng.Range(-0.35f, 0.35f), -0.35f, rng.Range(-0.3f, 0.3f))).Normalized();
+            float t = rng.Range(0.42f, 0.9f);
+            float half = Mathf.Lerp(f.WaistW, f.ShoulderW * 0.9f, Math.Clamp((t - 0.34f) / 0.5f, 0f, 1f)) * pad;
+            float a = rng.Range(0f, MathF.Tau);
+            Vector3 normal = new Vector3(MathF.Cos(a), 0f, MathF.Sin(a));
+            Vector3 at = new(MathF.Cos(a) * half, T * t, MathF.Sin(a) * d);
+            Basis b = Geo.AlongY(normal) * new Basis(Vector3.Up, rng.Range(0f, MathF.Tau));
+            float w = rng.Range(0.09f, 0.17f) * u, h = rng.Range(0.07f, 0.14f) * u;
+            p.Add(Shape.Sphere, new Vector3(w * 1.25f, 0.014f, h * 1.25f), at + normal * 0.004f, f.Cloth.Darkened(0.55f), 0f, 0f, b, 8);
+            p.Add(Shape.Sphere, new Vector3(w, 0.016f, h), at + normal * 0.008f, f.Skin.Darkened(rng.Range(0.05f, 0.2f)), 0f, 0f, b, 8);
         }
+        // Strips hanging from the hem and the shoulders.
+        for (int i = 0; i < 6; i++)
+        {
+            float a = rng.Range(0f, MathF.Tau);
+            bool hem = i < 4;
+            float y = hem ? T * rng.Range(0.3f, 0.36f) : T * 0.88f;
+            float r = hem ? f.WaistW * 1.05f * pad : f.ShoulderW * 0.95f * pad;
+            p.Add(Shape.Box, new Vector3(0.05f, rng.Range(0.12f, 0.24f), 0.01f) * u, new Vector3(MathF.Cos(a) * r, y - 0.08f * u, MathF.Sin(a) * d * 1.02f), f.Cloth.Darkened(0.15f),
+                0f, 0f, new Basis(Vector3.Up, -a) * new Basis(Vector3.Forward, rng.Range(-0.25f, 0.25f)));
+        }
+    }
+
+    /// <summary>A back bent and swollen at the top: the hump a hunched Husk carries, under its clothes.</summary>
+    static void Hump(Piece p, Figure f)
+    {
+        float T = f.Torso, d = f.ChestD * f.Padding, W = f.ShoulderW * f.Padding;
+        p.Add(Shape.Sphere, new Vector3(W * 1.5f, T * 0.38f, d * 1.5f), new Vector3(W * 0.12f, T * 0.84f, d * 0.75f), f.Cloth.Darkened(0.08f), 0f, 0f, new Basis(Vector3.Right, 0.4f), 10);
+        p.Add(Shape.Sphere, new Vector3(W * 0.7f, T * 0.2f, d * 0.9f), new Vector3(-W * 0.3f, T * 0.92f, d * 0.9f), f.Skin.Darkened(0.1f), 0f, 0f, null, 9, Mat.Membrane);
     }
 
     static void Hair(Piece p, Figure f, Vector3 c)

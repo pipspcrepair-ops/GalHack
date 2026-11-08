@@ -14,6 +14,8 @@ public enum Shape { Sphere, Box, Capsule, Cylinder, Cone, Taper, Loft }
 public static class Mat
 {
     public const float Skin = 0f, Horn = 1f, Carapace = 2f, Membrane = 3f, Eye = 4f;
+    /// <summary>A worm: wet, and it moves on its own (the shader sways it by how far along the worm each point is).</summary>
+    public const float Worm = 5f;
 }
 
 /// <summary>
@@ -33,6 +35,9 @@ public struct Prim
     public float Glow, Pattern, Material;
     public int Sides;
     public LoftProfile Loft;
+    /// <summary>A worm's segment: which worm (its own sway), and how far along the worm (0 root to 1 tip) its two ends are.</summary>
+    public int Worm;
+    public float AlongFrom, AlongTo;
 }
 
 /// <summary>
@@ -157,6 +162,32 @@ public sealed class Piece
         {
             float r0 = baseRadius * (1f - i / (float)n), r1 = baseRadius * (1f - (i + 1) / (float)n);
             Taper(points[i], points[i + 1], MathF.Max(r0, baseRadius * 0.05f), MathF.Max(r1, baseRadius * 0.05f), color, 0f, 0f, material, 7);
+        }
+        return this;
+    }
+
+    /// <summary>
+    /// A worm: a chain of tapers from its root along a wandering line, thinning to nothing, each
+    /// segment marked with its worm and how far along it lies, so the shader sways the whole worm
+    /// from a still root to a lashing tip. <paramref name="bend"/> is how much it wanders and droops a joint.
+    /// </summary>
+    public Piece Worm(Vector3 root, Vector3 dir, float length, float radius, Color color, int worm, Rng rng, int joints = 4, float droop = 0.35f, float bend = 0.35f)
+    {
+        Vector3 at = root, d = dir.Normalized();
+        float seg = length / joints, r = radius;
+        for (int i = 0; i < joints; i++)
+        {
+            Vector3 next = at + d * seg;
+            float r2 = i == joints - 1 ? radius * 0.3f : r * 0.86f;
+            Taper(at, next, r, r2, color, 0f, 0f, Mat.Worm, 5);
+            Prim p = Prims[^1];
+            p.Worm = worm;
+            p.AlongFrom = i / (float)joints;
+            p.AlongTo = (i + 1f) / joints;
+            Prims[^1] = p;
+            at = next;
+            r = r2;
+            d = (d + new Vector3(rng.Range(-bend, bend), -droop, rng.Range(-bend, bend))).Normalized();
         }
         return this;
     }

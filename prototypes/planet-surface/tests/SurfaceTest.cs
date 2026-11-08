@@ -41,6 +41,15 @@ public partial class SurfaceTest : Node
     {
         foreach (string arg in OS.GetCmdlineUserArgs())
             if (arg.StartsWith("--only=")) _only.UnionWith(arg["--only=".Length..].Split(','));
+        // A hung run quits on its own (--limit=SECONDS, 40 minutes by default) rather than wait for someone to kill it.
+        double limit = 2400;
+        foreach (string arg in OS.GetCmdlineUserArgs())
+            if (arg.StartsWith("--limit=")) limit = double.Parse(arg["--limit=".Length..], System.Globalization.CultureInfo.InvariantCulture);
+        _ = System.Threading.Tasks.Task.Delay(TimeSpan.FromSeconds(limit)).ContinueWith(_ =>
+        {
+            GD.PrintErr($"TIMED OUT after {limit:F0} s: the run quits itself");
+            System.Environment.Exit(2);
+        });
         // Planets save their edits when you leave them: start from untouched planets every run, in a
         // save folder of this run's own. Another run saving the same test planet into a shared
         // folder at the same moment made this run land on its edits ("dug 0 cells": already dug).
@@ -66,6 +75,9 @@ public partial class SurfaceTest : Node
             await Run("Profile", ProfileChecks);
             await Run("Infra", InfraChecks);
             await Run("StartTown", StartTownChecks);
+            await Run("City", CityChecks);
+            await Run("Ground", GroundChecks);
+            await Run("Dungeons", DungeonChecks);
             await Run("Under", UnderChecks);
             await Run("Water", WaterChecks);
             await Run("Ports", PortChecks);

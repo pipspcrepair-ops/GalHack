@@ -244,6 +244,21 @@ public static partial class DecoModels
         };
     }
 
+    /// <summary>A rough block of rock <paramref name="size"/> across, its base at <paramref name="y"/>: narrower at the top, every corner a little off.</summary>
+    static void Lump(DecoBuilder b, float x, float y, float z, float size)
+    {
+        var c = new Vector3[8];
+        for (int i = 0; i < 8; i++)
+        {
+            bool top = (i & 2) != 0;
+            float k = top ? b.Rng.Range(0.6f, 0.85f) : 1f;
+            c[i] = new Vector3(x + ((i & 1) != 0 ? 0.5f : -0.5f) * size * k + b.Rng.Range(-0.05f, 0.05f) * size,
+                y + (top ? size * b.Rng.Range(0.55f, 0.75f) : 0f),
+                z + ((i & 4) != 0 ? 0.5f : -0.5f) * size * k + b.Rng.Range(-0.05f, 0.05f) * size);
+        }
+        b.Hull(c, Stone);
+    }
+
     static void Mine(Dictionary<string, Action<DecoBuilder>> r)
     {
         r["mine-cart"] = b =>
@@ -326,6 +341,15 @@ public static partial class DecoModels
             b.Box(-0.455f, 0.12f, -0.225f, 0.455f, 0.2f, 0.225f, Alert).Ghost();
             b.Wedge(-0.08f, 0.21f, -0.235f, 0.08f, -0.225f, 0.33f, 0.33f, Hazard).Ghost();
             foreach (float x in new[] { -0.47f, 0.45f }) b.Cable(new Vector3(x + 0.01f, 0.27f, -0.08f), new Vector3(x + 0.01f, 0.27f, 0.08f), 0.012f, Canvas, 0.3f);
+        };
+
+        r["rock-pile"] = b =>
+        {
+            // Spoil from the face: big lumps at the foot, smaller ones heaped on them, each resting on what's under it.
+            foreach (var (x, z, size) in new[] { (-0.35f, -0.3f, 0.5f), (0.3f, -0.25f, 0.45f), (0.05f, 0.35f, 0.55f), (-0.4f, 0.35f, 0.35f), (0.4f, 0.4f, 0.3f) })
+                Lump(b, x, 0, z, size);
+            Lump(b, -0.05f, 0.22f, 0, 0.45f);
+            Lump(b, 0.08f, 0.45f, 0.04f, 0.3f);
         };
 
         r["cable-winch"] = b =>

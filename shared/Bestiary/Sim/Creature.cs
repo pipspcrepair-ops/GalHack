@@ -6,7 +6,7 @@ namespace Wildlife;
 public enum CState { Idle, Wander, Graze, Flee, Stalk, Chase, Hidden, Lurk, Warn, ReturnHome, Scavenge, Eat, Follow, Freeze, Root, Rest, Patrol, Tell, Guard, InWalls }
 
 /// <summary>Every attack runs wind-up, lunge, recover. The wind-up is the telegraph.</summary>
-public enum AttackPhase { None, Windup, Lunge, Recover }
+public enum AttackPhase { None, Windup, Lunge, Recover, Hold }
 
 public enum HopPhase { Ground, Crouch, Air, Land }
 
@@ -63,6 +63,15 @@ public sealed class Creature
     public bool Thrown;
     public float Yaw;
     public float Age;
+
+    // A Husk's: who it has seized and for how long, whether this lunge is a seize or a blow, when
+    // it may next bring its maggots up, who it is after; and how stirred its worms are (0..1).
+    public ITarget Holding;
+    public float HeldFor, VomitAt, MurmurAt, Stir;
+    public bool Seizing;
+    public ITarget Quarry;
+    /// <summary>The Husk holding this one face to face, if any: it can do nothing else.</summary>
+    public Creature HeldBy;
 
     // Health and death.
     public float Health;

@@ -58,6 +58,12 @@ public sealed class ConstructorSection : IMenuSection
         _ => 4,
     };
 
+    /// <summary>A recipe row's height and the gap under it.</summary>
+    public const float RowH = 30, RowGap = 2;
+
+    /// <summary>The room the orders and what blocks them keep under the list.</summary>
+    const float QueueH = 200;
+
     public void Build(Gui g, Rect2 area)
     {
         Constructor c = _machine();
@@ -65,56 +71,67 @@ public sealed class ConstructorSection : IMenuSection
         g.Caption(_title, o, area.Size.X);
         if (c == null)
         {
-            g.Text("No constructor here.", o + new Vector2(0, 40), C.Dim, 16);
+            g.Text("NONE", o + new Vector2(0, 40), C.Dim, 16);
             return;
         }
         Progress p = _game.Progress;
-        g.Text($"{c.Def.Tag}  {c.Def.Name.ToUpperInvariant()}  ·  speed {c.Def.Speed:0.##}x{(_game.CraftTimeScale != 1 ? $"  (TEST TIME-SCALE {_game.CraftTimeScale:0}x)" : "")}", o + new Vector2(0, 32), C.Dim, 13);
-        g.Text(c.Status, o + new Vector2(0, 52), c.Current != null ? C.Good : C.Accent2, 15, UiTheme.Mono);
+        g.Text($"{c.Def.Tag}  ×{c.Def.Speed:0.##}{(_game.CraftTimeScale != 1 ? $"  TEST ×{_game.CraftTimeScale:0}" : "")}", o + new Vector2(0, 30), C.Dim, 13, UiTheme.Mono);
+        g.TextIn(c.Status, new Rect2(o.X + 200, o.Y + 28, area.Size.X - 200, 20), c.Current != null ? C.Good : C.Accent2, 14, HorizontalAlignment.Right, UiTheme.Mono);
 
-        // ---- What it can make -------------------------------------------------------------------
-        ItemView view = FilterBar.Build(g, $"recipes:{_key}", new Rect2(o.X, o.Y + 74, area.Size.X, FilterBar.Height), readOnly: _key == "screen");
+        // ---- What it can make: a dense list, one line a recipe ------------------------------------
+        ItemView view = FilterBar.Build(g, $"recipes:{_key}", new Rect2(o.X, o.Y + 54, area.Size.X, FilterBar.Height), readOnly: _key == "screen");
         var list = view.Apply(Recipes(c, p), i => c.Storage.Count(i.Id));
         if (view.Sort == ItemSort.Slot) list = list.OrderBy(i => !c.Knows(i)).ThenBy(i => !p.ItemAllowed(i)).ToList();
-        int perPage = 7;
+        float listTop = o.Y + 54 + FilterBar.Height;
+        int perPage = Math.Max(3, (int)((area.End.Y - QueueH - 40 - listTop) / (RowH + RowGap)));
         _scroll = Math.Clamp(_scroll, 0, Math.Max(0, (list.Count - 1) / perPage));
-        float y = o.Y + 74 + FilterBar.Height;
+        float y = listTop;
+        const float ButtonW = 42, TimeW = 44, NameW = 168;
         for (int i = 0; i < perPage; i++)
         {
             int k = _scroll * perPage + i;
             if (k >= list.Count) break;
             ItemDef item = list[k];
             bool known = c.Knows(item), allowed = p.ItemAllowed(item);
-            var row = new Rect2(o.X, y, area.Size.X, 40);
-            g.Fill(row, new Color(known && allowed ? C.Panel : C.Glass, 0.9f));
-            g.Fill(new Rect2(row.Position, new Vector2(5, row.Size.Y)), new Color(Rarities.Color(item.Rarity) << 8 | 0xff));
-            g.Text($"{item.Name}{(item.Recipe.Count > 1 ? $" x{item.Recipe.Count}" : "")}", row.Position + new Vector2(12, 2), known && allowed ? C.Text : C.Dim, 15);
-            string detail = !known ? $"needs a {c.Items.Machines.TierName(item.Recipe.Tier)} constructor"
-                : !allowed ? p.LockReason(item.Id)
-                : $"{c.Items.Describe(item.Recipe.InputsFor(1), 3)} · {c.RunSeconds(item.Recipe):0.#} s";
-            g.Text(detail, row.Position + new Vector2(12, 21), !known || !allowed ? C.Warn : C.Dim, 12);
-            g.SetTip(new Rect2(row.Position, new Vector2(row.Size.X - 160, row.Size.Y)), () => Tooltips.For(_game, item, 0));
+            var row = new Rect2(o.X, y, area.Size.X, RowH);
+            g.Fill(row, g.Back(new Color(known && allowed ? C.Panel : C.Glass, 0.75f)));
+            g.Fill(new Rect2(row.Position, new Vector2(4, row.Size.Y)), new Color(Rarities.Color(item.Rarity) << 8 | 0xff));
+            if (g.Drawing && ItemIcons.Shared?.Get(item) is Texture2D icon)
+                g.Canvas.DrawTextureRect(icon, new Rect2(row.Position + new Vector2(7, 2), new Vector2(RowH - 4, RowH - 4)), false, new Color(1, 1, 1, known && allowed ? 1f : 0.45f));
+            float x = row.Position.X + RowH + 8;
+            g.TextIn(HudLayout.Fit(UiTheme.Label, 14, $"{item.Name}{(item.Recipe.Count > 1 ? $" ×{item.Recipe.Count}" : "")}", NameW), new Rect2(x, y, NameW, RowH), known && allowed ? C.Text : C.Dim, 14);
+            x += NameW + 6;
+            float buttons = row.End.X - 3 * (ButtonW + 3);
+            float inputsW = buttons - TimeW - 6 - x;
+            if (!known || !allowed)
+                g.TextIn(HudLayout.Fit(UiTheme.Label, 12, !known ? $"{c.Items.Machines.TierName(item.Recipe.Tier).ToUpperInvariant()} CONSTRUCTOR" : $"LV {p.Node(item.Id)?.Level}", inputsW), new Rect2(x, y, inputsW, RowH), C.Warn, 12);
+            else Inputs(g, c, item, new Rect2(x, y, inputsW, RowH));
+            g.TextIn($"{c.RunSeconds(item.Recipe):0.#}s", new Rect2(buttons - TimeW - 4, y, TimeW, RowH), C.Dim, 12, HorizontalAlignment.Right, UiTheme.Mono);
+            g.SetTip(new Rect2(row.Position, new Vector2(buttons - row.Position.X, row.Size.Y)), () => Tooltips.For(_game, item, 0));
             int[] counts = { 1, 5, 10 };
             for (int n = 0; n < counts.Length; n++)
             {
-                var b = new Rect2(row.End.X - 150 + n * 50, row.Position.Y + 5, 44, 30);
-                if (g.Button($"order:{_key}:{item.Id}:{counts[n]}", b, $"+{counts[n]}", C.Accent, known && allowed))
+                var b = new Rect2(buttons + n * (ButtonW + 3), row.Position.Y + 2, ButtonW, RowH - 4);
+                if (g.Button($"order:{_key}:{item.Id}:{counts[n]}", b, $"+{counts[n]}", C.Accent, known && allowed, size: 13))
                 {
                     OrderResult r = c.Order(item.Id, counts[n]);
-                    _said = r.Ok ? $"Queued {counts[n] * item.Recipe.Count} {item.Name}" : r.Message;
+                    _said = r.Ok ? "" : r.Message;
                     g.Sound = r.Ok ? "queued" : "refused";
                 }
             }
-            y += 44;
+            y += RowH + RowGap;
         }
-        if (g.Button($"{_key}:up", new Rect2(o.X, y + 2, 70, 28), "UP", C.Accent2, _scroll > 0)) _scroll--;
-        if (g.Button($"{_key}:down", new Rect2(o.X + 80, y + 2, 70, 28), "DOWN", C.Accent2, (_scroll + 1) * perPage < list.Count)) _scroll++;
-        g.Text($"{_scroll + 1}/{(list.Count + perPage - 1) / perPage}", new Vector2(o.X + 160, y + 6), C.Dim, 14, UiTheme.Mono);
-        g.Text(_said, new Vector2(o.X + 210, y + 6), C.Accent2, 13);
-        y += 40;
-
+        y = listTop + perPage * (RowH + RowGap) + 2;
+        int pages = Math.Max(1, (list.Count + perPage - 1) / perPage);
+        {
+            if (g.Button($"{_key}:up", new Rect2(o.X, y, 70, 26), "UP", C.Accent2, _scroll > 0, size: 13)) _scroll--;
+            if (g.Button($"{_key}:down", new Rect2(o.X + 76, y, 70, 26), "DOWN", C.Accent2, (_scroll + 1) * perPage < list.Count, size: 13)) _scroll++;
+            if (pages > 1) g.Text($"{_scroll + 1}/{pages}", new Vector2(o.X + 156, y + 4), C.Dim, 14, UiTheme.Mono);
+        }
+        if (_said != "") g.TextIn(HudLayout.Fit(UiTheme.Label, 13, _said, area.Size.X - 220), new Rect2(o.X + 210, y, area.Size.X - 210, 26), C.Warn, 13);
+        y += 34;
         // ---- Queues -----------------------------------------------------------------------------
-        g.Caption("YOUR ORDERS · AUTO SUB-PARTS", new Vector2(o.X, y), area.Size.X, C.Accent2);
+        g.Caption("ORDERS", new Vector2(o.X, y), area.Size.X, C.Accent2);
         y += 32;
         // Each order, with the sub-parts it planned indented under it. Cancelling an order cancels its parts.
         int shown = 0;
@@ -132,20 +149,40 @@ public sealed class ConstructorSection : IMenuSection
             }
         }
         int orphans = c.SubParts.Count(j => j.Feeds == null || !c.Orders.Take(4).Contains(j.Feeds));
-        if (shown + orphans > 5) { g.Text($"+{shown + orphans - 5} more sub-parts", new Vector2(o.X + 22, y), C.Dim, 12); y += 18; }
-        if (c.Orders.Count == 0) { g.Text("none", new Vector2(o.X, y), C.Dim, 13); y += 22; }
+        if (shown + orphans > 5) { g.Text($"+{shown + orphans - 5}", new Vector2(o.X + 22, y), C.Dim, 12); y += 18; }
+        if (c.Orders.Count == 0) { g.Text("—", new Vector2(o.X, y), C.Dim, 13); y += 22; }
         List<string> blockers = c.Blockers;
         foreach (string b in blockers.Take(4))
         {
             g.Text($"NEEDS: {b}", new Vector2(o.X, y + 4), C.Danger, 13);
             y += 20;
         }
-        if (blockers.Count > 4) { g.Text($"+{blockers.Count - 4} more needed", new Vector2(o.X, y + 4), C.Danger, 12); y += 18; }
+        if (blockers.Count > 4) { g.Text($"+{blockers.Count - 4}", new Vector2(o.X, y + 4), C.Danger, 12); y += 18; }
         if (c.Restock.InUse.Count > 0)
         {
             if (g.Button($"restock:{_key}", new Rect2(o.X, y + 6, 200, 30), c.Restock.Enabled ? "AMMO RESTOCK ON" : "AMMO RESTOCK OFF", C.Accent2, lit: c.Restock.Enabled))
                 c.Restock.Enabled = !c.Restock.Enabled;
             g.Text(c.Restock.Status, new Vector2(o.X + 210, y + 12), C.Dim, 12);
+        }
+    }
+
+    /// <summary>
+    /// A recipe's inputs on one line, each "count NAME": plain when it is in store, amber when short
+    /// but this constructor makes it as a sub-part, red when short and it can't.
+    /// </summary>
+    static void Inputs(Gui g, Constructor c, ItemDef item, Rect2 r)
+    {
+        float x = r.Position.X;
+        foreach (var (id, need) in item.Recipe.InputsFor(1))
+        {
+            ItemDef input = c.Items.Item(id);
+            int have = c.Storage.Count(id);
+            Color tone = have >= need ? C.Text : c.Knows(input) ? C.Warn : C.Danger;
+            string text = $"{need} {input.ShortName}";
+            float w = Paint.TextWidth(UiTheme.Label, 12, text);
+            if (x + w > r.End.X) { g.TextIn("…", new Rect2(x, r.Position.Y, r.End.X - x, r.Size.Y), C.Dim, 12); break; }
+            g.TextIn(text, new Rect2(x, r.Position.Y, w + 1, r.Size.Y), tone, 12);
+            x += w + 10;
         }
     }
 
