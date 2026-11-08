@@ -297,7 +297,7 @@ public static class PoiFactory
             HasCore = layout.Family.HasCore(state), World = world,
         };
         inst.Age = PoiInstance.AgeFor(layout.Family, state, layout.Extras.InSpace);
-        inst.Ruin = world?.Ruin ?? RuinAge.Default;
+        inst.Ruin = world?.Ruin ?? RuinAge.Fallback;
         var rng = new Rng(Hash.Combine(layout.Seed ^ (ulong)layout.Rarity, spawnSeed, (ulong)state + 11));
 
         using (Prof.Time("fixtures")) Fixtures.Place(inst, rng.Fork("fixtures"));

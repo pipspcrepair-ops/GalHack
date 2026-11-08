@@ -147,7 +147,7 @@ public static class Debris
     static void DustPatch(List<ShapeBox> l, Pick r, Rgb c)
     {
         float x = 0.08f + r.F() * 0.2f, z = 0.08f + r.F() * 0.2f;
-        l.Add(new ShapeBox(new V3(x, 0, z), new V3(x + 0.5f + r.F() * 0.3f, 0.012f, z + 0.45f + r.F() * 0.3f), c.Lerp(Dust, 0.55f), Surface.Matte, true));
+        l.Add(new ShapeBox(new V3(x, 0, z), new V3(MathF.Min(0.97f, x + 0.5f + r.F() * 0.3f), 0.012f, MathF.Min(0.97f, z + 0.45f + r.F() * 0.3f)), c.Lerp(Dust, 0.55f), Surface.Matte, true));
     }
 
     /// <summary>Where a lot came down at once: a mound of chunks over its dust, a slab across it, bars sticking out at angles.</summary>
@@ -183,16 +183,17 @@ public static class Debris
     /// <summary>The ceiling come down: its tiles lying where they dropped, one propped on another, in a drift of plaster dust.</summary>
     static void TileFall(List<ShapeBox> l, Pick r, Rgb c)
     {
-        Rgb plaster = c.Lerp(Dust, 0.6f);
-        float x = 0.05f + r.F() * 0.15f, z = 0.05f + r.F() * 0.15f;
-        l.Add(new ShapeBox(new V3(x, 0, z), new V3(x + 0.6f + r.F() * 0.25f, 0.01f, z + 0.55f + r.F() * 0.25f), plaster, Surface.Matte, true));
+        // The dust lies in drifts, not a sheet: a few small turned patches, greyed by the years.
+        Rgb plaster = c.Lerp(Dust, 0.45f).Scale(0.78f);
+        for (int i = 0; i < 2 + r.Int(2); i++)
+            Piece(l, new V3(0.2f + r.F() * 0.6f, 0, 0.2f + r.F() * 0.6f), new V3(0.08f + r.F() * 0.14f, 0.004f, 0.06f + r.F() * 0.12f), new V3(0, r.F() * 6f, 0), plaster.Scale(0.9f + r.F() * 0.15f), Surface.Matte, 0.014f);
         int n = 2 + r.Int(3);
         float rest = 0f;
         for (int i = 0; i < n; i++)
         {
             float tilt = i == n - 1 && n > 2 ? 0.25f : r.S(0.06f);
             Rgb t = Tile.Lerp(new Rgb(0x8a, 0x7a, 0x5a), r.F() * 0.35f); // stained by the water that brought them down
-            var (_, top) = Piece(l, new V3(0.2f + r.F() * 0.6f, 0, 0.2f + r.F() * 0.6f), new V3(0.15f, 0.008f, 0.15f), new V3(tilt, r.F() * 6f, r.S(0.05f)), t, Surface.Matte, i == n - 1 ? rest : 0f);
+            var (_, top) = Piece(l, new V3(0.2f + r.F() * 0.6f, 0, 0.2f + r.F() * 0.6f), new V3(0.1f + r.F() * 0.05f, 0.008f, 0.1f + r.F() * 0.05f), new V3(tilt, r.F() * 6f, r.S(0.05f)), t.Scale(0.8f), Surface.Matte, i == n - 1 ? rest : 0f);
             rest = MathF.Min(top, 0.05f);
         }
     }
@@ -290,12 +291,20 @@ public static class Debris
     static (V3 Centre, float Top) Piece(List<ShapeBox> l, V3 at, V3 half, V3 tilt, Rgb c, Surface s, float floor)
     {
         float x0 = 0, x1 = 0, y0 = 0, y1 = 0, z0 = 0, z1 = 0;
-        for (int i = 0; i < 8; i++)
+        for (int pass = 0; pass < 2; pass++)
         {
-            V3 v = Shapes.Rotate(new V3((i & 1) == 0 ? -half.X : half.X, (i & 2) == 0 ? -half.Y : half.Y, (i & 4) == 0 ? -half.Z : half.Z), tilt);
-            x0 = MathF.Min(x0, v.X); x1 = MathF.Max(x1, v.X);
-            y0 = MathF.Min(y0, v.Y); y1 = MathF.Max(y1, v.Y);
-            z0 = MathF.Min(z0, v.Z); z1 = MathF.Max(z1, v.Z);
+            x0 = x1 = y0 = y1 = z0 = z1 = 0;
+            for (int i = 0; i < 8; i++)
+            {
+                V3 v = Shapes.Rotate(new V3((i & 1) == 0 ? -half.X : half.X, (i & 2) == 0 ? -half.Y : half.Y, (i & 4) == 0 ? -half.Z : half.Z), tilt);
+                x0 = MathF.Min(x0, v.X); x1 = MathF.Max(x1, v.X);
+                y0 = MathF.Min(y0, v.Y); y1 = MathF.Max(y1, v.Y);
+                z0 = MathF.Min(z0, v.Z); z1 = MathF.Max(z1, v.Z);
+            }
+            // Too big to lie in the cell as it is turned: a smaller piece of the same.
+            float over = MathF.Max(x1 - x0, z1 - z0) / 0.95f;
+            if (over <= 1f) break;
+            half = half * (1f / over);
         }
         const float M = 0.02f;
         float cx = Math.Clamp(at.X, M - x0, MathF.Max(M - x0, 1 - M - x1)), cz = Math.Clamp(at.Z, M - z0, MathF.Max(M - z0, 1 - M - z1));

@@ -101,7 +101,7 @@ public partial class PoiTest
             int Soot(PoiInstance p) => p.Blocks.Blocks().Count(t => t.Block.Role is Role.Wall or Role.Roof or Role.Floor && t.Block.Color.R + t.Block.Color.G + t.Block.Color.B < 140) + p.Blocks.Blocks().Count(t => t.Block.Type == BlockType.Ash);
             if (Soot(blasted) >= Soot(old)) sootier++;
             // Mid-collapse the power still runs.
-            if (!young.Blocks.Blocks().Any(t => t.Block.Material == Gen.Material.DeadLumen) || !layout.Blocks.Blocks().Any(t => t.Block.Material == Gen.Material.Lumen)) lit++;
+            if (young.Blocks.Blocks().Count(t => t.Block.Material == Gen.Material.DeadLumen) <= layout.Blocks.Blocks().Count(t => t.Block.Material == Gen.Material.DeadLumen)) lit++; // no lamp put out that wasn't out already
         }
         Check(older >= pairs * 0.8f && greener >= pairs * 0.7f && wetter == pairs && sootier >= pairs * 0.7f && lit == pairs,
             $"decay scales with the fall: of {pairs} places, {older} lost more structure old than mid-collapse, {greener} greener, {wetter} as wet or wetter on a drowned world, {sootier} as scorched or more after a violent fall, {lit} with the lights on mid-collapse");

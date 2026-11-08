@@ -17,6 +17,9 @@ public sealed record RuinAge(float Wear, bool Falling, float Violence, float Wat
     /// <summary>A place off any world (the viewer, the tests' mass runs): a century after a fall that was mostly neglect.</summary>
     public static readonly RuinAge Default = new(0.65f, false, 0.2f, 0.35f);
 
+    /// <summary>What a place spawned off any world is read as: <see cref="Default"/>, unless a viewer or proof frame asks for another age.</summary>
+    public static RuinAge Fallback = Default;
+
     /// <summary>The roll's age, phase and falls, read as decay.</summary>
     public static RuinAge Of(WorldRoll roll)
     {
@@ -77,7 +80,7 @@ public static partial class StateTransforms
                 Int3 at = rng.Pick(floor);
                 if (Ceiling(g, at) is not int top) continue;
                 foreach (Int3 c in floor)
-                    if (c.FlatDistance(at) < 1.7f && g.Get(c).IsAir && rng.Chance(0.65f)) g.Set(c, Debris.Of(Material.Ceramic, Plaster, Debris.Tiles, Dirs.Horizontal[rng.Range(0, 4)]));
+                    if (c.FlatDistance(at) < 1.7f && g.Get(c).IsAir && rng.Chance(0.45f)) g.Set(c, Debris.Of(Material.Ceramic, Plaster, Debris.Tiles, Dirs.Horizontal[rng.Range(0, 4)]));
                 for (int n = 0; n < 3; n++)
                 {
                     Int3 hang = new(at.X + rng.Range(-1, 2), top - 1, at.Z + rng.Range(-1, 2));
@@ -161,7 +164,8 @@ public static partial class StateTransforms
             bool low = m.Underground || m.Min.Y < 0 || m.Min.Y <= 0 && m.Kind == ModuleKind.Hall && age.Water > 0.85f;
             if (!low) continue;
             int top = m.Max.Y;
-            float level = MathF.Min(table, top - 0.3f);
+            // Deeper the wetter and older the world, but a room holds a wading depth, not a sump.
+            float level = MathF.Min(MathF.Min(table, top - 0.3f), m.Min.Y + 0.3f + 1.4f * age.Water * age.Wear);
             if (m.Min.Y >= 0) level = MathF.Min(level, m.Min.Y + 0.5f);
             if (level < m.Min.Y + 0.08f) continue;
             var cells = m.Cells.Where(c => c.Y == m.Min.Y && !BlockInfo.IsFullCube(g.Get(c).Type) && (BlockInfo.IsFullCube(g.Get(c + Int3.Down).Type) || nav.IsRock(c + Int3.Down))).ToList();

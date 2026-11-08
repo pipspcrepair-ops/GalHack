@@ -74,7 +74,7 @@ public static class MeshBuild
             m.SetShaderParameter("daylight", 0.4f);
             return m;
         }
-        return new StandardMaterial3D { AlbedoColor = deep.Lerp(shallow, 0.4f), Roughness = 0.03f, Metallic = 0.25f, MetallicSpecular = 0.9f, CullMode = BaseMaterial3D.CullModeEnum.Disabled };
+        return new StandardMaterial3D { AlbedoColor = deep.Lerp(shallow, 0.5f), Roughness = 0.12f, Metallic = 0f, MetallicSpecular = 0.35f, CullMode = BaseMaterial3D.CullModeEnum.Disabled };
     }
 
     public static ConcavePolygonShape3D ToShape(ChunkMesh chunk)

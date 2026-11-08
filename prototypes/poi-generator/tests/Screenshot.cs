@@ -30,6 +30,12 @@ public partial class Screenshot : Node
             else if (arg == "--day") Main.Daylight = true;
             else if (arg == "--bare") Main.Bare = true;
             else if (arg == "--cost") _cost = true;
+            // --ruin=wear/violence/water[/falling]: the fall every place off a world is read as (proof frames of a given age).
+            else if (arg.StartsWith("--ruin="))
+            {
+                float[] w = arg["--ruin=".Length..].Split('/').Take(3).Select(x => float.Parse(x, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
+                RuinAge.Fallback = new RuinAge(w[0], arg.EndsWith("/falling"), w[1], w[2]);
+            }
         }
         // Its own time limit: a shot that stalls quits by itself and says so.
         GetTree().CreateTimer(240.0, processAlways: true, processInPhysics: false, ignoreTimeScale: true).Timeout += () =>
@@ -280,6 +286,18 @@ public partial class Screenshot : Node
             Frame(a[5]);
             return;
         }
+        // place:<family>:<state>:<out|in|inN|pool> spawns a family fresh and frames it as a lot is framed; pool stands
+        // at the edge of its biggest flooded room.
+        if (view.StartsWith("place:"))
+        {
+            string[] a = view.Split(':');
+            FamilyDef f = m.Library.Families.First(x => x.Id == a[1]);
+            var rng = new Rng(_seed);
+            m.Show(PoiFactory.Generate(m.Library, f, rng.Range(0, f.Variants.Count), f.Rarity, System.Enum.Parse<PoiState>(a[2], true), rng.NextU64()));
+            m.HideHud(true);
+            Frame(a[3]);
+            return;
+        }
         // inspect:<family>:<variant>:<rarity>:<state>:<seed>:<yaw>:<pitch>:<distance> frames anything.
         if (view.StartsWith("inspect:"))
         {
@@ -350,13 +368,27 @@ public partial class Screenshot : Node
     {
         var m = _main;
         PoiInstance poi = m.Stage.Poi;
-        if (shot.StartsWith("in"))
+        if (shot.StartsWith("in") || shot == "pool")
         {
-            int storey = shot.Length > 2 ? int.Parse(shot[2..]) : 0;
-            var rooms = poi.Layout.Modules.Where(x => x.Kind is ModuleKind.Room or ModuleKind.Hall && x.Storey == storey).ToList();
-            if (rooms.Count == 0) rooms = poi.Layout.Modules.Where(x => x.Kind is ModuleKind.Room or ModuleKind.Hall).ToList();
-            PlacedModule room = rooms.OrderByDescending(x => (x.Max.X - x.Min.X) * (x.Max.Z - x.Min.Z)).First();
-            Vector3 eye = m.Stage.ToGlobal(new Vector3(room.Min.X + 0.7f, room.Min.Y + 1.55f, room.Min.Z + 0.7f));
+            PlacedModule room;
+            float lift = 1.55f;
+            if (shot == "pool" && poi.Water.Count > 0)
+            {
+                // A pool under a ceiling, so the frame is a room and not a trench.
+                bool Roofed(WaterPool w) => Enumerable.Range(1, 8).Any(k => BlockInfo.Collides(poi.Blocks.Get(new Int3(poi.Layout.Modules[w.Module].Min.X + 1, poi.Layout.Modules[w.Module].Max.Y + k, poi.Layout.Modules[w.Module].Min.Z + 1)).Type));
+                WaterPool pool = poi.Water.OrderByDescending(Roofed).ThenByDescending(w => w.Cells.Count).First();
+                room = poi.Layout.Modules[pool.Module];
+                lift = pool.Level - room.Min.Y + 1.3f;
+                GD.Print($"pool: {pool.Cells.Count} cells, {pool.Level - room.Min.Y:0.00} m deep in {room.Purpose}");
+            }
+            else
+            {
+                int storey = shot.Length > 2 && shot.StartsWith("in") ? int.Parse(shot[2..]) : 0;
+                var rooms = poi.Layout.Modules.Where(x => x.Kind is ModuleKind.Room or ModuleKind.Hall && x.Storey == storey).ToList();
+                if (rooms.Count == 0) rooms = poi.Layout.Modules.Where(x => x.Kind is ModuleKind.Room or ModuleKind.Hall).ToList();
+                room = rooms.OrderByDescending(x => (x.Max.X - x.Min.X) * (x.Max.Z - x.Min.Z)).First();
+            }
+            Vector3 eye = m.Stage.ToGlobal(new Vector3(room.Min.X + 0.7f, room.Min.Y + lift, room.Min.Z + 0.7f));
             Vector3 at = m.Stage.ToGlobal(new Vector3(room.Max.X + 0.5f, room.Min.Y + 0.5f, room.Max.Z + 0.5f));
             m.Camera.GlobalTransform = new Transform3D(Basis.Identity, eye).LookingAt(at, Vector3.Up);
             m.Camera.Fov = 80f;
@@ -368,9 +400,9 @@ public partial class Screenshot : Node
         }
         var b = m.Stage.SurfaceBounds();
         float r = 0.5f * b.Size.Length();
-        float dist = Mathf.Clamp(r * 1.25f, 22f, 200f);
+        float dist = Mathf.Clamp(r * 2f, 28f, 260f);
         Vector3 target = m.Stage.ToGlobal(b.GetCenter() with { Y = b.Position.Y + b.Size.Y * 0.3f });
-        float yaw = Mathf.DegToRad(m.EntranceYaw() + 32f), pitch = Mathf.DegToRad(30f);
+        float yaw = Mathf.DegToRad(m.EntranceYaw() + 32f), pitch = Mathf.DegToRad(22f);
         Vector3 from = target + new Vector3(Mathf.Sin(yaw) * Mathf.Cos(pitch), Mathf.Sin(pitch), Mathf.Cos(yaw) * Mathf.Cos(pitch)) * dist;
         m.Camera.GlobalTransform = new Transform3D(Basis.Identity, from).LookingAt(target, Vector3.Up);
         m.FreezeCamera = true;
