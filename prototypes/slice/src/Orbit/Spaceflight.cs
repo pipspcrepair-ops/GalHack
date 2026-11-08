@@ -139,6 +139,7 @@ public partial class Spaceflight : Node
         GameNode g = Game;
         if (g.Phase != Phase.Playing || g.Survivor == null) return;
         OrbitComing();
+        WeatherAloft(delta);
         if (g.Suit.Dead) return;
         if (++_chartTick % 30 == 0) Chart();
         // Afloat in a structure you right yourself with its decks, so a door in a tilted hull fits you.
