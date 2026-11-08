@@ -88,6 +88,23 @@ public sealed partial class Town
             float r = BodyRadius(p), h = MathF.Max(p.Figure.Height * (p.Sitting ? 0.7f : 1f), r * 2f + 0.05f);
             if (MathF.Abs(s.Shape.Radius - r) > 0.01f) s.Shape.Radius = r;
             if (MathF.Abs(s.Shape.Height - h) > 0.02f) s.Shape.Height = h;
+            // Come down on you (you stepped into them as they turned, or they were pushed into you): out of you first, if there's room.
+            if (afoot)
+            {
+                Vector3 o = new(p.Pos.X - player.X, 0f, p.Pos.Z - player.Z);
+                float od = o.Length(), touch = r + Slice.Player.Survivor.Radius + 0.02f;
+                if (od < touch && MathF.Abs(p.Pos.Y - player.Y) < 1.6f)
+                {
+                    Vector3 dir = od > 1e-3f ? o / od : new Vector3(MathF.Sin(p.Yaw), 0f, MathF.Cos(p.Yaw));
+                    Vector3 step = dir * (touch - od);
+                    if (Open(p.Pos + step)) p.Pos += step;
+                    else
+                    {
+                        Vector3 side = new Vector3(-dir.Z, 0f, dir.X) * (touch - od);
+                        if (Open(p.Pos + side + step * 0.5f)) p.Pos += side + step * 0.5f;
+                    }
+                }
+            }
             s.Body.GlobalPosition = World(p.Pos + Vector3.Up * h * 0.5f);
             // Pressed by you: walking into them moves them aside at their own give; pinned, they stay, and stop you.
             if (afoot)

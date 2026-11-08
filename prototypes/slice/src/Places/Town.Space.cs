@@ -50,6 +50,8 @@ public sealed partial class Town
         // You are a body they keep off too (giving nothing); walking into them is the push rule's (Town.Colliders).
         if (_places.Zone.Wildlife.Player is { Attackable: true }) _space.Bodies.Add(new PersonalSpace.Body { Pos = player, Radius = Slice.Player.Survivor.Radius - 0.03f, Give = 0f }); // (just inside their capsules' touch)
         _space.Resolve(dt, Open, 4);
+        // (Someone who moved a long way at once, far off and updated now and then, can land on another: settle it now.)
+        if (_space.WorstOverlap > 0.04f) _space.Resolve(0f, Open, 6);
         WorstOverlap = MathF.Max(WorstOverlap, _space.WorstOverlap);
         for (int i = 0; i < _bodies.Count; i++)
         {

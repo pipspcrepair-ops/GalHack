@@ -452,6 +452,14 @@ public sealed partial class Town
                 Pose(p, who, away, dt);
                 continue;
             }
+            // Unwelcome, you: off their post, they make for it before anything else (watching you on the way).
+            if (guard && mood != Mood.Hostile && Unwelcome && (p.Pos - Walk(Data.Spots[p.Spawn.Spot].Cell)).Length() > 2f)
+            {
+                if (p.Spot != p.Spawn.Spot || p.Path == null || p.Step >= p.Path.Count) GoTo(p, p.Spawn.Spot);
+                Move(p, dt);
+                Pose(p, who, away, dt);
+                continue;
+            }
             if (guard && mood != Mood.Peaceful && (player - p.Pos).Length() < 40f)
             {
                 Guard(p, player, mood, dt);
