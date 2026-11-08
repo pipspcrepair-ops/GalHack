@@ -74,6 +74,12 @@ public sealed class PoiInstance
     public bool Friendly;
     /// <summary>Townsfolk as data for the ambient routine to come; null where nobody lives.</summary>
     public Townsfolk? Townsfolk;
+    /// <summary>How long ago and how hard its world fell (from the world's roll, or a century of neglect off one): how far decay has gone.</summary>
+    public RuinAge Ruin = RuinAge.Default;
+    /// <summary>Standing water in the low rooms (the decay pass floods them to the water table).</summary>
+    public readonly List<WaterPool> Water = new();
+    /// <summary>The cells decay took out of the structure: torn edges show their bars beside them.</summary>
+    public readonly List<Int3> Fallen = new();
     /// <summary>How hard a nearby blast hit this place (0 untouched); set by the planet's siting.</summary>
     public float Blasted;
     /// <summary>Where something could have rooted, best first, and how many trees it wants at most (see <see cref="GrowthSpot"/>).</summary>
@@ -291,6 +297,7 @@ public static class PoiFactory
             HasCore = layout.Family.HasCore(state), World = world,
         };
         inst.Age = PoiInstance.AgeFor(layout.Family, state, layout.Extras.InSpace);
+        inst.Ruin = world?.Ruin ?? RuinAge.Default;
         var rng = new Rng(Hash.Combine(layout.Seed ^ (ulong)layout.Rarity, spawnSeed, (ulong)state + 11));
 
         using (Prof.Time("fixtures")) Fixtures.Place(inst, rng.Fork("fixtures"));
@@ -308,6 +315,7 @@ public static class PoiFactory
         StateTransforms.Weather(inst, rng.Fork("weather")); // a century or two after the fall
         using (Prof.Time("decay")) Decay.Apply(inst, rng.Fork("decay"));
         using (Prof.Time("dressing")) Dressing.Apply(lib, inst, rng.Fork("dressing"));
+        using (Prof.Time("aftermath")) StateTransforms.Aftermath(inst, rng.Fork("aftermath"));
         Structure.DropUntethered(inst.Blocks); // cables and tendrils always hang from something
         // Repair after decay: anything the passes above left hanging in the air (a canopy cut off by a
         // ruin, a wall stub after the timber rotted) comes down. The flood fill in Spawn then checks the way in.

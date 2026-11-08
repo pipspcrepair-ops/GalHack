@@ -29,7 +29,16 @@ public partial class Screenshot : Node
             else if (arg.StartsWith("--out=")) _out = arg["--out=".Length..];
             else if (arg == "--day") Main.Daylight = true;
             else if (arg == "--bare") Main.Bare = true;
+            else if (arg == "--cost") _cost = true;
         }
+        // Its own time limit: a shot that stalls quits by itself and says so.
+        GetTree().CreateTimer(240.0, processAlways: true, processInPhysics: false, ignoreTimeScale: true).Timeout += () =>
+        {
+            GD.PrintErr("Screenshot timed out after 4 minutes");
+            GetTree().Quit(2);
+        };
+        foreach (string arg in OS.GetCmdlineUserArgs())
+            if (arg.StartsWith("--seed=")) _seed = ulong.Parse(arg["--seed=".Length..]);
         ProcessPhysicsPriority = 100;
         // Debanding dithers every pixel, which PNG can't compress; screenshots don't need it.
         GetViewport().UseDebanding = false;
@@ -253,6 +262,24 @@ public partial class Screenshot : Node
             m.Sky.PlacePlanetInView(m.Camera, 24f, 16f);
             return;
         }
+        // lot:<kind>:<state>:<fall>:<storeys>:<out|in|inN>[:wear/violence/water[/falling]] builds a city lot of a kind (tower, terrace, house...) as the city's
+        // planner asks for it, in a state, fallen that far (0 to 1), and frames it from outside or inside its biggest room.
+        if (view.StartsWith("lot:"))
+        {
+            string[] a = view.Split(':');
+            var rng = new Rng(_seed);
+            string kind = a[1];
+            FamilyDef f = m.Library.Families.First(x => x.Id == "city_" + kind);
+            var lot = new CityLot(kind, kind == "terrace" ? 17 : 18, 17, int.Parse(a[4]), rng.Range(0, 1000), float.Parse(a[3], System.Globalization.CultureInfo.InvariantCulture));
+            Layout layout = PoiFactory.BuildLayout(m.Library, f, 0, f.Rarity, rng.NextU64(), new LayoutHints(Dir.North, TechLevel.Mid, lot));
+            // An optional seventh part, wear/violence/water[/falling], is the world's fall as decay reads it.
+            float[] w = a.Length > 6 ? a[6].Split('/').Take(3).Select(x => float.Parse(x, System.Globalization.CultureInfo.InvariantCulture)).ToArray() : null;
+            var world = w == null ? null : new WorldProfile { Ruin = new RuinAge(w[0], a[6].EndsWith("/falling"), w[1], w[2]) };
+            m.Show(PoiFactory.Spawn(m.Library, layout, System.Enum.Parse<PoiState>(a[2], true), rng.NextU64(), world));
+            m.HideHud(true);
+            Frame(a[5]);
+            return;
+        }
         // inspect:<family>:<variant>:<rarity>:<state>:<seed>:<yaw>:<pitch>:<distance> frames anything.
         if (view.StartsWith("inspect:"))
         {
@@ -310,6 +337,43 @@ public partial class Screenshot : Node
                 break;
             }
         }
+    }
+
+    ulong _seed = (ulong)System.Random.Shared.NextInt64();
+
+    /// <summary>
+    /// Frames the place on stage: "out", three-quarters on from the front and above, close enough to see into
+    /// what is open; "in", standing in a corner of its biggest ground-floor room looking across it; "inN", the
+    /// same on storey N.
+    /// </summary>
+    void Frame(string shot)
+    {
+        var m = _main;
+        PoiInstance poi = m.Stage.Poi;
+        if (shot.StartsWith("in"))
+        {
+            int storey = shot.Length > 2 ? int.Parse(shot[2..]) : 0;
+            var rooms = poi.Layout.Modules.Where(x => x.Kind is ModuleKind.Room or ModuleKind.Hall && x.Storey == storey).ToList();
+            if (rooms.Count == 0) rooms = poi.Layout.Modules.Where(x => x.Kind is ModuleKind.Room or ModuleKind.Hall).ToList();
+            PlacedModule room = rooms.OrderByDescending(x => (x.Max.X - x.Min.X) * (x.Max.Z - x.Min.Z)).First();
+            Vector3 eye = m.Stage.ToGlobal(new Vector3(room.Min.X + 0.7f, room.Min.Y + 1.55f, room.Min.Z + 0.7f));
+            Vector3 at = m.Stage.ToGlobal(new Vector3(room.Max.X + 0.5f, room.Min.Y + 0.5f, room.Max.Z + 0.5f));
+            m.Camera.GlobalTransform = new Transform3D(Basis.Identity, eye).LookingAt(at, Vector3.Up);
+            m.Camera.Fov = 80f;
+            m.FreezeCamera = true;
+            // A soft fill at the eye, as the interiors sheet has, so a dark room reads.
+            m.Player.Lamp.Visible = false;
+            m.Camera.AddChild(new OmniLight3D { LightColor = new Color("fff0dc"), LightEnergy = 0.6f, OmniRange = 22f, OmniAttenuation = 1.2f, ShadowEnabled = false });
+            return;
+        }
+        var b = m.Stage.SurfaceBounds();
+        float r = 0.5f * b.Size.Length();
+        float dist = Mathf.Clamp(r * 1.25f, 22f, 200f);
+        Vector3 target = m.Stage.ToGlobal(b.GetCenter() with { Y = b.Position.Y + b.Size.Y * 0.3f });
+        float yaw = Mathf.DegToRad(m.EntranceYaw() + 32f), pitch = Mathf.DegToRad(30f);
+        Vector3 from = target + new Vector3(Mathf.Sin(yaw) * Mathf.Cos(pitch), Mathf.Sin(pitch), Mathf.Cos(yaw) * Mathf.Cos(pitch)) * dist;
+        m.Camera.GlobalTransform = new Transform3D(Basis.Identity, from).LookingAt(target, Vector3.Up);
+        m.FreezeCamera = true;
     }
 
     /// <summary>Orbits the inspector camera relative to the way in, and hangs the sky world in view.</summary>
@@ -537,9 +601,39 @@ public partial class Screenshot : Node
         _main.SettleInterior();
     }
 
+    // The frame's cost on the shot (--cost): the time between drawn frames over the last stretch before the capture.
+    bool _cost;
+    double _frameSum;
+    int _frames;
+    ulong _last;
+
+    public override void _Process(double delta)
+    {
+        if (!_cost || _tick < CaptureTick - 70) return;
+        ulong now = Time.GetTicksUsec();
+        if (_last != 0) { _frameSum += (now - _last) / 1000.0; _frames++; }
+        _last = now;
+    }
+
     async void Capture()
     {
         await ToSignal(RenderingServer.Singleton, "frame_post_draw");
+        if (_cost && _main.Stage?.Poi is PoiInstance shown)
+        {
+            int piles = 0, bars = 0, debrisTris = 0;
+            foreach (var (c, b) in shown.Blocks.Blocks())
+            {
+                if (b.Type == BlockType.Rubble) piles++;
+                else if (b.Type == BlockType.Rebar) bars++;
+                else continue;
+                debrisTris += Shapes.For(b, c, shown.Blocks).Count * 12;
+            }
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            Mesher.Build(shown.Blocks, shown.Layout.Occupied, new MeshOptions { Rock = false });
+            double mesh = watch.Elapsed.TotalMilliseconds;
+            GD.Print($"frame cost: {_frameSum / System.Math.Max(1, _frames):0.00} ms a frame over {_frames} frames, {RenderingServer.GetRenderingInfo(RenderingServer.RenderingInfo.TotalDrawCallsInFrame)} draw calls, " +
+                     $"{RenderingServer.GetRenderingInfo(RenderingServer.RenderingInfo.TotalPrimitivesInFrame)} primitives; {piles} rubble piles and {bars} cells of bars, {debrisTris} triangles of them; whole place meshed in {mesh:0} ms, {shown.Blocks.CountBlocks()} blocks, {shown.Water.Count} pools; {shown.Ruin}");
+        }
         // The places in the shot get PoiTest's Geometry check on the meshes actually drawn: a stroke
         // thrown out of its cell (a "wire" across the frame) refuses the shot rather than ship it.
         int places = StrayGeometry(this, out int triangles, out int stray, out string first);

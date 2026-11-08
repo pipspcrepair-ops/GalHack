@@ -36,6 +36,47 @@ public static class MeshBuild
         return mesh;
     }
 
+    /// <summary>
+    /// The still water standing in a place's low rooms (<see cref="PoiInstance.Water"/>): a flat sheet at each pool's
+    /// level over the floor cells it covers, in the place's own cells; null where nothing is flooded.
+    /// </summary>
+    public static MeshInstance3D Flooding(PoiInstance inst)
+    {
+        if (inst.Water.Count == 0) return null;
+        var st = new SurfaceTool();
+        st.Begin(Mesh.PrimitiveType.Triangles);
+        st.SetNormal(Vector3.Up);
+        st.SetColor(new Color(1, 1, 1, 1)); // the river shader reads its alpha as the shore: all of it is water
+        foreach (WaterPool pool in inst.Water)
+            foreach (Int3 c in pool.Cells)
+            {
+                Vector3 a = new(c.X, pool.Level, c.Z), b = new(c.X + 1, pool.Level, c.Z), d = new(c.X + 1, pool.Level, c.Z + 1), e = new(c.X, pool.Level, c.Z + 1);
+                st.AddVertex(a); st.AddVertex(b); st.AddVertex(d);
+                st.AddVertex(a); st.AddVertex(d); st.AddVertex(e);
+            }
+        st.Index();
+        return new MeshInstance3D { Name = "Flooding", Mesh = st.Commit(), MaterialOverride = StillWater(), CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
+    }
+
+    /// <summary>
+    /// Standing water indoors: the game's water shader (where the project has it) in the dark green of still,
+    /// stale water, glassy enough to hold the room in it; elsewhere a plain glossy dark surface.
+    /// </summary>
+    public static Material StillWater()
+    {
+        const string path = "res://shaders/water.gdshader";
+        Color shallow = new(0.075f, 0.1f, 0.07f), deep = new(0.018f, 0.032f, 0.026f);
+        if (ResourceLoader.Exists(path))
+        {
+            var m = new ShaderMaterial { Shader = GD.Load<Shader>(path) };
+            m.SetShaderParameter("shallow", shallow);
+            m.SetShaderParameter("deep", deep);
+            m.SetShaderParameter("daylight", 0.4f);
+            return m;
+        }
+        return new StandardMaterial3D { AlbedoColor = deep.Lerp(shallow, 0.4f), Roughness = 0.03f, Metallic = 0.25f, MetallicSpecular = 0.9f, CullMode = BaseMaterial3D.CullModeEnum.Disabled };
+    }
+
     public static ConcavePolygonShape3D ToShape(ChunkMesh chunk)
     {
         var l = chunk.Collision;

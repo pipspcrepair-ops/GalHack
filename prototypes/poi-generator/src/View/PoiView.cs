@@ -90,6 +90,7 @@ public partial class PoiView : Node3D
     {
         var view = new PoiView { Poi = poi, Walkable = opt.Collision, Name = poi.Family.Id, _opt = opt, _biome = biome, _groundAt = groundAt, _offset = offset };
         view.BuildBlocks();
+        if (MeshBuild.Flooding(poi) is { } water) view._blocks.AddChild(water);
         view.BuildDoors();
         view.BuildLifts();
         if (opt.Lights) view.BuildLights();
