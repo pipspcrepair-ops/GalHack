@@ -71,6 +71,6 @@ public partial class LightShots : Node
         if (n < 8) return; // let the meshes build
         int f = n - 8;
         GetViewport().GetTexture().GetImage().SavePng($"{_out}/f{f:D3}.png");
-        if (f >= Frames) GetTree().Quit();
+        if (f >= Frames) GalHack.Testing.Backstop.Quit(this);
     }
 }
