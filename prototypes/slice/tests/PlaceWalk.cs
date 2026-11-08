@@ -333,6 +333,7 @@ public sealed class PlaceWalk
         }
         Controls.Hold(Key.W, false);
         Controls.Hold(Key.S, false);
+        if (ticks >= 600) Notes.Add($"the ladder from {a} to {b} didn't bring us there (feet {p.FromWorld(_game.Survivor.WorldFeet):F2}, target {p.FromWorld(target):F2}, climb {_game.Survivor.Legs.Climb}, on floor {_game.Survivor.Body.OnFloor}, ladder out {_game.Survivor.Legs.Ladder.Out:F1})");
         done(ticks < 600);
     }
 

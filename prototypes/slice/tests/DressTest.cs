@@ -175,7 +175,7 @@ public partial class DressTest : Node
             }
         GD.Print($"{rolled.Count} places, {rooms} rooms, {pieces} pieces ({_flecks} pairs of a model's own faces a hair apart, above its floor marks or flecks)");
         foreach (var kv in _kinds.OrderByDescending(k => k.Value).Take(20)) GD.Print($"  {kv.Key}: {kv.Value}");
-        foreach (string s in floating.Take(4).Concat(sunk.Take(4)).Concat(coplanar.Where((_, n) => n % 97 == 0).Take(14))) GD.Print("  e.g. " + s);
+        foreach (string s in floating.Take(4).Concat(sunk.Take(4)).Concat(coplanar.Where((_, n) => coplanar.Count <= 14 || n % 97 == 0).Take(14))) GD.Print("  e.g. " + s);
         Check(floating.Count == 0, $"every piece, and the debris and ash it lays, lies on a floor at its room's height ({floating.Count} over a hole, a step or a ledge)");
         Check(sunk.Count == 0, $"no piece is drawn inside a block ({sunk.Count} are)");
         Check(coplanar.Count == 0, $"no two flat faces near the floor lie a hair apart one over the other ({coplanar.Count} pairs)");

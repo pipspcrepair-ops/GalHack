@@ -396,14 +396,25 @@ public partial class PlaceTest : Node
             PoiGenerator.Gen.Int3 from = walk.Here(place, nav);
             var open = nav.Reachable(from);
             int Near(Vector3 at) { var q = place.CellAt(at); return open.Where(c => c.Y == q.Y).Select(c => c.Manhattan(q)).DefaultIfEmpty(9999).Min(); }
-            DecoHit piece = place.Pieces().Where(h => h.Room.Solid.Contains(h.Index) && h.Node.GlobalPosition.Y - game.Survivor.WorldFeet.Y is > -2f and < 2f && Near(h.Node.GlobalPosition) <= 3)
-                .OrderBy(h => h.Node.GlobalPosition.DistanceTo(game.Survivor.WorldFeet)).FirstOrDefault();
-            if (piece != null)
+            var pieces = place.Pieces().Where(h => h.Room.Solid.Contains(h.Index) && h.Node.GlobalPosition.Y - game.Survivor.WorldFeet.Y is > -2f and < 2f && Near(h.Node.GlobalPosition) <= 3)
+                .OrderBy(h => h.Node.GlobalPosition.DistanceTo(game.Survivor.WorldFeet)).Take(5).ToList();
+            DecoHit piece = null;
+            Vector3 mid = default;
+            // One the crosshair meets from beside it: a furnished room can stand another piece in front of the nearest.
+            foreach (DecoHit h in pieces)
             {
-                var pc = place.CellAt(piece.Node.GlobalPosition);
+                var pc = place.CellAt(h.Node.GlobalPosition);
                 PoiGenerator.Gen.Int3 stand = open.Where(c => c.Y == pc.Y).OrderBy(c => c.Manhattan(pc)).First();
                 foreach (int x in Watched(walk.To(place, stand, r => ok = r))) yield return x;
-                Vector3 mid = piece.Node.GlobalPosition + Vector3.Up * MathF.Min(0.6f, piece.Piece.Height * 0.5f);
+                mid = h.Node.GlobalPosition + Vector3.Up * MathF.Min(0.6f, h.Piece.Height * 0.5f);
+                foreach (int x in Watched(drive.LookAt(mid, 10))) yield return x;
+                for (int i = 0; i < 3; i++) yield return 0;
+                piece = h;
+                if (game.Tool.PlaceHit?.Piece is DecoHit seen && seen.Room == h.Room && seen.Index == h.Index) break;
+                GD.Print($"  (the {h.Piece.Name} is behind something from where you stand: '{game.Tool.TargetLabel}' by the crosshair; the next)");
+            }
+            if (piece != null)
+            {
                 int bag = game.Pack.Storage.Contents.Total;
                 double Carried() => place.Memory.SalvageCarry.Values.Sum(); // a small piece pays in fractions, carried in the place's memory until they make a whole item
                 double carried = Carried();
@@ -977,6 +988,11 @@ public partial class PlaceTest : Node
             Int3 door = place.Inst.Layout.EntranceCell;
             Int3 outward = place.Inst.Layout.EntranceFacing.Vec();
             Vector3 doorAt = new(door.X + 0.5f, door.Y, door.Z + 0.5f), outv = new(outward.X, 0f, outward.Z);
+            // The way in's own middle (a 2 m way is two cells: its entrance cell's middle is half a metre off it), where one
+            // standing in it is in your way, not beside it to be walked round.
+            var wayCells = place.Inst.Layout.Doorways.Where(d => d.Cells.Contains(door)).SelectMany(d => d.Cells).Concat(place.Inst.Layout.ExitCells.Where(c => c.Manhattan(door) <= 1))
+                .Where(c => c.Y == door.Y && (c - door).X * outward.X + (c - door).Z * outward.Z == 0).Append(door).Distinct().ToList();
+            Vector3 wayMiddle = new((float)wayCells.Average(c => c.X) + 0.5f, door.Y, (float)wayCells.Average(c => c.Z) + 0.5f);
             // Two of them meeting in the way in: one waits or steps aside, neither passes through the other.
             var pair = town.People.Where(q => !q.Dead && !q.Indoors && !q.Away && q.Looks != null && q.Role != "guard").Take(2).ToList();
             if (pair.Count == 2)
@@ -1003,7 +1019,7 @@ public partial class PlaceTest : Node
                 GD.Print("  (TEST: one of them set standing in the way in)");
                 int pushes = town.Pushed;
                 float closest = 0f, through = 0f;
-                foreach (int x in PushThrough(game, drive, place, town, block, doorAt, outv, (t, c, th) => { civTicks = t; closest = c; through = th; })) yield return x;
+                foreach (int x in PushThrough(game, drive, place, town, block, wayMiddle, outv, (t, c, th) => { civTicks = t; closest = c; through = th; })) yield return x;
                 float need = block.Looks.Stats.Radius * 0.78f + Slice.Player.Survivor.Radius;
                 Check(closest > need - 0.08f, $"you can't walk through a standing person (closest {closest:F2} m, bodies {need:F2} m; {town.SolidsInUse} capsules on people)");
                 Check(town.Pushed > pushes && civTicks >= 0 && civTicks <= 120 && through < 1.2f, $"one standing in the way in is pushed clear in {civTicks / 60f:F1} s and you get through ({through:F1} m from the far side, they answered {block.Answer})");
@@ -1015,7 +1031,7 @@ public partial class PlaceTest : Node
                 GD.Print("  (TEST: a guard set braced in the way in)");
                 int guardTicks = -1;
                 brace.Halt = 1f; // braced: they've halted someone
-                foreach (int x in PushThrough(game, drive, place, town, brace, doorAt, outv, (t, c, th) => guardTicks = t, keepBraced: true)) yield return x;
+                foreach (int x in PushThrough(game, drive, place, town, brace, wayMiddle, outv, (t, c, th) => guardTicks = t, keepBraced: true)) yield return x;
                 brace.Halt = 0f;
                 Check(guardTicks < 0 || guardTicks > civTicks, $"a braced guard holds longer ({(guardTicks < 0 ? "held the whole push" : $"{guardTicks / 60f:F1} s")} against {civTicks / 60f:F1} s)");
             }

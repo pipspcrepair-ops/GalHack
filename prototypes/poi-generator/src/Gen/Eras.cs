@@ -376,6 +376,8 @@ public static class EraPass
             var p = new Int3(x, y, z);
             Block b = g.Get(p);
             if (y < 2 || b.Type != BlockType.Cube || b.Role is not (Role.Roof or Role.Wall) || !BlockInfo.Collides(g.Get(p + Int3.Down).Type)) continue;
+            // Where a ladder comes up beside it, the edge stays square: it is the step off the top.
+            if (Dirs.Horizontal.Any(d => g.Get(p + d.Vec()).Type == BlockType.Ladder || g.Get(p + d.Vec() + Int3.Down).Type == BlockType.Ladder)) continue;
             var open = Dirs.Horizontal.Where(d => clear(p + d.Vec()) && sky(p + d.Vec()) && !BlockInfo.Collides(g.Get(p + d.Vec() + Int3.Down).Type)).ToList();
             var held = Dirs.Horizontal.Where(d => g.Get(p + d.Vec()) is { Type: BlockType.Cube } n && n.Role is Role.Roof or Role.Wall).ToList();
             if (open.Count == 1 && held.Contains(open[0].Opposite()))

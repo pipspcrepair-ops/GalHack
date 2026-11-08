@@ -122,7 +122,20 @@ public sealed partial class Town
                     p.PressFor = pressing > 0.2f || leaning ? p.PressFor + dt : 0f;
                     if (pressing > 0.2f || p.PressFor > 0.25f)
                     {
-                        Vector3 step = away * MathF.Min(1.5f * Give(p), 1.6f) * dt;
+                        // Aside, not just on ahead of you: off the line you walk, toward the side they already stand to
+                        // (pushed straight on, someone in a narrow way is only driven along it in front of you).
+                        Vector3 aside = away;
+                        Vector3 going = moved with { Y = 0f };
+                        if (going.LengthSquared() < 1e-8f) going = facing;
+                        if (going.LengthSquared() > 1e-6f)
+                        {
+                            going = going.Normalized();
+                            Vector3 lateral = away - going * away.Dot(going);
+                            if (lateral.LengthSquared() < 0.01f) lateral = new Vector3(-going.Z, 0f, going.X) * ((p.GetHashCode() & 1) == 0 ? 1f : -1f);
+                            aside = (away * 0.5f + lateral.Normalized()).Normalized();
+                        }
+                        Vector3 step = aside * MathF.Min(1.5f * Give(p), 1.6f) * dt;
+                        if (!Open(p.Pos + step)) step = away * step.Length();
                         if (Open(p.Pos + step)) p.Pos += step;
                         else
                         {
