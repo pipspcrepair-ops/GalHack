@@ -71,6 +71,38 @@ family flavour_farmstead
     seed 9713
     site farm_bottom
 
+family flavour_warning
+  tier site
+  siting flat
+  rise 3
+  name Warning Post
+  pitch A post with a hazard sign, at the edge of ground that is still hot.
+  faction none
+  roster raiders
+  site warning_post
+  core none
+  owner none
+  rarity common
+  biomes desert rock ash ice steppe fungal
+  territory any
+  spacing 2
+  reveal 40
+  ominous 0.4
+  wrong 0
+  tags flavour warning
+  is open
+  states active 0 abandoned 6 infested 0 ruined 2
+  # The one post, turned to face whoever comes in; the variants only reseed it.
+  variant Warning Post
+    seed 9731
+    site warning_post
+  variant Hazard Post
+    seed 9732
+    site warning_post
+  variant Sign Post
+    seed 9733
+    site warning_post
+
 family flavour_shed
   tier site
   siting flat

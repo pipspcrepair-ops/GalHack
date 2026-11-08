@@ -9,15 +9,25 @@
 #                          severity, 0 to 1); a bigger world takes more, a scar in one region a third
 #     crater lo hi         a ground burst's crater radius, metres (the bigger the target, the bigger the yield)
 #     depth d  rim r       the bowl's depth below the land and its thrown rim, as shares of the radius
-#     ruin dead fade       how far out it flattened, burnt the land dead (ash, nothing growing) and
-#                          faded back to the land's own, as multiples of the crater radius
+#     ruin dead fade m [+] how far out it flattened, burnt the land dead (ash, nothing growing) and
+#                          faded back to the land's own: m times the crater radius, plus metres (a big
+#                          blast's rings in metres: multiples of a 250 m bowl would kill the whole world)
+#     centre yes           a ground burst comes down in the target itself (the city it hit), not beside it
+#     flatten yes          the places round it grade by distance: foundations and tower stumps by the rim,
+#                          stumps a storey or two tall, gutted shells, then standing ruins further out
+#     rad n [aged]         radiation at ground zero, RAD, to none at the dead ring's edge (warned there),
+#                          and the share of it a long century takes away
+#     field lo hi          shell holes in its crater field on a 16x8 km world, mildest to hardest fall: in
+#                          barrages round the targets, along the fronts between them and down their roads
+#     shell lo hi          a shell hole's radius, metres, most of them near lo
 #     air share            strikes that burst in the air: no crater, the same flattening and burning
 #     miss share           strikes that missed: down within spread of the target, never in open water
 #     spread lo hi         how far off a miss came down, metres
 #     wild share           the odd one over open country, aimed at nothing (an airburst)
-#     salvo lo hi step m   each strike a stick of lo to hi craters in a line, step metres apart
+#     salvo lo hi step m   each strike a stick of lo to hi craters in a line, step metres (and 3.5 radii) apart
 #     era L M H            how many strikes the old world could throw, by its tech level
-#     aged depth rim dead  what a long century since takes off the bowl, the rim and the dead ground
+#     aged depth rim dead  what a long century since takes off the bowl, the rim and the dead ground (past 1:
+#                          the land has all grown back before the century is out)
 #
 #   target <kind>          what a strike aims at; the first that matches a place wins
 #     match words          any of: tier.T tag.T id.T role.T (the plan's role) primary capital plan.city
@@ -28,22 +38,24 @@
 #     hard yes             hardened: always a ground burst
 #     air share            its own share of airbursts (cities and towns: the blast over the streets)
 #     naval yes            a ship target: its strike may come down on the water
+#     within yes           lived in: a strike that comes down in its target (centre yes) comes down in its middle
 #     era L M H            its worth by the old world's tech level
 
-strike nuclear | falls nuclear_war | count 5 14 | crater 30 58 | depth 0.26 | rim 0.08 | ruin 6 | dead 9 | fade 16 | air 0.3 | miss 0.12 | spread 220 600 | wild 0.05 | era L 0.5 M 1 H 1.3 | aged 0.35 0.5 0.3
-strike bombardment | falls orbital_bombardment | count 4 11 | crater 12 22 | depth 0.3 | rim 0.1 | ruin 5 | dead 6 | fade 11 | air 0 | miss 0.18 | spread 150 450 | wild 0.04 | salvo 2 4 step 70 | era L 1 M 1 H 1 | aged 0.3 0.5 0.3
-strike kinetic | falls kinetic_strikes | count 3 8 | crater 34 64 | depth 0.4 | rim 0.1 | ruin 4 | dead 3 | fade 7 | air 0 | miss 0.15 | spread 250 650 | wild 0.08 | era L 1 M 1 H 1 | aged 0.3 0.5 0.2
+strike nuclear | falls nuclear_war | count 4 12 | crater 80 250 | centre yes | flatten yes | depth 0.22 | rim 0.07 | ruin 1 900 | dead 1.2 250 | fade 1 1300 | rad 12 0.4 | air 0.25 | miss 0.1 | spread 300 800 | wild 0.04 | era L 0.5 M 1 H 1.3 | aged 0.2 0.3 0.1
+strike bombardment | falls orbital_bombardment | count 6 18 | crater 20 60 | depth 0.3 | rim 0.1 | ruin 4 | dead 1.5 | fade 6 | air 0 | miss 0.18 | spread 150 450 | wild 0.04 | salvo 2 5 step 30 | field 40 260 | shell 3 16 | era L 1 M 1 H 1 | aged 0.35 0.5 1.6
+strike kinetic | falls kinetic_strikes | count 3 9 | crater 25 60 | depth 0.4 | rim 0.1 | ruin 4 | dead 2 | fade 5 | air 0 | miss 0.15 | spread 250 650 | wild 0.08 | salvo 1 3 step 60 | field 30 180 | shell 3 14 | era L 1 M 1 H 1 | aged 0.35 0.5 1.5
+strike shelling | falls invasion civil_war drone_wars blockade mercenary_seizure | count 0 0 | crater 8 12 | depth 0.32 | rim 0.1 | ruin 1.5 | dead 1.2 | fade 2.5 | air 0 | field 30 200 | shell 3 12 | era L 0.7 M 1 H 1.1 | aged 0.35 0.5 2.2
 
 target none | match tag.flavour tag.wreck tag.alien tag.precursor tag.evacuation tag.radiation tag.scrappy tag.gang tag.settlement tag.recovery tag.working | value 0
-target capital | match capital | value 14 | takes 3 | air 0.7
-target city | match plan.city | value 11 | takes 3 | air 0.8
+target capital | match capital | value 14 | takes 3 | air 0.15 | within yes
+target city | match plan.city | value 11 | takes 3 | air 0.2 | within yes
 target port | match tier.spaceport | value 9 | takes 2 | era L 0.7 M 1 H 1.2
 target base | match tag.military | value 8 | takes 2 | hard yes
 target airfield | match tag.aviation | value 7 | hard yes
 target docks | match tag.port | value 6 | naval yes
 target power | match tag.power | value 5 | era L 0.6 M 1 H 1.3
 target refinery | match id.refinery id.steelworks id.works_complex | value 5 | era L 0.8 M 1.2 H 1
-target town | match tier.town tier.city role.hub | value 5 | takes 2 | air 0.6
+target town | match tier.town tier.city role.hub | value 7 | takes 2 | air 0.15 | within yes
 target industry | match tag.industry | value 3 | era L 0.7 M 1.2 H 1
 target bridge | match infra.bridge+route.highway infra.bridge+route.rail | value 2 | share 0.2 | hard yes
 target junction | match infra.junction+route.highway | value 1.5 | share 0.15 | hard yes

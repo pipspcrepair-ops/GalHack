@@ -66,6 +66,20 @@ public sealed partial class PlanetWorld
     /// </summary>
     public readonly IReadOnlyList<PoiGenerator.Gen.Strike> Blasts;
 
+    /// <summary>What the war's blasts left in the ground here, RAD (a nuclear crater and its ring; 0 elsewhere): added to the world's background by the suit.</summary>
+    public float RadiationAt(double x, double z)
+    {
+        float rad = 0f;
+        foreach (PoiGenerator.Gen.Strike b in Blasts)
+        {
+            if (b.Rad <= 0f) continue;
+            double dx = Mathx.WrapDelta(x - b.X, Map.WidthMeters), dz = Mathx.WrapDelta(z - b.Z, Map.HeightMeters);
+            if (Math.Abs(dx) > b.Dead || Math.Abs(dz) > b.Dead) continue;
+            rad = MathF.Max(rad, b.RadiationAt((float)Math.Sqrt(dx * dx + dz * dz)));
+        }
+        return rad;
+    }
+
     /// <summary>
     /// The world round the places, when its code is compiled in (src/World/Infra: the infrastructure
     /// network, see PlanetWorld.Infra.cs). Projects that compile only this file build worlds without it.
@@ -191,11 +205,13 @@ public sealed partial class PlanetWorld
         Palette = new GroundPalette(map, Flora);
         // Every blast's dead zone shows in the ground's colour, fading back to the land's own, and nothing grows
         // in it (the scatter and the cover read the same zones); its crater shows on the map as in the ground.
+        // An old shell hole's dead ground has all grown back: only its bowl is left.
         foreach (PoiGenerator.Gen.Strike b in Blasts)
         {
-            Palette.DeadZones.Add((b.X, b.Z, b.Dead, b.Fade));
+            if (b.Faded > 0f) Palette.DeadZones.Add((b.X, b.Z, b.Dead, b.Faded));
             if (b.Bowl) Palette.Craters.Add((b.X, b.Z, b.Crater, b.Depth, b.Rim));
         }
+        Palette.IndexBlasts();
         // The land comes back through the ruins as the planet's own flora, and their rubble is its rock.
         Palette.Planted = RuinGrowth.Plan(pois, source, Palette, map.WidthMeters, map.HeightMeters);
         foreach (PoiSite p in pois) PoiGenerator.Gen.Growth.Earthen(p.Instance, RubbleRock, Weed);
@@ -225,6 +241,7 @@ public sealed partial class PlanetWorld
         List<PoiSite> pois = catalog == null ? new List<PoiSite>() : PoiSiting.Place(catalog, map, bare, landing, profile: profile, depth: rollDepth);
         var stamps = new List<TerrainStamp>();
         var anchors = new List<TerrainDigging.Terrain.PoiSite>();
+        var seated = new List<PoiSite>(pois);
         foreach (PoiSite p in pois)
         {
             stamps.AddRange(p.Stamps);   // the pad, then whatever grounds it (bowl, terraces, approach cut, tilt, furrow)
@@ -236,6 +253,14 @@ public sealed partial class PlanetWorld
         object around = null;
         List<PoiGenerator.Gen.Strike> blasts = PoiSiting.SiteBlasts(pois);
         PlanAround(spec, catalog, map, bare, pois, profile, landing, stamps, roll, blasts, ref around);
+        // A ground burst in a town's middle took the places in its bowl: nothing holds the ground for them now.
+        if (pois.Count != seated.Count || !seated.TrueForAll(pois.Contains))
+        {
+            var standing = new HashSet<PoiSite>(pois);
+            var kept = new List<TerrainDigging.Terrain.PoiSite>();
+            for (int i = 0; i < anchors.Count; i++) if (standing.Contains(seated[i])) kept.Add(anchors[i]);
+            anchors = kept;
+        }
         // Every place inside a blast's reach takes it, the city's buildings with the rest.
         PoiSiting.Blast(pois, blasts, map.WidthMeters, map.HeightMeters);
         var source = new PlanetTerrainSource(map, stamps, anchors);

@@ -49,6 +49,15 @@ public partial class LayersTest : Node
         try
         {
             _lib = WorldChoice.Library;
+            // -- --strikes: the war's craters only, and what they cost.
+            if (OS.GetCmdlineUserArgs().Contains("--strikes"))
+            {
+                WarFalls();
+                StrikesOnTargets();
+                WarFields();
+                WarLoads();
+                goto done;
+            }
             Data();
             var worlds = RollMany(700);
             Flora(worlds);
@@ -60,6 +69,9 @@ public partial class LayersTest : Node
             Hooks(worlds);
             WarFalls();
             StrikesOnTargets();
+            WarFields();
+            WarLoads();
+            done:;
         }
         catch (Exception e) { Check(false, $"the test threw: {e}"); }
         GD.Print(_failures == 0 ? $"ALL PASSED ({_passes} checks in {_clock.Elapsed.TotalSeconds:F1} s)" : $"{_failures} CHECK(S) FAILED ({_passes} passed)");
