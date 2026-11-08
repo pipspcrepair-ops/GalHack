@@ -152,7 +152,7 @@ public partial class BuildTest
         return problems;
     }
 
-    /// <summary>The escape menu's pages and its quit question: the alerts' row clear of every panel.</summary>
+    /// <summary>The escape menu's pages and its quit and new game questions: the alerts' row clear of every panel.</summary>
     IEnumerable<int> EscapeRowChecks()
     {
         Gui.Measure = true;
@@ -161,6 +161,7 @@ public partial class BuildTest
         foreach (OptionsTab tab in Enum.GetValues<OptionsTab>())
             pages.Add(($"options: {tab}", () => { esc.Root.Page = EscapePage.Options; esc.Root.Options.Tab = tab; esc.Root.Confirming = false; }));
         pages.Add(("the quit question", () => { esc.Root.Page = EscapePage.World; esc.Root.Confirming = true; }));
+        pages.Add(("the new game question", () => { esc.Root.Page = EscapePage.World; esc.Root.Asking = EscapeQuestion.NewGame; }));
         esc.Open();
         foreach (var (name, set) in pages)
         {

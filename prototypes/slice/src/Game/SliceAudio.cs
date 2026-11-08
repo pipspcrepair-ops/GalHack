@@ -115,6 +115,7 @@ public partial class SliceAudio : Node
     public override void _ExitTree()
     {
         GetTree().NodeAdded -= Route;
+        Muffle(false); // the buses outlive the game: a NEW GAME taken under water must not start muffled
         if (_saveIn > 0f) Settings.Save(SettingsPath);
     }
 

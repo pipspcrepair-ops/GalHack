@@ -70,23 +70,32 @@ public partial class SliceMusic : Node
         _worker.Start();
     }
 
+    /// <summary>Music workers running now, in every game (a game torn down leaves none).</summary>
+    public static int Workers => Volatile.Read(ref _workers);
+    static int _workers;
+
     /// <summary>The worker: tops the buffer up, then sleeps. A new scene's engine is made here, off the main thread.</summary>
     void Work()
     {
-        var left = new float[Chunk];
-        var right = new float[Chunk];
-        var frames = new Vector2[Chunk];
-        while (_running)
+        Interlocked.Increment(ref _workers);
+        try
         {
-            while (_running && _playback.GetFramesAvailable() >= Chunk)
+            var left = new float[Chunk];
+            var right = new float[Chunk];
+            var frames = new Vector2[Chunk];
+            while (_running)
             {
-                _mix.Render(left, right, Chunk);
-                for (int i = 0; i < Chunk; i++) frames[i] = new Vector2(left[i], right[i]);
-                _playback.PushBuffer(frames);
-                Interlocked.Add(ref _pushed, Chunk);
+                while (_running && _playback.GetFramesAvailable() >= Chunk)
+                {
+                    _mix.Render(left, right, Chunk);
+                    for (int i = 0; i < Chunk; i++) frames[i] = new Vector2(left[i], right[i]);
+                    _playback.PushBuffer(frames);
+                    Interlocked.Add(ref _pushed, Chunk);
+                }
+                Thread.Sleep(40);
             }
-            Thread.Sleep(40);
         }
+        finally { Interlocked.Decrement(ref _workers); }
     }
 
     public override void _Process(double delta)
