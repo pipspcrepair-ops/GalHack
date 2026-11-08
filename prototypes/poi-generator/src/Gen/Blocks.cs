@@ -147,7 +147,7 @@ public static class BlockInfo
     public static bool IsFinish(BlockType t) => t == BlockType.Plate;
 
     /// <summary>How thick a floor's finish is: what stands on it stands this much higher.</summary>
-    public const float FinishTop = 0.1f;
+    public const float FinishTop = Shapes.PlateTop; // a plate is drawn 2 cm thick: that is the finish's top
 
     /// <summary>Walked like a ramp: a 45-degree slope rising toward the block's facing.</summary>
     public static bool IsSlope(BlockType t) => t is BlockType.Ramp or BlockType.Stair;
