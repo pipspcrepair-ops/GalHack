@@ -68,7 +68,7 @@ public sealed partial class Staging
                 yield return 0;
                 if (i > 120 && _game.Zone.Streamer.Settled && !_game.Zone.Pois.MidPending) break;
             }
-            for (int i = 0; i < 30; i++) yield return 0;
+            foreach (int x in Timed($"{mark:0} m")) yield return x;
             Snap($"{mark:0}m");
             GD.Print($"(city {mark:0} m: eye {eye}, settled {_game.Zone.Streamer.Settled}, merged blocks pending {_game.Zone.Pois.MidPending}, places standing {_game.Places.Standing.Count})");
         }
@@ -88,10 +88,25 @@ public sealed partial class Staging
                 yield return 0;
                 if (i > 120 && _game.Zone.Streamer.Settled && !_game.Zone.Pois.MidPending) break;
             }
-            for (int i = 0; i < 30; i++) yield return 0;
+            foreach (int x in Timed("air")) yield return x;
             Snap("air");
         }
         _game.FixedCamera = null;
+    }
+
+    /// <summary>What drawing a view costs: the render's GPU and CPU time a frame over 60 frames, mean and worst, printed.</summary>
+    IEnumerable<int> Timed(string tag)
+    {
+        Rid vp = _game.GetViewport().GetViewportRid();
+        RenderingServer.ViewportSetMeasureRenderTime(vp, true);
+        double gpu = 0, cpu = 0, worst = 0;
+        for (int i = 0; i < 60; i++)
+        {
+            yield return 0;
+            double g = RenderingServer.ViewportGetMeasuredRenderTimeGpu(vp), c = RenderingServer.ViewportGetMeasuredRenderTimeCpu(vp);
+            gpu += g; cpu += c; worst = Math.Max(worst, g);
+        }
+        GD.Print($"(city {tag}: render {gpu / 60:F1} ms GPU (worst {worst:F1}), {cpu / 60:F1} ms CPU a frame)");
     }
 
     /// <summary>

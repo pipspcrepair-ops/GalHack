@@ -574,6 +574,7 @@ public sealed class InfraNetwork
         if (NoLanes) return;
         RouteKind lane = Profile.Before == TechLevel.Low ? RouteKind.Track : RouteKind.Road;
         bool Direct(PoiSite a, PoiSite b) => Routes.Any(r => r.From == a && r.To == b || r.From == b && r.To == a);
+        int Out(PoiSite p) => Routes.Count(r => r.From == p || r.To == p);
         var joins = new Dictionary<PoiSite, int>();
         var pairs = new List<(PoiSite A, PoiSite B, double Gap)>();
         for (int i = 0; i < Places.Count; i++)
@@ -589,7 +590,8 @@ public sealed class InfraNetwork
         foreach (var (a, b, _) in pairs.OrderBy(p => p.Gap))
         {
             if (Direct(a, b)) direct++;
-            if (Direct(a, b) || joins.GetValueOrDefault(a) >= 2 || joins.GetValueOrDefault(b) >= 2) continue;
+            // Never a star: a place with roads enough out of it already gets no more.
+            if (Direct(a, b) || joins.GetValueOrDefault(a) >= 2 || joins.GetValueOrDefault(b) >= 2 || Out(a) >= 4 || Out(b) >= 4) continue;
             int before = Routes.Count;
             if (!Link(router, a, b, lane, rng)) { failed++; continue; }
             for (int k = before; k < Routes.Count; k++) if (Routes[k].Kind == RouteKind.Road) Routes[k].HalfWidth = 2.6f;
