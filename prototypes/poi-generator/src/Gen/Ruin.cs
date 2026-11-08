@@ -71,6 +71,8 @@ public static partial class StateTransforms
         if (inst.Age != Age.OldWorld) wear *= 0.4f; // a sealed or living place keeps better
         var g = inst.Blocks;
         var nav = inst.Nav();
+        // Nothing hangs in a doorway: a wire there would be drawn across the way with nothing to stop you.
+        var doorways = new HashSet<Int3>(inst.Layout.Doorways.SelectMany(d => d.Cells).Concat(inst.Layout.ExitCells));
         foreach (PlacedModule m in inst.Layout.Modules)
         {
             if (m.Kind is not (ModuleKind.Room or ModuleKind.Hall or ModuleKind.Corridor or ModuleKind.Stair)) continue;
@@ -88,9 +90,9 @@ public static partial class StateTransforms
                 for (int n = 0; n < 3; n++)
                 {
                     Int3 hang = new(at.X + rng.Range(-1, 2), top - 1, at.Z + rng.Range(-1, 2));
-                    if (!g.Get(hang).IsAir || !BlockInfo.Collides(g.Get(hang + Int3.Up).Type) || inst.Protected[hang]) continue;
+                    if (!g.Get(hang).IsAir || !BlockInfo.Collides(g.Get(hang + Int3.Up).Type) || inst.Protected[hang] || doorways.Contains(hang)) continue;
                     g.Set(hang, new Block(BlockType.Cable, Material.Steel, Wire, Role.Debris));
-                    if (rng.Chance(0.5f) && g.Get(hang + Int3.Down).IsAir && g.Get(hang + Int3.Down * 2).IsAir && !inst.Protected[hang + Int3.Down])
+                    if (rng.Chance(0.5f) && g.Get(hang + Int3.Down).IsAir && g.Get(hang + Int3.Down * 2).IsAir && !inst.Protected[hang + Int3.Down] && !doorways.Contains(hang + Int3.Down))
                         g.Set(hang + Int3.Down, new Block(BlockType.Cable, Material.Steel, Wire, Role.Debris));
                 }
             }

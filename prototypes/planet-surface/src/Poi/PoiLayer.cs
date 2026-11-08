@@ -82,7 +82,7 @@ public partial class PoiLayer : Node3D
     public static List<ChunkMesh> Mesh(PoiSite site)
     {
         BlockGrid g = site.Instance.Blocks;
-        return Mesher.Build(g, site.Instance.Layout.Occupied, MeshOptions.OnPlanet(g.Min));
+        return Mesher.Build(g, site.Instance.Layout.Occupied, WalkableMesh.On(g.Min));
     }
 
     public override void _Process(double delta)

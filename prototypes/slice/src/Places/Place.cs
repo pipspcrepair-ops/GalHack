@@ -103,9 +103,8 @@ public partial class Place : Node3D
     /// <summary>The mesher's options for a near place: doors are the view's own; buried ground hides faces (an empty plug, as the planet's far drawing does).</summary>
     public static MeshOptions Options(Int3 min, bool collision = true)
     {
-        MeshOptions o = MeshOptions.OnPlanet(min);
+        MeshOptions o = WalkableMesh.On(min); // doors are the view's own: Place.Fixtures' leaves, solid until opened
         o.ChunkSize = ChunkSize;
-        o.Doors = false;
         o.Collision = collision;
         return o;
     }
