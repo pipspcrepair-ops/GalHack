@@ -125,6 +125,7 @@ public partial class WildlifePatch : Node3D
             if (shows >= 1f) PlanetSurface.Fx.Fade.Clear(n);
             else PlanetSurface.Fx.Fade.Set(n, 0f, shows);
         };
+        PersonView.Fader = View.Fader; // people dissolve in and out at the far edge as creatures do
         AddChild(View);
         Audio = new ProceduralAudio { Name = "Calls" };
         AddChild(Audio);

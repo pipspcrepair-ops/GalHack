@@ -290,9 +290,10 @@ public sealed partial class Town
         return t < 0.24f || t > 0.8f;
     }
 
-    /// <summary>Beyond this someone updates a few times a second; bodies built a tick at most.</summary>
-    const float NearPeople = 40f;
+    /// <summary>Bodies built a tick at most.</summary>
     const int BodiesPerTick = 3;
+    /// <summary>Close enough that someone sees you and answers with their body (greets, waves you off, startles), m.</summary>
+    const float ActRange = 48f;
     int _tick;
 
     void Tick(float tickDt)
@@ -322,29 +323,38 @@ public sealed partial class Town
             if (_held.Contains(p) && !p.Dead)
             {
                 p.Now = 0f;
-                Pose(p, who);
+                Pose(p, who, (player - p.Pos).Length(), tickDt);
                 continue;
             }
             if (p.Dead)
             {
                 // Going down, then lying where they fell.
                 if (p.View == null) MakeBody(p);
-                if (p.Down >= 1f && p.Laid) continue;
+                float lying = (player - p.Pos).Length();
+                if (p.Down >= 1f && p.Laid)
+                {
+                    // Down: only seen or not as you come and go, and posed where they lie when they come into view.
+                    p.Saved += tickDt;
+                    if ((_tick + who) % PersonView.PoseEvery(lying) != 0) continue;
+                    bool was = p.View.Visible;
+                    if (Shown(p, lying, p.Saved) && !was) PoseBody(p, who, p.Saved);
+                    p.Saved = 0f;
+                    continue;
+                }
                 p.Laid = p.Down >= 1f;
                 p.Down = MathF.Min(1f, p.Down + tickDt * 1.8f);
-                _posing = (player - p.Pos).Length() < PersonView.NearRange + 6f;
-                Pose(p, who);
+                Pose(p, who, lying, tickDt);
                 continue;
             }
             if (p.View == null && built < BodiesPerTick) { MakeBody(p); built++; }
-            // Far from you a town needn't move every tick: each in their turn, with the time they missed.
+            // Far from you a town needn't move every tick: each in their turn, with the time they missed,
+            // the further off the fewer times a second (and so their bodies are posed).
             p.Saved += tickDt;
             float away = (player - p.Pos).Length();
-            if (away > NearPeople && (_tick + who) % 6 != 0) continue;
+            if ((_tick + who) % PersonView.PoseEvery(away) != 0) continue;
             float dt = p.Saved;
             p.Saved = 0f;
-            _posing = away < PersonView.NearRange + 6f;
-            if (_posing && p.Looks != null) Acts(p, player, eye, look, away, dt);
+            if (away < ActRange && p.Looks != null) Acts(p, player, eye, look, away, dt);
             bool guard = p.Role == "guard";
             p.Hurt = MathF.Max(0f, p.Hurt - dt);
             // Until it reaches them, they carry on as they were; then a start, and they act.
@@ -362,7 +372,7 @@ public sealed partial class Town
                 p.Fleeing = mood == Mood.Hostile;
                 p.Speed = p.Fleeing ? 3.4f : p.Speed;
                 if (Move(p, dt)) { p.Indoors = _homes.Length > 0; }
-                Pose(p, who);
+                Pose(p, who, away, dt);
                 continue;
             }
             if (!hide && p.Indoors)
@@ -371,11 +381,11 @@ public sealed partial class Town
                 p.Fleeing = false;
                 p.Speed = p.Spawn.Gait == "hurry" ? 3.0f : p.Spawn.Gait == "amble" ? 1.1f : 1.3f;
             }
-            if (p.Indoors) { Pose(p, who); continue; }
+            if (p.Indoors) { Pose(p, who, away, dt); continue; }
             if (guard && mood != Mood.Peaceful && (player - p.Pos).Length() < 40f)
             {
                 Guard(p, player, mood, dt);
-                Pose(p, who);
+                Pose(p, who, away, dt);
                 continue;
             }
             if (Move(p, dt))
@@ -384,7 +394,7 @@ public sealed partial class Town
                 if (p.Wait <= 0f) Next(p);
                 else Idle(p, dt);
             }
-            Pose(p, who);
+            Pose(p, who, away, dt);
         }
     }
 
@@ -828,19 +838,27 @@ public sealed partial class Town
         p.Ready = null;
     }
 
-    bool _posing = true;
     float _clock;
 
-    void Pose(Person p, int who)
+    /// <summary>Their body where they are now, this far from you (dt: the time since they were last posed).</summary>
+    void Pose(Person p, int who, float away, float dt)
     {
-        if (p.View == null) return;
-        if (p.View.Visible == p.Indoors) p.View.Visible = !p.Indoors;
-        if (p.Indoors) return;
-        // Far off they're one mesh, and only that moves.
+        if (Shown(p, away, dt)) PoseBody(p, who, dt);
+    }
+
+    /// <summary>Whether their body shows at all (not indoors, not beyond the far range), faded in and out at its edges.</summary>
+    bool Shown(Person p, float away, float dt)
+    {
+        if (p.View == null) return false;
+        bool shows = !p.Indoors && p.View.Fade(away, dt);
+        if (p.View.Visible != shows) p.View.Visible = shows;
+        return shows;
+    }
+
+    void PoseBody(Person p, int who, float dt)
+    {
         p.View.SyncFar(p.Pos, p.Yaw);
-        if (!_posing) return;
         bool moving = p.Now > 0.05f;
-        float dt = 1f / 60f;
         float t = _clock + who * 1.7f;
         p.Seated = Mathf.MoveToward(p.Seated, p.Sitting ? 1f : 0f, 2.5f * dt);
         p.Bent = Mathf.MoveToward(p.Bent, !moving && p.Role == "worker" ? 1f : 0f, 2f * dt);

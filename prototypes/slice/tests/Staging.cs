@@ -94,6 +94,7 @@ public sealed partial class Staging
             "crouch" => CrouchView(),
             "folk" => FolkView(),
             "crowd" => CrowdView(),
+            "farfolk" => FarFolkView(),
             "fauna" => FaunaView(),
             "peopleperf" => PeoplePerf(),
             "dark" => Dark(),
