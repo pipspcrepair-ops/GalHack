@@ -234,6 +234,7 @@ public partial class PoiLayer
             float d = tile?.Distance ?? Away(p, camera), radius = tile != null ? CityMidRadius : MidRadius, drop = tile != null ? CityMidDrop : MidDrop;
             if (p.Mid != null && d > drop && p != _midJob)
             {
+                if (p.Whole && p.Mid.Visible) Fx.PopLog.Note(tile != null ? "city" : "place", "merged blocks to far", d, p.Size, 1f);
                 p.Mid.QueueFree();
                 p.Mid = null;
                 p.Cells.Clear();
@@ -241,7 +242,11 @@ public partial class PoiLayer
             }
             // A place you are all but in is never its far blocks, even for the moment its mid ones take.
             bool low = !p.Whole && d > 200f;
-            if (p.Low != null && p.Low.Visible != low) p.Low.Visible = low;
+            if (p.Low != null && p.Low.Visible != low)
+            {
+                if (!p.Whole) Fx.PopLog.Note("place", low ? "far blocks back" : "far blocks hidden, nothing in", d, p.Size, 1f);
+                p.Low.Visible = low;
+            }
             if (tile == null) SinkFar(p.Low, d);
             if (p.Mid == null && p != _midJob && d < radius && d - radius < best)
             {
@@ -253,7 +258,11 @@ public partial class PoiLayer
         foreach (Tile t in _tiles)
         {
             bool show = t.Members.Any(p => !p.Whole);
-            if (t.Low != null && t.Low.Visible != show) t.Low.Visible = show;
+            if (t.Low != null && t.Low.Visible != show)
+            {
+                Fx.PopLog.Note("city", show ? "tile far mesh back" : "tile far mesh to buildings", t.Distance, TileSize, 1f);
+                t.Low.Visible = show;
+            }
         }
         MidPending = next != null || _midJob != null;
         if (next != null && _midJob == null)
@@ -289,6 +298,9 @@ public partial class PoiLayer
             p.Cells[c.Chunk] = cube;
         }
         if (p.MidNext < meshes.Count) return;
+        Tile tile = _tileOf.GetValueOrDefault(p);
+        Vector3 eye = GetViewport()?.GetCamera3D()?.GlobalPosition ?? Vector3.Zero;
+        Fx.PopLog.Note(tile != null ? "city" : "place", tile != null ? "building merged in over its tile" : "far to merged blocks", Away(p, eye), p.Size, 1f);
         p.Mid.Visible = true;
         if (p.Low != null) p.Low.Visible = false;
         p.Whole = true;

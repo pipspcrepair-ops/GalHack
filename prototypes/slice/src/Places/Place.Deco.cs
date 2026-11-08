@@ -628,6 +628,7 @@ public partial class Place
     void Undress(int module)
     {
         Dressed d = _dressed[module];
+        PlanetSurface.Fx.PopLog.Note("props", "room undressed", Away(Memory.Rooms[module], FromWorld(Places.EyeAt())), 1.2f, 1f);
         foreach (DecoNode n in d.Pieces)
             if (n?.Body != null) _pieceOf.Remove(n.Body.GetInstanceId());
         d.Node.QueueFree();
@@ -681,6 +682,7 @@ public partial class Place
             }
             d.Node.AddChild(new MeshInstance3D { Name = "Wires", Mesh = DecoGodot.ToMesh(mesh, decor.Meshes.Materials) });
         }
+        PlanetSurface.Fx.PopLog.Note("props", "room dressed", Away(room, FromWorld(Places.EyeAt())), 1.2f, 1f);
         yield return 0;
     }
 

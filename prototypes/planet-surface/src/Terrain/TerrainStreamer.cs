@@ -831,6 +831,7 @@ public partial class TerrainStreamer : Node3D
             FarBuildMs[job.Lod] += job.Milliseconds;
             FarBuilds[job.Lod]++;
             if (job.Version != f.Version) continue; // flora went stale: it is requested again
+            NotePops(f, job);
             f.Node?.QueueFree();
             long nodeStart = Stopwatch.GetTimestamp();
             f.Node = BuildFarNode(job);
@@ -855,6 +856,7 @@ public partial class TerrainStreamer : Node3D
         {
             if (!keep.Contains(key))
             {
+                NoteGone(f);
                 f.Node?.QueueFree();
                 (gone ??= new List<(int, int)>()).Add(key);
                 continue;

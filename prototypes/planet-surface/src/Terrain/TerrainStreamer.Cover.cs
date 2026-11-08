@@ -83,6 +83,7 @@ public partial class TerrainStreamer
             if (done.Version != _coverVersion) continue;
             _coverCells[(done.Cx, done.Cz)] = done;
             _coverDirty = true;
+            NoteCover(done);
         }
 
         // Nearest missing cells first, a couple at a time: the workers are the far rings' too.
@@ -188,6 +189,28 @@ public partial class TerrainStreamer
             System.Array.Resize(ref d.Buffer, d.Capacity * 16);
         }
         return d;
+    }
+
+    /// <summary>A cell of cover landed: for the pop-in log, how much of it shows at once where it stands (the shader shrinks each tuft in by its own reach).</summary>
+    void NoteCover(CoverCell cell)
+    {
+        if (!Fx.PopLog.On) return;
+        Vector3 eye = Eye();
+        float x0 = (float)NearestCopy(cell.Cx * CoverBuilder.CellSize, CoverBuilder.CellSize, eye.X, World.Terrain.Width);
+        float z0 = (float)NearestCopy(cell.Cz * CoverBuilder.CellSize, CoverBuilder.CellSize, eye.Z, World.Terrain.Height);
+        float most = 0f, nearest = float.MaxValue;
+        foreach (var (_, buffer, count) in cell.Plants)
+            for (int i = 0; i < count; i++)
+            {
+                int o = i * 16;
+                float away = new Vector2(x0 + buffer[o + 3] - eye.X, z0 + buffer[o + 11] - eye.Z).Length();
+                float reach = CoverBuilder.ReachOf(buffer[o + 15]);
+                float keep = 1f - Mathf.SmoothStep(reach * 0.72f, reach, away);
+                if (keep <= 0f) continue;
+                most = MathF.Max(most, keep);
+                nearest = MathF.Min(nearest, away);
+            }
+        if (most > 0f) Fx.PopLog.Note("cover", "cell lands", nearest, 0.6f, most);
     }
 
     /// <summary>A far chunk's ground changed: its cover is laid out afresh.</summary>

@@ -30,6 +30,9 @@ public partial class PoiLayer : Node3D
         public bool Whole;
         public readonly Dictionary<Int3, MeshInstance3D> Cells = new();
         public readonly HashSet<Int3> Hidden = new();
+
+        /// <summary>How big it stands, m: the wider way across its grid (the pop-in log's measure).</summary>
+        public float Size => System.Math.Max(Site.Instance.Blocks.Size.X, Site.Instance.Blocks.Size.Z);
     }
 
     readonly List<Place> _places = new();

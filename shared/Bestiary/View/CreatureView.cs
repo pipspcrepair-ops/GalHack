@@ -272,6 +272,9 @@ public partial class WildlifeView : Node3D
     /// <summary>The most new bodies built in a frame (a whole herd coming into view is spread over a few).</summary>
     public int MostNew = int.MaxValue;
 
+    /// <summary>A creature's body came into view or went (built in view, or crossing the far distance), and how far off (measurements).</summary>
+    public System.Action<Creature, float, bool> Shown;
+
     /// <summary>Takes up a new sim. Creatures carried into it from the last (old to new) keep their bodies.</summary>
     public void Bind(WildSim sim, Node unused, IReadOnlyDictionary<Creature, Creature> carried = null)
     {
@@ -305,10 +308,12 @@ public partial class WildlifeView : Node3D
         foreach (Creature c in _sim.Creatures)
         {
             if (c.Removed) continue;
+            bool fresh = false;
             if (!_views.TryGetValue(c, out CreatureView view))
             {
                 if (built >= MostNew) continue;
                 built++;
+                fresh = true;
                 view = new CreatureView();
                 AddChild(view);
                 view.Build(c);
@@ -319,6 +324,7 @@ public partial class WildlifeView : Node3D
             float far = c.Species.Plan == BodyPlan.Giant ? FarDistance * 2.5f : FarDistance;
             c.RigInterval = d < NearDistance ? 1 : d < MidDistance ? 2 : d < far ? 4 : 12;
             bool visible = d < far;
+            if (fresh ? visible : view.Visible != visible) Shown?.Invoke(c, d, visible);
             if (view.Visible != visible) view.Visible = visible;
             if (visible && (c.RigInterval == 1 || c.RigPending == 0f)) view.Sync();
             view.Listen(d);

@@ -283,6 +283,7 @@ public partial class Place : Node3D
 
     void ShowNear(Group g, bool near)
     {
+        if (g.Near != near) PlanetSurface.Fx.PopLog.Note("detail", near ? "full detail in" : "full detail out", Away(g.Key, FromWorld(Places.EyeAt())), GroupSize, 1f);
         g.Near = near;
         Places.Zone.Pois.HideGroup(Site, g.Key, near);
         foreach (Door d in g.Doors) d.Root.Visible = near;
