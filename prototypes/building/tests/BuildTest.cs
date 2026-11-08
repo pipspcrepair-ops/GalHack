@@ -44,6 +44,7 @@ public partial class BuildTest : Node
         Run("Upgrading in place", TestUpgrade);
         Run("Paint", TestPaint);
         Run("Sealed rooms", TestRooms);
+        Run("The tall door", TestTallDoor);
         Run("Shared storage", TestStorage);
         Run("Blueprints", TestBlueprints);
         Run("Validator", TestValidator);
@@ -453,6 +454,78 @@ public partial class BuildTest : Node
         Check(Rooms.Detect(s).Sealed.Count() == 1, "a glass window is airtight");
     }
 
+    /// <summary>
+    /// The large door: two cells and one piece (a 3 m leaf under a 1 m top). Placed, it takes the cell over it as
+    /// well, its top turned with it; a top is never placed alone, nor a door under a full cell; it opens, shuts,
+    /// comes down, pays back and is destroyed as one. A room with one in its wall seals shut and leaks through
+    /// both cells open; nobody stands on it; open, nothing solid in its 3 m opening, only its top over it. A
+    /// blueprint names the door alone and loads its top; an old blueprint's wall over its 2 m door becomes the
+    /// top, keeping its paint, and anything else there leaves it a one-cell door. A small grid's door is one cell.
+    /// </summary>
+    void TestTallDoor()
+    {
+        BlockType top = _cat.Type("door-head");
+        Check(_door.StackOn(GridSize.Large).SequenceEqual(new[] { top }) && _door.StackOn(GridSize.Small).Length == 0 && top.PieceOf == _door,
+            "a large door stacks its top over it; a small one stacks nothing");
+        Structure s = HollowBox();
+        Orientations.TryParse("+y+x", out int facingOut);
+        Int3 foot = new(4, 1, 2), head = foot + Int3.UnitY;
+        Check(Building.Check(s, foot, Block(s, _door, rot: facingOut)) == PlaceError.Occupied, "a door can't go where its top's cell is taken");
+        s.Clear(foot);
+        Check(Building.Check(s, foot, Block(s, _door, rot: facingOut)) == PlaceError.TopBlocked, "nor under a wall it would need for its top");
+        s.Clear(head);
+        Check(Building.Check(s, head, Block(s, top, rot: facingOut)) == PlaceError.PieceTop, "a door's top is never placed on its own");
+        Check(Building.Place(s, foot, Block(s, _door, rot: facingOut)) == PlaceError.None && s.Get(head).Type == top.Index && s.Get(head).Rot == facingOut
+              && Building.PieceCells(s, head).SequenceEqual(new[] { foot, head }), "placed, a door takes the cell over it for its top, turned with it");
+        RoomReport r = Rooms.Detect(s);
+        Check(r.Sealed.Count() == 1 && !r.Leaking.Any(), "a room with a tall door in its wall seals while it is shut");
+        Building.Toggle(s, head);
+        r = Rooms.Detect(s);
+        Check(s.Get(foot).Open && s.Get(head).Open && !r.Sealed.Any() && r.LeakFaces.ToHashSet().SetEquals(new[] { new Face(foot, Dir.PosX), new Face(head, Dir.PosX) }),
+            $"opened from its top, both cells open and the room leaks through both ({string.Join(", ", r.LeakFaces.Select(f => $"{f.Cell} {f.Dir.Name()}"))})");
+        var nav = NavGrid.Build(s);
+        Check(nav.Nodes.TryGetValue(foot, out NavKind kind) && kind == NavKind.Door && !nav.Nodes.ContainsKey(head), "the door is a door node and nobody stands on its top");
+        // Open, nothing solid in the 3 m opening (2 m of the foot and the top's first metre): only the top's last metre is over it.
+        float size = s.Grid.CellSize;
+        Vector3 lo = new((foot.X - 0.5f) * size, (foot.Y - 0.5f) * size + 0.02f, (foot.Z - 0.42f) * size), hi = new((foot.X + 0.5f) * size, (foot.Y - 0.5f) * size + 3f - 0.02f, (foot.Z + 0.42f) * size);
+        ChunkMeshData mesh = ChunkMesher.Build(s, Structure.ChunkOf(foot));
+        bool Overlaps((Vector3 center, Vector3 size) b, Vector3 a0, Vector3 a1) =>
+            b.center.X - b.size.X / 2 < a1.X && b.center.X + b.size.X / 2 > a0.X && b.center.Y - b.size.Y / 2 < a1.Y && b.center.Y + b.size.Y / 2 > a0.Y && b.center.Z - b.size.Z / 2 < a1.Z && b.center.Z + b.size.Z / 2 > a0.Z;
+        bool clear = !mesh.Boxes.Any(b => Overlaps(b, lo, hi));
+        bool lintel = mesh.Boxes.Any(b => Overlaps(b, lo with { Y = hi.Y + 0.1f }, hi with { Y = hi.Y + 0.9f }));
+        Check(clear && lintel, $"open, its 3 m opening is clear and its top's last metre is solid over it (clear {clear}, top {lintel})");
+        Building.Toggle(s, foot);
+        Check(!s.Get(foot).Open && !s.Get(head).Open && Rooms.Detect(s).Sealed.Count() == 1, "shut from its foot, both cells shut and the room seals again");
+
+        // A blueprint names the door alone and loads its top, byte for byte.
+        string text = Blueprint.Save(s);
+        Structure back = Blueprint.Load(text, _cat, out List<string> errors);
+        Check(!text.Contains("door-head") && errors.Count == 0 && back?.Get(head).Type == top.Index && Blueprint.Save(back) == text,
+            "a blueprint names the door and not its top, loads the top back and saves the same");
+
+        var bag = new Inventory { Creative = false };
+        RemoveResult gone = Building.Remove(s, head, bag);
+        Check(gone.Status == RemoveStatus.Removed && !s.Has(foot) && !s.Has(head) && bag["iron"] == 14 && bag["electronics"] == 2,
+            "taken down by its top, the whole door comes down and pays back one door");
+        Building.Place(s, foot, Block(s, _door, rot: facingOut));
+        var report = new DamageReport();
+        Damage.Hit(s, head, DamageType.Explosive, 1e6f, report);
+        Check(!s.Has(foot) && !s.Has(head) && report.Destroyed.Count == 2, "destroying its top destroys the door");
+
+        // An old blueprint: a 2 m door with a painted wall block over it, and one with a container over it.
+        string Old(string over) => string.Join("\n", "schema galhack.blueprint", "version 1", "name \"Old\"", "grid large", "mode base", "paint wall base=ece3c8",
+            "block 0 0 0 core", "block 1 0 0 steel", "block 1 1 0 door", "block 1 2 0 " + over, "");
+        Structure old = Blueprint.Load(Old("steel paint=wall"), _cat, out errors);
+        Check(errors.Count == 0 && old.Get(new Int3(1, 2, 0)).Type == top.Index && old.Palette.NameOf(old.Get(new Int3(1, 2, 0)).Paint.PX) == "wall",
+            "an old blueprint's wall over its door becomes the door's top, its paint kept");
+        old = Blueprint.Load(Old("container"), _cat, out errors);
+        Check(errors.Count == 0 && old.Get(new Int3(1, 2, 0)).Type == _container.Index && old.Get(new Int3(1, 1, 0)).Type == _door.Index,
+            "with a device over it the old door still loads, a one-cell door");
+
+        Structure small = NewShip(GridSize.Small);
+        Check(Place(small, 1, 0, 0, _door) == PlaceError.None && small.Count == 2, "a small grid's door is one cell");
+    }
+
     /// <summary>A hollow 5Ã—5Ã—5 steel box from (0,0,0) to (4,4,4) with its core in the floor.</summary>
     Structure HollowBox()
     {
@@ -590,7 +663,7 @@ public partial class BuildTest : Node
         int x0 = 1, placedOk = 0, tried = 0;
         foreach (BlockType t in _cat.Types.Skip(1))
         {
-            if (t.IsCore) continue; // the one core is already in the floor
+            if (t.IsCore || t.IsPieceTop) continue; // the one core is already in the floor; a door's top comes with its door
             foreach (ShapeDef shape in t.IsArmor ? _cat.Shapes : new ShapeDef[] { null })
             {
                 int rot = t.IsArmor || BlockType.Has(t.AttachFaces, Dir.NegY) ? 0 : backDown;

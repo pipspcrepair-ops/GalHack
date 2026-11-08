@@ -48,7 +48,8 @@ public sealed class Fab
 /// <summary>
 /// A large place drawn the way a player would build it. A block here is the player's 2 m large block
 /// (eight of the POI grid's 1 m cells), and every size is in whole blocks: walls a block thick, storeys
-/// a whole number of blocks, half-block decks, 45 degree large slopes, a player's door in a 2 m opening.
+/// a whole number of blocks, half-block decks, 45 degree large slopes, the player's door block (one block wide,
+/// two tall, a 3 m opening under its transom) wherever a person goes through a wall.
 /// So anything drawn here keeps to the 2 m lattice, whichever way the place is turned, and can be read
 /// and rebuilt block for block. Rooms are volumes, not a plan of cells: a hall, a gallery, a tunnel.
 /// <para>u and v are cells in the place's own frame (u along its front, v back from it), i and k blocks in
@@ -266,13 +267,18 @@ public sealed class Plot
         C.Link(a, b);
     }
 
-    /// <summary>A player's door: one block wide and tall, in a wall one block thick (along the wall's i or k), between two rooms.</summary>
+    /// <summary>
+    /// A player's door, the standard one (<see cref="DoorSize"/>): the player's door block, one block wide and two
+    /// tall, its leaf <see cref="DoorSize.Tall"/> m high under the block's transom, in a wall one block thick (along
+    /// the wall's i or k) between two rooms. The wall stands two blocks tall over level j there, so the rooms either
+    /// side are at least that high: the transom is the wall's own top metre.
+    /// </summary>
     public int Door(int i, int j, int k, bool alongI, int a, int b)
     {
-        // Facing across the wall: the door hangs in the wall's front layer, the back layer is open.
+        // Facing across the wall: the door hangs in the wall's front layer, the back layer is open to the same height.
         var cells = new List<Int3>();
         for (int s = 0; s < 2; s++)
-            for (int y = 2 * j; y < 2 * j + 2; y++)
+            for (int y = 2 * j; y < 2 * j + DoorSize.Tall; y++)
             {
                 cells.Add(alongI ? Cell(2 * i + s, y, 2 * k) : Cell(2 * i, y, 2 * k + s));
                 Air(alongI ? 2 * i + s : 2 * i + 1, y, alongI ? 2 * k + 1 : 2 * k + s);

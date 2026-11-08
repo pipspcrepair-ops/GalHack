@@ -20,8 +20,8 @@ public sealed record PlainBox(Int3 Min, Int3 Max, int Eave, Dir Front);
 /// They are built the way a player builds. POI cells are 1 m and the player's large block is 2 m, so
 /// everything keeps to a 2 m lattice in plan and in storeys, in shapes the player has: walls and
 /// slabs are large half blocks (1 m thick on their 2 m module), roofs are 45 degree slopes (a pair of
-/// 1 m ramps and the fill under them is one large slope), floors and paths are thin plates, doors fill
-/// a 2 m cell and windows are panes in a 2 m wide opening, and everything is plain paint on a
+/// 1 m ramps and the fill under them is one large slope), floors and paths are thin plates, doors are
+/// the standard door (2 m wide, 3 m tall, nothing low over the way to it) and windows are panes in a 2 m wide opening, and everything is plain paint on a
 /// plain material. You can read a ruin and rebuild it block for block.
 ///
 /// Everything stands on the ground, so no cell goes below it and the terrain runs flush up to
@@ -195,8 +195,8 @@ public static partial class Homes
                     if (a.Module < b.Module && a.Storey == b.Storey && a.U0 <= b.U1 + 2 && b.U0 <= a.U1 + 2 && a.V0 <= b.V1 + 2 && b.V0 <= a.V1 + 2) C.Link(a.Module, b.Module);
         }
 
-        /// <summary>An opening through a wall, one 2 m module wide and tall by default: the size of a player's door.</summary>
-        public void Gap(int u, int v, bool alongU, int storey = 0, int width = 2, int tall = 2)
+        /// <summary>An opening through a wall, the standard door's by default (<see cref="DoorSize"/>): 2 m wide, 3 m tall.</summary>
+        public void Gap(int u, int v, bool alongU, int storey = 0, int width = DoorSize.Wide, int tall = DoorSize.Tall)
         {
             for (int k = 0; k < width; k++)
             {
@@ -206,8 +206,8 @@ public static partial class Homes
             }
         }
 
-        /// <summary>The door in an outside wall: a real door in a 2 m wide opening (a house's the full storey tall), from the yard into a room.</summary>
-        public void FrontDoor(int u, int v, Room room, int tall = 2)
+        /// <summary>The door in an outside wall: the standard door (<see cref="DoorSize"/>) in its opening, from the yard into a room.</summary>
+        public void FrontDoor(int u, int v, Room room, int tall = DoorSize.Tall)
         {
             var cells = new List<Int3>();
             for (int k = 0; k < 2; k++)
@@ -513,6 +513,7 @@ public static partial class Homes
         barn.Modules();
         barn.Windows(0.6f);
         barn.Roof();
+        barn.Headroom(w / 2 - 2, 0, Dir.North, 0, 4, exit: false);
         barn.GableVent(w / 2, 0);
         barn.Box();
         // Stalls down one side.
@@ -530,6 +531,8 @@ public static partial class Homes
         // The house at the front of the yard, the barn across the back of it, the silo beside the barn.
         const int HouseU = 6, HouseV = 12;
         var (hw, _, door) = House(l, f.Shift(HouseU, HouseV), layout switch { 0 => "bungalow", 1 => "cottage", _ => "twostorey" });
+        // How far back the house reaches, wings, eaves and all: the shed keeps clear of it.
+        int back = l.C.Blocks.Keys.Where(p => p.Y >= 0).Select(p => f.Q switch { 0 => p.Z - f.Z, 1 => f.X - p.X, 2 => f.Z - p.Z, _ => p.X - f.X }).DefaultIfEmpty(HouseV).Max();
         for (int v = 0; v < HouseV - 4; v++)
             for (int k = 0; k < 2; k++) l.Plate(f, HouseU + door + k, v, l.S.Base.Scale(1.1f));
         l.C.X.Gate = f.At(HouseU + door, 0, -1);
@@ -548,13 +551,15 @@ public static partial class Homes
         for (int u = 0; u < run; u++)
             if (Hash.Cell(new Int3(u / 2, 0, 0), 85) % 100 > 25) l.C.Blocks.TryAdd(f.At(HouseU + u, 0, fieldV - 2), new Block(BlockType.Rail, Material.Timber, l.S.Door, Role.Decor));
         if (layout == 0) return;
-        var shed = new Hut(l, f.Shift(HouseU, HouseV + 22), l.S) { Open = true };
+        // The shed far enough behind the house that its eaves never close the way between them overhead.
+        var shed = new Hut(l, f.Shift(HouseU, Math.Max(HouseV + 22, back + 6)), l.S) { Open = true };
         shed.Wings.Add(new Wing(0, 0, 9, 7));
         Room s = shed.Add("workshop", 0, 1, 1, 8, 6);
         shed.Raise();
         shed.Gap(4, 0, true);
         shed.Modules();
         shed.Roof();
+        shed.Headroom(4, 0, Dir.North, 0, exit: false);
         shed.Furnish();
         shed.Box();
         l.C.Link(l.C.EntranceModule, s.Module);
@@ -611,6 +616,7 @@ public static partial class Homes
         h.Modules();
         h.Windows(0.5f);
         h.Roof();
+        h.Headroom(mouth, 0, Dir.North, 0, wide, exit: false);
         h.Furnish();
         h.Loot(room);
         h.Box();
@@ -652,6 +658,7 @@ public static partial class Homes
         else h.Modules();
         h.Windows(0.5f);
         h.FlatRoof();
+        h.Headroom(door, 0, Dir.North, 0);
         for (int u = 2; u < w - 2; u++) l.C.Set(f.At(u, h.Ring(h.Storeys - 1) + 1, -1), new Block(BlockType.Cube, l.S.BaseM, l.S.Sign, Role.Wall));
         h.Furnish();
         h.Loot(store);
@@ -710,6 +717,7 @@ public static partial class Homes
         else h.Modules();
         h.Windows();
         h.Roof();
+        h.Headroom(door, 0, Dir.North, 0);
         h.Chimney(w - 1, d / 2 - 1, 0, 1);
         h.Furnish();
         h.Loot(store);
@@ -723,9 +731,10 @@ public static partial class Homes
         stable.Wings.Add(new Wing(0, 0, sw - 1, sd - 1, true, RoofKind.Lean));
         Room stalls = stable.Add("storage", 0, 1, 1, sw - 2, sd - 2, ModuleKind.Hall);
         stable.Raise();
-        stable.Gap(2, 0, true, 0, 8, 2);
+        stable.Gap(2, 0, true, 0, 8, DoorSize.Tall);
         stable.Modules();
         stable.Roof();
+        stable.Headroom(2, 0, Dir.North, 0, 8, exit: false);
         stable.Box();
         l.C.Link(l.C.EntranceModule, stalls.Module);
         var wood = new Rgb(0x54, 0x46, 0x38);
@@ -771,6 +780,7 @@ public static partial class Homes
         h.Gap(4, 0, true);
         h.Modules();
         h.FlatRoof(1, 1);
+        h.Headroom(4, 0, Dir.North, 0);
         h.Loot(room);
         h.Box();
         l.Approach(f, 4, -3);

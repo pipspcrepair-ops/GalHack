@@ -369,7 +369,18 @@ public sealed class WeatherSim
     {
         if (Land == null || !Data.Regions.Fallback.TryGetValue(kind, out WeatherKind fallback)) return kind;
         Ground g = GroundAt(p);
-        return Regions.Suits(Data.Regions, kind, g, kind == WeatherKind.Fog ? AroundHeight(p) : g.Height) >= 0.5f ? kind : fallback;
+        if (Regions.Suits(Data.Regions, kind, g, kind == WeatherKind.Fog ? AroundHeight(p) : g.Height) >= 0.5f) return kind;
+        // A tornado storm is the area's danger, not one spot's: funnels that form on open land in reach
+        // wander, so it is a tornado storm wherever such land lies within a few kilometres.
+        if (kind == WeatherKind.Tornado)
+            for (int ring = 1; ring <= 2; ring++)
+                for (int k = 0; k < 8; k++)
+                {
+                    float a = k * MathF.Tau / 8f + ring * 0.4f;
+                    Vector3 q = p + new Vector3(MathF.Cos(a), 0f, MathF.Sin(a)) * (1500f * ring);
+                    if (Regions.TornadoGround(Data.Regions, Land, q) > 0.25f) return kind;
+                }
+        return fallback;
     }
 
     /// <summary>

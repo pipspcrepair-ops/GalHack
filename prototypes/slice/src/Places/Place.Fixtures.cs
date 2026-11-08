@@ -83,6 +83,7 @@ public partial class Place
                 continue;
             }
             bool blast = b0.Variant == DoorState.Blast;
+            bool danger = blast || index >= 0 && layout.Doorways[index].Hazard;
             float thick = blast ? 0.4f : 0.18f;
             float width = alongX ? hi.X - lo.X : hi.Z - lo.Z, height = hi.Y - lo.Y;
             Vector3 along = alongX ? Vector3.Right : Vector3.Back;
@@ -106,17 +107,25 @@ public partial class Place
                 var leaf = new AnimatableBody3D { Name = side == 0 ? "Leaf A" : "Leaf B", CollisionLayer = Layers.World, CollisionMask = 0, SyncToPhysics = true };
                 leaf.AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = size } });
                 leaf.AddChild(new MeshInstance3D { Mesh = new BoxMesh { Size = size }, MaterialOverride = paint });
-                // A hazard band across the middle, and the dark edge where the leaves meet. Each stands proud of
-                // the leaf's faces (the seam prouder than the band it crosses) and stops short of its ends, top
-                // and bottom: no face of one lies in a face of another, where the two would flicker.
+                // Hazard stripes across a dangerous opening's own door (a blast door, an airlock), never on a person's
+                // door, and the dark edge where the leaves meet. Each stands proud of the leaf's faces (the seam prouder
+                // than the stripes it crosses) and stops short of its ends, top and bottom: no face of one lies in a
+                // face of another, where the two would flicker.
                 float band = half - 2f * Inset;
-                // A house's door is a plain timber leaf (Mesher's rule too): no hazard band on a home.
-                if (b0.Material != PoiGenerator.Gen.Material.Timber)
-                leaf.AddChild(new MeshInstance3D
+                if (danger && b0.Material != PoiGenerator.Gen.Material.Timber)
                 {
-                    Mesh = new BoxMesh { Size = alongX ? new Vector3(band, blast ? 0.4f : 0.2f, thick + 0.02f) : new Vector3(thick + 0.02f, blast ? 0.4f : 0.2f, band) },
-                    MaterialOverride = _band, Position = new Vector3(0f, -0.4f, 0f),
-                });
+                    int bars = Math.Max(2, (int)MathF.Round(band / 0.25f));
+                    float bar = band / bars, tall = blast ? 0.4f : 0.3f;
+                    for (int k = 0; k < bars; k++)
+                    {
+                        float at = -band / 2f + bar * (k + 0.5f);
+                        leaf.AddChild(new MeshInstance3D
+                        {
+                            Mesh = new BoxMesh { Size = alongX ? new Vector3(bar, tall, thick + 0.02f) : new Vector3(thick + 0.02f, tall, bar) },
+                            MaterialOverride = k % 2 == 0 ? _band : _seam, Position = along * at + new Vector3(0f, -0.4f, 0f),
+                        });
+                    }
+                }
                 float edge = (side == 0 ? 1f : -1f) * (half / 2f - 0.02f - 2f * Inset);
                 leaf.AddChild(new MeshInstance3D
                 {

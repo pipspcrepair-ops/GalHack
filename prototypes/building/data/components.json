@@ -12,10 +12,14 @@
 //   covers     faces that may hide the cell face behind them (for culling). Only ever a limit:
 //              a face hides nothing unless an opaque part really covers the whole of it
 //   collide    cell, parts (the part boxes) or none
+//   stack      per grid, the cells stacked over it along its own up, placed, opened, taken down and
+//              destroyed with it as one piece (the large door's top); pieceOf on each says whose it is,
+//              and such a cell is never placed, paid for or listed on its own
 //   extenderTier  cpu-extender only: the highest CPU tier it counts towards (default 2). Tiers 3
 //              and 4 take extenders built round lattice parts found in POIs (design 883)
 //   parts      boxes or cylinders in cell units; style body (takes paint), dark, accent, glow,
-//              glass; closedOnly parts belong to a door leaf. A part may also set its finish:
+//              glass; closedOnly parts belong to a door leaf; grid (large or small) keeps a part to
+//              one grid. A part may also set its finish:
 //              color, accent, pattern (a paint pattern, fine-hazard or grille), texture, metal,
 //              symbol (shown on a glow part, stencilled on anything else), anim and speed (a glow
 //              that pulses or blinks). Bolts, vents, screens and trim come from DeviceDetail.cs,
@@ -111,13 +115,35 @@
       "mass": 1.5, "cpu": 300, "power": -0.01, "color": "f4a100", "accent": "2b2d42",
       "attach": "all", "airtight": "all", "airtightOpen": "none",
       "covers": ["+x", "-x"],
+      // The one door, the same everywhere (the POIs' DoorSize): on the large grid two cells tall, its leaf 3 m
+      // high under a 1 m top (door-head), placed, opened and taken down as one piece. A small-grid door stays
+      // one cell under its own frame: no small vessel has a walk-in door.
+      "stack": { "large": ["door-head"] },
       "cost": { "iron": 14, "electronics": 2 }, "smallCost": { "iron": 3, "copper": 1 },
       "parts": [
         { "box": [-0.5, -0.5, -0.5, -0.44, 0.5, 0.5], "style": "dark" },
         { "box": [0.44, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "dark" },
-        { "box": [-0.44, 0.46, -0.5, 0.44, 0.5, 0.5], "style": "dark" },
-        { "box": [-0.44, -0.5, -0.1, 0.44, 0.46, 0.1], "style": "body", "closedOnly": true },
+        { "box": [-0.44, 0.46, -0.5, 0.44, 0.5, 0.5], "style": "dark", "grid": "small" },
+        { "box": [-0.44, -0.5, -0.1, 0.44, 0.46, 0.1], "style": "body", "closedOnly": true, "grid": "small" },
+        { "box": [-0.44, -0.5, -0.1, 0.44, 0.5, 0.1], "style": "body", "closedOnly": true, "grid": "large" },
         { "box": [-0.44, -0.1, -0.105, 0.44, 0.0, 0.105], "style": "accent", "closedOnly": true }
+      ]
+    },
+    {
+      // The large door's top cell: the last metre of its leaf and, over the 3 m opening, its top, a panel that
+      // takes the wall's paint. Never placed, paid for or listed on its own: it comes with its door.
+      "id": "door-head", "name": "Door top", "function": "door", "pieceOf": "door",
+      "hp": 700, "armor": 20, "resist": { "kinetic": 0.2, "explosive": 0.15, "energy": 0.15 },
+      "mass": 1, "cpu": 0, "color": "f4a100", "accent": "2b2d42",
+      "attach": "all", "airtight": "all", "airtightOpen": ["+x", "-x", "+y"],
+      "covers": ["+y"], "collide": "parts",
+      "cost": {}, "smallCost": {},
+      "parts": [
+        { "box": [-0.5, -0.5, -0.5, -0.44, 0.0, 0.5], "style": "dark" },
+        { "box": [0.44, -0.5, -0.5, 0.5, 0.0, 0.5], "style": "dark" },
+        { "box": [-0.5, 0.0, -0.5, 0.5, 0.06, 0.5], "style": "dark" },
+        { "box": [-0.5, 0.06, -0.5, 0.5, 0.5, 0.5], "style": "body" },
+        { "box": [-0.44, -0.5, -0.1, 0.44, 0.0, 0.1], "style": "body", "closedOnly": true }
       ]
     },
     {

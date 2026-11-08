@@ -51,6 +51,8 @@ public sealed class Doorway
     public List<Int3> Cells = new();
     public Dir Facing;
     public int ModuleA, ModuleB;
+    /// <summary>A dangerous opening (an airlock): its door wears hazard stripes, as a blast door's does. A person's door never does.</summary>
+    public bool Hazard;
 }
 
 /// <summary>A socket nobody connected to, walled up.</summary>

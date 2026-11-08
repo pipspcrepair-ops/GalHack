@@ -95,7 +95,7 @@ public static class BrutalComplex
         // A guard's box each side, for a person, inside the wall.
         foreach (int i in new[] { GateI0 - 8, GateI1 + 4 })
         {
-            int box = p.Hall("guard-post", ModuleKind.Room, 0, i, 3, i + 4, 8, 0, 1, f.Plinth, weather: false);
+            int box = p.Hall("guard-post", ModuleKind.Room, 0, i, 3, i + 4, 8, 0, 2, f.Plinth, weather: false);
             p.Door(i + 2, 0, 8, true, box, p.Yard);
             p.Glazed(i + 1, 0, 3, i + 3, 3);
             p.Spawn(2 * i + 4, 0, 2 * 5, box);
@@ -386,8 +386,6 @@ public static class BrutalComplex
                     if (u % 12 != 0) p.Lay(u, y, 2 * k, new Block(BlockType.Shelf, Material.Steel, f.Steel.C, Role.Prop));
         int vault = p.Hall("vault", ModuleKind.Vault, 0, 134, 28, 146, 44, 0, 3, f.Plinth, weather: false);
         p.Door(134, 0, 36, false, store, vault);
-        p.Stripes(2 * 134, 0, 2 * 35, 2 * 134 + 1, 5, 2 * 35 + 1);
-        p.Stripes(2 * 134, 0, 2 * 37, 2 * 134 + 1, 5, 2 * 37 + 1);
         p.Cache(2 * 144, 0, 2 * 30, vault);
         p.Cache(2 * 144, 0, 2 * 42, vault);
         p.Terminal(2 * 136, 0, 2 * 30, vault);
@@ -454,9 +452,7 @@ public static class BrutalComplex
         Fab f = p.F;
         int i1 = i0 + side, k1 = k0 + side;
         int lobby = p.Hall("tower-lobby", ModuleKind.Hall, 0, i0, k0, i1, k1, 0, 6, f.Wall);
-        p.Mouth((i0 + i1) / 2 - 1, 0, k0, (i0 + i1) / 2 + 1, 2, k0, lobby, p.Yard);
-        p.Stripes(i0 + i1 - 3, 0, 2 * k0, i0 + i1 - 3, 5, 2 * k0 + 1);
-        p.Stripes(i0 + i1 + 4, 0, 2 * k0, i0 + i1 + 4, 5, 2 * k0 + 1);
+        p.Mouth((i0 + i1) / 2 - 1, 0, k0, (i0 + i1) / 2 + 1, 2, k0, lobby, p.Yard); // a way in for people: no hazard stripes round it
         // Solid-looking shafts stepped in; hollow, walls only.
         int j = 7;
         foreach (var (inset, until) in new[] { (0, h / 3), (1, 2 * h / 3), (2, h - 6) })
