@@ -67,13 +67,27 @@ public partial class Game
         return Math.Clamp((int)(a / Mathf.Tau * Wheel.Length), 0, Wheel.Length - 1);
     }
 
-    /// <summary>Makes a gesture: everyone near who can see you reads it.</summary>
+    /// <summary>Makes a gesture: your arms make it (seen in third person), and everyone near who can see you reads it.</summary>
     public void MakeGesture(PlayerGesture g)
     {
         LastGesture = g;
         LastGestureAt = Time.GetTicksMsec() / 1000.0;
+        SinceGesture = 0f;
         Vector3 eye = Survivor.WorldEye(), look = Survivor.WorldLook();
         foreach (Town t in _towns) t.Heard(g, eye, look);
         Gestured?.Invoke(g);
+    }
+
+    /// <summary>The castaway's figure as seen from outside (third person, screenshots): its arms make your gestures.</summary>
+    public Node3D Figure { get; private set; }
+
+    /// <summary>Seconds of play since the last gesture was made (the figure's clock: it stops with the world).</summary>
+    public float SinceGesture { get; private set; } = 99f;
+
+    /// <summary>The figure's arms in the last gesture, while it plays; at rest after.</summary>
+    void PoseFigure(double delta)
+    {
+        SinceGesture += (float)delta;
+        if (Figure != null) Slice.Player.CharacterModel.Pose(Figure, LastGesture, SinceGesture);
     }
 }
