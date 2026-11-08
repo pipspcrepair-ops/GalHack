@@ -121,12 +121,12 @@ public partial class WindTest : Node
             Vector3 centre = Zone.Planet.NearestCopy(Zone.Planet.Canonical(Weather.Glue.ToVortex(t).Base), fx.GlobalPosition);
             Vector3 foot = fx.Foot;
             worst = MathF.Max(worst, new Vector2(foot.X - centre.X, foot.Z - centre.Z).Length());
-            worstY = MathF.Max(worstY, MathF.Abs(foot.Y - Zone.GroundAt(foot.X, foot.Z).Y));
+            worstY = MathF.Max(worstY, MathF.Abs(foot.Y - Sim.GroundHeight(foot.X, foot.Z))); // the surface it stands on: the water's over a lake
             rise = MathF.Max(rise, centre.Y);
             low = MathF.Min(low, centre.Y);
             ticks++;
         }
-        Check(ticks > 500 && worst < 1.5f && worstY < 2f, $"a {t.Rules.Speed * 3.6f:F0} km/h tornado's drawn foot stays on its force's centre every tick ({ticks} ticks over {rise - low:F0} m of rise and fall): {worst:F2} m apart at worst, {worstY:F2} m off the ground");
+        Check(ticks > 500 && worst < 1.5f && worstY < 2f, $"a {t.Rules.Speed * 3.6f:F0} km/h tornado's drawn foot stays on its force's centre every tick ({ticks} ticks over {rise - low:F0} m of rise and fall): {worst:F2} m apart at worst, {worstY:F2} m off the surface it stands on");
         Calm();
     }
 
@@ -218,7 +218,7 @@ public partial class WindTest : Node
         {
             "feet" => $"{MathF.Sqrt(walk.Footing * k.Mass / (0.5f * rho * k.Area)):F0} m/s",
             "landed" => $"{MathF.Sqrt(VesselController.WeatherWakeShare * k.Mass * g / (0.5f * rho * k.Area)):F0} m/s",
-            "skids" => $"{MathF.Sqrt(Slice.Vehicles.HoverBike.ParkedHold * k.Mass / (0.5f * rho * k.Area)):F0} m/s",
+            "skids" => $"{MathF.Sqrt(Slice.Vehicles.HoverBike.ParkedBrake * k.Mass / (0.5f * rho * k.Area)):F0} m/s",
             _ => "rider holds",
         };
         GD.Print($"      {"body",-34} {"mass",10} {"drag mÂ²",8} {"slides at",10}  lifted by          thrown by a cone / a wedge");
