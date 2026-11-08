@@ -123,6 +123,7 @@ public sealed partial class Staging
             "icons-sheet" => IconSheetView(),
             "icons-hands" => IconHandsView(),
             "blockdetail" => BlockDetailView(),
+            "decorooms" => DecoRooms(),
             _ => ProofViews(view),
         };
         foreach (int x in script) yield return x;

@@ -55,6 +55,7 @@ public partial class Screenshot : Node
         if (_args.TryGetValue("out", out string o)) _out = o;
         if (_args.TryGetValue("view", out string v)) _view = v;
         if (_view == "city") PlanetSurface.Infra.CityPlan.Force = true; // a city on any lived-in world
+        if (_args.TryGetValue("force", out string force)) PlanetSurface.Poi.PoiSiting.ForceFamily = force; // a place of this family near the landing site
         _game = new Game.Game { Interactive = false, SkipIntro = true, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), System.Array.IndexOf(OS.GetCmdlineUserArgs(), "--ringed=1") >= 0 ? RingedWorld() : WorldChoice.Tested) };
         AddChild(_game);
         _staging = new Staging(_game, _args) { TakeShot = file => _pending = file };

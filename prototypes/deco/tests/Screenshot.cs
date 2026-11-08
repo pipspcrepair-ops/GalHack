@@ -17,7 +17,8 @@ namespace DecoShowroom.Tests;
 /// strip, close: from the front, raised, swung round, aimed at a share of its height),
 /// room:&lt;demo&gt; (a demo room or site as used and as found), close:&lt;demo&gt;:before|after,
 /// inside:&lt;demo&gt;:before|after (from a corner at eye height), ores (the ore surface tells).
-/// Add --state=ruined (or active, infested) for the rooms. Several shots in one run:
+/// Add --state=ruined (or active, infested) for the rooms, --sun=pitch,yaw for a light of the view's own,
+/// --perf=1 for what a frame costs on each view. Several shots in one run:
 /// --shots="view&gt;file;view&gt;file", or --shotfile=a file of view&gt;file lines (no piece: views among them). The rooms roll a fresh seed each run.
 /// </summary>
 public partial class Screenshot : Node
@@ -26,6 +27,7 @@ public partial class Screenshot : Node
     readonly List<(string View, string File)> _shots = new();
     Showroom _room;
     Vector2? _sun;
+    bool _perf;
 
     public override void _Ready()
     {
@@ -43,6 +45,7 @@ public partial class Screenshot : Node
             else if (arg.StartsWith("--out=")) _out = arg["--out=".Length..];
             else if (arg.StartsWith("--state=")) _state = arg["--state=".Length..];
             else if (arg.StartsWith("--sun=")) { string[] s = arg["--sun=".Length..].Split(','); _sun = new Vector2(float.Parse(s[0], System.Globalization.CultureInfo.InvariantCulture), float.Parse(s[1], System.Globalization.CultureInfo.InvariantCulture)); }
+            else if (arg == "--perf=1") _perf = true;
             else if (arg.StartsWith("--shots=") || arg.StartsWith("--shotfile="))
                 foreach (string s in arg.StartsWith("--shots=") ? arg["--shots=".Length..].Split(';', StringSplitOptions.RemoveEmptyEntries) : System.IO.File.ReadAllLines(arg["--shotfile=".Length..]).Where(l => l.Contains('>')))
                 {
@@ -67,6 +70,26 @@ public partial class Screenshot : Node
         Run();
     }
 
+    /// <summary>What a frame costs on this view, vsync off: frame time, the renderer's CPU and GPU time, averaged over 240 frames.</summary>
+    async Task Measure(string view)
+    {
+        DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Disabled);
+        Engine.MaxFps = 0;
+        Rid vp = GetViewport().GetViewportRid();
+        RenderingServer.ViewportSetMeasureRenderTime(vp, true);
+        await Frames(30);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        double cpu = 0, gpu = 0;
+        const int N = 240;
+        for (int i = 0; i < N; i++)
+        {
+            await Frames(1);
+            cpu += RenderingServer.ViewportGetMeasuredRenderTimeCpu(vp);
+            gpu += RenderingServer.ViewportGetMeasuredRenderTimeGpu(vp);
+        }
+        GD.Print(string.Create(System.Globalization.CultureInfo.InvariantCulture, $"DECOPERF {view}: frame {clock.Elapsed.TotalMilliseconds / N:F2} ms, render cpu {cpu / N:F2} ms, gpu {gpu / N:F2} ms, draws {GetViewport().GetRenderInfo(Viewport.RenderInfoType.Visible, Viewport.RenderInfo.DrawCallsInFrame)}"));
+    }
+
     async Task Frames(int n)
     {
         for (int i = 0; i < n; i++) await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
@@ -85,6 +108,7 @@ public partial class Screenshot : Node
                 _view = _shots[i].View;
                 Place(_view.Split(':'));
                 await Frames(i == 0 ? 45 : 20);
+                if (_perf) await Measure(_view);
                 Image image = GetViewport().GetTexture().GetImage();
                 Error result = image.SavePng(_shots[i].File);
                 GD.Print(result == Error.Ok ? $"saved {_shots[i].File}" : $"could not save {_shots[i].File}: {result}");
