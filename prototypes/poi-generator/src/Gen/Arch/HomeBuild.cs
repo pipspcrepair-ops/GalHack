@@ -452,7 +452,7 @@ public static partial class Homes
             // A mansard's top storey is roof, its windows dormers in it.
             if (s.Roof == "mansard" && storey == h.Storeys - 1 && storey > 0) return new Block(BlockType.Cube, st.RoofM, st.Roof.Scale(0.92f), Role.Wall);
             uint hash = Hash.Cell(new Int3(u, y, v), 0x5C1u);
-            float jit = 1f + ((hash % 9) - 4) / 100f;
+            float jit = 1f + ((hash % 7) - 3) / 100f;
             bool corner = !h.Foot.Contains((u - 1, v)) && !h.Foot.Contains((u, v - 1)) || !h.Foot.Contains((u + 1, v)) && !h.Foot.Contains((u, v - 1))
                 || !h.Foot.Contains((u - 1, v)) && !h.Foot.Contains((u, v + 1)) || !h.Foot.Contains((u + 1, v)) && !h.Foot.Contains((u, v + 1));
             switch (wall)
@@ -460,13 +460,13 @@ public static partial class Homes
                 case "brick": return new Block(BlockType.Cube, Material.Ceramic, (y == 0 ? c.Scale(0.8f) : c).Scale(jit), Role.Wall);
                 case "board": return new Block(BlockType.Cube, Material.Timber, y == 0 ? c.Scale(0.7f) : corner ? c.Scale(1.06f) : (y & 1) == 0 ? c : c.Scale(0.9f), Role.Wall);
                 case "timber": return new Block(BlockType.Cube, Material.Timber, (corner ? c.Scale(0.8f) : (y & 1) == 0 ? c : c.Scale(0.86f)).Scale(jit), Role.Wall);
-                case "stone": return new Block(BlockType.Cube, Material.Rock, (corner && ((y + 1) & 1) == 0 ? c.Scale(1.15f) : c).Scale(1f + ((int)(hash % 17) - 8) / 100f), Role.Wall);
+                case "stone": return new Block(BlockType.Cube, Material.Rock, (corner && ((y / 2) & 1) == 0 ? c.Scale(1.12f) : c).Scale(jit), Role.Wall);
                 case "halftimber":
                 {
                     bool frame = y == 0 || inStorey == 0 || inStorey == storeyH - 1 || corner || (u + v) % 4 == 0 || ((u + v) % 4 + inStorey) % 4 == 0 && inStorey is 1 or 2 && (u + v) % 4 != 2;
                     return frame ? new Block(BlockType.Cube, Material.Timber, dark, Role.Wall) : new Block(BlockType.Cube, Material.Concrete, s.WallC.Lerp(new Rgb(0xec, 0xe4, 0xcc), 0.6f), Role.Wall);
                 }
-                case "adobe": return new Block(BlockType.Cube, Material.Concrete, c.Scale(1f + ((int)(hash % 13) - 6) / 100f), Role.Wall);
+                case "adobe": return new Block(BlockType.Cube, Material.Concrete, c.Scale(jit), Role.Wall);
                 case "panel": return new Block(BlockType.Cube, tech == TechLevel.High ? Material.Resin : Material.Concrete, (u + v) % 4 == 0 ? c.Scale(0.92f) : c, Role.Wall);
                 case "glass":
                     return inStorey == storeyH - 1 || inStorey == 0 ? new Block(BlockType.Cube, Material.Alloy, new Rgb(0x8c, 0x98, 0xa0), Role.Wall)
@@ -703,6 +703,7 @@ public static partial class Homes
             gDoorV = gv0;
             Carport(l, f, h, gu0, gv0, gOuter, gd, garageRight, s);
             garageDoorCell = f.At(gDoorU, 0, gDoorV);
+            garageFacing = f.Turn(Dir.North);
         }
         // What stands in front: a porch or a verandah, bays, a balcony; a hoist beam, vigas; stilts and the steps up.
         var (fu0, fv0, fu1, fv1) = plan.Box;

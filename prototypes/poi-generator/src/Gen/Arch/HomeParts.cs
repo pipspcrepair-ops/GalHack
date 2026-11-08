@@ -481,7 +481,7 @@ public static partial class Homes
                             : new Block(BlockType.Pane, Material.Glass, new Rgb(0x58, 0x6a, 0x70), Role.Window),
                         "timber" => new Block(BlockType.Cube, Material.Timber, (k & 1) == 0 ? paint : paint.Scale(0.86f), Role.Wall),
                         "hinged" => new Block(BlockType.Cube, Material.Timber, k == half - 1 || k == half ? paint.Scale(0.7f) : (k % half) == (y + (k >= half ? 0 : 1)) % half ? paint.Scale(0.8f) : paint, Role.Wall),
-                        _ => new Block(BlockType.Cube, metal, (y == 1 ? paint : paint.Scale(0.9f)).Scale((k & 1) == 0 ? 1f : 0.95f), Role.Wall),
+                        _ => new Block(BlockType.Cube, metal, y == 1 ? paint : paint.Scale(0.9f), Role.Wall),
                     };
                     if (swung && k < half) continue;
                     Put(u0 + k, y, v, b);
