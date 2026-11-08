@@ -42,14 +42,15 @@ public partial class WormMassView : Node3D
             _mesh.Scale = new Vector3(1f + 0.15f * _sunk, 1f - 0.7f * _sunk, 1f + 0.15f * _sunk);
         }
         // Limp once dead: the shader's sway is all but stopped.
-        float stir = m.Dead ? -0.8f : MathF.Round(m.Stir * 10f) / 10f;
+        // Close to, eager: faster, and stretching further toward what is near (calm, just their own sway).
+        float stir = m.Dead ? -0.8f : MathF.Round((m.Stir + 0.9f * m.Eager) * 10f) / 10f;
         if (MathF.Abs(stir - _stirShown) > 0.01f)
         {
             _stirShown = stir;
             _mesh.SetInstanceShaderParameter("worm_stir", stir);
         }
         Vector3 dir = m.Dead ? Vector3.Zero : Basis.Inverse() * m.Reach;
-        var reach = new Vector4(dir.X, dir.Y, dir.Z, MathF.Max(0f, stir));
+        var reach = new Vector4(dir.X, dir.Y, dir.Z, MathF.Max(0f, stir) * (1f + 1.4f * m.Eager));
         if ((reach - _reachShown).LengthSquared() > 0.003f)
         {
             _reachShown = reach;

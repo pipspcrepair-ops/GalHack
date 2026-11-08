@@ -84,7 +84,8 @@ public sealed partial class Staging
         string tag = severe ? "" : "-light";
         Vector3 from = _game.Survivor.WorldFeet;
         PoiSite site = _game.Zone.Planet.Pois.Where(s => s.Instance != null && s != _game.Bunker.Poi && _game.Places.PlaceOf(s) == null && s.Instance.Townsfolk == null
-                && s.Instance.Layout.Modules.Count(m => m.Kind is ModuleKind.Room or ModuleKind.Hall or ModuleKind.Corridor) >= (int)Num("rooms", 9))
+                && s.Instance.Layout.Modules.Count(m => m.Kind is ModuleKind.Room or ModuleKind.Hall or ModuleKind.Corridor) >= (int)Num("rooms", 9) && !s.Family.Tags.Contains("camp")
+                && s.Instance.State is PoiGenerator.Gen.PoiState.Abandoned or PoiGenerator.Gen.PoiState.Ruined)
             .OrderBy(s => _game.Places.DistanceTo(s, from)).First(s => _game.Places.DistanceTo(s, from) > 250f && !_game.Places.MemoryOf(s).Prepared);
         site.Instance.Occupancy = severe ? new OccupancyRoll(Occupant.Turned) : new OccupancyRoll(Occupant.Empty, null, Sharing.Layers, Occupant.Turned);
         GD.Print($"(STAGING: {site.Name} [{site.Family.Id}], {_game.Places.DistanceTo(site, from):F0} m off, held by the Turned {(severe ? "alone" : "as a trace")})");
@@ -113,6 +114,14 @@ public sealed partial class Staging
             WormMass big = sim.Masses.Where(m => !m.Dead).OrderByDescending(m => sim.Veins.Count(v => v.Points[0].DistanceTo(m.Position) < 2f) + m.Size * 4f).First();
             foreach (int x in DenView(p, deep, big.Middle, 3.2f, 1.5f)) yield return x;
             foreach (int x in Shot(Path.Combine(dir, "severe.png"))) yield return x;
+            // One on a wall: rooted in it, its open side out into the room.
+            WormMass wall = sim.Masses.Where(m => !m.Dead && MathF.Abs(m.Normal.Y) < 0.4f).OrderByDescending(m => m.Size).FirstOrDefault();
+            if (wall != null)
+            {
+                GD.Print($"(a mass on a wall: facing {wall.Normal.X:F2}, {wall.Normal.Y:F2}, {wall.Normal.Z:F2}; {sim.Masses.Count(m => MathF.Abs(m.Normal.Y) < 0.4f)} of {sim.Masses.Count} are on walls)");
+                foreach (int x in DenView(p, deep, wall.Middle, 2.6f, 0.3f)) yield return x;
+                foreach (int x in Shot(Path.Combine(dir, "wall.png"))) yield return x;
+            }
             WormMass made = sim.Masses.Where(m => !m.Dead && m.Host != null && m.Normal.Y > 0.5f).OrderBy(m => WormMasses.RemnantKind(m) == 0 ? 0 : 1).ThenByDescending(m => m.Size).FirstOrDefault();
             if (made != null)
             {
@@ -145,6 +154,84 @@ public sealed partial class Staging
             GD.Print($"(light inside: {sim.Veins.Count} veins, the Husk {(husk == null ? "none" : $"{husk.Position.DistanceTo(at):F1} m from the vein")}, wrongness {_game.Wrongness:F2})");
             foreach (int x in Shot(Path.Combine(dir, "light.png"))) yield return x;
         }
+    }
+
+    /// <summary>
+    /// --view=husk-worms: walking up to a worm mass in a severe den, through the castaway's eyes:
+    /// calm.png from a few metres, eager.png a step out of its reach (the worms reaching for you),
+    /// held.png once they have you (hauled in, stung: printed), then a shot into it, free.png.
+    /// STAGING: the den is set up as husk-den's; the place's creatures stand still.
+    /// </summary>
+    IEnumerable<int> HuskWorms()
+    {
+        _args["den"] = "severe";
+        string dir = _args.GetValueOrDefault("dir", "husk");
+        Directory.CreateDirectory(dir);
+        _args["dir"] = Path.Combine(dir, "den");
+        // The den, its frames to a side folder; then the walk up.
+        foreach (int x in HuskDen()) yield return x;
+        _game.FixedCamera = null;
+        HideCastaway(false);
+        _game.Visor.Visible = false;
+        DeepSite deep = _game.Zone.Wildlife.Sites.OrderBy(s => s.GlobalPosition.DistanceTo(_game.Survivor.WorldFeet)).First(s => s.Sim.Masses.Count > 0);
+        HuskRules rules = _game.Zone.Wildlife.Life.Data.Husks;
+        var space = _game.Zone.GetWorld3D().DirectSpaceState;
+        // A floor mass with open floor before it, at a man's eye looking down on it.
+        WormMass m = null;
+        Vector3 back = Vector3.Zero;
+        foreach (WormMass c in deep.Sim.Masses.Where(c => !c.Dead && c.Normal.Y > 0.9f).OrderByDescending(c => c.Size))
+        {
+            for (int a = 0; a < 12 && m == null; a++)
+            {
+                var d = new Vector3(MathF.Cos(a * MathF.Tau / 12f), 0f, MathF.Sin(a * MathF.Tau / 12f));
+                Vector3 eye = deep.World(c.Position + d * 4.5f) + Vector3.Up * 1.6f;
+                if (space.IntersectRay(PhysicsRayQueryParameters3D.Create(eye, deep.World(c.Middle), GalHack.Physics.Layers.World)).Count == 0
+                    && space.IntersectRay(PhysicsRayQueryParameters3D.Create(eye + Vector3.Down * 1.4f, deep.World(c.Position) + Vector3.Up * 0.2f, GalHack.Physics.Layers.World)).Count == 0) { m = c; back = d; }
+            }
+            if (m != null) break;
+        }
+        if (m == null) throw new InvalidOperationException("no floor mass with open floor before it");
+        float grab = WormMasses.Grab(rules, m);
+        foreach (Creature c in deep.Sim.Creatures) if (c.Position.DistanceTo(m.Position) < 6f) c.Removed = true;
+        GD.Print($"(STAGING: the creatures by the mass taken out of the shot; it reaches {grab:F1} m)");
+        IEnumerable<int> StandAt(float off, int wait)
+        {
+            _game.Survivor.PlaceOutside(deep.World(m.Position + back * off).ToNumerics());
+            for (int i = 0; i < wait; i++)
+            {
+                _drive.Face(deep.World(m.Middle) + Vector3.Up * 0.3f);
+                yield return 0;
+            }
+        }
+        foreach (int x in StandAt(4.5f, 120)) yield return x;
+        GD.Print($"(calm: eager {m.Eager:F2}, stir {m.Stir:F2})");
+        foreach (int x in Shot(Path.Combine(dir, "calm.png"))) yield return x;
+        foreach (int x in StandAt(grab + 0.7f, 75)) yield return x;
+        GD.Print($"(a step out of reach: eager {m.Eager:F2}, stir {m.Stir:F2}, held {_game.InWorms})");
+        foreach (int x in Shot(Path.Combine(dir, "eager.png"))) yield return x;
+        double health = _game.Suit.HealthShare;
+        foreach (int x in StandAt(grab - 0.25f, 2)) yield return x;
+        float startAt = WildSim.Flat(_game.Survivor.WorldFeet - deep.World(m.Middle)).Length();
+        for (int i = 0; i < 120; i++)
+        {
+            _drive.Face(deep.World(m.Middle) + Vector3.Up * 0.3f);
+            yield return 0;
+        }
+        float nowAt = WildSim.Flat(_game.Survivor.WorldFeet - deep.World(m.Middle)).Length();
+        GD.Print($"(held: {_game.InWorms}, hauled {startAt:F2} to {nowAt:F2} m in 2 s ({_game.WormHauled:F2} m all told), health {health * 100:F1}% to {_game.Suit.HealthShare * 100:F1}%)");
+        if (!_game.InWorms || nowAt >= startAt - 0.3f || _game.Suit.HealthShare >= health) throw new InvalidOperationException("the mass did not hold, haul and sting the castaway");
+        foreach (int x in Shot(Path.Combine(dir, "held.png"))) yield return x;
+        foreach (int x in Play.Tool(Slice.Player.ToolMode.Shoot)) yield return x;
+        _drive.Face(deep.World(m.Middle));
+        yield return 0;
+        _game.Controls.Primary = true;
+        _game.Controls.PrimaryPressed = true;
+        yield return 0;
+        _game.Controls.Primary = false;
+        for (int i = 0; i < 10; i++) yield return 0;
+        GD.Print($"(a shot into it: its health {m.Health:F0} of {m.MaxHealth:F0}, held {_game.InWorms})");
+        if (_game.InWorms) throw new InvalidOperationException("a shot into the mass did not make it let go");
+        foreach (int x in Shot(Path.Combine(dir, "free.png"))) yield return x;
     }
 
     /// <summary>Full day where the castaway stands (the clock is the world's, the sun the place's): the time of day with the sun highest, printed.</summary>

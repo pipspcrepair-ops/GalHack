@@ -522,6 +522,20 @@ public sealed class HuskRules
     /// <summary>After a hold on someone ends, how long before anything can seize them again, s: a ring of Husks can't pass them hand to hand.</summary>
     public float SeizeCooldown { get; set; } = 4f;
     /// <summary>
+    /// A worm mass's grip (<see cref="WormMasses.Step"/>): how far its worms reach to take hold, m
+    /// (and more per metre of its size); how much further off the one held must get to tear free, m;
+    /// what share of their own pace they keep while held; how fast they are hauled in, m/s; what
+    /// they lose a second (a share of their health in hundredths, a steady sting, nothing like the
+    /// face grab); and how long before it can take the same one again, s. Never an infection.
+    /// </summary>
+    public float MassGrab { get; set; } = 0.55f;
+    public float MassGrabPerSize { get; set; } = 0.75f;
+    public float MassLetGo { get; set; } = 0.5f;
+    public float MassSlow { get; set; } = 0.3f;
+    public float MassPull { get; set; } = 0.9f;
+    public float MassDamage { get; set; } = 3f;
+    public float MassRegrab { get; set; } = 2.5f;
+    /// <summary>
     /// How far gone a den is (0 light to 1 severe), at least and at most, by how the place's
     /// occupancy has them: holding it alone, sharing it, the second group in it, or only a trace.
     /// </summary>

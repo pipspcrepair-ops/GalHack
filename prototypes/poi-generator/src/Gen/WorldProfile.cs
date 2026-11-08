@@ -55,6 +55,10 @@ public sealed record WorldProfile
     public TechLevel Now { get; init; } = TechLevel.Low;
     /// <summary>The words of a family's <c>is</c> line this world's facts rule out, from its roll: no open streets or farms where the air was never fit to build under.</summary>
     public IReadOnlySet<string> Barred { get; init; } = Nothing;
+    /// <summary>How long ago and how hard the world fell, for its places' decay (from its roll; null: a century of neglect).</summary>
+    public RuinAge? Ruin { get; init; }
+    /// <summary>The colours its made things take, faded by its years and its fall (from its roll; null: as built).</summary>
+    public WorldPaint? Paint { get; init; }
     static readonly HashSet<string> Nothing = new();
 
     /// <summary>The data tag of a level (low, mid, high), as families' variants and the deco library name them.</summary>

@@ -291,6 +291,9 @@ public partial class TerrainStreamer : Node3D
         m.SetShaderParameter("road_index", _roads.Index);
         m.SetShaderParameter("road_grid", _roads.Grid);
         m.SetShaderParameter("road_tolerance", far ? 12f : 1.2f);
+        // The world's own ground bared, for its tracks and dirt roads: its rock weathered into clay, grit or sand.
+        Planets.Look.Rgb bare = World.Palette.BareSoil;
+        m.SetShaderParameter("bare_soil", new Color(bare.R, bare.G, bare.B));
         m.SetShaderParameter("ground_patches", _grounds.Patches);
         m.SetShaderParameter("ground_cells", _grounds.Cells);
         m.SetShaderParameter("ground_index", _grounds.Index);
@@ -563,7 +566,9 @@ public partial class TerrainStreamer : Node3D
 
         long collisionStart = Stopwatch.GetTimestamp();
         UpdateCollision(fcx, fcz, start);
+        long solidsStart = Stopwatch.GetTimestamp();
         UpdateSolids(fcx, fcz, start);
+        SolidsTotalMs += Stopwatch.GetElapsedTime(solidsStart).TotalMilliseconds;
         _sections[4] = Stopwatch.GetElapsedTime(collisionStart).TotalMilliseconds;
         Unload(fcx, fcz);
         UpdateVisibility(fcx, fcz);

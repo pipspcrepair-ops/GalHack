@@ -72,13 +72,14 @@ public sealed partial class Staging
         float away = (float)Num("away", 4.5);
         Vector3? feet = StandNear(p, c => System.Math.Abs(c.Y - mark.Cell.Y) <= 1 && new Vector2(c.X - mark.Cell.X, c.Z - mark.Cell.Z).Length() is var d && d > away - 1.5f && d < away + 1.5f, at + new Vector3(away, 0f, 0f));
         Vector3 stand = feet ?? p.ToWorld(at + new Vector3(away, 0f, 0f));
-        Vector3 eye = stand + Vector3.Up * 1.7f, target = p.ToWorld(at + Vector3.Up * (mark.Kind == "wrong_object" ? 0.2f : 0.6f));
-        if (mark.Kind == "wrong_object") eye += Vector3.Down * 0.4f;
+        // A little above head height, looking down on it: daylight through the openings, no torch.
+        Vector3 eye = stand + Vector3.Up * 2.4f, target = p.ToWorld(at + Vector3.Up * (mark.Kind == "wrong_object" ? 0.2f : 0.4f));
+        if (mark.Kind == "wrong_object") eye += Vector3.Down * 1.2f;
         // The castaway stands a little behind the camera, so the view isn't through their own head.
         Vector3 back = (eye - target) with { Y = 0f };
         _game.Survivor.PlaceOutside((stand + back.Normalized() * 1.2f).ToNumerics());
         foreach (int x in _drive.Wait(40)) yield return x;
-        _game.Torch.Visible = true;
+        _game.Torch.Visible = false;
         _game.Zone.Sky.TimeOfDay = Num("time", 0.45);
         _game.FixedCamera = new Transform3D(Basis.LookingAt(target - eye, Vector3.Up), eye);
         foreach (int x in _drive.Wait(90)) yield return x;

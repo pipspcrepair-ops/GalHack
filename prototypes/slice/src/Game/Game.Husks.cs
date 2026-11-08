@@ -1,7 +1,9 @@
 using System;
 using Godot;
+using Slice.Surface;
 using SurvivalVitals.Model;
 using Wildlife;
+using N = System.Numerics;
 
 namespace Slice.Game;
 
@@ -143,6 +145,55 @@ public partial class Game
             EndHold();
         }
         return true;
+    }
+
+    /// <summary>A worm mass's worms have you by the legs and body (in whichever sim).</summary>
+    public bool InWorms { get; private set; }
+    Vector3 _wormsPull;
+    WormMass _wormsBy;
+    /// <summary>Seconds spent in a mass's grip, and how far it has hauled you all told, m (tests).</summary>
+    public float WormSeconds { get; private set; }
+    public float WormHauled { get; private set; }
+
+    /// <summary>
+    /// A worm mass has hold of you (wildlife's <see cref="WormMasses.Held"/>): your legs keep only a
+    /// share of their pace, you are hauled toward it a step at a time, and it stings, steadily and
+    /// no worse. Walk out of it against the pull, or shoot or cut the mass, and it lets go. It
+    /// never infects you: only a Husk's face could, and it can't get to you.
+    /// </summary>
+    void Tangled(Slice.Player.Survivor s)
+    {
+        bool was = InWorms;
+        InWorms = false;
+        WildlifePatch patch = Zone.Wildlife;
+        if (patch?.Sim == null || s.Seated != null || Suit.Dead) return;
+        foreach (DeepSite site in patch.Sites)
+            if (site.Player != null && WormMasses.Held(site.Sim, site.Player, out Vector3 toward, out WormMass by))
+            {
+                InWorms = true;
+                _wormsPull = toward;
+                if (by != _wormsBy || !was) Alerts.Attack("husk_hazard", site.World(by.Middle));
+                _wormsBy = by;
+                break;
+            }
+        if (!InWorms)
+        {
+            _wormsBy = null;
+            return;
+        }
+        HuskRules rules = patch.Life.Data.Husks;
+        float dt = (float)GetPhysicsProcessDeltaTime();
+        s.Legs.Move *= rules.MassSlow;
+        s.Legs.Sprint = false;
+        s.Legs.Jump = s.Legs.Jetpack = false;
+        // Hauled in: the legs dragged its way, as if walking there at the pull's pace (never a jump);
+        // walking away, what's left of your pace fights it.
+        var pull = new N.Vector3(_wormsPull.X, 0f, _wormsPull.Z) * (rules.MassPull / s.Legs.WalkSpeed);
+        N.Vector3 local = N.Vector3.Transform(pull, N.Quaternion.Inverse(N.Quaternion.Normalize(s.Body.Rotation * N.Quaternion.CreateFromAxisAngle(N.Vector3.UnitY, s.Legs.Yaw))));
+        s.Legs.Move += new N.Vector2(local.X, local.Z);
+        WormHauled += rules.MassPull * dt;
+        WormSeconds += dt;
+        Suit.Hit(rules.MassDamage / 100.0 * Suit.Sim.Data.Vitals.Health.Max * dt, DamageKind.Hit);
     }
 
     /// <summary>The camera pulled in to its face: a narrower view, and a tremor.</summary>

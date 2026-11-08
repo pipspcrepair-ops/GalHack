@@ -186,9 +186,6 @@ public sealed partial class PlanetWorld
         // The land comes back through the ruins as the planet's own flora, and their rubble is its rock.
         Palette.Planted = RuinGrowth.Plan(pois, source, Palette, map.WidthMeters, map.HeightMeters);
         foreach (PoiSite p in pois) PoiGenerator.Gen.Growth.Earthen(p.Instance, RubbleRock, Weed);
-        // Made things take the world's paint, faded by its years and its fall.
-        if (Reading.Paint is { } paint)
-            foreach (PoiSite p in pois) paint.Apply(p.Instance, p.Instance.SpawnSeed);
         Look = WorldLook.For(map, Sky);
         BuildMs = ms;
     }

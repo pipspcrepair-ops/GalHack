@@ -37,11 +37,11 @@ public partial class Screenshot : Node
 
     public override void _Ready()
     {
-        // A wall-clock limit too: the game clock above can crawl on a loaded machine, and a run must always end itself.
+        // A wall-clock limit as well: a hung run quits itself, even with the game's clock stopped.
         var watchdog = new System.Threading.Thread(() =>
         {
-            System.Threading.Thread.Sleep(TimeSpan.FromMinutes(25));
-            Console.Error.WriteLine("screenshot: over 25 minutes of real time, quitting");
+            System.Threading.Thread.Sleep(TimeSpan.FromSeconds(TimeoutSeconds + 300));
+            Console.Error.WriteLine($"screenshot '{_view}' took over {(TimeoutSeconds + 300) / 60:0} minutes of wall-clock time: watchdog");
             System.Environment.Exit(1);
         }) { IsBackground = true };
         watchdog.Start();

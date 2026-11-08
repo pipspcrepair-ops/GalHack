@@ -164,8 +164,8 @@ public sealed class PlanetFlora
             if (!book.Barren && mood.Fungal > FungalAt && trees > 0f && rules.All(r => r.Kind != Flora.GiantMushroom))
             {
                 Rgb tint = rules.First(r => FamilyOf(r.Kind) != null).Color;
-                kept.Add(new FloraRule(Flora.GiantMushroom, trees * 0.35f * mood.Fungal, tint));
-                kept.Add(new FloraRule(Flora.Mushroom, trees * 0.6f * mood.Fungal, tint));
+                kept.Add(new FloraRule(Flora.GiantMushroom, trees * 0.7f * mood.Fungal * mood.Fungal, tint));
+                kept.Add(new FloraRule(Flora.Mushroom, trees * 0.8f * mood.Fungal, tint));
             }
             _rules[b] = kept.ToArray();
         }

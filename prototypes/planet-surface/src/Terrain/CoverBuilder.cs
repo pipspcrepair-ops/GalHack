@@ -83,7 +83,7 @@ public static class CoverBuilder
             // one's yard), rather than stopping in a hard line round it.
             float built = source.Built(x, z, out bool onRoad);
             if ((onRoad || built > 0f)
-                && !(onRoad && built <= 0f && size < 0.4f && source.OnRoad(x, z, out float wear) && wear > 0.6f)
+                && !(onRoad && built <= 0f && size < 0.4f && source.GrowsOnRoad(x, z))
                 && !source.OnWild(x, z, out _)
                 && !(!onRoad && built < 1f && FarBuilder.Feather(roll) >= FarBuilder.Smooth(0.5f, 1f, built))) continue;
             int gx = (int)Math.Floor(x), gz = (int)Math.Floor(z);
