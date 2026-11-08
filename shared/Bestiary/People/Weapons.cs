@@ -39,7 +39,7 @@ public static class Weapons
     /// </summary>
     public static string ForEra(int now, int before, Rng rng)
     {
-        int era = before > now && rng.Chance(0.05f) ? before : now;
+        int era = now >= 1 && before > now && rng.Chance(0.05f) ? before : now; // (a low world keeps to its own: its old long gun is the musket)
         var table = era <= 0 ? Low : era == 1 ? Mid : High;
         float total = 0f;
         foreach (var t in table) total += t.weight;

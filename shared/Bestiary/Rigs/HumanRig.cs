@@ -194,16 +194,17 @@ public sealed class HumanRig : Rig
         float twist = moving * (0.1f + 0.1f * run) * MathF.Sin(cycle);
         // A weapon up: the left shoulder comes round toward the target (an archer's side-on stance).
         HoldKind kind = Weapons.HoldOf(f.Prop);
+        float squareOff = 0f; // the upper body turned to a weapon (the hips and legs stay square)
         float busy = Math.Clamp(MathF.Max(act, g.Reach), 0f, 1f);
         float aimW = kind == HoldKind.None ? 0f : Math.Clamp(g.Aim, 0f, 1f) * (1f - busy);
-        twist -= aimW * kind switch { HoldKind.Bow => 0.75f, HoldKind.Spear => 0.3f, _ => 0f };
+        squareOff -= aimW * kind switch { HoldKind.Bow => 0.75f, HoldKind.Spear => 0.3f, _ => 0f };
         if (kind is HoldKind.LongGun or HoldKind.Spear or HoldKind.Pistol) twist *= 1f - 0.8f * aimW; // steady on the target, even walking
         if (kind == HoldKind.LongGun)
         {
             // A long gun in both hands, carried or up; a short reach past a thick chest turns further, the left shoulder to the fore-end.
             float ua = HumanBody.ArmScale(f), armL = f.UpperArmOf(0) + f.ForearmOf(0);
             float lack = f.ChestD * f.Padding * 1.05f + 0.5f * ua - (armL * 0.97f + Reach * ua);
-            twist -= (0.3f + Math.Clamp(lack / (f.ShoulderW * 0.94f), 0f, 0.5f)) * (1f - busy);
+            squareOff -= (0.3f + Math.Clamp(lack / (f.ShoulderW * 0.94f), 0f, 0.5f)) * (1f - busy);
         }
         if (husk)
         {
@@ -214,7 +215,8 @@ public sealed class HumanRig : Rig
             // Reaching for a head, it straightens to bring its face to yours.
             pitch = Mathf.Lerp(pitch, 0.08f, 0.8f * g.Reach);
         }
-        Basis torso = turn * new Basis(Vector3.Up, twist) * new Basis(Vector3.Right, -pitch) * new Basis(Vector3.Back, roll);
+        Basis torso = turn * new Basis(Vector3.Up, twist + squareOff) * new Basis(Vector3.Right, -pitch) * new Basis(Vector3.Back, roll);
+        Vector3 hipsX = (turn * new Basis(Vector3.Up, twist) * new Basis(Vector3.Right, -pitch) * new Basis(Vector3.Back, roll)).X;
         Pose[_body] = new Transform3D(torso, hip);
         PoseTail(g, hip, torso, cycle, moving, jerk);
 
@@ -240,7 +242,7 @@ public sealed class HumanRig : Rig
             }
             float half = strideLength * duty * 0.5f;
             float forward = moving * reach * half + g.Sit * f.UpperLeg * 0.8f + g.Crouch * 0.05f * side;
-            Vector3 hipJoint = hip + torso.X * side * f.HipW * 0.55f + Vector3.Down * f.HipW * 0.1f;
+            Vector3 hipJoint = hip + hipsX * side * f.HipW * 0.55f + Vector3.Down * f.HipW * 0.1f;
             float wide = g.Act is BodyAct.Taunt or BodyAct.Warn or BodyAct.Startle or BodyAct.Panic ? 0.12f * keyed : 0f; // a wide stance for a threat or a fright
             Vector3 foot = g.Feet + recoil * 0.6f + fwd * forward + right * side * (f.HipW * 0.7f + staggerSide * 0.6f + g.Sit * 0.04f + g.Crouch * 0.06f + wide);
             float ground = GroundAt(foot.X, foot.Z, g.Feet.Y);
@@ -440,17 +442,9 @@ public sealed class HumanRig : Rig
                 grip = lowButt.Lerp(aimButt, aim) + dir * 0.3f * u;
                 // A short reach (thick clothes, short arms): the gun comes across and up toward the
                 // left shoulder, never back into the body, until the fore-end is in hand.
-                for (int k = 0; k < 8; k++)
-                {
-                    Vector3 near = grip + dir * 0.15f * u;
-                    float shortBy = near.DistanceTo(shoulderL) - (armL * 0.97f + Reach * u);
-                    if (shortBy <= 0f) break;
-                    Vector3 to = shoulderL - near;
-                    to -= ahead * to.Dot(ahead);
-                    grip += to.Normalized() * shortBy * 1.3f;
-                }
-                // Still short: the stock presses back into the coat, never into the chest under it.
-                float give = MathF.Max(0f, (grip - dir * 0.3f * u - hip).Dot(ahead) - f.ChestD * f.Padding * 1.03f);
+                grip = Across(grip, dir, 0.15f * u, shoulderL, armL * 0.97f + Reach * u, ahead);
+                // Still short: the stock presses back into a thick coat (it gives), never into the chest under it.
+                float give = MathF.Max(0f, (grip - dir * 0.3f * u - hip).Dot(ahead) - f.ChestD * (1f + 0.4f * (f.Padding - 1f)) * 1.03f);
                 float shortR = grip.DistanceTo(shoulderR) - (armR * 0.97f + Reach * u), shortL = (grip + dir * 0.15f * u).DistanceTo(shoulderL) - (armL * 0.97f + Reach * u);
                 if (MathF.Max(shortR, shortL) > 0f) grip -= ahead * MathF.Min(give, MathF.Max(shortR, shortL) * 1.2f);
                 // The other hand busy: carried in the right, muzzle down beside the leg.
@@ -467,7 +461,7 @@ public sealed class HumanRig : Rig
             case HoldKind.Pistol:
             {
                 // Holstered on the right hip, muzzle down, the grip back and up.
-                Vector3 holster = hip + up * T * 0.12f + torso.X * (f.HipW * f.Padding + 0.06f * u) + ahead * 0.02f * u;
+                Vector3 holster = hip + up * T * 0.12f + torso.X * (MathF.Max(f.HipW, f.WaistW) * f.Padding + 0.06f * u) + ahead * 0.02f * u;
                 Vector3 holsterDir = (Vector3.Down + fwd * 0.12f).Normalized();
                 float drawn = Math.Clamp((aim - 0.15f) / 0.85f, 0f, 1f);
                 Vector3 low = hip + up * T * 0.45f + torso.X * 0.12f * u + ahead * (d + 0.2f * u);
@@ -491,8 +485,10 @@ public sealed class HumanRig : Rig
                 Vector3 staffDir = (Vector3.Up + fwd * 0.08f).Normalized();
                 Vector3 level = hip + up * T * 0.4f + torso.X * 0.15f * u + ahead * (d + 0.08f * u);
                 Vector3 levelDir = (look - right * 0.24f + Vector3.Up * 0.08f).Normalized();
-                grip = staff.Lerp(level, aim);
+                // Swung out and round from upright to level, the butt clear of the hip on the way.
+                grip = staff.Lerp(level, aim) + (torso.X * 0.1f + ahead * 0.08f) * u * MathF.Sin(MathF.PI * aim);
                 dir = staffDir.Lerp(levelDir, aim).Normalized();
+                if (aim > 0f) grip = grip.Lerp(Across(grip, dir, 0.16f * u, shoulderL, armL * 0.97f + Reach * u, ahead), aim);
                 h.R = grip;
                 h.RW = 1f;
                 h.L = Along(shoulderL, armL + Reach * u, grip, dir, 0.16f * u, 0.45f * u);
@@ -520,7 +516,7 @@ public sealed class HumanRig : Rig
             case HoldKind.Blade:
             {
                 // Hanging clear of the hip, head down; raised before the shoulder, swinging wide of the body between.
-                Vector3 hangs = shoulderR + Vector3.Down * armR * 0.84f + torso.X * 0.17f * u + ahead * 0.06f * u;
+                Vector3 hangs = shoulderR + Vector3.Down * armR * 0.84f + torso.X * MathF.Max(0.17f * u, MathF.Max(f.HipW, f.WaistW) * f.Padding - f.ShoulderW * 0.94f + 0.12f * u) + ahead * 0.06f * u;
                 Vector3 raised = shoulderR + Vector3.Up * 0.02f * u + ahead * 0.28f * u + torso.X * 0.05f * u;
                 float wide = MathF.Sin(MathF.PI * aim);
                 h.R = hangs.Lerp(raised, aim) + (torso.X * 0.1f + ahead * 0.12f) * u * wide;
@@ -533,6 +529,22 @@ public sealed class HumanRig : Rig
 
     /// <summary>How far a shoulder comes forward to reach out to a held weapon, m for a 1.72 m human's arms.</summary>
     const float Reach = 0.06f;
+
+    /// <summary>A weapon held out of the left hand's reach comes across and up toward the left shoulder (never back into the body) until its near grip is in reach.</summary>
+    static Vector3 Across(Vector3 grip, Vector3 dir, float near, Vector3 shoulder, float reach, Vector3 ahead)
+    {
+        for (int k = 0; k < 8; k++)
+        {
+            Vector3 at = grip + dir * near;
+            float shortBy = at.DistanceTo(shoulder) - reach;
+            if (shortBy <= 0f) break;
+            Vector3 to = shoulder - at;
+            to -= ahead * to.Dot(ahead);
+            if (to.LengthSquared() < 1e-6f) break;
+            grip += to.Normalized() * shortBy * 1.3f;
+        }
+        return grip;
+    }
 
     /// <summary>The farthest point of a grip span (near..far along the weapon from the grip) the arm reaches: a short arm takes the near end.</summary>
     static Vector3 Along(Vector3 shoulder, float arm, Vector3 grip, Vector3 dir, float near, float far)

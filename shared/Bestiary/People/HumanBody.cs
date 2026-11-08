@@ -691,7 +691,7 @@ public static class HumanBody
     /// What a held weapon is sized by: the arms that hold it (shorter arms, a shorter gun), so the
     /// hands reach their grips on every build. 1 for a 1.72 m human's arms.
     /// </summary>
-    public static float ArmScale(Figure f) => MathF.Min(f.UpperArmOf(0) + f.ForearmOf(0), f.UpperArmOf(1) + f.ForearmOf(1)) / (0.341f * 1.72f);
+    public static float ArmScale(Figure f) => (MathF.Min(f.UpperArmOf(0) + f.ForearmOf(0), f.UpperArmOf(1) + f.ForearmOf(1)) - f.ChestD * MathF.Max(0f, f.Padding - 1f)) / (0.341f * 1.72f);
 
     static void Prop(Piece p, Figure f)
     {

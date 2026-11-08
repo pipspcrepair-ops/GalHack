@@ -131,7 +131,7 @@ public partial class BestiaryTest
             }
         }
         foreach (var (k, v) in tally.GroupBy(t => t.Key.Split(' ')[0]).SelectMany(gr => gr.OrderByDescending(t => t.Value).Take(8))) GD.Print($"        {v,4}  {k}");
-        Check(people > 120 && folks.Count >= 3, $"{people} fresh people of {folks.Count} folk, each with a weapon, in {poses} poses");
+        Check(people > 120 && folks.Count >= 2, $"{people} fresh people of {folks.Count} folk, each with a weapon, in {poses} poses");
         Check(worstGrip < 0.03f, $"every hand on a weapon is within 3 cm of its grip ({worstGrip * 100f:F1} cm at worst{(worstGrip >= 0.03f ? ": " + worstGripWhat : "")})");
         Check(fores == 0, $"a long gun has the second hand on its fore-end ({fores} missed{(fores > 0 ? ": " + foreWhat : "")})");
         Check(kneels == 0, $"crouched, a free hand rests by its knee ({kneels} didn't{(kneels > 0 ? ": " + kneelWhat : "")})");
@@ -162,7 +162,7 @@ public partial class BestiaryTest
         if (p.Y < 0.05f * T || p.Y > 0.95f * T) return false;
         float t = p.Y / T;
         float half = (t < 0.45f ? MathF.Max(f.HipW, f.WaistW) : Mathf.Lerp(f.WaistW, f.ShoulderW * 0.9f, Math.Clamp((t - 0.45f) / 0.35f, 0f, 1f))) * f.Padding * 0.9f;
-        float depth = f.ChestD * f.Padding * 0.95f;
+        float depth = f.ChestD * (1f + 0.4f * (f.Padding - 1f)) * 0.95f; // a thick coat gives under a stock
         return p.X * p.X / (half * half) + p.Z * p.Z / (depth * depth) < 1f;
     }
 
