@@ -960,6 +960,82 @@ public partial class PlaceTest : Node
         foreach (int x in walk.To(place, far.Cell, r => ok = r)) yield return x;
         foreach (int x in walk.To(place, place.Inst.Layout.EntranceCell, r => ok = r)) yield return x;
         Check(ok && place.Memory.Mood == place.Inst.Mood && town.GuardShots == 0 && game.Suit.HealthShare >= hurtBefore - 0.3, $"walked through it and back in peace ({(ok ? "" : $"the walk stopped: {string.Join("; ", walk.Notes.TakeLast(2))}; ")}health {game.Suit.HealthShare * 100:F0}%): still {place.Memory.Mood}, no guard raised a gun");
+        // Each job keeps its own day, from the generator: who they are, what they carry, how they get about.
+        var jobs = town.People.Where(q => q.Looks != null).GroupBy(q => q.Job).ToDictionary(g => g.Key, g => g.Count());
+        Check(jobs.Count >= 4 && town.People.All(q => q.Looks?.Figure.Routine != null), $"their jobs set their days ({string.Join(", ", jobs.Select(kv => $"{kv.Value} {kv.Key}"))})");
+        // A checkpoint: unwelcome, you are warned off at the way in, then held at gunpoint if you come on; nobody fires.
+        Mood was = place.Memory.Mood;
+        place.Memory.Mood = Mood.Wary;
+        GD.Print("  (TEST: the place made wary of you, to meet its checkpoint)");
+        Town.Person post = town.People.Where(q => q.Role == "guard" && !q.Dead && q.Figure.Prop == "rifle").OrderBy(q => q.Pos.DistanceTo(place.FromWorld(game.Survivor.WorldFeet))).FirstOrDefault();
+        int halts = town.Halts, holds = town.HoldAims, shots = town.GuardShots;
+        if (post != null)
+        {
+            for (int i = 0; i < 600 && (post.Path != null && post.Step < post.Path.Count || post.Spot != post.Spawn.Spot); i++) yield return 0; // back at the post
+            Vector3 at = place.ToWorld(post.Pos), here = game.Survivor.WorldFeet;
+            Vector3 toward = (at - here) with { Y = 0f };
+            Vector3 stand = at - toward.Normalized() * 3f;
+            foreach (int x in drive.WalkTo(stand, 0.6f, 25f, sprint: false, dig: false, hop: false)) yield return x;
+            foreach (int x in drive.Wait(200)) yield return x;
+            Check(town.Halts > halts && town.HoldAims > holds && town.GuardShots == shots, $"at the post a guard warns you off, then holds you at gunpoint as you come on ({town.Halts - halts} warnings, {town.HoldAims - holds} guns up, {town.GuardShots - shots} shots, {game.Survivor.WorldFeet.DistanceTo(at):F1} m off)");
+            foreach (int x in drive.WalkTo(at - toward.Normalized() * 11f, 0.8f, 25f, sprint: false, dig: false, hop: false)) yield return x;
+            foreach (int x in drive.Wait(90)) yield return x;
+            Check(!post.Holding, "back off and the gun goes down");
+        }
+        place.Memory.Mood = was;
+        // A Husk at the edge of them: by the place's temper and each one's nerve they fight it, shut themselves in, or run.
+        {
+            var sim = game.Zone.Wildlife.Sim;
+            Town.Person near = town.People.Where(q => !q.Dead && !q.Indoors && !q.Away && q.Looks != null).OrderBy(q => q.Pos.DistanceTo(place.FromWorld(game.Survivor.WorldFeet))).FirstOrDefault();
+            if (sim != null && near != null)
+            {
+                game.Zone.Wildlife.Frozen = true;
+                Vector3 spot = near.Position + new Vector3(9f, 0f, 0f);
+                Wildlife.Creature h = sim.Spawn(game.Zone.Wildlife.Life.People.Person(Wildlife.Rng.Mix(place.Inst.SpawnSeed, 77), Wildlife.PersonRole.Worker, Wildlife.Occupancy.Friendly, 0.2f, husk: true), spot);
+                GD.Print("  (TEST: a Husk set down 9 m from one of them, held still)");
+                int answered = town.Fought + town.FledFrom + town.Barricades;
+                foreach (int x in drive.Wait(90)) yield return x;
+                Check(town.Fought + town.FledFrom + town.Barricades > answered, $"a Husk among them: {town.Fought} fought it, {town.FledFrom} ran, {town.Barricades} barricades");
+                if (!h.Removed) sim.Remove(h);
+                game.Zone.Wildlife.Frozen = false;
+            }
+        }
+        // The gesture wheel, through its key and the mouse: up for the top of the wheel (a wave), and they answer.
+        {
+            int heard = town.Answered;
+            for (int i = 0; i < 12; i++)
+            {
+                game.Controls.Hold(Key.Z);
+                game.Controls.Look = new Vector2(0f, -30f);
+                yield return 0;
+            }
+            bool open = game.WheelOpen && game.WheelPick == 0;
+            game.Controls.Hold(Key.Z, false);
+            foreach (int x in drive.Wait(90)) yield return x;
+            Check(open && game.LastGesture == Wildlife.PlayerGesture.Wave && town.Answered > heard, $"held, the wheel opens; up and let go, a wave, and they answer it ({town.LastHeard}, {town.Answered - heard} answered; {string.Join(", ", town.People.Where(q => q.Answer != Wildlife.BodyAct.None).GroupBy(q => q.Answer).Select(g => $"{g.Count()} {g.Key}"))})");
+            // A threat costs goodwill, and puts hands up.
+            float stood = town.Standing;
+            game.MakeGesture(Wildlife.PlayerGesture.Threaten);
+            foreach (int x in drive.Wait(60)) yield return x;
+            Check(town.Standing < stood, $"a threat costs the place's goodwill ({stood:F0} to {town.Standing:F0})");
+            // Robbing one of them: possible, and costly.
+            Town.Person mark = town.People.Where(q => !q.Dead && !q.Indoors && !q.Away && q.Act is Wildlife.BodyAct.HandsUp or Wildlife.BodyAct.Cower).OrderBy(q => q.Pos.DistanceTo(place.FromWorld(game.Survivor.WorldFeet))).FirstOrDefault();
+            if (mark != null)
+            {
+                GD.Print("  (TEST: set down beside one of them with their hands up, to rob them)");
+                game.Survivor.PlaceOutside(place.ToWorld(mark.Pos + new Vector3(1.2f, 0.2f, 0f)).ToNumerics());
+                foreach (int x in drive.Wait(4)) yield return x;
+                float wasStanding = town.Standing;
+                game.Controls.Tap(Key.E);
+                foreach (int x in drive.Wait(5)) yield return x;
+                Check(game.Robbed == 1 && town.Robberies == 1 && mark.Robbed && town.Standing <= wasStanding - 25f, $"E on them and you take what they carry: they remember, the standing falls ({wasStanding:F0} to {town.Standing:F0})");
+                int knew = town.HeardOf;
+                foreach (int x in drive.Wait(600)) yield return x;
+                Check(town.HeardOf >= knew && town.HeardOf >= 1 && town.PriceFactor > 1.2f, $"word spreads ({knew} knew at once, {town.HeardOf} after 10 s), prices rise ({town.PriceFactor:F2}x), gates {(town.GatesShut ? "shut" : "open")}");
+                Check(town.People.Any(q => q.Pursue > 0f || q.Holding) || town.HoldAims > holds || !town.People.Any(q => q.Role == "guard" && !q.Dead), "and the guards who heard come for you");
+            }
+            else GD.Print("  (nobody had their hands up to rob)");
+        }
         // Night sends them in (the clock wound on, printed), morning brings them out.
         GD.Print("  (TEST: the clock wound on to night and back)");
         double morning = game.Zone.Sky.TimeOfDay;
@@ -972,10 +1048,16 @@ public partial class PlaceTest : Node
         Check(town.People.Count(q => q.Indoors) < inside, $"by day they come out again ({town.People.Count(q => q.Indoors)} still in)");
         // The wild keeps out; strays are culled.
         Check(game.Zone.Wildlife.Sim.Settlements.Count > 0, $"wildlife keeps out of the town: {game.Zone.Wildlife.Sim.Settlements.Count} settlement in the patch's sim; {town.Culled} strays culled");
+        // The sound direction marker: an option on the escape menu's Sound page, off by default; on, a shot is marked.
+        bool offByDefault = !new Game.AudioSettings().SoundDirection;
+        game.Audio?.SetDirection(true);
+        int marked = game.Visor.CuesMarked;
         // A shot in the town.
         int aims = town.GuardAims;
         foreach (int x in play.ShootAt(() => game.Survivor.WorldEye() + game.Survivor.WorldLook() * 8f + Vector3.Down * 1f)) yield return x;
         Check(place.Memory.Mood == Mood.Hostile, "a shot in a peaceful place turns it hostile");
+        Check(offByDefault && game.Visor.CuesMarked > marked, $"the sound direction marker is off by default, and once on it marks the shot ({game.Visor.CuesMarked - marked} marked)");
+        game.Audio?.SetDirection(false);
         var reacts = town.People.Where(q => !q.Dead).Select(q => q.ReactAt).ToList();
         Check(reacts.Count < 3 || reacts.Max() - reacts.Min() > 0.3f && reacts.Select(t => MathF.Round(t * 60f)).Distinct().Count() > reacts.Count / 2, $"nobody reacts on the same instant: they take it in over {(reacts.Count > 0 ? reacts.Max() - reacts.Min() : 0f):F2} s");
         foreach (int x in drive.Wait(300)) yield return x;
