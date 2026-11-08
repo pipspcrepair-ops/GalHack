@@ -67,7 +67,7 @@ public partial class Screenshot : Node
             return;
         }
         if (_view == "city") PlanetSurface.Infra.CityPlan.Force = true; // a city on any lived-in world
-        if (_view == "craters" && _args.GetValueOrDefault("pick", "gz") == "gz") PlanetSurface.Infra.CityPlan.Force = true; // a city for the war to hit
+        if (_view == "craters" && _args.GetValueOrDefault("pick", "gz") == "gz") { PlanetSurface.Infra.CityPlan.Force = true; PoiGenerator.Gen.StrikePlan.Force = "capital"; } // a city for the war to hit, and its first strike on it
         if (_view == "placesurf")
         {
             // The place surfaces proof: a city to frame, and an alien place set down near the start.

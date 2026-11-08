@@ -272,6 +272,9 @@ public static class StrikePlan
     /// <summary>How far round a scar's region its strikes stay, metres.</summary>
     public const double ScarReach = 3000;
 
+    /// <summary>Staging only (a screenshot): a war's first strike goes on the target of this kind (city, capital...) as a ground burst. Null in play.</summary>
+    public static string? Force;
+
     /// <param name="spare">Ground no strike reaches: a start world's bunker and the town by it (x, z, radius; a strike's flattened ring stays outside).</param>
     public static List<Strike> Make(StrikeBook book, WorldRoll roll, TechLevel before, IReadOnlyList<StrikeTarget> targets, IStrikeLand land, ulong seed,
         IReadOnlyList<(double X, double Z, double R)>? spare = null)
@@ -406,7 +409,7 @@ public static class StrikePlan
         for (int n = 0; n < count; n++)
         {
             // The odd one over open country, aimed at nothing.
-            if (rng.Chance(kind.Wild))
+            if (rng.Chance(kind.Wild) && !(n == 0 && Force != null))
             {
                 float r = kind.CraterLo;
                 for (int tries = 0; tries < 40; tries++)
@@ -423,7 +426,8 @@ public static class StrikePlan
                 }
                 continue;
             }
-            int i = rng.PickWeighted(weight.Select((v, k) => Open(k) ? v : 0f).ToList());
+            bool forced = n == 0 && Force != null && pool.Any(t => t.Kind == Force);
+            int i = forced ? pool.FindIndex(t => t.Kind == Force) : rng.PickWeighted(weight.Select((v, k) => Open(k) ? v : 0f).ToList());
             if (i < 0) break;
             left[i]--;
             drawn[pool[i].Kind] = Drawn(pool[i]) + 1;
@@ -433,8 +437,8 @@ public static class StrikePlan
             float big = Math.Clamp(t.Value / 11f, 0f, 1f);
             float radius = kind.CraterLo + (kind.CraterHi - kind.CraterLo) * Math.Clamp(0.2f + 0.65f * big + 0.35f * (rng.Float() - 0.5f), 0f, 1f);
             float depth = radius * kind.Depth;
-            bool air = !t.Hard && kind.Air > 0f && rng.Chance(t.Air ?? kind.Air);
-            bool miss = rng.Chance(kind.Miss);
+            bool air = !t.Hard && kind.Air > 0f && rng.Chance(t.Air ?? kind.Air) && !forced;
+            bool miss = rng.Chance(kind.Miss) && !forced;
             double ax = t.X, az = t.Z;
             {
                 // Over the target, a little off its middle.

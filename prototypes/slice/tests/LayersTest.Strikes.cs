@@ -105,7 +105,7 @@ public partial class LayersTest
                             if (s.Within && Dist(s.X, s.Z, s.AimX, s.AimZ) <= s.AimReach + s.Crater * 0.3 + 1) inTarget++;
                         }
                         if (s.Within)
-                            foreach (PoiSite p in w.Pois.Where(p => Dist(p.Center.X, p.Center.Z, s.X, s.Z) < s.Crater * 1.2))
+                            foreach (PoiSite p in w.Pois.Where(p => Dist(p.Center.X, p.Center.Z, s.X, s.Z) < s.Crater))
                             {
                                 leftIn++;
                                 stood.Add($"{p.Name} {Dist(p.Center.X, p.Center.Z, s.X, s.Z):F0} m from {s}");
