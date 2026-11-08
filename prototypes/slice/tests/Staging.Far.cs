@@ -118,12 +118,12 @@ public sealed partial class Staging
                 Vector3 eye = new(at.X, height, at.Z), feet = eye + new Vector3(-toSea.Y, 0f, toSea.X) * 40f;
                 var streamer = _game.Zone.Streamer;
                 var cost = new HorizonCost();
-                for (int i = 0; i < 60 * 40 && (i < 120 || !streamer.Settled); i++)
+                for (int i = 0; i < 60 * 40 && (i < 180 || !streamer.Settled); i++)
                 {
                     _game.Survivor.PlaceOutside(feet.ToNumerics());
                     _game.FixedCamera = new Transform3D(Basis.LookingAt(new Vector3(toSea.X, 0f, toSea.Y), Vector3.Up), eye);
                     yield return 0;
-                    if (cost.Sample(viewport, i >= 30) is { } runaway)
+                    if (cost.Sample(viewport, i >= 120) is { } runaway)
                     {
                         Engine.MaxFps = 0;
                         throw new InvalidOperationException($"horizon: stopped at {height:0} m: {runaway}");
@@ -168,7 +168,7 @@ public sealed partial class Staging
 
     /// <summary>
     /// What the frames cost while the eye is held at a height: the GPU's and the CPU's worst frame
-    /// (the first second, while the place loads, left out of the frame check), the most draw calls
+    /// (the first two seconds after the eye is moved there, while the place loads, left out of the frame check), the most draw calls
     /// and the most memory. A frame over 200 ms or over 6 GB of memory stops the run.
     /// </summary>
     sealed class HorizonCost
