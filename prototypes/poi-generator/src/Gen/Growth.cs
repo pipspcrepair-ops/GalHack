@@ -61,7 +61,7 @@ public static class Growth
             if (b.Type == BlockType.Plant)
             {
                 if (weed is Rgb w) b.Color = w.Scale(0.82f + 0.08f * (Hash.Cell(p, 117) % 4));
-                else b = Block.Air;
+                else g.Set(p, Block.Air); // the finish it grew through, if any, shows again
             }
             // What a building dropped keeps its own stuff's colour under the dust; loose stone is the planet's rock.
             else if (b.Type == BlockType.Rubble && b.Variant != Debris.Lumps) b.Color = b.Color.Lerp(grey, 0.2f).Lerp(rock, 0.1f);

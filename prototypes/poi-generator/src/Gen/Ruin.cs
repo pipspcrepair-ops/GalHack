@@ -10,7 +10,7 @@ namespace PoiGenerator.Gen;
 /// <see cref="Wear"/> 0 (the fall is going on now) to 1 (two centuries of weather); <see cref="Falling"/>,
 /// the world is falling right now (fresh damage, the lights still on); <see cref="Violence"/> 0 to 1, how much
 /// of the fall was blast and fire (wars and strikes from the sky) rather than neglect; <see cref="Water"/> 0 to
-/// 1, how high the water stands in the ground (a drowned or drowning world near 1, a dry one near 0).
+/// 1, how wet the world is (a drowned or drowning world near 1, a dry one near 0): how far damp and mould take the walls.
 /// </summary>
 public sealed record RuinAge(float Wear, bool Falling, float Violence, float Water)
 {
@@ -43,14 +43,8 @@ public sealed record RuinAge(float Wear, bool Falling, float Violence, float Wat
         return new RuinAge(wear, falling, violence, water);
     }
 
-    /// <summary>The height of the standing water in the ground, in a place's own cells (its ground floor's walk level is 0).</summary>
-    public float WaterTable => (Falling ? -9f : -9.5f + 9.8f * (Water * 0.55f + Wear * 0.45f)) + (Water > 0.85f ? 1.2f : 0f);
-
     public override string ToString() => $"wear {Wear:0.00}{(Falling ? ", falling now" : "")}, violence {Violence:0.00}, water {Water:0.00}";
 }
-
-/// <summary>Standing water in a room: its level in the place's cells and the floor cells it covers.</summary>
-public sealed record WaterPool(int Module, float Level, List<Int3> Cells);
 
 public static partial class StateTransforms
 {
@@ -59,8 +53,8 @@ public static partial class StateTransforms
     /// <summary>
     /// What the years leave inside a dead place, after its state and its dressing, by its world's age: ceilings
     /// come down in patches with their wires left hanging, mould and water climb the walls from the floor and the
-    /// paint lifts, moss takes the damp corners, dead leaves blow in at the openings, the low rooms flood to the
-    /// water table with a tide line on their walls, and bent bars show at every broken concrete edge.
+    /// paint lifts, moss takes the damp corners, dead leaves blow in at the openings, and bent bars show at every broken
+    /// concrete edge. No room is ever left standing in water.
     /// </summary>
     public static void Aftermath(PoiInstance inst, Rng rng)
     {
@@ -104,7 +98,6 @@ public static partial class StateTransforms
             }
             Walls(inst, m, wear, damp);
         }
-        Flood(inst, age);
         if (!age.Falling || ruined) Bars(inst, rng, wear);
     }
 
@@ -151,41 +144,6 @@ public static partial class StateTransforms
                     else if (h >= 1 && n % 100 < 30 * wear) b.Color = b.Color.Lerp(Plaster, 0.35f); // paint gone, the plaster under it
                 }
             }
-    }
-
-    /// <summary>
-    /// The low rooms fill to the water table: below ground (and a ground-floor hall, where the world is drowning)
-    /// still water stands over the floor, never deeper than the room is tall, and leaves its tide line on the walls.
-    /// </summary>
-    static void Flood(PoiInstance inst, RuinAge age)
-    {
-        var g = inst.Blocks;
-        var nav = inst.Nav();
-        float table = age.WaterTable;
-        foreach (PlacedModule m in inst.Layout.Modules)
-        {
-            if (m.Kind is ModuleKind.Outdoor or ModuleKind.Lift or ModuleKind.Tower) continue;
-            bool low = m.Underground || m.Min.Y < 0 || m.Min.Y <= 0 && m.Kind == ModuleKind.Hall && age.Water > 0.85f;
-            if (!low) continue;
-            int top = m.Max.Y;
-            // Deeper the wetter and older the world, but a room holds a wading depth, not a sump.
-            float level = MathF.Min(MathF.Min(table, top - 0.3f), m.Min.Y + 0.3f + 1.4f * age.Water * age.Wear);
-            if (m.Min.Y >= 0) level = MathF.Min(level, m.Min.Y + 0.5f);
-            if (level < m.Min.Y + 0.08f) continue;
-            var cells = m.Cells.Where(c => c.Y == m.Min.Y && !BlockInfo.IsFullCube(g.Get(c).Type) && (BlockInfo.IsFullCube(g.Get(c + Int3.Down).Type) || nav.IsRock(c + Int3.Down))).ToList();
-            if (cells.Count == 0) continue;
-            inst.Water.Add(new WaterPool(m.Index, level, cells));
-            // The tide line: the walls darken below the water, a band at the line itself.
-            int line = (int)MathF.Floor(level);
-            foreach (Int3 c in cells)
-                foreach (Dir d in Dirs.Horizontal)
-                    for (int y = m.Min.Y; y <= line + 1; y++)
-                    {
-                        ref Block b = ref g.At(new Int3(c.X, y, c.Z) + d.Vec());
-                        if (b.IsAir || b.Role is not (Role.Wall or Role.Floor) || !BlockInfo.IsFullCube(b.Type)) continue;
-                        b.Color = b.Color.Lerp(y == line ? Stain.Scale(0.6f) : y > line ? Stain : Mould, y == line ? 0.55f : y > line ? 0.12f : 0.3f);
-                    }
-        }
     }
 
     /// <summary>

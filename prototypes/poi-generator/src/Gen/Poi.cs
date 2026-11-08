@@ -76,8 +76,6 @@ public sealed class PoiInstance
     public Townsfolk? Townsfolk;
     /// <summary>How long ago and how hard its world fell (from the world's roll, or a century of neglect off one): how far decay has gone.</summary>
     public RuinAge Ruin = RuinAge.Default;
-    /// <summary>Standing water in the low rooms (the decay pass floods them to the water table).</summary>
-    public readonly List<WaterPool> Water = new();
     /// <summary>The cells decay took out of the structure: torn edges show their bars beside them.</summary>
     public readonly List<Int3> Fallen = new();
     /// <summary>How hard a nearby blast hit this place (0 untouched); set by the planet's siting.</summary>

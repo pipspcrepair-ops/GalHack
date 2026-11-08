@@ -551,6 +551,10 @@ public static class Mesher
 
         public void Block(Int3 p, Block b)
         {
+            // The floor's finish under what stands in the cell (the tiles under a table) is drawn whole under it:
+            // only a full cube hides a floor.
+            Block floor = BlockInfo.IsFullCube(b.Type) || BlockInfo.IsFinish(b.Type) ? default : _g.Under(p);
+            if (!floor.IsAir) Block(p, floor);
             if (b.Type == BlockType.Door && !_o.Doors) return;
             if (!_o.Detail && b.Type is BlockType.Scatter or BlockType.Scorch or BlockType.Ash or BlockType.Plant or BlockType.Remains or BlockType.Rebar) return;
             if (BlockInfo.IsFullCube(b.Type))
@@ -564,7 +568,9 @@ public static class Mesher
             if (boxes > 0)
             {
                 var shape = Shapes.For(b, p, _g);
-                for (int i = 0; i < shape.Count && i < boxes; i++) AddBox(chunk, p, shape[i], b);
+                // Something lower than the finish it was set on (a scorch, papers, moss) lies on top of it, not in it.
+                V3 lift = !floor.IsAir && shape.TrueForAll(s => s.Hi.Y <= BlockInfo.FinishTop) ? new V3(0, BlockInfo.FinishTop, 0) : default;
+                for (int i = 0; i < shape.Count && i < boxes; i++) AddBox(chunk, p, shape[i] with { Lo = shape[i].Lo + lift, Hi = shape[i].Hi + lift }, b);
             }
             // A stair is steps up close; from further off, a slope.
             if (b.Type == BlockType.Ramp || _o.Merged && b.Type == BlockType.Stair) Ramp(chunk, p, b, draw: _o.Drawn);
@@ -1120,6 +1126,7 @@ public sealed class ChunkWindow : IBlockStructure
 
     public Block Get(Int3 p) => _grid.Get(p);
     public void Set(Int3 p, Block b) => _grid.Set(p, b);
+    public Block Under(Int3 p) => _grid.Under(p);
     public int CountBlocks() => 0;
 
     /// <summary>The look of the grid it reads through.</summary>
