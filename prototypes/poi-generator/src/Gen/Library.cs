@@ -57,6 +57,9 @@ public sealed class PoiLibrary
     /// <summary>The house families (data/homes.txt): what a house is put together from, by climate, tech and era.</summary>
     public HomeBook Homes = new();
 
+    /// <summary>What each layer value leaves lying about in a world's streets, squares, gardens and roads (data/world-dressing.txt).</summary>
+    public DressBook Dressing = new();
+
     /// <summary>What places' faces are finished in (data/finishes.txt): the defaults by material, and each room purpose's own.</summary>
     public FinishBook Finishes = new();
 
@@ -88,6 +91,7 @@ public sealed class PoiLibrary
             else if (name.EndsWith("sigils.txt", StringComparison.Ordinal)) lib.Sigils = SigilDef.Parse(text, name);
             else if (name.EndsWith("orbit.txt", StringComparison.Ordinal)) OrbitParser.Parse(text, name, lib.SpaceSites, lib.OrbitThemes);
             else if (name.EndsWith("homes.txt", StringComparison.Ordinal)) lib.Homes = HomeBook.Parse(text, name);
+            else if (name.EndsWith("world-dressing.txt", StringComparison.Ordinal)) lib.Dressing = DressBook.Parse(text, name);
             else if (name.EndsWith("finishes.txt", StringComparison.Ordinal)) lib.Finishes = FinishBook.Parse(text, name);
             else if (name.EndsWith("strikes.txt", StringComparison.Ordinal)) lib.Strikes = StrikeBook.Parse(text, name);
         }

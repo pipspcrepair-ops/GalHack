@@ -268,7 +268,8 @@ public static partial class DecoModels
             b.Taper(-0.4f, 0.28f, -0.6f, 0.4f, 0.9f, 0.6f, 1.15f, 1.15f, Rust);
             b.Box(-0.47f, 0.86f, -0.7f, 0.47f, 0.9f, 0.7f, Metal).Ghost();
             for (int i = 0; i < 7; i++) b.Ball(b.Rng.Range(-0.28f, 0.28f), 0.86f, b.Rng.Range(-0.45f, 0.45f), b.Rng.Range(0.06f, 0.1f), Stone, 5).Ghost();
-            foreach (float z in new[] { -0.74f, 0.74f }) b.Box(-0.05f, 0.18f, z - 0.01f, 0.05f, 0.25f, z + 0.01f, Dark).Ghost();
+            // Its couplings, a bar out from each end of the chassis (not held off it in the air).
+            foreach (float z in new[] { -1f, 1f }) b.Box(-0.05f, 0.18f, z * 0.55f, 0.05f, 0.25f, z * 0.76f, Dark).Ghost();
         };
 
         r["rail-section"] = b =>

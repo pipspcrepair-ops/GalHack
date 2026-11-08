@@ -42,6 +42,8 @@ public partial class InfraLayer
             NV at = b.Local(Ruin.OriginX, Ruin.OriginY, Ruin.OriginZ);
             string name = Ruin.Family.Id;
             b.Blocks(name, new Vector3(at.X, at.Y, at.Z), meshes, () => Materials.BySurface);
+            // What its world painted and hung on its front: marks by the door, a shop's awning and sign.
+            b.DressHouse(Ruin, inst, at);
         }
     }
 
