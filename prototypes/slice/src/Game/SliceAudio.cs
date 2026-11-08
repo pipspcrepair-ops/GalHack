@@ -10,7 +10,7 @@ namespace Slice.Game;
 /// in from where they live (planet-surface's digging, ore, clank, place, boom, thunder and its
 /// wind and rain; building's place, remove, upgrade and UI clicks; diegetic-ui's chirp; wildlife's
 /// calls), plus the slice's own small voices (the jetpack's hiss and a vessel's engines, both synthesised live by <see cref="ThrusterVoice"/> with no loop to hear, and
-/// footsteps), and the music (<see cref="SliceMusic"/>). Four volumes in the Stats tab's settings,
+/// footsteps), and the music (<see cref="SliceMusic"/>). Four volumes in the escape menu (and the Stats tab's settings),
 /// remembered between runs: master, and music, effects and ambience as buses under it. Every player
 /// that joins the tree is routed to its bus here, so nothing needs to know about them, wherever
 /// the code that made it lives. Players are stopped before quitting (wildlife's shutdown drains them).
@@ -53,7 +53,27 @@ public partial class SliceAudio : Node
         int bus = Bus(key);
         float value = Settings.Get(key);
         AudioServer.SetBusMute(bus, value <= 0f);
-        AudioServer.SetBusVolumeDb(bus, Mathf.LinearToDb(Mathf.Clamp(value, 0.0001f, 1f)));
+        float hush = key == AudioSettings.Effects || key == AudioSettings.Ambience ? _hushShown : 0f;
+        AudioServer.SetBusVolumeDb(bus, Mathf.LinearToDb(Mathf.Clamp(value, 0.0001f, 1f)) - hush);
+    }
+
+    float _hushShown;
+
+    /// <summary>
+    /// How far the world's sound has died away, dB (the Husks' wrongness sets it): the effects and the
+    /// ambience fall, the music doesn't. Applied in half-dB steps.
+    /// </summary>
+    public float Hush
+    {
+        get => _hushShown;
+        set
+        {
+            float v = MathF.Round(Math.Max(0f, value) * 2f) / 2f;
+            if (v == _hushShown || Settings == null) return;
+            _hushShown = v;
+            Apply(AudioSettings.Effects);
+            Apply(AudioSettings.Ambience);
+        }
     }
 
     public static void MakeBuses()
@@ -98,7 +118,8 @@ public partial class SliceAudio : Node
         foreach (string key in AudioSettings.Volumes) Apply(key);
         foreach (Node n in Game.FindChildren("*", "", true, false)) Route(n);
         GetTree().NodeAdded += Route;
-        _ui = new BlockBuilding.Sfx { Name = "BuildingSfx" };
+        // Its one-shots are short, and the escape menu's clicks must sound while the world is stopped.
+        _ui = new BlockBuilding.Sfx { Name = "BuildingSfx", ProcessMode = ProcessModeEnum.Always };
         AddChild(_ui);
         _chirp = DiegeticUi.World.Sfx.WarningChirp();
         _jet = Engine("Jetpack", VoiceProfile.Jetpack, -9f);
@@ -107,9 +128,11 @@ public partial class SliceAudio : Node
         AddChild(_under);
         _step = new AudioStreamPlayer3D { Name = "Steps", Stream = Tap(), VolumeDb = -20f, MaxDistance = 20f };
         AddChild(_step);
-        Music = new SliceMusic { Name = "Music", Game = Game };
+        // The music plays on through the escape menu's pause, so its volume can be set by ear.
+        Music = new SliceMusic { Name = "Music", Game = Game, ProcessMode = ProcessModeEnum.Always };
         AddChild(Music);
         Game.Menu.Sounded += OnMenu;
+        Game.Escape.Sounded += OnMenu;
     }
 
     /// <summary>An engine voice: synthesised as it plays, so it has no loop point to hear.</summary>

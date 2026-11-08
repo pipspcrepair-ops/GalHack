@@ -55,8 +55,6 @@ public sealed class DeepFauna
     /// </summary>
     public Species For(DeepRole role, PoiTheme theme, int depth, bool infested = false)
     {
-        // What the Hollow leaves walking keeps to the corridors of the places it has taken.
-        if (infested && role == DeepRole.Prowler && Husks != null) return _husks[theme] = _husks.TryGetValue(theme, out Species husk) ? husk : Prowling(Husks(theme), role, theme, depth);
         DepthRules dr = _data.Deep.Depth;
         depth = Math.Clamp(depth, 0, dr.MaxLevel);
         int band = Band(depth);
@@ -69,11 +67,30 @@ public sealed class DeepFauna
         return s;
     }
 
-    /// <summary>Where the world has people to take, this rolls one of what's left of them (set by <see cref="WorldLife"/>).</summary>
+    /// <summary>The world's Husks, for a kind of place (set by <see cref="WorldLife"/>).</summary>
     public Func<PoiTheme, Species> Husks;
-    readonly Dictionary<PoiTheme, Species> _husks = new();
+    readonly Dictionary<(PoiTheme, DeepRole), Species> _husks = new();
 
-    /// <summary>A body from elsewhere, given a prowler's job in a place.</summary>
+    /// <summary>
+    /// Husks given a job in a den (a place they hold): prowlers on its corridors, lurkers in its
+    /// rooms. Every host of the world's Husks is given it, so a den holds different people.
+    /// </summary>
+    public Species HuskFor(PoiTheme theme, DeepRole role)
+    {
+        if (Husks == null) return null;
+        if (_husks.TryGetValue((theme, role), out Species found)) return found;
+        Species lead = Husks(theme);
+        var hosts = lead.Hosts ?? new List<Species> { lead };
+        for (int i = 0; i < hosts.Count; i++)
+        {
+            Prowling(hosts[i], role, theme, 0);
+            hosts[i].Id = $"{_seed:x}-deep-husk-{theme}-{role}-{i}";
+        }
+        lead.Hosts = hosts;
+        return _husks[(theme, role)] = lead;
+    }
+
+    /// <summary>A body from elsewhere, given a prowler's (or a lurker's) job in a place.</summary>
     Species Prowling(Species s, DeepRole role, PoiTheme theme, int depth)
     {
         DeepRoleDef rd = _data.Deep.Roles[role.ToString()];

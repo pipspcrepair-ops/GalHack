@@ -800,3 +800,69 @@ site faction_minehead
   style freeholder
   entrance 0 0 north
   part grand 0 0 what minehead tech mid
+
+site city_tower_lot
+  name Office Tower
+  style concrete
+  entrance 0 0 north
+  part grand 0 0 what city kind tower w 18 d 17 storeys 20 tech mid
+
+site city_midrise_lot
+  name City Block
+  style concrete
+  entrance 0 0 north
+  part grand 0 0 what city kind midrise w 14 d 17 storeys 6 tech mid
+
+site city_terrace_lot
+  name Terrace Row
+  style concrete
+  entrance 0 0 north
+  part grand 0 0 what city kind terrace w 13 d 17 storeys 3 tech mid
+
+site city_works_lot
+  name Works Shed
+  style concrete
+  entrance 0 0 north
+  part grand 0 0 what city kind works w 18 d 17 storeys 1 tech mid
+
+site city_civic_lot
+  name Domed Hall
+  style concrete
+  entrance 0 0 north
+  part grand 0 0 what city kind civic w 34 d 34 storeys 1 tech mid
+
+site city_house_lot
+  name House
+  style concrete
+  entrance 0 0 north
+  part grand 0 0 what city kind house w 11 d 17 storeys 2 tech mid
+
+site city_station_lot
+  name Station
+  style concrete
+  entrance 0 0 north
+  part grand 0 0 what city kind station w 34 d 34 storeys 1 tech mid
+
+site city_police_lot
+  name Police Station
+  style concrete
+  entrance 0 0 north
+  part grand 0 0 what city kind police w 18 d 17 storeys 2 tech mid
+
+site city_fire_lot
+  name Fire Station
+  style concrete
+  entrance 0 0 north
+  part grand 0 0 what city kind fire w 18 d 17 storeys 2 tech mid
+
+site city_school_lot
+  name School
+  style concrete
+  entrance 0 0 north
+  part grand 0 0 what city kind school w 34 d 34 storeys 2 tech mid
+
+site city_university_lot
+  name Campus
+  style concrete
+  entrance 0 0 north
+  part grand 0 0 what city kind university w 34 d 34 storeys 2 tech mid

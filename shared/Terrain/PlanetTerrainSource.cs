@@ -53,6 +53,9 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
     public float WaterLevel => 0f;
     public IReadOnlyList<PoiSite> PointsOfInterest { get; }
 
+    /// <summary>The made ground the terrain shader paints round the places (yards, aprons, car parks, paths), planned with the world; empty without it.</summary>
+    public IReadOnlyList<GroundPatch> Grounds { get; set; } = Array.Empty<GroundPatch>();
+
     readonly PeriodicNoise _caveA, _caveB, _caveRegion, _soil, _ore;
     readonly float _soilBase;
     readonly ConcurrentDictionary<long, Lazy<Column>> _columns = new();
@@ -228,7 +231,7 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
         foreach (int i in StampsAt(x, z))
         {
             TerrainStamp t = Stamps[i];
-            if (t.Shape is not (StampShape.Pad or StampShape.Road) || !roads && t.Shape == StampShape.Road) continue;
+            if (t.Shape is not (StampShape.Pad or StampShape.Road) || !roads && t.Shape == StampShape.Road || t.Painted) continue;
             float w = t.Weight(x, z);
             if (w <= weight) continue;
             weight = w;
@@ -278,6 +281,48 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
 
     /// <summary>Half the crown a track keeps between its wheel ruts, m (the shader's ruts run either side of it).</summary>
     public const float TrackCrown = 0.4f;
+    /// <summary>Whether a point is on open ground a stamp levelled but built nothing on (<see cref="TerrainStamp.Wild"/>, a park), off every road and other pad, and how worn it is.</summary>
+    public bool OnWild(double x, double z, out float wear)
+    {
+        wear = 0f;
+        bool wild = false;
+        foreach (int i in StampsAt(x, z))
+        {
+            TerrainStamp t = Stamps[i];
+            if (t.Weight(x, z) <= 0f) continue;
+            if (!t.Wild) return false;
+            wild = true;
+            wear = Math.Max(wear, t.Wear);
+        }
+        return wild;
+    }
+
+    /// <summary>
+    /// How far into a place's ground a point lies, for what may grow there: 2 on a place's footprint (where it stands),
+    /// its pads' weight elsewhere (1 on the apron, easing to 0 across the blend, whose outer reaches are the land's
+    /// own, only cut and filled), 0 off every pad; and whether a road's deck or shoulder covers it. Parks (wild pads)
+    /// and buried works don't count: plants go on over them as they were.
+    /// </summary>
+    public float Built(double x, double z, out bool road)
+    {
+        road = false;
+        float pad = 0f;
+        foreach (int i in StampsAt(x, z))
+        {
+            TerrainStamp t = Stamps[i];
+            if (t.Shape == StampShape.Road)
+            {
+                if (!road && t.Weight(x, z) > 0f) road = true;
+                continue;
+            }
+            if (t.Wild || t.Shape == StampShape.Buried) continue;
+            float w = t.Weight(x, z);
+            if (w <= 0f) continue;
+            if (t.Shape == StampShape.Pad && t.OnFootprint(x - 0.5, z - 0.5)) return 2f;
+            pad = Math.Max(pad, w);
+        }
+        return pad;
+    }
 
     /// <summary>How much any stamp covers a point (0 none, 1 on a pad).</summary>
     public float StampWeight(double x, double z)
@@ -619,10 +664,11 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
     List<OreBody> OreBodiesNear(int ox, int oz)
     {
         List<OreBody> list = null;
-        foreach (Deposit d in Map.Deposits.InRect(ox - 6, oz - 6, ox + S + 6, oz + S + 6))
+        float reach = DepositField.MaxBodyRadius + 1.5f;
+        foreach (Deposit d in Map.Deposits.InRect(ox - reach, oz - reach, ox + S + reach, oz + S + reach))
         {
             double dx = Wrap(d.X - (ox + S * 0.5), Width), dz = Wrap(d.Y - (oz + S * 0.5), Height);
-            if (Math.Abs(dx) > S * 0.5 + 6 || Math.Abs(dz) > S * 0.5 + 6) continue;
+            if (Math.Abs(dx) > S * 0.5 + OreRadius(d) + 1.5 || Math.Abs(dz) > S * 0.5 + OreRadius(d) + 1.5) continue;
             OreCentre(d, out _, out double y, out _);
             (list ??= new List<OreBody>()).Add(new OreBody(d, y, OreRadius(d)));
         }

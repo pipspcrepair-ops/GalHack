@@ -79,6 +79,10 @@ public sealed class Species
     public Figure Figure;
     /// <summary>Mutation has gone past growths: the body itself has changed shape.</summary>
     public bool Monstrous;
+    /// <summary>A person taken by the worms (see <see cref="Husks"/>).</summary>
+    public bool Husk => Figure?.Husk == true;
+    /// <summary>Bodies one of these may be instead (each spawned is one of them): a world's Husks were many different people.</summary>
+    public List<Species> Hosts;
     /// <summary>What covers it: fur on the cold worlds, scale and thin skin on the hot ones.</summary>
     public Coat Coat;
     /// <summary>How it knows what is around it.</summary>
@@ -227,8 +231,8 @@ public sealed class Species
         $"{Name} ({CommonName}) {Plan}/{Form} {Behaviour}+{Temperament} size {Body.Size:F1} m weird {Weirdness:F2}{(Corrupted ? " CORRUPTED" : "")}";
 }
 
-/// <summary>What comes up a throat: nothing, blood (its own colour), or bile.</summary>
-public enum SpitKind { None, Blood, Bile }
+/// <summary>What comes up a throat: nothing, blood (its own colour), bile, or a Husk's maggots.</summary>
+public enum SpitKind { None, Blood, Bile, Maggots }
 
 /// <summary>What covers a body.</summary>
 public enum Coat { Hide, Fur, Wool, Blubber, Scale, ThinSkin, Chitin, Shell, Plating }

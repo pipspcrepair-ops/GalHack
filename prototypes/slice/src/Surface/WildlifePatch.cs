@@ -52,6 +52,9 @@ public partial class WildlifePatch : Node3D
     /// <summary>The patch's middle, in the zone's frame.</summary>
     public Vector3 Origin { get; private set; }
 
+    /// <summary>Whether a zone point is inside something built on the surface (the places standing; set by the game).</summary>
+    public Func<Vector3, bool> SolidAt;
+
     /// <summary>The player as a target for creatures (set by the game).</summary>
     public ITarget Player { get; private set; }
 
@@ -101,6 +104,9 @@ public partial class WildlifePatch : Node3D
         var climate = Zone.Data.Rules.Climate;
         if (!world.Vacuum && climate.OxygenByAir.TryGetValue(planet.Sky.Air.ToString(), out double oxygen)) world.Oxygen = (float)oxygen;
         if (climate.RadiationByArchetype.TryGetValue(planet.Spec.Archetype.ToString(), out double radiation)) world.Radiation = (float)radiation;
+        // Its depth in the galaxy: the Husks spread outward from the core. And a world whose roll has the Bloom's country is a Hollow world.
+        world.Coreward = Math.Max(0f, planet.Depth);
+        world.Bloom = planet.Roll?.Orbit.Contains("bloom") == true;
         Life = Bestiary.Roll(Zone.Data.Wildlife, world);
         View = new WildlifeView { Name = "Creatures", MostNew = 2 };
         AddChild(View);
@@ -153,6 +159,8 @@ public partial class WildlifePatch : Node3D
         // Day and night: creatures go to rest sites in their off hours (wildlife's activity cycles).
         var sim = new WildSim(Zone.Data.Wildlife, terrain, nav) { Frozen = _frozen, ActivityCycles = true };
         sim.SightLine = (a, b) => SightClear(ToGlobal(a), ToGlobal(b));
+        // Places standing on the surface are solid to everything walking out there.
+        sim.SolidAt = p => SolidAt != null && SolidAt(FromPatch(p));
         // Creatures see by the same light the eye does; scent goes with the weather.
         sim.LightAt = p => Zone.Light?.LightAt(ToGlobal(p)) ?? 1f;
         sim.Clicked += c => Audio.Click(c);
@@ -170,6 +178,9 @@ public partial class WildlifePatch : Node3D
         sim.Warned += c => Audio.Telegraph(c);
         sim.Attacked += e => { if (e.Target == Player) Attacked?.Invoke(e); else Bitten?.Invoke(e); };
         sim.Died += (c, killer) => Died?.Invoke(c, killer);
+        sim.Seized += e => { if (e.Victim == Player) Seized?.Invoke(e, sim); };
+        sim.LetGo += e => { if (e.Victim == Player) LetGo?.Invoke(e); };
+        sim.Murmured += c => Audio.Murmur(c);
         int carried = 0;
         var carriedNow = new List<Creature>();
         var across = new Dictionary<Creature, Creature>();
@@ -404,6 +415,37 @@ public partial class WildlifePatch : Node3D
         Audio.Origin = origin;
         play(Audio);
         Audio.Origin = own;
+    }
+
+    /// <summary>A Husk has the player by the head (in whichever sim), and let them go.</summary>
+    public event Action<SeizeEvent, WildSim> Seized;
+    public event Action<SeizeEvent> LetGo;
+    internal void RaiseSeized(SeizeEvent e, WildSim sim) => Seized?.Invoke(e, sim);
+    internal void RaiseLetGo(SeizeEvent e) => LetGo?.Invoke(e);
+
+    /// <summary>A hold on the player ended: no Husk in any sim (the patch's, a place's, a cave's) may seize them for a while.</summary>
+    public void SparePlayer(float seconds)
+    {
+        Seizing.Spare(Sim, Player, seconds);
+        foreach (DeepSite s in Sites) Seizing.Spare(s.Sim, s.Player, seconds);
+    }
+
+    /// <summary>The first living worm mass along a ray (zone frame), within reach, in any place's sim.</summary>
+    public WormMass RaycastMass(Vector3 from, Vector3 dir, float reach, out float distance, out WildSim sim)
+    {
+        WormMass best = null;
+        distance = reach;
+        sim = null;
+        foreach (DeepSite s in Sites)
+        {
+            if (s.Sim.Masses.Count == 0) continue;
+            WormMass m = WormMasses.Raycast(s.Sim, s.Local(from), dir, distance, out float d);
+            if (m == null) continue;
+            best = m;
+            distance = d;
+            sim = s.Sim;
+        }
+        return best;
     }
 
     internal void RaiseTelegraphed(AttackEvent e) => Telegraphed?.Invoke(e);

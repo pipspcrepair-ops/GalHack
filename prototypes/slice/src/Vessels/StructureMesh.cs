@@ -47,7 +47,8 @@ public partial class StructureMesh : Node3D
     int _litVersion = -1;
     double _sinceLit;
 
-    public void Setup(Structure structure)
+    /// <param name="deferred">Draw its chunks over the next frames, within the frame's budget (a whole structure set down at once), not all now.</param>
+    public void Setup(Structure structure, bool deferred = false)
     {
         Structure = structure;
         foreach (MeshInstance3D m in _chunks.Values) m.QueueFree();
@@ -60,7 +61,12 @@ public partial class StructureMesh : Node3D
         Fx.Setup(structure);
         _sky.Flood(structure);
         _litVersion = structure.Version;
-        Rebuild(structure.Chunks.Keys);
+        if (!deferred) Rebuild(structure.Chunks.Keys);
+        else
+        {
+            _waiting.UnionWith(structure.Chunks.Keys);
+            UpdateLights();
+        }
     }
 
     /// <summary>Chunks to redraw soon: their blocks wore away or healed, and nothing else about them changed.</summary>

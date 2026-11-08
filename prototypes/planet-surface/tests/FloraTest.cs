@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using GalHack.Plants;
@@ -36,7 +36,16 @@ public partial class FloraTest : Node
 
     ulong Fresh() => _seeds = Planets.Gen.Hash.Mix(_seeds + 0x9E37);
 
-    public override void _Ready() => CallDeferred(nameof(RunAll));
+    public override void _Ready()
+    {
+        // A hung run quits on its own after 20 minutes rather than wait for someone to kill it.
+        _ = System.Threading.Tasks.Task.Delay(TimeSpan.FromMinutes(20)).ContinueWith(_ =>
+        {
+            GD.PrintErr("TIMED OUT after 20 minutes: the run quits itself");
+            System.Environment.Exit(2);
+        });
+        CallDeferred(nameof(RunAll));
+    }
 
     async void RunAll()
     {
@@ -134,7 +143,8 @@ public partial class FloraTest : Node
 
     void Working()
     {
-        int plants = 0, large = 0, solid = 0, noStem = 0, overNear = 0, overFar = 0, overCover = 0, noReach = 0, broken = 0, noWood = 0, overMeshes = 0, adrift = 0, petalled = 0, audited = 0, afloat = 0, unreached = 0, trunks = 0, stemGap = 0;
+        int plants = 0, large = 0, solid = 0, noStem = 0, overNear = 0, overFar = 0, overCover = 0, noReach = 0, broken = 0, noWood = 0, overMeshes = 0, adrift = 0, petalled = 0, audited = 0, afloat = 0, unreached = 0, trunks = 0, stemGap = 0, covered = 0, uncovered = 0, solidPartsSeen = 0;
+        var outsideBy = new Dictionary<PlantForm, int>();
         var forms = new HashSet<PlantForm>();
         foreach (var (a, v) in new[] { (Archetype.Temperate, 0), (Archetype.Temperate, 1), (Archetype.Arid, 0), (Archetype.Arid, 1), (Archetype.Ice, 0), (Archetype.Ice, 1), (Archetype.Alien, 0), (Archetype.Alien, 1), (Archetype.Lava, 0) })
         for (int i = 0; i < 2; i++)
@@ -222,10 +232,37 @@ public partial class FloraTest : Node
                 // The collider stands where the stem does: its point just above the foot is inside it.
                 Vector3 near = s.Center - s.Basis.Y * (s.Extents.Y - 0.05f);
                 if (near.Length() > 1f) broken++;
+                // What you see stops you: every solid part of every near mesh (each pipe of a cluster, a stalk,
+                // a cap, a shard, a trunk and its thick limbs) lies inside the colliders that variant gets.
+                for (int nv = 0; nv < p.Near.Length; nv++)
+                {
+                    var colliders = new List<FloraSolid>();
+                    FarBuilder.Solids.MakeAll(kind, p, nv, 7, Vector3.Zero, 1f, 0f, colliders);
+                    PlantMesh m = p.Near[nv];
+                    var solidParts = p.Columns[nv].Select(c => c.Part).ToHashSet();
+                    solidPartsSeen += solidParts.Count;
+                    for (int t = 0; t < m.Triangles; t++)
+                    {
+                        if (!solidParts.Contains(m.PartOf[t])) continue;
+                        for (int k = 0; k < 3; k++)
+                        {
+                            System.Numerics.Vector3 q = m.Positions[t * 3 + k];
+                            if (q.Y < 0.05f || q.Y > 2.2f) continue;
+                            covered++;
+                            var at = new Vector3(q.X, q.Y, q.Z);
+                            if (colliders.Any(c => Within(c, at, 0.03f))) continue;
+                            uncovered++;
+                            outsideBy[p.Form] = outsideBy.GetValueOrDefault(p.Form) + 1;
+                            if (uncovered <= 3) GD.PrintErr($"{p.Form} variant {nv}: {at} of part {m.PartOf[t]} lies outside its colliders ({string.Join("; ", colliders.Select(c => $"{c.Center} r {c.Extents.X:F2} h {c.Extents.Y:F2}"))}; columns {string.Join("; ", p.Columns[nv].Select(c => $"{c.A}-{c.B} r {c.Radius:F2} p {c.Part}"))})");
+                        }
+                    }
+                }
             }
         }
         Check(forms.Count >= 28, $"the module's forms all come up: {forms.Count} of {Enum.GetValues<PlantForm>().Length} seen in {plants} species");
         Check(broken == 0, $"every species builds sound meshes and a working trunk ({solid} solid, {broken} broken)");
+        foreach (var kv in outsideBy.OrderByDescending(k => k.Value)) GD.Print($"  outside its colliders: {kv.Key} {kv.Value}");
+        Check(uncovered == 0 && covered > 0, $"every solid part of every solid species' meshes lies inside its colliders, whatever the form: {solidPartsSeen} parts, {covered} points, {uncovered} outside");
         Check(noWood == 0, $"every tree species gives wood when felled ({noWood} without)");
         Check(noStem == 0, $"every stem starts under its foot ({noStem} on top of the ground)");
         Check(adrift == 0 && petalled > 0, $"every flower sits on a leaf or stem, within 3 cm: {petalled} flowers, {adrift} adrift");
@@ -233,6 +270,14 @@ public partial class FloraTest : Node
         Check(stemGap == 0 && trunks > 0, $"every trunk's top meets its limbs, crown or fronds, within {PlantAudit.Touch * 100f:F0} cm: {trunks} trunks, {stemGap} stopping short");
         Check(noReach == 0, $"every species knows the room it takes up, for ruin growth ({noReach} without)");
         Check(overNear == 0 && overCover == 0 && overFar == 0 && overMeshes == 0, $"mesh variety is bounded: at most {Herbarium.NearMeshes} near meshes a species, {NearBudget} triangles near, {FarBudget} far, {CoverBudget} cover ({overNear}, {overFar}, {overCover} over)");
+    }
+
+    /// <summary>Whether a point lies inside a collider grown by a margin (a trunk's radius and length, or a box).</summary>
+    static bool Within(FloraSolid c, Vector3 p, float margin)
+    {
+        Vector3 l = c.Basis.Transposed() * (p - c.Center);
+        if (Mathf.Abs(l.Y) > c.Extents.Y + margin) return false;
+        return c.IsTrunk ? Mathf.Sqrt(l.X * l.X + l.Z * l.Z) < c.Extents.X + margin : Mathf.Abs(l.X) < c.Extents.X + margin && Mathf.Abs(l.Z) < c.Extents.Z + margin;
     }
 
     /// <summary>How far a point is from a triangle.</summary>
@@ -395,7 +440,8 @@ public partial class FloraTest : Node
                         if (w.Palette.Planted != null && w.Palette.Planted.ContainsKey(FarBuilder.ScatterIdAt(x, z))) continue;
                         stood++;
                         if (b.Buffer[o + 7] > w.Source.SurfaceHeight(x, z) - FloraSolidRules.Sink + 0.01f) proud++;
-                        if (w.Source.StampWeight(x, z) > 0f && p.Large) onWork++;
+                        // Trees come in only over the outer blend round a place: none on its apron or footprint, nor on a road.
+                        if (p.Large && (w.Source.Built(x, z, out bool road) >= 0.55f || road) && !w.Source.OnWild(x, z, out _)) onWork++;
                     }
                 }
                 solids += job.Solids.Count;
@@ -419,7 +465,8 @@ public partial class FloraTest : Node
                         int o = k * 16;
                         double x = cx * (double)CoverBuilder.CellSize + buffer[o + 3], z = cz * (double)CoverBuilder.CellSize + buffer[o + 11];
                         covered++;
-                        if (w.Source.StampWeight(x, z) > 0f && !w.Source.OnRoad(x, z, out _)) coverOnBuilt++;
+                        // Ground cover thins out over a place's blend, but never stands on its apron or footprint.
+                        if (w.Source.Built(x, z, out _) >= 1f && !w.Source.OnWild(x, z, out _)) coverOnBuilt++;
                         if (buffer[o + 7] > w.Source.SurfaceHeight(x, z) + 0.02f) coverProud++;
                     }
                 }
@@ -429,7 +476,7 @@ public partial class FloraTest : Node
             Check(unset == 0 && solids > 0, $"{a}: every fellable trunk is a species ({solids} solids, {unset} not)");
             Check(felled > 0 && unfelled == 0, $"{a}: felled trees are gone, trunk and all: {felled} felled, {unfelled} still standing");
             Check(different == 0, $"{a}: chunks scatter the same plants each time ({different} differ)");
-            Check(covered > 200 && coverOnBuilt == 0 && coverProud == 0, $"{a}: ground cover is rooted and off pads: {covered} tufts, {coverOnBuilt} on pads, {coverProud} proud of the ground; {species.Count} species seen");
+            Check(covered > 200 && coverOnBuilt == 0 && coverProud == 0, $"{a}: ground cover is rooted and off aprons and footprints: {covered} tufts, {coverOnBuilt} on them, {coverProud} proud of the ground; {species.Count} species seen");
         }
     }
 }

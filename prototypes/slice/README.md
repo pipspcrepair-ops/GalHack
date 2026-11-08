@@ -79,7 +79,10 @@ Building by hand, block by block, is the game. Blueprints are in the menu, nowhe
 | H, B | Helmet, the survival replicator | |
 | V | Third person | Chase camera |
 | R (dead) | Wake in the bunker (your backpack stays where you fell, on the compass) | |
-| F3, Esc | Debug numbers, free the mouse | |
+| F3 | Debug numbers | |
+| Esc | The escape menu, and the world stops (with the Tab menu open, Esc closes that first) | |
+
+Every key above can be moved in the escape menu (OPTIONS, CONTROLS); the table gives the defaults.
 
 ### The Tab menu
 
@@ -89,13 +92,26 @@ One full-screen menu, styled as the suit's own terminal (the diegetic UI's scree
 | --- | --- |
 | **YOU** | Your **bag** (8 x 6 slots) and **toolbar** (1 to 9), stacks to each item's stack size, mass and volume, and the linked structure's **toolbar** under it. Drag to move, **Shift-click** to send a stack across, **right-click** to split, drag out of the panels (or onto SET DOWN) to drop it on the ground in a container that never despawns. Drag a stack from a structure's storage onto its toolbar to set a slot: nothing moves. Equipment slots round a **paperdoll** of your own character model, your vitals, armour, resistances and level beside it. On the right, the **suit fabricator** and **BLOCKS**: what each is made of, and how many you and the linked structure hold (in Creative, the **build palette**: drag one to the toolbar). **E** on a container opens it here beside the bag, with **TAKE ALL** and **STORE ALL** |
 | **TECH** | The tech tree: Base, Capital Vessel, Small Vessel, Hover Vessel, Tools, Weapons, Deco (a family per theme set), Misc. Nodes in columns by level, joined to their parents; locked nodes say what they need (level, points, parent); click one you can afford |
-| **STATS** | What you have done since the crash, and the master volume |
+| **STATS** | What you have done since the crash, and the four volumes (the rest of the settings are in the escape menu) |
 | **CORE** | The structures whose **area** you are in (or a device you stand by), the nearest picked, a button to switch; outside every area it says OUT OF RANGE. Its manufacturing (each constructor's orders with their sub-parts under them, exactly what is missing, ammo restock), its storage, its settings (core mode, gravity, power, lights, Home, auto-transmit) and its numbers (mass, power, CPU, storage; a vessel's four numbers, turn cap and lift margin) |
 | **MAP** | 300 or 600 m round you: structures, devices, the bunker, your backpack, bodies and drops, the nearest deposits, creatures |
 
 Every grid and recipe list is the same component. A **text box** filters live, on names and category words, case-insensitive (click it or press **/**; typing doesn't move you; **Escape** clears it, then lets go, then closes the menu; in-world screens have no keyboard and show it read-only). **Toggles** pick categories (ores, materials, parts, blocks, devices, ammo, food and medical, deco, other). **SORT** steps through as arranged, name, category, quantity, mass, rarity and recent, and each view keeps its own. Filtering and sorting change nothing stored. Take-all and store-all act on what is shown while a filter is on, and say so. Every item has a **tooltip**: rarity colour, mass and volume each and for the stack, its recipe and constructor or where it is found, its stack, a block's grid and classes, whether it is locked and at what level.
 
 The visor stays minimal: vitals, warnings, the compass with contacts, what is in hand, the torch, short **+XP** lines and a **LEVEL UP** banner that never blocks play. Along the bottom, centred and never overlapping at any size or UI scale (`HudLayout`, tested): the vitals, the toolbar, the selected item's line (name, shape, count, source), one quiet line of keys, and the shape picker with a block family in hand.
+
+### The escape menu
+
+**Esc** with no other menu open (`src/Ui/EscapeMenu.cs`). The slice is single player, so the world stops while it is open: the tree is paused, and only the menu, its clicks and the music (so its volume can be set by ear) run on. The mouse is freed, and taken back on resume. A second **Esc** or **RESUME** closes it, after backing out of a key prompt or the quit question first. Down the left: **RESUME**, **SAVE** and **LOAD** (greyed and marked NOT YET: the slice has no saves), **OPTIONS** and **QUIT TO DESKTOP**, which asks first and says the world ends with the game (it gives the seed to type on the start screen for the same planet). Beside them, this world's card (name, seed, mode, time, level, the main keys), or the options (`src/Ui/OptionsSection.cs`):
+
+| Page | What |
+| --- | --- |
+| **GRAPHICS** | Window (windowed, borderless, full screen) and its resolution (windowed only), vsync, a frame rate cap, render scale (50 to 100%), field of view (55 to 110 degrees), shadows (low, medium, high, ultra: the sun's reach, splits, maps and filter; high is the game as it was, and there is no off, since the sun's shadow keeps it out of rooms), ground detail (how far the diggable ground streams, 48 to 112 m; the far land lies past it) and brightness (a gamma pass over the 3D view only) |
+| **SOUND** | Master, music, effects and ambience on their buses; master starts at 50% |
+| **CONTROLS** | Every action and its key, by group; click one and press the new key (Esc cancels). A key on two actions shows red on both, with what else it does. The game reads each action by its default key (`KeyBindings`): a key pressed becomes the actions bound to it, so nothing else in the game knows about rebinding. The menus' own keys (Esc, /, Ctrl+A, + and -) and the mouse buttons are fixed |
+| **MOUSE** | Look sensitivity and invert, and the flight stick's own sensitivity and invert (flying, the mouse pushes a stick that recentres) |
+
+Everything applies at once; nothing needs a restart. Each page has its own reset. Graphics, mouse and keys are kept in `user://settings.cfg` (`GameSettings`), the volumes in `user://audio-settings.json` as before; a missing or broken file, or a value out of range, means the default. Tests and screenshots play on the defaults and write nothing unless they set a path.
 
 ## Phase 2: orbit
 
@@ -171,7 +187,7 @@ Orbit starts at **1,060 m** on every world, a hard cap on Empyrion's scale (`dat
 | Building | `building` | Its structure model, rules, blueprint format, mesher and ghosts |
 | Handling | `ship-handling` | The four numbers and the flight rules |
 | UI | `diegetic-ui` | Its theme, fonts, glass shader and widgets; the slice's menu, visor and cockpit console |
-| Sound | `planet-surface`, `building`, `diegetic-ui`, `wildlife` | All synthesised in code where it lives: digging, ore, clanks, thunder, wind and rain; block place and remove, UI clicks and the upgrade chime; the chirp; creature calls. The slice adds three small loops of its own (the jetpack, a vessel's engines, footsteps). Master, music, effects and ambience volumes are in Stats > Settings, remembered between runs (`user://audio-settings.json`) |
+| Sound | `planet-surface`, `building`, `diegetic-ui`, `wildlife` | All synthesised in code where it lives: digging, ore, clanks, thunder, wind and rain; block place and remove, UI clicks and the upgrade chime; the chirp; creature calls. The slice adds three small loops of its own (the jetpack, a vessel's engines, footsteps). Master, music, effects and ambience volumes are in the escape menu (OPTIONS, SOUND) and Stats > Settings, remembered between runs (`user://audio-settings.json`) |
 | Music | `shared/Music` | All generated, no audio files. `MusicScenes` reads the world's layers (type, biome, climate, star, tech, what became of it) and the place and time of day; `Composer` builds each scene from those parts over the world's own rolled voice (root, scale, pace, instruments, theme); `SliceMusic` synthesises on a worker and crossfades scenes in key, and to space over the climb. It never reacts to the player. Stats > Credits lists everything |
 
 ### The slice's additions to shared/Items (`data/items.json`)
@@ -241,6 +257,7 @@ A place is part of the surface world, Empyrion-style: there is no scene of its o
 ```powershell
 .\tools\test.ps1 -Project prototypes/slice -Scene res://tests/PlayerTest.tscn
 .\tools\test.ps1 -Project prototypes/slice -Scene res://tests/SliceTest.tscn
+.\tools\test.ps1 -Project prototypes/slice -Scene res://tests/EscapeMenuTest.tscn
 ```
 
 ### The real-player test (`tests/PlayerTest.tscn`)
@@ -273,6 +290,10 @@ Latest run: **ALL PASSED, 44 checks** in 54 s. Two fresh games roll different se
 Blocks as items and the storage model round them. Pure checks: the HUD at six window sizes and four UI scales, nothing overlapping or leaving the window and the longest item line fitting its box; text and category filters, every sort, moves under a filter, and a storage of thousands of stacks reconciling, filtering and redrawing inside a frame; every device in all 24 orientations on both grids, a thruster changing only its axis; a chair in a sealed shell, and the same shell holed. Then in a world, handing items over and teleporting (printed when it does): no block in the open, each core founding its class, small blocks refused on a base, a base-only block refused on a small vessel; your toolbar drawing only on your stack, the structure toolbar only on the structure's storage, neither falling back; deconstruct into the bag, a full bag into the structure, both full into a container on the ground; the area for all four classes, 0.25 m inside and outside; a vessel parked by a base; constructors and the suit fabricator each keeping to their own storage; the filter box taking typing without moving you, Escape's three steps; tooltips for a block, an ore, a part and something locked; Creative free under the same rules.
 
 Latest run: **ALL PASSED, 96 checks** in 17 s.
+
+### The escape menu test (`tests/EscapeMenuTest.tscn`)
+
+On a fresh random world, through the game's own keys and mouse: Esc opens the menu and the world stops (the clock and the castaway stand still with W held); a second Esc or RESUME closes it and the clock runs on; with the Tab menu open, Esc closes that and nothing else. SAVE and LOAD do nothing; QUIT asks, and STAY or Esc keep you. A volume slider reaches its bus. The torch moved to K at its prompt: K lights it and L no longer does; a clash is found on both actions; Esc cancels a prompt; the file keeps the binding. Twice the sensitivity turns the view twice as far, and invert flips up and down. Every graphics setting reaches what it sets (the camera, the 3D view's scale, the frame cap, the sun's and night light's shadows, the streamer's radius, which then streams out that far, the gamma pass), comes back from the file, and RESET puts it all back. `--view=escmenu` (Screenshot.tscn, windowed, with `--dir`) shoots each page.
 
 ### The place test (`tests/PlaceTest.tscn`)
 
@@ -337,6 +358,7 @@ All additive; each prototype's own tests still pass.
 | `ship-handling/src/Handling/FlightModel.cs` | `FlightState.Seat`, `Control`; turn, cruise and thrust in the seat's frame | A vessel's heading is set by the pilot's seat |
 | `planet-surface/shaders/sky.gdshader`, `src/Sky/Atmosphere.cs`, `SkyRig.cs`, new `CloudCoverage.cs`, `clouddeck.gdshader` | The cloud layer lowered to 600 to 1,000 m, its march scaled to it, `space_fade` into space's backdrop, a cloud deck from above, the cloud at the eye | Orbit at 1,060 m; the atmosphere fading away as the mask for the crossing |
 | `wildlife/src/Core` | `Stats.Xp`, set by the fauna generator from health, damage and hunting | Kill experience by species |
+| `planet-surface/src/Terrain/TerrainStreamer.cs` | `VoxelRadius` is a property: set while streaming, the ring of wanted columns is laid out again | The escape menu's ground detail applies at once |
 | `planet-surface/src/WeatherView` | `IWeatherScene` (earlier) | |
 | `planet-surface/src/Terrain/TerrainStreamer.cs` | `FloraNear(point, radius)` with each plant's scatter id (earlier, now merged with main's solid flora) | Find and cut plants from data |
 | `wildlife/src/Core/Terrain.cs`, `ProceduralAudio.cs` | (earlier) | Creatures on a patch of the real planet |

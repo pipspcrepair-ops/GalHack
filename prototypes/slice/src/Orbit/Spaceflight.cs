@@ -186,12 +186,11 @@ public partial class Spaceflight : Node
         var planet = g.Surface.Planet;
         double x = Mathx.WrapX(at.X, planet.Width), z = Mathx.Wrap(at.Z, planet.Height);
         Charts.LookAround(planet.Pois.Select((p, i) => ($"poi{i}", p.Name, (double)p.Origin.X, (double)p.Origin.Z)), x, z, planet.Width, planet.Height);
-        // The place in view from the bunker's way out is known from the start; every other place waits to be come near.
-        if (g.Bunker?.Poi is { } seen && g.Bunker.Landmark != null)
-            for (int i = 0; i < planet.Pois.Count; i++)
-                if (planet.Pois[i] == seen) Charts.Find($"poi{i}", seen.Name, seen.Origin.X, seen.Origin.Z, "place");
+        // Every place waits to be come near (the one in view from the bunker's way out too: you see it, the compass doesn't).
+        // A deposit is charted once you have been near it (a ping only marks it for a while).
+        float near = g.Surface.Data.Progress.Xp.DepositRadius;
         foreach (var (kind, d) in _deposits.Near(g.Surface, at))
-            Charts.Find($"deposit:{Mathf.RoundToInt(d.X)},{Mathf.RoundToInt(d.Z)}", kind, Mathx.WrapX(d.X, planet.Width), Mathx.Wrap(d.Z, planet.Height), "deposit");
+            if (new Vector2(d.X - at.X, d.Z - at.Z).Length() <= near) Charts.Find($"deposit:{Mathf.RoundToInt(d.X)},{Mathf.RoundToInt(d.Z)}", kind, Mathx.WrapX(d.X, planet.Width), Mathx.Wrap(d.Z, planet.Height), "deposit");
     }
 
     /// <summary>
@@ -284,8 +283,7 @@ public partial class Spaceflight : Node
         g.Suit.Sim.Environment = Vacuum;
         Crossings.Add(new Crossing(true, x, z, GlobeMap.HeadingDegrees(b.Rotation), p, b.Rotation, b.Velocity, b.Position, b.Rotation, b.Velocity, to.Turn, watch.Elapsed.TotalMilliseconds, Ledger.Audit(Holders(), totals)));
         Report();
-        g.Say(carrier != null ? $"In space: the {carrier.Name} has left the atmosphere" : "In space", Tones.Good);
-        if (g.Progress.Discover("orbit", 60, "reached orbit")) g.Say("The start system's wrecks are out here: fly close, step out, board one", Tones.Text);
+        g.Progress.Discover("orbit", 60, "reached orbit");
     }
 
     // ---- Down ----------------------------------------------------------------------------------
@@ -346,13 +344,12 @@ public partial class Spaceflight : Node
         if (_surfaceAir != null) g.Suit.Sim.Environment = _surfaceAir;
         Crossings.Add(new Crossing(false, x, z, GlobeMap.HeadingDegrees(b.Rotation), p, b.Rotation, b.Velocity, b.Position, b.Rotation, b.Velocity, from.Turn, watch.Elapsed.TotalMilliseconds, Ledger.Audit(Holders(), totals)));
         Report();
-        g.Say(carrier != null ? $"Into the atmosphere over {Where(x, z)}" : "Into the atmosphere", Tones.Good);
     }
 
     string Where(double x, double z)
     {
         double latitude = 90 - z / Game.Surface.Planet.Height * 180, longitude = x / Game.Surface.Planet.Width * 360;
-        return $"{Math.Abs(latitude):F0}°{(latitude >= 0 ? "N" : "S")} {longitude:F0}°E";
+        return $"{Math.Abs(latitude):F0}Â°{(latitude >= 0 ? "N" : "S")} {longitude:F0}Â°E";
     }
 
     static void Wake(SurfaceZone zone)

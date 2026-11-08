@@ -41,6 +41,7 @@ public static class Shutdown
 
         MeshBuilder.ReleaseCache();
         CreatureMaterials.Release();
+        VeinView.Release();
         // Anything else the scripts dropped is finalized now, while the engine is whole and the
         // main thread waits, instead of racing the engine's own teardown.
         GC.Collect();

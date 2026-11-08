@@ -75,6 +75,9 @@ public partial class SurfaceTest : Node
             await Run("Profile", ProfileChecks);
             await Run("Infra", InfraChecks);
             await Run("StartTown", StartTownChecks);
+            await Run("City", CityChecks);
+            await Run("Ground", GroundChecks);
+            await Run("Dungeons", DungeonChecks);
             await Run("Under", UnderChecks);
             await Run("Water", WaterChecks);
             await Run("Ports", PortChecks);

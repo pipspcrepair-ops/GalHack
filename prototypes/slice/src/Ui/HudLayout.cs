@@ -13,15 +13,24 @@ namespace Slice.Ui;
 /// and left of the bottom band stay clear for the held tool. The jetpack's gauge stands alone at
 /// the right edge, a little above the middle, and the suit's lines stop short of it.
 /// </summary>
-public readonly record struct HudLayout(float Scale, Rect2 Vitals, Rect2 Toolbar, Rect2 ItemLine, Rect2 Hints, Rect2 Shapes, Rect2 Lines, Rect2 Jet)
+public readonly record struct HudLayout(float Scale, Rect2 Vitals, Rect2 Toolbar, Rect2 ItemLine, Rect2 Hints, Rect2 Shapes, Rect2 Lines, Rect2 Jet,
+    Rect2 Compass, Rect2 Alerts, Rect2 BarName, Rect2 Flight, Rect2 Mode)
 {
     public const int Slots = 9;
     public const float VitalW = 150, VitalH = 54, VitalGap = 14, Cell = 52, CellGap = 4, WideRow = 760, JetW = 84, JetH = 150;
+    /// <summary>The compass: its width, and how many rows of labels it may grow below its strip.</summary>
+    public const float CompassW = 640, CompassTop = 34;
+    public const int CompassRows = 2;
+    /// <summary>The suit's lines shown at once.</summary>
+    public const int LinesShown = 3;
+    /// <summary>An alert's sign and the timer to its left.</summary>
+    public const float AlertIcon = 64, AlertTimer = 76;
 
     /// <summary>Every box, by name, for the overlap check.</summary>
     public IEnumerable<(string Name, Rect2 Box)> Boxes => new[]
     {
         ("vitals", Vitals), ("toolbar", Toolbar), ("item line", ItemLine), ("hints", Hints), ("shapes", Shapes), ("lines", Lines), ("jetpack gauge", Jet),
+        ("compass", Compass), ("alerts", Alerts), ("bar name", BarName), ("flight line", Flight), ("mode plate", Mode),
     };
 
     /// <summary>The layout for a window size and a UI scale (1 is the default; it shrinks to fit a narrow window).</summary>
@@ -37,10 +46,22 @@ public readonly record struct HudLayout(float Scale, Rect2 Vitals, Rect2 Toolbar
         Rect2 item = Row(toolbar.Position.Y - (4 + 22) * s, WideRow, 22);
         Rect2 hints = Row(item.Position.Y - (2 + 16) * s, WideRow, 16);
         Rect2 shapes = Row(hints.Position.Y - (4 + 58) * s, barW, 58);
-        float linesH = 5 * 26 * s;
+        float linesH = LinesShown * 26 * s;
         var jet = new Rect2(size.X - (24 + JetW) * s, size.Y * 0.45f - JetH * s / 2f, JetW * s, JetH * s);
-        var lines = new Rect2(40 * s, shapes.Position.Y - 8 * s - linesH, jet.Position.X - 12 * s - 40 * s, linesH);
-        return new HudLayout(s, vitals, toolbar, item, hints, shapes, lines, jet);
+        float alertsW = (AlertTimer + AlertIcon + 50) * s;
+        float linesX = 24 * s + alertsW + 12 * s; // right of the alerts' column
+        var lines = new Rect2(linesX, shapes.Position.Y - 8 * s - linesH, jet.Position.X - 12 * s - linesX, linesH);
+        // The compass strip and its labels (a label is 220 wide, centred on a mark that may sit at the strip's end).
+        float compassW = CompassW + 220;
+        var compass = new Rect2(cx - compassW * s / 2f, 14 * s, compassW * s, (CompassTop + 44 + CompassRows * 16 - 14) * s);
+        var barName = new Rect2(toolbar.Position.X - 150 * s, toolbar.Position.Y + Cell * s / 2f - 9 * s, 142 * s, 18 * s);
+        // Seated: the flight line, its message under it, and the mode plate under that (beside it, it ran off a narrow window).
+        var flight = new Rect2(cx - 360 * s, compass.End.Y + 14 * s, 720 * s, 68 * s);
+        var mode = new Rect2(cx - 96 * s, flight.End.Y + 6 * s, 192 * s, 34 * s);
+        // Alerts down the left edge, under all of that, beside the suit's lines.
+        float alertsTop = mode.End.Y + 10 * s;
+        var alerts = new Rect2(24 * s, alertsTop, alertsW, MathF.Max(0f, shapes.Position.Y - 8 * s - alertsTop));
+        return new HudLayout(s, vitals, toolbar, item, hints, shapes, lines, jet, compass, alerts, barName, flight, mode);
     }
 
     /// <summary>The first two boxes that overlap or leave the window, or null if the layout is sound.</summary>

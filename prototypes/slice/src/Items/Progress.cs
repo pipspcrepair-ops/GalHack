@@ -111,21 +111,21 @@ public sealed class Progress
     public event Action<TechNode> Unlocked;
 
     /// <summary>
-    /// The tabs: Base &amp; Capital (the large grid; one tab since they share every block and
-    /// component), Small &amp; Hover (the small grid, likewise), then tools, weapons, deco and misc.
+    /// The tabs: Large (the Big Core: Base, Hover and Flight modes, one tab since they share every
+    /// block and component), Small (the Small Core: Hover and Flight), then tools, weapons and misc
+    /// (the deco sets live there too).
     /// </summary>
-    public static readonly string[] Tabs = { "base", "small", "tools", "weapons", "deco", "misc" };
+    public static readonly string[] Tabs = { "large", "small", "tools", "weapons", "misc" };
 
-    /// <summary>The tab a data name lands on: the old capital and hover tabs are part of base and small.</summary>
-    public static string TabOf(string tab) => tab switch { "capital" => "base", "hover" => "small", _ => tab };
+    /// <summary>The tab a data name lands on: base and capital are Large, hover is Small, deco is part of misc.</summary>
+    public static string TabOf(string tab) => tab switch { "base" or "capital" => "large", "hover" => "small", "deco" => "misc", _ => tab };
 
     public static string TabName(string tab) => tab switch
     {
-        "base" => "BASE & CAPITAL",
-        "small" => "SMALL & HOVER",
+        "large" => "LARGE",
+        "small" => "SMALL",
         "tools" => "TOOLS",
         "weapons" => "WEAPONS",
-        "deco" => "DECO",
         _ => "MISC",
     };
 

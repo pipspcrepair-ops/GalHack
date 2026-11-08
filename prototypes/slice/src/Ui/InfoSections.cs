@@ -55,6 +55,7 @@ public sealed class StatsSection : IMenuSection
             g.Text($"{value * 100f:F0}%", new Vector2(area.Position.X + 300, y + 2), C.Text, 19, UiTheme.Mono);
             if (g.Slider($"options:volume-{key}", new Rect2(area.Position.X + 420, y, 760, 32), ref value, C.Accent2)) _game.Audio.SetVolume(key, value);
         }
+        g.Text("Graphics, keys and the mouse: Esc, OPTIONS.", new Vector2(area.Position.X + 12, area.Position.Y + 20 + 4 * 64), C.Dim, 16);
     }
 
     /// <summary>Everyone whose work is in the game, generated music included. The wheel scrolls it.</summary>
@@ -170,7 +171,10 @@ public sealed class MapSection : IMenuSection
         if (_game.Zone.Wildlife.Sim is { } sim)
             foreach (var c in sim.Creatures)
                 if (!c.Removed && !c.Dead) Mark(_game.Zone.Wildlife.FromPatch(c.Position), null, new Color(C.Warn, 0.7f), 3f);
-        foreach (var (kind, at) in _game.Visor.Deposits.Near(_game.Zone, me)) Mark(at, kind.ToUpperInvariant(), C.Holo, 6f, 6);
+        // Deposits you have been near, and the scanner's pings while they last.
+        if (!_game.InOrbit)
+            foreach (ChartMark m in _game.Spaceflight.Charts.OfKind("deposit")) Mark(Levels.NearYou(m.X, m.Z), m.Label.ToUpperInvariant(), C.Holo, 6f, 6);
+        foreach (Game.Game.Ping p in _game.Pings) Mark(p.At, p.Place ? "?" : p.Label.ToUpperInvariant(), new Color(p.Place ? C.Accent : C.Holo, _game.PingAlpha(p)), 5f, 7);
         foreach (Lootable l in _game.Zone.Loot.All)
             if (l.Kind != LootKind.Cache) // a place's caches are found by going in, not from the map
                 Mark(l.Position, l.Kind == LootKind.Backpack ? "YOUR BACKPACK" : null, l.Kind == LootKind.Backpack ? C.Danger : C.Accent2, l.Kind == LootKind.Backpack ? 8 : 4, 2);

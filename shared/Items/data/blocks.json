@@ -121,7 +121,7 @@
                                "large": { "level": 7, "cost": 1, "parent": "thruster@large", "tab": "base" } } },
     "hover":     { "small": { "hull-plate": 2, "winding": 2, "circuit-board": 1 },  "large": { "hull-plate": 8, "power-unit": 1, "nozzle": 2 },
                    "unlock": { "small": { "level": 1, "cost": 1, "parent": "small-core", "tab": "small" },
-                               "large": { "level": 10, "cost": 2, "parent": "hover@small", "tab": "small" } } },
+                               "large": { "level": 10, "cost": 2, "parent": "big-core", "tab": "base" } } },
     "gear":      { "small": { "hull-plate": 2, "servo": 1 },                         "large": { "hull-plate": 6, "servo": 2 },
                    "unlock": { "small": { "level": 5, "cost": 0, "parent": "small-core", "tab": "small" },
                                "large": { "level": 7, "cost": 0, "parent": "thruster@large", "tab": "base" } } },

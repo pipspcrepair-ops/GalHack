@@ -641,6 +641,52 @@ public static partial class DecoModels
             b.Tube(0, 2.95f, 3.3f, 0, 2.95f, 3.42f, 0.35f, Lamp, 10).Lit().Ghost();
         };
 
+        // ---- the hangar floor: indoor pieces of the aviation set ----
+
+        r["engine-stand"] = b =>
+        {
+            // A turbofan off its wing, on a wheeled cradle: two saddles under the nacelle, rails between them.
+            foreach (float z in new[] { -1.1f, 1.1f })
+            {
+                b.Box(-0.85f, 0.2f, z - 0.08f, 0.85f, 0.32f, z + 0.08f, Hazard);
+                foreach (float x in new[] { -0.72f, 0.72f }) Wheel(b, x, 0.12f, z, 0.12f, 0.08f);
+                b.Beam(new Vector3(-0.55f, 0.32f, z), new Vector3(-0.28f, 0.78f, z), 0.08f, 0.08f, Dark);
+                b.Beam(new Vector3(0.55f, 0.32f, z), new Vector3(0.28f, 0.78f, z), 0.08f, 0.08f, Dark);
+            }
+            foreach (float x in new[] { -0.62f, 0.62f }) b.Box(x - 0.05f, 0.22f, -1.02f, x + 0.05f, 0.3f, 1.02f, Dark);
+            b.Barrel(-1.3f, 1.05f, 0, 0.62f, 0.68f, 0.68f, Body, 16, 0.85f);
+            Ring(b, new Vector3(0, 1.3f, -1.3f), 0.63f, 16, 0.06f, Metal, 90);
+            b.Tube(0, 1.3f, -1.18f, 0, 1.3f, -1.26f, 0.56f, Dark, 16).Ghost();
+            b.Tube(0, 1.3f, -1.18f, 0, 1.3f, -1.42f, 0.16f, Metal, 10, 0.1f);
+            b.Tube(0, 1.3f, 1.05f, 0, 1.3f, 1.45f, 0.38f, Dark, 10, 0.3f);
+        };
+
+        r["airline-seats"] = b =>
+        {
+            // A pair of airliner seats on one frame: cushions, tall backs with headrest covers, armrests between and either side.
+            foreach (float x in new[] { -0.4f, 0.4f }) b.Box(x - 0.03f, 0, -0.25f, x + 0.03f, 0.38f, 0.25f, Metal);
+            foreach (float x in new[] { -0.24f, 0.24f })
+            {
+                b.Box(x - 0.21f, 0.38f, -0.3f, x + 0.21f, 0.5f, 0.25f, Fabric).Soft();
+                b.Box(x - 0.21f, 0.5f, 0.22f, x + 0.21f, 1.15f, 0.34f, Fabric).Soft();
+                b.Box(x - 0.17f, 0.98f, 0.18f, x + 0.17f, 1.12f, 0.22f, Linen).Soft();
+            }
+            foreach (float x in new[] { -0.46f, 0f, 0.46f }) b.Box(x - 0.025f, 0.5f, -0.25f, x + 0.025f, 0.68f, 0.2f, Dark);
+        };
+
+        r["aircraft-tug"] = b =>
+        {
+            // A low tow tractor: a long flat body on four wheels, the driver's seat at the back, a hitch at the front.
+            foreach (float s in new[] { -1f, 1f }) { Wheel(b, s * 0.55f, 0.25f, -0.72f, 0.25f, 0.2f); Wheel(b, s * 0.55f, 0.25f, 0.72f, 0.25f, 0.2f); }
+            b.Box(-0.7f, 0.22f, -1.12f, 0.7f, 0.62f, 1.15f, Hazard);
+            b.Box(-0.72f, 0.2f, -1.22f, 0.72f, 0.38f, -1.1f, Dark);
+            b.Box(-0.12f, 0.24f, -1.25f, 0.12f, 0.32f, -1.2f, Metal);
+            b.Box(-0.3f, 0.62f, 0.32f, 0.3f, 0.78f, 0.82f, Fabric).Soft();
+            b.Box(-0.3f, 0.78f, 0.76f, 0.3f, 1.15f, 0.88f, Fabric).Soft();
+            b.Tube(0, 0.62f, -0.08f, 0, 1.0f, 0.18f, 0.025f, Dark, 6);
+            Ring(b, new Vector3(0, 1.02f, 0.2f), 0.16f, 8, 0.025f, Dark, -55, 0);
+        };
+
         r["skyliner-engine"] = b =>
         {
             Ring(b, new Vector3(0, 1.92f, 0), 1.65f, 16, 0.55f, Body, 90);

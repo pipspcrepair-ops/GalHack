@@ -45,7 +45,7 @@ static class GalaxyGen
 
     static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Galaxy, Shape> Shapes = new();
 
-    const float CoreRadius = 85f, InnerRadius = 260f, OuterRadius = 440f;
+    const float CoreRadius = Galaxy.CoreRadius, InnerRadius = 260f, OuterRadius = 440f;
 
     public static Galaxy Make(ulong seed)
     {
@@ -100,7 +100,7 @@ static class GalaxyGen
     static float DiscDensity(Shape s, float r, float angle)
     {
         if (r < CoreRadius * 0.6f) return 0.08f;
-        float width = 16f + r * 0.085f, off = s.ArmOffset(r, angle) / width;
+        float width = ArmWidth(r), off = s.ArmOffset(r, angle) / width;
         float arm = 0.1f + 0.9f * MathF.Exp(-off * off);
         float fall = MathF.Exp(-r / 330f);
         float rim = r > Galaxy.DiscRadius ? MathF.Max(0f, 1f - (r - Galaxy.DiscRadius) / 25f) : 1f;
@@ -113,6 +113,21 @@ static class GalaxyGen
         if (r > OuterRadius) return Region.Periphery;
         if (s.VoidDepth(flat) < 0.5f) return Region.Void;
         return r <= InnerRadius ? Region.InnerArm : Region.OuterArm;
+    }
+
+    /// <summary>A spiral arm's width at a radius (ly): the density's own.</summary>
+    static float ArmWidth(float r) => 16f + r * 0.085f;
+
+    /// <summary>
+    /// How far a place lies across from the nearest spiral arm's centre line, as a share of the arm's
+    /// width there: 0 on it, about 1 at its edge, more out in the gap between arms. 0 for a galaxy whose
+    /// shape isn't known (one read back rather than made).
+    /// </summary>
+    public static float ArmShare(Galaxy g, Vector3 p)
+    {
+        if (!Shapes.TryGetValue(g, out Shape s)) return 0f;
+        float r = new Vector2(p.X, p.Z).Length();
+        return s.ArmOffset(r, MathF.Atan2(p.Z, p.X)) / ArmWidth(r);
     }
 
     /// <summary>The region a place in the galaxy lies in.</summary>
@@ -130,7 +145,7 @@ static class GalaxyGen
     {
         int count = 38 + rng.Int(24);
         var list = new Nebula[count];
-        // A share of them lie out on the rim, where every game begins: the rest along the arms.
+        // A share of them lie out on the rim at the arms' tips, where every game begins: the rest along the arms.
         int rim = 8 + rng.Int(5);
         for (int i = 0; i < count; i++)
         {
@@ -143,7 +158,8 @@ static class GalaxyGen
                 r = i < rim ? rng.Range(Galaxy.RimFrom + 5f, 485f) : rng.Range(CoreRadius + 15f, 420f);
                 angle = rng.Range(0f, MathF.Tau);
                 flat = new Vector2(MathF.Cos(angle) * r, MathF.Sin(angle) * r);
-                if (shape.ArmOffset(r, angle) < 14f + r * 0.08f && shape.VoidDepth(flat) > 0.8f) break;
+                float within = i < rim ? Galaxy.TipShare * 0.6f * ArmWidth(r) : 14f + r * 0.08f;
+                if (shape.ArmOffset(r, angle) < within && shape.VoidDepth(flat) > 0.8f) break;
             }
             float radius = kind switch
             {

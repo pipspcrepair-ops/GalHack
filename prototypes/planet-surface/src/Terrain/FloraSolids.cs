@@ -80,6 +80,38 @@ public sealed class FloraSolidRules
     }
 
     /// <summary>
+    /// The colliders a rolled species' instance gets: one round each solid part of the near mesh drawn
+    /// there (<paramref name="variant"/>): a tree's trunk and its thick limbs, every pipe of a cluster of
+    /// tubes, a trumpet's stalk and bell, a cap, each shard of a crystal; so you meet the plant where you see
+    /// it, whatever its form. The first (the main stem) carries the wood. False if you walk through it.
+    /// </summary>
+    public bool MakeAll(Flora kind, Plant plant, int variant, long id, Vector3 foot, float scale, float angle, List<FloraSolid> into)
+    {
+        if (!TryMake(kind, plant, id, foot, scale, angle, out FloraSolid main)) return false;
+        PlantColumn[] columns = plant?.Columns is { Length: > 0 } all ? all[Math.Clamp(variant, 0, all.Length - 1)] : null;
+        if (columns == null || columns.Length == 0)
+        {
+            into.Add(main);
+            return true;
+        }
+        var turn = new Basis(Vector3.Up, angle);
+        bool first = true;
+        foreach (PlantColumn c in columns)
+        {
+            Vector3 a = foot + turn * new Vector3(c.A.X, c.A.Y, c.A.Z) * scale, b = foot + turn * new Vector3(c.B.X, c.B.Y, c.B.Z) * scale;
+            Vector3 along = b - a;
+            float length = along.Length();
+            if (length < 0.02f) continue;
+            along /= length;
+            Basis basis = along.Y < -0.999f ? new Basis(Vector3.Right, Mathf.Pi) : new Basis(new Quaternion(Vector3.Up, along));
+            into.Add(new FloraSolid(id, kind, true, (a + b) * 0.5f, basis.Orthonormalized(), new Vector3(c.Radius * scale, length * 0.5f, c.Radius * scale), first ? main.Wood : 0, plant.Index));
+            first = false;
+        }
+        if (first) into.Add(main);
+        return true;
+    }
+
+    /// <summary>
     /// The collider one scatter instance gets (its mesh's foot at <paramref name="foot"/>, scaled and
     /// turned), or false if this kind is never solid or this one is too small (a pebble).
     /// </summary>

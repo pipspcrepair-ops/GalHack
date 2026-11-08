@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using Godot;
@@ -38,6 +38,7 @@ public partial class Screenshot : Node
     public override void _Ready()
     {
         ProcessPhysicsPriority = 100; // after the game's tick, so what it sets is read on the next one
+        ProcessMode = ProcessModeEnum.Always; // a view runs on while the escape menu stops the world
         foreach (string arg in OS.GetCmdlineUserArgs())
         {
             int eq = arg.IndexOf('=');
@@ -45,6 +46,7 @@ public partial class Screenshot : Node
         }
         if (_args.TryGetValue("out", out string o)) _out = o;
         if (_args.TryGetValue("view", out string v)) _view = v;
+        if (_view == "city") PlanetSurface.Infra.CityPlan.Force = true; // a city on any lived-in world
         _game = new Game.Game { Interactive = false, SkipIntro = true, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), System.Array.IndexOf(OS.GetCmdlineUserArgs(), "--ringed=1") >= 0 ? RingedWorld() : WorldChoice.Tested) };
         AddChild(_game);
         _staging = new Staging(_game, _args) { TakeShot = file => _pending = file };

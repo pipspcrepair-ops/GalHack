@@ -201,7 +201,8 @@ public sealed partial class Vessel
     // ---- Spawning ---------------------------------------------------------------------------
 
     /// <summary>A structure as a vessel: one kinematic hull swept through the world, landed (asleep) or flying.</summary>
-    public static Vessel Spawn(SurfaceZone zone, Structure s, N.Vector3 at, float heading, bool landed)
+    /// <param name="drawLater">Its look is drawn over the next frames, within their budget (a big structure set down whole).</param>
+    public static Vessel Spawn(SurfaceZone zone, Structure s, N.Vector3 at, float heading, bool landed, bool drawLater = false)
     {
         MassProperties mass = MassOf(s);
         Body body = zone.Physics.Register(new BodySpec
@@ -226,7 +227,7 @@ public sealed partial class Vessel
         zone.AddChild(hull);
         vessel.Binding = zone.Host.Bind(body, new HullBinding(hull));
         vessel.HullShapes = new StructureShapes(hull);
-        vessel.Furnish(hull);
+        vessel.Furnish(hull, drawLater);
         if (landed) vessel.Controller.PlaceLanded(body, at, heading);
         else vessel.Controller.Place(body, at, heading);
         vessel.Binding.Teleport();
@@ -238,7 +239,7 @@ public sealed partial class Vessel
     /// A structure in base mode set down on the ground: one fixed body (shared physics' base:
     /// nothing ever moves it, no gravity, wind or rescue), walked on in the zone's own world.
     /// </summary>
-    public static Vessel SpawnBase(SurfaceZone zone, Structure s, N.Vector3 at, float heading)
+    public static Vessel SpawnBase(SurfaceZone zone, Structure s, N.Vector3 at, float heading, bool drawLater = false)
     {
         s.Mode = CoreMode.Base;
         MassProperties mass = MassOf(s);
@@ -261,7 +262,7 @@ public sealed partial class Vessel
         zone.AddChild(node);
         vessel.Binding = zone.Host.Bind(body, new FixedBinding(node));
         vessel.HullShapes = new StructureShapes(node);
-        vessel.Furnish(node);
+        vessel.Furnish(node, drawLater);
         vessel.Binding.Teleport();
         vessel.Register();
         return vessel;
@@ -287,21 +288,39 @@ public sealed partial class Vessel
     static MassProperties MassOf(Structure s) =>
         s.Count > 0 ? StructureBridge.Mass(s) : new MassProperties(100f, N.Vector3.Zero);
 
-    void Furnish(CollisionObject3D owner)
+    void Furnish(CollisionObject3D owner, bool drawLater = false)
     {
         List<ChunkColliders> colliders = StructureBridge.Colliders(Structure);
-        HullShapes.Apply(colliders);
+        if (drawLater) foreach (ChunkColliders c in colliders) _pendingShapes.Enqueue((HullShapes, c));
+        else HullShapes.Apply(colliders);
         View = new StructureMesh { Name = "View", BeforeDraw = Hits.Flush };
         owner.AddChild(View);
-        View.Setup(Structure);
+        View.Setup(Structure, drawLater);
         Fx = new VesselFx { Name = "Fx" };
         owner.AddChild(Fx);
         Fx.Setup(this);
         Cabin = CabinWorld.Create("CabinWorld");
         owner.AddChild(Cabin);
-        Cabin.Shapes.Apply(colliders);
+        if (drawLater) foreach (ChunkColliders c in colliders) _pendingShapes.Enqueue((Cabin.Shapes, c));
+        else Cabin.Shapes.Apply(colliders);
         if (Body.Core != null) Cabin.SetGravity(Body.Core);
         Structure.DirtyChunks.Clear();
+    }
+
+    /// <summary>Collision still to build, a chunk a tick, hull first then cabin (a structure set down whole builds it over a few ticks, inside the frame's budget).</summary>
+    readonly Queue<(StructureShapes shapes, ChunkColliders chunk)> _pendingShapes = new();
+
+    /// <summary>Collision chunks still to build.</summary>
+    public int PendingShapes => _pendingShapes.Count;
+
+    /// <summary>Builds the next chunk of collision still to build (each tick), or all of it now.</summary>
+    public void BuildPendingShapes(bool all = false)
+    {
+        while (_pendingShapes.TryDequeue(out var next))
+        {
+            next.shapes.Apply(new[] { next.chunk });
+            if (!all) break;
+        }
     }
 
     void Register()
@@ -322,6 +341,7 @@ public sealed partial class Vessel
     public void ApplyEdits()
     {
         if (Structure.DirtyChunks.Count == 0) return;
+        BuildPendingShapes(all: true); // never an older chunk's collision over a newer one
         var dirty = Structure.DirtyChunks.ToList();
         Structure.DirtyChunks.Clear();
         List<ChunkColliders> colliders = StructureBridge.Colliders(Structure, dirty);

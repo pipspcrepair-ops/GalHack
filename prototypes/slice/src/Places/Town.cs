@@ -52,8 +52,20 @@ public sealed partial class Town
         _rng = new Random((int)(m.Inst.SpawnSeed & 0x7fffffff));
     }
 
-    public sealed class Person : ITarget
+    public sealed class Person : IHost
     {
+        /// <summary>Seized by a Husk and turned: one of them now, out in the wild sim; this one is gone.</summary>
+        public bool Gone;
+        /// <summary>A silent carrier: the worms are in them, and nothing shows until they are alone with someone (<see cref="Carriers"/>).</summary>
+        public bool Carrier;
+        Species IHost.Body => Looks;
+        void IHost.Taken()
+        {
+            Gone = true;
+            Health.Current = 0f;
+            if (View != null) View.Visible = false;
+        }
+
         public Town Town;
         public CitizenSpawn Spawn;
         public string Role => Spawn.Role;
@@ -296,10 +308,23 @@ public sealed partial class Town
         _tick++;
         _clock += tickDt;
         Voices(player, tickDt);
+        Worms(player, tickDt);
+        // Whoever a Husk has by the head stays where they are taken.
+        _held.Clear();
+        if (_places.Zone.Wildlife.Sim is { } wild)
+            foreach (Creature c in wild.Creatures)
+                if (c.Phase == AttackPhase.Hold && c.Holding is Person h && h.Town == this) _held.Add(h);
         int built = 0;
         for (int who = 0; who < People.Count; who++)
         {
             Person p = People[who];
+            if (p.Gone) continue;
+            if (_held.Contains(p) && !p.Dead)
+            {
+                p.Now = 0f;
+                Pose(p, who);
+                continue;
+            }
             if (p.Dead)
             {
                 // Going down, then lying where they fell.
@@ -612,6 +637,65 @@ public sealed partial class Town
             p.Nerve = roll.Float();
             p.Speed *= role switch { PersonRole.Elder => 0.78f, PersonRole.Drunk => 0.72f, _ => 1f };
         }
+        // A few of them may not be what they seem: silent carriers, rolled as anyone is, nothing showing.
+        HuskRules husks = life.Data.Husks;
+        int carriers = Carriers.Roll(husks, life.Moving.Any(s => s.Husk), life.World.Coreward, People.Count, roll);
+        foreach (Person q in People.Where(q => q.Looks.Figure.Stage != LifeStage.Child).OrderBy(_ => roll.Float()).Take(carriers)) q.Carrier = true;
+        CarriersAtStart = People.Count(q => q.Carrier);
+        foreach (Person q in People) _carried.Add(new Carried());
+    }
+
+    // ---- The worms among them ----------------------------------------------------------------------
+
+    readonly List<Carried> _carried = new();
+    readonly List<int> _rise = new();
+    readonly HashSet<Person> _held = new();
+    float _wormsIn;
+    const float WormsEvery = 0.25f;
+
+    /// <summary>Silent carriers rolled for the place, and those who have dropped the act since (tests).</summary>
+    public int CarriersAtStart { get; private set; }
+    public int Risen { get; private set; }
+    public int Carrying => People.Count(p => p.Carrier && !p.Gone && !p.Dead);
+
+    /// <summary>
+    /// The silent carriers (<see cref="Carriers"/>), a few times a second: one alone with you rises
+    /// a Husk where it stands and goes for you; one alone long enough with one of the town's own
+    /// passes the worms on; past the set share, they all drop the act.
+    /// </summary>
+    void Worms(Vector3 player, float dt)
+    {
+        if (_carried.Count != People.Count || (_wormsIn -= dt) > 0f) return;
+        _wormsIn = WormsEvery;
+        bool any = false;
+        for (int i = 0; i < People.Count; i++)
+        {
+            Person p = People[i];
+            Carried c = _carried[i];
+            c.At = p.Pos;
+            c.Out = !p.Dead && !p.Gone && !p.Indoors;
+            c.Carrier = p.Carrier && !p.Dead && !p.Gone;
+            any |= c.Carrier;
+        }
+        if (!any) return;
+        _rise.Clear();
+        ITarget you = _places.Zone.Wildlife.Player;
+        Carriers.Step(_places.Zone.Wildlife.Life.Data.Husks, _carried, you is { Attackable: true } ? player : null, WormsEvery, _rise);
+        for (int i = 0; i < People.Count; i++) People[i].Carrier = _carried[i].Carrier;
+        foreach (int i in _rise) Rise(People[i]);
+    }
+
+    /// <summary>A carrier drops the act: a Husk stands where they stood, in the wild sim, and they are gone from the town.</summary>
+    void Rise(Person p)
+    {
+        WildSim sim = _places.Zone.Wildlife.Sim;
+        if (sim == null || p.Gone || p.Dead) return;
+        Creature h = Seizing.Rise(sim, p, Wildlife.Rng.Mix(Memory.Inst.SpawnSeed, (ulong)(People.IndexOf(p) + 1) * 7919UL));
+        if (h == null) return;
+        p.Carrier = false;
+        Risen++;
+        sim.Targets.Remove(p);
+        h.Stir = 1f;
     }
 
     float _voiceIn = 2f;

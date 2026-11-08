@@ -462,6 +462,12 @@ public partial class PlaceTest : Node
 
         double views = game.Zone.Wildlife.Sites.Count > 0 ? game.Zone.Wildlife.Sites.Max(s => s.WorstViewMs) : 0;
         Check(views < 8.0, $"its creatures went in a few a frame as you came near: worst {views:F1} ms a frame ({WorstViews(game)})");
+        // Nothing alive inside a wall, a floor or a stair, in the place or out on the surface round it.
+        int inside = game.Zone.Wildlife.Sites.Sum(s => Wildlife.Interpenetration.Scan(s.Sim).Count) + Wildlife.Interpenetration.Scan(game.Zone.Wildlife.Sim).Count;
+        int freed = game.Zone.Wildlife.Sites.Sum(s => s.Sim.Freed) + game.Zone.Wildlife.Sim.Freed;
+        Check(inside == 0, $"no creature of the place or of the ground round it is inside a wall or a floor ({game.Zone.Wildlife.Sites.Sum(s => s.Sim.Creatures.Count)} in places; {freed} freed along the way)");
+        var bodies = game.Zone.Loot.All.Where(l => l.Kind == Slice.Items.LootKind.Corpse).ToList();
+        Check(bodies.All(l => l.Node.GetNodeOrNull("Ring") == null), $"the {bodies.Count} bodies lie with nothing drawn round them");
         GD.Print($"  (longest collector pause by then: {WorstPause(game)})");
         GD.Print($"  (build log: {string.Join("; ", game.Places.BuildLog.Select(l => $"{l.Name} {l.Seconds:F2} s, {l.Chunks} chunks"))}; slow steps: {string.Join(", ", game.Places.SlowSteps.Select(s => $"{s.Stage} {s.Ms:F1}{(s.Collected ? " (GC)" : "")}"))})");
         GD.Print($"  (shot down {_shotDown} creatures that came for you, {_healed} patch kits used)");
@@ -975,6 +981,25 @@ public partial class PlaceTest : Node
         foreach (int x in drive.Wait(300)) yield return x;
         Check(town.People.Where(q => q.Role != "guard").All(q => q.Indoors || q.Fleeing || q.Dead), $"its people run for cover ({town.People.Count(q => q.Fleeing)} fleeing, {town.People.Count(q => q.Indoors)} indoors)");
         Check(town.GuardShots == 0 || town.GuardAims > aims, $"its guards take aim where you can see it before they fire ({town.GuardAims - aims} aims, {town.GuardShots} shots)");
+        // A silent carrier: nothing shows in company; alone with you it rises a Husk, the same body.
+        GD.Print($"  (TEST: {town.CarriersAtStart} carriers were rolled here; one of those still out is made a carrier, then the rest are sent off)");
+        Town.Person carrier = town.People.FirstOrDefault(q => !q.Dead && !q.Gone && !q.Indoors && q.Looks.Figure.Stage != Wildlife.LifeStage.Child);
+        if (carrier != null)
+        {
+            carrier.Carrier = true;
+            Check(!carrier.Looks.Husk && !carrier.Figure.Torn && carrier.Figure.Wrongs == Wildlife.Wrong.None, "a carrier looks like anyone else in the place");
+            bool company = town.People.Any(q => q != carrier && !q.Dead && !q.Gone && !q.Indoors && q.Pos.DistanceTo(carrier.Pos) < game.Zone.Wildlife.Life.Data.Husks.CarrierAlone * 0.8f);
+            game.Survivor.PlaceOutside(place.ToWorld(carrier.Pos + new Vector3(1.2f, 0.2f, 0f)).ToNumerics());
+            foreach (int x in drive.Wait(30)) yield return x;
+            if (company) Check(town.Risen == 0, "beside you in company it gives nothing away");
+            foreach (Town.Person q in town.People) if (q != carrier) q.Gone = true;
+            game.Survivor.PlaceOutside(place.ToWorld(carrier.Pos + new Vector3(1.2f, 0.2f, 0f)).ToNumerics());
+            foreach (int x in drive.Wait(40)) yield return x;
+            Vector3 stood = place.ToWorld(carrier.Pos);
+            Wildlife.Creature risen = game.Zone.Wildlife.Sim.Creatures.FirstOrDefault(c => c.Species.Husk && !c.Removed && Wildlife.WildSim.Flat(game.Zone.Wildlife.WorldOf(c) - stood).Length() < 3f);
+            Check(town.Risen >= 1 && carrier.Gone && risen != null && MathF.Abs(risen.Species.Figure.Height - carrier.Figure.Height) < 0.01f,
+                $"alone with you it rises a Husk where it stood, the same body ({town.Risen} risen)");
+        }
         game.QueueFree();
         yield return 0;
     }

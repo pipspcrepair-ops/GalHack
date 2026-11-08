@@ -34,7 +34,7 @@ public sealed class WorldLife
         World = world;
         _generator = new FaunaGenerator(data.Fauna, data.Activity) { Allow = f => Fit.Allows(data.Fit, world, f) };
         Fauna = _generator.Generate(world.Seed, world.Alienness, world.Bloom);
-        People = new PeopleGenerator(data.People, world);
+        People = new PeopleGenerator(data.People, world) { HuskRules = data.Husks };
         FitToWorld();
     }
 
@@ -80,7 +80,28 @@ public sealed class WorldLife
         if (rng.Chance(t.BreakerWorld) && Breaker((BreakerKind)rng.Int(1, 4), rng) is { } breaker) species.Add(breaker);
         // Where the world has twisted its people far enough, some have gone wild.
         if (World.Mutagen >= 0.3f) species.Add(Feral(rng));
-        if (World.Bloom) species.Add(Husk(rng));
+        // Off a Hollow world the fungus is scarce: now and then one local kind has a few taken by it.
+        if (!World.Bloom) ScarceHollows(rng);
+        // The Husks spread outward from the core: scarce on the rim, more of them coreward.
+        HuskRules hr = Data.Husks;
+        if (rng.Chance(hr.WorldChanceAt(World.Coreward))) species.Add(Husk(rng));
+    }
+
+    /// <summary>One local animal kind with a few of its number taken by the fungus, beside the healthy ones (a world that isn't a Hollow world).</summary>
+    void ScarceHollows(Rng rng)
+    {
+        CorruptionRules c = Data.Fauna.Corruption;
+        if (!rng.Chance(c.ScarceChance)) return;
+        List<Species> hosts = Fauna.Species.FindAll(s => !s.Mechanical && s.Figure == null && !s.Corrupted && s.Breaker == BreakerKind.None && s.Domestic == DomesticKind.None);
+        if (hosts.Count == 0) return;
+        Species host = hosts[rng.Int(0, hosts.Count - 1)];
+        Species hollow = host.Copy();
+        hollow.Mate = null;
+        hollow.Young = null;
+        hollow.Index = 300 + host.Index;
+        _generator.CorruptSpecies(hollow, Rng.Mix(host.Seed, 0x4011));
+        hollow.Scarcity = host.Scarcity * c.ScarceShare;
+        Fauna.Species.Add(hollow);
     }
 
     /// <summary>What lives in this world's caves and places, with its husks.</summary>
@@ -121,19 +142,43 @@ public sealed class WorldLife
     /// <summary>People gone wild: the same people, feral, with the same world in them. Both sexes run together.</summary>
     Species Feral(Rng rng)
     {
-        Species a = Wild(rng, Rng.Mix(Seed, 0xFE4A), PersonRole.Worker, World.Mutagen * rng.Range(0.5f, 1f), husk: false);
-        Species b = Wild(rng, Rng.Mix(Seed, 0xFE4B), PersonRole.Scavenger, World.Mutagen * rng.Range(0.5f, 1f), husk: false);
+        Species a = Wild(rng, Rng.Mix(Seed, 0xFE4A), PersonRole.Worker, World.Mutagen * rng.Range(0.5f, 1f));
+        Species b = Wild(rng, Rng.Mix(Seed, 0xFE4B), PersonRole.Scavenger, World.Mutagen * rng.Range(0.5f, 1f));
         a.Mate = b;
         b.Mate = a;
         return a;
     }
 
-    /// <summary>What the Hollow leaves walking. Nothing says so.</summary>
-    Species Husk(Rng rng) => Wild(rng, Rng.Mix(Seed, 0x4057), PersonRole.Worker, rng.Range(0.1f, 0.35f), husk: true);
+    /// <summary>Jobs a Husk was taken from: anyone grown (no children).</summary>
+    static readonly PersonRole[] HuskJobs = { PersonRole.Worker, PersonRole.Farmer, PersonRole.Trader, PersonRole.Guard, PersonRole.Medic, PersonRole.Scavenger, PersonRole.Elder, PersonRole.Drunk, PersonRole.Raider, PersonRole.Worker };
 
-    Species Wild(Rng rng, ulong seed, PersonRole role, float mutation, bool husk)
+    /// <summary>
+    /// This world's Husks: several people of this world (any job, their own clothes), each taken by
+    /// the worms, walking as one kind (each spawned is one of them). How many there are goes by how
+    /// far in toward the core the world is.
+    /// </summary>
+    Species Husk(Rng rng)
     {
-        Species s = People.Person(seed, role, Occupancy.Feral, mutation, husk);
+        HuskRules r = Data.Husks;
+        var hosts = new List<Species>();
+        for (int i = 0; i < Math.Max(1, r.Hosts); i++)
+        {
+            ulong seed = Rng.Mix(Seed, 0x4057 + (ulong)i * 7919);
+            Species h = People.Person(seed, HuskJobs[rng.Int(0, HuskJobs.Length - 1)], Occupancy.Friendly, rng.Range(r.Mutation), husk: true);
+            hosts.Add(h);
+        }
+        Species lead = hosts[0];
+        lead.Hosts = hosts;
+        lead.Scarcity = r.ScarcityAt(World.Coreward);
+        return lead;
+    }
+
+    /// <summary>Someone seized long enough by a Husk: the same person as a Husk (the sim calls this through <see cref="WildSim"/>).</summary>
+    public Species Turn(Species host, ulong seed) => Husks.Turn(host, seed, Data.Husks);
+
+    Species Wild(Rng rng, ulong seed, PersonRole role, float mutation)
+    {
+        Species s = People.Person(seed, role, Occupancy.Feral, mutation);
         s.Scarcity = 0.5f;
         s.Senses = new SenseProfile { DarkVision = People.Folk.DarkVision, Hearing = 1.2f, Scent = 0.3f };
         Fit.Throat(s, rng);

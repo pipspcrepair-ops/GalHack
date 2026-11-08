@@ -130,11 +130,60 @@ public sealed class Galaxy
         return best;
     }
 
+    /// <summary>How far a place lies across from the nearest spiral arm, as a share of the arm's width: 0 on its centre line, past 1 in the gap.</summary>
+    public float ArmShare(Vector3 p) => GalaxyGen.ArmShare(this, p);
+
+    /// <summary>A home's most share of an arm's width off its centre line: well inside the arm, never the gap beside it.</summary>
+    public const float TipShare = 0.6f;
+
+    /// <summary>Where the arms end, out on the rim (depth 0), and the core's edge (depth 1), ly from the centre.</summary>
+    public const float TipRadius = 490f, CoreRadius = 85f;
+
     /// <summary>
-    /// The player's home: a real star of the world's own class out on the rim (design: every game
-    /// begins on a border world), with neighbours in jump reach. <paramref name="key"/> picks among
-    /// the candidates; a world whose sky holds a nebula gets a star inside one you can see, and
-    /// the rest get one in the open. Each step down gives a little up, so there is always a home.
+    /// How deep in the galaxy a place lies, from 0 at the arms' outer tips on the rim to 1 at the
+    /// core, by its distance from the centre. The satellites and anything past the tips are 0.
+    /// </summary>
+    public static float Depth(Vector3 p)
+    {
+        float r = new Vector2(p.X, p.Z).Length();
+        return Math.Clamp((TipRadius - r) / (TipRadius - CoreRadius), 0f, 1f);
+    }
+
+    public float DepthOf(int id) => Depth(Stars[id].Position);
+
+    /// <summary>The galaxy map's word for a depth: RIM, OUTER, INNER or CORE (the world roll's zones rim, arm, inner and core).</summary>
+    public static string Band(float depth) => depth < 0.25f ? "RIM" : depth < 0.5f ? "OUTER" : depth < 0.8f ? "INNER" : "CORE";
+
+    /// <summary>
+    /// A home at a depth asked for (a new game's option): a real star of the world's class as near
+    /// that depth as there is one, inside an arm with neighbours in jump reach, in a nebula you can
+    /// see when the sky has one. The band widens until something fits, so there is always a home.
+    /// </summary>
+    public int Home(StarKind kind, ulong key, bool inNebula, float depth)
+    {
+        var mine = new List<int>();
+        foreach (ref readonly Star s in Stars.AsSpan())
+            if (s.Kind == kind && s.Region != Region.Satellite) mine.Add(s.Id);
+        if (mine.Count == 0) return Home(kind, key, inNebula);
+        int Pick(List<int> list) => list[(int)(Mix.Hash(key ^ 0x44455054) % (ulong)list.Count)];
+        bool Seen(int id) => Stars[id].Nebula >= 0 && Nebulae[Stars[id].Nebula].Kind != NebulaKind.Dark;
+        for (float within = 0.02f; ; within *= 2f)
+        {
+            var near = mine.FindAll(id => MathF.Abs(DepthOf(id) - depth) <= within);
+            var fits = near.FindAll(id => ArmShare(Stars[id].Position) <= 1f && (inNebula ? Seen(id) : Stars[id].Nebula < 0) && Neighbours(id).Count >= 4);
+            if (fits.Count == 0) fits = near.FindAll(id => ArmShare(Stars[id].Position) <= 1f && Neighbours(id).Count >= 4);
+            if (fits.Count == 0) fits = near.FindAll(id => Neighbours(id).Count >= 1);
+            if (fits.Count == 0 && within >= 1f) fits = near;
+            if (fits.Count > 0) return Pick(fits);
+        }
+    }
+
+    /// <summary>
+    /// The player's home: a real star of the world's own class at the outer tip of a spiral arm, out on
+    /// the rim (design: every game begins on a border world) and inside the arm, never in the gap between
+    /// two or in toward the core, with neighbours in jump reach. <paramref name="key"/> picks among the
+    /// candidates; a world whose sky holds a nebula gets a star inside one you can see, and the rest get
+    /// one in the open. Each step down gives a little up, so there is always a home.
     /// </summary>
     public int Home(StarKind kind, ulong key, bool inNebula)
     {
@@ -152,7 +201,13 @@ public sealed class Galaxy
         bool Seen(int id) => Stars[id].Nebula >= 0 && Nebulae[Stars[id].Nebula].Kind != NebulaKind.Dark;
         // Out in the open the crowded spots are skipped: the rim is meant to be lonely. A nebula's stars crowd by nature.
         bool Lonely(int id) => Neighbours(id).Count <= 70;
-        var fits = rim.FindAll(id => Reach(id, 4) && (inNebula ? Seen(id) : Stars[id].Nebula < 0 && Lonely(id)));
+        var tips = rim.FindAll(id => ArmShare(Stars[id].Position) <= TipShare);
+        var fits = tips.FindAll(id => Reach(id, 4) && (inNebula ? Seen(id) : Stars[id].Nebula < 0 && Lonely(id)));
+        if (fits.Count == 0) fits = tips.FindAll(id => Reach(id, 4) && (inNebula ? Seen(id) : Stars[id].Nebula < 0));
+        // A nebula world would rather its nebula on the rim than an arm's tip without one.
+        if (fits.Count == 0 && inNebula) fits = rim.FindAll(id => Reach(id, 4) && Seen(id));
+        if (fits.Count == 0) fits = tips.FindAll(id => Reach(id, 1));
+        if (fits.Count == 0) fits = rim.FindAll(id => Reach(id, 4) && (inNebula ? Seen(id) : Stars[id].Nebula < 0 && Lonely(id)));
         if (fits.Count == 0) fits = rim.FindAll(id => Reach(id, 4) && Stars[id].Nebula < 0);
         if (fits.Count == 0) fits = rim.FindAll(id => Reach(id, 1));
         if (fits.Count == 0) fits = wider.FindAll(id => Reach(id, 1));

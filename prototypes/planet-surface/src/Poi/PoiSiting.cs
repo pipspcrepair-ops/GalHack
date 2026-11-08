@@ -161,19 +161,40 @@ public static partial class PoiSiting
             _ => "open",
         };
         if (air != null) given.Set(LayerKind.Air, air);
+        // What a new game or a test forces (the theme, the fall, mid-collapse or not).
+        WorldForce.Current.Into(given);
         return given;
     }
 
-    /// <summary>A world's profile with what its roll rules out, so the ruins along its roads keep the same rules as its places.</summary>
-    public static WorldProfile WithRules(PoiLibrary lib, WorldMap map, WorldProfile profile, bool? startWorld = null)
+    /// <summary>
+    /// A lived-in world's roll, as its places are laid out from it: the same planet, profile and
+    /// depth always roll the same. Null for a world nobody ever lived on, or a library with no layers.
+    /// </summary>
+    public static WorldRoll RollOf(PoiLibrary lib, WorldMap map, WorldProfile profile, bool? startWorld = null, float depth = -1f)
     {
-        if (profile is not { Inhabited: true } || lib == null) return profile;
+        if (profile is not { Inhabited: true } || lib == null) return null;
         PlanetSpec spec = map.Spec;
-        WorldRoll roll = WorldRoll.Roll(lib, GHash.Of(spec.Seed, 0x4C41), spec.Archetype.ToString(), profile, startWorld ?? StartWorld, Given(lib, spec, map.Def.VariantName));
+        return WorldRoll.Roll(lib, GHash.Of(spec.Seed, 0x4C41), spec.Archetype.ToString(), profile, startWorld ?? StartWorld, Given(lib, spec, map.Def.VariantName), depth);
+    }
+
+    /// <summary>A world's profile with what its roll rules out, so the ruins along its roads keep the same rules as its places.</summary>
+    public static WorldProfile WithRules(PoiLibrary lib, WorldMap map, WorldProfile profile, bool? startWorld = null, float depth = -1f)
+    {
+        WorldRoll roll = RollOf(lib, map, profile, startWorld, depth);
         return roll == null ? profile : profile with { Barred = roll.Barred };
     }
 
-    public static List<PoiSite> Place(PoiCatalog catalog, WorldMap map, PlanetTerrainSource bare, LandingSite landing, bool? startWorld = null, WorldProfile profile = null)
+    /// <summary>
+    /// Deeper in the galaxy the finds are rarer: a place there is now and then one step rarer than it
+    /// rolled (bigger, with better caches), up to one in three at the core. Nothing changes where the depth isn't known.
+    /// </summary>
+    static Rarity Deeper(Rarity r, float depth, ulong seed)
+    {
+        if (depth <= 0f || r >= Rarity.Exotic) return r;
+        return new PRng(GHash.Of(seed, 0x44454550)).Chance(depth * 0.35f) ? r + 1 : r;
+    }
+
+    public static List<PoiSite> Place(PoiCatalog catalog, WorldMap map, PlanetTerrainSource bare, LandingSite landing, bool? startWorld = null, WorldProfile profile = null, float depth = -1f)
     {
         bool start = startWorld ?? StartWorld;
         PoiLibrary lib = catalog.Library;
@@ -183,7 +204,7 @@ public static partial class PoiSiting
         PlanetMap pmap = BuildPlacementMap(map, 0, 0, cellsX, cellsZ, WorldCell, GHash.Of(spec.Seed, 0x504F49));
         ThemeDef theme = ThemeParser.For(lib, spec.Archetype.ToString(), map.Def.VariantName.Replace(' ', '_'), start);
         // A world that was ever lived in is laid out by its plan; only the wild is scattered.
-        WorldRoll roll = profile is { Inhabited: true } ? WorldRoll.Roll(lib, GHash.Of(spec.Seed, 0x4C41), spec.Archetype.ToString(), profile, start, Given(lib, spec, map.Def.VariantName)) : null;
+        WorldRoll roll = RollOf(lib, map, profile, start, depth);
         if (roll != null) profile = profile with { Barred = roll.Barred };
         RegionPlan plan = null;
         if (roll != null) plan = RegionPlan.Make(lib, new PlanetLand(map, bare, pmap), roll, profile, GHash.Of(spec.Seed, 0x4E41), (landing.X, landing.Y), start);
@@ -210,8 +231,10 @@ public static partial class PoiSiting
             PoiState state = start && ThemeDef.FactionOwned(forced) ? PoiState.Ruined : forced.Core == CoreRule.Owned || forced.Tags.Contains("settlement") ? PoiState.Active : PoiState.Abandoned;
             state = ForceState ?? state;
             int forcedVariant = ForceVariant ?? (profile != null && forced.Variants.Count > 1 ? profile.Variant(forced, state, new PRng(7)) : 0);
-            PoiInstance inst = PoiFactory.Spawn(lib, PoiFactory.BuildLayout(lib, forced, forcedVariant, forced.Rarity), state, 7, profile, ForceOccupancy);
-            for (int k = 0; k < 60 && sites.Count == 0; k++)
+            Layout forcedLayout = PoiFactory.TryLayout(lib, forced, forcedVariant, forced.Rarity, null, null, out string why);
+            if (forcedLayout == null) Godot.GD.PushWarning($"forced place skipped: {why}");
+            PoiInstance inst = forcedLayout == null ? null : PoiFactory.Spawn(lib, forcedLayout, state, 7, profile, ForceOccupancy);
+            for (int k = 0; inst != null && k < 60 && sites.Count == 0; k++)
             {
                 double a = k * Math.PI / 6, r = 700 + k / 12 * 240;
                 PoiSite site = Seat(inst, forced, bare, map, Mathx.WrapX(landing.X + Math.Cos(a) * r, map.WidthMeters), Mathx.Wrap(landing.Y + Math.Sin(a) * r, map.HeightMeters), landing, sites);
@@ -242,7 +265,7 @@ public static partial class PoiSiting
                 if (p.Family.Tags.Contains("settlement") && Away(p) < 4000)
                     for (ulong k = 1; k < 32 && Dressing.MoodFor(spawnSeed) == Mood.Hostile; k++) spawnSeed = PoiGenerator.Gen.Hash.Combine(p.SpawnSeed, k);
             }
-            PoiInstance inst = PoiFactory.Generate(lib, p.Family, variant, p.Rarity, p.State, spawnSeed, world: profile);
+            PoiInstance inst = PoiFactory.Generate(lib, p.Family, variant, Deeper(p.Rarity, depth, spawnSeed), p.State, spawnSeed, world: profile);
             PoiSite site = Seat(inst, p.Family, bare, map, Mathx.WrapX(p.X, map.WidthMeters), Mathx.Wrap(p.Z, map.HeightMeters), landing, sites);
             // The main port stands somewhere: if its spot won't take it, the next good ground round it. So do its crowd, nearer in.
             int retries = p.Primary ? 64 : IsPort(p) ? 12 : 0;
@@ -343,6 +366,8 @@ public static partial class PoiSiting
         int lx0 = occupied.Min.X, lz0 = occupied.Min.Z, lx1 = occupied.Min.X + occupied.Size.X, lz1 = occupied.Min.Z + occupied.Size.Z;
         double halfX = (lx1 - lx0) * 0.5, halfZ = (lz1 - lz0) * 0.5;
         string want = Preference(family);
+        // Nobody set anything heavy on sand: a town, a base, a port, anything big or tall looks for firm ground.
+        bool heavy = PlanetSurface.World.Footing.Heavy(family.Tier, lx1 - lx0, lz1 - lz0, occupied.Min.Y + occupied.Size.Y);
         double width = map.WidthMeters, height = map.HeightMeters;
 
         double bestScore = double.MaxValue, bestX = 0, bestZ = 0;
@@ -353,6 +378,7 @@ public static partial class PoiSiting
         // A big place looks further for its ground, a wider step at a time.
         bool wide = Math.Max(halfX, halfZ) > 100;
         double search = wide ? SearchRadius * 2 : SearchRadius, step = wide ? 20 : 10;
+
         for (double dz = -search; dz <= search; dz += step)
         for (double dx = -search; dx <= search; dx += step)
         {
@@ -365,6 +391,8 @@ public static partial class PoiSiting
                 crowded |= Dist(cx, cz, (o.Stamp.MinX + o.Stamp.MaxX) * 0.5, (o.Stamp.MinZ + o.Stamp.MaxZ) * 0.5, width, height)
                            < Math.Max(140, Math.Max(o.Stamp.ReachX, o.Stamp.ReachZ) + Math.Max(halfX, halfZ) + Apron + 50); // stamps never pile up
             if (crowded) continue;
+            // Sand only where no firm ground lies within the search at all (the middle of a dune sea).
+            bool sandy = heavy && PlanetSurface.World.Footing.SandShare(map, cx, cz, halfX + Apron, halfZ + Apron) > 0.12f;
 
             // Ground across the footprint and apron.
             samples.Clear();
@@ -400,6 +428,7 @@ public static partial class PoiSiting
                 _ => cut * 2.0,
             };
             score += distance * 0.02;
+            if (sandy) score += 100000;
             if (score < bestScore)
             {
                 bestScore = score;
