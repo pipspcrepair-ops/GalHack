@@ -77,6 +77,13 @@ public sealed class PersonalSpace
                                 Vector3 side = new Vector3(-dir.Z, 0f, dir.X) * overlap * ((i + j) % 2 == 0 ? 1f : -1f);
                                 if (a.Give >= b.Give && (open == null || open(a.Pos + side))) { pa = side; aOk = true; }
                                 else if (open == null || open(b.Pos - side)) { pb = -side; bOk = true; }
+                                // No room to part at all (a one-wide way): whoever is walking stops there and waits, never walks on through.
+                                if (!aOk && !bOk)
+                                {
+                                    bool aWalks = a.Heading.LengthSquared() > 0.01f, bWalks = b.Heading.LengthSquared() > 0.01f;
+                                    if (aWalks && (!bWalks || a.Give >= b.Give)) a.Wait = MathF.Max(a.Wait, 0.6f);
+                                    else if (bWalks) b.Wait = MathF.Max(b.Wait, 0.6f);
+                                }
                             }
                             if (aOk) { a.Pos += pa; a.Moved += pa; }
                             if (bOk) { b.Pos += pb; b.Moved += pb; }
