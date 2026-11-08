@@ -32,6 +32,9 @@ public partial class WeaponShots : Node
     bool _capturing, _done;
     readonly List<string> _saved = new();
 
+    /// <summary>Is this set of frames asked for (--only takes a comma list: held,icons,tech,actions)?</summary>
+    bool Wants(string set) => _only == "all" || Array.IndexOf(_only.Split(','), set) >= 0;
+
     ArmsHost Arms => _game.Arms;
     Vector3 Feet => _game.Survivor.WorldFeet;
     Vector3 Eye => _game.Survivor.WorldEye();
@@ -213,7 +216,7 @@ public partial class WeaponShots : Node
         // A heading over open ground with the sun not in the eyes.
         Vector3 view = BestView();
 
-        if (_only is "all" or "held")
+        if (Wants("held"))
             foreach (WeaponDef d in Arms.Table.All)
             {
                 Arm(d.Id);
@@ -222,9 +225,9 @@ public partial class WeaponShots : Node
                 foreach (int x in Shot($"held-{d.Id}")) yield return x;
             }
 
-        if (_only is "all" or "icons") foreach (int x in Icons()) yield return x;
-        if (_only is "all" or "tech") foreach (int x in TechTab()) yield return x;
-        if (_only is "all" or "actions") foreach (int x in Actions(view)) yield return x;
+        if (Wants("icons")) foreach (int x in Icons()) yield return x;
+        if (Wants("tech")) foreach (int x in TechTab()) yield return x;
+        if (Wants("actions")) foreach (int x in Actions(view)) yield return x;
     }
 
     Vector3 BestView()
@@ -287,7 +290,8 @@ public partial class WeaponShots : Node
         _game.Menu.Open(Slice.Ui.MenuTab.Tech);
         _game.Menu.Root.Tech.Tab = "weapons";
         _game.Menu.Root.Tech.Group = null;
-        foreach (int x in _drive.Wait(20)) yield return x;
+        // The tiles' icons render a few at a time: give the whole tab time to fill.
+        foreach (int x in _drive.Wait(240)) yield return x;
         foreach (int x in Shot("tech-weapons")) yield return x;
         _game.Menu.Close();
         foreach (int x in _drive.Wait(5)) yield return x;

@@ -142,17 +142,20 @@ public static class GunLook
                 }
                 break;
             case "prongs":
-                // The fork: three prongs round the muzzle, each tipped with a node.
+                // The fork: a collar round the muzzle holding three straight prongs, each tipped with a
+                // node on its very end (nothing hangs in the air: every piece touches the next).
+                Add(PartShape.Cylinder, new Vector3(0f, by, muzzleZ + 0.008f), new Vector3(br * 2.6f + 0.006f, 0.02f, br * 2.6f + 0.006f), new Vector3(90f, 0f, 0f), p.Dark, Role.Emitter, 9);
                 for (int i = 0; i < 3; i++)
                 {
                     float a = i * MathF.Tau / 3f + MathF.PI / 2f;
                     var off = new Vector3(MathF.Cos(a), MathF.Sin(a), 0f) * (br * 2.6f);
-                    Add(PartShape.Box, new Vector3(off.X, by + off.Y, muzzleZ - 0.03f), new Vector3(0.007f, 0.007f, 0.09f), new Vector3(-off.Y * 120f, off.X * 120f, 0f), p.Dark, Role.Emitter, 10 + i);
-                    Add(PartShape.Sphere, new Vector3(off.X * 1.4f, by + off.Y * 1.4f, muzzleZ - 0.075f), new Vector3(0.008f, 0.016f, 0f), Vector3.Zero, p.Glow, Role.Emitter, 20 + i, Finish.Emitter);
+                    Add(PartShape.Box, new Vector3(off.X, by + off.Y, muzzleZ - 0.03f), new Vector3(0.007f, 0.007f, 0.09f), Vector3.Zero, p.Dark, Role.Emitter, 10 + i);
+                    Add(PartShape.Sphere, new Vector3(off.X, by + off.Y, muzzleZ - 0.075f), new Vector3(0.008f, 0.016f, 0f), Vector3.Zero, p.Glow, Role.Emitter, 20 + i, Finish.Emitter);
                 }
                 break;
             case "pilot":
-                // A small blue pilot light under the nozzle, always on.
+                // A small blue pilot light under the nozzle, always on, on a bracket from the barrel.
+                Add(PartShape.Box, new Vector3(0f, by - br * 1.45f, muzzleZ + 0.035f), new Vector3(0.01f, br * 1.1f, 0.012f), Vector3.Zero, p.Dark, Role.Emitter, 29);
                 Add(PartShape.Cylinder, new Vector3(0f, by - br * 1.9f, muzzleZ + 0.02f), new Vector3(0.006f, 0.05f, 0.006f), new Vector3(90f, 0f, 0f), p.Dark, Role.Emitter, 30);
                 Add(PartShape.Sphere, new Vector3(0f, by - br * 1.9f, muzzleZ - 0.006f), new Vector3(0.007f, 0.014f, 0f), Vector3.Zero, 0x4aa8ff, Role.Emitter, 31, Finish.Emitter);
                 break;
