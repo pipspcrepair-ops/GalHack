@@ -47,15 +47,20 @@ public partial class OccupantTest : Node
             _data = DataFiles.LoadWildlife();
             // -- --own: only the world's own kinds (the quick part).
             bool own = Array.IndexOf(OS.GetCmdlineUserArgs(), "--own") >= 0, dark = Array.IndexOf(OS.GetCmdlineUserArgs(), "--dark") >= 0;
-            if (!own && !dark)
+            if (!own && !dark && Array.IndexOf(OS.GetCmdlineUserArgs(), "--queued") < 0)
             {
                 Mix();
                 Falls();
                 Sited();
                 Spawns();
             }
-            if (!dark) Signatures();
-            if (!own) DarkPlaces();
+            bool queued = Array.IndexOf(OS.GetCmdlineUserArgs(), "--queued") >= 0;
+            if (!queued)
+            {
+                if (!dark) Signatures();
+                if (!own) DarkPlaces();
+            }
+            if (!own && !dark || queued) Queued();
         }
         catch (Exception e) { Check(false, $"the test threw: {e}"); }
         GD.Print(_failures == 0 ? $"ALL PASSED ({_passes} checks in {_clock.Elapsed.TotalSeconds:F1} s)" : $"{_failures} CHECK(S) FAILED ({_passes} passed)");

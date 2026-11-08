@@ -69,7 +69,10 @@ public static partial class PoiSiting
                 for (int i = 0; i < w.Length; i++) if (i != (int)PoiState.Ruined) w[i] = 0f;
             if (w.All(v => v <= 0f)) continue;
             var state = (PoiState)Math.Max(0, rng.PickWeighted(w.ToList()));
-            if (WorldProfile.Living(f, state) && !WorldProfile.Unbuilt(f))
+            // A shanty town is where the survivors live: lived in wherever people survive, the few as much as the many.
+            bool shanty = p.Role == "shanty" && peopled && f.StateWeights[(int)PoiState.Active] > 0f;
+            if (shanty) state = PoiState.Active;
+            if (!shanty && WorldProfile.Living(f, state) && !WorldProfile.Unbuilt(f))
             {
                 if (living >= cap)
                 {

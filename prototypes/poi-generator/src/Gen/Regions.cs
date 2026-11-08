@@ -144,6 +144,7 @@ public sealed class RegionPlan
             var towns = Hubs();
             if (_start) StartCountry();
             foreach (var t in towns) Serve(t);
+            Shanties(towns);
             Ports();
             Wrecks();
             Fill();
@@ -233,6 +234,42 @@ public sealed class RegionPlan
             for (int n = seated ? 1 : 0; n < 2; n++)
                 if (Choose(options) is { } id && Spot(_landing.X, _landing.Z, 800, 1500, id) is { } s)
                     Add(id, s.X, s.Z, home, "landmark", "what the old town by the landing lived on");
+        }
+
+        /// <summary>Values of a world's roll that leave many with nothing: refugees on the roads, rationing, a people walking away.</summary>
+        static readonly HashSet<string> Uprooted = new() { "road_camps", "soup_kitchens", "ration_shelves", "luggage", "queue_slips" };
+        static readonly HashSet<string> Poor = new() { "subsistence", "famine", "economic_collapse", "slide", "supply_cutoff", "drought", "tide_of_refugees" };
+
+        /// <summary>
+        /// Shanty towns: survivors' shacks of salvage (the survivor hamlet's kit, laid out by the architect)
+        /// where survivors would gather: round an old town's edge, by water, on the way in. One on a world
+        /// where people survive, more where its fall left many with nothing and where it is poor; none
+        /// where nobody does.
+        /// </summary>
+        void Shanties(List<(Region Region, PlannedPlace Hub)> towns)
+        {
+            const string shack = "survivor_hamlet";
+            if (!_profile.Inhabited || _roll.Fact("people") == "none" || _profile.Current == PopulationNow.None || !_lib.Families.Any(f => f.Id == shack) || !Stands(shack)) return;
+            bool uprooted = _roll.Tags.Any(Uprooted.Contains), poor = _profile.Current is PopulationNow.Survivors or PopulationNow.Outposts || _roll.Rolled.Any(l => Poor.Contains(l.Id));
+            int n = 1 + (uprooted ? 2 : 0) + (poor ? 1 : 0);
+            var near = towns.Select(t => (t.Region.X, t.Region.Z)).ToList();
+            if (near.Count == 0) near.Add(_landing);
+            // Water near: the lowest, wettest ground round a spot is where people draw it.
+            float ByWater(double x, double z)
+            {
+                int wet = 0;
+                for (int a = 0; a < 8; a++)
+                    if (_land.Wet(Wrap(x + Math.Cos(a * Math.PI / 4) * 260, _land.Width), Wrap(z + Math.Sin(a * Math.PI / 4) * 260, _land.Depth))) wet++;
+                return -4f * Math.Min(wet, 3);
+            }
+            for (int i = 0; i < n; i++)
+            {
+                var (cx, cz) = near[i % near.Count];
+                if (Spot(cx, cz, 650, 1500, shack, ByWater) is not { } s) continue;
+                Region region = AddRegion(RegionKind.Hamlet, s.X, s.Z, 350);
+                region.Town = region.Index;
+                Add(shack, s.X, s.Z, region, "shanty", "survivors' shacks at an old town's edge");
+            }
         }
 
         /// <summary>The towns: picked far apart, on the widest level ground, the hub at each one's heart.</summary>

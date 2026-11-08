@@ -480,6 +480,15 @@ public static class OccupancyLayer
             // Picking the place over, not holding it: they watch you and leave you be, unless you start it.
             People(x, p.Mid, p.Near, m.Index, Mood.Wary, x.R.Between(2, 4), lookout: true);
         }
+        // However cramped the rooms, a band is camped here: the first room with floor enough for them.
+        if (full && x.Inst.Townsfolk == null)
+            foreach (PlacedModule m in Settled(x, rooms, 6))
+            {
+                var floor = Floor(x, m);
+                if (floor.Count < 6) continue;
+                People(x, floor[floor.Count / 2], floor, m.Index, Mood.Wary, x.R.Between(2, 3), lookout: true);
+                if (x.Inst.Townsfolk != null) break;
+            }
         // They've been through the side rooms.
         foreach (LootCache c in x.Inst.Caches.Where(c => !c.InVault && !c.Secret))
             if (full && !c.PickedOver && c.Items.Count > 1) { c.PickedOver = true; c.Items.RemoveRange(1, c.Items.Count - 1); }

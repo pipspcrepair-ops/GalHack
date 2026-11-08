@@ -163,6 +163,7 @@ public partial class WildlifePatch
         _ownClock = 0f;
         StepPatrols();
         Homes();
+        Ruins();
         WorldSignature sig = Life.Signature;
         if (sig.Empty) return;
         SignatureTables t = Life.Data.Signature;

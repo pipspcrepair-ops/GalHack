@@ -29,6 +29,9 @@ public partial class WildlifePatch
     Dictionary<(int, int), List<Home>> _homeCells;
     const float HomeCell = 48f;
 
+    /// <summary>Ruins given their scavengers so far (tests).</summary>
+    public int RuinsPicked { get; private set; }
+
     /// <summary>Lived-in homes on this world, and the times one was given its people (tests).</summary>
     public int HomesLived { get; private set; }
     public int HomesFilled { get; private set; }
@@ -86,6 +89,46 @@ public partial class WildlifePatch
     /// of your sight (a home ahead is filled while it is still too far to make out), by its door or in
     /// its yard, with the home as theirs.
     /// </summary>
+    /// <summary>
+    /// Every ruin has someone: each one within reach of you with nobody about it gets a small group of
+    /// the world's ruin roamers (its scavengers or drifters, or its small pack animals and leavings-eaters),
+    /// out of your sight, picking through it. A few at a time, so a ruined city is roamed, not crowded.
+    /// </summary>
+    void Ruins()
+    {
+        _anchors ??= MakeAnchors();
+        var cast = Life.RuinCast;
+        if (cast.Count == 0 || _anchors.Ruins.Count == 0) return;
+        Vector3 you = Player.Position, youZone = FromPatch(you);
+        float edge = Sim.Terrain.HalfSize - 20f, total = 0f;
+        foreach (var c in cast) total += c.Weight;
+        int near = 0, made = 0;
+        foreach (Creature c in Sim.Creatures)
+            if (!c.Removed && !c.Dead && Kept(c) && WildSim.Flat(c.Position - you).Length() < AroundYou) near++;
+        var rng = Rng.For(Life.Seed, "ruins", ++_ownRolls);
+        foreach (var (ruin, radius) in _anchors.Ruins)
+        {
+            if (near >= 40 || made >= 2) break;
+            Vector3 at = PatchLocal(_planet.NearestCopy(ruin, youZone));
+            if (WildSim.Flat(at - you).Length() > AroundYou || MathF.Abs(at.X) > edge || MathF.Abs(at.Z) > edge) continue;
+            bool someone = false;
+            foreach (Creature c in Sim.Creatures)
+                if (!c.Removed && !c.Dead && WildSim.Flat(c.Position - at).Length() < radius + 20f && (Kept(c) || c.Species.Figure != null)) { someone = true; break; }
+            if (someone) continue;
+            float pick = Rng.For(Rng.Mix(Life.Seed, (ulong)(ruin.X * 31f + ruin.Z * 7f)), "who").Range(0f, total);
+            Species s = cast[^1].Species;
+            foreach (var (k, w) in cast)
+                if ((pick -= w) <= 0f) { s = k; break; }
+            if (PutAt(s, rng.Int(s.GroupMin, s.GroupMax), at, radius + 2f, radius + 14f, rng) is not { Count: > 0 } group) continue;
+            foreach (Creature c in group) c.Home = at;
+            Sim.AssignRest(group);
+            Keep(group);
+            near += group.Count;
+            made++;
+            RuinsPicked++;
+        }
+    }
+
     void Homes()
     {
         MakeHomes();

@@ -649,6 +649,11 @@
   "signature": {
     "want": 2,
     "most": 3,
+    // Kinds every world where people survive has, whatever its story, by weight: hunting parties out in the wild.
+    "always": { "hunting_party": 0.7 },
+    // Who picks through a ruin (every ruin has someone): people on a world where they survive, by weight against
+    // the world's small pack animals and scavenging beasts.
+    "ruins": { "scavengers": 1, "drifters": 1 },
     "kinds": {
       "changed": { "name": "the Changed", "occupancy": "Feral", "roles": ["Worker", "Farmer", "Trader", "Medic", "Scavenger", "Guard", "Elder"],
         "mutation": [0.75, 1.0], "wrongs": [1, 2], "skin": "8a9a6e", "skinPull": 0.35, "grime": 0.35, "torn": true, "strip": ["head", "mouth", "eyes", "back", "prop"],
@@ -707,6 +712,12 @@
         "behaviour": "Herd", "temper": "Calm", "hunts": false, "walk": 0.8, "group": [4, 8], "haunts": { "town": 3, "road": 3 } },
       "swollen_beasts": { "name": "swollen beasts", "body": "beast", "from": "herd", "mutation": [0.85, 1.0], "behaviour": "PackHunter", "hunts": true, "damage": 10,
         "group": [2, 4], "haunts": { "open": 3, "ruins": 1 }, "den": true },
+      "hunting_party": { "name": "a hunting party", "occupancy": "Friendly", "roles": ["Guard", "Farmer", "Worker", "Scavenger"], "armed": true,
+        "look": { "wear": { "backpack": 0.6, "satchel": 0.4, "hood": 0.3, "scarf": 0.3 } }, "behaviour": "Herd", "temper": "Bold", "hunts": false,
+        "group": [2, 4], "haunts": { "open": 1 }, "activity": "Diurnal" },
+      "drifters": { "name": "drifters", "occupancy": "Friendly", "roles": ["Scavenger", "Worker", "Elder", "Drunk"], "grime": 0.4,
+        "look": { "wear": { "coat": 0.6, "scarf": 0.4, "backpack": 0.4, "satchel": 0.4 }, "stoop": 0.15 },
+        "behaviour": "Grazer", "temper": "Skittish", "hunts": false, "flees": true, "group": [1, 3], "haunts": { "ruins": 1 } },
       "settlers": { "name": "settlers", "occupancy": "Friendly", "roles": ["Farmer", "Worker", "Farmer", "Elder", "Child", "Trader"],
         "behaviour": "Grazer", "temper": "Calm", "hunts": false, "walk": 0.8, "group": [1, 3], "activity": "Diurnal" },
       "carrion_eaters": { "name": "carrion-eaters", "body": "beast", "from": "hunter", "behaviour": "Scavenger", "temper": "Bold", "hunts": false,
