@@ -307,7 +307,7 @@ public sealed partial class PeopleGenerator
         // Their looks come from where their people settled, on a stream of their own: nothing about
         // their job, side or temper reaches it.
         f.Skin = local
-            ? Color.FromHsv(Wrap(founders.SkinHue + kin.Range(-0.01f, 0.01f)), Math.Clamp(founders.SkinSat + kin.Range(-0.05f, 0.05f), 0f, 1f), Math.Clamp(founders.SkinValue + kin.Range(-0.07f, 0.07f), 0.15f, 0.95f))
+            ? Color.FromHsv(Wrap(founders.SkinHue + kin.Range(-0.01f, 0.01f)), Math.Clamp(founders.SkinSat + kin.Range(-0.05f, 0.05f), 0f, 1f), Math.Clamp(founders.SkinValue + kin.Range(-1f, 1f) * MathF.Min(0.07f, 0.3f * (folk.SkinVal[1] - folk.SkinVal[0])), 0.15f, 0.95f)) /* a place's spread is a share of its folk's */
             : Color.FromHsv(Wrap(kin.Range(folk.SkinHue)), kin.Range(folk.SkinSat), kin.Range(folk.SkinVal));
         if (!folk.Hairless) f.Hair = Hex(local && kin.Chance(0.85f) ? kin.Pick(founders.Hair) : kin.Pick(_t.HairColours));
         f.Brow = local ? founders.Brow + kin.Range(-0.05f, 0.05f) : kin.Range(-0.15f, 0.15f);
