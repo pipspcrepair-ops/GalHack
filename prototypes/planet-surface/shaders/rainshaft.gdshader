@@ -47,7 +47,7 @@ float vnoise(vec3 x) {
 
 float lump(vec2 xz, float y, float k) {
 	vec2 uv = (xz + cloud_drift * 0.35) / cloud_scale * k + vec2(y, -y) * 0.0009;
-	return texture(cloud_noise, uv).r * 0.6 + texture(cloud_noise, uv * 2.3 + 0.2).r * 0.4;
+	return textureLod(cloud_noise, uv, 0.0).r * 0.6 + textureLod(cloud_noise, uv * 2.3 + 0.2, 0.0).r * 0.4;
 }
 
 // Where the sky's cloud underside is above this spot, metres: its flat base less the sag the sky gives a storm.

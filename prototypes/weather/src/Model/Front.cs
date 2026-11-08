@@ -98,7 +98,10 @@ public sealed class Front
         float f = along / Period;
         return Bow * (0.5f - 0.5f * MathF.Cos(MathF.Tau * (Bows * f + Seed)))
             + 220f * MathF.Sin(MathF.Tau * (Bays * f + Fract(Seed * 7.13f)))
-            + 90f * MathF.Sin(MathF.Tau * (MathF.Round(Period / 1600f) * f + Fract(Seed * 3.71f)));
+            + 90f * MathF.Sin(MathF.Tau * (MathF.Round(Period / 1600f) * f + Fract(Seed * 3.71f)))
+            // Heaps along the edge, so no stretch of it runs straight: whole waves to the period, no seam.
+            + 120f * MathF.Sin(MathF.Tau * (MathF.Round(Period / 700f) * f + Fract(Seed * 5.31f)))
+            + 55f * MathF.Sin(MathF.Tau * (MathF.Round(Period / 330f) * f + Fract(Seed * 9.17f)));
     }
 
     /// <summary>How much of the storm behind the edge lies over a point, 0 to 1.</summary>

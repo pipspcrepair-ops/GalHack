@@ -239,6 +239,7 @@ public partial class TerrainStreamer : Node3D
         _horizonMaterial.SetShaderParameter("hole_sink_from", HorizonSpacing - 0.5f);
         _horizonMaterial.SetShaderParameter("hole_cut", 2f * HorizonSpacing);
         _horizonMaterial.SetShaderParameter("road_tolerance", 30f);
+        _horizonMaterial.SetShaderParameter("rock_uv2", 0f); // its UV2 is its own smoothed ground, not a cliff's reach
         _horizon.MaterialOverride = _horizonMaterial;
         // The far rings meet the voxels the same way. The square moves 16 m at a time, so the meshes
         // can't be stitched, and on a cliff the two can differ by metres along it. Far grid lines fall on
@@ -306,6 +307,7 @@ public partial class TerrainStreamer : Node3D
         bool painted = World.Profile?.Before is not PoiGenerator.Gen.TechLevel.Low;
         m.SetShaderParameter("road_paint", new Vector4(paint % 2, (paint / 2) % 3 == 0 ? 0 : 1, painted ? 1 : 0, 0));
         m.SetShaderParameter("road_wind", wind switch { 0 => new Vector2(1, 0), 1 => new Vector2(-1, 0), 2 => new Vector2(0, 1), _ => new Vector2(0, -1) });
+        RockLook.Apply(m, World, cliffInfo: true);
         return m;
     }
 
@@ -606,6 +608,7 @@ public partial class TerrainStreamer : Node3D
             arrays[(int)Mesh.ArrayType.Normal] = job.Normals;
             arrays[(int)Mesh.ArrayType.Color] = job.Colors;
             arrays[(int)Mesh.ArrayType.TexUV] = job.Flags;
+            arrays[(int)Mesh.ArrayType.TexUV2] = job.Relief;
             arrays[(int)Mesh.ArrayType.Index] = job.Indices;
             var mesh = new ArrayMesh();
             mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
@@ -1020,6 +1023,7 @@ public partial class TerrainStreamer : Node3D
         arrays[(int)Mesh.ArrayType.Normal] = job.Normals;
         arrays[(int)Mesh.ArrayType.Color] = job.Colors;
         arrays[(int)Mesh.ArrayType.TexUV] = job.Flags;
+        arrays[(int)Mesh.ArrayType.TexUV2] = job.Relief;
         arrays[(int)Mesh.ArrayType.Index] = job.Indices;
         var mesh = new ArrayMesh();
         mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);

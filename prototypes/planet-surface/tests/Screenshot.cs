@@ -38,7 +38,8 @@ public partial class Screenshot : Node
     public sealed record Shot(string Name, Vector3 Pos, float Heading, float Pitch);
 
     List<Shot> _series;
-    int _shot;
+    int _shot, _gpuFrames;
+    double _gpuSum, _gpuWorst;
 
     public override void _Ready()
     {
@@ -442,6 +443,18 @@ public partial class Screenshot : Node
                         foreach (Node c in n.GetChildren())
                             if ((c is CpuParticles3D && hide.Contains("smoke")) || (c is MeshInstance3D && hide.Contains("mesh"))) ((Node3D)c).Visible = false;
                 if (_settled < SettleFrames) return;
+                // --frames=N: the GPU's time per frame, over N settled frames before the capture.
+                if (_gpuFrames < Int("frames", 0))
+                {
+                    double gpu = RenderingServer.ViewportGetMeasuredRenderTimeGpu(GetViewport().GetViewportRid());
+                    _gpuSum += gpu;
+                    _gpuWorst = Math.Max(_gpuWorst, gpu);
+                    _gpuFrames++;
+                    return;
+                }
+                if (_gpuFrames > 0) GD.Print($"GPU over {_gpuFrames} frames: mean {_gpuSum / _gpuFrames:F2} ms, worst {_gpuWorst:F2} ms, {Engine.GetFramesPerSecond():F0} fps");
+                _gpuFrames = 0;
+                _gpuSum = _gpuWorst = 0;
                 _stage = 2;
                 Capture();
                 break;
@@ -505,6 +518,7 @@ public static class Views
         "cave" => new(PlanetSpec.Roll(9, Archetype.Temperate, 0), CaveView, CaveTime, WeatherKind.Clouds, Prepare: DigCave),
         "volcanic_dusk" => new(PlanetSpec.Roll(3, Archetype.Lava, 0), m => LookAtPeak(m, 1400, 120, 6), 0.735, WeatherKind.Clouds),
         _ when name.StartsWith("far:") => FarView(name),
+        _ when name.StartsWith("cliff:") => CliffViews.Get(name),
         _ when name.StartsWith("infra:") => InfraViews.Get(name),
         _ => null,
     };

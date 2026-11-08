@@ -54,6 +54,8 @@ uniform vec4 ground_grid = vec4(16.0, 0.0, 0.0, 0.0); // cell size, cells across
 varying vec3 wpos;
 varying vec3 wnormal;
 
+#include "res://shaders/rock.gdshaderinc"
+
 // What the nearest road at a point is: how far its deck's edge is (negative on it), how far from its
 // middle, how far along, its half width, wear, surface and style, and how much a place's pad covers it.
 struct Road {
@@ -828,11 +830,10 @@ void fragment() {
 	// Soil: patchy at two scales, so a meadow or a dune field never reads as flat paint.
 	vec3 soil = base * (0.8 + 0.32 * broad) * (0.9 + 0.2 * fine) * (1.0 + grain * 0.28 * near);
 
-	// Rock: strata that wander a little, plus chips and streaks.
-	float band = sin(wpos.y * 1.7 + broad * 9.0) * 0.5 + 0.5;
-	float band2 = sin(wpos.y * 0.43 + fine * 3.0 + broad * 4.0) * 0.5 + 0.5;
-	vec3 rock = (COLOR.a > 0.5 ? base : base * 0.95);
-	rock *= mix(1.0, 0.72 + 0.4 * band * band2, strata) * (0.82 + 0.3 * fine) * (1.0 + grain * 0.35 * near);
+	// Rock: beds, ledges, flutes, joints, varnish, caprock, and scree at a cliff's foot (rock.gdshaderinc).
+	vec3 rock_bump;
+	vec3 rock = rock_face(COLOR.a > 0.5 ? base : base * 0.95, wpos, NORMAL, INV_VIEW_MATRIX, UV2, fine, grain * near, bare, soil, rock_bump) * (0.82 + 0.3 * fine);
+	NORMAL = rock_normal(NORMAL, rock_bump, bare, VIEW_MATRIX, INV_VIEW_MATRIX, wpos, CAMERA_POSITION_WORLD);
 	vec3 albedo = mix(soil, rock, bare);
 
 	// Bedrock: a faint grid, so players learn what can't be cut.
