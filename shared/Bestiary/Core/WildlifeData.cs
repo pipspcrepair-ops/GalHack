@@ -84,6 +84,8 @@ public sealed class WildlifeData
     public PeopleTables People { get; set; } = new();
     /// <summary>What each climate does to bodies.</summary>
     public FitTables Fit { get; set; } = new();
+    /// <summary>What each world's story leaves walking it, and what its era gives people and machines.</summary>
+    public SignatureTables Signature { get; set; } = new();
 
     static readonly JsonSerializerOptions Options = new()
     {

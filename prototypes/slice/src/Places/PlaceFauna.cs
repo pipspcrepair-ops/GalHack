@@ -142,10 +142,14 @@ public sealed class PlaceFauna
         switch (main)
         {
             case Occupant.Prowlers:
+                // The world's twisted beasts, and its own changed where its fall left them (the Changed, ghouls, thralls).
                 plan.Holders.AddRange(life.Twisted);
+                plan.Holders.AddRange(life.Signature.Denning);
                 break;
             case Occupant.Machines or Occupant.Robots or Occupant.Guardians:
-                plan.Holders.AddRange(life.Machines);
+                // The world's own machines of its era where its story left some walking, else the old security's.
+                List<Species> own = life.Signature.Machines;
+                plan.Holders.AddRange(own.Count > 0 ? own : life.Machines);
                 break;
             case Occupant.Cyborgs:
                 plan.Holders.AddRange(life.Cyborgs);

@@ -310,9 +310,9 @@ public sealed class SliceRules
 
         /// <summary>
         /// How much the world's layers (a dead or barren world, a rich one) move its numbers: 0 not at
-        /// all, 1 fully. Half: a dead world is quieter, never empty.
+        /// all, 1 fully. Most of the way: a dead world plainly quiet, a living one alive.
         /// </summary>
-        public float LayerWeight { get; set; } = 0.5f;
+        public float LayerWeight { get; set; } = 0.8f;
 
         /// <summary>
         /// Topping up as you go: every few seconds, once you have moved on, a group comes back out of

@@ -99,15 +99,26 @@ public sealed class DeepFauna
     public Species Holding(Species s, DeepRole role, PoiTheme theme)
     {
         if (_holding.TryGetValue((s.Id, role, theme), out Species found)) return found;
-        Species c = s.Copy();
-        string id = $"{s.Id}-holds-{role}";
-        int index = s.Index;
-        Prowling(c, role, theme, 0);
-        // A machine ticks and whirs where a body breathes.
-        if (c.Mechanical) c.Tells = new[] { TellKind.Click };
-        c.Id = id;
-        c.Index = index;
-        return _holding[(s.Id, role, theme)] = c;
+        Species One(Species x)
+        {
+            Species c = x.Copy();
+            string id = $"{x.Id}-holds-{role}";
+            int index = x.Index;
+            Prowling(c, role, theme, 0);
+            // A machine ticks and whirs where a body breathes.
+            if (c.Mechanical) c.Tells = new[] { TellKind.Click };
+            c.Id = id;
+            c.Index = index;
+            return c;
+        }
+        Species lead = One(s);
+        // A kind of several people (the Changed, ghouls) is each of them, each given the job.
+        if (s.Hosts is { Count: > 0 } hosts)
+        {
+            lead.Hosts = hosts.ConvertAll(One);
+            lead.Hosts[0] = lead;
+        }
+        return _holding[(s.Id, role, theme)] = lead;
     }
 
     /// <summary>A body from elsewhere, given a prowler's (or a lurker's) job in a place.</summary>

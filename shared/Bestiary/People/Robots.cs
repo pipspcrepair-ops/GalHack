@@ -13,11 +13,19 @@ namespace Wildlife;
 public static class Robots
 {
     /// <summary>One kind of machine for this world; <paramref name="n"/> tells a world's kinds apart.</summary>
-    public static Species Roll(WorldConditions w, int n)
+    public static Species Roll(WorldConditions w, int n) => Roll(w, n, -1);
+
+    /// <summary>
+    /// One kind of machine of an era (0 low, 1 mid, 2 high; -1 any): a low-tech world's are
+    /// clockwork, two-legged, bulky and brass, slow; a mid world's crude and bulky, boxy plate in
+    /// drab or rust on four legs or two, a red eye; a high world's sleek, slim and long-legged in
+    /// white or graphite, six legs or two, a bright cold eye, fast.
+    /// </summary>
+    public static Species Roll(WorldConditions w, int n, int era)
     {
-        ulong seed = Rng.Mix(w.Seed, 0xB07 + (ulong)n);
+        ulong seed = Rng.Mix(w.Seed, 0xB07 + (ulong)n + (era >= 0 ? 0x100UL * (ulong)(era + 1) : 0UL));
         var rng = Rng.For(seed, "robot");
-        int legs = n % 3 == 0 ? 4 : n % 3 == 1 ? 6 : 2;
+        int legs = era switch { 0 => 2, 1 => n % 2 == 0 ? 4 : 2, 2 => n % 2 == 0 ? 6 : 2, _ => n % 3 == 0 ? 4 : n % 3 == 1 ? 6 : 2 };
         var s = new Species
         {
             Id = $"robot-{seed:x}",
@@ -40,18 +48,32 @@ public static class Robots
         };
         foreach (string slot in FaunaTables.Slots) s.Parts[slot] = "none";
         s.Parts["head"] = "dome";
-        Color hull = new Color(0.34f, 0.35f, 0.33f).Lerp(Color.FromHsv(rng.Range(0f, 1f), 0.35f, 0.42f), rng.Range(0f, 0.5f));
+        Color hull = era switch
+        {
+            0 => new Color(0.56f, 0.42f, 0.2f).Lerp(new Color(0.3f, 0.27f, 0.24f), rng.Range(0f, 0.45f)),
+            1 => (rng.Chance(0.5f) ? new Color(0.36f, 0.37f, 0.27f) : new Color(0.45f, 0.31f, 0.22f)).Lerp(new Color(0.33f, 0.33f, 0.32f), rng.Range(0f, 0.3f)),
+            2 => rng.Chance(0.5f) ? new Color(0.84f, 0.86f, 0.88f) : new Color(0.13f, 0.14f, 0.16f),
+            _ => new Color(0.34f, 0.35f, 0.33f).Lerp(Color.FromHsv(rng.Range(0f, 1f), 0.35f, 0.42f), rng.Range(0f, 0.5f)),
+        };
         s.Colors.Base = hull;
-        s.Colors.Accent = hull.Darkened(0.35f);
+        s.Colors.Accent = era == 2 ? (hull.V > 0.5f ? new Color(0.16f, 0.17f, 0.2f) : new Color(0.7f, 0.72f, 0.75f)) : hull.Darkened(0.35f);
         s.Colors.Belly = hull.Darkened(0.2f);
-        s.Colors.Glow = Color.FromHsv(rng.Pick(new[] { 0f, 0.08f, 0.5f, 0.56f }), 0.85f, 1f);
-        s.Colors.GlowStrength = 0.9f;
+        s.Colors.Glow = era switch { 0 => Color.FromHsv(0.08f, 0.8f, 1f), 1 => Color.FromHsv(0f, 0.9f, 1f), 2 => Color.FromHsv(rng.Pick(new[] { 0.5f, 0.56f }), 0.75f, 1f), _ => Color.FromHsv(rng.Pick(new[] { 0f, 0.08f, 0.5f, 0.56f }), 0.85f, 1f) };
+        s.Colors.GlowStrength = era switch { 0 => 0.35f, 1 => 0.7f, 2 => 1f, _ => 0.9f };
         s.Colors.Pattern = Pattern.Plain;
+        if (era >= 0) s.CommonName = era switch { 0 => "clockwork machine", 1 => legs == 2 ? "walking machine" : "four-legged machine", _ => legs == 2 ? "sleek machine" : "six-legged machine" };
         Proportions b = s.Body;
-        float k = rng.Range(0.9f, 1.25f);
+        float k = era switch { 0 => rng.Range(1.05f, 1.2f), 1 => rng.Range(1f, 1.2f), 2 => rng.Range(0.95f, 1.1f), _ => rng.Range(0.9f, 1.25f) };
         if (legs == 2)
         {
             s.Figure = Automaton(rng, k, hull);
+            // Bulk by era: a clockwork or a crude frame stands broad, a sleek one slim.
+            if (era >= 0)
+            {
+                s.Figure.Build = era switch { 0 => 0.85f, 1 => 0.65f, _ => 0.05f };
+                if (era == 2) { s.Figure.Height = MathF.Min(s.Figure.Height * 1.04f, 2.1f); s.Figure.Trim = s.Colors.Accent; }
+                s.Figure.Measure();
+            }
             Figure f = s.Figure;
             b.Size = f.Torso; b.Width = f.ShoulderW * 2f; b.Height = f.Torso; b.LegLength = f.LegLength; b.LegThickness = 0.1f; b.HeadSize = f.HeadRadius / 0.6f; b.NeckLength = f.Neck; b.Legs = 2;
         }
@@ -59,11 +81,15 @@ public static class Robots
         {
             b.Size = 1.3f * k; b.Width = 0.72f * k; b.Height = 0.46f * k; b.LegLength = legs == 4 ? 0.9f * k : 0.75f * k; b.LegThickness = 0.14f * k; b.HeadSize = 0.32f * k; b.NeckLength = 0.1f; b.Legs = legs;
             b.LegStyle = legs == 6 ? LegStyle.Splayed : LegStyle.Upright;
+            // Crude frames are boxes on stumps; sleek ones long, low-slung, on thin long legs.
+            if (era == 1) { b.Width = 0.86f * k; b.Height = 0.58f * k; b.LegThickness = 0.18f * k; b.LegLength *= 0.85f; }
+            if (era == 2) { b.Width = 0.52f * k; b.Height = 0.34f * k; b.Size = 1.45f * k; b.LegThickness = 0.08f * k; b.LegLength *= 1.25f; b.HeadSize = 0.26f * k; }
         }
         Stats st = s.Stats;
         st.MaxHealth = 180f * k;
         st.WalkSpeed = 1.4f;
-        st.RunSpeed = legs == 4 ? 5f : 3.2f;
+        st.RunSpeed = era switch { 0 => 2.2f, 2 => legs == 2 ? 4.4f : 6f, _ => legs == 4 ? 5f : 3.2f };
+        if (era == 0) st.WalkSpeed = 1.0f;
         st.Damage = 16f * k;
         st.AttackRange = 1.6f;
         st.Perception = 45f;

@@ -278,7 +278,7 @@ public static partial class PoiSiting
                     for (ulong k = 1; k < 32 && Dressing.MoodFor(spawnSeed) == Mood.Hostile; k++) spawnSeed = PoiGenerator.Gen.Hash.Combine(p.SpawnSeed, k);
             }
             // Who is in it follows the world's theme and fall here as on a planned world.
-            OccupancyRoll occ = roll != null && OccupancyLayer.Applies(p.Family, p.State) ? OccupancyLayer.Roll(roll.Occupancy, p.Family, spawnSeed) with { Tags = roll.Tags } : null;
+            OccupancyRoll occ = roll != null && OccupancyLayer.Applies(p.Family, p.State) ? OccupancyLayer.Roll(roll.Occupancy, p.Family, spawnSeed, null, OccupancyLayer.Peopled(roll, profile) && OccupancyLayer.Livable(p.Family, p.State)) with { Tags = roll.Tags } : null;
             PoiInstance inst = PoiFactory.Spawn(lib, PoiFactory.BuildLayout(lib, p.Family, variant, Deeper(p.Rarity, depth, spawnSeed)), p.State, spawnSeed, profile, occ);
             PoiSite site = Seat(inst, p.Family, bare, map, Mathx.WrapX(p.X, map.WidthMeters), Mathx.Wrap(p.Z, map.HeightMeters), landing, sites);
             // The main port stands somewhere: if its spot won't take it, the next good ground round it. So do its crowd, nearer in.
