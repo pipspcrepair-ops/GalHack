@@ -815,6 +815,7 @@ public partial class SliceTest : Node
         for (int i = 0; i < 90; i++) yield return 0;
         Check(_liftedOff == lifts + 1 && !v.Controller.Frozen && v.Body.Position.Y > start.Y + 2f,
             $"Space lifts it off: {v.Body.Position.Y - start.Y:F1} m up after 1.5 s");
+        Check(!_game.Visor.ImpactWarning, "climbing away from the ground raises no impact warning in the cockpit");
 
         var probe = new FrameProbe(this);
         var profiler = profiling ? new ProcessProfiler(probe, GetTree().Root, 40, this) : null;

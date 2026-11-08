@@ -2,9 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using GalHack.Items;
+using GalHack.Physics;
+using GalHack.Physics.Engine;
 using Godot;
 using Slice.Items;
 using Slice.Ui;
+using SurvivalVitals.Model;
 using Weather.Model;
 using WeatherKind = Weather.Model.WeatherKind;
 
@@ -23,6 +26,7 @@ public partial class BuildTest
         GD.Print("-- the UI round --");
         foreach (int x in AlertChecks()) yield return x;
         AlertSignChecks();
+        foreach (int x in ImpactChecks()) yield return x;
         foreach (int x in ScannerChecks()) yield return x;
         foreach (int x in MenuTextChecks()) yield return x;
         foreach (int x in EscapeStripChecks()) yield return x;
@@ -30,6 +34,32 @@ public partial class BuildTest
         foreach (int x in TechFitChecks()) yield return x;
         foreach (int x in GalaxyNameChecks()) yield return x;
         Check(MenuRoot.Glass <= 0.6f && _game.Menu.Root.Gui.Backing < 1f && !_game.GetTree().Paused, $"the Tab menu is see-through (glass {MenuRoot.Glass:0.00}, backings {_game.Menu.Root.Gui.Backing:0.00}) and the world runs behind it");
+    }
+
+    /// <summary>
+    /// The impact warning belongs to piloting: dropped from height on foot the suit raises its fall alert (its damage rules are
+    /// unchanged) and the glass shows no IMPACT; in a cockpit it shows only for a vessel coming down fast, close to the ground.
+    /// </summary>
+    IEnumerable<int> ImpactChecks()
+    {
+        var s = _game.Survivor;
+        Vector3 ground = _game.Zone.GroundAt(s.WorldFeet.X, s.WorldFeet.Z);
+        s.PlaceOutside((ground + Vector3.Up * 40f).ToNumerics());
+        bool alerted = false, shown = false;
+        float fastest = 0f;
+        for (int i = 0; i < 180 && s.WorldFeet.Y > ground.Y + 8f; i++)
+        {
+            yield return 0;
+            alerted |= (_game.Suit.Last.Warnings & Alert.Fall) != 0;
+            shown |= _game.Visor.ImpactWarning;
+            fastest = MathF.Max(fastest, s.ImpactSpeed);
+        }
+        s.PlaceOutside((ground + Vector3.Up * 0.3f).ToNumerics()); // back down before it lands
+        foreach (int x in _drive.Wait(30)) yield return x;
+        Check(alerted && !shown, $"on foot, falling at up to {fastest:F0} m/s the suit raises its fall alert (its damage rules stand) and the glass shows no IMPACT");
+        Check(Visor.ImpactSoon(20f, 50f, 8f, out float seconds) && seconds < Visor.ImpactSeconds
+              && !Visor.ImpactSoon(6f, 10f, 8f, out _) && !Visor.ImpactSoon(20f, 400f, 8f, out _) && !Visor.ImpactSoon(-5f, 10f, 8f, out _),
+            $"a pilot's impact warning needs a vessel coming down faster than it can land (8 m/s) within {Visor.ImpactSeconds:F0} s of the ground: 20 m/s at 50 m is {seconds:F1} s away, slower, higher or rising is not");
     }
 
     /// <summary>The galaxy map: every star drawn, names off but for the picked star, a toggle for the near ones.</summary>
