@@ -532,14 +532,14 @@
         "dress": "wraps", "padding": 1.04, "build": -0.04,
         "wear": { "head_wrap": 0.7, "wide_hat": 0.3, "shades": 0.45, "robe": 0.45, "face_wrap": 0.35 },
         "dry": { "wear": { "robe": 0.85, "head_wrap": 0.9, "face_wrap": 0.7, "goggles": 0.5 } },
-        "humid": { "dress": "light", "padding": 1.0, "wear": { "wide_hat": 0.55, "net_hat": 0.3, "sandals": 0.75, "rain_cape": 0.25 }, "colours": ["d8d0b8", "c8d0c0", "e0d8c4", "b8c4b0", "d4c4a4"] },
+        "humid": { "dress": "light", "padding": 1.0, "wear": { "robe": 0, "face_wrap": 0, "head_wrap": 0, "shades": 0.2, "wide_hat": 0.55, "net_hat": 0.3, "sandals": 0.75, "rain_cape": 0.25 }, "colours": ["d8d0b8", "c8d0c0", "e0d8c4", "b8c4b0", "d4c4a4"] },
         "colours": ["c2b08c", "b8a074", "a89476", "9c8c6c", "cbbd9d"]
       },
       "Scorching": {
         "dress": "wraps", "padding": 1.08, "build": -0.08,
         "wear": { "head_wrap": 0.95, "shades": 0.85, "robe": 0.75, "face_wrap": 0.7, "scarf": 0.3 },
         "dry": { "wear": { "robe": 0.95, "head_wrap": 0.98, "face_wrap": 0.85, "goggles": 0.6 } },
-        "humid": { "dress": "light", "padding": 1.0, "wear": { "net_hat": 0.45, "wide_hat": 0.5, "sandals": 0.85 }, "colours": ["e0d8c4", "d8d0b8", "cfd6c6"] },
+        "humid": { "dress": "light", "padding": 1.0, "wear": { "robe": 0, "face_wrap": 0, "head_wrap": 0, "shades": 0.3, "net_hat": 0.45, "wide_hat": 0.5, "sandals": 0.85 }, "colours": ["e0d8c4", "d8d0b8", "cfd6c6"] },
         "colours": ["d0c0a0", "c2b08c", "bcae94", "cfc2a6"]
       }
     },

@@ -997,7 +997,7 @@ public partial class PlaceTest : Node
                 int sighting = town.People.Count(q => q.Facing > 0f);
                 Check(town.Fought + town.FledFrom + town.Barricades + sighting > answered, $"a Husk among them: {town.Fought} fought it ({sighting} with it in their sights), {town.FledFrom} ran, {town.Barricades} barricades; looked round {town.Senses} times, {town.Sensed} creatures last)");
                 if (!h.Removed) sim.Remove(h);
-                foreach (int x in drive.Wait(720)) yield return x; // until the scare has passed
+                for (int i = 0; i < 2400 && (town.Barricaded || town.People.Count(q => q.Indoors) > 0 && i < 1500); i++) yield return 0; // until the scare has passed and they are out again
             }
         }
         // The gesture wheel, through its key and the mouse: up for the top of the wheel (a wave), and they answer.

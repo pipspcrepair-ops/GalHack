@@ -48,7 +48,8 @@ public sealed class Locale
 /// <summary>What a climate (or a hazard) dresses everyone in.</summary>
 public sealed class ClimateDress
 {
-    public string Dress { get; set; } = "shirt";
+    /// <summary>(Empty in a humidity variant: the band's own dress stands.)</summary>
+    public string Dress { get; set; } = "";
     public float Padding { get; set; } = 1f;
     /// <summary>Their bodies, on average: cold builds them heavier, heat leaner.</summary>
     public float Build { get; set; }
@@ -328,7 +329,7 @@ public sealed partial class PeopleGenerator
         Locale region = local || founders == null ? founders?.Locale : Regions.Count > 0 ? Regions[(int)(Rng.For(seed, "from").Float() * Regions.Count) % Regions.Count] : founders.Locale;
         f.Home = region;
         ClimateDress dress = DressFor(region);
-        f.Dress = occupancy == Occupancy.Feral ? "rags" : dress.Dress;
+        f.Dress = occupancy == Occupancy.Feral ? "rags" : dress.Dress is { Length: > 0 } worn ? worn : "shirt";
         f.Padding = occupancy == Occupancy.Feral ? 1f : dress.Padding;
         f.Cloth = dress.Colours.Length > 0 ? Hex(rng.Pick(dress.Colours)) : new Color(0.42f, 0.4f, 0.36f);
         f.Cloth = f.Cloth.Darkened(rng.Range(0f, 0.2f));
