@@ -127,6 +127,9 @@ public static class FlavourRuins
     public static float BlastAt(BlastZone zone, float d) =>
         d <= zone.Crater ? 1f : d >= zone.Fade * WorldReach ? 0f : 1f - (d - zone.Crater) / (zone.Fade * WorldReach - zone.Crater);
 
+    /// <summary>Forgets every layout drawn so far: a world's streets are no use to the next (a new game calls it between them).</summary>
+    public static void Forget() => Layouts.Clear();
+
     /// <summary>A family's layout, turned to face a road, in the world's tech level's materials; null (with a warning) if none lays out, and the lot stays empty.</summary>
     public static Layout LayoutFor(PoiLibrary lib, FamilyDef f, int variant, Dir front = Dir.North, TechLevel? tech = null, int salt = 0, HomeHints home = null)
     {

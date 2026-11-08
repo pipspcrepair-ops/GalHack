@@ -54,6 +54,7 @@ public sealed partial class Staging
             "menu" => Menu(),
             "settings" => SettingsView(),
             "escmenu" => EscapeMenuShots(),
+            "escnewgame" => EscapeNewGameShots(),
             "blueprints" => BlueprintShots(),
             "uiround" => UiRoundShots(),
             "fabicons" => FabIconShots(),

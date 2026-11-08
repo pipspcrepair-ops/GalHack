@@ -52,6 +52,20 @@ public static class InfraDeco
     /// <summary>Godot meshes for the library's looks (main thread only).</summary>
     public static DecoMeshCache Meshes => _meshes ??= Poi == null ? null : new DecoMeshCache(Poi.Forge);
 
+    /// <summary>
+    /// Lets the library go with its caches, on the main thread (a new game: the last world's looks are no use to
+    /// the next); the next use loads it afresh, and anything of the last world still working keeps the old one.
+    /// </summary>
+    public static void Forget()
+    {
+        lock (Gate)
+        {
+            _poi = null;
+            _tried = false;
+        }
+        _meshes = null;
+    }
+
     /// <summary>A site of the library dressed (an evacuation jam, a derailed train...), one tile at a time.</summary>
     public static DecoPlan DressSite(string site, ulong seed, TechLevel tech, string state = "abandoned")
     {
