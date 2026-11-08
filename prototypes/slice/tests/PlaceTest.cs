@@ -1189,7 +1189,7 @@ public partial class PlaceTest : Node
         who.Pos = doorAt; who.Path = null; who.Wait = 30f; who.ScaredFor = 0f; who.Pursue = 0f;
         game.Survivor.PlaceOutside(place.ToWorld(doorAt + outv * 3f + Vector3.Up * 0.3f).ToNumerics());
         foreach (int x in drive.Wait(10)) yield return x;
-        int tick = 0, clear = -1;
+        int tick = 0, clear = -1; // ticks since first contact
         float closest = float.MaxValue;
         var walking = drive.WalkTo(place.ToWorld(doorAt - outv * 3f), 0.8f, 8f, sprint: false, dig: false, hop: false).GetEnumerator();
         while (walking.MoveNext())
@@ -1197,8 +1197,9 @@ public partial class PlaceTest : Node
             if (keepBraced) who.Halt = 1f;
             Vector3 you = place.FromWorld(game.Survivor.WorldFeet);
             closest = MathF.Min(closest, new Vector2(you.X - who.Pos.X, you.Z - who.Pos.Z).Length());
-            if (clear < 0 && new Vector2(who.Pos.X - doorAt.X, who.Pos.Z - doorAt.Z).Length() > 0.6f) clear = tick;
-            tick++;
+            if (clear < 0 && tick > 0 && new Vector2(who.Pos.X - doorAt.X, who.Pos.Z - doorAt.Z).Length() > 0.6f) clear = tick;
+            // (Timed from when you first touch them.)
+            if (tick > 0 || new Vector2(you.X - who.Pos.X, you.Z - who.Pos.Z).Length() < who.Looks.Stats.Radius * 0.78f + Slice.Player.Survivor.Radius + 0.15f) tick++;
             yield return walking.Current;
         }
         result(clear, closest, (place.FromWorld(game.Survivor.WorldFeet) - (doorAt - outv * 3f)).Length());
