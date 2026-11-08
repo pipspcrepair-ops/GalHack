@@ -350,7 +350,13 @@ public sealed class WildSim
     /// screenshot staging use; natural spawning goes through <see cref="SpawnGroup"/>, which keeps
     /// out of base zones.
     /// </summary>
-    public Creature Spawn(Species species, Vector3 position, Herd herd = null, Pack pack = null)
+    public Creature Spawn(Species species, Vector3 position, Herd herd = null, Pack pack = null) => Spawn(species, position, herd, pack, false);
+
+    /// <summary>
+    /// A creature of a species here. <paramref name="asIs"/>: exactly this body, as when one is
+    /// carried from another sim (no fresh pick among a kind's bodies or sexes: it stays who it was).
+    /// </summary>
+    public Creature Spawn(Species species, Vector3 position, Herd herd, Pack pack, bool asIs)
     {
         var c = new Creature
         {
@@ -364,14 +370,14 @@ public sealed class WildSim
         };
         c.Rng = new Rng(Rng.Mix(species.Seed, (ulong)c.Id));
         // A kind drawn from several bodies (a world's Husks) is one of them each time.
-        if (species.Hosts is { Count: > 0 } hosts)
+        if (!asIs && species.Hosts is { Count: > 0 } hosts)
         {
             species = hosts[c.Rng.Int(0, hosts.Count - 1)];
             c.Species = species;
             c.Health = species.Stats.MaxHealth;
         }
         // Half of a dimorphic species is the other sex.
-        if (species.Mate != null && c.Rng.Chance(0.5f))
+        if (!asIs && species.Mate != null && c.Rng.Chance(0.5f))
         {
             species = species.Mate;
             c.Species = species;

@@ -41,6 +41,7 @@ public partial class BestiaryTest : Node
                 // Only the weapon checks (a quick run while working on holds).
                 WeaponsAreHeldRight();
                 ArmsFollowTheEra();
+                BodiesAreWhole();
                 GD.Print(_failures == 0 ? $"ALL PASSED ({_checks} checks)" : $"{_failures} OF {_checks} CHECK(S) FAILED");
                 Shutdown.Quit(this, _failures == 0 ? 0 : 1);
                 return;
@@ -67,6 +68,7 @@ public partial class BestiaryTest : Node
             EveryBuildWorks();
             WeaponsAreHeldRight();
             ArmsFollowTheEra();
+            BodiesAreWhole();
             TempersByTech();
             TwentyPeopleAreCheap();
             LooksClusterBySettlement();

@@ -7,7 +7,7 @@ namespace Wildlife;
 
 /// <summary>
 /// Armed people, fresh each run, five of different folk with different weapons (run windowed):
-/// - armed-front / armed-side: from the front or the side; --pick=aim raises every weapon, otherwise calm; --pick=crouch (or aim+crouch) crouches them.
+/// - armed-front / armed-side: from the front or the side; --pick=aim raises every weapon, otherwise calm; --pick=crouch (or aim+crouch) crouches them; --pick=suit puts them all in sealed suits.
 /// </summary>
 public partial class Screenshot
 {
@@ -36,6 +36,7 @@ public partial class Screenshot
             Species s = g.Person(rng.NextU64(), rng.Chance(0.5f) ? PersonRole.Guard : PersonRole.Worker, founders: g.FoundersOf(rng.NextU64()));
             if (s.Mechanical || s.Figure.Husk || !folks.Add(s.Figure.Folk?.Id ?? "human") && i < 150) continue;
             s.Figure.Prop = props[people.Count];
+            if (_pick.Contains("suit")) { s.Figure.Dress = "suit"; s.Figure.Wear.Add("suit_helmet"); }
             people.Add(s);
         }
         Vector3 fwd = Turn(SunFlat(), 0.35f), right = fwd.Cross(Vector3.Up).Normalized();
@@ -56,8 +57,10 @@ public partial class Screenshot
             m.View.Sync(m.Camera.GlobalPosition); // (Main synced the sim's own pose already this tick)
         };
         bool side = _view == "armed-side";
-        Vector3 eye = side ? Ground(origin + right * 5.5f - fwd * 2.2f) + Vector3.Up * 1.4f : Ground(origin - fwd * 7.5f) + Vector3.Up * 1.5f;
-        m.Camera.Fov = side ? 62f : 52f;
+        // --pick=far: from 25 m at a plain field of view, as they'd be seen across a street.
+        float back = _pick.Contains("far") ? 25f : 7.5f;
+        Vector3 eye = side ? Ground(origin + right * 5.5f - fwd * 2.2f) + Vector3.Up * 1.4f : Ground(origin - fwd * back) + Vector3.Up * 1.5f;
+        m.Camera.Fov = _pick.Contains("far") ? 70f : side ? 62f : 52f;
         _aim = () => (eye, origin + Vector3.Up * 1.0f - (side ? right * 1.2f : Vector3.Zero));
         _captureTick = 200;
         return true;
