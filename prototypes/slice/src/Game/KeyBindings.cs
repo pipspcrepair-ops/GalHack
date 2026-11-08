@@ -43,6 +43,7 @@ public sealed class KeyBindings
             new("replicator", Key.B, "Replicator", "set down or pack up", Hands),
             new("torch", Key.L, "Head torch", "on or off", Hands),
             new("view", Key.V, "Third person", "camera behind you", Hands),
+            new("gesture", Key.Z, "Gestures", "hold for the wheel", Hands),
             new("rotate", Key.R, "Rotate block", "turn deco; respawn", Build),
             new("tilt", Key.T, "Tilt block", "the other axis", Build),
             new("mirror", Key.X, "Mirror", "build left and right", Build),

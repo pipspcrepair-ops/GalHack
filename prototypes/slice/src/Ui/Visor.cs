@@ -157,6 +157,7 @@ public partial class Visor : CanvasLayer
         DrawChosenStar();
         DrawLines();
         DrawProgress();
+        DrawPeople();
         if (Game.Suit.Dead)
         {
             Banner($"{Game.Suit.Sim.Player.DeathCause?.ToUpperInvariant() ?? "DEAD"}", $"[R] RESPAWN", C.Danger);

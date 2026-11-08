@@ -37,6 +37,8 @@ public partial class Screenshot : Node
 
     public override void _Ready()
     {
+        // A wall-clock quit timer: whatever happens, the run ends itself.
+        new System.Threading.Thread(() => { System.Threading.Thread.Sleep(TimeSpan.FromMinutes(25)); Console.Error.WriteLine("screenshot: wall-clock timeout"); System.Diagnostics.Process.GetCurrentProcess().Kill(); }) { IsBackground = true }.Start();
         ProcessPhysicsPriority = 100; // after the game's tick, so what it sets is read on the next one
         ProcessMode = ProcessModeEnum.Always; // a view runs on while the escape menu stops the world
         foreach (string arg in OS.GetCmdlineUserArgs())

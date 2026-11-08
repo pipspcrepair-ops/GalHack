@@ -346,6 +346,7 @@ public partial class Game : Node3D
         if (Menu.IsOpen) Menu.Input(c);
         if (c.WasPressed(Key.V) && !Menu.IsOpen) ThirdPerson = !ThirdPerson;
         if (c.WasPressed(Key.L)) ToggleTorch();
+        if (!Menu.IsOpen) StepGestures(c);
         Survivor.WantCrouch = false; // only the walk below asks for it
         StepWrongness((float)delta);
         if (Suit.Dead)
