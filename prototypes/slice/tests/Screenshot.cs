@@ -65,6 +65,12 @@ public partial class Screenshot : Node
             return;
         }
         if (_view == "city") PlanetSurface.Infra.CityPlan.Force = true; // a city on any lived-in world
+        if (_view == "placesurf")
+        {
+            // The place surfaces proof: a city to frame, and an alien place set down near the start.
+            PlanetSurface.Infra.CityPlan.Force = true;
+            PlanetSurface.Poi.PoiSiting.ForceFamily = _args.GetValueOrDefault("force", "alien_cathedral");
+        }
         _game = new Game.Game { Interactive = false, SkipIntro = true, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), System.Array.IndexOf(OS.GetCmdlineUserArgs(), "--ringed=1") >= 0 ? RingedWorld() : WorldChoice.Tested) };
         AddChild(_game);
         _staging = new Staging(_game, _args) { TakeShot = file => _pending = file };

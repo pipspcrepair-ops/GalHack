@@ -201,6 +201,9 @@ public sealed class BlockGrid : IBlockStructure
     readonly Block[]?[] _chunks;
     Block _outside;
 
+    /// <summary>How the place's faces are finished and how far the years have taken them (set when it spawns; null: by material alone).</summary>
+    public PlaceLook? Look;
+
     public BlockGrid(Int3 min, Int3 size)
     {
         Min = min;
@@ -213,7 +216,7 @@ public sealed class BlockGrid : IBlockStructure
 
     public BlockGrid Clone()
     {
-        var copy = new BlockGrid(Min, Size);
+        var copy = new BlockGrid(Min, Size) { Look = Look };
         for (int i = 0; i < _chunks.Length; i++)
             if (_chunks[i] is { } c) copy._chunks[i] = (Block[])c.Clone();
         return copy;

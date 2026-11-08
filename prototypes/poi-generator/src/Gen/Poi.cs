@@ -330,6 +330,8 @@ public static class PoiFactory
             if (inst.Blocks.Get(c.Cell).IsAir && (state == PoiState.Active || Hash.Cell(c.Cell, 0xC409) % 3 == 0)) inst.Crops.Add(c);
         // Who's in it comes last, on the place as the years left it: the layout is whoever's.
         if (occupancy != null) OccupancyLayer.Apply(lib, inst, occupancy, rng.Fork("occupancy"));
+        // How its faces are finished and how far the years took them, the walls' and roofs' fixed while their colours are their own.
+        PlaceLook.Stamp(inst);
         PlaceLights.Tune(inst);
         return inst;
     }

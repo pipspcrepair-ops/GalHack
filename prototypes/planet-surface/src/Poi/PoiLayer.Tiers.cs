@@ -99,20 +99,8 @@ public partial class PoiLayer
                     ChunkMesh one = Mesher.Coarse(s.Instance.Blocks, s.Instance.Layout.Occupied);
                     float ox = (float)Planets.Gen.Mathx.WrapDelta(s.Origin.X - anchor.X, w), oy = s.Origin.Y - anchor.Y, oz = (float)Planets.Gen.Mathx.WrapDelta(s.Origin.Z - anchor.Z, h);
                     all.Quads += one.Quads;
-                    for (int k = 0; k < one.Surfaces.Length; k++)
-                    {
-                        MeshBuffer from = one.Surfaces[k], to = all.Surfaces[k];
-                        int first = to.VertexCount;
-                        for (int v = 0; v < from.VertexCount; v++)
-                        {
-                            to.Positions.Add(from.Positions[v * 3] + ox);
-                            to.Positions.Add(from.Positions[v * 3 + 1] + oy);
-                            to.Positions.Add(from.Positions[v * 3 + 2] + oz);
-                        }
-                        to.Normals.AddRange(from.Normals);
-                        to.Colors.AddRange(from.Colors);
-                        foreach (int i in from.Indices) to.Indices.Add(first + i);
-                    }
+                    // Their finish codes with them, so the far tile is drawn in the same surfaces as each building near.
+                    for (int k = 0; k < one.Surfaces.Length; k++) all.Surfaces[k].Append(one.Surfaces[k], 1f, new V3(ox, oy, oz));
                 }
                 return all;
             });

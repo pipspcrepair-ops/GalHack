@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using FaceSide = PoiGenerator.Gen.Side;
 
 namespace PoiGenerator.Gen;
 
@@ -8,20 +9,43 @@ namespace PoiGenerator.Gen;
 /// <summary>Which material a face is drawn with. Flesh is the Hollow Bloom: lit, wet, faintly glowing.</summary>
 public enum Surface { Matte, Metal, Glow, Glass, Flesh }
 
-/// <summary>Plain vertex arrays for one surface of one chunk: positions, normals, sRGB colours.</summary>
+/// <summary>
+/// Plain vertex arrays for one surface of one chunk: positions, normals, sRGB colours, and each face's
+/// finish code and the place's seed (two floats a vertex: see <see cref="Surfaces.Code"/>), which the
+/// place shader draws its surface from.
+/// </summary>
 public sealed class MeshBuffer
 {
     public readonly List<float> Positions = new();
     public readonly List<float> Normals = new();
     public readonly List<float> Colors = new();
+    public readonly List<float> Codes = new();
     public readonly List<int> Indices = new();
     public int VertexCount => Positions.Count / 3;
 
-    public void Vertex(V3 p, V3 n, float r, float g, float b, float a)
+    public void Vertex(V3 p, V3 n, float r, float g, float b, float a, float code = 0f, float seed = 0f)
     {
         Positions.Add(p.X); Positions.Add(p.Y); Positions.Add(p.Z);
         Normals.Add(n.X); Normals.Add(n.Y); Normals.Add(n.Z);
         Colors.Add(r); Colors.Add(g); Colors.Add(b); Colors.Add(a);
+        Codes.Add(code); Codes.Add(seed);
+    }
+
+    /// <summary>Another buffer's vertices, scaled and moved, and its triangles after them (a far lump put together, a city tile's buildings in one).</summary>
+    public void Append(MeshBuffer from, float scale, V3 offset)
+    {
+        int first = VertexCount;
+        for (int v = 0; v < from.VertexCount; v++)
+        {
+            Positions.Add(from.Positions[v * 3] * scale + offset.X);
+            Positions.Add(from.Positions[v * 3 + 1] * scale + offset.Y);
+            Positions.Add(from.Positions[v * 3 + 2] * scale + offset.Z);
+        }
+        Normals.AddRange(from.Normals);
+        Colors.AddRange(from.Colors);
+        if (from.Codes.Count == from.VertexCount * 2) Codes.AddRange(from.Codes);
+        else for (int v = 0; v < from.VertexCount * 2; v++) Codes.Add(0f);
+        foreach (int i in from.Indices) Indices.Add(first + i);
     }
 }
 
@@ -199,25 +223,38 @@ public static class Mesher
                     var color = new Rgb((byte)(sum[i * 3] / n), (byte)(sum[i * 3 + 1] / n), (byte)(sum[i * 3 + 2] / n));
                     coarse.Set(new Int3(x, y, z), new Block(BlockType.Cube, Material.Concrete, color, Role.Wall));
                 }
+        // What each lump is finished in, from far off: its walls' commonest finish, and its roofs'.
+        PlaceLook look = g.Look ?? new PlaceLook();
+        var roofs = new byte[count.Length];
+        var votes = new (byte Wall, int WallN, byte Roof, int RoofN)[count.Length];
+        foreach (var (c, b) in g.Blocks())
+        {
+            if (!BlockInfo.IsFullCube(b.Type) && !BlockInfo.IsSlope(b.Type) && !BlockInfo.IsCornerSlope(b.Type) || BlockInfo.IsTransparent(b.Material)) continue;
+            Int3 l = c - g.Min;
+            int i = ((l.Y / step) * size.Z + l.Z / step) * size.X + l.X / step;
+            bool top = b.Role is Role.Roof || b.Role == Role.Floor && !BlockInfo.Collides(g.Get(c + Int3.Up).Type);
+            Finish fin = look.Pick(b, top ? FaceSide.Roof : FaceSide.Out, BlockInfo.IsSlope(b.Type) || BlockInfo.IsCornerSlope(b.Type), 0).Finish;
+            ref var v = ref votes[i];
+            // The commonest, by a running vote: one byte a lump, however many kinds are in it.
+            if (top) { if (v.RoofN == 0) { v.Roof = (byte)fin; v.RoofN = 1; } else v.RoofN += v.Roof == (byte)fin ? 1 : -1; }
+            else { if (v.WallN == 0) { v.Wall = (byte)fin; v.WallN = 1; } else v.WallN += v.Wall == (byte)fin ? 1 : -1; }
+        }
+        for (int i = 0; i < votes.Length; i++) roofs[i] = votes[i].RoofN > 0 ? votes[i].Roof : votes[i].Wall;
+        coarse.Look = look.Far(roofs, size);
+        for (int y = 0, i = 0; y < size.Y; y++)
+            for (int z = 0; z < size.Z; z++)
+                for (int x = 0; x < size.X; x++, i++)
+                {
+                    if (count[i] < minimum * 2) continue;
+                    ref Block cb = ref coarse.At(new Int3(x, y, z));
+                    cb.Variant = (byte)(1 + (votes[i].WallN > 0 ? votes[i].Wall : votes[i].Roof));
+                }
         var built = Build(coarse, occupied, new MeshOptions { ChunkSize = Math.Max(size.X, Math.Max(size.Y, size.Z)) + 1, Rock = false, Collision = false, Detail = false, Doors = false, Merged = true });
         var all = new ChunkMesh();
         foreach (ChunkMesh m in built)
         {
             all.Quads += m.Quads;
-            for (int k = 0; k < m.Surfaces.Length; k++)
-            {
-                MeshBuffer from = m.Surfaces[k], to = all.Surfaces[k];
-                int first = to.VertexCount;
-                for (int v = 0; v < from.VertexCount; v++)
-                {
-                    to.Positions.Add(from.Positions[v * 3] * step + g.Min.X);
-                    to.Positions.Add(from.Positions[v * 3 + 1] * step + g.Min.Y);
-                    to.Positions.Add(from.Positions[v * 3 + 2] * step + g.Min.Z);
-                }
-                to.Normals.AddRange(from.Normals);
-                to.Colors.AddRange(from.Colors);
-                foreach (int i in from.Indices) to.Indices.Add(first + i);
-            }
+            for (int k = 0; k < m.Surfaces.Length; k++) all.Surfaces[k].Append(m.Surfaces[k], step, V3.Of(g.Min));
         }
         return all;
     }
@@ -235,12 +272,18 @@ public static class Mesher
         readonly byte[] _flags;
         readonly Int3 _fMin, _fSize;
 
+        readonly PlaceLook _look;
+        readonly float _seed;
+        readonly Dictionary<long, FinishPick> _picks = new();
+
         public Ctx(IBlockStructure g, CellMask occ, MeshOptions o, Dictionary<Int3, ChunkMesh> chunks)
         {
             _g = g;
             _occ = occ;
             _o = o;
             _chunks = chunks;
+            _look = (g is BlockGrid bg ? bg.Look : g is ChunkWindow w ? w.Look : null) ?? new PlaceLook();
+            _seed = _look.Seed;
 
             Int3 min = g.Min, max = g.Min + g.Size - new Int3(1, 1, 1);
             if (o.Rock)
@@ -309,6 +352,167 @@ public static class Mesher
         /// <summary>Whether a neighbour hides a face: as <see cref="Occludes"/>, except the top of the buried ground where it may not really be (<see cref="MeshOptions.GroundShow"/>).</summary>
         bool Hides(Int3 p) => Occludes(p) && !(_o.GroundShow > 0 && IsRock(p) && p.Y > Assembler.GroundY - _o.GroundShow);
 
+        // ---- Finishes -------------------------------------------------------------------------------
+        // Each face carries its finish and the decay's say for the place shader (Surfaces.Code). These read
+        // the whole grid, not the flags, so a chunk built alone asks the same questions as the whole build.
+
+        /// <summary>Which of the six faces a normal is nearest (a slope counts as looking up).</summary>
+        static int FaceOf(V3 n) => MathF.Abs(n.Y) > 0.5f ? (n.Y > 0 ? 4 : 5) : MathF.Abs(n.X) > MathF.Abs(n.Z) ? (n.X > 0 ? 1 : 3) : (n.Z > 0 ? 2 : 0);
+
+        /// <summary>The step along a face's across axis as the place shader lays it out (its u: up × normal on walls, east on floors and roofs).</summary>
+        static Int3 AcrossOf(int f) => f switch { 0 => new Int3(-1, 0, 0), 1 => new Int3(0, 0, -1), 2 => new Int3(1, 0, 0), 3 => new Int3(0, 0, 1), _ => new Int3(1, 0, 0) };
+
+        /// <summary>The step up a face's other axis: up on walls, south on floors and roofs.</summary>
+        static Int3 AlongOf(int f) => f >= 4 ? new Int3(0, 0, 1) : Int3.Up;
+
+        bool RockAt(Int3 c) => _o.Rock && c.Y <= Assembler.GroundY && !_occ[c] && _g.Get(c).IsAir;
+
+        /// <summary>Something stands here to be stood on: a floor, a slope, the ground.</summary>
+        bool Stands(Int3 c)
+        {
+            Block b = _g.Get(c);
+            return !b.IsAir && (BlockInfo.Supports(b.Type) || BlockInfo.IsSlope(b.Type) || b.Type == BlockType.Rubble) || RockAt(c);
+        }
+
+        readonly Dictionary<Int3, bool> _covered = new();
+
+        /// <summary>Something solid overhead within a few storeys: under a roof. Asked of the same cell by each face round it, so remembered.</summary>
+        bool Covered(Int3 c)
+        {
+            if (_covered.TryGetValue(c, out bool known)) return known;
+            bool covered = false;
+            for (int y = 1; y <= 12 && !covered; y++)
+            {
+                Block b = _g.Get(c + Int3.Up * y);
+                covered = !b.IsAir && (BlockInfo.IsFullCube(b.Type) || BlockInfo.IsSlope(b.Type) || BlockInfo.IsCornerSlope(b.Type)) && !BlockInfo.IsTransparent(b.Material);
+            }
+            return _covered[c] = covered;
+        }
+
+        /// <summary>How many cells a cell stands above whatever is under it, up to <paramref name="most"/>.</summary>
+        int Above(Int3 c, int most)
+        {
+            int k = 0;
+            while (k < most && !Stands(c - Int3.Up * (k + 1))) k++;
+            return k;
+        }
+
+        bool OpaqueFull(Int3 c)
+        {
+            Block b = _g.Get(c);
+            return BlockInfo.IsFullCube(b.Type) && !BlockInfo.IsTransparent(b.Material) || RockAt(c);
+        }
+
+        static bool IsGlass(Block b) => b.Material == Material.Glass && (b.Type is BlockType.Cube or BlockType.Pane);
+
+        FinishPick Pick(Block b, FaceSide side, bool slope, int room)
+        {
+            Finish own = Surfaces.Own(b);
+            long key = (long)b.Material | (long)b.Role << 6 | (long)(b.Color.R | b.Color.G << 8 | b.Color.B << 16) << 11
+                | (long)(own != Finish.Plain ? b.Variant : 0) << 35 | (long)side << 43 | (slope ? 1L : 0L) << 46 | (long)(room & 255) << 47;
+            if (!_picks.TryGetValue(key, out FinishPick pick)) _picks[key] = pick = _look.Pick(b, side, slope, room);
+            return pick;
+        }
+
+        /// <summary>A far lump's cell index (Mesher.Coarse's look carries its roofs by it).</summary>
+        int CoarseIndex(Int3 p) => (p.Y * _look.CoarseSize.Z + p.Z) * _look.CoarseSize.X + p.X;
+
+        /// <summary>The place shader's code for one face of a block, looking along a normal (see <see cref="Surfaces.Code"/>); 0 draws it plain.</summary>
+        float FaceCode(Int3 p, Block b, V3 normal, bool slope, Surface surf)
+        {
+            if (surf is Surface.Glow or Surface.Flesh) return 0f;
+            int f = FaceOf(normal);
+            Int3 n = p + Dirs.All[f].Vec();
+            bool up = f == 4, down = f == 5;
+            bool wallish = b.Role is Role.Wall or Role.Secret or Role.Window or Role.Door;
+            FaceSide side;
+            bool indoors = false;
+            int h = 3, room = 0;
+            if (_o.Merged)
+                side = up && !wallish ? FaceSide.Roof : down && !wallish ? FaceSide.Soffit : FaceSide.Out;
+            else if (down)
+            {
+                indoors = _occ[n] && !RockAt(n);
+                side = wallish ? (indoors ? FaceSide.In : FaceSide.Out) : indoors ? FaceSide.Ceiling : FaceSide.Soffit;
+                if (indoors) room = _look.RoomAt(n - Int3.Up * Above(n, 6));
+            }
+            else
+            {
+                indoors = _occ[n] && Covered(n);
+                if (up)
+                {
+                    h = 0;
+                    side = wallish ? (indoors ? FaceSide.In : FaceSide.Out) : indoors ? FaceSide.Floor : FaceSide.Roof;
+                    if (indoors) room = _look.RoomAt(n);
+                }
+                else
+                {
+                    h = Above(n, 3);
+                    side = indoors ? FaceSide.In : FaceSide.Out;
+                    if (indoors) room = _look.RoomAt(n - Int3.Up * h);
+                }
+            }
+            FinishPick pick = _look.CoarseRoofs != null && up && _look.CoarseRoofs.Length > 0
+                ? new FinishPick((Finish)_look.CoarseRoofs[Math.Clamp(CoarseIndex(p), 0, _look.CoarseRoofs.Length - 1)])
+                : Pick(b, side, slope, room);
+            Finish fin = surf == Surface.Glass ? Finish.Glass : pick.Finish;
+            if (fin == Finish.Plain) return 0f;
+            int param = _look.ParamOf(pick with { Finish = fin });
+
+            // The years: wear in patches, damp low and underground, fire where the fall burned.
+            float w = _look.Wear * (indoors ? 0.75f : 1f);
+            float j = Hash.Cell(new Int3(p.X >> 1, p.Y >> 1, p.Z >> 1), 0x3EA1u) % 1000 / 1000f;
+            int wear = _o.Merged ? (int)MathF.Round(w * 3f) : Math.Clamp((int)MathF.Floor(w * 3f + (j - 0.5f) * 1.2f + 0.35f), 0, 3);
+            bool damp = n.Y < 0 || (indoors ? _look.Water > 0.7f : _look.Water > 0.5f && h == 0);
+            int scorch = 0;
+            if (_look.Fire > 0f)
+            {
+                float j2 = Hash.Cell(new Int3(p.X / 6, p.Y / 4, p.Z / 6), 0x5C0Cu) % 1000 / 1000f;
+                scorch = Math.Clamp((int)(_look.Fire * (j2 * 1.6f - 0.2f) * 2.6f), 0, 3);
+            }
+            bool painted = fin switch
+            {
+                Finish.Render or Finish.Plaster or Finish.Block or Finish.Weatherboard or Finish.Precast => Surfaces.Painted(b.Color, b.Material),
+                Finish.Plate or Finish.Hull or Finish.Corrugated or Finish.Planks => param != 1 && Surfaces.Painted(b.Color, b.Material),
+                _ => false,
+            };
+            Surfaces.Under under = fin switch
+            {
+                Finish.Render => _look.Tech == TechLevel.Low ? Surfaces.Under.Stone : Surfaces.Under.Brick,
+                Finish.Plaster => b.Material switch
+                {
+                    Material.Ceramic => Surfaces.Under.Brick, Material.Rock => Surfaces.Under.Stone, Material.Timber => Surfaces.Under.Lath,
+                    _ => _look.Tech == TechLevel.High ? Surfaces.Under.Poured : Surfaces.Under.Block,
+                },
+                Finish.Block => Surfaces.Under.Block,
+                _ => Surfaces.Under.None,
+            };
+            // Edges: a pane's glass neighbours (so a window is framed round, with thin bars between its panes);
+            // on a wall, an opening above or below it and a corner beside it.
+            int edges = 0;
+            if (_o.Merged) edges = fin == Finish.Glass ? 15 : 0;
+            else if (fin == Finish.Glass)
+            {
+                Int3 u = AcrossOf(f), v = AlongOf(f);
+                if (IsGlass(_g.Get(p - u))) edges |= 1;
+                if (IsGlass(_g.Get(p + u))) edges |= 2;
+                if (IsGlass(_g.Get(p - v))) edges |= 4;
+                if (IsGlass(_g.Get(p + v))) edges |= 8;
+            }
+            else if (f < 4)
+            {
+                Int3 u = AcrossOf(f);
+                if (!OpaqueFull(p + Int3.Up)) edges |= 1;
+                if (!OpaqueFull(p + Int3.Down) && !Stands(p + Int3.Down)) edges |= 2;
+                if (!OpaqueFull(p + u) || !OpaqueFull(p - u)) edges |= 4;
+            }
+            return Surfaces.Code(fin, param, wear, h, indoors, damp, scorch, painted, under, edges);
+        }
+
+        /// <summary>A code for a face with no block to ask (the ground plug): a finish at the place's wear.</summary>
+        float PlainCode(Finish fin, bool damp = false) =>
+            Surfaces.Code(fin, _look.ParamOf(new FinishPick(fin)), Math.Clamp((int)MathF.Round(_look.Wear * 3f), 0, 3), 3, false, damp, 0, false, Surfaces.Under.None, 0);
+
         public void Block(Int3 p, Block b)
         {
             if (b.Type == BlockType.Door && !_o.Doors) return;
@@ -365,8 +569,8 @@ public static class Mesher
             return m;
         }
 
-        /// <summary>A colour rounded to 32 levels a channel, and its surface: what may merge. Never 0.</summary>
-        static int Key(Rgb c, Surface s) => 1 + (c.R >> 3 | (c.G >> 3) << 5 | (c.B >> 3) << 10 | (int)s << 15);
+        /// <summary>A colour rounded to 32 levels a channel, its surface and its finish (with its choice): what may merge. Never 0.</summary>
+        static int Key(Rgb c, Surface s, int finish) => 1 + (c.R >> 3 | (c.G >> 3) << 5 | (c.B >> 3) << 10 | (int)s << 15 | (finish & 0xFF) << 18);
 
         /// <summary>A full cube's open faces, as the plain mesher would pick them, into the planes.</summary>
         void Mark(Int3 p, Block b)
@@ -377,7 +581,7 @@ public static class Mesher
             bool glass = BlockInfo.IsTransparent(b.Material);
             bool glyph = b.Material == Material.Glyph;
             Rgb body = glyph ? b.Color.Lerp(new Rgb(0x1a, 0x1b, 0x22), 0.88f) : b.Color;
-            int key = Key(body, glyph ? Surface.Matte : Shapes.SurfaceOf(b.Material));
+            Surface bodySurf = glyph ? Surface.Matte : Shapes.SurfaceOf(b.Material);
             Planes planes = null!;
             for (int f = 0; f < 6; f++)
             {
@@ -388,6 +592,7 @@ public static class Mesher
                 bool solid = _o.Collision && (!CollidesFull(n) || IsRock(n));
                 if (!_o.Drawn && !solid) continue;
                 planes ??= _planes.TryGetValue(ch, out Planes got) ? got : _planes[ch] = new Planes();
+                int key = Key(body, bodySurf, _o.Drawn ? (int)FaceCode(p, b, Normals[f], false, bodySurf) & 0xFF : 0);
                 var (u, v, k) = Face2(f, l);
                 int plane = f * side + k;
                 if (_o.Drawn) Plane(planes.Drawn, plane, side)[v * side + u] = key;
@@ -454,6 +659,8 @@ public static class Mesher
             key--;
             Surface surf = (Surface)(key >> 15 & 7);
             var buf = chunk.Surfaces[(int)surf];
+            int fin = key >> 18 & 0xFF;
+            float code = (fin & 63) == 0 ? 0f : Surfaces.Code((Finish)(fin & 63), fin >> 6, Math.Clamp((int)MathF.Round(_look.Wear * 3f), 0, 3), 3, false, false, 0, false, Surfaces.Under.None, (fin & 63) == (int)Finish.Glass ? 15 : 0);
             float shade = surf == Surface.Glow ? 1f : FaceShade[f] * 0.92f; // a little of the corners' shading, on the flat
             float r = ((key & 31) * 8 + 4) / 255f * shade, g = ((key >> 5 & 31) * 8 + 4) / 255f * shade, b = ((key >> 10 & 31) * 8 + 4) / 255f * shade;
             float alpha = surf == Surface.Glass ? 0.35f : 1f;
@@ -461,10 +668,10 @@ public static class Mesher
             V3 At(V3 c) => new(at.X + c.X * size.X, at.Y + c.Y * size.Y, at.Z + c.Z * size.Z);
             int i0 = buf.VertexCount;
             V3 n = Normals[f];
-            buf.Vertex(At(c0), n, r, g, b, alpha);
-            buf.Vertex(At(c1), n, r, g, b, alpha);
-            buf.Vertex(At(c2), n, r, g, b, alpha);
-            buf.Vertex(At(c3), n, r, g, b, alpha);
+            buf.Vertex(At(c0), n, r, g, b, alpha, code, _seed);
+            buf.Vertex(At(c1), n, r, g, b, alpha, code, _seed);
+            buf.Vertex(At(c2), n, r, g, b, alpha, code, _seed);
+            buf.Vertex(At(c3), n, r, g, b, alpha, code, _seed);
             var idx = buf.Indices;
             idx.Add(i0); idx.Add(i0 + 2); idx.Add(i0 + 1); idx.Add(i0); idx.Add(i0 + 3); idx.Add(i0 + 2);
             chunk.Quads++;
@@ -495,7 +702,9 @@ public static class Mesher
                 var nb = _g.Get(n);
                 if (glass ? (!nb.IsAir && nb.Type == BlockType.Cube && (nb.Material == b.Material || !BlockInfo.IsTransparent(nb.Material))) || IsRock(n) && Hides(n) : Hides(n))
                     continue;
-                Face(chunk, surf, p, f, body, glass ? 0.35f : 1f, jitter, ao: surf != Surface.Glow);
+                float code = FaceCode(p, b, Normals[f], false, surf);
+                // A finished face keeps its colour even: the shader's own variation does the work the mottle did.
+                Face(chunk, surf, p, f, body, glass ? 0.35f : 1f, code != 0f ? 1f : jitter, ao: surf != Surface.Glow, code);
                 if (glyph) Glyph(chunk, p, f, b.Color);
                 if (b.Type == BlockType.Breakable && f < 4) Glyph(chunk, p, f, b.Color.Scale(0.35f), Surface.Matte, crack: true);
                 if (_o.Collision && (!CollidesFull(n) || IsRock(n))) CollideFace(chunk, p, f);
@@ -569,13 +778,13 @@ public static class Mesher
                 if (!InRockRect(n) || n.Y < _o.RockBottom) continue;
                 bool top = f == 4 && n.Y == 0;
                 Rgb c = top ? _o.GroundColorAt?.Invoke(p.X, p.Z) ?? _o.GroundColor : _o.RockColor;
-                Face(chunk, Surface.Matte, p, f, c, 1f, top ? 1f : jitter, ao: true);
+                Face(chunk, Surface.Matte, p, f, c, 1f, top ? 1f : jitter, ao: true, PlainCode(top ? Finish.Soil : Finish.RockFace, damp: p.Y < 0));
                 if (_o.Collision) CollideFace(chunk, p, f);
             }
         }
 
         /// <summary>One cube face with per-corner ambient occlusion.</summary>
-        void Face(ChunkMesh chunk, Surface surf, Int3 p, int f, Rgb color, float alpha, float jitter, bool ao)
+        void Face(ChunkMesh chunk, Surface surf, Int3 p, int f, Rgb color, float alpha, float jitter, bool ao, float code = 0f)
         {
             var buf = chunk.Surfaces[(int)surf];
             V3 n = Normals[f];
@@ -598,7 +807,7 @@ public static class Mesher
                     a = AoLevels[level];
                 }
                 float k = shade * a;
-                buf.Vertex(o + corner, n, color.R / 255f * k, color.G / 255f * k, color.B / 255f * k, alpha);
+                buf.Vertex(o + corner, n, color.R / 255f * k, color.G / 255f * k, color.B / 255f * k, alpha, code, _seed);
                 return a;
             }
 
@@ -682,6 +891,8 @@ public static class Mesher
             float alpha = box.Surface == Surface.Glass ? 0.4f : 1f;
             bool tilted = box.Tilt != default;
             V3 mid = (box.Lo + box.Hi) * 0.5f;
+            // A box is finished as what it is made of: a crate's boards, a machine's plate, a slab's concrete; a pane is framed glass.
+            float side = float.NaN, top = float.NaN, under = float.NaN;
             for (int f = 0; f < 6; f++)
             {
                 if (box.SkipBottom && f == 5) continue;
@@ -698,15 +909,33 @@ public static class Mesher
                     if (box.Surface != Surface.Glow) k = n.Y >= 0 ? 0.86f + 0.14f * n.Y : 0.86f + 0.2f * n.Y;
                 }
                 float r = box.Color.R / 255f * k, g = box.Color.G / 255f * k, bl = box.Color.B / 255f * k;
+                float code;
+                if (box.Surface == Surface.Glass && b.Type == BlockType.Pane && !tilted) code = FaceCode(p, b, n, false, Surface.Glass);
+                else if (n.Y > 0.5f) code = float.IsNaN(top) ? top = BoxCode(p, b, box.Surface, FaceSide.Roof) : top;
+                else if (n.Y < -0.5f) code = float.IsNaN(under) ? under = BoxCode(p, b, box.Surface, FaceSide.Soffit) : under;
+                else code = float.IsNaN(side) ? side = BoxCode(p, b, box.Surface, FaceSide.Out) : side;
                 int i0 = buf.VertexCount;
-                buf.Vertex(a, n, r, g, bl, alpha);
-                buf.Vertex(bb, n, r, g, bl, alpha);
-                buf.Vertex(c, n, r, g, bl, alpha);
-                buf.Vertex(d, n, r, g, bl, alpha);
+                buf.Vertex(a, n, r, g, bl, alpha, code, _seed);
+                buf.Vertex(bb, n, r, g, bl, alpha, code, _seed);
+                buf.Vertex(c, n, r, g, bl, alpha, code, _seed);
+                buf.Vertex(d, n, r, g, bl, alpha, code, _seed);
                 var idx = buf.Indices;
                 idx.Add(i0); idx.Add(i0 + 2); idx.Add(i0 + 1); idx.Add(i0); idx.Add(i0 + 3); idx.Add(i0 + 2);
                 chunk.Quads++;
             }
+        }
+
+        /// <summary>A prop's or a small part's face code: its material's finish that way, at the place's wear.</summary>
+        float BoxCode(Int3 p, Block b, Surface surf, FaceSide side)
+        {
+            if (surf is Surface.Glow or Surface.Flesh) return 0f;
+            if (surf == Surface.Glass) return PlainCode(Finish.Glass);
+            FinishPick pick = Pick(b, side, false, 0);
+            if (pick.Finish == Finish.Plain) return 0f;
+            float j = Hash.Cell(p, 0x3EA2u) % 1000 / 1000f;
+            int wear = Math.Clamp((int)MathF.Floor(_look.Wear * 3f + (j - 0.5f) * 1.2f + 0.35f), 0, 3);
+            bool painted = Surfaces.Coated(pick.Finish) && pick.Finish != Finish.Precast && Surfaces.Painted(b.Color, b.Material);
+            return Surfaces.Code(pick.Finish, _look.ParamOf(pick), wear, 3, false, p.Y < 0, 0, painted, Surfaces.Under.None, 0);
         }
 
         void Ramp(ChunkMesh chunk, Int3 p, Block b, bool draw)
@@ -715,32 +944,36 @@ public static class Mesher
             V3 o = V3.Of(p);
             V3 R(V3 v) => o + Shapes.Turn(v, b.Facing);
             V3 lowL = new(0, 0, 1), lowR = new(1, 0, 1), highL = new(0, 1, 0), highR = new(1, 1, 0), backL = new(0, 0, 0), backR = new(1, 0, 0);
-            var buf = chunk.Surfaces[(int)Shapes.SurfaceOf(b.Material)];
+            Surface rs = Shapes.SurfaceOf(b.Material);
+            var buf = chunk.Surfaces[(int)rs];
             float j = 1f + ((Hash.Cell(p, 5) % 100) / 1000f - 0.05f) * _o.Mottle;
-            void Quad(V3 a, V3 bb, V3 c, V3 d, float shade)
+            V3 sLL = R(lowL), sLR = R(lowR), sHL = R(highL), sHR = R(highR), sBL = R(backL), sBR = R(backR);
+            // The slope, its back and its sides are the roof's covering (a verge shows its edge); the underside an eave or a ceiling.
+            float slopeCode = draw ? FaceCode(p, b, V3.Cross(sLR - sLL, sHR - sLL).Normalized() is var sn && sn.Y < 0 ? sn * -1f : V3.Cross(sLR - sLL, sHR - sLL).Normalized(), true, rs) : 0f;
+            if (slopeCode != 0f) j = 1f;
+            void Quad(V3 a, V3 bb, V3 c, V3 d, float shade, float code)
             {
                 V3 n = V3.Cross(bb - a, c - a).Normalized();
                 int i0 = buf.VertexCount;
-                foreach (V3 v in new[] { a, bb, c, d }) buf.Vertex(v, n, b.Color.R / 255f * shade * j, b.Color.G / 255f * shade * j, b.Color.B / 255f * shade * j, 1f);
+                foreach (V3 v in new[] { a, bb, c, d }) buf.Vertex(v, n, b.Color.R / 255f * shade * j, b.Color.G / 255f * shade * j, b.Color.B / 255f * shade * j, 1f, code, _seed);
                 buf.Indices.AddRange(new[] { i0, i0 + 2, i0 + 1, i0, i0 + 3, i0 + 2 });
                 chunk.Quads++;
             }
-            void TriFace(V3 a, V3 bb, V3 c, float shade)
+            void TriFace(V3 a, V3 bb, V3 c, float shade, float code)
             {
                 V3 n = V3.Cross(bb - a, c - a).Normalized();
                 int i0 = buf.VertexCount;
-                foreach (V3 v in new[] { a, bb, c }) buf.Vertex(v, n, b.Color.R / 255f * shade * j, b.Color.G / 255f * shade * j, b.Color.B / 255f * shade * j, 1f);
+                foreach (V3 v in new[] { a, bb, c }) buf.Vertex(v, n, b.Color.R / 255f * shade * j, b.Color.G / 255f * shade * j, b.Color.B / 255f * shade * j, 1f, code, _seed);
                 buf.Indices.AddRange(new[] { i0, i0 + 2, i0 + 1 });
             }
-            V3 sLL = R(lowL), sLR = R(lowR), sHL = R(highL), sHR = R(highR), sBL = R(backL), sBR = R(backR);
             if (draw)
             {
-                Quad(sLL, sLR, sHR, sHL, 0.97f);                  // the slope
-                Quad(sBR, sBL, sHL, sHR, 0.82f);                  // the tall back
-                TriFace(sBL, sLL, sHL, 0.78f);                    // sides
-                TriFace(sLR, sBR, sHR, 0.78f);
+                Quad(sLL, sLR, sHR, sHL, 0.97f, slopeCode);                  // the slope
+                Quad(sBR, sBL, sHL, sHR, 0.82f, slopeCode);                  // the tall back
+                TriFace(sBL, sLL, sHL, 0.78f, slopeCode);                    // sides
+                TriFace(sLR, sBR, sHR, 0.78f, slopeCode);
                 // The underside, for a ramp nothing stands under: an eave or a roof seen from inside.
-                if (!Hides(p + Int3.Down)) Quad(sBL, sBR, sLR, sLL, 0.62f);
+                if (!Hides(p + Int3.Down)) Quad(sBL, sBR, sLR, sLL, 0.62f, FaceCode(p, b, new V3(0, -1, 0), false, rs));
             }
             if (_o.Collision)
             {
@@ -760,7 +993,8 @@ public static class Mesher
         {
             V3 o = V3.Of(p);
             V3 R(float x, float y, float z) => o + Shapes.Turn(new V3(x, y, z), b.Facing);
-            var buf = chunk.Surfaces[(int)Shapes.SurfaceOf(b.Material)];
+            Surface cs = Shapes.SurfaceOf(b.Material);
+            var buf = chunk.Surfaces[(int)cs];
             float j = 1f + ((Hash.Cell(p, 5) % 100) / 1000f - 0.05f) * _o.Mottle;
             V3 centre = b.Type == BlockType.Corner ? R(0.25f, 0.25f, 0.25f) : R(0.45f, 0.45f, 0.45f);
             void Face(V3[] pts, Int3? side, float shade)
@@ -771,8 +1005,11 @@ public static class Mesher
                 if (V3.Dot(n, pts[0] - centre) < 0) { Array.Reverse(pts); n = V3.Cross(pts[1] - pts[0], pts[2] - pts[0]).Normalized(); }
                 if (draw)
                 {
+                    // Every face but the underside is the roof's covering, as on a ramp.
+                    float code = FaceCode(p, b, n.Y < -0.5f ? n : new V3(0, 1, 0), n.Y > -0.5f, cs);
+                    float jj = code != 0f ? 1f : j;
                     int i0 = buf.VertexCount;
-                    foreach (V3 v in pts) buf.Vertex(v, n, b.Color.R / 255f * shade * j, b.Color.G / 255f * shade * j, b.Color.B / 255f * shade * j, 1f);
+                    foreach (V3 v in pts) buf.Vertex(v, n, b.Color.R / 255f * shade * jj, b.Color.G / 255f * shade * jj, b.Color.B / 255f * shade * jj, 1f, code, _seed);
                     for (int k = 1; k + 1 < pts.Length; k++) buf.Indices.AddRange(new[] { i0, i0 + k + 1, i0 + k });
                     chunk.Quads++;
                 }
@@ -848,6 +1085,9 @@ public sealed class ChunkWindow : IBlockStructure
     public Block Get(Int3 p) => _grid.Get(p);
     public void Set(Int3 p, Block b) => _grid.Set(p, b);
     public int CountBlocks() => 0;
+
+    /// <summary>The look of the grid it reads through.</summary>
+    public PlaceLook? Look => _grid is BlockGrid g ? g.Look : _grid is ChunkWindow w ? w.Look : null;
 }
 
 /// <summary>A box of a shape in cell units; <paramref name="Tilt"/> (pitch, yaw, roll, radians) turns it about its own middle (a piece of rubble lying as it landed).</summary>
