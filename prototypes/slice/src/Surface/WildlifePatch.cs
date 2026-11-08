@@ -423,6 +423,13 @@ public partial class WildlifePatch : Node3D
     internal void RaiseSeized(SeizeEvent e, WildSim sim) => Seized?.Invoke(e, sim);
     internal void RaiseLetGo(SeizeEvent e) => LetGo?.Invoke(e);
 
+    /// <summary>A hold on the player ended: no Husk in any sim (the patch's, a place's, a cave's) may seize them for a while.</summary>
+    public void SparePlayer(float seconds)
+    {
+        Seizing.Spare(Sim, Player, seconds);
+        foreach (DeepSite s in Sites) Seizing.Spare(s.Sim, s.Player, seconds);
+    }
+
     /// <summary>The first living worm mass along a ray (zone frame), within reach, in any place's sim.</summary>
     public WormMass RaycastMass(Vector3 from, Vector3 dir, float reach, out float distance, out WildSim sim)
     {

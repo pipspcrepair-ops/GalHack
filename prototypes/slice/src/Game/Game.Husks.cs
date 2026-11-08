@@ -77,6 +77,8 @@ public partial class Game
 
     void EndHold()
     {
+        // However it ended, a moment's grace: the next Husk in the ring can't take you straight away.
+        if (HeldBy != null) Zone.Wildlife.SparePlayer(Zone.Wildlife.Life.Data.Husks.SeizeCooldown);
         HeldBy = null;
         _heldIn = null;
         Struggle = 0f;

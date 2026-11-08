@@ -115,6 +115,8 @@ public sealed partial class Staging
             "husk-grab" => HuskGrab(),
             "newgame" => NewGameShots(),
             "galaxy-depth" => GalaxyDepth(),
+            "husk-den" => HuskDen(),
+            "husk-carrier" => HuskCarrier(),
             _ => ProofViews(view),
         };
         foreach (int x in script) yield return x;

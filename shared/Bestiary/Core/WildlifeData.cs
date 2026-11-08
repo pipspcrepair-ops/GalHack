@@ -519,6 +519,44 @@ public sealed class HuskRules
     /// <summary>How far a broken hold throws the Husk back, m, and how long it takes to come on again, s.</summary>
     public float Shove { get; set; } = 1.8f;
     public float Stagger { get; set; } = 1.6f;
+    /// <summary>After a hold on someone ends, how long before anything can seize them again, s: a ring of Husks can't pass them hand to hand.</summary>
+    public float SeizeCooldown { get; set; } = 4f;
+    /// <summary>
+    /// How far gone a den is (0 light to 1 severe), at least and at most, by how the place's
+    /// occupancy has them: holding it alone, sharing it, the second group in it, or only a trace.
+    /// </summary>
+    public float[] SeverityAlone { get; set; } = { 0.7f, 1f };
+    public float[] SeverityShared { get; set; } = { 0.4f, 0.75f };
+    public float[] SeveritySecond { get; set; } = { 0.2f, 0.45f };
+    public float[] SeverityTrace { get; set; } = { 0.03f, 0.15f };
+
+    /// <summary>Chance a settlement on a world with Husks has silent carriers among its people, on the rim and at the core.</summary>
+    public float[] CarrierTownChance { get; set; } = { 0.12f, 0.5f };
+    /// <summary>What share of such a settlement's people carry the worms to begin with, at least and at most.</summary>
+    public float[] CarrierShare { get; set; } = { 0.05f, 0.18f };
+    /// <summary>Once this share of a settlement's people carry them, the carriers drop the act and are Husks.</summary>
+    public float CarrierOpenShare { get; set; } = 0.35f;
+    /// <summary>Within this of someone, m, a carrier is with them; with nobody else of theirs within this, m, they are alone.</summary>
+    public float CarrierReach { get; set; } = 2.2f;
+    public float CarrierAlone { get; set; } = 10f;
+    /// <summary>How long a carrier has to be alone with one of its own people for the worms to pass to them, s.</summary>
+    public float CarrierPass { get; set; } = 8f;
+
+    /// <summary>
+    /// Their wrongness (<see cref="Wrongness"/>): how far off a Husk is felt, m; how much one near
+    /// counts, and a worm mass for its size; how fast a cluster grows past the sum of its Husks;
+    /// how much a den's severity adds; and how far animals keep from a Husk, m.
+    /// </summary>
+    public float WrongReach { get; set; } = 36f;
+    public float WrongPerHusk { get; set; } = 0.22f;
+    public float WrongPerMass { get; set; } = 0.12f;
+    public float WrongCluster { get; set; } = 1.35f;
+    public float WrongDen { get; set; } = 1.2f;
+    public float AnimalShun { get; set; } = 18f;
+
+    /// <summary>A den's severity from its occupancy, rolled (0..1) within the range for how they hold it.</summary>
+    public float SeverityOf(bool main, bool alone, bool trace, float roll) =>
+        Lerp(trace ? SeverityTrace : !main ? SeveritySecond : alone ? SeverityAlone : SeverityShared, roll);
     /// <summary>Maggot vomit: how far it reaches, m, and how long between, s.</summary>
     public float VomitReach { get; set; } = 6f;
     public float VomitEvery { get; set; } = 7f;

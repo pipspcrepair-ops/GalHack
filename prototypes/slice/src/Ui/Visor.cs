@@ -302,7 +302,8 @@ public partial class Visor : CanvasLayer
         float s = S;
         Vector2 size = _hud.Size;
         Vector3 look = Game.Spaceflight.Local(survivor.WorldLook()); // in orbit, north stays north
-        float heading = Mathf.PosMod(Mathf.RadToDeg(Mathf.Atan2(look.X, -look.Z)), 360f);
+        // Near the Husks it drifts off true (and everything on it with it).
+        float heading = Mathf.PosMod(Mathf.RadToDeg(Mathf.Atan2(look.X, -look.Z)) + Game.CompassDrift, 360f);
         float width = 640 * s, y = 34 * s, cx = size.X / 2;
         _hud.Block(new Rect2(cx - width / 2, y + 22 * s, width, 2 * s), new Color(C.Text, 0.5f));
         for (int d = 0; d < 360; d += 15)
@@ -315,7 +316,7 @@ public partial class Visor : CanvasLayer
             if (major)
                 _hud.TextIn(UiTheme.Display, (int)(16 * s), new Rect2(x - 20 * s, y - 14 * s, 40 * s, 20 * s), d switch { 0 => "N", 90 => "E", 180 => "S", _ => "W" }, C.Text, HorizontalAlignment.Center);
         }
-        _hud.Text(UiTheme.Mono, (int)(16 * s), new Vector2(cx - 18 * s, y + 28 * s), $"{heading:000}", C.Text);
+        _hud.Text(UiTheme.Mono, (int)(16 * s), new Vector2(cx - 18 * s, y + 28 * s), Garbled($"{heading:000}", Game.WrongShown), C.Text);
 
         Vector3 feet = survivor.WorldFeet;
         var labels = new List<(float x, int row)>();
@@ -338,6 +339,19 @@ public partial class Visor : CanvasLayer
             _hud.TextIn(UiTheme.Label, (int)(13 * s), new Rect2(x - 110 * s, y + (44 + row * 16) * s, 220 * s, 16 * s), $"{(tag.Length > 20 ? tag[..19] + ".." : tag)} {d:F0}m", colour, HorizontalAlignment.Center);
         }
         foreach (CompassMark m in CompassMarks()) Mark(m.At, m.Tag, m.Colour, m.Alpha);
+    }
+
+    /// <summary>A readout as the wrongness has it: now and then, the more the stronger it is, one digit comes up as another for a moment.</summary>
+    string Garbled(string text, float wrong)
+    {
+        if (wrong < 0.05f || text.Length == 0) return text;
+        int beat = (int)(_time * 9.0);
+        var roll = new Random(beat * 7919 + text.Length);
+        if (roll.NextDouble() > wrong * 0.22) return text;
+        char[] c = text.ToCharArray();
+        int at = c.Length - 1; // the last digit only, so it still reads as a heading
+        if (char.IsDigit(c[at])) c[at] = (char)('0' + (c[at] - '0' + 3 + roll.Next(6)) % 10);
+        return new string(c);
     }
 
     /// <summary>One mark on the compass: its label, where it is, its colour and how strongly it shows.</summary>
