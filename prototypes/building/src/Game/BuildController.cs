@@ -441,6 +441,7 @@ public partial class BuildController : Node
     static string Explain(PlaceError e, Structure s) => e switch
     {
         PlaceError.Occupied => "Something is already there",
+        PlaceError.TopBlocked => "A door is two blocks tall: clear the block over it",
         PlaceError.NotAttached => "Blocks must attach to the structure",
         PlaceError.NoSharedFace => "No shared face: that side of the neighbour is open",
         PlaceError.StartWithCore => "Start with a core (9)",
@@ -481,13 +482,14 @@ public partial class BuildController : Node
 
         Structure st = aim.View.Structure;
         Int3 cell = aim.Cell + aim.Face.Vec();
-        if (InPlayer(aim.View, cell))
+        BlockType type = SelectedType;
+        Block block = Building.Make(st, type, SelectedShape, AutoOrient(type, aim.Face, Rot));
+        // Every cell it takes: a door's top as well as its foot.
+        if (Building.Piece(st, cell, block).Any(c => InPlayer(aim.View, c.Pos)))
         {
             Refuse("You're standing there");
             return;
         }
-        BlockType type = SelectedType;
-        Block block = Building.Make(st, type, SelectedShape, AutoOrient(type, aim.Face, Rot));
         bool claiming = type.IsCore && st.IsWreck;
         var results = Building.PlaceSymmetric(st, cell, block, Symmetry, Inventory);
         if (results[0].error != PlaceError.None)

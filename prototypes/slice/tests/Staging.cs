@@ -142,7 +142,7 @@ public sealed partial class Staging
             "blockdetail" => BlockDetailView(),
             "placesurf" => PlaceSurfView(),
             "decorooms" => DecoRooms(),
-            _ => ProofViews(view),
+            _ => DoorViews(view),
         };
         foreach (int x in script) yield return x;
         if (_args.TryGetValue("hud", out string hud)) _game.Visor.Visible = hud != "0";

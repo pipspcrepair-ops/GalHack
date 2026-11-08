@@ -7,10 +7,11 @@ namespace PoiGenerator.Gen;
 
 /// <summary>
 /// What makes a place read as a building from a distance: a darker course where its walls meet the
-/// ground, a coping along their tops, a frame round each door to the outside, and no lamps showing
-/// through an outer wall as bright tiles. It only recolours what a kit built, so any generator's
-/// walls get it, while yards, wrecks and containers keep their own colours. A kit without a
-/// <c>facade</c> line is left alone.
+/// ground, a coping along their tops, a frame round each door to the outside where the style calls for
+/// one (in the building's own trim, never a hazard colour: a dangerous opening wears its stripes on its
+/// own door), and no lamps showing through an outer wall as bright tiles. It only recolours what a kit
+/// built, so any generator's walls get it, while yards, wrecks and containers keep their own colours.
+/// A kit without a <c>facade</c> line is left alone.
 /// </summary>
 public static class Facade
 {
@@ -99,9 +100,18 @@ public static class Facade
                 // calls for one (Homes), never in a kit's hazard colour.
                 if (layout.Extras.Homes.Count > 0) return;
                 Kit kit = owners.TryGetValue(w.Color, out Kit? k) ? k : layout.Kit;
-                if (kit.DoorFrame is Rgb frame) Paint(g, p, frame);
+                if (kit.DoorFrame is Rgb frame && !IsHazard(frame)) Paint(g, p, frame);
             }
         }
+    }
+
+    /// <summary>A safety yellow or a gold that reads as one at a distance: never round a person's door.</summary>
+    public static bool IsHazard(Rgb c)
+    {
+        int max = Math.Max(c.R, Math.Max(c.G, c.B)), min = Math.Min(c.R, Math.Min(c.G, c.B));
+        if (max < 170 || max - min < max * 0.45f || c.B == max) return false; // bright: an ochre or timber trim is no hazard
+        float hue = c.R == max ? 60f * (c.G - c.B) / (max - min) : 60f * (2f + (c.B - c.R) / (float)(max - min));
+        return hue >= 36f && hue <= 66f;
     }
 
     static void Paint(BlockGrid g, Int3 p, Rgb color)

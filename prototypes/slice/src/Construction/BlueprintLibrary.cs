@@ -122,7 +122,7 @@ public sealed class BlueprintLibrary
             File = file, Source = source, Plan = plan, Declared = largeHover ? CoreMode.Hover : plan.Mode,
             Size = new Vector3(max.X - min.X + 1, max.Y - min.Y + 1, max.Z - min.Z + 1) * cell,
             MassT = st.Mass, Blocks = plan.Count, Handling = h,
-            Families = plan.Blocks().GroupBy(b => plan.TypeOf(b.block).Id).Select(g => (g.Key, g.Count()))
+            Families = plan.Blocks().Where(b => !plan.TypeOf(b.block).IsPieceTop).GroupBy(b => plan.TypeOf(b.block).Id).Select(g => (g.Key, g.Count()))
                 .OrderByDescending(f => f.Item2).ThenBy(f => f.Key, StringComparer.Ordinal).ToList(),
         };
     }
