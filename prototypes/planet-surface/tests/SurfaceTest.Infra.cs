@@ -1240,7 +1240,7 @@ public partial class SurfaceTest
             {
                 exodus++;
                 var ports = w.Pois.Where(Wrecks.IsPort).ToList();
-                scrappy += ports.Count(p => p.Family.Tags.Contains("scrappy"));
+                scrappy += ports.Count(p => p.Family.Tags.Contains("scrappy") || p.Family.Tags.Contains("exodus"));
                 // Jams per kilometre of road, near a port and further out.
                 foreach (InfraRoute r in net.Routes.Where(r => r.Kind != RouteKind.Rail))
                     for (int i = 0; i < r.Count; i += 5)

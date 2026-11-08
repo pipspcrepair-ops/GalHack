@@ -61,7 +61,7 @@ public static class PoiLights
         foreach (LightSpot s in poi.Lights)
         {
             if (which != null && !which(s)) continue;
-            Set(s, Style(mood, poi.Kit.Light, s.Cell));
+            Set(s, Style(mood, poi.Layout.Lamp ?? poi.Kit.Light, s.Cell));
             n++;
         }
         return n;

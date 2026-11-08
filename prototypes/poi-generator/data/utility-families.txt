@@ -414,6 +414,8 @@ family scrappy_port
   tier camp
   siting flat
   rise 18
+  tech mid high
+  instead caravan_camp road_camp
   name Improvised Launch Field
   pitch A cleared field, scaffolding, fuel drums, and a ship that was never going to make it.
   faction none
@@ -436,6 +438,66 @@ family scrappy_port
     seed 9882
   variant Field Twelve
     seed 9883
+
+# What a low-tech world's people gathered at to leave, where a modern one threw up a launch field: the
+# era's own equivalent (scrappy_port's "instead" line), so a fall or a theme that brings one still has its place.
+family caravan_camp
+  tier camp
+  siting flat
+  rise 8
+  tech low
+  name Caravan Camp
+  pitch Wagons drawn up in a ring round a cold fire, a hood or two still on its hoops, and the road out of it.
+  faction none
+  roster raiders
+  site caravan_camp
+  core none
+  owner none
+  rarity common
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 6
+  reveal 400
+  ominous 0.5
+  wrong 0
+  tags exodus fallen
+  is open
+  states active 0 abandoned 7 infested 1 ruined 2
+  variant Wagon Ring
+    seed 9887
+  variant Drovers' Halt
+    seed 9888
+  variant Last Muster
+    seed 9889
+
+family road_camp
+  tier camp
+  siting flat
+  rise 6
+  tech low
+  name Road Camp
+  pitch Carts left nose to tail along the verge, a shed by the road, cold fires where the column stopped for the night.
+  faction none
+  roster raiders
+  site road_camp
+  core none
+  owner none
+  rarity common
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 6
+  reveal 300
+  ominous 0.5
+  wrong 0
+  tags exodus fallen
+  is open
+  states active 0 abandoned 7 infested 1 ruined 2
+  variant Verge Halt
+    seed 9890
+  variant Toll Shed Camp
+    seed 9891
+  variant Column's End
+    seed 9892
 
 family evacuation_camp
   tier camp

@@ -130,9 +130,28 @@ public static class FlavourRuins
         return HomeHints.ClimateOf(map.Temperature[k], map.Humidity[k]);
     }
 
-    /// <summary>A house's culture where it stands: a street's houses share one; a lone house has its own.</summary>
-    static HomeHints Home(PoiGenerator.Gen.Rng rng, WorldMap map, double x, double z, int? culture = null) =>
-        new(culture ?? (int)(rng.NextU64() >> 33), ClimateAt(map, x, z), rng.Float());
+    /// <summary>A house's culture where it stands, the region's (<see cref="CultureAt"/>); its purse is its own.</summary>
+    static HomeHints Home(PoiGenerator.Gen.Rng rng, WorldMap map, RegionPlan plan, double x, double z) =>
+        new(CultureAt(plan, map, x, z), ClimateAt(map, x, z), rng.Float());
+
+    /// <summary>How far a stretch of open country reaches that one people built in, metres.</summary>
+    public const double CountryPatch = 3200;
+
+    /// <summary>
+    /// The building culture where a house stands: one people to a town and everything it ran (its streets, its
+    /// farmland, its works: the plan's region and the town it served), and out in the open country one to each
+    /// stretch of land. A strange people's culture makes all its houses strange and a regular one none, so the two
+    /// never share a street, a town or a stretch of country (design doc, "Infrastructure").
+    /// </summary>
+    public static int CultureAt(RegionPlan plan, WorldMap map, double x, double z)
+    {
+        x = Mathx.WrapX(x, map.WidthMeters);
+        z = Mathx.Wrap(z, map.HeightMeters);
+        if (plan?.RegionAt(x, z) is { } region)
+            return (int)(PoiGenerator.Gen.Hash.Combine(map.Spec.Seed, 0xC0175UL, (ulong)(region.Town >= 0 ? region.Town : region.Index)) >> 33);
+        long px = (long)Math.Floor(x / CountryPatch), pz = (long)Math.Floor(z / CountryPatch);
+        return (int)(PoiGenerator.Gen.Hash.Combine(map.Spec.Seed, 0xC0A7UL, (ulong)(px * 73856093L ^ pz * 19349663L)) >> 33);
+    }
 
     /// <summary>Forgets every layout drawn so far: a world's streets are no use to the next (a new game calls it between them).</summary>
     public static void Forget() => Layouts.Clear();
@@ -188,10 +207,12 @@ public static class FlavourRuins
         bool Heart(double x, double z) => plan == null || plan.RegionAt(Mathx.WrapX(x, map.WidthMeters), Mathx.Wrap(z, map.HeightMeters)) is { } home && plan.Dist(home.X, home.Z, Mathx.WrapX(x, map.WidthMeters), Mathx.Wrap(z, map.HeightMeters)) < home.Radius * 0.7;
         bool Farmed(double x, double z) => plan == null || plan.RegionAt(Mathx.WrapX(x, map.WidthMeters), Mathx.Wrap(z, map.HeightMeters))?.Kind == RegionKind.Farmland;
         double Dist(double ax, double az, double bx, double bz) => Math.Sqrt(Math.Pow(Mathx.WrapDelta(ax - bx, w), 2) + Math.Pow(Mathx.WrapDelta(az - bz, h), 2));
-        // A house off on its own has a culture of its own, in the weather where it stands.
+        // A house off on its own, or a farm's, is of the people of the region it stands in, in the weather there.
         Layout Lot(FamilyDef f, Dir front, double x = 0, double z = 0) => f.Tags.Contains("house")
-            ? LayoutFor(lib, f, VariantFor(f, profile.Before, rng), front, profile.Before, rng.Range(0, HouseSalts), Home(rng, map, x, z))
-            : LayoutFor(lib, f, VariantFor(f, profile.Before, rng), front, profile.Before, rng.Range(0, Salts));
+            ? LayoutFor(lib, f, VariantFor(f, profile.Before, rng), front, profile.Before, rng.Range(0, HouseSalts), Home(rng, map, plan, x, z))
+            : f.Tags.Contains("farmstead")
+                ? LayoutFor(lib, f, VariantFor(f, profile.Before, rng), front, profile.Before, rng.Range(0, Salts), Home(rng, map, plan, x, z) with { Wealth = 0.5f })
+                : LayoutFor(lib, f, VariantFor(f, profile.Before, rng), front, profile.Before, rng.Range(0, Salts));
 
         double roadKm = net.Routes.Where(r => r.Kind is RouteKind.Highway or RouteKind.Road).Sum(r => r.Count * InfraNetwork.Spacing) / 1000;
         double trackKm = net.Routes.Where(r => r.Kind == RouteKind.Track).Sum(r => r.Count * InfraNetwork.Spacing) / 1000;
@@ -221,7 +242,7 @@ public static class FlavourRuins
             if (built.Any(b => Dist(b.X, b.Z, px, pz) < (plan != null ? 420 : 1100))) continue;
             if (r.Span[Math.Min(i, r.Span.Length - 1)] != RoadSpan.Ground) continue;
             int length = 3 + rng.Range(0, 4);
-            if (Street(px, pz, r, length, net, lib, bare, pois, ruins, w, h, rng, Pick("house"), Pick("shed"), Pick("shop"), profile.Before)) built.Add((px, pz));
+            if (Street(px, pz, r, length, net, lib, bare, pois, ruins, w, h, rng, Pick("house"), Pick("shed"), Pick("shop"), profile.Before, CultureAt(plan, map, px, pz))) built.Add((px, pz));
         }
 
         // The stop each age kept on its roads (an inn, a petrol station, a charging depot): crossroads first, then wherever a long highway has gone without one.
@@ -286,7 +307,7 @@ public static class FlavourRuins
                 double nx = -dz / len * side, nz = dx / len * side, off = 70 + 130 * rng.Float();
                 if (!Farmed(r.X[i] + nx * off, r.Z[i] + nz * off)) continue;
                 Dir front = Facing(-nx, -nz);
-                Layout layout = Lot(farm, front);
+                Layout layout = Lot(farm, front, r.X[i] + nx * off, r.Z[i] + nz * off);
                 if (layout == null) continue;
                 FlavourRuin ruin = Try(lib, farm, layout, r.X[i] + nx * off, r.Z[i] + nz * off, bare, net, pois, ruins, w, h, rng, spacing: 40);
                 if (ruin == null || !Connect(ruin, r, 2.2f, profile.Before == TechLevel.Low ? StampSurface.Dirt : StampSurface.Gravel, bare, w, h)) continue;
@@ -424,12 +445,12 @@ public static class FlavourRuins
     /// only if the ground takes a fair few lots. False if it doesn't, in any of the ways it could run.
     /// </summary>
     static bool Street(double px, double pz, InfraRoute road, int pairs, InfraNetwork net, PoiLibrary lib, PlanetTerrainSource bare, IReadOnlyList<PoiSite> pois, List<FlavourRuin> ruins,
-        double w, double h, PoiGenerator.Gen.Rng rng, FamilyDef house, FamilyDef shed, FamilyDef shop, TechLevel tech)
+        double w, double h, PoiGenerator.Gen.Rng rng, FamilyDef house, FamilyDef shed, FamilyDef shop, TechLevel tech, int culture)
     {
         if (house == null) return false;
         const float StreetHalf = 4f;
         // The street's people: one culture, in the weather here, as well off as the street was.
-        var home = new HomeHints((int)(PoiGenerator.Gen.Hash.Combine((ulong)(long)px, (ulong)(long)pz) >> 33), ClimateAt(bare.Sampler.Map, px, pz), rng.Float());
+        var home = new HomeHints(culture, ClimateAt(bare.Sampler.Map, px, pz), rng.Float());
         var ways = new List<(double X, double Z)> { (1, 0), (-1, 0), (0, 1), (0, -1) };
         rng.Shuffle(ways);
         foreach (var (ux, uz) in ways)

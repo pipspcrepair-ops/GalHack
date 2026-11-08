@@ -59,7 +59,9 @@ public static class Civic
     /// </summary>
     public static void Market(Canvas c, Rng rng, LayoutHints? hints, TechLevel tech)
     {
-        const int I0 = 4, I1 = 51, K0 = 6, K1 = 37, H = 7;
+        const int I0 = 4, K0 = 6, K1 = 37, H = 7;
+        // Each spawn its own length (its own seed).
+        int I1 = 45 + 2 * rng.Fork("size").Range(0, 7);
         var p = new Plot(c, rng, tech, hints?.Front ?? Dir.North);
         Wear(p);
         Fab f = p.F;
@@ -167,7 +169,11 @@ public static class Civic
     /// </summary>
     public static void Hospital(Canvas c, Rng rng, LayoutHints? hints, TechLevel tech)
     {
-        const int I0 = 4, I1 = 61, K0 = 8, K1 = 27, Storeys = 3, Pitch = 3, H = 2, End = 8;
+        const int I0 = 4, K0 = 8, Storeys = 3, Pitch = 3, H = 2, End = 8;
+        // Each spawn its own length and depth of wings (its own seed), so no two hospitals are one building.
+        var size = rng.Fork("size");
+        // (Whole bays of wards: the length steps by a ward.)
+        int I1 = 54 + 7 * size.Range(0, 3), K1 = 25 + 2 * size.Range(0, 3);
         const int CorridorK0 = 17, CorridorK1 = 18;
         var p = new Plot(c, rng, tech, hints?.Front ?? Dir.North);
         Wear(p);
@@ -319,7 +325,10 @@ public static class Civic
         for (int i = I0 + 5; i < I1 - 3; i += 8) p.Lamp(2 * i, 2 * H - 1, 2 * ((K0 + K1) / 2), hall, 1.6f, 18f);
 
         // The pump house.
-        const int PumpI0 = 8, PumpI1 = 26, PumpK0 = K1 + 6, PumpK1 = PumpK0 + 14;
+        const int PumpI0 = 8, PumpK0 = K1 + 6;
+        // Each spawn its own pump house (its own seed).
+        var pumpSize = p.R.Fork("pumps");
+        int PumpI1 = 22 + 2 * pumpSize.Range(0, 5), PumpK1 = PumpK0 + 12 + 2 * pumpSize.Range(0, 3);
         int pumps = p.Hall("pump-house", ModuleKind.Hall, 0, PumpI0, PumpK0, PumpI1, PumpK1, 0, H, f.Wall, f.Roof);
         p.Mouth(14, 0, PumpK0, 17, 2, PumpK0, pumps, p.Yard);
         for (int i = PumpI0 + 3; i < PumpI1 - 3; i += 5)
@@ -409,7 +418,10 @@ public static class Civic
     /// </summary>
     public static void Bunker(Canvas c, Rng rng, LayoutHints? hints, TechLevel tech)
     {
-        const int J = -15, Hood0 = 6, Hood1 = 15, StairI = 19, StairK = Hood1 + 10, MainI0 = 18, MainI1 = 21, MainK0 = StairK + 1, MainK1 = 70, Bottom = 2 * J;
+        const int Hood0 = 6, Hood1 = 15, StairI = 19, StairK = Hood1 + 10, MainI0 = 18, MainI1 = 21, MainK0 = StairK + 1;
+        // Each spawn dug to its own depth, its main tunnel its own length (its own seed).
+        var size = rng.Fork("size");
+        int J = -13 - 2 * size.Range(0, 3), MainK1 = 60 + 2 * size.Range(0, 9), Bottom = 2 * J;
         var p = new Plot(c, rng, tech, hints?.Front ?? Dir.North);
         Wear(p);
         Fab f = p.F;

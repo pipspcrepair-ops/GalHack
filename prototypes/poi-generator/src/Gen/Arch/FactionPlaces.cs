@@ -73,7 +73,9 @@ public static class FactionPlaces
     /// <summary>A spine 88 m long of labs off one corridor, a square tower at its end with the sigil on it, a landing pad in front.</summary>
     static void Lab(Plot p, SigilDef? sigil)
     {
-        const int I0 = 4, I1 = 47, K0 = 10, K1 = 17, H = 3, T1 = I1 + 9;
+        const int I0 = 4, K0 = 10, K1 = 17, H = 3;
+        // Each spawn its own length of wing (its own seed).
+        int I1 = 41 + 2 * p.R.Fork("size").Range(0, 7), T1 = I1 + 9;
         Fab f = p.F;
         Stuff2 teal = K(p, 't', f.Accent), orange = K(p, 'k', f.Accent), slate = K(p, '%', f.Panel);
         p.Approach(25, 4, Dir.North);
@@ -120,7 +122,7 @@ public static class FactionPlaces
         p.Cache(2 * (I1 + 3), 0, 2 * 10, server);
         p.Lamp(2 * (I1 + 4) + 1, 3, 2 * 13 + 1, server, 1.6f, 12f);
         Core(p, server, 2 * (I1 + 6), 0, 2 * 15);
-        const int Top = 13;
+        int Top = 11 + 2 * p.R.Fork("tower").Range(0, 3);
         for (int k = 8; k <= 19; k++)
             for (int i = I1; i <= T1; i++)
                 if (i == I1 || i == T1 || k == 8 || k == 19) p.Fill(i, 3, k, i, Top, k, Cube(f.Wall));
@@ -236,6 +238,13 @@ public static class FactionPlaces
         {
             (14, 22, 7, 3, "brood"), (28, 17, 6, 3, "barracks"), (44, 22, 9, 4, "hive-hall"), (59, 16, 5, 2, "sentinel"),
         };
+        // Each spawn grown its own way (its own seed): every dome a storey taller or lower.
+        var grow = p.R.Fork("domes");
+        for (int d = 0; d < domes.Length; d++)
+        {
+            var (gi, gk, gr, gh, gw) = domes[d];
+            domes[d] = (gi, gk, gr, Math.Max(2, gh + grow.Range(-1, 2)), gw);
+        }
         int gateI = (int)domes[0].I, gateK = (int)(domes[0].K - domes[0].R);
         p.Approach(gateI, gateK - 4, Dir.North);
         var rooms = new int[domes.Length];
@@ -330,7 +339,10 @@ public static class FactionPlaces
     {
         Fab f = p.F;
         Stuff2 lattice = K(p, 'l', f.Steel), panel = K(p, '%', f.Panel), cyan = K(p, '*', f.Accent), magenta = K(p, 'n', f.Accent), machine = K(p, 'm', f.Steel);
-        const int C0 = 24, C1 = 35, MH = 5, CH = 6;
+        const int C0 = 24, C1 = 35, MH = 5;
+        // Each spawn its own core height and spire (its own seed).
+        var tall = p.R.Fork("spire");
+        int CH = 5 + tall.Range(0, 3);
         p.Shell(C0, C0, C1, C1, 0, CH, f.Wall, f.Roof);
         p.Plinth(C0, C0, C1, C1, 0);
         p.Weathers(C0 - 1, 0, C0 - 1, C1 + 1, CH + 1, C1 + 1, CH);
@@ -386,7 +398,7 @@ public static class FactionPlaces
         }
         p.Cache(2 * 27, 0, 2 * 45, rooms[2]);
         // The spire: four lattice legs off the core's roof, rings every four levels, a dish and a mast with its status light.
-        const int Spire = 22;
+        int Spire = 18 + 2 * tall.Range(0, 5);
         foreach (var (i, k) in new[] { (26, 26), (33, 26), (26, 33), (33, 33) }) p.Fill(i, CH + 1, k, i, Spire, k, new Block(BlockType.Lattice, lattice.M, lattice.C, Role.Wall));
         for (int j = CH + 4; j <= Spire; j += 4)
             for (int t = 26; t <= 33; t++)
@@ -470,7 +482,10 @@ public static class FactionPlaces
         p.Drum(40, 21, 3, 0, 3, concrete);
         p.Disc(40, 21, 3, 4, Cube(roof, Role.Roof));
         p.Weathers(36, 0, 17, 44, 6, 25, 4);
-        const int F0 = 4, F1 = 49, G0 = 26, G1 = 42;
+        const int F0 = 4, G0 = 26;
+        // Each spawn its own field (its own seed).
+        var field = p.R.Fork("field");
+        int F1 = 41 + 2 * field.Range(0, 7), G1 = 36 + 2 * field.Range(0, 5);
         for (int k = 2 * G0; k <= 2 * G1 + 1; k++)
             for (int u = 2 * F0; u <= 2 * F1 + 1; u++)
             {
@@ -492,7 +507,9 @@ public static class FactionPlaces
         Fab f = p.F;
         Stuff2 timber = K(p, '%', f.Wall), red = K(p, 'n', f.Accent), concrete = K(p, 'q', f.Plinth), post = K(p, 'o', f.Steel), roof = f.Roof;
         Stuff2 ore = new(Material.Rock, new Rgb(0x8a, 0x6a, 0x3e));
-        const int J = -6;
+        // Each spawn sunk to its own depth, its stopes driven where its own seed says.
+        var mine = p.R.Fork("mine");
+        int J = -5 - mine.Range(0, 4);
         p.Approach(13, 5, Dir.North);
         Gabled(p, 8, 10, 19, 17, 2, true, timber, roof);
         int house = p.Room(ModuleKind.Hall, "winding-house", 0, 9, 0, 11, 18, 1, 16);
@@ -528,7 +545,7 @@ public static class FactionPlaces
             foreach (int k in new[] { 12, 15 })
                 for (int y = 2 * J; y < 2 * J + 6; y++) p.Put(2 * i, y, 2 * k + (k == 12 ? 0 : 1), new Block(BlockType.Rib, post.M, post.C, Role.Decor));
         for (int i = 21; i < 48; i += 7) p.Lamp(2 * i, 2 * J + 5, 2 * 13 + 1, drift, 1f, 11f);
-        foreach (var (k0, k1, mouthK, at) in new[] { (4, 10, 11, 28), (17, 23, 16, 38) })
+        foreach (var (k0, k1, mouthK, at) in new[] { (4, 10, 11, 28 + mine.Range(-3, 4)), (17, 23, 16, 38 + mine.Range(-3, 4)) })
         {
             int stope = p.Tunnel("stope", -1, at - 3, k0, at + 3, k1, J, 3, timber);
             p.Mouth(at, J, mouthK, at + 1, J + 1, mouthK, drift, stope);

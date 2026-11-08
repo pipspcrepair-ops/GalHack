@@ -17,11 +17,15 @@ public sealed class Fab
     public Stuff2 Wall, Panel, Plinth, Floor, Roof, Steel, Rust, Pipe, PipeHot, Accent, Grating;
     public Rgb Hazard = new(0xe0, 0xa8, 0x10), Black = new(0x1e, 0x1e, 0x20), Glass = new(0x5a, 0x6c, 0x70), Lamp = new(0xff, 0xd8, 0xa0), Emergency = new(0xff, 0x40, 0x28);
 
-    public static Fab For(TechLevel tech, Rng r) => tech switch
+    /// <summary>An age's materials: data/eras.txt's table, over the built-in one for anything it leaves out.</summary>
+    public static Fab For(TechLevel tech, Rng r) =>
+        EraBook.Current.Of(tech) is { Stuff.Count: > 0 } era ? era.Fab(r, Builtin(tech, null)) : Builtin(tech, r);
+
+    static Fab Builtin(TechLevel tech, Rng? r) => tech switch
     {
         TechLevel.Low => new Fab
         {
-            Wall = new(Material.Rock, r.Pick(new[] { new Rgb(0x7a, 0x5a, 0x4a), new Rgb(0x6e, 0x5c, 0x50), new Rgb(0x84, 0x6a, 0x54) })),
+            Wall = new(Material.Rock, Pick(r, new Rgb(0x7a, 0x5a, 0x4a), new Rgb(0x6e, 0x5c, 0x50), new Rgb(0x84, 0x6a, 0x54))),
             Panel = new(Material.Timber, new Rgb(0x6a, 0x58, 0x46)), Plinth = new(Material.Rock, new Rgb(0x5e, 0x5a, 0x54)), Floor = new(Material.Rock, new Rgb(0x66, 0x60, 0x58)),
             Roof = new(Material.Timber, new Rgb(0x4a, 0x3c, 0x32)), Steel = new(Material.Timber, new Rgb(0x5a, 0x48, 0x38)), Rust = new(Material.Rust, new Rgb(0x6e, 0x46, 0x34)),
             Pipe = new(Material.Rust, new Rgb(0x72, 0x4c, 0x38)), PipeHot = new(Material.Rust, new Rgb(0x5c, 0x48, 0x3e)), Accent = new(Material.Timber, new Rgb(0x7a, 0x3c, 0x2c)), Grating = new(Material.Timber, new Rgb(0x60, 0x4e, 0x3e)),
@@ -29,7 +33,7 @@ public sealed class Fab
         },
         TechLevel.High => new Fab
         {
-            Wall = new(Material.Resin, r.Pick(new[] { new Rgb(0xb4, 0xba, 0xbc), new Rgb(0xa6, 0xae, 0xb4), new Rgb(0xbc, 0xb8, 0xae) })),
+            Wall = new(Material.Resin, Pick(r, new Rgb(0xb4, 0xba, 0xbc), new Rgb(0xa6, 0xae, 0xb4), new Rgb(0xbc, 0xb8, 0xae))),
             Panel = new(Material.Alloy, new Rgb(0x8c, 0x98, 0xa2)), Plinth = new(Material.Concrete, new Rgb(0x5e, 0x64, 0x6a)), Floor = new(Material.Concrete, new Rgb(0x72, 0x78, 0x7c)),
             Roof = new(Material.Alloy, new Rgb(0x56, 0x60, 0x6a)), Steel = new(Material.Alloy, new Rgb(0x6e, 0x7a, 0x84)), Rust = new(Material.Alloy, new Rgb(0x4e, 0x58, 0x62)),
             Pipe = new(Material.Alloy, new Rgb(0x9a, 0xa6, 0xb0)), PipeHot = new(Material.Alloy, new Rgb(0x36, 0x6a, 0x7e)), Accent = new(Material.Alloy, new Rgb(0x1e, 0x6a, 0x84)), Grating = new(Material.Alloy, new Rgb(0x58, 0x64, 0x6e)),
@@ -37,12 +41,14 @@ public sealed class Fab
         },
         _ => new Fab
         {
-            Wall = new(Material.Concrete, r.Pick(new[] { new Rgb(0x8c, 0x88, 0x80), new Rgb(0x84, 0x82, 0x7c), new Rgb(0x92, 0x8c, 0x80) })),
+            Wall = new(Material.Concrete, Pick(r, new Rgb(0x8c, 0x88, 0x80), new Rgb(0x84, 0x82, 0x7c), new Rgb(0x92, 0x8c, 0x80))),
             Panel = new(Material.Concrete, new Rgb(0x70, 0x6e, 0x6a)), Plinth = new(Material.Concrete, new Rgb(0x5c, 0x5a, 0x56)), Floor = new(Material.Concrete, new Rgb(0x6a, 0x68, 0x64)),
             Roof = new(Material.Concrete, new Rgb(0x56, 0x54, 0x50)), Steel = new(Material.Steel, new Rgb(0x5c, 0x60, 0x62)), Rust = new(Material.Rust, new Rgb(0x7a, 0x48, 0x30)),
             Pipe = new(Material.Steel, new Rgb(0x74, 0x78, 0x76)), PipeHot = new(Material.Rust, new Rgb(0x7e, 0x50, 0x38)), Accent = new(Material.Steel, new Rgb(0x2a, 0x4e, 0x62)), Grating = new(Material.Steel, new Rgb(0x56, 0x5a, 0x5c)),
         },
     };
+
+    static Rgb Pick(Rng? r, params Rgb[] choices) => r != null ? r.Pick(choices) : choices[0];
 }
 
 /// <summary>

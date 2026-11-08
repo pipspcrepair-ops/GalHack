@@ -44,6 +44,12 @@ public static partial class PoiSiting
         }
     }
 
+    /// <summary>Tests only: lay places out the old way (most families from their variant's one authored seed), to time against.</summary>
+    public static bool FixedLayouts;
+
+    /// <summary>How long the last world's places took to lay out and spawn, side by side (tests read it).</summary>
+    public static double LastLayoutMs;
+
     static Dir Toward(double dx, double dz) => Math.Abs(dx) >= Math.Abs(dz) ? (dx > 0 ? Dir.East : Dir.West) : (dz > 0 ? Dir.South : Dir.North);
 
     /// <summary>The sites a plan asks for, built side by side and seated in order. Empty if the plan found no land.</summary>
@@ -91,21 +97,29 @@ public static partial class PoiSiting
         }
         // Whole works take a moment each: they're built side by side, then seated in order.
         var made = new PoiInstance[jobs.Count];
+        var clock = System.Diagnostics.Stopwatch.StartNew();
         Parallel.For(0, jobs.Count, i =>
         {
             var j = jobs[i];
             PlannedPlace served = j.Place.Serves >= 0 ? plan.Places[j.Place.Serves] : null;
             Dir front = served == null ? Dir.North
                 : Toward(Mathx.WrapDelta(served.X - j.Place.X, map.WidthMeters), Mathx.WrapDelta(served.Z - j.Place.Z, map.HeightMeters));
-            // Large places and places below ground are planned afresh for each place, so no two worlds share one;
-            // the rest keep their variant's own seed (a landmark is always the same place).
-            bool large = j.Family.Tags.Contains("grand") || j.Family.Tags.Contains("underground");
-            Layout layout = PoiFactory.TryLayout(lib, j.Family, j.Variant, Deeper(j.Family.Rarity, roll.Depth, j.Spawn), large ? PoiGenerator.Gen.Hash.Combine(j.Spawn, 0x6A11UL) : null, new LayoutHints(front, profile.Before, Ruin: profile.Ruin), out string why);
+            // Built in its age: the old world's places at the pre-collapse level, the living's (and what survivors
+            // built) at the post-collapse one; a wreck or an alien place keeps its makers' own.
+            TechLevel? age = WorldProfile.Unbuilt(j.Family) ? null : profile.LevelFor(j.Family, j.State);
+            Rarity rarity = Deeper(j.Family.Rarity, roll.Depth, j.Spawn);
+            var hints = new LayoutHints(front, age, Ruin: profile.Ruin);
+            // Every spawn its own layout, from its own seed: the family's variants are what it draws from, never one building.
+            string why;
+            Layout layout = FixedLayouts
+                ? PoiFactory.TryLayout(lib, j.Family, j.Variant, rarity, j.Family.Tags.Contains("grand") || j.Family.Tags.Contains("underground") ? PoiGenerator.Gen.Hash.Combine(j.Spawn, 0x6A11UL) : null, new LayoutHints(front), out why)
+                : PoiFactory.SpawnLayout(lib, j.Family, j.Variant, rarity, j.Spawn, hints, out why);
             // A place that won't lay out is left off the map with a warning, never a crash.
             if (layout == null) { Godot.GD.PushWarning($"place skipped: {why}"); return; }
-            if (large) layout.Name = j.Family.Variants[j.Variant].Name;
+            layout.Name = j.Family.Variants[j.Variant].Name;
             made[i] = PoiFactory.Spawn(lib, layout, j.State, j.Spawn, profile, j.Occ);
         });
+        LastLayoutMs = clock.Elapsed.TotalMilliseconds;
         int mark = sites.Count;
         for (int i = 0; i < jobs.Count; i++)
         {

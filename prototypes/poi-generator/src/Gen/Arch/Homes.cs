@@ -92,6 +92,8 @@ public static partial class Homes
         public Stuff S = null!;
         public Frame F;
         public TechLevel Tech;
+        /// <summary>The culture of the region it stands in, when its world gave one.</summary>
+        public HomeHints? Home;
         public int Loot = -1;
 
         public void Plate(Frame f, int u, int v, Rgb c, Role role = Role.Debris)
@@ -453,7 +455,7 @@ public static partial class Homes
     public static void Compose(Canvas c, SiteDef site, FamilyDef fam, Rng rng, LayoutHints? hints)
     {
         var tech = hints?.Tech ?? (TechLevel)rng.Range(0, 3);
-        var l = new Lot { C = c, R = rng, Tech = tech, S = Stuff.For(tech, rng), F = new Frame((int)(hints?.Front ?? Dir.North), 0, 0) };
+        var l = new Lot { C = c, R = rng, Tech = tech, S = Stuff.For(tech, rng), F = new Frame((int)(hints?.Front ?? Dir.North), 0, 0), Home = hints?.Home };
         c.ExitCells = new List<Int3>();
         c.X.PlainDoor = l.S.Door;
         c.X.Levels.Add(new LevelInfo { Storey = 0, WalkY = 0, Name = "ground" });

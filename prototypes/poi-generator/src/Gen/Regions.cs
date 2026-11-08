@@ -176,6 +176,9 @@ public sealed class RegionPlan
         PlannedPlace? Add(string family, double x, double z, Region? region, string role, string why, int serves = -1)
         {
             if (_p.Places.Count >= MaxPlaces) return null;
+            // A place whose tech the world never had gives way to its age's own (a launch field to a caravan camp).
+            if (_profile.ForAge(_lib, _lib.Family(family), Hash.Combine((ulong)_p.Places.Count, (ulong)(x * 7 + z))) is not { } aged) return null;
+            family = aged.Id;
             var place = new PlannedPlace { Index = _p.Places.Count, Family = family, X = x, Z = z, Region = region?.Index ?? -1, Role = role, Why = why, Serves = serves };
             _p.Places.Add(place);
             return place;
@@ -194,7 +197,11 @@ public sealed class RegionPlan
 
         string? Choose(Dictionary<string, float> table)
         {
-            var fit = table.Where(kv => Stands(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value);
+            // What the world's layers ask for, each in its age's own form where its tech doesn't fit.
+            var fit = new Dictionary<string, float>();
+            foreach (var (id, w) in table)
+                if (_profile.ForAge(_lib, _lib.Family(id), Hash.Of(id)) is { } aged && Stands(aged.Id))
+                    fit[aged.Id] = fit.GetValueOrDefault(aged.Id) + w;
             return _roll.Pick(fit, _r);
         }
 

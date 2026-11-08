@@ -27,7 +27,7 @@ public static class PlaceLights
     public static void Tune(PoiInstance inst)
     {
         Feel feel = Of(inst);
-        Rgb kit = inst.Kit.Light;
+        Rgb kit = inst.Layout.Lamp ?? inst.Kit.Light;
         bool named = inst.Kit.Mood.Length > 0;
         bool high = (inst.Tech ?? inst.Layout.Family.Techs.Select(WorldProfile.Parse).DefaultIfEmpty(TechLevel.Mid).Max()) == TechLevel.High;
         var rng = new Rng(Hash.Combine(inst.SpawnSeed, 0x11647UL));

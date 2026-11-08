@@ -186,6 +186,8 @@ public static class WorldPlacement
             var round = Enumerable.Range(0, sites.Count).Where(k => !ports.ContainsKey(k))
                 .OrderBy(k => TorusDist(map, sites[k].x, sites[k].y, sites[main].x, sites[main].y)).ToList();
             FamilyDef? scrappy = lib.Families.FirstOrDefault(f => f.Tags.Contains("scrappy")), camp = lib.Families.FirstOrDefault(f => f.Tags.Contains("evacuation"));
+            // A launch field the world never had the tech for gives way to its age's own (data: instead).
+            if (scrappy != null) scrappy = profile.ForAge(lib, scrappy, (ulong)main);
             int at = 0;
             for (int k = 0; scrappy != null && k < profile.ScrappyPorts && at < round.Count; k++) ports[round[at++]] = (scrappy, null, false);
             for (int k = 0; camp != null && k < profile.EvacuationCamps && at < round.Count; k++) ports[round[at++]] = (camp, null, false);

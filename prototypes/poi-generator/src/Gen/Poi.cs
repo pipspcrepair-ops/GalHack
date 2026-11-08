@@ -164,7 +164,27 @@ public static class PoiFactory
         Structure.HeadFloors(layout);
         Structure.LadderWalls(layout);
         Facade.Apply(layout, lib);
+        // On a world, the age it was built in (data/eras.txt): its materials, windows, roofs and corners.
+        if (hints?.Tech is TechLevel tech && EraPass.Enabled)
+            using (Prof.Time("era"))
+                EraPass.Apply(layout, tech);
         return layout;
+    }
+
+    /// <summary>
+    /// A place for one spawn on a world: laid out afresh from the spawn's own seed, so no two of a family's
+    /// places are one building (the family's variants are the plans and styles it draws from). If that seed
+    /// won't lay out, a few more are tried, then the variant's authored seed, then nothing.
+    /// </summary>
+    public static Layout? SpawnLayout(PoiLibrary lib, FamilyDef family, int variant, Rarity rarity, ulong spawn, LayoutHints? hints, out string? why)
+    {
+        why = null;
+        for (ulong k = 0; k < 3; k++)
+            try { return BuildLayout(lib, family, variant, rarity, Hash.Combine(spawn, 0x6A11UL, k), hints); }
+            catch (System.Exception e) { why ??= e.Message; System.Threading.Interlocked.Increment(ref Skipped); }
+        Layout? authored = TryLayout(lib, family, variant, rarity, null, hints, out string? whyAuthored);
+        if (authored == null) why ??= whyAuthored;
+        return authored;
     }
 
     /// <summary>
