@@ -49,7 +49,7 @@ family research_base
   pitch Labs above ground, and sublevels below that nobody came back up from.
   faction none
   roster oldworld
-  program research_base
+  site research_site
   core none
   owner none
   rarity uncommon
@@ -79,7 +79,7 @@ family ice_outpost
   pitch A hut half-buried in the drifts, and labs cut into the glacier where the drill broke through.
   faction none
   roster oldworld
-  program ice_outpost
+  site below_ice
   core none
   owner none
   rarity uncommon
@@ -163,7 +163,7 @@ family cryo_vault
   pitch People slept through the fall here, row on row, level on level. They never woke.
   faction none
   roster oldworld
-  program cryo_vault
+  site below_cryo
   core none
   owner none
   rarity rare
@@ -191,7 +191,7 @@ family biolab
   pitch They bred things here. The pens are open.
   faction none
   roster oldworld
-  program biolab
+  site biolab_site
   core none
   owner none
   rarity rare
@@ -219,7 +219,7 @@ family command_bunker
   pitch A hardened command post behind blast doors, going down past the war room.
   faction none
   roster oldworld
-  program command_bunker
+  site below_command
   core none
   owner none
   rarity uncommon
@@ -245,7 +245,7 @@ family prison_block
   pitch Cell tiers, a guard post at every landing, and a confiscation locker at the bottom.
   faction none
   roster oldworld
-  program prison
+  site prison_site
   core none
   owner none
   rarity uncommon
@@ -254,7 +254,7 @@ family prison_block
   spacing 12
   reveal 300
   ominous 0.7
-  tags prison fallen
+  tags prison fallen underground
   states active 0 abandoned 4 infested 3 ruined 2
   variant Blackgate
     seed 8901
@@ -288,6 +288,33 @@ family meridian_garrison
   variant Fort Calder
     seed 9003
 
+family missile_silo
+  tier base
+  tech mid high
+  siting flat
+  rise 12
+  name Missile Silo
+  pitch A hatch on a fenced pad, a lid flush with the ground, and storeys going down round the thing that never flew.
+  faction none
+  roster oldworld
+  site below_silo
+  core none
+  owner none
+  rarity rare
+  biomes desert rock ash steppe ice
+  territory any
+  spacing 20
+  reveal 300
+  ominous 0.75
+  wrong 0.1
+  tags military fallen underground
+  states active 0 abandoned 5 infested 2 ruined 2
+  variant Silo Nine
+    seed 9711
+  variant Launch Site Kilo
+    seed 9712
+  variant The Long Wait
+    seed 9713
 # ---- landmarks: hand-authored site plans --------------------------------------------------------
 
 family old_airfield
@@ -480,7 +507,7 @@ family alien_hive_ruin
   pitch Warrens chewed into the rock by something that left, or is sleeping deeper down.
   faction none
   roster hollow
-  program mine_works
+  site below_hive
   style alien_hive
   core none
   owner none
@@ -508,7 +535,7 @@ family alien_library
   pitch Shelves of crystal that still hum when you walk past, and a script nobody can read.
   faction none
   roster precursor
-  program research_base
+  site below_library
   style alien_library
   core none
   owner none

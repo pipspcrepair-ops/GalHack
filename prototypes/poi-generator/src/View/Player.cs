@@ -27,6 +27,9 @@ public partial class Player : CharacterBody3D
     /// <summary>For tests: walk toward this point instead of reading the keyboard.</summary>
     public Vector3? AutoTarget;
 
+    /// <summary>For tests: crouch as a player would under something low (a jammed door's leaf).</summary>
+    public bool AutoCrouch;
+
     /// <summary>Asks the place whether there is a ladder at a point (global): then the body climbs.</summary>
     public System.Func<Vector3, bool> LadderQuery;
     public bool Climbing { get; private set; }
@@ -96,7 +99,7 @@ public partial class Player : CharacterBody3D
             v.Y = climb;
         }
         else if (!onFloor) v.Y -= Gravity * dt;
-        Crouch(onFloor && Held(Key.Ctrl));
+        Crouch(onFloor && (Held(Key.Ctrl) || AutoCrouch));
 
         var move = new Vector2(Axis(Key.D, Key.A), Axis(Key.S, Key.W)).LimitLength(1f);
         float speed = Crouching ? CrouchSpeed : Held(Key.Shift) ? SprintSpeed : WalkSpeed;

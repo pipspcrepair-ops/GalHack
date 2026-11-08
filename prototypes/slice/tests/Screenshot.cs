@@ -81,6 +81,8 @@ public partial class Screenshot : Node
             PlanetSurface.Poi.PoiSiting.ForceOccupancy = new PoiGenerator.Gen.OccupancyRoll(who);
             PlanetSurface.Poi.PoiSiting.ForceState = PoiGenerator.Gen.PoiState.Abandoned;
         }
+        // The forced place in a state of its own (--force-state=active: still powered, its lamps lit).
+        if (_args.TryGetValue("force-state", out string fs) && Enum.TryParse(fs, true, out PoiGenerator.Gen.PoiState forcedState)) PlanetSurface.Poi.PoiSiting.ForceState = forcedState;
         _game = new Game.Game { Interactive = false, SkipIntro = true, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), System.Array.IndexOf(OS.GetCmdlineUserArgs(), "--ringed=1") >= 0 ? RingedWorld() : WorldChoice.Tested) };
         AddChild(_game);
         _staging = new Staging(_game, _args) { TakeShot = file => _pending = file };

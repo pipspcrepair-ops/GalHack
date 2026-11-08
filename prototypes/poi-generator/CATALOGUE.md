@@ -20,24 +20,25 @@ Programs are recipes (`programs.txt`): room demands, footprint shapes, circulati
 | Crashed Freighter | wreck | meridian ship kit | no core, salvage |
 | Kessari Relay Spire | outpost | kessari kit | a landmark |
 | Precursor Vault | site | precursor kit | no core |
-| Deep Bunker | site | program bunker, concrete | worse with depth: dark, red emergency light, fog, Bloom at the bottom |
-| Research Base | outpost | program research_base | sublevels, lifts |
+| Deep Bunker | site | below: shelter | a long stair or a ladder down; hubs, grids, rings and alcove galleries by level, blast vestibules between sections; worse with depth |
+| Research Base | outpost | site research_site: labs, below: research | sublevels through airlocks, a round test chamber with a gallery ring, lifts in a stacked core |
 | Ice Outpost | outpost | program ice_outpost | |
 | Ominous Tower | town | program tower_block | 8 to 12 storeys, loops and atriums, corner setbacks |
 | Abandoned Hospital | town | program hospital | wards, theatre, quarantine level under the mortuary |
-| Cryo Vault | site | program cryo_vault | rows of pods, level on level |
-| Biolab | outpost | program biolab | containment below |
-| Command Bunker | base | program command_bunker | |
-| Prison Block | base | program prison | cross or H plans, cell blocks round atriums |
+| Cryo Vault | site | below: cryo | in through decontamination, rings of pod halls level on level |
+| Biolab | outpost | site biolab_site: labs, below: biolab | clean, dirty and isolation levels through airlocks, containment cells round a hub |
+| Command Bunker | base | below: command | a bermed portal, an operations hall with a gallery over it, blast doors |
+| Prison Block | base | site prison_site: program prison, below: prison | cross or H plans, cell blocks round atriums; the hold under it: cell blocks round a guarded hub |
 | Meridian Garrison | base | program garrison_hq | faction-held, core, armoured foundations |
 | Old Airfield | base | site old_airfield | runway, hangars, control tower, fence gate |
 | Abandoned Spaceport | spaceport | site spaceport | a rocket on its pad (restorable), terminal, gantry |
 | Abandoned Military Base | base | site military_base | walled, watchtowers, trench, command bunker |
 | Blast Crater | site | site blast_crater | fallen world: radiation warned by signs, ramped paths down |
 | Scrap Fort | camp | site scrap_fort | roving gangs: spawn and patrol markers only, no core |
-| Old Mine | site | site old_mine | headframe and lattice tower over the shaft, drifts and stopes |
-| Alien Hive Ruin | site | mine_works in alien_hive | chewed warrens; Bloom-thick infested state |
-| Alien Library | site | research_base in alien_library | crystal stacks underground |
+| Old Mine | site | site old_mine, below: mine | headframe and shaft house, a cage and ladders down the shaft, winding drifts, stopes, ore chutes |
+| Alien Hive Ruin | site | below: hive, in alien_hive | chewed round chambers on curved ways, ramps down; Bloom-thick infested state |
+| Missile Silo | base | below: silo | a hatch on a pad, the lid flush with the ground; rings round the shaft level by level, the missile standing in it |
+| Alien Library | site | below: library, in alien_library | galleries of crystal stacks, round reading chambers with galleries round them |
 | Alien Cathedral | site | program cathedral in alien_cathedral | a cruciform nave with a tapering spire and leaning fins |
 | Abandoned Factory | site | sites factory_low, factory_mid, factory_high | a production hall frozen mid-run (conveyor, robot arms, a load on the crane), warehouse and loading bays, works offices over a boiler house, smokestacks and a water tower; tech level by layout; gangs hold some |
 | Old Farm | site | sites farm_low, farm_mid, agri_complex | farmhouse with a cellar, barn, silos, windmill or water tower, fields gone wild, greenhouses and hydroponic sheds, a vertical farm tower at high tech |

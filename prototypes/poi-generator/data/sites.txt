@@ -130,7 +130,7 @@ site military_base
   part tower -2 4 h 9 size 5 every 4 crown hut loot yes
   part tower -2 84 h 9 size 5 every 4 crown hut
   part building 12 8 program barracks
-  part building 56 46 program command_bunker vault yes
+  part below 56 46 rot 3 purpose command vault yes
   part vehicles 14 66 count 5 gap 7 axis x
   part pad 104 18 r 8
   part tower 102 72 h 36 size 4 every 6 crown lamp
@@ -142,7 +142,7 @@ site blast_crater
   style concrete
   entrance -64 0 west
   part crater 0 0 r 22 depth 8 radiation 14
-  part building 32 -40 program bunker vault yes
+  part below 32 -40 rot 3 purpose fallout vault yes
   part vehicles -44 18 count 4 gap 6 axis z
   part poles -40 -30 count 4 gap 14 h 6 axis z
   part camp -36 -16
@@ -166,7 +166,7 @@ site old_mine
   name Old Mine Works
   style mine
   entrance -46 10 west
-  part building 0 0 program mine_works vault yes
+  part below 0 0 rot 3 purpose mine vault yes
   part tower -16 2 h 16 size 5 every 5 crown wheel
   part tanks -26 -16 count 1 r 3 h 7
   part vehicles -34 22 count 3 gap 6 axis x
@@ -740,7 +740,68 @@ site bunker_deep
   name Deep Bunker
   style concrete
   entrance 0 0 north
-  part grand 0 0 what bunker tech mid
+  part grand 0 0 what below purpose shelter tech mid
+
+# ---- below ground: planned from rules over shared parts (data/depths.txt, src/Gen/Arch/Depths*.cs) --------
+# "part grand ... what below" is a whole place under its head; "part below x z [rot n] purpose p" puts one under a
+# composed site, its head's door turned toward the yard.
+
+site below_command
+  name Command Bunker
+  style concrete
+  entrance 0 0 north
+  part grand 0 0 what below purpose command tech mid
+
+site below_cryo
+  name Cryo Vault
+  style clinic
+  entrance 0 0 north
+  part grand 0 0 what below purpose cryo tech high
+
+site below_silo
+  name Missile Silo
+  style concrete
+  entrance 0 0 north
+  part grand 0 0 what below purpose silo tech mid
+
+site below_ice
+  name Ice Research Outpost
+  style ice
+  entrance 0 0 north
+  part grand 0 0 what below purpose ice tech mid
+
+site below_hive
+  name Alien Hive Ruin
+  style alien_hive
+  entrance 0 0 north
+  part grand 0 0 what below purpose hive tech mid
+
+site below_library
+  name Alien Library
+  style alien_library
+  entrance 0 0 north
+  part grand 0 0 what below purpose library tech high
+
+site biolab_site
+  name Biolab
+  style meridian
+  entrance -40 10 west
+  part building 0 0 program biolab levels 0
+  part below -18 -14 rot 3 purpose biolab vault yes
+
+site research_site
+  name Abandoned Research Base
+  style meridian
+  entrance -40 10 west
+  part building 0 0 program research_base levels 0
+  part below -18 -14 rot 3 purpose research vault yes
+
+site prison_site
+  name Prison Block
+  style concrete
+  entrance -40 18 west
+  part building 0 0 program prison levels 0
+  part below -18 -8 rot 3 purpose prison vault yes
 
 # Faction places on the 2 m grid, from each faction's character: Factions.cs.
 site faction_lab

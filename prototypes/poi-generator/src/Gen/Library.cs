@@ -65,6 +65,8 @@ public sealed class PoiLibrary
 
     /// <summary>How a war's strikes came down and what they aimed at (data/strikes.txt).</summary>
     public StrikeBook Strikes = new();
+    /// <summary>What each purpose below ground asks of its plan (data/depths.txt): see <see cref="Depths"/>.</summary>
+    public Dictionary<string, DepthDef> Depths = new();
 
     public FamilyDef Family(string id) => Families.First(f => f.Id == id);
     public RoomDef Room(string id) => Rooms.TryGetValue(id, out var r) ? r : throw new KeyNotFoundException($"no room '{id}' in rooms.txt");
@@ -94,6 +96,7 @@ public sealed class PoiLibrary
             else if (name.EndsWith("world-dressing.txt", StringComparison.Ordinal)) lib.Dressing = DressBook.Parse(text, name);
             else if (name.EndsWith("finishes.txt", StringComparison.Ordinal)) lib.Finishes = FinishBook.Parse(text, name);
             else if (name.EndsWith("strikes.txt", StringComparison.Ordinal)) lib.Strikes = StrikeBook.Parse(text, name);
+            else if (name.EndsWith("depths.txt", StringComparison.Ordinal)) lib.Depths = DepthParser.Parse(text, name);
         }
         lib.Check();
         return lib;
@@ -155,7 +158,12 @@ public sealed class PoiLibrary
             if (!Kits.ContainsKey(s.Style)) throw new FormatException($"site {s.Id}: no style kit '{s.Style}'");
             foreach (var part in s.Parts.Where(p => p.Kind == "building"))
                 if (!Programs.ContainsKey(part.Arg("program"))) throw new FormatException($"site {s.Id}: no program '{part.Arg("program")}'");
+            foreach (var part in s.Parts.Where(p => p.Kind == "below" || p.Kind == "grand" && p.Arg("what") == "below"))
+                if (!Depths.ContainsKey(part.Arg("purpose"))) throw new FormatException($"site {s.Id}: no depth purpose '{part.Arg("purpose")}'");
         }
+        foreach (var d in Depths.Values)
+            foreach (string r in d.RoomIds)
+                if (!Rooms.ContainsKey(r)) throw new FormatException($"depth {d.Id}: no room '{r}'");
         foreach (var r in Rooms.Values)
             foreach (string n in r.Near.Concat(r.Avoid))
                 if (!Rooms.ContainsKey(n)) throw new FormatException($"room {r.Id}: near/avoid names unknown room '{n}'");
