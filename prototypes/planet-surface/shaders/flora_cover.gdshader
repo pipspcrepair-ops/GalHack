@@ -16,13 +16,20 @@ varying vec3 tint;
 const float NEAR_REACH = 30.0;
 const float FAR_REACH = 112.0;
 
+// A cell that landed in sight carries when (instance alpha's whole part, tenths of a second round
+// a 400 s clock; TerrainStreamer.CoverClock) and grows in over GROW seconds from then.
+const float GROW = 0.6;
+
 void vertex() {
 	tint = INSTANCE_CUSTOM.rgb;
-	float k = 1.0 - INSTANCE_CUSTOM.a;
+	float born = floor(INSTANCE_CUSTOM.a);
+	float k = 1.0 - (INSTANCE_CUSTOM.a - born);
 	float reach = NEAR_REACH + (FAR_REACH - NEAR_REACH) * k * k * k * k;
 	vec3 root = MODEL_MATRIX[3].xyz;
-	float away = distance(root.xz, INV_VIEW_MATRIX[3].xz);
+	// From the eye itself, so cover far below a low flight shrinks away too.
+	float away = distance(root, INV_VIEW_MATRIX[3].xyz);
 	float keep = 1.0 - smoothstep(reach * 0.72, reach, away);
+	if (born > 0.5) keep *= clamp(mod(TIME * 10.0 - born, 4000.0) / (GROW * 10.0), 0.0, 1.0);
 	float high = max(VERTEX.y, 0.0);
 	VERTEX *= keep;
 	vec3 world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;

@@ -366,6 +366,9 @@ public partial class PoiPlaces : Node3D
     public void WarmUp()
     {
         Vector3 from = Focus();
+        // The dissolves' copies of the dressing's and the creatures' materials, made while loading.
+        if (Decor.Shared?.Meshes?.Materials is { } deco) PlanetSurface.Fx.Fade.Warm(deco.BySurface);
+        PlanetSurface.Fx.Fade.CopyOf(Wildlife.CreatureMaterials.Clothed);
         PoiSite nearest = Zone.Planet.Pois.Where(s => s.Instance != null).OrderBy(s => DistanceTo(s, from)).FirstOrDefault();
         if (nearest == null) return;
         var clock = Stopwatch.StartNew();

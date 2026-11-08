@@ -102,8 +102,9 @@ public sealed class StatsSection : IMenuSection
         for (int i = 0; i < rows.Length; i++)
         {
             var (label, value) = rows[i];
-            float y = area.Position.Y + 44 + i * 42;
-            g.Fill(new Rect2(area.Position.X, y - 6, area.Size.X, 36), new Color(i % 2 == 0 ? C.Panel : C.Glass, 0.6f));
+            // 36 apart, so the last row ends above the alerts' row at the bottom left.
+            float y = area.Position.Y + 44 + i * 36;
+            g.Fill(new Rect2(area.Position.X, y - 6, area.Size.X, 32), new Color(i % 2 == 0 ? C.Panel : C.Glass, 0.6f));
             g.Text(label, new Vector2(area.Position.X + 12, y), C.Dim, 17);
             g.Text(value, new Vector2(area.Position.X + 420, y - 2), C.Text, 19, UiTheme.Mono);
         }

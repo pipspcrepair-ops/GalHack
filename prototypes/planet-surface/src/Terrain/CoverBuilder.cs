@@ -14,6 +14,9 @@ public sealed class CoverCell
     public int Cx, Cz;
     public int Version;
 
+    /// <summary>When it landed in sight (TerrainStreamer.CoverClock; 0: before it could be seen): its tufts grow in from then (flora_cover.gdshader).</summary>
+    public int Born;
+
     /// <summary>Species index, and its instances (sixteen floats each, in metres from the cell's corner).</summary>
     public readonly List<(int Plant, float[] Buffer, int Count)> Plants = new();
 }

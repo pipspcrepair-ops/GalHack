@@ -560,9 +560,40 @@ public partial class Place
     {
         public Node3D Node;
         public readonly List<DecoNode> Pieces = new();
+        /// <summary>How far the room's pieces have dissolved in (0..1), and which way they are going (+1 in, -1 out, 0 still).</summary>
+        public float Blend;
+        public int Way;
     }
 
     readonly Dictionary<int, Dressed> _dressed = new();
+
+    /// <summary>Rooms whose pieces are dissolving in or out (out: already let go of, freed once gone).</summary>
+    readonly List<Dressed> _dressFading = new();
+
+    /// <summary>How long a room's pieces take to dissolve in or out, s.</summary>
+    const float DressBlendSeconds = 0.5f;
+
+    void StepDressFades(float dt)
+    {
+        if (_dressFading.Count == 0) return;
+        foreach (Dressed d in _dressFading)
+        {
+            d.Blend = Mathf.Clamp(d.Blend + d.Way * dt / DressBlendSeconds, 0f, 1f);
+            if (d.Way > 0 && d.Blend >= 1f)
+            {
+                PlanetSurface.Fx.Fade.Clear(d.Node);
+                d.Way = 0;
+            }
+            else if (d.Way < 0 && d.Blend <= 0f)
+            {
+                PlanetSurface.Fx.Fade.Forget(d.Node);
+                d.Node.QueueFree();
+                d.Way = 0;
+            }
+            else PlanetSurface.Fx.Fade.Set(d.Node, 0f, d.Blend);
+        }
+        _dressFading.RemoveAll(d => d.Way == 0);
+    }
     readonly Dictionary<ulong, (PlaceRoom Room, int Index)> _pieceOf = new();
 
     /// <summary>
@@ -628,9 +659,15 @@ public partial class Place
     void Undress(int module)
     {
         Dressed d = _dressed[module];
+        PlanetSurface.Fx.PopLog.Note("props", "room undressed", Away(Memory.Rooms[module], FromWorld(Places.EyeAt())), 1.2f, 1f / (60f * DressBlendSeconds));
         foreach (DecoNode n in d.Pieces)
-            if (n?.Body != null) _pieceOf.Remove(n.Body.GetInstanceId());
-        d.Node.QueueFree();
+            if (n?.Body != null)
+            {
+                _pieceOf.Remove(n.Body.GetInstanceId());
+                n.Body.ProcessMode = ProcessModeEnum.Disabled; // nothing to aim at or bump while it goes
+            }
+        d.Way = -1;
+        if (!_dressFading.Contains(d)) _dressFading.Add(d);
         _dressed.Remove(module);
     }
 
@@ -659,6 +696,7 @@ public partial class Place
                 continue;
             }
             d.Node.AddChild(n);
+            PlanetSurface.Fx.Fade.Set(n, 0f, 0f); // the room's pieces dissolve in together once all are in
             d.Pieces.Add(n);
             if (n.Body != null) _pieceOf[n.Body.GetInstanceId()] = (room, i);
             if (clock.Elapsed.TotalMilliseconds > 1.2)
@@ -681,6 +719,11 @@ public partial class Place
             }
             d.Node.AddChild(new MeshInstance3D { Name = "Wires", Mesh = DecoGodot.ToMesh(mesh, decor.Meshes.Materials) });
         }
+        PlanetSurface.Fx.PopLog.Note("props", "room dressed", Away(room, FromWorld(Places.EyeAt())), 1.2f, 1f / (60f * DressBlendSeconds));
+        d.Blend = 0f;
+        d.Way = 1;
+        PlanetSurface.Fx.Fade.Set(d.Node, 0f, 0f);
+        _dressFading.Add(d);
         yield return 0;
     }
 
