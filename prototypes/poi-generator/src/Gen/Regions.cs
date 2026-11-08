@@ -219,7 +219,8 @@ public sealed class RegionPlan
             var options = _roll.Industry.Concat(_roll.Farm).Concat(_roll.Poi)
                 .Where(kv => !_lib.Family(kv.Key).Tags.Contains("settlement")).GroupBy(kv => kv.Key).ToDictionary(g => g.Key, g => g.First().Value);
             // One of the large works stands within a fair walk: the first big place of a game.
-            var large = _lib.Families.Where(f => f.Tags.Contains("grand") && Stands(f.Id)).Select(f => f.Id).OrderBy(id => id, StringComparer.Ordinal).ToList();
+            // (A city's lots are built by its planner, lot by lot, never as works on their own.)
+            var large = _lib.Families.Where(f => f.Tags.Contains("grand") && !f.Tags.Contains("city") && Stands(f.Id)).Select(f => f.Id).OrderBy(id => id, StringComparer.Ordinal).ToList();
             bool seated = false;
             foreach (string id in large.OrderBy(_ => _r.Float()))
                 if (!seated && Spot(_landing.X, _landing.Z, 700, 1300, id) is { } near)

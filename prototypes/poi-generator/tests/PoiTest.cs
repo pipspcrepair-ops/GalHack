@@ -199,7 +199,7 @@ public partial class PoiTest : Node
         var why = new Dictionary<string, int>();
         var rng = new Rng(fresh);
         long started = System.Diagnostics.Stopwatch.GetTimestamp();
-        foreach (string kind in new[] { "tower", "midrise", "terrace", "house", "works", "civic", "station" })
+        foreach (string kind in new[] { "tower", "midrise", "terrace", "house", "works", "civic", "station", "police", "fire", "school", "university" })
         {
             FamilyDef f = _lib.Families.First(x => x.Id == "city_" + kind);
             for (int k = 0; k < 40; k++)
@@ -213,6 +213,7 @@ public partial class PoiTest : Node
                     "terrace" => new CityLot(kind, new[] { 9, 10, 13, 14, 17 }[rng.Range(0, 5)], 17, rng.Range(1, 4), rng.Range(0, 1000), fall, Back: Step(), Left: Step(), Right: Step(), EndRight: rng.Chance(0.3f)),
                     "house" => new CityLot(kind, rng.Range(10, 13), 17, rng.Range(1, 3), rng.Range(0, 1000), fall, Back: Step(), Left: Step(), Right: Step(), EndRight: rng.Chance(0.3f)),
                     "works" => new CityLot(kind, rng.Range(17, 21), 17, 1, rng.Range(0, 1000), fall),
+                    "police" or "fire" => new CityLot(kind, rng.Range(15, 21), 17, 2, rng.Range(0, 1000), fall, Back: Step(), Left: Step(), Right: Step(), EndRight: rng.Chance(0.3f)),
                     _ => new CityLot(kind, 34, 34, 1, rng.Range(0, 1000), fall),
                 };
                 rolls++;

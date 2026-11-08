@@ -318,6 +318,11 @@ public sealed class CityPlan
         if (core.Count > 4) special.TryAdd((core[4].A, core[4].B), "park");
         var edge = blocks.Where(k => k.District is "homes" or "works" && k.R > 0.6 && laid.Contains((k.A, k.B, true))).OrderBy(k => side(k.X + Block / 2, k.Z + Block / 2)).ToList();
         if (edge.FirstOrDefault(Takes) is { District: not null } station) special[(station.A, station.B)] = "station";
+        // Schools among the houses, about one to every eight blocks of them; a university only in a big city.
+        var homeBlocks = blocks.Where(k => k.District == "homes" && !special.ContainsKey((k.A, k.B))).OrderBy(k => PoiGenerator.Gen.Hash.Combine(seed, (ulong)(k.A * 7919 + k.B * 104729 + 1 << 20))).ToList();
+        foreach (var k in homeBlocks.Where(Takes).Take(Math.Max(homeBlocks.Count > 0 ? 1 : 0, homeBlocks.Count / 8))) special[(k.A, k.B)] = "school";
+        if (radius >= 640 && blocks.Where(k => k.District == "midrise" && !special.ContainsKey((k.A, k.B))).OrderBy(k => k.R).Skip(1).FirstOrDefault(Takes) is { District: not null } campus)
+            special[(campus.A, campus.B)] = "university";
 
         // ---- the lots: back to back, each row facing the street on its side, kerb line to kerb line.
         var families = lib.Families.Where(f => f.Tags.Contains("city")).ToDictionary(f => f.Id);
@@ -348,13 +353,13 @@ public sealed class CityPlan
             if (!homes && blk.District != "park")
                 city.Stamps.Add(new TerrainStamp($"city {district}", (int)(x0 + Inset), (int)(z0 + Inset), (int)(x1 - Inset), (int)(z1 - Inset), blockPad, 2f, 10f, w, h)
                 {
-                    Surface = district is "park" ? StampSurface.Lawn : district is "works" or "station" ? StampSurface.Gravel : StampSurface.Concrete,
+                    Surface = district is "park" or "school" or "university" ? StampSurface.Lawn : district is "works" or "station" ? StampSurface.Gravel : StampSurface.Concrete,
                     Wear = 0.5f + city.Fall * 0.5f, Wild = district == "park",
                 });
             if (district is "plaza" or "park") continue;
 
             double depth = (Block - 2 * Inset) / 2;
-            if (district is "civic" or "station")
+            if (district is "civic" or "station" or "school" or "university")
             {
                 // A whole block, facing the street on its north (or south) side.
                 bool northRow = laid.Contains((blk.A, blk.B, true));
@@ -405,6 +410,18 @@ public sealed class CityPlan
             }
         }
 
+        // ---- a police station and a fire station to each district: the wide lot nearest its middle, then the next.
+        foreach (var group in city.Lots.Where(l => l.District is "downtown" or "midrise" or "homes" or "works").GroupBy(l => l.District))
+        {
+            double gx = group.Average(l => (l.X0 + l.X1) / 2), gz = group.Average(l => (l.Z0 + l.Z1) / 2);
+            var wide = group.Where(l => l.X1 - l.X0 >= 30 && l.Kind is not ("civic" or "station")).OrderBy(l => Math.Abs((l.X0 + l.X1) / 2 - gx) + Math.Abs((l.Z0 + l.Z1) / 2 - gz)).Take(2).ToList();
+            for (int i = 0; i < wide.Count; i++)
+            {
+                wide[i].Kind = i == 0 ? "police" : "fire";
+                wide[i].Lot = wide[i].Lot with { Kind = wide[i].Kind, Storeys = 2, Lean = false, Toppled = false };
+            }
+        }
+
         // ---- each lot's ground: houses on their own street's deck, so a row steps up the hill; the rest on the
         // block's pad. Then where a neighbour's ground stands higher, a retaining wall on this side.
         foreach (CityLotPlan lot in city.Lots)
@@ -447,7 +464,14 @@ public sealed class CityPlan
             double ang = Math.Atan2((lot.Z0 + lot.Z1) / 2 - cz, (lot.X0 + lot.X1) / 2 - cx);
             bool lit = anyLit && lot.District is "midrise" or "downtown" && Math.Abs(Math.IEEERemainder(ang - litAngle, Math.Tau)) < (lived ? 1.2 : 0.7);
             PoiState state = lit ? PoiState.Active : lot.Lot.Fall > 0.55f ? PoiState.Ruined : PoiState.Abandoned;
-            OccupancyRoll occ = OccupancyLayer.Applies(f, state) ? OccupancyLayer.Roll(roll.Occupancy, f, s + 1) with { Tags = roll.Tags } : null;
+            // On a fallen world its services tell how it went: a police station barricaded or stripped, a school a shelter, a campus taken over.
+            OccupancyRoll occ = !OccupancyLayer.Applies(f, state) ? null : (lot.Kind switch
+            {
+                "police" => s % 2 == 0 ? new OccupancyRoll(Occupant.Gang) : new OccupancyRoll(Occupant.Empty, null, Sharing.Layers, Occupant.Scavengers),
+                "school" => new OccupancyRoll(Occupant.Squatters),
+                "university" => new OccupancyRoll(s % 3 == 0 ? Occupant.Cult : Occupant.Gang),
+                _ => OccupancyLayer.Roll(roll.Occupancy, f, s + 1),
+            }) with { Tags = roll.Tags };
             made[i] = PoiFactory.Spawn(lib, layout, state, s + 1, profile, occ);
             fams[i] = f;
         });
@@ -470,7 +494,7 @@ public sealed class CityPlan
             (double X, double Z) cross = alongX ? (gate.X, line + out1 * Inset) : (line + out1 * Inset, gate.Z);
             lot.Street = NearestOf(city.Streets, cross.X, cross.Z, 12, w, h, out _);
             lot.Crossover = (Mathx.WrapX(cross.X, w), Mathx.Wrap(cross.Z, h));
-            lot.DriveWidth = lot.Kind switch { "house" => 4f, "tower" or "midrise" => 6f, "works" => 16f, "station" => 8f, "terrace" => 2f, _ => 4f };
+            lot.DriveWidth = lot.Kind switch { "house" => 4f, "tower" or "midrise" or "police" => 6f, "works" => 16f, "fire" => 12f, "station" => 8f, "terrace" => 2f, _ => 4f };
             // The station's track bed lies along its lot between its platforms (CityBlocks.Station), 49 m back from the lot line.
             if (lot.Kind == "station")
             {

@@ -166,10 +166,12 @@ public sealed class StartTown
     /// <summary>A deep place within reach of the start with someone or something in it, the first a start can walk down into (null if no deep place stands that near).</summary>
     public PoiSite Dungeon;
 
-    /// <summary>A deep place: rooms below ground, and enough of them to be somewhere you go into.</summary>
-    public static bool Deep(PoiInstance inst) =>
-        inst.Layout.Modules.Count(m => m.Kind != ModuleKind.Outdoor && (m.Storey < 0 || m.Underground)) >= 2
-        && inst.Layout.Modules.Count(m => m.Kind is not (ModuleKind.Outdoor or ModuleKind.Stair)) >= 8;
+    /// <summary>A deep place: enough rooms to be somewhere you go into, two or more of them below ground, or five storeys or more of them (a tower is deep the other way).</summary>
+    public static bool Deep(PoiInstance inst) => Rooms(inst) >= 8 && (Below(inst) >= 2 || Levels(inst) >= 5);
+
+    static int Rooms(PoiInstance inst) => inst.Layout.Modules.Count(m => m.Kind is not (ModuleKind.Outdoor or ModuleKind.Stair));
+    static int Below(PoiInstance inst) => inst.Layout.Modules.Count(m => m.Kind != ModuleKind.Outdoor && (m.Storey < 0 || m.Underground));
+    static int Levels(PoiInstance inst) => inst.Layout.Modules.Where(m => m.Kind != ModuleKind.Outdoor).Select(m => m.Storey).Distinct().Count();
 
     /// <summary>Someone or something lives there: the Bloom, a roster, the occupancy layer's people or beasts, or a faction at home.</summary>
     public static bool Lived(PoiInstance inst) =>
@@ -183,9 +185,11 @@ public sealed class StartTown
     static PoiSite FirstDungeon(PoiLibrary lib, InfraNetwork net, IReadOnlyList<PoiSite> pois, double x, double z, double w, double h, ulong seed)
     {
         double Dist(PoiSite p) => Math.Sqrt(Math.Pow(Mathx.WrapDelta(p.Center.X - x, w), 2) + Math.Pow(Mathx.WrapDelta(p.Center.Z - z, h), 2));
-        var deep = pois.Where(p => p.Instance != null && Deep(p.Instance) && Dist(p) <= DungeonReach).OrderBy(Dist).ToList();
+        // Below ground first, then up a tower; failing both, the biggest place in reach that you can go into.
+        var deep = pois.Where(p => p.Instance != null && Deep(p.Instance) && Dist(p) <= DungeonReach).OrderBy(p => Below(p.Instance) >= 2 ? 0 : 1).ThenBy(Dist).ToList();
         if (deep.FirstOrDefault(p => Lived(p.Instance)) is { } lived) return lived;
-        PoiSite empty = deep.FirstOrDefault(p => OccupancyLayer.Applies(p.Family, p.Instance.State));
+        PoiSite empty = deep.FirstOrDefault(p => OccupancyLayer.Applies(p.Family, p.Instance.State))
+            ?? pois.Where(p => p.Instance != null && Dist(p) <= DungeonReach && Rooms(p.Instance) >= 6 && OccupancyLayer.Applies(p.Family, p.Instance.State)).OrderByDescending(p => Rooms(p.Instance)).FirstOrDefault();
         if (empty == null) return null;
         var mix = (net.RegionPlan?.Roll.Occupancy ?? new Dictionary<string, float>()).Where(kv => kv.Key != "EMP" && kv.Value > 0f).ToDictionary(kv => kv.Key, kv => kv.Value);
         OccupancyRoll occ = OccupancyLayer.Roll(mix, empty.Family, seed);

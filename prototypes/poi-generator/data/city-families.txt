@@ -194,3 +194,114 @@ family city_station
     seed 7362
   variant Station Three
     seed 7367
+
+family city_police
+  tier town
+  siting flat
+  rise 0
+  tech low mid high
+  name Police Station
+  pitch A police station, its desk unmanned, its armoury stripped or held.
+  faction none
+  roster raiders
+  site city_police_lot
+  core none
+  owner none
+  rarity common
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 0
+  reveal 300
+  wrong 0.02
+  tags city grand
+  states active 1 abandoned 6 infested 1 ruined 4
+  variant Police Station One
+    seed 7371
+  variant Police Station Two
+    seed 7372
+  variant Police Station Three
+    seed 7377
+
+
+family city_fire
+  tier town
+  siting flat
+  rise 0
+  tech low mid high
+  name Fire Station
+  pitch A fire station, its bay doors open on an empty floor.
+  faction none
+  roster raiders
+  site city_fire_lot
+  core none
+  owner none
+  rarity common
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 0
+  reveal 300
+  wrong 0.02
+  tags city grand
+  states active 1 abandoned 6 infested 1 ruined 4
+  variant Fire Station One
+    seed 7381
+  variant Fire Station Two
+    seed 7382
+  variant Fire Station Three
+    seed 7387
+
+
+family city_school
+  tier town
+  siting flat
+  rise 0
+  tech low mid high
+  name School
+  pitch A school round its yard, the classrooms as they were left.
+  faction none
+  roster raiders
+  site city_school_lot
+  core none
+  owner none
+  rarity common
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 0
+  reveal 300
+  wrong 0.02
+  tags city grand
+  states active 1 abandoned 6 infested 1 ruined 4
+  variant School One
+    seed 7391
+  variant School Two
+    seed 7392
+  variant School Three
+    seed 7397
+
+
+family city_university
+  tier town
+  siting flat
+  rise 0
+  tech low mid high
+  name Campus
+  pitch A campus of lecture halls, labs and a library round a green.
+  faction none
+  roster raiders
+  site city_university_lot
+  core none
+  owner none
+  rarity common
+  biomes desert rock ash steppe ice fungal
+  territory any
+  spacing 0
+  reveal 300
+  wrong 0.02
+  tags city grand
+  states active 1 abandoned 6 infested 1 ruined 4
+  variant Campus One
+    seed 7401
+  variant Campus Two
+    seed 7402
+  variant Campus Three
+    seed 7407

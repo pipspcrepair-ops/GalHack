@@ -182,8 +182,18 @@ public partial class Screenshot : Node
             double dx = r.X[i + 1] - r.X[i - 1], dz = r.Z[i + 1] - r.Z[i - 1], l = Math.Max(1e-6, Math.Sqrt(dx * dx + dz * dz));
             float ox = (float)(-dz / l * r.WallSide), oz = (float)(dx / l * r.WallSide), reach = r.HalfWidth + 1.5f;
             var top = new Vector3((float)r.X[i] + ox * reach, r.Y[i], (float)r.Z[i] + oz * reach);
-            var eye = top + new Vector3(ox, 0, oz) * 45f + new Vector3((float)(dx / l), 0, (float)(dz / l)) * 25f;
-            eye.Y = Mathf.Max(top.Y + 4f, m.World.GroundHeight(eye.X, eye.Z) + 6f);
+            // Out over the water: past the wall to the water, then on to 40 m out or the middle of a narrow river.
+            float first = -1, last = -1, level = 0;
+            for (float t = 2; t <= 160; t += 2)
+            {
+                bool wet = m.World.Source.WaterSurfaceAt(Mathx.WrapX(top.X + ox * t, m.World.Width), Mathx.Wrap(top.Z + oz * t, m.World.Height), out float lv);
+                if (wet && first < 0) (first, level) = (t, lv);
+                if (wet) last = t;
+                else if (first >= 0) break;
+            }
+            float off = first < 0 ? 45f : Mathf.Min(first + 40f, (first + last) * 0.5f);
+            var eye = top + new Vector3(ox, 0, oz) * off + new Vector3((float)(dx / l), 0, (float)(dz / l)) * 20f;
+            eye.Y = Mathf.Max(first < 0 ? top.Y + 4f : level + 4f, m.World.GroundHeight(eye.X, eye.Z) + 3f);
             shots.Add(Level("waterfront", eye, top - new Vector3(0, 1.5f, 0)));
         }
         // Down an avenue toward the middle: from its point about 120 m out, 1.7 m over its deck.
@@ -203,6 +213,16 @@ public partial class Screenshot : Node
             var eye = new Vector3(sx, m.World.GroundHeight(sx, sz) + 1.7f, sz);
             shots.Add(Level("homes", eye, new Vector3((float)home.Gate.X, home.Pad + 2.5f, (float)home.Gate.Z)));
         }
+        // The city's services from their streets: a fire station, a police station, a school, a campus.
+        foreach (string kind in new[] { "fire", "police", "school", "university" })
+            if (lots.FirstOrDefault(l => l.Kind == kind) is { } svc)
+            {
+                bool alongX = svc.Front is PoiGenerator.Gen.Dir.North or PoiGenerator.Gen.Dir.South;
+                float back = kind is "school" or "university" ? 30f : 18f, outward = svc.Front is PoiGenerator.Gen.Dir.North or PoiGenerator.Gen.Dir.West ? -1f : 1f;
+                float sx = (float)svc.Crossover.X + (alongX ? 14f : outward * 6f), sz = (float)svc.Crossover.Z + (alongX ? outward * 6f : 14f);
+                var eye = new Vector3(sx, m.World.GroundHeight(sx, sz) + (kind is "school" or "university" ? 9f : 1.7f), sz);
+                shots.Add(Level(kind, eye, new Vector3((float)(svc.X0 + svc.X1) / 2, svc.Pad + 4f, (float)(svc.Z0 + svc.Z1) / 2)));
+            }
         // Inside the tallest tower's lobby: at eye height where nothing is nearer than 2 m, toward the lobby's far side.
         {
             var site = tall.Site;

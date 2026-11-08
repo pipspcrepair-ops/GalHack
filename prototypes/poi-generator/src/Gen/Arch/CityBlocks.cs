@@ -51,6 +51,10 @@ public static class CityBlocks
             case "works": Works(p, lot); break;
             case "civic": CivicHall(p, lot); break;
             case "station": Station(p, lot); break;
+            case "police": Police(p, lot); break;
+            case "fire": FireStation(p, lot); break;
+            case "school": School(p, lot); break;
+            case "university": Campus(p, lot); break;
             default: Storeyed(p, lot); break;
         }
         p.Finish();
@@ -265,7 +269,8 @@ public static class CityBlocks
             CarPark(p, 0, k1 + 1, W - 1, D - 1, lot.Style);
             p.Pave(d0, K0, d0 + Drive - 1, k1, new Stuff2(Material.Concrete, Tarmac));
         }
-        p.C.VaultModule = rooms[^1];
+        // What was worth keeping was kept low, in a strongroom floor a few storeys up, not at the top of thirty flights.
+        p.C.VaultModule = rooms[Math.Min(storeys - 1, 3)];
 
         // The top: a parapet, plant boxes, and on the tallest a spire.
         int top = storeys - 1, topInset = Inset(top);
@@ -543,6 +548,211 @@ public static class CityBlocks
         p.Cache(2 * (i0 + 3), 0, 2 * (k1 - 3), hall);
         p.C.VaultModule = hall;
         p.Weathers(i0 - 1, 0, K0 - 1, i1 + 1, h + 4 + (int)r, k1 + 1, h);
+    }
+
+    // ---- civic services ------------------------------------------------------------------------
+    // Rooms these name, for the room-contents rules (the sweep branch owns those; nothing is dressed here):
+    //   police: "front desk" (a counter, benches, a notice wall), "office" (desks, files), "cells" (bunks behind
+    //     the bars, a bucket), "armoury" (gun racks, lockers, ammunition crates: the vault);
+    //   fire station: "engine bay" (an engine or its tyre marks, hose reels, lockers along the walls),
+    //     "quarters" (bunks, a kitchen table, lockers), "drill tower" (hose hung to dry, a ladder);
+    //   school: "hallway" (pegs, lockers, a notice board), "classroom" (rows of small desks, a teacher's desk,
+    //     a board), "gym" (wall bars, mats, a hoop; benches), "storage" (shelves of paper and kit);
+    //   university: "lecture hall" (tiered benches, a lectern), "lab" (benches, sinks, fume hoods, racks of
+    //     glass), "library" (stacks of shelves, reading tables).
+
+    /// <summary>
+    /// A police station: a front desk behind its door, the cell block behind bars and the armoury behind it,
+    /// offices upstairs; the vehicle yard behind, fenced, its drive down the side.
+    /// </summary>
+    static void Police(Plot p, CityLot lot)
+    {
+        Fab f = p.F;
+        int W = Math.Max(15, lot.W), D = Math.Max(16, lot.D);
+        const int Drive = 3;
+        int i0 = 0, i1 = W - 1 - Drive, k0 = 2, k1 = 10, im = (i0 + i1) / 2 + 1, mid = (i0 + i1) / 2;
+        for (int st = 0; st < 2; st++) p.Shell(i0, k0, i1, k1, st * Pitch, H, f.Wall, f.Roof);
+        int flight = p.Flight(i0 + 2, k0 + 1, Dir.East, 0, Pitch, 1, "stair", 0);
+        // The desk across the front; behind its wall the cells on one side and the armoury on the other.
+        for (int i = i0 + 1; i < i1; i++) p.Fill(i, 0, k0 + 4, i, H - 1, k0 + 4, Solid(f.Panel));
+        for (int k = k0 + 5; k < k1; k++) p.Fill(im, 0, k, im, H - 1, k, Solid(f.Panel));
+        // Bars across the cell block a block off its back wall, every other one left open.
+        var bars = new Block(BlockType.Rail, Material.Steel, f.Steel.C, Role.Wall);
+        for (int i = i0 + 1; i < im; i += 2) p.Fill(i, 0, k1 - 2, i, H - 1, k1 - 2, bars);
+        int desk = p.Room(ModuleKind.Room, "front desk", 0, i0 + 1, 0, k0 + 1, i1 - 1, H - 1, k0 + 3);
+        int cells = p.Room(ModuleKind.Room, "cells", 0, i0 + 1, 0, k0 + 5, im - 1, H - 1, k1 - 1);
+        int armoury = p.Room(ModuleKind.Room, "armoury", 0, im + 1, 0, k0 + 5, i1 - 1, H - 1, k1 - 1);
+        p.Level(1, Pitch, "floor 2");
+        int office = p.Room(ModuleKind.Room, "office", 1, i0 + 1, Pitch, k0 + 1, i1 - 1, Pitch + H - 1, k1 - 1);
+        p.C.Link(desk, flight);
+        p.C.Link(flight, office);
+        p.Door(i0 + 2, 0, k0 + 4, true, desk, cells);
+        p.Door(im + 2, 0, k0 + 4, true, desk, armoury);
+        p.Machine(im + 1, 0, k1 - 1, i1 - 1, k1 - 1, 1, f.Steel); // racks along the armoury's back wall
+        p.Cache(2 * (im + 2) + 1, 0, 2 * (k0 + 5), armoury);
+        for (int st = 0; st < 2; st++)
+            for (int i = i0 + 1; i < i1; i += 2)
+            {
+                if (st == 0 && Math.Abs(i - mid) <= 1) continue;
+                p.Glazed(i, st * Pitch + 1, k0, i, k0);
+                p.Glazed(i, st * Pitch + 1, k1, i, k1);
+            }
+        p.Lamp(2 * (i1 - 2), 3, 2 * (k0 + 1), desk, 1.2f, 12f);
+        p.Lamp(2 * (i1 - 2), 2 * Pitch + 3, 2 * (k0 + 2), office, 1.2f, 12f);
+        Gate(p, mid, 2 * mid);
+        p.Pave(i0, 0, i1, k0 - 1, f.Floor.Scale(0.9f));
+        p.Door(mid, 0, k0, true, p.Yard, desk);
+        // The vehicle yard behind, down a drive along the side.
+        CarPark(p, 0, k1 + 1, W - 1, D - 1, lot.Style);
+        p.Pave(W - Drive, 0, W - 1, k1, new Stuff2(Material.Concrete, Tarmac));
+        int roofJ = 2 * Pitch - 1;
+        for (int i = i0; i <= i1; i++) { p.Fill(i, roofJ + 1, k0, i, roofJ + 1, k0, Solid(f.Wall)); p.Fill(i, roofJ + 1, k1, i, roofJ + 1, k1, Solid(f.Wall)); }
+        Edges(p, lot, u => u <= 2 * i1 + 1 || u >= 2 * (W - Drive), false);
+        p.Weathers(i0 - 1, 0, k0 - 1, i1 + 1, roofJ + 2, k1 + 1, roofJ);
+        Broken(p, lot, i0, k0, i1, k1, roofJ);
+        p.C.VaultModule = armoury;
+    }
+
+    /// <summary>
+    /// A fire station: a wide engine bay with tall doors onto an apron at the street, the crew's quarters over
+    /// it up a stair from the bay, a drill tower in the yard behind, a drive down the side.
+    /// </summary>
+    static void FireStation(Plot p, CityLot lot)
+    {
+        Fab f = p.F;
+        int W = Math.Max(15, lot.W), D = Math.Max(16, lot.D);
+        const int Bay = 4, Drive = 3;
+        int i0 = 0, i1 = W - 1 - Drive, k0 = 3, k1 = 11;
+        Rgb red = new(0x9a, 0x2e, 0x26);
+        int bay = p.Hall("engine bay", ModuleKind.Hall, 0, i0, k0, i1, k1, 0, Bay, f.Wall, f.Roof);
+        p.Shell(i0, k0, i1, k1, Bay + 1, H, f.Wall, f.Roof);
+        int flight = p.Flight(i0 + 2, k1 - 1, Dir.East, 0, Bay + 1, 1, "stair", 0);
+        p.Level(1, Bay + 1, "quarters");
+        int quarters = p.Room(ModuleKind.Room, "quarters", 1, i0 + 1, Bay + 1, k0 + 1, i1 - 1, Bay + H, k1 - 1);
+        p.C.Link(bay, flight);
+        p.C.Link(flight, quarters);
+        // Tall doors to the street between piers, their frames painted.
+        Gate(p, (i0 + i1) / 2, 2 * ((i0 + i1) / 2));
+        for (int a = i0 + 1; a + 2 < i1; a += 4)
+        {
+            p.Mouth(a, 0, k0, a + 2, 2, k0, p.Yard, bay);
+            p.FloorStripes(2 * a, 2 * k0 - 2, 2 * (a + 2) + 1, 2 * k0 - 1);
+            p.Repaint(2 * a - 1, 0, 2 * k0, 2 * a - 1, 2 * Bay - 1, 2 * k0, (_, _, _) => red);
+        }
+        p.Pave(i0, 0, i1, k0 - 1, new Stuff2(Material.Concrete, f.Floor.C.Scale(0.95f)));
+        for (int i = i0 + 1; i < i1; i += 2) p.Glazed(i, Bay + 2, k0, i, k0);
+        p.Lamp(2 * (i1 - 2), 2 * Bay - 1, 2 * (k0 + 3), bay, 1.4f, 16f);
+        p.Cache(2 * (i1 - 2), 2 * (Bay + 1), 2 * (k0 + 2), quarters);
+        // The drill tower: a hollow shaft of a tower in the yard, open on its faces, a ladder up inside.
+        int t0 = k1 + 2, ti = i0;
+        int tower = p.Hall("drill tower", ModuleKind.Hall, 0, ti, t0, ti + 2, t0 + 2, 0, 12, f.Wall, f.Roof);
+        for (int j = 2; j < 11; j += 2) p.Dig(ti + 1, j, t0, ti + 1, j, t0);
+        p.Mouth(ti + 2, 0, t0 + 1, ti + 2, 1, t0 + 1, p.Yard, tower);
+        p.Ladder(2 * (ti + 1), 1, 22, 2 * (t0 + 1) + 1, Dir.South);
+        p.Pave(ti + 3, k1 + 1, W - 1, D - 2, new Stuff2(Material.Concrete, f.Floor.C.Scale(0.9f)));
+        p.Pave(W - Drive, 0, W - 1, k1, new Stuff2(Material.Concrete, Tarmac));
+        Edges(p, lot, u => u <= 2 * i1 + 1 || u >= 2 * (W - Drive), false);
+        p.Weathers(i0 - 1, 0, k0 - 1, i1 + 1, Bay + H + 3, k1 + 1, Bay + H);
+        Broken(p, lot, i0, k0, i1, k1, Bay + H);
+        p.C.VaultModule = quarters;
+    }
+
+    /// <summary>
+    /// A school on a block of its own: a wing of classrooms along a hallway behind its front doors, a gym
+    /// behind across the yard, a playing field with its goals, a fence round it all with a gate at the front.
+    /// </summary>
+    static void School(Plot p, CityLot lot)
+    {
+        Fab f = p.F;
+        int W = Math.Max(26, lot.W), D = Math.Max(26, lot.D);
+        int i0 = 3, i1 = W - 4, k0 = 4, k1 = 11, mid = (i0 + i1) / 2;
+        var face = new Stuff2(f.Wall.M, Facades[lot.Style % Facades.Length].Scale(0.9f));
+        p.Shell(i0, k0, i1, k1, 0, H, face, f.Roof);
+        for (int i = i0 + 1; i < i1; i++) p.Fill(i, 0, k0 + 3, i, H - 1, k0 + 3, Solid(f.Panel));
+        int count = (i1 - i0) / 6;
+        for (int n = 1; n <= count; n++) p.Fill(i0 + 6 * n, 0, k0 + 4, i0 + 6 * n, H - 1, k1 - 1, Solid(f.Panel));
+        int hall = p.Room(ModuleKind.Hall, "hallway", 0, i0 + 1, 0, k0 + 1, i1 - 1, H - 1, k0 + 2);
+        for (int n = 0; n <= count; n++)
+        {
+            int a = i0 + 6 * n + 1, b = Math.Min(i1 - 1, i0 + 6 * (n + 1) - 1);
+            if (b - a < 1) continue;
+            int room = p.Room(ModuleKind.Room, b - a >= 3 ? "classroom" : "storage", 0, a, 0, k0 + 4, b, H - 1, k1 - 1);
+            p.Door(a + 1, 0, k0 + 3, true, hall, room);
+            for (int i = a; i <= b; i += 2) p.Glazed(i, 1, k1, i, k1);
+            p.Lamp(2 * b, 3, 2 * (k1 - 1), room, 1f, 10f);
+        }
+        for (int i = i0 + 1; i < i1; i += 2)
+            if (Math.Abs(i - mid) > 1) p.Glazed(i, 1, k0, i, k0);
+        p.Lamp(2 * (i0 + 2), 3, 2 * (k0 + 1), hall, 1f, 10f);
+        p.Gable(i0, k0, i1, k1, H, true, f.Roof, face);
+        p.Weathers(i0 - 1, 0, k0 - 1, i1 + 1, H + 6, k1 + 1, H);
+        Gate(p, mid, 2 * mid + 1);
+        p.Pave(mid - 1, 0, mid, k0 - 1, f.Floor.Scale(1.05f));
+        p.Mouth(mid - 1, 0, k0, mid, 1, k0, p.Yard, hall);
+        // The gym across the yard behind, its doors onto the yard; the path round the wing to it.
+        int g1 = Math.Min(i0 + 12, W / 2), gk0 = k1 + 4, gk1 = D - 4;
+        int gym = p.Hall("gym", ModuleKind.Hall, 0, i0, gk0, g1, gk1, 0, 4, face, f.Roof);
+        p.Mouth((i0 + g1) / 2 - 1, 0, gk0, (i0 + g1) / 2, 2, gk0, p.Yard, gym);
+        p.Cache(2 * (i0 + 2), 0, 2 * (gk1 - 2), gym);
+        p.Pave(1, 1, 2, gk0 - 1, f.Floor.Scale(1.05f));
+        p.Pave(3, k1 + 1, g1, gk0 - 1, f.Floor.Scale(1.05f));
+        // The playing field: grass, a goal at each end.
+        int fi = (g1 + 2 + W - 2) / 2;
+        foreach (int k in new[] { gk0, gk1 })
+        {
+            p.Post(2 * (fi - 1), 2, 2 * k, f.Steel);
+            p.Post(2 * (fi + 1) + 1, 2, 2 * k, f.Steel);
+            for (int u = 2 * (fi - 1) + 1; u <= 2 * (fi + 1); u++) p.Put(u, 2, 2 * k, new Block(BlockType.Rail, f.Steel.M, f.Steel.C, Role.Decor));
+        }
+        Edges(p, lot, u => u >= 2 * (mid - 1) && u <= 2 * mid + 1 || u >= 2 && u <= 5, false);
+        Broken(p, lot, i0, k0, i1, k1, H);
+        p.C.VaultModule = gym;
+    }
+
+    /// <summary>
+    /// A university campus on a block of its own: a lecture hall and a block of labs facing each other across a
+    /// green, the library at its head, paths across the green from the gate to each door.
+    /// </summary>
+    static void Campus(Plot p, CityLot lot)
+    {
+        Fab f = p.F;
+        int W = Math.Max(30, lot.W), D = Math.Max(30, lot.D);
+        var stone = new Stuff2(f.Wall.M, new Rgb(0xc8, 0xb8, 0x9c));
+        int mid = W / 2;
+        // The lecture hall, west of the green, under a gable.
+        int l1 = mid - 4;
+        int lecture = p.Hall("lecture hall", ModuleKind.Hall, 0, 2, 3, l1, 13, 0, 4, stone, f.Roof);
+        p.Gable(2, 3, l1, 13, 4, false, f.Roof, stone);
+        for (int k = 5; k < 13; k += 2) p.Glazed(2, 2, k, 2, k);
+        p.Mouth(l1, 0, 8, l1, 1, 9, p.Yard, lecture);
+        p.Lamp(2 * 4, 7, 2 * 5, lecture, 1.4f, 16f);
+        // The labs, east of it: two storeys, a stair up from the ground floor.
+        int b0 = mid + 3, b1 = W - 3;
+        for (int st = 0; st < 2; st++) p.Shell(b0, 3, b1, 13, st * Pitch, H, f.Wall, f.Roof);
+        int flight = p.Flight(b0 + 2, 4, Dir.East, 0, Pitch, 1, "stair", 0);
+        p.Level(1, Pitch, "floor 2");
+        int lab = p.Room(ModuleKind.Hall, "lab", 0, b0 + 1, 0, 4, b1 - 1, H - 1, 12);
+        int lab2 = p.Room(ModuleKind.Hall, "lab", 1, b0 + 1, Pitch, 4, b1 - 1, Pitch + H - 1, 12);
+        p.C.Link(lab, flight);
+        p.C.Link(flight, lab2);
+        for (int st = 0; st < 2; st++)
+            for (int k = 5; k < 13; k += 2) p.Glazed(b1, st * Pitch + 1, k, b1, k);
+        p.Mouth(b0, 0, 8, b0, 1, 9, p.Yard, lab);
+        p.Lamp(2 * (b1 - 2), 3, 2 * 11, lab, 1.2f, 12f);
+        // The library at the head of the green.
+        int y0 = D - 14, y1 = D - 3;
+        int library = p.Hall("library", ModuleKind.Hall, 0, mid - 8, y0, mid + 8, y1, 0, 4, stone, f.Roof);
+        p.Gable(mid - 8, y0, mid + 8, y1, 4, true, f.Roof, stone);
+        for (int i = mid - 6; i < mid + 7; i += 2) p.Glazed(i, 2, y0, i, y0);
+        p.Mouth(mid - 1, 0, y0, mid, 2, y0, p.Yard, library);
+        p.Cache(2 * (mid - 6), 0, 2 * (y1 - 2), library);
+        p.Lamp(2 * mid, 7, 2 * (y0 + 4), library, 1.4f, 16f);
+        // The paths: from the gate up the green to the library, and across it between the hall and the labs.
+        Gate(p, mid, 2 * mid + 1);
+        p.Pave(mid - 1, 0, mid, y0 - 1, f.Floor.Scale(1.1f));
+        p.Pave(l1 + 1, 8, b0 - 1, 9, f.Floor.Scale(1.1f));
+        Edges(p, lot, u => u >= 2 * (mid - 1) && u <= 2 * mid + 1, true);
+        p.C.VaultModule = library;
     }
 
     /// <summary>

@@ -168,7 +168,8 @@ public partial class SurfaceTest
     static double ToDungeon(PlanetWorld w, out int count)
     {
         double sx = w.StartTown?.EdgeX ?? w.Landing.X, sz = w.StartTown?.EdgeZ ?? w.Landing.Y;
-        var deep = w.Pois.Where(Dungeon).ToList();
+        // (The start town's own dungeon counts even where it is only enclosed, not deep: the nearest big place in reach, given people.)
+        var deep = w.Pois.Where(p => Dungeon(p) || p == w.StartTown?.Dungeon && StartTown.Lived(p.Instance)).ToList();
         count = deep.Count;
         return deep.Select(p => Math.Sqrt(Math.Pow(Mathx.WrapDelta(p.Center.X - sx, w.Width), 2) + Math.Pow(Mathx.WrapDelta(p.Center.Z - sz, w.Height), 2))).DefaultIfEmpty(double.MaxValue).Min();
     }
