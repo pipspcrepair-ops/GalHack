@@ -35,6 +35,14 @@ public sealed class FlavourRuin
     public TerrainStamp Drive;
     /// <summary>A track of its own runs from its gate to the nearest road.</summary>
     public bool Tracked;
+    /// <summary>
+    /// Power (the interface with the roads side's lines, <see cref="PowerLines.Fixing"/>): where the house's service drop
+    /// is fixed to its wall. The houses side sets these from the house it builds: which face of its outer walls takes the
+    /// drop (null: the face toward the pole it comes from), and how high above that wall's foot, metres. The drop meets
+    /// the outer wall nearest that face's middle with nothing in front of it.
+    /// </summary>
+    public Dir? FixingSide;
+    public float FixingHeight = 3f;
     public (double X, double Z) Center => ((Stamp.MinX + Stamp.MaxX) * 0.5, (Stamp.MinZ + Stamp.MaxZ) * 0.5);
 
     /// <summary>The ruin as built and decayed (a pure function of its layout and seed): call off the main thread.</summary>
