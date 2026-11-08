@@ -558,8 +558,8 @@ public sealed partial class PeopleGenerator
     {
         Folk k = f.Folk;
         if (k == null || k.Human) return;
-        if (k.CrownRise > 0.9f || k.Ears is "tall")
-            foreach (string hat in new[] { "helmet", "cap", "wide_hat", "straw_hat" }) f.Wear.Remove(hat);
+        if (NoHatFits(f))
+            foreach (string hat in Hats) f.Wear.Remove(hat);
         if (k.Back != "" && f.Dress != "suit")
         {
             if (f.Wear.Remove("backpack") && !f.Wear.Any(w => HumanBody.Slot(w) == "side")) f.Wear.Add("satchel");
@@ -568,12 +568,18 @@ public sealed partial class PeopleGenerator
         if (k.Tail is "thick" or "bushy") { f.Wear.Remove("coat"); f.Wear.Remove("poncho"); }
     }
 
-    /// <summary>Puts on what a table says, each at its chance; a slot already filled stays as it is.</summary>
+    static readonly string[] Hats = { "helmet", "cap", "wide_hat", "straw_hat" };
+
+    /// <summary>A tall crown or tall ears: no cap, helmet or hat sits on that head.</summary>
+    public static bool NoHatFits(Figure f) => f.Folk is { Human: false } k && (k.CrownRise > 0.9f || k.Ears is "tall");
+
+    /// <summary>Puts on what a table says, each at its chance; a slot already filled stays as it is. A hat their head can't take never fills the slot (a head wrap after it still can).</summary>
     static void Put(Figure f, Rng rng, Dictionary<string, float> table)
     {
         foreach (var (id, chance) in table)
         {
             if (!rng.Chance(chance)) continue;
+            if (Array.IndexOf(Hats, id) >= 0 && NoHatFits(f)) continue;
             string slot = HumanBody.Slot(id);
             bool taken = false;
             if (slot != "")
