@@ -354,7 +354,8 @@ public sealed class RegionPlan
                         Serves(id, s, works, "industry", "what the town lived on", hub, _profile.Before == TechLevel.Low ? "road" : "highway");
                     }
                 }
-                if (_roll.Power != "none" && Choose(_roll.Plant) is { } plant && Spot(town.X, town.Z, 1000, 1800, plant) is { } ps)
+                // Where only the port had power, no plant fed a town's lines (PowerLines strings none to it).
+                if (_roll.Power is not ("none" or "port_only") && Choose(_roll.Plant) is { } plant && Spot(town.X, town.Z, 1000, 1800, plant) is { } ps)
                 {
                     PlannedPlace? pp = Serves(plant, ps, town, "plant", "feeds the town's lines", hub, "road");
                     if (pp != null) _p.Links.Add(new PlannedLink(pp.Index, hub.Index, "power", "the plant feeds its town"));

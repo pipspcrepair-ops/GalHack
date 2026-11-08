@@ -782,7 +782,9 @@ public partial class SkyTest : Node
     /// <summary>The sun's size from each kind of world, with the star its kind has: a scorched world's sun big and fierce, an ice world's small, neither a wall nor a dot.</summary>
     void SunBands()
     {
-        foreach (var (type, least, most) in new[] { (Archetype.Lava, 6f, 15f), (Archetype.Arid, 2.8f, 7f), (Archetype.Temperate, 2.4f, 4.6f), (Archetype.Ice, 0.9f, 3f) })
+        // A scorched world's sun is meant big and angry. One that is a close giant's moon sees it swell through its month (it
+        // passes between the giant and the star, as much as a third nearer), so the top reaches past a lone planet's 15.
+        foreach (var (type, least, most) in new[] { (Archetype.Lava, 6f, 21f), (Archetype.Arid, 2.8f, 7f), (Archetype.Temperate, 2.4f, 4.6f), (Archetype.Ice, 0.9f, 3f) })
         {
             var sizes = new List<float>();
             for (int i = 0; i < 24; i++)

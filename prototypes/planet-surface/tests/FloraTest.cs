@@ -450,9 +450,10 @@ public partial class FloraTest : Node
                 {
                     var cut = new FarJob { Fx = fx, Fz = fz, Lod = 0, SpanX = job.SpanX, SpanZ = job.SpanZ };
                     FarBuilder.Build(cut, w.Source, w.Palette, new HashSet<long>(), new HashSet<long> { tree.Id });
-                    int before = job.Flora.Where(b => b.Plant == tree.Plant).Sum(b => b.Count), after = cut.Flora.Where(b => b.Plant == tree.Plant).Sum(b => b.Count);
+                    // Level 0 carries a near and a far drawing of each large plant (they dissolve into each other): one of each goes.
+                    int Drawn(FarJob j, bool far) => j.Flora.Where(b => b.Plant == tree.Plant && b.Far == far).Sum(b => b.Count);
                     felled++;
-                    if (after != before - 1 || cut.Solids.Any(s => s.Id == tree.Id)) unfelled++;
+                    if (Drawn(cut, false) != Drawn(job, false) - 1 || Drawn(cut, true) != Drawn(job, true) - 1 || cut.Solids.Any(s => s.Id == tree.Id)) unfelled++;
                 }
                 unset += job.Solids.Count(s => s.Fellable && s.Plant < 0);
                 int cx = fx * 8 + (int)(rng.NextFloat() * 8), cz = fz * 8 + (int)(rng.NextFloat() * 8);

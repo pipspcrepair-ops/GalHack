@@ -863,6 +863,9 @@ public static class FarBuilder
             float gx = (source.SurfaceHeight(x + foot, z) - h) / foot, gz = (source.SurfaceHeight(x, z + foot) - h) / foot;
             float slope = MathF.Sqrt(gx * gx + gz * gz), lean = rock ? MathF.Min(slope, MaxRockLean) : 0f;
             float rootY = h - FloraSolidRules.Sink - (slope - lean) * foot;
+            // A stem's foot goes down to the lowest ground round it, the far sides too: the slope above is
+            // read uphill, and ground falling away behind (a cut, a rim, a bank) would leave it standing proud.
+            if (!rock) rootY = MathF.Min(rootY, MathF.Min(source.SurfaceHeight(x - foot, z), source.SurfaceHeight(x, z - foot)) - FloraSolidRules.Sink);
             var basis = new Basis(Vector3.Up, angle).Scaled(new Vector3(scale, scale, scale));
             if (lean > 0.01f && slope > 0f)
                 basis = new Basis(new Vector3(-gz, 0f, gx) / slope, -MathF.Atan(lean)) * basis;

@@ -132,9 +132,9 @@ public sealed class PowerLines
         foreach (InfraRoute r in net.Routes)
         {
             // Along roads and highways (railways carry their own catenary or none); a frontier world
-            // strung poles only to mines and works.
+            // strung poles only to mines, works and the plants that fed its towns.
             if (r.Kind is RouteKind.Track or RouteKind.Rail) continue;
-            bool industrial(PoiSite p) => p != null && (p.Family.Tags.Contains("mine") || p.Family.Tags.Contains("industry"));
+            bool industrial(PoiSite p) => p != null && (p.Family.Tags.Contains("mine") || p.Family.Tags.Contains("industry") || p.Family.Tags.Contains("power"));
             if (profile.Before == TechLevel.Low && !industrial(r.From) && !industrial(r.To)) continue;
             if (r.Length < 120 || r.Kind == RouteKind.Highway && profile.Before != TechLevel.Low) continue;
             if (style == "port_only" && !(r.From?.Primary == true || r.To?.Primary == true)) continue;
