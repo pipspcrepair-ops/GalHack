@@ -93,7 +93,7 @@ public sealed class YouSection : IMenuSection
             b + new Vector2(0, 454), C.Text, 15, UiTheme.Mono);
         g.Bar(new Rect2(b + new Vector2(0, 476), new Vector2(560, 10)), used, cap, used > cap * 0.9 ? C.Warn : C.Good, 20);
         bool mine = pack.Bar == BarSource.Personal;
-        g.Caption($"YOUR TOOLBAR  (1 TO 9){(mine ? "  · IN USE" : "")}", b + new Vector2(0, 494), 560, mine ? C.Accent : C.Dim);
+        g.Caption($"YOUR TOOLBAR [1-9]{(mine ? " · IN USE" : "")}", b + new Vector2(0, 494), 560, mine ? C.Accent : C.Dim);
         for (int i = 0; i < PlayerInventory.ToolbarSlots; i++)
         {
             var r = new Rect2(b + new Vector2(i * 62, 526), new Vector2(56, 56));
@@ -102,7 +102,7 @@ public sealed class YouSection : IMenuSection
         RemoteBar(g, new Rect2(b + new Vector2(0, 590), new Vector2(560, 90)));
         var dropZone = new Rect2(b + new Vector2(0, 690), new Vector2(560, 40));
         g.Fill(dropZone, new Color(C.Panel, 0.5f));
-        g.TextIn("SET DOWN HERE (or drag out of the panels) · double-click sends · right-drag takes half (Ctrl: one, wheel: amount)", dropZone, C.Dim, 13, HorizontalAlignment.Center);
+        g.TextIn("SET DOWN", dropZone, C.Dim, 13, HorizontalAlignment.Center);
         if (g.DropTarget("drop-ground", dropZone, out object d) && d is SlotRef sr) _game.Drop(sr.Grid, sr.Index);
         if (g.Button("bag:up", new Rect2(b.X + 400, b.Y + 450, 70, 22), "UP", C.Accent2, _bagScroll > 0, size: 12)) _bagScroll--;
         if (g.Button("bag:down", new Rect2(b.X + 480, b.Y + 450, 80, 22), "DOWN", C.Accent2, (_bagScroll + 6) * PlayerInventory.Columns < shownStacks, size: 12)) _bagScroll++;
@@ -130,7 +130,7 @@ public sealed class YouSection : IMenuSection
                 else if (_game.Stats.Seconds - _hoverSince >= HoverOpen) { _tab = t.Key; _hoverTab = null; }
             }
             else if (_hoverTab == t.Key) _hoverTab = null;
-            if (g.Over(rect)) g.SetTip(rect, () => new List<(string, Color)> { (t.Core?.Name ?? t.Title, C.Holo), ("A storage tab: drop items on it to send them there; hold something over it to open it", C.Dim) });
+            if (g.Over(rect)) g.SetTip(rect, () => new List<(string, Color)> { (t.Core?.Name ?? t.Title, C.Holo) });
         }
         var inner = new Rect2(c + new Vector2(0, 50), new Vector2(right.Size.X, right.Size.Y - 50));
         if (_tab == "blocks") Palette(g, inner);
@@ -211,11 +211,9 @@ public sealed class YouSection : IMenuSection
         PlayerInventory pack = _game.Pack;
         bool inUse = pack.OnRemoteBar, drag = pack.Dragging;
         ItemCatalogue items = _game.Zone.Data.Items;
-        g.Caption(inUse ? "REMOTE TOOLBAR  (Y)  · IN USE" : "REMOTE TOOLBAR  (Y)", r.Position, r.Size.X, inUse || drag ? C.Holo : C.Dim);
+        g.Caption(inUse ? "REMOTE TOOLBAR [Y] · IN USE" : "REMOTE TOOLBAR [Y]", r.Position, 300, inUse || drag ? C.Holo : C.Dim);
         if (pack.Remote[pack.Selected] is RemoteSlot chosen && inUse)
             g.TextIn(chosen.Origin.ToUpperInvariant(), new Rect2(r.Position.X + 300, r.Position.Y, r.Size.X - 300, 22), PipOf(pack.ColourOf(chosen.Source)), 15, HorizontalAlignment.Right);
-        else if (pack.RemoteEmpty && !drag)
-            g.TextIn("drag an item from a core's storage tab: it stays in the core", new Rect2(r.Position.X + 250, r.Position.Y + 2, r.Size.X - 250, 20), C.Dim, 12, HorizontalAlignment.Right);
         for (int i = 0; i < PlayerInventory.ToolbarSlots; i++)
         {
             var s = new Rect2(r.Position + new Vector2(i * 62, 32), new Vector2(56, 56));
@@ -365,9 +363,6 @@ public sealed class YouSection : IMenuSection
             .OrderBy(i => view.Sort == ItemSort.Slot ? (p.ItemAllowed(i) ? 0 : 1) : 0).ToList();
         int perPage = 13;
         _paletteScroll = Math.Clamp(_paletteScroll, 0, Math.Max(0, (entries.Count - 1) / perPage));
-        g.Text(creative ? "Drag a block onto your toolbar: Creative places it free and unlimited."
-                        : "Blocks are items: craft them in a constructor. Drag one onto the remote toolbar to build from a core's storage.",
-            r.Position + new Vector2(0, FilterBar.Height + 2), C.Dim, 12);
         float top = r.Position.Y + FilterBar.Height + 24;
         for (int i = 0; i < perPage; i++)
         {
@@ -388,8 +383,7 @@ public sealed class YouSection : IMenuSection
                 g.Draggable($"palette:{item.Id}", row, new BlockRef(item.Id), item.ShortName, item.SmallGrid ? C.Accent2 : C.Accent);
         }
         float y = top + perPage * 40 + 4;
-        if (g.Button("palette:up", new Rect2(r.Position.X, y, 60, 30), "UP", C.Accent2, _paletteScroll > 0)) _paletteScroll--;
-        if (g.Button("palette:down", new Rect2(r.Position.X + 70, y, 60, 30), "DOWN", C.Accent2, (_paletteScroll + 1) * perPage < entries.Count)) _paletteScroll++;
-        if (!creative) g.Text("YOURS + IN THE LINKED STRUCTURE", new Vector2(r.Position.X + 150, y + 6), C.Dim, 12);
+        if (g.Button("palette:up", new Rect2(r.Position.X, y, 80, 30), "UP", C.Accent2, _paletteScroll > 0)) _paletteScroll--;
+        if (g.Button("palette:down", new Rect2(r.Position.X + 90, y, 80, 30), "DOWN", C.Accent2, (_paletteScroll + 1) * perPage < entries.Count)) _paletteScroll++;
     }
 }

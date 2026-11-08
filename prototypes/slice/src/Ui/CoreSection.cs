@@ -93,9 +93,7 @@ public sealed class CoreSection : IMenuSection
         Vector2 o = area.Position;
         if (_picked == null)
         {
-            g.Caption("NO CORE NEARBY", o, area.Size.X);
-            g.Text("OUT OF RANGE: a structure's core, storage and constructors work anywhere inside its area; step into one.", o + new Vector2(0, 40), C.Warn, 16);
-            g.Text("Craft a survival constructor in the suit fabricator (YOU), put it on the toolbar and set it down.", o + new Vector2(0, 66), C.Dim, 16);
+            g.Caption("NO CORE IN RANGE", o, area.Size.X, C.Warn);
             return;
         }
         // The chooser.
@@ -120,7 +118,7 @@ public sealed class CoreSection : IMenuSection
         if (v2.Machines.Count == 0)
         {
             g.Caption("MANUFACTURING", machines.Position, machines.Size.X);
-            g.Text(v2.IsBase ? "No constructor on this base yet: craft a Small constructor (large) and place it." : "No constructor aboard.", machines.Position + new Vector2(0, 40), C.Dim, 15);
+            g.Text("NONE", machines.Position + new Vector2(0, 40), C.Dim, 15);
         }
         else
         {
@@ -129,7 +127,7 @@ public sealed class CoreSection : IMenuSection
                 Constructor c = v2.Machines.Values.ElementAt(i);
                 if (g.Tab($"core:machine:{i}", new Rect2(machines.Position + new Vector2(i * 140, 0), new Vector2(130, 30)), c.Def.Tag, i == _machine, C.Accent2)) _machine = i;
             }
-            if (!v2.Powered) g.Text(v2.PowerOn ? "NO POWER: build a generator onto it" : "POWER OFF", machines.Position + new Vector2(300, 6), C.Danger, 15);
+            if (!v2.Powered) g.Text(v2.PowerOn ? "NO POWER" : "POWER OFF", machines.Position + new Vector2(300, 6), C.Danger, 15);
             _constructor.Build(g, new Rect2(machines.Position + new Vector2(0, 40), new Vector2(machines.Size.X, machines.Size.Y - 40)));
         }
         var column = new Rect2(body.Position + new Vector2(1100, 0), new Vector2(area.End.X - body.Position.X - 1100, body.Size.Y));
@@ -286,7 +284,7 @@ public sealed class StructureSection : IMenuSection
         Int3? one = _game.LightEdit is Int3 c && v.Structure.TryGet(c, out Block lb) && v.Structure.TypeOf(lb).IsLight ? c : null;
         LightSettings cur = one is Int3 cell ? v.Structure.LightAt(cell) : v.Structure.Blocks().Where(b => v.Structure.TypeOf(b.block).IsLight).Select(b => v.Structure.LightAt(b.pos)).First();
         float y = at.Y;
-        if (g.Button("light:target", new Rect2(at.X, y, width, 24), one != null ? "STYLING ONE LIGHT (CLICK FOR ALL)" : "STYLING ALL LIGHTS (SHIFT+E ON A LIGHT FOR ONE)", C.Dim, size: 12) && one != null) _game.LightEdit = null;
+        if (g.Button("light:target", new Rect2(at.X, y, width, 24), one != null ? "ONE LIGHT" : "ALL LIGHTS", C.Dim, size: 12) && one != null) _game.LightEdit = null;
         y += 28;
         uint[] pal = LightSettings.Palette;
         float sw = (width - (pal.Length - 1) * 4) / pal.Length;
@@ -320,7 +318,7 @@ public sealed class StructureSection : IMenuSection
         if (v == null) return;
         Structure s = v.Structure;
         bool large = s.Grid.Size == GridSize.Large;
-        g.Caption($"{v.Name.ToUpperInvariant()} · {(large ? "BIG CORE" : "SMALL CORE")} · {ModeFit.Name(s.Mode)}", o, area.Size.X);
+        g.Caption($"{v.Name.ToUpperInvariant()} · {(large ? "LARGE" : "SMALL")}", o, area.Size.X);
         float y = o.Y + 36;
 
         // ---- Settings ---------------------------------------------------------------------------

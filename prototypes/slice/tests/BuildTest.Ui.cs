@@ -20,6 +20,44 @@ public partial class BuildTest
         GD.Print("-- the UI round --");
         foreach (int x in AlertChecks()) yield return x;
         foreach (int x in ScannerChecks()) yield return x;
+        foreach (int x in MenuTextChecks()) yield return x;
+        HudBoxChecks();
+    }
+
+    /// <summary>The visor's labels at 1080p and 1440p, measured from their boxes: none on another, none off the glass.</summary>
+    void HudBoxChecks()
+    {
+        foreach (Vector2 size in new[] { new Vector2(1920, 1080), new Vector2(2560, 1440) })
+        {
+            HudLayout l = HudLayout.Compute(size, 1f);
+            string problem = l.Problem(size);
+            Check(problem == null && l.Alerts.Size.Y >= HudLayout.AlertIcon * l.Scale * 2, $"HUD at {size.X}x{size.Y}: {l.Boxes.Count()} label boxes, none overlapping, room for two alerts{(problem == null ? "" : ": " + problem)}");
+        }
+    }
+
+    /// <summary>Every page of the Tab menu: no two lines of text on top of each other, and none cut short by its box.</summary>
+    IEnumerable<int> MenuTextChecks()
+    {
+        Gui.Measure = true;
+        var pages = new List<(string name, Action open)>
+        {
+            ("you: fabricator", () => { _game.Menu.Open(MenuTab.You); _game.Menu.Root.You.ShowBlocks = false; }),
+            ("you: blocks", () => { _game.Menu.Open(MenuTab.You); _game.Menu.Root.You.ShowBlocks = true; }),
+            ("stats", () => _game.Menu.Open(MenuTab.Stats)),
+            ("core", () => _game.Menu.Open(MenuTab.Core)),
+        };
+        foreach (string tab in Slice.Items.Progress.Tabs) pages.Add(($"tech: {tab}", () => { _game.Menu.Open(MenuTab.Tech); _game.Menu.Root.Tech.Tab = tab; }));
+        foreach (MapLevel level in Enum.GetValues<MapLevel>()) pages.Add(($"map: {level}", () => _game.Menu.OpenMap(level)));
+        foreach (var (name, open) in pages)
+        {
+            open();
+            foreach (int x in _drive.Wait(3)) yield return x;
+            List<string> problems = _game.Menu.Root.Gui.TextProblems();
+            Check(problems.Count == 0 && _game.Menu.Root.Gui.Texts.Count > 0, $"the menu's {name} page: {_game.Menu.Root.Gui.Texts.Count} lines, none overlapping or cut short{(problems.Count == 0 ? "" : ": " + string.Join("; ", problems.Take(6)))}");
+        }
+        _game.Menu.Root.You.ShowBlocks = false;
+        _game.Menu.Close();
+        Gui.Measure = false;
     }
 
     /// <summary>At the start, before anything is found or pinged, the compass holds the bunker and nothing else.</summary>
