@@ -51,7 +51,7 @@ public sealed partial class Town
                     p.ScaredFor = 0f;
                     break;
                 case GestureEffect.Alarm:
-                    if (p.Figure.Prop == "rifle") p.Holding = true;
+                    if (Weapons.Ranged(p.Figure.Prop)) p.Holding = true;
                     break;
                 case GestureEffect.Back:
                     p.ScaredFor = MathF.Max(p.ScaredFor, p.Figure.Stage == LifeStage.Child ? 6f : 2f);

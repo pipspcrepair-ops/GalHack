@@ -189,10 +189,15 @@ public partial class CreatureView : Node3D
         }
     }
 
+    /// <summary>Whether one creature's built meshes fit another's rig: the same species (a person is a species of one).</summary>
+    public static bool SameBody(Creature a, Creature b) => a != null && b != null && ReferenceEquals(a.Species, b.Species);
+
     /// <summary>The same body for a creature carried into a new sim: its meshes stay, so nothing is built or freed. False if it isn't the same body.</summary>
     public bool Rebind(Creature c)
     {
-        if (_swarm != null || c.Rig.Layout.Pieces.Count != _parts.Count) return false;
+        // Only its own body: another of its kind (another person, the other sex) has other proportions,
+        // and its meshes on this rig would leave gaps at every joint.
+        if (_swarm != null || !SameBody(Creature, c) || c.Rig.Layout.Pieces.Count != _parts.Count) return false;
         Creature = c;
         Sync();
         ResetPhysicsInterpolation();

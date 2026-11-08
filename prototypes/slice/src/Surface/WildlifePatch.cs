@@ -244,7 +244,7 @@ public partial class WildlifePatch : Node3D
                     packs[c.Pack] = pack;
                     sim.Packs.Add(pack);
                 }
-                Creature next = sim.Spawn(c.Species, local, herd, pack);
+                Creature next = sim.Spawn(c.Species, local, herd, pack, asIs: true); // the same one, not another of its kind
                 next.Home = c.Home + shift;
                 next.Health = c.Health;
                 next.Yaw = c.Yaw;

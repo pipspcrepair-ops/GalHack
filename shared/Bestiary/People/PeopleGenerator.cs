@@ -418,6 +418,8 @@ public sealed partial class PeopleGenerator
         // The era arms its fighters: what they carry is what their world could make, whatever their job's tool.
         if (Fighter(role, occupancy) && Armed is { Prop.Length: > 0 } a) f.Prop = a.Prop;
         if (occupancy != Occupancy.Feral && Flavour is { Prop.Length: > 0 } fl && f.Prop == "" && Rng.For(seed, "carry").Chance(fl.PropChance)) f.Prop = fl.Prop;
+        // A fighter's weapon is whatever the world's era makes: spears, bows and clubs low, rifles mid, energy weapons too high.
+        if (Weapons.Armed(f.Prop)) f.Prop = Weapons.ForEra(_w.Now, _w.Before, Rng.For(seed, "weapon"));
         // In a rainy region, a free hand holds an umbrella now and then.
         if (f.Prop == "" && (region?.Humidity ?? 0f) > Locale.Rainy && f.Stage != LifeStage.Child && Rng.For(seed, "umbrella").Chance(0.35f) && occupancy == Occupancy.Friendly) f.Prop = "umbrella";
         f.Routine = look;

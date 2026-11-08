@@ -748,7 +748,7 @@ public sealed partial class Town
         p.Now = 0f;
         if (p.Halt <= 0f) Halts++;
         p.Halt += dt;
-        if (!p.Holding && away < 5f && p.Halt > 1.6f && p.Figure.Prop == "rifle") { p.Holding = true; HoldAims++; }
+        if (!p.Holding && away < 5f && p.Halt > 1.6f && Weapons.Ranged(p.Figure.Prop)) { p.Holding = true; HoldAims++; }
         if (p.Holding && away > 7.5f) p.Holding = false;
         return true;
     }
@@ -980,7 +980,7 @@ public sealed partial class Town
         Vector3 to = p.Pos + Vector3.Up * f.Height * 0.6f - eye;
         float along = to.LengthSquared() > 0.01f ? look.Dot(to.Normalized()) : 0f;
         p.Covered = away < AimReach && along > (p.Covered ? AimOut : AimIn);
-        bool armed = f.Prop is "rifle" or "club";
+        bool armed = Weapons.Armed(f.Prop);
         bool peaceful = Memory.Mood != Mood.Hostile;
         if (away > GreetRearm) p.Greeted = false;
         // Coming up close out of nowhere: a start, before anything else.
