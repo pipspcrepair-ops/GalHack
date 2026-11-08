@@ -38,9 +38,8 @@ public sealed class NavGrid
                 if (!Clear(c + new Int3(0, k, 0))) return false;
             return true;
         }
-        // A shut door is no floor: the top of a tall door is still the doorway, not somewhere to stand.
         bool FloorUnder(Int3 c) =>
-            s.TryGet(c - Int3.UnitY, out Block below) && s.IsSolid(below) && !s.TypeOf(below).IsDoor && s.AttachCoverage(below, Dir.PosY) == Coverage.Full;
+            s.TryGet(c - Int3.UnitY, out Block below) && s.IsSolid(below) && s.AttachCoverage(below, Dir.PosY) == Coverage.Full;
 
         var (min, max) = s.Bounds();
         for (int z = min.Z - 1; z <= max.Z + 1; z++)

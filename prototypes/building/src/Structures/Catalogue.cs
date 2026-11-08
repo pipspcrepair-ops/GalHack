@@ -55,10 +55,9 @@ public sealed class Part
     /// <summary>How its faces depart from the style's look (colour, pattern, a screen's symbol, a pulse), or null.</summary>
     public PartFinish Finish;
 
-    /// <summary>Drawn (and, for a component's own parts, solid) on this grid only, or on both: the large door's leaf runs on into its top, the small one's stops under a frame.</summary>
-    public GridSize? Grid;
-
     // Detail parts only (see BlockType.Detail).
+    /// <summary>Drawn on this grid only, or on both.</summary>
+    public GridSize? Grid;
     /// <summary>The face it sits on: hidden, with all of it, when a neighbour hides that face.</summary>
     public Dir? Mount;
 }
@@ -122,22 +121,6 @@ public sealed class BlockType
     public int AirtightFacesOpen, CoverFacesOpen;
     public Collide Collide = Collide.Cell;
     public List<Part> Parts = new();
-
-    /// <summary>
-    /// A block more than one cell tall (the large grid's door: a 3 m opening needs two 2 m cells): the types
-    /// stacked over it along its own up, per grid, placed, opened, taken down and destroyed with it as one
-    /// piece. None on a grid it fits one cell of (the small grid's door is a single cell).
-    /// </summary>
-    public Dictionary<GridSize, BlockType[]> Stack = new();
-    internal Dictionary<GridSize, string[]> StackIds = new();
-
-    /// <summary>The block whose stack this type is a cell of (a door's top): never placed, costed or listed on its own.</summary>
-    public BlockType PieceOf;
-    internal string PieceOfId;
-    public bool IsPieceTop => PieceOf != null;
-
-    /// <summary>The cells stacked over this type on a grid (empty if none).</summary>
-    public BlockType[] StackOn(GridSize grid) => Stack.TryGetValue(grid, out BlockType[] s) ? s : Array.Empty<BlockType>();
 
     /// <summary>
     /// Looks only: the bolts, vents, screens, fins and trim that make a device read as a machine
@@ -210,14 +193,7 @@ public sealed class Catalogue
         c.LoadMaterials(Parse(readFile(MaterialsFile), "galhack.materials"));
         c.LoadComponents(Parse(readFile(ComponentsFile), "galhack.components"));
         foreach (BlockType t in c._types.Skip(1))
-        {
             if (t.UpgradesTo != null) t.Upgrade = c.Type(t.UpgradesTo);
-            if (t.PieceOfId != null) t.PieceOf = c.Type(t.PieceOfId);
-            foreach (var (grid, ids) in t.StackIds) t.Stack[grid] = ids.Select(c.Type).ToArray();
-        }
-        foreach (BlockType t in c._types.Skip(1))
-            foreach (BlockType top in t.Stack.Values.SelectMany(x => x))
-                if (top.PieceOf != t) throw new InvalidDataException($"'{t.Id}' stacks '{top.Id}', which must say pieceOf '{t.Id}'");
         foreach (BlockType t in c._types.Skip(1))
             if (!t.IsArmor) t.Detail = DeviceDetail.For(t);
         c.CoreType = c._types.Skip(1).FirstOrDefault(t => t.IsCore) ?? throw new InvalidDataException("no core component in components.json");
@@ -292,8 +268,7 @@ public sealed class Catalogue
     {
         foreach (Part part in t.Parts)
         {
-            // A part on one grid only can't answer for both: the face tables are the type's on either grid.
-            if (part.Style == PartStyle.Glass || (open && part.ClosedOnly) || part.Grid != null) continue;
+            if (part.Style == PartStyle.Glass || (open && part.ClosedOnly)) continue;
             foreach (Polygon poly in part.Polygons)
                 if (poly.Boundary == local && poly.Area() > 0.999f) return true;
         }
@@ -406,10 +381,6 @@ public sealed class Catalogue
             t.CoverFacesOpen = Faces(c, "coversOpen", t.CoverFaces);
             t.Airtight = t.AirtightFaces != 0;
             t.Collide = Str(c, "collide", "cell") switch { "none" => Collide.None, "parts" => Collide.Parts, _ => Collide.Cell };
-            if (c.TryGetProperty("stack", out JsonElement stack))
-                foreach (JsonProperty g in stack.EnumerateObject())
-                    t.StackIds[g.Name == "small" ? GridSize.Small : GridSize.Large] = g.Value.EnumerateArray().Select(x => x.GetString()).ToArray();
-            t.PieceOfId = c.TryGetProperty("pieceOf", out JsonElement of) ? of.GetString() : null;
             if (c.TryGetProperty("parts", out JsonElement parts))
                 foreach (JsonElement p in parts.EnumerateArray())
                     t.Parts.Add(LoadPart(p));
@@ -427,7 +398,6 @@ public sealed class Catalogue
             Style = Enum.Parse<PartStyle>(Str(p, "style", "body"), ignoreCase: true),
             ClosedOnly = Bool(p, "closedOnly", false),
             Finish = LoadFinish(p),
-            Grid = p.TryGetProperty("grid", out JsonElement grid) ? grid.GetString() == "small" ? GridSize.Small : GridSize.Large : null,
         };
         part.Polygons = p.TryGetProperty("cylinder", out JsonElement axis)
             ? Geometry.Cylinder(AxisIndex(axis.GetString()), min, max, Int(p, "segments", 12))

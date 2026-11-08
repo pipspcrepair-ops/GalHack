@@ -11,7 +11,7 @@ public partial class PoiTest
     /// <summary>
     /// The one door, in every family (houses have their own stricter check): on fresh seeds, turned every way, at
     /// every tech level, each doorway a person walks through and each way in is <see cref="DoorSize"/>'s door, 2 m
-    /// wide and 3 m tall exactly under its head; for 2 m either side of it nothing comes lower than its head, and
+    /// wide and as tall exactly under its head (one large block); for 2 m either side of it nothing comes lower than its head, and
     /// out of doors nothing lower than its head and a metre more. Every opening a person can reach between two
     /// walls (a gap, a mouth with no door) is at least the door's height clear. Hatches you climb through are not doors.
     /// </summary>
@@ -63,11 +63,16 @@ public partial class PoiTest
                     else if (open != DoorSize.Tall) { noHead++; Note(f.Id, $"{name}: a {(exit ? "way in" : "door")} {open} m clear under its head at {lo}"); }
                     // No person's door outlined in hazard yellow: not its jambs, not its head (a dangerous one wears stripes on its own door).
                     Int3 alongWall = facing.RotateCw(1).Vec();
-                    // An outline is a colour the wall doesn't wear further off (a sandstone wall is no frame).
-                    Int3? yellow = cells.SelectMany(c => new[] { (c + alongWall, c + alongWall * 4), (c - alongWall, c - alongWall * 4), (c + Int3.Up, c + Int3.Up * 3) })
-                        .Where(x => !cells.Contains(x.Item1)).Cast<(Int3, Int3)?>()
-                        .FirstOrDefault(x => g.Get(x!.Value.Item1) is { Role: Role.Wall } w && Facade.IsHazard(w.Color) && g.Get(x.Value.Item2).Color != w.Color)?.Item1;
-                    if (!danger && yellow is Int3 yc) { outlined++; Note(f.Id, $"{name}: a {(exit ? "way in" : "door")} outlined in {g.Get(yc).Color} at {yc}"); }
+                    // An outline rings the door: two of its jambs and its head in a hazard colour the wall doesn't wear further
+                    // off (a sandstone wall beside a door is no frame).
+                    bool Ringed(Int3 c, Int3 beyond) => !cells.Contains(c) && g.Get(c) is { Role: Role.Wall } w && Facade.IsHazard(w.Color) && g.Get(beyond).Color != w.Color;
+                    var marks = new[]
+                    {
+                        cells.Where(c => Ringed(c + alongWall, c + alongWall * 4)).Select(c => (Int3?)(c + alongWall)).FirstOrDefault(),
+                        cells.Where(c => Ringed(c - alongWall, c - alongWall * 4)).Select(c => (Int3?)(c - alongWall)).FirstOrDefault(),
+                        cells.Where(c => Ringed(c + Int3.Up, c + Int3.Up * 3)).Select(c => (Int3?)(c + Int3.Up)).FirstOrDefault(),
+                    }.Where(c => c != null).Select(c => c!.Value).ToList();
+                    if (!danger && marks.Count >= 2) { outlined++; Note(f.Id, $"{name}: a {(exit ? "way in" : "door")} outlined in {g.Get(marks[0]).Color} at {marks[0]}"); }
                     // Either side, past the wall's own thickness (the cells still under the door's head): nothing hangs lower than
                     // the head over the way, out of doors nothing lower than the head and a metre more. A wall or a machine standing
                     // on the floor doesn't hang: only what has clear floor under it counts.

@@ -21,7 +21,7 @@ public sealed record PlainBox(Int3 Min, Int3 Max, int Eave, Dir Front);
 /// everything keeps to a 2 m lattice in plan and in storeys, in shapes the player has: walls and
 /// slabs are large half blocks (1 m thick on their 2 m module), roofs are 45 degree slopes (a pair of
 /// 1 m ramps and the fill under them is one large slope), floors and paths are thin plates, doors are
-/// the standard door (2 m wide, 3 m tall, nothing low over the way to it) and windows are panes in a 2 m wide opening, and everything is plain paint on a
+/// the standard door (one large block, nothing low over the way to it) and windows are panes in a 2 m wide opening, and everything is plain paint on a
 /// plain material. You can read a ruin and rebuild it block for block.
 ///
 /// Everything stands on the ground, so no cell goes below it and the terrain runs flush up to
@@ -195,7 +195,7 @@ public static partial class Homes
                     if (a.Module < b.Module && a.Storey == b.Storey && a.U0 <= b.U1 + 2 && b.U0 <= a.U1 + 2 && a.V0 <= b.V1 + 2 && b.V0 <= a.V1 + 2) C.Link(a.Module, b.Module);
         }
 
-        /// <summary>An opening through a wall, the standard door's by default (<see cref="DoorSize"/>): 2 m wide, 3 m tall.</summary>
+        /// <summary>An opening through a wall, the standard door's by default (<see cref="DoorSize"/>): one large block, 2 m wide and tall.</summary>
         public void Gap(int u, int v, bool alongU, int storey = 0, int width = DoorSize.Wide, int tall = DoorSize.Tall)
         {
             for (int k = 0; k < width; k++)

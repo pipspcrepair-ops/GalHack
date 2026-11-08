@@ -16,10 +16,6 @@ public enum PlaceError
     StartWithCore,
     OneCoreOnly,
     NotEnoughMaterials,
-    /// <summary>A cell of a taller block (a door's top): it comes with its block, never on its own.</summary>
-    PieceTop,
-    /// <summary>A taller block's cell over it is taken (the large door is two blocks tall).</summary>
-    TopBlocked,
 }
 
 public enum RemoveStatus { Removed, Empty, CoreHoldsStructure }
@@ -107,110 +103,20 @@ public static class Building
 
     public static PlaceError Check(Structure s, Int3 p, in Block b)
     {
-        BlockType t = s.TypeOf(b);
-        if (t.IsPieceTop) return PlaceError.PieceTop;
         if (s.Has(p)) return PlaceError.Occupied;
-        List<(Int3 Pos, Block Block)> piece = Piece(s, p, b);
-        foreach (var (q, _) in piece)
-            if (s.Has(q)) return PlaceError.TopBlocked;
+        BlockType t = s.TypeOf(b);
         if (s.Count == 0) return t.IsCore ? PlaceError.None : PlaceError.StartWithCore;
         if (t.IsCore && s.Core != null) return PlaceError.OneCoreOnly;
 
-        // A taller block attaches through any of its cells' faces, but not to itself.
         bool touching = false;
-        foreach (var (q, qb) in piece)
-            foreach (Dir d in Dirs.All)
-            {
-                Int3 n = q + d.Vec();
-                if (piece.Exists(x => x.Pos == n) || !s.TryGet(n, out Block nb)) continue;
-                touching = true;
-                if (s.AttachCoverage(qb, d) != Coverage.None && s.AttachCoverage(nb, d.Opposite()) != Coverage.None)
-                    return PlaceError.None;
-            }
+        foreach (Dir d in Dirs.All)
+        {
+            if (!s.TryGet(p + d.Vec(), out Block n)) continue;
+            touching = true;
+            if (s.AttachCoverage(b, d) != Coverage.None && s.AttachCoverage(n, d.Opposite()) != Coverage.None)
+                return PlaceError.None;
+        }
         return touching ? PlaceError.NoSharedFace : PlaceError.NotAttached;
-    }
-
-    // ---- Taller blocks ----------------------------------------------------------------------
-    // A block whose type stacks more cells over it on this grid (the large door: a 3 m opening in two 2 m cells,
-    // the way taller doors span cells in other builders) is one piece: its base cell holds the block and the cells
-    // above it, along its own up, hold its tops, turned and opened with it. Everything else (rooms, air, pathing,
-    // collision, the mesher) reads each cell as it is; placing, taking down, opening and destroying go by the piece.
-
-    /// <summary>The cell offset a block's own up points to.</summary>
-    public static Int3 UpOf(in Block b) => Orientations.ToWorld(b.Rot, Dir.PosY).Vec();
-
-    /// <summary>The cells a block placed here would take, base first: just its own unless its type stacks tops on this grid.</summary>
-    public static List<(Int3 Pos, Block Block)> Piece(Structure s, Int3 p, in Block b)
-    {
-        var cells = new List<(Int3, Block)> { (p, b) };
-        BlockType[] stack = s.TypeOf(b).StackOn(s.Grid.Size);
-        Int3 up = UpOf(b);
-        for (int i = 0; i < stack.Length; i++)
-        {
-            Block top = Make(s, stack[i], null, b.Rot);
-            top.Flags = b.Flags & BlockFlags.Open;
-            top.Paint = b.Paint;
-            cells.Add((p + up * (i + 1), top));
-        }
-        return cells;
-    }
-
-    /// <summary>The base cell of the piece a cell belongs to: itself, unless it is a top standing on its base.</summary>
-    public static Int3 Root(Structure s, Int3 p)
-    {
-        if (!s.TryGet(p, out Block b) || !s.TypeOf(b).IsPieceTop) return p;
-        Int3 down = -UpOf(b);
-        for (Int3 q = p + down; s.TryGet(q, out Block below) && below.Rot == b.Rot; q += down)
-        {
-            BlockType t = s.TypeOf(below);
-            if (!t.IsPieceTop) return t == s.TypeOf(b).PieceOf ? q : p;
-        }
-        return p;
-    }
-
-    /// <summary>Every cell of the piece a cell belongs to that is there, base first.</summary>
-    public static List<Int3> PieceCells(Structure s, Int3 p)
-    {
-        Int3 root = Root(s, p);
-        var cells = new List<Int3> { root };
-        if (!s.TryGet(root, out Block b)) return cells;
-        BlockType[] stack = s.TypeOf(b).StackOn(s.Grid.Size);
-        Int3 up = UpOf(b);
-        for (int i = 0; i < stack.Length; i++)
-        {
-            Int3 q = root + up * (i + 1);
-            if (s.TryGet(q, out Block top) && top.Type == stack[i].Index && top.Rot == b.Rot) cells.Add(q);
-        }
-        return cells;
-    }
-
-    /// <summary>
-    /// Gives every taller block its tops (a structure written cell by cell: an old blueprint's 2 m door, a derelict's).
-    /// A top goes into an empty cell or takes an armour block's place (the wall over an old door becomes the door's
-    /// top, its paint kept); anything else in the way stays, and is said in <paramref name="problems"/>. A top with
-    /// no base under it goes. Tops follow their base's turn and its open or shut.
-    /// </summary>
-    public static void Complete(Structure s, List<string> problems = null)
-    {
-        foreach (var (p, b) in s.Blocks().ToList())
-        {
-            BlockType t = s.TypeOf(b);
-            if (t.IsPieceTop || t.StackOn(s.Grid.Size).Length == 0) continue;
-            foreach (var (q, top) in Piece(s, p, b).Skip(1))
-            {
-                Block put = top;
-                if (s.TryGet(q, out Block there))
-                {
-                    BlockType tt = s.TypeOf(there);
-                    if (there.Type == top.Type) { put.Paint = there.Paint; put.Hp = MathF.Min(there.Hp, put.Hp); }
-                    else if (tt.IsArmor) put.Paint = there.Paint;
-                    else { problems?.Add($"the {t.Name.ToLowerInvariant()} at {p} needs the cell over it, where a {tt.Name.ToLowerInvariant()} is"); break; }
-                }
-                s.Set(q, put);
-            }
-        }
-        foreach (var (p, b) in s.Blocks().ToList())
-            if (s.TypeOf(b).IsPieceTop && Root(s, p) == p) s.Clear(p);
     }
 
     /// <summary>
@@ -223,7 +129,7 @@ public static class Building
         if (error != PlaceError.None) return error;
         if (inventory != null && !inventory.TryTake(s.Catalogue.CostOf(b, s.Grid))) return PlaceError.NotEnoughMaterials;
         b.Hp = s.StatsOf(b).MaxHp;
-        foreach (var (q, cell) in Piece(s, p, b)) s.Set(q, cell);
+        s.Set(p, b);
         if (s.TypeOf(b).IsCore) s.Owner = owner;
         return PlaceError.None;
     }
@@ -307,13 +213,10 @@ public static class Building
     /// </summary>
     public static RemoveResult Remove(Structure s, Int3 p, Inventory inventory)
     {
-        if (!s.Has(p)) return new RemoveResult(RemoveStatus.Empty, default, new List<Structure>());
-        // A door's top comes down with its door: the piece goes as one, paid back as one.
-        List<Int3> piece = PieceCells(s, p);
-        Block b = s.Get(piece[0]);
+        if (!s.TryGet(p, out Block b)) return new RemoveResult(RemoveStatus.Empty, default, new List<Structure>());
         if (s.TypeOf(b).IsCore) return new RemoveResult(RemoveStatus.CoreHoldsStructure, b, new List<Structure>());
         inventory?.Add(s.Catalogue.CostOf(b, s.Grid));
-        foreach (Int3 q in piece) s.Clear(q);
+        s.Clear(p);
         return new RemoveResult(RemoveStatus.Removed, b, Connectivity.SplitOff(s));
     }
 
@@ -423,20 +326,8 @@ public static class Building
     {
         if (!s.TryGet(p, out Block b)) return false;
         BlockType t = s.TypeOf(b);
-        if (t.IsDoor)
-        {
-            // A tall door opens and shuts as one: every cell of it follows its base.
-            List<Int3> piece = PieceCells(s, p);
-            bool open = !s.Get(piece[0]).Open;
-            foreach (Int3 q in piece)
-            {
-                Block c = s.Get(q);
-                c.Flags = open ? c.Flags | BlockFlags.Open : c.Flags & ~BlockFlags.Open;
-                s.Set(q, c);
-            }
-            return true;
-        }
-        if (t.IsLight) b.Flags ^= BlockFlags.Off;
+        if (t.IsDoor) b.Flags ^= BlockFlags.Open;
+        else if (t.IsLight) b.Flags ^= BlockFlags.Off;
         else if (t.IsCore)
         {
             s.GravityOn = !s.GravityOn;

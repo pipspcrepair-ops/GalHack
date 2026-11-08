@@ -88,7 +88,7 @@ public static class StructureBridge
     /// <summary>
     /// One chunk: full cells (cubes, cell-colliding components, closed doors) merged into boxes;
     /// one convex hull per sloped block; part boxes for components that collide by their parts.
-    /// Open doors, ladders and lights don't collide, but a tall door's top keeps its frame over the opening.
+    /// Open doors, ladders and lights don't collide.
     /// </summary>
     public static ChunkColliders ChunkColliders(Structure s, Int3 chunk)
     {
@@ -102,12 +102,10 @@ public static class StructureBridge
             for (int i = 0; i < Chunk.Volume; i++)
             {
                 Block b = data.Cells[i];
-                if (b.IsEmpty) continue;
-                BlockType t = s.TypeOf(b);
-                // An open door lets you through, but a tall door's top still holds its frame over the opening.
-                if (!s.IsSolid(b) && !(t.IsDoor && t.Collide == Collide.Parts)) continue;
+                if (b.IsEmpty || !s.IsSolid(b)) continue;
                 var local = new Int3(i & Chunk.Mask, (i >> Chunk.Bits) & Chunk.Mask, i >> (2 * Chunk.Bits));
                 Int3 p = origin + local;
+                BlockType t = s.TypeOf(b);
                 Mat3 rot = Orientations.Matrix(b.Rot);
                 if (t.IsArmor && !s.ShapeOf(b).IsCube)
                 {
@@ -137,7 +135,7 @@ public static class StructureBridge
                 {
                     foreach (Part part in t.Parts)
                     {
-                        if (part.ClosedOnly && b.Open || part.Grid is GridSize pg && pg != s.Grid.Size) continue;
+                        if (part.ClosedOnly && b.Open) continue;
                         N.Vector3 a = rot.Apply(part.Min), z = rot.Apply(part.Max);
                         N.Vector3 min = N.Vector3.Min(a, z), max = N.Vector3.Max(a, z);
                         result.Boxes.Add(new BoxCollider((p.ToVector3() + (min + max) * 0.5f) * cell, (max - min) * cell));
