@@ -56,6 +56,12 @@ float rk_noise(vec3 p, vec2 f, float salt) {
 	return pnoise(vec3(p.x * f.x, p.y * f.y + salt, p.z * f.x), planet_size * f.x);
 }
 
+// Two octaves of it, the second at twice the frequency: thresholded, one octave of value noise shows its
+// lattice as squarish blocks.
+float rk_noise2(vec3 p, vec2 f, float salt) {
+	return rk_noise(p, f, salt) * 0.62 + rk_noise(p, f * 2.0, salt + 17.0) * 0.38;
+}
+
 vec3 rk_lin(vec3 c) {
 	return srgb_to_linear(c);
 }
@@ -142,12 +148,12 @@ vec3 rock_face(vec3 base, vec3 p, vec3 view_normal, mat4 inv_view, vec2 cliff, f
 		if (rk_hash(bed.x + float(j), 3.0) < 0.12 + 0.3 * layered) below_ledge = (float(j) - bed.y) * bed.z;
 	// (Not under every stretch of every ledge: where the water off it ran, in patches along the face.)
 	float runs = smoothstep(0.4, 0.7, rk_noise(p, vec2(0.0625, 0.0625), 33.0));
-	float drip = smoothstep(0.6, 0.85, rk_noise(p, vec2(0.75, 0.03125), 31.0)) * exp(-below_ledge / 6.0) * steep * layered * runs * 0.55;
+	float drip = smoothstep(0.58, 0.86, rk_noise2(p, vec2(0.75, 0.03125), 31.0)) * exp(-below_ledge / 6.0) * steep * layered * runs * 0.55;
 
 	// Varnish down from the rim: dark streaks of differing length hanging from the top of the face.
 	float streak_len = 5.0 + 22.0 * rk_noise(p, vec2(0.0625, 0.0), 41.0);
 	float from_rim = known ? smoothstep(0.5, 2.5, rise) * (1.0 - smoothstep(streak_len, streak_len + 8.0, rise)) : 0.5;
-	float streaks = smoothstep(0.5, 0.78, rk_noise(p, vec2(0.25, 0.03125), 43.0) * 0.8 + fine * 0.2) * from_rim * steep;
+	float streaks = smoothstep(0.5, 0.8, rk_noise2(p, vec2(0.25, 0.03125), 43.0) * 0.8 + fine * 0.2) * from_rim * steep;
 	float varnish = clamp(max(streaks * (0.35 + 0.65 * flutes), drip), 0.0, 1.0);
 	c = mix(c, c * clamp(rk_lin(rock_varnish) / max(rock, vec3(0.01)), vec3(0.15), vec3(1.2)), varnish * 0.75);
 
@@ -177,8 +183,8 @@ vec3 rock_face(vec3 base, vec3 p, vec3 view_normal, mat4 inv_view, vec2 cliff, f
 	float crack_seen = 1.0 - smoothstep(0.02, 0.12, fw);
 	vec2 inb = fract(q) * jw;
 	vec2 joint_at = mod(floor(q) + step(jw * 0.5, inb), count);   // the nearer joint each way
-	float open_x = step(hash3(vec3(joint_at.x, bed.x, 3.0)), 0.2 + 0.6 * joints);
-	float open_z = step(hash3(vec3(joint_at.y, bed.x, 5.0)), 0.2 + 0.6 * joints);
+	float open_x = step(hash3(vec3(joint_at.x, bed.x, 3.0)), 0.15 + 0.5 * joints);
+	float open_z = step(hash3(vec3(joint_at.y, bed.x, 5.0)), 0.15 + 0.5 * joints);
 	float to_joint = min(mix(1e3, min(inb.x, jw.x - inb.x), open_x), mix(1e3, min(inb.y, jw.y - inb.y), open_z));
 	float joint = rk_band(to_joint, 0.012 + 0.03 * joints, fw) * crack_seen * (0.25 + 0.75 * joints) * steep * steep;
 	// And fractures that wander across the beds: thin, dark, mostly upright.
@@ -206,14 +212,14 @@ vec3 rock_face(vec3 base, vec3 p, vec3 view_normal, mat4 inv_view, vec2 cliff, f
 	if (p.y < 7.0) {
 		float wash = (rk_noise(p, vec2(0.25, 0.25), 81.0) - 0.5) * 0.8;
 		float wet = (1.0 - smoothstep(1.2, 2.6, p.y + wash)) * steep;
-		float salt = rk_band(p.y + wash - 3.4, 1.0, fy) * steep * smoothstep(0.45, 0.6, rk_noise(p, vec2(0.75, 0.375), 83.0));
+		float salt = rk_band(p.y + wash - 3.4, 1.0, fy) * steep * smoothstep(0.42, 0.68, rk_noise2(p, vec2(0.75, 0.375), 83.0));
 		c = mix(c, c * 0.5, wet);
 		c = mix(c, c * 1.25 + 0.03, salt * 0.6);
 	}
 
 	// Lichen and moss where anything grows: blotches on the face, more on ledges and in damp hollows.
 	if (rock_life_amount > 0.0) {
-		float blot = smoothstep(0.58, 0.75, rk_noise(p, vec2(0.375, 0.375), 91.0) * 0.75 + fine * 0.25);
+		float blot = smoothstep(0.56, 0.78, rk_noise2(p, vec2(0.375, 0.375), 91.0) * 0.75 + fine * 0.25);
 		float where = rock_life_amount * (0.35 + 0.65 * max(ledge, undercut)) * (0.5 + 0.5 * smoothstep(0.2, 0.7, n.y + 0.4));
 		c = mix(c, rk_lin(rock_life) * (0.75 + 0.4 * fine), blot * where * 0.55);
 	}
