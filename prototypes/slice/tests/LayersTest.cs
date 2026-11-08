@@ -252,8 +252,10 @@ public partial class LayersTest : Node
             Check(signature.Values.Distinct().Count() == who.Length, $"{f.Id}: each of the five leaves something different");
         }
         // Who's in a place follows the roll: a keepers' world has keepers.
-        WorldRoll kroll = Roll(Seed(), "Temperate", new WorldRoll.Given().Set(LayerKind.Theme, "lighthouses").Set(LayerKind.Presence, "keepers"));
-        Check(kroll.Occupancy.GetValueOrDefault("KPR") > 0f, $"a world of keepers has keeper places: KPR {kroll.Occupancy.GetValueOrDefault("KPR"):F0}");
+        // (Keepers are living people: a world with nobody left alive has none, whatever its theme.)
+        var kept = Enumerable.Range(0, 20).Select(_ => Roll(Seed(), "Temperate", new WorldRoll.Given().Set(LayerKind.Theme, "lighthouses").Set(LayerKind.Presence, "keepers")))
+            .Where(r => r.Fact("people") != "none").ToList();
+        Check(kept.Count > 0 && kept.All(r => r.Occupancy.GetValueOrDefault("KPR") > 0f), $"a world of keepers with anyone alive has keeper places: {kept.Count(r => r.Occupancy.GetValueOrDefault("KPR") > 0f)} of {kept.Count}");
     }
 
     void Palettes(List<(WorldRoll Roll, string Arch, ulong Seed)> worlds)
