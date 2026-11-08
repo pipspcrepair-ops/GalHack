@@ -9,12 +9,13 @@ namespace PoiGenerator.Gen;
 /// </summary>
 public static class Grand
 {
-    public static void Compose(Canvas c, PoiLibrary lib, SiteDef site, Rng rng, LayoutHints? hints)
+    public static void Compose(Canvas c, PoiLibrary lib, SiteDef site, Rng rng, LayoutHints? hints, FamilyDef? fam = null, Rarity rarity = Rarity.Common)
     {
         SitePart part = site.Parts[0];
         TechLevel tech = WorldProfile.Parse(part.Arg("tech", "mid"));
         switch (part.Arg("what"))
         {
+            case "below": Depths.Whole(c, lib, part, fam, rarity, rng, hints); break;
             case "sewage": SewageWorks.Compose(c, rng, hints, tech); break;
             case "farm": FarmEstate.Compose(c, rng, hints, tech); break;
             case "complex": BrutalComplex.Compose(c, rng, hints, tech); break;

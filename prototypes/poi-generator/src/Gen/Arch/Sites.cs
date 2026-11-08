@@ -31,7 +31,7 @@ public static class Sites
     public static void Compose(PoiLibrary lib, Canvas c, SiteDef site, FamilyDef fam, Rarity rarity, Rng rng, LayoutHints? hints = null)
     {
         if (site.Parts.Count > 0 && site.Parts[0].Kind == "plain") { Homes.Compose(c, site, fam, rng, hints); return; }
-        if (site.Parts.Count > 0 && site.Parts[0].Kind == "grand") { Grand.Compose(c, lib, site, rng, hints); return; }
+        if (site.Parts.Count > 0 && site.Parts[0].Kind == "grand") { Grand.Compose(c, lib, site, rng, hints, fam, rarity); return; }
         var x = new Ctx { C = c, Lib = lib, Fam = fam, Rarity = rarity, Rng = rng, Site = site };
         c.X.InSpace = site.Space;
         // The approach: a patch of open ground at the site's way in.
@@ -45,12 +45,13 @@ public static class Sites
         c.EntranceFacing = site.EntranceFacing;
         c.ExitCells = new List<Int3>();
 
-        int vaultCandidates = site.Parts.Count(p => p.Kind == "building" && p.Arg("vault") == "yes");
+        int vaultCandidates = site.Parts.Count(p => p.Kind is "building" or "below" && p.Arg("vault") == "yes");
         foreach (var part in site.Parts)
         {
             switch (part.Kind)
             {
                 case "building": BuildingPart(x, part, vaultCandidates == 0); break;
+                case "below": BelowPart(x, part, vaultCandidates == 0, hints); break;
                 case "runway": Strip(x, part, runway: true); break;
                 case "road": Strip(x, part, runway: false); break;
                 case "pad": Pad(x, part); break;
@@ -123,6 +124,15 @@ public static class Sites
                 x.C.Remove(p + Int3.Up);
                 x.C.Remove(p + Int3.Up * 2);
             }
+    }
+
+    /// <summary>A place below ground (<see cref="Depths"/>): its head stands at the part's cell, its door on the yard.</summary>
+    static void BelowPart(Ctx x, SitePart part, bool anyMayHoldVault, LayoutHints? hints)
+    {
+        bool holds = part.Arg("vault") == "yes" || anyMayHoldVault && x.VaultModule < 0;
+        var (vault, deepest) = Depths.InSite(x.C, x.Lib, part, x.Fam, x.Rarity, x.Rng.Fork("below" + part.X + "," + part.Z), x.Yard, holds, hints);
+        if (holds && vault >= 0 && x.VaultModule < 0) x.VaultModule = vault;
+        if (deepest >= 0 && (x.DeepestModule < 0 || x.C.Modules[deepest].Min.Y < x.C.Modules[x.DeepestModule].Min.Y)) x.DeepestModule = deepest;
     }
 
     // ---- ground works -------------------------------------------------------------------------

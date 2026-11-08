@@ -67,26 +67,33 @@ public sealed class Plot
     /// <summary>Modules named for the loot, set by the place's own plan.</summary>
     public int Yard = -1;
 
-    public Plot(Canvas c, Rng r, TechLevel tech, Dir front)
+    public Plot(Canvas c, Rng r, TechLevel tech, Dir front) : this(c, r, tech, front, 0, 0) { }
+
+    /// <summary>A plot whose frame starts at a site cell (x, z): a part of a composed site drawn on the player's lattice.</summary>
+    public Plot(Canvas c, Rng r, TechLevel tech, Dir front, int originX, int originZ)
     {
         C = c;
         R = r;
         Tech = tech;
         F = Fab.For(tech, r);
         _q = front is Dir.North or Dir.East or Dir.South or Dir.West ? (int)front : 0;
+        _ox = originX;
+        _oz = originZ;
         c.ExitCells = new List<Int3>();
-        c.X.Levels.Add(new LevelInfo { Storey = 0, WalkY = 0, Name = "ground" });
+        if (c.X.Levels.All(l => l.Storey != 0)) c.X.Levels.Add(new LevelInfo { Storey = 0, WalkY = 0, Name = "ground" });
     }
+
+    readonly int _ox, _oz;
 
     // ---- the frame -----------------------------------------------------------------------------
 
     /// <summary>A cell of the place's frame on the map. Turning keeps whole blocks whole: cell u maps to -1 - u, not -u.</summary>
     public Int3 Cell(int u, int y, int v) => _q switch
     {
-        0 => new Int3(u, y, v),
-        1 => new Int3(-1 - v, y, u),
-        2 => new Int3(-1 - u, y, -1 - v),
-        _ => new Int3(v, y, -1 - u),
+        0 => new Int3(_ox + u, y, _oz + v),
+        1 => new Int3(_ox - 1 - v, y, _oz + u),
+        2 => new Int3(_ox - 1 - u, y, _oz - 1 - v),
+        _ => new Int3(_ox + v, y, _oz - 1 - u),
     };
 
     public Dir Turn(Dir d) => d is Dir.Up or Dir.Down ? d : (Dir)(((int)d + _q) % 4);
@@ -186,6 +193,9 @@ public sealed class Plot
     }
 
     public void Claim(IEnumerable<Int3> cells) => _claimed.UnionWith(cells);
+
+    /// <summary>Whether a cell of the frame already belongs to a room.</summary>
+    public bool Claimed(int u, int y, int v) => _claimed.Contains(Cell(u, y, v));
 
     /// <summary>A storey a hall or tunnel walks at, so the checks and the wrongness know of it.</summary>
     public void Level(int storey, int j, string name)
