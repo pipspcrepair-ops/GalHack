@@ -806,7 +806,8 @@ public sealed class WeatherSim
     Vector3 StrikeSpot(Vector3 observer)
     {
         StormCell cell = NearestCell(observer);
-        if (cell == null || cell.Cover(observer) > 0.2f) return observer + RandomOffset(Data.Lightning.StrikeOffset);
+        // Under a storm (a cell's tower or the deck behind a front's edge), strikes come down round you.
+        if (cell == null || CellCover(observer) > 0.2f) return observer + RandomOffset(Data.Lightning.StrikeOffset);
         return cell.Position + RandomOffset(cell.Radius * 0.6f);
     }
 
