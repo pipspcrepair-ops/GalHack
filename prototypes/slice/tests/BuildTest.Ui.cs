@@ -23,6 +23,20 @@ public partial class BuildTest
         foreach (int x in MenuTextChecks()) yield return x;
         HudBoxChecks();
         foreach (int x in TechFitChecks()) yield return x;
+        foreach (int x in GalaxyNameChecks()) yield return x;
+    }
+
+    /// <summary>The galaxy map: every star drawn, names off but for the picked star, a toggle for the near ones.</summary>
+    IEnumerable<int> GalaxyNameChecks()
+    {
+        _game.Menu.OpenMap(MapLevel.Galaxy);
+        foreach (int x in _drive.Wait(4)) yield return x;
+        MapLevels levels = _game.Menu.Root.Map.Levels;
+        bool before = levels.LabelNear;
+        foreach (int x in _drive.ClickWidget("map:names-near")) yield return x;
+        Check(!before && levels.LabelNear, "the galaxy map's names start off (the picked star keeps its own), and NEAR NAMES turns the near ones on");
+        foreach (int x in _drive.ClickWidget("map:names-near")) yield return x;
+        _game.Menu.Close();
     }
 
     /// <summary>Every tech tab, every deco set: each node a tile inside the screen, none on another, none scrolled away, and tall enough to read at 1080p.</summary>
