@@ -408,6 +408,9 @@ public sealed class RegionPlan
             }
         }
 
+        /// <summary>A blast site: a crater with its ring of flattened ruins.</summary>
+        bool Blast(string id) => _lib.Family(id) is { } f && f.Tier == PoiTier.Site && f.Tags.Contains("radiation");
+
         /// <summary>The rest of the theme's places, near what they'd have stood near.</summary>
         void Fill()
         {
@@ -417,7 +420,10 @@ public sealed class RegionPlan
             {
                 if (Choose(_roll.Poi) is not { } id) break;
                 PlannedPlace near = hubs[k % hubs.Count];
-                if (Spot(near.X, near.Z, 700, 2400, id) is { } s && Add(id, s.X, s.Z, _p.Regions[near.Region], "fill", "part of the town's country", near.Index) is { } p)
+                // A blast site was the town's own strike: it lies just outside it, not out in its country.
+                bool blast = Blast(id);
+                if (Spot(near.X, near.Z, blast ? 360 : 700, blast ? 800 : 2400, id) is { } s
+                    && Add(id, s.X, s.Z, _p.Regions[near.Region], "fill", blast ? "where the strike on the town came down" : "part of the town's country", near.Index) is { } p)
                     _p.Links.Add(new PlannedLink(p.Index, near.Index, "track", "a track out to it"));
             }
         }
@@ -427,8 +433,11 @@ public sealed class RegionPlan
         {
             int count = Math.Max(1, (int)Math.Round(_p.Places.Count * _roll.Break));
             var known = new HashSet<string>(_p.Places.Select(p => p.Family));
+            // On a world a war struck, its blasts came down on what they aimed at: never one out in the empty land.
+            bool war = _roll.All(LayerKind.Fall).Any(f => _lib.Strikes.For(f.Id) != null);
             var strangers = _lib.Families.Where(f => !f.Space && !f.Tags.Contains("flavour") && !f.Tags.Contains("scrappy") && !f.Tags.Contains("evacuation") && f.Tier != PoiTier.Spaceport
-                                                     && !known.Contains(f.Id) && !f.Tags.Contains("grand") && Stands(f.Id) && (!_start || !ThemeDef.FactionOwned(f) || f.StateWeights[(int)PoiState.Ruined] > 0f)).ToList();
+                                                     && !known.Contains(f.Id) && !f.Tags.Contains("grand") && Stands(f.Id) && (!_start || !ThemeDef.FactionOwned(f) || f.StateWeights[(int)PoiState.Ruined] > 0f)
+                                                     && !(war && Blast(f.Id))).ToList();
             if (strangers.Count == 0) return;
             for (int k = 0; k < count; k++)
             {

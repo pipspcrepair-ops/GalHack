@@ -41,9 +41,23 @@ public sealed record PlanetSpec(ulong Seed, Archetype Archetype, int Variant, Mo
 
     public bool Has(Modifier modifier) => (Modifiers & modifier) != 0;
 
-    /// <summary>A planet of the given archetype with 1-2 modifiers rolled from the seed.</summary>
+    /// <summary>
+    /// Whether natural impact craters stay on a kind of world: barren rock with no air or water to wear
+    /// them away (the generator's airless bodies are cratered arid, ice and lava worlds). A living world
+    /// with air, weather and seas erodes and fills its old impacts, so it never rolls <see cref="Modifier.Cratered"/>.
+    /// A war's blast craters are something else: they go on the war's targets (the POI generator's strikes).
+    /// </summary>
+    public static bool Craters(Archetype archetype) => archetype is Archetype.Arid or Archetype.Ice or Archetype.Lava;
+
+    /// <summary>
+    /// No air to speak of: a cratered barren body, the Barren of the design doc as far as the generator has one.
+    /// The one rule the flora, the creatures and the slice all read, so they can't disagree.
+    /// </summary>
+    public bool Airless => Has(Modifier.Cratered) && Craters(Archetype);
+
+    /// <summary>A planet of the given archetype with 1-2 modifiers rolled from the seed (craters only where the archetype keeps them).</summary>
     public static PlanetSpec Roll(ulong seed, Archetype archetype, int variant, int widthKm = 16) =>
-        new(seed, archetype, variant, RollModifiers(seed, 0), widthKm);
+        new(seed, archetype, variant, RollModifiers(seed, 0, archetype), widthKm);
 
     /// <summary>
     /// A world's width in km, rolled from its seed on Empyrion's planet classes 2-5 (5/40/50/5%):
@@ -63,8 +77,12 @@ public sealed record PlanetSpec(ulong Seed, Archetype Archetype, int Variant, Mo
     public static PlanetSpec RollSized(ulong seed, Archetype archetype, int variant, WorldKind kind = WorldKind.Planet) =>
         Roll(seed, archetype, variant, RollWidthKm(seed, kind));
 
-    /// <summary>1-2 distinct modifiers. Different rerolls of the same seed give different sets.</summary>
-    public static Modifier RollModifiers(ulong seed, int reroll)
+    /// <summary>
+    /// 1-2 distinct modifiers. Different rerolls of the same seed give different sets. Given the archetype,
+    /// <see cref="Modifier.Cratered"/> only stays where natural craters do (<see cref="Craters"/>): on a
+    /// living world the next of the rest takes its place, so every other world rolls as it always did.
+    /// </summary>
+    public static Modifier RollModifiers(ulong seed, int reroll, Archetype? archetype = null)
     {
         var rng = new Rng(Hash.Of(seed, 0x6D6F64, reroll));
         var all = (Modifier[])Enum.GetValues(typeof(Modifier));
@@ -78,6 +96,11 @@ public sealed record PlanetSpec(ulong Seed, Archetype Archetype, int Variant, Mo
             int pick = rng.Next(pool.Count);
             result |= pool[pick];
             pool.RemoveAt(pick);
+        }
+        if ((result & Modifier.Cratered) != 0 && archetype is Archetype a && !Craters(a))
+        {
+            result &= ~Modifier.Cratered;
+            result |= pool[rng.Next(pool.Count)];
         }
         return result;
     }

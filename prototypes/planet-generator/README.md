@@ -238,7 +238,7 @@ Every archetype differs from every other on terrain shape, palette, sky, flora, 
 | Alien | crystal, fungal | shard fields, ringlands, crystal plains and mesas; bulbous dome fields, spore marshes, karst | violet and teal under a ringed sky; orange and cream under lime | giant crystals; giant mushrooms | radiation, spores | crystal, resin |
 
 Each planet also rolls 1–2 modifiers:
-- **Terrain modifiers:** archipelago, highlands, cratered, mesas and canyons change the terrain. All but cratered push their landform into the world's mix (archipelago, mountains, mesas, canyonlands). Cratered scatters craters everywhere.
+- **Terrain modifiers:** archipelago, highlands, cratered, mesas and canyons change the terrain. All but cratered push their landform into the world's mix (archipelago, mountains, mesas, canyonlands). Cratered scatters craters everywhere, and only on bodies that keep them (arid, ice and lava worlds, which it makes airless: `PlanetSpec.Craters`, `PlanetSpec.Airless`); a living world never rolls it. A war's blast craters are not terrain modifiers: they go on the war's targets (the POI generator's strikes).
 - **Look-only modifiers:** ringed sky, perpetual storm and glowing nights change only the sky, clouds and night-side glow.
 
 ## Play it

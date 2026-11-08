@@ -43,7 +43,7 @@ public sealed class PlanetFlora
     };
 
     /// <summary>Whether a world has no air to speak of: the Barren of the design doc, as far as the generator has one.</summary>
-    public static bool Airless(PlanetSpec spec) => spec.Has(Modifier.Cratered) && spec.Archetype is Archetype.Arid or Archetype.Lava or Archetype.Ice;
+    public static bool Airless(PlanetSpec spec) => spec.Airless;
 
     /// <summary>
     /// How strange a world's plants are, 0 to 1: each type has its own range and every world rolls its

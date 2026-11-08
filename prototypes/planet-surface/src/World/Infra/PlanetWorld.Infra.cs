@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using GalHack.Terrain;
 using Planets.Gen;
 using PlanetSurface.Infra;
@@ -17,7 +18,8 @@ public sealed partial class PlanetWorld
     /// <summary>A start world's ruined town, where the start begins: the slice's start-site search starts from its <see cref="StartTown.Edge"/>.</summary>
     public StartTown StartTown => Infra.Town;
 
-    static partial void PlanAround(PlanetSpec spec, PoiCatalog catalog, WorldMap map, PlanetTerrainSource bare, List<PoiSite> pois, WorldProfile profile, LandingSite landing, List<TerrainStamp> stamps, ref object around)
+    static partial void PlanAround(PlanetSpec spec, PoiCatalog catalog, WorldMap map, PlanetTerrainSource bare, List<PoiSite> pois, WorldProfile profile, LandingSite landing, List<TerrainStamp> stamps,
+        PoiGenerator.Gen.WorldRoll roll, List<PoiGenerator.Gen.Strike> blasts, ref object around)
     {
         // The roads, railways, bridges and tunnels between the places, laid after the places' own stamps.
         var infra = InfraNetwork.Plan(map, bare, pois, profile, Hash.Of(spec.Seed, 0x1AF7));
@@ -34,6 +36,15 @@ public sealed partial class PlanetWorld
             foreach (PoiSite p in infra.City.Sites) stamps.Add(p.Stamp);
             Godot.GD.Print($"city: {infra.City.Streets.Count} streets, {infra.City.Lots.Count} lots, {infra.City.Sites.Count} buildings, fall {infra.City.Fall:F2}, {infra.City.BridgeAnchors.Count} bridge anchors, {infra.City.PlanMs:F0} ms {infra.City.Why}");
         }
+        // A war's strikes, on what was worth striking: planned once the places, the city and the roads are
+        // known, each ground burst's crater beside its target (laid after the places' own, before the ruins'
+        // pads and the roads, which keep off it), the bridges they hit dropped. The world's blasts are one list.
+        List<PoiGenerator.Gen.Strike> strikes = StrikeSites.Plan(catalog?.Library.Strikes, roll, infra, map, bare, pois, profile, landing, ruins,
+            PlanetSurface.Poi.PoiSiting.StartWorld, Hash.Of(spec.Seed, 0x57B1));
+        blasts.AddRange(strikes);
+        infra.Blasts.AddRange(blasts);
+        stamps.AddRange(infra.Craters);
+        if (strikes.Count > 0) Godot.GD.Print($"strikes: {strikes.Count} ({strikes.Count(s => s.Bowl)} craters, {strikes.Count(s => s.Air && !s.Naval)} airbursts, {strikes.Count(s => s.Naval)} on the water, {strikes.Count(s => s.Miss)} missed, {strikes.Count(s => s.Wild)} over open country) on {infra.Targets.Count} targets");
         // Flavour ruins by the roads and in the country, their pads laid before the roads.
         infra.Ruins = FlavourRuins.Plan(infra, catalog?.Library, map, bare, pois, profile, Hash.Of(spec.Seed, 0xF1A7), ruins);
         foreach (FlavourRuin ruin in infra.Ruins) stamps.Add(ruin.Stamp);

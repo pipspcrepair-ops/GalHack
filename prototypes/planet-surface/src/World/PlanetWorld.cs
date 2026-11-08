@@ -59,6 +59,14 @@ public sealed partial class PlanetWorld
     public readonly PoiGenerator.Gen.WorldReading Reading;
 
     /// <summary>
+    /// Every blast on this world, one record each (<see cref="PoiGenerator.Gen.Strike"/>): a blast site's
+    /// own, and where a war's strikes came down on its targets. The craters in the ground, the decay of
+    /// the places round them, the dead ash ground, the thinned plants and the map all read these, so
+    /// they always agree. Empty on a world no blast touched.
+    /// </summary>
+    public readonly IReadOnlyList<PoiGenerator.Gen.Strike> Blasts;
+
+    /// <summary>
     /// The world round the places, when its code is compiled in (src/World/Infra: the infrastructure
     /// network, see PlanetWorld.Infra.cs). Projects that compile only this file build worlds without it.
     /// </summary>
@@ -163,7 +171,8 @@ public sealed partial class PlanetWorld
         return true;
     }
 
-    PlanetWorld(PlanetSpec spec, WorldProfile profile, WorldMap map, LandingSite landing, IReadOnlyList<PoiSite> pois, object around, PlanetTerrainSource source, double ms, PoiGenerator.Gen.WorldReading reading)
+    PlanetWorld(PlanetSpec spec, WorldProfile profile, WorldMap map, LandingSite landing, IReadOnlyList<PoiSite> pois, object around, PlanetTerrainSource source, double ms, PoiGenerator.Gen.WorldReading reading,
+        IReadOnlyList<PoiGenerator.Gen.Strike> blasts)
     {
         Spec = spec;
         Profile = profile;
@@ -172,6 +181,7 @@ public sealed partial class PlanetWorld
         Map = map;
         Landing = landing;
         Pois = pois;
+        Blasts = blasts ?? Array.Empty<PoiGenerator.Gen.Strike>();
         Source = source;
         Terrain = new PlanetTerrain(source);
         Sky = SkySystem.For(spec);
@@ -179,10 +189,13 @@ public sealed partial class PlanetWorld
         var r = Reading;
         Flora = PlanetFlora.For(map, Sky, mood: new GalHack.Plants.FloraMood(r.Overgrown, r.Dead, r.Swollen, r.Fungal, r.Burnt, r.Sparse), lean: r.Alien);
         Palette = new GroundPalette(map, Flora);
-        // Blast sites' dead zones show in the ground's colour, fading back to the land's own.
-        foreach (PoiSite p in pois)
-            if (p.GroundZero is (double gx, double gz) && p.Instance.Layout.Extras.Blast is { } zone)
-                Palette.DeadZones.Add((gx, gz, zone.Dead * 3f, zone.Fade * 4f));
+        // Every blast's dead zone shows in the ground's colour, fading back to the land's own, and nothing grows
+        // in it (the scatter and the cover read the same zones); its crater shows on the map as in the ground.
+        foreach (PoiGenerator.Gen.Strike b in Blasts)
+        {
+            Palette.DeadZones.Add((b.X, b.Z, b.Dead, b.Fade));
+            if (b.Bowl) Palette.Craters.Add((b.X, b.Z, b.Crater, b.Depth, b.Rim));
+        }
         // The land comes back through the ruins as the planet's own flora, and their rubble is its rock.
         Palette.Planted = RuinGrowth.Plan(pois, source, Palette, map.WidthMeters, map.HeightMeters);
         foreach (PoiSite p in pois) PoiGenerator.Gen.Growth.Earthen(p.Instance, RubbleRock, Weed);
@@ -219,14 +232,18 @@ public sealed partial class PlanetWorld
         }
         // The world round the places: planned on the bare land, its stamps laid after the places' own,
         // then finished on the final ground (see PlanetWorld.Infra.cs; nothing when that isn't compiled in).
+        // A war's strikes are planned there too, on its targets, with the craters they punched.
         object around = null;
-        PlanAround(spec, catalog, map, bare, pois, profile, landing, stamps, ref around);
+        List<PoiGenerator.Gen.Strike> blasts = PoiSiting.SiteBlasts(pois);
+        PlanAround(spec, catalog, map, bare, pois, profile, landing, stamps, roll, blasts, ref around);
+        // Every place inside a blast's reach takes it, the city's buildings with the rest.
+        PoiSiting.Blast(pois, blasts, map.WidthMeters, map.HeightMeters);
         var source = new PlanetTerrainSource(map, stamps, anchors);
         FinishAround(spec, source, pois, around);
         // What stands off a place's footprint goes by the real ground, now that it's known.
         foreach (PoiSite p in pois)
             PoiGenerator.Gen.StateTransforms.Settle(p.Instance, (x, z) => source.SurfaceHeight(Mathx.WrapX(p.Origin.X + x + 0.5, source.Width), Mathx.Wrap(p.Origin.Z + z + 0.5, source.Height)) - p.Origin.Y, 3);
-        var world = new PlanetWorld(spec, profile, map, landing, pois, around, source, watch.Elapsed.TotalMilliseconds, PoiGenerator.Gen.WorldReading.Of(layers)) { Depth = depth, Roll = roll, Layers = layers };
+        var world = new PlanetWorld(spec, profile, map, landing, pois, around, source, watch.Elapsed.TotalMilliseconds, PoiGenerator.Gen.WorldReading.Of(layers), blasts) { Depth = depth, Roll = roll, Layers = layers };
         world.TakeChart(chart);
         world.ChartStars();
         return world;
@@ -241,7 +258,9 @@ public sealed partial class PlanetWorld
     static partial void Chart(PlanetSpec spec, float? wanted, ref object chart, ref float depth);
     partial void TakeChart(object chart);
 
-    static partial void PlanAround(PlanetSpec spec, PoiCatalog catalog, WorldMap map, PlanetTerrainSource bare, List<PoiSite> pois, WorldProfile profile, LandingSite landing, List<TerrainStamp> stamps, ref object around);
+    /// <param name="blasts">the world's blasts so far (its blast sites'); a war's strikes are added to it</param>
+    static partial void PlanAround(PlanetSpec spec, PoiCatalog catalog, WorldMap map, PlanetTerrainSource bare, List<PoiSite> pois, WorldProfile profile, LandingSite landing, List<TerrainStamp> stamps,
+        PoiGenerator.Gen.WorldRoll roll, List<PoiGenerator.Gen.Strike> blasts, ref object around);
     static partial void FinishAround(PlanetSpec spec, PlanetTerrainSource source, List<PoiSite> pois, object around);
 
     /// <summary>

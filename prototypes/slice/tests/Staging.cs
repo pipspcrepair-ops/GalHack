@@ -126,6 +126,7 @@ public sealed partial class Staging
             "clouds" => CloudTypes(),
             "farland" => FarLandView(),
             "city" => CityView(),
+            "strike" => StrikeView(),
             "horizon" => HorizonView(),
             "loadrun" => LoadRun(),
             "approach" => ApproachView(),

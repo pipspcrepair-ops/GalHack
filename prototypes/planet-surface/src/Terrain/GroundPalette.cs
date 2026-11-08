@@ -31,6 +31,72 @@ public sealed class GroundPalette
     /// </summary>
     public readonly List<(double X, double Z, float Dead, float Fade)> DeadZones = new();
 
+    /// <summary>The blasts' craters (ground zero in world metres, radius, bowl depth and rim height, metres): the map draws them as the ground has them.</summary>
+    public readonly List<(double X, double Z, float Radius, float Depth, float Rim)> Craters = new();
+
+    /// <summary>
+    /// Draws the blasts onto a map image of this world (RGB8, <paramref name="width"/> by <paramref name="height"/>
+    /// over the whole map): the dead ground ash-grey as the land itself turns (<see cref="Natural"/>'s rule), and
+    /// each crater's bowl and thrown rim lit from the map's north-west, as its relief is. Nothing on the sea.
+    /// </summary>
+    public void PaintBlasts(byte[] rgb, int width, int height)
+    {
+        if (DeadZones.Count == 0 && Craters.Count == 0) return;
+        double mx = Map.WidthMeters / width, mz = Map.HeightMeters / height;
+        var dead = new float[width * height];
+        var shade = new float[width * height];
+        void Each(double cx, double cz, double reach, Action<int, double, double> at)
+        {
+            int px0 = (int)Math.Floor((cx - reach) / mx), px1 = (int)Math.Ceiling((cx + reach) / mx);
+            int py0 = Math.Max(0, (int)Math.Floor((cz - reach) / mz)), py1 = Math.Min(height - 1, (int)Math.Ceiling((cz + reach) / mz));
+            for (int py = py0; py <= py1; py++)
+                for (int px = px0; px <= px1; px++)
+                {
+                    int wx = ((px % width) + width) % width;
+                    double x = (wx + 0.5) * mx, z = (py + 0.5) * mz;
+                    if (Map.Has(Map.CellAt(x, z), CellFlags.Water)) continue;
+                    at(py * width + wx, Mathx.WrapDelta(x - cx, Map.WidthMeters), z - cz);
+                }
+        }
+        foreach (var (gx, gz, d0, d1) in DeadZones)
+            Each(gx, gz, d1, (k, dx, dz) =>
+            {
+                float d = (float)Math.Sqrt(dx * dx + dz * dz);
+                if (d < d1) dead[k] = Math.Max(dead[k], d <= d0 ? 1f : 1f - SmoothStep(0f, 1f, (d - d0) / (d1 - d0)));
+            });
+        // The bowl's slope (the stamp's own profile), lit as the map lights its relief.
+        const float Relief = 2.6f;
+        float lx = -1f, ly = -1f, lz = 1.1f, ll = MathF.Sqrt(lx * lx + ly * ly + lz * lz);
+        (lx, ly, lz) = (lx / ll, ly / ll, lz / ll);
+        foreach (var (gx, gz, r, depth, rim) in Craters)
+            Each(gx, gz, r * 1.5, (k, dx, dz) =>
+            {
+                double d = Math.Sqrt(dx * dx + dz * dz);
+                if (d >= r * 1.5 || d < 1e-3) return;
+                // How the ground rises outward: up out of the bowl to the rim's crest, then down the rim's outer face.
+                float slope = d <= r ? (depth + rim) * 2f * (float)d / (r * r) : -rim / (r * 0.5f);
+                float gxs = slope * (float)(dx / d), gzs = slope * (float)(dz / d);
+                float nx = -gxs * Relief, nz = -gzs * Relief, nl = MathF.Sqrt(nx * nx + nz * nz + 1f);
+                float s = (nx * lx + nz * ly + lz) / nl;
+                shade[k] = Math.Clamp(1f + (s - lz) * 1.5f, 0.5f, 1.35f) * (d <= r ? 0.82f : 1f);
+            });
+        for (int k = 0; k < dead.Length; k++)
+        {
+            if (dead[k] <= 0f && shade[k] == 0f) continue;
+            int o = k * 3;
+            float r = rgb[o] / 255f, g = rgb[o + 1] / 255f, b = rgb[o + 2] / 255f;
+            if (dead[k] > 0f)
+            {
+                float l = r * 0.3f + g * 0.59f + b * 0.11f, t = dead[k] * 0.85f;
+                (r, g, b) = (r + (l * 0.78f + 0.06f - r) * t, g + (l * 0.74f + 0.055f - g) * t, b + (l * 0.7f + 0.05f - b) * t);
+            }
+            if (shade[k] > 0f) (r, g, b) = (r * shade[k], g * shade[k], b * shade[k]);
+            rgb[o] = (byte)Math.Clamp((int)MathF.Round(r * 255f), 0, 255);
+            rgb[o + 1] = (byte)Math.Clamp((int)MathF.Round(g * 255f), 0, 255);
+            rgb[o + 2] = (byte)Math.Clamp((int)MathF.Round(b * 255f), 0, 255);
+        }
+    }
+
     /// <summary>Flora set down on purpose (trees through ruins), by the scatter id each takes; null where there is none.</summary>
     public Dictionary<long, PlantedFlora> Planted;
 
@@ -49,6 +115,27 @@ public sealed class GroundPalette
             dead = Math.Max(dead, d <= d0 ? 1f : 1f - SmoothStep(0f, 1f, (d - d0) / (d1 - d0)));
         }
         return dead;
+    }
+
+    /// <summary>
+    /// Soil a blast has been over: burnt to ash in its dead zone (by <paramref name="ash"/> at most), and in a
+    /// crater a dark fused floor, a little glassy, with the paler thrown spoil of its rim round it.
+    /// </summary>
+    Rgb Scorched(Rgb soil, double x, double z, float ash, out float dead)
+    {
+        dead = Deadness(x, z);
+        if (dead <= 0f) return soil;
+        float l = soil.R * 0.3f + soil.G * 0.59f + soil.B * 0.11f;
+        Rgb c = Rgb.Lerp(soil, new Rgb(l * 0.78f + 0.06f, l * 0.74f + 0.055f, l * 0.7f + 0.05f), dead * ash);
+        foreach (var (gx, gz, r, _, _) in Craters)
+        {
+            double dx = Mathx.WrapDelta(x - gx, Map.WidthMeters), dz = Mathx.WrapDelta(z - gz, Map.HeightMeters);
+            if (Math.Abs(dx) > r * 1.6 || Math.Abs(dz) > r * 1.6) continue;
+            float d = (float)Math.Sqrt(dx * dx + dz * dz) / r;
+            if (d < 1f) c = Rgb.Lerp(c, new Rgb(0.16f, 0.15f, 0.14f), 0.7f * (1f - d * d * d));
+            else if (d < 1.5f) c = Rgb.Lerp(c, new Rgb(l * 0.6f + 0.22f, l * 0.58f + 0.2f, l * 0.55f + 0.18f), 0.45f * (1f - Math.Abs(d - 1.15f) / 0.35f));
+        }
+        return c;
     }
 
     /// <summary>How strongly rock faces show horizontal strata (0-1): canyons and mesas show them most.</summary>
@@ -173,6 +260,8 @@ public sealed class GroundPalette
     public Rgb FarGround(double x, double z, float height, float up, out float bare)
     {
         Rgb c = SoilAt(x, z, out _);
+        // A blast's dead ground and its crater, as the near ground has them (Natural), so the horizon and the globe show them too.
+        if (DeadZones.Count > 0) c = Scorched(c, x, z, 0.85f, out _);
         bare = Math.Clamp((0.85f - up) * 4f, 0f, 1f);
         c = Rgb.Lerp(c, Rock, bare);
         if (height < 0f) c = Rgb.Lerp(c, Seabed, Math.Clamp(-height / 5f, 0f, 1f));
@@ -269,14 +358,8 @@ public sealed class GroundPalette
         // In a blast's dead zone the soil is burnt to ash, greyer and darker toward ground zero.
         if (DeadZones.Count > 0)
         {
-            float dead = Deadness(x, z);
-            if (dead > 0f)
-            {
-                float l = soil.R * 0.3f + soil.G * 0.59f + soil.B * 0.11f;
-                var ash = new Rgb(l * 0.78f + 0.06f, l * 0.74f + 0.055f, l * 0.7f + 0.05f);
-                soil = Rgb.Lerp(soil, ash, dead * (0.75f + 0.2f * ValueNoise(x * 0.05, z * 0.05, 47)));
-                glow *= 1f - dead;
-            }
+            soil = Scorched(soil, x, z, 0.75f + 0.2f * ValueNoise(x * 0.05, z * 0.05, 47), out float dead);
+            glow *= 1f - dead;
         }
         Rgb c = Rgb.Lerp(Rock, soil, cover);
         if (height < 0.6f) c = Rgb.Lerp(c, Seabed, Math.Clamp(0.6f - height, 0f, 1f));

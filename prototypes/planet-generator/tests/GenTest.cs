@@ -32,6 +32,7 @@ public partial class GenTest : Node
             if (arg.StartsWith("--world=")) DebugWorld(arg["--world=".Length..]);
             else if (arg.StartsWith("--list=")) ListWorlds(arg["--list=".Length..]);
         Run("Determinism", Determinism);
+        Run("NaturalCraters", NaturalCraters);
         Run("SeamlessWrap", SeamlessWrap);
         Run("Poles", Poles);
         Run("LandFraction", LandFraction);
@@ -84,6 +85,35 @@ public partial class GenTest : Node
             same &= sampler.HeightAt(x, y, 1) == again.HeightAt(x, y, 1);
         }
         Check(same, "determinism: fine terrain identical at 500 points");
+    }
+
+    /// <summary>
+    /// Natural impact craters only on the bodies that keep them (barren, airless rock: cratered arid, ice
+    /// and lava worlds): a living world's rolls never carry them, nor its terrain when asked for them.
+    /// Fresh seeds every run.
+    /// </summary>
+    void NaturalCraters()
+    {
+        var rng = new Random();
+        int rolled = 0, wrong = 0, kept = 0, airless = 0;
+        foreach (var (a, v) in Variants())
+            for (int i = 0; i < 300; i++)
+            {
+                var spec = PlanetSpec.Roll((ulong)rng.NextInt64(1, long.MaxValue), a, v, 8);
+                bool craters = Archetypes.For(spec).CraterSpacing > 0f;
+                if (!spec.Has(Modifier.Cratered)) { if (craters) wrong++; continue; }
+                rolled++;
+                if (!PlanetSpec.Craters(a) || !craters || !spec.Airless) wrong++;
+                else { kept++; airless++; }
+            }
+        Check(wrong == 0 && kept > 0, $"natural craters: {rolled} cratered rolls, all on barren airless rock ({airless} airless); {wrong} wrong");
+        int forced = 0;
+        foreach (var (a, v) in Variants().Where(t => !PlanetSpec.Craters(t.a)))
+        {
+            var spec = new PlanetSpec((ulong)rng.NextInt64(1, long.MaxValue), a, v, Modifier.Cratered, 8);
+            if (Archetypes.For(spec).CraterSpacing == 0f && !spec.Airless) forced++;
+        }
+        Check(forced == Variants().Count(t => !PlanetSpec.Craters(t.a)), $"natural craters: a living world told it's cratered grows none and keeps its air ({forced} types)");
     }
 
     /// <summary>
