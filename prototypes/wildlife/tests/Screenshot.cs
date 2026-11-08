@@ -186,6 +186,7 @@ public partial class Screenshot : Node
         m.Player.Muzzle.Visible = false;
         Player p = m.Player;
         if (HuskSetup()) return;
+        if (ArmedSetup()) return;
         switch (_view)
         {
             case "discovery":

@@ -149,6 +149,15 @@ public static class HumanBody
             var prop = new Piece("prop");
             Prop(prop, f);
             layout.Add(prop);
+            // A bow's string: two pieces the rig draws from the limb tips to the nock (unit length along +Y).
+            if (f.Prop == "bow")
+                for (int bs = 0; bs < 2; bs++)
+                {
+                    var str = new Piece($"string{bs}");
+                    str.Taper(Vector3.Zero, Vector3.Up, 0.0035f * u, 0.0035f * u, new Color(0.75f, 0.72f, 0.62f));
+                    str.Shadow = false;
+                    layout.Add(str);
+                }
         }
         FolkBody.Tail(layout, f);
         return layout;
@@ -678,17 +687,58 @@ public static class HumanBody
         }
     }
 
+    /// <summary>
+    /// What a held weapon is sized by: the arms that hold it (shorter arms, a shorter gun), so the
+    /// hands reach their grips on every build. 1 for a 1.72 m human's arms.
+    /// </summary>
+    public static float ArmScale(Figure f) => MathF.Min(f.UpperArmOf(0) + f.ForearmOf(0), f.UpperArmOf(1) + f.ForearmOf(1)) / (0.341f * 1.72f);
+
     static void Prop(Piece p, Figure f)
     {
-        float u = Scale(f);
+        float u = Weapons.HoldOf(f.Prop) == HoldKind.None ? Scale(f) : ArmScale(f);
         Color steel = new(0.17f, 0.17f, 0.18f), wood = new(0.33f, 0.22f, 0.13f);
         // Prop space: origin in the hand that holds it, +Y along the thing and out through the far end.
         switch (f.Prop)
         {
-            case "rifle":
-                p.Add(Shape.Box, new Vector3(0.05f, 0.92f, 0.05f) * u, new Vector3(0f, 0.2f * u, 0f), steel);
-                p.Add(Shape.Box, new Vector3(0.055f, 0.3f, 0.09f) * u, new Vector3(0f, -0.3f * u, 0.015f * u), wood);
-                p.Add(Shape.Box, new Vector3(0.05f, 0.12f, 0.1f) * u, new Vector3(0f, 0.02f * u, 0.07f * u), steel);
+            // Long guns share one layout so one hold fits them all: the butt at -0.3, the grip at the
+            // origin, the fore-end from 0.15 to 0.35 for the other hand, +Z up when held level.
+            case "rifle" or "shotgun" or "musket" or "crossbow" or "laser_rifle":
+                LongGun(p, f, u, steel, wood);
+                break;
+            case "pistol" or "energy_pistol":
+            {
+                bool energy = f.Prop == "energy_pistol";
+                Color shell = energy ? new Color(0.62f, 0.64f, 0.66f) : steel;
+                p.Add(Shape.Box, new Vector3(0.03f, 0.045f, 0.1f) * u, new Vector3(0f, -0.012f, -0.025f) * u, energy ? steel : wood.Darkened(0.3f), 0f, 0f, new Basis(Vector3.Right, -0.25f));
+                p.Add(Shape.Box, new Vector3(0.032f, 0.19f, 0.045f) * u, new Vector3(0f, 0.065f, 0.042f) * u, shell, 0f, 0f, null, 0, Mat.Carapace);
+                p.Add(Shape.Box, new Vector3(0.008f, 0.05f, 0.03f) * u, new Vector3(0f, 0.035f, 0.005f) * u, steel);
+                if (energy)
+                {
+                    p.Add(Shape.Cylinder, new Vector3(0.036f, 0.04f, 0.036f) * u, new Vector3(0f, 0.17f, 0.045f) * u, steel);
+                    p.Add(Shape.Box, new Vector3(0.034f, 0.1f, 0.008f) * u, new Vector3(0f, 0.07f, 0.068f) * u, EnergyGlow, 0f, 1f);
+                }
+                break;
+            }
+            case "spear":
+                p.Taper(new Vector3(0f, -0.12f, 0f) * u, new Vector3(0f, 1.32f, 0f) * u, 0.017f * u, 0.014f * u, wood); // held near the butt
+                p.Add(Shape.Cylinder, new Vector3(0.036f, 0.07f, 0.036f) * u, new Vector3(0f, 1.3f, 0f) * u, f.Leather);
+                p.Add(Shape.Box, new Vector3(0.012f, 0.2f, 0.05f) * u, new Vector3(0f, 1.43f, 0f) * u, f.Metal.Lightened(0.15f), 0f, 0f, null, 0, Mat.Carapace);
+                p.Add(Shape.Box, new Vector3(0.008f, 0.07f, 0.03f) * u, new Vector3(0f, 1.55f, 0f) * u, f.Metal.Lightened(0.15f), 0f, 0f, null, 0, Mat.Carapace);
+                break;
+            case "bow":
+                // Held at the riser (the origin), the limbs up and down +Y, the string side toward -Z.
+                p.Add(Shape.Box, new Vector3(0.035f, 0.2f, 0.045f) * u, Vector3.Zero, wood.Darkened(0.15f));
+                p.Add(Shape.Cylinder, new Vector3(0.05f, 0.09f, 0.05f) * u, Vector3.Zero, f.Leather);
+                for (int k = -1; k <= 1; k += 2)
+                {
+                    p.Taper(new Vector3(0f, 0.09f * k, 0f) * u, new Vector3(0f, 0.36f * k, -0.035f) * u, 0.016f * u, 0.012f * u, wood);
+                    p.Taper(new Vector3(0f, 0.36f * k, -0.035f) * u, BowTip(f, k), 0.012f * u, 0.007f * u, wood);
+                }
+                break;
+            case "machete":
+                p.Taper(new Vector3(0f, -0.1f, 0f) * u, new Vector3(0f, 0.03f, 0f) * u, 0.018f * u, 0.016f * u, wood.Darkened(0.3f));
+                p.Add(Shape.Box, new Vector3(0.008f, 0.4f, 0.05f) * u, new Vector3(0f, 0.23f, -0.006f) * u, steel.Lightened(0.35f), 0f, 0f, null, 0, Mat.Carapace);
+                p.Add(Shape.Box, new Vector3(0.008f, 0.07f, 0.065f) * u, new Vector3(0f, 0.43f, -0.004f) * u, steel.Lightened(0.35f), 0f, 0f, null, 0, Mat.Carapace);
                 break;
             case "club":
                 p.Taper(new Vector3(0f, -0.14f, 0f) * u, new Vector3(0f, 0.55f, 0f) * u, 0.022f * u, 0.05f * u, wood);
@@ -718,6 +768,58 @@ public static class HumanBody
             case "bottle":
                 p.Add(Shape.Cylinder, new Vector3(0.07f, 0.17f, 0.07f) * u, new Vector3(0f, 0.04f * u, 0f), new Color(0.2f, 0.32f, 0.16f), 0f, 0f, null, 7, Mat.Eye);
                 p.Add(Shape.Cylinder, new Vector3(0.03f, 0.08f, 0.026f) * u, new Vector3(0f, 0.17f * u, 0f), new Color(0.2f, 0.32f, 0.16f), 0f, 0f, null, 6, Mat.Eye);
+                break;
+        }
+    }
+
+    static readonly Color EnergyGlow = new(0.35f, 0.85f, 1f);
+
+    /// <summary>A bow's limb tip (k = 1 the upper, -1 the lower), in prop space: the string runs between them.</summary>
+    public static Vector3 BowTip(Figure f, int k) => new Vector3(0f, 0.6f * k, -0.11f) * ArmScale(f);
+
+    /// <summary>A long gun: stock, grip, action, fore-end and barrel, each kind its own.</summary>
+    static void LongGun(Piece p, Figure f, float u, Color steel, Color wood)
+    {
+        string kind = f.Prop;
+        bool energy = kind == "laser_rifle";
+        Color stock = kind == "musket" ? wood.Lightened(0.1f) : energy ? new Color(0.6f, 0.62f, 0.64f) : wood;
+        p.Add(Shape.Box, new Vector3(0.045f, 0.25f, 0.075f) * u, new Vector3(0f, -0.17f, 0.02f) * u, stock);
+        p.Add(Shape.Box, new Vector3(0.047f, 0.02f, 0.085f) * u, new Vector3(0f, -0.29f, 0.02f) * u, steel.Darkened(0.3f));
+        if (kind != "musket") p.Add(Shape.Box, new Vector3(0.034f, 0.045f, 0.09f) * u, new Vector3(0f, 0f, -0.025f) * u, energy ? steel : wood.Darkened(0.15f), 0f, 0f, new Basis(Vector3.Right, -0.3f));
+        switch (kind)
+        {
+            case "rifle":
+                p.Add(Shape.Box, new Vector3(0.05f, 0.2f, 0.07f) * u, new Vector3(0f, 0.06f, 0.04f) * u, steel);
+                p.Add(Shape.Box, new Vector3(0.03f, 0.05f, 0.1f) * u, new Vector3(0f, 0.11f, -0.03f) * u, steel, 0f, 0f, new Basis(Vector3.Right, 0.2f));
+                p.Add(Shape.Box, new Vector3(0.05f, 0.2f, 0.06f) * u, new Vector3(0f, 0.25f, 0.035f) * u, wood);
+                p.Add(Shape.Box, new Vector3(0.022f, 0.3f, 0.022f) * u, new Vector3(0f, 0.48f, 0.045f) * u, steel);
+                p.Add(Shape.Box, new Vector3(0.012f, 0.03f, 0.03f) * u, new Vector3(0f, 0.6f, 0.068f) * u, steel);
+                break;
+            case "shotgun":
+                p.Add(Shape.Box, new Vector3(0.05f, 0.18f, 0.07f) * u, new Vector3(0f, 0.05f, 0.04f) * u, steel.Lightened(0.05f));
+                p.Add(Shape.Cylinder, new Vector3(0.034f, 0.42f, 0.034f) * u, new Vector3(0f, 0.36f, 0.055f) * u, steel);
+                p.Add(Shape.Cylinder, new Vector3(0.026f, 0.3f, 0.026f) * u, new Vector3(0f, 0.3f, 0.02f) * u, steel.Darkened(0.2f));
+                p.Add(Shape.Box, new Vector3(0.05f, 0.13f, 0.05f) * u, new Vector3(0f, 0.25f, 0.02f) * u, wood.Darkened(0.2f));
+                break;
+            case "musket":
+                p.Add(Shape.Box, new Vector3(0.042f, 0.62f, 0.05f) * u, new Vector3(0f, 0.25f, 0.025f) * u, stock);
+                p.Add(Shape.Cylinder, new Vector3(0.024f, 0.8f, 0.024f) * u, new Vector3(0f, 0.4f, 0.055f) * u, steel.Lightened(0.1f));
+                p.Add(Shape.Box, new Vector3(0.012f, 0.06f, 0.04f) * u, new Vector3(0.026f, 0.02f, 0.04f) * u, steel);
+                break;
+            case "crossbow":
+                p.Add(Shape.Box, new Vector3(0.045f, 0.5f, 0.05f) * u, new Vector3(0f, 0.2f, 0.03f) * u, wood);
+                for (int k = -1; k <= 1; k += 2)
+                {
+                    p.Taper(new Vector3(0f, 0.43f, 0.05f) * u, new Vector3(0.3f * k, 0.36f, 0.05f) * u, 0.014f * u, 0.008f * u, steel.Lightened(0.15f));
+                    p.Taper(new Vector3(0.3f * k, 0.36f, 0.06f) * u, new Vector3(0f, 0.12f, 0.06f) * u, 0.003f * u, 0.003f * u, new Color(0.75f, 0.72f, 0.62f));
+                }
+                p.Taper(new Vector3(0f, 0.12f, 0.07f) * u, new Vector3(0f, 0.5f, 0.07f) * u, 0.006f * u, 0.004f * u, wood.Lightened(0.2f));
+                break;
+            case "laser_rifle":
+                p.Add(Shape.Box, new Vector3(0.06f, 0.42f, 0.09f) * u, new Vector3(0f, 0.15f, 0.035f) * u, stock, 0f, 0f, null, 0, Mat.Carapace);
+                p.Add(Shape.Cylinder, new Vector3(0.042f, 0.2f, 0.042f) * u, new Vector3(0f, 0.45f, 0.045f) * u, steel);
+                p.Add(Shape.Box, new Vector3(0.012f, 0.3f, 0.012f) * u, new Vector3(0.032f, 0.15f, 0.05f) * u, EnergyGlow, 0f, 1f);
+                p.Add(Shape.Cylinder, new Vector3(0.03f, 0.01f, 0.03f) * u, new Vector3(0f, 0.555f, 0.045f) * u, EnergyGlow, 0f, 1f);
                 break;
         }
     }

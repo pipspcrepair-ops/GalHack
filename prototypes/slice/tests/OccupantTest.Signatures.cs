@@ -76,8 +76,8 @@ public partial class OccupantTest
         {
             WorldLife low = Life("civil_war", now: TechLevel.Low), high = Life("civil_war", now: TechLevel.High);
             Species lm = low.Signature.Kinds.First(k => k.Species.CommonName == "militia").Species, hm = high.Signature.Kinds.First(k => k.Species.CommonName == "militia").Species;
-            if (lm.Figure.Prop == "club") clubs++;
-            if (hm.Figure.Prop == "rifle") rifles++;
+            if (Weapons.Armed(lm.Figure.Prop) && !Weapons.Modern(lm.Figure.Prop)) clubs++;
+            if (Weapons.Modern(hm.Figure.Prop)) rifles++;
             if (hm.Figure.Has("suit_helmet") || hm.Figure.Dress == "suit") sealed_++;
             WorldLife lowM = Life("machine_uprising", now: TechLevel.Low, before: TechLevel.Low), highM = Life("machine_uprising", now: TechLevel.High, before: TechLevel.High);
             Species lr = lowM.Signature.Machines.First(), hr = highM.Signature.Machines.First();
@@ -86,7 +86,7 @@ public partial class OccupantTest
             if (lr.Body.Legs == 2 && lr.CommonName.Contains("clockwork")) lowLegs2++;
             if (hr.Body.Legs != 4 && (hr.Figure?.Build ?? 0f) < 0.2f && hr.Body.Width < 0.75f * 1.2f) highSlim++;
         }
-        Check(clubs >= n - 1 && rifles >= n - 1 && sealed_ >= n / 2, $"a civil war at low tech arms its militia with clubs ({clubs} of {n}), at high tech with rifles ({rifles}) and sealed helmets or suits ({sealed_})");
+        Check(clubs >= n - 1 && rifles >= n - 1 && sealed_ >= n / 2, $"a civil war at low tech arms its militia with clubs, spears and bows ({clubs} of {n}), at high tech with guns ({rifles}) and sealed helmets or suits ({sealed_})");
         Check(lowLegs2 == n && highSlim == n, $"machines: low-tech worlds' clockwork, two-legged, brass ({lowHulls.Trim()}); high-tech worlds' sleek in white or graphite ({highHulls.Trim()})");
 
         // Everyone on a world wears its story: masks among a plague world's townsfolk.

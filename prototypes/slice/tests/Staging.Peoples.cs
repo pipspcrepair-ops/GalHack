@@ -268,7 +268,7 @@ public sealed partial class Staging
         foreach (int x in _drive.Wait(200)) yield return x;
         p.Memory.Mood = Mood.Wary;
         GD.Print("(the place made wary of you, to meet its checkpoint)");
-        Town.Person post = town.People.Where(q => q.Role == "guard" && !q.Dead && q.Figure.Prop == "rifle").OrderBy(q => q.Pos.DistanceTo(p.FromWorld(_game.Survivor.WorldFeet))).FirstOrDefault();
+        Town.Person post = town.People.Where(q => q.Role == "guard" && !q.Dead && Wildlife.Weapons.Ranged(q.Figure.Prop)).OrderBy(q => q.Pos.DistanceTo(p.FromWorld(_game.Survivor.WorldFeet))).FirstOrDefault();
         if (post == null) { GD.Print("(no armed guard)"); yield break; }
         for (int i = 0; i < 900 && (post.Path != null && post.Step < post.Path.Count || post.Spot != post.Spawn.Spot); i++) yield return 0;
         Vector3 at = p.ToWorld(post.Pos);
