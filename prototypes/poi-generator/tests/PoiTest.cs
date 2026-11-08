@@ -1003,6 +1003,7 @@ public partial class PoiTest : Node
                 }
             }
             // Small improvised places repeat by design, as flavour ruins do.
+            if (Marker(f)) continue;
             if (f.Tags.Contains("flavour") || f.Tags.Contains("scrappy") || f.Tags.Contains("evacuation"))
             {
                 float same = full.GroupBy(c => c).Max(g => g.Count()) / (float)full.Count;
@@ -1065,14 +1066,17 @@ public partial class PoiTest : Node
         Check(bases, "every faction base has its core while it's active (hijack it to take the base)");
     }
 
-    const float RuinShare = 0.15f;
+    /// <summary>A marker, not a place (a warning post at the edge of a blast's hot ground): no rooms to ruin, nothing to infest, no landmark to see from afar.</summary>
+    static bool Marker(FamilyDef f) => f.Tags.Contains("warning");
+
+        const float RuinShare = 0.15f;
 
     void StateTransforms()
     {
         bool abandonedQuiet = true, infestedBloom = true, ruinedOk = true;
         float minRemoved = 1f;
         string ruinFirst = "";
-        foreach (var f in _lib.Families)
+        foreach (var f in _lib.Families.Where(f => !Marker(f)))
         {
             int v = 0;
             var ab = PoiFactory.Generate(_lib, f, v, Rarity.Rare, PoiState.Abandoned, 3);
@@ -1957,7 +1961,7 @@ public partial class PoiTest : Node
     void Landmarks()
     {
         var bad = new List<string>();
-        foreach (var f in _lib.Families)
+        foreach (var f in _lib.Families.Where(f => !Marker(f)))
             foreach (var s in new[] { PoiState.Abandoned, PoiState.Ruined })
             {
                 var p = PoiFactory.Generate(_lib, f, 0, Rarity.Uncommon, s, 21);

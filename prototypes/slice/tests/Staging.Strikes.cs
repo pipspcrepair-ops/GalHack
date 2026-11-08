@@ -101,12 +101,16 @@ public sealed partial class Staging
         float up, back;
         if (pick == "gz")
         {
-            // The ground zero with the most of its city standing round it, nearest the start.
+            // A ground zero in the city's grid first, then the one with the most of a town standing round it, nearest the start.
+            var city = world.Infra.City;
+            bool InCity(Strike b) => city != null && b.Within && Dist(b.X, b.Z, city.CenterX, city.CenterZ) < city.Radius + b.Crater;
             centre = world.Blasts.Where(b => b.Bowl && b.Flatten)
-                .OrderByDescending(b => (b.Within ? 1000 : 0) + world.Pois.Count(p => Dist(p.Center.X, p.Center.Z, b.X, b.Z) < b.Crater + 600))
+                .OrderByDescending(b => (InCity(b) ? 100000 : 0) + (b.Within ? 1000 : 0) + world.Pois.Count(p => Dist(p.Center.X, p.Center.Z, b.X, b.Z) < b.Crater + 600))
                 .ThenBy(b => Dist(b.X, b.Z, Mathx.WrapX(start.X, W), Mathx.Wrap(start.Z, H))).FirstOrDefault();
-            up = (float)Num("up", centre == null ? 0 : centre.Crater * 0.5 + 110);
-            back = (float)Num("back", centre == null ? 0 : centre.Crater + 420);
+            // At the rim, 120 m up, looking across ground zero to the city beyond.
+            up = (float)Num("up", 120);
+            back = (float)Num("back", centre == null ? 0 : centre.Crater * 1.05);
+            if (centre != null) GD.Print($"(craters gz: in the city's grid {InCity(centre)}, the city {(city == null ? "none" : $"{Dist(city.CenterX, city.CenterZ, centre.X, centre.Z):F0} m off, radius {city.Radius:F0}")})");
         }
         else
         {
@@ -135,7 +139,9 @@ public sealed partial class Staging
         if (pick == "gz" && ring.Count > 0)
         {
             double sx = ring.Average(p => Mathx.WrapDelta(p.Center.X - centre.X, W)), sz = ring.Average(p => Mathx.WrapDelta(p.Center.Z - centre.Z, H));
-            if (sx * sx + sz * sz > 1) dir = -new Vector3((float)sx, 0f, (float)sz).Normalized();
+            if (sx * sx + sz * sz > 1) dir = new Vector3((float)sx, 0f, (float)sz).Normalized();
+            if (world.Infra.City is { } cp && Dist(cp.CenterX, cp.CenterZ, centre.X, centre.Z) > 30)
+                dir = new Vector3((float)Mathx.WrapDelta(cp.CenterX - centre.X, W), 0f, (float)Mathx.WrapDelta(cp.CenterZ - centre.Z, H)).Normalized();
             foreach (var t in world.Source.Stamps.Where(t => t.Shape != GalHack.Terrain.StampShape.Bowl && Dist(t.CenterX, t.CenterZ, centre.X, centre.Z) < centre.Crater * 1.5)) GD.Print($"(craters: a stamp left in the bowl: {t.Name} at {t.CenterX:F0},{t.CenterZ:F0})");
         }
         Vector3 feet = gz - dir * back;
@@ -143,18 +149,23 @@ public sealed partial class Staging
         _game.Survivor.PlaceOutside(feet.ToNumerics());
         Vector3 eye = feet + Vector3.Up * up;
         // From the ground, over the nearest hole to the ones beyond it.
-        Vector3 look = pick == "grown" ? gz + dir * 14f : gz;
+        Vector3 look = pick == "grown" ? gz + dir * 14f : pick == "gz" ? gz + dir * (centre.Crater + 380f) : gz;
         double day = _game.Zone.Sky.TimeOfDay;
         for (int i = 0; i < 2400; i++)
         {
             _game.FixedCamera = new Transform3D(Basis.LookingAt(look - eye, Vector3.Up), eye);
-            if (i % 120 == 2) day = LocalDay();
+            if (i % 120 == 2) day = LocalDay() + (pick == "gz" ? Num("shift", -0.07) : 0); // a ground zero under a lower sun, so the bowl's walls show
             _game.Zone.Sky.TimeOfDay = day;
             yield return 0;
             if (i > 200 && _game.Zone.Streamer.Settled && !_game.Zone.Pois.MidPending) break;
         }
         foreach (int x in _drive.Wait(60)) yield return x;
         Snap(pick);
+        if (pick == "gz")
+        {
+            float At(double d) => world.GroundHeight(Mathx.WrapX(gz.X + dir.X * d, W), Mathx.Wrap(gz.Z + dir.Z * d, H));
+            GD.Print($"(craters gz: ground at zero {At(0):F1}, half way {At(centre.Crater * 0.5):F1}, rim {At(centre.Crater):F1}, 1.3 radii {At(centre.Crater * 1.3):F1}, 2 radii {At(centre.Crater * 2):F1}; depth {centre.Depth:F1}, rim {centre.Rim:F1})");
+        }
         GD.Print($"(craters {pick}: eye {eye}, settled {_game.Zone.Streamer.Settled}, weather {_game.Zone.Weather.Sim.Current})");
         _game.FixedCamera = null;
     }

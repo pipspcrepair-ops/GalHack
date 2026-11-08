@@ -28,7 +28,7 @@ public static class StrikeSites
     const double ApproachReach = 1600;
 
     /// <summary>The shallowest a crater's bowl is, as a share of its radius (on land too low for its own depth).</summary>
-    const float ShallowestBowl = 0.08f;
+    const float ShallowestBowl = 0.12f;
 
     /// <summary>
     /// Plans the strikes of a world's war (none for a fall that dropped nothing), punches their craters and drops the
@@ -53,11 +53,19 @@ public static class StrikeSites
         List<Strike> strikes = StrikePlan.Make(book, roll, profile.Before, targets, land, seed, spare);
         foreach (Strike s in strikes.Where(s => s.Bowl && s.Within)) Raze(s, net, pois, stamps, w, h);
         // A bowl punched into low land is shallower: its floor stays above the sea.
-        foreach (Strike s in strikes.Where(s => s.Bowl)) s.Depth = MathF.Max(s.Crater * ShallowestBowl, MathF.Min(s.Depth, land.Floor(s) - 3f));
+        foreach (Strike s in strikes.Where(s => s.Bowl))
+        {
+            s.Depth = MathF.Max(s.Crater * ShallowestBowl, MathF.Min(s.Depth, land.Floor(s) - 3f));
+            // A shallow bowl throws a low rim: never a raised disc with a dent in it.
+            s.Rim = MathF.Min(s.Rim, s.Depth * 0.3f);
+        }
         foreach (Strike s in strikes.Where(s => s.Bowl))
         {
             TerrainStamp bowl = land.Bowl(s);
             net.Craters.Add(bowl);
+            // A crater in a town lies under what is left of it: laid first, so the pads and streets round its lip
+            // keep the town's own level right up to the edge of the hole, and its thrown rim shows only where nothing stood.
+            if (s.Within) stamps?.Insert(0, bowl);
             // Tracks and drives laid later keep off it too.
             net.KeepOff(bowl);
         }
@@ -74,7 +82,8 @@ public static class StrikeSites
     /// </summary>
     static void Raze(Strike s, InfraNetwork net, List<PoiSite> pois, List<TerrainStamp> stamps, double w, double h)
     {
-        double reach = s.BowlReach;
+        // Only what stood in the hole itself: the slabs and stumps round its lip stand on their own pads.
+        double reach = s.Crater * 1.1;
         var gone = pois.Where(p => !p.Primary && p.GroundZero == null
                                    && Dist(p.Center.X, p.Center.Z, s.X, s.Z, w, h) - Math.Max(p.Stamp.MaxX - p.Stamp.MinX, p.Stamp.MaxZ - p.Stamp.MinZ) * 0.5 < reach).ToHashSet();
         foreach (PoiSite p in gone)
