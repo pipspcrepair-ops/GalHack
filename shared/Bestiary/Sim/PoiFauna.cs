@@ -626,6 +626,40 @@ public static class PoiFauna
         return new Crack { Id = id, Kind = CrackKind.Crack, Position = p, Normal = n, Network = network, Size = rng.Range(0.18f, 0.32f) };
     }
 
+    /// <summary>
+    /// Roots a worm mass in the surface it grows on: down onto the floor, or back against the wall,
+    /// onto the surface itself, and turned to face out of it as the surface does (its base and
+    /// lobes on the solid, its open, wormy side out into the room). False where there is no such
+    /// surface within reach (a room's box can run past its real walls, and a mass left there
+    /// hung in the air, its back to whoever saw it from beyond), or no open air before it.
+    /// </summary>
+    public static bool Root(ISolidSpace space, WormMass m)
+    {
+        Vector3 n = m.Normal.Normalized();
+        if (n.Y > 0.5f)
+        {
+            if (SpaceMath.FloorBelow(space, m.Position.X, m.Position.Y + 0.5f, m.Position.Z, 2f) is not float y) return false;
+            m.Position = new Vector3(m.Position.X, y, m.Position.Z);
+        }
+        else
+        {
+            const float Reach = 2f;
+            float t = SpaceMath.Ray(space, m.Position + n * 0.5f, -n, Reach);
+            if (t >= Reach) return false;
+            m.Position = m.Position + n * 0.5f - n * t;
+        }
+        Vector3 at = m.Position + n * 0.05f;
+        if (!SpaceMath.Project(space, ref at, 0f, out Vector3 surface) || surface.Dot(n) < 0.6f) return false;
+        m.Position = at;
+        m.Normal = surface;
+        return Faces(space, m);
+    }
+
+    /// <summary>Whether a mass sits on a surface with its open side away from it: solid just behind its base, open air just before its middle (tests too).</summary>
+    public static bool Faces(ISolidSpace space, WormMass m) =>
+        space.Density(m.Position - m.Normal * 0.15f) > 0f && space.Density(m.Middle + m.Normal * 0.2f) < 0f
+        && SpaceMath.Normal(space, m.Position + m.Normal * 0.02f).Dot(m.Normal) > 0.6f;
+
     // ---- Into a sim -------------------------------------------------------------------
 
     /// <summary>
@@ -655,17 +689,7 @@ public static class PoiFauna
         var placed = new List<WormMass>();
         foreach (WormMass m in pop.Masses)
         {
-            // Onto the surface it grows on: down onto the floor, or back against the wall.
-            if (m.Normal.Y > 0.5f)
-            {
-                if (SpaceMath.FloorBelow(space, m.Position.X, m.Position.Y + 0.5f, m.Position.Z, 2f) is float y) m.Position = new Vector3(m.Position.X, y, m.Position.Z);
-            }
-            else
-            {
-                Vector3 into = -m.Normal;
-                float t = SpaceMath.Ray(space, m.Position + m.Normal * 0.5f, into, 2f);
-                m.Position = m.Position + m.Normal * 0.5f + into * t;
-            }
+            if (!Root(space, m)) continue; // nothing there to grow on, or no room before it: it isn't there
             if (space.Density(m.Middle) > Interpenetration.Tolerance) continue; // inside something: it isn't there
             sim.Masses.Add(m);
             placed.Add(m);

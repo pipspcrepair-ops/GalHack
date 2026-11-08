@@ -27,6 +27,8 @@ public static class Veins
     const float Step = 0.16f;
     /// <summary>The most a den grows (a severe den's are many; a mesh of them is still one draw).</summary>
     const int Most = 420;
+    /// <summary>The thickest a vein is at its root, m, however big its mass: a vein, not a hose.</summary>
+    public const float Widest = 0.055f;
 
     public static void Grow(List<Vein> into, ISolidSpace space, List<WormMass> masses, List<(Vector3 At, Vector3 Normal, float Spread)> roots, float severity, ulong seed)
     {
@@ -40,7 +42,7 @@ public static class Veins
                 Vector3 dir = Tangent(new Vector3(rng.Range(-1f, 1f), rng.Range(-1f, 1f), rng.Range(-1f, 1f)), m.Normal);
                 if (dir == Vector3.Zero) continue;
                 float length = rng.Range(0.5f, 1f) * Mathf.Lerp(0.8f, 3.8f, sev) * (0.6f + 0.5f * m.Size);
-                float width = m.Size * Mathf.Lerp(0.05f, 0.09f, sev) * rng.Range(0.7f, 1.2f);
+                float width = MathF.Min(Widest, m.Size * Mathf.Lerp(0.04f, 0.07f, sev) * rng.Range(0.7f, 1.2f));
                 Walk(into, space, m.Position + dir * m.Size * 0.35f + m.Normal * 0.05f, dir, length, width, Flesh(rng), rng, sev > 0.4f ? 2 : 1, sev);
             }
         }
