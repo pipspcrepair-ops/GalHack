@@ -134,20 +134,6 @@ public partial class MenuRoot : MenuPanel
 
     static float TabWidth(string name) => MathF.Max(96, Paint.TextWidth(UiTheme.Label, 18, name) + 30);
 
-    /// <summary>
-    /// The header between the last tab and your level: no page draws there, so the hazard alerts take it
-    /// while the menu is open and never cover a panel, the paperdoll or a slot.
-    /// </summary>
-    public override Rect2? AlertStrip
-    {
-        get
-        {
-            float end = TabsFrom;
-            foreach (var (_, name) in Tabs) end += TabWidth(name) + 8;
-            return new Rect2(end + 6, 0, LevelFrom - 8 - (end + 6), 74);
-        }
-    }
-
     public YouSection You;
     public TechSection Tech;
     public StatsSection Stats;
@@ -185,7 +171,7 @@ public partial class MenuRoot : MenuPanel
             if (g.Tab($"tab:{name.ToLowerInvariant()}", r, name, Tab == tab, C.Accent2)) Tab = tab;
             tx += w + 8;
         }
-        // Your level and the mode sit at the right edge: the strip between them and the tabs is the alerts'.
+        // Your level and the mode sit at the right edge.
         Progress p = Game.Progress;
         var (into, span) = p.ToNext;
         g.Text($"LEVEL {p.Level}", header.Position + new Vector2(LevelFrom, 8), C.Glass, 20, UiTheme.Display);

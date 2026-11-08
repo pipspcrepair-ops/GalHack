@@ -35,6 +35,14 @@ public sealed class FlavourRuin
     public TerrainStamp Drive;
     /// <summary>A track of its own runs from its gate to the nearest road.</summary>
     public bool Tracked;
+    /// <summary>
+    /// Power (the interface with the roads side's lines, <see cref="PowerLines.Fixing"/>): where the house's service drop
+    /// is fixed to its wall. The houses side sets these from the house it builds: which face of its outer walls takes the
+    /// drop (null: the face toward the pole it comes from), and how high above that wall's foot, metres. The drop meets
+    /// the outer wall nearest that face's middle with nothing in front of it.
+    /// </summary>
+    public Dir? FixingSide;
+    public float FixingHeight = 3f;
     public (double X, double Z) Center => ((Stamp.MinX + Stamp.MaxX) * 0.5, (Stamp.MinZ + Stamp.MaxZ) * 0.5);
 
     /// <summary>The ruin as built and decayed (a pure function of its layout and seed): call off the main thread.</summary>
@@ -89,7 +97,7 @@ public sealed class FlavourRuin
 /// </summary>
 public static class FlavourRuins
 {
-    static readonly ConcurrentDictionary<(string, int, Dir, TechLevel?, int), Layout> Layouts = new();
+    static readonly ConcurrentDictionary<(string, int, Dir, TechLevel?, int, HomeHints), Layout> Layouts = new();
 
     /// <summary>
     /// How far a blast reaches into the land round its site, as a multiple of the site's own fade
@@ -100,18 +108,37 @@ public static class FlavourRuins
     /// <summary>Different drawings of each plan a world may use, so a street isn't one house over and over.</summary>
     public const int Salts = 3;
 
+    /// <summary>How many different houses one culture's street may draw from: each house is put together afresh by the house rules.</summary>
+    public const int HouseSalts = 4096;
+
+    /// <summary>The climate a place was built against, from the world map's temperature and humidity there.</summary>
+    public static PoiGenerator.Gen.Climate ClimateAt(WorldMap map, double x, double z)
+    {
+        int cx = (int)Math.Floor(Mathx.WrapX(x, map.WidthMeters) / map.CellSize) % map.Width, cz = (int)Math.Floor(Mathx.Wrap(z, map.HeightMeters) / map.CellSize) % map.Height;
+        int k = Math.Clamp(cz, 0, map.Height - 1) * map.Width + Math.Clamp(cx, 0, map.Width - 1);
+        return HomeHints.ClimateOf(map.Temperature[k], map.Humidity[k]);
+    }
+
+    /// <summary>A house's culture where it stands: a street's houses share one; a lone house has its own.</summary>
+    static HomeHints Home(PoiGenerator.Gen.Rng rng, WorldMap map, double x, double z, int? culture = null) =>
+        new(culture ?? (int)(rng.NextU64() >> 33), ClimateAt(map, x, z), rng.Float());
+
     /// <summary>How hard a blast hits at a distance from ground zero, out in the land round its site.</summary>
     public static float BlastAt(BlastZone zone, float d) =>
         d <= zone.Crater ? 1f : d >= zone.Fade * WorldReach ? 0f : 1f - (d - zone.Crater) / (zone.Fade * WorldReach - zone.Crater);
 
     /// <summary>A family's layout, turned to face a road, in the world's tech level's materials; null (with a warning) if none lays out, and the lot stays empty.</summary>
-    public static Layout LayoutFor(PoiLibrary lib, FamilyDef f, int variant, Dir front = Dir.North, TechLevel? tech = null, int salt = 0) =>
-        Layouts.GetOrAdd((f.Id, variant, front, tech, salt), _ =>
+    public static Layout LayoutFor(PoiLibrary lib, FamilyDef f, int variant, Dir front = Dir.North, TechLevel? tech = null, int salt = 0, HomeHints home = null)
+    {
+        // Every street's houses are its own: the cache forgets old worlds' rather than growing without end.
+        if (home != null && Layouts.Count > 3000) Layouts.Clear();
+        return Layouts.GetOrAdd((f.Id, variant, front, tech, salt, home), _ =>
         {
-            Layout l = PoiFactory.TryLayout(lib, f, variant, Rarity.Common, f.Variants[variant % f.Variants.Count].Seed + (ulong)salt * 7919UL, new LayoutHints(front, tech), out string why);
+            Layout l = PoiFactory.TryLayout(lib, f, variant, Rarity.Common, f.Variants[variant % f.Variants.Count].Seed + (ulong)salt * 7919UL, new LayoutHints(front, tech, Home: home), out string why);
             if (l == null) Godot.GD.PushWarning($"lot left empty: {why}");
             return l;
         });
+    }
 
     /// <summary>
     /// Which of a family's layouts a world of a tech level builds: its own, or any that fit all. A family's
@@ -151,7 +178,10 @@ public static class FlavourRuins
         bool Heart(double x, double z) => plan == null || plan.RegionAt(Mathx.WrapX(x, map.WidthMeters), Mathx.Wrap(z, map.HeightMeters)) is { } home && plan.Dist(home.X, home.Z, Mathx.WrapX(x, map.WidthMeters), Mathx.Wrap(z, map.HeightMeters)) < home.Radius * 0.7;
         bool Farmed(double x, double z) => plan == null || plan.RegionAt(Mathx.WrapX(x, map.WidthMeters), Mathx.Wrap(z, map.HeightMeters))?.Kind == RegionKind.Farmland;
         double Dist(double ax, double az, double bx, double bz) => Math.Sqrt(Math.Pow(Mathx.WrapDelta(ax - bx, w), 2) + Math.Pow(Mathx.WrapDelta(az - bz, h), 2));
-        Layout Lot(FamilyDef f, Dir front) => LayoutFor(lib, f, VariantFor(f, profile.Before, rng), front, profile.Before, rng.Range(0, Salts));
+        // A house off on its own has a culture of its own, in the weather where it stands.
+        Layout Lot(FamilyDef f, Dir front, double x = 0, double z = 0) => f.Tags.Contains("house")
+            ? LayoutFor(lib, f, VariantFor(f, profile.Before, rng), front, profile.Before, rng.Range(0, HouseSalts), Home(rng, map, x, z))
+            : LayoutFor(lib, f, VariantFor(f, profile.Before, rng), front, profile.Before, rng.Range(0, Salts));
 
         double roadKm = net.Routes.Where(r => r.Kind is RouteKind.Highway or RouteKind.Road).Sum(r => r.Count * InfraNetwork.Spacing) / 1000;
         double trackKm = net.Routes.Where(r => r.Kind == RouteKind.Track).Sum(r => r.Count * InfraNetwork.Spacing) / 1000;
@@ -273,7 +303,7 @@ public static class FlavourRuins
                 int side = rng.Chance(0.5f) ? 1 : -1;
                 double nx = -dz / len * side, nz = dx / len * side;
                 Dir front = Facing(-nx, -nz);
-                Layout layout = Lot(f, front);
+                Layout layout = Lot(f, front, r.X[i], r.Z[i]);
                 if (layout == null) continue;
                 var size = layout.Occupied.Size;
                 double back = Math.Sqrt(size.X * size.X + size.Z * size.Z) * 0.5 + 12 + rng.Float() * 16;
@@ -292,9 +322,10 @@ public static class FlavourRuins
             bool rough = tries > attempts / 2;
             FamilyDef f = Pick(!rough && (farmland || rng.Chance(0.5f)) ? "farmstead" : "house") ?? Pick("house");
             if (f == null) break;
-            Layout layout = Lot(f, Dirs.Horizontal[rng.Range(0, 4)]);
+            double lx = rng.Float() * w, lz = rng.Float() * h;
+            Layout layout = Lot(f, Dirs.Horizontal[rng.Range(0, 4)], lx, lz);
             if (layout == null) continue;
-            FlavourRuin ruin = Try(lib, f, layout, rng.Float() * w, rng.Float() * h, bare, net, pois, ruins, w, h, rng, maxCut: rough ? 8f : 4.5f);
+            FlavourRuin ruin = Try(lib, f, layout, lx, lz, bare, net, pois, ruins, w, h, rng, maxCut: rough ? 8f : 4.5f);
             if (ruin != null) ruins.Add(ruin);
         }
         // A survivor town's landing clearing, at its edge, with a track in, where traders set down.
@@ -332,7 +363,7 @@ public static class FlavourRuins
                 double a = rng.Float() * Math.PI * 2, d = inner + (outer - inner) * rng.Float();
                 FamilyDef f = Pick("house");
                 if (f == null) break;
-                Layout layout = LayoutFor(lib, f, VariantFor(f, profile.Before, rng), Dirs.Horizontal[rng.Range(0, 4)], profile.Before, rng.Range(0, Salts));
+                Layout layout = Lot(f, Dirs.Horizontal[rng.Range(0, 4)], gx + Math.Cos(a) * d, gz + Math.Sin(a) * d);
                 if (layout == null) continue;
                 var ruin = Try(lib, f, layout, gx + Math.Cos(a) * d, gz + Math.Sin(a) * d, bare, net, pois, ruins, w, h, rng);
                 if (ruin == null) continue;
@@ -369,6 +400,8 @@ public static class FlavourRuins
     {
         if (house == null) return false;
         const float StreetHalf = 4f;
+        // The street's people: one culture, in the weather here, as well off as the street was.
+        var home = new HomeHints((int)(PoiGenerator.Gen.Hash.Combine((ulong)(long)px, (ulong)(long)pz) >> 33), ClimateAt(bare.Sampler.Map, px, pz), rng.Float());
         var ways = new List<(double X, double Z)> { (1, 0), (-1, 0), (0, 1), (0, -1) };
         rng.Shuffle(ways);
         foreach (var (ux, uz) in ways)
@@ -388,7 +421,9 @@ public static class FlavourRuins
                     bool shopFront = shop != null && k < Math.Max(1, pairs / 3);
                     FamilyDef f = shopFront ? shop : shed != null && rng.Chance(0.1f) ? shed : house;
                     Dir front = Facing(-sx * side, -sz * side);
-                    Layout layout = LayoutFor(lib, f, VariantFor(f, tech, rng), front, tech, rng.Range(0, Salts));
+                    // Every house on a street of one culture, each put together afresh, so no two neighbours are one model.
+                    Layout layout = f == house ? LayoutFor(lib, f, VariantFor(f, tech, rng), front, tech, rng.Range(0, HouseSalts), home)
+                        : LayoutFor(lib, f, VariantFor(f, tech, rng), front, tech, rng.Range(0, Salts));
                     if (layout == null) continue;
                     var (wide, deep) = LotSize(layout, front);
                     along += wide * 0.5;

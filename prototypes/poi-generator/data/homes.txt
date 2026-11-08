@@ -1,0 +1,656 @@
+# House families: each a combination of the generated house parts (Homes.cs, HomeStyles.cs). Nothing here
+# is a drawing: a family only weights the parts a house is built from, by climate, tech and era, and the
+# culture of a street or a city picks two or three families and a palette, so neighbours differ but a
+# street reads as one place. Lines:
+#   family <id>            starts one
+#   name <words>           what it is called
+#   climate <list>         temperate cold hot wet (or any)
+#   tech <list>            low mid high
+#   era old|new|any        old families thin out in a newer culture and the other way round
+#   weight <n>             how often a culture takes it
+#   odd yes                a rare one-off: never a culture's own, turns up now and then on any street
+#   <part> a:3 b:1 ...     weighted choices: storeys plan roof cover wall ground upper window garage door fence overhang
+#                          (fence names fencekinds below; none is a plot left open)
+#   <part> <chance>        bay dormer porch verandah chimney balcony double gablefront hoist vigas lift berm flare
+#   width|depth|units|unit <min> <max>   sizes in metres (even, on the 2 m lattice)
+
+family suburban
+  name Suburban House
+  climate temperate cold hot wet
+  tech mid high
+  era new
+  weight 4
+  storeys 1:2 2:3
+  plan rect:3 ell:3 tee:1 wing:2
+  roof gable:3 hip:3 cross:3
+  cover tile:3 slate:2 metal:1 shingle:2
+  wall brick:3 render:2 board:3 stone:1 timber:1
+  window plain:3 shutters:2 tall:1 small:1
+  overhang 2:1
+  bay 0.35
+  dormer 0.15
+  porch 0.55
+  verandah 0.15
+  chimney 0.4
+  balcony 0.12
+  garage attached:4 front:3 detached:1 carport:1 none:1
+  door panel:4 ribbed:1 glazed:1 timber:1 hinged:1
+  double 0.5
+  fence picket:3 boarded:2 hedge:2 brickwall:2 renderlow:1 lowboard:1 chainlink:1 railings:1 kerb:1 none:2
+  width 12 16
+  depth 10 14
+
+family bungalow
+  name Bungalow
+  climate temperate hot wet
+  tech low mid
+  era any
+  weight 3
+  storeys 1:1
+  plan rect:3 ell:2 wing:1
+  roof hip:3 gable:2 cross:2
+  cover tile:3 metal:2 shingle:2 slate:1
+  wall render:2 board:2 brick:2 timber:1 stone:1
+  window plain:3 shutters:1 small:1
+  overhang 2:1
+  bay 0.2
+  verandah 0.5
+  porch 0.4
+  chimney 0.3
+  garage carport:3 detached:2 attached:2 none:2
+  door timber:2 hinged:2 panel:2 ribbed:1
+  double 0.2
+  fence lowboard:2 picket:2 hedge:2 renderlow:2 chainlink:1 corrugated:1 bamboo:1 none:2
+  width 12 18
+  depth 10 14
+
+family cottage
+  name Cottage
+  climate temperate cold wet
+  tech low mid
+  era old
+  weight 3
+  storeys 1:3 2:2
+  plan rect:3 ell:2
+  roof gable:4 cross:2 hip:2
+  cover thatch:3 slate:3 tile:2 shingle:1
+  wall stone:3 render:2 brick:2 halftimber:2
+  window plain:2 shutters:2 small:2
+  overhang 2:1
+  dormer 0.4
+  porch 0.5
+  chimney 0.95
+  bay 0.15
+  garage detached:2 none:4 carport:1
+  door hinged:3 timber:3
+  double 0.1
+  fence drystone:3 hedge:3 picket:2 wattle:2 lowboard:1 none:1
+  width 10 14
+  depth 10 12
+
+family chalet
+  name Chalet
+  climate cold
+  tech low mid high
+  era any
+  weight 5
+  storeys 2:1
+  plan rect:3 ell:1
+  roof gable:5 aframe:1
+  gablefront 0.8
+  cover slate:2 metal:2 shingle:2 tile:1
+  wall stone:2 render:2 timber:1
+  upper timber:4 board:1
+  window shutters:3 plain:1 small:1
+  overhang 3:1
+  balcony 0.8
+  chimney 0.6
+  garage attached:2 detached:2 none:2
+  door timber:3 hinged:2 panel:1
+  double 0.3
+  fence lowboard:3 boarded:2 drystone:2 picket:1 none:2
+  width 12 16
+  depth 12 14
+
+family stilt
+  name Stilt House
+  climate wet hot
+  tech low mid
+  era old
+  weight 5
+  storeys 1:4 2:1
+  lift 1
+  plan rect:3 ell:1
+  roof hip:3 gable:3 pagoda:1
+  cover thatch:3 metal:3 tile:1 shingle:1
+  wall timber:3 board:3
+  window plain:3 small:1 shutters:1
+  overhang 2:1
+  verandah 0.8
+  garage none:5 carport:1
+  door timber:1
+  fence bamboo:3 woven:2 wattle:1 lowboard:1 corrugated:1 none:3
+  width 10 14
+  depth 10 12
+
+family courtyard
+  name Courtyard House
+  climate hot temperate
+  tech low mid high
+  era any
+  weight 3
+  storeys 1:4 2:1
+  plan court:4
+  roof hip:2 flat:2 gable:1 pagoda:1
+  cover tile:4 glazed:1
+  wall render:4 adobe:1 stone:1 brick:1
+  window small:2 plain:2
+  overhang 1:1
+  fence compound:4 renderhigh:2 brickhigh:1
+  garage none:3 carport:1 front:1
+  door timber:2 hinged:2 panel:1
+  double 0.3
+  width 20 24
+  depth 18 22
+
+family canal
+  name Canal House
+  climate temperate wet cold
+  tech low mid
+  era old
+  weight 2
+  storeys 3:1
+  plan rect:1
+  roof gable:4
+  gablefront 1
+  cover tile:3 slate:2
+  wall brick:3 board:1 render:1
+  ground stone:3
+  window plain:2 shutters:1 tall:1
+  overhang 1:1
+  hoist 0.8
+  chimney 0.4
+  garage none:1
+  door timber:1
+  fence railings:3 brickwall:2 edging:1 none:2
+  width 10 12
+  depth 12 16
+
+family adobe
+  name Adobe House
+  climate hot
+  tech low mid
+  era old
+  weight 4
+  storeys 1:3 2:1
+  plan rect:2 ell:2 court:1
+  roof flat:5 shed:1
+  wall adobe:5 render:1
+  window small:4 plain:1
+  overhang 0:1
+  vigas 1
+  garage carport:2 none:3
+  door timber:2 hinged:1
+  fence compound:2 renderlow:2 renderhigh:2 woven:1 none:1
+  width 10 16
+  depth 10 14
+
+family modern
+  name Modern Box
+  climate temperate cold hot wet
+  tech mid high
+  era new
+  weight 3
+  storeys 1:1 2:3
+  plan rect:2 wing:2 ell:2
+  roof flat:4 shed:3
+  cover membrane:3 metal:2 tile:1
+  wall panel:2 render:3 timber:1
+  window tall:4 plain:1
+  overhang 1:1
+  balcony 0.3
+  garage front:3 attached:3 carport:1
+  door glazed:2 ribbed:2 panel:2
+  double 0.6
+  fence renderhigh:2 hedgehigh:2 kerb:2 chainlink:1 boarded:1 none:2
+  width 14 18
+  depth 10 14
+
+family earth
+  name Earth-Sheltered Home
+  climate cold hot temperate
+  tech mid high
+  era new
+  weight 1
+  storeys 1:1
+  plan rect:3 round:2
+  roof turf:1
+  berm 1
+  wall stone:2 render:2
+  window tall:3
+  overhang 0:1
+  garage none:3 front:1
+  door timber:1 panel:1
+  fence none:3 hedge:1 drystone:1 edging:1
+  width 12 16
+  depth 10 12
+
+family eaves
+  name Tiled Eaves House
+  climate temperate wet hot
+  tech low mid high
+  era any
+  weight 2
+  storeys 1:2 2:2
+  plan rect:2 ell:1 court:1
+  roof pagoda:4 hip:1
+  cover glazed:4 tile:2 metal:1
+  wall timber:2 render:3 board:1
+  window plain:2 small:1 shutters:1
+  overhang 2:1
+  fence renderlow:2 bamboo:2 woven:1 brickhigh:1 hedge:1 compound:1
+  garage none:2 detached:1 carport:1
+  door timber:2 hinged:2
+  width 12 16
+  depth 10 14
+
+family townhouse
+  name Town House
+  climate temperate cold
+  tech mid high
+  era old
+  weight 1
+  storeys 2:2 3:2
+  plan rect:1
+  roof mansard:3 hip:1
+  cover slate:4
+  wall render:2 stone:2 brick:2 board:1
+  window shutters:2 plain:2 tall:1
+  overhang 1:1
+  balcony 0.4
+  chimney 0.6
+  garage attached:1 none:2
+  door panel:2 timber:1
+  fence railings:4 brickwall:2 hedgehigh:1
+  width 12 14
+  depth 12 14
+
+family terrace
+  name Terrace Row
+  climate temperate cold wet
+  tech low mid high
+  era any
+  weight 2
+  storeys 2:3 3:2
+  plan row:1
+  roof gable:3 mansard:2 hip:1 flat:1
+  cover slate:3 tile:2
+  wall brick:4 render:2 board:1 stone:1
+  window plain:3 shutters:1 tall:1
+  overhang 1:1
+  bay 0.5
+  dormer 0.3
+  chimney 0.9
+  porch 0.4
+  garage none:1
+  door panel:1
+  fence brickwall:3 railings:2 picket:1 renderlow:1 hedge:1 edging:1
+  units 3 5
+  unit 8 10
+  depth 10 14
+
+# ---- the rare odd ones: the same parts pushed further ----
+
+family wavehouse
+  name Wave-Roofed House
+  odd yes
+  tech mid high
+  weight 1
+  storeys 1:1 2:1
+  plan rect:1
+  roof wave:1
+  cover membrane:1 metal:1
+  wall render:2 panel:1
+  window tall:1
+  overhang 1:1
+  garage front:2 none:1
+  door glazed:1 ribbed:1
+  width 16 20
+  depth 10 12
+
+family watertower
+  name Water Tower House
+  odd yes
+  tech low mid high
+  weight 1
+  storeys 4:1
+  plan tower:1
+  roof hip:2 flat:1 gable:1
+  cover metal:2 tile:1
+  wall board:2 timber:1 panel:1
+  ground render:1
+  window plain:1
+  overhang 1:1
+  garage none:1
+  door timber:1
+  width 8 8
+  depth 8 8
+
+family hillside
+  name Hillside Home
+  odd yes
+  tech mid high
+  weight 1
+  storeys 1:1
+  plan rect:1
+  roof turf:1
+  berm 1
+  wall render:1 stone:1
+  window tall:1
+  overhang 0:1
+  garage none:1
+  door glazed:1
+  width 16 20
+  depth 10 12
+
+family mushroom
+  name Mushroom House
+  odd yes
+  tech low mid high
+  weight 1
+  storeys 1:2 2:1
+  plan round:1
+  roof cap:1
+  cover cap:1
+  wall render:1
+  window small:1
+  overhang 3:1
+  garage none:1
+  door timber:1
+  width 10 12
+  depth 10 12
+
+family saucer
+  name Saucer House
+  odd yes
+  tech high mid
+  weight 1
+  storeys 1:1
+  plan round:1
+  lift 1
+  roof dome:1
+  cover membrane:1 metal:1
+  wall panel:1
+  window tall:1
+  overhang 2:1
+  garage none:1
+  door glazed:1
+  width 12 14
+  depth 12 14
+
+family pod
+  name Pod House
+  odd yes
+  tech high mid
+  weight 1
+  storeys 1:1
+  plan oval:1
+  lift 1
+  roof dome:1
+  cover membrane:1 metal:1
+  wall panel:1
+  window tall:1
+  overhang 1:1
+  garage none:1
+  door glazed:1
+  width 14 16
+  depth 8 10
+
+family glasshell
+  name Glass Shell
+  odd yes
+  tech high
+  weight 1
+  storeys 1:1
+  plan round:1
+  roof glass:1
+  cover glass:1
+  wall glass:1
+  window tall:1
+  overhang 0:1
+  garage none:1
+  door glazed:1
+  width 12 16
+  depth 12 16
+
+# ---- fences: a part a street chooses, like the parts of its houses ----
+# A street takes one or two kinds most of its lots have, from its families' fence lines weighted by how well each
+# kind suits its weather, tech, purse and age; now and then a lot has an odd one out, and some lots have none. The
+# next street, or a better-off or poorer neighbourhood of the same town, picks again. A fence follows its lot's own
+# lines, meets at corners on one post, opens only for the path and the drive (gate posts either side, the gate
+# standing open) and is drawn in the player's shapes: thin panels between posts, walls, hedges, railings on a low
+# wall, or edging laid flat. Lines:
+#   fencekind <id>         starts one
+#   name <words>
+#   body panel|wall|hedge|railing|edging
+#   tall <cells>           1 waist-high, 2 a screen or wall over your head, 3 a compound wall (edging lies flat)
+#   stuff <material> [<posts' material>]   timber steel alloy rust concrete ceramic rock plant resin cloth
+#   paint <list>           white cream trim paint dark black stone brick render wall steel galv rust green
+#                          darkgreen olive bamboo wicker reed adobe silver grey wood (the street's own shades)
+#   post pillar|rib|pier|none [<every n m>]   posts (or a wall's piers) along it as well as at its ends and gates
+#   climate, tech, era, weight as for families; wealth <min> <max>: the purse that builds it
+#   enclose <chance>       it runs right round the plot; else along the front and down the side to the house
+
+fencekind picket
+  name Picket Fence
+  body panel
+  tall 1
+  stuff timber
+  paint white cream trim paint
+  post pillar 2
+  climate temperate cold wet
+  tech low mid
+  wealth 0.3 1
+  enclose 0.3
+
+fencekind lowboard
+  name Low Board Fence
+  body panel
+  tall 1
+  stuff timber
+  paint wood trim olive dark
+  post pillar 3
+  tech low mid
+  enclose 0.3
+
+fencekind boarded
+  name Close-Boarded Fence
+  body panel
+  tall 2
+  stuff timber
+  paint wood dark
+  post rib 2
+  climate temperate cold wet
+  tech low mid high
+  wealth 0.2 0.9
+  enclose 0.6
+
+fencekind wattle
+  name Wattle Hurdles
+  body panel
+  tall 1
+  stuff plant timber
+  paint wicker reed
+  post pillar 2
+  climate temperate cold wet
+  tech low
+  era old
+  wealth 0 0.7
+  enclose 0.4
+
+fencekind bamboo
+  name Bamboo Screen
+  body panel
+  tall 2
+  stuff plant timber
+  paint bamboo
+  post pillar 2
+  climate hot wet temperate
+  tech low mid
+  enclose 0.6
+
+fencekind woven
+  name Woven Reed Screen
+  body panel
+  tall 2
+  stuff plant timber
+  paint reed wicker
+  post pillar 3
+  climate hot wet
+  tech low mid
+  wealth 0 0.6
+  enclose 0.5
+
+fencekind chainlink
+  name Chain-Link Fence
+  body panel
+  tall 2
+  stuff steel
+  paint galv silver
+  post pillar 3
+  tech mid high
+  era new
+  wealth 0 0.6
+  enclose 0.7
+
+fencekind corrugated
+  name Corrugated Sheet Fence
+  body panel
+  tall 2
+  stuff rust timber
+  paint rust steel grey
+  post pillar 2
+  tech low mid
+  wealth 0 0.35
+  enclose 0.6
+
+fencekind drystone
+  name Dry Stone Wall
+  body wall
+  tall 1
+  stuff rock
+  paint stone
+  post none
+  climate temperate cold wet
+  tech low mid
+  era old
+  enclose 0.5
+
+fencekind brickwall
+  name Low Brick Wall
+  body wall
+  tall 1
+  stuff ceramic
+  paint brick
+  post pier 4
+  climate temperate cold wet
+  tech mid
+  wealth 0.3 1
+  enclose 0.2
+
+fencekind brickhigh
+  name Brick Garden Wall
+  body wall
+  tall 2
+  stuff ceramic
+  paint brick
+  post pier 4
+  climate temperate cold hot
+  tech mid
+  wealth 0.45 1
+  enclose 0.7
+
+fencekind renderlow
+  name Low Rendered Wall
+  body wall
+  tall 1
+  stuff concrete
+  paint render wall
+  post none
+  climate hot temperate wet
+  tech low mid high
+  enclose 0.3
+
+fencekind renderhigh
+  name Rendered Privacy Wall
+  body wall
+  tall 2
+  stuff concrete
+  paint render wall adobe
+  post pier 5
+  climate hot temperate
+  tech mid high
+  wealth 0.3 1
+  enclose 0.8
+
+fencekind compound
+  name Compound Wall
+  body wall
+  tall 3
+  stuff concrete
+  paint render wall adobe
+  post none
+  climate hot temperate
+  tech low mid high
+  enclose 1
+
+fencekind railings
+  name Iron Railings on a Low Wall
+  body railing
+  tall 2
+  stuff rock
+  paint stone render brick
+  post pier 4
+  climate temperate cold wet
+  tech mid high
+  era old
+  wealth 0.5 1
+  enclose 0.2
+
+fencekind hedge
+  name Hedge
+  body hedge
+  tall 1
+  stuff plant
+  paint green darkgreen olive
+  climate temperate wet cold
+  tech low mid high
+  enclose 0.5
+
+fencekind hedgehigh
+  name Tall Hedge
+  body hedge
+  tall 2
+  stuff plant
+  paint darkgreen green
+  climate temperate wet
+  tech mid high
+  wealth 0.4 1
+  enclose 0.7
+
+fencekind edging
+  name Stone Edging
+  body edging
+  stuff rock
+  paint stone grey
+  tech low mid high
+  enclose 0
+
+fencekind kerb
+  name Concrete Kerb
+  body edging
+  stuff concrete
+  paint grey render
+  tech mid high
+  era new
+  enclose 0

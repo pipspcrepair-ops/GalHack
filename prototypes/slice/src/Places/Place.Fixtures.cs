@@ -110,6 +110,8 @@ public partial class Place
                 // the leaf's faces (the seam prouder than the band it crosses) and stops short of its ends, top
                 // and bottom: no face of one lies in a face of another, where the two would flicker.
                 float band = half - 2f * Inset;
+                // A house's door is a plain timber leaf (Mesher's rule too): no hazard band on a home.
+                if (b0.Material != PoiGenerator.Gen.Material.Timber)
                 leaf.AddChild(new MeshInstance3D
                 {
                     Mesh = new BoxMesh { Size = alongX ? new Vector3(band, blast ? 0.4f : 0.2f, thick + 0.02f) : new Vector3(thick + 0.02f, blast ? 0.4f : 0.2f, band) },

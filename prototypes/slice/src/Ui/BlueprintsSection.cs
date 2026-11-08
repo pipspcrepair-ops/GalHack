@@ -48,6 +48,8 @@ public sealed class BlueprintsSection : IMenuSection
 
     public const string NameBox = "blueprint-name";
     const float RowH = 38f;
+    /// <summary>The bottom of the library's column, left clear for the alerts' row (the toolbar's line at the far left).</summary>
+    const float AlertsRoom = 140f;
 
     public BlueprintsSection(Game.Game game) => _game = game;
     public Vector2 PreferredSize => new(1560, 790);
@@ -107,7 +109,7 @@ public sealed class BlueprintsSection : IMenuSection
 
     void List(Gui g, Rect2 r)
     {
-        var list = new Rect2(r.Position, new Vector2(r.Size.X, r.Size.Y - 128));
+        var list = new Rect2(r.Position, new Vector2(r.Size.X, r.Size.Y - 128 - AlertsRoom));
         var rows = new List<(string caption, LibraryEntry entry)>();
         void Group(string caption, IEnumerable<LibraryEntry> entries)
         {
@@ -151,14 +153,14 @@ public sealed class BlueprintsSection : IMenuSection
         }
         if (rows.Count > fits) g.TextIn($"{_scroll + 1}-{Math.Min(rows.Count, _scroll + fits)} / {rows.Count}", new Rect2(list.Position.X, list.End.Y - 2, list.Size.X, 18), C.Dim, 12, HorizontalAlignment.Right, UiTheme.Mono);
 
-        // SAVE: what it would keep, and the button.
-        float top = r.End.Y - 110;
+        // SAVE: what it would keep, and the button, above the alerts' row at the bottom left.
+        float top = r.End.Y - 110 - AlertsRoom;
         g.Caption("SAVE", new Vector2(r.Position.X, top), r.Size.X);
         Vessel t = _target;
         g.Text("TARGET", new Vector2(r.Position.X, top + 36), C.Dim, 14);
         g.TextIn(t == null ? "-" : $"{t.Name.ToUpperInvariant()} · {(BuildingBridge.IsSmall(t.Structure) ? "SMALL" : "LARGE")}",
             new Rect2(r.Position.X + 80, top + 30, r.Size.X - 80, 26), t == null ? C.Dim : C.Text, 15, HorizontalAlignment.Right, UiTheme.Mono);
-        if (g.Button("bp:save", new Rect2(r.Position.X, r.End.Y - 50, r.Size.X, 48), "SAVE", C.Accent, enabled: t != null, size: 20)) OpenSave();
+        if (g.Button("bp:save", new Rect2(r.Position.X, top + 60, r.Size.X, 48), "SAVE", C.Accent, enabled: t != null, size: 20)) OpenSave();
     }
 
     static string SizeText(LibraryEntry e) => $"{e.Size.X:0.#}x{e.Size.Y:0.#}x{e.Size.Z:0.#} m";

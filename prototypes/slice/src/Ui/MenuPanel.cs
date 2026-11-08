@@ -33,12 +33,6 @@ public abstract partial class MenuPanel : Control
     /// <summary>The canvas it is laid out in, design units.</summary>
     public abstract Vector2 DesignSize { get; }
 
-    /// <summary>
-    /// A strip of this panel (design units) that nothing on any of its pages uses, where the hazard alerts
-    /// are shown while the panel is open so they never cover its content. Null: the panel has none.
-    /// </summary>
-    public virtual Rect2? AlertStrip => null;
-
     /// <summary>Lays out the whole panel.</summary>
     protected abstract void Build(Gui g, Rect2 area);
 

@@ -142,7 +142,7 @@ public sealed class Gui
     public readonly List<(string Text, Rect2 Box, bool Overflow)> Texts = new();
     readonly List<(string Text, Rect2 Box, bool Overflow)> _texts = new();
 
-    /// <summary>Every panel and backing filled in the last input pass (tests: nothing may sit on the alerts' strip).</summary>
+    /// <summary>Every panel and backing filled in the last input pass (tests: nothing may sit on the alerts' row).</summary>
     public readonly List<Rect2> Fills = new();
     readonly List<Rect2> _fills = new();
 

@@ -16,8 +16,10 @@ public readonly record struct PlantedFlora(Flora Kind, double X, double Z, float
 /// <summary>
 /// One mesh's instances in a far chunk. Plant is the species' index in the world's herbarium (-1:
 /// a rock, drawn with its kind's fixed mesh) and Variant which of its near meshes (-1: its far mesh).
+/// Far: the far drawing of large plants, which a level-0 chunk carries beside the near one so the two
+/// dissolve into each other by distance (flora.gdshader); a coarser chunk carries only it.
 /// </summary>
-public readonly record struct FloraBatch(Flora Kind, int Plant, int Variant, float[] Buffer, int Count)
+public readonly record struct FloraBatch(Flora Kind, int Plant, int Variant, float[] Buffer, int Count, bool Far = false)
 {
     public void Deconstruct(out Flora kind, out float[] buffer, out int count)
     {
@@ -387,7 +389,7 @@ public static class FarBuilder
         if (solids != null) job.Solids = new List<FloraSolid>();
         var rng = new Rng(Hash.Of(pal.Map.Spec.Seed, job.Fx, job.Fz, 0x5CA7));
         var clump = new Fractal(Hash.Of(pal.Map.Spec.Seed, 0x636C756D), 70, 3);
-        var buffers = new Dictionary<(Flora Kind, int Plant, int Variant), List<float>>();
+        var buffers = new Dictionary<(Flora Kind, int Plant, int Variant, bool Far), List<float>>();
         PlanetFlora book = pal.Flora;
         double x0 = job.Fx * (double)Size, z0 = job.Fz * (double)Size;
         for (int gj = 0; gj < cellsZ; gj++)
@@ -404,7 +406,9 @@ public static class FarBuilder
             {
                 if (Dug(dug, (int)Math.Floor(tree.X), (int)Math.Floor(tree.Z))) continue; // the ground went from under it: gone, as any tree
                 float tx = (float)(tree.X - x0), tz = (float)(tree.Z - z0), treeY = tree.Foot - FloraSolidRules.Sink;
-                Add(tree.Kind, tree.Species, job.Lod > 0 ? -1 : 0, tx, treeY, tz, new Basis(Vector3.Up, tree.Angle).Scaled(new Vector3(tree.Scale, tree.Scale, tree.Scale)), tree.Tint, 0f);
+                var treeBasis = new Basis(Vector3.Up, tree.Angle).Scaled(new Vector3(tree.Scale, tree.Scale, tree.Scale));
+                if (job.Lod == 0) Add(tree.Kind, tree.Species, 0, tx, treeY, tz, treeBasis, tree.Tint, 0f, far: false);
+                Add(tree.Kind, tree.Species, -1, tx, treeY, tz, treeBasis, tree.Tint, 0f, far: true);
                 solids?.MakeAll(tree.Kind, tree.Species, 0, id, new Vector3((float)tree.X, treeY, (float)tree.Z), tree.Scale, tree.Angle, job.Solids);
                 continue;
             }
@@ -427,7 +431,9 @@ public static class FarBuilder
                     break;
                 }
             }
-            if (job.Lod > 0 && (!FloraMeshes.IsLarge(rule.Kind) || shade > 0.6f)) continue;
+            // Large growth has a far drawing (every level carries it); small growth only a near one (level 0).
+            bool hasFar = FloraMeshes.IsLarge(rule.Kind);
+            if (job.Lod > 0 && !hasFar) continue;
 
             // What grows here: the world's own species of this kind, for this biome and region. Rocks stay rocks.
             Plant plant = book?.Pick(rule.Kind, biome, x, z, kin);
@@ -446,7 +452,7 @@ public static class FarBuilder
             float built = source.Built(x, z, out bool onRoad);
             bool large = FloraMeshes.IsLarge(rule.Kind);
             if ((onRoad || built > 0f)
-                && !(onRoad && built <= 0f && !large && shade < 0.4f && source.OnRoad(x, z, out float wear) && wear > 0.6f)
+                && !(onRoad && built <= 0f && !large && shade < 0.4f && source.GrowsOnRoad(x, z))
                 && !(source.OnWild(x, z, out float wild) && (!large || wild > 0.7f))
                 && !(!onRoad && built < 1f && Feather(turn) >= Smooth(large ? 0.1f : 0.4f, large ? 0.55f : 0.95f, built))) continue;
 
@@ -475,18 +481,19 @@ public static class FarBuilder
             if (lean > 0.01f && slope > 0f)
                 basis = new Basis(new Vector3(-gz, 0f, gx) / slope, -MathF.Atan(lean)) * basis;
 
-            int variant = plant == null ? 0 : job.Lod > 0 ? -1 : (int)(kin * 977f) % plant.Near.Length;
-            Add(rule.Kind, plant, variant, lx, rootY, lz, basis, tint, glow);
+            if (job.Lod == 0) Add(rule.Kind, plant, plant == null ? 0 : (int)(kin * 977f) % plant.Near.Length, lx, rootY, lz, basis, tint, glow, far: false);
+            // A share of the large thins out sooner far off (it was the share the far levels used to leave out).
+            if (hasFar) Add(rule.Kind, plant, plant == null ? 0 : -1, lx, rootY, lz, basis, tint, glow + (shade > 0.6f ? 2f : 0f), far: true);
 
             // Trunks, stalks, pipes, shards and boulders are solid: their colliders, in planet coordinates, round
             // the parts of the near mesh this one draws (whatever the level of detail draws from here).
             solids?.MakeAll(rule.Kind, plant, plant == null ? 0 : (int)(kin * 977f) % plant.Near.Length, id, new Vector3((float)x, rootY, (float)z), scale, angle, job.Solids);
         }
-        foreach (var (key, list) in buffers) job.Flora.Add(new FloraBatch(key.Kind, key.Plant, key.Variant, list.ToArray(), list.Count / 16));
+        foreach (var (key, list) in buffers) job.Flora.Add(new FloraBatch(key.Kind, key.Plant, key.Variant, list.ToArray(), list.Count / 16, key.Far));
 
-        void Add(Flora kind, Plant plant, int variant, float lx, float y, float lz, Basis basis, Rgb tint, float glow)
+        void Add(Flora kind, Plant plant, int variant, float lx, float y, float lz, Basis basis, Rgb tint, float glow, bool far)
         {
-            var key = (kind, plant?.Index ?? -1, plant == null ? 0 : variant);
+            var key = (Kind: kind, Plant: plant?.Index ?? -1, Variant: plant == null ? 0 : variant, Far: far);
             if (!buffers.TryGetValue(key, out List<float> list)) buffers[key] = list = new List<float>();
             // MultiMesh layout: a 3x4 row-major transform, then four custom floats (tint and glow).
             list.Add(basis.X.X); list.Add(basis.Y.X); list.Add(basis.Z.X); list.Add(lx);

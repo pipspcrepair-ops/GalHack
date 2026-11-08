@@ -27,6 +27,12 @@ public partial class StructureMesh : Node3D
     /// <summary>Runs first thing each frame: the vessel applies the frame's hits.</summary>
     public System.Action BeforeDraw;
 
+    /// <summary>Whether the structure has power, asked a few times a second: its devices' lights and screens dim without it. Null: always powered.</summary>
+    public System.Func<bool> PowerSource;
+
+    /// <summary>Whether its devices show power now (the shader's per-chunk <c>powered</c>).</summary>
+    public bool Powered { get; private set; } = true;
+
     /// <summary>Sparks, chips, marks and smoke on this structure.</summary>
     public DamageFx Fx { get; private set; }
 
@@ -79,7 +85,11 @@ public partial class StructureMesh : Node3D
         int rebuilt = Rebuilt, queued = _waiting.Count;
         BeforeDraw?.Invoke();
         // Blocks shot away let daylight in: redone a few times a second, not once a hit.
-        if ((_sinceLit += delta) > 0.25) Relight();
+        if ((_sinceLit += delta) > 0.25)
+        {
+            Relight();
+            if (PowerSource != null && PowerSource() != Powered) SetPowered(!Powered);
+        }
         if (_waiting.Count > 0) DrainQueue();
         if (Rebuilt != rebuilt || queued > 0) LastFrameMs = (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
     }
@@ -98,6 +108,13 @@ public partial class StructureMesh : Node3D
             Rebuild(c, colliders: false);
             done++;
         }
+    }
+
+    /// <summary>Its devices' lights and screens dim or light up together: one value per chunk, nothing rebuilt.</summary>
+    void SetPowered(bool on)
+    {
+        Powered = on;
+        foreach (MeshInstance3D m in _chunks.Values) m.SetInstanceShaderParameter("powered", on ? 1f : 0f);
     }
 
     /// <summary>If the structure changed, floods it again and queues the chunks whose light moved.</summary>
@@ -134,6 +151,7 @@ public partial class StructureMesh : Node3D
         {
             mesh = new MeshInstance3D { Name = $"Chunk{chunk.X}_{chunk.Y}_{chunk.Z}" };
             AddChild(mesh);
+            if (!Powered) mesh.SetInstanceShaderParameter("powered", 0f);
             _chunks[chunk] = mesh;
         }
         ChunkMesher.Build(Structure, chunk, _scratch, colliders);

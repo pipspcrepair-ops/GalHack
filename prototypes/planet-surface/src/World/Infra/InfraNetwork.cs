@@ -44,6 +44,12 @@ public sealed class InfraRoute
     public double Length;
     /// <summary>A maglev: the whole line rides an elevated guideway.</summary>
     public bool Maglev;
+    /// <summary>
+    /// A graded dirt road: a road nobody paved, its own ground scraped wide and level, the spoil left in a berm
+    /// along each side. Every road of a world that never paved one, and haul roads out to mines, farms and
+    /// works that only served those.
+    /// </summary>
+    public bool Graded;
     /// <summary>A waterfront road: the side its seawall stands on (+1 left of its way, -1 right, 0 none); the ground past the wall drops to the water.</summary>
     public int WallSide;
 
@@ -175,6 +181,12 @@ public sealed class InfraNetwork
     };
 
     public static float HalfWidthOf(RouteKind k) => k switch { RouteKind.Highway => 7f, RouteKind.Road => 4f, RouteKind.Track => 2.2f, _ => 2.6f };
+    /// <summary>A graded road's half width: wider than a paved road of its class, for the grader's two passes and the drift at its edges.</summary>
+    public const float GradedHalfWidth = 4.6f;
+
+    /// <summary>A place out in the country that a haul road served: a mine, a farm or a works, not a town.</summary>
+    static bool Rural(PoiSite p) => p != null && p.Tier is not (PoiTier.Town or PoiTier.City or PoiTier.Spaceport)
+        && (p.Family.Tags.Contains("mine") || p.Family.Tags.Contains("farm") || p.Family.Tags.Contains("industry"));
 
     static StampSurface SurfaceOf(RouteKind k, TechLevel t) => (k, t) switch
     {
@@ -912,6 +924,7 @@ public sealed class InfraNetwork
     {
         _narrowed = false;
         List<(double X, double Z)> smooth = Resample(Smooth(pts, keepStart, keepEnd), Spacing);
+        if (kind == RouteKind.Track) return StraightenFlats(router, smooth);
         if (kind is not (RouteKind.Highway or RouteKind.Road) || pts.Count < 4) return smooth;
         bool highway = kind == RouteKind.Highway;
         // Paved roads never hairpin: a crowded corner gives way only to its class's least radius, and a run
@@ -944,6 +957,64 @@ public sealed class InfraNetwork
         // Squeezed between places too closely to keep a paved road's curves, it was only ever a lane.
         _narrowed = tight;
         return eased;
+    }
+
+    /// <summary>Ground steeper than this (rise over run) is a hill to a track: there it keeps the land's winding line, and may switch back.</summary>
+    public const float TrackHill = 0.07f;
+
+    /// <summary>
+    /// A track follows the land: across flat ground it runs straight from where it must turn to where it must
+    /// (whatever made it took the short way when nothing stopped it), and up a hill it keeps the land's winding
+    /// line, the only place it may switch back. Runs of flat ground 60 m and longer become straights joined by
+    /// easy curves; the first and last 24 m (the way out of a gate, into a junction) stay as they are.
+    /// </summary>
+    List<(double X, double Z)> StraightenFlats(Router router, List<(double X, double Z)> path)
+    {
+        int n = path.Count;
+        const int Keep = 6, Least = 15;
+        if (n < Keep * 2 + Least) return path;
+        var flat = new bool[n];
+        for (int i = 0; i < n; i++)
+        {
+            double x = Mathx.WrapX(path[i].X, _w), z = Mathx.Wrap(path[i].Z, _h);
+            float c = router.Ground(x, z, 2, out bool wet, out _);
+            float gx = router.Ground(Mathx.WrapX(x + 8, _w), z, 2, out _, out _) - c, gz = router.Ground(x, Mathx.Wrap(z + 8, _h), 2, out _, out _) - c;
+            flat[i] = !wet && Math.Sqrt(gx * gx + gz * gz) / 8 < TrackHill;
+        }
+        var result = new List<(double X, double Z)>(n);
+        bool changed = false;
+        for (int k = 0; k < n;)
+        {
+            int j = k;
+            while (j < n && flat[j] == flat[k]) j++;
+            int a = Math.Max(k, Keep), b = Math.Min(j, n - Keep);
+            if (flat[k] && b - a >= Least)
+            {
+                // The run's own ends and a point 12 m in from each: the straights leave the way the track came in.
+                var land = new List<(double X, double Z)> { path[a] };
+                for (int i = a + 3; i <= b - 4; i++) land.Add(path[i]);
+                land.Add(path[b - 1]);
+                List<(double X, double Z)> corners = Straights(router, land, 18, 60, 1, 1, 14);
+                List<(double X, double Z)> sweep = Sweep(corners, 40, 10, Math.PI * 0.9, out _);
+                if (sweep != null)
+                {
+                    List<(double X, double Z)> laid = Resample(sweep, Spacing);
+                    if (!laid.Any(q => router.Blocked(q.X, q.Z)))
+                    {
+                        for (int i = k; i < a; i++) result.Add(path[i]);
+                        result.AddRange(laid);
+                        for (int i = b; i < j; i++) result.Add(path[i]);
+                        changed = true;
+                        k = j;
+                        continue;
+                    }
+                }
+            }
+            for (int i = k; i < j; i++) result.Add(path[i]);
+            k = j;
+        }
+        // Where a straight meets the land's line again, one more easing, the ends kept.
+        return changed ? Resample(Smooth(result, Keep, Keep), Spacing) : path;
     }
 
     /// <summary>The tightest curve a paved road of a class takes; tracks may switch back as tight as they like.</summary>
@@ -1148,6 +1219,23 @@ public sealed class InfraNetwork
     /// <summary>Later routes go round this pad.</summary>
     public void KeepOff(TerrainStamp pad) => _router?.Block(pad, 12);
 
+    /// <summary>
+    /// The land's way between two points as a track would take it (round water and places, up the easy side of a
+    /// hill, along the roads where they go its way), continuous across the seams from <paramref name="from"/>; null
+    /// on a world with no network or where there's no way. For what follows the land without being a road (a spur of poles).
+    /// </summary>
+    public List<(double X, double Z)> LandWay((double X, double Z) from, (double X, double Z) to)
+    {
+        // (As a frontier world's would: never over open sea, where nothing stands.)
+        List<int> cells = _router?.Find(from, to, RouteKind.Track, TechLevel.Low);
+        if (cells == null) return null;
+        var pts = new List<(double X, double Z)> { from };
+        foreach (int c in cells.Skip(1).Take(Math.Max(0, cells.Count - 2))) pts.Add(_router.CellCentre(c));
+        pts.Add(to);
+        Unwrap(pts);
+        return Resample(Smooth(pts, 1, 1), Spacing);
+    }
+
     /// <summary>A spur from a point to the nearest route already laid (within a reach, leaving out some), found by the path engine. False if none.</summary>
     public bool Spur((double X, double Z) from, RouteKind kind, double reach, ICollection<InfraRoute> except = null)
     {
@@ -1161,6 +1249,8 @@ public sealed class InfraNetwork
         pts.Add((near.X[at], near.Z[at]));
         Unwrap(pts);
         List<(double X, double Z)> path = Resample(Smooth(pts, 1, 0), Spacing);
+        // A paved spur (a city's way out to the network) is a street of its class: no corner tighter than a town's.
+        if (kind is RouteKind.Road or RouteKind.Highway) path = Ease(_router, path, TownRadius(kind) * 1.3, 1, 1, out _);
         var pins = new List<(int Index, float Y)>();
         if (Snap(near, path[^1], out var p1, out float y1)) { path[^1] = p1; ClearEnd(path); pins.Add((path.Count - 1, y1)); }
         InfraRoute route = Build(_router, path, pins, kind, null, null, -1, -1, _rng);
@@ -1429,13 +1519,20 @@ public sealed class InfraNetwork
 
         bool kept = (a != null && (a.FactionHeld || a.Family.Tags.Contains("settlement") && a.Instance.State == PoiState.Active))
                     || (b != null && (b.FactionHeld || b.Family.Tags.Contains("settlement") && b.Instance.State == PoiState.Active));
+        // Never paved: every road on a world that paved none, and a haul road out to what only it served.
+        bool graded = kind == RouteKind.Road && (Profile.Before == TechLevel.Low || Rural(a) && (b == null || Rural(b)));
         var route = new InfraRoute
         {
             Id = Routes.Count, Kind = kind, Tech = Profile.Before, HalfWidth = HalfWidthOf(kind), Surface = SurfaceOf(kind, Profile.Before),
             Kept = kept, Wear = kept ? 0.18f : 0.75f + rng.Float() * 0.2f, Maglev = maglev,
             X = path.Select(p => p.X).ToArray(), Z = path.Select(p => p.Z).ToArray(), Y = deck, Span = spans,
-            FromGate = gateA, ToGate = gateB, Laid = _laid,
+            FromGate = gateA, ToGate = gateB, Laid = _laid, Graded = graded,
         };
+        if (graded)
+        {
+            route.HalfWidth = GradedHalfWidth;
+            route.Surface = StampSurface.Dirt;
+        }
         _laid = "";
         for (int i = 0; i + 1 < n; i++) route.Length += Math.Sqrt((route.X[i + 1] - route.X[i]) * (route.X[i + 1] - route.X[i]) + (route.Z[i + 1] - route.Z[i]) * (route.Z[i + 1] - route.Z[i]));
         Routes.Add(route);
@@ -1607,7 +1704,7 @@ public sealed class InfraNetwork
                 bool ground = false;
                 for (int i = s; i < e; i++) { spans.Add(r.Span[i]); ground |= r.Span[i] != RoadSpan.Bridge; }
                 if (!ground) continue;
-                list.Add(TerrainStamp.Road($"{r.Kind} {r.Id}{(r.Laid.Length == 0 ? " street" : "")}", new ArraySegment<double>(r.X, s, e - s + 1), new ArraySegment<double>(r.Z, s, e - s + 1),
+                list.Add(TerrainStamp.Road($"{(r.Graded ? "Graded" : r.Kind.ToString())} {r.Id}{(r.Laid.Length == 0 ? " street" : "")}", new ArraySegment<double>(r.X, s, e - s + 1), new ArraySegment<double>(r.Z, s, e - s + 1),
                     new ArraySegment<float>(r.Y, s, e - s + 1), spans, r.HalfWidth, r.Surface, r.Wear, _w, _h,
                     boreHalfWidth: r.HalfWidth + 1.2f, boreHeight: r.Kind == RouteKind.Rail ? 7f : 6.5f,
                     buckle: r.Kept || r.Kind == RouteKind.Rail || r.Surface is StampSurface.Dirt or StampSurface.Gravel ? 0f : 0.22f * r.Wear,
@@ -1825,7 +1922,7 @@ public sealed class InfraNetwork
         /// <summary>The cells of the cheapest path between two points, or null.</summary>
         public List<int> Find((double X, double Z) from, (double X, double Z) to, RouteKind kind, TechLevel tech)
         {
-            int start = Free(from), goal = Free(to);
+            int start = Free(from, to), goal = Free(to, from);
             if (start < 0 || goal < 0) return null;
             foreach (int t in _touched) { _cost[t] = float.PositiveInfinity; _closed[t] = false; }
             _touched.Clear();
@@ -1896,7 +1993,7 @@ public sealed class InfraNetwork
         /// <summary>Whether the sea parts two points: no way between them over land (rivers can be bridged).</summary>
         public bool SeaBetween((double X, double Z) a, (double X, double Z) b)
         {
-            int start = Free(a), goal = Free(b);
+            int start = Free(a, b), goal = Free(b, a);
             if (start < 0 || goal < 0) return false;
             var seen = new bool[_nx * _nz];
             var queue = new Queue<int>();
@@ -1919,18 +2016,32 @@ public sealed class InfraNetwork
         }
 
         /// <summary>The cell of a point, or the nearest free one within a few cells.</summary>
-        int Free((double X, double Z) p)
+        /// <summary>
+        /// The open cell a search starts or ends at for a point: its own, or where it lies on a place's keep-off ground
+        /// (a gate's way out), the nearest open cell to it, and of two as near the one toward the other end. (Taking the
+        /// first open cell of each ring as scanned leaned every way out toward one corner of the map: a track left its
+        /// gate aslant and turned back on itself on the flat.)
+        /// </summary>
+        int Free((double X, double Z) p, (double X, double Z)? toward = null)
         {
             int k = Index(p.X, p.Z);
             if (!_blocked[k]) return k;
-            for (int r = 1; r <= 4; r++)
-            for (int dz = -r; dz <= r; dz++)
-            for (int dx = -r; dx <= r; dx++)
+            int best = -1;
+            double least = double.MaxValue;
+            for (int dz = -4; dz <= 4; dz++)
+            for (int dx = -4; dx <= 4; dx++)
             {
                 int m = Index(p.X + dx * Cell, p.Z + dz * Cell);
-                if (!_blocked[m]) return m;
+                if (_blocked[m]) continue;
+                double d = dx * dx + dz * dz;
+                if (toward is { } t)
+                {
+                    double tx = Mathx.WrapDelta(t.X - (p.X + dx * Cell), _w), tz = Mathx.WrapDelta(t.Z - (p.Z + dz * Cell), _h);
+                    d += 1e-4 * Math.Sqrt(tx * tx + tz * tz) / Cell;
+                }
+                if (d < least) { least = d; best = m; }
             }
-            return -1;
+            return best;
         }
     }
 }

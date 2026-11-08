@@ -113,6 +113,7 @@ public sealed partial class Staging
             "horizon" => HorizonView(),
             "loadrun" => LoadRun(),
             "approach" => ApproachView(),
+            "popin" => PopInView(),
             "husk-grab" => HuskGrab(),
             "newgame" => NewGameShots(),
             "galaxy-depth" => GalaxyDepth(),
@@ -122,6 +123,7 @@ public sealed partial class Staging
             "icons-bag" => IconBagView(),
             "icons-sheet" => IconSheetView(),
             "icons-hands" => IconHandsView(),
+            "blockdetail" => BlockDetailView(),
             _ => ProofViews(view),
         };
         foreach (int x in script) yield return x;
