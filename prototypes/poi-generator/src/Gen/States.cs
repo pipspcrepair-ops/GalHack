@@ -739,6 +739,7 @@ public static class Structure
         foreach (var (c, b) in g.Blocks().ToList())
         {
             if (b.Type != BlockType.Ladder || g.Get(c + Int3.Down).Type == BlockType.Ladder) continue; // each run from its foot
+            if (b.Role == Role.Decor) continue; // railings and gate leaves: bars along their line, not a ladder up a wall
             var run = new List<Int3>();
             for (Int3 p = c; g.Get(p).Type == BlockType.Ladder; p += Int3.Up) run.Add(p);
             Dir back = (b.Facing is Dir.Up or Dir.Down ? Dir.South : b.Facing).Opposite();
