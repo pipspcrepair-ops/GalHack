@@ -92,7 +92,10 @@ public partial class OccupantTest
         int cleanOk = 0, taintOk = 0;
         foreach (string fall in new[] { "slow_fade", "civil_war", "plague" })
         {
+            // A world of that fall whose other layers left its water alone: mutagen patches or mutants (a mutagen of 0.5 or
+            // more) foul any world's water, whatever its fall, and a fresh roll can bring them.
             WorldLife life = Life(fall);
+            for (int i = 0; i < 20 && (life.World.Mutagen >= 0.5f || life.World.Radiation >= 2f); i++) life = Life(fall);
             if (Schools.Clean(Archetype.Temperate, life.World, null)) cleanOk++;
         }
         foreach (string fall in new[] { "nuclear_war", "chemical_war", "industrial_collapse" })
