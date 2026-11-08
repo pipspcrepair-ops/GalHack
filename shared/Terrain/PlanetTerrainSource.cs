@@ -53,6 +53,9 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
     public float WaterLevel => 0f;
     public IReadOnlyList<PoiSite> PointsOfInterest { get; }
 
+    /// <summary>The made ground the terrain shader paints round the places (yards, aprons, car parks, paths), planned with the world; empty without it.</summary>
+    public IReadOnlyList<GroundPatch> Grounds { get; set; } = Array.Empty<GroundPatch>();
+
     readonly PeriodicNoise _caveA, _caveB, _caveRegion, _soil, _ore;
     readonly float _soilBase;
     readonly ConcurrentDictionary<long, Lazy<Column>> _columns = new();
@@ -228,7 +231,7 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
         foreach (int i in StampsAt(x, z))
         {
             TerrainStamp t = Stamps[i];
-            if (t.Shape is not (StampShape.Pad or StampShape.Road) || !roads && t.Shape == StampShape.Road) continue;
+            if (t.Shape is not (StampShape.Pad or StampShape.Road) || !roads && t.Shape == StampShape.Road || t.Painted) continue;
             float w = t.Weight(x, z);
             if (w <= weight) continue;
             weight = w;
@@ -255,6 +258,29 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
         return road;
     }
 
+    /// <summary>
+    /// Whether low cover (grass, tussocks, scrub) grows at a point on a road: anywhere on one nobody has kept up
+    /// for a century, and on a track the crown between its wheel ruts and its ragged edges, where nothing
+    /// drives. False off the roads and on any place's pad.
+    /// </summary>
+    public bool GrowsOnRoad(double x, double z)
+    {
+        bool road = false;
+        foreach (int i in StampsAt(x, z))
+        {
+            TerrainStamp t = Stamps[i];
+            if (t.Shape == StampShape.Pad && t.Weight(x, z) > 0f) return false;
+            if (t.Shape != StampShape.Road || t.Weight(x, z) <= 0f) continue;
+            road = true;
+            if (t.Wear > 0.6f) continue;
+            if (t.Name.StartsWith("Track") && t.NearestOnPath(x, z, out float d, out _, out _) && (d < TrackCrown || d > t.HalfWidth - 0.35f)) continue;
+            return false;
+        }
+        return road;
+    }
+
+    /// <summary>Half the crown a track keeps between its wheel ruts, m (the shader's ruts run either side of it).</summary>
+    public const float TrackCrown = 0.4f;
     /// <summary>Whether a point is on open ground a stamp levelled but built nothing on (<see cref="TerrainStamp.Wild"/>, a park), off every road and other pad, and how worn it is.</summary>
     public bool OnWild(double x, double z, out float wear)
     {
@@ -269,6 +295,33 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
             wear = Math.Max(wear, t.Wear);
         }
         return wild;
+    }
+
+    /// <summary>
+    /// How far into a place's ground a point lies, for what may grow there: 2 on a place's footprint (where it stands),
+    /// its pads' weight elsewhere (1 on the apron, easing to 0 across the blend, whose outer reaches are the land's
+    /// own, only cut and filled), 0 off every pad; and whether a road's deck or shoulder covers it. Parks (wild pads)
+    /// and buried works don't count: plants go on over them as they were.
+    /// </summary>
+    public float Built(double x, double z, out bool road)
+    {
+        road = false;
+        float pad = 0f;
+        foreach (int i in StampsAt(x, z))
+        {
+            TerrainStamp t = Stamps[i];
+            if (t.Shape == StampShape.Road)
+            {
+                if (!road && t.Weight(x, z) > 0f) road = true;
+                continue;
+            }
+            if (t.Wild || t.Shape == StampShape.Buried) continue;
+            float w = t.Weight(x, z);
+            if (w <= 0f) continue;
+            if (t.Shape == StampShape.Pad && t.OnFootprint(x - 0.5, z - 0.5)) return 2f;
+            pad = Math.Max(pad, w);
+        }
+        return pad;
     }
 
     /// <summary>How much any stamp covers a point (0 none, 1 on a pad).</summary>

@@ -498,8 +498,9 @@ public sealed class WeatherSim
             if (Time < s.WarningAt || Time >= s.End) continue;
             // As it will be here: a tornado storm over the mountains is a lightning storm, a blizzard on warm low ground no blizzard.
             WeatherKind kind = LocalKind(s.Kind, observer);
+            // Only a real hazard warns, and by its own sign: clear skies, clouds and fog never do.
+            if (SignOf(kind) == null) continue;
             WeatherState state = Data.State(kind);
-            if (!state.Severe) continue;
             double eta = s.Start - Time;
             string text = eta > 0 ? $"{state.Name} in {Clock(eta)}. {state.Warning}" : state.Warning;
             // Weather comes in on the wind: from upwind of the observer.
@@ -509,7 +510,11 @@ public sealed class WeatherSim
         }
     }
 
-    /// <summary>The sign a weather is warned with (the names of the game's sign set).</summary>
+    /// <summary>
+    /// The sign a weather is warned with (the names of the game's sign set), or null for weather that is
+    /// no danger on foot and so never warns: clear skies, clouds and fog. There is no generic sign to fall
+    /// back on: a hazard without a sign of its own gets one drawn.
+    /// </summary>
     public static string SignOf(WeatherKind kind) => kind switch
     {
         WeatherKind.Tornado => "tornado",
@@ -519,7 +524,7 @@ public sealed class WeatherSim
         WeatherKind.Blizzard or WeatherKind.Snow => "extreme_cold",
         WeatherKind.FireStorm => "fire",
         WeatherKind.Monsoon or WeatherKind.Rain => "flood",
-        _ => "hazard",
+        _ => null, // Clear, Clouds, Fog
     };
 
     // ---- Storm cells ------------------------------------------------------------------
@@ -1207,6 +1212,9 @@ public sealed class WeatherSim
 
     /// <summary>Removes every tornado at once (tests, screenshots).</summary>
     public void ClearTornadoes() => _tornadoes.Clear();
+
+    /// <summary>Calls off every strike that is coming (tests, screenshots).</summary>
+    public void ClearHazards() => _hazards.Clear();
 
     // ---- Wind -------------------------------------------------------------------------
 

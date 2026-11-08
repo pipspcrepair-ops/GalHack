@@ -340,6 +340,9 @@ public partial class SurfaceTest
         double pavedKm = 0, tightest = double.MaxValue;
         string firstOnRoad = "", firstTight = ""; var tightHow = new Dictionary<string, int>();
         int sharp = 0, sweepWorlds = 0, elbows = 0, elbowRoutes = 0, elbowsAtEnds = 0;
+        int tracks = 0, switchbacks = 0, flatBacks = 0, graded = 0;
+        double trackKm = 0;
+        string firstFlatBack = "";
         var elbowNotes = new List<string>();
         double worstElbow = 0;
         string firstElbow = "";
@@ -372,6 +375,35 @@ public partial class SurfaceTest
                     i += 4;
                 }
             }
+            // A track switches back only on steep ground: anywhere it turns about over 40 m, the land within 30 m climbs.
+            float Ground(double x, double z) => w.Source.SurfaceHeight(Mathx.WrapX(x, w.Width), Mathx.Wrap(z, w.Height));
+            foreach (InfraRoute r in (w.Infra?.Routes ?? new List<InfraRoute>()).Where(r => r.Kind == RouteKind.Track))
+            {
+                tracks++;
+                trackKm += r.Length / 1000;
+                for (int i = 8; i + 8 < r.Count; i++)
+                {
+                    double a0 = Math.Atan2(r.Z[i - 3] - r.Z[i - 5], r.X[i - 3] - r.X[i - 5]), a1 = Math.Atan2(r.Z[i + 5] - r.Z[i + 3], r.X[i + 5] - r.X[i + 3]);
+                    double turn = Math.Abs(Math.IEEERemainder(a1 - a0, Math.PI * 2)) * 180 / Math.PI;
+                    if (turn <= 100) continue;
+                    switchbacks++;
+                    double steepest = 0;
+                    for (int dx = -30; dx <= 30; dx += 10)
+                    for (int dz = -30; dz <= 30; dz += 10)
+                    {
+                        double x = r.X[i] + dx, z = r.Z[i] + dz;
+                        float c = Ground(x, z);
+                        steepest = Math.Max(steepest, Math.Max(Math.Abs(Ground(x + 6, z) - c), Math.Abs(Ground(x, z + 6) - c)) / 6);
+                    }
+                    if (steepest < InfraNetwork.TrackHill)
+                    {
+                        flatBacks++;
+                        if (firstFlatBack.Length == 0) firstFlatBack = $" (first: point {i} of {r.Count}, at {r.X[i]:F0},{r.Z[i]:F0}, {turn:F0} degrees over 40 m, steepest ground near {steepest:F3})";
+                    }
+                    i += 8;
+                }
+            }
+            graded += (w.Infra?.Routes ?? new List<InfraRoute>()).Count(r => r.Graded);
             foreach (InfraRoute r in (w.Infra?.Routes ?? new List<InfraRoute>()).Where(r => r.Kind is RouteKind.Road or RouteKind.Highway))
             {
                 paved++;
@@ -463,6 +495,7 @@ public partial class SurfaceTest
         }
         Check(paved > 0 && tight == 0, $"paved roads sweep: {paved} roads and highways, {pavedKm:F1} km, none tighter than its class's least (road {InfraNetwork.LeastRadius(RouteKind.Road)} m, highway {InfraNetwork.LeastRadius(RouteKind.Highway)} m; tightest {Math.Min(tightest, 1e6):F0} m), {tight} too tight ({string.Join(", ", tightHow.Select(k => $"{k.Value} {(k.Key.Length > 0 ? k.Key : "unlaid")}"))}){firstTight}");
         Check(elbows == 0, $"no road has a hard elbow: {elbowRoutes} roads, streets and tracks on {sweepWorlds} fresh worlds, none turning more than 60 degrees over 8 m (a town corner's curve); sharpest {worstElbow:F0}, {elbows} over ({elbowsAtEnds} within 40 m of an end: {string.Join("; ", elbowNotes)}){firstElbow}");
+        Check(tracks > 0 && flatBacks == 0, $"tracks follow the land, switching back only on steep ground: {tracks} tracks, {trackKm:F1} km on {sweepWorlds} fresh worlds, {switchbacks} switchbacks, {flatBacks} on flat ground{firstFlatBack}; {graded} graded dirt roads");
         Check(sharp == 0, $"paved roads turn gently: on {sweepWorlds} fresh worlds no 50 m of road outside a town turns more than {InfraNetwork.MostTurn50(RouteKind.Road):F0} degrees (highway {InfraNetwork.MostTurn50(RouteKind.Highway):F0}); sharpest {sharpest:F0}, {sharp} over{firstSharp}");
         Check(standing > 100 && onRoad == 0, $"poles and pylons stand off the roads: {standing} standing, {onRoad} on a road or railway bed{firstOnRoad}");
         Check(feetChecked >= 120 && floating == 0, $"every pylon foot meets the ground: {feetChecked} feet, {floating} floating or buried (worst {worst:F2} m above)");

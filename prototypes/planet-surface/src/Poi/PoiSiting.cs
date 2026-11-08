@@ -181,7 +181,7 @@ public static partial class PoiSiting
     public static WorldProfile WithRules(PoiLibrary lib, WorldMap map, WorldProfile profile, bool? startWorld = null, float depth = -1f)
     {
         WorldRoll roll = RollOf(lib, map, profile, startWorld, depth);
-        return roll == null ? profile : profile with { Barred = roll.Barred };
+        return roll == null ? profile : profile with { Barred = roll.Barred, Ruin = RuinAge.Of(roll) };
     }
 
     /// <summary>
@@ -205,7 +205,7 @@ public static partial class PoiSiting
         ThemeDef theme = ThemeParser.For(lib, spec.Archetype.ToString(), map.Def.VariantName.Replace(' ', '_'), start);
         // A world that was ever lived in is laid out by its plan; only the wild is scattered.
         WorldRoll roll = RollOf(lib, map, profile, start, depth);
-        if (roll != null) profile = profile with { Barred = roll.Barred };
+        if (roll != null) profile = profile with { Barred = roll.Barred, Ruin = RuinAge.Of(roll) };
         RegionPlan plan = null;
         if (roll != null) plan = RegionPlan.Make(lib, new PlanetLand(map, bare, pmap), roll, profile, GHash.Of(spec.Seed, 0x4E41), (landing.X, landing.Y), start);
         var world = WorldPlacement.Place(lib, pmap, theme, GHash.Of(spec.Seed, 0x504C4143), profile: profile);
@@ -366,6 +366,8 @@ public static partial class PoiSiting
         int lx0 = occupied.Min.X, lz0 = occupied.Min.Z, lx1 = occupied.Min.X + occupied.Size.X, lz1 = occupied.Min.Z + occupied.Size.Z;
         double halfX = (lx1 - lx0) * 0.5, halfZ = (lz1 - lz0) * 0.5;
         string want = Preference(family);
+        // Nobody set anything heavy on sand: a town, a base, a port, anything big or tall looks for firm ground.
+        bool heavy = PlanetSurface.World.Footing.Heavy(family.Tier, lx1 - lx0, lz1 - lz0, occupied.Min.Y + occupied.Size.Y);
         double width = map.WidthMeters, height = map.HeightMeters;
 
         double bestScore = double.MaxValue, bestX = 0, bestZ = 0;
@@ -376,6 +378,7 @@ public static partial class PoiSiting
         // A big place looks further for its ground, a wider step at a time.
         bool wide = Math.Max(halfX, halfZ) > 100;
         double search = wide ? SearchRadius * 2 : SearchRadius, step = wide ? 20 : 10;
+
         for (double dz = -search; dz <= search; dz += step)
         for (double dx = -search; dx <= search; dx += step)
         {
@@ -388,6 +391,8 @@ public static partial class PoiSiting
                 crowded |= Dist(cx, cz, (o.Stamp.MinX + o.Stamp.MaxX) * 0.5, (o.Stamp.MinZ + o.Stamp.MaxZ) * 0.5, width, height)
                            < Math.Max(140, Math.Max(o.Stamp.ReachX, o.Stamp.ReachZ) + Math.Max(halfX, halfZ) + Apron + 50); // stamps never pile up
             if (crowded) continue;
+            // Sand only where no firm ground lies within the search at all (the middle of a dune sea).
+            bool sandy = heavy && PlanetSurface.World.Footing.SandShare(map, cx, cz, halfX + Apron, halfZ + Apron) > 0.12f;
 
             // Ground across the footprint and apron.
             samples.Clear();
@@ -423,6 +428,7 @@ public static partial class PoiSiting
                 _ => cut * 2.0,
             };
             score += distance * 0.02;
+            if (sandy) score += 100000;
             if (score < bestScore)
             {
                 bestScore = score;

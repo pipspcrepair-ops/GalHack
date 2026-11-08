@@ -23,6 +23,8 @@ public sealed class HoverBike
     /// <summary>How high the underside rides above the surface, m.</summary>
     public const float Hover = 0.9f;
     public const float MaxSpeed = 26f, BoostSpeed = 38f, ReverseSpeed = 7f, Accel = 20f, Brake = 34f;
+    /// <summary>How hard an empty bike stops, m/s²: a rider who steps off a moving bike finds it a step away, not gliding off down the hill.</summary>
+    public const float ParkedBrake = 100f;
     public const float TurnRate = 1.7f; // rad/s at full lock
     /// <summary>The seated eye, above the underside and a little back, m.</summary>
     public static readonly Vector3 EyeAt = new(0f, 1.3f, 0.15f);
@@ -180,8 +182,10 @@ public sealed class HoverBike
         float max = boost ? BoostSpeed : MaxSpeed;
         if (throttle > 0f) vf = vf < max ? MathF.Min(max, vf + Accel * (boost ? 1.6f : 1f) * throttle * dt) : MathF.Max(max, vf - 12f * dt);
         else if (throttle < 0f) vf = MathF.Max(-ReverseSpeed, vf - (vf > 0f ? Brake : 10f) * -throttle * dt);
+        // Only on its cushion do its pads drag: in the air it flies as thrown.
+        else if (Grounded && !Ridden) vf = MathF.Abs(vf) <= ParkedBrake * dt ? 0f : vf - MathF.Sign(vf) * ParkedBrake * dt; // nobody on it: the pads drop and drag it to a stop
         else if (Grounded) vf *= MathF.Exp(-0.55f * dt);
-        if (Grounded) vs *= MathF.Exp(-3.2f * dt); // it drifts a little through a turn, then grips (only on its cushion: in the air it flies as thrown)
+        if (Grounded) vs *= MathF.Exp(-(Ridden ? 3.2f : 12f) * dt); // it drifts a little through a turn, then grips
         Vector3 move = fwd * vf + right * vs;
 
         // Ahead: a wall, a cliff or a trunk stops it (it slides along nothing: it just loses the speed).

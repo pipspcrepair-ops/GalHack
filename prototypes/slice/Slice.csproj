@@ -24,6 +24,8 @@
     <Compile Include="..\..\shared\Items\Bridge\**\*.cs" />
     <!-- The bestiary: everything that moves. -->
     <Compile Include="..\..\shared\Bestiary\**\*.cs" />
+    <!-- The backstop that ends a run which was told to quit and did not. -->
+    <Compile Include="..\..\shared\Testing\**\*.cs" />
 
     <!-- Pure cores. -->
     <Compile Include="..\terrain-digging\src\Terrain\**\*.cs" />
@@ -61,6 +63,7 @@
     <Compile Include="..\planet-surface\src\Poi\PoiLayer.cs" />
     <Compile Include="..\planet-surface\src\Poi\PoiLayerDeco.cs" />
     <Compile Include="..\planet-surface\src\Poi\PoiLayer.Tiers.cs" />
+    <Compile Include="..\planet-surface\src\Poi\PoiLayer.StandIn.cs" />
     <Compile Include="..\planet-surface\src\Poi\PoiLitFaces.cs" />
     <Compile Include="..\planet-surface\src\Infra\**\*.cs" />
     <Compile Include="..\..\shared\Deco\**\*.cs" />

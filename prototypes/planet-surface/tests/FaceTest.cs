@@ -61,7 +61,7 @@ public partial class FaceTest : Node
         }
         GD.Print($"total test time {watch.Elapsed.TotalSeconds:F1} s");
         GD.Print(_failures == 0 ? "ALL PASSED" : $"{_failures} CHECK(S) FAILED");
-        GetTree().Quit(_failures == 0 ? 0 : 1);
+        GalHack.Testing.Backstop.Quit(this, _failures == 0 ? 0 : 1);
     }
 
     void Check(bool ok, string what)

@@ -48,6 +48,9 @@ public partial class PoiLayer
         public Node3D Node;
         public MeshInstance3D Low;
         public float Distance;
+        /// <summary>How far its far mesh has dissolved into its buildings' merged blocks (0..1), and which way it is going (+1, -1, 0).</summary>
+        public float Blend;
+        public int Way;
     }
 
     readonly List<Tile> _tiles = new();
@@ -136,8 +139,8 @@ public partial class PoiLayer
                     l.DistanceFadeBegin = 500f;
                     l.DistanceFadeLength = 120f;
                 }
-            // A few fires still smoking over a city, not one in every building.
-            if (Hash.Cell(new Int3(p.Site.Origin.X, 0, p.Site.Origin.Z), 0x5E0) % 6 == 0) AddSmoke(p.Node, inst);
+            // (No smoke: a city fell long ago, and nothing in it still burns.)
+
             DressFromDecoLibrary(p.Node, inst);
             AddChild(p.Node);
         }
@@ -197,8 +200,25 @@ public partial class PoiLayer
         if (low.Position != at) low.Position = at;
     }
 
+    /// <summary>How long a place's far mesh and its merged blocks take to dissolve one into the other, s.</summary>
+    public const float BlendSeconds = 0.7f;
+
+    /// <summary>The focus's own speed and way, m/s (the game sets it): at speed places' merged blocks are started further out, the way you are going first.</summary>
+    public Vector3 Heading;
+
+    /// <summary>How many seconds of travel ahead merged blocks are started, and the most that adds, m.</summary>
+    const float AheadSeconds = 8f, MostAhead = 700f;
+
+    /// <summary>Nearer than this a place's far mesh never shows, m: you are all but in it.</summary>
+    const float InsideFar = 40f;
+
+    double _lastTick = -1;
+
     void TickTiers(Vector3 camera)
     {
+        double now = Time.GetTicksMsec() / 1000.0;
+        float dt = _lastTick < 0 ? 0f : (float)Mathf.Min(now - _lastTick, 0.1);
+        _lastTick = now;
         bool built = false;
         foreach (Place p in _places)
         {
@@ -216,10 +236,16 @@ public partial class PoiLayer
             built = true;
         }
         if (_midJob != null) WorkMid();
+        foreach (Place p in _blending) StepBlend(p, dt);
+        _blending.RemoveAll(p => p.Way == 0);
+        foreach (Tile t in _tilesBlending) StepBlend(t, dt);
+        _tilesBlending.RemoveAll(t => t.Way == 0);
         if (--_tierTimer > 0) return;
         _tierTimer = 12;
         Place next = null;
         float best = float.MaxValue;
+        float speed = new Vector2(Heading.X, Heading.Z).Length();
+        float ahead = Mathf.Min(speed * AheadSeconds, MostAhead);
         // A city's tiles come in whole: each building in one goes by the nearest of them.
         foreach (Tile t in _tiles)
         {
@@ -231,29 +257,54 @@ public partial class PoiLayer
         {
             if (p.Node == null) continue;
             Tile tile = _tileOf.GetValueOrDefault(p);
-            float d = tile?.Distance ?? Away(p, camera), radius = tile != null ? CityMidRadius : MidRadius, drop = tile != null ? CityMidDrop : MidDrop;
-            if (p.Mid != null && d > drop && p != _midJob)
+            float d = tile?.Distance ?? Away(p, camera), radius = (tile != null ? CityMidRadius : MidRadius) + ahead, drop = (tile != null ? CityMidDrop : MidDrop) + ahead;
+            if (tile == null)
             {
-                p.Mid.QueueFree();
-                p.Mid = null;
-                p.Cells.Clear();
-                p.Whole = false;
+                // Out of reach: the far mesh dissolves back in over the merged blocks, and they go once it has.
+                if (p.Whole && d > drop && p.Way != -1) Blend(p, -1);
+                else if (p.Whole && d <= drop && p.Way == -1) Blend(p, +1);
+                if (p.Mid != null && !p.Whole && d > drop && p != _midJob && p.Way == 0) FreeMid(p);
+                if (p.Way == 0)
+                {
+                    bool low = !p.Whole && d > InsideFar;
+                    if (p.Low != null && p.Low.Visible != low)
+                    {
+                        Fx.PopLog.Note("place", low ? "far blocks back" : "far blocks hidden, nothing in", d, p.Size, 1f);
+                        p.Low.Visible = low;
+                    }
+                }
+                SinkFar(p.Low, d);
             }
-            // A place you are all but in is never its far blocks, even for the moment its mid ones take.
-            bool low = !p.Whole && d > 200f;
-            if (p.Low != null && p.Low.Visible != low) p.Low.Visible = low;
-            if (tile == null) SinkFar(p.Low, d);
-            if (p.Mid == null && p != _midJob && d < radius && d - radius < best)
+            if (p.Mid == null && p != _midJob && d < radius && p.Way == 0)
             {
-                best = d - radius;
-                next = p;
+                // The way you are going first; what you are leaving, not at all once it is half the reach off.
+                float along = 0f;
+                if (speed > 3f)
+                {
+                    var lo = p.Site.Footprint.Min;
+                    var hi = p.Site.Footprint.Max;
+                    Vector3 to = _world.NearestCopy(new Vector3((lo.X + hi.X + 1) * 0.5f, 0f, (lo.Z + hi.Z + 1) * 0.5f), camera) - camera;
+                    along = (to.X * Heading.X + to.Z * Heading.Z) / speed;
+                }
+                if (along < 0f && d > radius * 0.5f) continue;
+                float rank = d - along * 0.5f - radius;
+                if (rank < best)
+                {
+                    best = rank;
+                    next = p;
+                }
             }
         }
-        // A tile's far mesh stands until every building in it has its blocks in.
         foreach (Tile t in _tiles)
         {
-            bool show = t.Members.Any(p => !p.Whole);
-            if (t.Low != null && t.Low.Visible != show) t.Low.Visible = show;
+            if (t.Low == null || t.Way != 0) continue;
+            float drop = CityMidDrop + ahead;
+            // Every building of a tile in: the tile's far mesh dissolves into them. Out of reach: back.
+            if (t.Distance <= drop && t.Low.Visible && t.Members.All(p => p.Whole)) Blend(t, +1);
+            else if (t.Distance > drop && !t.Low.Visible) Blend(t, -1);
+            else if (t.Distance > drop && t.Low.Visible)
+                foreach (Place p in t.Members)
+                    if (p.Mid != null && p != _midJob) FreeMid(p);
         }
         MidPending = next != null || _midJob != null;
         if (next != null && _midJob == null)
@@ -262,6 +313,97 @@ public partial class PoiLayer
             BlockGrid g = next.Site.Instance.Blocks;
             CellMask occupied = next.Site.Instance.Layout.Occupied;
             next.MidMeshes = Task.Run(() => Mesher.Build(g, occupied, MidOptions(g)));
+        }
+    }
+
+    readonly List<Place> _blending = new();
+    readonly List<Tile> _tilesBlending = new();
+
+    void FreeMid(Place p)
+    {
+        Fx.Fade.Forget(p.Mid);
+        p.Mid.QueueFree();
+        p.Mid = null;
+        p.Cells.Clear();
+        p.Whole = false;
+    }
+
+    /// <summary>A place's far mesh starts dissolving into its merged blocks (+1), or back (-1).</summary>
+    void Blend(Place p, int way)
+    {
+        Vector3 eye = GetViewport()?.GetCamera3D()?.GlobalPosition ?? Vector3.Zero;
+        Fx.PopLog.Note("place", way > 0 ? "far to merged blocks" : "merged blocks to far", Away(p, eye), p.Size, BlendStep);
+        p.Way = way;
+        if (p.Low != null) p.Low.Visible = true;
+        p.Mid.Visible = true;
+        Bands(p.Low, p.Mid, p.Blend);
+        if (!_blending.Contains(p)) _blending.Add(p);
+    }
+
+    void Blend(Tile t, int way)
+    {
+        Fx.PopLog.Note("city", way > 0 ? "tile far mesh to buildings" : "buildings to tile far mesh", t.Distance, TileSize, BlendStep);
+        t.Way = way;
+        t.Low.Visible = true;
+        foreach (Place p in t.Members) p.Mid.Visible = true;
+        Bands(t);
+        if (!_tilesBlending.Contains(t)) _tilesBlending.Add(t);
+    }
+
+    /// <summary>The most of a blend that passes in one frame at 60 a second: what the pop-in log counts it as.</summary>
+    static float BlendStep => 1f / (60f * BlendSeconds);
+
+    static void Bands(MeshInstance3D low, Node3D mid, float blend)
+    {
+        if (low != null) Fx.Fade.Set(low, blend, 1f);
+        Fx.Fade.Set(mid, 0f, blend);
+    }
+
+    void Bands(Tile t)
+    {
+        Fx.Fade.Set(t.Low, t.Blend, 1f);
+        foreach (Place p in t.Members) Fx.Fade.Set(p.Mid, 0f, t.Blend);
+    }
+
+    void StepBlend(Place p, float dt)
+    {
+        p.Blend = Mathf.Clamp(p.Blend + p.Way * dt / BlendSeconds, 0f, 1f);
+        Bands(p.Low, p.Mid, p.Blend);
+        if (p.Way > 0 && p.Blend >= 1f)
+        {
+            if (p.Low != null)
+            {
+                p.Low.Visible = false;
+                Fx.Fade.Clear(p.Low);
+            }
+            Fx.Fade.Clear(p.Mid);
+            p.Way = 0;
+        }
+        else if (p.Way < 0 && p.Blend <= 0f)
+        {
+            if (p.Low != null) Fx.Fade.Clear(p.Low);
+            FreeMid(p);
+            p.Way = 0;
+        }
+    }
+
+    void StepBlend(Tile t, float dt)
+    {
+        t.Blend = Mathf.Clamp(t.Blend + t.Way * dt / BlendSeconds, 0f, 1f);
+        Bands(t);
+        if (t.Way > 0 && t.Blend >= 1f)
+        {
+            t.Low.Visible = false;
+            Fx.Fade.Clear(t.Low);
+            foreach (Place p in t.Members) Fx.Fade.Clear(p.Mid);
+            t.Way = 0;
+        }
+        else if (t.Way < 0 && t.Blend <= 0f)
+        {
+            Fx.Fade.Clear(t.Low);
+            foreach (Place p in t.Members)
+                if (p.Mid != null && p != _midJob) FreeMid(p);
+            t.Way = 0;
         }
     }
 
@@ -289,12 +431,32 @@ public partial class PoiLayer
             p.Cells[c.Chunk] = cube;
         }
         if (p.MidNext < meshes.Count) return;
-        p.Mid.Visible = true;
-        if (p.Low != null) p.Low.Visible = false;
         p.Whole = true;
         p.MidMeshes = null;
         p.MidNext = 0;
         _midJob = null;
+        // A city's building waits for the rest of its tile, hidden; a lone place dissolves in now.
+        if (_tileOf.ContainsKey(p)) return;
+        p.Blend = 0f;
+        Blend(p, +1);
+    }
+
+    /// <summary>
+    /// One 32 m cube of a place shown through the part of the fade pattern its structure's own near
+    /// meshes leave it (<paramref name="blend"/> to 1: they hold 0 to it), while the two dissolve one
+    /// into the other; done, it is whole again (and hidden or shown by <see cref="HideGroup"/>).
+    /// </summary>
+    public void FadeGroup(PoiSite site, Int3 group, float blend, bool done = false)
+    {
+        Place p = _places.Find(x => x.Site == site);
+        if (p == null || !p.Cells.TryGetValue(group, out MeshInstance3D cube)) return;
+        if (done)
+        {
+            Fx.Fade.Clear(cube);
+            return;
+        }
+        cube.Visible = true;
+        Fx.Fade.Set(cube, blend, 1f);
     }
 
     /// <summary>Hides or shows one 32 m cube of a place: its structure's own near meshes have taken over there, or just given it back.</summary>

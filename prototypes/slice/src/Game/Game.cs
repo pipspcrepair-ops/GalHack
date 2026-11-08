@@ -421,6 +421,7 @@ public partial class Game : Node3D
         s.Legs.Jump = !typing && c.IsHeld(Key.Space);
         s.Legs.Jetpack = !typing && c.IsHeld(Key.Space);
         s.Legs.Vertical = typing ? 0f : c.Axis(Key.Space, Key.Ctrl);
+        Tangled(s);
         Climb(c); // a ladder or a lift shaft at the feet
         if (Menu.IsOpen) return;
 
@@ -785,6 +786,7 @@ public partial class Game : Node3D
         Vector3 heading = Surface.Streamer.Heading.Lerp(moved, 0.1f);
         Surface.Streamer.Heading = heading;
         Surface.Infra.Heading = heading;
+        if (Zone.Pois != null) Zone.Pois.Heading = heading;
         if (Places != null) Places.Heading = heading;
     }
 

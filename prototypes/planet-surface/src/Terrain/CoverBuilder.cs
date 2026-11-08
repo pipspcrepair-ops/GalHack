@@ -14,6 +14,9 @@ public sealed class CoverCell
     public int Cx, Cz;
     public int Version;
 
+    /// <summary>When it landed in sight (TerrainStreamer.CoverClock; 0: before it could be seen): its tufts grow in from then (flora_cover.gdshader).</summary>
+    public int Born;
+
     /// <summary>Species index, and its instances (sixteen floats each, in metres from the cell's corner).</summary>
     public readonly List<(int Plant, float[] Buffer, int Count)> Plants = new();
 }
@@ -79,7 +82,13 @@ public static class CoverBuilder
             bool reed = family == PlantFamily.Reed;
             if (reed ? s.InRiver || ground < 0.1f || (ground > 1.6f && biome is not (Biome.Swamp or Biome.SporeMarsh or Biome.HotSpring or Biome.Oasis or Biome.Riverbank)) : s.InRiver || ground < 0.6f) continue;
             if (pal.DeadZones.Count > 0 && roll < pal.Deadness(x, z)) continue;
-            if (source.StampWeight(x, z) > 0f && !(size < 0.4f && source.OnRoad(x, z, out float wear) && wear > 0.6f) && !source.OnWild(x, z, out _)) continue;
+            // Ground cover thins out into a place's made ground over its blend and apron (and creeps a little way onto an old
+            // one's yard), rather than stopping in a hard line round it.
+            float built = source.Built(x, z, out bool onRoad);
+            if ((onRoad || built > 0f)
+                && !(onRoad && built <= 0f && size < 0.4f && source.GrowsOnRoad(x, z))
+                && !source.OnWild(x, z, out _)
+                && !(!onRoad && built < 1f && FarBuilder.Feather(roll) >= FarBuilder.Smooth(0.5f, 1f, built))) continue;
             int gx = (int)Math.Floor(x), gz = (int)Math.Floor(z);
             if (FarBuilder.Dug(dug, gx, gz)) continue;
             float hx = (source.SurfaceHeight(Mathx.WrapX(x + 0.7, w), z) - ground) / 0.7f, hz = (source.SurfaceHeight(x, Mathx.Wrap(z + 0.7, h)) - ground) / 0.7f;

@@ -44,6 +44,9 @@
          streamer compiles; with no flora-solids data loaded here, nothing is solid. -->
     <Compile Include="..\planet-surface\src\Terrain\TerrainStreamer.Solids.cs" />
     <Compile Include="..\planet-surface\src\Terrain\TerrainStreamer.Cover.cs" />
+    <Compile Include="..\planet-surface\src\Terrain\TerrainStreamer.Pop.cs" />
+    <Compile Include="..\planet-surface\src\Terrain\TerrainStreamer.Swap.cs" />
+    <Compile Include="..\planet-surface\src\Fx\PopLog.cs" />
     <Compile Include="..\planet-surface\src\Terrain\FloraSolids.cs" />
     <Compile Include="..\planet-surface\src\Terrain\PlanetFlora.cs" />
     <Compile Include="..\planet-surface\src\Terrain\CoverBuilder.cs" />

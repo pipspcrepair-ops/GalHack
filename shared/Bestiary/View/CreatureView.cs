@@ -103,6 +103,9 @@ public static class CreatureMaterials
 public partial class CreatureView : Node3D
 {
     public Creature Creature { get; private set; }
+
+    /// <summary>How much of it shows (0..1) as the view last faded it, and how far it has come in since it was built (WildlifeView.Fader).</summary>
+    public float Shows = 1f, Arrived = 1f;
     readonly List<MeshInstance3D> _parts = new();
     MultiMeshInstance3D _swarm;
     float _hurtShown, _wakeShown;
@@ -280,6 +283,18 @@ public partial class WildlifeView : Node3D
     /// <summary>The most new bodies built in a frame (a whole herd coming into view is spread over a few).</summary>
     public int MostNew = int.MaxValue;
 
+    /// <summary>A creature's body came into view or went (built in view, or crossing the far distance), how far off, and how much of it showed or went in that frame (measurements).</summary>
+    public System.Action<Creature, float, bool, float> Shown;
+
+    /// <summary>
+    /// Shows part of a body (0..1) through a dissolve, and 1 all of it again: the game's fade (left
+    /// out, bodies show or go whole). With it, a body dissolves in over <see cref="ArriveSeconds"/>
+    /// once built and out over the last <see cref="FadeBand"/> metres before the far distance.
+    /// </summary>
+    public System.Action<Node, float> Fader;
+    const float ArriveSeconds = 0.6f, FadeBand = 30f;
+    double _lastSync = -1;
+
     /// <summary>Takes up a new sim. Creatures carried into it from the last (old to new) keep their bodies.</summary>
     public void Bind(WildSim sim, Node unused, IReadOnlyDictionary<Creature, Creature> carried = null)
     {
@@ -310,13 +325,18 @@ public partial class WildlifeView : Node3D
     {
         if (_sim == null) return;
         int built = 0;
+        double now = Time.GetTicksMsec() / 1000.0;
+        float dt = _lastSync < 0 ? 0f : (float)Math.Min(now - _lastSync, 0.1);
+        _lastSync = now;
         foreach (Creature c in _sim.Creatures)
         {
             if (c.Removed) continue;
+            bool fresh = false;
             if (!_views.TryGetValue(c, out CreatureView view))
             {
                 if (built >= MostNew) continue;
                 built++;
+                fresh = true;
                 view = new CreatureView();
                 AddChild(view);
                 view.Build(c);
@@ -327,6 +347,18 @@ public partial class WildlifeView : Node3D
             float far = c.Species.Plan == BodyPlan.Giant ? FarDistance * 2.5f : FarDistance;
             c.RigInterval = d < NearDistance ? 1 : d < MidDistance ? 2 : d < far ? 4 : 12;
             bool visible = d < far;
+            float shows = visible ? 1f : 0f, was = view.Shows;
+            if (Fader != null)
+            {
+                // Built in sight: it dissolves in. Near the far distance: it dissolves out by distance.
+                if (fresh) view.Arrived = visible ? 0f : 1f;
+                else if (view.Arrived < 1f) view.Arrived = Math.Min(1f, view.Arrived + dt / ArriveSeconds);
+                shows = Math.Min(Math.Clamp((far - d) / FadeBand, 0f, 1f), view.Arrived);
+                visible = shows > 0f;
+                if (visible && (shows != view.Shows || fresh)) Fader(view, shows);
+                view.Shows = shows;
+            }
+            if (fresh ? visible : view.Visible != visible) Shown?.Invoke(c, d, visible, visible ? shows : Fader != null ? was : 1f);
             if (view.Visible != visible) view.Visible = visible;
             if (visible && (c.RigInterval == 1 || c.RigPending == 0f)) view.Sync();
             view.Listen(d);

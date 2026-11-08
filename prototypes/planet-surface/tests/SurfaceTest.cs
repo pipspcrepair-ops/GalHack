@@ -76,6 +76,7 @@ public partial class SurfaceTest : Node
             await Run("Infra", InfraChecks);
             await Run("StartTown", StartTownChecks);
             await Run("City", CityChecks);
+            await Run("Ground", GroundChecks);
             await Run("Dungeons", DungeonChecks);
             await Run("Under", UnderChecks);
             await Run("Water", WaterChecks);
@@ -106,7 +107,7 @@ public partial class SurfaceTest : Node
         GD.Print(_failures == 0 ? "ALL PASSED" : $"{_failures} CHECK(S) FAILED");
         try { System.IO.Directory.Delete(saves, recursive: true); }
         catch (Exception) { } // already gone, or a file still held: it is this run's own folder, nothing else reads it
-        GetTree().Quit(_failures == 0 ? 0 : 1);
+        GalHack.Testing.Backstop.Quit(this, _failures == 0 ? 0 : 1);
     }
 
     async Task Run(string name, Func<Task> check)

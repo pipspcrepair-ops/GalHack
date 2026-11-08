@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -48,7 +48,8 @@ public partial class SurfaceTest
             var occs = w.Pois.Where(p => p.Instance.Occupancy != null).GroupBy(p => p.Instance.Occupancy.Main).Select(g => $"{g.Key} {g.Count()}");
             GD.Print($"      {spec.Archetype} {w.Width / 1000:F0} km, {plan.Roll}: {plan.Regions.Count} regions, {w.Pois.Count}/{plan.Places.Count} seated ({string.Join(", ", roles)}), people {string.Join(", ", occs)}, " +
                      $"{net.Routes.Count} routes, {net.Ruins.Count} ruins, {net.Power.Poles.Count} poles, {w.BuildMs / 1000:F1} s");
-            foreach (PoiSite p in w.Pois)
+            // (A city's buildings are its plan's, not the region plan's: they have their lots.)
+            foreach (PoiSite p in w.Pois.Where(p => p.Siting != "city"))
             {
                 sited++;
                 if (p.Planned == null) { Note($"{p.Name} has no reason"); unserved++; continue; }
