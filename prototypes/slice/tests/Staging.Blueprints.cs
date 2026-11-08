@@ -15,7 +15,8 @@ namespace Slice.Tests;
 
 /// <summary>
 /// The BLUEPRINTS tab, frame by frame into --dir, in daylight: each starter set down whole in
-/// Creative through the tab's own PLACE and seen from outside (placed-NAME), the tab with a blueprint
+/// Creative through the tab's own PLACE and seen from outside (placed-NAME; any plants between the
+/// camera and it felled for the frame), the tab with a blueprint
 /// selected over the world (tab-NAME), and the save dialog with the Skiff you sit in (save-dialog).
 /// </summary>
 public sealed partial class Staging
@@ -61,9 +62,8 @@ public sealed partial class Staging
             if (v == null) continue;
             placed[e.File] = v;
             foreach (int x in _drive.Wait(40)) yield return x;
-            Outside(v);
             _game.Visor.Visible = false;
-            foreach (int x in _drive.Wait(6)) yield return x;
+            foreach (int x in Outside(v)) yield return x;
             foreach (int x in Shot($"{dir}/placed-{Slug(e.Name)}.png")) yield return x;
             _game.Visor.Visible = true;
             _game.FixedCamera = null;
@@ -100,8 +100,12 @@ public sealed partial class Staging
         }
     }
 
-    /// <summary>A three-quarter view of a structure from outside, a little above, the ground in the frame.</summary>
-    void Outside(Vessel v)
+    /// <summary>
+    /// A three-quarter view of a structure from outside, a little above, the ground in the frame: of
+    /// eight sides the one with the fewest plants in the way, and those few felled for the frame (a
+    /// photographer's clearing; the structure itself stands as it was placed).
+    /// </summary>
+    IEnumerable<int> Outside(Vessel v)
     {
         var (min, max) = v.Structure.Bounds();
         float cell = v.Structure.Grid.CellSize;
@@ -110,9 +114,39 @@ public sealed partial class Staging
         N.Vector3 mid = (lo + hi) * 0.5f;
         float size = (hi - lo).Length() + cell;
         Vector3 centre = v.Body.ToParent(mid).ToGodot();
-        Vector3 eye = v.Body.ToParent(mid + new N.Vector3(size * 0.75f, size * 0.32f, -size * 0.95f)).ToGodot();
-        eye.Y = MathF.Max(eye.Y, _game.Zone.GroundAt(eye.X, eye.Z).Y + 1.8f);
-        _game.FixedCamera = new Transform3D(Basis.LookingAt((centre - eye).Normalized(), Vector3.Up), eye);
+        var streamer = _game.Zone.Streamer;
+        List<long> InTheWay(Vector3 eye)
+        {
+            var ids = new HashSet<long>();
+            Vector3 to = centre - eye;
+            float length = to.Length() - size * 0.35f;
+            for (float t = 0f; t < length; t += 2f)
+            {
+                Vector3 p = eye + to.Normalized() * t;
+                foreach (var plant in streamer.FloraNear(p, 3.5f)) ids.Add(plant.Id);
+            }
+            return ids.ToList();
+        }
+        Vector3 best = default;
+        List<long> blocking = null;
+        for (int k = 0; k < 8; k++)
+        {
+            float a = Mathf.Pi * 0.25f * k + 0.6f;
+            var local = mid + new N.Vector3(MathF.Sin(a) * size * 1.15f, size * 0.3f, -MathF.Cos(a) * size * 1.15f);
+            Vector3 eye = v.Body.ToParent(local).ToGodot();
+            eye.Y = MathF.Max(eye.Y, _game.Zone.GroundAt(eye.X, eye.Z).Y + 1.8f);
+            List<long> ids = InTheWay(eye);
+            if (blocking != null && ids.Count >= blocking.Count) continue;
+            best = eye;
+            blocking = ids;
+        }
+        foreach (long id in blocking)
+        {
+            _game.Zone.Planet.Felled.Add(id);
+            streamer.Fell(id);
+        }
+        _game.FixedCamera = new Transform3D(Basis.LookingAt((centre - best).Normalized(), Vector3.Up), best);
+        foreach (int x in _drive.Wait(blocking.Count > 0 ? 45 : 6)) yield return x;
     }
 
     static string Slug(string name) => name.ToLowerInvariant().Replace(' ', '-');
