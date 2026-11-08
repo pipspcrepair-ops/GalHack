@@ -35,6 +35,9 @@ public sealed partial class Staging
         var pieces = d.Items.Select(it => (It: it, At: Near(it.X, it.Z))).Where(p => ((p.At - from) with { Y = 0f }).Length() < 4200f).ToList();
         var housed = new HashSet<InfraRoute>(world.Infra.Ruins.Where(f => f.Route != null && f.Family.Tags.Contains("house")).Select(f => f.Route));
         var streets = world.Infra.Routes.Where(r => r.Kind != RouteKind.Rail && (housed.Contains(r) || world.StartTown?.Streets.Contains(r) == true)).ToList();
+        // A world with no town's street in reach: its roads, whatever lies along them.
+        bool InReach(InfraRoute r) => Enumerable.Range(0, r.Count).Any(k => ((Near(r.X[k], r.Z[k]) - from) with { Y = 0f }).Length() < 4000f);
+        if (!streets.Any(InReach)) streets = world.Infra.Routes.Where(r => r.Kind != RouteKind.Rail).ToList();
         // The stretch of street with the most of the world's own story in view ahead: solid pieces count double.
         float bestScore = -1f;
         Vector3 stand = from, way = Vector3.Forward;

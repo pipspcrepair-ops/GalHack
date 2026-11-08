@@ -32,7 +32,8 @@ public partial class DressTest
                 {
                     int cap = DecoPlanner.CapOf(decor.Catalogue.Piece(g.Key));
                     if (g.Count() > cap) over.Add($"{r.Name}, {room.Room.RoomId}: {g.Count()} x {g.Key} (cap {cap})");
-                    if (Lined(g.ToList()) is int n && n >= 4) lined.Add($"{r.Name}, {room.Room.RoomId}: {n} x {g.Key} in an even line");
+                    // Seats set out in rows facing something (pews, an aircraft's cabin) are rows by what they are: those are made uneven, and left out here.
+                    if (Lined(g.Where(p => p.Role != "seat").ToList()) is int n && n >= 4) lined.Add($"{r.Name}, {room.Room.RoomId}: {n} x {g.Key} in an even line");
                 }
             }
         foreach (string s in over.Take(4).Concat(lined.Take(6))) GD.Print("  e.g. " + s);

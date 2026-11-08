@@ -287,10 +287,11 @@ public sealed class WorldDress
         {
             float old = _d.Old.GetValueOrDefault(p.Id), now = _d.Now.GetValueOrDefault(p.Id);
             bool kept = now > old;
-            DecoTech era = kept ? _d.After : _d.Before;
-            float wear = kept ? 0.08f : _wear;
+            // What the living made after the fall is in their era; kept by them, it's fresh, otherwise as worn as they left it.
+            DecoTech era = kept || p.Now ? _d.After : _d.Before;
+            float wear = kept ? 0.08f : p.Now ? Math.Min(_wear, 0.35f) : _wear;
             // Lamps that still burn: kept ones mostly, a high world's cells now and then, almost never an old one.
-            float lit = kept ? 0.8f : _falling ? 0.55f : era switch { DecoTech.High => 0.45f * (1 - wear * 0.5f), DecoTech.Mid => 0.06f, _ => 0.02f };
+            float lit = kept ? 0.8f : p.Now ? 0.45f : _falling ? 0.55f : era switch { DecoTech.High => 0.45f * (1 - wear * 0.5f), DecoTech.Mid => 0.06f, _ => 0.02f };
             string style = p.Style;
             if (p.Model == "mark" && style == "sigil") style = "sigil:" + _d.Emblem;
             else if (p.Model is "banner" or "banner_span" or "shrine" or "memorial" or "float" or "stage") style = _d.Emblem;
