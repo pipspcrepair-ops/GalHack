@@ -113,6 +113,8 @@ public sealed partial class Staging
             "loadrun" => LoadRun(),
             "approach" => ApproachView(),
             "husk-grab" => HuskGrab(),
+            "husk-den" => HuskDen(),
+            "husk-carrier" => HuskCarrier(),
             _ => ProofViews(view),
         };
         foreach (int x in script) yield return x;

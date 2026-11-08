@@ -68,6 +68,9 @@ public sealed class PlaceFauna
         {
             plan.Husks = true;
             plan.Shared = occ.Main != Occupant.Turned || occ.Second != null || occ.How != Sharing.Alone;
+            // How far gone it is goes by how they hold it: alone (severe), sharing, second, or only a trace (light).
+            plan.Severity = deep.Data.Husks.SeverityOf(occ.Main == Occupant.Turned, !plan.Shared, occ.Main != Occupant.Turned && occ.Second != Occupant.Turned,
+                Wildlife.Rng.For(inst.SpawnSeed, "den-severity").Float());
         }
         // People keep a place clear of what would hunt them, as a garrison does: at most vermin, down in the dark.
         if (inst.Occupancy is { Main: Occupant.Scavengers or Occupant.Squatters or Occupant.Gang or Occupant.Machines or Occupant.Faction or Occupant.Cyborgs or Occupant.Robots or Occupant.Cult or Occupant.Keepers or Occupant.Guardians, Second: not (Occupant.Nesters or Occupant.Prowlers) })

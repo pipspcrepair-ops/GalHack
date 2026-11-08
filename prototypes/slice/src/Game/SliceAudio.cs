@@ -53,7 +53,27 @@ public partial class SliceAudio : Node
         int bus = Bus(key);
         float value = Settings.Get(key);
         AudioServer.SetBusMute(bus, value <= 0f);
-        AudioServer.SetBusVolumeDb(bus, Mathf.LinearToDb(Mathf.Clamp(value, 0.0001f, 1f)));
+        float hush = key == AudioSettings.Effects || key == AudioSettings.Ambience ? _hushShown : 0f;
+        AudioServer.SetBusVolumeDb(bus, Mathf.LinearToDb(Mathf.Clamp(value, 0.0001f, 1f)) - hush);
+    }
+
+    float _hushShown;
+
+    /// <summary>
+    /// How far the world's sound has died away, dB (the Husks' wrongness sets it): the effects and the
+    /// ambience fall, the music doesn't. Applied in half-dB steps.
+    /// </summary>
+    public float Hush
+    {
+        get => _hushShown;
+        set
+        {
+            float v = MathF.Round(Math.Max(0f, value) * 2f) / 2f;
+            if (v == _hushShown || Settings == null) return;
+            _hushShown = v;
+            Apply(AudioSettings.Effects);
+            Apply(AudioSettings.Ambience);
+        }
     }
 
     public static void MakeBuses()

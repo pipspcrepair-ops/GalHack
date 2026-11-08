@@ -133,6 +133,15 @@ public sealed class WildSim
 
     /// <summary>Husk dens' worm masses on the floors and walls, and one destroyed.</summary>
     public readonly List<WormMass> Masses = new();
+    /// <summary>The veins of worm flesh spread round a den's masses (<see cref="Veins"/>): drawn, never stepped.</summary>
+    public readonly List<Vein> Veins = new();
+    /// <summary>How far gone the den this sim holds is, 0..1 (<see cref="PoiPlan.Severity"/>); none for open country.</summary>
+    public float DenSeverity;
+    /// <summary>Where the Husks are, refreshed now and then for animals to keep off (<see cref="Wrongness.Shunned"/>), and dens elsewhere a game adds.</summary>
+    public readonly List<Vector3> HuskSpots = new();
+    public readonly List<Vector3> WrongPlaces = new();
+    /// <summary>Whoever was just let go of, and until when (this sim's clock) nothing may seize them again (<see cref="Seizing.Spare"/>).</summary>
+    public readonly Dictionary<ITarget, float> Spared = new();
     public event Action<WormMass> MassDied;
     internal void RaiseMassDied(WormMass m) => MassDied?.Invoke(m);
 
@@ -562,6 +571,7 @@ public sealed class WildSim
         if (Colonies.Count > 0) Colony.StepAll(this, dt);
         if (Masses.Count > 0) WormMasses.Step(this, dt);
         if (Settlements.Count > 0 && Frame % 15 == 0) WatchTowns();
+        if (Frame % 15 == 7) Wrongness.Refresh(this);
         // Now and then, anything that has ended up inside a wall or a floor is put back in the open.
         if (Time >= _scanAt)
         {

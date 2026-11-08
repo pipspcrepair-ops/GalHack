@@ -224,8 +224,8 @@ public static class Attacks
     /// <summary>Launches at the committed aim point, stopping with the jaws on it.</summary>
     static void Launch(WildSim w, Creature c)
     {
-        // A Husk goes for the head as often as not; otherwise it swings an arm.
-        c.Seizing = c.Species.Attack.Style == AttackStyle.Seize && Seizing.CanReach(w, c, c.AttackTarget) && c.Rng.Chance(w.Data.Husks.SeizeShare);
+        // A Husk goes for the head as often as not; otherwise it swings an arm (always, just after someone threw a hold off).
+        c.Seizing = c.Species.Attack.Style == AttackStyle.Seize && Seizing.Free(w, c.AttackTarget) && Seizing.CanReach(w, c, c.AttackTarget) && c.Rng.Chance(w.Data.Husks.SeizeShare);
         if (c.Space != null)
         {
             Crawl.Launch(w, c);
@@ -276,7 +276,7 @@ public static class Attacks
                   && t.Position.Y - groundAtStrike < 2.2f; // a jump at the right moment clears a low lunge
         }
         // A seize needs room where it lands, as it did when it set off; without it, it's a blow.
-        if (hit && c.Seizing && Seizing.CanReach(w, c, t))
+        if (hit && c.Seizing && Seizing.Free(w, t) && Seizing.CanReach(w, c, t))
         {
             // It has them by the head.
             Seizing.Begin(w, c, t);

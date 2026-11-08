@@ -68,9 +68,9 @@ public partial class Alerts : CanvasLayer
         if (_attacks.Count > 2) _attacks.RemoveAt(0);
     }
 
-    /// <summary>The sign for whatever attacked: a person's mark for people, a Husk's sign for a Husk, the wildlife sign for a beast.</summary>
+    /// <summary>The sign for whatever attacked: a person's mark for people, a Husk's sign for a Husk, the Hollow sign for a beast the fungus has, the wildlife sign for any other.</summary>
     public static string SignFor(Wildlife.Species s) =>
-        s.Husk ? "husk_hazard" : s.Figure != null ? "hostile" : "wildlife";
+        s.Husk ? "husk_hazard" : s.Figure != null ? "hostile" : s.Corrupted ? "hollow_hazard" : "wildlife";
 
     public override void _Process(double delta)
     {

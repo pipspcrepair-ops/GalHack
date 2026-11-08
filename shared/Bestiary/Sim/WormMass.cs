@@ -16,6 +16,8 @@ public sealed class WormMass
     /// <summary>Across, m.</summary>
     public float Size = 0.8f;
     public ulong Seed;
+    /// <summary>Who it was made of, if anyone: a hand, a foot or part of a face of theirs still shows (<see cref="WormMasses.Build"/>).</summary>
+    public Species Host;
     public int Room;
     public float Health = -1f;
     public bool Dead;
@@ -126,6 +128,76 @@ public static class WormMasses
             Color c = new Color(0.8f, 0.68f, 0.6f).Lerp(new Color(0.45f, 0.15f, 0.17f), rng.Range(0f, 1f));
             p.Worm(root, (dir + Vector3.Up * 0.4f).Normalized(), S * rng.Range(0.25f, 0.7f), S * rng.Range(0.018f, 0.032f), c, i, rng, 5, 0.12f, 0.45f);
         }
+        if (m.Host?.Figure != null) Remnant(p, m, tops, rng);
         return p;
+    }
+
+    /// <summary>What kind of remnant a mass shows, for a seed: 0 a hand, 1 a foot, 2 part of a face (tests).</summary>
+    public static int RemnantKind(WormMass m) => Rng.For(m.Seed, "remnant").Int(0, 2);
+
+    /// <summary>
+    /// What is left of the one it was made of, sticking out of the lobes: their own hand (a
+    /// forearm and the fingers), a foot, or part of a face, as their body builds them
+    /// (<see cref="HumanBody.Build"/>), sunk in so only that much shows. A big mass may hold two.
+    /// </summary>
+    static void Remnant(Piece p, WormMass m, List<(Vector3 at, float r)> tops, Rng rng)
+    {
+        RigLayout body = HumanBody.Build(m.Host);
+        Figure f = m.Host.Figure;
+        int n = tops.Count > 6 && rng.Chance(0.4f) ? 2 : 1;
+        int first = RemnantKind(m);
+        for (int k = 0; k < n; k++)
+        {
+            var (at, r) = tops[rng.Int(0, tops.Count - 1)];
+            // Out of the lobe, leaning off upright, turned any way.
+            Vector3 out_ = new Vector3(rng.Range(-0.8f, 0.8f), 1f, rng.Range(-0.8f, 0.8f)).Normalized();
+            Vector3 surface = at + out_ * r * 0.55f;
+            int kind = (first + k) % 3;
+            string name = kind switch { 0 => $"arm{rng.Int(0, 1)}l", 1 => $"leg{rng.Int(0, 1)}f", _ => "head" };
+            Piece part = body.Pieces.Find(q => q.Name == name);
+            if (part == null) continue;
+            Transform3D t;
+            if (kind == 0)
+            {
+                // A forearm reaching out of it, the hand at the end: the elbow still in there.
+                float fore = f.ForearmOf(name[3] - '0');
+                Basis b = Geo.AlongY(out_).Rotated(out_, rng.Range(0f, MathF.Tau));
+                t = new Transform3D(b, surface - out_ * fore * 0.25f);
+            }
+            else if (kind == 1)
+            {
+                // A shin kicked up out of it, the foot on the end: the knee still in there.
+                Piece shin = body.Pieces.Find(q => q.Name == $"leg{name[3]}l");
+                // (The shin runs knee to ankle along its +Y; the foot stands up its own +Y toward the knee.)
+                float turn = rng.Range(0f, MathF.Tau);
+                Basis b = Geo.AlongY(-out_).Rotated(out_, turn);
+                Vector3 ankle = surface + out_ * f.LowerLeg * 0.6f;
+                if (shin != null)
+                {
+                    var along = new Transform3D(Geo.AlongY(out_).Rotated(out_, turn), ankle - out_ * f.LowerLeg);
+                    foreach (Prim q in shin.Prims)
+                    {
+                        Prim c = q;
+                        c.Local = along * q.Local;
+                        p.Prims.Add(c);
+                    }
+                }
+                t = new Transform3D(b, ankle);
+            }
+            else
+            {
+                // A face, turned up out of it, the back of the head under the worms, tipped off true.
+                float R = f.HeadRadius;
+                Vector3 centre = new(0f, f.Neck + R * 0.92f, 0f);
+                Basis b = Basis.LookingAt(out_, MathF.Abs(out_.Y) > 0.9f ? Vector3.Forward : Vector3.Up).Rotated(out_, rng.Range(-0.9f, 0.9f));
+                t = new Transform3D(b, surface - out_ * R * 0.15f - b * centre);
+            }
+            foreach (Prim q in part.Prims)
+            {
+                Prim c = q;
+                c.Local = t * q.Local;
+                p.Prims.Add(c);
+            }
+        }
     }
 }
