@@ -19,6 +19,12 @@ public partial class Screenshot
 
     async void HouseShots(string folder)
     {
+        // A wall-clock limit: the run quits itself whatever happens.
+        GetTree().CreateTimer(900.0, processAlways: true, processInPhysics: false, ignoreTimeScale: true).Timeout += () =>
+        {
+            GD.PrintErr("house shots timed out after 15 minutes");
+            GetTree().Quit(2);
+        };
         Directory.CreateDirectory(folder);
         var lib = _main.Library;
         var rand = new Random();
@@ -44,7 +50,7 @@ public partial class Screenshot
             {
                 Layout l = PoiFactory.BuildLayout(lib, fam, 1, Rarity.Common, (ulong)rand.NextInt64(), hints(k));
                 if (keep != null && !keep(l)) continue;
-                PoiInstance poi = PoiFactory.Spawn(lib, l, PoiState.Abandoned, (ulong)rand.NextInt64());
+                PoiInstance poi = PoiFactory.Spawn(lib, l, PoiState.Active, (ulong)rand.NextInt64());
                 var view = PoiView.Build(poi, Biome.Steppe, new PoiView.Options(Collision: false, Figures: false), (_, _) => new Color(0.36f, 0.43f, 0.27f));
                 float x0 = l.Occupied.Min.X;
                 view.Position = new Vector3(at - x0, 0, 0);
@@ -73,24 +79,26 @@ public partial class Screenshot
         string Says(IEnumerable<(Layout L, float X)> row) => string.Join(" | ", row.Select(r => string.Join(", ", r.L.Extras.Homes.Select(h => $"{h.Family} {h.Silhouette}"))));
 
         // A suburban street: one culture's houses, mid tech, temperate, seen from the street's edge looking along it.
+        // A culture whose main family is a suburban one.
         int culture = rand.Next();
+        for (int k = 0; k < 400 && HomeCulture.Of(lib.Homes, new HomeHints(culture, Climate.Temperate, 0.6f), TechLevel.Mid).Families[0].Family.Id is not ("suburban" or "bungalow"); k++) culture = rand.Next();
         var street = Row(_ => new LayoutHints(Dir.North, TechLevel.Mid, null, new HomeHints(culture, Climate.Temperate, 0.6f)), 7);
         GD.Print($"street: {Says(street)}");
         float end = street[^1].X + 30;
-        await Shot("street", new Vector3(-10, 1.7f, -9), new Vector3(end * 0.45f, 3.5f, 16));
-        await Shot("street-across", new Vector3(end * 0.35f, 9f, -46), new Vector3(end * 0.35f, 4f, 14));
+        await Shot("street", new Vector3(-6, 2.2f, -15), new Vector3(end * 0.35f, 3f, 8));
+        await Shot("street-across", new Vector3(end * 0.3f, 8f, -34), new Vector3(end * 0.3f, 4f, 14));
 
         // Another culture, another climate: the same rules, a different place.
         int culture2 = rand.Next();
         var street2 = Row(_ => new LayoutHints(Dir.North, (TechLevel)rand.Next(3), null, new HomeHints(culture2, rand.Next(2) == 0 ? Climate.Hot : Climate.Wet, 0.5f)), 6);
         GD.Print($"street 2: {Says(street2)}");
-        await Shot("street-other", new Vector3(-10, 1.7f, -9), new Vector3((street2[^1].X + 30) * 0.45f, 3.5f, 16));
+        await Shot("street-other", new Vector3(-6, 2.2f, -15), new Vector3((street2[^1].X + 30) * 0.35f, 3f, 8));
 
         // A row of terraces.
         var terrace = Row(_ => new LayoutHints(Dir.North, TechLevel.Mid, null, new HomeHints(rand.Next(), Climate.Temperate, 0.5f, "terrace")), 2);
         GD.Print($"terrace: {Says(terrace)}");
         float tw = terrace.Sum(t => t.L.Occupied.Size.X - 6);
-        await Shot("terrace", new Vector3(tw * 0.15f, 2.2f, -22), new Vector3(tw * 0.55f, 5f, 12));
+        await Shot("terrace", new Vector3(tw * 0.2f, 3f, -24), new Vector3(tw * 0.45f, 5f, 10));
 
         // Three regional families, each in its own climate.
         foreach (var (family, climate, tech) in new[] { ("chalet", Climate.Cold, TechLevel.Mid), ("stilt", Climate.Wet, TechLevel.Low), ("courtyard", Climate.Hot, TechLevel.Mid), ("adobe", Climate.Hot, TechLevel.Low), ("canal", Climate.Temperate, TechLevel.Low), ("eaves", Climate.Temperate, TechLevel.Mid) })
@@ -98,7 +106,7 @@ public partial class Screenshot
             var one = Row(_ => new LayoutHints(Dir.North, tech, null, new HomeHints(rand.Next(), climate, 0.6f, family)), 3);
             GD.Print($"{family}: {Says(one)}");
             float w = one.Sum(t => t.L.Occupied.Size.X - 6);
-            await Shot($"family-{family}", new Vector3(w * 0.5f - 18, 4f, -34), new Vector3(w * 0.5f, 5f, 14));
+            await Shot($"family-{family}", new Vector3(w * 0.5f - 10, 4f, -26), new Vector3(w * 0.5f, 5f, 12));
         }
 
         // The odd one-offs.
@@ -125,7 +133,7 @@ public partial class Screenshot
             var person = new MeshInstance3D { Mesh = new CapsuleMesh { Radius = 0.25f, Height = 1.8f }, Position = door + new Vector3(-h.DoorWide * 0.5f - 0.8f, 0.9f, -1.2f),
                 MaterialOverride = new StandardMaterial3D { AlbedoColor = new Color(0.85f, 0.35f, 0.2f) } };
             root.AddChild(person);
-            await Shot($"garage-{kind}", door + new Vector3(-5f, 1.7f, -11f), door + new Vector3(0, 1.4f, 0));
+            await Shot($"garage-{kind}", door + new Vector3(-4f, 1.7f, -10f), door + new Vector3(0, 1.6f, 0));
             person.QueueFree();
         }
         GetTree().Quit(0);

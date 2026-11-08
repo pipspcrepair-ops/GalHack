@@ -452,7 +452,7 @@ public static partial class Homes
             // A mansard's top storey is roof, its windows dormers in it.
             if (s.Roof == "mansard" && storey == h.Storeys - 1 && storey > 0) return new Block(BlockType.Cube, st.RoofM, st.Roof.Scale(0.92f), Role.Wall);
             uint hash = Hash.Cell(new Int3(u, y, v), 0x5C1u);
-            float jit = 1f + ((hash % 7) - 3) / 100f;
+            float jit = 1f + ((int)(hash % 7) - 3) / 100f;
             bool corner = !h.Foot.Contains((u - 1, v)) && !h.Foot.Contains((u, v - 1)) || !h.Foot.Contains((u + 1, v)) && !h.Foot.Contains((u, v - 1))
                 || !h.Foot.Contains((u - 1, v)) && !h.Foot.Contains((u, v + 1)) || !h.Foot.Contains((u + 1, v)) && !h.Foot.Contains((u, v + 1));
             switch (wall)
