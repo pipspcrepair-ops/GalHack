@@ -177,6 +177,12 @@ public sealed class Kit
     public Rgb? BaseCourse, Coping, DoorFrame;
     /// <summary>What its facade line said of door frames: "trim" or "none".</summary>
     public string DoorFrameRule = "";
+    /// <summary>What its faces are finished in, by material, role and side (its "finish" lines; data/finishes.txt has the defaults).</summary>
+    public readonly FinishTable Finishes = new();
+    /// <summary>"rooms keep": every room keeps the kit's own finishes, whatever it is for (an alien or faction kit's rooms are not carpeted offices).</summary>
+    public bool KeepRooms;
+    /// <summary>"alien": built by no one human; its finishes' alien conditions hold.</summary>
+    public bool Alien;
 
     public PaletteEntry Entry(short i) => Palette[i];
     public PaletteEntry? BySymbol(char c) => Symbols.TryGetValue(c, out short i) ? Palette[i] : null;
@@ -190,6 +196,8 @@ public sealed class Kit
 ///   faction vharn
 ///   panels 8 4 0.25              (sheets of a wall's other colours: wide, tall, share)
 ///   facade 1a0c18 cdb98f trim    (base course, coping, door frame: trim, the coping's colour, or none)
+///   finish chitin wall out:chitin in:chitin   (what faces are finished in; see data/finishes.txt)
+///   rooms keep                   (rooms keep the kit's finishes, whatever they are for)
 ///   palette
 ///     #  cube  chitin  3d1d36|46213e  wall
 ///   module vh_gullet
@@ -304,6 +312,9 @@ public static class KitParser
                     };
                     break;
                 case "cap": kit.CapEntry = Symbol(kit, parts[1][0], Error); break;
+                case "finish": kit.Finishes.ParseLine(parts, Error); break;
+                case "rooms": kit.KeepRooms = parts.Length > 1 && parts[1] == "keep"; break;
+                case "alien": kit.Alien = true; break;
                 case "module":
                     draft = new ModuleDraft { Line = lineNo };
                     draft.T.Id = parts[1];

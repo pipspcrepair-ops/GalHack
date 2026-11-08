@@ -22,6 +22,13 @@ public partial class PoiTest : Node
     public override void _Ready()
     {
         // Its own time limit: a run that hangs quits by itself and says so (nobody has to end it by hand).
+        // A wall-clock limit on a thread of its own, for a run whose loop has hung.
+        new System.Threading.Thread(() =>
+        {
+            System.Threading.Thread.Sleep(TimeSpan.FromMinutes(35));
+            Console.Error.WriteLine("PoiTest took over 35 minutes of wall-clock time: watchdog");
+            System.Environment.Exit(2);
+        }) { IsBackground = true }.Start();
         GetTree().CreateTimer(1800.0, processAlways: true, processInPhysics: false, ignoreTimeScale: true).Timeout += () =>
         {
             GD.PrintErr("PoiTest timed out after 30 minutes");
@@ -36,7 +43,7 @@ public partial class PoiTest : Node
             ("LootByRarity", LootByRarity), ("LootByDepth", LootByDepth), ("Carved", Carved), ("Hidden", Hidden),
             ("Breaches", Breaches), ("Keys", Keys), ("PlacementRules", PlacementRules), ("NoRepeatsInSystem", NoRepeatsInSystem),
             ("SeenWeighting", SeenWeighting), ("RegrowthPolicy", RegrowthPolicy), ("RevealDistances", RevealDistances),
-            ("WorldPlacement", WorldPlacementCheck), ("WorldProfiles", WorldProfiles), ("Ports", PortsAndPeople), ("StartWorlds", StartWorlds), ("Tethers", Tethers), ("Stamps", Stamps), ("Geometry", Geometry), ("RequiredRooms", RequiredRooms), ("Ages", Ages), ("FactionMix", FactionMix), ("Townsfolk", TownsfolkCheck), ("Blasts", Blasts), ("StartSystems", StartSystems), ("PlainRuins", PlainRuins), ("Houses", Houses), ("Doors", Doors), ("Decay", DecayPass), ("Landmarks", Landmarks), ("ShooterTags", ShooterTags), ("Performance", Performance),
+            ("WorldPlacement", WorldPlacementCheck), ("WorldProfiles", WorldProfiles), ("Ports", PortsAndPeople), ("StartWorlds", StartWorlds), ("Tethers", Tethers), ("Stamps", Stamps), ("Geometry", Geometry), ("RequiredRooms", RequiredRooms), ("Ages", Ages), ("FactionMix", FactionMix), ("Townsfolk", TownsfolkCheck), ("Blasts", Blasts), ("StartSystems", StartSystems), ("PlainRuins", PlainRuins), ("Houses", Houses), ("Doors", Doors), ("Surfaces", Surfaces), ("Rails", Rails), ("Decay", DecayPass), ("Landmarks", Landmarks), ("ShooterTags", ShooterTags), ("Performance", Performance),
         };
         try
         {

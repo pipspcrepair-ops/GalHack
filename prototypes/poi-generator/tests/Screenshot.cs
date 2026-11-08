@@ -37,6 +37,13 @@ public partial class Screenshot : Node
                 RuinAge.Fallback = new RuinAge(w[0], arg.EndsWith("/falling"), w[1], w[2]);
             }
         }
+        // A wall-clock limit as well, on a thread of its own: a run whose loop has hung still quits.
+        new System.Threading.Thread(() =>
+        {
+            System.Threading.Thread.Sleep(System.TimeSpan.FromSeconds(420));
+            System.Console.Error.WriteLine("Screenshot took over 7 minutes of wall-clock time: watchdog");
+            System.Environment.Exit(3);
+        }) { IsBackground = true }.Start();
         // Its own time limit: a shot that stalls quits by itself and says so.
         GetTree().CreateTimer(240.0, processAlways: true, processInPhysics: false, ignoreTimeScale: true).Timeout += () =>
         {
