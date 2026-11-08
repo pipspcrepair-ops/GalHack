@@ -122,8 +122,9 @@ public partial class SurfaceZone : Node3D
         AddChild(Streamer);
         Sea = new MeshInstance3D
         {
-            Name = "Sea", Mesh = new PlaneMesh { Size = new Vector2(24000f, 24000f) },
-            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+            // Subdivided so its far side can sink over the horizon with the land (round_sink in the water shader).
+            Name = "Sea", Mesh = new PlaneMesh { Size = new Vector2(24000f, 24000f), SubdivideWidth = 95, SubdivideDepth = 95 },
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, ExtraCullMargin = PlanetSurface.Terrain.TerrainStreamer.RoundSink(17000f),
         };
         AddChild(Sea);
         Sfx = new PlanetSurface.Fx.Sfx { Name = "Sfx" };

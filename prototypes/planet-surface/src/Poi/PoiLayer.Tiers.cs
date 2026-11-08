@@ -189,6 +189,14 @@ public partial class PoiLayer
         return Mathf.Sqrt(dx * dx + dz * dz);
     }
 
+    /// <summary>A far mesh sinks with the ground under it over the round world's horizon (<see cref="Terrain.TerrainStreamer.RoundSink"/>), or it would stand over it.</summary>
+    static void SinkFar(MeshInstance3D low, float distance)
+    {
+        if (low == null) return;
+        var at = new Vector3(0f, -Terrain.TerrainStreamer.RoundSink(distance), 0f);
+        if (low.Position != at) low.Position = at;
+    }
+
     void TickTiers(Vector3 camera)
     {
         bool built = false;
@@ -217,6 +225,7 @@ public partial class PoiLayer
         {
             t.Distance = float.MaxValue;
             foreach (Place p in t.Members) t.Distance = Mathf.Min(t.Distance, Away(p, camera));
+            SinkFar(t.Low, t.Distance);
         }
         foreach (Place p in _places)
         {
@@ -233,6 +242,7 @@ public partial class PoiLayer
             // A place you are all but in is never its far blocks, even for the moment its mid ones take.
             bool low = !p.Whole && d > 200f;
             if (p.Low != null && p.Low.Visible != low) p.Low.Visible = low;
+            if (tile == null) SinkFar(p.Low, d);
             if (p.Mid == null && p != _midJob && d < radius && d - radius < best)
             {
                 best = d - radius;
