@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Godot;
 
 namespace Wildlife;
@@ -19,21 +20,47 @@ public sealed class PeopleTables
     public ClimateDress BadAir { get; set; } = new();
     /// <summary>No air at all: a suit outdoors.</summary>
     public ClimateDress Vacuum { get; set; } = new();
+    /// <summary>What a rainy region adds to anyone's wear, whatever the band.</summary>
+    public ClimateDress Rain { get; set; } = new();
+    /// <summary>Breathable but poisoned (radiation, a mutagen): a hazard suit with a filter mask.</summary>
+    public ClimateDress Hazard { get; set; } = new();
+    /// <summary>How warm each garment keeps you (clo-like units); a dress's own base counts too.</summary>
+    public Dictionary<string, float> Garments { get; set; } = new();
     /// <summary>Role to its look.</summary>
     public Dictionary<string, RoleLook> Roles { get; set; } = new();
     /// <summary>Gone wild: what is left of their clothes.</summary>
     public RoleLook Feral { get; set; } = new();
 }
 
+/// <summary>
+/// A place's own spot on its world: the temperature and humidity of its region (the world map's),
+/// which dress its people. Two regions of one world dress differently; a visitor keeps their own.
+/// </summary>
+public sealed class Locale
+{
+    /// <summary>Below this humidity a region is dry, above the next humid, above the last rainy (0 to 1, the map's).</summary>
+    public const float Dry = 0.33f, Humid = 0.62f, Rainy = 0.78f;
+    public float TempC = 15f, Humidity = 0.5f;
+
+    public ClimateBand Band => new WorldConditions { TempC = TempC }.Climate;
+}
+
 /// <summary>What a climate (or a hazard) dresses everyone in.</summary>
 public sealed class ClimateDress
 {
-    public string Dress { get; set; } = "shirt";
+    /// <summary>(Empty in a humidity variant: the band's own dress stands.)</summary>
+    public string Dress { get; set; } = "";
     public float Padding { get; set; } = 1f;
     /// <summary>Their bodies, on average: cold builds them heavier, heat leaner.</summary>
     public float Build { get; set; }
     public Dictionary<string, float> Wear { get; set; } = new();
     public string[] Colours { get; set; } = Array.Empty<string>();
+    /// <summary>How warm they need to be here, and the layers they put on to get there, innermost first: base, insulation, wind, shell.</summary>
+    public float Warmth { get; set; }
+    public Dictionary<string, string[]> Layers { get; set; } = new();
+    /// <summary>The same band in a humid region and in a dry one: their own dress, wear and colours over the band's.</summary>
+    public ClimateDress Humid { get; set; }
+    public ClimateDress Dry { get; set; }
 }
 
 /// <summary>What a role wears on top of the climate's clothes, carries and looks like.</summary>
@@ -54,6 +81,14 @@ public sealed class RoleLook
     public string Startled { get; set; } = "Startle";
     /// <summary>The hue range (0 to 1) of the one saturated mark the job wears.</summary>
     public float[] Accent { get; set; } = Array.Empty<float>();
+    /// <summary>
+    /// Their day: when they are out and about (a share of the day, from and to; to past from wraps
+    /// past midnight; 0 to 1 is always), the spots they keep to (by tag), and how they get about
+    /// there: stay, beat, patrol, work, visit, sit, play, roam, leave, or wander.
+    /// </summary>
+    public float[] Out { get; set; } = { 0.26f, 0.78f };
+    public string[] Haunts { get; set; } = Array.Empty<string>();
+    public string Moves { get; set; } = "wander";
 }
 
 /// <summary>
@@ -71,6 +106,11 @@ public sealed class Founders
     public float Leg, Shoulder, Hip, Build;
     /// <summary>The share who are outsiders and travellers: more in trade hubs and spaceports.</summary>
     public float Outsiders = 0.08f;
+    /// <summary>The folk who founded the place, and in a mixed place another folk and its share.</summary>
+    public Folk Folk, Second;
+    public float SecondShare;
+    /// <summary>Where on its world the place stands: the region that dresses its people (null: the world's mean).</summary>
+    public Locale Locale;
 }
 
 /// <summary>
@@ -79,64 +119,122 @@ public sealed class Founders
 /// world has treated them sets their mutation, and who holds the place decides whether they're
 /// townsfolk, raiders or feral. Nothing here names a person or a town.
 /// </summary>
-public sealed class PeopleGenerator
+public sealed partial class PeopleGenerator
 {
     readonly PeopleTables _t;
     readonly WorldConditions _w;
+    /// <summary>The world's first folk: most of its places were founded by them.</summary>
     public readonly Folk Folk;
+    /// <summary>Every folk of the world, with how many of its places each founded (the first leads).</summary>
+    public readonly List<(Folk Folk, float Share)> Folks = new();
     /// <summary>How everyone here speaks, more or less.</summary>
     public readonly Dialect Dialect;
     /// <summary>How the worms take someone (the world's data sets it).</summary>
     public HuskRules HuskRules = new();
+    Folk _vharn;
 
     public PeopleGenerator(PeopleTables tables, WorldConditions world)
     {
         _t = tables;
         _w = world;
-        Folk = RollFolk(world);
+        RollFolks(world);
+        Folk = Folks[0].Folk;
         Dialect = Dialect.For(world.Seed);
     }
 
+    /// <summary>The Vharn as they are on this world: rolled from the same parts, leaning to chitin (their places only).</summary>
+    public Folk Vharn => _vharn ??= Settle(Peoples.RollVharn(Rng.For(_w.Seed, "vharn"), _w), _w);
+
     /// <summary>
-    /// Who lives on this world: mostly humans, sometimes a human-like folk, and more of those the
-    /// stranger the world. A folk's body answers to the world's heat and light however it started.
+    /// Who lives on this world: one to three folk, humans among them more often than not, and more
+    /// alien folk the stranger the world. A world's founders roll its mix; no two of its folk share
+    /// an outline (docs/alien-peoples.md 1.6). A folk's body answers to the world's heat and light
+    /// however it started.
     /// </summary>
-    static Folk RollFolk(WorldConditions w)
+    void RollFolks(WorldConditions w)
     {
         var rng = Rng.For(w.Seed, "folk");
-        var f = new Folk();
-        float dim = w.Climate is ClimateBand.Frozen or ClimateBand.Cold ? 0.7f : 0.3f;
-        if (rng.Chance(0.12f + 0.55f * w.Alienness))
+        float alien = 0.12f + 0.55f * w.Alienness;
+        int count = 1 + (rng.Chance(0.2f + 0.45f * w.Alienness) ? 1 : 0);
+        if (count == 2 && rng.Chance(0.15f + 0.3f * w.Alienness)) count = 3;
+        bool humans = false;
+        for (int i = 0; i < count; i++)
         {
-            f.Id = "kin";
-            f.Human = false;
-            f.HeightScale = rng.Range(0.94f, 1.12f);
-            f.LimbScale = rng.Range(0.96f, 1.1f);
-            f.BrowRidge = rng.Range(0.2f, 1f);
-            f.Dimorphism = rng.Range(0.2f, 1.7f);
-            f.Hairless = rng.Chance(0.4f);
-            f.DarkVision = rng.Chance(dim) ? rng.Range(0.5f, 1f) : rng.Range(0f, 0.3f);
-            // Their skin is their own: ashen, slate, ochre or a pale green-grey.
-            float[][] hues = { new[] { 0.09f, 0.12f }, new[] { 0.2f, 0.36f }, new[] { 0.54f, 0.64f }, new[] { 0.95f, 1.0f } };
-            f.SkinHue = rng.Pick(hues);
-            f.SkinSat = new[] { 0.08f, 0.3f };
-            f.SkinVal = new[] { 0.34f, 0.7f };
-            f.EyeShine = Color.FromHsv(rng.Range(0.05f, 0.55f), 0.6f, 0.9f);
+            Folk f;
+            // Humans are among a world's folk more often than not, at most once.
+            if (!humans && !rng.Chance(i == 0 ? alien : 0.6f)) { f = new Folk(); humans = true; }
+            else
+            {
+                f = Peoples.Roll(rng, w, $"folk{i}");
+                // Two folk of one world never share an outline: rolled again until they differ.
+                for (int tries = 0; tries < 40 && Folks.Exists(o => !o.Folk.Human && Peoples.Shared(o.Folk, f) > 2); tries++) f = Peoples.Roll(rng, w, $"folk{i}");
+                if (Folks.Exists(o => !o.Folk.Human && Peoples.Shared(o.Folk, f) > 2)) continue; // none different enough: one folk fewer
+            }
+            Folks.Add((Settle(f, w), i == 0 ? 1f : rng.Range(0.15f, 0.4f)));
         }
-        // Sun darkens a people, cold lightens them; cold thickens them, heat draws them out.
-        f.BuildBias = w.Climate switch { ClimateBand.Frozen => 0.14f, ClimateBand.Cold => 0.08f, ClimateBand.Hot => -0.06f, ClimateBand.Scorching => -0.1f, _ => 0f };
+    }
+
+    /// <summary>Sun darkens a people, cold lightens them; cold thickens them, heat draws them out.</summary>
+    static Folk Settle(Folk f, WorldConditions w)
+    {
+        if (f.Human) f.BuildBias = w.Climate switch { ClimateBand.Frozen => 0.14f, ClimateBand.Cold => 0.08f, ClimateBand.Hot => -0.06f, ClimateBand.Scorching => -0.1f, _ => 0f };
         float shift = w.Climate switch { ClimateBand.Frozen or ClimateBand.Cold => 0.1f, ClimateBand.Hot or ClimateBand.Scorching => -0.14f, _ => 0f };
         f.SkinVal = new[] { Math.Clamp(f.SkinVal[0] + shift, 0.2f, 0.9f), Math.Clamp(f.SkinVal[1] + shift, 0.3f, 0.92f) };
         return f;
+    }
+
+    /// <summary>One of the world's folk by their shares of its places.</summary>
+    Folk PickFolk(Rng rng, Folk not = null)
+    {
+        float total = 0f;
+        foreach (var (f, share) in Folks) if (f != not) total += share;
+        float r = rng.Float() * total;
+        foreach (var (f, share) in Folks)
+        {
+            if (f == not) continue;
+            if ((r -= share) <= 0f) return f;
+        }
+        return Folk;
     }
 
     static float Normal(Rng rng, float mean, float spread) => mean + spread * ((rng.Float() + rng.Float() + rng.Float()) / 1.5f - 1f) * 1.7f;
 
     static Color Hex(string s) => new("#" + s.TrimStart('#'));
 
-    /// <summary>What the weather dresses them in; a suit where there is no air; and where the air is bad but the weather mild, a sealed coverall.</summary>
-    ClimateDress Dress => _w.Vacuum ? _t.Vacuum : _w.BadAir && _w.Climate == ClimateBand.Mild ? _t.BadAir
-        : _t.Climates.TryGetValue(_w.Climate.ToString(), out ClimateDress d) ? d : new ClimateDress();
+    /// <summary>
+    /// What the weather where they live dresses them in: their region's temperature band, then its
+    /// humidity (dry, or humid; very wet regions add the rain's wear on top); a suit where there is
+    /// no air, and where the air is bad but the weather mild, a sealed coverall. With no region,
+    /// the world's own mean.
+    /// </summary>
+    ClimateDress DressFor(Locale region)
+    {
+        ClimateBand band = region?.Band ?? _w.Climate;
+        if (_w.Vacuum) return _t.Vacuum;
+        if (_w.BadAir && band == ClimateBand.Mild) return _t.BadAir;
+        ClimateDress d = _t.Climates.TryGetValue(band.ToString(), out ClimateDress c) ? c : new ClimateDress();
+        float wet = region?.Humidity ?? 0.5f;
+        ClimateDress over = wet < Locale.Dry ? d.Dry : wet > Locale.Humid ? d.Humid : null;
+        bool rain = wet > Locale.Rainy && band is not ClimateBand.Frozen;
+        if (over == null && !rain) return d;
+        // The region's own on top of the band's: its dress, its wear first (a slot it fills stays), its colours, its warmth.
+        var m = new ClimateDress
+        {
+            Dress = over?.Dress is { Length: > 0 } dd ? dd : d.Dress,
+            Padding = over != null && over.Padding != 1f ? over.Padding : d.Padding,
+            Build = d.Build,
+            Colours = over?.Colours is { Length: > 0 } cc ? cc : d.Colours,
+            Warmth = d.Warmth + (over?.Warmth ?? 0f),
+            Layers = over?.Layers is { Count: > 0 } ll ? ll : d.Layers,
+        };
+        if (rain) foreach (var (id, p) in _t.Rain.Wear) m.Wear[id] = p;
+        if (over != null) foreach (var (id, p) in over.Wear) m.Wear.TryAdd(id, p);
+        foreach (var (id, p) in d.Wear) m.Wear.TryAdd(id, p);
+        return m;
+    }
+
+    /// <summary>A few places' regions across the world: where an outsider comes from (a game with a map sets them; else the world's mean).</summary>
+    public List<Locale> Regions = new();
 
     /// <summary>
     /// One person, the same every time for a seed. <paramref name="mutation"/> is how hard this
@@ -146,20 +244,32 @@ public sealed class PeopleGenerator
     /// The founders of a place, from the world's seed and the place's: neighbouring places of
     /// one world lean the same way more than not, and a busier place has more outsiders.
     /// </summary>
-    public Founders FoundersOf(ulong place, bool crossroads = false)
+    public Founders FoundersOf(ulong place, bool crossroads = false, bool vharn = false)
     {
         var world = Rng.For(_w.Seed, "founders");
         var here = Rng.For(Rng.Mix(_w.Seed, place), "founders");
         float lean = world.Float();
-        float v = Mathf.Lerp(Folk.SkinVal[0], Folk.SkinVal[1], Math.Clamp(lean + here.Range(-0.35f, 0.35f), 0f, 1f));
+        // Who founded it: one of the world's folk by their shares (the Vharn hold their own places);
+        // about a third of places on a world of several folk are mixed, and crossroads mix more.
+        var who = Rng.For(Rng.Mix(_w.Seed, place), "founding folk");
+        Folk folk = vharn ? Vharn : PickFolk(who);
+        Folk second = null;
+        float share = 0f;
+        if (!vharn && Folks.Count > 1 && who.Chance(crossroads ? 0.8f : 0.33f))
+        {
+            second = PickFolk(who, folk);
+            share = crossroads ? who.Range(0.25f, 0.45f) : who.Range(0.15f, 0.3f);
+        }
+        float v = Mathf.Lerp(folk.SkinVal[0], folk.SkinVal[1], Math.Clamp(lean + here.Range(-0.35f, 0.35f), 0f, 1f));
         var hair = new string[2];
         for (int i = 0; i < hair.Length; i++) hair[i] = here.Pick(_t.HairColours);
         return new Founders
         {
-            SkinHue = here.Range(Folk.SkinHue), SkinSat = here.Range(Folk.SkinSat), SkinValue = v, Hair = hair,
+            SkinHue = here.Range(folk.SkinHue), SkinSat = here.Range(folk.SkinSat), SkinValue = v, Hair = hair,
             Brow = here.Range(-0.15f, 0.15f), Jaw = here.Range(-0.08f, 0.08f),
             Leg = here.Range(-0.03f, 0.03f), Shoulder = here.Range(-0.04f, 0.04f), Hip = here.Range(-0.04f, 0.04f), Build = here.Range(-0.1f, 0.1f),
-            Outsiders = crossroads ? here.Range(0.25f, 0.45f) : here.Range(0.03f, 0.12f),
+            Outsiders = vharn ? 0.02f : crossroads ? here.Range(0.25f, 0.45f) : here.Range(0.03f, 0.12f),
+            Folk = folk, Second = second, SecondShare = share,
         };
     }
 
@@ -168,7 +278,16 @@ public sealed class PeopleGenerator
         var rng = Rng.For(seed, "person");
         var look = occupancy == Occupancy.Feral ? _t.Feral
             : _t.Roles.TryGetValue(role.ToString(), out RoleLook l) ? l : new RoleLook();
-        var f = new Figure { Role = role, Occupancy = occupancy, Folk = Folk };
+        // Their folk: the place's founders', or in a mixed place now and then the other folk there;
+        // an outsider is any folk of the world. One person is one folk: no blends.
+        var kin = Rng.For(seed, "kin");
+        bool local = founders != null && !kin.Chance(founders.Outsiders);
+        var whose = Rng.For(seed, "folk");
+        Folk folk = founders == null ? PickFolk(whose) : !local ? (whose.Chance(0.6f) ? founders.Folk ?? Folk : PickFolk(whose))
+            : founders.Second != null && whose.Chance(founders.SecondShare) ? founders.Second : founders.Folk ?? Folk;
+        // A place's lean in skin is its own folk's: one of the other folk there takes their own people's range.
+        if (founders != null && folk != (founders.Folk ?? Folk)) local = false;
+        var f = new Figure { Role = role, Occupancy = occupancy, Folk = folk };
         f.Sex = rng.Chance(0.5f) ? Sex.Female : Sex.Male;
         f.Stage = role == PersonRole.Child || young ? LifeStage.Child : role == PersonRole.Elder ? LifeStage.Elder : LifeStage.Adult;
         // A child doing a grown-up's job carries it like one: upright, kitted out, no play in them.
@@ -178,22 +297,20 @@ public sealed class PeopleGenerator
         // Height: the sexes differ by as much as this folk's bodies do; age takes a little back.
         float[] h = f.Sex == Sex.Male ? _t.HeightMale : _t.HeightFemale;
         float mid = (_t.HeightMale[0] + _t.HeightFemale[0]) * 0.5f;
-        float mean = mid + (h[0] - mid) * Folk.Dimorphism;
-        f.Height = f.Stage == LifeStage.Child ? rng.Range(_t.HeightChild) : Normal(rng, mean, h[1]) * Folk.HeightScale;
+        float mean = mid + (h[0] - mid) * folk.Dimorphism;
+        f.Height = f.Stage == LifeStage.Child ? MathF.Min(rng.Range(_t.HeightChild) * MathF.Sqrt(folk.HeightScale), _t.HeightChild[1]) /* a child is a child, whatever their folk */ : Normal(rng, mean, h[1]) * folk.HeightScale;
         if (f.Stage == LifeStage.Elder) f.Height *= 0.97f;
-        f.Build = Math.Clamp(rng.Range(0.1f, 0.75f) + Folk.BuildBias + look.Build + (f.Age > 40f ? 0.08f : 0f) - (f.Stage == LifeStage.Child ? 0.2f : 0f), 0f, 1f);
-        f.Stoop = f.Hardened ? 0f : look.Stoop * rng.Range(0.7f, 1.2f) + (f.Age > 55f ? 0.1f : 0f);
+        f.Build = Math.Clamp(rng.Range(0.1f, 0.75f) + folk.BuildBias + look.Build + (f.Age > 40f ? 0.08f : 0f) - (f.Stage == LifeStage.Child ? 0.2f : 0f), 0f, 1f);
+        f.Stoop = f.Hardened ? 0f : MathF.Max(0f, look.Stoop * rng.Range(0.7f, 1.2f) + (f.Age > 55f ? 0.1f : 0f) + (f.Stage == LifeStage.Child ? 0f : folk.StoopBias));
         f.Stagger = look.Stagger * rng.Range(0.7f, 1.2f);
 
         // Colours: their skin; the climate's cloth; a role's trim. A town's fashions are its own rolls.
         // Their looks come from where their people settled, on a stream of their own: nothing about
         // their job, side or temper reaches it.
-        var kin = Rng.For(seed, "kin");
-        bool local = founders != null && !kin.Chance(founders.Outsiders);
         f.Skin = local
-            ? Color.FromHsv(Wrap(founders.SkinHue + kin.Range(-0.01f, 0.01f)), Math.Clamp(founders.SkinSat + kin.Range(-0.05f, 0.05f), 0f, 1f), Math.Clamp(founders.SkinValue + kin.Range(-0.07f, 0.07f), 0.15f, 0.95f))
-            : Color.FromHsv(Wrap(kin.Range(Folk.SkinHue)), kin.Range(Folk.SkinSat), kin.Range(Folk.SkinVal));
-        if (!Folk.Hairless) f.Hair = Hex(local && kin.Chance(0.85f) ? kin.Pick(founders.Hair) : kin.Pick(_t.HairColours));
+            ? Color.FromHsv(Wrap(founders.SkinHue + kin.Range(-0.01f, 0.01f)), Math.Clamp(founders.SkinSat + kin.Range(-0.05f, 0.05f), 0f, 1f), Math.Clamp(founders.SkinValue + kin.Range(-1f, 1f) * MathF.Min(0.07f, 0.3f * (folk.SkinVal[1] - folk.SkinVal[0])), 0.15f, 0.95f)) /* a place's spread is a share of its folk's */
+            : Color.FromHsv(Wrap(kin.Range(folk.SkinHue)), kin.Range(folk.SkinSat), kin.Range(folk.SkinVal));
+        if (!folk.Hairless) f.Hair = Hex(local && kin.Chance(0.85f) ? kin.Pick(founders.Hair) : kin.Pick(_t.HairColours));
         f.Brow = local ? founders.Brow + kin.Range(-0.05f, 0.05f) : kin.Range(-0.15f, 0.15f);
         f.Jaw = local ? founders.Jaw + kin.Range(-0.03f, 0.03f) : kin.Range(-0.08f, 0.08f);
         // Each proportion on its own, round their people's lean: builds vary inside a place and lean a little by people.
@@ -208,8 +325,11 @@ public sealed class PeopleGenerator
         f.ShoulderK = Around(founders?.Shoulder ?? 0f, 0.09f);
         if (local) f.Build = Math.Clamp(f.Build + founders.Build, 0f, 1f);
         if (f.Stage == LifeStage.Elder || f.Age > 50f && rng.Chance(0.5f)) f.Hair = new Color(0.62f, 0.6f, 0.58f).Lerp(f.Hair, 0.2f);
-        ClimateDress dress = Dress;
-        f.Dress = occupancy == Occupancy.Feral ? "rags" : dress.Dress;
+        // Dressed for where they live: the place's region, or for a visitor their own region's.
+        Locale region = local || founders == null ? founders?.Locale : Regions.Count > 0 ? Regions[(int)(Rng.For(seed, "from").Float() * Regions.Count) % Regions.Count] : founders.Locale;
+        f.Home = region;
+        ClimateDress dress = DressFor(region);
+        f.Dress = occupancy == Occupancy.Feral ? "rags" : dress.Dress is { Length: > 0 } worn ? worn : "shirt";
         f.Padding = occupancy == Occupancy.Feral ? 1f : dress.Padding;
         f.Cloth = dress.Colours.Length > 0 ? Hex(rng.Pick(dress.Colours)) : new Color(0.42f, 0.4f, 0.36f);
         f.Cloth = f.Cloth.Darkened(rng.Range(0f, 0.2f));
@@ -223,22 +343,35 @@ public sealed class PeopleGenerator
         f.Metal = new Color(0.34f, 0.34f, 0.36f);
         if (occupancy == Occupancy.Feral) f.Cloth = f.Cloth.Lerp(new Color(0.22f, 0.2f, 0.17f), 0.6f);
 
-        f.HairStyle = look.Hair == "mohawk" ? "mohawk" : Folk.Hairless ? "bald" : look.Hair.Length > 0 ? look.Hair : rng.Pick(_t.Hair); // a raider's crest is made, not grown
+        f.HairStyle = look.Hair == "mohawk" ? "mohawk" : folk.Hairless ? "bald" : look.Hair.Length > 0 ? look.Hair : rng.Pick(_t.Hair); // a raider's crest is made, not grown
         if (f.Stage == LifeStage.Elder && rng.Chance(0.4f)) f.HairStyle = "bald";
         if (f.HairStyle == "long" && f.Sex == Sex.Male && rng.Chance(0.6f)) f.HairStyle = "short";
         if (f.Sex == Sex.Female && f.HairStyle == "short" && rng.Chance(0.5f)) f.HairStyle = rng.Chance(0.5f) ? "long" : "tied";
-        f.Beard = f.Sex == Sex.Male && f.Stage != LifeStage.Child && !Folk.Hairless && rng.Chance(0.4f);
+        f.Beard = f.Sex == Sex.Male && f.Stage != LifeStage.Child && !folk.Hairless && rng.Chance(0.4f);
 
         // What they wear goes on hazard first, then the job, then the weather: whatever filled a slot stays.
         if (occupancy != Occupancy.Feral)
         {
             // Bad air comes first: a mask whatever else they have on.
             if (_w.BadAir) Put(f, rng, _w.Vacuum ? _t.Vacuum.Wear : _t.BadAir.Wear);
+            // Air you can breathe but shouldn't: a filter mask and a hazard hood, over a hazard suit where it's mild enough.
+            else if (HazardWorld)
+            {
+                var hz = Rng.For(seed, "hazard");
+                Put(f, hz, _t.Hazard.Wear);
+                if ((region?.Band ?? _w.Climate) is ClimateBand.Mild or ClimateBand.Hot && _t.Hazard.Dress.Length > 0) f.Dress = _t.Hazard.Dress;
+            }
             Put(f, rng, look.Wear);
             if (!_w.Vacuum) Put(f, rng, dress.Wear);
+            if (!_w.Vacuum) Layer(f, dress, Rng.For(seed, "layers"));
         }
         else Put(f, rng, look.Wear);
+        Age(f, occupancy, Rng.For(seed, "worn"));
+        FitParts(f);
         if (rng.Chance(look.PropChance)) f.Prop = look.Prop;
+        // In a rainy region, a free hand holds an umbrella now and then.
+        if (f.Prop == "" && (region?.Humidity ?? 0f) > Locale.Rainy && f.Stage != LifeStage.Child && Rng.For(seed, "umbrella").Chance(0.35f) && occupancy == Occupancy.Friendly) f.Prop = "umbrella";
+        f.Routine = look;
         f.Approach = Enum.TryParse(look.Approach, out BodyAct approach) ? approach : BodyAct.Greet;
         f.Aimed = Enum.TryParse(look.Aimed, out BodyAct aimed) ? aimed : BodyAct.HandsUp;
         f.Startled = Enum.TryParse(look.Startled, out BodyAct startled) ? startled : BodyAct.Startle;
@@ -253,7 +386,7 @@ public sealed class PeopleGenerator
             Form = "person",
             Rig = RigKind.Humanoid,
             Figure = f,
-            Name = Folk.Id,
+            Name = folk.Id,
             CommonName = occupancy == Occupancy.Feral ? "wild figure" : occupancy == Occupancy.Raider ? "raider" : role.ToString().ToLowerInvariant(),
             Behaviour = occupancy == Occupancy.Friendly ? Behaviour.Grazer : Behaviour.Predator,
             Temperament = occupancy == Occupancy.Friendly ? Temperament.Calm : Temperament.Aggressive,
@@ -276,9 +409,9 @@ public sealed class PeopleGenerator
         s.Colors.Accent = f.Cloth;
         s.Colors.Belly = f.Skin.Lightened(0.05f);
         s.Colors.Pattern = Pattern.Plain;
-        if (Folk.DarkVision > 0.5f)
+        if (folk.DarkVision > 0.5f)
         {
-            s.Colors.Glow = Folk.EyeShine;
+            s.Colors.Glow = folk.EyeShine;
             s.Colors.GlowStrength = 0.2f;
         }
         Stats st = s.Stats;
@@ -290,7 +423,8 @@ public sealed class PeopleGenerator
         st.AttackRange = 1.3f;
         st.Perception = 40f;
         st.FleeRadius = 10f;
-        st.Radius = 0.35f;
+        // Wide shoulders, a shell or a thick tail need more room to pass: at most half a metre, well inside a doorway.
+        st.Radius = Math.Clamp(0.35f * MathF.Max(1f, f.ShoulderW / (0.235f * f.Height / 1.72f)) + (folk.Tail is "thick" or "bushy" ? 0.06f : 0f) + (folk.Back == "plates" ? 0.04f : 0f), 0.35f, 0.5f);
         st.Retaliates = occupancy != Occupancy.Friendly;
         st.Hunts = occupancy != Occupancy.Friendly;
         s.Attack = new AttackDef { Name = "Rush", Style = AttackStyle.Lunge, Telegraph = 1.1f, Sound = "snarl" };
@@ -312,6 +446,75 @@ public sealed class PeopleGenerator
         f.Stoop = MathF.Max(f.Stoop, 0.5f * k * rng.Range(0.3f, 1f));
         s.Monstrous = k > 0.7f;
         if (k > 0.8f && !f.Has("suit_helmet")) f.HairStyle = "bald";
+    }
+
+    /// <summary>A world whose air keeps you alive but poisons you: radiation or a mutagen.</summary>
+    bool HazardWorld => !_w.BadAir && (_w.Radiation >= 2f || _w.Mutagen >= 0.5f);
+
+    /// <summary>What a dress keeps you warm by itself, before any layer.</summary>
+    static float DressWarmth(string dress) => dress switch { "furs" => 1.6f, "coat" => 0.9f, "suit" => 3f, "hazard" => 0.8f, "wraps" => 0.15f, "rags" => 0.1f, _ => 0.3f };
+
+    /// <summary>How warm everything they have on keeps them.</summary>
+    public float WarmthOf(Figure f)
+    {
+        float w = DressWarmth(f.Dress);
+        foreach (string g in f.Wear) w += _t.Garments.GetValueOrDefault(g);
+        foreach (string g in f.Layered) w += _t.Garments.GetValueOrDefault(g);
+        return w;
+    }
+
+    /// <summary>
+    /// Dressing for the weather in layers, innermost first (base, insulation, wind, shell), each
+    /// put on only while they are still colder than the climate asks; a shell already worn
+    /// counts. Every layer adds bulk.
+    /// </summary>
+    void Layer(Figure f, ClimateDress dress, Rng rng)
+    {
+        foreach (string layer in new[] { "base", "insulation", "wind", "shell" })
+        {
+            if (WarmthOf(f) >= dress.Warmth) break;
+            if (!dress.Layers.TryGetValue(layer, out string[] choices) || choices.Length == 0) continue;
+            string g = rng.Pick(choices);
+            string slot = HumanBody.Slot(g);
+            if (slot != "" && f.Wear.Any(w => HumanBody.Slot(w) == slot)) continue; // a coat or a robe is already the shell
+            if (layer == "shell") f.Wear.Add(g);
+            else f.Layered.Add(g);
+            f.Padding += layer == "base" ? 0.02f : 0.05f;
+        }
+        f.Warmth = WarmthOf(f);
+    }
+
+    /// <summary>
+    /// How worn their clothes are: older people's are older, a raider's and a wild one's worse,
+    /// and everyone's some. Worn cloth fades toward grey; the patches are drawn (<see cref="HumanBody"/>).
+    /// </summary>
+    static void Age(Figure f, Occupancy occupancy, Rng rng)
+    {
+        float age = Math.Clamp((f.Age - 16f) / 60f, 0f, 1f);
+        f.Worn = Math.Clamp(rng.Range(0f, 0.45f) + 0.45f * age + (occupancy == Occupancy.Raider ? 0.25f : occupancy == Occupancy.Feral ? 0.5f : 0f), 0f, 1f);
+        var grey = new Color(0.5f, 0.49f, 0.46f);
+        f.Cloth = f.Cloth.Lerp(grey, 0.28f * f.Worn);
+        f.Trim = f.Trim.Lerp(grey, 0.2f * f.Worn);
+        if (f.Warmth <= 0f) f.Warmth = DressWarmth(f.Dress);
+    }
+
+    /// <summary>
+    /// A folk's parts against their clothes (docs/alien-peoples.md 6): a tall crown leaves no room
+    /// for a cap, a helmet or a hat (horns pierce a hood); a back part takes the back slot, a pack
+    /// becoming a satchel; a thick tail means no long coat. Nothing here knows what a folk is.
+    /// </summary>
+    static void FitParts(Figure f)
+    {
+        Folk k = f.Folk;
+        if (k == null || k.Human) return;
+        if (k.CrownRise > 0.9f || k.Ears is "tall")
+            foreach (string hat in new[] { "helmet", "cap", "wide_hat", "straw_hat" }) f.Wear.Remove(hat);
+        if (k.Back != "" && f.Dress != "suit")
+        {
+            if (f.Wear.Remove("backpack") && !f.Wear.Any(w => HumanBody.Slot(w) == "side")) f.Wear.Add("satchel");
+            f.Wear.Remove("air_tank");
+        }
+        if (k.Tail is "thick" or "bushy") { f.Wear.Remove("coat"); f.Wear.Remove("poncho"); }
     }
 
     /// <summary>Puts on what a table says, each at its chance; a slot already filled stays as it is.</summary>
@@ -358,8 +561,9 @@ public sealed class PeopleGenerator
     public static PersonRole RoleFor(string townRole, bool farm, Rng rng) => townRole switch
     {
         "vendor" => PersonRole.Trader,
-        "guard" => PersonRole.Guard,
-        "worker" => farm ? PersonRole.Farmer : rng.Chance(0.15f) ? PersonRole.Medic : PersonRole.Worker,
+        // Some of a place's guards are its law: they walk the streets and keep a checkpoint at the way in.
+        "guard" => rng.Chance(0.35f) ? PersonRole.Lawman : PersonRole.Guard,
+        "worker" => farm ? PersonRole.Farmer : rng.Float() switch { < 0.15f => PersonRole.Medic, < 0.38f => PersonRole.Mechanic, _ => PersonRole.Worker },
         "rusher" => rng.Chance(0.3f) ? PersonRole.Medic : PersonRole.Scavenger,
         _ => rng.Float() switch { < 0.28f => PersonRole.Elder, < 0.5f => PersonRole.Child, < 0.62f => PersonRole.Drunk, < 0.82f => PersonRole.Scavenger, _ => PersonRole.Worker },
     };

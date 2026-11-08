@@ -189,9 +189,10 @@ public partial class WildlifePatch : Node3D
         sim.Telegraph += e =>
         {
             Audio.Telegraph(e.Creature);
+            Slice.Game.SoundCues.Cue(WorldOf(e.Creature), 1f);
             if (e.Target == Player) Telegraphed?.Invoke(e);
         };
-        sim.Warned += c => Audio.Telegraph(c);
+        sim.Warned += c => { Audio.Telegraph(c); Slice.Game.SoundCues.Cue(WorldOf(c), 0.8f); };
         sim.Attacked += e => { if (e.Target == Player) Attacked?.Invoke(e); else Bitten?.Invoke(e); };
         sim.Died += (c, killer) => Died?.Invoke(c, killer);
         sim.Seized += e => { if (e.Victim == Player) Seized?.Invoke(e, sim); };

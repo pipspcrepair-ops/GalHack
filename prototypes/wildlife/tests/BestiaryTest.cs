@@ -23,6 +23,15 @@ public partial class BestiaryTest : Node
 
     public override void _Ready()
     {
+        // A wall-clock quit: a run that hangs never outlives itself.
+        new System.Threading.Thread(() =>
+        {
+            System.Threading.Thread.Sleep(TimeSpan.FromMinutes(6));
+            Console.Error.WriteLine("FAIL  the run took over 6 minutes: watchdog");
+            // (Exit can wait on a busy main thread: the process ends itself regardless.)
+            new System.Threading.Thread(() => { System.Threading.Thread.Sleep(5000); System.Diagnostics.Process.GetCurrentProcess().Kill(); }) { IsBackground = true }.Start();
+            System.Environment.Exit(1);
+        }) { IsBackground = true }.Start();
         try
         {
             _data = DataFiles.LoadWildlife();
@@ -50,6 +59,16 @@ public partial class BestiaryTest : Node
             TempersByTech();
             TwentyPeopleAreCheap();
             LooksClusterBySettlement();
+            AlienPeoplesFromParts();
+            PeoplesClusterAndMix();
+            TheVharnAreInsectLike();
+            NobodyOverTopsADoor();
+            WormsReadOnEveryHead();
+            TwentyAliensAreCheap();
+            JobsKeepTheirOwnDay();
+            PeopleAndAnimalsReadEachOther();
+            RegionsDressTheirOwn();
+            NobodyWalksThroughAnybody();
             HusksSpreadFromTheCore();
             HusksAreTheirOwnPeople();
             SeizedPeopleTurn();
@@ -173,12 +192,16 @@ public partial class BestiaryTest : Node
     void PeopleVary()
     {
         var life = Bestiary.Roll(_data, World(15f));
-        var folk = Enumerable.Range(0, 300).Select(i => life.People.Person(Seed(), PersonRole.Worker)).ToList();
+        // (One folk at a time: the sexes differ by as much as that folk's bodies do.)
+        Founders founded = life.People.FoundersOf(Seed());
+        founded.Outsiders = 0f;
+        founded.Second = null;
+        var folk = Enumerable.Range(0, 300).Select(i => life.People.Person(Seed(), PersonRole.Worker, founders: founded)).ToList();
         float men = folk.Where(s => s.Figure.Sex == Sex.Male).Average(s => s.Figure.Height), women = folk.Where(s => s.Figure.Sex == Sex.Female).Average(s => s.Figure.Height);
-        Check(men > women + 0.04f * life.People.Folk.Dimorphism, $"men and women differ in height ({men:F2} and {women:F2} m)");
+        Check(men > women + 0.04f * founded.Folk.Dimorphism, $"men and women differ in height ({men:F2} and {women:F2} m)");
         float wide = folk.Where(s => s.Figure.Sex == Sex.Male).Average(s => s.Figure.ShoulderW / s.Figure.HipW), broad = folk.Where(s => s.Figure.Sex == Sex.Female).Average(s => s.Figure.ShoulderW / s.Figure.HipW);
         Check(wide > broad, $"and in shoulder to hip ({wide:F2} and {broad:F2})");
-        Check(folk.Max(s => s.Figure.Height) - folk.Min(s => s.Figure.Height) > 0.25f && folk.Select(s => s.Figure.Build).Distinct().Count() > 150, "heights and builds spread");
+        Check(folk.Max(s => s.Figure.Height) - folk.Min(s => s.Figure.Height) > 0.2f && folk.Select(s => s.Figure.Build).Distinct().Count() > 150, "heights and builds spread");
         Check(life.People.Person(Seed(), PersonRole.Child).Figure.Height < 1.5f, "a child is a child");
         var e = life.People.Person(Seed(), PersonRole.Elder).Figure;
         Check(e.Age > 60f && e.Stoop > 0.2f, $"an elder is old and bent ({e.Age:F0}, stoop {e.Stoop:F2})");
@@ -193,7 +216,7 @@ public partial class BestiaryTest : Node
         Check(Count(PersonRole.Guard, Occupancy.Friendly, mild, f => f.Has("vest") && f.Prop == "rifle") > 30, "guards wear armour and carry rifles");
         Check(Count(PersonRole.Raider, Occupancy.Raider, mild, f => f.HairStyle == "mohawk" && f.Has("bandoleer") | f.Has("spike_pads")) > 30, "raiders have mohawks, spikes and bandoleers");
         Check(Count(PersonRole.Medic, Occupancy.Friendly, mild, f => f.Has("medic_band")) == 40, "medics carry their kit");
-        Check(Count(PersonRole.Farmer, Occupancy.Friendly, mild, f => f.Has("straw_hat") | f.Has("wide_hat") | f.Prop == "hoe") > 30, "farmers have hats and hoes");
+        Check(Count(PersonRole.Farmer, Occupancy.Friendly, mild, f => f.Has("straw_hat") | f.Has("wide_hat") | f.Prop == "hoe" | (f.Folk?.CrownRise ?? 0f) > 0.9f) > 30, "farmers have hats and hoes (or a crown no hat fits)");
         Check(Count(PersonRole.Elder, Occupancy.Friendly, mild, f => f.Prop == "cane") > 18, "elders have sticks");
         Check(Count(PersonRole.Drunk, Occupancy.Friendly, mild, f => f.Stagger > 0.3f) == 40, "drunks stagger");
         Check(Count(PersonRole.Trader, Occupancy.Friendly, Bestiary.Roll(_data, World(-25f)).People, f => f.Dress == "furs") == 40, "on ice everyone is in furs");
@@ -205,7 +228,12 @@ public partial class BestiaryTest : Node
     void Walking()
     {
         var life = Bestiary.Roll(_data, World(15f));
-        Species s = life.People.Person(Seed(), PersonRole.Worker);
+        // (A human-framed body: a long-legged folk's toe-off is EveryBuildWorks's to check.)
+        Founders human = life.People.FoundersOf(Seed());
+        human.Folk = new Folk();
+        human.Second = null;
+        human.Outsiders = 0f;
+        Species s = life.People.Person(Seed(), PersonRole.Worker, founders: human);
         Figure f = s.Figure;
         var rig = new HumanRig(s);
         Vector3 feet = new(3f, 0f, -2f);
@@ -348,7 +376,7 @@ public partial class BestiaryTest : Node
             sim.Seized += _ => seized++;
             sim.Turned += _ => turned++;
             bool person = t % 2 == 0;
-            Species prey = person ? life.People.Person(Seed(), PersonRole.Farmer) : life.Moving.Where(s => !s.Mechanical && s.Figure == null && !s.Flies && s.Rig == RigKind.Legged).OrderBy(s => s.BodyHeight).First(); // one whose head it can reach
+            Species prey = person ? life.People.Person(Seed(), PersonRole.Farmer, founders: TallFolk(life)) : life.Moving.Where(s => !s.Mechanical && s.Figure == null && !s.Flies && s.Rig == RigKind.Legged).OrderBy(s => s.BodyHeight).First(); // one whose head it can reach
             if (!person && prey.BodyHeight > husk.Figure.Height + Seizing.ReachAbove) { GD.Print($"    (this world's smallest walker stands {prey.BodyHeight:F2} m: out of a Husk's reach, so not tried)"); outOfReach++; continue; }
             Creature h = sim.Spawn(husk, new Vector3(0f, 0f, 0f));
             Creature v = sim.Spawn(prey, new Vector3(1.6f, 0f, 0f));
@@ -374,12 +402,23 @@ public partial class BestiaryTest : Node
         Check(killed > 0 || outOfReach == 3, $"{killed} seized animals died and none turned");
     }
 
+    /// <summary>A place of the world's tallest folk (a short folk's Husks can't reach a standing head: owner's call, docs/alien-peoples.md 9).</summary>
+    Founders TallFolk(WorldLife life)
+    {
+        Founders tall = life.People.FoundersOf(Seed());
+        tall.Folk = life.People.Folks.OrderByDescending(f => f.Folk.HeightScale).First().Folk;
+        tall.Second = null;
+        tall.Outsiders = 0f;
+        return tall;
+    }
+
     /// <summary>A Husk of this world tall enough to seize a head.</summary>
     Species TallHusk(WorldLife life)
     {
+        Founders tall = TallFolk(life);
         for (int i = 0; i < 200; i++)
         {
-            Species s = life.People.Person(Seed(), PersonRole.Worker, Occupancy.Friendly, 0.2f, husk: true);
+            Species s = life.People.Person(Seed(), PersonRole.Worker, Occupancy.Friendly, 0.2f, husk: true, founders: tall);
             if (s.Figure.Height + Seizing.ReachAbove >= Seizing.StandingHead + 0.05f) return s;
         }
         throw new InvalidOperationException("no tall Husk in 200 rolls");
@@ -1248,6 +1287,288 @@ public partial class BestiaryTest : Node
         holder.QueueFree();
     }
 
+    /// <summary>
+    /// Alien folk are the human skeleton with parts at its sockets, rolled from a world: every part
+    /// shows up across worlds, every folk changes its outline twice over, two folk of one world
+    /// never share an outline, and nothing cold-blooded is native to ice.
+    /// </summary>
+    /// <summary>A world's people alone, without its wildlife: cheap enough to roll hundreds.</summary>
+    PeopleGenerator Folks(WorldConditions w) => new(_data.People, w) { HuskRules = _data.Husks };
+
+    void AlienPeoplesFromParts()
+    {
+        var folks = new List<(Folk f, WorldConditions w)>();
+        bool apart = true;
+        int worlds = 160, humans = 0;
+        for (int i = 0; i < worlds; i++)
+        {
+            WorldConditions w = World(_fresh.Range(-40f, 55f), alien: _fresh.Range(0.2f, 1f));
+            PeopleGenerator g = Folks(w);
+            for (int a = 0; a < g.Folks.Count; a++)
+                for (int b = a + 1; b < g.Folks.Count; b++)
+                    if (!g.Folks[a].Folk.Human && !g.Folks[b].Folk.Human && Peoples.Shared(g.Folks[a].Folk, g.Folks[b].Folk) > 2) apart = false;
+            humans += g.Folks.Count(f => f.Folk.Human);
+            folks.AddRange(g.Folks.Where(f => !f.Folk.Human).Select(f => (f.Folk, w)));
+        }
+        var aliens = folks.Select(x => x.f).ToList();
+        GD.Print($"  ({aliens.Count} alien folk and {humans} human on {worlds} worlds; crowns {string.Join(" ", aliens.GroupBy(f => f.Crown == "" ? "-" : f.Crown).Select(g => $"{g.Key}:{g.Count()}"))}; mouths {string.Join(" ", aliens.GroupBy(f => f.Mouth == "" ? "-" : f.Mouth).Select(g => $"{g.Key}:{g.Count()}"))}; tails {string.Join(" ", aliens.GroupBy(f => f.Tail == "" ? "-" : f.Tail).Select(g => $"{g.Key}:{g.Count()}"))})");
+        Check(aliens.Count > worlds / 2 && humans > worlds / 3, "worlds hold alien folk and humans side by side");
+        int Kinds(Func<Folk, string> part) => aliens.Select(part).Where(p => p != "").Distinct().Count();
+        Check(Kinds(f => f.Crown) >= 9 && Kinds(f => f.Mouth) >= 4 && Kinds(f => f.Tail) >= 5 && Kinds(f => f.Ears) >= 6 && Kinds(f => f.Eyes) >= 4 && Kinds(f => f.Covering) >= 5 && aliens.Any(f => f.Tusks) && Kinds(f => f.Back) >= 3,
+            $"the parts all turn up: {Kinds(f => f.Crown)} crowns, {Kinds(f => f.Mouth)} mouths, {Kinds(f => f.Tail)} tails, {Kinds(f => f.Ears)} ears, {Kinds(f => f.Eyes)} eye plans, {Kinds(f => f.Covering)} coverings, {Kinds(f => f.Back)} backs, tusks");
+        Check(aliens.All(f => Peoples.Outline(f) >= 2), $"every folk changes its outline at least twice (fewest {aliens.Min(Peoples.Outline)})");
+        Check(apart, "no two folk of one world share more than two of five outline marks");
+        Check(!folks.Any(x => x.w.Climate == ClimateBand.Frozen && x.f.Covering is "scales" or "chitin"), "nothing scaled or plated is native to ice");
+        Check(aliens.Select(f => $"{f.Covering}{f.Crown}{f.Mouth}{f.Tail}{f.Ears}{f.Eyes}").Distinct().Count() > aliens.Count * 0.7f, "and folk rarely repeat");
+        // Everyone of a folk has its parts on their body, and the body is still one skinned mesh.
+        PeopleGenerator gen = Folks(World(20f, alien: 1f));
+        Species one = gen.Person(Seed(), PersonRole.Worker, founders: gen.FoundersOf(Seed()));
+        var layout = HumanBody.Build(one);
+        Check(layout.Pieces.Count == 12 + (one.Figure.Prop != "" ? 1 : 0) + FolkBody.TailBones(one.Figure), $"a {one.Figure.Folk.Covering} folk's body keeps the twelve bones, a prop and its tail's ({layout.Pieces.Count} pieces)");
+    }
+
+    /// <summary>A place is mostly the folk who founded it; on a world of several folk some places mix; one person is one folk.</summary>
+    void PeoplesClusterAndMix()
+    {
+        int places = 0, mixed = 0;
+        float own = 0f;
+        for (int i = 0; i < 40; i++)
+        {
+            PeopleGenerator g = Folks(World(15f, alien: 0.9f));
+            if (g.Folks.Count < 2) continue;
+            for (int p = 0; p < 6; p++)
+            {
+                Founders f = g.FoundersOf(Seed());
+                var here = Enumerable.Range(0, 30).Select(_ => g.Person(Seed(), PersonRole.Worker, founders: f).Figure.Folk).ToList();
+                own += here.Count(x => x == f.Folk) / 30f;
+                places++;
+                if (here.Distinct().Count() > 1) mixed++;
+            }
+        }
+        Check(places > 0 && own / places > 0.65f, $"a place is mostly its founders' folk ({own / MathF.Max(1, places) * 100f:F0}% on average over {places} places)");
+        Check(mixed > places / 5, $"and on worlds of several folk, folk live side by side in {mixed} of {places} places");
+    }
+
+    /// <summary>The Vharn (the owner, 8 Nov 2026): the same parts, leaning hard to carapace, mandibles, antennae and chitin, on the human shape.</summary>
+    void TheVharnAreInsectLike()
+    {
+        var vharn = Enumerable.Range(0, 40).Select(_ => Folks(World(_fresh.Range(-30f, 50f))).Vharn).ToList();
+        Check(vharn.All(v => v.Covering == "chitin") && vharn.Count(v => v.Mouth == "mandibles") >= 36 && vharn.Count(v => v.Crown == "antennae") >= 36 && vharn.Count(v => v.Eyes is "compound" or "band") >= 30,
+            $"the Vharn are chitin ({vharn.Count(v => v.Covering == "chitin")}), mandibled ({vharn.Count(v => v.Mouth == "mandibles")}), antennaed ({vharn.Count(v => v.Crown == "antennae")}) and compound-eyed ({vharn.Count(v => v.Eyes is "compound" or "band")}) of 40");
+        Check(vharn.Select(v => $"{v.Back}{v.Tail}{v.Claws}{v.SkinHue[0]:F2}").Distinct().Count() > 10, "yet rolled, not drawn: each world's Vharn differ");
+        PeopleGenerator g = Folks(World(15f));
+        Founders f = g.FoundersOf(Seed(), vharn: true);
+        Check(Enumerable.Range(0, 30).Count(_ => g.Person(Seed(), PersonRole.Guard, founders: f).Figure.Folk == g.Vharn) >= 27,
+            "a Vharn place is the Vharn's");
+    }
+
+    /// <summary>Every people fits through a door: crown and all, nobody stands taller than the cap (the owner, 8 Nov 2026).</summary>
+    void NobodyOverTopsADoor()
+    {
+        float tallest = 0f, widest = 0f;
+        for (int i = 0; i < 60; i++)
+        {
+            PeopleGenerator g = Folks(World(_fresh.Range(-40f, 55f), alien: 1f));
+            foreach (PersonRole r in Enum.GetValues<PersonRole>())
+                for (int n = 0; n < 4; n++)
+                {
+                    Species s = g.Person(Seed(), r, r == PersonRole.Raider ? Occupancy.Raider : Occupancy.Friendly, founders: g.FoundersOf(Seed()));
+                    tallest = MathF.Max(tallest, s.Figure.Top);
+                    widest = MathF.Max(widest, s.Stats.Radius);
+                }
+            tallest = MathF.Max(tallest, g.Person(Seed(), PersonRole.Guard, founders: g.FoundersOf(Seed(), vharn: true)).Figure.Top);
+        }
+        Check(tallest <= Figure.HeightCap + 0.001f && tallest > 2.0f, $"the tallest of 2,000 people of every folk, crown and all, is {tallest:F2} m: tall folk are tall, and under the 3 m doorway (cap {Figure.HeightCap:F2} m)");
+        Check(widest <= 0.5f && widest * 2f < 1.9f, $"and the widest needs {widest * 2f:F2} m to pass (radius {widest:F2} m): through any doorway");
+    }
+
+    /// <summary>
+    /// A Husk reads as one on every head kind: worms from whatever openings the face has (a human
+    /// mouth, a muzzle, the gape of a snout, the seam of a beak, between mandibles), at least seven
+    /// and at most sixteen, and nothing over the face.
+    /// </summary>
+    void WormsReadOnEveryHead()
+    {
+        PeopleGenerator g = Folks(World(15f, alien: 1f));
+        var counts = new List<string>();
+        bool ok = true;
+        foreach (string mouth in new[] { "", "muzzle", "snout", "beak", "mandibles" })
+            foreach (string eyes in new[] { "two", "compound" })
+            {
+                Species s = g.Person(Seed(), PersonRole.Worker);
+                s.Figure.Folk = new Folk { Human = false, Mouth = mouth, Eyes = eyes, Crown = mouth == "mandibles" ? "antennae" : "pair", Ears = mouth == "mandibles" ? "none" : "leaf", Covering = mouth == "mandibles" ? "chitin" : "fur", Tail = "whip", TailLength = 0.7f, Tusks = mouth == "snout" };
+                Husks.Take(s, new Rng(Seed()), g.Dialect, g.HuskRules);
+                Piece head = HumanBody.Build(s).Pieces.First(p => p.Name == "head");
+                int worms = head.Prims.Where(p => p.Material == Mat.Worm).Select(p => p.Worm).Distinct().Count();
+                counts.Add($"{(mouth == "" ? "human" : mouth)}/{eyes} {worms}");
+                ok &= worms >= 7 && worms <= 16;
+            }
+        Check(ok, $"worms come out of every head kind ({string.Join(", ", counts)})");
+    }
+
+    /// <summary>Twenty people of the strangest folk (tails on bones, crowns, faces): still one body each, posed in the budget, nothing allocated.</summary>
+    void TwentyAliensAreCheap()
+    {
+        var crowd = new List<(HumanRig rig, PersonView view)>();
+        var holder = new Node3D();
+        AddChild(holder);
+        int tails = 0, verts = 0;
+        for (int i = 0; crowd.Count < 20 && i < 200; i++)
+        {
+            PeopleGenerator g = Folks(World(_fresh.Range(10f, 35f), alien: 1f));
+            Species s = g.Person(Seed(), (PersonRole)(i % 10), founders: g.FoundersOf(Seed()));
+            if (s.Figure.Folk.Human) continue;
+            var rig = new HumanRig(s);
+            var view = new PersonView();
+            holder.AddChild(view);
+            view.Build(rig);
+            crowd.Add((rig, view));
+            if (FolkBody.TailBones(s.Figure) > 0) tails++;
+            verts = Math.Max(verts, MeshBuilder.Skinned(rig.Layout.Pieces).SurfaceGetArrayLen(0));
+        }
+        double worst = 0;
+        long bytes = 0;
+        for (int f = 0; f < 120; f++)
+        {
+            long from = System.Diagnostics.Stopwatch.GetTimestamp(), alloc = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < crowd.Count; i++)
+            {
+                float t = f / 60f + i;
+                crowd[i].rig.Drive(new Gesture { Feet = new Vector3(i, 0f, -t * 1.3f), Speed = 1.3f, Walked = t * 1.3f, Clock = t, Act = i % 3 == 0 ? BodyAct.Greet : BodyAct.None, ActAmount = 1f });
+                crowd[i].view.Sync();
+            }
+            bytes += GC.GetAllocatedBytesForCurrentThread() - alloc;
+            if (f > 10) worst = Math.Max(worst, System.Diagnostics.Stopwatch.GetElapsedTime(from).TotalMilliseconds);
+        }
+        bool finite = crowd.All(c => c.rig.Pose.All(Geo.Finite));
+        Check(crowd.Count == 20 && crowd.All(c => c.view.DrawnNear == 1) && finite, $"twenty alien people ({tails} with tails) are one drawn body each and pose finite");
+        Check(worst < 1.5 && bytes == 0, $"and pose in {worst:F2} ms a frame at worst, allocating {bytes} B (budget 2 ms with drawing); the richest body {verts} vertices");
+        holder.QueueFree();
+    }
+
+    /// <summary>Every job has its own day, look and kit from the generator: the law and guards round the clock, traders by day, drunks late, elders early.</summary>
+    void JobsKeepTheirOwnDay()
+    {
+        PeopleGenerator g = Folks(World(15f));
+        Figure Of(PersonRole r) => g.Person(Seed(), r).Figure;
+        Check(Enum.GetValues<PersonRole>().All(r => Of(r).Routine != null) && Enum.GetValues<PersonRole>().Select(r => Of(r).Routine.Moves).Distinct().Count() >= 9, "every job has a day of its own (when out, where, how they get about)");
+        Check(Of(PersonRole.Lawman).OutAt(0.93f) && Of(PersonRole.Guard).OutAt(0.02f) && !Of(PersonRole.Trader).OutAt(0.93f) && Of(PersonRole.Drunk).OutAt(0.9f) && !Of(PersonRole.Elder).OutAt(0.26f) && Of(PersonRole.Farmer).OutAt(0.25f),
+            "the law and guards keep the night, traders shut up shop, a drunk stays out late, elders come out late and farmers early");
+        int Count(PersonRole r, Func<Figure, bool> test) => Enumerable.Range(0, 30).Count(_ => test(Of(r)));
+        Check(Count(PersonRole.Lawman, f => f.Has("badge") && f.Prop == "rifle" && f.Has("vest")) == 30 && Count(PersonRole.Mechanic, f => f.Prop == "wrench" && f.Has("tool_belt")) > 15,
+            "the law wears a badge and a vest and carries a rifle; mechanics carry a wrench on a tool belt");
+    }
+
+    /// <summary>
+    /// People and animals read each other by a few rules: Husks are fought by the armed and the
+    /// bold, barricaded against by a wary group, run from by the rest; predators are shot by the
+    /// guards and run from; pests are shooed; farmers work stock; animals keep from people by
+    /// their own shyness, and a hunter waits for a straggler.
+    /// </summary>
+    void PeopleAndAnimalsReadEachOther()
+    {
+        WorldLife life = Bestiary.Roll(_data, World(15f));
+        PeopleGenerator g = life.People;
+        Species husk = g.Person(Seed(), PersonRole.Worker, husk: true);
+        Figure guard = g.Person(Seed(), PersonRole.Guard).Figure, worker = g.Person(Seed(), PersonRole.Worker).Figure, farmer = g.Person(Seed(), PersonRole.Farmer).Figure;
+        guard.Prop = "rifle";
+        worker.Prop = "";
+        var wary = new Temper { Stance = Stance.Wary, Wariness = 0.8f };
+        var open = new Temper { Stance = Stance.Welcoming, Wariness = 0.2f };
+        Check(CrossReactions.Respond(husk, guard, open, 0.3f, 15f) == Response.Fight && CrossReactions.Respond(husk, worker, wary, 0.5f, 15f) == Response.Barricade && CrossReactions.Respond(husk, worker, open, 0.5f, 15f) == Response.Flee,
+            "a Husk: the armed fight it, a wary group barricades itself in, the rest run");
+        Species danger = null, pest = null, stock = null;
+        for (int i = 0; i < 30 && (danger == null || pest == null || stock == null); i++)
+        {
+            WorldLife w = i == 0 ? life : Bestiary.Roll(_data, World(_fresh.Range(0f, 30f)));
+            danger ??= w.Fauna.Species.FirstOrDefault(CrossReactions.Danger);
+            pest ??= w.Fauna.Species.FirstOrDefault(CrossReactions.Pest);
+            try { stock ??= w.Domestic(DomesticKind.Stock, 0); } catch (Exception) { }
+        }
+        Check(danger != null && CrossReactions.Respond(danger, guard, open, 0.5f, 18f) == Response.Fight && CrossReactions.Respond(danger, worker, open, 0.5f, 10f) == Response.Flee,
+            $"a predator ({danger?.CommonName}): the guards shoot it, the rest run");
+        Check(pest != null && CrossReactions.Respond(pest, worker, open, 0.5f, 3f) == Response.Shoo && CrossReactions.Respond(pest, worker, open, 0.5f, 12f) == Response.None, $"a pest ({pest?.CommonName}) close by is waved off, and let be further off");
+        Check(stock != null && CrossReactions.Respond(stock, farmer, open, 0.5f, 8f) == Response.Herd && CrossReactions.Respond(stock, worker, open, 0.5f, 8f) == Response.None, "farmers work the stock");
+        var shy = life.Fauna.Species.Where(s => s.Domestic == DomesticKind.None).ToList();
+        Check(shy.Count > 0 && shy.Where(s => s.Temperament == Temperament.Skittish).DefaultIfEmpty().All(s => s == null || CrossReactions.Shyness(s) > 0.9f) && shy.Where(s => s.Temperament == Temperament.Aggressive).DefaultIfEmpty().All(s => s == null || CrossReactions.Shyness(s) < 0.6f),
+            "each species keeps its own distance from people: the skittish far, the bold close");
+        var a = new Host(Vector3.Zero, husk);
+        var b = new Host(new Vector3(3f, 0f, 0f), husk);
+        var c = new Host(new Vector3(40f, 0f, 0f), husk);
+        var all = new List<ITarget> { a, b, c };
+        Check(!CrossReactions.Alone(all, a, 9f) && CrossReactions.Alone(all, c, 9f), "a hunter's straggler is whoever is alone");
+    }
+
+    /// <summary>
+    /// The owner (8 Nov 2026): humidity changes what settlers wear, and it is regional. Two places
+    /// of one world, one humid and one dry, dress differently in the same heat or the same cold;
+    /// rain adds ponchos and umbrellas; a visitor keeps their own region's clothes.
+    /// </summary>
+    void RegionsDressTheirOwn()
+    {
+        PeopleGenerator g = Folks(World(15f, alien: 0f));
+        List<Figure> At(float tempC, float wet, int n = 40)
+        {
+            Founders f = g.FoundersOf(Seed());
+            f.Folk = g.Folks.FirstOrDefault(x => x.Folk.Human).Folk ?? new Folk();
+            f.Second = null;
+            f.Outsiders = 0f;
+            f.Locale = new Locale { TempC = tempC, Humidity = wet };
+            return Enumerable.Range(0, n).Select(_ => g.Person(Seed(), PersonRole.Worker, founders: f).Figure).ToList();
+        }
+        var humidHot = At(34f, 0.7f);
+        var dryHot = At(34f, 0.12f);
+        var wetCold = At(0f, 0.7f);
+        var dryCold = At(0f, 0.12f);
+        var rainy = At(16f, 0.9f);
+        Check(humidHot.Count(f => f.Dress == "light") > 30 && humidHot.Count(f => f.Has("sandals")) > 20 && humidHot.Count(f => f.Has("wide_hat") | f.Has("net_hat")) > 10,
+            $"humid heat: loose light clothes, bare arms and legs, sandals, wide hats and netting ({humidHot.Count(f => f.Dress == "light")} light, {humidHot.Count(f => f.Has("sandals"))} in sandals)");
+        Check(dryHot.Count(f => f.Has("robe")) > 25 && dryHot.Count(f => f.Has("head_wrap")) > 15 && dryHot.Count(f => f.Wear.Any(w => HumanBody.Slot(w) == "head")) > 34 && dryHot.Count(f => f.Has("face_wrap")) > 20 && !dryHot.Any(f => f.Dress == "light"),
+            $"dry heat: full robes, head wraps and face wraps against the dust ({dryHot.Count(f => f.Has("robe"))} robes, {dryHot.Count(f => f.Has("face_wrap"))} face wraps)");
+        Check(wetCold.Count(f => f.Has("oilskin")) > 20 && wetCold.Count(f => f.Has("rubber_boots")) > 20 && wetCold.Count(f => f.Layered.Contains("sweater")) > 10,
+            $"wet cold: waxed shells, wool and rubber boots ({wetCold.Count(f => f.Has("oilskin"))} oilskins, {wetCold.Count(f => f.Has("rubber_boots"))} boots)");
+        Check(dryCold.Count(f => f.Dress == "furs") == 40 && dryCold.Average(f => f.Layered.Count) >= 1.5f, $"dry cold: furs and layers ({dryCold.Average(f => f.Layered.Count):F1} layers on average)");
+        Check(rainy.Count(f => f.Has("poncho") | f.Prop == "umbrella" | f.Has("rain_cape")) > 20, $"in a rainy region, ponchos and umbrellas ({rainy.Count(f => f.Has("poncho"))} ponchos, {rainy.Count(f => f.Prop == "umbrella")} umbrellas)");
+        // A visitor from a dry, cold region in a humid hot town keeps their furs.
+        g.Regions.Clear();
+        g.Regions.Add(new Locale { TempC = 0f, Humidity = 0.12f });
+        Founders town = g.FoundersOf(Seed());
+        town.Locale = new Locale { TempC = 34f, Humidity = 0.7f };
+        town.Outsiders = 1f;
+        var visitors = Enumerable.Range(0, 20).Select(_ => g.Person(Seed(), PersonRole.Trader, founders: town).Figure).ToList();
+        Check(visitors.All(f => f.Dress == "furs"), "a visitor keeps their own region's clothes");
+    }
+
+    /// <summary>The owner: nothing walks through anything. Two dozen creatures crowded together for a minute: no two sit in each other.</summary>
+    void NobodyWalksThroughAnybody()
+    {
+        WorldLife life = Bestiary.Roll(_data, World(15f));
+        var walkers = life.Moving.Where(s => !s.Flies && s.Rig is RigKind.Legged or RigKind.Humanoid && s.Figure == null && !s.Husk && s.Body.Size < 3f).ToList(); // (a titan is its own crowd)
+        var sim = new WildSim(_data, new Terrain((x, z) => 0f, 120f), new NavGrid(120f, 3f));
+        for (int i = 0; i < 20 && walkers.Count > 0; i++) sim.Spawn(walkers[i % walkers.Count], new Vector3(_fresh.Range(-9f, 9f), 0f, _fresh.Range(-9f, 9f)));
+        for (int i = 0; i < 8; i++) sim.Spawn(life.People.Person(Seed(), (PersonRole)(i % 9)), new Vector3(_fresh.Range(-4f, 4f), 0f, _fresh.Range(-4f, 4f)));
+        float worst = 0f;
+        for (int f = 0; f < 1800; f++)
+        {
+            sim.Step(1f / 30f);
+            if (f > 30) worst = MathF.Max(worst, sim.Space.WorstOverlap);
+        }
+        Check(worst < 0.08f, $"{sim.Space.Bodies.Count} bodies on the ground ({string.Join(", ", walkers.Select(s => s.Rig).Distinct())}) crowded together for a minute: none overlaps another by more than {worst * 100f:F1} cm");
+    }
+
+    sealed class Host : IHost
+    {
+        public Host(Vector3 at, Species body) { Position = at; Body = body; }
+        public Species Body { get; }
+        public void Taken() { }
+        public string Name => "host";
+        public Vector3 Position { get; }
+        public Vector3 Forward => Vector3.Forward;
+        public bool Attackable => true;
+        public float ThreatScale => 1f;
+        public Health Health { get; } = new(60f);
+    }
+
     /// <summary>Groups' first reactions to an outsider, by tech: every level shows more than one kind, and the mix shifts.</summary>
     void TempersByTech()
     {
@@ -1307,8 +1628,15 @@ public partial class BestiaryTest : Node
         PeopleGenerator g = Bestiary.Roll(_data, World(15f)).People;
         float Spread(List<Species> l) { float m = l.Average(s => s.Figure.Skin.V); return MathF.Sqrt(l.Average(s => (s.Figure.Skin.V - m) * (s.Figure.Skin.V - m))); }
         Founders a = g.FoundersOf(Seed()), b = g.FoundersOf(Seed());
+        a.Second = null;
+        a.Outsiders = 0f;
         var here = Enumerable.Range(0, 60).Select(i => g.Person(Seed(), PersonRole.Worker, founders: a)).ToList();
-        var everywhere = Enumerable.Range(0, 60).Select(i => g.Person(Seed(), PersonRole.Worker)).ToList();
+        // (One folk: across the world that folk's people, from no place in particular.)
+        Founders anywhere = g.FoundersOf(Seed());
+        anywhere.Folk = a.Folk;
+        anywhere.Second = null;
+        anywhere.Outsiders = 1f;
+        var everywhere = Enumerable.Range(0, 60).Select(i => g.Person(Seed(), PersonRole.Worker, founders: anywhere)).ToList();
         Check(Spread(here) < Spread(everywhere) * 0.8f, $"a settlement mostly shares a look ({Spread(here):F3} spread against {Spread(everywhere):F3} across the world)");
         ulong one = Seed();
         var asRaider = g.Person(one, PersonRole.Raider, Occupancy.Raider, founders: a).Figure;

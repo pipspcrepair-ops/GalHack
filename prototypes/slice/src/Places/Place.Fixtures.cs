@@ -175,6 +175,7 @@ public partial class Place
     {
         foreach (Door d in _doors)
         {
+            if (Memory.Town is { GatesShut: true } && d.Target > 0.5f) { d.Target = 0f; Memory.DoorsOpen[d.Index] = false; }
             float target = d.Jammed ? 0.5f : d.Target;
             // A shaft door stays shut unless the car is at its stop.
             if (d.Lift >= 0 && !CarAt(d.Lift, d.Stop)) target = 0f;
@@ -199,6 +200,8 @@ public partial class Place
     public (bool Ok, string Message) UseDoor(Door d)
     {
         if (d.Jammed) return (false, "Jammed: it won't move further, but there's room to squeeze through");
+        // A settlement that won't have you keeps its doors shut.
+        if (Memory.Town is { GatesShut: true } && d.Target < 0.5f) return (false, "BARRED");
         if (d.Clearance != null && !Places.HasClearance(d.Clearance))
             return (false, $"LOCKED: needs a {d.Clearance.ToUpperInvariant()} keycard");
         if (d.Lift >= 0 && !CarAt(d.Lift, d.Stop))
