@@ -1510,7 +1510,7 @@ public partial class BestiaryTest : Node
         List<Figure> At(float tempC, float wet, int n = 40)
         {
             Founders f = g.FoundersOf(Seed());
-            f.Folk = g.Folks.First(x => x.Folk.Human).Folk;
+            f.Folk = g.Folks.FirstOrDefault(x => x.Folk.Human).Folk ?? new Folk();
             f.Second = null;
             f.Outsiders = 0f;
             f.Locale = new Locale { TempC = tempC, Humidity = wet };
