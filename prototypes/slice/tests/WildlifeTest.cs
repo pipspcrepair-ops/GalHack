@@ -256,8 +256,11 @@ public partial class WildlifeTest : Node
             GD.Print($"  the walk: animals within 150 m at {sawAny} of {samples} looks (median {median}), {met.Count} different ones, {patch.Refilled} groups brought back; seen in first person at {firstPerson} of {looked} stops");
             if (world.Archetype == Planets.Gen.Archetype.Temperate)
             {
-                Check(samples > 0 && sawAny >= samples * 0.8f && median >= FewestOnTheWay * Math.Min(1f, patch.Livable),
-                    $"{world}: walking the land, animals within 150 m at {sawAny} of {samples} looks, {median} at the median (at least {FewestOnTheWay * Math.Min(1f, patch.Livable):F0}; livable {patch.Livable:F2})");
+                // Life spawns by place, not evenly (owner, 8 Nov 2026): a walk over poor ground meets less, and a
+                // less livable world less again. Most looks still find something near, never the whole way empty.
+                float share = 0.6f * Math.Min(1f, patch.Livable);
+                Check(samples > 0 && sawAny >= samples * share && median >= FewestOnTheWay * Math.Min(1f, patch.Livable),
+                    $"{world}: walking the land, animals within 150 m at {sawAny} of {samples} looks (at least {samples * share:F0}), {median} at the median (at least {FewestOnTheWay * Math.Min(1f, patch.Livable):F0}; livable {patch.Livable:F2})");
                 if (looked > 0) Check(firstPerson > 0, $"{world}: animals on screen through the castaway's own eyes at {firstPerson} of {looked} stops");
             }
         }

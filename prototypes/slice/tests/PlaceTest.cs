@@ -396,14 +396,25 @@ public partial class PlaceTest : Node
             PoiGenerator.Gen.Int3 from = walk.Here(place, nav);
             var open = nav.Reachable(from);
             int Near(Vector3 at) { var q = place.CellAt(at); return open.Where(c => c.Y == q.Y).Select(c => c.Manhattan(q)).DefaultIfEmpty(9999).Min(); }
-            DecoHit piece = place.Pieces().Where(h => h.Room.Solid.Contains(h.Index) && h.Node.GlobalPosition.Y - game.Survivor.WorldFeet.Y is > -2f and < 2f && Near(h.Node.GlobalPosition) <= 3)
-                .OrderBy(h => h.Node.GlobalPosition.DistanceTo(game.Survivor.WorldFeet)).FirstOrDefault();
-            if (piece != null)
+            var pieces = place.Pieces().Where(h => h.Room.Solid.Contains(h.Index) && h.Node.GlobalPosition.Y - game.Survivor.WorldFeet.Y is > -2f and < 2f && Near(h.Node.GlobalPosition) <= 3)
+                .OrderBy(h => h.Node.GlobalPosition.DistanceTo(game.Survivor.WorldFeet)).Take(5).ToList();
+            DecoHit piece = null;
+            Vector3 mid = default;
+            // One the crosshair meets from beside it: a furnished room can stand another piece in front of the nearest.
+            foreach (DecoHit h in pieces)
             {
-                var pc = place.CellAt(piece.Node.GlobalPosition);
+                var pc = place.CellAt(h.Node.GlobalPosition);
                 PoiGenerator.Gen.Int3 stand = open.Where(c => c.Y == pc.Y).OrderBy(c => c.Manhattan(pc)).First();
                 foreach (int x in Watched(walk.To(place, stand, r => ok = r))) yield return x;
-                Vector3 mid = piece.Node.GlobalPosition + Vector3.Up * MathF.Min(0.6f, piece.Piece.Height * 0.5f);
+                mid = h.Node.GlobalPosition + Vector3.Up * MathF.Min(0.6f, h.Piece.Height * 0.5f);
+                foreach (int x in Watched(drive.LookAt(mid, 10))) yield return x;
+                for (int i = 0; i < 3; i++) yield return 0;
+                piece = h;
+                if (game.Tool.PlaceHit?.Piece is DecoHit seen && seen.Room == h.Room && seen.Index == h.Index) break;
+                GD.Print($"  (the {h.Piece.Name} is behind something from where you stand: '{game.Tool.TargetLabel}' by the crosshair; the next)");
+            }
+            if (piece != null)
+            {
                 int bag = game.Pack.Storage.Contents.Total;
                 double Carried() => place.Memory.SalvageCarry.Values.Sum(); // a small piece pays in fractions, carried in the place's memory until they make a whole item
                 double carried = Carried();

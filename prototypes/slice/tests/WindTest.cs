@@ -338,7 +338,11 @@ public partial class WindTest : Node
         float slip = MathF.Sqrt(new WalkController().Footing * Slice.Player.Survivor.Mass / (0.5f * ForceModule.AirDensity * Slice.Player.Survivor.StandDragArea));
         Check(gust[0] < slip ? slips[0] == 0 : slips[0] > 0 && drift[0] > drift[1],
             $"a hurricane here ({Sim.Data.State(WeatherKind.Hurricane).WindSpeed:F0} m/s, gusting to {gust[0]:F0}; standing feet slip from {slip:F0}) {(slips[0] > 0 ? "slides" : "holds")} a survivor standing tall: {drift[0]:F1} m in 12 s, slipping {slips[0] / 60f:F1} s of it");
-        Check(drift[1] <= drift[0] * 0.4f + 0.2f && slips[1] <= slips[0], $"crouched to brace, they hold far better: {drift[1]:F1} m, slipping {slips[1] / 60f:F1} s");
+        // Braced low the wind has half the body to push: the feet slip only from √2 the wind. Each run's gusts are its own,
+        // so where they reach past that the crouch still slides, only less far.
+        float slipLow = slip * MathF.Sqrt(Slice.Player.Survivor.StandDragArea / Slice.Player.Survivor.CrouchDragArea);
+        Check(gust[1] < slipLow ? slips[1] == 0 && drift[1] <= drift[0] * 0.4f + 0.2f : drift[1] <= drift[0] * 0.6f + 0.2f,
+            $"crouched to brace, they hold far better: {drift[1]:F1} m, slipping {slips[1] / 60f:F1} s (gusting to {gust[1]:F0}; braced feet slip from {slipLow:F0})");
     }
 
     // ---- Craft --------------------------------------------------------------------------
@@ -739,6 +743,17 @@ public partial class WindTest : Node
         Vector3 at = Spot(0f, 220f);
         Me.PlaceOutside((Spot(0f, 150f) + Vector3.Up * 0.1f).ToNumerics());
         foreach (int x in _drive.Wait(30)) yield return x;
+        // The patch is laid round you again once you are set down far off: wait for it to settle there, or the
+        // creatures set down are left behind in the old one as it hands over (and are not followed).
+        for (int i = 0, steady = 0; i < 1200 && steady < 120; i++)
+        {
+            int was = patch.Patches;
+            yield return 0;
+            Vector3 feet = Me.WorldFeet;
+            bool round = patch.Sim != null && new Vector2(feet.X - patch.Origin.X, feet.Z - patch.Origin.Z).Length() < patch.Sim.Terrain.HalfSize * 0.5f
+                         && new Vector2(at.X - patch.Origin.X, at.Z - patch.Origin.Z).Length() < patch.Sim.Terrain.HalfSize * 0.5f;
+            steady = round && patch.Patches == was ? steady + 1 : 0;
+        }
         patch.Frozen = false;
         var picks = new[] { species[0], species[species.Count / 2], species[^1] }.Distinct().ToList();
         Vector3 origin = patch.Origin;
