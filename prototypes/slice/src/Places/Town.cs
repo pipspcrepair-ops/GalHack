@@ -118,6 +118,8 @@ public sealed partial class Town
         public bool Robbed;
         /// <summary>Waiting a moment for someone to pass (a doorway); how long since you last pushed them.</summary>
         public float Yield, ShovedFor;
+        /// <summary>When a vessel last hit them (clock).</summary>
+        public float StruckAt = -9f;
         public float Pursue;
         public BodyAct Answer;
         public float AnswerAt, AnswerFor, LookFor;
@@ -219,6 +221,7 @@ public sealed partial class Town
             patch.Sim.StrayEntered -= OnStray;
         }
         _animals.Clear();
+        DropSolids();
         foreach (Person p in People) p.View = null;
         _view = null;
         _place = null;
@@ -454,6 +457,7 @@ public sealed partial class Town
             Pose(p, who);
         }
         KeepApart(player, tickDt);
+        Solids(player, tickDt);
     }
 
     /// <summary>Walks a person along their path; true once they are there (or have no path).</summary>

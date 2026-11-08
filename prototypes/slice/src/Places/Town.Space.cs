@@ -47,9 +47,7 @@ public sealed partial class Town
             _bodies.Add(p);
         }
         if (_bodies.Count == 0) return;
-        ITarget you = _places.Zone.Wildlife.Player;
-        bool afoot = you is { Attackable: true };
-        if (afoot) _space.Bodies.Add(new PersonalSpace.Body { Pos = player, Radius = 0.35f, Give = 0f });
+        // (You are met by their real capsules and the push rule: Town.Colliders.)
         _space.Resolve(dt, Open, 4);
         WorstOverlap = MathF.Max(WorstOverlap, _space.WorstOverlap);
         for (int i = 0; i < _bodies.Count; i++)
@@ -58,9 +56,6 @@ public sealed partial class Town
             PersonalSpace.Body b = _space.Bodies[i];
             p.Pos = new Vector3(b.Pos.X, p.Pos.Y, b.Pos.Z);
             if (b.Wait > 0f) p.Yield = MathF.Max(p.Yield, b.Wait);
-            // You walked into them: they're moved, and they answer it.
-            if (afoot && b.Moved.LengthSquared() > 1e-6f && new Vector2(player.X - p.Pos.X, player.Z - p.Pos.Z).Length() < BodyRadius(p) + 0.5f && p.ShovedFor <= 0f)
-                Shoved(p, player);
         }
     }
 
