@@ -242,29 +242,14 @@ public static partial class StateTransforms
         var g = inst.Blocks;
         CellMask occ = inst.Layout.Occupied;
         Int3 lo = occ.Min, hi = occ.Min + occ.Size;
-        // On the pad and its apron the ground is the pad. Loose litter (weeds, debris, props) inside the place's
-        // bounds but out of the apron of any column it stands on lies on a lot's yard, on the land as it is, so
-        // it follows that too; what is built there keeps to the pad.
+        // On the pad and its apron the ground is the pad, and what is built there keeps to it. Loose litter
+        // (weeds, debris, props) goes by the ground wherever it lies: a lot's yard between its buildings, or a
+        // pad's blended edge, is the land as it is, and on the level pad it stays put.
         bool InBounds(int x, int z) => apron >= 0 && x >= lo.X - apron && x < hi.X + apron && z >= lo.Z - apron && z < hi.Z + apron;
-        HashSet<(int X, int Z)> padded = null;
-        if (apron >= 0)
-        {
-            var stands = new HashSet<(int X, int Z)>();
-            for (int z = lo.Z; z < hi.Z; z++)
-                for (int x = lo.X; x < hi.X; x++)
-                    for (int y = lo.Y; y < hi.Y; y++)
-                        if (occ[new Int3(x, y, z)]) { stands.Add((x, z)); break; }
-            padded = new HashSet<(int X, int Z)>();
-            foreach (var (x, z) in stands)
-                for (int dz = -apron; dz <= apron; dz++)
-                    for (int dx = -apron; dx <= apron; dx++)
-                        padded.Add((x + dx, z + dz));
-        }
         var columns = new Dictionary<(int X, int Z), List<(Int3 Cell, Block Block)>>();
         foreach (var (p, b) in g.Blocks())
         {
             if (p.Y < Assembler.GroundY) continue;
-            if (padded != null && padded.Contains((p.X, p.Z))) continue;
             if (!columns.TryGetValue((p.X, p.Z), out var list)) columns[(p.X, p.Z)] = list = new List<(Int3, Block)>();
             list.Add((p, b));
         }
