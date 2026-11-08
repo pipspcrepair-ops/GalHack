@@ -138,7 +138,7 @@ public sealed record WorldChoice(ulong Seed, Archetype Archetype, int Variant, i
             force = force with { MidCollapse = said is not ("no" or "false" or "0") };
         }
         if (IndexOf(args, "--no-mid-collapse") >= 0) force = force with { MidCollapse = false };
-        force = force with { Before = Era(args, "--era-old"), Now = Era(args, "--era-now") };
+        force = force with { Before = Era(args, "--era-old"), Now = Era(args, "--era-now"), Layers = Value(args, "--layer") };
         return force.Empty ? null : force;
     }
 

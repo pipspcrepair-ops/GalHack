@@ -177,11 +177,23 @@ public static partial class PoiSiting
         return WorldRoll.Roll(lib, GHash.Of(spec.Seed, 0x4C41), spec.Archetype.ToString(), profile, startWorld ?? StartWorld, Given(lib, spec, map.Def.VariantName), depth);
     }
 
+    /// <summary>
+    /// Any world's roll, lived on or not: the same as <see cref="RollOf"/> where there is one, and for a
+    /// world nobody lived on, its wild layers (its flora, creatures, sky and sound read them). Null only without a library.
+    /// </summary>
+    public static WorldRoll LayersOf(PoiLibrary lib, WorldMap map, WorldProfile profile, bool? startWorld = null, float depth = -1f)
+    {
+        if (lib == null || profile == null) return null;
+        if (profile.Inhabited) return RollOf(lib, map, profile, startWorld, depth);
+        PlanetSpec spec = map.Spec;
+        return WorldRoll.Roll(lib, GHash.Of(spec.Seed, 0x4C41), spec.Archetype.ToString(), profile, startWorld ?? StartWorld, Given(lib, spec, map.Def.VariantName), depth);
+    }
+
     /// <summary>A world's profile with what its roll rules out, so the ruins along its roads keep the same rules as its places.</summary>
     public static WorldProfile WithRules(PoiLibrary lib, WorldMap map, WorldProfile profile, bool? startWorld = null, float depth = -1f)
     {
         WorldRoll roll = RollOf(lib, map, profile, startWorld, depth);
-        return roll == null ? profile : profile with { Barred = roll.Barred, Ruin = RuinAge.Of(roll) };
+        return roll == null ? profile : profile with { Barred = roll.Barred, Ruin = RuinAge.Of(roll), Paint = WorldReading.Of(roll).Paint };
     }
 
     /// <summary>
@@ -205,7 +217,7 @@ public static partial class PoiSiting
         ThemeDef theme = ThemeParser.For(lib, spec.Archetype.ToString(), map.Def.VariantName.Replace(' ', '_'), start);
         // A world that was ever lived in is laid out by its plan; only the wild is scattered.
         WorldRoll roll = RollOf(lib, map, profile, start, depth);
-        if (roll != null) profile = profile with { Barred = roll.Barred, Ruin = RuinAge.Of(roll) };
+        if (roll != null) profile = profile with { Barred = roll.Barred, Ruin = RuinAge.Of(roll), Paint = WorldReading.Of(roll).Paint };
         RegionPlan plan = null;
         if (roll != null) plan = RegionPlan.Make(lib, new PlanetLand(map, bare, pmap), roll, profile, GHash.Of(spec.Seed, 0x4E41), (landing.X, landing.Y), start);
         var world = WorldPlacement.Place(lib, pmap, theme, GHash.Of(spec.Seed, 0x504C4143), profile: profile);
