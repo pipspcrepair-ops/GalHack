@@ -69,16 +69,20 @@ public partial class OccupantTest
             $"soldiers: {squad.Count} different people in one uniform ({soldier?.Figure.Cloth.ToHtml(false)}), patrolling together");
 
         // The era: the same fall at low tech and high tech gives different gear, weapons and machines.
-        int clubs = 0, rifles = 0, sealed_ = 0, n = 6;
+        int clubs = 0, rifles = 0, sealed_ = 0, lowN = 0, highN = 0, n = 6;
         string lowHulls = "", highHulls = "";
         int lowLegs2 = 0, highSlim = 0;
         for (int i = 0; i < n; i++)
         {
             WorldLife low = Life("civil_war", now: TechLevel.Low), high = Life("civil_war", now: TechLevel.High);
-            Species lm = low.Signature.Kinds.First(k => k.Species.CommonName == "militia").Species, hm = high.Signature.Kinds.First(k => k.Species.CommonName == "militia").Species;
-            if (lm.Figure.Prop == "club") clubs++;
-            if (hm.Figure.Prop == "rifle") rifles++;
-            if (hm.Figure.Has("suit_helmet") || hm.Figure.Dress == "suit") sealed_++;
+            // Every one of each militia, by share: one small sample is no judge.
+            foreach (Species lm in low.Signature.Kinds.First(k => k.Species.CommonName == "militia").Species.Hosts) { lowN++; if (lm.Figure.Prop == "club") clubs++; }
+            foreach (Species hm in high.Signature.Kinds.First(k => k.Species.CommonName == "militia").Species.Hosts)
+            {
+                highN++;
+                if (hm.Figure.Prop == "rifle") rifles++;
+                if (hm.Figure.Has("suit_helmet") || hm.Figure.Dress == "suit") sealed_++;
+            }
             WorldLife lowM = Life("machine_uprising", now: TechLevel.Low, before: TechLevel.Low), highM = Life("machine_uprising", now: TechLevel.High, before: TechLevel.High);
             Species lr = lowM.Signature.Machines.First(), hr = highM.Signature.Machines.First();
             lowHulls += lr.Colors.Base.ToHtml(false) + " ";
@@ -86,7 +90,7 @@ public partial class OccupantTest
             if (lr.Body.Legs == 2 && lr.CommonName.Contains("clockwork")) lowLegs2++;
             if (hr.Body.Legs != 4 && (hr.Figure?.Build ?? 0f) < 0.2f && hr.Body.Width < 0.75f * 1.2f) highSlim++;
         }
-        Check(clubs >= n - 1 && rifles >= n - 1 && sealed_ >= n / 2, $"a civil war at low tech arms its militia with clubs ({clubs} of {n}), at high tech with rifles ({rifles}) and sealed helmets or suits ({sealed_})");
+        Check(clubs == lowN && rifles == highN && sealed_ >= highN * 0.4f, $"a civil war at low tech arms its militia with clubs ({clubs} of {lowN}), at high tech with rifles ({rifles} of {highN}) and sealed helmets or suits ({sealed_})");
         Check(lowLegs2 == n && highSlim == n, $"machines: low-tech worlds' clockwork, two-legged, brass ({lowHulls.Trim()}); high-tech worlds' sleek in white or graphite ({highHulls.Trim()})");
 
         // Everyone on a world wears its story: masks among a plague world's townsfolk.

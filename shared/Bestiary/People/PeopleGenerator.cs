@@ -283,6 +283,29 @@ public sealed partial class PeopleGenerator
         };
     }
 
+    /// <summary>Who fights for their people: guards, the law, raiders, and anyone of a raiding band (never the wild).</summary>
+    public static bool Fighter(PersonRole role, Occupancy occupancy) =>
+        occupancy != Occupancy.Feral && (role is PersonRole.Guard or PersonRole.Raider or PersonRole.Lawman || occupancy == Occupancy.Raider);
+
+    /// <summary>
+    /// The one place a fighter is armed for the world's era (<see cref="Armed"/>, from the signature
+    /// tables' "armed" by era): its gear on (with <paramref name="clear"/>, off first whatever held those
+    /// slots, keeping air gear where the air is bad), its weapon in hand, its trim. Era weapons extend
+    /// the tables' props here and nowhere else.
+    /// </summary>
+    public void Arm(Figure f, Rng rng, bool clear)
+    {
+        if (Armed == null) return;
+        if (clear)
+            foreach (string g in Armed.Wear.Keys)
+            {
+                string slot = HumanBody.Slot(g);
+                if (slot != "" && slot != "mouth") f.Wear.RemoveWhere(w => HumanBody.Slot(w) == slot && !(_w.BadAir && w is "suit_helmet" or "air_tank"));
+            }
+        Put(f, rng, Armed.Wear);
+        if (Armed.Prop != "") f.Prop = Armed.Prop;
+    }
+
     public Species Person(ulong seed, PersonRole role, Occupancy occupancy = Occupancy.Friendly, float mutation = 0f, bool husk = false, bool young = false, Founders founders = null)
     {
         var rng = Rng.For(seed, "person");
@@ -375,8 +398,7 @@ public sealed partial class PeopleGenerator
             // The world's story, then its era, before the weather: whatever filled a slot stays.
             if (Flavour != null) Put(f, Rng.For(seed, "flavour"), Flavour.Wear);
             if (Era != null) Put(f, Rng.For(seed, "era"), Era.Wear);
-            bool armed = role is PersonRole.Guard or PersonRole.Raider or PersonRole.Lawman || occupancy == Occupancy.Raider;
-            if (armed && Armed != null) Put(f, Rng.For(seed, "armed"), Armed.Wear);
+            if (Fighter(role, occupancy)) Arm(f, Rng.For(seed, "armed"), clear: false);
             if (EraDress != null && f.Dress is "shirt" or "light" or "coat")
             {
                 var made = Rng.For(seed, "era-dress");
@@ -393,9 +415,8 @@ public sealed partial class PeopleGenerator
         Age(f, occupancy, Rng.For(seed, "worn"));
         FitParts(f);
         if (rng.Chance(look.PropChance)) f.Prop = look.Prop;
-        // The era arms its fighters: what they carry is what their world could make.
-        if (occupancy != Occupancy.Feral && Armed is { Prop.Length: > 0 } a && (role is PersonRole.Guard or PersonRole.Raider or PersonRole.Lawman || occupancy == Occupancy.Raider) && (f.Prop is "" or "rifle" or "club"))
-            f.Prop = f.Prop != "" || Rng.For(seed, "arms").Chance(a.PropChance) ? a.Prop : f.Prop;
+        // The era arms its fighters: what they carry is what their world could make, whatever their job's tool.
+        if (Fighter(role, occupancy) && Armed is { Prop.Length: > 0 } a) f.Prop = a.Prop;
         if (occupancy != Occupancy.Feral && Flavour is { Prop.Length: > 0 } fl && f.Prop == "" && Rng.For(seed, "carry").Chance(fl.PropChance)) f.Prop = fl.Prop;
         // In a rainy region, a free hand holds an umbrella now and then.
         if (f.Prop == "" && (region?.Humidity ?? 0f) > Locale.Rainy && f.Stage != LifeStage.Child && Rng.For(seed, "umbrella").Chance(0.35f) && occupancy == Occupancy.Friendly) f.Prop = "umbrella";

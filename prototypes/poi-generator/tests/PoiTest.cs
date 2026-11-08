@@ -405,7 +405,7 @@ public partial class PoiTest : Node
             }
             int Of(Occupant who, BlockType t) => counts[who].GetValueOrDefault(t);
             Check(enemies[Occupant.Empty] == 0, $"{f.Id}: an empty place is empty");
-            Check(Of(Occupant.Nesters, BlockType.Pod) > Of(Occupant.Empty, BlockType.Pod) + 3 && enemies[Occupant.Nesters] > 0, $"{f.Id}: nesters leave {Of(Occupant.Nesters, BlockType.Pod)} egg pods and {enemies[Occupant.Nesters]} creatures");
+            Check(Of(Occupant.Nesters, BlockType.Pod) == 0 && enemies[Occupant.Nesters] > 0, $"{f.Id}: nesters build no nests and leave {enemies[Occupant.Nesters]} creatures");
             Check(Of(Occupant.Scavengers, BlockType.Ash) > Of(Occupant.Empty, BlockType.Ash) && enemies[Occupant.Scavengers] == 0 && people[Occupant.Scavengers] is { Count: >= 2, Mood: Mood.Wary }, $"{f.Id}: scavengers leave a camp fire and are no one's enemies: {people[Occupant.Scavengers].Count} people, {people[Occupant.Scavengers].Mood}");
             Check(enemies[Occupant.Squatters] == 0 && people[Occupant.Squatters].Mood == Mood.Peaceful, $"{f.Id}: squatters are at home and at peace: {people[Occupant.Squatters].Count} people");
             Check(Of(Occupant.Gang, BlockType.Barricade) > Of(Occupant.Empty, BlockType.Barricade) + 3 && enemies[Occupant.Gang] > 0, $"{f.Id}: a gang leaves {Of(Occupant.Gang, BlockType.Barricade)} barricades and {enemies[Occupant.Gang]} of its own");

@@ -244,15 +244,13 @@ public sealed partial class WorldLife
         if (k.Strip.Length > 0 && Array.IndexOf(k.Strip, "prop") >= 0) f.Prop = "";
         if (k.Dress != "") f.Dress = k.Dress;
         // The era's arms first (a high-tech world's sealed helmet before a cap), then the kind's own look.
-        if (k.Armed && t.Armed.TryGetValue(SignatureTables.Era(era), out RoleLook armed))
+        if (k.Armed)
         {
-            foreach (string g in armed.Wear.Keys) { string slot = HumanBody.Slot(g); if (slot != "" && slot != "mouth") f.Wear.RemoveWhere(w => HumanBody.Slot(w) == slot && !(World.BadAir && w is "suit_helmet" or "air_tank")); }
-            Put(f, rng, armed.Wear);
-            if (armed.Prop != "" && rng.Chance(armed.PropChance)) f.Prop = armed.Prop;
-            if (armed.Trim.Length > 0 && k.Cloth != "uniform") f.Trim = Hex(rng.Pick(armed.Trim));
+            People.Arm(f, rng, clear: true);
+            if (People.Armed is { Trim.Length: > 0 } armed && k.Cloth != "uniform") f.Trim = Hex(rng.Pick(armed.Trim));
         }
         Put(f, rng, k.Look.Wear);
-        if (k.Look.Prop != "" && rng.Chance(k.Look.PropChance)) f.Prop = k.Look.Prop;
+        if (k.Look.Prop != "" && !k.Armed && rng.Chance(k.Look.PropChance)) f.Prop = k.Look.Prop;
         if (People.EraSwap != null && occ != Occupancy.Feral)
             foreach (var (from, to) in People.EraSwap)
                 if (f.Wear.Remove(from) && to != "") f.Wear.Add(to);

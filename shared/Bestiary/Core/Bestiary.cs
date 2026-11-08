@@ -188,7 +188,7 @@ public sealed partial class WorldLife
     /// <summary>What lives in this world's caves and places, with its husks.</summary>
     public DeepFauna Deep()
     {
-        var deep = new DeepFauna(Data, Fauna);
+        var deep = new DeepFauna(Data, Fauna) { InsectsDefend = World.Fall == "parasite_swarm" };
         deep.Husks = theme => Husk(Rng.For(Seed, "husk", (long)theme));
         return deep;
     }
