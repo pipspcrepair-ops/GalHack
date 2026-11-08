@@ -16,7 +16,9 @@ namespace Weather.Model;
 /// <param name="Warmth">How warm the climate is, 0 frozen to 1 scorching.</param>
 /// <param name="Water">A sea or a lake there.</param>
 /// <param name="Loose">How much of the ground is dry loose stuff the wind can lift (sand, ash, silt), 0..1.</param>
-public readonly record struct Ground(float Height, float Slope, float Forest, float Humidity, float Warmth, bool Water, float Loose)
+/// <param name="Mountain">Mountain country, 0..1: the map's own mountain ranges, whatever their height on this world.</param>
+/// <param name="Rugged">How broken the land is, 0 open plain, 0.5 rolling, 1 rugged (canyons, cliffs, badlands).</param>
+public readonly record struct Ground(float Height, float Slope, float Forest, float Humidity, float Warmth, bool Water, float Loose, float Mountain = 0f, float Rugged = 0f)
 {
     /// <summary>A flat open plain, mild and damp enough for anything: what a world with no map gets everywhere.</summary>
     public static readonly Ground Plain = new(40f, 0.02f, 0f, 0.6f, 0.6f, false, 0.5f);
@@ -53,6 +55,9 @@ public sealed class RegionRules
 
     /// <summary>What a weather becomes where its own can't form: a dust storm over wet woods is a windy overcast.</summary>
     public Dictionary<WeatherKind, WeatherKind> Fallback { get; set; } = new();
+
+    /// <summary>The map's landforms that are mountain country (by name): high ground on any world, however low its peaks.</summary>
+    public List<string> Mountains { get; set; } = new();
 
     /// <summary>How wooded each kind of ground is, 0..1, by the world map's biome names (unlisted: open).</summary>
     public Dictionary<string, float> Forest { get; set; } = new();
@@ -206,16 +211,19 @@ public sealed class WorldRules
 /// <summary>Reads a region's land against the rules: what may form there, and how its air differs.</summary>
 public static class Regions
 {
-    /// <summary>High ground, 0 below the mountain height to 1 well above it.</summary>
-    public static float High(RegionRules r, in Ground g) => Front.Smooth(r.MountainHeight * 0.75f, r.MountainHeight * 1.25f, g.Height);
+    /// <summary>High ground, 0 to 1: mountain country, or land above the mountain height.</summary>
+    public static float High(RegionRules r, in Ground g) => MathF.Max(g.Mountain, Front.Smooth(r.MountainHeight * 0.75f, r.MountainHeight * 1.25f, g.Height));
+
+    /// <summary>Ground no tornado can stand on: high mountains, steep or rugged ground.</summary>
+    public static bool Barred(RegionRules r, in Ground g) => g.Mountain > 0.5f || g.Height > r.MountainHeight || g.Slope > r.SteepSlope || g.Rugged > 0.8f;
 
     /// <summary>How well a tornado can stand on this one point: 0 never (mountain, steep ground, water), up to 1.</summary>
     public static float TornadoPoint(RegionRules r, in Ground g)
     {
         if (g.Water) return 0f;
         TornadoGround t = r.Tornado;
-        if (g.Height > r.MountainHeight || g.Slope > r.SteepSlope) return 0f;
-        float flat = 1f - Front.Smooth(t.MaxSlope * 0.6f, t.MaxSlope, g.Slope);
+        if (Barred(r, g)) return 0f;
+        float flat = (1f - Front.Smooth(t.MaxSlope * 0.6f, t.MaxSlope, g.Slope)) * (1f - Front.Smooth(0.5f, 0.8f, g.Rugged)) * (1f - Front.Smooth(0.1f, 0.5f, g.Mountain));
         float open = g.Forest >= t.DenseForest ? t.ForestOdds : 1f - (1f - t.ForestOdds) * Front.Smooth(t.DenseForest * 0.6f, t.DenseForest, g.Forest);
         float air = Front.Smooth(t.MinWarmth * 0.7f, t.MinWarmth, g.Warmth) * Front.Smooth(t.MinHumidity * 0.7f, t.MinHumidity, g.Humidity);
         return flat * open * air;
@@ -237,7 +245,7 @@ public static class Regions
         {
             float a = k * MathF.Tau / 8f;
             Ground o = land(p.X + MathF.Cos(a) * r.BroadRadius, p.Z + MathF.Sin(a) * r.BroadRadius);
-            if (o.Height > r.MountainHeight || o.Slope > r.SteepSlope) return 0f;
+            if (Barred(r, o)) return 0f;
             if (!o.Water) worst = MathF.Min(worst, MathF.Max(TornadoPoint(r, o), here * 0.5f));
             lo = MathF.Min(lo, o.Height);
             hi = MathF.Max(hi, o.Height);

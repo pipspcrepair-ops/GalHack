@@ -88,6 +88,9 @@ public sealed class WeatherSim
     /// <summary>The front the weather is arriving on (or has arrived on), or null: a storm's line, or a dust wall.</summary>
     public Front Front => _front;
 
+    /// <summary>The stretch of the timeline the front carries (its weather behind the edge, the one before it ahead), or null.</summary>
+    public Segment FrontWeather => _frontSegment;
+
     /// <summary>No fronts: storms come as loose cells (single-cell views, tests).</summary>
     public bool FrontsOff { get; set; }
 
@@ -905,13 +908,13 @@ public sealed class WeatherSim
             Tornado t = _tornadoes[i];
             bool wasDown = t.Touchdown;
             if (stormGone && !t.Homing && t.Kind == TornadoKind.Tornado) t.Dissipate();
-            if (look) GroundFate(t, 0.5f);
             if (t.Kind == TornadoKind.Waterspout)
             {
                 SpoutFate(t);
                 if (t.Storm && Current.LightningPerMinute < 0.1f && Current.TornadoesPerMinute < 0.05f) t.Dissipate();
             }
             t.Step(dt, observer, GroundHeight);
+            if (look) GroundFate(t, 0.5f);
             if (t.Touchdown && !wasDown)
                 _events.Add(new WeatherEvent(WeatherEventKind.TornadoTouchdown, t.Id, t.Position, null, 0f, 0f));
             if (!t.Done) continue;
@@ -940,7 +943,7 @@ public sealed class WeatherSim
             if (Flat(at - observer).Length() < rules.MinDistance) continue;
             if (OpenWater != null && OpenWater(at.X, at.Z))
             {
-                SpawnSpouts(at, storm: true);
+                if (SpoutGroups() < 2) SpawnSpouts(at, storm: true);
                 return;
             }
             if (_hazardRng.NextFloat() >= Regions.TornadoGround(Data.Regions, Land, at)) continue;
@@ -1027,7 +1030,7 @@ public sealed class WeatherSim
         if (Land == null) return;
         RegionRules r = Data.Regions;
         Ground g = GroundAt(t.Position);
-        if (g.Height > r.MountainHeight || g.Slope > r.SteepSlope) t.Dissipate();
+        if (Regions.Barred(r, g)) t.Dissipate();
         else if (g.Forest >= r.Tornado.DenseForest && _hazardRng.NextFloat() < 0.25f * dt) t.Dissipate();
     }
 
@@ -1085,9 +1088,7 @@ public sealed class WeatherSim
             ? Front.Smooth(12f, 26f, c.Temperature) * Front.Smooth(11f, 4f, c.WindSpeed) : 0f;
         float stormy = MathF.Min(1f, c.LightningPerMinute / 4f) * c.Cellular;
         if (!Accumulate(ref _spoutCharge, ref _spoutNext, fair * 0.3f + stormy * 0.35f, dt)) return;
-        var groups = new HashSet<int>();
-        foreach (Tornado t in _tornadoes) if (t.Kind == TornadoKind.Waterspout) groups.Add(t.Group);
-        if (groups.Count >= 2) return;
+        if (SpoutGroups() >= 2) return;
         if (stormy > fair)
             foreach (StormCell cell in _cells)
             {
@@ -1101,6 +1102,21 @@ public sealed class WeatherSim
             Vector3 p = observer + RandomOffset(1800f);
             if (Flat(p - observer).Length() > 250f && OpenWater(p.X, p.Z)) { SpawnSpouts(p, storm: false); return; }
         }
+    }
+
+    /// <summary>How many bases have spouts hanging from them now.</summary>
+    int SpoutGroups()
+    {
+        int n = 0;
+        for (int i = 0; i < _tornadoes.Count; i++)
+        {
+            Tornado t = _tornadoes[i];
+            if (t.Kind != TornadoKind.Waterspout) continue;
+            bool first = true;
+            for (int j = 0; j < i && first; j++) first = !(_tornadoes[j].Kind == TornadoKind.Waterspout && _tornadoes[j].Group == t.Group);
+            if (first) n++;
+        }
+        return n;
     }
 
     /// <summary>

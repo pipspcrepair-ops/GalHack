@@ -104,6 +104,7 @@
     "blizzard": { "maxWarmth": 0.3, "snowBelow": 1 },
     "fog": { "minHumidity": 0.45, "valleyDepth": 25, "lowHeight": 60 },
     "wind": { "highBoost": 0.45, "forestCut": 0.4 },
+    "mountains": ["Mountains", "Fjords", "ShardFields"],
     "fallback": { "DustStorm": "Clouds", "Blizzard": "Rain", "Fog": "Clouds", "Tornado": "Thunderstorm" },
     "forest": {
       "Forest": 0.8, "PineForest": 0.85, "Jungle": 0.95, "Rainforest": 0.95, "CloudForest": 0.9, "FungalForest": 0.8,

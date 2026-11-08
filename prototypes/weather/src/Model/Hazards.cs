@@ -143,7 +143,7 @@ public sealed class Tornado
     /// <summary>How hard it pulls, 0..1: nothing until touchdown, fading as it dissipates.</summary>
     public float Strength => Touchdown ? 1f - SmoothStep(_lifetime - Rules.DissipateSeconds, _lifetime, Age) : 0f;
 
-    public bool Dissipating => Age > _lifetime - Rules.DissipateSeconds;
+    public bool Dissipating => Age >= _lifetime - Rules.DissipateSeconds;
     public bool Done => Age >= _lifetime;
 
     public Vector3 Velocity

@@ -399,9 +399,10 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
     /// humidity and warmth, its sea, and how wooded and how loose its ground is by biome (the weather
     /// data's tables).
     /// </summary>
-    public static Func<float, float, Ground> LandOf(PlanetWorld planet, RegionRules rules)
+    public static Func<float, float, Ground> LandOf(PlanetWorld planet, RegionRules rules) => LandOf(planet.Map, rules);
+
+    public static Func<float, float, Ground> LandOf(WorldMap map, RegionRules rules)
     {
-        WorldMap map = planet.Map;
         var forest = new float[256];
         var loose = new float[256];
         foreach (Biome b in Enum.GetValues<Biome>())
@@ -409,13 +410,21 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
             forest[(int)b] = rules.Forest.TryGetValue(b.ToString(), out float f) ? f : 0f;
             loose[(int)b] = rules.Loose.TryGetValue(b.ToString(), out float l) ? l : 0f;
         }
+        var mountain = new float[256];
+        var rugged = new float[256];
+        foreach (Landform l in Enum.GetValues<Landform>())
+        {
+            mountain[(int)l] = rules.Mountains.Contains(l.ToString()) ? 1f : 0f;
+            rugged[(int)l] = LandformInfo.Openness(l) switch { Openness.Open => 0f, Openness.Rolling => 0.5f, _ => 1f };
+        }
         return (x, z) =>
         {
             double px = Mathx.WrapX(x, map.WidthMeters), pz = Mathx.Wrap(z, map.HeightMeters);
             int cell = map.CellAt(px, pz);
-            byte biome = map.Biome[cell];
+            byte biome = map.Biome[cell], land = map.Landform[cell];
             return new Ground(map.Sample(map.Elevation, px, pz), map.Sample(map.Slope, px, pz), forest[biome],
-                map.Sample(map.Humidity, px, pz), map.Sample(map.Temperature, px, pz), map.Has(cell, CellFlags.Water), loose[biome]);
+                map.Sample(map.Humidity, px, pz), map.Sample(map.Temperature, px, pz), map.Has(cell, CellFlags.Water), loose[biome],
+                mountain[land], rugged[land]);
         };
     }
 
