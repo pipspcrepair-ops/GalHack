@@ -113,6 +113,8 @@ public sealed partial class Staging
             "loadrun" => LoadRun(),
             "approach" => ApproachView(),
             "husk-grab" => HuskGrab(),
+            "newgame" => NewGameShots(),
+            "galaxy-depth" => GalaxyDepth(),
             "husk-den" => HuskDen(),
             "husk-carrier" => HuskCarrier(),
             _ => ProofViews(view),

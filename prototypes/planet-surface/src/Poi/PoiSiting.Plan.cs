@@ -93,7 +93,7 @@ public static partial class PoiSiting
             Dir front = served == null ? Dir.North
                 : Toward(Mathx.WrapDelta(served.X - j.Place.X, map.WidthMeters), Mathx.WrapDelta(served.Z - j.Place.Z, map.HeightMeters));
             bool large = j.Family.Tags.Contains("grand");
-            Layout layout = PoiFactory.TryLayout(lib, j.Family, j.Variant, j.Family.Rarity, large ? PoiGenerator.Gen.Hash.Combine(j.Spawn, 0x6A11UL) : null, new LayoutHints(front, profile.Before), out string why);
+            Layout layout = PoiFactory.TryLayout(lib, j.Family, j.Variant, Deeper(j.Family.Rarity, roll.Depth, j.Spawn), large ? PoiGenerator.Gen.Hash.Combine(j.Spawn, 0x6A11UL) : null, new LayoutHints(front, profile.Before), out string why);
             // A place that won't lay out is left off the map with a warning, never a crash.
             if (layout == null) { Godot.GD.PushWarning($"place skipped: {why}"); return; }
             if (large) layout.Name = j.Family.Variants[j.Variant].Name;

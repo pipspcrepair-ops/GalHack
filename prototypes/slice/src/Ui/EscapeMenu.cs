@@ -252,6 +252,7 @@ public partial class EscapeRoot : MenuPanel
         {
             ("WORLD", w?.Name ?? "-"),
             ("SEED", w != null ? $"{w.Seed}" : "-"),
+            ("DEPTH", Game.Zone?.Planet is { Depth: >= 0f } p ? $"{p.Depth:0.00}  {GalHack.Stars.Galaxy.Band(p.Depth)}" : "-"),
             ("MODE", Game.Mode == GalHack.Items.GameMode.Creative ? "Creative" : "Survival"),
             ("TIME HERE", TimeSpan.FromSeconds(Game.Stats.Seconds).ToString(@"h\:mm\:ss")),
             ("LEVEL", Game.Progress != null ? $"{Game.Progress.Level}  ({Game.Progress.Xp} XP)" : "-"),
