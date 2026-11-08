@@ -13,10 +13,12 @@ public enum EscapePage { World, Options }
 /// <summary>
 /// The escape menu, on Esc with no other menu open: RESUME, SAVE and LOAD (marked NOT YET: the
 /// slice has no saves), OPTIONS (graphics, sound, controls and mouse: <see cref="OptionsSection"/>)
-/// and QUIT TO DESKTOP, which asks first. The slice is single player, so the world stops while it
-/// is open: the tree is paused, and only this menu, its clicks and the music (so a volume can be
-/// set by ear) run on. The mouse is freed while it is open and taken back on resume. A second Esc
-/// closes it, after backing out of a key prompt or the quit question.
+/// and QUIT TO DESKTOP, which asks first. The game never pauses (it is built for co-op): the world
+/// runs on behind the menu, which is see-through like every menu, so you keep an eye on what is
+/// coming. Each tick's key presses and clicks are the menu's (it reads them before the game does),
+/// while held movement keys still reach the castaway, as with the Tab menu. The mouse is freed
+/// while it is open and taken back on resume. A second Esc closes it, after backing out of a key
+/// prompt or the quit question.
 ///
 /// It is the Tab menu's kind of panel (<see cref="MenuPanel"/>) on the same 1600 x 900 canvas:
 /// the real mouse clicks it in play, the game's own <see cref="Controls"/> in a test.
@@ -26,9 +28,6 @@ public partial class EscapeMenu : CanvasLayer
     public Game.Game Game;
     public EscapeRoot Root { get; private set; }
     public bool IsOpen => Root?.Visible == true;
-
-    /// <summary>Single player: the world stops while the menu is open. A shared world would run on.</summary>
-    public bool Pauses = true;
 
     /// <summary>Opened, closed, clicks: the menu's sounds play on these.</summary>
     public event Action<string> Sounded;
@@ -42,6 +41,7 @@ public partial class EscapeMenu : CanvasLayer
     {
         Layer = 8; // over the visor (1), the debug readout (2) and the Tab menu (3); under the start screen (10)
         ProcessMode = ProcessModeEnum.Always;
+        ProcessPhysicsPriority = -30; // the tick's presses and clicks reach the menu before the game (-20) reads them
         Root = new EscapeRoot { Name = "Root", Game = Game, Menu = this, Visible = false };
         AddChild(Root);
         Root.Sounded += s => Sounded?.Invoke(s);
@@ -57,7 +57,6 @@ public partial class EscapeMenu : CanvasLayer
         Root.Reset();
         Root.Visible = true;
         Game.Controls.EndTick(); // the Esc that opened it is spent
-        if (Pauses) GetTree().Paused = true;
         if (Game.Interactive) Input.MouseMode = Input.MouseModeEnum.Visible;
         if (Game.Visor != null)
         {
@@ -74,17 +73,10 @@ public partial class EscapeMenu : CanvasLayer
         Root.Gui.DragId = null;
         Root.Options.EndCapture();
         Game.Controls.EndTick();
-        if (Pauses) GetTree().Paused = false;
         if (Game.Visor != null) Game.Visor.Visible = _visorWas;
         if (Game.Interactive && !Game.Menu.IsOpen && DisplayServer.GetName() != "headless") Input.MouseMode = Input.MouseModeEnum.Captured;
         SaveNow();
         Sounded?.Invoke("close");
-    }
-
-    /// <summary>Freed while open (the game torn down under it): the tree is not left paused.</summary>
-    public override void _ExitTree()
-    {
-        if (IsOpen && Pauses && IsInsideTree()) GetTree().Paused = false;
     }
 
     /// <summary>QUIT TO DESKTOP, confirmed: the settings written, and out through wildlife's shutdown (sound drained, caches released). A test's game stays.</summary>
@@ -102,7 +94,7 @@ public partial class EscapeMenu : CanvasLayer
         Game.SaveSettings();
     }
 
-    /// <summary>While it is open, the tick's keys and (from a script) mouse are the menu's: the world is stopped and reads nothing.</summary>
+    /// <summary>While it is open, the tick's key presses and (from a script) mouse are the menu's: the game, which reads after it, sees none of them.</summary>
     public override void _PhysicsProcess(double delta)
     {
         if (!IsOpen) return;
@@ -114,11 +106,12 @@ public partial class EscapeMenu : CanvasLayer
         }
         if (!Game.Interactive)
             Root.Feed(c.Mouse, c.PrimaryPressed, c.PrimaryReleased, c.Primary, c.SecondaryPressed, c.ModifierHeld(Key.Shift), c.ModifierHeld(Key.Ctrl), c.SecondaryReleased, c.Secondary, c.Wheel);
-        if (GetTree().Paused) c.EndTick();
+        c.EndTick();
     }
 
     public override void _Process(double delta)
     {
+        if (Game?.Settings == null) return;
         if (Game.Settings.Version == _savedVersion) return;
         if (_saveIn < 0) _saveIn = SaveDelay;
         else if ((_saveIn -= delta) <= 0) SaveNow();
@@ -210,11 +203,12 @@ public partial class EscapeRoot : MenuPanel
 
     void Main(Gui g, Rect2 area)
     {
-        g.Fill(area, new Color(C.Glass, 0.9f));
+        // See-through: the world behind it stays in view.
+        g.Fill(area, new Color(C.Glass, 0.6f));
         var header = new Rect2(area.Position, new Vector2(area.Size.X, 74));
         g.Fill(header, C.Accent);
         if (g.Drawing) g.Canvas.Stripes(new Rect2(header.Position + new Vector2(header.Size.X - 300, 0), new Vector2(300, header.Size.Y)), C.Accent, C.Accent2, 16);
-        g.Text(Page == EscapePage.Options ? "OPTIONS" : "PAUSED", header.Position + new Vector2(24, 14), C.Glass, 30, UiTheme.Display);
+        g.Text(Page == EscapePage.Options ? "OPTIONS" : "MENU", header.Position + new Vector2(24, 14), C.Glass, 30, UiTheme.Display);
         if (Game.World is WorldChoice w)
             g.TextIn($"{w.Name.ToUpperInvariant()}   SEED {w.Seed}", new Rect2(header.Position.X + 620, header.Position.Y + 20, 640, 34), C.Glass, 18, HorizontalAlignment.Right, UiTheme.Mono);
 
