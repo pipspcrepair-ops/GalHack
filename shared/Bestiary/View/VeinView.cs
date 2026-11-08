@@ -20,6 +20,13 @@ public partial class VeinView : MeshInstance3D
         CullMode = BaseMaterial3D.CullModeEnum.Disabled,
     };
 
+    /// <summary>Lets the shared material go on the main thread at quit (<see cref="Shutdown"/>).</summary>
+    public static void Release()
+    {
+        _material?.Dispose();
+        _material = null;
+    }
+
     public void Build(IReadOnlyList<Vein> veins)
     {
         Name = "Veins";
