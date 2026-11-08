@@ -170,93 +170,35 @@ public static class Mesher
     /// <summary>A window's tone from far off: a pale grey-blue, the sky in the glass.</summary>
     static readonly Rgb Window = new(0x8e, 0x9a, 0xa6);
 
-    /// <remarks>
-    /// The far mesh stands in for the place's merged blocks and dissolves into them, so it keeps
-    /// their outline and their tone. A cell is solid where at least half of it is the place: blocks,
-    /// and the roofed rooms inside them (a wall one block thick round a room is a solid lump from far
-    /// off, neither swollen to the cell's side nor gone). Its colour is that of the blocks the
-    /// outside sees (with open air beside them), so floors and inner walls don't darken a facade.
-    /// </remarks>
     public static ChunkMesh Coarse(BlockGrid g, CellMask occupied, int step = 4, int minimum = 7)
     {
         Int3 size = new((g.Size.X + step - 1) / step, (g.Size.Y + step - 1) / step, (g.Size.Z + step - 1) / step);
         var count = new int[size.X * size.Y * size.Z];
-        var seen = new long[count.Length * 4];
-        var solid = new int[count.Length];
-        int Cell(Int3 c)
-        {
-            Int3 l = c - g.Min;
-            return ((l.Y / step) * size.Z + l.Z / step) * size.X + l.X / step;
-        }
-        bool Open(Int3 c) => !g.InBounds(c) || (g.Get(c).IsAir || BlockInfo.IsTransparent(g.Get(c).Material)) && !occupied[c];
+        var sum = new long[count.Length * 3];
         foreach (var (c, b) in g.Blocks())
         {
             int weight = BlockInfo.IsFullCube(b.Type) ? 2 : b.Type is BlockType.Ramp or BlockType.Corner or BlockType.InvCorner or BlockType.Stair or BlockType.Rib or BlockType.Pillar or BlockType.Pipe or BlockType.Tank or BlockType.Lattice ? 1 : 0;
             if (weight == 0 || BlockInfo.IsTransparent(b.Material)) continue;
-            int i = Cell(c);
+            Int3 l = c - g.Min;
+            int i = ((l.Y / step) * size.Z + l.Z / step) * size.X + l.X / step;
             count[i] += weight;
-            solid[i] += weight;
             // From far off a window shows the sky it mirrors, not its dark glass: averaged as glass, a tower of
             // windows was a dark navy box on the skyline.
             Rgb col = b.Role == Role.Window ? Window : b.Color;
-            if (Open(c + new Int3(1, 0, 0)) || Open(c + new Int3(-1, 0, 0)) || Open(c + new Int3(0, 0, 1)) || Open(c + new Int3(0, 0, -1)) || Open(c + new Int3(0, 1, 0)))
-            {
-                seen[i * 4] += col.R;
-                seen[i * 4 + 1] += col.G;
-                seen[i * 4 + 2] += col.B;
-                seen[i * 4 + 3]++;
-            }
+            sum[i * 3] += col.R * weight;
+            sum[i * 3 + 1] += col.G * weight;
+            sum[i * 3 + 2] += col.B * weight;
         }
-        // Rooms with a roof over them count as the place's bulk.
-        Int3 max = g.Min + g.Size;
-        for (int z = g.Min.Z; z < max.Z; z++)
-            for (int x = g.Min.X; x < max.X; x++)
-            {
-                bool roofed = false;
-                for (int y = max.Y - 1; y >= g.Min.Y; y--)
-                {
-                    var c = new Int3(x, y, z);
-                    Block b = g.Get(c);
-                    if (!b.IsAir && BlockInfo.IsFullCube(b.Type)) roofed = true;
-                    else if (roofed && b.IsAir && occupied[c]) count[Cell(c)] += 2;
-                }
-            }
         var coarse = new BlockGrid(new Int3(0, 0, 0), size);
-        // Bulk: half the cell or more the place (weights are 2 a cell). A wall standing alone (a ruin's)
-        // has no bulk beside it, and keeps its cell from a quarter of blocks; one round rooms doesn't
-        // swell out past them.
-        var bulk = new bool[count.Length];
-        int Volume(int x, int y, int z) => Math.Min(step, g.Size.X - x * step) * Math.Min(step, g.Size.Y - y * step) * Math.Min(step, g.Size.Z - z * step);
         for (int y = 0, i = 0; y < size.Y; y++)
             for (int z = 0; z < size.Z; z++)
                 for (int x = 0; x < size.X; x++, i++)
-                    bulk[i] = count[i] >= Math.Max(minimum * 2, Volume(x, y, z));
-        bool Bulk(int x, int y, int z) => x >= 0 && y >= 0 && z >= 0 && x < size.X && y < size.Y && z < size.Z && bulk[(y * size.Z + z) * size.X + x];
-        // A cell of rooms alone, or of blocks the outside never sees, takes the whole outside's colour.
-        long sr = 0, sg = 0, sb = 0, sk = 0;
-        for (int i = 0; i < count.Length; i++)
-        {
-            sr += seen[i * 4];
-            sg += seen[i * 4 + 1];
-            sb += seen[i * 4 + 2];
-            sk += seen[i * 4 + 3];
-        }
-        Rgb outside = sk > 0 ? new Rgb((byte)(sr / sk), (byte)(sg / sk), (byte)(sb / sk)) : new Rgb(0x80, 0x80, 0x80);
-        int cells = 0;
-        // Nothing standing to these rules (scattered wreckage, props): as many blocks as the old far mesh took, so a place never vanishes far off.
-        for (int pass = 0; pass < 2 && cells == 0; pass++)
-            for (int y = 0, i = 0; y < size.Y; y++)
-                for (int z = 0; z < size.Z; z++)
-                    for (int x = 0; x < size.X; x++, i++)
-                    {
-                        bool alone = solid[i] >= Math.Max(minimum * 2, pass == 0 ? Volume(x, y, z) / 2 : 0)
-                            && !Bulk(x + 1, y, z) && !Bulk(x - 1, y, z) && !Bulk(x, y + 1, z) && !Bulk(x, y - 1, z) && !Bulk(x, y, z + 1) && !Bulk(x, y, z - 1);
-                        if (!bulk[i] && !alone) continue;
-                        long k = seen[i * 4 + 3];
-                        Rgb color = k > 0 ? new Rgb((byte)(seen[i * 4] / k), (byte)(seen[i * 4 + 1] / k), (byte)(seen[i * 4 + 2] / k)) : outside;
-                        coarse.Set(new Int3(x, y, z), new Block(BlockType.Cube, Material.Concrete, color, Role.Wall));
-                        cells++;
-                    }
+                {
+                    int n = count[i];
+                    if (n < minimum * 2) continue;
+                    var color = new Rgb((byte)(sum[i * 3] / n), (byte)(sum[i * 3 + 1] / n), (byte)(sum[i * 3 + 2] / n));
+                    coarse.Set(new Int3(x, y, z), new Block(BlockType.Cube, Material.Concrete, color, Role.Wall));
+                }
         var built = Build(coarse, occupied, new MeshOptions { ChunkSize = Math.Max(size.X, Math.Max(size.Y, size.Z)) + 1, Rock = false, Collision = false, Detail = false, Doors = false, Merged = true });
         var all = new ChunkMesh();
         foreach (ChunkMesh m in built)
