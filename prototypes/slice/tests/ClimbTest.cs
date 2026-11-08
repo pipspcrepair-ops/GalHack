@@ -329,7 +329,7 @@ public partial class ClimbTest : Node
             else stops.Add($"down {run.High}..{run.Low}: {note}");
         }
         Check(runs.Count > 0 && climbable.Count == runs.Count, $"{place.Site.Name}: {climbable.Count} of {runs.Count} ladders have a floor at the foot and the top" +
-            string.Concat(runs.Where(r => r.Foot == null || r.Top == null).Take(4).Select(r => $"; {r.Low}..{r.High} out {r.Out} foot {r.Foot?.ToString() ?? "none"} top {r.Top?.ToString() ?? "none"}, over it {string.Join(" ", Enumerable.Range(1, 3).Select(k => place.Inst.Blocks.Get(r.High + P.Int3.Up * k).Type))}")));
+            string.Concat(runs.Where(r => r.Foot == null || r.Top == null).Take(4).Select(r => $"; {r.Low}..{r.High} out {r.Out} foot {r.Foot?.ToString() ?? "none"} top {r.Top?.ToString() ?? "none"}, beside the foot {string.Join(" ", new[] { r.Out, r.Out.RotateCw(1), r.Out.RotateCw(3), r.Out.Opposite() }.Select(d => $"{d}:{place.Inst.Blocks.Get(r.Low + d.Vec()).Type}/{place.Inst.Blocks.Get(r.Low + d.Vec() + P.Int3.Down).Type}{(place.Inst.Nav().Standable(r.Low + d.Vec()) ? " bare-standable" : "")}"))}, under it {place.Inst.Blocks.Get(r.Low + P.Int3.Down).Type}, off the top {string.Join(" ", new[] { r.Out.Opposite(), r.Out.RotateCw(1), r.Out.RotateCw(3) }.Select(d => $"{d}:{string.Join("/", Enumerable.Range(-1, 3).Select(k => place.Inst.Blocks.Get(r.High + P.Int3.Up * (1 + k) + d.Vec()).Type))}"))}, over it {string.Join(" ", Enumerable.Range(1, 3).Select(k => place.Inst.Blocks.Get(r.High + P.Int3.Up * k).Type))}")));
         Check(stops.Count == 0, $"{place.Site.Name}: up {ups} and down {downs} of {climbable.Count} ladders, on and off at both ends{(stops.Count > 0 ? $"; stopped: {string.Join(" | ", stops.Take(6))}" : "")}");
     }
 

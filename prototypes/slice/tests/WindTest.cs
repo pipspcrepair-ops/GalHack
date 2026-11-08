@@ -779,7 +779,7 @@ public partial class WindTest : Node
         }
         Check(rose[0] < 3f || tumbled[0] > 1.2f, $"a thrown creature tumbles in the air, not level: the {bodies[0].s.Name} turned {Mathf.RadToDeg(tumbled[0]):F0}° from upright");
         Check(!downed || gotUp, $"one that lands hard on its side lies there, then gets up ({(downed ? "downed, and up again" : "none came down on its side this time")})");
-        string row = string.Join(", ", bodies.Select((b, k) => $"{b.s.Name} {Mass(Wildlife.Heft.Mass(b.s))}: {rose[k]:F0} m up, {flew[k]:F0} m off"));
+        string row = string.Join(", ", bodies.Select((b, k) => $"{b.s.Name} {Mass(Wildlife.Heft.Mass(b.s))}: {rose[k]:F0} m up, {flew[k]:F0} m off{(b.c.Removed ? " (removed)" : "")}{(b.c.Space != null ? " (in a space)" : "")}{(patch.Sim != sim0 || patch.Origin != origin ? " (patch moved on)" : "")}"));
         bool ordered = true;
         for (int k = 1; k < bodies.Count; k++) ordered &= flew[k] <= flew[k - 1] * 1.15f + 2f;
         Check(ordered && (rose[0] > 3f || Wildlife.Heft.Mass(bodies[0].s) > 1500f), $"creatures in a tornado are thrown by their own mass: {row}");

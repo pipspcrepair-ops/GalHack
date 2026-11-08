@@ -154,7 +154,7 @@ public partial class CrouchTest : Node
             if (Z < rig.Near && Z > rig.Far) crouchedAllTheWay &= S.Crouched;
             lowest = MathF.Min(lowest, S.Body.WorldPosition.Y - rig.Top);
         }
-        Check(Z < rig.Far - 1.5f && crouchedAllTheWay, $"crouched, it walks the whole passage and out the far end (z {Z:F2}, end {rig.Far:F2}); lowest feet {lowest:F2} m over the pad");
+        Check(Z < rig.Far - 1.5f && crouchedAllTheWay, $"crouched, it walks the whole passage and out the far end (z {Z:F2}, end {rig.Far:F2}); lowest feet {lowest:F2} m over the pad{(Z < rig.Far - 1.5f ? "" : $"; in the way: {InTheWay()}")}");
 
         // ---- Back in, then let go of Ctrl: no room to stand ----------------------------------------------
         Keys.Hold(Key.W, false);
@@ -231,6 +231,21 @@ public partial class CrouchTest : Node
                 $"crouched in {depth:F2} m of still water it stays down and steady: never swimming, the eye at {eyeLo:F2} to {eyeHi:F2} m, the feet within {(feetHi - feetLo) * 100f:F1} cm");
         }
         _game.Zone.Physics.Water = dry;
+    }
+
+    /// <summary>What solid stands just ahead of the body, -Z (when a walk stops short).</summary>
+    string InTheWay()
+    {
+        var query = new PhysicsShapeQueryParameters3D
+        {
+            Shape = new SphereShape3D { Radius = 0.6f },
+            Transform = new Transform3D(Basis.Identity, S.WorldFeet + new Vector3(0f, 0.6f, -0.5f)),
+            CollisionMask = uint.MaxValue,
+        };
+        var names = new List<string>();
+        foreach (var hit in _game.Zone.GetWorld3D().DirectSpaceState.IntersectShape(query, 8))
+            if (hit["collider"].AsGodotObject() is Node n) names.Add(n.GetPath().ToString());
+        return names.Count == 0 ? "nothing in the scene's physics" : string.Join(", ", names.Distinct());
     }
 
     /// <summary>A sheet of still water at one level everywhere (the shallows a crouch is tried in).</summary>

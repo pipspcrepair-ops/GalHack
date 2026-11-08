@@ -119,13 +119,13 @@ public sealed partial class Town
         return true;
     }
 
-    /// <summary>The nearest standable cell to a spot's own (itself where it is clear), within a few cells and a level.</summary>
+    /// <summary>The nearest standable cell to a spot's own (itself where it is clear), within a few cells and a level up, or down to the floor under it (a spot left in the air over a pit or a drop).</summary>
     PInt3? Stand(PInt3 c)
     {
         if (_nav.Standable(c)) return c;
         PInt3? best = null;
         int bestD = int.MaxValue;
-        for (int dy = -1; dy <= 1; dy++)
+        for (int dy = -3; dy <= 1; dy++)
             for (int dz = -3; dz <= 3; dz++)
                 for (int dx = -3; dx <= 3; dx++)
                 {

@@ -412,8 +412,18 @@ public sealed class Decor
         foreach (KeyCard k in inst.Extras.Keys) r.Add(k.Cell);
         if (inst.HasCore) r.Add(inst.CoreCell);
         foreach (var (p, b) in inst.Blocks.Blocks())
+        {
             if (b.Type is BlockType.Ladder or BlockType.Stair or BlockType.Ramp or BlockType.Door or BlockType.Breakable or BlockType.Remains)
                 r.Add(p);
+            // A ladder's ends: the floor beside its foot you step on from, and the landing a level over its top you step off onto, with headroom.
+            if (b.Type != BlockType.Ladder) continue;
+            bool foot = inst.Blocks.Get(p + Int3.Down).Type != BlockType.Ladder, top = inst.Blocks.Get(p + Int3.Up).Type != BlockType.Ladder;
+            foreach (Dir h in Dirs.Horizontal)
+            {
+                if (foot) { r.Add(p + h.Vec()); r.Add(p + h.Vec() + Int3.Up); }
+                if (top) { r.Add(p + Int3.Up + h.Vec()); r.Add(p + Int3.Up * 2 + h.Vec()); }
+            }
+        }
         foreach (Doorway d in inst.Layout.Doorways)
             foreach (Int3 c in d.Cells)
                 foreach (Dir h in Dirs.Horizontal) r.Add(c + h.Vec());
