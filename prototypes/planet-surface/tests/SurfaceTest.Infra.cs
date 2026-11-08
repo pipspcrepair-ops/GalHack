@@ -351,6 +351,7 @@ public partial class SurfaceTest
         float worst = 0;
         int gridWorlds = 0, powered = 0, dropped = 0, unfed = 0, strungDrops = 0, downDrops = 0, wallsChecked = 0, offWall = 0, dropLow = 0, substations = 0, plantsSeen = 0;
         string firstUnserved = "", firstUnfed = "", firstOffWall = "", firstLow = "";
+        var unservedWhy = new Dictionary<string, int>();
         var rand = new Random();
         // Power comes from a world's networks layer, and only some build pylons: fresh worlds until enough have stood (ten at least, for the roads).
         for (int k = 0; k < 16 && (pylons < 60 || k < 10); k++)
@@ -383,7 +384,8 @@ public partial class SurfaceTest
             {
                 tracks++;
                 trackKm += r.Length / 1000;
-                for (int i = 8; i + 8 < r.Count; i++)
+                // (Not in the first and last 48 m: the way out of a gate and into a junction keep their own line.)
+                for (int i = 12; i + 12 < r.Count; i++)
                 {
                     double a0 = Math.Atan2(r.Z[i - 3] - r.Z[i - 5], r.X[i - 3] - r.X[i - 5]), a1 = Math.Atan2(r.Z[i + 5] - r.Z[i + 3], r.X[i + 5] - r.X[i + 3]);
                     double turn = Math.Abs(Math.IEEERemainder(a1 - a0, Math.PI * 2)) * 180 / Math.PI;
@@ -447,6 +449,7 @@ public partial class SurfaceTest
                 plantsSeen += power.Poles.Count(p => p.Role == PowerRole.Plant);
                 substations += power.Poles.Count(p => p.Role == PowerRole.Substation);
                 bool[] fed = power.Fed();
+                foreach (var (why, n) in power.UnservedWhy) unservedWhy[why] = unservedWhy.GetValueOrDefault(why) + n;
                 var byHouse = power.Drops.ToDictionary(d => d.House);
                 foreach (FlavourRuin house in w.Infra.Ruins.Where(PowerLines.Powered))
                 {
@@ -546,7 +549,7 @@ public partial class SurfaceTest
         Check(sharp == 0, $"paved roads turn gently: on {sweepWorlds} fresh worlds no 50 m of road outside a town turns more than {InfraNetwork.MostTurn50(RouteKind.Road):F0} degrees (highway {InfraNetwork.MostTurn50(RouteKind.Highway):F0}); sharpest {sharpest:F0}, {sharp} over{firstSharp}");
         Check(standing > 100 && onRoad == 0, $"poles and pylons stand off the roads: {standing} standing, {onRoad} on a road or railway bed{firstOnRoad}");
         Check(gridWorlds > 0 && powered > 0 && dropped == powered && unfed == 0 && plantsSeen > 0 && substations >= gridWorlds,
-            $"every powered house has its drop back to a plant: {gridWorlds} worlds with a grid, {plantsSeen} plants, {substations} substations; {powered} houses that would have had power, {dropped} with a drop ({strungDrops} strung, {downDrops} down){firstUnserved}, {unfed} on a pole not fed through a substation from a plant{firstUnfed}");
+            $"every powered house has its drop back to a plant: {gridWorlds} worlds with a grid, {plantsSeen} plants, {substations} substations; {powered} houses that would have had power, {dropped} with a drop ({strungDrops} strung, {downDrops} down){firstUnserved} [{string.Join(", ", unservedWhy.Select(k => $"{k.Value} {k.Key}"))}], {unfed} on a pole not fed through a substation from a plant{firstUnfed}");
         Check(wallsChecked > 0 && offWall == 0 && dropLow == 0,
             $"service drops are anchored: {wallsChecked} fixings checked against the house as spawned, {offWall} not on a standing wall{firstOffWall}; {dropLow} drops through or under the ground{firstLow}");
         Check(feetChecked >= 120 && floating == 0, $"every pylon foot meets the ground: {feetChecked} feet, {floating} floating or buried (worst {worst:F2} m above)");

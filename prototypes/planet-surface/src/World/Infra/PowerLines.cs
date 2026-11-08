@@ -155,6 +155,14 @@ public sealed class PowerLines
     public readonly List<ServiceDrop> Drops = new();
     /// <summary>Houses that would have had power but no line could reach (tests: there should be none).</summary>
     public readonly List<FlavourRuin> Unserved = new();
+    /// <summary>Why each unserved house went without (tests).</summary>
+    public readonly Dictionary<string, int> UnservedWhy = new();
+
+    void Without(FlavourRuin house, string why)
+    {
+        Unserved.Add(house);
+        UnservedWhy[why] = UnservedWhy.GetValueOrDefault(why) + 1;
+    }
 
     /// <summary>Whether a small place would have had power on a world with a grid: a house, a shop, a farmstead or a wayside stop; not a shed.</summary>
     public static bool Powered(FlavourRuin r) => !r.Family.Tags.Contains("shed");
@@ -325,14 +333,15 @@ public sealed class PowerLines
                     if (d < nearest) { nearest = d; from = j; }
                 }
                 int end = from < 0 ? -1 : Spur(from, hx, hz, halfDiag + 14, net, source, ground, rng, wear, kept);
-                if (end < 0 || Poles[end].Role != PowerRole.Line) { Unserved.Add(house); continue; }
+                // (A spur that stopped short still stands: the poles it laid are fed.)
                 fed = Fed();
+                if (end < 0 || Poles[end].Role != PowerRole.Line) { Without(house, from < 0 ? "nothing fed to come from" : end < 0 ? $"no spur: {_spurWhy}" : "the spur ended at a substation"); continue; }
                 pole = end;
             }
             PowerPole pp = Poles[pole];
-            if (!Fixing(house, pp.X, pp.Z, w, h, out Vector3 at, out var cell)) { Unserved.Add(house); continue; }
+            if (!Fixing(house, pp.X, pp.Z, w, h, out Vector3 at, out var cell)) { Without(house, "no wall to fix to"); continue; }
             Vector3 anchor = pp.DropAnchor(at.X, at.Z);
-            if (Vector3.Distance(anchor with { Y = 0 }, at with { Y = 0 }) > DropReach + 8) { Unserved.Add(house); continue; }
+            if (Vector3.Distance(anchor with { Y = 0 }, at with { Y = 0 }) > DropReach + 8) { Without(house, "the pole too far from the wall"); continue; }
             // What still holds it: a ruined house's walls can't be trusted to keep the fixing, so its drop hangs from the pole.
             bool broken = house.State == PoiState.Ruined || house.Blast > 0.02f;
             DropState state = pp.Fallen ? (broken ? DropState.Lying : DropState.FromHouse)
@@ -361,6 +370,8 @@ public sealed class PowerLines
         }
         return seen;
     }
+
+    string _spurWhy = "";
 
     /// <summary>A drop's sag: a thin wire strung loosely.</summary>
     public const float DropSlack = 0.035f;
@@ -431,11 +442,11 @@ public sealed class PowerLines
         return null;
     }
 
-    /// <summary>A pole may stand here: dry ground, off every road's bed and every pad.</summary>
+    /// <summary>A pole may stand here: dry ground, off every road's bed, and off any place's footprint and apron (the outer blend round a yard is the land's own, cut and filled).</summary>
     static bool PoleSpot(InfraNetwork net, PlanetTerrainSource source, double x, double z)
     {
         double cx = Mathx.WrapX(x, net.Width), cz = Mathx.Wrap(z, net.Height);
-        return source.StampWeight(cx, cz) <= 0.05f && !source.WaterSurfaceAt(cx, cz, out _) && net.OffRoad(x, z, 1.5);
+        return source.Built(cx, cz, out _) < 0.5f && !source.WaterSurfaceAt(cx, cz, out _) && net.OffRoad(x, z, 1.5);
     }
 
     /// <summary>Strings a pole line's wires between two nodes and links them: strung, or hanging from whichever still stands.</summary>
@@ -473,15 +484,19 @@ public sealed class PowerLines
             if (dl <= shortOf + 0.5) return prev;
             double ux = dx / dl, uz = dz / dl;
             double go = Math.Min(PoleSpan, dl - shortOf);
+            // Close enough already for what it serves: a pole on a line stops here.
+            if (go < 8 && last.Role == PowerRole.Line) return prev;
             PowerPole pole = null;
-            foreach (double back in new[] { 0.0, 6, 12, 18 })
+            bool spotted = false;
+            foreach (double back in new[] { 0.0, 6, 12, 18, 24 })
             {
                 double t = go - back;
-                if (t < 8) break;
-                foreach (double o in new[] { 0.0, 3, -3, 6, -6, 10, -10 })
+                if (t < Math.Min(8, go) - 1e-6) break;
+                foreach (double o in new[] { 0.0, 3, -3, 6, -6, 10, -10, 15, -15, 21, -21 })
                 {
                     double x = last.X + ux * t - uz * o, z = last.Z + uz * t + ux * o;
                     if (!PoleSpot(net, source, x, z)) continue;
+                    spotted = true;
                     var cand = new PowerPole { X = Mathx.WrapX(x, w), Z = Mathx.Wrap(z, h), Ground = ground(x, z), SideX = (float)-uz, SideZ = (float)ux };
                     // Unwrapped next to the last for the clearance test.
                     var test = new PowerPole { X = x, Z = z, Ground = cand.Ground, SideX = cand.SideX, SideZ = cand.SideZ };
@@ -491,7 +506,11 @@ public sealed class PowerLines
                 }
                 if (pole != null) break;
             }
-            if (pole == null) return -1;
+            if (pole == null)
+            {
+                _spurWhy = spotted ? "wires would not clear the ground" : step == 0 ? "no spot by where it leaves" : "no spot along the way";
+                return -1;
+            }
             pole.Fallen = !kept && rng.Chance(0.06f * wear);
             int idx = Add(pole);
             String(prev, idx, rng, wear, kept);
@@ -740,7 +759,7 @@ public sealed class PowerLines
             double nx = -sz / len * side, nz = sx / len * side;
             double px = r.X[i] + nx * offset, pz = r.Z[i] + nz * offset;
             double cx = Mathx.WrapX(px, net.Width), cz = Mathx.Wrap(pz, net.Height);
-            if (ok && (source.StampWeight(cx, cz) > 0.05f || source.WaterSurfaceAt(cx, cz, out _) || !net.OffRoad(px, pz, 1.5))) ok = false;
+            if (ok && !PoleSpot(net, source, px, pz)) ok = false;
             spots.Add(ok ? new PowerPole { X = px, Z = pz, Ground = ground(px, pz), SideX = (float)nx, SideZ = (float)nz, Pylon = pylons } : null);
         }
         int prev = -1;
