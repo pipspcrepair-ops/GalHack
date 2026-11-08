@@ -11,8 +11,9 @@ namespace Slice.Tests;
 
 /// <summary>
 /// The UI round's proof, one run, daylight: <c>--view=uiround --dir=folder</c> writes ui-hud-alert (a
-/// tornado forming and a beast's attack), ui-compass (out of the bunker: the bunker and the place in view, nothing else found yet),
-/// ui-menu-alert (the same alerts with the Tab menu open), ui-scanner (a ping), ui-tech-TAB for every tech tab, ui-fabricator, ui-inventory (a container open
+/// tornado forming, lightning building and a beast's attack), ui-compass (out of the bunker: the bunker and the place in view, nothing else found yet),
+/// ui-menu-alert, ui-menu-alert-stats, ui-menu-alert-blueprints and ui-esc-alert (the same alerts over the Tab menu's pages and
+/// the escape menu), ui-scanner (a ping), ui-tech-TAB for every tech tab, ui-fabricator, ui-inventory (a container open
 /// beside the bag), ui-core (a survival constructor's page) and ui-galaxy. Anything newer than the
 /// game it runs in is reached by name, so the same view shoots the game from before the round.
 /// </summary>
@@ -68,20 +69,43 @@ public sealed partial class Staging
         Call(_game, "Scan");
         foreach (int x in Frame("scanner")) yield return x;
 
-        // A tornado forming off to one side, and a beast's bite from the other.
+        // A tornado forming off to one side, lightning building far off on the other, and a beast's bite.
         Vector3 feet = _game.Survivor.WorldFeet;
-        Vector3 side = new Vector3(look.Z, 0f, -look.X).Normalized();
-        _game.Zone.Weather.Sim.SpawnTornado(feet + side * 260f + new Vector3(look.X, 0, look.Z).Normalized() * 120f, feet);
+        Vector3 side = new Vector3(look.Z, 0f, -look.X).Normalized(), ahead = new Vector3(look.X, 0, look.Z).Normalized();
+        var sim = _game.Zone.Weather.Sim;
+        sim.SpawnTornado(feet + side * 260f + ahead * 120f, feet);
+        // A strike's charge builds for a few seconds only: a fresh one before each frame, landing 170 m off.
+        void Threats()
+        {
+            sim.StartStrike(Weather.Model.HazardKind.Lightning, feet - side * 150f + ahead * 80f);
+            Call(Get(_game, "Alerts"), "Attack", "wildlife", feet - side * 6f);
+        }
         foreach (int x in _drive.Wait(30)) yield return x;
-        Call(Get(_game, "Alerts"), "Attack", "wildlife", feet - side * 6f);
+        Threats();
         Call(_game.Visor, "Hurt", feet - side * 6f);
         foreach (int x in Frame("hud-alert")) yield return x;
         // With the Tab menu open the same alerts stay on the toolbar's line at the far left, clear of the paperdoll and the slots.
         foreach (int x in Play.OpenMenu(MenuTab.You)) yield return x;
-        Call(Get(_game, "Alerts"), "Attack", "wildlife", feet - side * 6f);
+        Threats();
         foreach (int x in Frame("menu-alert")) yield return x;
+        // The pages that reach lowest at the left (the stats' last rows, the blueprints' SAVE) stay clear of them too.
+        foreach (MenuTab tab in new[] { MenuTab.Stats, MenuTab.Blueprints })
+        {
+            foreach (int x in Play.OpenMenu(tab)) yield return x;
+            Threats();
+            foreach (int x in Frame($"menu-alert-{tab.ToString().ToLowerInvariant()}")) yield return x;
+        }
         foreach (int x in Play.CloseMenu()) yield return x;
-        _game.Zone.Weather.Sim.ClearTornadoes();
+        // And over the escape menu, the world stopped behind it.
+        foreach (int x in _drive.Tap(Key.Escape)) yield return x;
+        foreach (int x in _drive.Wait(2)) yield return x;
+        Threats();
+        foreach (int x in Frame("esc-alert")) yield return x;
+        foreach (int x in _drive.Tap(Key.Escape)) yield return x;
+        foreach (int x in _drive.Wait(2)) yield return x;
+        _game.Escape.Close();
+        sim.ClearTornadoes();
+        sim.ClearHazards();
 
         // The Tab menu: the fabricator and bag, a container beside the bag, the core page, every tech tab, the galaxy.
         foreach (int x in Play.OpenMenu(MenuTab.You)) yield return x;
