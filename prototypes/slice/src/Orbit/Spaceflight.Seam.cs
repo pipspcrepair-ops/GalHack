@@ -280,6 +280,8 @@ public partial class Spaceflight
         Game.Camera.Far = shown ? _surfaceFar : Rules.Space.CameraFar;
     }
 
+    readonly Vector4[] _umbra = new Vector4[4];
+
     const int ManyKids = 24;
     const double GroundTurnMs = 1.5;
     readonly Queue<Action> _groundTurns = new();
@@ -389,8 +391,10 @@ public partial class Spaceflight
         float haze = MathF.Max(sky.Haze.R + sky.Haze.G + sky.Haze.B, 0.01f);
         float day = Mathf.Clamp((fog.R + fog.G + fog.B) / haze, 0f, 1.2f);
         Color airFar = fog.Lerp(new Color(sky.Horizon.R * day, sky.Horizon.G * day, sky.Horizon.B * day), env.FogAerialPerspective);
+        int umbrae = s.Sky.Umbrae(_umbra, out float umbraSun);
         o.Globe.Draw(new WorldView
         {
+            Umbra = _umbra, UmbraCount = umbrae, UmbraSun = umbraSun,
             Up = up, East = east, South = south,
             MapUp = MathX.Rotate(map, N.Vector3.UnitY).ToGodot(),
             MapEast = MathX.Rotate(map, N.Vector3.UnitX).ToGodot(),

@@ -50,8 +50,96 @@ public sealed class Galaxy
             long key = Key(s.Position);
             if (!_grid.TryGetValue(key, out List<int> list)) _grid[key] = list = new List<int>(8);
             list.Add(s.Id);
+            if (InBulge(s.Position)) BulgeStars++;
         }
+        Hole = Heart.Of(seed, stars[HoleId].Position);
+        var rng = new GalaxyRng(Mix.Of(seed, 0x42554C47));
+        BulgeOffset = new Vector3(rng.Range(0f, 32f), rng.Range(0f, 32f), rng.Range(0f, 32f));
     }
+
+    // ---- The core's bulge and its heart ---------------------------------------------------------
+
+    /// <summary>The central black hole's place in the catalogue: the first star of every galaxy.</summary>
+    public const int HoleId = 0;
+
+    /// <summary>The central black hole, its shadow and its accretion disc, as every sky draws it.</summary>
+    public readonly Heart Hole;
+
+    /// <summary>
+    /// The bulge's shape, the generator's own (<see cref="GalaxyGen"/>): its stars fall off from the
+    /// centre over <see cref="BulgeScale"/> ly, it is squashed to <see cref="BulgeFlat"/> of that
+    /// up and down, and it ends at <see cref="BulgeEdge"/>.
+    /// </summary>
+    public const float BulgeScale = 27f, BulgeFlat = 0.62f, BulgeEdge = CoreRadius * 1.15f;
+
+    /// <summary>The catalogue's stars inside the bulge: it stands for the countless more there.</summary>
+    public readonly int BulgeStars;
+
+    /// <summary>Where this galaxy's star clouds fall in the bulge: its own, from its seed.</summary>
+    public readonly Vector3 BulgeOffset;
+
+    /// <summary>A place in the bulge's own measure: 1 at its edge, wherever round it.</summary>
+    public static float BulgeReach(Vector3 p) => new Vector3(p.X, p.Y / BulgeFlat, p.Z).Length() / BulgeEdge;
+
+    public static bool InBulge(Vector3 p) => BulgeReach(p) <= 1f;
+
+    /// <summary>The softening at the bulge's very centre, ly: its density climbs toward the hole but never without end.</summary>
+    const float BulgeSoft = 1.6f;
+
+    /// <summary>
+    /// The bulge's stars per cubic light year at a point, the catalogue's few standing for the
+    /// many, before they gather into clouds: the generator's own spread (a fall-off from the
+    /// centre, the same in every direction before the squash). Times <see cref="Clouds"/> it is
+    /// the bulge itself; summed along a line of sight, the core's glow.
+    /// </summary>
+    public float BulgeSmooth(Vector3 p)
+    {
+        var q = new Vector3(p.X, p.Y / BulgeFlat, p.Z);
+        float r2 = q.LengthSquared();
+        if (r2 >= BulgeEdge * BulgeEdge) return 0f;
+        float r = MathF.Sqrt(r2);
+        // Radius drawn as an exponential in every direction alike: per unit volume, that over 4 pi r^2 (and the squash).
+        float smooth = MathF.Exp(-r / BulgeScale) / (4f * MathF.PI * BulgeScale * BulgeFlat * (r2 + BulgeSoft * BulgeSoft));
+        float edge = 1f - r2 / (BulgeEdge * BulgeEdge);
+        return smooth * edge * edge * Hollow(p) * BulgeStars;
+    }
+
+    /// <summary>The bulge's stars per cubic light year at a point, gathered into star clouds with thinner reaches between, the way a real bulge looks from inside.</summary>
+    public float BulgeDensity(Vector3 p) => BulgeSmooth(p) * Clouds(p);
+
+    /// <summary>Round the hole the bulge's stars thin away, 0 to 1: torn up, swallowed or flung out, nearly all within half its reach.</summary>
+    public float Hollow(Vector3 p)
+    {
+        float h = Math.Clamp((Vector3.Distance(p, Hole.Position) / Heart.Reach - HollowFrom) / (HollowTo - HollowFrom), 0f, 1f);
+        return 0.03f + 0.97f * h * h * (3f - 2f * h);
+    }
+
+    public const float HollowFrom = 0.1f, HollowTo = 0.5f;
+
+    /// <summary>The bulge's star clouds, about 1 on average: thick clouds, and thin reaches between.</summary>
+    public float Clouds(Vector3 p)
+    {
+        float big = LatticeNoise.Fractal(p / 20f + BulgeOffset, 3);
+        float c = Math.Clamp((big - 0.38f) / 0.3f, 0f, 1f);
+        return 0.06f + 2.4f * c * c * (3f - 2f * c);
+    }
+
+    /// <summary>
+    /// The core's dust, per light year: dark clouds and rifts strewn through the bulge, most of
+    /// them near the galaxy's plane and toward the centre. It dims, and reddens, what lies behind.
+    /// </summary>
+    public float BulgeDust(Vector3 p)
+    {
+        float r = new Vector2(p.X, p.Z).Length();
+        float sheet = MathF.Exp(-MathF.Abs(p.Y) / 9f - r / 50f);
+        if (sheet < 0.02f) return 0f;
+        Vector3 w = p / 8f + BulgeOffset * 1.7f;
+        w += new Vector3(LatticeNoise.Value(w * 0.5f), LatticeNoise.Value(w * 0.5f + new Vector3(4.1f, 2.3f, 7.9f)), LatticeNoise.Value(w * 0.5f + new Vector3(8.7f, 5.5f, 1.2f))) * 1.6f;
+        float lanes = Math.Clamp((LatticeNoise.Fractal(w, 3) - 0.57f) / 0.12f, 0f, 1f);
+        return DustPerLy * sheet * lanes * lanes * Hollow(p);
+    }
+
+    public const float DustPerLy = 0.2f;
 
     /// <summary>What picks among the rim stars for a home of this kind.</summary>
     public static ulong HomeKey(ulong seed, StarKind kind, bool inNebula) => Mix.Of(seed, (long)kind, inNebula ? 1 : 0);
@@ -163,7 +251,7 @@ public sealed class Galaxy
     {
         var mine = new List<int>();
         foreach (ref readonly Star s in Stars.AsSpan())
-            if (s.Kind == kind && s.Region != Region.Satellite) mine.Add(s.Id);
+            if (s.Kind == kind && s.Region != Region.Satellite && Vector3.Distance(s.Position, Hole.Position) > Heart.Reach) mine.Add(s.Id);
         if (mine.Count == 0) return Home(kind, key, inNebula);
         int Pick(List<int> list) => list[(int)(Mix.Hash(key ^ 0x44455054) % (ulong)list.Count)];
         bool Seen(int id) => Stars[id].Nebula >= 0 && Nebulae[Stars[id].Nebula].Kind != NebulaKind.Dark;
@@ -213,6 +301,33 @@ public sealed class Galaxy
         if (fits.Count == 0) fits = wider.FindAll(id => Reach(id, 1));
         if (fits.Count == 0) fits = any;
         return Pick(fits);
+    }
+}
+
+/// <summary>
+/// The central black hole as it really stands: a shadow nothing comes back out of, and the
+/// accretion disc round it in the plane its <see cref="Axis"/> says, from <see cref="Inner"/> (the
+/// last steady orbit) out to <see cref="Outer"/>, ly. One thing in one place: every sky works out
+/// how it looks from where it is, so from the rim it is a point in the bulge's heart and deep in
+/// the core a disc with a dark centre, and the same from the ground as from orbit.
+/// <see cref="Zero"/> lies in the disc's plane: the disc's own pattern is measured round from it.
+/// </summary>
+public readonly record struct Heart(Vector3 Position, Vector3 Axis, Vector3 Zero, float Shadow, float Inner, float Outer)
+{
+    /// <summary>The hole's own size (its event horizon's radius, ly): its shadow is 2.6 of it, its disc starts at 3.</summary>
+    public const float Horizon = 0.19f;
+
+    /// <summary>How near the hole no home lies, ly: closer is the expedition's ground (tides, radiation, the disc itself).</summary>
+    public const float Reach = 12f;
+
+    /// <summary>The disc's tilt to the galaxy's plane, its own for each seed: seen from out in the plane it shows as an open ellipse.</summary>
+    public static Heart Of(ulong seed, Vector3 at)
+    {
+        var rng = new GalaxyRng(Mix.Of(seed, 0x48454152));
+        float tilt = rng.Range(0.42f, 1.05f), round = rng.Range(0f, MathF.Tau);
+        var hinge = new Vector3(MathF.Cos(round), 0f, MathF.Sin(round));
+        Vector3 axis = Vector3.Normalize(Vector3.Transform(Vector3.UnitY, Quaternion.CreateFromAxisAngle(hinge, tilt)));
+        return new Heart(at, axis, hinge, Horizon * 2.6f, Horizon * 3f, rng.Range(2.6f, 3.2f)); // the hinge lies in both planes
     }
 }
 

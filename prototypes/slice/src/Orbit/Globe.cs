@@ -79,6 +79,11 @@ public readonly record struct WorldView
 {
     /// <summary>The drawing frame at the point under you, in the world.</summary>
     public Vector3 Up { get; init; }
+
+    /// <summary>What can shadow the globe now (SkyRig.Umbrae): each body's place from its centre and radius, in its radii; how many; the sun's angular radius.</summary>
+    public Vector4[] Umbra { get; init; }
+    public int UmbraCount { get; init; }
+    public float UmbraSun { get; init; }
     public Vector3 East { get; init; }
     public Vector3 South { get; init; }
     /// <summary>The same place's frame on the globe, for the map lookup.</summary>
@@ -253,6 +258,38 @@ public partial class Globe : Node3D
         }
         """;
 
+    /// <summary>
+    /// A moon's shadow on the globe: at each point the share of the sun the bodies in front of it
+    /// hide there (two discs' overlap, StarSystem.Covered's sum), so a dark umbra with a soft
+    /// penumbra round it, moving as they move.
+    /// </summary>
+    const string UmbraCode = """
+        uniform vec4 umbra[4];
+        uniform int umbra_count = 0;
+        uniform float umbra_sun = 0.0;
+        float sun_hidden(float a, float b, float c) {
+            if (a <= 0.0 || b <= 0.0 || c >= a + b) return 0.0;
+            if (c <= abs(b - a)) return b >= a ? 1.0 : b * b / (a * a);
+            float a2 = a * a, b2 = b * b, c2 = c * c;
+            float lens = a2 * acos(clamp((c2 + a2 - b2) / (2.0 * c * a), -1.0, 1.0)) + b2 * acos(clamp((c2 + b2 - a2) / (2.0 * c * b), -1.0, 1.0))
+                       - 0.5 * sqrt(max(0.0, (-c + a + b) * (c + a - b) * (c - a + b) * (c + a + b)));
+            return clamp(lens / (3.14159265 * a2), 0.0, 1.0);
+        }
+        // The sunlight reaching a point of the globe (in its radii from its centre), 0 to 1.
+        float sunlight_at(vec3 g, vec3 to_sun) {
+            float open = 1.0;
+            for (int i = 0; i < umbra_count; i++) {
+                vec3 v = umbra[i].xyz - g;
+                float dist = length(v);
+                if (dot(v, to_sun) <= 0.0) continue;
+                float size = asin(min(umbra[i].w / dist, 1.0));
+                float apart = atan(length(cross(v, to_sun)), dot(v, to_sun));
+                open *= 1.0 - sun_hidden(umbra_sun, size, apart);
+            }
+            return open;
+        }
+        """;
+
     const string GroundSource = $$"""
         shader_type spatial;
         render_mode world_vertex_coords, blend_mix, depth_draw_always, cull_back, diffuse_burley, specular_schlick_ggx, shadows_disabled;
@@ -265,6 +302,7 @@ public partial class Globe : Node3D
         uniform float relief = 1.0;
         {{SheetCode}}
         {{Paint}}
+        {{UmbraCode}}
         varying vec3 round_normal;
 
         float ground_at(vec2 o, float lod) {
@@ -302,7 +340,7 @@ public partial class Globe : Node3D
         void fragment() {
             MapPoint m = map_point(offset);
             vec4 a = paint(albedo_map, m);
-            ALBEDO = a.rgb;
+            ALBEDO = a.rgb * sunlight_at(normalize(round_normal), sun_dir);
             ROUGHNESS = mix(0.9, 0.42, a.a);
             SPECULAR = mix(0.1, 0.45, a.a);
             float night = smoothstep(0.15, -0.25, dot(normalize(round_normal), sun_dir));
@@ -317,11 +355,16 @@ public partial class Globe : Node3D
         render_mode world_vertex_coords, blend_mix, depth_draw_never, cull_back, diffuse_lambert_wrap, specular_disabled, shadows_disabled;
         uniform sampler2D cloud_map : source_color, filter_linear_mipmap, repeat_enable;
         uniform float cloud_lift = 30.0;
+        uniform vec3 sun_dir = vec3(0.0, 1.0, 0.0);
         {{SheetCode}}
         {{Paint}}
+        {{UmbraCode}}
+        varying vec3 round_normal;
         void vertex() {
             float s = arc(VERTEX.y);
             offset = VERTEX.xz * s;
+            float turned = round_angle(s);
+            round_normal = (eye_east * VERTEX.x + eye_south * VERTEX.z) * sin(turned) + eye_up * cos(turned);
             vec3 n;
             vec3 p = sheet_point(s, eye_east * VERTEX.x + eye_south * VERTEX.z, cloud_lift, n);
             distance = length(p);
@@ -331,7 +374,7 @@ public partial class Globe : Node3D
         }
         void fragment() {
             vec4 c = paint(cloud_map, map_point(offset));
-            ALBEDO = c.rgb;
+            ALBEDO = c.rgb * sunlight_at(normalize(round_normal), sun_dir);
             // Under the layer (or level with it) the sky draws the clouds: a flat sheet seen edge-on
             // stands along the horizon as a fence of slivers. It shows once the eye is over it.
             float over_layer = max(over_land, smoothstep(cloud_lift, cloud_lift + 200.0, height));
@@ -586,6 +629,13 @@ public partial class Globe : Node3D
         _clouds.RenderPriority = _ground.RenderPriority + 1;
         _ground.SetShaderParameter("relief", v.Relief);
         _ground.SetShaderParameter("sun_dir", v.ToSun);
+        _clouds.SetShaderParameter("sun_dir", v.ToSun);
+        foreach (ShaderMaterial m in new[] { _ground, _clouds })
+        {
+            m.SetShaderParameter("umbra_count", v.Umbra == null ? 0 : v.UmbraCount);
+            if (v.Umbra != null) m.SetShaderParameter("umbra", v.Umbra);
+            m.SetShaderParameter("umbra_sun", v.UmbraSun);
+        }
         _clouds.SetShaderParameter("cloud_lift", v.CloudLift);
         _air.SetShaderParameter("sun_dir", v.ToSun);
         _ring.Visible = _hasRing && v.RingShown > 0.002f;

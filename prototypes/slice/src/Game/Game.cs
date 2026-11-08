@@ -120,6 +120,7 @@ public partial class Game : Node3D
     public override void _Ready()
     {
         PlanetSurface.Skies.StarSystem.TemperateYearDays = Slice.Orbit.OrbitRules.Shared.Globe.TemperateYearDays;
+        PlanetSurface.Skies.StarSystem.StarSkyScale = Slice.Orbit.OrbitRules.Shared.Globe.StarSkyScale;
         ResourceMount.Mount();
         ProcessPhysicsPriority = -20; // input before the physics host (-10) steps
         // The world stops with the escape menu open, whatever runs it (a test's or the screenshots' node runs on through a pause).

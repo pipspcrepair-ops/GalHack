@@ -169,8 +169,19 @@ public sealed class GalaxySky
         m.SetShaderParameter("galaxy_cells", _cells);
         m.SetShaderParameter("galaxy_stars", _stars);
         m.SetShaderParameter("galaxy_glow", _glow);
+        // The central black hole from this sky's place: its shadow and disc are drawn where it really is, as big as it really looks.
+        Heart hole = Galaxy.Hole;
+        m.SetShaderParameter("galaxy_hole", V(hole.Position - View.Eye));
+        m.SetShaderParameter("galaxy_hole_axis", V(hole.Axis));
+        m.SetShaderParameter("galaxy_hole_zero", V(hole.Zero));
+        m.SetShaderParameter("galaxy_hole_size", new Vector4(hole.Shadow, hole.Inner, hole.Outer, View.HoleFront));
         m.SetShaderParameter("galaxy_on", true);
     }
+
+    static Vector3 V(N.Vector3 v) => new(v.X, v.Y, v.Z);
+
+    /// <summary>Toward the central black hole from this sky's place, the catalogue's frame (the map, the visor and the tests look it up here).</summary>
+    public N.Vector3 ToHole => View == null ? N.Vector3.UnitX : N.Vector3.Normalize(Galaxy.Hole.Position - View.Eye);
 
     static byte[] Bytes(float[] data)
     {
