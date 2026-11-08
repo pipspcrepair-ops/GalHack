@@ -69,6 +69,21 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
     /// <summary>A landed vessel wakes when weather pushes it harder than this share of its weight (a tornado, not a breeze).</summary>
     public const float WeatherWakeShare = 0.3f;
 
+    /// <summary>
+    /// A vessel the weather pulls with more than this share of its weight is past what its thrusters can
+    /// hold (<see cref="Body.Tossed"/>), for <see cref="TossSeconds"/> after the last such pull. A light
+    /// craft can be; a hover tank or a capital ship, whose share of a tornado's pull is tiny, never is.
+    /// A pilot at the controls takes it back <see cref="RecoverAfter"/> seconds after the last one.
+    /// </summary>
+    public const float TossShare = 0.5f, TossSeconds = 5f, RecoverAfter = 0.7f;
+
+    /// <summary>
+    /// The most angular acceleration a craft's gyros can put against a tumble, rad/s², and its hover
+    /// plates' on top within their ride height of the ground (none higher: no ground under them).
+    /// Past these the weather's turn wins, and it tips, rolls and flips.
+    /// </summary>
+    public const float GyroLevel = 1.2f, PlateLevel = 4f;
+
     public IFlightRules Flight { get; }
     public HoverController Hover { get; }
     public LandingGear Gear { get; }
@@ -96,7 +111,7 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
     public string ConsoleMessage { get; private set; }
     public float ConsoleMessageAge { get; private set; } = float.PositiveInfinity;
 
-    float _idle, _settleLeft;
+    float _idle, _settleLeft, _restFor, _tossedFor;
 
     // Placed down landed (or docked) but not yet looked under: the first tick checks whether its
     // feet are on a host, and parks it there.
@@ -214,20 +229,7 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
         GroundDistance = world.Query.Ray(body.Position, body.Position - Vector3.UnitY * 5000f, Layers.ProbeMask, body, out RayHit ground)
             ? body.Position.Y - ground.Point.Y : float.PositiveInfinity;
 
-        if (body.Tossed > 0f)
-        {
-            // Thrown by a tornado: no thrust, no assist, no hover cushion. It tumbles as it was thrown
-            // and falls under gravity and the wind until it has come down, and its landing hurts by the
-            // closing speed like any other hit (face-on hard, glancing little).
-            body.Tossed = MathF.Max(0f, body.Tossed - dt);
-            StrikeUnstreamedGround(world, body, dt);
-            Quaternion spun = Quaternion.Normalize(body.Rotation * MathX.AxisAngle(Vector3.UnitY, LocalSpin.Y * dt)
-                * MathX.AxisAngle(Vector3.UnitX, LocalSpin.X * dt) * MathX.AxisAngle(Vector3.UnitZ, LocalSpin.Z * dt));
-            body.AngularVelocity = AngularVelocity(body.Rotation, spun, dt);
-            body.Rotation = spun;
-            Flight.Halt();
-            return;
-        }
+        if (body.Tossed > 0f && Tossed(world, body, dt)) return;
 
         Vector3 v0 = body.Velocity;
         Quaternion before = body.Rotation;
@@ -275,6 +277,77 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
     Body RestingOn(Body body) => Gear?.StandingOn ?? body.Underfoot;
 
     /// <summary>
+    /// Thrown by the weather: no thrust, no assist, no hover cushion holding it. It flies and turns as it
+    /// was thrown (<see cref="React"/> spins it), falls under gravity and the wind, and its landings hurt
+    /// by the closing speed like any other hit (face-on hard, glancing little). Where it comes to rest it
+    /// lies as it landed, on its side or its roof if so, until a pilot lifts it off. A pilot at the
+    /// controls takes it back once out of the strongest pull, if there is room. Returns false once back
+    /// under its own power.
+    /// </summary>
+    bool Tossed(PhysicsWorld world, Body body, float dt)
+    {
+        _tossedFor += dt;
+        if (Flight.Seated && Flight.AnyThrust && body.Tossed <= TossSeconds - RecoverAfter && GroundDistance > 3f)
+        {
+            body.Tossed = 0f;
+            _tossedFor = _restFor = 0f;
+            return false; // the pilot has it again: the flight model rights and flies it from here
+        }
+        StrikeUnstreamedGround(world, body, dt);
+        bool resting = body.Velocity.Length() < 1.5f && (body.OnFloor || GroundDistance < body.Shape.FeetBelowOrigin + 1.5f);
+        _restFor = resting ? _restFor + dt : 0f;
+        if (_restFor > 0.6f || _tossedFor > 40f)
+        {
+            // Come to rest: it lies where and as it landed. Its engines stay off until a pilot asks.
+            body.Tossed = 0f;
+            body.Velocity = Vector3.Zero;
+            body.AngularVelocity = Vector3.Zero;
+            LocalSpin = Vector3.Zero;
+            _tossedFor = _restFor = 0f;
+            Frozen = true;
+            Parked = true;
+            Flight.Halt();
+            world.RaiseLanded(body);
+            return true;
+        }
+        body.Tossed = MathF.Max(body.Tossed - dt, resting ? 0f : 0.5f); // airborne or rolling, it stays the weather's
+        Quaternion spun = Quaternion.Normalize(body.Rotation * MathX.AxisAngle(Vector3.UnitY, LocalSpin.Y * dt)
+            * MathX.AxisAngle(Vector3.UnitX, LocalSpin.X * dt) * MathX.AxisAngle(Vector3.UnitZ, LocalSpin.Z * dt));
+        body.AngularVelocity = AngularVelocity(body.Rotation, spun, dt);
+        body.Rotation = spun;
+        Flight.Halt();
+        return true;
+    }
+
+    /// <summary>
+    /// What turns a tossed craft: the weather's push acts above its middle (the wind is stronger higher up,
+    /// and lifts it unevenly), so it tips it; a vortex holding it turns it round with it. Against that its
+    /// gyros, and its hover plates when the ground is within their reach, right it, each up to its limit.
+    /// </summary>
+    void Tumble(Body body, float dt)
+    {
+        Vector3 push = body.PendingForceFrom(ForceKind.Weather);
+        float h = MathF.Max(body.Shape.Height, 0.5f), r = MathF.Max(body.Shape.Radius, 0.5f);
+        float inertia = 0.3f * body.Mass * (r * r + 0.25f * h * h);
+        var flat = new Vector3(push.X, 0f, push.Z);
+        // Shear tips it (the push acts above its middle); uneven lift across its width turns it end over end
+        // about its own beam, whichever way the flow round it pushes; the vortex turns it round with it.
+        Vector3 torque = Vector3.Cross(Vector3.UnitY * (0.35f * h), push) + MathX.Rotate(body.Rotation, Vector3.UnitX) * (push.Length() * r * 0.2f)
+            + Vector3.UnitY * (flat.Length() * r * 0.3f);
+        Vector3 spin = MathX.Rotate(body.Rotation, LocalSpin);
+        Vector3 up = MathX.Up(body.Rotation);
+        Vector3 axis = Vector3.Cross(up, Vector3.UnitY);
+        float tilt = MathF.Atan2(axis.Length(), Vector3.Dot(up, Vector3.UnitY));
+        axis = axis.LengthSquared() > 1e-8f ? Vector3.Normalize(axis) : Vector3.Zero;
+        bool plates = Hover != null && GroundDistance < MathF.Max(Stats.RideHeight, 1f) * 1.5f;
+        Vector3 level = MathX.LimitLength(axis * (3f * tilt) - spin * 1.5f, GyroLevel + (plates ? PlateLevel : 0f));
+        // On the ground its turning stops against it: it rolls to rest rather than spinning in place.
+        float drag = body.OnFloor || GroundDistance < body.Shape.FeetBelowOrigin + 0.5f ? 6f : 0.2f;
+        spin = MathX.LimitLength((spin + (torque / inertia + level) * dt) * MathF.Exp(-drag * dt), 5f);
+        LocalSpin = MathX.Unrotate(body.Rotation, spin);
+    }
+
+    /// <summary>
     /// A tossed hull far from anyone falls toward ground whose collision isn't streamed there (it is
     /// only round the player): where its keel would go into solid ground this tick, it strikes the
     /// ground there instead, by the one impact rule, and comes to rest on it.
@@ -286,27 +359,21 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
         float below = body.Shape.FeetBelowOrigin;
         Vector3 com = body.CenterOfMassPosition;
         Vector3 keel = new Vector3(com.X, body.Position.Y - below, com.Z) + v * dt; // under its middle, at its lowest
-        Vector3 shift = keel - (body.Position + v * dt - Vector3.UnitY * below);
-        if (!SolidAt(world, body, keel)) return;
+        float top = float.NegativeInfinity;
+        foreach (IStuckField f in world.StuckFields)
+            if (f.Applies(body)) top = MathF.Max(top, f.TopAt(body, keel.X, keel.Z));
+        if (!float.IsFinite(top) || keel.Y > top) return;
         if (world.Query.Ray(body.Position, keel - Vector3.UnitY, Layers.ProbeMask, body, out _)) return; // streamed: the hull's own sweep meets it
-        float lift = 0f;
-        while (lift < 30f && SolidAt(world, body, keel + Vector3.UnitY * lift)) lift += 0.25f;
-        Vector3 point = keel + Vector3.UnitY * lift;
+        var point = new Vector3(keel.X, top, keel.Z);
         world.ResolveImpact(body, null, point, Vector3.UnitY, -v.Y, Surface.Ground);
-        body.Position = point - shift + Vector3.UnitY * below;
+        body.Position = new Vector3(body.Position.X + v.X * dt, top + below, body.Position.Z + v.Z * dt);
         body.Velocity = new Vector3(v.X * 0.3f, 0f, v.Z * 0.3f);
-        body.Tossed = 0f;
-    }
-
-    static bool SolidAt(PhysicsWorld world, Body body, Vector3 p)
-    {
-        foreach (IStuckField f in world.StuckFields) if (f.IsSolid(body, p)) return true;
-        return false;
     }
 
     /// <summary>Nothing is silently immune to weather: a landed ship a tornado pulls hard enough is knocked loose.</summary>
     public void React(PhysicsWorld world, Body body, float dt)
     {
+        if (body.Tossed > 0f && !Frozen) Tumble(body, dt);
         if (!Frozen && !Settling) return;
         float weight = body.Mass * world.Zone.Strength;
         if (body.PendingForceFrom(ForceKind.Weather).Length() > WeatherWakeShare * weight) Wake(body);
@@ -333,6 +400,7 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
 
     void CheckLanding(PhysicsWorld world, Body body, float dt)
     {
+        if (body.Tossed > 0f) return; // it comes to rest as it lies (Tossed), not settled level on its gear
         PhysicsRules.GearData t = world.Rules.Gear;
         bool idle = !Flight.Seated || !Flight.AnyThrust;
         _idle = idle ? _idle + dt : 0f;

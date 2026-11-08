@@ -6,6 +6,7 @@ using GalHack.Physics;
 using GalHack.Physics.Engine;
 using GalHack.Structures;
 using Godot;
+using ShipHandling.Handling;
 using PhysicsSandbox.Bridges;
 using Slice.Game;
 using Slice.Surface;
@@ -91,6 +92,9 @@ public partial class WindTest : Node
         foreach (int x in FlingAndJetpack()) yield return x;
         foreach (int x in StrongCore()) yield return x;
         foreach (int x in Creatures()) yield return x;
+        foreach (int x in TumblingCraft()) yield return x;
+        foreach (int x in Flyer()) yield return x;
+        foreach (int x in Trees()) yield return x;
     }
 
     Vector3 _home;
@@ -509,6 +513,180 @@ public partial class WindTest : Node
         Check(held[1] > 0f && free[1], $"in a weak rope near its end the same burn breaks free of its grip: after {held[1]:F1} s");
     }
 
+    static float TiltOf(N.Quaternion q) => N.Vector3.Transform(N.Vector3.UnitY, q).ToGodot().AngleTo(Vector3.Up);
+
+    /// <summary>
+    /// A hovercraft and a hover bike, landed and parked: a hurricane's gale doesn't tip them (their plates
+    /// hold them near the ground), but a tornado's grip beats their gyros and plates, and they tip, roll
+    /// and flip in the air. Where they come down on their side or roof they stay, until someone rights them.
+    /// </summary>
+    IEnumerable<int> TumblingCraft()
+    {
+        Calm();
+        Vector3 at = OpenSpot(-200f, 260f);
+        Me.PlaceOutside((at - new Vector3(0f, 0f, -60f) + Vector3.Up * 0.1f).ToNumerics());
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        Structure plan = Zone.Data.Blueprint("rover.gbp");
+        Vessel rover = Vessel.Spawn(Zone, plan, (at + Vector3.Up * 3f).ToNumerics(), 0f, landed: true);
+        Slice.Vehicles.HoverBike bike = _game.Bikes.Place(at + new Vector3(-6f, 0f, 3f), 0.4f);
+        foreach (int x in _drive.Wait(90)) yield return x;
+
+        // A hurricane first: nothing tips them on the ground.
+        Sim.Snap(WeatherKind.Hurricane);
+        Bridge.Calm = false;
+        float galeTilt = 0f, galeBike = 0f;
+        for (int i = 0; i < 60 * 6; i++)
+        {
+            yield return 0;
+            galeTilt = MathF.Max(galeTilt, TiltOf(rover.Body.Rotation));
+            galeBike = MathF.Max(galeBike, bike.Tilt);
+        }
+        Check(galeTilt < 0.15f && galeBike < 0.5f, $"a hurricane's gale doesn't tip a parked {plan.Name} or hover bike: at most {Mathf.RadToDeg(galeTilt):F0}° and {Mathf.RadToDeg(galeBike):F0}°");
+
+        // Then a tornado over both.
+        Sim.Snap(WeatherKind.Clouds);
+        TornadoAt(at + new Vector3(-2f, 0f, 1f), TornadoShape.Cone);
+        float roverTilt = 0f, bikeTilt = 0f, roverUp = 0f;
+        bool tossed = false;
+        for (int i = 0; i < 60 * 25; i++)
+        {
+            yield return 0;
+            tossed |= rover.Body.Tossed > 0f;
+            if (rover.Body.Tossed > 0f) roverTilt = MathF.Max(roverTilt, TiltOf(rover.Body.Rotation));
+            roverUp = MathF.Max(roverUp, rover.Body.WorldPosition.Y - at.Y);
+            bikeTilt = MathF.Max(bikeTilt, bike.Tilt);
+            if (Bridge.PhaseOf(rover.Body) == VortexPhase.Released) Sim.ClearTornadoes();
+            if (i > 60 * 8 && rover.Controller.Frozen && !bike.Toppled && bike.Grounded && Sim.Tornadoes.Count == 0) break;
+        }
+        Sim.ClearTornadoes();
+        for (int i = 0; i < 60 * 10 && !(rover.Controller.Frozen && rover.Body.Tossed <= 0f); i++) yield return 0;
+        float lies = TiltOf(rover.Body.Rotation);
+        foreach (int x in _drive.Wait(60 * 4)) yield return x;
+        float still = TiltOf(rover.Body.Rotation);
+        Check(tossed && roverTilt > MathF.PI / 2f, $"a tornado tips the {plan.Name} over in the air ({roverUp:F0} m up): it turned {Mathf.RadToDeg(roverTilt):F0}° from upright, past what its gyros and plates hold");
+        Check(MathF.Abs(still - lies) < 0.05f, $"it lies as it came down, {Mathf.RadToDeg(lies):F0}° from upright, and is still so 4 s on ({Mathf.RadToDeg(still):F0}°): its engines wait for a pilot");
+        Check(bikeTilt > 1.2f, $"the hover bike flips too: {Mathf.RadToDeg(bikeTilt):F0}° from upright{(bike.Toppled ? ", and lies on its side until it is ridden" : ", and landed back on its plates")}");
+        Remove(rover);
+        _game.Bikes.Remove(bike);
+        Calm();
+    }
+
+    /// <summary>
+    /// A small flyer in the air, unpiloted: its gyros and thrusters hold it level and in place in a
+    /// hurricane's gale; a tornado's grip beats them and it tumbles; once it is let go a pilot takes it
+    /// back, if there is room under it.
+    /// </summary>
+    IEnumerable<int> Flyer()
+    {
+        Calm();
+        Vector3 at = OpenSpot(220f, 260f);
+        Me.PlaceOutside((at + new Vector3(0f, 0f, 60f) + Vector3.Up * 0.1f).ToNumerics());
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        Structure plan = Zone.Data.Blueprint(Zone.Data.Rules.Build.StarterBlueprint);
+        plan.Name = "Flyer";
+        Vessel v = Vessel.Spawn(Zone, plan, (at + Vector3.Up * 14f).ToNumerics(), 0f, landed: false);
+        v.Flight.Input = PilotInput.Autopilot;
+        foreach (int x in _drive.Wait(60)) yield return x;
+        Sim.Snap(WeatherKind.Hurricane);
+        Bridge.Calm = false;
+        float galeTilt = 0f;
+        bool galeTossed = false;
+        N.Vector3 start = v.Body.WorldPosition;
+        for (int i = 0; i < 60 * 6; i++)
+        {
+            yield return 0;
+            galeTilt = MathF.Max(galeTilt, TiltOf(v.Body.Rotation));
+            galeTossed |= v.Body.Tossed > 0f;
+        }
+        float galeDrift = N.Vector3.Distance(v.Body.WorldPosition, start);
+        Check(!galeTossed && galeTilt < 0.35f, $"in flight a small flyer's gyros and thrusters hold it through a hurricane's gale: {Mathf.RadToDeg(galeTilt):F0}° at most, {galeDrift:F1} m off station");
+
+        Sim.Snap(WeatherKind.Clouds);
+        Vector3 under = v.Body.WorldPosition.ToGodot();
+        TornadoAt(Zone.GroundAt(under.X + 2f, under.Z), TornadoShape.Cone);
+        float tilt = 0f;
+        bool tossed = false, released = false, recovered = false, crashed = false;
+        float recoverTilt = float.MaxValue;
+        for (int i = 0; i < 60 * 25; i++)
+        {
+            yield return 0;
+            tossed |= v.Body.Tossed > 0f;
+            if (v.Body.Tossed > 0f) tilt = MathF.Max(tilt, TiltOf(v.Body.Rotation));
+            if (!released && Bridge.PhaseOf(v.Body) == VortexPhase.Released)
+            {
+                released = true;
+                Sim.ClearTornadoes();
+                v.Flight.Input = PilotInput.Hands(new Vector3(0f, 1f, 0f)); // a pilot at the controls: climb
+            }
+            if (released && tossed && v.Body.Tossed <= 0f && !v.Controller.Frozen) recovered = true;
+            if (recovered) recoverTilt = TiltOf(v.Body.Rotation);
+            crashed |= _impacts.Any(x => x.Body == v.Body && x.Damage > 0f);
+            if (recovered && v.Body.Tossed <= 0f && i % 60 == 0) break;
+            if (v.Controller.Frozen) break;
+        }
+        v.Flight.Input = PilotInput.Autopilot;
+        Check(tossed && tilt > MathF.PI / 2f, $"a tornado's grip beats the same flyer's gyros and thrusters: tossed, it turned {Mathf.RadToDeg(tilt):F0}° from upright");
+        Check(recovered ? !v.Controller.Frozen : crashed, recovered
+            ? $"let go, the pilot takes it back under power with room to spare ({Mathf.RadToDeg(recoverTilt):F0}° off level, to steer back)"
+            : "let go too low to recover, it came down by the impact rule");
+        Remove(v);
+        Calm();
+    }
+
+    /// <summary>
+    /// Trees in a tornado's path go by their size, as every body does: the light ones pulled up whole and
+    /// thrown (a root hole left), the heavy ones snapped (a stump) or blown over by their root plate (a
+    /// hole); they are gone for good from the world (the felled list), and only so many fly at once.
+    /// </summary>
+    IEnumerable<int> Trees()
+    {
+        Calm();
+        // The nearest stand of trees on open ground.
+        Vector3 stand = Vector3.Zero;
+        int most = 0;
+        for (int k = 0; k < 400; k++)
+        {
+            float a = k * 2.399f, r = 40f + k * 5f;
+            Vector3 p = Spot(MathF.Cos(a) * r, MathF.Sin(a) * r);
+            Me.PlaceOutside((p + Vector3.Up * 0.1f).ToNumerics());
+            int n = Zone.Streamer.SolidsNear(p, 25f).Count(s => s.solid.Fellable);
+            if (n > most) (most, stand) = (n, p);
+            if (most >= 8) break;
+            if (k % 20 == 19) foreach (int x in _drive.Wait(10)) yield return x; // let the ground stream in round the new spots
+        }
+        Me.PlaceOutside((stand + new Vector3(0f, 0f, 70f) + Vector3.Up * 0.1f).ToNumerics());
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        var trees = Zone.Streamer.SolidsNear(stand, 25f).Where(s => s.solid.Fellable).Select(s => s.solid.Id).ToList();
+        if (trees.Count == 0)
+        {
+            Check(false, "a stand of trees near the start to put a tornado through");
+            yield break;
+        }
+        SurfaceWeather fx = Zone.Weather;
+        int torn0 = fx.TreesTorn, thrown0 = fx.TreesThrown, snapped0 = fx.TreesSnapped, uprooted0 = fx.TreesUprooted;
+        Bridge.Calm = false;
+        Tornado t = TornadoAt(stand - new Vector3(40f, 0f, 0f), TornadoShape.Cone);
+        t.Rules.Speed = 3f;
+        int mostFlying = 0;
+        for (int i = 0; i < 60 * 30; i++)
+        {
+            yield return 0;
+            mostFlying = Math.Max(mostFlying, fx.Trees?.Flying ?? 0);
+        }
+        Sim.ClearTornadoes();
+        int torn = fx.TreesTorn - torn0;
+        var gone = trees.Where(id => Zone.Planet.Felled.Contains(id)).ToList();
+        bool stillThere = Zone.Streamer.SolidsNear(stand, 40f).Any(s => gone.Contains(s.solid.Id));
+        Check(torn > 0 && gone.Count > 0, $"a tornado through a stand of {trees.Count} trees tears out {gone.Count} of them ({torn} torn all told: {fx.TreesThrown - thrown0} pulled up and thrown, {fx.TreesSnapped - snapped0} snapped, {fx.TreesUprooted - uprooted0} blown over by the roots)");
+        Check(!stillThere && (fx.Trees?.Stumps ?? 0) + (fx.Trees?.Holes ?? 0) > 0, $"they are gone from the world for good, leaving {fx.Trees?.Stumps ?? 0} stumps and {fx.Trees?.Holes ?? 0} root holes along its path");
+        var (stood, flew) = fx.LastThrown;
+        bool sameSize = fx.TreesThrown == thrown0 || (stood - flew).Length() < 0.05f * stood.Length() + 0.05f;
+        Check(sameSize, fx.TreesThrown == thrown0 ? "(no tree was light enough to throw this time)"
+            : $"a tree thrown flies as itself, full size: {stood.X:F1} × {stood.Y:F1} × {stood.Z:F1} m standing, {flew.X:F1} × {flew.Y:F1} × {flew.Z:F1} m in the air");
+        Check(mostFlying <= SurfaceWeather.MostFlyingTrees, $"no more than {SurfaceWeather.MostFlyingTrees} trees are ever in the air at once ({mostFlying} at most)");
+        Calm();
+    }
+
     // ---- Creatures ----------------------------------------------------------------------
 
     /// <summary>Creatures of different weights in one tornado's reach: the light ones are thrown far, the heavy ones barely moved.</summary>
@@ -527,28 +705,44 @@ public partial class WindTest : Node
         foreach (int x in _drive.Wait(30)) yield return x;
         patch.Frozen = false;
         var picks = new[] { species[0], species[species.Count / 2], species[^1] }.Distinct().ToList();
+        Vector3 origin = patch.Origin;
+        Wildlife.WildSim sim0 = patch.Sim; // if the patch moves on to a new sim, these creatures are left behind: stop following them
         var bodies = new List<(Wildlife.Species s, Wildlife.Creature c, Vector3 start)>();
         for (int k = 0; k < picks.Count; k++)
         {
             Vector3 p = at + new Vector3(MathF.Cos(k * 2.1f) * 4f, 0f, MathF.Sin(k * 2.1f) * 4f);
             Vector3 local = patch.PatchLocal(Zone.GroundAt(p.X, p.Z));
             Wildlife.Creature c = patch.Sim.Spawn(picks[k], local);
-            bodies.Add((picks[k], c, c.Position));
+            bodies.Add((picks[k], c, c.Position + origin));
         }
         Bridge.Calm = false;
         TornadoAt(at, TornadoShape.Cone);
         var flew = new float[bodies.Count];
         var rose = new float[bodies.Count];
+        var tumbled = new float[bodies.Count];
+        bool downed = false, gotUp = false;
         for (int i = 0; i < 60 * 12; i++)
         {
             yield return 0;
             for (int k = 0; k < bodies.Count; k++)
             {
                 Wildlife.Creature c = bodies[k].c;
-                flew[k] = MathF.Max(flew[k], new Vector2(c.Position.X - bodies[k].start.X, c.Position.Z - bodies[k].start.Z).Length());
-                rose[k] = MathF.Max(rose[k], c.Position.Y - bodies[k].start.Y);
+                if (patch.Sim != sim0 || patch.Origin != origin) continue;
+                Vector3 now = c.Position + origin;
+                flew[k] = MathF.Max(flew[k], new Vector2(now.X - bodies[k].start.X, now.Z - bodies[k].start.Z).Length());
+                rose[k] = MathF.Max(rose[k], now.Y - bodies[k].start.Y);
+                tumbled[k] = MathF.Max(tumbled[k], (c.Tumble * Vector3.Up).AngleTo(Vector3.Up));
+                downed |= c.Downed > 0f;
+                gotUp |= downed && c.Downed <= 0f && !c.Thrown && c.Tumble.IsEqualApprox(Quaternion.Identity) && !c.Dead;
             }
         }
+        for (int i = 0; i < 60 * 8 && downed && !gotUp; i++)
+        {
+            yield return 0;
+            gotUp = bodies.Any(b => !b.c.Dead && b.c.Downed <= 0f && !b.c.Thrown && b.c.Tumble.IsEqualApprox(Quaternion.Identity) && rose[bodies.IndexOf(b)] > 3f);
+        }
+        Check(rose[0] < 3f || tumbled[0] > 1.2f, $"a thrown creature tumbles in the air, not level: the {bodies[0].s.Name} turned {Mathf.RadToDeg(tumbled[0]):F0}° from upright");
+        Check(!downed || gotUp, $"one that lands hard on its side lies there, then gets up ({(downed ? "downed, and up again" : "none came down on its side this time")})");
         string row = string.Join(", ", bodies.Select((b, k) => $"{b.s.Name} {Mass(Wildlife.Heft.Mass(b.s))}: {rose[k]:F0} m up, {flew[k]:F0} m off"));
         bool ordered = true;
         for (int k = 1; k < bodies.Count; k++) ordered &= flew[k] <= flew[k - 1] * 1.15f + 2f;

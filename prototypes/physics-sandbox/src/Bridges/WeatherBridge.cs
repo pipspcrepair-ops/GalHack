@@ -25,12 +25,8 @@ namespace PhysicsSandbox.Bridges;
 /// </summary>
 public sealed class WeatherBridge : IForceProvider
 {
-    /// <summary>
-    /// A vessel a tornado pulls with more than this share of its weight is tossed: its engines can't
-    /// hold it (<see cref="Body.Tossed"/>), for this many seconds after the last such pull or its fling.
-    /// A light craft is; a hover tank or a capital ship, whose share of the pull is tiny, never is.
-    /// </summary>
-    public const float TossShare = 0.5f, TossSeconds = 5f;
+    /// <summary>The vessel rules' own limits on what its thrusters hold against the weather (<see cref="VesselController.TossShare"/>).</summary>
+    public const float TossShare = VesselController.TossShare, TossSeconds = VesselController.TossSeconds;
 
     public WeatherSim Sim { get; }
     public ForceModule Forces { get; } = new();
@@ -135,8 +131,8 @@ public sealed class WeatherBridge : IForceProvider
         public void ApplyForce(GVector3 force)
         {
             if (InShelter || _bridge._world == null) return;
-            // A vessel a tornado pulls harder than its engines can hold is at its mercy until it has come down.
-            if (_body.Kind == BodyKind.Vessel && _bridge.Forces.PhaseOf(this) == VortexPhase.Caught && !_bridge._world.IsSheltered(_body)
+            // A vessel the weather (a tornado's grip, a hurricane's gust) pulls harder than its thrusters can hold is at its mercy until it has come down.
+            if (_body.Kind == BodyKind.Vessel && !_bridge._world.IsSheltered(_body)
                 && force.Length() > TossShare * _body.Mass * _bridge._world.Zone.Strength)
                 _body.Tossed = TossSeconds;
             _bridge._world.AddForce(_body, IntoFrame(force), ForceKind.Weather);

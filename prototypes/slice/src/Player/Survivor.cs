@@ -307,6 +307,7 @@ public sealed class Survivor
     public bool Mount(HoverBike bike)
     {
         if (OnBike != null || Seated != null || Body.Frame != null) return false;
+        if (bike.Toppled) bike.SetUpright(); // the rider sets it back on its plates first
         OnBike = bike;
         bike.Ridden = true;
         Body.Asleep = true;

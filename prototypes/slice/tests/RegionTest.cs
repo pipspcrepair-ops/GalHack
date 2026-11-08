@@ -69,6 +69,7 @@ public partial class RegionTest : Node
         var sim = new WeatherSim(_data, SurfaceWeather.ArchetypeFor(w.Spec), (ulong)_rng.NextInt64(), start)
         {
             Land = w.Land, OpenWater = w.Sea, WorldSize = new Vector2((float)w.Map.WidthMeters, (float)w.Map.HeightMeters),
+            MeanWarmth = w.Map.Temperature.Average(),
             GroundHeight = (x, z) => MathF.Max(0f, w.Map.Sample(w.Map.Elevation, Mathx.WrapX(x, w.Map.WidthMeters), Mathx.Wrap(z, w.Map.HeightMeters))),
         };
         return sim;

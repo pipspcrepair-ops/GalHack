@@ -33,10 +33,15 @@ public partial class Staging
 
     void Midday()
     {
-        _game.Zone.Sky.Paused = true;
-        _game.Zone.Sky.TimeOfDay = Num("time", 0.45);
+        var sky = _game.Zone.Sky;
+        sky.Paused = true;
+        // Full daylight on this world: the hour its sun stands highest (--time picks one instead).
+        double noon = 0.5;
+        for (double t = 0.2; t < 0.8; t += 0.002) if (sky.SunAt(t).Y > sky.SunAt(noon).Y) noon = t;
+        sky.TimeOfDay = Num("time", noon);
         _game.Visor.Visible = false;
         _game.Hands.Visible = false;
+        _game.Alerts.Visible = false;
     }
 
     /// <summary>
@@ -49,10 +54,12 @@ public partial class Staging
         Midday();
         WeatherSim sim = WeatherNow;
         sim.FrontsOff = true;
-        sim.Snap(WeatherKind.Thunderstorm);
+        sim.Snap(WeatherKind.Clouds);
         sim.ClearTornadoes();
         foreach (int x in _drive.UntilSettled()) yield return x;
-        Vector2 way = Front.Lattice(sim.Current.Wind, sim.WorldSize, 5500f).heading;
+        sim.Force(WeatherKind.Thunderstorm); // the storm comes in on the front: fair ahead of it, its own weather behind
+        Vector2 stormWind = sim.SegmentAt(sim.Time).To.Wind;
+        Vector2 way = Front.Lattice(stormWind, sim.WorldSize, 5500f).heading;
         var down = new Vector3(way.X, 0f, way.Y);
         // A boundary between two regions across the front's path, near the start.
         Vector3 start = _game.Survivor.WorldFeet, boundary = start;
@@ -71,7 +78,7 @@ public partial class Staging
         _game.Survivor.PlaceOutside((_game.Zone.GroundAt(boundary.X, boundary.Z) + Vector3.Up).ToNumerics());
         foreach (int x in _drive.UntilSettled()) yield return x;
         // Its edge just over the boundary, advancing from the first region into the second.
-        Front f = sim.StartFront(FrontKind.Storm, boundary, (float)Num("dist", 200), sim.Current.Wind);
+        Front f = sim.StartFront(FrontKind.Storm, boundary, (float)Num("dist", 200), stormWind);
         sim.FrontsOff = true;
         foreach (int x in _drive.Wait(60)) yield return x;
         float pitch = -(float)Num("down", 0.2);
@@ -156,13 +163,14 @@ public partial class Staging
         Midday();
         WeatherSim sim = WeatherNow;
         sim.FrontsOff = true;
-        sim.Snap(WeatherKind.Clouds);
+        sim.Snap(WeatherKind.Thunderstorm); // a storm's cells overhead: the funnel hangs from one
         sim.ClearTornadoes();
         foreach (int x in _drive.UntilSettled()) yield return x;
         // A long stretch of open flat ground.
         RegionRules rules = sim.Data.Regions;
         Vector3 start = _game.Survivor.WorldFeet, row = start;
         var along = new Vector3(1f, 0f, 0f);
+        bool woods = Num("trees", 0) == 1; // --trees=1: a stand of trees along the row instead of clear ground
         for (int k = 0; k < 2000; k++)
         {
             float a = k * 2.399f, r = 60f + k * 3f;
@@ -172,10 +180,10 @@ public partial class Staging
             {
                 Vector3 q = p + along * (j * 25f);
                 Ground g = sim.GroundAt(q);
-                flat = !g.Water && g.Forest < 0.05f && g.Slope < 0.06f && !_game.Zone.Water.LiquidAt(q.X, q.Z, out _) && _game.Places?.PlaceAt(q) == null
-                    && !_game.Zone.Streamer.SolidsNear(_game.Zone.GroundAt(q.X, q.Z), 14f).Any();
+                flat = !g.Water && (woods || g.Forest < 0.05f) && g.Slope < 0.06f && !_game.Zone.Water.LiquidAt(q.X, q.Z, out _) && _game.Places?.PlaceAt(q) == null
+                    && (woods || !_game.Zone.Streamer.SolidsNear(_game.Zone.GroundAt(q.X, q.Z), 14f).Any());
             }
-            if (flat) { row = p; break; }
+            if (flat && (!woods || _game.Zone.Streamer.SolidsNear(_game.Zone.GroundAt(p.X, p.Z), 30f).Count(s => s.solid.Fellable) >= 6)) { row = p; break; }
         }
         Vector3 At(float x) => _game.Zone.GroundAt(row.X + x, row.Z);
         // The survivor stands in the row too: the weather happens round them, and their streamed ground holds everyone up.
@@ -192,12 +200,14 @@ public partial class Staging
                 labels.Add($"{s.Name} {Wildlife.Heft.Mass(s):F0} kg at {x:F0} m");
             }
         _game.Bikes.Place(At(-5f), 0f);
-        Structure skiff = _game.Zone.Data.Blueprint(_game.Zone.Data.Rules.Build.StarterBlueprint);
+        Structure skiff = _game.Zone.Data.Blueprint("rover.gbp");
         Vessel small = Vessel.Spawn(_game.Zone, skiff, (At(10f) + Vector3.Up * 3f).ToNumerics(), 0f, landed: true);
+        Structure flyerPlan = _game.Zone.Data.Blueprint(_game.Zone.Data.Rules.Build.StarterBlueprint);
+        Vessel flyer = Vessel.Spawn(_game.Zone, flyerPlan, (At(28f) + Vector3.Up * 12f).ToNumerics(), 0f, landed: false);
         Structure tankPlan = _game.Zone.Data.Blueprint("tank.gbp");
-        Vessel tank = Vessel.Spawn(_game.Zone, tankPlan, (At(40f) + Vector3.Up * 4f).ToNumerics(), 0f, landed: true);
+        Vessel tank = Vessel.Spawn(_game.Zone, tankPlan, (At(50f) + Vector3.Up * 4f).ToNumerics(), 0f, landed: true);
         foreach (int x in _drive.Wait(120)) yield return x;
-        GD.Print($"(wind bodies: {string.Join(", ", labels)}, survivor at -15 m, bike at -5 m, {skiff.Name} at 10 m, {tankPlan.Name} at 40 m)");
+        GD.Print($"(wind bodies: {string.Join(", ", labels)}, survivor at -15 m, bike at -5 m, {skiff.Name} at 10 m, {flyerPlan.Name} flying at 28 m, {tankPlan.Name} at 50 m)");
         float dist = (float)Num("dist", 150);
         Vector3 eye = At(0f) + new Vector3(0f, 0f, dist);
         eye.Y = MathF.Max(eye.Y, _game.Zone.GroundAt(eye.X, eye.Z).Y) + (float)Num("up", 28);
@@ -205,7 +215,7 @@ public partial class Staging
         _game.Zone.Weather.Bridge.Calm = false;
         TornadoShapeRules cone = sim.Data.Tornado.Shapes.First(s => s.Shape == Enum.Parse<TornadoShape>(_args.GetValueOrDefault("shape", "Cone")));
         TornadoRules tr = sim.Data.Tornado.Shaped(cone, (float)Num("speed", 4), 300f);
-        Tornado t = sim.SpawnTornado(At(-75f), At(500f), tr);
+        Tornado t = sim.SpawnTornado(At(-75f), At(500f), tr); // under a storm cell of its own: a funnel always hangs from a cloud
         t.Homing = false;
         t.Kept = true;
         t.SetHeading(0f);
@@ -217,7 +227,7 @@ public partial class Staging
             foreach (int x in Shot(string.Format(pattern, f))) yield return x;
             for (int i = 0; i < every; i++) yield return 0;
             if (f % 10 == 0)
-                GD.Print($"(frame {f}: tornado at {t.Position.X - row.X:F0} m; skiff {small.Body.WorldPosition.Y - At(10f).Y:F1} m up, damage {small.Body.Damage:F2}; tank moved {N.Vector3.Distance(tank.Body.WorldPosition, (At(40f) + Vector3.Up * 4f).ToNumerics()):F1} m; survivor {_game.Survivor.WorldFeet.Y - At(-15f).Y:F1} m up)");
+                GD.Print($"(frame {f}: tornado at {t.Position.X - row.X:F0} m; hovercraft {small.Body.WorldPosition.Y - At(10f).Y:F1} m up, tilt {Mathf.RadToDeg(N.Vector3.Transform(N.Vector3.UnitY, small.Body.Rotation).ToGodot().AngleTo(Vector3.Up)):F0}°, damage {small.Body.Damage:F2}; flyer tilt {Mathf.RadToDeg(N.Vector3.Transform(N.Vector3.UnitY, flyer.Body.Rotation).ToGodot().AngleTo(Vector3.Up)):F0}°; tank moved {N.Vector3.Distance(tank.Body.WorldPosition, (At(50f) + Vector3.Up * 4f).ToNumerics()):F1} m; survivor {_game.Survivor.WorldFeet.Y - At(-15f).Y:F1} m up; trees torn {_game.Zone.Weather.TreesTorn})");
         }
     }
 }

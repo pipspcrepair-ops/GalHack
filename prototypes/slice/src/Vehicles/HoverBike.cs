@@ -86,7 +86,54 @@ public sealed class HoverBike
     void Place()
     {
         Node.GlobalTransform = new Transform3D(
-            new Basis(Vector3.Up, Yaw) * new Basis(Vector3.Right, _pitch) * new Basis(Vector3.Forward, _roll), Position);
+            _tumble * new Basis(Vector3.Up, Yaw) * new Basis(Vector3.Right, _pitch) * new Basis(Vector3.Forward, _roll), Position);
+    }
+
+    /// <summary>
+    /// How the weather has turned it, on top of its heading and lean: a toss tips, rolls and flips it.
+    /// Its plates right it only within their reach of the ground, and only so hard (<see cref="PlateLevel"/>).
+    /// </summary>
+    Basis _tumble = Basis.Identity;
+    Vector3 _spin;
+
+    /// <summary>The most angular acceleration its hover plates put against a tumble near the ground, rad/s².</summary>
+    public const float PlateLevel = 8f;
+
+    /// <summary>Came down on its side or its roof: it lies there, its plates useless, until someone rights it.</summary>
+    public bool Toppled { get; private set; }
+
+    /// <summary>How far it is tipped from upright, radians.</summary>
+    public float Tilt => _tumble.Y.AngleTo(Vector3.Up);
+
+    /// <summary>The rider sets it back on its plates.</summary>
+    public void SetUpright()
+    {
+        Toppled = false;
+        _tumble = Basis.Identity;
+        _spin = Vector3.Zero;
+        Place();
+    }
+
+    /// <summary>
+    /// The weather's turn on it: its push acts above its middle (stronger aloft, uneven), so a hard push
+    /// tips it, and a vortex turns it round with it; its plates right it within their reach of the
+    /// ground, up to their limit. A light bike in a tornado's grip tumbles.
+    /// </summary>
+    void Turn(Vector3 push, float above, float dt)
+    {
+        var flat = new Vector3(push.X, 0f, push.Z);
+        Vector3 alpha = Vector3.Up.Cross(flat) * 1.1f + Vector3.Up * flat.Length() * 0.25f; // m/s² of push over its own small size
+        if (above < Hover * 2.5f)
+        {
+            Vector3 axis = _tumble.Y.Cross(Vector3.Up);
+            float tilt = Tilt;
+            Vector3 level = (axis.LengthSquared() > 1e-8f ? axis.Normalized() * (20f * tilt) : Vector3.Zero) - _spin * 4f;
+            alpha += level.LimitLength(PlateLevel);
+        }
+        _spin = ((_spin + alpha * dt) * MathF.Exp(-0.3f * dt)).LimitLength(7f);
+        float turn = _spin.Length() * dt;
+        if (turn > 1e-6f) _tumble = new Basis(_spin.Normalized(), turn) * _tumble;
+        _tumble = _tumble.Orthonormalized();
     }
 
     /// <summary>One physics tick.</summary>
@@ -110,7 +157,22 @@ public sealed class HoverBike
         if (parked) Velocity = new Vector3(Velocity.X, 0f, Velocity.Z) * MathF.Exp(-6f * dt) + Vector3.Up * Velocity.Y;
         _vy += _push.Y * dt + _kick.Y;
         bool tossed = _push.Y > 12f || _kick.Y > 0.5f;
+        Vector3 pushed = _push;
         _push = _kick = Vector3.Zero;
+        float above = Position.Y - _owner.SurfaceAt(Position.X, Position.Z, Position.Y + 4f, out _);
+        Turn(pushed, above, dt);
+        if (Toppled)
+        {
+            // On its side or its roof: no cushion, no drive. It lies on the ground, sliding to a stop.
+            float ground = _owner.SurfaceAt(Position.X, Position.Z, Position.Y + 4f, out _);
+            Velocity = new Vector3(Velocity.X, 0f, Velocity.Z) * MathF.Exp(-4f * dt);
+            Position += Velocity * dt;
+            Position.Y = ground + 0.35f;
+            _vy = 0f;
+            _spin = Vector3.Zero;
+            Place();
+            return;
+        }
 
         Vector3 fwd = Forward, right = Right;
         Vector3 flat = new(Velocity.X, 0f, Velocity.Z);
@@ -146,9 +208,12 @@ public sealed class HoverBike
         float surface = _owner.SurfaceAt(Position.X, Position.Z, Position.Y + 4f, out bool water);
         OnWater = water;
         float target = surface + Hover;
+        bool wasAirborne = !Grounded;
         if (Position.Y > target + 0.35f || tossed) { _vy -= 12f * dt; Grounded = false; }
         else
         {
+            // Back down: tipped past its plates' reach, it lands on its side or roof and stays there.
+            if (wasAirborne && Tilt > 1.05f) Toppled = true;
             _vy += (70f * (target - Position.Y) - 16f * _vy) * dt;
             Grounded = true;
         }

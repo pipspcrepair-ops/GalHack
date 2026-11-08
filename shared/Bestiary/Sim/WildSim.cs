@@ -337,6 +337,11 @@ public sealed class WildSim
         c.Thrown = true;
         c.Velocity = velocity;
         c.Position += Vector3.Up * 0.3f;
+        // Thrown unevenly, it turns end over end about the way it flies, and round with the throw; the
+        // smaller it is the faster.
+        var flat = new Vector3(velocity.X, 0f, velocity.Z);
+        float size = MathF.Max(0.3f, c.Species.Body.Size);
+        c.TumbleSpin = (Vector3.Up.Cross(flat) * 0.35f + Vector3.Up * flat.Length() * 0.15f) / size;
     }
 
     /// <summary>

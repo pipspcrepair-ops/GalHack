@@ -20,7 +20,7 @@ public sealed partial class TreeFx : Node3D
 
     public override void _Ready() => AddChild(_stumps);
 
-    public int Stumps => _stumps.GetChildCount();
+    public int Stumps => _stumps.GetChildCount() - Holes;
 
     /// <summary>The colour of a plant's leaves (or what stands in for them).</summary>
     public static Color LeafColour(Flora kind) => kind switch
@@ -73,35 +73,79 @@ public sealed partial class TreeFx : Node3D
     /// A tree felled: the trunk and crown topple away along <paramref name="away"/>, lie, and fade;
     /// a stump stays.
     /// </summary>
-    public void Fell(Vector3 root, Vector3 away, float height, float radius, Color leaf, bool crown, Color? barkColour = null, Mesh body = null, Basis turn = default)
+    public void Fell(Vector3 root, Vector3 away, float height, float radius, Color leaf, bool crown, Color? barkColour = null, Mesh body = null, Basis turn = default, bool stump = true)
     {
         away.Y = 0f;
         away = away.LengthSquared() < 1e-4f ? Vector3.Forward : away.Normalized();
         Color bark = barkColour ?? new Color(0.36f, 0.25f, 0.16f);
-        var stump = new MeshInstance3D
+        if (stump)
+            _stumps.AddChild(new MeshInstance3D
+            {
+                Mesh = new CylinderMesh { TopRadius = radius * 0.85f, BottomRadius = radius * 1.15f, Height = 0.5f },
+                MaterialOverride = new StandardMaterial3D { AlbedoColor = bark, Roughness = 0.95f },
+                Position = root + Vector3.Up * 0.2f,
+            });
+        AddChild(new FallingTree(root, away, height, radius, bark, leaf, crown, body, turn, stump ? 0f : radius * 1.5f));
+    }
+
+    /// <summary>Root holes left where trees were torn out whole (tests).</summary>
+    public int Holes { get; private set; }
+
+    /// <summary>Trees in the air right now.</summary>
+    public int Flying
+    {
+        get
         {
-            Mesh = new CylinderMesh { TopRadius = radius * 0.85f, BottomRadius = radius * 1.15f, Height = 0.5f },
-            MaterialOverride = new StandardMaterial3D { AlbedoColor = bark, Roughness = 0.95f },
-            Position = root + Vector3.Up * 0.2f,
-        };
-        _stumps.AddChild(stump);
-        AddChild(new FallingTree(root, away, height, radius, bark, leaf, crown, body, turn));
+            int n = 0;
+            foreach (Node c in GetChildren()) if (c is FlungTree { Landed: false }) n++;
+            return n;
+        }
+    }
+
+    /// <summary>The hole a tree's root plate leaves: a dark dished scar in the ground, kept like a stump.</summary>
+    public void Hole(Vector3 root, float radius)
+    {
+        Holes++;
+        _stumps.AddChild(new MeshInstance3D
+        {
+            Mesh = new SphereMesh { Radius = radius, Height = radius * 0.5f, RadialSegments = 10, Rings = 3 },
+            MaterialOverride = new StandardMaterial3D { AlbedoColor = new Color(0.2f, 0.15f, 0.1f), Roughness = 1f },
+            Position = root + Vector3.Up * 0.02f,
+        });
+    }
+
+    /// <summary>
+    /// A tree torn up whole, roots and all, and thrown: it flies, turning end over end, and lies where it
+    /// lands. <paramref name="body"/> and <paramref name="turn"/> are the plant's own mesh and its standing
+    /// turn and scale, so it flies as itself, full size.
+    /// </summary>
+    public FlungTree Throw(Vector3 root, Vector3 velocity, float height, float radius, Color leaf, Func<float, float, float> ground, Mesh body = null, Basis turn = default)
+    {
+        var tree = new FlungTree(root, velocity, height, radius, new Color(0.36f, 0.25f, 0.16f), leaf, ground, body, turn);
+        AddChild(tree);
+        return tree;
     }
 }
 
-/// <summary>A felled tree toppling over, lying, and fading away.</summary>
+/// <summary>A felled tree toppling over, lying a good while along the path it was torn from, and fading away.</summary>
 public sealed partial class FallingTree : Node3D
 {
-    const float FallTime = 1.5f, LieTime = 5f, FadeTime = 2.5f;
+    const float FallTime = 1.5f, LieTime = 90f, FadeTime = 4f;
     readonly Vector3 _axis;
     readonly StandardMaterial3D _bark, _leaf;
     readonly ShaderMaterial _body;
     float _t;
 
-    public FallingTree(Vector3 root, Vector3 away, float height, float radius, Color bark, Color leaf, bool crown, Mesh body = null, Basis turn = default)
+    public FallingTree(Vector3 root, Vector3 away, float height, float radius, Color bark, Color leaf, bool crown, Mesh body = null, Basis turn = default, float roots = 0f)
     {
         Position = root;
         _axis = Vector3.Up.Cross(away).Normalized();
+        if (roots > 0f)
+            AddChild(new MeshInstance3D // torn out by its root plate: the plate comes up with it
+            {
+                Mesh = new CylinderMesh { TopRadius = roots, BottomRadius = roots * 0.7f, Height = roots * 0.5f, RadialSegments = 8 },
+                MaterialOverride = new StandardMaterial3D { AlbedoColor = new Color(0.3f, 0.22f, 0.15f), Roughness = 1f },
+            });
         if (body != null)
         {
             // The tree itself goes over, its own shape and colours.
@@ -142,5 +186,95 @@ public sealed partial class FallingTree : Node3D
             if (_leaf != null) _leaf.AlbedoColor = new Color(_leaf.AlbedoColor, MathF.Max(0f, a));
             if (a <= 0f) QueueFree();
         }
+    }
+}
+
+/// <summary>
+/// A tree a tornado pulled up whole and threw: it flies on its arc turning end over end, comes down and
+/// lies on its side where it landed, a good while, then fades. Its root plate comes with it.
+/// </summary>
+public sealed partial class FlungTree : Node3D
+{
+    const float LieTime = 90f, FadeTime = 4f, Gravity = 9.8f;
+    readonly Func<float, float, float> _ground;
+    readonly Vector3 _spinAxis;
+    readonly float _spin, _height;
+    readonly StandardMaterial3D _bark, _leaf;
+    readonly ShaderMaterial _body;
+    Vector3 _velocity;
+    float _lying = -1f;
+
+    public bool Landed => _lying >= 0f;
+
+    /// <summary>The size it flies at, as drawn: its own mesh at its own scale.</summary>
+    public Vector3 Bounds { get; }
+
+    public FlungTree(Vector3 root, Vector3 velocity, float height, float radius, Color bark, Color leaf, Func<float, float, float> ground, Mesh body = null, Basis turn = default)
+    {
+        Position = root + Vector3.Up * (height * 0.5f);
+        _velocity = velocity;
+        _ground = ground;
+        _height = height;
+        var flat = new Vector3(velocity.X, 0f, velocity.Z);
+        _spinAxis = flat.LengthSquared() > 0.01f ? Vector3.Up.Cross(flat).Normalized() : Vector3.Right;
+        _spin = 1.2f + 6f / MathF.Max(2f, height);
+        _bark = new StandardMaterial3D { AlbedoColor = bark, Roughness = 0.95f, Transparency = BaseMaterial3D.TransparencyEnum.Alpha };
+        _leaf = new StandardMaterial3D { AlbedoColor = leaf, Roughness = 0.9f, Transparency = BaseMaterial3D.TransparencyEnum.Alpha };
+        // Built about its middle, so it turns about it: the plant itself (its own mesh, turn and scale as it
+        // stood), or a trunk and crown where the world's herbarium has no mesh for it; its root plate below.
+        if (body != null)
+        {
+            _body = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/flora_fall.gdshader") };
+            _body.SetShaderParameter("tint", new Vector3(leaf.R, leaf.G, leaf.B));
+            var standing = new Transform3D(turn, Vector3.Down * (height * 0.5f));
+            AddChild(new MeshInstance3D { Mesh = body, MaterialOverride = _body, Transform = standing });
+            Bounds = (new Transform3D(turn, Vector3.Zero) * body.GetAabb()).Size;
+        }
+        else
+        {
+            AddChild(new MeshInstance3D { Mesh = new CylinderMesh { TopRadius = radius * 0.6f, BottomRadius = radius, Height = height }, MaterialOverride = _bark });
+            AddChild(new MeshInstance3D
+            {
+                Mesh = new SphereMesh { Radius = MathF.Max(1.1f, height * 0.32f), Height = MathF.Max(2.2f, height * 0.58f), RadialSegments = 7, Rings = 4 },
+                MaterialOverride = _leaf,
+                Position = Vector3.Up * (height * 0.45f),
+            });
+            Bounds = new Vector3(radius * 2f, height, radius * 2f);
+        }
+        AddChild(new MeshInstance3D
+        {
+            Mesh = new CylinderMesh { TopRadius = radius * 3f, BottomRadius = radius * 2f, Height = radius * 1.5f, RadialSegments = 8 },
+            MaterialOverride = new StandardMaterial3D { AlbedoColor = new Color(0.3f, 0.22f, 0.15f), Roughness = 1f },
+            Position = Vector3.Down * (height * 0.5f),
+        });
+    }
+
+    public override void _PhysicsProcess(double delta)
+    {
+        float dt = (float)delta;
+        if (_lying < 0f)
+        {
+            _velocity += Vector3.Down * Gravity * dt;
+            Position += _velocity * dt;
+            Basis = new Basis(_spinAxis, _spin * dt) * Basis;
+            float ground = _ground(Position.X, Position.Z);
+            if (Position.Y - _height * 0.15f > ground) return;
+            // Down: it lies along the ground on its side, the way it was turning.
+            _lying = 0f;
+            Vector3 along = Basis.Y;
+            along.Y = 0f;
+            along = along.LengthSquared() > 1e-4f ? along.Normalized() : _spinAxis.Cross(Vector3.Up);
+            Vector3 x = along.Cross(Vector3.Up).Normalized();
+            Basis = new Basis(x, along, x.Cross(along)); // its trunk along the ground
+            Position = new Vector3(Position.X, ground + MathF.Max(0.4f, _height * 0.05f), Position.Z);
+            return;
+        }
+        _lying += dt;
+        if (_lying < LieTime) return;
+        float a = 1f - (_lying - LieTime) / FadeTime;
+        _bark.AlbedoColor = new Color(_bark.AlbedoColor, MathF.Max(0f, a));
+        _leaf.AlbedoColor = new Color(_leaf.AlbedoColor, MathF.Max(0f, a));
+        _body?.SetShaderParameter("fade", MathF.Max(0f, a));
+        if (a <= 0f) QueueFree();
     }
 }

@@ -109,6 +109,9 @@ public sealed class WeatherSim
     /// </summary>
     public Func<float, float, Ground> Land { get; set; }
 
+    /// <summary>The world's mean warmth on the same 0..1 scale as <see cref="Ground.Warmth"/>: its type's base temperature is the weather there.</summary>
+    public float MeanWarmth { get; set; } = 0.5f;
+
     /// <summary>This world's own dials on its type's weights.</summary>
     public WorldWeather World { get; }
 
@@ -399,8 +402,8 @@ public sealed class WeatherSim
         if (from != to) c = Conditions.Lerp(Localize(c, from, g, around), Localize(c, to, g, around), blend);
         else c = Localize(c, to, g, around);
 
-        // Warmer and colder ground, and the cold of height.
-        float temperature = c.Temperature + r.WarmthDegrees * (g.Warmth - 0.5f) * 2f - r.LapseRate * MathF.Max(0f, g.Height) / 1000f;
+        // Warmer and colder ground than the world's middle, and the cold of height.
+        float temperature = c.Temperature + r.WarmthDegrees * (g.Warmth - MeanWarmth) * 2f - r.LapseRate * MathF.Max(0f, g.Height) / 1000f;
         c[Param.Temperature] = temperature;
         float snowy = 1f - Front.Smooth(r.Blizzard.SnowBelow, r.Blizzard.SnowBelow + 2f, temperature);
         float fall = c.Rain + c.Snow;
@@ -691,7 +694,9 @@ public sealed class WeatherSim
     public Front StartFront(FrontKind kind, Vector3 observer, float distance, Vector2? wind = null, bool? roll = null)
     {
         _front = MakeFront(kind, observer, distance, wind ?? Current.Wind, FrontSpeed(kind, Current.WindSpeed), 1f, roll);
-        _frontSegment = null;
+        // It carries the timeline's own front weather, if one is in or due: the weather before it ahead of its edge, its own behind.
+        Segment due = FrontSegment(Data.Cells.FrontSight / 7f, out FrontKind dueKind);
+        _frontSegment = due != null && dueKind == kind ? due : null;
         _cells.RemoveAll(c => c.Funnel == null);
         if (kind == FrontKind.Storm) StepFrontCells(0f, observer, _front);
         return _front;

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using GalHack.Physics.Engine;
 using Godot;
 using Planets.Gen;
@@ -372,6 +373,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
         sim.WorldSize = new Vector2((float)planet.Width, (float)planet.Height);
         sim.OpenWater = (x, z) => OpenWater(planet, x, z);
         sim.Land = LandOf(planet, data.Regions);
+        sim.MeanWarmth = planet.Map.Temperature.Average();
         Bridge = new WeatherBridge(sim) { Observer = () => Observer().ToNumerics() };
         Zone.Physics.ForceProviders.Clear();
         Zone.Physics.ForceProviders.Add(Bridge);
@@ -490,6 +492,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
                 if (t.Touchdown && t.Strength > 0.25f && t.Kind != TornadoKind.DustDevil) Ravage(t);
         }
         Gust((float)delta);
+        if (Sim != null) WindFells(Observer(), (float)delta);
     }
 
     float _ravageTimer;
@@ -519,14 +522,99 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
             _torn.Add(solid);
             if (_torn.Count >= TornPerPass) break;
         }
-        foreach (FloraSolid s in _torn) TearUp(s, at);
+        foreach (FloraSolid s in _torn) TearUp(s, at, t);
         ThrowCreatures(t, at, reach);
         Zone.Dust?.Puff(at + Vector3.Up * 0.6f, new Color(_planet.Look.Dust, 1f), 3f);
     }
 
-    void TearUp(FloraSolid tree, Vector3 funnel)
+    /// <summary>Trees torn up whole and thrown, snapped (a stump left), and uprooted to fall (a root hole left) (tests).</summary>
+    public int TreesThrown { get; private set; }
+    public int TreesSnapped { get; private set; }
+    public int TreesUprooted { get; private set; }
+
+    /// <summary>The torn trees' effects: stumps, root holes, trunks falling, lying and flying (tests).</summary>
+    public TreeFx Trees => _trees;
+
+    /// <summary>The most trees in the air at once: the rest of what a funnel tears up falls where it stood.</summary>
+    public const int MostFlyingTrees = 6;
+
+    /// <summary>What a tree weighs, kg: its trunk's wood and its crown, by its real height as it stood.</summary>
+    public static float TreeMass(FloraSolid tree, float height)
     {
-        if (!_planet.Felled.Add(tree.Id)) return;
+        float r = MathF.Max(0.08f, tree.Extents.X), h = MathF.Max(1f, height);
+        return MathF.PI * r * r * h * 700f * 1.6f;
+    }
+
+    /// <summary>The last tree thrown: its size as it stood, and the size of the body it flew as (tests: the same tree, the same size).</summary>
+    public (Vector3 Standing, Vector3 Flying) LastThrown { get; private set; }
+
+    // The tree being felled: its own mesh and its standing transform (turn and scale), and its standing size.
+    Mesh _felledMesh;
+    Basis _felledTurn = Basis.Identity;
+    Vector3 _felledBounds;
+
+    /// <summary>
+    /// A tree in a funnel's reach goes, by its weight against the tornado's pull, by the force module's own
+    /// rule for every body: one light enough for the updraft is pulled up whole, roots and all, and thrown
+    /// (a root hole left); a heavier one is snapped, a stump left and its trunk thrown down, or blown over
+    /// whole, its root plate torn out. Either way it is gone for good (the felled list).
+    /// </summary>
+    void TearUp(FloraSolid tree, Vector3 funnel, Tornado t)
+    {
+        if (!Fell(tree, funnel, out Vector3 root, out Vector3 away, out float height, out Color leaf)) return;
+        float mass = TreeMass(tree, height);
+        Vector3 radial = new Vector3(root.X - funnel.X, 0f, root.Z - funnel.Z);
+        radial = radial.LengthSquared() > 1e-4f ? radial.Normalized() : Vector3.Right;
+        var around = new Vector3(-radial.Z, 0f, radial.X);
+        Vector3 throwV = TornadoThrow(t.Rules, mass, t.Strength, around, radial);
+        if (throwV.Y > 6f && _trees.Flying < MostFlyingTrees)
+        {
+            TreesThrown++;
+            _trees.Hole(root, MathF.Max(0.6f, tree.Extents.X * 3f));
+            FlungTree flung = _trees.Throw(root, throwV + t.Velocity, height, tree.Extents.X, leaf, (x, z) => Zone.GroundAt(x, z).Y, _felledMesh, _felledTurn);
+            LastThrown = (_felledBounds, flung.Bounds);
+        }
+        else Topple(tree, root, away, height, leaf);
+        _trees.Leaves(root + Vector3.Up * height, leaf, 20, 2.2f);
+    }
+
+    /// <summary>A tree that goes over where it stands: a thin trunk snaps (a stump left), a thick one is torn out by its root plate (a hole left).</summary>
+    void Topple(FloraSolid tree, Vector3 root, Vector3 away, float height, Color leaf)
+    {
+        bool snaps = tree.Extents.X < 0.08f * height; // slender for its height: the trunk gives before the roots
+        if (snaps) TreesSnapped++;
+        else
+        {
+            TreesUprooted++;
+            _trees.Hole(root, MathF.Max(0.6f, tree.Extents.X * 3f));
+        }
+        _trees.Fell(root, away, height, tree.Extents.X, leaf, crown: true, body: _felledMesh, turn: _felledTurn, stump: snaps);
+    }
+
+    /// <summary>Takes a tree out of the world for good, and where it stood: false if it is already gone.</summary>
+    bool Fell(FloraSolid tree, Vector3 from, out Vector3 root, out Vector3 away, out float height, out Color leaf)
+    {
+        root = away = default;
+        height = 0f;
+        leaf = default;
+        if (_planet.Felled.Contains(tree.Id)) return false;
+        Vector3 c = _planet.NearestCopy(_planet.Canonical(tree.Center), from);
+        root = new(c.X, c.Y - tree.Extents.Y, c.Z);
+        // The plant as it stands, before it goes: its own mesh, its turn and scale, and so its real size.
+        _felledMesh = null;
+        _felledTurn = Basis.Identity;
+        foreach (TerrainStreamer.PlantSighting s in Zone.Streamer.FloraNear(root, 4f))
+            if (s.Id == tree.Id)
+            {
+                _felledMesh = Zone.Streamer.PlantMesh(s.Plant, s.Variant);
+                _felledTurn = s.Turn;
+                root = s.Root;
+                break;
+            }
+        Aabb stood = _felledMesh != null ? new Transform3D(_felledTurn, Vector3.Zero) * _felledMesh.GetAabb() : new Aabb(-tree.Extents, tree.Extents * 2f);
+        _felledBounds = stood.Size;
+        // Gone in the same tick its stand-in appears: never a gap, never two.
+        _planet.Felled.Add(tree.Id);
         Zone.Streamer.Fell(tree.Id);
         TreesTorn++;
         if (_trees == null)
@@ -534,14 +622,43 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
             _trees = new TreeFx();
             Zone.AddChild(_trees);
         }
-        Vector3 c = _planet.NearestCopy(_planet.Canonical(tree.Center), funnel);
-        Vector3 root = new(c.X, c.Y - tree.Extents.Y, c.Z);
-        Vector3 away = root - funnel;
+        away = root - from;
         away = new Vector3(-away.Z, 0f, away.X) + away * 0.4f; // round with the wind, and out
-        Color leaf = TreeFx.LeafColour(tree.Kind);
-        float height = MathF.Max(2f, tree.Extents.Y * 2f);
-        _trees.Fell(root, away.LengthSquared() > 0.01f ? away : Vector3.Right, height, tree.Extents.X, leaf, crown: true);
-        _trees.Leaves(root + Vector3.Up * height, leaf, 20, 2.2f);
+        if (away.LengthSquared() < 0.01f) away = Vector3.Right;
+        leaf = TreeFx.LeafColour(tree.Kind);
+        height = MathF.Max(2f, _felledMesh != null ? stood.End.Y : tree.Extents.Y * 2f);
+        return true;
+    }
+
+    float _treeGust;
+
+    /// <summary>
+    /// Wind strong enough snaps or blows over trees near the player, the weaker ones first: a tree goes
+    /// when the wind's push on its crown, by its size, beats what its trunk holds. A hurricane's gusts take
+    /// the odd tree round you; a gale none. One at a time, a few a minute at most.
+    /// </summary>
+    void WindFells(Vector3 near, float dt)
+    {
+        if ((_treeGust -= dt) > 0f) return;
+        _treeGust = 1.5f;
+        float wind = Sim.WindAt(near).Length();
+        if (wind < 30f || Bridge == null || Bridge.Calm) return;
+        foreach (var (solid, offset) in Zone.Streamer.SolidsNear(near, 70f))
+        {
+            if (!solid.Fellable) continue;
+            Vector3 at = solid.Center + offset;
+            float w = Sim.WindAt(at).Length();
+            float h = MathF.Max(1f, solid.Extents.Y * 2f), r = MathF.Max(0.08f, solid.Extents.X);
+            // The crown's drag over the trunk's strength: tall slender trees go first, stout ones hold.
+            float load = 0.5f * Weather.Forces.ForceModule.AirDensity * (h * h * 0.25f) * w * w * h * 0.6f;
+            float holds = 1.2e7f * r * r * r;
+            if (load < holds) continue;
+            if (!Fell(solid, at - new Vector3(Sim.WindAt(at).X, 0f, Sim.WindAt(at).Z), out Vector3 root, out Vector3 away, out float height, out Color leaf)) continue;
+            Vector3 downwind = Sim.WindAt(at);
+            Topple(solid, root, new Vector3(downwind.X, 0f, downwind.Z), height, leaf);
+            _trees.Leaves(root + Vector3.Up * height, leaf, 14, 2f);
+            return;
+        }
     }
 
     void ThrowCreatures(Tornado t, Vector3 at, float reach)
@@ -571,7 +688,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
     /// </summary>
     public static Vector3 TornadoThrow(TornadoRules rules, float mass, float strength, Vector3 around, Vector3 outward)
     {
-        const float g = 9.8f, tumbleG = 9.8f * 0.6f; // a thrown creature falls on the Bestiary's tumble
+        const float g = 9.8f, tumbleG = 18f * 0.6f; // a thrown creature falls on the Bestiary's tumble (Locomotion)
         float share = Weather.Forces.ForceModule.MassShare(mass, rules.LiftMassLimit) * strength;
         float updraft = rules.Response * rules.LiftSpeed;
         float climb = Math.Clamp((share * (updraft + g) - g) / updraft, 0f, 1f); // 1: carried all the way up
