@@ -257,6 +257,9 @@ public partial class TerrainStreamer : Node3D
         m.SetShaderParameter("road_index", _roads.Index);
         m.SetShaderParameter("road_grid", _roads.Grid);
         m.SetShaderParameter("road_tolerance", far ? 12f : 1.2f);
+        // The world's own ground bared, for its tracks and dirt roads: its rock weathered into clay, grit or sand.
+        Planets.Look.Rgb bare = World.Palette.BareSoil;
+        m.SetShaderParameter("bare_soil", new Color(bare.R, bare.G, bare.B));
         // The prevailing wind that drifts sand over the roads: one of the map's four ways, by the world.
         int wind = (int)(World.Spec.Seed % 4);
         // The world's road paint: yellow or white centre lines, dashed or solid, by its culture; none where

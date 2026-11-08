@@ -255,6 +255,30 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
         return road;
     }
 
+    /// <summary>
+    /// Whether low cover (grass, tussocks, scrub) grows at a point on a road: anywhere on one nobody has kept up
+    /// for a century, and on a track the crown between its wheel ruts and its ragged edges, where nothing
+    /// drives. False off the roads and on any place's pad.
+    /// </summary>
+    public bool GrowsOnRoad(double x, double z)
+    {
+        bool road = false;
+        foreach (int i in StampsAt(x, z))
+        {
+            TerrainStamp t = Stamps[i];
+            if (t.Shape == StampShape.Pad && t.Weight(x, z) > 0f) return false;
+            if (t.Shape != StampShape.Road || t.Weight(x, z) <= 0f) continue;
+            road = true;
+            if (t.Wear > 0.6f) continue;
+            if (t.Name.StartsWith("Track") && t.NearestOnPath(x, z, out float d, out _, out _) && (d < TrackCrown || d > t.HalfWidth - 0.35f)) continue;
+            return false;
+        }
+        return road;
+    }
+
+    /// <summary>Half the crown a track keeps between its wheel ruts, m (the shader's ruts run either side of it).</summary>
+    public const float TrackCrown = 0.4f;
+
     /// <summary>How much any stamp covers a point (0 none, 1 on a pad).</summary>
     public float StampWeight(double x, double z)
     {

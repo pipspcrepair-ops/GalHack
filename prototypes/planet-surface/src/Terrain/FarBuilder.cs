@@ -442,7 +442,7 @@ public static class FarBuilder
             // Pads and their aprons stay clear, and roads, except that grass and shrubs push back
             // through a road nobody has kept up for a century (never a tree: the way stays open).
             if (source.StampWeight(x, z) > 0f
-                && !(!FloraMeshes.IsLarge(rule.Kind) && shade < 0.4f && source.OnRoad(x, z, out float wear) && wear > 0.6f)) continue;
+                && !(!FloraMeshes.IsLarge(rule.Kind) && shade < 0.4f && source.GrowsOnRoad(x, z))) continue;
 
             // Exact ground under the trunk (the voxel surface), not the coarse grid's.
             int cx = (int)Math.Floor(x), cz = (int)Math.Floor(z);

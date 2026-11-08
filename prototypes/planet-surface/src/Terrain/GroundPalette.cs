@@ -22,6 +22,8 @@ public sealed class GroundPalette
 {
     public readonly WorldMap Map;
     public readonly Rgb Rock, DeepRock, Bedrock, Seabed, RiverBed, Snow;
+    /// <summary>The ground bared by wheels and feet: the world's rock weathered into clay, grit or sand (tracks and dirt roads).</summary>
+    public readonly Rgb BareSoil;
 
     /// <summary>
     /// A blast's dead zone (ground zero in world metres, the dead radius and where it has faded back
@@ -89,6 +91,7 @@ public sealed class GroundPalette
         Bedrock = Rgb.Hex("26262b");
         Seabed = Rgb.Lerp(Rock, Rgb.Hex("b0a48a"), 0.45f) * 0.85f;
         RiverBed = Rgb.Lerp(Rock, Rgb.Hex("4a4034"), 0.6f);
+        BareSoil = Rgb.Lerp(Rock, Rgb.Hex("7a5e44"), 0.45f);
         Snow = Rgb.Hex("eef2f6");
     }
 
