@@ -4,7 +4,7 @@ using Godot;
 namespace Wildlife;
 
 /// <summary>What a body says without words. Each is only where the hands, the back and the head go.</summary>
-public enum BodyAct { None, HandsUp, Cower, WaveOff, Beckon, Point, Shrug, Warn, Celebrate, Grieve, Panic, Fidget, Taunt, Present, Greet, Startle, Play }
+public enum BodyAct { None, HandsUp, Cower, WaveOff, Beckon, Point, Shrug, Warn, Celebrate, Grieve, Panic, Fidget, Taunt, Present, Greet, Startle, Play, Thanks }
 
 /// <summary>What someone is doing, for the rig to show. Everything a game has to say about a person's body.</summary>
 public struct Gesture
@@ -24,6 +24,8 @@ public struct Gesture
     public Vector3 ActAt;
     /// <summary>Seconds, for the slow things: weight shifting, a drink, a tool coming down.</summary>
     public float Clock;
+    /// <summary>The local form of the friendly gestures (a greeting, thanks): 0 a hand waved high, 1 an open palm held up, 2 a hand to the chest.</summary>
+    public int Style;
 }
 
 /// <summary>
@@ -62,7 +64,44 @@ public sealed class HumanRig : Rig
             _legL[i] = pieces.FindIndex(p => p.Name == $"leg{side}l");
             _foot[i] = pieces.FindIndex(p => p.Name == $"leg{side}f");
         }
+        int bones = s.Mechanical ? 0 : FolkBody.TailBones(_f);
+        _tail = new int[bones];
+        for (int i = 0; i < bones; i++)
+        {
+            int bone = i;
+            _tail[i] = pieces.FindIndex(p => p.Name == $"tail{bone}");
+        }
         _offset = (s.Seed % 97) / 97f;
+    }
+
+    readonly int[] _tail;
+
+    /// <summary>
+    /// A tail on bones from the back of the hips: carried out behind and down, swinging with the
+    /// stride, curling a little at rest, lying along the seat when sitting; a Husk's hangs slack and
+    /// jerks with it. Never below the ground.
+    /// </summary>
+    void PoseTail(in Gesture g, Vector3 hip, Basis torso, float cycle, float moving, float jerk)
+    {
+        if (_tail.Length == 0 || _tail[0] < 0) return;
+        Figure f = _f;
+        Folk k = f.Folk;
+        float len = FolkBody.TailLength(f), seg = len / _tail.Length, r = FolkBody.TailRoot(f);
+        Vector3 back = torso.Z, side = torso.X;
+        Vector3 at = hip + back * f.ChestD * f.Padding * 0.85f + torso.Y * f.Torso * 0.04f;
+        // How far it droops from level behind: a thick tail is carried, a thin one hangs; slack on a Husk, lower sitting.
+        float droop = (k?.Tail switch { "thick" => 0.35f, "fan" => 0.25f, "bushy" => 0.55f, "stub" => 0.2f, _ => 0.75f }) + (f.Husk ? 0.45f : 0f) + g.Sit * 0.5f + g.Crouch * 0.2f;
+        float swing = moving * 0.32f * MathF.Sin(cycle) + (1f - moving) * 0.14f * MathF.Sin(g.Clock * 0.9f + _offset * 11f) + 0.5f * jerk * MathF.Sin(_offset * 41f);
+        for (int i = 0; i < _tail.Length; i++)
+        {
+            float bend = droop + i * (f.Husk ? 0.28f : 0.16f) - (1f - moving) * i * 0.06f;
+            Vector3 dir = (back * MathF.Cos(bend) - Vector3.Up * MathF.Sin(bend)).Rotated(Vector3.Up, swing * (0.6f + 0.5f * i)).Normalized();
+            Vector3 to = at + dir * seg;
+            float ground = GroundAt(to.X, to.Z, g.Feet.Y) + r * 0.8f;
+            if (to.Y < ground) to.Y = ground;
+            Pose[_tail[i]] = Geo.Segment(at, to, side, seg);
+            at = to;
+        }
     }
 
     public override int FootCount => 2;
@@ -142,7 +181,7 @@ public sealed class HumanRig : Rig
         // The torso leans into a run and over work, bows with age and drink, rolls with the stride.
         float pitch = 0.05f + 0.26f * run + f.Stoop * 0.55f + g.Work * (0.5f + 0.2f * MathF.Sin(g.Clock * 1.7f)) + g.Crouch * 0.5f + g.Retch * 0.8f - g.Sit * 0.1f - g.Aim * 0.03f + g.Reach * 0.3f;
         float act = g.Act == BodyAct.None ? 0f : Mathf.SmoothStep(0f, 1f, Math.Clamp(g.ActAmount, 0f, 1f));
-        pitch += act * g.Act switch { BodyAct.Cower => 0.55f, BodyAct.Grieve => 0.45f, BodyAct.Taunt => -0.22f, BodyAct.Startle => -0.28f, BodyAct.Warn => -0.08f, BodyAct.HandsUp => -0.06f, BodyAct.Celebrate => -0.1f, BodyAct.Present => 0.1f, _ => 0f };
+        pitch += act * g.Act switch { BodyAct.Cower => 0.55f, BodyAct.Grieve => 0.45f, BodyAct.Taunt => -0.22f, BodyAct.Startle => -0.28f, BodyAct.Warn => -0.08f, BodyAct.HandsUp => -0.06f, BodyAct.Celebrate => -0.1f, BodyAct.Present => 0.1f, BodyAct.Thanks => 0.3f, BodyAct.Greet when g.Style == 2 => 0.22f, _ => 0f };
         float roll = -sway * 1.2f + staggerSide * 2.2f;
         float twist = moving * (0.1f + 0.1f * run) * MathF.Sin(cycle);
         if (husk)
@@ -156,6 +195,7 @@ public sealed class HumanRig : Rig
         }
         Basis torso = turn * new Basis(Vector3.Up, twist) * new Basis(Vector3.Right, -pitch) * new Basis(Vector3.Back, roll);
         Pose[_body] = new Transform3D(torso, hip);
+        PoseTail(g, hip, torso, cycle, moving, jerk);
 
         // Legs: a foot on the ground moves back under the body at walking speed, one in the air comes through high.
         float duty = Mathf.Lerp(0.62f, 0.4f, run);
@@ -303,6 +343,9 @@ public sealed class HumanRig : Rig
             case BodyAct.Fidget: return right && MathF.Sin(t * 0.4f) > 0.2f ? neck + torso.Z * 0.06f + out_ * 0.12f : hip + out_ * 0.2f + ahead * 0.02f;
             case BodyAct.Taunt: return shoulder + (out_ * 0.85f + up * (0.2f + 0.6f * MathF.Max(0f, MathF.Sin(t * 5f + i * 3f))) + ahead * 0.2f).Normalized() * arm * 0.97f;
             case BodyAct.Present: return right ? shoulder + (toward * 0.6f + out_ * 0.4f).Normalized() * arm * 0.9f + Vector3.Down * 0.15f : rest;
+            case BodyAct.Thanks: return right ? chest + ahead * 0.16f + torso.X * -0.04f + up * 0.02f : rest;
+            case BodyAct.Greet when g.Style == 1: return right ? shoulder + (up * 0.75f + ahead * 0.45f + out_ * 0.2f).Normalized() * arm * 0.95f : rest;
+            case BodyAct.Greet when g.Style == 2: return right ? chest + ahead * 0.16f + torso.X * -0.04f : rest;
             case BodyAct.Greet: return right ? shoulder + (up * 0.85f + out_ * (0.15f + 0.55f * (0.5f + 0.5f * MathF.Sin(t * 6f)))).Normalized() * arm * 0.98f : rest;
             case BodyAct.Startle: return shoulder + (up * 0.55f + out_ * 0.7f + ahead * 0.25f).Normalized() * arm * 0.9f;
             case BodyAct.Play: return shoulder + out_ * arm * (0.45f + 0.35f * MathF.Sin(t * 4f + i * 3.1f)) + up * (0.05f + 0.3f * MathF.Max(0f, MathF.Sin(t * 4f + i * 3.1f))) + ahead * 0.2f;
