@@ -349,7 +349,7 @@ public partial class Visor : CanvasLayer
         var roll = new Random(beat * 7919 + text.Length);
         if (roll.NextDouble() > wrong * 0.22) return text;
         char[] c = text.ToCharArray();
-        int at = roll.Next(c.Length);
+        int at = c.Length - 1; // the last digit only, so it still reads as a heading
         if (char.IsDigit(c[at])) c[at] = (char)('0' + (c[at] - '0' + 3 + roll.Next(6)) % 10);
         return new string(c);
     }

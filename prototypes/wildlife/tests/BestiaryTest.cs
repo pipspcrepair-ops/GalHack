@@ -340,7 +340,7 @@ public partial class BestiaryTest : Node
         w.Coreward = 1f;
         WorldLife life = Bestiary.Roll(_data, w);
         Species husk = TallHusk(life);
-        int turned = 0, killed = 0, seized = 0, tries = 0;
+        int turned = 0, killed = 0, seized = 0, tries = 0, outOfReach = 0;
         for (int t = 0; t < 6; t++)
         {
             var sim = new WildSim(_data, new Terrain((x, z) => 0f, 120f), new NavGrid(120f, 3f));
@@ -348,6 +348,7 @@ public partial class BestiaryTest : Node
             sim.Turned += _ => turned++;
             bool person = t % 2 == 0;
             Species prey = person ? life.People.Person(Seed(), PersonRole.Farmer) : life.Moving.Where(s => !s.Mechanical && s.Figure == null && !s.Flies && s.Rig == RigKind.Legged).OrderBy(s => s.BodyHeight).First(); // one whose head it can reach
+            if (!person && prey.BodyHeight > husk.Figure.Height + Seizing.ReachAbove) { GD.Print($"    (this world's smallest walker stands {prey.BodyHeight:F2} m: out of a Husk's reach, so not tried)"); outOfReach++; continue; }
             Creature h = sim.Spawn(husk, new Vector3(0f, 0f, 0f));
             Creature v = sim.Spawn(prey, new Vector3(1.6f, 0f, 0f));
             v.Health = v.Stats.MaxHealth = 10000f; // only the seize may end it
@@ -369,7 +370,7 @@ public partial class BestiaryTest : Node
         }
         Check(seized > 0, $"Husks seize the living ({seized} holds)");
         Check(turned > 0 && turned <= 3, $"{turned} seized people turned");
-        Check(killed > 0, $"{killed} seized animals died and none turned");
+        Check(killed > 0 || outOfReach == 3, $"{killed} seized animals died and none turned");
     }
 
     /// <summary>A Husk of this world tall enough to seize a head.</summary>

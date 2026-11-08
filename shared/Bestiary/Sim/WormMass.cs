@@ -159,16 +159,30 @@ public static class WormMasses
             Transform3D t;
             if (kind == 0)
             {
-                // A forearm reaching out of it, the hand open at the end: half of it still in there.
+                // A forearm reaching out of it, the hand at the end: the elbow still in there.
                 float fore = f.ForearmOf(name[3] - '0');
                 Basis b = Geo.AlongY(out_).Rotated(out_, rng.Range(0f, MathF.Tau));
-                t = new Transform3D(b, surface - out_ * fore * 0.5f);
+                t = new Transform3D(b, surface - out_ * fore * 0.25f);
             }
             else if (kind == 1)
             {
-                // A foot, toes out, the ankle sunk in the flesh.
-                Basis b = Basis.LookingAt(out_ + Vector3.Up * 0.3f, Vector3.Up).Rotated(out_, rng.Range(-0.6f, 0.6f));
-                t = new Transform3D(b, surface - out_ * 0.05f);
+                // A shin kicked up out of it, the foot on the end: the knee still in there.
+                Piece shin = body.Pieces.Find(q => q.Name == $"leg{name[3]}l");
+                // (The shin runs knee to ankle along its +Y; the foot stands up its own +Y toward the knee.)
+                float turn = rng.Range(0f, MathF.Tau);
+                Basis b = Geo.AlongY(-out_).Rotated(out_, turn);
+                Vector3 ankle = surface + out_ * f.LowerLeg * 0.6f;
+                if (shin != null)
+                {
+                    var along = new Transform3D(Geo.AlongY(out_).Rotated(out_, turn), ankle - out_ * f.LowerLeg);
+                    foreach (Prim q in shin.Prims)
+                    {
+                        Prim c = q;
+                        c.Local = along * q.Local;
+                        p.Prims.Add(c);
+                    }
+                }
+                t = new Transform3D(b, ankle);
             }
             else
             {
@@ -176,7 +190,7 @@ public static class WormMasses
                 float R = f.HeadRadius;
                 Vector3 centre = new(0f, f.Neck + R * 0.92f, 0f);
                 Basis b = Basis.LookingAt(out_, MathF.Abs(out_.Y) > 0.9f ? Vector3.Forward : Vector3.Up).Rotated(out_, rng.Range(-0.9f, 0.9f));
-                t = new Transform3D(b, surface - out_ * R * 0.45f - b * centre);
+                t = new Transform3D(b, surface - out_ * R * 0.15f - b * centre);
             }
             foreach (Prim q in part.Prims)
             {
