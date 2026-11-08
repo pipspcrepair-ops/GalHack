@@ -167,6 +167,9 @@ public static class Mesher
     /// solid where enough stands in them, their mean colour, merged flat. It keeps the silhouette and the
     /// colours of the walls and little else. In the grid's own units.
     /// </summary>
+    /// <summary>A window's tone from far off: a pale grey-blue, the sky in the glass.</summary>
+    static readonly Rgb Window = new(0x8e, 0x9a, 0xa6);
+
     public static ChunkMesh Coarse(BlockGrid g, CellMask occupied, int step = 4, int minimum = 7)
     {
         Int3 size = new((g.Size.X + step - 1) / step, (g.Size.Y + step - 1) / step, (g.Size.Z + step - 1) / step);
@@ -179,9 +182,12 @@ public static class Mesher
             Int3 l = c - g.Min;
             int i = ((l.Y / step) * size.Z + l.Z / step) * size.X + l.X / step;
             count[i] += weight;
-            sum[i * 3] += b.Color.R * weight;
-            sum[i * 3 + 1] += b.Color.G * weight;
-            sum[i * 3 + 2] += b.Color.B * weight;
+            // From far off a window shows the sky it mirrors, not its dark glass: averaged as glass, a tower of
+            // windows was a dark navy box on the skyline.
+            Rgb col = b.Role == Role.Window ? Window : b.Color;
+            sum[i * 3] += col.R * weight;
+            sum[i * 3 + 1] += col.G * weight;
+            sum[i * 3 + 2] += col.B * weight;
         }
         var coarse = new BlockGrid(new Int3(0, 0, 0), size);
         for (int y = 0, i = 0; y < size.Y; y++)

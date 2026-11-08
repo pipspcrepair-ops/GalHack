@@ -67,6 +67,8 @@ public sealed class CityPlan
     /// <summary>Tests and proof frames: plan a city on any lived-in world, whatever its layers; and, if set, how far it fell.</summary>
     public static bool Force;
     public static float? ForceFall;
+    /// <summary>Proof frames: build its waterfronts as a world of this tech would.</summary>
+    public static TechLevel? ForceTech;
 
     public double CenterX, CenterZ, Radius;
     /// <summary>Which way from the middle the most water lies (a unit vector; zero with no water near).</summary>
@@ -229,7 +231,7 @@ public sealed class CityPlan
         if (city.Streets.Count == 0) { city.Why = "no street would lie"; return city; }
 
         // ---- the waterfronts: a highway along the main bank and promenades along the rest, each on a wall over the water.
-        Waterfronts(city, net, cx, cz, radius, WetAt, (x, z) => G(x, z).Height, Dist, w, h, profile.Before, seed);
+        Waterfronts(city, net, cx, cz, radius, WetAt, (x, z) => G(x, z).Height, Dist, w, h, ForceTech ?? profile.Before, seed);
         // The city joined to the old network: from the far ends of its two longest avenues out to the nearest road.
         var own = new HashSet<InfraRoute>(city.Streets);
         foreach (Seawall s in city.Waterfront) own.Add(s.Road);

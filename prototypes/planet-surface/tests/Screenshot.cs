@@ -76,6 +76,7 @@ public partial class Screenshot : Node
         if (cityView != null) PlanetSurface.Infra.CityPlan.Force = true;
         if (_args.ContainsKey("cityfall")) PlanetSurface.Infra.CityPlan.ForceFall = (float)Num("cityfall", 0.5);
         PlanetSurface.Infra.MadeGrounds.Off = _args.GetValueOrDefault("made") == "0";
+        if (_args.TryGetValue("citytech", out string ct)) PlanetSurface.Infra.CityPlan.ForceTech = Enum.Parse<PoiGenerator.Gen.TechLevel>(ct, true);
         PlanetSurface.Infra.InfraNetwork.NoLanes = _args.GetValueOrDefault("lanes") == "0";
         return new ViewSpec(planet, m =>
         {
@@ -125,6 +126,27 @@ public partial class Screenshot : Node
         GD.Print($"city at {city.CenterX:F0},{city.CenterZ:F0} radius {city.Radius:F0}, {lots.Count} buildings; tallest {tall.Lot.Storeys} storeys at {tall.Crossover.X:F0},{tall.Crossover.Z:F0}; " +
                  $"districts {string.Join(", ", city.Districts.Select(d => $"{d.Key} {d.Value}"))}; kinds {string.Join(", ", lots.GroupBy(l => l.Kind).Select(g => $"{g.Key} {g.Count()}"))}; " +
                  $"{lots.Count(l => l.Lot.Lean)} leaning, {lots.Count(l => l.Lot.Toppled)} toppled, {lots.Count(l => l.Site.Instance.State == PoiGenerator.Gen.PoiState.Active)} lit; bank {(city.Bank != null ? "yes" : "no")}, {city.Bridges.Count} bridges, station {(city.Tracks != null ? "yes" : "no")}");
+        if (_args.ContainsKey("scan"))
+            foreach (var l in lots.Where(l => l.Lot.Storeys >= 10))
+            {
+                double mx = (l.X0 + l.X1) / 2 - 10698.4, mz = (l.Z0 + l.Z1) / 2 - 3072.4;
+                double ang = Math.Atan2(mx, -mz) * 180 / Math.PI;
+                if (Math.Sqrt(mx * mx + mz * mz) < 450) GD.Print($"near: {l.Kind} storeys {l.Lot.Storeys} lean {l.Lot.Lean} toppled {l.Lot.Toppled} style {l.Lot.Style % 4} size {l.Lot.W}x{l.Lot.D} front {l.Front} at {mx:F0},{mz:F0} heading {ang:F0} blocks {l.Site.Instance.Blocks.Size}");
+            }
+        if (_args.ContainsKey("scan"))
+            foreach (var l in lots)
+            {
+                // A thin column standing high over the rest of a building: the storeys where little stands.
+                var g = l.Site.Instance.Blocks;
+                var counts = new int[g.Size.Y];
+                foreach (var (cell, b) in g.Blocks()) if (PoiGenerator.Gen.BlockInfo.Collides(b.Type)) counts[cell.Y - g.Min.Y]++;
+                int top = counts.Length - 1;
+                while (top > 0 && counts[top] == 0) top--;
+                int body = counts.OrderByDescending(n => n).Skip(counts.Length / 4).FirstOrDefault();
+                int thin = 0;
+                for (int y = top; y > 0 && counts[y] < body * 0.3; y--) thin++;
+                if (thin >= 5) GD.Print($"scan: {l.Kind} style {l.Lot.Style % 4} storeys {l.Lot.Storeys} lean {l.Lot.Lean} toppled {l.Lot.Toppled} fall {l.Lot.Fall:F2}: {thin} thin layers on top ({counts[top]} blocks at the top, {body} in a floor) at {(l.X0 + l.X1) / 2:F0},{(l.Z0 + l.Z1) / 2:F0}");
+            }
         // Toward the water from the middle, or the heading asked for.
         Vector2 toWater = new((float)city.WaterX, (float)city.WaterZ);
         if (_args.ContainsKey("heading")) toWater = new Vector2(Mathf.Sin(Mathf.DegToRad((float)Num("heading", 0))), -Mathf.Cos(Mathf.DegToRad((float)Num("heading", 0))));
@@ -176,6 +198,7 @@ public partial class Screenshot : Node
             var at = new Vector3((float)(fallen.X0 + fallen.X1) / 2, fallen.Pad + 3f * fallen.Lot.Storeys, (float)(fallen.Z0 + fallen.Z1) / 2);
             Vector2 side = new Vector2(-toWater.Y, toWater.X);
             shots.Add(Toward("fallen", new Vector3(at.X + side.X * 140, fallen.Pad + 40, at.Z + side.Y * 140), at));
+            GD.Print($"fallen: {fallen.Kind} storeys {fallen.Lot.Storeys} lean {fallen.Lot.Lean} at {at}, eye {new Vector3(at.X + side.X * 140, fallen.Pad + 40, at.Z + side.Y * 140)}");
         }
         // The waterfront from the water: its wall, the road on top, the city behind.
         if (city.Waterfront.FirstOrDefault() is { } front && front.Road.Count > 8)
@@ -268,8 +291,41 @@ public partial class Screenshot : Node
     /// The ground round a place (--ground=town, works or farm): the nearest one of that kind to the landing site, from
     /// the air (125 m out, 110 m up) and at a person's height 26 m out from its way in, looking at it.
     /// </summary>
+    /// <summary>Steps in the ground beside the roads (--tears=1): where the surface jumps more than a metre and a half in half a metre, within 24 m of a road's deck, listed with what is stamped there.</summary>
+    void TearScan(Main m)
+    {
+        var w = m.World;
+        int steps = 0, looked = 0;
+        foreach (var r in w.Infra.Routes)
+            for (int i = 1; i + 1 < r.Count; i += 2)
+            {
+                if (r.Span[i] != GalHack.Terrain.RoadSpan.Ground) continue;
+                double dx = r.X[i + 1] - r.X[i - 1], dz = r.Z[i + 1] - r.Z[i - 1], l = Math.Sqrt(dx * dx + dz * dz);
+                if (l < 1e-6) continue;
+                double nx = -dz / l, nz = dx / l;
+                foreach (int side in new[] { -1, 1 })
+                    for (double o = r.HalfWidth - 1; o < r.HalfWidth + 24; o += 0.5)
+                    {
+                        double ax = r.X[i] + nx * side * o, az = r.Z[i] + nz * side * o, bx = ax + nx * side * 0.5, bz = az + nz * side * 0.5;
+                        float ha = w.GroundHeight(Mathx.WrapX(ax, w.Width), Mathx.Wrap(az, w.Height)), hb = w.GroundHeight(Mathx.WrapX(bx, w.Width), Mathx.Wrap(bz, w.Height));
+                        looked++;
+                        if (Math.Abs(ha - hb) < 1.5f) continue;
+                        if (w.Source.WaterSurfaceAt(Mathx.WrapX(bx, w.Width), Mathx.Wrap(bz, w.Height), out _)) continue;
+                        steps++;
+                        if (steps <= 12)
+                        {
+                            var near = w.Source.StampsAt(Mathx.WrapX(bx, w.Width), Mathx.Wrap(bz, w.Height)).Select(k => w.Source.Stamps[k]).Where(t => t.Weight(Mathx.WrapX(bx, w.Width), Mathx.Wrap(bz, w.Height)) > 0f).Select(t => $"{t.Shape} {t.Name}");
+                            GD.Print($"tear: {ha:F1} to {hb:F1} m at {bx:F1},{bz:F1}, {o:F1} m off {r.Kind} ({r.HalfWidth:F1} wide, deck {r.Y[i]:F1}): {string.Join("; ", near)}");
+                        }
+                        break;
+                    }
+            }
+        GD.Print($"tears: {steps} steps over 1.5 m in half a metre beside the roads, of {looked} looked at");
+    }
+
     List<Shot> GroundShots(Main m, string which)
     {
+        if (_args.ContainsKey("tears")) TearScan(m);
         var w = m.World;
         double lx = w.Landing.X, lz = w.Landing.Y;
         double Away(double x, double z) => Math.Sqrt(Math.Pow(Mathx.WrapDelta(x - lx, w.Width), 2) + Math.Pow(Mathx.WrapDelta(z - lz, w.Height), 2));
