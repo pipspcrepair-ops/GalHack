@@ -472,7 +472,7 @@ public sealed class SurvivalTool
             foreach (var (solid, _) in _zone.Streamer.SolidsNear(plant, 2.5f))
                 if (solid.Id == id && solid.IsTrunk) { height = MathF.Max(2f, solid.Extents.Y * 2f); radius = solid.Extents.X; }
             Color bark = species == null ? new Color(0.36f, 0.25f, 0.16f) : new Color(species.Bark.R, species.Bark.G, species.Bark.B);
-            Trees.Fell(plant, plant - _survivor.WorldEye(), height, radius, leaf, crown: true, bark, _zone.Streamer.MeshOf(sighting), sighting.Turn, custom: sighting.Custom);
+            Trees.Fell(plant, plant - _survivor.WorldEye(), height, radius, leaf, crown: true, bark, _zone.Streamer.MeshOf(sighting), sighting.Turn, custom: sighting.OwnTint);
             Trees.Leaves(plant + Vector3.Up * height, leaf, 30, 1.8f);
             Sfx?.Play(Sfx.Sound.Dig, plant, 0.6f, -2f);
         }

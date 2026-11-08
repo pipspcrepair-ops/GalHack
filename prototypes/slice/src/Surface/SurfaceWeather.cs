@@ -608,15 +608,19 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
         _felledMesh = null;
         _felledTurn = Basis.Identity;
         _felledTint = default;
+        // A plant is in the scatter twice, near and far: take its near self (its own variant, tint and glow);
+        // the far stand-in only if the near one isn't built here, and then as its full near mesh.
+        bool near = false;
         foreach (TerrainStreamer.PlantSighting s in Zone.Streamer.FloraNear(root, 4f))
-            if (s.Id == tree.Id)
-            {
-                _felledMesh = Zone.Streamer.MeshOf(s);
-                _felledTurn = s.Turn;
-                _felledTint = s.Custom;
-                root = s.Root;
-                break;
-            }
+        {
+            if (s.Id != tree.Id || (near && s.Variant < 0)) continue;
+            _felledMesh = Zone.Streamer.MeshOf(s);
+            _felledTurn = s.Turn;
+            _felledTint = s.OwnTint;
+            root = s.Root;
+            near = s.Variant >= 0;
+            if (near) break;
+        }
         Aabb stood = _felledMesh != null ? new Transform3D(_felledTurn, Vector3.Zero) * _felledMesh.GetAabb() : new Aabb(-tree.Extents, tree.Extents * 2f);
         _felledBounds = stood.Size;
         // Gone in the same tick its stand-in appears: never a gap, never two.

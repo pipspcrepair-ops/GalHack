@@ -978,12 +978,19 @@ public partial class TerrainStreamer : Node3D
         }
     }
 
-    /// <summary>The mesh a plant is drawn with standing: its species' variant, or its kind's where the herbarium has none.</summary>
-    public Mesh MeshOf(in PlantSighting s) => PlantMesh(s.Plant, s.Variant) ?? (_floraMeshes != null && _floraMeshes.TryGetValue(s.Kind, out Mesh m) ? m : null);
+    /// <summary>
+    /// The full near mesh of a plant, whatever its distance: its species' near variant (a far sighting, seen
+    /// only as its far stand-in, takes its first), or its kind's where the herbarium has none. What a plant
+    /// is when it is close enough to touch, felled or thrown.
+    /// </summary>
+    public Mesh MeshOf(in PlantSighting s) => PlantMesh(s.Plant, Math.Max(0, s.Variant)) ?? (_floraMeshes != null && _floraMeshes.TryGetValue(s.Kind, out Mesh m) ? m : null);
 
     /// <summary>One plant seen in the scatter: its kind, where it roots, its scale, id, species and mesh, its turn, and its instance's own tint and glow.</summary>
     public readonly record struct PlantSighting(Flora Kind, Vector3 Root, float Scale, long Id, int Plant, int Variant, Basis Turn, Color Custom = default)
     {
+        /// <summary>Its own tint and glow as it stands near (a far copy's glow carries its shade marker, +2).</summary>
+        public Color OwnTint => Variant < 0 && Custom.A >= 2f ? new Color(Custom.R, Custom.G, Custom.B, Custom.A - 2f) : Custom;
+
         public void Deconstruct(out Flora kind, out Vector3 root, out float scale, out long id)
         {
             kind = Kind;
