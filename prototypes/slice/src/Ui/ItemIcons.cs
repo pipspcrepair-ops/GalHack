@@ -45,6 +45,9 @@ public partial class ItemIcons : Node
         _blocks = blocks;
     }
 
+    /// <summary>An icon that has been rendered, or null (tests and the icon sheet).</summary>
+    public Texture2D Rendered(string itemId) => itemId != null && _done.TryGetValue(itemId, out Texture2D t) ? t : null;
+
     /// <summary>The icon of an item once it is rendered, else null (and it is queued to be).</summary>
     public Texture2D Get(ItemDef item)
     {

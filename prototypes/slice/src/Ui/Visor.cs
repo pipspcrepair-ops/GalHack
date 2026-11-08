@@ -427,10 +427,22 @@ public partial class Visor : CanvasLayer
             HandKind.Block or HandKind.Core or HandKind.Device or HandKind.Blueprint => Game.Builder.Verdict,
             HandKind.Consumable => "click to use",
             HandKind.Vehicle => "click to set it down",
+            HandKind.Weapon => WeaponLabel(),
             _ => "",
         };
         if (!string.IsNullOrEmpty(label))
             _hud.TextIn(UiTheme.Label, (int)(18 * s), new Rect2(0, c.Y + 18 * s, _hud.Size.X, 24 * s), label, C.Text, HorizontalAlignment.Center);
+    }
+
+    /// <summary>Under the crosshair with a weapon in hand: reloading, out of ammo, or the charge stage reached.</summary>
+    string WeaponLabel()
+    {
+        GalHack.Arms.Gun gun = Game.Arms?.InHand;
+        if (gun == null) return "";
+        if (gun.Reloading) return "RELOADING";
+        if (gun.Loaded == 0) return gun.Reserve > 0 ? "[R] RELOAD" : "NO AMMO";
+        if (gun.Charging) return gun.Stage == 0 ? "CHARGING" : $"STAGE {gun.Stage}";
+        return "";
     }
 
     /// <summary>What the toolbar's slot shows: a label, a count and the item's tone.</summary>
@@ -474,6 +486,13 @@ public partial class Visor : CanvasLayer
                 };
             case HandKind.Vehicle:
                 return "HOVER BIKE · click to set it down";
+            case HandKind.Weapon when Game.Zone.Data.Arms.OfItem(pack.HandItem) is GalHack.Arms.WeaponDef w:
+                // The gun's name and mode, then what's in it and what's left to load.
+                GalHack.Arms.Gun held = Game.Arms?.InHand?.Base == w ? Game.Arms.InHand : null;
+                string mode = held != null && held.Def.Mode.Length > 0 ? $" · {held.Def.Mode}" : "";
+                string ammo = items.TryGet((held?.Def ?? w).Ammo, out var ammoItem) ? ammoItem.ShortName : "";
+                string count = held == null ? "" : w.Ammo == w.Item ? $" · {pack[w.Item]} LEFT" : $" · {held.Loaded}/{held.Def.Magazine} · {held.Reserve} {ammo}";
+                return $"{bar}{w.Name.ToUpperInvariant()}{mode}{count}";
             case HandKind.Block when pack.HandItem is string id && items.TryGet(id, out var item):
                 bool tiny = Game.Builder.TargetVessel != null && Game.Builder.TargetVessel.Structure.Grid.Size == GalHack.Structures.GridSize.Small;
                 string shape = item.Family == GalHack.Items.BlockFamily.Armour ? $", {Game.Builder.Shape.Name}" : item.IsUniversalDeco ? $", {Game.Builder.CurrentDeco(tiny)?.Name ?? "no piece"}" : "";
@@ -496,6 +515,7 @@ public partial class Visor : CanvasLayer
         string keys = hand switch
         {
             HandKind.Tool => Game.Tool.Mode == ToolMode.Deconstruct ? "[Q] MODE  [LMB] TAKE DOWN   " : "[Q] MODE   ",
+            HandKind.Weapon => Game.Zone.Data.Arms.OfItem(Game.Pack.HandItem)?.Modes.Count > 1 ? "[R] RELOAD  [Q] MODE   " : "[R] RELOAD   ",
             HandKind.Block when Game.Pack.HandItem == GalHack.Items.DecoCatalogue.UniversalItem => "[WHEEL] PIECE  [G] THEME  [R] TURN  [RMB] TAKE DOWN   ",
             HandKind.Block => $"[WHEEL] SHAPE  [R/T] TURN  [X] MIRROR{(Game.Builder.MirrorX ? " ON" : "")}  [RMB] TAKE DOWN   ",
             _ => "",

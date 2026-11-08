@@ -6,7 +6,7 @@ using GalHack.Items;
 namespace Slice.Items;
 
 /// <summary>What the selected toolbar slot puts in your hands.</summary>
-public enum HandKind { Empty, Tool, Block, Core, Device, Consumable, Blueprint, Vehicle, Other }
+public enum HandKind { Empty, Tool, Block, Core, Device, Consumable, Blueprint, Vehicle, Other, Weapon }
 
 /// <summary>Which toolbar the number keys use: your own, or the remote one (items left in cores' storage).</summary>
 public enum BarSource { Personal, Remote }
@@ -257,6 +257,7 @@ public sealed class PlayerInventory
             string id = HandItem;
             if (id == null || !_items.TryGet(id, out ItemDef item)) return HandKind.Empty;
             if (ToolItems.Contains(id)) return HandKind.Tool;
+            if (item.Category == ItemCategory.Weapon) return HandKind.Weapon;
             if (id == "hover-bike") return HandKind.Vehicle;
             if (CoreItems.Contains(id)) return HandKind.Core;
             if (item.IsBlock) return HandKind.Block;

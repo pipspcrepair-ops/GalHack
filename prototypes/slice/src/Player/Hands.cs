@@ -14,13 +14,25 @@ public partial class Hands : Node3D
 {
     public Game.Game Game;
 
-    Node3D _rig, _tip;
+    Node3D _rig, _tip, _toolRoot, _gunRoot;
     ShaderMaterial _lens, _lensRound, _coreMat, _topCore;
     int _shotsSeen;
-    float _kick, _bob, _strength = 1f, _camKick, _shake, _shakeTime;
+    float _kick, _bob, _strength = 1f, _camKick, _shake, _shakeTime, _reloadDip;
+    Color _tint;
+
+    /// <summary>Each weapon's model, built the first time it is in hand (shared/Arms' generated look).</summary>
+    readonly System.Collections.Generic.Dictionary<string, Slice.Arms.GunModel.Built> _guns = new();
+    Slice.Arms.GunModel.Built _gun;
+
+    /// <summary>The weapon model in hand now, or null (tests and screenshots).</summary>
+    public Slice.Arms.GunModel.Built Gun => _gunRoot != null && _gunRoot.Visible ? _gun : null;
+
+    /// <summary>Where the gun model sits in the hand: its grip's top in the glove.</summary>
+    static readonly Vector3 GripAt = new(0.19f, -0.175f, -0.36f);
+    const float GunScale = 0.62f;
 
     /// <summary>Where the barrel's tip is now, in the world, or null when the hands aren't showing: flashes and bolts begin here, riding the hand and its recoil.</summary>
-    public Vector3? BarrelTip => Visible && _tip != null ? _tip.GlobalPosition : null;
+    public Vector3? BarrelTip => !Visible ? null : Gun != null ? _gun.Muzzle.GlobalPosition : _tip?.GlobalPosition;
 
     /// <summary>The camera's tilt now, in radians (zero at rest): for tests.</summary>
     public float CameraTilt { get; private set; }
@@ -41,6 +53,13 @@ public partial class Hands : Node3D
         _strength = feel.Recoil;
         _camKick = feel.CameraKick;
         if (feel.Shake > 0f) Shake(feel.Shake);
+    }
+
+    /// <summary>The same, with a weapon's own camera kick in degrees.</summary>
+    public void Recoil(GunFeel feel, float cameraKick)
+    {
+        Recoil(feel);
+        _camKick = cameraKick;
     }
 
     /// <summary>A blow from somewhere (world frame): the view is knocked away from it, and rights itself.</summary>
@@ -67,6 +86,7 @@ public partial class Hands : Node3D
     {
         _rig = new Node3D { Name = "Rig", Scale = Vector3.One * 0.75f, Position = new Vector3(0.05f, -0.03f, 0f) };
         AddChild(_rig);
+        _into = _rig;
         var suit = new StandardMaterial3D { AlbedoColor = new Color("e85d04"), Roughness = 0.7f };
         var glove = new StandardMaterial3D { AlbedoColor = new Color("2b2d42"), Roughness = 0.8f };
         var metal = new StandardMaterial3D { AlbedoColor = new Color("ece3c8"), Roughness = 0.4f, Metallic = 0.4f };
@@ -74,6 +94,13 @@ public partial class Hands : Node3D
         // Forearm and glove.
         Add(new CylinderMesh { TopRadius = 0.045f, BottomRadius = 0.055f, Height = 0.32f }, suit, new Vector3(0.21f, -0.24f, -0.18f), new Vector3(-75, 8, 0));
         Add(new BoxMesh { Size = new Vector3(0.09f, 0.07f, 0.1f) }, glove, new Vector3(0.185f, -0.19f, -0.33f), Vector3.Zero);
+        // The tool's parts hang off their own node, so a weapon can take its place in the glove.
+        _toolRoot = new Node3D { Name = "Tool" };
+        _rig.AddChild(_toolRoot);
+        _into = _toolRoot;
+        // Guns are modelled at full size; in the hand they sit a little smaller, so the view stays open.
+        _gunRoot = new Node3D { Name = "Gun", Position = GripAt, Scale = Vector3.One * GunScale, Visible = false };
+        _rig.AddChild(_gunRoot);
         // The tool: body, grip, barrel, emitter ring; each a worn, mottled finish (HeldFinish), with
         // a few proud plates and a muzzle shroud for panel lines. The glowing panel stays clean.
         Color hull = new("d8cfb6"), plate = new("c4baa0"), grip = new("2a3550");
@@ -105,14 +132,44 @@ public partial class Hands : Node3D
         Worn(new BoxMesh { Size = new Vector3(0.058f, 0.058f, 0.05f) }, plate, new Vector3(0.17f, -0.145f, -0.52f), Vector3.Zero, 0.5f, 0.35f, 8f);
         // The barrel's tip (the barrel is 0.14 long, centred at z -0.48): where flashes and bolts begin.
         _tip = new Node3D { Name = "BarrelTip", Position = new Vector3(0.17f, -0.145f, -0.56f) };
-        _rig.AddChild(_tip);
-        foreach (Node n in _rig.GetChildren())
-            if (n is MeshInstance3D m) m.CastShadow = GeometryInstance3D.ShadowCastingSetting.Off;
+        _toolRoot.AddChild(_tip);
+        foreach (Node parent in new Node[] { _rig, _toolRoot })
+            foreach (Node n in parent.GetChildren())
+                if (n is MeshInstance3D m) m.CastShadow = GeometryInstance3D.ShadowCastingSetting.Off;
         Visible = false;
     }
 
+    Node3D _into;
+
     void Add(Mesh mesh, Material material, Vector3 at, Vector3 degrees) =>
-        _rig.AddChild(new MeshInstance3D { Mesh = mesh, MaterialOverride = material, Position = at, RotationDegrees = degrees });
+        _into.AddChild(new MeshInstance3D { Mesh = mesh, MaterialOverride = material, Position = at, RotationDegrees = degrees });
+
+    static readonly StringName Tint = "tint";
+
+    /// <summary>The weapon in hand shows in the glove: its model is built the first time, and its charge rings light by stage.</summary>
+    void ShowWeapon(GalHack.Arms.WeaponDef def, GalHack.Arms.Gun gun, float dt)
+    {
+        _toolRoot.Visible = def == null;
+        _gunRoot.Visible = def != null;
+        if (def == null) return;
+        if (!_guns.TryGetValue(def.Base.Id, out Slice.Arms.GunModel.Built built))
+        {
+            built = Slice.Arms.GunModel.Build(def.Base);
+            _gunRoot.AddChild(built.Root);
+            _guns[def.Base.Id] = built;
+        }
+        if (_gun != built)
+        {
+            foreach (var b in _guns.Values) b.Root.Visible = b == built;
+            _gun = built;
+        }
+        int stage = gun?.Stage ?? 0;
+        if (built.Rings.Count > 0) Slice.Arms.GunModel.LightRings(built, gun != null && gun.Charging ? Math.Max(1, stage) : 0);
+        // A reload dips the gun out of line and brings it back.
+        _reloadDip = Mathf.MoveToward(_reloadDip, gun != null && gun.Reloading ? 1f : 0f, dt * 5f);
+        _gunRoot.RotationDegrees = new Vector3(-28f * _reloadDip, 2.5f, 12f * _reloadDip);
+        _gunRoot.Position = GripAt + new Vector3(0f, -0.05f * _reloadDip, 0f);
+    }
 
     public override void _Process(double delta)
     {
@@ -131,11 +188,17 @@ public partial class Hands : Node3D
         TiltCamera();
         HandKind hand = g?.Pack?.Hand ?? HandKind.Empty;
         bool show = g?.Survivor != null && g.Survivor.Seated == null && !g.ThirdPerson && g.FixedCamera == null && !g.Suit.Dead
-                    && hand is HandKind.Tool or HandKind.Block or HandKind.Core or HandKind.Device or HandKind.Blueprint;
+                    && hand is HandKind.Tool or HandKind.Block or HandKind.Core or HandKind.Device or HandKind.Blueprint or HandKind.Weapon;
         Visible = show;
         if (!show) return;
+        GalHack.Arms.WeaponDef weapon = hand == HandKind.Weapon ? g.Zone.Data.Arms.OfItem(g.Pack.HandItem) : null;
+        ShowWeapon(weapon, weapon != null && g.Arms?.InHand?.Base == weapon.Base ? g.Arms.InHand : null, dt);
         Color tint = hand != HandKind.Tool ? new Color("ffb703") : g.Tool.Mode == ToolMode.Shoot ? new Color("ef233c") : new Color("2ec4b6");
-        foreach (ShaderMaterial lens in new[] { _lens, _lensRound, _coreMat, _topCore }) lens.SetShaderParameter("tint", tint);
+        if (weapon == null && tint != _tint)
+        {
+            _tint = tint;
+            foreach (ShaderMaterial lens in new[] { _lens, _lensRound, _coreMat, _topCore }) lens.SetShaderParameter(Tint, tint);
+        }
         float speed = g.Survivor.Body.OnFloor ? new Vector2(g.Survivor.Body.Velocity.X, g.Survivor.Body.Velocity.Z).Length() : 0f;
         _bob += dt * speed * 1.6f;
         float sway = MathF.Min(speed, 6f) / 6f;
