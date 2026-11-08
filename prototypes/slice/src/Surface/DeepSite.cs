@@ -291,10 +291,20 @@ public partial class DeepSite : Node3D
 
     readonly List<WormMassView> _massViews = new();
     Node3D _masses;
+    VeinView _veins;
+
+    /// <summary>Veins drawn (tests).</summary>
+    public int VeinsDrawn => _veins == null ? 0 : Sim.Veins.Count;
 
     /// <summary>Views of a den's worm masses (built a few at a time within the frame's budget), stirred every frame.</summary>
     void SyncMasses(float dt, Stopwatch clock)
     {
+        // The veins round them: one mesh for the whole place, made once.
+        if (_veins == null && Sim.Veins.Count > 0)
+        {
+            AddChild(_veins = new VeinView());
+            _veins.Build(Sim.Veins);
+        }
         if (Sim.Masses.Count == 0) return;
         if (_masses == null) AddChild(_masses = new Node3D { Name = "WormMasses" });
         while (_massViews.Count < Sim.Masses.Count && clock.Elapsed.TotalMilliseconds < BudgetMs)

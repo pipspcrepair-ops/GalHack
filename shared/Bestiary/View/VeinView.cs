@@ -26,6 +26,5 @@ public partial class VeinView : MeshInstance3D
         Mesh = Veins.Build(veins);
         MaterialOverride = Material;
         CastShadow = ShadowCastingSetting.Off;
-        VisibilityRangeEnd = 60f;
     }
 }
