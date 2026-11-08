@@ -48,8 +48,10 @@ public static class Sites
         c.ExitCells = new List<Int3>();
 
         int vaultCandidates = site.Parts.Count(p => p.Kind is "building" or "below" && p.Arg("vault") == "yes");
-        foreach (var part in site.Parts)
+        for (int pi = 0; pi < site.Parts.Count; pi++)
         {
+            // Ranges in the plan ("count 3..6") rolled by this spawn's seed.
+            var part = site.Parts[pi].Rolled(x.Rng.Fork("roll" + pi));
             switch (part.Kind)
             {
                 case "building": BuildingPart(x, part, vaultCandidates == 0); break;

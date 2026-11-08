@@ -85,6 +85,26 @@ public sealed class SitePart
     public int Int(string k, int d = 0) => Args.TryGetValue(k, out var v) ? int.Parse(v, CultureInfo.InvariantCulture) : d;
     public float Num(string k, float d = 0f) => Args.TryGetValue(k, out var v) ? float.Parse(v, CultureInfo.InvariantCulture) : d;
     public override string ToString() => $"{Kind} at {X},{Z}";
+
+    /// <summary>
+    /// This part as one spawn builds it: any whole-number argument written as a range ("count 3..6",
+    /// "len 50..90") rolled from the spawn's own seed, so no two spawns of a site lay it out alike.
+    /// </summary>
+    public SitePart Rolled(Rng rng)
+    {
+        if (!Args.Values.Any(v => v.Contains(".."))) return this;
+        var p = new SitePart { Kind = Kind, X = X, Z = Z, Rot = Rot };
+        foreach (var (k, v) in Args.OrderBy(kv => kv.Key, StringComparer.Ordinal))
+        {
+            int at = v.IndexOf("..", StringComparison.Ordinal);
+            if (at < 0) { p.Args[k] = v; continue; }
+            int n = rng.Range(int.Parse(v[..at], CultureInfo.InvariantCulture), int.Parse(v[(at + 2)..], CultureInfo.InvariantCulture) + 1);
+            if (k == "@x") p.X = n;
+            else if (k == "@z") p.Z = n;
+            else p.Args[k] = n.ToString(CultureInfo.InvariantCulture);
+        }
+        return p;
+    }
 }
 
 /// <summary>
@@ -268,7 +288,11 @@ public static class ArchParser
                 case "part":
                 {
                     // part <kind> <x> <z> [rot <n>] [key value]...
-                    var part = new SitePart { Kind = p[1], X = I(p[2]), Z = I(p[3]) };
+                    // (x or z written lo..hi stands where each spawn rolls it: kept as "@x"/"@z" until then.)
+                    int Lo(string s) => I(s.Contains("..") ? s[..s.IndexOf("..", StringComparison.Ordinal)] : s);
+                    var part = new SitePart { Kind = p[1], X = Lo(p[2]), Z = Lo(p[3]) };
+                    if (p[2].Contains("..")) part.Args["@x"] = p[2];
+                    if (p[3].Contains("..")) part.Args["@z"] = p[3];
                     for (int i = 4; i + 1 < p.Length; i += 2)
                     {
                         if (p[i] == "rot") part.Rot = I(p[i + 1]);
