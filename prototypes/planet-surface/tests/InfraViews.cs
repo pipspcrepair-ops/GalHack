@@ -65,6 +65,12 @@ public static class InfraViews
             return new(PlanetSpec.Roll(seed, arch, 0), m => default, 0.4, WeatherKind.Clear, Series: JunctionSeries);
         }
         // A road running into a place's made ground, and the made ground's edges against the land.
+        // Surfaces close up: a town footpath, an old street, a yard's edge against the land, a track's crown.
+        if (what == "surfaces")
+        {
+            PlanetSurface.Poi.PoiSiting.StartWorld = true;
+            return new(PlanetSpec.Roll(seed, arch, 0), m => default, 0.4, WeatherKind.Clear, Series: SurfaceSeries);
+        }
         if (what == "wayin")
         {
             PlanetSurface.Poi.PoiSiting.StartWorld = true;
@@ -564,6 +570,82 @@ public static class InfraViews
         {
             int i = street.Count / 2;
             Add("street-high", street.X[i] + 30, street.Z[i] + 30, street.Y[i] + 45f, street.X[i], street.Z[i], street.Y[i]);
+        }
+        // A street that stops in a turning bulb, from 30 m up beside it.
+        var bulb = w.Infra.Routes.Where(r => r.Kind != RouteKind.Rail && r.Count > 8 && (r.StartJoin == JunctionForm.DeadEnd || r.EndJoin == JunctionForm.DeadEnd))
+            .Select(r => (r, e: r.EndJoin == JunctionForm.DeadEnd ? r.Count - 1 : 0)).OrderBy(t => Away(t.r.X[t.e], t.r.Z[t.e])).FirstOrDefault();
+        if (bulb.r != null)
+        {
+            var (r, e) = bulb;
+            int o = e == 0 ? 6 : e - 6;
+            double dx = r.X[e] - r.X[o], dz = r.Z[e] - r.Z[o], l = Math.Max(1e-6, Math.Sqrt(dx * dx + dz * dz));
+            GD.Print($"JUNC: dead end at {r.X[e]:F0},{r.Z[e]:F0}");
+            Add("deadend-high", r.X[e] - dx / l * 30 + dz / l * 18, r.Z[e] - dz / l * 30 - dx / l * 18, r.Y[e] + 30f, r.X[e], r.Z[e], r.Y[e]);
+        }
+        // A bridge that passes over another way, from the side and above.
+        foreach (InfraStructure s in w.Infra.Structures.Where(s => s.Kind == RoadSpan.Bridge && !s.Route.Maglev).OrderBy(s => Away(s.Route.X[(s.First + s.Last) / 2], s.Route.Z[(s.First + s.Last) / 2])))
+        {
+            int over = -1;
+            for (int k = s.First; k <= s.Last && over < 0; k++)
+                if (w.Infra.Nearest(s.Route.X[k], s.Route.Z[k], 12, out _, out double d, new[] { s.Route }) is { } under && d < under.HalfWidth + 2) over = k;
+            if (over < 0) continue;
+            var r = s.Route;
+            int a = Math.Max(0, over - 2), b = Math.Min(r.Count - 1, over + 2);
+            double dx = r.X[b] - r.X[a], dz = r.Z[b] - r.Z[a], l = Math.Max(1e-6, Math.Sqrt(dx * dx + dz * dz));
+            GD.Print($"JUNC: a {r.Kind} bridge over a way at {r.X[over]:F0},{r.Z[over]:F0}, {s.Fallen.Count} stretches fallen");
+            Add("overpass-high", r.X[over] + dz / l * 40 - dx / l * 15, r.Z[over] - dx / l * 40 - dz / l * 15, r.Y[over] + 25f, r.X[over], r.Z[over], r.Y[over] - 3f);
+            break;
+        }
+        // The station stairs' head beside the main street, from 25 m up.
+        if (w.Infra.Town?.Under?.Scheme?.Stairs is { Count: > 0 } stairs)
+        {
+            var st = stairs[0];
+            GD.Print($"JUNC: station stairs at {st.X},{st.Z}");
+            Add("stairs-high", st.X + 22, st.Z + 14, st.TopY + 25f, st.X, st.Z, st.TopY);
+        }
+        return shots;
+    }
+
+    /// <summary>infra:surfaces: a town street's footpath from eye height, the old street from a little higher, a yard's unkerbed edge, and a track's crown.</summary>
+    static System.Collections.Generic.List<Screenshot.Shot> SurfaceSeries(Main m)
+    {
+        var w = m.World;
+        var shots = new System.Collections.Generic.List<Screenshot.Shot>();
+        float G(double x, double z) => w.GroundHeight(Mathx.WrapX(x, w.Width), Mathx.Wrap(z, w.Height));
+        double Away(double x, double z) => Math.Sqrt(Math.Pow(Mathx.WrapDelta(x - w.Landing.X, w.Width), 2) + Math.Pow(Mathx.WrapDelta(z - w.Landing.Y, w.Height), 2));
+        void Add(string name, double x, double z, float y, double tx, double tz, float ty)
+        {
+            var (p, h, pitch) = Look(w, x, z, y, tx, tz, ty);
+            shots.Add(new Screenshot.Shot(name, p, h, pitch));
+        }
+        InfraRoute street = w.Infra.Routes.Where(InfraNetwork.Kerbed).OrderByDescending(r => r.Wear).ThenByDescending(r => r.Length).FirstOrDefault();
+        if (street != null && street.Count > 16)
+        {
+            int i = street.Count / 2;
+            double dx = street.X[i + 2] - street.X[i - 2], dz = street.Z[i + 2] - street.Z[i - 2], l = Math.Max(1e-6, Math.Sqrt(dx * dx + dz * dz));
+            dx /= l; dz /= l;
+            double off = street.HalfWidth + 2.4;
+            double fx = street.X[i] - dz * off, fz = street.Z[i] + dx * off;
+            GD.Print($"SURF: footpath on a street worn {street.Wear:F2} at {fx:F0},{fz:F0}");
+            Add("pavement-close", fx - dx * 3, fz - dz * 3, G(fx, fz) + 1.6f, fx + dx * 6, fz + dz * 6, G(fx, fz));
+            Add("street-old", street.X[i] - dx * 10 + dz * 2, street.Z[i] - dz * 10 - dx * 2, street.Y[i] + 4f, street.X[i] + dx * 10, street.Z[i] + dz * 10, street.Y[i]);
+        }
+        GalHack.Terrain.GroundPatch yard = w.Infra.Grounds.Where(g => !g.Kerb && g.Cover is GalHack.Terrain.MadeCover.Concrete or GalHack.Terrain.MadeCover.Tarmac or GalHack.Terrain.MadeCover.Gravel or GalHack.Terrain.MadeCover.Dirt && g.HalfU > 6)
+            .OrderBy(g => Away(g.X, g.Z)).FirstOrDefault();
+        if (yard != null)
+        {
+            double ex = yard.X - yard.UZ * (yard.HalfV + 0.5), ez = yard.Z + yard.UX * (yard.HalfV + 0.5);
+            GD.Print($"SURF: a {yard.Cover} yard's edge at {ex:F0},{ez:F0}");
+            Add("yard-edge", ex - yard.UZ * 7 - yard.UX * 5, ez + yard.UX * 7 - yard.UZ * 5, G(ex, ez) + 3f, ex + yard.UX * 4, ez + yard.UZ * 4, G(ex, ez));
+        }
+        InfraRoute track = w.Infra.Routes.Where(r => r.Kind == RouteKind.Track && r.Count > 30).OrderBy(r => Away(r.X[r.Count / 2], r.Z[r.Count / 2])).FirstOrDefault();
+        if (track != null)
+        {
+            int i = track.Count / 2;
+            double dx = track.X[i + 2] - track.X[i - 2], dz = track.Z[i + 2] - track.Z[i - 2], l = Math.Max(1e-6, Math.Sqrt(dx * dx + dz * dz));
+            dx /= l; dz /= l;
+            GD.Print($"SURF: a track at {track.X[i]:F0},{track.Z[i]:F0}");
+            Add("track-crown", track.X[i] - dx * 5 + dz * 0.6, track.Z[i] - dz * 5 - dx * 0.6, G(track.X[i], track.Z[i]) + 1.7f, track.X[i] + dx * 8, track.Z[i] + dz * 8, track.Y[i]);
         }
         return shots;
     }

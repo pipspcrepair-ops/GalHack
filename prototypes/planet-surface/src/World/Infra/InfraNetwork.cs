@@ -189,6 +189,10 @@ public sealed class InfraNetwork
     public const double RailRadius = 260, RailRadiusLeast = 170;
     /// <summary>How far a deck may stand over the ground before it becomes a bridge.</summary>
     static float BridgeFill(RouteKind k) => k switch { RouteKind.Highway => 8f, RouteKind.Road => 7f, RouteKind.Track => 5f, _ => 8f };
+    /// <summary>How high a bridge's deck stands at its ends at least, m: lower, the bank is built up to it (an embankment).</summary>
+    public const float EmbankHeight = 3.5f;
+    /// <summary>How high a span must stand to have fallen, m (lower, it would only have settled onto the land).</summary>
+    public const float FallHeight = 6f;
     /// <summary>How deep a deck may cut before it becomes a tunnel (tracks never tunnel: they climb and wind).</summary>
     static float TunnelCut(RouteKind k) => k switch { RouteKind.Highway => 14f, RouteKind.Road => 13f, RouteKind.Track => float.MaxValue, _ => 11f };
     /// <summary>How far along the deck heights are averaged before the grade is held: highways and railways sweep, tracks follow the land.</summary>
@@ -1603,9 +1607,10 @@ public sealed class InfraNetwork
         // embankment); bridges and tunnels reach one stretch on to firm ground at each end.
         Clean(spans, RoadSpan.Tunnel, 3);
         Clean(spans, RoadSpan.Bridge, 3, water);
-        // A bridge reaches on until its deck meets the bank (an abutment, never a step); a tunnel until
-        // its mouth is about a bore high in the slope (a portal face).
-        Extend(spans, RoadSpan.Bridge, i => deck[i] - ground[i] > 1.2f && !water[i] || water[i]);
+        // A bridge reaches on until its deck stands an embankment's height over the ground (an abutment, the bank built
+        // up to it: never a deck lying low over the land, nor one that falls onto it); a tunnel until its mouth is about
+        // a bore high in the slope (a portal face).
+        Extend(spans, RoadSpan.Bridge, i => deck[i] - ground[i] > EmbankHeight && !water[i] || water[i]);
         Extend(spans, RoadSpan.Tunnel, i => ground[i] - deck[i] > 6.5f);
         // Past what its builders could span or bore, a route follows the land instead: down into the
         // valley and up the far side, over the ridge, steep where it must be (its deck eases onto the
@@ -1666,9 +1671,11 @@ public sealed class InfraNetwork
             if (s.Kind == RoadSpan.Bridge && !route.Kept && j - i >= 4)
             {
                 // A long-neglected bridge has lost a span or two: never at its ends, always a whole span between piers.
+                // (Only a span standing high: one a few metres up would only have settled onto the land, slabs on the ground.)
                 int spanLen = 5;   // stretches between piers (20 m)
                 for (int k = i + spanLen; k + spanLen < j; k += spanLen)
-                    if (rng.Chance(0.12f + 0.25f * route.Wear * (route.Tech == TechLevel.Low ? 1.5f : 1f)))
+                    if (rng.Chance(0.12f + 0.25f * route.Wear * (route.Tech == TechLevel.Low ? 1.5f : 1f))
+                        && Enumerable.Range(k, spanLen + 1).All(m => water[m] || deck[m] - ground[m] >= FallHeight))
                         for (int m = k; m < k + spanLen; m++) s.Fallen.Add(m);
             }
             if (s.Kind == RoadSpan.Tunnel && !route.Kept)
@@ -1824,6 +1831,21 @@ public sealed class InfraNetwork
     public static bool GoreSlip(InfraJunction j) => j.Form is JunctionForm.Slip or JunctionForm.Tee or JunctionForm.Crossroads && j.Through.Kind == RouteKind.Highway && !j.Through.Soil
         && j.Arms.All(a => !a.Route.Soil);
 
+    /// <summary>Every rounded kerb corner: at the junctions, where streets cross, round the rings and the turning bulbs (<see cref="RoadCorners"/>).</summary>
+    public List<RoadCorner> Corners = new();
+    /// <summary>Corners that couldn't be laid, and why, and where (tests).</summary>
+    public readonly Dictionary<string, int> CornerMisses = new();
+    public readonly List<(double X, double Z, string Why)> CornerMissedAt = new();
+
+    /// <summary>Plans the rounded corners once every way and junction is laid.</summary>
+    public void PlanCorners(Func<double, double, bool> onPlace = null)
+    {
+        CornerMisses.Clear();
+        CornerMissedAt.Clear();
+        Corners = RoadCorners.Plan(this, CornerMisses, onPlace, CornerMissedAt);
+        RoadCorners.Settle(Corners, _w, _h);
+    }
+
     /// <summary>Why junctions that might have been roundabouts weren't (tests and proof frames).</summary>
     public readonly Dictionary<string, int> RoundaboutMisses = new();
 
@@ -1912,6 +1934,9 @@ public sealed class InfraNetwork
             if (!clear(j.X, j.Z, radius + 10)) { Miss("no room"); continue; }
             if (!(ForceRoundabouts || rng.Chance(0.75f))) { Miss("chance"); continue; }
             if (Joins.Any(q => q != j && q.Form == JunctionForm.Roundabout && Dist((q.X, q.Z), (j.X, j.Z)) < 200)) { Miss("another near"); continue; }
+            // A ring is a circle round one junction: another junction on one of its ways close enough to run into it
+            // keeps this one a plain junction (two joined in one ring drew a stretched pill).
+            if (Joins.Any(q => q != j && q.Form != JunctionForm.RunOn && q.Arms.Any(a => j.Arms.Any(b => b.Route == a.Route)) && Dist((q.X, q.Z), (j.X, j.Z)) < radius + (hwArm ? 6 : 4) + 18)) { Miss("a junction near"); continue; }
             j.Form = JunctionForm.Roundabout;
             j.Why = "roads alike meeting on level open ground";
             j.RingR = radius;
@@ -2028,7 +2053,9 @@ public sealed class InfraNetwork
                 var spans = new List<RoadSpan>();
                 bool ground = false;
                 for (int i = s; i < e; i++) { spans.Add(r.Span[i]); ground |= r.Span[i] != RoadSpan.Bridge; }
-                if (!ground) continue;
+                // (A stretch all bridge is stamped too, so the land under it is cut clear of its deck; not a maglev's
+                // guideway, which rides high over the deck its route keeps along the ground.)
+                if (!ground && r.Maglev) continue;
                 list.Add(TerrainStamp.Road($"{(r.Ring ? "Ring" : r.Graded ? "Graded" : r.Kind.ToString())} {r.Id}{(r.Laid.Length == 0 ? " street" : "")}", new ArraySegment<double>(r.X, s, e - s + 1), new ArraySegment<double>(r.Z, s, e - s + 1),
                     new ArraySegment<float>(r.Y, s, e - s + 1), spans, r.HalfWidth, r.Surface, r.Wear, _w, _h,
                     boreHalfWidth: r.HalfWidth + 1.2f, boreHeight: r.Kind == RouteKind.Rail ? 7f : 6.5f,
@@ -2038,11 +2065,37 @@ public sealed class InfraNetwork
                 list[^1].JoinEnd = (int)r.EndJoin;
                 list[^1].Median = MedianOf(r);
                 list[^1].Verge = Kerbed(r) ? FootpathOut + 0.4f : 0f;
+                // A street that stops turns in a bulb: its bed a level disc round its end, out past the bulb's footpath.
+                float cap = RoadCorners.BulbRadius(r) + (Kerbed(r) ? FootpathOut + 0.4f : 1.6f);
+                if (s == 0 && r.StartJoin == JunctionForm.DeadEnd) list[^1].CapStart = cap;
+                if (e == r.Count - 1 && r.EndJoin == JunctionForm.DeadEnd) list[^1].CapEnd = cap;
                 list[^1].MeetStartHw = r.StartMeetHw;
                 list[^1].MeetEndHw = r.EndMeetHw;
                 list[^1].MeetStartTaper = (float)SeamTaper(r.Soil, r.StartMeetSoil, r.HalfWidth, r.StartMeetHw);
                 list[^1].MeetEndTaper = (float)SeamTaper(r.Soil, r.EndMeetSoil, r.HalfWidth, r.EndMeetHw);
             }
+        }
+        // Each rounded corner's own level bed round its arc, at the deck's height, out past a street's footpath: the corner
+        // is laid on the ground it rounds off, never on a bank (RoadField draws no road for it; it only shapes the ground).
+        for (int k = 0; k < Corners.Count; k++)
+        {
+            RoadCorner c = Corners[k];
+            if (c.Disc) continue;
+            double a0 = Math.Atan2(c.AZ, c.AX), cab = c.AX * c.BZ - c.AZ * c.BX;
+            double sweep = Math.Acos(Math.Clamp(c.AX * c.BX + c.AZ * c.BZ, -1, 1)) * Math.Sign(cab);
+            int n = Math.Max(3, (int)Math.Ceiling(Math.Abs(sweep) * c.R / 1.5));
+            var xs = new double[n + 1];
+            var zs = new double[n + 1];
+            for (int i = 0; i <= n; i++)
+            {
+                double ang = a0 + sweep * i / n;
+                xs[i] = c.X + Math.Cos(ang) * c.R;
+                zs[i] = c.Z + Math.Sin(ang) * c.R;
+            }
+            var bed = TerrainStamp.Road($"Corner {k}", xs, zs, Enumerable.Repeat(c.Y, n + 1).ToArray(), Enumerable.Repeat(RoadSpan.Ground, n).ToArray(),
+                0.5f, StampSurface.Natural, 0f, _w, _h);
+            bed.Verge = Math.Min(c.R * 0.6f, c.Kerbed ? FootpathOut + 0.6f : 1.8f);
+            list.Add(bed);
         }
         return list;
     }
@@ -2103,6 +2156,32 @@ public sealed class InfraNetwork
                     if (px * px + pz * pz < reach * reach) return false;
                 }
             }
+        return true;
+    }
+
+    /// <summary>
+    /// Whether a spot stands off every deck as drawn: the roads' own (<see cref="OffRoad"/>), a junction's rounded corner
+    /// and a street's turning bulb, by a margin: for what stands on the ground (a lamp, a sign, a signal pole).
+    /// </summary>
+    public bool OffDeck(double x, double z, double margin)
+    {
+        if (!OffRoad(x, z, margin)) return false;
+        double cx = Mathx.WrapX(x, _w), cz = Mathx.Wrap(z, _h);
+        foreach (RoadCorner c in Corners)
+        {
+            if (Math.Abs(Mathx.WrapDelta(c.X - cx, _w)) > c.Cut || Math.Abs(Mathx.WrapDelta(c.Z - cz, _h)) > c.Cut) continue;
+            if (c.Edge(cx, cz, _w, _h) < margin) return false;
+        }
+        foreach (InfraRoute r in Routes)
+            foreach (bool start in new[] { true, false })
+            {
+                if ((start ? r.StartJoin : r.EndJoin) != JunctionForm.DeadEnd) continue;
+                int e = start ? 0 : r.Count - 1;
+                if (Dist((r.X[e], r.Z[e]), (cx, cz)) < RoadCorners.BulbRadius(r) + margin) return false;
+            }
+        // A drive up to a roadside ruin is a deck too.
+        foreach (FlavourRuin ruin in Ruins)
+            if (ruin.Drive is { } d && d.NearestOnPath(cx, cz, out float dd, out _, out _) && dd < d.HalfWidth + margin) return false;
         return true;
     }
 

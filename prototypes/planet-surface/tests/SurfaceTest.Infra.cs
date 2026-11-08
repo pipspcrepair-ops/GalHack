@@ -1284,7 +1284,7 @@ public partial class SurfaceTest
             segments += field.SegmentCount;
             foreach (TerrainStamp t in w.Source.Stamps)
             {
-                if (t.Shape != StampShape.Road) continue;
+                if (t.Shape != StampShape.Road || t.Name.StartsWith("Corner")) continue;
                 for (int i = 0; i + 1 < t.PathCount; i++)
                 {
                     points++;

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using GalHack.Terrain;
 using Godot;
 using Planets.Gen;
@@ -24,7 +25,14 @@ namespace PlanetSurface.Terrain;
 ///   5: the junction form a and b lie near (the network's JunctionForm, at the nearer end within 80 m; 0 none),
 ///      and how far along the road that junction is from a and from b (positive ahead the way it was laid, negative behind)
 ///   6: the median dividing a highway's carriageways (0 none, 1 grass, 2 barrier, 3 grown over), then unused
-///   7: unused
+///   7: whether the stretch's start or end is a way's end lying on another way's deck (a junction's branch, a drive):
+///      it ends there flat, square across, inside that deck (a round end poked out past its far kerb as a bump); 0, 0
+/// A junction's rounded corner (<see cref="PlanetSurface.Infra.RoadCorner"/>) is an entry of its own, style <see cref="Corner"/>:
+///   0: its centre (canonical), 0, 0
+///   1: deck height, deck height, radius, cut (how far from the centre its deck reaches)
+///   2: cut (its reach, for the cells), 0, 0, style + 16 x 0
+///   3: unit vectors from the centre to where it meets each kerb line (a, b)
+///   4: how far along each of those it may reach, kerbed, 0
 /// <see cref="Cells"/> holds each cell's first entry in <see cref="Index"/> and its count; the index lists segments.
 /// </summary>
 public sealed class RoadField
@@ -36,22 +44,24 @@ public sealed class RoadField
     public const float Reach = 8f;
 
     /// <summary>Road styles: how its markings run (plus <see cref="Town"/> on a town's street).</summary>
-    public const int Street = 0, Highway = 1, Track = 2, Rail = 3, Drive = 4, Graded = 5, Ring = 6;
+    public const int Street = 0, Highway = 1, Track = 2, Rail = 3, Drive = 4, Graded = 5, Ring = 6, Corner = 7;
 
     public ImageTexture Segments, Cells, Index;
     /// <summary>Cell size, cells across, cells down, segment count.</summary>
     public Vector4 Grid;
     public int SegmentCount, Entries;
+    /// <summary>The junctions' rounded corners drawn with the roads.</summary>
+    public IReadOnlyList<PlanetSurface.Infra.RoadCorner> Corners = Array.Empty<PlanetSurface.Infra.RoadCorner>();
 
     float[] _segs, _cells, _index;
     double _width, _height;
 
-    readonly record struct Point(double X, double Z, float Y, float S, float Pad, float Core, float Wide, float Lot = 0f, float JForm = 0f, float JDist = 0f, float PaintHw = 0f, float Seam = 0f);
+    readonly record struct Point(double X, double Z, float Y, float S, float Pad, float Core, float Wide, float Lot = 0f, float JForm = 0f, float JDist = 0f, float PaintHw = 0f, float Seam = 0f, float Flat = 0f);
 
     /// <summary>How far from an end that runs into a place's lot a road counts as that lot's way in (a crossover where it leaves the street), m.</summary>
     const float LotReach = 30f;
 
-    public static RoadField Build(PlanetTerrainSource source, double width, double height)
+    public static RoadField Build(PlanetTerrainSource source, double width, double height, IReadOnlyList<PlanetSurface.Infra.RoadCorner> corners = null)
     {
         var segs = new List<float>();
         string lastName = null;
@@ -62,7 +72,7 @@ public sealed class RoadField
         var runs = new List<(List<Point> Points, TerrainStamp Stamp, int Style, int Id)>();
         foreach (TerrainStamp t in source.Stamps)
         {
-            if (t.Shape != StampShape.Road || t.PathCount < 2) continue;
+            if (t.Shape != StampShape.Road || t.PathCount < 2 || t.Name.StartsWith("Corner")) continue;
             int style = StyleOf(t.Name, t.HalfWidth);
             var (fx, fz, _) = t.PathPoint(0);
             double x0 = t.CenterX + fx, z0 = t.CenterZ + fz;
@@ -121,9 +131,52 @@ public sealed class RoadField
             var e = ends.TryGetValue(rid, out var have) ? have : (Start: pts[0].Core > 0.5f && pts[0].S < 0.01f, End: false, Length: 0f);
             ends[rid] = (e.Start, pts[^1].Core > 0.5f, Math.Max(e.Length, pts[^1].S));
         }
+        // Each way's own two ends: one lying on another way's deck, away from that way's ends (not a way running on into
+        // another), ends flat.
+        var firsts = new Dictionary<int, (double X, double Z)>();
+        var lasts = new Dictionary<int, (double X, double Z)>();
+        foreach (var (pts, _, _, rid) in runs)
+        {
+            if (!firsts.ContainsKey(rid) && pts[0].S < 0.01f) firsts[rid] = (pts[0].X, pts[0].Z);
+            lasts[rid] = (pts[^1].X, pts[^1].Z);
+        }
+        // How many ways end at a point (three or more ending at one point make a junction, whose ends all end flat).
+        int EndsAt(double x, double z)
+        {
+            int n = 0;
+            foreach (var (id, e) in firsts.Concat(lasts))
+                if (Math.Abs(Mathx.WrapDelta(e.X - x, width)) < 1.5 && Math.Abs(Mathx.WrapDelta(e.Z - z, height)) < 1.5) n++;
+            return n;
+        }
+        bool OnAnother(int rid, double x, double z)
+        {
+            bool meeting = EndsAt(x, z) >= 3;
+            foreach (var (pts, t, _, other) in runs)
+            {
+                if (other == rid) continue;
+                for (int i = 0; i + 1 < pts.Count; i++)
+                {
+                    double ax = Mathx.WrapDelta(pts[i].X - x, width), az = Mathx.WrapDelta(pts[i].Z - z, height);
+                    double ex = pts[i + 1].X - pts[i].X, ez = pts[i + 1].Z - pts[i].Z, l2 = ex * ex + ez * ez;
+                    if (Math.Abs(ax) > 40 || Math.Abs(az) > 40) continue;
+                    double u = l2 < 1e-9 ? 0 : Math.Clamp(-(ax * ex + az * ez) / l2, 0, 1);
+                    double px = ax + ex * u, pz = az + ez * u;
+                    if (px * px + pz * pz > t.HalfWidth * t.HalfWidth) continue;
+                    // Not where the other way ends too (two ways running on into each other keep their round ends).
+                    foreach (var e in new[] { firsts.GetValueOrDefault(other, (double.NaN, double.NaN)), lasts.GetValueOrDefault(other, (double.NaN, double.NaN)) })
+                        if (!meeting && !double.IsNaN(e.Item1) && Math.Abs(Mathx.WrapDelta(e.Item1 - x, width)) < 1.5 && Math.Abs(Mathx.WrapDelta(e.Item2 - z, height)) < 1.5) return false;
+                    return true;
+                }
+            }
+            return false;
+        }
+        var flatStart = new HashSet<int>(firsts.Where(f => OnAnother(f.Key, f.Value.X, f.Value.Z)).Select(f => f.Key));
+        var flatEnd = new HashSet<int>(lasts.Where(f => OnAnother(f.Key, f.Value.X, f.Value.Z)).Select(f => f.Key));
         foreach (var (pts, t, st, rid) in runs)
         {
             var (start, end, length) = ends[rid];
+            if (flatStart.Contains(rid) && pts[0].S < 0.01f) pts[0] = pts[0] with { Flat = 1f };
+            if (flatEnd.Contains(rid) && Math.Abs(pts[^1].S - length) < 0.01f) pts[^1] = pts[^1] with { Flat = 1f };
             for (int i = 0; i < pts.Count; i++)
             {
                 if (start && pts[i].S < LotReach || end && length - pts[i].S < LotReach) pts[i] = pts[i] with { Lot = 1f };
@@ -140,7 +193,20 @@ public sealed class RoadField
             }
             n += Emit(segs, pts, t, st, rid, width, height);
         }
-        return Pack(segs, n, width, height);
+        // The junctions' rounded corners, each an entry of its own.
+        foreach (PlanetSurface.Infra.RoadCorner c in corners ?? Array.Empty<PlanetSurface.Infra.RoadCorner>())
+        {
+            segs.Add((float)Mathx.WrapX(c.X, width)); segs.Add((float)Mathx.Wrap(c.Z, height)); segs.Add(0f); segs.Add(0f);
+            segs.Add(c.Y); segs.Add(c.Y); segs.Add(c.R); segs.Add(c.Cut);
+            segs.Add(c.Cut); segs.Add(0f); segs.Add(0f); segs.Add(Corner);
+            segs.Add(c.AX); segs.Add(c.AZ); segs.Add(c.BX); segs.Add(c.BZ);
+            segs.Add(c.LimA); segs.Add(c.LimB); segs.Add(c.Kerbed ? 1f : 0f); segs.Add(c.Disc ? 1f : 0f);
+            for (int k = 5 * 4; k < Stride; k++) segs.Add(0f);
+            n++;
+        }
+        RoadField field = Pack(segs, n, width, height);
+        field.Corners = corners ?? Array.Empty<PlanetSurface.Infra.RoadCorner>();
+        return field;
     }
 
     /// <summary>
@@ -247,7 +313,8 @@ public sealed class RoadField
             segs.Add(a.Wide); segs.Add(b.Wide); segs.Add(a.Lot); segs.Add(b.Lot);
             segs.Add(a.JForm); segs.Add(b.JForm); segs.Add(a.JDist); segs.Add(b.JDist);
             segs.Add(t.Median); segs.Add((a.PaintHw + b.PaintHw) * 0.5f); segs.Add(a.Seam); segs.Add(b.Seam);
-            for (int k2 = 7 * 4; k2 < Stride; k2++) segs.Add(0f);
+            segs.Add(k == 0 ? a.Flat : 0f); segs.Add(k + 2 == keep.Count ? b.Flat : 0f);
+            for (int k2 = 7 * 4 + 2; k2 < Stride; k2++) segs.Add(0f);
             count++;
         }
         return count;
@@ -358,6 +425,7 @@ public sealed class RoadField
         for (int k = 0; k < count; k++)
         {
             int o = (int)_index[first + k] * Stride;
+            if (Math.Abs(_segs[o + 11] - Corner) < 0.5f) continue;
             float rx = (float)Mathx.WrapDelta(cx - _segs[o], _width), rz = (float)Mathx.WrapDelta(cz - _segs[o + 1], _height);
             float ex = _segs[o + 2], ez = _segs[o + 3];
             float u = Math.Clamp((rx * ex + rz * ez) / MathF.Max(ex * ex + ez * ez, 1e-6f), 0f, 1f);
@@ -367,6 +435,50 @@ public sealed class RoadField
             if (edge < best) { best = edge; across = d; }
         }
         return best;
+    }
+
+    /// <summary>
+    /// The deck's edge as the terrain shader draws it where paved roads meet (tests): the nearest road's edge, or a
+    /// junction's rounded corner where that comes nearer (negative on the deck, positive past the kerb).
+    /// </summary>
+    public float DeckEdgeAt(double x, double z, float y, float tolerance)
+    {
+        float edge = float.PositiveInfinity;
+        if (SegmentCount == 0) return edge;
+        double cx = Mathx.WrapX(x, _width), cz = Mathx.Wrap(z, _height);
+        int cellX = Math.Min((int)Grid.Y - 1, (int)(cx / Cell)), cellZ = Math.Min((int)Grid.Z - 1, (int)(cz / Cell));
+        int cell = cellZ * (int)Grid.Y + cellX, first = (int)_cells[cell * 2], count = Math.Min((int)_cells[cell * 2 + 1], 64);
+        // The roads: the nearest's edge (and a street's turning bulb round its end, as the shader swells it).
+        for (int k = 0; k < count; k++)
+        {
+            int o = (int)_index[first + k] * Stride;
+            if (Math.Abs(_segs[o + 11] - Corner) < 0.5f) continue;
+            float rx = (float)Mathx.WrapDelta(cx - _segs[o], _width), rz = (float)Mathx.WrapDelta(cz - _segs[o + 1], _height);
+            float ex = _segs[o + 2], ez = _segs[o + 3];
+            float u = Math.Clamp((rx * ex + rz * ez) / MathF.Max(ex * ex + ez * ez, 1e-6f), 0f, 1f);
+            float d = MathF.Sqrt((rx - ex * u) * (rx - ex * u) + (rz - ez * u) * (rz - ez * u));
+            float hw = _segs[o + 25] > 0.1f ? _segs[o + 25] : _segs[o + 8];
+            float e = d - hw;
+            float ur = (rx * ex + rz * ez) / MathF.Max(ex * ex + ez * ez, 1e-6f), len = MathF.Sqrt(ex * ex + ez * ez);
+            if (ur < 0f && _segs[o + 28] > 0.5f || ur > 1f && _segs[o + 29] > 0.5f)
+                e = MathF.Max(MathF.Abs(rx * ez - rz * ex) / MathF.Max(len, 1e-4f) - hw, MathF.Max(-ur, ur - 1f) * len);
+            if (e > Reach || MathF.Abs(y - (_segs[o + 4] + (_segs[o + 5] - _segs[o + 4]) * u)) > tolerance + MathF.Max(e, 0f) * 1.2f) continue;
+            edge = MathF.Min(edge, e);
+        }
+        for (int k = 0; k < count; k++)
+        {
+            int o = (int)_index[first + k] * Stride;
+            if (Math.Abs(_segs[o + 11] - Corner) > 0.5f) continue;
+            var c = new PlanetSurface.Infra.RoadCorner
+            {
+                X = _segs[o], Z = _segs[o + 1], R = _segs[o + 6], Cut = _segs[o + 7], AX = _segs[o + 12], AZ = _segs[o + 13], BX = _segs[o + 14], BZ = _segs[o + 15],
+                LimA = _segs[o + 16], LimB = _segs[o + 17], Disc = _segs[o + 19] > 0.5f,
+            };
+            float f = c.Edge(cx, cz, _width, _height);
+            if (float.IsInfinity(f) || MathF.Abs(y - _segs[o + 4]) > tolerance + MathF.Max(f, 0f) * 1.2f) continue;
+            edge = MathF.Min(edge, f);
+        }
+        return edge;
     }
 
     static ImageTexture Texture(float[] values, int w, int h, Image.Format format, int bytesPerTexel)

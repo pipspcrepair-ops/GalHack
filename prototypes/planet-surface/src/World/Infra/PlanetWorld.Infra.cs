@@ -53,6 +53,12 @@ public sealed partial class PlanetWorld
             infra.Ruins.Remove(gone);
             stamps.Remove(gone.Stamp);
         }
+        var pads = stamps.Where(s => s.Shape == StampShape.Pad).ToList();
+        infra.PlanCorners((x, z) =>
+        {
+            double cx = Mathx.WrapX(x, mw), cz = Mathx.Wrap(z, mh);
+            return pads.Any(s => s.OnFootprint(cx, cz));
+        });
         stamps.AddRange(infra.Stamps());
         foreach (FlavourRuin ruin in infra.Ruins) if (ruin.Drive != null) stamps.Add(ruin.Drive);
         // What runs under a town: its ways in on pads of their own, after the roads so they win there.

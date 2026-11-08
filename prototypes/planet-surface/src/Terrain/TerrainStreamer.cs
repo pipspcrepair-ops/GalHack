@@ -223,7 +223,7 @@ public partial class TerrainStreamer : Node3D
         Focus = focus;
         _felledSnapshot = new HashSet<long>(world.Felled); // trees felled here before stay felled
         _waterMaterial = water;
-        _roads = RoadField.Build(world.Source, world.Width, world.Height);
+        _roads = RoadField.Build(world.Source, world.Width, world.Height, world.Infra.Corners);
         _grounds = GroundField.Build(world.Source.Grounds, world.Width, world.Height);
         if (_grounds.Crowded > 0) GD.Print($"made ground: {_grounds.PatchCount} patches, {_grounds.Crowded} cells over {GroundField.MostPerCell}");
         VoxelMaterial = TerrainMaterial(far: false);

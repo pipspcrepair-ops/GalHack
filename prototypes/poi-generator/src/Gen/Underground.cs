@@ -186,6 +186,8 @@ public sealed class UnderSite
     public ulong Seed;
     /// <summary>The ground's height at a cell (any copy of the planet): the street's deck where one runs.</summary>
     public Func<int, int, float> Ground = (_, _) => 40f;
+    /// <summary>The lowest ground near a cell, within a chamber's reach (null: <see cref="Ground"/>): what the runs keep their cover under, however the land falls away beside the street.</summary>
+    public Func<int, int, float> Lowest;
     /// <summary>Cells a pipe must keep out from under (a place's pad, water).</summary>
     public Func<int, int, bool> Avoid = (_, _) => false;
 
@@ -208,6 +210,8 @@ public static class Underground
     const int SewerHalf = 2, SewerHeight = 4, DrainHalf = 2, DrainHeight = 3, JunctionHalf = 5, JunctionHeight = 5, SumpHalf = 6, SumpHeight = 6;
     /// <summary>How far off the main street's centre the service gallery and the station stairs run, metres.</summary>
     public const int GalleryAcross = 5, EntranceAcross = 11;
+    /// <summary>How far along the main street from the crossing behind them the stairs' head stands, metres: its pad clear of the crossing's corner.</summary>
+    public const int EntranceClear = 20;
     /// <summary>The pipe to the outfall: how far it may reach, and its fall (one metre in this many).</summary>
     public const int OutfallReach = 700, OutfallFall = 80;
 
@@ -218,7 +222,7 @@ public static class Underground
     {
         if (!UnderPlan.Metro(s.Tech)) yield break;
         int side = -s.BackSide;
-        yield return (-s.Block - 1, -s.Block + 41, Math.Min(side * 6, side * 16), Math.Max(side * 6, side * 16));
+        yield return (-s.Block + EntranceClear - 8, -s.Block + EntranceClear + 36, Math.Min(side * 6, side * 16), Math.Max(side * 6, side * 16));
         yield return (-3, 11, 9, 17);
     }
 
@@ -228,7 +232,7 @@ public static class Underground
         int Deck(int along, int across)
         {
             var (x, z) = s.At(along, across);
-            return (int)MathF.Floor(s.Ground(x, z));
+            return (int)MathF.Floor((s.Lowest ?? s.Ground)(x, z));
         }
 
         // The main sewer: follows the street at its cover, a ramp at a time, level through each junction.
@@ -427,8 +431,9 @@ public static class Underground
 
         // The stairs: down beside the street on the side away from the gallery, between the crossings,
         // to a level passage and a doorway in the hall's wall onto the track bed.
+        // (Their head clear of the crossing behind: its rounded kerb, its footpath and the sight line across the corner.)
         int side = -s.BackSide, u = side * EntranceAcross;
-        int TopAlong = -s.Block + 5;
+        int TopAlong = -s.Block + EntranceClear;
         int topY = (int)MathF.Round(s.Ground(s.At(TopAlong, u).X, s.At(TopAlong, u).Z));
         int flight = topY - y;
         var top = s.At(TopAlong, u);

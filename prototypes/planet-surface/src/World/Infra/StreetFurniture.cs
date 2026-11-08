@@ -48,7 +48,7 @@ public static class StreetFurniture
         bool Free(double x, double z)
         {
             double cx = Mathx.WrapX(x, w), cz = Mathx.Wrap(z, h);
-            if (source.Built(cx, cz, out _) > 0.6f || source.WaterSurfaceAt(cx, cz, out _) || !net.OffRoad(x, z, 0.4)) return false;
+            if (source.Built(cx, cz, out _) > 0.6f || source.WaterSurfaceAt(cx, cz, out _) || !net.OffDeck(x, z, 0.4)) return false;
             if (gates.Any(g => Dist(g.X, g.Z, x, z) < 7)) return false;
             if (items.Any(i => Dist(i.X, i.Z, x, z) < 4)) return false;
             return !net.Joins.Any(j => Dist(j.X, j.Z, x, z) < 14);
@@ -94,8 +94,16 @@ public static class StreetFurniture
                     double half = Math.Acos(Math.Clamp(a.DirX * b.DirX + a.DirZ * b.DirZ, -1, 1)) * 0.5;
                     double d = Math.Min(14, (Math.Max(a.Route.HalfWidth, b.Route.HalfWidth) + 1.6) / Math.Max(0.3, Math.Sin(half)));
                     double x = j.X + bx / bl * d, z = j.Z + bz / bl * d;
+                    // Round a rounded corner: in its verge, a little past the middle of its kerb's arc.
+                    RoadCorner rc = net.Corners.Where(c => Dist(c.X, c.Z, j.X, j.Z) < 40).OrderBy(c => Dist(c.X, c.Z, x, z)).FirstOrDefault();
+                    if (rc != null && Dist(rc.X, rc.Z, x, z) < rc.R + 6)
+                    {
+                        double mx = rc.AX + rc.BX, mz = rc.AZ + rc.BZ, ml = Math.Max(1e-6, Math.Sqrt(mx * mx + mz * mz));
+                        x = rc.X + mx / ml * (rc.R - 1.0);
+                        z = rc.Z + mz / ml * (rc.R - 1.0);
+                    }
                     double cx = Mathx.WrapX(x, w), cz = Mathx.Wrap(z, h);
-                    if (source.Built(cx, cz, out _) > 0.6f || !net.OffRoad(x, z, 0.3)) continue;
+                    if (source.Built(cx, cz, out _) > 0.6f || !net.OffDeck(x, z, 0.3)) continue;
                     items.Add(new StreetItem(StreetThing.Signal, cx, cz, Ground(x, z), (float)(-bx / bl), (float)(-bz / bl)));
                 }
                 continue;
@@ -106,9 +114,16 @@ public static class StreetFurniture
                 // On the right of the way coming in, a little short of the junction, facing whoever comes.
                 double back = j.Form == JunctionForm.Roundabout ? j.RingR + 12 : 9 + j.Through.HalfWidth;
                 double tx = -a.DirX, tz = -a.DirZ, rx = -tz, rz = tx;
-                double x = j.X + a.DirX * back + rx * (a.Route.HalfWidth + 1.1), z = j.Z + a.DirZ * back + rz * (a.Route.HalfWidth + 1.1);
+                double x = 0, z = 0;
+                // (Back past the corner's rounded kerb: a sign stands in the verge beside the way in, never on the corner's deck.)
+                for (int tries = 0; tries < 10; tries++, back += 2)
+                {
+                    x = j.X + a.DirX * back + rx * (a.Route.HalfWidth + 1.1);
+                    z = j.Z + a.DirZ * back + rz * (a.Route.HalfWidth + 1.1);
+                    if (net.OffDeck(x, z, 0.4)) break;
+                }
                 double cx = Mathx.WrapX(x, w), cz = Mathx.Wrap(z, h);
-                if (source.Built(cx, cz, out _) > 0.6f || !net.OffRoad(x, z, 0.4) || source.WaterSurfaceAt(cx, cz, out _)) continue;
+                if (source.Built(cx, cz, out _) > 0.6f || !net.OffDeck(x, z, 0.4) || source.WaterSurfaceAt(cx, cz, out _)) continue;
                 items.Add(new StreetItem(StreetThing.Sign, cx, cz, Ground(x, z), (float)-tx, (float)-tz, j.Form == JunctionForm.Roundabout ? RoundaboutAhead : GiveWay));
             }
         }

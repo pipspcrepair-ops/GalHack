@@ -89,8 +89,11 @@ struct Road {
 	float median;   // a highway's median: 0 none, 1 grass, 2 a concrete barrier, 3 grown over
 	float seam;     // 1 where it runs on into a way of another class, easing to 0 over the taper (its width eases too)
 	float other_soil; // 1 if the other road is a way of the land's own ground (a track, a dirt road)
+	float other_kerbed; // 1 if the other road is a kerbed town street (its footpath runs on across a lane into a lot)
 	float cap;      // how far past the end of the way a point lies, m (in its rounded end cap; 0 beside it)
 	float other_cap; // and the same for the other road: a junction's curved corners fade out past its end
+	float corner;   // a junction's rounded corner (RoadCorners): metres past its kerb arc (negative on the deck it adds), 1e9 none
+	float corner_kerbed; // and whether that corner is a kerbed street's
 };
 
 // Fills a road's own fields from one of its segments (the base texel b), at a point `rel` from its start, u along it.
@@ -149,8 +152,11 @@ Road nearest_road(vec2 at, float y) {	Road r;
 	r.median = 0.0;
 	r.seam = 0.0;
 	r.other_soil = 0.0;
+	r.other_kerbed = 0.0;
 	r.cap = 0.0;
 	r.other_cap = 0.0;
+	r.corner = 1e9;
+	r.corner_kerbed = 0.0;
 	if (road_grid.w < 0.5) return r;
 	vec2 c = mod(at, planet_size);
 	ivec2 cell = ivec2(min(floor(c / road_grid.x), road_grid.yz - 1.0));
@@ -169,15 +175,44 @@ Road nearest_road(vec2 at, float y) {	Road r;
 		vec4 t0 = texelFetch(road_segments, b, 0);
 		vec2 rel = c - t0.xy;
 		rel -= planet_size * round(rel / planet_size);
+		vec4 t2 = texelFetch(road_segments, b + ivec2(2, 0), 0);
+		// A junction's rounded corner (RoadCorners): an arc tangent to both kerb lines, its land side the inside of the
+		// circle within the cone from its centre to where it meets each; past the arc toward the decks, deck.
+		if (abs(t2.w - 7.0) < 0.5) {
+			vec4 t1c = texelFetch(road_segments, b + ivec2(1, 0), 0);
+			float dist = length(rel);
+			if (dist > t1c.w) continue;
+			vec4 t3c = texelFetch(road_segments, b + ivec2(3, 0), 0);
+			vec4 t4c = texelFetch(road_segments, b + ivec2(4, 0), 0);
+			// (A turning bulb: a disc of deck round a street's end.)
+			if (t4c.w > 0.5) {
+				float fd = dist - t1c.z;
+				if (abs(y - t1c.x) <= road_tolerance + max(fd, 0.0) * 1.2 && fd < r.corner) { r.corner = fd; r.corner_kerbed = t4c.z; }
+				continue;
+			}
+			vec2 ua = t3c.xy, ub = t3c.zw;
+			float cab = ua.x * ub.y - ua.y * ub.x, c1 = ua.x * rel.y - ua.y * rel.x, c2 = rel.x * ub.y - rel.y * ub.x;
+			bool cone = cab >= 0.0 ? (c1 >= 0.0 && c2 >= 0.0) : (c1 <= 0.0 && c2 <= 0.0);
+			if (!cone || dot(rel, ua) > t4c.x || dot(rel, ub) > t4c.y) continue;
+			float f = t1c.z - dist;
+			if (abs(y - t1c.x) > road_tolerance + max(f, 0.0) * 1.2) continue;
+			if (f < r.corner) { r.corner = f; r.corner_kerbed = t4c.z; }
+			continue;
+		}
 		float ur = dot(rel, t0.zw) / max(dot(t0.zw, t0.zw), 1e-6);
 		float u = clamp(ur, 0.0, 1.0);
 		float cap = max(max(-ur, ur - 1.0), 0.0) * length(t0.zw);
 		float d = length(rel - t0.zw * u);
-		vec4 t2 = texelFetch(road_segments, b + ivec2(2, 0), 0);
 		vec4 t6 = texelFetch(road_segments, b + ivec2(6, 0), 0);
 		// Its painted width: its own, or easing to meet a way of another class it runs on into.
 		if (t6.y > 0.1) t2.x = t6.y;
 		float edge = d - t2.x;
+		// A way that ends on another's deck (a junction's branch, a drive) ends there flat, inside that deck.
+		if (cap > 0.0) {
+			vec4 t7 = texelFetch(road_segments, b + ivec2(7, 0), 0);
+			if (ur < 0.0 && t7.x > 0.5 || ur > 1.0 && t7.y > 0.5)
+				edge = max(abs(rel.x * t0.w - rel.y * t0.z) / max(length(t0.zw), 1e-4) - t2.x, cap);
+		}
 		if (edge > 8.0) continue;
 		vec4 t1 = texelFetch(road_segments, b + ivec2(1, 0), 0);
 		float off = abs(y - mix(t1.x, t1.y, u));
@@ -205,7 +240,7 @@ Road nearest_road(vec2 at, float y) {	Road r;
 		bool apart = id != best_id || abs(along - r.along) > 2.0 * t2.x + 6.0;
 		if (edge < r.edge) {
 			// (A stretch on a place's footprint isn't drawn, so it makes no junction: no kerbs, no crossing.)
-			if (apart && r.edge < r.other && r.core_end < 0.5 && best_grounded) { r.other = r.edge; r.other_hw = r.half_width; r.other_id = best_id; r.other_dir = r.dir; r.other_core = r.core; r.other_lot = r.lot; r.other_soil = r.surface > 2.5 ? 1.0 : 0.0; r.other_cap = r.cap; }
+			if (apart && r.edge < r.other && r.core_end < 0.5 && best_grounded) { r.other = r.edge; r.other_hw = r.half_width; r.other_id = best_id; r.other_dir = r.dir; r.other_core = r.core; r.other_lot = r.lot; r.other_soil = r.surface > 2.5 ? 1.0 : 0.0; r.other_cap = r.cap; r.other_kerbed = r.town > 0.5 && r.style < 0.5 && r.surface < 2.5 && r.half_width >= 3.5 ? 1.0 : 0.0; }
 			take_road(r, b, rel, u, d, edge, off, id, cap);
 			best_id = id;
 			r.id = id;
@@ -221,6 +256,8 @@ Road nearest_road(vec2 at, float y) {	Road r;
 				r.other_id = id;
 				r.other_dir = t0.zw / max(length(t0.zw), 1e-4);
 				r.other_soil = t2.z > 2.5 ? 1.0 : 0.0;
+				float ost = t2.w - id * 16.0;
+				r.other_kerbed = ost > 7.5 && ost < 8.5 && t2.z < 2.5 && t2.x >= 3.5 ? 1.0 : 0.0;
 				r.other_cap = cap;
 			}
 		}
@@ -240,6 +277,7 @@ Road nearest_road(vec2 at, float y) {	Road r;
 		r.other_core = score;
 		r.other_lot = slot;
 		r.other_soil = 1.0;
+		r.other_kerbed = 0.0;
 		r.other_cap = scap;
 	}
 	return r;
@@ -303,12 +341,12 @@ vec3 bared(vec3 land) {
 }
 
 // A way of the land's own ground, no surface laid: a track's two wheel ruts with a crown between where
-// grass and tussocks stand, loose soil heaped beside each rut; or a graded road's wide scraped bed with only
+// grass and tussocks stand (the land's own: the way only thins there, `own`), loose soil heaped beside each rut; or a graded road's wide scraped bed with only
 // faint wheel tracks. Up close: tyre treads, footprints and hoof prints pressed into soft ground, twigs
 // blown across. Wet, the ruts hold long narrow pools of milky water and the ground between is churned into
 // ragged ridges of mud; dry again, the rut bottoms where water stood crack into clay plates. On a slope,
 // washouts down its length and corrugations across it.
-vec3 soil_way(Road r, vec2 p, vec3 land, float fw, float near, inout float gloss) {
+vec3 soil_way(Road r, vec2 p, vec3 land, float fw, float near, inout float gloss, inout float own) {
 	float veg = greenness(land);
 	vec3 bare = bared(land);
 	float x = r.across, s = r.side, hw = r.half_width;
@@ -329,12 +367,13 @@ vec3 soil_way(Road r, vec2 p, vec3 land, float fw, float near, inout float gloss
 	// Loose soil thrown up beside each rut: lighter, lumpy.
 	float heap = band(dr - rut_w - 0.17, 0.13, fw) * (0.5 + 0.7 * pn2(p, 3.3));
 	c = mix(c, bare * 1.13, heap * 0.5 * worn);
-	// A track's crown: grass and tussocks where anything grows, a ridge of loose sand where nothing does.
+	// A track's crown: where anything grows the way isn't worn there, so the land's own ground and grass show
+	// through it in tufts (it is never painted a green of its own); where nothing grows, a ridge of loose sand.
 	float crown = 0.0;
 	if (track) {
 		crown = (1.0 - smoothstep(gauge - rut_w - 0.14, gauge - rut_w + 0.03, x + wob)) * (1.0 - r.seam);
 		float tuft = smoothstep(0.3, 0.7, pn2(p, 1.7) * 0.7 + pn2(p, 5.3) * 0.3 * near + 0.1);
-		c = mix(c, land * (0.8 + 0.35 * tuft), crown * veg * (0.5 + 0.5 * tuft));
+		own = 1.0 - crown * veg * (0.55 + 0.45 * tuft);
 		c = mix(c, bare * 1.08, crown * (1.0 - veg) * 0.45);
 	}
 	// On a slope rain runs down it: gullies wander along its length, deeper on an old way, and the ground
@@ -493,10 +532,12 @@ vec4 paint_road(Road r, vec2 p, vec3 land, float fw, float near, out float cover
 	bool hard = r.surface < 2.5;          // concrete or tarmac
 	bool gravel = r.surface > 2.5 && r.surface < 3.5;
 	bool rail = r.style > 2.5 && r.style < 3.5;
-	// The edge wanders smoothly (a laid edge barely, a crumbling or trodden one more), never in steps.
+	// The edge wanders smoothly (a laid edge barely, a crumbling or trodden one more), never in steps; a way of bare
+	// ground has no edge to speak of, only where the wheels stopped wearing it, ragged at every scale.
 	float wander = (pn2(p, 0.25) - 0.5) * (hard ? 0.25 + 0.6 * wear : 0.9)
 		+ (pn2(p, 1.0) - 0.5) * (hard ? 0.3 * wear : 0.45) * near
-		+ (pn2(p, 3.7) - 0.5) * (hard ? 0.18 * wear : 0.15) * near;
+		+ (pn2(p, 3.7) - 0.5) * (hard ? 0.18 * wear : 0.3) * near;
+	if (!hard && !rail) wander += (pn2(p, 0.11) - 0.5) * 1.6 + (pn2(p, 7.9) - 0.5) * 0.12 * near;
 	// Where two roads meet, their decks join in one surface with curved kerb corners, a tighter curve for
 	// smaller roads (a smooth union of the two decks).
 	// Sized for a vehicle to turn from its near lane into the near lane of the other road: about 7 m on town
@@ -512,23 +553,29 @@ vec4 paint_road(Road r, vec2 p, vec3 land, float fw, float near, out float cover
 	// A dirt way meeting a paved road: the paved road's edge stays whole, and the dirt way's own corners are a short
 	// worn apron (below), not a sweeping kerb.
 	bool dirt_way = r.surface > 2.5 && !rail;
-	// A town street is kerbed: the kerbstones hold its edge to a straight laid line, whatever its age.
+	// A town street is kerbed: the kerbstones hold its edge to a straight laid line, whatever its age. Round a
+	// junction's corner, the corner says (a kerbed street's corner is kerbed all round its arc).
 	bool kerbed = hard && r.town > 0.5 && r.style < 0.5;
+	if (r.corner < 1e8 && r.corner <= min(r.edge, r.other)) kerbed = hard && r.corner_kerbed > 0.5;
 	if (kerbed) wander = 0.0;
-	float drive_r = abs(r.style - 4.0) < 0.5 || max(r.lot, r.other_lot) > 0.5 ? 1.8
-		: !dirt_way && r.other_soil > 0.5 ? 0.3 : dirt_way && r.other_soil < 0.5 ? 7.0 : turn_r;
+	bool lane = abs(r.style - 4.0) < 0.5 || max(r.lot, r.other_lot) > 0.5;
+	float drive_r = lane ? 1.8 : !dirt_way && r.other_soil > 0.5 ? 0.3 : dirt_way && r.other_soil < 0.5 ? 7.0 : turn_r;
 	// (Only beside the other way, never past its end: a branch that stops at a road's middle rounds no corners on its far side.)
 	float kerb = r.other_hw > 0.0 ? max(drive_r * 1.7 * smoothstep(0.1, 0.4, crossing) * (1.0 - onto) * (1.0 - smoothstep(0.0, 2.0 + r.other_hw, r.other_cap)), 0.5) : 3.0;
 	// Two paved decks running together at a shallow angle (a slip road leaving or joining) never leave a knife edge
 	// of grass between them: the fork is paved out to a gore, a nose about 4 m wide with a rounded tip, hatched.
 	bool gore_here = hard && r.other_soil < 0.5 && r.other_hw > 0.0 && r.other_id != r.id && crossing < 0.2 && max(r.lot, r.other_lot) < 0.5;
 	if (gore_here) kerb = max(kerb, 8.0);
+	// Paved ways meeting square enough to turn: their decks simply join, and the corner between them is the junction's
+	// own (RoadCorners: one arc of the class's radius from one kerb line to the other). A smooth union here bulged the
+	// kerb where two stretches met, and hooked it into the carriageway where the nearest road changed.
+	if (hard && !lane && r.other_soil < 0.5 && !gore_here) kerb = 0.0;
 	// A way of bare ground meeting a paved road flares into a short worn apron at its edge.
 	// It swells smoothly over its last dozen metres (a bell, no corner), the swell ragged where the scrub meets it.
 	float apron = dirt_way && r.other_soil < 0.5 && r.other_hw > 0.0 ? 1.0 - smoothstep(0.0, 12.0, max(r.other, 0.0)) : 0.0;
 	r.edge -= (3.2 + 0.8 * (pn2(p, 0.6) - 0.5)) * apron * apron;
-	float h_k = max(kerb - abs(r.edge - r.other), 0.0) / kerb;
-	float joined = min(r.edge, r.other) - h_k * h_k * kerb * 0.25;
+	float h_k = kerb > 0.0 ? max(kerb - abs(r.edge - r.other), 0.0) / kerb : 0.0;
+	float joined = min(min(r.edge, r.other) - h_k * h_k * kerb * 0.25, r.corner);
 	float edge = joined + wander;
 	float soft = kerbed ? 0.02 : hard ? 0.05 + 0.2 * wear : 0.35 + (r.surface > 3.5 ? 0.5 : 0.0);
 	float deck = 1.0 - smoothstep(-soft - fw * 0.5, soft + fw * 0.5, edge);
@@ -539,8 +586,9 @@ vec4 paint_road(Road r, vec2 p, vec3 land, float fw, float near, out float cover
 	// and shadowed on its inner, so it reads from the air.
 	float shoulder_w = hard ? 1.6 : 1.0;
 	float shoulder = (1.0 - smoothstep(0.0, shoulder_w, edge)) * (0.35 + 0.3 * pn2(p, 0.5)) * (1.0 - deck);
+	// (Its own grit and dust, never the land's colour: where it thins, the land's own ground shows.)
 	float lum = dot(land, vec3(0.3, 0.59, 0.11));
-	vec3 grit = mix(land, vec3(lum) * vec3(1.02, 0.98, 0.92) * 0.9 + 0.03, 0.55);
+	vec3 grit = vec3(lum) * vec3(1.02, 0.98, 0.92) * 0.9 + 0.03;
 	bool soil = !hard && !rail;
 	if (soil) {
 		grit = bared(land) * (1.02 + 0.12 * pn2(p, 2.6));
@@ -556,8 +604,8 @@ vec4 paint_road(Road r, vec2 p, vec3 land, float fw, float near, out float cover
 	// side or both (by the street); old ones cracked and grown over. Everything follows the junctions' rounded
 	// corners, and where a lane crosses into a lot the kerb drops flush and the flags run on across it.
 	if (kerbed) {
-		bool both = hash3(vec3(r.id, 3.0, 5.0)) < 0.6;
-		float here = both || r.side > 0.0 ? 1.0 : 0.0;
+		// A footpath both sides, all the way along and round every corner.
+		float here = 1.0;
 		// (And where a track or dirt road crosses the verge to it: the kerb dropped there too.)
 		float crossover = (max(r.lot, r.other_lot) > 0.5 || r.other_soil > 0.5) && r.other < 6.0 ? 1.0 : 0.0;
 		// Everything past the kerb is laid to its line: the kerbstones, a grass verge, then the footpath, each
@@ -588,24 +636,26 @@ vec4 paint_road(Road r, vec2 p, vec3 land, float fw, float near, out float cover
 		}
 		foot_c *= 1.0 - 0.4 * joint_f;
 		// Age: lichen and grime in blotches, weeds in the joints, and tufts where the surface broke; on an old
-		// fallen world a slab now and then gone, its bed of soil showing. Never so much the path stops being one.
+		// fallen world a slab now and then gone. Never so much the path stops being one. Where weeds grow and
+		// where a slab is gone the path only thins: the land's own ground and grass show there, not a green of its own.
 		foot_c *= 1.0 - 0.18 * wear * smoothstep(0.4, 0.8, pn2(p, 0.35));
-		vec3 weed_c = mix(land, vec3(dot(land, vec3(0.3, 0.59, 0.11))) * vec3(0.75, 0.9, 0.55), 0.35) * 0.8;
 		float tufts = smoothstep(0.66, 0.74, pn2(p, 1.7) * 0.75 + pn2(p, 5.3) * 0.25 * near + 0.18 * wear) * smoothstep(0.35, 0.9, wear);
 		float weed = max(joint_f * smoothstep(0.15, 0.6, wear) * (0.6 + 0.4 * pn2(p, 2.2)), tufts * 0.7);
 		float gone = laid != 1 && cell_h > 0.5 - 0.05 * wear * wear ? 1.0 : 0.0;
-		foot_c = mix(foot_c, bared(land) * 0.85, gone * 0.9);
-		foot_c = mix(foot_c, weed_c, weed * greenness(land) + weed * 0.3 * (1.0 - greenness(land)));
+		float foot_own = 1.0 - max(gone * 0.95, min(weed, 1.0) * mix(0.35, 0.8, greenness(land)));
 		// The kerbstones: pale, a little chipped and darker with age; lower and greyer where they drop for a crossover.
 		vec3 kerb_c = vec3(0.52, 0.52, 0.5) * (crossover > 0.5 ? 0.85 : 1.0) * mix(1.0, 0.75, wear) * (0.92 + 0.16 * pn2(p, 1.6));
 		kerb_c *= 1.0 - 0.3 * smoothstep(0.75, 0.8, pn2(p, 4.1) + 0.1 * wear) * detail;
-		grit = mix(land, mix(foot_c, kerb_c, kerb_s), max(kerb_s, flags));
-		shoulder = max(kerb_s, flags) * (1.0 - deck);
+		grit = mix(foot_c, kerb_c, kerb_s);
+		shoulder = max(kerb_s, flags * foot_own) * (1.0 - deck);
 	}
 
 	vec3 c;
 	float x = r.across;
 	float pit_wet = 0.0;
+	// How much of its own surface shows here (1 all of it): where the land takes it back, a crack lets the land in,
+	// or a track's crown grows over, it only thins, and the land's own ground shows through.
+	float laid_own = 1.0;
 	if (r.surface < 1.5) {
 		// Concrete: slabs 5 m long, a joint down the middle (and between lanes), each slab its own shade.
 		float lane = floor(x / max(r.half_width * 0.5, 1.8));
@@ -622,9 +672,9 @@ vec4 paint_road(Road r, vec2 p, vec3 land, float fw, float near, out float cover
 		c *= 0.85 + 0.3 * pn2(p, 0.12) + 0.12 * (pn2(p, 2.0) - 0.5) * near;
 	} else if (rail) {
 		// Ballast: crushed stone under the sleepers.
-		c = mix(vec3(0.22, 0.2, 0.17), land * 0.85, 0.3) * (0.85 + 0.3 * pn2(p, 3.0) * near + 0.15 * pn2(p, 0.2)) * 0.85;
+		c = vec3(0.2, 0.185, 0.16) * (0.85 + 0.3 * pn2(p, 3.0) * near + 0.15 * pn2(p, 0.2)) * 0.85;
 	} else {
-		c = soil_way(r, p, land, fw, near, pit_wet);
+		c = soil_way(r, p, land, fw, near, pit_wet, laid_own);
 		// Its apron by a paved road: trodden flat and even, the ruts run out into it.
 		c = mix(c, bared(land) * (0.96 + 0.1 * pn2(p, 1.9)), apron * 0.75);
 	}
@@ -665,15 +715,27 @@ vec4 paint_road(Road r, vec2 p, vec3 land, float fw, float near, out float cover
 		float at = (cell + 0.2 + 0.6 * fract(h * 13.7)) * span + (pn2(p, 0.7) - 0.5) * 0.25 + (pn2(p, 2.9) - 0.5) * 0.04;
 		float lo = fract(h * 7.3) < 0.5 ? 0.0 : lane_w, hi = lo + lane_w * (0.6 + 0.4 * fract(h * 3.7));
 		crack = max(crack, band(r.along - at, thin, fw) * step(h, 0.12 + 0.5 * many) * step(lo, x) * (1.0 - smoothstep(hi - 0.3, hi, x)));
-		// Alligator cracking, only in small patches that have broken up.
-		float broken = smoothstep(0.76, 0.8, pn2(p, 0.1) + 0.1 * many);
+		// Block cracking on the oldest roads, in broad patches, never everywhere: the surface split into rough
+		// squares a metre or so across, lines along and across the road, each length of line there or not.
+		float blocks = smoothstep(0.58, 0.68, pn2(p, 0.045) + 0.3 * (wear - 0.75)) * step(0.72, wear);
+		if (blocks > 0.0) {
+			vec2 q = vec2(r.along, r.side) / 1.3;
+			float wob2 = (pn2(p, 1.7) - 0.5) * 0.1;
+			float la = band(abs(fract(q.x + 0.5 + wob2) - 0.5) * 1.3, thin, fw) * step(hash3(vec3(floor(q.x + 0.5), floor(q.y), r.id + 3.0)), 0.6);
+			float lb = band(abs(fract(q.y + 0.5 - wob2) - 0.5) * 1.3, thin, fw) * step(hash3(vec3(floor(q.x), floor(q.y + 0.5), r.id + 5.0)), 0.45);
+			crack = max(crack, max(la, lb) * blocks);
+		}
+		// Alligator cracking, only in small patches where the surface failed under the wheels.
+		float broken = smoothstep(0.82, 0.86, pn2(p, 0.23) + 0.06 * many) * smoothstep(0.35, 0.6, wear);
 		if (broken > 0.0) {
-			crack = max(crack, band(crazing(p, 0.35), thin * 0.8, fw) * broken);
+			vec2 warp = vec2(pn2(p, 2.1), pn2(p + 9.0, 2.1)) - 0.5;
+			crack = max(crack, band(crazing(p + warp * 0.3, 0.28), thin * 0.8, fw) * broken);
 			c *= 1.0 - 0.06 * broken;
 		}
 		crack *= detail * (0.4 + 0.6 * wear);
-		// Dark hairlines with the land blown into them: sand on a desert, soil and grass on a green world.
-		c = mix(c, mix(c * 0.25, land * 0.6, 0.1 + 0.25 * wear), crack);
+		// Dark hairlines; on an old road the land gets into them (its own ground shows a little there).
+		c = mix(c, c * 0.28, crack);
+		laid_own *= 1.0 - crack * (0.1 + 0.35 * wear);
 		// Repairs: a strip of sealant along a wheel-path crack, and patches laid square across a lane,
 		// fresher and finer than the road round them, with a seam at their edge.
 		float seal_off = 0.5 * lane_w + (along_noise(r.along * 0.003, 71.0 + r.style) > 0.5 ? 0.9 : -0.9) + (along_noise(r.along * 0.05, 73.0) - 0.5) * 0.35;
@@ -705,7 +767,6 @@ vec4 paint_road(Road r, vec2 p, vec3 land, float fw, float near, out float cover
 			// The far wall in light, the near one in its own shadow, the bottom darkest.
 			float wall = dot(normalize(rel + vec2(1e-4)), normalize(vec2(0.6, 0.8)));
 			vec3 bottom = c * mix(0.22, 0.45 + 0.2 * wall, smoothstep(0.55, 1.0, t));
-			bottom = mix(bottom, land * 0.5, 0.25 * (1.0 - t) * (1.0 - weather_ground.x));
 			float water = smoothstep(0.15, 0.5, weather_ground.x) * (1.0 - smoothstep(0.7, 0.9, t));
 			bottom = mix(bottom, vec3(0.03, 0.035, 0.04), water * 0.8);
 			float seen = 1.0 - smoothstep(0.3, 0.8, fw);
@@ -713,6 +774,16 @@ vec4 paint_road(Road r, vec2 p, vec3 land, float fw, float near, out float cover
 			c = mix(c, c * 1.35 + 0.01, lip * 0.6 * seen);
 			pit_wet = pit * water * seen;
 		}
+	}
+	// A lane or drive into a lot crosses a kerbed street's footpath on the level: the path runs straight on across it,
+	// flush (its flags, or its asphalt), the kerb dropped; never broken off at every gate.
+	if (!kerbed && r.other_kerbed > 0.5 && r.other > 0.0 && r.other < FOOT_OUT + 0.3 && r.other_soil < 0.5) {
+		int laid_p = int(road_paint.w + 0.5);
+		float path_ = band(r.other - (0.22 + FOOT_OUT) * 0.5, (FOOT_OUT - 0.22) * 0.5, fw);
+		float jn = laid_p == 1 ? 0.0 : band(fract(r.along / 0.9) * 0.9 - 0.45, 0.012, fw) * (1.0 - smoothstep(0.03, 0.12, fw));
+		vec3 path_c = laid_p == 1 ? mix(vec3(0.05, 0.048, 0.046), vec3(0.13, 0.125, 0.118), wear) : (laid_p == 2 ? vec3(0.47, 0.465, 0.445) : vec3(0.44, 0.43, 0.41)) * mix(1.0, 0.72, wear);
+		path_c *= (0.94 + 0.12 * pn2(p, 0.9)) * (1.0 - 0.4 * jn);
+		c = mix(c, path_c, path_);
 	}
 	// The gore: chevrons across the paved fork, a line round its nose, flaking with age like the rest of the paint.
 	if (gore_here && min(r.edge, r.other) > 0.0) {
@@ -766,13 +837,13 @@ vec4 paint_road(Road r, vec2 p, vec3 land, float fw, float near, out float cover
 		}
 		c = mix(c, vec3(0.62, 0.62, 0.6), junction_paint(r, p, x, setback, meets, gives_way, fw) * flake);
 	}
-	// Where a track or dirt road meets it, dirt and gravel carried onto the paved road a few metres either way,
-	// thickest in the mouth and scattered thinner out, over the paint.
-	if (hard && r.other_soil > 0.5 && r.other < 7.0) {
-		float carried = 1.0 - smoothstep(-1.5, 7.0, r.other);
-		float clumps = smoothstep(0.42, 0.7, pn2(p, 0.9) * 0.55 + pn2(p, 3.7) * 0.25 * near + carried * 0.45);
-		float grit_ = band(fract(pn2(p, 9.0) * 7.0) - 0.5, 0.08, fw) * near;
-		c = mix(c, bared(land) * (0.9 + 0.2 * pn2(p, 4.4)), carried * max(clumps, grit_ * 0.6) * 0.8);
+	// Where a track or dirt road meets it, a scatter of dirt and gravel carried onto the paved road, only near its
+	// edge in the track's mouth and thinning fast: the road's own surface wins, whole to its edge (never the track's
+	// soil laid over it as a wedge).
+	if (hard && r.other_soil > 0.5 && r.other < 4.0) {
+		float carried = (1.0 - smoothstep(-0.5, 3.0, r.other)) * (1.0 - smoothstep(0.2, 2.2, -r.edge));
+		float crumbs = smoothstep(0.62, 0.8, pn2(p, 1.3) * 0.5 + pn2(p, 4.1) * 0.5 * near + carried * 0.25);
+		c = mix(c, bared(land) * (0.9 + 0.2 * pn2(p, 4.4)), carried * crumbs * 0.7);
 	}
 	// The land takes it back from the edges in: grass and soil creep in along both, sand blows in from the
 	// side the wind comes from in long tapering tongues, and the middle goes last. It lies over the markings.
@@ -790,7 +861,7 @@ vec4 paint_road(Road r, vec2 p, vec3 land, float fw, float near, out float cover
 	float ruffle = (pn2(p, 2.7) - 0.5) * 0.12 * near;
 	float over = 1.0 - smoothstep(reach - 0.25 - fw, reach + fw, inward + ruffle);
 	over *= 0.92;
-	c = mix(c, land, over);
+	laid_own *= 1.0 - over;
 	// A divided highway's median, down the middle away from junctions: a kerbed strip of grass (the land's own,
 	// grown over to scrub where nobody keeps it), or a concrete barrier's footing (the barrier stands on it).
 	if (r.style > 0.5 && r.style < 1.5 && r.median > 0.5 && r.other > 20.0) {
@@ -804,9 +875,9 @@ vec4 paint_road(Road r, vec2 p, vec3 land, float fw, float near, out float cover
 			shoulder *= 1.0 - open_;
 		}
 	}
-	cover = deck * (1.0 - smoothstep(0.5, 1.0, r.core));
+	cover = deck * laid_own * (1.0 - smoothstep(0.5, 1.0, r.core));
 	rough = mix(mix(r.surface < 2.5 ? 0.82 : 0.95, 0.93, over), 0.08, pit_wet);
-	return vec4(mix(grit, c, deck), max(deck, shoulder) * (1.0 - smoothstep(0.5, 1.0, r.core)));
+	return vec4(mix(grit, c, deck), max(deck * laid_own, shoulder) * (1.0 - smoothstep(0.5, 1.0, r.core)));
 }
 
 // ---- made ground ------------------------------------------------------------------------------------
@@ -925,42 +996,40 @@ vec4 paint_ground(Patch g, vec2 p, vec3 land, float fw, float near, out float co
 		vec2 j = abs(fract(grid / s + 0.5) - 0.5) * s;
 		float jw = (flags ? 0.008 : 0.015) + (flags ? 0.012 : 0.025) * wear;
 		seam = max(band(j.x, jw, fw), band(j.y, jw, fw)) * (g.pattern > 0.5 || flags ? 1.0 : 0.0);
-		// A slab cracked across now and then, more of them the older it is; and some gone altogether.
+		// A slab cracked now and then, more of them the older it is: a short crack in from one of its corners, across
+		// part of the slab and tapering out; and some slabs gone altogether.
 		float h = hash3(vec3(cell, g.seed + 11.0));
 		vec2 f = grid / s - cell;
-		float ang = h * 6.2832;
-		float across = abs(dot(f - 0.5 - vec2(0.2 * (fract(h * 7.0) - 0.5)), vec2(cos(ang), sin(ang)))) * s;
-		seam = max(seam, band(across, jw * 0.6, fw) * step(h, 0.08 + 0.45 * wear * wear) * detail);
+		vec2 corner = vec2(step(0.5, fract(h * 7.0)), step(0.5, fract(h * 13.0)));
+		vec2 into = normalize(vec2(0.5) - corner + (vec2(fract(h * 17.0), fract(h * 23.0)) - 0.5) * 0.9);
+		float clen = 0.35 + 0.5 * fract(h * 29.0);
+		vec2 crel = f - corner;
+		float ct = clamp(dot(crel, into), 0.0, clen);
+		float dcr = (length(crel - into * ct) + (pn2(p, 6.0) - 0.5) * 0.03) * s;
+		seam = max(seam, band(dcr, jw * 0.6 * (1.0 - 0.6 * ct / clen), fw) * step(h, 0.06 + 0.4 * wear * wear) * detail);
 		broken = step(fract(h * 53.0), 0.015 + 0.12 * wear * wear * wear) * (flags ? 1.0 : 0.7);
 	} else if (g.cover < 2.5) {
 		// Tarmac: black when laid, greying with age.
 		c = mix(vec3(0.032, 0.032, 0.034), vec3(0.085, 0.082, 0.077), wear);
 		c *= 0.85 + 0.3 * pn2(p, 0.11) + 0.12 * (pn2(p, 2.0) - 0.5) * near;
-		// Where it has broken up it crazes into blocks; the worst of that lifts out in pieces.
-		float crazed = smoothstep(0.66, 0.74, pn2(p, 0.09) + 0.25 * wear);
-		if (crazed > 0.0 && fw < 0.5) seam = band(crazing(p, 0.5), 0.012 + 0.015 * wear, fw) * crazed * detail;
+		// Where it failed it crazes into small blocks, in patches only; the worst of that lifts out in pieces.
+		float crazed = smoothstep(0.8, 0.85, pn2(p, 0.2) + 0.15 * wear) * step(0.45, wear);
+		vec2 cw = vec2(pn2(p, 2.3), pn2(p + 5.0, 2.3)) - 0.5;
+		if (crazed > 0.0 && fw < 0.5) seam = band(crazing(p + cw * 0.3, 0.3), 0.01 + 0.012 * wear, fw) * crazed * detail;
 		broken = smoothstep(0.82, 0.86, pn2(p, 0.21) + 0.2 * wear * wear) * step(0.45, wear) * 0.8;
 	} else if (g.cover < 3.5) {
 		// Gravel: loose stone, grey-brown, darker where it lies thick.
-		c = mix(vec3(0.2, 0.188, 0.165), land * 0.8, 0.2) * (0.82 + 0.25 * pn2(p, 0.25));
+		c = vec3(0.19, 0.18, 0.158) * (0.82 + 0.25 * pn2(p, 0.25));
 		c *= 1.0 + (pn2(p, 6.0) - 0.5) * 0.35 * near;
 		rough = 0.97;
 	} else {
-		// Trodden dirt: the land's own ground, beaten bare and darker, with stones in it.
-		c = mix(land * vec3(0.72, 0.66, 0.6), vec3(lum * 0.7) + vec3(0.05, 0.03, 0.012), 0.45) * (0.88 + 0.24 * pn2(p, 0.3));
+		// Trodden dirt: the world's own soil beaten bare and darker, with stones in it.
+		c = bared(land) * vec3(0.82, 0.78, 0.74) * (0.88 + 0.24 * pn2(p, 0.3));
 		c *= 1.0 + (pn2(p, 5.0) - 0.5) * 0.2 * near;
 	}
-	// Cracks running on across it from slab to slab, straight and branching where the ground under it moved, more
-	// of them the older it is: the edges of cells a few metres across, only some of them cracked.
-	if (hard && fw < 0.5 && wear > 0.15) {
-		vec2 warp = vec2(pn2(p, 1.9), pn2(p + 17.0, 1.9)) - 0.5;
-		float edge = crazing(p + warp * 0.35, 3.2);
-		float some = smoothstep(0.62 - 0.3 * wear, 0.7 - 0.3 * wear, pn2(p, 0.21));
-		seam = max(seam, band(edge, 0.006 + 0.012 * wear, fw) * some * detail);
-	}
-	// The seams: dark, with the land in them (grass on a green world, sand on a desert), more of it with age.
-	vec3 in_seam = mix(c * 0.4, land * 0.7, 0.1 + 0.5 * wear * wear);
-	c = mix(c, in_seam, seam * seen);
+	// The seams: dark; with age the land gets into them (its own ground and grass show there, more with age).
+	c = mix(c, c * 0.42, seam * seen);
+	float own = 1.0 - seam * seen * (0.05 + 0.6 * wear * wear);
 	// Painted lines: a car park's bays, a loading apron's hazard stripes, flaking as it ages.
 	float flake = smoothstep(0.25, 0.7, pn2(p, 0.9) + 0.5 - 0.45 * wear) * (1.0 - 0.6 * wear);
 	if (g.pattern > 1.5 && g.pattern < 2.5) {
@@ -984,11 +1053,11 @@ vec4 paint_ground(Patch g, vec2 p, vec3 land, float fw, float near, out float co
 		kerb = band(g.d + 0.12, 0.1, fw) * (1.0 - 0.6 * step(0.86 - 0.25 * wear, pn2(p, 2.3)));
 		c = mix(c, vec3(0.36, 0.35, 0.33) * (0.9 + 0.2 * pn2(p, 1.7)), kerb);
 	}
-	// Slabs gone: the land showing through, broken concrete lying in it.
+	// Slabs gone: the land's own ground showing, broken concrete lying in it.
 	if (broken > 0.0) {
 		float bits = fragments(p, 0.6, 0.35, 13.0 + g.seed, fw);
-		vec3 rubble = mix(land * 0.85, c * 1.08, bits);
-		c = mix(c, rubble, broken * seen);
+		c = mix(c, c * 1.08, bits * broken * seen);
+		own *= 1.0 - broken * seen * (1.0 - bits);
 	}
 	// The land takes it back: grass and soil creep in from the edge, more of it and further in the older it is,
 	// and lie in drifts here and there; never over the whole of it.
@@ -998,19 +1067,21 @@ vec4 paint_ground(Patch g, vec2 p, vec3 land, float fw, float near, out float co
 	float drift = smoothstep(0.7 - 0.12 * wear, 0.85, pn2(p, 0.045)) * (0.15 + 0.5 * wear) * smoothstep(0.1, 0.4, wear);
 	over = max(over * (0.55 + 0.4 * wear), drift);
 	over = min(over, 0.9);
-	c = mix(c, land, over);
+	own *= 1.0 - over;
 	// An edge laid straight onto the land never stops on a clean line: it frays at every scale, and the land takes it
 	// back from outside in, grass and soil in clumps over its last metre or few (more the older it is); loose stone and
 	// trodden earth thin out into the land with no edge at all. A kerbed edge stops at its kerb.
 	float d_edge = g.d;
 	if (g.kerb < 0.5) {
-		float fray = (pn2(p, 0.8) - 0.5) * 1.4 + (pn2(p, 2.6) - 0.5) * 0.6 * near + (pn2(p, 7.3) - 0.5) * 0.25 * near;
+		// (And over metres too: no length of its outline lies straight.)
+		float fray = (pn2(p, 0.8) - 0.5) * 1.4 + (pn2(p, 2.6) - 0.5) * 0.6 * near + (pn2(p, 7.3) - 0.5) * 0.25 * near
+			+ (pn2(p, 0.13) - 0.5) * (hard ? 1.6 : 3.2);
 		d_edge += fray * (hard ? 0.5 + 0.7 * wear : 1.0);
 		float depth = hard ? 1.0 + 2.5 * wear : 3.0;
 		float edge_t = smoothstep(-depth, 0.0, d_edge);
 		float clumps = smoothstep(0.4, 0.6, pn2(p, 1.3) * 0.6 + pn2(p, 4.2) * 0.4 * near + edge_t * 0.7 - 0.35);
-		c = mix(c, land, clumps * edge_t * (hard ? 0.85 : 0.95));
-		if (!hard) c = mix(c, mix(c, land, 0.55), edge_t);
+		own *= 1.0 - clumps * edge_t * (hard ? 0.85 : 0.95);
+		if (!hard) own *= 1.0 - 0.55 * edge_t;
 		over = max(over, clumps * edge_t * 0.8);
 	}
 	// Past the outline: an unkerbed hard edge breaks up into chunks lying in the grass, with grit and dust beyond.
@@ -1023,9 +1094,9 @@ vec4 paint_ground(Patch g, vec2 p, vec3 land, float fw, float near, out float co
 	if (hard && d_edge >= 0.0) c = mix(vec3(0.3, 0.29, 0.275), bared(land), 0.35) * (0.8 + 0.3 * pn2(p, 3.3));
 	// Gravel and dirt spill a little way past their edge; grit and dust lie a little way past a hard one.
 	float spread = (1.0 - smoothstep(0.0, hard ? 1.4 : 1.2, d_edge)) * (hard ? (g.kerb < 0.5 ? 0.2 + 0.25 * pn2(p, 1.9) : 0.0) : 0.3 + 0.3 * pn2(p, 0.7)) * (1.0 - body);
-	cover = body * (1.0 - over);
+	cover = body * own;
 	rough = mix(hard ? (g.cover < 2.5 && g.cover > 1.5 ? 0.85 : 0.9) : rough, 0.93, over);
-	return vec4(c, max(max(body, spill), spread));
+	return vec4(c, max(max(body * own, spill), spread));
 }
 
 // How far a point is inside the hole (negative outside).
@@ -1142,8 +1213,7 @@ void fragment() {
 	// (Nor on a far ring's curtains, upright walls under each chunk's edge: painted, they show as pale sheets.)
 	if (road_grid.w > 0.5 && up > (far_ring ? 0.3 : 0.7) && !(far_ring && inside_hole(wpos.xz) > 0.0)) {
 		Road r = nearest_road(wpos.xz, wpos.y);
-		// A town street that just stops turns in a bulb: its deck swells to a disc round its end.
-		if (r.jform > 6.5 && abs(r.jdist) < 14.0) r.edge = min(r.edge, sqrt(r.jdist * r.jdist + r.across * r.across) - (r.half_width + 4.0));
+		// (A town street that just stops turns in a bulb: a disc round its end, drawn with the corners.)
 		// A road leading to a place runs into its made ground and joins it with rounded corners: outside the yard, its
 		// deck swells into the corner between its edge and the yard's (a smooth union, a few metres round).
 		bool to_place = r.lot > 0.5 && made_d < 6.0;

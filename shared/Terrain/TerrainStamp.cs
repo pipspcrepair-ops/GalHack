@@ -184,6 +184,27 @@ public sealed class TerrainStamp
     public int Median { get; set; }
     /// <summary>Road: how far past the deck its bed is laid level before the banks begin, m (a town street's kerb, verge and footpath).</summary>
     public float Verge { get; set; }
+    /// <summary>Road: a level bed of this radius round its path's first or last point, m (0 none): the turning bulb a street stops in, and its footpath.</summary>
+    public float CapStart { get; set; }
+    public float CapEnd { get; set; }
+    /// <summary>Whether a point lies in a road's level disc round its first or last point (a turning bulb's bed).</summary>
+    public bool InCap(double x, double z)
+    {
+        if (CapStart <= 0f && CapEnd <= 0f || _px == null || _px.Length < 2) return false;
+        Offset(x, z, out double dx, out double dz);
+        foreach (int e in new[] { 0, _px.Length - 1 })
+        {
+            float cap = e == 0 ? CapStart : CapEnd;
+            if (cap > 0f && ((float)dx - _px[e]) * ((float)dx - _px[e]) + ((float)dz - _pz[e]) * ((float)dz - _pz[e]) <= cap * cap) return true;
+        }
+        return false;
+    }
+
+    /// <summary>Road: every stretch of it a bridge (laid only to cut away land that would stand up through the deck).</summary>
+    public bool AllBridge { get; private set; }
+
+    /// <summary>How far under a bridge's deck the land must lie at least, m: anything higher is cut away under it.</summary>
+    public const float BridgeClear = 2.6f;
     /// <summary>A road that runs on at its route's start or end into a way of another class: that way's half width (0 none) and the taper's length, m; its painted width eases to meet it.</summary>
     public float MeetStartHw { get; set; }
     public float MeetEndHw { get; set; }
@@ -316,7 +337,14 @@ public sealed class TerrainStamp
                 // banks easing back to the land at a walkable slope. Tunnels leave the ground alone
                 // (their mouths are faces in the slope); under a bridge the ground is the land's own,
                 // except where the embankment's end spills down under it round the abutment.
-                if (!NearestOnPath(x, z, out _, out _, out RoadSpan span) || span == RoadSpan.Tunnel) return height;
+                if (!NearestOnPath(x, z, out float onPath, out float deckOver, out RoadSpan span) || span == RoadSpan.Tunnel) return height;
+                // Nothing stands up through a bridge: land higher than its deck less the clearance under it (a dune, a
+                // knoll between its piers) is cut away under it, easing back at its sides.
+                if (span == RoadSpan.Bridge && height > deckOver - BridgeClear)
+                {
+                    float under = deckOver - BridgeClear, cutEase = MathF.Max(StripBlend, (height - under) * 1.8f);
+                    height += (under - height) * (1f - Smooth((onPath - HalfWidth - 1.5f) / cutEase));
+                }
                 if (!Bed(x, z, out float s, out float target, out float mouth)) return height;
                 // A century of frost and roots buckles a neglected deck: a gentle heave, never a step.
                 if (Buckle > 0f) target += Buckle * (Heave(x, z) * 2f - 1f);
@@ -324,6 +352,16 @@ public sealed class TerrainStamp
                 // walls, so they meet the slope over the bore without a cliff across it where the road stops
                 // changing the ground.
                 float bed = HalfWidth + Verge;
+                // A street's turning bulb: a level disc round its end, the banks easing from its rim.
+                if (CapStart > 0f || CapEnd > 0f)
+                    foreach (int e in new[] { 0, _px.Length - 1 })
+                    {
+                        float cap = e == 0 ? CapStart : CapEnd;
+                        if (cap <= 0f) continue;
+                        Offset(x, z, out double cdx, out double cdz);
+                        float de = MathF.Sqrt(((float)cdx - _px[e]) * ((float)cdx - _px[e]) + ((float)cdz - _pz[e]) * ((float)cdz - _pz[e]));
+                        if (de - cap < s - bed) { s = de; bed = cap; target = _py[e]; }
+                    }
                 float ease = MathF.Min(BankMax, MathF.Max(StripBlend, MathF.Abs(target - height) * 2.2f));
                 if (mouth < MouthBox + MouthFade)
                 {
@@ -510,6 +548,7 @@ public sealed class TerrainStamp
             t._spans[i] = spans[i];
             if (spans[i] == RoadSpan.Tunnel) t._boreBottom = Math.Min(t._boreBottom, Math.Min(ys[i], ys[i + 1]));
         }
+        t.AllBridge = n > 1 && Array.TrueForAll(t._spans, sp => sp == RoadSpan.Bridge);
         return t;
     }
 
@@ -649,8 +688,13 @@ public sealed class TerrainStamp
         for (int k = 0; k < n; k++)
         {
             TerrainStamp t = stamps[only != null ? only[k] : k];
-            if (t.Shape != StampShape.Road || !t.NearestOnPath(x, z, out float d, out _, out _, skipTunnels: true)) continue;
+            if (t.Shape != StampShape.Road || !t.NearestOnPath(x, z, out float d, out float deckAt, out _, skipTunnels: true)) continue;
+            // (A stretch all bridge has a say only where the land would stand up through its deck: elsewhere the land
+            // under it is its own, and the roads round it shape it as they did.)
+            if (t.AllBridge && height <= deckAt - BridgeClear) continue;
             float edge = MathF.Max(0f, d - t.HalfWidth), reach = t.BankMax + StripBlend;
+            // (Within a turning bulb's level disc the stamp that lays it rules, as on its own deck.)
+            if (t.InCap(x, z)) edge = 0f;
             if (edge >= reach) continue;
             float fade = 1f - edge / reach, w = fade * fade / (edge * edge + 0.0025f);
             sum += w * t.Apply(height, x, z, padWeight);

@@ -48,7 +48,22 @@ public sealed class UnderTown
     public void Plan(PlanetTerrainSource ground, IReadOnlyList<PoiSite> pois)
     {
         double w = ground.Width, h = ground.Height;
+        // The lowest ground near a point (within a chamber's half width): what runs under it keeps its cover however the
+        // land falls away beside the street (past a street's end the ground drops down a bank, and a chamber planned
+        // from the deck alone stood out of it, its dark walls showing black).
+        float Lowest(int x, int z)
+        {
+            float low = ground.SurfaceHeight(Mathx.WrapX(x + 0.5, w), Mathx.Wrap(z + 0.5, h));
+            for (int k = 0; k < 12; k++)
+            {
+                double a = k * Math.Tau / 12;
+                foreach (double r in new[] { 4.0, 8.0 })
+                    low = MathF.Min(low, ground.SurfaceHeight(Mathx.WrapX(x + 0.5 + Math.Cos(a) * r, w), Mathx.Wrap(z + 0.5 + Math.Sin(a) * r, h)));
+            }
+            return low;
+        }
         _site.Ground = (x, z) => ground.SurfaceHeight(Mathx.WrapX(x + 0.5, w), Mathx.Wrap(z + 0.5, h));
+        _site.Lowest = Lowest;
         _site.Avoid = (x, z) =>
         {
             double cx = Mathx.WrapX(x + 0.5, w), cz = Mathx.Wrap(z + 0.5, h);
