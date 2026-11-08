@@ -68,7 +68,7 @@ public sealed class Player
         Body = body;
         Binding = binding;
         Health = new Health(body.Integrity) { RegenDelay = 8f, RegenPerSecond = body.Integrity * 0.02f };
-        body.DamageSink = new HealthSink(Health, world.Weather);
+        body.DamageSink = new HealthSink(Health);
         body.Controller = Legs;
     }
 
@@ -138,7 +138,6 @@ public sealed class Player
     public void AfterPhysics(float dt)
     {
         Health.Tick(dt);
-        if (Body.OnFloor) World.Weather.Landed(Body); // a fling's protection ends when you touch down
         PhysicsRules.RidingData rules = World.Rules.Riding;
         _rejoinBlocked -= dt;
 

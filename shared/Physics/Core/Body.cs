@@ -99,8 +99,7 @@ public interface IBodyController
 }
 
 /// <summary>
-/// Takes damage for a body that keeps its health somewhere else (a player's health with the
-/// tornado's fling floor). Returns what was actually dealt. The default just adds it up.
+/// Takes damage for a body that keeps its health somewhere else (a player's health). Returns what was actually dealt. The default just adds it up.
 /// </summary>
 public interface IDamageSink
 {

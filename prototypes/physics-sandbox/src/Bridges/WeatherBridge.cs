@@ -15,9 +15,6 @@ namespace PhysicsSandbox.Bridges;
 /// weather's own Glue), and lets the force module push every tracked body, its pushes landing
 /// on the one force path as <see cref="ForceKind.Weather"/>.
 ///
-/// The tornado fling's health floor stays the weather code's: <see cref="FlingFloor"/> asks
-/// weather's force module, and the player's health sink passes it on.
-///
 /// Riders on an outer hull live in their ship's cabin world, and the weather reaches them there:
 /// the wind acts against their velocity relative to the hull, not the ship's airspeed (they ride
 /// in its frame, so a ship can fly with someone on its roof), and its push is turned into the
@@ -34,7 +31,7 @@ public sealed class WeatherBridge : IForceProvider
     /// <summary>Where hazards happen: around the player.</summary>
     public System.Func<N.Vector3> Observer = static () => N.Vector3.Zero;
 
-    /// <summary>Weather off: no wind, no tornadoes (the force module still steps, so fling floors keep working).</summary>
+    /// <summary>Weather off: no wind, no tornadoes (the force module still steps).</summary>
     public bool Calm;
 
     /// <summary>The game's own shelter (a hole deep enough, a place's roof): no wind or tornado reaches such a body.</summary>
@@ -70,15 +67,6 @@ public sealed class WeatherBridge : IForceProvider
         Glue.Sync(Sim, Forces);
         if (Calm) Forces.Vortices.Clear();
         Forces.Step(dt);
-    }
-
-    /// <summary>The share of max health a fling's landing must leave this body, or 0. Weather's own rule.</summary>
-    public float FlingFloor(Body body) => _tracked.TryGetValue(body, out Pushed p) ? Forces.FlingFloor(p) : 0f;
-
-    /// <summary>The body has touched down: a fling's protection ends.</summary>
-    public void Landed(Body body)
-    {
-        if (_tracked.TryGetValue(body, out Pushed p)) Forces.Landed(p);
     }
 
     public VortexPhase PhaseOf(Body body) => _tracked.TryGetValue(body, out Pushed p) ? Forces.PhaseOf(p) : VortexPhase.Free;
@@ -154,23 +142,13 @@ public sealed class WeatherBridge : IForceProvider
 
 /// <summary>
 /// A player's health as the physics module's damage sink: every impact hits it in full
-/// (weather's <see cref="Health.Hit"/>), with the floor weather says applies: the tornado
-/// fling's share, or none. Nothing else ever lowers damage.
+/// (weather's <see cref="Health.Hit"/>), a tornado's fling or not. Nothing ever lowers damage.
 /// </summary>
 public sealed class HealthSink : IDamageSink
 {
     public readonly Health Health;
-    readonly WeatherBridge _weather;
 
-    public HealthSink(Health health, WeatherBridge weather)
-    {
-        Health = health;
-        _weather = weather;
-    }
+    public HealthSink(Health health) => Health = health;
 
-    public float Take(Body body, float raw)
-    {
-        float floor = _weather?.FlingFloor(body) ?? 0f;
-        return Health.Hit(raw, floor * Health.Max);
-    }
+    public float Take(Body body, float raw) => Health.Hit(raw);
 }

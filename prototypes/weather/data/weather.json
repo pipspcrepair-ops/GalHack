@@ -74,7 +74,6 @@
     "maxCarrySeconds": 8,
     "flingSpeed": 11,
     "releaseImmunity": 5,
-    "flingHealthFloor": 0.15,
     "liftMassLimit": 1500,
     "response": 3.5,
     "visualHeight": 170

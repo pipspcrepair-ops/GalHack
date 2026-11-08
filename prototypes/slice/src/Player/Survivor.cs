@@ -132,7 +132,6 @@ public sealed class Survivor
         PhysicsRules.RidingData rules = Zone.Physics.Rules.Riding;
         _rejoinBlocked -= dt;
         UpdateCrouch(dt);
-        if (Body.OnFloor) Zone.Weather.Bridge?.Landed(Body); // a fling's protection ends on touching down
 
         if (OnBike != null)
         {

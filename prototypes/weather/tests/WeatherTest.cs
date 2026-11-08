@@ -45,8 +45,8 @@ public partial class WeatherTest : Node
         Section("Tornado");
         TornadoLiftsOrbitsReleases();
         TornadoIsNeverSilent();
-        Section("Damage: never reduced, except a tornado fling's floor");
-        FlingIsNeverFatal();
+        Section("Damage: never reduced, a tornado fling's landing included");
+        FlingIsUniform();
         StrikesAreWarnedFirst();
         Section("Lightning");
         LightningBuildsThenHitsHighest();
@@ -217,10 +217,9 @@ public partial class WeatherTest : Node
             if (forces.PhaseOf(body) == VortexPhase.Caught) orbit = forces.OrbitOf(body);
             if (released && body.Landed is float speed)
             {
-                // Exactly what the player does on touching down: fall damage, with the fling's floor.
+                // Exactly what the player does on touching down: fall damage, a fling or not.
                 landing = speed;
-                dealt = hp.Hit(DamageRules.FallDamage(speed), forces.FlingFloor(body) * hp.Max);
-                forces.Landed(body);
+                dealt = hp.Hit(DamageRules.FallDamage(speed));
             }
         }
         return new Fling(phases, peak, orbit, landing, hp.Current, dealt);
@@ -239,23 +238,22 @@ public partial class WeatherTest : Node
         Check(heavy.Peak < f.Peak * 0.7f, $"the 6.5 t rover is lifted less ({heavy.Peak:F1} m vs {f.Peak:F1} m)");
     }
 
-    void FlingIsNeverFatal()
+    void FlingIsUniform()
     {
-        float floor = _data.Tornado.FlingHealthFloor * 100f;
         Fling full = RunFling(Specs.PlayerMass, Specs.PlayerDragArea, 100f);
-        Check(full.Dealt > 0f && full.HealthAfter >= floor,
-            $"from full health a fling hurts but leaves you standing (raw {DamageRules.FallDamage(full.Landing):F0}, dealt {full.Dealt:F0}, {full.HealthAfter:F0} left)");
+        float raw = DamageRules.FallDamage(full.Landing);
+        Check(full.Dealt > 0f && MathF.Abs(full.Dealt - MathF.Min(raw, 100f)) < 1e-3f,
+            $"from full health a fling's landing deals its fall damage in full (landing at {full.Landing:F1} m/s: {raw:F0}, dealt {full.Dealt:F0}, {full.HealthAfter:F0} left)");
         Fling low = RunFling(Specs.PlayerMass, Specs.PlayerDragArea, 30f);
-        Check(low.HealthAfter >= floor - 1e-3f && low.HealthAfter > 0f,
-            $"from 30 health the fling and its landing stop at the {floor:F0} health floor ({low.HealthAfter:F1} left)");
-        Fling lower = RunFling(Specs.PlayerMass, Specs.PlayerDragArea, 8f);
-        Check(lower.HealthAfter >= 8f - 1e-3f, $"already below the floor, a fling takes nothing ({lower.HealthAfter:F1} left)");
+        float rawLow = DamageRules.FallDamage(low.Landing);
+        Check(MathF.Abs(low.HealthAfter - MathF.Max(0f, 30f - rawLow)) < 1e-3f,
+            $"from 30 health nothing holds it back: {rawLow:F0} raw leaves {low.HealthAfter:F1}{(low.HealthAfter <= 0f ? " (dead)" : "")}");
 
-        // The floor belongs to the tornado: the same landing without a fling has no such guarantee.
+        // A fling's landing and a cliff fall at the same speed hurt exactly the same.
         var plain = new Health(100f);
         plain.Set(30f);
         plain.Hit(DamageRules.FallDamage(low.Landing));
-        Check(plain.Current < floor, $"there is no general cap: the same {low.Landing:F0} m/s fall from a cliff leaves {plain.Current:F0}");
+        Check(MathF.Abs(plain.Current - low.HealthAfter) < 1e-3f, $"the same {low.Landing:F0} m/s fall from a cliff leaves the same {plain.Current:F1}");
     }
 
     void TornadoIsNeverSilent()
@@ -606,15 +604,15 @@ public partial class WeatherTest : Node
                 }
                 break;
 
-            case 5: // the real player, on Jolt, caught at 30 health: thrown about, lands hard, lives
+            case 5: // the real player, on Jolt: caught, thrown about, and the landing hurts like any fall
             {
                 Player player = _main.Player;
                 if (_tick == 1)
                 {
                     weather.Sim.Snap(WeatherKind.Clear);
                     player.DebugPlace(Terrain.OnGround(60f, 60f, 0.05f), 0f, 0f); // open ground, away from the pad
-                    player.Health.RegenPerSecond = 0f; // no healing mid-flight, so the floor is what saves you
-                    player.Health.Set(30f);
+                    player.Health.RegenPerSecond = 0f; // no healing mid-flight: what it takes is what you lose
+                    player.Health.Set(100f);
                 }
                 if (_tick == 30)
                 {
@@ -630,11 +628,10 @@ public partial class WeatherTest : Node
                 bool landed = _playerReleased && player.IsOnFloor() && _playerPeak > 10f;
                 if (landed || _tick > 60 * 30)
                 {
-                    float floor = _data.Tornado.FlingHealthFloor * player.Health.Max;
                     Check(_playerCaught && _playerReleased && _playerPeak > 15f,
                         $"in the scene, the player is caught, carried up {_playerPeak:F0} m and thrown clear");
-                    Check(landed && !player.Health.Dead && player.Health.Current >= floor - 1e-3f,
-                        $"and lands alive: 30 health before, {player.Health.Current:F1} after (floor {floor:F0})");
+                    Check(landed && player.Health.Current < player.Health.Max,
+                        $"and lands hurt by the fall like any other: 100 health before, {player.Health.Current:F1} after");
                     player.Health.RegenPerSecond = 2.5f;
                     weather.ClearTornadoes();
                     Next();

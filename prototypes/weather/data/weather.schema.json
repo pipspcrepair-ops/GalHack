@@ -50,10 +50,9 @@
     "tornado": {
       "type": "object",
       "description": "Path and lift profile. Radii in metres, speeds in m/s.",
-      "required": ["formSeconds", "lifetime", "captureRadius", "liftSpeed", "releaseHeight", "flingHealthFloor"],
+      "required": ["formSeconds", "lifetime", "captureRadius", "liftSpeed", "releaseHeight"],
       "properties": {
-        "formSeconds": { "$ref": "#/$defs/positive", "description": "The funnel lowers from the cloud base for this long before touchdown." },
-        "flingHealthFloor": { "$ref": "#/$defs/unit", "description": "A fling and its landing never take a player below this share of max health." }
+        "formSeconds": { "$ref": "#/$defs/positive", "description": "The funnel lowers from the cloud base for this long before touchdown." }
       },
       "additionalProperties": { "type": "number" }
     },

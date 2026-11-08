@@ -138,7 +138,6 @@ public sealed class TornadoRules
     public float ReleaseImmunity { get; set; }
 
     /// <summary>A fling and its landing never take a player below this share of max health.</summary>
-    public float FlingHealthFloor { get; set; }
     public float LiftMassLimit { get; set; }
     public float Response { get; set; }
     public float VisualHeight { get; set; }
