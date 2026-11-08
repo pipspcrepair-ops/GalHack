@@ -169,8 +169,14 @@ public sealed class Kit
     /// <summary>How the second and later colours of a wall, roof or floor show: as sheets this wide and tall (cells), on this share of them.</summary>
     public int PanelWidth = 8, PanelHeight = 4;
     public float PanelShare = 0.2f;
-    /// <summary>What a building of this kit wears outside: the course at the ground, the top of its walls, the frame of a door. See <see cref="Facade"/>.</summary>
+    /// <summary>
+    /// What a building of this kit wears outside: the course at the ground, the top of its walls, and the frame of a
+    /// door to the outside: only in the building's own trim (its coping), and only where the style calls for one;
+    /// null for none. Never a hazard colour: hazard stripes are a dangerous opening's own (a blast door's). See <see cref="Facade"/>.
+    /// </summary>
     public Rgb? BaseCourse, Coping, DoorFrame;
+    /// <summary>What its facade line said of door frames: "trim" or "none".</summary>
+    public string DoorFrameRule = "";
 
     public PaletteEntry Entry(short i) => Palette[i];
     public PaletteEntry? BySymbol(char c) => Symbols.TryGetValue(c, out short i) ? Palette[i] : null;
@@ -183,7 +189,7 @@ public sealed class Kit
 ///   kit vharn
 ///   faction vharn
 ///   panels 8 4 0.25              (sheets of a wall's other colours: wide, tall, share)
-///   facade 1a0c18 cdb98f cdb98f  (base course, coping, door frame)
+///   facade 1a0c18 cdb98f trim    (base course, coping, door frame: trim, the coping's colour, or none)
 ///   palette
 ///     #  cube  chitin  3d1d36|46213e  wall
 ///   module vh_gullet
@@ -288,7 +294,14 @@ public static class KitParser
                 case "facade":
                     kit.BaseCourse = Rgb.Parse(parts[1]);
                     kit.Coping = Rgb.Parse(parts[2]);
-                    kit.DoorFrame = Rgb.Parse(parts[3]);
+                    // A door to the outside is framed in the building's own trim or not at all, never in a colour of its own.
+                    kit.DoorFrameRule = parts[3];
+                    kit.DoorFrame = parts[3] switch
+                    {
+                        "trim" => kit.Coping,
+                        "none" => null,
+                        _ => throw Error($"facade's door frame is 'trim' (the coping's colour) or 'none', not '{parts[3]}'"),
+                    };
                     break;
                 case "cap": kit.CapEntry = Symbol(kit, parts[1][0], Error); break;
                 case "module":
