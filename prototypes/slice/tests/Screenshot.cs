@@ -65,6 +65,13 @@ public partial class Screenshot : Node
             return;
         }
         if (_view == "city") PlanetSurface.Infra.CityPlan.Force = true; // a city on any lived-in world
+        // A place of a family near the landing, and who is in it (--force-family, --force-occupant=Keepers).
+        if (_args.TryGetValue("force-family", out string ff)) PlanetSurface.Poi.PoiSiting.ForceFamily = ff;
+        if (_args.TryGetValue("force-occupant", out string fo) && Enum.TryParse(fo, true, out PoiGenerator.Gen.Occupant who))
+        {
+            PlanetSurface.Poi.PoiSiting.ForceOccupancy = new PoiGenerator.Gen.OccupancyRoll(who);
+            PlanetSurface.Poi.PoiSiting.ForceState = PoiGenerator.Gen.PoiState.Abandoned;
+        }
         _game = new Game.Game { Interactive = false, SkipIntro = true, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), System.Array.IndexOf(OS.GetCmdlineUserArgs(), "--ringed=1") >= 0 ? RingedWorld() : WorldChoice.Tested) };
         AddChild(_game);
         _staging = new Staging(_game, _args) { TakeShot = file => _pending = file };

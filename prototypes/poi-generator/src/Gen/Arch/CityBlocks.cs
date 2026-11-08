@@ -89,7 +89,7 @@ public static class CityBlocks
     /// two lots is fenced once) and along the back. A low wall at a house's front, rails elsewhere. Sections
     /// have fallen, more the further the city fell.
     /// </summary>
-    static void Edges(Plot p, CityLot lot, Func<int, bool> frontGap, bool lowFront, bool sides = true)
+    static void Edges(Plot p, CityLot lot, Func<int, bool> frontGap, bool lowFront, bool sides = true, bool fence = true)
     {
         int U = 2 * lot.W - 1, V = 2 * lot.D - 1;
         Block rail = Rail(p), low = Solid(p.F.Plinth), hold = Solid(p.F.Plinth.Scale(0.9f));
@@ -120,6 +120,7 @@ public static class CityBlocks
         Hold(Line(0, 1, 0, V), left);
         Hold(Line(U, 1, U, V), right);
         Hold(Line(0, V, U, V), back);
+        if (!fence) return;
         Fence(Line(0, 0, U, 0).Where(c => !frontGap(c.U)), lowFront ? low : rail, 0);
         if (!sides) return;
         Fence(Line(0, 1, 0, V), rail, left);
@@ -339,8 +340,10 @@ public static class CityBlocks
 
     static void HouseLot(Plot p, CityLot lot, bool terrace)
     {
-        var (paths, d0, d1) = Homes.CityHouse(p, lot, terrace);
-        Edges(p, lot, u => paths.Any(x => u >= x - 1 && u <= x + 2) || d0 is int a && u >= a - 1 && u <= d1!.Value + 1, lot.Style % 3 != 2);
+        var (paths, d0, d1, fence) = Homes.CityHouse(p, lot, terrace);
+        // Its retaining walls, then the fence of the house rules, of the kind its neighbourhood builds.
+        Edges(p, lot, u => paths.Any(x => u >= x - 1 && u <= x + 2) || d0 is int a && u >= a - 1 && u <= d1!.Value + 1, lot.Style % 3 != 2, fence: false);
+        fence();
     }
 
     // ---- works, hall and station ------------------------------------------------------------------

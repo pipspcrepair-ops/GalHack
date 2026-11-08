@@ -120,6 +120,8 @@ public sealed partial class Staging
             "husk-den" => HuskDen(),
             "husk-worms" => HuskWorms(),
             "husk-carrier" => HuskCarrier(),
+            "layers-land" => LayersLand(),
+            "layers-mark" => LayersMark(),
             "icons-bag" => IconBagView(),
             "icons-sheet" => IconSheetView(),
             "icons-hands" => IconHandsView(),

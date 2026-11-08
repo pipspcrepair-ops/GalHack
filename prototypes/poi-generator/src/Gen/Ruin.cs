@@ -36,6 +36,10 @@ public sealed record RuinAge(float Wear, bool Falling, float Violence, float Wat
             if (f.Sets.Any(s => s.Fact == "water" && s.Value == "dry")) water = Math.Min(water, 0.1f);
         }
         if (roll.Fact("water") == "dry") water = Math.Min(water, 0.1f);
+        // What every rolled value leans (WorldReading, from the data's bias lines): burned country and war are violence too, and a dry world keeps its water low.
+        WorldReading lean = WorldReading.Of(roll);
+        violence = Math.Max(violence, Math.Max(lean.Burnt, lean.Strife * 0.65f));
+        if (lean.Dry > 0.6f) water = Math.Min(water, 0.1f);
         return new RuinAge(wear, falling, violence, water);
     }
 

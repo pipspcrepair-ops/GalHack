@@ -266,6 +266,20 @@ public partial class PoiLayer : Node3D
         }
     }
 
+    static Texture2D _puff;
+
+    /// <summary>A soft round puff, dense at the middle and gone by the rim, so smoke never shows a quad's square edge.</summary>
+    static Texture2D Puff => _puff ??= new GradientTexture2D
+    {
+        Width = 64, Height = 64,
+        Fill = GradientTexture2D.FillEnum.Radial, FillFrom = new Vector2(0.5f, 0.5f), FillTo = new Vector2(0.5f, 0f),
+        Gradient = new Gradient
+        {
+            Offsets = new[] { 0f, 0.45f, 1f },
+            Colors = new[] { new Color(1, 1, 1, 1f), new Color(1, 1, 1, 0.55f), new Color(1, 1, 1, 0f) },
+        },
+    };
+
     /// <summary>A thin column of smoke (or Bloom spores) where something still burns or vents: quiet, seen from afar.</summary>
     static void AddSmoke(Node3D node, PoiInstance inst)
     {
@@ -294,7 +308,7 @@ public partial class PoiLayer : Node3D
                     {
                         BillboardMode = BaseMaterial3D.BillboardModeEnum.Particles,
                         Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
-                        VertexColorUseAsAlbedo = true, AlbedoColor = Colors.White,
+                        VertexColorUseAsAlbedo = true, AlbedoColor = Colors.White, AlbedoTexture = Puff,
                         ShadingMode = BaseMaterial3D.ShadingModeEnum.PerVertex,
                         DisableReceiveShadows = true,
                     },
@@ -303,6 +317,7 @@ public partial class PoiLayer : Node3D
                 InitialVelocityMin = 2.2f, InitialVelocityMax = 3.2f,
                 Gravity = new Vector3(0.35f, 0.05f, 0.12f),
                 ScaleAmountMin = 1.2f, ScaleAmountMax = 2.8f, ScaleAmountCurve = curve,
+                AngleMin = 0f, AngleMax = 360f, // each puff turned its own way, so no edge lines up
                 ColorRamp = ramp,
                 EmissionShape = CpuParticles3D.EmissionShapeEnum.Sphere, EmissionSphereRadius = 0.8f,
                 Position = new Vector3(m.Cell.X + 0.5f, m.Cell.Y + 1.5f, m.Cell.Z + 0.5f),

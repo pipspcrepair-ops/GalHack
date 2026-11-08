@@ -190,7 +190,7 @@ public partial class MatrixTest : Node
                 if (all > 0f)
                 {
                     huskPlaces[b] += roll.Occupancy.GetValueOrDefault("HSK") / all;
-                    wrong[b] += roll.Occupancy.GetValueOrDefault("HOL") / all;
+                    wrong[b] += roll.Occupancy.GetValueOrDefault("WRP") / all;
                 }
             }
             husky[b] /= Math.Max(1, worlds);

@@ -87,6 +87,8 @@ public sealed class PoiInstance
     public int GrowthWanted;
     /// <summary>The world it stands on, when placed on one: its tech levels decide the living's animals and gear.</summary>
     public WorldProfile? World;
+    /// <summary>The colours its world gives made things (set by <see cref="WorldPaint.Apply"/>), for anything dressed in it later: null off a world.</summary>
+    public WorldPaint? Paint;
     /// <summary>"New on old": held by people of a higher level than the ruins round it (the world round it shows the old level).</summary>
     public bool NewOnOld => World != null && World.NewOnOld(Layout.Family, State);
     /// <summary>The tech level it is built at on its world (the living at the post-collapse level, the old world at the pre-collapse one), or null off a world.</summary>
@@ -330,6 +332,8 @@ public static class PoiFactory
             if (inst.Blocks.Get(c.Cell).IsAir && (state == PoiState.Active || Hash.Cell(c.Cell, 0xC409) % 3 == 0)) inst.Crops.Add(c);
         // Who's in it comes last, on the place as the years left it: the layout is whoever's.
         if (occupancy != null) OccupancyLayer.Apply(lib, inst, occupancy, rng.Fork("occupancy"));
+        // Made things in the world's own paint, as worn as the world: places, houses and city lots alike.
+        world?.Paint?.Apply(inst, spawnSeed);
         PlaceLights.Tune(inst);
         return inst;
     }

@@ -218,6 +218,8 @@ public sealed class Townsfolk
     public List<(int A, int B)> Links = new();
     public List<(int A, int B)> Routes = new();
     public List<CitizenSpawn> People = new();
+    /// <summary>Everyone here is the same person: one look for all of them (a place of copies).</summary>
+    public bool Copies;
     /// <summary>Animals the town keeps: stock in pens and fields, a working beast by the cart, pets by the homes.</summary>
     public List<(string Kind, Int3 Cell)> Animals = new();
     /// <summary>The town's area as a circle (local cells, metres), for wildlife to keep out of.</summary>

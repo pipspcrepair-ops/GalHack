@@ -23,6 +23,8 @@ public sealed record WorldForce
     /// <summary>The old world's tech era and the living's.</summary>
     public TechLevel? Before { get; init; }
     public TechLevel? Now { get; init; }
+    /// <summary>Any other values to force, as <c>layer.id</c> separated by commas (a test's Hollow world: <c>flora.hollow_overrun</c>); null: none.</summary>
+    public string? Layers { get; init; }
 
     /// <summary>
     /// The force on the world being built now. The slice sets it with <c>PoiSiting.StartWorld</c>,
@@ -45,6 +47,10 @@ public sealed record WorldForce
         if (Fall != null) given.Set(LayerKind.Fall, Fall);
         if (MidCollapse == true) given.Set(LayerKind.Phase, "falling");
         else if (MidCollapse == false) given.Without(LayerKind.Phase, "falling");
+        if (Layers != null)
+            foreach (var kind in Layers.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(s => s.Trim().Split('.', 2)).Where(p => p.Length == 2)
+                         .GroupBy(p => p[0].ToLowerInvariant()))
+                if (Enum.TryParse(kind.Key, true, out LayerKind k)) given.Set(k, kind.Select(p => p[1]).ToArray());
     }
 
     /// <summary>The values a picker offers for a layer: every value of it in the library, by id.</summary>
@@ -62,6 +68,7 @@ public sealed record WorldForce
         if (MidCollapse is bool m) parts.Add(m ? "mid-collapse" : "not mid-collapse");
         if (Before is TechLevel b) parts.Add($"era-old {WorldProfile.Tag(b)}");
         if (Now is TechLevel n) parts.Add($"era-now {WorldProfile.Tag(n)}");
+        if (Layers != null) parts.Add($"layers {Layers}");
         return parts.Count == 0 ? "nothing forced" : string.Join(", ", parts);
     }
 }

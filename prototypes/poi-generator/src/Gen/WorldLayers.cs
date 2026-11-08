@@ -42,6 +42,10 @@ public sealed class WorldLayer
     /// <summary>On a world type: what it allows, by fact (air, temp, water, life, land).</summary>
     public readonly Dictionary<string, List<string>> Allows = new();
     public readonly Dictionary<string, float> Regions = new(), Hub = new(), Industry = new(), Plant = new(), Farm = new(), Poi = new(), Occupancy = new();
+    /// <summary>How this value leans the rest of the world, by what it reads (flora, creatures, paint, sound, weather): they add up over a roll, see <see cref="WorldReading"/>.</summary>
+    public readonly Dictionary<string, float> Bias = new();
+    /// <summary>On a palette: the colours made things take (paint, accent, roof, cloth, light).</summary>
+    public readonly List<Rgb> Paint = new();
     public readonly Dictionary<string, string> Style = new();
     public string? Depot;
     public float[]? States;
@@ -155,6 +159,8 @@ public static class LayerParser
             case "farm": Table(l.Farm); break;
             case "poi": Table(l.Poi); break;
             case "occ": Table(l.Occupancy); break;
+            case "bias": Table(l.Bias); break;
+            case "paint": l.Paint.AddRange(p.Skip(1).Select(Rgb.Parse)); break;
             case "style":
                 for (int i = 1; i + 1 < p.Length; i += 2) l.Style[p[i]] = p[i + 1];
                 break;
@@ -218,6 +224,10 @@ public sealed class WorldRoll
     public readonly HashSet<string> Barred = new();
 
     public readonly Dictionary<string, float> Regions = new(), Hub = new(), Industry = new(), Plant = new(), Farm = new(), Poi = new(), Occupancy = new();
+    /// <summary>Every rolled value's lean, added up (see <see cref="WorldReading"/>).</summary>
+    public readonly Dictionary<string, float> Bias = new();
+    /// <summary>The colours made things take, from the palette rolled (empty where it gives none).</summary>
+    public readonly List<Rgb> Paint = new();
     public readonly List<string> Needs = new(), Tags = new();
     public string? Depot;
     public float[]? States;
@@ -230,6 +240,12 @@ public sealed class WorldRoll
     public IEnumerable<WorldLayer> Layers => Rolled;
 
     public string? Fact(string name) => Facts.GetValueOrDefault(name);
+
+    /// <summary>A Hollow world: the growth has it all, as the earlier design had them. Rare, and rarer toward the rim.</summary>
+    public bool HollowWorld => Fact("hollow") == "world";
+
+    /// <summary>What every rolled value adds up to on one reading (0 where nothing says).</summary>
+    public float Lean(string key) => Bias.GetValueOrDefault(key);
     public WorldLayer? One(LayerKind kind) => Rolled.FirstOrDefault(l => l.Kind == kind);
     public IEnumerable<WorldLayer> All(LayerKind kind) => Rolled.Where(l => l.Kind == kind);
 
@@ -500,6 +516,8 @@ public sealed class WorldRoll
             Add(Farm, l.Farm);
             Add(Poi, l.Poi);
             Add(Occupancy, l.Occupancy);
+            Add(Bias, l.Bias);
+            if (l.Paint.Count > 0) { Paint.Clear(); Paint.AddRange(l.Paint); }
             Needs.AddRange(l.Needs.Where(n => !Needs.Contains(n)));
             Tags.AddRange(l.Tags.Where(t => !Tags.Contains(t)));
             Orbit.AddRange(l.Orbit.Where(t => !Orbit.Contains(t)));
@@ -511,9 +529,9 @@ public sealed class WorldRoll
             if (l.Style.TryGetValue("power", out string? power)) Power = power;
         }
         if (Rolled.Any(l => l.Streets > 0)) Streets = Rolled.Sum(l => l.Streets);
-        // The Husks and the wrong spread outward from the core: the deeper the world, the more of its places are theirs.
+        // The Husks and their wrongness spread outward from the core: the deeper the world, the more of its places are theirs.
         if (Depth >= 0f)
-            foreach (string code in new[] { "HSK", "HOL" })
+            foreach (string code in new[] { "HSK", "WRP" })
                 if (Occupancy.TryGetValue(code, out float v)) Occupancy[code] = v * (0.4f + 1.2f * Depth);
         var occupants = lib.Layers.Where(l => l.Kind == LayerKind.Occ).ToDictionary(l => l.Id);
         foreach (string code in Occupancy.Keys.ToList())

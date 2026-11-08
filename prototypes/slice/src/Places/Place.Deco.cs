@@ -78,6 +78,8 @@ public sealed class Decor
                 Tech = tech,
                 Set = alien ? "alien" : null,
                 Seed = Hash.Combine(inst.SpawnSeed, (ulong)m.Index + 1),
+                // Its pieces' trim in the world's own paint, as worn as the place.
+                KitTrim = inst.Paint is { } paint && !alien ? GalHack.Deco.DecoRgb.Hex(paint.Weather(paint.Accent).ToString()) : null,
             };
             foreach (var cells in layout.Doorways.Where(dw => dw.ModuleA == m.Index || dw.ModuleB == m.Index).Select(dw => dw.Cells)
                          .Concat(m.Index == layout.EntranceModule ? new[] { layout.ExitCells } : Array.Empty<List<Int3>>()))
