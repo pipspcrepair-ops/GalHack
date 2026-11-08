@@ -192,7 +192,7 @@ public partial class SkyRig : Node3D
         _noise = new NoiseTexture2D
         {
             Width = 512, Height = 512, Seamless = true, GenerateMipmaps = true,
-            Noise = new FastNoiseLite { Seed = 11, Frequency = 0.008f, FractalOctaves = 5, FractalGain = 0.5f, NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin },
+            Noise = CloudNoiseSource(),
         };
         GalaxyShader.Register();
         _sky = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/sky.gdshader") };
@@ -300,6 +300,16 @@ public partial class SkyRig : Node3D
         _sky.SetShaderParameter("front_wave", wave);
         _sky.SetShaderParameter("front_kind", kind);
     }
+
+    /// <summary>
+    /// The noise the clouds are cut from: smooth simplex, warped. Perlin's square lattice showed through as
+    /// square clouds where thin cover first breaks the threshold; these heaps are round and ragged at every cover.
+    /// </summary>
+    public static FastNoiseLite CloudNoiseSource() => new()
+    {
+        Seed = 11, Frequency = 0.008f, FractalOctaves = 5, FractalGain = 0.5f, NoiseType = FastNoiseLite.NoiseTypeEnum.SimplexSmooth,
+        DomainWarpEnabled = true, DomainWarpType = FastNoiseLite.DomainWarpTypeEnum.SimplexReduced, DomainWarpAmplitude = 30f, DomainWarpFrequency = 0.012f,
+    };
 
     /// <summary>Growing cumulus to swell over fair-weather waterspouts: (x, z, radius, how far grown), up to two.</summary>
     public void SetCumulus(Vector4[] cells, int count)

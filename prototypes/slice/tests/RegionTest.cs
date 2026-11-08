@@ -175,6 +175,7 @@ public partial class RegionTest : Node
         Blizzards();
         Fog();
         FrontsCross();
+        CloudContours();
     }
 
     /// <summary>A blizzard falls as snow on cold or high ground; on warm low ground the same weather is rain and wind.</summary>
@@ -275,6 +276,53 @@ public partial class RegionTest : Node
             return;
         }
         Check(false, "a storm front formed on its own on a storm world within three hours (12 worlds tried, the weather before it fair)");
+    }
+
+    /// <summary>
+    /// The noise the sky cuts its clouds from, at every cover from thin to full: where its edges run (the
+    /// contour at that cover), they run every way alike, never mostly along the texture's axes or in straight
+    /// lines. Perlin's lattice failed this: square clouds as thin cover first broke through.
+    /// </summary>
+    void CloudContours()
+    {
+        float was = AxisShare(new FastNoiseLite { Seed = 11, Frequency = 0.008f, FractalOctaves = 5, FractalGain = 0.5f, NoiseType = FastNoiseLite.NoiseTypeEnum.Perlin }, out _);
+        float worst = AxisShare(PlanetSurface.Skies.SkyRig.CloudNoiseSource(), out float worstCover);
+        // Edges running every way alike put a ninth of themselves within 5° of an axis.
+        Check(worst < 0.16f, $"the clouds' edges run every way at every cover, never along the axes: at worst {worst:P0} of edge within 5° of an axis (at cover {worstCover:F2}; a ninth, 11%, is no lean at all; the Perlin noise they were cut from before: {was:P0})");
+    }
+
+    /// <summary>The largest share of a noise's contour, over covers from thin to full, that runs within 5° of an axis.</summary>
+    static float AxisShare(FastNoiseLite noise, out float worstCover)
+    {
+        // The texture as the sky gets it: tiled seamless, its edges blended (a blend that runs along the axes).
+        const int size = 512;
+        Image image = noise.GetSeamlessImage(size, size, false, false, 0.1f, true);
+        var v = new float[size, size];
+        for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++) v[x, y] = image.GetPixel(x, y).R;
+        float worst = 0f;
+        worstCover = 0f;
+        foreach (float cover in new[] { 0.15f, 0.3f, 0.45f, 0.6f, 0.75f })
+        {
+            // The contour where this much of the sky is cloud: the value with that share above it.
+            var all = new List<float>(size * size);
+            foreach (float f in v) all.Add(f);
+            all.Sort();
+            float threshold = all[(int)((1f - cover) * (all.Count - 1))];
+            int edges = 0, axis = 0;
+            for (int y = 1; y < size - 1; y++)
+                for (int x = 1; x < size - 1; x++)
+                {
+                    if ((v[x, y] - threshold) * (v[x + 1, y] - threshold) > 0f && (v[x, y] - threshold) * (v[x, y + 1] - threshold) > 0f) continue;
+                    float gx = v[x + 1, y] - v[x - 1, y], gy = v[x, y + 1] - v[x, y - 1];
+                    float angle = MathF.Abs(MathF.Atan2(gy, gx)) % (MathF.PI / 2f);
+                    edges++;
+                    if (angle < 0.0873f || angle > MathF.PI / 2f - 0.0873f) axis++; // within 5° of an axis
+                }
+            float share = axis / (float)Math.Max(1, edges);
+            if (share > worst) (worst, worstCover) = (share, cover);
+        }
+        return worst;
     }
 
     /// <summary>A rough name for a stretch of land, to tell regions apart.</summary>

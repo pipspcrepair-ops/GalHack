@@ -49,6 +49,8 @@ public partial class WeatherTest : Node
         SpeedSetsLife();
         Section("Each world's own weather");
         WorldDials();
+        Section("Front edges");
+        FrontEdgesBillow();
         Section("Tornadoes by mass");
         PullOrderedByMass();
         Section("Damage: never reduced, a tornado fling's landing included");
@@ -213,6 +215,42 @@ public partial class WeatherTest : Node
         float fastRopes = Share(3, TornadoShape.Rope, TornadoShape.Cone), slowWedges = Share(0, TornadoShape.Wedge);
         Check(fastRopes > 0.7f && slowWedges > 0.5f && Share(0, TornadoShape.Rope) < 0.1f && Share(3, TornadoShape.Wedge) < 0.1f,
             $"fast ones lean to ropes and cones ({fastRopes:P0} of the fastest quarter), slow ones to wedges ({slowWedges:P0} of the slowest)");
+    }
+
+    /// <summary>
+    /// A storm front's edge, on fresh fronts every run: it never runs straight. Walking along it every 25 m,
+    /// no stretch longer than a few hundred metres keeps one direction, and its direction keeps turning.
+    /// </summary>
+    void FrontEdgesBillow()
+    {
+        int fronts = 20, ruled = 0;
+        float worstRun = 0f, leastTurn = float.MaxValue;
+        for (int k = 0; k < fronts; k++)
+        {
+            var sim = new WeatherSim(_data, "storm", (ulong)Random.Shared.NextInt64(), WeatherKind.Thunderstorm)
+            { WorldSize = new Vector2(Random.Shared.Next(8, 33) * 1000f, Random.Shared.Next(4, 17) * 1000f) };
+            float a = Random.Shared.NextSingle() * MathF.Tau;
+            Front f = sim.StartFront(FrontKind.Storm, Vector3.Zero, 2000f, new Vector2(MathF.Cos(a), MathF.Sin(a)) * 15f);
+            const float step = 25f;
+            int samples = (int)MathF.Min(f.Period / step, 1600);
+            float run = 0f, longest = 0f, turnSum = 0f;
+            float prevSlope = (f.Lag(step) - f.Lag(0f)) / step;
+            for (int i = 1; i < samples; i++)
+            {
+                float u = i * step;
+                float slope = (f.Lag(u + step) - f.Lag(u)) / step;
+                float turn = MathF.Abs(MathF.Atan(slope) - MathF.Atan(prevSlope));
+                turnSum += turn;
+                run = turn < 0.002f ? run + step : 0f; // under a tenth of a degree a step: running straight
+                longest = MathF.Max(longest, run);
+                prevSlope = slope;
+            }
+            float turnPerKm = turnSum / (samples * step / 1000f);
+            worstRun = MathF.Max(worstRun, longest);
+            leastTurn = MathF.Min(leastTurn, turnPerKm);
+            if (longest > 300f || turnPerKm < 0.5f) ruled++;
+        }
+        Check(ruled == 0, $"no front's edge runs straight: over {fronts} fresh fronts, the longest straight stretch {worstRun:F0} m, the least turning {Mathf.RadToDeg(leastTurn):F0}° a kilometre");
     }
 
     /// <summary>Each world leans its type's weights by its own climate and layers, and two worlds of a type still differ.</summary>
