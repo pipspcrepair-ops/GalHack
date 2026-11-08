@@ -21,23 +21,39 @@ public static class StrikeSites
     /// <summary>Craters keep clear of the band either side of a seam, as places do.</summary>
     const double SeamMargin = 320;
 
-    /// <summary>On a start world no strike's fade reaches within this of the landing (the bunker and the town by it).</summary>
+    /// <summary>On a start world no strike's flattened ring reaches within this of the landing (the bunker and the town by it), nor its faint fade the landing itself.</summary>
     public const double StartSpared = 1800;
 
-    /// <summary>Plans the strikes of a world's war (none for a fall that dropped nothing), punches their craters and drops the bridges they hit.</summary>
-    public static List<Strike> Plan(StrikeBook book, WorldRoll roll, InfraNetwork net, WorldMap map, PlanetTerrainSource bare, IReadOnlyList<PoiSite> pois,
-        WorldProfile profile, LandingSite landing, IReadOnlyList<FlavourRuin> ruins, bool start, ulong seed)
+    /// <summary>How far round a target the roads that lead to it are its approaches, metres past its edge.</summary>
+    const double ApproachReach = 1600;
+
+    /// <summary>The shallowest a crater's bowl is, as a share of its radius (on land too low for its own depth).</summary>
+    const float ShallowestBowl = 0.08f;
+
+    /// <summary>
+    /// Plans the strikes of a world's war (none for a fall that dropped nothing), punches their craters and drops the
+    /// bridges they hit. A ground burst that came down in a city or a town takes what stood in its bowl: those
+    /// places (and their stamps) go from <paramref name="pois"/> and <paramref name="stamps"/>, and the roads through
+    /// it are cut there.
+    /// </summary>
+    public static List<Strike> Plan(StrikeBook book, WorldRoll roll, InfraNetwork net, WorldMap map, PlanetTerrainSource bare, List<PoiSite> pois,
+        WorldProfile profile, LandingSite landing, IReadOnlyList<FlavourRuin> ruins, bool start, ulong seed, List<TerrainStamp> stamps = null)
     {
         if (book == null || roll == null || profile is not { Inhabited: true } || !roll.All(LayerKind.Fall).Any(f => book.For(f.Id) != null)) return new List<Strike>();
-        List<StrikeTarget> targets = Targets(book, net, pois, profile.Before, map.WidthMeters, map.HeightMeters);
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        double w = map.WidthMeters, h = map.HeightMeters;
+        List<StrikeTarget> targets = Targets(book, net, pois, profile.Before, w, h);
         var spare = new List<(double X, double Z, double R)>();
         if (start)
         {
             spare.Add((landing.X, landing.Y, StartSpared));
             if (net.Town is StartTown town) spare.Add((town.CenterX, town.CenterZ, StartSpared * 0.6));
         }
-        var land = new Land(map, bare, net, pois, ruins);
+        var land = new Land(map, bare, net, pois, ruins, Approaches(net, targets, w, h));
         List<Strike> strikes = StrikePlan.Make(book, roll, profile.Before, targets, land, seed, spare);
+        foreach (Strike s in strikes.Where(s => s.Bowl && s.Within)) Raze(s, net, pois, stamps, w, h);
+        // A bowl punched into low land is shallower: its floor stays above the sea.
+        foreach (Strike s in strikes.Where(s => s.Bowl)) s.Depth = MathF.Max(s.Crater * ShallowestBowl, MathF.Min(s.Depth, land.Floor(s) - 3f));
         foreach (Strike s in strikes.Where(s => s.Bowl))
         {
             TerrainStamp bowl = land.Bowl(s);
@@ -45,9 +61,73 @@ public static class StrikeSites
             // Tracks and drives laid later keep off it too.
             net.KeepOff(bowl);
         }
-        DropBridges(net, strikes, map.WidthMeters, map.HeightMeters, seed);
+        DropBridges(net, strikes, w, h, seed);
         net.Targets.AddRange(targets);
+        net.StrikeMs = watch.Elapsed.TotalMilliseconds;
         return strikes;
+    }
+
+    /// <summary>
+    /// What stood in a crater punched into the middle of a city or a town is gone: every place whose footprint
+    /// reaches into its bowl and thrown rim (with its stamps, its city lot and its share of the city's own
+    /// ground), and every road through it, cut at the hole.
+    /// </summary>
+    static void Raze(Strike s, InfraNetwork net, List<PoiSite> pois, List<TerrainStamp> stamps, double w, double h)
+    {
+        double reach = s.BowlReach;
+        var gone = pois.Where(p => !p.Primary && p.GroundZero == null
+                                   && Dist(p.Center.X, p.Center.Z, s.X, s.Z, w, h) - Math.Max(p.Stamp.MaxX - p.Stamp.MinX, p.Stamp.MaxZ - p.Stamp.MinZ) * 0.5 < reach).ToHashSet();
+        foreach (PoiSite p in gone)
+        {
+            pois.Remove(p);
+            net.Places.Remove(p);
+            if (stamps != null) foreach (TerrainStamp t in p.Stamps) stamps.Remove(t);
+        }
+        net.Lots.RemoveAll(l => l.Site != null && gone.Contains(l.Site));
+        if (net.City is { } city)
+        {
+            city.Sites.RemoveAll(gone.Contains);
+            city.Lots.RemoveAll(l => l.Site != null && gone.Contains(l.Site));
+            foreach (TerrainStamp t in city.Stamps.Where(t => Dist(t.CenterX, t.CenterZ, s.X, s.Z, w, h) < reach).ToList())
+            {
+                city.Stamps.Remove(t);
+                stamps?.Remove(t);
+            }
+        }
+        foreach (InfraRoute r in net.Routes)
+        {
+            if (gone.Contains(r.From)) (r.From, r.FromGate) = (null, -1);
+            if (gone.Contains(r.To)) (r.To, r.ToGate) = (null, -1);
+        }
+        var pieces = net.Sever(s.X, s.Z, reach + 8);
+        // The city's streets are what is left of them.
+        if (net.City is { } c)
+        {
+            c.Streets.AddRange(pieces.Where(p => c.Streets.Contains(p.From)).Select(p => p.Piece));
+            c.Streets.RemoveAll(r => r.Count < 2);
+        }
+    }
+
+    /// <summary>Points every 40 m along the roads near the targets (not on their own ground): where a war's shelling walks its approaches.</summary>
+    static List<(double X, double Z)> Approaches(InfraNetwork net, List<StrikeTarget> targets, double w, double h)
+    {
+        var points = new List<(double X, double Z)>();
+        if (targets.Count == 0) return points;
+        foreach (InfraRoute r in net.Routes.Where(r => r.Kind != RouteKind.Rail))
+            for (int i = 0; i + 1 < r.Count; i += 10)
+            {
+                if (r.Span[i] != RoadSpan.Ground) continue;
+                double x = Mathx.WrapX(r.X[i], w), z = Mathx.Wrap(r.Z[i], h);
+                bool near = false;
+                foreach (StrikeTarget t in targets)
+                {
+                    double d = Dist(t.X, t.Z, x, z, w, h);
+                    if (d < t.Reach + 40) { near = false; break; }
+                    near |= d < t.Reach + ApproachReach;
+                }
+                if (near) points.Add((x, z));
+            }
+        return points;
     }
 
     static double Dist(double ax, double az, double bx, double bz, double w, double h)
@@ -139,15 +219,55 @@ public static class StrikeSites
         readonly IReadOnlyList<PoiSite> _pois;
         readonly IReadOnlyList<FlavourRuin> _ruins;
 
-        public Land(WorldMap map, PlanetTerrainSource bare, InfraNetwork net, IReadOnlyList<PoiSite> pois, IReadOnlyList<FlavourRuin> ruins)
+        public Land(WorldMap map, PlanetTerrainSource bare, InfraNetwork net, IReadOnlyList<PoiSite> pois, IReadOnlyList<FlavourRuin> ruins, List<(double X, double Z)> approaches)
         {
             (_map, _bare, _net, _pois, _ruins) = (map, bare, net, pois, ruins);
             Width = map.WidthMeters;
             Depth = map.HeightMeters;
+            Approaches = approaches;
         }
 
         public double Width { get; }
         public double Depth { get; }
+        public IReadOnlyList<(double X, double Z)> Approaches { get; }
+
+        /// <summary>In a city's or a town's middle: dry, firm ground clear of the seams and the water, never on the main port, a blast site or the start town, whatever else stands on it.</summary>
+        public bool Within(double x, double z, float radius, float depth)
+        {
+            x = Mathx.WrapX(x, Width);
+            z = Mathx.Wrap(z, Depth);
+            float reach = radius * 1.5f + Math.Clamp(radius * 0.6f, 3f, 36f);
+            if (x < SeamMargin + reach || x > Width - SeamMargin - reach || z < SeamMargin + reach || z > Depth - SeamMargin - reach) return false;
+            foreach (PoiSite p in _pois)
+                if ((p.Primary || p.GroundZero != null) && Dist(p.Center.X, p.Center.Z, x, z, Width, Depth) < Math.Max(p.Stamp.ReachX, p.Stamp.ReachZ) + reach + 10) return false;
+            if (_net.Town is StartTown town && Dist(town.CenterX, town.CenterZ, x, z, Width, Depth) < 450 + reach) return false;
+            // Its bowl dry and its thrown rim off the sea (a river past its rim keeps its banks); not so steep the bowl turns into a terrace; its floor above the sea (on low land the bowl is shallower: Plan holds it there).
+            var (pad, low, high, _) = Ground(x, z, radius, radius * 1.5f);
+            for (double f = 0; f <= 1.5; f += 0.25)
+                for (int k = 0, around = f == 0 ? 1 : (int)(f * 24); k < around; k++)
+                {
+                    double a = k * Math.Tau / around;
+                    double sx = Mathx.WrapX(x + Math.Cos(a) * radius * f, Width), sz = Mathx.Wrap(z + Math.Sin(a) * radius * f, Depth);
+                    GroundSample g = _bare.Sampler.Sample(sx, sz, 2);
+                    if (Sea(sx, sz) || f <= 1.25 && (g.InRiver || g.Height < 2.5f)) return false;
+                }
+            if (Watered(x, z, radius * 1.25f)) return false;
+            return high - low <= Math.Max(9f, radius * 0.45f) && MathF.Round(pad) - radius * ShallowestBowl > 3f;
+        }
+
+        /// <summary>A river or open water anywhere within a radius (a river's bed is narrower than any ring of samples): every map cell it covers, a river's banks included.</summary>
+        bool Watered(double x, double z, float reach)
+        {
+            double step = _map.CellSize * 0.5;
+            for (double dz = -reach; dz <= reach; dz += step)
+                for (double dx = -reach; dx <= reach; dx += step)
+                {
+                    if (dx * dx + dz * dz > reach * reach) continue;
+                    int k = _map.CellAt(Mathx.WrapX(x + dx, Width), Mathx.Wrap(z + dz, Depth));
+                    if (_map.Has(k, CellFlags.River) || _map.Has(k, CellFlags.Water)) return true;
+                }
+            return false;
+        }
 
         public bool Sea(double x, double z) => _map.Has(_map.CellAt(Mathx.WrapX(x, Width), Mathx.Wrap(z, Depth)), CellFlags.Water);
 
@@ -163,9 +283,11 @@ public static class StrikeSites
             var inner = new List<float>();
             float low = float.MaxValue, high = float.MinValue;
             bool wet = false;
-            foreach (double f in new[] { 0.0, 0.5, 1.0, 1.5, reach / radius })
+            // A shell hole is a few metres across: its middle, its rim and its edge tell enough.
+            bool small = radius < 14f;
+            foreach (double f in small ? new[] { 0.0, 1.0, reach / radius } : new[] { 0.0, 0.5, 1.0, 1.5, reach / radius })
             {
-                int around = f == 0 ? 1 : 10;
+                int around = f == 0 ? 1 : small ? 6 : 10;
                 for (int k = 0; k < around; k++)
                 {
                     double a = k * Math.Tau / around;
@@ -185,7 +307,7 @@ public static class StrikeSites
         {
             x = Mathx.WrapX(x, Width);
             z = Mathx.Wrap(z, Depth);
-            float reach = radius * 1.5f + Math.Clamp(radius * 0.6f, 14f, 36f);
+            float reach = radius * 1.5f + Math.Clamp(radius * 0.6f, 3f, 36f);
             if (x < SeamMargin + reach || x > Width - SeamMargin - reach || z < SeamMargin + reach || z > Depth - SeamMargin - reach) return false;
             // Beside a place, never under it: clear of every pad and the ground it blends.
             foreach (PoiSite p in _pois)
@@ -203,17 +325,22 @@ public static class StrikeSites
             // Dry, firm ground: no river or sea in it, not so steep the bowl turns into a terrace, its floor above the water.
             var (pad, low, high, wet) = Ground(x, z, radius, reach);
             if (wet || high - low > Math.Max(9f, radius * 0.45f)) return false;
+            // A big bowl's ring of samples can straddle a river: the map's own cells say.
+            if (radius >= 14f && Watered(x, z, radius * 1.25f)) return false;
             return MathF.Round(pad) - depth > 3f;
         }
 
-        /// <summary>A ground burst's crater in the terrain: its bowl, glassed and ash-grey by the dead ground round it, and its thrown rim.</summary>
+        /// <summary>The height a crater's bowl is sunk from: its middle's ground.</summary>
+        public float Floor(Strike s) => MathF.Round(Ground(s.X, s.Z, s.Crater, s.BowlReach).Pad);
+
+        /// <summary>A ground burst's crater in the terrain: its bowl, glassed and ash-grey by the dead ground round it, and its thrown rim. Nothing was built in it: what grows here grows back into it (a nuclear crater's dead ground keeps it bare).</summary>
         public TerrainStamp Bowl(Strike s)
         {
             float reach = s.BowlReach;
             var (pad, _, _, _) = Ground(s.X, s.Z, s.Crater, reach);
             int gx = (int)Math.Round(s.X), gz = (int)Math.Round(s.Z), rr = (int)Math.Ceiling(s.Crater);
             return new TerrainStamp($"strike crater ({(s.Target.Length > 0 ? s.Target : "open country")})", gx - rr, gz - rr, gx + rr, gz + rr, (int)MathF.Round(pad), 0f, s.BowlBlend, Width, Depth)
-                { Shape = StampShape.Bowl, Radius = s.Crater, Depth = s.Depth, Rim = s.Rim };
+                { Shape = StampShape.Bowl, Radius = s.Crater, Depth = s.Depth, Rim = s.Rim, Wild = !s.Flatten };
         }
     }
 }

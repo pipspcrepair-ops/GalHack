@@ -29,6 +29,8 @@ public sealed class FlavourRuin
     /// <summary>How hard a nearby blast flattened it (0 none), and from which way ground zero lies.</summary>
     public float Blast;
     public float BlastX, BlastZ;
+    /// <summary>The big blast that graded it by distance (stumps by the rim, shells further out), or null.</summary>
+    public Strike Flatten;
     /// <summary>The road it stands by (null for one out in the country).</summary>
     public InfraRoute Route;
     /// <summary>Its driveway, forecourt apron or farm track to that road (null where it has no road).</summary>
@@ -49,6 +51,15 @@ public sealed class FlavourRuin
     public PoiInstance Spawn(WorldProfile world, PlanetTerrainSource ground = null)
     {
         PoiInstance inst = PoiFactory.Spawn(Library, Layout, State, SpawnSeed, world);
+        if (Blast > 0.02f && Flatten is { } f)
+        {
+            double w = ground?.Width ?? double.MaxValue, h = ground?.Height ?? double.MaxValue;
+            StateTransforms.Flattened(inst, (x, z) =>
+            {
+                double dx = Mathx.WrapDelta(OriginX + x + 0.5 - f.X, w), dz = Mathx.WrapDelta(OriginZ + z + 0.5 - f.Z, h);
+                return f.Strength((float)Math.Sqrt(dx * dx + dz * dz));
+            });
+        }
         if (Blast > 0.02f) StateTransforms.Blast(inst, BlastX, BlastZ, Blast, new PoiGenerator.Gen.Rng(PoiGenerator.Gen.Hash.Combine(SpawnSeed, 0xB1A57UL)));
         if (ground != null)
             StateTransforms.Settle(inst, (x, z) => ground.SurfaceHeight(Mathx.WrapX(OriginX + x + 0.5, ground.Width), Mathx.Wrap(OriginZ + z + 0.5, ground.Height)) - OriginY, -1);
@@ -370,12 +381,30 @@ public static class FlavourRuins
                 placed++;
             }
         }
-        foreach (FlavourRuin ruin in ruins) Blasted(ruin, net.Blasts, w, h);
-        // Nobody built out of reach of a road: whatever came down without one, and hasn't a neighbour that has, gets a track.
+        // Round a blast that left the ground hot: warning posts at the edge of it, facing whoever comes in.
+        if (Pick("warning") is { } warning)
+            foreach (Strike b in net.Blasts.Where(b => b.Rad > 0f && !b.Naval))
+            {
+                double start = rng.Float() * Math.PI * 2;
+                for (int k = 0, placed = 0; k < 16 && placed < 8; k++)
+                {
+                    double a = start + k * Math.PI / 8, d = b.Dead + 6;
+                    double px = b.X + Math.Cos(a) * d, pz = b.Z + Math.Sin(a) * d;
+                    Layout layout = LayoutFor(lib, warning, 0, Facing(Math.Cos(a), Math.Sin(a)));
+                    if (layout == null) break;
+                    var post = Try(lib, warning, layout, px, pz, bare, net, pois, ruins, w, h, rng, roadGap: 3, spacing: 4, maxCut: 3f, clearance: 4);
+                    if (post == null) continue;
+                    post.State = PoiState.Abandoned;
+                    ruins.Add(post);
+                    placed++;
+                }
+            }
+        foreach (FlavourRuin ruin in ruins) Blasted(ruin, net.Blasts, w, h);        // Nobody built out of reach of a road: whatever came down without one, and hasn't a neighbour that has, gets a track.
         foreach (FlavourRuin ruin in ruins) net.KeepOff(ruin.Stamp);
         foreach (FlavourRuin ruin in ruins)
         {
-            if (ruin.Route != null || ruin.Drive != null) continue;
+            // A warning post stands where people come, not where a track was made to it.
+            if (ruin.Route != null || ruin.Drive != null || ruin.Family.Tags.Contains("warning")) continue;
             var (rx, rz) = ruin.Center;
             if (ruins.Any(o => o != ruin && (o.Route != null || o.Drive != null) && Dist(o.Center.X, o.Center.Z, rx, rz) < 60)) continue;
             InfraRoute near = net.Nearest(rx, rz, 380, out _, out _);
@@ -515,6 +544,7 @@ public static class FlavourRuins
             float d = (float)Math.Sqrt(dx * dx + dz * dz), s = b.Strength(d);
             if (s <= ruin.Blast) continue;
             ruin.Blast = s;
+            ruin.Flatten = b.Flatten ? b : null;
             ruin.BlastX = d < 1f ? 0f : (float)(-dx / d);
             ruin.BlastZ = d < 1f ? 1f : (float)(-dz / d);
         }

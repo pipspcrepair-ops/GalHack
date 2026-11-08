@@ -13,7 +13,7 @@
 #       fence     len h axis gate breaches type(mesh|wall);  poles  count gap h axis
 #       tower     h size every crown(lamp|wheel|hut) loot;  crater  r depth radiation
 #       aircraft  len;  rocket  decks r;  trench  len axis;  vehicles  count gap axis
-#       camp      gang(yes|no);  obelisks  count h spread
+#       camp      gang(yes|no);  obelisks  count h spread;  warning  kind (a hazard sign on a post)
 #       basins    count r h gap axis water(clean|foul);  heaps  count r h gap type(coal|spoil)
 #       conveyor  len h0 h axis;  dome  r wall breach;  turbines  count h blade gap axis;  panels  rows len gap
 #       slipway   len w h axis;  freighter  len axis
@@ -376,6 +376,12 @@ site farm_bottom
   style concrete
   entrance 0 0 north
   part plain 0 0 what bottomfarm
+
+site warning_post
+  name Warning Post
+  style concrete
+  entrance 0 2 south
+  part warning 0 0 kind radiation
 
 site shed_tool
   name Tool Shed

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System;
+using System.Linq;
 using GalHack.Terrain;
 using Planets.Gen;
 using Planets.Look;
@@ -103,10 +104,62 @@ public sealed class GroundPalette
     /// <summary>The world's plants (shared/Flora, through its planet adapter). Null only for a palette made without a world's flora.</summary>
     public readonly PlanetFlora Flora;
 
+    /// <summary>The dead zones and the craters by 128 m cell (indices into each list), once they are all in: a war's hundreds of shell holes cost a ground vertex the few near it, not all of them.</summary>
+    int[][] _deadCells, _craterCells;
+    int _cellsX, _cellsZ;
+    const double BlastCell = 128;
+    static readonly int[] NoBlasts = Array.Empty<int>();
+
+    /// <summary>Indexes <see cref="DeadZones"/> and <see cref="Craters"/>; call once they are filled, before any worker reads the palette.</summary>
+    public void IndexBlasts()
+    {
+        _cellsX = Math.Max(1, (int)Math.Ceiling(Map.WidthMeters / BlastCell));
+        _cellsZ = Math.Max(1, (int)Math.Ceiling(Map.HeightMeters / BlastCell));
+        int[][] Index(int count, Func<int, (double X, double Z, double Reach)> at)
+        {
+            var lists = new List<int>[_cellsX * _cellsZ];
+            for (int i = 0; i < count; i++)
+            {
+                var (x, z, reach) = at(i);
+                int x0 = (int)Math.Floor((x - reach) / BlastCell), x1 = (int)Math.Floor((x + reach) / BlastCell);
+                int z0 = (int)Math.Floor((z - reach) / BlastCell), z1 = (int)Math.Floor((z + reach) / BlastCell);
+                if (x1 - x0 >= _cellsX) (x0, x1) = (0, _cellsX - 1);
+                if (z1 - z0 >= _cellsZ) (z0, z1) = (0, _cellsZ - 1);
+                for (int cz = z0; cz <= z1; cz++)
+                    for (int cx = x0; cx <= x1; cx++)
+                    {
+                        int k = ((cz % _cellsZ + _cellsZ) % _cellsZ) * _cellsX + (cx % _cellsX + _cellsX) % _cellsX;
+                        (lists[k] ??= new List<int>()).Add(i);
+                    }
+            }
+            return lists.Select(l => l?.ToArray() ?? NoBlasts).ToArray();
+        }
+        _deadCells = Index(DeadZones.Count, i => (DeadZones[i].X, DeadZones[i].Z, DeadZones[i].Fade));
+        _craterCells = Index(Craters.Count, i => (Craters[i].X, Craters[i].Z, Craters[i].Radius * 1.6));
+    }
+
+    int[] Near(int[][] cells, double x, double z)
+    {
+        int cx = (int)Math.Floor(Mathx.WrapX(x, Map.WidthMeters) / BlastCell) % _cellsX, cz = (int)Math.Floor(Mathx.Wrap(z, Map.HeightMeters) / BlastCell) % _cellsZ;
+        return cells[Math.Clamp(cz, 0, _cellsZ - 1) * _cellsX + Math.Clamp(cx, 0, _cellsX - 1)];
+    }
+
     /// <summary>How dead the land is at a point: 1 inside a blast's dead zone, easing to 0 at its fade, 0 elsewhere.</summary>
     public float Deadness(double x, double z)
     {
         float dead = 0f;
+        if (_deadCells != null)
+        {
+            foreach (int i in Near(_deadCells, x, z))
+            {
+                var (gx, gz, d0, d1) = DeadZones[i];
+                double dx = Mathx.WrapDelta(x - gx, Map.WidthMeters), dz = Mathx.WrapDelta(z - gz, Map.HeightMeters);
+                float d = (float)Math.Sqrt(dx * dx + dz * dz);
+                if (d >= d1) continue;
+                dead = Math.Max(dead, d <= d0 ? 1f : 1f - SmoothStep(0f, 1f, (d - d0) / (d1 - d0)));
+            }
+            return dead;
+        }
         foreach (var (gx, gz, d0, d1) in DeadZones)
         {
             double dx = Mathx.WrapDelta(x - gx, Map.WidthMeters), dz = Mathx.WrapDelta(z - gz, Map.HeightMeters);
@@ -127,8 +180,11 @@ public sealed class GroundPalette
         if (dead <= 0f) return soil;
         float l = soil.R * 0.3f + soil.G * 0.59f + soil.B * 0.11f;
         Rgb c = Rgb.Lerp(soil, new Rgb(l * 0.78f + 0.06f, l * 0.74f + 0.055f, l * 0.7f + 0.05f), dead * ash);
-        foreach (var (gx, gz, r, _, _) in Craters)
+        int[] near = _craterCells != null ? Near(_craterCells, x, z) : null;
+        int count = near?.Length ?? Craters.Count;
+        for (int k = 0; k < count; k++)
         {
+            var (gx, gz, r, _, _) = Craters[near != null ? near[k] : k];
             double dx = Mathx.WrapDelta(x - gx, Map.WidthMeters), dz = Mathx.WrapDelta(z - gz, Map.HeightMeters);
             if (Math.Abs(dx) > r * 1.6 || Math.Abs(dz) > r * 1.6) continue;
             float d = (float)Math.Sqrt(dx * dx + dz * dz) / r;
