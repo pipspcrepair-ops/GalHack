@@ -76,6 +76,7 @@ public partial class SurfaceTest : Node
             await Run("Infra", InfraChecks);
             await Run("StartTown", StartTownChecks);
             await Run("City", CityChecks);
+            await Run("Eras", EraChecks);
             await Run("Ground", GroundChecks);
             await Run("Dungeons", DungeonChecks);
             await Run("Under", UnderChecks);
