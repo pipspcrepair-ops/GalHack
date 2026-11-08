@@ -153,7 +153,7 @@ public partial class Game : Node3D
     void Begin()
     {
         GD.Print($"world: {World}");
-        Zone = new SurfaceZone { Name = "Surface", Spec = World.Spec(), PickStart = PickStart };
+        Zone = new SurfaceZone { Name = "Surface", Spec = World.Spec(), Force = World.Force, PickStart = PickStart };
         AddChild(Zone);
         AddChild(new GcPacer { Name = "GC pacer" });
         Zone.WorldRules.Mode = _mode;

@@ -29,6 +29,9 @@ public partial class SurfaceZone : Node3D
     public GameData Data;
     public PlanetSpec Spec;
 
+    /// <summary>What the new game forced onto this world's roll (depth, theme, fall, mid-collapse, eras), or null for nothing.</summary>
+    public PoiGenerator.Gen.WorldForce Force;
+
     /// <summary>Where streaming centres: the player, or the vessel they fly.</summary>
     public Func<Vector3> Focus = () => Vector3.Zero;
 
@@ -161,6 +164,8 @@ public partial class SurfaceZone : Node3D
         PlanetSurface.Poi.PoiCatalog catalog = PoiCatalog;
         // Every game starts on a start world: no faction holds ground there (the POI siting's rule).
         PlanetSurface.Poi.PoiSiting.StartWorld = true;
+        // And what the new game forced onto its roll (its depth, theme, fall, mid-collapse and eras), or nothing.
+        PoiGenerator.Gen.WorldForce.Current = Force ?? new PoiGenerator.Gen.WorldForce();
         _building = Task.Run(() => PlanetWorld.Build(spec, catalog));
     }
 

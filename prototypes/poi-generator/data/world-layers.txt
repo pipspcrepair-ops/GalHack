@@ -3,9 +3,9 @@
 # A world is whatever its layers add up to, and no generator names a value from here.
 
 zone rim | name on the quiet rim | weight 38 | occ EMP 8
-zone arm | name in the outer arms | weight 34 | is rough | occ SCV 3 HSK 3 | like fall.husks_fall*1.5 presence.husk_nights*1.5
-zone inner | name in the inner arms | weight 20 | is rough | occ HSK 6 HOL 3 | like fall.husks_fall*2.5 presence.husk_nights*2.5 feature.precursor_plates*1.5 feature.vault_field*1.5 hazard.night_swarms*1.5
-zone core | name near the core | weight 8 | is rough | occ HOL 8 HSK 10 | like theme.wrong_stars*2 fall.husks_fall*4 presence.husk_nights*4 feature.precursor_plates*2.5 feature.vault_field*2.5 hazard.night_swarms*2.5 sky.seam*2
+zone arm | name in the outer arms | weight 34 | is rough | occ SCV 3 HSK 3 | like fall.husks_fall*2 presence.husk_nights*2
+zone inner | name in the inner arms | weight 20 | is rough | occ HSK 6 HOL 3 | like fall.husks_fall*4 presence.husk_nights*4 feature.precursor_plates*1.5 feature.vault_field*1.5 hazard.night_swarms*1.5
+zone core | name near the core | weight 8 | is rough | occ HOL 8 HSK 10 | like theme.wrong_stars*2 fall.husks_fall*8 presence.husk_nights*8 feature.precursor_plates*2.5 feature.vault_field*2.5 hazard.night_swarms*2.5 sky.seam*2
 
 type meadow | name a meadow world | was 1 | arch temperate.meadow | zones Z4 | weight 8 | air open | temp mild | water some wet | life mid high | land plains hills river_valleys lake_district coastal_cliffs terraces | settle 0.96 | start yes
 type rainforest | name a rainforest world | was 2 | arch temperate.rainforest | zones Z3 Z4 | weight 7 | air open | temp mild hot | water wet | life high | land hills wetlands karst delta | settle 0.85 | start yes

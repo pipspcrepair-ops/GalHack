@@ -113,6 +113,8 @@ public sealed partial class Staging
             "loadrun" => LoadRun(),
             "approach" => ApproachView(),
             "husk-grab" => HuskGrab(),
+            "newgame" => NewGameShots(),
+            "galaxy-depth" => GalaxyDepth(),
             _ => ProofViews(view),
         };
         foreach (int x in script) yield return x;
