@@ -108,7 +108,7 @@ public sealed partial class Staging
             "farland" => FarLandView(),
             "loadrun" => LoadRun(),
             "approach" => ApproachView(),
-            _ => OrbitViews(view),
+            _ => ProofViews(view),
         };
         foreach (int x in script) yield return x;
         if (_args.TryGetValue("hud", out string hud)) _game.Visor.Visible = hud != "0";
