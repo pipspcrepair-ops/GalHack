@@ -22,6 +22,9 @@ namespace Slice.Game;
 public partial class Game
 {
     public PoiPlaces Places { get; private set; }
+
+    /// <summary>The crashed capital ships, set down as real vessels as the survivor nears them.</summary>
+    public Hulks Hulks { get; private set; }
     public Caves Caves { get; private set; }
 
     /// <summary>Door blocks on bases and vessels: the same doors, E and sliding leaves, opening for you on your own.</summary>
@@ -44,6 +47,8 @@ public partial class Game
         Zone.AddChild(Places);
         Zone.Infra.WreckStood += Places.WreckStood;
         Zone.AddChild(new RuinLoot { Name = "Ruin loot", Zone = Zone, Focus = Focus });
+        Hulks = new Hulks { Name = "Hulks", Zone = Zone, Focus = Focus, Places = Places };
+        Zone.AddChild(Hulks);
         Caves = new Caves
         {
             Name = "Caves", Zone = Zone, Feet = () => Survivor.WorldFeet, Look = () => Survivor.WorldLook(), Deep = Places.Fauna,

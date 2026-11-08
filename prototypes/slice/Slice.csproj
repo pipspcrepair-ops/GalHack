@@ -40,6 +40,11 @@
     <Compile Include="..\poi-generator\src\Gen\**\*.cs" />
     <Compile Include="..\ship-handling\src\Handling\**\*.cs" />
     <Compile Include="..\building\src\Structures\**\*.cs" />
+    <!-- Lifting a half-buried hull free (a claimed crash hulk): capital-base's cut planner and lift-off, unchanged. -->
+    <Compile Include="..\capital-base\src\Core\CutFree.cs" />
+    <Compile Include="..\capital-base\src\Core\CapitalRules.cs" />
+    <Compile Include="..\capital-base\src\Core\Cargo.cs" />
+    <Compile Include="..\capital-base\src\World\LiftOff.cs" />
     <Compile Include="..\survival-vitals\src\Model\**\*.cs" />
     <Compile Include="..\diegetic-ui\src\Logic\FocusMachine.cs" />
     <Compile Include="..\diegetic-ui\src\Logic\Items.cs" />
