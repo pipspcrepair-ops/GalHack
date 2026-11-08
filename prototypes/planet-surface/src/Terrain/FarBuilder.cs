@@ -894,7 +894,8 @@ public static class FarBuilder
                 int s = grid.Sample(i, j);
                 if (river[s] || height[s] < 0.6f || up[j * grid.Nx + i] < FloraMeshes.MinUp(fallen)) continue;
                 Vector2 under = relief.At(lx, lz, height[s]);
-                float lies = Smooth(6f, 30f, under.X) * (1f - Smooth(1.5f, 4f, under.Y));
+                // (A face above it: 14 m or more within the lattice's 16 m reach. A hillside's valley floor isn't one.)
+                float lies = Smooth(14f, 34f, under.X) * (1f - Smooth(1.5f, 4f, under.Y));
                 if (Hash.Unit(roll, 2) >= lies * 0.75f) continue;
                 double x = x0 + lx, z = z0 + lz;
                 if (source.Built(x, z, out bool onRoad) > 0f || onRoad) continue;

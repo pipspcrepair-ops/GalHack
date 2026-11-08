@@ -104,7 +104,7 @@ vec3 rock_face(vec3 base, vec3 p, vec3 view_normal, mat4 inv_view, vec2 cliff, f
 
 	// Scree and talus at a cliff's foot: broken rock fallen from the face, lighter where it broke fresh,
 	// thinning out away from it in a ragged edge, pebbles only up close.
-	float under = known && bare < 0.999 ? smoothstep(5.0, 16.0, rise) * (1.0 - smoothstep(0.6, 3.5, fall)) : 0.0;
+	float under = known && bare < 0.999 ? smoothstep(12.0, 24.0, rise) * (1.0 - smoothstep(0.6, 3.5, fall)) : 0.0;
 	if (under > 0.0) {
 		float ragged = smoothstep(0.3, 0.7, rk_noise(p, vec2(0.125, 0.125), 11.0) * 0.7 + fine * 0.3 + under * 0.45 - 0.2);
 		float pebbles = rk_noise(p, vec2(1.5, 1.5), 13.0) - 0.5;
