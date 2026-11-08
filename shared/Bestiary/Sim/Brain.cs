@@ -87,6 +87,15 @@ public static partial class Brain
         }
         else if (near != null && c.Noticed != null) near = c.Noticed;
 
+        // A Husk keeps no hours and has a mind of its own (if it is one at all).
+        if (c.Species.Husk)
+        {
+            HuskMind(w, c, near, dist, dt);
+            // One that rose inside a town (a carrier, or someone it turned) is already in.
+            if (w.Settlements.Count > 0 && !c.InTown) AvoidTowns(w, c);
+            return;
+        }
+
         // Outside its hours it goes to its rest site and stays there, unless something wakes it.
         if (w.ActivityCycles && c.Rest != null && Resting(w, c, near, dist, dt)) return;
 
@@ -109,6 +118,8 @@ public static partial class Brain
 
         // Wild things keep out of settlements: they steer round them, whatever they are doing.
         if (w.Settlements.Count > 0) AvoidTowns(w, c);
+        // And animals won't go near a Husk (or a den), whatever they are doing.
+        if (w.HuskSpots.Count > 0 && Wrongness.Shuns(c)) Wrongness.Shunned(w, c);
     }
 
     static float CruiseAltitude(Creature c) => c.Species.Rig == RigKind.GasBag ? 6f + (c.Id % 5) * 1.3f : 1.8f;

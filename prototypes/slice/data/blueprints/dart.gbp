@@ -1,0 +1,131 @@
+# Dart Fighter: a Small Core in Flight Mode. A light fighter: a long nose, a glass canopy over
+# one seat, swept wings with fins at the tips, four gatlings in the wing roots, three mains.
+#
+# Small grid (0.5 m cells). x is starboard, y up, -z forward. The core sits in the floor.
+# Three mains in the tail, retros beside the nose, three lift jets under the belly and wings, a
+# down jet on the spine and a side jet on each wingtip; two generators and a gyro behind the seat;
+# a nose leg and two legs on pylons under the wings.
+
+schema galhack.blueprint
+version 1
+name "Dart Fighter"
+grid small
+mode vessel
+gravity on
+
+# Livery: cream hull, charcoal belly and spine, an orange chevron band across the wings, red tips.
+paint hull base=ece3c8 grime=1
+paint belly base=2b2d42 grime=2
+paint spine base=3a3f47 grime=1
+paint stripe base=ece3c8 accent=e85d04 pattern=stripes grime=1
+paint chev base=e85d04 accent=2b2d42 pattern=chevrons grime=1
+paint red base=c1121f grime=1
+paint hazard base=f4a100 accent=2b2d42 pattern=hazard grime=2
+
+# --- Belly (y -1), chamfered down the sides and at the chin ------------------------------------
+block -1..1 -1 -6..4 steel paint=belly
+block -1..1 -1 -7 steel slope rot=-y-z paint=belly
+block -2 -1 -6..4 steel slope rot=-y-x paint=belly
+block 2 -1 -6..4 steel slope rot=-y+x paint=belly
+
+# --- Floor (y 0), the core in the middle, the nose tip in red ----------------------------------
+block -2..2 0 -8..-1 steel paint=belly
+block -2..-1 0 0 steel paint=belly
+block 0 0 0 core
+block 1..2 0 0 steel paint=belly
+block -2..2 0 1..5 steel paint=belly
+block -1 0 -9 hardened slope paint=red
+block 0 0 -9 hardened paint=red
+block 1 0 -9 hardened slope paint=red
+block 0 0 -10 hardened slope paint=red
+
+# --- Fuselage (y 1): striped sides, the nose hood, the seat, the bay behind it -----------------
+block -2..2 1 -8 steel slope paint=hull
+block -1..1 1 -7..-6 steel paint=hull
+block -2 1 -7..5 steel paint=hull -x=stripe
+block 2 1 -7..5 steel paint=hull +x=stripe
+block 0 1 -4 chair
+block -1..1 1 -2 steel paint=spine
+block -1 1 -1 generator
+block 0 1 -1 gyro
+block 1 1 -1 generator
+block -1 1 0 steel paint=spine
+block 0 1 0 container
+block 1 1 0 steel paint=spine
+block -1..1 1 1..5 steel paint=spine
+
+# --- Shoulders and spine (y 2), the canopy (y 2..4) --------------------------------------------
+block -2 2 -7..4 steel slope rot=+y-x paint=hull
+block 2 2 -7..4 steel slope rot=+y+x paint=hull
+block -1..1 2 -7 steel slope paint=hull
+block -1..1 2 -6 glass slope
+block -1 2 -5..-3 glass
+block 1 2 -5..-3 glass
+block -1..1 2 -2..4 steel paint=spine
+block -1..1 2 5 steel slope rot=+y+z paint=spine
+block -1..1 3 -5 glass slope
+block -1 3 -4..-3 glass
+block 1 3 -4..-3 glass
+block -1..1 3 -2 steel paint=spine
+block -1..1 4 -4 glass slope
+block -1..1 4 -3 glass
+block -1..1 4 -2 glass slope rot=+y+z
+block 0 3 -1..2 steel paint=chev
+block 0 3 3 steel slope rot=+y+z paint=spine
+
+# --- Wings (y 0): swept back, a chevron band, red tips, fins standing on the tips --------------
+block -3 0 -4..4 steel paint=hull
+block 3 0 -4..4 steel paint=hull
+block -4 0 -3 steel slope paint=hull
+block 4 0 -3 steel slope paint=hull
+block -4 0 -2..4 steel paint=hull
+block 4 0 -2..4 steel paint=hull
+block -5 0 -1..4 steel paint=chev
+block 5 0 -1..4 steel paint=chev
+block -6 0 1 steel slope paint=hull
+block 6 0 1 steel slope paint=hull
+block -6 0 2..4 steel paint=hull
+block 6 0 2..4 steel paint=hull
+block -7 0 2 steel slope paint=red
+block 7 0 2 steel slope paint=red
+block -7 0 3..4 steel paint=red
+block 7 0 3..4 steel paint=red
+block -7 1 2 steel slope paint=red
+block 7 1 2 steel slope paint=red
+block -7 1 3..4 steel paint=red
+block 7 1 3..4 steel paint=red
+block -7 2 3 steel slope paint=red
+block 7 2 3 steel slope paint=red
+block -7 2 4 steel paint=red
+block 7 2 4 steel paint=red
+
+# --- Guns: two gatlings in each wing root ------------------------------------------------------
+block -3 0 -5 gatling
+block 3 0 -5 gatling
+block -5 0 -2 gatling
+block 5 0 -2 gatling
+
+# --- Engines: three mains in the tail ------------------------------------------------------------
+block -1 0 6 thruster
+block 1 0 6 thruster
+block 0 1 6 thruster
+block 0 0 6 steel paint=hazard
+block -2 0 6 steel slope rot=+y+z paint=hazard
+block 2 0 6 steel slope rot=+y+z paint=hazard
+
+# --- Manoeuvring: retros by the nose, side jets on the tips, a down jet on the spine -----------
+block -3 0 -7 thruster rot=+y+z
+block 3 0 -7 thruster rot=+y+z
+block -8 0 3 thruster rot=+y+x
+block 8 0 3 thruster rot=+y-x
+block 0 4 1 thruster rot=+z-y
+
+# --- Under it: three lift jets, a nose leg, two legs on wing pylons -----------------------------
+block 0 -2 -3 thruster rot=+z+y
+block -4 -1 1 thruster rot=+z+y
+block 4 -1 1 thruster rot=+z+y
+block 0 -2 -6 gear
+block -3 -1 3 steel paint=belly
+block 3 -1 3 steel paint=belly
+block -3 -2 3 gear
+block 3 -2 3 gear

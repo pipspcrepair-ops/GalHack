@@ -29,8 +29,13 @@ public static class CreatureMaterials
         // Pebbled hide at a scale that suits the animal: fine on a critter, coarse on a giant.
         m.SetShaderParameter("detail_freq", 48f / MathF.Sqrt(MathF.Max(0.3f, sp.Body.Size)));
         m.SetShaderParameter("detail_strength", sp.Rig == RigKind.Swarm ? 0f : 0.1f);
+        // A Husk's worms reach about a third of their own length either way.
+        if (sp.Husk) m.SetShaderParameter("worm_scale", WormSway(sp.Figure));
         return m;
     });
+
+    /// <summary>How far a Husk's worm tips sway, m, by the size of its head.</summary>
+    public static float WormSway(Figure f) => f.HeadRadius * 0.55f;
 
     /// <summary>The soft see-through fan of a wing beating too fast to see. Its colour and strength come from the mesh's vertices.</summary>
     public static StandardMaterial3D Blur => _blur ??= new StandardMaterial3D
@@ -58,6 +63,7 @@ public static class CreatureMaterials
         m.SetShaderParameter("detail_strength", 0.05f);
         m.SetShaderParameter("rim_strength", 0.45f);
         m.SetShaderParameter("far_lift", 0.28f);
+        m.SetShaderParameter("worm_scale", 0.065f); // only a Husk has worms to sway
         return m;
     }
 
@@ -221,7 +227,16 @@ public partial class CreatureView : Node3D
             _wakeShown = wake;
             foreach (MeshInstance3D p in _parts) p.SetInstanceShaderParameter("wake", wake);
         }
+        // A Husk's worms reaching for whatever moves near (only its head has any).
+        float stir = MathF.Round(c.Stir * 10f) / 10f;
+        if (MathF.Abs(stir - _stirShown) > 0.01f)
+        {
+            _stirShown = stir;
+            foreach (MeshInstance3D p in _parts) p.SetInstanceShaderParameter("worm_stir", stir);
+        }
     }
+
+    float _stirShown;
 }
 
 /// <summary>

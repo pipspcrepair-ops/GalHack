@@ -111,7 +111,7 @@ public partial class MachineScreens : Node3D
             _down = false;
             return false;
         }
-        bool shift = c.IsHeld(Key.Shift);
+        bool shift = c.ModifierHeld(Key.Shift);
         if (c.PrimaryPressed && !_down)
         {
             _down = true;

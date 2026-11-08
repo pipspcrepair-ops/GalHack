@@ -53,6 +53,9 @@ public sealed partial class Staging
             "cockpit" => Cockpit(),
             "menu" => Menu(),
             "settings" => SettingsView(),
+            "escmenu" => EscapeMenuShots(),
+            "blueprints" => BlueprintShots(),
+            "uiround" => UiRoundShots(),
             "loot" => Loot(),
             "bolt" => Bolt(),
             "bunkershot" => BunkerShot(),
@@ -108,9 +111,15 @@ public sealed partial class Staging
             "stormcell" => StormCellShot(),
             "clouds" => CloudTypes(),
             "farland" => FarLandView(),
+            "horizon" => HorizonView(),
             "loadrun" => LoadRun(),
             "approach" => ApproachView(),
-            _ => OrbitViews(view),
+            "husk-grab" => HuskGrab(),
+            "newgame" => NewGameShots(),
+            "galaxy-depth" => GalaxyDepth(),
+            "husk-den" => HuskDen(),
+            "husk-carrier" => HuskCarrier(),
+            _ => ProofViews(view),
         };
         foreach (int x in script) yield return x;
         if (_args.TryGetValue("hud", out string hud)) _game.Visor.Visible = hud != "0";

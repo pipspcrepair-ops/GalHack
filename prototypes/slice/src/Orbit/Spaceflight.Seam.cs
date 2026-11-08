@@ -398,6 +398,7 @@ public partial class Spaceflight
             Nadir = new Vector2((float)nx, (float)nz),
             Height = MathF.Max(height, 2f), // under the sea's level (a bunker) it's still the far land past what you can see
             Bend = bend,
+            FlatFrom = PlanetSurface.Terrain.TerrainStreamer.RoundFrom * (1f - Smooth((y - cap) / 300f)),
             Eye = eye,
             RingRadius = ringRadius,
             RingShown = orbit ? Smooth((y - cap) / 120f) : 0f, // the sky draws it too, out to the band's top: the sheet covers the sky in front of it

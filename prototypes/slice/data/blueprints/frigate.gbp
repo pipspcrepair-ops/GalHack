@@ -1,0 +1,196 @@
+# Frigate: a Big Core in Flight Mode. A small capital ship: a pointed bow under a glazed bridge,
+# crew quarters (two cabins off a corridor), a machine room below them, a hangar bay in the stern
+# big enough for the Skiff to fly into (14 m wide, 6 m high, 16 m deep, open at the back), and an
+# engine nacelle on each flank.
+#
+# Large grid (2 m cells). x is starboard, y up, -z forward. The core sits in the keel.
+# Decks: the machine room on the keel (y 1), the bridge and quarters above it (floor y 2, y 3);
+# the hangar is all three high. A ladder in the hangar climbs to the quarters; a door off the
+# hangar opens the machine room. Eight mains in the nacelles, retros by the bow, ten lift jets and
+# five legs underneath, side jets on the nacelles, down jets on the roof.
+
+schema galhack.blueprint
+version 1
+name "Frigate"
+grid large
+mode capital
+gravity on
+
+# Livery: pale grey hull, charcoal keel, a red band down the flanks, hazard round the hangar mouth.
+paint hull base=d8d9d4 grime=2
+paint keel base=2b2d42 grime=2
+paint band base=d8d9d4 accent=c1121f pattern=stripes grime=2
+paint red base=c1121f grime=1
+paint dark base=3a3f47 grime=2
+paint deck base=8b8f96 grime=2
+paint hazard base=f4a100 accent=2b2d42 pattern=hazard grime=2
+
+# --- Keel (y 0), the core in the middle ----------------------------------------------------------
+block -3..3 0 -9..-1 steel paint=keel
+block -3..-1 0 0 steel paint=keel
+block 0 0 0 core
+block 1..3 0 0 steel paint=keel
+block -3..3 0 1..10 steel paint=keel
+block -3..3 0 11 steel paint=hazard
+block -4 0 -9..11 steel slope rot=-y-x paint=keel
+block 4 0 -9..11 steel slope rot=-y+x paint=keel
+
+# --- Bow: a wedge tapering in plan and raked in profile -----------------------------------------
+block -3..3 0..2 -10 steel paint=hull
+block -4 0..2 -10 steel slope rot=-x-z paint=hull
+block 4 0..2 -10 steel slope rot=+x-z paint=hull
+block -2..2 0..1 -11 steel paint=hull
+block -3 0..1 -11 steel slope rot=-x-z paint=hull
+block 3 0..1 -11 steel slope rot=+x-z paint=hull
+block -2..2 2 -11 steel slope paint=red
+block -1..1 0 -12 steel paint=red
+block -2 0 -12 steel slope rot=-x-z paint=red
+block 2 0 -12 steel slope rot=+x-z paint=red
+block -1..1 1 -12 steel slope paint=red
+block 0 0 -13 hardened slope paint=red
+block -1 0 -13 hardened slope rot=-x-z paint=red
+block 1 0 -13 hardened slope rot=+x-z paint=red
+
+# --- Flanks (x ±4, y 1..3): the red band at y 2, windows on the bridge and quarters -------------
+block -4 1 -9..10 steel paint=hull
+block 4 1 -9..10 steel paint=hull
+block -4 2 -9..10 steel paint=band
+block 4 2 -9..10 steel paint=band
+block -4 3 -9..-6 glass
+block 4 3 -9..-6 glass
+block -4 3 -5..10 steel paint=hull
+block 4 3 -5..10 steel paint=hull
+block -4 1..3 11 steel paint=hazard
+block 4 1..3 11 steel paint=hazard
+
+# --- Machine room (y 1, z -9..2): generators, gyros, fuel and stores; a door to the hangar -------
+block -3 1 -9..-8 container
+block 3 1 -9..-8 container
+block -3 1 -6 generator
+block -3 1 -5 generator
+block 3 1 -6 generator
+block 3 1 -5 generator
+block -3 1 -2 gyro
+block -3 1 -1 gyro
+block 3 1 -2 gyro
+block 3 1 -1 gyro
+block -3 1 1 fueltank
+block 3 1 1 fueltank
+block 0 1 -4 light rot=+z-y
+block 0 1 0 light rot=+z-y
+
+# --- Upper deck (floor y 2, z -9..2) ------------------------------------------------------------
+block -3..3 2 -9..2 steel paint=deck
+
+# --- Bridge (y 3, z -9..-6): a raked windscreen, a low console, three seats ---------------------
+block -3..3 3 -10 glass slope
+block -4 3 -10 steel slope paint=hull
+block 4 3 -10 steel slope paint=hull
+block -2..2 3 -9 steel half paint=dark
+block -2 3 -8 chair
+block 0 3 -8 chair
+block 2 3 -8 chair
+block -3..-1 3 -5 steel paint=hull
+block 0 3 -5 door
+block 1..3 3 -5 steel paint=hull
+block 0 3 -7 light rot=+z-y
+
+# --- Quarters (y 3, z -4..2): a corridor down the middle, a cabin each side, lockers, lights ----
+block -1 3 -4 steel paint=hull
+block -1 3 -3 door
+block -1 3 -2..0 steel paint=hull
+block -1 3 1 door
+block -1 3 2 steel paint=hull
+block 1 3 -4 steel paint=hull
+block 1 3 -3 door
+block 1 3 -2..0 steel paint=hull
+block 1 3 1 door
+block 1 3 2 steel paint=hull
+block -3..-2 3 -1 steel paint=hull
+block 2..3 3 -1 steel paint=hull
+block -3 3 -4 container
+block 3 3 -4 container
+block -3 3 2 container
+block 3 3 2 container
+block -2 3 -3 light rot=+z-y
+block 2 3 -3 light rot=+z-y
+block -2 3 1 light rot=+z-y
+block 2 3 1 light rot=+z-y
+
+# --- Bulkhead (z 3) between the decks and the hangar: doors and a ladder --------------------------
+block -3..1 1 3 steel paint=hull
+block 2 1 3 door
+block 3 1 3 steel paint=hull
+block -3..3 2 3 steel paint=hull
+block -3..-1 3 3 steel paint=hull
+block 0 3 3 door
+block 1..3 3 3 steel paint=hull
+block 0 1..2 4 ladder rot=+y+z
+
+# --- Hangar (z 4..11): open at the stern, lit from the roof --------------------------------------
+block -2 3 6 light rot=+z-y
+block 2 3 6 light rot=+z-y
+block -2 3 9 light rot=+z-y
+block 2 3 9 light rot=+z-y
+
+# --- Roof (y 4): bevelled flanks, a dorsal spine over the hangar, a mast over the quarters -------
+block -3..3 4 -9..10 steel paint=hull
+block -3..3 4 11 steel paint=hazard
+block -4 4 -9..11 steel slope rot=+y-x paint=hull
+block 4 4 -9..11 steel slope rot=+y+x paint=hull
+block -1..1 5 1 steel slope paint=dark
+block -1..1 5 2..9 steel paint=dark
+block -1..1 5 10 steel slope rot=+y+z paint=dark
+block 0 5..6 -3 steel cylinder paint=dark
+block 0 7 -3 light rot=+z+y
+
+# --- Engine nacelles (x ±5..±6, z 1..10), four mains in each, a stub wing outboard -----------------
+block -6..-5 0..1 0 steel slope paint=red
+block 5..6 0..1 0 steel slope paint=red
+block -5 2 0 steel slope paint=red
+block 5 2 0 steel slope paint=red
+block -6..-5 0..1 1..10 steel paint=dark
+block 5..6 0..1 1..10 steel paint=dark
+block -5 2 1..10 steel paint=dark
+block 5 2 1..10 steel paint=dark
+block -6 2 1..10 steel slope rot=+y-x paint=hull
+block 6 2 1..10 steel slope rot=+y+x paint=hull
+block -5 3 1..10 steel slope rot=+y-x paint=hull
+block 5 3 1..10 steel slope rot=+y+x paint=hull
+block -6..-5 0..1 11 thruster
+block 5..6 0..1 11 thruster
+block -5 2 11 steel slope rot=+y+z paint=dark
+block 5 2 11 steel slope rot=+y+z paint=dark
+block -7 0 3..9 steel paint=hull
+block 7 0 3..9 steel paint=hull
+block -7 0 2 steel slope paint=hull
+block 7 0 2 steel slope paint=hull
+block -8 0 5..9 steel paint=red
+block 8 0 5..9 steel paint=red
+block -8 0 4 steel slope paint=red
+block 8 0 4 steel slope paint=red
+
+# --- Manoeuvring: retros by the bow, side jets on the nacelles, down jets on the roof -------------
+block -5 1 -8 thruster rot=+y+z
+block 5 1 -8 thruster rot=+y+z
+block -7 1 6 thruster rot=+y+x
+block 7 1 6 thruster rot=+y-x
+block -2 5 -6 thruster rot=+z-y
+block 2 5 -6 thruster rot=+z-y
+
+# --- Underneath: ten lift jets and five legs -----------------------------------------------------
+block -3 -1 -7 thruster rot=+z+y
+block 3 -1 -7 thruster rot=+z+y
+block -3 -1 0 thruster rot=+z+y
+block 3 -1 0 thruster rot=+z+y
+block -5 -1 4 thruster rot=+z+y
+block 5 -1 4 thruster rot=+z+y
+block -5 -1 9 thruster rot=+z+y
+block 5 -1 9 thruster rot=+z+y
+block -7 -1 6 thruster rot=+z+y
+block 7 -1 6 thruster rot=+z+y
+block 0 -1 -11 gear
+block -3 -1 -4 gear
+block 3 -1 -4 gear
+block -3 -1 8 gear
+block 3 -1 8 gear

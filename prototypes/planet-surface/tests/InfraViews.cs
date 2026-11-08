@@ -315,6 +315,10 @@ public static class InfraViews
             Add("town-low", bx, bz, c + 45f, town.CenterX, town.CenterZ, c);
             double hx = town.CenterX + (town.AlongX * 0.6 + town.AlongZ * 0.8) * 520, hz = town.CenterZ + (town.AlongZ * 0.6 - town.AlongX * 0.8) * 520;
             Add("town-high", hx, hz, c + 400f, town.CenterX, town.CenterZ, c);
+            // A corner of the grid from above, where the back street turns into a cross street.
+            double sx0 = -town.AlongZ, sz0 = town.AlongX;
+            double kx = town.CenterX + town.AlongX * town.Block + sx0 * town.BackSide * town.Arm, kz = town.CenterZ + town.AlongZ * town.Block + sz0 * town.BackSide * town.Arm;
+            Add("town-corner", kx - town.AlongX * 14 - sx0 * town.BackSide * 14, kz - town.AlongZ * 14 - sz0 * town.BackSide * 14, G(kx, kz) + 55f, kx, kz, G(kx, kz));
         }
         else GD.Print("ROADS: no start town on this world");
         // A ground stretch that bends and runs off the map's axes, a little way from the town.
@@ -357,6 +361,8 @@ public static class InfraViews
                 if (r.Span[i - 20] != RoadSpan.Ground || r.Span[i + 19] != RoadSpan.Ground) continue;
                 double d = Math.Sqrt(Math.Pow(Mathx.WrapDelta(r.X[i] - ox, w.Width), 2) + Math.Pow(Mathx.WrapDelta(r.Z[i] - oz, w.Height), 2));
                 if (d < 400 || d >= pavedAway) continue;
+                // Out on its own, not by a place (whose pad would fill the view).
+                if (w.Pois.Any(q => Math.Sqrt(Math.Pow(Mathx.WrapDelta(q.Center.X - r.X[i], w.Width), 2) + Math.Pow(Mathx.WrapDelta(q.Center.Z - r.Z[i], w.Height), 2)) < Math.Max(q.Stamp.ReachX, q.Stamp.ReachZ) + 80)) continue;
                 pavedAway = d;
                 paved = r;
                 pavedAt = i;
@@ -409,6 +415,7 @@ public static class InfraViews
         {
             GD.Print($"ROADS: junction of {jr.Kind} {jr.Id} at {jr.X[ji]:F0}, {jr.Z[ji]:F0}");
             Add("junction-low", jr.X[ji] + 60, jr.Z[ji] + 45, jr.Y[ji] + 40f, jr.X[ji], jr.Z[ji], jr.Y[ji]);
+            Add("junction-close", jr.X[ji] + 10, jr.Z[ji] + 8, jr.Y[ji] + 38f, jr.X[ji], jr.Z[ji], jr.Y[ji]);
             Add("junction-high", jr.X[ji] + 330, jr.Z[ji] + 250, jr.Y[ji] + 400f, jr.X[ji], jr.Z[ji], jr.Y[ji]);
         }
         else GD.Print("ROADS: no junction found");

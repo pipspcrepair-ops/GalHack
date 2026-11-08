@@ -53,7 +53,7 @@ public sealed class StartTown
         double Dist(double ax, double az, double bx, double bz) => Math.Sqrt(Math.Pow(Mathx.WrapDelta(ax - bx, w), 2) + Math.Pow(Mathx.WrapDelta(az - bz, h), 2));
         // The spot: flat, dry, clear of places, with a place in view beyond it and no settlement near.
         // The biggest town whose ground is gentle; failing that, the gentlest of the sizes.
-        double bestScore = double.MaxValue, bx = 0, bz = 0, mainHalf = 0, block = 0, arm = 0;
+        double bestScore = double.MaxValue, bestRank = double.MaxValue, bx = 0, bz = 0, mainHalf = 0, block = 0, arm = 0;
         PoiSite bestMark = null;
         foreach (var size in Sizes)
         {
@@ -66,8 +66,9 @@ public sealed class StartTown
             double cx = Mathx.WrapX(landing.X + Math.Cos(a) * r, w), cz = Mathx.Wrap(landing.Y + Math.Sin(a) * r, h);
             if (pois.Any(p => p.Family.Tags.Contains("settlement") && Dist(p.Center.X, p.Center.Z, cx, cz) < NoSettlement + 300)) continue;
             if (pois.Any(p => Dist(p.Center.X, p.Center.Z, cx, cz) < Math.Max(p.Stamp.ReachX, p.Stamp.ReachZ) + 150)) continue;
+            // A deep place for choice: the first place a start walks to is one worth going down into.
             PoiSite mark = pois.Where(p => p.Instance.State != PoiState.Active && !p.Family.Tags.Contains("settlement"))
-                .Select(p => (p, d: Dist(p.Center.X, p.Center.Z, cx, cz))).Where(t => t.d > 420 && t.d < 1150).OrderBy(t => t.d).Select(t => t.p).FirstOrDefault();
+                .Select(p => (p, d: Dist(p.Center.X, p.Center.Z, cx, cz))).Where(t => t.d > 420 && t.d < 1150).OrderBy(t => Deep(t.p.Instance) ? 0 : 1).ThenBy(t => t.d).Select(t => t.p).FirstOrDefault();
             if (mark == null) continue;
             float lo = float.MaxValue, hi = float.MinValue;
             bool wet = false;
@@ -81,7 +82,9 @@ public sealed class StartTown
             }
             if (wet) continue;
             double score = (hi - lo) + r * 0.004;
-            if (score < bestScore) { bestScore = score; bx = cx; bz = cz; bestMark = mark; (mainHalf, block, arm) = size; }
+            // Rougher ground is worth it for a deep place in view: a start should have somewhere to go down into.
+            double rank = score + (Deep(mark.Instance) ? 0 : 25);
+            if (rank < bestRank) { bestRank = rank; bestScore = score; bx = cx; bz = cz; bestMark = mark; (mainHalf, block, arm) = size; }
         }
         }
         if (bestMark == null || bestScore > 85) return null;
@@ -103,11 +106,13 @@ public sealed class StartTown
             if (s != null) town.Streets.Add(s);
         }
         Lay(At(-mainHalf, 0), At(mainHalf, 0));
+        int backSide = rng.Chance(0.5f) ? 1 : -1;
+        // On the back street's side the outer cross streets and the back street are one street round two
+        // rounded corners; the rest meet the main street square, at junctions with rounded kerbs.
         for (int c = -1; c <= 1; c++)
             foreach (int side in new[] { -1, 1 })
-                Lay(At(c * block, 0), At(c * block, side * arm));
-        int backSide = rng.Chance(0.5f) ? 1 : -1;
-        Lay(At(-block, backSide * arm), At(block, backSide * arm));
+                if (side != backSide || c == 0) Lay(At(c * block, 0), At(c * block, side * arm));
+        Lay(At(-block, 0), At(-block, backSide * arm), At(block, backSide * arm), At(block, 0));
         town.BackSide = backSide;
         // Joined to the old network: a spur from the town's far end to the nearest road.
         net.Spur(At(-mainHalf, 0), kind, 2500);
@@ -133,6 +138,7 @@ public sealed class StartTown
                         Dir front = FlavourRuins.Facing(-nx, -nz);
                         FamilyDef type = s == main && shop != null && rng.Chance(0.75f) ? shop : shed != null && rng.Chance(0.1f) ? shed : house;
                         Layout lot = FlavourRuins.LayoutFor(lib, type, FlavourRuins.VariantFor(type, profile.Before, rng), front, profile.Before, rng.Range(0, FlavourRuins.Salts));
+                        if (lot == null) continue;
                         // The street runs on a map axis, so the lot lies square to it: half the lot off the kerb.
                         double half = Math.Abs(dz) > Math.Abs(dx) ? lot.Occupied.Size.X * 0.5 : lot.Occupied.Size.Z * 0.5;
                         double clear = s.HalfWidth + half + 2;
@@ -150,7 +156,46 @@ public sealed class StartTown
                         town.Houses.Add(r);
                     }
         }
+        town.Dungeon = FirstDungeon(lib, net, pois, bx, bz, w, h, PoiGenerator.Gen.Hash.Combine(seed, 0xD06UL));
         return town;
+    }
+
+    /// <summary>How far from the town the first dungeon may lie, metres.</summary>
+    public const double DungeonReach = 2200;
+
+    /// <summary>A deep place within reach of the start with someone or something in it, the first a start can walk down into (null if no deep place stands that near).</summary>
+    public PoiSite Dungeon;
+
+    /// <summary>A deep place: enough rooms to be somewhere you go into, two or more of them below ground, or five storeys or more of them (a tower is deep the other way).</summary>
+    public static bool Deep(PoiInstance inst) => Rooms(inst) >= 8 && (Below(inst) >= 2 || Levels(inst) >= 5);
+
+    static int Rooms(PoiInstance inst) => inst.Layout.Modules.Count(m => m.Kind is not (ModuleKind.Outdoor or ModuleKind.Stair));
+    static int Below(PoiInstance inst) => inst.Layout.Modules.Count(m => m.Kind != ModuleKind.Outdoor && (m.Storey < 0 || m.Underground));
+    static int Levels(PoiInstance inst) => inst.Layout.Modules.Where(m => m.Kind != ModuleKind.Outdoor).Select(m => m.Storey).Distinct().Count();
+
+    /// <summary>Someone or something lives there: the Bloom, a roster, the occupancy layer's people or beasts, or a faction at home.</summary>
+    public static bool Lived(PoiInstance inst) =>
+        inst.State == PoiState.Infested || inst.Enemies.Count > 0 || inst.Occupancy is { Main: not Occupant.Empty }
+        || inst.State == PoiState.Active && inst.Family.Faction != Faction.None;
+
+    /// <summary>
+    /// The nearest deep place to the town that someone lives in; failing one within reach, the nearest deep place
+    /// that stands empty is given people from the world's own mix (never empty), so every start has a dungeon to walk to.
+    /// </summary>
+    static PoiSite FirstDungeon(PoiLibrary lib, InfraNetwork net, IReadOnlyList<PoiSite> pois, double x, double z, double w, double h, ulong seed)
+    {
+        double Dist(PoiSite p) => Math.Sqrt(Math.Pow(Mathx.WrapDelta(p.Center.X - x, w), 2) + Math.Pow(Mathx.WrapDelta(p.Center.Z - z, h), 2));
+        // Below ground first, then up a tower; failing both, the biggest place in reach that you can go into.
+        var deep = pois.Where(p => p.Instance != null && Deep(p.Instance) && Dist(p) <= DungeonReach).OrderBy(p => Below(p.Instance) >= 2 ? 0 : 1).ThenBy(Dist).ToList();
+        if (deep.FirstOrDefault(p => Lived(p.Instance)) is { } lived) return lived;
+        PoiSite empty = deep.FirstOrDefault(p => OccupancyLayer.Applies(p.Family, p.Instance.State))
+            ?? pois.Where(p => p.Instance != null && Dist(p) <= DungeonReach && Rooms(p.Instance) >= 6 && OccupancyLayer.Applies(p.Family, p.Instance.State)).OrderByDescending(p => Rooms(p.Instance)).FirstOrDefault();
+        if (empty == null) return null;
+        var mix = (net.RegionPlan?.Roll.Occupancy ?? new Dictionary<string, float>()).Where(kv => kv.Key != "EMP" && kv.Value > 0f).ToDictionary(kv => kv.Key, kv => kv.Value);
+        OccupancyRoll occ = OccupancyLayer.Roll(mix, empty.Family, seed);
+        if (occ.Main == Occupant.Empty) occ = new OccupancyRoll(Occupant.Nesters);
+        OccupancyLayer.Apply(lib, empty.Instance, occ with { Tags = net.RegionPlan?.Roll.Tags ?? new List<string>() }, new PoiGenerator.Gen.Rng(seed));
+        return empty;
     }
 
     /// <summary>

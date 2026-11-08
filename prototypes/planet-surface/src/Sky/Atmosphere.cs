@@ -89,6 +89,27 @@ public static class Atmosphere
         };
     }
 
+    /// <summary>How deep the haze lies, m: its density falls by e over this much height.</summary>
+    public const float HazeDepth = 180f;
+
+    /// <summary>The most depth fog that is the air's haze, lying low (a visibility of about 5.6 km); past it the weather's murk fills the whole air.</summary>
+    public const float HazeMost = 0.00035f;
+
+    /// <summary>
+    /// The depth fog for an eye <paramref name="height"/> m over the ground under it. The haze lies
+    /// low, thinning with height (<see cref="HazeDepth"/>), so from high up the far land is seen
+    /// through less of it than along the ground: the density is its mean along a ray from the eye
+    /// down to the ground. From 600 m a clear day's haze is under a third of what it is on foot, so the
+    /// land reads out to the horizon, hazed but never erased. A storm's or a fog's own murk is the
+    /// weather's and stays as thick at every height.
+    /// </summary>
+    public static float FogFrom(float fog, float height)
+    {
+        if (height <= 1f) return fog;
+        float haze = Math.Min(fog, HazeMost);
+        return haze * HazeDepth * (1f - MathF.Exp(-height / HazeDepth)) / height + fog - haze;
+    }
+
     /// <summary>How deep valley fog of this strength (0..1) lies over the low ground, m.</summary>
     public static float ValleyFogDepthOf(float valley) => 18f + 46f * valley;
 

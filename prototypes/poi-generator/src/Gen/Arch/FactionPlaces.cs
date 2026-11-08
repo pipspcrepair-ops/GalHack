@@ -442,7 +442,7 @@ public static class FactionPlaces
         int green = p.Room(ModuleKind.Hall, "greenhouse", 0, 35, 0, 11, 44, 1, 14);
         p.Weathers(33, 0, 9, 46, 4, 16, 2);
         for (int u = 2 * 35 + 1; u < 2 * 44; u += 2)
-            foreach (int v in new[] { 23, 25, 27 }) p.Prop(u, 0, v, BlockType.Plant, Material.Plant, new Rgb(0x5a, 0x7a, 0x3a));
+            foreach (int v in new[] { 23, 25, 27 }) p.Sow(u, 0, v, 1);
         // Bolted connectors between the modules.
         foreach (var (a0, a1, ma, mb) in new[] { (17, 20, living, shop), (31, 34, shop, green) })
         {
@@ -476,7 +476,8 @@ public static class FactionPlaces
             {
                 bool edge = u == 2 * F0 || u == 2 * F1 + 1 || k == 2 * G0 || k == 2 * G1 + 1;
                 if (edge && !(k == 2 * G0 && u >= 2 * 16 && u <= 2 * 17 + 1)) p.Lay(u, 0, k, new Block(BlockType.Rail, Material.Timber, timber.C.Scale(0.8f), Role.Decor));
-                else if (!edge && k % 4 == 1) p.Lay(u, 0, k, new Block(BlockType.Plant, Material.Plant, new Rgb(0x7a, 0x84, 0x3a), Role.Decor));
+                else if (!edge && k % 4 == 1) p.Sow(u, 0, k, (k / 8) % 3);
+                else if (!edge && k % 4 == 3) p.Lay(u, 0, k, new Block(BlockType.Plate, Material.Soil, new Rgb(0x4c, 0x3e, 0x30), Role.Floor));
             }
         p.Spawn(2 * 14, 0, 2 * 14, living);
         p.Spawn(2 * 26, 0, 2 * 13, shop);

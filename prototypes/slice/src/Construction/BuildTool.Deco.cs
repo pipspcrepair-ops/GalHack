@@ -219,7 +219,7 @@ public sealed partial class BuildTool
             Bill back = Bill.Of((block.Id, 1));
             Vector3 at = v.ToWorld(StructureBridge.CellCenter(v.Structure, d.Anchor));
             GiveBack(back, v, at);
-            Said?.Invoke($"Taken down: {Decor.Shared?.Catalogue.Piece(d.Piece).Name}, +1 {block.Name}", Tones.Text);
+            Said?.Invoke($"+1 {block.Name}", Tones.Text);
         }
         _zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Clank, v.ToWorld(StructureBridge.CellCenter(v.Structure, d.Anchor)), 0.9f, -6f);
         return true;

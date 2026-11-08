@@ -651,7 +651,7 @@ public static class Structure
     /// ground level that touch rock count as grounded.
     /// </summary>
     /// <summary>Building fabric, which holds up what joins it. Rubble, furniture and weeds only rest on what is under them.</summary>
-    static bool Holds(BlockType t) => t is BlockType.Cube or BlockType.Breakable or BlockType.Ramp or BlockType.Stair or BlockType.Pillar or BlockType.Rib or BlockType.Lattice or BlockType.Pane or BlockType.Rail or BlockType.Pipe;
+    static bool Holds(BlockType t) => t is BlockType.Cube or BlockType.Breakable or BlockType.Ramp or BlockType.Corner or BlockType.InvCorner or BlockType.Stair or BlockType.Pillar or BlockType.Rib or BlockType.Lattice or BlockType.Pane or BlockType.Rail or BlockType.Pipe;
 
     /// <param name="solidOnly">Only fabric holds others up, and a thin thing (a floor plate, a weed) only rests on what is under it; a wall stub standing on a floor plate is still floating.</param>
     public static List<Int3> Floating(BlockGrid g, CellMask occupied, IReadOnlyCollection<Int3>? anchors = null, bool solidOnly = false)

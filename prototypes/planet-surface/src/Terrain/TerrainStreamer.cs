@@ -40,7 +40,18 @@ public partial class TerrainStreamer : Node3D
     /// <summary>How long ahead of a moving focus the far rings stand, s, and the most that comes to, m.</summary>
     const float FarLeadSeconds = 1.5f, FarLeadMost = 128f, FarLeadFrom = 15f;
 
-    public int VoxelRadius = 5;
+    /// <summary>How many 16 m columns of diggable voxels stream each way round the focus; past them, the far rings. It can change while streaming (a game's view-distance setting): the ring of wanted columns is laid out again.</summary>
+    public int VoxelRadius
+    {
+        get => _voxelRadius;
+        set
+        {
+            if (value == _voxelRadius) return;
+            _voxelRadius = value;
+            _ring.Clear();
+        }
+    }
+    int _voxelRadius = 5;
     public int CollisionRadius = 2;
     public bool CollisionEnabled = true;
     public double UploadBudgetMs = 3.0;
@@ -54,6 +65,24 @@ public partial class TerrainStreamer : Node3D
     /// the eye, so the far field has to be solid from 5,800 m out.
     /// </summary>
     public const float HorizonReach = 7600f;
+
+    /// <summary>
+    /// Where the world starts to be round, m from the eye: past it the far land, the sea, the far
+    /// field and the clouds all sink over the horizon together on the far land's curve
+    /// (<see cref="RoundRadius"/>; round_sink in noise.gdshaderinc, the sky's clouds, the sheet). It is
+    /// past everything drawn in full or that collides (the far rings, places' near blocks, roads'
+    /// furniture: under 1,400 m), so nothing that stands on the ground moves but the far meshes of
+    /// places, which sink with it (PoiLayer.SinkFar). Any further out and the horizon would stand
+    /// further off, deeper in the haze.
+    /// </summary>
+    public const float RoundFrom = 2000f, RoundRadius = 300000f;
+
+    /// <summary>How far ground this far from the eye has sunk over the round world's horizon, m.</summary>
+    public static float RoundSink(float distance)
+    {
+        float d = MathF.Max(distance - RoundFrom, 0f);
+        return d * d / (2f * RoundRadius);
+    }
 
     /// <summary>How far inside the voxel square the far rings still draw: a grid square of the coarsest level, the last that can be there.</summary>
     const float FarHoleCut = 8f;
@@ -259,6 +288,11 @@ public partial class TerrainStreamer : Node3D
         m.SetShaderParameter("road_tolerance", far ? 12f : 1.2f);
         // The prevailing wind that drifts sand over the roads: one of the map's four ways, by the world.
         int wind = (int)(World.Spec.Seed % 4);
+        // The world's road paint: yellow or white centre lines, dashed or solid, by its culture; none where
+        // the old world never painted its roads.
+        ulong paint = World.Spec.Seed / 4;
+        bool painted = World.Profile?.Before is not PoiGenerator.Gen.TechLevel.Low;
+        m.SetShaderParameter("road_paint", new Vector4(paint % 2, (paint / 2) % 3 == 0 ? 0 : 1, painted ? 1 : 0, 0));
         m.SetShaderParameter("road_wind", wind switch { 0 => new Vector2(1, 0), 1 => new Vector2(-1, 0), 2 => new Vector2(0, 1), _ => new Vector2(0, -1) });
         return m;
     }
@@ -1013,6 +1047,7 @@ public partial class TerrainStreamer : Node3D
         var normals = new Vector3[n * n];
         var colors = new Color[n * n];
         var flags = new Vector2[n * n];
+        var smooth = new Vector2[n * n];
         var height = new float[n * n];
         for (int j = 0; j < n; j++)
         for (int i = 0; i < n; i++)
@@ -1031,6 +1066,7 @@ public partial class TerrainStreamer : Node3D
             float hgt = height[k];
             verts[k] = new Vector3((float)(x - cx), hgt - 2f, (float)(z - cz));
             normals[k] = normal;
+            smooth[k] = new Vector2(Smoothed(height, n, i, j) - 2f, 0f);
             Rgb c = pal.FarGround(Mathx.WrapX(x, map.WidthMeters), Mathx.Wrap(z, map.HeightMeters), hgt, normal.Y, out float bare);
             colors[k] = new Color(c.R, c.G, c.B, bare);
         }
@@ -1049,8 +1085,32 @@ public partial class TerrainStreamer : Node3D
         arrays[(int)Mesh.ArrayType.Normal] = normals;
         arrays[(int)Mesh.ArrayType.Color] = colors;
         arrays[(int)Mesh.ArrayType.TexUV] = flags;
+        arrays[(int)Mesh.ArrayType.TexUV2] = smooth;
         arrays[(int)Mesh.ArrayType.Index] = indices;
         return arrays;
+    }
+
+    /// <summary>How far round a horizon vertex its ground is smoothed, in grid steps: about what the far field's relief holds where the land meets it.</summary>
+    const int SmoothSteps = 2;
+
+    /// <summary>
+    /// The ground at a horizon vertex as the far field past it has it: the mean of the heights round
+    /// it, the sea floor at the sea's level. Toward its rim the land eases onto this (terrain.gdshader),
+    /// so where it thins away the sheet behind is the same land at the same height: no peak goes to
+    /// a ghost of itself with the sky through it.
+    /// </summary>
+    static float Smoothed(float[] height, int n, int i, int j)
+    {
+        float sum = 0f;
+        int count = 0;
+        for (int dj = -SmoothSteps; dj <= SmoothSteps; dj++)
+        for (int di = -SmoothSteps; di <= SmoothSteps; di++)
+        {
+            int a = Math.Clamp(i + di, 0, n - 1), b = Math.Clamp(j + dj, 0, n - 1);
+            sum += MathF.Max(height[b * n + a], 0f);
+            count++;
+        }
+        return sum / count;
     }
 
     // ---- Housekeeping ---------------------------------------------------------------------

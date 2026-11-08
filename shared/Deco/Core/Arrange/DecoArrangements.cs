@@ -15,9 +15,11 @@ public sealed class DecoTemplate
         Beside = Array.Empty<string>(), Screen = Array.Empty<string>(), Ends = Array.Empty<string>(), Focus = Array.Empty<string>(),
         Side = Array.Empty<string>(), Other = Array.Empty<string>();
     public int CountMin = 1, CountMax = 1;
-    /// <summary>The most uses of an island template in one room (0: as many as fit).</summary>
+    /// <summary>The most uses of a template in one room (0: as many as fit).</summary>
     public int Max;
     public float Gap = 0.05f, Spacing = 0.3f, TopChance = 0.5f;
+    /// <summary>Rows: the aisle down the middle.</summary>
+    public float Aisle = 1.3f;
     public bool OnWall => Where == "wall";
     public override string ToString() => Id;
 }
@@ -52,7 +54,12 @@ public sealed class DecoArrangements
     public readonly Dictionary<string, DecoSetPlan> Sets = new(StringComparer.Ordinal);
     public readonly Dictionary<string, DecoSetPlan> Recipes = new(StringComparer.Ordinal);
     public readonly Dictionary<string, DecoSiteDef> Sites = new(StringComparer.Ordinal);
-    public readonly Dictionary<string, string> Rooms = new(StringComparer.Ordinal), Kits = new(StringComparer.Ordinal), Tags = new(StringComparer.Ordinal);
+    public readonly Dictionary<string, string> Rooms = new(StringComparer.Ordinal), Kits = new(StringComparer.Ordinal), Tags = new(StringComparer.Ordinal),
+        Roles = new(StringComparer.Ordinal), Spaces = new(StringComparer.Ordinal);
+    /// <summary>The tags in the file's order: the first a place has wins.</summary>
+    public readonly List<string> TagOrder = new();
+    /// <summary>What a room the rest say nothing of is furnished as.</summary>
+    public string Fallback = "storeroom";
     public readonly Dictionary<string, (string[] Roles, string Fallback)> Props = new(StringComparer.Ordinal);
     public readonly Dictionary<string, DecoDisorderRules> Disorder = new(StringComparer.Ordinal);
     public static readonly string[] Kinds = { "around", "station", "bay", "row", "line", "rows", "cluster", "conveyor", "single" };
@@ -74,7 +81,7 @@ public sealed class DecoArrangements
                 Beside = Roles(e, "beside"), Screen = Roles(e, "screen"), Ends = Roles(e, "ends"), Focus = Roles(e, "focus"),
                 Side = Roles(e, "side"), Other = Roles(e, "other"),
                 Gap = (float)DataJson.Num(e, "gap", 0.05), Spacing = (float)DataJson.Num(e, "spacing", 0.3), TopChance = (float)DataJson.Num(e, "topChance", 0.5),
-                Max = DataJson.Int(e, "max", 0),
+                Max = DataJson.Int(e, "max", 0), Aisle = (float)DataJson.Num(e, "aisle", 1.3),
             };
             if (e.TryGetProperty("count", out JsonElement c)) { var v = c.EnumerateArray().Select(x => x.GetInt32()).ToArray(); t.CountMin = v[0]; t.CountMax = v[1]; }
             if (!Kinds.Contains(t.Kind)) throw new InvalidDataException($"template '{t.Id}': unknown kind '{t.Kind}'");
@@ -106,13 +113,16 @@ public sealed class DecoArrangements
         }
         foreach (JsonProperty p in root.GetProperty("sites").EnumerateObject())
             a.Sites[p.Name] = new DecoSiteDef { Id = p.Name, Blurb = DataJson.Str(p.Value, "blurb", ""), Width = (float)DataJson.Num(p.Value, "width"), Length = (float)DataJson.Num(p.Value, "length"), Lane = (float)DataJson.Num(p.Value, "lane") };
-        foreach (var (key, map) in new[] { ("rooms", a.Rooms), ("kits", a.Kits), ("tags", a.Tags) })
+        foreach (var (key, map) in new[] { ("rooms", a.Rooms), ("kits", a.Kits), ("tags", a.Tags), ("roles", a.Roles), ("spaces", a.Spaces) })
             foreach (JsonProperty p in root.GetProperty(key).EnumerateObject())
             {
                 string set = p.Value.GetString();
-                if (!cat.HasSet(set)) throw new InvalidDataException($"arrangements {key}: '{p.Name}' maps to unknown set '{set}'");
+                if (!cat.HasSet(set) && !a.Recipes.ContainsKey(set)) throw new InvalidDataException($"arrangements {key}: '{p.Name}' maps to unknown set or recipe '{set}'");
                 map[p.Name] = set;
+                if (key == "tags") a.TagOrder.Add(p.Name);
             }
+        a.Fallback = DataJson.Str(root, "fallback", "storeroom");
+        if (!cat.HasSet(a.Fallback) && !a.Recipes.ContainsKey(a.Fallback)) throw new InvalidDataException($"arrangements: unknown fallback '{a.Fallback}'");
         foreach (JsonProperty p in root.GetProperty("props").EnumerateObject())
         {
             string fb = DataJson.Str(p.Value, "fallback");
@@ -137,12 +147,37 @@ public sealed class DecoArrangements
         return a;
     }
 
-    /// <summary>The set a POI room is furnished from: its own mapping, else its kit's, else its tags', else office.</summary>
-    public string SetFor(string roomId, IEnumerable<string> tags = null, string kit = null)
+    /// <summary>The set a POI room is furnished from (see <see cref="Resolve"/>).</summary>
+    public string SetFor(string roomId, IEnumerable<string> tags = null, string kit = null) => Resolve(roomId, tags, kit).Set;
+
+    /// <summary>
+    /// How a POI room is furnished: a set, and the recipe (a named mix of it) when one fits. The room's
+    /// own role comes first (its id, then a word of it: a foreman's office is an office wherever it
+    /// stands), then what the place is for (the first of its tags in the file's order: a mine's drifts
+    /// are a mine's, an airfield's hangar a hangar), then what the room is as a space, then a plain
+    /// storeroom. A culture's kit furnishes everything it builds. Office furniture goes only where a
+    /// room says it is an office.
+    /// </summary>
+    public (string Set, string Recipe) Resolve(string roomId, IEnumerable<string> tags = null, string kit = null)
     {
-        if (kit != null && Kits.TryGetValue(kit, out string k)) return k;
-        if (roomId != null && Rooms.TryGetValue(roomId, out string r)) return r;
-        if (tags != null) foreach (string t in tags) if (Tags.TryGetValue(t, out string s)) return s;
-        return "office";
+        if (kit != null && Kits.TryGetValue(kit, out string k)) return As(k);
+        string[] words = Words(roomId);
+        if (roomId != null && Rooms.TryGetValue(roomId, out string r)) return As(r);
+        foreach (string w in words) if (Roles.TryGetValue(w, out string role)) return As(role);
+        if (tags != null)
+        {
+            var has = new HashSet<string>(tags, StringComparer.Ordinal);
+            foreach (string t in TagOrder) if (has.Contains(t)) return As(Tags[t]);
+        }
+        if (roomId != null && Spaces.TryGetValue(roomId, out string sp)) return As(sp);
+        foreach (string w in words) if (Spaces.TryGetValue(w, out string space)) return As(space);
+        return As(Fallback);
     }
+
+    /// <summary>A name in the maps as a set and recipe: a recipe furnishes from its own set.</summary>
+    (string Set, string Recipe) As(string name) => Recipes.TryGetValue(name, out DecoSetPlan recipe) ? (recipe.Set, name) : (name, null);
+
+    /// <summary>A room id's words: "foreman's office" is foreman and office, "pump-hall" pump and hall.</summary>
+    static string[] Words(string id) => id == null ? Array.Empty<string>() :
+        id.ToLowerInvariant().Replace("'s", "").Split(new[] { ' ', '-', '_' }, StringSplitOptions.RemoveEmptyEntries);
 }

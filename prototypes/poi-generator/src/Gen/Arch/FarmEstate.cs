@@ -294,7 +294,7 @@ public static class FarmEstate
                 int row = (alongI ? v : u) % 6;
                 uint h = Hash.Cell(new Int3(u, kind, v), 311);
                 if (row < 2) p.Lay(u, 0, v, new Block(BlockType.Plate, Material.Soil, soil, Role.Floor));
-                else if (row is 3 or 4 && (h % 100 < 34)) p.Lay(u, 0, v, new Block(BlockType.Plant, Material.Plant, h % 5 == 0 ? new Rgb(0x70, 0x78, 0x44) : crop, Role.Debris));
+                else if (row is 3 or 4 && (h % 100 < 34)) p.Sow(u, 0, v, kind);
             }
     }
 

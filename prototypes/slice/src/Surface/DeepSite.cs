@@ -88,6 +88,9 @@ public partial class DeepSite : Node3D
         Sim.Warned += OnWarned;
         Sim.Attacked += OnAttacked;
         Sim.Died += OnDied;
+        Sim.Seized += OnSeized;
+        Sim.LetGo += OnLetGo;
+        Sim.Murmured += OnMurmured;
         Patch.Sites.Add(this);
     }
 
@@ -98,6 +101,9 @@ public partial class DeepSite : Node3D
         Sim.Warned -= OnWarned;
         Sim.Attacked -= OnAttacked;
         Sim.Died -= OnDied;
+        Sim.Seized -= OnSeized;
+        Sim.LetGo -= OnLetGo;
+        Sim.Murmured -= OnMurmured;
         Sim.Targets.Remove(Player);
         Sim.SightLine = null;
         Patch.Sites.Remove(this);
@@ -124,6 +130,19 @@ public partial class DeepSite : Node3D
     }
 
     void OnDied(Creature c, ITarget killer) => Patch.RaiseDied(c, killer == Player ? Patch.Player : killer);
+
+    // A Husk of this place seizing the player is the game's to settle, as one outside is.
+    void OnSeized(SeizeEvent e)
+    {
+        if (e.Victim == Player) Patch.RaiseSeized(e, Sim);
+    }
+
+    void OnLetGo(SeizeEvent e)
+    {
+        if (e.Victim == Player) Patch.RaiseLetGo(e);
+    }
+
+    void OnMurmured(Creature c) => Patch.Sound(GlobalPosition, a => a.Murmur(c));
 
     public Vector3 Local(Vector3 world) => world - GlobalPosition;
     public Vector3 World(Vector3 local) => local + GlobalPosition;
@@ -164,6 +183,7 @@ public partial class DeepSite : Node3D
         _built = 0;
         _buildMs = 0;
         if (eye is Vector3 at) SyncViews(at, clock);
+        SyncMasses((float)delta, clock);
         _pausedAtLastFrame = GC.GetTotalPauseDuration();
         double all = clock.Elapsed.TotalMilliseconds, stopped = (_pausedAtLastFrame - paused).TotalMilliseconds, ms = all - stopped;
         if (ms > WorstViewMs)
@@ -268,6 +288,37 @@ public partial class DeepSite : Node3D
             _unseen.Remove(c);
         }
     }
+
+    readonly List<WormMassView> _massViews = new();
+    Node3D _masses;
+    VeinView _veins;
+
+    /// <summary>Veins drawn (tests).</summary>
+    public int VeinsDrawn => _veins == null ? 0 : Sim.Veins.Count;
+
+    /// <summary>Views of a den's worm masses (built a few at a time within the frame's budget), stirred every frame.</summary>
+    void SyncMasses(float dt, Stopwatch clock)
+    {
+        // The veins round them: one mesh for the whole place, made once.
+        if (_veins == null && Sim.Veins.Count > 0)
+        {
+            AddChild(_veins = new VeinView());
+            _veins.Build(Sim.Veins);
+        }
+        if (Sim.Masses.Count == 0) return;
+        if (_masses == null) AddChild(_masses = new Node3D { Name = "WormMasses" });
+        while (_massViews.Count < Sim.Masses.Count && clock.Elapsed.TotalMilliseconds < BudgetMs)
+        {
+            var view = new WormMassView();
+            _masses.AddChild(view);
+            view.Build(Sim.Masses[_massViews.Count]);
+            _massViews.Add(view);
+        }
+        foreach (WormMassView v in _massViews) v.Sync(dt);
+    }
+
+    /// <summary>Worm masses drawn so far (tests).</summary>
+    public int MassesDrawn => _massViews.Count;
 
     /// <summary>Whether a line from the eye reaches a creature living in solid space: cell by cell, half a metre at a time, up to a metre short of it (it lies against a wall).</summary>
     static bool Sees(Creature c, Vector3 eye)

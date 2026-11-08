@@ -130,8 +130,8 @@ public sealed class MapLevels
     {
         Game.Controls c = _game.Controls;
         int w = g.Over(panel) ? (_game.Interactive ? -g.Wheel : c.Wheel) : 0;
-        if (c.WasPressed(Key.Equal) || c.WasPressed(Key.KpAdd)) w--;
-        if (c.WasPressed(Key.Minus) || c.WasPressed(Key.KpSubtract)) w++;
+        if (c.KeyWasPressed(Key.Equal) || c.KeyWasPressed(Key.KpAdd)) w--;
+        if (c.KeyWasPressed(Key.Minus) || c.KeyWasPressed(Key.KpSubtract)) w++;
         return w;
     }
 
@@ -468,16 +468,10 @@ public sealed class MapLevels
         }
         g.Caption("SYSTEM MAP", side.Position, side.Size.X);
         g.Text($"{bodies.Count(e => e.Kind is "planet" or "giant" or "world")} worlds, {bodies.Count(e => e.Kind == "moon")} moons, {bodies.Count(e => e.Kind == "belt")} belts", side.Position + new Vector2(0, 40), C.Dim, 14);
-        if (!yours)
+        if (yours)
         {
-            g.Text(star.ToUpperInvariant() + ": a survey of the orbits.", side.Position + new Vector2(0, 62), C.Dim, 14);
-            g.Text("Wrecks and places stay undiscovered", side.Position + new Vector2(0, 84), C.Dim, 14);
-            g.Text("until someone goes there.", side.Position + new Vector2(0, 106), C.Dim, 14);
-        }
-        else
-        {
-        g.Text("travel between planets: warp drive", side.Position + new Vector2(0, 62), C.Dim, 14);
-        g.Text("(not fitted). Wrecks by your world:", side.Position + new Vector2(0, 84), C.Dim, 14);
+            g.Text("WARP DRIVE: NOT FITTED", side.Position + new Vector2(0, 62), C.Dim, 14);
+            g.Text("WRECKS", side.Position + new Vector2(0, 84), C.Dim, 14);
         }
         float y = 112;
         if (yours)
@@ -487,7 +481,7 @@ public sealed class MapLevels
             if (g.Button($"map:go:{e.Key}", new Rect2(side.Position + new Vector2(0, y), new Vector2(310, 28)), e.Label.ToUpperInvariant(), C.Accent2, lit: picked, size: 13)) charts.Destination = picked ? null : e.Key;
             y += 30;
         }
-        if (yours && charts.Wrecks.Count == 0) g.Text("No wrecks found yet: reach orbit.", side.Position + new Vector2(0, y), C.Dim, 14);
+        if (yours && charts.Wrecks.Count == 0) g.Text("NONE FOUND", side.Position + new Vector2(0, y), C.Dim, 14);
         if (yours && g.Drawing && charts.Destination != null && places.TryGetValue(charts.Destination, out Vector2 to))
         {
             if (panel.HasPoint(world) && panel.HasPoint(to))
@@ -527,6 +521,8 @@ public sealed class MapLevels
         var lines = new List<string> { galaxy.Name(id).ToUpperInvariant() };
         lines.Add(GalaxyNames.Kind(s.Kind) + (s.Companions == 1 ? ", double" : s.Companions > 1 ? ", triple" : ""));
         lines.Add(GalaxyNames.Of(s.Region));
+        float depth = galaxy.DepthOf(id);
+        lines.Add($"DEPTH {depth:0.00}  {Galaxy.Band(depth)}");
         if (s.Nebula >= 0) lines.Add("in the " + galaxy.Nebulae[s.Nebula].Name);
         lines.Add("territory: unclaimed");
         lines.Add(id == Trail.You ? "you are here" : $"{light:F1} LY away{(light <= Lanes.Range ? ", one jump" : "")}");
@@ -769,6 +765,9 @@ public sealed class MapLevels
     /// stand at their real place and size. The sphere round you is a jump's true 3D reach. A click
     /// picks a star, the sky marks it, and the wheel zooms in on it and on down into its system.
     /// </summary>
+    /// <summary>Galaxy map names: off but for the picked star; these add the stars near you or the route's.</summary>
+    public bool LabelNear, LabelRoute = true;
+
     void GalaxyLevel(Gui g, Rect2 panel, Rect2 side)
     {
         Galaxy galaxy = Catalogue;
@@ -875,7 +874,9 @@ public sealed class MapLevels
                 float r = Math.Clamp((3.2f + 0.8f * MathF.Log10(s.Light + 0.01f)) * MathF.Sqrt(96f / depth), 2.4f, 8f);
                 g.Canvas.DrawCircle(q, r, StarColour(id));
                 if (!lanes.Connected.Contains(id)) g.Canvas.DrawArc(q, r + 3f, 0, Mathf.Tau, 12, new Color(C.Dim, 0.6f), 1f);
-                if (id != Trail.You && id != charts.ChosenStar) labels.Add(q, r, depth < 220f ? galaxy.Name(id).ToUpperInvariant() : null, C.Text, 5);
+                // Names stay off but for the picked star (and you); the toggles add the near ones or the route's.
+                bool named = LabelNear && depth < 220f || LabelRoute && _route != null && _route.Contains(id);
+                if (id != Trail.You && id != charts.ChosenStar) labels.Add(q, r, named ? galaxy.Name(id).ToUpperInvariant() : null, C.Text, 5);
             }
             if (At(you.Position, out Vector2 me, out _) && panel.HasPoint(me))
             {
@@ -889,7 +890,7 @@ public sealed class MapLevels
                 g.Canvas.DrawArc(chosen, 12f, 0, Mathf.Tau, 24, C.Holo, 2f);
                 labels.Add(chosen, 12f, galaxy.Name(charts.ChosenStar).ToUpperInvariant(), C.Holo, 1);
             }
-            if (At(N.Vector3.Zero, out Vector2 core, out _) && panel.HasPoint(core)) labels.Add(core, 4f, "CORE", C.Dim, 3);
+            if (LabelNear && At(N.Vector3.Zero, out Vector2 core, out _) && panel.HasPoint(core)) labels.Add(core, 4f, "CORE", C.Dim, 3);
             labels.Flush(g, panel);
         }
         int facts = charts.ChosenStar >= 0 ? charts.ChosenStar : Trail.You;
@@ -909,7 +910,8 @@ public sealed class MapLevels
             Sky.Focus = N.Vector3.Zero;
             Sky.Distance = GalaxyMapView.Widest;
         }
-        g.Text($"{shown.Count} stars charted, drag to turn", side.Position + new Vector2(0, 294), C.Dim, 14);
+        if (g.Button("map:names-near", new Rect2(side.Position + new Vector2(0, 288), new Vector2(150, 30)), "NEAR NAMES", C.Holo, lit: LabelNear, size: 14)) LabelNear = !LabelNear;
+        if (g.Button("map:names-route", new Rect2(side.Position + new Vector2(156, 288), new Vector2(150, 30)), "ROUTE NAMES", C.Holo, enabled: _route != null, lit: LabelRoute && _route != null, size: 14)) LabelRoute = !LabelRoute;
     }
 
     Lanes _lanes;
@@ -936,10 +938,10 @@ public sealed class MapLevels
     void RouteFacts(Gui g, Vector2 at, Galaxy galaxy, int id)
     {
         if (id == Trail.You || id < 0) return;
-        if (_route == null) { g.Text("no chain of jumps reaches it", at, C.Warn, 15); return; }
+        if (_route == null) { g.Text("NO ROUTE", at, C.Warn, 15); return; }
         float ly = Lanes.Length(galaxy, _route);
-        g.Text($"route: {_route.Count - 1} jump{(_route.Count == 2 ? "" : "s")}, {ly:F1} LY", at, C.Holo, 15);
-        g.Text($"fold crystal needed: {Lanes.Crystal(galaxy, _route)}", at + new Vector2(0, 24), C.Holo, 15);
+        g.Text($"{_route.Count - 1} JUMP{(_route.Count == 2 ? "" : "S")} · {ly:F1} LY", at, C.Holo, 15, UiTheme.Mono);
+        g.Text($"FOLD CRYSTAL {Lanes.Crystal(galaxy, _route)}", at + new Vector2(0, 24), C.Holo, 15, UiTheme.Mono);
     }
 
     Vector2[] _cloudAt;
@@ -975,7 +977,7 @@ public sealed class MapLevels
             float d = q.DistanceSquaredTo(g.Mouse);
             if (d < nearest) (nearest, near) = (d, i);
             // Names as the zoom allows: only once close in, and only so many.
-            if (close && depth < 60f && named < 40) { named++; labels.Add(q, 2f, galaxy.Name(i).ToUpperInvariant(), C.Dim, 6); }
+            if (LabelNear && close && depth < 60f && named < 40) { named++; labels.Add(q, 2f, galaxy.Name(i).ToUpperInvariant(), C.Dim, 6); }
         }
         _hovered = near;
         if (count == 0) return;
@@ -1033,6 +1035,6 @@ public sealed class MapLevels
             }
         var known = new HashSet<int>(shown.Select(id => (int)galaxy.Stars[id].Nebula));
         foreach (Nebula n in galaxy.Nebulae)
-            if (known.Contains(n.Id) && at(n.Centre, out Vector2 middle, out _) && panel.HasPoint(middle)) g.Text(n.Name.ToUpperInvariant(), middle, new Color(n.Colour.X, n.Colour.Y, n.Colour.Z), 12);
+            if (LabelNear && known.Contains(n.Id) && at(n.Centre, out Vector2 middle, out _) && panel.HasPoint(middle)) g.Text(n.Name.ToUpperInvariant(), middle, new Color(n.Colour.X, n.Colour.Y, n.Colour.Z), 12);
     }
 }

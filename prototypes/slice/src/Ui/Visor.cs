@@ -72,7 +72,7 @@ public partial class Visor : CanvasLayer
     {
         _lines.RemoveAll(l => l.text == text);
         _lines.Add((text, colour, _time + 5));
-        if (_lines.Count > 5) _lines.RemoveAt(0);
+        if (_lines.Count > HudLayout.LinesShown) _lines.RemoveAt(0);
     }
 
     /// <summary>Experience earned: a short line at the upper right ("+3 XP ore").</summary>
@@ -145,7 +145,7 @@ public partial class Visor : CanvasLayer
         Vector2 size = _hud.Size;
         if (Game.Phase == Phase.Generating)
         {
-            Banner("GENERATING PLANET", Game.World == null ? "" : $"{Game.World.Name} · seed {Game.World.Seed} · the cryopod is thawing", C.Accent);
+            Banner("GENERATING PLANET", Game.World == null ? "" : $"{Game.World.Name} · seed {Game.World.Seed}", C.Accent);
             return;
         }
         Survivor survivor = Game.Survivor;
@@ -156,11 +156,10 @@ public partial class Visor : CanvasLayer
         DrawCompass(survivor);
         DrawChosenStar();
         DrawLines();
-        DrawWarnings();
         DrawProgress();
         if (Game.Suit.Dead)
         {
-            Banner($"{Game.Suit.Sim.Player.DeathCause?.ToUpperInvariant() ?? "DEAD"}", "R: wake in the bunker (your backpack stays where you fell)", C.Danger);
+            Banner($"{Game.Suit.Sim.Player.DeathCause?.ToUpperInvariant() ?? "DEAD"}", $"[R] RESPAWN", C.Danger);
             return;
         }
         DrawVitals();
@@ -240,12 +239,6 @@ public partial class Visor : CanvasLayer
         }
         if ((warn & Alert.Fall) != 0 && Mathf.PosMod((float)_time * 4f, 1f) < 0.6f)
             _hud.TextIn(UiTheme.Display, (int)(34 * s), new Rect2(0, size.Y * 0.6f, size.X, 50 * s), "IMPACT", C.Danger, HorizontalAlignment.Center);
-        if (ThreatShowing && Mathf.PosMod((float)_time * 3f, 1f) < 0.6f)
-        {
-            Vector3 local = Game.Camera.GlobalBasis.Inverse() * (_threatFrom - Game.Camera.GlobalPosition);
-            string side = MathF.Abs(local.X) < MathF.Abs(local.Z) * 0.6f ? (local.Z < 0 ? "AHEAD" : "BEHIND") : local.X < 0 ? "LEFT" : "RIGHT";
-            _hud.TextIn(UiTheme.Display, (int)(28 * s), new Rect2(0, size.Y * 0.66f, size.X, 44 * s), $"THREAT {side}", C.Warn, HorizontalAlignment.Center);
-        }
     }
 
     /// <summary>
@@ -309,7 +302,8 @@ public partial class Visor : CanvasLayer
         float s = S;
         Vector2 size = _hud.Size;
         Vector3 look = Game.Spaceflight.Local(survivor.WorldLook()); // in orbit, north stays north
-        float heading = Mathf.PosMod(Mathf.RadToDeg(Mathf.Atan2(look.X, -look.Z)), 360f);
+        // Near the Husks it drifts off true (and everything on it with it).
+        float heading = Mathf.PosMod(Mathf.RadToDeg(Mathf.Atan2(look.X, -look.Z)) + Game.CompassDrift, 360f);
         float width = 640 * s, y = 34 * s, cx = size.X / 2;
         _hud.Block(new Rect2(cx - width / 2, y + 22 * s, width, 2 * s), new Color(C.Text, 0.5f));
         for (int d = 0; d < 360; d += 15)
@@ -322,13 +316,14 @@ public partial class Visor : CanvasLayer
             if (major)
                 _hud.TextIn(UiTheme.Display, (int)(16 * s), new Rect2(x - 20 * s, y - 14 * s, 40 * s, 20 * s), d switch { 0 => "N", 90 => "E", 180 => "S", _ => "W" }, C.Text, HorizontalAlignment.Center);
         }
-        _hud.Text(UiTheme.Mono, (int)(16 * s), new Vector2(cx - 18 * s, y + 28 * s), $"{heading:000}", C.Text);
+        _hud.Text(UiTheme.Mono, (int)(16 * s), new Vector2(cx - 18 * s, y + 28 * s), Garbled($"{heading:000}", Game.WrongShown), C.Text);
 
         Vector3 feet = survivor.WorldFeet;
         var labels = new List<(float x, int row)>();
         _compassBottom = (y + 44 * s + 16 * s); // grows below with each row of contact labels
-        void Mark(Vector3 at, string tag, Color colour)
+        void Mark(Vector3 at, string tag, Color colour, float alpha)
         {
+            colour = new Color(colour, alpha);
             Vector3 to = Game.Spaceflight.Local(at - feet);
             float bearing = Mathf.PosMod(Mathf.RadToDeg(Mathf.Atan2(to.X, -to.Z)), 360f);
             float off = Mathf.Clamp(Mathf.Wrap(bearing - heading, -180f, 180f), -60f, 60f);
@@ -338,25 +333,62 @@ public partial class Visor : CanvasLayer
             // The first row whose neighbourhood is free, so labels at the same bearing stack.
             int row = 0;
             while (labels.Exists(l => l.row == row && MathF.Abs(l.x - x) < 170 * s)) row++;
+            if (row >= HudLayout.CompassRows) return; // the mark stays; its label would crowd the view
             labels.Add((x, row));
             _compassBottom = MathF.Max(_compassBottom, y + (44 + (row + 1) * 16) * s);
             _hud.TextIn(UiTheme.Label, (int)(13 * s), new Rect2(x - 110 * s, y + (44 + row * 16) * s, 220 * s, 16 * s), $"{(tag.Length > 20 ? tag[..19] + ".." : tag)} {d:F0}m", colour, HorizontalAlignment.Center);
         }
-        if (Game.Bunker != null) Mark(Game.Start, "BUNKER", C.Accent2);
-        // Places you have found (coming near one finds it for good; the one seen from the bunker's way out starts found): the nearest few.
-        if (!Game.InOrbit)
-            foreach (var (label, at) in Game.Spaceflight.Charts.OfKind("place")
-                .Select(m => (m.Label, At: Game.Zone.Planet.NearestCopy(new Vector3((float)m.X, feet.Y, (float)m.Z), feet)))
-                .OrderBy(x => new Vector2(x.At.X - feet.X, x.At.Z - feet.Z).LengthSquared()).Take(NearestPlaces).ToList())
-                Mark(at, label.ToUpperInvariant(), C.Accent);
-        foreach (Vessel v in Game.Zone.Vessels)
-            if (!v.IsRuin && !v.IsWreck && (v.Seat != null || v.IsBase) && survivor.Aboard != v) Mark(v.Body.Position.ToGodot(), v.Name.ToUpperInvariant(), C.Good);
-        if (Game.Backpack != null) Mark(Game.Backpack.Position, "BACKPACK", C.Danger);
-        if (survivor.Seated == null)
-            foreach (var (kind, at) in Deposits.Near(Game.Zone, feet))
-                Mark(at, kind.ToUpperInvariant(), C.Holo);
+        foreach (CompassMark m in CompassMarks()) Mark(m.At, m.Tag, m.Colour, m.Alpha);
     }
 
+    /// <summary>A readout as the wrongness has it: now and then, the more the stronger it is, one digit comes up as another for a moment.</summary>
+    string Garbled(string text, float wrong)
+    {
+        if (wrong < 0.05f || text.Length == 0) return text;
+        int beat = (int)(_time * 9.0);
+        var roll = new Random(beat * 7919 + text.Length);
+        if (roll.NextDouble() > wrong * 0.22) return text;
+        char[] c = text.ToCharArray();
+        int at = c.Length - 1; // the last digit only, so it still reads as a heading
+        if (char.IsDigit(c[at])) c[at] = (char)('0' + (c[at] - '0' + 3 + roll.Next(6)) % 10);
+        return new string(c);
+    }
+
+    /// <summary>One mark on the compass: its label, where it is, its colour and how strongly it shows.</summary>
+    public readonly record struct CompassMark(string Tag, Vector3 At, Color Colour, float Alpha, string Kind);
+
+    /// <summary>
+    /// What the compass shows: your bunker; then only what you have found by going near it (places,
+    /// deposits: the nearest few of each), your own vessels and backpack, and the scanner's pings
+    /// for as long as they last.
+    /// </summary>
+    public List<CompassMark> CompassMarks()
+    {
+        var marks = new List<CompassMark>();
+        Survivor survivor = Game.Survivor;
+        if (survivor == null) return marks;
+        Vector3 feet = survivor.WorldFeet;
+        if (Game.Bunker != null) marks.Add(new("BUNKER", Game.Start, C.Accent2, 1f, "bunker"));
+        if (!Game.InOrbit && Game.Zone.Planet != null)
+        {
+            IEnumerable<(string Label, Vector3 At)> Found(string kind, int take) => Game.Spaceflight.Charts.OfKind(kind)
+                .Select(m => (m.Label, At: Game.Zone.Planet.NearestCopy(new Vector3((float)m.X, feet.Y, (float)m.Z), feet)))
+                .Where(x => new Vector2(x.At.X - feet.X, x.At.Z - feet.Z).Length() < Slice.Game.Game.ScanRange)
+                .OrderBy(x => new Vector2(x.At.X - feet.X, x.At.Z - feet.Z).LengthSquared()).Take(take);
+            foreach (var (label, at) in Found("place", NearestPlaces)) marks.Add(new(label.ToUpperInvariant(), at, C.Accent, 1f, "place"));
+            if (survivor.Seated == null)
+                foreach (var (label, at) in Found("deposit", NearestDeposits)) marks.Add(new(label.ToUpperInvariant(), at, C.Holo, 1f, "deposit"));
+        }
+        foreach (Vessel v in Game.Zone.Vessels)
+            if (!v.IsRuin && !v.IsWreck && (v.Seat != null || v.IsBase) && survivor.Aboard != v) marks.Add(new(v.Name.ToUpperInvariant(), v.Body.Position.ToGodot(), C.Good, 1f, "vessel"));
+        if (Game.Backpack != null) marks.Add(new("BACKPACK", Game.Backpack.Position, C.Danger, 1f, "backpack"));
+        foreach (Game.Game.Ping p in Game.Pings)
+            marks.Add(new(p.Place ? "?" : p.Label.ToUpperInvariant(), p.At, p.Place ? C.Accent : C.Holo, Game.PingAlpha(p), "ping"));
+        return marks;
+    }
+
+    /// <summary>How many found deposits the compass shows (the nearest).</summary>
+    public const int NearestDeposits = 3;
     // ---- Lines, warnings, aim -------------------------------------------------------------------
 
     void DrawLines()
@@ -377,34 +409,14 @@ public partial class Visor : CanvasLayer
 
     float _compassBottom;
 
-    void DrawWarnings()
-    {
-        float s = S;
-        float y = MathF.Max(90 * s, _compassBottom + 8 * s); // always below the compass labels
-        foreach (WarningEntry w in Game.WeatherWarnings())
-        {
-            Color c = w.Level == WarningLevel.Danger ? C.Danger : w.Level == WarningLevel.Warning ? C.Warn : C.Dim;
-            _hud.Text(UiTheme.Label, (int)(17 * s), new Vector2(40 * s, y), w.Text, c);
-            y += 24 * s;
-            if (y > _compassBottom + 130 * s) break;
-        }
-    }
-
-    /// <summary>Experience and levels: short lines at the upper right, a banner on a new level. Nothing blocks play.</summary>
+    /// <summary>A new level: a banner under the compass for a few seconds. Nothing blocks play; experience itself counts quietly.</summary>
     void DrawProgress()
     {
         float s = S;
         Vector2 size = _hud.Size;
-        float y = 96 * s;
-        foreach (var (text, until) in _xp)
-        {
-            float a = (float)Math.Clamp(until - _time, 0, 1);
-            _hud.TextIn(UiTheme.Label, (int)(17 * s), new Rect2(size.X - 440 * s, y, 400 * s, 22 * s), text, new Color(C.Accent2, a), HorizontalAlignment.Right);
-            y += 22 * s;
-        }
         if (LevelUpShowing && Mathf.PosMod((float)_time * 2f, 1f) < 0.8f)
         {
-            var band = new Rect2(size.X / 2 - 320 * s, 150 * s, 640 * s, 48 * s);
+            var band = new Rect2(size.X / 2 - 320 * s, Layout.Flight.Position.Y, 640 * s, 48 * s);
             _hud.Block(band, new Color(C.Accent, 0.85f));
             _hud.TextIn(UiTheme.Display, (int)(26 * s), band, _level, C.Glass, HorizontalAlignment.Center);
         }
@@ -425,8 +437,9 @@ public partial class Visor : CanvasLayer
         {
             HandKind.Tool => Game.Tool.Mode == ToolMode.Deconstruct ? Game.Builder.Verdict : Game.Tool.TargetLabel,
             HandKind.Block or HandKind.Core or HandKind.Device or HandKind.Blueprint => Game.Builder.Verdict,
-            HandKind.Consumable => "click to use",
-            HandKind.Vehicle => "click to set it down",
+            HandKind.Consumable => "[LMB] USE",
+            HandKind.Vehicle => "[LMB] SET DOWN",
+            HandKind.Scanner => Game.ScanWait > 0 ? $"{Game.ScanWait:F0}" : "[LMB] PING",
             _ => "",
         };
         if (!string.IsNullOrEmpty(label))
@@ -460,7 +473,7 @@ public partial class Visor : CanvasLayer
         if (Game.ToolHint is string hint) return hint;
         var items = Game.Zone.Data.Items;
         string bar = pack.OnRemoteBar ? $"REMOTE · {pack.HandRemote?.Origin.ToUpperInvariant()} · " : "";
-        if (pack.OnRemoteBar && !pack.HandUsable) return $"{bar}OUT OF RANGE: step back into the core's area to use it";
+        if (pack.OnRemoteBar && !pack.HandUsable) return $"{bar}OUT OF RANGE";
         HandKind hand = Game.Builder.Projecting ? HandKind.Blueprint : pack.Hand;
         switch (hand)
         {
@@ -473,7 +486,7 @@ public partial class Visor : CanvasLayer
                     _ => $"{toolName} · GATHER",
                 };
             case HandKind.Vehicle:
-                return "HOVER BIKE · click to set it down";
+                return "HOVER BIKE";
             case HandKind.Block when pack.HandItem is string id && items.TryGet(id, out var item):
                 bool tiny = Game.Builder.TargetVessel != null && Game.Builder.TargetVessel.Structure.Grid.Size == GalHack.Structures.GridSize.Small;
                 string shape = item.Family == GalHack.Items.BlockFamily.Armour ? $", {Game.Builder.Shape.Name}" : item.IsUniversalDeco ? $", {Game.Builder.CurrentDeco(tiny)?.Name ?? "no piece"}" : "";
@@ -481,29 +494,32 @@ public partial class Visor : CanvasLayer
                     : pack.OnRemoteBar ? $"{pack.HandSource.Count(id)} in {pack.HandRemote?.Origin}"
                     : $"{pack.InHand.Count} in your stack{(pack.Linked != null && pack.Linked.Count(id) > 0 ? $" · {pack.Linked.Count(id)} in {pack.LinkedName}" : "")}";
                 return $"{bar}{item.Name}{shape} · {where}";
-            case HandKind.Core: return $"{bar}{items.Item(pack.HandItem).Name}: set it down on open ground";
-            case HandKind.Device: return $"{bar}{items.Item(pack.HandItem).Name}: set it down on open ground";
-            case HandKind.Blueprint: return Game.Builder.Underway != null ? $"{Game.Builder.Underway.Name}: {Game.Builder.Remaining.Count} blocks to go" : "BLUEPRINT PROJECTOR: set the Skiff down";
-            case HandKind.Consumable: return $"{bar}{items.Item(pack.HandItem).Name}: click to use";
+            case HandKind.Core: return $"{bar}{items.Item(pack.HandItem).Name}";
+            case HandKind.Device: return $"{bar}{items.Item(pack.HandItem).Name}";
+            case HandKind.Blueprint: return Game.Builder.Underway != null ? $"{Game.Builder.Underway.Name}: {Game.Builder.Remaining.Count} blocks to go" : $"BLUEPRINT · {(Game.Builder.Plan?.Name ?? "Skiff").ToUpperInvariant()}";
+            case HandKind.Consumable: return $"{bar}{items.Item(pack.HandItem).Name}";
             default: return pack.HandItem != null && items.TryGet(pack.HandItem, out var other) ? $"{bar}{other.Name}" : bar;
         }
     }
 
-    /// <summary>The key hints, all on one quiet line.</summary>
+    /// <summary>The key hints, all on one quiet line, each the key it is bound to now.</summary>
     public string HintLine()
     {
         HandKind hand = Game.Pack.Hand;
         string keys = hand switch
         {
-            HandKind.Tool => Game.Tool.Mode == ToolMode.Deconstruct ? "[Q] MODE  [LMB] TAKE DOWN   " : "[Q] MODE   ",
-            HandKind.Block when Game.Pack.HandItem == GalHack.Items.DecoCatalogue.UniversalItem => "[WHEEL] PIECE  [G] THEME  [R] TURN  [RMB] TAKE DOWN   ",
-            HandKind.Block => $"[WHEEL] SHAPE  [R/T] TURN  [X] MIRROR{(Game.Builder.MirrorX ? " ON" : "")}  [RMB] TAKE DOWN   ",
+            HandKind.Tool => Game.Tool.Mode == ToolMode.Deconstruct ? $"{Bound("tool-mode")} MODE  [LMB] TAKE DOWN   " : $"{Bound("tool-mode")} MODE   ",
+            HandKind.Block when Game.Pack.HandItem == GalHack.Items.DecoCatalogue.UniversalItem => $"[WHEEL] PIECE  {Bound("style")} THEME  {Bound("rotate")} TURN  [RMB] TAKE DOWN   ",
+            HandKind.Block => $"[WHEEL] SHAPE  {Bound("rotate", "tilt")} TURN  {Bound("mirror")} MIRROR{(Game.Builder.MirrorX ? " ON" : "")}  [RMB] TAKE DOWN   ",
             _ => "",
         };
-        string bar = Game.Pack.OnRemoteBar ? "[Y] YOUR TOOLBAR   " : "[Y] REMOTE TOOLBAR   ";
+        string bar = Game.Pack.OnRemoteBar ? $"{Bound("switch-bar")} YOUR TOOLBAR   " : $"{Bound("switch-bar")} REMOTE TOOLBAR   ";
         string creative = Game.Mode == GalHack.Items.GameMode.Creative ? "   CREATIVE: BUILDING IS FREE" : "";
-        return $"{keys}{bar}[L] TORCH {(Game.Torch.Visible ? "ON" : "OFF")}   [TAB] MENU   LVL {Game.Progress.Level}{creative}";
+        return $"{keys}{bar}{Bound("torch")} TORCH {(Game.Torch.Visible ? "ON" : "OFF")}   {Bound("terminal")} MENU   LVL {Game.Progress.Level}{creative}";
     }
+
+    /// <summary>A hint's key, as bound now: "[Q]", or "[R/T]" for two.</summary>
+    string Bound(params string[] actions) => $"[{string.Join("/", actions.Select(a => KeyBindings.Name(Game.Settings.Keys[a])))}]";
 
     /// <summary>The toolbar, the selected item's line, the key hints and, with a block family in hand, the shape strip.</summary>
     void DrawHand()
@@ -547,7 +563,7 @@ public partial class Visor : CanvasLayer
             }
         }
         // Which bar this is: a label and the tint, at the toolbar's left.
-        _hud.TextIn(UiTheme.Display, (int)(13 * s), new Rect2(layout.Toolbar.Position + new Vector2(-150 * s, cell / 2 - 9 * s), new Vector2(142 * s, 18 * s)), remote ? "REMOTE [Y]" : "YOURS [Y]", remote ? C.Holo : C.Dim, HorizontalAlignment.Right);
+        _hud.TextIn(UiTheme.Display, (int)(13 * s), layout.BarName, remote ? $"REMOTE {Bound("switch-bar")}" : $"YOURS {Bound("switch-bar")}", remote ? C.Holo : C.Dim, HorizontalAlignment.Right);
         int itemSize = (int)(16 * s), hintSize = (int)(13 * s);
         _hud.TextIn(UiTheme.Label, itemSize, layout.ItemLine, HudLayout.Fit(UiTheme.Label, itemSize, ItemLine(), layout.ItemLine.Size.X), C.Text, HorizontalAlignment.Center);
         _hud.TextIn(UiTheme.Label, hintSize, layout.Hints, HudLayout.Fit(UiTheme.Label, hintSize, HintLine(), layout.Hints.Size.X), C.Dim, HorizontalAlignment.Center);
@@ -583,11 +599,11 @@ public partial class Visor : CanvasLayer
         var chip = new Rect2(r.Position, new Vector2(92 * s, r.Size.Y));
         string theme = builder.DecoTheme == null ? "ALL THEMES" : Slice.Places.Decor.Shared?.Catalogue.Set(builder.DecoTheme).Name.ToUpperInvariant() ?? builder.DecoTheme;
         _hud.Block(chip, new Color(C.Holo, 0.85f));
-        _hud.TextIn(UiTheme.Label, (int)(10 * s), new Rect2(chip.Position + new Vector2(2, 3 * s), new Vector2(chip.Size.X - 4, 14 * s)), "THEME [G]", C.Glass, HorizontalAlignment.Center);
+        _hud.TextIn(UiTheme.Label, (int)(10 * s), new Rect2(chip.Position + new Vector2(2, 3 * s), new Vector2(chip.Size.X - 4, 14 * s)), $"THEME {Bound("style")}", C.Glass, HorizontalAlignment.Center);
         _hud.TextIn(UiTheme.Display, (int)(12 * s), new Rect2(chip.Position + new Vector2(2, 20 * s), new Vector2(chip.Size.X - 4, r.Size.Y - 22 * s)), HudLayout.Fit(UiTheme.Display, (int)(12 * s), theme, chip.Size.X - 6), C.Glass, HorizontalAlignment.Center);
         if (cur == null)
         {
-            _hud.TextIn(UiTheme.Label, (int)(12 * s), new Rect2(r.Position.X + 98 * s, r.Position.Y, r.Size.X - 98 * s, r.Size.Y), "no deco piece unlocked: the tech tree's DECO tab", C.Dim, HorizontalAlignment.Center);
+            _hud.TextIn(UiTheme.Label, (int)(12 * s), new Rect2(r.Position.X + 98 * s, r.Position.Y, r.Size.X - 98 * s, r.Size.Y), "NONE UNLOCKED", C.Dim, HorizontalAlignment.Center);
             return;
         }
         float cw = 46 * s, gap = 3 * s;
@@ -623,12 +639,13 @@ public partial class Visor : CanvasLayer
         string line = Game.InOrbit ? Game.Spaceflight.FlightLine(v)
             : $"{v.Body.Velocity.Length():F0} m/s   ALT {v.Body.Position.Y:F0} m   AGL {v.AboveGround:F0} m   {gear}{(v.Flight.State.Cruise ? "   CRUISE" : "")}";
         // Under the compass, clear of the cockpit console.
-        var band = new Rect2(size.X / 2 - 360 * s, 128 * s, 720 * s, 34 * s);
+        Rect2 flight = Layout.Flight;
+        var band = new Rect2(flight.Position, new Vector2(flight.Size.X, 34 * s));
         _hud.Block(band, new Color(C.Glass, 0.6f));
         _hud.TextIn(UiTheme.Mono, (int)(19 * s), band, line, C.Text, HorizontalAlignment.Center);
-        string message = c?.ConsoleMessageAge < 4f ? c.ConsoleMessage : v.Unanchored ? "BASE MODE: ENGINES OFF UNTIL IT LANDS AND ANCHORS" : v.ModeWarning ?? v.Stats.LiftWarning;
+        string message = c?.ConsoleMessageAge < 4f ? c.ConsoleMessage : v.Unanchored ? "UNANCHORED: ENGINES OFF" : v.ModeWarning ?? v.Stats.LiftWarning;
         if (!string.IsNullOrEmpty(message))
-            _hud.TextIn(UiTheme.Label, (int)(20 * s), new Rect2(0, band.End.Y + 8 * s, size.X, 26 * s), message, C.Warn, HorizontalAlignment.Center);
+            _hud.TextIn(UiTheme.Label, (int)(20 * s), new Rect2(flight.Position.X, band.End.Y + 8 * s, flight.Size.X, 26 * s), HudLayout.Fit(UiTheme.Label, (int)(20 * s), message, flight.Size.X), C.Warn, HorizontalAlignment.Center);
     }
 
     /// <summary>
@@ -641,7 +658,7 @@ public partial class Visor : CanvasLayer
         Vector2 size = _hud.Size;
         CoreMode mode = v.Structure.Mode;
         Color tone = mode switch { CoreMode.Base => C.Good, CoreMode.Capital => C.Accent, CoreMode.Hover => C.Holo, _ => C.Accent2 };
-        var box = new Rect2(size.X / 2 - 560 * s, 128 * s, 192 * s, 34 * s);
+        Rect2 box = Layout.Mode;
         _hud.Block(box, new Color(C.Glass, 0.75f));
         _hud.Block(new Rect2(box.Position, new Vector2(5 * s, box.Size.Y)), tone);
         _hud.Frame(box, new Color(tone, 0.8f), 1.5f * s);

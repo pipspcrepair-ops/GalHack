@@ -292,7 +292,8 @@ public sealed class GroundPalette
     /// </summary>
     public Color Made(Color land, StampSurface surface, float weight, float wear, double x, double z, float spacing = 1f)
     {
-        if (weight <= 0f) return land;
+        // A lawn is levelled, not laid: the land's own ground shows.
+        if (weight <= 0f || surface == StampSurface.Lawn) return land;
         // Detail finer than the mesh's own vertex spacing can't be drawn there, only aliased into a blotchy
         // mosaic: far off, each pattern gives way to its average tone, and joints and cracks to nothing.
         float Noise(double fx, double fz, double freq, int seed)

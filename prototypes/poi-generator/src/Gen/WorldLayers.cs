@@ -189,7 +189,20 @@ public sealed class WorldRoll
         }
         public string? First(LayerKind kind) => Values.TryGetValue(kind, out var v) && v.Count > 0 ? v[0] : null;
         public List<string> All(LayerKind kind) => Values.GetValueOrDefault(kind) ?? new List<string>();
+
+        /// <summary>Values the roll must not pick for a layer (a new game that isn't mid-collapse is never falling).</summary>
+        public readonly Dictionary<LayerKind, HashSet<string>> Out = new();
+        public Given Without(LayerKind kind, params string[] ids)
+        {
+            if (!Out.TryGetValue(kind, out var set)) Out[kind] = set = new HashSet<string>();
+            set.UnionWith(ids);
+            return this;
+        }
+        public bool Barred(LayerKind kind, string id) => Out.TryGetValue(kind, out var set) && set.Contains(id);
     }
+
+    /// <summary>How deep in the galaxy the world lies, 0 on the rim to 1 at the core, when its place is known (-1 when not).</summary>
+    public float Depth = -1f;
 
     public WorldLayer? Type;
     public WorldLayer Theme = null!;
@@ -322,7 +335,7 @@ public sealed class WorldRoll
             var rare = new List<WorldLayer>();
             foreach (WorldLayer l in Table(kind))
             {
-                if (where != null && !where(l)) continue;
+                if (where != null && !where(l) || _given.Barred(kind, l.Id)) continue;
                 var (hard, soft) = Legal(l);
                 if (hard && soft) pool.Add(l);
                 else if (hard) rare.Add(l);
@@ -395,13 +408,18 @@ public sealed class WorldRoll
     /// ground and the tables can't disagree. A family's own tech levels and <see cref="WorldProfile.Fits"/>
     /// still apply on top. Null where the library has no themes.
     /// </summary>
-    public static WorldRoll? Roll(PoiLibrary lib, ulong seed, string archetype, WorldProfile profile, bool start, Given? given = null)
+    public static WorldRoll? Roll(PoiLibrary lib, ulong seed, string archetype, WorldProfile profile, bool start, Given? given = null, float depth = -1f)
     {
         if (!lib.Layers.Any(l => l.Kind == LayerKind.Theme)) return null;
         given ??= new Given();
-        var roll = new WorldRoll();
+        var roll = new WorldRoll { Depth = depth };
+        // A world whose place in the galaxy is known lies in that place's zone.
+        if (depth >= 0f && given.First(LayerKind.Zone) == null) given.Set(LayerKind.Zone, WorldForce.ZoneAt(depth));
         var w = new Roller(lib, roll, Hash.Combine(seed, 0x7EEEA5UL), given);
         roll.Facts["start"] = start ? "yes" : "no";
+        // A start world on the rim is spared anything rough; one begun deeper in (a new game's choice) takes its chances.
+        string? zone = given.First(LayerKind.Zone);
+        roll.Facts["sheltered"] = start && (zone == null || zone == "rim") ? "yes" : "no";
         string a = archetype.ToLowerInvariant() + ".";
 
         // The body.
@@ -493,6 +511,10 @@ public sealed class WorldRoll
             if (l.Style.TryGetValue("power", out string? power)) Power = power;
         }
         if (Rolled.Any(l => l.Streets > 0)) Streets = Rolled.Sum(l => l.Streets);
+        // The Husks and the wrong spread outward from the core: the deeper the world, the more of its places are theirs.
+        if (Depth >= 0f)
+            foreach (string code in new[] { "HSK", "HOL" })
+                if (Occupancy.TryGetValue(code, out float v)) Occupancy[code] = v * (0.4f + 1.2f * Depth);
         var occupants = lib.Layers.Where(l => l.Kind == LayerKind.Occ).ToDictionary(l => l.Id);
         foreach (string code in Occupancy.Keys.ToList())
             if (Occupancy[code] <= 0f || !occupants.TryGetValue(code, out WorldLayer? occ) || w.Rules(occ, false) is not (true, true)) Occupancy.Remove(code);

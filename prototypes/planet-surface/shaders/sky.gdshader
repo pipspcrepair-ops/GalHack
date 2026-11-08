@@ -451,10 +451,11 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter) 
 	int most = fronted ? steps + 64 : steps;
 	for (int i = 0; i < most && t < t1; i++) {
 		vec3 p = ro + rd * t;
-		// The world is round: far clouds follow the land over the horizon (the same slow curve as the far land,
-		// 1 / 300 km), so distant bases sink out of sight and only the upper bulk shows. Overhead it is flat.
-		vec2 away = p.xz - ro.xz;
-		p.y += dot(away, away) * 1.667e-6;
+		// The world is round: far clouds follow the land over the horizon (the same slow curve from the
+		// same distance as the far land, round_sink in noise.gdshaderinc: 1 / 300 km past 2,000 m), so
+		// distant bases sink out of sight and only the upper bulk shows. Overhead it is flat.
+		float away = max(length(p.xz - ro.xz) - 2000.0, 0.0);
+		p.y += away * away * 1.667e-6;
 		float step_t = dt;
 		vec3 fr = vec3(0.0);
 		if (fronted) {

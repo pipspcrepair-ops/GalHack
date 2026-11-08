@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using GalHack.Items.Bridge;
@@ -110,9 +111,10 @@ public sealed partial class Vessel
         TickMode();
     }
 
-    /// <summary>Each tick: a Big Core in Base Mode anchors once it has come to rest, and a hull that has left its footings lets go of them.</summary>
+    /// <summary>Each tick: the next chunk of collision still to build, if any; a Big Core in Base Mode anchors once it has come to rest, and a hull that has left its footings lets go of them.</summary>
     public void TickMode()
     {
+        BuildPendingShapes();
         if (_liftedFrom is N.Vector3 from && N.Vector3.DistanceSquared(Body.Position, from) > LetGoAfter * LetGoAfter)
         {
             _liftedFrom = null;
@@ -190,26 +192,37 @@ public sealed partial class Vessel
     }
 
     /// <summary>Every block anchored at or under the ground meets it flush (terrain-digging's rule 4).</summary>
-    void ClearGround()
+    public void ClearGround()
     {
         if (Zone.Edits == null) return;
+        var parts = GroundParts().SelectMany(g => g).ToList();
+        if (parts.Count > 0) Zone.Edits.ClearForStructure(parts); // one edit for them all
+    }
+
+    /// <summary>The blocks at and under the ground, grouped by the 16 m column of ground they stand in (so clearing can go a column a tick).</summary>
+    public List<List<(TerrainDigging.Terrain.VolumeKey, TerrainDigging.Terrain.StructureVolume)>> GroundParts()
+    {
         float cell = Structure.Grid.CellSize;
-        foreach (var (p, _) in Structure.Blocks().ToList())
+        var groups = new SortedDictionary<(int, int), List<(TerrainDigging.Terrain.VolumeKey, TerrainDigging.Terrain.StructureVolume)>>();
+        foreach (var (p, _) in Structure.Blocks())
         {
             Vector3 at = ToWorld(StructureBridge.CellCenter(Structure, p));
-            if (at.Y - cell <= Zone.GroundAt(at.X, at.Z).Y) ClearGround(p);
+            if (at.Y - cell > Zone.GroundAt(at.X, at.Z).Y) continue;
+            var key = ((int)MathF.Floor(at.X / 16f), (int)MathF.Floor(at.Z / 16f));
+            if (!groups.TryGetValue(key, out var list)) groups[key] = list = new();
+            list.Add((GroundKey(p), VolumeOf(p)));
         }
+        return groups.Values.ToList();
     }
 
     /// <summary>
     /// A block of a base reaching into the ground: the cells whose centres lie inside it are cleared
     /// and its volume registered, so the ground meets its faces flush (terrain-digging's rule 4).
     /// </summary>
-    public void ClearGround(Int3 cell)
-    {
-        var volume = new TerrainDigging.Terrain.StructureVolume(Body.ToParent(StructureBridge.CellCenter(Structure, cell)), Body.Rotation, new N.Vector3(Structure.Grid.CellSize));
-        Zone.Edits?.ClearForStructure(GroundKey(cell), volume);
-    }
+    public void ClearGround(Int3 cell) => Zone.Edits?.ClearForStructure(GroundKey(cell), VolumeOf(cell));
+
+    TerrainDigging.Terrain.StructureVolume VolumeOf(Int3 cell) =>
+        new(Body.ToParent(StructureBridge.CellCenter(Structure, cell)), Body.Rotation, new N.Vector3(Structure.Grid.CellSize));
 
     /// <summary>A block's hold on the ground.</summary>
     public TerrainDigging.Terrain.VolumeKey GroundKey(Int3 cell) => new(Body.Id, cell.X, cell.Y, cell.Z);

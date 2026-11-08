@@ -370,7 +370,7 @@ public partial class WildlifeTest : Node
             for (int i = 0; i < Math.Min(clean.Species.Count, bloom.Species.Count); i++)
             {
                 Species c = clean.Species[i], b = bloom.Species[i];
-                marked &= b.Corrupted && !c.Corrupted && b.Name.StartsWith(_data.Fauna.Corruption.Prefix) && b.Colors.Pattern == Pattern.Veins;
+                marked &= b.Corrupted && !c.Corrupted && b.Name.StartsWith(_data.Fauna.Corruption.Prefix) && b.Colors.Pattern == Pattern.Mottle && b.Stats.MaxHealth <= c.Stats.MaxHealth;
                 ok &= b.Plan == c.Plan && b.Form == c.Form && b.Weirdness > c.Weirdness;
                 n++;
             }

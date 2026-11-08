@@ -64,6 +64,8 @@ public sealed class SurvivalTool
     public event Action<int> OreDug;
     public event Action PlantCut;
     public event Action<Creature> CreatureHit;
+    /// <summary>A shot landed on a den's worm mass.</summary>
+    public event Action<WormMass> MassHit;
 
     /// <summary>The same hit, with where it landed and which way it was going.</summary>
     public event Action<Creature, Vector3, Vector3> CreatureStruck;
@@ -104,7 +106,7 @@ public sealed class SurvivalTool
     Deposit? _tell;
     readonly Dictionary<(double, double), int> _tellsWorked = new();
     /// <summary>Pulses a tell rock takes to break down; each gives a little of its ore.</summary>
-    public const int TellPulses = 4, TellOrePerPulse = 3;
+    public const int TellPulses = 4, TellOrePerPulse = 1;
     public PoiPlaces.Hit? PlaceHit => _placeHit;
     PoiPlaces.Hit? _placeHit;
     SalvageSite _wreck;
@@ -250,7 +252,7 @@ public sealed class SurvivalTool
         {
             _cooldown = 0.35f;
             var refused = new PlanetEdit(EditKind.Tool);
-            if (verdict == Verdict.Bedrock) { refused.Bedrock = 1; Said?.Invoke("BEDROCK: the tool can't cut it", Tones.Warning); }
+            if (verdict == Verdict.Bedrock) { refused.Bedrock = 1; Said?.Invoke("BEDROCK", Tones.Warning); }
             else if (verdict == Verdict.Anchored) refused.Anchored = 1;
             else refused.AlreadyAir = 1;
             Sfx?.Play(Sfx.Sound.Clank, at);
@@ -310,6 +312,12 @@ public sealed class SurvivalTool
     /// <summary>A living creature in arm's reach in front of what the tool is on takes the blow instead (its body is solid to the tool too).</summary>
     bool StrikeCreature()
     {
+        if (Seizer?.Invoke() is { Dead: false })
+        {
+            _cooldown = 0.4f;
+            _suit.Worked();
+            return IntoSeizer(_rules.ShotDamage * Tier.Shot * 0.5f);
+        }
         Vector3 eye = _survivor.WorldEye(), dir = _survivor.WorldLook();
         Creature c = _zone.Wildlife.Raycast(eye, dir, _rules.CutReach, out float distance, out Vector3 point);
         if (c == null || c.Dead) return false;
@@ -498,10 +506,35 @@ public sealed class SurvivalTool
     /// <summary>How far past a voxel cube a shot looks for the drawn ground: ample for a shot along a slope, short of reaching through an unloaded hill to what stands behind it.</summary>
     const float GrazePast = 24f;
 
+    /// <summary>The Husk holding the survivor's head, if one is (set by the game): every shot and blow goes into it.</summary>
+    public Func<Creature> Seizer;
+    /// <summary>A shot or a blow went into the Husk holding you: that breaks its hold.</summary>
+    public event Action<Creature> SeizerHit;
+
+    /// <summary>
+    /// A shot or a blow with a Husk's face against yours can't miss: it goes straight into it, at
+    /// the head, no ray needed. Damage enough and it lets go (the game's hold sees to that).
+    /// </summary>
+    bool IntoSeizer(float damage)
+    {
+        if (Seizer?.Invoke() is not { Dead: false } husk) return false;
+        Vector3 eye = _survivor.WorldEye();
+        Vector3 face = _zone.Wildlife.WorldOf(husk) + Vector3.Up * husk.Species.Figure.Height * 0.88f;
+        Vector3 dir = (face - eye).LengthSquared() > 1e-4f ? (face - eye).Normalized() : _survivor.WorldLook();
+        _zone.Wildlife.Damage(husk, damage * 1.5f);
+        SeizerHit?.Invoke(husk);
+        CreatureHit?.Invoke(husk);
+        CreatureStruck?.Invoke(husk, face, dir);
+        if (Fx != null) Fx.Fire(Muzzle(), face, default, () => Fx.Impact(face, -dir, ImpactKind.Creature, null), Feel, HeldMuzzle);
+        Sfx?.Play(Sfx.Sound.Ping, face, 0.8f, -8f);
+        return true;
+    }
+
     void Shoot()
     {
         _cooldown = _rules.ShotInterval;
         Shots++;
+        if (IntoSeizer(_rules.ShotDamage * Tier.Shot)) return;
         Vector3 eye = _survivor.WorldEye(), dir = _survivor.WorldLook();
         float reach = _rules.ShotRange;
         ImpactKind kind = ImpactKind.Nothing;
@@ -536,6 +569,18 @@ public sealed class SurvivalTool
         _zone.Wildlife.Noise(eye, ShotHeard);
         Creature c = _zone.Wildlife.Raycast(eye, dir, reach, out float distance, out Vector3 point);
         bool struck = c != null && !c.Dead;
+        // A den's worm mass in the way takes the shot (enough of them and it's dead).
+        if (_zone.Wildlife.RaycastMass(eye, dir, struck ? distance : reach, out float massAt, out WildSim massSim) is { } mass)
+        {
+            WormMasses.Damage(massSim, mass, _rules.ShotDamage * Tier.Shot);
+            struck = false;
+            c = null;
+            kind = ImpactKind.Creature;
+            reach = massAt;
+            onto = null;
+            onPlace = null;
+            MassHit?.Invoke(mass);
+        }
         // Someone of a town in the way: hit, and the town takes it badly. Shooting inside a town at all does.
         float personAt = 0f;
         Town.Person person = Places == null ? null : Places.PersonAlong(eye, dir, struck ? distance : reach, out personAt);
@@ -549,8 +594,7 @@ public sealed class SurvivalTool
             onPlace = null;
         }
         else (Places?.TownAt(eye) ?? Places?.TownAt(eye + dir * MathF.Min(reach, 30f)))?.Provoked();
-        if (onPlace is PoiPlaces.Hit target && !struck && Places.Shot(target, _rules.ShotDamage * Tier.Shot))
-            Said?.Invoke("The cracked panel gives way: a room behind it", Tones.Good);
+        if (onPlace is PoiPlaces.Hit target && !struck) Places.Shot(target, _rules.ShotDamage * Tier.Shot); // a cracked panel gives way: the room behind it says so
         Vector3 end = struck ? point : eye + dir * reach;
         if (struck)
         {

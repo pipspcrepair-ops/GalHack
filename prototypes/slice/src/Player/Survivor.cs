@@ -110,6 +110,8 @@ public sealed class Survivor
             Kind = BodyKind.Player, Label = "Survivor", Mass = Mass, DragArea = 0.9f, Density = 700f,
             Shape = new StuckShape(Height, Radius), Position = feet,
         });
+        // A crouch shortens the capsule, not the person: in water they're reckoned at their full height.
+        body.WaterHeight = Height;
         var c = new CharacterBody3D { Name = "Survivor", CollisionLayer = Layers.Player, CollisionMask = Layers.PlayerMask };
         var shape = new CollisionShape3D { Shape = new CapsuleShape3D { Radius = Radius, Height = Height }, Position = Vector3.Up * (Height / 2f) };
         c.AddChild(shape);

@@ -41,6 +41,13 @@ public sealed partial class PlanetWorld
     /// (the living: settlements and faction places, their gear, defences and animals).
     /// </summary>
     public readonly WorldProfile Profile;
+
+    /// <summary>How deep in the galaxy this world lies, 0 on the rim to 1 at the core, from its star's real place (-1 where the galaxy isn't compiled in).</summary>
+    public float Depth { get; private set; } = -1f;
+
+    /// <summary>What this world rolled, layer by layer (null for a world nobody ever lived on): its places are laid out from it.</summary>
+    public PoiGenerator.Gen.WorldRoll Roll { get; private set; }
+
     /// <summary>
     /// The world round the places, when its code is compiled in (src/World/Infra: the infrastructure
     /// network, see PlanetWorld.Infra.cs). Projects that compile only this file build worlds without it.
@@ -174,12 +181,21 @@ public sealed partial class PlanetWorld
     public static PlanetWorld Build(PlanetSpec spec, PoiCatalog catalog)
     {
         var watch = Stopwatch.StartNew();
-        WorldProfile profile = ProfileFor(spec, PoiSiting.StartWorld);
+        PoiGenerator.Gen.WorldForce force = PoiGenerator.Gen.WorldForce.Current;
+        WorldProfile profile = force.Apply(ProfileFor(spec, PoiSiting.StartWorld));
+        // Its star first: where it lies in the galaxy is part of what the world rolls from.
+        object chart = null;
+        float depth = -1f;
+        Chart(spec, force.Depth, ref chart, ref depth);
+        // Only a start world (or one a depth was asked for) has its real place yet: any other is found
+        // a rim star for its sky, so its zone is still rolled by the odds rather than read off that star.
+        float rollDepth = PoiSiting.StartWorld || force.Depth != null ? depth : -1f;
         WorldMap map = PlanetGenerator.Generate(spec);
         LandingSite landing = Planets.Gen.Landing.Find(map, map.WidthMeters * 0.5, map.HeightMeters * 0.5);
         var bare = new PlanetTerrainSource(map);
-        if (catalog != null) profile = PoiSiting.WithRules(catalog.Library, map, profile);
-        List<PoiSite> pois = catalog == null ? new List<PoiSite>() : PoiSiting.Place(catalog, map, bare, landing, profile: profile);
+        PoiGenerator.Gen.WorldRoll roll = catalog == null ? null : PoiSiting.RollOf(catalog.Library, map, profile, depth: rollDepth);
+        if (roll != null) profile = profile with { Barred = roll.Barred };
+        List<PoiSite> pois = catalog == null ? new List<PoiSite>() : PoiSiting.Place(catalog, map, bare, landing, profile: profile, depth: rollDepth);
         var stamps = new List<TerrainStamp>();
         var anchors = new List<TerrainDigging.Terrain.PoiSite>();
         foreach (PoiSite p in pois)
@@ -196,7 +212,8 @@ public sealed partial class PlanetWorld
         // What stands off a place's footprint goes by the real ground, now that it's known.
         foreach (PoiSite p in pois)
             PoiGenerator.Gen.StateTransforms.Settle(p.Instance, (x, z) => source.SurfaceHeight(Mathx.WrapX(p.Origin.X + x + 0.5, source.Width), Mathx.Wrap(p.Origin.Z + z + 0.5, source.Height)) - p.Origin.Y, 3);
-        var world = new PlanetWorld(spec, profile, map, landing, pois, around, source, watch.Elapsed.TotalMilliseconds);
+        var world = new PlanetWorld(spec, profile, map, landing, pois, around, source, watch.Elapsed.TotalMilliseconds) { Depth = depth, Roll = roll };
+        world.TakeChart(chart);
         world.ChartStars();
         return world;
     }
@@ -205,6 +222,10 @@ public sealed partial class PlanetWorld
     public void ChartStars() => FindHomeStar();
 
     partial void FindHomeStar();
+
+    /// <summary>This world's star in the galaxy, found before anything is placed (near a depth asked for, or out at an arm's tip), and how deep it lies; nothing when that isn't compiled in.</summary>
+    static partial void Chart(PlanetSpec spec, float? wanted, ref object chart, ref float depth);
+    partial void TakeChart(object chart);
 
     static partial void PlanAround(PlanetSpec spec, PoiCatalog catalog, WorldMap map, PlanetTerrainSource bare, List<PoiSite> pois, WorldProfile profile, LandingSite landing, List<TerrainStamp> stamps, ref object around);
     static partial void FinishAround(PlanetSpec spec, PlanetTerrainSource source, List<PoiSite> pois, object around);
@@ -254,12 +275,31 @@ public sealed partial class PlanetWorld
     public float? WaterSurfaceAt(Vector3 p) =>
         !Look.Lava && Source.WaterSurfaceAt(Mathx.WrapX(p.X, Width), Mathx.Wrap(p.Z, Height), out float surface) ? surface : null;
 
-    /// <summary>A sea mask for the water shader: depth below sea level per world-map cell.</summary>
+    /// <summary>
+    /// The sea mask for the water shader: metres below sea level per world-map cell (negative on land),
+    /// one texel a cell, so the shader's filtered read is the very bilinear blend the terrain and the
+    /// physics take of the same cells. The sea is drawn exactly where it is, deeper than
+    /// <see cref="PlanetTerrainSource.SeaMaskDepth"/>: the ground is raised just clear of it everywhere
+    /// else, and no edge of it hangs over a dip the mask left out. Half floats, never bytes: a byte's
+    /// step was half a metre of depth, the size of the sea's own margin.
+    /// </summary>
     public ImageTexture SeaTexture()
     {
-        var bytes = new byte[Map.Count];
-        for (int k = 0; k < Map.Count; k++) bytes[k] = Rgb.Byte(Math.Clamp(-Map.Elevation[k] / 120f, 0f, 1f));
-        return ImageTexture.CreateFromImage(Image.CreateFromData(Map.Width, Map.Height, false, Image.Format.R8, bytes));
+        var bytes = new byte[Map.Count * 2];
+        for (int k = 0; k < Map.Count; k++)
+            BitConverter.TryWriteBytes(new Span<byte>(bytes, k * 2, 2), (Half)Math.Clamp(-Map.Elevation[k], -60000f, 60000f));
+        return ImageTexture.CreateFromImage(Image.CreateFromData(Map.Width, Map.Height, false, Image.Format.Rh, bytes));
+    }
+
+    /// <summary>What the water shader reads at a point: the sea mask's texels blended as its linear filter blends them (tests).</summary>
+    public static float SeaMaskAt(Image mask, double x, double z, double planetWidth, double planetHeight)
+    {
+        int w = mask.GetWidth(), h = mask.GetHeight();
+        double gx = x / planetWidth * w - 0.5, gz = z / planetHeight * h - 0.5;
+        int i0 = (int)Math.Floor(gx), j0 = (int)Math.Floor(gz);
+        float tx = (float)(gx - i0), tz = (float)(gz - j0);
+        float At(int i, int j) => mask.GetPixel(((i % w) + w) % w, ((j % h) + h) % h).R;
+        return Mathf.Lerp(Mathf.Lerp(At(i0, j0), At(i0 + 1, j0), tx), Mathf.Lerp(At(i0, j0 + 1), At(i0 + 1, j0 + 1), tx), tz);
     }
 }
 

@@ -29,6 +29,9 @@ public partial class SurfaceZone : Node3D
     public GameData Data;
     public PlanetSpec Spec;
 
+    /// <summary>What the new game forced onto this world's roll (depth, theme, fall, mid-collapse, eras), or null for nothing.</summary>
+    public PoiGenerator.Gen.WorldForce Force;
+
     /// <summary>Where streaming centres: the player, or the vessel they fly.</summary>
     public Func<Vector3> Focus = () => Vector3.Zero;
 
@@ -122,8 +125,9 @@ public partial class SurfaceZone : Node3D
         AddChild(Streamer);
         Sea = new MeshInstance3D
         {
-            Name = "Sea", Mesh = new PlaneMesh { Size = new Vector2(24000f, 24000f) },
-            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+            // Subdivided so its far side can sink over the horizon with the land (round_sink in the water shader).
+            Name = "Sea", Mesh = new PlaneMesh { Size = new Vector2(24000f, 24000f), SubdivideWidth = 95, SubdivideDepth = 95 },
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, ExtraCullMargin = PlanetSurface.Terrain.TerrainStreamer.RoundSink(17000f),
         };
         AddChild(Sea);
         Sfx = new PlanetSurface.Fx.Sfx { Name = "Sfx" };
@@ -145,7 +149,7 @@ public partial class SurfaceZone : Node3D
         AddChild(Blood);
         Underwater = new UnderwaterView { Name = "Underwater", Zone = this };
         AddChild(Underwater);
-        Loot = new Slice.Items.Lootables { Name = "Loot", Items = Data.Items };
+        Loot = new Slice.Items.Lootables { Name = "Loot", Items = Data.Items, BodyAt = c => Wildlife.WorldOf(c), Settle = FloorUnder };
         AddChild(Loot);
 
         // Places collide on the world layer: walkers, vessels, E and the tool meet them (planet-surface's own layer is its own).
@@ -160,6 +164,8 @@ public partial class SurfaceZone : Node3D
         PlanetSurface.Poi.PoiCatalog catalog = PoiCatalog;
         // Every game starts on a start world: no faction holds ground there (the POI siting's rule).
         PlanetSurface.Poi.PoiSiting.StartWorld = true;
+        // And what the new game forced onto its roll (its depth, theme, fall, mid-collapse and eras), or nothing.
+        PoiGenerator.Gen.WorldForce.Current = Force ?? new PoiGenerator.Gen.WorldForce();
         _building = Task.Run(() => PlanetWorld.Build(spec, catalog));
     }
 
@@ -222,6 +228,21 @@ public partial class SurfaceZone : Node3D
     /// <summary>The generator's landing site, on the ground.</summary>
     public Vector3 LandingSite => GroundAt((float)Planet.Landing.X, (float)Planet.Landing.Y);
 
+    /// <summary>
+    /// The first floor at or below a point that someone on foot stands on (a place's floor, a deck,
+    /// the dug ground), and never above the point: a thing left inside a ceiling or on a ledge out of
+    /// reach comes down to it. With nothing below in reach, the natural ground.
+    /// </summary>
+    public Vector3 FloorUnder(Vector3 p)
+    {
+        var q = PhysicsRayQueryParameters3D.Create(p + Vector3.Up * 0.3f, p + Vector3.Down * 80f, GalHack.Physics.Layers.Solid);
+        q.HitFromInside = false;
+        var hit = GetWorld3D().DirectSpaceState.IntersectRay(q);
+        if (hit.Count > 0) return (Vector3)hit["position"];
+        Vector3 ground = GroundAt(p.X, p.Z);
+        return float.IsFinite(ground.Y) ? ground : p;
+    }
+
     /// <summary>The natural ground (before digging) under a frame position.</summary>
     public virtual Vector3 GroundAt(float x, float z) => new(x, Planet.GroundHeight(Mathx.WrapX(x, Planet.Width), Mathx.Wrap(z, Planet.Height)), z);
 
@@ -237,6 +258,7 @@ public partial class SurfaceZone : Node3D
         {
             water.SetShaderParameter("sea", true);
             water.SetShaderParameter("sea_map", Planet.SeaTexture());
+            water.SetShaderParameter("sea_mask", GalHack.Terrain.PlanetTerrainSource.SeaMaskDepth);
         }
         return water;
     }

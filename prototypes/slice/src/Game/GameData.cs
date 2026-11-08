@@ -142,7 +142,7 @@ public sealed class SliceRules
     public sealed class MaterialRules
     {
         /// <summary>Raw ore items per 1 m cell of ore dug (shared/Items' pacing reference).</summary>
-        public int OrePerCell { get; set; } = 12;
+        public int OrePerCell { get; set; } = 3;
         /// <summary>Stone per cell of rock dug.</summary>
         public int StonePerRockCell { get; set; } = 1;
         public double OrganicsPerPlant { get; set; } = 1.5;
@@ -225,8 +225,8 @@ public sealed class SliceRules
         public float Tree { get; set; } = 9f;
         public float Boulder { get; set; } = 5f;
         /// <summary>A tree gives this many times a plant's materials.</summary>
-        public float TreeYield { get; set; } = 3f;
-        public float BoulderStone { get; set; } = 6f;
+        public float TreeYield { get; set; } = 1.5f;
+        public float BoulderStone { get; set; } = 3f;
     }
 
     public sealed class BuildRules
@@ -234,6 +234,10 @@ public sealed class SliceRules
         public float Reach { get; set; } = 9f;
         public float BlueprintPlacesPerSecond { get; set; } = 8f;
         public string StarterBlueprint { get; set; } = "starter.gbp";
+        /// <summary>The BLUEPRINTS tab's starter set (data/blueprints), Large and Small together.</summary>
+        public List<string> Library { get; set; } = new() { "starter.gbp" };
+        /// <summary>Where blueprints the player saves go (the library's Yours).</summary>
+        public string Saved { get; set; } = "user://blueprints";
         public float SmallVesselMaxTurn { get; set; } = 110f;
         public AreaRules Area { get; set; } = new();
     }

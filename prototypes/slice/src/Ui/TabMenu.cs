@@ -11,7 +11,7 @@ using Palette = DiegeticUi.Theme.Palette;
 namespace Slice.Ui;
 
 /// <summary>The Tab menu's tabs.</summary>
-public enum MenuTab { You, Tech, Stats, Core, Map }
+public enum MenuTab { You, Tech, Stats, Core, Map, Blueprints }
 
 /// <summary>
 /// The suit's terminal, on Tab: one full-screen menu in the diegetic UI's look (screen glass,
@@ -23,6 +23,7 @@ public enum MenuTab { You, Tech, Stats, Core, Map }
 ///   TECH   the tech tree, by tab, built from every item's and block's unlock
 ///   STATS  what you have done since the crash
 ///   CORE   the structure or device you are in or next to: its manufacturing, storage, settings and numbers
+///   BLUEPRINTS  the library of structures to place, and SAVE for one of yours
 ///   MAP    what is around you
 ///
 /// Every section is its own panel (<see cref="IMenuSection"/>), so any of them can stand alone on
@@ -85,6 +86,7 @@ public partial class TabMenu : CanvasLayer
         if (!IsOpen) return;
         Root.Visible = false;
         Root.Gui.DragId = null;
+        Root.Blueprints?.CloseSave();
         Game.CloseContainer();
         Sounded?.Invoke("close");
     }
@@ -94,7 +96,7 @@ public partial class TabMenu : CanvasLayer
     {
         if (Game.Interactive) return; // real mouse input reaches the panel itself
         Root.Gui.MiddleHeld = c.Middle;
-        Root.Feed(c.Mouse, c.PrimaryPressed, c.PrimaryReleased, c.Primary, c.SecondaryPressed, c.IsHeld(Godot.Key.Shift), c.IsHeld(Godot.Key.Ctrl), c.SecondaryReleased, c.Secondary, c.Wheel);
+        Root.Feed(c.Mouse, c.PrimaryPressed, c.PrimaryReleased, c.Primary, c.SecondaryPressed, c.ModifierHeld(Godot.Key.Shift), c.ModifierHeld(Godot.Key.Ctrl), c.SecondaryReleased, c.Secondary, c.Wheel);
     }
 
     /// <summary>The / key: the first filter box on the page takes the keyboard.</summary>
@@ -119,15 +121,19 @@ public partial class MenuRoot : MenuPanel
     public MenuTab Tab = MenuTab.You;
     public override Vector2 DesignSize => new(Gui.Width, Gui.Height);
 
+    /// <summary>How solid the menu's glass is, and the widgets' backings on it.</summary>
+    public const float Glass = 0.55f, Backing = 0.6f;
+
     /// <summary>Redrawn when what it shows changes: the tab, the bag, an open container, progress, and a 4 Hz tick for live vitals and queues.</summary>
     protected override string Signature() => Game?.Pack == null ? "" :
-        $"{Tab}|{Game.Pack.Storage.Version}|{Game.Pack.Grid.Version}|{Game.Pack.Selected}|{Game.Pack.Bar}|{Game.Opened?.Grid.Storage.Version}|{Game.Progress.Xp}|{Game.Progress.Points}|{(int)(Game.Stats.Seconds * 4)}|{ItemViews.Focused}|{(ItemViews.Focused != null ? ItemViews.Get(ItemViews.Focused).Text : "")}|{(Tab == MenuTab.Map ? Map.Levels.Signature : Tab == MenuTab.Tech ? Tech.Signature : Tab == MenuTab.Stats ? Stats.Signature : "")}";
+        $"{Tab}|{Game.Pack.Storage.Version}|{Game.Pack.Grid.Version}|{Game.Pack.Selected}|{Game.Pack.Bar}|{Game.Opened?.Grid.Storage.Version}|{Game.Progress.Xp}|{Game.Progress.Points}|{(int)(Game.Stats.Seconds * 4)}|{ItemViews.Focused}|{(ItemViews.Focused != null ? ItemViews.Get(ItemViews.Focused).Text : "")}|{(Tab == MenuTab.Map ? Map.Levels.Signature : Tab == MenuTab.Tech ? Tech.Signature : Tab == MenuTab.Stats ? Stats.Signature : Tab == MenuTab.Blueprints ? Blueprints.Signature : "")}";
 
     public YouSection You;
     public TechSection Tech;
     public StatsSection Stats;
     public CoreSection Core;
     public MapSection Map;
+    public BlueprintsSection Blueprints;
 
     public override void _Ready()
     {
@@ -137,23 +143,28 @@ public partial class MenuRoot : MenuPanel
         Stats = new StatsSection(Game);
         Core = new CoreSection(Game);
         Map = new MapSection(Game);
+        Blueprints = new BlueprintsSection(Game);
     }
 
     protected override void Build(Gui g, Rect2 area)
     {
         if (Game?.Survivor == null) return;
-        // The glass: dark, with the theme's scanline stripes at the top.
-        g.Fill(area, new Color(C.Glass, 0.93f));
+        // The glass: see-through, so the world reads behind it (the game never pauses); the widgets' backings are lighter too.
+        g.Backing = Backing;
+        g.Fill(area, new Color(C.Glass, Glass));
         var header = new Rect2(area.Position, new Vector2(area.Size.X, 74));
         g.Fill(header, C.Accent);
         if (g.Drawing) g.Canvas.Stripes(new Rect2(header.Position + new Vector2(header.Size.X - 300, 0), new Vector2(300, header.Size.Y)), C.Accent, C.Accent2, 16);
         g.Text("SUIT TERMINAL", header.Position + new Vector2(24, 14), C.Glass, 30, UiTheme.Display);
 
-        string[] names = { "YOU", "TECH", "STATS", "CORE", "MAP" };
-        for (int i = 0; i < names.Length; i++)
+        (MenuTab tab, string name)[] tabs = { (MenuTab.You, "YOU"), (MenuTab.Tech, "TECH"), (MenuTab.Stats, "STATS"), (MenuTab.Core, "CORE"), (MenuTab.Blueprints, "BLUEPRINTS"), (MenuTab.Map, "MAP") };
+        float tx = header.Position.X + 384;
+        foreach (var (tab, name) in tabs)
         {
-            var r = new Rect2(header.Position + new Vector2(420 + i * 150, 16), new Vector2(140, 44));
-            if (g.Tab($"tab:{names[i].ToLowerInvariant()}", r, names[i], Tab == (MenuTab)i, C.Accent2)) Tab = (MenuTab)i;
+            float w = MathF.Max(104, Paint.TextWidth(UiTheme.Label, 18, name) + 36);
+            var r = new Rect2(tx, header.Position.Y + 16, w, 44);
+            if (g.Tab($"tab:{name.ToLowerInvariant()}", r, name, Tab == tab, C.Accent2)) Tab = tab;
+            tx += w + 8;
         }
         Progress p = Game.Progress;
         var (into, span) = p.ToNext;
@@ -170,8 +181,8 @@ public partial class MenuRoot : MenuPanel
             case MenuTab.Stats: Stats.Build(g, body); break;
             case MenuTab.Core: Core.Build(g, body); break;
             case MenuTab.Map: Map.Build(g, body); break;
+            case MenuTab.Blueprints: Blueprints.Build(g, body); break;
         }
-        g.TextIn("TAB close · ESC close · the world keeps running", new Rect2(area.Position + new Vector2(20, area.Size.Y - 24), new Vector2(area.Size.X - 40, 20)), C.Dim, 14, HorizontalAlignment.Right);
         // Something dragged out of the window is set down on the ground in front of you.
         if (g.DroppedOutside(body.Grow(4), out object dropped) && dropped is SlotRef s) Game.Drop(s.Grid, s.Index);
     }

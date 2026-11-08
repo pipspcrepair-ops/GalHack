@@ -28,6 +28,10 @@
 //   light               range (m) and energy while powered; anim: flicker, blink, pulse, or spark
 //                       (blinks while powered, sparks when broken)
 //   palette             a piece's own palette (the alien looks)
+//   outdoor             false: an indoor piece of an outdoor set (a hangar's engine stand among the airliners)
+//   blast               a hazard: damaged through its hit points it goes up, radius (m) and damage at its
+//                       heart (falling off to a quarter at the edge); blocks, creatures, the survivor and
+//                       structures round it take it, and the hazards within reach go up a moment later
 //   uniqueOnly          needs a unique find (precursor alloy): salvage only
 {
   "schema": "galhack.deco",
@@ -162,11 +166,11 @@
     { "id": "pipe-run", "name": "Pipe run", "set": "industrial", "roles": ["pipes"], "size": [4, 2, 1], "fixed": true, "also": ["cryo", "ship"], "bill": { "iron-bar": 3 } },
     { "id": "valve-assembly", "name": "Valve assembly", "set": "industrial", "roles": ["valve", "pipes", "machine"], "size": [2, 3, 1], "fixed": true, "also": ["mine"], "bill": { "iron-bar": 2, "copper-bar": 1 } },
     { "id": "control-panel", "name": "Control panel", "set": "industrial", "roles": ["panel", "machine", "console"], "size": [2, 3, 1], "light": { "range": 2, "energy": 0.5 }, "anim": "spark", "fall": ["front", "back"], "also": ["lab", "ship", "military"], "bill": { "circuit-board": 2, "hull-plate": 1, "copper-wire": 2 } },
-    { "id": "oil-barrel", "name": "Oil barrel", "set": "industrial", "roles": ["barrel", "tank", "crate"], "size": [1, 2, 1], "fall": ["side", "front"], "also": ["mine", "reaver", "military"], "bill": { "iron-bar": 1 } },
-    { "id": "workbench", "name": "Workbench", "set": "industrial", "roles": ["bench", "table"], "size": [4, 2, 2], "surface": 0.9, "fall": ["back", "front"], "also": ["mine", "reaver", "ship"], "bill": { "iron-bar": 3, "hull-plate": 1 } },
-    { "id": "tool-rack", "name": "Tool rack", "set": "industrial", "roles": ["toolrack", "rack", "shelf"], "size": [3, 3, 1], "mount": "wall", "mountY": 0.9, "fall": ["front"], "also": ["mine", "ship"], "bill": { "iron-bar": 2 } },
-    { "id": "gas-cylinders", "name": "Gas cylinders", "set": "industrial", "roles": ["cylinders", "tank"], "size": [2, 3, 1], "fall": ["front", "side"], "also": ["medical", "lab"], "bill": { "iron-bar": 2, "hull-plate": 1 } },
-    { "id": "cargo-crate", "name": "Cargo crate", "set": "industrial", "roles": ["crate", "chest"], "size": [2, 2, 2], "fall": ["side", "over"], "also": ["spaceport", "ship", "mine", "military"], "bill": { "hull-plate": 2 } },
+    { "id": "oil-barrel", "name": "Oil barrel", "set": "industrial", "hp": 60, "blast": { "radius": 3.5, "damage": 260 }, "roles": ["barrel", "tank", "crate"], "size": [1, 2, 1], "fall": ["side", "front"], "also": ["mine", "reaver", "military", "aviation"], "bill": { "iron-bar": 1 } },
+    { "id": "workbench", "name": "Workbench", "set": "industrial", "roles": ["bench", "table"], "size": [4, 2, 2], "surface": 0.9, "fall": ["back", "front"], "also": ["mine", "reaver", "ship", "aviation"], "bill": { "iron-bar": 3, "hull-plate": 1 } },
+    { "id": "tool-rack", "name": "Tool rack", "set": "industrial", "roles": ["toolrack", "rack", "shelf"], "size": [3, 3, 1], "mount": "wall", "mountY": 0.9, "fall": ["front"], "also": ["mine", "ship", "aviation"], "bill": { "iron-bar": 2 } },
+    { "id": "gas-cylinders", "name": "Gas cylinders", "set": "industrial", "hp": 50, "blast": { "radius": 3, "damage": 220 }, "roles": ["cylinders", "tank"], "size": [2, 3, 1], "fall": ["front", "side"], "also": ["medical", "lab", "aviation"], "bill": { "iron-bar": 2, "hull-plate": 1 } },
+    { "id": "cargo-crate", "name": "Cargo crate", "set": "industrial", "roles": ["crate", "chest"], "size": [2, 2, 2], "fall": ["side", "over"], "also": ["spaceport", "ship", "mine", "military", "aviation"], "bill": { "hull-plate": 2 } },
     { "id": "junction-box", "name": "Junction box", "set": "industrial", "roles": ["junction", "panel"], "size": [1, 2, 1], "mount": "wall", "mountY": 1.0, "light": { "range": 1.2, "energy": 0.3 }, "anim": "spark", "fall": ["front"], "also": ["ship", "prison", "mine"], "bill": { "copper-wire": 2, "circuit-board": 1 } },
     { "id": "ceiling-light", "name": "Ceiling light", "set": "industrial", "roles": ["ceiling-light"], "size": [2, 1, 2], "mount": "ceiling", "grids": ["large", "small"], "light": { "range": 7, "energy": 1.3 }, "also": ["office", "lab", "medical", "military", "residential", "canteen", "prison", "spaceport", "cryo", "ship", "mine", "resort"], "bill": { "glass": 1, "copper-wire": 1, "iron-bar": 1 } },
     { "id": "strip-light", "name": "Strip light", "set": "industrial", "roles": ["strip-light"], "size": [4, 1, 1], "mount": "ceiling", "grids": ["large", "small"], "light": { "range": 6, "energy": 1.1 }, "also": ["office", "lab", "medical", "military", "residential", "canteen", "prison", "spaceport", "cryo", "ship", "mine", "resort"], "bill": { "glass": 1, "copper-wire": 1, "polymer": 1 } },
@@ -222,12 +226,12 @@
     { "id": "canister-cart", "name": "Canister cart", "set": "cryo", "roles": ["cart", "crate"], "size": [2, 2, 2], "fall": ["side"], "also": ["lab", "medical"], "bill": { "iron-bar": 1, "hull-plate": 1, "glass": 1 } },
 
     // ---- Spaceport --------------------------------------------------------------------------------
-    { "id": "seat-row", "name": "Waiting seats", "set": "spaceport", "roles": ["seat-row", "bench-seat", "chair"], "size": [4, 2, 2], "fall": ["back", "front"], "also": ["medical", "civic"], "bill": { "iron-bar": 2, "polymer": 2 } },
+    { "id": "seat-row", "name": "Waiting seats", "set": "spaceport", "roles": ["seat-row", "bench-seat", "chair"], "size": [4, 2, 2], "fall": ["back", "front"], "also": ["medical", "civic", "aviation"], "bill": { "iron-bar": 2, "polymer": 2 } },
     { "id": "departure-board", "name": "Departure board", "set": "spaceport", "roles": ["board", "screen", "sign"], "size": [4, 5, 1], "fixed": true, "light": { "range": 3, "energy": 0.8 }, "anim": "flicker", "bill": { "circuit-board": 3, "glass": 2, "iron-bar": 2 } },
     { "id": "luggage-cart", "name": "Luggage cart", "set": "spaceport", "roles": ["cart", "luggage"], "size": [2, 2, 3], "fall": ["side"], "bill": { "iron-bar": 2, "polymer": 1 } },
     { "id": "info-kiosk", "name": "Info kiosk", "set": "spaceport", "roles": ["kiosk", "screen", "machine"], "size": [1, 3, 1], "light": { "range": 1.5, "energy": 0.5 }, "anim": "flicker", "also": ["themepark", "resort"], "bill": { "circuit-board": 1, "glass": 1, "hull-plate": 1 } },
     { "id": "checkin-desk", "name": "Check-in desk", "set": "spaceport", "roles": ["counter", "desk"], "size": [4, 2, 2], "surface": 1.0, "fixed": true, "light": { "range": 1.5, "energy": 0.3 }, "also": ["office"], "bill": { "hull-plate": 2, "polymer": 2, "circuit-board": 1 } },
-    { "id": "suitcase", "name": "Suitcase", "set": "spaceport", "roles": ["luggage", "crate"], "size": [1, 2, 1], "fall": ["side", "back", "front"], "also": ["residential", "ship"], "bill": { "polymer": 1 } },
+    { "id": "suitcase", "name": "Suitcase", "set": "spaceport", "roles": ["luggage", "crate"], "size": [1, 2, 1], "fall": ["side", "back", "front"], "also": ["residential", "ship", "aviation"], "bill": { "polymer": 1 } },
     { "id": "stanchion", "name": "Queue stanchions", "set": "spaceport", "roles": ["barrier"], "size": [3, 2, 1], "fall": ["back", "front"], "also": ["office", "civic"], "bill": { "iron-bar": 1, "polymer": 1 } },
 
     // ---- Prison -----------------------------------------------------------------------------------
@@ -246,7 +250,7 @@
     { "id": "nav-table", "name": "Star chart table", "set": "ship", "roles": ["table", "console"], "size": [3, 2, 3], "surface": 0.95, "fixed": true, "light": { "range": 2.5, "energy": 0.7 }, "anim": "pulse", "also": ["military"], "bill": { "circuit-board": 2, "glass": 2, "hull-plate": 2 } },
     { "id": "netted-cargo", "name": "Netted cargo", "set": "ship", "roles": ["crate"], "size": [3, 2, 2], "fixed": true, "grids": ["large", "small"], "also": ["spaceport", "industrial"], "bill": { "polymer": 1, "hull-plate": 2 } },
     { "id": "bulkhead-lamp", "name": "Bulkhead lamp", "set": "ship", "roles": ["lamp"], "size": [1, 1, 1], "mount": "wall", "mountY": 1.9, "fall": ["front"], "grids": ["large", "small"], "light": { "range": 3.5, "energy": 0.8 }, "also": ["industrial", "prison", "mine", "military"], "bill": { "glass": 1, "copper-wire": 1 } },
-    { "id": "galley-unit", "name": "Galley unit", "set": "ship", "roles": ["counter", "machine"], "size": [2, 3, 1], "surface": 0.9, "fixed": true, "grids": ["large", "small"], "light": { "range": 1, "energy": 0.3 }, "also": ["canteen"], "bill": { "hull-plate": 2, "polymer": 1, "winding": 1 } },
+    { "id": "galley-unit", "name": "Galley unit", "set": "ship", "roles": ["counter", "machine"], "size": [2, 3, 1], "surface": 0.9, "fixed": true, "grids": ["large", "small"], "light": { "range": 1, "energy": 0.3 }, "also": ["canteen", "aviation"], "bill": { "hull-plate": 2, "polymer": 1, "winding": 1 } },
     { "id": "suit-rack", "name": "Suit rack", "set": "ship", "roles": ["rack", "suit"], "size": [2, 4, 1], "fall": ["front", "side"], "grids": ["large", "small"], "also": ["military", "mine"], "bill": { "iron-bar": 2, "polymer": 2 } },
 
     // ---- Mine -------------------------------------------------------------------------------------
@@ -255,8 +259,9 @@
     { "id": "rock-drill", "name": "Rock drill", "set": "mine", "roles": ["drill", "machine"], "size": [2, 3, 3], "fall": ["side", "back"], "bill": { "iron-bar": 2, "servo": 1, "hull-plate": 1 } },
     { "id": "mine-lamp", "name": "Cage lamp post", "set": "mine", "roles": ["lamp"], "size": [1, 4, 1], "light": { "range": 4, "energy": 0.9 }, "anim": "flicker", "fall": ["side", "back", "front"], "also": ["reaver", "military"], "bill": { "iron-bar": 1, "glass": 1, "copper-wire": 1 } },
     { "id": "timber-prop", "name": "Timber prop", "set": "mine", "roles": ["support", "pillar"], "size": [4, 5, 1], "fixed": true, "bill": { "biomass": 4 } },
-    { "id": "blasting-crate", "name": "Blasting crate", "set": "mine", "roles": ["crate", "chest"], "size": [2, 1, 1], "fall": ["side", "over"], "also": ["military"], "bill": { "biomass": 1, "iron-bar": 1 } },
+    { "id": "blasting-crate", "name": "Blasting crate", "set": "mine", "hp": 40, "blast": { "radius": 5, "damage": 450 }, "roles": ["crate", "chest"], "size": [2, 1, 1], "fall": ["side", "over"], "also": ["military"], "bill": { "biomass": 1, "iron-bar": 1 } },
     { "id": "cable-winch", "name": "Cable winch", "set": "mine", "roles": ["winch", "machine"], "size": [2, 2, 2], "fall": ["side"], "also": ["industrial"], "bill": { "iron-bar": 2, "winding": 1 } },
+    { "id": "rock-pile", "name": "Rock pile", "set": "mine", "roles": ["rock", "spoil"], "size": [3, 2, 3], "fixed": true, "states": ["overgrown"], "bill": { "stone": 3 } },
 
     // ---- Reaver scrap -----------------------------------------------------------------------------
     { "id": "scrap-throne", "name": "Scrap throne", "set": "reaver", "roles": ["chair"], "size": [2, 3, 2], "fall": ["back", "side"], "bill": { "hull-plate": 2, "iron-bar": 1 } },
@@ -306,7 +311,7 @@
     { "id": "robot-arm", "name": "Robot arm", "set": "industrial", "roles": ["robot", "machine"], "size": [4, 5, 4], "fixed": true, "light": { "range": 1, "energy": 0.3 }, "anim": "spark", "tech": "high", "also": ["lab", "ship"], "bill": { "servo": 4, "hull-plate": 2, "circuit-board": 2 } },
     { "id": "gantry-crane", "name": "Gantry crane", "set": "industrial", "roles": ["crane"], "size": [8, 5, 4], "fixed": true, "also": ["spaceport", "mine"], "bill": { "iron-bar": 8, "servo": 2, "winding": 1 } },
     { "id": "assembly-station", "name": "Assembly station", "set": "industrial", "roles": ["bench", "station"], "size": [4, 3, 2], "surface": 0.9, "fixed": true, "light": { "range": 2, "energy": 0.5 }, "bill": { "iron-bar": 3, "circuit-board": 1, "glass": 1 } },
-    { "id": "pallet-racking", "name": "Pallet racking", "set": "industrial", "roles": ["racking", "shelf", "rack"], "size": [6, 5, 2], "fixed": true, "also": ["spaceport", "military"], "bill": { "iron-bar": 6 } },
+    { "id": "pallet-racking", "name": "Pallet racking", "set": "industrial", "roles": ["racking", "shelf", "rack"], "size": [6, 5, 2], "fixed": true, "also": ["spaceport", "military", "aviation"], "bill": { "iron-bar": 6 } },
     { "id": "pallet-stack", "name": "Wrapped pallet", "set": "industrial", "roles": ["pallet", "crate"], "size": [3, 3, 3], "fall": ["side"], "also": ["spaceport", "farm", "military"], "bill": { "biomass": 2, "polymer": 2 } },
     { "id": "control-desk", "name": "Control-room desk", "set": "industrial", "roles": ["console", "desk", "panel"], "size": [4, 4, 2], "fixed": true, "light": { "range": 2, "energy": 0.5 }, "anim": "flicker", "also": ["cryo", "lab"], "bill": { "circuit-board": 3, "glass": 3, "hull-plate": 2 } },
     { "id": "boiler", "name": "Boiler", "set": "industrial", "roles": ["boiler", "tank", "machine"], "size": [4, 5, 3], "fixed": true, "light": { "range": 2, "energy": 0.6 }, "anim": "flicker", "tech": "low", "also": ["mine", "farm"], "bill": { "hull-plate": 6, "iron-bar": 4, "copper-bar": 2 } },
@@ -386,6 +391,9 @@
     { "id": "skyliner-body", "name": "Skyliner body", "set": "aviation", "palette": "aviation-high", "roles": ["airliner", "fuselage"], "size": [10, 9, 16], "fixed": true, "tech": "high", "salvage": "huge", "states": ["broken", "burnt", "overgrown", "rusted", "open", "buried"], "light": { "range": 3, "energy": 0.6 }, "bill": { "hull-plate": 24, "glass": 8 } },
     { "id": "skyliner-wing", "name": "Skyliner wings", "set": "aviation", "palette": "aviation-high", "roles": ["airliner", "wing"], "size": [56, 3, 16], "fixed": true, "tech": "high", "salvage": "huge", "light": { "range": 3, "energy": 0.5 }, "bill": { "hull-plate": 30, "field-emitter": 2 } },
     { "id": "skyliner-tail", "name": "Skyliner tail", "set": "aviation", "palette": "aviation-high", "roles": ["airliner", "tail"], "size": [20, 14, 14], "fixed": true, "tech": "high", "salvage": "huge", "bill": { "hull-plate": 20 } },
-    { "id": "skyliner-engine", "name": "Ring thruster", "set": "aviation", "palette": "aviation-high", "roles": ["airliner", "engine"], "size": [8, 8, 9], "fixed": true, "tech": "high", "salvage": "heavy", "light": { "range": 3, "energy": 0.7 }, "anim": "pulse", "bill": { "hull-plate": 6, "thrust-assembly": 2, "field-emitter": 1 } }
+    { "id": "skyliner-engine", "name": "Ring thruster", "set": "aviation", "palette": "aviation-high", "roles": ["airliner", "engine"], "size": [8, 8, 9], "fixed": true, "tech": "high", "salvage": "heavy", "light": { "range": 3, "energy": 0.7 }, "anim": "pulse", "bill": { "hull-plate": 6, "thrust-assembly": 2, "field-emitter": 1 } },
+    { "id": "engine-stand", "name": "Engine on a stand", "set": "aviation", "outdoor": false, "tech": "low", "roles": ["engine-stand", "machine"], "size": [4, 4, 6], "fixed": true, "salvage": "medium", "states": ["broken", "burnt", "overgrown", "rusted"], "bill": { "hull-plate": 3, "thrust-assembly": 1 } },
+    { "id": "airline-seats", "name": "Airliner seats", "set": "aviation", "outdoor": false, "tech": "low", "roles": ["airline-seat", "seat", "chair"], "size": [2, 3, 2], "fall": ["back", "side"], "bill": { "polymer": 2, "iron-bar": 1 } },
+    { "id": "aircraft-tug", "name": "Aircraft tug", "set": "aviation", "outdoor": false, "tech": "low", "roles": ["tug", "cart"], "size": [3, 3, 5], "fixed": true, "salvage": "medium", "states": ["broken", "burnt", "overgrown", "rusted"], "bill": { "iron-bar": 4, "servo": 1, "hull-plate": 1 } }
   ]
 }

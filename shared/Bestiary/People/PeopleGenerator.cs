@@ -86,6 +86,8 @@ public sealed class PeopleGenerator
     public readonly Folk Folk;
     /// <summary>How everyone here speaks, more or less.</summary>
     public readonly Dialect Dialect;
+    /// <summary>How the worms take someone (the world's data sets it).</summary>
+    public HuskRules HuskRules = new();
 
     public PeopleGenerator(PeopleTables tables, WorldConditions world)
     {
@@ -166,7 +168,7 @@ public sealed class PeopleGenerator
         var rng = Rng.For(seed, "person");
         var look = occupancy == Occupancy.Feral ? _t.Feral
             : _t.Roles.TryGetValue(role.ToString(), out RoleLook l) ? l : new RoleLook();
-        var f = new Figure { Role = role, Occupancy = occupancy, Folk = Folk, Husk = husk };
+        var f = new Figure { Role = role, Occupancy = occupancy, Folk = Folk };
         f.Sex = rng.Chance(0.5f) ? Sex.Female : Sex.Male;
         f.Stage = role == PersonRole.Child || young ? LifeStage.Child : role == PersonRole.Elder ? LifeStage.Elder : LifeStage.Adult;
         // A child doing a grown-up's job carries it like one: upright, kitted out, no play in them.
@@ -182,7 +184,6 @@ public sealed class PeopleGenerator
         f.Build = Math.Clamp(rng.Range(0.1f, 0.75f) + Folk.BuildBias + look.Build + (f.Age > 40f ? 0.08f : 0f) - (f.Stage == LifeStage.Child ? 0.2f : 0f), 0f, 1f);
         f.Stoop = f.Hardened ? 0f : look.Stoop * rng.Range(0.7f, 1.2f) + (f.Age > 55f ? 0.1f : 0f);
         f.Stagger = look.Stagger * rng.Range(0.7f, 1.2f);
-        if (husk) { f.Build = MathF.Min(f.Build, 0.2f); f.Stoop = rng.Range(0.3f, 0.6f); f.Stagger = 0.25f; }
 
         // Colours: their skin; the climate's cloth; a role's trim. A town's fashions are its own rolls.
         // Their looks come from where their people settled, on a stream of their own: nothing about
@@ -242,7 +243,7 @@ public sealed class PeopleGenerator
         f.Aimed = Enum.TryParse(look.Aimed, out BodyAct aimed) ? aimed : BodyAct.HandsUp;
         f.Startled = Enum.TryParse(look.Startled, out BodyAct startled) ? startled : BodyAct.Startle;
         f.Measure();
-        if (!husk) f.Voice = Voice.For(f, Dialect, seed);
+        f.Voice = Voice.For(f, Dialect, seed);
 
         var s = new Species
         {
@@ -253,7 +254,7 @@ public sealed class PeopleGenerator
             Rig = RigKind.Humanoid,
             Figure = f,
             Name = Folk.Id,
-            CommonName = husk ? "gaunt figure" : occupancy == Occupancy.Feral ? "wild figure" : occupancy == Occupancy.Raider ? "raider" : role.ToString().ToLowerInvariant(),
+            CommonName = occupancy == Occupancy.Feral ? "wild figure" : occupancy == Occupancy.Raider ? "raider" : role.ToString().ToLowerInvariant(),
             Behaviour = occupancy == Occupancy.Friendly ? Behaviour.Grazer : Behaviour.Predator,
             Temperament = occupancy == Occupancy.Friendly ? Temperament.Calm : Temperament.Aggressive,
             Activity = Activity.Cathemeral,
@@ -297,6 +298,8 @@ public sealed class PeopleGenerator
         s.Mutation = Math.Clamp(mutation, 0f, 1f);
         if (mutation > 0f) MutateFigure(s, rng, mutation);
         if (occupancy != Occupancy.Friendly) Fit.Throat(s, rng);
+        // Taken by the worms: the same person, in their own clothes, torn (see Husks).
+        if (husk) Husks.Take(s, Rng.For(seed, "husk"), Dialect, HuskRules);
         return s;
     }
 

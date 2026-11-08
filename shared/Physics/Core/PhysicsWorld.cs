@@ -233,7 +233,7 @@ public sealed class PhysicsWorld
         Vector3 p = b.CenterOfMassPosition;
         if (!Water.SurfaceAt(p, out float surface)) return WaterState.Dry;
         float feet = b.Position.Y - b.Shape.FeetBelowOrigin;
-        return new WaterState(surface, WaterForces.SubmergedFraction(feet, b.Shape.Height, surface));
+        return new WaterState(surface, WaterForces.SubmergedFraction(feet, b.WaterHeight ?? b.Shape.Height, surface));
     }
 
     /// <summary>

@@ -35,9 +35,12 @@ public enum WarningLevel { Advisory, Warning, Danger }
 
 /// <summary>
 /// A visor warning. <see cref="ArrivesAt"/> is when the danger lands; <see cref="Kind"/> is set for
-/// weather warnings and <see cref="HazardId"/> for strikes (lightning, debris).
+/// weather warnings and <see cref="HazardId"/> for strikes (lightning, debris). For a symbol-only
+/// visor: <see cref="Sign"/> names the hazard's sign, <see cref="Left"/> is how long it lasts once
+/// here (seconds; 0 when unknown) and <see cref="From"/> is where it is or comes from.
 /// </summary>
-public readonly record struct WarningEntry(WarningLevel Level, string Text, double Eta, WeatherKind? Kind = null, double ArrivesAt = 0, int HazardId = 0);
+public readonly record struct WarningEntry(WarningLevel Level, string Text, double Eta, WeatherKind? Kind = null, double ArrivesAt = 0, int HazardId = 0,
+    string Sign = null, double Left = 0, Vector3? From = null);
 
 /// <summary>Weather that lingers on the ground after it has passed.</summary>
 public struct GroundCover
@@ -323,13 +326,13 @@ public sealed class WeatherSim
                 string what = h.TargetPoint?.Name ?? "open ground";
                 into.Add(new WarningEntry(WarningLevel.Danger,
                     $"Lightning charge building on {what}, {distance:F0} m {Bearing(observer, h.Target)}", h.Remaining,
-                    ArrivesAt: Time + h.Remaining, HazardId: h.Id));
+                    ArrivesAt: Time + h.Remaining, HazardId: h.Id, Sign: "storm", From: h.Target));
             }
             else if (h.Kind == HazardKind.Debris && distance < 60f)
             {
                 into.Add(new WarningEntry(WarningLevel.Danger,
                     $"Burning debris incoming, {distance:F0} m {Bearing(observer, h.Target)}", h.Remaining,
-                    ArrivesAt: Time + h.Remaining, HazardId: h.Id));
+                    ArrivesAt: Time + h.Remaining, HazardId: h.Id, Sign: "falling_debris", From: h.Target));
             }
         }
 
@@ -346,10 +349,11 @@ public sealed class WeatherSim
             if (!t.Touchdown)
                 into.Add(new WarningEntry(WarningLevel.Danger,
                     $"Funnel forming {distance:F0} m {Bearing(observer, t.Position)}, touchdown in {t.Rules.FormSeconds - t.Age:F0} s",
-                    t.Rules.FormSeconds - t.Age));
+                    t.Rules.FormSeconds - t.Age, Sign: "tornado", From: t.Position));
             else if (!t.Dissipating || distance < 200f)
                 into.Add(new WarningEntry(WarningLevel.Danger,
-                    $"Tornado {distance:F0} m {Bearing(observer, t.Position)}{(t.Homing ? ", heading your way" : "")}", 0));
+                    $"Tornado {distance:F0} m {Bearing(observer, t.Position)}{(t.Homing ? ", heading your way" : "")}", 0,
+                    Sign: "tornado", Left: Math.Max(0, t.Rules.Lifetime - t.Age), From: t.Position));
         }
 
         foreach (Segment s in _segments)
@@ -358,9 +362,25 @@ public sealed class WeatherSim
             WeatherState state = Data.State(s.Kind);
             double eta = s.Start - Time;
             string text = eta > 0 ? $"{state.Name} in {Clock(eta)}. {state.Warning}" : state.Warning;
-            into.Add(new WarningEntry(WarningLevel.Warning, text, Math.Max(0, eta), s.Kind, s.Start));
+            // Weather comes in on the wind: from upwind of the observer.
+            var upwind = new Vector3(-MathF.Cos(s.WindHeading), 0f, -MathF.Sin(s.WindHeading));
+            into.Add(new WarningEntry(WarningLevel.Warning, text, Math.Max(0, eta), s.Kind, s.Start,
+                Sign: SignOf(s.Kind), Left: Math.Max(0, s.End - Math.Max(Time, s.Start)), From: observer + upwind * 2000f));
         }
     }
+
+    /// <summary>The sign a weather is warned with (the names of the game's sign set).</summary>
+    public static string SignOf(WeatherKind kind) => kind switch
+    {
+        WeatherKind.Tornado => "tornado",
+        WeatherKind.Thunderstorm => "storm",
+        WeatherKind.Hurricane => "high_wind",
+        WeatherKind.DustStorm => "dust_storm",
+        WeatherKind.Blizzard or WeatherKind.Snow => "extreme_cold",
+        WeatherKind.FireStorm => "fire",
+        WeatherKind.Monsoon or WeatherKind.Rain => "flood",
+        _ => "hazard",
+    };
 
     // ---- Storm cells ------------------------------------------------------------------
 

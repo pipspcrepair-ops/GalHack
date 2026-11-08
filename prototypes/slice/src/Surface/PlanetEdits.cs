@@ -52,20 +52,28 @@ public sealed class PlanetEdits : ITerrainEditor
     /// cleared, bodies woken), and its volume is registered, with its copies across the seams, so
     /// the ground is drawn and collides flush against its faces. Harmless to repeat for a standing block.
     /// </summary>
-    public PlanetEdit ClearForStructure(VolumeKey key, StructureVolume volume)
+    public PlanetEdit ClearForStructure(VolumeKey key, StructureVolume volume) => ClearForStructure(new[] { (key, volume) });
+
+    /// <summary>Several blocks of one structure at once (a base set down whole, or anchoring), as one edit: one dig, one rebuild.</summary>
+    public PlanetEdit ClearForStructure(IReadOnlyCollection<(VolumeKey key, StructureVolume volume)> parts)
     {
         var dirty = new HashSet<Int3>();
-        int copy = 0;
-        for (int a = -1; a <= 1; a++)
-        for (int b = -1; b <= 1; b++)
+        var cells = new List<Int3>();
+        foreach (var (key, volume) in parts)
         {
-            bool self = a == 0 && b == 0;
-            StructureVolume v = self ? volume : volume.Offset(new N.Vector3(a * Terrain.Width, 0f, b * Terrain.Height));
-            CellBox box = v.CellBounds;
-            if (!self && !Terrain.InFrame(box.Min) && !Terrain.InFrame(box.Max - Int3.One)) continue;
-            dirty.UnionWith(Terrain.Store.AddVolume(key.AsCopy(self ? 0 : ++copy), v));
+            int copy = 0;
+            for (int a = -1; a <= 1; a++)
+            for (int b = -1; b <= 1; b++)
+            {
+                bool self = a == 0 && b == 0;
+                StructureVolume v = self ? volume : volume.Offset(new N.Vector3(a * Terrain.Width, 0f, b * Terrain.Height));
+                CellBox box = v.CellBounds;
+                if (!self && !Terrain.InFrame(box.Min) && !Terrain.InFrame(box.Max - Int3.One)) continue;
+                dirty.UnionWith(Terrain.Store.AddVolume(key.AsCopy(self ? 0 : ++copy), v));
+            }
+            cells.AddRange(volume.CellsInside());
         }
-        PlanetEdit edit = Terrain.DigCells(volume.CellsInside());
+        PlanetEdit edit = Terrain.DigCells(cells);
         Commit(edit, notify: true);
         _streamer.MarkDirty(dirty); // the volume changes how the ground near it is drawn, dug or not
         return edit;

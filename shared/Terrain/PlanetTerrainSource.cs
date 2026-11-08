@@ -255,6 +255,22 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
         return road;
     }
 
+    /// <summary>Whether a point is on open ground a stamp levelled but built nothing on (<see cref="TerrainStamp.Wild"/>, a park), off every road and other pad, and how worn it is.</summary>
+    public bool OnWild(double x, double z, out float wear)
+    {
+        wear = 0f;
+        bool wild = false;
+        foreach (int i in StampsAt(x, z))
+        {
+            TerrainStamp t = Stamps[i];
+            if (t.Weight(x, z) <= 0f) continue;
+            if (!t.Wild) return false;
+            wild = true;
+            wear = Math.Max(wear, t.Wear);
+        }
+        return wild;
+    }
+
     /// <summary>How much any stamp covers a point (0 none, 1 on a pad).</summary>
     public float StampWeight(double x, double z)
     {
@@ -595,10 +611,11 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
     List<OreBody> OreBodiesNear(int ox, int oz)
     {
         List<OreBody> list = null;
-        foreach (Deposit d in Map.Deposits.InRect(ox - 6, oz - 6, ox + S + 6, oz + S + 6))
+        float reach = DepositField.MaxBodyRadius + 1.5f;
+        foreach (Deposit d in Map.Deposits.InRect(ox - reach, oz - reach, ox + S + reach, oz + S + reach))
         {
             double dx = Wrap(d.X - (ox + S * 0.5), Width), dz = Wrap(d.Y - (oz + S * 0.5), Height);
-            if (Math.Abs(dx) > S * 0.5 + 6 || Math.Abs(dz) > S * 0.5 + 6) continue;
+            if (Math.Abs(dx) > S * 0.5 + OreRadius(d) + 1.5 || Math.Abs(dz) > S * 0.5 + OreRadius(d) + 1.5) continue;
             OreCentre(d, out _, out double y, out _);
             (list ??= new List<OreBody>()).Add(new OreBody(d, y, OreRadius(d)));
         }

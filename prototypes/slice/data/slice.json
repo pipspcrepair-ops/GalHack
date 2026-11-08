@@ -16,8 +16,10 @@
   // What gathering gives, as shared/Items' raw items (an ore cell gives the ore its deposit kind
   // maps to in items.json).
   "materials": {
-    // Raw ore per 1 m cell of ore dug: shared/Items' pacing reference (machines.json).
-    "orePerCell": 12,
+    // Raw ore per 1 m cell of ore dug, whatever the tool (a better tool digs faster, never more a cell).
+    // Was 12 (36 kg a cell): a bag held tons in minutes. At 3, the first tools' and the hover bike's
+    // 30 iron ore is ten cells of a deposit, a minute or two from the start with the walk.
+    "orePerCell": 3,
     // Stone per cell of rock dug (soil gives nothing).
     "stonePerRockCell": 1,
     // Cutting a plant, at scale 1: biomass, and kg of organics for the replicator.
@@ -69,7 +71,7 @@
     // store has no partial density), so it sinks in cell-sized stages, the beam's ball of cells
     // wearing down from the centre out.
     "gatherRate": 3,
-    "durability": { "soil": 1, "rock": 2, "deepRock": 3, "ore": 3, "plant": 1.5, "tree": 9, "boulder": 5, "treeYield": 3, "boulderStone": 6 },
+    "durability": { "soil": 1, "rock": 2, "deepRock": 3, "ore": 3, "plant": 1.5, "tree": 9, "boulder": 5, "treeYield": 1.5, "boulderStone": 3 },
     // The hand tools: each a faster survival tool (the tech tree unlocks them by level).
     "tiers": {
       "survival-tool": { "name": "Survival tool", "rate": 1, "radius": 1.42, "shot": 1 },
@@ -83,6 +85,10 @@
     // Holding the button on a blueprint places its blocks one at a time, in order, at this rate.
     "blueprintPlacesPerSecond": 8,
     "starterBlueprint": "starter.gbp",
+    // The BLUEPRINTS tab's starter set, in data/blueprints: shown under Large and Small by grid.
+    "library": ["starter.gbp", "rover.gbp", "dart.gbp", "shuttle.gbp", "outpost.gbp", "tank.gbp", "hauler.gbp", "frigate.gbp"],
+    // Blueprints the player saves, shown under Yours.
+    "saved": "user://blueprints",
     // Small vessels turn no faster than this, °/s, however light they are (the handling model's
     // turn rate is gyro torque over mass, so a light first vessel spins too fast to fly well).
     "smallVesselMaxTurn": 110,
