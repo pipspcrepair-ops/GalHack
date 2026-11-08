@@ -11,8 +11,9 @@ namespace Slice.Tests;
 
 /// <summary>
 /// The escape menu, on a fresh random world, through the game's own keys and mouse
-/// (<see cref="Controls"/>): Esc opens it and the world stops (the clock and the castaway stand
-/// still, W held); a second Esc or RESUME closes it and the world runs on; with the Tab menu open,
+/// (<see cref="Controls"/>): Esc opens it and the world runs on behind it (the game never pauses:
+/// the clock goes on, and a key pressed for the game, Tab, is the menu's while it is open); a second
+/// Esc or RESUME closes it; with the Tab menu open,
 /// Esc closes that instead. SAVE and LOAD do nothing yet; QUIT asks first and STAY (or Esc) keeps
 /// you. A volume slider reaches its bus. A key rebound at its prompt drives its action from the new
 /// key and not the old, a clash is found, Esc cancels a prompt, and the binding comes back from the
@@ -43,7 +44,7 @@ public partial class EscapeMenuTest : Node
             System.Environment.Exit(1);
         }) { IsBackground = true };
         thread.Start();
-        ProcessMode = ProcessModeEnum.Always; // the test runs on while the escape menu stops the world
+        ProcessMode = ProcessModeEnum.Always;
         ProcessPhysicsPriority = 100;
         _run = Scenario().GetEnumerator();
     }
@@ -122,7 +123,7 @@ public partial class EscapeMenuTest : Node
         Check(UiTheme.Label.HasChar('·') && UiTheme.Label.HasChar('°') && UiTheme.Display.HasChar('·'),
             "the menus' fonts have the middle dot and the degree sign (the suit terminal shows them, not \"A-hat\" pairs)");
 
-        foreach (int x in OpenAndPause()) yield return x;
+        foreach (int x in OpenRunning()) yield return x;
         foreach (int x in Buttons()) yield return x;
         foreach (int x in Volume()) yield return x;
         foreach (int x in Rebind()) yield return x;
@@ -139,23 +140,18 @@ public partial class EscapeMenuTest : Node
         foreach (int x in Wait(10)) yield return x;
     }
 
-    /// <summary>Esc: open, the world stopped; Esc again: closed, the world running.</summary>
-    IEnumerable<int> OpenAndPause()
+    /// <summary>Esc: open, the world running on behind it; Esc again: closed.</summary>
+    IEnumerable<int> OpenRunning()
     {
         foreach (int x in Tap(Key.Escape)) yield return x;
-        Check(Esc.IsOpen && GetTree().Paused && Esc.Root.Page == EscapePage.World, "Esc opens the escape menu, on this world's card, and pauses the tree");
+        Check(Esc.IsOpen && !GetTree().Paused && Esc.Root.Page == EscapePage.World, "Esc opens the escape menu, on this world's card, and nothing pauses");
         double clock = _game.Stats.Seconds;
-        Vector3 feet = _game.Survivor.WorldFeet;
-        C.Hold(Key.W);
-        foreach (int x in Wait(60)) yield return x;
-        C.Hold(Key.W, false);
-        Check(_game.Stats.Seconds == clock && _game.Survivor.WorldFeet.DistanceTo(feet) < 0.001f,
-            $"the world stands still while it is open: the clock {clock:F2} s before and {_game.Stats.Seconds:F2} s after a second of ticks, W held, the castaway moved {_game.Survivor.WorldFeet.DistanceTo(feet):F3} m");
-        foreach (int x in Tap(Key.Escape)) yield return x;
-        Check(!Esc.IsOpen && !GetTree().Paused, "a second Esc closes it and the tree runs again");
-        clock = _game.Stats.Seconds;
         foreach (int x in Wait(30)) yield return x;
-        Check(_game.Stats.Seconds > clock + 0.4, $"and the world's clock runs on ({_game.Stats.Seconds - clock:F2} s in 30 ticks)");
+        Check(_game.Stats.Seconds > clock + 0.4, $"the world runs on while it is open ({_game.Stats.Seconds - clock:F2} s in 30 ticks)");
+        foreach (int x in Tap(Key.Tab)) yield return x;
+        Check(Esc.IsOpen && !_game.Menu.IsOpen, "a key pressed while it is open is the menu's: Tab opens nothing under it");
+        foreach (int x in Tap(Key.Escape)) yield return x;
+        Check(!Esc.IsOpen && !GetTree().Paused, "a second Esc closes it");
     }
 
     /// <summary>SAVE and LOAD are there and do nothing; QUIT asks, STAY and Esc keep you; RESUME closes.</summary>

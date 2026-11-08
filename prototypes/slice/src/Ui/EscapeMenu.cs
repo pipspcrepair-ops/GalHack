@@ -13,10 +13,12 @@ public enum EscapePage { World, Options }
 /// <summary>
 /// The escape menu, on Esc with no other menu open: RESUME, SAVE and LOAD (marked NOT YET: the
 /// slice has no saves), OPTIONS (graphics, sound, controls and mouse: <see cref="OptionsSection"/>)
-/// and QUIT TO DESKTOP, which asks first. The slice is single player, so the world stops while it
-/// is open: the tree is paused, and only this menu, its clicks and the music (so a volume can be
-/// set by ear) run on. The mouse is freed while it is open and taken back on resume. A second Esc
-/// closes it, after backing out of a key prompt or the quit question.
+/// and QUIT TO DESKTOP, which asks first. The game never pauses (it is built for co-op): the world
+/// runs on behind the menu, which is see-through like every menu, so you keep an eye on what is
+/// coming. Each tick's key presses and clicks are the menu's (it reads them before the game does),
+/// while held movement keys still reach the castaway, as with the Tab menu. The mouse is freed
+/// while it is open and taken back on resume. A second Esc closes it, after backing out of a key
+/// prompt or the quit question.
 ///
 /// It is the Tab menu's kind of panel (<see cref="MenuPanel"/>) on the same 1600 x 900 canvas:
 /// the real mouse clicks it in play, the game's own <see cref="Controls"/> in a test.
@@ -26,9 +28,6 @@ public partial class EscapeMenu : CanvasLayer
     public Game.Game Game;
     public EscapeRoot Root { get; private set; }
     public bool IsOpen => Root?.Visible == true;
-
-    /// <summary>Single player: the world stops while the menu is open. A shared world would run on.</summary>
-    public bool Pauses = true;
 
     /// <summary>Opened, closed, clicks: the menu's sounds play on these.</summary>
     public event Action<string> Sounded;
@@ -42,6 +41,7 @@ public partial class EscapeMenu : CanvasLayer
     {
         Layer = 8; // over the visor (1), the debug readout (2) and the Tab menu (3); under the start screen (10)
         ProcessMode = ProcessModeEnum.Always;
+        ProcessPhysicsPriority = -30; // the tick's presses and clicks reach the menu before the game (-20) reads them
         Root = new EscapeRoot { Name = "Root", Game = Game, Menu = this, Visible = false };
         AddChild(Root);
         Root.Sounded += s => Sounded?.Invoke(s);
@@ -57,7 +57,6 @@ public partial class EscapeMenu : CanvasLayer
         Root.Reset();
         Root.Visible = true;
         Game.Controls.EndTick(); // the Esc that opened it is spent
-        if (Pauses) GetTree().Paused = true;
         if (Game.Interactive) Input.MouseMode = Input.MouseModeEnum.Visible;
         if (Game.Visor != null)
         {
@@ -74,17 +73,10 @@ public partial class EscapeMenu : CanvasLayer
         Root.Gui.DragId = null;
         Root.Options.EndCapture();
         Game.Controls.EndTick();
-        if (Pauses) GetTree().Paused = false;
         if (Game.Visor != null) Game.Visor.Visible = _visorWas;
         if (Game.Interactive && !Game.Menu.IsOpen && DisplayServer.GetName() != "headless") Input.MouseMode = Input.MouseModeEnum.Captured;
         SaveNow();
         Sounded?.Invoke("close");
-    }
-
-    /// <summary>Freed while open (the game torn down under it): the tree is not left paused.</summary>
-    public override void _ExitTree()
-    {
-        if (IsOpen && Pauses && IsInsideTree()) GetTree().Paused = false;
     }
 
     /// <summary>QUIT TO DESKTOP, confirmed: the settings written, and out through wildlife's shutdown (sound drained, caches released). A test's game stays.</summary>
@@ -102,7 +94,7 @@ public partial class EscapeMenu : CanvasLayer
         Game.SaveSettings();
     }
 
-    /// <summary>While it is open, the tick's keys and (from a script) mouse are the menu's: the world is stopped and reads nothing.</summary>
+    /// <summary>While it is open, the tick's key presses and (from a script) mouse are the menu's: the game, which reads after it, sees none of them.</summary>
     public override void _PhysicsProcess(double delta)
     {
         if (!IsOpen) return;
@@ -114,11 +106,12 @@ public partial class EscapeMenu : CanvasLayer
         }
         if (!Game.Interactive)
             Root.Feed(c.Mouse, c.PrimaryPressed, c.PrimaryReleased, c.Primary, c.SecondaryPressed, c.ModifierHeld(Key.Shift), c.ModifierHeld(Key.Ctrl), c.SecondaryReleased, c.Secondary, c.Wheel);
-        if (GetTree().Paused) c.EndTick();
+        c.EndTick();
     }
 
     public override void _Process(double delta)
     {
+        if (Game?.Settings == null) return;
         if (Game.Settings.Version == _savedVersion) return;
         if (_saveIn < 0) _saveIn = SaveDelay;
         else if ((_saveIn -= delta) <= 0) SaveNow();
@@ -191,7 +184,8 @@ public partial class EscapeRoot : MenuPanel
             var strip = new Rect2(area.Position, new Vector2(area.Size.X, 52));
             g.Fill(strip, new Color(C.Glass, 0.85f));
             g.Fill(new Rect2(strip.Position, new Vector2(8, strip.Size.Y)), C.Accent2);
-            g.TextIn("VIEWING THE WORLD     click anywhere or press Esc to go back to the options", strip.Grow(-20), C.Text, 18);
+            g.TextIn("VIEWING THE WORLD", strip.Grow(-20), C.Text, 18);
+            g.TextIn("CLICK OR ESC TO GO BACK", strip.Grow(-20), C.Dim, 16, HorizontalAlignment.Right);
             if (!g.Drawing && g.Pressed)
             {
                 Viewing = false;
@@ -209,12 +203,12 @@ public partial class EscapeRoot : MenuPanel
 
     void Main(Gui g, Rect2 area)
     {
-        g.Fill(area, new Color(C.Glass, 0.9f));
+        // See-through: the world behind it stays in view.
+        g.Fill(area, new Color(C.Glass, 0.6f));
         var header = new Rect2(area.Position, new Vector2(area.Size.X, 74));
         g.Fill(header, C.Accent);
         if (g.Drawing) g.Canvas.Stripes(new Rect2(header.Position + new Vector2(header.Size.X - 300, 0), new Vector2(300, header.Size.Y)), C.Accent, C.Accent2, 16);
-        g.Text(Page == EscapePage.Options ? "OPTIONS" : "PAUSED", header.Position + new Vector2(24, 14), C.Glass, 30, UiTheme.Display);
-        g.Text("THE WORLD IS STOPPED", header.Position + new Vector2(270, 27), C.Glass, 18, UiTheme.Label);
+        g.Text(Page == EscapePage.Options ? "OPTIONS" : "MENU", header.Position + new Vector2(24, 14), C.Glass, 30, UiTheme.Display);
         if (Game.World is WorldChoice w)
             g.TextIn($"{w.Name.ToUpperInvariant()}   SEED {w.Seed}", new Rect2(header.Position.X + 620, header.Position.Y + 20, 640, 34), C.Glass, 18, HorizontalAlignment.Right, UiTheme.Mono);
 
@@ -236,7 +230,6 @@ public partial class EscapeRoot : MenuPanel
             Options.EndCapture();
         }
         if (g.Button("esc:quit", Next(), "QUIT TO DESKTOP", C.Danger, size: 24)) Confirming = true;
-        g.Text("ESC  resume", new Vector2(x, y + 6), C.Dim, 16);
 
         var right = new Rect2(area.Position.X + 410, area.Position.Y + 96, area.Size.X - 430, area.Size.Y - 116);
         if (Page == EscapePage.Options) Options.Build(g, right);
@@ -250,7 +243,7 @@ public partial class EscapeRoot : MenuPanel
         g.TextIn("NOT YET", new Rect2(r.End.X - 110, r.Position.Y + 6, 100, 22), C.Warn, 14, HorizontalAlignment.Right);
     }
 
-    /// <summary>This world: what it is, how long you have been here, how to have it again with no saves, and the keys that matter most.</summary>
+    /// <summary>This world: what it is, how long you have been here, and the keys that matter most.</summary>
     void WorldCard(Gui g, Rect2 area)
     {
         g.Caption("THIS WORLD", area.Position, area.Size.X);
@@ -260,7 +253,7 @@ public partial class EscapeRoot : MenuPanel
             ("WORLD", w?.Name ?? "-"),
             ("SEED", w != null ? $"{w.Seed}" : "-"),
             ("MODE", Game.Mode == GalHack.Items.GameMode.Creative ? "Creative" : "Survival"),
-            ("TIME SINCE THE CRASH", TimeSpan.FromSeconds(Game.Stats.Seconds).ToString(@"h\:mm\:ss")),
+            ("TIME HERE", TimeSpan.FromSeconds(Game.Stats.Seconds).ToString(@"h\:mm\:ss")),
             ("LEVEL", Game.Progress != null ? $"{Game.Progress.Level}  ({Game.Progress.Xp} XP)" : "-"),
         };
         float y = area.Position.Y + 40;
@@ -272,12 +265,6 @@ public partial class EscapeRoot : MenuPanel
         }
 
         y += 24;
-        g.Caption("SAVES", new Vector2(area.Position.X, y), area.Size.X);
-        string seed = w != null ? $"{w.Seed}" : "its seed";
-        g.Text("Saving and loading are not in the game yet. Until they are, a world lasts as long as the game runs.", new Vector2(area.Position.X + 14, y + 40), C.Text, 18);
-        g.Text($"To have this planet again, start a new game and type its seed, {seed}, on the start screen.", new Vector2(area.Position.X + 14, y + 68), C.Text, 18);
-
-        y += 124;
         g.Caption("KEYS", new Vector2(area.Position.X, y), area.Size.X);
         KeyBindings keys = Game.Settings.Keys;
         string[] shown = { "terminal", "map", "use", "seat", "tool-mode", "torch", "helmet", "view", "debug" };
@@ -291,10 +278,9 @@ public partial class EscapeRoot : MenuPanel
             g.TextIn(KeyBindings.Name(keys[a.Id]), key, C.Accent2, 17, HorizontalAlignment.Center, UiTheme.Mono);
             g.Text(a.Name, at + new Vector2(124, 5), C.Text, 18);
         }
-        g.Text("Every key can be changed in OPTIONS, CONTROLS.", new Vector2(area.Position.X + 14, y + 166), C.Dim, 16);
     }
 
-    /// <summary>QUIT TO DESKTOP? With no saves, the answer loses the world: the question says so, and gives its seed.</summary>
+    /// <summary>QUIT TO DESKTOP? With no saves, the answer loses the world: the question marks that, with its seed.</summary>
     void Question(Gui g, Rect2 area)
     {
         g.Fill(area, new Color(C.Glass, 0.55f));
@@ -304,8 +290,8 @@ public partial class EscapeRoot : MenuPanel
         var inner = box.Grow(-36);
         g.Text("QUIT TO DESKTOP?", inner.Position + new Vector2(4, 6), C.Text, 30, UiTheme.Display);
         string seed = Game.World != null ? $"{Game.World.Seed}" : "-";
-        g.Text("There are no saves yet: this world ends when the game does.", inner.Position + new Vector2(4, 70), C.Text, 19);
-        g.Text($"Its seed is {seed}. Type it on the start screen for the same planet again.", inner.Position + new Vector2(4, 100), C.Dim, 18);
+        g.Text("NO SAVES YET", inner.Position + new Vector2(4, 72), C.Warn, 20);
+        g.Text($"SEED {seed}", inner.Position + new Vector2(4, 104), C.Text, 20, UiTheme.Mono);
         var buttons = new Rect2(inner.Position.X, inner.End.Y - 60, inner.Size.X, 60);
         if (g.Button("esc:quit-yes", new Rect2(buttons.Position, new Vector2(360, 60)), "QUIT", C.Danger, size: 24)) Menu.Quit();
         if (g.Button("esc:quit-no", new Rect2(buttons.End.X - 360, buttons.Position.Y, 360, 60), "STAY", C.Accent2, size: 24)) Confirming = false;

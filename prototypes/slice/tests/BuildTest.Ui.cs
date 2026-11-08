@@ -101,6 +101,8 @@ public partial class BuildTest
         };
         foreach (string tab in Slice.Items.Progress.Tabs) pages.Add(($"tech: {tab}", () => { _game.Menu.Open(MenuTab.Tech); _game.Menu.Root.Tech.Tab = tab; }));
         foreach (MapLevel level in Enum.GetValues<MapLevel>()) pages.Add(($"map: {level}", () => _game.Menu.OpenMap(level)));
+        foreach (var entry in _game.Menu.Root.Blueprints.Library.Starters)
+            pages.Add(($"blueprints: {entry.Name}", () => { _game.Menu.Open(MenuTab.Blueprints); _game.Menu.Root.Blueprints.Select(entry); }));
         foreach (var (name, open) in pages)
         {
             open();

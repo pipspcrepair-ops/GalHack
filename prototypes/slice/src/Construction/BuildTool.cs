@@ -41,7 +41,7 @@ public enum NewThing { None, Base, Vessel, Device }
 /// A core item in hand founds a new structure on open ground (the Big Core a base, fixed where it
 /// stands; the Small Core a small craft on a build stand), and the CORE tab sets its mode. A device
 /// item (the survival constructor) is set down as itself. The blueprint projector is not
-/// on the toolbar: the CORE tab starts it (<see cref="Project"/>), and it builds the Skiff block by
+/// on the toolbar: the BLUEPRINTS tab starts it (<see cref="Project"/>), and it builds a blueprint block by
 /// block while the button is held, each block one item from your bag.
 /// </summary>
 public sealed partial class BuildTool
@@ -56,7 +56,7 @@ public sealed partial class BuildTool
     readonly BlockPlacer _placer;
     public Progress Progress;
 
-    /// <summary>The blueprint projector is running (started from the CORE tab, not the toolbar).</summary>
+    /// <summary>The blueprint projector is running (started from the BLUEPRINTS tab, not the toolbar).</summary>
     public bool Projecting { get; private set; }
 
     public int ShapeIndex;
@@ -206,7 +206,7 @@ public sealed partial class BuildTool
         if (pressed) Remove(TargetVessel, TargetCell);
     }
 
-    /// <summary>Starts the blueprint projector (from the CORE tab): the Skiff's ghost follows the crosshair until a click sets it down.</summary>
+    /// <summary>Starts the blueprint projector (from the BLUEPRINTS tab): the blueprint's ghost (the Skiff's if none is given) follows the crosshair until a click sets it down.</summary>
     public void Project(Structure blueprint = null)
     {
         Follow(blueprint ?? _zone.Data.Blueprint(_rules.StarterBlueprint));

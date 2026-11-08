@@ -482,7 +482,7 @@ public partial class Visor : CanvasLayer
                 return $"{bar}{item.Name}{shape} · {where}";
             case HandKind.Core: return $"{bar}{items.Item(pack.HandItem).Name}";
             case HandKind.Device: return $"{bar}{items.Item(pack.HandItem).Name}";
-            case HandKind.Blueprint: return Game.Builder.Underway != null ? $"{Game.Builder.Underway.Name}: {Game.Builder.Remaining.Count} blocks to go" : "BLUEPRINT · SKIFF";
+            case HandKind.Blueprint: return Game.Builder.Underway != null ? $"{Game.Builder.Underway.Name}: {Game.Builder.Remaining.Count} blocks to go" : $"BLUEPRINT · {(Game.Builder.Plan?.Name ?? "Skiff").ToUpperInvariant()}";
             case HandKind.Consumable: return $"{bar}{items.Item(pack.HandItem).Name}";
             default: return pack.HandItem != null && items.TryGet(pack.HandItem, out var other) ? $"{bar}{other.Name}" : bar;
         }

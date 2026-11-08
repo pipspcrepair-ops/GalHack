@@ -108,6 +108,8 @@ public partial class BuildTest : Node
         OrientationChecks();
         GD.Print("-- lights: colour, animation and glowing paint --");
         LightChecks();
+        GD.Print("-- the starter blueprints, and saving one --");
+        BlueprintChecks();
 
         _game = new Game.Game { Interactive = false, SkipIntro = true, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), WorldChoice.Tested) };
         AddChild(_game);
@@ -135,6 +137,12 @@ public partial class BuildTest : Node
             foreach (int x in UiRound()) yield return x;
             yield break;
         }
+        if (System.Array.IndexOf(OS.GetCmdlineUserArgs(), "--only=blueprints") >= 0)
+        {
+            // -- --only=blueprints: the BLUEPRINTS tab's scenario alone.
+            foreach (int x in Blueprints()) yield return x;
+            yield break;
+        }
         foreach (int x in Founding()) yield return x;
         foreach (int x in Sources()) yield return x;
         foreach (int x in BackIntoInventories()) yield return x;
@@ -146,6 +154,7 @@ public partial class BuildTest : Node
         foreach (int x in MenuChecks()) yield return x;
         foreach (int x in UiRound()) yield return x;
         foreach (int x in Creative()) yield return x;
+        foreach (int x in Blueprints()) yield return x;
     }
 
     // ---- Pure checks ---------------------------------------------------------------------------
