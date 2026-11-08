@@ -276,8 +276,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
             {
                 Creature c = list[i];
                 if (c.Dead || c.Removed) continue;
-                Vector3 centre = Centre(c, so);
-                if (!ShotPool.InWedge(o, nd, cos, cone.Range, centre.ToNumerics(), (c.Rig?.BoundsRadius ?? 0.4f) * 0.5f)) continue;
+                if (!BodyInWedge(c, so, o, nd, cos, cone.Range, out Vector3 centre)) continue;
                 if (SolidBetween(origin, centre)) continue;
                 ConeHits++;
                 Harm(c, d.Damage, centre, dir);
@@ -332,8 +331,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
             foreach (Creature c in sim.Creatures)
             {
                 if (c.Dead || c.Removed) continue;
-                Vector3 centre = Centre(c, so);
-                if (ShotPool.InWedge(back.ToNumerics(), (-dir).ToNumerics(), cos, b.Length, centre.ToNumerics(), (c.Rig?.BoundsRadius ?? 0.4f) * 0.5f) && !SolidBetween(back, centre))
+                if (BodyInWedge(c, so, back.ToNumerics(), (-dir).ToNumerics(), cos, b.Length, out Vector3 centre) && !SolidBetween(back, centre))
                     Harm(c, b.Damage, centre, -dir);
             }
         }
@@ -588,6 +586,42 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         return true;
     }
 
+    /// <summary>
+    /// How far a point is from a creature's body: the nearest of its hit spheres' surfaces (0 inside
+    /// one), so a long neck or tail doesn't reach where the body isn't. Falls back to its middle.
+    /// </summary>
+    static float Gap(Creature c, Vector3 simOrigin, Vector3 p)
+    {
+        Rig rig = c.Rig;
+        if (rig == null || rig.HitCount == 0) return MathF.Max(0f, p.DistanceTo(Centre(c, simOrigin)) - 0.4f);
+        float best = float.MaxValue;
+        for (int i = 0; i < rig.HitCount; i++)
+        {
+            Vector4 h = rig.Hits[i];
+            best = MathF.Min(best, p.DistanceTo(new Vector3(h.X, h.Y, h.Z) + simOrigin) - h.W);
+        }
+        return MathF.Max(0f, best);
+    }
+
+    /// <summary>Does any of a creature's hit spheres reach into a wedge? Gives the point of it that does (where the flame lands).</summary>
+    static bool BodyInWedge(Creature c, Vector3 simOrigin, N.Vector3 o, N.Vector3 dir, float cos, float range, out Vector3 at)
+    {
+        Rig rig = c.Rig;
+        if (rig == null || rig.HitCount == 0)
+        {
+            at = Centre(c, simOrigin);
+            return ShotPool.InWedge(o, dir, cos, range, at.ToNumerics(), 0.4f);
+        }
+        for (int i = 0; i < rig.HitCount; i++)
+        {
+            Vector4 h = rig.Hits[i];
+            at = new Vector3(h.X, h.Y, h.Z) + simOrigin;
+            if (ShotPool.InWedge(o, dir, cos, range, at.ToNumerics(), h.W)) return true;
+        }
+        at = default;
+        return false;
+    }
+
     /// <summary>A creature's middle in the zone (its hit spheres' bounds).</summary>
     static Vector3 Centre(Creature c, Vector3 simOrigin) =>
         c.Rig != null ? c.Rig.BoundsCenter + simOrigin : c.Position + simOrigin + Vector3.Up * 0.5f;
@@ -715,7 +749,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
                 Creature c = list[i];
                 if (c.Dead || c.Removed) continue;
                 Vector3 centre = Centre(c, so);
-                float d = MathF.Max(0f, p.DistanceTo(centre) - (c.Rig?.BoundsRadius ?? 0.4f) * 0.5f);
+                float d = Gap(c, so, p);
                 if (d < r) Harm(c, blast.Damage * (1f - d / r), centre, (centre - p).Normalized());
             }
         }
@@ -842,7 +876,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
             {
                 Creature c = list[i];
                 if (c.Dead || c.Removed) continue;
-                if (p.DistanceTo(Centre(c, so)) - (c.Rig?.BoundsRadius ?? 0.4f) * 0.6f < radius) return true;
+                if (Gap(c, so, p) < radius) return true;
             }
         }
         if (!Game.Suit.Dead && SegmentNear(p, p, Game.Survivor.WorldFeet, Game.Survivor.WorldEye(), out _, out float pd) && pd < radius) return true;
