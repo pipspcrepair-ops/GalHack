@@ -116,6 +116,8 @@ public sealed partial class Town
         /// <summary>Their answer to your gesture (from when, for how long), and where they've been shown to look.</summary>
         /// <summary>You robbed them (they remember); a guard on your trail after a robbery, for how long.</summary>
         public bool Robbed;
+        /// <summary>Waiting a moment for someone to pass (a doorway); how long since you last pushed them.</summary>
+        public float Yield, ShovedFor;
         public float Pursue;
         public BodyAct Answer;
         public float AnswerAt, AnswerFor, LookFor;
@@ -392,6 +394,7 @@ public sealed partial class Town
             // The guards and the law keep their posts round the clock, and turn on you.
             bool offDuty = !guard && p.Looks != null ? !p.Figure.OutAt(time) : night;
             p.ScaredFor = MathF.Max(0f, p.ScaredFor - dt);
+            p.ShovedFor = MathF.Max(0f, p.ShovedFor - dt);
             p.ShooFor = MathF.Max(0f, p.ShooFor - dt);
             // Something dangerous about: those who answer it with a gun do; the scared run in; a barricaded place keeps everyone in.
             if (Fight(p, dt))
@@ -450,11 +453,19 @@ public sealed partial class Town
             }
             Pose(p, who);
         }
+        KeepApart(player, tickDt);
     }
 
     /// <summary>Walks a person along their path; true once they are there (or have no path).</summary>
     bool Move(Person p, float dt)
     {
+        if (p.Yield > 0f && p.Path != null && p.Step < p.Path.Count)
+        {
+            // Letting someone through first.
+            p.Yield -= dt;
+            p.Now = Mathf.MoveToward(p.Now, 0f, PeopleAccel * 2f * dt);
+            return false;
+        }
         if (p.Path == null || p.Step >= p.Path.Count)
         {
             p.Now = 0f;

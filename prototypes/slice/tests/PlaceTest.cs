@@ -960,6 +960,46 @@ public partial class PlaceTest : Node
         foreach (int x in walk.To(place, far.Cell, r => ok = r)) yield return x;
         foreach (int x in walk.To(place, place.Inst.Layout.EntranceCell, r => ok = r)) yield return x;
         Check(ok && place.Memory.Mood == place.Inst.Mood && town.GuardShots == 0 && game.Suit.HealthShare >= hurtBefore - 0.3, $"walked through it and back in peace ({(ok ? "" : $"the walk stopped: {string.Join("; ", walk.Notes.TakeLast(2))}; ")}health {game.Suit.HealthShare * 100:F0}%): still {place.Memory.Mood}, no guard raised a gun");
+        // Personal space: a busy minute with nobody in anybody.
+        {
+            town.WorstOverlap = 0f;
+            foreach (int x in drive.Wait(3600)) yield return x;
+            Check(town.WorstOverlap < 0.05f, $"a busy minute: no two of them overlap by more than {town.WorstOverlap * 100f:F1} cm");
+            Int3 door = place.Inst.Layout.EntranceCell;
+            Int3 outward = place.Inst.Layout.EntranceFacing.Vec();
+            Vector3 doorAt = new(door.X + 0.5f, door.Y, door.Z + 0.5f), outv = new(outward.X, 0f, outward.Z);
+            // Two of them meeting in the way in: one waits or steps aside, neither passes through the other.
+            var pair = town.People.Where(q => !q.Dead && !q.Indoors && !q.Away && q.Looks != null && q.Role != "guard").Take(2).ToList();
+            if (pair.Count == 2)
+            {
+                GD.Print("  (TEST: two of them set either side of the way in, each sent through it)");
+                game.Survivor.PlaceOutside(place.ToWorld(doorAt + outv * 12f + Vector3.Up * 0.3f).ToNumerics());
+                pair[0].Pos = doorAt - outv * 3f; pair[1].Pos = doorAt + outv * 3f;
+                pair[0].Path = new List<Vector3> { doorAt, doorAt + outv * 3f }; pair[1].Path = new List<Vector3> { doorAt, doorAt - outv * 3f };
+                foreach (var q in pair) { q.Step = 0; q.Wait = 30f; q.Speed = 1.3f; q.ScaredFor = 0f; }
+                float closest = float.MaxValue, need = (pair[0].Looks.Stats.Radius + pair[1].Looks.Stats.Radius) * 0.78f;
+                for (int i = 0; i < 480; i++)
+                {
+                    closest = MathF.Min(closest, new Vector2(pair[0].Pos.X - pair[1].Pos.X, pair[0].Pos.Z - pair[1].Pos.Z).Length());
+                    yield return 0;
+                }
+                bool through = pair[0].Pos.DistanceTo(doorAt + outv * 3f) < 1.2f && pair[1].Pos.DistanceTo(doorAt - outv * 3f) < 1.2f;
+                Check(through && closest > need - 0.05f, $"two meeting in the way in get past each other without passing through (closest {closest:F2} m, bodies {need:F2} m; {(through ? "both through" : "not through")})");
+            }
+            // One standing in the way in: walk into them and they're moved aside; you get through.
+            Town.Person block = town.People.Where(q => !q.Dead && !q.Indoors && !q.Away && q.Looks != null && q.Role != "guard").OrderBy(q => q.Pos.DistanceTo(doorAt)).FirstOrDefault();
+            if (block != null)
+            {
+                GD.Print("  (TEST: one of them set standing in the way in)");
+                block.Pos = doorAt; block.Path = null; block.Wait = 30f; block.ScaredFor = 0f;
+                game.Survivor.PlaceOutside(place.ToWorld(doorAt + outv * 3f + Vector3.Up * 0.3f).ToNumerics());
+                foreach (int x in drive.Wait(10)) yield return x;
+                int pushes = town.Pushed;
+                foreach (int x in drive.WalkTo(place.ToWorld(doorAt - outv * 3f), 0.8f, 6f, sprint: false, dig: false, hop: false)) yield return x;
+                float through = (place.FromWorld(game.Survivor.WorldFeet) - (doorAt - outv * 3f)).Length();
+                Check(town.Pushed > pushes && block.Pos.DistanceTo(doorAt) > 0.4f && through < 1.2f, $"one standing in the way in is pushed aside and you get through ({block.Pos.DistanceTo(doorAt):F2} m moved, you {through:F1} m from the far side, they answered {block.Answer})");
+            }
+        }
         // Each job keeps its own day, from the generator: who they are, what they carry, how they get about.
         var jobs = town.People.Where(q => q.Looks != null).GroupBy(q => q.Job).ToDictionary(g => g.Key, g => g.Count());
         Check(jobs.Count >= 4 && town.People.All(q => q.Looks?.Figure.Routine != null), $"their jobs set their days ({string.Join(", ", jobs.Select(kv => $"{kv.Value} {kv.Key}"))})");
@@ -971,7 +1011,8 @@ public partial class PlaceTest : Node
         int halts = town.Halts, holds = town.HoldAims, shots = town.GuardShots;
         if (post != null)
         {
-            for (int i = 0; i < 600 && (post.Path != null && post.Step < post.Path.Count || post.Spot != post.Spawn.Spot); i++) yield return 0; // back at the post
+            Vector3 postAt = new(town.Data.Spots[post.Spawn.Spot].Cell.X + 0.5f, town.Data.Spots[post.Spawn.Spot].Cell.Y, town.Data.Spots[post.Spawn.Spot].Cell.Z + 0.5f);
+            for (int i = 0; i < 1200 && post.Pos.DistanceTo(postAt) > 2.5f; i++) yield return 0; // back at the post
             Vector3 at = place.ToWorld(post.Pos), here = game.Survivor.WorldFeet;
             Vector3 toward = (at - here) with { Y = 0f };
             Vector3 stand = at - toward.Normalized() * 3f;

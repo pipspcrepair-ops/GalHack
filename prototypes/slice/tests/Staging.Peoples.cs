@@ -223,7 +223,7 @@ public sealed partial class Staging
     {
         foreach (int x in _drive.UntilSettled()) yield return x;
         Vector3 from = _game.Survivor.WorldFeet;
-        PlanetSurface.Poi.PoiSite site = _game.Zone.Planet.Pois.Where(s => s.Instance?.Townsfolk != null && s.Instance.Mood != Mood.Hostile).OrderBy(s => _game.Places.DistanceTo(s, from)).FirstOrDefault();
+        PlanetSurface.Poi.PoiSite site = _game.Zone.Planet.Pois.Where(s => s.Instance?.Townsfolk != null && s.Instance.Mood != Mood.Hostile && s.Instance.Townsfolk.People.Count >= 10).OrderBy(s => s.Family.Tags.Contains("settlement") ? 0 : 1).ThenBy(s => _game.Places.DistanceTo(s, from)).FirstOrDefault();
         if (site == null) { GD.Print("(no town on this world)"); yield break; }
         GD.Print($"(town: {site.Name}, {site.Instance.Mood}, {site.Instance.Townsfolk.People.Count} people)");
         foreach (int x in GoTo(site, Gate(site) + Vector3.Up * 0.1f)) yield return x;

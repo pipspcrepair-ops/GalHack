@@ -82,7 +82,8 @@ public sealed partial class Town
     void Learn(Person q)
     {
         if (!_knows.Add(q)) return;
-        if (_knows.Count > 1) Did(Deed.Word);
+        // Each new mouth costs a little, up to the first ten: by then it's the talk of the place.
+        if (_knows.Count > 1 && _knows.Count <= 11) Did(Deed.Word);
         // A guard who knows comes for you, gun up.
         if (q.Role == "guard") q.Pursue = 25f;
     }

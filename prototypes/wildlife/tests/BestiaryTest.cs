@@ -68,6 +68,7 @@ public partial class BestiaryTest : Node
             JobsKeepTheirOwnDay();
             PeopleAndAnimalsReadEachOther();
             RegionsDressTheirOwn();
+            NobodyWalksThroughAnybody();
             HusksSpreadFromTheCore();
             HusksAreTheirOwnPeople();
             SeizedPeopleTurn();
@@ -1536,6 +1537,23 @@ public partial class BestiaryTest : Node
         town.Outsiders = 1f;
         var visitors = Enumerable.Range(0, 20).Select(_ => g.Person(Seed(), PersonRole.Trader, founders: town).Figure).ToList();
         Check(visitors.All(f => f.Dress == "furs"), "a visitor keeps their own region's clothes");
+    }
+
+    /// <summary>The owner: nothing walks through anything. Two dozen creatures crowded together for a minute: no two sit in each other.</summary>
+    void NobodyWalksThroughAnybody()
+    {
+        WorldLife life = Bestiary.Roll(_data, World(15f));
+        var walkers = life.Moving.Where(s => !s.Flies && s.Rig is RigKind.Legged or RigKind.Humanoid && s.Figure == null && !s.Husk).ToList();
+        var sim = new WildSim(_data, new Terrain((x, z) => 0f, 120f), new NavGrid(120f, 3f));
+        for (int i = 0; i < 24 && walkers.Count > 0; i++) sim.Spawn(walkers[i % walkers.Count], new Vector3(_fresh.Range(-5f, 5f), 0f, _fresh.Range(-5f, 5f)));
+        for (int i = 0; i < 8; i++) sim.Spawn(life.People.Person(Seed(), (PersonRole)(i % 9)), new Vector3(_fresh.Range(-4f, 4f), 0f, _fresh.Range(-4f, 4f)));
+        float worst = 0f;
+        for (int f = 0; f < 1800; f++)
+        {
+            sim.Step(1f / 30f);
+            if (f > 30) worst = MathF.Max(worst, sim.Space.WorstOverlap);
+        }
+        Check(worst < 0.05f, $"{sim.Creatures.Count} bodies crowded together for a minute: none overlaps another by more than {worst * 100f:F1} cm");
     }
 
     sealed class Host : IHost

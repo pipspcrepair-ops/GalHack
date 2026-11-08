@@ -499,6 +499,34 @@ public sealed class WildSim
 
     // ---- Stepping ---------------------------------------------------------------------
 
+    /// <summary>Personal space: no two bodies on the ground pass through each other, nor through you (<see cref="PersonalSpace"/>).</summary>
+    public readonly PersonalSpace Space = new();
+    readonly List<Creature> _spaced = new();
+
+    void KeepApart(float dt)
+    {
+        Space.Bodies.Clear();
+        _spaced.Clear();
+        foreach (Creature c in Creatures)
+        {
+            if (c.Removed || c.Dead || c.Dormant || c.HeldBy != null || c.Holding != null || c.Space != null || c.Thrown || c.InWalls
+                || c.Species.Rig == RigKind.Swarm || c.Species.Flies && !c.Landed) continue;
+            Vector3 v = Flat(c.Velocity);
+            Space.Bodies.Add(new PersonalSpace.Body { Pos = c.Position, Radius = c.Radius, Heading = v.LengthSquared() > 0.04f ? v.Normalized() : Vector3.Zero, Give = c.Attacking ? 0.4f : 1f });
+            _spaced.Add(c);
+        }
+        if (_spaced.Count == 0) return;
+        // Whoever the creatures meet on foot (you, a town's people) gives nothing here: they are stepped round.
+        foreach (ITarget t in Targets)
+            if (t.Attackable) Space.Bodies.Add(new PersonalSpace.Body { Pos = t.Position, Radius = 0.35f, Give = 0f });
+        Space.Resolve(dt, null, 2);
+        for (int i = 0; i < _spaced.Count; i++)
+        {
+            Vector3 moved = Space.Bodies[i].Moved;
+            if (moved.LengthSquared() > 1e-8f) _spaced[i].Position += new Vector3(moved.X, 0f, moved.Z);
+        }
+    }
+
     public void Step(float dt)
     {
         Time += dt;
@@ -568,6 +596,7 @@ public sealed class WildSim
             RigMs += rigTicks * ms;
         }
 
+        if (!Frozen) KeepApart(dt);
         if (Colonies.Count > 0) Colony.StepAll(this, dt);
         if (Masses.Count > 0) WormMasses.Step(this, dt);
         if (Settlements.Count > 0 && Frame % 15 == 0) WatchTowns();
