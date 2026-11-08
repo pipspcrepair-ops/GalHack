@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Diagnostics;
 using Godot;
 
@@ -622,7 +623,15 @@ public sealed class WildSim
             foreach (FoodPatch f in Food) f.Amount = MathF.Min(1f, f.Amount + dt * 30f / 90f);
 
         // Drop removed creatures now and then, never mid-loop.
-        if (Frame % 120 == 0) Creatures.RemoveAll(c => c.Removed);
+        if (Frame % 120 == 0)
+        {
+            Creatures.RemoveAll(c => c.Removed);
+            // Bodies lie a long while, but not without end: past the most a world keeps, the oldest go first.
+            int bodies = 0;
+            foreach (Creature c in Creatures) if (c.Dead) bodies++;
+            if (bodies > MostBodies)
+                foreach (Creature c in Creatures.Where(c => c.Dead).OrderByDescending(c => c.DeadTime).Take(bodies - MostBodies)) c.Removed = true;
+        }
     }
 
     /// <summary>Tells a town when something wild gets in.</summary>
@@ -637,12 +646,18 @@ public sealed class WildSim
         }
     }
 
+    /// <summary>How long a body lies before it goes, seconds of play: long enough to come back to (the owner wants them to stay "a lot a lot longer"). Picked clean, the remains lie on as long.</summary>
+    public const float CorpseLasts = 3600f;
+
+    /// <summary>The most bodies lying in the world at once; past it the oldest go.</summary>
+    public const int MostBodies = 150;
+
     void UpdateCorpse(Creature c, float dt)
     {
         c.DeadTime += dt;
         c.Desired = Vector3.Zero;
         c.Phase = AttackPhase.None;
-        if (c.DeadTime > 150f || (c.MeatLeft <= 0f && c.DeadTime > 4f)) c.Removed = true;
+        if (c.DeadTime > CorpseLasts) c.Removed = true;
     }
 
     /// <summary>Gives back this step's path searches (for driving creatures outside <see cref="Step"/>).</summary>
