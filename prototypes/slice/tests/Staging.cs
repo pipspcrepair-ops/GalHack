@@ -148,6 +148,7 @@ public sealed partial class Staging
             "blockdetail" => BlockDetailView(),
             "placesurf" => PlaceSurfView(),
             "decorooms" => DecoRooms(),
+            "hulk" => HulkView(),
             _ => DoorViews(view),
         };
         foreach (int x in script) yield return x;

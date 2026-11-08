@@ -65,6 +65,9 @@ public enum BlockType : byte
     InvCorner,  // inner corner slope: three raised corners, the low one opposite Corner's raised one
     // Added with the decay pass.
     Rebar,      // bent bars standing out of a torn concrete face, the face toward Facing; never blocks
+    // Added with the capital hulls: the vessel devices a claimed wreck flies on (building's "thruster" and "chair").
+    Thruster,   // a large-grid thruster, one 2 m block drawn from this, its lowest corner cell; it pushes away from Facing (its nozzle faces Facing)
+    Seat,       // a command chair facing Facing: every seat aboard is one (design: no cockpit block)
 }
 
 /// <summary>What a block is made of. Drives how it renders and what salvage it gives.</summary>
