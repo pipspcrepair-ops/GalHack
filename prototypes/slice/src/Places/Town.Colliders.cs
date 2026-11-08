@@ -114,8 +114,13 @@ public sealed partial class Town
                 if (dist < contact && dist > 1e-3f && MathF.Abs(p.Pos.Y - player.Y) < 1.6f)
                 {
                     Vector3 away = d / dist;
+                    // Pressing: walking into them, or leaning on them face on (your capsule stopped by theirs) a moment.
                     float pressing = MathF.Max(moved.Dot(away) / MathF.Max(dt, 1e-3f), 0f);
-                    if (pressing > 0.2f)
+                    Vector3 facing = _places.Zone.Wildlife.Player.Forward;
+                    facing.Y = 0f;
+                    bool leaning = facing.LengthSquared() > 1e-4f && facing.Normalized().Dot(away) > 0.5f;
+                    p.PressFor = pressing > 0.2f || leaning ? p.PressFor + dt : 0f;
+                    if (pressing > 0.2f || p.PressFor > 0.25f)
                     {
                         Vector3 step = away * MathF.Min(1.5f * Give(p), 1.6f) * dt;
                         if (Open(p.Pos + step)) p.Pos += step;

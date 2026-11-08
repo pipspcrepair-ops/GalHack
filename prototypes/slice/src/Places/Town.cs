@@ -120,6 +120,8 @@ public sealed partial class Town
         public float Yield, ShovedFor;
         /// <summary>When a vessel last hit them (clock).</summary>
         public float StruckAt = -9f;
+        /// <summary>How long you've been leaning on them.</summary>
+        public float PressFor;
         public float Pursue;
         public BodyAct Answer;
         public float AnswerAt, AnswerFor, LookFor;
