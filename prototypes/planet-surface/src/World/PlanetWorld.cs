@@ -41,6 +41,13 @@ public sealed partial class PlanetWorld
     /// (the living: settlements and faction places, their gear, defences and animals).
     /// </summary>
     public readonly WorldProfile Profile;
+
+    /// <summary>How deep in the galaxy this world lies, 0 on the rim to 1 at the core, from its star's real place (-1 where the galaxy isn't compiled in).</summary>
+    public float Depth { get; private set; } = -1f;
+
+    /// <summary>What this world rolled, layer by layer (null for a world nobody ever lived on): its places are laid out from it.</summary>
+    public PoiGenerator.Gen.WorldRoll Roll { get; private set; }
+
     /// <summary>
     /// The world round the places, when its code is compiled in (src/World/Infra: the infrastructure
     /// network, see PlanetWorld.Infra.cs). Projects that compile only this file build worlds without it.
@@ -174,12 +181,18 @@ public sealed partial class PlanetWorld
     public static PlanetWorld Build(PlanetSpec spec, PoiCatalog catalog)
     {
         var watch = Stopwatch.StartNew();
-        WorldProfile profile = ProfileFor(spec, PoiSiting.StartWorld);
+        PoiGenerator.Gen.WorldForce force = PoiGenerator.Gen.WorldForce.Current;
+        WorldProfile profile = force.Apply(ProfileFor(spec, PoiSiting.StartWorld));
+        // Its star first: where it lies in the galaxy is part of what the world rolls from.
+        object chart = null;
+        float depth = -1f;
+        Chart(spec, force.Depth, ref chart, ref depth);
         WorldMap map = PlanetGenerator.Generate(spec);
         LandingSite landing = Planets.Gen.Landing.Find(map, map.WidthMeters * 0.5, map.HeightMeters * 0.5);
         var bare = new PlanetTerrainSource(map);
-        if (catalog != null) profile = PoiSiting.WithRules(catalog.Library, map, profile);
-        List<PoiSite> pois = catalog == null ? new List<PoiSite>() : PoiSiting.Place(catalog, map, bare, landing, profile: profile);
+        PoiGenerator.Gen.WorldRoll roll = catalog == null ? null : PoiSiting.RollOf(catalog.Library, map, profile, depth: depth);
+        if (roll != null) profile = profile with { Barred = roll.Barred };
+        List<PoiSite> pois = catalog == null ? new List<PoiSite>() : PoiSiting.Place(catalog, map, bare, landing, profile: profile, depth: depth);
         var stamps = new List<TerrainStamp>();
         var anchors = new List<TerrainDigging.Terrain.PoiSite>();
         foreach (PoiSite p in pois)
@@ -196,7 +209,8 @@ public sealed partial class PlanetWorld
         // What stands off a place's footprint goes by the real ground, now that it's known.
         foreach (PoiSite p in pois)
             PoiGenerator.Gen.StateTransforms.Settle(p.Instance, (x, z) => source.SurfaceHeight(Mathx.WrapX(p.Origin.X + x + 0.5, source.Width), Mathx.Wrap(p.Origin.Z + z + 0.5, source.Height)) - p.Origin.Y, 3);
-        var world = new PlanetWorld(spec, profile, map, landing, pois, around, source, watch.Elapsed.TotalMilliseconds);
+        var world = new PlanetWorld(spec, profile, map, landing, pois, around, source, watch.Elapsed.TotalMilliseconds) { Depth = depth, Roll = roll };
+        world.TakeChart(chart);
         world.ChartStars();
         return world;
     }
@@ -205,6 +219,10 @@ public sealed partial class PlanetWorld
     public void ChartStars() => FindHomeStar();
 
     partial void FindHomeStar();
+
+    /// <summary>This world's star in the galaxy, found before anything is placed (near a depth asked for, or out at an arm's tip), and how deep it lies; nothing when that isn't compiled in.</summary>
+    static partial void Chart(PlanetSpec spec, float? wanted, ref object chart, ref float depth);
+    partial void TakeChart(object chart);
 
     static partial void PlanAround(PlanetSpec spec, PoiCatalog catalog, WorldMap map, PlanetTerrainSource bare, List<PoiSite> pois, WorldProfile profile, LandingSite landing, List<TerrainStamp> stamps, ref object around);
     static partial void FinishAround(PlanetSpec spec, PlanetTerrainSource source, List<PoiSite> pois, object around);

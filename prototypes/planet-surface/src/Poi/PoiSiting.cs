@@ -161,19 +161,40 @@ public static partial class PoiSiting
             _ => "open",
         };
         if (air != null) given.Set(LayerKind.Air, air);
+        // What a new game or a test forces (the theme, the fall, mid-collapse or not).
+        WorldForce.Current.Into(given);
         return given;
     }
 
-    /// <summary>A world's profile with what its roll rules out, so the ruins along its roads keep the same rules as its places.</summary>
-    public static WorldProfile WithRules(PoiLibrary lib, WorldMap map, WorldProfile profile, bool? startWorld = null)
+    /// <summary>
+    /// A lived-in world's roll, as its places are laid out from it: the same planet, profile and
+    /// depth always roll the same. Null for a world nobody ever lived on, or a library with no layers.
+    /// </summary>
+    public static WorldRoll RollOf(PoiLibrary lib, WorldMap map, WorldProfile profile, bool? startWorld = null, float depth = -1f)
     {
-        if (profile is not { Inhabited: true } || lib == null) return profile;
+        if (profile is not { Inhabited: true } || lib == null) return null;
         PlanetSpec spec = map.Spec;
-        WorldRoll roll = WorldRoll.Roll(lib, GHash.Of(spec.Seed, 0x4C41), spec.Archetype.ToString(), profile, startWorld ?? StartWorld, Given(lib, spec, map.Def.VariantName));
+        return WorldRoll.Roll(lib, GHash.Of(spec.Seed, 0x4C41), spec.Archetype.ToString(), profile, startWorld ?? StartWorld, Given(lib, spec, map.Def.VariantName), depth);
+    }
+
+    /// <summary>A world's profile with what its roll rules out, so the ruins along its roads keep the same rules as its places.</summary>
+    public static WorldProfile WithRules(PoiLibrary lib, WorldMap map, WorldProfile profile, bool? startWorld = null, float depth = -1f)
+    {
+        WorldRoll roll = RollOf(lib, map, profile, startWorld, depth);
         return roll == null ? profile : profile with { Barred = roll.Barred };
     }
 
-    public static List<PoiSite> Place(PoiCatalog catalog, WorldMap map, PlanetTerrainSource bare, LandingSite landing, bool? startWorld = null, WorldProfile profile = null)
+    /// <summary>
+    /// Deeper in the galaxy the finds are rarer: a place there is now and then one step rarer than it
+    /// rolled (bigger, with better caches), up to one in three at the core. Nothing changes where the depth isn't known.
+    /// </summary>
+    static Rarity Deeper(Rarity r, float depth, ulong seed)
+    {
+        if (depth <= 0f || r >= Rarity.Exotic) return r;
+        return new PRng(GHash.Of(seed, 0x44454550)).Chance(depth * 0.35f) ? r + 1 : r;
+    }
+
+    public static List<PoiSite> Place(PoiCatalog catalog, WorldMap map, PlanetTerrainSource bare, LandingSite landing, bool? startWorld = null, WorldProfile profile = null, float depth = -1f)
     {
         bool start = startWorld ?? StartWorld;
         PoiLibrary lib = catalog.Library;
@@ -183,7 +204,7 @@ public static partial class PoiSiting
         PlanetMap pmap = BuildPlacementMap(map, 0, 0, cellsX, cellsZ, WorldCell, GHash.Of(spec.Seed, 0x504F49));
         ThemeDef theme = ThemeParser.For(lib, spec.Archetype.ToString(), map.Def.VariantName.Replace(' ', '_'), start);
         // A world that was ever lived in is laid out by its plan; only the wild is scattered.
-        WorldRoll roll = profile is { Inhabited: true } ? WorldRoll.Roll(lib, GHash.Of(spec.Seed, 0x4C41), spec.Archetype.ToString(), profile, start, Given(lib, spec, map.Def.VariantName)) : null;
+        WorldRoll roll = RollOf(lib, map, profile, start, depth);
         if (roll != null) profile = profile with { Barred = roll.Barred };
         RegionPlan plan = null;
         if (roll != null) plan = RegionPlan.Make(lib, new PlanetLand(map, bare, pmap), roll, profile, GHash.Of(spec.Seed, 0x4E41), (landing.X, landing.Y), start);
@@ -244,7 +265,7 @@ public static partial class PoiSiting
                 if (p.Family.Tags.Contains("settlement") && Away(p) < 4000)
                     for (ulong k = 1; k < 32 && Dressing.MoodFor(spawnSeed) == Mood.Hostile; k++) spawnSeed = PoiGenerator.Gen.Hash.Combine(p.SpawnSeed, k);
             }
-            PoiInstance inst = PoiFactory.Generate(lib, p.Family, variant, p.Rarity, p.State, spawnSeed, world: profile);
+            PoiInstance inst = PoiFactory.Generate(lib, p.Family, variant, Deeper(p.Rarity, depth, spawnSeed), p.State, spawnSeed, world: profile);
             PoiSite site = Seat(inst, p.Family, bare, map, Mathx.WrapX(p.X, map.WidthMeters), Mathx.Wrap(p.Z, map.HeightMeters), landing, sites);
             // The main port stands somewhere: if its spot won't take it, the next good ground round it. So do its crowd, nearer in.
             int retries = p.Primary ? 64 : IsPort(p) ? 12 : 0;

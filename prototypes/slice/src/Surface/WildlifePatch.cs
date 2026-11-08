@@ -104,6 +104,9 @@ public partial class WildlifePatch : Node3D
         var climate = Zone.Data.Rules.Climate;
         if (!world.Vacuum && climate.OxygenByAir.TryGetValue(planet.Sky.Air.ToString(), out double oxygen)) world.Oxygen = (float)oxygen;
         if (climate.RadiationByArchetype.TryGetValue(planet.Spec.Archetype.ToString(), out double radiation)) world.Radiation = (float)radiation;
+        // Its depth in the galaxy: the Husks spread outward from the core. And a world whose roll has the Bloom's country is a Hollow world.
+        world.Coreward = Math.Max(0f, planet.Depth);
+        world.Bloom = planet.Roll?.Orbit.Contains("bloom") == true;
         Life = Bestiary.Roll(Zone.Data.Wildlife, world);
         View = new WildlifeView { Name = "Creatures", MostNew = 2 };
         AddChild(View);

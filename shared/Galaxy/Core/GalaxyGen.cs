@@ -45,7 +45,7 @@ static class GalaxyGen
 
     static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Galaxy, Shape> Shapes = new();
 
-    const float CoreRadius = 85f, InnerRadius = 260f, OuterRadius = 440f;
+    const float CoreRadius = Galaxy.CoreRadius, InnerRadius = 260f, OuterRadius = 440f;
 
     public static Galaxy Make(ulong seed)
     {

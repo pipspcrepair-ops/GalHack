@@ -521,6 +521,8 @@ public sealed class MapLevels
         var lines = new List<string> { galaxy.Name(id).ToUpperInvariant() };
         lines.Add(GalaxyNames.Kind(s.Kind) + (s.Companions == 1 ? ", double" : s.Companions > 1 ? ", triple" : ""));
         lines.Add(GalaxyNames.Of(s.Region));
+        float depth = galaxy.DepthOf(id);
+        lines.Add($"DEPTH {depth:0.00}  {Galaxy.Band(depth)}");
         if (s.Nebula >= 0) lines.Add("in the " + galaxy.Nebulae[s.Nebula].Name);
         lines.Add("territory: unclaimed");
         lines.Add(id == Trail.You ? "you are here" : $"{light:F1} LY away{(light <= Lanes.Range ? ", one jump" : "")}");
