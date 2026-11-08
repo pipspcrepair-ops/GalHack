@@ -57,6 +57,7 @@ public partial class BestiaryTest : Node
             TheCooldownHolds();
             DensHideFromOutside();
             MassesHoldBodyParts();
+            MassesTakeHold();
             CarriersLookNormalUntilAlone();
             CarriersTurnPastTheShare();
             WrongnessRisesWithHusks();
@@ -778,6 +779,78 @@ public partial class BestiaryTest : Node
         }
         float kept = Closest(true), free = Closest(false);
         Check(kept > _data.Husks.AnimalShun * 0.7f && kept > free, $"animals keep off a Husk: the nearest came {kept:F1} m, against {free:F1} m with nothing there");
+    }
+
+    /// <summary>
+    /// A worm mass's worms are calm far off, eager close to, and take hold within reach: the one
+    /// held is hauled in and stung a little at a time, gets free by getting away or when the mass
+    /// is shot; an animal that blunders in is held the same; standing on its veins does nothing.
+    /// </summary>
+    void MassesTakeHold()
+    {
+        HuskRules r = _data.Husks;
+        var sim = new WildSim(_data, new Terrain((x, z) => 0f, 60f), new NavGrid(60f, 3f));
+        var mass = new WormMass { Position = Vector3.Zero, Normal = Vector3.Up, Size = 1f, Seed = Seed() };
+        sim.Masses.Add(mass);
+        var you = new DummyTarget { Position = new Vector3(12f, 0f, 0f), Health = new Health(1e6f) };
+        sim.Targets.Add(you);
+        float grab = WormMasses.Grab(r, mass);
+        for (int i = 0; i < 60; i++) sim.Step(1f / 30f);
+        float calm = mass.Eager;
+        you.Position = new Vector3(grab + 1.2f, 0f, 0f);
+        for (int i = 0; i < 60; i++) sim.Step(1f / 30f);
+        float keen = mass.Eager;
+        Check(calm == 0f && keen > 0.2f && !WormMasses.Held(sim, you, out _, out _), $"calm with nobody near (eager {calm:F2}); eager a step out of reach ({keen:F2}), and not holding");
+        you.Position = new Vector3(grab * 0.8f, 0f, 0f);
+        sim.Step(1f / 30f);
+        bool held = WormMasses.Held(sim, you, out Vector3 toward, out _);
+        Check(held && toward.Dot(-you.Position.Normalized()) > 0.9f && mass.Eager > keen, "within reach the worms take hold and haul toward the mass");
+        // Pulling against it: a step a tick away, at the share of pace it leaves; past its reach it lets go.
+        float t0 = sim.Time;
+        while (WormMasses.Held(sim, you, out _, out _) && sim.Time - t0 < 20f)
+        {
+            you.Position += new Vector3(5.5f * r.MassSlow - r.MassPull, 0f, 0f) / 30f;
+            sim.Step(1f / 30f);
+        }
+        Check(!WormMasses.Held(sim, you, out _, out _) && sim.Time - t0 < 20f, $"walking out against the pull tears free in {sim.Time - t0:F1} s");
+        you.Position = new Vector3(grab * 0.8f, 0f, 0f);
+        sim.Step(1f / 30f);
+        Check(!WormMasses.Held(sim, you, out _, out _), "and it can't take you straight back");
+        for (int i = 0; i < (int)(r.MassRegrab * 30f) + 5; i++) sim.Step(1f / 30f);
+        Check(WormMasses.Held(sim, you, out _, out _), "after a moment it can");
+        WormMasses.Damage(sim, mass, 1f);
+        Check(!WormMasses.Held(sim, you, out _, out _), "a shot into the mass makes it let go");
+
+        // An animal that blunders in: held, hauled, stung; a player on its veins, nothing.
+        WorldLife life = Bestiary.Roll(_data, World(15f));
+        Species beast = life.Moving.First(s => s.Figure == null && !s.Flies && !s.Mechanical && s.Rig == RigKind.Legged);
+        var zoo = new WildSim(_data, new Terrain((x, z) => 0f, 60f), new NavGrid(60f, 3f)) { Frozen = true };
+        var lump = new WormMass { Position = Vector3.Zero, Normal = Vector3.Up, Size = 1f, Seed = Seed() };
+        zoo.Masses.Add(lump);
+        Creature c = zoo.Spawn(beast, new Vector3(WormMasses.Grab(r, lump) * 0.85f + beast.Stats.Radius * 0.8f, 0f, 0f));
+        float before = c.Health, startAt = WildSim.Flat(c.Position).Length();
+        for (int i = 0; i < 90; i++) zoo.Step(1f / 30f);
+        Check(lump.Latches.Any(l => l.Creature == c) && c.Health < before && WildSim.Flat(c.Position).Length() < startAt - 0.25f,
+            $"an animal that blunders in is held, hauled in ({startAt:F1} to {WildSim.Flat(c.Position).Length():F1} m) and stung ({before:F0} to {c.Health:F0})");
+        var veins = new List<Vein>();
+        var floor = new BlockSpace((x, y, z) => y < 0 || y > 4, new Vector3I(-20, -2, -20), new Vector3I(20, 6, 20));
+        var root = new WormMass { Position = Vector3.Zero, Normal = Vector3.Up, Size = 1.2f, Seed = Seed() };
+        Veins.Grow(veins, floor, new List<WormMass> { root }, new(), 1f, Seed());
+        var walker = new DummyTarget { Health = new Health(100f) };
+        var open = new WildSim(_data, new Terrain((x, z) => 0f, 60f), new NavGrid(60f, 3f));
+        open.Masses.Add(root);
+        open.Targets.Add(walker);
+        int touched = 0, onVeins = 0;
+        foreach (Vein v in veins)
+            foreach (Vector3 p in v.Points)
+            {
+                if (p.Length() < 2.5f) continue; // the mass itself isn't here: only its veins
+                onVeins++;
+                walker.Position = p;
+                open.Step(1f / 30f);
+                touched += WormMasses.Held(open, walker, out _, out _) ? 1 : 0;
+            }
+        Check(onVeins > 20 && touched == 0 && walker.Health.Current >= 100f, $"standing on its veins ({onVeins} spots along them) does nothing");
     }
 
     /// <summary>A worm mass made of someone shows them: a hand, a foot or part of a face, from their own body.</summary>

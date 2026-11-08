@@ -114,6 +114,7 @@ public sealed partial class Staging
             "approach" => ApproachView(),
             "husk-grab" => HuskGrab(),
             "husk-den" => HuskDen(),
+            "husk-worms" => HuskWorms(),
             "husk-carrier" => HuskCarrier(),
             _ => ProofViews(view),
         };
