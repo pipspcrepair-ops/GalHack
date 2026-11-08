@@ -226,8 +226,12 @@ public static class EraPass
             {
                 uint h = Hash.Cell(new Int3(Floor(p.X, lattice), 0, Floor(p.Z, lattice)), 0x3A11);
                 if (h / (float)uint.MaxValue < era.Windows) continue;
-                foreach (Dir d in Dirs.Horizontal)
-                    if (g.Get(p + d.Vec()) is { Type: BlockType.Cube, Role: Role.Wall } wall) { g.Set(p, wall); break; }
+                // Walled in with the wall round it: over or under it first (a band of glass has glass either side).
+                Block? fill = null;
+                foreach (Dir d in new[] { Dir.Up, Dir.Down, Dir.North, Dir.East, Dir.South, Dir.West })
+                    for (int k = 1; k <= 2 * lattice && fill == null; k++)
+                        if (g.Get(p + d.Vec() * k) is { Type: BlockType.Cube, Role: Role.Wall } wall) fill = wall;
+                if (fill is Block w) g.Set(p, w);
             }
         if (era.Ribbon > 0f && lattice == 1)
             foreach (var (p, pane) in g.Blocks().Where(x => x.Block.Type == BlockType.Pane && x.Block.Material == Material.Glass && x.Block.Role == Role.Window).ToList())

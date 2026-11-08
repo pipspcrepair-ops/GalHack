@@ -47,9 +47,11 @@ public static class BrutalComplex
         c.Link(p.Yard, cargo);
 
         // ---- the towers, the stack, the cooling tower, and the pipes between them --------------------
-        int lobby = Tower(p, 58, 86, 14, 46);
+        // Its skyline its own (its own seed): the office tower, the stack and the crane each their own height.
+        var sky = p.R.Fork("skyline");
+        int lobby = Tower(p, 58, 86, 14, 38 + 2 * sky.Range(0, 9));
         c.Link(p.Yard, lobby);
-        Stack(p, 122, 92, 6, 42);
+        Stack(p, 122, 92, 6, 34 + 2 * sky.Range(0, 9));
         int cooling = CoolingTower(p, 166, 118);
         c.Link(p.Yard, cooling);
         TankFarm(p, 16, 112);

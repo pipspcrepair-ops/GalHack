@@ -39,7 +39,8 @@ public partial class PoiTest
         int differ = 0, same = 0, failed = 0;
         double authoredMs = 0, freshMs = 0;
         var sameIds = new List<string>();
-        foreach (FamilyDef f in families)
+        // (A city's buildings are laid lot by lot by its planner, each from its own lot: size, storeys, style.)
+        foreach (FamilyDef f in families.Where(x => !x.Tags.Contains("city")))
         {
             TechLevel tech = f.Techs.Count > 0 ? WorldProfile.Parse(f.Techs[rand.Next(f.Techs.Count)]) : (TechLevel)rand.Next(3);
             int v = rand.Next(f.Variants.Count);
@@ -56,13 +57,14 @@ public partial class PoiTest
             else { same++; sameIds.Add(f.Id); }
         }
         Check(same * 20 <= differ + same && failed <= families.Count / 20,
-            $"two spawns of a family are different buildings: {differ} of {differ + same} families differ{(sameIds.Count > 0 ? $" (alike: {string.Join(", ", sameIds.Take(6))})" : "")}, {failed} would not lay out");
+            $"two spawns of a family are different buildings: {differ} of {differ + same} families differ{(sameIds.Count > 0 ? $" (alike: {string.Join(", ", sameIds)})" : "")}, {failed} would not lay out");
         Check(freshMs <= authoredMs * 1.6 + 200,
             $"a fresh layout takes no longer than an authored one: {freshMs / families.Count:0.0} ms against {authoredMs / families.Count:0.0} ms a family");
 
         // ---- the era kits read their era
         var kitMix = new Dictionary<TechLevel, (int Fabric, int Modern, int Stellar, int Places, int Pitched, int Strips, int Panes, int Walls)>();
         int walkBroken = 0, walked = 0;
+        (int L, int H) glassBefore = (0, 0), glassAfter = (0, 0);
         string first = "";
         foreach (TechLevel tech in new[] { TechLevel.Low, TechLevel.Mid, TechLevel.High })
         {
@@ -102,6 +104,8 @@ public partial class PoiTest
                     EraPass.Enabled = true;
                     var inst = PoiFactory.Spawn(_lib, l, PoiState.Active, seed);
                     int before = asBuilt == null ? 0 : Validator.Check(PoiFactory.Spawn(_lib, asBuilt, PoiState.Active, seed)).Count;
+                    int Glass(Layout x) => x.Blocks.Blocks().Count(c => c.Block.Role == Role.Window && c.Block.Material == Material.Glass);
+                    if (asBuilt != null) { if (tech == TechLevel.Low) { glassBefore.L += Glass(asBuilt); glassAfter.L += Glass(l); } else { glassBefore.H += Glass(asBuilt); glassAfter.H += Glass(l); } }
                     var problems = Validator.Check(inst);
                     if (problems.Count > before) { walkBroken++; if (first.Length == 0) first = $" (first: {f.Id} in {WorldProfile.Tag(tech)}: {problems[0]})"; }
                 }
@@ -112,10 +116,10 @@ public partial class PoiTest
         float Share(int a, int b) => b == 0 ? 0f : a / (float)b;
         Check(Share(lo.Modern, lo.Fabric) < 0.08f && lo.Places > 10,
             $"low-tech kits read low: {Share(lo.Modern, lo.Fabric):P1} of {lo.Fabric} wall and roof blocks in concrete, steel or alloy over {lo.Places} places (mid {Share(mid.Modern, mid.Fabric):P0})");
-        Check(Share(lo.Pitched, lo.Places) > 0.3f && Share(lo.Panes, lo.Walls) < Share(mid.Panes, mid.Walls) * 0.8f,
-            $"low-tech places have pitched roofs and few windows: {lo.Pitched} of {lo.Places} pitched, {Share(lo.Panes, lo.Walls):P1} glass to wall against {Share(mid.Panes, mid.Walls):P1} mid");
-        Check(Share(hi.Stellar, hi.Fabric) > 0.55f && Share(hi.Strips, hi.Places) > 0.5f && Share(hi.Panes, hi.Walls) > Share(mid.Panes, mid.Walls),
-            $"high-tech kits read high: {Share(hi.Stellar, hi.Fabric):P0} alloy, resin, glass and light (mid {Share(mid.Stellar, mid.Fabric):P0}), {hi.Strips} of {hi.Places} with light strips, {Share(hi.Panes, hi.Walls):P1} glass to wall");
+        Check(Share(lo.Pitched, lo.Places) > 0.3f && glassAfter.L < glassBefore.L * 0.75f,
+            $"low-tech places have pitched roofs and few windows: {lo.Pitched} of {lo.Places} pitched, {glassAfter.L} panes kept of {glassBefore.L} the kits drew");
+        Check(Share(hi.Stellar, hi.Fabric) > 0.55f && Share(hi.Strips, hi.Places) > 0.5f && glassAfter.H > glassBefore.H,
+            $"high-tech kits read high: {Share(hi.Stellar, hi.Fabric):P0} alloy, resin, glass and light (mid {Share(mid.Stellar, mid.Fabric):P0}), {hi.Strips} of {hi.Places} with light strips, {glassAfter.H} panes against {glassBefore.H} the kits drew");
         Check(walkBroken == 0, $"the era pass breaks no place's walk: {walkBroken} of {walked} places gained a problem{first}");
 
         // ---- a world asks only for what its tech had, and its falls bring their age's own places
