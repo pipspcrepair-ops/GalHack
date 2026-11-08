@@ -90,6 +90,26 @@ public sealed class DeepFauna
         return _husks[(theme, role)] = lead;
     }
 
+    readonly Dictionary<(string, DeepRole, PoiTheme), Species> _holding = new();
+
+    /// <summary>
+    /// One of a place's holders (a machine, a twisted beast, a Hollow, one of the fall's own) given
+    /// a job in it: the same body, a copy of its own, with the role's senses and reach. Once each.
+    /// </summary>
+    public Species Holding(Species s, DeepRole role, PoiTheme theme)
+    {
+        if (_holding.TryGetValue((s.Id, role, theme), out Species found)) return found;
+        Species c = s.Copy();
+        string id = $"{s.Id}-holds-{role}";
+        int index = s.Index;
+        Prowling(c, role, theme, 0);
+        // A machine ticks and whirs where a body breathes.
+        if (c.Mechanical) c.Tells = new[] { TellKind.Click };
+        c.Id = id;
+        c.Index = index;
+        return _holding[(s.Id, role, theme)] = c;
+    }
+
     /// <summary>A body from elsewhere, given a prowler's (or a lurker's) job in a place.</summary>
     Species Prowling(Species s, DeepRole role, PoiTheme theme, int depth)
     {

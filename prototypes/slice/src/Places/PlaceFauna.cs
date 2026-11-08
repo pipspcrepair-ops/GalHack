@@ -35,8 +35,12 @@ public sealed class PlaceFauna
         /// <summary>How livable the world is, 0..1.</summary>
         public readonly float Livable;
 
+        /// <summary>The world's life: whoever holds a place is one of its own kinds.</summary>
+        public readonly WorldLife Life;
+
         public Deep(WorldLife life, PlanetSurface.World.PlanetWorld planet, float livable = 1f)
         {
+            Life = life;
             Data = life.Data;
             Planet = planet;
             Livable = livable;
@@ -63,18 +67,19 @@ public sealed class PlaceFauna
             Derelict = ship,
             Livable = deep.Livable,
         };
-        // The Turned (code HSK) hold it, alone or sharing it with others: a Husk den.
-        if (inst.Occupancy is { } occ && (occ.Main == Occupant.Turned || occ.Second == Occupant.Turned || occ.Trace == Occupant.Turned))
+        // The Turned (code HSK) hold it, alone or sharing it with others: a Husk den. Where the Husks'
+        // warping (WRP) holds it, a light one: the wrongness, a few of them far in.
+        if (inst.Occupancy is { } occ && (Has(occ, Occupant.Turned) || Has(occ, Occupant.Warped)))
         {
+            bool turned = Has(occ, Occupant.Turned);
+            Occupant who = turned ? Occupant.Turned : Occupant.Warped;
             plan.Husks = true;
-            plan.Shared = occ.Main != Occupant.Turned || occ.Second != null || occ.How != Sharing.Alone;
+            plan.Shared = occ.Main != who || occ.Second != null || occ.How != Sharing.Alone;
             // How far gone it is goes by how they hold it: alone (severe), sharing, second, or only a trace (light).
-            plan.Severity = deep.Data.Husks.SeverityOf(occ.Main == Occupant.Turned, !plan.Shared, occ.Main != Occupant.Turned && occ.Second != Occupant.Turned,
-                Wildlife.Rng.For(inst.SpawnSeed, "den-severity").Float());
+            plan.Severity = deep.Data.Husks.SeverityOf(occ.Main == who, !plan.Shared, occ.Main != who && occ.Second != who,
+                Wildlife.Rng.For(inst.SpawnSeed, "den-severity").Float()) * (turned ? 1f : 0.4f);
         }
-        // People keep a place clear of what would hunt them, as a garrison does: at most vermin, down in the dark.
-        if (inst.Occupancy is { Main: Occupant.Scavengers or Occupant.Squatters or Occupant.Gang or Occupant.Machines or Occupant.Faction or Occupant.Cyborgs or Occupant.Robots or Occupant.Cult or Occupant.Keepers or Occupant.Guardians, Second: not (Occupant.Nesters or Occupant.Prowlers) })
-            plan.State = PlaceState.Active;
+        HoldersOf(inst, deep.Life, plan);
         var byIndex = new Dictionary<int, PoiRoom>();
         foreach (PlacedModule m in layout.Modules)
         {
@@ -112,6 +117,56 @@ public sealed class PlaceFauna
         lock (deep.Lock) pop = PoiFauna.Populate(plan, deep.Fauna, deep.Data.Deep);
         return new PlaceFauna { Population = pop };
     }
+
+    static bool Has(OccupancyRoll o, Occupant who) => o.Main == who || o.Second == who || o.Trace == who;
+
+    /// <summary>
+    /// Who holds a place, from its rolled occupant (who the world's theme and fall put there), and
+    /// which of the world's own kinds they are: nesters' nests; twisted beasts (and the fall's own
+    /// changed, where it has them) in their den; machines, the old security or cyborgs on their
+    /// rounds; people (the town) keeping it clear; the empty and the sleeping holding vermin at
+    /// most. A place the growth took (infested) is the Hollows', its beasts through its rooms. Where
+    /// two groups share it, the one that isn't people says what lives in it.
+    /// </summary>
+    public static void HoldersOf(PoiInstance inst, WorldLife life, PoiPlan plan)
+    {
+        if (inst.Occupancy is not { } occ)
+        {
+            if (inst.State != PoiState.Infested) return;
+            plan.Holder = PlaceHolder.Hollows;
+            plan.Holders.AddRange(life.Hollows);
+            return;
+        }
+        Occupant main = Creatures(occ.Main) || occ.Second is not { } second || !Creatures(second) ? occ.Main : second;
+        plan.Holder = HolderOf(main);
+        switch (main)
+        {
+            case Occupant.Prowlers:
+                plan.Holders.AddRange(life.Twisted);
+                break;
+            case Occupant.Machines or Occupant.Robots or Occupant.Guardians:
+                plan.Holders.AddRange(life.Machines);
+                break;
+            case Occupant.Cyborgs:
+                plan.Holders.AddRange(life.Cyborgs);
+                break;
+        }
+        // Holders with nobody to be: the place is only what lives in any place.
+        if (plan.Holder is PlaceHolder.Beasts or PlaceHolder.Machines && plan.Holders.Count == 0) plan.Holder = PlaceHolder.Empty;
+    }
+
+    /// <summary>Occupants that are creatures (beasts, machines, the Husks), not the town's people.</summary>
+    static bool Creatures(Occupant o) => o is Occupant.Nesters or Occupant.Prowlers or Occupant.Turned or Occupant.Warped or Occupant.Machines or Occupant.Robots or Occupant.Guardians or Occupant.Cyborgs;
+
+    public static PlaceHolder HolderOf(Occupant o) => o switch
+    {
+        Occupant.Nesters => PlaceHolder.Nesters,
+        Occupant.Prowlers => PlaceHolder.Beasts,
+        Occupant.Turned or Occupant.Warped => PlaceHolder.Husks,
+        Occupant.Machines or Occupant.Robots or Occupant.Guardians or Occupant.Cyborgs => PlaceHolder.Machines,
+        Occupant.Scavengers or Occupant.Squatters or Occupant.Gang or Occupant.Faction or Occupant.Cult or Occupant.Keepers or Occupant.Mimics => PlaceHolder.People,
+        _ => PlaceHolder.Empty, // nobody, or the sleepers (still asleep, harming nobody)
+    };
 
     static PoiTheme ThemeOf(Faction f, FamilyDef family) =>
         family.Tags.Contains("mine") || family.Tags.Contains("cave") ? PoiTheme.Natural
