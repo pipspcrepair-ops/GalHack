@@ -115,7 +115,8 @@ void take_road(inout Road r, ivec2 b, vec2 rel, float u, float d, float edge, fl
 	r.dir = t0.zw / len;
 	r.side = (t0.z * to.y - t0.w * to.x) / len;
 	r.along = mix(t1.z, t1.w, u);
-	r.half_width = t6.y > 0.1 ? t6.y : t2.x;
+	vec4 t7 = texelFetch(road_segments, b + ivec2(7, 0), 0);
+	r.half_width = t6.y > 0.1 ? mix(t7.z, t7.w, u) : t2.x;
 	r.wear = t2.y;
 	r.surface = t2.z;
 	r.style = t2.w - id * 16.0;
@@ -207,12 +208,13 @@ Road nearest_road(vec2 at, float y) {	Road r;
 		float cap = max(max(-ur, ur - 1.0), 0.0) * length(t0.zw);
 		float d = length(rel - t0.zw * u);
 		vec4 t6 = texelFetch(road_segments, b + ivec2(6, 0), 0);
-		// Its painted width: its own, or easing to meet a way of another class it runs on into.
-		if (t6.y > 0.1) t2.x = t6.y;
+		vec4 t7 = texelFetch(road_segments, b + ivec2(7, 0), 0);
+		// Its painted width: its own, or easing to meet a way of another class it runs on into (smoothly along the
+		// segment, from its width at one end to its width at the other: never a step where two segments meet).
+		if (t6.y > 0.1) t2.x = mix(t7.z, t7.w, u);
 		float edge = d - t2.x;
 		// A way that ends on another's deck (a junction's branch, a drive) ends there flat, inside that deck.
 		if (cap > 0.0) {
-			vec4 t7 = texelFetch(road_segments, b + ivec2(7, 0), 0);
 			if (ur < 0.0 && t7.x > 0.5 || ur > 1.0 && t7.y > 0.5)
 				edge = max(abs(rel.x * t0.w - rel.y * t0.z) / max(length(t0.zw), 1e-4) - t2.x, cap);
 		}
@@ -599,10 +601,9 @@ vec4 paint_road(Road r, vec2 p, vec3 land, float fw, float near, out float cover
 	// them, the crossover laid over its sides where they cross.)
 	float o_join = kerbed && (r.other_soil > 0.5 || lane && r.other_hw < 2.5) ? 1e9 : r.other;
 	float h_k = kerb > 0.0 ? max(kerb - abs(r.edge - o_join), 0.0) / kerb : 0.0;
-	// (A corner's kerb joins the ways' own eased over a few centimetres: RoadField.CornerJoin.)
+	// (A corner's kerb is tangent to the ways' own as drawn, so the two simply meet: RoadField.CornerJoin.)
 	float joined_r = min(r.edge, o_join) - h_k * h_k * kerb * 0.25;
-	float h_c = max(0.4 - abs(joined_r - r.corner), 0.0) / 0.4;
-	float joined = min(joined_r, r.corner) - h_c * h_c * 0.1;
+	float joined = min(joined_r, r.corner);
 	float edge = joined + wander;
 	float soft = kerbed ? 0.02 : hard ? 0.05 + 0.2 * wear : 0.35 + (r.surface > 3.5 ? 0.5 : 0.0);
 	float deck = 1.0 - smoothstep(-soft - fw * 0.5, soft + fw * 0.5, edge);

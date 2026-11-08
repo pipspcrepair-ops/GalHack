@@ -33,7 +33,8 @@ public partial class SurfaceTest
         int bulbs = 0, bulbsSteep = 0, bulbsBanked = 0, bulbsEmpty = 0, bridges = 0, badBridges = 0, stubs = 0, ringsChecked = 0, badRings = 0;
         int footSamples = 0, footOff = 0, footDip = 0, joinsChecked = 0, aslant = 0, noCrossover = 0;
         var notes = new Dictionary<string, string>();
-        void Note(string key, string s) { if (!notes.ContainsKey(key)) notes[key] = s; }
+        bool verbose = OS.GetCmdlineUserArgs().Contains("--kerbverbose");
+        void Note(string key, string s) { if (!notes.ContainsKey(key)) notes[key] = s; if (verbose) GD.Print($"KERBFAIL w{worlds} {key}: {s}"); }
         var forms = new Dictionary<string, int>();
         string mapDir = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--kerbmaps="))?["--kerbmaps=".Length..];
         int maps = 0;
@@ -54,6 +55,7 @@ public partial class SurfaceTest
                 InfraNetwork.ForceRoundabouts = false;
                 if (w.Infra?.Profile == null || !w.Infra.Profile.Inhabited) continue;
                 worlds++;
+                if (verbose) GD.Print($"KERBWORLD w{worlds}: {w.Spec} start {start} city {city} rings {ringsOn}");
                 InfraNetwork net = w.Infra;
                 RoadField field = RoadField.Build(w.Source, w.Width, w.Height, net.Corners);
                 foreach (var (why, n) in net.CornerMisses)
@@ -76,6 +78,7 @@ public partial class SurfaceTest
                     if (fault != null)
                     {
                         if (fault.StartsWith("broken")) broken++; else rough++;
+                        if (verbose) GD.Print($"KERBDIAG w{worlds} kerb {c.Why} {c.X:F0},{c.Z:F0}: {fault} {Diag(net, w, c, fault)} {Radii(field, c, 0f, w)}");
                         Note("kerb", $"{c.Why} corner at {c.X:F0},{c.Z:F0} (r {c.R:F1}): {fault}");
                         Note("kerb " + c.Why, $"{c.X:F0},{c.Z:F0} (r {c.R:F1}): {fault}");
                         if (!failing.Any(f => f.Why == $"{c.Why}-kerb")) failing.Add((c.X, c.Z, $"{c.Why}-kerb"));
@@ -87,6 +90,7 @@ public partial class SurfaceTest
                         if (foot != null)
                         {
                             footRough++;
+                            if (verbose) GD.Print($"KERBDIAG w{worlds} foot {c.Why} {c.X:F0},{c.Z:F0}: {foot} {Diag(net, w, c, foot)} {Radii(field, c, InfraNetwork.FootpathOut, w)}");
                             Note("foot", $"{c.Why} corner at {c.X:F0},{c.Z:F0}: {foot}");
                             Note("foot " + c.Why, $"{c.X:F0},{c.Z:F0}: {foot}");
                             if (fault == null && !failing.Any(f => f.Why == $"{c.Why}-foot")) failing.Add((c.X, c.Z, $"{c.Why}-foot"));
@@ -119,7 +123,12 @@ public partial class SurfaceTest
                         if (w.Source.Built(x, z, out _) > 0.5f) continue;
                         bedSamples++;
                         float g = w.Source.SurfaceHeight(x, z), deck = c.DeckAt(x, z, w.Width, w.Height);
-                        if (Math.Abs(g - deck) > 0.8f) { bedOff++; Note("bed", $"the {c.Why} corner's deck at {x:F0},{z:F0} is {g - deck:F2} m off the ground"); }
+                        if (Math.Abs(g - deck) > 0.8f)
+                        {
+                            bedOff++;
+                            if (verbose) GD.Print($"KERBDIAG w{worlds} bed {c.Why} {c.X:F0},{c.Z:F0} r{c.R:F1} tilt {c.TiltX:F3},{c.TiltZ:F3}: at {x:F1},{z:F1} ground {g:F2} deck {deck:F2}; stamps {string.Join("/", w.Source.StampsAt(x, z).Select(k => w.Source.Stamps[k]).Where(t => t.Weight(x, z) > 0f).Select(t => t.Name).Take(5))} {Diag(net, w, c, $"{x:F1},{z:F1}")}");
+                            Note("bed", $"the {c.Why} corner's deck at {x:F0},{z:F0} is {g - deck:F2} m off the ground");
+                        }
                     }
                 }
                 // Turning bulbs: the ground at the deck across the whole disc.
@@ -361,6 +370,50 @@ public partial class SurfaceTest
         Check(lamps > 20 && lampsOff * 100 <= lamps, $"every lamp stands in its verge on the ground: {lamps} lamps, {lampsOff} not (at most one in a hundred){N("lamp")}");
         Check(bedSamples > 100 && bedOff == 0 && underOut == 0 && throughDeck * 100 <= bridgeSamples,
             $"the ground meets the road and nothing shows through: {bedSamples} points under corners and turning bulbs, {bedOff} off the deck by over 0.8 m{N("bed")}{N("bulb")}; {underCells} columns over the underground, {underOut} out of the ground{N("under")}; {bridgeSamples} points under bridges, {throughDeck} with land through the deck (at most one in a hundred){N("bridge")} ({overpasses} points over another way, not judged)");
+    }
+
+    /// <summary>What lies round a kerb fault (verbose runs): the sharpest bend of any way's centre line near it, the nearest bulb, other corners, widths.</summary>
+    static string Diag(InfraNetwork net, PlanetWorld w, RoadCorner c, string fault)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(fault ?? "", @"(-?\d+\.\d),(-?\d+\.\d)");
+        double fx = c.X, fz = c.Z;
+        if (m.Success) { fx = double.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture); fz = double.Parse(m.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture); }
+        double D(double ax, double az, double bx, double bz) => Math.Sqrt(Math.Pow(Mathx.WrapDelta(ax - bx, w.Width), 2) + Math.Pow(Mathx.WrapDelta(az - bz, w.Height), 2));
+        double dc = D(fx, fz, c.X, c.Z);
+        string part = Math.Abs(dc - c.R) < 0.6 ? "arc" : "leg";
+        var bends = new List<string>();
+        foreach (InfraRoute r in net.Routes.Where(r => r.Kind != RouteKind.Rail && r.Count >= 3))
+            for (int i = 1; i + 1 < r.Count; i++)
+            {
+                if (D(r.X[i], r.Z[i], fx, fz) > 14) continue;
+                double ax = r.X[i] - r.X[i - 1], az = r.Z[i] - r.Z[i - 1], bx = r.X[i + 1] - r.X[i], bz = r.Z[i + 1] - r.Z[i];
+                double t = Math.Acos(Math.Clamp((ax * bx + az * bz) / Math.Max(1e-9, Math.Sqrt((ax * ax + az * az) * (bx * bx + bz * bz))), -1, 1)) * 180 / Math.PI;
+                if (t > 6) bends.Add($"r{r.Id}[{i}/{r.Count}] {t:F0}deg {D(r.X[i], r.Z[i], fx, fz):F1}m");
+            }
+        var near = net.Routes.Where(r => r.Kind != RouteKind.Rail && r.Count >= 2).Select(r => (r, d: Enumerable.Range(0, r.Count).Min(i => D(r.X[i], r.Z[i], fx, fz)))).Where(p => p.d < 20)
+            .Select(p => $"r{p.r.Id} {p.r.Kind}{(p.r.Laid.Length == 0 ? "-st" : "")}{(p.r.Soil ? "-dirt" : "")} hw{p.r.HalfWidth:F1} meet{p.r.StartMeetHw:F1}/{p.r.EndMeetHw:F1} ends{p.r.StartJoin}/{p.r.EndJoin} n{p.r.Count} {p.d:F0}m");
+        var discs = net.Corners.Where(o => o.Disc).Select(o => D(o.X, o.Z, fx, fz) - o.R).Where(d => d < 12).Select(d => $"{d:F1}");
+        var others = net.Corners.Where(o => !o.Disc && o != c).Select(o => (o, d: D(o.X, o.Z, fx, fz))).Where(p => p.d < p.o.Cut + 2).Select(p => $"{p.o.Why} r{p.o.R:F1} {p.d:F1}m");
+        var joins = net.Joins.Where(j => D(j.X, j.Z, fx, fz) < 30).Select(j => $"{j.Form}({j.Arms.Count}) {D(j.X, j.Z, fx, fz):F0}m");
+        return $"[{part} {dc:F1}/{c.R:F1}; routes {c.RouteA}/{c.RouteB}; bends {string.Join(", ", bends)}; near {string.Join("; ", near)}; discs {string.Join(" ", discs)}; corners {string.Join(", ", others)}; joins {string.Join(", ", joins)}]";
+    }
+
+    /// <summary>Where the drawn edge at a level crosses each ray from a corner's centre, across its sweep and a little past it (verbose runs).</summary>
+    static string Radii(RoadField field, RoadCorner c, float level, PlanetWorld w)
+    {
+        double a0 = Math.Atan2(c.AZ, c.AX), cab = c.AX * c.BZ - c.AZ * c.BX;
+        double sweep = Math.Acos(Math.Clamp(c.AX * c.BX + c.AZ * c.BZ, -1, 1)) * Math.Sign(cab);
+        var parts = new List<string>();
+        for (int i = -2; i <= 14; i++)
+        {
+            double ang = a0 + sweep * i / 12;
+            double lo = 0.2, hi = c.R + 3;
+            float F(double r) => field.DeckEdgeAt(Mathx.WrapX(c.X + Math.Cos(ang) * r, w.Width), Mathx.Wrap(c.Z + Math.Sin(ang) * r, w.Height), c.Y, 3f) - level;
+            if (!(F(lo) > 0 && F(hi) < 0)) { parts.Add("x"); continue; }
+            for (int it = 0; it < 30; it++) { double m = (lo + hi) * 0.5; if (F(m) > 0) lo = m; else hi = m; }
+            parts.Add(((lo + hi) * 0.5).ToString("F2"));
+        }
+        return $"radii@{level:F1} (want {c.R - level:F2}): {string.Join(" ", parts)}";
     }
 
     /// <summary>Whether one corner's deck runs over the other's kerb arc.</summary>

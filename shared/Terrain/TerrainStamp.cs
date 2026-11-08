@@ -678,6 +678,7 @@ public sealed class TerrainStamp
     public static float Compose(System.Collections.Generic.IReadOnlyList<TerrainStamp> stamps, float natural, double x, double z)
     {
         float pad = PadWeight(stamps, null, x, z);
+        if (pad >= 1f && OnStreetBed(stamps, null, x, z)) pad = 0.999f;
         float h = natural;
         bool roads = false;
         for (int i = 0; i < stamps.Count; i++)
@@ -728,6 +729,30 @@ public sealed class TerrainStamp
             if (t.Shape == StampShape.Pad) most = Math.Max(most, t.Weight(x, z));
         }
         return most;
+    }
+
+    /// <summary>
+    /// Whether a point lies on a kerbed street's level bed (kerb, verge and footpath) and on no place's footprint: there the
+    /// street rules even over a pad's apron, so a footpath beside a lot is laid level with its street, not tipped to the
+    /// lot's own level along its outer edge.
+    /// </summary>
+    public static bool OnStreetBed(System.Collections.Generic.IReadOnlyList<TerrainStamp> stamps, int[] only, double x, double z)
+    {
+        int n = only?.Length ?? stamps.Count;
+        bool bed = false;
+        for (int k = 0; k < n && !bed; k++)
+        {
+            TerrainStamp t = stamps[only != null ? only[k] : k];
+            if (t.Shape != StampShape.Road || t.Verge <= 0f) continue;
+            if (t.NearestOnPath(x, z, out float d, out _, out RoadSpan span, groundOnly: true) && span == RoadSpan.Ground && d <= t.HalfWidth + t.Verge) bed = true;
+        }
+        if (!bed) return false;
+        for (int k = 0; k < n; k++)
+        {
+            TerrainStamp t = stamps[only != null ? only[k] : k];
+            if (t.Shape == StampShape.Pad && t.OnFootprint(x, z)) return false;
+        }
+        return true;
     }
 
     /// <summary>Whether a point is on a place's footprint or apron: roads never change the ground there (the place's pad rules it).</summary>

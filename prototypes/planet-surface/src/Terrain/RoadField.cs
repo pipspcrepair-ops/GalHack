@@ -26,7 +26,8 @@ namespace PlanetSurface.Terrain;
 ///      and how far along the road that junction is from a and from b (positive ahead the way it was laid, negative behind)
 ///   6: the median dividing a highway's carriageways (0 none, 1 grass, 2 barrier, 3 grown over), then unused
 ///   7: whether the stretch's start or end is a way's end lying on another way's deck (a junction's branch, a drive):
-///      it ends there flat, square across, inside that deck (a round end poked out past its far kerb as a bump); 0, 0
+///      it ends there flat, square across, inside that deck (a round end poked out past its far kerb as a bump); its
+///      painted half width at a and at b (the deck's width eases smoothly along the segment between them)
 /// A junction's rounded corner (<see cref="PlanetSurface.Infra.RoadCorner"/>) is an entry of its own, style <see cref="Corner"/>:
 ///   0: its centre (canonical), the tilt of its plane (rise per metre in x and z: a turning bulb on sloping land)
 ///   1: deck height, deck height, radius, cut (how far from the centre its deck reaches)
@@ -170,6 +171,31 @@ public sealed class RoadField
             }
             return false;
         }
+        // Near a junction's rounded corner the ways are drawn as laid, to the millimetre (Simplify).
+        var near = new Dictionary<(int, int), List<PlanetSurface.Infra.RoadCorner>>();
+        foreach (PlanetSurface.Infra.RoadCorner c in corners ?? Array.Empty<PlanetSurface.Infra.RoadCorner>())
+        {
+            double reach = c.Cut + 6;
+            for (int gx = (int)Math.Floor((c.X - reach) / 32); gx <= (int)Math.Floor((c.X + reach) / 32); gx++)
+                for (int gz = (int)Math.Floor((c.Z - reach) / 32); gz <= (int)Math.Floor((c.Z + reach) / 32); gz++)
+                {
+                    int nx = (int)Math.Ceiling(width / 32), nz = (int)Math.Ceiling(height / 32);
+                    var key = ((gx % nx + nx) % nx, (gz % nz + nz) % nz);
+                    if (!near.TryGetValue(key, out var l)) near[key] = l = new();
+                    l.Add(c);
+                }
+        }
+        bool precise(double x, double z)
+        {
+            double cx = Mathx.WrapX(x, width), cz = Mathx.Wrap(z, height);
+            if (!near.TryGetValue(((int)Math.Floor(cx / 32), (int)Math.Floor(cz / 32)), out var l)) return false;
+            foreach (var c in l)
+            {
+                double dx = Mathx.WrapDelta(cx - c.X, width), dz = Mathx.WrapDelta(cz - c.Z, height);
+                if (dx * dx + dz * dz < (c.Cut + 6) * (c.Cut + 6)) return true;
+            }
+            return false;
+        }
         var flatStart = new HashSet<int>(firsts.Where(f => OnAnother(f.Key, f.Value.X, f.Value.Z)).Select(f => f.Key));
         var flatEnd = new HashSet<int>(lasts.Where(f => OnAnother(f.Key, f.Value.X, f.Value.Z)).Select(f => f.Key));
         foreach (var (pts, t, st, rid) in runs)
@@ -191,7 +217,7 @@ public sealed class RoadField
                     foreach (var (ix, iz, ir) in islands)
                         if (Math.Sqrt(Math.Pow(Mathx.WrapDelta(pts[i].X - ix, width), 2) + Math.Pow(Mathx.WrapDelta(pts[i].Z - iz, height), 2)) < ir) pts[i] = pts[i] with { Core = 1f };
             }
-            n += Emit(segs, pts, t, st, rid, width, height);
+            n += Emit(segs, pts, t, st, rid, width, height, precise);
         }
         // The junctions' rounded corners, each an entry of its own.
         foreach (PlanetSurface.Infra.RoadCorner c in corners ?? Array.Empty<PlanetSurface.Infra.RoadCorner>())
@@ -295,11 +321,11 @@ public sealed class RoadField
     }
 
     /// <summary>A run of ground points as few segments as keep the line within 3 cm (and the deck within 20 cm): straights become one segment.</summary>
-    static int Emit(List<float> segs, List<Point> run, TerrainStamp t, int style, int id, double width, double height)
+    static int Emit(List<float> segs, List<Point> run, TerrainStamp t, int style, int id, double width, double height, Func<double, double, bool> precise)
     {
         int count = 0;
         var keep = new List<int> { 0 };
-        Simplify(run, 0, run.Count - 1, keep);
+        Simplify(run, 0, run.Count - 1, keep, precise);
         keep.Add(run.Count - 1);
         keep.Sort();
         for (int k = 0; k + 1 < keep.Count; k++)
@@ -313,14 +339,13 @@ public sealed class RoadField
             segs.Add(a.Wide); segs.Add(b.Wide); segs.Add(a.Lot); segs.Add(b.Lot);
             segs.Add(a.JForm); segs.Add(b.JForm); segs.Add(a.JDist); segs.Add(b.JDist);
             segs.Add(t.Median); segs.Add((a.PaintHw + b.PaintHw) * 0.5f); segs.Add(a.Seam); segs.Add(b.Seam);
-            segs.Add(k == 0 ? a.Flat : 0f); segs.Add(k + 2 == keep.Count ? b.Flat : 0f);
-            for (int k2 = 7 * 4 + 2; k2 < Stride; k2++) segs.Add(0f);
+            segs.Add(k == 0 ? a.Flat : 0f); segs.Add(k + 2 == keep.Count ? b.Flat : 0f); segs.Add(a.PaintHw); segs.Add(b.PaintHw);
             count++;
         }
         return count;
     }
 
-    static void Simplify(List<Point> run, int a, int b, List<int> keep)
+    static void Simplify(List<Point> run, int a, int b, List<int> keep, Func<double, double, bool> precise)
     {
         if (b - a < 2) return;
         Point p = run[a], q = run[b];
@@ -332,20 +357,23 @@ public sealed class RoadField
             Point r = run[i];
             float u = (float)((r.S - p.S) / Math.Max(1e-6f, q.S - p.S));
             double side = len > 1e-6 ? Math.Abs((r.X - p.X) * ez - (r.Z - p.Z) * ex) / len : 0;
-            float err = MathF.Max((float)side / 0.03f, MathF.Abs(r.Y - (p.Y + (q.Y - p.Y) * u)) / 0.2f);
+            // (By a junction's rounded corner the line and width are kept to a few millimetres: the corner's arc is fitted to
+            // the way as laid, and a few centimetres off it showed as a jog where the kerb runs into the arc.)
+            float tol = precise != null && precise(r.X, r.Z) ? 0.004f : 0.03f, tolW = tol < 0.01f ? 0.004f : 0.05f;
+            float err = MathF.Max((float)side / tol, MathF.Abs(r.Y - (p.Y + (q.Y - p.Y) * u)) / 0.2f);
             err = MathF.Max(err, MathF.Max(MathF.Abs(r.Pad - (p.Pad + (q.Pad - p.Pad) * u)), MathF.Abs(r.Core - (p.Core + (q.Core - p.Core) * u))) / 0.1f);
             err = MathF.Max(err, MathF.Max(MathF.Abs(r.Wide - (p.Wide + (q.Wide - p.Wide) * u)), MathF.Abs(r.Lot - (p.Lot + (q.Lot - p.Lot) * u))) / 0.1f);
             if (r.JForm != p.JForm || r.JForm != q.JForm) err = MathF.Max(err, 100f);
             err = MathF.Max(err, MathF.Abs(r.JDist - (p.JDist + (q.JDist - p.JDist) * u)) / 0.2f);
-            err = MathF.Max(err, MathF.Max(MathF.Abs(r.PaintHw - (p.PaintHw + (q.PaintHw - p.PaintHw) * u)) / 0.05f, MathF.Abs(r.Seam - (p.Seam + (q.Seam - p.Seam) * u)) / 0.1f));
+            err = MathF.Max(err, MathF.Max(MathF.Abs(r.PaintHw - (p.PaintHw + (q.PaintHw - p.PaintHw) * u)) / tolW, MathF.Abs(r.Seam - (p.Seam + (q.Seam - p.Seam) * u)) / 0.1f));
             if (err > worst) { worst = err; at = i; }
         }
         // Long segments are split anyway, so a cell's list stays short and the deck follows the grade.
         if (at < 0 && q.S - p.S > 96f) at = (a + b) / 2;
         if (at < 0) return;
         keep.Add(at);
-        Simplify(run, a, at, keep);
-        Simplify(run, at, b, keep);
+        Simplify(run, a, at, keep, precise);
+        Simplify(run, at, b, keep, precise);
     }
 
     static RoadField Pack(List<float> segs, int n, double width, double height)
@@ -457,7 +485,7 @@ public sealed class RoadField
             float ex = _segs[o + 2], ez = _segs[o + 3];
             float u = Math.Clamp((rx * ex + rz * ez) / MathF.Max(ex * ex + ez * ez, 1e-6f), 0f, 1f);
             float d = MathF.Sqrt((rx - ex * u) * (rx - ex * u) + (rz - ez * u) * (rz - ez * u));
-            float hw = _segs[o + 25] > 0.1f ? _segs[o + 25] : _segs[o + 8];
+            float hw = _segs[o + 25] > 0.1f ? _segs[o + 30] + (_segs[o + 31] - _segs[o + 30]) * u : _segs[o + 8];
             float e = d - hw;
             float ur = (rx * ex + rz * ez) / MathF.Max(ex * ex + ez * ez, 1e-6f), len = MathF.Sqrt(ex * ex + ez * ez);
             if (ur < 0f && _segs[o + 28] > 0.5f || ur > 1f && _segs[o + 29] > 0.5f)
@@ -482,15 +510,11 @@ public sealed class RoadField
     }
 
     /// <summary>
-    /// A corner's kerb joined to the ways' own (the shader's): their least, eased over the last few centimetres where they meet, so
-    /// the few centimetres a corner's fit to a curved centre line leaves at its tangent points never show as a jog in the kerb.
+    /// A corner's kerb joined to the ways' own (the shader's): simply their least. The corner's arc is tangent to the kerb lines
+    /// as they are drawn (each way's painted width along it), so the two meet without a jog; an easing between them stepped
+    /// in where the corner's cone began, a jog of up to 10 cm at every tangent point.
     /// </summary>
-    public static float CornerJoin(float road, float corner)
-    {
-        const float K = 0.4f;
-        float h = MathF.Max(K - MathF.Abs(road - corner), 0f) / K;
-        return MathF.Min(road, corner) - h * h * K * 0.25f;
-    }
+    public static float CornerJoin(float road, float corner) => MathF.Min(road, corner);
 
     static ImageTexture Texture(float[] values, int w, int h, Image.Format format, int bytesPerTexel)
     {

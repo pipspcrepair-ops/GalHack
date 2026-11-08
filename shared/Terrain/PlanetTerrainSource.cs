@@ -169,6 +169,8 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
     {
         int[] near = StampsAt(x, z);
         float pad = TerrainStamp.PadWeight(Stamps, near, x, z);
+        // (A kerbed street's level bed rules over a pad's apron: its footpath lies level with it right up to the lot.)
+        if (pad >= 1f && TerrainStamp.OnStreetBed(Stamps, near, x, z)) pad = 0.999f;
         float h = natural;
         bool roads = false;
         foreach (int i in near)

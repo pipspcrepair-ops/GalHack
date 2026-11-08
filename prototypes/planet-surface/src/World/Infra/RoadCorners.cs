@@ -92,6 +92,8 @@ public static class RoadCorners
         public double Angle;
         /// <summary>Its half width at the meeting point: its own, or where it narrows to meet the way it comes to, that.</summary>
         public float Hw;
+        /// <summary>Its painted half width at each point of <see cref="P"/> (it may ease along the leg to meet another way's).</summary>
+        public List<float> Hws = new();
     }
 
     public static List<RoadCorner> Plan(InfraNetwork net, Dictionary<string, int> misses = null, Func<double, double, bool> onPlace = null, List<(double X, double Z, string Why)> missedAt = null)
@@ -107,7 +109,12 @@ public static class RoadCorners
         // A leg from route point `i` of r, stepping `step` (+1 or -1), as far as `reach` metres, in metres from (ox, oz).
         Leg MakeLeg(InfraRoute r, int i, int step, double ox, double oz, double reach = 70)
         {
-            var leg = new Leg { Route = r, Hw = i == 0 && r.StartMeetHw > 0f ? (r.HalfWidth + r.StartMeetHw) * 0.5f : i == r.Count - 1 && r.EndMeetHw > 0f ? (r.HalfWidth + r.EndMeetHw) * 0.5f : r.HalfWidth };
+            var leg = new Leg { Route = r };
+            // (How far along the route each of its points lies, for its painted width there.)
+            var along = new double[r.Count];
+            for (int k = 1; k < r.Count; k++) along[k] = along[k - 1] + Math.Sqrt(Math.Pow(r.X[k] - r.X[k - 1], 2) + Math.Pow(r.Z[k] - r.Z[k - 1], 2));
+            float Paint(int k) => InfraNetwork.PaintHalfWidth(r, along[k], along[^1] - along[k]);
+            leg.Hw = Paint(i);
             var pts = new List<(double X, double Z)>();
             double run = 0;
             for (int k = i; k >= 0 && k < r.Count; k += step)
@@ -115,12 +122,14 @@ public static class RoadCorners
                 var p = (Mathx.WrapDelta(r.X[k] - ox, w), Mathx.WrapDelta(r.Z[k] - oz, h));
                 if (pts.Count > 0) run += Math.Sqrt(Math.Pow(p.Item1 - pts[^1].X, 2) + Math.Pow(p.Item2 - pts[^1].Z, 2));
                 pts.Add(p);
+                leg.Hws.Add(Paint(k));
                 if (run > reach) break;
             }
             if (pts.Count < 2) return null;
             // Straight on back behind the meeting point (a branch may stop short of the middle of the way it meets).
             double bx = pts[0].X - pts[1].X, bz = pts[0].Z - pts[1].Z, bl = Math.Max(1e-6, Math.Sqrt(bx * bx + bz * bz));
             leg.P.Add((pts[0].X + bx / bl * 24, pts[0].Z + bz / bl * 24));
+            leg.Hws.Insert(0, leg.Hw);
             leg.Start = 1;
             leg.P.AddRange(pts);
             // Its heading: toward where it is about 10 m out.
@@ -260,9 +269,12 @@ public static class RoadCorners
         // A corner between leg a's kerb on side sa and leg b's on side sb (+1 left of the way out, -1 right).
         RoadCorner Fillet(Leg a, int sa, Leg b, int sb, float r, double ox, double oz, string why)
         {
-            var oa = Offset(a, sa, a.Hw + r);
-            var ob = Offset(b, sb, b.Hw + r);
+            var oa = Offset(a, sa, r);
+            var ob = Offset(b, sb, r);
             if (!Intersect(oa, ob, out double cx, out double cz)) return null;
+            // Then exactly tangent to both kerbs as they are drawn (a curved way's, a narrowing way's), so the kerb runs on
+            // into the arc without a jog.
+            (cx, cz) = Tangent(cx, cz, r, (x, z) => (KerbEdge(a, x, z, out double gx, out double gz), gx, gz), (x, z) => (KerbEdge(b, x, z, out double gx, out double gz), gx, gz));
             var (fa, ta) = Foot(a, cx, cz);
             var (fb, tb) = Foot(b, cx, cz);
             // The arc meets each kerb on the leg itself, short of its far end.
@@ -282,13 +294,20 @@ public static class RoadCorners
         // outside it, tangent to the leg's kerb and to the circle.
         void Circle(Leg a, int side, double ox, double oz, double ro, float circleDeck, float r0, float y, InfraRoute circle, string why)
         {
+            // (A ring is drawn as its polygon: the corner is fitted to that, not the circle it stands for.)
+            Leg ring = null;
+            if (circle.Ring)
+            {
+                ring = new Leg { Route = circle, Hw = circle.HalfWidth, Start = 0 };
+                for (int k = 0; k < circle.Count; k++) { ring.P.Add((Mathx.WrapDelta(circle.X[k] - ox, w), Mathx.WrapDelta(circle.Z[k] - oz, h))); ring.Hws.Add(circle.HalfWidth); }
+            }
             for (int tries = 0; tries < 5; tries++, r0 *= 0.75f)
                 if (OnCircle(r0) is { } made) { list.Add(made); return; }
             Miss($"{why}: no room", ox, oz);
 
             RoadCorner OnCircle(float r)
             {
-                var oa = Offset(a, side, a.Hw + r);
+                var oa = Offset(a, side, r);
                 // The offset line's first crossing of the circle round the middle at ro + r, going out.
                 double want = ro + r;
                 (double X, double Z)? hit = null;
@@ -312,10 +331,16 @@ public static class RoadCorners
                     }
                 }
                 if (hit is not { } cc) return null;
+                // Exactly tangent to the leg's kerb as drawn, and to the circle: a ring's as its polygon is drawn, a bulb's true circle.
+                Func<double, double, (double, double, double)> round = ring != null
+                    ? (x, z) => (KerbEdge(ring, x, z, out double gx, out double gz), gx, gz)
+                    : (x, z) => { double l0 = Math.Max(1e-9, Math.Sqrt(x * x + z * z)); return (l0 - ro, x / l0, z / l0); };
+                cc = Tangent(cc.X, cc.Z, r, (x, z) => (KerbEdge(a, x, z, out double gx, out double gz), gx, gz), round);
                 var (fa, ta) = Foot(a, cc.X, cc.Z);
                 if (ta < 0 || ta > Length(a) - 1) return null;
-                double l = Math.Sqrt(cc.X * cc.X + cc.Z * cc.Z);
-                var fb = (cc.X - cc.X / l * r, cc.Z - cc.Z / l * r);   // where the arc meets the circle
+                // Where the arc meets the circle: back down the way the circle's edge grows.
+                var (_, rgx, rgz) = round(cc.X, cc.Z);
+                var fb = (cc.X - rgx * r, cc.Z - rgz * r);
                 float yc = (DeckAt(a.Route, fa.X + ox, fa.Z + oz) + y) * 0.5f;
                 RoadCorner c = side > 0
                     ? Make(a.Route, circle, cc.X + ox, cc.Z + oz, (fa.X + ox, fa.Z + oz), (fb.Item1 + ox, fb.Item2 + oz), r, a.Hw * 2, circleDeck, yc, why, local: false)
@@ -348,6 +373,51 @@ public static class RoadCorners
                 Kerbed = InfraNetwork.Kerbed(ra) || InfraNetwork.Kerbed(rb), RouteA = ra.Id, RouteB = rb.Id, Why = why,
             };
         }
+    }
+
+    /// <summary>
+    /// How far past a leg's kerb a point is, as the terrain shader draws it (its distance from the nearest stretch of the
+    /// centre line less the painted half width there), and the way that grows (unit).
+    /// </summary>
+    static double KerbEdge(Leg leg, double x, double z, out double gx, out double gz)
+    {
+        double best = double.MaxValue;
+        gx = 1; gz = 0;
+        for (int k = 0; k + 1 < leg.P.Count; k++)
+        {
+            var (p, q) = (leg.P[k], leg.P[k + 1]);
+            double sx = q.X - p.X, sz = q.Z - p.Z, l2 = sx * sx + sz * sz;
+            double t = l2 < 1e-12 ? 0 : Math.Clamp(((x - p.X) * sx + (z - p.Z) * sz) / l2, 0, 1);
+            double dx = x - (p.X + sx * t), dz = z - (p.Z + sz * t), d = Math.Sqrt(dx * dx + dz * dz);
+            double e = d - (leg.Hws[k] + (leg.Hws[k + 1] - leg.Hws[k]) * t);
+            if (e < best) { best = e; gx = dx / Math.Max(d, 1e-9); gz = dz / Math.Max(d, 1e-9); }
+        }
+        return best;
+    }
+
+    /// <summary>
+    /// A corner's centre moved from where its fit put it to where it lies exactly <paramref name="r"/> past both kerbs (Newton's
+    /// method on the two kerbs' distances; each grows a metre a metre): its arc then meets each kerb tangent, with no jog.
+    /// Left where it was if that doesn't settle close by.
+    /// </summary>
+    static (double X, double Z) Tangent(double cx, double cz, double r, Func<double, double, (double E, double GX, double GZ)> ka, Func<double, double, (double E, double GX, double GZ)> kb)
+    {
+        double x = cx, z = cz;
+        for (int it = 0; it < 12; it++)
+        {
+            var (ea, ax, az) = ka(x, z);
+            var (eb, bx, bz) = kb(x, z);
+            double fa = ea - r, fb = eb - r;
+            if (Math.Abs(fa) < 1e-4 && Math.Abs(fb) < 1e-4) break;
+            double det = ax * bz - az * bx;
+            if (Math.Abs(det) < 0.05) return (cx, cz);
+            x += (-fa * bz + fb * az) / det;
+            z += (-fb * ax + fa * bx) / det;
+            if ((x - cx) * (x - cx) + (z - cz) * (z - cz) > 9) return (cx, cz);
+        }
+        var (e1, _, _) = ka(x, z);
+        var (e2, _, _) = kb(x, z);
+        return Math.Abs(e1 - r) < 0.005 && Math.Abs(e2 - r) < 0.005 ? (x, z) : (cx, cz);
     }
 
     /// <summary>Whether one corner's deck runs over the other's kerb (any point of its arc).</summary>
@@ -405,14 +475,15 @@ public static class RoadCorners
         return run;
     }
 
-    /// <summary>The leg's centre line offset to one side (+1 left of the way out) by a distance, point by point.</summary>
-    static List<(double X, double Z)> Offset(Leg leg, int side, double by)
+    /// <summary>The leg's kerb line on one side (+1 left of the way out) offset a further distance past it, point by point (its painted width at each).</summary>
+    static List<(double X, double Z)> Offset(Leg leg, int side, double extra)
     {
         var o = new List<(double X, double Z)>(leg.P.Count);
         for (int k = 0; k < leg.P.Count; k++)
         {
             var p = leg.P[Math.Max(0, k - 1)];
             var q = leg.P[Math.Min(leg.P.Count - 1, k + 1)];
+            double by = leg.Hws[k] + extra;
             double tx = q.X - p.X, tz = q.Z - p.Z, tl = Math.Max(1e-9, Math.Sqrt(tx * tx + tz * tz));
             // Left of the way out: the heading turned a quarter toward +z from +x (atan2's sense).
             o.Add((leg.P[k].X - tz / tl * side * by, leg.P[k].Z + tx / tl * side * by));

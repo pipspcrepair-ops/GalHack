@@ -570,6 +570,14 @@ public sealed class InfraNetwork
                 any = true;
                 continue;
             }
+            // Nor a stub between two roads lying side by side, no longer than their two decks are wide: once bent to meet
+            // each square it was a blob of deck over both (a tiny highway at a town's crossroads).
+            double PathLength() { double s = 0; for (int k = 1; k < path.Count; k++) s += Math.Sqrt(Math.Pow(path[k].X - path[k - 1].X, 2) + Math.Pow(path[k].Z - path[k - 1].Z, 2)); return s; }
+            if (run.JoinFrom >= 0 && run.JoinTo >= 0 && PathLength() < Routes[run.JoinFrom].HalfWidth + Routes[run.JoinTo].HalfWidth + 8)
+            {
+                any = true;
+                continue;
+            }
             // Junction ends land exactly on the route they join, at its deck height.
             // Where the link goes on along the road it meets, it merges into it in a sweeping curve; where it
             // only meets or crosses it, it meets it square.
@@ -636,6 +644,12 @@ public sealed class InfraNetwork
                     // A road up on a bank or down in a cutting at this spot passes over or under: no level crossing.
                     if (Math.Abs(yr - router.Ground(Mathx.WrapX(path[k].X, _w), Mathx.Wrap(path[k].Z, _h), 2, out _, out _)) < 1.5f) pins.Add((k, yr));
                 }
+            // (Again once its ends are squared to the ways they meet, which can draw a short run back to almost nothing.)
+            if (run.JoinFrom >= 0 && run.JoinTo >= 0 && (path.Count < 4 || PathLength() < Routes[run.JoinFrom].HalfWidth + Routes[run.JoinTo].HalfWidth + 8))
+            {
+                any = true;
+                continue;
+            }
             narrowedAny |= narrowed;
             laidRuns.Add((path, pins, run, laidAs));
         }
@@ -796,23 +810,29 @@ public sealed class InfraNetwork
     /// </summary>
     public void PruneDeadEnds(Func<double, double, float> bare)
     {
-        // (Not a city's grid: its blocks are laid to its streets as they are.)
-        foreach (InfraRoute r in Routes.Where(r => r.Kind == RouteKind.Road && r.Laid.Length == 0 && !r.Ring && !r.Soil && City?.Streets.Contains(r) != true).ToList())
+        // (A city's grid too: its blocks are laid to its streets, so there a street is only cut back past its last lot, and
+        // its lots are never given up.)
+        foreach (InfraRoute r in Routes.Where(r => r.Kind == RouteKind.Road && r.Laid.Length == 0 && !r.Ring && !r.Soil).ToList())
             for (int pass = 0; pass < 2 && Routes.Contains(r); pass++)
             {
-                bool atStart = pass == 0;
+                bool atStart = pass == 0, city = City?.Streets.Contains(r) == true;
                 if (r.Count < 2 || (atStart ? r.From : r.To) != null || EndJoins(r, atStart).Count > 0) continue;
                 // The lots along it, by where their crossovers meet it.
                 var lots = new List<(int Index, FlavourRuin Ruin)>();
                 foreach (FlavourRuin ruin in Ruins.Where(q => q.Join?.Road == r)) lots.Add((ruin.Join.Index, ruin));
                 foreach (CityLotPlan lot in Lots.Where(l => l.Street == r)) lots.Add((NearestIndex(r, lot.Crossover.X, lot.Crossover.Z), null));
+                var lotIndices = lots.Select(l => l.Index).ToList();
                 // Other ways joining it along its length (a side street, a lane out to a place): it reaches them whatever its lots
                 // do, its bulb a turning bulb's room past the last; they are never given up.
                 var joins = new List<int>();
+                var joiners = new List<InfraRoute>();
                 foreach (InfraRoute q in Routes)
                     foreach (bool qs in new[] { true, false })
                         if (q != r && q.Kind != RouteKind.Rail && q.Count >= 2 && EndJoins(q, qs).Contains(r))
+                        {
                             joins.Add(NearestIndex(r, q.X[qs ? 0 : q.Count - 1], q.Z[qs ? 0 : q.Count - 1]));
+                            joiners.Add(q);
+                        }
                 // (Its own other end meeting a way counts only as where it starts.)
                 bool joined = joins.Count > 0 || EndJoins(r, !atStart).Count > 0;
                 if (lots.Count == 0 && joins.Count == 0 && Ruins.Any(q => q.Route == r))
@@ -839,7 +859,7 @@ public sealed class InfraNetwork
                     int last = atStart ? lots.Min(l => l.Index) : lots.Max(l => l.Index);
                     int extra = (int)Math.Ceiling(margin / Spacing);
                     int end = atStart ? Math.Max(0, last - extra) : Math.Min(r.Count - 1, last + extra);
-                    if (last == held || BulbFits(r, end, atStart, bare, out _)) break;
+                    if (last == held || city || BulbFits(r, end, atStart, bare, out _)) break;
                     // Too steep for a bulb there: the street ends short of this lot, which is given up.
                     foreach (var l in lots.Where(l => l.Index == last && l.Ruin != null).ToList())
                     {
@@ -848,6 +868,7 @@ public sealed class InfraNetwork
                         LotsDropped++;
                     }
                     lots.RemoveAll(l => l.Index == last);
+                    lotIndices.RemoveAll(i => i == last);
                 }
                 if (lots.Count == 0)
                 {
@@ -861,6 +882,24 @@ public sealed class InfraNetwork
                     break;
                 }
                 int keepTo = atStart ? Math.Max(0, lots.Min(l => l.Index) - (int)Math.Ceiling(margin / Spacing)) : Math.Min(r.Count - 1, lots.Max(l => l.Index) + (int)Math.Ceiling(margin / Spacing));
+                bool bulb = true;
+                if (held >= 0)
+                {
+                    // Past the last way joining it, the bulb stands clear of that junction's rounded corners: their reach along
+                    // this street, then the bulb's own corners' (two corners, never run into one another).
+                    InfraRoute q = joiners[joins.IndexOf(held)];
+                    float rb = RoadCorners.BulbRadius(r), rr = RoadCorners.Radius(r, r);
+                    double need = q.HalfWidth + RoadCorners.Radius(r, q) + Math.Sqrt(Math.Max(0, (rb + rr) * (rb + rr) - (r.HalfWidth + rr) * (r.HalfWidth + rr))) + 2;
+                    int want = atStart ? held - (int)Math.Ceiling(need / Spacing) : held + (int)Math.Ceiling(need / Spacing);
+                    bool lotPast = lotIndices.Any(i => atStart ? i < held : i > held);
+                    if (want >= 0 && want <= r.Count - 1) keepTo = atStart ? Math.Min(keepTo, want) : Math.Max(keepTo, want);
+                    else if (!lotPast)
+                    {
+                        // No room for one: the street ends where the last way meets it, a corner of two streets (no bulb).
+                        keepTo = held;
+                        bulb = false;
+                    }
+                }
                 int count = atStart ? r.Count - keepTo : keepTo + 1;
                 if (count < r.Count)
                 {
@@ -868,6 +907,7 @@ public sealed class InfraNetwork
                     foreach (FlavourRuin q in Ruins.Where(q => q.Join?.Road == r && atStart)) q.Join.Index -= keepTo;
                     StreetsTrimmed++;
                 }
+                if (!bulb) continue;
                 BulbFits(r, atStart ? 0 : r.Count - 1, atStart, bare, out var tilt);
                 if (atStart) r.StartTilt = tilt; else r.EndTilt = tilt;
             }
@@ -2376,9 +2416,24 @@ public sealed class InfraNetwork
     /// </summary>
     public static float SeamWidth(float own, float other, double along, double taper)
     {
+        if (other <= 0f) return own;
         double t = Math.Clamp(along / taper, 0, 1);
         t = t * t * (3 - 2 * t);
         return (float)((own + other) * 0.5 + (own - (own + other) * 0.5) * t);
+    }
+
+    /// <summary>
+    /// A way's painted half width at a point <paramref name="toStart"/> metres along it from its start and <paramref name="toEnd"/>
+    /// from its end (the terrain shader's, RoadField.Seam): its own, or easing to meet the way it runs on into or narrows to meet.
+    /// </summary>
+    public static float PaintHalfWidth(InfraRoute r, double toStart, double toEnd)
+    {
+        double taperS = SeamTaper(r.Soil, r.StartMeetSoil, r.HalfWidth, r.StartMeetHw), taperE = SeamTaper(r.Soil, r.EndMeetSoil, r.HalfWidth, r.EndMeetHw);
+        bool atStart = r.StartMeetHw > 0f && toStart < taperS && (r.EndMeetHw <= 0f || toStart <= toEnd);
+        bool atEnd = !atStart && r.EndMeetHw > 0f && toEnd < taperE;
+        if (atStart) return SeamWidth(r.HalfWidth, r.StartMeetHw, toStart, taperS);
+        if (atEnd) return SeamWidth(r.HalfWidth, r.EndMeetHw, toEnd, taperE);
+        return r.HalfWidth;
     }
 
     /// <summary>
