@@ -62,6 +62,13 @@ public static partial class Brain
             return;
         }
 
+        // Fire: whatever it is and whatever it wanted, it runs until the fright wears off.
+        if (w.Time < c.ScaredUntil && c.Space == null)
+        {
+            Flee(w, c, c.ScaredFrom);
+            return;
+        }
+
         // A settlement's own animals keep to their pens and their people.
         if (c.Species.Domestic != DomesticKind.None)
         {

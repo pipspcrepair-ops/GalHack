@@ -32,9 +32,10 @@ public static class Rarities
 /// <summary>
 /// What kind of thing an item is. Raw and unique items have no recipe; everything else has exactly
 /// one. <see cref="Block"/> items are block families (Empyrion's way): one item per block and grid,
-/// carried in stacks and placed as any of the family's shapes.
+/// carried in stacks and placed as any of the family's shapes. <see cref="Weapon"/> items are hand
+/// weapons (shared/Arms has their rows).
 /// </summary>
-public enum ItemCategory { Raw, Unique, Refined, Part, Component, Consumable, Ammo, Tool, Block }
+public enum ItemCategory { Raw, Unique, Refined, Part, Component, Consumable, Ammo, Tool, Block, Weapon }
 
 /// <summary>
 /// What sort of block family a block item is: building material (placed in any shape), a device

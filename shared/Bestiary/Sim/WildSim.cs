@@ -649,6 +649,17 @@ public sealed class WildSim
         if (c.Health <= 0f) Kill(c, source);
     }
 
+    /// <summary>Something it can't face (a flame) sends it running from a point for so many seconds, whatever its temper; it thinks again at once.</summary>
+    public void Scare(Creature c, Vector3 from, float seconds)
+    {
+        if (c.Dead || seconds <= 0f) return;
+        c.ScaredUntil = MathF.Max(c.ScaredUntil, Time + seconds);
+        c.ScaredFrom = from;
+        c.Think = 0f;
+        c.ThinkEvery = 0f;
+        c.Herd?.Alarm(from, Time);
+    }
+
     public void Kill(Creature c, ITarget killer)
     {
         if (c.Dead) return;

@@ -63,7 +63,8 @@ public partial class ItemsTest : TestBase
         }
         Check(Enum.GetValues<Rarity>().All(r => _items.Items.Any(i => i.Rarity == r)), "every step of the rarity ladder has items");
         Check(Rarities.Color(Rarity.Exotic) == 0xa64dff && Rarities.Color(Rarity.Unique) == 0xffbf2e, "exotic is purple and unique is gold");
-        foreach (ItemCategory c in Enum.GetValues<ItemCategory>())
+        // Hand weapons are the slice's own items (their rows are in shared/Arms), so the shared catalogue has none.
+        foreach (ItemCategory c in Enum.GetValues<ItemCategory>().Where(c => c != ItemCategory.Weapon))
             Check(_items.InCategory(c).Any(), $"the catalogue has {c} items");
 
         // A broken file is refused at load, not discovered later.

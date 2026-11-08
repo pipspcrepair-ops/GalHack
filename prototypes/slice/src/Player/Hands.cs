@@ -32,6 +32,16 @@ public partial class Hands : Node3D
     /// <summary>The model in the glove now (tests compare it with the item's icon model), or null when the hands aren't showing.</summary>
     public ItemModel Shown => Visible ? _shown : null;
 
+    /// <summary>The weapon model in the glove now, or null (tests and screenshots).</summary>
+    public Slice.Arms.GunModel.Built Gun => Slice.Arms.GunModel.Of(Shown?.Root);
+
+    /// <summary>The same, with a weapon's own camera kick in degrees.</summary>
+    public void Recoil(GunFeel feel, float cameraKick)
+    {
+        Recoil(feel);
+        _camKick = cameraKick;
+    }
+
     /// <summary>The camera's tilt now, in radians (zero at rest): for tests.</summary>
     public float CameraTilt { get; private set; }
     public float Kick => _kick;
@@ -151,6 +161,8 @@ public partial class Hands : Node3D
             _tint = tint;
             foreach (ShaderMaterial lens in _shown.Lenses) lens.SetShaderParameter("tint", tint);
         }
+        // A gun in hand: its charge rings light by stage and a reload dips it out of line.
+        if (hand == HandKind.Weapon) Slice.Arms.GunModel.Animate(_shown.Root, g.Arms?.InHand, dt);
         float speed = g.Survivor.Body.OnFloor ? new Vector2(g.Survivor.Body.Velocity.X, g.Survivor.Body.Velocity.Z).Length() : 0f;
         _bob += dt * speed * 1.6f;
         float sway = MathF.Min(speed, 6f) / 6f;

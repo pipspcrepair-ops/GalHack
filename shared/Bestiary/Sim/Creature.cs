@@ -123,6 +123,10 @@ public sealed class Creature
     public float WantCrouch, WantHidden, WantGraze, Rear, Lunge, Alert, Brace;
     public Vector3? LookAt;
 
+    /// <summary>Scared off by something it can't fight (a flame): until this sim time it runs from <see cref="ScaredFrom"/>, whatever its temper.</summary>
+    public float ScaredUntil = -999f;
+    public Vector3 ScaredFrom;
+
     // Fliers and floaters: target height above ground. 0 means land.
     public float Altitude;
     public bool Landed;
