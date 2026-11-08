@@ -122,6 +122,8 @@ public static partial class DecoModels
                 switch (i)
                 {
                     case 0:
+                        // A rake: its head on the handle's foot, the tines hung from the head.
+                        b.Box(x - 0.08f, 0.1f, -0.1f, x + 0.08f, 0.13f, -0.07f, Metal).Ghost();
                         for (int t = 0; t < 3; t++) b.Beam(new Vector3(x - 0.06f + t * 0.06f, 0.12f, -0.09f), new Vector3(x - 0.06f + t * 0.06f, 0.0f + 0.01f, -0.18f), 0.012f, 0.012f, Metal).Ghost();
                         break;
                     case 2:
