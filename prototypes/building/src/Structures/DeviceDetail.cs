@@ -126,7 +126,13 @@ public static class DeviceDetail
             float w = big ? 0.15f : 0.1f, o = 0.016f, r = big ? 0.2f : 0.15f;
             foreach (int sx in new[] { -1, 1 })
                 foreach (int sz in new[] { -1, 1 })
-                    k.Box(new Vector3(sx * (0.5f + o), -0.5f, sz * (0.5f + o)), new Vector3(sx * (0.5f - w), 0.5f, sz * (0.5f - w)), PartStyle.Dark, Armour());
+                {
+                    // Corner posts; the Big Core's stand proud of its top as capped towers.
+                    float top = big ? 0.56f : 0.5f;
+                    k.Box(new Vector3(sx * (0.5f + o), -0.5f, sz * (0.5f + o)), new Vector3(sx * (0.5f - w), top, sz * (0.5f - w)), PartStyle.Dark, Armour());
+                    if (big)
+                        k.Box(new Vector3(sx * (0.5f + o - 0.025f), top, sz * (0.5f + o - 0.025f)), new Vector3(sx * (0.5f - w + 0.025f), top + 0.025f, sz * (0.5f - w + 0.025f)), PartStyle.Accent, Hazard);
+                }
             foreach (Dir d in Sides)
             {
                 float u0 = -0.5f + w, u1 = 0.5f - w;
@@ -259,7 +265,7 @@ public static class DeviceDetail
         var valve = new Vector3(-0.2f, 0.5f, 0.12f);
         k.Tube(1, valve, 0.028f, 0.028f, 0.5f, 0.62f, PartStyle.Dark, Bare, segments: 8);
         k.Tube(1, valve, 0.095f, 0.095f, 0.6f, 0.62f, PartStyle.Accent, Coat(ValveRed), segments: 12);
-        k.Face(Dir.NegZ, -0.5f, -0.5f, 0.5f, -0.42f, 0.012f, PartStyle.Accent, Hazard, lift: 0.0f);
+        k.Face(Dir.NegZ, -0.5f, -0.5f, 0.5f, -0.42f, 0.012f, PartStyle.Accent, Hazard);
     }
 
     /// <summary>A container: rails round its top and foot, two latches, a handle, and a stencilled grid.</summary>
@@ -304,10 +310,10 @@ public static class DeviceDetail
         // Straw, violet, blue: metal that has been hot.
         (float r0, float r1, float z0, float z1, uint c)[] bands =
         {
-            (0.3f, 0.35f, 0.26f, 0.34f, 0xc8a24a), (0.35f, 0.405f, 0.34f, 0.42f, 0x6a4c93), (0.405f, 0.46f, 0.42f, 0.5f, 0x3d5a80),
+            (0.3f, 0.35f, 0.26f, 0.34f, 0xd9b25a), (0.35f, 0.405f, 0.34f, 0.42f, 0x8a64b8), (0.405f, 0.46f, 0.42f, 0.5f, 0x5577aa),
         };
         foreach (var b in bands)
-            k.Tube(2, Vector3.Zero, b.r0, b.r1, b.z0, b.z1, PartStyle.Dark, new PartFinish { Color = b.c, Metal = 3, Texture = FaceTexture.Smooth }, segments: 16, caps: false);
+            k.Tube(2, Vector3.Zero, b.r0, b.r1, b.z0, b.z1, PartStyle.Dark, new PartFinish { Color = b.c, Metal = 1, Texture = FaceTexture.Smooth }, segments: 16, caps: false);
         k.Tube(2, Vector3.Zero, 0.455f, 0.455f, 0.48f, 0.49f, PartStyle.Dark, Coat(Soot, 0), segments: 16);
         Band(k, 2, 0.05f, 0.16f, 0.014f, Hazard);
         // Vents along the body from its nose to the band (on the flanks u runs along Z, on top and bottom v does).

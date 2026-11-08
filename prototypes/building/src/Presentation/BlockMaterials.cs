@@ -292,7 +292,7 @@ void concrete_detail(vec2 uv, vec2 f, float wall, float fine, float coarse, inou
     shade *= mix(1.0, 0.42, hole * fine);
     slope -= hole * h / 0.026 * 0.6 * fine;
     float g = hash3(vec3(floor(uv * 72.0), 2.7));
-    shade *= 1.0 + (g > 0.86 ? 0.14 : g < 0.12 ? -0.13 : 0.0) * fine;
+    shade *= 1.0 + (g > 0.9 ? 0.09 : g < 0.08 ? -0.09 : 0.0) * fine;
 }
 
 // Metal dents and scorches: scratches through the paint, then bare metal and cracks, then soot and hot tears.

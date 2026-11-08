@@ -221,7 +221,8 @@ public sealed partial class Staging
             {
                 // Sealed rooms are dark by day: the head torch, as a player would.
                 _game.FixedCamera = inside;
-                _game.Survivor.PlaceOutside((inside.Origin + Vector3.Down * 1.55f).ToNumerics());
+                // The survivor stands just beside the camera, out of the frame, the torch on the room.
+                _game.Survivor.PlaceOutside((inside.Origin + Vector3.Down * 1.55f + inside.Basis.X * 0.9f).ToNumerics());
                 _game.Torch.Visible = true;
                 foreach (int x in _drive.Wait(20)) yield return x;
                 _game.FixedCamera = inside;
