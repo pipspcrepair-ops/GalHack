@@ -327,6 +327,8 @@ public static class PoiFactory
         // A plain ruin's weeds and moss come last, on what's left.
         if (layout.Extras.Plain.Count > 0 && state != PoiState.Active) StateTransforms.Overgrow(inst, rng.Fork("overgrow"));
         if (state != PoiState.Active) StateTransforms.Rest(inst);
+        // What the rest pass took down may have been all a strand hung from: it comes down too.
+        Structure.DropUntethered(inst.Blocks);
         inst.Growth.RemoveAll(s => !Growth.Rootable(inst, s.Cell));
         foreach (CropSpot c in layout.Extras.Crops)
             if (inst.Blocks.Get(c.Cell).IsAir && (state == PoiState.Active || Hash.Cell(c.Cell, 0xC409) % 3 == 0)) inst.Crops.Add(c);

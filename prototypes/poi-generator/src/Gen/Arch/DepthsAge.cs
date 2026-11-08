@@ -150,7 +150,7 @@ internal sealed partial class Depths
     /// <summary>A corridor's roof come down across it: if no way round remains, whoever came after dug one through the rock beside it.</summary>
     void Collapse()
     {
-        var candidates = Live.Where(s => s.Kind is "corridor" or "gallery" or "ring" or "tunnel" or "drift" && !s.Secret && s.Columns >= 10 && s != _top).OrderBy(_ => R.Float()).ToList();
+        var candidates = Live.Where(s => s.Kind is "corridor" or "gallery" or "ring" or "tunnel" or "drift" && !s.Secret && s.Columns >= 10 && s != _top).OrderBy(_ => R.Float()).Take(6).ToList();
         foreach (var c in candidates)
         {
             bool alongI = c.W >= c.D;
@@ -294,7 +294,7 @@ internal sealed partial class Depths
     void Seal()
     {
         var doors = Joints.Where(j => j.Kind == "door" && !j.A.Secret && !j.B.Secret && j.B != _vaultSpace && j.A != _vaultSpace).OrderBy(_ => R.Float()).ToList();
-        foreach (var j in doors.Take(10))
+        foreach (var j in doors.Take(5))
         {
             if (!AllReached(_blocked, without: j))
             {

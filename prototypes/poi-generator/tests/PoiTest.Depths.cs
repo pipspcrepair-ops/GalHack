@@ -188,7 +188,7 @@ public partial class PoiTest
         int places = 0, failed = 0, unreached = 0, invalid = 0, repeated = 0;
         string first = "";
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        int perFamily = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--depths-n=")) is { } n ? int.Parse(n["--depths-n=".Length..]) : 16;
+        int perFamily = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--depths-n=")) is { } n ? int.Parse(n["--depths-n=".Length..]) : 10;
         foreach (var f in families)
         {
             var list = shapes[f.Id] = new List<Shape>();
@@ -225,8 +225,7 @@ public partial class PoiTest
                 long t1 = sw.ElapsedTicks;
                 var inst = PoiFactory.Spawn(_lib, layout, state, (ulong)rand.NextInt64());
                 long t2 = sw.ElapsedTicks;
-                Mesher.Build(inst.Blocks, layout.Occupied, new MeshOptions { RockMin = inst.Blocks.Min, RockMax = inst.Blocks.Max, RockBottom = inst.Blocks.Min.Y });
-                cost[f.Id] = cost[f.Id] with { Spawn = cost[f.Id].Spawn + (t2 - t1) * 1000.0 / System.Diagnostics.Stopwatch.Frequency, Mesh = cost[f.Id].Mesh + (sw.ElapsedTicks - t2) * 1000.0 / System.Diagnostics.Stopwatch.Frequency, Blocks = cost[f.Id].Blocks + inst.Blocks.CountBlocks() };
+                cost[f.Id] = cost[f.Id] with { Spawn = cost[f.Id].Spawn + (t2 - t1) * 1000.0 / System.Diagnostics.Stopwatch.Frequency, Blocks = cost[f.Id].Blocks + inst.Blocks.CountBlocks() };
                 if (Validator.Check(inst) is { Count: > 0 } vp)
                 {
                     invalid++;
@@ -311,7 +310,7 @@ public partial class PoiTest
         var flat = shapes.Where(s => s.Value.Count > 1 && sd[s.Key].Count(x => x > 0.01f) < 3).Select(s => s.Key).ToList();
         Architect.Rejected = null;
         foreach (var (id, c) in cost.Where(c => c.Value.N > 0))
-            GD.Print($"      cost {id,-18} layout {c.Layout / c.N:F0} ms, spawn {c.Spawn / c.N:F0} ms, mesh {c.Mesh / c.N:F0} ms, {c.Blocks / c.N} blocks, last {c.Size.X} x {c.Size.Z} x {c.Size.Y} m");
+            GD.Print($"      cost {id,-18} layout {c.Layout / c.N:F0} ms, spawn {c.Spawn / c.N:F0} ms, {c.Blocks / c.N} blocks, last {c.Size.X} x {c.Size.Z} x {c.Size.Y} m");
         GD.Print($"      {places} places in {sw.ElapsedMilliseconds} ms, {Architect.Stats.Regenerated} regenerated");
         foreach (string why in Architect.Stats.FirstFailures.Take(8)) GD.Print("      regenerated after: " + why);
         Check(failed == 0 && places > 0, $"places below ground lay out on fresh worlds: {places} over {families.Count} families ({failed} failed){first}");

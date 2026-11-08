@@ -237,6 +237,7 @@ internal sealed partial class Depths
             if (_span == null) ZoneLock(lv);
             Grow(lv);
         }
+        Reach();
         // A mine's ore went down chutes from its stopes: ways round the shaft between levels.
         if (Levels.Any(l => l.Part == "drifts"))
             for (int g = 0; g + 1 < Levels.Count; g++)
@@ -254,6 +255,34 @@ internal sealed partial class Depths
     }
 
     static int RoundUp(int v, int step) => step <= 0 ? v : (v + step - 1) / step * step;
+
+    /// <summary>
+    /// A large place that came out small reaches out until it spans what its purpose wants: a wing off one of its
+    /// ways, along whichever axis it is shorter in, rooms down it and one across its end.
+    /// </summary>
+    void Reach()
+    {
+        if (Def.MinSize <= 0) return;
+        for (int tries = 0; tries < 8; tries++)
+        {
+            var live = Live.ToList();
+            int i0 = live.Min(s => s.I0), i1 = live.Max(s => s.I1), k0 = live.Min(s => s.K0), k1 = live.Max(s => s.K1);
+            int span = 2 * (Math.Max(i1 - i0, k1 - k0) + 3);
+            if (span >= Def.MinSize) return;
+            bool alongI = i1 - i0 >= k1 - k0;
+            var lv = R.Pick(Levels);
+            var hosts = lv.Spaces.Where(s => !s.Dead && !s.Secret && s.Kind is "corridor" or "gallery" or "hub" or "ring" or "hall" or "landing").ToList();
+            // Off the host nearest the end it can lengthen, outward.
+            foreach (var (host, d) in hosts.SelectMany(h => (alongI ? new[] { Dir.East, Dir.West } : new[] { Dir.North, Dir.South }).Select(d => (h, d)))
+                         .OrderBy(x => x.d switch { Dir.East => i1 - x.h.I1, Dir.West => x.h.I0 - i0, Dir.South => k1 - x.h.K1, _ => x.h.K0 - k0 }))
+            {
+                if (From(lv, host, d, R.Between(12, 20), Math.Max(2, MainW - 1), Math.Min(lv.H, 3), minLen: 8) is not { } wing) continue;
+                RoomsAlong(lv, wing, density: 0.8f);
+                EndRoom(lv, wing, R.Between(4, 7), wing.Wid + R.Between(2, 5));
+                break;
+            }
+        }
+    }
 
     bool _stacked;
     int _flight = 2, _opsLevel = -1;

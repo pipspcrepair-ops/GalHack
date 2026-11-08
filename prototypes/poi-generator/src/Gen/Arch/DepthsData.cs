@@ -38,6 +38,8 @@ public sealed class DepthDef
     public readonly Dictionary<string, float> Age = new();
     /// <summary>Something the purpose always has, whatever else is rolled: "ops" (an operations hall with a gallery over it).</summary>
     public string Feature = "";
+    /// <summary>The least it spans across, in metres (a large place reaches out until it does).</summary>
+    public int MinSize;
 
     public IEnumerable<string> RoomIds => Rooms.Values.SelectMany(b => b).Select(d => d.Room).Concat(Fill);
 }
@@ -129,6 +131,7 @@ public static class DepthParser
                     case "alien": D().Alien = true; break;
                     case "lining": D().Lining = w[1]; break;
                     case "feature": D().Feature = w[1]; break;
+                    case "size": D().MinSize = I(w[1]); break;
                     case "age":
                         for (int i = 1; i + 1 < w.Length; i += 2) D().Age[w[i]] = F(w[i + 1]);
                         break;

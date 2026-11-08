@@ -33,6 +33,7 @@
 #     alien              round chambers, curved ways, ramps
 #     lining <paint>     wall, steel, timber, ice
 #     feature ops        an operations hall with a gallery over it on one of the levels
+#     size m             the least it spans across, in metres: a large place reaches out with another wing until it does
 #     age <kind p>...    collapse (a corridor's roof down, a way dug round it), cave (broken into), squat (a
 #                        squatters' tunnel), sealed (a door welded, the section reached another way), breach
 #                        (the ground fallen in from the surface): their chance a century after the fall; the
@@ -40,6 +41,7 @@
 
 depth shelter
   name Deep Bunker
+  size 108
   levels 2 3
   first 12 16
   rock 0 2
@@ -281,8 +283,8 @@ depth mine
   rooms top ore-store magazine storage
   rooms upper ore-store pump-hall
   rooms deep ore-store
-  rooms deepest vault!
-  fill ore-store storage
+  rooms deepest vault! magazine storage
+  fill storage ore-store magazine
   crawl 0
   blast 0
   ends 1 2
@@ -309,7 +311,7 @@ depth silo
   rooms top security! quarters mess
   rooms upper control! monitor storage
   rooms deep plant generator
-  rooms deepest vault! storage
+  rooms deepest vault! storage armoury
   fill storage plant
   zones outer inner
   lock blast
