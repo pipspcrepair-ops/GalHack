@@ -1219,6 +1219,23 @@ public sealed class InfraNetwork
     /// <summary>Later routes go round this pad.</summary>
     public void KeepOff(TerrainStamp pad) => _router?.Block(pad, 12);
 
+    /// <summary>
+    /// The land's way between two points as a track would take it (round water and places, up the easy side of a
+    /// hill, along the roads where they go its way), continuous across the seams from <paramref name="from"/>; null
+    /// on a world with no network or where there's no way. For what follows the land without being a road (a spur of poles).
+    /// </summary>
+    public List<(double X, double Z)> LandWay((double X, double Z) from, (double X, double Z) to)
+    {
+        // (As a frontier world's would: never over open sea, where nothing stands.)
+        List<int> cells = _router?.Find(from, to, RouteKind.Track, TechLevel.Low);
+        if (cells == null) return null;
+        var pts = new List<(double X, double Z)> { from };
+        foreach (int c in cells.Skip(1).Take(Math.Max(0, cells.Count - 2))) pts.Add(_router.CellCentre(c));
+        pts.Add(to);
+        Unwrap(pts);
+        return Resample(Smooth(pts, 1, 1), Spacing);
+    }
+
     /// <summary>A spur from a point to the nearest route already laid (within a reach, leaving out some), found by the path engine. False if none.</summary>
     public bool Spur((double X, double Z) from, RouteKind kind, double reach, ICollection<InfraRoute> except = null)
     {
@@ -1232,6 +1249,8 @@ public sealed class InfraNetwork
         pts.Add((near.X[at], near.Z[at]));
         Unwrap(pts);
         List<(double X, double Z)> path = Resample(Smooth(pts, 1, 0), Spacing);
+        // A paved spur (a city's way out to the network) is a street of its class: no corner tighter than a town's.
+        if (kind is RouteKind.Road or RouteKind.Highway) path = Ease(_router, path, TownRadius(kind) * 1.3, 1, 1, out _);
         var pins = new List<(int Index, float Y)>();
         if (Snap(near, path[^1], out var p1, out float y1)) { path[^1] = p1; ClearEnd(path); pins.Add((path.Count - 1, y1)); }
         InfraRoute route = Build(_router, path, pins, kind, null, null, -1, -1, _rng);
@@ -1903,7 +1922,7 @@ public sealed class InfraNetwork
         /// <summary>The cells of the cheapest path between two points, or null.</summary>
         public List<int> Find((double X, double Z) from, (double X, double Z) to, RouteKind kind, TechLevel tech)
         {
-            int start = Free(from), goal = Free(to);
+            int start = Free(from, to), goal = Free(to, from);
             if (start < 0 || goal < 0) return null;
             foreach (int t in _touched) { _cost[t] = float.PositiveInfinity; _closed[t] = false; }
             _touched.Clear();
@@ -1974,7 +1993,7 @@ public sealed class InfraNetwork
         /// <summary>Whether the sea parts two points: no way between them over land (rivers can be bridged).</summary>
         public bool SeaBetween((double X, double Z) a, (double X, double Z) b)
         {
-            int start = Free(a), goal = Free(b);
+            int start = Free(a, b), goal = Free(b, a);
             if (start < 0 || goal < 0) return false;
             var seen = new bool[_nx * _nz];
             var queue = new Queue<int>();
@@ -1997,18 +2016,32 @@ public sealed class InfraNetwork
         }
 
         /// <summary>The cell of a point, or the nearest free one within a few cells.</summary>
-        int Free((double X, double Z) p)
+        /// <summary>
+        /// The open cell a search starts or ends at for a point: its own, or where it lies on a place's keep-off ground
+        /// (a gate's way out), the nearest open cell to it, and of two as near the one toward the other end. (Taking the
+        /// first open cell of each ring as scanned leaned every way out toward one corner of the map: a track left its
+        /// gate aslant and turned back on itself on the flat.)
+        /// </summary>
+        int Free((double X, double Z) p, (double X, double Z)? toward = null)
         {
             int k = Index(p.X, p.Z);
             if (!_blocked[k]) return k;
-            for (int r = 1; r <= 4; r++)
-            for (int dz = -r; dz <= r; dz++)
-            for (int dx = -r; dx <= r; dx++)
+            int best = -1;
+            double least = double.MaxValue;
+            for (int dz = -4; dz <= 4; dz++)
+            for (int dx = -4; dx <= 4; dx++)
             {
                 int m = Index(p.X + dx * Cell, p.Z + dz * Cell);
-                if (!_blocked[m]) return m;
+                if (_blocked[m]) continue;
+                double d = dx * dx + dz * dz;
+                if (toward is { } t)
+                {
+                    double tx = Mathx.WrapDelta(t.X - (p.X + dx * Cell), _w), tz = Mathx.WrapDelta(t.Z - (p.Z + dz * Cell), _h);
+                    d += 1e-4 * Math.Sqrt(tx * tx + tz * tz) / Cell;
+                }
+                if (d < least) { least = d; best = m; }
             }
-            return -1;
+            return best;
         }
     }
 }

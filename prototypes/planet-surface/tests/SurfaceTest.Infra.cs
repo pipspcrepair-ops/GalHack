@@ -456,7 +456,7 @@ public partial class SurfaceTest
                     powered++;
                     if (!byHouse.TryGetValue(house, out ServiceDrop d))
                     {
-                        if (firstUnserved.Length == 0) firstUnserved = $" (first: a {house.Family.Id} at {house.Center.X:F0},{house.Center.Z:F0})";
+                        if (firstUnserved.Length == 0 && !power.NoWallLeft.Contains(house)) firstUnserved = $" (first: a {house.Family.Id} at {house.Center.X:F0},{house.Center.Z:F0})";
                         continue;
                     }
                     dropped++;
@@ -548,8 +548,10 @@ public partial class SurfaceTest
         Check(tracks > 0 && flatBacks == 0, $"tracks follow the land, switching back only on steep ground: {tracks} tracks, {trackKm:F1} km on {sweepWorlds} fresh worlds, {switchbacks} switchbacks, {flatBacks} on flat ground{firstFlatBack}; {graded} graded dirt roads");
         Check(sharp == 0, $"paved roads turn gently: on {sweepWorlds} fresh worlds no 50 m of road outside a town turns more than {InfraNetwork.MostTurn50(RouteKind.Road):F0} degrees (highway {InfraNetwork.MostTurn50(RouteKind.Highway):F0}); sharpest {sharpest:F0}, {sharp} over{firstSharp}");
         Check(standing > 100 && onRoad == 0, $"poles and pylons stand off the roads: {standing} standing, {onRoad} on a road or railway bed{firstOnRoad}");
-        Check(gridWorlds > 0 && powered > 0 && dropped == powered && unfed == 0 && plantsSeen > 0 && substations >= gridWorlds,
-            $"every powered house has its drop back to a plant: {gridWorlds} worlds with a grid, {plantsSeen} plants, {substations} substations; {powered} houses that would have had power, {dropped} with a drop ({strungDrops} strung, {downDrops} down){firstUnserved} [{string.Join(", ", unservedWhy.Select(k => $"{k.Value} {k.Key}"))}], {unfed} on a pole not fed through a substation from a plant{firstUnfed}");
+        // (A house none of whose walls toward the line still stands a storey high has nothing to fix a drop to: it counts as unpowered.)
+        int noWall = unservedWhy.GetValueOrDefault(PowerLines.NoWall);
+        Check(gridWorlds > 0 && powered > 0 && dropped + noWall == powered && unfed == 0 && plantsSeen > 0 && substations >= gridWorlds,
+            $"every powered house has its drop back to a plant: {gridWorlds} worlds with a grid, {plantsSeen} plants, {substations} substations; {powered} houses that would have had power, {dropped} with a drop ({strungDrops} strung, {downDrops} down), {noWall} with no wall left standing to fix one to{firstUnserved} [{string.Join(", ", unservedWhy.Where(k => k.Key != PowerLines.NoWall).Select(k => $"{k.Value} {k.Key}"))}], {unfed} on a pole not fed through a substation from a plant{firstUnfed}");
         Check(wallsChecked > 0 && offWall == 0 && dropLow == 0,
             $"service drops are anchored: {wallsChecked} fixings checked against the house as spawned, {offWall} not on a standing wall{firstOffWall}; {dropLow} drops through or under the ground{firstLow}");
         Check(feetChecked >= 120 && floating == 0, $"every pylon foot meets the ground: {feetChecked} feet, {floating} floating or buried (worst {worst:F2} m above)");

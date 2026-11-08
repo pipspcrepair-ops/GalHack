@@ -155,12 +155,15 @@ public sealed class PowerLines
     public readonly List<ServiceDrop> Drops = new();
     /// <summary>Houses that would have had power but no line could reach (tests: there should be none).</summary>
     public readonly List<FlavourRuin> Unserved = new();
+    /// <summary>Houses with no wall left standing a storey high on a face the line could reach: nothing to fix a drop to.</summary>
+    public readonly HashSet<FlavourRuin> NoWallLeft = new();
     /// <summary>Why each unserved house went without (tests).</summary>
     public readonly Dictionary<string, int> UnservedWhy = new();
 
     void Without(FlavourRuin house, string why)
     {
         Unserved.Add(house);
+        if (why == NoWall) NoWallLeft.Add(house);
         UnservedWhy[why] = UnservedWhy.GetValueOrDefault(why) + 1;
     }
 
@@ -169,6 +172,8 @@ public sealed class PowerLines
 
     /// <summary>How far a service drop reaches from its pole to the wall, m; farther, a spur of poles comes nearer first.</summary>
     public const float DropReach = 38f;
+    /// <summary>The longest a drop runs, where a lot keeps its pole back: the reach and a little more.</summary>
+    const float DropLongest = DropReach + 8f;
     const float PoleSpan = 38f;
 
     int Add(PowerPole p)
@@ -240,21 +245,50 @@ public sealed class PowerLines
         }
 
         // ---- the high-voltage lines: the shortest lines that join every substation to a plant (plants and the
-        // substations already fed count as joined), each its own straight stride of pylons.
+        // substations already fed count as joined), each its own straight stride of pylons. Where the land won't
+        // take the shortest (a sea, a range in the way), the next nearest joined node is tried, a few at most;
+        // a line that can't be finished is never begun.
         var joined = new List<int>(plantNodes);
         var waiting = new List<int>(subs);
+        var tried = new HashSet<(int, int)>();
+        var tries = new Dictionary<int, int>();
         while (waiting.Count > 0)
         {
-            (int From, int To) next = default;
+            (int From, int To) next = (-1, -1);
             double best = double.MaxValue;
             foreach (int a in joined)
                 foreach (int b in waiting)
                 {
+                    if (tried.Contains((a, b))) continue;
                     double d = Dist(Poles[a].X, Poles[a].Z, Poles[b].X, Poles[b].Z);
                     if (d < best) { best = d; next = (a, b); }
                 }
-            waiting.Remove(next.To);
-            if (Line(next.From, next.To, net, source, rng)) joined.Add(next.To);
+            if (next.To < 0) break;
+            tried.Add(next);
+            int n = tries[next.To] = tries.GetValueOrDefault(next.To) + 1;
+            int poles = Poles.Count, wires = Wires.Count, links = Links.Count, legs = Legs.Count;
+            if (Line(next.From, next.To, net, source, rng)) { joined.Add(next.To); waiting.Remove(next.To); continue; }
+            Poles.RemoveRange(poles, Poles.Count - poles);
+            Wires.RemoveRange(wires, Wires.Count - wires);
+            Links.RemoveRange(links, Links.Count - links);
+            Legs.RemoveRange(legs, Legs.Count - legs);
+            if (n >= 5) waiting.Remove(next.To);
+        }
+        // Where water parts a town's yard from every line the land would carry, the old world laid a cable under it:
+        // from the nearest yard or plant already fed, buried from yard to yard (nothing of it shows; tests walk it).
+        for (bool laid = true; laid;)
+        {
+            laid = false;
+            foreach (int b in subs.Where(s => !joined.Contains(s)))
+            {
+                int a = joined.OrderBy(j => Dist(Poles[j].X, Poles[j].Z, Poles[b].X, Poles[b].Z)).First();
+                if (!WaterBetween(Poles[a], Poles[b], source, w, h)) continue;
+                Links.Add((a, b));
+                Cables.Add((a, b));
+                joined.Add(b);
+                laid = true;
+                break;
+            }
         }
 
         // ---- the town lines: poles from each substation along its streets and the roads out of it.
@@ -302,17 +336,36 @@ public sealed class PowerLines
                 }
             }
             if (loose < 0) break;
+            // Straight to it, or else the land's way round whatever is between; a spur that can't reach it is never begun.
+            bool Joins(int end) => end >= 0 && Dist(Poles[end].X, Poles[end].Z, Poles[loose].X, Poles[loose].Z) <= PoleSpan + 6 && Clears(Poles[end], Poles[loose], ground, 2.5f);
+            int pm = Poles.Count, wm = Wires.Count, lm = Links.Count;
             int end = Spur(from, Poles[loose].X, Poles[loose].Z, PoleSpan, net, source, ground, rng, wear, kept);
-            if (end >= 0 && Dist(Poles[end].X, Poles[end].Z, Poles[loose].X, Poles[loose].Z) <= PoleSpan + 6 && Clears(Poles[end], Poles[loose], ground, 2.5f)) String(end, loose, rng, wear, kept);
+            if (!Joins(end))
+            {
+                Undo(pm, wm, lm);
+                end = SpurWay(from, Poles[loose].X, Poles[loose].Z, PoleSpan, net, source, ground, rng, wear, kept, false);
+                if (!Joins(end)) { Undo(pm, wm, lm); end = -1; }
+            }
+            if (end >= 0) String(end, loose, rng, wear, kept);
             fed = Fed();
             // A stretch nothing could reach stands unfed (its houses take spurs of their own): not tried again.
             if (!fed[loose]) stranded.UnionWith(Stretch(loose));
         }
 
-        // ---- the drops: from the nearest fed pole to each house's wall; past a drop's reach, a spur comes nearer first.
+        // ---- the drops: from the nearest fed pole to a fixing on each house's wall; past a drop's reach, a spur of
+        // poles comes to within reach of the wall first.
         foreach (FlavourRuin house in houses)
         {
             var (hx, hz) = house.Center;
+            // What still holds it: a ruined house's walls can't be trusted to keep the fixing, so its drop hangs from the pole.
+            bool broken = house.State == PoiState.Ruined || house.Blast > 0.02f;
+            // A whole house's drop holds at its wall, so the wall must stand in the house as it is now (an abandoned
+            // one has lost a block here and there): it is looked at as spawned.
+            BlockGrid standing = broken ? null : house.Spawn(net.Profile, source).Blocks;
+            Vector3 at = default;
+            (int X, int Y, int Z) cell = default;
+            bool Reaches(int p, float reach) => p >= 0 && Fixing(house, Poles[p].X, Poles[p].Z, w, h, out at, out cell, standing)
+                && Vector3.Distance(Poles[p].DropAnchor(at.X, at.Z) with { Y = 0 }, at with { Y = 0 }) <= reach;
             int pole = -1;
             double best = double.MaxValue;
             for (int i = 0; i < Poles.Count; i++)
@@ -322,8 +375,7 @@ public sealed class PowerLines
                 double d = Dist(p.X, p.Z, hx, hz);
                 if (d < best) { best = d; pole = i; }
             }
-            double halfDiag = Math.Sqrt(Math.Pow(house.Stamp.MaxX - house.Stamp.MinX, 2) + Math.Pow(house.Stamp.MaxZ - house.Stamp.MinZ, 2)) * 0.5;
-            if (pole < 0 || best > DropReach + halfDiag * 0.6)
+            if (!Reaches(pole, DropReach))
             {
                 int from = -1;
                 double nearest = double.MaxValue;
@@ -332,18 +384,27 @@ public sealed class PowerLines
                     double d = Dist(Poles[j].X, Poles[j].Z, hx, hz);
                     if (d < nearest) { nearest = d; from = j; }
                 }
-                int end = from < 0 ? -1 : Spur(from, hx, hz, halfDiag + 14, net, source, ground, rng, wear, kept);
-                // (A spur that stopped short still stands: the poles it laid are fed.)
+                if (from < 0) { Without(house, "nothing fed to come from"); continue; }
+                // Toward the wall it will be fixed to, stopping within a drop's reach of it.
+                if (!Fixing(house, Poles[from].X, Poles[from].Z, w, h, out Vector3 aim, out _, standing)) { Without(house, NoWall); continue; }
+                // Straight there, or else the land's way round whatever is between (a bay, a lake, a hill); a spur that
+                // can't get there is never begun.
+                int pm = Poles.Count, wm = Wires.Count, lm = Links.Count;
+                int end = Spur(from, aim.X, aim.Z, DropReach * 0.7, net, source, ground, rng, wear, kept, toHouse: true);
+                if (end < 0)
+                {
+                    string straight = _spurWhy;
+                    Undo(pm, wm, lm);
+                    end = SpurWay(from, aim.X, aim.Z, DropReach * 0.7, net, source, ground, rng, wear, kept, true);
+                    if (end < 0) { Undo(pm, wm, lm); _spurWhy = $"{straight}, and {_spurWhy}"; }
+                }
                 fed = Fed();
-                if (end < 0 || Poles[end].Role != PowerRole.Line) { Without(house, from < 0 ? "nothing fed to come from" : end < 0 ? $"no spur: {_spurWhy}" : "the spur ended at a substation"); continue; }
+                if (end < 0 || Poles[end].Role != PowerRole.Line) { Without(house, end < 0 ? $"no spur: {_spurWhy}" : "the spur ended at a substation"); continue; }
                 pole = end;
+                if (!Reaches(pole, DropLongest)) { Without(house, Fixing(house, Poles[pole].X, Poles[pole].Z, w, h, out _, out _, standing) ? "the pole too far from the wall" : NoWall); continue; }
             }
             PowerPole pp = Poles[pole];
-            if (!Fixing(house, pp.X, pp.Z, w, h, out Vector3 at, out var cell)) { Without(house, "no wall to fix to"); continue; }
             Vector3 anchor = pp.DropAnchor(at.X, at.Z);
-            if (Vector3.Distance(anchor with { Y = 0 }, at with { Y = 0 }) > DropReach + 8) { Without(house, "the pole too far from the wall"); continue; }
-            // What still holds it: a ruined house's walls can't be trusted to keep the fixing, so its drop hangs from the pole.
-            bool broken = house.State == PoiState.Ruined || house.Blast > 0.02f;
             DropState state = pp.Fallen ? (broken ? DropState.Lying : DropState.FromHouse)
                 : broken ? DropState.FromPole
                 : !kept && rng.Chance(0.15f * wear) ? (rng.Chance(0.5f) ? DropState.FromPole : DropState.FromHouse) : DropState.Strung;
@@ -442,11 +503,15 @@ public sealed class PowerLines
         return null;
     }
 
-    /// <summary>A pole may stand here: dry ground, off every road's bed, and off any place's footprint and apron (the outer blend round a yard is the land's own, cut and filled).</summary>
+    /// <summary>
+    /// A pole may stand here: dry ground, off every road's bed, and outside every lot and place, past the flat apron
+    /// round its footprint (the apron is the lot's own). The verge between a street's kerb and the lots along it, a
+    /// few metres of a lot's eased blend, is where a street's poles stand.
+    /// </summary>
     static bool PoleSpot(InfraNetwork net, PlanetTerrainSource source, double x, double z)
     {
         double cx = Mathx.WrapX(x, net.Width), cz = Mathx.Wrap(z, net.Height);
-        return source.Built(cx, cz, out _) < 0.5f && !source.WaterSurfaceAt(cx, cz, out _) && net.OffRoad(x, z, 1.5);
+        return source.Built(cx, cz, out _) < 1f && !source.WaterSurfaceAt(cx, cz, out _) && net.OffRoad(x, z, 1.5);
     }
 
     /// <summary>Strings a pole line's wires between two nodes and links them: strung, or hanging from whichever still stands.</summary>
@@ -473,7 +538,7 @@ public sealed class PowerLines
     /// every span or nearer, each on a spot that takes one (nudged aside off a road or a pad), each span's wires
     /// clear of the ground. The last pole's index, or -1 if the land would not take it.
     /// </summary>
-    int Spur(int from, double tx, double tz, double shortOf, InfraNetwork net, PlanetTerrainSource source, Func<double, double, float> ground, PoiGenerator.Gen.Rng rng, float wear, bool kept)
+    int Spur(int from, double tx, double tz, double shortOf, InfraNetwork net, PlanetTerrainSource source, Func<double, double, float> ground, PoiGenerator.Gen.Rng rng, float wear, bool kept, bool toHouse = false)
     {
         double w = net.Width, h = net.Height;
         int prev = from;
@@ -481,11 +546,12 @@ public sealed class PowerLines
         {
             PowerPole last = Poles[prev];
             double dx = Mathx.WrapDelta(tx - last.X, w), dz = Mathx.WrapDelta(tz - last.Z, h), dl = Math.Sqrt(dx * dx + dz * dz);
-            if (dl <= shortOf + 0.5) return prev;
+            // Close enough already for what it serves: a pole on a line stops here (a house's drop needs a pole: from a
+            // substation's yard, one pole out of it at least).
+            bool line = last.Role == PowerRole.Line;
+            if (dl <= shortOf + 0.5 && (line || !toHouse) || line && dl - shortOf < 8) return prev;
             double ux = dx / dl, uz = dz / dl;
-            double go = Math.Min(PoleSpan, dl - shortOf);
-            // Close enough already for what it serves: a pole on a line stops here.
-            if (go < 8 && last.Role == PowerRole.Line) return prev;
+            double go = Math.Min(PoleSpan, Math.Max(dl - shortOf, Math.Min(12, dl)));
             PowerPole pole = null;
             bool spotted = false;
             foreach (double back in new[] { 0.0, 6, 12, 18, 24 })
@@ -508,6 +574,8 @@ public sealed class PowerLines
             }
             if (pole == null)
             {
+                // A house's lot comes between: its last pole is as near as the lot lets it, close enough if a long drop reaches.
+                if (toHouse && line && dl <= DropLongest) return prev;
                 _spurWhy = spotted ? "wires would not clear the ground" : step == 0 ? "no spot by where it leaves" : "no spot along the way";
                 return -1;
             }
@@ -520,24 +588,137 @@ public sealed class PowerLines
     }
 
     /// <summary>
-    /// The wall fixing for a house's drop from a pole at (tx, tz): on the face the house gives (<see cref="FlavourRuin.FixingSide"/>)
-    /// or else the face toward the pole, the outer wall nearest that face's middle, at the house's fixing height above the wall's
-    /// foot. World metres, just proud of the wall, and the wall block's world cell. False if the house has no wall there tall enough.
+    /// A spur of poles that takes the land's way (<see cref="InfraNetwork.LandWay"/>) where the straight way won't do:
+    /// round a bay or a lake, along the roads where they go its way. Each pole is as far along the way from the last as
+    /// a span reaches, nudged aside onto a spot that takes one, its wires clear of the ground; it stops
+    /// <paramref name="shortOf"/> from the end. The last pole's index, or -1.
     /// </summary>
-    public static bool Fixing(FlavourRuin house, double tx, double tz, double w, double h, out Vector3 at, out (int X, int Y, int Z) cell)
+    int SpurWay(int from, double tx, double tz, double shortOf, InfraNetwork net, PlanetTerrainSource source, Func<double, double, float> ground, PoiGenerator.Gen.Rng rng, float wear, bool kept, bool toHouse)
+    {
+        double w = net.Width, h = net.Height;
+        PowerPole start = Poles[from];
+        double ex = start.X + Mathx.WrapDelta(tx - start.X, w), ez = start.Z + Mathx.WrapDelta(tz - start.Z, h);
+        List<(double X, double Z)> way = net.LandWay((start.X, start.Z), (ex, ez));
+        if (way == null || way.Count < 2) { _spurWhy = "no way over the land"; return -1; }
+        int prev = from, at = 0;
+        double lx = start.X, lz = start.Z;
+        for (int step = 0; step < 600; step++)
+        {
+            PowerPole last = Poles[prev];
+            double dl = Math.Sqrt((ex - lx) * (ex - lx) + (ez - lz) * (ez - lz));
+            bool line = last.Role == PowerRole.Line;
+            if (dl <= shortOf + 0.5 && (line || !toHouse)) return prev;
+            // The farthest point along the way a span from the last pole reaches.
+            int reach = at;
+            while (reach + 1 < way.Count && Math.Sqrt(Math.Pow(way[reach + 1].X - lx, 2) + Math.Pow(way[reach + 1].Z - lz, 2)) <= PoleSpan) reach++;
+            PowerPole pole = null;
+            int took = -1;
+            for (int k = reach; k > at && pole == null; k -= 2)
+            {
+                double kx = way[k].X, kz = way[k].Z;
+                int k0 = Math.Max(0, k - 1), k1 = Math.Min(way.Count - 1, k + 1);
+                double dx = way[k1].X - way[k0].X, dz = way[k1].Z - way[k0].Z, l = Math.Max(1e-6, Math.Sqrt(dx * dx + dz * dz));
+                double nx = -dz / l, nz = dx / l;
+                foreach (double o in new[] { 0.0, 4, -4, 8, -8, 13, -13, 19, -19 })
+                {
+                    double x = kx + nx * o, z = kz + nz * o;
+                    if ((x - lx) * (x - lx) + (z - lz) * (z - lz) > (PoleSpan + 4) * (PoleSpan + 4) || !PoleSpot(net, source, x, z)) continue;
+                    double sx = -(z - lz), sz = x - lx, sl = Math.Max(1e-3, Math.Sqrt(sx * sx + sz * sz));
+                    var test = new PowerPole { X = x, Z = z, Ground = ground(x, z), SideX = (float)(sx / sl), SideZ = (float)(sz / sl) };
+                    var here = new PowerPole { X = lx, Z = lz, Ground = last.Ground, SideX = last.SideX, SideZ = last.SideZ, Role = last.Role, Pylon = last.Pylon, Tall = last.Tall };
+                    if (!Clears(here, test, ground, 2.5f)) continue;
+                    pole = test;
+                    took = k;
+                    break;
+                }
+            }
+            if (pole == null)
+            {
+                if (toHouse && line && dl <= DropLongest) return prev;
+                _spurWhy = "no spot along the land's way";
+                return -1;
+            }
+            lx = pole.X;
+            lz = pole.Z;
+            at = took;
+            pole.X = Mathx.WrapX(pole.X, w);
+            pole.Z = Mathx.Wrap(pole.Z, h);
+            pole.Fallen = !kept && rng.Chance(0.06f * wear);
+            int idx = Add(pole);
+            String(prev, idx, rng, wear, kept);
+            prev = idx;
+        }
+        return -1;
+    }
+
+    /// <summary>Whether the straight way between two nodes crosses open water or a river's channel somewhere.</summary>
+    static bool WaterBetween(PowerPole a, PowerPole b, PlanetTerrainSource source, double w, double h)
+    {
+        double dx = Mathx.WrapDelta(b.X - a.X, w), dz = Mathx.WrapDelta(b.Z - a.Z, h), l = Math.Sqrt(dx * dx + dz * dz);
+        for (double t = 0; t <= l; t += 20)
+            if (source.WaterSurfaceAt(Mathx.WrapX(a.X + dx * t / l, w), Mathx.Wrap(a.Z + dz * t / l, h), out _)) return true;
+        return false;
+    }
+
+    /// <summary>The cables laid under water from a fed yard or plant to a town's yard the land's lines couldn't reach (tests, views).</summary>
+    public readonly List<(int A, int B)> Cables = new();
+
+    /// <summary>Takes back whatever a spur that failed laid: a line that leads nowhere is never begun.</summary>
+    void Undo(int poles, int wires, int links)
+    {
+        Poles.RemoveRange(poles, Poles.Count - poles);
+        Wires.RemoveRange(wires, Wires.Count - wires);
+        Links.RemoveRange(links, Links.Count - links);
+    }
+
+    /// <summary>Why a house has no drop when none of its walls that could take one still stands tall enough (tests count these apart).</summary>
+    public const string NoWall = "no wall standing to fix to";
+
+    /// <summary>
+    /// The wall fixing for a house's drop from a pole at (tx, tz): on the face the house gives (<see cref="FlavourRuin.FixingSide"/>),
+    /// else the face toward the pole, else the face beside it nearer the pole, then the other beside it (never the far face: the
+    /// wire would cross the roof); on each, the outer wall nearest the face's middle, at the house's fixing height above the
+    /// wall's foot. A whole wall in the house as built and, given <paramref name="standing"/>, still in the house as it stands.
+    /// World metres, just proud of the wall, and the wall block's world cell. False if no such face has a wall tall enough.
+    /// </summary>
+    public static bool Fixing(FlavourRuin house, double tx, double tz, double w, double h, out Vector3 at, out (int X, int Y, int Z) cell, BlockGrid standing = null)
+    {
+        var (cx, cz) = house.Center;
+        double dx = Mathx.WrapDelta(tx - cx, w), dz = Mathx.WrapDelta(tz - cz, h);
+        Dir toward = FlavourRuins.Facing(dx, dz);
+        Dir[] beside = toward is Dir.North or Dir.South ? (dx >= 0 ? new[] { Dir.East, Dir.West } : new[] { Dir.West, Dir.East })
+            : (dz >= 0 ? new[] { Dir.South, Dir.North } : new[] { Dir.North, Dir.South });
+        var order = new List<Dir>(4);
+        if (house.FixingSide is Dir given) order.Add(given);
+        foreach (Dir d in new[] { toward, beside[0], beside[1] }) if (!order.Contains(d)) order.Add(d);
+        foreach (Dir side in order)
+            if (FixingOn(house, side, standing, out at, out cell)) return true;
+        at = default;
+        cell = default;
+        return false;
+    }
+
+    static bool FixingOn(FlavourRuin house, Dir side, BlockGrid standing, out Vector3 at, out (int X, int Y, int Z) cell)
     {
         at = default;
         cell = default;
-        Layout l = house.Layout;
-        BlockGrid g = l.Blocks;
-        var (cx, cz) = house.Center;
-        Dir side = house.FixingSide ?? FlavourRuins.Facing(Mathx.WrapDelta(tx - cx, w), Mathx.WrapDelta(tz - cz, h));
+        BlockGrid g = house.Layout.Blocks;
         PoiGenerator.Gen.Int3 v = side.Vec();
         bool acrossX = v.X == 0;
         int aMin = acrossX ? g.Min.X : g.Min.Z, aMax = acrossX ? g.Max.X : g.Max.Z;
         int sOut = acrossX ? (v.Z > 0 ? g.Max.Z : g.Min.Z) : (v.X > 0 ? g.Max.X : g.Min.X), sIn = acrossX ? (v.Z > 0 ? g.Min.Z : g.Max.Z) : (v.X > 0 ? g.Min.X : g.Max.X);
         int sStep = sOut < sIn ? 1 : -1, mid = (aMin + aMax) / 2;
-        bool Wall(int x, int y, int z) { Block b = g.Get(new PoiGenerator.Gen.Int3(x, y, z)); return !b.IsAir && b.Role == Role.Wall && BlockInfo.IsFullCube(b.Type); }
+        bool Wall(int x, int y, int z)
+        {
+            var c = new PoiGenerator.Gen.Int3(x, y, z);
+            Block b = g.Get(c);
+            return !b.IsAir && b.Role == Role.Wall && BlockInfo.IsFullCube(b.Type) && (standing == null || !standing.Get(c).IsAir);
+        }
+        bool Air(int x, int y, int z)
+        {
+            var c = new PoiGenerator.Gen.Int3(x, y, z);
+            return g.Get(c).IsAir && (standing == null || standing.Get(c).IsAir);
+        }
         for (int o = 0; o <= (aMax - aMin) / 2 + 1; o++)
             foreach (int sign in new[] { 1, -1 })
             {
@@ -559,7 +740,7 @@ public sealed class PowerLines
                     bool clear = true;
                     for (int k = s - sStep; k != sOut - sStep && clear; k -= sStep)
                         for (int y = y0 - 1; y <= y0 + 1 && clear; y++)
-                            if (!g.Get(new PoiGenerator.Gen.Int3(acrossX ? a : k, y, acrossX ? k : a)).IsAir) clear = false;
+                            if (!Air(acrossX ? a : k, y, acrossX ? k : a)) clear = false;
                     if (!clear) break;
                     cell = (house.OriginX + x, house.OriginY + y0, house.OriginZ + z);
                     at = new Vector3(house.OriginX + x + 0.5f + v.X * 0.56f, house.OriginY + y0 + 0.5f, house.OriginZ + z + 0.5f + v.Z * 0.56f);
@@ -657,40 +838,67 @@ public sealed class PowerLines
         int first = Poles.Count, prev = -1;
         PowerPole last = null;
         bool whole = true;
+        // The yards at either end, unwrapped beside the line, for the spans down onto their gantries.
+        PowerPole Beside(PowerPole n, double x, double z) => new() { X = x, Z = z, Ground = n.Ground, SideX = n.SideX, SideZ = n.SideZ, Role = n.Role, Site = n.Site };
+        PowerPole yardA = Beside(na, ax, az), yardB = Beside(nb, ax + dx, az + dz);
         for (int leg = 0; leg + 1 < way.Count; leg++)
         {
             var (px, pz) = way[leg];
             var (qx, qz) = way[leg + 1];
             double l = Math.Sqrt((qx - px) * (qx - px) + (qz - pz) * (qz - pz));
             double vx = (qx - px) / l, vz = (qz - pz) / l;
-            // Evenly from end to end: the line's last pylon stands at its end, by the substation or the plant.
-            int spans = Math.Max(1, (int)Math.Ceiling(l / PylonSpan));
-            for (int i = leg == 0 ? 0 : 1; i <= spans; i++)
+            // The spots near a point of the leg that take a pylon, nearest first: the first pass wants ground flat under
+            // all four feet, the second takes a steeper spot (the legs reach down to the ground under each foot), never a cliff.
+            IEnumerable<PowerPole> Spots(double t)
             {
-                double t = l * i / spans;
-                // At the spot due, or the nearest that takes a pylon along or to the side of it.
-                PowerPole pole = null;
-                // The first pass wants ground flat under all four feet; the second takes a steeper spot (the legs reach down to the ground under each foot), never a cliff.
-                for (int pass = 0; pass < 3 && pole == null; pass++)
+                for (int pass = 0; pass < 3; pass++)
                     foreach (double o in pass < 2 ? new[] { 0.0, 24, -24 } : new[] { 48.0, -48, 80, -80 })
                         foreach (double s in new[] { 0.0, -40, 40, -80, 80, -120, 120 })
                         {
                             double x = px + vx * (t + s) - vz * o, z = pz + vz * (t + s) + vx * o;
-                            if (pole != null || last != null && (x - last.X) * (x - last.X) + (z - last.Z) * (z - last.Z) > PylonFarthest * PylonFarthest || !Takes(x, z)) continue;
+                            if (last != null && ((x - last.X) * (x - last.X) + (z - last.Z) * (z - last.Z) > PylonFarthest * PylonFarthest || (x - last.X) * vx + (z - last.Z) * vz < 60) || !Takes(x, z)) continue;
                             var cand = new PowerPole { X = x, Z = z, Ground = ground(x, z), SideX = (float)-vz, SideZ = (float)vx, Pylon = true };
                             float lo = float.MaxValue, hi = float.MinValue;
                             foreach (var f in cand.FeetXZ()) { float g = ground(f.X, f.Z); lo = Math.Min(lo, g); hi = Math.Max(hi, g); }
                             if (hi - lo > (pass == 0 ? 3.5f : 8f)) continue;
-                            pole = cand;
+                            yield return cand;
                         }
-                if (pole == null) { whole = false; last = null; prev = -1; continue; }
-                bool strung = false;
-                foreach (float tall in PylonHeights)
+            }
+            // Evenly from end to end where the land lets the wires clear; where a rise comes between, the next pylon
+            // stands nearer. The line's first pylon stands by the plant or yard it leaves, its last by the one it reaches.
+            double at = 0;
+            bool fresh = leg == 0;
+            while (fresh || at < l - 1)
+            {
+                double due = fresh ? 0 : at + (l - at) / Math.Max(1, Math.Ceiling((l - at) / PylonSpan - 1e-6));
+                bool firstPylon = fresh, lastPylon = leg + 2 == way.Count && due >= l - 1;
+                fresh = false;
+                PowerPole pole = null;
+                double took = due;
+                foreach (double frac in last == null ? new[] { 1.0 } : new[] { 1.0, 0.7, 0.5, 0.35 })
                 {
-                    pole.Tall = tall;
-                    if (last == null || (strung = Clears(last, pole, ground, 8f))) break;
+                    double t = at + (due - at) * frac;
+                    if (frac < 1 && t - at < 80) break;
+                    bool ending = lastPylon && frac == 1.0;
+                    foreach (PowerPole cand in Spots(t))
+                    {
+                        foreach (float tall in PylonHeights)
+                        {
+                            cand.Tall = tall;
+                            if ((last == null || Clears(last, cand, ground, 8f))
+                                && (!firstPylon || na.Role != PowerRole.Substation || Clears(cand, yardA, ground, 3f))
+                                && (!ending || nb.Role != PowerRole.Substation || Clears(cand, yardB, ground, 3f))) { pole = cand; break; }
+                        }
+                        if (pole != null) break;
+                    }
+                    if (pole != null) { took = t; break; }
                 }
-                if (last != null && !strung) { whole = false; last = null; prev = -1; }
+                if (pole == null)
+                {
+                    whole = false; last = null; prev = -1;
+                    break;
+                }
+                at = took;
                 pole.Fallen = rng.Chance(0.04f);
                 Poles.Add(pole);
                 int idx = Poles.Count - 1;
@@ -699,13 +907,12 @@ public sealed class PowerLines
                 prev = idx;
                 last = pole;
             }
-        }
-        if (Poles.Count > first) Legs.Add((first, Poles.Count - 1));
+            if (!whole) break;
+        }        if (Poles.Count > first) Legs.Add((first, Poles.Count - 1));
         if (!whole || prev < 0) return false;
         // Into the far end: a plant's own switchyard, or down onto a substation's tall gantry.
         if (nb.Role == PowerRole.Substation)
         {
-            if (!Clears(Poles[prev], nb, ground, 3f)) return false;
             Pylons(prev, to, rng);
         }
         else Links.Add((prev, to));
@@ -713,7 +920,6 @@ public sealed class PowerLines
         if (na.Role == PowerRole.Substation)
         {
             Links.Remove((from, first));
-            if (!Clears(Poles[first], na, ground, 3f)) return false;
             Pylons(first, from, rng);
         }
         return true;
