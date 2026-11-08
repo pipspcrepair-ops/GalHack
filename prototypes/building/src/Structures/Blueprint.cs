@@ -310,6 +310,10 @@ public static class Blueprint
             s.Set(b.Pos, block);
             if (b.Light is LightSettings light) s.SetLight(b.Pos, light);
         }
+        // Taller blocks get their tops: a saved one names a top only when it was painted or damaged apart from its
+        // block, and a blueprint from before doors were two cells tall has none (the wall over its old 2 m door
+        // becomes the top). Where something else stands over one, it stays a one-cell door.
+        Building.Complete(s);
         if (s.Core == null) s.Owner = null;
         // Old blueprints said "capital" on every small grid, and a hover pad made the craft a hover
         // vessel: they load in Hover Mode. A blueprint saved since says "vessel" or "hover" itself.
@@ -337,7 +341,8 @@ public static class Blueprint
         Line($"gravity {(s.GravityOn ? "on" : "off")}");
         if (s.CargoSu > 0) Line($"cargo {Num(s.CargoSu)}");
 
-        var blocks = s.Blocks().OrderBy(x => x.pos.Y).ThenBy(x => x.pos.Z).ThenBy(x => x.pos.X).ToList();
+        // A top that is just its block's (same paint, whole) is left out: loading puts it back.
+        var blocks = s.Blocks().Where(x => !PlainTop(s, x.pos, x.block)).OrderBy(x => x.pos.Y).ThenBy(x => x.pos.Z).ThenBy(x => x.pos.X).ToList();
         var used = new SortedSet<ushort>();
         foreach (var (_, b) in blocks)
             foreach (Dir d in Dirs.All)
@@ -360,6 +365,13 @@ public static class Blueprint
             i = j;
         }
         return sb.ToString();
+    }
+
+    static bool PlainTop(Structure s, Int3 pos, in Block b)
+    {
+        if (!s.TypeOf(b).IsPieceTop) return false;
+        Int3 root = Building.Root(s, pos);
+        return root != pos && s.Get(root).Paint.Equals(b.Paint) && b.Hp >= s.StatsOf(b).MaxHp - 0.05f;
     }
 
     static string PaintLine(string name, Paint p)

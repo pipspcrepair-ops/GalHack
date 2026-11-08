@@ -38,6 +38,13 @@ public partial class SliceAudio : Node
     static string SettingsPath => ProjectSettings.GlobalizePath("user://audio-settings.json");
 
     /// <summary>A volume, 0 to 1, by its key in <see cref="AudioSettings.Volumes"/>: applied now, saved a moment later.</summary>
+    /// <summary>Turns the sound direction marker on or off (remembered).</summary>
+    public void SetDirection(bool on)
+    {
+        Settings.SoundDirection = on;
+        _saveIn = 1f;
+    }
+
     public void SetVolume(string key, float value)
     {
         Settings.Set(key, value);

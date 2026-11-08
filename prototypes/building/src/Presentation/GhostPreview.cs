@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Godot;
 using GalHack.Structures;
 
@@ -43,6 +44,9 @@ public partial class GhostPreview : Node3D
     /// <summary>Shows a ghost for each copy, in the frame of the structure it would join.</summary>
     public void ShowGhosts(Transform3D frame, Structure s, IReadOnlyList<(Int3 cell, Block block, Color tint)> copies)
     {
+        // A taller block shows whole: the large door's top over it, in the same tint.
+        if (copies.Any(c => s.TypeOf(c.block).StackOn(s.Grid.Size).Length > 0))
+            copies = copies.SelectMany(c => Building.Piece(s, c.cell, c.block).Select(q => (q.Pos, q.Block, c.tint))).ToList();
         while (_ghosts.Count < copies.Count)
         {
             var node = new MeshInstance3D { CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, Visible = false };

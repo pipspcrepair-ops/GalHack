@@ -61,7 +61,7 @@ public static partial class Brain
         }
 
         // Out of its pen (shoved, or startled out): straight back.
-        if (WildSim.Flat(c.Position - pen).Length() > radius)
+        if (WildSim.Flat(c.Position - pen).Length() > radius + (s.Domestic == DomesticKind.Stock && c.Owner != null ? 5f : 0f))
         {
             c.SetState(CState.ReturnHome);
             Steer(w, c, pen, s.Stats.WalkSpeed);
@@ -78,6 +78,20 @@ public static partial class Brain
         switch (s.Domestic)
         {
             case DomesticKind.Stock:
+                // Whoever works them: near the pen, the stock drift after their handler in a loose bunch.
+                if (c.Owner is { Attackable: true } handler && WildSim.Flat(handler.Position - pen).Length() < radius + 6f)
+                {
+                    float d = WildSim.Flat(handler.Position - c.Position).Length(), keep = 2.2f + (c.Id % 4) * 0.7f;
+                    if (d > keep + 1.2f)
+                    {
+                        c.SetState(CState.Follow);
+                        Vector3 goal = handler.Position - WildSim.Flat(handler.Forward).Normalized() * keep;
+                        Vector3 fromPen = WildSim.Flat(goal - pen);
+                        if (fromPen.Length() > radius + 4f) goal = pen + fromPen.Normalized() * (radius + 4f);
+                        Steer(w, c, goal, c.Stats.WalkSpeed * 0.8f);
+                        break;
+                    }
+                }
                 PenWander(w, c, pen, radius, dt);
                 break;
             case DomesticKind.Working:

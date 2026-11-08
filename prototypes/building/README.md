@@ -15,6 +15,7 @@ The canonical structure model for GalHack (pillar: **build what you fly**). Ship
 - **Data-driven.** Grids, materials, shapes and components are JSON in `data/`. A shape is just a list of points: volume, full faces (for attaching and sealing) and mirror symmetry are worked out from the geometry.
 - **Readable, hand-writable blueprints.** The example ship is 891 blocks in about 130 hand-written lines, and it loads on start.
 - **Fast enough.** 20,000 blocks mesh in about 55 ms; a single-block edit remeshes in about 6 ms.
+- **The one door.** On the large grid a door is two cells tall and one piece: a 3 m leaf under a 1 m top (`door-head`, the data's `stack`), placed, opened, taken down, paid back and destroyed together, the same height as every door in the world's places. Rooms, air, pathing, collision and the mesher read each cell as it is. A blueprint names the door alone; one from before keeps working (the wall over its old 2 m door becomes the top). A small grid's door stays one cell (no small vessel has a walk-in door). Reference only, nothing copied: how Empyrion's larger doors and shutters span several cells as one placed block (its local `BlocksConfig.ecf`, `SizeInBlocks` and `OccupySizeInBlocks`).
 - **Sealed rooms, found automatically.** Leaks are reported as the fewest faces that would seal the room (a min cut), so a missing block reports its own face and an open door reports the doorway.
 
 ## Play it

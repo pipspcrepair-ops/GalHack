@@ -290,4 +290,31 @@ public partial class Staging
                 GD.Print($"(frame {f}: tornado at {t.Position.X - stand.X:F0} m; torn {fx.TreesTorn}: {fx.TreesThrown} thrown, {fx.TreesSnapped} snapped, {fx.TreesUprooted} blown over; flying {fx.Trees?.Flying ?? 0}; last thrown stood {fx.LastThrown.Standing} flew {fx.LastThrown.Flying})");
         }
     }
+
+    /// <summary>
+    /// A tornado storm coming, warned: on open land where tornado storms are themselves, the survivor looks
+    /// upwind at the sky while the alert row (bottom left) shows the warning with its sign and its time.
+    /// </summary>
+    IEnumerable<int> TornadoWarning()
+    {
+        var sky = _game.Zone.Sky;
+        sky.Paused = true;
+        double noon = 0.5;
+        for (double t = 0.2; t < 0.8; t += 0.002) if (sky.SunAt(t).Y > sky.SunAt(noon).Y) noon = t;
+        sky.TimeOfDay = noon;
+        WeatherSim sim = WeatherNow;
+        sim.Snap(WeatherKind.Clouds);
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        Vector3 at = _game.Survivor.WorldFeet;
+        for (int k = 0; k < 600 && sim.LocalKind(WeatherKind.Tornado, at) != WeatherKind.Tornado; k++)
+            at = _game.Survivor.WorldFeet + new Vector3(MathF.Cos(k * 2.399f), 0f, MathF.Sin(k * 2.399f)) * (150f + k * 12f);
+        GD.Print($"(tornado warning: standing where tornado storms are themselves: {sim.LocalKind(WeatherKind.Tornado, at)})");
+        _game.Survivor.PlaceOutside((at + Vector3.Up * 0.2f).ToNumerics());
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        sim.Force(WeatherKind.Tornado);
+        foreach (int x in _drive.Wait(120)) yield return x;
+        var list = new List<WarningEntry>();
+        sim.GetWarnings(list, _game.Survivor.WorldFeet);
+        GD.Print($"(tornado warning: {string.Join("; ", list.Select(w => $"{w.Sign} {w.Text}"))})");
+    }
 }

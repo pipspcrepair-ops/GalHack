@@ -201,10 +201,26 @@ public partial class BuildTest
             bool severe = _game.Zone.Data.Weather.State(kind).Severe;
             string sign = WeatherSim.SignOf(kind);
             sim.Snap(kind);
+            // Where this weather can be itself: the region rules keep a dust storm off wet ground and a
+            // tornado storm off broken land, so look from the nearest ground they allow it (the check is of
+            // the warning, not the region rules).
+            Vector3 at = feet;
+            for (int k = 0; k < 600 && sim.LocalKind(kind, at) != kind; k++)
+            {
+                float a = k * 2.399f, r = 150f + k * 12f;
+                at = feet + new Vector3(MathF.Cos(a) * r, 0f, MathF.Sin(a) * r);
+            }
+            if (sim.LocalKind(kind, at) != kind)
+            {
+                GD.Print($"      ({kind}: no ground on this world within 7 km lets it be itself: a {sim.LocalKind(kind, feet)} here, warned as that)");
+                at = feet;
+            }
             var list = new List<WarningEntry>();
-            sim.GetWarnings(list, feet);
+            sim.GetWarnings(list, at);
             var own = list.Where(w => w.Kind == kind).ToList();
-            if (severe)
+            bool possible = sim.LocalKind(kind, at) == kind;
+            if (severe && !possible) silent++;
+            else if (severe)
             {
                 if (!Alerts.Specific(sign)) problems.Add($"{kind} is severe but its sign '{sign ?? "none"}' is not a sign of its own");
                 else if (own.Count != 1 || own[0].Sign != sign) problems.Add($"{kind} should raise one '{sign}' warning, raised {own.Count}");

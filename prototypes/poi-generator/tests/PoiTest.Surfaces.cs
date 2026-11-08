@@ -1,0 +1,135 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using PoiGenerator.Gen;
+using FinishKind = PoiGenerator.Gen.Finish;
+
+namespace PoiGenerator;
+
+public partial class PoiTest
+{
+    /// <summary>
+    /// Every face of a place is finished in something (brick, render, boards, tile, plate...), by rule from
+    /// what it is made of, the part it plays, its kit and its room: no bare flat colour on a wall, floor or
+    /// roof, near or far. The code a face carries is the same however the place is meshed (whole, one chunk
+    /// at a time, merged from further off), so a remeshed chunk never shows a seam.
+    /// </summary>
+    void Surfaces()
+    {
+        // The data: every kit's walls, floors and roofs have a finish on every side they show.
+        var missing = new List<string>();
+        var look = new PlaceLook { Book = _lib.Finishes };
+        foreach (Kit k in _lib.Kits.Values)
+        {
+            var kl = new PlaceLook { Book = _lib.Finishes, Kit = k.Finishes, KitRooms = k.KeepRooms, Alien = k.Alien };
+            foreach (PaletteEntry e in k.Palette.Where(e => e.Type is BlockType.Cube or BlockType.Ramp && e.Role is Role.Wall or Role.Floor or Role.Roof && e.Material is not (Material.Glass or Material.Lumen or Material.Crystal)))
+                foreach (Side s in e.Role == Role.Wall ? new[] { Side.Out, Side.In } : e.Role == Role.Floor ? new[] { Side.Floor, Side.Ceiling } : new[] { Side.Roof, Side.Ceiling })
+                    foreach (Rgb c in e.Colors)
+                        if (kl.Pick(new Block(e.Type, e.Material, c, e.Role), s, e.Type == BlockType.Ramp, 0).Finish == FinishKind.Plain)
+                            missing.Add($"{k.Id} '{e.Symbol}' {e.Material} {e.Role} {s}");
+        }
+        Check(missing.Count == 0, $"every kit's walls, floors and roofs are finished on every side ({missing.Count} not: {string.Join("; ", missing.Distinct().Take(6))})");
+        Check(_lib.Finishes.Rooms.Count >= 20 && _lib.Finishes.Rooms.ContainsKey("office") && _lib.Finishes.Rooms.ContainsKey("kitchen"), $"{_lib.Finishes.Rooms.Count} room purposes have finishes of their own inside");
+        float big = Gen.Surfaces.Code(FinishKind.Glass, 3, 3, 3, true, true, 3, true, Gen.Surfaces.Under.Poured, 15);
+        Check(big < (1 << 24) && (int)big == (int)MathF.Round(big) && Gen.Surfaces.FinishOf(big) == FinishKind.Glass, "a face's code fits a float exactly");
+
+        // Places as spawned: their opaque faces carry a finish, the far drawings too.
+        var rand = new Random();
+        int faces = 0, plain = 0, mergedFaces = 0, mergedPlain = 0, farFaces = 0, farPlain = 0;
+        var bare = new Dictionary<string, int>();
+        var kinds = new HashSet<FinishKind>();
+        int uncoded = 0, lookless = 0;
+        var families = _lib.Families.OrderBy(_ => rand.Next()).Take(28).ToList();
+        foreach (FamilyDef f in families)
+        {
+            PoiInstance inst;
+            try { inst = PoiFactory.Generate(_lib, f, rand.Next(f.Variants.Count), f.Rarity, (PoiState)rand.Next(4), (ulong)rand.NextInt64()); }
+            catch (InvalidOperationException) { continue; }
+            if (inst.Blocks.Look == null) lookless++;
+            BlockGrid g = inst.Blocks;
+            MeshOptions near = MeshOptions.OnPlanet(g.Min);
+            near.Collision = false;
+            foreach (ChunkMesh m in Mesher.Build(g, inst.Layout.Occupied, near))
+                for (int s = 0; s < 2; s++)
+                {
+                    MeshBuffer b = m.Surfaces[s];
+                    if (b.Codes.Count != b.VertexCount * 2) uncoded++;
+                    for (int v = 0; v + 3 < b.VertexCount; v += 4)
+                    {
+                        // Which block the face belongs to: the cell it is on. Growing things (plants, the Bloom) and
+                        // the strokes laid over faces (a weak wall's cracks, glyph lines) are drawn as they are.
+                        var c = new Int3((int)MathF.Floor((b.Positions[v * 3] + b.Positions[(v + 2) * 3]) * 0.5f - b.Normals[v * 3] * 0.1f),
+                            (int)MathF.Floor((b.Positions[v * 3 + 1] + b.Positions[(v + 2) * 3 + 1]) * 0.5f - b.Normals[v * 3 + 1] * 0.1f),
+                            (int)MathF.Floor((b.Positions[v * 3 + 2] + b.Positions[(v + 2) * 3 + 2]) * 0.5f - b.Normals[v * 3 + 2] * 0.1f));
+                        Block at = g.Get(c);
+                        if (at.IsAir || at.Material is Material.Plant or Material.Bloom or Material.Flesh or Material.DeadLumen or Material.Lumen or Material.Water) continue;
+                        faces++;
+                        FinishKind fin = Gen.Surfaces.FinishOf(b.Codes[v * 2]);
+                        kinds.Add(fin);
+                        if (fin != FinishKind.Plain) continue;
+                        plain++;
+                        string key = at.IsAir ? "air" : $"{at.Type}/{at.Material}/{at.Role}";
+                        bare[key] = bare.GetValueOrDefault(key) + 1;
+                    }
+                }
+            MeshOptions mid = MeshOptions.OnPlanet(g.Min);
+            mid.Merged = true;
+            mid.Collision = false;
+            mid.Detail = false;
+            foreach (ChunkMesh m in Mesher.Build(g, inst.Layout.Occupied, mid))
+                for (int s = 0; s < 2; s++)
+                    for (int v = 0; v + 3 < m.Surfaces[s].VertexCount; v += 4)
+                    {
+                        mergedFaces++;
+                        if (Gen.Surfaces.FinishOf(m.Surfaces[s].Codes[v * 2]) == FinishKind.Plain) mergedPlain++;
+                    }
+            ChunkMesh far = Mesher.Coarse(g, inst.Layout.Occupied);
+            for (int s = 0; s < 2; s++)
+                for (int v = 0; v + 3 < far.Surfaces[s].VertexCount; v += 4)
+                {
+                    farFaces++;
+                    if (Gen.Surfaces.FinishOf(far.Surfaces[s].Codes[v * 2]) == FinishKind.Plain) farPlain++;
+                }
+        }
+        Check(lookless == 0 && uncoded == 0, $"every spawned place knows its look ({lookless} not) and every vertex has its code ({uncoded} buffers without)");
+        string worst = string.Join(", ", bare.OrderByDescending(kv => kv.Value).Take(5).Select(kv => $"{kv.Key} {kv.Value}"));
+        Check(plain <= faces * 0.04, $"of {faces} opaque faces of built things in {families.Count} fresh places, {100.0 * plain / Math.Max(1, faces):F1}% are bare colour (most: {worst})");
+        Check(mergedPlain <= mergedFaces * 0.06, $"from further off, {100.0 * mergedPlain / Math.Max(1, mergedFaces):F1}% of {mergedFaces} merged faces are bare");
+        Check(farPlain <= farFaces * 0.1, $"far off, {100.0 * farPlain / Math.Max(1, farFaces):F1}% of {farFaces} lump faces are bare");
+        Check(kinds.Count >= 12, $"{kinds.Count} finishes seen across them: {string.Join(" ", kinds.OrderBy(k => k))}");
+
+        // What the finishes cost: a big works meshed with and without them, the best of three each.
+        {
+            FamilyDef works = _lib.Family("works_complex");
+            PoiInstance w = PoiFactory.Generate(_lib, works, 0, works.Rarity, PoiState.Abandoned, (ulong)rand.NextInt64());
+            var mo = new MeshOptions { RockMin = w.Blocks.Min, RockMax = w.Blocks.Max, RockBottom = w.Blocks.Min.Y };
+            double Best(bool on)
+            {
+                Mesher.Finishes = on;
+                double best = double.MaxValue;
+                for (int k = 0; k < 3; k++)
+                {
+                    var t = System.Diagnostics.Stopwatch.StartNew();
+                    Mesher.Build(w.Blocks, w.Layout.Occupied, mo);
+                    best = Math.Min(best, t.Elapsed.TotalMilliseconds);
+                }
+                Mesher.Finishes = true;
+                return best;
+            }
+            double plainMs = Best(false), finishedMs = Best(true);
+            Check(finishedMs < plainMs * 1.6 + 50, $"meshing a big works ({w.Blocks.CountBlocks()} blocks) with its finishes takes {finishedMs:F0} ms, {plainMs:F0} ms without (best of three)");
+        }
+
+        // One chunk meshed alone carries the same codes as the whole build gives it.
+        FamilyDef town = _lib.Family("survivor_town");
+        PoiInstance t = PoiFactory.Generate(_lib, town, 0, town.Rarity, PoiState.Ruined, (ulong)rand.NextInt64());
+        MeshOptions o = MeshOptions.OnPlanet(t.Blocks.Min);
+        o.ChunkSize = 16;
+        o.Collision = false;
+        List<ChunkMesh> whole = Mesher.Build(t.Blocks, t.Layout.Occupied, o);
+        ChunkMesh busiest = whole.OrderByDescending(m => m.Quads).First();
+        ChunkMesh alone = Mesher.BuildChunk(t.Blocks, t.Layout.Occupied, busiest.Chunk, 16, _ => o);
+        static string Codes(ChunkMesh m) => string.Join(",", Enumerable.Range(0, 5).SelectMany(s => m.Surfaces[s].Codes.Where((_, i) => i % 2 == 0)).OrderBy(x => x));
+        Check(alone != null && Codes(alone) == Codes(busiest), $"a chunk meshed alone has the codes the whole build gave it ({busiest.Quads} faces)");
+    }
+}

@@ -82,7 +82,10 @@ public sealed class OptionsSection : IMenuSection
                 break;
             case OptionsTab.Sound:
                 if (_game.Audio is SliceAudio audio)
+                {
                     foreach (string key in AudioSettings.Volumes) audio.SetVolume(key, new AudioSettings().Get(key));
+                    audio.SetDirection(false);
+                }
                 break;
             case OptionsTab.Controls:
                 S.Keys.Reset();
@@ -203,6 +206,9 @@ public sealed class OptionsSection : IMenuSection
             float value = audio.Settings.Get(key);
             if (Range(g, $"opt:volume-{key}", r, ref value, 0f, 1f, 0.01f, x => $"{x * 100f:F0}%")) audio.SetVolume(key, value);
         }
+        Rect2 dir = Row(g, body, AudioSettings.Volumes.Length, "SOUND DIRECTION", h: 90);
+        int shown = Choice(g, "opt:sound-direction", dir, new[] { "OFF", "ON" }, audio.Settings.SoundDirection ? 1 : 0, 120);
+        if (shown >= 0 && (shown == 1) != audio.Settings.SoundDirection) audio.SetDirection(shown == 1);
     }
 
     // ---- CONTROLS -----------------------------------------------------------------------------

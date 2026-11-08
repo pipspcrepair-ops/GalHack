@@ -282,7 +282,7 @@ public partial class BuildTest : Node
         foreach (bool small in new[] { true, false })
         {
             int devices = 0;
-            foreach (BlockType type in Blocks.Types.Where(t => t != null && !t.IsArmor && !t.IsCore))
+            foreach (BlockType type in Blocks.Types.Where(t => t != null && !t.IsArmor && !t.IsCore && !t.IsPieceTop))
             {
                 var seen = new HashSet<string>();
                 var axes = new HashSet<Dir>();

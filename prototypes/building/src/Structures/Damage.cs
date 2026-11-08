@@ -69,6 +69,9 @@ public static class Damage
             return;
         }
         bool core = s.TypeOf(b).IsCore;
+        // A taller block (a door and its top) is one piece: when one cell of it goes, the rest goes with it.
+        foreach (Int3 q in Building.PieceCells(s, p))
+            if (q != p && s.TryGet(q, out Block other)) { s.Clear(q); report.Destroyed.Add((q, other)); }
         s.Clear(p);
         report.Destroyed.Add((p, b));
         if (core) s.Owner = null; // ownership lives in the core

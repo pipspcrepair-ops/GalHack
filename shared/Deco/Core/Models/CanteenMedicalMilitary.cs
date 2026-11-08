@@ -439,7 +439,8 @@ public static partial class DecoModels
             for (int i = 0; i < 3; i++) b.Tube(-0.12f + i * 0.09f, 0.08f, -0.125f, -0.12f + i * 0.09f, 0.08f, -0.16f, 0.025f, Metal, 6).Ghost();
             b.Box(-0.15f, 0.15f, -0.13f, 0.05f, 0.19f, -0.125f, Screen).Screen();
             b.Box(0.1f, 0.16f, -0.13f, 0.13f, 0.19f, -0.125f, Signal).Lit().Ghost();
-            b.Tube(0.15f, 0.24f, 0.1f, 0.19f, 0.48f, 0.12f, 0.006f, Metal, 4).Ghost();
+            // The whip aerial, set in its socket in the case.
+            b.Tube(0.15f, 0.2f, 0.1f, 0.19f, 0.48f, 0.12f, 0.006f, Metal, 4).Ghost();
             b.Box(0.2f, 0.04f, -0.06f, 0.24f, 0.2f, 0.04f, Dark).Loose();
             b.Light(0, 0.2f, -0.3f, Signal);
         };

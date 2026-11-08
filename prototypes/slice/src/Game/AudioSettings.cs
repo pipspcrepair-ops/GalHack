@@ -12,6 +12,8 @@ namespace Slice.Game;
 public sealed class AudioSettings
 {
     public const string Master = "master", Music = "music", Effects = "effects", Ambience = "ambience";
+    /// <summary>Not a volume: the option to mark at the screen edge where a significant sound came from (off by default).</summary>
+    public const string Direction = "direction";
     public static readonly string[] Volumes = { Master, Music, Effects, Ambience };
     const float DefaultMaster = 0.5f;
 
@@ -23,12 +25,20 @@ public sealed class AudioSettings
     public AudioSettings()
     {
         foreach (string key in Volumes) _values[key] = key == Master ? DefaultMaster : 1f;
+        _values[Direction] = 0f;
     }
 
     /// <summary>The audio bus a volume sets (the master is the engine's own).</summary>
     public static string BusName(string key) => key switch { Music => "Music", Effects => "Effects", Ambience => "Ambience", _ => "Master" };
 
     public float Get(string key) => _values[key];
+
+    /// <summary>Where a significant sound came from shows as a marker at the screen edge.</summary>
+    public bool SoundDirection
+    {
+        get => _values[Direction] > 0.5f;
+        set { _values[Direction] = value ? 1f : 0f; Version++; }
+    }
 
     public void Set(string key, float value)
     {
@@ -44,6 +54,7 @@ public sealed class AudioSettings
             var saved = JsonSerializer.Deserialize<Dictionary<string, float>>(File.ReadAllText(path));
             foreach (string key in Volumes)
                 if (saved != null && saved.TryGetValue(key, out float value)) settings._values[key] = Math.Clamp(value, 0f, 1f);
+            if (saved != null && saved.TryGetValue(Direction, out float shown)) settings._values[Direction] = shown > 0.5f ? 1f : 0f;
         }
         catch (Exception e) when (e is IOException or JsonException or UnauthorizedAccessException) { }
         return settings;

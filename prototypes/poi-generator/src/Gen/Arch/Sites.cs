@@ -668,7 +668,7 @@ public static class Sites
             else
             {
                 x.C.Link(x.Yard, m);
-                x.C.Doorways.Add(new Doorway { Cells = doorCells, Facing = Dir.East, ModuleA = x.Yard, ModuleB = m });
+                x.C.Doorways.Add(new Doorway { Cells = doorCells, Facing = Dir.East, ModuleA = x.Yard, ModuleB = m, Hazard = true }); // the lander's airlock
             }
             prev = m;
             var floor = cells.Where(c => c.Y == baseY + d * 4 + 1 && Math.Abs(c.X - p.X) + Math.Abs(c.Z - p.Z) >= 2).OrderBy(c => Hash.Cell(c, (uint)d)).ToList();

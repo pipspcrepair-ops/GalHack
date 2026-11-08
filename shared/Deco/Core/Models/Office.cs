@@ -89,7 +89,7 @@ public static partial class DecoModels
             {
                 float y = 0.04f + i * 0.38f;
                 b.Box(-0.45f, y, -0.2f, 0.45f, y + 0.03f, 0.2f, Wood).Loose();
-                if (i < 4) Books(b, -0.44f, 0.44f, y + 0.03f, -0.18f, 0.2f, 0.3f);
+                if (i < 4) Books(b, -0.45f, 0.45f, y + 0.03f, -0.18f, 0.2f, 0.3f);
             }
         };
 

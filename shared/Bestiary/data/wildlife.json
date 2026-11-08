@@ -506,27 +506,40 @@
     "climates": {
       "Frozen": {
         "dress": "furs", "padding": 1.3, "build": 0.1,
-        "wear": { "fur_hood": 0.85, "scarf": 0.7, "goggles": 0.3 },
+        "wear": { "fur_hood": 0.85, "scarf": 0.7, "goggles": 0.3, "balaclava": 0.45, "mukluks": 0.85 },
+        "warmth": 5.2, "layers": { "base": ["thermals"], "insulation": ["fleece", "sweater"], "wind": ["anorak"], "shell": ["parka"] },
+        "dry": { "warmth": 0.6, "wear": { "fur_hood": 0.95, "goggles": 0.5 } },
+        "humid": { "wear": { "oilskin": 0.4, "rubber_boots": 0.3 } },
         "colours": ["6b5a48", "5a4a3a", "7a6a55", "8a7a62", "4f4538"]
       },
       "Cold": {
         "dress": "coat", "padding": 1.16, "build": 0.05,
-        "wear": { "hood": 0.45, "cap": 0.5, "scarf": 0.6, "coat": 0.55 },
+        "wear": { "hood": 0.45, "cap": 0.5, "scarf": 0.6, "coat": 0.4, "mukluks": 0.2, "balaclava": 0.1 },
+        "warmth": 3.0, "layers": { "base": ["thermals", "undershirt"], "insulation": ["sweater", "fleece"], "wind": ["anorak", "smock"], "shell": ["parka", "coat"] },
+        "dry": { "dress": "furs", "warmth": 0.8, "layers": { "base": ["thermals"], "insulation": ["fleece"], "wind": ["anorak"], "shell": ["parka"] }, "wear": { "fur_hood": 0.5, "goggles": 0.3 } },
+        "humid": { "layers": { "base": ["undershirt"], "insulation": ["sweater"], "shell": ["oilskin"] }, "wear": { "oilskin": 0.75, "hood": 0.7, "rubber_boots": 0.75, "scarf": 0.4 }, "colours": ["4a4c3a", "3f4a44", "54503a", "3c4048"] },
         "colours": ["4f5a54", "5a5044", "46505c", "6a5a48", "5c4a3c"]
       },
       "Mild": {
         "dress": "shirt", "padding": 1.0,
         "wear": { "cap": 0.2 },
+        "warmth": 0.5, "layers": { "base": ["undershirt"], "wind": ["smock"] },
+        "dry": { "wear": { "wide_hat": 0.3, "scarf": 0.3 } },
+        "humid": { "wear": { "rain_cape": 0.3, "rubber_boots": 0.3, "cap": 0.3 } },
         "colours": ["6e6a5c", "7a6a50", "4f5e66", "6a4e3e", "5a6450", "8a8270"]
       },
       "Hot": {
         "dress": "wraps", "padding": 1.04, "build": -0.04,
-        "wear": { "head_wrap": 0.7, "wide_hat": 0.3, "shades": 0.45 },
+        "wear": { "head_wrap": 0.7, "wide_hat": 0.3, "shades": 0.45, "robe": 0.45, "face_wrap": 0.35 },
+        "dry": { "wear": { "robe": 0.85, "head_wrap": 0.9, "face_wrap": 0.7, "goggles": 0.5 } },
+        "humid": { "dress": "light", "padding": 1.0, "wear": { "robe": 0, "face_wrap": 0, "head_wrap": 0, "shades": 0.2, "wide_hat": 0.55, "net_hat": 0.3, "sandals": 0.75, "rain_cape": 0.25 }, "colours": ["d8d0b8", "c8d0c0", "e0d8c4", "b8c4b0", "d4c4a4"] },
         "colours": ["c2b08c", "b8a074", "a89476", "9c8c6c", "cbbd9d"]
       },
       "Scorching": {
         "dress": "wraps", "padding": 1.08, "build": -0.08,
-        "wear": { "head_wrap": 0.95, "shades": 0.85, "scarf": 0.6 },
+        "wear": { "head_wrap": 0.95, "shades": 0.85, "robe": 0.75, "face_wrap": 0.7, "scarf": 0.3 },
+        "dry": { "wear": { "robe": 0.95, "head_wrap": 0.98, "face_wrap": 0.85, "goggles": 0.6 } },
+        "humid": { "dress": "light", "padding": 1.0, "wear": { "robe": 0, "face_wrap": 0, "head_wrap": 0, "shades": 0.3, "net_hat": 0.45, "wide_hat": 0.5, "sandals": 0.85 }, "colours": ["e0d8c4", "d8d0b8", "cfd6c6"] },
         "colours": ["d0c0a0", "c2b08c", "bcae94", "cfc2a6"]
       }
     },
@@ -535,6 +548,18 @@
       "wear": { "respirator": 1.0, "hood": 0.6, "goggles": 0.8, "air_tank": 0.3 },
       "colours": ["6e6a48", "5e6a58", "7a6440", "54605c"]
     },
+    "rain": {
+      "wear": { "poncho": 0.55, "rain_cape": 0.25, "rubber_boots": 0.35 }
+    },
+    "hazard": {
+      "dress": "hazard",
+      "wear": { "filter_mask": 1.0, "hazard_hood": 0.8, "air_tank": 0.15 }
+    },
+    "garments": {
+      "thermals": 0.6, "undershirt": 0.2, "sweater": 0.8, "fleece": 1.0, "anorak": 0.7, "smock": 0.4,
+      "parka": 1.8, "coat": 1.0, "poncho": 0.5, "shawl": 0.3, "robe": 0.2, "coveralls": 0.4,
+      "fur_hood": 0.5, "hood": 0.25, "oilskin": 1.1, "rain_cape": 0.3, "rubber_boots": 0.2, "net_hat": 0.05, "balaclava": 0.35, "scarf": 0.2, "mukluks": 0.4, "cap": 0.1, "hazard_hood": 0.2
+    },
     "vacuum": {
       "dress": "suit", "padding": 1.26,
       "wear": { "suit_helmet": 1.0, "air_tank": 1.0 },
@@ -542,52 +567,62 @@
     },
     "roles": {
       "Worker": {
-        "wear": { "tool_belt": 0.6, "apron": 0.3, "cap": 0.4, "backpack": 0.1 },
+        "wear": { "tool_belt": 0.6, "coveralls": 0.45, "hivis": 0.25, "apron": 0.3, "cap": 0.4, "backpack": 0.1 },
         "trim": ["4a5a6a", "3f5060", "5a5040", "4a4a42"],
-        "accent": [0.08, 0.14]
+        "accent": [0.08, 0.14], "haunts": ["work", "garden"], "moves": "stay"
       },
       "Trader": {
-        "wear": { "apron": 0.55, "satchel": 0.7, "scarf": 0.5, "wide_hat": 0.4, "shawl": 0.25 },
+        "wear": { "trader_pack": 0.5, "pouches": 0.55, "apron": 0.45, "satchel": 0.6, "scarf": 0.5, "wide_hat": 0.4, "shawl": 0.25 },
         "trim": ["a8622a", "8a3f2c", "9a7a2c", "5a3f6a", "2f6a5e"],
-        "approach": "Present", "accent": [0.75, 0.85]
+        "approach": "Present", "accent": [0.75, 0.85], "out": [0.27, 0.76], "haunts": ["stall"], "moves": "stay"
       },
       "Guard": {
         "wear": { "vest": 0.95, "helmet": 0.8, "satchel": 0.3, "bandoleer": 0.25 },
         "trim": ["3a3f36", "2f3a3f", "45443a", "3c3430"],
-        "prop": "rifle", "build": 0.15, "approach": "Warn", "aimed": "Warn", "accent": [0.55, 0.62]
+        "prop": "rifle", "build": 0.15, "approach": "Warn", "aimed": "Warn", "accent": [0.55, 0.62], "out": [0.0, 1.0], "moves": "beat"
       },
       "Farmer": {
         "wear": { "straw_hat": 0.75, "apron": 0.2, "wide_hat": 0.2, "tool_belt": 0.15 },
         "trim": ["5a4a2f", "6a5a38", "4f5230", "3f4a5a"],
-        "prop": "hoe", "propChance": 0.6, "accent": [0.12, 0.17]
+        "prop": "hoe", "propChance": 0.6, "accent": [0.12, 0.17], "out": [0.24, 0.74], "haunts": ["garden", "work"], "moves": "work"
       },
       "Medic": {
         "wear": { "medic_band": 1.0, "shawl": 0.15, "cap": 0.3 },
-        "trim": ["bcbab0", "c8c4b6", "a8aaa4"], "accent": [0.98, 1.0]
+        "trim": ["bcbab0", "c8c4b6", "a8aaa4"], "accent": [0.98, 1.0], "out": [0.26, 0.82], "haunts": ["sit", "home", "work"], "moves": "visit"
       },
       "Scavenger": {
-        "wear": { "backpack": 0.9, "goggles": 0.6, "hood": 0.3, "tool_belt": 0.4, "scarf": 0.4, "coat": 0.25 },
-        "trim": ["4a4034", "3f3a30", "54483a", "3a3f36"]
+        "wear": { "backpack": 0.9, "goggles": 0.6, "hood": 0.3, "pouches": 0.35, "tool_belt": 0.4, "scarf": 0.4, "coat": 0.25 },
+        "trim": ["4a4034", "3f3a30", "54483a", "3a3f36"], "out": [0.25, 0.75], "moves": "leave"
       },
       "Elder": {
         "wear": { "shawl": 0.7, "hood": 0.2, "wide_hat": 0.2 },
         "trim": ["5a4a5a", "6a5a4a", "4a5048", "7a6a58"],
-        "prop": "cane", "propChance": 0.75, "stoop": 0.55, "build": -0.1
+        "prop": "cane", "propChance": 0.75, "stoop": 0.55, "build": -0.1, "out": [0.3, 0.7], "haunts": ["sit", "chat"], "moves": "sit"
       },
       "Child": {
         "wear": { "cap": 0.15, "scarf": 0.2 },
         "trim": ["6a4a3a", "4a5a6a", "6a6a4a", "7a5a4a"],
-        "build": -0.05
+        "build": -0.05, "out": [0.28, 0.72], "moves": "play"
       },
       "Drunk": {
         "wear": { "coat": 0.35, "wide_hat": 0.2, "scarf": 0.2 },
         "trim": ["4a4038", "5a4a40", "3f3f3a"],
-        "prop": "bottle", "propChance": 0.8, "stoop": 0.25, "stagger": 1.0
+        "prop": "bottle", "propChance": 0.8, "stoop": 0.25, "stagger": 1.0, "out": [0.4, 0.97], "haunts": ["sit", "chat"], "moves": "roam"
       },
       "Raider": {
         "wear": { "spike_pads": 1.0, "bandoleer": 0.85, "face_paint": 0.75, "trophies": 0.7, "scrap_armour": 0.6, "eyepatch": 0.2, "goggles": 0.3 },
         "trim": ["1f1a18", "2a2320", "33261e", "3a1f1a"],
         "prop": "rifle", "propChance": 0.55, "build": 0.15, "hair": "mohawk", "approach": "Taunt", "aimed": "Taunt", "accent": [0.0, 0.03]
+      },
+      "Mechanic": {
+        "wear": { "coveralls": 0.85, "tool_belt": 0.9, "hivis": 0.2, "cap": 0.45, "goggles": 0.35 },
+        "trim": ["3f4a52", "4a443a", "33403a", "4f4a44"],
+        "prop": "wrench", "propChance": 0.85, "accent": [0.45, 0.5], "out": [0.25, 0.78], "haunts": ["work"], "moves": "work"
+      },
+      "Lawman": {
+        "wear": { "vest": 1.0, "badge": 1.0, "cap": 0.6, "helmet": 0.25 },
+        "trim": ["2a3040", "30343a", "2c3a44"],
+        "prop": "rifle", "build": 0.1, "approach": "Warn", "aimed": "Warn", "accent": [0.6, 0.66], "out": [0.0, 1.0], "moves": "patrol"
       }
     },
     "feral": {

@@ -92,6 +92,58 @@ public sealed class MeshBuilder
         return b.Prepare(bones);
     }
 
+    /// <summary>
+    /// <see cref="Skinning(IReadOnlyList{Piece})"/> with levels of detail that leave out the small
+    /// parts: <paramref name="keep"/> says, from a part's size (its box, in its piece) and whether it is
+    /// its piece's biggest, how many of the levels it stays in (0: only the whole mesh). Level k
+    /// is drawn once <paramref name="edges"/>[k - 1] metres would cover less than a pixel (the
+    /// renderer's own mesh LOD), so the parts drop by size on screen, in one mesh and one draw call.
+    /// </summary>
+    public static Prepared Skinning(IReadOnlyList<Piece> pieces, Func<Vector3, bool, int> keep, float[] edges)
+    {
+        var b = new MeshBuilder();
+        var bones = new List<int>();
+        var levels = new List<int>(); // per triangle: how many levels it stays in
+        var parts = new List<(int From, int To, Vector3 Size)>();
+        for (int i = 0; i < pieces.Count; i++)
+        {
+            parts.Clear();
+            foreach (Prim prim in pieces[i].Prims)
+            {
+                int v0 = b._v.Count, i0 = b._i.Count;
+                b.Add(prim);
+                Vector3 lo = Vector3.Inf, hi = -Vector3.Inf;
+                for (int v = v0; v < b._v.Count; v++) { lo = lo.Min(b._v[v]); hi = hi.Max(b._v[v]); }
+                parts.Add((i0, b._i.Count, b._v.Count > v0 ? hi - lo : Vector3.Zero));
+            }
+            int biggest = -1;
+            float most = -1f;
+            for (int k = 0; k < parts.Count; k++)
+            {
+                Vector3 s = parts[k].Size;
+                float volume = s.X * s.Y * s.Z + 1e-9f * (s.X + s.Y + s.Z);
+                if (volume > most) { most = volume; biggest = k; }
+            }
+            for (int k = 0; k < parts.Count; k++)
+            {
+                int level = Math.Clamp(keep(parts[k].Size, k == biggest), 0, edges.Length);
+                for (int t = parts[k].From; t < parts[k].To; t += 3) levels.Add(level);
+            }
+            while (bones.Count < b._v.Count) bones.Add(i);
+        }
+        Prepared p = b.Prepare(bones);
+        p.Edges = edges;
+        p.Lods = new int[edges.Length][];
+        for (int k = 1; k <= edges.Length; k++)
+        {
+            var kept = new List<int>();
+            for (int t = 0; t < levels.Count; t++)
+                if (levels[t] >= k) { kept.Add(p.I[t * 3]); kept.Add(p.I[t * 3 + 1]); kept.Add(p.I[t * 3 + 2]); }
+            p.Lods[k - 1] = kept.ToArray();
+        }
+        return p;
+    }
+
     /// <summary>A plain piece's vertex work, off the main thread.</summary>
     public static Prepared Plain(Piece piece)
     {
@@ -108,6 +160,9 @@ public sealed class MeshBuilder
         public Vector2[] Uv;
         public int[] I, Bones;
         public float[] Weights;
+        /// <summary>Levels of detail, if any: the triangles each keeps (wound as <see cref="I"/>), and the size, m, below which a pixel it is drawn.</summary>
+        public int[][] Lods;
+        public float[] Edges;
 
         public ArrayMesh Commit()
         {
@@ -125,7 +180,16 @@ public sealed class MeshBuilder
                 arrays[(int)Mesh.ArrayType.Bones] = Bones;
                 arrays[(int)Mesh.ArrayType.Weights] = Weights;
             }
-            mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
+            Godot.Collections.Dictionary lods = null;
+            if (Lods != null)
+            {
+                // Each level must leave something out (the renderer skips one that doesn't), and keep something.
+                lods = new Godot.Collections.Dictionary();
+                int last = I.Length;
+                for (int k = 0; k < Lods.Length; k++)
+                    if (Lods[k].Length > 0 && Lods[k].Length < last) { lods[Edges[k]] = Lods[k]; last = Lods[k].Length; }
+            }
+            mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays, null, lods);
             return mesh;
         }
     }

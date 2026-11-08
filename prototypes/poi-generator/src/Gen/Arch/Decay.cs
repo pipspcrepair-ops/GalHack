@@ -42,10 +42,10 @@ public static class Decay
                 {
                     Int3 w = cell + h.Vec(), behind = w + h.Vec();
                     if (c.Get(w).Role != Role.Wall || c.Occ.Contains(behind) || behind.Y > Assembler.GroundY) continue;
-                    if (c.Get(w + Int3.Up).Role != Role.Wall) continue;
+                    // The standard door's height (DoorSize), its head the wall over it.
+                    if (Enumerable.Range(1, DoorSize.Tall - 1).Any(k => c.Get(w + Int3.Up * k).Role != Role.Wall) || !BlockInfo.Collides(c.Get(w + Int3.Up * DoorSize.Tall).Type)) continue;
                     var color = c.Style.AccentColor.Scale(0.5f);
-                    c.Set(w, new Block(BlockType.SealedDoor, Material.Steel, color, Role.Story, h.Opposite(), 1));
-                    c.Set(w + Int3.Up, new Block(BlockType.SealedDoor, Material.Steel, color, Role.Story, h.Opposite(), 1));
+                    for (int k = 0; k < DoorSize.Tall; k++) c.Set(w + Int3.Up * k, new Block(BlockType.SealedDoor, Material.Steel, color, Role.Story, h.Opposite(), 1));
                     c.X.Story.Add(new StoryProp("door to nowhere", w, "A welded door in a wall with nothing but rock behind it. Scratched from the other side."));
                     goto nextCorridor;
                 }

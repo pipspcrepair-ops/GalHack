@@ -1,0 +1,103 @@
+# What places' faces are finished in: the surface the place shader draws over a block's colour.
+#
+#   default <material> <role> <side>:<finish> ...    what a face is, by what it is made of and the part it plays
+#   room <purpose> ... floor:<f> wall:<f> ceiling:<f> a room's own finishes inside (over the built materials)
+#   built <material> ...                             the materials a room's own finish may go over
+#
+# Roles: wall, floor, roof, decor (falls back to wall), rock, any. Sides: out and in (a wall's outside and
+# inside), floor, ceiling, roof (anything facing the sky: a roof, a yard's paving, a flat top), soffit (an
+# eave's underside), all. A finish may name its small choice after a dot (brick.flemish, tile.checker);
+# left out, each place picks its own, the same all over it. A side may list alternatives with a condition
+# each, the last one unconditional: "painted=render/poured" is render on a tinted block, poured concrete
+# on a grey one. Conditions: painted, grey, wood, straw, dark, light, slope, flat, low, mid, high, alien.
+# A kit's own "finish" lines (same form, no "default") come first; a block's own finish (Block.Variant,
+# set by a builder that chose it, such as a house's cladding) comes before both.
+#
+# Finishes: plain brick render plaster weatherboard logs stone rubble poured precast block corrugated seam
+# plate planks parquet tile lino carpet rooftile slate shingle thatch tar walltile deck hull paving chitin
+# resin bone fused basalt bronze rockface soil ceilingtile armour patched cloth ash
+
+built concrete ceramic timber rock steel alloy
+
+# ---- Walls, and the slab edges and wall tops that go with them ----------------------------------------
+
+default concrete wall   out:painted=render/high=precast/poured   in:painted=plaster/poured
+default concrete floor  out:poured  in:poured  floor:painted=lino/poured  ceiling:light=plaster/poured  roof:paving  soffit:poured
+default concrete roof   out:poured  in:poured  roof:slope=shingle.asphalt/tar  ceiling:light=plaster/poured  soffit:painted=render/poured
+default concrete rock   all:rockface
+default concrete any    all:poured
+
+default ceramic  wall   out:brick   in:plaster
+default ceramic  floor  out:brick   in:plaster  floor:tile  ceiling:plaster  roof:tile  soffit:plaster
+default ceramic  roof   out:brick   in:plaster  roof:slope=rooftile/tile  ceiling:plaster  soffit:planks
+default ceramic  any    all:tile
+
+default rock     wall   out:stone   in:painted=plaster/stone
+default rock     floor  out:stone   in:stone    floor:paving.flags  ceiling:plaster  roof:paving.flags  soffit:stone
+default rock     roof   out:stone   in:stone    roof:slope=slate/paving.flags  ceiling:planks  soffit:planks
+default rock     rock   all:rockface
+default rock     any    all:rockface
+default basalt   any    all:basalt
+default soil     any    all:soil
+
+default timber   wall   out:dark=planks/wood=logs/straw=planks/weatherboard   in:dark=planks/wood=logs/plaster
+default timber   floor  out:planks  in:planks   floor:planks  ceiling:planks  roof:planks  soffit:planks
+default timber   roof   out:planks  in:planks   roof:straw=thatch/slope=shingle/planks  ceiling:planks  soffit:planks
+default timber   decor  all:planks
+default timber   any    all:planks
+
+default steel    wall   out:plate   in:plate
+default steel    floor  out:plate   in:plate    floor:deck  ceiling:plate  roof:deck  soffit:plate
+default steel    roof   out:plate   in:plate    roof:slope=seam/plate  ceiling:plate  soffit:plate
+default steel    decor  all:plate
+default steel    any    all:plate
+
+default rust     wall   out:corrugated.rusty  in:corrugated.rusty
+default rust     floor  all:deck   out:plate  in:plate
+default rust     roof   roof:corrugated.rusty  out:plate  in:plate  ceiling:corrugated.rusty  soffit:corrugated.rusty
+default rust     any    all:plate
+
+default scrap    wall   out:patched  in:patched
+default scrap    floor  all:deck
+default scrap    roof   roof:corrugated.rusty  out:patched  in:patched  ceiling:corrugated  soffit:corrugated
+default scrap    any    all:patched
+
+default alloy    wall   out:hull  in:hull
+default alloy    floor  out:hull  in:hull  floor:deck  ceiling:hull  roof:deck  soffit:hull
+default alloy    roof   out:hull  in:hull  roof:slope=seam/hull  ceiling:hull  soffit:hull
+default alloy    any    all:hull
+
+default armour   any    all:armour
+default bronze   any    all:bronze
+
+default resin    wall   out:alien=resin/precast  in:alien=resin/precast
+default resin    floor  out:alien=resin/precast  in:alien=resin/precast  floor:alien=resin/lino  ceiling:alien=resin/precast  roof:alien=resin/tar  soffit:alien=resin/precast
+default resin    roof   all:alien=resin/precast  roof:alien=resin/slope=seam/tar
+default resin    any    all:resin
+
+default chitin   any    all:chitin
+default bone     any    all:bone
+default fused    any    all:fused
+default glyph    any    all:basalt
+default ash      any    all:ash
+default cloth    any    all:cloth
+default glass    any    all:glass
+
+# ---- Rooms inside -------------------------------------------------------------------------------------
+
+room office archive security monitor control command        floor:carpet.tiles     wall:plaster  ceiling:ceilingtile
+room lobby                                                   floor:tile.large       wall:plaster  ceiling:ceilingtile
+room corridor hallway passage connector                     floor:lino             wall:plaster  ceiling:ceilingtile
+room ward nurses pharmacy quarantine decon mortuary theatre  floor:lino             wall:walltile ceiling:ceilingtile
+room washroom                                                floor:tile.mosaic      wall:walltile ceiling:plaster
+room kitchen galley farm-kitchen mess                        floor:tile.checker     wall:walltile ceiling:plaster
+room living-room day-room                                    floor:planks           wall:plaster  ceiling:plaster
+room quarters crew-quarters                                  floor:carpet           wall:plaster  ceiling:plaster
+room shop market-hall                                        floor:tile             wall:plaster  ceiling:ceilingtile
+room lab server-room                                         floor:lino             wall:plaster  ceiling:ceilingtile
+room chapel                                                  floor:parquet          wall:plaster  ceiling:plaster
+room cellblock cells solitary guardroom evidence             floor:poured           wall:block    ceiling:poured
+room storage store stores warehouse parts-store ore-store loading-dock hold   floor:poured   wall:block   ceiling:poured
+room workshop generator boiler-house plant pump-hall reactor engine-room       floor:poured   wall:block   ceiling:poured
+room armoury magazine                                        floor:poured           wall:poured   ceiling:poured
+room cellar                                                  floor:poured           wall:painted=plaster/block ceiling:planks

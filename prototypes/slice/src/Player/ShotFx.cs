@@ -251,6 +251,7 @@ public partial class ShotFx : Node3D
     /// <summary>Fires a bolt from the muzzle to where the shot lands; the impact shows when it gets there.</summary>
     public void Fire(Vector3 muzzle, Vector3 end, Color colour, Action arrived, string feel = null, Func<Vector3?> follow = null)
     {
+        Slice.Game.SoundCues.Cue(muzzle, 1f);
         Bolts++;
         var mesh = new MeshInstance3D { Mesh = _boltMesh, MaterialOverride = _boltMaterial, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
         if (colour != default)

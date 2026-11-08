@@ -125,6 +125,7 @@ public partial class WildlifePatch : Node3D
             if (shows >= 1f) PlanetSurface.Fx.Fade.Clear(n);
             else PlanetSurface.Fx.Fade.Set(n, 0f, shows);
         };
+        PersonView.Fader = View.Fader; // people dissolve in and out at the far edge as creatures do
         AddChild(View);
         Audio = new ProceduralAudio { Name = "Calls" };
         AddChild(Audio);
@@ -189,9 +190,10 @@ public partial class WildlifePatch : Node3D
         sim.Telegraph += e =>
         {
             Audio.Telegraph(e.Creature);
+            Slice.Game.SoundCues.Cue(WorldOf(e.Creature), 1f);
             if (e.Target == Player) Telegraphed?.Invoke(e);
         };
-        sim.Warned += c => Audio.Telegraph(c);
+        sim.Warned += c => { Audio.Telegraph(c); Slice.Game.SoundCues.Cue(WorldOf(c), 0.8f); };
         sim.Attacked += e => { if (e.Target == Player) Attacked?.Invoke(e); else Bitten?.Invoke(e); };
         sim.Died += (c, killer) => Died?.Invoke(c, killer);
         sim.Seized += e => { if (e.Victim == Player) Seized?.Invoke(e, sim); };

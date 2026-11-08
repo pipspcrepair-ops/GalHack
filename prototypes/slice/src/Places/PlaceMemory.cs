@@ -51,6 +51,8 @@ public sealed class PlaceMemory
     public bool Entered;
     /// <summary>A settlement's temper now (a peaceful one turns hostile if you shoot in it).</summary>
     public Mood Mood;
+    /// <summary>A settlement's standing with you, -100 to 100: what you've done there moves it, and it sets how they treat you (<see cref="Town"/>).</summary>
+    public float Standing;
 
     /// <summary>Fractions of salvage yields not yet a whole item.</summary>
     public readonly Dictionary<string, double> SalvageCarry = new();

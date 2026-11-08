@@ -42,6 +42,13 @@ public partial class PlacePerf : Node
 
     public override void _Ready()
     {
+        // A wall-clock limit on a thread of its own: a run that hangs still quits.
+        new System.Threading.Thread(() =>
+        {
+            System.Threading.Thread.Sleep(TimeSpan.FromMinutes(25));
+            Console.Error.WriteLine("PlacePerf took over 25 minutes of wall-clock time: watchdog");
+            System.Environment.Exit(1);
+        }) { IsBackground = true }.Start();
         foreach (string arg in OS.GetCmdlineUserArgs())
         {
             int eq = arg.IndexOf('=');
@@ -155,6 +162,15 @@ public partial class PlacePerf : Node
         Begin();
         while (_times.Count < frames) yield return 0;
         End(stage);
+        // --ab: the same frame again with places' surfaces left as plain colour, then back: their cost, on one world.
+        if (!_args.ContainsKey("ab") || stage.EndsWith(" plain") || stage.StartsWith("far") || stage == "start") yield break;
+        PoiGenerator.BlockMaterials.Detail(false);
+        foreach (int x in _drive.Wait(10)) yield return x;
+        Begin();
+        while (_times.Count < frames) yield return 0;
+        End(stage + " plain");
+        PoiGenerator.BlockMaterials.Detail(true);
+        foreach (int x in _drive.Wait(10)) yield return x;
     }
 
     IEnumerable<int> Scenario()
@@ -266,6 +282,19 @@ public partial class PlacePerf : Node
             }
             _game.Controls.Look = Vector2.Zero;
             End("inside");
+            if (_args.ContainsKey("ab"))
+            {
+                PoiGenerator.BlockMaterials.Detail(false);
+                Begin();
+                for (int i = 0; i < 360; i++)
+                {
+                    _game.Controls.Look = new Vector2(40f, 0f);
+                    yield return 0;
+                }
+                _game.Controls.Look = Vector2.Zero;
+                End("inside plain");
+                PoiGenerator.BlockMaterials.Detail(true);
+            }
         }
         _game.Survivor.PlaceOutside(Out(-40f).ToNumerics());
         foreach (int x in _drive.Wait(30)) yield return x;

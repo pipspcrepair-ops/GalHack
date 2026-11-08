@@ -480,13 +480,23 @@ public static partial class DecoModels
 
         r["crash-debris"] = b =>
         {
-            // Torn panels, each tipped up off one edge.
+            // Torn panels: most lie flat; one tipped up off an edge rests its raised end on a crumpled chunk.
             for (int i = 0; i < 9; i++)
             {
                 float x = b.Rng.Range(-2.8f, 2.8f), z = b.Rng.Range(-2.8f, 2.8f), sx = b.Rng.Range(0.5f, 1.2f), sz = b.Rng.Range(0.4f, 0.9f);
+                float tip = b.Rng.Chance(0.5f) ? b.Rng.Range(6f, 18f) : 0f;
                 using (b.Turn(new Vector3(x, 0, z), 0, b.Rng.Range(0, 180)))
-                using (b.Turn(new Vector3(x - sx / 2, 0, z), 0, 0, b.Rng.Range(0, 18)))
-                    b.Box(x - sx / 2, 0, z - sz / 2, x + sx / 2, 0.06f, z + sz / 2, i % 3 == 0 ? Trim : Body);
+                {
+                    using (b.Turn(new Vector3(x - sx / 2, 0, z), 0, 0, tip))
+                        b.Box(x - sx / 2, 0, z - sz / 2, x + sx / 2, 0.06f, z + sz / 2, i % 3 == 0 ? Trim : Body);
+                    if (tip > 0)
+                    {
+                        // The chunk under it: the panel's underside rests on its nearer top edge.
+                        float d = sx - 0.14f, top = d * MathF.Sin(tip * DecoGeo.Deg) - 0.07f * MathF.Tan(tip * DecoGeo.Deg);
+                        float cx = x - sx / 2 + d * MathF.Cos(tip * DecoGeo.Deg);
+                        b.Box(cx - 0.07f, 0, z - sz * 0.3f, cx + 0.07f, top, z + sz * 0.3f, Dark);
+                    }
+                }
             }
             // Seats torn out in pairs, some upside down.
             for (int i = 0; i < 4; i++)

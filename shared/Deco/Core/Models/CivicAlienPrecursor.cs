@@ -295,8 +295,9 @@ public static partial class DecoModels
             foreach (var (x, z, h, tilt) in crystals)
                 using (b.Turn(new Vector3(x, 0.2f, z), tilt * 0.6f, 0, tilt))
                 {
-                    b.Cyl(x, 0.2f, z, 0.09f, h, Glass, 6).Pane();
-                    b.Cyl(x, 0.2f + h, z, 0.09f, 0.15f, Glass, 6, 0f).Pane().Ghost();
+                    // Grown from the cradle: set into it, its point grown from the shaft.
+                    b.Cyl(x, 0.14f, z, 0.09f, h + 0.06f, Glass, 6).Pane();
+                    b.Cyl(x, 0.18f + h, z, 0.09f, 0.17f, Glass, 6, 0f).Pane().Ghost();
                 }
             b.Cyl(0, 0.25f, 0, 0.05f, 0.85f, Node, 6).Lit();
             b.Light(0, 0.8f, 0, Node);

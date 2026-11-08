@@ -45,7 +45,7 @@ public static class DeviceDetail
             case "thruster": Thruster(k); break;
             case "hover": Hover(k); break;
             case "chair": Chair(k); break;
-            case "door": Door(k); break;
+            case "door": if (t.IsPieceTop) DoorTop(k); else Door(k); break;
             case "light": Light(k); break;
             case "cpu-extender": CpuExtender(k, t); break;
             case "warp-drive":
@@ -352,17 +352,43 @@ public static class DeviceDetail
         k.Box(new Vector3(-0.19f, -0.5f, -0.08f), new Vector3(0.19f, -0.45f, 0.25f), PartStyle.Accent, Hazard);
     }
 
-    /// <summary>A door: chunky hazard-striped jambs in the frame, a status lamp over it each side, and seams across the leaf.</summary>
+    /// <summary>
+    /// A door: chunky jambs in the frame, a status lamp over it each side, and seams across the leaf.
+    /// On the large grid the door is two cells: its jambs and seam run on up into its top, which carries the lamps.
+    /// </summary>
     static void Door(Kit k)
     {
-        foreach (int s in new[] { -1, 1 })
-            k.Box(new Vector3(s * 0.44f, -0.5f, -0.15f), new Vector3(s * 0.39f, 0.46f, 0.15f), PartStyle.Accent, Hazard);
+        foreach (GridSize grid in new[] { GridSize.Small, GridSize.Large })
+        {
+            float top = grid == GridSize.Small ? 0.46f : 0.5f;
+            k.Grid = grid;
+            // Plain jambs: hazard stripes belong on a dangerous opening, never round a person's door.
+            foreach (int s in new[] { -1, 1 })
+                k.Box(new Vector3(s * 0.44f, -0.5f, -0.15f), new Vector3(s * 0.39f, top, 0.15f), PartStyle.Accent, Armour(1));
+            k.ClosedOnly = true;
+            k.Box(new Vector3(-0.007f, -0.5f, -0.104f), new Vector3(0.007f, top, 0.104f), PartStyle.Dark, Armour(1));
+            k.ClosedOnly = false;
+        }
+        k.Grid = GridSize.Small;
         foreach (int s in new[] { -1, 1 })
             k.Box(new Vector3(-0.07f, 0.4f, s * 0.5f), new Vector3(0.07f, 0.455f, s * 0.515f), PartStyle.Glow, Pulse(0.25f));
+        k.Grid = null;
         k.ClosedOnly = true;
-        k.Box(new Vector3(-0.007f, -0.5f, -0.104f), new Vector3(0.007f, 0.46f, 0.104f), PartStyle.Dark, Armour(1));
         foreach (float y in new[] { -0.32f, 0.24f })
             k.Box(new Vector3(-0.39f, y - 0.01f, -0.104f), new Vector3(0.39f, y + 0.01f, 0.104f), PartStyle.Dark, Armour(1));
+        k.ClosedOnly = false;
+    }
+
+    /// <summary>The large door's top: its jambs up to the head of the 3 m opening, a status lamp on the head each side, the leaf's seam.</summary>
+    static void DoorTop(Kit k)
+    {
+        foreach (int s in new[] { -1, 1 })
+            k.Box(new Vector3(s * 0.44f, -0.5f, -0.15f), new Vector3(s * 0.39f, 0f, 0.15f), PartStyle.Accent, Armour(1));
+        foreach (int s in new[] { -1, 1 })
+            k.Box(new Vector3(-0.07f, 0.08f, s * 0.5f), new Vector3(0.07f, 0.135f, s * 0.515f), PartStyle.Glow, Pulse(0.25f));
+        k.ClosedOnly = true;
+        k.Box(new Vector3(-0.007f, -0.5f, -0.104f), new Vector3(0.007f, 0f, 0.104f), PartStyle.Dark, Armour(1));
+        k.Box(new Vector3(-0.39f, -0.26f, -0.104f), new Vector3(0.39f, -0.24f, 0.104f), PartStyle.Dark, Armour(1));
         k.ClosedOnly = false;
     }
 

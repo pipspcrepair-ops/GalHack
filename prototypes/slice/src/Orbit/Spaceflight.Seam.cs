@@ -96,6 +96,7 @@ public partial class Spaceflight
         _laps.Clear();
         _lapAt = started;
         TimeSpan paused = GC.GetTotalPauseDuration();
+        _frameDelta = (float)delta;
         ProcessSeam(delta);
         double ms = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
         if (ms > WorstSeamMs)
@@ -342,6 +343,8 @@ public partial class Spaceflight
         Vector3 eye = Game.Camera.GlobalPosition;
         bool orbit = Game.InOrbit;
         float cap = Ceiling, R = o.GlobeRadius;
+        // The weather it shows: often while its clouds are in sight, now and then while they're under the sky's own.
+        o.Globe.Weather?.Update(_frameDelta, s.Weather?.Sim, s.Sky, s.Planet.Look.Dust, orbit || y > s.Sky.Air.CloudBase ? GlobeWeather.LeastPeriod : 15.0);
         double w = s.Planet.Width, h = s.Planet.Height;
 
         // Where the sheet stands: under you on the flat map, turning into under you on the globe up the band.

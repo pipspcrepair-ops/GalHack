@@ -1205,7 +1205,7 @@ public sealed partial class Building
     {
         List<Int3> cells = new();
         for (int z = Zs; z <= Zs + 1; z++)
-            for (int k = 0; k < 3; k++) cells.Add(L(Hut ? Cx - 2 : 0, k, z));
+            for (int k = 0; k < DoorSize.Tall; k++) cells.Add(L(Hut ? Cx - 2 : 0, k, z));
         Dir facing = R(Dir.West);
         foreach (Int3 c in cells) C.Clear(c);
         Out.ExitCells = cells;
@@ -1213,18 +1213,18 @@ public sealed partial class Building
         Int3 min = cells.Aggregate(Int3.Min);
         Out.EntranceCell = min + facing.Vec() * 2;
         Out.EntranceModule = _plans[0].Corridor;
-        // A canopy over the way in on two posts, so the door reads from across the yard.
+        // A canopy over the way in on two posts, so the door reads from across the yard: at the door's headroom, a metre over its head.
         Dir across = facing is Dir.North or Dir.South ? Dir.East : Dir.South;
         Int3 lo = min, hi = cells.Aggregate(Int3.Max);
         int span = (hi - lo).X + (hi - lo).Z;
         for (int d = 1; d <= 2; d++)
             for (int a = -1; a <= span + 1; a++)
             {
-                Int3 c = (lo with { Y = 3 }) + facing.Vec() * d + across.Vec() * a;
+                Int3 c = (lo with { Y = DoorSize.Headroom }) + facing.Vec() * d + across.Vec() * a;
                 if (!C.Blocks.ContainsKey(c)) C.Blocks[c] = S.Accent.Make(c);
             }
         foreach (int a in new[] { -1, span + 1 })
-            for (int k = 0; k < 3; k++)
+            for (int k = 0; k < DoorSize.Headroom; k++)
             {
                 Int3 post = (lo with { Y = k }) + facing.Vec() * 2 + across.Vec() * a;
                 if (!C.Blocks.ContainsKey(post)) C.Blocks[post] = new Block(BlockType.Pillar, Material.Steel, S.Machine.Colors[0], Role.Decor);

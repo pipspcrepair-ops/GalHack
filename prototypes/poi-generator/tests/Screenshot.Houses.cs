@@ -43,7 +43,7 @@ public partial class Screenshot
         FamilyDef fam = lib.Families.First(f => f.Id == "flavour_house");
 
         // Lots in a row along +x, fronts to -z (the street), each lot's line against the last's; returns their layouts and where each stands.
-        List<(Layout L, float X)> Row(Func<int, LayoutHints> hints, int n, Func<Layout, bool> keep = null, int tries = 400, float start = 0, bool clear = true)
+        List<(Layout L, float X)> Row(Func<int, LayoutHints> hints, int n, Func<Layout, bool> keep = null, int tries = 400, float start = 0, bool clear = true, PoiState state = PoiState.Active)
         {
             if (clear)
             {
@@ -56,7 +56,7 @@ public partial class Screenshot
             {
                 Layout l = PoiFactory.BuildLayout(lib, fam, 1, Rarity.Common, (ulong)rand.NextInt64(), hints(k));
                 if (keep != null && !keep(l)) continue;
-                PoiInstance poi = PoiFactory.Spawn(lib, l, PoiState.Active, (ulong)rand.NextInt64());
+                PoiInstance poi = PoiFactory.Spawn(lib, l, state, (ulong)rand.NextInt64());
                 var view = PoiView.Build(poi, Biome.Steppe, new PoiView.Options(Collision: false, Figures: false), (_, _) => new Color(0.36f, 0.43f, 0.27f));
                 HomeNote h = l.Extras.Homes.FirstOrDefault();
                 bool lot = h != null && h.LotMax.X > h.LotMin.X;
@@ -124,6 +124,36 @@ public partial class Screenshot
             float end = street[^1].X + 40;
             await Shot("street", new Vector3(end * 0.12f, 2.2f, -17), new Vector3(end * 0.5f, 3.5f, 6));
             await Shot("street-across", new Vector3(end * 0.3f, 8f, -34), new Vector3(end * 0.3f, 4f, 14));
+        }
+
+        // Houses in their real surfaces: three neighbours of one street each clad differently, seen across the street; and a
+        // ruined house close up, its walls one material each, worn by the years rather than a mosaic of colours.
+        string WallOf(Layout l) => l.Extras.Homes.FirstOrDefault()?.Silhouette.Split('/') is { Length: > 5 } parts ? parts[5] : "";
+        if (Want("claddings"))
+        {
+            int cul = rand.Next();
+            for (int k = 0; k < 400 && HomeCulture.Of(lib.Homes, new HomeHints(cul, Climate.Temperate, 0.6f), TechLevel.Mid).Families[0].Family.Id is not ("suburban" or "cottage" or "bungalow"); k++) cul = rand.Next();
+            var seen = new HashSet<string>();
+            var three = Row(_ => new LayoutHints(Dir.North, TechLevel.Mid, null, new HomeHints(cul, Climate.Temperate, 0.6f)), 3,
+                l => WallOf(l) is var w && w is "brick" or "board" or "stone" or "render" or "timber" or "halftimber" && seen.Add(w), 600);
+            GD.Print($"claddings: {Says(three)}");
+            if (three.Count > 0)
+            {
+                float end = three[^1].X + three[^1].L.Extras.Homes[0].LotMax.X;
+                await Shot("claddings", new Vector3(end * 0.5f, 4.5f, -19f), new Vector3(end * 0.5f, 3.5f, 10f));
+            }
+        }
+        if (Want("ruin-close"))
+        {
+            var one = Row(_ => new LayoutHints(Dir.North, TechLevel.Mid, null, new HomeHints(rand.Next(), Climate.Temperate, 0.5f, rand.Next(2) == 0 ? "suburban" : "cottage")), 1,
+                l => WallOf(l) is "brick" or "board" or "stone" or "render", 400, state: PoiState.Ruined);
+            if (one.Count > 0 && Door(one[0]) is var (mid, o, along))
+            {
+                GD.Print($"ruin-close: {Says(one)}");
+                var person = Figure(mid + o * 1.5f + along * 2.5f);
+                await Shot("ruin-close", mid + o * 9f - along * 5f + new Vector3(0, 2.2f, 0), mid + new Vector3(0, 3f, 0) + along * 1.5f);
+                person.QueueFree();
+            }
         }
 
         // Two streets of one town side by side, each with its own fences.

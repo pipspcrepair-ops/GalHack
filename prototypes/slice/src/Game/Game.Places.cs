@@ -94,6 +94,7 @@ public partial class Game
             Zone.Dust?.Puff(at + new Vector3(rng.RandfRange(-1f, 1f), rng.RandfRange(-0.3f, 0.8f), rng.RandfRange(-1f, 1f)) * radius * 0.25f, new Color(0.32f, 0.28f, 0.24f, 0.85f), 1.2f + radius * 0.2f);
         Zone.Dust?.Sparks(at, Vector3.Up, new Color(1f, 0.62f, 0.25f));
         Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Boom, at, 0.75f, 6f);
+        SoundCues.Cue(at, 1.5f);
         var flash = new OmniLight3D { Name = "Blast flash", LightColor = new Color(1f, 0.72f, 0.4f), LightEnergy = 10f, OmniRange = radius * 3f };
         Zone.AddChild(flash);
         flash.GlobalPosition = at;
@@ -111,6 +112,7 @@ public partial class Game
             Alerts.Attack("hostile", from);
             Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Ping, from, 0.5f, -4f);
         };
+        t.ShotAway += (from, to) => Shots.Fire(from, to, default, null);
         t.Fired += (from, to, clear) =>
         {
             Shots.Fire(from, to, default, null);

@@ -13,7 +13,7 @@ namespace Slice.Tests;
 /// against the engine itself, so the globe the player sees and the map they land on agree: every
 /// vertex of Godot's own SphereMesh points where the mapping says its texture coordinate is (the
 /// globe's colour map is planet-generator's ColorMap, whose pixel (u, v) is the map point
-/// (u·width, v·height)).
+/// (uÂ·width, vÂ·height)).
 ///
 /// Run: .\tools\test.ps1 -Project prototypes/slice -Scene res://tests/GlobeTest.tscn
 /// </summary>
@@ -35,13 +35,16 @@ public partial class GlobeTest : Node
         OrbitsStandApart();
         RingsFitTheirSpheres();
         BodiesWearTheirOwnWorlds();
+        TheCloudsRepeatExactly();
+        try { TheWeatherShows(); }
+        catch (Exception e) { Check(false, $"globe weather: threw {e}"); }
         GD.Print(_failures == 0 ? $"ALL PASSED ({_passes} checks in {clock.Elapsed.TotalSeconds:F1} s)" : $"{_failures} CHECK(S) FAILED ({_passes} passed)");
         GalHack.Testing.Backstop.Quit(this, _failures == 0 ? 0 : 1);
     }
 
     /// <summary>
     /// Godot's SphereMesh carries the globe's texture: a vertex with texture coordinate (u, v) shows
-    /// the map point (u·width, v·height). The mapping must put that map point in the same direction
+    /// the map point (uÂ·width, vÂ·height). The mapping must put that map point in the same direction
     /// as the vertex, or the place under a descending vessel isn't the place it lands on.
     /// </summary>
     void SphereMeshAgrees(double width, double height)
@@ -65,7 +68,7 @@ public partial class GlobeTest : Node
             checkedCount++;
         }
         Check(checkedCount > 1000 && worst < 0.5,
-            $"globe: all {checkedCount} vertices of Godot's SphereMesh point where the mapping puts their texture's map point (worst {worst:F3}°)");
+            $"globe: all {checkedCount} vertices of Godot's SphereMesh point where the mapping puts their texture's map point (worst {worst:F3}Â°)");
 
         // East is east: a quarter of the way round the map from x = 0 is the globe's +X side (u runs east).
         N.Vector3 quarter = globe.Direction(width / 4, height / 2);
@@ -368,6 +371,226 @@ public partial class GlobeTest : Node
         }
         Check(wrong == 0 && front > 100 && behind > 100, $"globe: over a giant's disc only the near arc is drawn in front, from both sides of the ring plane and nearly in it ({front} in front, {behind} behind, {wrong} wrong)");
     }
+
+    /// <summary>
+    /// The globe's clouds are the live weather's, at the right places: on a fresh world a storm front
+    /// and its cells, made by the weather itself, stand on the globe's weather layer where the weather
+    /// has them (the front's edge where its deck begins, each cell's tower over the cell), the layer
+    /// follows the front as it advances a minute on, and filling it costs a frame under a millisecond.
+    /// </summary>
+    void TheWeatherShows()
+    {
+        var rng = new Random();
+        var data = Weather.Model.WeatherData.Parse(System.IO.File.ReadAllText(ProjectSettings.GlobalizePath("res://") + "../weather/data/weather.json"));
+        var kinds = new[] { Planets.Gen.Archetype.Temperate, Planets.Gen.Archetype.Alien, Planets.Gen.Archetype.Arid };
+        var spec = Planets.Gen.PlanetSpec.Roll((ulong)rng.NextInt64(), kinds[rng.Next(kinds.Length)], rng.Next(Planets.Gen.PlanetSpec.VariantCount), 16);
+        Planets.Gen.WorldMap map = Planets.Gen.PlanetGenerator.Generate(spec);
+        var size = new Vector2((float)map.WidthMeters, (float)map.HeightMeters);
+        var sim = new Weather.Model.WeatherSim(data, Slice.Surface.SurfaceWeather.ArchetypeFor(spec), (ulong)rng.NextInt64(), Weather.Model.WeatherKind.Thunderstorm)
+        {
+            Land = Slice.Surface.SurfaceWeather.LandOf(map, data.Regions), WorldSize = size, MeanWarmth = map.Temperature.Average(),
+        };
+        var sky = PlanetSurface.Skies.SkySystem.For(spec);
+        var observer = new Vector3((float)(rng.NextDouble() * size.X), 0f, (float)(rng.NextDouble() * size.Y));
+        // No seam anywhere in what the globe is drawn from, before a front lays a line of its own across it:
+        // in a weather that differs from place to place (fog pooling in damp low ground, the rest overcast).
+        sim.Snap(Weather.Model.WeatherKind.Fog);
+        var layer = new GlobeWeather(size);
+        layer.FillAll(sim, sky);
+        NothingChangesAcrossSeams(spec, map, layer);
+        sim.Snap(Weather.Model.WeatherKind.Thunderstorm);
+        Weather.Model.Front f = sim.StartFront(Weather.Model.FrontKind.Storm, observer, 1500f);
+        layer.FillAll(sim, sky);
+
+        // Across the front through the observer's stretch of it: where the layer's cloud begins, against the sky's own sums at full resolution.
+        var heading = new Vector3(f.Heading.X, 0f, f.Heading.Y);
+        float along = f.Along(observer);
+        Vector3 edge = f.EdgeAt(along, observer);
+        var cells = sim.Cells.Where(c => c.Strength * sim.Current.Cellular >= 0.04f).Take(4)
+            .Select(c => new GlobeWeather.Cell(new Vector2(Wrap(c.Position.X, size.X), Wrap(c.Position.Z, size.Y)), c.Radius, c.Strength * sim.Current.Cellular)).ToList();
+        float LayerEdge() => Crossing(t => Bilinear(layer, edge + heading * t).Extra);
+        float TrueEdge() => Crossing(t => GlobeWeather.At(sim, sky, edge + heading * t, size, cells).Extra);
+        float onLayer = LayerEdge(), truth = TrueEdge();
+        Check(MathF.Abs(onLayer - truth) <= GlobeWeather.TexelMetres * 1.5f && truth is > -900f and < 800f,
+            $"globe weather: the front's deck begins on the globe's layer {onLayer:F0} m from its edge, where the sky's own sums have it ({truth:F0} m; its edge where the weather has it, its deck {f.Depth / 1000f:F1} km deep, {f.Period / 1000f:F0} km long)");
+        var behind = Bilinear(layer, edge - heading * MathF.Min(1600f, f.Depth * 0.45f));
+        var ahead = Bilinear(layer, edge + heading * 1500f);
+        Check(GlobeWeather.Coverage(0.5f, behind) > 0.15f && GlobeWeather.Coverage(0.5f, behind) - GlobeWeather.Coverage(0.5f, ahead) > 0.6f,
+            $"globe weather: thick cloud behind the front's edge ({GlobeWeather.Coverage(0.5f, behind):F2}), open air ahead of it ({GlobeWeather.Coverage(0.5f, ahead):F2}), lightning {behind.Lightning:F1} a minute under it");
+
+        // Each cell's tower stands over the cell.
+        float worstCell = 0f;
+        int shown = 0;
+        foreach (GlobeWeather.Cell c in cells)
+        {
+            var (ci, cj) = layer.TexelOf(c.At.X, c.At.Y);
+            float best = -1f;
+            int reach = (int)MathF.Ceiling(c.Radius / GlobeWeather.TexelMetres);
+            for (int dj = -reach; dj <= reach; dj++)
+            for (int di = -reach; di <= reach; di++)
+            {
+                int i = ((ci + di) % layer.Width + layer.Width) % layer.Width, j = Math.Clamp(cj + dj, 0, layer.Height - 1);
+                best = MathF.Max(best, layer.Read(i, j).Tower);
+            }
+            // The tower's top is flat over its core: the cell stands where it is at its highest.
+            float top = Bilinear(layer, new Vector3(c.At.X, 0f, c.At.Y)).Tower;
+            worstCell = MathF.Max(worstCell, 1f - top / MathF.Max(best, 1e-3f));
+            if (best > 0.3f) shown++;
+        }
+        Check(cells.Count > 0 && shown == cells.Count && worstCell < 0.05f,
+            $"globe weather: all {cells.Count} of the front's storm cells stand on the layer as towers ({shown} tall), each cell under its tower's top ({worstCell:P0} short of it at worst)");
+
+        // A minute on: the front has advanced, and so has its deck on the globe.
+        float seconds = MathF.Min(60f, 800f / f.Speed);
+        for (int i = 0; i < (int)(seconds * 2f); i++) sim.Step(0.5f, observer);
+        cells = sim.Cells.Where(c => c.Strength * sim.Current.Cellular >= 0.04f).Take(4)
+            .Select(c => new GlobeWeather.Cell(new Vector2(Wrap(c.Position.X, size.X), Wrap(c.Position.Z, size.Y)), c.Radius, c.Strength * sim.Current.Cellular)).ToList();
+        layer.FillAll(sim, sky);
+        float later = LayerEdge(), moved = later - onLayer, expected = f.Speed * (int)(seconds * 2f) * 0.5f;
+        Check(sim.Front == f && MathF.Abs(moved - expected) <= GlobeWeather.TexelMetres * 1.5f && MathF.Abs(later - TrueEdge()) <= GlobeWeather.TexelMetres * 1.5f,
+            $"globe weather: {seconds:F0} s on the front's deck on the globe has moved {moved:F0} m the way it advances, as the front has ({expected:F0} m at {f.Speed:F1} m/s)");
+
+        // Filling it a frame at a time stays inside its budget.
+        var fresh = new GlobeWeather(size);
+        var times = new System.Collections.Generic.List<double>();
+        var clock = Stopwatch.StartNew();
+        while (true)
+        {
+            var frame = Stopwatch.StartNew();
+            bool done = fresh.Fill(sim, sky, GlobeWeather.BudgetMs);
+            times.Add(frame.Elapsed.TotalMilliseconds);
+            if (done || times.Count > 100000) break;
+        }
+        times.Sort();
+        double typical = times[(int)(times.Count * 0.95)], worst = times[^1];
+        int over = times.Count(t => t > 1.5);
+        // A frame or two the machine itself stalls (another process, a collection) doesn't count against it.
+        Check(typical < 1.0 && over <= 2 && times.Count * (1000.0 / 60.0) < 20000,
+            $"globe weather: a pass over the whole map ({fresh.Width} x {fresh.Height} texels) takes {clock.Elapsed.TotalMilliseconds:F0} ms of work over {times.Count} frames: {typical:F2} ms in 95% of them, {over} over 1.5 ms (the worst {worst:F2} ms)");
+    }
+
+    /// <summary>
+    /// The globe's maps have no seam: across the equator and round through the map's edge in
+    /// longitude, the colour map, the paint's cloud map and the weather layer (no front on it, which
+    /// is a line of its own) are the same kind of thing either side: a band's statistics (each
+    /// channel's mean and spread) just over the equator against just under it, and just west of the
+    /// map's edge against just east, differ no more than neighbouring bands anywhere else do.
+    /// </summary>
+    void NothingChangesAcrossSeams(Planets.Gen.PlanetSpec spec, Planets.Gen.WorldMap map, GlobeWeather layer)
+    {
+        GlobePaint paint = GlobePaint.Make(spec, map, OrbitRules.Shared.Globe);
+        var weather = new byte[layer.Width * layer.Height * 4];
+        Array.Copy(layer.Finished, weather, weather.Length);
+        foreach (var (what, data, w, h, channels) in new (string, byte[], int, int, int)[]
+        {
+            ("colour map", paint.Albedo.GetData(), paint.Albedo.GetWidth(), paint.Albedo.GetHeight(), 3),
+            ("cloud map", paint.Clouds.GetData(), paint.Clouds.GetWidth(), paint.Clouds.GetHeight(), 4),
+            ("weather layer", weather, layer.Width, layer.Height, 4),
+        })
+        {
+            // A band's mean and spread in each channel: rows [y0, y1) whole, or columns [x0, x1) whole (wrapping).
+            double[] Stats(int x0, int x1, int y0, int y1)
+            {
+                var st = new double[channels * 2];
+                int n = 0;
+                for (int y = y0; y < y1; y++)
+                    for (int xi = x0; xi < x1; xi++)
+                    {
+                        int x = ((xi % w) + w) % w;
+                        for (int c = 0; c < channels; c++)
+                        {
+                            double v = data[(y * w + x) * 4 + c];
+                            st[c * 2] += v;
+                            st[c * 2 + 1] += v * v;
+                        }
+                        n++;
+                    }
+                for (int c = 0; c < channels; c++)
+                {
+                    double mean = st[c * 2] / n;
+                    st[c * 2 + 1] = Math.Sqrt(Math.Max(st[c * 2 + 1] / n - mean * mean, 0));
+                    st[c * 2] = mean;
+                }
+                return st;
+            }
+            double Apart(double[] a, double[] b) => a.Zip(b, (p, q) => Math.Abs(p - q)).Max();
+            int bh = Math.Max(2, h / 16), bw = Math.Max(2, w / 16);
+            // Every pair of neighbouring bands, row-wise and column-wise; the equator's and the map edge's among them.
+            var rowPairs = Enumerable.Range(1, h / bh - 1).Select(k => Apart(Stats(0, w, k * bh - bh, k * bh), Stats(0, w, k * bh, k * bh + bh))).ToList();
+            var colPairs = Enumerable.Range(1, w / bw - 1).Select(k => Apart(Stats(k * bw - bw, k * bw, 0, h), Stats(k * bw, k * bw + bw, 0, h))).ToList();
+            double equator = Apart(Stats(0, w, h / 2 - bh, h / 2), Stats(0, w, h / 2, h / 2 + bh));
+            double round = Apart(Stats(w - bw, w, 0, h), Stats(w, w + bw, 0, h));
+            double rowMost = rowPairs.Max(), colMost = colPairs.Max();
+            // And no step from one pixel to the next there: a seam is a step all along a row or a column.
+            double Step(bool rows, int a, int b)
+            {
+                double sum = 0;
+                int n = rows ? w : h;
+                for (int i = 0; i < n; i++)
+                    for (int c = 0; c < channels; c++)
+                        sum += rows ? Math.Abs(data[(a * w + i) * 4 + c] - data[(b * w + i) * 4 + c]) : Math.Abs(data[(i * w + a) * 4 + c] - data[(i * w + b) * 4 + c]);
+                return sum / (n * channels);
+            }
+            var rowSteps = Enumerable.Range(1, h - 1).Select(y => Step(true, y - 1, y)).OrderBy(d => d).ToList();
+            var colSteps = Enumerable.Range(1, w - 1).Select(x => Step(false, x - 1, x)).OrderBy(d => d).ToList();
+            double rowStep = Step(true, h / 2 - 1, h / 2), colStep = Step(false, w - 1, 0);
+            double rowUsual = rowSteps[(int)(rowSteps.Count * 0.9)], colUsual = colSteps[(int)(colSteps.Count * 0.9)];
+            Check(equator <= Math.Max(rowMost, 1.0) && round <= Math.Max(colMost * 1.25, 1.0) && rowStep <= Math.Max(rowUsual * 1.5, 1.0) && colStep <= Math.Max(colUsual * 1.5, 1.0),
+                $"globe weather: the {what} ({w} x {h}) is the same either side of the equator (bands {bh} rows deep differ by {equator:F1} there, up to {rowMost:F1} between neighbours elsewhere; a step of {rowStep:F2} between its rows, {rowUsual:F2} usual) and either side of its edge round the globe ({round:F1} against up to {colMost:F1}; a step of {colStep:F2}, {colUsual:F2} usual)");
+        }
+    }
+
+    /// <summary>
+    /// The sheet's clouds are one field over the whole map: every noise it reads is read at a whole
+    /// number of its tiles to the map's (the sky's noise tile divides the map both ways), so the field
+    /// repeats exactly through the map's edge, which runs through the lookup at u = ±0.5, and from pole to pole.
+    /// </summary>
+    void TheCloudsRepeatExactly()
+    {
+        var scales = new System.Collections.Generic.List<double>();
+        foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(Globe.CloudShader, @"\bq \* (?:vec2\(([0-9.]+), ([0-9.]+)\)|([0-9.]+))"))
+            foreach (int g in new[] { 1, 2, 3 })
+                if (m.Groups[g].Success) scales.Add(double.Parse(m.Groups[g].Value, System.Globalization.CultureInfo.InvariantCulture));
+        var odd = scales.Where(k => Math.Abs(k - Math.Round(k)) > 1e-9).ToList();
+        Check(scales.Count >= 8 && odd.Count == 0 && Globe.CloudShader.Contains("mod(c, cells)"),
+            $"globe weather: all {scales.Count} of the clouds' noise reads are whole tiles to the map ({string.Join(", ", scales.Distinct())}), and the lightning's patches a whole number to it: nothing breaks where the map's edge runs round the globe{(odd.Count > 0 ? $" (not: {string.Join(", ", odd)})" : "")}");
+    }
+
+    /// <summary>Where along a line (m, from +2000 back to -1600) a value first turns positive, to a few metres.</summary>
+    static float Crossing(Func<float, float> value)
+    {
+        float last = 2000f;
+        for (float t = 2000f; t >= -1600f; t -= 20f)
+        {
+            if (value(t) > 0f)
+            {
+                float lo = t, hi = last;
+                for (int k = 0; k < 12; k++)
+                {
+                    float mid = (lo + hi) * 0.5f;
+                    if (value(mid) > 0f) lo = mid;
+                    else hi = mid;
+                }
+                return (lo + hi) * 0.5f;
+            }
+            last = t;
+        }
+        return float.NaN;
+    }
+
+    /// <summary>The layer read between its texels, as the sheet's filtering reads it.</summary>
+    static GlobeWeather.Texel Bilinear(GlobeWeather layer, Vector3 p)
+    {
+        float x = Wrap(p.X, layer.MapSize.X) / layer.MapSize.X * layer.Width - 0.5f, z = Wrap(p.Z, layer.MapSize.Y) / layer.MapSize.Y * layer.Height - 0.5f;
+        int i0 = (int)MathF.Floor(x), j0 = (int)MathF.Floor(z);
+        float fx = x - i0, fz = z - j0;
+        GlobeWeather.Texel T(int i, int j) => layer.Read(((i % layer.Width) + layer.Width) % layer.Width, ((j % layer.Height) + layer.Height) % layer.Height);
+        GlobeWeather.Texel a = T(i0, j0), b = T(i0 + 1, j0), c = T(i0, j0 + 1), d = T(i0 + 1, j0 + 1);
+        float L(Func<GlobeWeather.Texel, float> f) => (f(a) * (1 - fx) + f(b) * fx) * (1 - fz) + (f(c) * (1 - fx) + f(d) * fx) * fz;
+        return new GlobeWeather.Texel(L(t => t.Cover), L(t => t.Extra), L(t => t.Tower), L(t => t.Veil), L(t => t.Dust), L(t => t.Snow), L(t => t.Fog), L(t => t.Lightning));
+    }
+
+    static float Wrap(float x, float size) => x - size * MathF.Floor(x / size);
 
     static Vector3 G(PlanetSurface.Skies.D3 d) => new((float)d.X, (float)d.Y, (float)d.Z);
 
