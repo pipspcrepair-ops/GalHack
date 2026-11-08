@@ -798,7 +798,7 @@ flora tethered_drifters | name gas bladders on long stalks | weight 1 | is plant
 flora tell_plants | name plants that grow only over ore | weight 2 | is plants | bias alien 0.1
 flora giant_flora | name giant plants | weight 2 | is plants rich_life | bias overgrown 0.6
 flora bent_coreward | name everything bending one way | weight 1 | is plants warped | bias alien 0.15
-flora hollow_overrun | name the Hollow's growth over everything | weight 0.5 | is plants hollow rough | sets hollow=world | bias fungal 1 overgrown 0.7 alien 0.2 desolate 0.2
+flora hollow_overrun | name the Hollow's growth over everything | weight 0.5 | is plants hollow rough | sets hollow=world | bias fungal 1 overgrown 0.7 alien 0.2 desolate 0.2 | state active 1 abandoned 3 infested 5 ruined 2
 ```
 
 **Fauna.** One bias per world. The bestiary still builds the bodies; this says what kind of living is winning here. Behaviour ideas from the variety list are values, not creatures, so any world can use them.
