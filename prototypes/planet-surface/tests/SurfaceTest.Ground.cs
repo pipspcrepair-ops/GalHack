@@ -24,7 +24,7 @@ public partial class SurfaceTest
     {
         var rand = new Random();
         bool was = CityPlan.Force;
-        int heavy = 0, onSand = 0, cityHeavy = 0, citySand = 0, places = 0, unpainted = 0, bareDoor = 0, patches = 0, worlds = 0, lanes = 0;
+        int heavy = 0, onSand = 0, sandSeated = 0, cityHeavy = 0, citySand = 0, places = 0, unpainted = 0, bareDoor = 0, patches = 0, worlds = 0, lanes = 0;
         string first = "";
         void Note(string s) { if (first.Length == 0) first = $" (first: {s})"; }
         try
@@ -53,7 +53,16 @@ public partial class SurfaceTest
                     if (Footing.Heavy(p.Tier, sx, sz, p.Instance.Layout.Occupied.Min.Y + p.Instance.Layout.Occupied.Size.Y))
                     {
                         heavy++;
-                        if (Footing.SandShare(w.Map, t.CenterX, t.CenterZ, sx * 0.5 + 4, sz * 0.5 + 4) > 0.12f) { onSand++; Note($"{p.Name} on sand"); }
+                        // On sand only in the middle of a dune sea: nowhere firm within a search's reach of it.
+                        if (Footing.SandShare(w.Map, t.CenterX, t.CenterZ, sx * 0.5 + 4, sz * 0.5 + 4) > 0.12f)
+                        {
+                            sandSeated++;
+                            bool firmNear = false;
+                            for (int k = 0; k < 8 && !firmNear; k++)
+                                foreach (double r in new[] { 40.0, 90.0 })
+                                    firmNear |= Footing.SandShare(w.Map, t.CenterX + Math.Cos(k * Math.PI / 4) * r, t.CenterZ + Math.Sin(k * Math.PI / 4) * r, sx * 0.5 + 4, sz * 0.5 + 4) <= 0.05f;
+                            if (firmNear) { onSand++; Note($"{p.Name} on sand with firm ground beside it"); }
+                        }
                     }
                     bool wild = p.Tier == PoiGenerator.Gen.PoiTier.Wreck || new[] { "alien", "wreck", "precursor", "hive" }.Any(p.Family.Tags.Contains);
                     if (wild) continue;
@@ -72,7 +81,7 @@ public partial class SurfaceTest
         }
         finally { CityPlan.Force = was; }
         GD.Print($"      {worlds} worlds: {heavy} heavy places, {cityHeavy} heavy city lots, {places} places that made their ground, {patches} patches, {lanes} lanes{first}");
-        Check(onSand == 0 && citySand == 0, $"nothing heavy on sand: {onSand} of {heavy} heavy places and {citySand} of {cityHeavy} city towers, blocks and works stand on it");
+        Check(onSand == 0 && citySand == 0, $"nothing heavy on sand: {onSand} of {heavy} heavy places stand on it with firm ground beside them ({sandSeated} in the middle of a dune sea), {citySand} of {cityHeavy} city towers, blocks and works on it");
         Check(places > 0 && unpainted == 0 && bareDoor <= places / 20, $"every place has its made ground: {unpainted} of {places} pads unpainted, {bareDoor} with nothing laid at the way in");
         await Frames(1);
     }
