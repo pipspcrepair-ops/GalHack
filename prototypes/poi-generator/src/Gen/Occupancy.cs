@@ -6,7 +6,7 @@ using System.Linq;
 namespace PoiGenerator.Gen;
 
 /// <summary>Who is in a place: a layer of its own, separate from its layout (docs/world-themes.md, Occupancy).</summary>
-public enum Occupant : byte { Empty, Nesters, Turned, Scavengers, Squatters, Gang, Machines, Hollow, Prowlers, Faction, Cyborgs, Robots, Cult, Keepers, Sleepers, Guardians, Mimics }
+public enum Occupant : byte { Empty, Nesters, Turned, Scavengers, Squatters, Gang, Machines, Warped, Prowlers, Faction, Cyborgs, Robots, Cult, Keepers, Sleepers, Guardians, Mimics }
 
 /// <summary>How two groups share a mixed place.</summary>
 public enum Sharing : byte { Alone, Floors, FrontLine, Layers }
@@ -74,7 +74,7 @@ public static class OccupancyLayer
     static Occupant? Code(string code) => code switch
     {
         "EMP" => Occupant.Empty, "NST" => Occupant.Nesters, "HSK" => Occupant.Turned, "SCV" => Occupant.Scavengers, "SQT" => Occupant.Squatters,
-        "GNG" => Occupant.Gang, "MCH" => Occupant.Machines, "HOL" => Occupant.Hollow, "MUT" => Occupant.Prowlers,
+        "GNG" => Occupant.Gang, "MCH" => Occupant.Machines, "WRP" or "HOL" => Occupant.Warped, "MUT" => Occupant.Prowlers,
         "FAC" => Occupant.Faction, "CYB" => Occupant.Cyborgs, "BOT" => Occupant.Robots, "CLT" => Occupant.Cult,
         "KPR" => Occupant.Keepers, "SLP" => Occupant.Sleepers, "GRD" => Occupant.Guardians, "MIM" => Occupant.Mimics, _ => null,
     };
@@ -193,27 +193,165 @@ public static class OccupancyLayer
             case Occupant.Squatters: Lived(x, rooms, full); break;
             case Occupant.Gang: Held(x, rooms, full); break;
             case Occupant.Machines: Machines(x, rooms, full); break;
-            case Occupant.Hollow: Wrong(x, rooms, full); break;
+            case Occupant.Warped: Wrong(x, rooms, full); break;
             case Occupant.Prowlers: Den(x, rooms, full); break;
             // Those who hold a place by force leave what a gang does; machines of any kind keep it as machines do.
             case Occupant.Faction: Held(x, rooms, full); break;
-            case Occupant.Cyborgs or Occupant.Robots or Occupant.Guardians: Machines(x, rooms, full); break;
+            case Occupant.Cyborgs or Occupant.Robots: Machines(x, rooms, full); break;
             // People who live by a rule: lived in, kept up, and at peace with you.
-            case Occupant.Cult or Occupant.Keepers: Lived(x, rooms, full); break;
+            case Occupant.Cult: Lived(x, rooms, full); break;
+            // The rarer ones each leave something of their own, and nothing names it.
+            case Occupant.Keepers: Kept(x, rooms, full); break;
             case Occupant.Sleepers: Sleepers(x, rooms, full); break;
-            case Occupant.Mimics: Wrong(x, rooms, full); break;
+            case Occupant.Guardians: Guarded(x, rooms, full); break;
+            case Occupant.Mimics: Copies(x, rooms, full); break;
         }
     }
 
-    /// <summary>Beds in rows, someone in each, and nobody stirring.</summary>
+    /// <summary>
+    /// Sleepers, still asleep: in pods where the world had them (cold light over glass in rows), in
+    /// beds in a ward where it didn't, and now and then on their feet, a crowd standing in rows all
+    /// facing one way. Nobody stirs, and nothing harms you.
+    /// </summary>
     static void Sleepers(Ctx x, List<PlacedModule> rooms, bool full)
     {
-        Rgb frame = new(0x62, 0x60, 0x5c), body = new(0x6a, 0x5e, 0x54);
+        Rgb frame = new(0x62, 0x60, 0x5c), body = new(0x6a, 0x5e, 0x54), glass = new(0x9a, 0xb8, 0xc8), cold = new(0x9a, 0xd0, 0xff), sheet = new(0xc4, 0xc0, 0xb4);
+        IReadOnlyList<string> tags = x.Inst.Occupancy?.Tags ?? Array.Empty<string>();
+        // How they sleep: the world's own leaning first, then what its people could build.
+        int how = tags.Contains("pod_rows") ? 0 : tags.Contains("sleep_wards") ? 1 : x.R.Chance(0.3f) ? 2 : x.Inst.Tech is TechLevel.Low ? 1 : 0;
+        Dir facing = Dirs.Horizontal[x.R.Range(0, 4)];
         foreach (PlacedModule m in Settled(x, rooms, full ? 3 : 1))
-            foreach (Int3 c in Floor(x, m).Where(c => (c.X % 3 == 0) && (c.Z % 2 == 0) && x.R.Chance(0.6f)).Take(14))
+        {
+            var rows = Floor(x, m).Where(c => c.X % 3 == 0 && c.Z % 2 == 0).Take(16).ToList();
+            foreach (Int3 c in rows)
+                switch (how)
+                {
+                    case 0:
+                        x.Put(c, BlockType.Tank, Material.Glass, glass, Role.Story, facing);
+                        break;
+                    case 1:
+                        x.Put(c, BlockType.Bed, Material.Cloth, sheet, Role.Story, facing);
+                        x.Put(c + facing.Vec(), BlockType.Remains, Material.Cloth, body, Role.Story, facing);
+                        break;
+                    default:
+                        x.Put(c, BlockType.Statue, Material.Cloth, body.Scale(x.R.Float(0.85f, 1.15f)), Role.Story, facing);
+                        break;
+                }
+            if (rows.Count > 0)
             {
-                x.Put(c, BlockType.Bunk, Material.Steel, frame);
-                if (x.R.Chance(0.5f)) x.Put(c + Dir.East.Vec(), BlockType.Remains, Material.Cloth, body);
+                x.Inst.Markers.Add(new Marker("sleepers", rows[0], how switch { 0 => "pods", 1 => "beds", _ => "standing" }));
+                if (how == 0) x.Inst.Lights.Add(new LightSpot { Cell = rows[rows.Count / 2] + Int3.Up * 2, Color = cold, Mode = LightMode.Steady, Energy = 0.7f, Range = 9f, Module = m.Index });
+            }
+            if (how == 1)
+                foreach (Int3 c in Floor(x, m).Where(c => c.X % 6 == 3 && c.Z % 4 == 1).Take(3)) x.Put(c, BlockType.Bunk, Material.Steel, frame);
+        }
+    }
+
+    /// <summary>
+    /// Keepers on a duty that outlived its reason: the rooms on their rounds swept clean in a ruin, a
+    /// post by the way in with a bench and one lamp still kept burning, a row of identical tags along
+    /// the wall, a runner laid down the middle. The keepers are at their posts, and walk their rounds.
+    /// </summary>
+    static void Kept(Ctx x, List<PlacedModule> rooms, bool full)
+    {
+        Rgb wood = new(0x6a, 0x56, 0x40), brass = new(0xb0, 0x90, 0x4a), runner = new(0x7a, 0x34, 0x2a), lamp = new(0xff, 0xd8, 0x9a);
+        bool first = true;
+        foreach (PlacedModule m in Settled(x, rooms, full ? 3 : 1))
+        {
+            foreach (Int3 c in m.Cells.Where(c => x.Inst.Blocks.Get(c).Role == Role.Debris && !BlockInfo.Collides(x.Inst.Blocks.Get(c).Type)).ToList())
+                x.Inst.Blocks.Set(c, Block.Air);
+            var floor = Floor(x, m);
+            if (floor.Count < 8) continue;
+            Int3 post = floor.OrderBy(c => c.Manhattan(x.Inst.Layout.EntranceCell)).First();
+            x.Put(post, BlockType.Bench, Material.Timber, wood);
+            x.Inst.Lights.Add(new LightSpot { Cell = post + Int3.Up * 2, Color = lamp, Mode = LightMode.Steady, Energy = 1.2f, Range = 9f, Module = m.Index });
+            x.Inst.Markers.Add(new Marker("keeper_post", post));
+            // The roster: the same tag, again and again, at one height along one wall.
+            int back = floor.Min(f => f.Z);
+            foreach (Int3 c in floor.Where(c => c.Z == back && BlockInfo.Collides(x.Inst.Blocks.Get(c + Dir.North.Vec()).Type)).Take(10))
+                x.Put(c + Int3.Up, BlockType.Sign, Material.Bronze, brass, Role.Story, Dir.South);
+            // A runner down the room, straight and kept.
+            Int3 mid = floor[floor.Count / 2];
+            foreach (Int3 c in floor.Where(c => c.X == mid.X && c != post)) x.Put(c, BlockType.Plate, Material.Cloth, runner);
+            if (full) People(x, post, floor, m.Index, Mood.Peaceful, first ? 2 : 1, lookout: first);
+            first = false;
+        }
+    }
+
+    /// <summary>
+    /// Guardians of a far older place: a ring of dark stone posts round the deepest room, something
+    /// grown of crystal at its heart in a slow pale light, and marks nobody can read on the walls. The
+    /// guardians stand on the ring.
+    /// </summary>
+    static void Guarded(Ctx x, List<PlacedModule> rooms, bool full)
+    {
+        Rgb basalt = new(0x2e, 0x2c, 0x30), glyph = new(0x8a, 0xd8, 0xd0), heart = new(0xb8, 0xe8, 0xff);
+        var frames = Survivors.Fighters(x.Lib, "oldworld").Where(e => e.Kind == EnemyKind.Guard).ToList();
+        bool first = true;
+        foreach (PlacedModule m in Settled(x, rooms, full ? 2 : 1))
+        {
+            var floor = Floor(x, m);
+            if (floor.Count < 12) continue;
+            float cx = (float)floor.Average(c => c.X), cz = (float)floor.Average(c => c.Z);
+            Int3 mid = floor.OrderBy(c => MathF.Abs(c.X - cx) + MathF.Abs(c.Z - cz)).First();
+            float ring = first ? 3f : 2f;
+            foreach (Int3 c in floor.Where(c => MathF.Abs(c.FlatDistance(mid) - ring) < 0.5f && (c.X + c.Z) % 2 == 0).ToList())
+                x.Put(c, BlockType.Pillar, Material.Basalt, basalt);
+            x.Put(mid, BlockType.Crystal, Material.Crystal, heart);
+            x.Inst.Lights.Add(new LightSpot { Cell = mid + Int3.Up * 2, Color = heart, Mode = LightMode.Pulse, Energy = 1f, Range = 10f, Module = m.Index });
+            foreach (Int3 c in floor.Where(c => Dirs.Horizontal.Any(d => BlockInfo.Collides(x.Inst.Blocks.Get(c + d.Vec()).Type)) && Hash.Cell(c, 0x61) % 5 == 0).Take(8).ToList())
+            {
+                Dir wall = Dirs.Horizontal.First(d => BlockInfo.Collides(x.Inst.Blocks.Get(c + d.Vec()).Type));
+                x.Put(c + Int3.Up, BlockType.Sign, Material.Glyph, glyph, Role.Story, wall.Opposite());
+            }
+            x.Inst.Markers.Add(new Marker("guardian_ring", mid));
+            if (full && frames.Count > 0)
+                foreach (Int3 c in floor.Where(c => MathF.Abs(c.FlatDistance(mid) - ring - 1f) < 0.5f).OrderBy(c => Hash.Cell(c, 0x67)).Take(first ? 2 : 1).ToList())
+                    x.Enemy(x.R.Pick(frames), EnemyKind.Guard, c, m.Index, 2);
+            first = false;
+        }
+    }
+
+    static readonly HashSet<BlockType> Furniture = new() { BlockType.Table, BlockType.Bench, BlockType.Bed, BlockType.Bunk, BlockType.Locker, BlockType.Shelf, BlockType.Crate, BlockType.Terminal, BlockType.Tank, BlockType.Statue };
+
+    /// <summary>
+    /// Mimics and copies: one thing in the place that can't be (a copy of a piece of its furniture,
+    /// stood the right way up against the ceiling over the original), and people who are all the same
+    /// person, going about it peacefully. Nothing else is wrong.
+    /// </summary>
+    static void Copies(Ctx x, List<PlacedModule> rooms, bool full)
+    {
+        BlockGrid g = x.Inst.Blocks;
+        // The one wrong object: the first piece of furniture with room above it up to a ceiling.
+        foreach (PlacedModule m in Settled(x, rooms, rooms.Count))
+        {
+            Int3? found = null, top = null;
+            foreach (Int3 c in m.Cells)
+            {
+                if (!Furniture.Contains(g.Get(c).Type)) continue;
+                Int3 up = c + Int3.Up;
+                int k = 0;
+                for (; k < 12 && g.InBounds(up + Int3.Up) && g.Get(up + Int3.Up).IsAir; k++) up += Int3.Up;
+                if (k < 2 || !g.InBounds(up + Int3.Up) || !BlockInfo.Collides(g.Get(up + Int3.Up).Type)) continue;
+                found = c;
+                top = up;
+                break;
+            }
+            if (found is not Int3 at || top is not Int3 under) continue;
+            g.Set(under, g.Get(at));
+            x.Inst.Markers.Add(new Marker("wrong_object", under));
+            break;
+        }
+        if (!full) return;
+        foreach (PlacedModule m in Settled(x, rooms, 1))
+            if (Patch(x, m, 4f) is { } p)
+            {
+                People(x, p.Mid, Floor(x, m), m.Index, Mood.Peaceful, x.R.Between(3, 5), lookout: false);
+                if (x.Inst.Townsfolk != null)
+                {
+                    x.Inst.Townsfolk.Copies = true;
+                    x.Inst.Markers.Add(new Marker("copies", p.Mid));
+                }
             }
     }
 
@@ -420,11 +558,16 @@ public static class OccupancyLayer
         }
     }
 
-    /// <summary>Things set out in patterns nobody would make, in a room with nobody in it.</summary>
+    /// <summary>
+    /// Husk-warped: things set out in patterns nobody would make, in a room with nobody in it, and
+    /// everything that can face a way turned to face the same one. Now and then one of the turned
+    /// stands in the middle of it.
+    /// </summary>
     static void Wrong(Ctx x, List<PlacedModule> rooms, bool full)
     {
-        var hollow = x.Lib.Roster(Faction.Hollow.Id()).Where(e => e.Kind == EnemyKind.Hollow).ToList();
+        var husk = new EnemyDef("Turned", EnemyKind.Corrupted, ShooterClass.None, "claws");
         Rgb pale = new(0xb8, 0xb4, 0xa8), stain = new(0x2a, 0x1e, 0x2e);
+        Dir one = Dirs.Horizontal[x.R.Range(0, 4)];
         foreach (PlacedModule m in Settled(x, rooms, full ? 3 : 1))
         {
             if (Patch(x, m, 5f) is not { } p) continue;
@@ -434,7 +577,13 @@ public static class OccupancyLayer
                 if (Math.Abs(d - 3f) < 0.5f && (c.X + c.Z) % 2 == 0) x.Put(c, BlockType.Scatter, Material.Bone, pale);
                 else if (d < 1f) x.Put(c, BlockType.Scorch, Material.Ash, stain);
             }
-            if (full && hollow.Count > 0 && x.R.Chance(0.6f)) x.Enemy(x.R.Pick(hollow), EnemyKind.Hollow, p.Mid, m.Index, 2);
+            foreach (Int3 c in m.Cells)
+            {
+                ref Block b = ref x.Inst.Blocks.At(c);
+                if (Furniture.Contains(b.Type) && !x.Inst.Protected[c]) b.Facing = one;
+            }
+            x.Inst.Markers.Add(new Marker("warped", p.Mid));
+            if (full && x.R.Chance(0.35f)) x.Enemy(husk, EnemyKind.Corrupted, p.Mid, m.Index, 2);
         }
     }
 
