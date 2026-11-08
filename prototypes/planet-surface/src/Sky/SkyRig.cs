@@ -484,7 +484,9 @@ public partial class SkyRig : Node3D
         float layer = 1f - Smooth(0f, 0.3f, inside);
         Environment.FogHeight = top;
         Environment.FogHeightDensity = valley * 0.09f * layer;
-        Environment.FogDensity = air.FogDensity + valley * 0.004f * (1f - layer);
+        // The haze lies low: from high up the far land is seen through less of it (Atmosphere.FogFrom).
+        float over = camera == null ? 0f : camera.GlobalPosition.Y - floor;
+        Environment.FogDensity = Atmosphere.FogFrom(air.FogDensity, over) + valley * 0.004f * (1f - layer);
     }
 
     /// <summary>

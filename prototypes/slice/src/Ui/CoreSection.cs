@@ -93,9 +93,7 @@ public sealed class CoreSection : IMenuSection
         Vector2 o = area.Position;
         if (_picked == null)
         {
-            g.Caption("NO CORE NEARBY", o, area.Size.X);
-            g.Text("OUT OF RANGE: a structure's core, storage and constructors work anywhere inside its area; step into one.", o + new Vector2(0, 40), C.Warn, 16);
-            g.Text("Craft a survival constructor in the suit fabricator (YOU), put it on the toolbar and set it down.", o + new Vector2(0, 66), C.Dim, 16);
+            g.Caption("NO CORE IN RANGE", o, area.Size.X, C.Warn);
             return;
         }
         // The chooser.
@@ -104,23 +102,24 @@ public sealed class CoreSection : IMenuSection
         for (int i = 0; i < shown; i++)
         {
             string name = near[i] switch { Vessel v => v.Name, Device d => d.Label, _ => "?" };
-            if (g.Tab($"core:pick:{i}", new Rect2(o + new Vector2(i % PerRow * 210, i / PerRow * 40), new Vector2(200, 36)), name.ToUpperInvariant(), near[i] == _picked, C.Accent)) Pick(near[i]);
+            if (g.Tab($"core:pick:{i}", new Rect2(o + new Vector2(i % PerRow * 210, i / PerRow * 40), new Vector2(200, 36)), HudLayout.Fit(UiTheme.Label, 18, name.ToUpperInvariant(), 186), near[i] == _picked, C.Accent)) Pick(near[i]);
         }
         float top = 50 + (rows - 1) * 40;
         var body = new Rect2(o + new Vector2(0, top), new Vector2(area.Size.X, area.Size.Y - top));
         if (_picked is Device device)
         {
-            _constructor.Build(g, new Rect2(body.Position, new Vector2(560, body.Size.Y)));
-            DeviceStorage(g, new Rect2(body.Position + new Vector2(600, 0), new Vector2(560, body.Size.Y)), device);
+            _constructor.Build(g, new Rect2(body.Position, new Vector2(700, body.Size.Y)));
+            DeviceStorage(g, new Rect2(body.Position + new Vector2(730, 0), new Vector2(area.End.X - body.Position.X - 730, body.Size.Y)), device);
             return;
         }
         var v2 = (Vessel)_picked;
-        _structure.Build(g, new Rect2(body.Position, new Vector2(500, body.Size.Y)));
-        var machines = new Rect2(body.Position + new Vector2(530, 0), new Vector2(540, body.Size.Y));
+        // Side by side: the structure's settings and numbers, its constructor and queue, its storage.
+        _structure.Build(g, new Rect2(body.Position, new Vector2(400, body.Size.Y)));
+        var machines = new Rect2(body.Position + new Vector2(420, 0), new Vector2(620, body.Size.Y));
         if (v2.Machines.Count == 0)
         {
             g.Caption("MANUFACTURING", machines.Position, machines.Size.X);
-            g.Text(v2.IsBase ? "No constructor on this base yet: craft a Small constructor (large) and place it." : "No constructor aboard.", machines.Position + new Vector2(0, 40), C.Dim, 15);
+            g.Text("NONE", machines.Position + new Vector2(0, 40), C.Dim, 15);
         }
         else
         {
@@ -129,10 +128,10 @@ public sealed class CoreSection : IMenuSection
                 Constructor c = v2.Machines.Values.ElementAt(i);
                 if (g.Tab($"core:machine:{i}", new Rect2(machines.Position + new Vector2(i * 140, 0), new Vector2(130, 30)), c.Def.Tag, i == _machine, C.Accent2)) _machine = i;
             }
-            if (!v2.Powered) g.Text(v2.PowerOn ? "NO POWER: build a generator onto it" : "POWER OFF", machines.Position + new Vector2(300, 6), C.Danger, 15);
+            if (!v2.Powered) g.Text(v2.PowerOn ? "NO POWER" : "POWER OFF", machines.Position + new Vector2(300, 6), C.Danger, 15);
             _constructor.Build(g, new Rect2(machines.Position + new Vector2(0, 40), new Vector2(machines.Size.X, machines.Size.Y - 40)));
         }
-        var column = new Rect2(body.Position + new Vector2(1100, 0), new Vector2(area.End.X - body.Position.X - 1100, body.Size.Y));
+        var column = new Rect2(body.Position + new Vector2(1060, 0), new Vector2(area.End.X - body.Position.X - 1060, body.Size.Y));
         StorageColumn(g, column, v2.StorageGrid, v2.Name, () => _game.Open(new OpenContainer
         {
             Title = $"{v2.Name} storage", Grid = v2.StorageGrid, Vessel = v2, Where = () => v2.Body.Position.ToGodot(),
@@ -156,28 +155,30 @@ public sealed class CoreSection : IMenuSection
         g.Bar(new Rect2(r.Position + new Vector2(0, 50), new Vector2(r.Size.X, 8)), s.UsedSu, Math.Max(1, s.CapacitySu), C.Accent2, 16);
         ItemView view = FilterBar.Build(g, "storage", new Rect2(r.Position + new Vector2(0, 64), new Vector2(r.Size.X, FilterBar.Height)));
         int columns = Math.Max(1, (int)((r.Size.X + 6) / 56));
-        var cells = new Rect2(r.Position + new Vector2(0, 66 + FilterBar.Height), new Vector2(r.Size.X, 4 * 56 - 6));
+        // As many rows as the column has room for, above its buttons (and the blueprint button under them).
+        float cellsTop = r.Position.Y + 66 + FilterBar.Height;
+        int visRows = Math.Max(4, (int)((r.End.Y - 44 - 26 - 120 - cellsTop) / 56));
+        var cells = new Rect2(new Vector2(r.Position.X, cellsTop), new Vector2(r.Size.X, visRows * 56 - 6));
         IReadOnlyList<int> shownSlots = view.Visible(grid);
         int rows = Math.Max(1, (shownSlots.Count + columns - 1) / columns);
-        _storageScroll = Math.Clamp(_storageScroll, 0, Math.Max(0, rows - 4));
+        _storageScroll = Math.Clamp(_storageScroll, 0, Math.Max(0, rows - visRows));
         Slots.Grid(g, _game, "store", grid, 0, grid.Count, columns, cells, 50, _game.Pack.Grid, _storageScroll, view);
         float y = cells.End.Y + 6;
-        if (s.IsEmpty) g.Text("empty", new Vector2(r.Position.X, y), C.Dim, 13);
-        g.Text($"{s.Stacks.Count()} kinds{(view.Filtering ? $" · {shownSlots.Count} stacks shown" : "")}", new Vector2(r.Position.X + 60, y), C.Dim, 13);
-        if (rows > 4)
+        g.Text($"{s.Stacks.Count()} KINDS{(view.Filtering ? $" · {shownSlots.Count} SHOWN" : "")}", new Vector2(r.Position.X, y), C.Dim, 13);
+        if (rows > visRows)
         {
-            if (g.Button("store:up", new Rect2(r.End.X - 130, y - 2, 60, 24), "UP", C.Accent2, _storageScroll > 0, size: 12)) _storageScroll--;
-            if (g.Button("store:down", new Rect2(r.End.X - 64, y - 2, 60, 24), "DOWN", C.Accent2, _storageScroll + 4 < rows, size: 12)) _storageScroll++;
+            if (g.Button("store:up", new Rect2(r.End.X - 146, y - 2, 70, 24), "UP", C.Accent2, _storageScroll > 0, size: 12)) _storageScroll--;
+            if (g.Button("store:down", new Rect2(r.End.X - 72, y - 2, 70, 24), "DOWN", C.Accent2, _storageScroll + visRows < rows, size: 12)) _storageScroll++;
         }
         y += 26;
         var only = view.Filtering ? new HashSet<int>(shownSlots) : null;
         float half = (r.Size.X - 8) / 2;
-        if (g.Button("storage:store-all", new Rect2(r.Position.X + half + 8, y, half, 34), "STORE ALL MY BAG", C.Accent2, size: 14))
+        if (g.Button("storage:store-all", new Rect2(r.Position.X + half + 8, y, half, 34), "STORE BAG", C.Accent2, size: 14))
         {
             Bill moved = ItemGrid.MoveAll(_game.Pack.Grid, grid, false);
-            _game.Say(moved.IsEmpty ? "Nothing in your bag to store (or no room; the toolbar stays with you)" : $"Stored {s.Catalogue.Describe(moved, 4)}", moved.IsEmpty ? Tones.Caution : Tones.Good);
+            if (moved.IsEmpty) _game.Say("Nothing stored", Tones.Caution);
         }
-        if (g.Button("storage:store-raw", new Rect2(r.Position.X, y, half, 34), "STORE ORE, MATERIALS", C.Accent2, size: 14))
+        if (g.Button("storage:store-raw", new Rect2(r.Position.X, y, half, 34), "STORE ORE + MATS", C.Accent2, size: 14))
         {
             var moved = new Bill();
             PlayerInventory pack = _game.Pack;
@@ -191,9 +192,9 @@ public sealed class CoreSection : IMenuSection
                 int n = ItemGrid.QuickMove(pack.Grid, i, grid);
                 if (n > 0) moved.Add(id, n);
             }
-            _game.Say(moved.IsEmpty ? "No ore or materials in your bag (or no room)" : $"Stored {s.Catalogue.Describe(moved, 4)}", moved.IsEmpty ? Tones.Caution : Tones.Good);
+            if (moved.IsEmpty) _game.Say("Nothing stored", Tones.Caution);
         }
-        if (g.Button($"storage:take-made", new Rect2(r.Position.X, y + 42, r.Size.X, 34), "TAKE BLOCKS, CORES, DEVICES AND SUPPLIES", C.Good, size: 14))
+        if (g.Button($"storage:take-made", new Rect2(r.Position.X, y + 42, r.Size.X, 34), "TAKE MADE ITEMS", C.Good, size: 14))
         {
             var moved = new Bill();
             for (int i = 0; i < grid.Count; i++)
@@ -206,9 +207,9 @@ public sealed class CoreSection : IMenuSection
                 int n = ItemGrid.QuickMove(grid, i, _game.Pack.Grid);
                 if (n > 0) moved.Add(id, n);
             }
-            _game.Say(moved.IsEmpty ? "Nothing made here to take yet" : $"Took {s.Catalogue.Describe(moved, 4)}{FilterBar.Shown(view, only?.Count ?? 0)}", moved.IsEmpty ? Tones.Caution : Tones.Good);
+            if (moved.IsEmpty) _game.Say("Nothing taken", Tones.Caution);
         }
-        if (g.Button($"storage:open", new Rect2(r.Position.X, y + 84, r.Size.X, 34), "OPEN BESIDE MY BAG", C.Accent)) open();
+        if (g.Button($"storage:open", new Rect2(r.Position.X, y + 84, r.Size.X, 34), "OPEN BY BAG", C.Accent)) open();
     }
 }
 
@@ -257,7 +258,7 @@ public sealed class StructureSection : IMenuSection
         {
             string warning = ModeFit.Warning(m, v.MissingFor(m));
             string line = warning ?? $"{ModeFit.Name(m)}: READY";
-            g.TextIn(line, new Rect2(inner.Position.X + 8, y, inner.Size.X - 16, 16), warning == null ? C.Good : C.Warn, 12);
+            g.TextIn(HudLayout.Fit(UiTheme.Label, 12, line, inner.Size.X - 16), new Rect2(inner.Position.X + 8, y, inner.Size.X - 16, 16), warning == null ? C.Good : C.Warn, 12);
             y += 18;
         }
         return panel.End.Y + 8;
@@ -268,8 +269,8 @@ public sealed class StructureSection : IMenuSection
     {
         v.SwitchMode(mode);
         string warning = v.ModeWarning;
-        string said = v.Unanchored ? $"{v.Name}: {ModeFit.Name(mode)}. ENGINES OFF: IT FALLS UNTIL IT LANDS, THEN ANCHORS" : warning ?? $"{v.Name}: {ModeFit.Name(mode)}";
-        _game.Say(said, warning != null || v.Unanchored ? Tones.Caution : Tones.Text);
+        // The panel shows the mode; only a problem with it is said.
+        if (warning != null) _game.Say(warning, Tones.Caution);
     }
 
     /// <summary>Colour, mode and speed for the structure's lights: the one picked with Shift+E, else all of them. Quiet: three short rows.</summary>
@@ -280,7 +281,7 @@ public sealed class StructureSection : IMenuSection
         Int3? one = _game.LightEdit is Int3 c && v.Structure.TryGet(c, out Block lb) && v.Structure.TypeOf(lb).IsLight ? c : null;
         LightSettings cur = one is Int3 cell ? v.Structure.LightAt(cell) : v.Structure.Blocks().Where(b => v.Structure.TypeOf(b.block).IsLight).Select(b => v.Structure.LightAt(b.pos)).First();
         float y = at.Y;
-        if (g.Button("light:target", new Rect2(at.X, y, width, 24), one != null ? "STYLING ONE LIGHT (CLICK FOR ALL)" : "STYLING ALL LIGHTS (SHIFT+E ON A LIGHT FOR ONE)", C.Dim, size: 12) && one != null) _game.LightEdit = null;
+        if (g.Button("light:target", new Rect2(at.X, y, width, 24), one != null ? "ONE LIGHT" : "ALL LIGHTS", C.Dim, size: 12) && one != null) _game.LightEdit = null;
         y += 28;
         uint[] pal = LightSettings.Palette;
         float sw = (width - (pal.Length - 1) * 4) / pal.Length;
@@ -314,7 +315,7 @@ public sealed class StructureSection : IMenuSection
         if (v == null) return;
         Structure s = v.Structure;
         bool large = s.Grid.Size == GridSize.Large;
-        g.Caption($"{v.Name.ToUpperInvariant()} · {(large ? "BIG CORE" : "SMALL CORE")} · {ModeFit.Name(s.Mode)}", o, area.Size.X);
+        g.Caption($"{v.Name.ToUpperInvariant()} · {(large ? "LARGE" : "SMALL")}", o, area.Size.X);
         float y = o.Y + 36;
 
         // ---- Settings ---------------------------------------------------------------------------
@@ -350,7 +351,6 @@ public sealed class StructureSection : IMenuSection
             bool now = !v.Home;
             foreach (Vessel other in _game.Zone.Vessels) other.Home = false; // one Home at a time
             v.Home = now;
-            if (now) _game.Say($"{v.Name} is Home: vessels with auto-transmit send their haul here", Tones.Good);
         }
         if (!large && Toggle("core:transmit", "AUTO-TRANSMIT TO HOME", v.AutoTransmit)) v.AutoTransmit = !v.AutoTransmit;
 
@@ -362,7 +362,7 @@ public sealed class StructureSection : IMenuSection
         void Row(string label, string value, Color colour)
         {
             g.Text(label, new Vector2(o.X, y), C.Dim, 14);
-            g.Text(value, new Vector2(o.X + 190, y - 1), colour, 16, UiTheme.Mono);
+            g.TextIn(HudLayout.Fit(UiTheme.Mono, 15, value, area.Size.X - 150), new Rect2(o.X + 150, y - 1, area.Size.X - 150, 20), colour, 15, HorizontalAlignment.Left, UiTheme.Mono);
             y += 26;
         }
         Row("MASS", $"{st.Mass:F2} t ({st.Blocks} blocks)", C.Text);

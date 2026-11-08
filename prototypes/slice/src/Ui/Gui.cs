@@ -19,6 +19,15 @@ public sealed class Gui
     public const float Width = 1600f, Height = 900f;
     static Palette C => UiTheme.Colors;
 
+    /// <summary>
+    /// How solid the backings behind widgets are (buttons, text boxes, slots, rows): 1 for an in-world
+    /// screen; the Tab menu sets less, so the world reads through it while text stays on its backing.
+    /// </summary>
+    public float Backing = 1f;
+
+    /// <summary>A backing colour at this panel's solidity.</summary>
+    public Color Back(Color c) => new(c, c.A * Backing);
+
     /// <summary>The draw pass's canvas, or null in the input pass.</summary>
     public CanvasItem Canvas;
     public bool Drawing => Canvas != null;
@@ -65,12 +74,15 @@ public sealed class Gui
         if (wheel != 0 && DragPayload is IDragAmount da) da.Step(wheel * (shift ? 10 : 1));
         Sound = null;
         _building.Clear();
+        _texts.Clear();
     }
 
     public void EndInput()
     {
         Rects.Clear();
         foreach (var (k, v) in _building) Rects[k] = v;
+        Texts.Clear();
+        Texts.AddRange(_texts);
         if (LetGo && DragId != null && !_dropTaken) { DragId = null; DragPayload = null; DragRight = false; }
         _dropTaken = false;
         LastTip = Tip;
@@ -106,11 +118,38 @@ public sealed class Gui
     public void Text(string text, Vector2 at, Color colour, int size = 18, Font font = null)
     {
         if (Drawing) Canvas.Text(font ?? UiTheme.Label, size, at, text, colour);
+        else if (Measure && !string.IsNullOrEmpty(text)) _texts.Add((text, new Rect2(at, Paint.TextWidth(font ?? UiTheme.Label, size, text), size), false));
     }
 
     public void TextIn(string text, Rect2 r, Color colour, int size = 18, HorizontalAlignment align = HorizontalAlignment.Left, Font font = null)
     {
         if (Drawing) Canvas.TextIn(font ?? UiTheme.Label, size, r, text, colour, align);
+        else if (Measure && !string.IsNullOrEmpty(text))
+        {
+            float w = Paint.TextWidth(font ?? UiTheme.Label, size, text), shown = MathF.Min(w, r.Size.X);
+            float x = align == HorizontalAlignment.Center ? r.Position.X + (r.Size.X - shown) / 2f : align == HorizontalAlignment.Right ? r.End.X - shown : r.Position.X;
+            _texts.Add((text, new Rect2(x, r.Position.Y + (r.Size.Y - size) / 2f, shown, size), w > r.Size.X + 1f));
+        }
+    }
+
+    /// <summary>Tests: measure every line of text laid out in the input pass (off in play: it costs a little).</summary>
+    public static bool Measure;
+
+    /// <summary>Every line of text the last input pass laid out, its box, and whether it ran past its box (tests).</summary>
+    public readonly List<(string Text, Rect2 Box, bool Overflow)> Texts = new();
+    readonly List<(string Text, Rect2 Box, bool Overflow)> _texts = new();
+
+    /// <summary>Pairs of laid-out lines whose boxes overlap, and lines cut short by their box (tests).</summary>
+    public List<string> TextProblems()
+    {
+        var problems = new List<string>();
+        for (int i = 0; i < Texts.Count; i++)
+        {
+            if (Texts[i].Overflow) problems.Add($"\"{Texts[i].Text}\" runs past its box");
+            for (int k = i + 1; k < Texts.Count; k++)
+                if (Texts[i].Box.Grow(-1f).Intersects(Texts[k].Box.Grow(-1f))) problems.Add($"\"{Texts[i].Text}\" {Texts[i].Box} overlaps \"{Texts[k].Text}\" {Texts[k].Box}");
+        }
+        return problems;
     }
 
     /// <summary>A warning-striped band round a rectangle, drawn just inside its edge.</summary>
@@ -144,7 +183,7 @@ public sealed class Gui
     /// <summary>A section caption with a rule under it.</summary>
     public void Caption(string text, Vector2 at, float width, Color? colour = null)
     {
-        Text(text, at, colour ?? C.Accent, 16, UiTheme.Display);
+        TextIn(HudLayout.Fit(UiTheme.Display, 16, text, width), new Rect2(at, width, 22), colour ?? C.Accent, 16, HorizontalAlignment.Left, UiTheme.Display);
         Fill(new Rect2(at.X, at.Y + 24, width, 2), new Color(C.Rule, 0.8f));
     }
 
@@ -157,12 +196,13 @@ public sealed class Gui
         bool hot = Over(r) && enabled;
         if (Drawing)
         {
-            Color bg = !enabled ? new Color(C.Glass, 0.5f) : lit ? colour : hot ? new Color(colour, 0.45f) : new Color(C.Glass, 0.85f);
+            Color bg = !enabled ? Back(new Color(C.Glass, 0.5f)) : lit ? colour : hot ? new Color(colour, 0.45f) : Back(new Color(C.Glass, 0.85f));
             Canvas.Block(r, bg);
             Canvas.Block(new Rect2(r.Position, new Vector2(5, r.Size.Y)), enabled ? colour : C.Dim);
             Canvas.TextIn(UiTheme.Label, size, r.Grow(-6), label, !enabled ? C.Dim : lit ? C.Glass : C.Text, HorizontalAlignment.Center);
             return false;
         }
+        if (Measure) TextIn(label, r.Grow(-6), C.Text, size, HorizontalAlignment.Center);
         bool clicked = enabled && Pressed && hot && DragId == null;
         if (clicked) Sound = "click";
         return clicked;
@@ -288,7 +328,7 @@ public sealed class Gui
         if (!readOnly) FirstBox ??= id;
         if (Drawing)
         {
-            Canvas.Block(r, new Color(C.Panel, 0.9f));
+            Canvas.Block(r, Back(new Color(C.Panel, 0.9f)));
             Canvas.Frame(r, focused ? C.Accent : new Color(C.Rule, 0.9f), focused ? 2.5f : 1.5f);
             bool empty = string.IsNullOrEmpty(text);
             string shown = empty ? placeholder : text;

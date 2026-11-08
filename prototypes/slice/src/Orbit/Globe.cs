@@ -91,6 +91,8 @@ public readonly record struct WorldView
     public float Height { get; init; }
     /// <summary>The sheet's curvature, 1 / m.</summary>
     public float Bend { get; init; }
+    /// <summary>How far out from under you the sheet stays flat before it curves, m: the land's own round_sink under the cap.</summary>
+    public float FlatFrom { get; init; }
     /// <summary>1: the map laid out flat, as the surface has it. 0: wrapped on the sphere.</summary>
     public float Flat { get; init; }
     /// <summary>1: past <see cref="Local"/> m from under you the map is the sphere's whatever <see cref="Flat"/> is (a pole has no flat map round it). 0: flat out to the rim of the sheet.</summary>
@@ -100,7 +102,7 @@ public readonly record struct WorldView
     public float Relief { get; init; }
     /// <summary>The height of the cloud layer, m.</summary>
     public float CloudLift { get; init; }
-    /// <summary>The cloud sheet's curvature, 1 / m: flat until the climb bends the ground, then the same. Callers set it: the ground's own bend for a sheet with no flat stretch.</summary>
+    /// <summary>The sky's cloud deck's curvature, 1 / m: flat until the climb bends the ground, then the same. The sheet's own clouds curve with its ground, as the sky's far clouds do.</summary>
     public float CloudBend { get; init; }
     /// <summary>The sheet over the land that's still drawn (0 to 1).</summary>
     public float OverLand { get; init; }
@@ -159,6 +161,7 @@ public partial class Globe : Node3D
         uniform float radius = 2546.0;
         uniform float height = 1000.0;
         uniform float bend = 0.0;
+        uniform float flat_from = 0.0;
         uniform float flat_map = 1.0;
         uniform float taper = 0.0;
         uniform float local = 3000.0;
@@ -218,11 +221,13 @@ public partial class Globe : Node3D
         // Metres of the map a grid point stands from the point under you.
         float arc(float t) { return reach * (exp(6.0 * t) - 1.0) / 402.43; }
 
-        // A point at arc s on bearing t, lifted, as seen from the eye; the sheet's own normal is n.
+        // A point at arc s on bearing t, lifted, as seen from the eye; the sheet's own normal is n. It
+        // is flat out to flat_from, as the land is, and curves away past it (round_sink on the surface).
         vec3 sheet_point(float s, vec3 t, float lift, out vec3 n) {
-            float x = s * bend;
-            float along = x > 0.0001 ? sin(x) / bend : s;
-            float drop = x > 0.0001 ? (1.0 - cos(x)) / bend : s * x * 0.5;
+            float f = min(s, flat_from), r = s - f;
+            float x = r * bend;
+            float along = f + (x > 0.0001 ? sin(x) / bend : r);
+            float drop = x > 0.0001 ? (1.0 - cos(x)) / bend : r * x * 0.5;
             n = t * sin(x) + eye_up * cos(x);
             return t * along - eye_up * (height + drop) + n * lift;
         }
@@ -277,12 +282,15 @@ public partial class Globe : Node3D
             // The relief at the grid's own spacing there, or it stands up as spikes.
             float step_m = max(32.0, s * 0.0375);
             float lod = log2(step_m / 32.0);
-            float e = ground_at(offset, lod);
+            // Past the horizon the relief lies down: there the grid's few bearings would stand hills
+            // up over the horizon as a fence of posts, a bearing apart.
+            float beyond = 1.0 - smoothstep(0.0, 2000.0, s - flat_from - sqrt(2.0 * height / max(bend, 1e-9)));
+            float e = ground_at(offset, lod) * beyond;
             vec3 n;
             vec3 p = sheet_point(s, t, e, n);
             // The ground's slope, from the same map.
-            float ex = ground_at(offset + vec2(step_m, 0.0), lod);
-            float ez = ground_at(offset + vec2(0.0, step_m), lod);
+            float ex = ground_at(offset + vec2(step_m, 0.0), lod) * beyond;
+            float ez = ground_at(offset + vec2(0.0, step_m), lod) * beyond;
             vec3 slope = (eye_east * (ex - e) + eye_south * (ez - e)) / step_m;
             // Lit as the sheet lies low down, as the sphere it stands for high up: the night side comes in with the curve.
             float a = round_angle(s);
@@ -324,7 +332,10 @@ public partial class Globe : Node3D
         void fragment() {
             vec4 c = paint(cloud_map, map_point(offset));
             ALBEDO = c.rgb;
-            ALPHA = c.a * mix(over_land, 1.0, smoothstep(4800.0, 5800.0, max(abs(offset.x), abs(offset.y))));
+            // Under the layer (or level with it) the sky draws the clouds: a flat sheet seen edge-on
+            // stands along the horizon as a fence of slivers. It shows once the eye is over it.
+            float over_layer = max(over_land, smoothstep(cloud_lift, cloud_lift + 200.0, height));
+            ALPHA = c.a * over_layer * mix(over_land, 1.0, smoothstep(4800.0, 5800.0, max(abs(offset.x), abs(offset.y))));
             FOG = vec4(fog_color, 1.0 - exp(-fog_density * distance));
         }
         """;
@@ -545,7 +556,7 @@ public partial class Globe : Node3D
         Visible = !Hidden;
         if (!Visible) return;
         float rho = v.Bend > 1e-7f ? 1f / v.Bend : 1e7f;
-        Reach = RimOf(rho, v.Height);
+        Reach = v.FlatFrom + RimOf(rho, v.Height);
         float sphereOut = ArcAt(_sphereReach, rho, Radius);
         foreach (ShaderMaterial m in new[] { _ground, _clouds })
         {
@@ -558,6 +569,7 @@ public partial class Globe : Node3D
             m.SetShaderParameter("nadir", v.Nadir);
             m.SetShaderParameter("height", v.Height);
             m.SetShaderParameter("bend", v.Bend);
+            m.SetShaderParameter("flat_from", v.FlatFrom);
             m.SetShaderParameter("flat_map", v.Flat);
             m.SetShaderParameter("taper", v.Taper);
             m.SetShaderParameter("local", v.Local);
@@ -569,8 +581,6 @@ public partial class Globe : Node3D
             m.SetShaderParameter("fog_color", v.FogColor);
             m.SetShaderParameter("over_land", v.OverLand);
         }
-        // Clouds stay flat on the way up from the ground: only the climb's own bend curves them.
-        _clouds.SetShaderParameter("bend", MathF.Max(v.CloudBend, 1e-7f));
         // Over the cloud deck for the swap, under it as the far field.
         _ground.RenderPriority = v.OverLand > 0f && v.OverLand < 1f ? 1 : -2;
         _clouds.RenderPriority = _ground.RenderPriority + 1;

@@ -59,7 +59,6 @@ public partial class Game
         Tool.Salvaged += () => Progress.Earn(2, "salvage");
         Places.WallBroken += (p, s) => Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Clank, p.WorldOf(s.WallCells[0], 1f), 0.5f, -2f);
         Places.Stood += OnPlaceStood;
-        Places.CoreDestroyed += p => Say($"{p.Site.Name.ToUpperInvariant()}: ITS CORE IS DESTROYED", Tones.Good);
         Places.WarmUp(); // still loading: the first build's one-off costs are paid now
     }
 
@@ -69,7 +68,7 @@ public partial class Game
         t.Aimed += from =>
         {
             Visor.Threat(from);
-            Say("A GUARD IS TAKING AIM", Tones.Warning);
+            Alerts.Attack("hostile", from);
             Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Ping, from, 0.5f, -4f);
         };
         t.Fired += (from, to, clear) =>
@@ -78,9 +77,8 @@ public partial class Game
             if (!clear || Suit.Dead) return;
             double lost = Suit.Hit(12, SurvivalVitals.Model.DamageKind.Hit);
             Visor.Hurt(from);
-            Say($"Shot by a guard: -{lost:F0} health", Tones.Warning);
+            Alerts.Attack("hostile", from);
         };
-        t.TurnedHostile += () => Say($"{p.Site.Name.ToUpperInvariant()} TURNS ON YOU: its people run for cover", Tones.Warning);
     }
 
     /// <summary>Whether the bag holds a keycard of this clearance or a higher one.</summary>
@@ -146,7 +144,6 @@ public partial class Game
             Bill left = Pack.Add($"keycard-{k.Clearance}", 1);
             if (!left.IsEmpty) { Say("No room in the bag", Tones.Caution); return true; }
             p.TakeKey(k);
-            Say($"Taken: a {k.Clearance.ToUpperInvariant()} keycard. Doors marked {k.Clearance} open for you now", Tones.Good);
             Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Ping, eye + dir, 1.8f, -12f);
             return true;
         }
@@ -160,7 +157,7 @@ public partial class Game
         if (h.Door != null)
         {
             var (ok, message) = h.Place.UseDoor(h.Door);
-            if (message != "") Say(message, ok ? Tones.Good : Tones.Caution);
+            if (!ok && message != "") Say(message, Tones.Caution); // only what stops you
             h.Place.Memory.Entered = true;
             return true;
         }
@@ -173,12 +170,10 @@ public partial class Game
         }
         if (b.Type == BlockType.Core)
         {
-            Say("A faction's core: shoot it out to free the place (hijacking waits for the factions)", Tones.Caution);
             return true;
         }
         if (b.Type == BlockType.Terminal)
         {
-            Say(h.Place.Inst.State == PoiState.Active ? "The terminal hums; its screen shows the doors on this level" : "The terminal is dead", Tones.Text);
             return true;
         }
         return false;
