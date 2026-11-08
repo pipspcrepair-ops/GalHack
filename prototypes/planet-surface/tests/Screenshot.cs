@@ -194,6 +194,7 @@ public partial class Screenshot : Node
             float off = first < 0 ? 45f : Mathf.Min(first + 40f, (first + last) * 0.5f);
             var eye = top + new Vector3(ox, 0, oz) * off + new Vector3((float)(dx / l), 0, (float)(dz / l)) * 20f;
             eye.Y = Mathf.Max(first < 0 ? top.Y + 4f : level + 4f, m.World.GroundHeight(eye.X, eye.Z) + 3f);
+            GD.Print($"waterfront: {r.Count} points, wall top at {top.X:F0},{top.Y:F0},{top.Z:F0} ({Math.Sqrt(Math.Pow(top.X - city.CenterX, 2) + Math.Pow(top.Z - city.CenterZ, 2)):F0} m from the middle), water from {first:F0} to {last:F0} m out, eye {eye.X:F0},{eye.Y:F0},{eye.Z:F0}");
             shots.Add(Level("waterfront", eye, top - new Vector3(0, 1.5f, 0)));
         }
         // Down an avenue toward the middle: from its point about 120 m out, 1.7 m over its deck.
