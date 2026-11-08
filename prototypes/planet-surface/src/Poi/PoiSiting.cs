@@ -345,6 +345,8 @@ public static partial class PoiSiting
         int lx0 = occupied.Min.X, lz0 = occupied.Min.Z, lx1 = occupied.Min.X + occupied.Size.X, lz1 = occupied.Min.Z + occupied.Size.Z;
         double halfX = (lx1 - lx0) * 0.5, halfZ = (lz1 - lz0) * 0.5;
         string want = Preference(family);
+        // Nobody set anything heavy on sand: a town, a base, a port, anything big or tall looks for firm ground.
+        bool heavy = PlanetSurface.World.Footing.Heavy(family.Tier, lx1 - lx0, lz1 - lz0, occupied.Min.Y + occupied.Size.Y);
         double width = map.WidthMeters, height = map.HeightMeters;
 
         double bestScore = double.MaxValue, bestX = 0, bestZ = 0;
@@ -367,6 +369,7 @@ public static partial class PoiSiting
                 crowded |= Dist(cx, cz, (o.Stamp.MinX + o.Stamp.MaxX) * 0.5, (o.Stamp.MinZ + o.Stamp.MaxZ) * 0.5, width, height)
                            < Math.Max(140, Math.Max(o.Stamp.ReachX, o.Stamp.ReachZ) + Math.Max(halfX, halfZ) + Apron + 50); // stamps never pile up
             if (crowded) continue;
+            if (heavy && PlanetSurface.World.Footing.SandShare(map, cx, cz, halfX + Apron, halfZ + Apron) > 0.12f) continue;
 
             // Ground across the footprint and apron.
             samples.Clear();
