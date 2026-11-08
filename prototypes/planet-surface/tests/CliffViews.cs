@@ -44,8 +44,10 @@ public static class CliffViews
             "crag" => Landform.Mountains,
             _ => Landform.CoastalCliffs,
         };
+        // cliff:KIND:SEED:far draws it all with the far rings (the voxels' square shrunk to one column round the eye).
+        bool far = a.Length > 3 && a[3] == "far";
         return new Screenshot.ViewSpec(spec, m => (Vector3.Zero, 0f, 0f), 0.4, WeatherKind.Clear,
-            TimeFor: Lit, Series: m => Shots(m, want, kind == "sea"));
+            TimeFor: Lit, Series: m => Shots(m, want, kind == "sea"), Prepare: far ? m => m.Streamer.VoxelRadius = 1 : null);
     }
 
     static PlanetSpec With(PlanetSpec s, Modifier m) => s with { Modifiers = (s.Modifiers | m) & ~Modifier.Archipelago };
@@ -92,24 +94,49 @@ public static class CliffViews
         var o = new Vector3(f.Out.X, 0f, f.Out.Y);
         var side = new Vector3(-o.Z, 0f, o.X);
         Vector3 mid = (f.Top + f.Foot) * 0.5f;
-        Vector3 Stand(Vector3 p, float eye)
-        {
-            float g = w.GroundHeight(p.X, p.Z);
-            if (sea || g < 0f) g = Mathf.Max(g, 0f);
-            return new Vector3(p.X, g + eye, p.Z);
-        }
+        Vector3 face = new(mid.X, 0f, mid.Z);
         Screenshot.Shot At(string name, Vector3 from, Vector3 to)
         {
             Vector3 d = to - from;
             return new Screenshot.Shot(name, from, Mathf.RadToDeg(Mathf.Atan2(d.X, -d.Z)), Mathf.RadToDeg(Mathf.Atan2(d.Y, new Vector2(d.X, d.Z).Length())));
         }
-        // Out from the foot along the way it faces, at a person's height; looking at the face's middle.
-        Vector3 foot = new(f.Foot.X, 0f, f.Foot.Z);
+        // Whether nothing stands between an eye and the face: the ground along the sight line stays under it.
+        bool Clear(Vector3 eye, Vector3 to)
+        {
+            for (float t = 0.04f; t < 0.88f; t += 0.02f)
+            {
+                Vector3 p = eye.Lerp(to, t);
+                if (w.GroundHeight(p.X, p.Z) > p.Y - 0.4f) return false;
+            }
+            return true;
+        }
+        // From this far out from the face, at a person's height (or a little higher where the ground in front
+        // hides it), turned off square as little as it takes to see it.
+        // In a narrow canyon the far wall is nearer than that: then from closer in, on the floor.
+        Screenshot.Shot Stand(string name, float distance, float turn, float eye, Vector3 to)
+        {
+            Vector3 best = default;
+            for (float d = distance; d >= 12f; d *= 0.75f)
+            for (float lift = 0f; lift <= 18f; lift += 3f)
+            for (int k = 0; k < 9; k++)
+            {
+                float a = Mathf.DegToRad(turn + 12f * ((k + 1) / 2) * (k % 2 == 0 ? 1 : -1));
+                Vector3 dir = o * Mathf.Cos(a) + side * Mathf.Sin(a);
+                Vector3 p = face + dir * d;
+                // Never below the face's own foot: where the land falls on past it, the eye hovers at its level.
+                float ground = w.GroundHeight(p.X, p.Z), g = Mathf.Max(ground, f.Foot.Y);
+                if (sea || g < 0f) g = Mathf.Max(g, 0f);
+                var at = new Vector3(p.X, g + eye + lift, p.Z);
+                if (best == default) best = at;
+                if (ground < f.Foot.Y + height * 0.3f && Clear(at, to)) return At(name, at, to);
+            }
+            return At(name, best, to);
+        }
         return new List<Screenshot.Shot>
         {
-            At("80m", Stand(foot + o * 80f, 1.8f), mid),
-            At("20m", Stand(foot + o * 20f, 1.8f), mid + Vector3.Down * (height * 0.15f)),
-            At("along", Stand(foot + o * 75f + side * 95f, 2.5f), mid),
+            Stand("80m", 80f, 0f, 1.8f, mid),
+            Stand("20m", 20f, 0f, 1.8f, mid + Vector3.Down * (height * 0.15f)),
+            Stand("along", 110f, 55f, 2.5f, mid),
             At("air", new Vector3(f.Top.X, f.Top.Y, f.Top.Z) + o * 190f + side * 60f + Vector3.Up * 120f, mid),
         };
     }
@@ -119,7 +146,9 @@ public static class CliffViews
     /// sea); among them, on the fine ground, the point whose drop within 6 m is the greatest, with at
     /// least 18 m of fall below it within 40 m. Nearest the landing site first, except sea cliffs.
     /// </summary>
-    static Face Find(Main m, Landform want, bool sea)
+    static Face Find(Main m, Landform want, bool sea) => Find(m, want, sea, 3500) ?? Find(m, want, sea, double.MaxValue);
+
+    static Face Find(Main m, Landform want, bool sea, double reach)
     {
         var w = m.World;
         WorldMap map = w.Map;
@@ -129,11 +158,12 @@ public static class CliffViews
         for (int i = 0; i < map.Width; i++)
         {
             int k = j * map.Width + i;
-            if (map.Landform[k] != (byte)want || map.Elevation[k] < (sea ? 6f : 4f)) continue;
+            if (map.Elevation[k] < (sea ? 6f : 4f) || map.Slope[k] < 0.2f) continue;
             double x = map.CellX(i), z = map.CellY(j);
+            if (map.LandformsAt(x, z).Weight(want) < (want == Landform.Mountains ? 0.25f : 0.45f)) continue;
             double dx = Mathx.WrapDelta(x - lx, w.Width), dz = Mathx.WrapDelta(z - lz, w.Height);
             double away = Math.Sqrt(dx * dx + dz * dz);
-            if (!sea && away > 3500) continue;
+            if (!sea && away > reach) continue;
             if (sea)
             {
                 // Beside the sea: water within two cells.
@@ -147,6 +177,7 @@ public static class CliffViews
             cells.Add((k, score));
         }
         cells.Sort((p, q) => q.score.CompareTo(p.score));
+        GD.Print($"cliff view: {cells.Count} steep {want} cells within {(reach > 1e6 ? "the world" : $"{reach:F0} m")}");
         Face best = null;
         float bestDrop = 0f;
         int looked = 0;
@@ -166,7 +197,7 @@ public static class CliffViews
                     float drop = h - w.Source.SurfaceHeight(x + dir.X * 6, z + dir.Y * 6, 2);
                     if (drop <= bestDrop) continue;
                     float below = w.Source.SurfaceHeight(x + dir.X * 40, z + dir.Y * 40, 2);
-                    if (h - below < 18f) continue;
+                    if (h - below < 15f) continue;
                     if (sea && below > 4f) continue;
                     // The foot: on out until the ground stops falling.
                     double fx = x, fz = z;

@@ -76,9 +76,96 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
         public float Floor00, Floor10, Floor01, Floor11;
         /// <summary>Squared slope over 8 m on a 4 m lattice (5 x 5 points, edges shared with the neighbours): for colours.</summary>
         public readonly float[] BroadSlope2 = new float[Lattice * Lattice];
+
+        /// <summary>
+        /// The highest and lowest ground within 16 m each way of each point of an 8 m lattice (3 x 3, edges
+        /// shared with the neighbours): how far a cliff rises over a point and falls below it, for its rock.
+        /// </summary>
+        public readonly float[] ReliefMax = new float[ReliefPoints * ReliefPoints], ReliefMin = new float[ReliefPoints * ReliefPoints];
+
+        /// <summary>
+        /// Cliffs between neighbouring cells: where along the step from a cell centre to the next one in +x
+        /// (CrossX) or +z (CrossZ) the ground passes halfway down, 0 to 1; NaN where the step isn't a cliff.
+        /// </summary>
+        public readonly float[] CrossX = new float[P * P], CrossZ = new float[P * P];
     }
 
     const int Lattice = S / 4 + 1;
+
+    // ---- Cliffs -----------------------------------------------------------------------------
+    //
+    // A cliff stands wherever the generator puts it, but the ground's density is set per 1 m cell from its
+    // column's height, so a wall could only fall between a high column and a low one: in plan it ran as
+    // a staircase of metre steps, its normals turning from one column to the next into upright stripes
+    // and its rim a row of teeth. So where neighbouring columns differ by more than WallFrom, the place
+    // the ground passes halfway down between their centres is found, and the cells beside it take their
+    // distance to that wall as their density: the surface between them then stands on the cliff's own
+    // line, to a few centimetres. The distance to a column's own top keeps the scale of its own ground
+    // there (the gentler side of it), so a cliff's rim and foot lie where the ground is.
+
+    /// <summary>The fall between neighbouring 1 m columns from which it is a cliff, m.</summary>
+    const float WallFrom = 2f;
+
+    /// <summary>Where along a straight line from a (0) to b (1) the ground passes halfway between their heights.</summary>
+    float WallCrossing(double ax, double az, double bx, double bz, float ha, float hb)
+    {
+        float target = (ha + hb) * 0.5f;
+        float lo = 0f, hi = 1f, flo = ha - target, fhi = hb - target;
+        for (int n = 0; n < 4; n++)
+        {
+            float mid = (lo + hi) * 0.5f;
+            float f = SurfaceHeight(ax + (bx - ax) * mid, az + (bz - az) * mid) - target;
+            if (f > 0f == flo > 0f) { lo = mid; flo = f; }
+            else { hi = mid; fhi = f; }
+        }
+        float t = flo == fhi ? 0.5f : flo / (flo - fhi);
+        return lo + (hi - lo) * Math.Clamp(t, 0f, 1f);
+    }
+
+    static float MinMod(float a, float b) => a * b <= 0f ? 0f : MathF.Abs(a) < MathF.Abs(b) ? a : b;
+
+    /// <summary>
+    /// The ground's density at a cell centre (height yc) of a column whose surface is h, beside a cliff:
+    /// its neighbours' surfaces (-x, +x, -z, +z) and how far from this column's centre each one's wall
+    /// stands (NaN: no cliff that way). Positive in the ground. The distance to the nearest wall the
+    /// ground at this height ends at (inside) or starts at (outside), or to its own top, whichever is
+    /// nearer; that top measured at the gentler slope beside it.
+    /// </summary>
+    static float WallDensity(float h, float yc, float hmx, float hpx, float hmz, float hpz, float wmx, float wpx, float wmz, float wpz)
+    {
+        float sx = MinMod(h - hmx, hpx - h), sz = MinMod(h - hmz, hpz - h);
+        float depth = h - yc, d = depth / MathF.Sqrt(1f + sx * sx + sz * sz);
+        // The cells either side of the column's own top keep their distance to it, so its surface stands
+        // exactly at its height; the walls shape the cells beyond them.
+        if (MathF.Abs(depth) <= 1f) return d;
+        bool inside = depth > 0f;
+        float wx = float.PositiveInfinity, wz = float.PositiveInfinity;
+        if (!float.IsNaN(wmx) && (inside ? hmx < yc : hmx > yc)) wx = wmx;
+        if (!float.IsNaN(wpx) && (inside ? hpx < yc : hpx > yc)) wx = MathF.Min(wx, wpx);
+        if (!float.IsNaN(wmz) && (inside ? hmz < yc : hmz > yc)) wz = wmz;
+        if (!float.IsNaN(wpz) && (inside ? hpz < yc : hpz > yc)) wz = MathF.Min(wz, wpz);
+        if (float.IsPositiveInfinity(wx) && float.IsPositiveInfinity(wz)) return d;
+        float wall = float.IsPositiveInfinity(wx) ? wz : float.IsPositiveInfinity(wz) ? wx : wx * wz / MathF.Sqrt(wx * wx + wz * wz + 1e-12f);
+        return inside ? MathF.Min(d, wall) : MathF.Max(d, -wall);
+    }
+
+    /// <summary>The relief lattice's spacing, m, and how many of its steps each way a point looks (16 m), as the far rings measure it.</summary>
+    public const int ReliefStep = 8, ReliefReach = 2;
+    const int ReliefPoints = S / ReliefStep + 1;
+
+    /// <summary>
+    /// How far the undug ground rises above a height and falls below it within reach of a point inside a
+    /// chunk column (metres from its corner): to a cliff's top and to its foot. Never below zero.
+    /// </summary>
+    public static (float rise, float fall) Relief(Column column, float fx, float fz, float y)
+    {
+        float gx = Math.Clamp(fx / ReliefStep, 0f, ReliefPoints - 1.001f), gz = Math.Clamp(fz / ReliefStep, 0f, ReliefPoints - 1.001f);
+        int i = (int)gx, j = (int)gz;
+        float tx = gx - i, tz = gz - j;
+        float At(float[] v) => (v[i + ReliefPoints * j] * (1 - tx) + v[i + 1 + ReliefPoints * j] * tx) * (1 - tz)
+                             + (v[i + ReliefPoints * (j + 1)] * (1 - tx) + v[i + 1 + ReliefPoints * (j + 1)] * tx) * tz;
+        return (MathF.Max(0f, At(column.ReliefMax) - y), MathF.Max(0f, y - At(column.ReliefMin)));
+    }
 
     public PlanetTerrainSource(WorldMap map, IReadOnlyList<TerrainStamp> stamps = null, IReadOnlyList<PoiSite> pois = null)
     {
@@ -394,6 +481,20 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
             column.Min = Math.Min(column.Min, h);
             column.Max = Math.Max(column.Max, h);
         }
+        // Cliffs between neighbouring cells, along x and z (the ring's edges too: the next column finds the same).
+        column.CrossX.AsSpan().Fill(float.NaN);
+        column.CrossZ.AsSpan().Fill(float.NaN);
+        for (int pz = 0; pz < P; pz++)
+        for (int px = 0; px < P; px++)
+        {
+            int k = px + P * pz;
+            float h = column.Heights[k];
+            double x = ox + px - 0.5, z = oz + pz - 0.5;
+            if (px + 1 < P && pz > 0 && pz < P - 1 && MathF.Abs(h - column.Heights[k + 1]) > WallFrom)
+                column.CrossX[k] = WallCrossing(x, z, x + 1, z, h, column.Heights[k + 1]);
+            if (pz + 1 < P && px > 0 && px < P - 1 && MathF.Abs(h - column.Heights[k + P]) > WallFrom)
+                column.CrossZ[k] = WallCrossing(x, z, x, z + 1, h, column.Heights[k + P]);
+        }
         // The slope that colours the ground, measured over 8 m: the 1 m slope that decides the cells'
         // materials wobbles with every bump, and soil and rock would mottle along the voxel grid.
         // The lattice's edge points are the same points the neighbouring column samples, so colours
@@ -409,6 +510,27 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
             float gx = (coarse[i + 2 + C * (j + 1)] - coarse[i + C * (j + 1)]) / 8f;
             float gz = (coarse[i + 1 + C * (j + 2)] - coarse[i + 1 + C * j]) / 8f;
             column.BroadSlope2[i + Lattice * j] = gx * gx + gz * gz;
+        }
+        // The relief lattice: its points are every 8 m on the planet, the same points the far rings
+        // measure, so the rock a cliff shows goes on across chunks and levels of detail.
+        const int R = ReliefPoints + 2 * ReliefReach;
+        Span<float> wide = stackalloc float[R * R];
+        for (int j = 0; j < R; j++)
+        for (int i = 0; i < R; i++)
+            wide[i + R * j] = SurfaceHeight(ox + (i - ReliefReach) * (double)ReliefStep, oz + (j - ReliefReach) * (double)ReliefStep, ReliefStep);
+        for (int j = 0; j < ReliefPoints; j++)
+        for (int i = 0; i < ReliefPoints; i++)
+        {
+            float hi = float.MinValue, lo = float.MaxValue;
+            for (int dj = 0; dj <= 2 * ReliefReach; dj++)
+            for (int di = 0; di <= 2 * ReliefReach; di++)
+            {
+                float h = wide[i + di + R * (j + dj)];
+                hi = MathF.Max(hi, h);
+                lo = MathF.Min(lo, h);
+            }
+            column.ReliefMax[i + ReliefPoints * j] = hi;
+            column.ReliefMin[i + ReliefPoints * j] = lo;
         }
         column.Floor00 = FloorAt(cx, cz);
         column.Floor10 = FloorAt(cx + 1, cz);
@@ -558,6 +680,9 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
             float sx = (column.Heights[hi + 1] - column.Heights[hi - 1]) * 0.5f, sz = (column.Heights[hi + P] - column.Heights[hi - P]) * 0.5f;
             float slope2 = sx * sx + sz * sz;
             float slopeScale = 1f / MathF.Sqrt(1f + slope2);
+            // Beside a cliff, the distance to its wall (see WallDensity).
+            float wmx = 1f - column.CrossX[hi - 1], wpx = column.CrossX[hi], wmz = 1f - column.CrossZ[hi - P], wpz = column.CrossZ[hi];
+            bool walled = !float.IsNaN(wmx) || !float.IsNaN(wpx) || !float.IsNaN(wmz) || !float.IsNaN(wpz);
 
             // Soil slides off steep ground, so slopes and cliffs show bare rock.
             float soilDepth = SoilDepth(x, z, slope2);
@@ -604,7 +729,9 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
                     continue;
                 }
 
-                float d = dist;
+                float d = walled
+                    ? WallDensity(h, y + 0.5f, column.Heights[hi - 1], column.Heights[hi + 1], column.Heights[hi - P], column.Heights[hi + P], wmx, wpx, wmz, wpz)
+                    : dist;
                 if (caves > 0f && depth > -1f) d = MathF.Min(d, CaveDensity(x + 0.5, y + 0.5, z + 0.5, dist, caves));
                 if (mouths != null && depth > -4f && !padded) d = MathF.Min(d, MouthsAt(mouths, x + 0.5, y + 0.5, z + 0.5));
                 d = Math.Clamp(d, -Limit, Limit);
@@ -744,10 +871,19 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
     public float CellDensity(int x, int y, int z)
     {
         float h = SurfaceHeight(x + 0.5, z + 0.5);
-        float hx = SurfaceHeight(x + 1.5, z + 0.5) - SurfaceHeight(x - 0.5, z + 0.5);
-        float hz = SurfaceHeight(x + 0.5, z + 1.5) - SurfaceHeight(x + 0.5, z - 0.5);
+        float hpx = SurfaceHeight(x + 1.5, z + 0.5), hmx = SurfaceHeight(x - 0.5, z + 0.5);
+        float hpz = SurfaceHeight(x + 0.5, z + 1.5), hmz = SurfaceHeight(x + 0.5, z - 0.5);
+        float hx = hpx - hmx, hz = hpz - hmz;
         float slopeScale = 1f / MathF.Sqrt(1f + (hx * hx + hz * hz) * 0.25f);
         float depth = h - (y + 0.5f), d = depth * slopeScale;
+        // Beside a cliff, as the chunks have it (WallDensity).
+        float Wall(float hn, double nx, double nz, bool from) =>
+            MathF.Abs(h - hn) <= WallFrom ? float.NaN
+            : from ? WallCrossing(x + 0.5, z + 0.5, nx, nz, h, hn) : 1f - WallCrossing(nx, nz, x + 0.5, z + 0.5, hn, h);
+        float wmx = Wall(hmx, x - 0.5, z + 0.5, false), wpx = Wall(hpx, x + 1.5, z + 0.5, true);
+        float wmz = Wall(hmz, x + 0.5, z - 0.5, false), wpz = Wall(hpz, x + 0.5, z + 1.5, true);
+        if (!float.IsNaN(wmx) || !float.IsNaN(wpx) || !float.IsNaN(wmz) || !float.IsNaN(wpz))
+            d = WallDensity(h, y + 0.5f, hmx, hpx, hmz, hpz, wmx, wpx, wmz, wpz);
         foreach (int i in StampsAt(x + 0.5, z + 0.5))
             if (Stamps[i].IsCarved(x, y, z) && (Stamps[i].Shape != StampShape.Road || depth > TunnelRoof)) return -Limit;
         if (depth > BedrockDepth)

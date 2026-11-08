@@ -22,6 +22,9 @@ public sealed class VoxelJob
     public Vector3[] Positions, Normals, Faces;
     public Color[] Colors;
     public Vector2[] Flags;
+
+    /// <summary>How far the ground rises above each vertex and falls below it nearby (UV2: a cliff's top and foot, for its rock).</summary>
+    public Vector2[] Relief;
     public int[] Indices;
     public ulong Hash;
     public double Milliseconds;
@@ -55,6 +58,7 @@ public static class VoxelMeshing
                 job.Indices = mesh.Indices;
                 job.Colors = new Color[job.Positions.Length];
                 job.Flags = new Vector2[job.Positions.Length];
+                job.Relief = new Vector2[job.Positions.Length];
                 List<Deposit> deposits = null;
                 PlanetTerrainSource.Column column = source.ColumnAt(job.Key.X, job.Key.Z);
                 float cornerX = job.Key.X * ChunkStore.Size, cornerZ = job.Key.Z * ChunkStore.Size;
@@ -62,6 +66,8 @@ public static class VoxelMeshing
                 {
                     Vector3 p = job.Positions[i];
                     double x = Wrap(p.X, width), z = Wrap(p.Z, height);
+                    var (rise, fall) = PlanetTerrainSource.Relief(column, p.X - cornerX, p.Z - cornerZ, p.Y);
+                    job.Relief[i] = new Vector2(rise, fall);
                     CellMaterial m = mesh.Materials[i];
                     if (m is CellMaterial.Soil or CellMaterial.Rock)
                     {
