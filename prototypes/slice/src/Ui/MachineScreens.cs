@@ -182,9 +182,9 @@ public partial class MachineScreens : Node3D
         return new Mounted { Screen = screen, Panel = panel, Holder = holder };
     }
 
-    // What makes each panel look different (it redraws only then).
+    // What makes each panel look different (it redraws only then): the icons too, which render a few a frame.
     string MachineState(Constructor c) =>
-        c == null ? "" : $"{c.Status}|{c.Version}|{c.Current?.Item.Id}|{(int)((c.Current?.Progress ?? 0) * 40)}|{c.Storage.Version}|{Game.Progress.Points}|{Game.Progress.State.Unlocked.Count}";
+        c == null ? "" : $"{c.Status}|{c.Version}|{c.Current?.Item.Id}|{(int)((c.Current?.Progress ?? 0) * 40)}|{c.Storage.Version}|{Game.Progress.Points}|{Game.Progress.State.Unlocked.Count}|{ItemIcons.Shared?.Count}";
 
     static string StructureState(Vessel v) => $"{v.PowerOn}|{v.LightsOn}|{v.Home}|{v.AutoTransmit}|{v.Powered}|{v.Structure.Count}|{v.Storage.Version}";
 }

@@ -305,7 +305,8 @@ public sealed class BlueprintsSection : IMenuSection
             ItemDef item = _game.Zone.Data.Items.BlockItem(blockId, small);
             string name = (item?.Name ?? e.Plan.Catalogue.Type(blockId).Name).Replace(small ? " (small)" : " (large)", "", StringComparison.Ordinal);
             bool isLocked = locked.Contains(blockId);
-            if (g.Drawing && item != null && ItemIcons.Shared?.Get(item) is Texture2D icon) g.Canvas.DrawTextureRect(icon, new Rect2(r.Position.X, y, 20, 20), false);
+            if (item != null && ItemIcons.Shared?.Get(item) is Texture2D icon) g.Image(icon, new Rect2(r.Position.X, y + 1, 20, 20), Colors.White);
+            if (item != null) g.SetTip(new Rect2(r.Position.X, y, r.Size.X, 22), () => Tooltips.For(_game, item, count));
             g.TextIn(name.ToUpperInvariant(), new Rect2(r.Position.X + 28, y, r.Size.X - 150, 22), isLocked ? C.Danger : C.Text, 13);
             int have = item == null ? 0 : _game.Pack[item.Id];
             string amount = Creative ? $"{count}" : $"{Math.Min(have, count)}/{count}";
