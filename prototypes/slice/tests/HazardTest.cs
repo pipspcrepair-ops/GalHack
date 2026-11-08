@@ -97,6 +97,11 @@ public partial class HazardTest : Node
                 var memory = new PlaceMemory(s);
                 memory.Rooms = Decor.Shared.Plan(memory);
                 if (Pair(memory) is not { } found) continue;
+                // A floor to stand on well inside the first one's reach (a cramped room may leave none).
+                DecoPlacement fp = found.Room.Plan.Placements[found.First];
+                var rel = new Vector3(found.Room.Corner.X + fp.X, found.Room.Corner.Y + found.Room.Floor, found.Room.Corner.Z + fp.Z);
+                PInt3 st = Free(s, found.Room, rel);
+                if (new Vector3(st.X + 0.5f, st.Y + found.Room.Floor + 0.05f, st.Z + 0.5f).DistanceTo(rel) > Decor.Shared.Catalogue.Piece(fp.Piece).Blast.Radius - 1.2f) continue;
                 site = s;
                 pair = found;
                 break;
@@ -148,12 +153,14 @@ public partial class HazardTest : Node
             Check(game.Places.Explosions == explosions + 1 && !a.Node.Visible, $"shot through its {a.Piece.Hp} hit points ({shots} shots) it goes up, and is gone");
             Check(b.Node.Visible, "its neighbour isn't set off in the same instant");
             Check(place.Memory.BlockDamage.Count > blocks || place.Memory.Modified, $"the place's blocks round it take the blast ({place.Memory.BlockDamage.Count - blocks} hurt)");
+            // Game time, not the wall clock: under --fixed-fps a headless frame can take far less than its 1/60 s.
+            ulong blastFrame = Engine.GetPhysicsFrames();
+            double GameSecondsSince() => (Engine.GetPhysicsFrames() - blastFrame) / (double)Engine.PhysicsTicksPerSecond;
             foreach (int x in drive.Wait(3)) yield return x;
             Check(game.Suit.Vitals.Health < health, $"the survivor beside it is hurt ({health:F0} to {game.Suit.Vitals.Health:F0} health)");
-            var after = Stopwatch.StartNew();
-            while (b.Node.Visible && after.Elapsed.TotalSeconds < 3) yield return 0;
-            Check(!b.Node.Visible && game.Places.Explosions >= explosions + 2 && after.Elapsed.TotalSeconds >= PoiPlaces.ChainDelay * 0.8f,
-                $"and a moment later its neighbour, the {b.Piece.Name}, follows ({after.Elapsed.TotalSeconds:F2} s on)");
+            while (b.Node.Visible && GameSecondsSince() < 3) yield return 0;
+            Check(!b.Node.Visible && game.Places.Explosions >= explosions + 2 && GameSecondsSince() >= PoiPlaces.ChainDelay * 0.8f,
+                $"and a moment later its neighbour, the {b.Piece.Name}, follows ({GameSecondsSince():F2} s on)");
             game.QueueFree();
             yield break;
         }

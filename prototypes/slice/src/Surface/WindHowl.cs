@@ -63,7 +63,7 @@ public partial class WindHowl : Node3D
     void Look()
     {
         float wind = Zone.Weather.Wind2D.Length();
-        if (wind < LeastWind || Quiet() || Zone.Underwater.CameraUnder)
+        if (wind < LeastWind || Quiet() || Zone.Underwater?.CameraUnder == true)
         {
             _target = 0f;
             return;

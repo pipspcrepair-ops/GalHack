@@ -120,7 +120,7 @@ public partial class OrbitTest : Node
     }
 
     /// <summary>
-    /// This scenario boards a derelict ship (door, bulkhead, hold), and a start system may hold no
+    /// This scenario boards a derelict ship (door, rooms, hold), and a start system may hold no
     /// ship among its fields, pods, hulks and stations (a pick of its weighted sites, none promised).
     /// So a run takes the next fresh world that has one; never a kept list. A seed given on the
     /// command line stays, and fails below if it has no ship.
@@ -184,16 +184,23 @@ public partial class OrbitTest : Node
         _game.Progress.Creative = true;
         GD.Print($"  (setup: handed over the Skiff's parts and the Big Core, and opened the tech tree)");
         _game.Pack.Grid.SetBlock(3, PlayerInventory.BlueprintBlock);
-        Vector3 pad = new Playthrough(_game).FlatSpot(_game.Start, 18f, span: 10f); // room for you to stand off it and see it
-        Vector3 stand = pad + (pad - _game.Start).Normalized() * 7f;
-        foreach (int x in _drive.WalkTo(new Vector3(stand.X, 0, stand.Z), 1.5f)) yield return x;
-        foreach (int x in _drive.Tap(Key.Key4)) yield return x;
-        foreach (int x in _drive.LookAt(pad, 6)) yield return x;
-        // The ground's collision may still be coming in where you look: the ghost shows once it can go down.
-        for (int i = 0; i < 300 && !_game.Builder.PlanShown; i++)
-            foreach (int x in _drive.LookAt(pad, 1)) yield return x;
-        foreach (int x in _drive.Click()) yield return x;
-        Vessel skiff = _game.Builder.Underway;
+        Vector3 pad = default;
+        Vessel skiff = null;
+        // As the staging does: a walk the ground blocks (a wall, a gully) leaves you too far off, so a few pads farther out are tried.
+        for (int attempt = 0; attempt < 3 && skiff == null; attempt++)
+        {
+            pad = new Playthrough(_game).FlatSpot(_game.Start, 18f + attempt * 14f, span: 10f); // room for you to stand off it and see it
+            Vector3 stand = pad + (pad - _game.Start).Normalized() * 7f;
+            foreach (int x in _drive.WalkTo(new Vector3(stand.X, 0, stand.Z), 1.5f)) yield return x;
+            if (_game.Pack.Selected != 3) foreach (int x in _drive.Tap(Key.Key4)) yield return x;
+            foreach (int x in _drive.LookAt(pad, 6)) yield return x;
+            // The ground's collision may still be coming in where you look: the ghost shows once it can go down.
+            for (int i = 0; i < 300 && !_game.Builder.PlanShown; i++)
+                foreach (int x in _drive.LookAt(pad, 1)) yield return x;
+            foreach (int x in _drive.Click()) yield return x;
+            skiff = _game.Builder.Underway;
+            if (skiff == null) GD.Print($"  (the blueprint set nothing down at {pad}, feet {_game.Survivor.WorldFeet}: {_game.Builder.Verdict})");
+        }
         if (skiff == null)
         {
             Fail($"the blueprint projector set nothing down (the tool says: {_game.Builder.Verdict}; shown {_game.Builder.PlanShown}, plan {_game.Builder.Plan != null}; pad {pad}, feet {_game.Survivor.WorldFeet}, slot {_game.Pack.Selected}, in hand {_game.Pack.InHand}, wish yaw {_game.Survivor.Yaw:F2})");
@@ -298,6 +305,67 @@ public partial class OrbitTest : Node
     /// <summary>Half a metre up the hull's own axis: the suit's eye over a door's middle, so the legs clear its sill.</summary>
     Vector3 Lift => MathX.Rotate(_wreck.Body.Rotation, N.Vector3.UnitY * 0.5f).ToGodot();
 
+    static readonly Int3[] Sides = { new(1, 0, 0), new(-1, 0, 0), new(0, 1, 0), new(0, -1, 0), new(0, 0, 1), new(0, 0, -1) };
+
+    /// <summary>
+    /// The shortest way from a cell inside the hull, through its empty cells and its doors (open or
+    /// shut), to a cell beside a cargo box; and that box. Never back out by the hull door taken in.
+    /// </summary>
+    (List<Int3> route, Int3 box) HoldRoute(Structure ship, Int3 from)
+    {
+        var (min, max) = ship.Bounds();
+        bool Inside(Int3 c) => c.X >= min.X - 1 && c.X <= max.X + 1 && c.Y >= min.Y - 1 && c.Y <= max.Y + 1 && c.Z >= min.Z - 1 && c.Z <= max.Z + 1;
+        bool Passable(Int3 c) => c != _door && (!ship.TryGet(c, out Block b) || ship.TypeOf(b).IsDoor);
+        var came = new Dictionary<Int3, Int3> { [from] = from };
+        var queue = new Queue<Int3>();
+        queue.Enqueue(from);
+        while (queue.Count > 0)
+        {
+            Int3 c = queue.Dequeue();
+            foreach (Int3 d in Sides)
+            {
+                var n = new Int3(c.X + d.X, c.Y + d.Y, c.Z + d.Z);
+                if (ship.TryGet(n, out Block nb) && ship.TypeOf(nb).IsContainer && !ship.TypeOf(nb).IsDoor && !(ship.TryGet(c, out Block cb) && ship.TypeOf(cb).IsDoor))
+                {
+                    var route = new List<Int3>();
+                    for (Int3 at = c; at != from; at = came[at]) route.Add(at);
+                    route.Add(from);
+                    route.Reverse();
+                    return (route, n);
+                }
+            }
+            foreach (Int3 d in Sides)
+            {
+                var n = new Int3(c.X + d.X, c.Y + d.Y, c.Z + d.Z);
+                if (!Inside(n) || came.ContainsKey(n) || !Passable(n)) continue;
+                came[n] = c;
+                queue.Enqueue(n);
+            }
+        }
+        return (null, default);
+    }
+
+    /// <summary>Floats a route cell by cell (only where it turns, and either side of a door), forcing a shut door met on it by hand.</summary>
+    IEnumerable<int> Along(Structure ship, List<Int3> route)
+    {
+        bool IsDoor(Int3 c) => ship.TryGet(c, out Block b) && ship.TypeOf(b).IsDoor;
+        for (int i = 1; i < route.Count; i++)
+        {
+            Int3 c = route[i];
+            bool last = i == route.Count - 1, turn = !last && (route[i + 1].X - c.X, route[i + 1].Y - c.Y, route[i + 1].Z - c.Z) != (c.X - route[i - 1].X, c.Y - route[i - 1].Y, c.Z - route[i - 1].Z);
+            bool doorNext = !last && IsDoor(route[i + 1]);
+            if (!(last || turn || doorNext || IsDoor(c) || IsDoor(route[i - 1]))) continue;
+            foreach (int x in _pilot.FloatTo(() => BodyAt(c.X, c.Y, c.Z), 0.5f, 20f)) yield return x;
+            if (doorNext && !ship.Get(route[i + 1]).Open)
+            {
+                Int3 d = route[i + 1];
+                foreach (int x in _drive.LookAt(CellAt(d.X, d.Y, d.Z), 6)) yield return x;
+                foreach (int x in _drive.Tap(Key.E)) yield return x;
+            }
+        }
+        foreach (int x in _pilot.Stop()) yield return x;
+    }
+
     IEnumerable<int> ToTheDerelict()
     {
         GD.Print("-- across space to a derelict --");
@@ -377,21 +445,29 @@ public partial class OrbitTest : Node
         foreach (int x in _drive.Tap(Key.L)) yield return x;
         Check(_game.Torch.Visible, "dark in there: the head torch on");
 
-        // Aft through the bulkhead's open door to the hold.
-        Int3 box = ship.Blocks().Where(b => ship.TypeOf(b.block).IsContainer).Select(b => b.pos).OrderBy(p => p.Z).First();
-        Int3 bulkhead = ship.Blocks().Where(b => ship.TypeOf(b.block).IsDoor && b.block.Open && b.pos.Z > 0).Select(b => b.pos).First();
-        foreach (int x in _pilot.FloatTo(() => CellAt(0, 1, _door.Z), 0.9f, 25f)) yield return x;
-
-        foreach (int x in _pilot.FloatTo(() => BodyAt(bulkhead.X, bulkhead.Y, bulkhead.Z - 1), 0.4f, 25f)) yield return x;
-
-        foreach (int x in _pilot.FloatTo(() => BodyAt(bulkhead.X, bulkhead.Y, box.Z), 0.9f, 25f)) yield return x;
+        // Through the hull to its nearest cargo box. A capital hull is many rooms on several decks, so
+        // the way is found through its open cells and doors, forcing any shut door met on it.
+        Int3 inside0 = new Int3(_door.X - 2 * sx, _door.Y, _door.Z);
+        var (route, box) = HoldRoute(ship, inside0);
+        if (route == null)
+        {
+            Fail($"no way through {_wreck.Name}'s open cells and doors from its hull door to a cargo box");
+            yield break;
+        }
+        GD.Print($"  to the cargo box at {box}: {route.Count} cells from inside the door");
+        foreach (int x in Along(ship, route)) yield return x;
 
         Vector3 BoxAt() => CellAt(box.X, box.Y, box.Z); // read live: a dead hull drifts
-        // Up off the deck first: the suit's thrusters don't slide along a floor they press into, and a wide hold's box is out of arm's reach from the middle.
-        foreach (int x in _pilot.FloatTo(() => CellAt(box.X - Math.Sign(box.X), 2, box.Z), 1.0f, 15f)) yield return x;
         foreach (int x in _pilot.FloatTo(BoxAt, 2.6f, 15f)) yield return x;
         foreach (int x in _pilot.Stop()) yield return x;
         foreach (int x in _drive.LookAt(BoxAt(), 8)) yield return x;
+        // The suit floats at any tilt: if a corner is in the way of the look, in closer and look again.
+        for (int k = 1; k <= 3 && string.IsNullOrEmpty(_game.UsePrompt()); k++)
+        {
+            foreach (int x in _pilot.FloatTo(BoxAt, 2.6f - 0.4f * k, 10f)) yield return x;
+            foreach (int x in _pilot.Stop()) yield return x;
+            foreach (int x in _drive.LookAt(BoxAt(), 8)) yield return x;
+        }
         Bill hold = _wreck.Storage.Contents;
         string boxPrompt = _game.UsePrompt();
         foreach (int x in _drive.Tap(Key.E)) yield return x;
@@ -418,8 +494,8 @@ public partial class OrbitTest : Node
         _lootedFrom = hold.Total;
 
         // Out by the way in, and claim it from outside with the Big Core.
-        foreach (int x in _pilot.FloatTo(() => CellAt(bulkhead.X, bulkhead.Y, bulkhead.Z + 1), 1.0f, 25f)) yield return x;
-        foreach (int x in _pilot.FloatTo(() => CellAt(bulkhead.X, bulkhead.Y, bulkhead.Z - 1), 1.0f, 25f)) yield return x;
+        route.Reverse();
+        foreach (int x in Along(ship, route)) yield return x;
         foreach (int x in _pilot.FloatTo(() => CellAt(_door.X - 2 * sx, 1, _door.Z), 1.0f, 25f)) yield return x;
         foreach (int x in _pilot.FloatTo(() => Door + Outward * 3f, 1.0f, 25f)) yield return x;
         foreach (int x in _pilot.Stop()) yield return x;
@@ -506,6 +582,7 @@ public partial class OrbitTest : Node
 
         // Down on the gear, as a pilot would: the height under it sets the sink rate.
         int ticks = 0;
+        float hurtBefore = v.Body.Damage; // what it took out there (a drifting wreck's knock) is not the landing's
         Vector3 target = surface.GroundAt(down.PositionAfter.X, down.PositionAfter.Z);
         while (!v.Controller.Frozen && ticks++ < 60 * 120)
         {
@@ -524,7 +601,7 @@ public partial class OrbitTest : Node
         dxe = Math.Min(dxe, surface.Planet.Width - dxe);
         double landed = Math.Sqrt(dxe * dxe + Math.Pow(Planets.Gen.Mathx.Wrap(end.Z, surface.Planet.Height) - tz, 2));
         double finalHeading = GlobeMap.HeadingDegrees(v.Body.Rotation);
-        Check(v.Controller.Frozen && v.Body.Damage == 0f, $"it landed on its gear, undamaged, {landed:F0} m from the chosen point (settled {v.Controller.Frozen}, damage {v.Body.Damage:F1}, {v.AboveGround:F1} m up, {v.Body.Velocity.Length():F1} m/s, ticks {ticks})");
+        Check(v.Controller.Frozen && v.Body.Damage == hurtBefore, $"it landed on its gear, undamaged, {landed:F0} m from the chosen point (settled {v.Controller.Frozen}, damage {v.Body.Damage - hurtBefore:F2} on landing, {hurtBefore:F2} before it, {v.AboveGround:F1} m up, {v.Body.Velocity.Length():F1} m/s, ticks {ticks})");
         Check(landed < 150, $"the landing point is the point it came down over ({landed:F0} m off)");
         Check(HeadingError(finalHeading, heading) < 8, $"and its heading is the one it had over the globe: {finalHeading:F1}°");
         TheSkyCameBack();

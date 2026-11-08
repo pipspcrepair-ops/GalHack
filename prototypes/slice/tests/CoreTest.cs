@@ -105,7 +105,7 @@ public partial class CoreTest : Node
         Check(PlayerInventory.CoreItems.OrderBy(c => c).SequenceEqual(new[] { "big-core", "small-core" }), "two core items found structures");
         var tree = new Progress(Data.Progress, items, Data.Catalogue);
         var nodes = tree.Nodes.Where(n => n.BlockId == "core").Select(n => (n.Id, n.Tab)).OrderBy(n => n.Id).ToList();
-        Check(nodes.SequenceEqual(new[] { ("big-core", "base"), ("small-core", "small") }), $"one core node on each tab: {string.Join(", ", nodes)}");
+        Check(nodes.SequenceEqual(new[] { ("big-core", "large"), ("small-core", "small") }), $"one core node on each tab: {string.Join(", ", nodes)}");
         Check(!tree.Nodes.Any(n => gone.Contains(n.Id) || gone.Contains(n.Unlock.Parent)), "no node is or hangs from an old core");
         Check(tree.Node("small-core").Level == 1 && tree.Node("big-core").Level == 1, "both cores open at level 1");
         Check(items.Item("big-core").ShortName.Length <= 8 && items.Item("small-core").ShortName.Length <= 8, $"the short names fit a slot: {items.Item("big-core").ShortName}, {items.Item("small-core").ShortName}");
