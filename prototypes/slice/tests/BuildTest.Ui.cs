@@ -11,9 +11,10 @@ using WeatherKind = Weather.Model.WeatherKind;
 namespace Slice.Tests;
 
 /// <summary>
-/// The UI round: hazards as symbols with a timer and no words, each by a sign of its own and never a generic one, a compass that starts with only the
-/// bunker and the place in view from its way out, the scanner's ping marking it for ten seconds, every tech tab on one 1080p screen, and
-/// no two HUD labels on top of each other.
+/// The UI round: hazards as symbols with a timer and no words, each by a sign of its own and never a
+/// generic one, kept off every menu page's panels by a strip of the menu's header, a compass that starts
+/// with only the bunker and the place in view from its way out, the scanner's ping marking it for ten
+/// seconds, every tech tab on one 1080p screen, and no two HUD labels on top of each other.
 /// </summary>
 public partial class BuildTest
 {
@@ -24,6 +25,7 @@ public partial class BuildTest
         AlertSignChecks();
         foreach (int x in ScannerChecks()) yield return x;
         foreach (int x in MenuTextChecks()) yield return x;
+        foreach (int x in EscapeStripChecks()) yield return x;
         HudBoxChecks();
         foreach (int x in TechFitChecks()) yield return x;
         foreach (int x in GalaxyNameChecks()) yield return x;
@@ -89,6 +91,84 @@ public partial class BuildTest
             string problem = l.Problem(size);
             Check(problem == null && l.Alerts.Size.Y >= HudLayout.AlertIcon * l.Scale * 2, $"HUD at {size.X}x{size.Y}: {l.Boxes.Count()} label boxes, none overlapping, room for two alerts{(problem == null ? "" : ": " + problem)}");
         }
+    }
+
+    /// <summary>
+    /// The alerts' strip of a menu panel, on the page it is showing, at 1080p and 1440p: inside the window, with no line of
+    /// text, widget or panel on it, and with room for every alert there can be at once (the most hazards and two attacks),
+    /// each sign and timer inside the strip and none on another.
+    /// </summary>
+    static List<string> StripProblems(MenuPanel panel)
+    {
+        var problems = new List<string>();
+        if (panel.AlertStrip is not Rect2 strip)
+        {
+            problems.Add("no strip for the alerts");
+            return problems;
+        }
+        var design = new Vector2(Gui.Width, Gui.Height);
+        foreach (Vector2 size in new[] { new Vector2(1920, 1080), new Vector2(2560, 1440) })
+        {
+            float k = MathF.Min(size.X / design.X, size.Y / design.Y);
+            Vector2 offset = (size - design * k) * 0.5f;
+            Rect2 Px(Rect2 r) => new(offset + r.Position * k, r.Size * k);
+            Rect2 box = Px(strip);
+            string at = $"{size.X:0}x{size.Y:0}";
+            if (!new Rect2(Vector2.Zero, size).Encloses(box)) problems.Add($"{at}: the strip leaves the window");
+            foreach (var (text, rect, _) in panel.Gui.Texts)
+                if (Px(rect).Grow(-1f).Intersects(box)) problems.Add($"{at}: \"{text}\" is on the strip");
+            foreach (var (id, rect) in panel.Gui.Rects)
+                if (Px(rect).Intersects(box)) problems.Add($"{at}: widget {id} is on the strip");
+            foreach (Rect2 fill in panel.Gui.Fills)
+                if (!fill.Encloses(strip) && Px(fill).Intersects(box)) problems.Add($"{at}: a panel {fill} is on the strip");
+            int most = Alerts.MostHazards + 2;
+            var cells = Alerts.StripCells(box, k, most);
+            if (cells.Count < most) problems.Add($"{at}: room for {cells.Count} of {most} alerts");
+            for (int i = 0; i < cells.Count; i++)
+            {
+                if (!box.Encloses(cells[i].Sign) || !box.Encloses(cells[i].Timer)) problems.Add($"{at}: alert {i + 1} runs off the strip");
+                for (int j = i + 1; j < cells.Count; j++)
+                    if (cells[i].Sign.Intersects(cells[j].Sign) || cells[i].Timer.Intersects(cells[j].Timer) || cells[i].Sign.Intersects(cells[j].Timer)) problems.Add($"{at}: alerts {i + 1} and {j + 1} overlap");
+            }
+        }
+        return problems;
+    }
+
+    /// <summary>The escape menu's pages and its quit question: the same strip, clear of every panel.</summary>
+    IEnumerable<int> EscapeStripChecks()
+    {
+        Gui.Measure = true;
+        EscapeMenu esc = _game.Escape;
+        var pages = new List<(string name, Action set)> { ("the world", () => { esc.Root.Page = EscapePage.World; esc.Root.Confirming = false; }) };
+        foreach (OptionsTab tab in Enum.GetValues<OptionsTab>())
+            pages.Add(($"options: {tab}", () => { esc.Root.Page = EscapePage.Options; esc.Root.Options.Tab = tab; esc.Root.Confirming = false; }));
+        pages.Add(("the quit question", () => { esc.Root.Page = EscapePage.World; esc.Root.Confirming = true; }));
+        esc.Open();
+        foreach (var (name, set) in pages)
+        {
+            set();
+            foreach (int x in _drive.Wait(3)) yield return x;
+            List<string> problems = StripProblems(esc.Root);
+            Check(problems.Count == 0 && esc.Root.Gui.Texts.Count > 0, $"the escape menu, {name}: the alerts' strip is clear of every panel at 1080p and 1440p{(problems.Count == 0 ? "" : ": " + string.Join("; ", problems.Take(6)))}");
+        }
+        esc.Root.Confirming = false;
+        esc.Root.Page = EscapePage.World;
+        esc.Close();
+        Gui.Measure = false;
+        // Where the alerts show: a menu open has them in its strip, none up has them on the glass.
+        _game.Menu.Open(MenuTab.You);
+        foreach (int x in _drive.Wait(2)) yield return x;
+        Check(_game.Alerts.MenuStrip(out Rect2 header, out float k) && k > 0f && MathF.Abs(header.Size.Y - 74f * k) < 0.5f && header.Size.X > 150f * k, $"with the Tab menu open the alerts have its header strip ({header}, {k:0.00} px a unit)");
+        Gui.Measure = true;
+        _game.Menu.Root.Tab = MenuTab.Stats;
+        foreach (int x in _drive.Wait(3)) yield return x;
+        Gui.Measure = false;
+        var title = _game.Menu.Root.Gui.Texts.FirstOrDefault(t => t.Text == "SUIT TERMINAL");
+        float firstTab = _game.Menu.Root.Gui.Rects.Where(r => r.Key.StartsWith("tab:")).Select(r => r.Value.Position.X).DefaultIfEmpty(0f).Min();
+        Check(title.Text != null && title.Box.End.X + 8f <= firstTab, $"the header's title ends ({title.Box.End.X:F0}) before the first tab ({firstTab:F0}) that now starts further left");
+        _game.Menu.Close();
+        foreach (int x in _drive.Wait(2)) yield return x;
+        Check(!_game.Alerts.MenuStrip(out _, out _), "and with no menu up they sit on the glass at the left as before");
     }
 
     /// <summary>
@@ -168,7 +248,9 @@ public partial class BuildTest
             open();
             foreach (int x in _drive.Wait(3)) yield return x;
             List<string> problems = _game.Menu.Root.Gui.TextProblems();
-            Check(problems.Count == 0 && _game.Menu.Root.Gui.Texts.Count > 0, $"the menu's {name} page: {_game.Menu.Root.Gui.Texts.Count} lines, none overlapping or cut short{(problems.Count == 0 ? "" : ": " + string.Join("; ", problems.Take(6)))}");
+            List<string> strip = StripProblems(_game.Menu.Root);
+            Check(problems.Count == 0 && strip.Count == 0 && _game.Menu.Root.Gui.Texts.Count > 0,
+                $"the menu's {name} page: {_game.Menu.Root.Gui.Texts.Count} lines, none overlapping or cut short, and the alerts' strip clear of every panel at 1080p and 1440p{(problems.Count + strip.Count == 0 ? "" : ": " + string.Join("; ", problems.Concat(strip).Take(6)))}");
         }
         _game.Menu.Root.You.ShowBlocks = false;
         _game.Menu.Close();

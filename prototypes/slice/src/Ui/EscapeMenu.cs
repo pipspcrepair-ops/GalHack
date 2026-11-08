@@ -146,6 +146,9 @@ public partial class EscapeRoot : MenuPanel
     public OptionsSection Options { get; private set; }
     public override Vector2 DesignSize => new(Gui.Width, Gui.Height);
 
+    /// <summary>The header's right end, past the world's name and seed: where the hazard alerts show while the menu is up (none while it stands aside to view the world: the visor's own place is clear then).</summary>
+    public override Rect2? AlertStrip => Viewing ? null : new Rect2(1272, 0, 320, 74);
+
     protected override string Signature() => $"{Page}|{Confirming}|{Viewing}|{Options?.Signature}";
 
     public override void _Ready()

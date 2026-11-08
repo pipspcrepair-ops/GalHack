@@ -14,8 +14,9 @@ namespace Slice.Ui;
 /// ends) and an arrow for where it is or comes from. An attack flashes an animal's or a person's
 /// silhouette with an arrow to the attacker, and makes no sound of its own: the blow's own sounds
 /// and the damage vignette carry it. This layer sits over the Tab menu and the escape menu, so a
-/// warning is never hidden behind a menu. A warning with no sign of its own in the sign set is not
-/// shown: there is no generic one.
+/// warning is never hidden behind a menu, and while one is open the alerts move to a strip of its
+/// header that no page uses (<see cref="MenuPanel.AlertStrip"/>), so they never cover its content.
+/// A warning with no sign of its own in the sign set is not shown: there is no generic one.
 /// </summary>
 public partial class Alerts : CanvasLayer
 {
@@ -126,12 +127,51 @@ public partial class Alerts : CanvasLayer
     /// </summary>
     public static bool Specific(string sign) => !string.IsNullOrEmpty(sign) && sign != "hazard" && HasSign(sign);
 
+    /// <summary>An alert's sign and timer in the menu's strip, in design units: the sign's size, and the width a sign and its timer take.</summary>
+    public const float StripIcon = 38, StripCell = 43;
+
+    /// <summary>
+    /// Where each of up to <paramref name="count"/> alerts goes in a menu's strip (pixels, <paramref name="scale"/> pixels to a
+    /// design unit): the sign with its timer under it. As many as fit, most urgent first.
+    /// </summary>
+    public static List<(Rect2 Sign, Rect2 Timer)> StripCells(Rect2 strip, float scale, int count)
+    {
+        var cells = new List<(Rect2, Rect2)>();
+        int fit = Math.Max(0, (int)((strip.Size.X - 8f * scale) / (StripCell * scale)));
+        for (int i = 0; i < Math.Min(count, fit); i++)
+        {
+            float x = strip.Position.X + 4f * scale + i * StripCell * scale;
+            cells.Add((new Rect2(x, strip.Position.Y + 5f * scale, StripIcon * scale, StripIcon * scale),
+                new Rect2(x - 2f * scale, strip.Position.Y + 47f * scale, (StripCell - 1f) * scale, 20f * scale)));
+        }
+        return cells;
+    }
+
+    /// <summary>The strip of whichever menu is open, in pixels, and the pixels to a design unit; false with no menu up (or one standing aside).</summary>
+    public bool MenuStrip(out Rect2 strip, out float scale)
+    {
+        strip = default;
+        scale = 1f;
+        MenuPanel panel = Game.Escape != null && Game.Escape.IsOpen ? Game.Escape.Root : Game.Menu != null && Game.Menu.IsOpen ? Game.Menu.Root : null;
+        if (panel?.AlertStrip is not Rect2 design) return false;
+        Transform2D fit = panel.Fit;
+        scale = fit.X.X;
+        strip = new Rect2(panel.GlobalPosition + fit.Origin + design.Position * scale, design.Size * scale);
+        return true;
+    }
+
     void Draw()
     {
         Vector2 size = _view.Size;
         if (size.Y < 100f || Game?.Camera == null) return; // headless: no window to draw on
         HudLayout layout = HudLayout.Compute(size, Game.Visor?.UiScale ?? 1f);
         float s = layout.Scale;
+        if (MenuStrip(out Rect2 strip, out float k))
+        {
+            DrawInStrip(strip, k);
+            DrawStruggle(size, s);
+            return;
+        }
         Rect2 box = layout.Alerts;
         float y = box.Position.Y;
         float icon = HudLayout.AlertIcon * s, row = icon + 10 * s;
@@ -154,6 +194,31 @@ public partial class Alerts : CanvasLayer
             y += row;
         }
         DrawStruggle(size, s);
+    }
+
+    /// <summary>Every alert as a small sign with its timer under it and, where there is one, an arrow ring in its corner, along a menu's strip.</summary>
+    void DrawInStrip(Rect2 strip, float k)
+    {
+        var shown = new List<Shown>(Attacks);
+        shown.AddRange(_hazards);
+        if (shown.Count == 0) return;
+        var cells = StripCells(strip, k, shown.Count);
+        if (cells.Count == 0) return;
+        _view.Block(strip, new Color(C.Glass, 0.92f));
+        for (int i = 0; i < cells.Count; i++)
+        {
+            Shown a = shown[i];
+            var (signBox, timerBox) = cells[i];
+            float alpha = a.Attack && Mathf.PosMod((float)_time * 5f, 1f) >= 0.6f ? 0.45f : 1f;
+            DrawSign(a.Sign, signBox, alpha);
+            if (a.Seconds > 0) _view.TextIn(UiTheme.Mono, Math.Max(8, (int)(15 * k)), timerBox, Clock(a.Seconds), C.Text, HorizontalAlignment.Center);
+            if (a.From is Vector3 from)
+            {
+                Vector2 at = signBox.End - new Vector2(7f, 7f) * k;
+                _view.DrawCircle(at, 9f * k, new Color(C.Glass, 0.85f));
+                DrawArrow(at, from, a.Attack ? C.Danger : C.Warn, 0.5f * k);
+            }
+        }
     }
 
     void DrawSign(string name, Rect2 r, float alpha)
