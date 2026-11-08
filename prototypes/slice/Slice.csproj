@@ -26,6 +26,8 @@
     <Compile Include="..\..\shared\Arms\Core\**\*.cs" />
     <!-- The bestiary: everything that moves. -->
     <Compile Include="..\..\shared\Bestiary\**\*.cs" />
+    <!-- The backstop that ends a run which was told to quit and did not. -->
+    <Compile Include="..\..\shared\Testing\**\*.cs" />
 
     <!-- Pure cores. -->
     <Compile Include="..\terrain-digging\src\Terrain\**\*.cs" />

@@ -75,6 +75,7 @@ public sealed class Gui
         Sound = null;
         _building.Clear();
         _texts.Clear();
+        _fills.Clear();
     }
 
     public void EndInput()
@@ -83,6 +84,8 @@ public sealed class Gui
         foreach (var (k, v) in _building) Rects[k] = v;
         Texts.Clear();
         Texts.AddRange(_texts);
+        Fills.Clear();
+        Fills.AddRange(_fills);
         if (LetGo && DragId != null && !_dropTaken) { DragId = null; DragPayload = null; DragRight = false; }
         _dropTaken = false;
         LastTip = Tip;
@@ -112,7 +115,7 @@ public sealed class Gui
 
     // ---- Drawing ----------------------------------------------------------------------------
 
-    public void Fill(Rect2 r, Color c) { if (Drawing) Canvas.Block(r, c); }
+    public void Fill(Rect2 r, Color c) { if (Drawing) Canvas.Block(r, c); else if (Measure) _fills.Add(r); }
     public void Outline(Rect2 r, Color c, float w = 2f) { if (Drawing) Canvas.Frame(r, c, w); }
 
     public void Text(string text, Vector2 at, Color colour, int size = 18, Font font = null)
@@ -138,6 +141,10 @@ public sealed class Gui
     /// <summary>Every line of text the last input pass laid out, its box, and whether it ran past its box (tests).</summary>
     public readonly List<(string Text, Rect2 Box, bool Overflow)> Texts = new();
     readonly List<(string Text, Rect2 Box, bool Overflow)> _texts = new();
+
+    /// <summary>Every panel and backing filled in the last input pass (tests: nothing may sit on the alerts' strip).</summary>
+    public readonly List<Rect2> Fills = new();
+    readonly List<Rect2> _fills = new();
 
     /// <summary>Pairs of laid-out lines whose boxes overlap, and lines cut short by their box (tests).</summary>
     public List<string> TextProblems()

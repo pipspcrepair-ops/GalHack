@@ -128,6 +128,26 @@ public partial class MenuRoot : MenuPanel
     protected override string Signature() => Game?.Pack == null ? "" :
         $"{Tab}|{Game.Pack.Storage.Version}|{Game.Pack.Grid.Version}|{Game.Pack.Selected}|{Game.Pack.Bar}|{Game.Opened?.Grid.Storage.Version}|{Game.Progress.Xp}|{Game.Progress.Points}|{(int)(Game.Stats.Seconds * 4)}|{ItemViews.Focused}|{(ItemViews.Focused != null ? ItemViews.Get(ItemViews.Focused).Text : "")}|{(Tab == MenuTab.Map ? Map.Levels.Signature : Tab == MenuTab.Tech ? Tech.Signature : Tab == MenuTab.Stats ? Stats.Signature : Tab == MenuTab.Blueprints ? Blueprints.Signature : "")}";
 
+    /// <summary>The header's tabs, where they start (design units), and where your level and the mode start at the right edge.</summary>
+    static readonly (MenuTab tab, string name)[] Tabs = { (MenuTab.You, "YOU"), (MenuTab.Tech, "TECH"), (MenuTab.Stats, "STATS"), (MenuTab.Core, "CORE"), (MenuTab.Blueprints, "BLUEPRINTS"), (MenuTab.Map, "MAP") };
+    const float TabsFrom = 330, LevelFrom = 1370;
+
+    static float TabWidth(string name) => MathF.Max(96, Paint.TextWidth(UiTheme.Label, 18, name) + 30);
+
+    /// <summary>
+    /// The header between the last tab and your level: no page draws there, so the hazard alerts take it
+    /// while the menu is open and never cover a panel, the paperdoll or a slot.
+    /// </summary>
+    public override Rect2? AlertStrip
+    {
+        get
+        {
+            float end = TabsFrom;
+            foreach (var (_, name) in Tabs) end += TabWidth(name) + 8;
+            return new Rect2(end + 6, 0, LevelFrom - 8 - (end + 6), 74);
+        }
+    }
+
     public YouSection You;
     public TechSection Tech;
     public StatsSection Stats;
@@ -155,23 +175,23 @@ public partial class MenuRoot : MenuPanel
         var header = new Rect2(area.Position, new Vector2(area.Size.X, 74));
         g.Fill(header, C.Accent);
         if (g.Drawing) g.Canvas.Stripes(new Rect2(header.Position + new Vector2(header.Size.X - 300, 0), new Vector2(300, header.Size.Y)), C.Accent, C.Accent2, 16);
-        g.Text("SUIT TERMINAL", header.Position + new Vector2(24, 14), C.Glass, 30, UiTheme.Display);
+        g.Text("SUIT TERMINAL", header.Position + new Vector2(24, 14), C.Glass, 26, UiTheme.Display);
 
-        (MenuTab tab, string name)[] tabs = { (MenuTab.You, "YOU"), (MenuTab.Tech, "TECH"), (MenuTab.Stats, "STATS"), (MenuTab.Core, "CORE"), (MenuTab.Blueprints, "BLUEPRINTS"), (MenuTab.Map, "MAP") };
-        float tx = header.Position.X + 384;
-        foreach (var (tab, name) in tabs)
+        float tx = header.Position.X + TabsFrom;
+        foreach (var (tab, name) in Tabs)
         {
-            float w = MathF.Max(104, Paint.TextWidth(UiTheme.Label, 18, name) + 36);
+            float w = TabWidth(name);
             var r = new Rect2(tx, header.Position.Y + 16, w, 44);
             if (g.Tab($"tab:{name.ToLowerInvariant()}", r, name, Tab == tab, C.Accent2)) Tab = tab;
             tx += w + 8;
         }
+        // Your level and the mode sit at the right edge: the strip between them and the tabs is the alerts'.
         Progress p = Game.Progress;
         var (into, span) = p.ToNext;
-        g.Text($"LEVEL {p.Level}", header.Position + new Vector2(1180, 8), C.Glass, 20, UiTheme.Display);
-        g.Text($"{p.Points} PTS", header.Position + new Vector2(1180, 40), C.Glass, 18, UiTheme.Mono);
-        g.Bar(new Rect2(header.Position + new Vector2(1270, 46), new Vector2(150, 14)), into, span, C.Glass, 10);
-        g.Text(Game.Mode == GalHack.Items.GameMode.Creative ? "CREATIVE" : "SURVIVAL", header.Position + new Vector2(1440, 26), C.Glass, 16, UiTheme.Label);
+        g.Text($"LEVEL {p.Level}", header.Position + new Vector2(LevelFrom, 8), C.Glass, 20, UiTheme.Display);
+        g.Text($"{p.Points} PTS", header.Position + new Vector2(LevelFrom, 40), C.Glass, 18, UiTheme.Mono);
+        g.Bar(new Rect2(header.Position + new Vector2(LevelFrom + 84, 46), new Vector2(136, 14)), into, span, C.Glass, 10);
+        g.TextIn(Game.Mode == GalHack.Items.GameMode.Creative ? "CREATIVE" : "SURVIVAL", new Rect2(header.Position + new Vector2(LevelFrom + 140, 8), new Vector2(82, 22)), C.Glass, 14, HorizontalAlignment.Right, UiTheme.Label);
 
         var body = new Rect2(area.Position + new Vector2(20, 90), new Vector2(area.Size.X - 40, area.Size.Y - 110));
         switch (Tab)
