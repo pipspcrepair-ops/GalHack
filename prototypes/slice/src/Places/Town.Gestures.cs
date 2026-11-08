@@ -65,9 +65,9 @@ public sealed partial class Town
                     // Over to the spot nearest you.
                     int near = -1;
                     float best = float.MaxValue;
-                    for (int i = 0; i < Data.Spots.Count; i++)
+                    for (int i = 0; i < Spots.Count; i++)
                     {
-                        float k = (Walk(Data.Spots[i].Cell) - eye).LengthSquared();
+                        float k = (At(i) - eye).LengthSquared();
                         if (k < best) { best = k; near = i; }
                     }
                     if (near >= 0) { GoTo(p, near); p.Wait = 6f; }

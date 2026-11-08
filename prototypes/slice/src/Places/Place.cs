@@ -438,6 +438,26 @@ public partial class Place
     public static PoiGenerator.Gen.NavGrid NavOf(PlaceMemory m, Dictionary<int, PlaceRoom> rooms) =>
         new(Routed(m, rooms), m.Inst.Layout.Occupied, m.Inst.Extras.Lifts, false);
 
+    /// <summary>
+    /// Where the place's people walk: the walking routes with the dressing standing in, but only on
+    /// foot: no lifts and no ladders (they ride and climb neither), so a route never takes anyone
+    /// straight up or down through a floor, and never over the furniture or a crate.
+    /// </summary>
+    public static PoiGenerator.Gen.NavGrid FootNavOf(PlaceMemory m)
+    {
+        var blocked = new HashSet<Int3>(m.Rooms?.Values.SelectMany(r => r.Cells) ?? Enumerable.Empty<Int3>());
+        BlockGrid g = m.Inst.Blocks;
+        Int3 min = g.Min, size = g.Size;
+        for (int y = min.Y; y < min.Y + size.Y; y++)
+            for (int z = min.Z; z < min.Z + size.Z; z++)
+                for (int x = min.X; x < min.X + size.X; x++)
+                {
+                    var c = new Int3(x, y, z);
+                    if (g.Get(c).Type == BlockType.Ladder) blocked.Add(c);
+                }
+        return new(new Overlay(g, blocked, foot: true), m.Inst.Layout.Occupied, null, false);
+    }
+
     /// <summary>The place's blocks as a walking route sees them, the dressing's solid pieces standing in.</summary>
     public static IBlockStructure Routed(PlaceMemory m, Dictionary<int, PlaceRoom> rooms = null) =>
         new Overlay(m.Inst.Blocks, new HashSet<Int3>((rooms ?? m.Rooms)?.Values.SelectMany(r => r.Cells) ?? Enumerable.Empty<Int3>()));
@@ -450,7 +470,10 @@ public partial class Place
         readonly BlockGrid _g;
         readonly HashSet<Int3> _blocked;
         static readonly Block Crate = new(BlockType.Crate, PoiGenerator.Gen.Material.Timber, new Rgb(0, 0, 0), Role.Prop);
-        public Overlay(BlockGrid g, HashSet<Int3> blocked) { _g = g; _blocked = blocked; }
+        static readonly Block Piece = new(BlockType.Barricade, PoiGenerator.Gen.Material.Timber, new Rgb(0, 0, 0), Role.Prop);
+        /// <summary>On foot only: a piece of the dressing, or a crate, is gone round, never stood on.</summary>
+        readonly bool _foot;
+        public Overlay(BlockGrid g, HashSet<Int3> blocked, bool foot = false) { _g = g; _blocked = blocked; _foot = foot; }
         public Int3 Min => _g.Min;
         public Int3 Size => _g.Size;
         public bool InBounds(Int3 p) => _g.InBounds(p);
@@ -458,6 +481,7 @@ public partial class Place
         {
             Block b = _g.Get(p);
             // A piece stands in its cell over whatever doesn't stop a walker there (air, a floor plate, litter).
+            if (_foot) return (_blocked.Contains(p) && !BlockInfo.IsFullCube(b.Type)) || b.Type == BlockType.Crate ? Piece : b;
             return _blocked.Contains(p) && (!BlockInfo.Collides(b.Type) || b.Type == BlockType.Growth) ? Crate : b;
         }
         public void Set(Int3 p, Block b) => _g.Set(p, b);
