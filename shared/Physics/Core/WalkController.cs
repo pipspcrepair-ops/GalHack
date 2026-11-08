@@ -52,6 +52,15 @@ public sealed class WalkController : IBodyController, IForceReactor
     /// </summary>
     public ClimbMode Climb;
 
+    /// <summary>
+    /// The ladder being climbed, as the game sees it, set each tick with <see cref="Climb"/>. Left
+    /// unknown (default), forward is up and the walk carries on across. Known, it is climbed as a
+    /// person climbs one: forward or up climbs, back or down goes down, and on it the climber keeps
+    /// to its line (a free-standing one is never walked through); over its top any way steps off;
+    /// at its foot, back, aside, or away from its wall walks off it.
+    /// </summary>
+    public LadderHold Ladder;
+
     public float ClimbSpeed = 2.6f, ShaftSpeed = 3.5f;
 
     public float CrouchSpeed = 2.4f, CrouchJumpShare = 0.7f;
@@ -134,15 +143,35 @@ public sealed class WalkController : IBodyController, IForceReactor
             return;
         }
 
-        if (Climb != ClimbMode.None)
+        Vector2 cm = Move.LengthSquared() > 1f ? Vector2.Normalize(Move) : Move;
+        LadderHold hold = Ladder;
+        bool known = Climb == ClimbMode.Ladder && hold.Known;
+        Vector3 outward = known ? Vector3.Normalize(hold.Out - up * Vector3.Dot(hold.Out, up)) : Vector3.Zero;
+        Vector3 wishAcross = MathX.Rotate(heading, new Vector3(cm.X, 0f, cm.Y));
+        // At a ladder's foot (the feet down at the floor it stands on): back, aside, nothing, or forward
+        // away from its wall is the ordinary walk. That is how you step off it at the bottom.
+        bool offAtFoot = known && !hold.Below && Vertical <= 0f
+                         && (cm.Y >= 0f || hold.Backed && Vector3.Dot(wishAcross, outward) > 0.5f);
+        if (Climb != ClimbMode.None && !offAtFoot)
         {
-            // On a ladder forward is up (so walking into it climbs it, and over its top); in a shaft
-            // only up and down ride it. Across, a climber moves at a climb on a ladder and at a walk
-            // in a shaft, so stepping off at the top or out of a shaft door is the ordinary walk.
-            Vector2 cm = Move.LengthSquared() > 1f ? Vector2.Normalize(Move) : Move;
+            // On a ladder forward or up climbs (walking into it climbs it, and over its top), back or
+            // down goes down; in a shaft only up and down ride it. Across, a climber moves at a climb on
+            // a ladder and at a walk in a shaft, so stepping off at the top or out of a shaft door is the
+            // ordinary walk. On a known ladder below its top, and on the way down from it, the climber
+            // keeps hold: drawn to its line, moving only along its face.
             bool ladder = Climb == ClimbMode.Ladder;
             float rise = ladder ? Math.Clamp(-cm.Y + Vertical, -1f, 1f) * ClimbSpeed : Math.Clamp(Vertical, -1f, 1f) * ShaftSpeed;
-            Vector3 across = MathX.Rotate(heading, new Vector3(cm.X, 0f, cm.Y)) * (ladder ? ClimbSpeed : Sprint ? SprintSpeed : WalkSpeed);
+            Vector3 across = wishAcross * (ladder ? ClimbSpeed : Sprint ? SprintSpeed : WalkSpeed);
+            if (known && !(hold.Top && rise > 0f))
+            {
+                Vector3 toLine = hold.Centre - body.Position;
+                toLine -= up * Vector3.Dot(toLine, up);
+                Vector3 side = Vector3.Normalize(Vector3.Cross(up, outward));
+                float sideways = Vector3.Dot(across, side);
+                // Off its line along its face only when asked to; to and from its wall, always back to it.
+                Vector3 pull = outward * Vector3.Dot(toLine, outward) + (cm.X == 0f ? side * Vector3.Dot(toLine, side) : Vector3.Zero);
+                across = side * sideways + MathX.LimitLength(pull * 4f, ClimbSpeed);
+            }
             Vector3 climbed = Toward(v, across + up * rise, GroundAccel * dt);
             world.AddForce(body, MathX.LimitLength(m * (climbed - v) / dt - body.PendingTotalForce, m * Grip), ForceKind.Walk);
             return;
@@ -227,3 +256,20 @@ public sealed class WalkController : IBodyController, IForceReactor
 
 /// <summary>What holds a walking body up besides its feet (see <see cref="WalkController.Climb"/>).</summary>
 public enum ClimbMode { None, Ladder, Shaft }
+
+/// <summary>A ladder at a climber's feet (see <see cref="WalkController.Ladder"/>), in the climber's world.</summary>
+public struct LadderHold
+{
+    /// <summary>Which way it looks out from what it is fixed to (level, unit); zero when unknown.</summary>
+    public Vector3 Out;
+    /// <summary>A point on its line, the middle of its cells.</summary>
+    public Vector3 Centre;
+    /// <summary>A wall behind it (not one standing free), so walking away from it at its foot is walking off it.</summary>
+    public bool Backed;
+    /// <summary>It goes on below the feet: false at its foot, once the feet are down within a hand of the floor it stands on.</summary>
+    public bool Below;
+    /// <summary>The feet are over its top (only the cell under them is ladder): from here any way steps off.</summary>
+    public bool Top;
+
+    public readonly bool Known => Out.LengthSquared() > 0.25f;
+}

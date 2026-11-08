@@ -140,7 +140,7 @@ public sealed class CharacterBinding : BodyBinding
                     TouchedHullNormal = n;
                 }
             }
-            if (stepped && N.Vector3.Dot(n, up) < 0.3f) continue; // the step's riser: stepped up, not hit
+            if (stepped && Steps.Blocks(Character, n.ToGodot(), up.ToGodot())) continue; // the step's riser or edge: stepped up, not hit
             N.Vector3 otherVelocity = other == null || b.Frame != null ? N.Vector3.Zero : other.PointVelocity(point);
             N.Vector3 mine = b.Frame != null ? before.ToNumerics() : worldBefore;
             float closing = -N.Vector3.Dot(mine - otherVelocity, n);
