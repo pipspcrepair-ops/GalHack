@@ -296,7 +296,8 @@ public partial class Game : Node3D
         Howl = new WindHowl { Name = "Howl", Zone = Zone, Eye = () => Survivor.WorldEye(), Quiet = () => Spaceflight.AirGone > 0.5f };
         Zone.AddChild(Howl);
         // The castaway seen from outside (third person and screenshots); the first-person camera leaves it out.
-        Survivor.Node.AddChild(CharacterModel.Build());
+        Figure = CharacterModel.Build();
+        Survivor.Node.AddChild(Figure);
         Bodies = new CreatureBodies { Name = "CreatureBodies", Game = this };
         Zone.AddChild(Bodies);
         SetUpPlaces();
@@ -324,7 +325,7 @@ public partial class Game : Node3D
     public override void _PhysicsProcess(double delta)
     {
         if (Zone == null) return; // the start screen is up
-        if (Interactive) PollKeyboard();
+        if (Interactive || Keyboard) PollKeyboard();
         // Esc with no menu open: the escape menu, and the world stops (with the Tab menu open, Esc is the Tab menu's, below).
         if (Controls.KeyWasPressed(Key.Escape) && !Menu.IsOpen)
         {
@@ -706,6 +707,13 @@ public partial class Game : Node3D
         Key.W, Key.A, Key.S, Key.D, Key.Space, Key.Ctrl, Key.Shift, Key.Q, Key.E, Key.M, Key.Z,
     };
 
+    /// <summary>
+    /// Reads the real keyboard every tick, as play does. On whenever <see cref="Interactive"/> is;
+    /// a test turns it on to press real keys through the engine's input (and off again before its
+    /// script holds keys itself, since the keyboard's state overwrites them).
+    /// </summary>
+    public bool Keyboard;
+
     /// <summary>The view turned by a tick's mouse movement, at your sensitivity, the pitch held short of straight up and down.</summary>
     void Turn(Survivor s, Controls c)
     {
@@ -784,6 +792,7 @@ public partial class Game : Node3D
         if (Zone.IsBuilt) Zone.Streamer.CollisionRadius = (Survivor?.Seated?.Flight != null && Survivor.Seated.Controller?.Frozen == false) || Survivor?.OnBike != null ? 3 : 2;
         if (Survivor == null) return;
         LoadAhead(delta);
+        PoseFigure(delta);
         Camera.SetCullMaskValue(2, (ThirdPerson || FixedCamera != null) && Survivor.Seated == null);
         Camera.GlobalTransform = FixedCamera ?? (Survivor.Seated is Vessel v && ThirdPerson
             ? Chase(v, 1.6f, 0.5f)

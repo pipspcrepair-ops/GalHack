@@ -1087,19 +1087,31 @@ public partial class PlaceTest : Node
                 for (int i = 0; i < 2400 && (town.Barricaded || town.People.Count(q => q.Indoors) > 0 && i < 1500); i++) yield return 0; // until the scare has passed and they are out again
             }
         }
-        // The gesture wheel, through its key and the mouse: up for the top of the wheel (a wave), and they answer.
+        // The gesture wheel through the real keyboard: Z pressed and held as a key through the engine's
+        // input, read by the game's own keyboard poll as in play; the mouse up for the top of the wheel
+        // (a wave); let go, the castaway's arm waves, and they answer.
         {
             int heard = town.Answered;
+            drive.ReleaseAll();
+            game.Keyboard = true;
+            Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = Key.Z, Keycode = Key.Z, Pressed = true });
             for (int i = 0; i < 12; i++)
             {
-                game.Controls.Hold(Key.Z);
-                game.Controls.Look = new Vector2(0f, -30f);
+                game.Controls.Look = new Vector2(0f, -30f); // the mouse's movement, as play hands it over
                 yield return 0;
             }
             bool open = game.WheelOpen && game.WheelPick == 0;
-            game.Controls.Hold(Key.Z, false);
-            foreach (int x in drive.Wait(90)) yield return x;
-            Check(open && game.LastGesture == Wildlife.PlayerGesture.Wave && town.Answered > heard, $"held, the wheel opens; up and let go, a wave, and they answer it ({town.LastHeard}, {town.Answered - heard} answered; {string.Join(", ", town.People.Where(q => q.Answer != Wildlife.BodyAct.None).GroupBy(q => q.Answer).Select(g => $"{g.Count()} {g.Key}"))})");
+            Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = Key.Z, Keycode = Key.Z, Pressed = false });
+            float shoulder = game.Figure.ToGlobal(new Vector3(0.27f, 1.38f, 0f)).Y, hand = float.MinValue;
+            for (int i = 0; i < 40; i++)
+            {
+                hand = MathF.Max(hand, Slice.Player.CharacterModel.RightHand(game.Figure).Y);
+                yield return 0;
+            }
+            game.Keyboard = false;
+            foreach (int x in drive.Wait(50)) yield return x;
+            Check(open && game.LastGesture == Wildlife.PlayerGesture.Wave && town.Answered > heard, $"Z held on the keyboard, the wheel opens; up and let go, a wave, and they answer it ({town.LastHeard}, {town.Answered - heard} answered; {string.Join(", ", town.People.Where(q => q.Answer != Wildlife.BodyAct.None).GroupBy(q => q.Answer).Select(g => $"{g.Count()} {g.Key}"))})");
+            Check(hand > shoulder + 0.2f, $"and the castaway's own arm waves: the right hand {hand - shoulder:+0.00;-0.00} m over the shoulder");
             // A threat costs goodwill, and puts hands up.
             float stood = town.Standing;
             game.MakeGesture(Wildlife.PlayerGesture.Threaten);
