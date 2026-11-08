@@ -155,7 +155,8 @@ public partial class ArrangeTest : TestBase
         DecoRoom room = plan.Room;
         if (room.Doors.Count == 0) return true;
         _paths++;
-        float step = room.Outdoor ? 0.25f : 0.1f, half = room.Agent / 2;
+        // Indoors on a 5 cm grid: it holds every agent spot on the planner's quarter-metre cells, so a corridor exactly an agent wide is found.
+        float step = room.Outdoor ? 0.25f : 0.05f, half = room.Agent / 2;
         var blockers = plan.Placements.Where(p => DecoLayout.Blocks(_forge, p)).Select(p => DecoLayout.Footprint(_forge, p).Shrink(0.01f)).ToList();
         int nx = (int)((room.Width - 2 * half) / step) + 1, nz = (int)((room.Depth - 2 * half) / step) + 1;
         if (nx <= 0 || nz <= 0) return false;
