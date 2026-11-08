@@ -198,6 +198,13 @@ public sealed class Body
     /// <summary>Not simulated this tick: a landed vessel or a sleeping rigid body. Costs nothing.</summary>
     public bool Asleep { get; set; }
 
+    /// <summary>
+    /// Seconds left that a vessel is at the weather's mercy: a tornado has hold of it or has just
+    /// thrown it, and its engines can't hold it (<see cref="VesselController"/>). It flies as thrown,
+    /// falls, and lands by the same impact rule as everything else.
+    /// </summary>
+    public float Tossed { get; set; }
+
     public StuckShape Shape { get; set; }
 
     /// <summary>

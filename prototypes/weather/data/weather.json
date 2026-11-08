@@ -76,7 +76,88 @@
     "releaseImmunity": 5,
     "liftMassLimit": 1500,
     "response": 3.5,
-    "visualHeight": 170
+    "visualHeight": 170,
+    "speedMin": 1.5,
+    "speedMax": 16.66,
+    "lifeSlow": 320,
+    "lifeFast": 45,
+    "lifeJitter": 0.2,
+    "steerMin": 0.15,
+    "steerMax": 1.1,
+    "shapes": [
+      { "shape": "Rope",  "speed": 0.92, "spread": 0.28, "weight": 1.0, "pull": 0.75, "lift": 0.85, "massLimit": 0.5, "width": 0.55, "lookMin": 0.03, "lookMax": 0.14, "smooth": 0.0 },
+      { "shape": "Cone",  "speed": 0.65, "spread": 0.3,  "weight": 1.2, "pull": 1.0,  "lift": 1.0,  "massLimit": 1.0, "width": 1.0,  "lookMin": 0.5,  "lookMax": 0.66, "smooth": 0.4 },
+      { "shape": "Pipe",  "speed": 0.4,  "spread": 0.3,  "weight": 0.8, "pull": 1.0,  "lift": 1.05, "massLimit": 1.3, "width": 0.85, "lookMin": 0.25, "lookMax": 0.38, "smooth": 0.1 },
+      { "shape": "Wedge", "speed": 0.08, "spread": 0.3,  "weight": 1.0, "pull": 1.25, "lift": 1.15, "massLimit": 4.0, "width": 1.9,  "lookMin": 0.8,  "lookMax": 1.0,  "smooth": 0.1 }
+    ]
+  },
+
+  "regions": {
+    "about": "What each region's land and climate let form there. Heights in metres above sea level, slopes rise over run, the rest 0..1 as the world's map gives them.",
+    "lapseRate": 6.5,
+    "warmthDegrees": 22,
+    "mountainHeight": 420,
+    "steepSlope": 0.35,
+    "broadRadius": 350,
+    "tornado": { "maxSlope": 0.14, "maxRelief": 90, "denseForest": 0.6, "forestOdds": 0.12, "minWarmth": 0.3, "minHumidity": 0.3, "minCell": 0.7, "minDistance": 280 },
+    "dust": { "minLoose": 0.35, "maxHumidity": 0.35, "devilWarmth": 0.5, "devilCloud": 0.35, "devilWind": 9, "devilsPerMinute": 0.8 },
+    "blizzard": { "maxWarmth": 0.3, "snowBelow": 1 },
+    "fog": { "minHumidity": 0.45, "valleyDepth": 25, "lowHeight": 60 },
+    "wind": { "highBoost": 0.45, "forestCut": 0.4 },
+    "fallback": { "DustStorm": "Clouds", "Blizzard": "Rain", "Fog": "Clouds", "Tornado": "Thunderstorm" },
+    "forest": {
+      "Forest": 0.8, "PineForest": 0.85, "Jungle": 0.95, "Rainforest": 0.95, "CloudForest": 0.9, "FungalForest": 0.8,
+      "Swamp": 0.45, "Riverbank": 0.35, "Oasis": 0.4, "Meadow": 0.12, "Scrub": 0.15, "SporeMarsh": 0.3, "CrystalSpires": 0.5
+    },
+    "loose": {
+      "Dunes": 1.0, "Erg": 1.0, "SaltFlat": 0.7, "Scrub": 0.5, "Badlands": 0.65, "RedRock": 0.35, "MesaTop": 0.3, "Beach": 0.7,
+      "Ash": 0.95, "Basalt": 0.3, "Sulfur": 0.6, "Chalk": 0.55, "Tundra": 0.3, "Grassland": 0.3, "CrystalPlain": 0.3, "Mycelium": 0.4
+    }
+  },
+
+  "worlds": {
+    "about": "Each world's own dials, rolled from its climate and weather layers on top of its type's weights, then leaning at random by up to the spread (natural log).",
+    "spread": 0.4,
+    "min": 0.05,
+    "max": 4,
+    "dials": {
+      "storminess": ["Thunderstorm", "Hurricane", "Tornado", "Monsoon"],
+      "tornadoes": ["Tornado"],
+      "wetness": ["Rain", "Monsoon", "Snow"],
+      "dryness": ["DustStorm", "Clear", "FireStorm"],
+      "fog": ["Fog"],
+      "cold": ["Snow", "Blizzard"]
+    },
+    "facts": {
+      "temp=scorch": { "dryness": 1.8, "wetness": 0.4, "fog": 0.3, "cold": 0.05 },
+      "temp=hot": { "storminess": 1.25, "tornadoes": 1.3, "cold": 0.2 },
+      "temp=mild": { "tornadoes": 1.1 },
+      "temp=cold": { "tornadoes": 0.4, "cold": 1.6, "storminess": 0.8 },
+      "temp=frozen": { "tornadoes": 0.05, "cold": 2.2, "storminess": 0.5 },
+      "water=none": { "wetness": 0.15, "dryness": 2.2, "fog": 0.15, "storminess": 0.5, "tornadoes": 0.4 },
+      "water=dry": { "wetness": 0.5, "dryness": 1.6, "fog": 0.5, "tornadoes": 0.8 },
+      "water=some": { "wetness": 1.0 },
+      "water=wet": { "wetness": 1.5, "dryness": 0.5, "fog": 1.4, "storminess": 1.15 },
+      "water=sea": { "wetness": 1.3, "dryness": 0.6, "fog": 1.3, "storminess": 1.2 }
+    },
+    "layers": {
+      "calm": { "storminess": 0.55, "tornadoes": 0.5 },
+      "dead_calm": { "storminess": 0.15, "tornadoes": 0.1, "fog": 1.4 },
+      "thunderheads": { "storminess": 1.8, "tornadoes": 1.7 },
+      "perpetual_storm": { "storminess": 2.5, "tornadoes": 1.5 },
+      "monsoon": { "wetness": 2.0, "storminess": 1.2 },
+      "rain_seasons": { "wetness": 1.6 },
+      "dust_storms": { "dryness": 2.4 },
+      "dry_gales": { "dryness": 1.5, "storminess": 1.2 },
+      "heat_shimmer": { "dryness": 1.3, "fog": 0.6 },
+      "fog_banks": { "fog": 2.6 },
+      "morning_mist": { "fog": 1.6 },
+      "sea_wind": { "storminess": 1.2 },
+      "trade_winds": { "storminess": 0.9 },
+      "snowfall": { "cold": 1.6 },
+      "blizzards": { "cold": 2.2 },
+      "gold_evenings": { "storminess": 0.8 }
+    }
   },
 
   "cells": {

@@ -25,6 +25,13 @@ namespace PhysicsSandbox.Bridges;
 /// </summary>
 public sealed class WeatherBridge : IForceProvider
 {
+    /// <summary>
+    /// A vessel a tornado pulls with more than this share of its weight is tossed: its engines can't
+    /// hold it (<see cref="Body.Tossed"/>), for this many seconds after the last such pull or its fling.
+    /// A light craft is; a hover tank or a capital ship, whose share of the pull is tiny, never is.
+    /// </summary>
+    public const float TossShare = 0.5f, TossSeconds = 5f;
+
     public WeatherSim Sim { get; }
     public ForceModule Forces { get; } = new();
 
@@ -118,7 +125,7 @@ public sealed class WeatherBridge : IForceProvider
             {
                 if (_body.Frame != null) return MathX.Rotate(_body.Frame.Rotation, _body.Velocity).ToGodot();
                 if (_body.Kind == BodyKind.Vessel && _body.Motion == GalHack.Physics.Motion.Kinematic
-                    && _bridge.Forces.PhaseOf(this) != VortexPhase.Caught)
+                    && _bridge.Forces.PhaseOf(this) != VortexPhase.Caught && _body.Tossed <= 0f)
                     return GVector3.Zero;
                 return _body.Velocity.ToGodot();
             }
@@ -127,12 +134,19 @@ public sealed class WeatherBridge : IForceProvider
         // The world itself drops weather on sheltered bodies, tornado pulls and flings included.
         public void ApplyForce(GVector3 force)
         {
-            if (!InShelter) _bridge._world?.AddForce(_body, IntoFrame(force), ForceKind.Weather);
+            if (InShelter || _bridge._world == null) return;
+            // A vessel a tornado pulls harder than its engines can hold is at its mercy until it has come down.
+            if (_body.Kind == BodyKind.Vessel && _bridge.Forces.PhaseOf(this) == VortexPhase.Caught && !_bridge._world.IsSheltered(_body)
+                && force.Length() > TossShare * _body.Mass * _bridge._world.Zone.Strength)
+                _body.Tossed = TossSeconds;
+            _bridge._world.AddForce(_body, IntoFrame(force), ForceKind.Weather);
         }
 
         public void ApplyImpulse(GVector3 impulse)
         {
-            if (!InShelter) _bridge._world?.AddImpulse(_body, IntoFrame(impulse), ForceKind.Weather);
+            if (InShelter || _bridge._world == null) return;
+            if (_body.Kind == BodyKind.Vessel && _body.Tossed > 0f) _body.Tossed = TossSeconds; // flung: the fall that follows is the tornado's too
+            _bridge._world.AddImpulse(_body, IntoFrame(impulse), ForceKind.Weather);
         }
 
         /// <summary>A world push in the axes the body integrates in (its ship's, out on a hull).</summary>

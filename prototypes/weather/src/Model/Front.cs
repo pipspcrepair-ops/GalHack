@@ -109,10 +109,13 @@ public sealed class Front
     }
 
     /// <summary>How open the air is at a point because the front's storm is not over it, 0 to 1: ahead of its edge, and past the deck trailing behind it.</summary>
-    public float Clear(Vector3 p)
+    public float Clear(Vector3 p) => Strength * (1f - Under(p));
+
+    /// <summary>How far a point is under the front's weather, 0 to 1, whatever its strength: behind its edge, short of the end of its deck.</summary>
+    public float Under(Vector3 p)
     {
         float a = Ahead(p);
-        return Strength * (1f - Smooth(900f, 0f, a) * Smooth(-Depth * 1.05f, -Depth * 0.75f, a));
+        return Smooth(900f, 0f, a) * Smooth(-Depth * 1.05f, -Depth * 0.75f, a);
     }
 
     /// <summary>The point of its leading edge at a distance along the copy nearest <paramref name="near"/>, on the XZ plane.</summary>

@@ -184,11 +184,13 @@ public partial class TornadoFx : Node3D
 
         float strength = t.Strength;
         float formation = t.Formation;
-        // Each tornado rolls its own shape; it is a thin rope as it forms, matures into that shape and dies as a contorted rope.
-        float roll = Fract(MathF.Sin(t.Id * 12.9898f) * 43758.5453f);
-        // Some are smooth pale cones instead of ragged ones: wide at the top, a clean curving taper, bright in side light.
-        float clean = Fract(MathF.Sin(t.Id * 7.31f + 1.3f) * 9631.7f) > 0.55f ? 1f : 0f;
-        if (clean > 0f) roll = 0.6f + 0.3f * roll;
+        // Each tornado has its own shape (rolled with its speed: fast ones ropes and cones, slow ones wedges);
+        // it is a thin rope as it forms, matures into that shape and dies as a contorted rope. One the model
+        // didn't shape (tests, the debug key) rolls its own here.
+        float roll = t.Look >= 0f ? t.Look : Fract(MathF.Sin(t.Id * 12.9898f) * 43758.5453f);
+        // Some are smooth pale funnels instead of ragged ones: a clean curving taper, bright in side light.
+        float clean = t.Look >= 0f ? (t.Smooth ? 1f : 0f) : Fract(MathF.Sin(t.Id * 7.31f + 1.3f) * 9631.7f) > 0.55f ? 1f : 0f;
+        if (clean > 0f && t.Look < 0f) roll = 0.6f + 0.3f * roll;
         // A waterspout is a rope all its life; a dust devil a column widening upward.
         if (_kind == TornadoKind.Waterspout) { roll = 0f; clean = 0f; }
         if (_kind == TornadoKind.DustDevil) { roll = 0.5f; clean = 0f; }

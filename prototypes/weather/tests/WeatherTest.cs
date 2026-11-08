@@ -45,6 +45,12 @@ public partial class WeatherTest : Node
         Section("Tornado");
         TornadoLiftsOrbitsReleases();
         TornadoIsNeverSilent();
+        Section("Tornado speed, life and shape");
+        SpeedSetsLife();
+        Section("Each world's own weather");
+        WorldDials();
+        Section("Tornadoes by mass");
+        PullOrderedByMass();
         Section("Damage: never reduced, a tornado fling's landing included");
         FlingIsUniform();
         StrikesAreWarnedFirst();
@@ -179,6 +185,114 @@ public partial class WeatherTest : Node
         }
         float drift = hover.Position.Length() / rover.Position.Length();
         Check(drift >= 5f, $"light hover vessel drifts {drift:F1}× further than the heavy rover ({hover.Position.Length():F1} m vs {rover.Position.Length():F2} m in 3 s)");
+    }
+
+    /// <summary>
+    /// Thousands of tornadoes rolled from storms of every strength, fresh seeds every run: none faster
+    /// than 60 km/h, the fast ones briefest and the slow ones longest-lived, fast ones mostly ropes and
+    /// cones and slow ones mostly wedges.
+    /// </summary>
+    void SpeedSetsLife()
+    {
+        var sim = new WeatherSim(_data, "temperate", (ulong)Random.Shared.NextInt64(), WeatherKind.Tornado);
+        var rolled = new List<(float speed, float life, TornadoShape shape)>();
+        for (int i = 0; i < 4000; i++)
+        {
+            var (rules, shape) = sim.Roll(Random.Shared.NextSingle() * 30f);
+            rolled.Add((rules.Speed, rules.Lifetime, shape.Shape));
+        }
+        float fastest = rolled.Max(x => x.speed);
+        Check(fastest <= 60f / 3.6f + 1e-3f, $"no tornado moves faster than 60 km/h (fastest {fastest * 3.6f:F1} km/h of {rolled.Count})");
+        var bySpeed = rolled.OrderBy(x => x.speed).ToList();
+        int q = bySpeed.Count / 4;
+        float[] life = Enumerable.Range(0, 4).Select(k => bySpeed.Skip(k * q).Take(q).Average(x => x.life)).ToArray();
+        float[] speed = Enumerable.Range(0, 4).Select(k => bySpeed.Skip(k * q).Take(q).Average(x => x.speed)).ToArray();
+        Check(life[0] > life[1] && life[1] > life[2] && life[2] > life[3] && life[0] > 2.5f * life[3],
+            $"its life falls as its speed rises: by speed quarter {string.Join(", ", Enumerable.Range(0, 4).Select(k => $"{speed[k] * 3.6f:F0} km/h lives {life[k]:F0} s"))}");
+        float Share(int k, params TornadoShape[] shapes) => bySpeed.Skip(k * q).Take(q).Count(x => shapes.Contains(x.shape)) / (float)q;
+        float fastRopes = Share(3, TornadoShape.Rope, TornadoShape.Cone), slowWedges = Share(0, TornadoShape.Wedge);
+        Check(fastRopes > 0.7f && slowWedges > 0.5f && Share(0, TornadoShape.Rope) < 0.1f && Share(3, TornadoShape.Wedge) < 0.1f,
+            $"fast ones lean to ropes and cones ({fastRopes:P0} of the fastest quarter), slow ones to wedges ({slowWedges:P0} of the slowest)");
+    }
+
+    /// <summary>Each world leans its type's weights by its own climate and layers, and two worlds of a type still differ.</summary>
+    void WorldDials()
+    {
+        WorldRules rules = _data.Worlds;
+        var dry = new Dictionary<string, string> { ["temp"] = "hot", ["water"] = "none" };
+        var wet = new Dictionary<string, string> { ["temp"] = "mild", ["water"] = "wet" };
+        int n = 60, drier = 0, stormier = 0, differ = 0;
+        for (int i = 0; i < n; i++)
+        {
+            ulong seed = (ulong)Random.Shared.NextInt64();
+            WorldWeather d = WorldWeather.Roll(rules, dry, new[] { "dust_storms" }, seed);
+            WorldWeather w = WorldWeather.Roll(rules, wet, new[] { "thunderheads" }, seed);
+            WorldWeather other = WorldWeather.Roll(rules, wet, new[] { "thunderheads" }, seed + 1);
+            if (d.Dryness > w.Dryness && d.Wetness < w.Wetness) drier++;
+            if (w.Tornadoes > d.Tornadoes && w.Storminess > d.Storminess) stormier++;
+            if (MathF.Abs(w.Storminess - other.Storminess) > 0.01f) differ++;
+        }
+        Check(drier == n, $"a hot waterless world of dust storms is drier and less wet than a mild wet one ({drier} of {n} rolls)");
+        Check(stormier == n, $"a wet world of big storm towers is stormier and more prone to tornadoes ({stormier} of {n})");
+        Check(differ > n * 0.9f, $"two worlds with the same layers still lean their own way ({differ} of {n})");
+        ulong s = (ulong)Random.Shared.NextInt64();
+        var plain = new WeatherSim(_data, "temperate", s);
+        var towers = new WeatherSim(_data, "temperate", s, world: WorldWeather.Roll(rules, wet, new[] { "thunderheads", "perpetual_storm" }, s));
+        Check(towers.Share(WeatherKind.Tornado) > plain.Share(WeatherKind.Tornado) * 1.5f,
+            $"the dials reach the timeline: tornado storms are {plain.Share(WeatherKind.Tornado):P0} of a plain temperate world's weather, {towers.Share(WeatherKind.Tornado):P0} of a stormy one's ({towers.World})");
+    }
+
+    /// <summary>
+    /// Bodies from a pebble-light critter to a capital ship at the base of each shape of tornado: the
+    /// pull, the lift and the throw fall with mass for every shape, and only the lightest are lifted far.
+    /// </summary>
+    void PullOrderedByMass()
+    {
+        (string name, float mass, float area)[] bodies =
+        {
+            ("critter", 8f, 0.08f), ("player", Specs.PlayerMass, Specs.PlayerDragArea), ("light skiff", Specs.HoverMass, Specs.HoverDragArea),
+            ("rover", Specs.RoverMass, Specs.RoverDragArea), ("hover tank", 354000f, 90f), ("frigate", 1002500f, 400f),
+        };
+        bool ordered = true, bigStay = true;
+        foreach (TornadoShapeRules shape in _data.Tornado.Shapes)
+        {
+            var row = new List<string>();
+            float lastPeak = float.MaxValue, lastThrow = float.MaxValue;
+            foreach (var (name, mass, area) in bodies)
+            {
+                var (peak, thrown) = Pull(shape, mass, area);
+                row.Add($"{name} {peak:F0} m up, {thrown:F0} m off");
+                ordered &= peak <= lastPeak * 1.05f + 0.5f && thrown <= lastThrow * 1.1f + 1f; // below the mass limit all take the full pull alike
+                lastPeak = peak;
+                lastThrow = thrown;
+                if (mass > 100000f) bigStay &= peak < 0.5f && thrown < 3f;
+            }
+            GD.Print($"      {shape.Shape,-6} {string.Join(", ", row)}");
+        }
+        Check(ordered, "for every shape, the heavier the body the less it is lifted and the less far it is thrown");
+        Check(bigStay, "a hover tank or a frigate stays put: no tornado lifts it, none drags it more than a few metres");
+    }
+
+    /// <summary>A body at the base of a tornado of one shape, at full strength: how high it goes, and how far from where it stood it ends up.</summary>
+    (float peak, float thrown) Pull(TornadoShapeRules shape, float mass, float area)
+    {
+        var sim = new WeatherSim(_data, "temperate", (ulong)Random.Shared.NextInt64(), WeatherKind.Clear);
+        var forces = new ForceModule();
+        var body = new TestBody(mass, area);
+        forces.Register(body);
+        Tornado t = sim.SpawnTornado(new Vector3(0, 0, 0), new Vector3(100, 0, 0), _data.Tornado.Shaped(shape, 0.01f, 300f));
+        t.SkipFormation();
+        body.Position = new Vector3(3f, 0f, 0f);
+        float peak = 0f;
+        for (int i = 0; i < 60 * 25; i++)
+        {
+            sim.Step(Dt, body.Position);
+            Glue.Sync(sim, forces);
+            forces.Step(Dt);
+            body.Integrate(Dt, gravity: true);
+            peak = MathF.Max(peak, body.Position.Y);
+        }
+        return (peak, new Vector2(body.Position.X - 3f, body.Position.Z).Length());
     }
 
     /// <summary>What happened to a body caught at a tornado's base, from catch to landing.</summary>

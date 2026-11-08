@@ -52,7 +52,20 @@
       "description": "Path and lift profile. Radii in metres, speeds in m/s.",
       "required": ["formSeconds", "lifetime", "captureRadius", "liftSpeed", "releaseHeight"],
       "properties": {
-        "formSeconds": { "$ref": "#/$defs/positive", "description": "The funnel lowers from the cloud base for this long before touchdown." }
+        "formSeconds": { "$ref": "#/$defs/positive", "description": "The funnel lowers from the cloud base for this long before touchdown." },
+        "speedMax": { "type": "number", "exclusiveMinimum": 0, "maximum": 16.7, "description": "The cap on a tornado's ground speed, m/s (60 km/h)." },
+        "lifeSlow": { "$ref": "#/$defs/positive", "description": "Seconds a tornado lives at the slowest speed; a faster one lives less, down to lifeFast at the cap." },
+        "lifeFast": { "$ref": "#/$defs/positive" },
+        "shapes": {
+          "type": "array", "minItems": 1,
+          "description": "Rope, pipe, cone or wedge, each leaning to a share of the speed range (0 slowest, 1 the cap) and scaling the base tornado's pull, lift, liftable mass and width.",
+          "items": {
+            "type": "object",
+            "required": ["shape", "speed"],
+            "properties": { "shape": { "enum": ["Rope", "Pipe", "Cone", "Wedge"] }, "speed": { "$ref": "#/$defs/unit" } },
+            "additionalProperties": { "type": "number" }
+          }
+        }
       },
       "additionalProperties": { "type": "number" }
     },

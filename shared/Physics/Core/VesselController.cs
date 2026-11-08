@@ -214,6 +214,20 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
         GroundDistance = world.Query.Ray(body.Position, body.Position - Vector3.UnitY * 5000f, Layers.ProbeMask, body, out RayHit ground)
             ? body.Position.Y - ground.Point.Y : float.PositiveInfinity;
 
+        if (body.Tossed > 0f)
+        {
+            // Thrown by a tornado: no thrust, no assist, no hover cushion. It tumbles as it was thrown
+            // and falls under gravity and the wind until it has come down, and its landing hurts by the
+            // closing speed like any other hit (face-on hard, glancing little).
+            body.Tossed = MathF.Max(0f, body.Tossed - dt);
+            Quaternion spun = Quaternion.Normalize(body.Rotation * MathX.AxisAngle(Vector3.UnitY, LocalSpin.Y * dt)
+                * MathX.AxisAngle(Vector3.UnitX, LocalSpin.X * dt) * MathX.AxisAngle(Vector3.UnitZ, LocalSpin.Z * dt));
+            body.AngularVelocity = AngularVelocity(body.Rotation, spun, dt);
+            body.Rotation = spun;
+            Flight.Halt();
+            return;
+        }
+
         Vector3 v0 = body.Velocity;
         Quaternion before = body.Rotation;
         var motion = new FlightMotion { Velocity = v0, Rotation = before, LocalSpin = LocalSpin, Parked = Parked };

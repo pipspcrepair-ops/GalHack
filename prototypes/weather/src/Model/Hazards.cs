@@ -86,6 +86,21 @@ public sealed class Tornado
     /// <summary>A dust devil's height, metres (whirls that never reach a cloud).</summary>
     public float Height { get; init; }
 
+    /// <summary>Its shape (rope, pipe, cone, wedge), rolled from its speed: fast ones lean to ropes and cones, slow ones to wedges.</summary>
+    public TornadoShape Shape { get; internal set; } = TornadoShape.Cone;
+
+    /// <summary>Its funnel's look, 0 thin rope .. 1 wide wedge (funnel.gdshader's shape); below 0 the view rolls its own.</summary>
+    public float Look { get; internal set; } = -1f;
+
+    /// <summary>A smooth pale funnel rather than a ragged one.</summary>
+    public bool Smooth { get; internal set; }
+
+    /// <summary>Its ground speed, m/s.</summary>
+    public float GroundSpeed => Rules.Speed;
+
+    /// <summary>How long it lives from first forming, seconds (its storm or the ground can cut it short).</summary>
+    public float Lifetime => _lifetime;
+
     /// <summary>Starts it this many seconds later (whirls from one base come down at different times).</summary>
     public void Delay(float seconds) => Age -= seconds;
 

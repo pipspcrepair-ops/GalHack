@@ -243,6 +243,7 @@ public partial class Game : Node3D
         Tool.Debris = debris;
         Bikes = new HoverBikes(Zone) { Puff = (at, colour, size) => debris.Puff(at, colour, size) };
         Bikes.Bumped += at => Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Clank, at, 0.8f, -6f);
+        Bikes.TornOff = bike => { if (Survivor.OnBike == bike) Survivor.Dismount(); };
         Zone.AddChild(Bikes);
         Survivor.Bikes = Bikes;
         Tool.Said += Say;
@@ -268,6 +269,7 @@ public partial class Game : Node3D
         Zone.Wildlife.Died += OnCreatureDied;
         Zone.Weather.Observer = () => Survivor.WorldFeet;
         Zone.Weather.Bridge.Shelter = body => Sheltered(body.WorldPosition.ToGodot());
+        Zone.Weather.Shelter = Sheltered;
         Suit.UnderCover = UnderCover;
         Zone.Weather.Enclosed = () => Survivor.Aboard is { } ship && !Survivor.OnOuterHull && !Slice.Surface.SkyLight.Stands(ship);
         Zone.Weather.Happened += OnWeather;

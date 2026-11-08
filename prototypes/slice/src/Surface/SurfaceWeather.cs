@@ -352,10 +352,11 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
         _planet = planet;
         WeatherData data = Zone.Data.Weather;
         string archetype = ArchetypeFor(planet.Spec);
+        World = WorldOf(data, planet);
         WeatherSim sim = null;
         for (ulong k = 0; k < 1024; k++)
         {
-            sim = new WeatherSim(data, archetype, planet.Spec.Seed + k * 0x9E3779B9UL, WeatherKind.Clouds);
+            sim = new WeatherSim(data, archetype, planet.Spec.Seed + k * 0x9E3779B9UL, WeatherKind.Clouds, World);
             sim.EnsureTimeline(CalmOpening);
             bool calm = true;
             foreach (Segment s in sim.Timeline)
@@ -370,9 +371,52 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
         };
         sim.WorldSize = new Vector2((float)planet.Width, (float)planet.Height);
         sim.OpenWater = (x, z) => OpenWater(planet, x, z);
+        sim.Land = LandOf(planet, data.Regions);
         Bridge = new WeatherBridge(sim) { Observer = () => Observer().ToNumerics() };
         Zone.Physics.ForceProviders.Clear();
         Zone.Physics.ForceProviders.Add(Bridge);
+    }
+
+    /// <summary>The game's own shelter at a point (a place's roof, a hole deep enough): no weather reaches there.</summary>
+    public Func<Vector3, bool> Shelter = static _ => false;
+
+    public bool ShelteredAt(Vector3 at) => Shelter(at);
+
+    /// <summary>This world's own weather dials, rolled from its climate and weather layers.</summary>
+    public WorldWeather World { get; private set; }
+
+    /// <summary>A world's weather dials: its rolled facts (climate, water) and layers lean its type's weights.</summary>
+    public static WorldWeather WorldOf(WeatherData data, PlanetWorld planet)
+    {
+        var roll = planet.Roll;
+        var layers = new List<string>();
+        if (roll != null) foreach (var l in roll.Rolled) layers.Add(l.Id);
+        return WorldWeather.Roll(data.Worlds, roll?.Facts, layers, planet.Spec.Seed);
+    }
+
+    /// <summary>
+    /// The land and climate at a point as the weather reads it, off the world map: its height, slope,
+    /// humidity and warmth, its sea, and how wooded and how loose its ground is by biome (the weather
+    /// data's tables).
+    /// </summary>
+    public static Func<float, float, Ground> LandOf(PlanetWorld planet, RegionRules rules)
+    {
+        WorldMap map = planet.Map;
+        var forest = new float[256];
+        var loose = new float[256];
+        foreach (Biome b in Enum.GetValues<Biome>())
+        {
+            forest[(int)b] = rules.Forest.TryGetValue(b.ToString(), out float f) ? f : 0f;
+            loose[(int)b] = rules.Loose.TryGetValue(b.ToString(), out float l) ? l : 0f;
+        }
+        return (x, z) =>
+        {
+            double px = Mathx.WrapX(x, map.WidthMeters), pz = Mathx.Wrap(z, map.HeightMeters);
+            int cell = map.CellAt(px, pz);
+            byte biome = map.Biome[cell];
+            return new Ground(map.Sample(map.Elevation, px, pz), map.Sample(map.Slope, px, pz), forest[biome],
+                map.Sample(map.Humidity, px, pz), map.Sample(map.Temperature, px, pz), map.Has(cell, CellFlags.Water), loose[biome]);
+        };
     }
 
     /// <summary>A sea or a lake at a point, not a stream: water a metre and a half deep there and 60 m round it.</summary>
@@ -397,8 +441,8 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
     /// </summary>
     Conditions AirHere()
     {
-        Conditions c = Sim.Current;
-        if (Camera == null) return c;
+        if (Camera == null) return Sim.Current;
+        Conditions c = Sim.LocalAt(Camera.GlobalPosition);
         // Ahead of a storm's front the sky is still the fair one: its deck stands over there, dark against it.
         if (Sim.Front is { Kind: FrontKind.Storm } f)
         {
@@ -436,6 +480,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
             foreach (Tornado t in Sim.Tornadoes)
                 if (t.Touchdown && t.Strength > 0.25f && t.Kind != TornadoKind.DustDevil) Ravage(t);
         }
+        Gust((float)delta);
     }
 
     float _ravageTimer;
@@ -502,12 +547,63 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
             float r = flat.Length();
             if (c.Thrown || r > reach) continue;
             Vector2 radial = r > 0.01f ? flat / r : Vector2.Right;
-            // A body's share of the pull, as for vehicles: giants barely lift.
-            float share = MathF.Min(1f, 2.2f / MathF.Max(0.4f, c.Species.Body.Size)) * t.Strength;
             var around = new Vector3(-radial.Y, 0f, radial.X);
             var outward = new Vector3(radial.X, 0f, radial.Y);
-            patch.Sim.Throw(c, (around * t.Rules.OrbitSpeed + outward * t.Rules.FlingSpeed * 0.5f + Vector3.Up * t.Rules.LiftSpeed * 1.4f) * share + t.Velocity);
+            patch.Sim.Throw(c, TornadoThrow(t.Rules, Wildlife.Heft.Mass(c.Species), t.Strength, around, outward) + t.Velocity);
         }
+    }
+
+    /// <summary>
+    /// How a tornado throws a creature or a person of this mass: by the force module's own rule for
+    /// players and vehicles. Its share of the pull falls past the tornado's mass limit (the same
+    /// <see cref="Weather.Forces.ForceModule.MassShare"/>); it is carried up only as far as that share
+    /// of the updraft beats its weight, to the release height at most, and flung out by its share of
+    /// the fling. A light body flies far; a heavy one is only dragged a little way round.
+    /// </summary>
+    public static Vector3 TornadoThrow(TornadoRules rules, float mass, float strength, Vector3 around, Vector3 outward)
+    {
+        const float g = 9.8f, tumbleG = 9.8f * 0.6f; // a thrown creature falls on the Bestiary's tumble
+        float share = Weather.Forces.ForceModule.MassShare(mass, rules.LiftMassLimit) * strength;
+        float updraft = rules.Response * rules.LiftSpeed;
+        float climb = Math.Clamp((share * (updraft + g) - g) / updraft, 0f, 1f); // 1: carried all the way up
+        float up = MathF.Sqrt(2f * tumbleG * rules.ReleaseHeight * climb);
+        return (outward * rules.FlingSpeed + around * (rules.OrbitSpeed * 0.6f + rules.FlingSpeed * 0.6f)) * share + Vector3.Up * up;
+    }
+
+    float _gustTimer;
+
+    /// <summary>
+    /// Wind on creatures and people out in the open: the same drag and the same footing as a player's
+    /// (<see cref="GalHack.Physics.WalkController.Footing"/>). Where it pushes a body harder than its
+    /// feet hold, it is knocked off them and tumbles downwind; light ones in a gale, heavy ones never.
+    /// </summary>
+    void Gust(float dt)
+    {
+        _gustTimer -= dt;
+        if (_gustTimer > 0f) return;
+        _gustTimer = 0.5f;
+        WildlifePatch patch = Zone.Wildlife;
+        if (patch?.Sim == null || Bridge == null || Bridge.Calm) return;
+        foreach (Wildlife.Creature c in patch.Sim.Creatures)
+        {
+            if (c.Thrown || c.Dead || c.Space != null || c.Species.Flies) continue;
+            Vector3 world = c.Position + patch.Origin;
+            Vector3 wind = Sim.WindAt(world);
+            float push = CreaturePush(c.Species, wind.Length());
+            if (push <= Footing) continue;
+            float speed = wind.Length();
+            patch.Sim.Throw(c, wind / MathF.Max(speed, 0.1f) * (push - Footing) * 0.5f + Vector3.Up * 1.5f);
+        }
+    }
+
+    /// <summary>The feet's hold against a push, m/s²: a walker's (the shared walk rules), for creatures and people alike.</summary>
+    const float Footing = 6.5f;
+
+    /// <summary>What a wind of this speed does to a creature or a person standing in it, m/s²: drag by its side-on area over its mass.</summary>
+    public static float CreaturePush(Wildlife.Species s, float wind)
+    {
+        float area = MathF.Max(0.02f, s.BodyLength * s.BodyHeight * 0.7f) * 0.8f; // side on, a bluff body
+        return 0.5f * Weather.Forces.ForceModule.AirDensity * area * wind * wind / MathF.Max(0.1f, Wildlife.Heft.Mass(s));
     }
 
     void SyncTornadoes()
@@ -578,8 +674,8 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
     {
         if (Sim == null || Camera == null) return;
         float dt = (float)delta;
-        Conditions c = Sim.Current;
         Vector3 camera = Camera.GlobalPosition;
+        Conditions c = Sim.LocalAt(camera); // the camera's region's weather, under its part of the front
         // Nothing of the sky reaches under the water or a sealed room. Everywhere else it falls until it hits something.
         float open = SkyAtEye;
         Vector3 wind = Sim.WindAt(camera);

@@ -212,7 +212,16 @@ public sealed class ForceModule
         t.Orbit += MathF.Abs(t.LastRadial.AngleTo(radial));
         t.LastRadial = radial;
 
-        float share = MassShare(body.Mass, v.LiftMassLimit) * v.Strength;
+        // Its grip fades past the core (wider the stronger it is): a body pushing hard enough outward
+        // there (a jetpack) can break free of a weak one; a strong core holds it.
+        float holdRadius = HoldRadius(v);
+        float share = MassShare(body.Mass, v.LiftMassLimit) * v.Strength * (1f - SmoothStep(holdRadius, holdRadius * 1.6f, r));
+        if (r > holdRadius * 1.6f)
+        {
+            t.Immunity = v.ReleaseImmunity;
+            SetPhase(t, VortexPhase.Released); // broke free: no fling
+            return Vector3.Zero;
+        }
         bool letGo = height >= v.ReleaseHeight * 0.95f || t.Carry >= v.MaxCarrySeconds
             || r > v.InfluenceRadius || v.Strength < 0.3f;
         if (letGo)
@@ -229,6 +238,9 @@ public sealed class ForceModule
         Vector3 accel = v.Response * (flow - body.Velocity) + Vector3.Up * Gravity; // the updraft carries your weight
         return accel * share * body.Mass;
     }
+
+    /// <summary>Out to here a caught body is held at full grip, metres; it slips free by 1.6 times as far.</summary>
+    public static float HoldRadius(in Vortex v) => v.OrbitRadius + v.CaptureRadius * v.Strength;
 
     void SetPhase(Tracked t, VortexPhase phase)
     {
