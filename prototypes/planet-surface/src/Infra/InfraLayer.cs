@@ -318,6 +318,7 @@ public partial class InfraLayer : Node3D
         foreach (Piece p in OrePieces(world)) yield return p;
         foreach (Piece p in UnderPieces(world)) yield return p;
         foreach (Piece p in SeawallPieces(world)) yield return p;
+        foreach (Piece p in DressPieces(world)) yield return p;
         PowerLines power = net.Power;
         for (int i = 0; i < power.Poles.Count; i++)
             if (power.Poles[i].Role != PowerRole.Plant) yield return new PolePiece { Lines = power, Index = i, X = power.Poles[i].X, Z = power.Poles[i].Z };
