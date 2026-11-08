@@ -23,6 +23,7 @@ internal sealed partial class Depths
         "cave" => 0.4f + Wear,
         "squat" => 0.2f + Wear,
         "sealed" => 0.5f + Violence,
+        "breach" => (0.4f + Wear) * (1f + 0.5f * Violence),
         _ => 1f,
     };
 
@@ -34,6 +35,44 @@ internal sealed partial class Depths
         if (R.Chance(AgeChance("cave"))) Cave();
         if (R.Chance(AgeChance("squat"))) Squat(R.Pick(Levels));
         if (R.Chance(AgeChance("sealed"))) Seal();
+        if (_whole && R.Chance(AgeChance("breach"))) SurfaceBreach();
+    }
+
+    bool _whole;
+    /// <summary>A breach from the surface: the room it falls into, the rubble slope, where you stand at the lip.</summary>
+    (DSpace Room, DSpace Slope, int I, int K)? _breach;
+
+    /// <summary>
+    /// The ground and a roof gave way over the top level: a slope of rubble from the surface down into a room or
+    /// a corridor, daylight and weather falling in, another way in for whoever finds it.
+    /// </summary>
+    void SurfaceBreach()
+    {
+        var lv = Levels[0];
+        int rise = -lv.J;
+        var (hi0, hk0, hi1, hk1, _) = _head;
+        var hosts = lv.Spaces.Where(s => !s.Dead && !s.Raw && !s.Secret && s != _vaultSpace && s.Kind is "room" or "hall" or "corridor" or "gallery" or "hub" or "ring").OrderBy(_ => R.Float()).Take(12).ToList();
+        foreach (var host in hosts)
+            foreach (Dir d in Dirs.Horizontal.OrderBy(_ => R.Float()))
+            {
+                var face = Face(host, d, lv.J);
+                if (face.Count < 2) continue;
+                var c = face[face.Count / 2 - 1];
+                var (di, dk) = V(d);
+                int i0 = c.I + di, k0 = c.K + dk;
+                // Its lip on open ground, well clear of the head and the way up to it.
+                int ti = i0 + rise * di, tk = k0 + rise * dk;
+                if (ti >= hi0 - 4 && ti <= hi1 + 4 && tk >= hk0 - 8 && tk <= hk1 + 4) continue;
+                var run = RunSpace("ramp", i0, k0, d, lv.J, rise, 2, lv);
+                run.Surface = true;
+                run.Raw = true;
+                run.Kind = "breach";
+                run.Purpose = "breach";
+                if (!Take(run, lv, host)) continue;
+                Join(host, run);
+                _breach = (host, run, ti, tk);
+                return;
+            }
     }
 
     // ---- can it still be walked? ------------------------------------------------------------------

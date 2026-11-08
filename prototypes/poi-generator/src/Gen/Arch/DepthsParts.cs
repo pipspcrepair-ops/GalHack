@@ -298,7 +298,7 @@ internal sealed partial class Depths
     /// </summary>
     bool Ring(Level lv, DSpace a, Dir d, bool pods)
     {
-        int wid = Math.Max(2, Math.Min(MainW, 3)), h = Math.Min(lv.H, MainH);
+        int wid = Math.Max(2, Math.Min(MainW, 4)), h = Math.Min(lv.H, MainH);
         var entry = From(lv, a, d, R.Between(2, 5), Math.Max(2, MainW), h, minLen: 2);
         if (entry == null) return false;
         int W = R.Between(16, 26), D = R.Between(14, 24);
@@ -589,10 +589,10 @@ internal sealed partial class Depths
     /// <summary>Cross corridors: lines across and along the way in, a room in every cell between them, rooms round the outside.</summary>
     bool Grid(Level lv, DSpace a, Dir d)
     {
-        int wid = Math.Max(2, Math.Min(MainW, 3)), h = Math.Min(lv.H, MainH);
+        int wid = Math.Max(2, Math.Min(MainW, 4)), h = Math.Min(lv.H, MainH);
         var entry = From(lv, a, d, R.Between(2, 4), Math.Max(2, MainW), h, minLen: 2);
         if (entry == null) return false;
-        int spacing = R.Between(8, 11), nCross = R.Between(2, 3), nAlong = R.Between(2, 3);
+        int spacing = R.Between(8, 11) + wid - 2, nCross = R.Between(2, 3), nAlong = R.Between(2, 3);
         var (ei, ek) = entry.At(entry.Len, entry.Wid / 2);
         var (di, dk) = V(d);
         var (li, lk) = Lat(d);
@@ -844,7 +844,7 @@ internal sealed partial class Depths
         var w = From(lv, a, d, R.Between(16, 30), wid, h, kind: "gallery", purpose: "gallery", minLen: 8);
         if (w == null) return false;
         int aw = R.Between(2, 3), ad = R.Between(2, 3);
-        string alcove = Def.Id switch { "library" => "archive", "prison" => "solitary", "cryo" => "cryo-bay", "shelter" => "storage", _ => "storage" };
+        string alcove = Def.Id switch { "library" => "archive", "prison" => "solitary", "cryo" => "cryo-bay", "fallout" => "quarters", _ => "storage" };
         bool doors = Def.Id is "prison" || R.Chance(0.2f);
         foreach (bool pos in new[] { false, true })
             for (int p = 1; p + aw <= w.Len - 1; p += aw + 1)
@@ -1013,7 +1013,7 @@ internal sealed partial class Depths
         var (di, dk) = V(d);
         var c0 = face[face.Count / 2];
         var chambers = new List<(DSpace S, float I, float K)>();
-        int want = R.Between(4, 7);
+        int want = R.Between(4, 6);
         // The first chamber just off the way in, joined by a short way.
         for (int tries = 0; tries < want * 10 && chambers.Count < want; tries++)
         {
@@ -1026,7 +1026,7 @@ internal sealed partial class Depths
                 ci = pi + MathF.Cos(ang) * dist;
                 ck = pk + MathF.Sin(ang) * dist;
             }
-            var s = Blob(lv, ci, ck, R.Float(3f, 6f), R.Float(2.5f, 5f), R.Float(0f, 3.14f));
+            var s = Blob(lv, ci, ck, R.Float(3f, 5.5f), R.Float(2.5f, 4.5f), R.Float(0f, 3.14f));
             if (s == null) continue;
             chambers.Add((s, ci, ck));
         }

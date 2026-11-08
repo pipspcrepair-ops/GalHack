@@ -52,6 +52,106 @@ public partial class PoiTest
         return new Shape(branching, loops, levels, Cv(rooms), Cv(widths), rooms.Count, partsUsed);
     }
 
+    /// <summary>
+    /// A plan sheet: six places below ground side by side (fresh seeds), each one's levels top to bottom as maps
+    /// seen from above at its walk height. Corridors grey, rooms tan, halls orange, the vault gold, stairs blue,
+    /// lifts cyan, galleries pale blue over their halls, crawlways purple, caves and drifts brown, cells pink,
+    /// airlocks teal, walls dark, rock black, doors red. "-- --depthsheet=FILE.png [--families=a,b,...]".
+    /// </summary>
+    void DepthsSheet()
+    {
+        string? path = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--depthsheet="))?["--depthsheet=".Length..];
+        if (path == null) return;
+        string[] want = (OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--families="))?["--families=".Length..]
+            ?? "command_bunker,cryo_vault,old_mine,missile_silo,alien_library,prison_block").Split(',');
+        var rand = new Random();
+        const int px = 2, pad = 12;
+        var panels = new List<(string Family, List<Image> Levels)>();
+        foreach (string id in want)
+        {
+            var f = _lib.Family(id);
+            Layout l = PoiFactory.BuildLayout(_lib, f, rand.Next(f.Variants.Count), f.Rarity, (ulong)rand.NextInt64(),
+                new LayoutHints(Dir.North, (TechLevel)rand.Next(3), Ruin: new RuinAge((float)rand.NextDouble(), false, (float)rand.NextDouble(), 0.3f)));
+            var doors = new HashSet<Int3>(l.Doorways.SelectMany(d => d.Cells));
+            var levels = new List<Image>();
+            foreach (var lv in l.Extras.Levels.Where(v => v.WalkY < 0).OrderByDescending(v => v.WalkY))
+            {
+                int y = lv.WalkY;
+                // Which module holds each cell at this height, and the galleries over it.
+                var at = new Dictionary<(int, int), PlacedModule>();
+                var over = new HashSet<(int, int)>();
+                foreach (var m in l.Modules)
+                    foreach (Int3 c in m.Cells)
+                    {
+                        if (c.Y == y) at[(c.X, c.Z)] = m;
+                        else if (c.Y > y && c.Y <= y + 10 && m.Purpose == "gallery") over.Add((c.X, c.Z));
+                    }
+                if (at.Count == 0) continue;
+                int x0 = at.Keys.Min(c => c.Item1) - 4, x1 = at.Keys.Max(c => c.Item1) + 4, z0 = at.Keys.Min(c => c.Item2) - 4, z1 = at.Keys.Max(c => c.Item2) + 4;
+                var img = Image.CreateEmpty((x1 - x0 + 1) * px, (z1 - z0 + 1) * px, false, Image.Format.Rgb8);
+                for (int z = z0; z <= z1; z++)
+                    for (int x = x0; x <= x1; x++)
+                    {
+                        var cell = new Int3(x, y, z);
+                        var b = l.Blocks.Get(cell);
+                        Color col;
+                        if (doors.Contains(cell)) col = new Color(0.9f, 0.15f, 0.12f);
+                        else if (at.TryGetValue((x, z), out var m))
+                        {
+                            col = m.Purpose switch
+                            {
+                                "crawlway" => new Color(0.55f, 0.35f, 0.75f),
+                                "gallery" => new Color(0.6f, 0.75f, 0.9f),
+                                "cryo-bay" => new Color(0.55f, 0.8f, 0.95f),
+                                "cellblock" or "solitary" => new Color(0.85f, 0.55f, 0.65f),
+                                "airlock" or "decon" or "vestibule" => new Color(0.3f, 0.7f, 0.65f),
+                                "drift" or "stope" or "cavern" or "tunnel" => new Color(0.55f, 0.4f, 0.28f),
+                                "silo" => new Color(0.25f, 0.45f, 0.5f),
+                                "hidden stash" => new Color(0.6f, 0.3f, 0.9f),
+                                _ => m.Kind switch
+                                {
+                                    ModuleKind.Corridor => new Color(0.62f, 0.62f, 0.62f),
+                                    ModuleKind.Hall => new Color(0.88f, 0.55f, 0.27f),
+                                    ModuleKind.Vault => new Color(0.95f, 0.8f, 0.2f),
+                                    ModuleKind.Stair => new Color(0.35f, 0.55f, 0.92f),
+                                    ModuleKind.Lift => new Color(0.3f, 0.88f, 0.9f),
+                                    ModuleKind.Cave => new Color(0.5f, 0.37f, 0.27f),
+                                    _ => new Color(0.82f, 0.7f, 0.5f),
+                                },
+                            };
+                            if (BlockInfo.IsSlope(b.Type)) col = new Color(0.35f, 0.55f, 0.92f);
+                            else if (b.Type == BlockType.Ladder) col = new Color(0.95f, 0.9f, 0.3f);
+                            else if (b.Role == Role.Debris && BlockInfo.Collides(b.Type)) col = new Color(0.4f, 0.3f, 0.22f);
+                            else if (!b.IsAir && BlockInfo.Collides(b.Type)) col = col.Darkened(0.35f);
+                            if (over.Contains((x, z)) && m.Purpose != "gallery") col = col.Lerp(new Color(0.6f, 0.75f, 0.9f), 0.45f);
+                        }
+                        else if (!b.IsAir && BlockInfo.Collides(b.Type)) col = new Color(0.24f, 0.24f, 0.26f);
+                        else col = new Color(0.06f, 0.06f, 0.07f);
+                        img.FillRect(new Rect2I((x - x0) * px, (z - z0) * px, px, px), col);
+                    }
+                levels.Add(img);
+            }
+            panels.Add((id, levels));
+            GD.Print($"      sheet: {id} '{l.Name}', {levels.Count} levels, parts {string.Join(" ", l.Extras.Plans.Select(p => p.Signature.Split('/')).Where(p => p.Length > 1).Select(p => p[1]))}");
+        }
+        int width = panels.Sum(p => p.Levels.Count == 0 ? 0 : p.Levels.Max(i => i.GetWidth()) + pad) + pad;
+        int height = panels.Max(p => p.Levels.Sum(i => i.GetHeight() + pad)) + pad;
+        var sheet = Image.CreateEmpty(width, height, false, Image.Format.Rgb8);
+        sheet.Fill(new Color(0.16f, 0.17f, 0.19f));
+        int ox = pad;
+        foreach (var (_, levels) in panels)
+        {
+            int oy = pad, w = levels.Count == 0 ? 0 : levels.Max(i => i.GetWidth());
+            foreach (var img in levels)
+            {
+                sheet.BlitRect(img, new Rect2I(0, 0, img.GetWidth(), img.GetHeight()), new Vector2I(ox + (w - img.GetWidth()) / 2, oy));
+                oy += img.GetHeight() + pad;
+            }
+            ox += w + pad;
+        }
+        Check(sheet.SavePng(path) == Error.Ok, $"plan sheet of {panels.Count} places below ground saved to {path} ({width} by {height})");
+    }
+
     void Depths()
     {
         var rand = new Random();
@@ -62,6 +162,19 @@ public partial class PoiTest
         int told = 0;
         Architect.Rejected = (layout, why) =>
         {
+            // A doorway that opens onto nothing: what it joins and what stands round its sides.
+            if (why[0].StartsWith("doorway at") && told < 6)
+            {
+                told++;
+                foreach (var d in layout.Doorways)
+                {
+                    Int3 lo = d.Cells.Aggregate(Int3.Min);
+                    if (!why[0].Contains(lo.ToString())) continue;
+                    var nav0 = new NavGrid(layout.Blocks, layout.Occupied, layout.Extras.Lifts, layout.Extras.InSpace);
+                    Int3 o = lo - d.Facing.Vec(), n = lo + d.Facing.Vec();
+                    GD.Print($"      rejected door {layout.Modules[d.ModuleA].Purpose}/{layout.Modules[d.ModuleA].Kind} to {layout.Modules[d.ModuleB].Purpose}/{layout.Modules[d.ModuleB].Kind}: outside {o} {layout.Blocks.Get(o)} over {layout.Blocks.Get(o + Int3.Down)} occ {layout.Occupied[o + Int3.Down]} under {layout.Blocks.Get(o + Int3.Up)}; inside {n} {layout.Blocks.Get(n)} stand {nav0.Standable(n)}; in module {layout.Modules.FirstOrDefault(m => m.Cells.Contains(o))?.Purpose}");
+                }
+            }
             if (told++ >= 3 || families.Count > 2) return;
             GD.Print("      rejected: " + why[0]);
             var nav = new NavGrid(layout.Blocks, layout.Occupied, layout.Extras.Lifts, layout.Extras.InSpace);
@@ -70,6 +183,7 @@ public partial class PoiTest
                 GD.Print($"        {(m.Cells.Any(reach.Contains) ? "  " : "XX")} #{m.Index} {m.Purpose} {m.Kind} storey {m.Storey} {m.Min}..{m.Max} links {string.Join(",", layout.Links.Where(l => l.A == m.Index || l.B == m.Index).Select(l => l.A == m.Index ? l.B : l.A))}");
         };
         var shapes = new Dictionary<string, List<Shape>>();
+        var cost = new Dictionary<string, (double Layout, double Spawn, double Mesh, long Blocks, int N, Int3 Size)>();
         var mixes = new Dictionary<string, Dictionary<string, int>>();
         int places = 0, failed = 0, unreached = 0, invalid = 0, repeated = 0;
         string first = "";
@@ -85,8 +199,10 @@ public partial class PoiTest
                 var age = new RuinAge((float)rand.NextDouble(), false, (float)rand.NextDouble(), 0.3f);
                 var hints = new LayoutHints(Dirs.Horizontal[rand.Next(4)], (TechLevel)rand.Next(3), Ruin: age);
                 Layout layout;
+                long t0 = sw.ElapsedTicks;
                 try { layout = PoiFactory.BuildLayout(_lib, f, rand.Next(f.Variants.Count), f.Rarity, (ulong)rand.NextInt64(), hints); }
                 catch (Exception e) { failed++; if (first.Length == 0) first = $" (first: {f.Id}: {e.Message})"; continue; }
+                cost[f.Id] = cost.GetValueOrDefault(f.Id) with { Layout = cost.GetValueOrDefault(f.Id).Layout + (sw.ElapsedTicks - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency, N = cost.GetValueOrDefault(f.Id).N + 1, Size = layout.Blocks.Size };
                 places++;
                 var shape = Measure(layout);
                 list.Add(shape);
@@ -105,7 +221,11 @@ public partial class PoiTest
                 }
                 var state = (PoiState)rand.Next(4);
                 if (f.StateWeights[(int)state] <= 0f) state = PoiState.Abandoned;
+                long t1 = sw.ElapsedTicks;
                 var inst = PoiFactory.Spawn(_lib, layout, state, (ulong)rand.NextInt64());
+                long t2 = sw.ElapsedTicks;
+                Mesher.Build(inst.Blocks, layout.Occupied, new MeshOptions { RockMin = inst.Blocks.Min, RockMax = inst.Blocks.Max, RockBottom = inst.Blocks.Min.Y });
+                cost[f.Id] = cost[f.Id] with { Spawn = cost[f.Id].Spawn + (t2 - t1) * 1000.0 / System.Diagnostics.Stopwatch.Frequency, Mesh = cost[f.Id].Mesh + (sw.ElapsedTicks - t2) * 1000.0 / System.Diagnostics.Stopwatch.Frequency, Blocks = cost[f.Id].Blocks + inst.Blocks.CountBlocks() };
                 if (Validator.Check(inst) is { Count: > 0 } vp)
                 {
                     invalid++;
@@ -184,11 +304,13 @@ public partial class PoiTest
                 }
                 float distance = MathF.Sqrt(d2) + 3f * (1f - overlap);
                 if (distance < worst) { worst = distance; closest = $"{a} and {b}: parts overlap {overlap:P0}, measures {MathF.Sqrt(d2):F2} apart"; }
-                if (distance < 1.5f) alike++;
+                if (distance < 1.5f) { alike++; GD.Print($"      alike: {a} and {b}: parts overlap {overlap:P0}, measures {MathF.Sqrt(d2):F2} apart"); }
             }
         // Within a family: no two plans the same, and the measures spread.
         var flat = shapes.Where(s => s.Value.Count > 1 && sd[s.Key].Count(x => x > 0.01f) < 3).Select(s => s.Key).ToList();
         Architect.Rejected = null;
+        foreach (var (id, c) in cost.Where(c => c.Value.N > 0))
+            GD.Print($"      cost {id,-18} layout {c.Layout / c.N:F0} ms, spawn {c.Spawn / c.N:F0} ms, mesh {c.Mesh / c.N:F0} ms, {c.Blocks / c.N} blocks, last {c.Size.X} x {c.Size.Z} x {c.Size.Y} m");
         GD.Print($"      {places} places in {sw.ElapsedMilliseconds} ms, {Architect.Stats.Regenerated} regenerated");
         foreach (string why in Architect.Stats.FirstFailures.Take(8)) GD.Print("      regenerated after: " + why);
         Check(failed == 0 && places > 0, $"places below ground lay out on fresh worlds: {places} over {families.Count} families ({failed} failed){first}");

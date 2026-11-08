@@ -34,7 +34,8 @@ internal sealed partial class Depths
         SpanBuild();
         CollapseBuild();
         foreach (var s in Live.Where(s => s.Def != null && !s.Secret && s.Mod >= 0)) Furnish(s);
-        foreach (var s in Live.Where(s => s.Mod >= 0 && s.Def == null && !s.Secret && s.Kind is not ("stair" or "ramp" or "shaft" or "lift"))) WayLights(s);
+        foreach (var s in Live.Where(s => s.Mod >= 0 && s.Def == null && !s.Secret && s.Kind is not ("stair" or "ramp" or "shaft" or "lift" or "breach"))) WayLights(s);
+        BreachBuild();
         Keycards();
         Stories();
         Signatures();
@@ -75,13 +76,14 @@ internal sealed partial class Depths
         Fab f = P.F;
         Stuff2 wall = _headKind switch
         {
-            "headframe" => new Stuff2(Material.Timber, Wood),
+            // Corrugated iron over the shaft (timber in the open rots and brings down what hangs from it).
+            "headframe" => Tech == TechLevel.Low ? new Stuff2(Material.Rust, new Rgb(0x7a, 0x52, 0x3c)) : new Stuff2(Material.Steel, new Rgb(0x6a, 0x6e, 0x70)),
             "maw" => AlienStuff(0),
             "hatch" => f.Plinth,
             _ => f.Wall,
         };
         if (Alien) wall = AlienStuff(0);
-        Stuff2 roof = Alien ? AlienStuff(1) : _headKind == "headframe" ? f.Roof : f.Roof;
+        Stuff2 roof = Alien ? AlienStuff(1) : _headKind == "headframe" ? wall.Scale(0.85f) : f.Roof;
         string name = _headKind switch { "hood" => "blockhouse", "portal" => "portal", "headframe" => "shaft-house", "maw" => "maw", "hatch" => "hatch", _ => "entrance" };
         // No weather box: that's for roadside ruins, whose decay takes down everything thin (ladders too).
         _headModule = P.Hall(name, ModuleKind.Hall, 0, i0, k0, i1, k1, 0, h, wall, roof, weather: false);
@@ -113,15 +115,22 @@ internal sealed partial class Depths
                     P.C.X.Markers.Add(new Marker("vent", P.Cell(2 * vi, 2 * (h + 1) + vh + 1, 2 * vk), "a thin breath of air from below"));
                     P.C.X.Sounds.Add(new SoundHook("vent-hum", P.Cell(2 * vi, 2 * (h + 1), 2 * vk), 0.4f, 0));
                 }
-                if (_headKind == "hood")
-                {
-                    int mh = 10 + 2 * Levels.Count;
-                    int mu = 2 * i1 - 1, mv = 2 * k0 + 1;
-                    for (int y = 0; y < mh; y++) P.Put(mu, 2 * (h + 1) + y, mv, new Block(y % 4 == 3 ? BlockType.Lattice : BlockType.Pillar, Material.Steel, new Rgb(0x5a, 0x5c, 0x60), Role.Decor));
-                    P.Put(mu, 2 * (h + 1) + mh, mv, new Block(BlockType.Cube, Material.Lumen, new Rgb(0xff, 0x30, 0x20), Role.Light));
-                    P.C.X.Lights.Add(new LightSpot { Cell = P.Cell(mu, 2 * (h + 1) + mh, mv), Color = new Rgb(0xff, 0x30, 0x20), Mode = LightMode.Beacon, Energy = 2.2f, Range = 14f });
-                }
                 break;
+        }
+        // What marks it from afar: a mast by its back corner whose red lamp still blinks (an alien spire over a maw),
+        // as tall as the family's landmark wants and taller the deeper the place goes.
+        int rise = Math.Max(Fam?.Rise ?? 12, 10 + 2 * Levels.Count);
+        int mu = 2 * i1 + 3, mv = 2 * k1 + 1;
+        bool clear = true;
+        for (int y = 0; y <= rise && clear; y++) clear = P.Get(mu, y, mv).IsAir && !P.Claimed(mu, y, mv);
+        if (!clear) { mu = 2 * i0 - 4; clear = true; for (int y = 0; y <= rise && clear; y++) clear = P.Get(mu, y, mv).IsAir && !P.Claimed(mu, y, mv); }
+        if (clear)
+        {
+            Stuff2 mast = Alien ? AlienStuff(0) : new Stuff2(Material.Steel, new Rgb(0x5a, 0x5c, 0x60));
+            for (int y = 0; y < rise; y++) P.Put(mu, y, mv, new Block(Alien ? BlockType.Rib : y % 4 == 3 ? BlockType.Lattice : BlockType.Pillar, mast.M, mast.C, Role.Decor));
+            Rgb lamp = Alien ? new Rgb(0x80, 0xff, 0xe0) : new Rgb(0xff, 0x30, 0x20);
+            P.Put(mu, rise, mv, new Block(BlockType.Cube, Alien ? Material.Glyph : Material.Lumen, lamp, Role.Light));
+            P.C.X.Lights.Add(new LightSpot { Cell = P.Cell(mu, rise, mv), Color = lamp, Mode = Alien ? LightMode.Pulse : LightMode.Beacon, Energy = 2.2f, Range = 14f });
         }
     }
 
@@ -344,6 +353,7 @@ internal sealed partial class Depths
             case "door" or "hazard" or "hatch" or "locked" or "blast":
             {
                 if (a < 0 || b < 0) return;
+                Frame(j);
                 int d = P.Door(j.I, j.J, j.K, j.AlongI, a, b);
                 if (j.Kind is "hazard" or "blast") P.C.Doorways[d].Hazard = true;
                 if (j.Kind is "locked" or "blast") P.C.X.Locks.Add(new DoorLock { Doorway = d, Clearance = j.Clearance ?? "security", Blast = j.Kind == "blast" });
@@ -375,6 +385,18 @@ internal sealed partial class Depths
                 P.C.X.Story.Add(new StoryProp("sealed", P.Cell(2 * j.I, 2 * j.J, 2 * j.K), "Welded shut from this side. Whatever was behind it, someone wanted it to stay there."));
                 break;
             }
+        }
+    }
+
+    /// <summary>A door cut in raw rock gets a frame: its head and jambs set in timber (a mine's) or dressed stone, so it hangs in something.</summary>
+    void Frame(DJoint j)
+    {
+        Stuff2 frame = Def.Lining == "timber" ? new Stuff2(Material.Timber, Wood) : Alien ? AlienStuff(0) : new Stuff2(Material.Rock, Rubble.Scale(1.15f));
+        int li = j.AlongI ? 1 : 0, lk = j.AlongI ? 0 : 1;
+        foreach (var (i, jj, k) in new[] { (j.I, j.J + 1, j.K), (j.I - li, j.J, j.K - lk), (j.I + li, j.J, j.K + lk), (j.I - li, j.J + 1, j.K - lk), (j.I + li, j.J + 1, j.K + lk) })
+        {
+            if (jj >= 0 || G.Interior(i, jj, k) || !P.Get(2 * i, 2 * jj, 2 * k).IsAir) continue;
+            P.Fill(i, jj, k, i, jj, k, Plot.Cube(frame, Role.Wall));
         }
     }
 
@@ -528,6 +550,32 @@ internal sealed partial class Depths
             P.C.X.Story.Add(new StoryProp("collapse", P.Cell(2 * mi, 2 * c.J, 2 * mk), "The roof came down here. Whoever came after went round."));
             P.C.X.Sounds.Add(new SoundHook("drip", P.Cell(2 * mi, 2 * c.J + 2, 2 * mk), 0.5f, c.Storey));
         }
+    }
+
+    /// <summary>The breach from the surface: its lip where you stand, the cells open to the sky, rubble round the hole, the wind in it.</summary>
+    void BreachBuild()
+    {
+        if (_breach is not { } b || b.Room.Dead || b.Slope.Dead || b.Room.Mod < 0) return;
+        var breach = new Breach { Module = b.Room.Mod, SurfaceCell = P.Cell(2 * b.I, 0, 2 * b.K) };
+        foreach (var (i, j, k) in b.Slope.Blocks())
+            if (j >= -3)
+                for (int y = 2 * j; y < 2 * j + 2; y++)
+                    for (int v = 2 * k; v < 2 * k + 2; v++)
+                        for (int u = 2 * i; u < 2 * i + 2; u++)
+                            if (P.Get(u, y, v).IsAir) breach.Cells.Add(P.Cell(u, y, v));
+        P.C.X.Breaches.Add(breach);
+        // Rubble kicked up round the lip, never on the slope itself.
+        foreach (var (i, k) in b.Slope.Foot.Where(c => b.Slope.FloorAt(c.I, c.K) >= -3))
+            foreach (Dir d in Dirs.Horizontal)
+            {
+                var (di, dk) = V(d);
+                int ni = i + di, nk = k + dk;
+                if (b.Slope.Has(ni, nk) || G.Interior(ni, -1, nk) || Hash.Cell(new Int3(ni, 0, nk), 0xB2EA) % 3 != 0) continue;
+                int u = 2 * ni + (Hash.Cell(new Int3(ni, 1, nk), 5) % 2 == 0 ? 0 : 1), v = 2 * nk + (Hash.Cell(new Int3(ni, 2, nk), 5) % 2 == 0 ? 0 : 1);
+                if (P.Get(u, 0, v).IsAir && !P.Claimed(u, 0, v)) P.Lay(u, 0, v, new Block(BlockType.Rubble, Material.Rock, Rubble, Role.Debris));
+            }
+        P.C.X.Sounds.Add(new SoundHook("wind", P.Cell(2 * b.Slope.I0, 2 * b.Room.J + 2, 2 * b.Slope.K0), 0.7f, b.Room.Storey));
+        P.C.X.Story.Add(new StoryProp("collapse", breach.SurfaceCell, "The roof came down here. Daylight and weather have been getting in ever since."));
     }
 
     void Stories()

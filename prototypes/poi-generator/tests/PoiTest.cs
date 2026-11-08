@@ -39,7 +39,7 @@ public partial class PoiTest : Node
         {
             ("Grand", GrandPlaces), ("FactionRolls", FactionRolls), ("CityLots", CityLots), ("Roofs", Roofs), ("Lights", LightMoods), ("Merged", MergedFaces), ("Layers", WorldLayers), ("Occupancy", Occupancy), ("Regions", Regions), ("Data", Data), ("Facades", Facades), ("Items", Items), ("Determinism", Determinism), ("KitValidation", KitValidation),
             ("KitAuthored", KitAuthored), ("ArchAuthored", ArchAuthored), ("Thousands", Thousands), ("Corridors", Corridors),
-            ("Sense", Sense), ("Variety", Variety), ("Depths", Depths), ("Underground", UndergroundNet), ("Cores", Cores), ("Lights", LightsApi), ("StateTransforms", StateTransforms),
+            ("Sense", Sense), ("Variety", Variety), ("Depths", Depths), ("DepthsSheet", DepthsSheet), ("Underground", UndergroundNet), ("Cores", Cores), ("Lights", LightsApi), ("StateTransforms", StateTransforms),
             ("LootByRarity", LootByRarity), ("LootByDepth", LootByDepth), ("Carved", Carved), ("Hidden", Hidden),
             ("Breaches", Breaches), ("Keys", Keys), ("PlacementRules", PlacementRules), ("NoRepeatsInSystem", NoRepeatsInSystem),
             ("SeenWeighting", SeenWeighting), ("RegrowthPolicy", RegrowthPolicy), ("RevealDistances", RevealDistances),
@@ -1212,7 +1212,9 @@ public partial class PoiTest : Node
     void Breaches()
     {
         int breaches = 0, layouts = 0, toVault = 0;
-        foreach (var f in Arch.Where(f => f.Program != null && _lib.Programs[f.Program].Breach > 0))
+        // Buried buildings that roll a breach, and the places below ground whose years can bring one.
+        var below = new HashSet<string>(Below.Select(f => f.Id));
+        foreach (var f in Arch.Where(f => f.Program != null && _lib.Programs[f.Program].Breach > 0 || below.Contains(f.Id)))
             for (int i = 0; i < 20; i++)
             {
                 var layout = PoiFactory.BuildLayout(_lib, f, i, Rarity.Common, Hash.Combine(0xB2EAC4UL, (ulong)i, Hash.Of(f.Id)));
@@ -2145,9 +2147,18 @@ public partial class PoiTest : Node
             }
         }
         _walker.AutoTarget = new Vector3(target.X + 0.5f, target.Y, target.Z + 0.5f);
+        // Held up a moment: duck, as a player ducks under a door jammed part open.
+        _walker.AutoCrouch = _stuck > 45;
         if (++_stuck > 420)
         {
             Fail($"walking {WalkName(w)}: stuck at {at} on cell {_step}/{_route.Count} ({target}){(_back ? " on the way back" : "")}");
+            // What the route crosses there: each cell's block, the block under it and over it, and whose room it is.
+            var poi = _view.Poi;
+            for (int k = Math.Max(0, _step - 3); k < Math.Min(_route.Count, _step + 4); k++)
+            {
+                var c = _route[k];
+                GD.PrintErr($"      {(k == _step ? ">" : " ")} {c}: {poi.Blocks.Get(c).Type} over {poi.Blocks.Get(c + Gen.Int3.Down).Type}, under {poi.Blocks.Get(c + Gen.Int3.Up).Type}/{poi.Blocks.Get(c + Gen.Int3.Up * 2).Type}, {poi.Layout.Modules.FirstOrDefault(m => m.Cells.Contains(c))?.Purpose ?? "-"}");
+            }
             _walker = null;
             NextWalk();
         }

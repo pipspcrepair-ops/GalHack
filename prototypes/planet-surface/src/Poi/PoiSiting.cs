@@ -243,7 +243,10 @@ public static partial class PoiSiting
             PoiState state = start && ThemeDef.FactionOwned(forced) ? PoiState.Ruined : forced.Core == CoreRule.Owned || forced.Tags.Contains("settlement") ? PoiState.Active : PoiState.Abandoned;
             state = ForceState ?? state;
             int forcedVariant = ForceVariant ?? (profile != null && forced.Variants.Count > 1 ? profile.Variant(forced, state, new PRng(7)) : 0);
-            Layout forcedLayout = PoiFactory.TryLayout(lib, forced, forcedVariant, forced.Rarity, null, null, out string why);
+            // A place below ground is planned afresh on each world, as it is when the world places it itself.
+            ulong? fresh = forced.Tags.Contains("underground") ? PoiGenerator.Gen.Hash.Combine((ulong)(long)(landing.X * 7919 + landing.Y), PoiGenerator.Gen.Hash.Of(forced.Id)) : null;
+            Layout forcedLayout = PoiFactory.TryLayout(lib, forced, forcedVariant, forced.Rarity, fresh, fresh == null ? null : new LayoutHints(Dir.North, profile?.Before, Ruin: profile?.Ruin), out string why);
+            if (fresh != null && forcedLayout != null) forcedLayout.Name = forced.Variants[forcedVariant % forced.Variants.Count].Name;
             if (forcedLayout == null) Godot.GD.PushWarning($"forced place skipped: {why}");
             PoiInstance inst = forcedLayout == null ? null : PoiFactory.Spawn(lib, forcedLayout, state, 7, profile, ForceOccupancy);
             for (int k = 0; inst != null && k < 60 && sites.Count == 0; k++)
@@ -277,7 +280,8 @@ public static partial class PoiSiting
                 if (p.Family.Tags.Contains("settlement") && Away(p) < 4000)
                     for (ulong k = 1; k < 32 && Dressing.MoodFor(spawnSeed) == Mood.Hostile; k++) spawnSeed = PoiGenerator.Gen.Hash.Combine(p.SpawnSeed, k);
             }
-            PoiInstance inst = PoiFactory.Generate(lib, p.Family, variant, Deeper(p.Rarity, depth, spawnSeed), p.State, spawnSeed, world: profile);
+            PoiInstance inst = PoiFactory.Generate(lib, p.Family, variant, Deeper(p.Rarity, depth, spawnSeed), p.State, spawnSeed,
+                customSeed: p.Family.Tags.Contains("underground") ? PoiGenerator.Gen.Hash.Combine(spawnSeed, 0x6A11UL) : null, world: profile);
             PoiSite site = Seat(inst, p.Family, bare, map, Mathx.WrapX(p.X, map.WidthMeters), Mathx.Wrap(p.Z, map.HeightMeters), landing, sites);
             // The main port stands somewhere: if its spot won't take it, the next good ground round it. So do its crowd, nearer in.
             int retries = p.Primary ? 64 : IsPort(p) ? 12 : 0;

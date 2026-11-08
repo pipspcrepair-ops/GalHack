@@ -142,7 +142,7 @@ site blast_crater
   style concrete
   entrance -64 0 west
   part crater 0 0 r 22 depth 8 radiation 14
-  part below 32 -40 rot 3 purpose shelter vault yes
+  part below 32 -40 rot 3 purpose fallout vault yes
   part vehicles -44 18 count 4 gap 6 axis z
   part poles -40 -30 count 4 gap 14 h 6 axis z
   part camp -36 -16

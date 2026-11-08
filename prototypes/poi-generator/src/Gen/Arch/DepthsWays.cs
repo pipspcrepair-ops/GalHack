@@ -186,7 +186,7 @@ internal sealed partial class Depths
                 spots.Add((i, k, d));
             }
         }
-        foreach (var (i, k, d) in spots.OrderBy(_ => R.Float()).Take(12))
+        foreach (var (i, k, d) in spots.Where(s => !BesideDoor(s.I, up.J, s.K)).OrderBy(_ => R.Float()).Take(12))
         {
             var (di, dk) = V(d);
             int pi = Math.Abs(dk), pk = Math.Abs(di);
@@ -210,6 +210,36 @@ internal sealed partial class Depths
             down.In = d.Opposite();
             return true;
         }
+        return false;
+    }
+
+    /// <summary>
+    /// An ore chute: a steep, narrow raw slope from a stope down to a drift on the level below, the way the ore
+    /// went, a way round the shaft for whoever climbs it.
+    /// </summary>
+    bool Chute(Level up, Level down)
+    {
+        int rise = up.J - down.J;
+        var targets = down.Spaces.Where(s => !s.Dead && s.Kind is "drift" or "stope" or "landing").ToList();
+        foreach (var stope in up.Spaces.Where(s => !s.Dead && s.Kind is "stope" or "drift").OrderBy(_ => R.Float()))
+            foreach (var (i, k) in stope.Foot.Where(c => stope.FloorAt(c.I, c.K) == up.J).OrderBy(_ => R.Float()).Take(24))
+                foreach (Dir d in Dirs.Horizontal)
+                {
+                    var (di, dk) = V(d);
+                    if (stope.Has(i + di, k + dk)) continue;
+                    // The foot lands just past the slope's lowest column: on a drift or a stope below.
+                    int fi = i + (rise + 1) * di, fk = k + (rise + 1) * dk;
+                    var hit = targets.FirstOrDefault(t => t.Has(fi, fk) && t.FloorAt(fi, fk) == down.J);
+                    if (hit == null) continue;
+                    var run = RunSpace("ramp", i + rise * di, k + rise * dk, d.Opposite(), down.J, rise, 1, down);
+                    run.Raw = true;
+                    run.Kind = "chute";
+                    run.Purpose = "ore chute";
+                    if (!Take(run, null, stope, hit)) continue;
+                    Join(stope, run);
+                    Join(run, hit);
+                    return true;
+                }
         return false;
     }
 

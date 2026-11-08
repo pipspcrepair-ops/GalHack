@@ -28,7 +28,7 @@ internal sealed partial class Depths
     {
         TechLevel tech = hints?.Tech ?? WorldProfile.Parse(part.Arg("tech", "mid"));
         var p = new Plot(c, rng.Fork("plot"), tech, hints?.Front ?? Dir.North);
-        var d = new Depths(lib, p, part, fam, rarity, rng, hints, tech);
+        var d = new Depths(lib, p, part, fam, rarity, rng, hints, tech) { _whole = true };
         p.Approach(0, -3, Dir.North);
         d._yard = p.Yard;
         d.Plan();
@@ -154,8 +154,10 @@ internal sealed partial class Depths
         public override string ToString() => $"level {Index} j{J} {Part} ({Zone})";
     }
 
+    /// <summary>A main way's width in blocks: the purpose's, a block wider at high tech and narrower at low (big facilities 8 m, the grandest 10 m).</summary>
     int MainW => Math.Clamp(R.Between(Def.MainW0, Def.MainW1) + (Tech == TechLevel.High ? 1 : Tech == TechLevel.Low ? -1 : 0), Math.Min(2, Def.MainW0), 5);
-    int MainH => R.Between(Def.MainH0, Def.MainH1);
+    /// <summary>A main way's height: the purpose's, a block more at high tech where the level has the room (6 m, the grandest 8 m).</summary>
+    int MainH => R.Between(Def.MainH0, Def.MainH1) + (Tech == TechLevel.High && Def.MainH1 >= 3 ? 1 : 0);
     int SideW => Math.Clamp(R.Between(Def.SideW0, Def.SideW1), 1, 4);
     int SideH => R.Between(Def.SideH0, Def.SideH1);
     int RoomH => R.Between(Def.RoomH0, Def.RoomH1);
@@ -189,7 +191,8 @@ internal sealed partial class Depths
             lv.Part = i == opsLevel ? "hall" : options[Math.Max(0, R.PickWeighted(options.Select(o => o.Weight).ToList()))].Key;
             used[lv.Part] = used.GetValueOrDefault(lv.Part) + 1;
             lv.H = HeightOf(lv.Part);
-            lv.Zone = Def.Zones.Count == 0 ? "" : Def.Zones[Math.Min(Def.Zones.Count - 1, (int)MathF.Floor(i * Def.Zones.Count / (float)n))];
+            // Zones in order down the levels, the last always the deepest's (a biolab's isolation at the bottom).
+            lv.Zone = Def.Zones.Count == 0 ? "" : Def.Zones[i == n - 1 ? Def.Zones.Count - 1 : Math.Min(Def.Zones.Count - 1, (int)MathF.Floor(i * Def.Zones.Count / (float)n))];
             Levels.Add(lv);
         }
         _opsLevel = opsLevel;
@@ -234,6 +237,10 @@ internal sealed partial class Depths
             if (_span == null) ZoneLock(lv);
             Grow(lv);
         }
+        // A mine's ore went down chutes from its stopes: ways round the shaft between levels.
+        if (Levels.Any(l => l.Part == "drifts"))
+            for (int g = 0; g + 1 < Levels.Count; g++)
+                if (R.Chance(0.75f)) Chute(Levels[g], Levels[g + 1]);
         // Lesser structure over the main plan: crawlways, dead ends with what they keep, hidden rooms.
         foreach (var lv in Levels.Where(l => l.Arrival != null))
         {
@@ -259,7 +266,7 @@ internal sealed partial class Depths
         "cells" => R.Chance(0.5f) ? 5 : Math.Max(3, Def.MainH1),
         "drifts" => 4,
         "organic" => 5,
-        _ => Math.Max(3, Def.MainH1),
+        _ => Math.Max(3, Def.MainH1) + (Tech == TechLevel.High && Def.MainH1 >= 3 ? 1 : 0),
     };
 
     // ---- the parts' bookkeeping --------------------------------------------------------------
@@ -352,6 +359,8 @@ internal sealed partial class Depths
                 int wi = i + di, wk = k + dk, bi = i + 2 * di, bk = k + 2 * dk;
                 if (!b.Has(bi, bk) || b.FloorAt(bi, bk) != fj || a.FloorAt(i, k) != fj) continue;
                 if (G.Owner(wi, fj, wk) != -1) continue;
+                // Never onto the top of a ladder's shaft (a hole in the floor) either side.
+                if (ShaftUnder(i, fj, k) || ShaftUnder(bi, fj, bk)) continue;
                 // The head over it, and the jambs either side along the wall: wall or rock, no one's interior.
                 if (G.Interior(wi, fj + 1, wk) || G.Owner(wi, fj + 1, wk) == -2) continue;
                 int pi = Math.Abs(dk), pk = Math.Abs(di);
@@ -364,4 +373,10 @@ internal sealed partial class Depths
         }
         return spots.Distinct().OrderBy(s => s.Item1).ThenBy(s => s.Item3).ToList();
     }
+
+    /// <summary>Whether a column's floor at j is the top of a shaft or a lift (a hole you can't stand at).</summary>
+    bool ShaftUnder(int i, int j, int k) => G.Owner(i, j - 1, k) is int o && o >= 0 && S[o].Kind is "shaft" or "lift";
+
+    /// <summary>Whether a door's block (kept clear) stands beside a column at j.</summary>
+    bool BesideDoor(int i, int j, int k) => Dirs.Horizontal.Any(d => { var (di, dk) = V(d); return G.Owner(i + di, j, k + dk) == -3; });
 }
