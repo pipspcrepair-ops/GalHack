@@ -595,10 +595,11 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
     List<OreBody> OreBodiesNear(int ox, int oz)
     {
         List<OreBody> list = null;
-        foreach (Deposit d in Map.Deposits.InRect(ox - 6, oz - 6, ox + S + 6, oz + S + 6))
+        float reach = DepositField.MaxBodyRadius + 1.5f;
+        foreach (Deposit d in Map.Deposits.InRect(ox - reach, oz - reach, ox + S + reach, oz + S + reach))
         {
             double dx = Wrap(d.X - (ox + S * 0.5), Width), dz = Wrap(d.Y - (oz + S * 0.5), Height);
-            if (Math.Abs(dx) > S * 0.5 + 6 || Math.Abs(dz) > S * 0.5 + 6) continue;
+            if (Math.Abs(dx) > S * 0.5 + OreRadius(d) + 1.5 || Math.Abs(dz) > S * 0.5 + OreRadius(d) + 1.5) continue;
             OreCentre(d, out _, out double y, out _);
             (list ??= new List<OreBody>()).Add(new OreBody(d, y, OreRadius(d)));
         }

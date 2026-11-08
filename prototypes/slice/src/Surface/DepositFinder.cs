@@ -20,7 +20,7 @@ public sealed class DepositFinder
     public static readonly DepositKind[] Kinds = DepositField.EveryPlanet().ToArray();
 
     /// <summary>The deepest an ore body's centre may lie under the ground and still be shown, m.</summary>
-    public const float MaxDepth = 5f;
+    public const float MaxDepth = 9f;
 
     /// <summary>How far round an ore body's centre its cells are counted, m.</summary>
     const int BodyReach = 6;

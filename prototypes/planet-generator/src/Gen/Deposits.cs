@@ -21,48 +21,75 @@ public enum DepositKind : byte
 public readonly record struct Deposit(double X, double Y, DepositKind Kind, float Amount, float Depth);
 
 /// <summary>
-/// Resource deposits laid out so the early game stays short. The planet is cut into 283 m cells (two
-/// 200 m cells' ground: half as many deposits as the first worlds had, which crowded the scanner) and
-/// every cell with usable land gets one deposit of each common material, so from any walkable spot
-/// the nearest of each is at most a cell diagonal (about 400 m) away, on every archetype. The
-/// uncommon ores are smaller and fewer but never absent (design 626): one deposit to each block of
-/// a few cells, so they are spread evenly and a walk finds them. Each archetype also scatters its
-/// signature resource, in full-sized deposits, without that promise.
+/// How an ore is laid down on a world: one deposit to every <see cref="Every"/> base cells of ground
+/// (200 m squares), each <see cref="Size"/> times the base amount (its ore body grows with it), and,
+/// for the first ores, one promised within <see cref="Start"/> metres of the start (0: no promise).
+/// </summary>
+public readonly record struct OreRule(float Every, float Size, float Start = 0f);
+
+/// <summary>
+/// Resource deposits laid out so the early game stays short, but each a find: few, and big. Each ore
+/// has its own grid of cells, sized by its line in <see cref="Ores"/> (the tuning table) and the world
+/// type's <see cref="ArchetypeDef.DepositCount"/>; every cell with usable land gets one deposit of it,
+/// <see cref="OreRule.Size"/> times the base amount times the world type's
+/// <see cref="ArchetypeDef.DepositSize"/>. So from any walkable spot the nearest of each common ore is
+/// at most its cell's diagonal away (about 490 m), the first ores are promised near the start, and the
+/// uncommon ores are fewer still but never absent (design 626). Each world type's signature resource
+/// is scattered on top, without the promise.
 /// </summary>
 public sealed class DepositField
 {
     public const int CommonKinds = 6;
-    /// <summary>How much ground each cell's deposits serve: the deposit frequency (halved from 200 m cells).</summary>
-    public const double CellSize = 283;
     public const float MaxShallowDepth = 3f;
 
-    /// <summary>A signature resource that is a common material: these cells hold more of it.</summary>
-    const float RichCommon = 1.4f;
+    /// <summary>The ground the table's counts are measured in, and the cells deposits are found by (m).</summary>
+    public const double BaseCell = 200;
+
+    /// <summary>How near the start the first ores are promised (m).</summary>
+    public const float StartReach = 200f;
 
     /// <summary>
-    /// The uncommon ores: one deposit in each block of this many cells a side, at this share of a
-    /// common deposit's size. Gravium belongs on high-gravity worlds, but no world has its gravity
-    /// yet and a system is one world, so the Capital guarantee (design 627, "it adds the missing
-    /// deposit") puts a few on every planet until those worlds exist.
+    /// The tuning table: each ore's count (one deposit to every so many base cells) and size (times the
+    /// base amount: a body's radius is 1.4 m + 1.3 m an amount, its ore about the cube of that). The first
+    /// worlds had one common deposit to every cell at size 1, and the uncommon ores one to every 9, 9, 9,
+    /// 16 and 25 cells at 0.6, 0.6, 0.6, 0.6 and 0.5: too many and too small. Now a third as many, each
+    /// about three times the ore, so a world holds about as much and the scanner a third of the marks.
     /// </summary>
-    static readonly (DepositKind Kind, int Block, float Size)[] Scarce =
+    public static readonly IReadOnlyDictionary<DepositKind, OreRule> Ores = new Dictionary<DepositKind, OreRule>
     {
-        (DepositKind.Magnesium, 3, 0.6f),
-        (DepositKind.Cobalt, 3, 0.6f),
-        (DepositKind.Neodymium, 3, 0.6f),
-        (DepositKind.Gold, 4, 0.6f),
-        (DepositKind.Gravium, 5, 0.5f),
+        [DepositKind.Iron] = new(3f, 1.9f, StartReach),
+        [DepositKind.Copper] = new(3f, 1.9f, StartReach),
+        [DepositKind.Silicon] = new(3f, 1.9f, StartReach),
+        [DepositKind.Carbon] = new(3f, 1.9f, StartReach),
+        [DepositKind.Water] = new(3f, 1.9f),
+        [DepositKind.Burnstone] = new(3f, 1.9f),
+        [DepositKind.Magnesium] = new(27f, 1.3f),
+        [DepositKind.Cobalt] = new(27f, 1.3f),
+        [DepositKind.Neodymium] = new(27f, 1.3f),
+        [DepositKind.Gold] = new(48f, 1.3f),
+        [DepositKind.Gravium] = new(75f, 1.1f),
+        // Only ever a world's signature: where it is one, this often and this big.
+        [DepositKind.Crystal] = new(12f, 1.9f),
+        [DepositKind.Resin] = new(12f, 1.9f),
     };
+
+    /// <summary>A world's signature resource when it's an uncommon or signature-only ore: one to every so many base cells, on top of its own line.</summary>
+    const float SignatureEvery = 12f;
+
+    /// <summary>A signature resource that is a common material: a quarter of its deposits hold more of it.</summary>
+    const float RichCommon = 1.4f;
 
     /// <summary>The kinds every planet holds, in the design's guarantee: the commons and the uncommon ores.</summary>
     public static IEnumerable<DepositKind> EveryPlanet()
     {
-        for (int k = 0; k < CommonKinds; k++) yield return (DepositKind)k;
-        foreach (var s in Scarce) yield return s.Kind;
+        for (int k = 0; k <= (int)DepositKind.Gravium; k++) yield return (DepositKind)k;
     }
 
     /// <summary>The ores that are smaller and fewer than the commons.</summary>
     public static bool IsScarce(DepositKind kind) => kind >= DepositKind.Magnesium && kind <= DepositKind.Gravium;
+
+    /// <summary>The largest ore body any deposit can have (m): how far round a chunk to look for one that reaches into it.</summary>
+    public static float MaxBodyRadius => 1.4f + 1.3f * 1.6f * Ores.Values.Max(r => r.Size) * RichCommon * 1.5f;
 
     readonly WorldMap _map;
     readonly int _nx, _ny;
@@ -74,49 +101,41 @@ public sealed class DepositField
     public DepositField(WorldMap map)
     {
         _map = map;
-        _nx = Math.Max(1, (int)Math.Round(map.WidthMeters / CellSize));
-        _ny = Math.Max(1, (int)Math.Round(map.HeightMeters / CellSize));
-        _cw = map.WidthMeters / _nx; // a whole number of cells around the planet, so the grid wraps
+        // The index deposits are found by: base cells, a whole number of them round the planet so it wraps.
+        _nx = Math.Max(1, (int)Math.Round(map.WidthMeters / BaseCell));
+        _ny = Math.Max(1, (int)Math.Round(map.HeightMeters / BaseCell));
+        _cw = map.WidthMeters / _nx;
         _ch = map.HeightMeters / _ny;
         _cells = new List<Deposit>[_nx * _ny];
-        DepositKind signature = map.Def.Signature;
-        for (int cj = 0; cj < _ny; cj++)
-        for (int ci = 0; ci < _nx; ci++)
-        {
-            var list = new List<Deposit>(CommonKinds + 2);
-            for (int kind = 0; kind < CommonKinds; kind++)
-                if (Place(ci, cj, (DepositKind)kind, out Deposit d, (DepositKind)kind == signature && Rich(ci, cj) ? RichCommon : 1f)) list.Add(d);
-            // Signature resources: roughly one cell in four.
-            if ((int)signature >= CommonKinds && Rich(ci, cj) && Place(ci, cj, signature, out Deposit s)) list.Add(s);
-            _cells[cj * _nx + ci] = list;
-        }
-        foreach (var (kind, block, size) in Scarce) Scatter(kind, block, size);
+        for (int k = 0; k < _cells.Length; k++) _cells[k] = new List<Deposit>(4);
+        ArchetypeDef def = map.Def;
+        DepositKind signature = def.Signature;
+        foreach (DepositKind kind in EveryPlanet()) Lay(kind, Ores[kind].Every / def.DepositCount, Ores[kind].Size * def.DepositSize, kind == signature);
+        if ((int)signature > (int)DepositKind.Burnstone) Lay(signature, SignatureEvery / def.DepositCount, Ores[signature].Size * def.DepositSize, false, 0x516);
         foreach (DepositKind kind in EveryPlanet())
             if (!_cells.Any(c => c.Exists(d => d.Kind == kind))) AddMissing(kind);
+        Promise(Landing.Find(map, map.WidthMeters * 0.5, map.HeightMeters * 0.5));
         Count = _cells.Sum(c => c.Count);
     }
 
-    bool Rich(int ci, int cj) => Hash.Unit(Hash.Of(_map.Spec.Seed, ci, cj, 0x51C), 0) < 0.25f;
-
-    /// <summary>One deposit in each block of cells (none if a signature already put one there): the first cell of the block, in a rolled order, with land for it.</summary>
-    void Scatter(DepositKind kind, int block, float size)
+    /// <summary>One ore over the whole planet: its own grid of cells, a deposit in each with land for it.</summary>
+    void Lay(DepositKind kind, float every, float size, bool rich, int salt = 0)
     {
-        for (int bj = 0; bj < _ny; bj += block)
-        for (int bi = 0; bi < _nx; bi += block)
+        double side = BaseCell * Math.Sqrt(Math.Max(0.25f, every));
+        int nx = Math.Max(1, (int)Math.Round(_map.WidthMeters / side)), ny = Math.Max(1, (int)Math.Round(_map.HeightMeters / side));
+        double cw = _map.WidthMeters / nx, ch = _map.HeightMeters / ny;
+        for (int cj = 0; cj < ny; cj++)
+        for (int ci = 0; ci < nx; ci++)
         {
-            int w = Math.Min(block, _nx - bi), h = Math.Min(block, _ny - bj), n = w * h;
-            bool has = false;
-            for (int k = 0; k < n && !has; k++) has = _cells[(bj + k / w) * _nx + bi + k % w].Exists(d => d.Kind == kind);
-            if (has) continue;
-            int start = (int)(Hash.Of(_map.Spec.Seed, bi, bj, 0x5CA7 + (int)kind) % (ulong)n);
-            for (int k = 0; k < n; k++)
-            {
-                int at = (start + k) % n, ci = bi + at % w, cj = bj + at / w;
-                if (!Place(ci, cj, kind, out Deposit d, size)) continue;
-                _cells[cj * _nx + ci].Add(d);
-                break;
-            }
+            bool more = rich && (int)kind < CommonKinds && Hash.Unit(Hash.Of(_map.Spec.Seed, ci, cj, 0x51C + salt), 0) < 0.25f;
+            if (Place(ci * cw, cj * ch, cw, ch, Hash.Of(_map.Spec.Seed, ci, cj, 0xDE90 + (int)kind + salt), kind, out Deposit d, more ? size * RichCommon : size)) Add(d);
         }
+    }
+
+    void Add(Deposit d)
+    {
+        int i = Math.Clamp((int)Math.Floor(d.X / _cw), 0, _nx - 1), j = Math.Clamp((int)Math.Floor(d.Y / _ch), 0, _ny - 1);
+        _cells[j * _nx + i].Add(d);
     }
 
     /// <summary>The generator's guarantee (design 621): a kind the planet came up short of is added, wherever there is land, however little.</summary>
@@ -124,11 +143,30 @@ public sealed class DepositField
     {
         for (int cj = 0; cj < _ny; cj++)
         for (int ci = 0; ci < _nx; ci++)
-            if (Place(ci, cj, kind, out Deposit d))
+            if (Place(ci * _cw, cj * _ch, _cw, _ch, Hash.Of(_map.Spec.Seed, ci, cj, 0xADD + (int)kind), kind, out Deposit d, Ores[kind].Size * _map.Def.DepositSize))
             {
-                _cells[cj * _nx + ci].Add(d);
+                Add(d);
                 return;
             }
+    }
+
+    /// <summary>
+    /// The first ores near the start (the landing the start is found from): any not already within its
+    /// promise gets a deposit of its own, on usable land as near the site as a ring round it allows.
+    /// </summary>
+    void Promise(LandingSite site)
+    {
+        foreach (var (kind, rule) in Ores)
+        {
+            if (rule.Start <= 0f || Nearest(kind, site.X, site.Y, rule.Start * 2) <= rule.Start) continue;
+            ulong h = Hash.Of(_map.Spec.Seed, (int)kind, 0, 0x57A27);
+            for (int k = 0; k < 24; k++)
+            {
+                double a = (Hash.Unit(h, k) + k / 24.0) * Math.Tau, r = rule.Start * (0.4 + 0.5 * k / 24.0);
+                double x = Mathx.WrapX(site.X + Math.Cos(a) * r, _map.WidthMeters), y = Mathx.Wrap(site.Y + Math.Sin(a) * r, _map.HeightMeters);
+                if (Place(x - 20, y - 20, 40, 40, Hash.Of(h, k), kind, out Deposit d, rule.Size * _map.Def.DepositSize)) { Add(d); break; }
+            }
+        }
     }
 
     /// <summary>Deposits go on ground at least this high where the cell has any (metres above sea level).</summary>
@@ -138,9 +176,9 @@ public sealed class DepositField
     public static bool Usable(WorldMap map, int cell) =>
         map.Flags[cell] is 0 or CellFlags.Riparian or CellFlags.Coast && map.Elevation[cell] >= 1.5f && map.Slope[cell] < 0.6f;
 
-    bool Place(int ci, int cj, DepositKind kind, out Deposit deposit, float size = 1f)
+    /// <summary>A deposit of a kind somewhere in a cell (its corner, width and height in metres), on usable land, or false if the cell has none.</summary>
+    bool Place(double x0, double y0, double w, double hgt, ulong h, DepositKind kind, out Deposit deposit, float size = 1f)
     {
-        ulong h = Hash.Of(_map.Spec.Seed, ci, cj, 0xDE90 + (int)kind);
         float amount = Mathx.Lerp(0.6f, 1.6f, Hash.Unit(h, 40)) * size;
         float depth = Hash.Unit(h, 41) < 0.6f ? 0f : Mathx.Lerp(0.5f, MaxShallowDepth, Hash.Unit(h, 42));
 
@@ -151,8 +189,8 @@ public sealed class DepositField
         for (int attempt = 0; attempt < 16; attempt++)
         {
             double spread = attempt < 8 ? 0.5 : 0.9;
-            double x = (ci + 0.5 + (Hash.Unit(h, attempt * 2) - 0.5) * spread) * _cw;
-            double y = (cj + 0.5 + (Hash.Unit(h, attempt * 2 + 1) - 0.5) * spread) * _ch;
+            double x = Mathx.WrapX(x0 + (0.5 + (Hash.Unit(h, attempt * 2) - 0.5) * spread) * w, _map.WidthMeters);
+            double y = Mathx.Wrap(y0 + (0.5 + (Hash.Unit(h, attempt * 2 + 1) - 0.5) * spread) * hgt, _map.HeightMeters);
             int cell = _map.CellAt(x, y);
             if (!Usable(_map, cell) || (pass == 0 && _map.Elevation[cell] < SafeElevation)) continue;
             deposit = new Deposit(x, y, kind, amount, depth);
@@ -162,8 +200,7 @@ public sealed class DepositField
         // Small islands and narrow valleys: take the usable map cell nearest the middle, if any.
         // Every map cell that overlaps this deposit cell counts, at the nearest point of it inside.
         double best = double.MaxValue, bx = 0, by = 0;
-        double cx = (ci + 0.5) * _cw, cy = (cj + 0.5) * _ch;
-        double x0 = ci * _cw, x1 = (ci + 1) * _cw, y0 = cj * _ch, y1 = (cj + 1) * _ch;
+        double cx = x0 + w * 0.5, cy = y0 + hgt * 0.5, x1 = x0 + w, y1 = y0 + hgt;
         int mi0 = (int)Math.Floor(x0 / _map.CellSize), mi1 = (int)Math.Floor((x1 - 1e-6) / _map.CellSize);
         int mj0 = (int)Math.Floor(y0 / _map.CellSize), mj1 = (int)Math.Floor((y1 - 1e-6) / _map.CellSize);
         for (int pass = 0; pass < 2 && best == double.MaxValue; pass++)
@@ -177,8 +214,8 @@ public sealed class DepositField
             if (d < best)
             {
                 best = d;
-                bx = x;
-                by = y;
+                bx = Mathx.WrapX(x, _map.WidthMeters);
+                by = Mathx.Wrap(y, _map.HeightMeters);
             }
         }
         deposit = new Deposit(bx, by, kind, amount, depth);

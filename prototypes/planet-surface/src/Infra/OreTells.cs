@@ -30,8 +30,8 @@ public partial class InfraLayer
             if (HasTell(world, d)) yield return new OreTellPiece { Deposit = d, X = Mathx.WrapX(d.X, world.Width), Z = Mathx.Wrap(d.Y, world.Height) };
     }
 
-    /// <summary>How many deposits show a rock at the surface out in open country, and in rock country.</summary>
-    public const float OpenShare = 0.12f, RockyShare = 0.28f;
+    /// <summary>How many deposits show a rock at the surface out in open country, and in rock country (deposits are few and big: most show).</summary>
+    public const float OpenShare = 0.3f, RockyShare = 0.6f;
 
     /// <summary>Whether a deposit shows itself at the surface at all.</summary>
     public static bool HasTell(PlanetWorld world, Deposit d)
@@ -120,14 +120,26 @@ public partial class InfraLayer
                 Rgb c = low.Saturate(0.8f);
                 growth = new DecoRgb(c.R, c.G, c.B);
             }
-            DecoMeshData mesh = DecoOreTells.Build(TellOf(d), new DecoRgb(ore.R, ore.G, ore.B), DepositLook.Glow(d.Kind) * 0.3f, glints, seed, radius, new DecoRgb(rock.R, rock.G, rock.B), growth: growth);
-            // Laid along the slope and sunk in by whatever the ground still falls away under its rim.
-            Matrix4x4 place = Matrix4x4.CreateRotationY((seed % 360) * MathF.PI / 180f) * b.Seat(d.X, d.Y, radius);
-            // A rock's edge can reach a place's pad, where nothing solid may stand in a way in: there it stays scenery.
-            bool clear = true;
-            for (int a = 0; a < 8 && clear; a++)
-                clear = b.World.Source.StampWeight(Mathx.WrapX(d.X + MathF.Cos(a * MathF.PI / 4f) * (radius + 2f), b.World.Width), Mathx.Wrap(d.Y + MathF.Sin(a * MathF.PI / 4f) * (radius + 2f), b.World.Height)) <= 0f;
-            b.Merge(mesh, place, collide: OreTellsCollide && clear);
+            // A big body shows over much of its ground: its main tell over the middle, and lesser ones round
+            // it out to the body's edge (a cluster of slabs, knuckles or scree, not one small rock).
+            float body = GTerrain.PlanetTerrainSource.OreRadius(d);
+            int count = Math.Clamp(1 + (int)((body - 2.5f) / 1.2f), 1, 4);
+            for (int k = 0; k < count; k++)
+            {
+                float a = (seed % 628) / 100f + k * MathF.Tau / Math.Max(1, count - 1), off = k == 0 ? 0f : body * 0.65f;
+                double tx = d.X + MathF.Cos(a) * off, tz = d.Y + MathF.Sin(a) * off;
+                float r = k == 0 ? radius : radius * 0.55f;
+                ulong each = Hash.Of(seed, k, 0x7E1);
+                DecoMeshData mesh = DecoOreTells.Build(TellOf(d), new DecoRgb(ore.R, ore.G, ore.B), DepositLook.Glow(d.Kind) * 0.3f, glints, each, r, new DecoRgb(rock.R, rock.G, rock.B), growth: growth);
+                // Laid along the slope and sunk in by whatever the ground still falls away under its rim.
+                Matrix4x4 place = Matrix4x4.CreateRotationY((each % 360) * MathF.PI / 180f) * b.Seat(tx, tz, r);
+                // A rock's edge can reach a place's pad, where nothing solid may stand in a way in: there it stays scenery.
+                bool clear = true;
+                for (int q = 0; q < 8 && clear; q++)
+                    clear = b.World.Source.StampWeight(Mathx.WrapX(tx + MathF.Cos(q * MathF.PI / 4f) * (r + 2f), b.World.Width), Mathx.Wrap(tz + MathF.Sin(q * MathF.PI / 4f) * (r + 2f), b.World.Height)) <= 0f;
+                if (k > 0 && (b.World.Source.WaterSurfaceAt(Mathx.WrapX(tx, b.World.Width), Mathx.Wrap(tz, b.World.Height), out _) || b.World.Source.StampWeight(Mathx.WrapX(tx, b.World.Width), Mathx.Wrap(tz, b.World.Height)) > 0f)) continue;
+                b.Merge(mesh, place, collide: OreTellsCollide && clear);
+            }
         }
     }
 }
