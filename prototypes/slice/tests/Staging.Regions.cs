@@ -242,7 +242,7 @@ public partial class Staging
         Midday();
         WeatherSim sim = WeatherNow;
         sim.FrontsOff = true;
-        sim.Snap(WeatherKind.Thunderstorm);
+        sim.Snap(Enum.Parse<WeatherKind>(_args.GetValueOrDefault("weather", "Thunderstorm")));
         sim.ClearTornadoes();
         foreach (int x in _drive.UntilSettled()) yield return x;
         Vector3 start = _game.Survivor.WorldFeet, stand = start;
