@@ -596,8 +596,9 @@ public sealed partial class Town
                 p.Wait = 8f + (float)_rng.NextDouble() * 10f;
                 return;
             case "guard":
-                // A short beat: to a spot nearby and back to the post.
+                // A short beat: to a spot nearby and back to the post; unwelcome, you, they keep the post.
                 int post = p.Spawn.Spot;
+                if (Unwelcome) { GoTo(p, post); p.Wait = 4f; return; }
                 GoTo(p, p.Spot != post ? post : linked.Count > 0 ? linked[_rng.Next(linked.Count)] : post);
                 p.Wait = 6f + (float)_rng.NextDouble() * 8f;
                 return;
@@ -689,7 +690,7 @@ public sealed partial class Town
     bool Checkpoint(Person p, Vector3 player, Mood mood, float dt)
     {
         float away = (player - p.Pos).Length();
-        bool post = p.Spot == p.Spawn.Spot && (p.Path == null || p.Step >= p.Path.Count);
+        bool post = (p.Pos - Walk(Data.Spots[p.Spawn.Spot].Cell)).Length() < 4f;
         if (!post || !Unwelcome || away > 12f || p.Looks == null)
         {
             if (p.Halt > 0f || p.Holding) { p.Halt = 0f; p.Holding = false; }

@@ -199,7 +199,7 @@ public partial class BestiaryTest : Node
         Check(men > women + 0.04f * founded.Folk.Dimorphism, $"men and women differ in height ({men:F2} and {women:F2} m)");
         float wide = folk.Where(s => s.Figure.Sex == Sex.Male).Average(s => s.Figure.ShoulderW / s.Figure.HipW), broad = folk.Where(s => s.Figure.Sex == Sex.Female).Average(s => s.Figure.ShoulderW / s.Figure.HipW);
         Check(wide > broad, $"and in shoulder to hip ({wide:F2} and {broad:F2})");
-        Check(folk.Max(s => s.Figure.Height) - folk.Min(s => s.Figure.Height) > 0.25f && folk.Select(s => s.Figure.Build).Distinct().Count() > 150, "heights and builds spread");
+        Check(folk.Max(s => s.Figure.Height) - folk.Min(s => s.Figure.Height) > 0.2f && folk.Select(s => s.Figure.Build).Distinct().Count() > 150, "heights and builds spread");
         Check(life.People.Person(Seed(), PersonRole.Child).Figure.Height < 1.5f, "a child is a child");
         var e = life.People.Person(Seed(), PersonRole.Elder).Figure;
         Check(e.Age > 60f && e.Stoop > 0.2f, $"an elder is old and bent ({e.Age:F0}, stoop {e.Stoop:F2})");
@@ -214,7 +214,7 @@ public partial class BestiaryTest : Node
         Check(Count(PersonRole.Guard, Occupancy.Friendly, mild, f => f.Has("vest") && f.Prop == "rifle") > 30, "guards wear armour and carry rifles");
         Check(Count(PersonRole.Raider, Occupancy.Raider, mild, f => f.HairStyle == "mohawk" && f.Has("bandoleer") | f.Has("spike_pads")) > 30, "raiders have mohawks, spikes and bandoleers");
         Check(Count(PersonRole.Medic, Occupancy.Friendly, mild, f => f.Has("medic_band")) == 40, "medics carry their kit");
-        Check(Count(PersonRole.Farmer, Occupancy.Friendly, mild, f => f.Has("straw_hat") | f.Has("wide_hat") | f.Prop == "hoe") > 30, "farmers have hats and hoes");
+        Check(Count(PersonRole.Farmer, Occupancy.Friendly, mild, f => f.Has("straw_hat") | f.Has("wide_hat") | f.Prop == "hoe" | (f.Folk?.CrownRise ?? 0f) > 0.9f) > 30, "farmers have hats and hoes (or a crown no hat fits)");
         Check(Count(PersonRole.Elder, Occupancy.Friendly, mild, f => f.Prop == "cane") > 18, "elders have sticks");
         Check(Count(PersonRole.Drunk, Occupancy.Friendly, mild, f => f.Stagger > 0.3f) == 40, "drunks stagger");
         Check(Count(PersonRole.Trader, Occupancy.Friendly, Bestiary.Roll(_data, World(-25f)).People, f => f.Dress == "furs") == 40, "on ice everyone is in furs");
@@ -369,7 +369,7 @@ public partial class BestiaryTest : Node
             sim.Seized += _ => seized++;
             sim.Turned += _ => turned++;
             bool person = t % 2 == 0;
-            Species prey = person ? life.People.Person(Seed(), PersonRole.Farmer) : life.Moving.Where(s => !s.Mechanical && s.Figure == null && !s.Flies && s.Rig == RigKind.Legged).OrderBy(s => s.BodyHeight).First(); // one whose head it can reach
+            Species prey = person ? life.People.Person(Seed(), PersonRole.Farmer, founders: TallFolk(life)) : life.Moving.Where(s => !s.Mechanical && s.Figure == null && !s.Flies && s.Rig == RigKind.Legged).OrderBy(s => s.BodyHeight).First(); // one whose head it can reach
             if (!person && prey.BodyHeight > husk.Figure.Height + Seizing.ReachAbove) { GD.Print($"    (this world's smallest walker stands {prey.BodyHeight:F2} m: out of a Husk's reach, so not tried)"); outOfReach++; continue; }
             Creature h = sim.Spawn(husk, new Vector3(0f, 0f, 0f));
             Creature v = sim.Spawn(prey, new Vector3(1.6f, 0f, 0f));
@@ -395,12 +395,23 @@ public partial class BestiaryTest : Node
         Check(killed > 0 || outOfReach == 3, $"{killed} seized animals died and none turned");
     }
 
+    /// <summary>A place of the world's tallest folk (a short folk's Husks can't reach a standing head: owner's call, docs/alien-peoples.md 9).</summary>
+    Founders TallFolk(WorldLife life)
+    {
+        Founders tall = life.People.FoundersOf(Seed());
+        tall.Folk = life.People.Folks.OrderByDescending(f => f.Folk.HeightScale).First().Folk;
+        tall.Second = null;
+        tall.Outsiders = 0f;
+        return tall;
+    }
+
     /// <summary>A Husk of this world tall enough to seize a head.</summary>
     Species TallHusk(WorldLife life)
     {
+        Founders tall = TallFolk(life);
         for (int i = 0; i < 200; i++)
         {
-            Species s = life.People.Person(Seed(), PersonRole.Worker, Occupancy.Friendly, 0.2f, husk: true);
+            Species s = life.People.Person(Seed(), PersonRole.Worker, Occupancy.Friendly, 0.2f, husk: true, founders: tall);
             if (s.Figure.Height + Seizing.ReachAbove >= Seizing.StandingHead + 0.05f) return s;
         }
         throw new InvalidOperationException("no tall Husk in 200 rolls");
@@ -1551,8 +1562,15 @@ public partial class BestiaryTest : Node
         PeopleGenerator g = Bestiary.Roll(_data, World(15f)).People;
         float Spread(List<Species> l) { float m = l.Average(s => s.Figure.Skin.V); return MathF.Sqrt(l.Average(s => (s.Figure.Skin.V - m) * (s.Figure.Skin.V - m))); }
         Founders a = g.FoundersOf(Seed()), b = g.FoundersOf(Seed());
+        a.Second = null;
+        a.Outsiders = 0f;
         var here = Enumerable.Range(0, 60).Select(i => g.Person(Seed(), PersonRole.Worker, founders: a)).ToList();
-        var everywhere = Enumerable.Range(0, 60).Select(i => g.Person(Seed(), PersonRole.Worker)).ToList();
+        // (One folk: across the world that folk's people, from no place in particular.)
+        Founders anywhere = g.FoundersOf(Seed());
+        anywhere.Folk = a.Folk;
+        anywhere.Second = null;
+        anywhere.Outsiders = 1f;
+        var everywhere = Enumerable.Range(0, 60).Select(i => g.Person(Seed(), PersonRole.Worker, founders: anywhere)).ToList();
         Check(Spread(here) < Spread(everywhere) * 0.8f, $"a settlement mostly shares a look ({Spread(here):F3} spread against {Spread(everywhere):F3} across the world)");
         ulong one = Seed();
         var asRaider = g.Person(one, PersonRole.Raider, Occupancy.Raider, founders: a).Figure;

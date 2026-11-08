@@ -48,7 +48,7 @@ public static class Peoples
     /// biases parts towards a kind (the Vharn: carapace, mandibles, antennae, chitin), and is
     /// still only a bias on the same rolls.
     /// </summary>
-    public static Folk Roll(Rng rng, WorldConditions w, string id, Dictionary<string, float> lean = null)
+    public static Folk Roll(Rng rng, WorldConditions w, string id, Dictionary<string, float> lean = null, string covering = null)
     {
         lean ??= new Dictionary<string, float>();
         float Lean(string what) => lean.TryGetValue(what, out float b) ? b : 1f;
@@ -63,13 +63,13 @@ public static class Peoples
             ["skin"] = 2.5f, ["fur"] = cold ? 4f : hot ? 0.3f : 1.5f, ["feathers"] = band == ClimateBand.Frozen ? 0.4f : hot ? 0.8f : 1.2f,
             ["scales"] = cold ? 0f : hot ? 3f : 1f, ["chitin"] = cold ? 0f : hot ? 1.6f : 0.7f,
         };
-        f.Covering = Pick(rng, cover, Lean);
+        f.Covering = covering ?? Pick(rng, cover, Lean);
         string c = f.Covering;
         f.Hairless = c != "skin" || rng.Chance(0.4f);
 
         // Colour: a family the covering comes in; the world's light shifts it, as for anyone.
-        var fam = Array.Find(Families, x => x.Name == rng.Pick(FamiliesOf(c)));
-        if (lean.ContainsKey("dark")) fam = Array.Find(Families, x => x.Name == rng.Pick(new[] { "black", "dusk", "browns" }));
+        string family = lean.ContainsKey("dark") ? rng.Pick(new[] { "black", "dusk", "browns" }) : rng.Pick(FamiliesOf(c));
+        var fam = Array.Find(Families, x => x.Name == family);
         f.SkinHue = Narrow(rng, fam.Hue, 0.5f);
         f.SkinSat = fam.Sat;
         f.SkinVal = Narrow(rng, fam.Val, 0.7f);
@@ -82,7 +82,7 @@ public static class Peoples
 
         // The frame: cold thickens and shortens, heat draws out (the wildlife fit rule's numbers).
         float limbs = band switch { ClimateBand.Frozen => 0.82f, ClimateBand.Cold => 0.92f, ClimateBand.Hot => 1.08f, ClimateBand.Scorching => 1.14f, _ => 1f };
-        f.HeightScale = rng.Range(0.86f, 1.14f);
+        f.HeightScale = rng.Range(0.9f, 1.12f);
         f.LimbScale = 1f;
         f.LegScale = Math.Clamp(rng.Range(0.92f, 1.1f) * MathF.Sqrt(limbs), 0.86f, 1.16f);
         f.ArmScale = Math.Clamp(rng.Range(0.9f, 1.2f) * MathF.Sqrt(limbs), 0.8f, 1.28f);
@@ -141,9 +141,11 @@ public static class Peoples
         f.MouthSize = rng.Range(0.85f, 1.2f);
 
         // At least two things that change the outline (docs/alien-peoples.md 1.6): add a tail, then a crown, if short.
-        if (Outline(f) < 2 && f.Tail == "") { f.Tail = scales ? "thick" : feathers ? "fan" : fur ? "bushy" : "whip"; if (hot && f.Tail == "bushy") f.Tail = "whip"; f.TailLength = rng.Range(0.55f, 0.85f); f.Spent += 2; }
-        if (Outline(f) < 2 && f.Crown == "") { f.Crown = chitin ? "antennae" : feathers ? "plume" : scales ? "crest" : "pair"; f.Spent += 2; }
         Fit(f);
+        // (After the doorway fit, which can take height away: only parts count here.)
+        if (Outline(f) < 2 && f.Tail is "" or "stub") { f.Tail = scales ? "thick" : feathers ? "fan" : fur && !hot ? "bushy" : "whip"; f.TailLength = rng.Range(0.55f, 0.85f); f.Spent += 2; }
+        if (Outline(f) < 2 && f.Crown is "" or "knobs") { f.Crown = chitin ? "antennae" : feathers ? "plume" : scales ? "crest" : "pair"; f.Spent += 2; Fit(f); }
+        if (Outline(f) < 2 && f.Back == "") { f.Back = chitin ? "plates" : "spines"; f.Spent += 2; }
         return f;
     }
 
@@ -164,7 +166,7 @@ public static class Peoples
             ["chitin"] = 60f, ["mandibles"] = 40f, ["antennae"] = 40f, ["compound"] = 12f, ["band"] = 4f, ["plates"] = 8f, ["claws"] = 2.2f, ["glow"] = 3f, ["dark"] = 1f,
             [""] = 0.6f,
         };
-        Folk f = Roll(rng, home, "vharn", lean);
+        Folk f = Roll(rng, home, "vharn", lean, "chitin");
         // Thin and long in the arm, a little hunched: the insect line, on the human shape so their gestures read.
         f.ShoulderScale = MathF.Min(f.ShoulderScale, rng.Range(0.88f, 0.96f));
         f.ArmScale = MathF.Max(f.ArmScale, rng.Range(1.08f, 1.18f));

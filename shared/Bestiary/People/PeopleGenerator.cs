@@ -146,7 +146,8 @@ public sealed partial class PeopleGenerator
             {
                 f = Peoples.Roll(rng, w, $"folk{i}");
                 // Two folk of one world never share an outline: rolled again until they differ.
-                for (int tries = 0; tries < 8 && Folks.Exists(o => Peoples.Shared(o.Folk, f) > 2); tries++) f = Peoples.Roll(rng, w, $"folk{i}");
+                for (int tries = 0; tries < 40 && Folks.Exists(o => !o.Folk.Human && Peoples.Shared(o.Folk, f) > 2); tries++) f = Peoples.Roll(rng, w, $"folk{i}");
+                if (Folks.Exists(o => !o.Folk.Human && Peoples.Shared(o.Folk, f) > 2)) continue; // none different enough: one folk fewer
             }
             Folks.Add((Settle(f, w), i == 0 ? 1f : rng.Range(0.15f, 0.4f)));
         }

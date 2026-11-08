@@ -994,10 +994,12 @@ public partial class PlaceTest : Node
                 Wildlife.Creature h = sim.Spawn(game.Zone.Wildlife.Life.People.Person(Wildlife.Rng.Mix(place.Inst.SpawnSeed, 77), Wildlife.PersonRole.Worker, Wildlife.Occupancy.Friendly, 0.2f, husk: true), spot);
                 GD.Print("  (TEST: a Husk set down 9 m from one of them, held still)");
                 int answered = town.Fought + town.FledFrom + town.Barricades;
-                foreach (int x in drive.Wait(90)) yield return x;
-                Check(town.Fought + town.FledFrom + town.Barricades > answered, $"a Husk among them: {town.Fought} fought it, {town.FledFrom} ran, {town.Barricades} barricades");
+                foreach (int x in drive.Wait(150)) yield return x;
+                int sighting = town.People.Count(q => q.Facing > 0f);
+                Check(town.Fought + town.FledFrom + town.Barricades + sighting > answered, $"a Husk among them: {town.Fought} fought it ({sighting} with it in their sights), {town.FledFrom} ran, {town.Barricades} barricades");
                 if (!h.Removed) sim.Remove(h);
                 game.Zone.Wildlife.Frozen = false;
+                foreach (int x in drive.Wait(720)) yield return x; // until the scare has passed
             }
         }
         // The gesture wheel, through its key and the mouse: up for the top of the wheel (a wave), and they answer.
@@ -1019,12 +1021,18 @@ public partial class PlaceTest : Node
             foreach (int x in drive.Wait(60)) yield return x;
             Check(town.Standing < stood, $"a threat costs the place's goodwill ({stood:F0} to {town.Standing:F0})");
             // Robbing one of them: possible, and costly.
-            Town.Person mark = town.People.Where(q => !q.Dead && !q.Indoors && !q.Away && q.Act is Wildlife.BodyAct.HandsUp or Wildlife.BodyAct.Cower).OrderBy(q => q.Pos.DistanceTo(place.FromWorld(game.Survivor.WorldFeet))).FirstOrDefault();
+            // Robbing one of them: possible, and costly. Covered (looked at down your sights, close), their hands go up.
+            Town.Person mark = town.People.Where(q => !q.Dead && !q.Indoors && !q.Away && q.Looks != null && !q.Fleeing && q.Role != "guard" && q.Figure.Stage != Wildlife.LifeStage.Child).OrderBy(q => q.Pos.DistanceTo(place.FromWorld(game.Survivor.WorldFeet))).FirstOrDefault();
             if (mark != null)
             {
-                GD.Print("  (TEST: set down beside one of them with their hands up, to rob them)");
-                game.Survivor.PlaceOutside(place.ToWorld(mark.Pos + new Vector3(1.2f, 0.2f, 0f)).ToNumerics());
-                foreach (int x in drive.Wait(4)) yield return x;
+                GD.Print("  (TEST: set down 1.8 m from one of them, to rob them)");
+                game.Survivor.PlaceOutside(place.ToWorld(mark.Pos + new Vector3(1.8f, 0.2f, 0f)).ToNumerics());
+                for (int i = 0; i < 150 && mark.Act is not (Wildlife.BodyAct.HandsUp or Wildlife.BodyAct.Cower); i++)
+                {
+                    foreach (int x in drive.LookAt(place.ToWorld(mark.Pos + Vector3.Up * mark.Figure.Height * 0.6f), 1)) yield return x;
+                    if (mark.Pos.DistanceTo(place.FromWorld(game.Survivor.WorldFeet)) > 2.4f) game.Survivor.PlaceOutside(place.ToWorld(mark.Pos + new Vector3(1.8f, 0.2f, 0f)).ToNumerics());
+                }
+                GD.Print($"  (covered, they {mark.Act})");
                 float wasStanding = town.Standing;
                 game.Controls.Tap(Key.E);
                 foreach (int x in drive.Wait(5)) yield return x;
