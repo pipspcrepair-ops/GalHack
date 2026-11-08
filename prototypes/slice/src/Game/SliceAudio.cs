@@ -213,7 +213,7 @@ public partial class SliceAudio : Node
         var w = g.Zone.Weather;
         float shelter = g.Survivor.Aboard != null && !g.Survivor.OnOuterHull ? 0.8f : g.Survivor.Seated != null ? 0.6f : 0f;
         shelter = Mathf.Max(shelter, g.Spaceflight.AirGone); // the wind thins away with the air
-        shelter = Mathf.Max(shelter, 0.9f * (1f - g.Zone.Light.EyeOpen)); // and with the walls: a sealed room hears little of it
+        shelter = Mathf.Max(shelter, 0.9f * (1f - (g.Zone.Light?.EyeOpen ?? 1f))); // (the orbit's zone has no sky light) // and with the walls: a sealed room hears little of it
         // Under water everything comes through it, dull and far off; the weather not at all.
         bool under = g.Zone.Underwater?.CameraUnder == true;
         Muffle(under);

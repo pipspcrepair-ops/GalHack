@@ -184,16 +184,23 @@ public partial class OrbitTest : Node
         _game.Progress.Creative = true;
         GD.Print($"  (setup: handed over the Skiff's parts and the Big Core, and opened the tech tree)");
         _game.Pack.Grid.SetBlock(3, PlayerInventory.BlueprintBlock);
-        Vector3 pad = new Playthrough(_game).FlatSpot(_game.Start, 18f, span: 10f); // room for you to stand off it and see it
-        Vector3 stand = pad + (pad - _game.Start).Normalized() * 7f;
-        foreach (int x in _drive.WalkTo(new Vector3(stand.X, 0, stand.Z), 1.5f)) yield return x;
-        foreach (int x in _drive.Tap(Key.Key4)) yield return x;
-        foreach (int x in _drive.LookAt(pad, 6)) yield return x;
-        // The ground's collision may still be coming in where you look: the ghost shows once it can go down.
-        for (int i = 0; i < 300 && !_game.Builder.PlanShown; i++)
-            foreach (int x in _drive.LookAt(pad, 1)) yield return x;
-        foreach (int x in _drive.Click()) yield return x;
-        Vessel skiff = _game.Builder.Underway;
+        Vector3 pad = default;
+        Vessel skiff = null;
+        // As the staging does: a walk the ground blocks (a wall, a gully) leaves you too far off, so a few pads farther out are tried.
+        for (int attempt = 0; attempt < 3 && skiff == null; attempt++)
+        {
+            pad = new Playthrough(_game).FlatSpot(_game.Start, 18f + attempt * 14f, span: 10f); // room for you to stand off it and see it
+            Vector3 stand = pad + (pad - _game.Start).Normalized() * 7f;
+            foreach (int x in _drive.WalkTo(new Vector3(stand.X, 0, stand.Z), 1.5f)) yield return x;
+            if (_game.Pack.Selected != 3) foreach (int x in _drive.Tap(Key.Key4)) yield return x;
+            foreach (int x in _drive.LookAt(pad, 6)) yield return x;
+            // The ground's collision may still be coming in where you look: the ghost shows once it can go down.
+            for (int i = 0; i < 300 && !_game.Builder.PlanShown; i++)
+                foreach (int x in _drive.LookAt(pad, 1)) yield return x;
+            foreach (int x in _drive.Click()) yield return x;
+            skiff = _game.Builder.Underway;
+            if (skiff == null) GD.Print($"  (the blueprint set nothing down at {pad}, feet {_game.Survivor.WorldFeet}: {_game.Builder.Verdict})");
+        }
         if (skiff == null)
         {
             Fail($"the blueprint projector set nothing down (the tool says: {_game.Builder.Verdict}; shown {_game.Builder.PlanShown}, plan {_game.Builder.Plan != null}; pad {pad}, feet {_game.Survivor.WorldFeet}, slot {_game.Pack.Selected}, in hand {_game.Pack.InHand}, wish yaw {_game.Survivor.Yaw:F2})");
@@ -454,6 +461,13 @@ public partial class OrbitTest : Node
         foreach (int x in _pilot.FloatTo(BoxAt, 2.6f, 15f)) yield return x;
         foreach (int x in _pilot.Stop()) yield return x;
         foreach (int x in _drive.LookAt(BoxAt(), 8)) yield return x;
+        // The suit floats at any tilt: if a corner is in the way of the look, in closer and look again.
+        for (int k = 1; k <= 3 && string.IsNullOrEmpty(_game.UsePrompt()); k++)
+        {
+            foreach (int x in _pilot.FloatTo(BoxAt, 2.6f - 0.4f * k, 10f)) yield return x;
+            foreach (int x in _pilot.Stop()) yield return x;
+            foreach (int x in _drive.LookAt(BoxAt(), 8)) yield return x;
+        }
         Bill hold = _wreck.Storage.Contents;
         string boxPrompt = _game.UsePrompt();
         foreach (int x in _drive.Tap(Key.E)) yield return x;
@@ -568,6 +582,7 @@ public partial class OrbitTest : Node
 
         // Down on the gear, as a pilot would: the height under it sets the sink rate.
         int ticks = 0;
+        float hurtBefore = v.Body.Damage; // what it took out there (a drifting wreck's knock) is not the landing's
         Vector3 target = surface.GroundAt(down.PositionAfter.X, down.PositionAfter.Z);
         while (!v.Controller.Frozen && ticks++ < 60 * 120)
         {
@@ -586,7 +601,7 @@ public partial class OrbitTest : Node
         dxe = Math.Min(dxe, surface.Planet.Width - dxe);
         double landed = Math.Sqrt(dxe * dxe + Math.Pow(Planets.Gen.Mathx.Wrap(end.Z, surface.Planet.Height) - tz, 2));
         double finalHeading = GlobeMap.HeadingDegrees(v.Body.Rotation);
-        Check(v.Controller.Frozen && v.Body.Damage == 0f, $"it landed on its gear, undamaged, {landed:F0} m from the chosen point (settled {v.Controller.Frozen}, damage {v.Body.Damage:F1}, {v.AboveGround:F1} m up, {v.Body.Velocity.Length():F1} m/s, ticks {ticks})");
+        Check(v.Controller.Frozen && v.Body.Damage == hurtBefore, $"it landed on its gear, undamaged, {landed:F0} m from the chosen point (settled {v.Controller.Frozen}, damage {v.Body.Damage - hurtBefore:F2} on landing, {hurtBefore:F2} before it, {v.AboveGround:F1} m up, {v.Body.Velocity.Length():F1} m/s, ticks {ticks})");
         Check(landed < 150, $"the landing point is the point it came down over ({landed:F0} m off)");
         Check(HeadingError(finalHeading, heading) < 8, $"and its heading is the one it had over the globe: {finalHeading:F1}°");
         TheSkyCameBack();
