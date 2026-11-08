@@ -207,7 +207,7 @@ vec4 bodies(vec3 dir, vec3 sun) {
 		vec3 n;
 		vec4 m = lit_disc(dir, moon_dir[i], moon_radius[i], moon_light[i], n);
 		if (m.a <= 0.0) continue;
-		vec3 ground = moon_color[i] * (0.82 + 0.18 * texture(cloud_noise, n.xz * 0.7 + float(i) * 0.31).r);
+		vec3 ground = moon_color[i] * (0.82 + 0.18 * textureLod(cloud_noise, n.xz * 0.7 + float(i) * 0.31, 0.0).r);
 		float glows = 0.0;
 		if (moon_layer[i] >= 0) {
 			vec4 own = surface_at(moon_layer[i], n, moon_axis[i], moon_zero[i], moon_radius[i]);
@@ -236,7 +236,7 @@ uniform sampler3D cloud_detail : filter_linear_mipmap, repeat_enable;
 uniform float tower_wall[4];     // 0..1: a funnel hangs from this cell's base (a lumpy lowered bulge of it)
 float lump(vec3 p, float k) {
 	vec2 uv = (p.xz + cloud_drift * 0.35) / cloud_scale * k + vec2(p.y, -p.y) * 0.0009;
-	return texture(cloud_noise, uv).r * 0.6 + texture(cloud_noise, uv * 2.3 + 0.2).r * 0.4;
+	return textureLod(cloud_noise, uv, 0.0).r * 0.6 + textureLod(cloud_noise, uv * 2.3 + 0.2, 0.0).r * 0.4;
 }
 
 vec4 storm_at(vec3 p) {
@@ -287,7 +287,9 @@ float front_lag(float u) {
 	float f = u / front_shape.y, s = front_kind.z;
 	return front_wave.y * (0.5 - 0.5 * cos(6.2831853 * (front_wave.z * f + s)))
 		+ 220.0 * sin(6.2831853 * (front_wave.w * f + fract(s * 7.13)))
-		+ 90.0 * sin(6.2831853 * (floor(front_shape.y / 1600.0 + 0.5) * f + fract(s * 3.71)));
+		+ 90.0 * sin(6.2831853 * (floor(front_shape.y / 1600.0 + 0.5) * f + fract(s * 3.71)))
+		+ 120.0 * sin(6.2831853 * (floor(front_shape.y / 700.0 + 0.5) * f + fract(s * 5.31)))
+		+ 55.0 * sin(6.2831853 * (floor(front_shape.y / 330.0 + 0.5) * f + fract(s * 9.17)));
 }
 
 // Where a point stands against the nearest copy of the front: x along it, y ahead of its edge (negative behind), z its strength.
@@ -322,25 +324,31 @@ vec2 front_sides(vec3 fr) {
 float shelf_cloud(vec3 p, vec3 fr, bool cheap) {
 	float W = min(2600.0, front_reach() * 0.8);
 	float a = fr.y;
-	if (front_kind.x < 0.5 || fr.z < 0.01 || a > 80.0 || a < -W) return 0.0;
+	if (front_kind.x < 0.5 || fr.z < 0.01 || a > 260.0 || a < -W) return 0.0;
 	float x = clamp(-a / W, 0.0, 1.0);
-	float wob = texture(cloud_noise, vec2(along_wave(fr.x, 3000.0), 0.61 + front_kind.z)).r - 0.5;
+	float wob = textureLod(cloud_noise, vec2(along_wave(fr.x, 3000.0), 0.61 + front_kind.z), 0.0).r - 0.5;
 	float drop = (150.0 + 140.0 * front_kind.w) * smoothstep(0.0, 0.6, fr.z);
-	float lip = cloud_base - drop + wob * 60.0;
-	float k = x * 4.0;
+	// Heaps of the cloud's own noise, a few hundred metres across: they bend its tiers so no step runs
+	// ruled, and decide where it buds first as it grows (the strongest heaps fill in, then the rest).
+	float heap = textureLod(cloud_noise, vec2(along_wave(fr.x, 650.0), a / 650.0) + 0.41, 0.0).r * 0.6
+		+ textureLod(cloud_noise, vec2(along_wave(fr.x, 260.0), a / 260.0) + 0.77, 0.0).r * 0.4;
+	float lip = cloud_base - drop + wob * 60.0 + (heap - 0.5) * 90.0;
+	float k = x * 4.0 + (heap - 0.5) * 1.4;
 	float tiers = (floor(k) + smoothstep(0.45, 1.0, fract(k))) * 0.25;
 	float under = lip + (drop - 10.0) * mix(x, tiers, 0.75);
-	float s = sqrt(x) * 3.0;
+	float s = sqrt(x) * 3.0 + (heap - 0.5) * 1.1;
 	float face = (floor(s) + smoothstep(0.3, 1.0, fract(s))) / 3.0;
 	float over = lip + 20.0 + (drop + cloud_thick * 1.3) * mix(sqrt(x), face, 0.55);
-	float d = smoothstep(under, under + 28.0, p.y) * smoothstep(over, over - 40.0, p.y) * smoothstep(80.0, -30.0, a);
+	float d = smoothstep(under, under + 28.0, p.y) * smoothstep(over, over - 40.0, p.y) * smoothstep(80.0, -30.0, a + (heap - 0.5) * 300.0); // its front face heaped, not a wall
 	if (!cheap && d > 0.0) {
 		// Fine striations running along the edge under it, and a little tearing so it is not machined.
 		float stri = sin(a / 36.0 + wob * 11.0 + sin(6.2831853 * along_wave(fr.x, 4400.0)) * 1.5) * 0.5 + 0.5;
 		d *= 1.0 - 0.4 * stri * smoothstep(under + 90.0, under, p.y);
-		d -= (texture(cloud_noise, vec2(along_wave(fr.x, 900.0), a / 900.0) + 0.13).r - 0.45) * 0.5 * smoothstep(over - 200.0, over, p.y);
+		d -= (textureLod(cloud_noise, vec2(along_wave(fr.x, 900.0), a / 900.0) + 0.13, 0.0).r - 0.45) * 0.5 * smoothstep(over - 200.0, over, p.y);
 	}
-	return clamp(d, 0.0, 1.0) * smoothstep(0.0, 0.25, fr.z);
+	// Growing, it buds in rounded heaps along a ragged line and spreads, never appearing whole.
+	float grown = smoothstep(0.0, 1.0, fr.z);
+	return clamp(d, 0.0, 1.0) * smoothstep(1.0 - grown * 1.3, 1.15 - grown * 1.3, 1.0 - heap);
 }
 // Growing cumulus over a fair-weather waterspout's base (WeatherSim.SpawnSpouts): a swelling of the deck,
 // tall and with a flat darker base, where the spouts hang.
@@ -356,12 +364,13 @@ float cumulus_at(vec2 xz, float n) {
 
 float cloud_density(vec3 p, bool cheap) {
 	vec2 uv = (p.xz + cloud_drift) / cloud_scale;
-	float n = texture(cloud_noise, uv).r * 0.65 + texture(cloud_noise, uv * 2.0 + 0.31).r * 0.35;
+	// The second octave turned against the first, so no direction of the texture's own lines adds up.
+	float n = textureLod(cloud_noise, uv, 0.0).r * 0.65 + textureLod(cloud_noise, mat2(vec2(0.8, 0.6), vec2(-0.6, 0.8)) * uv * 2.0 + 0.31, 0.0).r * 0.35;
 	bool stormy = tower_count > 0 || front_shape.x > 0.001;
 	// Stratus: the same noise pulled out flat along one way, an even sheet with long seams in it.
 	// Flat layers come in broad patches that drift across the map: some places heaped, some layered.
-	float st = (stratus > 0.001 && !stormy) ? stratus * smoothstep(0.3, 0.55, texture(cloud_noise, uv * 0.06 + 0.77).r + stratus * 0.25) : 0.0;
-	if (st > 0.001) n = mix(n, 0.32 + 0.42 * texture(cloud_noise, uv * vec2(0.3, 1.3) + 0.47).r, st);
+	float st = (stratus > 0.001 && !stormy) ? stratus * smoothstep(0.3, 0.55, textureLod(cloud_noise, uv * 0.06 + 0.77, 0.0).r + stratus * 0.25) : 0.0;
+	if (st > 0.001) n = mix(n, 0.32 + 0.42 * textureLod(cloud_noise, uv * vec2(0.3, 1.3) + 0.47, 0.0).r, st);
 	vec4 st_ = tower_count > 0 ? storm_at(p) : vec4(0.0);
 	float storm = st_.x;
 	float cover = mix(0.12, 1.05, cloud_cover);
@@ -371,7 +380,11 @@ float cloud_density(vec3 p, bool cheap) {
 	float extra = 0.0, behind = 0.0;
 	if (front_shape.x > 0.001) {
 		vec3 fr = front_at(p.xz);
-		vec2 sides = front_sides(fr);
+		// Where its deck begins and ends, the cloud's own small heaps decide: it buds and spreads in rounded
+		// masses along a ragged line, never along a ruled one.
+		vec3 heaped = fr;
+		heaped.y += (textureLod(cloud_noise, uv * 1.9 + 0.37, 0.0).r - 0.5) * 900.0 + (n - 0.5) * 500.0;
+		vec2 sides = front_sides(heaped);
 		behind = sides.x;
 		halo *= 1.0 - sides.y; // clear sky right beside the front: its storms' deck only spreads behind the edge
 		float hh = (p.y - cloud_base) / cloud_thick;
@@ -379,9 +392,13 @@ float cloud_density(vec3 p, bool cheap) {
 		float thin = 0.6 * sides.y * smoothstep(1.0, 1.8, hh);
 		coverage += sides.x * 0.75 - sides.y * 0.55 - storm * 0.55 * thin;
 		storm *= 1.0 - thin;
+		// The anvils' sheet: lenses, thick where the noise is and thinning to nothing at their edges, so
+		// from below they are soft rounded patches, not slabs cut out with sheer sides.
+		float lens = smoothstep(0.25, 0.75, textureLod(cloud_noise, uv * 0.7 + 0.21, 0.0).r);
+		float half_thick = 0.42 * lens;
 		float sheet = fr.z * smoothstep(-1500.0, 0.0, fr.y) * smoothstep(min(9000.0 + 5000.0 * front_kind.w, front_reach() - 300.0), 1000.0, fr.y)
-			* smoothstep(2.05, 2.3, hh) * smoothstep(2.9, 2.55, hh) * front_kind.x;
-		extra = max(shelf_cloud(p, fr, cheap), sheet * 0.45 * smoothstep(0.3, 0.65, texture(cloud_noise, uv * 0.7 + 0.21).r));
+			* smoothstep(half_thick, half_thick * 0.3, abs(hh - 2.47)) * front_kind.x;
+		extra = max(shelf_cloud(p, fr, cheap), sheet * 0.45 * lens);
 	}
 	coverage += halo * 0.4;
 	float swell = cumulus_count > 0 ? cumulus_at(p.xz, n) : 0.0;
@@ -395,9 +412,12 @@ float cloud_density(vec3 p, bool cheap) {
 	top = mix(top, 1.5 + 0.8 * n, swell); // a cumulus growing tall over the spouts
 	float profile = smoothstep(0.0, mix(0.07, 0.2, max(storm, behind)), h) * (1.0 - smoothstep(top * mix(0.55, 0.82, max(storm, behind)), top, h)); // flat topped
 	float d = coverage * 3.2 * profile;
+	// Rounded shoulders, not walls: the coverage is a field over the ground, so on its own every cloud
+	// stood as a prism with sheer sides; near its edge it now thins the higher it goes, a heap.
+	d *= smoothstep(0.0, 0.06 + 0.5 * h * h, coverage);
 	if (!cheap) {
 		vec3 q = (p + vec3(cloud_drift.x, 0.0, cloud_drift.y) * 1.3) / (cloud_scale.x * 0.125);
-		float detail = texture(cloud_detail, q).r * 0.65 + texture(cloud_detail, q * 3.0).r * 0.35;
+		float detail = textureLod(cloud_detail, q, 0.0).r * 0.65 + textureLod(cloud_detail, q * 3.0, 0.0).r * 0.35;
 		d -= detail * (0.55 - 0.25 * h) * (1.0 - cloud_cover * 0.5);
 		if (storm > 0.01) d -= detail * 0.5 * (1.0 - smoothstep(0.15, 0.7, storm)); // billows and curling lobes where it meets the open sky
 	}
@@ -448,7 +468,10 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter) 
 	float flash = weather_flash.w * (0.12 + 1.4 * pow(max(dot(rd, weather_flash.xyz), 0.0), 7.0));
 	float fronts = 0.0; // how much of what this ray met was the front's: its shelf and deck stand out low over the horizon
 	// The shelf is a thin crisp wedge: through its band the march takes short steps (and may take more of them).
+	// Its short steps come out of their own budget: once it is spent the march goes on at the plain step,
+	// so the far side of the ray is never cut off (a cut along the band's edges drew square masses).
 	int most = fronted ? steps + 64 : steps;
+	float short_left = 64.0;
 	for (int i = 0; i < most && t < t1; i++) {
 		vec3 p = ro + rd * t;
 		// The world is round: far clouds follow the land over the horizon (the same slow curve from the
@@ -460,7 +483,13 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter) 
 		vec3 fr = vec3(0.0);
 		if (fronted) {
 			fr = front_at(p.xz);
-			if (front_kind.x > 0.5 && fr.y < 300.0 && fr.y > -2800.0 && p.y < cloud_base + cloud_thick * 1.6) step_t = min(dt, 22.0 + t * 0.004);
+			// Eased in and out across the band's edges, so no seam follows them.
+			float band = front_kind.x * smoothstep(500.0, 300.0, fr.y) * smoothstep(-3200.0, -2800.0, fr.y)
+				* smoothstep(cloud_base + cloud_thick * 1.9, cloud_base + cloud_thick * 1.6, p.y);
+			if (band > 0.0 && short_left > 0.0) {
+				step_t = mix(dt, min(dt, 22.0 + t * 0.004), band);
+				short_left -= 1.0 - step_t / dt;
+			}
 		}
 		float d = cloud_density(p, false);
 		if (d > 0.01) {
@@ -595,9 +624,9 @@ void sky() {
 			// combing warped, so they wander like real cirrus; patches of it come and go across the sky.
 			vec2 q = dir.xz / (dir.y + 0.55) + cloud_drift * 0.00002;
 			vec2 r = vec2(q.x * 0.82 + q.y * 0.57, q.y * 0.82 - q.x * 0.57);
-			r += (texture(cloud_noise, q * 0.3 + 0.6).rg - 0.5) * 0.7;
-			float s = texture(cloud_noise, r * vec2(0.14, 0.42)).r * 0.7 + texture(cloud_noise, r * vec2(0.34, 1.1) + 0.2).r * 0.3;
-			float patch = smoothstep(0.35, 0.6, texture(cloud_noise, q * 0.12 + 0.3).r);
+			r += (textureLod(cloud_noise, q * 0.3 + 0.6, 0.0).rg - 0.5) * 0.7;
+			float s = textureLod(cloud_noise, r * vec2(0.14, 0.42), 0.0).r * 0.7 + textureLod(cloud_noise, r * vec2(0.34, 1.1) + 0.2, 0.0).r * 0.3;
+			float patch = smoothstep(0.35, 0.6, textureLod(cloud_noise, q * 0.12 + 0.3, 0.0).r);
 			float wisps = smoothstep(0.5, 0.78, s) * patch * smoothstep(0.02, 0.22, dir.y) * (1.0 - cover);
 			vec3 lit = mix(sunset * 1.4, cloud_lit, smoothstep(0.02, 0.32, sun.y)) * (0.08 + 0.92 * day);
 			col = mix(col, lit, wisps * cirrus * 0.5);

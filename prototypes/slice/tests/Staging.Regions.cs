@@ -317,4 +317,44 @@ public partial class Staging
         sim.GetWarnings(list, _game.Survivor.WorldFeet);
         GD.Print($"(tornado warning: {string.Join("; ", list.Select(w => $"{w.Sign} {w.Text}"))})");
     }
+
+    /// <summary>
+    /// Clouds growing at one spot, from a clear sky to a storm front coming over: a frame every --every
+    /// game seconds (8) for --frames (8), looking upwind from --up metres (2, or 300 for the view from above).
+    /// </summary>
+    IEnumerable<int> FrontGrowth()
+    {
+        var sky = _game.Zone.Sky;
+        sky.Paused = true;
+        double noon = 0.5;
+        for (double t = 0.2; t < 0.8; t += 0.002) if (sky.SunAt(t).Y > sky.SunAt(noon).Y) noon = t;
+        sky.TimeOfDay = noon;
+        _game.Visor.Visible = false;
+        _game.Hands.Visible = false;
+        _game.Alerts.Visible = false;
+        WeatherSim sim = WeatherNow;
+        sim.Snap(WeatherKind.Clear);
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        sim.Force(WeatherKind.Thunderstorm);
+        Vector2 wind = sim.SegmentAt(sim.Time).To.Wind;
+        Vector3 upwind = new Vector3(-wind.X, 0f, -wind.Y).Normalized();
+        float up = (float)Num("up", 2);
+        Vector3 eye = Lookout(_game.Survivor.WorldFeet, upwind, up);
+        eye.Y = _game.Zone.GroundAt(eye.X, eye.Z).Y + up;
+        float pitch = up > 50f ? -0.25f : 0.18f;
+        _game.FixedCamera = new Transform3D(Basis.LookingAt(upwind * MathF.Cos(pitch) + Vector3.Up * MathF.Sin(pitch), Vector3.Up), eye);
+        sky.DebugView((int)Num("debug", 0));
+        _game.Zone.Weather.ShaftsHidden = Num("noshafts", 0) == 1;
+        int frames = (int)Num("frames", 8);
+        double every = Num("every", 8);
+        string pattern = _args.GetValueOrDefault("out", "growth.png").Replace(".png", "-{0:D2}.png");
+        for (int f = 0; f < frames; f++)
+        {
+            foreach (int x in Shot(string.Format(pattern, f))) yield return x;
+            GD.Print($"(growth {f}: {sim.Time:F0} s, cover here {sim.LocalAt(eye).CloudCover:F2}, front {(sim.Front == null ? "none" : $"{sim.Front.Ahead(eye):F0} m off, strength {sim.Front.Strength:F2}")})");
+            Hurry(4);
+            for (int i = 0; i < every * 60 / 4; i++) yield return 0;
+            Hurry(1);
+        }
+    }
 }
