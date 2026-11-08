@@ -53,7 +53,7 @@ public static class Attacks
     }
 
     /// <summary>How close it has to be to start a bite that will reach: no nearer than its jaws let it.</summary>
-    public static float Range(Creature c) => Spitting.Can(c) ? Spitting.Reach : MathF.Max(c.Stats.AttackRange, Jaws(c) + Stretch(c) + BodyRadius + 0.2f);
+    public static float Range(Creature c) => Spitting.Can(c) ? Spitting.ReachOf(c.Species) : MathF.Max(c.Stats.AttackRange, Jaws(c) + Stretch(c) + BodyRadius + 0.2f);
 
     /// <summary>How far a lunge's pose throws its head forward, on top of its jaws at rest.</summary>
     public static float Stretch(Creature c) => c.Species.Rig == RigKind.Legged ? c.Species.Body.Size * 0.3f : c.Species.Body.Size * 0.08f;
@@ -132,6 +132,11 @@ public static class Attacks
         CombatRules r = w.Combat;
         ITarget t = c.AttackTarget;
         c.PhaseTime += dt;
+        if (c.Phase == AttackPhase.Hold)
+        {
+            Seizing.Hold(w, c, dt);
+            return;
+        }
         if (c.Species.Flight == FlightKind.Glide && c.Space == null)
         {
             Swoop.Update(w, c, t, dt);
@@ -205,6 +210,11 @@ public static class Attacks
                 c.WantCrouch = 1f;
                 c.Rear = 0.5f * k;
                 break;
+            case AttackStyle.Seize:
+                // Arms coming up for the head, the worms already reaching.
+                c.Rear = 0.6f * k;
+                c.Stir = 1f;
+                break;
             default:
                 c.Rear = k;
                 break;
@@ -214,6 +224,8 @@ public static class Attacks
     /// <summary>Launches at the committed aim point, stopping with the jaws on it.</summary>
     static void Launch(WildSim w, Creature c)
     {
+        // A Husk goes for the head as often as not; otherwise it swings an arm.
+        c.Seizing = c.Species.Attack.Style == AttackStyle.Seize && Seizing.CanReach(w, c, c.AttackTarget) && c.Rng.Chance(w.Data.Husks.SeizeShare);
         if (c.Space != null)
         {
             Crawl.Launch(w, c);
@@ -262,6 +274,13 @@ public static class Attacks
             hit = t.Attackable
                   && WildSim.Flat(off).Length() <= r.ContactRadius + c.Radius * 0.4f
                   && t.Position.Y - groundAtStrike < 2.2f; // a jump at the right moment clears a low lunge
+        }
+        // A seize needs room where it lands, as it did when it set off; without it, it's a blow.
+        if (hit && c.Seizing && Seizing.CanReach(w, c, t))
+        {
+            // It has them by the head.
+            Seizing.Begin(w, c, t);
+            return;
         }
         Deliver(w, c, t, hit);
         if (c.Species.Flight == FlightKind.Hover) c.Velocity = Vector3.Zero; // a sting stops dead at the skin: what carried it in doesn't carry it through

@@ -114,6 +114,35 @@ public sealed class WildSim
     /// </summary>
     public Func<Vector3, Vector3, bool> SightLine;
 
+    /// <summary>
+    /// Whether a point (sim frame) is inside something solid that the terrain's heights don't know
+    /// of: a place's walls and floors standing on the surface. The game sets it; walkers out on the
+    /// surface never step into it, and nothing spawns in it. (Creatures of a cave or a place go by
+    /// their own <see cref="ISolidSpace"/>.)
+    /// </summary>
+    public Func<Vector3, bool> SolidAt;
+
+    /// <summary>A Husk has seized someone by the head; let go of them (broken free or not); turned them into one of its own.</summary>
+    public event Action<SeizeEvent> Seized, LetGo, Turned;
+    internal void RaiseSeized(SeizeEvent e) => Seized?.Invoke(e);
+    internal void RaiseLetGo(SeizeEvent e) => LetGo?.Invoke(e);
+    internal void RaiseTurned(SeizeEvent e) => Turned?.Invoke(e);
+    /// <summary>A Husk murmured through its worms (a game plays it, low).</summary>
+    public event Action<Creature> Murmured;
+    internal void RaiseMurmur(Creature c) => Murmured?.Invoke(c);
+
+    /// <summary>Husk dens' worm masses on the floors and walls, and one destroyed.</summary>
+    public readonly List<WormMass> Masses = new();
+    public event Action<WormMass> MassDied;
+    internal void RaiseMassDied(WormMass m) => MassDied?.Invoke(m);
+
+    /// <summary>Who a seized person becomes: the same person as a Husk. A game may hand it the world's own (<see cref="WorldLife.Turn"/>).</summary>
+    public Func<Species, ulong, Species> TurnHost;
+
+    /// <summary>Creatures found inside solid geometry and freed (see <see cref="Interpenetration"/>); should stay at zero.</summary>
+    public int Freed;
+    float _scanAt;
+
     /// <summary>Loud sounds of the last moment.</summary>
     public readonly List<WorldNoise> Noises = new();
 
@@ -223,6 +252,7 @@ public sealed class WildSim
         Terrain = terrain;
         Nav = nav;
         Clock = new DayClock(data.World);
+        TurnHost = (host, seed) => Husks.Turn(host, seed, Data.Husks);
     }
 
     // ---- Spawning ---------------------------------------------------------------------
@@ -318,6 +348,13 @@ public sealed class WildSim
             Yaw = 0f,
         };
         c.Rng = new Rng(Rng.Mix(species.Seed, (ulong)c.Id));
+        // A kind drawn from several bodies (a world's Husks) is one of them each time.
+        if (species.Hosts is { Count: > 0 } hosts)
+        {
+            species = hosts[c.Rng.Int(0, hosts.Count - 1)];
+            c.Species = species;
+            c.Health = species.Stats.MaxHealth;
+        }
         // Half of a dimorphic species is the other sex.
         if (species.Mate != null && c.Rng.Chance(0.5f))
         {
@@ -384,7 +421,7 @@ public sealed class WildSim
             float a = i * 2.39996f, r = spread * MathF.Sqrt((i + 0.5f) / count);
             Vector3 p = center + new Vector3(MathF.Cos(a) * r, 0f, MathF.Sin(a) * r);
             p = FreeSpot(p, rng);
-            if (InBaseZone(p) || (allow != null && !allow(p))) continue;
+            if (InBaseZone(p) || (allow != null && !allow(p)) || Interpenetration.SolidSurface(this, p, species)) continue;
             list.Add(Spawn(i < young ? species.Young : species, p, herd, pack));
         }
         if (ActivityCycles && list.Count > 0) Rests.Assign(this, list);
@@ -434,6 +471,8 @@ public sealed class WildSim
         c.Space = space;
         c.Clearance = Crawl.ClearanceFor(species);
         Crawl.Place(this, c, near, up);
+        // A spot inside a wall, a pillar or a stair is no spot: the nearest open floor near it, or nowhere.
+        if (Interpenetration.Inside(this, c) && !Interpenetration.Free(this, c, near)) c.Removed = true;
         c.Home = c.Position;
         c.Rig.Reset(this, c);
         return c;
@@ -467,7 +506,17 @@ public sealed class WildSim
             if (c.Removed || c.Dormant && !c.Dead) continue;
             c.Age += dt;
             c.HurtFlash = MathF.Max(0f, c.HurtFlash - dt * 4f);
+            if (c.HeldBy != null && (c.HeldBy.Removed || c.HeldBy.Dead || c.HeldBy.Holding != c.AsTarget)) c.HeldBy = null;
             if (c.Dead) UpdateCorpse(c, dt);
+            else if (c.HeldBy != null)
+            {
+                // Seized face to face: it can do nothing but be held.
+                c.Desired = Vector3.Zero;
+                c.Velocity = Vector3.Zero;
+                c.FacePoint = c.HeldBy.Position;
+                c.LookAt = c.HeldBy.Position + Vector3.Up * 1.5f;
+                c.Rear = 0.6f;
+            }
             else if (Frozen)
             {
                 c.Desired = Vector3.Zero;
@@ -511,7 +560,14 @@ public sealed class WildSim
         }
 
         if (Colonies.Count > 0) Colony.StepAll(this, dt);
+        if (Masses.Count > 0) WormMasses.Step(this, dt);
         if (Settlements.Count > 0 && Frame % 15 == 0) WatchTowns();
+        // Now and then, anything that has ended up inside a wall or a floor is put back in the open.
+        if (Time >= _scanAt)
+        {
+            _scanAt = Time + 1f;
+            foreach (Creature c in Interpenetration.Scan(this)) if (Interpenetration.Free(this, c)) Freed++;
+        }
         // Moss, fungus and scraps grow back slowly.
         if (Food.Count > 0 && Frame % 30 == 0)
             foreach (FoodPatch f in Food) f.Amount = MathF.Min(1f, f.Amount + dt * 30f / 90f);

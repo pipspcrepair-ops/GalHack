@@ -10,6 +10,10 @@ public enum LifeStage { Child, Adult, Elder }
 /// <summary>What someone does for a living, which is what they look like.</summary>
 public enum PersonRole { Worker, Trader, Guard, Farmer, Medic, Scavenger, Elder, Child, Drunk, Raider }
 
+/// <summary>What the worms do to a body's shape: one or two of these on a Husk, so it reads wrong from a distance.</summary>
+[Flags]
+public enum Wrong { None = 0, Jaw = 1, Arm = 2, Hunch = 4, Head = 8 }
+
 /// <summary>Who holds a place: the same people, friendly, gone to raiding, or gone wild.</summary>
 public enum Occupancy { Friendly, Raider, Feral }
 
@@ -68,8 +72,29 @@ public sealed class Figure
     public string Dress = "shirt";
     /// <summary>What they carry: "", rifle, club, hoe, cane, bottle.</summary>
     public string Prop = "";
-    /// <summary>A Hollow husk: gaunt, slack, and what lives in it shows at the mouth and the eyes.</summary>
+    /// <summary>A Husk: taken by the worms, which come out of the mouth, the nose, the eyes and the ears. Gaunt and slack, moved like a puppet.</summary>
     public bool Husk;
+    /// <summary>Their clothes are torn: rents and hanging strips, skin showing through.</summary>
+    public bool Torn;
+    /// <summary>What the worms have done to the body's shape (none for most people): see <see cref="Husks"/>.</summary>
+    public Wrong Wrongs;
+    /// <summary>The arm that is too long (0 left, 1 right), and how much longer.</summary>
+    public int LongArm;
+    public float ArmStretch = 1f;
+    /// <summary>How far the head sits off true, radians (to the side, and forward), and how far the jaw hangs, as a share of the head.</summary>
+    public float HeadTilt, HeadDroop, JawDrop;
+
+    /// <summary>One side's upper arm and forearm (a Husk's long arm is longer).</summary>
+    public float UpperArmOf(int side) => side == LongArm ? UpperArm * ArmStretch : UpperArm;
+    public float ForearmOf(int side) => side == LongArm ? Forearm * ArmStretch : Forearm;
+
+    /// <summary>A copy to change (a person turned): every number and colour, their own set of clothes.</summary>
+    public Figure Clone()
+    {
+        var f = (Figure)MemberwiseClone();
+        typeof(Figure).GetField(nameof(Wear))!.SetValue(f, new HashSet<string>(Wear));
+        return f;
+    }
     /// <summary>A child doing a grown-up's job out of necessity: walks, stands and dresses like one.</summary>
     public bool Hardened;
     /// <summary>A child at play: quick, darting, never still for long.</summary>

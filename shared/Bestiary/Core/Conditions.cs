@@ -15,8 +15,10 @@ public sealed class WorldConditions
 {
     public ulong Seed;
     public float Alienness;
-    /// <summary>The Bloom has this world.</summary>
+    /// <summary>A Hollow world: the fungus has its wildlife (most of it is Hollows). How often worlds are, the world's own layer decides.</summary>
     public bool Bloom;
+    /// <summary>How far in toward the galaxy's core, 0 on the rim to 1 at the core: the Husks spread outward from there. The rim when nothing says.</summary>
+    public float Coreward;
     /// <summary>Mean surface temperature, C.</summary>
     public float TempC = 15f;
     /// <summary>Oxygen in the air, percent.</summary>
@@ -78,7 +80,7 @@ public sealed class WorldConditions
         float chance = spec.Archetype == Archetype.Alien ? 0.3f : 0.08f;
         w.Mutagen = rng.Chance(chance) ? rng.Range(0.35f, 1f) : 0f;
         w.Mutagen = MathF.Max(w.Mutagen, Math.Clamp((w.Radiation - 1f) * 0.2f, 0f, 0.3f));
-        if (bloom) w.Mutagen = MathF.Max(w.Mutagen, 0.5f);
+        // (The fungus of a Hollow world takes animals; it twists nobody's body, so it adds no mutagen.)
         return w;
     }
 }

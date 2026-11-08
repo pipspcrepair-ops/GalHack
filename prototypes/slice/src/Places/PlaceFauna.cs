@@ -46,7 +46,7 @@ public sealed class PlaceFauna
 
     public PoiPopulation Population;
     public WildSim Sim;
-    public bool Silent => Population == null || Population.Silent || Population.Spawns.Count == 0;
+    public bool Silent => Population == null || Population.Silent || Population.Spawns.Count == 0 && Population.Masses.Count == 0;
     DeepSite _site;
 
     /// <summary>The place's rooms as the population function sees them, and who lives there (worker-safe).</summary>
@@ -63,6 +63,12 @@ public sealed class PlaceFauna
             Derelict = ship,
             Livable = deep.Livable,
         };
+        // The Turned (code HSK) hold it, alone or sharing it with others: a Husk den.
+        if (inst.Occupancy is { } occ && (occ.Main == Occupant.Turned || occ.Second == Occupant.Turned || occ.Trace == Occupant.Turned))
+        {
+            plan.Husks = true;
+            plan.Shared = occ.Main != Occupant.Turned || occ.Second != null || occ.How != Sharing.Alone;
+        }
         // People keep a place clear of what would hunt them, as a garrison does: at most vermin, down in the dark.
         if (inst.Occupancy is { Main: Occupant.Scavengers or Occupant.Squatters or Occupant.Gang or Occupant.Machines or Occupant.Faction or Occupant.Cyborgs or Occupant.Robots or Occupant.Cult or Occupant.Keepers or Occupant.Guardians, Second: not (Occupant.Nesters or Occupant.Prowlers) })
             plan.State = PlaceState.Active;
@@ -182,8 +188,17 @@ public sealed class PlaceFauna
         var c = new PInt3(x, y, z);
         Block b = inst.Blocks.Get(c);
         if (b.IsAir) return y <= Assembler.GroundY && !inst.Layout.Occupied[c];
-        return BlockInfo.Collides(b.Type) && b.Type is not (BlockType.Door or BlockType.Pane or BlockType.Table or BlockType.Rail or BlockType.Lattice);
+        return Built(b);
     }
+
+    /// <summary>Solid to a creature out on the surface: only what was built (walls, floors, roofs, heavy fittings), not the ground round it.</summary>
+    public static bool BuiltSolid(PoiInstance inst, PInt3 c)
+    {
+        Block b = inst.Blocks.Get(c);
+        return !b.IsAir && Built(b);
+    }
+
+    static bool Built(Block b) => BlockInfo.Collides(b.Type) && b.Type is not (BlockType.Door or BlockType.Pane or BlockType.Table or BlockType.Rail or BlockType.Lattice);
 
     /// <summary>
     /// Its sim, made once (worker-safe): the place's ground round it for anything that wanders

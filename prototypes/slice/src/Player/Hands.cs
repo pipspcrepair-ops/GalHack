@@ -130,7 +130,8 @@ public partial class Hands : Node3D
         _shakeTime += dt * 55f;
         TiltCamera();
         HandKind hand = g?.Pack?.Hand ?? HandKind.Empty;
-        bool show = g?.Survivor != null && g.Survivor.Seated == null && !g.ThirdPerson && g.FixedCamera == null && !g.Suit.Dead
+        // (Not while a Husk has your head: its face is all there is to see.)
+        bool show = g?.Survivor != null && g.Survivor.Seated == null && !g.ThirdPerson && g.FixedCamera == null && !g.Suit.Dead && g.HeldBy == null
                     && hand is HandKind.Tool or HandKind.Block or HandKind.Core or HandKind.Device or HandKind.Blueprint;
         Visible = show;
         if (!show) return;

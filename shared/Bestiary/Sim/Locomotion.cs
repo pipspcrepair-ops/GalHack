@@ -93,8 +93,25 @@ public static class Locomotion
         Avoid(w, c, ref p, ref v);
         p = Bound(w, p, ref v);
         p.Y = w.Terrain.Height(p.X, p.Z);
+        if (w.SolidAt != null) KeepOutOfSolid(w, c, ref p, ref v);
         c.Velocity = v;
         c.Position = p;
+    }
+
+    /// <summary>
+    /// A place's walls are walls: a step that would take the body into one slides along it on
+    /// whichever way is still open, or doesn't happen. (A body already inside, which never should
+    /// be, is let walk out: the sim's scan puts it back in the open.)
+    /// </summary>
+    static void KeepOutOfSolid(WildSim w, Creature c, ref Vector3 p, ref Vector3 v)
+    {
+        if (!Interpenetration.SolidSurface(w, p, c.Species) || Interpenetration.SolidSurface(w, c.Position, c.Species)) return;
+        var alongX = new Vector3(p.X, 0f, c.Position.Z);
+        var alongZ = new Vector3(c.Position.X, 0f, p.Z);
+        if (!Interpenetration.SolidSurface(w, alongX, c.Species)) { p = alongX; v.Z = 0f; }
+        else if (!Interpenetration.SolidSurface(w, alongZ, c.Species)) { p = alongZ; v.X = 0f; }
+        else { p = c.Position; v = Vector3.Zero; return; }
+        p.Y = w.Terrain.Height(p.X, p.Z);
     }
 
     /// <summary>Hoppers stand still on the ground and cover distance in ballistic hops.</summary>
@@ -204,6 +221,13 @@ public static class Locomotion
         else if (c.Species.Flies) p.Y = Mathf.Lerp(c.LungeFrom.Y, ground + 1f, eased);
         else p.Y = ground;
         c.Velocity = (c.LungeTo - c.LungeFrom) / MathF.Max(0.01f, c.PhaseLength);
+        // A lunge into a wall stops at the wall.
+        if (!c.Species.Flies && Interpenetration.SolidSurface(w, p, c.Species) && !Interpenetration.SolidSurface(w, c.Position, c.Species))
+        {
+            c.LungeTo = c.Position;
+            c.Velocity = Vector3.Zero;
+            return;
+        }
         c.Position = p;
         if (c.Species.Rig == RigKind.Hopper) c.Hop = t < 1f ? HopPhase.Air : HopPhase.Land;
     }
@@ -238,7 +262,7 @@ public static class Locomotion
     {
         Rig rig = c.Rig;
         bool glider = c.Species.Flight == FlightKind.Glide && !c.Landed; // it can't step aside: it lifts over you, and a dive is held to this too
-        if (rig == null || c.Dead || c.InWalls || c.Falling || (c.Phase == AttackPhase.Lunge && !glider) || c.Species.Rig == RigKind.Swarm) return;
+        if (rig == null || c.Dead || c.InWalls || c.Falling || (c.Phase == AttackPhase.Lunge && !glider) || c.Phase == AttackPhase.Hold || c.Species.Rig == RigKind.Swarm) return;
         if (c.Space != null && c.Facing.Y.Y < -0.3f) return; // on a ceiling: over your head, whatever the headroom
         foreach (ITarget t in w.Targets)
         {
@@ -278,6 +302,8 @@ public static class Locomotion
             {
                 moved = Bound(w, moved, ref c.Velocity);
                 if (!c.Species.Flies && c.Hop == HopPhase.Ground) moved.Y = w.Terrain.Height(moved.X, moved.Z);
+                // Never shoved into a wall.
+                if (Interpenetration.SolidSurface(w, moved, c.Species) && !c.Species.Flies) continue;
             }
             float closing = c.Velocity.Dot(push);
             if (closing < 0f) c.Velocity -= push * closing;

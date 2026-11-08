@@ -45,6 +45,8 @@ public sealed class PoiPlan
     public bool Derelict;
     /// <summary>How livable its world is, 0..1: a harsh world's places hold less (an overrun place holds what the Bloom brought).</summary>
     public float Livable = 1f;
+    /// <summary>A Husk den (its occupancy is the Turned): Husks in its rooms, worm masses on its floors and walls. Shared: it shares the place with others (by floors, a front line, or in layers), so fewer.</summary>
+    public bool Husks, Shared;
     public readonly List<PoiRoom> Rooms = new();
 }
 
@@ -80,6 +82,8 @@ public sealed class PoiPopulation
     public readonly List<FoodPatch> Food = new();
     public readonly List<Crack> Cracks = new();
     public readonly List<FoodLink> FoodChain = new();
+    /// <summary>A Husk den's worm masses.</summary>
+    public readonly List<WormMass> Masses = new();
 
     public int Count(DeepRole role) => Spawns.FindAll(s => s.Role == role).Count;
 }
@@ -165,7 +169,7 @@ public static class PoiFauna
         var rng = Rng.For(poi.Seed, "poi-fauna");
         PopulationRules pr = rules.Population;
         string state = poi.State.ToString();
-        if (rng.Chance(pr.Silent.GetValueOrDefault(state, 0.25f)))
+        if (!poi.Husks && rng.Chance(pr.Silent.GetValueOrDefault(state, 0.25f)))
         {
             pop.Silent = true;
             pop.Note = "empty and silent";
@@ -213,12 +217,12 @@ public static class PoiFauna
                 case RoomKind.Vent:
                 case RoomKind.Duct:
                     if (active) break;
-                    if (poi.Derelict && rng.Chance(0.5f * density)) NestIn(pop, fauna, theme, room, rng, infested, density, rules, DeepRole.DerelictNester, true);
+                    if (poi.Derelict && (!poi.Husks || poi.Shared) && rng.Chance(0.5f * density)) NestIn(pop, fauna, theme, room, rng, infested, density, rules, DeepRole.DerelictNester, true);
                     else if (rng.Chance(0.6f * density)) Hidden(pop, fauna, theme, room, rng, infested, HideKind.Vent);
                     break;
                 case RoomKind.Hold:
                 case RoomKind.EngineRoom:
-                    if (poi.Derelict && !active) NestIn(pop, fauna, theme, room, rng, infested, density, rules, DeepRole.DerelictNester, true);
+                    if (poi.Derelict && !active && (!poi.Husks || poi.Shared)) NestIn(pop, fauna, theme, room, rng, infested, density, rules, DeepRole.DerelictNester, true);
                     Subsisters(pop, fauna, theme, room, rng, infested, density * 0.6f, pr);
                     break;
                 default:
@@ -229,9 +233,11 @@ public static class PoiFauna
                         break;
                     }
                     bool dark = room.Dark || d >= 1;
-                    if (deep && room.Kind is RoomKind.Room or RoomKind.Hall or RoomKind.Vault or RoomKind.Descent)
+                    // Husks don't breed in nests: a den the Turned hold alone has no eggs anywhere (it spreads only by the worms getting into someone).
+                    bool nests = !poi.Husks || poi.Shared;
+                    if (nests && deep && room.Kind is RoomKind.Room or RoomKind.Hall or RoomKind.Vault or RoomKind.Descent)
                         NestIn(pop, fauna, theme, room, rng, infested, density, rules, poi.Derelict ? DeepRole.DerelictNester : DeepRole.Nester, poi.Derelict);
-                    else if (infested && d >= 1 && rng.Chance(0.3f))
+                    else if (nests && infested && d >= 1 && rng.Chance(0.3f))
                         NestIn(pop, fauna, theme, room, rng, true, density, rules, DeepRole.Nester, false);
                     if (dark && room.Kind != RoomKind.Entrance && rng.Chance(pr.Lurker * MathF.Min(1.5f, density))) Lurker(pop, fauna, theme, room, rng, infested);
                     Subsisters(pop, fauna, theme, room, rng, infested, density, pr);
@@ -258,6 +264,8 @@ public static class PoiFauna
         }
 
         Cap(poi, pop, rng, pr, state);
+        // A Husk den: theirs come after the cap, as a den is theirs before it is anything's.
+        if (poi.Husks) Den(poi, pop, fauna, theme, rng);
 
         // The food chain: every hunter of the place eats every subsister in it.
         var preds = new HashSet<Species>();
@@ -269,7 +277,7 @@ public static class PoiFauna
         }
         foreach (Species p in preds)
         foreach (Species q in prey) pop.FoodChain.Add(new FoodLink(p, q));
-        if (pop.Spawns.Count == 0)
+        if (pop.Spawns.Count == 0 && pop.Masses.Count == 0)
         {
             pop.Silent = true;
             pop.Note = active ? "kept clear by its garrison" : "empty and silent";
@@ -319,6 +327,54 @@ public static class PoiFauna
             foreach (PoiSpawn s in from) shallowest = Math.Min(shallowest, Depth(s));
             from = from.FindAll(s => Depth(s) == shallowest);
             pop.Spawns.Remove(from[rng.Int(0, from.Count - 1)]);
+        }
+    }
+
+    /// <summary>
+    /// A Husk den: in every room a few of the world's Husks (prowling the corridors, lurking in the
+    /// rooms, more of them deeper down), and the worms gathered into masses on the floors and the
+    /// walls, more and bigger in the halls and deeper down. Fewer where the den shares the place.
+    /// </summary>
+    static void Den(PoiPlan poi, PoiPopulation pop, DeepFauna fauna, PoiTheme theme, Rng rng)
+    {
+        float share = poi.Shared ? 0.5f : 1f;
+        foreach (PoiRoom room in poi.Rooms)
+        {
+            if (room.Kind is RoomKind.Vent or RoomKind.Duct || room.Size.Y < 2f) continue;
+            // A room another occupant nests in is theirs: no Husks or worms among the eggs.
+            if (pop.Spawns.Exists(s => s.Room == room.Index && s.Nest >= 0)) continue;
+            bool hall = room.Kind is RoomKind.Hall or RoomKind.Hold or RoomKind.Vault;
+            int husks = (int)MathF.Round((rng.Int(0, 2) + (room.Depth >= 1 ? 1 : 0) + (hall ? 1 : 0)) * share);
+            for (int i = 0; i < husks; i++)
+            {
+                bool corridor = room.Kind == RoomKind.Corridor;
+                Species sp = fauna.HuskFor(theme, corridor ? DeepRole.Prowler : DeepRole.Lurker);
+                if (sp == null) break;
+                if (corridor)
+                {
+                    List<Vector3> route = Beat(poi, room, rng, out _, out _);
+                    pop.Spawns.Add(new PoiSpawn { Role = DeepRole.Prowler, Species = sp, Position = route[0], Room = room.Index, Route = route });
+                }
+                else pop.Spawns.Add(new PoiSpawn { Role = DeepRole.Lurker, Species = sp, Position = FloorPoint(room, rng, 0.8f), Room = room.Index, Hide = HideKind.Dark });
+            }
+            int masses = (int)MathF.Round((rng.Int(1, 2) + (room.Depth >= 1 ? 1 : 0) + (hall ? 1 : 0)) * MathF.Max(share, 0.6f));
+            for (int i = 0; i < masses; i++)
+            {
+                float size = MathF.Min(rng.Range(0.6f, 1.25f) * (hall ? 1.3f : 1f) * (1f + 0.15f * room.Depth), room.Width * 0.45f);
+                var m = new WormMass { Size = size, Seed = Rng.Mix(poi.Seed, (ulong)(pop.Masses.Count * 7919 + room.Index)), Room = room.Index };
+                if (rng.Chance(0.6f) || room.Size.Y < 2.5f)
+                {
+                    m.Position = FloorPoint(room, rng, MathF.Max(0.5f, size * 0.6f));
+                    m.Normal = Vector3.Up;
+                }
+                else
+                {
+                    Crack wall = WallCrack(room, rng, 0, -1);
+                    m.Position = wall.Position + Vector3.Up * rng.Range(0.3f, MathF.Min(1.6f, room.Size.Y - 0.6f));
+                    m.Normal = wall.Normal;
+                }
+                pop.Masses.Add(m);
+            }
         }
     }
 
@@ -507,6 +563,22 @@ public static class PoiFauna
         }
         foreach (Nest n in pop.Nests)
             if (SpaceMath.FloorBelow(space, n.Position.X, n.Position.Y + 0.5f, n.Position.Z, 2f) is float y) n.Position = new Vector3(n.Position.X, y, n.Position.Z);
+        foreach (WormMass m in pop.Masses)
+        {
+            // Onto the surface it grows on: down onto the floor, or back against the wall.
+            if (m.Normal.Y > 0.5f)
+            {
+                if (SpaceMath.FloorBelow(space, m.Position.X, m.Position.Y + 0.5f, m.Position.Z, 2f) is float y) m.Position = new Vector3(m.Position.X, y, m.Position.Z);
+            }
+            else
+            {
+                Vector3 into = -m.Normal;
+                float t = SpaceMath.Ray(space, m.Position + m.Normal * 0.5f, into, 2f);
+                m.Position = m.Position + m.Normal * 0.5f + into * t;
+            }
+            if (space.Density(m.Middle) > Interpenetration.Tolerance) continue; // inside something: it isn't there
+            sim.Masses.Add(m);
+        }
 
         var colonies = new Dictionary<Species, Colony>();
         foreach (PoiSpawn s in pop.Spawns)

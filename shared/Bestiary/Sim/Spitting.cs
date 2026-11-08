@@ -31,8 +31,13 @@ public static class Spitting
     public const float HitRadius = 1.05f;
 
     public static readonly Color BileColour = new(0.62f, 0.68f, 0.14f);
+    /// <summary>A Husk's maggots: pale, the colour of grubs.</summary>
+    public static readonly Color MaggotColour = new(0.9f, 0.86f, 0.74f);
 
-    public static Color ColourOf(Species s) => s.Spit == SpitKind.Blood ? s.Blood : BileColour;
+    public static Color ColourOf(Species s) => s.Spit switch { SpitKind.Blood => s.Blood, SpitKind.Maggots => MaggotColour, _ => BileColour };
+
+    /// <summary>How far a throat throws: maggots come up at short range only.</summary>
+    public static float ReachOf(Species s) => s.Spit == SpitKind.Maggots ? 6f : Reach;
 
     public static bool Can(Creature c) => c.Species.Spit != SpitKind.None && c.Space == null;
 

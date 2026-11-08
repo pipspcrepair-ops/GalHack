@@ -54,6 +54,7 @@ public partial class Game
         Doors = new BlockDoors { Name = "BlockDoors", Zone = Zone, Feet = () => Survivor.WorldFeet };
         Zone.AddChild(Doors);
         Tool.Places = Places;
+        Zone.Wildlife.SolidAt = Places.SolidAt;
         Zone.Light.Places = () => Places.Standing;
         Tool.Salvaged += () => Progress.Earn(2, "salvage");
         Places.WallBroken += (p, s) => Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Clank, p.WorldOf(s.WallCells[0], 1f), 0.5f, -2f);

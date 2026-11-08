@@ -30,11 +30,28 @@ uniform float detail_strength = 0.0;
 instance uniform float hurt = 0.0;
 // 0..1: a lurker waking in the dark: its glow brightens and its eyes catch the light.
 instance uniform float wake = 0.0;
+// Worms (material 5) sway on their own: how far a tip goes, m, and (per instance) how stirred they
+// are by something moving near, 0..1. UV.x on a worm is which worm (whole part) and how far along it.
+uniform float worm_scale = 0.0;
+instance uniform float worm_stir = 0.0;
+// Which way they reach (model space) and how hard, for a mass reaching at what comes near.
+instance uniform vec4 worm_reach = vec4(0.0);
 
 varying vec3 lp;
 
 void vertex() {
 	lp = VERTEX;
+	if (UV.y > 4.5 && worm_scale > 0.0) {
+		float id = floor(UV.x);
+		float a = fract(UV.x);
+		float ph = id * 1.93;
+		float f = 1.6 + 3.2 * worm_stir + mod(id, 5.0) * 0.17;
+		// Slow searching, and now and then a sudden twitch, each worm on its own.
+		float twitch = pow(max(0.0, sin(TIME * (0.9 + mod(id, 3.0) * 0.4) + ph * 2.3)), 14.0);
+		vec3 sway = vec3(sin(TIME * f + ph + a * 4.0), 0.6 * sin(TIME * f * 0.83 + ph * 1.7 + a * 3.1), cos(TIME * f * 1.13 + ph * 0.6 + a * 3.7));
+		VERTEX += sway * a * a * worm_scale * (1.0 + 1.4 * worm_stir + 1.6 * twitch);
+		VERTEX += worm_reach.xyz * a * a * worm_scale * 2.2 * worm_reach.w;
+	}
 }
 
 float hash3(vec3 p) {
@@ -89,9 +106,10 @@ void fragment() {
 	bool horn = mat > 0.5 && mat < 1.5;
 	bool shell = mat > 1.5 && mat < 2.5;
 	bool membrane = mat > 2.5 && mat < 3.5;
-	bool eye = mat > 3.5;
+	bool eye = mat > 3.5 && mat < 4.5;
+	bool worm = mat > 4.5;
 
-	float m = pattern == 0 ? 0.0 : pattern_mask(lp * pattern_freq) * UV.x;
+	float m = pattern == 0 || worm ? 0.0 : pattern_mask(lp * pattern_freq) * UV.x;
 	vec3 albedo = mix(base, accent, m);
 
 	// Surface detail: a height field in the piece's own space, turned into a bump with screen
@@ -101,6 +119,10 @@ void fragment() {
 	float strength = detail_strength;
 	if (eye) {
 		strength = 0.0;
+	} else if (worm) {
+		// Ringed, like an earthworm's body.
+		h = tri(fract(UV.x) * 22.0);
+		strength *= 0.6;
 	} else if (horn) {
 		h = tri(lp.y * detail_freq * 0.5 + vnoise(lp * detail_freq * 0.5) * 0.8);
 		strength *= 0.5;
@@ -152,6 +174,11 @@ void fragment() {
 		ROUGHNESS = 0.08;
 		SPECULAR = 0.9;
 		RIM = 0.0;
+	} else if (worm) {
+		// Wet: a glossy sheen, and light through the thin flesh.
+		ROUGHNESS = 0.28;
+		SPECULAR = 0.6;
+		BACKLIGHT = albedo * 0.5;
 	}
 
 	float g = COLOR.a * glow_strength;
