@@ -221,10 +221,11 @@ public sealed class PlaceLook
         PlaceLook look = For(inst);
         inst.Blocks.Look = look;
         BlockGrid g = inst.Blocks;
-        foreach (Int3 c in g.Cells())
+        // Only what stands: walking every cell of a big works' box would make every empty chunk of it.
+        foreach (var (c, found) in g.Blocks().ToList())
         {
+            if (found.Variant != 0 || found.Type is not (BlockType.Cube or BlockType.Ramp or BlockType.Corner or BlockType.InvCorner)) continue;
             ref Block b = ref g.At(c);
-            if (b.IsAir || b.Variant != 0 || b.Type is not (BlockType.Cube or BlockType.Ramp or BlockType.Corner or BlockType.InvCorner)) continue;
             if (b.Role is not (Role.Wall or Role.Roof or Role.Decor) || b.Material is Material.Glass or Material.Lumen or Material.Glyph or Material.Crystal) continue;
             bool slope = b.Type != BlockType.Cube;
             Finish f = look.Pick(b, b.Role == Role.Roof || slope ? Side.Roof : Side.Out, slope, 0).Finish;

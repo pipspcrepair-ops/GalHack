@@ -56,16 +56,18 @@ public partial class PoiTest
                     if (b.Codes.Count != b.VertexCount * 2) uncoded++;
                     for (int v = 0; v + 3 < b.VertexCount; v += 4)
                     {
+                        // Which block the face belongs to: the cell it is on. Growing things (plants, the Bloom) and
+                        // the strokes laid over faces (a weak wall's cracks, glyph lines) are drawn as they are.
+                        var c = new Int3((int)MathF.Floor((b.Positions[v * 3] + b.Positions[(v + 2) * 3]) * 0.5f - b.Normals[v * 3] * 0.1f),
+                            (int)MathF.Floor((b.Positions[v * 3 + 1] + b.Positions[(v + 2) * 3 + 1]) * 0.5f - b.Normals[v * 3 + 1] * 0.1f),
+                            (int)MathF.Floor((b.Positions[v * 3 + 2] + b.Positions[(v + 2) * 3 + 2]) * 0.5f - b.Normals[v * 3 + 2] * 0.1f));
+                        Block at = g.Get(c);
+                        if (at.IsAir || at.Material is Material.Plant or Material.Bloom or Material.Flesh or Material.DeadLumen or Material.Lumen or Material.Water) continue;
                         faces++;
                         FinishKind fin = Gen.Surfaces.FinishOf(b.Codes[v * 2]);
                         kinds.Add(fin);
                         if (fin != FinishKind.Plain) continue;
                         plain++;
-                        // Which block left it plain: the cell the face is on.
-                        var c = new Int3((int)MathF.Floor((b.Positions[v * 3] + b.Positions[(v + 2) * 3]) * 0.5f - b.Normals[v * 3] * 0.1f),
-                            (int)MathF.Floor((b.Positions[v * 3 + 1] + b.Positions[(v + 2) * 3 + 1]) * 0.5f - b.Normals[v * 3 + 1] * 0.1f),
-                            (int)MathF.Floor((b.Positions[v * 3 + 2] + b.Positions[(v + 2) * 3 + 2]) * 0.5f - b.Normals[v * 3 + 2] * 0.1f));
-                        Block at = g.Get(c);
                         string key = at.IsAir ? "air" : $"{at.Type}/{at.Material}/{at.Role}";
                         bare[key] = bare.GetValueOrDefault(key) + 1;
                     }
@@ -91,10 +93,32 @@ public partial class PoiTest
         }
         Check(lookless == 0 && uncoded == 0, $"every spawned place knows its look ({lookless} not) and every vertex has its code ({uncoded} buffers without)");
         string worst = string.Join(", ", bare.OrderByDescending(kv => kv.Value).Take(5).Select(kv => $"{kv.Key} {kv.Value}"));
-        Check(plain <= faces * 0.06, $"of {faces} opaque faces in {families.Count} fresh places, {100.0 * plain / Math.Max(1, faces):F1}% are bare colour (most: {worst})");
+        Check(plain <= faces * 0.04, $"of {faces} opaque faces of built things in {families.Count} fresh places, {100.0 * plain / Math.Max(1, faces):F1}% are bare colour (most: {worst})");
         Check(mergedPlain <= mergedFaces * 0.06, $"from further off, {100.0 * mergedPlain / Math.Max(1, mergedFaces):F1}% of {mergedFaces} merged faces are bare");
         Check(farPlain <= farFaces * 0.1, $"far off, {100.0 * farPlain / Math.Max(1, farFaces):F1}% of {farFaces} lump faces are bare");
         Check(kinds.Count >= 12, $"{kinds.Count} finishes seen across them: {string.Join(" ", kinds.OrderBy(k => k))}");
+
+        // What the finishes cost: a big works meshed with and without them, the best of three each.
+        {
+            FamilyDef works = _lib.Family("works_complex");
+            PoiInstance w = PoiFactory.Generate(_lib, works, 0, works.Rarity, PoiState.Abandoned, (ulong)rand.NextInt64());
+            var mo = new MeshOptions { RockMin = w.Blocks.Min, RockMax = w.Blocks.Max, RockBottom = w.Blocks.Min.Y };
+            double Best(bool on)
+            {
+                Mesher.Finishes = on;
+                double best = double.MaxValue;
+                for (int k = 0; k < 3; k++)
+                {
+                    var t = System.Diagnostics.Stopwatch.StartNew();
+                    Mesher.Build(w.Blocks, w.Layout.Occupied, mo);
+                    best = Math.Min(best, t.Elapsed.TotalMilliseconds);
+                }
+                Mesher.Finishes = true;
+                return best;
+            }
+            double plainMs = Best(false), finishedMs = Best(true);
+            Check(finishedMs < plainMs * 1.6 + 50, $"meshing a big works ({w.Blocks.CountBlocks()} blocks) with its finishes takes {finishedMs:F0} ms, {plainMs:F0} ms without (best of three)");
+        }
 
         // One chunk meshed alone carries the same codes as the whole build gives it.
         FamilyDef town = _lib.Family("survivor_town");

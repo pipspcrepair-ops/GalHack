@@ -127,6 +127,9 @@ public sealed class MeshOptions
 /// </summary>
 public static class Mesher
 {
+    /// <summary>Faces carry their finish codes (off only to measure what they cost: every face then draws plain).</summary>
+    public static bool Finishes = true;
+
     static readonly V3[] Normals =
     {
         new(0, 0, -1), new(1, 0, 0), new(0, 0, 1), new(-1, 0, 0), new(0, 1, 0), new(0, -1, 0),
@@ -269,6 +272,8 @@ public static class Mesher
         // Occlusion questions are asked a dozen times per face, so the answers for the whole
         // region are worked out once into a flat array.
         const byte FOccludes = 1, FCollides = 2, FRock = 4;
+        // For the finishes: something stands here to be stood on; something solid lies overhead within twelve cells; this cell is such a cover.
+        const byte FStands = 8, FCovered = 16, FCover = 32;
         readonly byte[] _flags;
         readonly Int3 _fMin, _fSize;
 
@@ -312,10 +317,38 @@ public static class Mesher
                                 f |= FCollides;
                                 if (!BlockInfo.IsTransparent(b.Material)) f |= FOccludes;
                             }
+                            if (BlockInfo.Supports(b.Type) || BlockInfo.IsSlope(b.Type) || b.Type == BlockType.Rubble) f |= FStands;
+                            if (Covers(b)) f |= FCover;
                         }
-                        else if (o.Rock && p.Y <= Assembler.GroundY && !occ[p]) f = FOccludes | FCollides | FRock;
+                        else if (o.Rock && p.Y <= Assembler.GroundY && !occ[p]) f = FOccludes | FCollides | FRock | FStands;
                         _flags[i] = f;
                     }
+            // Each column from the top down: under a cover within twelve cells, counting what stands over the region.
+            int layer = _fSize.X * _fSize.Z;
+            for (int z = 0; z < (Finishes ? _fSize.Z : 0); z++)
+                for (int x = 0; x < _fSize.X; x++)
+                {
+                    int top = _fMin.Y + _fSize.Y - 1, last = int.MaxValue;
+                    for (int k = 1; k <= 12 && last == int.MaxValue; k++)
+                        if (Covers(g.Get(new Int3(_fMin.X + x, top + k, _fMin.Z + z)))) last = top + k;
+                    for (int y = _fSize.Y - 1; y >= 0; y--)
+                    {
+                        int at = y * layer + z * _fSize.X + x;
+                        if (last - (_fMin.Y + y) <= 12) _flags[at] |= FCovered;
+                        if ((_flags[at] & FCover) != 0) last = _fMin.Y + y;
+                    }
+                }
+        }
+
+        static bool Covers(Block b) => !b.IsAir && (BlockInfo.IsFullCube(b.Type) || BlockInfo.IsSlope(b.Type) || BlockInfo.IsCornerSlope(b.Type)) && !BlockInfo.IsTransparent(b.Material);
+
+        /// <summary>A cell's flags if the region holds it (its bit for <paramref name="bit"/>), else null: past the region the grid itself is asked.</summary>
+        bool? Flag(Int3 p, byte bit)
+        {
+            int x = p.X - _fMin.X, y = p.Y - _fMin.Y, z = p.Z - _fMin.Z;
+            if ((uint)x < (uint)_fSize.X && (uint)y < (uint)_fSize.Y && (uint)z < (uint)_fSize.Z)
+                return (_flags[(y * _fSize.Z + z) * _fSize.X + x] & bit) != 0;
+            return null;
         }
 
         byte Flags(Int3 p)
@@ -370,6 +403,7 @@ public static class Mesher
         /// <summary>Something stands here to be stood on: a floor, a slope, the ground.</summary>
         bool Stands(Int3 c)
         {
+            if (Flag(c, FStands) is bool known) return known;
             Block b = _g.Get(c);
             return !b.IsAir && (BlockInfo.Supports(b.Type) || BlockInfo.IsSlope(b.Type) || b.Type == BlockType.Rubble) || RockAt(c);
         }
@@ -379,6 +413,7 @@ public static class Mesher
         /// <summary>Something solid overhead within a few storeys: under a roof. Asked of the same cell by each face round it, so remembered.</summary>
         bool Covered(Int3 c)
         {
+            if (Flag(c, FCovered) is bool inRegion) return inRegion;
             if (_covered.TryGetValue(c, out bool known)) return known;
             bool covered = false;
             for (int y = 1; y <= 12 && !covered; y++)
@@ -399,6 +434,7 @@ public static class Mesher
 
         bool OpaqueFull(Int3 c)
         {
+            if (Flag(c, FOccludes) is bool known) return known;
             Block b = _g.Get(c);
             return BlockInfo.IsFullCube(b.Type) && !BlockInfo.IsTransparent(b.Material) || RockAt(c);
         }
@@ -420,7 +456,7 @@ public static class Mesher
         /// <summary>The place shader's code for one face of a block, looking along a normal (see <see cref="Surfaces.Code"/>); 0 draws it plain.</summary>
         float FaceCode(Int3 p, Block b, V3 normal, bool slope, Surface surf)
         {
-            if (surf is Surface.Glow or Surface.Flesh) return 0f;
+            if (!Finishes || surf is Surface.Glow or Surface.Flesh) return 0f;
             int f = FaceOf(normal);
             Int3 n = p + Dirs.All[f].Vec();
             bool up = f == 4, down = f == 5;
@@ -928,7 +964,7 @@ public static class Mesher
         /// <summary>A prop's or a small part's face code: its material's finish that way, at the place's wear.</summary>
         float BoxCode(Int3 p, Block b, Surface surf, FaceSide side)
         {
-            if (surf is Surface.Glow or Surface.Flesh) return 0f;
+            if (!Finishes || surf is Surface.Glow or Surface.Flesh) return 0f;
             if (surf == Surface.Glass) return PlainCode(Finish.Glass);
             FinishPick pick = Pick(b, side, false, 0);
             if (pick.Finish == Finish.Plain) return 0f;
