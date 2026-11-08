@@ -229,7 +229,7 @@ public partial class BestiaryTest : Node
         Check(Count(PersonRole.Guard, Occupancy.Friendly, mild, f => f.Has("vest") && Weapons.Armed(f.Prop)) > 30, "guards wear armour and carry weapons");
         Check(Count(PersonRole.Raider, Occupancy.Raider, mild, f => f.HairStyle == "mohawk" && f.Has("bandoleer") | f.Has("spike_pads")) > 30, "raiders have mohawks, spikes and bandoleers");
         Check(Count(PersonRole.Medic, Occupancy.Friendly, mild, f => f.Has("medic_band")) == 40, "medics carry their kit");
-        Check(Count(PersonRole.Farmer, Occupancy.Friendly, mild, f => f.Has("straw_hat") | f.Has("wide_hat") | f.Prop == "hoe" | (f.Folk?.CrownRise ?? 0f) > 0.9f) > 30, "farmers have hats and hoes (or a crown no hat fits)");
+        Check(Count(PersonRole.Farmer, Occupancy.Friendly, mild, f => f.Has("straw_hat") | f.Has("wide_hat") | f.Prop == "hoe" | PeopleGenerator.NoHatFits(f)) > 30, "farmers have hats and hoes (or a crown or ears no hat fits)");
         Check(Count(PersonRole.Elder, Occupancy.Friendly, mild, f => f.Prop == "cane") > 18, "elders have sticks");
         Check(Count(PersonRole.Drunk, Occupancy.Friendly, mild, f => f.Stagger > 0.3f) == 40, "drunks stagger");
         Check(Count(PersonRole.Trader, Occupancy.Friendly, Bestiary.Roll(_data, World(-25f)).People, f => f.Dress == "furs") == 40, "on ice everyone is in furs");

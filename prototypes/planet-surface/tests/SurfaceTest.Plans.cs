@@ -96,7 +96,7 @@ public partial class SurfaceTest
             foreach (PlannedLink l in plan.Links.Where(l => l.Kind == "power"))
             {
                 plants++;
-                if (plan.Places[l.A].Seated is PoiSite a && plan.Places[l.B].Seated is PoiSite && plan.Roll.Power != "none" && !w.Infra.Power.Poles.Any()) { unfed++; Note($"{a.Name} feeds nothing"); }
+                if (plan.Places[l.A].Seated is PoiSite a && plan.Places[l.B].Seated is PoiSite && plan.Roll.Power != "none" && !w.Infra.Power.Poles.Any()) { unfed++; Note($"{a.Name} feeds nothing ({w.Profile.Before} world, power {plan.Roll.Power}, {w.Infra.Routes.Count} routes)"); }
             }
             // Empty land between: most of a world's dry ground is in no region at all.
             int dry = 0, wild = 0;

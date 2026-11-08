@@ -106,7 +106,7 @@ public partial class Showroom : Node3D
 
         Caves = BuildCaves();
         Outpost = BuildPlace(BlockPlace.Outpost(OutpostSeed()), new Color("4a4740"), new Color("6a655b"), new Color("3c3a36"));
-        Hold = BuildPlace(HoldWithNests(), new Color("2e3134"), new Color("3c4045"), new Color("26292c"));
+        Hold = BuildPlace(HoldWithNesters(), new Color("2e3134"), new Color("3c4045"), new Color("26292c"));
         Gallery = BuildGallery();
         Town = BuildTown();
         Stations.Add(("A generator cave", Caves, Chamber + new Vector3(0f, 0.2f, 0f), Chamber + new Vector3(4f, 2.5f, 0f)));
@@ -140,13 +140,13 @@ public partial class Showroom : Node3D
         return 41;
     }
 
-    BlockPlace HoldWithNests()
+    BlockPlace HoldWithNesters()
     {
         for (ulong s = 7; s < 200; s++)
         {
             BlockPlace p = BlockPlace.Hold(s);
             PoiPopulation pop = PoiFauna.Populate(p.Plan, Fauna, Data.Deep);
-            if (!pop.Silent && pop.Nests.Count >= 2) return p;
+            if (!pop.Silent && pop.Count(DeepRole.DerelictNester) >= 2) return p; // wreck nesters, as nests are no more
         }
         return BlockPlace.Hold();
     }

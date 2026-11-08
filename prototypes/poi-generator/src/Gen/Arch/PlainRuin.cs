@@ -242,12 +242,14 @@ public static partial class StateTransforms
         var g = inst.Blocks;
         CellMask occ = inst.Layout.Occupied;
         Int3 lo = occ.Min, hi = occ.Min + occ.Size;
+        // On the pad and its apron the ground is the pad, and what is built there keeps to it. Loose litter
+        // (weeds, debris, props) goes by the ground wherever it lies: a lot's yard between its buildings, or a
+        // pad's blended edge, is the land as it is, and on the level pad it stays put.
+        bool InBounds(int x, int z) => apron >= 0 && x >= lo.X - apron && x < hi.X + apron && z >= lo.Z - apron && z < hi.Z + apron;
         var columns = new Dictionary<(int X, int Z), List<(Int3 Cell, Block Block)>>();
         foreach (var (p, b) in g.Blocks())
         {
             if (p.Y < Assembler.GroundY) continue;
-            // On the pad and its apron the ground is the pad.
-            if (apron >= 0 && p.X >= lo.X - apron && p.X < hi.X + apron && p.Z >= lo.Z - apron && p.Z < hi.Z + apron) continue;
             if (!columns.TryGetValue((p.X, p.Z), out var list)) columns[(p.X, p.Z)] = list = new List<(Int3, Block)>();
             list.Add((p, b));
         }
@@ -260,6 +262,7 @@ public static partial class StateTransforms
             while (count < cells.Count && cells[count].Cell.Y == cells[0].Cell.Y + count) count++;
             var list = cells.GetRange(0, count);
             if (list.Any(c => occ[c.Cell] || c.Block.Role is Role.Loot or Role.Core or Role.Terminal or Role.Door)) continue;
+            if (InBounds(key.X, key.Z) && !list.All(c => c.Block.Role is Role.Debris or Role.Prop && !BlockInfo.IsFullCube(c.Block.Type))) continue;
             int dy = (int)MathF.Floor(ground(key.X, key.Z) + 0.02f);
             if (dy == 0) continue;
             foreach (var (p, _) in list) g.Set(p, Block.Air);

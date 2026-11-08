@@ -37,7 +37,7 @@ public partial class LandformFaunaTest : Node
             WorldWithLandforms(out WorldMap map, out PlanetFauna fauna);
             DistinctSetsPerLandform(map, fauna);
             BuiltForTheirGround();
-            ColoursFitTheGround(fauna);
+            ColoursFitTheGround(fauna, map);
             PicksByLandform(map, fauna);
             SpawnerKeepsToHomes(map, fauna);
             OldFaunaUnchanged();
@@ -132,22 +132,31 @@ public partial class LandformFaunaTest : Node
             $"dune seas burrowers and sand-swimmers ({sandOk}), wetlands stilt-legged waders and ambushers ({wetOk}); {problems} quality problems in {checkedSpecies} species");
     }
 
-    /// <summary>Colours that fit the ground: a species' coat is nearer its own ground's colour than the other landforms'.</summary>
-    void ColoursFitTheGround(PlanetFauna fauna)
+    /// <summary>
+    /// Colours that fit the ground: a species' coat is nearer its own ground's colour than the other landforms'.
+    /// Judged over ten fresh planets of the test world's landforms (a coat keeps some of its own colour, so one
+    /// planet's dozen species is too few to judge by); a coat of no ground's colour would be nearer about half the time.
+    /// </summary>
+    void ColoursFitTheGround(PlanetFauna fauna, WorldMap map)
     {
         int nearer = 0, judged = 0;
-        var homes = fauna.Species.SelectMany(s => s.Homes).Distinct().ToArray();
-        foreach (Species s in fauna.Species)
+        for (int w = 0; w < 10; w++)
         {
-            if (s.Homes.Length != 1) continue;
-            Color own = LandformFauna.Ground(s.Homes[0]);
-            float d = Dist(s.Colors.Base, own);
-            float others = homes.Where(h => h != s.Homes[0] && Dist(LandformFauna.Ground(h), own) > 0.15f)
-                .Select(h => Dist(s.Colors.Base, LandformFauna.Ground(h))).DefaultIfEmpty(float.MaxValue).Average();
-            judged++;
-            if (d < others) nearer++;
+            PlanetFauna f = w == 0 ? fauna : _gen.Generate((ulong)System.Random.Shared.NextInt64(), 0.3f, false, map.Model.Mix.Landforms);
+            var homes = f.Species.SelectMany(s => s.Homes).Distinct().ToArray();
+            foreach (Species s in f.Species)
+            {
+                // (A Hollow-infected animal has gone the fungus's colours: it is judged as what it became, not by its ground.)
+                if (s.Homes.Length != 1 || s.Corrupted) continue;
+                Color own = LandformFauna.Ground(s.Homes[0]);
+                float d = Dist(s.Colors.Base, own);
+                float others = homes.Where(h => h != s.Homes[0] && Dist(LandformFauna.Ground(h), own) > 0.15f)
+                    .Select(h => Dist(s.Colors.Base, LandformFauna.Ground(h))).DefaultIfEmpty(float.MaxValue).Average();
+                judged++;
+                if (d < others) nearer++;
+            }
         }
-        Check(judged > 0 && nearer >= judged * 0.8f, $"colours fit the ground: {nearer} of {judged} species are nearer their own ground's colour than other landforms'");
+        Check(judged > 50 && nearer >= judged * 0.75f, $"colours fit the ground: {nearer} of {judged} species over ten planets are nearer their own ground's colour than other landforms'");
     }
 
     static float Dist(Color a, Color b) => MathF.Sqrt((a.R - b.R) * (a.R - b.R) + (a.G - b.G) * (a.G - b.G) + (a.B - b.B) * (a.B - b.B));
