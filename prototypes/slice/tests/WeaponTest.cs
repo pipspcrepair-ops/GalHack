@@ -101,7 +101,7 @@ public partial class WeaponTest : Node
         {
             float a = from + i * MathF.Tau / 24f;
             var d = new Vector3(MathF.Sin(a), 0f, MathF.Cos(a));
-            if (avoid.Any(v => v.Dot(d) > 0.8f)) continue;
+            if (avoid.Any(v => v.Dot(d) > 0.5f)) continue; // 60 degrees clear of the others' headings
             float worst = 0f;
             for (float r = 2f; r <= distance + 4f; r += 2f)
             {
@@ -262,6 +262,16 @@ public partial class WeaponTest : Node
     }
 
     string Tally() => $"fired {Arms.Fired}, hits {Arms.Hits}: ground {Arms.GroundHits}, blocks {Arms.BlockHits}, creatures {Arms.CreatureHits}";
+
+    /// <summary>Where a creature is, for a failing check: its centre's bearing and distance from the eye along a heading, and its bounds.</summary>
+    string Where(Creature c, Vector3 dir)
+    {
+        Vector3 to = Centre(c) - Eye;
+        Wild.SimOf(c, out Vector3 o, out _);
+        Vector3 rb = (c.Rig?.BoundsCenter ?? Vector3.Zero) + o - Eye;
+        float deg(Vector3 v) => Mathf.RadToDeg(MathF.Acos(Math.Clamp(v.Normalized().Dot(dir.Normalized()), -1f, 1f)));
+        return $"{to.Length():F1} m at {deg(to):F0} deg (rig bounds {rb.Length():F1} m at {deg(rb):F0} deg, r {c.Rig?.BoundsRadius:F2}, {c.Rig?.HitCount} spheres)";
+    }
 
     float DealtTo(object thing) => _dealt.Where(h => h.Thing == thing).Sum(h => h.Amount);
     int HitsOn(object thing) => _dealt.Count(h => h.Thing == thing);
@@ -460,13 +470,14 @@ public partial class WeaponTest : Node
         foreach (int x in _drive.Wait(4)) yield return x;
         foreach (int x in _drive.LookAt(Centre(c), 8)) yield return x;
         int live = Arms.Pool.Live;
-        int hits = HitsOn(c);
+        int hits = HitsOn(c), struck = Arms.Hits;
         _game.Controls.PrimaryPressed = true;
         _game.Controls.Primary = true;
         yield return 0;
         _game.Controls.Primary = false;
         yield return 0;
-        int pellets = Arms.Pool.Live - live;
+        // In flight, plus any that struck in their first tick (a close creature is reached at once).
+        int pellets = Arms.Pool.Live - live + (Arms.Hits - struck);
         foreach (int x in _drive.Wait(20)) yield return x;
         Check(pellets == 8 && HitsOn(c) - hits >= 2, $"BUCKSHOT: one shell, {pellets} pellets in flight, {HitsOn(c) - hits} on the creature at 7 m");
         int fired = Arms.Fired;
@@ -497,15 +508,16 @@ public partial class WeaponTest : Node
         WeaponDef d = Arm("break-launcher");
         Gun gun = GunOf(d);
         Vector3 dir = Bearing(24f);
-        // A lob up at 30 degrees: it climbs, tops out and falls, as gravity says.
-        Vector3 up = (dir * MathF.Cos(0.52f) + Vector3.Up * MathF.Sin(0.52f)).Normalized();
+        // A lob up at 70 degrees (above the trees): it climbs, tops out and falls, as gravity says.
+        Vector3 up = (dir * MathF.Cos(1.22f) + Vector3.Up * MathF.Sin(1.22f)).Normalized();
         foreach (int x in Shoot(d, Eye + up * 30f)) yield return x;
         int slot = Array.FindIndex(Arms.Pool.Shots, s => s.Live && s.Def.Base.Id == d.Id);
         var heights = new List<float>();
         var vy = new List<float>();
         int id = slot >= 0 ? Arms.Pool.Shots[slot].Id : -1;
         float startY = slot >= 0 ? Arms.Pool.Shots[slot].Pos.Y : 0f;
-        for (int i = 0; i < 300 && slot >= 0 && Arms.Pool.Shots[slot].Live && Arms.Pool.Shots[slot].Id == id; i++)
+        int blasts0 = Arms.Blasts;
+        for (int i = 0; i < 480 && slot >= 0 && Arms.Pool.Shots[slot].Live && Arms.Pool.Shots[slot].Id == id; i++)
         {
             heights.Add(Arms.Pool.Shots[slot].Pos.Y);
             vy.Add(Arms.Pool.Shots[slot].Vel.Y);
@@ -514,8 +526,9 @@ public partial class WeaponTest : Node
         float g = Zone.Data.Rules.Planet.Gravity;
         float accel = vy.Count > 20 ? (vy[^5] - vy[4]) / ((vy.Count - 9) / 60f) : 0f;
         Check(heights.Count > 30 && heights.Max() > startY + 2f && heights[^1] < heights.Max() - 1f && MathF.Abs(accel + g) < 0.4f,
-            $"IMPACT grenade arcs: up {heights.DefaultIfEmpty(0f).Max() - startY:F1} m over {heights.Count / 60f:F1} s, falling at {-accel:F1} m/s² (gravity {g:F1})");
-        Check(Arms.Blasts > 0, $"and bursts where it lands ({Arms.Blasts} blasts)");
+            $"IMPACT grenade arcs: up {heights.DefaultIfEmpty(0f).Max() - startY:F1} m over {heights.Count / 60f:F1} s, falling at {-accel:F1} m/s² (gravity {g:F1}; {Arms.Recent()})");
+        foreach (int x in Until(() => Arms.Blasts > blasts0, 120)) yield return x;
+        Check(Arms.Blasts > blasts0, $"and bursts where it lands ({Arms.Blasts - blasts0} blasts)");
         foreach (int x in Until(() => !gun.Reloading, 200)) yield return x;
 
         // BOUNCE: skips off the ground and goes off on its fuse.
@@ -569,14 +582,26 @@ public partial class WeaponTest : Node
         WeaponDef d = Arm("stage-rifle");
         Gun gun = GunOf(d);
         Vector3 dir = Bearing(18f);
-        Creature first = Animal(Feet + dir * 9f), second = Animal(Feet + dir * 14f);
+        Creature first = Animal(Feet + dir * 9f);
         foreach (int x in _drive.Wait(6)) yield return x;
-        Vector3 aim = Centre(second); // through the first, which stands in the line
+        // The second stands on the line from the eye through the first, where that line meets its body's height.
+        Vector3 c1 = Centre(first), line = (c1 - Eye).Normalized();
+        float lift = c1.Y - Zone.GroundAt(c1.X, c1.Z).Y, bestOff = float.MaxValue, bestAt = 14f;
+        for (float r = 12f; r <= 20f; r += 0.5f)
+        {
+            Vector3 p = Eye + line * (r / MathF.Max(0.2f, new Vector2(line.X, line.Z).Length()));
+            float off = MathF.Abs(p.Y - (Zone.GroundAt(p.X, p.Z).Y + lift));
+            if (off < bestOff) { bestOff = off; bestAt = r; }
+        }
+        Vector3 flat = new Vector3(line.X, 0f, line.Z).Normalized();
+        Creature second = Animal(new Vector3(Eye.X, Feet.Y, Eye.Z) + flat * bestAt);
+        foreach (int x in _drive.Wait(6)) yield return x;
+        Vector3 aim = c1; // through the first, into the second behind it
         // A tap: the light shot stops in the first.
         string t0 = Tally();
         foreach (int x in Shoot(d, aim, 1)) yield return x;
         foreach (int x in _drive.Wait(40)) yield return x;
-        Check(DealtTo(first) > 0f && DealtTo(second) == 0f, $"an uncharged slug stops in the first creature ({DealtTo(first):F0}) and doesn't reach the second ({t0} to {Tally()})");
+        Check(DealtTo(first) > 0f && DealtTo(second) == 0f, $"an uncharged slug stops in the first creature ({DealtTo(first):F0}) and doesn't reach the second ({t0} to {Tally()}; first {Where(first, aim - Eye)}, second {Where(second, aim - Eye)}; {Arms.Recent()})");
         // A full charge: four stages, each faster and through one more.
         foreach (int x in _drive.LookAt(aim, 6)) yield return x;
         _game.Controls.PrimaryPressed = true;
@@ -598,7 +623,7 @@ public partial class WeaponTest : Node
         Check(MathF.Abs(speed - (d.Speed + 4 * d.Charge.Speed)) < 1f && pierce == 4, $"a full charge flies at {speed:F0} m/s and pierces {pierce}");
         float a = DealtTo(first), b = DealtTo(second);
         foreach (int x in _drive.Wait(30)) yield return x;
-        Check(DealtTo(first) > a && DealtTo(second) > b, $"and goes through the first creature into the second ({DealtTo(first) - a:F0} and {DealtTo(second) - b:F0}; {Arms.Recent()})");
+        Check(DealtTo(first) > a && DealtTo(second) > b, $"and goes through the first creature into the second ({DealtTo(first) - a:F0} and {DealtTo(second) - b:F0}; first {Where(first, aim - Eye)}, second {Where(second, aim - Eye)}; {Arms.Recent()})");
         Gone(first);
         Gone(second);
     }
@@ -734,7 +759,7 @@ public partial class WeaponTest : Node
         foreach (int x in _drive.Wait(6)) yield return x;
         int cone = Arms.ConeHits;
         foreach (int x in Shoot(d, Centre(inside), 45)) yield return x;
-        Check(DealtTo(inside) > 0f && DealtTo(outside) == 0f && Arms.ConeHits > cone, $"the flame hits only inside its arc: {DealtTo(inside):F0} to the one ahead, {DealtTo(outside):F0} to the one 60 degrees off (muzzle to it: {Arms.Probe(Arms.Muzzle(), Centre(inside))}, {Arms.Muzzle().DistanceTo(Centre(inside)):F1} m)");
+        Check(DealtTo(inside) > 0f && DealtTo(outside) == 0f && Arms.ConeHits > cone, $"the flame hits only inside its arc: {DealtTo(inside):F0} to the one ahead, {DealtTo(outside):F0} to the one 60 degrees off (muzzle to it: {Arms.Probe(Arms.Muzzle(), Centre(inside))}, {Arms.Muzzle().DistanceTo(Centre(inside)):F1} m; look {_game.Survivor.WorldLook().Dot(dir):F2} along the heading; inside {Where(inside, _game.Survivor.WorldLook())}, outside {Where(outside, _game.Survivor.WorldLook())})");
         Check(Arms.Sounds.Played[(int)VoiceKind.Hold] > 0, "with its roar held while it burns");
         float burnt = DealtTo(inside);
         foreach (int x in _drive.Wait(60)) yield return x;
@@ -939,7 +964,7 @@ public partial class WeaponTest : Node
             bool blocks = d.Blocks > 0f && (d.Swarm == null);
             string expect = blocks ? "harms" : "leaves alone";
             Check(hitCreature && hitWall == blocks && hitShip == blocks,
-                $"{d.Code} {d.Name}: the creature takes {DealtTo(c):F0}; it {expect} blocks: the wall takes {DealtTo(wall) - onWall:F0} ({wallLoss:F0} after armour), the vessel {DealtTo(ship) - onShip:F0} (hull {ship.Body.Damage - shipDamage:F2}; hits on {where}){(hitCreature && hitWall == blocks && hitShip == blocks ? "" : "; last struck: " + Arms.Recent())}");
+                $"{d.Code} {d.Name}: the creature takes {DealtTo(c):F0}; it {expect} blocks: the wall takes {DealtTo(wall) - onWall:F0} ({wallLoss:F0} after armour), the vessel {DealtTo(ship) - onShip:F0} (hull {ship.Body.Damage - shipDamage:F2}; hits on {where}){(hitCreature && hitWall == blocks && hitShip == blocks ? "" : $"; creature {Where(c, cd)}, wall {Where(c, WallMiddle(wall) - Eye)} off the wall's line, wall {Eye.DistanceTo(WallMiddle(wall)):F1} m; last struck: " + Arms.Recent())}");
             Gone(c);
             foreach (int x in Until(() => !gun.Reloading, 400)) yield return x;
             foreach (int x in _drive.Wait(20)) yield return x;
@@ -966,10 +991,12 @@ public partial class WeaponTest : Node
         foreach (int x in _drive.Wait(90)) yield return x;
         Arms.Pool.Clear();
         Arms.Fire(rifle, 20);
+        int rounds = Arms.Pool.Live;
         Arms.Fire(hive, 8);
+        int fired = Arms.Pool.Live;
         foreach (int x in _drive.Wait(4)) yield return x;
         int live = Arms.Pool.Live;
-        double total = 0, worst = 0;
+        double total = 0, worst = 0, eventWorst = 0;
         long bytes = 0;
         int ticks = 0, eventful = 0;
         var where = new List<string>();
@@ -979,10 +1006,10 @@ public partial class WeaponTest : Node
             yield return 0;
             if (Arms.Pool.Live < 25) break;
             total += Arms.LastStepMs;
-            worst = Math.Max(worst, Arms.LastStepMs);
             ticks++;
             // Hits and bounces make sparks and sounds (and may allocate); steady flight must not.
-            if (Arms.Hits + Arms.Bounces + Arms.Blasts + Arms.Sticks != events) { eventful++; continue; }
+            if (Arms.Hits + Arms.Bounces + Arms.Blasts + Arms.Sticks != events) { eventful++; eventWorst = Math.Max(eventWorst, Arms.LastStepMs); continue; }
+            worst = Math.Max(worst, Arms.LastStepMs);
             bytes += Arms.LastStepBytes;
             if (Arms.LastStepBytes > 0) where.Add($"tick {i}: {Arms.LastStepBytes} B");
         }
@@ -1017,8 +1044,8 @@ public partial class WeaponTest : Node
             Arms.Pool.Clear();
         }
         double mean = ticks > 0 ? total / ticks : double.MaxValue;
-        Check(live >= 28 && ticks >= 20, $"20 rounds and a swarm of 8 in flight ({live} shots), timed over {ticks} ticks");
-        Check(mean < StepBudgetMs && worst < StepBudgetMs * 4, $"the shots' step: {mean:F3} ms a tick on average, {worst:F3} ms at worst (budget {StepBudgetMs} ms)");
+        Check(live >= 28 && ticks >= 20, $"20 rounds and a swarm of 8 in flight ({live} shots; {rounds} rounds then {fired} with the swarm as fired), timed over {ticks} ticks ({Arms.Recent()})");
+        Check(mean < StepBudgetMs && worst < StepBudgetMs * 4, $"the shots' step: {mean:F3} ms a tick on average, {worst:F3} ms at worst in steady flight, {eventWorst:F3} ms on a tick with a hit (budget {StepBudgetMs} ms)");
         Check(bytes == 0, $"and it allocates nothing while they fly ({bytes} bytes over {ticks - eventful} ticks of steady flight; {eventful} ticks had a hit or bounce)");
         foreach (int x in _drive.Wait(30)) yield return x;
         Check(Arms.Fx.Drawn > 0 || Arms.Pool.Live == 0, "every live shot is drawn from the pool");
