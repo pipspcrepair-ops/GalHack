@@ -509,8 +509,9 @@ public sealed class WildSim
         _spaced.Clear();
         foreach (Creature c in Creatures)
         {
-            if (c.Removed || c.Dead || c.Dormant || c.HeldBy != null || c.Holding != null || c.Space != null || c.Thrown || c.InWalls
-                || c.Species.Rig == RigKind.Swarm || c.Species.Flies && !c.Landed) continue;
+            // (Not one closing to strike or seize: an attack needs its reach.)
+            if (c.Removed || c.Dead || c.Dormant || c.HeldBy != null || c.Holding != null || c.Attacking || c.Space != null || c.Thrown || c.InWalls
+                || c.Species.Rig is RigKind.Swarm or RigKind.GasBag || c.Species.Flies && !c.Landed) continue; // (a swarm is a cloud, a gas bag floats)
             Vector3 v = Flat(c.Velocity);
             Space.Bodies.Add(new PersonalSpace.Body { Pos = c.Position, Radius = c.Radius, Heading = v.LengthSquared() > 0.04f ? v.Normalized() : Vector3.Zero, Give = c.Attacking ? 0.4f : 1f });
             _spaced.Add(c);
@@ -519,7 +520,7 @@ public sealed class WildSim
         // Whoever the creatures meet on foot (you, a town's people) gives nothing here: they are stepped round.
         foreach (ITarget t in Targets)
             if (t.Attackable) Space.Bodies.Add(new PersonalSpace.Body { Pos = t.Position, Radius = 0.35f, Give = 0f });
-        Space.Resolve(dt, null, 2);
+        Space.Resolve(dt, SolidAt == null ? null : p => !SolidAt(p + Vector3.Up * 0.4f), 4);
         for (int i = 0; i < _spaced.Count; i++)
         {
             Vector3 moved = Space.Bodies[i].Moved;

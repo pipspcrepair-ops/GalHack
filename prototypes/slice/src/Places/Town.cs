@@ -461,8 +461,10 @@ public sealed partial class Town
     {
         if (p.Yield > 0f && p.Path != null && p.Step < p.Path.Count)
         {
-            // Letting someone through first.
+            // Letting someone through first: a step back out of their way.
             p.Yield -= dt;
+            Vector3 back = new(MathF.Sin(p.Yaw), 0f, MathF.Cos(p.Yaw));
+            if (Open(p.Pos + back * 0.5f * dt)) p.Pos += back * 0.5f * dt;
             p.Now = Mathf.MoveToward(p.Now, 0f, PeopleAccel * 2f * dt);
             return false;
         }

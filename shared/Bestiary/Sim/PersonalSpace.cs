@@ -66,8 +66,12 @@ public sealed class PersonalSpace
                             if (total <= 0f) continue;
                             float overlap = want - dist;
                             Vector3 pa = -dir * overlap * a.Give / total, pb = dir * overlap * b.Give / total;
-                            if (open == null || open(a.Pos + pa)) { a.Pos += pa; a.Moved += pa; }
-                            if (open == null || open(b.Pos + pb)) { b.Pos += pb; b.Moved += pb; }
+                            // One against a wall: the other takes the whole of it, if it can.
+                            bool aOk = open == null || open(a.Pos + pa), bOk = open == null || open(b.Pos + pb);
+                            if (!aOk && b.Give > 0f) { pb = dir * overlap; bOk = open == null || open(b.Pos + pb); }
+                            else if (!bOk && a.Give > 0f) { pa = -dir * overlap; aOk = open == null || open(a.Pos + pa); }
+                            if (aOk) { a.Pos += pa; a.Moved += pa; }
+                            if (bOk) { b.Pos += pb; b.Moved += pb; }
                             // Face to face on a narrow way: the one who gives more waits a moment.
                             if (a.Heading.Dot(b.Heading) < -0.5f && a.Heading.Dot(dir) > 0.6f)
                             {

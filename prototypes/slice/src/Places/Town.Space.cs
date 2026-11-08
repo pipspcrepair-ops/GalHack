@@ -50,7 +50,7 @@ public sealed partial class Town
         ITarget you = _places.Zone.Wildlife.Player;
         bool afoot = you is { Attackable: true };
         if (afoot) _space.Bodies.Add(new PersonalSpace.Body { Pos = player, Radius = 0.35f, Give = 0f });
-        _space.Resolve(dt, Open, 3);
+        _space.Resolve(dt, Open, 4);
         WorstOverlap = MathF.Max(WorstOverlap, _space.WorstOverlap);
         for (int i = 0; i < _bodies.Count; i++)
         {

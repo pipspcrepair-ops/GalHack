@@ -463,7 +463,8 @@ public static class HumanBody
             Vector3 mouth = open.Mouth;
             bool along = open.MouthAlong != Vector3.Right;
             p.Add(Shape.Sphere, along ? new Vector3(R * 0.3f, R * (0.3f + drop * 0.6f), open.Gape * 1.1f) : new Vector3(open.Gape * 1.3f, R * (0.34f + drop * 0.6f), R * 0.24f), mouth, new Color(0.07f, 0.03f, 0.03f), 0f, 0f, null, 7);
-            int many = husk.Int(5, 8);
+            // (A face with no ear holes puts more out of the mouth: never fewer than the human count.)
+            int many = husk.Int(5, 8) + (open.EarHoles ? 0 : 3);
             for (int i = 0; i < many; i++)
             {
                 float spread = many == 1 ? 0f : i / (many - 1f) - 0.5f;
