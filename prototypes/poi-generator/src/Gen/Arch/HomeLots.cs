@@ -100,15 +100,17 @@ public static partial class Homes
             if (cur.Count > 0) split.Add(cur);
         }
         runs = split;
-        // Posts: both ends of every run (a corner shared by two runs is one post), the gate posts, and along each run at the kind's spacing.
+        // Posts: both ends of every run (a corner shared by two runs is one post) and the gate posts, each a whole cell so the
+        // boards run flush into it; along the run at the kind's spacing, a wall's pier or a panel fence's darker post board in the line.
         var posts = new HashSet<(int U, int V)>();
+        var bands = new HashSet<(int U, int V)>();
         if (k.Body is "panel" or "railing" || k.Body == "wall" && k.Post == "pier")
             foreach (var run in runs)
             {
                 posts.Add(run[0]);
                 posts.Add(run[^1]);
                 for (int i = 1; i < run.Count - 1; i++)
-                    if (k.Every > 0 && i % k.Every == 0 && run.Count - 1 - i >= 1) posts.Add(run[i]);
+                    if (k.Every > 0 && i % k.Every == 0 && run.Count - 1 - i >= 1) (k.Body == "panel" ? bands : posts).Add(run[i]);
             }
         if (k.Body is not "edging")
             foreach (var (ga, gb) in gates) { posts.Add(ga); posts.Add(gb); }
@@ -118,8 +120,8 @@ public static partial class Homes
         Block Post(int y) => k.Body switch
         {
             "wall" or "railing" => new Block(BlockType.Cube, k.Stuff, body.Scale(0.86f), Role.Wall),
-            "hedge" => new Block(BlockType.Pillar, Material.Timber, post, Role.Decor),
-            _ => new Block(k.Post == "rib" ? BlockType.Rib : BlockType.Pillar, k.PostStuff, post, Role.Decor),
+            "hedge" => new Block(BlockType.Cube, Material.Timber, post, Role.Decor),
+            _ => new Block(BlockType.Cube, k.PostStuff, post, Role.Decor),
         };
         float Jit(int u, int y, int v, int spread) => 1f + ((int)(Hash.Cell(f.At(u, y, v), 0xFE7u) % (uint)(2 * spread + 1)) - spread) / 100f;
         Block Body(int u, int y, int v, bool alongU) => k.Body switch
@@ -142,7 +144,9 @@ public static partial class Homes
                 {
                     Int3 p = f.At(u, y, v);
                     if (k.Body == "edging") { if (!c.Blocks.ContainsKey(p)) c.Blocks[p] = Body(u, y, v, alongU); continue; }
-                    c.Set(p, isPost ? Post(y) : Body(u, y, v, alongU));
+                    Block x = isPost ? Post(y) : Body(u, y, v, alongU);
+                    if (bands.Contains((u, v))) x.Color = post;
+                    c.Set(p, x);
                 }
                 // A pier stands a course over its wall, a hedge's gate post as tall as the hedge.
                 if (isPost && k.Body == "wall") c.Set(f.At(u, tall, v), Post(tall));

@@ -156,9 +156,12 @@ public partial class Screenshot
             var corner = new Vector3(one[0].X + h.LotMin.X, 0, h.LotMin.Z);
             var gate = h.Fence!.Gates[0].A;
             var g = new Vector3(one[0].X + gate.X + 0.5f, 0, gate.Z + 0.5f);
-            var person = Figure(g + new Vector3(1.5f, 0, -1.2f));
-            await Shot(name, corner + new Vector3(-3.5f, 2.1f, -5.5f), corner + new Vector3((g.X - corner.X) * 0.45f, 0.6f, 3f));
+            var person = Figure(corner + new Vector3(2.5f, 0, -1.3f));
+            await Shot(name, corner + new Vector3(-3f, 1.9f, -5f), corner + new Vector3(4.5f, 0.6f, 3.5f));
+            var person2 = Figure(g + new Vector3(0, 0, -1.3f));
+            await Shot(name + "-gate", g + new Vector3(-4f, 2f, -6.5f), g + new Vector3(0.5f, 0.8f, 1f));
             person.QueueFree();
+            person2.QueueFree();
         }
 
         // Front doors close up with the figure at the door: a one-storey eaves house under its hipped or pagoda roof, and a cross-gabled house with a carport.
@@ -172,7 +175,17 @@ public partial class Screenshot
         {
             var one = Row(_ => new LayoutHints(Dir.North, TechLevel.Mid, null, new HomeHints(rand.Next(), Climate.Temperate, 0.4f, rand.Next(2) == 0 ? "suburban" : "bungalow")), 1,
                 l => l.Extras.Homes.FirstOrDefault() is { Roof: "cross", Garage: "carport" }, 1500);
-            if (one.Count > 0) { GD.Print($"door-carport: {Says(one)}"); await DoorShot("door-carport", one[0]); }
+            if (one.Count > 0 && Door(one[0]) is var (mid, o, along))
+            {
+                // Back far enough to see the carport beside the house as well as the figure at the door.
+                GD.Print($"door-carport: {Says(one)}");
+                HomeNote h = one[0].L.Extras.Homes[0];
+                var port = new Vector3(one[0].X + h.DoorCell.X + 0.5f, 0, h.DoorCell.Z + 0.5f);
+                var person = Figure(mid + o * 1.1f + along * 0.9f);
+                Vector3 between = (mid + port) * 0.5f;
+                await Shot("door-carport", between + o * 15f + new Vector3(0, 2.4f, 0) - (port - mid).Normalized() * 2f, between + new Vector3(0, 2.2f, 0));
+                person.QueueFree();
+            }
             else GD.Print("no cross-gabled house with a carport came up");
         }
 
@@ -223,10 +236,11 @@ public partial class Screenshot
                 l => l.Extras.Homes.Any(h => h.Family == odd));
             if (one.Count == 0) continue;
             GD.Print($"odd {odd}: {Says(one)}");
-            var b = one[0].L.Occupied;
-            float cx = one[0].X + b.Min.X + b.Size.X * 0.5f;
-            Vector3 look = new(cx, 5f, b.Min.Z + b.Size.Z * 0.5f);
-            await Shot($"odd-{odd}", new Vector3(cx - 16, 4f, look.Z - 26), look);
+            // On the house itself, from a little above any garden wall.
+            PlainBox b = one[0].L.Extras.Plain.OrderByDescending(x => (x.Max.X - x.Min.X) * (x.Max.Z - x.Min.Z)).First();
+            float cx = one[0].X + (b.Min.X + b.Max.X + 1) * 0.5f, cz = (b.Min.Z + b.Max.Z + 1) * 0.5f, size = Math.Max(b.Max.X - b.Min.X, b.Max.Z - b.Min.Z);
+            Vector3 look = new(cx, b.Eave * 0.8f, cz);
+            await Shot($"odd-{odd}", new Vector3(cx - size * 0.55f, b.Eave + 5f, cz - size * 1.25f), look);
         }
 
         // Garage doors close up: one of each kind, a 1.8 m figure beside each.

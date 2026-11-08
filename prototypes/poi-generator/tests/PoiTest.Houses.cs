@@ -228,7 +228,8 @@ public partial class PoiTest
             Kinds[h.FenceKind] = Kinds.GetValueOrDefault(h.FenceKind) + 1;
             if (h.Fence is not { } f) return;
             lots++;
-            bool Post(Int3 c) => g.Get(c).Type is BlockType.Pillar or BlockType.Rib || f.Body is "wall" or "railing" && g.Get(c).Type == BlockType.Cube;
+            // A post is a whole cell, so the boards run flush into it: nothing stops short of its post.
+            bool Post(Int3 c) => g.Get(c).Type == BlockType.Cube;
             var owners = new Dictionary<Int3, List<int>>();
             for (int i = 0; i < f.Runs.Count; i++)
             {
