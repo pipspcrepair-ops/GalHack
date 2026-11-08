@@ -5,11 +5,13 @@ using GalHack.Items;
 using Godot;
 using Slice.Items;
 using Slice.Ui;
+using Weather.Model;
+using WeatherKind = Weather.Model.WeatherKind;
 
 namespace Slice.Tests;
 
 /// <summary>
-/// The UI round: hazards as symbols with a timer and no words, a compass that starts with only the
+/// The UI round: hazards as symbols with a timer and no words, each by a sign of its own and never a generic one, a compass that starts with only the
 /// bunker and the place in view from its way out, the scanner's ping marking it for ten seconds, every tech tab on one 1080p screen, and
 /// no two HUD labels on top of each other.
 /// </summary>
@@ -19,6 +21,7 @@ public partial class BuildTest
     {
         GD.Print("-- the UI round --");
         foreach (int x in AlertChecks()) yield return x;
+        AlertSignChecks();
         foreach (int x in ScannerChecks()) yield return x;
         foreach (int x in MenuTextChecks()) yield return x;
         HudBoxChecks();
@@ -86,6 +89,63 @@ public partial class BuildTest
             string problem = l.Problem(size);
             Check(problem == null && l.Alerts.Size.Y >= HudLayout.AlertIcon * l.Scale * 2, $"HUD at {size.X}x{size.Y}: {l.Boxes.Count()} label boxes, none overlapping, room for two alerts{(problem == null ? "" : ": " + problem)}");
         }
+    }
+
+    /// <summary>
+    /// Every weather kind and every other kind of alert: it warns by a sign of its own (in the sign set, never the generic "!"),
+    /// or it never warns. Clear skies, clouds and fog are no danger on foot and never do; an alert with no sign of its own is not shown.
+    /// </summary>
+    void AlertSignChecks()
+    {
+        var sim = _game.Zone.Weather.Sim;
+        Vector3 feet = _game.Survivor.WorldFeet;
+        var problems = new List<string>();
+        int warns = 0, silent = 0;
+        foreach (WeatherKind kind in Enum.GetValues<WeatherKind>())
+        {
+            bool severe = _game.Zone.Data.Weather.State(kind).Severe;
+            string sign = WeatherSim.SignOf(kind);
+            sim.Snap(kind);
+            var list = new List<WarningEntry>();
+            sim.GetWarnings(list, feet);
+            var own = list.Where(w => w.Kind == kind).ToList();
+            if (severe)
+            {
+                if (!Alerts.Specific(sign)) problems.Add($"{kind} is severe but its sign '{sign ?? "none"}' is not a sign of its own");
+                else if (own.Count != 1 || own[0].Sign != sign) problems.Add($"{kind} should raise one '{sign}' warning, raised {own.Count}");
+                else warns++;
+            }
+            else if (own.Count > 0) problems.Add($"{kind} is no hazard but warns ('{own[0].Sign ?? "none"}')");
+            else silent++;
+            foreach (WarningEntry w in list)
+                if (w.Level != WarningLevel.Advisory && !Alerts.Specific(w.Sign)) problems.Add($"{kind}: a warning with the sign '{w.Sign ?? "none"}'");
+        }
+        sim.Snap(WeatherKind.Clear);
+        sim.ClearTornadoes();
+        sim.ClearHazards();
+        sim.ClearCells();
+        Check(problems.Count == 0 && warns > 0, $"every weather kind warns by a sign of its own or not at all: {warns} warn, {silent} never do{(problems.Count == 0 ? "" : ": " + string.Join("; ", problems))}");
+        Check(WeatherSim.SignOf(WeatherKind.Clear) == null && WeatherSim.SignOf(WeatherKind.Clouds) == null && WeatherSim.SignOf(WeatherKind.Fog) == null,
+            "clear skies, clouds and fog name no sign: they cannot raise an alert");
+
+        // The strikes, the funnel, lava and every attacker.
+        var strikes = new List<WarningEntry>();
+        sim.StartStrike(HazardKind.Lightning, feet + new Vector3(20f, 0f, 0f));
+        sim.StartStrike(HazardKind.Debris, feet + new Vector3(10f, 0f, 0f));
+        sim.SpawnTornado(feet + new Vector3(0f, 0f, 220f), feet);
+        sim.GetWarnings(strikes, feet);
+        sim.ClearTornadoes();
+        sim.ClearHazards();
+        sim.ClearCells();
+        var badStrike = strikes.Where(w => !Alerts.Specific(w.Sign)).Select(w => w.Sign ?? "none").ToList();
+        Check(strikes.Count >= 3 && badStrike.Count == 0, $"lightning, falling debris and a tornado each warn by their own sign ({string.Join(", ", strikes.Select(w => w.Sign))}){(badStrike.Count == 0 ? "" : $", but {string.Join(", ", badStrike)} is not one")}");
+        var badAttackers = _game.Zone.Wildlife.Fauna.Species.Where(s => !Alerts.Specific(Alerts.SignFor(s))).Select(s => s.CommonName).ToList();
+        string[] others = { "storm", "lava", "husk_hazard", "hostile", "wildlife" };
+        Check(badAttackers.Count == 0 && others.All(Alerts.Specific), $"every attacker of this world and the lightning strike and lava alerts have a sign of their own{(badAttackers.Count == 0 ? "" : $" (not {string.Join(", ", badAttackers)})")}");
+        Check(!Alerts.Specific("hazard") && !Alerts.Specific(null) && !Alerts.Specific("no-such-sign"), "the generic hazard sign, no sign and a sign that is not there are not signs of their own");
+        _game.Alerts.Attack("hazard", feet);
+        _game.Alerts.Attack("no-such-sign", feet);
+        Check(!_game.Alerts.Attacks.Any(), "and an alert asked for with one of those is skipped, not shown");
     }
 
     /// <summary>Every page of the Tab menu: no two lines of text on top of each other, and none cut short by its box.</summary>
@@ -179,6 +239,8 @@ public partial class BuildTest
         Check(_game.Alerts.Hazards.Any(h => h.Sign == "tornado"), "with the Tab menu open the tornado's sign is still up");
         _game.Menu.Close();
         sim.ClearTornadoes();
+        sim.ClearHazards();
+        sim.ClearCells();
         foreach (int x in _drive.Wait(3)) yield return x;
         Check(_game.Alerts.Hazards.All(h => h.Sign != "tornado"), "and goes once the tornado has");
         _game.Said -= Hear;

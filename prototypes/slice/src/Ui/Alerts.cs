@@ -14,7 +14,8 @@ namespace Slice.Ui;
 /// ends) and an arrow for where it is or comes from. An attack flashes an animal's or a person's
 /// silhouette with an arrow to the attacker, and makes no sound of its own: the blow's own sounds
 /// and the damage vignette carry it. This layer sits over the Tab menu and the escape menu, so a
-/// warning is never hidden behind a menu.
+/// warning is never hidden behind a menu. A warning with no sign of its own in the sign set is not
+/// shown: there is no generic one.
 /// </summary>
 public partial class Alerts : CanvasLayer
 {
@@ -63,6 +64,7 @@ public partial class Alerts : CanvasLayer
     /// <summary>An attack: the attacker's silhouette flashes at the left with an arrow to where it struck from.</summary>
     public void Attack(string sign, Vector3 from)
     {
+        if (!Specific(sign)) return; // no generic "!" in its place
         _attacks.RemoveAll(a => a.sign == sign);
         _attacks.Add((sign, from, _time + AttackSeconds));
         if (_attacks.Count > 2) _attacks.RemoveAt(0);
@@ -83,12 +85,13 @@ public partial class Alerts : CanvasLayer
         Game.Zone.Weather.Sim?.GetWarnings(_warnings, Game.Survivor.WorldFeet);
         foreach (WarningEntry w in _warnings)
         {
-            if (w.Level == WarningLevel.Advisory || w.Sign == null) continue;
+            // A warning with no sign of its own is skipped, never shown as a generic "!".
+            if (w.Level == WarningLevel.Advisory || !Specific(w.Sign)) continue;
             // One sign per hazard kind: the most urgent of them (the list comes most urgent first).
             if (!seen.Add(w.Sign)) continue;
             _hazards.Add(new Shown(w.Sign, w.Eta > 0 ? w.Eta : w.Left, w.From, false));
         }
-        if (Game.Suit != null && (Game.Suit.Last.Warnings & Alert.Lava) != 0 && seen.Add("lava")) _hazards.Add(new Shown("lava", 0, null, false));
+        if (Game.Suit != null && (Game.Suit.Last.Warnings & Alert.Lava) != 0 && Specific("lava") && seen.Add("lava")) _hazards.Add(new Shown("lava", 0, null, false));
         if (_hazards.Count > MostHazards) _hazards.RemoveRange(MostHazards, _hazards.Count - MostHazards);
         _view.QueueRedraw();
     }
@@ -116,6 +119,12 @@ public partial class Alerts : CanvasLayer
 
     /// <summary>Whether the sign set has this sign.</summary>
     public static bool HasSign(string name) => System.IO.File.Exists(ProjectSettings.GlobalizePath($"res://data/signs/{name}.png"));
+
+    /// <summary>
+    /// Whether a sign is one of its own for what it warns of: named, in the sign set, and not the generic "!" hazard
+    /// sign, which tells the player nothing. An alert without one is not shown at all; a hazard that has none gets one drawn.
+    /// </summary>
+    public static bool Specific(string sign) => !string.IsNullOrEmpty(sign) && sign != "hazard" && HasSign(sign);
 
     void Draw()
     {
