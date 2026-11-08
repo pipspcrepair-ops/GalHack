@@ -49,8 +49,18 @@ public partial class BuildTest : Node
     PlayerInventory Pack => _game.Pack;
     string Item(string block, bool small) => Items.BlockItem(block, small).Id;
 
+    const int WatchdogMinutes = 20;
+
     public override void _Ready()
     {
+        // Its own time limit: a hung run quits itself.
+        var thread = new System.Threading.Thread(() =>
+        {
+            System.Threading.Thread.Sleep(TimeSpan.FromMinutes(WatchdogMinutes));
+            Console.Error.WriteLine($"FAIL  the run took over {WatchdogMinutes} minutes: watchdog");
+            System.Environment.Exit(1);
+        }) { IsBackground = true };
+        thread.Start();
         ProcessPhysicsPriority = 100;
         _run = Scenarios().GetEnumerator();
     }
@@ -118,6 +128,12 @@ public partial class BuildTest : Node
         Check(Pack.Hand == HandKind.Empty, "a lost tool leaves your hands empty");
         foreach (int x in _play.MakeTool()) yield return x;
         Check(Pack.Hand == HandKind.Tool, "and the free recipe replaces it");
+        if (System.Array.IndexOf(OS.GetCmdlineUserArgs(), "--only=ui") >= 0)
+        {
+            // -- --only=ui: the UI round's checks alone.
+            foreach (int x in UiRound()) yield return x;
+            yield break;
+        }
         foreach (int x in Founding()) yield return x;
         foreach (int x in Sources()) yield return x;
         foreach (int x in BackIntoInventories()) yield return x;
@@ -127,6 +143,7 @@ public partial class BuildTest : Node
         foreach (int x in CpuExtender()) yield return x;
         LatticeGate();
         foreach (int x in MenuChecks()) yield return x;
+        foreach (int x in UiRound()) yield return x;
         foreach (int x in Creative()) yield return x;
     }
 

@@ -43,7 +43,6 @@ public partial class Game
             Seizing.Break(_heldIn, husk);
             HoldsBroken++;
             ShotsFree++;
-            Say("Shot it off", Tones.Good);
             EndHold();
         };
     }
@@ -68,7 +67,7 @@ public partial class Game
         Survivor.Dismount();
         Zone.Wildlife.Audio.PlayUi("hurt", -4f);
         Visor.Hurt(Zone.Wildlife.WorldOf(e.Husk));
-        if (!_openHelmet) Say("SEIZED: MASH SPACE OR WRENCH AWAY", Tones.Warning);
+        Alerts.Attack("husk_hazard", Zone.Wildlife.WorldOf(e.Husk)); // the key to struggle free shows while it holds you
     }
 
     void OnLetGo(SeizeEvent e)
@@ -139,7 +138,6 @@ public partial class Game
         {
             Seizing.Break(_heldIn, h);
             HoldsBroken++;
-            Say("Broke free", Tones.Good);
             EndHold();
         }
         return true;

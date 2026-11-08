@@ -70,6 +70,9 @@ public partial class Game : Node3D
     public ShotFx Shots { get; private set; }
     public PlayerTarget Target { get; private set; }
     public Visor Visor { get; private set; }
+
+    /// <summary>Hazards and attacks as symbols, over every menu.</summary>
+    public Alerts Alerts { get; private set; }
     public TabMenu Menu { get; private set; }
     public CockpitConsole Console { get; private set; }
     /// <summary>The in-world screens on constructors and base-mode Big Cores (looked at to use).</summary>
@@ -169,6 +172,8 @@ public partial class Game : Node3D
         AddChild(Menu);
         Escape = new EscapeMenu { Name = "Escape", Game = this };
         AddChild(Escape);
+        Alerts = new Alerts { Name = "Alerts", Game = this };
+        AddChild(Alerts);
         Debug = new DebugHud { Name = "Debug", Game = this, Visible = false };
         AddChild(Debug);
         Said += (text, colour) => Visor.Say(text, colour);
@@ -254,7 +259,13 @@ public partial class Game : Node3D
         Zone.Wildlife.SetPlayer(Target);
         Zone.Wildlife.Attacked += OnBitten;
         SetUpHusks();
-        Zone.Wildlife.Telegraphed += e => Visor.Threat(Zone.Wildlife.WorldOf(e.Creature));
+        Zone.Wildlife.Telegraphed += e =>
+        {
+            Vector3 from = Zone.Wildlife.WorldOf(e.Creature);
+            Visor.Threat(from);
+            // A Husk's wind-up is never flagged: it looks like anyone until it has you.
+            if (!e.Creature.Species.Husk) Alerts.Attack(Alerts.SignFor(e.Creature.Species), from);
+        };
         Zone.Wildlife.Died += OnCreatureDied;
         Zone.Weather.Observer = () => Survivor.WorldFeet;
         Zone.Weather.Bridge.Shelter = body => Sheltered(body.WorldPosition.ToGodot());
@@ -639,8 +650,8 @@ public partial class Game : Node3D
         Vector3 from = Zone.Wildlife.WorldOf(e.Creature);
         Visor.Hurt(from);
         Hands?.Jolt(from, MathF.Min(1f, e.Damage / 20f));
-        Zone.Wildlife.Audio.PlayUi("hurt", -6f);
-        Say($"{e.Creature.Species.CommonName}: -{lost:F0} health", Tones.Warning);
+        Zone.Wildlife.Audio.PlayUi("hurt", -6f); // the blow landing, not an alert
+        Alerts.Attack(Alerts.SignFor(e.Creature.Species), from);
     }
 
     /// <summary>A hit lands on a creature: a wet smack where it landed, its blood, and a critter of a swarm gone with a pop.</summary>
@@ -666,11 +677,9 @@ public partial class Game : Node3D
                 if (distance < e.DamageRadius && !UnderCover())
                 {
                     Suit.Hit(e.Damage, DamageKind.Hit);
-                    Say("STRUCK BY LIGHTNING: get low in a storm", Tones.Warning);
+                    Visor.Hurt(e.Position);
+                    Alerts.Attack("storm", e.Position);
                 }
-                break;
-            case WeatherEventKind.TornadoForming:
-                Say($"Funnel cloud forming {WeatherSim.Bearing(feet, e.Position)}", Tones.Warning);
                 break;
         }
     }

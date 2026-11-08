@@ -79,9 +79,6 @@ public partial class Game
         if ((Zone.Infra.Hurry || !orbit) && _waiting.Elapsed.TotalSeconds < MostWait) return;
         Zone.Infra.Hurry = false;
         Phase = Phase.Playing;
-        Say(Bunker.Mine.Open
-            ? $"Out of the cryopod. Locker {Bunker.MineLocker.Number} (E) has the kit. The stairs lead up."
-            : "CRYO CYCLE COMPLETE. F: open the pod.", Tones.Good);
         Woke?.Invoke();
     }
 
@@ -92,7 +89,6 @@ public partial class Game
         if (Survivor.WorldFeet.DistanceTo(Bunker.CryoStand) > 1.5f) return false;
         pod.OpenLid();
         Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Ping, Bunker.CryoStand + Vector3.Up * 1.5f, 0.6f, -10f);
-        Say($"You are the only one who woke. Tab: inventory and crafting. Locker {Bunker.MineLocker.Number} (E) has supplies; the stairs lead up.", Tones.Good);
         return true;
     }
 

@@ -72,7 +72,7 @@ public partial class Visor : CanvasLayer
     {
         _lines.RemoveAll(l => l.text == text);
         _lines.Add((text, colour, _time + 5));
-        if (_lines.Count > 5) _lines.RemoveAt(0);
+        if (_lines.Count > HudLayout.LinesShown) _lines.RemoveAt(0);
     }
 
     /// <summary>Experience earned: a short line at the upper right ("+3 XP ore").</summary>
@@ -145,7 +145,7 @@ public partial class Visor : CanvasLayer
         Vector2 size = _hud.Size;
         if (Game.Phase == Phase.Generating)
         {
-            Banner("GENERATING PLANET", Game.World == null ? "" : $"{Game.World.Name} · seed {Game.World.Seed} · the cryopod is thawing", C.Accent);
+            Banner("GENERATING PLANET", Game.World == null ? "" : $"{Game.World.Name} · seed {Game.World.Seed}", C.Accent);
             return;
         }
         Survivor survivor = Game.Survivor;
@@ -156,11 +156,10 @@ public partial class Visor : CanvasLayer
         DrawCompass(survivor);
         DrawChosenStar();
         DrawLines();
-        DrawWarnings();
         DrawProgress();
         if (Game.Suit.Dead)
         {
-            Banner($"{Game.Suit.Sim.Player.DeathCause?.ToUpperInvariant() ?? "DEAD"}", "R: wake in the bunker (your backpack stays where you fell)", C.Danger);
+            Banner($"{Game.Suit.Sim.Player.DeathCause?.ToUpperInvariant() ?? "DEAD"}", $"[R] RESPAWN", C.Danger);
             return;
         }
         DrawVitals();
@@ -240,12 +239,6 @@ public partial class Visor : CanvasLayer
         }
         if ((warn & Alert.Fall) != 0 && Mathf.PosMod((float)_time * 4f, 1f) < 0.6f)
             _hud.TextIn(UiTheme.Display, (int)(34 * s), new Rect2(0, size.Y * 0.6f, size.X, 50 * s), "IMPACT", C.Danger, HorizontalAlignment.Center);
-        if (ThreatShowing && Mathf.PosMod((float)_time * 3f, 1f) < 0.6f)
-        {
-            Vector3 local = Game.Camera.GlobalBasis.Inverse() * (_threatFrom - Game.Camera.GlobalPosition);
-            string side = MathF.Abs(local.X) < MathF.Abs(local.Z) * 0.6f ? (local.Z < 0 ? "AHEAD" : "BEHIND") : local.X < 0 ? "LEFT" : "RIGHT";
-            _hud.TextIn(UiTheme.Display, (int)(28 * s), new Rect2(0, size.Y * 0.66f, size.X, 44 * s), $"THREAT {side}", C.Warn, HorizontalAlignment.Center);
-        }
     }
 
     /// <summary>
@@ -338,6 +331,7 @@ public partial class Visor : CanvasLayer
             // The first row whose neighbourhood is free, so labels at the same bearing stack.
             int row = 0;
             while (labels.Exists(l => l.row == row && MathF.Abs(l.x - x) < 170 * s)) row++;
+            if (row >= HudLayout.CompassRows) return; // the mark stays; its label would crowd the view
             labels.Add((x, row));
             _compassBottom = MathF.Max(_compassBottom, y + (44 + (row + 1) * 16) * s);
             _hud.TextIn(UiTheme.Label, (int)(13 * s), new Rect2(x - 110 * s, y + (44 + row * 16) * s, 220 * s, 16 * s), $"{(tag.Length > 20 ? tag[..19] + ".." : tag)} {d:F0}m", colour, HorizontalAlignment.Center);
@@ -377,34 +371,14 @@ public partial class Visor : CanvasLayer
 
     float _compassBottom;
 
-    void DrawWarnings()
-    {
-        float s = S;
-        float y = MathF.Max(90 * s, _compassBottom + 8 * s); // always below the compass labels
-        foreach (WarningEntry w in Game.WeatherWarnings())
-        {
-            Color c = w.Level == WarningLevel.Danger ? C.Danger : w.Level == WarningLevel.Warning ? C.Warn : C.Dim;
-            _hud.Text(UiTheme.Label, (int)(17 * s), new Vector2(40 * s, y), w.Text, c);
-            y += 24 * s;
-            if (y > _compassBottom + 130 * s) break;
-        }
-    }
-
-    /// <summary>Experience and levels: short lines at the upper right, a banner on a new level. Nothing blocks play.</summary>
+    /// <summary>A new level: a banner under the compass for a few seconds. Nothing blocks play; experience itself counts quietly.</summary>
     void DrawProgress()
     {
         float s = S;
         Vector2 size = _hud.Size;
-        float y = 96 * s;
-        foreach (var (text, until) in _xp)
-        {
-            float a = (float)Math.Clamp(until - _time, 0, 1);
-            _hud.TextIn(UiTheme.Label, (int)(17 * s), new Rect2(size.X - 440 * s, y, 400 * s, 22 * s), text, new Color(C.Accent2, a), HorizontalAlignment.Right);
-            y += 22 * s;
-        }
         if (LevelUpShowing && Mathf.PosMod((float)_time * 2f, 1f) < 0.8f)
         {
-            var band = new Rect2(size.X / 2 - 320 * s, 150 * s, 640 * s, 48 * s);
+            var band = new Rect2(size.X / 2 - 320 * s, Layout.Flight.Position.Y, 640 * s, 48 * s);
             _hud.Block(band, new Color(C.Accent, 0.85f));
             _hud.TextIn(UiTheme.Display, (int)(26 * s), band, _level, C.Glass, HorizontalAlignment.Center);
         }
@@ -550,7 +524,7 @@ public partial class Visor : CanvasLayer
             }
         }
         // Which bar this is: a label and the tint, at the toolbar's left.
-        _hud.TextIn(UiTheme.Display, (int)(13 * s), new Rect2(layout.Toolbar.Position + new Vector2(-150 * s, cell / 2 - 9 * s), new Vector2(142 * s, 18 * s)), remote ? $"REMOTE {Bound("switch-bar")}" : $"YOURS {Bound("switch-bar")}", remote ? C.Holo : C.Dim, HorizontalAlignment.Right);
+        _hud.TextIn(UiTheme.Display, (int)(13 * s), layout.BarName, remote ? $"REMOTE {Bound("switch-bar")}" : $"YOURS {Bound("switch-bar")}", remote ? C.Holo : C.Dim, HorizontalAlignment.Right);
         int itemSize = (int)(16 * s), hintSize = (int)(13 * s);
         _hud.TextIn(UiTheme.Label, itemSize, layout.ItemLine, HudLayout.Fit(UiTheme.Label, itemSize, ItemLine(), layout.ItemLine.Size.X), C.Text, HorizontalAlignment.Center);
         _hud.TextIn(UiTheme.Label, hintSize, layout.Hints, HudLayout.Fit(UiTheme.Label, hintSize, HintLine(), layout.Hints.Size.X), C.Dim, HorizontalAlignment.Center);
@@ -626,12 +600,13 @@ public partial class Visor : CanvasLayer
         string line = Game.InOrbit ? Game.Spaceflight.FlightLine(v)
             : $"{v.Body.Velocity.Length():F0} m/s   ALT {v.Body.Position.Y:F0} m   AGL {v.AboveGround:F0} m   {gear}{(v.Flight.State.Cruise ? "   CRUISE" : "")}";
         // Under the compass, clear of the cockpit console.
-        var band = new Rect2(size.X / 2 - 360 * s, 128 * s, 720 * s, 34 * s);
+        Rect2 flight = Layout.Flight;
+        var band = new Rect2(flight.Position, new Vector2(flight.Size.X, 34 * s));
         _hud.Block(band, new Color(C.Glass, 0.6f));
         _hud.TextIn(UiTheme.Mono, (int)(19 * s), band, line, C.Text, HorizontalAlignment.Center);
         string message = c?.ConsoleMessageAge < 4f ? c.ConsoleMessage : v.Unanchored ? "BASE MODE: ENGINES OFF UNTIL IT LANDS AND ANCHORS" : v.ModeWarning ?? v.Stats.LiftWarning;
         if (!string.IsNullOrEmpty(message))
-            _hud.TextIn(UiTheme.Label, (int)(20 * s), new Rect2(0, band.End.Y + 8 * s, size.X, 26 * s), message, C.Warn, HorizontalAlignment.Center);
+            _hud.TextIn(UiTheme.Label, (int)(20 * s), new Rect2(flight.Position.X, band.End.Y + 8 * s, flight.Size.X, 26 * s), HudLayout.Fit(UiTheme.Label, (int)(20 * s), message, flight.Size.X), C.Warn, HorizontalAlignment.Center);
     }
 
     /// <summary>
@@ -644,7 +619,7 @@ public partial class Visor : CanvasLayer
         Vector2 size = _hud.Size;
         CoreMode mode = v.Structure.Mode;
         Color tone = mode switch { CoreMode.Base => C.Good, CoreMode.Capital => C.Accent, CoreMode.Hover => C.Holo, _ => C.Accent2 };
-        var box = new Rect2(size.X / 2 - 560 * s, 128 * s, 192 * s, 34 * s);
+        Rect2 box = Layout.Mode;
         _hud.Block(box, new Color(C.Glass, 0.75f));
         _hud.Block(new Rect2(box.Position, new Vector2(5 * s, box.Size.Y)), tone);
         _hud.Frame(box, new Color(tone, 0.8f), 1.5f * s);
