@@ -47,6 +47,14 @@ public sealed partial class Staging
                 if (c.Y - 1.7f < sea + 0.5f) continue;
                 var hit = space.IntersectRay(PhysicsRayQueryParameters3D.Create(c, mid + Vector3.Up * 6f, PlanetSurface.World.Layers.Flora));
                 // Broadside reads best: more across than along, nothing in the way.
+                // The land itself between: a hill in the way puts it out of sight.
+                bool hidden = false;
+                for (float s = 0.05f; s < 0.7f && !hidden; s += 0.05f)
+                {
+                    Vector3 q = c.Lerp(mid + Vector3.Up * 6f, s);
+                    hidden = _game.Zone.GroundAt(q.X, q.Z).Y > q.Y - 0.5f;
+                }
+                if (hidden) continue;
                 float score = MathF.Abs(MathF.Cos(a)) * 2f - MathF.Abs(MathF.Sin(a) - 0.5f) - (hit.Count > 0 ? 4f : 0f) - r;
                 if (score > best) { best = score; far = c; }
             }
@@ -74,14 +82,23 @@ public sealed partial class Staging
             if (purpose == "bridge")
             {
                 // From the back of the bridge toward its windows.
-                var glazed = cells.Where(c => Dirs.Horizontal.Any(h => inst.Blocks.Get(c + Int3.Up * 2 + h.Vec()).Type == BlockType.Pane)).ToList();
+                Dir bow = inst.Blocks.Blocks().Where(b => b.Block.Type == BlockType.Thruster).GroupBy(b => b.Block.Facing).OrderByDescending(g => g.Count()).First().Key.Opposite();
+                var glazed = cells.Where(c => inst.Blocks.Get(c + Int3.Up * 2 + bow.Vec()).Type == BlockType.Pane || inst.Blocks.Get(c + Int3.Up * 2 + bow.Vec() * 2).Type == BlockType.Pane).ToList();
+                if (glazed.Count == 0) glazed = cells.Where(c => Dirs.Horizontal.Any(h => inst.Blocks.Get(c + Int3.Up * 2 + h.Vec()).Type == BlockType.Pane)).ToList();
                 Int3 window = glazed.Count > 0 ? glazed.OrderBy(c => Math.Abs(c.X - c0.X) + Math.Abs(c.Z - c0.Z)).First() : end;
-                Int3 back = cells.OrderByDescending(c => c.Manhattan(window)).First();
-                eye = p.WorldOf(back, 1.65f);
-                look = p.WorldOf(window, 1.3f);
+                look = p.WorldOf(window, 2.2f);
+                // The farthest spot that still sees the windows past the stair's block.
+                foreach (Int3 c in cells.OrderByDescending(c => c.Manhattan(window)))
+                {
+                    Vector3 e = p.WorldOf(c, 1.65f);
+                    var hit = space.IntersectRay(PhysicsRayQueryParameters3D.Create(e, look, GalHack.Physics.Layers.World));
+                    if (hit.Count > 0 && ((Vector3)hit["position"]).DistanceTo(look) > 1.5f) continue;
+                    eye = e;
+                    break;
+                }
             }
             GD.Print($"hulk: {purpose} {m.Cells.Count()} cells, eye {eye}, look {look}");
-            _game.Survivor.PlaceOutside((eye + Vector3.Down * 1.6f).ToNumerics());
+            _game.Survivor.PlaceOutside((eye + Vector3.Down * 1.6f - (look - eye).Normalized() * 1.2f).ToNumerics());
             foreach (int x in _drive.Wait(60)) yield return x;
             _game.FixedCamera = new Transform3D(Basis.LookingAt(look - eye, Vector3.Up), eye);
             foreach (int x in _drive.Wait(90)) yield return x;
