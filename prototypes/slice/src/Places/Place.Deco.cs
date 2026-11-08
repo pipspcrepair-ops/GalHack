@@ -56,7 +56,9 @@ public sealed class Decor
         PoiInstance inst = memory.Inst;
         Layout layout = inst.Layout;
         var rooms = new Dictionary<int, PlaceRoom>();
-        var reserved = Reserved(inst);
+        var openings = Openings(inst).ToList();
+        var reserved = Reserved(inst, openings);
+        NavGrid nav = inst.Nav();
         string state = inst.State.ToString().ToLowerInvariant();
         bool alien = (inst.Family.Style ?? "").StartsWith("alien_", StringComparison.Ordinal);
         DecoTech? tech = TechOf(inst);
@@ -65,12 +67,12 @@ public sealed class Decor
             if (m.Kind is not (ModuleKind.Room or ModuleKind.Hall or ModuleKind.Vault)) continue;
             if (inst.Extras.Secrets.Any(s => s.Module == m.Index)) continue; // a hidden room keeps what the generator left
             if (Interior(inst, m) is not { } room0) continue;
-            var (y, x0, x1, z0, z1, height, open) = room0;
+            var (y, x0, x1, z0, z1, height, open, floor) = room0;
             int w = x1 - x0 + 1, d = z1 - z0 + 1;
             if (open < 9 || open < w * d * 0.85f || height < 2) continue; // not a rectangle: the generator's props stay
             var room = new DecoRoom
             {
-                Width = w, Depth = d, Height = height, RoomId = m.Purpose, State = state,
+                Width = w, Depth = d, Height = height, RoomId = m.Purpose, Tags = inst.Family.Tags.ToList(), State = state,
                 Age = inst.AgeOf(m.Index) switch { Age.New => DecoAge.Fresh, Age.Preserved => DecoAge.Preserved, _ => DecoAge.OldWorld },
                 Exposed = inst.ExposureOf(m.Index) != Exposure.Indoors,
                 Tech = tech,
@@ -89,33 +91,56 @@ public sealed class Decor
                 else if (c.X < x0) room.Doors.Add(new DecoDoor(DecoWall.West, c.Z - z0 + width / 2, width));
                 else if (c.X > x1) room.Doors.Add(new DecoDoor(DecoWall.East, c.Z - z0 + width / 2, width));
             }
+            // What the room's floor can't take, the library keeps clear from the start (the checks below are the last word):
+            // another room's floor inside its box among it.
+            var own = new HashSet<Int3>(m.Cells.Where(c => c.Y == y));
+            for (int z = z0; z <= z1; z++)
+                for (int x = x0; x <= x1; x++)
+                {
+                    var c = new Int3(x, y, z);
+                    bool free = own.Contains(c) && FloorAt(inst, nav, c) is float f && MathF.Abs(f - floor) < 0.01f && !reserved.Contains(c) && !reserved.Contains(c + Int3.Up)
+                        && (Clearable(inst.Blocks.Get(c + Int3.Up)) || inst.Blocks.Get(c + Int3.Up).Type is BlockType.Sign or BlockType.Cable or BlockType.Vine);
+                    if (!free) room.Blocked.Add(new DecoRect(new NV2(x - x0 + 0.5f, z - z0 + 0.5f), new NV2(0.5f, 0), new NV2(0, 0.5f)));
+                }
             DecoPlan plan;
             try { plan = Poi.Dress(room, inst.Kit?.Id); }
             catch (Exception) { continue; }
-            var placeRoom = new PlaceRoom { Module = m.Index, Corner = new Int3(x0, y, z0), Room = room, Plan = plan };
-            // Pieces on a reserved cell (or standing on one that is) are left out.
+            var placeRoom = new PlaceRoom { Module = m.Index, Corner = new Int3(x0, y, z0), Floor = floor, Room = room, Plan = plan };
+            // Pieces on a reserved cell (or standing on one that is), or not standing as they're drawn, are left out.
             var dropped = new HashSet<int>();
+            var touched = new Dictionary<int, HashSet<Int3>>();
             for (int i = 0; i < plan.Placements.Count; i++)
             {
                 DecoPlacement pl = plan.Placements[i];
                 if (pl.Support >= 0 && dropped.Contains(pl.Support)) { dropped.Add(i); continue; }
                 foreach (Int3 c in CellsOf(DecoLayout.Footprint(Forge, pl), placeRoom.Corner, 0.05f))
                     if (reserved.Contains(c) || reserved.Contains(c + Int3.Up)) { dropped.Add(i); break; }
-                if (!dropped.Contains(i) && pl.Support < 0 && !Held(inst, pl, DecoLayout.Footprint(Forge, pl), placeRoom.Corner)) dropped.Add(i);
+                if (dropped.Contains(i)) continue;
+                var cells = new HashSet<Int3>();
+                if (!Rests(inst, nav, pl, placeRoom, own, cells)) dropped.Add(i);
+                else touched[i] = cells;
             }
             var kept = memory.DecoTaken.GetValueOrDefault(m.Index) ?? new HashSet<int>();
             foreach (int i in dropped) kept.Add(i);
             if (kept.Count > 0) memory.DecoTaken[m.Index] = kept;
-            // The pieces' meshes are worked out here, off the main thread (the forge keeps them).
-            for (int i = 0; i < plan.Placements.Count; i++)
-                if (!kept.Contains(i)) Forge.Mesh(plan.Placements[i].Look);
             for (int i = 0; i < plan.Placements.Count; i++)
             {
                 if (kept.Contains(i) || !DecoLayout.Blocks(Forge, plan.Placements[i])) continue;
+                var blocking = Blocking(plan.Placements[i], placeRoom);
+                // A solid piece whose collision a person would meet in a doorway, an opening or by a cache goes, with what's on it.
+                if (blocking.Any(reserved.Contains))
+                {
+                    foreach (int j in Carried(plan, i)) kept.Add(j);
+                    continue;
+                }
                 placeRoom.Solid.Add(i);
-                foreach (Int3 c in Standing(DecoLayout.Footprint(Forge, plan.Placements[i]), placeRoom.Corner)) placeRoom.Cells.Add(c);
+                placeRoom.Blocking[i] = blocking;
             }
-            // The generator's generic props in this room go: the library's pieces stand there instead.
+            placeRoom.Solid.RemoveWhere(kept.Contains);
+            foreach (int i in placeRoom.Solid) placeRoom.Cells.UnionWith(placeRoom.Blocking[i]);
+            if (kept.Count > 0) memory.DecoTaken[m.Index] = kept;
+            // The generator's generic props in this room go, and its loose litter wherever a piece lies:
+            // the library's pieces stand there instead, so nothing is drawn one inside another.
             foreach (Int3 c in m.Cells)
             {
                 if (c.Y != y && c.Y != y + 1) continue;
@@ -123,51 +148,153 @@ public sealed class Decor
                 Block b = inst.Blocks.Get(c);
                 if (b.Role == Role.Prop || b.Role == Role.Story && b.Type == BlockType.Barricade) inst.Blocks.Set(c, Block.Air);
             }
+            foreach (var (i, cells) in touched)
+                if (!kept.Contains(i))
+                    foreach (Int3 c in cells)
+                        if (!inst.Blocks.Get(c).IsAir && Clearable(inst.Blocks.Get(c))) inst.Blocks.Set(c, Block.Air);
             rooms[m.Index] = placeRoom;
         }
-        KeepWaysOpen(memory, rooms);
+        KeepWaysOpen(memory, rooms, openings);
         return rooms;
     }
 
     /// <summary>
-    /// Whether a piece has something to hold it: one on the floor needs floor under all of it (decay leaves
-    /// holes), one up a wall or under a ceiling needs that wall or ceiling still there.
+    /// Whether a piece stands as it is drawn: whatever it lays on the floor (its feet, a broken one's
+    /// fragments, a burnt one's ash) lies on floor at the room's own height, never over a hole, a step,
+    /// a stair or a ledge; none of it is drawn inside a block; and one up a wall or under a ceiling has
+    /// that wall or ceiling still there. It stands on its own room's floor (<paramref name="own"/>), not on
+    /// another's that its box takes in. <paramref name="cells"/> gets the cells it is drawn in.
     /// </summary>
-    static bool Held(PoiInstance inst, DecoPlacement pl, DecoRect foot, Int3 corner)
+    bool Rests(PoiInstance inst, NavGrid nav, DecoPlacement pl, PlaceRoom room, HashSet<Int3> own, HashSet<Int3> cells)
     {
-        var nav = inst.Nav();
-        if (pl.Y < 0.2f)
+        DecoPiece piece = Forge.Catalogue.Piece(pl.Piece);
+        // The mesh is worked out here, off the main thread (the forge keeps it).
+        DecoMeshData mesh = Forge.Mesh(pl.Look);
+        System.Numerics.Matrix4x4 at = pl.Transform;
+        bool onFloor = pl.Support < 0 && piece.Mount is DecoMount.Floor or DecoMount.Top;
+        var centre = new NV2(pl.X, pl.Z);
+        var floors = new HashSet<Int3>();
+        // Most pieces stand clear of everything: if every cell of the box round all of it is clear (and floor at
+        // the room's height under it), that is enough, and the vertices needn't be walked one by one.
+        if (pl.Support < 0 && onFloor && ClearBox(inst, nav, mesh, at, room, own, cells)) return true;
+        cells.Clear();
+        foreach (DecoSurfaceData s in mesh.Surfaces)
+            foreach (System.Numerics.Vector3 v0 in s.Positions)
+            {
+                System.Numerics.Vector3 v = System.Numerics.Vector3.Transform(v0, at);
+                // A hair in toward the piece's middle: a face flush with a wall isn't in it.
+                var flat = new NV2(v.X, v.Z);
+                NV2 inward = centre - flat;
+                flat += new NV2(MathF.Sign(inward.X) * MathF.Min(0.01f, MathF.Abs(inward.X)), MathF.Sign(inward.Y) * MathF.Min(0.01f, MathF.Abs(inward.Y)));
+                float up = MathF.Max(v.Y, 0f);
+                var c = new Int3(room.Corner.X + (int)MathF.Floor(flat.X), room.Corner.Y + (int)MathF.Floor(room.Floor + up + 0.005f), room.Corner.Z + (int)MathF.Floor(flat.Y));
+                cells.Add(c);
+                if (onFloor && up < 0.03f) floors.Add(c with { Y = room.Corner.Y });
+            }
+        foreach (Int3 c in cells)
         {
-            foreach (Int3 c in CellsOf(foot, corner, 0.2f))
-                if (!nav.Solid(c + Int3.Down)) return false;
+            Block b = inst.Blocks.Get(c);
+            if (Clearable(b) || b.Type is BlockType.Sign or BlockType.Cable or BlockType.Vine) continue;
+            if (c.Y == room.Corner.Y && b.Type == BlockType.Plate && b.Role == Role.Floor) continue;
+            return false;
+        }
+        foreach (Int3 c in floors)
+            if (!own.Contains(c) || FloorAt(inst, nav, c) is not float f || MathF.Abs(f - room.Floor) > 0.01f) return false;
+        if (pl.Support >= 0 || onFloor) return true;
+        if (piece.Mount == DecoMount.Ceiling)
+        {
+            // Under a ceiling: the ceiling over all of it.
+            foreach (Int3 c in CellsOf(DecoLayout.Footprint(Forge, pl), room.Corner, 0.05f))
+                if (!nav.Solid(c with { Y = room.Corner.Y + (int)MathF.Floor(room.Floor + pl.Y + piece.Height + 0.05f) })) return false;
             return true;
         }
-        int up = (int)MathF.Floor(pl.Y);
-        foreach (Int3 c in CellsOf(foot, corner, 0f))
-        {
-            Int3 at = c + Int3.Up * up;
-            foreach (Dir d in Dirs.All)
-                if (nav.Solid(at + d.Vec())) return true;
-        }
-        return false;
+        // Up a wall: the wall behind it, all along its back and from its foot to its top (an opening into
+        // the next room is no wall to hang a rack on).
+        NV2 back = DecoGeo.Yaw(new NV2(0, 1), pl.Yaw), side = new(-back.Y, back.X);
+        foreach (float a in new[] { -0.4f, 0f, 0.4f })
+            foreach (float h in new[] { pl.Y + 0.1f, pl.Y + piece.Height - 0.1f })
+            {
+                NV2 behind = new NV2(pl.X, pl.Z) + back * (piece.Depth / 2f + 0.1f) + side * (a * piece.Width);
+                var c = new Int3(room.Corner.X + (int)MathF.Floor(behind.X), room.Corner.Y + (int)MathF.Floor(room.Floor + h), room.Corner.Z + (int)MathF.Floor(behind.Y));
+                if (!nav.Solid(c)) return false;
+            }
+        return true;
     }
+
+    /// <summary>Whether every cell of the box round a floor piece's mesh is clear and floored at the room's height (the cells go in <paramref name="cells"/>).</summary>
+    static bool ClearBox(PoiInstance inst, NavGrid nav, DecoMeshData mesh, System.Numerics.Matrix4x4 at, PlaceRoom room, HashSet<Int3> own, HashSet<Int3> cells)
+    {
+        // The box of the drawn vertices themselves (a fallen piece's stored bounds can be its standing ones).
+        float x0 = float.MaxValue, x1 = float.MinValue, z0 = float.MaxValue, z1 = float.MinValue, top = 0f;
+        foreach (DecoSurfaceData s in mesh.Surfaces)
+            foreach (System.Numerics.Vector3 p in s.Positions)
+            {
+                var v = System.Numerics.Vector3.Transform(p, at);
+                x0 = MathF.Min(x0, v.X); x1 = MathF.Max(x1, v.X); z0 = MathF.Min(z0, v.Z); z1 = MathF.Max(z1, v.Z); top = MathF.Max(top, v.Y);
+            }
+        if (x0 > x1) return false;
+        int cx0 = room.Corner.X + (int)MathF.Floor(x0 + 0.01f), cx1 = room.Corner.X + (int)MathF.Floor(x1 - 0.01f);
+        int cz0 = room.Corner.Z + (int)MathF.Floor(z0 + 0.01f), cz1 = room.Corner.Z + (int)MathF.Floor(z1 - 0.01f);
+        int cy1 = room.Corner.Y + (int)MathF.Floor(room.Floor + top + 0.005f);
+        for (int z = cz0; z <= cz1; z++)
+            for (int x = cx0; x <= cx1; x++)
+            {
+                var floor = new Int3(x, room.Corner.Y, z);
+                if (!own.Contains(floor) || FloorAt(inst, nav, floor) is not float f || MathF.Abs(f - room.Floor) > 0.01f) return false;
+                for (int y = room.Corner.Y; y <= cy1; y++)
+                {
+                    var c = new Int3(x, y, z);
+                    Block b = inst.Blocks.Get(c);
+                    if (!Clearable(b) && !(y == room.Corner.Y && b.Type == BlockType.Plate && b.Role == Role.Floor) && b.Type is not (BlockType.Sign or BlockType.Cable or BlockType.Vine)) return false;
+                    cells.Add(c);
+                }
+            }
+        return true;
+    }
+
+    /// <summary>The top of a floor plate: a room laid with them stands its pieces on them.</summary>
+    public const float PlateTop = 0.1f;
+
+    /// <summary>
+    /// The floor in a walk-level cell, as a height above the cell's bottom, or null where there's nothing a
+    /// piece could stand on: it's bare over a full block or the ground (0), or laid with a floor plate on
+    /// one (<see cref="PlateTop"/>). A stair, a hole, a ledge or a prop under it is no floor.
+    /// </summary>
+    static float? FloorAt(PoiInstance inst, NavGrid nav, Int3 c)
+    {
+        Block b = inst.Blocks.Get(c), under = inst.Blocks.Get(c + Int3.Down);
+        bool firm = under.IsAir ? nav.IsRock(c + Int3.Down) : BlockInfo.IsFullCube(under.Type) || under.Type == BlockType.Lattice;
+        if (!firm) return null;
+        if (b.Type == BlockType.Plate && b.Role == Role.Floor) return PlateTop;
+        return Clearable(b) ? 0f : null;
+    }
+
+    /// <summary>What a piece may be drawn in: air, the generator's props (they go from a dressed room) and its loose litter (cleared where a piece lies).</summary>
+    static bool Clearable(Block b) => b.IsAir || b.Role == Role.Prop || b.Role == Role.Story && b.Type == BlockType.Barricade
+        || b.Role == Role.Debris && b.Type is BlockType.Ash or BlockType.Scatter or BlockType.Rubble or BlockType.Plant or BlockType.Puddle or BlockType.Crate or BlockType.Scorch;
 
     /// <summary>
     /// The dressing never closes a way the architect checked: every doorway, stair, cache, keycard
     /// and hidden wall reachable on the bare blocks stays reachable round the solid pieces. A piece
     /// standing on the bare route to one that was cut off goes (and what stood on it).
     /// </summary>
-    void KeepWaysOpen(PlaceMemory memory, Dictionary<int, PlaceRoom> rooms)
+    void KeepWaysOpen(PlaceMemory memory, Dictionary<int, PlaceRoom> rooms, List<(Int3 A, Int3 B)> openings)
     {
         PoiInstance inst = memory.Inst;
         var bare = inst.Nav();
         Int3 entry = inst.Layout.EntranceCell;
-        var open = bare.Reachable(entry);
+        var tree = bare.Tree(entry);
+        var open = new HashSet<Int3>(tree.Keys);
         var need = new HashSet<Int3>();
         void Need(Int3 c) { if (open.Contains(c)) need.Add(c); }
         foreach (Doorway d in inst.Layout.Doorways)
             foreach (Int3 c in d.Cells)
                 foreach (Dir h in Dirs.Horizontal) Need(c + h.Vec());
+        foreach (var (a, b) in openings)
+        {
+            Need(a);
+            Need(b);
+        }
         foreach (var (p, b) in inst.Blocks.Blocks())
             if (b.Type is BlockType.Stair or BlockType.Ladder) Need(p);
         foreach (LootCache c in inst.Caches)
@@ -179,24 +306,26 @@ public sealed class Decor
                 Need(c + s.Facing.Vec());
                 Need(c - s.Facing.Vec());
             }
-        for (int round = 0; round < 200; round++)
+        for (int round = 0; round < 40 && need.Count > 0; round++)
         {
             var reach = Place.NavOf(memory, rooms).Reachable(entry);
-            Int3? cut = null;
-            foreach (Int3 c in need)
-                if (!reach.Contains(c)) { cut = c; break; }
-            if (cut is not Int3 lost) return;
-            List<Int3> way = bare.FindPath(entry, lost);
-            if (way == null) { need.Remove(lost); continue; }
+            var lost = need.Where(c => !reach.Contains(c)).ToList();
+            if (lost.Count == 0) return;
             bool freed = false;
-            foreach (PlaceRoom r in rooms.Values)
-                foreach (int i in r.Solid.ToList())
-                    if (Standing(DecoLayout.Footprint(Forge, r.Plan.Placements[i]), r.Corner).Any(way.Contains))
-                    {
-                        Drop(memory, r, i);
-                        freed = true;
-                    }
-            if (!freed) need.Remove(lost); // nothing of ours stands in the way
+            foreach (Int3 cut in lost)
+            {
+                List<Int3> way = NavGrid.PathInTree(tree, cut);
+                if (way == null) { need.Remove(cut); continue; }
+                var on = new HashSet<Int3>(way);
+                foreach (PlaceRoom r in rooms.Values)
+                    foreach (int i in r.Solid.ToList())
+                        if (r.Blocking[i].Overlaps(on))
+                        {
+                            Drop(memory, r, i);
+                            freed = true;
+                        }
+            }
+            if (!freed) return; // nothing of ours stands in the way of what's left
         }
     }
 
@@ -214,24 +343,31 @@ public sealed class Decor
             r.Solid.Remove(i);
         }
         r.Cells.Clear();
-        foreach (int i in r.Solid)
-            foreach (Int3 c in Standing(DecoLayout.Footprint(Forge, r.Plan.Placements[i]), r.Corner)) r.Cells.Add(c);
+        foreach (int i in r.Solid) r.Cells.UnionWith(r.Blocking[i]);
     }
 
     /// <summary>
-    /// A module's open interior: the level you walk on (the lowest with open floor: the architect's
-    /// modules start at it, a kit's a layer of floor below), its box and clear height, its open cells.
+    /// A module's open interior: the level you walk on (the lowest with floor: the architect's modules
+    /// start at it, a kit's a layer of floor below), the floor's height in it (bare, or laid with plates:
+    /// as most of its cells are), its box and clear height, and its cells with that floor.
     /// </summary>
-    public static (int Y, int X0, int X1, int Z0, int Z1, int Height, int Cells)? Interior(PoiInstance inst, PlacedModule m)
+    public static (int Y, int X0, int X1, int Z0, int Z1, int Height, int Cells, float Floor)? Interior(PoiInstance inst, PlacedModule m)
     {
+        NavGrid nav = inst.Nav();
         foreach (int y in new[] { m.Min.Y, m.Min.Y + 1 })
         {
-            var inside = m.Cells.Where(c => c.Y == y && Open(inst.Blocks.Get(c)) && !inst.Blocks.Get(c + Int3.Down).IsAir).ToList();
-            if (inside.Count == 0) continue;
+            var floors = m.Cells.Where(c => c.Y == y).Select(c => (Cell: c, Floor: FloorAt(inst, nav, c))).Where(t => t.Floor != null).ToList();
+            if (floors.Count == 0) continue;
+            float floor = floors.GroupBy(t => t.Floor.Value).OrderByDescending(g => g.Count()).ThenBy(g => g.Key).First().Key;
+            var inside = floors.Where(t => t.Floor == floor).Select(t => t.Cell).ToList();
             int x0 = inside.Min(c => c.X), x1 = inside.Max(c => c.X), z0 = inside.Min(c => c.Z), z1 = inside.Max(c => c.Z);
             int height = 0;
-            for (int h = 0; h < 12 && Open(inst.Blocks.Get(new Int3((x0 + x1) / 2, y + h, (z0 + z1) / 2))); h++) height++;
-            return (y, x0, x1, z0, z1, height, inside.Count);
+            for (int h = 0; h < 12; h++, height++)
+            {
+                Block b = inst.Blocks.Get(new Int3((x0 + x1) / 2, y + h, (z0 + z1) / 2));
+                if (!Open(b) && !(h == 0 && b.Type == BlockType.Plate)) break;
+            }
+            return (y, x0, x1, z0, z1, height, inside.Count, floor);
         }
         return null;
     }
@@ -249,7 +385,7 @@ public sealed class Decor
     };
 
     /// <summary>Cells the dressing must leave clear: fixtures, ways up and down, doorways and a step inside them.</summary>
-    static HashSet<Int3> Reserved(PoiInstance inst)
+    static HashSet<Int3> Reserved(PoiInstance inst, List<(Int3 A, Int3 B)> openings)
     {
         var r = new HashSet<Int3>();
         foreach (LootCache c in inst.Caches) r.Add(c.Cell);
@@ -262,6 +398,13 @@ public sealed class Decor
         foreach (Doorway d in inst.Layout.Doorways)
             foreach (Int3 c in d.Cells)
                 foreach (Dir h in Dirs.Horizontal) r.Add(c + h.Vec());
+        // Where two modules' floors meet with no doorway (a mine's drifts run into each other, a hall opens
+        // on a passage), the way through stays clear as a doorway's does: nothing is stood across it.
+        foreach (var (a, b) in openings)
+        {
+            r.Add(a);
+            r.Add(b);
+        }
         foreach (Int3 c in inst.Layout.ExitCells)
             foreach (Dir h in Dirs.Horizontal) r.Add(c + h.Vec());
         foreach (LiftShaft s in inst.Extras.Lifts)
@@ -280,6 +423,94 @@ public sealed class Decor
             foreach (Int3 c in s.TellCells) r.Add(c);
         }
         return r;
+    }
+
+    /// <summary>
+    /// The places two modules open into each other with no doorway: a walkable cell of one beside a walkable
+    /// cell of the other (a mine's drifts and stopes, a hangar floor and its passage). Each pair once.
+    /// </summary>
+    public static IEnumerable<(Int3 A, Int3 B)> Openings(PoiInstance inst)
+    {
+        var nav = inst.Nav();
+        var of = new Dictionary<Int3, int>();
+        foreach (PlacedModule m in inst.Layout.Modules)
+            foreach (Int3 c in m.Cells) of.TryAdd(c, m.Index);
+        // Walkable as the place will stand: the generator's props and litter go from a dressed room.
+        bool Walk(Int3 c) => nav.Standable(c) || FloorAt(inst, nav, c) != null && Clearable(inst.Blocks.Get(c + Int3.Up));
+        foreach (var (c, mi) in of)
+            foreach (Dir h in new[] { Dir.East, Dir.South })
+            {
+                Int3 n = c + h.Vec();
+                if (of.TryGetValue(n, out int ni) && ni != mi && Walk(c) && Walk(n)) yield return (c, n);
+            }
+    }
+
+    /// <summary>A piece and everything standing on it (and on that).</summary>
+    static List<int> Carried(DecoPlan plan, int index)
+    {
+        var all = new List<int> { index };
+        for (int k = 0; k < all.Count; k++)
+            for (int i = 0; i < plan.Placements.Count; i++)
+                if (plan.Placements[i].Support == all[k] && !all.Contains(i)) all.Add(i);
+        return all;
+    }
+
+    /// <summary>
+    /// The walk-level cells a solid piece takes from a walker: those it stands in, and those whose middle
+    /// lies within a person's radius of its collision (its boxes between a step's height and a head's,
+    /// seen from above). A route through cell middles never brushes it.
+    /// </summary>
+    HashSet<Int3> Blocking(DecoPlacement pl, PlaceRoom room)
+    {
+        var cells = new HashSet<Int3>(Standing(DecoLayout.Footprint(Forge, pl), room.Corner));
+        float reach = Slice.Player.Survivor.Radius;
+        foreach (DecoBox box in Forge.Mesh(pl.Look).Boxes)
+        {
+            var corners = box.Corners().Select(c => System.Numerics.Vector3.Transform(c, pl.Transform)).ToList();
+            if (corners.Max(c => c.Y) < 0.35f || corners.Min(c => c.Y) > Slice.Player.Survivor.Height) continue;
+            NV2[] hull = Hull(corners.Select(c => new NV2(c.X, c.Z)).ToList());
+            int x0 = (int)MathF.Floor(hull.Min(h => h.X) - reach), x1 = (int)MathF.Floor(hull.Max(h => h.X) + reach);
+            int z0 = (int)MathF.Floor(hull.Min(h => h.Y) - reach), z1 = (int)MathF.Floor(hull.Max(h => h.Y) + reach);
+            for (int z = z0; z <= z1; z++)
+                for (int x = x0; x <= x1; x++)
+                    if (Outside(hull, new NV2(x + 0.5f, z + 0.5f)) < reach) cells.Add(new Int3(room.Corner.X + x, room.Corner.Y, room.Corner.Z + z));
+        }
+        return cells;
+    }
+
+    /// <summary>The convex hull of a few points, counter-clockwise (a box's corners seen from above).</summary>
+    static NV2[] Hull(List<NV2> pts)
+    {
+        var hull = new List<NV2>();
+        NV2 start = pts.OrderBy(p => p.X).ThenBy(p => p.Y).First(), at = start;
+        do
+        {
+            hull.Add(at);
+            NV2 next = pts[0] == at ? pts[1] : pts[0];
+            foreach (NV2 q in pts)
+            {
+                float cross = (next.X - at.X) * (q.Y - at.Y) - (next.Y - at.Y) * (q.X - at.X);
+                if (cross < 0 || cross == 0 && NV2.DistanceSquared(at, q) > NV2.DistanceSquared(at, next)) next = q;
+            }
+            at = next;
+        } while (at != start && hull.Count <= pts.Count);
+        return hull.ToArray();
+    }
+
+    /// <summary>How far a point lies outside a convex polygon (0 inside).</summary>
+    static float Outside(NV2[] poly, NV2 p)
+    {
+        if (poly.Length < 3) return poly.Min(q => NV2.Distance(q, p));
+        bool inside = true;
+        float best = float.MaxValue;
+        for (int i = 0; i < poly.Length; i++)
+        {
+            NV2 a = poly[i], e = poly[(i + 1) % poly.Length] - a;
+            if (e.X * (p.Y - a.Y) - e.Y * (p.X - a.X) < 0) inside = false;
+            float t = Math.Clamp(NV2.Dot(p - a, e) / MathF.Max(e.LengthSquared(), 1e-9f), 0f, 1f);
+            best = MathF.Min(best, NV2.Distance(a + e * t, p));
+        }
+        return inside ? 0f : best;
     }
 
     /// <summary>The floor cells a solid piece stands in: a body as wide as a person can't use them, even where the piece misses the cell's middle.</summary>
@@ -408,7 +639,7 @@ public partial class Place
         Decor decor = Decor.Shared;
         if (_dressed.ContainsKey(room.Module)) yield break;
         // A hair off the floor: nothing the dressing lays flat is ever coplanar with the blocks.
-        var d = new Dressed { Node = new Node3D { Name = $"Deco {room.Module}", Position = new Vector3(room.Corner.X, room.Corner.Y + 0.008f, room.Corner.Z) } };
+        var d = new Dressed { Node = new Node3D { Name = $"Deco {room.Module}", Position = new Vector3(room.Corner.X, room.Corner.Y + room.Floor + 0.008f, room.Corner.Z) } };
         AddChild(d.Node);
         _dressed[room.Module] = d;
         HashSet<int> taken = Memory.DecoTaken.GetValueOrDefault(room.Module);

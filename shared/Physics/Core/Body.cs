@@ -144,6 +144,12 @@ public sealed class Body
     public float Density { get; set; }
 
     /// <summary>
+    /// The height its share under water is reckoned by, if not its shape's: a person who crouches keeps
+    /// the body they have, so crouching in shallow water neither floats them nor sets them swimming.
+    /// </summary>
+    public float? WaterHeight { get; set; }
+
+    /// <summary>
     /// How the body sits in water this tick (the world updates it before anything reacts to it):
     /// the share of it under the surface, and whether it is wholly under, the cue for a vitals
     /// system that a suit must breathe its own oxygen.

@@ -353,10 +353,11 @@ public partial class GenTest : Node
     /// </summary>
     void StarterMaterials()
     {
-        const double Reach = 300;
+        const double Reach = 500; // a common ore's cell (three 200 m cells of ground) across its diagonal
         foreach (var (a, v) in Variants())
         {
-            double worst = 0, worstLanding = 0;
+            double worst = 0, worstLanding = 0, worstStart = 0, marks = 0;
+            int spots = 0;
             int deposits = 0, dry = 0, tooDeep = 0, unusable = 0;
             for (int s = 0; s < 4; s++)
             {
@@ -379,6 +380,11 @@ public partial class GenTest : Node
                         worstLanding = Math.Max(worstLanding, field.Nearest((DepositKind)kind, site.X, site.Y));
                 }
 
+                // The start's landing: the first ores within their promise.
+                LandingSite start = Landing.Find(map, map.WidthMeters * 0.5, map.HeightMeters * 0.5);
+                foreach (DepositKind first in new[] { DepositKind.Iron, DepositKind.Copper, DepositKind.Silicon, DepositKind.Carbon })
+                    worstStart = Math.Max(worstStart, field.Nearest(first, start.X, start.Y));
+
                 // And anywhere else a player could stand.
                 var rng = new Rng((ulong)(s + 1) * 977);
                 for (int p = 0, tries = 0; p < 300 && tries < 20000; tries++)
@@ -388,12 +394,16 @@ public partial class GenTest : Node
                     p++;
                     for (int kind = 0; kind < DepositField.CommonKinds; kind++)
                         worst = Math.Max(worst, field.Nearest((DepositKind)kind, x, y));
+                    // The scanner's marks here: the kinds with a deposit within its 600 m.
+                    spots++;
+                    foreach (DepositKind kind in DepositField.EveryPlanet())
+                        if (field.Nearest(kind, x, y, 700) <= 600) marks++;
                 }
             }
             float dryShare = dry / (float)Math.Max(deposits, 1);
-            Check(worst <= Reach && worstLanding <= Reach && tooDeep == 0 && unusable == 0 && dryShare > 0.97f,
+            Check(worst <= Reach && worstLanding <= Reach && worstStart <= DepositField.StartReach + 1 && tooDeep == 0 && unusable == 0 && dryShare > 0.97f,
                 $"starter materials {a}/{v}: iron, copper, silicon, carbon, water and burnstone all within {worst:F0} m of any walkable spot " +
-                $"({worstLanding:F0} m from landing sites); {deposits / 4} deposits per planet, {dryShare:P1} on dry ground, none deeper than 3 m");
+                $"({worstLanding:F0} m from landing sites; iron, copper, silicon and carbon within {worstStart:F0} m of the start's); {deposits / 4} deposits per planet, {dryShare:P1} on dry ground, none deeper than 3 m; the scanner shows {marks / Math.Max(1, spots):F1} kinds on average");
         }
     }
 

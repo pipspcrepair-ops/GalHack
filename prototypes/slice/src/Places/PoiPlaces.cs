@@ -153,6 +153,7 @@ public partial class PoiPlaces : Node3D
             Scan(focus);
         }
         if (_job != null) Work();
+        BurnFuses(delta);
     }
 
     /// <summary>How far off a place is started at the speed you are going.</summary>

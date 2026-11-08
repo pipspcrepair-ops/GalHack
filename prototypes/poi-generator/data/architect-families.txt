@@ -310,7 +310,7 @@ family old_airfield
   spacing 30
   reveal landmark
   ominous 0.7
-  tags fallen military
+  tags fallen military aviation
   states active 0 abandoned 6 infested 2 ruined 3
   variant Kestrel Field
     seed 9101
@@ -337,7 +337,7 @@ family abandoned_spaceport
   spacing 40
   reveal landmark
   ominous 0.6
-  tags fallen space
+  tags fallen space aviation
   states active 0 abandoned 6 infested 2 ruined 2
   variant Port Meridian
     seed 9201

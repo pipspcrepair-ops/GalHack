@@ -53,7 +53,8 @@ public sealed class DecoPlanner
         _rng = new DecoRng(DecoHash.Combine(room.Seed, DecoHash.Fnv(room.Set ?? "")));
         _groups = 0;
         _chosen.Clear();
-        mix ??= (room.RoomId != null && _arr.Recipes.TryGetValue(room.RoomId, out var recipe)) ? recipe : _arr.Sets.TryGetValue(room.Set, out var sp) ? sp : new DecoSetPlan { Set = room.Set };
+        string named = room.Recipe ?? room.RoomId;
+        mix ??= (named != null && _arr.Recipes.TryGetValue(named, out var recipe)) ? recipe : _arr.Sets.TryGetValue(room.Set, out var sp) ? sp : new DecoSetPlan { Set = room.Set };
         Reserve();
         bool corridor = MathF.Min(room.Width, room.Depth) < 2.6f;
 
@@ -300,11 +301,14 @@ public sealed class DecoPlanner
         var walls = new List<DecoWall> { DecoWall.North, DecoWall.South, DecoWall.West, DecoWall.East };
         _rng.Shuffle(walls);
         int failures = 0;
+        var uses = new int[mix.Count];
         for (int tries = 0; tries < 40 && failures < 8; tries++)
         {
             int pick = _rng.PickWeighted(weights);
             if (pick < 0) break;
             DecoTemplate t = _arr.Templates[mix[pick].Template];
+            // A template with a most uses (a galley, an altar) stops at it.
+            if (t.Max > 0 && uses[pick] >= t.Max) { weights[pick] = 0; continue; }
             List<Member> inst = Instance(t);
             if (inst == null) { weights[pick] = 0; failures++; continue; }
             var (lo, hi) = Extent(inst);
@@ -320,6 +324,7 @@ public sealed class DecoPlanner
                 if (placed) break;
             }
             if (!placed) { weights[pick] *= 0.3f; failures++; }
+            else uses[pick]++;
         }
     }
 
@@ -388,7 +393,8 @@ public sealed class DecoPlanner
     {
         DecoPiece seat = Pick(t.Anchor, t.Id + ":anchor");
         if (seat == null) return;
-        DecoDoor door = _room.Doors.Count > 0 ? _room.Doors[0] : new DecoDoor(DecoWall.North, _room.Width / 2, 1.2f);
+        // Facing away from the way in; with none, down the room's length (an aircraft's cabin, a long hall).
+        DecoDoor door = _room.Doors.Count > 0 ? _room.Doors[0] : _room.Depth >= _room.Width ? new DecoDoor(DecoWall.North, _room.Width / 2, 1.2f) : new DecoDoor(DecoWall.West, _room.Depth / 2, 1.2f);
         DecoWall focusWall = door.Wall switch { DecoWall.North => DecoWall.South, DecoWall.South => DecoWall.North, DecoWall.West => DecoWall.East, _ => DecoWall.West };
         float len = WallLength(focusWall), depth = focusWall is DecoWall.North or DecoWall.South ? _room.Depth : _room.Width;
         DecoPiece focus = Pick(t.Focus, t.Id + ":focus", p => p.Mount == DecoMount.Floor);
@@ -399,7 +405,7 @@ public sealed class DecoPlanner
             var fm = new List<Member> { new() { Piece = focus, Role = "focus" } };
             if (TryPlace(fm, fx, fz, WallYaw(focusWall), t.Id)) start = focus.Depth + 1.4f;
         }
-        float aisle = 1.3f, step = seat.Depth + 0.5f;
+        float aisle = t.Aisle, step = seat.Depth + 0.5f;
         int perSide = Math.Max(1, (int)((len / 2 - aisle / 2 - 0.5f) / (seat.Width + 0.05f)));
         for (float d = start + seat.Depth / 2; d < depth - 2.2f; d += step)
         {
@@ -440,6 +446,7 @@ public sealed class DecoPlanner
         _reserved = new List<DecoRect>();
         float w = _room.Agent + 0.35f;
         foreach (DecoDoor d in _room.Doors) _reserved.Add(_room.Apron(d, 1.2f, 0.2f));
+        _reserved.AddRange(_room.Blocked);
         if (_room.Doors.Count == 0) return;
         var (p0, i0) = _room.DoorPoint(_room.Doors[0]);
         Vector2 a = p0 + i0 * 0.6f;

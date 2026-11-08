@@ -20,10 +20,14 @@ public sealed class DecoRoom
 {
     public float Width, Depth, Height = 3f;
     public List<DecoDoor> Doors = new();
+    /// <summary>Patches of the floor nothing may stand on (a stair, a cache, a hole, a heap the years left): kept clear like a doorway.</summary>
+    public List<DecoRect> Blocked = new();
     /// <summary>The theme set (deco.json) the room is furnished from.</summary>
     public string Set;
     /// <summary>The POI room id it came from (rooms.txt), if any, and its tags.</summary>
     public string RoomId;
+    /// <summary>The named recipe (a mix of the set) it is furnished by, if any: set by <see cref="DecoPoi.Dress"/> from the room's id and the place.</summary>
+    public string Recipe;
     public List<string> Tags = new();
     /// <summary>The POI's state: active, abandoned, infested or ruined.</summary>
     public string State = "abandoned";

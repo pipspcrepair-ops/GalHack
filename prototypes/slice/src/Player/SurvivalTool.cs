@@ -106,7 +106,7 @@ public sealed class SurvivalTool
     Deposit? _tell;
     readonly Dictionary<(double, double), int> _tellsWorked = new();
     /// <summary>Pulses a tell rock takes to break down; each gives a little of its ore.</summary>
-    public const int TellPulses = 4, TellOrePerPulse = 3;
+    public const int TellPulses = 4, TellOrePerPulse = 1;
     public PoiPlaces.Hit? PlaceHit => _placeHit;
     PoiPlaces.Hit? _placeHit;
     SalvageSite _wreck;
