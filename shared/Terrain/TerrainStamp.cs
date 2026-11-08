@@ -179,6 +179,8 @@ public sealed class TerrainStamp
     public float Wear { get; init; }
     /// <summary>Open ground with nothing built on it (a park): the land's plants grow on it, grass always, trees once it's worn past keeping.</summary>
     public bool Wild { get; init; }
+    /// <summary>Its made ground is drawn by the terrain shader from <see cref="GroundPatch"/>es (set when they are planned): the mesh's colours leave it to them.</summary>
+    public bool Painted { get; set; }
 
     /// <summary>The stamp's shape: Pad (the default), Bowl, Terraces, Cut, Tilt or Furrow.</summary>
     public StampShape Shape { get; init; } = StampShape.Pad;

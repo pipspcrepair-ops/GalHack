@@ -42,6 +42,13 @@ uniform vec2 road_wind = vec2(1.0, 0.0);
 // z paint at all (a low-tech world painted none).
 uniform vec4 road_paint = vec4(0.0, 1.0, 1.0, 0.0);
 
+// The made ground round the places (GroundField.cs): yards, aprons, car parks, forecourts, drives and paths,
+// each a rounded rectangle; the top one over a pixel paints it from its exact outline.
+uniform sampler2D ground_patches : filter_nearest;
+uniform sampler2D ground_cells : filter_nearest;
+uniform sampler2D ground_index : filter_nearest;
+uniform vec4 ground_grid = vec4(16.0, 0.0, 0.0, 0.0); // cell size, cells across, cells down, patches
+
 varying vec3 wpos;
 varying vec3 wnormal;
 
@@ -404,6 +411,209 @@ vec4 paint_road(Road r, vec2 p, vec3 land, float fw, float near, out float cover
 	return vec4(mix(grit, c, deck), max(deck, shoulder) * (1.0 - smoothstep(0.5, 1.0, r.core)));
 }
 
+// ---- made ground ------------------------------------------------------------------------------------
+
+// The patch of made ground over a point: the top layer of those it lies in (or, outside them all, the
+// nearest, for its crumbling edge), how far inside its outline it is, and where it is in the patch's own frame.
+struct Patch {
+	float found;
+	float d;        // metres past its outline (negative inside), the outline's wander included
+	vec2 local;     // along its U axis from its middle, across it (V)
+	vec2 half_;     // its half length and half width
+	float cover;    // MadeCover: 1 concrete, 2 tarmac, 3 gravel, 4 dirt, 5 flags, 6 lawn
+	float pattern;  // GroundPattern: 0 plain, 1 slabs, 2 bays, 3 loading
+	float wear;
+	float layer;
+	float kerb;
+	float slab;
+	float seed;
+};
+
+Patch top_patch(vec2 at, float y, float tolerance, float wob) {
+	Patch t;
+	t.found = 0.0;
+	t.d = 1e9;
+	t.layer = -1.0;
+	if (ground_grid.w < 0.5) return t;
+	vec2 c = mod(at, planet_size);
+	ivec2 cell = ivec2(min(floor(c / ground_grid.x), ground_grid.yz - 1.0));
+	vec2 list = texelFetch(ground_cells, cell, 0).xy;
+	int first = int(list.x), count = min(int(list.y), 32);
+	for (int k = 0; k < count; k++) {
+		int e = first + k;
+		int s = int(texelFetch(ground_index, ivec2(e % 4096, e / 4096), 0).r);
+		ivec2 b = ivec2((s % 1024) * 4, s / 1024);
+		vec4 t0 = texelFetch(ground_patches, b, 0);
+		vec2 rel = c - t0.xy;
+		rel -= planet_size * round(rel / planet_size);
+		vec2 lp = vec2(dot(rel, t0.zw), dot(rel, vec2(-t0.w, t0.z)));
+		vec4 t1 = texelFetch(ground_patches, b + ivec2(1, 0), 0);
+		vec2 q = abs(lp) - (t1.xy - t1.z);
+		float d = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - t1.z;
+		if (d > 3.5) continue;
+		vec4 t3 = texelFetch(ground_patches, b + ivec2(3, 0), 0);
+		// Ground well off its level isn't it: a pit dug in it, the wall of a cut, a bank beside it.
+		if (abs(y - t1.w) > max(tolerance, t3.w) + max(d, 0.0) * 1.2) continue;
+		vec4 t2 = texelFetch(ground_patches, b + ivec2(2, 0), 0);
+		// A laid edge barely wanders; one laid straight on the land crumbles more the older it is.
+		d += wob * (t3.x > 0.5 ? 0.04 : 0.2 + 0.8 * t2.z) * min(1.0, t1.y * 0.5);
+		bool inside = d < 0.0, was = t.d < 0.0;
+		bool take = t.found < 0.5 || (inside != was ? inside : inside ? t2.w > t.layer || t2.w == t.layer && d < t.d : d < t.d);
+		if (!take) continue;
+		t.found = 1.0;
+		t.d = d;
+		t.local = lp;
+		t.half_ = t1.xy;
+		t.cover = t2.x;
+		t.pattern = t2.y;
+		t.wear = t2.z;
+		t.layer = t2.w;
+		t.kerb = t3.x;
+		t.slab = t3.y;
+		t.seed = t3.z;
+	}
+	return t;
+}
+
+// How much of a pixel scattered fragments cover: chunks of concrete about a hand to a forearm across, jittered
+// on a grid of `size` metres, each there by `density`.
+float fragments(vec2 p, float size, float density, float salt, float fw) {
+	vec2 q = p / size, i = floor(q), period = floor(planet_size / size);
+	float most = 0.0;
+	float jag = pn2(p, 7.0) - 0.5;
+	for (int y = -1; y <= 1; y++)
+	for (int x = -1; x <= 1; x++) {
+		vec2 g = i + vec2(float(x), float(y));
+		vec2 w = mod(g, period);
+		float h = hash3(vec3(w, salt));
+		if (h > density) continue;
+		vec2 at = (g + vec2(hash3(vec3(w, salt + 3.0)), hash3(vec3(w, salt + 7.0))) * 0.8 + 0.1) * size;
+		float r = size * (0.12 + 0.2 * fract(h * 37.0));
+		vec2 rel = p - at;
+		// A broken edge: squarish chunks, not discs.
+		float a = fract(h * 91.0) * 3.1416;
+		vec2 rr = abs(vec2(cos(a) * rel.x + sin(a) * rel.y, -sin(a) * rel.x + cos(a) * rel.y));
+		float dd = max(rr.x, rr.y * 1.3) + jag * r * 0.5 - r;
+		most = max(most, 1.0 - smoothstep(-fw * 0.5, fw * 0.5, dd));
+	}
+	return most;
+}
+
+// The made ground over the land: its albedo and how much of it shows, and its roughness.
+vec4 paint_ground(Patch g, vec2 p, vec3 land, float fw, float near, out float cover, out float rough) {
+	cover = 0.0;
+	rough = 0.93;
+	// Kept grass: nothing laid, and nothing under it shows.
+	if (g.cover > 5.5) return vec4(land, 0.0);
+	float wear = g.wear;
+	float lum = dot(land, vec3(0.3, 0.59, 0.11));
+	bool hard = g.cover < 2.5 || g.cover > 4.5;      // concrete, tarmac, flags
+	vec2 grid = g.local + g.half_;                       // metres from its corner, along and across
+	float detail = 1.0 - smoothstep(0.08, 0.3, fw);     // hairlines only up close
+	float seen = 1.0 - smoothstep(0.3, 0.9, fw);
+	vec3 c;
+	float seam = 0.0;     // joints and cracks: dark, and with the land growing in them as it ages
+	float broken = 0.0;   // slabs gone: the land and rubble showing
+	if (g.cover < 1.5 || g.cover > 4.5) {
+		// Concrete in slabs, or flags: each its own shade, a joint round every one.
+		float s = max(g.slab, 0.3);
+		vec2 cell = floor(grid / s);
+		float tone = hash3(vec3(cell, g.seed)) - 0.5;
+		bool flags = g.cover > 4.5;
+		c = (flags ? vec3(0.33, 0.31, 0.285) : vec3(0.31, 0.302, 0.285));
+		c = mix(c, c * vec3(0.78, 0.8, 0.76), wear) * (1.0 + tone * (0.1 + 0.14 * wear)) * (0.9 + 0.2 * pn2(p, 0.13));
+		vec2 j = abs(fract(grid / s + 0.5) - 0.5) * s;
+		float jw = (flags ? 0.008 : 0.015) + (flags ? 0.012 : 0.025) * wear;
+		seam = max(band(j.x, jw, fw), band(j.y, jw, fw)) * (g.pattern > 0.5 || flags ? 1.0 : 0.0);
+		// A slab cracked across now and then, more of them the older it is; and some gone altogether.
+		float h = hash3(vec3(cell, g.seed + 11.0));
+		vec2 f = grid / s - cell;
+		float ang = h * 6.2832;
+		float across = abs(dot(f - 0.5 - vec2(0.2 * (fract(h * 7.0) - 0.5)), vec2(cos(ang), sin(ang)))) * s;
+		seam = max(seam, band(across, jw * 0.6, fw) * step(h, 0.08 + 0.45 * wear * wear) * detail);
+		broken = step(fract(h * 53.0), 0.015 + 0.12 * wear * wear * wear) * (flags ? 1.0 : 0.7);
+	} else if (g.cover < 2.5) {
+		// Tarmac: black when laid, greying with age.
+		c = mix(vec3(0.032, 0.032, 0.034), vec3(0.085, 0.082, 0.077), wear);
+		c *= 0.85 + 0.3 * pn2(p, 0.11) + 0.12 * (pn2(p, 2.0) - 0.5) * near;
+		// Where it has broken up it crazes into blocks; the worst of that lifts out in pieces.
+		float crazed = smoothstep(0.66, 0.74, pn2(p, 0.09) + 0.25 * wear);
+		if (crazed > 0.0 && fw < 0.5) seam = band(crazing(p, 0.5), 0.012 + 0.015 * wear, fw) * crazed * detail;
+		broken = smoothstep(0.82, 0.86, pn2(p, 0.21) + 0.2 * wear * wear) * step(0.45, wear) * 0.8;
+	} else if (g.cover < 3.5) {
+		// Gravel: loose stone, grey-brown, darker where it lies thick.
+		c = mix(vec3(0.2, 0.188, 0.165), land * 0.8, 0.2) * (0.82 + 0.25 * pn2(p, 0.25));
+		c *= 1.0 + (pn2(p, 6.0) - 0.5) * 0.35 * near;
+		rough = 0.97;
+	} else {
+		// Trodden dirt: the land's own ground, beaten bare and darker, with stones in it.
+		c = mix(land * vec3(0.72, 0.66, 0.6), vec3(lum * 0.7) + vec3(0.05, 0.03, 0.012), 0.45) * (0.88 + 0.24 * pn2(p, 0.3));
+		c *= 1.0 + (pn2(p, 5.0) - 0.5) * 0.2 * near;
+	}
+	// Cracks running on across it from slab to slab, straight and branching where the ground under it moved, more
+	// of them the older it is: the edges of cells a few metres across, only some of them cracked.
+	if (hard && fw < 0.5 && wear > 0.15) {
+		vec2 warp = vec2(pn2(p, 1.9), pn2(p + 17.0, 1.9)) - 0.5;
+		float edge = crazing(p + warp * 0.35, 3.2);
+		float some = smoothstep(0.62 - 0.3 * wear, 0.7 - 0.3 * wear, pn2(p, 0.21));
+		seam = max(seam, band(edge, 0.006 + 0.012 * wear, fw) * some * detail);
+	}
+	// The seams: dark, with the land in them (grass on a green world, sand on a desert), more of it with age.
+	vec3 in_seam = mix(c * 0.4, land * 0.7, 0.1 + 0.5 * wear * wear);
+	c = mix(c, in_seam, seam * seen);
+	// Painted lines: a car park's bays, a loading apron's hazard stripes, flaking as it ages.
+	float flake = smoothstep(0.25, 0.7, pn2(p, 0.9) + 0.5 - 0.45 * wear) * (1.0 - 0.6 * wear);
+	if (g.pattern > 1.5 && g.pattern < 2.5) {
+		// Rows of bays 2.5 m wide and 5 deep against both long sides, a 6 m aisle between; one row where it's narrow.
+		float v = g.local.y, hv = g.half_.y;
+		bool two = hv * 2.0 >= 16.0;
+		float row = two ? step(hv - 5.0, abs(v)) : step(hv - 5.0, v);
+		float u = grid.x - 1.0;
+		float bay = band(abs(fract(u / 2.5 + 0.5) - 0.5) * 2.5, 0.06, fw) * row * step(0.0, u) * step(u, g.half_.x * 2.0 - 2.0);
+		c = mix(c, vec3(0.6, 0.6, 0.57), bay * flake);
+	} else if (g.pattern > 2.5) {
+		// Hazard stripes along the side the doors are, yellow and black on the diagonal.
+		float v = g.local.y - (g.half_.y - 1.1);
+		float stripe = step(0.5, fract((g.local.x + v) / 1.2));
+		float on = band(v, 0.45, fw);
+		c = mix(c, mix(vec3(0.55, 0.4, 0.04), vec3(0.03), stripe), on * flake);
+	}
+	// A kerb along a laid edge: a line of pale stones, a little chipped.
+	float kerb = 0.0;
+	if (g.kerb > 0.5) {
+		kerb = band(g.d + 0.12, 0.1, fw) * (1.0 - 0.6 * step(0.86 - 0.25 * wear, pn2(p, 2.3)));
+		c = mix(c, vec3(0.36, 0.35, 0.33) * (0.9 + 0.2 * pn2(p, 1.7)), kerb);
+	}
+	// Slabs gone: the land showing through, broken concrete lying in it.
+	if (broken > 0.0) {
+		float bits = fragments(p, 0.6, 0.35, 13.0 + g.seed, fw);
+		vec3 rubble = mix(land * 0.85, c * 1.08, bits);
+		c = mix(c, rubble, broken * seen);
+	}
+	// The land takes it back: grass and soil creep in from the edge, more of it and further in the older it is,
+	// and lie in drifts here and there; never over the whole of it.
+	float inward = -g.d;
+	float creep = (g.kerb > 0.5 ? 0.03 + 0.35 * wear * wear : 0.25 + 2.6 * wear * wear) * (0.4 + 0.9 * pn2(p, 0.17)) + (pn2(p, 1.3) - 0.5) * 0.25 * near;
+	float over = 1.0 - smoothstep(creep - 0.3 - fw, creep + fw, inward);
+	float drift = smoothstep(0.7 - 0.12 * wear, 0.85, pn2(p, 0.045)) * (0.15 + 0.5 * wear) * smoothstep(0.1, 0.4, wear);
+	over = max(over * (0.55 + 0.4 * wear), drift);
+	over = min(over, 0.9);
+	c = mix(c, land, over);
+	// Past the outline: an unkerbed edge breaks up into chunks lying in the grass; a kerbed one stops at its kerb.
+	float body = 1.0 - smoothstep(-fw * 0.5, fw * 0.5, g.d);
+	float spill = 0.0;
+	if (g.d > -0.5 && g.kerb < 0.5 && hard && wear > 0.2) {
+		float dens = (1.0 - smoothstep(0.0, 2.5, g.d)) * 0.5 * wear;
+		spill = fragments(p, 0.7, dens, 29.0 + g.seed, fw) * seen * step(0.0, g.d);
+	}
+	if (hard && g.d >= 0.0) c = vec3(0.3, 0.29, 0.275) * (0.8 + 0.3 * pn2(p, 3.3));
+	// Gravel and dirt spill a little way past their edge.
+	float spread = hard ? 0.0 : (1.0 - smoothstep(0.0, 1.2, g.d)) * (0.3 + 0.3 * pn2(p, 0.7)) * (1.0 - body);
+	cover = body * (1.0 - over);
+	rough = mix(hard ? (g.cover < 2.5 && g.cover > 1.5 ? 0.85 : 0.9) : rough, 0.93, over);
+	return vec4(c, max(max(body, spill), spread));
+}
+
 // How far a point is inside the hole (negative outside).
 float inside_hole(vec2 p) {
 	return min(min(p.x - hole.x, hole.z - p.x), min(p.y - hole.y, hole.w - p.y));
@@ -488,6 +698,24 @@ void fragment() {
 		albedo = mix(albedo, albedo * 2.2 + vec3(0.03, 0.03, 0.06), edge * 0.6);
 	}
 
+	// The places' made ground, painted from the patches' outlines (on level ground facing up, not a dug wall):
+	// up close only level ground takes it; far off, as with roads, only its edges keep off steep ground.
+	float made_cover = 0.0;
+	float made_rough = 0.93;
+	if (ground_grid.w > 0.5 && up > (far_ring ? 0.3 : 0.5) && !(far_ring && inside_hole(wpos.xz) > 0.0)) {
+		float wob = (pn2(wpos.xz, 0.31) - 0.5) * 1.2 + (pn2(wpos.xz, 1.4) - 0.5) * 0.35 * near;
+		Patch g = top_patch(wpos.xz, wpos.y, road_tolerance, wob);
+		if (g.found > 0.5) {
+			float fw = length(fwidth(wpos.xz)) * 0.7;
+			vec4 m = paint_ground(g, wpos.xz, albedo, fw, near, made_cover, made_rough);
+			// (A footpath may ramp down a bank to a lower street; the wall of a pit dug in a yard is never painted.)
+			float flat_ = smoothstep(0.55, 0.72, up);
+			float keep = far_ring ? max(made_cover, flat_) : flat_;
+			albedo = mix(albedo, m.rgb, m.a * keep);
+			made_cover *= keep;
+		}
+	}
+
 	// Roads, painted from their exact lines (on level ground facing up, not a dug wall).
 	float road_cover = 0.0;
 	float road_rough = 0.93;
@@ -498,13 +726,16 @@ void fragment() {
 		Road r = nearest_road(wpos.xz, wpos.y);
 		if (r.edge < 8.0) {
 			float fw = length(fwidth(wpos.xz)) * 0.7;
-			vec4 road = paint_road(r, wpos.xz, soil, fw, near, road_cover, road_rough);
+			// The ground the land creeping onto it comes from: the made ground beside it where there is any.
+			vec4 road = paint_road(r, wpos.xz, mix(soil, albedo, made_cover), fw, near, road_cover, road_rough);
 			// Up close only level ground takes it (not the wall of a pit dug in it). A far grid is too
 			// coarse to hold a deck's level through a tight bend, so there the deck is painted whole
 			// and only its shoulders keep off steep ground: one clean surface, not a smear.
 			float flat_ = smoothstep(0.72, 0.88, up);   // a deck is near level: a bank or fin beside it keeps the land's colour
 			float keep = far_ring ? max(road_cover, flat_) : flat_;
-			albedo = mix(albedo, road.rgb, road.a * keep);
+			// On made ground a road's dusty shoulder gives way to it: only its deck is drawn over a footpath or a yard.
+			float a = mix(road.a, road_cover, made_cover);
+			albedo = mix(albedo, road.rgb, a * keep);
 			road_cover *= keep;
 		}
 	}
@@ -513,7 +744,7 @@ void fragment() {
 	float settled = clamp(weather_ground.y + base_snow + smoothstep(snow_altitude, snow_altitude + 120.0, wpos.y + broad * 60.0), 0.0, 1.0);
 	float snow = smoothstep(0.62, 0.8, up + fine * 0.15) * smoothstep(0.05, 0.55, settled + fine * 0.2 - 0.1);
 	// A road's open line keeps snow thin and patchy, so it reads under a white world.
-	snow *= 1.0 - road_cover * (0.9 - 0.4 * smoothstep(0.4, 0.8, fine));
+	snow *= 1.0 - max(road_cover, made_cover * 0.7) * (0.9 - 0.4 * smoothstep(0.4, 0.8, fine));
 	albedo = mix(albedo, vec3(0.82, 0.85, 0.88), snow);
 
 	// Dust drifts over everything a dust storm crosses.
@@ -523,7 +754,7 @@ void fragment() {
 	float wet = weather_ground.x * (1.0 - snow);
 	albedo *= 1.0 - wet * 0.35;
 	ALBEDO = albedo;
-	ROUGHNESS = mix(mix(0.93, road_rough, road_cover), 0.45, wet * (0.4 + 0.6 * max(bare, road_cover)));
+	ROUGHNESS = mix(mix(mix(0.93, made_rough, made_cover), road_rough, road_cover), 0.45, wet * (0.4 + 0.6 * max(bare, max(road_cover, made_cover))));
 	SPECULAR = (0.3 + wet * 0.3) * sheen;
 
 	if (UV.x > 0.01) {

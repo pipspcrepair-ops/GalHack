@@ -53,6 +53,9 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
     public float WaterLevel => 0f;
     public IReadOnlyList<PoiSite> PointsOfInterest { get; }
 
+    /// <summary>The made ground the terrain shader paints round the places (yards, aprons, car parks, paths), planned with the world; empty without it.</summary>
+    public IReadOnlyList<GroundPatch> Grounds { get; set; } = Array.Empty<GroundPatch>();
+
     readonly PeriodicNoise _caveA, _caveB, _caveRegion, _soil, _ore;
     readonly float _soilBase;
     readonly ConcurrentDictionary<long, Lazy<Column>> _columns = new();
@@ -228,7 +231,7 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
         foreach (int i in StampsAt(x, z))
         {
             TerrainStamp t = Stamps[i];
-            if (t.Shape is not (StampShape.Pad or StampShape.Road) || !roads && t.Shape == StampShape.Road) continue;
+            if (t.Shape is not (StampShape.Pad or StampShape.Road) || !roads && t.Shape == StampShape.Road || t.Painted) continue;
             float w = t.Weight(x, z);
             if (w <= weight) continue;
             weight = w;

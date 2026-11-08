@@ -50,12 +50,15 @@ public sealed partial class PlanetWorld
                 stamps.AddRange(under.Stamps);
             }
         }
+        // The ground each place's people made round it, painted by the terrain shader: its pads are marked so the mesh leaves them to it.
+        infra.Grounds = MadeGrounds.Plan(infra, pois, stamps, profile, map.WidthMeters, map.HeightMeters);
         around = infra;
     }
 
     static partial void FinishAround(PlanetSpec spec, PlanetTerrainSource source, List<PoiSite> pois, object around)
     {
         if (around is not InfraNetwork infra) return;
+        source.Grounds = infra.Grounds;
         // Power lines and wrecked traffic stand on the finished ground, beside the roads.
         infra.Power = PowerLines.Plan(infra, source, Hash.Of(spec.Seed, 0x90E7));
         infra.Wrecks = Wrecks.Plan(infra, source, pois, Hash.Of(spec.Seed, 0x3EC5));

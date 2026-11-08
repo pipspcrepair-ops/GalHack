@@ -119,6 +119,9 @@ public sealed class InfraNetwork
     public readonly List<CityLotPlan> Lots = new();
     /// <summary>Flavour ruins along the roads and in the countryside (planned on the bare land: <see cref="FlavourRuins.Plan"/>).</summary>
     public List<FlavourRuin> Ruins = new();
+
+    /// <summary>The made ground round the places (yards, aprons, car parks, footpaths, paths), for the terrain shader (<see cref="MadeGrounds"/>).</summary>
+    public List<GalHack.Terrain.GroundPatch> Grounds = new();
     /// <summary>What the world's plan says each region was for (null on a world laid out without one).</summary>
     public RegionPlan RegionPlan;
     /// <summary>Links the plan asked for, kept with why, for tests: (from, to, why).</summary>

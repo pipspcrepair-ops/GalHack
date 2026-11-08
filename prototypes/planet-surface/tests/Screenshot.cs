@@ -75,6 +75,7 @@ public partial class Screenshot : Node
         _args.TryGetValue("city", out string cityView);
         if (cityView != null) PlanetSurface.Infra.CityPlan.Force = true;
         if (_args.ContainsKey("cityfall")) PlanetSurface.Infra.CityPlan.ForceFall = (float)Num("cityfall", 0.5);
+        PlanetSurface.Infra.MadeGrounds.Off = _args.GetValueOrDefault("made") == "0";
         return new ViewSpec(planet, m =>
         {
             // A place's own frame: the camera and what it looks at, in the place's cells.
@@ -107,7 +108,8 @@ public partial class Screenshot : Node
             float ground = m.World.GroundHeight(x, z);
             return (new Vector3((float)x, ground + (float)Num("up", 20), (float)z), (float)Num("heading", 0), (float)Num("pitch", -8));
         }, Num("time", 0.42), weather, Force: force, BeforeCapture: AddFigure,
-            Series: cityView == null ? null : m => m.World.Infra.City is { Sites.Count: > 0 } city ? CityShots(m, city, cityView) : null);
+            Series: _args.TryGetValue("ground", out string groundView) ? m => GroundShots(m, groundView)
+                : cityView == null ? null : m => m.World.Infra.City is { Sites.Count: > 0 } city ? CityShots(m, city, cityView) : null);
     }
 
     /// <summary>
@@ -204,6 +206,19 @@ public partial class Screenshot : Node
             int near = Enumerable.Range(0, avenue.Count).OrderBy(i => Dist(avenue, i, city)).First();
             int from = near + 30 < avenue.Count ? near + 30 : Math.Max(0, near - 30);
             var eye = new Vector3((float)avenue.X[from], avenue.Y[from] + 1.7f, (float)avenue.Z[from]);
+            if (_args.ContainsKey("probe"))
+            {
+                // What the made ground is beside the avenue, both sides, 20 m along from the eye.
+                foreach (int ahead in new[] { 2, 5, 9 })
+                foreach (double off in new[] { -7.5, -6.5, -5.5, 5.5, 6.5, 7.5 })
+                {
+                int at = from + (near > from ? ahead : -ahead);
+                double ax = avenue.X[at + 1] - avenue.X[at - 1], az = avenue.Z[at + 1] - avenue.Z[at - 1], al = Math.Sqrt(ax * ax + az * az);
+                    double px = avenue.X[at] - az / al * off, pz = avenue.Z[at] + ax / al * off;
+                    float gy = m.World.GroundHeight(Mathx.WrapX(px, m.World.Width), Mathx.Wrap(pz, m.World.Height));
+                    GD.Print($"at {px:F1},{pz:F1} heading {Mathf.RadToDeg(Mathf.Atan2((float)ax, -(float)az)):F0}: probe {Math.Sqrt(Math.Pow(avenue.X[at] - eye.X, 2) + Math.Pow(avenue.Z[at] - eye.Z, 2)):F0} m ahead, {off:F1} m: ground {gy:F1}, deck {avenue.Y[at]:F1}: " + string.Join("; ", PlanetSurface.Infra.MadeGrounds.Probe(m.World.Source.Grounds, px, pz, gy, m.World.Width, m.World.Height)));
+                }
+            }
             shots.Add(Level("street", eye, new Vector3((float)avenue.X[near], avenue.Y[near] + 22f, (float)avenue.Z[near])));
         }
         // A house's frontage from its street: lawn, drive, fence and the house set back behind them.
@@ -247,6 +262,63 @@ public partial class Screenshot : Node
     }
 
     static double Dist(PlanetSurface.Infra.InfraRoute r, int i, PlanetSurface.Infra.CityPlan city) => Math.Abs(r.X[i] - city.CenterX) + Math.Abs(r.Z[i] - city.CenterZ);
+
+    /// <summary>
+    /// The ground round a place (--ground=town, works or farm): the nearest one of that kind to the landing site, from
+    /// the air (125 m out, 110 m up) and at a person's height 26 m out from its way in, looking at it.
+    /// </summary>
+    List<Shot> GroundShots(Main m, string which)
+    {
+        var w = m.World;
+        double lx = w.Landing.X, lz = w.Landing.Y;
+        double Away(double x, double z) => Math.Sqrt(Math.Pow(Mathx.WrapDelta(x - lx, w.Width), 2) + Math.Pow(Mathx.WrapDelta(z - lz, w.Height), 2));
+        bool Has(PoiGenerator.Gen.FamilyDef f, params string[] tags) => tags.Any(f.Tags.Contains);
+        (double X, double Z, float Y, double FX, double FZ, string Name, GalHack.Terrain.TerrainStamp Pad)? spot = null;
+        if (which == "farm" && w.Infra.Ruins.Where(r => Has(r.Family, "farmstead")).OrderBy(r => Away(r.Center.X, r.Center.Z)).FirstOrDefault() is { } farm)
+        {
+            var f = PoiGenerator.Gen.Dirs.Vec(farm.Layout.EntranceFacing);
+            spot = (farm.OriginX + farm.Layout.EntranceCell.X + 0.5, farm.OriginZ + farm.Layout.EntranceCell.Z + 0.5, farm.Stamp.PadY, f.X, f.Z, farm.Family.Name, farm.Stamp);
+        }
+        else
+        {
+            Func<PlanetSurface.Poi.PoiSite, bool> want = which switch
+            {
+                "town" => s => s.Instance.Townsfolk != null || Has(s.Family, "settlement", "civilian"),
+                "works" => s => Has(s.Family, "industry", "working", "mine", "power", "fuel"),
+                "farm" => s => Has(s.Family, "farm"),
+                _ => s => s.Family.Id == which,
+            };
+            if (w.Pois.Where(s => s.Siting != "city" && want(s)).OrderBy(s => Away(s.Center.X, s.Center.Z)).FirstOrDefault() is { } site)
+            {
+                var f = PoiGenerator.Gen.Dirs.Vec(site.Instance.Layout.EntranceFacing);
+                spot = (site.Entrance.X + 0.5, site.Entrance.Z + 0.5, site.Stamp.PadY, f.X, f.Z, site.Name, site.Stamp);
+            }
+        }
+        if (spot is not { } s0)
+        {
+            GD.Print($"ground: no {which} on this world");
+            return new List<Shot>();
+        }
+        GD.Print($"ground: {which}: {s0.Name} at {s0.X:F0},{s0.Z:F0}, {Away(s0.X, s0.Z):F0} m from the landing site");
+        var at = new Vector3((float)s0.X, s0.Y, (float)s0.Z);
+        var out1 = new Vector3((float)s0.FX, 0f, (float)s0.FZ);
+        if (out1.LengthSquared() < 0.5f) out1 = Vector3.Back;
+        Shot Look(string name, Vector3 from, Vector3 to)
+        {
+            from.Y = Mathf.Max(from.Y, m.World.GroundHeight(from.X, from.Z) + 1.6f);
+            Vector3 d = to - from;
+            return new Shot(name, from, Mathf.RadToDeg(Mathf.Atan2(d.X, -d.Z)), Mathf.RadToDeg(Mathf.Atan2(d.Y, new Vector2(d.X, d.Z).Length())));
+        }
+        var side = new Vector3(-out1.Z, 0f, out1.X);
+        // On the yard, toward its far corner from the way in, looking back across it at the way in.
+        var eye = at + out1 * 15f + side * 6f;
+        eye.Y = m.World.GroundHeight(eye.X, eye.Z) + 1.7f;
+        return new List<Shot>
+        {
+            Look("air", at + out1 * 110f + side * 60f + Vector3.Up * 110f, at - out1 * 20f),
+            Look("ground", eye, at + Vector3.Up * 1.2f),
+        };
+    }
 
     Vector3? _figure;
 
