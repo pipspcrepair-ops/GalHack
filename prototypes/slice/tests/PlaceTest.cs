@@ -989,16 +989,14 @@ public partial class PlaceTest : Node
             Town.Person near = town.People.Where(q => !q.Dead && !q.Indoors && !q.Away && q.Looks != null).OrderBy(q => q.Pos.DistanceTo(place.FromWorld(game.Survivor.WorldFeet))).FirstOrDefault();
             if (sim != null && near != null)
             {
-                game.Zone.Wildlife.Frozen = true;
-                Vector3 spot = near.Position + new Vector3(9f, 0f, 0f);
+                Vector3 spot = near.Position + new Vector3(11f, 0f, 0f);
                 Wildlife.Creature h = sim.Spawn(game.Zone.Wildlife.Life.People.Person(Wildlife.Rng.Mix(place.Inst.SpawnSeed, 77), Wildlife.PersonRole.Worker, Wildlife.Occupancy.Friendly, 0.2f, husk: true), spot);
-                GD.Print("  (TEST: a Husk set down 9 m from one of them, held still)");
+                GD.Print("  (TEST: a Husk set down 11 m from one of them)");
                 int answered = town.Fought + town.FledFrom + town.Barricades;
-                foreach (int x in drive.Wait(150)) yield return x;
+                foreach (int x in drive.Wait(100)) yield return x;
                 int sighting = town.People.Count(q => q.Facing > 0f);
                 Check(town.Fought + town.FledFrom + town.Barricades + sighting > answered, $"a Husk among them: {town.Fought} fought it ({sighting} with it in their sights), {town.FledFrom} ran, {town.Barricades} barricades; looked round {town.Senses} times, {town.Sensed} creatures last)");
                 if (!h.Removed) sim.Remove(h);
-                game.Zone.Wildlife.Frozen = false;
                 foreach (int x in drive.Wait(720)) yield return x; // until the scare has passed
             }
         }

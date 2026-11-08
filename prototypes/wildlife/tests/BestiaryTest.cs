@@ -1359,19 +1359,21 @@ public partial class BestiaryTest : Node
     /// <summary>Every people fits through a door: crown and all, nobody stands taller than the cap (the owner, 8 Nov 2026).</summary>
     void NobodyOverTopsADoor()
     {
-        float tallest = 0f;
+        float tallest = 0f, widest = 0f;
         for (int i = 0; i < 60; i++)
         {
             PeopleGenerator g = Folks(World(_fresh.Range(-40f, 55f), alien: 1f));
             foreach (PersonRole r in Enum.GetValues<PersonRole>())
                 for (int n = 0; n < 4; n++)
                 {
-                    Figure f = g.Person(Seed(), r, r == PersonRole.Raider ? Occupancy.Raider : Occupancy.Friendly, founders: g.FoundersOf(Seed())).Figure;
-                    tallest = MathF.Max(tallest, f.Top);
+                    Species s = g.Person(Seed(), r, r == PersonRole.Raider ? Occupancy.Raider : Occupancy.Friendly, founders: g.FoundersOf(Seed()));
+                    tallest = MathF.Max(tallest, s.Figure.Top);
+                    widest = MathF.Max(widest, s.Stats.Radius);
                 }
             tallest = MathF.Max(tallest, g.Person(Seed(), PersonRole.Guard, founders: g.FoundersOf(Seed(), vharn: true)).Figure.Top);
         }
-        Check(tallest <= Figure.HeightCap + 0.001f && tallest > 1.75f, $"the tallest of 2,000 people of every folk, crown and all, is {tallest:F2} m: under a doorway ({Figure.HeightCap:F2} m)");
+        Check(tallest <= Figure.HeightCap + 0.001f && tallest > 2.0f, $"the tallest of 2,000 people of every folk, crown and all, is {tallest:F2} m: tall folk are tall, and under the 3 m doorway (cap {Figure.HeightCap:F2} m)");
+        Check(widest <= 0.5f && widest * 2f < 1.9f, $"and the widest needs {widest * 2f:F2} m to pass (radius {widest:F2} m): through any doorway");
     }
 
     /// <summary>
@@ -1519,7 +1521,7 @@ public partial class BestiaryTest : Node
             $"dry heat: full robes, head wraps and face wraps against the dust ({dryHot.Count(f => f.Has("robe"))} robes, {dryHot.Count(f => f.Has("face_wrap"))} face wraps)");
         Check(wetCold.Count(f => f.Has("oilskin")) > 20 && wetCold.Count(f => f.Has("rubber_boots")) > 20 && wetCold.Count(f => f.Layered.Contains("sweater")) > 10,
             $"wet cold: waxed shells, wool and rubber boots ({wetCold.Count(f => f.Has("oilskin"))} oilskins, {wetCold.Count(f => f.Has("rubber_boots"))} boots)");
-        Check(dryCold.Count(f => f.Dress == "furs") == 40 && dryCold.Average(f => f.Layered.Count) > wetCold.Average(f => f.Layered.Count) - 0.01f, $"dry cold: furs and layers ({dryCold.Average(f => f.Layered.Count):F1} layers on average)");
+        Check(dryCold.Count(f => f.Dress == "furs") == 40 && dryCold.Average(f => f.Layered.Count) >= 1.5f, $"dry cold: furs and layers ({dryCold.Average(f => f.Layered.Count):F1} layers on average)");
         Check(rainy.Count(f => f.Has("poncho") | f.Prop == "umbrella" | f.Has("rain_cape")) > 20, $"in a rainy region, ponchos and umbrellas ({rainy.Count(f => f.Has("poncho"))} ponchos, {rainy.Count(f => f.Prop == "umbrella")} umbrellas)");
         // A visitor from a dry, cold region in a humid hot town keeps their furs.
         g.Regions.Clear();

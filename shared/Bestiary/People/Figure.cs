@@ -129,10 +129,10 @@ public sealed class Figure
     public bool Has(string garment) => Wear.Contains(garment);
 
     /// <summary>
-    /// The tallest anyone stands, crown and all, m: under a doorway (one 2 m cell, less a hand's
-    /// clearance). The owner's rule (8 Nov 2026): every people fits through every generated door.
+    /// The tallest anyone stands, crown and all, m: a little under the standard 3 m doorway (design
+    /// doc rev 702). The owner's rule (8 Nov 2026): every people fits through every door.
     /// </summary>
-    public const float HeightCap = 1.92f;
+    public const float HeightCap = 2.8f;
     /// <summary>The top of them standing, crown and all, m.</summary>
     public float Top => Height + HeadRadius * (Folk?.CrownRise ?? 0f) * (Stage == LifeStage.Child ? 0.5f : 1f);
     static readonly Folk Default = new();

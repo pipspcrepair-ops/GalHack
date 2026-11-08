@@ -297,7 +297,7 @@ public sealed partial class PeopleGenerator
         float[] h = f.Sex == Sex.Male ? _t.HeightMale : _t.HeightFemale;
         float mid = (_t.HeightMale[0] + _t.HeightFemale[0]) * 0.5f;
         float mean = mid + (h[0] - mid) * folk.Dimorphism;
-        f.Height = f.Stage == LifeStage.Child ? rng.Range(_t.HeightChild) * MathF.Sqrt(folk.HeightScale) : Normal(rng, mean, h[1]) * folk.HeightScale;
+        f.Height = f.Stage == LifeStage.Child ? MathF.Min(rng.Range(_t.HeightChild) * MathF.Sqrt(folk.HeightScale), _t.HeightChild[1]) /* a child is a child, whatever their folk */ : Normal(rng, mean, h[1]) * folk.HeightScale;
         if (f.Stage == LifeStage.Elder) f.Height *= 0.97f;
         f.Build = Math.Clamp(rng.Range(0.1f, 0.75f) + folk.BuildBias + look.Build + (f.Age > 40f ? 0.08f : 0f) - (f.Stage == LifeStage.Child ? 0.2f : 0f), 0f, 1f);
         f.Stoop = f.Hardened ? 0f : MathF.Max(0f, look.Stoop * rng.Range(0.7f, 1.2f) + (f.Age > 55f ? 0.1f : 0f) + (f.Stage == LifeStage.Child ? 0f : folk.StoopBias));
@@ -422,7 +422,8 @@ public sealed partial class PeopleGenerator
         st.AttackRange = 1.3f;
         st.Perception = 40f;
         st.FleeRadius = 10f;
-        st.Radius = 0.35f;
+        // Wide shoulders, a shell or a thick tail need more room to pass: at most half a metre, well inside a doorway.
+        st.Radius = Math.Clamp(0.35f * MathF.Max(1f, f.ShoulderW / (0.235f * f.Height / 1.72f)) + (folk.Tail is "thick" or "bushy" ? 0.06f : 0f) + (folk.Back == "plates" ? 0.04f : 0f), 0.35f, 0.5f);
         st.Retaliates = occupancy != Occupancy.Friendly;
         st.Hunts = occupancy != Occupancy.Friendly;
         s.Attack = new AttackDef { Name = "Rush", Style = AttackStyle.Lunge, Telegraph = 1.1f, Sound = "snarl" };

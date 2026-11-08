@@ -413,7 +413,7 @@ public sealed partial class Town
                 // Home, wherever they were going: only reaching their own door takes them in.
                 if (p.Spot != p.Home || p.Path == null) GoTo(p, p.Home);
                 p.Fleeing = mood == Mood.Hostile || scared;
-                p.Speed = p.Fleeing ? 3.4f : p.Speed;
+                p.Speed = p.Fleeing ? 3.4f : MathF.Max(p.Speed, 1.5f); // home before dark: a brisk walk
                 if (Move(p, dt) && p.Spot == p.Home) p.Indoors = _homes.Length > 0;
                 Pose(p, who);
                 continue;
@@ -523,6 +523,8 @@ public sealed partial class Town
         var linked = Data.Links.Where(l => l.A == p.Spot || l.B == p.Spot).Select(l => l.A == p.Spot ? l.B : l.A).ToList();
         RoleLook day = p.Looks?.Figure.Routine;
         string moves = day?.Moves ?? "wander";
+        // Unwelcome, you: every guard and the law keep their post at the way in.
+        if (p.Role == "guard" && Unwelcome) { GoTo(p, p.Spawn.Spot); p.Wait = 4f; return; }
         switch (moves)
         {
             case "patrol":

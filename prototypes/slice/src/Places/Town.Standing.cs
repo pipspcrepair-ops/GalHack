@@ -76,7 +76,7 @@ public sealed partial class Town
         Learn(p);
         Vector3 at = p.Pos;
         foreach (Person q in People)
-            if (q != p && !q.Dead && !q.Indoors && !q.Away && (q.Pos - at).Length() < 14f) Learn(q);
+            if (q != p && !q.Dead && !q.Indoors && !q.Away && ((q.Pos - at).Length() < 14f || q.Role == "guard" && (q.Pos - at).Length() < 40f)) Learn(q); // the guards keep an eye on the streets
     }
 
     void Learn(Person q)

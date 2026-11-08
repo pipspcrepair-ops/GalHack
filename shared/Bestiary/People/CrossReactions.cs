@@ -5,7 +5,7 @@ using Godot;
 namespace Wildlife;
 
 /// <summary>What a person does about a creature near them.</summary>
-public enum Response { None, Watch, Flee, Fight, Barricade, Herd, Shoo }
+public enum Response { None, Watch, Herd, Shoo, Flee, Fight, Barricade } // (in order of how much it matters)
 
 /// <summary>
 /// People and animals reading each other, as a few plain rules (no one-offs): a person sizes up
