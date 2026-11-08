@@ -453,6 +453,18 @@ public sealed class CityPlan
             lot.Lot = lot.Lot with { Back = back, Left = north ? west : east, Right = north ? east : west };
         }
 
+        // ---- the homes: one culture to the whole city, in its weather; further out, better off. The house
+        // rules (Homes.CityHouse) build every house and terrace from it, so no two neighbours are one model.
+        {
+            int culture = (int)(PoiGenerator.Gen.Hash.Combine(seed, 0xC0175UL) >> 33);
+            var climate = FlavourRuins.ClimateAt(map, cx, cz);
+            foreach (CityLotPlan lot in city.Lots.Where(l => l.Kind is "house" or "terrace"))
+            {
+                double far = Math.Sqrt(Math.Pow(Mathx.WrapDelta((lot.X0 + lot.X1) / 2 - cx, w), 2) + Math.Pow(Mathx.WrapDelta((lot.Z0 + lot.Z1) / 2 - cz, h), 2)) / radius;
+                lot.Lot = lot.Lot with { Home = new HomeHints(culture, climate, (float)Math.Clamp(0.2 + 0.7 * far, 0, 1)) };
+            }
+        }
+
         // ---- the buildings, laid out side by side, then set on their lots.
         var made = new PoiInstance[city.Lots.Count];
         var fams = new FamilyDef[city.Lots.Count];

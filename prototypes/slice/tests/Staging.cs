@@ -118,7 +118,12 @@ public sealed partial class Staging
             "newgame" => NewGameShots(),
             "galaxy-depth" => GalaxyDepth(),
             "husk-den" => HuskDen(),
+            "husk-worms" => HuskWorms(),
             "husk-carrier" => HuskCarrier(),
+            "icons-bag" => IconBagView(),
+            "icons-sheet" => IconSheetView(),
+            "icons-hands" => IconHandsView(),
+            "blockdetail" => BlockDetailView(),
             _ => ProofViews(view),
         };
         foreach (int x in script) yield return x;

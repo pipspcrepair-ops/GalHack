@@ -452,7 +452,7 @@ public static class FarBuilder
             float built = source.Built(x, z, out bool onRoad);
             bool large = FloraMeshes.IsLarge(rule.Kind);
             if ((onRoad || built > 0f)
-                && !(onRoad && built <= 0f && !large && shade < 0.4f && source.OnRoad(x, z, out float wear) && wear > 0.6f)
+                && !(onRoad && built <= 0f && !large && shade < 0.4f && source.GrowsOnRoad(x, z))
                 && !(source.OnWild(x, z, out float wild) && (!large || wild > 0.7f))
                 && !(!onRoad && built < 1f && Feather(turn) >= Smooth(large ? 0.1f : 0.4f, large ? 0.55f : 0.95f, built))) continue;
 

@@ -281,17 +281,9 @@ public partial class PlacePerf : Node
             foreach (int x in Measure("gate-creatures", 120)) yield return x;
             zone.Wildlife.Frozen = true;
             foreach (int x in Measure("gate-wildlife", 120)) yield return x;
-            int anim = 0;
-            void Walk(Node n)
-            {
-                foreach (Node c in n.GetChildren())
-                {
-                    if (c is GalHack.Deco.Engine.DecoNode d) { if (d.IsProcessing()) anim++; d.SetProcess(false); }
-                    Walk(c);
-                }
-            }
-            Walk(places);
-            GD.Print($"PERF animated deco {anim}");
+            // The animated pieces are all moved by one animator, near the eye only: stopping it stops them all.
+            GD.Print($"PERF animated deco {GalHack.Deco.Engine.DecoAnimator.Count} ({GalHack.Deco.Engine.DecoAnimator.NearCount} near, {GalHack.Deco.Engine.DecoAnimator.MidCount} in the middle distance)");
+            if (places.GetTree().Root.GetNodeOrNull("DecoAnimator") is Node animator) animator.ProcessMode = ProcessModeEnum.Disabled;
             foreach (int x in Measure("gate-deco anim", 120)) yield return x;
             zone.Infra.ProcessMode = ProcessModeEnum.Disabled;
             foreach (int x in Measure("gate-infra", 120)) yield return x;

@@ -312,7 +312,7 @@ public static class Mesher
         public void Block(Int3 p, Block b)
         {
             if (b.Type == BlockType.Door && !_o.Doors) return;
-            if (!_o.Detail && b.Type is BlockType.Scatter or BlockType.Scorch or BlockType.Ash or BlockType.Plant or BlockType.Remains) return;
+            if (!_o.Detail && b.Type is BlockType.Scatter or BlockType.Scorch or BlockType.Ash or BlockType.Plant or BlockType.Remains or BlockType.Rebar) return;
             if (BlockInfo.IsFullCube(b.Type))
             {
                 if (_o.Merged) Mark(p, b);
@@ -680,17 +680,29 @@ public static class Mesher
             var buf = chunk.Surfaces[(int)box.Surface];
             V3 o = V3.Of(p);
             float alpha = box.Surface == Surface.Glass ? 0.4f : 1f;
+            bool tilted = box.Tilt != default;
+            V3 mid = (box.Lo + box.Hi) * 0.5f;
             for (int f = 0; f < 6; f++)
             {
                 if (box.SkipBottom && f == 5) continue;
                 BoxFace(f, o + box.Lo, o + box.Hi, out V3 a, out V3 bb, out V3 c, out V3 d);
+                V3 n = Normals[f];
                 float k = box.Surface == Surface.Glow ? 1f : FaceShade[f];
+                if (tilted)
+                {
+                    // Turned about its own middle: corners and normal alike, and shaded by where the face now looks.
+                    V3 centre = o + mid;
+                    a = centre + Shapes.Rotate(a - centre, box.Tilt); bb = centre + Shapes.Rotate(bb - centre, box.Tilt);
+                    c = centre + Shapes.Rotate(c - centre, box.Tilt); d = centre + Shapes.Rotate(d - centre, box.Tilt);
+                    n = Shapes.Rotate(n, box.Tilt);
+                    if (box.Surface != Surface.Glow) k = n.Y >= 0 ? 0.86f + 0.14f * n.Y : 0.86f + 0.2f * n.Y;
+                }
                 float r = box.Color.R / 255f * k, g = box.Color.G / 255f * k, bl = box.Color.B / 255f * k;
                 int i0 = buf.VertexCount;
-                buf.Vertex(a, Normals[f], r, g, bl, alpha);
-                buf.Vertex(bb, Normals[f], r, g, bl, alpha);
-                buf.Vertex(c, Normals[f], r, g, bl, alpha);
-                buf.Vertex(d, Normals[f], r, g, bl, alpha);
+                buf.Vertex(a, n, r, g, bl, alpha);
+                buf.Vertex(bb, n, r, g, bl, alpha);
+                buf.Vertex(c, n, r, g, bl, alpha);
+                buf.Vertex(d, n, r, g, bl, alpha);
                 var idx = buf.Indices;
                 idx.Add(i0); idx.Add(i0 + 2); idx.Add(i0 + 1); idx.Add(i0); idx.Add(i0 + 3); idx.Add(i0 + 2);
                 chunk.Quads++;
@@ -838,7 +850,8 @@ public sealed class ChunkWindow : IBlockStructure
     public int CountBlocks() => 0;
 }
 
-public readonly record struct ShapeBox(V3 Lo, V3 Hi, Rgb Color, Surface Surface, bool SkipBottom = false);
+/// <summary>A box of a shape in cell units; <paramref name="Tilt"/> (pitch, yaw, roll, radians) turns it about its own middle (a piece of rubble lying as it landed).</summary>
+public readonly record struct ShapeBox(V3 Lo, V3 Hi, Rgb Color, Surface Surface, bool SkipBottom = false, V3 Tilt = default);
 
 /// <summary>What each non-cube block looks like: a few boxes in cell-local units (0 to 1).</summary>
 public static class Shapes
@@ -853,6 +866,17 @@ public static class Shapes
         Material.Steel or Material.Alloy or Material.Bronze or Material.Scrap => Surface.Metal,
         _ => Surface.Matte,
     };
+
+    /// <summary>Turns a vector by a tilt: roll about z, then pitch about x, then yaw about y (radians).</summary>
+    public static V3 Rotate(V3 v, V3 t)
+    {
+        float cz = MathF.Cos(t.Z), sz = MathF.Sin(t.Z);
+        v = new V3(v.X * cz - v.Y * sz, v.X * sz + v.Y * cz, v.Z);
+        float cx = MathF.Cos(t.X), sx = MathF.Sin(t.X);
+        v = new V3(v.X, v.Y * cx - v.Z * sx, v.Y * sx + v.Z * cx);
+        float cy = MathF.Cos(t.Y), sy = MathF.Sin(t.Y);
+        return new V3(v.X * cy + v.Z * sy, v.Y, -v.X * sy + v.Z * cy);
+    }
 
     /// <summary>Rotates a cell-local point from north-facing to the given facing.</summary>
     public static V3 Turn(V3 v, Dir facing)
@@ -875,7 +899,7 @@ public static class Shapes
         BlockType.Rib => (new V3(0.15f, 0, 0.15f), new V3(0.85f, 1, 0.85f)),
         BlockType.Pane or BlockType.Lattice or BlockType.SealedDoor or BlockType.Growth => (new V3(0, 0, 0), new V3(1, 1, 1)),
         BlockType.Spike => (new V3(0.25f, 0, 0.25f), new V3(0.75f, 1, 0.75f)),
-        BlockType.Rubble => (new V3(0.05f, 0, 0.05f), new V3(0.95f, 0.45f, 0.95f)),
+        BlockType.Rubble => (new V3(0.05f, 0, 0.05f), new V3(0.95f, Debris.Top(b.Variant), 0.95f)),
         BlockType.Core => (new V3(0.2f, 0, 0.2f), new V3(0.8f, 1.8f, 0.8f)),
         BlockType.Rail => (new V3(0, 0, 0), new V3(1, 1.05f, 1)),
         BlockType.Shelf or BlockType.Locker => (new V3(0.06f, 0, 0.1f), new V3(0.94f, 1f, 0.9f)),
@@ -1057,11 +1081,10 @@ public static class Shapes
                 }
                 break;
             case BlockType.Rubble:
-                for (int i = 0; i < 4; i++)
-                {
-                    float sz = 0.25f + R(i) * 0.3f, x = R(i + 2) * (1 - sz), z = R(i + 4) * (1 - sz);
-                    l.Add(Box(x, 0, z, x + sz, sz * 0.8f, z + sz, c.Scale(0.8f + R(i + 1) * 0.3f), Surface.Matte));
-                }
+                Debris.Shape(l, b, p);
+                break;
+            case BlockType.Rebar:
+                Debris.Bars(l, b, p);
                 break;
             case BlockType.Ash:
                 l.Add(new ShapeBox(new V3(0, 0, 0), new V3(1, 0.06f + R(0) * 0.05f, 1), c, Surface.Matte, true));

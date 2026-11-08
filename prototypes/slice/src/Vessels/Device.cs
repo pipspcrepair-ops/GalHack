@@ -75,42 +75,53 @@ public partial class Device : Node3D
         return d;
     }
 
-    /// <summary>A squat vented drum on a plinth, its ring lit while it burns. Procedural, no assets.</summary>
-    void BuildClimate()
+    /// <summary>
+    /// A device's look, meshes only: the climate node is a squat vented drum on a plinth, its ring lit
+    /// while it burns; anything else a constructor's cabinet on hazard feet. Procedural, no assets.
+    /// The inventory icon is this same model.
+    /// </summary>
+    static Node3D Look(bool climate, out MeshInstance3D panel, out StandardMaterial3D panelMaterial)
     {
-        var shell = new StandardMaterial3D { AlbedoColor = new Color("6c757d"), Roughness = 0.5f, Metallic = 0.5f };
+        var root = new Node3D { Name = "Look" };
         var dark = new StandardMaterial3D { AlbedoColor = new Color("1b263b"), Roughness = 0.7f };
-        _panelMaterial = new StandardMaterial3D { AlbedoColor = new Color("2ec4b6"), EmissionEnabled = true, Emission = new Color("2ec4b6"), EmissionEnergyMultiplier = 0.15f };
-        AddChild(new MeshInstance3D { Mesh = new CylinderMesh { TopRadius = 0.55f, BottomRadius = 0.55f, Height = 0.12f }, Position = Vector3.Up * 0.06f, MaterialOverride = dark });
-        AddChild(new MeshInstance3D { Mesh = new CylinderMesh { TopRadius = 0.32f, BottomRadius = 0.42f, Height = 0.9f }, Position = Vector3.Up * 0.57f, MaterialOverride = shell });
-        _panel = new MeshInstance3D { Mesh = new CylinderMesh { TopRadius = 0.36f, BottomRadius = 0.37f, Height = 0.08f }, Position = Vector3.Up * 0.72f, MaterialOverride = _panelMaterial };
-        AddChild(_panel);
-        AddChild(new MeshInstance3D { Mesh = new CylinderMesh { TopRadius = 0.18f, BottomRadius = 0.3f, Height = 0.14f }, Position = Vector3.Up * 1.09f, MaterialOverride = dark });
-        _body = new StaticBody3D { Name = "Body", CollisionLayer = Layers.Props, CollisionMask = 0 };
-        _body.AddChild(new CollisionShape3D { Shape = new CylinderShape3D { Radius = 0.5f, Height = 1.2f }, Position = Vector3.Up * 0.6f });
-        AddChild(_body);
+        MeshInstance3D Add(Mesh mesh, Vector3 at, Material material)
+        {
+            var m = new MeshInstance3D { Mesh = mesh, Position = at, MaterialOverride = material };
+            root.AddChild(m);
+            return m;
+        }
+        if (climate)
+        {
+            var drum = new StandardMaterial3D { AlbedoColor = new Color("6c757d"), Roughness = 0.5f, Metallic = 0.5f };
+            panelMaterial = new StandardMaterial3D { AlbedoColor = new Color("2ec4b6"), EmissionEnabled = true, Emission = new Color("2ec4b6"), EmissionEnergyMultiplier = 0.15f };
+            Add(new CylinderMesh { TopRadius = 0.55f, BottomRadius = 0.55f, Height = 0.12f }, Vector3.Up * 0.06f, dark);
+            Add(new CylinderMesh { TopRadius = 0.32f, BottomRadius = 0.42f, Height = 0.9f }, Vector3.Up * 0.57f, drum);
+            panel = Add(new CylinderMesh { TopRadius = 0.36f, BottomRadius = 0.37f, Height = 0.08f }, Vector3.Up * 0.72f, panelMaterial);
+            Add(new CylinderMesh { TopRadius = 0.18f, BottomRadius = 0.3f, Height = 0.14f }, Vector3.Up * 1.09f, dark);
+            return root;
+        }
+        var shell = new StandardMaterial3D { AlbedoColor = new Color("0a9396"), Roughness = 0.55f, Metallic = 0.3f };
+        panelMaterial = new StandardMaterial3D { AlbedoColor = new Color("f4a100"), EmissionEnabled = true, Emission = new Color("f4a100"), EmissionEnergyMultiplier = 0.8f };
+        Add(new BoxMesh { Size = new Vector3(1.1f, 1.15f, 0.8f) }, Vector3.Up * 0.575f, shell);
+        Add(new BoxMesh { Size = new Vector3(1.16f, 0.12f, 0.86f) }, Vector3.Up * 1.2f, dark);
+        Add(new BoxMesh { Size = new Vector3(0.7f, 0.35f, 0.02f) }, new Vector3(0f, 0.85f, -0.41f), dark);
+        panel = Add(new BoxMesh { Size = new Vector3(0.62f, 0.08f, 0.02f) }, new Vector3(0f, 0.45f, -0.41f), panelMaterial);
+        // Hazard feet.
+        foreach (float x in new[] { -0.45f, 0.45f })
+            Add(new BoxMesh { Size = new Vector3(0.18f, 0.08f, 0.9f) }, new Vector3(x, 0.04f, 0f), dark);
+        return root;
     }
+
+    /// <summary>The model of a device item, as the world and the inventory icon show it.</summary>
+    public static ItemModel Model(bool climate) => new() { Root = Look(climate, out _, out _) };
 
     public override void _Ready()
     {
-        if (IsClimate)
-        {
-            BuildClimate();
-            return;
-        }
-        var shell = new StandardMaterial3D { AlbedoColor = new Color("0a9396"), Roughness = 0.55f, Metallic = 0.3f };
-        var dark = new StandardMaterial3D { AlbedoColor = new Color("1b263b"), Roughness = 0.7f };
-        _panelMaterial = new StandardMaterial3D { AlbedoColor = new Color("f4a100"), EmissionEnabled = true, Emission = new Color("f4a100"), EmissionEnergyMultiplier = 0.8f };
-        AddChild(new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(1.1f, 1.15f, 0.8f) }, Position = Vector3.Up * 0.575f, MaterialOverride = shell });
-        AddChild(new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(1.16f, 0.12f, 0.86f) }, Position = Vector3.Up * 1.2f, MaterialOverride = dark });
-        AddChild(new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(0.7f, 0.35f, 0.02f) }, Position = new Vector3(0f, 0.85f, -0.41f), MaterialOverride = dark });
-        _panel = new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(0.62f, 0.08f, 0.02f) }, Position = new Vector3(0f, 0.45f, -0.41f), MaterialOverride = _panelMaterial };
-        AddChild(_panel);
-        // Hazard feet.
-        foreach (float x in new[] { -0.45f, 0.45f })
-            AddChild(new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(0.18f, 0.08f, 0.9f) }, Position = new Vector3(x, 0.04f, 0f), MaterialOverride = dark });
+        AddChild(Look(IsClimate, out _panel, out _panelMaterial));
         _body = new StaticBody3D { Name = "Body", CollisionLayer = Layers.Props, CollisionMask = 0 };
-        _body.AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = new Vector3(1.1f, 1.25f, 0.8f) }, Position = Vector3.Up * 0.625f });
+        _body.AddChild(IsClimate
+            ? new CollisionShape3D { Shape = new CylinderShape3D { Radius = 0.5f, Height = 1.2f }, Position = Vector3.Up * 0.6f }
+            : new CollisionShape3D { Shape = new BoxShape3D { Size = new Vector3(1.1f, 1.25f, 0.8f) }, Position = Vector3.Up * 0.625f });
         AddChild(_body);
     }
 

@@ -419,6 +419,7 @@ public partial class Game : Node3D
         s.Legs.Jump = !typing && c.IsHeld(Key.Space);
         s.Legs.Jetpack = !typing && c.IsHeld(Key.Space);
         s.Legs.Vertical = typing ? 0f : c.Axis(Key.Space, Key.Ctrl);
+        Tangled(s);
         Climb(c); // a ladder or a lift shaft at the feet
         if (Menu.IsOpen) return;
 
