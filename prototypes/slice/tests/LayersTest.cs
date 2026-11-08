@@ -58,6 +58,8 @@ public partial class LayersTest : Node
             Palettes(worlds);
             Sound();
             Hooks(worlds);
+            WarFalls();
+            StrikesOnTargets();
         }
         catch (Exception e) { Check(false, $"the test threw: {e}"); }
         GD.Print(_failures == 0 ? $"ALL PASSED ({_passes} checks in {_clock.Elapsed.TotalSeconds:F1} s)" : $"{_failures} CHECK(S) FAILED ({_passes} passed)");

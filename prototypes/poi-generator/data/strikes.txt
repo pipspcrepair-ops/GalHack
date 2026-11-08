@@ -1,0 +1,50 @@
+# Where a war's blasts came down: the strikes of a nuclear exchange or a bombardment, and what they
+# aimed at. Read by StrikePlan (src/Gen/Strikes.cs) for a world whose fall (or scar) a strike names.
+# Nothing here names a place: a strike goes on whatever the world's plan built that matches a target.
+# The map's craters and the ruined places are the same blasts, so they always agree.
+#
+#   strike <id>            how one kind of war came down
+#     falls ids            the fall layers (data/world-layers.txt) that bring it
+#     count lo hi          strikes on a 16x8 km world, from the mildest fall to the hardest (the roll's
+#                          severity, 0 to 1); a bigger world takes more, a scar in one region a third
+#     crater lo hi         a ground burst's crater radius, metres (the bigger the target, the bigger the yield)
+#     depth d  rim r       the bowl's depth below the land and its thrown rim, as shares of the radius
+#     ruin dead fade       how far out it flattened, burnt the land dead (ash, nothing growing) and
+#                          faded back to the land's own, as multiples of the crater radius
+#     air share            strikes that burst in the air: no crater, the same flattening and burning
+#     miss share           strikes that missed: down within spread of the target, never in open water
+#     spread lo hi         how far off a miss came down, metres
+#     wild share           the odd one over open country, aimed at nothing (an airburst)
+#     salvo lo hi step m   each strike a stick of lo to hi craters in a line, step metres apart
+#     era L M H            how many strikes the old world could throw, by its tech level
+#     aged depth rim dead  what a long century since takes off the bowl, the rim and the dead ground
+#
+#   target <kind>          what a strike aims at; the first that matches a place wins
+#     match words          any of: tier.T tag.T id.T role.T (the plan's role) primary capital plan.city
+#                          infra.bridge infra.junction route.K; a+b needs both
+#     value n              what it was worth a strike (0: never aimed at)
+#     takes n              most strikes one target draws
+#     share s              most of a world's strikes this kind draws (its roads never take most of a war)
+#     hard yes             hardened: always a ground burst
+#     air share            its own share of airbursts (cities and towns: the blast over the streets)
+#     naval yes            a ship target: its strike may come down on the water
+#     era L M H            its worth by the old world's tech level
+
+strike nuclear | falls nuclear_war | count 5 14 | crater 30 58 | depth 0.26 | rim 0.08 | ruin 6 | dead 9 | fade 16 | air 0.3 | miss 0.12 | spread 220 600 | wild 0.05 | era L 0.5 M 1 H 1.3 | aged 0.35 0.5 0.3
+strike bombardment | falls orbital_bombardment | count 4 11 | crater 12 22 | depth 0.3 | rim 0.1 | ruin 5 | dead 6 | fade 11 | air 0 | miss 0.18 | spread 150 450 | wild 0.04 | salvo 2 4 step 70 | era L 1 M 1 H 1 | aged 0.3 0.5 0.3
+strike kinetic | falls kinetic_strikes | count 3 8 | crater 34 64 | depth 0.4 | rim 0.1 | ruin 4 | dead 3 | fade 7 | air 0 | miss 0.15 | spread 250 650 | wild 0.08 | era L 1 M 1 H 1 | aged 0.3 0.5 0.2
+
+target none | match tag.flavour tag.wreck tag.alien tag.precursor tag.evacuation tag.radiation tag.scrappy tag.gang tag.settlement tag.recovery tag.working | value 0
+target capital | match capital | value 14 | takes 3 | air 0.7
+target city | match plan.city | value 11 | takes 3 | air 0.8
+target port | match tier.spaceport | value 9 | takes 2 | era L 0.7 M 1 H 1.2
+target base | match tag.military | value 8 | takes 2 | hard yes
+target airfield | match tag.aviation | value 7 | hard yes
+target docks | match tag.port | value 6 | naval yes
+target power | match tag.power | value 5 | era L 0.6 M 1 H 1.3
+target refinery | match id.refinery id.steelworks id.works_complex | value 5 | era L 0.8 M 1.2 H 1
+target town | match tier.town tier.city role.hub | value 5 | takes 2 | air 0.6
+target industry | match tag.industry | value 3 | era L 0.7 M 1.2 H 1
+target bridge | match infra.bridge+route.highway infra.bridge+route.rail | value 2 | share 0.2 | hard yes
+target junction | match infra.junction+route.highway | value 1.5 | share 0.15 | hard yes
+target crossing | match infra.bridge+route.road infra.junction+route.road | value 0.3 | share 0.1 | hard yes

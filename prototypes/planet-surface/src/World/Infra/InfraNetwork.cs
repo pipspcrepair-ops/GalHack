@@ -126,6 +126,13 @@ public sealed class InfraNetwork
     /// <summary>Flavour ruins along the roads and in the countryside (planned on the bare land: <see cref="FlavourRuins.Plan"/>).</summary>
     public List<FlavourRuin> Ruins = new();
 
+    /// <summary>Every blast on the world (blast sites' own and a war's strikes, <see cref="StrikeSites"/>): the ruins round them take them as the places do.</summary>
+    public readonly List<PoiGenerator.Gen.Strike> Blasts = new();
+    /// <summary>The craters a war's ground bursts punched (bowl stamps, laid after the places' own and before the ruins and roads, which keep off them).</summary>
+    public readonly List<TerrainStamp> Craters = new();
+    /// <summary>What a war's strikes could aim at here (tests: craters on targets).</summary>
+    public readonly List<PoiGenerator.Gen.StrikeTarget> Targets = new();
+
     /// <summary>The made ground round the places (yards, aprons, car parks, footpaths, paths), for the terrain shader (<see cref="MadeGrounds"/>).</summary>
     public List<GalHack.Terrain.GroundPatch> Grounds = new();
     /// <summary>What the world's plan says each region was for (null on a world laid out without one).</summary>

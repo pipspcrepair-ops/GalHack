@@ -323,10 +323,10 @@ public sealed class SliceRules
         /// <summary>How livable a world of each archetype is, 0..1: lush worlds busiest, lava all but dead.</summary>
         public Dictionary<string, float> Livable { get; set; } = new() { ["Temperate"] = 1f, ["Alien"] = 0.6f, ["Arid"] = 0.35f, ["Ice"] = 0.3f, ["Lava"] = 0.08f };
 
-        /// <summary>A cratered world, airless rock for the most part, holds this share of that.</summary>
-        public float Cratered { get; set; } = 0.7f;
+        /// <summary>An airless cratered body (barren rock) holds this share of that.</summary>
+        public float Cratered { get; set; } = 0.4f;
 
         public float LivableOn(Planets.Gen.PlanetSpec spec) =>
-            Livable.GetValueOrDefault(spec.Archetype.ToString(), 0.5f) * (spec.Has(Planets.Gen.Modifier.Cratered) ? Cratered : 1f);
+            Livable.GetValueOrDefault(spec.Archetype.ToString(), 0.5f) * (spec.Airless ? Cratered : 1f);
     }
 }
