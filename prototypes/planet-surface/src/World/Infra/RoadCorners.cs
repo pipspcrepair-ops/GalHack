@@ -38,6 +38,10 @@ public sealed class RoadCorner
     public bool RoundA, RoundB;
     /// <summary>A turning bulb's disc of deck round a street's end, not a corner: <see cref="R"/> its radius round (X, Z).</summary>
     public bool Disc;
+    /// <summary>The tilt of the plane the corner lies on (rise per metre in x and z from its centre): a turning bulb's and its fillets', following the land; 0 elsewhere.</summary>
+    public float TiltX, TiltZ;
+    /// <summary>Its deck's height at a point (on its tilted plane).</summary>
+    public float DeckAt(double x, double z, double width, double height) => Y + TiltX * (float)Mathx.WrapDelta(x - X, width) + TiltZ * (float)Mathx.WrapDelta(z - Z, height);
     /// <summary>The same corner laid again at another radius (null where it won't go): for making room beside another.</summary>
     internal Func<float, RoadCorner> Remake;
 
@@ -86,7 +90,8 @@ public static class RoadCorners
         /// <summary>The index in <see cref="P"/> of the meeting point itself (the points before it run back behind it, straight).</summary>
         public int Start;
         public double Angle;
-        public float Hw => Route.HalfWidth;
+        /// <summary>Its half width at the meeting point: its own, or where it narrows to meet the way it comes to, that.</summary>
+        public float Hw;
     }
 
     public static List<RoadCorner> Plan(InfraNetwork net, Dictionary<string, int> misses = null, Func<double, double, bool> onPlace = null, List<(double X, double Z, string Why)> missedAt = null)
@@ -102,7 +107,7 @@ public static class RoadCorners
         // A leg from route point `i` of r, stepping `step` (+1 or -1), as far as `reach` metres, in metres from (ox, oz).
         Leg MakeLeg(InfraRoute r, int i, int step, double ox, double oz, double reach = 70)
         {
-            var leg = new Leg { Route = r };
+            var leg = new Leg { Route = r, Hw = i == 0 && r.StartMeetHw > 0f ? (r.HalfWidth + r.StartMeetHw) * 0.5f : i == r.Count - 1 && r.EndMeetHw > 0f ? (r.HalfWidth + r.EndMeetHw) * 0.5f : r.HalfWidth };
             var pts = new List<(double X, double Z)>();
             double run = 0;
             for (int k = i; k >= 0 && k < r.Count; k += step)
@@ -175,10 +180,19 @@ public static class RoadCorners
                 Leg leg = MakeLeg(r, e, start ? 1 : -1, r.X[e], r.Z[e], 50);
                 if (leg == null) continue;
                 float rb = BulbRadius(r);
+                int before = list.Count;
                 foreach (int side in new[] { -1, 1 })
                     Circle(leg, side, r.X[e], r.Z[e], rb, rb * 2, Radius(r, r), r.Y[e], r, "bulb");
-                // The bulb itself: a true circle round the street's end (as its corners assume), whatever the street does before it.
-                list.Add(new RoadCorner { X = r.X[e], Z = r.Z[e], Y = r.Y[e], R = rb, Cut = rb + 9f, Disc = true, Kerbed = InfraNetwork.Kerbed(r), RouteA = r.Id, RouteB = r.Id, Why = "disc", AX = 1, BX = 1 });
+                // The bulb itself: a true circle round the street's end (as its corners assume), whatever the street does before it,
+                // on the plane its bed is laid to (the land's grade, as gently as a street's grades allow); its fillets on it too.
+                var (tx, tz) = start ? r.StartTilt : r.EndTilt;
+                list.Add(new RoadCorner { X = r.X[e], Z = r.Z[e], Y = r.Y[e], R = rb, Cut = rb + 9f, Disc = true, Kerbed = InfraNetwork.Kerbed(r), RouteA = r.Id, RouteB = r.Id, Why = "disc", AX = 1, BX = 1, TiltX = tx, TiltZ = tz });
+                for (int k = before; k + 1 < list.Count; k++)
+                {
+                    RoadCorner c = list[k];
+                    c.Y = r.Y[e] + tx * (float)Mathx.WrapDelta(c.X - r.X[e], w) + tz * (float)Mathx.WrapDelta(c.Z - r.Z[e], h);
+                    (c.TiltX, c.TiltZ) = (tx, tz);
+                }
             }
         // Corners near together on one way (two junctions close along it) each tighten until neither's deck runs over
         // the other's kerb: two corners, never one stretched pad.

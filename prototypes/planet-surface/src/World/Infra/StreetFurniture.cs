@@ -30,6 +30,8 @@ public static class StreetFurniture
 {
     /// <summary>How far past a street's deck edge its verge things stand, m (the footpath lies beyond).</summary>
     public const float Verge = 0.8f;
+    /// <summary>How far past a kerbed street's deck edge its trees stand, m: past its footpath, their crowns clear of the carriageway.</summary>
+    public const float TreeBack = InfraNetwork.FootpathOut + 1.6f;
 
     /// <summary>Sign symbols: give way, roundabout ahead, no through road.</summary>
     public const int GiveWay = 0, RoundaboutAhead = 1, NoThrough = 2;
@@ -69,10 +71,12 @@ public static class StreetFurniture
                     if (r.Span[i] != RoadSpan.Ground || r.Span[i - 1] != RoadSpan.Ground) continue;
                     double dx = r.X[i + 1] - r.X[i - 1], dz = r.Z[i + 1] - r.Z[i - 1], l = Math.Max(1e-6, Math.Sqrt(dx * dx + dz * dz));
                     double nx = -dz / l * side, nz = dx / l * side;
-                    double x = r.X[i] + nx * (r.HalfWidth + Verge), z = r.Z[i] + nz * (r.HalfWidth + Verge);
+                    StreetThing thing = lamps && (!trees || turn % 2 == 0) ? StreetThing.Lamp : StreetThing.Tree;
+                    // A tree stands past the footpath, its crown clear of the carriageway; a lamp in the verge by the kerb.
+                    double off = thing == StreetThing.Tree && InfraNetwork.Kerbed(r) ? r.HalfWidth + TreeBack : r.HalfWidth + Verge;
+                    double x = r.X[i] + nx * off, z = r.Z[i] + nz * off;
                     float y = Ground(x, z);
                     if (Math.Abs(y - r.Y[i]) > 0.6f || !Free(x, z)) continue;
-                    StreetThing thing = lamps && (!trees || turn % 2 == 0) ? StreetThing.Lamp : StreetThing.Tree;
                     turn++;
                     items.Add(new StreetItem(thing, Mathx.WrapX(x, w), Mathx.Wrap(z, h), y, (float)-nx, (float)-nz));
                 }

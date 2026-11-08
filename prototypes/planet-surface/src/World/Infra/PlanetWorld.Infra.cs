@@ -37,6 +37,9 @@ public sealed partial class PlanetWorld
         }
         // Flavour ruins by the roads and in the country, their pads laid before the roads.
         infra.Ruins = FlavourRuins.Plan(infra, catalog?.Library, map, bare, pois, profile, Hash.Of(spec.Seed, 0xF1A7), ruins);
+        // A street that just stops is a cul-de-sac for its lots, its bulb on ground it can lie on; a street to nowhere goes.
+        double pw = map.WidthMeters, ph = map.HeightMeters;
+        infra.PruneDeadEnds((x, z) => bare.Sampler.Sample(Mathx.WrapX(x, pw), Mathx.Wrap(z, ph), 2).Height);
         foreach (FlavourRuin ruin in infra.Ruins) stamps.Add(ruin.Stamp);
         // The junctions, every way laid: each given its form, a roundabout its ring, before the roads are stamped.
         double mw = map.WidthMeters, mh = map.HeightMeters;

@@ -28,7 +28,7 @@ namespace PlanetSurface.Terrain;
 ///   7: whether the stretch's start or end is a way's end lying on another way's deck (a junction's branch, a drive):
 ///      it ends there flat, square across, inside that deck (a round end poked out past its far kerb as a bump); 0, 0
 /// A junction's rounded corner (<see cref="PlanetSurface.Infra.RoadCorner"/>) is an entry of its own, style <see cref="Corner"/>:
-///   0: its centre (canonical), 0, 0
+///   0: its centre (canonical), the tilt of its plane (rise per metre in x and z: a turning bulb on sloping land)
 ///   1: deck height, deck height, radius, cut (how far from the centre its deck reaches)
 ///   2: cut (its reach, for the cells), 0, 0, style + 16 x 0
 ///   3: unit vectors from the centre to where it meets each kerb line (a, b)
@@ -175,8 +175,8 @@ public sealed class RoadField
         foreach (var (pts, t, st, rid) in runs)
         {
             var (start, end, length) = ends[rid];
-            if (flatStart.Contains(rid) && pts[0].S < 0.01f) pts[0] = pts[0] with { Flat = 1f };
-            if (flatEnd.Contains(rid) && Math.Abs(pts[^1].S - length) < 0.01f) pts[^1] = pts[^1] with { Flat = 1f };
+            if ((flatStart.Contains(rid) || t.FlatStart) && pts[0].S < 0.01f) pts[0] = pts[0] with { Flat = 1f };
+            if ((flatEnd.Contains(rid) || t.FlatEnd) && Math.Abs(pts[^1].S - length) < 0.01f) pts[^1] = pts[^1] with { Flat = 1f };
             for (int i = 0; i < pts.Count; i++)
             {
                 if (start && pts[i].S < LotReach || end && length - pts[i].S < LotReach) pts[i] = pts[i] with { Lot = 1f };
@@ -196,7 +196,7 @@ public sealed class RoadField
         // The junctions' rounded corners, each an entry of its own.
         foreach (PlanetSurface.Infra.RoadCorner c in corners ?? Array.Empty<PlanetSurface.Infra.RoadCorner>())
         {
-            segs.Add((float)Mathx.WrapX(c.X, width)); segs.Add((float)Mathx.Wrap(c.Z, height)); segs.Add(0f); segs.Add(0f);
+            segs.Add((float)Mathx.WrapX(c.X, width)); segs.Add((float)Mathx.Wrap(c.Z, height)); segs.Add(c.TiltX); segs.Add(c.TiltZ);
             segs.Add(c.Y); segs.Add(c.Y); segs.Add(c.R); segs.Add(c.Cut);
             segs.Add(c.Cut); segs.Add(0f); segs.Add(0f); segs.Add(Corner);
             segs.Add(c.AX); segs.Add(c.AZ); segs.Add(c.BX); segs.Add(c.BZ);
@@ -472,13 +472,24 @@ public sealed class RoadField
             var c = new PlanetSurface.Infra.RoadCorner
             {
                 X = _segs[o], Z = _segs[o + 1], R = _segs[o + 6], Cut = _segs[o + 7], AX = _segs[o + 12], AZ = _segs[o + 13], BX = _segs[o + 14], BZ = _segs[o + 15],
-                LimA = _segs[o + 16], LimB = _segs[o + 17], Disc = _segs[o + 19] > 0.5f,
+                LimA = _segs[o + 16], LimB = _segs[o + 17], Disc = _segs[o + 19] > 0.5f, Y = _segs[o + 4], TiltX = _segs[o + 2], TiltZ = _segs[o + 3],
             };
             float f = c.Edge(cx, cz, _width, _height);
-            if (float.IsInfinity(f) || MathF.Abs(y - _segs[o + 4]) > tolerance + MathF.Max(f, 0f) * 1.2f) continue;
-            edge = MathF.Min(edge, f);
+            if (float.IsInfinity(f) || MathF.Abs(y - c.DeckAt(cx, cz, _width, _height)) > tolerance + MathF.Max(f, 0f) * 1.2f) continue;
+            edge = float.IsInfinity(edge) ? f : CornerJoin(edge, f);
         }
         return edge;
+    }
+
+    /// <summary>
+    /// A corner's kerb joined to the ways' own (the shader's): their least, eased over the last few centimetres where they meet, so
+    /// the few centimetres a corner's fit to a curved centre line leaves at its tangent points never show as a jog in the kerb.
+    /// </summary>
+    public static float CornerJoin(float road, float corner)
+    {
+        const float K = 0.4f;
+        float h = MathF.Max(K - MathF.Abs(road - corner), 0f) / K;
+        return MathF.Min(road, corner) - h * h * K * 0.25f;
     }
 
     static ImageTexture Texture(float[] values, int w, int h, Image.Format format, int bytesPerTexel)

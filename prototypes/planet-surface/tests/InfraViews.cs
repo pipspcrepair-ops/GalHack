@@ -71,6 +71,27 @@ public static class InfraViews
             PlanetSurface.Poi.PoiSiting.StartWorld = true;
             return new(PlanetSpec.Roll(seed, arch, 0), m => default, 0.4, WeatherKind.Clear, Series: SurfaceSeries);
         }
+        // A gallery of junctions and crossings of every kind, picked at random on a fresh world (a start world, with its
+        // town): infra:jgallery:<archetype>:<seed>[:<tech: low, mid, high or any>[:<kinds wanted first, comma separated>]].
+        // A tech asked for re-rolls the seed (from the one given) until the world's old tech is that.
+        if (what == "jgallery")
+        {
+            PlanetSurface.Poi.PoiSiting.StartWorld = true;
+            string tech = a.Length > 4 ? a[4] : "any";
+            if (tech != "any")
+            {
+                var want = Enum.Parse<TechLevel>(tech, true);
+                for (int k = 0; k < 2000; k++)
+                {
+                    var prof = World.PlanetWorld.ProfileFor(PlanetSpec.Roll(seed, arch, 0), true);
+                    if (prof.Inhabited && prof.Before == want) break;
+                    seed = seed * 6364136223846793005UL + 1442695040888963407UL;
+                }
+            }
+            GalleryKinds = a.Length > 5 ? a[5].Split(',') : Array.Empty<string>();
+            GD.Print($"GALLERY: {arch} seed {seed} ({tech})");
+            return new(PlanetSpec.Roll(seed, arch, 0), m => default, 0.4, WeatherKind.Clear, Series: JunctionGallery);
+        }
         if (what == "wayin")
         {
             PlanetSurface.Poi.PoiSiting.StartWorld = true;
@@ -646,6 +667,150 @@ public static class InfraViews
             dx /= l; dz /= l;
             GD.Print($"SURF: a track at {track.X[i]:F0},{track.Z[i]:F0}");
             Add("track-crown", track.X[i] - dx * 5 + dz * 0.6, track.Z[i] - dz * 5 - dx * 0.6, G(track.X[i], track.Z[i]) + 1.7f, track.X[i] + dx * 8, track.Z[i] + dz * 8, track.Y[i]);
+        }
+        return shots;
+    }
+
+    /// <summary>Kinds a gallery world frames first (the view's last part), the rest picked at random.</summary>
+    static string[] GalleryKinds = Array.Empty<string>();
+
+    /// <summary>How many junctions and crossings a gallery world frames.</summary>
+    const int GalleryPerWorld = 6;
+
+    /// <summary>
+    /// infra:jgallery: junctions and crossings of every kind (tracks meeting, a track's mouth on a road or a street, a road's T,
+    /// a crossroads, a roundabout, a slip road, a dead end's bulb, a bridge, a ford, a way into a place's yard, a lot's drive
+    /// onto its street, an old street), each a random one of its kind on this fresh world: from about 30 m up and from the
+    /// ground, standing where a person could (dry, not steep, not on a place's footprint or in a wreck), in sight of it.
+    /// </summary>
+    static System.Collections.Generic.List<Screenshot.Shot> JunctionGallery(Main m)
+    {
+        var w = m.World;
+        InfraNetwork net = w.Infra;
+        var shots = new System.Collections.Generic.List<Screenshot.Shot>();
+        var rand = new Random();
+        float G(double x, double z) => w.GroundHeight(Mathx.WrapX(x, w.Width), Mathx.Wrap(z, w.Height));
+        double Dist(double ax, double az, double bx, double bz) => Math.Sqrt(Math.Pow(Mathx.WrapDelta(ax - bx, w.Width), 2) + Math.Pow(Mathx.WrapDelta(az - bz, w.Height), 2));
+        GD.Print($"GALLERY: {w.Spec}, built {net.Profile?.Before}; {net.Joins.Count} junctions ({string.Join(", ", net.Joins.GroupBy(j => j.Form).Select(g => $"{g.Count()} {g.Key}"))}), {net.Structures.Count(s => s.Kind == RoadSpan.Bridge)} bridges; {net.Demoted} paved stubs demoted, {net.StreetsTrimmed} streets trimmed, {net.StreetsRemoved} removed, {net.LotsDropped} lots dropped; roundabouts missed: {string.Join(", ", net.RoundaboutMisses.Select(k => $"{k.Value} {k.Key}"))}");
+        var kinds = new System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<(double X, double Z, float Y, double DX, double DZ, string Note)>>();
+        void Add(string kind, double x, double z, float y, double dx, double dz, string note)
+        {
+            if (!kinds.TryGetValue(kind, out var l)) kinds[kind] = l = new();
+            double dl = Math.Sqrt(dx * dx + dz * dz);
+            if (dl < 1e-6) (dx, dz, dl) = (1, 0, 1);
+            l.Add((x, z, y, dx / dl, dz / dl, note));
+        }
+        string Name(InfraRoute r) => r.Ring ? "ring" : r.Graded ? "graded" : r.Laid.Length == 0 ? $"{r.Kind.ToString().ToLowerInvariant()}-street" : r.Kind.ToString().ToLowerInvariant();
+        foreach (InfraJunction j in net.Joins)
+        {
+            JunctionArm branch = j.Arms.FirstOrDefault(a => a.Route != j.Through) ?? j.Arms[0];
+            string note = $"{j.Form}: {string.Join(" + ", j.Arms.Select(a => Name(a.Route)))}";
+            if (j.Arms.All(a => a.Route.Soil)) { if (j.Arms.Count >= 3) Add("track-track", j.X, j.Z, j.Y, branch.DirX, branch.DirZ, note); }
+            else if (!j.Through.Soil && j.Arms.Any(a => a.Route.Soil))
+            {
+                JunctionArm soil = j.Arms.First(a => a.Route.Soil);
+                Add(InfraNetwork.Kerbed(j.Through) ? "track-street" : "track-road", j.X, j.Z, j.Y, soil.DirX, soil.DirZ, note);
+            }
+            else if (j.Form == JunctionForm.Roundabout) Add("roundabout", j.X, j.Z, j.Y, branch.DirX, branch.DirZ, note);
+            else if (j.Form is JunctionForm.Slip or JunctionForm.Fork) Add("slip", j.X, j.Z, j.Y, branch.DirX, branch.DirZ, note);
+            else if (j.Form == JunctionForm.Crossroads) Add("crossroads", j.X, j.Z, j.Y, branch.DirX, branch.DirZ, note);
+            else if (j.Form == JunctionForm.Tee) Add(j.Arms.Any(a => a.Route.Laid.Length == 0) ? "street-tee" : "road-tee", j.X, j.Z, j.Y, branch.DirX, branch.DirZ, note);
+            else if (j.Form == JunctionForm.RunOn && j.Arms.Count == 2 && InfraNetwork.ClassChange(j.Arms[0].Route, j.Arms[1].Route)) Add("seam", j.X, j.Z, j.Y, branch.DirX, branch.DirZ, note);
+        }
+        foreach (InfraRoute r in net.Routes.Where(r => r.Kind != RouteKind.Rail && r.Count > 6))
+            foreach (bool start in new[] { true, false })
+                if ((start ? r.StartJoin : r.EndJoin) == JunctionForm.DeadEnd)
+                {
+                    int e = start ? 0 : r.Count - 1, o = start ? 4 : r.Count - 5;
+                    Add("deadend", r.X[e], r.Z[e], r.Y[e], r.X[o] - r.X[e], r.Z[o] - r.Z[e], $"turning bulb of {Name(r)} {r.Id}, tilt {(start ? r.StartTilt : r.EndTilt)}");
+                }
+        foreach (InfraStructure s in net.Structures.Where(s => s.Kind == RoadSpan.Bridge && !s.Route.Maglev && s.Route.Kind != RouteKind.Rail))
+        {
+            InfraRoute r = s.Route;
+            int mid = (s.First + s.Last) / 2;
+            double dx = r.X[Math.Min(r.Count - 1, mid + 1)] - r.X[Math.Max(0, mid - 1)], dz = r.Z[Math.Min(r.Count - 1, mid + 1)] - r.Z[Math.Max(0, mid - 1)];
+            Add("bridge", r.X[mid], r.Z[mid], r.Y[mid], -dz, dx, $"{s.Build} {Name(r)} bridge {s.Length:F0} m{(s.OverWater ? " over water" : "")}{(s.Fallen.Count > 0 ? ", a span fallen" : "")}");
+        }
+        foreach (InfraRoute r in net.Routes.Where(r => r.Kind != RouteKind.Rail))
+            for (int i = 2; i + 2 < r.Count; i += 2)
+                if (r.Span[i] == RoadSpan.Ground && r.Span[i - 1] == RoadSpan.Ground && w.Source.WaterSurfaceAt(Mathx.WrapX(r.X[i], w.Width), Mathx.Wrap(r.Z[i], w.Height), out _))
+                {
+                    Add("ford", r.X[i], r.Z[i], r.Y[i], -(r.Z[i + 1] - r.Z[i - 1]), r.X[i + 1] - r.X[i - 1], $"{Name(r)} through water");
+                    i += 40;
+                }
+        foreach (InfraRoute r in net.Routes.Where(r => r.Kind != RouteKind.Rail && r.Count > 12))
+            foreach (var (p, e, o) in new[] { (r.From, 0, 6), (r.To, r.Count - 1, r.Count - 7) })
+                if (p != null && p.Siting != "city") Add("yard", r.X[e], r.Z[e], r.Y[e], r.X[o] - r.X[e], r.Z[o] - r.Z[e], $"{Name(r)} into a {p.Family.Id}'s yard");
+        foreach (FlavourRuin ruin in net.Ruins.Where(q => q.Join != null && q.Drive != null))
+        {
+            RoadJoin jn = ruin.Join;
+            Add(jn.Kerbed ? "lot-street" : "lot-road", jn.X, jn.Z, jn.Y, -jn.NX, -jn.NZ, $"a {ruin.Family.Id}'s drive onto {Name(jn.Road)}");
+        }
+        foreach (InfraRoute r in net.Routes.Where(InfraNetwork.Kerbed).Where(r => r.Count > 20))
+        {
+            int i = r.Count / 2;
+            Add("old-street", r.X[i], r.Z[i], r.Y[i], r.X[i + 3] - r.X[i], r.Z[i + 3] - r.Z[i], $"{Name(r)} worn {r.Wear:F2}");
+        }
+        GD.Print($"GALLERY: kinds here: {string.Join(", ", kinds.Select(k => $"{k.Value.Count} {k.Key}"))}");
+        // The kinds asked for first, then the rest at random.
+        var order = GalleryKinds.Where(kinds.ContainsKey).Distinct().ToList();
+        foreach (string k in kinds.Keys.OrderBy(_ => rand.Next())) if (!order.Contains(k)) order.Add(k);
+        bool Walkable(double x, double z)
+        {
+            double cx = Mathx.WrapX(x, w.Width), cz = Mathx.Wrap(z, w.Height);
+            if (w.Source.WaterSurfaceAt(cx, cz, out _)) return false;
+            float g = G(x, z);
+            foreach (var (ox, oz) in new[] { (1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0) })
+                if (Math.Abs(G(x + ox, z + oz) - g) > 0.55f) return false;
+            foreach (int s in w.Source.StampsAt(cx, cz))
+            {
+                TerrainStamp t = w.Source.Stamps[s];
+                if (t.Shape == StampShape.Pad && t.OnFootprint(cx, cz)) return false;
+            }
+            return !net.Wrecks.Any(k => { var (kx, kz) = k.World(k.Width / 2, k.Length / 2); return Dist(kx, kz, x, z) < Math.Max(k.Width, k.Length) * 0.6 + 2; });
+        }
+        (double X, double Z, float Y)? Spot(double tx, double tz, float ty, double dx, double dz)
+        {
+            double a0 = Math.Atan2(dz, dx);
+            foreach (double dist in new[] { 18.0, 24.0, 13.0, 30.0 })
+                for (int k = 0; k < 16; k++)
+                {
+                    double a = a0 + (k % 2 == 0 ? 1 : -1) * ((k + 1) / 2) * Math.PI / 8;
+                    double x = tx + Math.Cos(a) * dist, z = tz + Math.Sin(a) * dist;
+                    if (!Walkable(x, z)) continue;
+                    float g = G(x, z);
+                    bool seen = true;
+                    for (double t = 0.06; t < 0.94 && seen; t += 0.03)
+                    {
+                        float ly = g + 1.7f + (ty + 0.6f - (g + 1.7f)) * (float)t;
+                        seen = G(x + (tx - x) * t, z + (tz - z) * t) < ly - 0.3f;
+                    }
+                    if (seen) return (x, z, g);
+                }
+            return null;
+        }
+        int n = 0;
+        foreach (string kind in order)
+        {
+            if (n >= GalleryPerWorld) break;
+            var all = kinds[kind];
+            var near = all.Where(c => Dist(c.X, c.Z, w.Landing.X, w.Landing.Y) < 5000).ToList();
+            if (near.Count == 0) near = all;
+            var (x, z, y, dx, dz, note) = near[rand.Next(near.Count)];
+            n++;
+            double sx = -dz, sz = dx, back = 15, up = 26;
+            if (kind == "bridge") { back = 45; up = 16; }
+            double hx = x + dx * back + sx * 6, hz = z + dz * back + sz * 6;
+            float hy = Math.Max(y + (float)up, G(hx, hz) + 8f);
+            var (hp, hh, hpi) = Look(w, hx, hz, hy, x, z, y);
+            shots.Add(new Screenshot.Shot($"{n:D2}-{kind}-high", hp, hh, hpi));
+            var spot = Spot(x, z, y, dx, dz);
+            GD.Print($"GALLERY: {n:D2} {kind} at {x:F0},{z:F0} (deck {y:F1}): {note}; {near.Count} of {all.Count} near; ground frame {(spot is { } s0 ? $"from {s0.X:F0},{s0.Z:F0}" : "none: nowhere to stand in sight")}");
+            if (spot is { } s)
+            {
+                var (gp, gh, gpi) = Look(w, s.X, s.Z, s.Y + 1.7f, x, z, y + 0.6f);
+                shots.Add(new Screenshot.Shot($"{n:D2}-{kind}-ground", gp, gh, gpi));
+            }
         }
         return shots;
     }

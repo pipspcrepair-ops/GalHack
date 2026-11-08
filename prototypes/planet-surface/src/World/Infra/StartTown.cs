@@ -141,17 +141,18 @@ public sealed class StartTown
                         if (lot == null) continue;
                         // The street runs on a map axis, so the lot lies square to it: half the lot off the kerb.
                         double half = Math.Abs(dz) > Math.Abs(dx) ? lot.Occupied.Size.X * 0.5 : lot.Occupied.Size.Z * 0.5;
-                        double clear = s.HalfWidth + half + 2;
+                        // Set back past the level bed of kerb, verge and footpath, and laid at the street's level (no dip or step between).
+                        double clear = s.HalfWidth + half + FlavourRuins.LotSetback - 2;
                         double lotX = s.X[i] + nx * (clear + 2), lotZ = s.Z[i] + nz * (clear + 2);
                         double la = Mathx.WrapDelta(lotX - bx, w) * ux + Mathx.WrapDelta(lotZ - bz, h) * uz, lu = Mathx.WrapDelta(lotX - bx, w) * sx + Mathx.WrapDelta(lotZ - bz, h) * sz;
                         double reach = Math.Max(lot.Occupied.Size.X, lot.Occupied.Size.Z) * 0.5 + 2;
                         if (reserved.Any(k => la + reach > k.A0 && la - reach < k.A1 && lu + reach > k.U0 && lu - reach < k.U1)) continue;
                         FlavourRuin r = FlavourRuins.Try(lib, type, lot, lotX, lotZ, bare, net, pois, ruins, w, h, rng,
-                            spacing: 0, maxCut: 8f, clearance: clear);
+                            spacing: 0, maxCut: 8f, clearance: clear, level: s.Y[i]);
                         if (r == null) continue;
                         r.Route = s;
                         r.State = PoiState.Ruined;
-                        FlavourRuins.Connect(r, s, 1.6f, GalHack.Terrain.StampSurface.Gravel, bare, w, h);
+                        FlavourRuins.Connect(r, s, 1.6f, GalHack.Terrain.StampSurface.Gravel, bare, w, h, net);
                         ruins.Add(r);
                         town.Houses.Add(r);
                     }

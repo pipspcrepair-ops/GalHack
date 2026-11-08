@@ -58,7 +58,75 @@ public static class MadeGrounds
             t.Painted = true;
         }
         if (net != null) WaysIn(patches, net, w, h);
+        if (net != null) Crossovers(patches, net, w, h);
         return patches;
+    }
+
+    /// <summary>How far past a kerbed street's kerb its crossovers reach, m: across the verge and the footpath and a little past it.</summary>
+    public const float CrossoverDepth = InfraNetwork.FootpathOut + 0.2f;
+
+    /// <summary>
+    /// Every join of a lesser way onto a kerbed street has its crossover: a piece of made ground of its own, square to the
+    /// kerb, a fixed width for its way's class, straight-sided with rounded corners, from the kerb across the verge and the
+    /// footpath, the kerb dropped along its street edge. The footpath and kerb stop clean against its sides (the shader lays
+    /// made ground over a street's sides), and the way arrives square and ends on it: a lot's drive (its join planned with
+    /// it) or a track. Nothing meets the street's sides at an angle, so no sliver is left between two overlapping shapes.
+    /// </summary>
+    static void Crossovers(List<GroundPatch> patches, InfraNetwork net, double w, double h)
+    {
+        var joins = new List<(RoadJoin J, float Wear)>();
+        foreach (FlavourRuin ruin in net.Ruins)
+            if (ruin.Join is { Kerbed: true } j && ruin.Drive != null && net.Routes.Contains(j.Road)) joins.Add((j, j.Road.Wear));
+        foreach (InfraRoute r in net.Routes)
+        {
+            if (!r.Soil || r.Kind == RouteKind.Rail || r.Count < 4) continue;
+            foreach (bool atStart in new[] { true, false })
+            {
+                if ((atStart ? r.From : r.To) != null) continue;
+                InfraRoute k = net.EndJoins(r, atStart).FirstOrDefault(InfraNetwork.Kerbed);
+                if (k == null) continue;
+                int e = atStart ? 0 : r.Count - 1, b = atStart ? 3 : r.Count - 4;
+                if (Join(k, r.X[e], r.Z[e], r.X[b], r.Z[b], r.HalfWidth + 0.6f, w, h) is { } j) joins.Add((j, k.Wear));
+            }
+        }
+        foreach (var (j, wear) in joins)
+        {
+            float hw = j.Road.HalfWidth, depth = CrossoverDepth + 0.05f;
+            // From 5 cm under the kerb line out to just past the footpath: U across the verge, V along the kerb.
+            double mid = hw - 0.05 + depth * 0.5;
+            var p = new GroundPatch
+            {
+                X = Mathx.WrapX(j.X + j.NX * mid, w), Z = Mathx.Wrap(j.Z + j.NZ * mid, h), UX = (float)j.NX, UZ = (float)j.NZ,
+                HalfU = depth * 0.5f, HalfV = j.HalfWidth, Round = 0.6f, Y = j.Y, Cover = MadeCover.Concrete, Pattern = GroundPattern.Slabs,
+                Slab = 1.6f, Wear = wear, Layer = 5, Kerb = true, Give = 0.6f,
+            };
+            patches.Add(p);
+        }
+    }
+
+    /// <summary>The join of a way ending at (x, z), coming from (bx, bz), onto a road: the foot of it on the road's line, square to it.</summary>
+    public static RoadJoin Join(InfraRoute road, double x, double z, double bx, double bz, float halfWidth, double w, double h)
+    {
+        int seg = -1;
+        double best = double.MaxValue, fu = 0;
+        for (int i = 0; i + 1 < road.Count; i++)
+        {
+            double ax = Mathx.WrapDelta(road.X[i] - x, w), az = Mathx.WrapDelta(road.Z[i] - z, h), ex = road.X[i + 1] - road.X[i], ez = road.Z[i + 1] - road.Z[i];
+            double l2 = ex * ex + ez * ez, u = l2 < 1e-9 ? 0 : Math.Clamp(-(ax * ex + az * ez) / l2, 0, 1);
+            double px = ax + ex * u, pz = az + ez * u, d = px * px + pz * pz;
+            if (d < best) { best = d; seg = i; fu = u; }
+        }
+        if (seg < 0 || best > 100) return null;
+        double fx = x + Mathx.WrapDelta(road.X[seg] + (road.X[seg + 1] - road.X[seg]) * fu - x, w), fz = z + Mathx.WrapDelta(road.Z[seg] + (road.Z[seg + 1] - road.Z[seg]) * fu - z, h);
+        double tx = road.X[seg + 1] - road.X[seg], tz = road.Z[seg + 1] - road.Z[seg], tl = Math.Max(1e-6, Math.Sqrt(tx * tx + tz * tz));
+        double nx = -tz / tl, nz = tx / tl;
+        double ox = Mathx.WrapDelta(bx - fx, w), oz = Mathx.WrapDelta(bz - fz, h);
+        if (nx * ox + nz * oz < 0) { nx = -nx; nz = -nz; }
+        return new RoadJoin
+        {
+            Road = road, Index = fu < 0.5 ? seg : seg + 1, X = Mathx.WrapX(fx, w), Z = Mathx.Wrap(fz, h), NX = nx, NZ = nz,
+            Y = road.Y[seg] + (road.Y[seg + 1] - road.Y[seg]) * (float)fu, HalfWidth = halfWidth, Kerbed = InfraNetwork.Kerbed(road),
+        };
     }
 
     /// <summary>

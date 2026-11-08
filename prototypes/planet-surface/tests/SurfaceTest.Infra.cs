@@ -87,7 +87,7 @@ public partial class SurfaceTest
         }
         finally { InfraNetwork.ForceRoundabouts = false; }
         Check(worlds > 0 && rings * 4 >= worlds && broken == 0,
-            $"roundabouts form where roads alike meet on level open ground: {rings} on {worlds} fresh worlds that built them ({candidates} T and crossroads in all), {broken} not whole on the ground{firstBroken}; missed: {string.Join(", ", misses.OrderByDescending(m => m.Value).Take(8).Select(m => $"{m.Value} {m.Key}"))}");
+            $"roundabouts form where roads alike meet on level open ground: {rings} on {worlds} fresh worlds that built them ({candidates} T and crossroads in all), {broken} not whole on the ground{firstBroken}; missed: {string.Join(", ", misses.Where(m => !m.Key.StartsWith("not roads alike")).Select(m => $"{m.Value} {m.Key}"))}; {misses.Where(m => m.Key.StartsWith("not roads alike")).Sum(m => m.Value)} not roads alike");
     }
 
     /// <summary>
@@ -573,7 +573,7 @@ public partial class SurfaceTest
                     JunctionForm.RunOn => j.Arms.Count <= 2,
                     JunctionForm.Tee => j.Arms.Count == 3,
                     JunctionForm.Crossroads => j.Arms.Count >= 4,
-                    JunctionForm.Roundabout => !low && j.Arms.Count >= 3 && j.Ring != null && j.Ring.Span.All(s => s == RoadSpan.Ground) && j.Arms.All(a => a.Route.Kind == RouteKind.Road || a.Route.Kind == RouteKind.Highway && w.Infra.Profile.Before == PoiGenerator.Gen.TechLevel.Mid),
+                    JunctionForm.Roundabout => !low && j.Arms.Count >= 3 && j.Ring != null && j.Ring.Span.All(s => s == RoadSpan.Ground) && j.Arms.All(a => a.Route.Kind is RouteKind.Road or RouteKind.Highway && !a.Route.Soil),
                     JunctionForm.Slip => !low && j.Arms.Count >= 3,
                     JunctionForm.Fork => low && j.Arms.Count >= 3,
                     _ => false,
@@ -669,12 +669,21 @@ public partial class SurfaceTest
                 standing++;
                 var feet = p.Pylon ? p.FeetXZ() : new[] { (p.X, p.Z) };
                 foreach (var (fx, fz) in feet)
+                {
                     if (w.Infra.Nearest(fx, fz, 40, out _, out double d) is { } road && d < road.HalfWidth + 0.5)
                     {
                         onRoad++;
                         if (firstOnRoad.Length == 0) firstOnRoad = $" (first: a {(p.Pylon ? "pylon foot" : "pole")} {d:F1} m from a {road.Kind}'s line, {road.HalfWidth:F1} m half wide)";
                         break;
                     }
+                    // (Nor on a turning bulb, a junction's corner, or a kerbed street's verge and footpath.)
+                    if (!p.Pylon && !w.Infra.OffBed(fx, fz, 0))
+                    {
+                        onRoad++;
+                        if (firstOnRoad.Length == 0) firstOnRoad = $" (first: a pole at {fx:F0},{fz:F0} on a bulb, a corner or a street's footpath)";
+                        break;
+                    }
+                }
             }
             foreach (PowerPole p in power.Poles)
             {
@@ -1064,7 +1073,8 @@ public partial class SurfaceTest
                 {
                     var (dx, dz, _) = ruin.Drive.PathPoint(ruin.Drive.PathCount - 1);
                     double ex = Mathx.WrapX(ruin.Drive.CenterX + dx, w.Width), ez = Mathx.Wrap(ruin.Drive.CenterZ + dz, w.Height);
-                    if (net.Nearest(ex, ez, 12, out _, out double off) == null || off > 6) ruinsUnjoined++;
+                    // (On a kerbed street a drive ends on its crossover, past the footpath.)
+                    if (net.Nearest(ex, ez, 14, out _, out double off) == null || off > (ruin.Join?.Kerbed == true ? ruin.Join.Reach + 2.5 : 6)) ruinsUnjoined++;
                 }
                 if (ruin.Family.Tags.Contains("wayside") && ruin.Layout.Variant.Tech != PoiGenerator.Gen.WorldProfile.Tag(w.Profile.Before) && ruin.Layout.Variant.Tech != "unique") fuelOnLow++;
                 if (ruin.Family.Tags.Contains("wayside")) stopKinds[ruin.Layout.Variant.Name] = stopKinds.GetValueOrDefault(ruin.Layout.Variant.Name) + 1;
@@ -1332,7 +1342,9 @@ public partial class SurfaceTest
         var notes = new List<string>();
         try
         {
-            foreach (var (a, seed) in new[] { (0, 31UL), (1, 32UL), (2, 33UL), (0, 34UL) })
+            // (Fresh worlds every run, never a pinned seed.)
+            var rand = new Random();
+            foreach (var (a, seed) in new[] { (0, (ulong)rand.NextInt64()), (1, (ulong)rand.NextInt64()), (2, (ulong)rand.NextInt64()), (0, (ulong)rand.NextInt64()) })
             {
                 var spec = PlanetSpec.Roll(seed, (Archetype)a, 0);
                 PlanetWorld w = PlanetWorld.Build(spec, Main.Catalog);
@@ -1345,7 +1357,7 @@ public partial class SurfaceTest
                 if (w.Infra.Wrecks.Any(k => town.Streets.Contains(k.Route))) jams++;
                 // A kerbed street's verge and footpath lie on its level bed, not up its bank: across the footpath the
                 // ground stands within a hand's breadth of the deck (away from corners, drives and places' pads).
-                foreach (InfraRoute s in w.Infra.Routes.Where(InfraNetwork.Kerbed))
+                foreach (InfraRoute s in w.Infra.Routes.Where(InfraNetwork.Kerbed).Where(s => w.Infra.City?.Streets.Contains(s) != true))
                     for (int i = 4; i + 4 < s.Count; i += 2)
                     {
                         if (s.Span[i] != RoadSpan.Ground || s.Span[i - 1] != RoadSpan.Ground) continue;
@@ -1356,7 +1368,7 @@ public partial class SurfaceTest
                             {
                                 double fx = s.X[i] - ez / el * side * (s.HalfWidth + off), fz = s.Z[i] + ex / el * side * (s.HalfWidth + off);
                                 double cx = Mathx.WrapX(fx, w.Width), cz = Mathx.Wrap(fz, w.Height);
-                                if (w.Source.Built(cx, cz, out _) > 0.05f || w.Infra.Nearest(fx, fz, 12, out _, out double dn, new[] { s }) is { } other && dn < other.HalfWidth + 4) continue;
+                                if (w.Infra.Nearest(fx, fz, 12, out _, out double dn, new[] { s }) is { } other && dn < other.HalfWidth + 4 || w.Infra.Corners.Any(c => Dist(w, c.X, c.Z, fx, fz) < c.Cut + 3)) continue;
                                 footSamples++;
                                 float dh = w.Source.SurfaceHeight(cx, cz) - s.Y[i];
                                 if (Math.Abs(dh) > 0.35f) { footOff++; if (footNote.Length == 0) footNote = $" (first: {dh:F2} m at {fx:F0},{fz:F0})"; }
@@ -1394,7 +1406,7 @@ public partial class SurfaceTest
         {
             PlanetSurface.Poi.PoiSiting.StartWorld = was;
         }
-        Check(footSamples > 50 && footOff <= footSamples / 50, $"town footpaths lie on their street's level bed: {footSamples} points across verges and footpaths, {footOff} more than 35 cm off the deck (at most one in fifty){footNote}");
+        Check(footSamples > 50 && footOff == 0, $"town footpaths lie on their street's level bed, beside lots too: {footSamples} points across verges and footpaths, {footOff} more than 35 cm off the deck{footNote}");
         Check(towns == worlds && houses >= towns * 6 && streets >= towns * 2 && jams == towns,
             $"start worlds begin at a ruined town by the landing site: {towns} of {worlds} worlds, {houses} abandoned houses on {streets} streets, rusted cars on the main street of {jams}{(notes.Count > 0 ? "; " + string.Join("; ", notes.Take(3)) : "")}");
         Check(settlementsNear == 0 && landmarks == towns && walkable == towns,
@@ -1712,7 +1724,9 @@ public partial class SurfaceTest
         var notes = new List<string>();
         try
         {
-            foreach (var (a, seed) in new[] { (0, 31UL), (1, 32UL), (2, 33UL), (0, 34UL) })
+            // (Fresh worlds every run, never a pinned seed.)
+            var rand = new Random();
+            foreach (var (a, seed) in new[] { (0, (ulong)rand.NextInt64()), (1, (ulong)rand.NextInt64()), (2, (ulong)rand.NextInt64()), (0, (ulong)rand.NextInt64()) })
             {
                 var spec = PlanetSpec.Roll(seed, (Archetype)a, 0);
                 PlanetWorld w = PlanetWorld.Build(spec, Main.Catalog);

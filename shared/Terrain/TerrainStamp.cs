@@ -187,6 +187,12 @@ public sealed class TerrainStamp
     /// <summary>Road: a level bed of this radius round its path's first or last point, m (0 none): the turning bulb a street stops in, and its footpath.</summary>
     public float CapStart { get; set; }
     public float CapEnd { get; set; }
+    /// <summary>Road: the tilt of that bed's plane (rise per metre in x and z): a bulb follows the land's grade within a street's, never a level shelf on a bank.</summary>
+    public (float X, float Z) CapStartTilt { get; set; }
+    public (float X, float Z) CapEndTilt { get; set; }
+    /// <summary>Road: its path ends square at its first or last point (a drive ending on its street's crossover), not in a round cap.</summary>
+    public bool FlatStart { get; set; }
+    public bool FlatEnd { get; set; }
     /// <summary>Whether a point lies in a road's level disc round its first or last point (a turning bulb's bed).</summary>
     public bool InCap(double x, double z)
     {
@@ -347,20 +353,23 @@ public sealed class TerrainStamp
                 }
                 if (!Bed(x, z, out float s, out float target, out float mouth)) return height;
                 // A century of frost and roots buckles a neglected deck: a gentle heave, never a step.
-                if (Buckle > 0f) target += Buckle * (Heave(x, z) * 2f - 1f);
+                // (Only the carriageway heaves: a street's verge and footpath past its kerb lie level.)
+                if (Buckle > 0f) target += Buckle * (Heave(x, z) * 2f - 1f) * (1f - Smooth((s - HalfWidth) / 1.2f));
                 // Near a tunnel the cutting opens out to the portal's width, its banks drawing in to the portal's
                 // walls, so they meet the slope over the bore without a cliff across it where the road stops
                 // changing the ground.
                 float bed = HalfWidth + Verge;
-                // A street's turning bulb: a level disc round its end, the banks easing from its rim.
+                // A street's turning bulb: a disc round its end on a plane following the land's grade (as gently as a street's
+                // grades allow), the banks easing from its rim.
                 if (CapStart > 0f || CapEnd > 0f)
                     foreach (int e in new[] { 0, _px.Length - 1 })
                     {
                         float cap = e == 0 ? CapStart : CapEnd;
                         if (cap <= 0f) continue;
                         Offset(x, z, out double cdx, out double cdz);
-                        float de = MathF.Sqrt(((float)cdx - _px[e]) * ((float)cdx - _px[e]) + ((float)cdz - _pz[e]) * ((float)cdz - _pz[e]));
-                        if (de - cap < s - bed) { s = de; bed = cap; target = _py[e]; }
+                        float rx = (float)cdx - _px[e], rz = (float)cdz - _pz[e], de = MathF.Sqrt(rx * rx + rz * rz);
+                        var tilt = e == 0 ? CapStartTilt : CapEndTilt;
+                        if (de - cap < s - bed) { s = de; bed = cap; target = _py[e] + tilt.X * rx + tilt.Z * rz; }
                     }
                 float ease = MathF.Min(BankMax, MathF.Max(StripBlend, MathF.Abs(target - height) * 2.2f));
                 if (mouth < MouthBox + MouthFade)
@@ -633,9 +642,12 @@ public sealed class TerrainStamp
         // deck (a trace of weight each); the ground itself is left as it was.
         if (span == RoadSpan.Tunnel) return s <= BoreHalfWidth + 2f ? 0.01f : 0f;
         if (span == RoadSpan.Bridge) return s <= HalfWidth + 3f ? 0.01f : 0f;
-        if (s <= HalfWidth) return 1f;
-        const float Edge = 3f;
-        return s >= HalfWidth + Edge ? 0f : 1f - Smooth((s - HalfWidth) / Edge);
+        // (A street's whole level bed, its verge and footpath, and its turning bulb's, are the road's: no tree stands there.)
+        float bed = HalfWidth + Verge;
+        if (s <= bed || InCap(x, z)) return 1f;
+        // (Past a street's bed the land's own grass grows right up to it.)
+        float edge = Verge > 0f ? 0.5f : 3f;
+        return s >= bed + edge ? 0f : 1f - Smooth((s - bed) / edge);
     }
 
     /// <summary>Whether a point is inside a tunnel's bore: under an arched roof over the deck, within its width.</summary>
@@ -692,7 +704,9 @@ public sealed class TerrainStamp
             // (A stretch all bridge has a say only where the land would stand up through its deck: elsewhere the land
             // under it is its own, and the roads round it shape it as they did.)
             if (t.AllBridge && height <= deckAt - BridgeClear) continue;
-            float edge = MathF.Max(0f, d - t.HalfWidth), reach = t.BankMax + StripBlend;
+            // (A street's whole level bed, kerb to footpath, is its own: on it no other way's banks pull the ground off its
+            // level, a drive crossing it among them; a dip beside a drive was the drive's bank winning there.)
+            float edge = MathF.Max(0f, d - t.HalfWidth - t.Verge), reach = t.BankMax + StripBlend;
             // (Within a turning bulb's level disc the stamp that lays it rules, as on its own deck.)
             if (t.InCap(x, z)) edge = 0f;
             if (edge >= reach) continue;

@@ -519,13 +519,15 @@ public sealed class PowerLines
 
     /// <summary>
     /// A pole may stand here: dry ground, off every road's bed, and outside every lot and place, past the flat apron
-    /// round its footprint (the apron is the lot's own). The verge between a street's kerb and the lots along it, a
+    /// round its footprint (the apron is the lot's own), and never on a road, a turning bulb or a kerbed street's verge and footpath:
+    /// the strip between a street's footpath and the lots along it, a
     /// few metres of a lot's eased blend, is where a street's poles stand.
     /// </summary>
     static bool PoleSpot(InfraNetwork net, PlanetTerrainSource source, double x, double z)
     {
         double cx = Mathx.WrapX(x, net.Width), cz = Mathx.Wrap(z, net.Height);
-        return source.Built(cx, cz, out _) < 1f && !source.WaterSurfaceAt(cx, cz, out _) && net.OffRoad(x, z, 1.5);
+        // (Nor in a lot's eased edge or a road's bank: off every stamp's ground.)
+        return source.Built(cx, cz, out _) < 1f && source.StampWeight(cx, cz) <= 0.05f && !source.WaterSurfaceAt(cx, cz, out _) && net.OffRoad(x, z, 1.5) && net.OffBed(x, z, 0.4);
     }
 
     /// <summary>Strings a pole line's wires between two nodes and links them: strung, or hanging from whichever still stands.</summary>
@@ -999,7 +1001,8 @@ public sealed class PowerLines
     void Lay(InfraRoute r, PlanetTerrainSource source, InfraNetwork net, bool pylons, PoiGenerator.Gen.Rng rng, int from = 0, int to = -1)
     {
         if (to < 0) to = r.Count - 1;
-        float spacing = pylons ? 110f : 42f, offset = r.HalfWidth + (pylons ? 18f : 3.5f), clearance = pylons ? 7f : 2.5f;
+        // (Beside a kerbed street, past its footpath: never on its verge or its path.)
+        float spacing = pylons ? 110f : 42f, offset = r.HalfWidth + (pylons ? 18f : InfraNetwork.Kerbed(r) ? InfraNetwork.FootpathOut + 1.1f : 3.5f), clearance = pylons ? 7f : 2.5f;
         int side = rng.Chance(0.5f) ? 1 : -1;
         int first = Poles.Count;
         Func<double, double, float> ground = (x, z) => source.SurfaceHeight(Mathx.WrapX(x, net.Width), Mathx.Wrap(z, net.Height));
