@@ -46,6 +46,7 @@
     <Compile Include="..\planet-surface\src\Terrain\TerrainStreamer.Cover.cs" />
     <Compile Include="..\planet-surface\src\Terrain\TerrainStreamer.Pop.cs" />
     <Compile Include="..\planet-surface\src\Terrain\TerrainStreamer.Swap.cs" />
+    <Compile Include="..\planet-surface\src\Terrain\RockLook.cs" />
     <Compile Include="..\planet-surface\src\Fx\PopLog.cs" />
     <Compile Include="..\planet-surface\src\Terrain\FloraSolids.cs" />
     <Compile Include="..\planet-surface\src\Terrain\PlanetFlora.cs" />
