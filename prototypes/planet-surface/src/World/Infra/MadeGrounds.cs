@@ -88,8 +88,11 @@ public static class MadeGrounds
     static GroundPatch Yard(TerrainStamp t, MadeCover cover, float wear, int layer)
     {
         float a = Math.Min(t.Apron, YardOut);
+        // A laid yard has square corners eased a little; a gravel or earth one wears round.
+        bool soft = cover is MadeCover.Gravel or MadeCover.Dirt;
+        float least = Math.Min(t.MaxX - t.MinX, t.MaxZ - t.MinZ) + 2 * a;
         var p = GroundPatch.Box(t.MinX - a, t.MinZ - a, t.MaxX + a, t.MaxZ + a, t.PadY, cover, cover is MadeCover.Concrete ? GroundPattern.Slabs : GroundPattern.Plain, wear, layer,
-            round: Math.Min(6f, 2f + 0.06f * Math.Min(t.MaxX - t.MinX, t.MaxZ - t.MinZ)));
+            round: soft ? Math.Min(18f, least * 0.3f) : Math.Min(6f, 2f + 0.06f * least));
         p.Slab = 6f;
         return p;
     }

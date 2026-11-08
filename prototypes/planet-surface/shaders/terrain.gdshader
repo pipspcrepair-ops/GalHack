@@ -429,7 +429,7 @@ struct Patch {
 	float seed;
 };
 
-Patch top_patch(vec2 at, float y, float tolerance, float wob) {
+Patch top_patch(vec2 at, float y, float tolerance, float wob, float sway) {
 	Patch t;
 	t.found = 0.0;
 	t.d = 1e9;
@@ -457,6 +457,8 @@ Patch top_patch(vec2 at, float y, float tolerance, float wob) {
 		vec4 t2 = texelFetch(ground_patches, b + ivec2(2, 0), 0);
 		// A laid edge barely wanders; one laid straight on the land crumbles more the older it is.
 		d += wob * (t3.x > 0.5 ? 0.04 : 0.2 + 0.8 * t2.z) * min(1.0, t1.y * 0.5);
+		// A yard of gravel or trodden earth has no laid edge at all: it wanders metres in and out round the place.
+		if (t2.x > 2.5 && t2.x < 4.5) d += sway * min(1.0, t1.y * 0.08);
 		bool inside = d < 0.0, was = t.d < 0.0;
 		bool take = t.found < 0.5 || (inside != was ? inside : inside ? t2.w > t.layer || t2.w == t.layer && d < t.d : d < t.d);
 		if (!take) continue;
@@ -704,7 +706,8 @@ void fragment() {
 	float made_rough = 0.93;
 	if (ground_grid.w > 0.5 && up > (far_ring ? 0.3 : 0.5) && !(far_ring && inside_hole(wpos.xz) > 0.0)) {
 		float wob = (pn2(wpos.xz, 0.31) - 0.5) * 1.2 + (pn2(wpos.xz, 1.4) - 0.5) * 0.35 * near;
-		Patch g = top_patch(wpos.xz, wpos.y, road_tolerance, wob);
+		float sway = (pn2(wpos.xz, 0.045) - 0.5) * 7.0 + (pn2(wpos.xz, 0.13) - 0.5) * 2.0;
+		Patch g = top_patch(wpos.xz, wpos.y, road_tolerance, wob, sway);
 		if (g.found > 0.5) {
 			float fw = length(fwidth(wpos.xz)) * 0.7;
 			vec4 m = paint_ground(g, wpos.xz, albedo, fw, near, made_cover, made_rough);

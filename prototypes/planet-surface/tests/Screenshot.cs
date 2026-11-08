@@ -76,6 +76,7 @@ public partial class Screenshot : Node
         if (cityView != null) PlanetSurface.Infra.CityPlan.Force = true;
         if (_args.ContainsKey("cityfall")) PlanetSurface.Infra.CityPlan.ForceFall = (float)Num("cityfall", 0.5);
         PlanetSurface.Infra.MadeGrounds.Off = _args.GetValueOrDefault("made") == "0";
+        PlanetSurface.Infra.InfraNetwork.NoLanes = _args.GetValueOrDefault("lanes") == "0";
         return new ViewSpec(planet, m =>
         {
             // A place's own frame: the camera and what it looks at, in the place's cells.
@@ -299,6 +300,7 @@ public partial class Screenshot : Node
             GD.Print($"ground: no {which} on this world");
             return new List<Shot>();
         }
+        GD.Print($"lanes: {w.Infra.NeighbourLanes} between neighbours, {w.Infra.Spurs} out to a road; {w.Infra.Isolated.Count} places isolated; {w.Infra.LaneLog}");
         GD.Print($"ground: {which}: {s0.Name} at {s0.X:F0},{s0.Z:F0}, {Away(s0.X, s0.Z):F0} m from the landing site");
         var at = new Vector3((float)s0.X, s0.Y, (float)s0.Z);
         var out1 = new Vector3((float)s0.FX, 0f, (float)s0.FZ);
@@ -317,6 +319,7 @@ public partial class Screenshot : Node
         {
             Look("air", at + out1 * 110f + side * 60f + Vector3.Up * 110f, at - out1 * 20f),
             Look("ground", eye, at + Vector3.Up * 1.2f),
+            Look("wide", at + out1 * 380f + side * 200f + Vector3.Up * 330f, at),
         };
     }
 
