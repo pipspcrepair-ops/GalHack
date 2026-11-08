@@ -113,6 +113,7 @@ public sealed partial class Staging
             "plainstornado" => PlainsTornado(),
             "windbodies" => WindBodies(),
             "treepath" => TreePath(),
+            "tornadowarning" => TornadoWarning(),
             "skylevel" => SkyLevel(),
             "sunset" => Sunset(),
             "underwater" => UnderwaterShot(),
