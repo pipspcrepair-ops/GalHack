@@ -75,7 +75,9 @@ public partial class ArrangeTest : TestBase
         {
             var room = new DecoRoom { Width = 9, Depth = 7, RoomId = roomId, Doors = { new DecoDoor(DecoWall.South, 4.5f, 2f) }, Seed = DecoHash.Fnv(roomId), State = "abandoned" };
             DecoPlan plan = _poi.Dress(room);
-            Check(room.Set == set && plan.Placements.Count >= 2, $"POI room '{roomId}' dresses from '{set}' ({plan.Placements.Count} pieces)");
+            // A room may name a recipe: it furnishes from the recipe's own set.
+            string expect = _arr.Recipes.TryGetValue(set, out DecoSetPlan recipe) ? recipe.Set : set;
+            Check(room.Set == expect && plan.Placements.Count >= 2, $"POI room '{roomId}' dresses from '{set}' ({plan.Placements.Count} pieces)");
         }
         var precursor = new DecoRoom { Width = 9, Depth = 7, RoomId = "lab", Doors = { new DecoDoor(DecoWall.South, 4.5f, 2f) } };
         _poi.Dress(precursor, kit: "precursor");

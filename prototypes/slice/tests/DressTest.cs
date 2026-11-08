@@ -53,13 +53,13 @@ public partial class DressTest : Node
     /// <summary>A rolled place, dressed as the game dresses it.</summary>
     sealed record Rolled(FamilyDef Family, PoiInstance Inst, PlaceMemory Memory, string Name);
 
-    /// <summary>Places of families picked at random, each in a random variant and state, dressed.</summary>
-    static IEnumerable<Rolled> Roll(int count, int seed)
+    /// <summary>Places of families picked at random (or of the families named), each in a random variant and state, dressed.</summary>
+    static IEnumerable<Rolled> Roll(int count, int seed, Func<FamilyDef, bool> only = null)
     {
         PoiLibrary lib = Slice.Surface.SurfaceZone.PoiCatalog.Library;
         var rng = new Random(seed);
-        var families = lib.Families.Where(f => f.Variants.Count > 0).ToList();
-        for (int made = 0, tries = 0; made < count && tries < count * 4; tries++)
+        var families = lib.Families.Where(f => f.Variants.Count > 0 && (only == null || only(f))).ToList();
+        for (int made = 0, tries = 0; made < count && tries < count * 4 && families.Count > 0; tries++)
         {
             FamilyDef f = families[rng.Next(families.Count)];
             int variant = rng.Next(f.Variants.Count);
@@ -85,6 +85,9 @@ public partial class DressTest : Node
         GD.Print($"rolling {Places} places from {seed}");
         var rolled = Roll(Places, seed).ToList();
         Resting(decor, rolled);
+        // Mines and airfields every run, beside whatever the dice brought.
+        rolled.AddRange(Roll(16, seed + 1, f => f.Tags.Contains("mine") || f.Tags.Contains("aviation")));
+        Fitting(decor, rolled);
     }
 
     /// <summary>Everything a piece lays on the floor lies on floor, nothing is drawn in a block, no flat faces flicker.</summary>
@@ -151,19 +154,77 @@ public partial class DressTest : Node
                     {
                         float dy = MathF.Abs(flats[p].Y - flats[q].Y);
                         if (dy > 0.002f || !Differ(flats[p].Col, flats[q].Col) || !Overlap(flats[p].A, flats[p].B, flats[p].C, flats[q].A, flats[q].B, flats[q].C)) continue;
-                        // A fleck of a model's own detail, a few square centimetres, is no flicker anyone sees: counted, not failed.
-                        if (flats[p].Piece == flats[q].Piece && MathF.Min(Area(flats[p].A, flats[p].B, flats[p].C), Area(flats[q].A, flats[q].B, flats[q].C)) < 5e-4f) { _flecks++; continue; }
+                        // Two faces of one piece's own model above the floor marks (its scorch, stains, glass and the
+                        // first of its fragments lie lowest) are the model's own detail: counted, not failed here.
+                        // A fleck under 5 cm2 is no flicker anyone sees either.
+                        if (flats[p].Piece == flats[q].Piece && (flats[p].Y - room.Corner.Y - room.Floor > 0.02f
+                            || MathF.Min(Area(flats[p].A, flats[p].B, flats[p].C), Area(flats[q].A, flats[q].B, flats[q].C)) < 5e-4f)) { _flecks++; continue; }
                         string k = flats[p].Piece == flats[q].Piece ? $"within a {room.Plan.Placements[flats[p].Piece].State} {room.Plan.Placements[flats[p].Piece].Piece} ({(DecoSurface)flats[p].Surface}/{(DecoSurface)flats[q].Surface})" : "between pieces";
                         _kinds["flat faces " + k] = _kinds.GetValueOrDefault("flat faces " + k) + 1;
                         coplanar.Add($"{r.Name}, {room.Room.RoomId}: {room.Plan.Placements[flats[p].Piece]} and {room.Plan.Placements[flats[q].Piece]}, {dy * 1000:F2} mm apart, {flats[p].Y - room.Corner.Y - room.Floor:F3} up, colours {flats[p].Col} {flats[q].Col}, areas {Area(flats[p].A, flats[p].B, flats[p].C) * 1e4:F0} {Area(flats[q].A, flats[q].B, flats[q].C) * 1e4:F0} cm2");
                     }
             }
-        GD.Print($"{rolled.Count} places, {rooms} rooms, {pieces} pieces ({_flecks} flecks of a model's own detail under 5 cm2 a hair apart)");
+        GD.Print($"{rolled.Count} places, {rooms} rooms, {pieces} pieces ({_flecks} pairs of a model's own faces a hair apart, above its floor marks or flecks)");
         foreach (var kv in _kinds.OrderByDescending(k => k.Value).Take(20)) GD.Print($"  {kv.Key}: {kv.Value}");
         foreach (string s in floating.Take(4).Concat(sunk.Take(4)).Concat(coplanar.Where((_, n) => n % 97 == 0).Take(14))) GD.Print("  e.g. " + s);
         Check(floating.Count == 0, $"every piece, and the debris and ash it lays, lies on a floor at its room's height ({floating.Count} over a hole, a step or a ledge)");
         Check(sunk.Count == 0, $"no piece is drawn inside a block ({sunk.Count} are)");
         Check(coplanar.Count == 0, $"no two flat faces near the floor lie a hair apart one over the other ({coplanar.Count} pairs)");
+    }
+
+    /// <summary>The words of a room id that say it is an office.</summary>
+    static readonly string[] OfficeWords = { "office", "archive", "lobby", "monitor", "counting", "reception" };
+
+    static string[] Words(string id) => (id ?? "").ToLowerInvariant().Replace("'s", "").Split(new[] { ' ', '-', '_' }, StringSplitOptions.RemoveEmptyEntries);
+
+    /// <summary>
+    /// What a room holds comes from the place's function and the room's role: office furniture only where
+    /// the room is an office; a mine's rooms from the mine (rock, tools, carts, blasting stores); an
+    /// airfield's hangars with engines on stands, tugs and benches; an aircraft's cabin with seats and a galley.
+    /// </summary>
+    void Fitting(Decor decor, List<Rolled> rolled)
+    {
+        var officeOut = new List<string>();
+        var mineOff = new List<string>();
+        var hangars = new List<(string Where, bool Fits, bool Craft)>();
+        var cabins = new List<(string Where, bool Fits)>();
+        var seen = new SortedDictionary<string, int>();
+        foreach (Rolled r in rolled)
+        {
+            bool culture = r.Inst.Kit?.Id is "precursor" or "vharn" or "kessari" || (r.Family.Style ?? "").StartsWith("alien_", StringComparison.Ordinal);
+            foreach (PlaceRoom room in r.Memory.Rooms.Values)
+            {
+                string[] words = Words(room.Room.RoomId);
+                string how = room.Room.Recipe ?? room.Room.Set;
+                string key = $"{room.Room.RoomId} in {r.Family.Id}: {how}";
+                seen[key] = seen.GetValueOrDefault(key) + 1;
+                HashSet<int> taken = r.Memory.DecoTaken.GetValueOrDefault(room.Module) ?? new HashSet<int>();
+                var pieces = room.Plan.Placements.Where((_, i) => !taken.Contains(i)).Select(pl => decor.Catalogue.Piece(pl.Piece)).ToList();
+                bool officeRole = words.Any(OfficeWords.Contains);
+                // Office furniture of the office set's own, as a room's set: only in a room that is an office.
+                if (room.Room.Set == "office" && !officeRole) officeOut.Add($"{r.Name}: '{room.Room.RoomId}' furnished as an office");
+                if (culture) continue;
+                if ((r.Family.Tags.Contains("mine") || r.Family.Tags.Contains("ore")) && !officeRole)
+                {
+                    var desks = pieces.Where(p => p.Set == "office").Select(p => p.Id).Distinct().ToList();
+                    if (desks.Count > 0) mineOff.Add($"{r.Name}: '{room.Room.RoomId}' ({how}) holds {string.Join(", ", desks)}");
+                }
+                if (r.Family.Tags.Contains("aviation") && words.Any(w => w is "hangar" or "workshop" or "hall") && room.Room.Width * room.Room.Depth >= 60)
+                    hangars.Add(($"{r.Name}: '{room.Room.RoomId}' {room.Room.Width:F0}x{room.Room.Depth:F0} ({string.Join(", ", pieces.Select(p => p.Id).Distinct().Take(8))})",
+                        how == "hangar" && pieces.All(p => p.Set != "office") && pieces.Any(p => p.Has("bench") || p.Has("toolrack") || p.Id is "engine-stand" or "aircraft-tug"),
+                        pieces.Any(p => p.Id is "engine-stand" or "aircraft-tug")));
+                if (words.Contains("aircraft") || words.Contains("cabin"))
+                    cabins.Add(($"{r.Name}: '{room.Room.RoomId}' as {how} ({string.Join(", ", pieces.Select(p => p.Id).Distinct().Take(8))})",
+                        how == "aircraft-cabin" && pieces.Any(p => p.Has("airline-seat")) && pieces.All(p => p.Set != "office")));
+            }
+        }
+        foreach (var kv in seen) GD.Print($"  room: {kv.Key} x{kv.Value}");
+        foreach (string s in officeOut.Take(4).Concat(mineOff.Take(4)).Concat(hangars.Where(h => !h.Fits).Select(h => h.Where).Take(4)).Concat(cabins.Where(c => !c.Fits).Select(c => c.Where).Take(4))) GD.Print("  e.g. " + s);
+        Check(officeOut.Count == 0, $"only a room that is an office is furnished as one ({officeOut.Count} others)");
+        Check(mineOff.Count == 0, $"no desk, filing cabinet or bookshelf down a mine but in its offices ({mineOff.Count} rooms)");
+        Check(hangars.Count > 0 && hangars.All(h => h.Fits), $"an airfield's hangars are furnished as hangars: benches, tool racks, engines, tugs, no office furniture ({hangars.Count(h => h.Fits)} of {hangars.Count})");
+        Check(hangars.Count(h => h.Craft) >= hangars.Count * 0.7f, $"and most still have an engine on its stand or a tug in them, whatever the years carried off ({hangars.Count(h => h.Craft)} of {hangars.Count})");
+        Check(cabins.All(c => c.Fits), $"an aircraft's cabin holds rows of seats and no office furniture ({cabins.Count(c => c.Fits)} of {cabins.Count})");
     }
 
     /// <summary>The top of what's underfoot in a walk-level cell: the ground or a full block under it, or a floor plate on that; null where there's none.</summary>

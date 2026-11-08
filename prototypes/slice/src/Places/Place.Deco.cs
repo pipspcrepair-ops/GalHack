@@ -71,7 +71,7 @@ public sealed class Decor
             if (open < 9 || open < w * d * 0.85f || height < 2) continue; // not a rectangle: the generator's props stay
             var room = new DecoRoom
             {
-                Width = w, Depth = d, Height = height, RoomId = m.Purpose, State = state,
+                Width = w, Depth = d, Height = height, RoomId = m.Purpose, Tags = inst.Family.Tags.ToList(), State = state,
                 Age = inst.AgeOf(m.Index) switch { Age.New => DecoAge.Fresh, Age.Preserved => DecoAge.Preserved, _ => DecoAge.OldWorld },
                 Exposed = inst.ExposureOf(m.Index) != Exposure.Indoors,
                 Tech = tech,
@@ -90,6 +90,15 @@ public sealed class Decor
                 else if (c.X < x0) room.Doors.Add(new DecoDoor(DecoWall.West, c.Z - z0 + width / 2, width));
                 else if (c.X > x1) room.Doors.Add(new DecoDoor(DecoWall.East, c.Z - z0 + width / 2, width));
             }
+            // What the room's floor can't take, the library keeps clear from the start (the checks below are the last word).
+            for (int z = z0; z <= z1; z++)
+                for (int x = x0; x <= x1; x++)
+                {
+                    var c = new Int3(x, y, z);
+                    bool free = FloorAt(inst, nav, c) is float f && MathF.Abs(f - floor) < 0.01f && !reserved.Contains(c) && !reserved.Contains(c + Int3.Up)
+                        && (Clearable(inst.Blocks.Get(c + Int3.Up)) || inst.Blocks.Get(c + Int3.Up).Type is BlockType.Sign or BlockType.Cable or BlockType.Vine);
+                    if (!free) room.Blocked.Add(new DecoRect(new NV2(x - x0 + 0.5f, z - z0 + 0.5f), new NV2(0.5f, 0), new NV2(0, 0.5f)));
+                }
             DecoPlan plan;
             try { plan = Poi.Dress(room, inst.Kit?.Id); }
             catch (Exception) { continue; }

@@ -8,11 +8,20 @@
 //                        beside, screen, ends, focus, side, other: the roles of the pieces round it
 //               count    how many (members round a table, racks in a row)
 //               gap      clearance between pieces; spacing between repeats along a wall
-//               max      the most uses of an island template in one room (default: as many as fit)
+//               max      the most uses of a template in one room (default: as many as fit)
+//               aisle    rows: the aisle down the middle (default 1.3 m)
 // sets        per theme set: wall and island templates with weights, and the roles that fill the
 //             walls between them
 // sites       outdoor templates: what a road, airfield or rail line is dressed with
-// rooms       POI room id (rooms.txt) to theme set; kits and tags pick a set when the room doesn't
+// rooms ...   how a POI room is furnished: from its role first, then what the place is for, never
+//             another room's kit. Each names a set or a recipe. In order:
+//               kits     a culture's kit furnishes everything it builds (alien, Precursor)
+//               rooms    a room id that says what the room is (rooms.txt and the site plans)
+//               roles    a word of the id that does ("foreman's office" is an office anywhere)
+//               tags     what the place is for, by its family's tags, the first listed here winning
+//                        (a mine's drifts are a mine's, an airfield's hangar a hangar)
+//               spaces   what a room is as a space when the place says nothing ("hangar", "store")
+//               fallback a plain storeroom
 // props       the POI room library's generic props to roles, with a fallback piece for each
 // disorder    per POI state: shares of pieces knocked over, scattered, broken, burnt, overgrown,
 //             missing; frozen-moment touches; and how rarely a long-life power cell still runs
@@ -49,6 +58,11 @@
     "assembly-line": { "kind": "conveyor", "where": "island", "anchor": ["conveyor"], "count": [2, 4], "side": ["robot"], "other": ["station", "stool"] },
     "growbed-rows":  { "kind": "row", "where": "island", "anchor": ["growbed"], "count": [2, 3], "spacing": 0.0 },
     "racking-aisle": { "kind": "row", "where": "wall", "anchor": ["racking"], "count": [2, 3], "spacing": 0.0 },
+    "cabin-rows":    { "kind": "rows", "where": "island", "anchor": ["airline-seat"], "aisle": 0.6 },
+    "galley-line":   { "kind": "line", "where": "wall", "anchor": ["counter"], "count": [1, 2], "max": 1 },
+    "engine-bay":    { "kind": "single", "where": "island", "max": 2, "anchor": ["engine-stand"] },
+    "tug-bay":       { "kind": "single", "where": "island", "max": 1, "anchor": ["tug"] },
+    "rock-heap":     { "kind": "cluster", "where": "wall", "anchor": ["rock"], "count": [1, 3] },
     "big-piece":     { "kind": "single", "where": "island", "max": 2, "anchor": ["ridecar", "mascot", "crane", "cart", "drill", "optable", "tank", "instrument", "forklift", "trough", "well", "coop", "statue", "lounger"] }
   },
 
@@ -66,7 +80,7 @@
     "spaceport":   { "wall": { "counter-line": 2, "booth-row": 0.5 }, "island": { "seat-rows": 3 }, "fill": ["luggage", "plant", "barrier", "kiosk", "vending"] },
     "prison":      { "wall": { "cell-bay": 4, "locker-row": 1 }, "island": { "table-group": 1 }, "fill": ["bed", "screen", "desk"] },
     "ship":        { "wall": { "console-station": 3, "locker-row": 2 }, "island": { "table-group": 1 }, "fill": ["crate", "rack", "lamp"] },
-    "mine":        { "wall": { "crate-stack": 2, "rack-row": 1 }, "island": { "big-piece": 2 }, "fill": ["lamp", "crate", "barrel", "winch", "support"] },
+    "mine":        { "wall": { "crate-stack": 2, "rack-row": 1, "rock-heap": 1.5 }, "island": { "big-piece": 2 }, "fill": ["lamp", "crate", "barrel", "winch", "support"] },
     "reaver":      { "wall": { "shelf-row": 1, "cot-row": 2 }, "island": { "camp": 2, "table-group": 1 }, "fill": ["trophy", "barricade", "crate", "barrel"] },
     "civic":       { "wall": { "pillar-row": 0.5 }, "island": { "seat-rows": 3 }, "fill": ["candles", "statue", "flag", "plant", "board"] },
     "alien":       { "wall": { "pillar-row": 1 }, "island": { "altar-circle": 3 }, "fill": ["pod", "instrument", "crystal", "totem", "pillar"] },
@@ -82,7 +96,10 @@
     "greenhouse":  { "set": "farm", "wall": { "rack-row": 0.5 }, "island": { "growbed-rows": 5 }, "fill": ["planter", "growbed"] },
     "assembly-hall": { "set": "industrial", "wall": { "workbench-station": 2, "racking-aisle": 1 }, "island": { "assembly-line": 4 }, "fill": ["pallet", "crate", "panel", "barrel"] },
     "warehouse":   { "set": "industrial", "wall": { "racking-aisle": 6 }, "island": { "big-piece": 0.5 }, "fill": ["pallet", "crate"] },
-    "control-room": { "set": "industrial", "wall": { "console-station": 4 }, "island": {}, "fill": ["cabinet", "panel", "plant"] }
+    "control-room": { "set": "industrial", "wall": { "console-station": 4 }, "island": {}, "fill": ["cabinet", "panel", "plant"] },
+    "hangar":      { "set": "aviation", "wall": { "workbench-station": 3, "rack-row": 2, "tank-row": 1, "racking-aisle": 0.5 }, "island": { "engine-bay": 2, "tug-bay": 1.5 }, "fill": ["barrel", "cylinders", "crate", "toolrack"] },
+    "aircraft-cabin": { "set": "aviation", "wall": { "galley-line": 1 }, "island": { "cabin-rows": 4 }, "fill": ["luggage"] },
+    "storeroom":   { "set": "industrial", "wall": { "crate-stack": 3, "shelf-row": 1, "racking-aisle": 1 }, "island": {}, "fill": ["crate", "barrel", "pallet"] }
   },
 
   // Outdoor sites: a road, an apron or a rail line laid along z (north to south). "lane" is the
@@ -102,18 +119,46 @@
     "rail-depot":     { "width": 26, "length": 56, "lane": 1.2, "blurb": "A rusting depot yard: wagons on parallel sidings, buffer stops, signals." }
   },
 
+  "kits": { "precursor": "precursor", "vharn": "alien", "kessari": "alien", "mine": "mine" },
   "rooms": {
     "lobby": "office", "security": "military", "airlock": "ship", "decon": "medical", "office": "office", "archive": "office",
-    "lab": "lab", "cold-store": "cryo", "containment": "lab", "control": "ship", "command": "military", "workshop": "industrial",
-    "storage": "industrial", "armoury": "military", "quarters": "residential", "mess": "canteen", "galley": "canteen",
+    "lab": "lab", "cold-store": "cryo", "containment": "lab", "control": "control-room", "command": "military",
+    "armoury": "military", "quarters": "residential", "mess": "canteen", "galley": "canteen",
     "washroom": "residential", "chapel": "civic", "ward": "medical", "nurses": "medical", "theatre": "medical",
     "pharmacy": "medical", "quarantine": "medical", "mortuary": "medical", "cryo-bay": "cryo", "monitor": "office",
-    "hydroponics": "farm", "plant": "industrial", "reactor": "industrial", "generator": "industrial", "cellblock": "prison",
-    "guardroom": "prison", "solitary": "prison", "evidence": "prison", "stope": "mine", "ore-store": "mine",
-    "magazine": "military", "pump-hall": "industrial", "vault": "precursor"
+    "hydroponics": "greenhouse", "cellblock": "prison", "guardroom": "prison", "solitary": "prison", "evidence": "prison",
+    "stope": "mine", "ore-store": "mine", "vault": "precursor", "barn": "barn", "feed-store": "feed-store", "greenhouse": "greenhouse"
   },
-  "kits": { "precursor": "precursor", "vharn": "alien", "kessari": "alien", "mine": "mine" },
-  "tags": { "medical": "medical", "military": "military", "science": "lab", "industry": "industrial", "food": "canteen", "ore": "mine", "mine": "mine", "ice": "cryo", "story": "civic", "hum": "industrial", "reactor": "industrial" },
+  "roles": {
+    "office": "office", "archive": "office", "counting": "office", "kitchen": "canteen", "galley": "canteen", "mess": "canteen",
+    "canteen": "canteen", "quarters": "residential", "bunk": "military", "living": "residential", "bedroom": "residential",
+    "washroom": "residential", "lab": "lab", "clean": "lab", "ward": "medical", "theatre": "medical", "mortuary": "medical",
+    "pharmacy": "medical", "chapel": "civic", "armoury": "military", "guard": "military", "lockers": "military",
+    "cellblock": "prison", "server": "control-room", "switch": "control-room", "control": "control-room", "cabin": "aircraft-cabin",
+    "aircraft": "aircraft-cabin", "bridge": "ship", "barn": "barn", "hay": "barn", "cattle": "barn", "greenhouse": "greenhouse",
+    "grow": "greenhouse", "hydroponic": "greenhouse", "stope": "mine", "drift": "mine", "drifts": "mine", "ore": "mine",
+    "powder": "mine", "engine": "industrial", "turbine": "industrial", "boiler": "industrial", "reactor": "industrial",
+    "generator": "industrial", "pump": "industrial", "blower": "industrial", "filter": "industrial", "valve": "industrial",
+    "coolant": "industrial", "pipe": "industrial", "press": "industrial", "screen": "industrial"
+  },
+  "tags": {
+    "aviation": "hangar", "mine": "mine", "ore": "mine", "prison": "prison", "medical": "medical", "science": "lab",
+    "ice": "cryo", "farm": "farm", "farmstead": "farm", "military": "military", "fort": "military", "ship": "ship",
+    "wreck": "ship", "space": "spaceport", "industry": "industrial", "power": "industrial", "utility": "industrial",
+    "machine": "industrial", "water": "industrial", "fuel": "industrial", "rail": "industrial", "port": "industrial",
+    "trade": "canteen", "shop": "canteen", "wayside": "canteen", "food": "canteen", "comms": "control-room",
+    "settlement": "residential", "house": "residential", "civilian": "residential", "city": "residential",
+    "evacuation": "residential", "shed": "storeroom", "gang": "reaver", "scrappy": "reaver", "salvage": "reaver",
+    "alien": "alien", "hive": "alien", "precursor": "precursor", "cathedral": "civic", "story": "civic",
+    "hum": "industrial", "reactor": "industrial"
+  },
+  "spaces": {
+    "hangar": "hangar", "tunnel": "mine", "shaft": "mine", "gallery": "mine", "cavern": "mine", "workshop": "industrial",
+    "plant": "industrial", "generator": "industrial", "reactor": "industrial", "magazine": "military", "deck": "ship",
+    "hold": "storeroom", "store": "storeroom", "stores": "storeroom", "storage": "storeroom", "shed": "storeroom",
+    "shack": "residential", "hall": "storeroom", "room": "storeroom", "bay": "storeroom", "container": "storeroom"
+  },
+  "fallback": "storeroom",
 
   "props": {
     "bench":     { "roles": ["bench", "counter", "station"], "fallback": "workbench" },

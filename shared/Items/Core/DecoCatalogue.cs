@@ -332,7 +332,7 @@ public sealed class DecoCatalogue
                 Anim = DataJson.Str(j, "anim", null),
                 Tech = ParseTech(DataJson.Str(j, "tech", set.Tech.ToString()), where),
                 Salvage = DataJson.Str(j, "salvage", null),
-                Outdoor = set.Outdoor,
+                Outdoor = DataJson.Bool(j, "outdoor", set.Outdoor),
                 Palette = DataJson.Str(j, "palette", set.Palette),
                 Hp = DataJson.Int(j, "hp", 80 + 10 * size[0] * size[1] * size[2] / 4),
                 MassKg = (float)DataJson.Num(j, "mass", 6 * size[0] * size[1] * size[2]),

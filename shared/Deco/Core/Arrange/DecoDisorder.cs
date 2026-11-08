@@ -36,7 +36,8 @@ public sealed class DecoDisorder
         _rng = new DecoRng(DecoHash.Combine(_room.Seed, 0xD150DE7UL));
         DecoDisorderRules rules = _arr.Disorder.TryGetValue(_room.State, out var r) ? r : _arr.Disorder["abandoned"];
         DecoAge age = _room.AgeOrDefault;
-        _aprons = _room.Doors.Select(d => _room.Apron(d, 1.0f, 0.1f)).ToList();
+        // Nothing is pushed, dropped or left out onto a doorway's apron or a patch of floor that can't take it.
+        _aprons = _room.Doors.Select(d => _room.Apron(d, 1.0f, 0.1f)).Concat(_room.Blocked).ToList();
         _raster = new DecoRaster(_room.Width, _room.Depth, DecoPlanner.Cell);
         foreach (DecoPlacement pl in _plan.Placements.Where(p => DecoLayout.Blocks(_forge, p))) _raster.Add(DecoLayout.Footprint(_forge, pl), 1);
 
