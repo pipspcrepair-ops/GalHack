@@ -17,7 +17,7 @@ The owner's rule: "nothing should be bespoke, it should all be because a combina
 
 | Group | Layer | Values | What it decides | Replaces |
 | --- | --- | --- | --- | --- |
-| Body | `zone` | 4 | Rim to core; gates factions, Bloom and Hollow | Galaxy region |
+| Body | `zone` | 4 | Rim to core; gates factions, Hollow growth and the Husks' warping | Galaxy region |
 | Body | `type` | 39 | The place to stand | The 40 types, ten of which moved |
 | Body | `air` | 4 | What can live and be built; `air0` then, `air` now | "Toxic air" as a hazard only |
 | Body | `climate` | 19 | Temperature and water | A line in each theme |
@@ -55,7 +55,7 @@ POI family weights have no layer of their own, on purpose. Any value can carry `
 ## 3. Rules kept
 
 - **No written logs or dialogue for now.** Where an old entry had a log, letter, ledger or voice, it's now an object, a place or a wordless sound. Marks are signs and tallies, not text. The only script is script nobody can read.
-- **The Hollow stays subtle.** Its values describe what the player can notice. No `name` calls it anything, and `name` isn't player-facing anyway. The Bloom's bright growth is a separate, loud thing, kept to its own values and rare patches, as the design says.
+- **The warping stays subtle.** What the Husks do to a place (the tag `warped`, the occupant `WRP`, "something wrong here") is written only as what the player can notice. No `name` calls it anything, and `name` isn't player-facing anyway. The Hollow's growth (the tag `hollow`, which was `bloom`) is a separate, loud thing, kept to its own values and rare patches, and a whole Hollow world is rarer still (`flora.hollow_overrun`, owner's decision 8 in section 11).
 - **No Earth, no real brands, no copying.** New names are ours, and animals are described by what they do. Two old names that echo other works are flagged in section 11.
 - **Tech bands are low, mid and high.** The incomprehensible isn't a band. It appears only as a rare glimpse in the sky near the core.
 - **No invading drones.** Machine presences hold their ground. A sentry stays on post and a harvester stays in its field, and neither comes for a base in waves.
@@ -69,29 +69,29 @@ Every table below is live data: the script reads these fenced blocks, so what yo
 
 These roll first and owe nothing to people. Position in the system comes from `docs/solar-systems.md`, which reads a type off its orbit zone. The `zones` field keeps that link; the roller here ignores it and uses `weight`, because it has no system to place a world in.
 
-**Galaxy zone.** Where the world sits. It gates factions, the Bloom, the Hollow and glimpses of the incomprehensible.
+**Galaxy zone.** Where the world sits. It gates factions, the Hollow's growth, the Husks' warping and glimpses of the incomprehensible.
 
 ```layers
 zone rim | name on the quiet rim | weight 38 | occ EMP 8
-zone arm | name in the outer arms | weight 34 | is rough | occ SCV 3
-zone inner | name in the inner arms | weight 20 | is rough
-zone core | name near the core | weight 8 | is rough | occ HOL 8 | like theme.wrong_stars*2
+zone arm | name in the outer arms | weight 34 | is rough | occ SCV 3 HSK 3 | like fall.husks_fall*2 presence.husk_nights*2 | bias alien 0.05
+zone inner | name in the inner arms | weight 20 | is rough | occ HSK 6 WRP 3 | like fall.husks_fall*4 presence.husk_nights*4 feature.precursor_plates*1.5 feature.vault_field*1.5 hazard.night_swarms*1.5 | bias alien 0.1
+zone core | name near the core | weight 8 | is rough | occ WRP 8 HSK 10 | like theme.wrong_stars*2 fall.husks_fall*8 presence.husk_nights*8 feature.precursor_plates*2.5 feature.vault_field*2.5 hazard.night_swarms*2.5 sky.seam*2 flora.hollow_overrun*2 | bias alien 0.2
 ```
 
 **World type.** A place to stand, not a story. Thirty of the old 40 types stay here, and ten moved to other layers (section 6.2). Nine are new, from the design doc and the owner's lists: places those named that had no type, such as the plateau, oasis, irradiated ice, dead and city-covered worlds. `air`, `temp`, `water`, `life` and `land` list what the type allows, and `settle` is the chance people ever lived there. Weights follow the old rarity: common 8, uncommon 4, rare 2.
 
 ```layers
 type meadow | name a meadow world | was 1 | arch temperate.meadow | zones Z4 | weight 8 | air open | temp mild | water some wet | life mid high | land plains hills river_valleys lake_district coastal_cliffs terraces | settle 0.96 | start yes
-type rainforest | name a rainforest world | was 2 | arch temperate.rainforest | zones Z3 Z4 | weight 7 | air open | temp mild hot | water wet | life high | land hills wetlands karst delta | settle 0.85 | start yes
+type rainforest | name a rainforest world | was 2 | arch temperate.rainforest | zones Z3 Z4 | weight 7 | air open | temp mild hot | water wet | life high | land hills wetlands karst delta | settle 0.85 | start yes | bias overgrown 0.3
 type swamp | name a swamp world | was 3 | arch new | zones Z3 Z4 | weight 4 | air open thin | temp mild hot | water wet | life mid high | land wetlands delta archipelago karst | settle 0.8 | start yes
-type steppe | name a steppe world | was 4 | arch temperate.steppe | zones Z4 Z5 | weight 8 | air open thin | temp mild cold | water dry some | life mid | land steppe plains river_valleys plateau | settle 0.92 | start yes
+type steppe | name a steppe world | was 4 | arch temperate.steppe | zones Z4 Z5 | weight 8 | air open thin | temp mild cold | water dry some | life mid | land steppe plains river_valleys plateau | settle 0.92 | start yes | bias stock 0.2 dry 0.2
 type archipelago | name an archipelago world | was 5 | arch temperate.islands | zones Z4 | weight 4 | air open | temp mild hot | water sea | life mid high | land archipelago coastal_cliffs reef | settle 0.9 | start yes
 type highland | name a high plateau world | was new | arch temperate.plateau | zones Z4 | weight 3 | air open thin | temp mild cold | water some dry | life mid | land plateau mountains hills karst terraces | settle 0.9 | start yes
 type oasis | name an oasis world | was new | arch arid.oasis | zones Z3 | weight 3 | air open thin | temp hot mild | water dry some | life low mid | land rocky_desert lake_district mesas | settle 0.8 | start yes
-type dune | name a dune world | was 7 | arch arid.dunes | zones Z2 Z3 | weight 8 | air open thin | temp hot | water dry | life low | land dune_sea rocky_desert salt_pan | settle 0.75 | start yes
+type dune | name a dune world | was 7 | arch arid.dunes | zones Z2 Z3 | weight 8 | air open thin | temp hot | water dry | life low | land dune_sea rocky_desert salt_pan | settle 0.75 | start yes | bias dry 0.7
 type canyon | name a canyon world | was 8 | arch arid.canyon | zones Z2 Z3 | weight 8 | air open thin | temp hot mild | water dry | life low | land canyonlands mesas badlands plateau | settle 0.78 | start yes
-type salt_flat | name a salt flat world | was 9 | arch new | zones Z2 Z3 | weight 4 | air open thin | temp hot mild | water dry | life low | land salt_pan plateau rocky_desert | settle 0.7 | start yes
-type scorched | name a scorched world | was 10 | arch new | zones Z1 Z2 | weight 4 | air thin foul none | temp scorch | water none dry | life none low | land basalt_plains badlands crater_field | settle 0.5
+type salt_flat | name a salt flat world | was 9 | arch new | zones Z2 Z3 | weight 4 | air open thin | temp hot mild | water dry | life low | land salt_pan plateau rocky_desert | settle 0.7 | start yes | bias dry 0.7
+type scorched | name a scorched world | was 10 | arch new | zones Z1 Z2 | weight 4 | air thin foul none | temp scorch | water none dry | life none low | land basalt_plains badlands crater_field | settle 0.5 | bias dry 0.7 sparse 0.4
 type glacier | name a glacier world | was 11 | arch ice.glacier | zones Z5 Z6 | weight 8 | air open thin | temp frozen cold | water some | life low | land ice_plain mountains fjords | settle 0.7 | start yes
 type tundra | name a tundra world | was 12 | arch new | zones Z5 | weight 8 | air open thin | temp cold | water dry some | life mid | land steppe hills lake_district ice_plain | settle 0.85 | start yes
 type hot_spring_ice | name a hot-spring ice world | was 13 | arch ice.hot_spring | zones Z5 Z6 | weight 4 | air open thin | temp cold frozen | water some | life mid low | land ice_plain volcanic_field fjords | settle 0.72 | start yes
@@ -100,25 +100,25 @@ type ocean | name an ocean world | was 15 | arch new | zones Z4 Z5 | weight 4 | 
 type tide | name a tide world | was 17 | arch new | zones Z4 Z5 | weight 2 | air open | temp mild cold | water wet sea | life mid | land tidal_flats delta coastal_cliffs | settle 0.8 | start yes
 type volcanic | name a volcanic world | was 18 | arch lava.volcanic | zones Z1 Z2 Z3 | weight 8 | air thin foul open | temp hot scorch | water dry none | life low | land volcanic_field basalt_plains mountains | settle 0.6
 type lava_ocean | name a lava ocean world | was 19 | arch lava.lava_ocean | zones Z1 | weight 4 | air foul none | temp scorch | water none | life none low | land basalt_plains volcanic_field | settle 0.3
-type ash_fall | name an ash-fall world | was 20 | arch new | zones Z2 Z3 Z4 Z5 | weight 4 | air thin foul open | temp mild cold | water dry some | life low | land basalt_plains plains badlands | settle 0.7 | start yes
+type ash_fall | name an ash-fall world | was 20 | arch new | zones Z2 Z3 Z4 Z5 | weight 4 | air thin foul open | temp mild cold | water dry some | life low | land basalt_plains plains badlands | settle 0.7 | start yes | bias ash 0.4 dead 0.3
 type cratered_moon | name a cratered moon | was 21 | arch new | zones any | weight 7 | air none | temp hot mild cold frozen | water none | life none | land crater_field rilles | settle 0.5
 type large_barren | name a large barren world | was 22 | arch new | zones Z1 Z2 Z6 Z7 Z8 | weight 7 | air none | temp hot cold frozen | water none | life none | land crater_field basalt_plains rift_valleys | settle 0.5
 type barren_metal | name a barren metal world | was 25 | arch new | zones Z1 | weight 2 | air none | temp scorch hot | water none | life none | land basalt_plains shard_fields | settle 0.4
 type ice_moon | name an ice moon | was 26 | arch new | zones Z6 Z7 Z8 | weight 7 | air none thin | temp frozen | water some | life none | land ice_plain rift_valleys | settle 0.5
-type nascent | name a nascent world | was 28 | arch new | zones any | weight 2 | air foul none | temp hot scorch | water none dry | life none low | land basalt_plains rift_valleys volcanic_field | settle 0.15
-type toxic | name a toxic world | was 32 | arch new | zones Z2 Z3 | weight 4 | air foul | temp hot mild | water wet some | life low | land badlands wetlands plains | settle 0.6
-type crystal | name a crystal world | was 33 | arch alien.crystal | zones Z5 Z6 Z7 | weight 4 | air open thin foul | temp cold mild | water dry some | life low | land shard_fields ringlands plains | settle 0.55
-type fungal | name a fungal world | was 34 | arch alien.fungal | zones Z3 Z4 Z5 | weight 4 | air open thin foul | temp mild hot | water wet some | life mid | land dome_fields wetlands karst | settle 0.65
-type bioluminescent | name a glowing world | was 35 | arch new | zones Z4 Z5 | weight 2 | air open thin | temp mild cold | water wet some | life high | land hills karst wetlands | settle 0.6
-type shell | name a hollow shell world | was 36 | arch new | zones Z2 Z3 Z4 Z5 Z6 | weight 2 | air thin open | temp mild cold | water dry some | life mid | land sinkhole_country plains | settle 0.6
+type nascent | name a nascent world | was 28 | arch new | zones any | weight 2 | air foul none | temp hot scorch | water none dry | life none low | land basalt_plains rift_valleys volcanic_field | settle 0.15 | bias sparse 0.4
+type toxic | name a toxic world | was 32 | arch new | zones Z2 Z3 | weight 4 | air foul | temp hot mild | water wet some | life low | land badlands wetlands plains | settle 0.6 | bias mutagen 0.3
+type crystal | name a crystal world | was 33 | arch alien.crystal | zones Z5 Z6 Z7 | weight 4 | air open thin foul | temp cold mild | water dry some | life low | land shard_fields ringlands plains | settle 0.55 | bias alien 0.2
+type fungal | name a fungal world | was 34 | arch alien.fungal | zones Z3 Z4 Z5 | weight 4 | air open thin foul | temp mild hot | water wet some | life mid | land dome_fields wetlands karst | settle 0.65 | bias fungal 0.6
+type bioluminescent | name a glowing world | was 35 | arch new | zones Z4 Z5 | weight 2 | air open thin | temp mild cold | water wet some | life high | land hills karst wetlands | settle 0.6 | bias alien 0.2
+type shell | name a hollow shell world | was 36 | arch new | zones Z2 Z3 Z4 Z5 Z6 | weight 2 | air thin open | temp mild cold | water dry some | life mid | land sinkhole_country plains | settle 0.6 | bias alien 0.1
 type shattered | name a shattered world | was 37 | arch new | zones any | weight 2 | air thin none | temp cold mild | water none dry | life low none | land rift_valleys crater_field | settle 0.3
-type storm | name a storm world | was 40 | arch new | zones Z3 Z4 Z5 | weight 4 | air open thin | temp mild hot | water some wet | life low | land mountains badlands plateau | settle 0.6
+type storm | name a storm world | was 40 | arch new | zones Z3 Z4 Z5 | weight 4 | air open thin | temp mild hot | water some wet | life low | land mountains badlands plateau | settle 0.6 | bias storm 0.8
 type irradiated_ice | name an irradiated ice world | was new | arch new | zones Z6 Z7 | weight 2 | air thin none | temp frozen | water some | life low none | land ice_plain shard_fields | settle 0.3
 type cryo_fire | name a cryo-fire world | was new | arch new | zones Z7 Z8 | weight 2 | air foul | temp frozen | water some | life none low | land ice_plain lake_district | settle 0.25
-type petrified | name a petrified forest world | was new | arch new | zones Z4 Z5 | weight 2 | air open thin | temp mild cold | water dry | life low | land plains hills canyonlands | settle 0.6
+type petrified | name a petrified forest world | was new | arch new | zones Z4 Z5 | weight 2 | air open thin | temp mild cold | water dry | life low | land plains hills canyonlands | settle 0.6 | bias dead 0.5
 type rogue | name a rogue world with no sun | was new | arch new | zones deep | weight 1 | air thin none | temp frozen | water none some | life none low | land ice_plain basalt_plains | settle 0.3
-type dead_world | name a dead world | was new | arch new | zones any | weight 3 | air thin foul | temp cold mild | water dry | life none low | land plains basalt_plains badlands | settle 0.9
-type city_covered | name a city-covered world | was new | arch new | zones Z4 | weight 2 | air open thin | temp mild hot cold | water some wet | life mid high | land plains river_valleys | settle 1 | only pre.hightech
+type dead_world | name a dead world | was new | arch new | zones any | weight 3 | air thin foul | temp cold mild | water dry | life none low | land plains basalt_plains badlands | settle 0.9 | bias barren 0.6 dead 0.6 desolate 0.5
+type city_covered | name a city-covered world | was new | arch new | zones Z4 | weight 2 | air open thin | temp mild hot cold | water some wet | life mid high | land plains river_valleys | settle 1 | only pre.hightech | bias sparse 0.5 barren 0.3
 type arc | name a Precursor Arc | was new | arch new | zones deep | weight 1 | is deep | air open thin | temp mild | water some | life mid low | land plains ringlands | settle 0.05 | like feature.precursor_plates*20
 ```
 
@@ -134,25 +134,25 @@ air none | name no air | sets air0=none air=none | weight 3 | is rough | like ha
 **Climate.** Sets the world's `temp` and `water` facts inside what the type allows.
 
 ```layers
-climate scorch_bare | name scorching and bone dry | sets temp=scorch water=none | like hazard.heat*8
-climate scorch_dry | name scorching with dry seas of dust | sets temp=scorch water=dry | like hazard.heat*8
-climate hot_bare | name hot and waterless | sets temp=hot water=none
-climate hot_dry | name hot and dry | sets temp=hot water=dry | weight 3
-climate hot_some | name hot with slow rivers | sets temp=hot water=some
-climate hot_wet | name hot and steaming | sets temp=hot water=wet | weight 2
-climate hot_sea | name hot with warm seas | sets temp=hot water=sea
-climate mild_bare | name mild by day, waterless | sets temp=mild water=none
-climate mild_dry | name mild and dry | sets temp=mild water=dry | weight 2
-climate mild_some | name mild with rivers and lakes | sets temp=mild water=some | weight 3
-climate mild_wet | name mild and rainy | sets temp=mild water=wet | weight 2
-climate mild_sea | name mild with open seas | sets temp=mild water=sea | weight 2
-climate cold_bare | name cold and waterless | sets temp=cold water=none
-climate cold_dry | name cold and dry | sets temp=cold water=dry | weight 2
-climate cold_some | name cold with frozen lakes | sets temp=cold water=some | weight 2
-climate cold_wet | name cold and sodden | sets temp=cold water=wet
-climate cold_sea | name cold with grey seas | sets temp=cold water=sea
-climate frozen_bare | name deep frozen | sets temp=frozen water=none | like hazard.cold*8
-climate frozen_some | name frozen, water locked in ice | sets temp=frozen water=some | like hazard.cold*8
+climate scorch_bare | name scorching and bone dry | sets temp=scorch water=none | like hazard.heat*8 | bias dry 0.7
+climate scorch_dry | name scorching with dry seas of dust | sets temp=scorch water=dry | like hazard.heat*8 | bias dry 0.5
+climate hot_bare | name hot and waterless | sets temp=hot water=none | bias dry 0.7
+climate hot_dry | name hot and dry | sets temp=hot water=dry | weight 3 | bias dry 0.5
+climate hot_some | name hot with slow rivers | sets temp=hot water=some | bias dry 0.2
+climate hot_wet | name hot and steaming | sets temp=hot water=wet | weight 2 | bias storm 0.2
+climate hot_sea | name hot with warm seas | sets temp=hot water=sea | bias storm 0.2
+climate mild_bare | name mild by day, waterless | sets temp=mild water=none | bias dry 0.7
+climate mild_dry | name mild and dry | sets temp=mild water=dry | weight 2 | bias dry 0.5
+climate mild_some | name mild with rivers and lakes | sets temp=mild water=some | weight 3 | bias dry 0.2
+climate mild_wet | name mild and rainy | sets temp=mild water=wet | weight 2 | bias storm 0.2
+climate mild_sea | name mild with open seas | sets temp=mild water=sea | weight 2 | bias storm 0.2
+climate cold_bare | name cold and waterless | sets temp=cold water=none | bias dry 0.7
+climate cold_dry | name cold and dry | sets temp=cold water=dry | weight 2 | bias dry 0.5
+climate cold_some | name cold with frozen lakes | sets temp=cold water=some | weight 2 | bias dry 0.2
+climate cold_wet | name cold and sodden | sets temp=cold water=wet | bias storm 0.2
+climate cold_sea | name cold with grey seas | sets temp=cold water=sea | bias storm 0.2
+climate frozen_bare | name deep frozen | sets temp=frozen water=none | like hazard.cold*8 | bias dry 0.7
+climate frozen_some | name frozen, water locked in ice | sets temp=frozen water=some | like hazard.cold*8 | bias dry 0.2
 ```
 
 **Land.** Landform bias. A world rolls two for now, and each region of the planner takes one. The first 24 are the code's landforms; the last eight are new.
@@ -205,13 +205,13 @@ mod meteor_pelted | name pelted by meteors | was 24 | weight 2 | req air=none,th
 mod year_thaw | name in the thaw of a centuries-long year | weight 1 | req air!=none water!=none temp=cold,mild
 mod year_summer | name in the high summer of a centuries-long year | weight 1 | req air!=none temp=mild,hot
 mod year_leaf | name in the leaf-fall of a centuries-long year | weight 1 | req life=mid,high air!=none
-mod year_winter | name in the deep winter of a centuries-long year | weight 1 | req air!=none temp=mild,cold | like weather.blizzards*5
+mod year_winter | name in the deep winter of a centuries-long year | weight 1 | req air!=none temp=mild,cold | like weather.blizzards*5 | bias sparse 0.2
 mod short_days | name days of a few hours | weight 1
 mod long_days | name days that last for weeks | weight 1
-mod terraformed | name terraformed, and it took | weight 2 | is high settled | req air=open,thin life!=none
-mod half_terraformed | name half terraformed, grid by grid | weight 2 | is high settled | req air=open,thin,foul
+mod terraformed | name terraformed, and it took | weight 2 | is high settled | req air=open,thin life!=none | bias alien -0.1 overgrown 0.1
+mod half_terraformed | name half terraformed, grid by grid | weight 2 | is high settled | req air=open,thin,foul | bias alien 0.05 sparse 0.2
 mod fire_and_ice | name fire at the equator and ice at the poles | weight 2 | req air!=none | like feature.active_volcano*6
-mod drained_sea | name a sea that went away | weight 2 | req water=dry,none temp!=frozen | like feature.stranded_ships*10
+mod drained_sea | name a sea that went away | weight 2 | req water=dry,none temp!=frozen | like feature.stranded_ships*10 | bias dry 0.4
 ```
 
 ### 4.2 The people: who lived here and how
@@ -222,9 +222,9 @@ mod drained_sea | name a sea that went away | weight 2 | req water=dry,none temp
 pre L | name low tech | weight 3 | is low | req air0=open,thin | needs water_works | plant coal_plant 2 wind_farm 1 | hub survivor_hamlet 1 | like post.M*0.12 post.H*0.02 port.E*3 trade.subsistence*4 trade.farming*2 trade.herding*2 trade.mining*2 ran.elders*3 ran.great_houses*2 build.gabled_timber*2
 pre M | name mid tech | weight 5 | needs sewage_works water_works substation | plant coal_plant 2 nuclear_plant 1 wind_farm 1 solar_farm 1 | hub meridian_apartments 1 | like post.H*0.08
 pre H | name high tech | weight 4 | is hightech | needs sewage_works water_works substation telecom_exchange | plant fusion_plant 2 solar_farm 1 nuclear_plant 1 | hub meridian_apartments 1 ominous_tower 1 | like trade.subsistence*0.2 trade.herding*0.3 infra.tracks*0.2
-post L | name low tech | weight 6 | req air=open,thin
+post L | name low tech | weight 6 | req air=open,thin | bias working 0.4 stock 0.2
 post M | name mid tech | weight 3
-post H | name high tech | weight 1
+post H | name high tech | weight 1 | bias stock -0.1
 ```
 
 **Port.** The old main starport. A and B leave things in orbit, and the orbit layer reads them.
@@ -250,14 +250,14 @@ people settled | name with settled country | weight 4 | hub survivor_town 2 surv
 **Trade: what it lived on.** The biggest dissolver. The profile's six trades stay in `base`, so `WorldProfile.Weight` still works; a region plan's towns, farmland, industry, hubs and most new POI families now hang here instead of on a theme. Many old themes were just a trade with a name.
 
 ```layers
-trade subsistence | name small farms and local trade | base Agricultural | weight 7 | is crops | region hamlet 4 farmland 3 town 1 | hub survivor_hamlet 2 | farm old_farm 3 freeholder_farm 2 | poi water_mill 1 | streets 2
-trade farming | name grain and field farming | base Agricultural | weight 6 | is crops | region town 2 farmland 4 hamlet 2 | hub meridian_apartments 1 | farm old_farm 3 grain_elevator 2 | poi ration_depot 1 seed_vault 1 | tags field_stores | streets 3
-trade orchards | name orchards and pressing | base Agricultural | weight 3 | is crops | region town 1 farmland 4 hamlet 3 | farm orchard 3 old_farm 2 walled_orchard 1 | poi drone_hive 1 harvester_field 1 | tags press_cellars | streets 2
-trade herding | name herding on open grass | base Agricultural | weight 3 | is outdoors rich_life | region hamlet 4 farmland 1 | farm yurt_camp 2 old_farm 1 | hub survivor_hamlet 1 | tags felt_camps | streets 1
+trade subsistence | name small farms and local trade | base Agricultural | weight 7 | is crops | region hamlet 4 farmland 3 town 1 | hub survivor_hamlet 2 | farm old_farm 3 freeholder_farm 2 | poi water_mill 1 | streets 2 | bias stock 0.3 working 0.4
+trade farming | name grain and field farming | base Agricultural | weight 6 | is crops | region town 2 farmland 4 hamlet 2 | hub meridian_apartments 1 | farm old_farm 3 grain_elevator 2 | poi ration_depot 1 seed_vault 1 | tags field_stores | streets 3 | bias stock 0.5 working 0.2
+trade orchards | name orchards and pressing | base Agricultural | weight 3 | is crops | region town 1 farmland 4 hamlet 3 | farm orchard 3 old_farm 2 walled_orchard 1 | poi drone_hive 1 harvester_field 1 | tags press_cellars | streets 2 | bias stock 0.2
+trade herding | name herding on open grass | base Agricultural | weight 3 | is outdoors rich_life | region hamlet 4 farmland 1 | farm yurt_camp 2 old_farm 1 | hub survivor_hamlet 1 | tags felt_camps | streets 1 | bias stock 0.8 working 0.3
 trade greenhouses | name sealed greenhouse farming | base Agricultural | weight 2 | is mid | region town 1 farmland 3 | farm greenhouse_dome 3 | poi seed_vault 1 | tags grow_racks | streets 2
-trade vat_stock | name meat grown in vats | base Agricultural | weight 2 | is high | region industry 2 town 1 | industry vat_hall 3 rendering_plant 2 | poi biolab 1 | tags vat_shapes | streets 2
+trade vat_stock | name meat grown in vats | base Agricultural | weight 2 | is high | region industry 2 town 1 | industry vat_hall 3 rendering_plant 2 | poi biolab 1 | tags vat_shapes | streets 2 | bias stock 0.2
 trade fishing | name fishing and canning | base Industrial | weight 3 | is shore | region town 2 industry 2 | industry cannery 3 docks 2 rendering_plant 1 | hub docks 1 | tags tins labels | streets 2
-trade mining | name mining | base Mining | weight 7 | region town 2 industry 3 | industry old_mine 3 abandoned_mine 2 ore_sorting_hall 2 | hub company_town 2 | depot rail_yard | tags pay_tickets | streets 2
+trade mining | name mining | base Mining | weight 7 | region town 2 industry 3 | industry old_mine 3 abandoned_mine 2 ore_sorting_hall 2 | hub company_town 2 | depot rail_yard | tags pay_tickets | streets 2 | bias working 0.1
 trade heavy_industry | name furnaces and heavy industry | base Industrial | weight 6 | is mid | region town 2 industry 4 | industry works_complex 4 steelworks 3 refinery 2 old_mine 1 coal_plant 2 | hub survivor_town 1 | depot rail_yard | tags shift_boards last_pour | streets 2 | orbit traffic
 trade light_industry | name factories and assembly | base Industrial | weight 5 | is mid | region town 3 industry 3 | industry abandoned_factory 4 works_complex 1 | hub meridian_apartments 2 | depot rail_yard | tags assembly_stop | streets 4
 trade fuel | name pumping and refining fuel | base Industrial | weight 4 | is mid | region town 1 industry 3 | industry refinery 3 pump_station 3 offshore_rig 1 | tags frozen_gauges | streets 1 | orbit traffic
@@ -266,7 +266,7 @@ trade shipbuilding | name building ships | base Industrial | weight 3 | is high 
 trade breaking | name breaking ships and scrap | base Industrial | weight 3 | is mid | region town 1 industry 3 | industry breaker_yard 3 steelworks 1 | poi scrap_fort 1 | tags cutting_rigs | streets 1
 trade salt | name salt and minerals from dry seas | base Mining | weight 2 | is dry | region town 1 industry 2 | industry salt_works 3 refinery 1 | tags crystal_cargo | streets 1
 trade ice_cutting | name cutting and shipping ice | base Mining | weight 2 | is cold | req water!=none | region town 1 industry 2 | industry ice_cutters 3 ice_outpost 2 | tags stove_rooms | streets 1 | orbit traffic
-trade timber | name timber | base Industrial | weight 2 | is rich_life outdoors plants | region hamlet 3 town 1 industry 1 | industry abandoned_factory 1 | poi treehouse_village 1 | hub survivor_hamlet 1 | tags tool_lockers | streets 1
+trade timber | name timber | base Industrial | weight 2 | is rich_life outdoors plants | region hamlet 3 town 1 industry 1 | industry abandoned_factory 1 | poi treehouse_village 1 | hub survivor_hamlet 1 | tags tool_lockers | streets 1 | bias working 0.3
 trade digs | name digging up the old and huge | base Research | weight 2 | region hamlet 2 camp 3 | hub survivor_hamlet 1 | industry bone_dig_site 3 old_mine 1 | poi bone_dig_site 2 | tags casts | streets 1
 trade research | name research | base Research | weight 5 | is mid | region town 2 industry 1 | hub research_base 2 | industry research_lab 3 meridian_research 1 biolab 1 | poi research_base 2 | tags bench_work | streets 2
 trade star_survey | name watching the sky | base Research | weight 3 | is mid | region hamlet 2 camp 2 | hub research_base 1 | industry observatory 3 | poi telecom_exchange 1 volcano_observatory 1 | tags star_charts | streets 1
@@ -369,108 +369,108 @@ The setting is fixed: the collapse was fast, galaxy-wide and a century or two ag
 **Phase.** How far along the fall is. Mid-collapse isn't a separate list; it's this value on any fall tagged `now`, which gives each one its own version of a world falling. `state` is the planner's table (active, abandoned, infested, ruined). `spared` is the frontier world that barely noticed: Horse and Diesel's "did not need a collapse", which the old stack had no way to say.
 
 ```layers
-phase fallen | name still in ruins | weight 62 | blank yes | state active 1 abandoned 6 infested 1 ruined 3 | break 0.1 | occ EMP 26 SCV 8 NST 8
-phase mending | name mending, slowly | weight 14 | req people=survivors,outposts,settled | state active 3 abandoned 5 infested 1 ruined 2 | break 0.12 | occ EMP 24 SCV 10 SQT 12 | tags patched
-phase recovered | name recovered, the fall showing only in spots | weight 60 | is mended | req post=M,H people=settled drop=0,1,up | state active 7 abandoned 2 infested 0 ruined 1 | break 0.15 | occ EMP 12 SQT 20 FAC 8 MCH 8 | tags memorials
-phase spared | name barely touched | weight 20 | is spared | req pre=L,M post=L,M people=survivors,settled,outposts drop=0,1,up | only fall.mild | state active 5 abandoned 3 infested 0 ruined 1 | break 0.1 | occ SQT 24 EMP 22 SCV 8
+phase fallen | name still in ruins | weight 62 | blank yes | state active 1 abandoned 6 infested 1 ruined 3 | break 0.1 | occ EMP 26 SCV 8 NST 8 | bias severity 0.6 desolate 0.3 ferals 0.3
+phase mending | name mending, slowly | weight 14 | req people=survivors,outposts,settled | state active 3 abandoned 5 infested 1 ruined 2 | break 0.12 | occ EMP 24 SCV 10 SQT 12 | tags patched | bias severity 0.45 living 0.3
+phase recovered | name recovered, the fall showing only in spots | weight 60 | is mended | req post=M,H people=settled drop=0,1,up | state active 7 abandoned 2 infested 0 ruined 1 | break 0.15 | occ EMP 12 SQT 20 FAC 8 MCH 8 | tags memorials | bias severity 0.15 living 0.6
+phase spared | name barely touched | weight 20 | is spared | req pre=L,M post=L,M people=survivors,settled,outposts drop=0,1,up | only fall.mild | state active 5 abandoned 3 infested 0 ruined 1 | break 0.1 | occ SQT 24 EMP 22 SCV 8 | bias severity 0.1 living 0.5
 phase untouched | name never settled | weight 0 | req settled=no | occ EMP 70 NST 30
-phase falling | name falling right now | weight 12 | is falling rough | req drop=0,1,up people=settled | only fall.now | state active 6 abandoned 3 infested 1 ruined 1 | break 0.08 | occ SQT 14 GNG 12 FAC 8 EMP 8 | tags front_barricades
+phase falling | name falling right now | weight 12 | is falling rough | req drop=0,1,up people=settled | only fall.now | state active 6 abandoned 3 infested 1 ruined 1 | break 0.08 | occ SQT 14 GNG 12 FAC 8 EMP 8 | tags front_barricades | bias severity 0.9 strife 0.7
 ```
 
 **Time since the fall.** Wear on any world comes from this. Today POIs have three fixed ages, so `wear` is what replaces them.
 
 ```layers
-age now | name in the last few months | wear 0 | req phase=falling | weight 1
-age recent | name within a generation, after holding on | wear 1 | req phase!=falling | weight 2
-age century | name about 110 years ago | wear 2 | req phase!=falling | weight 5
-age long | name about 170 years ago | wear 3 | req phase!=falling | weight 5
+age now | name in the last few months | wear 0 | req phase=falling | weight 1 | bias age 0
+age recent | name within a generation, after holding on | wear 1 | req phase!=falling | weight 2 | bias age 0.3
+age century | name about 110 years ago | wear 2 | req phase!=falling | weight 5 | bias age 0.65 overgrown 0.25
+age long | name about 170 years ago | wear 3 | req phase!=falling | weight 5 | bias age 1 overgrown 0.45
 ```
 
 **The fall.** The apocalypse layer: all 70 keep their ids and their entries in `docs/world-themes.md`, which stay the reference for what each leaves behind. Three groups of changes were needed. Requirements moved from `needs pre` to the general tags. `poi`, `occ`, `like` and `tags` hold the data form of each entry. `now` marks falls that can still be happening, `mild` marks those a spared world can have, and `stamp` says what it writes into the terrain. Z71 to Z82 at the end are new, from the gaps in section 10.
 
 ```layers
-fall nuclear_war | name a nuclear exchange | group war | speed instant | weight 5 | is mid now | poi blast_crater 3 deep_bunker 3 command_bunker 2 missile_silo 2 nuclear_plant 1 fallout_shelter 3 shadow_wall 2 | occ SQT 10 GNG 10 MUT 10 | like hazard.radiation*10 weather.ash_fall*3 flora.dead_forest*4 fauna.mutants*3 | tags shadows sealed_doors tally_doors | stamp crater_ring | orbit debris
-fall orbital_bombardment | name bombardment from orbit | group war | speed quick | weight 4 | is now | poi crashed_freighter 2 abandoned_spaceport 2 blast_crater 2 debris_camp 2 orbital_wreck_site 1 | occ SCV 10 NST 5 | like hazard.unstable_wrecks*5 feature.debris_line*5 sky.broken_stations*5 | tags vacuum_crews | stamp crater_line | orbit wrecks debris patrol
-fall invasion | name invasion and occupation | group war | speed quick | weight 4 | is now | poi military_base 2 vharn_outpost 2 vharn_sam_site 1 prison_block 2 scrap_fort 1 | occ FAC 10 GNG 6 | like hazard.mines*5 presence.resistance*5 marks.foreign_script*5 | tags ransacked_offices | orbit patrol
-fall civil_war | name civil war | group war | speed season | weight 5 | is now | poi military_base 2 command_bunker 2 hospital 2 evacuation_camp 2 trench_line 2 | occ GNG 8 SCV 6 | like hazard.mines*4 presence.militias*5 marks.two_flags*6 | tags barricades field_hospitals
-fall machine_uprising | name a machine uprising | group war | speed quick | weight 3 | is mid now | poi kessari_works 3 kessari_spire 2 abandoned_factory 2 sentry_line 2 | occ MCH 18 BOT 8 | like hazard.armed_hardware*5 presence.kessari*4 running.sentries*4 | tags welded_doors spotless_zones
-fall chemical_war | name chemical war | group war | speed quick | weight 3 | is mid now rough | poi mask_depot 3 deep_bunker 2 refinery 1 hospital 2 | occ EMP 8 SCV 6 | sets air=foul | like hazard.bad_air*6 hazard.corrosion*3 | tags masks stained_streets
-fall kinetic_strikes | name rocks dropped from space | group war | speed instant | weight 3 | is now | poi blast_crater 3 old_mine 1 precursor_vault 1 | occ SQT 6 NST 4 | like hazard.unstable_ground*6 | tags tilted_towers | stamp crater_deep | orbit debris
-fall blockade | name siege and blockade | group war | speed season | weight 3 | is port now | poi ration_depot 3 abandoned_spaceport 2 scrappy_port 2 command_bunker 1 | occ GNG 8 SCV 8 | like hazard.mines*3 presence.smugglers*5 | tags ration_shelves tally_doors | orbit fleet_parked patrol
-fall drone_wars | name autonomous weapons fighting themselves out | group war | speed quick | weight 3 | is mid now | poi drone_factory 3 sentry_line 2 military_base 2 motor_pool 1 | occ MCH 14 BOT 10 | like hazard.armed_hardware*6 feature.machine_drifts*8 | tags spare_airframes | orbit fleet_parked
-fall mercenary_seizure | name hired guns taking the cities | group war | speed quick | weight 3 | is now | poi scrap_fort 2 military_base 2 casino_resort 1 exchange_depot 2 | occ GNG 14 FAC 4 | like presence.warlords*5 infra.toll_roads*3 | tags gilded_forts
-fall plague | name plague | group disease | speed quick | weight 6 | is now | poi hospital 3 evacuation_camp 2 burial_pits 3 biolab 1 | occ EMP 10 SQT 6 HSK 6 | like marks.plague_marks*8 fauna.ferals*2 | tags sealed_houses cot_halls
-fall biohazard | name a lab agent let loose | group disease | speed quick | weight 4 | is mid now | poi biolab 3 research_base 2 cryo_vault 1 hospital 2 bloom_garden 1 vat_hall 1 | occ MUT 12 NST 8 | like hazard.spores*5 hazard.mutagen*5 flora.swollen*5 fauna.mutants*5 | tags grown_through taped_corridors
-fall sleep_sickness | name a sickness of sleep | group disease | speed season | weight 3 | is now | poi hospital 2 hospice_ward 3 cryo_vault 1 sleeper_ward 2 routine_loop_street 1 | occ SLP 18 EMP 8 KPR 6 | like presence.routine_walkers*6 | tags sleep_wards
-fall frenzy | name a contagion of rage | group disease | speed quick | weight 3 | is rough now | poi hospital 2 prison_block 2 evacuation_camp 2 | occ GNG 6 MUT 8 | like presence.frenzied*6 | tags gouged_doors
-fall husks_fall | name bodies that kept walking | group disease | speed quick | weight 3 | is mid rough now | poi cemetery_vault 3 church_chapel 2 hospital 2 mortuary_deep 1 | occ HSK 26 SQT 4 | like presence.husk_nights*8 hazard.night_swarms*6 marks.tally_marks*5 | tags churchyards
-fall fungal_takeover | name mould through the cities | group disease | speed season | weight 3 | is now | poi fruiting_hall 3 sewage_works 2 hospital 1 old_mine 1 | occ NST 12 MUT 6 | like hazard.spores*6 flora.fungal_giants*4 | tags mat_streets
-fall sterility | name the births stopping | group disease | speed slow | weight 3 | is mild | poi school_campus 2 hospice_ward 2 survivor_town 1 | occ EMP 16 SQT 6 | like sound.silence*2 | tags empty_nurseries
-fall parasite_swarm | name a swarm in the walls | group disease | speed season | weight 3 | is beasts | poi sewage_works 2 hospital 1 meridian_apartments 2 | occ NST 18 | like hazard.swarm_nests*6 | tags webbed_lifts
-fall famine | name famine | group env | speed season | weight 5 | is now mild | poi grain_elevator 3 ration_depot 3 old_farm 2 evacuation_camp 2 | occ GNG 8 SCV 8 | like presence.gangs*2 | tags ration_shelves soup_kitchens
-fall drought | name the rivers failing | group env | speed slow | weight 4 | is flowing air_weather mild | sets water=dry | poi water_works 3 water_tower_keep 2 drowned_cistern 2 caravan_stop 2 | occ GNG 6 SQT 6 | like hazard.thirst*6 weather.dust_storms*3 presence.water_lords*5 | tags tally_rods stranded_boats
-fall rising_seas | name the sea rising | group env | speed slow | weight 3 | is shore air_weather flood | sets water=sea | poi docks 2 sewage_works 2 barge_town 3 hospital 1 | occ SQT 8 NST 4 | like hazard.surges*6 feature.drowned_city*12 | tags waterlines | stamp flood
-fall long_winter | name a winter that stayed | group env | speed season | weight 4 | is air_weather | req temp=mild,cold | sets temp=cold | poi ice_outpost 2 coal_plant 2 old_mine 1 ski_lodge 1 | occ EMP 6 SQT 6 | like hazard.cold*6 weather.blizzards*5 presence.fur_folk*3 | tags stove_rooms buried_cars
-fall runaway_heat | name the air baking | group env | speed slow | weight 3 | is air_weather | req temp=mild,hot | sets temp=hot | poi water_works 2 deep_bunker 2 solar_farm 2 | occ EMP 8 | like hazard.heat*6 weather.fire_storms*3 | tags cellar_towns
-fall ash_year | name an eruption closing the sky | group env | speed instant | weight 3 | is air_weather now | poi coal_plant 1 old_mine 2 deep_bunker 2 | occ SQT 4 EMP 6 | like weather.ash_fall*8 flora.dead_forest*3 | tags ash_roofs | stamp ash
-fall great_quake | name the ground moving | group env | speed instant | weight 3 | is now mild | poi highway_interchange 2 rail_yard 2 hospital 2 | occ SCV 6 | like hazard.unstable_ground*6 hazard.sinkholes*3 | tags tilted_towers | stamp fault
-fall air_loss | name the air thinning | group env | speed slow | weight 2 | req air0=open | sets air=thin | poi habitat_dome 3 greenhouse_dome 2 research_lab 1 | occ EMP 10 SQT 4 | like hazard.thin_air*6 | tags masks dead_gardens
-fall poison_air | name a toxic haze from a thousand chimneys | group env | speed slow | weight 3 | is mid rough | req air0=open,thin | sets air=foul | poi refinery 2 steelworks 2 abandoned_factory 2 dust_mill 1 mask_depot 1 | occ SCV 4 | like hazard.bad_air*6 weather.acid_rain*4 | tags masks stained_streets
-fall stellar_flare | name the star flaring | group env | speed instant | weight 3 | poi solar_farm 2 telecom_exchange 2 observatory 2 | occ EMP 10 | like hazard.radiation*5 | tags sunward_scorch
-fall meteor_swarm | name years of meteors | group env | speed quick | weight 3 | is now | poi blast_crater 2 observatory 1 habitat_dome 1 | occ EMP 6 | like hazard.meteors*8 | tags holed_domes | stamp crater_scatter
-fall industrial_collapse | name factories eating the land | group env | speed slow | weight 3 | is mid mild | poi steelworks 2 refinery 2 coal_plant 2 acid_pool_works 1 | occ SCV 8 | like hazard.toxic_runoff*6 | tags slag_rivers
-fall pollinator_loss | name the pollinators stopping | group env | speed slow | weight 2 | is beasts crops mild | poi orchard 2 old_farm 2 greenhouse_dome 2 | occ SQT 4 | like flora.pollen_heavy*4 | tags bare_orchards
-fall grey_goo | name small machines eating everything | group tech | speed quick | weight 2 | is high rough | poi research_lab 2 kessari_works 1 data_centre 1 abandoned_factory 2 | occ EMP 10 | like hazard.grey_front*12 fauna.metal_eaters*5 | tags lace_steel | stamp grey_scar
-fall reactor_failures | name every plant failing at once | group tech | speed instant | weight 3 | is mid | poi nuclear_plant 3 fusion_plant 2 substation 2 evacuation_camp 2 | occ EMP 8 MUT 6 | like hazard.radiation*6 | tags alarm_rooms
-fall grid_cascade | name the lights going out together | group tech | speed instant | weight 4 | is mid now | poi substation 3 coal_plant 1 nuclear_plant 1 rail_yard 2 hospital 2 dam_hydro 1 | occ SCV 8 | like hazard.arc_flash*5 feature.pylon_forest*5 | tags candle_stubs
-fall ai_silence | name every mind-machine going quiet | group tech | speed instant | weight 3 | is mid now | poi data_centre 3 ministry_hall 2 abandoned_factory 2 telecom_exchange 2 | occ MCH 8 | like presence.kessari*2 | tags quiet_terminals | orbit sats
-fall terraform_failure | name the world-fixer breaking | group tech | speed quick | weight 2 | is high | like mod.half_terraformed*12 | poi weather_engine 2 research_lab 2 solar_farm 1 observatory 1 | occ SQT 4 | like hazard.strange_chemistry*5 marks.survey_stakes*6 | tags climate_towers | stamp terraform_grid
-fall weather_failure | name the weather control breaking | group tech | speed instant | weight 3 | is high air_weather | poi weather_engine 3 telecom_exchange 1 wind_farm 2 | occ EMP 8 | like weather.perpetual_storm*8 weather.dead_calm*3 hazard.lightning*5 | tags shelter_halls
-fall teleport_accident | name the gates misfiring | group tech | speed instant | weight 2 | is high | poi gate_ruin 3 abandoned_spaceport 1 research_lab 1 | occ EMP 8 | like hazard.misplaced_things*5 | tags lost_luggage
-fall drive_disaster | name a drive failing on its pad | group tech | speed instant | weight 2 | is high port | poi abandoned_spaceport 3 crashed_freighter 2 blast_crater 2 | occ SCV 8 | like hazard.radiation*3 hazard.unstable_wrecks*4 | tags melted_pads | stamp crater_ring
-fall cloning_mishap | name too many of everyone | group tech | speed quick | weight 2 | is high rough | poi clone_farm 3 hospital 2 cryo_vault 1 | occ MIM 10 GNG 4 | like presence.duplicates*6 | tags name_doubles
+fall nuclear_war | name a nuclear exchange | group war | speed instant | weight 5 | is mid now | poi blast_crater 3 deep_bunker 3 command_bunker 2 missile_silo 2 nuclear_plant 1 fallout_shelter 3 shadow_wall 2 | occ SQT 10 GNG 10 MUT 10 | like hazard.radiation*10 weather.ash_fall*3 flora.dead_forest*4 fauna.mutants*3 | tags shadows sealed_doors tally_doors | stamp crater_ring | orbit debris | bias severity 0.35 strife 0.4 burnt 0.7 dead 0.4 barren 0.35 ash 1 mutagen 0.3 predators 0.2 fade 0.2
+fall orbital_bombardment | name bombardment from orbit | group war | speed quick | weight 4 | is now | poi crashed_freighter 2 abandoned_spaceport 2 blast_crater 2 debris_camp 2 orbital_wreck_site 1 | occ SCV 10 NST 5 | like hazard.unstable_wrecks*5 feature.debris_line*5 sky.broken_stations*5 | tags vacuum_crews | stamp crater_line | orbit wrecks debris patrol | bias severity 0.25 strife 0.4 burnt 0.6 barren 0.2
+fall invasion | name invasion and occupation | group war | speed quick | weight 4 | is now | poi military_base 2 vharn_outpost 2 vharn_sam_site 1 prison_block 2 scrap_fort 1 | occ FAC 10 GNG 6 | like hazard.mines*5 presence.resistance*5 marks.foreign_script*5 | tags ransacked_offices | orbit patrol | bias severity 0.25 strife 0.4 burnt 0.2
+fall civil_war | name civil war | group war | speed season | weight 5 | is now | poi military_base 2 command_bunker 2 hospital 2 evacuation_camp 2 trench_line 2 | occ GNG 8 SCV 6 | like hazard.mines*4 presence.militias*5 marks.two_flags*6 | tags barricades field_hospitals | bias severity 0.25 strife 0.4 burnt 0.2
+fall machine_uprising | name a machine uprising | group war | speed quick | weight 3 | is mid now | poi kessari_works 3 kessari_spire 2 abandoned_factory 2 sentry_line 2 | occ MCH 18 BOT 8 | like hazard.armed_hardware*5 presence.kessari*4 running.sentries*4 | tags welded_doors spotless_zones | bias severity 0.25 strife 0.4 burnt 0.2
+fall chemical_war | name chemical war | group war | speed quick | weight 3 | is mid now rough | poi mask_depot 3 deep_bunker 2 refinery 1 hospital 2 | occ EMP 8 SCV 6 | sets air=foul | like hazard.bad_air*6 hazard.corrosion*3 | tags masks stained_streets | bias severity 0.35 strife 0.4 burnt 0.2 dead 0.5 barren 0.3 mutagen 0.2
+fall kinetic_strikes | name rocks dropped from space | group war | speed instant | weight 3 | is now | poi blast_crater 3 old_mine 1 precursor_vault 1 | occ SQT 6 NST 4 | like hazard.unstable_ground*6 | tags tilted_towers | stamp crater_deep | orbit debris | bias severity 0.35 strife 0.4 burnt 0.5
+fall blockade | name siege and blockade | group war | speed season | weight 3 | is port now | poi ration_depot 3 abandoned_spaceport 2 scrappy_port 2 command_bunker 1 | occ GNG 8 SCV 8 | like hazard.mines*3 presence.smugglers*5 | tags ration_shelves tally_doors | orbit fleet_parked patrol | bias severity 0.25 strife 0.4 burnt 0.2
+fall drone_wars | name autonomous weapons fighting themselves out | group war | speed quick | weight 3 | is mid now | poi drone_factory 3 sentry_line 2 military_base 2 motor_pool 1 | occ MCH 14 BOT 10 | like hazard.armed_hardware*6 feature.machine_drifts*8 | tags spare_airframes | orbit fleet_parked | bias severity 0.25 strife 0.6 burnt 0.2
+fall mercenary_seizure | name hired guns taking the cities | group war | speed quick | weight 3 | is now | poi scrap_fort 2 military_base 2 casino_resort 1 exchange_depot 2 | occ GNG 14 FAC 4 | like presence.warlords*5 infra.toll_roads*3 | tags gilded_forts | bias severity 0.25 strife 0.4 burnt 0.2
+fall plague | name plague | group disease | speed quick | weight 6 | is now | poi hospital 3 evacuation_camp 2 burial_pits 3 biolab 1 | occ EMP 10 SQT 6 HSK 6 | like marks.plague_marks*8 fauna.ferals*2 | tags sealed_houses cot_halls | bias severity 0.15 desolate 0.3 ferals 0.3
+fall biohazard | name a lab agent let loose | group disease | speed quick | weight 4 | is mid now | poi biolab 3 research_base 2 cryo_vault 1 hospital 2 bloom_garden 1 vat_hall 1 | occ MUT 12 NST 8 | like hazard.spores*5 hazard.mutagen*5 flora.swollen*5 fauna.mutants*5 | tags grown_through taped_corridors | bias severity 0.15 desolate 0.3 swollen 0.6 mutagen 0.6 predators 0.8
+fall sleep_sickness | name a sickness of sleep | group disease | speed season | weight 3 | is now | poi hospital 2 hospice_ward 3 cryo_vault 1 sleeper_ward 2 routine_loop_street 1 | occ SLP 18 EMP 8 KPR 6 | like presence.routine_walkers*6 | tags sleep_wards | bias severity 0.15 desolate 0.3
+fall frenzy | name a contagion of rage | group disease | speed quick | weight 3 | is rough now | poi hospital 2 prison_block 2 evacuation_camp 2 | occ GNG 6 MUT 8 | like presence.frenzied*6 | tags gouged_doors | bias severity 0.25 desolate 0.3 predators 0.3
+fall husks_fall | name bodies that kept walking | group disease | speed quick | weight 3 | is mid rough now | poi cemetery_vault 3 church_chapel 2 hospital 2 mortuary_deep 1 | occ HSK 26 SQT 4 | like presence.husk_nights*8 hazard.night_swarms*6 marks.tally_marks*5 | tags churchyards | bias severity 0.25 desolate 0.6
+fall fungal_takeover | name mould through the cities | group disease | speed season | weight 3 | is now | poi fruiting_hall 3 sewage_works 2 hospital 1 old_mine 1 | occ NST 12 MUT 6 | like hazard.spores*6 flora.fungal_giants*4 | tags mat_streets | bias severity 0.15 desolate 0.3 fungal 0.8 overgrown 0.2
+fall sterility | name the births stopping | group disease | speed slow | weight 3 | is mild | poi school_campus 2 hospice_ward 2 survivor_town 1 | occ EMP 16 SQT 6 | like sound.silence*2 | tags empty_nurseries | bias desolate 0.3
+fall parasite_swarm | name a swarm in the walls | group disease | speed season | weight 3 | is beasts | poi sewage_works 2 hospital 1 meridian_apartments 2 | occ NST 18 | like hazard.swarm_nests*6 | tags webbed_lifts | bias severity 0.15 desolate 0.3 predators 0.4 swollen 0.2
+fall famine | name famine | group env | speed season | weight 5 | is now mild | poi grain_elevator 3 ration_depot 3 old_farm 2 evacuation_camp 2 | occ GNG 8 SCV 8 | like presence.gangs*2 | tags ration_shelves soup_kitchens | bias sparse 0.3 dead 0.2 stock -0.3
+fall drought | name the rivers failing | group env | speed slow | weight 4 | is flowing air_weather mild | sets water=dry | poi water_works 3 water_tower_keep 2 drowned_cistern 2 caravan_stop 2 | occ GNG 6 SQT 6 | like hazard.thirst*6 weather.dust_storms*3 presence.water_lords*5 | tags tally_rods stranded_boats | bias dry 0.8 dead 0.3 sparse 0.4 barren 0.2
+fall rising_seas | name the sea rising | group env | speed slow | weight 3 | is shore air_weather flood | sets water=sea | poi docks 2 sewage_works 2 barge_town 3 hospital 1 | occ SQT 8 NST 4 | like hazard.surges*6 feature.drowned_city*12 | tags waterlines | stamp flood | bias severity 0.15 storm 0.3
+fall long_winter | name a winter that stayed | group env | speed season | weight 4 | is air_weather | req temp=mild,cold | sets temp=cold | poi ice_outpost 2 coal_plant 2 old_mine 1 ski_lodge 1 | occ EMP 6 SQT 6 | like hazard.cold*6 weather.blizzards*5 presence.fur_folk*3 | tags stove_rooms buried_cars | bias severity 0.15 sparse 0.3 storm 0.2
+fall runaway_heat | name the air baking | group env | speed slow | weight 3 | is air_weather | req temp=mild,hot | sets temp=hot | poi water_works 2 deep_bunker 2 solar_farm 2 | occ EMP 8 | like hazard.heat*6 weather.fire_storms*3 | tags cellar_towns | bias severity 0.15 dry 0.5 dead 0.3 sparse 0.3
+fall ash_year | name an eruption closing the sky | group env | speed instant | weight 3 | is air_weather now | poi coal_plant 1 old_mine 2 deep_bunker 2 | occ SQT 4 EMP 6 | like weather.ash_fall*8 flora.dead_forest*3 | tags ash_roofs | stamp ash | bias severity 0.25 dead 0.4 sparse 0.3 ash 0.6 barren 0.2
+fall great_quake | name the ground moving | group env | speed instant | weight 3 | is now mild | poi highway_interchange 2 rail_yard 2 hospital 2 | occ SCV 6 | like hazard.unstable_ground*6 hazard.sinkholes*3 | tags tilted_towers | stamp fault | bias severity 0.1
+fall air_loss | name the air thinning | group env | speed slow | weight 2 | req air0=open | sets air=thin | poi habitat_dome 3 greenhouse_dome 2 research_lab 1 | occ EMP 10 SQT 4 | like hazard.thin_air*6 | tags masks dead_gardens | bias severity 0.15 sparse 0.4 barren 0.3
+fall poison_air | name a toxic haze from a thousand chimneys | group env | speed slow | weight 3 | is mid rough | req air0=open,thin | sets air=foul | poi refinery 2 steelworks 2 abandoned_factory 2 dust_mill 1 mask_depot 1 | occ SCV 4 | like hazard.bad_air*6 weather.acid_rain*4 | tags masks stained_streets | bias severity 0.25 dead 0.4 barren 0.35 mutagen 0.1
+fall stellar_flare | name the star flaring | group env | speed instant | weight 3 | poi solar_farm 2 telecom_exchange 2 observatory 2 | occ EMP 10 | like hazard.radiation*5 | tags sunward_scorch | bias severity 0.25 burnt 0.3 dead 0.2
+fall meteor_swarm | name years of meteors | group env | speed quick | weight 3 | is now | poi blast_crater 2 observatory 1 habitat_dome 1 | occ EMP 6 | like hazard.meteors*8 | tags holed_domes | stamp crater_scatter | bias severity 0.15 burnt 0.2
+fall industrial_collapse | name factories eating the land | group env | speed slow | weight 3 | is mid mild | poi steelworks 2 refinery 2 coal_plant 2 acid_pool_works 1 | occ SCV 8 | like hazard.toxic_runoff*6 | tags slag_rivers | bias dead 0.2 dirt 0.3
+fall pollinator_loss | name the pollinators stopping | group env | speed slow | weight 2 | is beasts crops mild | poi orchard 2 old_farm 2 greenhouse_dome 2 | occ SQT 4 | like flora.pollen_heavy*4 | tags bare_orchards | bias sparse 0.3 dead 0.2
+fall grey_goo | name small machines eating everything | group tech | speed quick | weight 2 | is high rough | poi research_lab 2 kessari_works 1 data_centre 1 abandoned_factory 2 | occ EMP 10 | like hazard.grey_front*12 fauna.metal_eaters*5 | tags lace_steel | stamp grey_scar | bias severity 0.25 barren 0.5 dead 0.5
+fall reactor_failures | name every plant failing at once | group tech | speed instant | weight 3 | is mid | poi nuclear_plant 3 fusion_plant 2 substation 2 evacuation_camp 2 | occ EMP 8 MUT 6 | like hazard.radiation*6 | tags alarm_rooms | bias severity 0.25 mutagen 0.4 predators 0.3 swollen 0.3
+fall grid_cascade | name the lights going out together | group tech | speed instant | weight 4 | is mid now | poi substation 3 coal_plant 1 nuclear_plant 1 rail_yard 2 hospital 2 dam_hydro 1 | occ SCV 8 | like hazard.arc_flash*5 feature.pylon_forest*5 | tags candle_stubs | bias severity 0.25
+fall ai_silence | name every mind-machine going quiet | group tech | speed instant | weight 3 | is mid now | poi data_centre 3 ministry_hall 2 abandoned_factory 2 telecom_exchange 2 | occ MCH 8 | like presence.kessari*2 | tags quiet_terminals | orbit sats | bias severity 0.25
+fall terraform_failure | name the world-fixer breaking | group tech | speed quick | weight 2 | is high | like mod.half_terraformed*12 | poi weather_engine 2 research_lab 2 solar_farm 1 observatory 1 | occ SQT 4 | like hazard.strange_chemistry*5 marks.survey_stakes*6 | tags climate_towers | stamp terraform_grid | bias severity 0.15 alien 0.3 swollen 0.2 storm 0.3
+fall weather_failure | name the weather control breaking | group tech | speed instant | weight 3 | is high air_weather | poi weather_engine 3 telecom_exchange 1 wind_farm 2 | occ EMP 8 | like weather.perpetual_storm*8 weather.dead_calm*3 hazard.lightning*5 | tags shelter_halls | bias severity 0.25 storm 0.8
+fall teleport_accident | name the gates misfiring | group tech | speed instant | weight 2 | is high | poi gate_ruin 3 abandoned_spaceport 1 research_lab 1 | occ EMP 8 | like hazard.misplaced_things*5 | tags lost_luggage | bias severity 0.25 alien 0.2
+fall drive_disaster | name a drive failing on its pad | group tech | speed instant | weight 2 | is high port | poi abandoned_spaceport 3 crashed_freighter 2 blast_crater 2 | occ SCV 8 | like hazard.radiation*3 hazard.unstable_wrecks*4 | tags melted_pads | stamp crater_ring | bias severity 0.25
+fall cloning_mishap | name too many of everyone | group tech | speed quick | weight 2 | is high rough | poi clone_farm 3 hospital 2 cryo_vault 1 | occ MIM 10 GNG 4 | like presence.duplicates*6 | tags name_doubles | bias severity 0.25
 fall memory_rot | name the records rotting away | group tech | speed slow | weight 2 | is mid mild | poi data_centre 2 public_library 2 archive_vault 2 ministry_hall 1 | occ EMP 6 | like marks.blanked_signs*6 | tags cold_racks
-fall debris_cascade | name orbit filling with wreckage | group tech | speed quick | weight 3 | is high | poi crashed_freighter 2 debris_camp 3 observatory 1 abandoned_spaceport 2 | occ SCV 10 | like hazard.falling_debris*8 sky.drifting_hulks*5 feature.debris_line*4 | tags vacuum_crews | stamp wreck_furrow | orbit debris wrecks
-fall monoculture_failure | name one crop and one blight | group tech | speed quick | weight 2 | is mid crops | poi grain_elevator 3 old_farm 2 ration_depot 2 | occ SCV 6 | like flora.dead_fields*8 | tags field_stores
-fall exodus | name everyone trying to leave | group social | speed season | weight 6 | is port now | poi abandoned_spaceport 3 scrappy_port 3 evacuation_camp 3 processing_hall 2 luggage_field 2 | occ EMP 8 SCV 8 | like infra.port_funnel*5 hazard.unstable_wrecks*3 feature.jam_highways*6 | tags luggage queue_slips | orbit wrecks
-fall lockdown | name walls going up | group social | speed quick | weight 3 | is now | poi quarantine_wall 3 sorting_gate 2 front_checkpoint 2 prison_block 2 | occ MCH 6 EMP 6 | like feature.quarantine_walls*6 marks.colour_zones*6 | tags newspapers_stand
-fall economic_collapse | name money ceasing to mean anything | group social | speed quick | weight 4 | is now mild | poi exchange_market 2 casino_resort 1 shopping_mall 2 exchange_depot 2 | occ GNG 6 SQT 6 | like presence.gangs*2 | tags dead_banks
-fall faith_takeover | name prophets filling the gap | group social | speed season | weight 3 | is now mild | poi church_chapel 3 monastery 2 hollow_shrine 1 alien_cathedral 1 | occ CLT 16 | like creed.lamp_keepers*2 marks.prayer_flags*3 | tags altars
-fall decreed_exodus | name an order for everyone to leave | group social | speed quick | weight 3 | is mid now | poi evacuation_camp 2 ministry_hall 2 abandoned_spaceport 2 | occ EMP 14 MCH 6 | like running.sentries*3 | tags door_notices
-fall general_stoppage | name everyone putting tools down | group social | speed quick | weight 3 | is now mild | poi steelworks 2 rail_yard 2 abandoned_factory 2 company_town 2 | occ SQT 6 | like marks.strike_banners*8 | tags picket_chairs
-fall enclave_wars | name gated estates fighting | group social | speed season | weight 3 | is now | poi wall_city 3 scrap_fort 2 meridian_apartments 2 estate_house 2 | occ GNG 8 | like hazard.crossfire*4 | tags trophy_halls
-fall mutiny | name the workers rising | group social | speed quick | weight 3 | is now | poi company_town 3 ministry_hall 1 abandoned_factory 2 old_mine 2 | occ GNG 6 SQT 6 | like marks.strike_banners*6 ran.company*2 | tags meeting_halls
-fall great_migration | name a whole people walking away | group social | speed season | weight 3 | is outdoors mild | poi evacuation_camp 2 caravan_stop 3 pilgrim_hostel 1 | occ EMP 14 | like marks.route_paint*6 | tags road_camps
-fall dark_patch | name the light dimming | group cosmic | speed slow | weight 3 | is mild | poi observatory 2 solar_farm 2 greenhouse_dome 2 | occ EMP 6 | like fauna.night_hunters*4 flora.glow_moss*5 | tags lamp_arrays
-fall gravity_shift | name the pull changing in patches | group cosmic | speed instant | weight 2 | poi research_lab 2 crashed_freighter 1 space_elevator_base 1 | occ EMP 8 | like hazard.gravity_pockets*10 | tags marker_posts
-fall rogue_body | name a dark world passing close | group cosmic | speed quick | weight 2 | is shore air_weather flood | sets water=sea | poi docks 2 observatory 1 lighthouse 1 | occ SQT 4 | like hazard.tides*6 feature.stranded_ships*3 | tags stranded_boats | stamp flood | orbit debris
-fall time_stutter | name hours repeating in patches | group cosmic | speed quick | weight 1 | is hollow | poi time_pocket 3 wrong_house 2 observatory 1 | occ EMP 14 HOL 8 | like hazard.time_slips*10 | tags repeat_rooms
-fall dimensional_tear | name a seam opening overhead | group cosmic | speed instant | weight 1 | is hollow rough | poi bloom_scar 1 alien_cathedral 1 observatory 2 | occ EMP 10 HOL 8 | like sky.seam*20 | tags bent_rooms
-fall wormhole_tides | name passages opening at random | group cosmic | speed quick | weight 2 | is rough | poi crashed_freighter 2 gate_ruin 2 abandoned_spaceport 1 | occ SCV 8 | like hazard.misplaced_things*4 | tags lost_luggage
-fall slow_fade | name a slow fade | group slow | speed slow | weight 5 | is mild | poi survivor_town 2 hospital 1 school_campus 1 | occ SQT 10 EMP 10 | tags one_open_street
-fall emigration | name the young leaving | group slow | speed slow | weight 4 | is mild | poi school_campus 2 hospice_ward 1 survivor_town 2 | occ EMP 12 SQT 6 | tags one_open_street
-fall neglect | name nobody maintaining it | group slow | speed slow | weight 4 | is mild | poi water_works 2 rail_yard 2 dam_hydro 2 | occ KPR 6 SCV 6 | like hazard.collapsing_floors*5 | tags propped_stairs
-fall supply_cutoff | name the ships ceasing to come | group slow | speed quick | weight 5 | is mild | poi exchange_depot 2 scrappy_port 2 ration_depot 2 | occ SQT 10 | tags ration_shelves
-fall ageing_colony | name machines wearing out first | group slow | speed slow | weight 3 | is mid mild | poi kessari_works 1 old_farm 2 habitat_dome 2 | occ SQT 6 KPR 6 | like hazard.failing_seals*6 | tags hand_parts
-fall vanishing | name everyone vanishing | group mystery | speed instant | weight 3 | poi survivor_hamlet 1 meridian_apartments 2 hospital 1 | occ EMP 28 HOL 6 | like running.long_life_lamps*3 sound.silence*3 | tags set_tables
-fall walked_out_apoc | name everyone leaving calmly at once | group mystery | speed quick | weight 3 | poi military_base 1 meridian_apartments 2 survivor_town 1 | occ EMP 24 | tags door_notices packed_bags
-fall silence | name sound failing | group mystery | speed instant | weight 1 | is hollow | poi radio_mast_site 2 telecom_exchange 1 hospital 1 | occ EMP 10 | like sound.silence*12 marks.hand_signs*8 | tags clapperless_bells
-fall bloom_front | name the Bloom arriving | group mystery | speed season | weight 2 | is bloom rough now | poi bloom_scar 3 alien_hive_ruin 2 hollow_shrine 1 military_base 2 front_checkpoint 2 bloom_garden 1 | occ HOL 8 MUT 12 FAC 6 | like hazard.mutagen*6 feature.bloom_basin*8 | tags grown_through | stamp bloom_region | orbit bloom
-fall folding | name a place folding onto itself | group mystery | speed instant | weight 1 | is hollow rough | poi wrong_house 3 mirror_hall 2 time_pocket 1 | occ EMP 16 HOL 10 | like hazard.disorientation*10 feature.folded_district*10 | tags repeat_rooms
-fall replacement | name the people being swapped for copies | group mystery | speed quick | weight 1 | is hollow rough | poi wrong_house 2 hospital 1 meridian_apartments 1 | occ MIM 20 EMP 10 | like presence.duplicates*4 | tags one_wrong_object
-fall long_sleep | name everyone entering cryo, and the vaults failing | group mystery | speed slow | weight 2 | is mid | poi cryo_vault 3 sleeper_barracks 3 hospice_ward 1 | occ SLP 18 EMP 14 KPR 4 | like running.cold_storage*6 | tags pod_rows
-fall slide | name a slide into barbarism | group social | speed slow | weight 5 | is now mild | new Z71 | poi scrap_fort 2 survivor_town 2 wall_city 1 | occ GNG 12 SQT 8 | like presence.warlords*3 presence.gangs*3 | tags barricades
-fall liquidation | name the owners selling the world for parts | group social | speed season | weight 2 | is now | new Z72 | poi exchange_depot 3 breaker_yard 2 abandoned_factory 2 | occ SCV 8 FAC 4 MCH 4 | like ran.absentees*6 ran.company*4 marks.repossession_tags*10 | tags stripped_rooms | orbit traffic
-fall seam_fire | name fires under the ground | group env | speed slow | weight 2 | is now air_weather mild | new Z73 | poi burn_town 3 coal_plant 2 old_mine 2 | occ EMP 8 NST 4 | like hazard.burning_ground*10 hazard.bad_air*3 feature.burning_seams*10 | tags slumped_towns
-fall magnetic_flip | name the magnetic field failing | group cosmic | speed season | weight 2 | new Z74 | poi telecom_exchange 2 observatory 1 substation 1 | occ EMP 8 | like hazard.radiation*3 sky.aurora*8 fauna.lost_migrants*8 | tags dead_compasses
-fall mirror_burn | name an orbital mirror turning on its own cities | group tech | speed instant | weight 1 | is high | new Z75 | poi solar_farm 2 blast_crater 1 | occ EMP 10 | like sky.second_noon*10 hazard.glare*4 | tags sunward_scorch | stamp burn | orbit mirrors
-fall gene_drift | name children being born slightly changed | group disease | speed slow | weight 2 | is mid mild | new Z76 | poi biolab 1 school_campus 1 hospital 1 | occ MUT 6 SQT 8 | like creed.body_keepers*8 | tags height_marks
-fall broadcast | name a signal that changed how people behaved | group tech | speed quick | weight 1 | is mid hollow | new Z77 | poi telecom_exchange 3 radio_mast_site 2 | occ HOL 6 CLT 6 EMP 8 | like running.broadcast*8 sound.radio_murmur*8 | tags cut_cables
+fall debris_cascade | name orbit filling with wreckage | group tech | speed quick | weight 3 | is high | poi crashed_freighter 2 debris_camp 3 observatory 1 abandoned_spaceport 2 | occ SCV 10 | like hazard.falling_debris*8 sky.drifting_hulks*5 feature.debris_line*4 | tags vacuum_crews | stamp wreck_furrow | orbit debris wrecks | bias severity 0.15
+fall monoculture_failure | name one crop and one blight | group tech | speed quick | weight 2 | is mid crops | poi grain_elevator 3 old_farm 2 ration_depot 2 | occ SCV 6 | like flora.dead_fields*8 | tags field_stores | bias severity 0.15 dead 0.5 stock 0.2
+fall exodus | name everyone trying to leave | group social | speed season | weight 6 | is port now | poi abandoned_spaceport 3 scrappy_port 3 evacuation_camp 3 processing_hall 2 luggage_field 2 | occ EMP 8 SCV 8 | like infra.port_funnel*5 hazard.unstable_wrecks*3 feature.jam_highways*6 | tags luggage queue_slips | orbit wrecks | bias severity 0.05 desolate 0.4 ferals 0.4 stock 0.2
+fall lockdown | name walls going up | group social | speed quick | weight 3 | is now | poi quarantine_wall 3 sorting_gate 2 front_checkpoint 2 prison_block 2 | occ MCH 6 EMP 6 | like feature.quarantine_walls*6 marks.colour_zones*6 | tags newspapers_stand | bias severity 0.05
+fall economic_collapse | name money ceasing to mean anything | group social | speed quick | weight 4 | is now mild | poi exchange_market 2 casino_resort 1 shopping_mall 2 exchange_depot 2 | occ GNG 6 SQT 6 | like presence.gangs*2 | tags dead_banks | bias severity -0.1 ferals 0.2
+fall faith_takeover | name prophets filling the gap | group social | speed season | weight 3 | is now mild | poi church_chapel 3 monastery 2 hollow_shrine 1 alien_cathedral 1 | occ CLT 16 | like creed.lamp_keepers*2 marks.prayer_flags*3 | tags altars | bias severity -0.1
+fall decreed_exodus | name an order for everyone to leave | group social | speed quick | weight 3 | is mid now | poi evacuation_camp 2 ministry_hall 2 abandoned_spaceport 2 | occ EMP 14 MCH 6 | like running.sentries*3 | tags door_notices | bias severity 0.05 desolate 0.4 ferals 0.3
+fall general_stoppage | name everyone putting tools down | group social | speed quick | weight 3 | is now mild | poi steelworks 2 rail_yard 2 abandoned_factory 2 company_town 2 | occ SQT 6 | like marks.strike_banners*8 | tags picket_chairs | bias severity -0.1
+fall enclave_wars | name gated estates fighting | group social | speed season | weight 3 | is now | poi wall_city 3 scrap_fort 2 meridian_apartments 2 estate_house 2 | occ GNG 8 | like hazard.crossfire*4 | tags trophy_halls | bias severity 0.05 strife 0.4
+fall mutiny | name the workers rising | group social | speed quick | weight 3 | is now | poi company_town 3 ministry_hall 1 abandoned_factory 2 old_mine 2 | occ GNG 6 SQT 6 | like marks.strike_banners*6 ran.company*2 | tags meeting_halls | bias severity 0.05 strife 0.3
+fall great_migration | name a whole people walking away | group social | speed season | weight 3 | is outdoors mild | poi evacuation_camp 2 caravan_stop 3 pilgrim_hostel 1 | occ EMP 14 | like marks.route_paint*6 | tags road_camps | bias severity -0.1 desolate 0.3
+fall dark_patch | name the light dimming | group cosmic | speed slow | weight 3 | is mild | poi observatory 2 solar_farm 2 greenhouse_dome 2 | occ EMP 6 | like fauna.night_hunters*4 flora.glow_moss*5 | tags lamp_arrays | bias severity 0.05 alien 0.1
+fall gravity_shift | name the pull changing in patches | group cosmic | speed instant | weight 2 | poi research_lab 2 crashed_freighter 1 space_elevator_base 1 | occ EMP 8 | like hazard.gravity_pockets*10 | tags marker_posts | bias severity 0.3 alien 0.1
+fall rogue_body | name a dark world passing close | group cosmic | speed quick | weight 2 | is shore air_weather flood | sets water=sea | poi docks 2 observatory 1 lighthouse 1 | occ SQT 4 | like hazard.tides*6 feature.stranded_ships*3 | tags stranded_boats | stamp flood | orbit debris | bias severity 0.2 storm 0.3
+fall time_stutter | name hours repeating in patches | group cosmic | speed quick | weight 1 | is warped | poi time_pocket 3 wrong_house 2 observatory 1 | occ EMP 14 WRP 8 | like hazard.time_slips*10 | tags repeat_rooms | bias severity 0.2 alien 0.15
+fall dimensional_tear | name a seam opening overhead | group cosmic | speed instant | weight 1 | is warped rough | poi bloom_scar 1 alien_cathedral 1 observatory 2 | occ EMP 10 WRP 8 | like sky.seam*20 | tags bent_rooms | bias severity 0.4 alien 0.15
+fall wormhole_tides | name passages opening at random | group cosmic | speed quick | weight 2 | is rough | poi crashed_freighter 2 gate_ruin 2 abandoned_spaceport 1 | occ SCV 8 | like hazard.misplaced_things*4 | tags lost_luggage | bias severity 0.3 alien 0.1
+fall slow_fade | name a slow fade | group slow | speed slow | weight 5 | is mild | poi survivor_town 2 hospital 1 school_campus 1 | occ SQT 10 EMP 10 | tags one_open_street | bias severity -0.25 desolate 0.2 overgrown 0.2
+fall emigration | name the young leaving | group slow | speed slow | weight 4 | is mild | poi school_campus 2 hospice_ward 1 survivor_town 2 | occ EMP 12 SQT 6 | tags one_open_street | bias severity -0.25 desolate 0.2 overgrown 0.2 ferals 0.2 stock 0.2
+fall neglect | name nobody maintaining it | group slow | speed slow | weight 4 | is mild | poi water_works 2 rail_yard 2 dam_hydro 2 | occ KPR 6 SCV 6 | like hazard.collapsing_floors*5 | tags propped_stairs | bias severity -0.25 desolate 0.2 overgrown 0.3 dirt 0.3
+fall supply_cutoff | name the ships ceasing to come | group slow | speed quick | weight 5 | is mild | poi exchange_depot 2 scrappy_port 2 ration_depot 2 | occ SQT 10 | tags ration_shelves | bias severity -0.25 desolate 0.2
+fall ageing_colony | name machines wearing out first | group slow | speed slow | weight 3 | is mid mild | poi kessari_works 1 old_farm 2 habitat_dome 2 | occ SQT 6 KPR 6 | like hazard.failing_seals*6 | tags hand_parts | bias severity -0.25 desolate 0.2 dirt 0.2
+fall vanishing | name everyone vanishing | group mystery | speed instant | weight 3 | poi survivor_hamlet 1 meridian_apartments 2 hospital 1 | occ EMP 28 WRP 6 | like running.long_life_lamps*3 sound.silence*3 | tags set_tables | bias severity 0.2 desolate 0.4 ferals 0.5 stock 0.3 overgrown 0.2
+fall walked_out_apoc | name everyone leaving calmly at once | group mystery | speed quick | weight 3 | poi military_base 1 meridian_apartments 2 survivor_town 1 | occ EMP 24 | tags door_notices packed_bags | bias severity 0.1 desolate 0.4 ferals 0.4 stock 0.3 overgrown 0.2
+fall silence | name sound failing | group mystery | speed instant | weight 1 | is warped | poi radio_mast_site 2 telecom_exchange 1 hospital 1 | occ EMP 10 | like sound.silence*12 marks.hand_signs*8 | tags clapperless_bells | bias severity 0.2 desolate 0.5
+fall hollow_front | name the Hollow growth arriving | group mystery | speed season | weight 2 | is hollow rough now | poi bloom_scar 3 alien_hive_ruin 2 hollow_shrine 1 military_base 2 front_checkpoint 2 bloom_garden 1 | occ WRP 8 MUT 12 FAC 6 | like hazard.mutagen*6 feature.hollow_basin*8 flora.hollow_overrun*8 | tags grown_through | stamp hollow_region | orbit hollow | bias severity 0.2 desolate 0.4 fungal 0.8 overgrown 0.5 alien 0.2
+fall folding | name a place folding onto itself | group mystery | speed instant | weight 1 | is warped rough | poi wrong_house 3 mirror_hall 2 time_pocket 1 | occ EMP 16 WRP 10 | like hazard.disorientation*10 feature.folded_district*10 | tags repeat_rooms | bias severity 0.3 desolate 0.4
+fall replacement | name the people being swapped for copies | group mystery | speed quick | weight 1 | is warped rough | poi wrong_house 2 hospital 1 meridian_apartments 1 | occ MIM 20 EMP 10 | like presence.duplicates*4 | tags one_wrong_object | bias severity 0.2 desolate 0.4
+fall long_sleep | name everyone entering cryo, and the vaults failing | group mystery | speed slow | weight 2 | is mid | poi cryo_vault 3 sleeper_barracks 3 hospice_ward 1 | occ SLP 18 EMP 14 KPR 4 | like running.cold_storage*6 | tags pod_rows | bias severity 0.1 desolate 0.4 ferals 0.3 overgrown 0.2
+fall slide | name a slide into barbarism | group social | speed slow | weight 5 | is now mild | new Z71 | poi scrap_fort 2 survivor_town 2 wall_city 1 | occ GNG 12 SQT 8 | like presence.warlords*3 presence.gangs*3 | tags barricades | bias severity -0.1 strife 0.3 stock 0.2 working 0.3
+fall liquidation | name the owners selling the world for parts | group social | speed season | weight 2 | is now | new Z72 | poi exchange_depot 3 breaker_yard 2 abandoned_factory 2 | occ SCV 8 FAC 4 MCH 4 | like ran.absentees*6 ran.company*4 marks.repossession_tags*10 | tags stripped_rooms | orbit traffic | bias severity 0.05 dirt 0.2
+fall seam_fire | name fires under the ground | group env | speed slow | weight 2 | is now air_weather mild | new Z73 | poi burn_town 3 coal_plant 2 old_mine 2 | occ EMP 8 NST 4 | like hazard.burning_ground*10 hazard.bad_air*3 feature.burning_seams*10 | tags slumped_towns | bias burnt 0.6 dry 0.2 sparse 0.3
+fall magnetic_flip | name the magnetic field failing | group cosmic | speed season | weight 2 | new Z74 | poi telecom_exchange 2 observatory 1 substation 1 | occ EMP 8 | like hazard.radiation*3 sky.aurora*8 fauna.lost_migrants*8 | tags dead_compasses | bias severity 0.2 storm 0.3 mutagen 0.1
+fall mirror_burn | name an orbital mirror turning on its own cities | group tech | speed instant | weight 1 | is high | new Z75 | poi solar_farm 2 blast_crater 1 | occ EMP 10 | like sky.second_noon*10 hazard.glare*4 | tags sunward_scorch | stamp burn | orbit mirrors | bias severity 0.25 burnt 0.7 dead 0.3 dry 0.3
+fall gene_drift | name children being born slightly changed | group disease | speed slow | weight 2 | is mid mild | new Z76 | poi biolab 1 school_campus 1 hospital 1 | occ MUT 6 SQT 8 | like creed.body_keepers*8 | tags height_marks | bias desolate 0.3 swollen 0.3 mutagen 0.3
+fall broadcast | name a signal that changed how people behaved | group tech | speed quick | weight 1 | is mid warped | new Z77 | poi telecom_exchange 3 radio_mast_site 2 | occ WRP 6 CLT 6 EMP 8 | like running.broadcast*8 sound.radio_murmur*8 | tags cut_cables | bias severity 0.15
 fall sinkage | name the ground under the cities giving way | group env | speed slow | weight 2 | is mild | new Z78 | poi sunk_town 3 water_works 1 metro_station 1 | occ NST 6 EMP 8 | like hazard.sinkholes*8 | tags tilted_towers | stamp pit
-fall overreach | name a megaproject that broke the economy | group social | speed slow | weight 2 | is mid mild | new Z79 | poi works_complex 2 abandoned_factory 1 | occ EMP 10 SCV 4 | like feature.unfinished_works*14 | tags scaffolds
-fall last_ark | name the rich leaving in the only ship | group social | speed quick | weight 2 | is high port | new Z80 | poi abandoned_spaceport 2 estate_house 2 scrap_fort 1 | occ GNG 8 SQT 6 | like ran.great_houses*5 ran.company*3 | tags gilded_forts
-fall first_contact | name something landing and then leaving | group cosmic | speed quick | weight 1 | is rough | new Z81 | poi alien_cathedral 1 blast_crater 1 research_lab 1 | occ EMP 8 CLT 6 | like feature.long_furrow*5 | tags cordon_tents
-fall tide_of_refugees | name more people arriving than it could feed | group social | speed season | weight 3 | is now port | new Z82 | poi evacuation_camp 3 aid_station 2 ration_depot 2 scrappy_port 1 | occ SQT 8 GNG 6 SCV 6 | like presence.refugees*8 | tags road_camps soup_kitchens
+fall overreach | name a megaproject that broke the economy | group social | speed slow | weight 2 | is mid mild | new Z79 | poi works_complex 2 abandoned_factory 1 | occ EMP 10 SCV 4 | like feature.unfinished_works*14 | tags scaffolds | bias severity -0.1
+fall last_ark | name the rich leaving in the only ship | group social | speed quick | weight 2 | is high port | new Z80 | poi abandoned_spaceport 2 estate_house 2 scrap_fort 1 | occ GNG 8 SQT 6 | like ran.great_houses*5 ran.company*3 | tags gilded_forts | bias severity 0.05 desolate 0.3
+fall first_contact | name something landing and then leaving | group cosmic | speed quick | weight 1 | is rough | new Z81 | poi alien_cathedral 1 blast_crater 1 research_lab 1 | occ EMP 8 CLT 6 | like feature.long_furrow*5 | tags cordon_tents | bias severity 0.3 alien 0.2
+fall tide_of_refugees | name more people arriving than it could feed | group social | speed season | weight 3 | is now port | new Z82 | poi evacuation_camp 3 aid_station 2 ration_depot 2 scrappy_port 1 | occ SQT 8 GNG 6 SCV 6 | like presence.refugees*8 | tags road_camps soup_kitchens | bias severity 0.05 strife 0.2 dead 0.1 sparse 0.2
 ```
 
 **The moment it fell.** An owner's variable, and one of the best new layers. Parade Ground, School Holidays, Closed for the Season and half of the frozen-moment ideas turned out to be one value here. Slow falls have no moment, so they read `over decades`.
@@ -500,11 +500,11 @@ moment still_going | name and it's still going | weight 1 | req phase=falling
 **What's still running.** An owner's variable. Where long-life power survives, places keep their schedule, so this also sets what changes by the hour.
 
 ```layers
-running nothing | name nothing | weight 12 | blank yes | occ EMP 4 | like sound.silence*1.5
+running nothing | name nothing | weight 12 | blank yes | occ EMP 4 | like sound.silence*1.5 | bias desolate 0.3
 running long_life_lamps | name long-life lamps in empty rooms | weight 5 | is mid | tags lamps_on
 running timers | name timers: barriers, sprinklers and shift bells for no one | weight 4 | is mid | occ MCH 4 | tags afterhours
 running transit_loops | name trams and trains on empty loops | weight 3 | is mid | occ MCH 6 | poi monorail_station 1 | like sound.rail_hum*5 | tags ticket_halls
-running farm_machines | name farm machines still sowing and shipping | weight 3 | is mid crops | occ MCH 12 | poi harvester_field 2 drone_hive 2 | tags full_silos
+running farm_machines | name farm machines still sowing and shipping | weight 3 | is mid crops | occ MCH 12 | poi harvester_field 2 drone_hive 2 | tags full_silos | bias stock 0.2
 running factory_lines | name factory lines making stock for nobody | weight 3 | is mid | occ MCH 12 | tags stock_mountains
 running vats | name vats still growing | weight 2 | is high | occ MCH 6 NST 4 | poi vat_hall 2 | tags vat_shapes
 running sentries | name sentries still guarding | weight 5 | is rough mid | occ MCH 16 | poi sentry_line 2 | like hazard.armed_hardware*5 | tags dormant_racks
@@ -522,44 +522,44 @@ running billboards | name powered billboards still selling | weight 3 | is high 
 running hour_horn | name a great horn sounding once a day | weight 2 | is mid | like sound.hour_horn*20
 ```
 
-**Presences and factions.** Who holds ground now, and who's working the place. Faction rules from the design hold: the rim has none, start worlds have none, and machine presences hold ground, they never come at a base in waves. The Hollow is written only as what the player can notice, and `name` never calls it anything.
+**Presences and factions.** Who holds ground now, and who's working the place. Faction rules from the design hold: the rim has none, start worlds have none, and machine presences hold ground, they never come at a base in waves. The Husks' warping is written only as what the player can notice, and `name` never calls it anything.
 
 ```layers
-presence vharn_garrison | name a Vharn garrison | weight 4 | is faction | occ FAC 18 | poi vharn_outpost 4 vharn_sam_site 2 | like marks.faction_sigils*3 | orbit patrol
-presence vharn_patrols | name Vharn crews in orbit | weight 2 | is faction | orbit patrol
+presence vharn_garrison | name a Vharn garrison | weight 4 | is faction | occ FAC 18 | poi vharn_outpost 4 vharn_sam_site 2 | like marks.faction_sigils*3 | orbit patrol | bias strife 0.3
+presence vharn_patrols | name Vharn crews in orbit | weight 2 | is faction | orbit patrol | bias strife 0.2
 presence meridian_remnant | name a Meridian remnant | weight 4 | is faction settled | occ FAC 14 | poi meridian_garrison 2 meridian_relay 2 meridian_research 1 | orbit stations
 presence exchange_traders | name Exchange traders | weight 4 | is faction living | occ SQT 6 | poi exchange_depot 3 exchange_market 2 | orbit traffic stations
 presence kessari | name Kessari clans | weight 4 | is faction | occ MCH 12 | poi kessari_works 3 kessari_spire 3 | orbit relays
 presence reaver_capital | name a Reaver capital ship overhead | weight 2 | is faction | occ GNG 8 | poi crashed_freighter 2 bog_wreck_field 1 | orbit pirates
 presence reaver_salvage | name Reaver salvage crews | weight 3 | is faction settled | occ GNG 10 SCV 6 | poi scrap_fort 2 | orbit pirates
-presence freeholders | name Freeholder settlers | weight 6 | is living | occ SQT 16 | poi freeholder_farm 3 frontier_base 1
-presence gangs | name roving gangs | weight 6 | is settled rough outdoors | occ GNG 22 | poi scrap_fort 3 fuel_fort 1 gang_arena 1 | tags trophy_walls
-presence warlords | name warlords | weight 3 | is settled rough | occ GNG 14 SQT 6 | poi hilltop_keep 2 toll_gate 2 wall_city 1 | tags trophy_halls
-presence militias | name town militias | weight 3 | is living | occ SQT 8 GNG 6 | poi scrap_fort 1 | tags barricades
-presence resistance | name resistance cells | weight 0.6 | is living rough | occ SQT 6 FAC 4 | tags hidden_cellars
+presence freeholders | name Freeholder settlers | weight 6 | is living | occ SQT 16 | poi freeholder_farm 3 frontier_base 1 | bias living 0.4 stock 0.2
+presence gangs | name roving gangs | weight 6 | is settled rough outdoors | occ GNG 22 | poi scrap_fort 3 fuel_fort 1 gang_arena 1 | tags trophy_walls | bias strife 0.2
+presence warlords | name warlords | weight 3 | is settled rough | occ GNG 14 SQT 6 | poi hilltop_keep 2 toll_gate 2 wall_city 1 | tags trophy_halls | bias strife 0.5
+presence militias | name town militias | weight 3 | is living | occ SQT 8 GNG 6 | poi scrap_fort 1 | tags barricades | bias strife 0.3
+presence resistance | name resistance cells | weight 0.6 | is living rough | occ SQT 6 FAC 4 | tags hidden_cellars | bias strife 0.4
 presence smugglers | name smugglers | weight 2 | is living | occ SCV 8 | tags hidden_cellars
 presence water_lords | name water lords | weight 2 | is living dry rough | occ GNG 12 | poi water_tower_keep 3 | tags tally_rods
-presence caravaners | name caravaners | weight 3 | is living outdoors | occ SCV 10 | poi caravan_stop 2 | tags caravan_gear
-presence fisher_folk | name fisher folk | weight 3 | is living shore | occ SQT 10 | poi barge_town 1 pier 1 | tags net_lofts
-presence fur_folk | name fur-clad hamlets | weight 2 | is living cold outdoors | occ SQT 10 | poi ice_cutters 1 | tags stove_rooms
+presence caravaners | name caravaners | weight 3 | is living outdoors | occ SCV 10 | poi caravan_stop 2 | tags caravan_gear | bias working 0.5
+presence fisher_folk | name fisher folk | weight 3 | is living shore | occ SQT 10 | poi barge_town 1 pier 1 | tags net_lofts | bias living 0.3
+presence fur_folk | name fur-clad hamlets | weight 2 | is living cold outdoors | occ SQT 10 | poi ice_cutters 1 | tags stove_rooms | bias living 0.2 working 0.2
 presence pale_folk | name pale people from below | weight 2 | is living | occ SQT 8 NST 4 | poi undercity_district 2 | tags shop_streets
 presence hermits | name lone hermits | weight 5 | is settled | occ SQT 3 SCV 3 | poi hermit_cabin 2 | tags hermit_camps
-presence keepers | name keepers who never left | weight 4 | is living | occ KPR 12 | tags duty_rosters
+presence keepers | name keepers who never left | weight 4 | is living | occ KPR 12 | tags duty_rosters | bias living 0.2
 presence pilgrims | name pilgrims | weight 3 | is living outdoors | occ CLT 10 | poi pilgrim_hostel 1 | tags hostels
 presence cultists | name a sect | weight 2 | is living | occ CLT 14 | poi hollow_shrine 1 church_chapel 1 | tags altars
-presence refugees | name refugees | weight 2 | is living | occ SQT 10 SCV 6 | poi evacuation_camp 2 aid_station 1 | tags road_camps
+presence refugees | name refugees | weight 2 | is living | occ SQT 10 SCV 6 | poi evacuation_camp 2 aid_station 1 | tags road_camps | bias strife 0.1 living 0.2
 presence debris_diggers | name debris diggers | weight 2 | is living | occ SCV 12 | poi debris_camp 2 | tags hermit_camps
-presence bandit_riders | name riders on the old roads | weight 2 | is living rough low outdoors | occ GNG 10 | tags trophy_walls
-presence hunters | name hunters and guides | weight 2 | is living beasts | occ SCV 6 SQT 4 | tags trophy_halls
+presence bandit_riders | name riders on the old roads | weight 2 | is living rough low outdoors | occ GNG 10 | tags trophy_walls | bias strife 0.3 working 0.3
+presence hunters | name hunters and guides | weight 2 | is living beasts | occ SCV 6 SQT 4 | tags trophy_halls | bias living 0.2
 presence routine_walkers | name sleepers walking their old routines | weight 0.2 | is settled | occ HSK 6 | poi routine_loop_street 2 | tags routine_scenes
-presence husk_nights | name husks abroad after dark | weight 0.4 | is settled mid rough | occ HSK 22 | poi cemetery_vault 1 | tags churchyards
-presence frenzied | name the frenzied, still wandering | weight 0.2 | is settled rough | occ MUT 6 GNG 6 | tags gouged_doors
+presence husk_nights | name husks abroad after dark | weight 0.4 | is settled mid rough | occ HSK 22 | poi cemetery_vault 1 | tags churchyards | bias desolate 0.2
+presence frenzied | name the frenzied, still wandering | weight 0.2 | is settled rough | occ MUT 6 GNG 6 | tags gouged_doors | bias strife 0.3
 presence duplicates | name people who are all the same person | weight 0.2 | is settled rough | occ MIM 12 | tags name_doubles
-presence reclaimers | name crews come back to reclaim it | weight 3 | is mended | occ SCV 6 FAC 4 | tags patched
+presence reclaimers | name crews come back to reclaim it | weight 3 | is mended | occ SCV 6 FAC 4 | tags patched | bias living 0.3
 presence precursor_guardians | name silent guardians | weight 0.4 | is rough | occ GRD 20 | poi precursor_vault 2 | orbit precursor
 presence machine_lords | name a lone machine that thinks it owns the place | weight 1 | is mid rough | occ MCH 10 | tags spotless_zones
-presence bloom_shore | name shore towns at the edge of the Bloom | weight 1 | is bloom living rough | occ HOL 6 SQT 6 MUT 8 | poi bloom_scar 1 | orbit bloom
-presence listening | name something listening | weight 2 | is hollow | occ HOL 16 | poi hollow_shrine 1 | tags patterned_objects
+presence hollow_shore | name shore towns at the edge of the Hollow growth | weight 1 | is hollow living rough | occ WRP 6 SQT 6 MUT 8 | poi bloom_scar 1 | orbit hollow | like flora.hollow_overrun*3 | bias fungal 0.3
+presence listening | name something listening | weight 2 | is warped | occ WRP 16 | poi hollow_shrine 1 | tags patterned_objects
 ```
 
 **Creeds.** Survivors now have beliefs as well as places, which the variety scout found to be the biggest gap on the people side. A creed changes dressing, dress, stock and rules, and shows only in behaviour and objects, never in words.
@@ -575,7 +575,7 @@ creed horn_pausers | name stopping to look up at the hour horn | weight 1 | is l
 creed lamp_keepers | name keeping one lamp lit in every town | weight 3 | is living | tags lamp_rooms
 creed cargo_builders | name building timber ships and waiting | weight 2 | is living port outdoors | poi timber_fleet 2 | tags timber_ships
 creed sealed_believers | name sure the outside air is death | weight 2 | is living | poi deep_bunker 1 | tags trade_hatch
-creed coreward_leaners | name building everything to face one way | weight 2 | is living hollow | poi hollow_shrine 2 | tags pilgrim_cots
+creed coreward_leaners | name building everything to face one way | weight 2 | is living warped | poi hollow_shrine 2 | tags pilgrim_cots
 creed sky_counters | name counting nights and lights in the sky | weight 2 | is living | poi observatory 1 | tags star_charts
 creed seed_keepers | name guarding seed they may never plant | weight 3 | is living crops | poi seed_vault 2 | tags seed_rooms
 creed road_menders | name keeping up one perfect stretch of road | weight 2 | is living outdoors | tags road_crews
@@ -599,7 +599,7 @@ occ FAC | name faction-held | is faction
 occ MCH | name machine-held | is mid
 occ CYB | name cyborgs | is high
 occ BOT | name feral robots | is mid
-occ HOL | name something wrong here | is hollow
+occ WRP | name Husk-warped: something wrong here | is warped
 occ CLT | name cultists and pilgrims | is living
 occ MUT | name mutated predators | is beasts
 occ KPR | name keepers, on a duty that outlived its reason | is living
@@ -698,14 +698,14 @@ feature precursor_plates | name smooth plates and pillars on the plain | weight 
 feature vault_field | name sealed domes on an empty plain | weight 2 | is rough | poi precursor_vault 2 vault_gate 2 alien_hive_ruin 1 | tags packed_cases | orbit precursor | like presence.precursor_guardians*12
 feature vharn_yards | name half-built hulls on alien cradles | weight 1 | is faction | poi alien_slipway 3 vharn_outpost 2 | tags hull_jigs | orbit yards | like presence.vharn_garrison*12
 feature alien_prison | name an alien prison of gantries and wall lines | weight 1 | is faction | poi alien_cellblock 3 prison_block 1 | tags cells | like presence.vharn_garrison*12
-feature bloom_basin | name a lowland full of shimmering growth | weight 2 | is bloom rough | poi bloom_scar 2 bloom_garden 2 | stamp bloom_region | tags grown_through | orbit bloom | like presence.bloom_shore*6
-feature bloom_patch | name one rare splotch of overgrown land | weight 2 | is bloom | poi bloom_garden 1 | tags grown_through
-feature leaning_world | name every trunk leaning one way | weight 1 | is hollow plants | poi hollow_shrine 1 | like flora.bent_coreward*12 | tags pilgrim_cots
-feature singing_rock | name fluted stone that seems to repeat itself | weight 1 | is hollow | poi sound_garden 2 | like sound.stone_flutes*12
-feature folded_district | name a district that turns back on itself | weight 1 | is hollow settled | poi wrong_house 2 time_pocket 1 | tags repeat_rooms
-feature mirror_district | name districts with twins, each with one small edit | weight 1 | is hollow settled mid | poi mirror_hall 3 wrong_house 1 | tags repeat_rooms
-feature still_wave | name a breaking wave stopped and turned to stone | weight 1 | is hollow shore
-feature facing_suits | name empty suits in rows, all facing one way | weight 1 | is hollow settled | tags patterned_objects
+feature hollow_basin | name a lowland full of shimmering growth | weight 2 | is hollow rough | poi bloom_scar 2 bloom_garden 2 | stamp hollow_region | tags grown_through | orbit hollow | like presence.hollow_shore*6 flora.hollow_overrun*4
+feature hollow_patch | name one rare splotch of overgrown land | weight 2 | is hollow | poi bloom_garden 1 | tags grown_through
+feature leaning_world | name every trunk leaning one way | weight 1 | is warped plants | poi hollow_shrine 1 | like flora.bent_coreward*12 | tags pilgrim_cots
+feature singing_rock | name fluted stone that seems to repeat itself | weight 1 | is warped | poi sound_garden 2 | like sound.stone_flutes*12
+feature folded_district | name a district that turns back on itself | weight 1 | is warped settled | poi wrong_house 2 time_pocket 1 | tags repeat_rooms
+feature mirror_district | name districts with twins, each with one small edit | weight 1 | is warped settled mid | poi mirror_hall 3 wrong_house 1 | tags repeat_rooms
+feature still_wave | name a breaking wave stopped and turned to stone | weight 1 | is warped shore
+feature facing_suits | name empty suits in rows, all facing one way | weight 1 | is warped settled | tags patterned_objects
 feature domed_observatories | name a dome on every high point | weight 2 | is settled mid | poi observatory 3 | tags star_charts
 ```
 
@@ -717,13 +717,13 @@ hazard thin_air | name thin air | weight 1 | req air=thin
 hazard bad_air | name bad air | weight 1 | req air=foul
 hazard heat | name heat | weight 2 | is hot
 hazard cold | name cold | weight 2 | is cold
-hazard radiation | name radiation zones | weight 2
-hazard mutagen | name mutagen patches | weight 1 | is plants
-hazard spores | name spore bursts | weight 1 | is plants
-hazard toxic_runoff | name toxic runoff | weight 1 | is settled mid air_weather
+hazard radiation | name radiation zones | weight 2 | bias mutagen 0.3 predators 0.1
+hazard mutagen | name mutagen patches | weight 1 | is plants | bias mutagen 0.7 swollen 0.4 predators 0.3
+hazard spores | name spore bursts | weight 1 | is plants | bias fungal 0.4
+hazard toxic_runoff | name toxic runoff | weight 1 | is settled mid air_weather | bias dead 0.2
 hazard strange_chemistry | name odd chemistry in the air and water | weight 1 | is air_weather
 hazard corrosion | name corrosion | weight 1 | is air_weather
-hazard thirst | name thirst | weight 2 | is dry air_weather
+hazard thirst | name thirst | weight 2 | is dry air_weather | bias dry 0.4
 hazard glare | name glare | weight 2 | is dry
 hazard sharp_ground | name sharp ground | weight 1
 hazard unstable_ground | name unstable ground | weight 2
@@ -738,7 +738,7 @@ hazard scalding | name scalding vents | weight 1 | req water=some,wet,sea temp!=
 hazard lava | name lava | weight 2 | req temp=scorch,hot air0!=open
 hazard eruptions | name eruptions | weight 1 | is hot
 hazard quakes | name quakes | weight 2
-hazard burning_ground | name burning ground | weight 1 | is air_weather
+hazard burning_ground | name burning ground | weight 1 | is air_weather | bias burnt 0.3
 hazard lightning | name lightning | weight 2 | is air_weather
 hazard gusts | name gusts and tornadoes | weight 2 | is air_weather
 hazard meteors | name meteor showers | weight 1
@@ -747,68 +747,69 @@ hazard unstable_wrecks | name unstable wrecks | weight 2 | is settled
 hazard collapsing_floors | name collapsing floors and rusted rigging | weight 3 | is settled
 hazard falling_facades | name falling facades | weight 1 | is settled mid
 hazard failing_seals | name failing seals | weight 2 | is settled mid
-hazard armed_hardware | name armed machines still on post | weight 2 | is settled mid rough
-hazard mines | name mines and unexploded ordnance | weight 2 | is settled rough
-hazard crossfire | name crossfire | weight 1 | is settled rough living
+hazard armed_hardware | name armed machines still on post | weight 2 | is settled mid rough | bias strife 0.2
+hazard mines | name mines and unexploded ordnance | weight 2 | is settled rough | bias strife 0.3
+hazard crossfire | name crossfire | weight 1 | is settled rough living | bias strife 0.5
 hazard arc_flash | name arc flash at live switchgear | weight 1 | is settled mid
 hazard molten_pits | name pits still molten | weight 1 | is settled mid
-hazard rot_pockets | name rot pockets and gas | weight 1 | is settled
-hazard gang_ambush | name ambushes on the roads | weight 2 | is settled rough living outdoors
+hazard rot_pockets | name rot pockets and gas | weight 1 | is settled | bias fungal 0.2
+hazard gang_ambush | name ambushes on the roads | weight 2 | is settled rough living outdoors | bias strife 0.3
 hazard night_swarms | name night swarms | weight 1 | is settled rough
-hazard swarm_nests | name nest rooms | weight 2 | is beasts
-hazard ambush_plants | name ambush plants | weight 1 | is plants rich_life rough
-hazard stampedes | name stampedes | weight 1 | is beasts rich_life outdoors
-hazard night_predators | name night predators | weight 2 | is beasts
+hazard swarm_nests | name nest rooms | weight 2 | is beasts | bias predators 0.2
+hazard ambush_plants | name ambush plants | weight 1 | is plants rich_life rough | bias alien 0.1
+hazard stampedes | name stampedes | weight 1 | is beasts rich_life outdoors | bias stock 0.1
+hazard night_predators | name night predators | weight 2 | is beasts | bias predators 0.4
 hazard getting_lost | name getting lost | weight 1
 hazard grey_front | name a grey front that will not bear weight | weight 1 | is high
 hazard gravity_pockets | name gravity pockets | weight 1
 hazard misplaced_things | name things that reappear elsewhere | weight 1 | is high
-hazard disorientation | name disorientation | weight 1 | is hollow
-hazard time_slips | name lost minutes | weight 1 | is hollow
-hazard sound_lures | name wordless sounds that lead you on | weight 1 | is hollow
+hazard disorientation | name disorientation | weight 1 | is warped
+hazard time_slips | name lost minutes | weight 1 | is warped
+hazard sound_lures | name wordless sounds that lead you on | weight 1 | is warped
 ```
 
 **Flora.** One bias per world, on top of the one flora module, which still rolls the actual species.
 
 ```layers
-flora bare | name no plants | weight 8 | blank yes | req life=none
-flora bare_rock_lichen | name lichen in the shade only | weight 6 | is plants | req life=low
-flora dead_forest | name dead grey forests | weight 0.3 | is plants settled | req temp!=frozen,scorch
-flora dead_fields | name vast fields of one dead crop | weight 0.3 | is plants settled crops
-flora meadow_grass | name grass and broadleaf | weight 6 | is plants rich_life | req temp=mild,hot,cold
-flora deep_forest | name deep canopy | weight 5 | is plants rich_life | req water=some,wet,sea temp=mild,hot
+flora bare | name no plants | weight 8 | blank yes | req life=none | bias sparse 1 barren 0.4
+flora bare_rock_lichen | name lichen in the shade only | weight 6 | is plants | req life=low | bias sparse 0.7 barren 0.3
+flora dead_forest | name dead grey forests | weight 0.3 | is plants settled | req temp!=frozen,scorch | bias dead 0.8
+flora dead_fields | name vast fields of one dead crop | weight 0.3 | is plants settled crops | bias dead 0.6 stock 0.2
+flora meadow_grass | name grass and broadleaf | weight 6 | is plants rich_life | req temp=mild,hot,cold | bias stock 0.1
+flora deep_forest | name deep canopy | weight 5 | is plants rich_life | req water=some,wet,sea temp=mild,hot | bias overgrown 0.4
 flora mangrove_reed | name mangrove, reed and moss | weight 4 | is plants shore
-flora scrub | name scrub and few trees | weight 4 | is plants | req water=dry,some
-flora cactus_oasis | name succulents and oasis palms | weight 3 | is plants dry | req temp=hot,mild
-flora salt_scrub | name salt scrub | weight 2 | is plants dry
-flora ice_moss | name moss, dwarf shrub and lichen | weight 4 | is plants cold
-flora fungal_giants | name giant mushrooms | weight 2 | is plants flowing
-flora glow_moss | name glowing moss on everything | weight 2 | is plants flowing
-flora crystal_growth | name crystal growing like plants | weight 1
+flora scrub | name scrub and few trees | weight 4 | is plants | req water=dry,some | bias sparse 0.3 dry 0.2
+flora cactus_oasis | name succulents and oasis palms | weight 3 | is plants dry | req temp=hot,mild | bias dry 0.4
+flora salt_scrub | name salt scrub | weight 2 | is plants dry | bias sparse 0.4 dry 0.4
+flora ice_moss | name moss, dwarf shrub and lichen | weight 4 | is plants cold | bias sparse 0.3
+flora fungal_giants | name giant mushrooms | weight 2 | is plants flowing | bias fungal 0.8
+flora glow_moss | name glowing moss on everything | weight 2 | is plants flowing | bias alien 0.1 fungal 0.2
+flora crystal_growth | name crystal growing like plants | weight 1 | bias alien 0.3
 flora kelp_forest | name kelp forests | weight 3 | is plants sea
-flora swollen | name swollen, fused and wrongly coloured growth | weight 1 | is plants
-flora carnivorous | name fanged vines and pitcher traps | weight 2 | is plants rich_life rough
-flora thorn_lanes | name walls of thorn | weight 1 | is plants
-flora reclaiming_forest | name forest through every ruin | weight 2 | is plants rich_life settled
-flora crop_gone_wild | name old crops gone wild | weight 3 | is plants crops settled
-flora orchard_rows | name orchards in rows nobody planted | weight 1 | is plants crops
-flora pollen_heavy | name flowers shedding yellow cloud | weight 1 | is plants rich_life
-flora stone_trees | name stone trees and little else | weight 1 | is plants | req type=petrified
-flora tethered_drifters | name gas bladders on long stalks | weight 1 | is plants shore
-flora tell_plants | name plants that grow only over ore | weight 2 | is plants
-flora giant_flora | name giant plants | weight 2 | is plants rich_life
-flora bent_coreward | name everything bending one way | weight 1 | is plants hollow
+flora swollen | name swollen, fused and wrongly coloured growth | weight 1 | is plants | bias swollen 0.8 mutagen 0.2
+flora carnivorous | name fanged vines and pitcher traps | weight 2 | is plants rich_life rough | bias alien 0.15 predators 0.2
+flora thorn_lanes | name walls of thorn | weight 1 | is plants | bias overgrown 0.3
+flora reclaiming_forest | name forest through every ruin | weight 2 | is plants rich_life settled | bias overgrown 0.8
+flora crop_gone_wild | name old crops gone wild | weight 3 | is plants crops settled | bias overgrown 0.3 stock 0.3
+flora orchard_rows | name orchards in rows nobody planted | weight 1 | is plants crops | bias stock 0.2
+flora pollen_heavy | name flowers shedding yellow cloud | weight 1 | is plants rich_life | bias overgrown 0.2
+flora stone_trees | name stone trees and little else | weight 1 | is plants | req type=petrified | bias dead 0.6
+flora tethered_drifters | name gas bladders on long stalks | weight 1 | is plants shore | bias alien 0.25
+flora tell_plants | name plants that grow only over ore | weight 2 | is plants | bias alien 0.1
+flora giant_flora | name giant plants | weight 2 | is plants rich_life | bias overgrown 0.6
+flora bent_coreward | name everything bending one way | weight 1 | is plants warped | bias alien 0.15
+flora hollow_overrun | name the Hollow's growth over everything | weight 0.5 | is plants hollow rough | sets hollow=world | bias fungal 1 overgrown 0.7 alien 0.2 desolate 0.2
 ```
 
 **Fauna.** One bias per world. The bestiary still builds the bodies; this says what kind of living is winning here. Behaviour ideas from the variety list are values, not creatures, so any world can use them.
 
 ```layers
-fauna none | name no animals | weight 6 | blank yes | req life=none
-fauna sparse | name almost nothing alive | weight 5 | req life=low,none
-fauna quiet_grazers | name wary grazers | weight 6 | is beasts rich_life
-fauna herds_hunters | name herds and their hunters | weight 5 | is beasts rich_life
+fauna none | name no animals | weight 6 | blank yes | req life=none | bias barren 0.9
+fauna sparse | name almost nothing alive | weight 5 | req life=low,none | bias barren 0.6
+fauna quiet_grazers | name wary grazers | weight 6 | is beasts rich_life | bias barren -0.1
+fauna herds_hunters | name herds and their hunters | weight 5 | is beasts rich_life | bias barren -0.2
 fauna giants | name giants | weight 1 | is beasts rich_life
-fauna pack_hunters | name pack hunters that flank | weight 3 | is beasts rich_life
+fauna pack_hunters | name pack hunters that flank | weight 3 | is beasts rich_life | bias predators 0.2
 fauna swarms | name swarms | weight 3 | is beasts
 fauna hive_castes | name hive castes | weight 1 | is beasts
 fauna burrowers | name burrowers under everything | weight 4 | is beasts dry
@@ -819,22 +820,22 @@ fauna waders | name waders and ambushers | weight 3 | is beasts shore
 fauna ice_beasts | name shaggy ice beasts | weight 4 | is beasts cold
 fauna heat_lovers | name heat-adapted life | weight 3 | is beasts hot
 fauna cliff_fliers | name cliff-nesting fliers | weight 3 | is beasts
-fauna carrion_fliers | name carrion fliers in the ruins | weight 3 | is beasts settled
-fauna ferals | name old stock and pets gone feral | weight 3 | is beasts settled
-fauna mixed_exotics | name animals from many worlds breeding together | weight 1 | is beasts settled rich_life
-fauna mutants | name mutants | weight 1 | is beasts
+fauna carrion_fliers | name carrion fliers in the ruins | weight 3 | is beasts settled | bias desolate 0.1
+fauna ferals | name old stock and pets gone feral | weight 3 | is beasts settled | bias ferals 1
+fauna mixed_exotics | name animals from many worlds breeding together | weight 1 | is beasts settled rich_life | bias alien 0.1 ferals 0.3
+fauna mutants | name mutants | weight 1 | is beasts | bias mutagen 0.5 predators 0.6
 fauna blind_crawlers | name blind cave crawlers | weight 3 | is beasts
-fauna night_hunters | name night-adapted hunters | weight 3 | is beasts
+fauna night_hunters | name night-adapted hunters | weight 3 | is beasts | bias predators 0.3
 fauna lamp_shy | name hunters that won't cross light | weight 2 | is beasts
 fauna metal_eaters | name metal-eating crawlers | weight 1 | is beasts
 fauna wreck_hermits | name things that wear wrecks as shells | weight 2 | is beasts settled
 fauna bower_builders | name creatures sorting ruin litter into displays | weight 2 | is beasts settled
 fauna dusk_climbers | name herds that climb to high ground at dusk | weight 2 | is beasts rich_life
 fauna slowstones | name boulders that move a few metres a day | weight 1 | is beasts dry
-fauna burden_giants | name giants with old huts lashed to their backs | weight 1 | is beasts rich_life settled
+fauna burden_giants | name giants with old huts lashed to their backs | weight 1 | is beasts rich_life settled | bias working 0.4
 fauna web_liners | name something using web lines as roads | weight 2 | is beasts settled
 fauna echo_birds | name birds repeating sounds of generations ago | weight 2 | is beasts settled
-fauna old_rounds | name harnessed beasts still walking a dead delivery route | weight 1 | is beasts settled low
+fauna old_rounds | name harnessed beasts still walking a dead delivery route | weight 1 | is beasts settled low | bias working 0.8
 fauna lode_grazers | name grazers that lick at ore seams | weight 2 | is beasts
 fauna static_nesters | name static-charged nesters | weight 1 | is beasts air_weather
 fauna light_floaters | name slow floating fliers | weight 2 | is beasts
@@ -866,97 +867,97 @@ sky second_noon | name a point of light from an old orbital mirror | weight 2 | 
 sky broken_stations | name a ring of broken stations | weight 2 | is settled high | orbit wrecks stations
 sky drifting_hulks | name hulks drifting across the night | weight 2 | is settled mid | orbit wrecks debris
 sky light_on_moon | name a light blinking on the moon's dark side | weight 2 | is settled | orbit beacon
-sky visitor_moon | name a body slightly bigger each night | weight 1 | is hollow
-sky wrong_stars | name more lights than the star map says | weight 1 | is hollow
-sky stutter_sun | name a sun that stutters at noon | weight 1 | is hollow
-sky seam | name a seam in the air | weight 1 | is hollow rough
+sky visitor_moon | name a body slightly bigger each night | weight 1 | is warped
+sky wrong_stars | name more lights than the star map says | weight 1 | is warped
+sky stutter_sun | name a sun that stutters at noon | weight 1 | is warped
+sky seam | name a seam in the air | weight 1 | is warped rough
 sky glimpse_beyond | name something impossible, seen once and gone | weight 1 | is nearcore
 ```
 
 ```layers
-weather no_weather | name no weather | weight 10 | blank yes | req air=none
-weather calm | name calm settled weather | weight 6 | is air_weather
+weather no_weather | name no weather | weight 10 | blank yes | req air=none | bias storm -1
+weather calm | name calm settled weather | weight 6 | is air_weather | bias storm -0.3
 weather gold_evenings | name long gold evenings | weight 4 | is air_weather
 weather morning_mist | name mist at dawn | weight 4 | is air_weather flowing
 weather fog_banks | name fog that hides the horizon | weight 3 | is air_weather shore
-weather sea_wind | name salt wind and fast weather | weight 3 | is air_weather shore
-weather trade_winds | name steady trade winds | weight 3 | is air_weather
-weather dry_gales | name dry gales | weight 3 | is air_weather dry
-weather dust_storms | name dust storms | weight 3 | is air_weather dry
-weather heat_shimmer | name heat shimmer and mirage | weight 3 | is air_weather hot
-weather monsoon | name monsoons | weight 3 | is air_weather | req water=wet,sea temp=mild,hot
-weather thunderheads | name big angry storm towers | weight 3 | is air_weather | req water!=none
-weather rain_seasons | name long grey rains | weight 3 | is air_weather | req water=some,wet,sea temp=mild,cold,hot
+weather sea_wind | name salt wind and fast weather | weight 3 | is air_weather shore | bias storm 0.3
+weather trade_winds | name steady trade winds | weight 3 | is air_weather | bias storm 0.2
+weather dry_gales | name dry gales | weight 3 | is air_weather dry | bias storm 0.4 dry 0.4
+weather dust_storms | name dust storms | weight 3 | is air_weather dry | bias storm 0.5 dry 0.5
+weather heat_shimmer | name heat shimmer and mirage | weight 3 | is air_weather hot | bias dry 0.4
+weather monsoon | name monsoons | weight 3 | is air_weather | req water=wet,sea temp=mild,hot | bias storm 0.5
+weather thunderheads | name big angry storm towers | weight 3 | is air_weather | req water!=none | bias storm 0.6
+weather rain_seasons | name long grey rains | weight 3 | is air_weather | req water=some,wet,sea temp=mild,cold,hot | bias storm 0.3
 weather snowfall | name snow on every road | weight 3 | is air_weather snowy
-weather blizzards | name blizzards | weight 3 | is air_weather snowy
+weather blizzards | name blizzards | weight 3 | is air_weather snowy | bias storm 0.7
 weather pollen_clouds | name yellow pollen clouds | weight 1 | is air_weather rich_life
-weather ash_fall | name ash fall | weight 1 | is air_weather
-weather acid_rain | name rain that bites | weight 1 | is air_weather
-weather spore_haze | name spore haze | weight 1 | is air_weather plants
-weather perpetual_storm | name a perpetual storm | weight 1 | is air_weather
-weather fire_storms | name fire storms | weight 1 | is air_weather hot
-weather glass_sleet | name sideways glass sleet | weight 1 | is air_weather hot
+weather ash_fall | name ash fall | weight 1 | is air_weather | bias ash 0.4 dead 0.2
+weather acid_rain | name rain that bites | weight 1 | is air_weather | bias storm 0.3 dead 0.2
+weather spore_haze | name spore haze | weight 1 | is air_weather plants | bias fungal 0.3
+weather perpetual_storm | name a perpetual storm | weight 1 | is air_weather | bias storm 1
+weather fire_storms | name fire storms | weight 1 | is air_weather hot | bias storm 0.7 burnt 0.3
+weather glass_sleet | name sideways glass sleet | weight 1 | is air_weather hot | bias storm 0.3
 weather iron_drizzle | name a thin iron drizzle | weight 1 | is air_weather
-weather soot_snow | name soot snow | weight 1 | is air_weather snowy settled
-weather oil_rain | name oily black rain | weight 1 | is air_weather hot
+weather soot_snow | name soot snow | weight 1 | is air_weather snowy settled | bias ash 0.3 dirt 0.2
+weather oil_rain | name oily black rain | weight 1 | is air_weather hot | bias dirt 0.3
 weather seed_fall | name a season of slow drifting seeds | weight 1 | is air_weather rich_life
-weather dead_calm | name a dead calm that never lifts | weight 1 | is air_weather
+weather dead_calm | name a dead calm that never lifts | weight 1 | is air_weather | bias storm -0.5
 ```
 
 **Palette.** A world's colour mood. Old entries each carried one, so they're gathered as values and any world can take any that suit it.
 
 ```layers
-palette gold_dust | name gold and faded paint | weight 3 | is air_weather
-palette pastel_moss | name pastels under moss | weight 3 | is plants rich_life settled
-palette grey_sea | name grey sea and rust orange | weight 3 | is shore
-palette white_turquoise | name white and turquoise | weight 2 | is shore
-palette soot_signal | name soot grey and signal red | weight 3 | is settled
-palette slag_ochre | name ochre and slag | weight 3
-palette rust_chrome | name chrome and rust | weight 2 | is settled
-palette stone_brass | name grey stone and brass | weight 2 | is settled
-palette beige_slate | name beige and slate | weight 2 | is settled
-palette green_gold | name green-gold haze | weight 3 | is plants rich_life
-palette violet_cold | name cold violet light | weight 2
-palette ash_brown | name ash grey and brown | weight 3
-palette bone_white | name bone white and glare | weight 3
-palette steel_blue | name steel blue | weight 2
-palette red_black | name red and black | weight 2
-palette amber_leaf | name amber and leaf-red | weight 2 | is plants rich_life
-palette lilac_yellow | name lilac skies and yellow cloud | weight 1 | is air_weather
-palette pink_white | name steam and pink-white | weight 1 | is settled
-palette neon_dead | name dead neon | weight 1 | is settled high
-palette prismatic | name prismatic edges | weight 1
-palette indigo_pink | name indigo and pink | weight 2 | is cold
-palette lime_cream | name lime and cream | weight 1 | is plants rich_life
-palette moss_black | name wet green and black | weight 2 | is plants rich_life flowing
-palette ink_starlight | name black and hard white | weight 4 | req air=none
+palette gold_dust | name gold and faded paint | weight 3 | is air_weather | paint c9a24a 8a6a3a a86a3a b89a6a ffd28a
+palette pastel_moss | name pastels under moss | weight 3 | is plants rich_life settled | paint c8a8b0 9ec4b0 7a8a6a d8c8a0 ffe6c8
+palette grey_sea | name grey sea and rust orange | weight 3 | is shore | paint 6c7478 c4622a 5a5e60 8a8070 ffd0a0
+palette white_turquoise | name white and turquoise | weight 2 | is shore | paint e0e0d8 3aa8a0 d8d8d0 5ab0b8 e8f8ff
+palette soot_signal | name soot grey and signal red | weight 3 | is settled | paint 4a4a4c c42a20 3a3a3c 8a2a24 ffb080
+palette slag_ochre | name ochre and slag | weight 3 | paint b8862e 5a4e44 7a5a34 a0782c ffc070
+palette rust_chrome | name chrome and rust | weight 2 | is settled | paint a85a32 b8bcc0 7a4a2c 5a5a5e fff0e0
+palette stone_brass | name grey stone and brass | weight 2 | is settled | paint 8a8a84 b08a3a 5c5c5a 6a6a5c ffe0a0
+palette beige_slate | name beige and slate | weight 2 | is settled | paint c8b89a 4c5866 4a5260 a89878 fff0d8
+palette green_gold | name green-gold haze | weight 3 | is plants rich_life | paint 6a8a3a c8a83a 4a6a34 9aa860 ffe8a0
+palette violet_cold | name cold violet light | weight 2 | paint 6a5a8a a8a0d0 4a4466 7a6a9a d0d8ff
+palette ash_brown | name ash grey and brown | weight 3 | paint 7a6e64 5a4a3c 4a423c 6a5e52 ffd8b0
+palette bone_white | name bone white and glare | weight 3 | paint e4dccc a89070 cac0ae d8cdb8 fff8ec
+palette steel_blue | name steel blue | weight 2 | paint 5a7088 c8ccd0 3e4c5c 4a5c74 d8e8ff
+palette red_black | name red and black | weight 2 | paint 8a2420 1e1c1c 3a1e1c 6a1a18 ffa080
+palette amber_leaf | name amber and leaf-red | weight 2 | is plants rich_life | paint c07a2a 8a3a24 7a4a2a a86a30 ffc890
+palette lilac_yellow | name lilac skies and yellow cloud | weight 1 | is air_weather | paint b8a0c8 e0c860 8a7a9a c8b0d0 fff0c0
+palette pink_white | name steam and pink-white | weight 1 | is settled | paint e8c8c8 f0f0ec c8a0a0 e0b8b8 ffe8ec
+palette neon_dead | name dead neon | weight 1 | is settled high | paint 2a2a34 e040a0 30303a 3ac0c8 c0f0ff
+palette prismatic | name prismatic edges | weight 1 | paint c0c8d0 7ad0c0 8a90a8 b0a0d0 f0f8ff
+palette indigo_pink | name indigo and pink | weight 2 | is cold | paint 3a3a6a d8809a 2e2e4a 6a5a8a e0d0ff
+palette lime_cream | name lime and cream | weight 1 | is plants rich_life | paint b8d060 e8e0c0 8a9a4a d8d0a8 fff8d0
+palette moss_black | name wet green and black | weight 2 | is plants rich_life flowing | paint 3a5a34 1e221e 2a3a28 4a5a3a e8ffd0
+palette ink_starlight | name black and hard white | weight 4 | req air=none | paint 1c1c20 e8e8f0 2a2a30 4a4a54 f0f4ff
 ```
 
 **Music and sound.** All music is generated drones by world type, so this picks the drone's temperament and one signature sound, heard in the world or sat under it. No recorded tracks, and no reactive scores.
 
 ```layers
 sound soft_drone | name a soft spacious drone | weight 7
-sound haunting | name an eerie thin drone | weight 5
-sound pastoral | name a warm slow drone | weight 4 | is plants
-sound grinding | name a low industrial drone | weight 4 | is settled
+sound haunting | name an eerie thin drone | weight 5 | bias desolate 0.5
+sound pastoral | name a warm slow drone | weight 4 | is plants | bias living 0.6
+sound grinding | name a low industrial drone | weight 4 | is settled | bias dirt 0.1
 sound wind_low | name wind at every opening | weight 4 | is air_weather
 sound surf | name surf and shore birds | weight 3 | is shore air_weather
-sound insect_chorus | name an insect chorus | weight 3 | is beasts rich_life
+sound insect_chorus | name an insect chorus | weight 3 | is beasts rich_life | bias living 0.3
 sound creaking_ice | name creaking ice | weight 3 | is cold air_weather
 sound crystal_hum | name a hum from the crystal | weight 1 | req type=crystal,irradiated_ice,barren_metal
 sound rail_hum | name distant rail hum | weight 1 | is settled mid
 sound generators | name far-off generators | weight 2 | is settled mid
-sound radio_murmur | name radio static that almost sounds like a voice | weight 1 | is settled mid
-sound bells | name bells at set hours | weight 1 | is settled air_weather
+sound radio_murmur | name radio static that almost sounds like a voice | weight 1 | is settled mid | bias desolate 0.2
+sound bells | name bells at set hours | weight 1 | is settled air_weather | bias living 0.2
 sound wind_chimes | name wind chimes and tuned turbines | weight 1 | is settled air_weather
 sound stone_flutes | name wind in fluted stone | weight 1 | is air_weather
 sound hour_horn | name a horn across the region once a day | weight 1 | is settled
-sound distant_guns | name far guns or something like them | weight 1 | is settled rough
-sound wordless_chant | name wordless chanting | weight 1 | is living
-sound festival_echo | name a band that plays once at dusk | weight 1 | is settled mid
-sound the_knock | name three slow thuds from far below | weight 1 | is hollow
-sound still_minute | name a minute when all sound stops | weight 1 | is hollow
-sound silence | name near silence | weight 4
+sound distant_guns | name far guns or something like them | weight 1 | is settled rough | bias strife 0.7
+sound wordless_chant | name wordless chanting | weight 1 | is living | bias living 0.1
+sound festival_echo | name a band that plays once at dusk | weight 1 | is settled mid | bias living 0.4
+sound the_knock | name three slow thuds from far below | weight 1 | is warped | bias desolate 0.3
+sound still_minute | name a minute when all sound stops | weight 1 | is warped | bias desolate 0.3
+sound silence | name near silence | weight 4 | bias desolate 0.7
 ```
 
 **Signs and marks.** Signs carry meaning without language, and a world's culture and tech vary their frames and colours. These are the world's habit of marking, placed from real room data so they tell the truth. Nothing here is text to read, apart from foreign script nobody can read.
@@ -1193,49 +1194,49 @@ Most old themes turned out to be combinations, so most are gone, and that's the 
 
 ```layers
 theme plain | name no strong mood | weight 16 | blank yes | is wild | identity Nothing pulls this world one way, and what it is comes from its parts alone
-theme long_queue | name The Long Queue | like fall.exodus*6 fall.decreed_exodus*3 fall.tide_of_refugees*2 infra.port_funnel*8 feature.jam_highways*6 palette.gold_dust*3 weather.gold_evenings*3 creed.the_numbered*4 | region camp 2 scrappy_pad 2 | occ EMP 8 SCV 6 | break 0.12 | tags queue_slips | identity Everyone here wanted the same one door out
-theme hush_suburbs | name Hush | like fall.vanishing*8 fall.walked_out_apoc*4 moment.ordinary_evening*4 running.long_life_lamps*5 build.pastel_estate*5 sound.silence*4 palette.pastel_moss*4 | occ EMP 22 HOL 3 | break 0.1 | tags set_tables | identity Nobody home and nothing broken, and the quiet is the unease
-theme parade_ground | name The Parade Ground | like moment.festival*10 moment.match_day*8 trade.sport*3 trade.roadside*2 marks.faded_bunting*5 sound.festival_echo*6 creed.festival_keepers*6 | occ EMP 6 SQT 6 SCV 6 | identity The happiest day a world ever had, stopped
-theme closed_season | name Closed for the Season | like trade.resort*8 trade.gaming*8 moment.holiday*6 fall.decreed_exodus*3 fall.walked_out_apoc*3 build.resort_curve*6 palette.white_turquoise*4 palette.neon_dead*4 running.cleaners*3 | occ EMP 8 MCH 8 | identity The rich left first and best, and it still looks ready for them
-theme deserted_capital | name The Standing Order | like trade.administration*10 ran.ministry*5 running.clerks*8 build.concrete_slab*4 fall.ai_silence*3 fall.decreed_exodus*4 marks.stamped_plates*5 palette.beige_slate*4 palette.stone_brass*3 creed.stampers*6 | occ MCH 10 | identity An order is still being carried out, and nobody remembers giving it
-theme clockwork_hours | name Clockwork Hours | like running.automata*10 running.farm_machines*8 running.timers*6 running.transit_loops*5 running.factory_lines*4 creed.machine_kin*6 sound.generators*3 palette.stone_brass*3 | is mid | occ MCH 18 | identity Everything runs, slightly off, for no one
-theme sentry_world | name Sentry World | like running.sentries*10 feature.sentry_lines*8 trade.military*3 fall.drone_wars*5 fall.machine_uprising*4 hazard.armed_hardware*8 palette.steel_blue*4 | is rough mid | occ MCH 20 | identity Everything is guarded and nobody is home
-theme mercy | name The Mercy Hospitals | like trade.medicine*10 running.carers*6 presence.keepers*5 build.white_clinical*5 fall.plague*3 fall.sleep_sickness*3 fall.tide_of_refugees*4 weather.morning_mist*3 | occ SQT 10 KPR 8 | tags wards | identity People stayed to look after other people, long past any sense in it
-theme wall_cities | name Wall Cities | like build.stone_keep*6 infra.toll_roads*8 presence.warlords*6 presence.militias*4 fall.enclave_wars*6 fall.slide*5 fall.mercenary_seizure*3 ran.great_houses*4 | is living | occ SQT 8 GNG 10 | poi wall_city 2 hilltop_keep 2 toll_gate 1 | identity Every settlement is a fortress against its neighbours
-theme road_warrens | name Road Warrens | like presence.gangs*8 infra.road_web*5 trade.fuel*5 fall.supply_cutoff*3 fall.slide*3 palette.rust_chrome*6 marks.gang_sign*6 hazard.gang_ambush*10 | is rough outdoors living | occ GNG 20 | poi fuel_fort 3 gang_arena 2 caravan_stop 1 | tags engine_shrines | identity Order failed and the survivors became convoys, and fuel is the only law
-theme water_tax | name The Water Tax | like fall.drought*8 fall.famine*6 fall.monoculture_failure*4 presence.water_lords*6 hazard.thirst*5 creed.seed_keepers*5 feature.green_valley*10 flora.dead_fields*4 | is living | occ GNG 8 SQT 8 | identity One scarce thing rules, and whoever holds it holds the world
-theme foundry_belt | name Foundry Belt | like trade.heavy_industry*8 trade.breaking*6 running.banked_furnaces*6 fall.general_stoppage*4 fall.poison_air*4 fall.industrial_collapse*6 palette.soot_signal*5 sound.grinding*5 feature.pylon_forest*3 | is mid | occ SCV 8 GNG 6 | tags shift_boards | identity Work without end, stopped mid-shift, and the furnaces never quite cold
+theme long_queue | name The Long Queue | like fall.exodus*6 fall.decreed_exodus*3 fall.tide_of_refugees*2 infra.port_funnel*8 feature.jam_highways*6 palette.gold_dust*3 weather.gold_evenings*3 creed.the_numbered*4 | region camp 2 scrappy_pad 2 | occ EMP 8 SCV 6 | break 0.12 | tags queue_slips | identity Everyone here wanted the same one door out | bias desolate 0.3
+theme hush_suburbs | name Hush | like fall.vanishing*8 fall.walked_out_apoc*4 moment.ordinary_evening*4 running.long_life_lamps*5 build.pastel_estate*5 sound.silence*4 palette.pastel_moss*4 | occ EMP 22 WRP 3 | break 0.1 | tags set_tables | identity Nobody home and nothing broken, and the quiet is the unease | bias desolate 0.5 ferals 0.3
+theme parade_ground | name The Parade Ground | like moment.festival*10 moment.match_day*8 trade.sport*3 trade.roadside*2 marks.faded_bunting*5 sound.festival_echo*6 creed.festival_keepers*6 | occ EMP 6 SQT 6 SCV 6 | identity The happiest day a world ever had, stopped | bias strife 0.2
+theme closed_season | name Closed for the Season | like trade.resort*8 trade.gaming*8 moment.holiday*6 fall.decreed_exodus*3 fall.walked_out_apoc*3 build.resort_curve*6 palette.white_turquoise*4 palette.neon_dead*4 running.cleaners*3 | occ EMP 8 MCH 8 | identity The rich left first and best, and it still looks ready for them | bias desolate 0.3
+theme deserted_capital | name The Standing Order | like trade.administration*10 ran.ministry*5 running.clerks*8 build.concrete_slab*4 fall.ai_silence*3 fall.decreed_exodus*4 marks.stamped_plates*5 palette.beige_slate*4 palette.stone_brass*3 creed.stampers*6 | occ MCH 10 | identity An order is still being carried out, and nobody remembers giving it | bias desolate 0.3
+theme clockwork_hours | name Clockwork Hours | like running.automata*10 running.farm_machines*8 running.timers*6 running.transit_loops*5 running.factory_lines*4 creed.machine_kin*6 sound.generators*3 palette.stone_brass*3 | is mid | occ MCH 18 | identity Everything runs, slightly off, for no one | bias desolate 0.2
+theme sentry_world | name Sentry World | like running.sentries*10 feature.sentry_lines*8 trade.military*3 fall.drone_wars*5 fall.machine_uprising*4 hazard.armed_hardware*8 palette.steel_blue*4 | is rough mid | occ MCH 20 | identity Everything is guarded and nobody is home | bias strife 0.1
+theme mercy | name The Mercy Hospitals | like trade.medicine*10 running.carers*6 presence.keepers*5 build.white_clinical*5 fall.plague*3 fall.sleep_sickness*3 fall.tide_of_refugees*4 weather.morning_mist*3 | occ SQT 10 KPR 8 | tags wards | identity People stayed to look after other people, long past any sense in it | bias living 0.2
+theme wall_cities | name Wall Cities | like build.stone_keep*6 infra.toll_roads*8 presence.warlords*6 presence.militias*4 fall.enclave_wars*6 fall.slide*5 fall.mercenary_seizure*3 ran.great_houses*4 | is living | occ SQT 8 GNG 10 | poi wall_city 2 hilltop_keep 2 toll_gate 1 | identity Every settlement is a fortress against its neighbours | bias strife 0.3
+theme road_warrens | name Road Warrens | like presence.gangs*8 infra.road_web*5 trade.fuel*5 fall.supply_cutoff*3 fall.slide*3 palette.rust_chrome*6 marks.gang_sign*6 hazard.gang_ambush*10 | is rough outdoors living | occ GNG 20 | poi fuel_fort 3 gang_arena 2 caravan_stop 1 | tags engine_shrines | identity Order failed and the survivors became convoys, and fuel is the only law | bias strife 0.3
+theme water_tax | name The Water Tax | like fall.drought*8 fall.famine*6 fall.monoculture_failure*4 presence.water_lords*6 hazard.thirst*5 creed.seed_keepers*5 feature.green_valley*10 flora.dead_fields*4 | is living | occ GNG 8 SQT 8 | identity One scarce thing rules, and whoever holds it holds the world | bias dry 0.4 strife 0.2
+theme foundry_belt | name Foundry Belt | like trade.heavy_industry*8 trade.breaking*6 running.banked_furnaces*6 fall.general_stoppage*4 fall.poison_air*4 fall.industrial_collapse*6 palette.soot_signal*5 sound.grinding*5 feature.pylon_forest*3 | is mid | occ SCV 8 GNG 6 | tags shift_boards | identity Work without end, stopped mid-shift, and the furnaces never quite cold | bias dirt 0.5
 theme moon_lakes | name Moon Lakes | like phase.spared*6 fall.slow_fade*4 fall.emigration*4 trade.subsistence*5 trade.orchards*5 sky.one_big_moon*5 feature.mirror_lakes*6 sound.pastoral*4 weather.calm*3 | is outdoors | occ EMP 14 SQT 8 | tags moon_lakes_set | identity Beautiful, lightly lived in and in no hurry
-theme overgrown_metropolis | name Overgrown Metropolis | like type.city_covered*20 feature.overgrown_city*10 flora.reclaiming_forest*6 fauna.cliff_fliers*3 infra.skyways*4 | is plants settled mid | occ NST 8 MUT 6 | identity A city to the horizon, in leaf
-theme pilgrim_roads | name Pilgrim Roads | like trade.pilgrimage*10 infra.pilgrim_ways*10 fall.faith_takeover*4 ran.faith*5 marks.prayer_flags*5 sound.bells*4 feature.bell_towers*5 presence.pilgrims*5 | is outdoors | occ CLT 8 SQT 6 | identity A world organised around walking to something
+theme overgrown_metropolis | name Overgrown Metropolis | like type.city_covered*20 feature.overgrown_city*10 flora.reclaiming_forest*6 fauna.cliff_fliers*3 infra.skyways*4 | is plants settled mid | occ NST 8 MUT 6 | identity A city to the horizon, in leaf | bias overgrown 0.7 ferals 0.5
+theme pilgrim_roads | name Pilgrim Roads | like trade.pilgrimage*10 infra.pilgrim_ways*10 fall.faith_takeover*4 ran.faith*5 marks.prayer_flags*5 sound.bells*4 feature.bell_towers*5 presence.pilgrims*5 | is outdoors | occ CLT 8 SQT 6 | identity A world organised around walking to something | bias living 0.2 working 0.3
 theme library_towns | name Library Towns | like trade.learning*8 trade.archives*8 ran.scholars*8 fall.memory_rot*6 infra.quiet_roads*2 | occ EMP 8 KPR 6 | tags reading_rooms | identity What was known is being kept, whether or not anyone can still use it
-theme lighthouses | name The Last Keepers | like running.beacons*10 running.broadcast*10 presence.keepers*6 feature.mast_forest*3 sound.radio_murmur*4 | occ KPR 10 | tags lamp_rooms | identity One keeper, one light, still going, for nobody in particular
-theme wrong_stars | name Wrong Stars | like sky.wrong_stars*12 sky.stutter_sun*8 sky.visitor_moon*6 trade.star_survey*5 feature.domed_observatories*6 creed.sky_counters*8 fall.time_stutter*6 feature.mast_forest*3 sound.radio_murmur*3 hazard.sound_lures*6 | is hollow | occ EMP 8 HOL 6 | identity The numbers have stopped adding up, and the careful people noticed first
-theme folded_town | name The Folded Town | like fall.folding*10 feature.folded_district*8 feature.mirror_district*8 weather.calm*3 sound.silence*4 | is hollow settled | occ EMP 20 HOL 8 | identity A place that doesn't quite close
-theme hollow_orchards | name The Lean | like feature.leaning_world*10 feature.singing_rock*10 flora.bent_coreward*8 creed.coreward_leaners*8 presence.pilgrims*3 | is hollow | occ CLT 10 HOL 8 | tags pilgrim_cots | identity Land that has started pointing at something, and people who have started listening
-theme lamplight | name Lamplight | like creed.lamp_keepers*8 running.long_life_lamps*4 weather.morning_mist*3 sound.soft_drone*2 | occ EMP 12 SQT 8 | tags lamp_rooms | identity One lit window in each town, and nobody says who keeps it
+theme lighthouses | name The Last Keepers | like running.beacons*10 running.broadcast*10 presence.keepers*6 feature.mast_forest*3 sound.radio_murmur*4 | occ KPR 10 | tags lamp_rooms | identity One keeper, one light, still going, for nobody in particular | bias desolate 0.3
+theme wrong_stars | name Wrong Stars | like sky.wrong_stars*12 sky.stutter_sun*8 sky.visitor_moon*6 trade.star_survey*5 feature.domed_observatories*6 creed.sky_counters*8 fall.time_stutter*6 feature.mast_forest*3 sound.radio_murmur*3 hazard.sound_lures*6 | is warped | occ EMP 8 WRP 6 | identity The numbers have stopped adding up, and the careful people noticed first | bias alien 0.1
+theme folded_town | name The Folded Town | like fall.folding*10 feature.folded_district*8 feature.mirror_district*8 weather.calm*3 sound.silence*4 | is warped settled | occ EMP 20 WRP 8 | identity A place that doesn't quite close | bias desolate 0.2
+theme hollow_orchards | name The Lean | like feature.leaning_world*10 feature.singing_rock*10 flora.bent_coreward*8 creed.coreward_leaners*8 presence.pilgrims*3 | is warped | occ CLT 10 WRP 8 | tags pilgrim_cots | identity Land that has started pointing at something, and people who have started listening | bias alien 0.2
+theme lamplight | name Lamplight | like creed.lamp_keepers*8 running.long_life_lamps*4 weather.morning_mist*3 sound.soft_drone*2 | occ EMP 12 SQT 8 | tags lamp_rooms | identity One lit window in each town, and nobody says who keeps it | bias living 0.2
 theme souvenir | name Souvenir World | like trade.roadside*10 trade.art*8 feature.giant_statues*8 marks.mural_walls*6 palette.gold_dust*3 | occ EMP 6 SQT 6 SCV 6 | identity A world made to be looked at, still smiling
-theme trench_moon | name Trench Moon | like feature.trench_lines*10 fall.civil_war*5 fall.invasion*3 feature.machine_drifts*6 hazard.mines*6 palette.ash_brown*4 sound.distant_guns*6 weather.rain_seasons*3 | is rough | occ EMP 6 GNG 6 HSK 3 | identity A stalemate cut so deep into the land that nobody can leave it
-theme eye_bloom | name The Last Days | like phase.falling*20 fall.bloom_front*5 marks.warning_stripes*2 sound.distant_guns*3 | is rough | req phase=falling | occ FAC 8 SQT 6 | identity A world with days left, and everyone in it knows
-theme diesel_frontier | name Hoof and Diesel | like phase.spared*8 infra.diesel_rail*8 trade.mining*2 trade.herding*3 build.gabled_timber*5 presence.bandit_riders*6 presence.freeholders*5 | is outdoors living | req pre=L,M | occ SQT 10 GNG 4 | identity A frontier that never reached the modern day and didn't need a collapse
-theme pit_worlds | name Pit Worlds | like build.buried_warren*10 infra.deep_tunnels*8 presence.pale_folk*8 feature.sinkhole_chain*5 feature.fungal_deep*6 type.shell*6 | occ NST 6 SQT 6 | identity The surface is the lid, and everything that matters is below
-theme teeth_trees | name Teeth in the Trees | like flora.carnivorous*10 flora.thorn_lanes*6 fauna.hive_castes*6 fauna.sand_swimmers*6 fauna.reef_stalkers*6 feature.hive_mounds*6 feature.thorn_maze*6 feature.coral_land*6 hazard.ambush_plants*8 | is beasts rough wild | occ NST 14 MUT 10 | identity The land itself hunts
-theme titans_meadows | name Titans' Meadows | like fauna.giants*10 feature.herd_giants*10 feature.giant_bones*8 trade.digs*8 fauna.burden_giants*6 | is beasts wild | occ EMP 8 SQT 4 | identity Everything here is bigger than you, and mostly doesn't care
-theme glass_garden | name The Glass Garden | is wild | like feature.crystal_fields*10 sky.aurora*5 sky.hard_stars*5 trade.star_survey*5 trade.research*2 sound.crystal_hum*5 palette.prismatic*6 | occ EMP 18 | identity Quiet wonder, with hardly anyone left to see it
-theme barrow_downs | name The Old Ground | is wild | like feature.standing_stones*10 feature.precursor_plates*10 feature.vault_field*10 marks.glyph_marks*6 presence.precursor_guardians*4 | occ EMP 8 GRD 6 | identity Far older than anyone here, and not finished
-theme empty_ark | name Empty Ark | like feature.colony_hull*12 ran.founders*8 fall.walked_out_apoc*6 build.ship_hull_town*4 | occ EMP 16 KPR 3 | identity The founders' order is intact, and the people walked out of it by plan
-theme waiting_world | name The Waiting World | like feature.waiting_town*12 moment.opening_day*8 running.cleaners*4 running.timers*4 fall.supply_cutoff*3 | is mid | occ EMP 18 MCH 8 | tags dust_sheets | identity Everything was built and made ready, and the settlers never came
-theme test_range | name The Test Range | like feature.dummy_town*10 feature.warning_country*8 feature.missile_grid*4 ran.generals*5 trade.military*3 hazard.mines*3 | is rough mid | occ EMP 16 MCH 6 | identity This place was built to be destroyed, and parts of it still are
-theme memorial_world | name The Kept Grave | like phase.recovered*6 phase.mending*3 marks.memorial_names*8 creed.ancestor_tenders*8 feature.graveyard_hills*5 | is living | occ KPR 8 SQT 6 | tags memorials | identity The whole world has been made into its own grave marker, and it's tended daily
-theme liquidation | name The Sale | like fall.liquidation*12 ran.absentees*5 marks.repossession_tags*8 trade.mining*2 | occ SCV 6 FAC 2 | tags stripped_rooms | identity Someone is selling the place out from under itself, room by room
-theme false_spring | name False Spring | like phase.mending*6 phase.recovered*3 presence.reclaimers*6 weather.gold_evenings*2 | is living | occ SQT 8 | tags patched | identity Fresh paint on old wounds, and everyone very cheerful about it
-theme imitation | name The Timber Fleet | like feature.timber_ships*12 creed.cargo_builders*10 creed.stampers*4 | is living | occ SQT 8 CLT 6 | identity People copy what they can no longer understand and wait for it to work
-theme duty | name The Good Kilometre | like creed.road_menders*8 feature.good_kilometre*10 presence.keepers*5 running.hour_horn*4 creed.horn_pausers*5 | is living | occ KPR 10 | identity Work handed down so long that nobody remembers what it was for
-theme nature_reserve | name The Reserve | like trade.parks*8 fauna.mixed_exotics*6 fauna.herds_hunters*3 flora.meadow_grass*2 running.nothing*2 | is beasts settled | occ NST 8 KPR 6 | identity The old world set this aside on purpose, and the fences outlived the reason
-theme second_wind | name The Second Wind | like phase.falling*2 fall.slide*2 presence.reclaimers*2 phase.recovered*2 presence.refugees*3 | is living | occ SQT 6 GNG 4 | identity It survived the collapse once and is finding out what that cost
-theme wild_country | name Wild Country | weight 7 | like fauna.herds_hunters*4 fauna.pack_hunters*4 flora.deep_forest*3 flora.giant_flora*4 hazard.night_predators*4 | is wild beasts | req settled=no | occ NST 10 | identity Nobody has ever stood here, and everything alive is busy
+theme trench_moon | name Trench Moon | like feature.trench_lines*10 fall.civil_war*5 fall.invasion*3 feature.machine_drifts*6 hazard.mines*6 palette.ash_brown*4 sound.distant_guns*6 weather.rain_seasons*3 | is rough | occ EMP 6 GNG 6 HSK 3 | identity A stalemate cut so deep into the land that nobody can leave it | bias strife 0.6 dead 0.3 burnt 0.3
+theme eye_bloom | name The Last Days | like phase.falling*20 fall.hollow_front*5 marks.warning_stripes*2 sound.distant_guns*3 | is rough | req phase=falling | occ FAC 8 SQT 6 | identity A world with days left, and everyone in it knows | bias strife 0.6 severity 0.2
+theme diesel_frontier | name Hoof and Diesel | like phase.spared*8 infra.diesel_rail*8 trade.mining*2 trade.herding*3 build.gabled_timber*5 presence.bandit_riders*6 presence.freeholders*5 | is outdoors living | req pre=L,M | occ SQT 10 GNG 4 | identity A frontier that never reached the modern day and didn't need a collapse | bias working 0.6 stock 0.5 living 0.4
+theme pit_worlds | name Pit Worlds | like build.buried_warren*10 infra.deep_tunnels*8 presence.pale_folk*8 feature.sinkhole_chain*5 feature.fungal_deep*6 type.shell*6 | occ NST 6 SQT 6 | identity The surface is the lid, and everything that matters is below | bias dirt 0.4
+theme teeth_trees | name Teeth in the Trees | like flora.carnivorous*10 flora.thorn_lanes*6 fauna.hive_castes*6 fauna.sand_swimmers*6 fauna.reef_stalkers*6 feature.hive_mounds*6 feature.thorn_maze*6 feature.coral_land*6 hazard.ambush_plants*8 | is beasts rough wild | occ NST 14 MUT 10 | identity The land itself hunts | bias overgrown 0.4 predators 0.3
+theme titans_meadows | name Titans' Meadows | like fauna.giants*10 feature.herd_giants*10 feature.giant_bones*8 trade.digs*8 fauna.burden_giants*6 | is beasts wild | occ EMP 8 SQT 4 | identity Everything here is bigger than you, and mostly doesn't care | bias stock 0.2 overgrown 0.3
+theme glass_garden | name The Glass Garden | is wild | like feature.crystal_fields*10 sky.aurora*5 sky.hard_stars*5 trade.star_survey*5 trade.research*2 sound.crystal_hum*5 palette.prismatic*6 | occ EMP 18 | identity Quiet wonder, with hardly anyone left to see it | bias alien 0.2
+theme barrow_downs | name The Old Ground | is wild | like feature.standing_stones*10 feature.precursor_plates*10 feature.vault_field*10 marks.glyph_marks*6 presence.precursor_guardians*4 | occ EMP 8 GRD 6 | identity Far older than anyone here, and not finished | bias alien 0.1
+theme empty_ark | name Empty Ark | like feature.colony_hull*12 ran.founders*8 fall.walked_out_apoc*6 build.ship_hull_town*4 | occ EMP 16 KPR 3 | identity The founders' order is intact, and the people walked out of it by plan | bias desolate 0.4
+theme waiting_world | name The Waiting World | like feature.waiting_town*12 moment.opening_day*8 running.cleaners*4 running.timers*4 fall.supply_cutoff*3 | is mid | occ EMP 18 MCH 8 | tags dust_sheets | identity Everything was built and made ready, and the settlers never came | bias fade -0.4 dirt -0.2 desolate 0.3
+theme test_range | name The Test Range | like feature.dummy_town*10 feature.warning_country*8 feature.missile_grid*4 ran.generals*5 trade.military*3 hazard.mines*3 | is rough mid | occ EMP 16 MCH 6 | identity This place was built to be destroyed, and parts of it still are | bias burnt 0.4 dead 0.2
+theme memorial_world | name The Kept Grave | like phase.recovered*6 phase.mending*3 marks.memorial_names*8 creed.ancestor_tenders*8 feature.graveyard_hills*5 | is living | occ KPR 8 SQT 6 | tags memorials | identity The whole world has been made into its own grave marker, and it's tended daily | bias living 0.3 fade -0.2
+theme liquidation | name The Sale | like fall.liquidation*12 ran.absentees*5 marks.repossession_tags*8 trade.mining*2 | occ SCV 6 FAC 2 | tags stripped_rooms | identity Someone is selling the place out from under itself, room by room | bias dirt 0.2
+theme false_spring | name False Spring | like phase.mending*6 phase.recovered*3 presence.reclaimers*6 weather.gold_evenings*2 | is living | occ SQT 8 | tags patched | identity Fresh paint on old wounds, and everyone very cheerful about it | bias living 0.3 fade -0.3 dirt -0.3
+theme imitation | name The Timber Fleet | like feature.timber_ships*12 creed.cargo_builders*10 creed.stampers*4 | is living | occ SQT 8 CLT 6 | identity People copy what they can no longer understand and wait for it to work | bias living 0.2
+theme duty | name The Good Kilometre | like creed.road_menders*8 feature.good_kilometre*10 presence.keepers*5 running.hour_horn*4 creed.horn_pausers*5 | is living | occ KPR 10 | identity Work handed down so long that nobody remembers what it was for | bias living 0.2
+theme nature_reserve | name The Reserve | like trade.parks*8 fauna.mixed_exotics*6 fauna.herds_hunters*3 flora.meadow_grass*2 running.nothing*2 | is beasts settled | occ NST 8 KPR 6 | identity The old world set this aside on purpose, and the fences outlived the reason | bias stock 0.1 barren -0.3
+theme second_wind | name The Second Wind | like phase.falling*2 fall.slide*2 presence.reclaimers*2 phase.recovered*2 presence.refugees*3 | is living | occ SQT 6 GNG 4 | identity It survived the collapse once and is finding out what that cost | bias living 0.5
+theme wild_country | name Wild Country | weight 7 | like fauna.herds_hunters*4 fauna.pack_hunters*4 flora.deep_forest*3 flora.giant_flora*4 hazard.night_predators*4 | is wild beasts | req settled=no | occ NST 10 | identity Nobody has ever stood here, and everything alive is busy | bias barren -0.2
 theme grand_scenery | name The Grand Scenery | weight 7 | like feature.buttes*5 feature.rock_spires*5 feature.columnar_towers*5 feature.natural_arches*5 feature.great_falls*5 feature.rainbow_strata*5 feature.lone_rock*5 sound.wind_low*3 | is wild | req settled=no | identity The land has no audience and puts on the show anyway
-theme stillness | name The Stillness | weight 7 | like sound.silence*6 weather.dead_calm*6 fauna.sparse*4 sky.hard_stars*3 sky.black_sky*2 | is wild | req settled=no | occ EMP 16 | identity Nothing here moves, and a footprint would last a million years
+theme stillness | name The Stillness | weight 7 | like sound.silence*6 weather.dead_calm*6 fauna.sparse*4 sky.hard_stars*3 sky.black_sky*2 | is wild | req settled=no | occ EMP 16 | identity Nothing here moves, and a footprint would last a million years | bias desolate 0.5 barren 0.3
 ```
 
 ## 6. Where the old entries ended up
@@ -1262,7 +1263,7 @@ old fever_jungle | n 12 | to dissolved | parts type.rainforest fall.biohazard fl
 old sleepwalkers | n 13 | to dissolved | parts type.meadow fall.sleep_sickness presence.routine_walkers weather.morning_mist pre.M post.L | keeps carers who watch; crowds that panic when disturbed
 old pollen_wars | n 14 | to dissolved | parts type.meadow trade.orchards fall.pollinator_loss flora.pollen_heavy weather.pollen_clouds palette.lilac_yellow running.farm_machines fauna.pollinators pre.M post.L | keeps a fridge of next year's seed
 old blightland | n 15 | to water_tax | parts type.steppe trade.farming fall.famine flora.dead_fields palette.ash_brown pre.M post.L | keeps black rivers; rare clean springs
-old bloom_drowned | n 16 | to dissolved | parts type.meadow zone.inner fall.bloom_front feature.bloom_basin presence.bloom_shore palette.violet_cold pre.M post.L | keeps paths of safe stone; roads that dive in and come out the far side
+old bloom_drowned | n 16 | to dissolved | parts type.meadow zone.inner fall.hollow_front feature.hollow_basin presence.hollow_shore palette.violet_cold pre.M post.L | keeps paths of safe stone; roads that dive in and come out the far side
 old coughing_hills | n 17 | to foundry_belt | parts type.ash_fall trade.heavy_industry fall.poison_air palette.slag_ochre hazard.bad_air pre.M post.L | keeps a mill fire as the local cause; masks stacked at checkpoints
 old mercy | n 18 | to mercy | parts type.meadow trade.medicine running.carers presence.keepers weather.morning_mist pre.M post.L | keeps one bed with fresh sheets
 old flesh_gardens | n 19 | to dissolved | parts type.meadow land.plains trade.vat_stock ran.company fall.biohazard running.vats palette.pink_white pre.H post.L
@@ -1305,7 +1306,7 @@ old mirror_cities | n 55 | to folded_town | parts type.meadow zone.core fall.fol
 old choir_canyon | n 56 | to hollow_orchards | parts type.canyon zone.inner feature.singing_rock sound.stone_flutes pre.L post.L | keeps resonant stone
 old clockwork_hours | n 57 | to clockwork_hours | parts type.meadow running.automata pre.H post.H | keeps a handful of repair folk
 old husks | n 58 | to dissolved | parts type.meadow fall.husks_fall presence.husk_nights feature.graveyard_hills weather.morning_mist pre.M post.L
-old eye_bloom | n 59 | to eye_bloom | parts type.meadow zone.inner phase.falling age.now fall.bloom_front moment.still_going pre.M post.M people.settled | keeps survey pay
+old eye_bloom | n 59 | to eye_bloom | parts type.meadow zone.inner phase.falling age.now fall.hollow_front moment.still_going pre.M post.M people.settled | keeps survey pay
 old dream_salt | n 60 | to dissolved | parts type.glacier fall.long_sleep sky.aurora pre.H post.L
 old black_library | n 61 | to library_towns | parts type.highland trade.archives ran.scholars pre.M post.L | keeps dangerous knowledge walled in; rename, see section 11
 old lamplight | n 62 | to lamplight | parts type.meadow land.hills creed.lamp_keepers pre.L post.L
@@ -1398,7 +1399,7 @@ Nothing here lists which values go with which. The rolled world has a few plain 
 - `req` is a direct condition, for the few values no general word fits, such as `req temp=mild,hot`.
 - `only` narrows a later layer by tag. A spared world takes `only fall.mild`, and a mid-collapse world takes `only fall.now`, so `falling` works with any fall that can still be happening without listing them.
 
-**Hard and soft.** A hard rule is physics or tech: no weather without air, no reactor failures on a world of carts, no animals roaming a vacuum. It never breaks. A soft rule is habit or rarity: domes on a good world, the Hollow near the rim. One world in 25 may break one soft rule. That's the "rare break", and it's recorded on the world so the generator can give it a reason and a survey can show it.
+**Hard and soft.** A hard rule is physics or tech: no weather without air, no reactor failures on a world of carts, no animals roaming a vacuum. It never breaks. A soft rule is habit or rarity: domes on a good world, the Husks' warping or Hollow growth near the rim. One world in 25 may break one soft rule. That's the "rare break", and it's recorded on the world so the generator can give it a reason and a survey can show it.
 
 **How the air rule plays out.** `air0` and `air` differ only when a fall changes the air. So a world whose air went foul keeps its gabled streets, and now has people in masks walking them, or nobody at all. Living things and today's outdoor life read `air`, buildings read `air0`, and the design's "ruins fit their world's air" needs no special case. The same rule covers moons: what matters is the air, not the kind of body.
 
@@ -1429,9 +1430,9 @@ rule bigport | req port=A,B,C | why needs a big port
 rule living | req people!=none | why needs somebody alive now
 rule settled | req settled=yes | why needs someone to have lived here
 rule faction | req zone!=rim start=no | why the rim has no factions, and start worlds never have a faction holding ground
-rule rough | req start=no | why too hostile for a start world
-rule hollow | soft yes | req zone=inner,core | why the Hollow rises toward the core; a trace of it further out is a rare break
-rule bloom | soft yes | req zone=inner,core | why the Bloom is rare near the rim
+rule rough | req sheltered=no | why too hostile for a start world on the rim; a game begun deeper in takes its chances
+rule warped | soft yes | req zone=inner,core | why the Husks' wrongness rises toward the core; a trace of it further out is a rare break
+rule hollow | soft yes | req zone=inner,core | why Hollow growth is rare near the rim
 rule deep | soft yes | req zone=inner,core | why the greatest old works lie deep in the galaxy
 rule nearcore | soft yes | req zone=core | why the incomprehensible is seen near the core
 rule mended | req phase=mending,recovered | why reclaimers need something to reclaim from
@@ -1493,6 +1494,8 @@ So these tables can become `.txt` files by a mechanical pass, and they're compac
 | `air temp water life land settle zones start was` | On types: what the type allows |
 | `group speed new` | On falls |
 | `identity`, `why`, `shows` | Plain words for people reading, never shown to players |
+| `bias` | `key N` pairs: how a value leans the rest of the world. They add up over a roll and the game reads the sums (`WorldReading`): flora `alien overgrown dead swollen fungal burnt sparse`, creatures `stock working ferals predators mutagen barren`, time and fall `age severity`, weather inputs `storm dry`, sound `desolate strife living ash`, paint `fade dirt`. Negative leans the other way |
+| `paint` | On palettes: five colours, `main accent roof cloth light`, that made things take. Natural colours never do |
 
 **Code changes the format needs**, for whoever builds it: `LayerParser` throws on an unknown keyword, so it needs the new ones, or a rule to keep unknown ones as data. `LayerKind` needs the new kinds. `WorldLayer.Pre`, `Post`, `Ports` and `Worlds` move into `req` and `is`. `Occupancy.Code` needs `HSK` (it reads `SHB`) and the codes it lacks: `FAC CYB BOT CLT` from the old table and the new `KPR SLP GRD MIM`.
 
@@ -1553,11 +1556,11 @@ Orbit reads, it never rolls. An orbit takes the finished roll of its parent as r
 | `people` | `people_below` | `none`, `survivors`, `outposts`, `settled` for its empty, scattered, towns and cities |
 | `build` | `culture` | |
 | `air`, `mod` | `lift` inputs | Air, and `low_gravity`, `high_gravity` |
-| `zone` | `hollow` | A world's Hollow level comes from its zone |
-| `feature`, `fall` | `bloom_region` | True with `bloom_basin`, `bloom_patch` or `fall.bloom_front` |
+| `zone` | `warped` | How far the Husks' warping reaches a world comes from its zone |
+| `feature`, `fall` | `hollow_region` | True with `hollow_basin`, `hollow_patch` or `fall.hollow_front` |
 | `trade`, `ran`, `running`, `presence`, `age` | Its budget, owners and fate tables | Available if useful |
 
-**The `orbit` words.** Any value can add words to a world's list, and the orbit layer treats them as hints: `highport`, `yards`, `hull_frames`, `stations`, `traffic`, `patrol`, `pirates`, `fleet_parked`, `wrecks`, `debris`, `sats`, `mirrors`, `relays`, `beacon`, `elevator_stump`, `precursor`, `bloom`. A world with `feature.fallen_elevator` says `elevator_stump`, and the orbit knows a cable belongs there, which is the echo that document wants.
+**The `orbit` words.** Any value can add words to a world's list, and the orbit layer treats them as hints: `highport`, `yards`, `hull_frames`, `stations`, `traffic`, `patrol`, `pirates`, `fleet_parked`, `wrecks`, `debris`, `sats`, `mirrors`, `relays`, `beacon`, `elevator_stump`, `precursor`, `hollow` (Hollow growth; it was `bloom`). A world with `feature.fallen_elevator` says `elevator_stump`, and the orbit knows a cable belongs there, which is the echo that document wants.
 
 **The echo: reading a dissolved theme.** Its group tables key on the 112 old ids, and most of those no longer exist as themes. They don't need to. Section 6.1 keeps each old theme's parts, so a world can say which old themes it echoes: any whose parts it holds at least two of, or all if there are fewer, leaving out type, tech and landform. Best match first. `world_theme` in that document then means "the world's theme if it has one, and otherwise its best echo". The sample worlds in section 9 show these as `echo:` words.
 
@@ -1652,7 +1655,7 @@ Twenty sample worlds, the first twenty of the roll, unedited:
 
 **8.** a dune world, open breathable air, hot and dry, on the quiet rim. Land: salt pans and dune seas. Once high tech, now low tech, with a few survivors, with a poor port. It lived on mining, run by a company, built in stacked containers, joined by long ore conveyors and haul roads. It fell by the records rotting away, over months and decades, about 110 years ago, and is mending, slowly. Mood: Moon Lakes; in one region, False Spring. Still running: furnaces banked and still hot. Belief: nothing in common. Now: keepers who never left. Features: buttes on skirts of scree, a stopped train on every line, huge shapes scraped into the plain. Danger: collapsing floors and rusted rigging, mines and unexploded ordnance, failing seals. Life: swollen, fused and wrongly coloured growth, static-charged nesters. Sky: one big moon, fire storms, ochre and slag. Sound: a low industrial drone. Marks: the ghosts of dead brands. Places: EMP 51, SQT 25, SCV 15, KPR 9. Orbit reads: echo:lockin.
 
-**9.** an ice moon, thin air, frozen, water locked in ice, near the core. Land: rift valleys and slabs and ice plains; a moon of a giant. Never settled. Mood: no strong mood. Now: something listening, Kessari clans. Features: a chain of sinkholes. Danger: scalding vents. Life: no plants, almost nothing alive. Sky: a giant filling the sky, big angry storm towers, ochre and slag. Sound: wind at every opening. Marks: no marks at all. Places: EMP 74, HOL 26. Orbit reads: relays.
+**9.** an ice moon, thin air, frozen, water locked in ice, near the core. Land: rift valleys and slabs and ice plains; a moon of a giant. Never settled. Mood: no strong mood. Now: something listening, Kessari clans. Features: a chain of sinkholes. Danger: scalding vents. Life: no plants, almost nothing alive. Sky: a giant filling the sky, big angry storm towers, ochre and slag. Sound: wind at every opening. Marks: no marks at all. Places: EMP 74, WRP 26. Orbit reads: relays.
 
 **10.** a dead world, thin air, mild and dry, on the quiet rim. Land: open plains and basalt plains. Once high tech, now low tech, with nobody left, with a poor port. It lived on carrying people across the world, run by the army, built in earth-sheltered mounds, joined by every road running to one port. It fell by famine, over months and decades, about 170 years ago, and is still in ruins, with a scar of walls going up in one region. Mood: The Test Range; in one region, The Long Queue. Still running: trams and trains on empty loops. Belief: nothing in common. Now: roving gangs. Features: an active volcano on the horizon, a vast thing never finished, a mannequin town built to be destroyed. Danger: unstable wrecks, mines and unexploded ordnance. Life: no plants, almost nothing alive. Sky: a light blinking on the moon's dark side, calm settled weather, soot grey and signal red. Sound: radio static that almost sounds like a voice. Marks: painted house marks. Places: EMP 82, MCH 18. Orbit reads: traffic beacon echo:hunger_roads echo:walked_out echo:last_train.
 
@@ -1741,3 +1744,4 @@ Decided. These stand.
 5. Mid-collapse worlds stay at a few in every hundred.
 6. Husks need mid or high tech.
 7. The 112-row occupancy table is a record, not data: mixes come from adding layers.
+8. The Husks are the threat, and the names move with them (8 November). `bloom` now means the Hollow: fungal growth, and Hollow worlds, which remain as before, overrun by the growth, but rare (`flora.hollow_overrun` sets `hollow=world`, behind the soft `hollow` rule). What was `hollow` or `HOL`, "something wrong here", is the Husks' warping: the tag `warped` and the occupant `WRP` (the code `HOL` still reads as it). Value ids moved with them: `fall.hollow_front`, `feature.hollow_basin`, `feature.hollow_patch`, `presence.hollow_shore`, `orbit hollow`. Theme ids (`eye_bloom`, `hollow_orchards`) and POI family ids stay as they were.
