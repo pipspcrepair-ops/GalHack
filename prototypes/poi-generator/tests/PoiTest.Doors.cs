@@ -11,7 +11,7 @@ public partial class PoiTest
     /// <summary>
     /// The one door, in every family (houses have their own stricter check): on fresh seeds, turned every way, at
     /// every tech level, each doorway a person walks through and each way in is <see cref="DoorSize"/>'s door, 2 m
-    /// wide and 3 m tall exactly under its head; for 2 m either side of it nothing comes lower than its head, and
+    /// wide and as tall exactly under its head (one large block); for 2 m either side of it nothing comes lower than its head, and
     /// out of doors nothing lower than its head and a metre more. Every opening a person can reach between two
     /// walls (a gap, a mouth with no door) is at least the door's height clear. Hatches you climb through are not doors.
     /// </summary>

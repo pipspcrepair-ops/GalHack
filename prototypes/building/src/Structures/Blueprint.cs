@@ -65,6 +65,7 @@ public static class Blueprint
     public static Structure Load(string text, Catalogue catalogue, out List<string> errors, string owner = Building.DefaultOwner)
     {
         BlueprintData data = Parse(text);
+        OldDoorTops(data, catalogue);
         errors = Validate(data, catalogue);
         return errors.Count > 0 ? null : Build(data, catalogue, owner);
     }
@@ -310,16 +311,49 @@ public static class Blueprint
             s.Set(b.Pos, block);
             if (b.Light is LightSettings light) s.SetLight(b.Pos, light);
         }
-        // Taller blocks get their tops: a saved one names a top only when it was painted or damaged apart from its
-        // block, and a blueprint from before doors were two cells tall has none (the wall over its old 2 m door
-        // becomes the top). Where something else stands over one, it stays a one-cell door.
-        Building.Complete(s);
+        if (data.Blocks.Any(b => b.Type == "door")) WallOverDoors(s);
         if (s.Core == null) s.Owner = null;
         // Old blueprints said "capital" on every small grid, and a hover pad made the craft a hover
         // vessel: they load in Hover Mode. A blueprint saved since says "vessel" or "hover" itself.
         if (data.Mode == CoreMode.Capital && s.Grid.Size == GridSize.Small && s.Blocks().Any(x => s.TypeOf(x.block).Function == "hover"))
             s.Mode = CoreMode.Hover;
         return s;
+    }
+
+    // ---- Doors two cells tall, for a while -----------------------------------------------------
+    // For a short while (design 702 to 708) a large door was two cells, a 3 m leaf under a top cell ("door-head")
+    // that took the place of the wall over it. The door is one block again; a blueprint saved then still loads,
+    // its door with the wall block over it once more.
+
+    /// <summary>A door's top named in a blueprint becomes the wall block it was: steel, its paint kept, whole.</summary>
+    static void OldDoorTops(BlueprintData data, Catalogue catalogue)
+    {
+        if (catalogue.TryGetType("door-head", out _)) return;
+        foreach (BlueprintBlock b in data.Blocks.Where(b => b.Type == "door-head"))
+        {
+            b.Type = "steel";
+            b.Hp = null;
+            b.Flags &= ~BlockFlags.Open;
+        }
+    }
+
+    /// <summary>
+    /// A top saved unnamed (it wore its door's paint) left a gap over the door, between the wall's blocks either
+    /// side of it: the wall closes over it again, a block like its neighbour's.
+    /// </summary>
+    static void WallOverDoors(Structure s)
+    {
+        if (s.Grid.Size != GridSize.Large) return;
+        foreach (var (p, b) in s.Blocks().Where(x => s.TypeOf(x.block).IsDoor).ToList())
+        {
+            Int3 over = p + Orientations.ToWorld(b.Rot, Dir.PosY).Vec(), side = Orientations.ToWorld(b.Rot, Dir.PosX).Vec();
+            if (s.Has(over) || !s.TryGet(over + side, out Block left) || !s.TryGet(over - side, out Block right)) continue;
+            if (!s.TypeOf(left).IsArmor || !s.TypeOf(right).IsArmor) continue;
+            Block wall = left;
+            wall.Hp = s.StatsOf(wall).MaxHp;
+            wall.Flags = BlockFlags.None;
+            s.Set(over, wall);
+        }
     }
 
     // ---- Saving -----------------------------------------------------------------------------
@@ -341,8 +375,7 @@ public static class Blueprint
         Line($"gravity {(s.GravityOn ? "on" : "off")}");
         if (s.CargoSu > 0) Line($"cargo {Num(s.CargoSu)}");
 
-        // A top that is just its block's (same paint, whole) is left out: loading puts it back.
-        var blocks = s.Blocks().Where(x => !PlainTop(s, x.pos, x.block)).OrderBy(x => x.pos.Y).ThenBy(x => x.pos.Z).ThenBy(x => x.pos.X).ToList();
+        var blocks = s.Blocks().OrderBy(x => x.pos.Y).ThenBy(x => x.pos.Z).ThenBy(x => x.pos.X).ToList();
         var used = new SortedSet<ushort>();
         foreach (var (_, b) in blocks)
             foreach (Dir d in Dirs.All)
@@ -365,13 +398,6 @@ public static class Blueprint
             i = j;
         }
         return sb.ToString();
-    }
-
-    static bool PlainTop(Structure s, Int3 pos, in Block b)
-    {
-        if (!s.TypeOf(b).IsPieceTop) return false;
-        Int3 root = Building.Root(s, pos);
-        return root != pos && s.Get(root).Paint.Equals(b.Paint) && b.Hp >= s.StatsOf(b).MaxHp - 0.05f;
     }
 
     static string PaintLine(string name, Paint p)

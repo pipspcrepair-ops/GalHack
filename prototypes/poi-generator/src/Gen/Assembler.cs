@@ -340,14 +340,27 @@ public static class Assembler
             m.Purpose = m.Template.Id;
         }
 
-        // Doorways and the way in.
+        // Doorways and the way in. A socket may stand taller than the one door (DoorSize): the door takes its
+        // foot, and the wall closes over it in the module's own stuff, on both sides of the join.
+        List<Int3> Door(PlacedModule m, SocketDef sock)
+        {
+            var kit = m.Template.Kit;
+            int top = sock.Min.Y + DoorSize.Tall;
+            foreach (Int3 c in sock.Cells.Where(c => c.Y >= top))
+            {
+                Int3 w = m.World(c);
+                layout.Blocks.Set(w, kit.Palette[kit.CapEntry].Make(w, Dir.North));
+            }
+            return sock.Cells.Where(c => c.Y < top).Select(m.World).ToList();
+        }
         foreach (var link in s.Links)
         {
             var child = s.Modules[link.B];
             var sock = child.Shape.Sockets[link.SocketB];
+            if (link.SocketA >= 0) Door(s.Modules[link.A], s.Modules[link.A].Shape.Sockets[link.SocketA]);
             layout.Doorways.Add(new Doorway
             {
-                Cells = sock.Cells.Select(child.World).ToList(),
+                Cells = Door(child, sock),
                 Facing = sock.Facing,
                 ModuleA = link.A,
                 ModuleB = link.B,
@@ -355,7 +368,7 @@ public static class Assembler
         }
         var entrance = s.Modules[0];
         var exit = entrance.Shape.Sockets.First(k => k.Exterior);
-        layout.ExitCells = exit.Cells.Select(entrance.World).ToList();
+        layout.ExitCells = Door(entrance, exit);
         layout.EntranceFacing = exit.Facing;
         Int3 exitMin = layout.ExitCells.Aggregate(Int3.Min);
         layout.EntranceCell = exitMin + exit.Facing.Vec() * 2;

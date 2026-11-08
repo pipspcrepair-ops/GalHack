@@ -1780,7 +1780,7 @@ public partial class PoiTest : Node
 
     /// <summary>
     /// The roadside ruins, on fresh seeds, turned every way, at every tech level: a house is house-sized
-    /// against a person (10 to 16 m wide, 4 m a storey, the standard 3 m door), has a sloped roof and a door and
+    /// against a person (10 to 16 m wide, 4 m a storey, the standard 2 m door), has a sloped roof and a door and
     /// never digs into the ground; decay leaves nothing hanging, no block trees, weeds only on
     /// something solid; and every face that isn't against a block is drawn, buried or not, tops of broken
     /// walls included, on these and on the places proper.
@@ -1807,7 +1807,7 @@ public partial class PoiTest : Node
                         foreach (Doorway d in layout.Doorways)
                         {
                             Int3 lo = d.Cells.Aggregate(Int3.Min), hi = d.Cells.Aggregate(Int3.Max);
-                            // Every building's doors are the one standard door (3 m against a 1.8 m person): a house's, a shop's, an inn's, a shed's.
+                            // Every building's doors are the one standard door (a large block against a 1.8 m person): a house's, a shop's, an inn's, a shed's.
                             if (hi.Y - lo.Y + 1 != DoorSize.Tall) { wrongSize++; Note($"{v.Name}: a door {hi.Y - lo.Y + 1} m tall"); }
                         }
                         if (layout.Doorways.Count == 0 && f.Id is not ("flavour_shed" or "flavour_farmstead")) { noDoor++; Note($"{v.Name} has no door"); }
