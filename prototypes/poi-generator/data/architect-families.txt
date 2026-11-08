@@ -13,6 +13,7 @@
 
 family deep_bunker
   tier site
+  tech mid high
   siting open
   rise 12
   name Deep Bunker
@@ -433,7 +434,7 @@ family scrap_fort
   territory wild any
   spacing 14
   reveal 500
-  tags fallen gang
+  tags fallen gang survivor
   states active 6 abandoned 2 infested 1 ruined 1
   variant Rust Hold
     seed 9501
@@ -911,6 +912,7 @@ family survivor_town
 
 family works_complex
   tier base
+  tech mid high
   siting flat
   rise 80
   name Industrial Complex

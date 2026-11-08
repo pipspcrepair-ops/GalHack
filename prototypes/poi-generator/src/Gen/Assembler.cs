@@ -87,6 +87,10 @@ public sealed class Layout
     public int Attempts;
     public Kit Kit = null!;
     public LayoutExtras Extras = new();
+    /// <summary>The age it was built in on its world (data/eras.txt), or null off a world (as the kits drew it).</summary>
+    public TechLevel? Tech;
+    /// <summary>What its lamps glow in that age, or null for its kit's own light.</summary>
+    public Rgb? Lamp;
     /// <summary>Whether the generator had to repair or regenerate it (counted by the tests).</summary>
     public int Repairs, Regenerations;
 

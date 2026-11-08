@@ -153,7 +153,7 @@ public static class Wrecks
 
     /// <summary>A site laid on the route from point i: straight and nearly level for its length, all on the ground, off every pad.</summary>
     /// <summary>Whether people tried to leave from here: a starport of any class, a scrappy field.</summary>
-    public static bool IsPort(PoiSite p) => p != null && (p.Tier == PoiTier.Spaceport || p.Family.Tags.Contains("scrappy"));
+    public static bool IsPort(PoiSite p) => p != null && (p.Tier == PoiTier.Spaceport || p.Family.Tags.Contains("scrappy") || p.Family.Tags.Contains("exodus"));
 
     /// <summary>
     /// The roads people tried to leave by: walking out from each port along every road that reaches it,

@@ -15,7 +15,7 @@ public static partial class Homes
     {
         HomeHints home = hints?.Home ?? Loose(rng);
         var culture = HomeCulture.Of(HomeBook.Current, home, l.Tech);
-        HouseStyle s = HouseStyle.Roll(culture, rng, family ?? home.Family);
+        HouseStyle s = HouseStyle.Roll(culture, rng, family ?? home.Family, force: family == null && home.Family != null);
         const int Side = 6;
         int front = 10 + 2 * rng.Range(0, 2);
         Built b = Dwelling(l, l.F, s, Side, front);
@@ -200,7 +200,8 @@ public static partial class Homes
     /// <summary>A farm's house: a house of the farm's own people, no garage (the farm has its sheds), its door on the yard.</summary>
     static (int W, int D, int DoorU) House(Lot l, Frame f, string plan)
     {
-        var culture = HomeCulture.Of(HomeBook.Current, Loose(l.R), l.Tech);
+        // The region's people where it has one (a strange people's farm has a strange house).
+        var culture = HomeCulture.Of(HomeBook.Current, l.Home ?? Loose(l.R), l.Tech);
         string family = plan switch { "bungalow" => "bungalow", "cottage" => "cottage", "prefab" => "modern", _ => "suburban" };
         if (HomeBook.Current.Find(family) == null) family = HomeBook.Current.Families.FirstOrDefault(x => !x.Odd)?.Id ?? family;
         HouseStyle s = HouseStyle.Roll(culture, l.R, family);

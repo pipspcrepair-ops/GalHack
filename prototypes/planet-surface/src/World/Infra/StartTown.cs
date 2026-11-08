@@ -137,7 +137,11 @@ public sealed class StartTown
                         double nx = -dz / len * side, nz = dx / len * side;
                         Dir front = FlavourRuins.Facing(-nx, -nz);
                         FamilyDef type = s == main && shop != null && rng.Chance(0.75f) ? shop : shed != null && rng.Chance(0.1f) ? shed : house;
-                        Layout lot = FlavourRuins.LayoutFor(lib, type, FlavourRuins.VariantFor(type, profile.Before, rng), front, profile.Before, rng.Range(0, FlavourRuins.Salts));
+                        // One people to the town: its houses share its culture (a strange people's town is all strange), each put together afresh.
+                        Layout lot = type == house
+                            ? FlavourRuins.LayoutFor(lib, type, FlavourRuins.VariantFor(type, profile.Before, rng), front, profile.Before, rng.Range(0, FlavourRuins.HouseSalts),
+                                new HomeHints(FlavourRuins.CultureAt(net.RegionPlan, map, s.X[i], s.Z[i]), FlavourRuins.ClimateAt(map, s.X[i], s.Z[i]), rng.Float()))
+                            : FlavourRuins.LayoutFor(lib, type, FlavourRuins.VariantFor(type, profile.Before, rng), front, profile.Before, rng.Range(0, FlavourRuins.Salts));
                         if (lot == null) continue;
                         // The street runs on a map axis, so the lot lies square to it: half the lot off the kerb.
                         double half = Math.Abs(dz) > Math.Abs(dx) ? lot.Occupied.Size.X * 0.5 : lot.Occupied.Size.Z * 0.5;

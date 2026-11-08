@@ -460,7 +460,8 @@ public sealed class CityPlan
         // ---- the homes: one culture to the whole city, in its weather; further out, better off. The house
         // rules (Homes.CityHouse) build every house and terrace from it, so no two neighbours are one model.
         {
-            int culture = (int)(PoiGenerator.Gen.Hash.Combine(seed, 0xC0175UL) >> 33);
+            // The region's people (FlavourRuins.CultureAt), so the streets round the city are of its kind too.
+            int culture = FlavourRuins.CultureAt(net?.RegionPlan, map, cx, cz);
             var climate = FlavourRuins.ClimateAt(map, cx, cz);
             foreach (CityLotPlan lot in city.Lots.Where(l => l.Kind is "house" or "terrace"))
             {

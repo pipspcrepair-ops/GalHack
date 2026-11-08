@@ -21,6 +21,8 @@ public static class Sites
         public Rarity Rarity;
         public Rng Rng = null!;
         public SiteDef Site = null!;
+        /// <summary>The age its world built it in (null off a world): what stands abandoned in its yards.</summary>
+        public TechLevel? Tech;
         public int Yard = -1;
         public int VaultModule = -1, DeepestModule = -1;
         public List<int> Landmarks = new();
@@ -32,7 +34,7 @@ public static class Sites
     {
         if (site.Parts.Count > 0 && site.Parts[0].Kind == "plain") { Homes.Compose(c, site, fam, rng, hints); return; }
         if (site.Parts.Count > 0 && site.Parts[0].Kind == "grand") { Grand.Compose(c, lib, site, rng, hints); return; }
-        var x = new Ctx { C = c, Lib = lib, Fam = fam, Rarity = rarity, Rng = rng, Site = site };
+        var x = new Ctx { C = c, Lib = lib, Fam = fam, Rarity = rarity, Rng = rng, Site = site, Tech = hints?.Tech };
         c.X.InSpace = site.Space;
         // The approach: a patch of open ground at the site's way in.
         var approach = new List<Int3>();
@@ -747,10 +749,33 @@ public static class Sites
     {
         int n = p.Int("count", 3), gap = p.Int("gap", 8);
         bool alongX = p.Arg("axis", "x") == "x";
+        // What its age left standing in the yard (data/eras.txt): carts and wagons, motors, or grav sleds.
+        string kind = x.Tech is TechLevel t && EraBook.Current.Of(t) is { } era ? era.Vehicles : "motors";
         for (int i = 0; i < n; i++)
         {
             int ox = p.X + (alongX ? i * gap : 0), oz = p.Z + (alongX ? 0 : i * gap);
-            var col = new[] { new Rgb(0x6a, 0x5a, 0x3a), new Rgb(0x4a, 0x5a, 0x4a), new Rgb(0x7a, 0x3a, 0x2a) }[i % 3].Lerp(new Rgb(0x5a, 0x40, 0x30), 0.3f);
+            Int3 At(int a, int b, int y) => alongX ? new Int3(ox + b, y, oz + a) : new Int3(ox + a, y, oz + b);
+            if (kind == "carts")
+            {
+                // A cart or a covered wagon: a plank bed on four wheels, a shaft out front, the odd canvas hood on hoops.
+                var wood = new[] { new Rgb(0x6a, 0x52, 0x3c), new Rgb(0x5a, 0x46, 0x34), new Rgb(0x74, 0x5c, 0x44) }[i % 3];
+                bool hood = x.Rng.Chance(0.55f);
+                int clen = hood ? 5 : 4;
+                foreach (int a in new[] { 0, clen - 1 })
+                    foreach (int b in new[] { 0, 2 })
+                        x.C.Set(At(a, b, 0), new Block(BlockType.Pillar, Material.Timber, wood.Scale(0.6f), Role.Debris));
+                for (int a = 0; a < clen; a++)
+                    for (int b = 0; b < 3; b++)
+                    {
+                        x.C.Set(At(a, b, 1), new Block(BlockType.Plate, Material.Timber, wood, Role.Debris));
+                        if (hood && (b != 1 || a % 2 == 0)) x.C.Set(At(a, b, 2), new Block(b == 1 ? BlockType.Cube : BlockType.Pane, Material.Cloth, new Rgb(0xb8, 0xae, 0x94).Scale(0.8f + 0.1f * (a % 2)), Role.Debris));
+                    }
+                x.C.Set(At(clen, 1, 1), new Block(BlockType.Rail, Material.Timber, wood.Scale(0.8f), Role.Debris));
+                continue;
+            }
+            bool grav = kind == "grav";
+            var col = grav ? new[] { new Rgb(0x9a, 0xa4, 0xac), new Rgb(0x5a, 0x6a, 0x7a), new Rgb(0xc4, 0xc8, 0xcc) }[i % 3]
+                : new[] { new Rgb(0x6a, 0x5a, 0x3a), new Rgb(0x4a, 0x5a, 0x4a), new Rgb(0x7a, 0x3a, 0x2a) }[i % 3].Lerp(new Rgb(0x5a, 0x40, 0x30), 0.3f);
             bool big = x.Rng.Chance(0.4f);
             int len = big ? 6 : 4, wid = 3, hgt = big ? 3 : 2;
             for (int a = 0; a < len; a++)
@@ -761,7 +786,10 @@ public static class Sites
                         if (!cab && y == hgt - 1 && big && b == 1) continue;
                         if (y == hgt - 1 && cab && !big) continue;
                         Int3 c = alongX ? new Int3(ox + b, y, oz + a) : new Int3(ox + a, y, oz + b);
-                        x.C.Set(c, new Block(BlockType.Cube, Material.Rust, col.Scale(0.8f + 0.2f * ((a + y) % 2)), Role.Debris));
+                        // A grav sled's nose is swept back where a motor's is square.
+                        bool nose = grav && a == len - 1 && y == hgt - 1 - (big ? 0 : 1);
+                        x.C.Set(c, nose ? new Block(BlockType.Ramp, Material.Alloy, col, Role.Debris, alongX ? Dir.North : Dir.West)
+                            : new Block(BlockType.Cube, grav ? Material.Alloy : Material.Rust, col.Scale(0.8f + 0.2f * ((a + y) % 2)), Role.Debris));
                     }
         }
     }

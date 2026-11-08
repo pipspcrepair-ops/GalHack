@@ -66,6 +66,9 @@ public sealed class PoiLibrary
     /// <summary>How a war's strikes came down and what they aimed at (data/strikes.txt).</summary>
     public StrikeBook Strikes = new();
 
+    /// <summary>What each age built with and how its buildings stand (data/eras.txt).</summary>
+    public EraBook Eras = new();
+
     public FamilyDef Family(string id) => Families.First(f => f.Id == id);
     public RoomDef Room(string id) => Rooms.TryGetValue(id, out var r) ? r : throw new KeyNotFoundException($"no room '{id}' in rooms.txt");
 
@@ -94,6 +97,7 @@ public sealed class PoiLibrary
             else if (name.EndsWith("world-dressing.txt", StringComparison.Ordinal)) lib.Dressing = DressBook.Parse(text, name);
             else if (name.EndsWith("finishes.txt", StringComparison.Ordinal)) lib.Finishes = FinishBook.Parse(text, name);
             else if (name.EndsWith("strikes.txt", StringComparison.Ordinal)) lib.Strikes = StrikeBook.Parse(text, name);
+            else if (name.EndsWith("eras.txt", StringComparison.Ordinal)) lib.Eras = EraBook.Parse(text, name);
         }
         lib.Check();
         return lib;

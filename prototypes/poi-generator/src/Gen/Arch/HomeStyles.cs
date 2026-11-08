@@ -260,6 +260,10 @@ public sealed class HomeCulture
 {
     public readonly List<(HouseFamily Family, float Weight)> Families = new();
     public readonly List<HouseFamily> Odd = new();
+    /// <summary>A strange people's culture: its houses are all of the odd families (homes.txt "odd yes"), a regular one's never.</summary>
+    public bool Strange;
+    /// <summary>How many cultures are strange ones.</summary>
+    public const float StrangeShare = 0.12f;
     public readonly Dictionary<string, string> Favoured = new();
     public Rgb[] Render = Array.Empty<Rgb>(), Paint = Array.Empty<Rgb>(), Brick = Array.Empty<Rgb>(), Stone = Array.Empty<Rgb>(), Wood = Array.Empty<Rgb>(), Trim = Array.Empty<Rgb>();
     public Rgb Tile, Tile2, Slate, Metal, Metal2, Thatch, Shingle, Glazed;
@@ -293,14 +297,17 @@ public sealed class HomeCulture
         var c = new HomeCulture { Climate = hints.Climate, Tech = tech, Wealth = hints.Wealth, Seed = hints.Culture };
         float age = r.Float();
         float Weight(HouseFamily f) => f.Weight * (f.Era == "old" ? 0.4f + 1.2f * age : f.Era == "new" ? 1.6f - 1.2f * age : 1f);
-        var fit = book.Families.Where(f => !f.Odd && f.Techs.Contains(tech) && f.Climates.Contains(hints.Climate)).ToList();
-        if (fit.Count == 0) fit = book.Families.Where(f => !f.Odd && f.Techs.Contains(tech)).ToList();
-        if (fit.Count == 0) fit = book.Families.Where(f => !f.Odd).ToList();
+        // A strange people builds only strange houses, and a regular one never does: the two never share a
+        // street, a town or a stretch of country (the culture is the region's).
+        var strange = book.Families.Where(f => f.Odd && f.Techs.Contains(tech)).ToList();
+        c.Strange = strange.Count > 0 && new Rng(Hash.Combine((ulong)(uint)hints.Culture, 0x0DD5UL)).Chance(StrangeShare);
+        var fit = book.Families.Where(f => f.Odd == c.Strange && f.Techs.Contains(tech) && f.Climates.Contains(hints.Climate)).ToList();
+        if (fit.Count == 0) fit = book.Families.Where(f => f.Odd == c.Strange && f.Techs.Contains(tech)).ToList();
+        if (fit.Count == 0) fit = book.Families.Where(f => f.Odd == c.Strange).ToList();
         // A main family, and one or two more it builds less of.
         int n = Math.Min(fit.Count, 2 + (r.Chance(0.5f) ? 1 : 0));
         var order = r.WeightedOrder(fit, Weight);
         for (int i = 0; i < n; i++) c.Families.Add((order[i], i == 0 ? 3f : 1.2f));
-        c.Odd.AddRange(book.Families.Where(f => f.Odd && f.Techs.Contains(tech)));
         c.Age = age;
         // Its fences, by street: what its families put round their plots, what suits the weather, the tech, the
         // street's purse and its age. A neighbourhood better or worse off than the next picks again.
@@ -371,12 +378,13 @@ public sealed class HouseStyle
 
     static int Even(int m) => m / 2 * 2;
 
-    /// <summary>A house of a culture: a family, then each of its parts.</summary>
-    public static HouseStyle Roll(HomeCulture c, Rng r, string? family = null)
+    /// <summary>A house of a culture: a family, then each of its parts. A named family stands only where it is of the culture's kind, unless <paramref name="force"/> (a test or a view asking for one).</summary>
+    public static HouseStyle Roll(HomeCulture c, Rng r, string? family = null, bool force = false)
     {
         HouseFamily f;
         HomeBook book = HomeBook.Current;
-        if (family != null && book.Find(family) is { } named) f = named;
+        // A named family only where it is of the culture's kind: a strange people never builds a regular house, nor the other way round.
+        if (family != null && book.Find(family) is { } named && (force || named.Odd == c.Strange)) f = named;
         else if (c.Odd.Count > 0 && r.Chance(0.05f)) f = r.Pick(c.Odd);
         else f = c.Families[r.PickWeighted(c.Families.Select(x => x.Weight).ToList())].Family;
         var s = new HouseStyle { Family = f, Wealth = Math.Clamp(c.Wealth + r.Float(-0.25f, 0.25f), 0f, 1f) };

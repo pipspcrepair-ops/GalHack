@@ -78,8 +78,27 @@ public sealed record WorldProfile
     /// <summary>Places no one from this world built: alien and precursor sites, and wrecks that fell from the sky. Any world can have them.</summary>
     public static bool Unbuilt(FamilyDef f) => f.Tags.Contains("alien") || f.Tags.Contains("precursor") || f.Tags.Contains("wreck");
 
-    /// <summary>The tech level a place in a state is built at: the living at <see cref="Now"/>, the old world at <see cref="Before"/>.</summary>
-    public TechLevel LevelFor(FamilyDef f, PoiState state) => Living(f, state) ? Now : Before;
+    /// <summary>Built by survivors after the fall (a scrap fort, a camp), lived in or not: it is of the living's age, never the old world's.</summary>
+    public static bool SurvivorBuilt(FamilyDef f) => f.Tags.Contains("settlement") || f.Tags.Contains("survivor");
+
+    /// <summary>The tech level a place in a state is built at: the living (and whatever survivors built) at <see cref="Now"/>, the old world at <see cref="Before"/>.</summary>
+    public TechLevel LevelFor(FamilyDef f, PoiState state) => Living(f, state) || SurvivorBuilt(f) ? Now : Before;
+
+    /// <summary>Whether a family's tech fits this world in any state it can take (its data tech line, any when empty).</summary>
+    public bool TechFits(FamilyDef f) =>
+        Unbuilt(f) || f.Techs.Count == 0 || Enumerable.Range(0, f.StateWeights.Length).Any(s => f.StateWeights[s] > 0f && f.Techs.Contains(Tag(LevelFor(f, (PoiState)s))));
+
+    /// <summary>
+    /// What stands for a family on this world: the family itself where its tech fits, else the first of its
+    /// <c>instead</c> line that does (its age's equivalent: a caravan camp where a low-tech world has no launch
+    /// field), else null. By rule, so any fall, theme or plan that asks for it gets the right thing.
+    /// </summary>
+    public FamilyDef? ForAge(PoiLibrary lib, FamilyDef f, ulong salt = 0)
+    {
+        if (TechFits(f)) return f;
+        var fits = f.Instead.Select(id => lib.Families.FirstOrDefault(x => x.Id == id)).Where(x => x != null && TechFits(x)).ToList();
+        return fits.Count == 0 ? null : fits[(int)(Hash.Mix(salt) % (ulong)fits.Count)];
+    }
 
     /// <summary>
     /// Whether a family can stand here in a state: its tech levels (data: tech, any when empty)
@@ -95,8 +114,7 @@ public sealed record WorldProfile
         if (!living && !Inhabited) return false;
         if (f.Tier == PoiTier.Spaceport && !living && Starport == Starport.None) return false;
         if (living && !LivingFits(f)) return false;
-        TechLevel level = living ? Now : Before;
-        return f.Techs.Count == 0 || f.Techs.Contains(Tag(level));
+        return f.Techs.Count == 0 || f.Techs.Contains(Tag(LevelFor(f, state)));
     }
 
     /// <summary>Whether this many people could keep a living place of this size: hamlets for survivors, nothing past a base for outposts.</summary>

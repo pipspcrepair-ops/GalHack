@@ -43,7 +43,7 @@ public partial class PoiTest : Node
             ("LootByRarity", LootByRarity), ("LootByDepth", LootByDepth), ("Carved", Carved), ("Hidden", Hidden),
             ("Breaches", Breaches), ("Keys", Keys), ("PlacementRules", PlacementRules), ("NoRepeatsInSystem", NoRepeatsInSystem),
             ("SeenWeighting", SeenWeighting), ("RegrowthPolicy", RegrowthPolicy), ("RevealDistances", RevealDistances),
-            ("WorldPlacement", WorldPlacementCheck), ("WorldProfiles", WorldProfiles), ("Ports", PortsAndPeople), ("StartWorlds", StartWorlds), ("Tethers", Tethers), ("Stamps", Stamps), ("Geometry", Geometry), ("RequiredRooms", RequiredRooms), ("Ages", Ages), ("FactionMix", FactionMix), ("Townsfolk", TownsfolkCheck), ("Blasts", Blasts), ("StartSystems", StartSystems), ("PlainRuins", PlainRuins), ("Houses", Houses), ("Doors", Doors), ("DoorwaySolids", DoorwaySolids), ("Surfaces", Surfaces), ("Rails", Rails), ("Decay", DecayPass), ("Landmarks", Landmarks), ("ShooterTags", ShooterTags), ("Hulks", Hulks), ("Performance", Performance),
+            ("WorldPlacement", WorldPlacementCheck), ("WorldProfiles", WorldProfiles), ("Ports", PortsAndPeople), ("StartWorlds", StartWorlds), ("Tethers", Tethers), ("Stamps", Stamps), ("Geometry", Geometry), ("RequiredRooms", RequiredRooms), ("Ages", Ages), ("FactionMix", FactionMix), ("Townsfolk", TownsfolkCheck), ("Blasts", Blasts), ("StartSystems", StartSystems), ("PlainRuins", PlainRuins), ("Houses", Houses), ("Doors", Doors), ("DoorwaySolids", DoorwaySolids), ("Surfaces", Surfaces), ("Rails", Rails), ("Decay", DecayPass), ("Landmarks", Landmarks), ("ShooterTags", ShooterTags), ("Hulks", Hulks), ("Eras", Eras), ("Performance", Performance),
         };
         try
         {
@@ -935,7 +935,7 @@ public partial class PoiTest : Node
             {
                 exodusWorlds++;
                 var main = primaries.FirstOrDefault();
-                var mine = r.Pois.Where(p => p.Family.Tags.Contains("scrappy")).ToList();
+                var mine = r.Pois.Where(p => p.Family.Tags.Contains("scrappy") || p.Family.Tags.Contains("exodus")).ToList();
                 scrappy += mine.Count;
                 camps += r.Pois.Count(p => p.Family.Tags.Contains("evacuation"));
                 if (mine.Count < Math.Min(w.ScrappyPorts, 6)) thin++;

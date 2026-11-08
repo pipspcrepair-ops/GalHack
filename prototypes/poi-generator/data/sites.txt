@@ -625,6 +625,34 @@ site scrappy_port
   part crater 2 30 r 4 depth 1
   part vehicles -22 -14 count 3 gap 7 axis z
 
+# A caravan camp (low-tech worlds' launch field): wagons drawn up in a ring round a cold fire, awnings
+# for shelter, a timber shed for what was kept dry, a hitching rail, the track in.
+site caravan_camp
+  name Caravan Camp
+  style freeholder
+  entrance -30 4 west
+  part road -24 2 len 12 width 4 axis x cracks 0.6
+  part vehicles -12 -18 count 4 gap 7 axis x
+  part vehicles -12 16 count 4 gap 7 axis x
+  part vehicles 18 -10 count 3 gap 8 axis z
+  part camp 2 0
+  part stalls -6 -6 count 2 gap 4
+  part building -8 -40 program shed vault yes
+  part poles -18 -2 count 4 gap 3 h 2 axis z
+
+# A road camp: a column of carts stopped along the verge, a shed by the road, cold fires along it.
+site road_camp
+  name Road Camp
+  style freeholder
+  entrance -30 4 west
+  part road -24 2 len 70 width 5 axis x cracks 0.5
+  part vehicles -18 -6 count 6 gap 8 axis x
+  part vehicles -14 12 count 4 gap 9 axis x
+  part camp 6 -16
+  part camp 30 -16
+  part building 10 24 program shed vault yes
+  part stalls 34 14 count 2 gap 4
+
 # An evacuation camp: rows of shelters inside a wire fence by the road, an aid post, what was left behind.
 site evacuation_camp
   name Evacuation Camp
