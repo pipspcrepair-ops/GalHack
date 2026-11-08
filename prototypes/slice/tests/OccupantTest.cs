@@ -202,15 +202,22 @@ public partial class OccupantTest : Node
         foreach (string fall in falls)
         {
             WorldForce.Current = new WorldForce { Fall = fall };
-            var spec = new PlanetSpec(Seed(), Archetype.Temperate, 0, Modifier.None);
-            WorldMap map = PlanetGenerator.Generate(spec);
-            WorldProfile profile = WorldProfile.Roll(spec.Seed, "Temperate", false);
-            if (!profile.Inhabited) profile = profile with { Inhabited = true };
-            profile = WorldForce.Current.Apply(profile);
-            WorldRoll roll = PoiSiting.RollOf(_lib, map, profile);
-            LandingSite landing = Landing.Find(map, map.WidthMeters * 0.5, map.HeightMeters * 0.5);
-            List<PoiSite> sites = PoiSiting.Place(catalog, map, new GalHack.Terrain.PlanetTerrainSource(map), landing, profile: profile);
-            var held = sites.Where(s => s.Instance != null && OccupancyLayer.Applies(s.Family, s.Instance.State)).ToList();
+            WorldRoll roll = null;
+            List<PoiSite> sites = null, held = null;
+            // A small world can have nothing to hold (every place a survivor hamlet, a faction's farm or infested): another world of that fall.
+            for (int tries = 0; tries < 6 && (held == null || held.Count == 0); tries++)
+            {
+                var spec = new PlanetSpec(Seed(), Archetype.Temperate, 0, Modifier.None);
+                WorldMap map = PlanetGenerator.Generate(spec);
+                WorldProfile profile = WorldProfile.Roll(spec.Seed, "Temperate", false);
+                if (!profile.Inhabited) profile = profile with { Inhabited = true };
+                profile = WorldForce.Current.Apply(profile);
+                roll = PoiSiting.RollOf(_lib, map, profile);
+                LandingSite landing = Landing.Find(map, map.WidthMeters * 0.5, map.HeightMeters * 0.5);
+                sites = PoiSiting.Place(catalog, map, new GalHack.Terrain.PlanetTerrainSource(map), landing, profile: profile);
+                held = sites.Where(s => s.Instance != null && OccupancyLayer.Applies(s.Family, s.Instance.State)).ToList();
+                if (held.Count == 0) GD.Print($"  (a {fall} world with nothing to hold, another rolled: {string.Join(", ", sites.Select(s => $"{s.Family.Id} {s.Instance?.State.ToString() ?? "no instance"}"))})");
+            }
             int rolled = held.Count(s => s.Instance.Occupancy != null);
             int inMix = held.Count(s => s.Instance.Occupancy is { } o && roll.Occupancy.ContainsKey(CodeOf(o.Main)));
             Check(roll != null && held.Count > 0 && rolled == held.Count && inMix == rolled,

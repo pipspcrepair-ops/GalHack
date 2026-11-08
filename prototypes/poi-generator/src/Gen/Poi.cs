@@ -470,7 +470,8 @@ public static class Fixtures
         var m = inst.Layout.Modules[module];
         var nav = inst.Nav();
         Int3 mid = new((m.Min.X + m.Max.X) / 2, m.Min.Y + 1, (m.Min.Z + m.Max.Z) / 2);
-        return m.Cells.Where(c => inst.Blocks.Get(c).IsAir && nav.Standable(c) && !nav.LadderAt(c) && !nav.LiftAt(c))
+        // Never on the way in itself (a yard that is only its approach, such as a warning post's, would wall it off).
+        return m.Cells.Where(c => c != inst.Layout.EntranceCell && inst.Blocks.Get(c).IsAir && nav.Standable(c) && !nav.LadderAt(c) && !nav.LiftAt(c))
             .OrderBy(c => c.Manhattan(mid)).FirstOrDefault(new Int3(m.Min.X + 1, m.Min.Y + 1, m.Min.Z + 1));
     }
 

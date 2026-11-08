@@ -308,6 +308,8 @@ public partial class PlaceTest : Node
             key = k;
             break;
         }
+        if (inst.Extras.Keys.Count > 0 && key == null) // what became of each lock, when no key finds one
+            GD.Print($"  ({inst.Family.Id} {inst.State}: locks {string.Join("; ", inst.Extras.Locks.Select(l => $"{l.Clearance} at doorway {l.Doorway}: {string.Join(" ", inst.Layout.Doorways[l.Doorway].Cells.Select(c => $"{inst.Blocks.Get(c).Type}/{inst.Blocks.Get(c).Variant}"))}"))}; keys {string.Join(", ", inst.Extras.Keys.Select(k => $"{k.Clearance} at {k.Cell}"))})");
         if (inst.Extras.Keys.Count > 0) // a mine or a farm has none
             Check(key != null, $"a keycard ({key?.Clearance}) lies within reach, and a door it opens ({inst.Extras.Keys.Count} keys, {place.Doors.Count(d => d.Clearance != null)} locked doors)");
         if (key != null)
@@ -465,6 +467,13 @@ public partial class PlaceTest : Node
         // Nothing alive inside a wall, a floor or a stair, in the place or out on the surface round it.
         int inside = game.Zone.Wildlife.Sites.Sum(s => Wildlife.Interpenetration.Scan(s.Sim).Count) + Wildlife.Interpenetration.Scan(game.Zone.Wildlife.Sim).Count;
         int freed = game.Zone.Wildlife.Sites.Sum(s => s.Sim.Freed) + game.Zone.Wildlife.Sim.Freed;
+        if (inside > 0)
+            foreach (var s in game.Zone.Wildlife.Sites)
+                foreach (var c in Wildlife.Interpenetration.Scan(s.Sim).Take(4))
+                {
+                    var cell = place.CellAt(Wildlife.Interpenetration.Middle(c));
+                    GD.Print($"  (inside: {c.Species.CommonName} in a space {c.Space != null}, middle {Wildlife.Interpenetration.Middle(c)}, cell {cell}: {inst.Blocks.Get(cell)}, below {inst.Blocks.Get(cell + PoiGenerator.Gen.Int3.Down)}, in walls {c.InWalls})");
+                }
         Check(inside == 0, $"no creature of the place or of the ground round it is inside a wall or a floor ({game.Zone.Wildlife.Sites.Sum(s => s.Sim.Creatures.Count)} in places; {freed} freed along the way)");
         var bodies = game.Zone.Loot.All.Where(l => l.Kind == Slice.Items.LootKind.Corpse).ToList();
         Check(bodies.All(l => l.Node.GetNodeOrNull("Ring") == null), $"the {bodies.Count} bodies lie with nothing drawn round them");

@@ -61,7 +61,7 @@ public static class Civic
     {
         const int I0 = 4, K0 = 6, K1 = 37, H = 7;
         // Each spawn its own length (its own seed).
-        int I1 = 45 + 2 * rng.Fork("size").Range(0, 7);
+        int I1 = 51 + 2 * rng.Fork("size").Range(0, 4); // never shorter than the old fixed 51: a large place stands 100 m on its long side
         var p = new Plot(c, rng, tech, hints?.Front ?? Dir.North);
         Wear(p);
         Fab f = p.F;

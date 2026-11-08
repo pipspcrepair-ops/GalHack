@@ -263,24 +263,37 @@ internal sealed partial class Depths
     void Reach()
     {
         if (Def.MinSize <= 0) return;
-        for (int tries = 0; tries < 8; tries++)
+        for (int tries = 0; tries < 16; tries++)
         {
             var live = Live.ToList();
             int i0 = live.Min(s => s.I0), i1 = live.Max(s => s.I1), k0 = live.Min(s => s.K0), k1 = live.Max(s => s.K1);
             int span = 2 * (Math.Max(i1 - i0, k1 - k0) + 3);
             if (span >= Def.MinSize) return;
             bool alongI = i1 - i0 >= k1 - k0;
-            var lv = R.Pick(Levels);
-            var hosts = lv.Spaces.Where(s => !s.Dead && !s.Secret && s.Kind is "corridor" or "gallery" or "hub" or "ring" or "hall" or "landing").ToList();
-            // Off the host nearest the end it can lengthen, outward.
-            foreach (var (host, d) in hosts.SelectMany(h => (alongI ? new[] { Dir.East, Dir.West } : new[] { Dir.North, Dir.South }).Select(d => (h, d)))
-                         .OrderBy(x => x.d switch { Dir.East => i1 - x.h.I1, Dir.West => x.h.I0 - i0, Dir.South => k1 - x.h.K1, _ => x.h.K0 - k0 }))
+            // Every level in turn (one picked at random can have no way that reaches out), the first that takes a wing.
+            bool grew = false;
+            foreach (var lv in Levels.OrderBy(_ => R.Float()).ToList())
             {
-                if (From(lv, host, d, R.Between(12, 20), Math.Max(2, MainW - 1), Math.Min(lv.H, 3), minLen: 8) is not { } wing) continue;
-                RoomsAlong(lv, wing, density: 0.8f);
-                EndRoom(lv, wing, R.Between(4, 7), wing.Wid + R.Between(2, 5));
-                break;
+                // The ways first; failing those, a room at the end (what stands at the far end of a way often closes it off).
+                var hosts = lv.Spaces.Where(s => !s.Dead && !s.Secret && s.Kind is "corridor" or "gallery" or "hub" or "ring" or "hall" or "landing").ToList();
+                hosts.AddRange(lv.Spaces.Where(s => !s.Dead && !s.Secret && s.Kind == "room"));
+                // Off the host nearest the end it can lengthen, outward.
+                // Long enough to reach the span it wants from the end it grows from (a wing in the middle reaches nothing).
+                int want = Def.MinSize / 2 - 3;
+                foreach (var (host, d) in hosts.SelectMany(h => (alongI ? new[] { Dir.East, Dir.West } : new[] { Dir.North, Dir.South }).Select(d => (h, d)))
+                             .OrderBy(x => x.h.Kind == "room" ? 1 : 0).ThenBy(x => x.d switch { Dir.East => i1 - x.h.I1, Dir.West => x.h.I0 - i0, Dir.South => k1 - x.h.K1, _ => x.h.K0 - k0 }))
+                {
+                    int from = d switch { Dir.East => host.I1 - i0, Dir.West => i1 - host.I0, Dir.South => host.K1 - k0, _ => k1 - host.K0 };
+                    int len = Math.Clamp(want - from + 1, 12, 40);
+                    if (From(lv, host, d, Math.Max(len, R.Between(12, 20)), Math.Max(2, MainW - 1), Math.Min(lv.H, 3), minLen: 8) is not { } wing) continue;
+                    RoomsAlong(lv, wing, density: 0.8f);
+                    EndRoom(lv, wing, R.Between(4, 7), wing.Wid + R.Between(2, 5));
+                    grew = true;
+                    break;
+                }
+                if (grew) break;
             }
+            if (!grew) return;
         }
     }
 

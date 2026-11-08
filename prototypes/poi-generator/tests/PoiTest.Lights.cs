@@ -15,6 +15,7 @@ public partial class PoiTest
         var fam = _lib.Families.First();
         var poi = PoiFactory.Generate(_lib, fam, 0, Rarity.Common, PoiState.Active, (ulong)rng.NextInt64());
         poi.Lights.Clear();
+        poi.LitFaces.Clear(); // a high-tech place already carries strips of its own (PlaceLights): this face is the one under test
         Int3 at = poi.Layout.EntranceCell;
         var style = LightSettings.Make(0xff3322, LightAnim.Pulse, 1f, rng.Next(128));
         PoiLights.Add(poi, at, style);

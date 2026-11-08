@@ -485,7 +485,7 @@ public static class FactionPlaces
         const int F0 = 4, G0 = 26;
         // Each spawn its own field (its own seed).
         var field = p.R.Fork("field");
-        int F1 = 41 + 2 * field.Range(0, 7), G1 = 36 + 2 * field.Range(0, 5);
+        int F1 = 49 + 2 * field.Range(0, 3) /* never shorter than the old fixed 49: a large place stands 100 m on its long side */, G1 = 36 + 2 * field.Range(0, 5);
         for (int k = 2 * G0; k <= 2 * G1 + 1; k++)
             for (int u = 2 * F0; u <= 2 * F1 + 1; u++)
             {

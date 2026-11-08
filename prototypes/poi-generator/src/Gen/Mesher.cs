@@ -569,7 +569,7 @@ public static class Mesher
             {
                 var shape = Shapes.For(b, p, _g);
                 // Something lower than the finish it was set on (a scorch, papers, moss) lies on top of it, not in it.
-                V3 lift = !floor.IsAir && shape.TrueForAll(s => s.Hi.Y <= BlockInfo.FinishTop) ? new V3(0, BlockInfo.FinishTop, 0) : default;
+                V3 lift = !floor.IsAir && shape.TrueForAll(s => s.Hi.Y <= 0.1f) ? new V3(0, BlockInfo.FinishTop, 0) : default;
                 for (int i = 0; i < shape.Count && i < boxes; i++) AddBox(chunk, p, shape[i] with { Lo = shape[i].Lo + lift, Hi = shape[i].Hi + lift }, b);
             }
             // A stair is steps up close; from further off, a slope.

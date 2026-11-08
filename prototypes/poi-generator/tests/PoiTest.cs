@@ -1004,7 +1004,9 @@ public partial class PoiTest : Node
             }
             // Small improvised places repeat by design, as flavour ruins do.
             if (Marker(f)) continue;
-            if (f.Tags.Contains("flavour") || f.Tags.Contains("scrappy") || f.Tags.Contains("evacuation"))
+            // (So are the era's own stand-ins for them: a caravan or road camp where a low-tech world has no launch field.)
+            static bool Filler(FamilyDef f) => f.Tags.Contains("flavour") || f.Tags.Contains("scrappy") || f.Tags.Contains("evacuation");
+            if (Filler(f) || _lib.Families.Any(o => o.Instead.Contains(f.Id) && Filler(o)))
             {
                 float same = full.GroupBy(c => c).Max(g => g.Count()) / (float)full.Count;
                 if (same > worstFiller) { worstFiller = same; worstFillerType = f.Id; }
@@ -1085,10 +1087,14 @@ public partial class PoiTest : Node
             int growths = inf.Blocks.Blocks().Count(b => b.Block.Type == BlockType.Growth);
             infestedBloom &= growths > 0 && inf.Enemies.Any(e => e.Kind is EnemyKind.Hollow or EnemyKind.Corrupted);
             var ru = PoiFactory.Generate(_lib, f, v, Rarity.Common, PoiState.Ruined, 3);
-            minRemoved = Math.Min(minRemoved, ru.RemovedFraction);
             var ruProblems = Validator.Check(ru);
-            if ((ru.RemovedFraction < RuinShare || ruProblems.Count > 0) && ruinFirst.Length == 0) ruinFirst = $" (first: {f.Id} lost {ru.RemovedFraction:P1}{(ruProblems.Count > 0 ? ", " + ruProblems[0] : "")})";
-            ruinedOk &= ru.RemovedFraction >= RuinShare && ruProblems.Count == 0;
+            // A crashed hulk is a real vessel of the player's blocks, damaged in its own plan (CapitalHull.Damage) and kept
+            // worth claiming (design: derelicts that can be repaired and claimed); the place's own blocks are only its yard.
+            bool hulk = CapitalHull.Of(ru.Layout) != null;
+            bool lost = hulk || ru.RemovedFraction >= RuinShare;
+            if ((!lost || ruProblems.Count > 0) && ruinFirst.Length == 0) ruinFirst = $" (first: {f.Id} lost {ru.RemovedFraction:P1}{(ruProblems.Count > 0 ? ", " + ruProblems[0] : "")})";
+            ruinedOk &= lost && ruProblems.Count == 0;
+            if (!hulk) minRemoved = Math.Min(minRemoved, ru.RemovedFraction);
         }
         var garrison = PoiFactory.Generate(_lib, _lib.Family("vharn_outpost"), 0, Rarity.Rare, PoiState.Active, 3);
         Check(garrison.Enemies.Count(e => e.Defender) > 0, $"active faction places are guarded ({garrison.Enemies.Count(e => e.Defender)} defenders in a rare Vharn garrison)");
@@ -1966,6 +1972,11 @@ public partial class PoiTest : Node
             {
                 var p = PoiFactory.Generate(_lib, f, 0, Rarity.Uncommon, s, 21);
                 int top = p.Blocks.Blocks().Where(b => b.Cell.Y >= 0 && BlockInfo.Collides(b.Block.Type)).Select(b => b.Cell.Y + 1).DefaultIfEmpty(0).Max();
+                // A crashed hulk stands as the vessel it is (its 2 m blocks set down in the place's frame), not in the place's own blocks.
+                if (CapitalHull.Of(p.Layout) is { } hull)
+                    foreach (var piece in hull.Pieces)
+                        foreach (Int3 c in piece.Intact.Keys)
+                            top = Math.Max(top, (int)MathF.Floor(piece.Origin.Y + System.Numerics.Vector3.Transform(new System.Numerics.Vector3(c.X, c.Y, c.Z) * 2f, piece.Rotation).Y + 1f));
                 bool light = p.Lights.Count > 0 || p.Blocks.Blocks().Any(b => b.Cell.Y >= 0 && b.Block.Material is Gen.Material.Lumen or Gen.Material.Glyph or Gen.Material.Crystal);
                 if (s == PoiState.Ruined) top = Math.Max(top, f.Rise); // a ruin may have lost its top; it still needs its light
                 if (top < f.Rise || !light) bad.Add($"{f.Id} {s}: top {top} m (wants {f.Rise}), light {light}");
