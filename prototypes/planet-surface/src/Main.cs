@@ -186,6 +186,7 @@ public partial class Main : Node3D
         _seaMaterial = (ShaderMaterial)_water.Duplicate();
         _seaMaterial.SetShaderParameter("sea", true);
         _seaMaterial.SetShaderParameter("sea_map", world.SeaTexture());
+        _seaMaterial.SetShaderParameter("sea_mask", GalHack.Terrain.PlanetTerrainSource.SeaMaskDepth);
         Sea.MaterialOverride = _seaMaterial;
         _underwater = new Godot.Environment
         {

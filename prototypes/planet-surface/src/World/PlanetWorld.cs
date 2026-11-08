@@ -254,12 +254,31 @@ public sealed partial class PlanetWorld
     public float? WaterSurfaceAt(Vector3 p) =>
         !Look.Lava && Source.WaterSurfaceAt(Mathx.WrapX(p.X, Width), Mathx.Wrap(p.Z, Height), out float surface) ? surface : null;
 
-    /// <summary>A sea mask for the water shader: depth below sea level per world-map cell.</summary>
+    /// <summary>
+    /// The sea mask for the water shader: metres below sea level per world-map cell (negative on land),
+    /// one texel a cell, so the shader's filtered read is the very bilinear blend the terrain and the
+    /// physics take of the same cells. The sea is drawn exactly where it is, deeper than
+    /// <see cref="PlanetTerrainSource.SeaMaskDepth"/>: the ground is raised just clear of it everywhere
+    /// else, and no edge of it hangs over a dip the mask left out. Half floats, never bytes: a byte's
+    /// step was half a metre of depth, the size of the sea's own margin.
+    /// </summary>
     public ImageTexture SeaTexture()
     {
-        var bytes = new byte[Map.Count];
-        for (int k = 0; k < Map.Count; k++) bytes[k] = Rgb.Byte(Math.Clamp(-Map.Elevation[k] / 120f, 0f, 1f));
-        return ImageTexture.CreateFromImage(Image.CreateFromData(Map.Width, Map.Height, false, Image.Format.R8, bytes));
+        var bytes = new byte[Map.Count * 2];
+        for (int k = 0; k < Map.Count; k++)
+            BitConverter.TryWriteBytes(new Span<byte>(bytes, k * 2, 2), (Half)Math.Clamp(-Map.Elevation[k], -60000f, 60000f));
+        return ImageTexture.CreateFromImage(Image.CreateFromData(Map.Width, Map.Height, false, Image.Format.Rh, bytes));
+    }
+
+    /// <summary>What the water shader reads at a point: the sea mask's texels blended as its linear filter blends them (tests).</summary>
+    public static float SeaMaskAt(Image mask, double x, double z, double planetWidth, double planetHeight)
+    {
+        int w = mask.GetWidth(), h = mask.GetHeight();
+        double gx = x / planetWidth * w - 0.5, gz = z / planetHeight * h - 0.5;
+        int i0 = (int)Math.Floor(gx), j0 = (int)Math.Floor(gz);
+        float tx = (float)(gx - i0), tz = (float)(gz - j0);
+        float At(int i, int j) => mask.GetPixel(((i % w) + w) % w, ((j % h) + h) % h).R;
+        return Mathf.Lerp(Mathf.Lerp(At(i0, j0), At(i0 + 1, j0), tx), Mathf.Lerp(At(i0, j0 + 1), At(i0 + 1, j0 + 1), tx), tz);
     }
 }
 

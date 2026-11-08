@@ -10,7 +10,8 @@ global uniform vec2 planet_size;
 global uniform vec4 weather_wind;
 global uniform vec4 weather_ground;
 
-uniform sampler2D sea_map : filter_linear, repeat_enable;  // r: depth below sea level (0 = land)
+uniform sampler2D sea_map : filter_linear, repeat_enable;  // r: metres below sea level by world-map cell (negative on land)
+uniform float sea_mask = 0.48;  // the sea is where it's deeper than this, as the terrain and physics have it (PlanetTerrainSource.SeaMaskDepth)
 uniform bool sea = false;
 uniform vec3 shallow : source_color = vec3(0.1, 0.45, 0.5);
 uniform vec3 deep : source_color = vec3(0.02, 0.12, 0.2);
@@ -65,8 +66,9 @@ void fragment() {
 	if (past_rim(wpos.xz, rim, FRAGCOORD.xy)) discard;
 	float depth = 0.25; // rivers: shallow
 	if (sea) {
-		depth = texture(sea_map, wpos.xz / planet_size).r;
-		if (depth < 0.004) discard;
+		float below = texture(sea_map, wpos.xz / planet_size).r;
+		if (below < sea_mask) discard;
+		depth = clamp(below / 120.0, 0.0, 1.0);
 	} else {
 		// River quads run one grid square past the channel (vertex alpha 0 there). Where the banks
 		// are too low to hide that edge it would show as a staircase of squares: fray it with noise
