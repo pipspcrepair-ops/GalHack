@@ -214,4 +214,51 @@ public partial class Staging
         }
         return holes;
     }
+
+    /// <summary>
+    /// The night sky through cloud, at the darkest hour of a fresh world, from a lookout: clear, under broken
+    /// cloud, with a storm front's deck coming in (--ahead m ahead of its edge, 2,500: its warning is up) and
+    /// with it overhead (--behind m behind its edge, 1,500), each looking up --pitch (0.45 rad) toward the
+    /// front, saved as clear, broken, coming and storm .png in the --out folder.
+    /// </summary>
+    IEnumerable<int> NightClouds()
+    {
+        var sky = _game.Zone.Sky;
+        sky.Paused = true;
+        double midnight = 0.0;
+        for (double t = 0.0; t < 1.0; t += 0.002) if (sky.SunAt(t).Y < sky.SunAt(midnight).Y) midnight = t;
+        sky.TimeOfDay = midnight;
+        _game.Visor.Visible = false;
+        _game.Hands.Visible = false;
+        _game.Alerts.Visible = false;
+        WeatherSim sim = _game.Zone.Weather.Sim;
+        sim.FrontsOff = true;
+        sim.ClearFront();
+        sim.ClearTornadoes();
+        sim.Snap(WeatherKind.Clear);
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        sky.Stars.Finish();
+        Vector2 wind = sim.Current.Wind.LengthSquared() > 0.01f ? sim.Current.Wind : new Vector2(1f, 0f);
+        Vector2 way = Front.Lattice(wind, sim.WorldSize, 5500f).heading;
+        var toward = new Vector3(-way.X, 0f, -way.Y);
+        Vector3 eye = Lookout(_game.Survivor.WorldFeet, toward, 2f);
+        _game.Survivor.PlaceOutside((eye + Vector3.Up).ToNumerics());
+        foreach (int x in _drive.UntilSettled()) yield return x;
+        eye.Y = _game.Zone.GroundAt(eye.X, eye.Z).Y + 2f;
+        float pitch = (float)Num("pitch", 0.45);
+        _game.FixedCamera = new Transform3D(Basis.LookingAt(toward * MathF.Cos(pitch) + Vector3.Up * MathF.Sin(pitch), Vector3.Up), eye);
+        _game.Zone.Weather.ShaftsHidden = true;
+        string dir = _args.GetValueOrDefault("out", "nightclouds");
+        System.IO.Directory.CreateDirectory(dir);
+        foreach (var (name, weather, front) in new[] { ("clear", WeatherKind.Clear, float.NaN), ("broken", WeatherKind.Clouds, float.NaN),
+                     ("coming", WeatherKind.Clouds, (float)Num("ahead", 2500)), ("storm", WeatherKind.Thunderstorm, -(float)Num("behind", 1500)) })
+        {
+            sim.ClearFront();
+            sim.Snap(weather);
+            if (!float.IsNaN(front)) sim.StartFront(FrontKind.Storm, eye, front, wind);
+            foreach (int x in _drive.Wait(60)) yield return x;
+            GD.Print($"(nightclouds {name}: sun y {sky.ToSun.Y:F2}, cover {sky.Air.CloudCover:F2}, overcast {sky.Air.Overcast:F2}, front {(sim.Front == null ? "none" : $"{sim.Front.Ahead(eye):F0} m off")}, places glowing {sky.GlowingPlaces})");
+            foreach (int x in Shot(System.IO.Path.Combine(dir, name + ".png"))) yield return x;
+        }
+    }
 }

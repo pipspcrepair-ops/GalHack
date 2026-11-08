@@ -305,11 +305,93 @@ public partial class SkyRig : Node3D
             _sky.SetShaderParameter("rings", giant.Rings);
             _sky.SetShaderParameter("ring_color", C(giant.RingColor));
         }
+        FindLitPlaces(world);
         Surfaces = new BodySurfaces(world.StarSystem, new D3(0, world.StarSystem.Home.Radius, 0));
         _sky.SetShaderParameter("surfaces", Surfaces.Texture);
         _sky.SetShaderParameter("home_ring", world.StarSystem.Home.Rings);
         _sky.SetShaderParameter("home_ring_color", C(Planets.Look.ArchetypeLook.For(world.Spec).RingColor));
         Sun.LightColor = C(s.StarColor);
+    }
+
+    // ---- Lamps under the clouds ---------------------------------------------------------------------
+
+    const int GlowSlots = 4;
+
+    /// <summary>The glow of a place's lamps on the cloud base at night, at the most (a town's full of them).</summary>
+    public const float PlaceGlow = 0.05f;
+
+    /// <summary>This world's lit places: where each stands (canonical x, z), how far its glow reaches, its lamps' light and their colour.</summary>
+    readonly List<(Vector2 At, float Reach, float Lamps, Vector3 Colour)> _litPlaces = new();
+    readonly Vector4[] _glow = new Vector4[GlowSlots];
+    readonly Vector3[] _glowColours = new Vector3[GlowSlots];
+    readonly float[] _glowLamps = new float[GlowSlots];
+    Vector2 _glowEye = new(float.MaxValue, float.MaxValue);
+    int _glowCount;
+
+    /// <summary>How many lit places light the clouds over the eye now (tests).</summary>
+    public int GlowingPlaces => _glowCount;
+
+    /// <summary>Every place with lamps that still work above its ground: a town's glow on the cloud over it.</summary>
+    void FindLitPlaces(PlanetWorld world)
+    {
+        _litPlaces.Clear();
+        _glowEye = new Vector2(float.MaxValue, float.MaxValue);
+        foreach (Poi.PoiSite site in world.Pois)
+        {
+            if (site.Instance == null) continue;
+            float lamps = 0f;
+            Vector3 colour = Vector3.Zero;
+            foreach (PoiGenerator.Gen.LightSpot l in site.Instance.Lights)
+            {
+                if (l.Mode is PoiGenerator.Gen.LightMode.Dead or PoiGenerator.Gen.LightMode.Bloom || l.Cell.Y < 0) continue;
+                lamps += l.Energy;
+                colour += new Vector3(l.Color.R, l.Color.G, l.Color.B) / 255f * l.Energy;
+            }
+            if (lamps <= 0f) continue;
+            var (x, z) = site.Center;
+            float size = MathF.Max((float)(site.Stamp.MaxX - site.Stamp.MinX), (float)(site.Stamp.MaxZ - site.Stamp.MinZ));
+            _litPlaces.Add((new Vector2((float)x, (float)z), size * 0.5f + 500f + 45f * MathF.Sqrt(lamps), lamps, colour / lamps));
+        }
+    }
+
+    /// <summary>The nearest lit places to the eye light the cloud over them, by night: their reach and their lamps' light.</summary>
+    void GlowUnder(float night)
+    {
+        Camera3D camera = IsInsideTree() ? GetViewport()?.GetCamera3D() : null;
+        if (camera == null || _world == null || _litPlaces.Count == 0 || night <= 0.01f)
+        {
+            if (_glowCount != 0) _sky.SetShaderParameter("glow_count", 0);
+            _glowCount = 0;
+            _glowEye = new Vector2(float.MaxValue, float.MaxValue);
+            return;
+        }
+        var eye = new Vector2(camera.GlobalPosition.X, camera.GlobalPosition.Z);
+        if (eye.DistanceSquaredTo(_glowEye) > 150f * 150f)
+        {
+            // Into the eye's own frame, the near way round the planet: the glow sits over the place wherever the frame is.
+            _glowEye = eye;
+            double w = _world.Width, h = _world.Height;
+            var near = new List<(float Gap, Vector2 At, float Reach, float Lamps, Vector3 Colour)>();
+            foreach (var (at, reach, lamps, colour) in _litPlaces)
+            {
+                var to = new Vector2((float)Planets.Gen.Mathx.WrapDelta(at.X - eye.X, w), (float)Planets.Gen.Mathx.WrapDelta(at.Y - eye.Y, h));
+                float gap = to.Length() - reach;
+                if (gap < 9000f) near.Add((gap, eye + to, reach, lamps, colour));
+            }
+            near.Sort((a, b) => a.Gap.CompareTo(b.Gap));
+            _glowCount = Math.Min(near.Count, GlowSlots);
+            for (int i = 0; i < _glowCount; i++)
+            {
+                _glow[i] = new Vector4(near[i].At.X, near[i].At.Y, near[i].Reach, 0f);
+                _glowLamps[i] = near[i].Lamps;
+                _glowColours[i] = near[i].Colour;
+            }
+            _sky.SetShaderParameter("ground_glow_color", _glowColours);
+            _sky.SetShaderParameter("glow_count", _glowCount);
+        }
+        // A camp's few lamps barely touch it; a town's many light it as much as it gets.
+        for (int i = 0; i < _glowCount; i++) _glow[i].W = PlaceGlow * night * (1f - MathF.Exp(-_glowLamps[i] / 25f));
+        _sky.SetShaderParameter("ground_glow", _glow);
     }
 
     /// <summary>The storm towers to draw: (x, z, radius, strength) in the frame, up to four.</summary>
@@ -535,7 +617,13 @@ public partial class SkyRig : Node3D
         NightLight.ShadowEnabled = !Sun.ShadowEnabled;
         NightLight.LightEnergy = Smooth(-0.03f, -0.08f, toSun.Y) * Math.Clamp(_brightestEnergy, 0.06f, 0.35f) * air.SunScale;
         NightLight.LightColor = new Color(0.62f, 0.7f, 0.95f);
-        NightLight.LookAt(NightLight.GlobalPosition - (_brightest.Y > 0.1f ? _brightest : new Vector3(0.3f, 1f, 0.2f).Normalized()), Vector3.Forward);
+        Vector3 nightWay = _brightest.Y > 0.1f ? _brightest : new Vector3(0.3f, 1f, 0.2f).Normalized();
+        NightLight.LookAt(NightLight.GlobalPosition - nightWay, Vector3.Forward);
+        // The clouds are lit by night as the ground is, from the same way in the same colour (over the clouds,
+        // with none of them in the way); and from under them by the lamps of lit places nearby.
+        _sky.SetShaderParameter("night_light", new Vector4(nightWay.X, nightWay.Y, nightWay.Z, Math.Clamp(_brightestEnergy, 0.06f, 0.35f)));
+        _sky.SetShaderParameter("night_color", NightLight.LightColor);
+        GlowUnder(1f - day);
         Stars.Poll();
         GalaxySky.SetPixel(_sky, IsInsideTree() ? GetViewport() : null);
         _sky.SetShaderParameter("sun_time", SunTime);

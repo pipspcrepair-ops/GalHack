@@ -88,7 +88,7 @@ public sealed class WorldConditions
             Oxygen = OxygenOf(spec.Archetype),
             Radiation = RadiationOf(spec.Archetype),
             // Cratered rock with nothing but the sky above it holds no air.
-            Vacuum = spec.Has(Modifier.Cratered) && spec.Archetype is Archetype.Arid or Archetype.Ice or Archetype.Lava,
+            Vacuum = spec.Airless,
         };
         if (w.Vacuum) w.Oxygen = 0f;
         w.Backdrop = w.Climate == ClimateBand.Frozen ? new Color(0.86f, 0.88f, 0.9f) : spec.Archetype switch

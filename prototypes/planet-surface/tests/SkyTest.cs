@@ -36,6 +36,11 @@ namespace PlanetSurface;
 ///   broken cloud with the sun up and in the afternoon west (the slice's world and weather), at
 ///   dusk, under heavy cloud, and at night under a nebula. No line, no pinch, and stars as dense
 ///   along the axes as anywhere (<see cref="SkySeams"/>).
+/// - <b>Clouds hide what is behind them.</b> At midnight on a fresh world, looking up all round, the
+///   galaxy's light in the picture (drawn with it and without it) under a storm's deck is next to none
+///   of what a clear sky shows, and a giant overhead is hidden there too, whether the storm is only
+///   coming (fair air round its deck) or is here; broken cloud lets part of it through its gaps
+///   (<c>--only=nightclouds</c>).
 /// - <b>A low sun never drenches the picture.</b> On a temperate coast and in arid hills, at dawn
 ///   and at dusk with the sun a few degrees up, looking toward it, across it and away from it, in
 ///   clear air and in fog: no white wash (hardly any near-white pixels, never brighter than noon
@@ -63,6 +68,7 @@ public partial class SkyTest : Node
             if (only is null or "bodies") await WholeBodies();
             if (only is null or "eclipse") await Eclipse();
             if (only is null or "seams") await Seams();
+            if (only is null or "nightclouds") await NightClouds();
             if (only is null or "lowsun") await LowSun();
         }
         catch (Exception e)
@@ -170,6 +176,144 @@ public partial class SkyTest : Node
         Conditions c = Atmosphere.Clear();
         c[Param.CloudCover] = cloudCover;
         rig.Advance(0.0, 0f, Atmosphere.Compute(world.Sky, c, rig.SunAt(time).Y), Vector2.Zero);
+    }
+
+    // ---- Clouds in front of the night ---------------------------------------------------------------
+
+    async Task NightClouds()
+    {
+        var stage = new SubViewport { OwnWorld3D = true, Size = new Vector2I(4, 4), RenderTargetUpdateMode = SubViewport.UpdateMode.Always };
+        AddChild(stage);
+        var rig = new SkyRig { Name = "Sky" };
+        stage.AddChild(rig);
+        PlanetWorld world = PlanetWorld.Build(PlanetSpec.Roll((ulong)System.Random.Shared.NextInt64(), Archetype.Temperate, 0), Main.Catalog);
+        rig.SetWorld(world);
+        rig.Stars.Finish();
+        double midnight = 0.0;
+        for (double t = 0.0; t < 1.0; t += 0.004) if (rig.SunAt(t).Y < rig.SunAt(midnight).Y) midnight = t;
+        var sky = (ShaderMaterial)rig.Environment.Sky.SkyMaterial;
+        const int Size = 96;
+        // The sky's own energy, as the game draws it: a multiplier would scale its reduced passes too, the clouds' cover with them.
+        var camera = new Camera3D
+        {
+            Fov = 60f, Near = 0.1f, Far = 20000f,
+            Environment = new Godot.Environment
+            {
+                BackgroundMode = Godot.Environment.BGMode.Sky, Sky = new Sky { SkyMaterial = sky, RadianceSize = Sky.RadianceSizeEnum.Size32 },
+                TonemapMode = Godot.Environment.ToneMapper.Linear,
+                AmbientLightSource = Godot.Environment.AmbientSource.Disabled, ReflectedLightSource = Godot.Environment.ReflectionSource.Disabled,
+            },
+        };
+        stage.Size = new Vector2I(Size, Size);
+        stage.AddChild(camera);
+        camera.Position = new Vector3(0f, 120f, 0f);
+        camera.MakeCurrent();
+        // Up all round: the zenith, six ways at 40 degrees and four at 20.
+        var looks = new List<Vector3> { Vector3.Up };
+        for (int i = 0; i < 6; i++) looks.Add(new Vector3(MathF.Cos(i * MathF.Tau / 6f) * MathF.Cos(0.7f), MathF.Sin(0.7f), MathF.Sin(i * MathF.Tau / 6f) * MathF.Cos(0.7f)));
+        for (int i = 0; i < 4; i++) looks.Add(new Vector3(MathF.Cos(i * MathF.Tau / 4f + 0.4f) * MathF.Cos(0.35f), MathF.Sin(0.35f), MathF.Sin(i * MathF.Tau / 4f + 0.4f) * MathF.Cos(0.35f)));
+        string keep = System.Array.Find(OS.GetCmdlineUserArgs(), a => a.StartsWith("--keep="))?["--keep=".Length..];
+        async Task<float[]> Light(Vector3 at, string save)
+        {
+            camera.GlobalBasis = SkySeams.LookAlong(at);
+            await Frames(5);
+            Image image = stage.GetTexture().GetImage();
+            if (keep != null && save != null) image.SavePng(System.IO.Path.Combine(keep, save + ".png"));
+            var light = new float[Size * Size];
+            for (int i = 0; i < light.Length; i++)
+            {
+                Color c = image.GetPixel(i % Size, i / Size).SrgbToLinear();
+                light[i] = c.R + c.G + c.B;
+            }
+            return light;
+        }
+        // What a uniform changes in the pictures, drawn with it on and off: per pixel, summed over the looks.
+        async Task<float> Adds(string uniform, IEnumerable<Vector3> at, string save)
+        {
+            float total = 0f;
+            int n = 0;
+            foreach (Vector3 d in at)
+            {
+                sky.SetShaderParameter(uniform, true);
+                float[] with = await Light(d, n == 0 ? save : null);
+                sky.SetShaderParameter(uniform, false);
+                float[] without = await Light(d, null);
+                for (int i = 0; i < with.Length; i++) total += MathF.Abs(with[i] - without[i]);
+                if (keep != null && save != null)
+                {
+                    // Where it changed the picture, brightened.
+                    var change = Image.CreateEmpty(Size, Size, false, Image.Format.Rgb8);
+                    for (int i = 0; i < with.Length; i++) change.SetPixel(i % Size, i / Size, new Color(1f, 1f, 1f) * Math.Clamp(MathF.Abs(with[i] - without[i]) * 8f, 0f, 1f));
+                    change.SavePng(System.IO.Path.Combine(keep, $"{save}-change-{n}.png"));
+                }
+                n++;
+            }
+            sky.SetShaderParameter(uniform, true);
+            return total / (Size * Size);
+        }
+        // A storm overhead: four strong, wide cells round the eye, their deck solid over all of this sky.
+        var cells = new Vector4[4];
+        for (int i = 0; i < 4; i++) cells[i] = new Vector4(MathF.Cos(i * MathF.Tau / 4f) * 1000f, MathF.Sin(i * MathF.Tau / 4f) * 1000f, 4000f, 1f);
+        // The sky's passes are made for this camera on its first frames: nothing is measured until they are drawing.
+        await Light(Vector3.Up, null);
+        await Frames(60);
+        var results = new Dictionary<string, (float Galaxy, float Giant)>();
+        foreach (var (what, cover, dark, cellular, storm) in new[]
+                 {
+                     ("a clear sky", 0f, 0f, 0f, false),
+                     ("broken cloud", 0.45f, 0.1f, 0f, false),
+                     ("a storm's deck coming in over fair air", 0.5f, 0.4f, 0f, true),
+                     ("a thunderstorm", 1f, 0.85f, 0.85f, true),
+                 })
+        {
+            rig.SetCells(cells, storm ? 4 : 0);
+            rig.TimeOfDay = midnight;
+            rig.Paused = true;
+            Conditions c = Atmosphere.Clear();
+            c[Param.CloudCover] = cover;
+            c[Param.CloudDarkness] = dark;
+            c[Param.Cellular] = cellular;
+            c[Param.Rain] = storm && cellular > 0f ? 0.8f : 0f;
+            rig.Advance(0.0, 0f, Atmosphere.Compute(world.Sky, c, rig.SunAt(midnight).Y), Vector2.Zero);
+            await Frames(4);
+            // A lit giant straight overhead against a plain night, then the galaxy alone (the system's own
+            // bodies are the same in both pictures of each pair).
+            string name = what.Split(' ')[^1].Replace("'", "");
+            sky.SetShaderParameter("giant_dir", Vector3.Up);
+            sky.SetShaderParameter("giant_radius", 0.12f);
+            sky.SetShaderParameter("giant_light", new Vector3(0.3f, -0.85f, 0.4f).Normalized());
+            sky.SetShaderParameter("giant_at", 0);
+            sky.SetShaderParameter("giant_layer", -1);
+            sky.SetShaderParameter("rings", false);
+            sky.SetShaderParameter("galaxy_on", false);
+            float giant = await Adds("giant", new[] { Vector3.Up }, null);
+            sky.SetShaderParameter("giant", false);
+            float galaxy = await Adds("galaxy_on", looks, $"night-{name}");
+            if (keep != null)
+            {
+                rig.DebugView(1);
+                await Light(Vector3.Up, $"cover-{name}");
+                await Light(looks[1], $"cover-{name}-40");
+                await Light(looks[7], $"cover-{name}-20");
+                rig.DebugView(0);
+            }
+            results[what] = (galaxy, giant);
+            GD.Print($"({what} at midnight: the galaxy adds {galaxy:F4} to the pictures, the giant {giant:F4}; cover {rig.Air.CloudCover:F2}, overcast {rig.Air.Overcast:F2})");
+        }
+        var (clearGalaxy, clearGiant) = results["a clear sky"];
+        Check(clearGalaxy > 0.01f && clearGiant > 0.01f, $"at midnight a clear sky shows the galaxy ({clearGalaxy:F4}) and a giant overhead ({clearGiant:F4})");
+        foreach (string storm in new[] { "a storm's deck coming in over fair air", "a thunderstorm" })
+        {
+            var (galaxy, giant) = results[storm];
+            Check(galaxy <= clearGalaxy * 0.01f && giant <= clearGiant * 0.01f,
+                $"under {storm} the galaxy is hidden ({galaxy / clearGalaxy:P2} of a clear sky's) and so is the giant ({giant / clearGiant:P2})");
+        }
+        float broken = results["broken cloud"].Galaxy;
+        Check(broken > clearGalaxy * 0.05f && broken < clearGalaxy * 0.95f, $"broken cloud lets part of the galaxy through its gaps ({broken / clearGalaxy:P0} of a clear sky's)");
+        rig.SetCells(cells, 0);
+        RemoveChild(stage);
+        stage.QueueFree();
+        await Frames(1);
     }
 
     // ---- A low sun ----------------------------------------------------------------------------------

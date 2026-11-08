@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace PoiGenerator.Gen;
 
@@ -44,7 +45,7 @@ public enum BlockType : byte
     Crystal,
     // Added with the architect: vertical traversal, breakable walls and more props.
     Stair,      // walked like a ramp (rising toward Facing), drawn as steps
-    Ladder,     // climbable and never blocks; the rungs sit against the wall behind Facing
+    Ladder,     // climbable and never blocks; the rungs lie flat against the wall behind Facing (Facing looks out at the climber)
     Rail,       // a waist-high guard rail: collides, never stood on
     Breakable,  // a weak wall section hiding something; drawn as a wall with cracks
     Sign,       // a plate on a wall (warnings, directories); never blocks
@@ -138,6 +139,16 @@ public static class BlockInfo
     /// <summary>Fills its cell completely, so it hides its neighbours' faces.</summary>
     public static bool IsFullCube(BlockType t) => t is BlockType.Cube or BlockType.Breakable;
 
+    /// <summary>
+    /// A floor's finish: a thin slab laid on the floor (tiles, boards, a path, a painted line) that things are set
+    /// down on. It stays under whatever is put in its cell (see <see cref="BlockGrid.Under"/>), so a table never
+    /// leaves a hole in the tiles.
+    /// </summary>
+    public static bool IsFinish(BlockType t) => t == BlockType.Plate;
+
+    /// <summary>How thick a floor's finish is: what stands on it stands this much higher.</summary>
+    public const float FinishTop = 0.1f;
+
     /// <summary>Walked like a ramp: a 45-degree slope rising toward the block's facing.</summary>
     public static bool IsSlope(BlockType t) => t is BlockType.Ramp or BlockType.Stair;
 
@@ -185,6 +196,8 @@ public interface IBlockStructure
     Block Get(Int3 p);
     void Set(Int3 p, Block b);
     int CountBlocks();
+    /// <summary>The floor's finish under what stands in a cell (<see cref="BlockGrid.Under"/>); air where there is none.</summary>
+    Block Under(Int3 p) => Block.Air;
 }
 
 /// <summary>
@@ -200,6 +213,8 @@ public sealed class BlockGrid : IBlockStructure
     readonly int _cx, _cy, _cz;
     readonly Block[]?[] _chunks;
     Block _outside;
+    /// <summary>The floor finishes under what stands on them, by cell (see <see cref="Under"/>).</summary>
+    Dictionary<Int3, Block>? _under;
 
     /// <summary>How the place's faces are finished and how far the years have taken them (set when it spawns; null: by material alone).</summary>
     public PlaceLook? Look;
@@ -219,6 +234,7 @@ public sealed class BlockGrid : IBlockStructure
         var copy = new BlockGrid(Min, Size) { Look = Look };
         for (int i = 0; i < _chunks.Length; i++)
             if (_chunks[i] is { } c) copy._chunks[i] = (Block[])c.Clone();
+        if (_under != null) copy._under = new Dictionary<Int3, Block>(_under);
         return copy;
     }
 
@@ -238,11 +254,20 @@ public sealed class BlockGrid : IBlockStructure
         return _chunks[Chunk(l)] is { } c ? c[Cell(l)] : Block.Air;
     }
 
+    /// <summary>
+    /// Puts a block in a cell. A floor's finish stays under what is set down on it: the tiles a table is put on are
+    /// kept (<see cref="Under"/>) and come back when the table goes; a new finish replaces the old one, and air
+    /// put on a bare finish takes the finish itself away.
+    /// </summary>
     public void Set(Int3 p, Block b)
     {
         if (!InBounds(p)) return;
         Int3 l = p - Min;
         int k = Chunk(l);
+        Block was = _chunks[k] is { } held ? held[Cell(l)] : Block.Air;
+        if (BlockInfo.IsFinish(b.Type)) _under?.Remove(p);
+        else if (BlockInfo.IsFinish(was.Type) && !b.IsAir) (_under ??= new Dictionary<Int3, Block>())[p] = was;
+        else if (b.IsAir && _under != null && _under.Remove(p, out Block floor)) b = floor;
         if (_chunks[k] == null)
         {
             if (b.IsAir) return;
@@ -250,6 +275,21 @@ public sealed class BlockGrid : IBlockStructure
         }
         _chunks[k]![Cell(l)] = b;
     }
+
+    /// <summary>The floor's finish under what stands in a cell (the tiles under a table), or air: drawn under it, never in its way.</summary>
+    public Block Under(Int3 p) => _under != null && _under.TryGetValue(p, out Block b) ? b : Block.Air;
+
+    /// <summary>Lays a floor's finish under what already stands in a cell (or in the open cell itself).</summary>
+    public void SetUnder(Int3 p, Block finish)
+    {
+        if (!InBounds(p) || !BlockInfo.IsFinish(finish.Type)) return;
+        Block at = Get(p);
+        if (at.IsAir) Set(p, finish);
+        else if (!BlockInfo.IsFinish(at.Type)) (_under ??= new Dictionary<Int3, Block>())[p] = finish;
+    }
+
+    /// <summary>Every cell with a finish under what stands in it.</summary>
+    public IEnumerable<(Int3 Cell, Block Finish)> Unders() => _under == null ? Enumerable.Empty<(Int3, Block)>() : _under.Select(kv => (kv.Key, kv.Value));
 
     public ref Block At(Int3 p)
     {

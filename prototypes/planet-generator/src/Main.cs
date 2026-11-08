@@ -193,7 +193,7 @@ public partial class Main : Node3D
                 SetSpec(PlanetSpec.Roll(seed, Spec.Archetype, Spec.Variant, Spec.WidthKm));
                 break;
             case Key.M:
-                SetSpec(Spec with { Modifiers = PlanetSpec.RollModifiers(Spec.Seed, ++_reroll) });
+                SetSpec(Spec with { Modifiers = PlanetSpec.RollModifiers(Spec.Seed, ++_reroll, Spec.Archetype) });
                 break;
             case Key.S:
                 int next = (Array.IndexOf(PlanetSpec.Widths, Spec.WidthKm) + 1) % PlanetSpec.Widths.Length;

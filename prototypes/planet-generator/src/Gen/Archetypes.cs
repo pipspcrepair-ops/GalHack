@@ -86,7 +86,8 @@ public sealed record ArchetypeDef
         ArchetypeDef d = this;
         if ((mods & Modifier.Highlands) != 0)
             d = d with { MountainHeight = d.MountainHeight * 1.25f, HillHeight = d.HillHeight * 1.25f, HighlandLift = 40f };
-        if ((mods & Modifier.Cratered) != 0 && d.CraterSpacing == 0)
+        // Natural craters only where they stay: a living world's weather and seas wore its old impacts away.
+        if ((mods & Modifier.Cratered) != 0 && d.CraterSpacing == 0 && PlanetSpec.Craters(Archetype))
             d = d with { CraterSpacing = 650f };
         if ((mods & Modifier.Mesas) != 0)
             d = d with { TerraceStep = d.TerraceStep > 0 ? d.TerraceStep : 40f, TerraceCover = Math.Max(d.TerraceCover, 0.6f) };

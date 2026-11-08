@@ -371,7 +371,7 @@ public static class Civic
         p.Dig(i0, -2, k0, i1, 0, k1);
         for (int v = 2 * k0; v <= 2 * k1 + 1; v++)
             for (int u = 2 * i0; u <= 2 * i1 + 1; u++)
-                p.Put(u, -4, v, new Block(BlockType.Puddle, Material.Water, new Rgb(0x4c, 0x6a, 0x6c), Role.Decor));
+                p.Wet(u, -4, v);
         var rail = new Block(BlockType.Rail, f.Steel.M, f.Steel.C, Role.Decor);
         for (int u = 2 * i0 - 1; u <= 2 * i1 + 2; u++)
             foreach (int v in new[] { 2 * k0 - 1, 2 * k1 + 2 }) p.Put(u, 0, v, rail);

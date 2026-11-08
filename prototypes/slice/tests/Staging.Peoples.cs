@@ -288,6 +288,59 @@ public sealed partial class Staging
         }
     }
 
+    /// <summary>
+    /// A gesture answered, through the real keyboard, seen from behind in third person: in a town,
+    /// a few metres from one of its people, Z held and the mouse pushed up (a wave), let go, the
+    /// castaway's arm waves and they answer; then Z held again so the wheel is up in the same frame.
+    /// </summary>
+    IEnumerable<int> AnswerView()
+    {
+        string dir = Folder("answer");
+        Place p = null;
+        foreach (int x in ToTown(q => p = q)) yield return x;
+        if (p?.Memory.Town == null) yield break;
+        Town town = p.Memory.Town;
+        foreach (int x in NoonLight()) yield return x;
+        Vector3 feet = p.FromWorld(_game.Survivor.WorldFeet);
+        Town.Person who = town.People.Where(q => !q.Dead && !q.Indoors && !q.Away && q.Looks != null && !q.Fleeing && q.Figure.Stage != LifeStage.Child)
+            .OrderBy(q => q.Pos.DistanceTo(feet)).FirstOrDefault();
+        if (who == null) { GD.Print("(nobody out)"); yield break; }
+        // They stop where they are; the castaway is set down in front of them, 4 m off.
+        who.Path = null;
+        who.Step = 0;
+        who.Wait = MathF.Max(who.Wait, 30f);
+        Vector3 at = p.ToWorld(who.Pos);
+        Vector3 toward = at - p.ToWorld(who.Pos + new Vector3(-MathF.Sin(who.Yaw), 0f, -MathF.Cos(who.Yaw)));
+        toward = (toward with { Y = 0f }).LengthSquared() > 0.01f ? (toward with { Y = 0f }).Normalized() : Vector3.Forward;
+        Vector3 stand = Ground(at - toward * 4f);
+        _game.Survivor.PlaceOutside((stand + Vector3.Up * 0.1f).ToNumerics());
+        foreach (int x in _drive.Wait(60)) yield return x;
+        stand = _game.Survivor.WorldFeet;
+        at = p.ToWorld(who.Pos);
+        toward = ((at - stand) with { Y = 0f }).Normalized();
+        foreach (int x in _drive.LookAt(at + Vector3.Up * 1.4f, 12)) yield return x;
+        // From the side, both in frame: the castaway on one side of the wheel, the one answering on the other.
+        Vector3 mid = (stand + at) * 0.5f, side = new Vector3(-toward.Z, 0f, toward.X);
+        Vector3 eye = mid + side * 4.6f;
+        eye.Y = MathF.Max(_game.Zone.GroundAt(eye.X, eye.Z).Y, mid.Y) + 1.6f;
+        _game.FixedCamera = new Transform3D(Basis.LookingAt(mid + Vector3.Up * 1.0f - eye, Vector3.Up), eye);
+        void Z(bool down) => Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = Key.Z, Keycode = Key.Z, Pressed = down });
+        _game.Keyboard = true;
+        Z(true);
+        for (int i = 0; i < 12; i++) { _game.Controls.Look = new Vector2(0f, -30f); yield return 0; }
+        Z(false);
+        for (int i = 0; i < 90 && (who.Answer == BodyAct.None || who.Act != who.Answer); i++) yield return 0;
+        for (int i = 0; i < 12; i++) yield return 0;
+        GD.Print($"  made {_game.LastGesture}; {town.Answered} answered, {who.Job}: {who.Answer}, showing {who.Act} {who.ActAmount:F2}");
+        foreach (int x in Shot(Path.Combine(dir, "answered.png"))) yield return x;
+        Z(true);
+        for (int i = 0; i < 8; i++) { _game.Controls.Look = new Vector2(0f, -30f); yield return 0; }
+        GD.Print($"  (wheel open {_game.WheelOpen}, on {(_game.WheelPick >= 0 ? Game.Game.Wheel[_game.WheelPick] : "none")}; the hand {Slice.Player.CharacterModel.RightHand(_game.Figure).Y - _game.Figure.GlobalPosition.Y:F2} m up; they {who.Answer})");
+        foreach (int x in Shot(Path.Combine(dir, "answer.png"))) yield return x;
+        Z(false);
+        _game.Keyboard = false;
+    }
+
     IEnumerable<int> WheelView()
     {
         string dir = Folder("wheel");

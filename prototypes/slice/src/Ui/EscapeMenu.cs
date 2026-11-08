@@ -10,10 +10,14 @@ namespace Slice.Ui;
 /// <summary>What the escape menu's right side shows: this world, or the options.</summary>
 public enum EscapePage { World, Options }
 
+/// <summary>The question the escape menu is asking, if any.</summary>
+public enum EscapeQuestion { None, Quit, NewGame }
+
 /// <summary>
 /// The escape menu, on Esc with no other menu open: RESUME, SAVE and LOAD (marked NOT YET: the
-/// slice has no saves), OPTIONS (graphics, sound, controls and mouse: <see cref="OptionsSection"/>)
-/// and QUIT TO DESKTOP, which asks first. The game never pauses (it is built for co-op): the world
+/// slice has no saves), NEW GAME (it asks first, then tears this world down for the start screen,
+/// as at launch: <see cref="Game.Game.NewGame"/>), OPTIONS (graphics, sound, controls and mouse:
+/// <see cref="OptionsSection"/>) and QUIT TO DESKTOP, which asks first. The game never pauses (it is built for co-op): the world
 /// runs on behind the menu, which is see-through like every menu, so you keep an eye on what is
 /// coming. Each tick's key presses and clicks are the menu's (it reads them before the game does),
 /// while held movement keys still reach the castaway, as with the Tab menu. The mouse is freed
@@ -86,6 +90,13 @@ public partial class EscapeMenu : CanvasLayer
         if (Game.Interactive) Wildlife.Shutdown.Quit(Game);
     }
 
+    /// <summary>NEW GAME, confirmed: the settings written, this world torn down and the start screen up, as at launch.</summary>
+    public void NewGame()
+    {
+        SaveNow();
+        Game.NewGame();
+    }
+
     void SaveNow()
     {
         _saveIn = -1;
@@ -137,8 +148,15 @@ public partial class EscapeRoot : MenuPanel
     public EscapeMenu Menu;
     public EscapePage Page = EscapePage.World;
 
+    /// <summary>The question up (QUIT TO DESKTOP? or NEW GAME?), or none.</summary>
+    public EscapeQuestion Asking;
+
     /// <summary>QUIT TO DESKTOP was clicked: the question is up.</summary>
-    public bool Confirming;
+    public bool Confirming
+    {
+        get => Asking == EscapeQuestion.Quit;
+        set => Asking = value ? EscapeQuestion.Quit : EscapeQuestion.None;
+    }
 
     /// <summary>VIEW THE WORLD: the menu stands aside (a strip along the top) so a graphics change can be seen; a click or Esc brings it back.</summary>
     public bool Viewing;
@@ -146,7 +164,7 @@ public partial class EscapeRoot : MenuPanel
     public OptionsSection Options { get; private set; }
     public override Vector2 DesignSize => new(Gui.Width, Gui.Height);
 
-    protected override string Signature() => $"{Page}|{Confirming}|{Viewing}|{Options?.Signature}";
+    protected override string Signature() => $"{Page}|{Asking}|{Viewing}|{Options?.Signature}";
 
     public override void _Ready()
     {
@@ -158,7 +176,8 @@ public partial class EscapeRoot : MenuPanel
     public void Reset()
     {
         Page = EscapePage.World;
-        Confirming = Viewing = false;
+        Asking = EscapeQuestion.None;
+        Viewing = false;
         Options?.EndCapture();
     }
 
@@ -172,7 +191,7 @@ public partial class EscapeRoot : MenuPanel
         }
         if (key != Key.Escape) return;
         if (Viewing) Viewing = false;
-        else if (Confirming) Confirming = false;
+        else if (Asking != EscapeQuestion.None) Asking = EscapeQuestion.None;
         else Menu.Close();
     }
 
@@ -193,12 +212,13 @@ public partial class EscapeRoot : MenuPanel
             }
             return;
         }
-        // Under the quit question nothing is lit or clickable: the pointer is kept off it.
+        // Under a question nothing is lit or clickable: the pointer is kept off it.
         Vector2 mouse = g.Mouse;
-        if (Confirming) g.Mouse = new Vector2(-1e5f, -1e5f);
+        if (Asking != EscapeQuestion.None) g.Mouse = new Vector2(-1e5f, -1e5f);
         Main(g, area);
         g.Mouse = mouse;
-        if (Confirming) Question(g, area);
+        if (Asking == EscapeQuestion.Quit) Question(g, area);
+        else if (Asking == EscapeQuestion.NewGame) NewGameQuestion(g, area);
     }
 
     void Main(Gui g, Rect2 area)
@@ -224,6 +244,7 @@ public partial class EscapeRoot : MenuPanel
         if (g.Button("esc:resume", Next(), "RESUME", C.Accent2, size: 24)) Menu.Close();
         NotYet(g, "esc:save", Next(), "SAVE");
         NotYet(g, "esc:load", Next(), "LOAD");
+        if (g.Button("esc:new", Next(), "NEW GAME", C.Warn, size: 24)) Asking = EscapeQuestion.NewGame;
         if (g.Button("esc:options", Next(), "OPTIONS", C.Accent2, lit: Page == EscapePage.Options, size: 24))
         {
             Page = Page == EscapePage.Options ? EscapePage.World : EscapePage.Options;
@@ -296,5 +317,19 @@ public partial class EscapeRoot : MenuPanel
         var buttons = new Rect2(inner.Position.X, inner.End.Y - 60, inner.Size.X, 60);
         if (g.Button("esc:quit-yes", new Rect2(buttons.Position, new Vector2(360, 60)), "QUIT", C.Danger, size: 24)) Menu.Quit();
         if (g.Button("esc:quit-no", new Rect2(buttons.End.X - 360, buttons.Position.Y, 360, 60), "STAY", C.Accent2, size: 24)) Confirming = false;
+    }
+
+    /// <summary>NEW GAME? YES tears this world down for the start screen; NO keeps it.</summary>
+    void NewGameQuestion(Gui g, Rect2 area)
+    {
+        g.Fill(area, new Color(C.Glass, 0.55f));
+        var box = new Rect2(area.GetCenter() - new Vector2(420, 110), new Vector2(840, 220));
+        g.Fill(box, C.Glass);
+        g.Stripes(box, 12, C.Warn);
+        var inner = box.Grow(-36);
+        g.Text("NEW GAME?", inner.Position + new Vector2(4, 6), C.Text, 30, UiTheme.Display);
+        var buttons = new Rect2(inner.Position.X, inner.End.Y - 60, inner.Size.X, 60);
+        if (g.Button("esc:new-yes", new Rect2(buttons.Position, new Vector2(360, 60)), "YES", C.Warn, size: 24)) Menu.NewGame();
+        if (g.Button("esc:new-no", new Rect2(buttons.End.X - 360, buttons.Position.Y, 360, 60), "NO", C.Accent2, size: 24)) Asking = EscapeQuestion.None;
     }
 }

@@ -178,8 +178,7 @@ public static class Decay
         }
         inst.Markers.AddRange(x.Markers);
 
-        // Damp and disorder deep down whatever the state; the Bloom creeps in (thickest deepest) only where it has taken the place.
-        var nav = inst.Nav();
+        // The Bloom creeps in (thickest deepest) only where it has taken the place.
         foreach (var m in layout.Modules)
         {
             var lvl = LevelAt(layout, m.Min.Y);
@@ -193,12 +192,6 @@ public static class Decay
             {
                 StateTransforms.GrowAt(inst, r, rng.Between(4, 6 + (int)(w * 10)), rng);
                 if (rng.Chance(0.5f)) inst.Lights.Add(new LightSpot { Cell = r + Int3.Up, Color = BloomGlow, Mode = LightMode.Bloom, Energy = 0.9f + w, Range = 6f, Module = m.Index, Storey = m.Storey });
-            }
-            // Puddles and drips, things knocked over.
-            foreach (Int3 c in StateTransforms.FloorCells(inst, m, nav))
-            {
-                if (inst.Protected[c] && !rng.Chance(0.5f)) continue;
-                if (rng.Chance(0.05f * w)) inst.Blocks.Set(c, new Block(BlockType.Puddle, Material.Water, new Rgb(0x20, 0x26, 0x28), Role.Debris));
             }
         }
         // What you hear.

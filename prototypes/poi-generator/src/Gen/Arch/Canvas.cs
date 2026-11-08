@@ -47,6 +47,48 @@ public sealed class Style
 }
 
 /// <summary>
+/// A canvas's blocks by cell. Like <see cref="BlockGrid.Set"/>, a floor's finish stays under whatever is set down
+/// on it (<see cref="Under"/>) and comes back when that goes; taking a cell out takes its finish with it.
+/// </summary>
+public sealed class BlockMap : Dictionary<Int3, Block>
+{
+    /// <summary>The floor finishes under what stands on them.</summary>
+    public readonly Dictionary<Int3, Block> Under = new();
+
+    public new Block this[Int3 p]
+    {
+        get => base[p];
+        set
+        {
+            Block was = TryGetValue(p, out Block w) ? w : Block.Air;
+            if (BlockInfo.IsFinish(value.Type)) Under.Remove(p);
+            else if (BlockInfo.IsFinish(was.Type) && !value.IsAir) Under[p] = was;
+            else if (value.IsAir && Under.Remove(p, out Block floor)) value = floor;
+            base[p] = value;
+        }
+    }
+
+    public new bool Remove(Int3 p)
+    {
+        Under.Remove(p);
+        return base.Remove(p);
+    }
+
+    public new void Clear()
+    {
+        Under.Clear();
+        base.Clear();
+    }
+
+    /// <summary>Lays a floor's finish in an open cell, or under what already stands there (never under a full cube).</summary>
+    public void Pave(Int3 p, Block finish)
+    {
+        if (!TryGetValue(p, out Block at)) base[p] = finish;
+        else if (!BlockInfo.IsFinish(at.Type) && !BlockInfo.IsFullCube(at.Type)) Under.TryAdd(p, finish);
+    }
+}
+
+/// <summary>
 /// Where the architect builds a place before it becomes a <see cref="Layout"/>: blocks, the cells
 /// the place occupies (carved out of the ground below it), modules (rooms, corridors, stairs,
 /// lifts), doorways, slots and the extras. Finish turns it into a layout the rest of the generator
@@ -54,7 +96,7 @@ public sealed class Style
 /// </summary>
 public sealed class Canvas
 {
-    public readonly Dictionary<Int3, Block> Blocks = new();
+    public readonly BlockMap Blocks = new();
     public readonly HashSet<Int3> Occ = new();
     public readonly List<PlacedModule> Modules = new();
     public readonly List<Doorway> Doorways = new();
@@ -85,6 +127,13 @@ public sealed class Canvas
     public void Clear(Int3 p)
     {
         Blocks.Remove(p);
+        Occ.Add(p);
+    }
+
+    /// <summary>Standing water over a cell's floor, claiming the cell: a surface drawn over the floor, never a block (<see cref="LayoutExtras.Water"/>).</summary>
+    public void Wet(Int3 p)
+    {
+        X.Water.Add(p);
         Occ.Add(p);
     }
 
@@ -200,6 +249,9 @@ public sealed class Canvas
             Doorways = Doorways, Slots = Slots, EntranceModule = EntranceModule, VaultModule = VaultModule,
         };
         foreach (var (p, b) in Blocks) layout.Blocks.Set(p, b);
+        foreach (var (p, f) in Blocks.Under) layout.Blocks.SetUnder(p, f);
+        // Water stands only where nothing solid was built over it after (a column, a bridge pier).
+        X.Water.RemoveWhere(p => BlockInfo.IsFullCube(Get(p).Type));
         foreach (Int3 p in Occ) layout.Occupied[p] = true;
         foreach (var (a, b) in Edges) layout.Links.Add(new Link(a, -1, b, -1));
 

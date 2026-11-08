@@ -133,7 +133,7 @@ public partial class SurfaceTest
                     nextLot:;
                 }
             }
-            // Only a world whose layers call for one gets a city.
+            // Only a world that was crowded, or whose layers call for one, gets a city.
             CityPlan.Force = false;
             for (int k = 0; k < 3; k++)
             {
@@ -141,7 +141,7 @@ public partial class SurfaceTest
                 PlanetWorld w = await Task.Run(() => PlanetWorld.Build(spec, Main.Catalog));
                 worlds++;
                 WorldRoll roll = w.Infra.RegionPlan?.Roll;
-                bool wanted = roll != null && w.Profile is { Inhabited: true } && CityPlan.Wanted(roll), has = w.Infra.City != null;
+                bool wanted = roll != null && w.Profile is { Inhabited: true } && CityPlan.Wanted(roll, w.Profile), has = w.Infra.City != null;
                 if (wanted != has) { wrongWorld++; if (firstWorld.Length == 0) firstWorld = $" (first: {roll}: wanted {wanted}, has {has})"; }
             }
         }

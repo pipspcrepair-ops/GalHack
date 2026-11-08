@@ -636,6 +636,79 @@ public static class Structure
     }
 
     /// <summary>
+    /// The head of every stair or ramp cut down into the ground is a floor the place holds: where the
+    /// cell past a flight's top, at its top step's level, is the ground, it becomes a floor block (the
+    /// flight's own stuff) that the place draws and stands on. Left to the ground, the head is the cut's
+    /// edge, and the ground's surface rounds off into the cut there, falling away from the top step: the
+    /// step's edge stood proud of it, a lip at the head of every flight dug into the ground that stopped
+    /// a walker. Now floor and step meet flush, and the ground holds back inside the block as at any
+    /// outer wall (<see cref="OuterWall"/>). Returns how many were laid.
+    /// </summary>
+    public static int HeadFloors(Layout layout)
+    {
+        BlockGrid g = layout.Blocks;
+        CellMask occupied = layout.Occupied;
+        if (layout.Extras.InSpace) return 0;
+        var heads = new Dictionary<Int3, Block>();
+        foreach (var (c, b) in g.Blocks())
+        {
+            if (!BlockInfo.IsSlope(b.Type) || b.Facing is Dir.Up or Dir.Down) continue;
+            Int3 head = c + b.Facing.Vec();
+            // Ground there (below the ground's level, nothing built, not the place's open space), and the place's way on over it.
+            if (head.Y > Assembler.GroundY || !g.InBounds(head) || occupied[head] || !g.Get(head).IsAir) continue;
+            if (!occupied[head + Int3.Up] || BlockInfo.Collides(g.Get(head + Int3.Up).Type)) continue;
+            heads.TryAdd(head, new Block(BlockType.Cube, b.Material, b.Color.Scale(0.93f), Role.Floor));
+        }
+        foreach (var (head, floor) in heads)
+        {
+            g.Set(head, floor);
+            occupied[head] = true;
+        }
+        return heads.Count;
+    }
+
+    /// <summary>
+    /// Every ladder lies flat against a wall: each run of ladder up a column turns, as one, to the side
+    /// with the most wall along it (its back to the wall, Facing out), keeping the way it was drawn
+    /// when that side is as good as any. A ladder with nothing beside it (one standing free on a
+    /// gantry) stays as it was. However the place's plan turned it, it never stands side-on to its
+    /// wall or hangs out in the shaft. Returns how many runs turned.
+    /// </summary>
+    public static int LadderWalls(Layout layout)
+    {
+        BlockGrid g = layout.Blocks;
+        CellMask occupied = layout.Occupied;
+        bool Wall(Int3 c)
+        {
+            Block b = g.Get(c);
+            if (b.IsAir) return !layout.Extras.InSpace && c.Y <= Assembler.GroundY && !occupied[c];
+            return BlockInfo.IsFullCube(b.Type) || b.Type is BlockType.Lattice or BlockType.Tank or BlockType.Machine or BlockType.SealedDoor or BlockType.Shelf or BlockType.Growth;
+        }
+        int turned = 0;
+        foreach (var (c, b) in g.Blocks().ToList())
+        {
+            if (b.Type != BlockType.Ladder || g.Get(c + Int3.Down).Type == BlockType.Ladder) continue; // each run from its foot
+            var run = new List<Int3>();
+            for (Int3 p = c; g.Get(p).Type == BlockType.Ladder; p += Int3.Up) run.Add(p);
+            Dir back = (b.Facing is Dir.Up or Dir.Down ? Dir.South : b.Facing).Opposite();
+            int Along(Dir d) => run.Count(p => Wall(p + d.Vec()));
+            Dir best = back;
+            int most = Along(back);
+            foreach (Dir d in new[] { back.Opposite(), back.RotateCw(1), back.RotateCw(3) })
+                if (Along(d) > most) { best = d; most = Along(d); }
+            if (best == back && b.Facing is not (Dir.Up or Dir.Down)) continue;
+            foreach (Int3 p in run)
+            {
+                Block l = g.Get(p);
+                l.Facing = best.Opposite();
+                g.Set(p, l);
+            }
+            turned++;
+        }
+        return turned;
+    }
+
+    /// <summary>
     /// Whether the ground must be opened at a cell a place occupies. An outer wall is not, at any height:
     /// open ground beside a carved cell slumps toward it, leaving a curved dip along the wall. Left solid
     /// (<see cref="OuterWall"/>), the dip falls inside the wall and the ground runs flush up to it.
@@ -701,11 +774,22 @@ public static class Structure
         foreach (var (p, b) in g.Blocks())
         {
             if (grounded[p]) continue;
-            // A thin thing rests on what is under it, a door hangs in the wall beside it, bars stand out of their face.
+            // A thin thing rests on what is under it, a door hangs in the wall beside it, bars stand out of their face, a ladder is fixed to its wall or stands on its foot.
             if (solidOnly && !Holds(b.Type) && (nav.IsRock(p + Int3.Down) || grounded[p + Int3.Down] || b.Type == BlockType.Door && Dirs.Horizontal.Any(d => grounded[p + d.Vec()])
-                || b.Type == BlockType.Rebar && grounded[p + b.Facing.Vec()])) continue;
+                || b.Type == BlockType.Rebar && grounded[p + b.Facing.Vec()] || b.Type == BlockType.Ladder && LadderHeld(p))) continue;
             floating.Add(p);
         }
         return floating;
+
+        // Anywhere down its run: the wall behind it, or the floor under its foot.
+        bool LadderHeld(Int3 p)
+        {
+            for (Int3 q = p; g.Get(q).Type == BlockType.Ladder; q += Int3.Down)
+            {
+                Int3 back = q - g.Get(q).Facing.Vec();
+                if (grounded[back] || nav.IsRock(back) || grounded[q + Int3.Down] || nav.IsRock(q + Int3.Down)) return true;
+            }
+            return false;
+        }
     }
 }

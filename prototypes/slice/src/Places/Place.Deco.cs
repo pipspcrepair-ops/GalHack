@@ -45,6 +45,16 @@ public sealed class Decor
     }
 
     /// <summary>
+    /// Lets the library go with its caches (a NEW GAME: the last world's looks, in its own paint, are no use to the
+    /// next); the next use loads it afresh. Anything of the last world still working keeps the old one to itself.
+    /// </summary>
+    public static void Forget()
+    {
+        _shared = null;
+        _tried = false;
+    }
+
+    /// <summary>
     /// Works out how each room of a place is dressed (worker-safe): the room's interior, its doors,
     /// state, age (new, old-world or preserved), exposure and tech go to the library, which arranges
     /// its pieces as the room was used and then left. Pieces that would stand on a cache, a
@@ -255,7 +265,7 @@ public sealed class Decor
     }
 
     /// <summary>The top of a floor plate: a room laid with them stands its pieces on them.</summary>
-    public const float PlateTop = 0.1f;
+    public const float PlateTop = Shapes.PlateTop;
 
     /// <summary>
     /// The floor in a walk-level cell, as a height above the cell's bottom, or null where there's nothing a

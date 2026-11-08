@@ -127,28 +127,96 @@ public partial class Game : Node3D
         ProcessMode = ProcessModeEnum.Pausable;
         LoadSettings();
         // The command line pins the world and the mode: -- --seed 123 --type meadow --depth 0.7 --fall famine --creative (WorldChoice.FromArgs)
-        string[] args = OS.GetCmdlineUserArgs();
+        // A game started by NEW GAME pins nothing: it asks, as at launch.
+        string[] args = AskWorld ? Array.Empty<string>() : OS.GetCmdlineUserArgs();
         if (Array.IndexOf(args, "--creative") >= 0) _mode = GameMode.Creative;
         World ??= WorldChoice.FromArgs(args);
-        if (World == null && Interactive)
+        // The last game's world let go of (its streets' layouts forgotten, sound drained, shared caches released, collected) before this one is built.
+        if (AskWorld) _settling = Settle();
+        if (World == null && (Interactive || AskWorld))
         {
             // A new game: the start screen asks for the mode, the planet type and (if any) a seed.
-            var start = new StartScreen { Name = "Start" };
-            start.Chosen += (world, mode) =>
+            StartScreen = new StartScreen { Name = "Start" };
+            StartScreen.Chosen += (world, mode) =>
             {
                 World = world;
                 _mode = mode;
-                Begin();
+                StartScreen = null;
+                if (_settling is { IsCompleted: false }) BeginSettled();
+                else Begin();
             };
-            AddChild(start);
+            AddChild(StartScreen);
             return;
         }
         World ??= WorldChoice.Fresh();
         Begin();
     }
 
-    /// <summary>A new game from the start screen (STATS: NEW GAME).</summary>
-    public void NewGame() => GetTree().ReloadCurrentScene();
+    /// <summary>The new-game screen while it is up (at launch, and after NEW GAME), or null.</summary>
+    public StartScreen StartScreen { get; private set; }
+
+    /// <summary>Show the start screen whatever runs the game (a test too), and pin nothing from the command line: set on the game NEW GAME starts.</summary>
+    public bool AskWorld;
+
+    /// <summary>The game that took this one's place on NEW GAME (a test follows it there), or null.</summary>
+    public Game Next { get; private set; }
+
+    System.Threading.Tasks.Task _settling;
+
+    /// <summary>The last game's world let go of (at once for a game that followed none).</summary>
+    public bool Settled => _settling?.IsCompleted ?? true;
+
+    /// <summary>What the last world left in the shared caches, keyed to it (its streets' layouts, its looks in its own paint), forgotten; then the sound drained, the creature caches released and all of it collected.</summary>
+    System.Threading.Tasks.Task Settle()
+    {
+        PlanetSurface.Infra.FlavourRuins.Forget();
+        PlanetSurface.Infra.InfraDeco.Forget();
+        Slice.Places.Decor.Forget();
+        return Wildlife.Shutdown.Quiet(this);
+    }
+
+    async void BeginSettled()
+    {
+        await _settling;
+        if (IsInsideTree()) Begin();
+    }
+
+    /// <summary>
+    /// NEW GAME (the escape menu's, and STATS'): the settings written, then this game torn down
+    /// whole (its zones, places, wildlife, weather, orbit, vessels, sound and workers go with its
+    /// nodes) and a fresh game put in its place, on the start screen exactly as at launch.
+    /// </summary>
+    public void NewGame()
+    {
+        if (Next != null || !IsInsideTree()) return;
+        SaveSettings();
+        Next = new Game { Interactive = Interactive, SkipIntro = SkipIntro, CraftTimeScale = CraftTimeScale, SettingsPath = SettingsPath, AskWorld = true };
+        if (!Name.ToString().Contains('@')) Next.Name = Name; // the running scene's "Game" (an engine-given name is the engine's to give again)
+        Callable.From(HandOver).CallDeferred();
+    }
+
+    /// <summary>Out of the tree and freed, every sound stopped first, and the next game where this one was (the running scene, in play).</summary>
+    void HandOver()
+    {
+        Node parent = GetParent();
+        SceneTree tree = GetTree();
+        int at = GetIndex();
+        bool scene = tree.CurrentScene == this;
+        Audio?.StopAll();
+        foreach (Node n in FindChildren("*", "", true, false))
+            switch (n)
+            {
+                case AudioStreamPlayer p: p.Stop(); break;
+                case AudioStreamPlayer2D p: p.Stop(); break;
+                case AudioStreamPlayer3D p: p.Stop(); break;
+            }
+        if (Slice.Ui.ItemIcons.Shared == Icons) Slice.Ui.ItemIcons.Shared = null;
+        parent.RemoveChild(this);
+        QueueFree();
+        parent.AddChild(Next);
+        parent.MoveChild(Next, at);
+        if (scene) tree.CurrentScene = Next;
+    }
 
     /// <summary>The world chosen: generate it, and everything that lives in it.</summary>
     void Begin()
@@ -296,7 +364,8 @@ public partial class Game : Node3D
         Howl = new WindHowl { Name = "Howl", Zone = Zone, Eye = () => Survivor.WorldEye(), Quiet = () => Spaceflight.AirGone > 0.5f };
         Zone.AddChild(Howl);
         // The castaway seen from outside (third person and screenshots); the first-person camera leaves it out.
-        Survivor.Node.AddChild(CharacterModel.Build());
+        Figure = CharacterModel.Build();
+        Survivor.Node.AddChild(Figure);
         Bodies = new CreatureBodies { Name = "CreatureBodies", Game = this };
         Zone.AddChild(Bodies);
         SetUpPlaces();
@@ -324,7 +393,7 @@ public partial class Game : Node3D
     public override void _PhysicsProcess(double delta)
     {
         if (Zone == null) return; // the start screen is up
-        if (Interactive) PollKeyboard();
+        if (Interactive || Keyboard) PollKeyboard();
         // Esc with no menu open: the escape menu, and the world stops (with the Tab menu open, Esc is the Tab menu's, below).
         if (Controls.KeyWasPressed(Key.Escape) && !Menu.IsOpen)
         {
@@ -367,13 +436,20 @@ public partial class Game : Node3D
         }
         // Seized by a Husk: the hold has the body until it ends.
         if (Held(c, (float)delta)) return;
-        if (Survivor.OnBike is HoverBike bike) Ride(bike, c);
+        if (Survivor.OnBike is HoverBike bike) Ride(bike, c, (float)delta);
         else if (Survivor.Seated is Vessel vessel) Fly(vessel, c);
         else Walk(c);
     }
 
-    /// <summary>On the hover bike: W/S throttle and brake, A/D steer, Shift boosts, Space hops, F gets off. The mouse looks.</summary>
-    void Ride(HoverBike bike, Controls c)
+    /// <summary>Looking around from the bike's seat (Alt held), or easing the view back onto its heading after.</summary>
+    bool _lookingAround;
+
+    /// <summary>
+    /// On the hover bike: W/S throttle and brake, A/D steer, Shift boosts, Space hops, F gets off. The
+    /// mouse steers: the bike comes round toward where you look. Alt held looks around without steering,
+    /// and on letting go the view eases back onto the bike's heading.
+    /// </summary>
+    void Ride(HoverBike bike, Controls c, float dt)
     {
         Survivor s = Survivor;
         s.Legs.Move = default;
@@ -381,6 +457,13 @@ public partial class Game : Node3D
         s.Legs.Vertical = 0f;
         bool typing = Menu.IsOpen && Slice.Items.ItemViews.Focused != null;
         if (!Menu.IsOpen) Turn(s, c);
+        if (c.ModifierHeld(Key.Alt)) _lookingAround = true;
+        else if (_lookingAround)
+        {
+            s.Yaw = Mathf.LerpAngle(s.Yaw, bike.Yaw, 1f - MathF.Exp(-10f * dt));
+            if (MathF.Abs(Mathf.Wrap(bike.Yaw - s.Yaw, -MathF.PI, MathF.PI)) < 0.01f) _lookingAround = false;
+        }
+        bike.Aim = _lookingAround ? float.NaN : s.Yaw;
         if (c.WasPressed(Key.F) && !Menu.IsOpen)
         {
             s.Dismount();
@@ -706,6 +789,13 @@ public partial class Game : Node3D
         Key.W, Key.A, Key.S, Key.D, Key.Space, Key.Ctrl, Key.Shift, Key.Q, Key.E, Key.M, Key.Z,
     };
 
+    /// <summary>
+    /// Reads the real keyboard every tick, as play does. On whenever <see cref="Interactive"/> is;
+    /// a test turns it on to press real keys through the engine's input (and off again before its
+    /// script holds keys itself, since the keyboard's state overwrites them).
+    /// </summary>
+    public bool Keyboard;
+
     /// <summary>The view turned by a tick's mouse movement, at your sensitivity, the pitch held short of straight up and down.</summary>
     void Turn(Survivor s, Controls c)
     {
@@ -784,6 +874,7 @@ public partial class Game : Node3D
         if (Zone.IsBuilt) Zone.Streamer.CollisionRadius = (Survivor?.Seated?.Flight != null && Survivor.Seated.Controller?.Frozen == false) || Survivor?.OnBike != null ? 3 : 2;
         if (Survivor == null) return;
         LoadAhead(delta);
+        PoseFigure(delta);
         Camera.SetCullMaskValue(2, (ThirdPerson || FixedCamera != null) && Survivor.Seated == null);
         Camera.GlobalTransform = FixedCamera ?? (Survivor.Seated is Vessel v && ThirdPerson
             ? Chase(v, 1.6f, 0.5f)

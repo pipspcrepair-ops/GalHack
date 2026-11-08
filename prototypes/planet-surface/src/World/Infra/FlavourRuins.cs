@@ -123,9 +123,8 @@ public static class FlavourRuins
     static HomeHints Home(PoiGenerator.Gen.Rng rng, WorldMap map, double x, double z, int? culture = null) =>
         new(culture ?? (int)(rng.NextU64() >> 33), ClimateAt(map, x, z), rng.Float());
 
-    /// <summary>How hard a blast hits at a distance from ground zero, out in the land round its site.</summary>
-    public static float BlastAt(BlastZone zone, float d) =>
-        d <= zone.Crater ? 1f : d >= zone.Fade * WorldReach ? 0f : 1f - (d - zone.Crater) / (zone.Fade * WorldReach - zone.Crater);
+    /// <summary>Forgets every layout drawn so far: a world's streets are no use to the next (a new game calls it between them).</summary>
+    public static void Forget() => Layouts.Clear();
 
     /// <summary>A family's layout, turned to face a road, in the world's tech level's materials; null (with a warning) if none lays out, and the lot stays empty.</summary>
     public static Layout LayoutFor(PoiLibrary lib, FamilyDef f, int variant, Dir front = Dir.North, TechLevel? tech = null, int salt = 0, HomeHints home = null)
@@ -371,7 +370,7 @@ public static class FlavourRuins
                 placed++;
             }
         }
-        foreach (FlavourRuin ruin in ruins) Blasted(ruin, pois, w, h);
+        foreach (FlavourRuin ruin in ruins) Blasted(ruin, net.Blasts, w, h);
         // Nobody built out of reach of a road: whatever came down without one, and hasn't a neighbour that has, gets a track.
         foreach (FlavourRuin ruin in ruins) net.KeepOff(ruin.Stamp);
         foreach (FlavourRuin ruin in ruins)
@@ -506,19 +505,18 @@ public static class FlavourRuins
         return true;
     }
 
-    /// <summary>Takes a ruin's share of any blast round it: the nearer ground zero, the harder.</summary>
-    static void Blasted(FlavourRuin ruin, IReadOnlyList<PoiSite> pois, double w, double h)
+    /// <summary>Takes a ruin's share of any blast round it (a blast site's or a war's strike, one record each): the nearer ground zero, the harder.</summary>
+    static void Blasted(FlavourRuin ruin, IReadOnlyList<Strike> blasts, double w, double h)
     {
-        foreach (PoiSite p in pois)
+        foreach (Strike b in blasts)
         {
-            if (p.GroundZero is not (double gx, double gz) || p.Instance.Layout.Extras.Blast is not BlastZone zone) continue;
             var (cx, cz) = ruin.Center;
-            double dx = Mathx.WrapDelta(cx - gx, w), dz = Mathx.WrapDelta(cz - gz, h);
-            float d = (float)Math.Sqrt(dx * dx + dz * dz), s = BlastAt(zone, d);
-            if (s <= ruin.Blast || d < 1f) continue;
+            double dx = Mathx.WrapDelta(cx - b.X, w), dz = Mathx.WrapDelta(cz - b.Z, h);
+            float d = (float)Math.Sqrt(dx * dx + dz * dz), s = b.Strength(d);
+            if (s <= ruin.Blast) continue;
             ruin.Blast = s;
-            ruin.BlastX = (float)(-dx / d);
-            ruin.BlastZ = (float)(-dz / d);
+            ruin.BlastX = d < 1f ? 0f : (float)(-dx / d);
+            ruin.BlastZ = d < 1f ? 1f : (float)(-dz / d);
         }
     }
 
@@ -545,6 +543,12 @@ public static class FlavourRuins
             double dx = Math.Abs(Mathx.WrapDelta(p.Center.X - cx, w)), dz = Math.Abs(Mathx.WrapDelta(p.Center.Z - cz, h));
             double reach = Math.Max(p.Stamp.ReachX, p.Stamp.ReachZ) + Math.Max(halfX, halfZ) + 12;
             if (dx < reach && dz < reach) return null;
+        }
+        // Nor in a crater: nothing stood where a strike punched one.
+        foreach (TerrainStamp c in net.Craters)
+        {
+            double reach = c.ReachX + Math.Max(halfX, halfZ) + 6;
+            if (Math.Abs(Mathx.WrapDelta(c.CenterX - cx, w)) < reach && Math.Abs(Mathx.WrapDelta(c.CenterZ - cz, h)) < reach) return null;
         }
         double corner = Math.Sqrt(halfX * halfX + halfZ * halfZ) + Apron;
         if (net.Nearest(cx, cz, corner + 30, out _, out double gap) != null && gap < (clearance ?? corner + roadGap)) return null;

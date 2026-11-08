@@ -248,7 +248,10 @@ public sealed class MapLevels
         _painting ??= Task.Run(() =>
         {
             ColorMap colors = ColorMap.Build(planet.Map, ArchetypeLook.For(planet.Spec), 2048);
-            return Image.CreateFromData(colors.Width, colors.Height, false, Image.Format.Rgb8, colors.Composite());
+            byte[] rgb = colors.Composite();
+            // The world's blasts as its ground has them: the dead ash round each, and its crater.
+            planet.Palette.PaintBlasts(rgb, colors.Width, colors.Height);
+            return Image.CreateFromData(colors.Width, colors.Height, false, Image.Format.Rgb8, rgb);
         });
         if (_chart == null && _painting.IsCompletedSuccessfully) _chart = ImageTexture.CreateFromImage(_painting.Result);
     }
