@@ -33,6 +33,8 @@ public sealed class DressPart
     public bool Solid;
     /// <summary>Only a garden, wall or gate of a building with this family tag (a shop's awning), when set.</summary>
     public string? Only;
+    /// <summary>Made by the living after the fall (spikes, braziers, a barricade of junk): in their era, whoever leans to it.</summary>
+    public bool Now;
 }
 
 /// <summary>
@@ -88,6 +90,7 @@ public sealed class DressBook
                             case "reach": p.Reach = Num(w[1]); break;
                             case "solid": p.Solid = w[1] == "yes"; break;
                             case "only": p.Only = w[1]; break;
+                            case "era": p.Now = w[1] == "now" ? true : w[1] == "old" ? false : throw Err($"era is old or now, not '{w[1]}'"); break;
                             default: throw Err($"unknown keyword '{w[0]}'");
                         }
                     }

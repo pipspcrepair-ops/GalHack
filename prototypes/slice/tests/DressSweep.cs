@@ -232,10 +232,10 @@ public partial class DressSweep : Node
             if (c.StartOwn + c.TownOwn == 0) bare.Add(theme);
             DecoTech before = WorldDress.Era(w.Profile.Before), now = WorldDress.Era(w.Profile.Now);
             foreach (DressItem it in d.Items)
-                if (it.Era != (it.Kept ? now : before)) { wrongEra.Add($"{theme}: {it.Part.Id} {it.Era}"); break; }
+                if (it.Era != (it.Kept || it.Part.Now ? now : before)) { wrongEra.Add($"{theme}: {it.Part.Id} {it.Era}"); break; }
         }
         Check(bare.Count == 0, $"every theme shows its own dressing near the start or in the nearest town ({rows.Count - bare.Count} of {rows.Count}){(bare.Count > 0 ? $"; bare: {string.Join(", ", bare)}" : "")}");
-        Check(wrongEra.Count == 0, $"every piece takes its world's era (the old one; the living's own where they keep it){(wrongEra.Count > 0 ? $"; not: {string.Join("; ", wrongEra.Take(6))}" : "")}");
+        Check(wrongEra.Count == 0, $"every piece takes its world's era (the old one; the living's own for what they made or keep){(wrongEra.Count > 0 ? $"; not: {string.Join("; ", wrongEra.Take(6))}" : "")}");
         if (_args.TryGetValue("out", out string path))
         {
             var csv = new System.Text.StringBuilder("theme,world,era,start_all,start_own,town_all,town_own,top\n");

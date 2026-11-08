@@ -25,14 +25,15 @@ public static partial class DecoDressing
         {
             bool prayer = a.Style == "prayer";
             var (tl, tr) = SpanPosts(b, a, SpanHeight(a.Era));
-            int lines = prayer ? 1 + (b.Rng.Chance(0.4f) ? 1 : 0) : 1 + (b.Rng.Chance(0.65f) ? 1 : 0);
+            int lines = prayer ? 1 + (b.Rng.Chance(0.4f) ? 1 : 0) : 2 + (b.Rng.Chance(0.5f) ? 1 : 0);
             for (int k = 0; k < lines; k++)
             {
                 var a0 = new Vector3(tl.X + 0.06f, tl.Y - 0.12f - k * 0.75f, 0);
-                var a1 = new Vector3(tr.X - 0.06f, tr.Y - 0.12f - k * (prayer ? 0.75f : 0.2f), 0);
+                // Bunting criss-crosses: each line from one post's top to lower on the other, by turns.
+                var a1 = new Vector3(tr.X - 0.06f, tr.Y - 0.12f - (prayer ? k * 0.75f : (k % 2 == 1 ? 0f : k * 0.45f + 0.9f)), 0);
                 bool broken = b.Rng.Chance(a.Wear * 0.4f);
                 if (broken && b.Rng.Chance(0.5f)) (a0, a1) = (a1, a0);
-                float slack = 0.04f + 0.035f * k + a.Wear * 0.03f, w = prayer ? 0.3f : 0.26f, len = prayer ? 0.36f : 0.32f;
+                float slack = 0.04f + 0.03f * k + a.Wear * 0.03f, w = prayer ? 0.42f : 0.4f, len = prayer ? 0.48f : 0.5f;
                 int offset = b.Rng.Int(4);
                 Line(b, a0, a1, slack, 0.008f, prayer ? DecoSlot.Linen : DecoSlot.Dark, broken, prayer ? 0.38f : 0.36f,
                     (at, dir, i) =>

@@ -104,11 +104,15 @@ public sealed class DecoPlanner
         // Pieces that play the first-named role come first.
         var all = own.Concat(borrowed).ToList();
         if (all.Count == 0) return null;
-        var weights = all.Select(x => (x.Set == _room.Set ? 3f : 1f) * (x.Has(roles[0]) ? 2f : 1f) * (_room.Tech != null && x.Tech == _room.Tech ? 1.5f : 1f)).ToList();
+        // The room's own era first by far: a high world's room takes its high pieces where it has them, older ones only to fill in.
+        var weights = all.Select(x => (x.Set == _room.Set ? 3f : 1f) * (x.Has(roles[0]) ? 2f : 1f) * Era(x)).ToList();
         p = all[Math.Max(0, _rng.PickWeighted(weights))];
         _chosen[key] = p;
         return p;
     }
+
+    /// <summary>How much a piece suits the room's era: its own era four times over, one era older at par, two older a little.</summary>
+    float Era(DecoPiece x) => _room.Tech is not DecoTech t ? 1f : x.Tech == t ? 4f : (int)t - (int)x.Tech == 1 ? 1f : 0.3f;
 
     // ---- templates in their own frame ------------------------------------------------------------
 
@@ -146,7 +150,8 @@ public sealed class DecoPlanner
                     {
                         float along = -sides[s].len / 2 + sides[s].len / n[s] * (i + 0.5f);
                         Vector2 dir = sides[s].dir, tangent = new(-dir.Y, dir.X);
-                        m.Add(new Member { Piece = c, At = dir * sides[s].off + tangent * along, Yaw = sides[s].yaw, Role = c.Roles.First(t.Members.Contains) });
+                        // Chairs as they were left: a little out, a little turned.
+                        m.Add(new Member { Piece = c, At = dir * (sides[s].off + _rng.Range(0f, 0.1f)) + tangent * (along + _rng.Range(-0.04f, 0.04f)), Yaw = sides[s].yaw + _rng.Range(-8f, 8f), Role = c.Roles.First(t.Members.Contains) });
                         DecoPiece tray = t.Top.Length > 0 && a.Surface > 0 && s < 2 && _rng.Chance(t.TopChance) ? Pick(t.Top, t.Id + ":top") : null;
                         if (tray != null)
                             m.Add(new Member { Piece = tray, At = dir * (a.Depth / 2 - tray.Depth / 2 - 0.03f) + tangent * along, Yaw = sides[s].yaw, Y = a.Surface, Support = 0, Role = "tray" });
@@ -194,7 +199,8 @@ public sealed class DecoPlanner
                     DecoPiece stool = Pick(t.Front, t.Id + ":front");
                     if (stool != null)
                         for (float sx = -a.Width / 2 + 0.35f; sx < a.Width / 2 - 0.2f; sx += 0.7f)
-                            m.Add(new Member { Piece = stool, At = new Vector2(i * step + sx, -(a.Depth / 2 + 0.12f + stool.Depth / 2)), Yaw = 180, Role = "stool" });
+                            // Each stool as it was last pushed in or out, turned a little.
+                            m.Add(new Member { Piece = stool, At = new Vector2(i * step + sx + _rng.Range(-0.08f, 0.08f), -(a.Depth / 2 + 0.12f + stool.Depth / 2) - _rng.Range(0f, 0.12f)), Yaw = 180 + _rng.Range(-15f, 15f), Role = "stool" });
                     DecoPiece tray = a.Surface > 0 && _rng.Chance(t.TopChance) ? Pick(t.Top, t.Id + ":top") : null;
                     if (tray != null) m.Add(new Member { Piece = tray, At = new Vector2(i * step + _rng.Range(-0.4f, 0.4f) * a.Width, -a.Depth / 2 + tray.Depth / 2 + 0.05f), Y = a.Surface, Support = idx, Role = "tray" });
                 }
