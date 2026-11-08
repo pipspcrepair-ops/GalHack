@@ -24,6 +24,16 @@ public partial class Staging
         _ => OrbitViews(view),
     };
 
+    /// <summary>The nearest place of the first of the families named (--family=a,b,c) the world has, or null.</summary>
+    PoiSite Proofed()
+    {
+        Vector3 from = _game.Survivor.WorldFeet;
+        foreach (string family in _args.GetValueOrDefault("family", "").Split(','))
+            if (_game.Zone.Planet.Pois.Where(s => s.Family.Id == family).OrderBy(s => _game.Places.DistanceTo(s, from)).FirstOrDefault() is PoiSite site) return site;
+        GD.Print($"(proof: no {_args.GetValueOrDefault("family", "")} on this world)");
+        return null;
+    }
+
     /// <summary>A point of the place's grid where a person stands, nearest a wanted spot: its floor in the world.</summary>
     static Vector3? StandNear(Place p, Func<Int3, bool> allowed, Vector3 local)
     {
@@ -50,7 +60,8 @@ public partial class Staging
     {
         _game.Zone.Sky.TimeOfDay = Num("time", 0.45);
         _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
-        PoiSite site = Named();
+        PoiSite site = Proofed();
+        if (site == null) yield break;
         foreach (int x in GoTo(site, Gate(site) + Vector3.Up * 0.1f)) yield return x;
         Place p = _game.Places.PlaceOf(site);
         string want = _args.GetValueOrDefault("purpose", "drift");
@@ -74,9 +85,11 @@ public partial class Staging
     {
         _game.Zone.Sky.TimeOfDay = Num("time", 0.45);
         _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
-        PoiSite site = Named();
+        PoiSite site = Proofed();
+        if (site == null) yield break;
         foreach (int x in GoTo(site, Gate(site) + Vector3.Up * 0.1f)) yield return x;
         Place p = _game.Places.PlaceOf(site);
+        if (p.Doors.Count == 0) { GD.Print("(proof: no door)"); yield break; }
         Place.Door d = p.Doors.Where(q => q.Jammed).Concat(p.Doors).First();
         // Half open, so the leaves' inside edges show.
         d.Target = 0.5f;
