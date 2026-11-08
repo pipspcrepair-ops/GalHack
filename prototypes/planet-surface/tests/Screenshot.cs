@@ -47,6 +47,13 @@ public partial class Screenshot : Node
             int eq = arg.IndexOf('=');
             if (arg.StartsWith("--") && eq > 2) _args[arg[2..eq]] = arg[(eq + 1)..];
         }
+        // A hung run quits on its own (--limit=SECONDS, 15 minutes by default), even if the main thread never returns.
+        double limit = Num("limit", 900);
+        _ = System.Threading.Tasks.Task.Delay(TimeSpan.FromSeconds(limit)).ContinueWith(_ =>
+        {
+            GD.PrintErr($"TIMED OUT after {limit:F0} s: the run quits itself");
+            System.Environment.Exit(2);
+        });
         if (_args.TryGetValue("out", out string o)) _out = o;
         if (_args.TryGetValue("view", out string v)) _view = v;
         _spec = _view == "look" ? Look() : Views.Get(_view);

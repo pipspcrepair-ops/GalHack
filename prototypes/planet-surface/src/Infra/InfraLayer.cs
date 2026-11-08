@@ -320,9 +320,11 @@ public partial class InfraLayer : Node3D
         foreach (Piece p in SeawallPieces(world)) yield return p;
         PowerLines power = net.Power;
         for (int i = 0; i < power.Poles.Count; i++)
-            yield return new PolePiece { Lines = power, Index = i, X = power.Poles[i].X, Z = power.Poles[i].Z };
+            if (power.Poles[i].Role != PowerRole.Plant) yield return new PolePiece { Lines = power, Index = i, X = power.Poles[i].X, Z = power.Poles[i].Z };
         foreach (PowerWire wire in power.Wires)
             yield return new WirePiece { Lines = power, Wire = wire, X = power.Poles[wire.A].X, Z = power.Poles[wire.A].Z };
+        foreach (ServiceDrop drop in power.Drops)
+            yield return new DropPiece { Lines = power, Drop = drop, X = power.Poles[drop.Pole].X, Z = power.Poles[drop.Pole].Z };
         // A station at each end of a line: a platform, a shelter and the buffers the track stops at.
         foreach (InfraRoute r in net.Routes)
         {
@@ -565,6 +567,11 @@ public partial class InfraLayer : Node3D
             PowerPole p = Lines.Poles[Index];
             NV foot = b.Local(p.X, p.Ground, p.Z), side = new(p.SideX, 0, p.SideZ), along = new(-p.SideZ, 0, p.SideX);
             float h = p.Height;
+            if (p.Role == PowerRole.Substation)
+            {
+                SubstationYard(b, p, foot, side, along);
+                return;
+            }
             if (p.Fallen)
             {
                 // Lying along the line, its foot snapped off at the stump, and along the ground, however it falls away.
@@ -627,6 +634,94 @@ public partial class InfraLayer : Node3D
                 var a = p.Anchor(k, Lines.WiresOn(p));
                 b.Box(b.Local(a.X, a.Y + 0.6f, a.Z), NV.UnitX * 0.08f, NV.UnitY * 0.6f, NV.UnitZ * 0.08f, Insulator, DecoSurface.Matte, collide: false);
             }
+        }
+    }
+
+    internal static readonly DecoRgb Transformer =DecoRgb.Hex("5b6458"), Fence = DecoRgb.Hex("8e9294"), Bushing = DecoRgb.Hex("7a4a32");
+
+    /// <summary>
+    /// A substation: a concrete slab on the ground (its foot down to the lowest corner), a fence round it with a gate,
+    /// the tall steel gantry the high-voltage line lands on at one end, two transformers in the middle, and the low
+    /// gantry the town's lines leave from at the other end.
+    /// </summary>
+    static void SubstationYard(TileBuilder b, PowerPole p, NV foot, NV side, NV along)
+    {
+        float ha = Substation.HalfAlong, hc = Substation.HalfAcross;
+        float lo = float.MaxValue;
+        foreach (int i in new[] { -1, 1 })
+            foreach (int j in new[] { -1, 1 })
+                lo = Math.Min(lo, b.Ground(p.X - p.SideZ * ha * i + p.SideX * hc * j, p.Z + p.SideX * ha * i + p.SideZ * hc * j));
+        float depth = p.Ground - lo + 0.5f;
+        b.Box(foot - NV.UnitY * (depth * 0.5f), along * ha, NV.UnitY * (depth * 0.5f), side * hc, PylonConcrete, DecoSurface.Matte, collide: true);
+        // The fence: posts round the slab's edge and two rails, a gap for the gate on the low end.
+        for (int edge = 0; edge < 4; edge++)
+        {
+            bool longSide = edge < 2;
+            float sgn = edge % 2 == 0 ? 1 : -1, half = longSide ? ha : hc;
+            NV o = longSide ? side * (hc - 0.2f) * sgn : along * (ha - 0.2f) * sgn, dir = longSide ? along : side, thin = longSide ? side : along;
+            int posts = (int)(half * 2 / 2.6f);
+            for (int k = 0; k <= posts; k++)
+            {
+                float t = -half + 0.2f + (half * 2 - 0.4f) * k / posts;
+                if (edge == 3 && Math.Abs(t) < 1.8f) continue;
+                b.Box(foot + o + dir * t + NV.UnitY * 1.1f, NV.UnitX * 0.04f, NV.UnitY * 1.1f, NV.UnitZ * 0.04f, Fence, DecoSurface.Metal, collide: true);
+            }
+            foreach (float y in new[] { 1.1f, 2.15f })
+                if (edge == 3)
+                    foreach (float s2 in new[] { -1f, 1f })
+                        b.Box(foot + o + dir * (s2 * (half + 1.8f) * 0.5f) + NV.UnitY * y, dir * ((half - 1.8f) * 0.5f), NV.UnitY * 0.025f, thin * 0.025f, Fence, DecoSurface.Metal, collide: false);
+                else b.Box(foot + o + NV.UnitY * y, dir * (half - 0.2f), NV.UnitY * 0.025f, thin * 0.025f, Fence, DecoSurface.Metal, collide: false);
+        }
+        // The tall gantry: two steel legs and a beam, insulators hanging where the line lands.
+        foreach (float c in new[] { -5f, 5f })
+            b.Box(foot + along * Substation.HighAt + side * c + NV.UnitY * (Substation.High * 0.5f), along * 0.22f, NV.UnitY * (Substation.High * 0.5f), side * 0.22f, PylonSteel, DecoSurface.Metal, collide: true);
+        b.Box(foot + along * Substation.HighAt + NV.UnitY * (Substation.High + 0.2f), along * 0.2f, NV.UnitY * 0.2f, side * 5.2f, PylonSteel, DecoSurface.Metal, collide: true);
+        for (int k = 0; k < 6; k++)
+        {
+            var a = p.Anchor(k, 6);
+            b.Box(b.Local(a.X, a.Y + 0.3f, a.Z), NV.UnitX * 0.07f, NV.UnitY * 0.3f, NV.UnitZ * 0.07f, Insulator, DecoSurface.Matte, collide: false);
+        }
+        // Two transformers on plinths, finned, with bushings on top.
+        foreach (float c in new[] { -2.4f, 2.4f })
+        {
+            NV t = foot + side * c + along * 0.2f;
+            b.Box(t + NV.UnitY * 0.15f, along * 1.5f, NV.UnitY * 0.15f, side * 1.2f, PylonConcrete, DecoSurface.Matte, collide: true);
+            b.Box(t + NV.UnitY * 1.5f, along * 1.2f, NV.UnitY * 1.2f, side * 0.9f, Transformer, DecoSurface.Metal, collide: true);
+            for (int f = -3; f <= 3; f++)
+                b.Box(t + along * (f * 0.33f) + side * (c > 0 ? 1.0f : -1.0f) + NV.UnitY * 1.35f, along * 0.03f, NV.UnitY * 0.9f, side * 0.12f, Transformer, DecoSurface.Metal, collide: false);
+            for (int k = -1; k <= 1; k++)
+                b.Box(t + along * (k * 0.5f) + NV.UnitY * 3.0f, NV.UnitX * 0.08f, NV.UnitY * 0.3f, NV.UnitZ * 0.08f, Bushing, DecoSurface.Matte, collide: false);
+        }
+        // The low gantry the town's lines leave from.
+        foreach (float c in new[] { -2.2f, 2.2f })
+            b.Box(foot + along * Substation.LowAt + side * c + NV.UnitY * (Substation.Low * 0.5f), along * 0.14f, NV.UnitY * (Substation.Low * 0.5f), side * 0.14f, PylonSteel, DecoSurface.Metal, collide: true);
+        b.Box(foot + along * Substation.LowAt + NV.UnitY * (Substation.Low + 0.12f), along * 0.12f, NV.UnitY * 0.12f, side * 2.4f, PylonSteel, DecoSurface.Metal, collide: true);
+        for (int k = 0; k < 3; k++)
+        {
+            var a = p.Anchor(k, 3);
+            b.Box(b.Local(a.X, a.Y + 0.3f, a.Z), NV.UnitX * 0.05f, NV.UnitY * 0.3f, NV.UnitZ * 0.05f, Insulator, DecoSurface.Matte, collide: false);
+        }
+    }
+
+    /// <summary>A house's service drop: one thin wire from its pole's bracket to the fixing on its wall, or down where it broke.</summary>
+    sealed class DropPiece : Piece
+    {
+        public PowerLines Lines;
+        public ServiceDrop Drop;
+
+        public override void Emit(TileBuilder b)
+        {
+            PowerPole p = Lines.Poles[Drop.Pole];
+            var pts = Lines.DropPath(Drop, b.Ground).Select(q => b.Local(q.X, q.Y, q.Z)).ToList();
+            b.Cable(pts, 0.012f, WireDark);
+            // The bracket on the pole, and the fixing on the wall where the wire still holds.
+            if (!p.Fallen)
+            {
+                var a = p.DropAnchor(Drop.Fixing.X, Drop.Fixing.Z);
+                b.Box(b.Local(a.X, a.Y + 0.06f, a.Z), NV.UnitX * 0.04f, NV.UnitY * 0.08f, NV.UnitZ * 0.04f, Insulator, DecoSurface.Matte, collide: false);
+            }
+            if (Drop.State is DropState.Strung or DropState.FromHouse)
+                b.Box(b.Local(Drop.Fixing.X, Drop.Fixing.Y, Drop.Fixing.Z), NV.UnitX * 0.06f, NV.UnitY * 0.06f, NV.UnitZ * 0.06f, Insulator, DecoSurface.Matte, collide: false);
         }
     }
 

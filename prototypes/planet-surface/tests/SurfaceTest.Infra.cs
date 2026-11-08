@@ -349,6 +349,8 @@ public partial class SurfaceTest
         double sharpest = 0;
         string firstSharp = "";
         float worst = 0;
+        int gridWorlds = 0, powered = 0, dropped = 0, unfed = 0, strungDrops = 0, downDrops = 0, wallsChecked = 0, offWall = 0, dropLow = 0, substations = 0, plantsSeen = 0;
+        string firstUnserved = "", firstUnfed = "", firstOffWall = "", firstLow = "";
         var rand = new Random();
         // Power comes from a world's networks layer, and only some build pylons: fresh worlds until enough have stood (ten at least, for the roads).
         for (int k = 0; k < 16 && (pylons < 60 || k < 10); k++)
@@ -437,8 +439,53 @@ public partial class SurfaceTest
             }
             PowerLines power = w.Infra?.Power;
             if (power == null) continue;
+            // The grid's hierarchy: every house that would have had power has its drop, from a pole fed through a
+            // substation from a plant; a strung drop meets a wall that stands, and every drop clears or lies on the ground.
+            if (power.Poles.Any(p => p.Role == PowerRole.Plant))
+            {
+                gridWorlds++;
+                plantsSeen += power.Poles.Count(p => p.Role == PowerRole.Plant);
+                substations += power.Poles.Count(p => p.Role == PowerRole.Substation);
+                bool[] fed = power.Fed();
+                var byHouse = power.Drops.ToDictionary(d => d.House);
+                foreach (FlavourRuin house in w.Infra.Ruins.Where(PowerLines.Powered))
+                {
+                    powered++;
+                    if (!byHouse.TryGetValue(house, out ServiceDrop d))
+                    {
+                        if (firstUnserved.Length == 0) firstUnserved = $" (first: a {house.Family.Id} at {house.Center.X:F0},{house.Center.Z:F0})";
+                        continue;
+                    }
+                    dropped++;
+                    if (!fed[d.Pole]) { unfed++; if (firstUnfed.Length == 0) firstUnfed = $" (first: a {house.Family.Id} at {house.Center.X:F0},{house.Center.Z:F0}, pole {d.Pole})"; }
+                    if (d.State == DropState.Strung) strungDrops++; else downDrops++;
+                    List<System.Numerics.Vector3> path = power.DropPath(d, Ground);
+                    for (int i = 1; i + 1 < path.Count; i++)
+                    {
+                        float g = Ground(path[i].X, path[i].Z);
+                        if (d.State == DropState.Strung ? path[i].Y < g + 0.5f : path[i].Y < g - 0.05f)
+                        {
+                            dropLow++;
+                            if (firstLow.Length == 0) firstLow = $" (first: a {d.State} drop at {path[i].X:F0},{path[i].Z:F0}, {path[i].Y - g:F2} m off the ground)";
+                            break;
+                        }
+                    }
+                    // Where the drop holds at the house, the wall it is fixed to stands in the house as built and decayed.
+                    if (d.State is DropState.Strung or DropState.FromHouse && wallsChecked < gridWorlds * 10)
+                    {
+                        wallsChecked++;
+                        var inst = house.Spawn(w.Profile, w.Source);
+                        var cell = new PoiGenerator.Gen.Int3(d.Cell.X - house.OriginX, d.Cell.Y - house.OriginY, d.Cell.Z - house.OriginZ);
+                        if (inst.Blocks.Get(cell).IsAir)
+                        {
+                            offWall++;
+                            if (firstOffWall.Length == 0) firstOffWall = $" (first: a {house.Family.Id}, {house.State}, cell {cell.X},{cell.Y},{cell.Z})";
+                        }
+                    }
+                }
+            }
             // Nothing that stands on the ground stands on a road bed: poles and every pylon foot (wires may cross over).
-            foreach (PowerPole p in power.Poles.Where(p => !p.Fallen))
+            foreach (PowerPole p in power.Poles.Where(p => !p.Fallen && p.Role != PowerRole.Plant))
             {
                 standing++;
                 var feet = p.Pylon ? p.FeetXZ() : new[] { (p.X, p.Z) };
@@ -498,6 +545,10 @@ public partial class SurfaceTest
         Check(tracks > 0 && flatBacks == 0, $"tracks follow the land, switching back only on steep ground: {tracks} tracks, {trackKm:F1} km on {sweepWorlds} fresh worlds, {switchbacks} switchbacks, {flatBacks} on flat ground{firstFlatBack}; {graded} graded dirt roads");
         Check(sharp == 0, $"paved roads turn gently: on {sweepWorlds} fresh worlds no 50 m of road outside a town turns more than {InfraNetwork.MostTurn50(RouteKind.Road):F0} degrees (highway {InfraNetwork.MostTurn50(RouteKind.Highway):F0}); sharpest {sharpest:F0}, {sharp} over{firstSharp}");
         Check(standing > 100 && onRoad == 0, $"poles and pylons stand off the roads: {standing} standing, {onRoad} on a road or railway bed{firstOnRoad}");
+        Check(gridWorlds > 0 && powered > 0 && dropped == powered && unfed == 0 && plantsSeen > 0 && substations >= gridWorlds,
+            $"every powered house has its drop back to a plant: {gridWorlds} worlds with a grid, {plantsSeen} plants, {substations} substations; {powered} houses that would have had power, {dropped} with a drop ({strungDrops} strung, {downDrops} down){firstUnserved}, {unfed} on a pole not fed through a substation from a plant{firstUnfed}");
+        Check(wallsChecked > 0 && offWall == 0 && dropLow == 0,
+            $"service drops are anchored: {wallsChecked} fixings checked against the house as spawned, {offWall} not on a standing wall{firstOffWall}; {dropLow} drops through or under the ground{firstLow}");
         Check(feetChecked >= 120 && floating == 0, $"every pylon foot meets the ground: {feetChecked} feet, {floating} floating or buried (worst {worst:F2} m above)");
         Check(pylons >= 30 && wrongHeight == 0 && byRoad < pylons * 0.4 && spanned > 30 && hollow == 0 && turns <= legs + stretches * 0.12,
             $"pylons stride on their own: {pylons} on {legs} lines,{wrongHeight} outside 30 to 50 m, {byRoad} within 40 m of a road, {turns} turns in {stretches} spans (a line may bend once), {spanned} wires strung; {poles} poles; {hollow} without collision");
