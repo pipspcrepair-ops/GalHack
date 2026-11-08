@@ -87,13 +87,13 @@ public sealed class YouSection : IMenuSection
         int shownStacks = Slots.Grid(g, _game, "bag", pack.Grid, PlayerInventory.ToolbarSlots, PlayerInventory.Columns * PlayerInventory.Rows, PlayerInventory.Columns,
             bagArea, 54, other ?? pack.Grid, _bagScroll, bagView);
         if (bagView.Filtering || bagView.Sort != ItemSort.Slot)
-            g.Text($"{shownStacks} shown{(bagView.Filtering ? " Â· filtered" : "")}", b + new Vector2(480, 4), C.Dim, 13);
+            g.Text($"{shownStacks} shown{(bagView.Filtering ? " · filtered" : "")}", b + new Vector2(480, 4), C.Dim, 13);
         double used = pack.Grid.UsedSu, cap = pack.Storage.CapacitySu;
         g.Text($"{pack.Grid.MassKg:F1} kg   {used:F1} / {cap:F0} SU   {pack.Grid.Used - pack.Grid.Slots.Take(9).Count(s => !s.IsEmpty)}/{pack.Grid.BagSlots} slots",
             b + new Vector2(0, 454), C.Text, 15, UiTheme.Mono);
         g.Bar(new Rect2(b + new Vector2(0, 476), new Vector2(560, 10)), used, cap, used > cap * 0.9 ? C.Warn : C.Good, 20);
         bool mine = pack.Bar == BarSource.Personal;
-        g.Caption($"YOUR TOOLBAR  (1 TO 9){(mine ? "  Â· IN USE" : "")}", b + new Vector2(0, 494), 560, mine ? C.Accent : C.Dim);
+        g.Caption($"YOUR TOOLBAR  (1 TO 9){(mine ? "  · IN USE" : "")}", b + new Vector2(0, 494), 560, mine ? C.Accent : C.Dim);
         for (int i = 0; i < PlayerInventory.ToolbarSlots; i++)
         {
             var r = new Rect2(b + new Vector2(i * 62, 526), new Vector2(56, 56));
@@ -102,7 +102,7 @@ public sealed class YouSection : IMenuSection
         RemoteBar(g, new Rect2(b + new Vector2(0, 590), new Vector2(560, 90)));
         var dropZone = new Rect2(b + new Vector2(0, 690), new Vector2(560, 40));
         g.Fill(dropZone, new Color(C.Panel, 0.5f));
-        g.TextIn("SET DOWN HERE (or drag out of the panels) Â· double-click sends Â· right-drag takes half (Ctrl: one, wheel: amount)", dropZone, C.Dim, 13, HorizontalAlignment.Center);
+        g.TextIn("SET DOWN HERE (or drag out of the panels) · double-click sends · right-drag takes half (Ctrl: one, wheel: amount)", dropZone, C.Dim, 13, HorizontalAlignment.Center);
         if (g.DropTarget("drop-ground", dropZone, out object d) && d is SlotRef sr) _game.Drop(sr.Grid, sr.Index);
         if (g.Button("bag:up", new Rect2(b.X + 400, b.Y + 450, 70, 22), "UP", C.Accent2, _bagScroll > 0, size: 12)) _bagScroll--;
         if (g.Button("bag:down", new Rect2(b.X + 480, b.Y + 450, 80, 22), "DOWN", C.Accent2, (_bagScroll + 6) * PlayerInventory.Columns < shownStacks, size: 12)) _bagScroll++;
@@ -211,7 +211,7 @@ public sealed class YouSection : IMenuSection
         PlayerInventory pack = _game.Pack;
         bool inUse = pack.OnRemoteBar, drag = pack.Dragging;
         ItemCatalogue items = _game.Zone.Data.Items;
-        g.Caption(inUse ? "REMOTE TOOLBAR  (Y)  Â· IN USE" : "REMOTE TOOLBAR  (Y)", r.Position, r.Size.X, inUse || drag ? C.Holo : C.Dim);
+        g.Caption(inUse ? "REMOTE TOOLBAR  (Y)  · IN USE" : "REMOTE TOOLBAR  (Y)", r.Position, r.Size.X, inUse || drag ? C.Holo : C.Dim);
         if (pack.Remote[pack.Selected] is RemoteSlot chosen && inUse)
             g.TextIn(chosen.Origin.ToUpperInvariant(), new Rect2(r.Position.X + 300, r.Position.Y, r.Size.X - 300, 22), PipOf(pack.ColourOf(chosen.Source)), 15, HorizontalAlignment.Right);
         else if (pack.RemoteEmpty && !drag)
@@ -241,7 +241,7 @@ public sealed class YouSection : IMenuSection
                 g.SetTip(s, () =>
                 {
                     List<(string Text, Color Colour)> tip = Tooltips.For(_game, item, n);
-                    tip.Insert(1, ($"Remote: {n} in {rs.Origin}{(ready ? "" : " Â· OUT OF RANGE")}", ready ? PipOf(pack.ColourOf(rs.Source)) : C.Danger));
+                    tip.Insert(1, ($"Remote: {n} in {rs.Origin}{(ready ? "" : " · OUT OF RANGE")}", ready ? PipOf(pack.ColourOf(rs.Source)) : C.Danger));
                     return tip;
                 });
             if (g.RightClicked(s) && rs != null)
@@ -282,7 +282,7 @@ public sealed class YouSection : IMenuSection
             ("FOOD", $"{suit.FoodShare * 100:F0}%", suit.FoodShare, C.Accent2),
             ("OXYGEN", $"{suit.OxygenShare * 100:F0}%", suit.OxygenShare, C.Holo),
             ("STAMINA", $"{v.Stamina:F0}", v.Stamina / rules.Stamina.Max, C.Accent),
-            ("BODY TEMP", $"{v.BodyTemperature:F1}Â°C", 1 - Math.Abs(v.BodyTemperature - rules.Temperature.Normal) / 4.0, C.Good),
+            ("BODY TEMP", $"{v.BodyTemperature:F1}°C", 1 - Math.Abs(v.BodyTemperature - rules.Temperature.Normal) / 4.0, C.Good),
             ("RADIATION", $"{v.Radiation:F1}", 1 - v.Radiation / (rules.Radiation.DamageAbove * 1.5), C.Warn),
         };
         for (int i = 0; i < rows.Length; i++)
@@ -297,7 +297,7 @@ public sealed class YouSection : IMenuSection
         g.Text($"ARMOUR {mods.Armor:F0}   COLD {mods.ColdProtection:F0}   HEAT {mods.HeatProtection:F0}   RAD {mods.RadiationShielding:F0}", new Vector2(r.Position.X, yy), C.Text, 14, UiTheme.Mono);
         Progress p = _game.Progress;
         var (into, span) = p.ToNext;
-        g.Text($"LEVEL {p.Level} Â· {p.Xp} XP Â· {p.Points} POINTS", new Vector2(r.Position.X, yy + 30), C.Accent2, 17, UiTheme.Display);
+        g.Text($"LEVEL {p.Level} · {p.Xp} XP · {p.Points} POINTS", new Vector2(r.Position.X, yy + 30), C.Accent2, 17, UiTheme.Display);
         g.Bar(new Rect2(r.Position.X, yy + 58, 410, 12), into, span, C.Accent2, 20);
         g.Text(p.Level >= p.Rules.Cap ? $"past the cap: a point every {p.Rules.PastCap} XP" : $"{span - into} XP to level {p.Level + 1}", new Vector2(r.Position.X, yy + 76), C.Dim, 14);
     }
@@ -380,7 +380,7 @@ public sealed class YouSection : IMenuSection
             g.Fill(row, new Color(allowed ? C.Glass : C.Panel, 0.85f));
             g.Fill(new Rect2(row.Position, new Vector2(5, row.Size.Y)), allowed ? (item.SmallGrid ? C.Accent2 : C.Accent) : C.Dim);
             g.Text(item.Name, row.Position + new Vector2(12, 2), allowed || creative ? C.Text : C.Dim, 14);
-            string detail = creative ? "free" : $"made from {items.Describe(item.Recipe?.InputsFor(1), 2)}{(allowed ? "" : $" Â· {p.LockReason(item.Id)}")}";
+            string detail = creative ? "free" : $"made from {items.Describe(item.Recipe?.InputsFor(1), 2)}{(allowed ? "" : $" · {p.LockReason(item.Id)}")}";
             g.Text(detail, row.Position + new Vector2(12, 19), allowed ? C.Dim : C.Warn, 11);
             if (!creative)
                 g.TextIn($"{pack[item.Id]}{(pack.Linked != null ? $" + {pack.Linked.Count(item.Id)}" : "")}", new Rect2(row.End.X - 110, row.Position.Y + 6, 104, 22), C.Accent2, 14, HorizontalAlignment.Right, UiTheme.Mono);

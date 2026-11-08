@@ -38,6 +38,7 @@ public partial class Screenshot : Node
     public override void _Ready()
     {
         ProcessPhysicsPriority = 100; // after the game's tick, so what it sets is read on the next one
+        ProcessMode = ProcessModeEnum.Always; // a view runs on while the escape menu stops the world
         foreach (string arg in OS.GetCmdlineUserArgs())
         {
             int eq = arg.IndexOf('=');

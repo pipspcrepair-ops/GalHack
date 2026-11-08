@@ -119,6 +119,9 @@ public partial class Game : Node3D
         PlanetSurface.Skies.StarSystem.TemperateYearDays = Slice.Orbit.OrbitRules.Shared.Globe.TemperateYearDays;
         ResourceMount.Mount();
         ProcessPhysicsPriority = -20; // input before the physics host (-10) steps
+        // The world stops with the escape menu open, whatever runs it (a test's or the screenshots' node runs on through a pause).
+        ProcessMode = ProcessModeEnum.Pausable;
+        LoadSettings();
         // The command line pins the world and the mode: -- --seed 123 --planet ice --creative
         string[] args = OS.GetCmdlineUserArgs();
         if (Array.IndexOf(args, "--creative") >= 0) _mode = GameMode.Creative;
@@ -164,6 +167,8 @@ public partial class Game : Node3D
         AddChild(Visor);
         Menu = new TabMenu { Name = "Menu", Game = this };
         AddChild(Menu);
+        Escape = new EscapeMenu { Name = "Escape", Game = this };
+        AddChild(Escape);
         Debug = new DebugHud { Name = "Debug", Game = this, Visible = false };
         AddChild(Debug);
         Said += (text, colour) => Visor.Say(text, colour);
@@ -302,6 +307,12 @@ public partial class Game : Node3D
     {
         if (Zone == null) return; // the start screen is up
         if (Interactive) PollKeyboard();
+        // Esc with no menu open: the escape menu, and the world stops (with the Tab menu open, Esc is the Tab menu's, below).
+        if (Controls.KeyWasPressed(Key.Escape) && !Menu.IsOpen)
+        {
+            Escape.Open();
+            return;
+        }
         if (Phase == Phase.Generating)
         {
             if (Zone.IsBuilt) Waking();
@@ -319,9 +330,9 @@ public partial class Game : Node3D
             else if (!Menu.IsOpen) Menu.OpenMap(Slice.Ui.MapLevel.Local);
             else Menu.Tab = Slice.Ui.MenuTab.Map;
         }
-        if (c.WasPressed(Key.Escape) && Menu.IsOpen && !Slice.Items.ItemViews.Escape()) Menu.Close();
-        if (c.WasPressed(Key.Slash) && Menu.IsOpen && Slice.Items.ItemViews.Focused == null) Menu.FocusFilter();
-        if (Menu.IsOpen && c.WasPressed(Key.A) && c.IsHeld(Key.Ctrl) && Slice.Items.ItemViews.Focused == null) Slice.Ui.Slots.SelectAll();
+        if (c.KeyWasPressed(Key.Escape) && Menu.IsOpen && !Slice.Items.ItemViews.Escape()) Menu.Close();
+        if (c.KeyWasPressed(Key.Slash) && Menu.IsOpen && Slice.Items.ItemViews.Focused == null) Menu.FocusFilter();
+        if (Menu.IsOpen && c.KeyWasPressed(Key.A) && c.ModifierHeld(Key.Ctrl) && Slice.Items.ItemViews.Focused == null) Slice.Ui.Slots.SelectAll();
         if (Menu.IsOpen) Menu.Input(c);
         if (c.WasPressed(Key.V) && !Menu.IsOpen) ThirdPerson = !ThirdPerson;
         if (c.WasPressed(Key.L)) ToggleTorch();
@@ -349,11 +360,7 @@ public partial class Game : Node3D
         s.Legs.Jump = s.Legs.Jetpack = false;
         s.Legs.Vertical = 0f;
         bool typing = Menu.IsOpen && Slice.Items.ItemViews.Focused != null;
-        if (!Menu.IsOpen)
-        {
-            s.Yaw -= c.Look.X * 0.0025f;
-            s.Pitch = Mathf.Clamp(s.Pitch - c.Look.Y * 0.0025f, -1.5f, 1.5f);
-        }
+        if (!Menu.IsOpen) Turn(s, c);
         if (c.WasPressed(Key.F) && !Menu.IsOpen)
         {
             s.Dismount();
@@ -395,11 +402,7 @@ public partial class Game : Node3D
     {
         Survivor s = Survivor;
         // The menu takes the mouse (the game doesn't pause: you can still walk with it open).
-        if (!Menu.IsOpen)
-        {
-            s.Yaw -= c.Look.X * 0.0025f;
-            s.Pitch = Mathf.Clamp(s.Pitch - c.Look.Y * 0.0025f, -1.5f, 1.5f);
-        }
+        if (!Menu.IsOpen) Turn(s, c);
         // Typing into a filter box doesn't move you.
         bool typing = Menu.IsOpen && Slice.Items.ItemViews.Focused != null;
         s.Legs.Move = typing ? N.Vector2.Zero : new N.Vector2(c.Axis(Key.D, Key.A), c.Axis(Key.S, Key.W));
@@ -519,7 +522,7 @@ public partial class Game : Node3D
     void Fly(Vessel vessel, Controls c)
     {
         // The mouse moves a virtual stick that recentres by itself (as in ship-handling).
-        if (!Menu.IsOpen) _stick = (_stick * 0.85f + c.Look * 0.012f).Clamp(new Vector2(-1, -1), new Vector2(1, 1));
+        if (!Menu.IsOpen) _stick = (_stick * 0.85f + StickPush(c)).Clamp(new Vector2(-1, -1), new Vector2(1, 1));
         if (_stick.LengthSquared() < 1e-8f) _stick = Vector2.Zero; // recentred means centred: the decay alone never reaches zero
         if (c.WasPressed(Key.F) && !Menu.IsOpen)
         {
@@ -687,9 +690,22 @@ public partial class Game : Node3D
         Key.W, Key.A, Key.S, Key.D, Key.Space, Key.Ctrl, Key.Shift, Key.Q, Key.E, Key.M,
     };
 
+    /// <summary>The view turned by a tick's mouse movement, at your sensitivity, the pitch held short of straight up and down.</summary>
+    void Turn(Survivor s, Controls c)
+    {
+        Vector2 turn = LookTurn(c);
+        s.Yaw -= turn.X;
+        s.Pitch = Mathf.Clamp(s.Pitch - turn.Y, -1.5f, 1.5f);
+    }
+
     void PollKeyboard()
     {
-        foreach (Key k in Watched) Controls.Hold(k, Input.IsPhysicalKeyPressed(k));
+        // Each held action by the key bound to it; the modifiers themselves too, for the menus' Shift- and Ctrl-clicks.
+        KeyBindings keys = Settings.Keys;
+        foreach (Key k in Watched) Controls.Hold(k, Input.IsPhysicalKeyPressed(keys.BoundFor(k)));
+        foreach (Key m in new[] { Key.Shift, Key.Ctrl, Key.Alt })
+            if (Input.IsPhysicalKeyPressed(m)) Controls.Modifiers.Add(m);
+            else Controls.Modifiers.Remove(m);
         bool captured = Input.MouseMode == Input.MouseModeEnum.Captured;
         Controls.Primary = (captured || Menu.IsOpen) && Input.IsMouseButtonPressed(MouseButton.Left);
         Controls.Secondary = (captured || Menu.IsOpen) && Input.IsMouseButtonPressed(MouseButton.Right);
@@ -698,7 +714,7 @@ public partial class Game : Node3D
 
     public override void _UnhandledInput(InputEvent e)
     {
-        if (!Interactive) return;
+        if (!Interactive || Zone == null) return; // the start screen takes its own
         switch (e)
         {
             case InputEventMouseMotion motion when Input.MouseMode == Input.MouseModeEnum.Captured:
@@ -728,8 +744,7 @@ public partial class Game : Node3D
                     break;
                 }
                 if (key.Echo) break;
-                if (key.PhysicalKeycode == Key.Escape && !Menu.IsOpen) Input.MouseMode = Input.MouseModeEnum.Visible;
-                else Controls.Tap(key.PhysicalKeycode);
+                Press(key.PhysicalKeycode);
                 break;
         }
     }
@@ -741,6 +756,7 @@ public partial class Game : Node3D
     public override void _Process(double delta)
     {
         if (Zone == null) return; // the start screen is up
+        KeepSettingsApplied();
         if (Suit != null) SyncReplicators();
         if (Interactive)
         {

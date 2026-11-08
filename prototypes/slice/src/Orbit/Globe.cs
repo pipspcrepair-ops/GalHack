@@ -9,7 +9,7 @@ namespace Slice.Orbit;
 /// <summary>
 /// The globe's paint, made off the main thread from the world's own map: planet-generator's
 /// colour map (albedo with glossy seas, and glow) and cloud map, as mipmapped images ready to
-/// upload. Its pixel (u, v) shows the map point (uÂ·width, vÂ·height), which is what
+/// upload. Its pixel (u, v) shows the map point (u·width, v·height), which is what
 /// <see cref="GlobeMap"/> assumes and the globe test checks against Godot's sphere.
 /// </summary>
 public sealed class GlobePaint

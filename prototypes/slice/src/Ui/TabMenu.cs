@@ -94,7 +94,7 @@ public partial class TabMenu : CanvasLayer
     {
         if (Game.Interactive) return; // real mouse input reaches the panel itself
         Root.Gui.MiddleHeld = c.Middle;
-        Root.Feed(c.Mouse, c.PrimaryPressed, c.PrimaryReleased, c.Primary, c.SecondaryPressed, c.IsHeld(Godot.Key.Shift), c.IsHeld(Godot.Key.Ctrl), c.SecondaryReleased, c.Secondary, c.Wheel);
+        Root.Feed(c.Mouse, c.PrimaryPressed, c.PrimaryReleased, c.Primary, c.SecondaryPressed, c.ModifierHeld(Godot.Key.Shift), c.ModifierHeld(Godot.Key.Ctrl), c.SecondaryReleased, c.Secondary, c.Wheel);
     }
 
     /// <summary>The / key: the first filter box on the page takes the keyboard.</summary>
