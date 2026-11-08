@@ -277,6 +277,7 @@ public sealed partial class Town
     void OnStray(Creature c, Settlement town)
     {
         if (town != _settlement) return;
+        if (c.Species.Husk) return; // a Husk is met by temper: fought, fled or barricaded against (Town.Reactions)
         Person guard = People.Where(p => p.Role == "guard" && !p.Dead).OrderBy(p => (p.Position - c.Position).LengthSquared()).FirstOrDefault();
         _places.Zone.Wildlife.Sim.CullStray(c, guard);
         Culled++;

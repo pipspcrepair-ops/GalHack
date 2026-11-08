@@ -42,6 +42,36 @@ public sealed partial class Staging
         return made;
     }
 
+    /// <summary>
+    /// Level ground with a clear view of a row this wide from this far back: of a few flat spots
+    /// round you, the one whose sight lines to the row hit the fewest things (trees, rocks).
+    /// </summary>
+    Vector3 OpenSpot(float width, float back)
+    {
+        var space = _game.Zone.GetWorld3D().DirectSpaceState;
+        Vector3 best = Ground(Play.FlatSpot(_game.Survivor.WorldFeet, 30f, span: width));
+        int fewest = int.MaxValue;
+        for (int i = 0; i < 16; i++)
+        {
+            float a = i * 2.39996f, r = 25f + (i % 4) * 15f;
+            Vector3 from = _game.Survivor.WorldFeet + new Vector3(MathF.Cos(a), 0f, MathF.Sin(a)) * r;
+            Vector3 s = Ground(Play.FlatSpot(from, 12f, span: width));
+            Vector3 eye = s + new Vector3(0f, 1.45f, back);
+            int hits = 0;
+            for (float x = -width * 0.5f; x <= width * 0.5f; x += 1f)
+            {
+                Vector3 to = Ground(s + new Vector3(x, 0f, 0f)) + Vector3.Up * 1.2f;
+                var q = PhysicsRayQueryParameters3D.Create(eye, to);
+                if (space.IntersectRay(q).Count > 0) hits++;
+                float rise = _game.Zone.GroundAt(s.X + x, s.Z).Y - s.Y;
+                if (MathF.Abs(rise) > 0.5f) hits++;
+            }
+            if (hits < fewest) { fewest = hits; best = s; }
+        }
+        GD.Print($"(stage: {fewest} sight lines blocked)");
+        return best;
+    }
+
     IEnumerable<int> NoonLight()
     {
         _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
@@ -88,12 +118,12 @@ public sealed partial class Staging
             line.Add(s);
             GD.Print($"  {f.Id}: {f.Covering}, crown {f.Crown}, mouth {f.Mouth}{(f.Tusks ? "+tusks" : "")}, eyes {f.Eyes}, ears {f.Ears}, tail {f.Tail}, back {f.Back}; {s.Figure.Height:F2} m (top {s.Figure.Top:F2}); [{string.Join(", ", s.Figure.Wear)}]");
         }
-        Vector3 spot = Ground(Play.FlatSpot(_game.Survivor.WorldFeet, 30f, span: 12f));
+        Vector3 spot = OpenSpot(12f, 6.5f);
         var stage = new Node3D { Name = "Peoples" };
         _game.Zone.AddChild(stage);
         Row(stage, line, spot, 1.6f);
         _game.Visor.Visible = false;
-        Look(spot + new Vector3(1.2f, 1.45f, 7.2f), spot + Vector3.Up * 1.05f);
+        Look(spot + new Vector3(0.6f, 1.4f, 6.2f), spot + Vector3.Up * 1.1f);
         foreach (int x in _drive.Wait(20)) yield return x;
         foreach (int x in Shot(Path.Combine(dir, "lineup.png"))) yield return x;
         Look(spot + new Vector3(-2.4f, 1.6f, 3.2f), spot + new Vector3(-2.4f, 1.45f, 0f));
@@ -102,7 +132,7 @@ public sealed partial class Staging
         Look(spot + new Vector3(2.4f, 1.6f, 3.2f), spot + new Vector3(2.4f, 1.45f, 0f));
         foreach (int x in _drive.Wait(5)) yield return x;
         foreach (int x in Shot(Path.Combine(dir, "close-right.png"))) yield return x;
-        Look(spot + new Vector3(-9f, 1.5f, -2f), spot + Vector3.Up * 1f);
+        Look(spot + new Vector3(-7f, 1.4f, -3.5f), spot + new Vector3(0f, 0.9f, 0f));
         foreach (int x in _drive.Wait(5)) yield return x;
         foreach (int x in Shot(Path.Combine(dir, "side.png"))) yield return x;
         Look(spot + new Vector3(0f, 1.7f, 30f), spot + Vector3.Up * 0.9f);
@@ -147,7 +177,7 @@ public sealed partial class Staging
                 GD.Print($"  {name} {r}: {s.Figure.Dress}, layers [{string.Join(", ", s.Figure.Layered)}], wear [{string.Join(", ", s.Figure.Wear)}], warmth {s.Figure.Warmth:F1}, worn {s.Figure.Worn:F2}");
             }
         }
-        Vector3 spot = Ground(Play.FlatSpot(_game.Survivor.WorldFeet, 30f, span: 18f));
+        Vector3 spot = OpenSpot(16f, 10.5f);
         var stage = new Node3D { Name = "Outfits" };
         _game.Zone.AddChild(stage);
         Row(stage, line, spot, 1.05f);

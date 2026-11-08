@@ -90,7 +90,7 @@ public sealed class HumanRig : Rig
         Vector3 back = torso.Z, side = torso.X;
         Vector3 at = hip + back * f.ChestD * f.Padding * 0.85f + torso.Y * f.Torso * 0.04f;
         // How far it droops from level behind: a thick tail is carried, a thin one hangs; slack on a Husk, lower sitting.
-        float droop = (k?.Tail switch { "thick" => 0.35f, "fan" => 0.25f, "bushy" => 0.55f, "stub" => 0.2f, _ => 0.75f }) + (f.Husk ? 0.45f : 0f) + g.Sit * 0.5f + g.Crouch * 0.2f;
+        float droop = (k?.Tail switch { "thick" => 0.25f, "fan" => 0.05f, "bushy" => 0.3f, "stub" => 0.1f, _ => 0.5f }) + (f.Husk ? 0.45f : 0f) + g.Sit * 0.5f + g.Crouch * 0.2f;
         float swing = moving * 0.32f * MathF.Sin(cycle) + (1f - moving) * 0.14f * MathF.Sin(g.Clock * 0.9f + _offset * 11f) + 0.5f * jerk * MathF.Sin(_offset * 41f);
         for (int i = 0; i < _tail.Length; i++)
         {

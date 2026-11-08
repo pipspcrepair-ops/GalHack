@@ -309,7 +309,7 @@ public static class HumanBody
                     (0f, f.HipW * 1.4f * pad, d * 1.3f, 0f), (0.35f, (f.HipW + f.WaistW) * 0.7f * pad, d * 1.25f, 0f), (0.8f, W * 1.1f, d * 1.25f, 0f), (1f, W * 0.78f, d * 0.92f, 0f),
                 }, 9, 0.05f);
                 p.Loft(parka, shell, shell.Darkened(0.2f), 0f, 0f, Mat.Skin, null, upright, 11);
-                for (int i = 0; i < 4; i++) p.Add(Shape.Sphere, new Vector3(W * 2.3f, 0.02f * u, d * 2.62f), new Vector3(0f, T * (0.1f + 0.2f * i), 0f), shell.Darkened(0.12f), 0f, 0f, null, 10);
+                for (int i = 0; i < 4; i++) p.Add(Shape.Sphere, new Vector3(Mathf.Lerp(f.HipW * 1.4f * pad, W * 1.1f, 0.25f + 0.2f * i) * 2.04f, 0.02f * u, d * 2.56f), new Vector3(0f, T * (0.1f + 0.2f * i), 0f), shell.Darkened(0.12f), 0f, 0f, null, 10);
                 FurTrim(p, f, T * 1.0f, f.ShoulderW * 0.62f, new Color(0.72f, 0.66f, 0.56f));
                 break;
             }
@@ -331,7 +331,7 @@ public static class HumanBody
                 Color vis = new Color(0.95f, 0.62f, 0.08f).Lerp(new Color(0.85f, 0.88f, 0.12f), f.Height % 0.02f * 50f);
                 var bright = LoftProfile.Smooth(0.38f * T, 0.93f * T, new[] { (0f, f.WaistW * 1.12f * pad, d * 1.02f, 0f), (0.6f, W * 0.99f, d * 1.14f, 0f), (1f, W * 0.82f, d * 1.0f, 0f) }, 7, 0.1f);
                 p.Loft(bright, vis, vis.Darkened(0.1f), 0f, 0.06f, Mat.Skin, null, upright, 11);
-                for (int i = 0; i < 2; i++) p.Add(Shape.Sphere, new Vector3(W * 2.06f, 0.035f * u, d * 2.34f), new Vector3(0f, T * (0.5f + 0.16f * i), 0f), new Color(0.8f, 0.82f, 0.82f), 0f, 0.1f, null, 10);
+                for (int i = 0; i < 2; i++) p.Add(Shape.Sphere, new Vector3((f.WaistW * f.Padding + W * 0.9f) * 1.12f, 0.035f * u, d * 2.24f), new Vector3(0f, T * (0.55f + 0.14f * i), 0f), new Color(0.8f, 0.82f, 0.82f), 0f, 0.1f, null, 10);
                 break;
             }
             case "trader_pack":
