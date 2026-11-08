@@ -163,16 +163,14 @@ public sealed class Suit : IDamageSink
         _riding = survivor.Seated != null || survivor.OnBike != null;
         _miningLeft -= dt;
         Activity activity = new(PaceOf(survivor), Mining: _miningLeft > 0f, FallSpeed: survivor.ImpactSpeed);
-        int events = Sim.Events.Count;
         double before = Vitals.Health;
         TickReport report = Sim.Tick(dt, activity);
         if (Vitals.Health < before) Count(DamageKindFor(report.Harm), before - Vitals.Health);
         Outdoors(dt, survivor, report);
         foreach (Alert a in Enum.GetValues<Alert>())
             if (a != Alert.None && (report.Warnings & a) != 0 && (_warning & a) == 0) WarnedAt[a] = Sim.Time;
-        if ((report.Warnings & Alert.Lava) != 0 && (_warning & Alert.Lava) == 0) Said?.Invoke("LAVA CLOSE: keep clear, the heat burns");
         _warning = report.Warnings;
-        for (int i = events; i < Sim.Events.Count; i++) Said?.Invoke(Sim.Events[i]);
+        // The model's own lines (helmet sealed, oxygen low, a hard landing) stay off the visor: the vitals show them.
         return report;
     }
 
@@ -249,7 +247,6 @@ public sealed class Suit : IDamageSink
         bool fall = (Last.Warnings & Alert.Fall) != 0; // the visor was flashing IMPACT
         double health = raw / body.Integrity * Sim.Data.Vitals.Health.Max;
         double lost = Hit(health, fall ? DamageKind.Fall : DamageKind.Hit);
-        if (fall && lost > 0) Said?.Invoke($"Hard landing: -{lost:F0} health.");
         return (float)(lost / Sim.Data.Vitals.Health.Max * body.Integrity);
     }
 

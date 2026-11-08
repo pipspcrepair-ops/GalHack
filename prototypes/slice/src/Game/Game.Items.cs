@@ -76,12 +76,10 @@ public partial class Game
         }
         if (Bunker?.SealedAlong(eye, dir, reach + 0.3f) is Slice.Start.BunkerLocker sealedOne)
         {
-            Say($"Locker {sealedOne.Number} is sealed: its sleeper never woke", Tones.Caution);
             return;
         }
         if (!hit)
         {
-            Say("Nothing to use here", Tones.Caution);
             return;
         }
         if (Zone.Devices.FirstOrDefault(d => d.Collider == look.Collider) is Device device)
@@ -104,7 +102,6 @@ public partial class Game
             }
             if (type.IsCommandChair)
             {
-                Say("F to take the command chair", Tones.Text);
                 return;
             }
             if (type.IsLight && Godot.Input.IsKeyPressed(Godot.Key.Shift))
@@ -115,7 +112,6 @@ public partial class Game
             }
             if (type.IsLight && v.ToggleLight(look.Cell))
             {
-                Say(v.Structure.Get(look.Cell).Off ? "Light off" : "Light on", Tones.Text);
                 return;
             }
             if (Zone.Data.Items.Machines.ForBlock(type.Id) != null)
@@ -127,7 +123,6 @@ public partial class Game
             }
         }
         if (UsePlace(look)) return;
-        Say("Nothing to use here", Tones.Caution);
     }
 
     /// <summary>What E (or F) would do with what is under the crosshair, for the prompt beside it; empty if nothing usable is in reach.</summary>
@@ -192,7 +187,6 @@ public partial class Game
         if (e.Food > 0) v.Food = Math.Min(r.Food.Max, v.Food + e.Food * r.Food.Max);
         if (e.Health > 0) v.Heal(e.Health);
         if (e.Oxygen > 0) v.Oxygen = Math.Min(Suit.Sim.OxygenCapacity, v.Oxygen + e.Oxygen);
-        Say($"Used a {name}", Tones.Good);
         Stats.Used++;
         return true;
     }
@@ -203,7 +197,7 @@ public partial class Game
         if (items == null || items.IsEmpty) return;
         Vector3 ground = Zone.GroundAt(at.X, at.Z);
         Zone.Loot.Spill(items, new Vector3(at.X, MathF.Max(at.Y - 0.2f, ground.Y), at.Z));
-        Say($"Set down: {Zone.Data.Items.Describe(items, 3)} (no room)", Tones.Caution);
+        Say($"No room: {Zone.Data.Items.Describe(items, 3)} set down", Tones.Caution);
     }
 
     /// <summary>Drops a stack from the bag onto the ground in front of you (dragged out of the inventory window).</summary>
@@ -220,7 +214,6 @@ public partial class Game
         Vector3 ahead = Survivor.WorldFeet + new Vector3(look.X, 0f, look.Z).Normalized() * 1.2f;
         Vector3 ground = Zone.GroundAt(ahead.X, ahead.Z);
         Zone.Loot.Spill(bill, float.IsFinite(ground.Y) ? ground : ahead + Vector3.Up * 0.6f); // in space it floats where it was let go
-        Say($"Dropped {Zone.Data.Items.Describe(bill)}", Tones.Text);
     }
 
     // ---- Death and the backpack -----------------------------------------------------------------
@@ -256,7 +249,6 @@ public partial class Game
         Survivor.Body.Velocity = N.Vector3.Zero;
         _wasDead = false;
         Report(o);
-        if (Backpack != null) Say("Your backpack is marked on the compass: E on it to take everything back", Tones.Caution);
     }
 
     // ---- Creatures' bodies ---------------------------------------------------------------------
@@ -296,7 +288,6 @@ public partial class Game
         {
             Stats.Kills++;
             Progress.Earn(s.Stats.Xp, $"{s.CommonName} brought down");
-            Say($"{Cap(s.CommonName)} down: E on its body to take its meat and hide", Tones.Good);
         }
     }
 
@@ -406,7 +397,7 @@ public partial class Game
             Stats.Crafted += runs * job.Recipe.Count;
             int xp = runs * Math.Max(1, (int)Math.Round(job.Recipe.Seconds / Progress.Rules.Xp.CraftSecondsPerXp));
             Progress.Earn(xp, $"made {job.Item.Name}");
-            if (!now.Contains(job) && job.Lane == Lane.Order) Say($"{c.Def.Name}: {job.Count} {job.Item.Name} done", Tones.Good);
+            if (!now.Contains(job) && job.Lane == Lane.Order) Say($"{c.Def.Name}: {job.Count} {job.Item.Name}", Tones.Good);
         }
     }
 }

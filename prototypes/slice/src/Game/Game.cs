@@ -70,6 +70,9 @@ public partial class Game : Node3D
     public ShotFx Shots { get; private set; }
     public PlayerTarget Target { get; private set; }
     public Visor Visor { get; private set; }
+
+    /// <summary>Hazards and attacks as symbols, over every menu.</summary>
+    public Alerts Alerts { get; private set; }
     public TabMenu Menu { get; private set; }
     public CockpitConsole Console { get; private set; }
     /// <summary>The in-world screens on constructors and base-mode Big Cores (looked at to use).</summary>
@@ -169,6 +172,8 @@ public partial class Game : Node3D
         AddChild(Menu);
         Escape = new EscapeMenu { Name = "Escape", Game = this };
         AddChild(Escape);
+        Alerts = new Alerts { Name = "Alerts", Game = this };
+        AddChild(Alerts);
         Debug = new DebugHud { Name = "Debug", Game = this, Visible = false };
         AddChild(Debug);
         Said += (text, colour) => Visor.Say(text, colour);
@@ -246,7 +251,6 @@ public partial class Game : Node3D
         Tool.CreatureStruck += OnCreatureStruck;
         Builder = new BuildTool(Zone, Survivor, Pack, Progress);
         Builder.Said += Say;
-        Builder.Finished += v => Say($"Fly it: F at the {v.Name}'s seat", Tones.Good);
         Builder.Spilled += SetDown;
         WireProgress();
 
@@ -254,7 +258,13 @@ public partial class Game : Node3D
         Zone.Wildlife.SetPlayer(Target);
         Zone.Wildlife.Attacked += OnBitten;
         SetUpHusks();
-        Zone.Wildlife.Telegraphed += e => Visor.Threat(Zone.Wildlife.WorldOf(e.Creature));
+        Zone.Wildlife.Telegraphed += e =>
+        {
+            Vector3 from = Zone.Wildlife.WorldOf(e.Creature);
+            Visor.Threat(from);
+            // A Husk's wind-up is never flagged: it looks like anyone until it has you.
+            if (!e.Creature.Species.Husk) Alerts.Attack(Alerts.SignFor(e.Creature.Species), from);
+        };
         Zone.Wildlife.Died += OnCreatureDied;
         Zone.Weather.Observer = () => Survivor.WorldFeet;
         Zone.Weather.Bridge.Shelter = body => Sheltered(body.WorldPosition.ToGodot());
@@ -364,7 +374,6 @@ public partial class Game : Node3D
         if (c.WasPressed(Key.F) && !Menu.IsOpen)
         {
             s.Dismount();
-            Say("Off the hover bike", Tones.Text);
             return;
         }
         bike.Throttle = typing ? 0f : c.Axis(Key.W, Key.S);
@@ -378,13 +387,12 @@ public partial class Game : Node3D
     {
         if (!WorldRay.Cast(Zone, Survivor, 9f, Layers.World | Layers.Hull, out LookHit look) || look.Normal.Y < 0.5f)
         {
-            Say("Look at open ground to set the hover bike down", Tones.Caution);
+            Say("Needs open ground", Tones.Caution);
             return;
         }
         if (Pack.Remove("hover-bike", 1) < 1) return;
         Pack.Grid.Reconcile();
         Bikes.Place(look.Point, Survivor.Yaw);
-        Say("Hover bike set down: F to ride, E to pick it up", Tones.Good);
     }
 
     /// <summary>E at a standing hover bike: it goes back in the pack.</summary>
@@ -394,7 +402,6 @@ public partial class Game : Node3D
         Bill left = Pack.Add("hover-bike", 1);
         if (!left.IsEmpty) SetDown(left, bike.Position);
         Bikes.Remove(bike);
-        Say("Hover bike packed away", Tones.Text);
         return true;
     }
 
@@ -433,12 +440,6 @@ public partial class Game : Node3D
         if (hand == HandKind.Tool && c.WasPressed(Key.Q))
         {
             Tool.Mode = Tool.Mode switch { ToolMode.Gather => ToolMode.Shoot, ToolMode.Shoot => ToolMode.Deconstruct, _ => ToolMode.Gather };
-            Say(Tool.Mode switch
-            {
-                ToolMode.Shoot => "Survival tool: SHOOT (Q: deconstruct)",
-                ToolMode.Deconstruct => "Survival tool: DECONSTRUCT: take blocks down, their items back (Q: gather)",
-                _ => "Survival tool: GATHER (Q: shoot)",
-            }, Tones.Text);
         }
         if (hand is HandKind.Block or HandKind.Core or HandKind.Blueprint)
         {
@@ -456,7 +457,6 @@ public partial class Game : Node3D
             if (c.WasPressed(Key.X))
             {
                 Builder.MirrorX = !Builder.MirrorX;
-                Say(Builder.MirrorX ? "Mirror left/right on" : "Mirror off", Tones.Text);
             }
         }
         else if (c.Wheel != 0) Select((Pack.Selected + Math.Sign(c.Wheel) + PlayerInventory.ToolbarSlots) % PlayerInventory.ToolbarSlots);
@@ -470,7 +470,7 @@ public partial class Game : Node3D
     public bool ToolEquipped { get; private set; }
 
     /// <summary>The hint at waking, until the tool is equipped; null after.</summary>
-    public string ToolHint => ToolEquipped ? null : "Press Tab: make your survival tool in the suit fabricator";
+    public string ToolHint => ToolEquipped ? null : $"[{KeyBindings.Name(Settings.Keys["terminal"])}] SUIT FABRICATOR";
 
     /// <summary>Puts a toolbar slot in your hands.</summary>
     public void Select(int slot)
@@ -482,7 +482,6 @@ public partial class Game : Node3D
         string id = Pack.HandItem;
         string what = s.Block == PlayerInventory.BlueprintBlock ? "Blueprint projector: the Skiff" : id != null && Zone.Data.Items.TryGet(id, out var item) ? item.Name : "empty hands";
         string origin = Pack.OnRemoteBar && Pack.HandRemote is RemoteSlot rs ? $" ({rs.Origin})" : "";
-        Say($"{slot + 1}{origin}: {what}{(Pack.OnRemoteBar && !Pack.HandUsable && Pack.HandRemote != null ? " · out of range" : "")}", Tones.Text);
     }
 
     /// <summary>Switches between your own toolbar and the remote one (an empty remote bar can't be opened).</summary>
@@ -495,7 +494,6 @@ public partial class Game : Node3D
             return;
         }
         Builder.Hide();
-        Say(Pack.OnRemoteBar ? "REMOTE TOOLBAR: items stay in their core's storage" : "YOUR TOOLBAR: items come from your own stacks", Tones.Text);
     }
 
     /// <summary>The structure you are linked to (its area holds you), or null.</summary>
@@ -547,7 +545,6 @@ public partial class Game : Node3D
     {
         Torch.Visible = !Torch.Visible;
         Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Ping, Camera.GlobalPosition, Torch.Visible ? 2.2f : 1.8f, -18f);
-        Say(Torch.Visible ? "Head torch on (L)" : "Head torch off", Tones.Text);
     }
 
     /// <summary>F on foot: the nearest command chair within reach.</summary>
@@ -565,14 +562,12 @@ public partial class Game : Node3D
         HoverBike bike = Bikes.Nearest(eye, bestDistance, out _);
         if (bike != null && Survivor.Mount(bike))
         {
-            Say("On the hover bike: W/S throttle, A/D steer, Shift boost, Space hop, F get off", Tones.Text);
             return;
         }
-        if (best == null) Say("No seat or hover bike within reach", Tones.Caution);
-        else if (TakeNearestChair(best, eye) && Survivor.Sit(best)) Say($"At the {best.Name}'s controls: WASD, Space/Ctrl, mouse, Q/E roll, G gear", Tones.Text);
+        if (best != null && TakeNearestChair(best, eye)) Survivor.Sit(best);
     }
 
-    void Report(Outcome o) => Say(o.Message, o.Ok ? Tones.Good : Tones.Caution);
+    void Report(Outcome o) { if (!o.Ok) Say(o.Message, Tones.Caution); } // what worked shows for itself
 
     Pos FeetPos()
     {
@@ -600,7 +595,7 @@ public partial class Game : Node3D
         Pack.Grid.Reconcile();
         LinkStructure();
         HandKind hand = Pack.Hand;
-        if (Pack.Tick()) Say("The remote toolbar emptied: back on your own", Tones.Text);
+        Pack.Tick(); // an emptied remote toolbar hands back to your own: the bar's name shows it
         // A remote slot out of its origin's range stays in the hand, greyed, and does nothing.
         bool hands = !Suit.Dead && Survivor.Seated == null && Survivor.OnBike == null && !Menu.IsOpen && Pack.HandUsable;
         // Aim on an in-world screen within reach: the buttons click it, and nothing else fires.
@@ -622,6 +617,8 @@ public partial class Game : Node3D
             Builder.Tick(dt, hand, Pack.InHand, Pack.Selected, primary, pressed, hands && Controls.SecondaryPressed);
         else if (hands && hand == HandKind.Consumable && pressed) Consume(Pack.Selected);
         else if (hands && hand == HandKind.Vehicle && pressed) PlaceBike();
+        else if (hands && hand == HandKind.Scanner && pressed) Scan();
+        TickPings();
         if (!hands || !(building || deconstruct)) Builder.Hide();
         TickMachines(dt);
         CheckDeath();
@@ -639,8 +636,8 @@ public partial class Game : Node3D
         Vector3 from = Zone.Wildlife.WorldOf(e.Creature);
         Visor.Hurt(from);
         Hands?.Jolt(from, MathF.Min(1f, e.Damage / 20f));
-        Zone.Wildlife.Audio.PlayUi("hurt", -6f);
-        Say($"{e.Creature.Species.CommonName}: -{lost:F0} health", Tones.Warning);
+        Zone.Wildlife.Audio.PlayUi("hurt", -6f); // the blow landing, not an alert
+        Alerts.Attack(Alerts.SignFor(e.Creature.Species), from);
     }
 
     /// <summary>A hit lands on a creature: a wet smack where it landed, its blood, and a critter of a swarm gone with a pop.</summary>
@@ -666,11 +663,9 @@ public partial class Game : Node3D
                 if (distance < e.DamageRadius && !UnderCover())
                 {
                     Suit.Hit(e.Damage, DamageKind.Hit);
-                    Say("STRUCK BY LIGHTNING: get low in a storm", Tones.Warning);
+                    Visor.Hurt(e.Position);
+                    Alerts.Attack("storm", e.Position);
                 }
-                break;
-            case WeatherEventKind.TornadoForming:
-                Say($"Funnel cloud forming {WeatherSim.Bearing(feet, e.Position)}", Tones.Warning);
                 break;
         }
     }

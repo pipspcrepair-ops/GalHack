@@ -252,7 +252,7 @@ public sealed class SurvivalTool
         {
             _cooldown = 0.35f;
             var refused = new PlanetEdit(EditKind.Tool);
-            if (verdict == Verdict.Bedrock) { refused.Bedrock = 1; Said?.Invoke("BEDROCK: the tool can't cut it", Tones.Warning); }
+            if (verdict == Verdict.Bedrock) { refused.Bedrock = 1; Said?.Invoke("BEDROCK", Tones.Warning); }
             else if (verdict == Verdict.Anchored) refused.Anchored = 1;
             else refused.AlreadyAir = 1;
             Sfx?.Play(Sfx.Sound.Clank, at);
@@ -594,8 +594,7 @@ public sealed class SurvivalTool
             onPlace = null;
         }
         else (Places?.TownAt(eye) ?? Places?.TownAt(eye + dir * MathF.Min(reach, 30f)))?.Provoked();
-        if (onPlace is PoiPlaces.Hit target && !struck && Places.Shot(target, _rules.ShotDamage * Tier.Shot))
-            Said?.Invoke("The cracked panel gives way: a room behind it", Tones.Good);
+        if (onPlace is PoiPlaces.Hit target && !struck) Places.Shot(target, _rules.ShotDamage * Tier.Shot); // a cracked panel gives way: the room behind it says so
         Vector3 end = struck ? point : eye + dir * reach;
         if (struck)
         {
