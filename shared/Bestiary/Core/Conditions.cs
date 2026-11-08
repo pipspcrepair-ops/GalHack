@@ -29,6 +29,10 @@ public sealed class WorldConditions
     public float Radiation;
     /// <summary>Fallout, a biolab agent, the Bloom's touch: how hard this world twists what lives on it, 0 to 1.</summary>
     public float Mutagen;
+    /// <summary>What the world's history leaves living wild, each the chance (0 to 1) of a kind of it: stock grazing loose on a farmed world, working beasts, pets and stock gone feral where a city fell, predators twisted by a biohazard. The world's layers decide.</summary>
+    public float Stock, Working, Ferals, Predators;
+    /// <summary>How much life the world carries against its type's usual, 1 by default: a dead world's few hardy kinds and thin numbers.</summary>
+    public float Density = 1f;
     /// <summary>The colour of the ground people stand on, roughly: what their clothes must read against.</summary>
     public Color Backdrop = new(0.32f, 0.38f, 0.22f);
 

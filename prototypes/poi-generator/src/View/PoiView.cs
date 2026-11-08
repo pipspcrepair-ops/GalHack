@@ -93,6 +93,7 @@ public partial class PoiView : Node3D
         if (MeshBuild.Flooding(poi) is { } water) view._blocks.AddChild(water);
         view.BuildDoors();
         view.BuildLifts();
+        view.BuildFittings();
         if (opt.Lights) view.BuildLights();
         if (opt.Lights) view.BuildLitFaces();
         if (opt.Figures) view.BuildFigures();

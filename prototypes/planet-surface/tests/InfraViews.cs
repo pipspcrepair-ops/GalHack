@@ -51,6 +51,12 @@ public static class InfraViews
             PlanetSurface.Poi.PoiSiting.StartWorld = true;
             return new(PlanetSpec.Roll(seed, arch, 0), m => default, 0.4, WeatherKind.Clear, Ground: what == "ways-wet" ? new GroundCover { Wetness = 0.75f } : null, Series: WaySeries);
         }
+        // The grid: a substation and its lines, a house's drop close, and a street of drops from above.
+        if (what == "power")
+        {
+            PlanetSurface.Poi.PoiSiting.StartWorld = true;
+            return new(PlanetSpec.Roll(seed, arch, 0), m => default, 0.4, WeatherKind.Clear, Series: PowerSeries);
+        }
         if (what == "pylon") PylonBearing = a.Length > 4 ? float.Parse(a[4]) : 20f;
         bool town = what is "town" or "sewer" or "drain" or "metro" or "culvert" or "gallery";
         if (town) PlanetSurface.Poi.PoiSiting.StartWorld = true;
@@ -469,6 +475,42 @@ public static class InfraViews
             Add($"{name}-ground", sx, sz, G(sx, sz) + 1.7f, best.X[at + 6], best.Z[at + 6], best.Y[at + 6]);
             Add($"{name}-close", best.X[at] - dx * 3 + dz * 1.5, best.Z[at] - dz * 3 - dx * 1.5, best.Y[at] + 3.2f, best.X[at] + dx * 3, best.Z[at] + dz * 3, best.Y[at]);
             if (name != "steep") Add($"{name}-high", best.X[at] - dx * 120 + dz * 90, best.Z[at] - dz * 120 - dx * 90, best.Y[at] + 160f, best.X[at], best.Z[at], best.Y[at]);
+        }
+        return shots;
+    }
+
+    /// <summary>infra:power: the nearest substation from the ground and from above, the nearest strung drop close, and its street from above.</summary>
+    static System.Collections.Generic.List<Screenshot.Shot> PowerSeries(Main m)
+    {
+        var w = m.World;
+        var shots = new System.Collections.Generic.List<Screenshot.Shot>();
+        PowerLines power = w.Infra.Power;
+        float G(double x, double z) => w.GroundHeight(Mathx.WrapX(x, w.Width), Mathx.Wrap(z, w.Height));
+        double Away(double x, double z) => Math.Sqrt(Math.Pow(Mathx.WrapDelta(x - w.Landing.X, w.Width), 2) + Math.Pow(Mathx.WrapDelta(z - w.Landing.Y, w.Height), 2));
+        void Add(string name, double x, double z, float y, double tx, double tz, float ty)
+        {
+            var (p, h, pitch) = Look(w, x, z, Math.Max(y, G(x, z) + 1.7f), tx, tz, ty);
+            shots.Add(new Screenshot.Shot(name, p, h, pitch));
+        }
+        if (power == null) { GD.Print("POWER: no lines"); return shots; }
+        GD.Print($"POWER: {power.Poles.Count(p => p.Role == PowerRole.Plant)} plants, {power.Poles.Count(p => p.Role == PowerRole.Substation)} substations, {power.Poles.Count(p => p.Pylon)} pylons, {power.Poles.Count(p => p.Role == PowerRole.Line && !p.Pylon)} poles, {power.Drops.Count} drops ({power.Drops.Count(d => d.State == DropState.Strung)} strung), {power.Unserved.Count} unserved");
+        PowerPole sub = power.Poles.Where(p => p.Role == PowerRole.Substation).OrderBy(p => Away(p.X, p.Z)).FirstOrDefault();
+        if (sub != null)
+        {
+            double ax = -sub.SideZ, az = sub.SideX;
+            Add("substation", sub.X - ax * 26 + sub.SideX * 18, sub.Z - az * 26 + sub.SideZ * 18, sub.Ground + 4f, sub.X, sub.Z, sub.Ground + 3f);
+            Add("substation-high", sub.X - ax * 90 + sub.SideX * 70, sub.Z - az * 90 + sub.SideZ * 70, sub.Ground + 70f, sub.X, sub.Z, sub.Ground);
+        }
+        ServiceDrop drop = power.Drops.Where(d => d.State == DropState.Strung).OrderBy(d => Away(d.Fixing.X, d.Fixing.Z)).FirstOrDefault()
+            ?? power.Drops.OrderBy(d => Away(d.Fixing.X, d.Fixing.Z)).FirstOrDefault();
+        if (drop != null)
+        {
+            PowerPole p = power.Poles[drop.Pole];
+            double dx = drop.Fixing.X - p.X, dz = drop.Fixing.Z - p.Z, l = Math.Max(1, Math.Sqrt(dx * dx + dz * dz));
+            double mx = (p.X + drop.Fixing.X) / 2, mz = (p.Z + drop.Fixing.Z) / 2;
+            GD.Print($"POWER: drop {drop.State} to a {drop.House.Family.Id} ({drop.House.State}), {l:F0} m");
+            Add("drop", mx + dz / l * 16 - dx / l * 4, mz - dx / l * 16 - dz / l * 4, G(mx, mz) + 2.5f, mx, mz, drop.Fixing.Y);
+            Add("drops-high", mx + dz / l * 45, mz - dx / l * 45, G(mx, mz) + 40f, mx, mz, G(mx, mz));
         }
         return shots;
     }

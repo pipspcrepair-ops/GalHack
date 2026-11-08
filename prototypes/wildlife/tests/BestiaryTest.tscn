@@ -1,6 +1,20 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://tests/BestiaryTest.cs" id="1_btest"]
 
+[sub_resource type="GDScript" id="quit"]
+script/source = "extends Node
+# Quits the run after 20 minutes of real time if the test itself never does.
+func _process(_delta):
+	if Time.get_ticks_msec() > 1200000:
+		printerr(\"FAIL  the run passed its time limit\")
+		get_tree().quit(1)
+		set_process(false)
+"
+
 [node name="BestiaryTest" type="Node"]
 script = ExtResource("1_btest")
+
+[node name="QuitTimer" type="Node" parent="."]
+process_mode = 3
+script = SubResource("quit")

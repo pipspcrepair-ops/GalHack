@@ -248,27 +248,24 @@ public sealed class PlaceLook
         string room = roomIndex > 0 && roomIndex < Purposes.Count ? Purposes[roomIndex] : "";
         Finish own = Surfaces.Own(b);
         // A roof's own finish is its covering, on top; its edges and underside go by the rules.
-        if (own != Finish.Plain && b.Role == Role.Roof)
-        {
-            if (side == Side.Roof) return new FinishPick(own);
-        }
-        else if (own != Finish.Plain)
-        {
-            if (side is Side.Out or Side.Roof or Side.Soffit) return new FinishPick(own);
-            // Inside, a timber or stone house shows what it is made of; anything clad shows plaster.
-            Finish inside = own switch
-            {
-                Finish.Logs or Finish.Planks or Finish.Basalt or Finish.Chitin or Finish.Resin or Finish.Bone or Finish.Fused or Finish.Plate or Finish.Hull or Finish.Corrugated or Finish.Patched => own,
-                Finish.Weatherboard => Finish.Plaster,
-                _ => Finish.Plain,
-            };
-            if (inside != Finish.Plain && side == Side.In) return new FinishPick(inside);
-        }
+        if (own != Finish.Plain && (b.Role == Role.Roof ? side == Side.Roof : side is Side.Out or Side.Roof or Side.Soffit)) return new FinishPick(own);
         string role = Surfaces.RoleName(b.Role);
         if (room.Length > 0 && !KitRooms && Book.Built.Contains(b.Material) && Book.Rooms.TryGetValue(room, out RoomFinish? rf))
         {
             FinishSpec? r = side switch { Side.Floor => rf.Floor, Side.Ceiling => rf.Ceiling, Side.In => rf.Wall, _ => null };
             if (r != null) return Choose(r, b, slope);
+        }
+        if (own != Finish.Plain && b.Role != Role.Roof && side == Side.In)
+        {
+            // Inside, a wall of logs, boards, plate or poured concrete shows what it is made of; brick, stone,
+            // render and weatherboard are plastered over.
+            Finish inside = own switch
+            {
+                Finish.Weatherboard or Finish.Render or Finish.Brick or Finish.Stone or Finish.Rubble => Finish.Plaster,
+                Finish.Paving or Finish.Tar or Finish.RoofTile or Finish.Slate or Finish.Shingle or Finish.Thatch or Finish.Seam => Finish.Plain,
+                _ => own,
+            };
+            if (inside != Finish.Plain) return new FinishPick(inside);
         }
         FinishSpec? spec = Kit?.Find(b.Material, role, side) ?? Book.Defaults.Find(b.Material, role, side);
         return spec == null ? new FinishPick(Finish.Plain) : Choose(spec, b, slope);

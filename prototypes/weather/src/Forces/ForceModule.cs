@@ -57,12 +57,6 @@ public struct Vortex
     /// <summary>After release a body can't be caught again for this long, so it is thrown clear.</summary>
     public float ReleaseImmunity;
 
-    /// <summary>
-    /// Getting caught is dramatic, never fatal: the fall that follows a fling can't take a body
-    /// below this share of its max health. See <see cref="ForceModule.FlingFloor"/>.
-    /// </summary>
-    public float FlingHealthFloor;
-
     /// <summary>Bodies heavier than this feel proportionally less of the vortex.</summary>
     public float LiftMassLimit;
 
@@ -103,10 +97,6 @@ public sealed class ForceModule
         public int VortexId;
         public float Carry, Immunity, Orbit;
         public Vector2 LastRadial;
-
-        /// <summary>Set from a fling until the body reports landing: its fall is protected.</summary>
-        public float FlingFloor;
-        public float FlungFor;
     }
 
     readonly List<Tracked> _bodies = new();
@@ -121,20 +111,6 @@ public sealed class ForceModule
     public int Count => _bodies.Count;
 
     public VortexPhase PhaseOf(IForceBody body) => Find(body)?.Phase ?? VortexPhase.Free;
-
-    /// <summary>
-    /// The share of max health a body is guaranteed to keep when it lands after a tornado
-    /// fling, or 0 if it isn't falling from one. Whoever applies fall damage passes this as the
-    /// floor, then calls <see cref="Landed"/>. This is the tornado's own rule, not a general cap.
-    /// </summary>
-    public float FlingFloor(IForceBody body) => Find(body)?.FlingFloor ?? 0f;
-
-    /// <summary>The body has touched down: the fall after a fling is over.</summary>
-    public void Landed(IForceBody body)
-    {
-        Tracked t = Find(body);
-        if (t != null && t.Phase != VortexPhase.Caught && t.FlungFor > 0.3f) t.FlingFloor = 0f;
-    }
 
     /// <summary>Radians a caught body has travelled around the vortex since it was caught.</summary>
     public float OrbitOf(IForceBody body) => Find(body)?.Orbit ?? 0f;
@@ -187,12 +163,6 @@ public sealed class ForceModule
         Vector3 force = Vector3.Zero;
         bool caught = false;
 
-        if (t.FlingFloor > 0f)
-        {
-            t.FlungFor += dt;
-            if (t.FlungFor > 30f) t.FlingFloor = 0f; // stuck somewhere high: stop protecting eventually
-        }
-
         if (t.Phase == VortexPhase.Released)
         {
             t.Immunity -= dt;
@@ -221,8 +191,6 @@ public sealed class ForceModule
                 t.Carry = 0f;
                 t.Orbit = 0f;
                 t.LastRadial = radial;
-                t.FlingFloor = v.FlingHealthFloor; // protected from now until it lands again
-                t.FlungFor = 0f;
                 SetPhase(t, VortexPhase.Caught);
                 caught = true;
             }
@@ -244,7 +212,16 @@ public sealed class ForceModule
         t.Orbit += MathF.Abs(t.LastRadial.AngleTo(radial));
         t.LastRadial = radial;
 
-        float share = MassShare(body.Mass, v.LiftMassLimit) * v.Strength;
+        // Its grip fades past the core (wider the stronger it is): a body pushing hard enough outward
+        // there (a jetpack) can break free of a weak one; a strong core holds it.
+        float holdRadius = HoldRadius(v);
+        float share = MassShare(body.Mass, v.LiftMassLimit) * v.Strength * (1f - SmoothStep(holdRadius, holdRadius * 1.6f, r));
+        if (r > holdRadius * 1.6f)
+        {
+            t.Immunity = v.ReleaseImmunity;
+            SetPhase(t, VortexPhase.Released); // broke free: no fling
+            return Vector3.Zero;
+        }
         bool letGo = height >= v.ReleaseHeight * 0.95f || t.Carry >= v.MaxCarrySeconds
             || r > v.InfluenceRadius || v.Strength < 0.3f;
         if (letGo)
@@ -261,6 +238,9 @@ public sealed class ForceModule
         Vector3 accel = v.Response * (flow - body.Velocity) + Vector3.Up * Gravity; // the updraft carries your weight
         return accel * share * body.Mass;
     }
+
+    /// <summary>Out to here a caught body is held at full grip, metres; it slips free by 1.6 times as far.</summary>
+    public static float HoldRadius(in Vortex v) => v.OrbitRadius + v.CaptureRadius * v.Strength;
 
     void SetPhase(Tracked t, VortexPhase phase)
     {

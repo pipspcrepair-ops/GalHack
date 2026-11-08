@@ -146,7 +146,10 @@ public sealed class Herbarium
     static (PlantForm, float)[] Forms(PlantFamily family, FloraClimate c)
     {
         float a = c.Alien, known = 1f - 0.82f * a;
-        return family switch
+        FloraMood m = c.Moods;
+        // Dead and burned country stands full of snags; swollen growth bulges into bottles and lanterns.
+        float snag = 4f * m.Dead + 2.5f * m.Burnt, bulge = 3f * m.Swollen;
+        (PlantForm, float)[] forms = family switch
         {
             PlantFamily.Conifer => new[] { (PlantForm.Spire, 3f * known), (PlantForm.Pagoda, 2.2f * known), (PlantForm.Spindle, 1.8f * known), (PlantForm.Stacked, 1f + 3f * a), (PlantForm.Pole, 1f), (PlantForm.CloudPads, 1.3f * known), (PlantForm.Antler, 4f * a) },
             PlantFamily.Broadleaf => new[] { (PlantForm.Domed, 3f * known), (PlantForm.Umbrella, 2f), (PlantForm.Weeping, 1.6f), (PlantForm.CloudPads, 1.5f * known), (PlantForm.Spindle, 0.8f * known), (PlantForm.Bottle, 1f), (PlantForm.Pole, 0.6f + a), (PlantForm.Antler, 4f * a), (PlantForm.Lantern, 4f * a), (PlantForm.Stacked, 3f * a) },
@@ -165,6 +168,14 @@ public sealed class Herbarium
             PlantFamily.Pins => new[] { (PlantForm.PinStalks, 1f) },
             _ => new[] { (PlantForm.GrainCrop, 1f), (PlantForm.LeafCrop, 1f), (PlantForm.VineCrop, 1f) },
         };
+        if (family is PlantFamily.Conifer or PlantFamily.Broadleaf or PlantFamily.Jungle && (snag > 0f || bulge > 0f))
+        {
+            var more = new List<(PlantForm, float)>(forms);
+            if (snag > 0f) more.Add((PlantForm.Snag, snag));
+            if (bulge > 0f) { more.Add((PlantForm.Bottle, bulge)); more.Add((PlantForm.Lantern, bulge)); }
+            forms = more.ToArray();
+        }
+        return forms;
     }
 
     /// <summary>A habitat keeps up to three of a family's species, the nearest its own climate, each with a place on the region axis.</summary>
@@ -255,7 +266,10 @@ public sealed class Herbarium
         p.S *= 1f - 0.25f * cold - 0.28f * dry;
         p.V *= (1f + 0.22f * dry) * (c.Wetness > 0.6f ? 0.92f : 1f) * (c.Air < 0.7f ? 1.12f : 1f);
         if (c.Air < 0.7f) p.S *= 0.82f;
-        float swing = d.Range(14f, 34f) * (d.Chance(0.5f) ? 1f : -1f) * (c.Alien > 0.4f ? 2f : 1f);
+        FloraMood m = c.Moods;
+        // Overgrown country is deeper green; swollen growth swings off into wrong colours.
+        p.V *= 1f - 0.1f * m.Overgrown;
+        float swing = d.Range(14f, 34f) * (d.Chance(0.5f) ? 1f : -1f) * (c.Alien > 0.4f ? 2f : 1f) * (1f + 3f * m.Swollen);
         var leaves = new[]
         {
             Tone.Hsv(p.H, p.S, p.V),
@@ -276,6 +290,10 @@ public sealed class Herbarium
         };
         if (c.Alien > 0.5f) bark = (p.H + d.Range(120f, 240f), d.Range(0.18f, 0.4f), d.Range(0.25f, 0.5f));
         var barks = new[] { Tone.Hsv(bark.H, bark.S, bark.V), Tone.Hsv(bark.H + 8f, bark.S * 0.8f, bark.V * 1.2f), Tone.Hsv(bark.H - 6f, bark.S * 1.1f, bark.V * 0.78f) };
+        // Dead country goes grey and brown; a burn leaves bark charred.
+        Tone deadLeaf = Tone.Hsv(32f, 0.24f, 0.4f), deadBark = new(0.42f, 0.4f, 0.37f), charred = new(0.09f, 0.08f, 0.07f);
+        for (int i = 0; i < leaves.Length; i++) leaves[i] = Tone.Lerp(leaves[i], deadLeaf * (0.9f + 0.08f * i), 0.75f * m.Dead);
+        for (int i = 0; i < barks.Length; i++) barks[i] = Tone.Lerp(Tone.Lerp(barks[i], deadBark, 0.4f * m.Dead), charred, 0.7f * m.Burnt);
 
         // Flowers stand off the leaves: a bright, small accent, and that's all the brightness a plant gets.
         float bloom = p.H + d.Range(130f, 230f);
@@ -285,14 +303,16 @@ public sealed class Herbarium
         var caps = new[] { Tone.Hsv(capHue, 0.56f, 0.66f), Tone.Hsv(capHue + 18f, 0.42f, 0.74f), Tone.Hsv(capHue - 22f, 0.6f, 0.5f), Tone.Hsv(capHue + 150f, 0.36f, 0.62f) };
 
         // Build: low gravity isn't known to the module; cold, thin air and drought all make for small and tough.
-        float stature = (0.72f + 0.62f * MathF.Sqrt(c.Warmth * MathF.Max(c.Wetness, 0.2f)) + d.Range(-0.1f, 0.2f)) * (c.Air < 0.7f ? 0.78f : 1f) * (c.Air > 1.25f ? 1.1f : 1f);
+        float stature = (0.72f + 0.62f * MathF.Sqrt(c.Warmth * MathF.Max(c.Wetness, 0.2f)) + d.Range(-0.1f, 0.2f)) * (c.Air < 0.7f ? 0.78f : 1f) * (c.Air > 1.25f ? 1.1f : 1f)
+            // Old growth through everything stands taller; what came back after a burn is young and low.
+            * (1f + 0.25f * m.Overgrown) * (1f - 0.35f * m.Burnt);
         return new FloraStyle
         {
             Leaves = leaves, Barks = barks, Blooms = blooms, Caps = caps,
             Stalk = Tone.Lerp(Tone.Hsv(p.H + 30f, 0.18f, 0.74f), new Tone(0.86f, 0.82f, 0.72f), 0.5f),
-            Stature = MathF.Min(stature, 1.12f),
-            Droop = (0.5f + c.Wetness * 0.8f) * (c.Air < 0.7f ? 0.7f : 1f) * d.Range(0.75f, 1.25f),
-            Flat = d.Range(0.72f, 1.25f) * (1f + (c.Warmth - 0.5f) * 0.3f),
+            Stature = MathF.Min(stature, 1.12f + 0.2f * m.Overgrown),
+            Droop = (0.5f + c.Wetness * 0.8f) * (c.Air < 0.7f ? 0.7f : 1f) * d.Range(0.75f, 1.25f) * (1f + 0.5f * m.Swollen),
+            Flat = d.Range(0.72f, 1.25f) * (1f + (c.Warmth - 0.5f) * 0.3f) * (1f + 0.3f * m.Swollen),
             Slender = d.Range(0.8f, 1.25f) * (1f + (0.5f - c.Warmth) * 0.3f),
             Lean = d.Chance(0.4f) ? d.Range(0.06f, 0.16f) : d.Range(0f, 0.04f),
             LeanAngle = d.Range(0f, MathF.Tau),
@@ -319,6 +339,20 @@ public sealed class Herbarium
         if (family == PlantFamily.Cactus) leaf = Tone.Lerp(leaf, Tone.Hsv(150f, 0.3f, 0.4f), 0.35f);
         // On a green world the odd tree has turned: a species, so russet woods come and go with the region.
         if (Familiar(book.Climate) && family == PlantFamily.Broadleaf && d.Chance(0.16f)) leaf = Tone.Hsv(d.Range(16f, 44f), d.Range(0.46f, 0.6f), d.Range(0.4f, 0.5f));
+        FloraMood mood = book.Climate.Moods;
+        bool tree = family is PlantFamily.Conifer or PlantFamily.Broadleaf or PlantFamily.Jungle or PlantFamily.Palm;
+        // A mutagenic world's growth: some species gone a colour nothing here should be, and swollen at the base.
+        if (mood.Swollen > 0f && !fungal && d.Chance(mood.Swollen * 0.6f)) leaf = Tone.Hsv(d.Range(270f, 350f), d.Range(0.36f, 0.56f), d.Range(0.34f, 0.5f));
+        // A dead world's trees: whole species standing grey, with nothing in flower.
+        bool deadKind = tree && mood.Dead > 0f && d.Chance(mood.Dead * 0.6f) || form == PlantForm.Snag;
+        if (deadKind) leaf = Tone.Lerp(leaf, Tone.Hsv(30f, 0.16f, 0.36f), 0.85f);
+        if (mood.Swollen > 0f && tree)
+        {
+            p.Genome.TrunkRadius *= 1f + 0.6f * mood.Swollen;
+            p.Genome.Flare *= 1f + 0.4f * mood.Swollen;
+            p.Genome.Crown *= 1f + 0.25f * mood.Swollen;
+        }
+        if (deadKind) p.Genome.Bloom = 0f;
         p.Leaf = leaf;
         p.Bark = fungal ? st.Stalk : d.Pick(st.Barks);
         p.Bloom = d.Pick(st.Blooms);
