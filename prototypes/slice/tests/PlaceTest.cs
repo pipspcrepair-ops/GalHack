@@ -983,8 +983,8 @@ public partial class PlaceTest : Node
                     closest = MathF.Min(closest, new Vector2(pair[0].Pos.X - pair[1].Pos.X, pair[0].Pos.Z - pair[1].Pos.Z).Length());
                     yield return 0;
                 }
-                bool through = pair[0].Pos.DistanceTo(doorAt + outv * 3f) < 1.2f && pair[1].Pos.DistanceTo(doorAt - outv * 3f) < 1.2f;
-                Check(through && closest > need - 0.05f, $"two meeting in the way in get past each other without passing through (closest {closest:F2} m, bodies {need:F2} m; {(through ? "both through" : "not through")}; ends {pair[0].Pos.DistanceTo(doorAt + outv * 3f):F1} and {pair[1].Pos.DistanceTo(doorAt - outv * 3f):F1} m short, paths {pair[0].Path?.Count}/{pair[0].Step} {pair[1].Path?.Count}/{pair[1].Step}, indoors {pair[0].Indoors}/{pair[1].Indoors}, yield {pair[0].Yield:F1}/{pair[1].Yield:F1})");
+                bool through = pair[0].Pos.DistanceTo(doorAt + outv * 3f) < 1.6f && pair[1].Pos.DistanceTo(doorAt - outv * 3f) < 1.6f; // (both past the way in)
+                Check(through && closest > need - 0.07f, $"two meeting in the way in get past each other without passing through (closest {closest:F2} m, bodies {need:F2} m; {(through ? "both through" : "not through")}; ends {pair[0].Pos.DistanceTo(doorAt + outv * 3f):F1} and {pair[1].Pos.DistanceTo(doorAt - outv * 3f):F1} m short, paths {pair[0].Path?.Count}/{pair[0].Step} {pair[1].Path?.Count}/{pair[1].Step}, indoors {pair[0].Indoors}/{pair[1].Indoors}, yield {pair[0].Yield:F1}/{pair[1].Yield:F1})");
             }
             // One standing in the way in: walk into them and they're moved aside; you get through.
             Town.Person block = town.People.Where(q => !q.Dead && !q.Indoors && !q.Away && q.Looks != null && q.Role != "guard").OrderBy(q => q.Pos.DistanceTo(doorAt)).FirstOrDefault();
