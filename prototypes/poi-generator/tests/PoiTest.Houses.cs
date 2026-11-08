@@ -21,6 +21,7 @@ public partial class PoiTest
         var sw = System.Diagnostics.Stopwatch.StartNew();
         int houses = 0, garages = 0, badSize = 0, noDrive = 0, unreached = 0, floating = 0, noService = 0, badService = 0, lowHatch = 0, lowDoor = 0, framed = 0;
         int exits = 0, offSize = 0, noHeadroom = 0, overDoor = 0;
+        var fixings = new Dictionary<string, int>();
         var fence = new FenceTally();
         var kinds = new Dictionary<string, int>();
         int singles = 0, doubles = 0;
@@ -98,13 +99,25 @@ public partial class PoiTest
             if (loose.Count > 0) { floating++; Note($"{layout.Extras.Homes.FirstOrDefault()?.Silhouette}: {g.Get(loose[0])} floats at {loose[0]}"); }
             // A fixing for every house's service drop, a bracket or a pole, facing level.
             if (layout.Extras.Service.Count == 0) { noService++; Note($"{layout.Extras.Homes.FirstOrDefault()?.Silhouette}: no service fixing"); }
-            // A slim mast or pole with an insulator on top, never the old cross-shaped pipe lump.
+            // An insulator at the roof's street-side corner, on a slim mast up through the roof's edge or the parapet, or hung
+            // under the eave's corner; a pole in the garden only where no corner will take it. Never the old cross-shaped lump.
             foreach (ServicePoint p in layout.Extras.Service)
-                if (!p.Facing.IsHorizontal() || g.Get(p.Cell) is not { Type: BlockType.Pillar, Material: PoiGenerator.Gen.Material.Ceramic } || g.Get(p.Cell - Int3.Up).Type != BlockType.Pillar)
-                { badService++; Note($"service fixing at {p.Cell} is {g.Get(p.Cell)} on {g.Get(p.Cell - Int3.Up)} facing {p.Facing}"); }
+            {
+                Block under = g.Get(p.Cell - Int3.Up), over = g.Get(p.Cell + Int3.Up);
+                if (!p.Facing.IsHorizontal() || g.Get(p.Cell) is not { Type: BlockType.Pillar, Material: PoiGenerator.Gen.Material.Ceramic } || under.Type != BlockType.Pillar && over.Role != Role.Roof)
+                { badService++; Note($"service fixing at {p.Cell} is {g.Get(p.Cell)} on {under} under {over} facing {p.Facing}"); continue; }
+                if (under.Type != BlockType.Pillar) { fixings["eave bracket"] = fixings.GetValueOrDefault("eave bracket") + 1; continue; }
+                Int3 c = p.Cell - Int3.Up;
+                while (g.Get(c - Int3.Up).Type == BlockType.Pillar) c -= Int3.Up;
+                bool pole = !BlockInfo.Collides(g.Get(c - Int3.Up).Type) || g.Get(c - Int3.Up).Role is not (Role.Roof or Role.Wall);
+                string kind = pole ? "garden pole" : g.Get(c - Int3.Up).Role == Role.Wall ? "parapet mast" : "roof mast";
+                fixings[kind] = fixings.GetValueOrDefault(kind) + 1;
+            }
         }
         GD.Print($"      {houses} houses, {garages} garages in {sw.ElapsedMilliseconds} ms: {string.Join(", ", kinds.OrderByDescending(k => k.Value).Select(k => $"{k.Key} {k.Value}"))}; {singles} single, {doubles} double");
         GD.Print($"      fences: {string.Join(", ", fence.Kinds.OrderByDescending(k => k.Value).Select(k => $"{k.Key} {k.Value}"))}");
+        GD.Print($"      service fixings: {string.Join(", ", fixings.OrderByDescending(k => k.Value).Select(k => $"{k.Key} {k.Value}"))}");
+        Check(fixings.GetValueOrDefault("garden pole") * 4 < fixings.Values.Sum() && fixings.Count >= 3, $"the service fixing is at the roof's street-side corner, the garden pole only a fallback: {string.Join(", ", fixings.Select(k => $"{k.Key} {k.Value}"))}");
         Check(exits >= houses && offSize == 0, $"every door out of a house is the standard {DoorSize.Tall} m door: {exits} doors, {offSize} not{first}");
         Check(noHeadroom == 0, $"nothing comes lower than {DoorSize.Headroom} m over a door or {DoorSize.Approach} m in front of it: {noHeadroom} of {exits} doors with something in the way{first}");
         Check(overDoor == 0, $"no service fixing within 2 m either side of a door: {overDoor}{first}");
