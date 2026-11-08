@@ -274,6 +274,33 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
         return wild;
     }
 
+    /// <summary>
+    /// How far into a place's ground a point lies, for what may grow there: 2 on a place's footprint (where it stands),
+    /// its pads' weight elsewhere (1 on the apron, easing to 0 across the blend, whose outer reaches are the land's
+    /// own, only cut and filled), 0 off every pad; and whether a road's deck or shoulder covers it. Parks (wild pads)
+    /// and buried works don't count: plants go on over them as they were.
+    /// </summary>
+    public float Built(double x, double z, out bool road)
+    {
+        road = false;
+        float pad = 0f;
+        foreach (int i in StampsAt(x, z))
+        {
+            TerrainStamp t = Stamps[i];
+            if (t.Shape == StampShape.Road)
+            {
+                if (!road && t.Weight(x, z) > 0f) road = true;
+                continue;
+            }
+            if (t.Wild || t.Shape == StampShape.Buried) continue;
+            float w = t.Weight(x, z);
+            if (w <= 0f) continue;
+            if (t.Shape == StampShape.Pad && t.OnFootprint(x - 0.5, z - 0.5)) return 2f;
+            pad = Math.Max(pad, w);
+        }
+        return pad;
+    }
+
     /// <summary>How much any stamp covers a point (0 none, 1 on a pad).</summary>
     public float StampWeight(double x, double z)
     {

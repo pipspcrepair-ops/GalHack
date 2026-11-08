@@ -442,9 +442,14 @@ public static class FarBuilder
             // Pads and their aprons stay clear, and roads, except that grass and shrubs push back
             // through a road nobody has kept up for a century (never a tree: the way stays open).
             // A park grows back: grass and shrubs always, trees once nobody has kept it.
-            if (source.StampWeight(x, z) > 0f
-                && !(!FloraMeshes.IsLarge(rule.Kind) && shade < 0.4f && source.OnRoad(x, z, out float wear) && wear > 0.6f)
-                && !(source.OnWild(x, z, out float wild) && (!FloraMeshes.IsLarge(rule.Kind) || wild > 0.7f))) continue;
+            // Round a place the growth thins out into its made ground instead of stopping in a line: trees come in
+            // across the outer blend, shrubs and rocks further, ever fewer the nearer the apron.
+            float built = source.Built(x, z, out bool onRoad);
+            bool large = FloraMeshes.IsLarge(rule.Kind);
+            if ((onRoad || built > 0f)
+                && !(onRoad && built <= 0f && !large && shade < 0.4f && source.OnRoad(x, z, out float wear) && wear > 0.6f)
+                && !(source.OnWild(x, z, out float wild) && (!large || wild > 0.7f))
+                && !(!onRoad && built < 1f && Feather(turn) >= Smooth(large ? 0.1f : 0.4f, large ? 0.55f : 0.95f, built))) continue;
 
             // Exact ground under the trunk (the voxel surface), not the coarse grid's.
             int cx = (int)Math.Floor(x), cz = (int)Math.Floor(z);
@@ -515,13 +520,16 @@ public static class FarBuilder
         }
     }
 
-    /// <summary>Whether anything built lies under a crown's reach of a point: four spots round its rim.</summary>
+    /// <summary>Whether anything built lies under a crown's reach of a point: four spots round its rim (a road, or a place's ground well in from its blend).</summary>
     static bool CrownOver(PlanetTerrainSource source, GroundPalette pal, double x, double z, float reach)
     {
         double w = pal.Map.WidthMeters, h = pal.Map.HeightMeters;
-        return source.StampWeight(Mathx.WrapX(x + reach, w), z) > 0f || source.StampWeight(Mathx.WrapX(x - reach, w), z) > 0f
-            || source.StampWeight(x, Mathx.Wrap(z + reach, h)) > 0f || source.StampWeight(x, Mathx.Wrap(z - reach, h)) > 0f;
+        bool Over(double px, double pz) => source.Built(px, pz, out bool road) >= 0.5f || road;
+        return Over(Mathx.WrapX(x + reach, w), z) || Over(Mathx.WrapX(x - reach, w), z) || Over(x, Mathx.Wrap(z + reach, h)) || Over(x, Mathx.Wrap(z - reach, h));
     }
+
+    /// <summary>A plant's own roll for how far it may come into a place's ground, unrelated to its other rolls.</summary>
+    internal static float Feather(float roll) => roll * 7.31f % 1f;
 
     /// <summary>Whether the ground has been dug under a root or beside it.</summary>
     internal static bool Dug(IReadOnlySet<long> dug, int x, int z) => dug != null && (dug.Contains(Key(x, z)) || dug.Contains(Key(x + 1, z)) || dug.Contains(Key(x, z + 1)) || dug.Contains(Key(x - 1, z)) || dug.Contains(Key(x, z - 1)));
@@ -541,7 +549,7 @@ public static class FarBuilder
     /// <summary>A canonical column (x, z in metres) as a set key.</summary>
     public static long Key(int x, int z) => (long)x << 32 | (uint)z;
 
-    static float Smooth(float e0, float e1, float x)
+    internal static float Smooth(float e0, float e1, float x)
     {
         float t = Math.Clamp((x - e0) / (e1 - e0), 0f, 1f);
         return t * t * (3f - 2f * t);
