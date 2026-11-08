@@ -21,8 +21,11 @@ public sealed class WholePlacement
     public string Why;
     public bool Done;
 
-    /// <summary>What it cost: finding the spot, building the body, clearing the ground (ms), and the most any one tick spent on it.</summary>
+    /// <summary>What it cost: finding the spot, building the body, clearing the plants and ground (ms), and the most any one tick spent on it.</summary>
     public double SiteMs, SpawnMs, GroundMs, WorstTickMs;
+
+    /// <summary>Plants felled from under it.</summary>
+    public int Felled;
 
     /// <summary>Placed or given up.</summary>
     public event Action<WholePlacement> Finished;
@@ -35,13 +38,13 @@ public sealed class WholePlacement
 /// Creative's PLACE on the BLUEPRINTS tab: a whole structure at once, in front of you, on clear
 /// ground. Its heading snaps to the quarter turn nearest the way you face and its spot to its own
 /// grid; the spot is the nearest ahead whose ground is level enough under its whole footprint, dry,
-/// and clear of terrain, places, trees and other structures. A vessel stands on its lowest point (its
+/// and clear of terrain, places and other structures; the plants it stands on are felled. A vessel stands on its lowest point (its
 /// legs' feet) at the highest ground under it, so nothing of it is in the ground; a base meets the
 /// ground (it may sink a little into the high side, and the ground there is cleared flush, as a
 /// base's blocks always clear it).
 ///
 /// It keeps to the frame's budget: the search runs a few milliseconds a tick, the body is built in
-/// one, its look is drawn over the next frames, and a base's ground is cleared in one edit after.
+/// one, its look is drawn over the next frames, and a base's ground is cleared a column a tick after.
 /// </summary>
 public sealed partial class BuildTool
 {
@@ -116,12 +119,43 @@ public sealed partial class BuildTool
         _zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Place, at.Origin, 0.6f, 0f);
         Said?.Invoke($"{s.Name} placed", Tones.Good);
         Started?.Invoke(v);
-        if (!v.IsBase) yield break;
-        // A base meets the ground flush: the blocks at and under it clear it, in one edit.
+        // The plants it stands on go, as a cut plant goes (felled for good, collider and all).
         yield return true;
         clock.Restart();
-        v.ClearGround();
+        job.Felled = FellUnder(v);
         job.GroundMs = clock.Elapsed.TotalMilliseconds;
+        if (!v.IsBase) yield break;
+        // A base meets the ground flush: the blocks at and under it clear it, a 16 m column of ground a tick.
+        foreach (var column in v.GroundParts())
+        {
+            yield return true;
+            clock.Restart();
+            _zone.Edits?.ClearForStructure(column);
+            job.GroundMs += clock.Elapsed.TotalMilliseconds;
+        }
+    }
+
+    /// <summary>Fells every plant rooted under a structure's footprint (a metre round it too). Returns how many.</summary>
+    int FellUnder(Vessel v)
+    {
+        if (_zone.Streamer == null || _zone.Planet == null) return 0;
+        var (min, max) = v.Structure.Bounds();
+        float cell = v.Structure.Grid.CellSize, margin = 1f;
+        Vector3 lo = new Vector3(min.X, min.Y, min.Z) * cell - Vector3.One * (cell * 0.5f + margin);
+        Vector3 hi = new Vector3(max.X, max.Y, max.Z) * cell + Vector3.One * (cell * 0.5f + margin);
+        Vector3 mid = v.ToWorld(((lo + hi) * 0.5f).ToNumerics());
+        float reach = new Vector2(hi.X - lo.X, hi.Z - lo.Z).Length() * 0.5f;
+        Transform3D toLocal = v.DrawTransform.AffineInverse();
+        int n = 0;
+        foreach (var plant in new List<PlanetSurface.Terrain.TerrainStreamer.PlantSighting>(_zone.Streamer.FloraNear(mid, reach)))
+        {
+            Vector3 at = toLocal * plant.Root;
+            if (at.X < lo.X || at.X > hi.X || at.Z < lo.Z || at.Z > hi.Z || _zone.Planet.Felled.Contains(plant.Id)) continue;
+            _zone.Planet.Felled.Add(plant.Id);
+            _zone.Streamer.Fell(plant.Id);
+            n++;
+        }
+        return n;
     }
 
     /// <summary>
@@ -164,7 +198,7 @@ public sealed partial class BuildTool
         // Level enough: a share of its size, within limits. A vessel stands on its legs, one end higher off
         // the ground than the other on a slope; a base sinks into its high side, as far as half a block.
         bool large = plan.Grid.Size == GridSize.Large;
-        float tolerance = Math.Clamp(0.1f * radius, 0.5f, isBase ? 2.5f : large ? 4f : 1.5f);
+        float tolerance = isBase ? Math.Clamp(0.1f * radius, 0.5f, 2.5f) : Math.Clamp(0.2f * radius, 0.75f, large ? 6f : 2f);
         float step = MathF.Max(cell, MathF.Max(sx, sz) / 8f);
         Vector3 from = _survivor.WorldFeet;
         int water = 0, steep = 0, blocked = 0;
@@ -236,7 +270,7 @@ public sealed partial class BuildTool
         return true;
     }
 
-    /// <summary>Is anything solid (the ground's own collision, a place, a tree, a structure, a device) inside the box the structure will fill, above its footing?</summary>
+    /// <summary>Is anything solid (the ground's own collision, a place, a structure, a device) inside the box the structure will fill, above its footing?</summary>
     bool Blocked(Transform3D frame, Vector3 lo, Vector3 hi, float floor)
     {
         float bottom = MathF.Max(lo.Y, floor);
@@ -251,7 +285,9 @@ public sealed partial class BuildTool
             CollideWithBodies = true,
             CollideWithAreas = false,
         };
-        if (_zone.GetWorld3D().DirectSpaceState.IntersectShape(query, 1).Count > 0) return true;
+        // Plants don't count (their colliders are the physics server's own, with no node): they are felled once it stands.
+        foreach (Godot.Collections.Dictionary hit in _zone.GetWorld3D().DirectSpaceState.IntersectShape(query, 32))
+            if (hit["collider"].AsGodotObject() != null) return true;
         // You are not built into it.
         Vector3 you = frame.AffineInverse() * _survivor.WorldFeet;
         return you.X > lo.X - 1f && you.X < hi.X + 1f && you.Z > lo.Z - 1f && you.Z < hi.Z + 1f && you.Y < hi.Y + 1f;

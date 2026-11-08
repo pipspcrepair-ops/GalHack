@@ -154,7 +154,7 @@ public partial class MenuRoot : MenuPanel
         g.Text("SUIT TERMINAL", header.Position + new Vector2(24, 14), C.Glass, 30, UiTheme.Display);
 
         (MenuTab tab, string name)[] tabs = { (MenuTab.You, "YOU"), (MenuTab.Tech, "TECH"), (MenuTab.Stats, "STATS"), (MenuTab.Core, "CORE"), (MenuTab.Blueprints, "BLUEPRINTS"), (MenuTab.Map, "MAP") };
-        float tx = header.Position.X + 360;
+        float tx = header.Position.X + 384;
         foreach (var (tab, name) in tabs)
         {
             float w = MathF.Max(104, Paint.TextWidth(UiTheme.Label, 18, name) + 36);

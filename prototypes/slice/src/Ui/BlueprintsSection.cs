@@ -107,7 +107,7 @@ public sealed class BlueprintsSection : IMenuSection
 
     void List(Gui g, Rect2 r)
     {
-        var list = new Rect2(r.Position, new Vector2(r.Size.X, r.Size.Y - 128));
+        var list = new Rect2(r.Position, new Vector2(r.Size.X, r.Size.Y - 140));
         var rows = new List<(string caption, LibraryEntry entry)>();
         void Group(string caption, IEnumerable<LibraryEntry> entries)
         {
@@ -152,16 +152,16 @@ public sealed class BlueprintsSection : IMenuSection
         if (rows.Count > fits) g.TextIn($"{_scroll + 1}-{Math.Min(rows.Count, _scroll + fits)} / {rows.Count}", new Rect2(list.Position.X, list.End.Y - 2, list.Size.X, 18), C.Dim, 12, HorizontalAlignment.Right, UiTheme.Mono);
 
         // SAVE: what it would keep, and the button.
-        float top = r.End.Y - 110;
+        float top = r.End.Y - 120;
         g.Caption("SAVE", new Vector2(r.Position.X, top), r.Size.X);
         Vessel t = _target;
         g.Text("TARGET", new Vector2(r.Position.X, top + 36), C.Dim, 14);
         g.TextIn(t == null ? "-" : $"{t.Name.ToUpperInvariant()} · {(BuildingBridge.IsSmall(t.Structure) ? "SMALL" : "LARGE")}",
             new Rect2(r.Position.X + 80, top + 30, r.Size.X - 80, 26), t == null ? C.Dim : C.Text, 15, HorizontalAlignment.Right, UiTheme.Mono);
-        if (g.Button("bp:save", new Rect2(r.Position.X, r.End.Y - 50, r.Size.X, 48), "SAVE", C.Accent, enabled: t != null, size: 20)) OpenSave();
+        if (g.Button("bp:save", new Rect2(r.Position.X, r.End.Y - 60, r.Size.X, 48), "SAVE", C.Accent, enabled: t != null, size: 20)) OpenSave();
     }
 
-    static string SizeText(LibraryEntry e) => $"{e.Size.X:0.#}x{e.Size.Y:0.#}x{e.Size.Z:0.#} M";
+    static string SizeText(LibraryEntry e) => $"{e.Size.X:0.#}x{e.Size.Y:0.#}x{e.Size.Z:0.#} m";
 
     // ---- The turntable ---------------------------------------------------------------------------
 
@@ -287,7 +287,7 @@ public sealed class BlueprintsSection : IMenuSection
         y += 34;
         List<string> locked = Creative ? new List<string>() : Locked(e);
         bool small = !e.Large;
-        float bottom = r.End.Y - 96;
+        float bottom = r.End.Y - 106;
         int shown = 0, rowsFit = (int)((bottom - y) / 23f);
         foreach (var (blockId, count) in e.Families)
         {
@@ -309,8 +309,8 @@ public sealed class BlueprintsSection : IMenuSection
         }
 
         // PLACE.
-        if (_why != null) g.TextIn(_why, new Rect2(r.Position.X, r.End.Y - 90, r.Size.X, 24), C.Warn, 14, HorizontalAlignment.Right);
-        if (g.Button("bp:place", new Rect2(r.Position.X, r.End.Y - 60, r.Size.X, 58), Busy ? "PLACING" : "PLACE", C.Good, enabled: locked.Count == 0 && !Busy, size: 22)) Place(e);
+        if (_why != null) g.TextIn(_why, new Rect2(r.Position.X, r.End.Y - 100, r.Size.X, 24), C.Warn, 14, HorizontalAlignment.Right);
+        if (g.Button("bp:place", new Rect2(r.Position.X, r.End.Y - 70, r.Size.X, 58), Busy ? "PLACING" : "PLACE", C.Good, enabled: locked.Count == 0 && !Busy, size: 22)) Place(e);
     }
 
     /// <summary>Creative: the whole of it, set down over the next few ticks (the menu closes once it stands). Survival: the projector, block by block from your bag.</summary>

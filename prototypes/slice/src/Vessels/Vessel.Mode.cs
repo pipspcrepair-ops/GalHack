@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using GalHack.Items.Bridge;
@@ -194,14 +195,24 @@ public sealed partial class Vessel
     public void ClearGround()
     {
         if (Zone.Edits == null) return;
+        var parts = GroundParts().SelectMany(g => g).ToList();
+        if (parts.Count > 0) Zone.Edits.ClearForStructure(parts); // one edit for them all
+    }
+
+    /// <summary>The blocks at and under the ground, grouped by the 16 m column of ground they stand in (so clearing can go a column a tick).</summary>
+    public List<List<(TerrainDigging.Terrain.VolumeKey, TerrainDigging.Terrain.StructureVolume)>> GroundParts()
+    {
         float cell = Structure.Grid.CellSize;
-        var parts = new List<(TerrainDigging.Terrain.VolumeKey, TerrainDigging.Terrain.StructureVolume)>();
+        var groups = new SortedDictionary<(int, int), List<(TerrainDigging.Terrain.VolumeKey, TerrainDigging.Terrain.StructureVolume)>>();
         foreach (var (p, _) in Structure.Blocks())
         {
             Vector3 at = ToWorld(StructureBridge.CellCenter(Structure, p));
-            if (at.Y - cell <= Zone.GroundAt(at.X, at.Z).Y) parts.Add((GroundKey(p), VolumeOf(p)));
+            if (at.Y - cell > Zone.GroundAt(at.X, at.Z).Y) continue;
+            var key = ((int)MathF.Floor(at.X / 16f), (int)MathF.Floor(at.Z / 16f));
+            if (!groups.TryGetValue(key, out var list)) groups[key] = list = new();
+            list.Add((GroundKey(p), VolumeOf(p)));
         }
-        if (parts.Count > 0) Zone.Edits.ClearForStructure(parts); // one edit for them all
+        return groups.Values.ToList();
     }
 
     /// <summary>
