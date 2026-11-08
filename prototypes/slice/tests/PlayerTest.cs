@@ -385,6 +385,19 @@ public partial class PlayerTest : Node
         Lootable body = _game.Zone.Loot.All.FirstOrDefault(l => l.Kind == LootKind.Corpse && l.Creature == _prey);
         if (body == null) { Fail("the creature left no body to loot"); yield break; }
         Check(body.Storage.Count("meat") > 0 && body.Storage.Count("hide") > 0, $"its body is a container: {_game.Zone.Data.Items.Describe(body.Storage.Contents)}");
+        {
+            // What a body holds follows what it was: machines leave salvage, people what they carried, animals meat and hide.
+            WorldLife life = _game.Zone.Wildlife.Life;
+            var machines = life.Machines.Concat(life.Cyborgs).ToList();
+            var folk = Enum.GetValues<PersonRole>().Select((r, i) => life.People.Person(Wildlife.Rng.Mix(_prey.Species.Seed, 0xB0D1 + (ulong)i), r, i % 2 == 0 ? Occupancy.Friendly : Occupancy.Raider)).ToList();
+            bool Flesh(Bill b) => b["meat"] + b["hide"] > 0;
+            var mBills = machines.Select((s, i) => Game.Game.BodyDrops(s, Wildlife.Rng.For(s.Seed, "drop", i))).ToList();
+            var pBills = folk.Select((s, i) => Game.Game.BodyDrops(s, Wildlife.Rng.For(s.Seed, "drop", i))).ToList();
+            bool known(Bill b) => b.Ids.All(_game.Zone.Data.Items.Has);
+            Check(machines.Count > 0 && mBills.All(b => !Flesh(b) && b["iron-bar"] > 0 && known(b)),
+                $"a machine's body holds salvage, no meat or hide ({machines.Count} kinds; {_game.Zone.Data.Items.Describe(mBills[0])})");
+            Check(pBills.All(b => !Flesh(b) && known(b)), $"a person's body holds what they carried, no meat or hide ({folk.Count} people; {string.Join(" | ", pBills.Where(b => !b.IsEmpty).Take(3).Select(b => _game.Zone.Data.Items.Describe(b)))})");
+        }
         foreach (int x in _drive.WalkTo(body.Position, 1.6f, 30f)) yield return x;
         foreach (int x in _drive.LookAt(body.Position + Vector3.Up * 0.3f, 6)) yield return x;
         foreach (int x in _drive.Tap(Key.E)) yield return x;
