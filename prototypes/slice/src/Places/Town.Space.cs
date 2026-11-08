@@ -22,6 +22,8 @@ public sealed partial class Town
     /// <summary>The deepest two of them (or one of them and you) have been in each other since this was last reset, m (tests); and pushes you've given.</summary>
     public float WorstOverlap;
     public int Pushed { get; private set; }
+    /// <summary>Who the worst overlap was between (tests).</summary>
+    public string WorstNote = "";
 
     /// <summary>A person's body radius, m: their folk's width.</summary>
     static float BodyRadius(Person p) => (p.Looks?.Stats.Radius ?? 0.35f) * 0.78f;
@@ -32,7 +34,13 @@ public sealed partial class Town
         : p.Role == "guard" ? (p.Holding || p.Halt > 0f ? 0.3f : 0.55f)
         : p.Sitting ? 0.3f : p.Working ? 0.6f : 1f;
 
-    bool Open(Vector3 local) => _nav == null || _nav.Standable(new PInt3((int)MathF.Floor(local.X), (int)MathF.Round(local.Y), (int)MathF.Floor(local.Z)));
+    /// <summary>Whether a body can stand here: the cell at its feet, or on a stair the one below or above (between levels a walker's height is in between).</summary>
+    bool Open(Vector3 local)
+    {
+        if (_nav == null) return true;
+        int x = (int)MathF.Floor(local.X), z = (int)MathF.Floor(local.Z);
+        return _nav.Standable(new PInt3(x, (int)MathF.Floor(local.Y + 0.05f), z)) || _nav.Standable(new PInt3(x, (int)MathF.Ceiling(local.Y - 0.05f), z));
+    }
 
     /// <summary>Once a tick, after everyone has moved: bodies apart, you stepped round, pushes answered.</summary>
     void KeepApart(Vector3 player, float dt)
@@ -52,7 +60,13 @@ public sealed partial class Town
         _space.Resolve(dt, Open, 4);
         // (Someone who moved a long way at once, far off and updated now and then, can land on another: settle it now.)
         if (_space.WorstOverlap > 0.04f) _space.Resolve(0f, Open, 6);
-        WorstOverlap = MathF.Max(WorstOverlap, _space.WorstOverlap);
+        if (_space.WorstOverlap > WorstOverlap)
+        {
+            WorstOverlap = _space.WorstOverlap;
+            var (wa, wb) = _space.WorstPair;
+            string Who(int k) => k < _bodies.Count ? $"{_bodies[k].Job} at {_bodies[k].Pos.X:F1},{_bodies[k].Pos.Y:F1},{_bodies[k].Pos.Z:F1} {(Open(_bodies[k].Pos) ? "open" : "in a wall")}{(_bodies[k].Sitting ? " sitting" : "")}{(_bodies[k].Now > 0.1f ? " walking" : "")}" : "you";
+            WorstNote = $"{Who(wa)} and {Who(wb)}";
+        }
         for (int i = 0; i < _bodies.Count; i++)
         {
             Person p = _bodies[i];

@@ -964,7 +964,7 @@ public partial class PlaceTest : Node
         {
             town.WorstOverlap = 0f;
             foreach (int x in drive.Wait(3600)) yield return x;
-            Check(town.WorstOverlap < 0.08f, $"a busy minute: no two of them overlap by more than {town.WorstOverlap * 100f:F1} cm (a few cm allowed: shoulders brush)");
+            Check(town.WorstOverlap < 0.08f, $"a busy minute: no two of them overlap by more than {town.WorstOverlap * 100f:F1} cm (a few cm allowed: shoulders brush; worst {town.WorstNote})");
             Int3 door = place.Inst.Layout.EntranceCell;
             Int3 outward = place.Inst.Layout.EntranceFacing.Vec();
             Vector3 doorAt = new(door.X + 0.5f, door.Y, door.Z + 0.5f), outv = new(outward.X, 0f, outward.Z);
