@@ -19,7 +19,7 @@ namespace Slice.Tests;
 /// gun's inventory icon on one sheet (rendered from its own model), and action shots of the arc, the
 /// swarm, the cone, the mine and the charge. The camera is kept at least 1.2 m clear of any surface.
 /// Run windowed (not a *Test scene, so the gate doesn't run it); it quits itself:
-///   godot --path prototypes/slice res://tests/WeaponShots.tscn -- --out=DIR [--only=held|icons|actions]
+///   godot --path prototypes/slice res://tests/WeaponShots.tscn -- --out=DIR [--only=held|icons|tech|actions]
 /// </summary>
 public partial class WeaponShots : Node
 {
@@ -223,6 +223,7 @@ public partial class WeaponShots : Node
             }
 
         if (_only is "all" or "icons") foreach (int x in Icons()) yield return x;
+        if (_only is "all" or "tech") foreach (int x in TechTab()) yield return x;
         if (_only is "all" or "actions") foreach (int x in Actions(view)) yield return x;
     }
 
@@ -277,6 +278,19 @@ public partial class WeaponShots : Node
         foreach (int x in Shot("icons")) yield return x;
         layer.QueueFree();
         yield return 0;
+    }
+
+    // ---- The Weapons tab of the tech tree --------------------------------------------------------
+
+    IEnumerable<int> TechTab()
+    {
+        _game.Menu.Open(Slice.Ui.MenuTab.Tech);
+        _game.Menu.Root.Tech.Tab = "weapons";
+        _game.Menu.Root.Tech.Group = null;
+        foreach (int x in _drive.Wait(20)) yield return x;
+        foreach (int x in Shot("tech-weapons")) yield return x;
+        _game.Menu.Close();
+        foreach (int x in _drive.Wait(5)) yield return x;
     }
 
     // ---- Action shots ------------------------------------------------------------------------------

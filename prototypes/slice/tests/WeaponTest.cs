@@ -341,7 +341,7 @@ public partial class WeaponTest : Node
             "each sits at the pacing doc's level, at its level's cost (1 to level 4, 2 to 10, 3 to 16)");
         Check(items.Items.Where(i => i.IsAmmo && i.Unlock?.Parent != null && levels.ContainsKey(i.Unlock.Parent)).All(i => i.Unlock.Cost == 0),
             "a weapon's own new ammo costs nothing and opens with it");
-        Check(table.All.Where(w => w.Look.Band == Band.Living).All(w => w.Ammo == "meat"), "living weapons eat plain biomass: raw meat");
+        Check(table.All.Where(w => w.Look.Band == Band.Living).All(w => w.Ammo == "biomass"), "living weapons eat plain biomass");
         Check(table.Rules.SelfHarm && !table.Rules.FriendlyFire, "self-harm on, friendly fire off by default (a server setting)");
 
         // Models from parts: each band has its own look, and every gun has a grip and a muzzle.
@@ -627,7 +627,7 @@ public partial class WeaponTest : Node
         WeaponDef d = Arm("hornet-hive", 10);
         Gun gun = GunOf(d);
         Vector3 dir = Bearing(14f);
-        int meat = _game.Pack["meat"];
+        int meat = _game.Pack["biomass"];
         // A pouch empties as the trigger is held.
         Vector3 up = (dir + Vector3.Up * 0.5f).Normalized();
         int fired = Arms.Fired;
@@ -656,7 +656,7 @@ public partial class WeaponTest : Node
         Creature c = Animal(Feet + dir * 8f);
         foreach (int x in _drive.Wait(4)) yield return x;
         foreach (int x in Until(() => !gun.Reloading, 400)) yield return x;
-        Check(_game.Pack["meat"] < meat && gun.Loaded == d.Magazine, $"the pouch refills from raw meat ({meat - _game.Pack["meat"]} eaten)");
+        Check(_game.Pack["biomass"] < meat && gun.Loaded == d.Magazine, $"the pouch refills from biomass ({meat - _game.Pack["biomass"]} eaten)");
         int stings = HitsOn(c);
         foreach (int x in Shoot(d, Centre(c) + dir.Cross(Vector3.Up) * 2f, 75)) yield return x;
         foreach (int x in Until(() => HitsOn(c) - stings >= 5, 600)) yield return x;
