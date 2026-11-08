@@ -42,6 +42,12 @@ public partial class Showroom : Node3D
     public Vector3 OreOrigin { get; private set; }
     public bool BuildGallery = true, BuildRooms = true, BuildOres = true, Lights = true;
     public string OnlySet, OnlyRoom;
+    /// <summary>Only these sets' strips (null or empty builds them all).</summary>
+    public HashSet<string> OnlySets;
+    /// <summary>The rooms' seed, when one is given.</summary>
+    public ulong? RoomSeed;
+    /// <summary>The sun's pitch and yaw in degrees, when a view wants its own light.</summary>
+    public Vector2? Sun;
     /// <summary>Only this piece, its states laid out side by side in lines of five (a close card for screenshots).</summary>
     public string OnlyPiece;
     int _setIndex;
@@ -58,6 +64,7 @@ public partial class Showroom : Node3D
         if (BuildRooms)
         {
             Rooms = new RoomGallery { Name = "Rooms", Meshes = Meshes, Poi = new DecoPoi(DataPaths.Forge, DataPaths.Arrangements), Position = new Vector3(0, 0, -60), Only = OnlyRoom };
+            if (RoomSeed is ulong seed) Rooms.Seed = seed;
             AddChild(Rooms);
         }
         Hud = new Label { Position = new Vector2(16, 12), Text = HelpText() };
@@ -96,7 +103,7 @@ public partial class Showroom : Node3D
         var sun = new DirectionalLight3D
         {
             LightColor = new Color("ffe2c0"), LightEnergy = 1.35f, ShadowEnabled = true,
-            RotationDegrees = new Vector3(-52, -35, 0), DirectionalShadowMaxDistance = 120,
+            RotationDegrees = Sun is Vector2 s ? new Vector3(s.X, s.Y, 0) : new Vector3(-52, -35, 0), DirectionalShadowMaxDistance = 120,
         };
         AddChild(sun);
     }
@@ -112,6 +119,7 @@ public partial class Showroom : Node3D
         foreach (DecoSet set in cat.Sets)
         {
             if (OnlySet != null && OnlySet != set.Id) continue;
+            if (OnlySets is { Count: > 0 } && !OnlySets.Contains(set.Id)) continue;
             z += BuildStrip(set, new Vector3(0, 0, z)) + 8;
         }
         return z;

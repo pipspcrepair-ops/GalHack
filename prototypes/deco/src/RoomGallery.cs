@@ -205,6 +205,14 @@ public partial class RoomGallery : Node3D
         return (c + new Vector3(0, span * 0.62f, -span * 0.55f), c + new Vector3(0, 0, span * 0.05f));
     }
 
+    /// <summary>One copy of a demo room from inside: from its front corner at eye height, looking across to the far one.</summary>
+    public (Vector3, Vector3) Inside(string id, bool after)
+    {
+        var (before, aft, size) = Spots[id];
+        Vector3 o = GlobalPosition + (after ? aft : before);
+        return (o + new Vector3(size.X - 0.4f, 1.6f, 0.4f), o + new Vector3(size.X * 0.25f, 0.55f, size.Y * 0.7f));
+    }
+
     public void Reseed() { Seed = Seed * 6364136223846793005UL + 1442695040888963407UL; Build(); }
 
     public void SetState(int s)
