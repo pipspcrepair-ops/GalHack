@@ -149,7 +149,7 @@ void paint(vec2 uv, vec2 L, float e, int wear, float seed, vec3 wp, float px, in
         rough = mix(rough, 0.85, s);
         if (wear >= 3) {
             // Paint lifting in sheets, rust under it.
-            float lift = smoothstep(0.6, 0.63, fbm3(wp * 6.0 + seed * 3.0));
+            float lift = smoothstep(0.6, 0.63 + px * 4.0, fbm3(wp * 6.0 + seed * 3.0));
             col = mix(col, vec3(0.12, 0.045, 0.018) * (0.7 + 0.6 * noise3(wp * 40.0)), lift);
             rough = mix(rough, 0.95, lift);
         }
@@ -587,13 +587,13 @@ void fragment() {
     bool face = L.x != 0.0 || L.y != 0.0;
     float px = max(length(fwidth(face ? UV : v_obj.xy)), 1e-6);
     float fres = pow(1.0 - clamp(abs(dot(NORMAL, VIEW)), 0.0, 1.0), 3.0);
-    float smudge = smoothstep(0.55, 0.85, noise3(vec3((face ? UV : v_obj.xy) * 16.0, 3.0))) * vis(16.0, px);
+    float smudge = smoothstep(0.45, 0.95, noise3(vec3((face ? UV : v_obj.xy) * 9.0, 3.0))) * vis(9.0, px);
     float gasket = deco && face ? (1.0 - aastep(0.005, e)) * vis(1.0 / 0.008, px) : 0.0;
     float dirt = wear * (0.06 + 0.08 * fbm3(v_obj * 6.0)) + (1.0 - smoothstep(0.0, 0.05, e)) * wear * 0.08 + (1.0 - smoothstep(0.0, 0.5, v_obj.y)) * wear * 0.05;
     dirt = clamp(dirt, 0.0, 0.7);
     ALBEDO = mix(mix(tint, vec3(0.3, 0.27, 0.22), dirt), vec3(0.02), gasket);
     ALPHA = clamp(alpha + fres * 0.35 + dirt * 0.7 + gasket, 0.0, 1.0);
-    ROUGHNESS = mix(0.06 + 0.16 * smudge, 0.75, dirt);
+    ROUGHNESS = mix(0.05 + 0.06 * smudge, 0.75, dirt);
     METALLIC = 0.2;
     SPECULAR = 0.7;
 }";
