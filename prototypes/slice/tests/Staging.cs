@@ -99,6 +99,7 @@ public sealed partial class Staging
             "townnight" => TownNightView(),
             "checkpoint" => CheckpointView(),
             "wheel" => WheelView(),
+            "farfolk" => FarFolkView(),
             "fauna" => FaunaView(),
             "peopleperf" => PeoplePerf(),
             "dark" => Dark(),
