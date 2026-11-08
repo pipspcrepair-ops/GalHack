@@ -149,7 +149,10 @@ public static class Dressing
         int tier = (int)inst.Rarity;
         var lvl = Decay.LevelAt(inst.Layout, cache.Cell.Y);
         tier += (int)MathF.Round(lvl.Wrongness * 2f);
+        // Deeper is richer by the level's own depth, not only its share of the place's: the fourth level down of a deep silo beats
+        // the bottom of a shallow bunker.
         if (lvl.Depth >= 2) tier++;
+        if (lvl.Depth >= 4) tier++;
         if (cache.InVault) tier += 1;
         if (cache.Secret) tier += 1 + (lvl.Depth >= 2 ? 1 : 0);
         if (inst.State == PoiState.Infested) tier += 1;   // danger pays
