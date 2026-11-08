@@ -1,0 +1,380 @@
+# World dressing: what each layer value leaves lying about in a world's streets, squares, gardens and roads
+# (docs/DESIGN.md section 8, "Every world is dressed by its layers"). Fields split by ' | '.
+#
+#   part <id> | model <builder> | style <word> | at <sites> | every <m> | chance <share> | far <m> | reach <m> | solid yes | only <tag>
+#     at      span (across a street, between two posts), kerb (beside a street), lane (in a street, one side,
+#             the other kept clear), square (open ground at a town's crossings), garden (a house's front),
+#             wall (a house's front wall by its door), verge (beside a road or highway out of town),
+#             road (in its lane, one side), field (open ground off a road), gate (a place's way in)
+#     every   metres between them along a way at a strength of one; chance: the share of spots that take one
+#     far     how far from a settlement it has thinned to a third
+#     reach   how far it reaches round its spot: nothing else is set down inside it
+#     only    a garden, wall or gate of a building with that family tag only (shops' awnings and signs)
+#
+#   lean <selector> | <part> <strength> ...
+#     selector  layer.id (theme.parade_ground, fall.plague, moment.festival, marks.two_flags, creed.stampers...),
+#               tag.word (a dress tag a rolled value carries), group.word (a fall's group), all (every settled world)
+#     A world's strength for a part is every lean that holds added up, at most 2.5: how thick it lies.
+#     Creeds' and presences' leans are the living's: kept fresh, and in the era they live in now.
+#
+# Every part is built in code from shapes, painted in the world's paint and worn by its age, and drawn by
+# its era: timber, rope and oil on a low world, steel and sodium on a mid one, composite and light strips
+# on a high one. Signs carry symbols only: there is no writing anywhere.
+
+# ---- Street furniture, every settled world, by era ----
+part lamp | at kerb | every 30 | far 260 | reach 0.6 | solid yes
+part awning | at wall | chance 0.7 | only shop | reach 1
+part shop_sign | at wall | chance 0.9 | only shop | reach 0.6
+part sign_post | at kerb verge | every 140 | far 1500 | reach 0.6 | solid yes
+
+# ---- Festival, match day, opening day ----
+part bunting | at span | every 24 | far 500 | reach 0.8
+part lanterns | at span | every 32 | far 400 | reach 0.8
+part prayer_flags | model bunting | style prayer | at span verge | every 22 | far 2500 | reach 0.8
+part banner | at kerb gate | every 36 | chance 0.4 | far 600 | reach 0.8 | solid yes
+part banner_span | at span | every 90 | far 400 | reach 1
+part stall | at kerb square | every 55 | chance 0.6 | far 500 | reach 2.6 | solid yes
+part grandstand | at square | chance 0.7 | far 400 | reach 7.5 | solid yes
+part stage | at square | chance 0.6 | far 400 | reach 5.5 | solid yes
+part float | at lane road | every 150 | far 1600 | reach 6 | solid yes
+part confetti | at kerb lane square | every 14 | far 500 | reach 1.4
+part instruments | at kerb lane | every 42 | far 600 | reach 1
+part costumes | at kerb garden | every 32 | chance 0.25 | far 600 | reach 1
+part belongings | at kerb lane verge | every 48 | far 1500 | reach 1.2
+part scarves | at kerb | every 46 | far 500 | reach 1.8 | solid yes
+part ticket_booth | at square gate kerb | every 140 | chance 0.4 | far 500 | reach 1.6 | solid yes
+
+# ---- Sickness ----
+part mark_plague | model mark | style cross | at wall | chance 0.6
+part tape | at span garden gate | every 42 | chance 0.35 | far 900 | reach 2.2
+part barrier | at lane kerb gate road | every 70 | chance 0.4 | far 1200 | reach 1.4 | solid yes
+part tent_medical | model tent | style medical | at square gate garden | chance 0.45 | far 900 | reach 4 | solid yes
+part burn_pit | at square field | every 700 | chance 0.4 | far 1200 | reach 4
+part masks | model belongings | style masks | at kerb garden | every 44 | chance 0.2 | far 900 | reach 1
+
+# ---- War ----
+part sandbags | at kerb gate square road | every 60 | chance 0.5 | far 1400 | reach 2.4 | solid yes
+part barricade | at lane road | every 130 | far 1000 | reach 4.5 | solid yes
+part hedgehogs | at road verge field | every 240 | far 1600 | reach 1.6 | solid yes
+part wire | at verge field | every 130 | far 1600 | reach 5.5
+part two_flags | at square gate kerb | every 150 | chance 0.5 | far 900 | reach 2.6 | solid yes
+part burnt_car | at lane road verge | every 170 | far 2200 | reach 3.2 | solid yes
+part shell_hole | at field verge square | every 95 | far 1800 | reach 3.6
+
+# ---- Leaving ----
+part luggage | at kerb lane verge road garden | every 36 | chance 0.25 | far 2600 | reach 1.2
+part queue_rails | at gate square kerb | every 100 | chance 0.5 | far 700 | reach 3.2 | solid yes
+part crates | at kerb gate square | every 64 | chance 0.3 | far 1200 | reach 1.5 | solid yes
+part bedrolls | model belongings | style camp | at verge garden kerb | every 90 | chance 0.2 | far 3000 | reach 1.6
+part tent_camp | model tent | style camp | at square field garden verge | every 520 | chance 0.3 | far 2000 | reach 3.2 | solid yes
+
+# ---- Faith ----
+part shrine | at kerb square verge | every 130 | chance 0.4 | far 1400 | reach 1.4 | solid yes
+part memorial | at square verge | every 320 | chance 0.4 | far 1200 | reach 3 | solid yes
+part bell_post | at square verge | every 520 | chance 0.4 | far 1200 | reach 1.6 | solid yes
+part cairn | at verge field | every 260 | far 3000 | reach 1
+
+# ---- Marks on house fronts: symbols only ----
+part mark_sigil | model mark | style sigil | at wall | chance 0.5
+part mark_tally | model mark | style tally | at wall | chance 0.5
+part mark_plate | model mark | style plate | at wall | chance 0.7
+part mark_tag | model mark | style tag | at wall | chance 0.7
+part mark_chalk | model mark | style chalk | at wall | chance 0.4
+part mark_fist | model mark | style fist | at wall | chance 0.4
+part mark_names | model mark | style names | at wall | chance 0.4
+part mark_water | model mark | style waterline | at wall | chance 0.7
+part mark_glyph | model mark | style glyph | at wall | chance 0.4
+part mark_mural | model mark | style mural | at wall | chance 0.5
+part mark_zone | model mark | style zone | at wall | chance 0.6
+part mark_arrow | model mark | style arrow | at wall | chance 0.4
+part mark_height | model mark | style height | at wall | chance 0.4
+part mark_notice | model mark | style notice | at wall | chance 0.8
+part mark_gang | model mark | style gang | at wall | chance 0.5
+
+# ---- The rest of a world's stories ----
+part survey_stakes | at field verge | every 210 | far 3000 | reach 4
+part washing_line | at garden | chance 0.3 | reach 3
+part garden_table | at garden | chance 0.3 | reach 1.6 | solid yes
+part dust_sheets | at garden kerb | every 64 | chance 0.3 | far 700 | reach 1.4 | solid yes
+part soup_kitchen | at square | chance 0.5 | far 500 | reach 4 | solid yes
+part burn_barrel | at kerb square lane | every 64 | chance 0.3 | far 1200 | reach 0.8 | solid yes
+part spikes | at kerb road gate | every 85 | chance 0.4 | far 1300 | reach 1.5 | solid yes
+part picket | at kerb gate | every 95 | chance 0.4 | far 700 | reach 2.6 | solid yes
+part beacon | at square verge kerb | every 210 | chance 0.4 | far 1500 | reach 0.8 | solid yes
+part telescope | at square garden | chance 0.25 | far 900 | reach 1.2 | solid yes
+part scaffold | at kerb garden | every 95 | chance 0.25 | far 800 | reach 2.2 | solid yes
+part mannequins | at kerb square garden | every 52 | chance 0.4 | far 800 | reach 1.6 | solid yes
+part timber_frame | at square field | every 720 | chance 0.45 | far 1200 | reach 6.5 | solid yes
+part cones | at lane kerb road | every 52 | far 1400 | reach 1.6
+part water_barrels | at kerb square gate | every 72 | chance 0.4 | far 1000 | reach 1.4 | solid yes
+part planters | at kerb garden | every 32 | chance 0.4 | far 500 | reach 0.8 | solid yes
+part hitch_rail | at kerb | every 72 | far 600 | reach 1.8 | solid yes
+part fence | at verge | every 95 | far 2600 | reach 5.5
+part books | model belongings | style books | at kerb garden | every 50 | chance 0.3 | far 600 | reach 1.2
+
+# ---- Every settled world ----
+lean all | lamp 1 | awning 0.6 | shop_sign 0.7
+
+# ---- Falls, by group, then the common ones on their own ----
+lean group.war | sandbags 1 | barricade 0.7 | two_flags 0.4 | burnt_car 0.8 | shell_hole 0.7 | hedgehogs 0.5 | wire 0.5 | crates 0.3
+lean group.disease | tape 0.8 | barrier 0.6 | tent_medical 0.6 | mark_plague 0.7 | masks 0.4 | burn_pit 0.4
+lean group.env | water_barrels 0.3 | belongings 0.3 | tent_camp 0.3 | crates 0.3 | luggage 0.3
+lean group.tech | barrier 0.5 | cones 0.4 | mark_notice 0.3 | belongings 0.3 | sign_post 0.3
+lean group.social | luggage 0.4 | barricade 0.3 | picket 0.3 | belongings 0.4 | crates 0.3
+lean group.mystery | belongings 0.5 | garden_table 0.4 | dust_sheets 0.2 | mark_chalk 0.3 | luggage 0.2
+lean group.cosmic | survey_stakes 0.4 | telescope 0.3 | tape 0.3 | beacon 0.3 | belongings 0.3
+lean group.slow | planters 0.3 | washing_line 0.3 | dust_sheets 0.3 | hitch_rail 0.2 | belongings 0.2
+lean fall.plague | mark_plague 1.2 | tape 1 | burn_pit 0.9 | tent_medical 1 | barrier 0.6 | memorial 0.3
+lean fall.biohazard | tape 1 | barrier 1 | tent_medical 0.6 | masks 0.8 | mark_plague 0.4
+lean fall.sleep_sickness | tent_medical 0.6 | garden_table 0.3
+lean fall.frenzy | barricade 0.8 | mark_gang 0.4 | tape 0.4
+lean fall.husks_fall | barricade 1 | mark_tally 0.8 | burn_pit 0.8 | spikes 0.4
+lean fall.fungal_takeover | masks 0.8 | tape 0.6 | burn_pit 0.5
+lean fall.sterility | dust_sheets 0.5 | planters 0.3 | memorial 0.4
+lean fall.parasite_swarm | tape 0.6 | burn_pit 0.6 | barrier 0.4
+lean fall.gene_drift | mark_height 0.8
+lean fall.nuclear_war | shell_hole 1 | burnt_car 1 | sandbags 0.6 | masks 0.6 | sign_post 0.4
+lean fall.orbital_bombardment | shell_hole 1.4 | burnt_car 0.8 | barricade 0.4
+lean fall.invasion | sandbags 1 | two_flags 0.6 | barricade 1 | mark_sigil 0.6 | hedgehogs 0.8 | wire 0.6
+lean fall.civil_war | two_flags 1.4 | sandbags 1.2 | barricade 1 | burnt_car 0.6 | shell_hole 0.5
+lean fall.machine_uprising | barricade 0.8 | burnt_car 0.6 | hedgehogs 0.4
+lean fall.chemical_war | masks 1.2 | tent_medical 0.6 | tape 0.6 | barrier 0.6
+lean fall.kinetic_strikes | shell_hole 1.2
+lean fall.blockade | sandbags 0.6 | crates 0.6 | queue_rails 0.6 | mark_tally 0.4
+lean fall.drone_wars | burnt_car 0.8 | shell_hole 0.6 | wire 0.4
+lean fall.mercenary_seizure | barricade 0.6 | two_flags 0.4 | sandbags 0.6 | mark_sigil 0.4
+lean fall.famine | soup_kitchen 1 | queue_rails 0.8 | crates 0.6 | water_barrels 0.3
+lean fall.drought | water_barrels 1.2 | queue_rails 0.4 | belongings 0.3
+lean fall.rising_seas | mark_water 1 | crates 0.4 | sandbags 0.6
+lean fall.long_winter | burn_barrel 0.8 | crates 0.4 | tent_camp 0.3
+lean fall.runaway_heat | water_barrels 0.6 | dust_sheets 0.3
+lean fall.ash_year | masks 0.6 | dust_sheets 0.6
+lean fall.great_quake | tape 0.6 | tent_camp 0.6 | scaffold 0.4 | barrier 0.4
+lean fall.sinkage | tape 0.6 | barrier 0.6
+lean fall.air_loss | masks 1
+lean fall.poison_air | masks 1 | dust_sheets 0.3
+lean fall.seam_fire | masks 0.6 | tape 0.4
+lean fall.stellar_flare | dust_sheets 0.4 | burnt_car 0.4
+lean fall.mirror_burn | dust_sheets 0.4 | burnt_car 0.6
+lean fall.meteor_swarm | shell_hole 1
+lean fall.industrial_collapse | picket 0.4 | crates 0.4 | burn_barrel 0.6
+lean fall.grid_cascade | cones 0.4 | barrier 0.4 | mark_notice 0.3
+lean fall.ai_silence | sign_post 0.4 | barrier 0.4
+lean fall.exodus | luggage 1.4 | queue_rails 0.8 | crates 0.4 | belongings 0.6 | barrier 0.4 | tent_camp 0.3
+lean fall.decreed_exodus | mark_notice 1 | luggage 0.6 | barrier 0.6 | queue_rails 0.4
+lean fall.lockdown | barrier 1.2 | mark_zone 1 | tape 0.6 | sign_post 0.5
+lean fall.economic_collapse | picket 0.4 | mark_tag 0.4 | crates 0.3 | burn_barrel 0.4
+lean fall.faith_takeover | shrine 1.2 | mark_sigil 0.8 | prayer_flags 0.6 | banner 0.4
+lean fall.general_stoppage | picket 1.2 | mark_fist 0.8 | banner_span 0.8 | burn_barrel 0.6
+lean fall.mutiny | picket 0.8 | mark_fist 0.8 | barricade 0.6 | banner_span 0.4
+lean fall.enclave_wars | barricade 0.8 | two_flags 0.6 | spikes 0.5 | sandbags 0.6
+lean fall.great_migration | bedrolls 1 | mark_arrow 1 | luggage 0.6 | cairn 0.4
+lean fall.slide | barricade 0.8 | spikes 0.6 | burn_barrel 0.6
+lean fall.liquidation | mark_tag 1.2 | crates 0.6
+lean fall.vanishing | garden_table 0.8 | belongings 0.6 | washing_line 0.4
+lean fall.walked_out_apoc | mark_notice 0.8 | luggage 0.5
+lean fall.supply_cutoff | crates 0.5 | queue_rails 0.3
+lean fall.neglect | scaffold 0.3 | cones 0.3
+lean fall.tide_of_refugees | tent_camp 1 | queue_rails 0.6 | soup_kitchen 0.6 | bedrolls 0.6 | luggage 0.6
+lean fall.hollow_front | barricade 1 | sandbags 1 | burn_pit 0.6 | tape 0.5
+lean fall.long_sleep | dust_sheets 0.4
+lean fall.first_contact | tape 0.8 | tent_camp 0.6 | survey_stakes 0.6
+lean fall.overreach | scaffold 1.2 | cones 0.6 | sign_post 0.3
+lean fall.last_ark | luggage 0.6 | barricade 0.4
+lean fall.teleport_accident | luggage 0.8 | tape 0.4
+lean fall.wormhole_tides | luggage 0.6 | tape 0.4
+lean fall.time_stutter | garden_table 0.5 | mannequins 0.3
+lean fall.folding | garden_table 0.4 | mannequins 0.4
+lean fall.replacement | mannequins 0.6
+lean fall.silence | bell_post 0.8 | mark_chalk 0.4
+lean fall.broadcast | beacon 0.4 | sign_post 0.4
+lean fall.magnetic_flip | survey_stakes 0.4 | sign_post 0.4
+
+# ---- The moment it fell ----
+lean moment.festival | bunting 1.4 | lanterns 0.8 | banner 0.8 | stall 1 | grandstand 0.9 | stage 0.8 | float 0.8 | confetti 1.2 | instruments 0.8 | costumes 0.9 | belongings 0.6 | banner_span 0.4
+lean moment.match_day | scarves 1.2 | two_flags 0.3 | ticket_booth 1 | grandstand 0.6 | banner 0.6 | bunting 0.4 | confetti 0.6 | belongings 0.6
+lean moment.ordinary_evening | garden_table 1 | washing_line 0.6 | belongings 0.3
+lean moment.rush_hour | belongings 0.6 | luggage 0.3 | queue_rails 0.3
+lean moment.shift_change | belongings 0.4 | crates 0.3
+lean moment.deep_night | washing_line 0.4 | garden_table 0.3
+lean moment.term_time | belongings 0.5 | books 0.4
+lean moment.holiday | dust_sheets 1 | stall 0.3
+lean moment.harvest | crates 0.8 | hitch_rail 0.3 | bunting 0.3 | stall 0.4
+lean moment.election | banner 1 | mark_plate 0.4 | banner_span 0.6 | queue_rails 0.5 | stage 0.4
+lean moment.wedding_season | bunting 0.4 | lanterns 0.6 | garden_table 0.8 | costumes 0.2
+lean moment.opening_day | dust_sheets 0.8 | bunting 0.6 | banner_span 0.6 | ticket_booth 0.4
+lean moment.signing_day | two_flags 1 | banner 0.6 | stage 0.3 | garden_table 0.3
+lean moment.launch_day | luggage 1 | queue_rails 0.6 | banner 0.4 | bunting 0.4
+lean moment.drill | barrier 0.8 | cones 0.6 | mark_zone 0.4
+lean moment.over_decades | planters 0.2
+lean moment.still_going | barricade 0.4 | luggage 0.6
+
+# ---- Phases ----
+lean phase.falling | barricade 0.6 | luggage 0.6 | sandbags 0.4
+lean phase.recovered | planters 0.4 | washing_line 0.4
+lean phase.mending | scaffold 0.4 | planters 0.3
+
+# ---- Marks ----
+lean marks.plain_pictograms | sign_post 1
+lean marks.traveller_chalk | mark_chalk 1.2
+lean marks.tally_marks | mark_tally 1.2
+lean marks.plague_marks | mark_plague 1.2
+lean marks.colour_zones | mark_zone 1 | sign_post 0.5
+lean marks.faction_sigils | mark_sigil 1 | banner 0.6
+lean marks.gang_sign | mark_gang 1 | spikes 1
+lean marks.route_paint | mark_arrow 1.2
+lean marks.strike_banners | banner_span 1 | mark_fist 1 | picket 0.5
+lean marks.prayer_flags | prayer_flags 1.4
+lean marks.faded_bunting | bunting 1.2
+lean marks.brand_ghosts | mark_mural 0.8 | shop_sign 0.8
+lean marks.stamped_plates | mark_plate 1.2
+lean marks.warning_stripes | barrier 0.8 | cones 0.4
+lean marks.hand_signs | sign_post 1
+lean marks.mural_walls | mark_mural 1.4
+lean marks.survey_stakes | survey_stakes 1.4
+lean marks.waterline_marks | mark_water 1.2 | mark_height 0.4
+lean marks.memorial_names | mark_names 1 | memorial 0.8
+lean marks.foreign_script | mark_sigil 1
+lean marks.two_flags | two_flags 1.4
+lean marks.blanked_signs | sign_post 0.8
+lean marks.glyph_marks | mark_glyph 1
+lean marks.repossession_tags | mark_tag 1.4
+
+# ---- Creeds: the living, keeping it up ----
+lean creed.festival_keepers | bunting 1.2 | lanterns 0.8 | costumes 0.6 | stall 0.5 | banner 0.5
+lean creed.the_numbered | queue_rails 1 | mark_plate 0.6
+lean creed.the_unmoving | garden_table 1
+lean creed.stampers | mark_plate 1 | sign_post 0.4
+lean creed.knockers | bell_post 0.4 | mark_chalk 0.6
+lean creed.horn_pausers | bell_post 0.8
+lean creed.lamp_keepers | beacon 1.2 | lanterns 0.6
+lean creed.cargo_builders | timber_frame 1.4 | beacon 0.4
+lean creed.sealed_believers | masks 0.8 | tape 0.6 | barrier 0.4
+lean creed.coreward_leaners | shrine 0.8 | mark_glyph 0.6 | prayer_flags 0.4
+lean creed.sky_counters | telescope 1 | mark_tally 0.6
+lean creed.seed_keepers | crates 0.6 | planters 0.8
+lean creed.road_menders | cones 1 | barrier 0.3
+lean creed.ancestor_tenders | memorial 1.2 | shrine 0.6 | planters 0.4
+lean creed.machine_kin | shrine 0.6 | crates 0.3
+lean creed.body_keepers | mark_height 1.2
+lean creed.mender_faith | scaffold 0.6 | crates 0.4
+lean creed.tally_keepers | mark_tally 1.2
+
+# ---- Presences ----
+lean presence.militias | sandbags 0.6 | two_flags 0.4
+lean presence.warlords | spikes 0.6 | barricade 0.4
+lean presence.gangs | spikes 0.6 | mark_gang 0.6 | burn_barrel 0.4
+lean presence.pilgrims | prayer_flags 0.6 | bedrolls 0.6 | shrine 0.4
+lean presence.refugees | tent_camp 0.8 | bedrolls 0.6
+lean presence.keepers | beacon 0.4 | planters 0.4
+lean presence.reclaimers | scaffold 0.6 | planters 0.6
+lean presence.resistance | barricade 0.6 | mark_sigil 0.4
+
+# ---- Features and hazards ----
+lean feature.stalled_floats | float 1.6 | confetti 0.4
+lean feature.jam_highways | luggage 0.8 | belongings 0.6
+lean feature.trench_lines | wire 1 | sandbags 1
+lean feature.quarantine_walls | barrier 1 | tape 1
+lean feature.sentry_lines | sandbags 0.6 | barrier 0.6
+lean feature.bell_towers | bell_post 1
+lean feature.timber_ships | timber_frame 1
+lean feature.good_kilometre | cones 0.8
+lean feature.graveyard_hills | memorial 0.8
+lean feature.dummy_town | mannequins 1.2
+lean feature.waiting_town | dust_sheets 0.8
+lean feature.unfinished_works | scaffold 1.2
+lean feature.colony_hull | mark_notice 0.4
+lean hazard.mines | sign_post 0.4 | tape 0.3
+lean hazard.radiation | sign_post 0.4 | barrier 0.3
+lean hazard.armed_hardware | sandbags 0.3
+
+# ---- Dress tags the values carry ----
+lean tag.costumes | costumes 0.6 | float 0.4
+lean tag.stalls | stall 0.6
+lean tag.market_stalls | stall 0.6
+lean tag.scoreboards | scarves 0.4
+lean tag.luggage | luggage 0.6
+lean tag.queue_slips | queue_rails 0.5
+lean tag.jam | luggage 0.4 | belongings 0.4
+lean tag.packed_bags | luggage 0.6
+lean tag.packed_cases | luggage 0.4
+lean tag.door_notices | mark_notice 0.8
+lean tag.set_tables | garden_table 0.6
+lean tag.dust_sheets | dust_sheets 0.6
+lean tag.sealed_houses | mark_plague 0.6 | tape 0.4
+lean tag.cot_halls | tent_medical 0.5
+lean tag.field_hospitals | tent_medical 0.8
+lean tag.wards | tent_medical 0.4
+lean tag.barricades | barricade 0.6
+lean tag.front_barricades | barricade 0.6 | sandbags 0.4
+lean tag.masks | masks 0.6
+lean tag.altars | shrine 0.6
+lean tag.road_camps | bedrolls 0.8
+lean tag.picket_chairs | picket 0.8
+lean tag.ration_shelves | crates 0.5
+lean tag.soup_kitchens | soup_kitchen 0.8
+lean tag.lamp_rooms | beacon 0.4
+lean tag.memorials | memorial 0.6
+lean tag.engine_shrines | shrine 0.6
+lean tag.timber_ships | timber_frame 0.6
+lean tag.height_marks | mark_height 0.6
+lean tag.tally_doors | mark_tally 0.8
+lean tag.stripped_rooms | mark_tag 0.4
+lean tag.patched | planters 0.3
+lean tag.cordon_tents | tape 0.6 | tent_camp 0.6
+lean tag.scaffolds | scaffold 0.6
+lean tag.waterlines | mark_water 0.6
+lean tag.lost_luggage | luggage 0.6
+lean tag.pilgrim_cots | bedrolls 0.6
+lean tag.road_crews | cones 0.6
+lean tag.star_charts | telescope 0.4
+lean tag.mannequins | mannequins 0.6
+lean tag.warning_spikes | spikes 0.6
+lean tag.reading_rooms | books 0.6
+lean tag.taped_corridors | tape 0.4
+lean tag.newspapers_stand | belongings 0.3
+
+# ---- Themes: each world's mood, at least a little of it everywhere ----
+lean theme.parade_ground | bunting 1.2 | float 1.2 | grandstand 1 | stage 0.6 | banner 1 | stall 0.8 | confetti 1 | instruments 0.9 | costumes 0.9 | lanterns 0.5 | belongings 0.5 | banner_span 0.5
+lean theme.long_queue | queue_rails 1.4 | luggage 1 | ticket_booth 0.8 | barrier 0.6 | mark_plate 0.5 | belongings 0.4
+lean theme.hush_suburbs | garden_table 1.2 | washing_line 1 | belongings 0.4 | planters 0.4
+lean theme.closed_season | dust_sheets 1.4 | stall 0.4 | planters 0.3 | ticket_booth 0.3
+lean theme.deserted_capital | mark_plate 1 | banner 0.8 | queue_rails 0.8 | barrier 0.6 | two_flags 0.3 | sign_post 0.5
+lean theme.clockwork_hours | sign_post 0.6 | beacon 0.5 | cones 0.4 | mark_zone 0.4
+lean theme.sentry_world | sandbags 1 | barrier 1 | mark_zone 0.6 | hedgehogs 0.6 | wire 0.6
+lean theme.mercy | tent_medical 1.4 | tape 0.4 | crates 0.6 | mark_plague 0.3 | queue_rails 0.3
+lean theme.wall_cities | barricade 1 | sandbags 0.8 | two_flags 0.6 | spikes 0.6 | banner 0.4
+lean theme.road_warrens | spikes 1.4 | burn_barrel 1 | barricade 0.8 | mark_gang 0.8 | burnt_car 0.6 | shrine 0.4
+lean theme.water_tax | water_barrels 1.4 | queue_rails 0.6 | sandbags 0.4 | mark_tally 0.4
+lean theme.foundry_belt | picket 0.8 | burn_barrel 0.8 | crates 0.8 | mark_fist 0.5 | banner_span 0.4
+lean theme.moon_lakes | lanterns 1 | garden_table 0.5 | washing_line 0.4 | planters 0.4
+lean theme.overgrown_metropolis | belongings 0.6 | luggage 0.4 | sign_post 0.4 | dust_sheets 0.2
+lean theme.pilgrim_roads | prayer_flags 1.2 | shrine 1 | cairn 1 | bedrolls 0.6 | bell_post 0.4
+lean theme.library_towns | books 1.2 | sign_post 0.3 | lanterns 0.3
+lean theme.lighthouses | beacon 1.4 | lanterns 0.4
+lean theme.wrong_stars | telescope 1.2 | mark_tally 0.6 | survey_stakes 0.4 | mark_chalk 0.4
+lean theme.folded_town | mannequins 0.6 | garden_table 0.6 | dust_sheets 0.3
+lean theme.hollow_orchards | shrine 0.8 | prayer_flags 0.6 | mark_glyph 0.6 | bedrolls 0.4
+lean theme.lamplight | lanterns 1 | beacon 0.8 | planters 0.3
+lean theme.souvenir | stall 1 | mark_mural 1 | shop_sign 0.8 | banner 0.6 | bunting 0.4
+lean theme.trench_moon | wire 1.4 | sandbags 1.4 | shell_hole 1.2 | two_flags 0.6 | burnt_car 0.6 | hedgehogs 0.6
+lean theme.eye_bloom | barricade 1.2 | sandbags 0.8 | barrier 0.8 | luggage 0.8 | burn_pit 0.5 | tape 0.4
+lean theme.diesel_frontier | hitch_rail 1.2 | water_barrels 0.6 | crates 0.8 | burn_barrel 0.4
+lean theme.pit_worlds | crates 0.8 | beacon 0.4 | cones 0.3 | sign_post 0.4
+lean theme.teeth_trees | sign_post 0.8 | wire 0.6 | burn_pit 0.4
+lean theme.titans_meadows | tent_camp 0.8 | survey_stakes 0.8 | fence 0.6
+lean theme.glass_garden | survey_stakes 1 | tent_camp 0.4 | telescope 0.3
+lean theme.old_ground | cairn 0.8 | survey_stakes 0.6 | tent_camp 0.6 | mark_glyph 0.6
+lean theme.empty_ark | mark_notice 1 | luggage 0.6 | crates 0.4
+lean theme.waiting_world | dust_sheets 1.2 | bunting 0.6 | banner_span 0.6 | crates 0.6 | planters 0.4
+lean theme.test_range | mannequins 1.4 | shell_hole 0.8 | barrier 0.6 | sign_post 0.4 | burnt_car 0.4
+lean theme.memorial_world | memorial 1.4 | planters 0.8 | shrine 0.4 | mark_names 0.6
+lean theme.liquidation | mark_tag 1.4 | crates 0.8 | dust_sheets 0.4
+lean theme.false_spring | planters 1.2 | bunting 0.5 | banner 0.3 | scaffold 0.3
+lean theme.imitation | timber_frame 1.4 | beacon 0.6 | banner 0.3
+lean theme.duty | cones 1.4 | barrier 0.4 | crates 0.3
+lean theme.nature_reserve | fence 1.4 | sign_post 0.8
+lean theme.second_wind | washing_line 0.8 | planters 0.6 | barricade 0.4 | burn_barrel 0.4
+lean theme.wild_country | cairn 0.8 | survey_stakes 0.6 | tent_camp 0.4
+lean theme.grand_scenery | cairn 1 | sign_post 0.4
+lean theme.stillness | survey_stakes 0.6 | cairn 0.6

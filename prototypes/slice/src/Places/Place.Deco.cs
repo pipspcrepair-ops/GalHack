@@ -265,7 +265,7 @@ public sealed class Decor
     }
 
     /// <summary>The top of a floor plate: a room laid with them stands its pieces on them.</summary>
-    public const float PlateTop = 0.1f;
+    public const float PlateTop = Shapes.PlateTop;
 
     /// <summary>
     /// The floor in a walk-level cell, as a height above the cell's bottom, or null where there's nothing a

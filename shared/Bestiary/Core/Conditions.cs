@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Godot;
 using Planets.Gen;
 
@@ -35,6 +36,20 @@ public sealed class WorldConditions
     public float Density = 1f;
     /// <summary>The colour of the ground people stand on, roughly: what their clothes must read against.</summary>
     public Color Backdrop = new(0.32f, 0.38f, 0.22f);
+
+    /// <summary>
+    /// The world's story as its layers rolled it (empty where nobody ever lived): how it fell and the
+    /// fall's group (war, disease, env, tech, social, cosmic, mystery, slow), its theme, and the other
+    /// values of its roll as layer.id (creed.x, presence.y), which say who its people are now.
+    /// </summary>
+    public string Fall = "", FallGroup = "", Theme = "";
+    public readonly HashSet<string> Story = new();
+    /// <summary>Anyone lives on it now (a world everyone left or vanished from has nobody: only its wild, its machines and its changed).</summary>
+    public bool Peopled = true;
+    /// <summary>The old world's tech and the living's: 0 low, 1 mid, 2 high. They set gear, weapons and machines.</summary>
+    public int Before = 1, Now = 1;
+    /// <summary>The colours made things take on this world (its rolled palette, faded): uniforms and costumes. Empty: none.</summary>
+    public readonly List<Color> Paint = new();
 
     public ClimateBand Climate => TempC switch
     {

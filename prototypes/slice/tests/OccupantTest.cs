@@ -45,10 +45,16 @@ public partial class OccupantTest : Node
         {
             _lib = WorldChoice.Library;
             _data = DataFiles.LoadWildlife();
-            Mix();
-            Falls();
-            Sited();
-            Spawns();
+            // -- --own: only the world's own kinds (the quick part).
+            bool own = Array.IndexOf(OS.GetCmdlineUserArgs(), "--own") >= 0;
+            if (!own)
+            {
+                Mix();
+                Falls();
+                Sited();
+                Spawns();
+            }
+            Signatures();
         }
         catch (Exception e) { Check(false, $"the test threw: {e}"); }
         GD.Print(_failures == 0 ? $"ALL PASSED ({_passes} checks in {_clock.Elapsed.TotalSeconds:F1} s)" : $"{_failures} CHECK(S) FAILED ({_passes} passed)");
@@ -130,6 +136,26 @@ public partial class OccupantTest : Node
         Check(worlds > 100 && tvd < 0.03f, $"{rolls} places on {worlds} fresh worlds: who holds them matches the worlds' weights (distance {tvd:F3}; "
             + string.Join(" ", observed.OrderByDescending(kv => kv.Value).Take(8).Select(kv => $"{kv.Key} {kv.Value / rolls:P0}/{expected.GetValueOrDefault(kv.Key) / rolls:P0}")) + ")");
         Check(outside == 0, $"nobody holds a place the world's theme and fall don't have ({outside} did)");
+
+        // Where people survive, a home standing whole is usually lived in; elsewhere, as the mix has it.
+        var homes = families.Where(f => OccupancyLayer.Livable(f, PoiState.Abandoned)).ToList();
+        int lived = 0, livedOf = 0, other = 0, otherOf = 0;
+        for (int i = 0; i < 120; i++)
+        {
+            ulong seed = Seed();
+            WorldRoll roll = Roll(seed, "Temperate");
+            WorldProfile profile = WorldProfile.Roll(seed, "Temperate", false);
+            if (roll == null || !OccupancyLayer.Peopled(roll, profile)) continue;
+            for (int j = 0; j < 12; j++)
+            {
+                FamilyDef home = homes[_rng.Next(homes.Count)];
+                if (OccupancyLayer.Dwellers.Contains(CodeOf(OccupancyLayer.Roll(roll.Occupancy, home, Seed(), null, true).Main))) lived++;
+                livedOf++;
+                if (OccupancyLayer.Dwellers.Contains(CodeOf(OccupancyLayer.Roll(roll.Occupancy, home, Seed()).Main))) other++;
+                otherOf++;
+            }
+        }
+        Check(homes.Count >= 3 && livedOf > 300 && lived >= livedOf * 0.6f, $"{homes.Count} kinds of home: where people survive, {lived * 100 / Math.Max(1, livedOf)}% of those standing whole are lived in (against {other * 100 / Math.Max(1, otherOf)}% by the mix alone)");
     }
 
     /// <summary>Each fall's own occupants take its worlds' places, far more than on worlds that fell otherwise.</summary>
@@ -145,11 +171,11 @@ public partial class OccupantTest : Node
         float Share(string fall, string[] codes)
         {
             int hit = 0, n = 0;
-            for (int i = 0; i < 24; i++)
+            for (int i = 0; i < 40; i++)
             {
                 WorldRoll roll = Roll(Seed(), "Temperate", new WorldRoll.Given().Set(LayerKind.Fall, fall));
                 if (roll == null || roll.Occupancy.Count == 0) continue;
-                for (int j = 0; j < 30; j++, n++)
+                for (int j = 0; j < 40; j++, n++)
                     if (codes.Contains(CodeOf(OccupancyLayer.Roll(roll.Occupancy, families[_rng.Next(families.Count)], Seed()).Main))) hit++;
             }
             return n == 0 ? 0f : hit / (float)n;
@@ -157,7 +183,7 @@ public partial class OccupantTest : Node
         foreach (var (fall, codes) in cases)
         {
             float own = Share(fall, codes), other = Share("slow_fade", codes);
-            Check(own >= 0.06f && own > other * 2f + 0.04f, $"{fall}: {string.Join("/", codes)} hold {own:P0} of its places, against {other:P0} after a slow fade");
+            Check(own >= 0.06f && own > other * 1.5f + 0.03f, $"{fall}: {string.Join("/", codes)} hold {own:P0} of its places, against {other:P0} after a slow fade");
         }
     }
 

@@ -35,7 +35,31 @@ public sealed partial class WorldLife
         _generator = new FaunaGenerator(data.Fauna, data.Activity) { Allow = f => Fit.Allows(data.Fit, world, f) };
         Fauna = _generator.Generate(world.Seed, world.Alienness, world.Bloom);
         People = new PeopleGenerator(data.People, world) { HuskRules = data.Husks };
+        Flavour(data.Signature, world);
         FitToWorld();
+    }
+
+    /// <summary>
+    /// What the world's story and era put on everyone living on it: the looks for its fall, the
+    /// fall's group and its theme, added together (a plague world's masks, a parade world's
+    /// costume pieces), and its era's dress, garments and arms.
+    /// </summary>
+    void Flavour(SignatureTables t, WorldConditions w)
+    {
+        RoleLook look = null;
+        foreach (string key in new[] { w.FallGroup, w.Fall, w.Theme })
+        {
+            if (string.IsNullOrEmpty(key) || !t.Folk.TryGetValue(key, out RoleLook l)) continue;
+            look ??= new RoleLook();
+            foreach (var (g, c) in l.Wear) look.Wear[g] = MathF.Max(look.Wear.GetValueOrDefault(g), c);
+            if (l.Prop != "") { look.Prop = l.Prop; look.PropChance = l.PropChance; }
+        }
+        People.Flavour = look;
+        string era = SignatureTables.Era(w.Now);
+        People.Era = t.Eras.GetValueOrDefault(era);
+        People.Armed = t.Armed.GetValueOrDefault(era);
+        People.EraDress = t.EraDress.GetValueOrDefault(era);
+        People.EraSwap = t.EraSwap.GetValueOrDefault(era);
     }
 
     /// <summary>

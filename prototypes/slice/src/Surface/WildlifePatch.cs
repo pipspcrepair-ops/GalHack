@@ -116,8 +116,12 @@ public partial class WildlifePatch : Node3D
         world.Predators = layers.Predators;
         world.Density = layers.Density;
         world.Mutagen = Math.Max(world.Mutagen, layers.Mutagen);
-        // The layers nudge the numbers (a dead world quieter, a rich one busier); they never empty a world.
+        // Its story: how it fell, its theme, who lives on it now, its eras and paint: what walks it beside its wild.
+        Story(world, planet.Roll, planet.Profile, layers);
+        // How much lives here is the world's own: its type's livability and what its layers say of it (a dead,
+        // barren or poisoned world quiet, a rich one alive); where on it, its land decides (Richness).
         Livable *= Mathf.Lerp(1f, layers.Density, rules.LayerWeight);
+        MeasureRichness();
         Life = Bestiary.Roll(Zone.Data.Wildlife, world);
         View = new WildlifeView { Name = "Creatures", MostNew = 2 };
         View.Shown = (c, d, shown, jump) => PlanetSurface.Fx.PopLog.Note("creature", shown ? "comes into view" : "goes from view", d, c.Species.BodyLength, jump);
@@ -178,7 +182,8 @@ public partial class WildlifePatch : Node3D
         var sim = new WildSim(Zone.Data.Wildlife, terrain, nav) { Frozen = _frozen, ActivityCycles = true };
         sim.SightLine = (a, b) => SightClear(ToGlobal(a), ToGlobal(b));
         // Places standing on the surface are solid to everything walking out there.
-        sim.SolidAt = p => SolidAt != null && SolidAt(FromPatch(p));
+        // And so are the houses and farmsteads along the roads: nothing walks through their walls.
+        sim.SolidAt = p => SolidAt != null && SolidAt(FromPatch(p)) || InHome(FromPatch(p));
         // Creatures see by the same light the eye does; scent goes with the weather.
         sim.LightAt = p => Zone.Light?.LightAt(ToGlobal(p)) ?? 1f;
         sim.Clicked += c => Audio.Click(c);
@@ -203,6 +208,10 @@ public partial class WildlifePatch : Node3D
         int carried = 0;
         var carriedNow = new List<Creature>();
         var across = new Dictionary<Creature, Creature>();
+        // Herds and packs come across as herds and packs: a clump still clumps, a patrol still walks its road.
+        var herds = new Dictionary<Herd, Herd>();
+        var packs = new Dictionary<Pack, Pack>();
+        Vector3 shift = oldOrigin - origin;
         if (old != null)
         {
             sim.Time = old.Time;
@@ -212,7 +221,22 @@ public partial class WildlifePatch : Node3D
                 if (c.Removed || c.Dead || c.Species.Domestic != DomesticKind.None) continue;
                 Vector3 local = c.Position + oldOrigin - origin;
                 if (!terrain.Inside(local, 12f)) continue;
-                Creature next = sim.Spawn(c.Species, local);
+                Herd herd = null;
+                if (c.Herd != null && !herds.TryGetValue(c.Herd, out herd))
+                {
+                    herd = new Herd { Home = c.Herd.Home + shift, Goal = c.Herd.Goal + shift, Center = c.Herd.Center + shift, Spread = c.Herd.Spread, GoalTimer = c.Herd.GoalTimer };
+                    herds[c.Herd] = herd;
+                    sim.Herds.Add(herd);
+                }
+                Pack pack = null;
+                if (c.Pack != null && !packs.TryGetValue(c.Pack, out pack))
+                {
+                    pack = new Pack { Home = c.Pack.Home + shift, Center = c.Pack.Center + shift };
+                    packs[c.Pack] = pack;
+                    sim.Packs.Add(pack);
+                }
+                Creature next = sim.Spawn(c.Species, local, herd, pack);
+                next.Home = c.Home + shift;
                 next.Health = c.Health;
                 next.Yaw = c.Yaw;
                 if (c.Species.Flies)
@@ -225,9 +249,11 @@ public partial class WildlifePatch : Node3D
                 }
                 carriedNow.Add(next);
                 across[c] = next;
+                if (Kept(c)) _kept.Add(next);
                 carried++;
             }
             foreach (Creature c in carriedNow) sim.AssignRest(new List<Creature> { c });
+            RemapPatrols(herds);
         }
         Sim = sim;
         if (old != null) _refilledFrom += oldOrigin - origin; // where the last group came back, in the new patch's frame
@@ -267,8 +293,8 @@ public partial class WildlifePatch : Node3D
                 {
                     float a = rng.Range(0f, MathF.Tau), r = rng.Range(inner, edge);
                     at = new Vector3(MathF.Cos(a) * r, 0f, MathF.Sin(a) * r);
-                    // A patch taking over from another is seen arriving: only where nobody is near or looking.
-                    found = new Vector2(at.X - clearOf.X, at.Z - clearOf.Z).Length() >= min && Open(s, at, spread) && (!carriedOver || Sim.ClearOfPlayers(at, spread));
+                    // A patch taking over from another is seen arriving: only where nobody is near or looking. And on ground that holds it.
+                    found = new Vector2(at.X - clearOf.X, at.Z - clearOf.Z).Length() >= min && Open(s, at, spread) && (!carriedOver || Sim.ClearOfPlayers(at, spread)) && (attempt == 11 || Keep(s, at, rng));
                 }
                 if (!found) continue;
                 Sim.SpawnGroup(s, Sim.FreeSpot(at, rng), count, carriedOver ? p => Sim.ClearOfPlayers(p, 0f) : null);
@@ -283,7 +309,7 @@ public partial class WildlifePatch : Node3D
     int GroupSize(Species s, Rng rng) => Math.Max(1, (int)MathF.Round(rng.Int(s.GroupMin, s.GroupMax) * Mathf.Lerp(0.5f, 1f, Math.Min(1f, Livable))));
 
     /// <summary>A spot a group may start at (patch frame): out of a base's zone, and for anything that walks, on dry land and off any place's ground (never inside its walls).</summary>
-    bool Open(Species s, Vector3 at, float spread) => !Sim.InBaseZone(at, spread) && (s.Flies || !Sim.Nav.Blocked(at) && !OnPlace(at, 3f));
+    bool Open(Species s, Vector3 at, float spread) => !Sim.InBaseZone(at, spread) && (s.Flies || !Sim.Nav.Blocked(at) && !OnPlace(at, 3f) && !InHome(FromPatch(at) with { Y = float.MinValue }, 1.5f));
 
     /// <summary>Wild creatures alive in the patch (not a town's own animals), and those within <paramref name="reach"/> of a point (patch frame).</summary>
     public int WildAlive(Vector3? near = null, float reach = float.MaxValue)
@@ -294,7 +320,8 @@ public partial class WildlifePatch : Node3D
         return n;
     }
 
-    static bool Wild(Creature c) => !c.Removed && !c.Dead && c.Species.Domestic == DomesticKind.None;
+    /// <summary>One of the wild's own numbers: alive, not a town's, not one the world's haunts and homes keep.</summary>
+    bool Wild(Creature c) => !c.Removed && !c.Dead && c.Species.Domestic == DomesticKind.None && !Kept(c);
 
     /// <summary>How far round you the land is kept lively, m (patch frame, flat).</summary>
     public const float AroundYou = 250f;
@@ -323,7 +350,8 @@ public partial class WildlifePatch : Node3D
         _refillClock = 0f;
         Vector3 you = Player.Position;
         if (new Vector2(you.X - _refilledFrom.X, you.Z - _refilledFrom.Z).Length() < spawning.StayPutRadius) return;
-        int want = (int)MathF.Ceiling(Most * Zone.Data.Rules.Wildlife.NearShare);
+        // As many as the land round you holds: more in its rich country, fewer on bare rock and high ground.
+        int want = (int)MathF.Ceiling(Most * Zone.Data.Rules.Wildlife.NearShare * Math.Clamp(Richness(you), 0.55f, 1.4f));
         float total = 0f;
         foreach (Species k in Fauna.Species) total += Weight(k);
         if (total <= 0f) return;
@@ -352,9 +380,11 @@ public partial class WildlifePatch : Node3D
             float a = rng.Range(0f, MathF.Tau), r = rng.Range(spawning.MinPlayerDistance + spread, MathF.Max(spawning.MinPlayerDistance + spread + 20f, AroundYou - spread));
             var at = new Vector3(you.X + MathF.Cos(a) * r, 0f, you.Z + MathF.Sin(a) * r);
             if (MathF.Abs(at.X) > edge || MathF.Abs(at.Z) > edge || !Open(s, at, spread) || !Sim.ClearOfPlayers(at, spread)) continue;
+            // Each to its own ground: herds on the open, small things in scrub, hunters in the woods and hills.
+            if (attempt < 15 && !Keep(s, at, rng)) continue;
             Vector3 spot = Sim.FreeSpot(at, rng);
-            if (!s.Flies && Sim.Nav.Blocked(spot)) continue;
-            List<Creature> group = Sim.SpawnGroup(s, spot, count, p => Sim.ClearOfPlayers(p, 0f));
+            if (!s.Flies && (Sim.Nav.Blocked(spot) || OnPlace(spot, 3f))) continue;
+            List<Creature> group = Sim.SpawnGroup(s, spot, count, p => Sim.ClearOfPlayers(p, 0f) && (s.Flies || !OnPlace(p, 1f)));
             if (group.Count == 0) continue;
             Sim.AssignRest(group);
             return true;
@@ -593,6 +623,7 @@ public partial class WildlifePatch : Node3D
         }
         Refill((float)delta);
         Haunting((float)delta);
+        Own((float)delta);
         Sim.Step((float)delta);
     }
 

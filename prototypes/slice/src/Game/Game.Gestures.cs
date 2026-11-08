@@ -1,4 +1,5 @@
 using System;
+using GalHack.Physics.Engine;
 using Godot;
 using Slice.Places;
 using Wildlife;
@@ -84,10 +85,50 @@ public partial class Game
     /// <summary>Seconds of play since the last gesture was made (the figure's clock: it stops with the world).</summary>
     public float SinceGesture { get; private set; } = 99f;
 
-    /// <summary>The figure's arms in the last gesture, while it plays; at rest after.</summary>
+    /// <summary>
+    /// The figure where the castaway is and doing what it does: on foot it faces the view's heading
+    /// in the frame it stands in (the planet's up, or a vessel's aboard) and walks, runs, jumps,
+    /// flies, swims and climbs by the walker's own state; on the hover bike it sits astride, facing
+    /// and turning with the bike; in a chair it sits. The last gesture plays on its arms.
+    /// </summary>
     void PoseFigure(double delta)
     {
         SinceGesture += (float)delta;
-        if (Figure != null) Slice.Player.CharacterModel.Pose(Figure, LastGesture, SinceGesture);
+        if (Figure == null || Survivor == null) return;
+        Slice.Player.Survivor s = Survivor;
+        if (!Figure.TopLevel) Figure.TopLevel = true; // placed in the world each frame, whatever the body node's turn
+        var legs = s.Legs;
+        System.Numerics.Vector3 v = s.Body.Velocity, up = System.Numerics.Vector3.Normalize(s.Body.Up);
+        float climb = System.Numerics.Vector3.Dot(v, up);
+        var m = new Slice.Player.CastawayMotion
+        {
+            Speed = (v - up * climb).Length(),
+            Climb = climb,
+            Grounded = s.Body.OnFloor,
+            Crouched = s.Crouched,
+            Jetting = legs.JetpackFiring,
+            Swimming = legs.Swimming,
+            Floating = legs.Floating,
+            Ladder = legs.Climb != GalHack.Physics.ClimbMode.None,
+            Riding = s.OnBike != null,
+            Seated = s.Seated != null,
+            Pitch = s.Pitch,
+        };
+        Transform3D place;
+        if (s.OnBike is Slice.Vehicles.HoverBike bike)
+            place = bike.Node.GetGlobalTransformInterpolated() * new Transform3D(Basis.Identity, new Vector3(0f, 0.07f, 0.35f));
+        else if (s.Seated is Slice.Vessels.Vessel seat && seat.Seat is System.Numerics.Vector3 chair)
+            place = seat.DrawTransform * new Transform3D(seat.ChairBasis, chair.ToGodot() - seat.ChairBasis.Y * 0.32f);
+        else
+        {
+            // The view's own frame with its pitch taken out: the eye's heading, feet under it.
+            Transform3D eye = s.Eye();
+            Basis turn = (eye.Basis * new Basis(Vector3.Right, -s.Pitch)).Orthonormalized();
+            place = new Transform3D(turn, eye.Origin - turn.Y * s.EyeAbove);
+            // Swimming, it lies out along the way it faces, the head clear of the water.
+            if (m.Swimming) place *= new Transform3D(Basis.Identity, Vector3.Up * 1.1f) * new Transform3D(new Basis(Vector3.Right, -1.2f), Vector3.Zero) * new Transform3D(Basis.Identity, Vector3.Down * 1.1f);
+        }
+        Figure.GlobalTransform = place;
+        Slice.Player.CharacterModel.Drive(Figure, m, LastGesture, SinceGesture, (float)delta);
     }
 }

@@ -107,6 +107,8 @@ public sealed class DecoForge
         var rng = new DecoRng(DecoHash.Combine(DecoHash.Fnv(id), (ulong)state * 7919UL));
         DecoModel model = Model(id).Clone();
         s = new Shape { Model = model };
+        // What stood on what before anything came off: a part that loses what held it falls onto what's under it.
+        var held = piece.Mount is DecoMount.Floor or DecoMount.Top ? new HashSet<DecoPart>(model.Parts.Where(p => Held(p, model.Parts))) : null;
         if (age == DecoAge.OldWorld) Weather(piece, model, s, exposed, new DecoRng(DecoHash.Combine(DecoHash.Fnv(id), exposed ? 77UL : 78UL)));
         switch (state)
         {
@@ -131,6 +133,7 @@ public sealed class DecoForge
                 break;
         }
         if (doors || state == DecoState.Open) OpenDoors(model, rng);
+        if (held != null) Drop(model, held);
         s.Repaired = HangCables(model, state, rng);
 
         List<Vector3> verts = model.Parts.SelectMany(DecoEmit.Vertices).ToList();
@@ -164,6 +167,54 @@ public sealed class DecoForge
         }
         _shapes[(id, state, fall, doors, age, exposed)] = s;
         return s;
+    }
+
+    /// <summary>A part's box.</summary>
+    static (Vector3 Lo, Vector3 Hi) BoxOf(DecoPart p)
+    {
+        var v = DecoEmit.Vertices(p);
+        return (v.Aggregate(Vector3.Min), v.Aggregate(Vector3.Max));
+    }
+
+    /// <summary>Whether a part rests on the floor or on another part under it (touching its top or its side).</summary>
+    static bool Held(DecoPart p, IReadOnlyList<DecoPart> parts)
+    {
+        var (lo, hi) = BoxOf(p);
+        if (lo.Y <= 0.01f) return true;
+        foreach (DecoPart q in parts)
+        {
+            if (q == p) continue;
+            var (qlo, qhi) = BoxOf(q);
+            if (qlo.Y < lo.Y - 0.001f && qhi.Y >= lo.Y - 0.02f && qlo.X <= hi.X + 0.01f && qhi.X >= lo.X - 0.01f && qlo.Z <= hi.Z + 0.01f && qhi.Z >= lo.Z - 0.01f) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Parts that stood on something that has gone (a drawer's handle, a cushion's buttons, a plant on a
+    /// rotted stem) fall straight down onto the highest part under them, or the floor: nothing is left in the air.
+    /// </summary>
+    static void Drop(DecoModel m, HashSet<DecoPart> held)
+    {
+        for (int pass = 0; pass < 3; pass++)
+        {
+            bool moved = false;
+            foreach (DecoPart p in m.Parts.OrderBy(p => BoxOf(p).Lo.Y).ToList())
+            {
+                if (!held.Contains(p) || Held(p, m.Parts)) continue;
+                var (lo, hi) = BoxOf(p);
+                float to = 0f;
+                foreach (DecoPart q in m.Parts)
+                {
+                    if (q == p) continue;
+                    var (qlo, qhi) = BoxOf(q);
+                    if (qhi.Y <= lo.Y + 0.005f && qlo.X <= hi.X && qhi.X >= lo.X && qlo.Z <= hi.Z && qhi.Z >= lo.Z) to = MathF.Max(to, qhi.Y);
+                }
+                p.M *= DecoGeo.Move(0, to - lo.Y, 0);
+                moved = true;
+            }
+            if (!moved) break;
+        }
     }
 
     static void Apply(DecoModel model, Matrix4x4 m)
@@ -769,6 +820,17 @@ public sealed class DecoForge
                 var c = new Vector3(x, ShardLift, z);
                 var ring = new[] { c + new Vector3(MathF.Cos(a), 0, MathF.Sin(a)) * s, c + new Vector3(MathF.Cos(a + 2.2f), 0, MathF.Sin(a + 2.2f)) * s * 0.7f, c + new Vector3(MathF.Cos(a + 4f), 0, MathF.Sin(a + 4f)) * s * 0.9f };
                 FloorPoly(mesh, DecoSurface.Matte, c, ring, glass.Scale(1.1f));
+                // Its edges down to the floor: a sliver lying on it, not a flake held off it.
+                for (int k = 0; k < ring.Length; k++)
+                {
+                    Vector3 p0 = ring[k], p1 = ring[(k + 1) % ring.Length];
+                    Vector3 q0 = p0 with { Y = 0 }, q1 = p1 with { Y = 0 };
+                    Vector3 o = (p0 + p1) * 0.5f - c;
+                    (Vector3 u, Vector3 w) = Vector3.Dot(Vector3.Cross(p1 - p0, q0 - p0), o) >= 0 ? (p1, q0) : (q0, p1);
+                    mesh.AddTriangle(DecoSurface.Matte, p0, u, w, glass);
+                    (u, w) = Vector3.Dot(Vector3.Cross(q0 - p1, q1 - p1), o) >= 0 ? (q0, q1) : (q1, q0);
+                    mesh.AddTriangle(DecoSurface.Matte, p1, u, w, glass);
+                }
             }
     }
 
@@ -808,20 +870,22 @@ public sealed class DecoForge
             // A fragment's longest reach from its middle (its scale is at most s by s by s, turned).
             float reach = s * 0.75f;
             if (max.X - min.X < 2 * s || max.Z - min.Z < 2 * s || !free(x, z, s * 0.6f) || Overlaps(laid, x, z, reach)) continue;
-            // Its top off every mark and face already laid near the floor (a chunk's top is near level: it tips 12 degrees at most).
-            float sy = flat ? s * 0.18f : s * rng.Range(0.3f, 0.6f), top = flat ? sy : s * 0.3f + sy / 2f;
+            float sy = flat ? s * 0.18f : s * rng.Range(0.3f, 0.6f);
+            var part = new DecoPart
+            {
+                Kind = DecoPrim.Hex, Corners = DecoPart.UnitCube, Slot = DecoSlot.Debris,
+                M = Matrix4x4.CreateScale(s, sy, s * rng.Range(0.5f, 1f)) * DecoGeo.RotZ(flat ? 0 : rng.Range(-12, 12)) * DecoGeo.RotY(rng.Range(0, 180)) * DecoGeo.Move(x, 0, z),
+            };
+            // Down onto the floor by its lowest corner, however it tipped: a chunk lies on the floor, never just off it.
+            List<Vector3> corners = DecoEmit.Vertices(part);
+            float bottom = corners.Min(v => v.Y), top = corners.Max(v => v.Y) - bottom;
+            part.M *= DecoGeo.Move(0, -bottom, 0);
+            // Its top off every mark and face already laid near the floor.
             if (Clashes(low, x - reach, z - reach, x + reach, z + reach, top)) continue;
             laid.Add((x, z, reach));
             low.Add((x - reach, z - reach, x + reach, z + reach, top));
             i++;
-            var part = new DecoPart
-            {
-                Kind = DecoPrim.Hex, Corners = DecoPart.UnitCube, Slot = DecoSlot.Debris,
-                M = Matrix4x4.CreateScale(s, sy, s * rng.Range(0.5f, 1f)) * DecoGeo.RotZ(flat ? 0 : rng.Range(-12, 12)) * DecoGeo.RotY(rng.Range(0, 180)),
-            };
-            float half = flat ? s * 0.09f : s * 0.3f;
-            part.M *= DecoGeo.Move(x, half, z);
-            DecoEmit.Part(mesh, part, (at, n, _) => col.Scale(0.85f + 0.3f * DecoHash.At(at, 99)), _ => DecoSurface.Matte, v => v.Y < 0 ? v with { Y = 0 } : v);
+            DecoEmit.Part(mesh, part, (at, n, _) => col.Scale(0.85f + 0.3f * DecoHash.At(at, 99)), _ => DecoSurface.Matte);
         }
     }
 
@@ -927,6 +991,8 @@ public sealed class DecoForge
         }
 
         var stems = new List<DecoPart>();
+        // Each leaf's base lies on the face it grew on (a hair off it), never held out from it.
+        const float LeafLift = 0.004f;
         var leaves = new List<(Vector3 at, Vector3 n, float size)>();
         int vines = (int)((3 + rng.Int(3)) * MathF.Min(scale, 2.5f));
         float height = max.Y - min.Y;
@@ -943,7 +1009,7 @@ public sealed class DecoForge
                 var hit = Cast(new Vector3(centre.X, y, centre.Z) + dir * reach, -dir);
                 if (hit == null) { if (path.Count > 2) break; continue; }
                 path.Add(Clamp(hit.Value.at + hit.Value.n * (r + 0.006f)));
-                if (rng.Chance(0.6f)) leaves.Add((hit.Value.at + hit.Value.n * 0.02f, hit.Value.n, rng.Range(0.05f, 0.09f) * MathF.Sqrt(scale)));
+                if (rng.Chance(0.6f)) leaves.Add((hit.Value.at + hit.Value.n * LeafLift, hit.Value.n, rng.Range(0.05f, 0.09f) * MathF.Sqrt(scale)));
             }
             // Over the top: down-rays from above, walking inward.
             if (path.Count > 0 && path[^1].Y > max.Y - 0.25f * MathF.Max(1, height / 1.5f))
@@ -960,7 +1026,7 @@ public sealed class DecoForge
                         var hit = Cast(new Vector3(p.X, max.Y + 1f, p.Z), -Vector3.UnitY);
                         if (hit == null) break;
                         path.Add(Clamp(hit.Value.at + hit.Value.n * (r + 0.006f)));
-                        if (rng.Chance(0.7f)) leaves.Add((hit.Value.at + hit.Value.n * 0.02f, hit.Value.n, rng.Range(0.05f, 0.1f) * MathF.Sqrt(scale)));
+                        if (rng.Chance(0.7f)) leaves.Add((hit.Value.at + hit.Value.n * LeafLift, hit.Value.n, rng.Range(0.05f, 0.1f) * MathF.Sqrt(scale)));
                     }
                 }
             }

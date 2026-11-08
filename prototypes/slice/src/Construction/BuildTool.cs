@@ -806,7 +806,11 @@ public sealed partial class BuildTool
         return Building.MirrorCopies(s, cell, block, sym).Select(c => (c.Pos, c.Block)).ToList();
     }
 
-    /// <summary>Components that mount by one face turn it toward the face clicked (as building's tool does).</summary>
+    /// <summary>
+    /// Components that mount by one face turn it toward the face clicked (as building's tool does). A
+    /// ladder on a wall also stands upright, its rails up the wall and its rungs level, however the
+    /// tool was turned.
+    /// </summary>
     int AutoOrient(BlockType type, int preferred)
     {
         if (type.IsArmor) return preferred;
@@ -814,14 +818,16 @@ public sealed partial class BuildTool
         if (mask == 0 || (mask & (mask - 1)) != 0) return preferred;
         var mount = (Dir)System.Numerics.BitOperations.TrailingZeroCount(mask);
         Dir wanted = Dirs.Closest((TargetCell - PlaceCell).ToVector3());
-        if (Orientations.ToWorld(preferred, mount) == wanted) return preferred;
+        bool upright = type.IsLadder && wanted.Axis() != Dir.PosY.Axis();
+        bool Stands(int o) => !upright || Orientations.ToWorld(o, Dir.PosY) == Dir.PosY;
+        if (Orientations.ToWorld(preferred, mount) == wanted && Stands(preferred)) return preferred;
         Mat3 pref = Orientations.Matrix(preferred);
         int best = preferred, bestScore = int.MinValue;
         for (int o = 0; o < Orientations.Count; o++)
         {
             if (Orientations.ToWorld(o, mount) != wanted) continue;
             Mat3 m = Orientations.Matrix(o);
-            int score = Int3.Dot(m.X, pref.X) + Int3.Dot(m.Y, pref.Y) + Int3.Dot(m.Z, pref.Z);
+            int score = Int3.Dot(m.X, pref.X) + Int3.Dot(m.Y, pref.Y) + Int3.Dot(m.Z, pref.Z) + (Stands(o) ? 100 : 0);
             if (score > bestScore) { bestScore = score; best = o; }
         }
         return best;

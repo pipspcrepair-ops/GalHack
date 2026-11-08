@@ -61,8 +61,11 @@ public sealed class CityLotPlan
 /// </summary>
 public sealed class CityPlan
 {
-    /// <summary>The layers that build a city.</summary>
+    /// <summary>The layers that build a city, and say what kind of city it is.</summary>
     public static readonly string[] Layers = { "city_covered", "glass_tower", "overgrown_city", "dead_city_ash", "drowned_city", "sinkage" };
+
+    /// <summary>A world this crowded before its fall had a city, whatever its layers (a power of ten: 6 is a million).</summary>
+    public const int CrowdedFrom = 6;
 
     /// <summary>Tests and proof frames: plan a city on any lived-in world, whatever its layers; and, if set, how far it fell.</summary>
     public static bool Force;
@@ -96,13 +99,14 @@ public sealed class CityPlan
     public double PlanMs;
     public string Why = "";
 
-    public static bool Wanted(WorldRoll roll) => roll != null && (Force || roll.Rolled.Any(l => Layers.Contains(l.Id)));
+    public static bool Wanted(WorldRoll roll, WorldProfile profile) =>
+        roll != null && (Force || profile?.Population >= CrowdedFrom || roll.Rolled.Any(l => Layers.Contains(l.Id)));
 
     public static CityPlan Plan(InfraNetwork net, PoiLibrary lib, WorldMap map, PlanetTerrainSource bare, List<PoiSite> pois, WorldProfile profile,
         LandingSite landing, ulong seed)
     {
         WorldRoll roll = net?.RegionPlan?.Roll;
-        if (lib == null || profile is not { Inhabited: true } || !Wanted(roll)) return null;
+        if (lib == null || profile is not { Inhabited: true } || !Wanted(roll, profile)) return null;
         var watch = Stopwatch.StartNew();
         double w = map.WidthMeters, h = map.HeightMeters;
         var rng = new Rng(PoiGenerator.Gen.Hash.Combine(seed, 0xC171UL));
@@ -491,7 +495,7 @@ public sealed class CityPlan
                 "university" => new() { ["CLT"] = 3f, ["GNG"] = 1.5f },
                 _ => null,
             };
-            OccupancyRoll occ = !OccupancyLayer.Applies(f, state) ? null : OccupancyLayer.Roll(roll.Occupancy, f, s + 1, lean) with { Tags = roll.Tags };
+            OccupancyRoll occ = !OccupancyLayer.Applies(f, state) ? null : OccupancyLayer.Roll(roll.Occupancy, f, s + 1, lean, OccupancyLayer.Peopled(roll, profile) && OccupancyLayer.Livable(f, state)) with { Tags = roll.Tags };
             made[i] = PoiFactory.Spawn(lib, layout, state, s + 1, profile, occ);
             fams[i] = f;
         });

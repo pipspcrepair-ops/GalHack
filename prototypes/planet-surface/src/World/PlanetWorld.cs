@@ -51,6 +51,9 @@ public sealed partial class PlanetWorld
     /// <summary>What this world rolled, lived on or not (null only where no layers are compiled in): the same roll as <see cref="Roll"/> where there is one.</summary>
     public PoiGenerator.Gen.WorldRoll Layers { get; private set; }
 
+    /// <summary>The POI library the world was built from (its dressing table among it); null where none was given.</summary>
+    public PoiGenerator.Gen.PoiLibrary Library { get; private set; }
+
     /// <summary>
     /// What the rest of the world reads off its layers: its plants, creatures, paint and sound, and
     /// the hooks others read (<see cref="PoiGenerator.Gen.WorldReading.Age"/> and <see cref="PoiGenerator.Gen.WorldReading.Severity"/>
@@ -243,7 +246,7 @@ public sealed partial class PlanetWorld
         // What stands off a place's footprint goes by the real ground, now that it's known.
         foreach (PoiSite p in pois)
             PoiGenerator.Gen.StateTransforms.Settle(p.Instance, (x, z) => source.SurfaceHeight(Mathx.WrapX(p.Origin.X + x + 0.5, source.Width), Mathx.Wrap(p.Origin.Z + z + 0.5, source.Height)) - p.Origin.Y, 3);
-        var world = new PlanetWorld(spec, profile, map, landing, pois, around, source, watch.Elapsed.TotalMilliseconds, PoiGenerator.Gen.WorldReading.Of(layers), blasts) { Depth = depth, Roll = roll, Layers = layers };
+        var world = new PlanetWorld(spec, profile, map, landing, pois, around, source, watch.Elapsed.TotalMilliseconds, PoiGenerator.Gen.WorldReading.Of(layers), blasts) { Depth = depth, Roll = roll, Layers = layers, Library = catalog?.Library };
         world.TakeChart(chart);
         world.ChartStars();
         return world;

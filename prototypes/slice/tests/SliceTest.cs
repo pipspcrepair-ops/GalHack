@@ -277,6 +277,42 @@ public partial class SliceTest : Node
 
     /// <summary>A rock over a deposit stops the ray and the walker, and the tool breaks it down: a little ore a pulse, then it digs on through.</summary>
     /// <summary>The hover bike: set down from the toolbar, F to ride, fast and hovering above the ground, over water as if it were ground, F to get off, E to pick it up.</summary>
+    static Vector3 Flat(Vector3 v) => new Vector3(v.X, 0f, v.Z).Normalized();
+
+    /// <summary>The castaway's own figure, as third person shows it: it faces the way you look, and walks when you walk.</summary>
+    IEnumerable<int> OwnFigure()
+    {
+        GD.Print("-- the castaway's own figure --");
+        Survivor s = _game.Survivor;
+        _game.ThirdPerson = true;
+        float worst = 0f;
+        foreach (float turn in new[] { 1.1f + (float)GD.Randf(), -2.3f })
+        {
+            s.Yaw += turn;
+            foreach (int x in _drive.Wait(20)) yield return x;
+            worst = MathF.Max(worst, Mathf.RadToDeg(Flat(-_game.Figure.GlobalTransform.Basis.Z).AngleTo(Flat(s.WorldLook()))));
+        }
+        Check(worst < 10f, $"third person, the figure turns with the view: its forward within {worst:F1}° of the view's after two turns");
+        float Spread(List<Vector3> feet) => feet.Count == 0 ? 0f : feet.Max(f => f.Z) - feet.Min(f => f.Z) + feet.Max(f => f.Y) - feet.Min(f => f.Y);
+        var walking = new List<Vector3>();
+        _game.Controls.Hold(Key.W);
+        for (int i = 0; i < 70; i++)
+        {
+            yield return 0;
+            if (i > 20) walking.Add(CharacterModel.Feet(_game.Figure).left);
+        }
+        _game.Controls.ReleaseAll();
+        foreach (int x in _drive.Wait(60)) yield return x;
+        var standing = new List<Vector3>();
+        for (int i = 0; i < 40; i++)
+        {
+            yield return 0;
+            standing.Add(CharacterModel.Feet(_game.Figure).left);
+        }
+        Check(Spread(walking) > 0.25f && Spread(standing) < 0.02f, $"its legs walk while it walks and are still when it stands (a foot moves {Spread(walking):F2} m walking, {Spread(standing):F3} m standing)");
+        _game.ThirdPerson = false;
+    }
+
     IEnumerable<int> HoverBike()
     {
         GD.Print("-- the hover bike --");
@@ -294,6 +330,7 @@ public partial class SliceTest : Node
         if (spot == default) spot = surf.GroundAt(_game.Survivor.WorldFeet.X + 20f, _game.Survivor.WorldFeet.Z);
         _game.Survivor.PlaceOutside((spot + Vector3.Up * 0.2f).ToNumerics());
         foreach (int x in _drive.UntilSettled()) yield return x;
+        foreach (int x in OwnFigure()) yield return x;
         // A clear run ahead, or the first trunk stops the speed check: as a rider picks a line.
         Vector3 chest = _game.Survivor.WorldFeet + Vector3.Up * 1.4f;
         for (int k = 0; k < 16; k++)
@@ -328,6 +365,30 @@ public partial class SliceTest : Node
         float ran = new Vector2(bike.Position.X - from.X, bike.Position.Z - from.Z).Length();
         Check(top > 9f && ran > 8f, $"the hover bike is fast: {top:F1} m/s, {ran:F0} m in under two seconds (a walker sprints at {_game.Survivor.Legs.SprintSpeed:F1})");
         Check(_game.Survivor.WorldEye().DistanceTo(bike.Position) < 2f, "the rider goes with the bike");
+        float astride = Mathf.RadToDeg(Flat(-_game.Figure.GlobalTransform.Basis.Z).AngleTo(Flat(bike.Forward)));
+        Check(astride < 10f, $"third person, the castaway sits the bike facing its heading ({astride:F1}° off)");
+        // The mouse steers: the bike comes round toward where the rider looks; Alt held looks around without steering.
+        // Tried from a standstill, so the ride stays short and the bike is on its cushion for getting off after.
+        _game.Controls.Hold(Key.S);
+        for (int i = 0; i < 50; i++) yield return 0;
+        _game.Controls.Hold(Key.S, false);
+        _game.Survivor.Yaw += MathF.PI / 2f;
+        for (int i = 0; i < 120; i++) yield return 0;
+        var view = new Vector3(-MathF.Sin(_game.Survivor.Yaw), 0f, -MathF.Cos(_game.Survivor.Yaw));
+        float off = Mathf.RadToDeg(bike.Forward.AngleTo(view));
+        Check(off < 8f, $"the mouse steers: turned a quarter, the bike comes round to where the rider looks ({off:F0}° off after two seconds)");
+        _game.Controls.Modifiers.Add(Key.Alt);
+        float heading = bike.Yaw;
+        _game.Survivor.Yaw += MathF.PI / 2f;
+        for (int i = 0; i < 30; i++) yield return 0;
+        Check(MathF.Abs(Mathf.Wrap(bike.Yaw - heading, -MathF.PI, MathF.PI)) < 0.05f, "Alt held looks around without steering");
+        _game.Controls.Modifiers.Remove(Key.Alt);
+        for (int i = 0; i < 60; i++) yield return 0;
+        float apart = Mathf.RadToDeg(MathF.Abs(Mathf.Wrap(bike.Yaw - _game.Survivor.Yaw, -MathF.PI, MathF.PI)));
+        Check(apart < 3f, $"let go, the view eases back onto the bike's heading ({apart:F1}° apart)");
+        _game.Controls.Hold(Key.W);
+        for (int i = 0; i < 60; i++) yield return 0;
+        _game.Controls.Hold(Key.W, false);
         foreach (int x in _drive.Wait(90)) yield return x;
         float speedAtF = bike.Speed;
         foreach (int x in _drive.Tap(Key.F)) yield return x;

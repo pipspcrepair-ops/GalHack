@@ -624,13 +624,14 @@ public static class PoiFauna
         if (from.Count == 0) from = walkable;
         if (holder == PlaceHolder.Machines)
         {
-            // On their rounds: each its own beat, through the rooms either side.
-            for (int i = 0; i < n; i++)
+            // On their rounds: each its own beat, through the rooms either side (where a frame can turn round).
+            for (int i = 0, placed = 0; i < n * 4 && placed < n; i++)
             {
                 PoiRoom start = i % 2 == 0 ? from[rng.Int(0, from.Count - 1)] : walkable[rng.Int(0, walkable.Count - 1)];
                 List<Vector3> route = Beat(poi, start, rng, out float width, out float height);
                 if (Own(poi, fauna, theme, DeepRole.Prowler, width, height, rng) is not { } sp) continue;
                 pop.Spawns.Add(new PoiSpawn { Role = DeepRole.Prowler, Species = sp, Position = route[0], Room = start.Index, Route = route });
+                placed++;
             }
             return;
         }
