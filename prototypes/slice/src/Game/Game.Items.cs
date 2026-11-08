@@ -274,11 +274,7 @@ public partial class Game
             }
             return;
         }
-        var drops = new Bill();
-        if (s.Drops.Meat > 0) drops.Add("meat", s.Drops.Meat);
-        drops.Add("hide", Math.Max(1, s.Drops.Meat / 3));
-        var rng = Wildlife.Rng.For(s.Seed, "drop", c.Id);
-        if (s.Drops.RarePart != "" && rng.Chance(s.Drops.RareChance)) drops.Add("rare-tissue", 1);
+        Bill drops = BodyDrops(s, Wildlife.Rng.For(s.Seed, "drop", c.Id));
         int[] size = Zone.Data.Rules.Containers.Corpse;
         Vector3 at = Zone.Wildlife.WorldOf(c);
         Lootable body = Zone.Loot.Create(LootKind.Corpse, $"{Cap(s.CommonName)} body", at, size[0], size[1], drops);
@@ -289,6 +285,43 @@ public partial class Game
             Stats.Kills++;
             Progress.Earn(s.Stats.Xp, $"{s.CommonName} brought down");
         }
+    }
+
+    /// <summary>
+    /// What a body holds follows what it was. A machine (robot, drone, cyborg) leaves salvage by
+    /// its size: metal, wiring, and a board or plate by chance. A person leaves what they carried
+    /// (rounds for a rifle, a ration, a bit of scrap), never meat or hide. An animal, a Husk or a
+    /// Hollow leaves meat and hide (no coat has a material of its own yet) and its rare part by chance.
+    /// </summary>
+    public static Bill BodyDrops(Species s, Wildlife.Rng rng)
+    {
+        var drops = new Bill();
+        if (s.Mechanical)
+        {
+            float r = MathF.Max(0.3f, s.Stats.Radius);
+            int bulk = Math.Clamp((int)MathF.Round(r * 4f), 1, 12);
+            drops.Add("iron-bar", bulk);
+            drops.Add("copper-wire", Math.Max(1, bulk / 2));
+            if (rng.Chance(MathF.Min(0.9f, 0.3f + r * 0.3f))) drops.Add("circuit-board", Math.Max(1, bulk / 4));
+            if (r >= 1f) drops.Add("hull-plate", Math.Max(1, bulk / 3));
+            return drops;
+        }
+        if (s.Figure != null && !s.Husk)
+        {
+            switch (s.Figure.Prop)
+            {
+                case "rifle": drops.Add("rifle-rounds", rng.Int(4, 14)); break;
+                case "club" or "hoe" or "cane": if (rng.Chance(0.5f)) drops.Add("iron-bar", 1); break;
+                case "umbrella": drops.Add("polymer", 1); break;
+            }
+            if (rng.Chance(0.45f)) drops.Add("trail-ration", 1);
+            if (rng.Chance(0.3f)) drops.Add("copper-wire", rng.Int(1, 2));
+            return drops;
+        }
+        if (s.Drops.Meat > 0) drops.Add("meat", s.Drops.Meat);
+        drops.Add("hide", Math.Max(1, s.Drops.Meat / 3));
+        if (s.Drops.RarePart != "" && rng.Chance(s.Drops.RareChance)) drops.Add("rare-tissue", 1);
+        return drops;
     }
 
     static string Cap(string s) => string.IsNullOrEmpty(s) ? s : char.ToUpperInvariant(s[0]) + s[1..];

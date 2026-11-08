@@ -102,6 +102,15 @@ public sealed partial class Town
         public BodyAct Before;
         public float HeadYaw;
         public bool Indoors, Sitting, Fleeing;
+        /// <summary>In bed for the night (lying on it), and how far down into it.</summary>
+        public bool Asleep;
+        public float Slept;
+        /// <summary>Far enough from you that their day is kept as a schedule, not walked.</summary>
+        public bool Far;
+        /// <summary>The spot they last left (a seat they are getting up out of).</summary>
+        public int Left = -1;
+        /// <summary>The seat they sat down in and haven't yet got up out of (-1: none).</summary>
+        public int Seat = -1;
         /// <summary>Their job (from the generator), which sets their day; out of town on it (a scavenger's run); bent to a task where they are.</summary>
         public PersonRole Job;
         public bool Away, Working;
@@ -145,26 +154,54 @@ public sealed partial class Town
         if (data == null || data.People.Count == 0 || data.Spots.Count < 2) return null;
         var town = new Town(m, data);
         town._tech = m.Inst.Layout.Variant?.Tech is { Length: > 0 } t ? t : m.Inst.Family.Tags.Contains("settlement") ? "low" : "mid";
-        town._nav = Place.NavOf(m);
+        town._nav = Place.FootNavOf(m);
+        town.Furnish(m);
         foreach (var (a, b) in data.Links.Concat(data.Routes)) town.PathBetween(a, b);
-        town._homes = data.Spots.Select((s, i) => (s, i)).Where(t => t.s.Tag == "home").Select(t => t.i).ToArray();
+        town._homes = town.Spots.Select((s, i) => (s, i)).Where(t => t.s.Tag == "home").Select(t => t.i).ToArray();
         // A place with no quarters of its own still has rooms with a roof: its people go in there for the night.
         if (town._homes.Length == 0)
-            town._homes = data.Spots.Select((s, i) => (s, i)).Where(t => t.s.Module >= 0 && t.s.Module < m.Inst.Layout.Modules.Count && m.Inst.Layout.Modules[t.s.Module].Kind == ModuleKind.Room).Select(t => t.i).ToArray();
+            town._homes = town.Spots.Select((s, i) => (s, i)).Where(t => t.s.Tag != "bed" && t.s.Module >= 0 && t.s.Module < m.Inst.Layout.Modules.Count && m.Inst.Layout.Modules[t.s.Module].Kind == ModuleKind.Room).Select(t => t.i).ToArray();
         return town;
     }
 
-    static Vector3 Walk(PInt3 c) => new(c.X + 0.5f, c.Y, c.Z + 0.5f);
+    /// <summary>A cell's walking point: the middle of its floor, or halfway up the stair or ramp standing in it.</summary>
+    Vector3 Walk(PInt3 c) => new(c.X + 0.5f, c.Y + (_nav != null && _nav.RampAt(c, out _) ? 0.5f : 0f), c.Z + 0.5f);
 
     List<Vector3> PathBetween(int a, int b)
     {
         if (_paths.TryGetValue((a, b), out var p)) return p;
-        if (_paths.TryGetValue((b, a), out var q)) return _paths[(a, b)] = Enumerable.Reverse(q).ToList();
-        PInt3 from = Data.Spots[a].Cell, to = Data.Spots[b].Cell;
+        if (_paths.TryGetValue((b, a), out var q))
+        {
+            // The way back is the way there walked the other way (from the spot's own point, to the other's).
+            if (q == null) return _paths[(a, b)] = null;
+            var back = Enumerable.Reverse(q).ToList();
+            if ((At(a) - Walk(Spots[a].Cell)).LengthSquared() > 0.01f) back.RemoveAt(0);
+            if (back.Count == 0 || (At(b) - back[^1]).LengthSquared() > 0.01f) back.Add(At(b));
+            return _paths[(a, b)] = back;
+        }
+        PInt3 from = Spots[a].Cell, to = Spots[b].Cell;
+        // By the walking grid only (the dressing standing in, through the doors): where there is no way, nobody goes,
+        // never straight across through a wall, a floor or the furniture.
         List<PInt3> cells = _nav.Standable(from) && _nav.Standable(to) ? _nav.FindPath(from, to, 30000) : null;
-        var path = cells?.Select(Walk).ToList() ?? new List<Vector3> { Walk(from), Walk(to) };
+        List<Vector3> path = cells?.Select(Walk).ToList();
+        if (path != null && (At(b) - path[^1]).LengthSquared() > 0.01f) path.Add(At(b));
         _paths[(a, b)] = path;
         return path;
+    }
+
+    /// <summary>Everyone, at their spots (once): each with a bed of their own for the night where the rooms have beds.</summary>
+    void Populate()
+    {
+        if (People.Count > 0) return;
+        foreach (CitizenSpawn s in Data.People)
+        {
+            var p = new Person { Town = this, Spawn = s, Pos = At(s.Spot), Spot = s.Spot, Yaw = (float)_rng.NextDouble() * MathF.Tau };
+            p.Home = _homes.Length > 0 ? _homes.OrderBy(h => Spots[h].Cell.Manhattan(s.Cell)).First() : s.Spot;
+            p.Speed = s.Gait switch { "hurry" => 3.0f, "amble" => 1.1f, "patrol" => 1.3f, _ => 1.3f };
+            p.Wait = (float)_rng.NextDouble() * 6f;
+            People.Add(p);
+            Bed(p);
+        }
     }
 
     /// <summary>What a tick of everyone in the town cost last time, ms.</summary>
@@ -181,15 +218,7 @@ public sealed partial class Town
         _places = places;
         _view = new Node3D { Name = "Townsfolk" };
         place.AddChild(_view);
-        if (People.Count == 0)
-            foreach (CitizenSpawn s in Data.People)
-            {
-                var p = new Person { Town = this, Spawn = s, Pos = Walk(s.Cell), Spot = s.Spot, Yaw = (float)_rng.NextDouble() * MathF.Tau };
-                p.Home = _homes.Length > 0 ? _homes.OrderBy(h => Data.Spots[h].Cell.Manhattan(s.Cell)).First() : s.Spot;
-                p.Speed = s.Gait switch { "hurry" => 3.0f, "amble" => 1.1f, "patrol" => 1.3f, _ => 1.3f };
-                p.Wait = (float)_rng.NextDouble() * 6f;
-                People.Add(p);
-            }
+        Populate();
         // Who they are and what they're drawn with is worked out on a worker: a town coming into view costs the frame nothing.
         if (People.Count > 0 && People[0].Looks == null && _rolling == null)
         {
@@ -268,7 +297,7 @@ public sealed partial class Town
             for (int i = 0; i < count; i++)
             {
                 Vector3 at = pen + new Vector3(i * 1.5f - 1.5f, 0, (i % 2) * 1.2f);
-                ITarget owner = kind == DomesticKind.Pet ? People.FirstOrDefault(p => p.Home == Data.Spots.FindIndex(sp => sp.Cell == cell)) : null;
+                ITarget owner = kind == DomesticKind.Pet ? People.FirstOrDefault(p => p.Home == Spots.FindIndex(sp => sp.Cell == cell)) : null;
                 _animals.Add((sim.SpawnDomestic(s, patch.PatchLocal(at), patch.PatchLocal(pen), kind == DomesticKind.Stock ? 5f : 3f, owner), kind, pen));
             }
         }
@@ -392,10 +421,11 @@ public sealed partial class Town
             // the further off the fewer times a second (and so their bodies are posed).
             p.Saved += tickDt;
             float away = (player - p.Pos).Length();
+            p.Far = away > FarSchedule;
             if ((_tick + who) % PersonView.PoseEvery(away) != 0) continue;
             float dt = p.Saved;
             p.Saved = 0f;
-            if (away < ActRange && p.Looks != null) Acts(p, player, eye, look, away, dt);
+            if (away < ActRange && p.Looks != null && !p.Asleep) Acts(p, player, eye, look, away, dt);
             bool guard = p.Role == "guard";
             p.Hurt = MathF.Max(0f, p.Hurt - dt);
             // Until it reaches them, they carry on as they were; then a start, and they act.
@@ -419,7 +449,7 @@ public sealed partial class Town
             }
             bool scared = p.ScaredFor > 0f || Barricaded;
             bool hide = !guard && (offDuty || mood == Mood.Hostile || scared);
-            if (hide && p.Away) { p.Away = false; p.Pos = Walk(Data.Spots[p.Spot].Cell); } // back from a run in time for the night
+            if (hide && p.Away) { p.Away = false; p.Pos = At(p.Spot); } // back from a run in time for the night
             if (p.Away)
             {
                 // Out of town on a scavenger's run: back after a while, by the way in.
@@ -427,23 +457,19 @@ public sealed partial class Town
                 Pose(p, who, away, dt);
                 continue;
             }
-            if (hide && !p.Indoors)
+            if (hide && !p.Indoors && !p.Asleep)
             {
-                // Home, wherever they were going: only reaching their own door takes them in.
+                // Home, wherever they were going: only reaching their own bed or door takes them in.
                 if (p.Spot != p.Home || p.Path == null) GoTo(p, p.Home);
                 p.Fleeing = mood == Mood.Hostile || scared;
                 p.Speed = p.Fleeing ? 3.4f : MathF.Max(p.Speed, 1.5f); // home before dark: a brisk walk
-                if (Move(p, dt) && p.Spot == p.Home) p.Indoors = _homes.Length > 0;
+                Arrive(p, dt, offDuty && !p.Fleeing);
                 Pose(p, who, away, dt);
                 continue;
             }
-            if (!hide && p.Indoors)
-            {
-                p.Indoors = false;
-                p.Fleeing = false;
-                p.Speed = p.Spawn.Gait == "hurry" ? 3.0f : p.Spawn.Gait == "amble" ? 1.1f : 1.3f;
-            }
-            if (p.Indoors) { Pose(p, who, away, dt); continue; }
+            // Morning, or the fright over, or a fright in the night: up and about.
+            if (!hide || p.Asleep && (mood == Mood.Hostile || scared)) Wake(p);
+            if (p.Indoors || p.Asleep) { Pose(p, who, away, dt); continue; }
             if (guard && mood != Mood.Hostile && Pursuit(p, player, dt))
             {
                 Pose(p, who, away, dt);
@@ -455,7 +481,7 @@ public sealed partial class Town
                 continue;
             }
             // Unwelcome, you: off their post, they make for it before anything else (watching you on the way).
-            if (guard && mood != Mood.Hostile && Unwelcome && (p.Pos - Walk(Data.Spots[p.Spawn.Spot].Cell)).Length() > 2f)
+            if (guard && mood != Mood.Hostile && Unwelcome && (p.Pos - At(p.Spawn.Spot)).Length() > 2f)
             {
                 if (p.Spot != p.Spawn.Spot || p.Path == null || p.Step >= p.Path.Count) GoTo(p, p.Spawn.Spot);
                 Move(p, dt);
@@ -507,14 +533,23 @@ public sealed partial class Town
         float step = p.Now * dt;
         p.Gait += step;
         // Turns a corner a stride early, not on the spot.
-        if (flat < step || flat < (last ? 0.05f : 0.4f))
+        // (Not out of a seat or into one: that way is walked as it lies, clear of the furniture round it.)
+        bool exact = p.Step == 0 && p.Seat >= 0 || p.Step >= p.Path.Count - 2 && p.Spot >= 0 && p.Spot < _own.Count && _own[p.Spot] != null;
+        if (flat < step || flat < (last || exact ? 0.05f : 0.4f))
         {
-            if (last) p.Pos = to;
+            if (last)
+            {
+                p.Pos = to;
+                if (p.Spot >= 0 && p.Spot < _own.Count && _own[p.Spot] != null) p.Seat = p.Spot;
+            }
             p.Step++;
             return p.Step >= p.Path.Count;
         }
         p.Pos += new Vector3(d.X, 0f, d.Z) / flat * step;
+        if (p.Seat >= 0 && !InSeat(p, p.Seat)) p.Seat = -1; // up and out of it
         p.Pos.Y = Mathf.Lerp(p.Pos.Y, to.Y, MathF.Min(1f, step / MathF.Max(flat, 0.01f)));
+        // Feet on what is under them: the floor, or the stair's slope, never sunk into it or above it.
+        if (Ground(p.Pos) is float ground && MathF.Abs(ground - p.Pos.Y) < 0.75f) p.Pos.Y = ground;
         p.Yaw = Mathf.RotateToward(p.Yaw, MathF.Atan2(-d.X, -d.Z), 5f * dt);
         p.Sitting = false;
         return false;
@@ -524,22 +559,40 @@ public sealed partial class Town
 
     void GoTo(Person p, int spot)
     {
-        if (spot == p.Spot && p.Path != null && p.Step >= p.Path.Count && (p.Pos - Walk(Data.Spots[spot].Cell)).Length() < 1.5f) return;
+        if (spot == p.Spot && p.Path != null && p.Step >= p.Path.Count && (p.Pos - At(spot)).Length() < 1.5f) return;
         if (spot == p.Spot && p.Path != null && p.Step >= p.Path.Count)
         {
-            // Moved off it (pushed, or after something): straight back to it.
-            p.Path = new List<Vector3> { Walk(Data.Spots[spot].Cell) };
+            // Moved off it (pushed, or after something): back to it by the walking grid.
+            p.Path = PathFromHere(p, spot) ?? new List<Vector3>();
             p.Step = 0;
             return;
         }
-        p.Path = PathFrom(p, spot);
-        p.Step = 0;
+        List<Vector3> path = PathFrom(p, spot);
+        if (path == null)
+        {
+            // No way there from here: they stay where they are a while rather than walk through anything.
+            p.Path = new List<Vector3>();
+            p.Step = 0;
+            p.Wait = MathF.Max(p.Wait, 4f);
+            return;
+        }
+        p.Left = p.Spot;
         p.Spot = spot;
+        p.Step = 0;
+        if (p.Far)
+        {
+            // Out of your sight: there already, their day kept as a schedule.
+            p.Pos = path[^1];
+            p.Path = new List<Vector3>();
+            return;
+        }
+        p.Path = path;
     }
 
     List<Vector3> PathFrom(Person p, int spot)
     {
-        // From the spot they are at (or near) along the worked-out route, else straight there.
+        // From the spot they are at (or near) along the worked-out route; called away partway, from where they are.
+        if ((p.Pos - At(p.Spot)).Length() > 1.2f && !InSeat(p, p.Spot)) return PathFromHere(p, spot);
         if (_paths.TryGetValue((p.Spot, spot), out var known)) return known;
         List<Vector3> path = PathBetween(p.Spot, spot);
         return path;
@@ -549,7 +602,7 @@ public sealed partial class Town
     int? Haunt(Person p, string[] tags)
     {
         if (tags == null || tags.Length == 0) return null;
-        var near = Data.Spots.Select((s, i) => (s, i)).Where(t => Array.IndexOf(tags, t.s.Tag) >= 0).OrderBy(t => t.s.Cell.Manhattan(Data.Spots[p.Spot].Cell) + _rng.Next(12)).Take(3).ToList();
+        var near = Spots.Select((s, i) => (s, i)).Where(t => Array.IndexOf(tags, t.s.Tag) >= 0).OrderBy(t => t.s.Cell.Manhattan(Spots[p.Spot].Cell) + _rng.Next(12)).Take(3).ToList();
         return near.Count == 0 ? null : near[_rng.Next(near.Count)].i;
     }
 
@@ -618,7 +671,7 @@ public sealed partial class Town
                 break;
             case "leave":
                 // Out by the way in, a while away, back with whatever they found.
-                int gate = Data.Spots.Select((s, i) => (s, i)).OrderBy(t => t.s.Cell.Manhattan(Memory.Inst.Layout.EntranceCell)).First().i;
+                int gate = Spots.Select((s, i) => (s, i)).OrderBy(t => t.s.Cell.Manhattan(Memory.Inst.Layout.EntranceCell)).First().i;
                 if (p.Spot == gate && _rng.NextDouble() < 0.7)
                 {
                     p.Away = true;
@@ -641,6 +694,8 @@ public sealed partial class Town
                 // They stay at their stall or their work; now and then a step and back.
                 p.Working = p.Role == "worker";
                 p.Wait = 8f + (float)_rng.NextDouble() * 10f;
+                // Now and then to a bench or a counter in the rooms round them, and back.
+                if (_rng.NextDouble() < 0.4 && Haunt(p, p.Role == "vendor" ? Keep : Bench) is int at && at != p.Spot) { GoTo(p, at); p.Working = true; }
                 return;
             case "guard":
                 // A short beat: to a spot nearby and back to the post; unwelcome, you, they keep the post.
@@ -670,6 +725,7 @@ public sealed partial class Town
                 // A child goes where a grown-up is.
                 Person minder = p.Figure?.Stage == LifeStage.Child ? People.Where(o => o != p && !o.Dead && !o.Indoors && o.Figure?.Stage != LifeStage.Child).OrderBy(o => o.Pos.DistanceSquaredTo(p.Pos)).FirstOrDefault() : null;
                 if (minder != null) GoTo(p, minder.Spot);
+                else if (_rng.NextDouble() < 0.35 && Haunt(p, Seat) is int seat_) GoTo(p, seat_); // a sit down in one of the rooms
                 else if (linked.Count > 0) GoTo(p, linked[_rng.Next(linked.Count)]);
                 p.Wait = 4f + (float)_rng.NextDouble() * 9f;
                 // Someone else already at this spot: they stop and chat.
@@ -682,7 +738,8 @@ public sealed partial class Town
     /// <summary>At a spot: sit at a sit spot, face a partner to chat, bend to work.</summary>
     void Idle(Person p, float dt)
     {
-        string tag = Data.Spots[p.Spot].Tag;
+        string tag = Spots[p.Spot].Tag;
+        FaceSpot(p, dt);
         string moves = p.Looks?.Figure.Routine?.Moves ?? "wander";
         p.Sitting = tag == "sit" && moves is "wander" or "sit" or "roam" && p.Role is not ("guard" or "vendor");
         if (p.Partner != null && !p.Partner.Dead)
@@ -737,7 +794,7 @@ public sealed partial class Town
     bool Checkpoint(Person p, Vector3 player, Mood mood, float dt)
     {
         float away = (player - p.Pos).Length();
-        bool post = (p.Pos - Walk(Data.Spots[p.Spawn.Spot].Cell)).Length() < 4f;
+        bool post = (p.Pos - Walk(Spots[p.Spawn.Spot].Cell)).Length() < 4f;
         if (!post || !Unwelcome || away > 12f || p.Looks == null)
         {
             if (p.Halt > 0f || p.Holding) { p.Halt = 0f; p.Holding = false; }
@@ -1110,7 +1167,7 @@ public sealed partial class Town
     bool Shown(Person p, float away, float dt)
     {
         if (p.View == null) return false;
-        bool shows = !p.Indoors && !p.Away && p.View.Fade(away, dt);
+        bool shows = (!p.Indoors || p.Asleep) && !p.Away && p.View.Fade(away, dt);
         if (p.View.Visible != shows) p.View.Visible = shows;
         return shows;
     }
@@ -1121,6 +1178,9 @@ public sealed partial class Town
         bool moving = p.Now > 0.05f;
         float t = _clock + who * 1.7f;
         p.Seated = Mathf.MoveToward(p.Seated, p.Sitting ? 1f : 0f, 2.5f * dt);
+        // Into bed: onto the mattress at its foot and back down onto it; out again in the morning.
+        p.Slept = Mathf.MoveToward(p.Slept, p.Asleep ? 1f : 0f, 1.2f * dt);
+        if (p.Asleep && p.Home < _lie.Count && _lie[p.Home] is Vector3 lie) p.Pos = p.Pos.MoveToward(lie, 1.5f * dt);
         p.Bent = Mathf.MoveToward(p.Bent, !moving && p.Working && !p.Sitting ? (p.Job == PersonRole.Medic ? 0.6f : 1f) : 0f, 2f * dt);
         p.Raised = Mathf.MoveToward(p.Raised, p.Aim >= 0f || p.Holding ? 1f : 0f, 3f * dt);
         // Looks at you if you're close and in front of them; otherwise glances about now and then.
@@ -1142,7 +1202,7 @@ public sealed partial class Town
             Work = p.Bent,
             Aim = p.Raised,
             Look = p.HeadYaw,
-            Down = p.Down,
+            Down = MathF.Max(p.Down, p.Slept),
             Act = p.Act,
             ActAmount = p.ActAmount,
             ActAt = p.Pos + new Vector3(-MathF.Sin(p.Yaw), 0f, -MathF.Cos(p.Yaw)) * 2f + Vector3.Up * 0.9f,

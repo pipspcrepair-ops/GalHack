@@ -122,9 +122,9 @@ public sealed partial class Town
         {
             int near = -1;
             float best = float.MaxValue;
-            for (int i = 0; i < Data.Spots.Count; i++)
+            for (int i = 0; i < Spots.Count; i++)
             {
-                float k = (Walk(Data.Spots[i].Cell) - player).LengthSquared();
+                float k = (At(i) - player).LengthSquared();
                 if (k < best) { best = k; near = i; }
             }
             if (near >= 0 && near != p.Spot) GoTo(p, near);
