@@ -119,6 +119,9 @@ public sealed partial class Staging
             "husk-den" => HuskDen(),
             "husk-worms" => HuskWorms(),
             "husk-carrier" => HuskCarrier(),
+            "icons-bag" => IconBagView(),
+            "icons-sheet" => IconSheetView(),
+            "icons-hands" => IconHandsView(),
             _ => ProofViews(view),
         };
         foreach (int x in script) yield return x;

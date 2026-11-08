@@ -110,6 +110,7 @@ public partial class BuildTest : Node
         LightChecks();
         GD.Print("-- the starter blueprints, and saving one --");
         BlueprintChecks();
+        IconSourceChecks();
 
         _game = new Game.Game { Interactive = false, SkipIntro = true, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), WorldChoice.Tested) };
         AddChild(_game);

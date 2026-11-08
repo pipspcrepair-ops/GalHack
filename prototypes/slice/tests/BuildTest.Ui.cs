@@ -20,6 +20,7 @@ public partial class BuildTest
         GD.Print("-- the UI round --");
         foreach (int x in AlertChecks()) yield return x;
         foreach (int x in ScannerChecks()) yield return x;
+        foreach (int x in HeldModelChecks()) yield return x;
         foreach (int x in MenuTextChecks()) yield return x;
         HudBoxChecks();
         foreach (int x in TechFitChecks()) yield return x;
