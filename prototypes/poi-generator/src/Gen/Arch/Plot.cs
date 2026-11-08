@@ -100,6 +100,9 @@ public sealed class Plot
         C.Set(Cell(u, y, v), b);
     }
 
+    /// <summary>Standing water over a cell's floor, claiming it (<see cref="Canvas.Wet"/>).</summary>
+    public void Wet(int u, int y, int v) => C.Wet(Cell(u, y, v));
+
     /// <summary>Sets a cell without claiming it: something lying on open ground.</summary>
     public void Lay(int u, int y, int v, Block b)
     {
@@ -135,7 +138,7 @@ public sealed class Plot
             for (int i = 2 * i0; i <= 2 * i1 + 1; i++)
             {
                 Int3 c = Cell(i, y, k);
-                if (!C.Blocks.ContainsKey(c)) C.Blocks[c] = new Block(BlockType.Plate, s.M, s.C.Scale(0.94f + (Hash.Cell(new Int3(i / 4, 0, k / 4), 141) % 12) / 100f), role);
+                C.Blocks.Pave(c, new Block(BlockType.Plate, s.M, s.C.Scale(0.94f + (Hash.Cell(new Int3(i / 4, 0, k / 4), 141) % 12) / 100f), role));
             }
     }
 
@@ -262,7 +265,7 @@ public sealed class Plot
             for (int i = 2 * i0; i <= 2 * i1 + 1; i++)
             {
                 Int3 c = Cell(i, 2 * j0, k);
-                if (j0 == 0 && !C.Blocks.ContainsKey(c)) C.Blocks[c] = new Block(BlockType.Plate, F.Floor.M, F.Floor.C, Role.Floor);
+                if (j0 == 0) C.Blocks.Pave(c, new Block(BlockType.Plate, F.Floor.M, F.Floor.C, Role.Floor));
             }
         C.Link(a, b);
     }

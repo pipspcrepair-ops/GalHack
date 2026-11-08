@@ -85,7 +85,7 @@ Derelict freighter, wreck field, escape pod cluster, drifting hulk, broken stati
 | Space stations, orbital habitats, orbital prisons, orbital shipyards (built) | space layouts: a hull program and zero-g traversal (the layout already knows `InSpace` and station anchors) |
 | Colony ship crashed into a mountain / on an ice moon | a large hull part that cuts into terrain (a stamp kind for a crash furrow) |
 | Space elevator | a tether site part and a far-ring silhouette |
-| Sunken city, underwater lab | flooding (`LayoutExtras.WaterY` is reserved) and swimming |
+| Sunken city, underwater lab | water inside places (interior flooding was taken out: a place holds water only as a surface over a floor, `LayoutExtras.Water`) and swimming |
 | Theme park, alien zoo | ride and enclosure site parts; an `alien_zoo` kit |
 | Alien megastructures, alien cities, alien warships | site parts at a much larger scale, streamed |
 | Alien colony domes, alien orbital habitats | the colony dome and orbital habitat above, in an alien kit |

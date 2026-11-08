@@ -184,7 +184,7 @@ public static class SewageWorks
         p.Fill(29, -3, 12, 43, -3, 15, Plot.Cube(f.Plinth, Role.Floor));
         for (int u = 2 * 29; u < 2 * 44; u++)
             for (int v = 2 * 12; v < 2 * 16; v++)
-                if (Hash.Cell(new Int3(u, 0, v), 203) % 100 < 70) p.Put(u, -4, v, new Block(BlockType.Puddle, Material.Water, new Rgb(0x4a, 0x48, 0x2a), Role.Decor));
+                p.Wet(u, -4, v);
         // Bar screens across the channel, a machine walking them.
         foreach (int i in new[] { 33, 38 })
         {
@@ -274,7 +274,6 @@ public static class SewageWorks
         p.Disc(ci, ck, r - 1, -3, Plot.Cube(f.Plinth, Role.Floor));
         p.Weathers(ci - (int)r - 1, 0, ck - (int)r - 1, ci + (int)r, 2, ck + (int)r, 0);
         var basin = new List<(int, int, int)>();
-        Rgb mud = new(0x4e, 0x48, 0x34), wet = new(0x3e, 0x44, 0x38);
         int rr = (int)r + 1;
         for (int v = 2 * (ck - rr); v < 2 * (ck + rr); v++)
             for (int u = 2 * (ci - rr); u < 2 * (ci + rr); u++)
@@ -282,8 +281,8 @@ public static class SewageWorks
                 if (!Plot.In(ci, ck, r - 1.0, u >> 1, v >> 1)) continue;
                 for (int y = -4; y <= -2; y++) basin.Add((u, y, v));
                 uint h = Hash.Cell(new Int3(u, ci, v), 211);
-                if (h % 100 < 55) p.Put(u, -4, v, new Block(BlockType.Puddle, Material.Water, h % 7 == 0 ? mud : wet, Role.Decor));
-                else if (h % 100 < 62) p.Put(u, -4, v, new Block(BlockType.Plant, Material.Plant, new Rgb(0x5a, 0x66, 0x38), Role.Debris));
+                p.Wet(u, -4, v);
+                if (h % 100 is >= 55 and < 62) p.Put(u, -4, v, new Block(BlockType.Plant, Material.Plant, new Rgb(0x5a, 0x66, 0x38), Role.Debris));
             }
         // The middle column, and the scraper bridge from the rim to it.
         p.Fill(ci - 1, -2, ck - 1, ci, 0, ck, Plot.Cube(f.Plinth, Role.Wall));
@@ -374,8 +373,7 @@ public static class SewageWorks
                 for (int u = 2 * (i0 + 1); u < 2 * i1; u++)
                 {
                     if (n == 0) for (int y = -4; y <= -2; y++) cells.Add((u, y, v));
-                    uint h = Hash.Cell(new Int3(u, n, v), 217);
-                    if (h % 100 < 62) p.Put(u, -4, v, new Block(BlockType.Puddle, Material.Water, h % 5 == 0 ? new Rgb(0x56, 0x52, 0x34) : new Rgb(0x3c, 0x4a, 0x42), Role.Decor));
+                    p.Wet(u, -4, v);
                 }
         // Air mains along the wall tops, drop pipes into the water.
         for (int n = 0; n <= lanes; n++)

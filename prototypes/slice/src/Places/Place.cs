@@ -383,8 +383,8 @@ public partial class Place : Node3D
 
     internal IEnumerable<int> BuildFixtures()
     {
-        // The standing water in its low rooms, still and dark.
-        if (PoiGenerator.MeshBuild.Flooding(Inst) is { } water) AddChild(water);
+        // The water it holds by design (a channel, a basin): a surface over the floor, never a block.
+        if (PoiGenerator.MeshBuild.Water(Inst) is { } water) AddChild(water);
         foreach (int x in BuildDoors()) yield return x;
         BuildLifts();
         yield return 0;

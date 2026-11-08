@@ -390,15 +390,16 @@ public static partial class Homes
         }
     }
 
-    sealed record Snap(Dictionary<Int3, Block> Blocks, HashSet<Int3> Occ, int Modules, int Doorways, int Slots, int Edges, int Plain, HashSet<Int3> Lasting, int Service, int Homes, int Entrance, Int3 Cell, Dir Facing, Int3 Gate, int Levels);
+    sealed record Snap(Dictionary<Int3, Block> Blocks, Dictionary<Int3, Block> Under, HashSet<Int3> Occ, int Modules, int Doorways, int Slots, int Edges, int Plain, HashSet<Int3> Lasting, int Service, int Homes, int Entrance, Int3 Cell, Dir Facing, Int3 Gate, int Levels);
 
-    static Snap Snapshot(Canvas c) => new(new Dictionary<Int3, Block>(c.Blocks), new HashSet<Int3>(c.Occ), c.Modules.Count, c.Doorways.Count, c.Slots.Count, c.Edges.Count,
+    static Snap Snapshot(Canvas c) => new(new Dictionary<Int3, Block>(c.Blocks), new Dictionary<Int3, Block>(c.Blocks.Under), new HashSet<Int3>(c.Occ), c.Modules.Count, c.Doorways.Count, c.Slots.Count, c.Edges.Count,
         c.X.Plain.Count, new HashSet<Int3>(c.X.Lasting), c.X.Service.Count, c.X.Homes.Count, c.EntranceModule, c.EntranceCell, c.EntranceFacing, c.X.Gate, c.X.Levels.Count);
 
     static void Restore(Canvas c, Snap s)
     {
         c.Blocks.Clear();
         foreach (var (k, v) in s.Blocks) c.Blocks[k] = v;
+        foreach (var (k, v) in s.Under) c.Blocks.Under[k] = v;
         c.Occ.Clear();
         c.Occ.UnionWith(s.Occ);
         c.Modules.RemoveRange(s.Modules, c.Modules.Count - s.Modules);

@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using Godot;
 using PoiGenerator.Gen;
 using Material = Godot.Material;
@@ -43,26 +45,48 @@ public static class MeshBuild
         return mesh;
     }
 
+    /// <summary>How far over a wet cell's floor its water stands: just over a floor's finish.</summary>
+    public const float WaterDepth = BlockInfo.FinishTop + 0.03f;
+
     /// <summary>
-    /// The still water standing in a place's low rooms (<see cref="PoiInstance.Water"/>): a flat sheet at each pool's
-    /// level over the floor cells it covers, in the place's own cells; null where nothing is flooded.
+    /// The water a place holds by design (<see cref="LayoutExtras.Water"/>), over the floors still under it; null
+    /// where it holds none.
     /// </summary>
-    public static MeshInstance3D Flooding(PoiInstance inst)
+    public static MeshInstance3D Water(PoiInstance inst)
     {
-        if (inst.Water.Count == 0) return null;
+        if (inst.Layout.Extras.Water.Count == 0) return null;
+        var nav = inst.Nav();
+        return Water(inst.Layout.Extras.Water.Where(c => nav.Solid(c + Int3.Down) && !BlockInfo.IsFullCube(inst.Blocks.Get(c).Type)), StillWater());
+    }
+
+    /// <summary>
+    /// Standing water as a surface a hand deep over each wet cell's floor: a whole cell where it joins another (a
+    /// channel, a basin), a puddle's patch where it lies alone. A surface only, never a block: nothing collides with
+    /// it and it hides no face, so whatever stands in it stands up out of it. Null where there is none.
+    /// </summary>
+    public static MeshInstance3D Water(IEnumerable<Int3> cells, Material material)
+    {
+        var wet = new HashSet<Int3>(cells);
+        if (wet.Count == 0) return null;
         var st = new SurfaceTool();
         st.Begin(Mesh.PrimitiveType.Triangles);
         st.SetNormal(Vector3.Up);
-        st.SetColor(new Color(1, 1, 1, 1)); // the river shader reads its alpha as the shore: all of it is water
-        foreach (WaterPool pool in inst.Water)
-            foreach (Int3 c in pool.Cells)
+        st.SetColor(new Color(1, 1, 1, 1)); // the water shader reads its alpha as the shore: all of it is water
+        foreach (Int3 c in wet)
+        {
+            float x0 = c.X, z0 = c.Z, x1 = c.X + 1, z1 = c.Z + 1, y = c.Y + WaterDepth;
+            if (!Dirs.Horizontal.Any(d => wet.Contains(c + d.Vec())))
             {
-                Vector3 a = new(c.X, pool.Level, c.Z), b = new(c.X + 1, pool.Level, c.Z), d = new(c.X + 1, pool.Level, c.Z + 1), e = new(c.X, pool.Level, c.Z + 1);
-                st.AddVertex(a); st.AddVertex(b); st.AddVertex(d);
-                st.AddVertex(a); st.AddVertex(d); st.AddVertex(e);
+                uint h = Hash.Cell(c, 57);
+                x0 += 0.05f + h % 97 / 97f * 0.2f; z0 += 0.05f + h / 97 % 89 / 89f * 0.2f;
+                x1 -= 0.05f + h / 8633 % 83 / 83f * 0.2f; z1 -= 0.05f + h / 688_939 % 79 / 79f * 0.2f;
             }
+            Vector3 a = new(x0, y, z0), b = new(x1, y, z0), d = new(x1, y, z1), e = new(x0, y, z1);
+            st.AddVertex(a); st.AddVertex(b); st.AddVertex(d);
+            st.AddVertex(a); st.AddVertex(d); st.AddVertex(e);
+        }
         st.Index();
-        return new MeshInstance3D { Name = "Flooding", Mesh = st.Commit(), MaterialOverride = StillWater(), CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
+        return new MeshInstance3D { Name = "Water", Mesh = st.Commit(), MaterialOverride = material, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
     }
 
     /// <summary>
