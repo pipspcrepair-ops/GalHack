@@ -412,6 +412,20 @@ float inside_hole(vec2 p) {
 void vertex() {
 	if (hole_sink > 0.0 && inside_hole((MODEL_MATRIX * vec4(VERTEX, 1.0)).xz) >= hole_sink_from) VERTEX.y -= hole_sink;
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	// The horizon mesh eases onto the far field's smoother ground (UV2.x) over the last of its reach,
+	// so where it thins away past its rim the sheet behind stands where it did.
+	if (far_ring && rim.z > 0.0) {
+		vec2 w = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xz;
+		float out_by = max(abs(w.x - rim.x), abs(w.y - rim.y));
+		VERTEX.y = mix(VERTEX.y, UV2.x, smoothstep(rim.z - 2400.0, rim.z - 600.0, out_by));
+		wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	}
+	// The far land sinks over the round world's horizon (round_sink); the voxels are all well inside it.
+	if (far_ring) {
+		float sink = round_sink(wpos.xz - CAMERA_POSITION_WORLD.xz);
+		VERTEX.y -= sink;
+		wpos.y -= sink;
+	}
 	wnormal = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
 }
 

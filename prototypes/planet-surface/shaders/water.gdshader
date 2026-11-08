@@ -59,6 +59,10 @@ vec3 rain_rings(vec2 p, float t, float amount) {
 }
 void vertex() {
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	// The sea sinks over the horizon with the land (round_sink): the plane is subdivided for it.
+	float sink = round_sink(wpos.xz - CAMERA_POSITION_WORLD.xz);
+	VERTEX.y -= sink;
+	wpos.y -= sink;
 }
 
 void fragment() {

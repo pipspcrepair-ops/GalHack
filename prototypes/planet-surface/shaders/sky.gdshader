@@ -339,10 +339,11 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter) 
 	float flash = weather_flash.w * (0.12 + 1.4 * pow(max(dot(rd, weather_flash.xyz), 0.0), 7.0));
 	for (int i = 0; i < steps; i++) {
 		vec3 p = ro + rd * t;
-		// The world is round: far clouds follow the land over the horizon (the same slow curve as the far land,
-		// 1 / 300 km), so distant bases sink out of sight and only the upper bulk shows. Overhead it is flat.
-		vec2 away = p.xz - ro.xz;
-		p.y += dot(away, away) * 1.667e-6;
+		// The world is round: far clouds follow the land over the horizon (the same slow curve from the
+		// same distance as the far land, round_sink in noise.gdshaderinc: 1 / 300 km past 2,000 m), so
+		// distant bases sink out of sight and only the upper bulk shows. Overhead it is flat.
+		float away = max(length(p.xz - ro.xz) - 2000.0, 0.0);
+		p.y += away * away * 1.667e-6;
 		float d = cloud_density(p, false);
 		if (d > 0.01) {
 			// A thinner slab packs the same cloud into less path: as solid, seen through.
