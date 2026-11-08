@@ -104,11 +104,15 @@ public sealed class DecoPlanner
         // Pieces that play the first-named role come first.
         var all = own.Concat(borrowed).ToList();
         if (all.Count == 0) return null;
-        var weights = all.Select(x => (x.Set == _room.Set ? 3f : 1f) * (x.Has(roles[0]) ? 2f : 1f) * (_room.Tech != null && x.Tech == _room.Tech ? 1.5f : 1f)).ToList();
+        // The room's own era first by far: a high world's room takes its high pieces where it has them, older ones only to fill in.
+        var weights = all.Select(x => (x.Set == _room.Set ? 3f : 1f) * (x.Has(roles[0]) ? 2f : 1f) * Era(x)).ToList();
         p = all[Math.Max(0, _rng.PickWeighted(weights))];
         _chosen[key] = p;
         return p;
     }
+
+    /// <summary>How much a piece suits the room's era: its own era four times over, one era older at par, two older a little.</summary>
+    float Era(DecoPiece x) => _room.Tech is not DecoTech t ? 1f : x.Tech == t ? 4f : (int)t - (int)x.Tech == 1 ? 1f : 0.3f;
 
     // ---- templates in their own frame ------------------------------------------------------------
 

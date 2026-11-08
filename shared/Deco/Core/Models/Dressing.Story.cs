@@ -246,12 +246,12 @@ public static partial class DecoDressing
         r["sandbags"] = (b, a) =>
         {
             // A curved wall of sandbags, laid in staggered courses; a high world's blast modules behind.
-            float len = R(b, 2.4f, 3.6f), bend = R(b, -0.4f, 0.6f);
-            int courses = a.Era == DecoTech.High ? 2 : 3 + b.Rng.Int(2);
+            float len = R(b, 3.2f, 4.6f), bend = R(b, -0.4f, 0.6f);
+            int courses = a.Era == DecoTech.High ? 3 : 4 + b.Rng.Int(2);
             Vector3 At(float t) => new(t * len - len / 2, 0, bend * (1 - 4 * (t - 0.5f) * (t - 0.5f)));
             for (int c = 0; c < courses; c++)
             {
-                int n = (int)(len / 0.56f);
+                int n = (int)(len / 0.66f);
                 for (int i = 0; i < n; i++)
                 {
                     float t = (i + 0.5f + (c % 2) * 0.5f) / (n + 0.5f);
@@ -259,7 +259,7 @@ public static partial class DecoDressing
                     Vector3 p = At(t), q = At(MathF.Min(1, t + 0.02f));
                     float yaw = MathF.Atan2(q.Z - p.Z, q.X - p.X) * -180f / MathF.PI;
                     using (b.Turn(new Vector3(p.X, 0, p.Z), 0, yaw + R(b, -6, 6)))
-                        b.Ball(p.X, 0.1f + c * 0.19f, p.Z, 0.29f, 0.11f, 0.17f, i % 4 == 0 ? DecoSlot.Soil : DecoSlot.Canvas, 8).As(DecoFinish.Fabric);
+                        b.Ball(p.X, 0.12f + c * 0.22f, p.Z, 0.35f, 0.13f, 0.21f, i % 4 == 0 ? DecoSlot.Soil : DecoSlot.Canvas, 8).As(DecoFinish.Fabric);
                 }
             }
             if (a.Era == DecoTech.High)
@@ -530,10 +530,41 @@ public static partial class DecoDressing
     {
         r["luggage"] = (b, a) =>
         {
-            int n = 2 + b.Rng.Int(4);
+            // A heap of what people carried and left: a cart or trolley now and then, cases piled by it.
+            bool cart = b.Rng.Chance(0.4f);
+            if (cart)
+                switch (a.Era)
+                {
+                    case DecoTech.Low:
+                        // A handcart: two big wheels, a bed of boards, its shafts down on the road.
+                        foreach (float x in new[] { -0.62f, 0.62f }) b.Tube(x - 0.04f, 0.45f, 0.6f, x + 0.04f, 0.45f, 0.6f, 0.45f, DecoSlot.Wood, 12);
+                        b.Box(-0.55f, 0.55f, -0.2f, 0.55f, 0.62f, 1.4f, DecoSlot.Wood).As(DecoFinish.Wood);
+                        foreach (float x in new[] { -0.45f, 0.45f }) Rod(b, new Vector3(x, 0.58f, -0.2f), new Vector3(x, 0.03f, -1.3f), 0.05f, DecoSlot.Wood);
+                        for (int k = 0; k < 3; k++) b.Ball(-0.25f + k * 0.25f, 0.8f, 0.4f + k * 0.3f, 0.26f, 0.2f, 0.24f, ClothOf(k), 8).Soft();
+                        break;
+                    case DecoTech.Mid:
+                        // A luggage trolley, tipped forward onto its nose.
+                        using (b.Turn(new Vector3(0, 0, -0.5f), -18, 0))
+                        {
+                            b.Box(-0.4f, 0.12f, -0.5f, 0.4f, 0.16f, 0.6f, DecoSlot.Metal);
+                            foreach (float x in new[] { -0.38f, 0.38f }) Rod(b, new Vector3(x, 0.16f, 0.6f), new Vector3(x, 1.05f, 0.7f), 0.03f, DecoSlot.Metal);
+                            b.Box(-0.42f, 0.2f, -0.35f, 0.42f, 0.72f, 0.4f, ClothOf(2));
+                        }
+                        foreach (float x in new[] { -0.35f, 0.35f }) b.Cyl(x, 0, 0.45f, 0.1f, 0.06f, DecoSlot.Rubber, 10);
+                        break;
+                    default:
+                        // A hover sled down on its skids, cases strapped on it.
+                        foreach (float x in new[] { -0.4f, 0.4f }) b.Box(x - 0.05f, 0, -0.8f, x + 0.05f, 0.12f, 0.8f, DecoSlot.Dark);
+                        b.Box(-0.5f, 0.12f, -0.85f, 0.5f, 0.2f, 0.85f, DecoSlot.Plastic);
+                        b.Box(-0.51f, 0.14f, -0.86f, 0.51f, 0.17f, 0.86f, DecoSlot.Lamp).Lit().Ghost();
+                        b.Frustum(0.2f, -0.4f, 0.4f, -0.6f, 0.5f, 0.75f, -0.35f, 0.35f, -0.55f, 0.45f, DecoSlot.Body);
+                        break;
+                }
+            int n = 4 + b.Rng.Int(5);
             for (int i = 0; i < n; i++)
             {
-                float x = R(b, -1f, 1f), z = R(b, -1f, 1f);
+                // Clear of the cart, where there is one: spilled in front of it.
+                float x = R(b, -1.3f, 1.3f), z = cart ? R(b, -2.3f, -1.4f) : R(b, -1.3f, 1.3f);
                 bool flat = b.Rng.Chance(0.5f);
                 using (b.Turn(new Vector3(x, 0, z), 0, R(b, 0, 360)))
                     switch (a.Era)
@@ -811,7 +842,7 @@ public static partial class DecoDressing
                 case "cross":
                 {
                     // A painted cross, the paint run down from its ends; a ring round it now and then.
-                    float c = 1.45f, s = R(b, 0.38f, 0.5f);
+                    float c = 1.4f, s = R(b, 0.5f, 0.62f);
                     Stroke(-s, c - s, s, c + s, 0.1f, DecoSlot.Alert);
                     Stroke(-s, c + s, s, c - s, 0.1f, DecoSlot.Alert);
                     for (int i = 0; i < 4; i++) { float x = (i % 2 == 0 ? -s : s) * R(b, 0.6f, 1f); float y = c - s * R(b, 0.3f, 1f); Stroke(x, y, x, y - R(b, 0.08f, 0.3f), 0.025f, DecoSlot.Alert); }
@@ -1102,12 +1133,15 @@ public static partial class DecoDressing
                     for (int i = 0; i < 3; i++) { float an = i * MathF.Tau / 3; Rod(b, new Vector3(MathF.Cos(an) * 0.35f, 0, MathF.Sin(an) * 0.35f), new Vector3(MathF.Cos(an) * 0.2f, 0.7f, MathF.Sin(an) * 0.2f), 0.03f, DecoSlot.Dark); }
                     b.Cyl(0, 0.65f, 0, 0.22f, 0.25f, DecoSlot.Dark, 12, 1.5f);
                     b.Dome(0, 0.85f, 0, 0.28f, 0.08f, 0.28f, DecoSlot.Char, 10);
+                    if (a.Lit) b.Dome(0, 0.9f, 0, 0.2f, 0.32f, 0.2f, DecoSlot.Lamp, 8).Lit().Ghost();
                     break;
                 case DecoTech.Mid:
                     b.Cyl(0, 0, 0, 0.29f, 0.88f, DecoSlot.Rust, 14);
                     for (int i = 0; i < 6; i++) { float an = i * MathF.Tau / 6; b.Tube(MathF.Cos(an) * 0.29f, 0.25f, MathF.Sin(an) * 0.29f, MathF.Cos(an) * 0.3f, 0.25f, MathF.Sin(an) * 0.3f, 0.04f, DecoSlot.Char, 6).Ghost(); }
                     b.Cyl(0, 0.8f, 0, 0.27f, 0.06f, DecoSlot.Char, 12).Ghost();
                     b.Box(-0.32f, 0.88f, -0.32f, 0.32f, 0.9f, 0.32f, DecoSlot.Dark);
+                    // Still burning where someone keeps it: flames over the grate.
+                    if (a.Lit) b.Dome(0, 0.9f, 0, 0.22f, 0.4f, 0.22f, DecoSlot.Lamp, 8).Lit().Ghost();
                     break;
                 default:
                     b.Cyl(0, 0, 0, 0.25f, 1.1f, DecoSlot.Plastic, 12, 0.4f);
@@ -1120,20 +1154,22 @@ public static partial class DecoDressing
         r["spikes"] = (b, a) =>
         {
             // A row of spikes leaning out, the gang's trophies on them, tyres heaped.
-            for (int i = 0; i < 5; i++)
+            for (int i = 0; i < 7; i++)
             {
-                float x = -1.6f + i * 0.8f, lean = R(b, -35, -20);
+                float x = -2.1f + i * 0.7f, lean = R(b, -35, -20);
                 using (b.Turn(new Vector3(x, 0, 0), lean, R(b, -10, 10)))
                 {
                     if (a.Era == DecoTech.High) b.Hull(new[] { new Vector3(x - 0.1f, -0.2f, -0.06f), new Vector3(x + 0.1f, -0.2f, -0.06f), new Vector3(x, 1.8f, 0), new Vector3(x, 1.8f, 0),
                         new Vector3(x - 0.1f, -0.2f, 0.06f), new Vector3(x + 0.1f, -0.2f, 0.06f), new Vector3(x, 1.8f, 0.01f), new Vector3(x, 1.8f, 0.01f) }, DecoSlot.Plastic);
-                    else b.Cyl(x, -0.3f, 0, a.Era == DecoTech.Low ? 0.07f : 0.025f, 2f, a.Era == DecoTech.Low ? DecoSlot.Wood : DecoSlot.Rust, 6, 0.05f);
+                    else b.Cyl(x, -0.3f, 0, a.Era == DecoTech.Low ? 0.08f : 0.04f, R(b, 2.3f, 2.9f), a.Era == DecoTech.Low ? DecoSlot.Wood : DecoSlot.Rust, 6, 0.05f);
                 }
             }
             // A horned skull on the middle one's foot, of some beast.
             b.Ball(0, 0.15f, -0.35f, 0.14f, 0.12f, 0.17f, DecoSlot.Bone, 8);
             foreach (float s in new[] { -1f, 1f }) Rod(b, new Vector3(s * 0.1f, 0.2f, -0.3f), new Vector3(s * 0.38f, 0.45f, -0.2f), 0.03f, DecoSlot.Bone);
-            if (a.Era != DecoTech.Low) for (int k = 0; k < 3; k++) b.Cyl(1.9f, k * 0.22f, 0.3f, 0.36f, 0.22f, DecoSlot.Rubber, 12);
+            if (a.Era != DecoTech.Low)
+                foreach (float tx in new[] { 2.6f, -2.8f })
+                    for (int k = 0, n = 3 + b.Rng.Int(3); k < n; k++) b.Cyl(tx + R(b, -0.05f, 0.05f), k * 0.22f, 0.3f, 0.36f, 0.22f, DecoSlot.Rubber, 12);
             if (a.Era == DecoTech.Mid)
             {
                 // A panel off a car, its gang mark painted on.

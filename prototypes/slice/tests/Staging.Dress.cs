@@ -32,7 +32,7 @@ public sealed partial class Staging
         string dir = _args.GetValueOrDefault("dir", "."), tag = _args.GetValueOrDefault("tag", "dress");
         Vector3 from = _game.Survivor.WorldFeet;
         Vector3 Near(double x, double z) => world.NearestCopy(new Vector3((float)x, 0f, (float)z), from);
-        var pieces = d.Items.Select(it => (It: it, At: Near(it.X, it.Z))).Where(p => p.At.DistanceTo(from) < 1100f).ToList();
+        var pieces = d.Items.Select(it => (It: it, At: Near(it.X, it.Z))).Where(p => ((p.At - from) with { Y = 0f }).Length() < 4200f).ToList();
         var housed = new HashSet<InfraRoute>(world.Infra.Ruins.Where(f => f.Route != null && f.Family.Tags.Contains("house")).Select(f => f.Route));
         var streets = world.Infra.Routes.Where(r => r.Kind != RouteKind.Rail && (housed.Contains(r) || world.StartTown?.Streets.Contains(r) == true)).ToList();
         // The stretch of street with the most of the world's own story in view ahead: solid pieces count double.
@@ -42,7 +42,8 @@ public sealed partial class Staging
             for (int k = 2; k + 2 < r.Count; k += 2)
             {
                 Vector3 p = Near(r.X[k], r.Z[k]);
-                if (p.DistanceTo(from) > 900f) continue;
+                // A town's street near the start for choice; a world without one there, the nearest town's.
+                if (((p - from) with { Y = 0f }).Length() > 4000f) continue;
                 Vector3 along = (Near(r.X[k + 2], r.Z[k + 2]) - Near(r.X[k - 2], r.Z[k - 2])) with { Y = 0f };
                 if (along.LengthSquared() < 1e-3f) continue;
                 along = along.Normalized();
@@ -57,15 +58,17 @@ public sealed partial class Staging
                         float ahead = off.Dot(fwd), side = MathF.Abs(off.Dot(new Vector3(-fwd.Z, 0f, fwd.X)));
                         if (ahead < 4f || ahead > 50f || side > 4f + ahead * 0.45f) continue;
                         bool own = !BaseDress.Contains(it.Part.Id);
-                        score += (own ? 1f : 0.2f) * (it.Part.Solid ? 2f : 1f) / (1f + ahead / 25f);
+                        // The world's strongest leanings count most: its own story, not what else happens to lie about.
+                        float lean = MathF.Min(2.5f, d.Old.GetValueOrDefault(it.Part.Id) + d.Now.GetValueOrDefault(it.Part.Id));
+                        score += (own ? 0.3f + lean : 0.2f) * (it.Part.Solid ? 2f : 1f) / (1f + ahead / 25f);
                         if (own) kinds.Add(it.Part.Id);
                     }
-                    score *= 1f + 0.15f * kinds.Count;
+                    score *= (1f + 0.15f * kinds.Count) / (1f + ((p - from) with { Y = 0f }).Length() / 3000f);
                     if (score > bestScore) { bestScore = score; stand = p; way = fwd; }
                 }
             }
         stand.Y = _game.Zone.GroundAt(stand.X, stand.Z).Y;
-        var seen = pieces.Where(p => (p.At - stand).Dot(way) is > 2f and < 55f && p.At.DistanceTo(stand) < 60f).GroupBy(p => p.It.Part.Id).OrderByDescending(g => g.Count()).Select(g => $"{g.Key}:{g.Count()}");
+        var seen = pieces.Where(p => ((p.At - stand) with { Y = 0f }).Dot(way) is > 2f and < 55f && ((p.At - stand) with { Y = 0f }).Length() < 60f).GroupBy(p => p.It.Part.Id).OrderByDescending(g => g.Count()).Select(g => $"{g.Key}:{g.Count()}");
         GD.Print($"DRESS street at {stand}, looking {way}, score {bestScore:F1}: {string.Join(" ", seen)}");
 
         // At eye height in the street, then from 30 m up and back along it.

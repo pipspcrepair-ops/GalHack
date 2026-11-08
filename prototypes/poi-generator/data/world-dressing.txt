@@ -28,10 +28,10 @@ part shop_sign | at wall | chance 0.9 | only shop | reach 0.6
 part sign_post | at kerb verge | every 140 | far 1500 | reach 0.6 | solid yes
 
 # ---- Festival, match day, opening day ----
-part bunting | at span | every 24 | far 500 | reach 0.8
+part bunting | at span | every 17 | far 500 | reach 0.8
 part lanterns | at span | every 32 | far 400 | reach 0.8
 part prayer_flags | model bunting | style prayer | at span verge | every 22 | far 2500 | reach 0.8
-part banner | at kerb gate | every 36 | chance 0.4 | far 600 | reach 0.8 | solid yes
+part banner | at kerb gate | every 26 | chance 0.4 | far 600 | reach 0.8 | solid yes
 part banner_span | at span | every 90 | far 400 | reach 1
 part stall | at kerb square | every 55 | chance 0.6 | far 500 | reach 2.6 | solid yes
 part grandstand | at square | chance 0.7 | far 400 | reach 7.5 | solid yes
@@ -45,37 +45,37 @@ part scarves | at kerb | every 46 | far 500 | reach 1.8 | solid yes
 part ticket_booth | at square gate kerb | every 140 | chance 0.4 | far 500 | reach 1.6 | solid yes
 
 # ---- Sickness ----
-part mark_plague | model mark | style cross | at wall | chance 0.6
-part tape | at span garden gate | every 42 | chance 0.35 | far 900 | reach 2.2
-part barrier | at lane kerb gate road | every 70 | chance 0.4 | far 1200 | reach 1.4 | solid yes
-part tent_medical | model tent | style medical | at square gate garden | chance 0.45 | far 900 | reach 4 | solid yes
-part burn_pit | at square field | every 700 | chance 0.4 | far 1200 | reach 4
+part mark_plague | model mark | style cross | at wall | chance 0.85
+part tape | at span garden gate | every 26 | chance 0.45 | far 900 | reach 2.2
+part barrier | at lane kerb gate road | every 45 | chance 0.4 | far 1200 | reach 1.4 | solid yes
+part tent_medical | model tent | style medical | at square gate garden | chance 0.6 | far 900 | reach 4 | solid yes
+part burn_pit | at square field | every 500 | chance 0.6 | far 1200 | reach 4
 part masks | model belongings | style masks | at kerb garden | every 44 | chance 0.2 | far 900 | reach 1
 
 # ---- War ----
-part sandbags | at kerb gate square road | every 60 | chance 0.5 | far 1400 | reach 2.4 | solid yes
-part barricade | at lane road | every 130 | far 1000 | reach 4.5 | solid yes
+part sandbags | at kerb gate square road | every 34 | chance 0.6 | far 1400 | reach 2.4 | solid yes
+part barricade | at lane road | every 70 | far 1000 | reach 4.5 | solid yes
 part hedgehogs | at road verge field | every 240 | far 1600 | reach 1.6 | solid yes
 part wire | at verge field | every 130 | far 1600 | reach 5.5
-part two_flags | at square gate kerb | every 150 | chance 0.5 | far 900 | reach 2.6 | solid yes
-part burnt_car | at lane road verge | every 170 | far 2200 | reach 3.2 | solid yes
-part shell_hole | at field verge square | every 95 | far 1800 | reach 3.6
+part two_flags | at square gate kerb | every 90 | chance 0.5 | far 900 | reach 2.6 | solid yes
+part burnt_car | at lane road verge | every 110 | far 2200 | reach 3.2 | solid yes
+part shell_hole | at field verge square kerb | every 70 | far 1800 | reach 3.6
 
 # ---- Leaving ----
-part luggage | at kerb lane verge road garden | every 36 | chance 0.25 | far 2600 | reach 1.2
-part queue_rails | at gate square kerb | every 100 | chance 0.5 | far 700 | reach 3.2 | solid yes
+part luggage | at kerb lane verge road garden | every 24 | chance 0.3 | far 2600 | reach 1.8
+part queue_rails | at gate square kerb | every 70 | chance 0.5 | far 700 | reach 3.2 | solid yes
 part crates | at kerb gate square | every 64 | chance 0.3 | far 1200 | reach 1.5 | solid yes
 part bedrolls | model belongings | style camp | at verge garden kerb | every 90 | chance 0.2 | far 3000 | reach 1.6
 part tent_camp | model tent | style camp | at square field garden verge | every 520 | chance 0.3 | far 2000 | reach 3.2 | solid yes
 
 # ---- Faith ----
-part shrine | at kerb square verge | every 130 | chance 0.4 | far 1400 | reach 1.4 | solid yes
+part shrine | at kerb square verge | every 70 | chance 0.5 | far 1400 | reach 1.4 | solid yes
 part memorial | at square verge | every 320 | chance 0.4 | far 1200 | reach 3 | solid yes
 part bell_post | at square verge | every 520 | chance 0.4 | far 1200 | reach 1.6 | solid yes
 part cairn | at verge field | every 260 | far 3000 | reach 1
 
 # ---- Marks on house fronts: symbols only ----
-part mark_sigil | model mark | style sigil | at wall | chance 0.5
+part mark_sigil | model mark | style sigil | at wall | chance 0.75
 part mark_tally | model mark | style tally | at wall | chance 0.5
 part mark_plate | model mark | style plate | at wall | chance 0.7
 part mark_tag | model mark | style tag | at wall | chance 0.7
@@ -97,8 +97,8 @@ part washing_line | at garden | chance 0.3 | reach 3
 part garden_table | at garden | chance 0.3 | reach 1.6 | solid yes
 part dust_sheets | at garden kerb | every 64 | chance 0.3 | far 700 | reach 1.4 | solid yes
 part soup_kitchen | at square | chance 0.5 | far 500 | reach 4 | solid yes
-part burn_barrel | at kerb square lane | every 64 | chance 0.3 | far 1200 | reach 0.8 | solid yes
-part spikes | at kerb road gate | every 85 | chance 0.4 | far 1300 | reach 1.5 | solid yes
+part burn_barrel | at kerb square lane | every 45 | chance 0.3 | far 1200 | reach 0.8 | solid yes
+part spikes | at kerb road gate | every 55 | chance 0.4 | far 1300 | reach 1.5 | solid yes
 part picket | at kerb gate | every 95 | chance 0.4 | far 700 | reach 2.6 | solid yes
 part beacon | at square verge kerb | every 210 | chance 0.4 | far 1500 | reach 0.8 | solid yes
 part telescope | at square garden | chance 0.25 | far 900 | reach 1.2 | solid yes

@@ -542,7 +542,8 @@ public partial class InfraLayer : Node3D
 
     // ---- power lines -------------------------------------------------------------------------------
 
-    internal static readonly DecoRgb PoleWood = DecoRgb.Hex("4f3d2c"), PylonSteel = DecoRgb.Hex("6e7072"), Insulator = DecoRgb.Hex("a8b4b8"), WireDark = DecoRgb.Hex("1e2024");
+    internal static readonly DecoRgb PoleWood = DecoRgb.Hex("4f3d2c"), PylonSteel = DecoRgb.Hex("6e7072"), Insulator = DecoRgb.Hex("a8b4b8"), WireDark = DecoRgb.Hex("1e2024"),
+        PoleConcrete = DecoRgb.Hex("8c8a84"), PoleComposite = DecoRgb.Hex("cfd3d6"), Conduit = DecoRgb.Hex("b9bec2");
 
     internal static readonly DecoRgb PylonConcrete = DecoRgb.Hex("8a8a86");
     /// <summary>How far a pylon leg's end sinks below the ground under its foot.</summary>
@@ -594,8 +595,13 @@ public partial class InfraLayer : Node3D
             }
             if (!p.Pylon)
             {
-                b.Box(foot + NV.UnitY * (h * 0.5f - 0.6f), NV.UnitX * 0.13f, NV.UnitY * (h * 0.5f + 0.6f), NV.UnitZ * 0.13f, PoleWood, DecoSurface.Matte, collide: true);
-                b.Box(foot + NV.UnitY * (h - 0.45f), along * 0.07f, NV.UnitY * 0.07f, side * 1.3f, PoleWood, DecoSurface.Matte, collide: true);
+                // By the old world's era: a timber pole, a concrete pole with a steel arm, a slim composite mast carrying conduit.
+                TechLevel era = b.World.Profile.Before;
+                DecoRgb pole = era switch { TechLevel.Low => PoleWood, TechLevel.Mid => PoleConcrete, _ => PoleComposite };
+                float thick = era == TechLevel.High ? 0.09f : 0.13f;
+                b.Box(foot + NV.UnitY * (h * 0.5f - 0.6f), NV.UnitX * thick, NV.UnitY * (h * 0.5f + 0.6f), NV.UnitZ * thick, pole, DecoSurface.Matte, collide: true);
+                b.Box(foot + NV.UnitY * (h - 0.45f), along * 0.07f, NV.UnitY * 0.07f, side * 1.3f, era == TechLevel.Low ? PoleWood : era == TechLevel.Mid ? PylonSteel : PoleComposite, era == TechLevel.Mid ? DecoSurface.Metal : DecoSurface.Matte, collide: true);
+                if (era == TechLevel.High) b.Box(foot + NV.UnitY * (h * 0.55f), NV.UnitX * (thick + 0.01f), NV.UnitY * 0.05f, NV.UnitZ * (thick + 0.01f), PylonSteel, DecoSurface.Metal, collide: false);
                 for (int k = 0; k < Lines.WiresOn(p); k++)
                 {
                     var a = p.Anchor(k, Lines.WiresOn(p));
@@ -714,7 +720,8 @@ public partial class InfraLayer : Node3D
         {
             PowerPole p = Lines.Poles[Drop.Pole];
             var pts = Lines.DropPath(Drop, b.Ground).Select(q => b.Local(q.X, q.Y, q.Z)).ToList();
-            b.Cable(pts, 0.012f, WireDark);
+            bool sleek = b.World.Profile.Before == TechLevel.High;
+            b.Cable(pts, sleek ? 0.022f : 0.012f, sleek ? Conduit : WireDark);
             // The bracket on the pole, and the fixing on the wall where the wire still holds.
             if (!p.Fallen)
             {
@@ -734,9 +741,11 @@ public partial class InfraLayer : Node3D
 
         public override void Emit(TileBuilder b)
         {
-            float radius = Lines.Poles[Wire.A].Pylon ? 0.04f : 0.022f;
+            bool pylon = Lines.Poles[Wire.A].Pylon, sleek = !pylon && b.World.Profile.Before == TechLevel.High;
+            // A high world's street lines are sheathed conduit, pale and thick; the rest bare dark wire.
+            float radius = pylon ? 0.04f : sleek ? 0.045f : 0.022f;
             var pts = Lines.Path(Wire, b.Ground).Select(p => b.Local(p.X, p.Y, p.Z)).ToList();
-            b.Cable(pts, radius, WireDark);
+            b.Cable(pts, radius, sleek ? Conduit : WireDark);
         }
     }
 

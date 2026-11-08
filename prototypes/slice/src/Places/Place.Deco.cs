@@ -393,7 +393,14 @@ public sealed class Decor
         "low" => DecoTech.Low,
         "mid" => DecoTech.Mid,
         "high" => DecoTech.High,
-        _ => inst.Family.Tags.Contains("settlement") ? DecoTech.Low : null,
+        // Otherwise the world's own era for it (the old world's for a ruin, the living's for a lived-in place).
+        _ => inst.Tech switch
+        {
+            TechLevel.Low => DecoTech.Low,
+            TechLevel.Mid => DecoTech.Mid,
+            TechLevel.High => DecoTech.High,
+            _ => inst.Family.Tags.Contains("settlement") ? DecoTech.Low : null,
+        },
     };
 
     /// <summary>Cells the dressing must leave clear: fixtures, ways up and down, doorways and a step inside them.</summary>
