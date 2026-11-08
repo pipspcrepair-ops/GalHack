@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using GalHack.Physics.Engine;
@@ -69,12 +70,28 @@ public sealed partial class Staging
         Marker mark = p.Inst.Markers.First(IsMark);
         GD.Print($"LAYERS mark {mark.Kind} {mark.Note} at {mark.Cell} in {site.Family.Id}, occupancy {p.Inst.Occupancy}");
         var at = new Vector3(mark.Cell.X + 0.5f, mark.Cell.Y + 0.5f, mark.Cell.Z + 0.5f);
-        float away = (float)Num("away", 4.5);
-        Vector3? feet = StandNear(p, c => System.Math.Abs(c.Y - mark.Cell.Y) <= 1 && new Vector2(c.X - mark.Cell.X, c.Z - mark.Cell.Z).Length() is var d && d > away - 1.5f && d < away + 1.5f, at + new Vector3(away, 0f, 0f));
-        Vector3 stand = feet ?? p.ToWorld(at + new Vector3(away, 0f, 0f));
-        // A little above head height, looking down on it: daylight through the openings, no torch.
-        Vector3 eye = stand + Vector3.Up * 2.4f, target = p.ToWorld(at + Vector3.Up * (mark.Kind == "wrong_object" ? 0.2f : 0.4f));
-        if (mark.Kind == "wrong_object") eye += Vector3.Down * 1.2f;
+        // Where to stand: a floor cell on the mark's own level, 4 to 9 m off, with nothing between the eye and the mark.
+        Vector3 target = p.ToWorld(at + Vector3.Up * (mark.Kind == "wrong_object" ? 0.2f : 0.4f));
+        float lift = mark.Kind == "wrong_object" ? 1.2f : 2.2f;
+        var space = _game.Zone.GetWorld3D().DirectSpaceState;
+        NavGrid nav = p.Nav();
+        bool Clear(Vector3 eye) => space.IntersectRay(PhysicsRayQueryParameters3D.Create(eye, target + (eye - target).Normalized() * 0.8f, GalHack.Physics.Layers.World)).Count == 0;
+        Vector3? best = null;
+        float bestScore = float.MaxValue;
+        for (int dz = -9; dz <= 9; dz++)
+            for (int dx = -9; dx <= 9; dx++)
+                for (int dy = -1; dy <= 1; dy++)
+                {
+                    var c = new Int3(mark.Cell.X + dx, mark.Cell.Y + dy, mark.Cell.Z + dz);
+                    float d = new Vector2(dx, dz).Length();
+                    if (d < 4f || d > 9f || !nav.Standable(c)) continue;
+                    Vector3 feetAt = PlaceWalk.Feet(p, c), eyeAt = feetAt + Vector3.Up * lift;
+                    float score = MathF.Abs(d - 6f) + (Clear(eyeAt) ? 0f : 100f);
+                    if (score < bestScore) { bestScore = score; best = feetAt; }
+                }
+        Vector3 stand = best ?? p.ToWorld(at + new Vector3(5f, 0f, 0f));
+        GD.Print($"LAYERS standing {(best == null ? "nowhere good" : bestScore < 100f ? "in clear view" : "with something in the way")}");
+        Vector3 eye = stand + Vector3.Up * lift;
         // The castaway stands a little behind the camera, so the view isn't through their own head.
         Vector3 back = (eye - target) with { Y = 0f };
         _game.Survivor.PlaceOutside((stand + back.Normalized() * 1.2f).ToNumerics());
