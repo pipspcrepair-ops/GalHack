@@ -10,7 +10,7 @@ namespace Slice.Tests;
 
 /// <summary>
 /// The UI round: hazards as symbols with a timer and no words, a compass that starts with only the
-/// bunker, the scanner's ping marking it for ten seconds, every tech tab on one 1080p screen, and
+/// bunker and the place in view from its way out, the scanner's ping marking it for ten seconds, every tech tab on one 1080p screen, and
 /// no two HUD labels on top of each other.
 /// </summary>
 public partial class BuildTest
@@ -115,11 +115,19 @@ public partial class BuildTest
         Gui.Measure = false;
     }
 
-    /// <summary>At the start, before anything is found or pinged, the compass holds the bunker and nothing else.</summary>
+    /// <summary>At the start, before anything else is found or pinged, the compass holds the bunker and the place in view from its way out, and nothing else.</summary>
     void CompassAtStart()
     {
-        var kinds = _game.Visor.CompassMarks().Select(m => m.Kind).ToList();
-        Check(kinds.SequenceEqual(new[] { "bunker" }), $"at the start the compass shows only the bunker ({string.Join(", ", kinds)})");
+        var marks = _game.Visor.CompassMarks();
+        var kinds = marks.Select(m => m.Kind).ToList();
+        var seen = _game.Bunker?.Poi;
+        bool landmark = seen != null && _game.Bunker.Landmark != null;
+        string[] want = landmark ? new[] { "bunker", "place" } : new[] { "bunker" };
+        Check(kinds.SequenceEqual(want) && (!landmark || marks[1].Tag == seen.Name.ToUpperInvariant()),
+            $"at the start the compass shows the bunker{(landmark ? $" and {seen.Name}, the place in view from its way out" : "")} and nothing else ({string.Join(", ", marks.Select(m => $"{m.Kind} {m.Tag}"))})");
+        if (landmark)
+            Check(_game.Spaceflight.Charts.Has(_game.Spaceflight.StartPlaceKey ?? "") && _game.Spaceflight.Charts.OfKind("place").Count() == 1,
+                $"it is found from the first moment, on the map too, and it is the only place found ({_game.Spaceflight.Charts.OfKind("place").Count()})");
     }
 
     /// <summary>The handheld scanner: free in the suit fabricator; a click pings what is far off onto the compass for ten seconds, fading, and nothing stays.</summary>

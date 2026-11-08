@@ -11,7 +11,7 @@ namespace Slice.Tests;
 
 /// <summary>
 /// The UI round's proof, one run, daylight: <c>--view=uiround --dir=folder</c> writes ui-hud-alert (a
-/// tornado forming and a beast's attack), ui-compass (out of the bunker, nothing found yet),
+/// tornado forming and a beast's attack), ui-compass (out of the bunker: the bunker and the place in view, nothing else found yet),
 /// ui-scanner (a ping), ui-tech-TAB for every tech tab, ui-fabricator, ui-inventory (a container open
 /// beside the bag), ui-core (a survival constructor's page) and ui-galaxy. Anything newer than the
 /// game it runs in is reached by name, so the same view shoots the game from before the round.
