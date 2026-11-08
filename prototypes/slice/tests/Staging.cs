@@ -106,6 +106,7 @@ public sealed partial class Staging
             "stormcell" => StormCellShot(),
             "clouds" => CloudTypes(),
             "farland" => FarLandView(),
+            "horizon" => HorizonView(),
             "loadrun" => LoadRun(),
             "approach" => ApproachView(),
             "husk-grab" => HuskGrab(),
