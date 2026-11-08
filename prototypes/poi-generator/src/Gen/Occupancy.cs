@@ -268,7 +268,7 @@ public static class OccupancyLayer
             x.Inst.Markers.Add(new Marker("keeper_post", post));
             // The roster: the same tag, again and again, at one height along one wall.
             int back = floor.Min(f => f.Z);
-            foreach (Int3 c in floor.Where(c => c.Z == back && BlockInfo.Collides(x.Inst.Blocks.Get(c + Dir.North.Vec()).Type)).Take(10))
+            foreach (Int3 c in floor.Where(c => c.Z == back && BlockInfo.Collides(x.Inst.Blocks.Get(c + Int3.Up + Dir.North.Vec()).Type)).Take(10))
                 x.Put(c + Int3.Up, BlockType.Sign, Material.Bronze, brass, Role.Story, Dir.South);
             // A runner down the room, straight and kept.
             Int3 mid = floor[floor.Count / 2];
@@ -299,9 +299,10 @@ public static class OccupancyLayer
                 x.Put(c, BlockType.Pillar, Material.Basalt, basalt);
             x.Put(mid, BlockType.Crystal, Material.Crystal, heart);
             x.Inst.Lights.Add(new LightSpot { Cell = mid + Int3.Up * 2, Color = heart, Mode = LightMode.Pulse, Energy = 1f, Range = 10f, Module = m.Index });
-            foreach (Int3 c in floor.Where(c => Dirs.Horizontal.Any(d => BlockInfo.Collides(x.Inst.Blocks.Get(c + d.Vec()).Type)) && Hash.Cell(c, 0x61) % 5 == 0).Take(8).ToList())
+            // Each mark on a wall at the height it hangs, never in the air.
+            foreach (Int3 c in floor.Where(c => Dirs.Horizontal.Any(d => BlockInfo.Collides(x.Inst.Blocks.Get(c + Int3.Up + d.Vec()).Type)) && Hash.Cell(c, 0x61) % 5 == 0).Take(8).ToList())
             {
-                Dir wall = Dirs.Horizontal.First(d => BlockInfo.Collides(x.Inst.Blocks.Get(c + d.Vec()).Type));
+                Dir wall = Dirs.Horizontal.First(d => BlockInfo.Collides(x.Inst.Blocks.Get(c + Int3.Up + d.Vec()).Type));
                 x.Put(c + Int3.Up, BlockType.Sign, Material.Glyph, glyph, Role.Story, wall.Opposite());
             }
             x.Inst.Markers.Add(new Marker("guardian_ring", mid));

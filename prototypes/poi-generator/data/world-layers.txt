@@ -626,7 +626,7 @@ flora tethered_drifters | name gas bladders on long stalks | weight 1 | is plant
 flora tell_plants | name plants that grow only over ore | weight 2 | is plants | bias alien 0.1
 flora giant_flora | name giant plants | weight 2 | is plants rich_life | bias overgrown 0.6
 flora bent_coreward | name everything bending one way | weight 1 | is plants warped | bias alien 0.15
-flora hollow_overrun | name the Hollow's growth over everything | weight 0.5 | is plants hollow rough | sets hollow=world | bias fungal 1 overgrown 0.7 alien 0.2 desolate 0.2
+flora hollow_overrun | name the Hollow's growth over everything | weight 0.5 | is plants hollow rough | sets hollow=world | bias fungal 1 overgrown 0.7 alien 0.2 desolate 0.2 | state active 1 abandoned 3 infested 5 ruined 2
 
 fauna none | name no animals | weight 6 | blank yes | req life=none | bias barren 0.9
 fauna sparse | name almost nothing alive | weight 5 | req life=low,none | bias barren 0.6

@@ -370,13 +370,14 @@ public static class Composer
             p.Bright *= 1f - 0.2f * dead;
             p.MelodyMin *= 1f + 0.8f * dead;
             p.MelodyMax *= 1f + 0.8f * dead;
-            if (dead > 0.45f && p.Bed is BedKind.Still or BedKind.Murk) p.Bed = BedKind.Wind;
+            if (dead > 0.45f && dead >= war && p.Bed is BedKind.Still or BedKind.Murk) p.Bed = BedKind.Wind;
             p.BedGain *= 1f + 0.3f * dead;
             p.BedHigh *= 1f + 0.3f * dead;
         }
         if (war > 0f)
         {
-            if (war > 0.45f && p.Bed is BedKind.Still or BedKind.Wind) p.Bed = BedKind.Rumble;
+            // Whichever the world has more of, the emptiness or the war, has the bed.
+            if (war > 0.45f && war > dead && p.Bed is BedKind.Still or BedKind.Wind) p.Bed = BedKind.Rumble;
             p.BedLow *= 1f - 0.35f * war;
             p.Sub += 0.12f * war;
             p.Sag = MathF.Max(p.Sag, 5f * war);

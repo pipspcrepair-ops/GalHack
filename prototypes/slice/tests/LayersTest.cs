@@ -220,6 +220,7 @@ public partial class LayersTest : Node
         int taken = life.Moving.Count(x => x.Corrupted), wild = life.Moving.Count(x => !x.Mechanical && !x.Husk && x.Figure == null);
         Check(hollow.HollowWorld && w.Bloom && taken * 2 > wild, $"a Hollow world's fungus has its wildlife: {taken} of {wild} kinds taken");
         Check(WorldReading.Of(hollow).Fungal > 0.8f, "and its plants are fungal");
+        Check(hollow.States is { } st && st[(int)PoiState.Infested] > st[(int)PoiState.Active] + st[(int)PoiState.Abandoned] * 0.5f, "and the growth has most of its places");
     }
 
     void Occupants()
