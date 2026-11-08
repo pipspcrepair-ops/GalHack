@@ -50,9 +50,14 @@ public static class SkyFrame
 ///   dust in the way, listed by the cell of a cube grid over the sky it falls in, so a pixel looks
 ///   only at the few stars near it;
 /// - a soft light from the catalogue's own stars, each spread a little: where they crowd too thickly
-///   to tell apart it is all that shows, and it is the galaxy's band and core;
+///   to tell apart it is all that shows, and it is the galaxy's band;
+/// - the core's bulge, its countless stars summed along every line of sight from here (the
+///   catalogue's bulge stars stand for them), with its star clouds and dust lanes: a bright heart
+///   from out on the rim, the whole sky from inside it;
 /// - the nebulae, marched from here, so they stand where they are, as big as they look from here,
 ///   and fill the sky from inside.
+/// The central black hole itself is the shader's, drawn from <see cref="Galaxy.Hole"/> and
+/// <see cref="HoleFront"/>.
 /// Directions are the catalogue's: <see cref="SkyFrame"/> turns the sky round them.
 /// </summary>
 public sealed class SkyView
@@ -117,6 +122,8 @@ public sealed class SkyView
         for (int f = 0; f < 6; f++) view.Glow[f] = new float[GlowSize * GlowSize * 3];
         view.Spread(g);
         for (int f = 0; f < 6; f++) Soften(view.Glow[f]);
+        Parallel.For(0, 6 * BulgeBands, options, k => view.Bulge(g, k / BulgeBands, k % BulgeBands));
+        view.HoleFront = view.FrontOfHole(g);
         Parallel.For(0, 6, options, f => view.March(g, f));
         return view;
     }
@@ -140,6 +147,7 @@ public sealed class SkyView
             float d = to.Length();
             if (d < 1e-3f) return;
             Direction[i] = to / d;
+            if (i == Galaxy.HoleId) return; // no point of light: the sky draws the hole itself, its shadow and its disc (GalaxyShader)
             float clear = g.Clear(Eye, stars[i].Position);
             if (stars[i].Region == Region.Core) clear = MathF.Max(clear, 0.5f); // their massed glow reads through any cloud
             float flux = stars[i].Light / (d * d) * clear;
@@ -292,9 +300,11 @@ public sealed class SkyView
     const float SoftGain = 1.1f, SoftShare = 0.45f, NearestSpread = 40f;
 
     /// <summary>
-    /// The core's stars are the farthest and the most tightly packed: each is faint, and it is
-    /// together that they show, as a real glowing mass you can steer by from anywhere. They count
-    /// for more of the soft light than their share, and it spreads a little wider.
+    /// The core's stars outside its bulge (its globular clusters) are far off and tightly packed:
+    /// each is faint, and it is together that they show. They count for more of the soft light than
+    /// their share, and it spreads a little wider. The bulge's own are left to <see cref="Bulge"/>:
+    /// spread one by one they showed from outside it, but from inside it they were too near to
+    /// spread and too few to fill the sky, so the core vanished from its own sky.
     /// </summary>
     const float CoreShare = 3.2f, CoreSpread = 1.5f;
 
@@ -308,6 +318,7 @@ public sealed class SkyView
             float d = Vector3.Distance(g.Stars[i].Position, Eye);
             if (d < NearestSpread) continue;
             bool core = g.Stars[i].Region == Region.Core;
+            if (core && Galaxy.InBulge(g.Stars[i].Position)) continue; // the bulge's light is summed whole (Bulge), these few among it
             // Per texel: a finer cube spreads the same light over more of them.
             float amount = MathF.Min(Shown[i], 0.45f) * SoftGain * (GlowSize / 256f) * (GlowSize / 256f) * (core ? CoreShare : Resolved[i] ? SoftShare : 1f) / Samples;
             Vector3 tint = Vector3.Lerp(TintOf(g, i), Vector3.One, 0.35f) * amount;
@@ -356,6 +367,134 @@ public sealed class SkyView
         Put(ix + 1, iy, fx * (1f - fy));
         Put(ix, iy + 1, (1f - fx) * fy);
         Put(ix + 1, iy + 1, fx * fy);
+    }
+
+    // ---- The bulge ------------------------------------------------------------------------------
+
+    /// <summary>Rows of a face marched as one piece of work: faces differ a lot in how much bulge they look through.</summary>
+    const int BulgeBands = 4;
+
+    /// <summary>
+    /// How a line of sight's bulge stars (per square light year) are drawn, r + g + b: compressed
+    /// as starlight is (<see cref="Tone"/>), so the thin outer bulge still shows round its thick
+    /// heart, and easing toward <see cref="BulgeMost"/> so even the heart, seen from inside, stays
+    /// a night sky.
+    /// </summary>
+    public static float BulgeTone(float column) => BulgeMost * (1f - MathF.Exp(-MathF.Pow(MathF.Max(column, 0f), BulgePower) * BulgeGain / BulgeMost));
+
+    public const float BulgeGain = 1.25f, BulgePower = 0.55f, BulgeMost = 2.8f;
+
+    /// <summary>The massed old stars' colour, r + g + b = 1: warm white.</summary>
+    static readonly Vector3 BulgeTint = new Vector3(1f, 0.8f, 0.6f) / 2.4f;
+
+    /// <summary>How much more the core's dust takes of each colour than of green: blue most, so what shows through it reddens.</summary>
+    static readonly Vector3 Reddening = new(0.75f, 1f, 1.35f);
+
+    /// <summary>The least of the bulge's light the core's dust lets through.</summary>
+    const float DustLeaves = 0.65f;
+
+    /// <summary>
+    /// The bulge along a line of sight, per square light year: its stars as they are spread
+    /// (<see cref="Galaxy.BulgeSmooth"/>), and in red, green and blue what of them shows, gathered
+    /// into clouds and seen through the core's dust.
+    /// </summary>
+    public readonly record struct Sight(float Spread, Vector3 Seen);
+
+    /// <summary>
+    /// The bulge along a line of sight from <paramref name="from"/> to <paramref name="to"/> ly
+    /// along it, through the bulge's ellipsoid only. The steps shorten toward the centre, where the
+    /// stars crowd; <paramref name="offset"/> (0 to 1) moves where in each step it is looked at, so
+    /// neighbouring lines of sight don't step in rings round the centre together.
+    /// </summary>
+    public static Sight Column(Galaxy g, Vector3 eye, Vector3 dir, float from = 0f, float to = float.MaxValue, float offset = 0.5f)
+    {
+        var e = new Vector3(eye.X, eye.Y / Galaxy.BulgeFlat, eye.Z);
+        var d = new Vector3(dir.X, dir.Y / Galaxy.BulgeFlat, dir.Z);
+        float a = d.LengthSquared(), b = Vector3.Dot(e, d), c = e.LengthSquared() - Galaxy.BulgeEdge * Galaxy.BulgeEdge;
+        float disc = b * b - a * c;
+        if (disc <= 0f) return default;
+        float root = MathF.Sqrt(disc);
+        float t0 = MathF.Max((-b - root) / a, from), t1 = MathF.Min((-b + root) / a, to);
+        float spread = 0f;
+        Vector3 seen = Vector3.Zero, through = Vector3.One;
+        for (float t = t0; t < t1;)
+        {
+            float step = MathF.Min(Math.Clamp((e + d * t).Length() * 0.14f, 0.35f, 6f), t1 - t);
+            if (step < 1e-3f) break; // the last sliver: far out, a float can't step it
+            Vector3 p = eye + dir * (t + step * offset);
+            float stars = g.BulgeSmooth(p) * step;
+            if (stars > 0f)
+            {
+                float dust = g.BulgeDust(p) * step;
+                spread += stars;
+                // The stars in this step shine through half its own dust; and dust takes much of
+                // what is behind it but never all (as a nebula's): the core must read from every system.
+                seen += Vector3.Max(through * Exp(-Reddening * (dust * 0.5f)), new Vector3(DustLeaves)) * (stars * g.Clouds(p));
+                if (dust > 0f) through *= Exp(-Reddening * dust);
+            }
+            t += step;
+        }
+        return new Sight(spread, seen);
+    }
+
+    static Vector3 Exp(Vector3 v) => new(MathF.Exp(v.X), MathF.Exp(v.Y), MathF.Exp(v.Z));
+
+    /// <summary>
+    /// A line of sight's light as drawn, r + g + b in the bulge's own tint: the bulge's shape
+    /// compressed (<see cref="BulgeTone"/>), and its clouds and dust lanes over it at their whole
+    /// contrast and a little more, so from inside it reads as star clouds, not a haze.
+    /// </summary>
+    public static Vector3 BulgeLight(Sight s)
+    {
+        if (s.Spread <= 1e-6f) return Vector3.Zero;
+        Vector3 texture = s.Seen / s.Spread;
+        texture = new Vector3(MathF.Pow(texture.X, Contrast), MathF.Pow(texture.Y, Contrast), MathF.Pow(texture.Z, Contrast));
+        return BulgeTint * BulgeTone(s.Spread) * Vector3.Min(texture, new Vector3(2.5f));
+    }
+
+    const float Contrast = 1.25f;
+
+    /// <summary>
+    /// The core's glow, summed along every line of sight through the bulge: its countless stars,
+    /// too faint and too many to tell apart (the catalogue's bulge stars stand for them). The same
+    /// thing from anywhere: from out on the rim a bright heart in the band, larger and larger on
+    /// the way in, and from inside it the whole sky, brightest toward the centre, with its star
+    /// clouds standing all round.
+    /// </summary>
+    void Bulge(Galaxy g, int face, int band)
+    {
+        float[] glow = Glow[face];
+        int rows = GlowSize / BulgeBands;
+        for (int y = band * rows; y < (band + 1) * rows; y++)
+        for (int x = 0; x < GlowSize; x++)
+        {
+            Vector3 dir = Through(face, (x + 0.5f) / GlowSize * 2f - 1f, (y + 0.5f) / GlowSize * 2f - 1f);
+            Sight sight = Column(g, Eye, dir, offset: Mix.Unit(Mix.Of(g.Seed, face * GlowSize + x, y)));
+            if (sight.Spread <= 0f) continue;
+            // Too many to tell apart, not too many to give the light a grain.
+            float grain = 0.62f + 0.76f * LatticeNoise.Value(dir * 260f + g.BulgeOffset);
+            Vector3 light = BulgeLight(sight) * grain;
+            int k = (x + y * GlowSize) * 3;
+            glow[k] += light.X;
+            glow[k + 1] += light.Y;
+            glow[k + 2] += light.Z;
+        }
+    }
+
+    /// <summary>
+    /// How much of the bulge toward the hole lies in front of it, 0 to 1: its shadow takes the
+    /// rest of that light, and the stars behind. The hole sits in the hollow it has cleared, so
+    /// about half of the bulge's stars along that line lie this side of it.
+    /// </summary>
+    public float HoleFront { get; private set; }
+
+    float FrontOfHole(Galaxy g)
+    {
+        Vector3 to = g.Hole.Position - Eye;
+        float d = to.Length();
+        if (d < 1e-3f) return 0f;
+        float all = Column(g, Eye, to / d).Spread;
+        return all > 1e-6f ? Math.Clamp(Column(g, Eye, to / d, 0f, d).Spread / all, 0f, 1f) : 0f;
     }
 
     // ---- Nebulae --------------------------------------------------------------------------------

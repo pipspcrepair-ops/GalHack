@@ -74,9 +74,9 @@ static class GalaxyGen
         for (int i = 0, tries = 0; i < bulge && tries < bulge * 20; tries++)
         {
             Vector3 dir = rng.Direction();
-            float r = -MathF.Log(1f - rng.Float() * 0.98f) * 27f;
-            if (r > CoreRadius * 1.15f) continue;
-            Vector3 p = dir * r * new Vector3(1f, 0.62f, 1f);
+            float r = -MathF.Log(1f - rng.Float() * 0.98f) * Galaxy.BulgeScale; // the sky's glow sums this same spread (Galaxy.BulgeDensity)
+            if (r > Galaxy.BulgeEdge) continue;
+            Vector3 p = dir * r * new Vector3(1f, Galaxy.BulgeFlat, 1f);
             if (stars.TryAdd(p, Region.Core, ref rng)) i++;
         }
         for (int i = 0, tries = 0; i < field && tries < field * 80; tries++)

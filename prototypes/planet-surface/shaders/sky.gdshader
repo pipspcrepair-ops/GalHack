@@ -21,7 +21,6 @@ uniform vec3 zenith_night : source_color;
 uniform vec3 sunset : source_color;
 uniform vec3 haze : source_color;
 uniform vec3 star_color : source_color;
-uniform float sun_radius = 0.01;
 uniform float sun_energy = 1.3;
 uniform float density = 1.0;
 uniform float stars_by_day = 0.0;
@@ -34,7 +33,10 @@ uniform vec3 moon_dir[10];
 uniform float moon_radius[10];
 uniform vec3 moon_color[10] : source_color;
 uniform vec3 moon_light[10];
-uniform int moon_layer[10];            // which layer of surfaces shows it; -1 while it is plain
+uniform int moon_layer[10];
+uniform float moon_shade[10];          // the share of the sun each moon sees (another body's shadow hides the rest)
+uniform float moon_red[10];            // how deep it stands in a shadow reddened by a world's air
+uniform float sun_lit = 1.0;           // the share of the sun's disc in sight from here: an eclipse darkens the day            // which layer of surfaces shows it; -1 while it is plain
 uniform vec3 moon_axis[10];
 uniform vec3 moon_zero[10];            // where its map's zero longitude faces this moment
 uniform sampler2DArray surfaces : source_color, filter_linear_mipmap, repeat_enable;
@@ -82,7 +84,7 @@ float sun_air(float sun_h) {
 vec3 sky_color(vec3 dir, vec3 sun) {
 	float up = dir.y;
 	float sun_h = sun.y;
-	float day = smoothstep(-0.2, 0.15, sun_h);
+	float day = smoothstep(-0.2, 0.15, sun_h) * (0.04 + 0.96 * sun_lit);
 	float bright = 0.25 + 0.75 * smoothstep(-0.05, 0.45, sun_h);
 
 	vec3 zen = mix(zenith_night, zenith_day * bright, day);
@@ -186,6 +188,10 @@ vec4 bodies(vec3 dir, vec3 sun) {
 				ring *= 1.0 - (smoothstep(1.93, 1.97, rr) - smoothstep(2.03, 2.07, rr)) * 0.85;
 				float tone = 0.6 + 0.4 * sin(rr * 41.0) * sin(rr * 13.0);
 				float lit = 0.6 + 0.4 * clamp(abs(dot(axis, giant_light)) * 1.5, 0.0, 1.0);
+				// The giant's own shadow across its ring, soft at the edge.
+				vec3 p = (dir * t - giant_dir) / sin(giant_radius);
+				float along = dot(p, giant_light);
+				lit *= along < 0.0 ? mix(0.06, 1.0, smoothstep(0.96, 1.04, length(p - giant_light * along))) : 1.0;
 				vec4 rc = vec4(ring_color * lit * tone * ring, ring);
 				if (t < 1.0) front = rc; else back = rc;
 			}
@@ -197,7 +203,10 @@ vec4 bodies(vec3 dir, vec3 sun) {
 			float bands = sin(lat * 19.0 + sin(lat * 7.0) * 1.6) * 0.5 + 0.5;
 			vec3 surface = mix(giant_color, giant_band, bands * 0.7);
 			if (giant_layer >= 0) surface = surface_at(giant_layer, n, axis, giant_zero, giant_radius).rgb;
-			disc.rgb = surface * (0.03 + 0.97 * disc.r) * disc.a;
+			// Never quite black on its night side, its limb faintly lit all round by its air: a whole
+			// sphere even dark against the night (the same numbers as space's own: SpaceSky).
+			float limb = pow(1.0 - clamp(dot(n, -giant_dir), 0.0, 1.0), 3.0) * (0.35 + 0.65 * smoothstep(-0.3, 0.6, dot(n, giant_light)));
+			disc.rgb = surface * (0.07 + 0.93 * disc.r + 0.22 * limb) * disc.a;
 		}
 		layer = over(front, over(disc, back));
 	}
@@ -214,7 +223,7 @@ vec4 bodies(vec3 dir, vec3 sun) {
 			ground = own.rgb;
 			glows = own.a;
 		}
-		m.rgb = ground * (0.025 + 1.1 * m.r + glows * 0.8) * m.a;
+		m.rgb = (ground * (0.05 + 1.1 * m.r * moon_shade[i] + glows * 0.8) + vec3(0.32, 0.06, 0.025) * moon_red[i]) * m.a;
 		result = over(m, result);
 	}
 	if (giant_at >= moon_count) result = over(layer, result);
@@ -440,7 +449,7 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter) 
 	float t = t0 + dt * jitter;
 	float trans = 1.0;
 	vec3 light = vec3(0.0);
-	float day = smoothstep(-0.15, 0.1, sun.y);
+	float day = smoothstep(-0.15, 0.1, sun.y) * (0.04 + 0.96 * sun_lit);
 	vec3 sun_tint = mix(vec3(1.0), star_color, 0.4);
 	vec3 sun_light = mix(sunset, sun_tint, smoothstep(0.0, 0.3, sun.y)) * day * sun_energy * 1.1;
 	vec3 ambient = mix(cloud_shade, sky, 0.35) * (0.12 + 0.88 * day);
@@ -533,11 +542,16 @@ uniform mat3 space_turn = mat3(1.0);   // the world's directions into the backdr
 uniform vec3 space_sun = vec3(0.0, 1.0, 0.0);
 
 // Space behind the sky. The stars show once the sky has gone dark enough, or if it already was.
+// The sun is the orbit's own (the include's sun_in_space): the same disc at the same size and
+// light, so nothing about it changes as one sky gives way to the other.
 vec3 space_backdrop(vec3 d, vec3 catalogue, float shown, bool points) {
-	vec3 col = vec3(0.003, 0.003, 0.006) + galaxy_sky(catalogue, points) * shown;
-	float s = max(dot(d, space_sun), 0.0);
-	col += vec3(1.0, 0.92, 0.8) * (pow(s, 900.0) * 30.0 + pow(s, 40.0) * 0.25);
-	return col;
+	return vec3(0.003, 0.003, 0.006) + galaxy_sky(catalogue, points) * shown + sun_in_space(d, space_sun);
+}
+
+// Across the sun's face, level: the way its shimmer sways.
+vec3 sun_east(vec3 sun) {
+	vec3 e = cross(vec3(0.0, 1.0, 0.0), sun);
+	return dot(e, e) > 1e-6 ? normalize(e) : vec3(1.0, 0.0, 0.0);
 }
 
 void sky() {
@@ -555,7 +569,7 @@ void sky() {
 		vec4 c = march_clouds(POSITION, dir, sun, col, true, march_jitter(FRAGCOORD.xy));
 		COLOR = sqrt(max(c.rgb, vec3(0.0)) * 0.25);
 	} else {
-		float day = smoothstep(-0.2, 0.15, sun.y);
+		float day = smoothstep(-0.2, 0.15, sun.y) * (0.04 + 0.96 * sun_lit); // an eclipse's totality: deep dusk, the stars out
 		vec3 plain = col;
 		// Faded out just below the horizon, not cut: seen from high up there is no hard line.
 		float starlight = max(1.0 - day, stars_by_day) * (1.0 - overcast) * smoothstep(-0.08, 0.0, dir.y);
@@ -567,8 +581,15 @@ void sky() {
 		col = col * (1.0 - b.a * mix(0.88, 1.0, 1.0 - day)) + b.rgb;
 
 		// The sun itself, in front of everything but cloud: dimmer and warmer low down, behind more air.
-		float sd = dot(dir, sun);
-		float disc = smoothstep(cos(sun_radius * 1.15), cos(sun_radius), sd) * (1.0 - b.a); // what crosses the sun hides it
+		// Low over a hot world it wavers in the rising air.
+		vec3 sun_seen = dir;
+		float shimmer = sun_heat * (1.0 - smoothstep(0.0, 0.35, sun.y)) * (sun_measure ? 0.0 : 1.0);
+		if (shimmer > 0.0) {
+			vec2 w = texture(cloud_noise, dir.xz * 37.0 + vec2(sun_time * 0.07, sun_time * 0.05)).rg - 0.5;
+			sun_seen = normalize(dir + (sun_east(sun) * w.x + vec3(0.0, w.y, 0.0)) * shimmer * sun_radius * 0.3);
+		}
+		// Its real size and look (the include's); what crosses the sun hides it.
+		vec3 disc = sun_body(sun_seen, sun) * (1.0 - b.a);
 		float through = sun_air(sun.y);
 		vec3 disc_color = mix(sunset, star_color, smoothstep(0.0, 0.3, sun.y)) * through * through;
 		// Well under the glow threshold near the horizon: there it's a coloured disc, it doesn't bloom.
@@ -612,7 +633,6 @@ void sky() {
 			float dark = smoothstep(0.78, 1.0, space_fade);
 			// The air goes; the sun and everything else up there stays, in front of the backdrop's stars.
 			col = mix(col, space_backdrop(space_turn * dir, star_turn * dir, max(dark * dark, 1.0 - day), !AT_CUBEMAP_PASS) * (1.0 - solid.a) + solid.rgb, gone);
-			col += star_color * disc * sun_energy * 18.0 * gone;
 		}
 		COLOR = col;
 	}

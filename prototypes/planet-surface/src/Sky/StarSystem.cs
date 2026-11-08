@@ -127,6 +127,13 @@ public sealed class StarSystem
     /// <summary>A temperate world's year, game days: the one number that sets how fast the system runs (data: orbit.json).</summary>
     public static double TemperateYearDays = 24.0;
 
+    /// <summary>
+    /// How much bigger stars stand in the sky than at the chart's plain scale (data: orbit.json):
+    /// a sun you notice, a sci-fi cover's. The one number every star's size in every sky comes
+    /// from; its light is the world's own, never brighter for being bigger.
+    /// </summary>
+    public static double StarSkyScale = 3.0;
+
     /// <summary>The galaxy catalogue's key for this star.</summary>
     public ulong StarKey { get; private set; }
 
@@ -222,6 +229,70 @@ public sealed class StarSystem
         return new Orientation(a.Cross(z), a, z);
     }
 
+    /// <summary>
+    /// The star's disc, its angular radius: its real radius over the world's distance from it.
+    /// The one size every sky draws the sun at (SkyRig.ShowSun), on the ground, through the climb
+    /// and in orbit, so it never changes size on the way up.
+    /// </summary>
+    public float SunAngular => See(Star, 0.0, new D3(0, Home.Radius, 0)).Angular;
+
+    // ---- Eclipses -----------------------------------------------------------------------------------
+
+    /// <summary>
+    /// How much of a disc of angular radius <paramref name="a"/> a disc of radius <paramref name="b"/>
+    /// hides, their centres <paramref name="c"/> apart (radians; small angles): 0 to 1. The two
+    /// circles' overlap over the first's area.
+    /// </summary>
+    public static double Covered(double a, double b, double c)
+    {
+        if (a <= 0.0 || b <= 0.0 || c >= a + b) return 0.0;
+        if (c <= Math.Abs(b - a)) return b >= a ? 1.0 : b * b / (a * a);
+        double a2 = a * a, b2 = b * b, c2 = c * c;
+        double lens = a2 * Math.Acos(Math.Clamp((c2 + a2 - b2) / (2.0 * c * a), -1.0, 1.0))
+                    + b2 * Math.Acos(Math.Clamp((c2 + b2 - a2) / (2.0 * c * b), -1.0, 1.0))
+                    - 0.5 * Math.Sqrt(Math.Max(0.0, (-c + a + b) * (c + a - b) * (c - a + b) * (c + a + b)));
+        return Math.Clamp(lens / (Math.PI * a2), 0.0, 1.0);
+    }
+
+    /// <summary>
+    /// An eclipse at a point of the system (its frame, m): how much of the star's disc the bodies
+    /// between hide (0 none, 1 total), and the one that hides the most. <paramref name="except"/>
+    /// is the body the point is on or in. The one answer every view takes its light from: the
+    /// ground's sun and sky, the orbit's sun, a moon in a world's shadow, the shadow on a globe.
+    /// </summary>
+    public (double Covered, Orbiter By) EclipseAt(double days, D3 at, Orbiter except = null)
+    {
+        D3 toStar = Position(Star, days) - at;
+        double starDistance = toStar.Length;
+        if (starDistance <= Star.Radius) return (0.0, null);
+        D3 sunDir = toStar * (1.0 / starDistance);
+        double sun = Math.Asin(Math.Min(Star.Radius / starDistance, 1.0)), open = 1.0, most = 0.0;
+        Orbiter by = null;
+        foreach (Orbiter b in _bodies)
+        {
+            if (b.Kind is OrbiterKind.Star or OrbiterKind.Belt || b == except || b.Radius <= 0.0) continue;
+            D3 to = Position(b, days) - at;
+            double distance = to.Length;
+            if (distance <= b.Radius || distance >= starDistance) continue;
+            double size = Math.Asin(Math.Min(b.Radius / distance, 1.0));
+            double apart = Math.Acos(Math.Clamp(to.Dot(sunDir) / distance, -1.0, 1.0));
+            if (apart >= sun + size) continue;
+            double f = Covered(sun, size, apart);
+            open *= 1.0 - f;
+            if (f > most) (most, by) = (f, b);
+        }
+        return (1.0 - open, by);
+    }
+
+    /// <summary>The eclipse seen from an eye in the home globe's frame (m from its centre).</summary>
+    public (double Covered, Orbiter By) Eclipse(double days, D3 eye) => EclipseAt(days, Position(Home, days) + Orient(days).ToSystem(eye), Home);
+
+    /// <summary>Whether a body casts a shadow reddened by its air (a moon in it glows dull red): a world or a giant, not a bare moon.</summary>
+    public static bool HasAir(Orbiter b) => b != null && b.Kind is OrbiterKind.GasGiant or OrbiterKind.Planet;
+
+    /// <summary>How fierce the sun is at home, 0 to 1: 1 on a scorched world close in, 0 from a temperate world out (its corona, its glare, the shimmer under it).</summary>
+    public float SunHeat => (float)Math.Clamp((0.95 - Home.Habitable) / 0.55, 0.0, 1.0);
+
     /// <summary>How a body looks from an eye, given in the home globe's frame in metres from its centre.</summary>
     public Sighting See(Orbiter b, double days, D3 eye, Orientation? turned = null)
     {
@@ -255,6 +326,14 @@ public sealed class StarSystem
     {
         StarClass.RedDwarf => 0.4, StarClass.Orange => 0.72, StarClass.Yellow => 1.0, StarClass.White => 1.35, _ => 1.7,
     };
+
+    /// <summary>
+    /// How big a star of this class looks from its habitable distance against a yellow one: a dim
+    /// star stands close to its worlds, so it looks bigger, and a bright one smaller. Eased (the
+    /// square root of the true ratio), so a red dwarf's lava world is never a wall of fire and a
+    /// blue-white star's ice world never a dot.
+    /// </summary>
+    static double LooksAtHome(StarClass s) => Math.Sqrt(StarRadiusOf(s) / Math.Sqrt(LuminosityOf(s)));
 
     /// <summary>Slots past the frost line, the most a star has.</summary>
     static int OuterSlots(StarClass s, ref Rng rng) => s is StarClass.White or StarClass.BlueWhite ? 1 + rng.Next(2) : 1 + rng.Next(3);
@@ -298,7 +377,8 @@ public sealed class StarSystem
         double equator() => s.Tilt + (next() - 0.5f) * 0.17;
         double equatorNode() => -Math.PI / 2 + (next() - 0.5f) * 0.17;
 
-        var star = new Orbiter { Name = "the star", Kind = OrbiterKind.Star, Radius = 0.0095 * StarRadiusOf(sky.Star) / Math.Sqrt(L) * chart(1.0), Color = sky.StarColor };
+        // Its size: a yellow star at a temperate world about 3 degrees across, closer worlds' suns bigger as their distances say.
+        var star = new Orbiter { Name = "the star", Kind = OrbiterKind.Star, Radius = 0.0095 * StarSkyScale * LooksAtHome(sky.Star) * chart(1.0), Color = sky.StarColor };
         s.Star = star;
         s._bodies.Add(star);
 
