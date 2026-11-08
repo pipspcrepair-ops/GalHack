@@ -988,6 +988,11 @@ public partial class PlaceTest : Node
             Int3 door = place.Inst.Layout.EntranceCell;
             Int3 outward = place.Inst.Layout.EntranceFacing.Vec();
             Vector3 doorAt = new(door.X + 0.5f, door.Y, door.Z + 0.5f), outv = new(outward.X, 0f, outward.Z);
+            // The way in's own middle (a 2 m way is two cells: its entrance cell's middle is half a metre off it), where one
+            // standing in it is in your way, not beside it to be walked round.
+            var wayCells = place.Inst.Layout.Doorways.Where(d => d.Cells.Contains(door)).SelectMany(d => d.Cells).Concat(place.Inst.Layout.ExitCells.Where(c => c.Manhattan(door) <= 1))
+                .Where(c => c.Y == door.Y && (c - door).X * outward.X + (c - door).Z * outward.Z == 0).Append(door).Distinct().ToList();
+            Vector3 wayMiddle = new((float)wayCells.Average(c => c.X) + 0.5f, door.Y, (float)wayCells.Average(c => c.Z) + 0.5f);
             // Two of them meeting in the way in: one waits or steps aside, neither passes through the other.
             var pair = town.People.Where(q => !q.Dead && !q.Indoors && !q.Away && q.Looks != null && q.Role != "guard").Take(2).ToList();
             if (pair.Count == 2)
@@ -1014,7 +1019,7 @@ public partial class PlaceTest : Node
                 GD.Print("  (TEST: one of them set standing in the way in)");
                 int pushes = town.Pushed;
                 float closest = 0f, through = 0f;
-                foreach (int x in PushThrough(game, drive, place, town, block, doorAt, outv, (t, c, th) => { civTicks = t; closest = c; through = th; })) yield return x;
+                foreach (int x in PushThrough(game, drive, place, town, block, wayMiddle, outv, (t, c, th) => { civTicks = t; closest = c; through = th; })) yield return x;
                 float need = block.Looks.Stats.Radius * 0.78f + Slice.Player.Survivor.Radius;
                 Check(closest > need - 0.08f, $"you can't walk through a standing person (closest {closest:F2} m, bodies {need:F2} m; {town.SolidsInUse} capsules on people)");
                 Check(town.Pushed > pushes && civTicks >= 0 && civTicks <= 120 && through < 1.2f, $"one standing in the way in is pushed clear in {civTicks / 60f:F1} s and you get through ({through:F1} m from the far side, they answered {block.Answer})");
@@ -1026,7 +1031,7 @@ public partial class PlaceTest : Node
                 GD.Print("  (TEST: a guard set braced in the way in)");
                 int guardTicks = -1;
                 brace.Halt = 1f; // braced: they've halted someone
-                foreach (int x in PushThrough(game, drive, place, town, brace, doorAt, outv, (t, c, th) => guardTicks = t, keepBraced: true)) yield return x;
+                foreach (int x in PushThrough(game, drive, place, town, brace, wayMiddle, outv, (t, c, th) => guardTicks = t, keepBraced: true)) yield return x;
                 brace.Halt = 0f;
                 Check(guardTicks < 0 || guardTicks > civTicks, $"a braced guard holds longer ({(guardTicks < 0 ? "held the whole push" : $"{guardTicks / 60f:F1} s")} against {civTicks / 60f:F1} s)");
             }
@@ -1229,9 +1234,7 @@ public partial class PlaceTest : Node
             if (keepBraced) who.Halt = 1f;
             Vector3 you = place.FromWorld(game.Survivor.WorldFeet);
             closest = MathF.Min(closest, new Vector2(you.X - who.Pos.X, you.Z - who.Pos.Z).Length());
-            // Out of the middle of the way, or pressed aside far enough that you are past them (a push moves them off your line).
-            bool past = new Vector2(you.X - who.Pos.X, you.Z - who.Pos.Z).Dot(new Vector2(-outv.X, -outv.Z)) > 0.3f;
-            if (clear < 0 && tick > 0 && (new Vector2(who.Pos.X - doorAt.X, who.Pos.Z - doorAt.Z).Length() > 0.4f || past)) clear = tick;
+            if (clear < 0 && tick > 0 && new Vector2(who.Pos.X - doorAt.X, who.Pos.Z - doorAt.Z).Length() > 0.4f) clear = tick; // (out of the middle of the way)
             // (Timed from when you first touch them.)
             if (tick > 0 || new Vector2(you.X - who.Pos.X, you.Z - who.Pos.Z).Length() < who.Looks.Stats.Radius * 0.78f + Slice.Player.Survivor.Radius + 0.15f) tick++;
             yield return walking.Current;
