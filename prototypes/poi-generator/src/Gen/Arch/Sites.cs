@@ -767,8 +767,8 @@ public static class Sites
                 for (int a = 0; a < clen; a++)
                     for (int b = 0; b < 3; b++)
                     {
-                        x.C.Set(At(a, b, 1), new Block(BlockType.Plate, Material.Timber, wood, Role.Debris));
-                        if (hood && (b != 1 || a % 2 == 0)) x.C.Set(At(a, b, 2), new Block(b == 1 ? BlockType.Cube : BlockType.Pane, Material.Cloth, new Rgb(0xb8, 0xae, 0x94).Scale(0.8f + 0.1f * (a % 2)), Role.Debris));
+                        x.C.Set(At(a, b, 1), new Block(BlockType.Cube, Material.Timber, wood.Scale(0.9f + 0.1f * (a % 2)), Role.Debris));
+                        if (hood && a > 0) x.C.Set(At(a, b, 2), new Block(b == 1 ? BlockType.Cube : BlockType.Ramp, Material.Cloth, new Rgb(0xc8, 0xbe, 0xa2).Scale(0.85f + 0.1f * (a % 2)), Role.Debris, alongX ? (b == 0 ? Dir.East : Dir.West) : (b == 0 ? Dir.South : Dir.North)));
                     }
                 x.C.Set(At(clen, 1, 1), new Block(BlockType.Rail, Material.Timber, wood.Scale(0.8f), Role.Debris));
                 continue;
