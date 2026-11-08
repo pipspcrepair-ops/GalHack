@@ -138,6 +138,8 @@ public sealed partial class Staging
             "newgame" => NewGameShots(),
             "galaxy-depth" => GalaxyDepth(),
             "husk-den" => HuskDen(),
+            "own" => OwnView(),
+            "own-inside" => OwnInside(),
             "husk-worms" => HuskWorms(),
             "husk-carrier" => HuskCarrier(),
             "layers-land" => LayersLand(),

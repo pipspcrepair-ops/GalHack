@@ -119,12 +119,13 @@
     // Server setting: block-breaking creatures (rams, burrowers, corroders, siege beasts) may damage
     // players' bases. false keeps bases whole; anything else still takes their blows.
     "breakBases": true,
-    // The most wild creatures a patch holds on the most livable world.
+    // The most wild creatures a patch holds on the most livable world (alive, not crowded).
     "mostPerPatch": 70,
     // Groups of each species a patch holds on the most livable world, against its natural number (giants 1, the rest 2).
     "density": 1.0,
-    // How far the world's layers (dead, barren, rich) move its numbers, 0..1: half, so a dead world is quieter, never empty.
-    "layerWeight": 0.5,
+    // How far the world's layers (dead, barren, rich) move its numbers, 0..1: most of the way, so a dead world is plainly quiet
+    // and a living one alive (what's left on a dead one is its own: scavengers, its fall's kinds, vermin).
+    "layerWeight": 0.8,
     // Topping up as you go: once you have moved on, groups come back out of sight while fewer than this share of the patch's most live within 250 m of you.
     "nearShare": 0.6,
     // How much life a world of each archetype carries: lush worlds busiest, lava all but dead.

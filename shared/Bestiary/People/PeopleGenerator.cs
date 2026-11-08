@@ -131,6 +131,16 @@ public sealed partial class PeopleGenerator
     public readonly Dialect Dialect;
     /// <summary>How the worms take someone (the world's data sets it).</summary>
     public HuskRules HuskRules = new();
+
+    /// <summary>
+    /// What the world's story and era put on its people, everyone not gone wild (set by the world's
+    /// life from its signature tables): masks on a plague world, festival pieces on a parade world;
+    /// what the era dresses them in (and the dress it makes, by chance); and what it arms its
+    /// fighters with (a club in a low-tech world, a rifle in a mid one, a sealed helmet too in a high one).
+    /// </summary>
+    public RoleLook Flavour, Era, Armed;
+    public Dictionary<string, float> EraDress;
+    public Dictionary<string, string> EraSwap;
     Folk _vharn;
 
     public PeopleGenerator(PeopleTables tables, WorldConditions world)
@@ -362,13 +372,31 @@ public sealed partial class PeopleGenerator
                 if ((region?.Band ?? _w.Climate) is ClimateBand.Mild or ClimateBand.Hot && _t.Hazard.Dress.Length > 0) f.Dress = _t.Hazard.Dress;
             }
             Put(f, rng, look.Wear);
+            // The world's story, then its era, before the weather: whatever filled a slot stays.
+            if (Flavour != null) Put(f, Rng.For(seed, "flavour"), Flavour.Wear);
+            if (Era != null) Put(f, Rng.For(seed, "era"), Era.Wear);
+            bool armed = role is PersonRole.Guard or PersonRole.Raider or PersonRole.Lawman || occupancy == Occupancy.Raider;
+            if (armed && Armed != null) Put(f, Rng.For(seed, "armed"), Armed.Wear);
+            if (EraDress != null && f.Dress is "shirt" or "light" or "coat")
+            {
+                var made = Rng.For(seed, "era-dress");
+                foreach (var (d, chance) in EraDress) if (made.Chance(chance)) { f.Dress = d; break; }
+            }
             if (!_w.Vacuum) Put(f, rng, dress.Wear);
             if (!_w.Vacuum) Layer(f, dress, Rng.For(seed, "layers"));
+            // What the era makes in place of what another would: a head wrap for a helmet, a sealed helmet for one.
+            if (EraSwap != null)
+                foreach (var (from, to) in EraSwap)
+                    if (f.Wear.Remove(from) && to != "") f.Wear.Add(to);
         }
         else Put(f, rng, look.Wear);
         Age(f, occupancy, Rng.For(seed, "worn"));
         FitParts(f);
         if (rng.Chance(look.PropChance)) f.Prop = look.Prop;
+        // The era arms its fighters: what they carry is what their world could make.
+        if (occupancy != Occupancy.Feral && Armed is { Prop.Length: > 0 } a && (role is PersonRole.Guard or PersonRole.Raider or PersonRole.Lawman || occupancy == Occupancy.Raider) && (f.Prop is "" or "rifle" or "club"))
+            f.Prop = f.Prop != "" || Rng.For(seed, "arms").Chance(a.PropChance) ? a.Prop : f.Prop;
+        if (occupancy != Occupancy.Feral && Flavour is { Prop.Length: > 0 } fl && f.Prop == "" && Rng.For(seed, "carry").Chance(fl.PropChance)) f.Prop = fl.Prop;
         // In a rainy region, a free hand holds an umbrella now and then.
         if (f.Prop == "" && (region?.Humidity ?? 0f) > Locale.Rainy && f.Stage != LifeStage.Child && Rng.For(seed, "umbrella").Chance(0.35f) && occupancy == Occupancy.Friendly) f.Prop = "umbrella";
         f.Routine = look;

@@ -491,7 +491,7 @@ public sealed class CityPlan
                 "university" => new() { ["CLT"] = 3f, ["GNG"] = 1.5f },
                 _ => null,
             };
-            OccupancyRoll occ = !OccupancyLayer.Applies(f, state) ? null : OccupancyLayer.Roll(roll.Occupancy, f, s + 1, lean) with { Tags = roll.Tags };
+            OccupancyRoll occ = !OccupancyLayer.Applies(f, state) ? null : OccupancyLayer.Roll(roll.Occupancy, f, s + 1, lean, OccupancyLayer.Peopled(roll, profile) && OccupancyLayer.Livable(f, state)) with { Tags = roll.Tags };
             made[i] = PoiFactory.Spawn(lib, layout, state, s + 1, profile, occ);
             fams[i] = f;
         });
