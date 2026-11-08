@@ -116,6 +116,7 @@ public sealed partial class Staging
             "tornadowarning" => TornadoWarning(),
             "frontgrowth" => FrontGrowth(),
             "cloudgrain" => CloudGrain(),
+            "nightclouds" => NightClouds(),
             "skylevel" => SkyLevel(),
             "sunset" => Sunset(),
             "underwater" => UnderwaterShot(),
