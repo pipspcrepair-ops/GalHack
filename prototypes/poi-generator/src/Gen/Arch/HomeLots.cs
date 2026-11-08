@@ -19,44 +19,180 @@ public static partial class Homes
         const int Side = 6;
         int front = 10 + 2 * rng.Range(0, 2);
         Built b = Dwelling(l, l.F, s, Side, front);
-        Grounds(l, l.F, b, s, b.U1 + 1 + Side, b.V1 + 8 + 2 * rng.Range(0, 2));
+        // A house on a street owns one side line, its neighbour the next; a house on its own owns both.
+        Grounds(l, l.F, b, s, b.U1 + 1 + Side, b.V1 + 8 + 2 * rng.Range(0, 2), hints?.Home == null);
     }
 
     /// <summary>
-    /// The plot round a house: a fence, a low wall, a hedge or a compound wall along the front and down the sides,
-    /// gaps at the drive and the path, fallen in sections. The lot's gate is where the drive (or the path) meets its front.
+    /// The plot round a house and its fence, of the kind its street builds (<see cref="FenceKind"/>), by rule. The
+    /// fence follows the lot's own lines only: the front, the side the lot owns (a lot on a street owns its u = 0
+    /// side and its neighbour the next, so a line between two lots is fenced once; a lot alone owns both) and the
+    /// back where the kind runs right round. Runs meet at a corner on one shared post and never cross; every run
+    /// starts and ends on a post (a pier, or the wall or hedge itself), or where it meets something solid; the
+    /// only openings are where the path or the drive comes through, a gate post either side and the gate standing
+    /// open inside. Panels run along their run from post to post; nothing hangs in the air. The lot's gate is
+    /// where the drive (or the path) meets its front.
     /// </summary>
-    static void Grounds(Lot l, Frame f, Built b, HouseStyle s, int lotW, int lotD)
+    static void Grounds(Lot l, Frame f, Built b, HouseStyle s, int lotW, int lotD, bool bothSides, bool gate = true)
     {
         Canvas c = l.C;
+        Rng r = l.R;
         int gateU = b.DriveU0 is int d0 ? (d0 + b.DriveU1!.Value) / 2 : b.PathU;
-        c.X.Gate = f.At(gateU, 0, -1);
-        bool Gap(int u) => b.Paths.Append(b.PathU).Any(x => u >= x - 1 && u <= x + 2) || b.DriveU0 is int a && u >= a - 1 && u <= b.DriveU1!.Value + 1;
-        int tall = s.Fence switch { "high" => 3, "hedge" => 2, "none" => 0, _ => 1 };
-        if (tall == 0) return;
-        Block Make(int u, int y, int v) => s.Fence switch
+        if (gate) c.X.Gate = f.At(gateU, 0, -1);
+        int U = lotW - 1, B = lotD - 1;
+        HomeNote? note = c.X.Homes.Count > 0 ? c.X.Homes[^1] : null;
+        Int3 lo = Int3.Min(f.At(0, 0, 0), f.At(U, 0, B)), hi = Int3.Max(f.At(0, 0, 0), f.At(U, 0, B));
+        void Record(FenceNote? fn)
         {
-            "rail" => new Block(BlockType.Rail, l.Tech == TechLevel.Low ? Material.Timber : Material.Steel, l.Tech == TechLevel.Low ? l.S.Door : new Rgb(0x5c, 0x60, 0x64), Role.Decor),
-            "hedge" => new Block(BlockType.Cube, Material.Plant, new Rgb(0x48, 0x64, 0x34).Scale(0.9f + (Hash.Cell(new Int3(u, y, v), 0x4ED) % 20) / 100f), Role.Decor),
-            "high" => new Block(BlockType.Cube, l.S.WallM == Material.Glass ? Material.Concrete : l.S.WallM, y == tall - 1 ? s.WallC.Scale(0.85f) : s.WallC, Role.Wall),
-            _ => new Block(BlockType.Cube, l.S.BaseM, s.Wall is "brick" or "stone" ? s.WallC.Scale(0.9f) : l.S.Base, Role.Wall),
-        };
-        void Lay(int u, int v)
+            if (note != null) c.X.Homes[^1] = note with { Fence = fn, FenceKind = s.Fence, LotMin = lo, LotMax = hi };
+        }
+        FenceKind? k = s.FenceKind;
+        if (k == null) { Record(null); return; }
+        int tall = k.Body == "edging" ? 1 : k.Tall;
+        // The openings in the front line: each path and the drive, joined where they come together, never at a corner.
+        var spans = b.Paths.Append(b.PathU).Distinct().Select(x => (A: x, B: x + 1)).ToList();
+        if (b.DriveU0 is int a0 && b.DriveU1 is int a1) spans.Add((a0, a1));
+        var open = new List<(int A, int B)>();
+        foreach (var (sa, sb) in spans.OrderBy(x => x.A))
         {
-            for (int y = 0; y < tall; y++)
+            int a = Math.Max(3, sa), z = Math.Min(U - 3, sb);
+            if (z < a) continue;
+            if (open.Count > 0 && a - open[^1].B <= 1) open[^1] = (open[^1].A, Math.Max(open[^1].B, z));
+            else open.Add((a, z));
+        }
+        // The runs: the front broken at the openings, the side or sides, and the back where it goes right round.
+        bool enclose = k.Body != "edging" && r.Chance(k.Enclose);
+        int sideTo = enclose ? B : Math.Clamp(b.V0 + Math.Max(2, (b.V1 - b.V0) / 2), 3, B - 1);
+        static List<(int U, int V)> Line(int u0, int v0, int u1, int v1)
+        {
+            var cells = new List<(int, int)>();
+            int len = Math.Max(Math.Abs(u1 - u0), Math.Abs(v1 - v0));
+            for (int t = 0; t <= len; t++) cells.Add((u0 + Math.Sign(u1 - u0) * t, v0 + Math.Sign(v1 - v0) * t));
+            return cells;
+        }
+        var runs = new List<List<(int U, int V)>>();
+        var gates = new List<((int U, int V) A, (int U, int V) B)>();
+        int from = 0;
+        foreach (var (a, z) in open)
+        {
+            runs.Add(Line(from, 0, a - 1, 0));
+            gates.Add(((a - 1, 0), (z + 1, 0)));
+            from = z + 1;
+        }
+        runs.Add(Line(from, 0, U, 0));
+        runs.Add(Line(0, 0, 0, sideTo));
+        if (bothSides) runs.Add(Line(U, 0, U, sideTo));
+        if (enclose) runs.Add(Line(0, B, U, B));
+        // A run that meets something solid on or against the lot line (a shed, a wall, earth heaped against a house)
+        // stops at it, never squeezing a slot between: split it there.
+        bool Solid(int u, int v) => Enumerable.Range(0, tall).Any(y => BlockInfo.Collides(c.Get(f.At(u, y, v)).Type)) || c.Occ.Contains(f.At(u, 0, v)) && !c.Blocks.ContainsKey(f.At(u, 0, v));
+        bool Blocked(int u, int v) => Solid(u, v) || Solid(u + 1, v) || Solid(u - 1, v) || Solid(u, v + 1) || Solid(u, v - 1);
+        var split = new List<List<(int U, int V)>>();
+        foreach (var run in runs)
+        {
+            var cur = new List<(int U, int V)>();
+            foreach (var cell in run)
             {
-                Int3 p = f.At(u, y, v);
-                if (c.Blocks.ContainsKey(p) || c.Occ.Contains(p) && y == 0) return;
-                // A fence falls in 2 m sections; a wall mostly stands.
-                if (Hash.Cell(new Int3(u / 2, 0, v / 2), 61 + (uint)lotW) % 100 < (s.Fence == "high" ? 8 : 24)) return;
-                c.Set(p, Make(u, y, v));
+                if (Blocked(cell.U, cell.V)) { if (cur.Count > 0) split.Add(cur); cur = new(); continue; }
+                cur.Add(cell);
+            }
+            // A run of one cell is a post on its own: between two openings, or between two solid things.
+            if (cur.Count > 0) split.Add(cur);
+        }
+        runs = split;
+        // Posts: both ends of every run (a corner shared by two runs is one post) and the gate posts, each a whole cell so the
+        // boards run flush into it; along the run at the kind's spacing, a wall's pier or a panel fence's darker post board in the line.
+        var posts = new HashSet<(int U, int V)>();
+        var bands = new HashSet<(int U, int V)>();
+        if (k.Body is "panel" or "railing" || k.Body == "wall" && k.Post == "pier")
+            foreach (var run in runs)
+            {
+                posts.Add(run[0]);
+                posts.Add(run[^1]);
+                for (int i = 1; i < run.Count - 1; i++)
+                    if (k.Every > 0 && i % k.Every == 0 && run.Count - 1 - i >= 1) (k.Body == "panel" ? bands : posts).Add(run[i]);
+            }
+        if (k.Body is not "edging")
+            foreach (var (ga, gb) in gates) { posts.Add(ga); posts.Add(gb); }
+        // Paints and blocks.
+        Rgb body = s.FenceC, post = s.FencePostC;
+        var iron = new Rgb(0x2c, 0x2e, 0x30);
+        Block Post(int y) => k.Body switch
+        {
+            "wall" or "railing" => new Block(BlockType.Cube, k.Stuff, body.Scale(0.86f), Role.Wall),
+            "hedge" => new Block(BlockType.Cube, Material.Timber, post, Role.Decor),
+            _ => new Block(BlockType.Cube, k.PostStuff, post, Role.Decor),
+        };
+        float Jit(int u, int y, int v, int spread) => 1f + ((int)(Hash.Cell(f.At(u, y, v), 0xFE7u) % (uint)(2 * spread + 1)) - spread) / 100f;
+        Block Body(int u, int y, int v, bool alongU) => k.Body switch
+        {
+            "wall" => new Block(BlockType.Cube, k.Stuff, body.Scale(Jit(u, y, v, k.Stuff == Material.Rock ? 9 : 3) * (y == tall - 1 ? 0.9f : 1f)), Role.Wall),
+            "hedge" => new Block(BlockType.Cube, Material.Plant, body.Scale(Jit(u, y, v, 10)), Role.Decor),
+            "railing" => y == 0 ? new Block(BlockType.Cube, k.Stuff, body.Scale(Jit(u, y, v, 3)), Role.Wall)
+                : new Block(BlockType.Ladder, Material.Steel, iron, Role.Decor, f.Turn(alongU ? Dir.North : Dir.East)),
+            "edging" => new Block(BlockType.Plate, k.Stuff, body.Scale(Jit(u, y, v, 4)), Role.Floor),
+            // Boards, sheet or screen: a corrugated sheet's ribs in alternate shades.
+            _ => new Block(BlockType.Pane, k.Stuff, k.Stuff == Material.Rust || k.Stuff == Material.Steel && body.R < 0xa0 ? body.Scale((u + v) % 2 == 0 ? 1f : 0.82f) : body.Scale(Jit(u, y, v, 3)), Role.Decor),
+        };
+        foreach (var run in runs)
+        {
+            bool alongU = run[0].V == run[^1].V;
+            foreach (var (u, v) in run)
+            {
+                bool isPost = posts.Contains((u, v));
+                for (int y = 0; y < tall; y++)
+                {
+                    Int3 p = f.At(u, y, v);
+                    if (k.Body == "edging") { if (!c.Blocks.ContainsKey(p)) c.Blocks[p] = Body(u, y, v, alongU); continue; }
+                    Block x = isPost ? Post(y) : Body(u, y, v, alongU);
+                    if (bands.Contains((u, v))) x.Color = post;
+                    c.Set(p, x);
+                }
+                // A pier stands a course over its wall, a hedge's gate post as tall as the hedge.
+                if (isPost && k.Body == "wall") c.Set(f.At(u, tall, v), Post(tall));
             }
         }
-        for (int u = 0; u < lotW; u++)
-            if (!Gap(u)) Lay(u, 0);
-        int back = s.Fence == "high" ? lotD - 1 : lotD * 2 / 3;
-        for (int v = 1; v <= back; v++) { Lay(0, v); Lay(lotW - 1, v); }
-        if (s.Fence == "high") for (int u = 1; u < lotW - 1; u++) Lay(u, lotD - 1);
+        // A panel the mesher would turn across its run (something solid beside it) becomes a post, so every panel runs along its run.
+        if (k.Body == "panel")
+            foreach (var run in runs)
+            {
+                bool alongX = f.At(run[0].U, 0, run[0].V).X != f.At(run[^1].U, 0, run[^1].V).X;
+                foreach (var (u, v) in run)
+                    for (int y = 0; y < tall; y++)
+                    {
+                        Int3 p = f.At(u, y, v);
+                        if (c.Get(p).Type != BlockType.Pane) continue;
+                        bool meshX = !c.Get(p + Dir.East.Vec()).IsAir || !c.Get(p + Dir.West.Vec()).IsAir;
+                        if (meshX == alongX) continue;
+                        for (int yy = 0; yy < tall; yy++) c.Set(f.At(u, yy, v), Post(yy));
+                        posts.Add((u, v));
+                        break;
+                    }
+            }
+        // The gates stand open inside the lot: a barred leaf hung on each gate post, as tall as the fence allows.
+        var leaves = new List<List<(int U, int V)>>();
+        if (k.Body is not "edging")
+            foreach (var (ga, gb) in gates)
+            {
+                int width = gb.U - ga.U - 1;
+                foreach (var (gp, half) in width <= 3 ? new[] { (ga, width) } : new[] { (ga, width / 2), (gb, width - width / 2) })
+                {
+                    int len = Math.Min(half, 3);
+                    var leaf = Enumerable.Range(1, len).Select(d => (gp.U, d)).ToList();
+                    if (leaf.Any(x => Enumerable.Range(0, Math.Min(tall, 2)).Any(y => c.Blocks.TryGetValue(f.At(x.Item1, y, x.d), out Block o) && o.Type != BlockType.Plate))) continue;
+                    foreach (var (u, v) in leaf)
+                        for (int y = 0; y < Math.Min(tall, 2); y++)
+                        {
+                            Int3 p = f.At(u, y, v);
+                            c.Blocks[p] = new Block(BlockType.Ladder, k.Body is "panel" ? k.PostStuff : Material.Steel, k.Body is "panel" ? post : iron, Role.Decor, f.Turn(Dir.East));
+                        }
+                    leaves.Add(leaf);
+                }
+            }
+        List<Int3> World(IEnumerable<(int U, int V)> cells) => cells.Select(x => f.At(x.U, 0, x.V)).ToList();
+        Record(new FenceNote(k.Id, k.Body, tall, runs.Select(World).ToList(), World(posts).ToHashSet(), gates.Select(g => (f.At(g.A.U, 0, g.A.V), f.At(g.B.U, 0, g.B.V))).ToList(),
+            open.Select(o => World(Line(o.A, 0, o.B, 0))).ToList(), bothSides)
+        { Leaves = leaves.Select(World).ToList(), SideLines = runs.Where(x => x[0].U == x[^1].U && x.Any(y => y.V > 0)).Select(x => x[0].U).Distinct().Count() });
     }
 
     /// <summary>A farm's house: a house of the farm's own people, no garage (the farm has its sheds), its door on the yard.</summary>
@@ -68,6 +204,7 @@ public static partial class Homes
         HouseStyle s = HouseStyle.Roll(culture, l.R, family);
         s.Garage = "none";
         s.Fence = "none";
+        s.FenceKind = null;
         if (s.Plan is "court" or "row" or "tower" or "round" or "oval") s.Plan = "rect";
         Built b = Dwelling(l, f, s, 0, 4);
         return (b.U1 - b.U0 + 1, b.V1 - b.V0 + 1, b.DoorU);
@@ -76,9 +213,10 @@ public static partial class Homes
     /// <summary>
     /// A city lot's house or row of terraced houses (<see cref="CityBlocks"/>): the city's culture and the lot's
     /// size choose it, set back from the lot line with its drive to the street. Returns where its drive and path
-    /// cross the lot line, for the fence's gaps.
+    /// cross the lot line, and its fence, of the kind its neighbourhood builds, to draw once the lot's retaining
+    /// walls stand (on the lot's left line, and its right on its row's last lot, as every city lot).
     /// </summary>
-    public static (List<int> Paths, int? DriveU0, int? DriveU1) CityHouse(Plot p, CityLot lot, bool terrace)
+    public static (List<int> Paths, int? DriveU0, int? DriveU1, Action Fence) CityHouse(Plot p, CityLot lot, bool terrace)
     {
         int q = (int)p.Turn(Dir.North);
         var frame = new Frame(q, q is 1 or 2 ? -1 : 0, q is 2 or 3 ? -1 : 0);
@@ -126,7 +264,7 @@ public static partial class Homes
         Built b = Dwelling(l, frame, s, 3, front, maxW);
         p.C.X.Gate = frame.At(b.DriveU0 is int d0 ? (d0 + b.DriveU1!.Value) / 2 : b.PathU, 0, 0);
         p.C.VaultModule = l.Loot;
-        return (b.Paths.Append(b.PathU).Distinct().ToList(), b.DriveU0, b.DriveU1);
+        return (b.Paths.Append(b.PathU).Distinct().ToList(), b.DriveU0, b.DriveU1, () => Grounds(l, frame, b, s, lotW, lotD, lot.EndRight, gate: false));
     }
 
     /// <summary>
@@ -162,8 +300,8 @@ public static partial class Homes
         flights.Add(shaft.Stair(col, 2, last));
         for (int v = 2; v <= 5; v++) house.Mark(col, v, false, 0, 1);
         house.Reserve(col, 2, 4);
-        house.Gap(split, tw - 2 + r.Range(0, off), false, 0, 2, house.Height);
-        shaft.Gap(tw / 2 - 1, 0, true, 0, 2, shaft.Height);
+        house.Gap(split, tw - 2 + r.Range(0, off), false, 0, DoorSize.Wide, DoorSize.Tall);
+        shaft.Gap(tw / 2 - 1, 0, true, 0, DoorSize.Wide, DoorSize.Tall);
         shaft.Modules();
         house.Modules();
         for (int st = 0; st + 1 < storeys; st++)
@@ -190,13 +328,14 @@ public static partial class Homes
         shaft.Box();
         house.Box();
         l.Approach(f, tw / 2 - 1, -3);
-        shaft.FrontDoor(tw / 2 - 1, 0, halls[0], shaft.Height);
+        shaft.Headroom(tw / 2 - 1, 0, Dir.North, 0);
+        shaft.FrontDoor(tw / 2 - 1, 0, halls[0], DoorSize.Tall);
         l.C.Link(l.C.EntranceModule, halls[0].Module);
         // The drop comes in on a bracket up the shaft, not to the house up top.
         shaft.Service(tw / 2 - 1, 0, null);
         for (int v = -(front + margin); v < 0; v++)
             for (int k = 0; k < 2; k++) l.Plate(f, tw / 2 - 1 + k, v, l.S.Base.Scale(1.15f), Role.Floor);
-        l.C.X.Homes.Add(new HomeNote(s.Family.Id, $"tower/{storeys}/{top}/{s.Roof}/{s.Wall}", storeys + 1, s.Roof, "none", "", 0, 0, default, Dir.North, false));
+        l.C.X.Homes.Add(new HomeNote(s.Family.Id, $"tower/{storeys}/{top}/{s.Roof}/{s.Wall}", storeys + 1, s.Roof, "none", "", 0, 0, default, Dir.North, false) { Exits = shaft.ExitCells().ToList() });
         return new Built { U0 = side, U1 = side + 2 * margin + tw - 1, V0 = front, V1 = front + 2 * margin + tw - 1, DoorU = side + margin + tw / 2 - 1, DoorV = front + margin, PathU = side + margin + tw / 2 - 1 };
     }
 }

@@ -8,10 +8,11 @@ using PoiGenerator.Gen;
 namespace PoiGenerator;
 
 /// <summary>
-/// Proof frames of the house rules in daylight: houses built by the rules, set side by side on open ground and
-/// seen from where a person would stand. --view=houses --out=&lt;folder&gt; writes them all: a street of one
-/// culture, a terrace row, three regional families, odd one-offs and garage doors close up beside a 1.8 m figure.
-/// Fresh seeds every run.
+/// Proof frames of the house rules in daylight: houses built by the rules, their lots set side by side lot line to
+/// lot line on open ground and seen from where a person would stand. --view=houses --out=&lt;folder&gt; writes them all:
+/// a street of one culture, two streets' fences, fences close up, a terrace row, regional families, odd one-offs,
+/// garage doors and front doors close up beside a 1.8 m figure, the service fixing. --shots=a,b only writes the
+/// frames whose names start with one of those. Fresh seeds every run.
 /// </summary>
 public partial class Screenshot
 {
@@ -26,6 +27,8 @@ public partial class Screenshot
             GetTree().Quit(2);
         };
         Directory.CreateDirectory(folder);
+        string[] only = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--shots="))?["--shots=".Length..].Split(',');
+        bool Want(string name) => only == null || only.Any(o => name.StartsWith(o, StringComparison.Ordinal));
         var lib = _main.Library;
         var rand = new Random();
         _main.Inspect("flavour_house", 0, Rarity.Common, PoiState.Abandoned, 7);
@@ -39,28 +42,41 @@ public partial class Screenshot
         });
         FamilyDef fam = lib.Families.First(f => f.Id == "flavour_house");
 
-        // Houses in a row along +x, fronts to -z (the street), each from the rules; returns their layouts and where each stands.
-        List<(Layout L, float X)> Row(Func<int, LayoutHints> hints, int n, Func<Layout, bool>? keep = null, int tries = 400)
+        // Lots in a row along +x, fronts to -z (the street), each lot's line against the last's; returns their layouts and where each stands.
+        List<(Layout L, float X)> Row(Func<int, LayoutHints> hints, int n, Func<Layout, bool> keep = null, int tries = 400, float start = 0, bool clear = true)
         {
-            foreach (Node3D x in _row) x.QueueFree();
-            _row.Clear();
+            if (clear)
+            {
+                foreach (Node3D x in _row) x.QueueFree();
+                _row.Clear();
+            }
             var made = new List<(Layout, float)>();
-            float at = 0;
+            float at = start;
             for (int k = 0, t = 0; k < n && t < tries; t++)
             {
                 Layout l = PoiFactory.BuildLayout(lib, fam, 1, Rarity.Common, (ulong)rand.NextInt64(), hints(k));
                 if (keep != null && !keep(l)) continue;
                 PoiInstance poi = PoiFactory.Spawn(lib, l, PoiState.Active, (ulong)rand.NextInt64());
                 var view = PoiView.Build(poi, Biome.Steppe, new PoiView.Options(Collision: false, Figures: false), (_, _) => new Color(0.36f, 0.43f, 0.27f));
-                float x0 = l.Occupied.Min.X;
+                HomeNote h = l.Extras.Homes.FirstOrDefault();
+                bool lot = h != null && h.LotMax.X > h.LotMin.X;
+                float x0 = lot ? h.LotMin.X : l.Occupied.Min.X, w = lot ? h.LotMax.X - h.LotMin.X + 1 : l.Occupied.Size.X - 6;
                 view.Position = new Vector3(at - x0, 0, 0);
                 root.AddChild(view);
                 _row.Add(view);
                 made.Add((l, at - x0));
-                at += l.Occupied.Size.X - 6;
+                at += w;
                 k++;
             }
             return made;
+        }
+
+        MeshInstance3D Figure(Vector3 feet)
+        {
+            var person = new MeshInstance3D { Mesh = new CapsuleMesh { Radius = 0.25f, Height = 1.8f }, Position = feet + new Vector3(0, 0.9f, 0),
+                MaterialOverride = new StandardMaterial3D { AlbedoColor = new Color(0.85f, 0.35f, 0.2f) } };
+            root.AddChild(person);
+            return person;
         }
 
         async System.Threading.Tasks.Task Shot(string name, Vector3 eye, Vector3 look, int settle = 90)
@@ -76,81 +92,180 @@ public partial class Screenshot
             GD.Print(e == Error.Ok ? $"saved {path}" : $"could not save {path}: {e}");
         }
 
-        string Says(IEnumerable<(Layout L, float X)> row) => string.Join(" | ", row.Select(r => string.Join(", ", r.L.Extras.Homes.Select(h => $"{h.Family} {h.Silhouette}"))));
+        string Says(IEnumerable<(Layout L, float X)> row) => string.Join(" | ", row.Select(r => string.Join(", ", r.L.Extras.Homes.Select(h => $"{h.Family} {h.Silhouette} fence {h.FenceKind}"))));
+
+        // The front door of a lot as built: its middle at the floor, the way out, the way along it.
+        (Vector3 Mid, Vector3 Out, Vector3 Along)? Door((Layout L, float X) one)
+        {
+            HomeNote h = one.L.Extras.Homes.FirstOrDefault();
+            if (h == null || h.Exits.Count == 0) return null;
+            var (a, b, o) = h.Exits[0];
+            var mid = new Vector3(one.X + (a.X + b.X) / 2f + 0.5f, a.Y, (a.Z + b.Z) / 2f + 0.5f);
+            Int3 ov = o.Vec(), av = b - a;
+            return (mid, new Vector3(ov.X, 0, ov.Z), new Vector3(av.X, 0, av.Z));
+        }
+
+        // A front door close up, the figure standing at it.
+        async System.Threading.Tasks.Task DoorShot(string name, (Layout L, float X) one)
+        {
+            if (Door(one) is not var (mid, o, along)) return;
+            var person = Figure(mid + o * 1.1f + along * 0.9f);
+            await Shot(name, mid + o * 8.5f - along * 3.5f + new Vector3(0, 1.8f, 0), mid + new Vector3(0, 2.2f, 0) + o * 1f);
+            person.QueueFree();
+        }
 
         // A suburban street: one culture's houses, mid tech, temperate, seen from the street's edge looking along it.
-        // A culture whose main family is a suburban one.
         int culture = rand.Next();
         for (int k = 0; k < 400 && HomeCulture.Of(lib.Homes, new HomeHints(culture, Climate.Temperate, 0.6f), TechLevel.Mid).Families[0].Family.Id is not ("suburban" or "bungalow"); k++) culture = rand.Next();
-        var street = Row(_ => new LayoutHints(Dir.North, TechLevel.Mid, null, new HomeHints(culture, Climate.Temperate, 0.6f)), 7);
-        GD.Print($"street: {Says(street)}");
-        float end = street[^1].X + 30;
-        await Shot("street", new Vector3(end * 0.12f, 2.2f, -17), new Vector3(end * 0.5f, 3.5f, 6));
-        await Shot("street-across", new Vector3(end * 0.3f, 8f, -34), new Vector3(end * 0.3f, 4f, 14));
+        if (Want("street"))
+        {
+            var street = Row(_ => new LayoutHints(Dir.North, TechLevel.Mid, null, new HomeHints(culture, Climate.Temperate, 0.6f)), 6);
+            GD.Print($"street: {Says(street)}");
+            float end = street[^1].X + 40;
+            await Shot("street", new Vector3(end * 0.12f, 2.2f, -17), new Vector3(end * 0.5f, 3.5f, 6));
+            await Shot("street-across", new Vector3(end * 0.3f, 8f, -34), new Vector3(end * 0.3f, 4f, 14));
+        }
 
-        // Another culture, another climate: the same rules, a different place.
-        int culture2 = rand.Next();
-        var street2 = Row(_ => new LayoutHints(Dir.North, (TechLevel)rand.Next(3), null, new HomeHints(culture2, rand.Next(2) == 0 ? Climate.Hot : Climate.Wet, 0.5f)), 6);
-        GD.Print($"street 2: {Says(street2)}");
-        await Shot("street-other", new Vector3((street2[^1].X + 30) * 0.12f, 2.2f, -17), new Vector3((street2[^1].X + 30) * 0.5f, 3.5f, 6));
+        // Two streets of one town side by side, each with its own fences.
+        if (Want("streets-fences"))
+        {
+            int c1 = rand.Next(), c2 = rand.Next();
+            HomeCulture C(int seed) => HomeCulture.Of(lib.Homes, new HomeHints(seed, Climate.Temperate, 0.55f), TechLevel.Mid);
+            for (int k = 0; k < 400 && (C(c1).Fences.Count == 0 || C(c1).Bare > 0.2f || C(c1).Fences[0].Kind.Body == "edging"); k++) c1 = rand.Next();
+            for (int k = 0; k < 400 && (C(c2).Fences.Count == 0 || C(c2).Bare > 0.2f || C(c2).Fences[0].Kind.Body is "edging" || C(c2).Fences[0].Kind.Body == C(c1).Fences[0].Kind.Body); k++) c2 = rand.Next();
+            var a = Row(_ => new LayoutHints(Dir.North, TechLevel.Mid, null, new HomeHints(c1, Climate.Temperate, 0.55f)), 3);
+            float gap = a.Count > 0 ? a[^1].X + a[^1].L.Extras.Homes[0].LotMax.X + 14 : 60;
+            var b = Row(_ => new LayoutHints(Dir.North, TechLevel.Mid, null, new HomeHints(c2, Climate.Temperate, 0.55f)), 3, start: gap, clear: false);
+            GD.Print($"street A ({C(c1).Fences[0].Kind.Id}): {Says(a)}");
+            GD.Print($"street B ({C(c2).Fences[0].Kind.Id}): {Says(b)}");
+            float end = b.Count > 0 ? b[^1].X + b[^1].L.Extras.Homes[0].LotMax.X : gap * 2;
+            await Shot("streets-fences", new Vector3(end * 0.5f, 14f, -46), new Vector3(end * 0.5f, 1f, 8));
+        }
+
+        // Fences close up: a corner post, the side run going back, the front run to the gate; a panel fence and a wall or railings.
+        for (int n = 0; n < 2; n++)
+        {
+            string name = $"fence-close-{n}";
+            if (!Want(name)) continue;
+            int nLocal = n;
+            var one = Row(_ => new LayoutHints(Dir.North, nLocal == 0 ? TechLevel.Low : TechLevel.Mid, null, new HomeHints(rand.Next(), nLocal == 0 ? Climate.Wet : Climate.Temperate, 0.6f)), 1,
+                l => l.Extras.Homes.FirstOrDefault()?.Fence is { } fn && fn.Gates.Count > 0 && (nLocal == 0 ? fn.Body == "panel" : fn.Body is "railing" or "wall" or "hedge"), 800);
+            if (one.Count == 0) { GD.Print($"no fence came up for {name}"); continue; }
+            HomeNote h = one[0].L.Extras.Homes[0];
+            GD.Print($"{name}: {Says(one)}");
+            var corner = new Vector3(one[0].X + h.LotMin.X, 0, h.LotMin.Z);
+            var gate = h.Fence!.Gates[0].A;
+            var g = new Vector3(one[0].X + gate.X + 0.5f, 0, gate.Z + 0.5f);
+            var person = Figure(corner + new Vector3(2.5f, 0, -1.3f));
+            await Shot(name, corner + new Vector3(-3f, 1.9f, -5f), corner + new Vector3(4.5f, 0.6f, 3.5f));
+            var person2 = Figure(g + new Vector3(0, 0, -1.3f));
+            await Shot(name + "-gate", g + new Vector3(-4f, 2f, -6.5f), g + new Vector3(0.5f, 0.8f, 1f));
+            person.QueueFree();
+            person2.QueueFree();
+        }
+
+        // Front doors close up with the figure at the door: a one-storey eaves house under its hipped or pagoda roof, and a cross-gabled house with a carport.
+        if (Want("door-eaves"))
+        {
+            var one = Row(_ => new LayoutHints(Dir.North, TechLevel.Mid, null, new HomeHints(rand.Next(), Climate.Temperate, 0.6f, "eaves")), 1,
+                l => l.Extras.Homes.FirstOrDefault() is { Family: "eaves", Storeys: 1, Roof: "hip" or "pagoda" }, 600);
+            if (one.Count > 0) { GD.Print($"door-eaves: {Says(one)}"); await DoorShot("door-eaves", one[0]); }
+        }
+        if (Want("door-carport"))
+        {
+            var one = Row(_ => new LayoutHints(Dir.North, TechLevel.Mid, null, new HomeHints(rand.Next(), Climate.Temperate, 0.4f, rand.Next(2) == 0 ? "suburban" : "bungalow")), 1,
+                l => l.Extras.Homes.FirstOrDefault() is { Roof: "cross", Garage: "carport" }, 1500);
+            if (one.Count > 0 && Door(one[0]) is var (mid, o, along))
+            {
+                // Back far enough to see the carport beside the house as well as the figure at the door.
+                GD.Print($"door-carport: {Says(one)}");
+                HomeNote h = one[0].L.Extras.Homes[0];
+                var port = new Vector3(one[0].X + h.DoorCell.X + 0.5f, 0, h.DoorCell.Z + 0.5f);
+                var person = Figure(mid + o * 1.1f + along * 0.9f);
+                Vector3 between = (mid + port) * 0.5f;
+                await Shot("door-carport", between + o * 15f + new Vector3(0, 2.4f, 0) - (port - mid).Normalized() * 2f, between + new Vector3(0, 2.2f, 0));
+                person.QueueFree();
+            }
+            else GD.Print("no cross-gabled house with a carport came up");
+        }
+
+        // The service fixing close up: a slim mast clamped to a wall, its insulator, the door off to one side.
+        if (Want("bracket"))
+        {
+            bool Mast(Layout l) => l.Extras.Service.Any(p => l.Blocks.Get(p.Cell - Int3.Up) is { Type: BlockType.Pillar, Material: PoiGenerator.Gen.Material.Steel });
+            var one = Row(_ => new LayoutHints(Dir.North, TechLevel.Mid, null, new HomeHints(rand.Next(), Climate.Temperate, 0.6f, "suburban")), 1,
+                l => Mast(l) && l.Extras.Service.Any(p => p.Facing == Dir.North), 800);
+            if (one.Count > 0)
+            {
+                ServicePoint p = one[0].L.Extras.Service.First(x => one[0].L.Blocks.Get(x.Cell - Int3.Up).Type == BlockType.Pillar);
+                GD.Print($"bracket at {p.Cell} facing {p.Facing}: {Says(one)}");
+                var at = new Vector3(one[0].X + p.Cell.X + 0.5f, p.Cell.Y, p.Cell.Z + 0.5f);
+                Int3 fv = p.Facing.Vec();
+                var o = new Vector3(fv.X, 0, fv.Z);
+                var side = new Vector3(-o.Z, 0, o.X);
+                var person = Door(one[0]) is var (mid, dout, _) ? Figure(mid + dout * 1.1f) : null;
+                await Shot("bracket", at + o * 9f + side * 3f + new Vector3(0, -2.5f, 0), at + new Vector3(0, -2.5f, 0));
+                person?.QueueFree();
+            }
+        }
 
         // A row of terraces.
-        var terrace = Row(_ => new LayoutHints(Dir.North, TechLevel.Mid, null, new HomeHints(rand.Next(), Climate.Temperate, 0.5f, "terrace")), 2);
-        GD.Print($"terrace: {Says(terrace)}");
-        float tw = terrace.Sum(t => t.L.Occupied.Size.X - 6);
-        await Shot("terrace", new Vector3(tw * 0.2f, 3f, -24), new Vector3(tw * 0.45f, 5f, 10));
+        if (Want("terrace"))
+        {
+            var terrace = Row(_ => new LayoutHints(Dir.North, TechLevel.Mid, null, new HomeHints(rand.Next(), Climate.Temperate, 0.5f, "terrace")), 2);
+            GD.Print($"terrace: {Says(terrace)}");
+            float tw = terrace[^1].X + terrace[^1].L.Extras.Homes[0].LotMax.X;
+            await Shot("terrace", new Vector3(tw * 0.2f, 3f, -24), new Vector3(tw * 0.45f, 5f, 10));
+        }
 
-        // Three regional families, each in its own climate.
+        // Regional families, each in its own climate.
         foreach (var (family, climate, tech) in new[] { ("chalet", Climate.Cold, TechLevel.Mid), ("stilt", Climate.Wet, TechLevel.Low), ("courtyard", Climate.Hot, TechLevel.Mid), ("adobe", Climate.Hot, TechLevel.Low), ("canal", Climate.Temperate, TechLevel.Low), ("eaves", Climate.Temperate, TechLevel.Mid) })
         {
+            if (!Want($"family-{family}")) continue;
             var one = Row(_ => new LayoutHints(Dir.North, tech, null, new HomeHints(rand.Next(), climate, 0.6f, family)), 3);
             GD.Print($"{family}: {Says(one)}");
-            float w = one.Sum(t => t.L.Occupied.Size.X - 6);
-            await Shot($"family-{family}", new Vector3(w * 0.5f - 10, 4f, -26), new Vector3(w * 0.5f, 5f, 12));
+            float w = one[^1].X + one[^1].L.Extras.Homes[0].LotMax.X;
+            await Shot($"family-{family}", new Vector3(w * 0.5f - 10, 4f, -30), new Vector3(w * 0.5f, 4f, 12));
         }
 
         // The odd one-offs.
         foreach (string odd in new[] { "watertower", "mushroom", "saucer", "wavehouse", "hillside", "glasshell", "pod" })
         {
+            if (!Want($"odd-{odd}")) continue;
             var one = Row(_ => new LayoutHints(Dir.North, TechLevel.High, null, new HomeHints(rand.Next(), Climate.Temperate, 0.6f, odd)), 1,
                 l => l.Extras.Homes.Any(h => h.Family == odd));
             if (one.Count == 0) continue;
             GD.Print($"odd {odd}: {Says(one)}");
-            var b = one[0].L.Occupied;
-            float cx = one[0].X + b.Min.X + b.Size.X * 0.5f;
-            await Shot($"odd-{odd}", new Vector3(cx - 14, 3f, -30), new Vector3(cx, 6f, b.Min.Z + b.Size.Z * 0.5f));
+            // On the house itself, from a little above any garden wall.
+            PlainBox b = one[0].L.Extras.Plain.OrderByDescending(x => (x.Max.X - x.Min.X) * (x.Max.Z - x.Min.Z)).First();
+            float cx = one[0].X + (b.Min.X + b.Max.X + 1) * 0.5f, cz = (b.Min.Z + b.Max.Z + 1) * 0.5f, size = Math.Max(b.Max.X - b.Min.X, b.Max.Z - b.Min.Z);
+            Vector3 look = new(cx, b.Eave * 0.8f, cz);
+            await Shot($"odd-{odd}", new Vector3(cx - size * 0.55f, b.Eave + 5f, cz - size * 1.25f), look);
         }
 
         // Garage doors close up: one of each kind, a 1.8 m figure beside each.
         foreach (string kind in new[] { "panel", "ribbed", "glazed", "timber", "hinged", "carport" })
         {
+            if (!Want($"garage-{kind}")) continue;
             var one = Row(_ => new LayoutHints(Dir.North, kind is "timber" or "hinged" ? TechLevel.Low : TechLevel.Mid, null, new HomeHints(rand.Next(), Climate.Temperate, 0.8f, kind is "timber" or "hinged" ? "bungalow" : "suburban")), 1,
                 l => l.Extras.Homes.Any(h => h.GarageDoor == kind && h.DoorWide > 0), 600);
             if (one.Count == 0) { GD.Print($"no {kind} garage came up"); continue; }
             HomeNote h = one[0].L.Extras.Homes.First(x => x.GarageDoor == kind);
             GD.Print($"garage {kind} {h.DoorWide} m: {Says(one)}");
             Vector3 door = new Vector3(one[0].X + h.DoorCell.X, 0, h.DoorCell.Z) + new Vector3(h.DoorWide * 0.5f, 0, 0);
-            var person = new MeshInstance3D { Mesh = new CapsuleMesh { Radius = 0.25f, Height = 1.8f }, Position = door + new Vector3(-h.DoorWide * 0.5f - 0.8f, 0.9f, -1.2f),
-                MaterialOverride = new StandardMaterial3D { AlbedoColor = new Color(0.85f, 0.35f, 0.2f) } };
-            root.AddChild(person);
+            var person = Figure(door + new Vector3(-h.DoorWide * 0.5f - 0.8f, 0, -1.2f));
             await Shot($"garage-{kind}", door + new Vector3(-4f, 1.7f, -10f), door + new Vector3(0, 1.6f, 0));
             person.QueueFree();
         }
 
-        // Front doors close up, a 1.8 m figure beside each: a full storey tall, framed (where at all) in the house's own trim.
+        // Front doors close up, a 1.8 m figure at each: the standard door, framed (where at all) in the house's own trim.
         for (int n = 0; n < 2; n++)
         {
-            var one = Row(_ => new LayoutHints(Dir.North, TechLevel.Mid, null, new HomeHints(rand.Next(), Climate.Temperate, 0.6f, n == 0 ? "suburban" : "cottage")), 1);
-            Doorway d = one[0].L.Doorways.FirstOrDefault(x => x.ModuleB == one[0].L.EntranceModule || x.ModuleA == one[0].L.EntranceModule);
-            if (d == null) continue;
-            Int3 lo = d.Cells.Aggregate(Int3.Min);
-            GD.Print($"door {n}: {Says(one)}, {d.Cells.Count} cells, {d.Cells.Max(c => c.Y) - lo.Y + 1} m tall");
-            Vector3 door = new Vector3(one[0].X + lo.X + 1f, 0, lo.Z);
-            var person = new MeshInstance3D { Mesh = new CapsuleMesh { Radius = 0.25f, Height = 1.8f }, Position = door + new Vector3(-2.2f, 0.9f, -1.0f),
-                MaterialOverride = new StandardMaterial3D { AlbedoColor = new Color(0.85f, 0.35f, 0.2f) } };
-            root.AddChild(person);
-            await Shot($"door-{n}", door + new Vector3(-3f, 1.7f, -7.5f), door + new Vector3(0, 1.5f, 0));
-            person.QueueFree();
+            if (!Want($"door-{n}")) continue;
+            int nLocal = n;
+            var one = Row(_ => new LayoutHints(Dir.North, TechLevel.Mid, null, new HomeHints(rand.Next(), Climate.Temperate, 0.6f, nLocal == 0 ? "suburban" : "cottage")), 1);
+            GD.Print($"door {n}: {Says(one)}");
+            await DoorShot($"door-{n}", one[0]);
         }
         GetTree().Quit(0);
     }

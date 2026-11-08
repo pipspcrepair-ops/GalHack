@@ -53,6 +53,66 @@ public static partial class Homes
         /// <summary>Columns its roof keeps off: a lower garage against it with a roof of its own.</summary>
         public HashSet<(int U, int V)>? Avoid;
 
+        /// <summary>Every door out of it a person walks through: its first cell, the way out, its storey.</summary>
+        public readonly List<(int U, int V, Dir Out, int Storey)> Exits = new();
+
+        static (int A, int B) Along(Dir outward) => outward is Dir.North or Dir.South ? (1, 0) : (0, 1);
+
+        /// <summary>Its exits in the world: each door's two floor cells and the way out.</summary>
+        public IEnumerable<(Int3 A, Int3 B, Dir Out)> ExitCells() => Exits.Select(e =>
+            (P(e.U, Walk(e.Storey), e.V), P(e.U + Along(e.Out).A, Walk(e.Storey), e.V + Along(e.Out).B), _f.Turn(e.Out)));
+
+        /// <summary>
+        /// Keeps the way out of a door clear (<see cref="DoorSize"/>): over its cells and out in front of them nothing
+        /// lower than the headroom over its floor. An eave or a porch roof that comes down there is trimmed back over
+        /// the door and a metre either side, as far out as it reaches; where one was, a hood at headroom height covers
+        /// the way in again, the posts at its corners standing up to it. Walls are never cut: a door against one is a
+        /// plan's mistake, and the check says so.
+        /// </summary>
+        public void Headroom(int u, int v, Dir outward, int storey, int wide = DoorSize.Wide, bool exit = true)
+        {
+            if (exit) Exits.Add((u, v, outward, storey));
+            Int3 o = outward.Vec();
+            var (a, b) = Along(outward);
+            int floor = Walk(storey), top = floor + DoorSize.Headroom - 1;
+            bool trimmed = false;
+            for (int k = -1; k <= wide; k++)
+            {
+                bool door = k >= 0 && k < wide;
+                for (int d = 1; d <= DoorSize.Approach + 4; d++)
+                {
+                    int cu = u + a * k + o.X * d, cv = v + b * k + o.Z * d;
+                    bool any = false;
+                    for (int y = floor + 1; y <= top; y++)
+                    {
+                        Block x = C.Get(P(cu, y, cv));
+                        if (!BlockInfo.Collides(x.Type)) continue;
+                        bool roof = x.Role == Role.Roof;
+                        if (roof || door && d <= DoorSize.Approach && x.Role is Role.Decor or Role.Prop)
+                        {
+                            C.Remove(P(cu, y, cv));
+                            trimmed |= roof;
+                            any |= roof;
+                        }
+                    }
+                    if (!any && d > DoorSize.Approach) break;
+                }
+            }
+            if (!trimmed) return;
+            for (int k = -1; k <= wide; k++)
+                for (int d = 1; d <= DoorSize.Approach; d++)
+                {
+                    int cu = u + a * k + o.X * d, cv = v + b * k + o.Z * d;
+                    if (Empty(cu, top + 1, cv))
+                        Put(cu, top + 1, cv, d < DoorSize.Approach ? new Block(BlockType.Cube, S.RoofM, S.Roof.Scale(0.9f), Role.Roof) : new Block(BlockType.Ramp, S.RoofM, S.Roof, Role.Roof, outward.Opposite()));
+                    if (d != DoorSize.Approach || k != -1 && k != wide) continue;
+                    Block post = C.Get(P(cu, floor, cv));
+                    if (post.Type is not (BlockType.Pillar or BlockType.Rib)) continue;
+                    for (int y = floor + 1; y <= top; y++)
+                        if (Empty(cu, y, cv)) C.Set(P(cu, y, cv), post);
+                }
+        }
+
         void Put(int u, int y, int v, Block b)
         {
             b.Facing = b.Facing is Dir.Up or Dir.Down ? b.Facing : _f.Turn(b.Facing);
@@ -323,7 +383,30 @@ public static partial class Homes
             bool round = u1 - u0 == v1 - v0;
             Func<int, int, int?> H;
             IEnumerable<(int, int)> cols;
-            if (round)
+            if (!glass && !earth)
+            {
+                // A real dome over a round or oval plan, as round as the slopes allow: each course's edge a circle
+                // (or an ellipse) laid in slopes, corners and inner corners. A mushroom's cap swells up from a rim
+                // that curls down; a saucer's or a pod's shell is a low lens.
+                double cu = (u0 + u1 + 1) / 2.0, cv = (v0 + v1 + 1) / 2.0, rx = (u1 - u0 + 1) / 2.0 + o, rz = (v1 - v0 + 1) / 2.0 + o;
+                double peak = (spotted ? 0.8 : 0.42) * Math.Max(rx, rz);
+                // The crown a course under the peak, so the top is a round of many cells, never a point.
+                int crown = Math.Max(1, (int)Math.Floor(peak - 0.3));
+                double Q(double x, double z) => (x - cu) * (x - cu) / (rx * rx) + (z - cv) * (z - cv) / (rz * rz);
+                H = (x, z) =>
+                {
+                    double q = Q(x, z);
+                    if (q > 1.4) return null;
+                    if (q >= 1) return 0;
+                    return Math.Min(crown, (int)Math.Round(spotted ? peak * Math.Sqrt(1 - q) : peak * (1 - q)));
+                };
+                var list = new List<(int, int)>();
+                for (int v = (int)Math.Floor(cv - rz) - 1; v <= (int)Math.Ceiling(cv + rz) + 1; v++)
+                    for (int u = (int)Math.Floor(cu - rx) - 1; u <= (int)Math.Ceiling(cu + rx) + 1; u++)
+                        if (Q(u + 0.5, v + 0.5) <= 1) list.Add((u, v));
+                cols = list;
+            }
+            else if (round)
             {
                 double cu = (u0 + u1 + 1) / 2.0, cv = (v0 + v1 + 1) / 2.0, big = (u1 - u0 + 1) / 2.0 + o;
                 double chamfer = Math.Round(big * (Math.Sqrt(2) - 1));
@@ -351,9 +434,10 @@ public static partial class Homes
             Func<int, int, Rgb>? paint = glass ? (u, v) => (u % 4 == 0 || v % 4 == 0) ? new Rgb(0x8c, 0x98, 0xa0) : S.Roof
                 : spotted ? (u, v) => Hash.Cell(new Int3(u, 1, v), 0x5B07u) % 9 == 0 ? new Rgb(0xec, 0xe8, 0xdc) : S.Roof
                 : earth ? (u, v) => grass.Scale(0.9f + (Hash.Cell(new Int3(u, 2, v), 0xE47u) % 20) / 100f) : null;
-            // Never down over the way to the door: an earth dome's passage, a low cap's notch over the path.
-            Func<int, int, int, bool> skip = earth ? (u, y, v) => u >= doorU - 1 && u <= doorU + 2 && v < doorV && y <= Ring(0)
-                : (u, y, v) => u >= doorU - 1 && u <= doorU + 2 && v < doorV && y < Ring(0);
+            // Never down over the way to the door, under the door's headroom: an earth dome's passage, a low cap's notch over the path.
+            int head = Walk(0) + DoorSize.Headroom;
+            Func<int, int, int, bool> skip = earth ? (u, y, v) => u >= doorU - 1 && u <= doorU + 2 && v < doorV && y <= head
+                : (u, y, v) => u >= doorU - 1 && u <= doorU + 2 && v < doorV && y < head;
             Surface(new List<Hut> { this }, H, cols, low, m, earth ? grass : S.Roof, paint, skip: skip);
             if (glass)
                 foreach (var (u, v) in cols)
@@ -361,13 +445,13 @@ public static partial class Homes
                         if (C.Blocks.TryGetValue(P(u, y, v), out Block b) && b.Material == Material.Glass && b.Role == Role.Roof && (u % 4 == 0 || v % 4 == 0))
                         { b.Material = Material.Alloy; C.Blocks[P(u, y, v)] = b; }
             if (!earth) return;
-            // The way in: cheek walls and a lintel from the dome's foot to the door.
+            // The way in: cheek walls and a lintel from the dome's foot to the door, the headroom clear under it.
             int front = cols.Where(c => c.Item1 >= doorU && c.Item1 <= doorU + 1).Min(c => c.Item2);
             for (int v = front; v < doorV; v++)
             {
                 foreach (int u in new[] { doorU - 1, doorU + 2 })
-                    for (int y = 0; y <= Ring(0); y++) Put(u, y, v, new Block(BlockType.Cube, Material.Rock, S.Base, Role.Wall));
-                for (int u = doorU; u <= doorU + 1; u++) Put(u, Ring(0), v, new Block(BlockType.Cube, Material.Rock, S.Base, Role.Wall));
+                    for (int y = 0; y <= head; y++) Put(u, y, v, new Block(BlockType.Cube, Material.Rock, S.Base, Role.Wall));
+                for (int u = doorU; u <= doorU + 1; u++) Put(u, head, v, new Block(BlockType.Cube, Material.Rock, S.Base, Role.Wall));
             }
         }
 
@@ -539,31 +623,50 @@ public static partial class Homes
         }
 
         /// <summary>
-        /// A verandah along the front: boards two metres deep, posts every four, a lean roof off the wall where the
-        /// eaves don't already cover it. Raised with the house on stilts, its edge railed but for the steps.
+        /// A verandah along the front: boards two metres deep, a lean roof off the wall at the doors' headroom where
+        /// the eaves don't already reach over it, posts up to whichever is over them: at its ends and every four
+        /// metres, never in front of a door but either side of it. Raised with the house on stilts, its edge railed
+        /// but for the steps.
         /// </summary>
-        public void Verandah(int u0, int u1, int frontV, bool raised, int storeys)
+        public void Verandah(int u0, int u1, int frontV, bool raised, int storeys, ICollection<int>? doors = null)
         {
             var wood = S.Door.Lerp(new Rgb(0x6a, 0x58, 0x46), 0.5f);
+            int head = DoorSize.Headroom;
+            bool Door(int u) => doors != null && doors.Contains(u);
             for (int u = u0; u <= u1; u++)
                 for (int d = 1; d <= 2; d++)
                 {
                     if (raised) Put(u, -1, frontV - d, new Block(BlockType.Cube, Material.Timber, wood, Role.Floor));
                     else _l.Plate(_f, u, frontV - d, wood);
                 }
+            // The roof first: the eaves where they come out over it already; where they reach only a metre out, their
+            // slope carried on a metre more; elsewhere a lean roof at the doors' headroom.
+            int? Lowest(int u, int v) => Enumerable.Range(1, head).Where(y => C.Get(P(u, y, v)).Role == Role.Roof).Select(y => (int?)y).FirstOrDefault();
             for (int u = u0; u <= u1; u++)
             {
-                bool post = u == u0 || u == u1 || (u - u0) % 4 == 0;
+                if (Lowest(u, frontV - 2) != null) continue;
+                if (Lowest(u, frontV - 1) is int eave)
+                {
+                    if (C.Get(P(u, eave, frontV - 1)).Type != BlockType.Ramp) { if (Empty(u, eave, frontV - 2)) Put(u, eave, frontV - 2, new Block(BlockType.Cube, S.RoofM, S.Roof, Role.Roof)); }
+                    else if (eave - 1 >= 1 && Empty(u, eave - 1, frontV - 2)) Put(u, eave - 1, frontV - 2, new Block(BlockType.Ramp, S.RoofM, S.Roof, Role.Roof, Dir.South));
+                    continue;
+                }
+                if (Empty(u, head, frontV - 1)) Put(u, head, frontV - 1, new Block(BlockType.Cube, S.RoofM, S.Roof.Scale(0.85f), Role.Roof));
+                if (Empty(u, head, frontV - 2)) Put(u, head, frontV - 2, new Block(BlockType.Ramp, S.RoofM, S.Roof, Role.Roof, Dir.South));
+            }
+            var posts = new HashSet<int>();
+            for (int u = u0; u <= u1; u++)
+                if ((u == u0 || u == u1 || (u - u0) % 4 == 0) && !Door(u)) posts.Add(u);
+            foreach (int u in Enumerable.Range(u0, u1 - u0 + 1).Where(Door))
+                foreach (int side in new[] { u - 1, u + 1 })
+                    if (side >= u0 && side <= u1 && !Door(side)) posts.Add(side);
+            foreach (int u in posts)
+            {
                 int v = frontV - 2;
-                if (post)
-                    for (int y = raised ? -Lift : 0; y <= 1; y++)
-                        if (y != -1) Put(u, y, v, new Block(BlockType.Pillar, Material.Timber, wood.Scale(0.85f), Role.Decor));
-                if (raised && post) Put(u, -1, v, new Block(BlockType.Cube, Material.Timber, wood, Role.Floor));
-                // The lean roof: a slope down from the wall, where nothing is already over it.
-                if (Empty(u, 3, frontV - 1) && Empty(u, 4, frontV - 1)) Put(u, 3, frontV - 1, new Block(BlockType.Ramp, S.RoofM, S.Roof, Role.Roof, Dir.South));
-                if (Empty(u, 2, frontV - 1)) Put(u, 2, frontV - 1, new Block(BlockType.Cube, S.RoofM, S.Roof.Scale(0.8f), Role.Roof));
-                if (Empty(u, 2, frontV - 2) && Empty(u, 3, frontV - 2)) Put(u, 2, frontV - 2, new Block(BlockType.Ramp, S.RoofM, S.Roof, Role.Roof, Dir.South));
-                else if (Empty(u, 2, frontV - 2)) Put(u, 2, frontV - 2, new Block(BlockType.Cube, S.RoofM, S.Roof.Scale(0.8f), Role.Roof));
+                int under = Enumerable.Range(1, head).FirstOrDefault(y => !Empty(u, y, v), head);
+                for (int y = raised ? -Lift : 0; y < under; y++)
+                    if (y != -1) Put(u, y, v, new Block(BlockType.Pillar, Material.Timber, wood.Scale(0.85f), Role.Decor));
+                if (raised) Put(u, -1, v, new Block(BlockType.Cube, Material.Timber, wood, Role.Floor));
             }
             _verandah ??= (u0, u1);
         }
@@ -583,10 +686,10 @@ public static partial class Homes
                     for (int f = -Lift; f < y; f++) Put(u + du, f, v, new Block(BlockType.Cube, Material.Timber, wood.Scale(0.8f), Role.Wall));
                 }
             }
-            // Rails along the deck's edge, the steps left open.
+            // A board guard along the deck's edge between its posts, the steps left open.
             if (_verandah is var (a0, a1))
                 for (int x = a0; x <= a1; x++)
-                    if ((x < u || x > u + 1) && Empty(x, 0, frontV - 2)) Put(x, 0, frontV - 2, new Block(BlockType.Rail, Material.Timber, wood, Role.Decor));
+                    if ((x < u || x > u + 1) && Empty(x, 0, frontV - 2)) Put(x, 0, frontV - 2, new Block(BlockType.Pane, Material.Timber, wood.Scale(0.9f), Role.Decor));
         }
 
         /// <summary>Bay windows out of the ground floor's front rooms: a box a metre out, glass on three sides, a slope over it.</summary>
@@ -613,10 +716,10 @@ public static partial class Homes
             }
         }
 
-        /// <summary>A balcony off the upper floor: a slab two metres out on the storey line, a rail round it, a door on to it.</summary>
+        /// <summary>A balcony off the upper floor: a slab two metres out on the storey line, a guard round it (boards, or glass on a newer house), a door on to it.</summary>
         public void Balcony(int u0, int wide, int frontV)
         {
-            var rail = new Block(BlockType.Rail, _l.Tech == TechLevel.Low ? Material.Timber : Material.Steel, _l.Tech == TechLevel.Low ? S.Door : new Rgb(0x4a, 0x4c, 0x50), Role.Decor);
+            var rail = _l.Tech == TechLevel.Low ? new Block(BlockType.Pane, Material.Timber, S.Door, Role.Decor) : new Block(BlockType.Pane, Material.Glass, new Rgb(0x6a, 0x84, 0x8c), Role.Decor);
             int y = Ring(0);
             for (int u = u0 - 1; u <= u0 + wide; u++)
                 for (int d = 1; d <= 2; d++)
@@ -657,10 +760,15 @@ public static partial class Homes
             for (int d = 1; d <= 2; d++) Put(u, top - 1, frontV - d, new Block(BlockType.Pipe, Material.Timber, new Rgb(0x4a, 0x3c, 0x30), Role.Decor, Dir.North));
         }
 
+        /// <summary>The fixing's insulator: a glazed ceramic cap in brown or white.</summary>
+        static Block Insulator(int salt) => new(BlockType.Pillar, Material.Ceramic, salt % 3 == 0 ? new Rgb(0xd8, 0xd4, 0xc8) : new Rgb(0x7a, 0x3e, 0x2c), Role.Decor);
+
         /// <summary>
-        /// Where the street's service drop is fixed: a short steel mast on the roof over the front wall near a
-        /// corner (on the parapet of a flat roof), its top the fixing point, facing the street; and the meter box
-        /// at the foot of the wall below. A terrace has one to each house.
+        /// Where the street's service drop is fixed: a short slim steel mast clamped flat to a wall with clear air over
+        /// and in front of it (a gable end, an upper storey, a parapet), never lower than a door's headroom and never
+        /// within two metres of a door to either side; an insulator on top is the fixing point, facing out. The front
+        /// near a corner first, then the sides near the front; a terrace house on its own front. Where every wall is
+        /// under eaves, a pole in the front garden away from the path. The meter box stands at the foot of the wall.
         /// </summary>
         public void Service(int doorU, int frontV, List<int>? units)
         {
@@ -668,61 +776,70 @@ public static partial class Homes
             var doors = new HashSet<Int3>(C.Doorways.SelectMany(d => d.Cells));
             bool NearDoor(int u, int v) => Enumerable.Range(-2, 5).Any(du => Enumerable.Range(-2, 5).Any(dv => doors.Contains(_f.At(u + du, Lift, v + dv)) || doors.Contains(_f.At(u + du, 0, v + dv))))
                 || _door.Any(d => d.S == 0 && Math.Abs(d.U - u) <= 1 && Math.Abs(d.V - v) <= 1);
-            int highest = Ring(Storeys - 1) - 1;
+            // Every exit's cells in plan, and how far a cell is from the nearest.
+            var exits = Exits.SelectMany(e => Enumerable.Range(0, DoorSize.Wide).Select(k => (U: e.U + Along(e.Out).A * k, V: e.V + Along(e.Out).B * k))).ToList();
+            if (exits.Count == 0) exits.Add((doorU, frontV));
+            int FromDoor(int u, int v) => exits.Min(e => Math.Max(Math.Abs(e.U - u), Math.Abs(e.V - v)));
+            bool Wall(int u, int y, int v) => C.Get(P(u, y, v)) is { Type: BlockType.Cube, Role: Role.Wall };
+            int lowest = DoorSize.Headroom, highest = Ring(Storeys - 1) + 4;
+            int fu0 = Foot.Min(c => c.U), fu1 = Foot.Max(c => c.U);
             foreach (int du in units ?? new List<int> { doorU })
             {
-                // A bracket on a wall with clear air in front of it at least three metres up: the front wall
-                // nearest this door first, then the sides near the front. On a terrace, its own house's front.
                 var spots = new List<(int U, int V, Dir Out, int Score)>();
                 foreach (var (u, v) in Foot.Where(c => Edge(c.U, c.V)))
                     foreach (Dir d in new[] { Dir.North, Dir.East, Dir.West })
                     {
                         Int3 o = d.Vec();
                         if (Foot.Contains((u + o.X, v + o.Z))) continue;
-                        if (units != null && (d != Dir.North || Math.Abs(u - du) > 3)) continue;
-                        int score = (d == Dir.North ? 0 : 40) + Math.Abs(u - du) + (v - frontV) * 2;
-                        spots.Add((u, v, d, score));
+                        if (units != null && (d != Dir.North || Math.Abs(u - du) > 4)) continue;
+                        if (FromDoor(u + o.X, v + o.Z) <= 2) continue;
+                        int corner = Math.Min(Math.Abs(u - fu0), Math.Abs(u - fu1));
+                        spots.Add((u, v, d, (d == Dir.North ? 0 : 30) + Math.Abs(v - frontV) * 2 + Math.Min(corner, 6)));
                     }
                 bool placed = false;
                 foreach (var (u, v, d, _) in spots.OrderBy(x => x.Score))
                 {
                     Int3 o = d.Vec();
-                    for (int y = highest + 4; y >= Math.Max(3 - Lift, 1) && !placed; y--)
+                    int ou = u + o.X, ov = v + o.Z;
+                    for (int y = lowest; y <= highest && !placed; y++)
                     {
-                        if (C.Get(P(u, y, v)).Role != Role.Wall || !BlockInfo.Collides(C.Get(P(u, y, v)).Type)) continue;
-                        // Clear air in front, out past any eaves, and nothing overhead within two metres.
+                        // Flat against the wall the whole way up, nothing over it, clear air out in front for the drop.
+                        if (!Wall(u, y, v) || !Wall(u, y + 1, v)) continue;
+                        if (!Empty(ou, y, ov) || !Empty(ou, y + 1, ov) || !Empty(ou, y + 2, ov) || !Empty(ou, y - 1, ov) && C.Get(P(ou, y - 1, ov)).Role == Role.Roof) continue;
                         bool clear = true;
                         for (int k = 1; k <= 3 && clear; k++)
-                            for (int dy = -1; dy <= 2 && clear; dy++)
-                                if (!Empty(u + o.X * k, y + dy, v + o.Z * k)) clear = false;
+                            for (int dy = 1; dy <= 2 && clear; dy++)
+                                if (!Empty(ou + o.X * k, y + dy, ov + o.Z * k)) clear = false;
                         if (!clear) continue;
-                        Put(u + o.X, y, v + o.Z, new Block(BlockType.Pipe, Material.Steel, steel, Role.Decor, d));
-                        C.X.Service.Add(new ServicePoint(P(u + o.X, y, v + o.Z), _f.Turn(d)));
+                        Put(ou, y, ov, new Block(BlockType.Pillar, Material.Steel, steel, Role.Decor));
+                        Put(ou, y + 1, ov, Insulator(u + v));
+                        C.X.Service.Add(new ServicePoint(P(ou, y + 1, ov), _f.Turn(d)));
                         // The meter box at the foot of the wall below it, clear of every door.
-                        if (Lift == 0 && Empty(u + o.X, 0, v + o.Z) && !NearDoor(u + o.X, v + o.Z))
-                            Put(u + o.X, 0, v + o.Z, new Block(BlockType.Locker, Material.Steel, new Rgb(0x8c, 0x90, 0x8c), Role.Decor, d));
+                        if (Lift == 0 && Empty(ou, 0, ov) && !NearDoor(ou, ov) && Wall(u, 0, v))
+                            Put(ou, 0, ov, new Block(BlockType.Locker, Material.Steel, new Rgb(0x8c, 0x90, 0x8c), Role.Decor, d));
                         placed = true;
                     }
                     if (placed) break;
                 }
                 if (placed) continue;
-                // Every wall under eaves: a service pole in the front garden at the corner, its top the fixing.
+                // Every wall under eaves: a service pole in the front garden at the corner, away from the path, its insulator the fixing.
                 int fv = Foot.Min(x => x.V);
                 var row = Foot.Where(c => c.V == fv).Select(c => c.U).ToList();
-                int pv = fv - 3, top = highest + 2;
+                int pv = fv - 3, top = Ring(Storeys - 1) + 1;
                 int pu = int.MinValue;
                 foreach (int back in new[] { 3, 5, 7 })
                 {
-                    foreach (int cand in new[] { row.Min() - 3, row.Max() + 3, row.Min() - 1, row.Max() + 1, row.Min() + 2, row.Max() - 2 }.OrderBy(x => Math.Abs(x - du)))
+                    foreach (int cand in new[] { row.Min() - 3, row.Max() + 3, row.Min() - 1, row.Max() + 1, row.Min() + 2, row.Max() - 2 }.OrderByDescending(x => Math.Abs(x - du)))
                     {
                         Int3 at = _f.At(cand, 0, fv - back);
-                        bool offPath = Math.Abs(cand - du) > 2 && Math.Max(Math.Abs(at.X - C.EntranceCell.X), Math.Abs(at.Z - C.EntranceCell.Z)) > 2;
+                        bool offPath = Math.Abs(cand - du) > 3 && FromDoor(cand, fv - back) > 3 && Math.Max(Math.Abs(at.X - C.EntranceCell.X), Math.Abs(at.Z - C.EntranceCell.Z)) > 2;
                         if (offPath && Enumerable.Range(-Lift, top + Lift + 3).All(y => Empty(cand, y, fv - back)) && !NearDoor(cand, fv - back)) { pu = cand; pv = fv - back; break; }
                     }
                     if (pu != int.MinValue) break;
                 }
                 if (pu == int.MinValue) continue;
-                for (int y = -Lift; y <= top; y++) Put(pu, y, pv, new Block(BlockType.Pillar, Material.Timber, new Rgb(0x5a, 0x4c, 0x3e), Role.Decor));
+                for (int y = -Lift; y < top; y++) Put(pu, y, pv, new Block(BlockType.Pillar, Material.Timber, new Rgb(0x5a, 0x4c, 0x3e), Role.Decor));
+                Put(pu, top, pv, Insulator(pu + pv));
                 C.X.Service.Add(new ServicePoint(P(pu, top, pv), _f.Turn(Dir.North)));
                 if (Lift == 0 && !NearDoor(pu, pv - 1) && Empty(pu, 0, pv - 1)) Put(pu, 0, pv - 1, new Block(BlockType.Locker, Material.Steel, new Rgb(0x8c, 0x90, 0x8c), Role.Decor, Dir.North));
             }
