@@ -119,6 +119,9 @@ public partial class MenuRoot : MenuPanel
     public MenuTab Tab = MenuTab.You;
     public override Vector2 DesignSize => new(Gui.Width, Gui.Height);
 
+    /// <summary>How solid the menu's glass is, and the widgets' backings on it.</summary>
+    public const float Glass = 0.55f, Backing = 0.6f;
+
     /// <summary>Redrawn when what it shows changes: the tab, the bag, an open container, progress, and a 4 Hz tick for live vitals and queues.</summary>
     protected override string Signature() => Game?.Pack == null ? "" :
         $"{Tab}|{Game.Pack.Storage.Version}|{Game.Pack.Grid.Version}|{Game.Pack.Selected}|{Game.Pack.Bar}|{Game.Opened?.Grid.Storage.Version}|{Game.Progress.Xp}|{Game.Progress.Points}|{(int)(Game.Stats.Seconds * 4)}|{ItemViews.Focused}|{(ItemViews.Focused != null ? ItemViews.Get(ItemViews.Focused).Text : "")}|{(Tab == MenuTab.Map ? Map.Levels.Signature : Tab == MenuTab.Tech ? Tech.Signature : Tab == MenuTab.Stats ? Stats.Signature : "")}";
@@ -142,8 +145,9 @@ public partial class MenuRoot : MenuPanel
     protected override void Build(Gui g, Rect2 area)
     {
         if (Game?.Survivor == null) return;
-        // The glass: dark, with the theme's scanline stripes at the top.
-        g.Fill(area, new Color(C.Glass, 0.93f));
+        // The glass: see-through, so the world reads behind it (the game never pauses); the widgets' backings are lighter too.
+        g.Backing = Backing;
+        g.Fill(area, new Color(C.Glass, Glass));
         var header = new Rect2(area.Position, new Vector2(area.Size.X, 74));
         g.Fill(header, C.Accent);
         if (g.Drawing) g.Canvas.Stripes(new Rect2(header.Position + new Vector2(header.Size.X - 300, 0), new Vector2(300, header.Size.Y)), C.Accent, C.Accent2, 16);

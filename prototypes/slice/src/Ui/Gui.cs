@@ -19,6 +19,15 @@ public sealed class Gui
     public const float Width = 1600f, Height = 900f;
     static Palette C => UiTheme.Colors;
 
+    /// <summary>
+    /// How solid the backings behind widgets are (buttons, text boxes, slots, rows): 1 for an in-world
+    /// screen; the Tab menu sets less, so the world reads through it while text stays on its backing.
+    /// </summary>
+    public float Backing = 1f;
+
+    /// <summary>A backing colour at this panel's solidity.</summary>
+    public Color Back(Color c) => new(c, c.A * Backing);
+
     /// <summary>The draw pass's canvas, or null in the input pass.</summary>
     public CanvasItem Canvas;
     public bool Drawing => Canvas != null;
@@ -187,7 +196,7 @@ public sealed class Gui
         bool hot = Over(r) && enabled;
         if (Drawing)
         {
-            Color bg = !enabled ? new Color(C.Glass, 0.5f) : lit ? colour : hot ? new Color(colour, 0.45f) : new Color(C.Glass, 0.85f);
+            Color bg = !enabled ? Back(new Color(C.Glass, 0.5f)) : lit ? colour : hot ? new Color(colour, 0.45f) : Back(new Color(C.Glass, 0.85f));
             Canvas.Block(r, bg);
             Canvas.Block(new Rect2(r.Position, new Vector2(5, r.Size.Y)), enabled ? colour : C.Dim);
             Canvas.TextIn(UiTheme.Label, size, r.Grow(-6), label, !enabled ? C.Dim : lit ? C.Glass : C.Text, HorizontalAlignment.Center);
@@ -319,7 +328,7 @@ public sealed class Gui
         if (!readOnly) FirstBox ??= id;
         if (Drawing)
         {
-            Canvas.Block(r, new Color(C.Panel, 0.9f));
+            Canvas.Block(r, Back(new Color(C.Panel, 0.9f)));
             Canvas.Frame(r, focused ? C.Accent : new Color(C.Rule, 0.9f), focused ? 2.5f : 1.5f);
             bool empty = string.IsNullOrEmpty(text);
             string shown = empty ? placeholder : text;

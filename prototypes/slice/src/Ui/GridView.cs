@@ -139,7 +139,7 @@ public static class Slots
         bool picked = Selection.Has(grid, index);
         if (g.Drawing)
         {
-            g.Fill(r, new Color(C.Glass, 0.9f));
+            g.Fill(r, g.Back(new Color(C.Glass, 0.9f)));
             if (picked) g.Fill(r, new Color(C.Holo, 0.22f));
             g.Outline(r, selected ? C.Accent : picked ? C.Holo : new Color(C.Rule, 0.9f), selected || picked ? 3 : 1.5f);
             if (!s.IsEmpty) DrawStack(g, r, shown, tone, label, count);

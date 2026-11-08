@@ -24,6 +24,7 @@ public partial class BuildTest
         HudBoxChecks();
         foreach (int x in TechFitChecks()) yield return x;
         foreach (int x in GalaxyNameChecks()) yield return x;
+        Check(MenuRoot.Glass <= 0.6f && _game.Menu.Root.Gui.Backing < 1f && !_game.GetTree().Paused, $"the Tab menu is see-through (glass {MenuRoot.Glass:0.00}, backings {_game.Menu.Root.Gui.Backing:0.00}) and the world runs behind it");
     }
 
     /// <summary>The galaxy map: every star drawn, names off but for the picked star, a toggle for the near ones.</summary>

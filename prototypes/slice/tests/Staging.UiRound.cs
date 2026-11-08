@@ -64,7 +64,7 @@ public sealed partial class Staging
         foreach (int x in Frame("compass")) yield return x;
 
         // The scanner's ping (a game from before the round has no scanner: the frame shows the same compass).
-        _game.Pack.Add("scanner", 1);
+        if (_game.Zone.Data.Items.TryGet("scanner", out _)) _game.Pack.Add("scanner", 1);
         Call(_game, "Scan");
         foreach (int x in Frame("scanner")) yield return x;
 
@@ -94,6 +94,7 @@ public sealed partial class Staging
         foreach (string tab in Slice.Items.Progress.Tabs)
         {
             _game.Menu.Root.Tech.Tab = tab;
+            foreach (int x in _drive.Wait(60)) yield return x; // the tiles' icons render a few a frame
             foreach (int x in Frame($"tech-{tab}")) yield return x;
         }
         _game.Menu.OpenMap(MapLevel.Galaxy);

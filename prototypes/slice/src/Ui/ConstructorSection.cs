@@ -94,7 +94,7 @@ public sealed class ConstructorSection : IMenuSection
             ItemDef item = list[k];
             bool known = c.Knows(item), allowed = p.ItemAllowed(item);
             var row = new Rect2(o.X, y, area.Size.X, RowH);
-            g.Fill(row, new Color(known && allowed ? C.Panel : C.Glass, 0.75f));
+            g.Fill(row, g.Back(new Color(known && allowed ? C.Panel : C.Glass, 0.75f)));
             g.Fill(new Rect2(row.Position, new Vector2(4, row.Size.Y)), new Color(Rarities.Color(item.Rarity) << 8 | 0xff));
             if (g.Drawing && ItemIcons.Shared?.Get(item) is Texture2D icon)
                 g.Canvas.DrawTextureRect(icon, new Rect2(row.Position + new Vector2(7, 2), new Vector2(RowH - 4, RowH - 4)), false, new Color(1, 1, 1, known && allowed ? 1f : 0.45f));

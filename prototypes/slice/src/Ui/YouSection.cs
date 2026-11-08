@@ -54,7 +54,7 @@ public sealed class YouSection : IMenuSection
         // ---- Paperdoll, equipment, vitals and level: a narrow column at the left -------------------
         var doll = new Rect2(o + new Vector2(62, 30), new Vector2(170, 280));
         g.Caption("YOU", o, LeftW);
-        g.Fill(doll, new Color(C.Panel, 0.6f));
+        g.Fill(doll, g.Back(new Color(C.Panel, 0.6f)));
         if (g.Drawing)
         {
             _doll ??= _game.GetNodeOrNull<Paperdoll>("Paperdoll");
@@ -75,7 +75,7 @@ public sealed class YouSection : IMenuSection
         {
             float x = i < 2 ? 0 : 242, y = 50 + (i < 2 ? i : i - 2) * 86;
             var r = new Rect2(o + new Vector2(x, y), new Vector2(56, 56));
-            g.Fill(r, new Color(C.Glass, 0.9f));
+            g.Fill(r, g.Back(new Color(C.Glass, 0.9f)));
             g.Outline(r, string.IsNullOrEmpty(equipment[i].value) ? new Color(C.Rule, 0.6f) : C.Accent2, 1.5f);
             g.TextIn(equipment[i].label, new Rect2(r.Position + new Vector2(-4, -17), new Vector2(64, 15)), C.Dim, 11, HorizontalAlignment.Center);
             g.TextIn(equipment[i].value, r.Grow(-3), C.Text, 11, HorizontalAlignment.Center);
@@ -124,7 +124,7 @@ public sealed class YouSection : IMenuSection
         {
             StorageTab t = tabs[i];
             var rect = new Rect2(c + new Vector2((i + 2) * (tabW + 6), 0), new Vector2(tabW, 36));
-            if (g.Tab($"stab:{t.Key}", rect, t.Title, _tab == t.Key, C.Holo)) _tab = t.Key;
+            if (g.Tab($"stab:{t.Key}", rect, HudLayout.Fit(UiTheme.Label, 18, t.Title, rect.Size.X - 14), _tab == t.Key, C.Holo)) _tab = t.Key;
             // Drop on a tab to send items to that container; hover over it with something held to open it.
             if (g.DropTarget($"stab:{t.Key}", rect, out object onTab) && onTab is SlotRef carried) Slots.Drop(_game, carried, t.Grid, -1);
             if (g.Drawing) { }

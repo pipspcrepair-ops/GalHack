@@ -382,7 +382,7 @@ public sealed class TechSection : IMenuSection
         }
         float fade = lit ? 1f : 0.28f;
         Color F(Color col) => new(col, col.A * fade);
-        g.Fill(r, F(new Color(state == UnlockState.Unlocked ? C.Panel : C.Glass, 0.9f)));
+        g.Fill(r, F(g.Back(new Color(state == UnlockState.Unlocked ? C.Panel : C.Glass, 0.9f))));
         g.Fill(new Rect2(r.Position, new Vector2(5, r.Size.Y)), F(tone));
         if (hot || state == UnlockState.Affordable) g.Outline(r, F(hot ? C.Text : tone), hot ? 3f : 2f);
         Texture2D tex = ItemIcons.Shared?.Get(n.ItemId);
