@@ -61,7 +61,8 @@ internal sealed partial class Depths
                 return;
             }
         }
-        if (lv.Index == _opsLevel) { if (Hall(lv, a, lv.In, ops: true)) return; }
+        // The operations hall: off any face, and smaller if the full one won't go.
+        if (lv.Index == _opsLevel && (Faces(lv.In, f => Hall(lv, a, f, ops: true)) || Faces(lv.In, f => Hall(lv, a, f, ops: true, small: true)))) { lv.Part = "hall"; return; }
         bool ok = Part(lv.Part, lv, a, lv.In);
         if (!ok)
             foreach (string fallback in new[] { "spine", "hub", "gallery" })
@@ -468,27 +469,36 @@ internal sealed partial class Depths
     {
         if (!_ringSides.TryGetValue(up.Index, out var upper)) return;
         if (RingAround(down, null) == null || !_ringSides.TryGetValue(down.Index, out var lower)) return;
-        bool west = down.Index % 2 == 1;
-        int ci = west ? upper.N.I0 : upper.N.I1, ck = upper.N.K0;
-        if (!lower.N.Has(ci, ck)) return;
-        var sh = NewSpace("shaft", "ladderway", ModuleKind.Stair, down.J + lower.N.H, up.J - (down.J + lower.N.H), down);
-        sh.Raw = false;
-        sh.Column(ci, ck);
-        if (sh.H < 1 || !Take(sh, null, upper.N, lower.N))
+        // Any corner of the ring but the one the ladder from above came down at.
+        var corners = new[]
         {
-            foreach (var s in new[] { lower.N, lower.S, lower.W, lower.E }) Drop(s, down);
-            _rings.Remove(down.Index);
-            _ringSides.Remove(down.Index);
-            Joints.RemoveAll(j => j.B == _span && j.J == down.J);
-            _spanGalleries.Remove(down.J);
+            (upper.N.I0, upper.N.K0, Dir.North, upper.N, lower.N), (upper.N.I1, upper.N.K0, Dir.North, upper.N, lower.N),
+            (upper.S.I0, upper.S.K1, Dir.South, upper.S, lower.S), (upper.S.I1, upper.S.K1, Dir.South, upper.S, lower.S),
+        };
+        foreach (var (ci, ck, back, from, to) in corners.Where(c => !_siloCorners.Contains((up.Index, c.Item1, c.Item2))).OrderBy(_ => R.Float()))
+        {
+            if (!to.Has(ci, ck)) continue;
+            var sh = NewSpace("shaft", "ladderway", ModuleKind.Stair, down.J + to.H, up.J - (down.J + to.H), down);
+            sh.Raw = false;
+            sh.Column(ci, ck);
+            if (sh.H < 1 || !Take(sh, null, from, to)) continue;
+            Join(from, sh);
+            Join(sh, to);
+            _ladders.Add((ci, ck, back, down.J, up.J));
+            _siloCorners.Add((down.Index, ci, ck));
+            down.Arrival = to;
+            down.In = back;
             return;
         }
-        Join(upper.N, sh);
-        Join(sh, lower.N);
-        _ladders.Add((ci, ck, Dir.North, down.J, up.J));
-        down.Arrival = lower.N;
-        down.In = Dir.North;
+        foreach (var s in new[] { lower.N, lower.S, lower.W, lower.E }) Drop(s, down);
+        _rings.Remove(down.Index);
+        _ringSides.Remove(down.Index);
+        Joints.RemoveAll(j => j.B == _span && j.J == down.J);
+        _spanGalleries.Remove(down.J);
     }
+
+    /// <summary>The ring corners a ladder from above came down at, by level: the next one down starts elsewhere.</summary>
+    readonly HashSet<(int Level, int I, int K)> _siloCorners = new();
 
     /// <summary>Joins a level's arrival to one of a set of spaces by the shortest way through free rock (see <see cref="Route"/>).</summary>
     bool Link(Level lv, DSpace a, IReadOnlyList<DSpace> targets) => Route(lv, a, targets, 2, Math.Min(3, lv.H), "corridor", raw: false) != null;
@@ -653,14 +663,14 @@ internal sealed partial class Depths
     /// hall, a machine hall): a flight up along its end wall to the gallery, rooms off the floor and off the
     /// gallery through its long walls, and a way on out of its far end.
     /// </summary>
-    bool Hall(Level lv, DSpace a, Dir d, bool ops, bool cells = false)
+    bool Hall(Level lv, DSpace a, Dir d, bool ops, bool cells = false, bool small = false)
     {
         int H = Math.Max(5, lv.H);
         if (lv.H < 5) return false;
-        int wid = MainW;
+        int wid = small ? 2 : MainW;
         var entry = From(lv, a, d, R.Between(2, 4), wid, Math.Min(3, MainH), minLen: 2);
         if (entry == null) return false;
-        int Hw = R.Between(Math.Max(14, wid + 10), 18), Hl = R.Between(16, 24);
+        int Hw = small ? wid + 10 : R.Between(Math.Max(14, wid + 10), 18), Hl = small ? R.Between(12, 14) : R.Between(16, 24);
         var (ei, ek) = entry.At(entry.Len, 0);
         var (di, dk) = V(d);
         var (li, lk) = Lat(d);

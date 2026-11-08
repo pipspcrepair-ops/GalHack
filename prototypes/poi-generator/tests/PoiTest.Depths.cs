@@ -204,6 +204,7 @@ public partial class PoiTest
                 catch (Exception e) { failed++; if (first.Length == 0) first = $" (first: {f.Id}: {e.Message})"; continue; }
                 cost[f.Id] = cost.GetValueOrDefault(f.Id) with { Layout = cost.GetValueOrDefault(f.Id).Layout + (sw.ElapsedTicks - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency, N = cost.GetValueOrDefault(f.Id).N + 1, Size = layout.Blocks.Size };
                 places++;
+                if (families.Count <= 2) GD.Print($"      {f.Id}: levels {string.Join(" ", layout.Extras.Plans.Select(p => p.Signature.Split('/')).Where(p => p.Length > 1).Select(p => p[1]))}");
                 var shape = Measure(layout);
                 list.Add(shape);
                 foreach (string p in shape.Parts.Split('+')) mix[p] = mix.GetValueOrDefault(p) + 1;

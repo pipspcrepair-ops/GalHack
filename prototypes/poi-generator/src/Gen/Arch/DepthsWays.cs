@@ -106,8 +106,10 @@ internal sealed partial class Depths
         var ways = Def.Between.Where(b => b.Key != "lift" && (b.Key != "ramp" || Alien || Def.Raw > 0.5f || R.Chance(0.4f))).ToList();
         if (ways.Count == 0) ways.Add(("straight", 1f));
         int rise = up.J - down.J;
-        var hosts = up.Spaces.Where(s => s.Kind is "corridor" or "hub" or "hall" or "landing" or "gallery" or "drift" or "chamber" or "tunnel" or "ring" && s.Columns > 0 && !s.Secret)
-            .OrderBy(_ => R.Float()).ToList();
+        // Off a way first; failing that, out of a room's corner (a stair in a room's corner is as old as stairs).
+        var hosts = up.Spaces.Where(s => !s.Dead && !s.Secret && s.Columns > 0 && s.Kind is "corridor" or "hub" or "hall" or "landing" or "gallery" or "drift" or "chamber" or "tunnel" or "ring" or "stope")
+            .OrderBy(_ => R.Float())
+            .Concat(up.Spaces.Where(s => !s.Dead && !s.Secret && s.Kind is "room" or "alcove" && s != _vaultSpace).OrderBy(_ => R.Float())).ToList();
         for (int attempt = 0; attempt < 3; attempt++)
         {
             string way = ways[Math.Max(0, R.PickWeighted(ways.Select(w => w.Weight).ToList()))].Key;
@@ -125,7 +127,7 @@ internal sealed partial class Depths
     /// <summary>A straight flight (or ramp) from a host's edge down to a landing on the level below.</summary>
     bool StairDown(Level up, Level down, DSpace host, bool ramp, int rise)
     {
-        int width = ramp ? 3 : 2;
+        int width = ramp && !Alien ? 3 : 2;
         var edges = new List<(int I, int K, Dir D)>();
         foreach (var (i, k) in host.Foot)
         {
