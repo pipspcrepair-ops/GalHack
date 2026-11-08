@@ -942,7 +942,7 @@ public partial class TerrainStreamer : Node3D
     }
 
     /// <summary>The mesh a plant is drawn with standing: its species' variant, or its kind's where the herbarium has none.</summary>
-    public Mesh MeshOf(in PlantSighting s) => PlantMesh(s.Plant, s.Variant) ?? _floraMeshes[s.Kind];
+    public Mesh MeshOf(in PlantSighting s) => PlantMesh(s.Plant, s.Variant) ?? (_floraMeshes != null && _floraMeshes.TryGetValue(s.Kind, out Mesh m) ? m : null);
 
     /// <summary>One plant seen in the scatter: its kind, where it roots, its scale, id, species and mesh, its turn, and its instance's own tint and glow.</summary>
     public readonly record struct PlantSighting(Flora Kind, Vector3 Root, float Scale, long Id, int Plant, int Variant, Basis Turn, Color Custom = default)
