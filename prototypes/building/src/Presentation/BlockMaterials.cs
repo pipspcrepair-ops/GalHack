@@ -15,6 +15,14 @@ public static class BlockMaterials
     public const int PatternShift = 0, StencilShift = 3, TextureShift = 7, DamageShift = 9,
         GlowShift = 11, MetalShift = 12, GrimeShift = 14, PaintedShift = 16, WearShift = 17, HoledShift = 19;
 
+    /// <summary>
+    /// A device's own lights and screens show its state: dim while the structure has no power (the
+    /// <c>powered</c> instance uniform, which StructureMesh sets per chunk). They are marked by the
+    /// polish a glow never otherwise has (metal 3), not by a flag bit of their own: a bit 23 would
+    /// push the flags past what the vertex data carries exactly through the rasteriser.
+    /// </summary>
+    public const int StatusMetal = 3;
+
     static ShaderMaterial _opaque, _glass;
 
     public static ShaderMaterial Opaque => _opaque ??= new ShaderMaterial { Shader = new Shader { Code = OpaqueCode() } };
@@ -48,6 +56,40 @@ public static class BlockMaterials
         ".###. #...# #...# .###. #...# #...# .###.",
         ".###. #...# #...# .#### ....# ....# .###.",
     };
+
+    // Device symbols, 7×7, in DeviceSymbol's order (None first): pictures for screens and stencils, never letters.
+    static readonly string[] Symbols =
+    {
+        "....... ....... ....... ....... ....... ....... .......",
+        "..#.#.. .#####. ##...## .#...#. ##...## .#####. ..#.#..", // gear
+        "...##.. ..##... .##.... ####### ....##. ...##.. ..##...", // bolt
+        "...#... ...#... ..###.. .#####. .#####. .#####. ..###..", // drop
+        ".#####. #.....# #.###.# #.###.# #.###.# #.....# .#####.", // ring
+        "...#... ..###.. .##.##. ##...## ...#... ..###.. .##.##.", // chevron
+        "####### #..#..# #..#..# ####### #..#..# #..#..# #######", // grid
+        "...#... .##.##. .#...#. ##.#.## .#...#. .##.##. ...#...", // crosshair
+        "..###.. .#...#. #.....# ####### #.....# .#...#. ..###..", // gimbal
+        ".....#. .....#. ...#.#. ...#.#. .#.#.#. .#.#.#. #######", // bars
+        "...#... ..#.#.. .#...#. #.....# .#...#. ..#.#.. ...#...", // crystal
+        "##...## .##.##. ..###.. ...#... ##...## .##.##. ..###..", // down
+        "...#... ..#.#.. ..#.#.. .#.#.#. .#...#. #..#..# #######", // warning
+        "....... ..#.#.. .##.##. ###.### .##.##. ..#.#.. .......", // arrows
+    };
+
+    /// <summary>Rows 0-3 of each symbol packed 7 bits per row into one int, rows 4-6 into another.</summary>
+    static (string a, string b) SymbolTables()
+    {
+        var a = new int[Symbols.Length];
+        var b = new int[Symbols.Length];
+        for (int d = 0; d < Symbols.Length; d++)
+        {
+            string[] rows = Symbols[d].Split(' ');
+            int Row(int r) => rows[r].Aggregate(0, (acc, c) => (acc << 1) | (c == '#' ? 1 : 0));
+            a[d] = (Row(0) << 21) | (Row(1) << 14) | (Row(2) << 7) | Row(3);
+            b[d] = (Row(4) << 14) | (Row(5) << 7) | Row(6);
+        }
+        return (string.Join(", ", a), string.Join(", ", b));
+    }
 
     /// <summary>Rows 0-3 of each digit packed 5 bits per row into one int, rows 4-6 into another.</summary>
     static (string a, string b) GlyphTables()
@@ -119,17 +161,26 @@ float scratches(vec2 f, float seed) {
     static string OpaqueCode()
     {
         var (a, b) = GlyphTables();
+        var (sa, sb) = SymbolTables();
         return @"
 shader_type spatial;
 render_mode cull_back, diffuse_burley, specular_schlick_ggx;
+
+// 1 while the structure has power: without it its devices' status lights and screens go dim.
+instance uniform float powered = 1.0;
 
 varying flat vec2 v_paint;
 varying vec3 v_local;
 varying float v_plane;
 varying float v_dark;
+varying float v_wall;
+varying vec3 v_right;
+varying vec3 v_up;
 
 const int GLYPH_A[10] = { " + a + @" };
 const int GLYPH_B[10] = { " + b + @" };
+const int SYMBOL_A[" + Symbols.Length + @"] = { " + sa + @" };
+const int SYMBOL_B[" + Symbols.Length + @"] = { " + sb + @" };
 " + Common + @"
 float glyph(int digit, vec2 g) {
     if (g.x < 0.0 || g.x >= 1.0 || g.y < 0.0 || g.y >= 1.0) return 0.0;
@@ -139,11 +190,109 @@ float glyph(int digit, vec2 g) {
     return float((bits >> (4 - col)) & 1);
 }
 
+float symbol(int s, vec2 g) {
+    if (s <= 0 || s >= " + Symbols.Length + @" || g.x < 0.0 || g.x >= 1.0 || g.y < 0.0 || g.y >= 1.0) return 0.0;
+    int col = int(g.x * 7.0);
+    int row = 6 - int(g.y * 7.0);
+    int bits = row < 4 ? (SYMBOL_A[s] >> ((3 - row) * 7)) : (SYMBOL_B[s] >> ((6 - row) * 7));
+    return float((bits >> (6 - col)) & 1);
+}
+
 void vertex() {
     v_paint = UV2;
     v_local = VERTEX;
     v_plane = dot(VERTEX, NORMAL);
     v_dark = CUSTOM0.r;
+    v_wall = 1.0 - abs(NORMAL.y);
+    // The face's across and up as the mesher lays out its UV (up is +Y on walls, -Z on floors and roofs), in view space for the normal.
+    vec3 up = abs(NORMAL.y) > 0.7 ? vec3(0.0, 0.0, -1.0) : vec3(0.0, 1.0, 0.0);
+    v_right = (MODELVIEW_MATRIX * vec4(normalize(cross(up, NORMAL)), 0.0)).xyz;
+    v_up = (MODELVIEW_MATRIX * vec4(up, 0.0)).xyz;
+}
+
+// ---- Material detail ----------------------------------------------------------------------
+// Each feature darkens or lightens a shade (albedo) and tips a slope (which way the surface's
+// normal leans across the face), scaled by k: 'fine' work (rivets, grain, grit) fades out first as
+// a block shrinks on screen, 'coarse' work (seams, plates, bevels) later, so nothing shimmers far off.
+
+// A bevel round a plate of this size: the surface leans out towards each edge over its last w.
+void bevel(vec2 q, vec2 size, float w, float k, inout vec2 slope) {
+    vec2 d = min(q, size - q);
+    vec2 toward = vec2(q.x < size.x * 0.5 ? -1.0 : 1.0, q.y < size.y * 0.5 ? -1.0 : 1.0);
+    if (d.x < d.y) slope.x += toward.x * k * (1.0 - smoothstep(0.0, w, d.x));
+    else slope.y += toward.y * k * (1.0 - smoothstep(0.0, w, d.y));
+}
+
+// A domed rivet or bolt at c: a dark rim, a lighter crown, leaning away from its middle.
+void rivet(vec2 p, vec2 c, float r, float k, inout float shade, inout vec2 slope) {
+    vec2 rel = p - c;
+    float d = length(rel);
+    float inside = 1.0 - aastep(r, d);
+    float rim = (1.0 - aastep(r + 0.007, d)) * aastep(r * 0.7, d);
+    shade *= mix(1.0, mix(1.0, 0.74, rim) * mix(1.0, 1.08, inside * (1.0 - rim)), k);
+    slope += inside * rel / max(r, 1e-4) * 0.9 * k;
+}
+
+// The nearest of n rivets a side, on a frame inset half a pitch from the block's edge.
+vec2 rivet_frame(vec2 f, float n) {
+    float inset = 0.5 / n;
+    vec2 g = (floor(f * n) + 0.5) / n;
+    vec2 a = vec2(f.x < 0.5 ? inset : 1.0 - inset, g.y), b = vec2(g.x, f.y < 0.5 ? inset : 1.0 - inset);
+    return length(f - a) < length(f - b) ? a : b;
+}
+
+// Steel, and a machine's panels: a seam and soft bevel round each block, its own tone, a faint
+// brushed grain, and rivets round the edge (steel) or a screw in each corner (a machine).
+void steel_detail(vec2 uv, vec2 f, float seed, bool riveted, float fine, float coarse, inout float shade, inout vec2 slope) {
+    float edge = min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y));
+    shade *= mix(1.0, mix(0.55, 1.0, aastep(0.016, edge)), coarse);
+    bevel(f, vec2(1.0), 0.05, 0.45 * coarse, slope);
+    shade *= 1.0 + (seed - 0.5) * 0.07 * coarse;
+    shade *= 1.0 + (noise3(vec3(uv.x * 3.0, uv.y * 110.0, seed * 17.0)) - 0.5) * 0.08 * fine;
+    if (riveted) rivet(f, rivet_frame(f, 8.0), 0.016, fine, shade, slope);
+    else rivet(f, vec2(f.x < 0.5 ? 0.055 : 0.945, f.y < 0.5 ? 0.055 : 0.945), 0.014, fine, shade, slope);
+}
+
+// Hardened: two heavy plates a block, wide bevelled seams, an armour bolt in each plate's corners.
+void hardened_detail(vec2 uv, vec2 f, float seed, float fine, float coarse, inout float shade, inout vec2 slope) {
+    vec2 q = vec2(f.x, fract(f.y * 2.0) * 0.5);
+    vec2 size = vec2(1.0, 0.5);
+    float e = min(min(q.x, size.x - q.x), min(q.y, size.y - q.y));
+    shade *= mix(1.0, mix(0.42, 1.0, aastep(0.013, e)), coarse);
+    bevel(q, size, 0.085, 0.7 * coarse, slope);
+    shade *= 1.0 + (hash3(vec3(floor(uv.x), floor(uv.y * 2.0), seed * 9.0)) - 0.5) * 0.09 * coarse;
+    rivet(q, vec2(q.x < 0.5 ? 0.085 : 0.915, q.y < 0.25 ? 0.085 : 0.415), 0.026, fine, shade, slope);
+    shade *= 1.0 + (noise3(vec3(uv * 9.0, seed * 5.0)) - 0.5) * 0.08 * fine;
+}
+
+// Combat: half-height plates laid like bricks, deep bevels, a big bolt at each plate's ends.
+void combat_detail(vec2 uv, float seed, float fine, float coarse, inout float shade, inout vec2 slope) {
+    float row = floor(uv.y * 2.0);
+    float shift = mod(row, 2.0) * 0.5;
+    vec2 q = vec2(fract(uv.x + shift), fract(uv.y * 2.0) * 0.5);
+    vec2 size = vec2(1.0, 0.5);
+    float e = min(min(q.x, size.x - q.x), min(q.y, size.y - q.y));
+    shade *= mix(1.0, mix(0.3, 1.0, aastep(0.016, e)), coarse);
+    bevel(q, size, 0.11, 0.9 * coarse, slope);
+    shade *= 1.0 + (hash3(vec3(floor(uv.x + shift), row, seed * 9.0)) - 0.5) * 0.1 * coarse;
+    rivet(q, vec2(q.x < 0.5 ? 0.1 : 0.9, 0.25), 0.034, fine, shade, slope);
+    shade *= 1.0 + (noise3(vec3(uv * 7.0, seed * 3.0)) - 0.5) * 0.1 * fine;
+}
+
+// Concrete: a fine cast joint, pour lines along walls, form-tie holes and aggregate speckle over a soft mottle.
+void concrete_detail(vec2 uv, vec2 f, float wall, float fine, float coarse, inout float shade, inout vec2 slope) {
+    float edge = min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y));
+    shade *= mix(1.0, mix(0.7, 1.0, aastep(0.01, edge)), coarse);
+    shade *= 1.0 + (noise3(vec3(uv * 1.3, 4.1)) - 0.5) * 0.12;
+    float lift = uv.y * 3.0 + (noise3(vec3(uv.x * 2.0, 0.0, 7.3)) - 0.5) * 0.14;
+    float pour = 1.0 - aastep(0.035, 1.0 - abs(fract(lift) - 0.5) * 2.0);
+    shade *= mix(1.0, 0.84, pour * wall * coarse);
+    vec2 h = fract(f * 2.0) - 0.5;
+    float hole = 1.0 - aastep(0.026, length(h));
+    shade *= mix(1.0, 0.42, hole * fine);
+    slope -= hole * h / 0.026 * 0.6 * fine;
+    float g = hash3(vec3(floor(uv * 72.0), 2.7));
+    shade *= 1.0 + (g > 0.86 ? 0.14 : g < 0.12 ? -0.13 : 0.0) * fine;
 }
 
 // Metal dents and scorches: scratches through the paint, then bare metal and cracks, then soot and hot tears.
@@ -212,6 +361,8 @@ void wear_alien(int damage, vec2 uv, float seed, float n, inout vec3 col, inout 
     }
 }
 
+float luma(vec3 c) { return dot(c, vec3(0.3, 0.59, 0.11)); }
+
 void fragment() {
     int accent_rgb = int(v_paint.x + 0.5);
     int flags = int(v_paint.y + 0.5);
@@ -226,16 +377,24 @@ void fragment() {
     int wear = (flags >> 17) & 3;
     bool holed = ((flags >> 19) & 1) == 1;
     int lamp = (flags >> 20) & 7;
+    bool status = glow == 1 && painted == 0 && metal == 3;
     bool lampPaint = glow == 1 && painted == 1;
     int lampShape = pattern;
     if (lampPaint) { pattern = 0; stencil = 0; }
+    // A part's symbol: its place on the face and its size ride in the accent instead of a colour.
+    bool symbolic = pattern == 7;
 
     vec3 base = COLOR.rgb;
     vec3 accent = unpack_rgb(accent_rgb);
     vec2 uv = UV;
     vec2 f = fract(uv);
 
-    // Livery patterns, continuous across neighbouring blocks.
+    // How small a block is on screen, in blocks per pixel: detail fades as it shrinks.
+    float px = max(length(fwidth(uv)), 1e-5);
+    float fine = 1.0 - smoothstep(0.007, 0.02, px);
+    float coarse = 1.0 - smoothstep(0.03, 0.08, px);
+
+    // Livery patterns, continuous across neighbouring blocks; then the parts' own.
     float m = 0.0;
     if (pattern == 1) {        // stripes: a bold band and a pinstripe per block
         m = aastep(0.16, f.y) * (1.0 - aastep(0.56, f.y)) + aastep(0.68, f.y) * (1.0 - aastep(0.8, f.y));
@@ -245,27 +404,47 @@ void fragment() {
         m = abs(aastep(0.5, f.x) - aastep(0.5, f.y));
     } else if (pattern == 4) { // hazard stripes
         m = aastep(0.5, fract((uv.x + uv.y) * 1.5));
+    } else if (pattern == 5) { // fine hazard trim, for a part's narrow bands
+        m = aastep(0.5, fract((uv.x + uv.y) * 6.0));
+    } else if (pattern == 6) { // a grille's slots
+        m = 1.0 - aastep(0.5, abs(fract(uv.y * 14.0) - 0.5) * 2.0);
     }
     vec3 col = mix(base, accent, m);
-    if (stencil > 0) {
+    float mark = 0.0;
+    if (symbolic) {
+        vec2 sc = vec2(float((accent_rgb >> 16) & 255), float((accent_rgb >> 8) & 255)) / 255.0;
+        float ss = max(float(accent_rgb & 255) / 255.0 * 0.8, 1e-3);
+        mark = symbol(stencil, (f - sc) / ss + 0.5);
+        col = mix(base, base * (glow == 1 ? 0.04 : 0.14), mark);
+    } else if (stencil > 0) {
         vec2 g = (f - vec2(0.2, 0.14)) / vec2(0.6, 0.72);
         col = mix(col, accent, glyph(stencil - 1, g));
     }
     col = to_linear(col);
 
-    // Surface texture.
+    // Surface texture: on plain panels, the material's own detail.
     float edge = min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y));
     float shade = 1.0;
-    if (tex == 0) {            // panel: a seam round each block and a soft bevel
-        shade *= mix(0.5, 1.0, aastep(0.022, edge));
-        shade *= 0.93 + 0.07 * smoothstep(0.02, 0.14, edge);
+    vec2 slope = vec2(0.0);
+    float seed0 = hash3(vec3(floor(uv), floor(v_plane * 3.0 + 0.5)));
+    if (tex == 0) {
+        if (wear == 1) concrete_detail(uv, f, v_wall, fine, coarse, shade, slope);
+        else if (wear == 2) {  // alien alloy: a seam round each block, no fixings
+            shade *= mix(0.5, 1.0, aastep(0.022, edge));
+            shade *= 0.93 + 0.07 * smoothstep(0.02, 0.14, edge);
+        }
+        else if (metal == 2) hardened_detail(uv, f, seed0, fine, coarse, shade, slope);
+        else if (metal == 3) combat_detail(uv, seed0, fine, coarse, shade, slope);
+        else steel_detail(uv, f, seed0, metal == 1, fine, coarse, shade, slope);
     } else if (tex == 2) {     // plates: half-block plates with rivets
         vec2 h = fract(uv * 2.0);
         float e2 = min(min(h.x, 1.0 - h.x), min(h.y, 1.0 - h.y));
-        shade *= mix(0.55, 1.0, aastep(0.03, e2));
-        shade *= mix(0.72, 1.0, aastep(0.045, length(min(h, 1.0 - h) - vec2(0.13))));
+        shade *= mix(1.0, mix(0.55, 1.0, aastep(0.03, e2)), coarse);
+        bevel(h, vec2(1.0), 0.07, 0.45 * coarse, slope);
+        rivet(h, vec2(h.x < 0.5 ? 0.13 : 0.87, h.y < 0.5 ? 0.13 : 0.87), 0.045, fine, shade, slope);
     } else if (tex == 3) {     // ribbed: vertical corrugation
         shade *= 0.8 + 0.2 * smoothstep(0.1, 0.9, abs(fract(uv.x * 4.0) - 0.5) * 2.0);
+        slope.x += sin(uv.x * 25.1327) * 0.35 * coarse;
         shade *= mix(0.5, 1.0, aastep(0.022, edge));
     }
     col *= shade;
@@ -276,7 +455,11 @@ void fragment() {
         else if (lampShape == 3) gm = aastep(0.18, f.x) * (1.0 - aastep(0.82, f.x)) * aastep(0.18, f.y) * (1.0 - aastep(0.82, f.y));
         else if (lampShape == 4) gm = (1.0 - aastep(0.14, edge)) * aastep(0.05, edge);
         col = mix(vec3(0.012), col * 0.4, gm);
+    } else if (glow == 1) {
+        if (pattern == 6) gm = m;                  // light through a grille's slots
+        else if (symbolic) gm = 1.0 - mark * 0.95; // a screen: the symbol dark on the light
     }
+    vec3 clean = col;
 
     // Grime: blotches and streaks that gather low on each block.
     if (grime > 0) {
@@ -291,8 +474,8 @@ void fragment() {
     // Damage, drawn per block and per material: the worse the block, the more of it shows.
     vec3 emission = vec3(0.0);
     float grit = 0.0;
+    float seed = block_seed(COLOR.a, uv, v_plane);
     if (damage > 0) {
-        float seed = block_seed(COLOR.a, uv, v_plane);
         float n = fbm3(vec3(uv * 2.3, seed * 7.0 + v_plane * 0.7));
         if (wear == 1) wear_concrete(damage, uv, f, edge, seed, n, col, grit);
         else if (wear == 2) wear_alien(damage, uv, seed, n, col, emission, grit);
@@ -301,7 +484,9 @@ void fragment() {
 
     ALBEDO = col;
     ROUGHNESS = mix(painted == 1 ? 0.6 : mix(0.72, 0.38, float(metal) / 3.0), 0.95, grit);
-    METALLIC = (painted == 1 ? 0.04 : float(metal) * 0.17) * (1.0 - grit);
+    METALLIC = (painted == 1 || glow == 1 ? 0.04 : float(metal) * 0.17) * (1.0 - grit);
+    if (glow == 0 && (slope.x != 0.0 || slope.y != 0.0))
+        NORMAL = normalize(NORMAL + (v_right * slope.x + v_up * slope.y) * 0.3);
     if (glow == 1) {
         vec3 lit = base;
         float k = 1.0;
@@ -316,7 +501,17 @@ void fragment() {
             else if (lamp == 3) k = fract(x * 2.0) < 0.14 ? 1.0 : 0.03;
             else if (lamp == 4) lit = mix(base, vec3(float((accent_rgb >> 8) & 15), float((accent_rgb >> 4) & 15), float(accent_rgb & 15)) / 15.0, 0.5 + 0.5 * sin(6.2831853 * x));
         }
-        emission += to_linear(lit) * 3.2 * k * gm;
+        if (damage > 0) {
+            // A damaged light flickers: now and then it drops out, more often the worse the block.
+            float x = TIME * (damage == 1 ? 2.3 : 6.0) + seed * 19.0;
+            float v = lamp_hash(floor(x) + seed * 7.0);
+            k *= v < (damage == 1 ? 0.14 : 0.45) ? 0.05 : 0.8 + 0.2 * lamp_hash(floor(x * 3.7) + 3.0);
+        }
+        if (status) k *= mix(0.05, 1.0, clamp(powered, 0.0, 1.0));
+        float energy = symbolic ? 1.6 : (pattern == 6 && !lampPaint) ? 1.3 : 3.2;
+        // Scorches, cracks and grime dim the glow under them, so the marks still show.
+        float kept = clamp(luma(col) / max(luma(clean), 1e-4), 0.0, 1.0);
+        emission += to_linear(lit) * energy * k * gm * mix(0.1, 1.0, kept);
         ALBEDO = lampPaint ? col : col * 0.4;
     }
     EMISSION = emission;
@@ -339,7 +534,15 @@ void vertex() {
 void fragment() {
     vec2 f = fract(UV);
     float edge = min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y));
-    float frame = 1.0 - aastep(0.035, edge);
+    // A frame round each pane: a dark gasketed seam where panes meet, the frame, a bright bevelled lip
+    // inside it and a bolt in each corner; the small parts fade as the pane shrinks on screen.
+    float px = max(length(fwidth(UV)), 1e-5);
+    float fine = 1.0 - smoothstep(0.007, 0.02, px);
+    float frame = 1.0 - aastep(0.05, edge);
+    float lip = (1.0 - aastep(0.064, edge)) * aastep(0.05, edge);
+    float gasket = 1.0 - aastep(0.008, edge);
+    vec2 cq = vec2(f.x < 0.5 ? 0.026 : 0.974, f.y < 0.5 ? 0.026 : 0.974);
+    float bolt = (1.0 - aastep(0.012, length(f - cq))) * fine;
     float fres = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
     vec3 tint = to_linear(COLOR.rgb);
 
@@ -361,13 +564,15 @@ void fragment() {
         if (damage == 3) {
             // Shards: sectors between the spokes and rings, about half of them fallen out.
             float shard = hash3(vec3(floor(a), floor(r * 4.0 + wobble), seed * 31.0));
-            if (shard < 0.5 && edge > 0.04 && crazed < 0.5) discard;
+            if (shard < 0.5 && edge > 0.065 && crazed < 0.5) discard;
         }
     }
 
-    ALBEDO = mix(mix(tint * 0.25, vec3(0.02, 0.02, 0.03), frame), vec3(0.8, 0.86, 0.9), crazed);
-    ALPHA = max(mix(0.22 + fres * 0.55, 1.0, frame), crazed * 0.92);
-    ROUGHNESS = mix(mix(0.04, 0.5, frame), 0.6, crazed);
+    vec3 frameCol = mix(mix(vec3(0.06, 0.065, 0.075), vec3(0.015), gasket), vec3(0.32, 0.34, 0.37), bolt);
+    vec3 pane = mix(mix(tint * 0.25, frameCol, frame), vec3(0.42, 0.45, 0.5), lip * 0.8);
+    ALBEDO = mix(pane, vec3(0.8, 0.86, 0.9), crazed);
+    ALPHA = max(mix(0.22 + fres * 0.55, 1.0, max(frame, lip)), crazed * 0.92);
+    ROUGHNESS = mix(mix(0.04, 0.45, max(frame, lip)), 0.6, crazed);
     METALLIC = 0.3;
     SPECULAR = 0.9;
 }

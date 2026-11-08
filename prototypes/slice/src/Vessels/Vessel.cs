@@ -293,7 +293,7 @@ public sealed partial class Vessel
         List<ChunkColliders> colliders = StructureBridge.Colliders(Structure);
         if (drawLater) foreach (ChunkColliders c in colliders) _pendingShapes.Enqueue((HullShapes, c));
         else HullShapes.Apply(colliders);
-        View = new StructureMesh { Name = "View", BeforeDraw = Hits.Flush };
+        View = new StructureMesh { Name = "View", BeforeDraw = Hits.Flush, PowerSource = () => Powered };
         owner.AddChild(View);
         View.Setup(Structure, drawLater);
         Fx = new VesselFx { Name = "Fx" };

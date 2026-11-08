@@ -20,8 +20,8 @@ namespace Slice.Tests;
 /// daylight: every device close up on each grid (device-ID-large, device-ID-small), a wall of each
 /// armour material at 2 m and 20 m (wall-ID-2m, wall-ID-20m), the Outpost and Frigate set down
 /// through the BLUEPRINTS tab and seen from outside and from inside (bp-NAME-outside, bp-NAME-inside),
-/// a PERF line of frame time and triangles at the Frigate, and an icon sheet of every block item
-/// (icons). --part=devices|walls|blueprints|icons runs one part; the default is all of them.
+/// a PERF line of frame time and triangles at the Frigate, the first devices powered, unpowered and
+/// damaged (status-*), and an icon sheet of every block item (icons). --part=devices|walls|blueprints|icons runs one part; the default is all of them.
 /// The showrooms are set down whole (STAGING): one large-grid base and one small-grid plate.
 /// </summary>
 public sealed partial class Staging
@@ -93,9 +93,9 @@ public sealed partial class Staging
             {
                 Int3 c = at[t];
                 var centre = new N.Vector3(c.X, c.Y, c.Z) * cell;
-                // Front quarter (the front is -Z), a little above; a hover plate from below its edge.
-                float up = t.Function is "hover" ? -0.35f : 0.75f;
-                var eyeLocal = centre + new N.Vector3(1.15f, up, -2.05f) * cell;
+                // Front quarter (the front is -Z), a little above; a thruster from behind, its nozzle; a hover plate from below its edge.
+                float up = t.Function is "hover" ? -0.35f : 0.75f, side = t.IsThruster ? 1f : -1f;
+                var eyeLocal = centre + new N.Vector3(t.IsThruster ? 1.7f : 1.15f, up, (t.IsThruster ? 1.5f : 2.05f) * side) * cell;
                 Vector3 eye = v.ToWorld(eyeLocal), look = v.ToWorld(centre + new N.Vector3(0f, t.Function == "hover" ? -0.1f : 0f, 0f));
                 _game.FixedCamera = new Transform3D(Basis.LookingAt((look - eye).Normalized(), Vector3.Up), eye);
                 foreach (int x in _drive.Wait(4)) yield return x;
@@ -107,8 +107,36 @@ public sealed partial class Staging
             _game.FixedCamera = new Transform3D(Basis.LookingAt((v.ToWorld(mid) - over).Normalized(), Vector3.Up), over);
             foreach (int x in _drive.Wait(6)) yield return x;
             foreach (int x in Shot($"{dir}/{tag}showroom-{grid0}.png")) yield return x;
+            if (size == GridSize.Large) foreach (int x in StatusShots(v, devices.Take(4).Select(t => at[t]).ToList(), dir, tag)) yield return x;
             _game.FixedCamera = null;
         }
+    }
+
+    /// <summary>The first devices of the showroom's front row as their status shows: powered, with the power off, then damaged (one bucket apiece, the glows flickering).</summary>
+    IEnumerable<int> StatusShots(Vessel v, List<Int3> cells, string dir, string tag)
+    {
+        Structure s = v.Structure;
+        float cell = s.Grid.CellSize;
+        var lo = new N.Vector3(cells.Min(c => c.X), 1f, cells.Min(c => c.Z)) * cell;
+        var hi = new N.Vector3(cells.Max(c => c.X), 1f, cells.Max(c => c.Z)) * cell;
+        N.Vector3 mid = (lo + hi) * 0.5f;
+        Vector3 eye = v.ToWorld(mid + new N.Vector3(2.5f, 1.6f, -5.5f) * cell);
+        _game.FixedCamera = new Transform3D(Basis.LookingAt((v.ToWorld(mid) - eye).Normalized(), Vector3.Up), eye);
+        foreach (int x in _drive.Wait(10)) yield return x;
+        foreach (int x in Shot($"{dir}/{tag}status-powered.png")) yield return x;
+        v.PowerOn = false;
+        foreach (int x in _drive.Wait(40)) yield return x;
+        foreach (int x in Shot($"{dir}/{tag}status-unpowered.png")) yield return x;
+        v.PowerOn = true;
+        float[] left = { 0.7f, 0.45f, 0.4f, 0.6f };
+        for (int i = 0; i < cells.Count; i++) s.SetHp(cells[i], s.MaxHp(s.Get(cells[i])) * left[i % left.Length]);
+        v.View.Rebuild(s.DirtyChunks.ToList());
+        s.DirtyChunks.Clear();
+        foreach (int x in _drive.Wait(40)) yield return x;
+        foreach (int x in Shot($"{dir}/{tag}status-damaged.png")) yield return x;
+        foreach (Int3 c in cells) s.SetHp(c, s.MaxHp(s.Get(c)));
+        v.View.Rebuild(s.DirtyChunks.ToList());
+        s.DirtyChunks.Clear();
     }
 
     /// <summary>A free-standing wall of each armour material, 6 by 4 blocks, at 2 m and at 20 m.</summary>
