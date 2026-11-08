@@ -67,7 +67,7 @@ public sealed class WalkController : IBodyController, IForceReactor
     /// in a gale; hurricane-force wind on a body standing tall slides it (crouching halves the push),
     /// and a tornado's pull drags you. Past it the feet slip: they hold back only a share of it.
     /// </summary>
-    public float Footing = 6.5f, SlipHold = 0.5f;
+    public float Footing = 5f, SlipHold = 0.5f;
 
     /// <summary>The feet lost their footing this tick: an outside push was too strong to stand against.</summary>
     public bool Slipping { get; private set; }

@@ -220,6 +220,7 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
             // and falls under gravity and the wind until it has come down, and its landing hurts by the
             // closing speed like any other hit (face-on hard, glancing little).
             body.Tossed = MathF.Max(0f, body.Tossed - dt);
+            StrikeUnstreamedGround(world, body, dt);
             Quaternion spun = Quaternion.Normalize(body.Rotation * MathX.AxisAngle(Vector3.UnitY, LocalSpin.Y * dt)
                 * MathX.AxisAngle(Vector3.UnitX, LocalSpin.X * dt) * MathX.AxisAngle(Vector3.UnitZ, LocalSpin.Z * dt));
             body.AngularVelocity = AngularVelocity(body.Rotation, spun, dt);
@@ -272,6 +273,36 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
 
     /// <summary>The registered body the vessel rests on: under its feet, or under its hull.</summary>
     Body RestingOn(Body body) => Gear?.StandingOn ?? body.Underfoot;
+
+    /// <summary>
+    /// A tossed hull far from anyone falls toward ground whose collision isn't streamed there (it is
+    /// only round the player): where its keel would go into solid ground this tick, it strikes the
+    /// ground there instead, by the one impact rule, and comes to rest on it.
+    /// </summary>
+    static void StrikeUnstreamedGround(PhysicsWorld world, Body body, float dt)
+    {
+        Vector3 v = body.Velocity;
+        if (v.Y >= 0f) return;
+        float below = body.Shape.FeetBelowOrigin;
+        Vector3 com = body.CenterOfMassPosition;
+        Vector3 keel = new Vector3(com.X, body.Position.Y - below, com.Z) + v * dt; // under its middle, at its lowest
+        Vector3 shift = keel - (body.Position + v * dt - Vector3.UnitY * below);
+        if (!SolidAt(world, body, keel)) return;
+        if (world.Query.Ray(body.Position, keel - Vector3.UnitY, Layers.ProbeMask, body, out _)) return; // streamed: the hull's own sweep meets it
+        float lift = 0f;
+        while (lift < 30f && SolidAt(world, body, keel + Vector3.UnitY * lift)) lift += 0.25f;
+        Vector3 point = keel + Vector3.UnitY * lift;
+        world.ResolveImpact(body, null, point, Vector3.UnitY, -v.Y, Surface.Ground);
+        body.Position = point - shift + Vector3.UnitY * below;
+        body.Velocity = new Vector3(v.X * 0.3f, 0f, v.Z * 0.3f);
+        body.Tossed = 0f;
+    }
+
+    static bool SolidAt(PhysicsWorld world, Body body, Vector3 p)
+    {
+        foreach (IStuckField f in world.StuckFields) if (f.IsSolid(body, p)) return true;
+        return false;
+    }
 
     /// <summary>Nothing is silently immune to weather: a landed ship a tornado pulls hard enough is knocked loose.</summary>
     public void React(PhysicsWorld world, Body body, float dt)

@@ -115,6 +115,9 @@ public sealed class Tornado
     /// <summary>Steers toward the observer until it has passed them, then keeps going.</summary>
     public bool Homing { get; set; }
 
+    /// <summary>Tests and screenshots: neither its storm going nor the ground under it takes it away (it still lives out its life).</summary>
+    public bool Kept { get; set; }
+
     /// <summary>A natural tornado does not hunt anyone: its heading drifts slowly at random (radians/s at most).</summary>
     public float WanderRate { get; set; }
 

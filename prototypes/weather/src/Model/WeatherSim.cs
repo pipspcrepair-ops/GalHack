@@ -907,7 +907,7 @@ public sealed class WeatherSim
         {
             Tornado t = _tornadoes[i];
             bool wasDown = t.Touchdown;
-            if (stormGone && !t.Homing && t.Kind == TornadoKind.Tornado) t.Dissipate();
+            if (stormGone && !t.Homing && !t.Kept && t.Kind == TornadoKind.Tornado) t.Dissipate();
             if (t.Kind == TornadoKind.Waterspout)
             {
                 SpoutFate(t);
@@ -1008,7 +1008,7 @@ public sealed class WeatherSim
     /// </summary>
     void GroundFate(Tornado t, float dt)
     {
-        if (!t.Touchdown || t.Dissipating || t.Homing) return;
+        if (!t.Touchdown || t.Dissipating || t.Homing || t.Kept) return;
         if (t.Kind == TornadoKind.DustDevil)
         {
             if (Land == null) return;

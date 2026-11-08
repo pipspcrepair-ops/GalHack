@@ -21,6 +21,9 @@ public sealed class Survivor
 {
     public const float Mass = 100f, Radius = 0.35f, Height = 1.8f, EyeHeight = 1.6f;
 
+    /// <summary>What the wind takes hold of, m²: standing tall, and crouched to brace.</summary>
+    public const float StandDragArea = 0.9f, CrouchDragArea = 0.45f;
+
     /// <summary>Crouched, the capsule and the eye drop: low enough for a 1.2 m gap.</summary>
     public const float CrouchHeight = 1.1f, CrouchEyeHeight = 0.95f;
 
@@ -107,7 +110,7 @@ public sealed class Survivor
         Body body = zone.Physics.Register(new BodySpec
         {
             // Lighter than water with the suit's air: it floats with the eyes well clear of the surface.
-            Kind = BodyKind.Player, Label = "Survivor", Mass = Mass, DragArea = 0.9f, Density = 700f,
+            Kind = BodyKind.Player, Label = "Survivor", Mass = Mass, DragArea = StandDragArea, Density = 700f,
             Shape = new StuckShape(Height, Radius), Position = feet,
         });
         // A crouch shortens the capsule, not the person: in water they're reckoned at their full height.
@@ -226,6 +229,7 @@ public sealed class Survivor
         _capsule.Height = height;
         _shape.Position = Vector3.Up * (height / 2f);
         Body.Shape = new StuckShape(height, Radius);
+        Body.DragArea = crouched ? CrouchDragArea : StandDragArea; // braced low, the wind has half as much of you
     }
 
     /// <summary>Whether the standing capsule would fit where the survivor is: nothing solid overhead or alongside.</summary>

@@ -606,7 +606,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
     }
 
     /// <summary>The feet's hold against a push, m/s²: a walker's (the shared walk rules), for creatures and people alike.</summary>
-    const float Footing = 6.5f;
+    const float Footing = 5f;
 
     /// <summary>What a wind of this speed does to a creature or a person standing in it, m/s²: drag by its side-on area over its mass.</summary>
     public static float CreaturePush(Wildlife.Species s, float wind)
