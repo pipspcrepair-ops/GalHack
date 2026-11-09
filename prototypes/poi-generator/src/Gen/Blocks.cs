@@ -148,14 +148,14 @@ public static class BlockInfo
     public static bool IsFullCube(BlockType t) => t is BlockType.Cube or BlockType.Breakable;
 
     /// <summary>
-    /// A floor's finish: a thin slab laid on the floor (tiles, boards, a path, a painted line) that things are set
-    /// down on. It stays under whatever is put in its cell (see <see cref="BlockGrid.Under"/>), so a table never
-    /// leaves a hole in the tiles.
+    /// A floor's finish (tiles, boards, carpet, a path, a painted line): what the floor block under it is painted
+    /// with, drawn on that block's top face and nothing of its own. It stays recorded under whatever is put in its
+    /// cell (see <see cref="BlockGrid.Under"/>), so the floor under a table is painted the same as round it.
     /// </summary>
     public static bool IsFinish(BlockType t) => t == BlockType.Plate;
 
     /// <summary>How thick a floor's finish is: what stands on it stands this much higher.</summary>
-    public const float FinishTop = Shapes.PlateTop; // a plate is drawn 2 cm thick: that is the finish's top
+    public const float FinishTop = Shapes.PlateTop; // paint: none
 
     /// <summary>Walked like a ramp: a 45-degree slope rising toward the block's facing.</summary>
     public static bool IsSlope(BlockType t) => t is BlockType.Ramp or BlockType.Stair;

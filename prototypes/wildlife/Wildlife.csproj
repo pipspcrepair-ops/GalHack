@@ -10,6 +10,8 @@
     <Optimize>true</Optimize>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Coplanar faces: found (tests) and set apart (meshers), engine-free. -->
+    <Compile Include="..\..\shared\Geometry\**\*.cs" />
     <!-- The bestiary: everything that moves, generated, built and run. This prototype is its showroom. -->
     <Compile Include="..\..\shared\Bestiary\**\*.cs" />
     <Compile Include="..\..\shared\Testing\**\*.cs" />

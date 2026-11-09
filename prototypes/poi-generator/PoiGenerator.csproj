@@ -8,6 +8,8 @@
     <Optimize>true</Optimize>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Coplanar faces: found (tests) and set apart (meshers), engine-free. -->
+    <Compile Include="..\..\shared\Geometry\**\*.cs" />
     <!-- The terrain stamp planet-surface seats places with: the tests check that it carves
          every underground room out of the ground and leaves solid walls around them. -->
     <Compile Include="..\..\shared\Testing\**\*.cs" />

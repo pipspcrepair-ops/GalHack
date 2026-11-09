@@ -14,6 +14,8 @@
     reuses unchanged (the planet's streamer and sky, building's mesher, the UI theme).
   -->
   <ItemGroup>
+    <!-- Coplanar faces: found (tests) and set apart (meshers), engine-free. -->
+    <Compile Include="..\..\shared\Geometry\**\*.cs" />
     <!-- Shared modules. -->
     <Compile Include="..\..\shared\Physics\**\*.cs" />
     <Compile Include="..\..\shared\Terrain\**\*.cs" />

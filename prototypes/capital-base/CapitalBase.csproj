@@ -9,6 +9,8 @@
     <Optimize>true</Optimize>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Coplanar faces: found (tests) and set apart (meshers), engine-free. -->
+    <Compile Include="..\..\shared\Geometry\**\*.cs" />
     <!-- Shared modules, compiled in where they live: physics (rules and engine adapters) and the
          planet as diggable voxels. -->
     <Compile Include="..\..\shared\Physics\**\*.cs" />
