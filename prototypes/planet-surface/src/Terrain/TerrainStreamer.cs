@@ -903,7 +903,10 @@ public partial class TerrainStreamer : Node3D
                 (gone ??= new List<(int, int)>()).Add(key);
                 continue;
             }
-            if (f.Node != null) f.Node.Position = new Vector3((float)NearestCopy(f.Fx * FarBuilder.Size, FarBuilder.Size, Focus.X, w), 0, (float)NearestCopy(f.Fz * FarBuilder.Size, FarBuilder.Size, Focus.Z, h));
+            if (f.Node == null) continue;
+            // Written only when it moves (a wrap round the planet): a same-spot write still tells every batch under it.
+            var at = new Vector3((float)NearestCopy(f.Fx * FarBuilder.Size, FarBuilder.Size, Focus.X, w), 0, (float)NearestCopy(f.Fz * FarBuilder.Size, FarBuilder.Size, Focus.Z, h));
+            if (f.Node.Position != at) f.Node.Position = at;
         }
         if (gone != null) foreach (var key in gone) _far.Remove(key);
 
