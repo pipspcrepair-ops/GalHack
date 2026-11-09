@@ -723,7 +723,7 @@ sealed class RampField : IStuckField
 
 /// <summary>
 /// A cryopod: an upright capsule against the bunker's back wall, its glass front a lid that
-/// swings open. The castaway's works (cold blue light, a lid that opens with F); the others are
+/// swings outward and slides back along its side. The castaway's works (cold blue light, a lid that opens with F); the others are
 /// dark, frosted, with their sleepers slumped inside.
 /// </summary>
 public partial class CryoPod : Node3D
@@ -792,7 +792,7 @@ public partial class CryoPod : Node3D
         }
     }
 
-    /// <summary>Opens the lid (it swings aside over a second); the way out is clear at once.</summary>
+    /// <summary>Opens the lid (it swings out and slides back along the pod's side over a second and a half); the way out is clear at once.</summary>
     public void OpenLid()
     {
         if (Open) return;
@@ -800,11 +800,28 @@ public partial class CryoPod : Node3D
         _lidCollider.Disabled = true;
     }
 
+    /// <summary>Where the lid's hinge stands shut, and where it ends up: just outside the port side wall, the glass along it.</summary>
+    static readonly Vector3 HingeShut = new(-0.45f, 0f, -0.45f), HingeStowed = new(-0.53f, 0f, 0.45f);
+
     public override void _Process(double delta)
     {
         if (!Open || _swing >= 1f) return;
-        _swing = MathF.Min(1f, _swing + (float)delta);
-        _lid.Rotation = new Vector3(0f, -1.9f * (1f - MathF.Pow(1f - _swing, 3f)), 0f);
+        _swing = MathF.Min(1f, _swing + (float)delta / 1.5f);
+        // First it swings outward on its hinge until it stands square to the front, never into the pod;
+        // then it steps clear of the side wall and slides back along it into its stowed place.
+        const float SwingPart = 0.45f;
+        if (_swing < SwingPart)
+        {
+            float u = _swing / SwingPart;
+            _lid.Rotation = new Vector3(0f, Mathf.Pi / 2f * (1f - MathF.Pow(1f - u, 3f)), 0f);
+            _lid.Position = HingeShut;
+            return;
+        }
+        float v = (_swing - SwingPart) / (1f - SwingPart);
+        _lid.Rotation = new Vector3(0f, Mathf.Pi / 2f, 0f);
+        _lid.Position = new Vector3(
+            Mathf.Lerp(HingeShut.X, HingeStowed.X, MathF.Min(1f, v * 8f)), 0f,
+            Mathf.Lerp(HingeShut.Z, HingeStowed.Z, v * v * (3f - 2f * v)));
     }
 
     static MeshInstance3D Box(Vector3 size, Vector3 at, Material m) =>
