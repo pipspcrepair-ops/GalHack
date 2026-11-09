@@ -1,4 +1,4 @@
-﻿// Seas and rivers: water, lava or an exotic liquid. The sea plane follows the camera and is
+// Seas and rivers: water, lava or an exotic liquid. The sea plane follows the camera and is
 // masked by the world map's depth texture, so a pit dug below sea level inland stays dry (water
 // is static, as in terrain-digging). Ripples move with the weather's wind and rain roughens them.
 shader_type spatial;
@@ -13,6 +13,10 @@ global uniform vec4 weather_ground;
 uniform sampler2D sea_map : filter_linear, repeat_enable;  // r: metres below sea level by world-map cell (negative on land)
 uniform float sea_mask = 0.48;  // the sea is where it's deeper than this, as the terrain and physics have it (PlanetTerrainSource.SeaMaskDepth)
 uniform bool sea = false;
+// Ground the map calls sea but that holds none (a place's pad, its rooms dug below sea level): the sea
+// draws nothing there, or it shows through their openings. r 1 dry, over dry_area (x, z of its corner, size m; w 1 on).
+uniform sampler2D dry_map : filter_nearest, repeat_disable;
+uniform vec4 dry_area = vec4(0.0);
 uniform vec3 shallow : source_color = vec3(0.1, 0.45, 0.5);
 uniform vec3 deep : source_color = vec3(0.02, 0.12, 0.2);
 uniform bool lava = false;
@@ -72,6 +76,10 @@ void fragment() {
 	if (sea) {
 		float below = texture(sea_map, wpos.xz / planet_size).r;
 		if (below < sea_mask) discard;
+		if (dry_area.w > 0.5) {
+			vec2 uv = (wpos.xz - dry_area.xy) / dry_area.z;
+			if (uv.x >= 0.0 && uv.y >= 0.0 && uv.x < 1.0 && uv.y < 1.0 && texture(dry_map, uv).r > 0.5) discard;
+		}
 		depth = clamp(below / 120.0, 0.0, 1.0);
 	} else {
 		// River quads run one grid square past the channel (vertex alpha 0 there). Where the banks
