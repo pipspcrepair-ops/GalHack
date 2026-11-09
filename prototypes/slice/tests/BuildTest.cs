@@ -116,6 +116,7 @@ public partial class BuildTest : Node
         AddChild(_game);
         _drive = new Driver(_game);
         _play = new Playthrough(_game);
+        _game.Said += (text, _) => _said.Add(text);
         foreach (int x in _drive.UntilPlaying()) yield return x;
         _game.Zone.Weather.Bridge.Calm = true;
         _game.Zone.Weather.Sim.Snap(Weather.Model.WeatherKind.Clear);
@@ -176,7 +177,7 @@ public partial class BuildTest : Node
                 if (DiegeticUi.Theme.Paint.TextWidth(DiegeticUi.Theme.UiTheme.Label, font, fitted) > l.ItemLine.Size.X + 0.5f) Fail($"HUD at {size} scale {scale}: the long line overflows its box");
                 checks++;
             }
-        Check(true, $"vitals, toolbar, item line, hints, shapes and lines never overlap or leave the window ({checks} sizes and scales), and the longest line fits its box");
+        Check(true, $"vitals, toolbar, item line, hints, shapes, lines and the notices never overlap or leave the window ({checks} sizes and scales), and the longest line fits its box");
     }
 
     ItemGrid BigGrid(int perItem, out SharedStorage storage)
@@ -412,12 +413,14 @@ public partial class BuildTest : Node
         foreach (int x in _drive.LookAt(_site, 8)) yield return x;
         foreach (int x in _drive.Click()) yield return x;
         foreach (int x in _drive.Wait(3)) yield return x;
-        Check(_game.Zone.Vessels.Count == structures && Pack[steelL] == 12 && _game.Builder.Verdict.Contains("set a core down"),
+        Check(_game.Zone.Vessels.Count == structures && Pack[steelL] == 12 && _game.Builder.Verdict.Contains("CORE FIRST"),
             $"a block can't be placed in the open without a structure: \"{_game.Builder.Verdict}\"");
 
         foreach (int x in Carry("big-core", 1, 4)) yield return x;
+        // The base this test founds: the world may already hold others (a hulk, a faction's, a claimable one).
+        var existing = new HashSet<Vessel>(_game.Zone.Vessels);
         foreach (int x in _play.PlaceOnGround(4, _site)) yield return x;
-        _base = _game.Zone.Vessels.FirstOrDefault(v => v.IsBase && !v.IsRuin && !v.IsWreck);
+        _base = _game.Zone.Vessels.FirstOrDefault(v => !existing.Contains(v) && v.IsBase && !v.IsRuin && !v.IsWreck);
         Check(_base != null && StructureArea.ClassOf(_base) == StructureClass.Base && _base.Structure.Grid.Size == GridSize.Large && Pack["big-core"] == 0,
             "the Big Core founds a base (large grid, anchored), and is used up");
         if (_base == null) yield break;
@@ -427,7 +430,7 @@ public partial class BuildTest : Node
         foreach (int x in _drive.LookAt(_base.ToWorld(new N.Vector3(1f, 0, 0)), 8)) yield return x;
         foreach (int x in _drive.Click()) yield return x;
         foreach (int x in _drive.Wait(3)) yield return x;
-        Check(_base.Structure.Count == 1 && Pack[steelS] == 12 && _game.Builder.Verdict.Contains("small-grid block"), $"a small-grid block is refused on a base: \"{_game.Builder.Verdict}\" (the eye {_game.Survivor.WorldEye().DistanceTo(_base.ToWorld(new N.Vector3(1f, 0, 0))):F1} m off it, feet {_game.Survivor.WorldFeet}, core at {_base.Body.Position}, site {_site}, ground there {_game.Zone.GroundAt(_site.X, _site.Z).Y:F2})");
+        Check(_base.Structure.Count == 1 && Pack[steelS] == 12 && _game.Builder.Verdict.Contains("SMALL-GRID BLOCK"), $"a small-grid block is refused on a base: \"{_game.Builder.Verdict}\" (the eye {_game.Survivor.WorldEye().DistanceTo(_base.ToWorld(new N.Vector3(1f, 0, 0))):F1} m off it, feet {_game.Survivor.WorldFeet}, core at {_base.Body.Position}, site {_site}, ground there {_game.Zone.GroundAt(_site.X, _site.Z).Y:F2})");
 
         // Building onto the founded structure works.
         bool on = false;
@@ -511,7 +514,7 @@ public partial class BuildTest : Node
         _base.Storage.Remove(steel, 4);
         Pack.Add(steel, 3);
         foreach (int x in _drive.LookAt(_base.ToWorld(new N.Vector3(0, 0, 7f)), 6)) yield return x;
-        Check(_game.Builder.Verdict.Contains("storage"), $"with none in the base's storage the structure toolbar refuses, though the bag holds some: \"{_game.Builder.Verdict}\"");
+        Check(_game.Builder.Verdict.Contains("STORAGE"), $"with none in the base's storage the structure toolbar refuses, though the bag holds some: \"{_game.Builder.Verdict}\"");
         count = _base.Structure.Count;
         foreach (int x in _drive.Click()) yield return x;
         foreach (int x in _drive.Wait(3)) yield return x;
@@ -650,7 +653,7 @@ public partial class BuildTest : Node
         Pack.Add(steel, 30);
         said = "";
         int moved = Slots.SendStacks(_game, Pack.Grid, new[] { Pack.Grid.IndexOf(steel) }, tiny, int.MaxValue);
-        Check(moved < 37 && moved == tinyStorage.Count(steel) && Pack[steel] == 37 - moved && said.Contains("full"), $"a full container takes what fits, the rest stays, and a message says so: moved {moved}, \"{said}\"");
+        Check(moved < 37 && moved == tinyStorage.Count(steel) && Pack[steel] == 37 - moved && said.Contains("FULL"), $"a full container takes what fits, the rest stays, and a message says so: moved {moved}, \"{said}\"");
 
         // Selection: Ctrl+click adds, Shift+click ranges, Ctrl+A takes all that the filter shows.
         Pack.Add(conc, 4);
@@ -715,8 +718,8 @@ public partial class BuildTest : Node
         var light = deco.Piece("ceiling-light");
         var up = tool.PlanDeco(_base, light, new Int3(0, 3, 0), new Int3(0, 2, 0), 0);
         Check(up.Why == null && Math.Abs(up.Local.Origin.Y - (2 * cell + cell * 0.5f - light.Height)) < 0.01f, $"a ceiling light hangs from the underside of the block above ({up.Why})");
-        Check(tool.PlanDeco(_base, light, Int3.Zero, new Int3(0, 1, 0), 0).Why?.Contains("ceiling") == true, "a ceiling piece is refused on a floor face");
-        Check(tool.PlanDeco(_base, crate, new Int3(0, 3, 0), new Int3(0, 2, 0), 0).Why?.Contains("floor") == true, "a floor piece is refused under a ceiling");
+        Check(tool.PlanDeco(_base, light, Int3.Zero, new Int3(0, 1, 0), 0).Why?.Contains("CEILING") == true, "a ceiling piece is refused on a floor face");
+        Check(tool.PlanDeco(_base, crate, new Int3(0, 3, 0), new Int3(0, 2, 0), 0).Why?.Contains("FLOOR") == true, "a floor piece is refused under a ceiling");
         var panel = deco.Piece("junction-box");
         var wall = tool.PlanDeco(_base, panel, new Int3(5, 1, 0), new Int3(4, 1, 0), 0);
         Check(wall.Why == null && wall.Cells.Count >= 1, $"a wall piece mounts against a side face ({wall.Why})");
@@ -1034,19 +1037,19 @@ public partial class BuildTest : Node
         foreach (int x in Hover(Item("steel", false))) yield return x;
         string block = All();
         GD.Print($"  (a block's tooltip: {block})");
-        Check(block.Contains("Steel block (large)") && block.Contains("8 Hull plate") && block.Contains("large grid") && block.Contains("Stacks to 250") && block.Contains("stack of "),
+        Check(block.Contains("Steel block (large)") && block.Contains("8 Hull plate") && block.Contains("LARGE GRID") && block.Contains("STACK 250") && block.Contains("   ×"),
             "a block's tooltip: name, recipe, stack, the grid it fits, the whole stack's mass");
         foreach (int x in Hover("iron-ore")) yield return x;
         string ore = All();
         GD.Print($"  (an ore's tooltip: {ore})");
-        Check(ore.Contains("Iron ore") && !ore.Contains("Made from") && (ore.Contains("Found") || ore.Contains("Mined")), "an ore's tooltip says where it is found, not how it is made");
+        Check(ore.Contains("Iron ore") && !ore.Contains("RECIPE") && ore.Contains("SOURCE"), "an ore's tooltip says where it is found, not how it is made");
         foreach (int x in Hover("hull-plate")) yield return x;
         string part = All();
         GD.Print($"  (a part's tooltip: {part})");
-        Check(part.Contains("Hull plate") && part.Contains("Made from") && part.Contains("constructor") && part.Contains(" s a run"), "a crafted part's tooltip: its inputs, its constructor and its time");
+        Check(part.Contains("Hull plate") && part.Contains("RECIPE") && part.Contains("constructor") && part.Contains(" s"), "a crafted part's tooltip: its inputs, its constructor and its time");
         ItemDef locked = Items.BlockItem("combat", false);
         var lines = Tooltips.For(_game, locked, 0);
-        Check(lines.Any(l => l.Text.Contains("Locked: level 12")), "a locked item's tooltip says at which level");
+        Check(lines.Any(l => l.Text.Contains("LOCKED · LV 12")), "a locked item's tooltip says at which level");
         Rect2 box = Gui.TipBox(new Rect2(0, 0, 1600, 900), new Rect2(1560, 860, 40, 40), lines);
         Check(new Rect2(0, 0, 1600, 900).Encloses(box), "a tooltip at the corner of the screen stays on it");
         _game.Controls.Mouse = Vector2.Zero;
@@ -1070,7 +1073,7 @@ public partial class BuildTest : Node
         foreach (int x in _drive.LookAt(_base.ToWorld(new N.Vector3(0, 0, 7f)), 8)) yield return x;
         foreach (int x in _drive.Click()) yield return x;
         foreach (int x in _drive.Wait(3)) yield return x;
-        Check(_base.Structure.Count == count + 1 && _game.Builder.Verdict.Contains("small-grid block"), "and the same grid rule applies: a small-grid block is refused on a base");
+        Check(_base.Structure.Count == count + 1 && _game.Builder.Verdict.Contains("SMALL-GRID BLOCK"), "and the same grid rule applies: a small-grid block is refused on a base");
         _game.Mode = GameMode.Survival;
     }
 }

@@ -321,8 +321,8 @@ public sealed class TechSection : IMenuSection
                 ($"LEVEL {n.Level} · {n.Cost} PT", C.Text),
                 (state == UnlockState.Unlocked ? "UNLOCKED" : p.Needs(n), state == UnlockState.Unlocked ? C.Good : state == UnlockState.Affordable ? C.Accent : C.Warn),
             };
-            if (hover.Parent != null) lines.Add(($"Needs {Plain(hover.Parent.Node, out _)}", C.Dim));
-            if (hover.Kids.Count > 0) lines.Add(($"Opens {string.Join(", ", hover.Kids.Take(4).Select(k => Plain(k.Node, out _)))}{(hover.Kids.Count > 4 ? "..." : "")}", C.Dim));
+            if (hover.Parent != null) lines.Add(($"NEEDS · {Plain(hover.Parent.Node, out _)}", C.Dim));
+            if (hover.Kids.Count > 0) lines.Add(($"OPENS · {string.Join(", ", hover.Kids.Take(4).Select(k => Plain(k.Node, out _)))}{(hover.Kids.Count > 4 ? "..." : "")}", C.Dim));
             g.SetTip(at[hover], () => lines);
         }
     }

@@ -102,9 +102,9 @@ public sealed partial class BuildTool
         bool floor = n.Y > 0, ceiling = n.Y < 0;
         var none = new List<Int3>();
         string fail(string why) => why;
-        if (piece.Mount == DecoMount.Ceiling && !ceiling) return (none, default, 0, $"{piece.Name} hangs from a ceiling: aim at the underside of a block");
-        if (piece.Mount == DecoMount.Wall && !wall) return (none, default, 0, $"{piece.Name} mounts on a wall: aim at the side of a block");
-        if (piece.Mount is DecoMount.Floor or DecoMount.Top && !floor) return (none, default, 0, $"{piece.Name} stands on a floor: aim at the top of a block");
+        if (piece.Mount == DecoMount.Ceiling && !ceiling) return (none, default, 0, $"{piece.Name} · CEILING ONLY");
+        if (piece.Mount == DecoMount.Wall && !wall) return (none, default, 0, $"{piece.Name} · WALL ONLY");
+        if (piece.Mount is DecoMount.Floor or DecoMount.Top && !floor) return (none, default, 0, $"{piece.Name} · FLOOR ONLY");
 
         // Footprint in cells (the piece's size is in half-metres).
         int W = Math.Max(1, (int)MathF.Ceiling(piece.Width / cell - 1e-4f)), D = Math.Max(1, (int)MathF.Ceiling(piece.Depth / cell - 1e-4f)), H = Math.Max(1, (int)MathF.Ceiling(piece.Height / cell - 1e-4f));
@@ -145,8 +145,8 @@ public sealed partial class BuildTool
         var local = new Transform3D(new Basis(Vector3.Up, Mathf.DegToRad(yawDeg)), centre);
         foreach (Int3 c in cells)
         {
-            if (s.Has(c)) return (cells, local, yawOut, "Something is already there");
-            if (v.DecoAt(c, out _)) return (cells, local, yawOut, "Another deco piece is there");
+            if (s.Has(c)) return (cells, local, yawOut, "OCCUPIED");
+            if (v.DecoAt(c, out _)) return (cells, local, yawOut, "OCCUPIED");
         }
         return (cells, local, yawOut, null);
     }
@@ -162,13 +162,13 @@ public sealed partial class BuildTool
         if (Decor.Shared == null || piece == null)
         {
             HideDeco();
-            Verdict = "No deco piece unlocked yet: the tech tree's deco tab has them";
+            Verdict = "NO DECO UNLOCKED";
             return;
         }
         if (!HasTarget || TargetVessel == null)
         {
             HideDeco();
-            Verdict = HasTarget ? "Deco goes onto a structure: set a core down first" : "";
+            Verdict = HasTarget ? "NO STRUCTURE · CORE FIRST" : "";
             return;
         }
         Vessel v = TargetVessel;
@@ -178,8 +178,8 @@ public sealed partial class BuildTool
             return;
         }
         var (cells, local, _, why) = PlanDeco(v, piece, TargetCell, PlaceCell, DecoYaw);
-        why ??= (small ? piece.OnSmall : piece.OnLarge) ? null : $"{piece.Name} is a {(small ? "large" : "small")}-grid piece";
-        why ??= InSurvivorAny(v, cells) ? "Step out of the way to build there" : null;
+        why ??= (small ? piece.OnSmall : piece.OnLarge) ? null : $"{piece.Name} · {(small ? "LARGE" : "SMALL")}-GRID PIECE";
+        why ??= InSurvivorAny(v, cells) ? "YOU · IN THE WAY" : null;
         why ??= SourceProblem(v, item, slotIndex);
         if (cells.Count > 0) ShowDecoGhost(v, piece, local, why == null);
         else HideDeco();
@@ -193,7 +193,7 @@ public sealed partial class BuildTool
         }
         if (!TakeOne(v, item, slotIndex))
         {
-            Said?.Invoke(SourceProblem(v, item, slotIndex) ?? $"No {item.Name} left", Tones.Caution);
+            Said?.Invoke(SourceProblem(v, item, slotIndex) ?? $"{item.Name} · 0", Tones.Caution);
             return;
         }
         v.AddDeco(piece.Id, PlaceCell, DecoYaw, cells, local);
@@ -231,7 +231,7 @@ public sealed partial class BuildTool
         verdict = null;
         if (!HasTarget || TargetVessel == null) return false;
         if (!(TargetVessel.DecoAt(PlaceCell, out DecoPlaced d) || TargetVessel.DecoAt(TargetCell, out d))) return false;
-        verdict = $"Deconstruct {Decor.Shared?.Catalogue.Piece(d.Piece).Name}{(Creative ? "" : ": +1 Deco block")}";
+        verdict = $"Deconstruct {Decor.Shared?.Catalogue.Piece(d.Piece).Name}{(Creative ? "" : " · +1 Deco block")}";
         return true;
     }
 

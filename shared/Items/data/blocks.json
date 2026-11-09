@@ -68,9 +68,9 @@
     "core":      { "small": { "hull-plate": 4, "circuit-board": 2, "winding": 1 },   "large": { "hull-plate": 16, "winding": 4, "copper-wire": 12 },
                    "seconds": { "small": 10, "large": 12 },
                    "item": { "small": { "id": "small-core", "name": "Small Core", "short": "SM CORE", "stack": 4, "was": [ "vessel-core", "hover-core" ],
-                                      "uses": "Set down on open ground: a new small craft. Its mode, Hover or Vessel, is on the CORE tab" },
+                                      "uses": "Founds a small craft · Hover · Vessel" },
                              "large": { "id": "big-core", "name": "Big Core", "short": "BIG CORE", "stack": 4, "was": [ "base-core", "capital-core" ],
-                                      "uses": "Set down on open ground: a new base. Its mode, Base or Capital, is on the CORE tab" } },
+                                      "uses": "Founds a base · Base · Capital" } },
                    "unlock": { "small": { "level": 1, "cost": 1, "tab": "small" },
                                "large": { "level": 1, "cost": 0, "tab": "base" } } },
     // The only block that gives control: every seat aboard is a command chair, and you build

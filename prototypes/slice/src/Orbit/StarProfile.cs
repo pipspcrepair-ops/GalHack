@@ -55,7 +55,7 @@ public sealed class StarProfile
         if (_lines.TryGetValue(id, out string[] known)) return known;
         StarSystem s = System(id);
         var lines = new List<string>();
-        if (s == null) lines.Add("no system survey");
+        if (s == null) lines.Add("NO SURVEY");
         else
         {
             int moons = s.Bodies.Count(b => b.Kind == OrbiterKind.Moon), belts = s.Bodies.Count(b => b.Kind == OrbiterKind.Belt);

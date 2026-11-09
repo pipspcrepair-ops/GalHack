@@ -140,6 +140,7 @@ public partial class WildlifePatch : Node3D
             else PlanetSurface.Fx.Fade.Set(n, 0f, shows);
         };
         PersonView.Fader = View.Fader; // people dissolve in and out at the far edge as creatures do
+        PersonView.Arrives = d => PlanetSurface.Fx.PopLog.Note("person", "comes into view", d, 1.8f, 0f);
         AddChild(View);
         Audio = new ProceduralAudio { Name = "Calls" };
         AddChild(Audio);
@@ -148,7 +149,7 @@ public partial class WildlifePatch : Node3D
         AddChild(Spit);
         Tells = new TellView { Name = "Tells", Audio = Audio };
         AddChild(Tells);
-        var (terrain, nav, origin) = Bake(planet, Snapped(landing), rules.PatchHalfSize);
+        var (terrain, nav, origin) = Bake(planet, Snapped(landing), SpawnReach.PatchHalf(rules.PatchHalfSize));
         Swap(terrain, nav, origin, keepClear: landing, clear: rules.SafeRadius);
     }
 
@@ -312,7 +313,7 @@ public partial class WildlifePatch : Node3D
     }
 
     /// <summary>The most wild creatures this patch holds: the data's most, by how livable the world is.</summary>
-    public int Most => (int)MathF.Ceiling(Zone.Data.Rules.Wildlife.MostPerPatch * Livable);
+    public int Most => (int)MathF.Ceiling(Zone.Data.Rules.Wildlife.MostPerPatch * Livable * SpawnReach.HoldScale(Sim?.Terrain.HalfSize ?? Zone.Data.Rules.Wildlife.PatchHalfSize, Zone.Data.Rules.Wildlife.PatchHalfSize));
 
     /// <summary>How many go about together: the species' own group, smaller on a harsher world.</summary>
     int GroupSize(Species s, Rng rng) => Math.Max(1, (int)MathF.Round(rng.Int(s.GroupMin, s.GroupMax) * Mathf.Lerp(0.5f, 1f, Math.Min(1f, Livable))));
@@ -333,7 +334,7 @@ public partial class WildlifePatch : Node3D
     bool Wild(Creature c) => !c.Removed && !c.Dead && c.Species.Domestic == DomesticKind.None && !Kept(c);
 
     /// <summary>How far round you the land is kept lively, m (patch frame, flat).</summary>
-    public const float AroundYou = 250f;
+    public static float AroundYou => SpawnReach.Distance; // the spawn distance setting (SpawnReach)
 
     /// <summary>Groups brought back by <see cref="Refill"/>, and creatures let go far behind to make room (tests).</summary>
     public int Refilled { get; private set; }
@@ -468,11 +469,13 @@ public partial class WildlifePatch : Node3D
             Swap(terrain, nav, origin, keepClear: _bakingFrom, clear: Zone.Data.Rules.Wildlife.SafeRadius);
             return;
         }
-        if (!onFoot || Sim == null) return;
-        if (new Vector2(at.X - Origin.X, at.Z - Origin.Z).Length() < Sim.Terrain.HalfSize * 0.5f) return;
+        if (Sim == null) return;
+        // A new spawn distance: the patch is baked again round you at its new size, whatever you are on.
+        float half = SpawnReach.PatchHalf(Zone.Data.Rules.Wildlife.PatchHalfSize);
+        bool resized = half != Sim.Terrain.HalfSize;
+        if (!resized && (!onFoot || new Vector2(at.X - Origin.X, at.Z - Origin.Z).Length() < Sim.Terrain.HalfSize * 0.5f)) return;
         PlanetWorld planet = _planet;
         Vector3 next = Snapped(at);
-        float half = Sim.Terrain.HalfSize;
         _bakingFrom = at;
         _baking = Task.Run(() => Bake(planet, next, half));
     }
@@ -636,9 +639,19 @@ public partial class WildlifePatch : Node3D
         Sim.Step((float)delta);
     }
 
+    int _reachVersion = -1;
+
     public override void _Process(double delta)
     {
         if (Sim == null || Zone.Camera == null) return;
+        if (_reachVersion != SpawnReach.Version)
+        {
+            // How far bodies are drawn and nothing new is put in sight: the spawn distance's.
+            _reachVersion = SpawnReach.Version;
+            View.FarDistance = SpawnReach.Distance;
+            View.MidDistance = MathF.Max(120f, SpawnReach.Distance * 0.45f);
+            Sim.Data.Spawning.ViewDistance = SpawnReach.ViewDistance;
+        }
         View.Sync(PatchLocal(Zone.Camera.GlobalPosition));
         Spit.Sync(Sim);
     }

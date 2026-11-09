@@ -180,8 +180,8 @@ public partial class PoiLayer
         return Mathf.Sqrt(dx * dx + dz * dz);
     }
 
-    /// <summary>A far mesh sinks with the ground under it over the round world's horizon (<see cref="Terrain.TerrainStreamer.RoundSink"/>), or it would stand over it.</summary>
-    static void SinkFar(MeshInstance3D low, float distance)
+    /// <summary>A far mesh (or merged blocks, at a long detail distance) sinks with the ground under it over the round world's horizon (<see cref="Terrain.TerrainStreamer.RoundSink"/>), or it would stand over it.</summary>
+    static void SinkFar(Node3D low, float distance)
     {
         if (low == null) return;
         var at = new Vector3(0f, -Terrain.TerrainStreamer.RoundSink(distance), 0f);
@@ -234,6 +234,9 @@ public partial class PoiLayer
         float best = float.MaxValue;
         float speed = new Vector2(Heading.X, Heading.Z).Length();
         float ahead = Mathf.Min(speed * AheadSeconds, MostAhead);
+        // Merged blocks reach as far as the detail distance takes them (DetailReach): out to the horizon at the top.
+        float midRadius = Terrain.DetailReach.Toward(MidRadius), midDrop = midRadius + MidDrop - MidRadius;
+        float cityRadius = Terrain.DetailReach.Toward(CityMidRadius), cityDrop = cityRadius + CityMidDrop - CityMidRadius;
         // A city's tiles come in whole: each building in one goes by the nearest of them.
         foreach (Tile t in _tiles)
         {
@@ -245,7 +248,9 @@ public partial class PoiLayer
         {
             if (p.Node == null) continue;
             Tile tile = _tileOf.GetValueOrDefault(p);
-            float d = tile?.Distance ?? Away(p, camera), radius = (tile != null ? CityMidRadius : MidRadius) + ahead, drop = (tile != null ? CityMidDrop : MidDrop) + ahead;
+            float d = tile?.Distance ?? Away(p, camera);
+            SinkFar(p.Mid, d);
+            float radius = (tile != null ? cityRadius : midRadius) + ahead, drop = (tile != null ? cityDrop : midDrop) + ahead;
             if (tile == null)
             {
                 // Out of reach: the far mesh dissolves back in over the merged blocks, and they go once it has.
@@ -286,7 +291,7 @@ public partial class PoiLayer
         foreach (Tile t in _tiles)
         {
             if (t.Low == null || t.Way != 0) continue;
-            float drop = CityMidDrop + ahead;
+            float drop = cityDrop + ahead;
             // Every building of a tile in: the tile's far mesh dissolves into them. Out of reach: back.
             if (t.Distance <= drop && t.Low.Visible && t.Members.All(p => p.Whole)) Blend(t, +1);
             else if (t.Distance > drop && !t.Low.Visible) Blend(t, -1);

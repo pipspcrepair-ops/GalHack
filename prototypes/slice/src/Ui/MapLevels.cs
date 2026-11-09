@@ -314,7 +314,7 @@ public sealed class MapLevels
         if (g.Drawing)
         {
             if (_chart != null) Tiles(g, panel, View.CentreX, View.CentreZ, View.MetresPerPixel, View.Width, View.Height, false);
-            else g.TextIn("Charting the world…", panel, C.Dim, 18, HorizontalAlignment.Center);
+            else g.TextIn("CHARTING…", panel, C.Dim, 18, HorizontalAlignment.Center);
             var labels = new MapLabels();
             void Mark(double x, double z, string label, Color colour, float r, int priority)
             {
@@ -335,7 +335,7 @@ public sealed class MapLevels
             labels.Flush(g, panel);
         }
         g.Caption("WORLD MAP", side.Position, side.Size.X);
-        string[] lines = { "drag to move, wheel to zoom", "right click: mark a place, or", "take down a mark of yours", "it wraps east to west", "found places and deposits", "show here, with your marks" };
+        string[] lines = { "[DRAG] MOVE", "[WHEEL] ZOOM", "[RMB] MARK · UNMARK" };
         for (int i = 0; i < lines.Length; i++) g.Text(lines[i], side.Position + new Vector2(0, 40 + i * 26), C.Dim, 15);
         g.Text($"{View.MetresPerPixel * panel.Size.X / 1000:F1} KM ACROSS", side.Position + new Vector2(0, 216), C.Text, 15, UiTheme.Mono);
         if (g.Button("map:home", new Rect2(side.Position + new Vector2(0, 250), new Vector2(150, 34)), "ON ME", C.Accent2))
@@ -470,7 +470,7 @@ public sealed class MapLevels
             labels.Flush(g, panel);
         }
         g.Caption("SYSTEM MAP", side.Position, side.Size.X);
-        g.Text($"{bodies.Count(e => e.Kind is "planet" or "giant" or "world")} worlds, {bodies.Count(e => e.Kind == "moon")} moons, {bodies.Count(e => e.Kind == "belt")} belts", side.Position + new Vector2(0, 40), C.Dim, 14);
+        g.Text($"{bodies.Count(e => e.Kind is "planet" or "giant" or "world")} WORLDS · {bodies.Count(e => e.Kind == "moon")} MOONS · {bodies.Count(e => e.Kind == "belt")} BELTS", side.Position + new Vector2(0, 40), C.Dim, 14);
         if (yours)
         {
             g.Text("WARP DRIVE: NOT FITTED", side.Position + new Vector2(0, 62), C.Dim, 14);
@@ -526,13 +526,13 @@ public sealed class MapLevels
         lines.Add(GalaxyNames.Of(s.Region));
         float depth = galaxy.DepthOf(id);
         lines.Add($"DEPTH {depth:0.00}  {Galaxy.Band(depth)}");
-        if (s.Nebula >= 0) lines.Add("in the " + galaxy.Nebulae[s.Nebula].Name);
-        lines.Add("territory: unclaimed");
-        lines.Add(id == Trail.You ? "you are here" : $"{light:F1} LY away{(light <= Lanes.Range ? ", one jump" : "")}");
+        if (s.Nebula >= 0) lines.Add("NEBULA · " + galaxy.Nebulae[s.Nebula].Name);
+        lines.Add("TERRITORY · UNCLAIMED");
+        lines.Add(id == Trail.You ? "YOU" : $"{light:F1} LY{(light <= Lanes.Range ? " · ONE JUMP" : "")}");
         if (id != Trail.You && Stars.View != null)
         {
             Vector3 look = _game.Spaceflight.LookToward(id);
-            lines.Add($"in your sky: {(MathF.Atan2(look.X, -look.Z) * 180f / MathF.PI + 360f) % 360f:000} deg, {MathF.Asin(Math.Clamp(look.Y, -1f, 1f)) * 180f / MathF.PI:+00;-00} up");
+            lines.Add($"SKY · {(MathF.Atan2(look.X, -look.Z) * 180f / MathF.PI + 360f) % 360f:000}° · {MathF.Asin(Math.Clamp(look.Y, -1f, 1f)) * 180f / MathF.PI:+00;-00}°");
         }
         for (int i = 0; i < lines.Count; i++) g.Text(lines[i], at + new Vector2(0, i * 21), i == 0 ? C.Text : C.Dim, 15);
     }
@@ -651,7 +651,7 @@ public sealed class MapLevels
                     g.Canvas.DrawPolygon(points, lit, uv, _chart);
                 }
             }
-            else g.TextIn("Charting the world…", panel, C.Dim, 18, HorizontalAlignment.Center);
+            else g.TextIn("CHARTING…", panel, C.Dim, 18, HorizontalAlignment.Center);
             g.Canvas.DrawArc(c, R, 0, Mathf.Tau, 96, new Color(C.Holo, 0.7f), 2f);
             var labels = new MapLabels();
             // Out from the world's centre in true directions, the distances eased: the farthest moon stands at the panel's edge.
@@ -714,7 +714,7 @@ public sealed class MapLevels
             labels.Flush(g, panel);
         }
         g.Caption("HIGH ORBIT", side.Position, side.Size.X);
-        string[] lines = { "drag to turn the world", "click: the world map there", $"{planet.Width / 1000:F0} by {planet.Height / 1000:F0} km of map", $"day {Math.Floor(days) + 1:0}, {(days - Math.Floor(days)) * 24:00.0} hours" };
+        string[] lines = { "[DRAG] TURN", "[LMB] WORLD MAP", $"{planet.Width / 1000:F0} x {planet.Height / 1000:F0} KM", $"DAY {Math.Floor(days) + 1:0} · {(days - Math.Floor(days)) * 24:00.0} H" };
         for (int i = 0; i < lines.Length; i++) g.Text(lines[i], side.Position + new Vector2(0, 40 + i * 26), C.Dim, 15);
         int row = 0;
         foreach (PlanetSurface.Skies.Orbiter m in model.Under(model.Home).OrderBy(m => m.Orbit).Take(3))
@@ -778,7 +778,7 @@ public sealed class MapLevels
         g.Caption("GALAXY MAP", side.Position, side.Size.X);
         if (galaxy == null || Trail.You < 0)
         {
-            g.TextIn("Charting the galaxy…", panel, C.Dim, 18, HorizontalAlignment.Center);
+            g.TextIn("CHARTING…", panel, C.Dim, 18, HorizontalAlignment.Center);
             return;
         }
         Star you = galaxy.Stars[Trail.You];

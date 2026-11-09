@@ -174,6 +174,12 @@ public sealed class OptionsSection : IMenuSection
             Changed();
         }
 
+        r = Row(g, body, i++, "DETAIL DISTANCE");
+        if (Range(g, "opt:detail", r, ref s.DetailDistance, DetailStepsFrom, DetailStepsTo, 20f, x => $"{x / 1000f:F1} KM")) Changed();
+
+        r = Row(g, body, i++, "SPAWN DISTANCE");
+        if (Range(g, "opt:spawn", r, ref s.SpawnDistance, SpawnStepsFrom, SpawnStepsTo, 20f, x => $"{x:F0} M")) Changed();
+
         r = Row(g, body, i++, "BRIGHTNESS");
         if (Range(g, "opt:gamma", r, ref s.Gamma, GameSettings.MinGamma, GameSettings.MaxGamma, 0.05f, x => $"{x:F2}")) Changed();
 
@@ -239,9 +245,9 @@ public sealed class OptionsSection : IMenuSection
         }
         var fixedKeys = new Rect2(body.Position.X, body.End.Y - 62, body.Size.X, 58);
         g.Fill(fixedKeys, new Color(C.Panel, 0.6f));
-        g.Text("FIXED     ESC  this menu     LEFT MOUSE  use, dig, build, shoot     RIGHT MOUSE  take a block away     WHEEL  slot or shape",
+        g.Text("FIXED     ESC  MENU     LMB  USE · DIG · BUILD · SHOOT     RMB  TAKE DOWN     WHEEL  SLOT · SHAPE",
             fixedKeys.Position + new Vector2(14, 7), C.Dim, 15);
-        g.Text("IN MENUS     /  search     CTRL+A  select all     SHIFT-CLICK  move a stack     + AND -  zoom the map",
+        g.Text("IN MENUS     /  SEARCH     CTRL+A  SELECT ALL     SHIFT-CLICK  MOVE STACK     + AND -  ZOOM MAP",
             fixedKeys.Position + new Vector2(14, 31), C.Dim, 15);
     }
 
@@ -333,6 +339,16 @@ public sealed class OptionsSection : IMenuSection
         }
         return picked;
     }
+
+    /// <summary>The detail distance slider's two ends, m: the default and the horizon.</summary>
+    public const float DetailStepsFrom = PlanetSurface.Terrain.DetailReach.Default, DetailStepsTo = PlanetSurface.Terrain.DetailReach.Most;
+
+    /// <summary>The spawn distance slider's two ends, m, and the value it gives at a point along it (0..1).</summary>
+    public const float SpawnStepsFrom = Slice.Surface.SpawnReach.Default, SpawnStepsTo = Slice.Surface.SpawnReach.Most;
+    public static float SpawnAt(float t) => Mathf.Clamp(Mathf.Snapped(SpawnStepsFrom + Mathf.Clamp(t, 0f, 1f) * (SpawnStepsTo - SpawnStepsFrom), 20f), SpawnStepsFrom, SpawnStepsTo);
+
+    /// <summary>The value the detail distance slider gives at a point along it (0..1), as dragging it does.</summary>
+    public static float DetailAt(float t) => Mathf.Clamp(Mathf.Snapped(DetailStepsFrom + Mathf.Clamp(t, 0f, 1f) * (DetailStepsTo - DetailStepsFrom), 20f), DetailStepsFrom, DetailStepsTo);
 
     /// <summary>A slider over a range, snapped to a step, its value shown at its right end. True when it moved.</summary>
     static bool Range(Gui g, string id, Rect2 r, ref float value, float min, float max, float step, Func<float, string> shown)

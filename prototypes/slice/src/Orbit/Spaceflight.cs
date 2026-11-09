@@ -368,7 +368,7 @@ public partial class Spaceflight : Node
     string Where(double x, double z)
     {
         double latitude = 90 - z / Game.Surface.Planet.Height * 180, longitude = x / Game.Surface.Planet.Width * 360;
-        return $"{Math.Abs(latitude):F0}Â°{(latitude >= 0 ? "N" : "S")} {longitude:F0}Â°E";
+        return $"{Math.Abs(latitude):F0}°{(latitude >= 0 ? "N" : "S")} {longitude:F0}°E";
     }
 
     static void Wake(SurfaceZone zone)
@@ -408,7 +408,7 @@ public partial class Spaceflight : Node
 
     void Refused()
     {
-        Game.Say($"The crossing was refused ({Ledger.Trouble})", Tones.Warning);
+        Game.Say($"CROSSING REFUSED · {Ledger.Trouble}", Tones.Warning);
         GD.PrintErr($"crossing refused: {Ledger.Trouble}");
     }
 

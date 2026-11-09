@@ -130,7 +130,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         if (pressed && gun.Def.Placed != null && Pool.Placed(gun.Def) >= gun.Def.Placed.Limit)
         {
             Refused++;
-            Game.Say($"{gun.Def.Placed.Limit} set already: that's the most at once", Tones.Caution);
+            Game.Say($"PLACED · {gun.Def.Placed.Limit}/{gun.Def.Placed.Limit}", Tones.Caution);
             pressed = false;
         }
         int shots = gun.Tick(dt, held, pressed, out int stage);
@@ -151,7 +151,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
     {
         if (InHand == null || InHand.Base.Modes.Count < 2) return;
         InHand.NextMode();
-        Game.Say($"{InHand.Base.Name}: {InHand.Def.Mode}", Tones.Text);
+        Game.Say($"{InHand.Base.Name} · {InHand.Def.Mode}", Tones.Text);
     }
 
     /// <summary>Ammo containers in reach, nearest first: the linked structures' storage.</summary>

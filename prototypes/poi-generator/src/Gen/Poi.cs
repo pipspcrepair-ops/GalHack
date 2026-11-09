@@ -168,6 +168,8 @@ public static class PoiFactory
         if (hints?.Tech is TechLevel tech && EraPass.Enabled)
             using (Prof.Time("era"))
                 EraPass.Apply(layout, tech);
+        // Last, with the walls as they will stand: each pane faces along the wall it is set in and keeps it through the years.
+        PaneFacing.Apply(layout.Blocks);
         return layout;
     }
 

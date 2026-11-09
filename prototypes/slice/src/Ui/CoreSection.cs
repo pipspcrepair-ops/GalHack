@@ -176,7 +176,7 @@ public sealed class CoreSection : IMenuSection
         if (g.Button("storage:store-all", new Rect2(r.Position.X + half + 8, y, half, 34), "STORE BAG", C.Accent2, size: 14))
         {
             Bill moved = ItemGrid.MoveAll(_game.Pack.Grid, grid, false);
-            if (moved.IsEmpty) _game.Say("Nothing stored", Tones.Caution);
+            if (moved.IsEmpty) _game.Say("NOTHING STORED", Tones.Caution);
         }
         if (g.Button("storage:store-raw", new Rect2(r.Position.X, y, half, 34), "STORE ORE + MATS", C.Accent2, size: 14))
         {
@@ -192,7 +192,7 @@ public sealed class CoreSection : IMenuSection
                 int n = ItemGrid.QuickMove(pack.Grid, i, grid);
                 if (n > 0) moved.Add(id, n);
             }
-            if (moved.IsEmpty) _game.Say("Nothing stored", Tones.Caution);
+            if (moved.IsEmpty) _game.Say("NOTHING STORED", Tones.Caution);
         }
         if (g.Button($"storage:take-made", new Rect2(r.Position.X, y + 42, r.Size.X, 34), "TAKE MADE ITEMS", C.Good, size: 14))
         {
@@ -207,7 +207,7 @@ public sealed class CoreSection : IMenuSection
                 int n = ItemGrid.QuickMove(grid, i, _game.Pack.Grid);
                 if (n > 0) moved.Add(id, n);
             }
-            if (moved.IsEmpty) _game.Say("Nothing taken", Tones.Caution);
+            if (moved.IsEmpty) _game.Say("NOTHING TAKEN", Tones.Caution);
         }
         if (g.Button($"storage:open", new Rect2(r.Position.X, y + 84, r.Size.X, 34), "OPEN BY BAG", C.Accent)) open();
     }
@@ -365,18 +365,18 @@ public sealed class StructureSection : IMenuSection
             g.TextIn(HudLayout.Fit(UiTheme.Mono, 15, value, area.Size.X - 150), new Rect2(o.X + 150, y - 1, area.Size.X - 150, 20), colour, 15, HorizontalAlignment.Left, UiTheme.Mono);
             y += 26;
         }
-        Row("MASS", $"{st.Mass:F2} t ({st.Blocks} blocks)", C.Text);
-        Row("POWER", st.Generators == 0 ? "no generator" : $"{st.PowerOut:F2} MW out, {st.PowerUse:F2} MW use", st.PowerOut >= st.PowerUse ? C.Good : C.Warn);
-        Row("CPU", $"{st.CpuUsed:N0} / {st.CpuLimit:N0} (tier {st.Tier})", st.Efficiency >= 1 ? C.Text : C.Warn);
+        Row("MASS", $"{st.Mass:F2} t · {st.Blocks} BLOCKS", C.Text);
+        Row("POWER", st.Generators == 0 ? "NO GENERATOR" : $"{st.PowerOut:F2} MW OUT · {st.PowerUse:F2} MW USE", st.PowerOut >= st.PowerUse ? C.Good : C.Warn);
+        Row("CPU", $"{st.CpuUsed:N0} / {st.CpuLimit:N0} · TIER {st.Tier}", st.Efficiency >= 1 ? C.Text : C.Warn);
         Row("STORAGE", $"{v.Storage.UsedSu:F0} / {st.StorageCapacity:F0} SU", C.Text);
         if (v.Stats is HandlingStats h && !v.IsBase)
         {
             float cap = _game.Zone.Data.Rules.Build.SmallVesselMaxTurn;
             Row("ACCEL F / B", $"{h.Accel(Direction.Forward):F1} / {h.Accel(Direction.Back):F1} m/s²", C.Text);
             Row("ACCEL UP / SIDE", $"{h.Accel(Direction.Up):F1} / {h.Accel(Direction.Right):F1} m/s²", C.Text);
-            Row("TURN", large || h.TurnRate <= cap ? $"{h.TurnRate:F0} °/s" : $"{cap:F0} °/s (capped from {h.TurnRate:F0})", C.Text);
+            Row("TURN", large || h.TurnRate <= cap ? $"{h.TurnRate:F0} °/s" : $"{cap:F0} °/s · CAPPED", C.Text);
             Row("TOP SPEED", $"{h.TopSpeed:F0} m/s", C.Text);
-            Row("LIFT MARGIN", $"{h.LiftMargin:+0;-0} kN ({h.SpareLift:F1} t spare)", h.CanLiftOff ? C.Good : C.Danger);
+            Row("LIFT MARGIN", $"{h.LiftMargin:+0;-0} kN · {h.SpareLift:F1} t SPARE", h.CanLiftOff ? C.Good : C.Danger);
             if (!h.CanLiftOff && !string.IsNullOrEmpty(h.LiftWarning)) { g.Text(h.LiftWarning, new Vector2(o.X, y), C.Warn, 12); y += 20; }
         }
     }
