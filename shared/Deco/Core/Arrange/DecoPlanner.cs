@@ -75,6 +75,7 @@ public sealed class DecoPlanner
         mix ??= (named != null && _arr.Recipes.TryGetValue(named, out var recipe)) ? recipe : _arr.Sets.TryGetValue(room.Set, out var sp) ? sp : new DecoSetPlan { Set = room.Set };
         Reserve();
         bool corridor = MathF.Min(room.Width, room.Depth) < 2.6f;
+        Supports(mix.Fill);
 
         // Pews and seat rows take the whole room, facing their focus.
         if (!corridor && mix.Island.Any(t => _arr.Templates[t.Template].Kind == "rows"))
@@ -99,8 +100,10 @@ public sealed class DecoPlanner
         if (roles.Length == 0) return null;
         key ??= string.Join(",", roles);
         if (_chosen.TryGetValue(key, out DecoPiece p) && (extra == null || extra(p)) && !Full(p)) return p;
-        var own = _cat.OfSet(_room.Set).Where(x => roles.Any(x.Has) && Allowed(x) && (extra == null || extra(x)) && !Full(x)).ToList();
-        var borrowed = _cat.InSet(_room.Set).Where(x => x.Set != _room.Set && roles.Any(x.Has) && Allowed(x) && (extra == null || extra(x)) && !Full(x)).ToList();
+        // A support (a mine's timber set) only ever spans a way, set by Supports: never a wall piece, a fill or a row.
+        bool span = key == SupportKey;
+        var own = _cat.OfSet(_room.Set).Where(x => roles.Any(x.Has) && x.Has("support") == span && Allowed(x) && (extra == null || extra(x)) && !Full(x)).ToList();
+        var borrowed = _cat.InSet(_room.Set).Where(x => x.Set != _room.Set && roles.Any(x.Has) && x.Has("support") == span && Allowed(x) && (extra == null || extra(x)) && !Full(x)).ToList();
         // Pieces that play the first-named role come first.
         var all = own.Concat(borrowed).ToList();
         if (all.Count == 0) return null;
@@ -466,6 +469,40 @@ public sealed class DecoPlanner
         }
     }
 
+    // ---- supports across a way ---------------------------------------------------------------------
+
+    const string SupportKey = "support";
+
+    /// <summary>
+    /// A set that fills with supports (a mine's timber sets) gets them only where they hold something
+    /// up: across a way no wider than the set, a post at each wall and its cap under the roof, spaced
+    /// along it. Never stood against a wall, where it would frame nothing. Walked through between its
+    /// posts, so it never blocks the way; other pieces keep off its line.
+    /// </summary>
+    void Supports(string[] fill)
+    {
+        if (!fill.Contains("support")) return;
+        DecoPiece p = Pick(new[] { "support" }, SupportKey);
+        if (p == null) return;
+        bool alongX = _room.Width >= _room.Depth;
+        float across = alongX ? _room.Depth : _room.Width, length = alongX ? _room.Width : _room.Depth;
+        // The posts stand at the walls (within a hand or so each side) and the cap is near the roof.
+        if (p.Width > across + 0.001f || across - p.Width > 0.6f || _room.Height - p.Height > 0.7f || length < 2f) return;
+        float step = _rng.Range(2.5f, 3.5f);
+        for (float s = _rng.Range(0.8f, step); s < length - 0.6f && !Full(p); s += step)
+        {
+            var pl = new DecoPlacement
+            {
+                Piece = p.Id, State = DecoState.Intact, X = alongX ? s : across / 2, Z = alongX ? across / 2 : s, Yaw = alongX ? 90 : 0, Y = 0,
+                Group = _groups, Role = "support", Palette = p.Palette,
+            };
+            if (!DecoLayout.Inside(_room, DecoLayout.Footprint(_forge, pl)) || _plan.Placements.Any(o => DecoLayout.Clash(_forge, o, pl))) continue;
+            _plan.Placements.Add(pl);
+            _count[p.Id] = _count.GetValueOrDefault(p.Id) + 1;
+            _groups++;
+        }
+    }
+
     // ---- filling the walls between ---------------------------------------------------------------
 
     void Fill(string[] roles, float share)
@@ -478,6 +515,7 @@ public sealed class DecoPlanner
             {
                 if (!_rng.Chance(share)) continue;
                 string role = roles[_rng.Int(roles.Length)];
+                if (role == "support") continue; // set across the way by Supports, never against a wall
                 DecoPiece p = Pick(new[] { role }, "fill:" + role + ":" + _rng.Int(2));
                 if (p == null || p.Mount == DecoMount.Ceiling || p.Mount == DecoMount.Top) continue;
                 var mem = new List<Member> { new() { Piece = p, Role = role } };
