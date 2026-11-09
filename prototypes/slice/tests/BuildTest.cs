@@ -417,8 +417,10 @@ public partial class BuildTest : Node
             $"a block can't be placed in the open without a structure: \"{_game.Builder.Verdict}\"");
 
         foreach (int x in Carry("big-core", 1, 4)) yield return x;
+        // The base this test founds: the world may already hold others (a hulk, a faction's, a claimable one).
+        var standing = new HashSet<Vessel>(_game.Zone.Vessels);
         foreach (int x in _play.PlaceOnGround(4, _site)) yield return x;
-        _base = _game.Zone.Vessels.FirstOrDefault(v => v.IsBase && !v.IsRuin && !v.IsWreck);
+        _base = _game.Zone.Vessels.FirstOrDefault(v => !standing.Contains(v) && v.IsBase && !v.IsRuin && !v.IsWreck);
         Check(_base != null && StructureArea.ClassOf(_base) == StructureClass.Base && _base.Structure.Grid.Size == GridSize.Large && Pack["big-core"] == 0,
             "the Big Core founds a base (large grid, anchored), and is used up");
         if (_base == null) yield break;
