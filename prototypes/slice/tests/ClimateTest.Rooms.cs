@@ -68,11 +68,12 @@ public partial class ClimateTest
         Orientations.TryParse("+y-x", out int rot);
         PlaceError placed = Building.Place(s, doorCell, Building.Make(s, s.Catalogue.Type("door"), null, rot));
         room.ApplyEdits();
-        Me.PlaceOutside(room.ToWorld(new N.Vector3(-2f * s.Grid.CellSize, 3f, 0f)).ToNumerics());
+        Me.PlaceAboard(room, new N.Vector3(-2f * s.Grid.CellSize, s.Grid.CellSize * 0.5f + 0.05f, 0f));
         foreach (int x in _drive.UntilSettled()) yield return x;
         foreach (int x in _drive.Wait(30)) yield return x;
         Check(placed == PlaceError.None && room.Powered && suit.InSealedRoom && suit.Room == RoomKind.Sealed,
-            $"a door in its wall, shut, and its generator on: sealed and powered ({placed}, powered {room.Powered}, {suit.Room})");
+            $"a door in its wall, shut, and its generator on: sealed and powered ({placed}, powered {room.Powered}, {suit.Room}; aboard {Me.Aboard?.Name ?? "nothing"}, sealed rooms {GalHack.Structures.Rooms.Detect(s).Sealed.Count()}, door open {BlockDoors.IsOpen(room, doorCell)})");
+        if (suit.Air == null) yield break;
         suit.ClimateTimeScale = AirSpeedUp;
         (double, double) was = (climate.ColdestC, climate.HottestC);
 

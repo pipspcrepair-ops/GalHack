@@ -80,8 +80,8 @@ public partial class ClimateTest : Node
         Zone.Weather.Sim.Snap(WeatherKind.Clear);
         Zone.Wildlife.Frozen = true;
         foreach (int x in _drive.UntilPlaying()) yield return x;
-        foreach (int x in _play.WakeAndLeave((_, _) => { })) yield return x;
         foreach (int x in Bunker()) yield return x;
+        foreach (int x in _play.WakeAndLeave((_, _) => { })) yield return x;
         foreach (int x in _drive.ClimbOut(_game.Bunker)) yield return x;
         foreach (int x in Sections()) yield return x;
     }
