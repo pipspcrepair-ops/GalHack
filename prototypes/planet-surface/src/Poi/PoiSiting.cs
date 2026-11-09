@@ -308,9 +308,10 @@ public static partial class PoiSiting
     public static void Blast(IReadOnlyList<PoiSite> sites, IReadOnlyList<Strike> blasts, double width, double height)
     {
         if (blasts.Count == 0) return;
-        foreach (PoiSite o in sites)
+        // Each place takes its blast on its own blocks only: a nuclear war's city goes a building to a core.
+        System.Threading.Tasks.Parallel.ForEach(sites, o =>
         {
-            if (o.GroundZero != null) continue; // a blast site is its own crater
+            if (o.GroundZero != null) return; // a blast site is its own crater
             float best = 0f, bx = 0f, bz = 0f;
             Strike by = null;
             foreach (Strike b in blasts)
@@ -322,7 +323,7 @@ public static partial class PoiSiting
                 (best, bx, bz) = d < 1f ? (strength, 0f, 1f) : (strength, (float)(-dx / d), (float)(-dz / d));
                 by = b;
             }
-            if (best < 0.05f) continue;
+            if (best < 0.05f) return;
             // A big blast grades the place by each column's distance from ground zero: stumps on the near side, shells on the far.
             if (by.Flatten)
             {
@@ -335,7 +336,7 @@ public static partial class PoiSiting
             }
             StateTransforms.Blast(o.Instance, bx, bz, best, new PRng(PoiGenerator.Gen.Hash.Combine(o.Instance.SpawnSeed, 0xB1A57UL)));
             o.Recarve?.Invoke();
-        }
+        });
     }
 
     /// <summary>The placement engine's view of the country: biome, territory and rich ground per 40 m cell.</summary>

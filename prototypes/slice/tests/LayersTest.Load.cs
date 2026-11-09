@@ -11,8 +11,8 @@ using PlanetSurface.World;
 namespace Slice.Tests;
 
 /// <summary>
-/// What a war's craters cost: world load time on fresh worlds of each kind of war, against worlds with
-/// none, and the per-frame work they add (a ground cover cell built round a crater, a height query in one).
+/// What a war's craters cost: world load time on fresh worlds of each kind of war, against the same worlds
+/// without their strikes, and the per-frame work they add (a ground cover cell built round a crater, a height query in one).
 /// </summary>
 public partial class LayersTest
 {
@@ -26,42 +26,57 @@ public partial class LayersTest
         bool start = PlanetSurface.Poi.PoiSiting.StartWorld;
         PlanetSurface.Poi.PoiSiting.StartWorld = false;
         var ms = new Dictionary<string, List<double>>();
+        var bareMs = new Dictionary<string, List<double>>();
         var cover = new List<double>();
         var height = new List<double>();
         var plain = new List<double>();
         var plan = new List<double>();
         try
         {
-            foreach (string fall in new[] { "", "nuclear_war", "orbital_bombardment", "kinetic_strikes", "invasion" })
-                for (int i = 0; i < 3; i++)
+            // Each world is built twice, the same seed and the same fall, with its war's strikes and without (in turn
+            // which first): what the strikes add. Two different worlds' loads differ by seconds with their places and
+            // their city, whatever their war did.
+            int turn = 0;
+            foreach (string fall in new[] { "nuclear_war", "orbital_bombardment", "kinetic_strikes", "invasion" })
+                for (int i = 0; i < 3; i++, turn++)
                 {
-                    WorldForce.Current = new WorldForce { Fall = fall.Length > 0 ? fall : "plague", MidCollapse = false, Before = TechLevel.Mid };
+                    WorldForce.Current = new WorldForce { Fall = fall, MidCollapse = false, Before = TechLevel.Mid };
                     PlanetSpec spec = PlanetSpec.Roll(Seed(), Archetype.Temperate, 0);
-                    var watch = Stopwatch.StartNew();
-                    PlanetWorld w = PlanetWorld.Build(spec, Slice.Surface.SurfaceZone.PoiCatalog);
-                    double took = watch.Elapsed.TotalMilliseconds;
-                    (ms.TryGetValue(fall, out var list) ? list : ms[fall] = new List<double>()).Add(took);
-                    var bowls = w.Blasts.Where(b => b.Bowl).ToList();
-                    if (fall.Length > 0) plan.Add(w.Infra.StrikeMs);
-                    GD.Print($"(load {(fall.Length > 0 ? fall : "no war")}: {took:F0} ms, {w.Blasts.Count} blasts, {bowls.Count} craters, strikes planned in {w.Infra.StrikeMs:F0} ms)");
-                    if (bowls.Count == 0)
+                    PlanetWorld w = null, bare = null;
+                    double took = 0, without = 0;
+                    foreach (bool off in turn % 2 == 0 ? new[] { false, true } : new[] { true, false })
                     {
-                        // Ordinary ground, for the cost of a cover cell anywhere.
+                        PlanetSurface.Infra.StrikeSites.Off = off;
+                        var watch = Stopwatch.StartNew();
+                        PlanetWorld built;
+                        try { built = PlanetWorld.Build(spec, Slice.Surface.SurfaceZone.PoiCatalog); }
+                        finally { PlanetSurface.Infra.StrikeSites.Off = false; }
+                        if (off) (bare, without) = (built, watch.Elapsed.TotalMilliseconds);
+                        else (w, took) = (built, watch.Elapsed.TotalMilliseconds);
+                    }
+                    (ms.TryGetValue(fall, out var list) ? list : ms[fall] = new List<double>()).Add(took);
+                    (bareMs.TryGetValue(fall, out var none) ? none : bareMs[fall] = new List<double>()).Add(without);
+                    var bowls = w.Blasts.Where(b => b.Bowl).ToList();
+                    plan.Add(w.Infra.StrikeMs);
+                    GD.Print($"(load {fall}: {took:F0} ms, {without:F0} ms without its strikes; {w.Blasts.Count} blasts, {bowls.Count} craters, strikes planned in {w.Infra.StrikeMs:F0} ms)");
+                    if (i == 0)
+                    {
+                        // Ordinary ground, for the cost of a cover cell anywhere: the same world without its war.
                         var at = new Stopwatch();
                         int n = 0;
                         for (int k = 0; k < 400 && n < 25; k++)
                         {
                             // Dry land, where cover grows.
-                            int cx = _rng.Next((int)(w.Map.WidthMeters / CoverBuilder.CellSize)), cz = _rng.Next((int)(w.Map.HeightMeters / CoverBuilder.CellSize));
-                            if (w.Map.Has(w.Map.CellAt((cx + 0.5) * CoverBuilder.CellSize, (cz + 0.5) * CoverBuilder.CellSize), CellFlags.Water)) continue;
+                            int cx = _rng.Next((int)(bare.Map.WidthMeters / CoverBuilder.CellSize)), cz = _rng.Next((int)(bare.Map.HeightMeters / CoverBuilder.CellSize));
+                            if (bare.Map.Has(bare.Map.CellAt((cx + 0.5) * CoverBuilder.CellSize, (cz + 0.5) * CoverBuilder.CellSize), CellFlags.Water)) continue;
                             at.Start();
-                            CoverBuilder.Build(cx, cz, w.Source, w.Palette, new HashSet<long>());
+                            CoverBuilder.Build(cx, cz, bare.Source, bare.Palette, new HashSet<long>());
                             at.Stop();
                             n++;
                         }
                         if (n > 0) plain.Add(at.Elapsed.TotalMilliseconds / n);
-                        continue;
                     }
+                    if (bowls.Count == 0) continue;
                     // The cover cells round a crater, and height queries in it: what the streamer does every frame it moves.
                     Strike s = bowls[_rng.Next(bowls.Count)];
                     var t = Stopwatch.StartNew();
@@ -80,11 +95,12 @@ public partial class LayersTest
             WorldForce.Current = before;
             PlanetSurface.Poi.PoiSiting.StartWorld = start;
         }
-        double none = ms[""].Average();
-        foreach (var (fall, list) in ms)
-            GD.Print($"(load {(fall.Length > 0 ? fall : "no war")}: mean {list.Average():F0} ms over {list.Count})");
-        double worst = ms.Where(k => k.Key.Length > 0).Max(k => k.Value.Average());
-        Check(worst <= none * (1 + LoadShare) + 1500, $"a war's world loads in {worst:F0} ms at worst against {none:F0} ms without one");
+        // The worst war against the same worlds without their strikes.
+        var falls = ms.Select(k => (Fall: k.Key, With: k.Value.Average(), Without: bareMs[k.Key].Average())).ToList();
+        foreach (var f in falls)
+            GD.Print($"(load {f.Fall}: mean {f.With:F0} ms with its strikes, {f.Without:F0} ms without)");
+        var worst = falls.OrderByDescending(f => f.With - f.Without * (1 + LoadShare)).First();
+        Check(worst.With <= worst.Without * (1 + LoadShare) + 1500, $"a war's world loads in {worst.With:F0} ms at worst against {worst.Without:F0} ms for the same worlds without its strikes ({worst.Fall})");
         Check(cover.Count > 0 && cover.Average() <= CoverCellMs, $"a ground cover cell round a crater takes {(cover.Count > 0 ? cover.Average() : 0):F2} ms (on dry land without a war {(plain.Count > 0 ? plain.Average() : 0):F2} ms; built on workers); a height query in one {(height.Count > 0 ? height.Average() : 0):F1} us; a war's strikes planned in {(plan.Count > 0 ? plan.Average() : 0):F0} ms on average, {(plan.Count > 0 ? plan.Max() : 0):F0} ms at most");
     }
 }

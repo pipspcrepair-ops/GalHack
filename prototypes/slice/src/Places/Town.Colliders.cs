@@ -96,11 +96,13 @@ public sealed partial class Town
                 if (od < touch && MathF.Abs(p.Pos.Y - player.Y) < 1.6f)
                 {
                     Vector3 dir = od > 1e-3f ? o / od : new Vector3(MathF.Sin(p.Yaw), 0f, MathF.Cos(p.Yaw));
-                    Vector3 step = dir * (touch - od);
+                    // At their give, as a push is: a braced guard leaning on you is moved off you slowest.
+                    float out1 = (touch - od) * MathF.Min(1f, Give(p));
+                    Vector3 step = dir * out1;
                     if (Open(p.Pos + step)) p.Pos += step;
                     else
                     {
-                        Vector3 side = new Vector3(-dir.Z, 0f, dir.X) * (touch - od);
+                        Vector3 side = new Vector3(-dir.Z, 0f, dir.X) * out1;
                         if (Open(p.Pos + side + step * 0.5f)) p.Pos += side + step * 0.5f;
                     }
                 }

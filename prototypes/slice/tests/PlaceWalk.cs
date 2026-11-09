@@ -348,9 +348,10 @@ public sealed class PlaceWalk
     public List<Vector3> Overland(Vector3 from, Vector3 to, PoiSite target) =>
         Overland(from, to, target, 160f, 0.6f, false) ?? Overland(from, to, target, 420f, 0.6f, false) ?? Overland(from, to, target, 420f, 0.85f, false)
         ?? Overland(from, to, target, 420f, 0.85f, true) // swimming a river
-        ?? Overland(from, to, target, 420f, 1.4f, true); // and last, up the banks on the jetpack (the walk hops them)
+        ?? Overland(from, to, target, 420f, 1.4f, true) // and last, up the banks on the jetpack (the walk hops them)
+        ?? Overland(from, to, target, 420f, 1.4f, true, round: false); // a way in deep inside its own ground (a wreck's hatch): straight over it
 
-    List<Vector3> Overland(Vector3 from, Vector3 to, PoiSite target, float margin, float slope, bool swim)
+    List<Vector3> Overland(Vector3 from, Vector3 to, PoiSite target, float margin, float slope, bool swim, bool round = true)
     {
         var zone = _game.Zone;
         var src = zone.Planet.Source;
@@ -375,7 +376,7 @@ public sealed class PlaceWalk
                     if (src.CellDensity((int)MathF.Floor((float)wx), (int)MathF.Floor(h - down), (int)MathF.Floor((float)wz)) < 0f) { ok = false; break; }
             if (ok && new Vector2(x - to.X, z - to.Z).Length() > 18f && others.Any(s => _game.Places.DistanceTo(s, new Vector3(x, 0, z)) < 4f)) ok = false;
             // Round the place you are walking to, to its way in (a town is walked into from any side).
-            if (ok && target?.Instance.Townsfolk == null && target != null && new Vector2(x - to.X, z - to.Z).Length() > 18f && _game.Places.DistanceTo(target, new Vector3(x, 0, z)) < 2f) ok = false;
+            if (ok && round && target?.Instance.Townsfolk == null && target != null && new Vector2(x - to.X, z - to.Z).Length() > 18f && _game.Places.DistanceTo(target, new Vector3(x, 0, z)) < 2f) ok = false;
             return height[k] = ok ? h : float.NaN;
         }
         (int, int) Cell(Vector3 p) => ((int)MathF.Round((p.X - lo.X) / cell), (int)MathF.Round((p.Z - lo.Z) / cell));
@@ -415,7 +416,23 @@ public sealed class PlaceWalk
                 open.Enqueue(n, c + new Vector2(i - goal.Item1, j - goal.Item2).Length() * cell);
             }
         }
-        Notes.Add($"no way over the land ({expanded} cells searched, {height.Count} probed, {height.Values.Count(float.IsNaN)} refused; start {start} {H(start.Item1, start.Item2):F1}, goal {goal} {H(goal.Item1, goal.Item2):F1})");
+        // Out from the goal eight ways: where each is first stopped (cells out, and the step's rise or refused ground).
+        var ways = new List<string>();
+        for (int k = 0; k < 8; k++)
+        {
+            int di = (int)MathF.Round(MathF.Cos(k * MathF.PI / 4f)), dj = (int)MathF.Round(MathF.Sin(k * MathF.PI / 4f));
+            float prev = H(goal.Item1, goal.Item2);
+            string stop = "clear";
+            for (int s = 1; s <= 20; s++)
+            {
+                float h = H(goal.Item1 + di * s, goal.Item2 + dj * s);
+                if (float.IsNaN(h)) { stop = $"{s} refused"; break; }
+                if (!float.IsNaN(prev) && MathF.Abs(h - prev) > cell * (di != 0 && dj != 0 ? 1.414f : 1f) * slope) { stop = $"{s} rise {h - prev:F1}"; break; }
+                prev = h;
+            }
+            ways.Add(stop);
+        }
+        Notes.Add($"no way over the land ({expanded} cells searched, {height.Count} probed, {height.Values.Count(float.IsNaN)} refused; start {start} {H(start.Item1, start.Item2):F1}, goal {goal} {H(goal.Item1, goal.Item2):F1}, out from the goal {string.Join("/", ways)})");
         return null;
     }
 

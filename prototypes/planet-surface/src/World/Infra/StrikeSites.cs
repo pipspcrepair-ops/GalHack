@@ -30,6 +30,9 @@ public static class StrikeSites
     /// <summary>The shallowest a crater's bowl is, as a share of its radius (on land too low for its own depth).</summary>
     const float ShallowestBowl = 0.12f;
 
+    /// <summary>TEST: no strikes are planned (the same world without its war's blasts, to time what they cost).</summary>
+    [ThreadStatic] public static bool Off;
+
     /// <summary>
     /// Plans the strikes of a world's war (none for a fall that dropped nothing), punches their craters and drops the
     /// bridges they hit. A ground burst that came down in a city or a town takes what stood in its bowl: those
@@ -39,7 +42,7 @@ public static class StrikeSites
     public static List<Strike> Plan(StrikeBook book, WorldRoll roll, InfraNetwork net, WorldMap map, PlanetTerrainSource bare, List<PoiSite> pois,
         WorldProfile profile, LandingSite landing, IReadOnlyList<FlavourRuin> ruins, bool start, ulong seed, List<TerrainStamp> stamps = null)
     {
-        if (book == null || roll == null || profile is not { Inhabited: true } || !roll.All(LayerKind.Fall).Any(f => book.For(f.Id) != null)) return new List<Strike>();
+        if (Off || book == null || roll == null || profile is not { Inhabited: true } || !roll.All(LayerKind.Fall).Any(f => book.For(f.Id) != null)) return new List<Strike>();
         var watch = System.Diagnostics.Stopwatch.StartNew();
         double w = map.WidthMeters, h = map.HeightMeters;
         List<StrikeTarget> targets = Targets(book, net, pois, profile.Before, w, h);

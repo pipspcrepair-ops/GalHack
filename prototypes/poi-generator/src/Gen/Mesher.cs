@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using FaceSide = PoiGenerator.Gen.Side;
 
 namespace PoiGenerator.Gen;
@@ -161,6 +162,7 @@ public static class Mesher
                         if (ctx.IsRock(p)) ctx.Rock(p);
                     }
         ctx.Flush();
+        ctx.MergeFaces();
         var list = new List<ChunkMesh>(chunks.Values);
         list.Sort((a, b) => (a.Chunk.Y, a.Chunk.Z, a.Chunk.X).CompareTo((b.Chunk.Y, b.Chunk.Z, b.Chunk.X)));
         return list;
@@ -893,13 +895,55 @@ public static class Mesher
             }
         }
 
+        /// <summary>A whole cell face that collides: kept until the chunk is done, then merged with its coplanar neighbours (<see cref="MergeFaces"/>).</summary>
         void CollideFace(ChunkMesh chunk, Int3 p, int f)
         {
-            Corners(f, out V3 a, out V3 b, out V3 c, out V3 d);
-            V3 o = V3.Of(p);
-            Tri(chunk, o + a, o + b, o + c);
-            Tri(chunk, o + a, o + c, o + d);
+            if (!_faces.TryGetValue(chunk, out var list)) _faces[chunk] = list = new List<(int, Int3)>();
+            list.Add((f, p));
         }
+
+        readonly Dictionary<ChunkMesh, List<(int F, Int3 P)>> _faces = new();
+
+        /// <summary>The axis a face looks along (z, x, z, x, y, y), and the two it spans.</summary>
+        static readonly int[] FaceAxis = { 2, 0, 2, 0, 1, 1 };
+
+        /// <summary>
+        /// Every chunk's colliding cell faces as the fewest rectangles: those facing the same way in one plane are merged
+        /// greedily, so a wall or a floor is a few triangles, not two a cell (the physics builds each chunk's shape on the main
+        /// thread, at a cost that grows with its triangles).
+        /// </summary>
+        public void MergeFaces()
+        {
+            foreach (var (chunk, faces) in _faces)
+            {
+                foreach (var plane in faces.GroupBy(q => (q.F, Of(q.P, FaceAxis[q.F]))))
+                {
+                    int f = plane.Key.F, n = FaceAxis[f], ua = n == 0 ? 1 : 0, va = n == 2 ? 1 : 2;
+                    var open = new HashSet<(int U, int V)>(plane.Select(q => (Of(q.P, ua), Of(q.P, va))));
+                    foreach (var start in open.OrderBy(c => c.V).ThenBy(c => c.U).ToList())
+                    {
+                        if (!open.Contains(start)) continue;
+                        int u1 = start.U, v1 = start.V;
+                        while (open.Contains((u1 + 1, start.V))) u1++;
+                        bool Row(int v) { for (int u = start.U; u <= u1; u++) if (!open.Contains((u, v))) return false; return true; }
+                        while (Row(v1 + 1)) v1++;
+                        for (int v = start.V; v <= v1; v++)
+                            for (int u = start.U; u <= u1; u++) open.Remove((u, v));
+                        var lo = new int[3];
+                        var hi = new int[3];
+                        lo[n] = plane.Key.Item2; hi[n] = plane.Key.Item2 + 1;
+                        lo[ua] = start.U; hi[ua] = u1 + 1;
+                        lo[va] = start.V; hi[va] = v1 + 1;
+                        BoxFace(f, new V3(lo[0], lo[1], lo[2]), new V3(hi[0], hi[1], hi[2]), out V3 a, out V3 b, out V3 c, out V3 d);
+                        Tri(chunk, a, b, c);
+                        Tri(chunk, a, c, d);
+                    }
+                }
+            }
+            _faces.Clear();
+        }
+
+        static int Of(Int3 p, int axis) => axis == 0 ? p.X : axis == 1 ? p.Y : p.Z;
 
         static void Tri(ChunkMesh chunk, V3 a, V3 b, V3 c)
         {
