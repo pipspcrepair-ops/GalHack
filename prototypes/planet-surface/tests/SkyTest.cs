@@ -262,6 +262,7 @@ public partial class SkyTest : Node
         await Frames(60);
         var results = new Dictionary<string, (float Galaxy, float Giant)>();
         var pixels = new Dictionary<string, List<float>>();
+        var hidden = new Dictionary<string, float[]>();
         foreach (var (what, cover, dark, cellular, storm) in new[]
                  {
                      ("a clear sky", 0f, 0f, 0f, false),
@@ -270,6 +271,7 @@ public partial class SkyTest : Node
                      ("a thunderstorm", 1f, 0.85f, 0.85f, true),
                      // The plain layer, no storm in it: thick night cloud of any kind hides what is behind it.
                      ("a thick night layer", 1f, 0.3f, 0f, false),
+                     ("a thin night layer", 0.35f, 0.1f, 0f, false),
                  })
         {
             rig.SetCells(cells, storm ? 4 : 0);
@@ -297,6 +299,10 @@ public partial class SkyTest : Node
             var each = new List<float>();
             float galaxy = await Adds("galaxy_on", looks, $"night-{name}", each);
             pixels[what] = each;
+            // How much the clouds hide straight up, pixel by pixel (the sky's own cover, drawn alone).
+            rig.DebugView(1);
+            hidden[what] = await Light(Vector3.Up, null);
+            rig.DebugView(0);
             if (keep != null)
             {
                 rig.DebugView(1);
@@ -329,6 +335,22 @@ public partial class SkyTest : Node
             float whole = results[thick].Galaxy / clearGalaxy;
             Check(whole <= 0.03f && worst <= 0.05f,
                 $"under {thick} the night behind it is hidden: {whole:P2} of a clear sky's on the whole, at most {worst:P1} at any of its brightest 1% (stars, core, nebulae)");
+        }
+        // Straight up, as the owner looked: under thin, broken and thick cloud the night's brightest pixels (stars,
+        // core, nebulae) show by no more than what the cloud in front of each lets through.
+        // (Pixels burnt to white under a clear sky are left out: there the picture cannot say how bright they were.)
+        int[] overhead = Enumerable.Range(0, Size * Size).Where(i => clear[i] < 2.9f).OrderByDescending(i => clear[i]).Take(Size * Size / 20).ToArray();
+        foreach (string any in new[] { "a thin night layer", "broken cloud", "a thick night layer" })
+        {
+            List<float> under = pixels[any];
+            float[] cover = hidden[any];
+            // Linear light read back as the sum of three channels: the cover is one channel's worth.
+            int over = overhead.Count(i => under[i] > clear[i] * (MathF.Max(1f - cover[i] / 3f, 0f) + 0.03f));
+            float mean = overhead.Average(i => cover[i] / 3f);
+            float shown = overhead.Sum(i => under[i]) / MathF.Max(overhead.Sum(i => clear[i]), 1e-6f);
+            float lets = overhead.Average(i => MathF.Max(1f - cover[i] / 3f, 0f));
+            // On the whole by no more than the cloud lets through; pixel by pixel within a little (the cloud lit by the night behind it brightens a few).
+            Check(shown <= lets + 0.03f && over <= overhead.Length / 10, $"straight up under {any} (cover {mean:F2} there) the night shows by what the cloud lets through: {shown:P1} of a clear sky's, {over} of its {overhead.Length} brightest pixels brighter than that");
         }
         float broken = results["broken cloud"].Galaxy;
         Check(broken > clearGalaxy * 0.05f && broken < clearGalaxy * 0.95f, $"broken cloud lets part of the galaxy through its gaps ({broken / clearGalaxy:P0} of a clear sky's)");
