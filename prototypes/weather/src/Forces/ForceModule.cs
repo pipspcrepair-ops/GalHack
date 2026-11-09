@@ -200,6 +200,9 @@ public sealed class ForceModule
             }
         }
 
+        // Held by a vortex that has gone (cleared, or faded out of the list) without letting go: let go now. A body left
+        // caught by nothing stayed caught for good (a ridden hover bike was torn from every rider who got back on).
+        if (!caught && t.Phase == VortexPhase.Caught) SetPhase(t, VortexPhase.Free);
         if (!caught) force += Drag(body, wind);
         body.ApplyForce(force);
     }

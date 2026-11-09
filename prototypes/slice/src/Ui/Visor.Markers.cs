@@ -8,19 +8,39 @@ namespace Slice.Ui;
 
 /// <summary>
 /// Markers on the things themselves, as Empyrion draws them: each of <see cref="Markers"/> at its target's place on
-/// the screen as an icon, a short name and a distance. A target behind you, or off the side of the view, is pinned
-/// to the screen's edge in its direction with a small arrow. Markers keep out of the visor's boxes (nudged off
-/// them, or left out when they can't be), and where labels would land on one another the nearer keeps its label
-/// and the others shrink to their icons. Far markers are smaller and fainter, so a crowded view still reads.
+/// the screen as an icon, a short name and a distance (MARKERS: WORLD; in COMPASS they sit on the compass strip
+/// instead). A target behind you, or off the side of the view, is pinned to the screen's edge in its direction with a
+/// small arrow. An icon on its target is never moved off it: a visor box over it hides it, and a label shows only where
+/// it is clear. Every either/or choice (pinned or not, which side of the icon the label takes, whether it shows, how far
+/// a pinned icon has slid along the edge to clear a box, which side a target behind you is pinned to) remembers its last
+/// answer and needs a margin to change it, so none flips from frame to frame. Far markers are smaller and fainter.
 /// </summary>
 public partial class Visor
 {
-    /// <summary>One marker as laid out: where its target projects to, where it is drawn, whether it was pinned to the edge (and in which direction) or nudged off a box, its icon's and label's boxes, how far, how strongly it shows.</summary>
+    /// <summary>One marker as laid out: where its target projects to, where it is drawn, whether it was pinned to the edge (and in which direction) or slid along it, its icon's and label's boxes, how far, how strongly it shows.</summary>
     public readonly record struct PlacedMarker(Marker Mark, Vector2 Anchor, Vector2 At, bool Pinned, bool Behind, bool Nudged, Vector2 Direction,
         Rect2 Icon, Rect2 Label, bool Labelled, float Distance, float Alpha);
 
     /// <summary>The icon's side at the default scale, the gap kept from the screen's edge, and how far markers shrink and fade.</summary>
-    public const float MarkerIcon = 26, MarkerMargin = 30, ShrinkFrom = 300, ShrinkTo = 3000, FadeFrom = 600, FadeTo = 6000;
+    public const float MarkerIcon = 17, MarkerMargin = 20, ShrinkFrom = 300, ShrinkTo = 3000, FadeFrom = 600, FadeTo = 6000;
+
+    /// <summary>The name's and the distance's type sizes at the default scale (the distance is the smaller).</summary>
+    public const float NameSize = 9, DistanceSize = 7.5f;
+
+    /// <summary>What a marker remembers between frames (see the class summary).</summary>
+    sealed class MarkState
+    {
+        public bool Labelled, LabelLeft, Hidden, Pinned;
+        public float Slide;
+        public int Side = 1;
+        public int Seen;
+    }
+
+    readonly Dictionary<string, MarkState> _marks = new();
+    int _layoutPass;
+
+    /// <summary>The markers as the last draw laid them out (empty in COMPASS mode): what the checks hold against the camera.</summary>
+    public List<PlacedMarker> Drawn { get; private set; } = new();
 
     /// <summary>The markers as they would be drawn in a window of this size, nearest first.</summary>
     public List<PlacedMarker> LayoutMarkers(Vector2 size, float uiScale)
@@ -28,6 +48,7 @@ public partial class Visor
         var placed = new List<PlacedMarker>();
         Camera3D cam = Game.Camera;
         if (cam == null || Game.Survivor == null || size.X < 10 || size.Y < 10) return placed;
+        _layoutPass++;
         HudLayout layout = HudLayout.Compute(size, uiScale);
         float s = layout.Scale;
         var boxes = layout.Boxes.Select(b => b.Box).ToList();
@@ -39,62 +60,73 @@ public partial class Visor
         var labels = new List<Rect2>();
         foreach (Marker m in Markers().OrderBy(m => m.At.DistanceSquaredTo(eye)))
         {
+            string key = $"{m.Kind}|{m.Tag}|{m.At.X:F1}|{m.At.Z:F1}";
+            if (!_marks.TryGetValue(key, out MarkState st)) _marks[key] = st = new MarkState();
+            st.Seen = _layoutPass;
             float d = m.At.DistanceTo(eye);
             Vector3 local = view * m.At;
             bool behind = local.Z > -0.05f;
             Vector2 anchor = behind ? centre : centre + new Vector2(local.X, -local.Y) * focal / -local.Z;
-            Vector2 dir = new Vector2(local.X, -local.Y);
-            dir = dir.LengthSquared() > 1e-6f ? dir.Normalized() : new Vector2(0f, 1f);
-            bool pinned = behind || !inner.HasPoint(anchor);
-            Vector2 at = pinned ? Edge(centre, dir, inner) : anchor;
+            // Directly behind, a hair either side of the line decides which way the pin swings: it keeps the side it had until clearly past.
+            float across = local.X;
+            float band = 0.06f * MathF.Max(new Vector2(local.X, local.Y).Length(), 1e-3f);
+            if (behind && MathF.Abs(across) < band) across = st.Side * MathF.Max(MathF.Abs(across), 1e-4f);
+            else if (MathF.Abs(across) >= band) st.Side = across < 0f ? -1 : 1;
+            Vector2 dir = new(across, -local.Y);
+            dir = dir.LengthSquared() > 1e-8f ? dir.Normalized() : new Vector2(0f, 1f);
+            // Pinned when behind or past the margin; once pinned it needs to be a little inside the margin to come off.
+            bool pinned = behind || !(st.Pinned ? inner.Grow(-2f * s) : inner).HasPoint(anchor);
+            st.Pinned = pinned;
             float near = Mathf.Clamp((d - ShrinkFrom) / (ShrinkTo - ShrinkFrom), 0f, 1f);
-            float side = MarkerIcon * s * Mathf.Lerp(1f, 0.65f, near);
+            float side = MarkerIcon * s * Mathf.Lerp(1f, 0.7f, near);
             float alpha = m.Alpha * Mathf.Lerp(1f, 0.5f, Mathf.Clamp((d - FadeFrom) / (FadeTo - FadeFrom), 0f, 1f));
             if (alpha <= 0.02f) continue;
-            Rect2 icon = new(at - new Vector2(side, side) / 2f, new Vector2(side, side));
-            Rect2 label = pinned ? new Rect2(icon.Position, Vector2.Zero) : LabelBox(m, icon, d, s);
-            bool nudged = false;
+            var iconSize = new Vector2(side, side);
             if (pinned)
             {
-                // Pinned: slid along the edge, either way, to the nearest stretch clear of the visor's boxes and of the markers pinned already.
-                Rect2? free = null;
-                for (int k = 0; k <= 40 && free == null; k++)
-                    foreach (float turn in k == 0 ? new[] { 0f } : new[] { k * 0.04f, -k * 0.04f })
-                    {
-                        Vector2 e = Edge(centre, dir.Rotated(turn), inner);
-                        var r = new Rect2(e - icon.Size / 2f, icon.Size);
-                        if (!boxes.Any(b => b.Intersects(r)) && !placed.Any(q => q.Pinned && q.Icon.Intersects(r))) { free = r; nudged = k > 0; break; }
-                    }
-                if (free is not Rect2 spot) continue;
-                icon = spot;
-                label = new Rect2(icon.Position, Vector2.Zero);
-                placed.Add(new PlacedMarker(m, anchor, icon.GetCenter(), true, behind, nudged, dir, icon, label, false, d, alpha));
+                // Slid along the edge only as far as it takes to clear the visor's boxes and the markers pinned already; it keeps the slide it had while that still clears.
+                bool Free(float turn, float grow, out Rect2 r)
+                {
+                    r = new Rect2(Edge(centre, dir.Rotated(turn), inner) - iconSize / 2f, iconSize);
+                    Rect2 g = r.Grow(grow);
+                    return !boxes.Any(b => b.Intersects(g)) && !placed.Any(q => q.Pinned && q.Icon.Intersects(g));
+                }
+                Rect2 spot = default;
+                bool found = false;
+                if (Free(0f, st.Slide == 0f ? 0f : 5f * s, out spot)) { st.Slide = 0f; found = true; }
+                else if (st.Slide != 0f && Free(st.Slide, 0f, out spot)) found = true;
+                else
+                {
+                    float first = st.Slide < 0f ? -1f : 1f;
+                    for (int k = 1; k <= 40 && !found; k++)
+                        foreach (float sign in new[] { first, -first })
+                            if (Free(sign * k * 0.04f, 0f, out spot)) { st.Slide = sign * k * 0.04f; found = true; break; }
+                }
+                if (!found) continue;
+                placed.Add(new PlacedMarker(m, anchor, spot.GetCenter(), true, behind, st.Slide != 0f, dir, spot, new Rect2(spot.Position, Vector2.Zero), false, d, alpha));
                 continue;
             }
-            // Off the visor's boxes: the icon and its label together if they can go, else the icon alone.
-            Rect2 whole = pinned ? icon : icon.Merge(label);
-            if (Clear(whole, boxes, size) is Vector2 move)
-            {
-                nudged = move != Vector2.Zero;
-                icon.Position += move;
-                label.Position += move;
-            }
-            else
-            {
-                Vector2? alone = Clear(icon, boxes, size);
-                if (alone is not Vector2 shift) continue; // nowhere clear of the boxes: not drawn
-                nudged = true;
-                icon.Position += shift;
-                label = new Rect2(icon.Position, Vector2.Zero);
-            }
-            at = icon.GetCenter();
-            // The nearer keeps its label; one landing on a label or an icon already placed shrinks to its icon.
-            bool labelled = label.Size.X > 0 && !labels.Any(l => l.Intersects(label)) && !placed.Any(p => p.Icon.Intersects(label))
-                && !boxes.Any(b => b.Intersects(label));
-            if (!labelled) label = new Rect2(icon.Position, Vector2.Zero);
-            else labels.Add(label);
-            placed.Add(new PlacedMarker(m, anchor, at, pinned, behind, nudged, dir, icon, label, labelled, d, alpha));
+            // On screen: the icon sits exactly on its target. A box over it hides it (and it comes back only once clear by a few pixels).
+            var icon = new Rect2(anchor - iconSize / 2f, iconSize);
+            Rect2 probe = st.Hidden ? icon.Grow(4f * s) : icon;
+            st.Hidden = boxes.Any(b => b.Intersects(probe));
+            if (st.Hidden) continue;
+            // The label goes right of the icon, or left of it where the right would run off the window; it shows where it is clear of the boxes and of the labels and icons placed already.
+            float lw = MathF.Max(Paint.TextWidth(UiTheme.Label, (int)(NameSize * s), Fitted(m.Tag, s)), Paint.TextWidth(UiTheme.Mono, (int)(DistanceSize * s), Distance(d))) + 6 * s;
+            float lh = 20 * s;
+            Rect2 Box(bool toLeft) => new(toLeft ? icon.Position.X - 3 * s - lw : icon.End.X + 3 * s, icon.GetCenter().Y - lh / 2f, lw, lh);
+            bool fitsRight = Box(false).End.X <= size.X - 2 * s, fitsLeft = Box(true).Position.X >= 2 * s;
+            bool left = st.LabelLeft ? fitsLeft || !fitsRight : !fitsRight && fitsLeft;
+            st.LabelLeft = left;
+            Rect2 label = Box(left);
+            Rect2 want = st.Labelled ? label : label.Grow(4f * s);
+            bool labelled = (left ? fitsLeft : fitsRight) && !labels.Any(l => l.Intersects(want)) && !placed.Any(p => p.Icon.Intersects(want))
+                && !boxes.Any(b => b.Intersects(want));
+            st.Labelled = labelled;
+            if (labelled) labels.Add(label); else label = new Rect2(icon.Position, Vector2.Zero);
+            placed.Add(new PlacedMarker(m, anchor, anchor, false, behind, false, dir, icon, label, labelled, d, alpha));
         }
+        if (_marks.Count > 64) foreach (string k in _marks.Where(e => e.Value.Seen != _layoutPass).Select(e => e.Key).ToList()) _marks.Remove(k);
         return placed;
     }
 
@@ -109,65 +141,35 @@ public partial class Visor
         return centre + dir * (t == float.MaxValue ? 0f : t);
     }
 
-    /// <summary>The label's box: the name over the distance, to the right of the icon.</summary>
-    static Rect2 LabelBox(Marker m, Rect2 icon, float d, float s)
-    {
-        float w = MathF.Max(Paint.TextWidth(UiTheme.Label, (int)(13 * s), Fitted(m.Tag, s)), Paint.TextWidth(UiTheme.Mono, (int)(12 * s), Distance(d))) + 8 * s;
-        return new Rect2(icon.End.X + 4 * s, icon.GetCenter().Y - 15 * s, w, 30 * s);
-    }
-
-    static string Fitted(string tag, float s) => HudLayout.Fit(UiTheme.Label, (int)(13 * s), tag, 170 * s);
+    static string Fitted(string tag, float s) => HudLayout.Fit(UiTheme.Label, (int)(NameSize * s), tag, 120 * s);
 
     /// <summary>A distance as the marker shows it: metres, or kilometres from one on.</summary>
     public static string Distance(float d) => d < 1000f ? $"{d:F0} m" : $"{d / 1000f:F1} km";
 
-    /// <summary>
-    /// The smallest move (none, if it is clear already) that takes a box off every one of the visor's boxes and keeps it
-    /// in the window; null if a few tries find none.
-    /// </summary>
-    static Vector2? Clear(Rect2 r, List<Rect2> boxes, Vector2 size)
-    {
-        var screen = new Rect2(Vector2.Zero, size);
-        Vector2 total = Vector2.Zero;
-        for (int i = 0; i < 8; i++)
-        {
-            Rect2 at = new(r.Position + total, r.Size);
-            Rect2? hit = boxes.FirstOrDefault(b => b.Intersects(at)) is Rect2 b0 && b0.Intersects(at) ? b0 : null;
-            if (hit is not Rect2 b) return screen.Encloses(at) ? total : null;
-            var moves = new[]
-            {
-                new Vector2(b.Position.X - 2f - at.End.X, 0f), new Vector2(b.End.X + 2f - at.Position.X, 0f),
-                new Vector2(0f, b.Position.Y - 2f - at.End.Y), new Vector2(0f, b.End.Y + 2f - at.Position.Y),
-            };
-            Vector2 best = moves.Where(mv => screen.Encloses(new Rect2(at.Position + mv, at.Size))).OrderBy(mv => mv.LengthSquared()).FirstOrDefault(new Vector2(float.NaN, float.NaN));
-            if (float.IsNaN(best.X)) return null;
-            total += best;
-        }
-        return null;
-    }
-
     void DrawMarkers()
     {
         float s = S;
-        foreach (PlacedMarker p in LayoutMarkers(_hud.Size, UiScale))
+        if (!MarkersInWorld) { Drawn = new(); return; }
+        Drawn = LayoutMarkers(_hud.Size, UiScale);
+        foreach (PlacedMarker p in Drawn)
         {
             Color tone = new(p.Mark.Colour, p.Alpha);
             float r = p.Icon.Size.X / 2f;
             Vector2 c = p.Icon.GetCenter();
             _hud.DrawCircle(c, r, new Color(C.Glass, 0.55f * p.Alpha));
             MarkerGlyph(p.Mark.Kind, c, r * 0.62f, tone);
-            _hud.DrawArc(c, r, 0, Mathf.Tau, 24, tone, MathF.Max(1f, 1.6f * s));
+            _hud.DrawArc(c, r, 0, Mathf.Tau, 24, tone, MathF.Max(1f, 1.2f * s));
             if (p.Pinned)
             {
                 // A small arrow just outside the ring, pointing the way to turn.
                 Vector2 d = p.Direction, n = new(-d.Y, d.X);
-                Vector2 tip = c + d * (r + 9f * s), back = c + d * (r + 3f * s);
-                _hud.DrawColoredPolygon(new[] { tip, back + n * 5f * s, back - n * 5f * s }, tone);
+                Vector2 tip = c + d * (r + 7f * s), back = c + d * (r + 2.5f * s);
+                _hud.DrawColoredPolygon(new[] { tip, back + n * 4f * s, back - n * 4f * s }, tone);
             }
             if (!p.Labelled) continue;
             _hud.Block(p.Label, new Color(C.Glass, 0.45f * p.Alpha));
-            _hud.Text(UiTheme.Label, (int)(13 * s), p.Label.Position + new Vector2(4 * s, 1 * s), Fitted(p.Mark.Tag, s), tone);
-            _hud.Text(UiTheme.Mono, (int)(12 * s), p.Label.Position + new Vector2(4 * s, 15 * s), Distance(p.Distance), new Color(C.Text, p.Alpha));
+            _hud.Text(UiTheme.Label, (int)(NameSize * s), p.Label.Position + new Vector2(3 * s, 0f), Fitted(p.Mark.Tag, s), tone);
+            _hud.Text(UiTheme.Mono, (int)(DistanceSize * s), p.Label.Position + new Vector2(3 * s, 10 * s), Distance(p.Distance), new Color(C.Text, p.Alpha * 0.85f));
         }
     }
 

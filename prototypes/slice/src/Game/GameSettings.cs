@@ -40,6 +40,8 @@ public sealed class GameSettings
     public float SpawnDistance = Slice.Surface.SpawnReach.Default;
     /// <summary>The picture's gamma: above 1 lifts the shadows, below darkens them.</summary>
     public float Gamma = 1f;
+    /// <summary>Where what is out there is marked: true in the scene on the things themselves (WORLD), false on the compass strip (COMPASS).</summary>
+    public bool MarkersInWorld = true;
 
     // ---- Mouse ----
     /// <summary>On foot (and on a bike): a multiple of the base look speed.</summary>
@@ -68,7 +70,7 @@ public sealed class GameSettings
     public void ResetGraphics()
     {
         var d = new GameSettings();
-        (Window, Resolution, Vsync, FpsCap, RenderScale, Fov, Shadows, GroundDetail, DetailDistance, SpawnDistance, Gamma) = (d.Window, d.Resolution, d.Vsync, d.FpsCap, d.RenderScale, d.Fov, d.Shadows, d.GroundDetail, d.DetailDistance, d.SpawnDistance, d.Gamma);
+        (Window, Resolution, Vsync, FpsCap, RenderScale, Fov, Shadows, GroundDetail, DetailDistance, SpawnDistance, Gamma, MarkersInWorld) = (d.Window, d.Resolution, d.Vsync, d.FpsCap, d.RenderScale, d.Fov, d.Shadows, d.GroundDetail, d.DetailDistance, d.SpawnDistance, d.Gamma, d.MarkersInWorld);
         Changed();
     }
 
@@ -97,6 +99,7 @@ public sealed class GameSettings
         s.DetailDistance = Math.Clamp(Float(file, "graphics", "detail_distance", s.DetailDistance), DetailReach.Default, DetailReach.Most);
         s.SpawnDistance = Math.Clamp(Float(file, "graphics", "spawn_distance", s.SpawnDistance), Slice.Surface.SpawnReach.Default, Slice.Surface.SpawnReach.Most);
         s.Gamma = Math.Clamp(Float(file, "graphics", "gamma", s.Gamma), MinGamma, MaxGamma);
+        s.MarkersInWorld = !string.Equals(Str(file, "graphics", "markers"), "compass", StringComparison.OrdinalIgnoreCase);
         s.Sensitivity = Math.Clamp(Float(file, "mouse", "sensitivity", s.Sensitivity), MinSense, MaxSense);
         s.InvertY = Bool(file, "mouse", "invert_y", s.InvertY);
         s.FlightSensitivity = Math.Clamp(Float(file, "mouse", "flight_sensitivity", s.FlightSensitivity), MinSense, MaxSense);
@@ -121,6 +124,7 @@ public sealed class GameSettings
         file.SetValue("graphics", "detail_distance", DetailDistance);
         file.SetValue("graphics", "spawn_distance", SpawnDistance);
         file.SetValue("graphics", "gamma", Gamma);
+        file.SetValue("graphics", "markers", MarkersInWorld ? "world" : "compass");
         file.SetValue("mouse", "sensitivity", Sensitivity);
         file.SetValue("mouse", "invert_y", InvertY);
         file.SetValue("mouse", "flight_sensitivity", FlightSensitivity);

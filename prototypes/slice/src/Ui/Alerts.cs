@@ -148,7 +148,7 @@ public partial class Alerts : CanvasLayer
     {
         Vector2 size = _view.Size;
         if (size.Y < 100f || Game?.Camera == null) return; // headless: no window to draw on
-        HudLayout layout = HudLayout.Compute(size, Game.Visor?.UiScale ?? 1f);
+        HudLayout layout = HudLayout.Compute(size, Game.Visor?.UiScale ?? 1f, Game.Visor?.MarkersInWorld == false);
         float s = layout.Scale;
         // Attacks first, flashing, then the hazards, most urgent first.
         var shown = new List<Shown>(Attacks);

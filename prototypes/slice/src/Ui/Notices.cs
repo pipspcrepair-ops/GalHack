@@ -115,7 +115,7 @@ public partial class Notices : CanvasLayer
     public Rect2 Slot(Vector2 size)
     {
         bool menu = Game != null && (Game.Menu?.IsOpen == true || Game.Escape?.IsOpen == true);
-        return menu ? HudLayout.MenuToScreen(HudLayout.MenuNotices, size) : HudLayout.Compute(size, Game?.Visor?.UiScale ?? 1f).Notices;
+        return menu ? HudLayout.MenuToScreen(HudLayout.MenuNotices, size) : HudLayout.Compute(size, Game?.Visor?.UiScale ?? 1f, Game?.Visor?.MarkersInWorld == false).Notices;
     }
 
     /// <summary>The slot's rows, top to bottom: one per notice shown at once, never on one another.</summary>

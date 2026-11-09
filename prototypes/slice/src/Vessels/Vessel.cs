@@ -238,7 +238,7 @@ public sealed partial class Vessel
         var vessel = new Vessel(zone, s, body);
         body.Class = StructureBridge.ClassOf(vessel.Spec);
         vessel._legsKey = vessel.LegsKey();
-        body.Controller = new VesselController(vessel.Flight, vessel.Spec.HoverPoints, vessel.Spec.Legs);
+        body.Controller = vessel.NewController();
 
         var hull = new CharacterBody3D { Name = s.Name.Replace(" ", "") };
         zone.AddChild(hull);
@@ -425,7 +425,7 @@ public sealed partial class Vessel
         if (key == _legsKey) return;
         _legsKey = key;
         VesselController old = Controller;
-        Body.Controller = new VesselController(Flight, Spec.HoverPoints, Spec.Legs);
+        Body.Controller = NewController();
         if (old?.Frozen ?? true)
         {
             N.Quaternion rotation = Body.Rotation;
@@ -433,6 +433,22 @@ public sealed partial class Vessel
             Body.Rotation = rotation;
         }
         else Controller.LocalSpin = old.LocalSpin; // in flight it carries on as it was: speed, attitude and spin
+    }
+
+    /// <summary>The body rules for its legs and hover plates as built now; the plates push along the command chair's down.</summary>
+    VesselController NewController()
+    {
+        var c = new VesselController(Flight, Spec.HoverPoints, Spec.Legs);
+        if (c.Hover != null) c.Hover.Down = ChairDown();
+        return c;
+    }
+
+    /// <summary>The command chair's down in the structure's frame (its first chair, as the seat is), or the structure's own down.</summary>
+    N.Vector3 ChairDown()
+    {
+        foreach (var (_, b) in Structure.Blocks())
+            if (IsChair(Structure.TypeOf(b))) return N.Vector3.Normalize(Orientations.Matrix(b.Rot).Apply(-N.Vector3.UnitY));
+        return -N.Vector3.UnitY;
     }
 
     string LegsKey() => Spec == null ? "" : string.Join(";", Spec.Legs.Select(l => l.Hip.ToString())) + "|" + string.Join(";", Spec.HoverPoints);

@@ -168,8 +168,9 @@ public partial class BuildTest : Node
         int checks = 0;
         foreach (Vector2 size in sizes)
             foreach (float scale in new[] { 0.75f, 1f, 1.25f, 1.5f })
+            foreach (bool onCompass in new[] { false, true }) // MARKERS: WORLD, then COMPASS (its label rows under the strip)
             {
-                HudLayout l = HudLayout.Compute(size, scale);
+                HudLayout l = HudLayout.Compute(size, scale, onCompass);
                 string problem = l.Problem(size);
                 if (problem != null) Fail($"HUD at {size} scale {scale}: {problem}");
                 int font = (int)(16 * l.Scale);
@@ -177,7 +178,7 @@ public partial class BuildTest : Node
                 if (DiegeticUi.Theme.Paint.TextWidth(DiegeticUi.Theme.UiTheme.Label, font, fitted) > l.ItemLine.Size.X + 0.5f) Fail($"HUD at {size} scale {scale}: the long line overflows its box");
                 checks++;
             }
-        Check(true, $"vitals, toolbar, item line, hints, shapes, lines and the notices never overlap or leave the window ({checks} sizes and scales), and the longest line fits its box");
+        Check(true, $"vitals, toolbar, item line, hints, shapes, lines and the notices never overlap or leave the window ({checks} sizes and scales, in both markers modes), and the longest line fits its box");
     }
 
     ItemGrid BigGrid(int perItem, out SharedStorage storage)

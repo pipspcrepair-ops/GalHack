@@ -140,7 +140,10 @@ public partial class Visor : CanvasLayer
     /// <summary>The player's UI scale (1 is the default).</summary>
     public float UiScale = 1f;
 
-    HudLayout Layout => HudLayout.Compute(_hud.Size, UiScale);
+    /// <summary>Where what is out there is marked: in the scene on the things themselves (WORLD), or on the compass strip (COMPASS). Option: MARKERS.</summary>
+    public bool MarkersInWorld => Game.Settings == null || Game.Settings.MarkersInWorld;
+
+    HudLayout Layout => HudLayout.Compute(_hud.Size, UiScale, !MarkersInWorld);
     float S => Layout.Scale;
 
     void Draw()
@@ -365,7 +368,27 @@ public partial class Visor : CanvasLayer
                 _hud.TextIn(UiTheme.Display, (int)(16 * s), new Rect2(x - 20 * s, y - 14 * s, 40 * s, 20 * s), d switch { 0 => "N", 90 => "E", 180 => "S", _ => "W" }, C.Text, HorizontalAlignment.Center);
         }
         _hud.Text(UiTheme.Mono, (int)(16 * s), new Vector2(cx - 18 * s, y + 28 * s), Garbled($"{heading:000}", Game.WrongShown), C.Text);
-        // Headings only: what is out there is marked where it is, in the world (DrawMarkers).
+        // WORLD markers: what is out there is marked where it is (DrawMarkers). COMPASS: marked on the strip, as it was.
+        if (MarkersInWorld) return;
+        Vector3 feet = survivor.WorldFeet;
+        var labels = new List<(float x, int row)>();
+        void Mark(Vector3 at, string tag, Color colour, float alpha)
+        {
+            colour = new Color(colour, alpha);
+            Vector3 to = Game.Spaceflight.Local(at - feet);
+            float bearing = Mathf.PosMod(Mathf.RadToDeg(Mathf.Atan2(to.X, -to.Z)), 360f);
+            float off = Mathf.Clamp(Mathf.Wrap(bearing - heading, -180f, 180f), -60f, 60f);
+            float x = cx + off / 60f * width / 2;
+            float d = new Vector2(to.X, to.Z).Length();
+            _hud.Block(new Rect2(x - 5 * s, y + 4 * s, 10 * s, 10 * s), colour);
+            // The first row whose neighbourhood is free, so labels at the same bearing stack.
+            int row = 0;
+            while (labels.Exists(l => l.row == row && MathF.Abs(l.x - x) < 170 * s)) row++;
+            if (row >= HudLayout.CompassRows) return; // the mark stays; its label would crowd the view
+            labels.Add((x, row));
+            _hud.TextIn(UiTheme.Label, (int)(13 * s), new Rect2(x - 110 * s, y + (44 + row * 16) * s, 220 * s, 16 * s), $"{(tag.Length > 20 ? tag[..19] + ".." : tag)} {d:F0}m", colour, HorizontalAlignment.Center);
+        }
+        foreach (Marker m in Markers()) Mark(m.At, m.Tag, m.Colour, m.Alpha);
     }
 
     /// <summary>A readout as the wrongness has it: now and then, the more the stronger it is, one digit comes up as another for a moment.</summary>
