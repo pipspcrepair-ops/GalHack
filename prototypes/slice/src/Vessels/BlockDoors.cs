@@ -16,8 +16,7 @@ public readonly record struct OpenDoor(Vector3 Centre, Vector3 Normal, Vector2 S
 /// <summary>
 /// One door system with the places' doors: door blocks on bases and vessels open and shut with E,
 /// the same two leaves sliding apart, the same prompt, and on your own structures they open for you
-/// as you come up ("doors open for the player faction on their own") and shut themselves a few seconds after the
-/// doorway is clear (<see cref="DoorWays.AutoClose"/>), never on you: a room's seal comes back on its own. The
+/// as you come up and shut behind you ("doors open for the player faction on their own"). The
 /// block's own Open flag (building's) stays the truth for rooms, pathing and collision: opening
 /// flips it at once so the way is clear while the leaves draw back; shutting flips it as the
 /// leaves meet, so nobody is shut inside one. Locks and keycards are the places' (<see cref="Place.Door"/>).
@@ -49,12 +48,6 @@ public partial class BlockDoors : Node3D
     readonly Dictionary<Vessel, Known> _known = new();
     /// <summary>Doors you shut by hand while beside them: they stay shut until you have stepped away.</summary>
     readonly HashSet<(Vessel, Int3)> _heldShut = new();
-    /// <summary>How long each open door's doorway has been clear, s: it shuts itself after <see cref="DoorWays.AutoClose"/>.</summary>
-    readonly Dictionary<(Vessel, Int3), float> _clear = new();
-
-    /// <summary>Whether you are in a door's doorway or its leaves' way (it never shuts on you).</summary>
-    static bool InWay(Vessel v, Int3 cell, Vector3 feet) =>
-        v.ToWorld(StructureBridge.CellCenter(v.Structure, cell)).DistanceTo(feet + Vector3.Up * 0.9f) < v.Structure.Grid.CellSize * 0.5f + Slice.Player.Survivor.Radius + 0.1f;
     int _tick;
     static StandardMaterial3D _body, _band;
 
@@ -154,11 +147,8 @@ public partial class BlockDoors : Node3D
     {
         if (Zone?.Planet == null || Feet == null) return;
         float dt = (float)delta;
-        Vector3 you = Feet();
         foreach (var (key, s) in _slides.ToList())
         {
-            // Shutting on you: it opens again.
-            if (s.Target < 0.5f && InWay(s.Vessel, s.Cell, you)) { s.Target = 1f; _clear[key] = 0f; }
             if (!GodotObject.IsInstanceValid(s.Root) || !s.Vessel.Structure.TryGet(s.Cell, out _))
             {
                 if (GodotObject.IsInstanceValid(s.Root)) s.Root.QueueFree();
@@ -194,13 +184,7 @@ public partial class BlockDoors : Node3D
                 bool open = _slides.TryGetValue((v, cell), out Slide s) ? s.Target > 0.5f : IsOpen(v, cell);
                 if (d > ShutRange) _heldShut.Remove((v, cell));
                 if (d < OpenRange && !open && !_heldShut.Contains((v, cell))) Set(v, cell, true);
-                else if (open)
-                {
-                    // Open: it shuts itself once its doorway has been clear a while (and stays shut till you come up to it again).
-                    float clear = InWay(v, cell, feet) ? 0f : _clear.GetValueOrDefault((v, cell)) + dt * 6f;
-                    _clear[(v, cell)] = clear;
-                    if (clear >= DoorWays.AutoClose) { Set(v, cell, false); _heldShut.Add((v, cell)); _clear.Remove((v, cell)); }
-                }
+                else if (d > ShutRange && open) Set(v, cell, false);
             }
         }
     }
