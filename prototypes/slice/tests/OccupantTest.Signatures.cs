@@ -104,7 +104,7 @@ public partial class OccupantTest
             }
             return m / 80f;
         }
-        WorldLife plagued = Life("plague"), faded = Life("slow_fade");
+        WorldLife plagued = Life("plague"), faded = Life("slow_fade", "plain");
         float plague = Masked(plagued);
         Check(plague >= 0.45f && plagued.People.Flavour?.Wear.ContainsKey("filter_mask") == true && faded.People.Flavour == null,
             $"a plague world's people go masked: {plague:P0} of them (its story's look on everyone; after a slow fade, none)");
