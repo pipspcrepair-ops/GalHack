@@ -1261,6 +1261,17 @@ public static class Shapes
             new V3(MathF.Max(a.X, b.X), MathF.Max(a.Y, b.Y), MathF.Max(a.Z, b.Z)), c, s);
     }
 
+    /// <summary>Whether a pane's sheet runs along x (its facing is north or south, across z) rather than along z; set when the place was laid out (<see cref="PaneFacing"/>).</summary>
+    public static bool PaneAlongX(Block b) => b.Facing is Dir.North or Dir.South;
+
+    /// <summary>A pane with another of its wall's panes in front of it (a wall two cells thick has glass in both): the outer one is the sheet, so a window is one plane.</summary>
+    public static bool PaneHidden(Block b, Int3 p, IBlockStructure g)
+    {
+        if (!b.Facing.IsHorizontal() || b.Role == Role.Prop) return false;
+        Block front = g.Get(p + b.Facing.Vec());
+        return front.Type == BlockType.Pane && front.Role != Role.Prop && PaneAlongX(front) == PaneAlongX(b);
+    }
+
     public static (V3 lo, V3 hi) CollisionBox(Block b) => b.Type switch
     {
         BlockType.Pillar => (new V3(0.3f, 0, 0.3f), new V3(0.7f, 1, 0.7f)),
@@ -1382,11 +1393,9 @@ public static class Shapes
                 l.Add(Box(0.1f, 0.42f, 0.1f, 0.9f, 0.58f, 0.9f, c.Scale(0.85f), s));
                 break;
             case BlockType.Pane:
-            {
-                bool alongX = !g.Get(p + Dir.East.Vec()).IsAir || !g.Get(p + Dir.West.Vec()).IsAir;
-                l.Add(alongX ? Box(0, 0, 0.42f, 1, 1, 0.58f, c, s) : Box(0.42f, 0, 0, 0.58f, 1, 1, c, s));
+                // A sheet in the plane of its wall, as its facing says (PaneFacing); a wall of several layers is one sheet, in its outermost.
+                if (!PaneHidden(b, p, g)) l.Add(PaneAlongX(b) ? Box(0, 0, 0.42f, 1, 1, 0.58f, c, s) : Box(0.42f, 0, 0, 0.58f, 1, 1, c, s));
                 break;
-            }
             case BlockType.Lattice:
             {
                 const float t = 0.13f;

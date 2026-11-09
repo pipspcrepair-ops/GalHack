@@ -98,7 +98,8 @@ public partial class PoiTest
     static PaneStats JudgePanes(BlockGrid g, Dictionary<Int3, (int Axis, float Depth)> sheets, string who)
     {
         var s = new PaneStats { Places = 1 };
-        var cells = g.Blocks().Where(x => GlassPane(x.Block)).Select(x => x.Cell).ToList();
+        // A pane with no air beside it at all (set in a retaining wall, a podium, the core of a tower) is seen from nowhere: it is left out.
+        var cells = g.Blocks().Where(x => GlassPane(x.Block) && Dirs.Horizontal.Any(d => g.Get(x.Cell + d.Vec()).IsAir)).Select(x => x.Cell).ToList();
         var run = new Dictionary<Int3, int>();
         foreach (Int3 c in cells)
         {
@@ -129,9 +130,27 @@ public partial class PoiTest
             bool deep = drawn.Max(d => d.Depth) - drawn.Min(d => d.Depth) > PaneDepthTolerance;
             if (!mixed && !deep) continue;
             s.BadWindows++;
-            if (s.Example == "") s.Example = $"{who}: a window of {group.Count()} panes at {group.First()} {(mixed ? "turns" : $"spans {drawn.Max(d => d.Depth) - drawn.Min(d => d.Depth):F2} m of depth")}";
+            if (s.Example == "") s.Example = $"{who}: a window of {group.Count()} panes at {group.First()} {(mixed ? "turns" : $"spans {drawn.Max(d => d.Depth) - drawn.Min(d => d.Depth):F2} m of depth")}" + "\n" + PaneSlice(g, group.First(), sheets);
         }
         return s;
+    }
+
+    /// <summary>A level of a grid round a cell as text, for a failure to show: a drawn pane is - (its sheet runs along x) or | (along z), a pane behind another +, other solids x, air a dot; the cell is *.</summary>
+    static string PaneSlice(BlockGrid g, Int3 at, Dictionary<Int3, (int Axis, float Depth)> sheets)
+    {
+        var rows = new List<string>();
+        for (int z = at.Z - 6; z <= at.Z + 6; z++)
+        {
+            var row = new System.Text.StringBuilder();
+            for (int x = at.X - 12; x <= at.X + 12; x++)
+            {
+                var c = new Int3(x, at.Y, z);
+                Block b = g.Get(c);
+                row.Append(c == at ? '*' : b.IsAir ? '.' : b.Type != BlockType.Pane ? 'x' : sheets.TryGetValue(c, out var sh) ? (sh.Axis == 0 ? '-' : '|') : '+');
+            }
+            rows.Add("        " + row);
+        }
+        return string.Join("\n", rows);
     }
 
     static CityLot RollLot(string kind, Rng rng)

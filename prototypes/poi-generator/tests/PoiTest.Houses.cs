@@ -279,7 +279,7 @@ public partial class PoiTest
             {
                 Block b = g.Get(p);
                 if (b.Type == BlockType.Rail) { turnstile++; note($"{f.Kind}: a cross-shaped rail at {p}"); }
-                else if (b.Type == BlockType.Pane && (!g.Get(p + Dir.East.Vec()).IsAir || !g.Get(p + Dir.West.Vec()).IsAir) != alongX) { across++; note($"{f.Kind}: a panel across its run at {p}"); }
+                else if (b.Type == BlockType.Pane && Shapes.PaneAlongX(b) != alongX) { across++; note($"{f.Kind}: a panel across its run at {p}"); }
                 else if (b.Type == BlockType.Ladder && (b.Facing is Dir.North or Dir.South) != alongX) { across++; note($"{f.Kind}: railings or a gate across their run at {p}"); }
             }
             foreach (var run in f.Runs)
