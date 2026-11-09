@@ -209,6 +209,7 @@ public static partial class PoiSiting
     public static List<PoiSite> Place(PoiCatalog catalog, WorldMap map, PlanetTerrainSource bare, LandingSite landing, bool? startWorld = null, WorldProfile profile = null, float depth = -1f)
     {
         bool start = startWorld ?? StartWorld;
+        LastPlanned = LastSkipped = LastUnseated = 0;
         PoiLibrary lib = catalog.Library;
         PlanetSpec spec = map.Spec;
         // The whole planet as the placement engine sees it, and the theme its kind of world has.
@@ -225,9 +226,11 @@ public static partial class PoiSiting
         // Spread over the whole planet, but the landing site's country gets its share first.
         double Away(PlacedPoi p) => Dist(p.X, p.Z, landing.X, landing.Y, map.WidthMeters, map.HeightMeters);
         var byDistance = placed.OrderBy(Away).ToList();
-        int near = MaxSites / 2;
+        // A bigger world gets more, at the region plan's rate (area to three quarters, against a 16 x 8 km world).
+        int most = (int)Math.Round(MaxSites * Math.Max(1.0, Math.Pow(map.WidthMeters * map.HeightMeters / (16000.0 * 8000.0), 0.75)));
+        int near = most / 2;
         var far = byDistance.Skip(near).ToList();
-        int stride = Math.Max(1, far.Count / Math.Max(1, MaxSites - near));
+        int stride = Math.Max(1, far.Count / Math.Max(1, most - near));
         var spread = far.Where((_, i) => i % stride == 0).ToList();
         // Nearest half, then an even spread out to the far side, then the rest in case some can't be seated.
         var order = byDistance.Take(near).Concat(spread).Concat(far.Except(spread)).ToList();
@@ -235,7 +238,7 @@ public static partial class PoiSiting
         var ports = placed.Where(IsPort).OrderByDescending(p => p.Primary).ToList();
         order = ports.Concat(order.Where(p => !IsPort(p))).ToList();
         static bool IsPort(PlacedPoi p) => p.Primary || p.Port != null || p.Family.Tags.Contains("scrappy") || p.Family.Tags.Contains("exodus") || p.Family.Tags.Contains("evacuation");
-        int budget = MaxSites + ports.Count;
+        int budget = most + ports.Count;
         var sites = new List<PoiSite>();
         if (ForceFamily != null && lib.Families.FirstOrDefault(f => f.Id == ForceFamily) is { } forced)
         {

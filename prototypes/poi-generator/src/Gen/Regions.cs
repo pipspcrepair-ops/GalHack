@@ -121,7 +121,30 @@ public sealed class RegionPlan
         readonly (double X, double Z) _landing;
         readonly bool _start;
         readonly List<(double X, double Z)> _open = new();
-        int MaxPlaces => 34;
+        /// <summary>
+        /// How many places a world of this size and these people wants, against a 16 x 8 km world of
+        /// a hundred thousand (the size the counts in the world-layer data are written for): its towns,
+        /// hamlets, fields, wrecks and the cap all grow with it. Area raised to three quarters, so a
+        /// big world is fuller than a small one but never dozens of times slower to build.
+        /// </summary>
+        double Scale
+        {
+            get
+            {
+                double area = _land.Width * _land.Depth / (16000.0 * 8000.0);
+                double people = _profile.Inhabited ? Math.Clamp(0.4 + _profile.Population * 0.12, 0.5, 1.6) : 0.5;
+                return Math.Pow(area, 0.75) * people;
+            }
+        }
+        int MaxPlaces => Math.Max(34, (int)Math.Round(34 * Scale));
+
+        /// <summary>A region count from the roll, for this world's size and people (never none where the roll had some).</summary>
+        int Count(string kind)
+        {
+            float rolled = _roll.Regions.GetValueOrDefault(kind);
+            int n = (int)Math.Round(rolled * Scale);
+            return rolled >= 0.5f ? Math.Max(1, n) : n;
+        }
 
         public Planner(RegionPlan p, PoiLibrary lib, ILand land, WorldRoll roll, WorldProfile profile, Rng r, (double, double) landing, bool start)
         {
@@ -299,12 +322,30 @@ public sealed class RegionPlan
         List<(Region Region, PlannedPlace Hub)> Hubs()
         {
             var made = new List<(Region, PlannedPlace)>();
-            int towns = _roll.RegionCount("town"), hamlets = _roll.RegionCount("hamlet");
+            int towns = Count("town"), hamlets = Count("hamlet");
             var spots = new List<(double X, double Z)>();
             bool Far(double x, double z, double d) => spots.All(s => _p.Dist(s.X, s.Z, x, z) >= d) && _p.Dist(_landing.X, _landing.Z, x, z) >= (_start ? 1700 : 500);
             var order = _open.OrderBy(o => _r.Float()).ToList();
-            // A big town wants big flat ground: the middle of the open land first.
-            int Wanted(double x, double z) => _open.Count(o => _p.Dist(o.X, o.Z, x, z) < 720);
+            // A big town wants big flat ground: the middle of the open land first (counted by 720 m buckets: a big world has tens of thousands of open spots).
+            var buckets = new Dictionary<(int, int), List<(double X, double Z)>>();
+            int bx = Math.Max(1, (int)(_land.Width / 720)), bz = Math.Max(1, (int)(_land.Depth / 720));
+            (int, int) Bucket(double x, double z) => ((int)(Wrap(x, _land.Width) / _land.Width * bx) % bx, (int)(Wrap(z, _land.Depth) / _land.Depth * bz) % bz);
+            foreach (var o in _open)
+            {
+                var key = Bucket(o.X, o.Z);
+                if (!buckets.TryGetValue(key, out var list)) buckets[key] = list = new List<(double, double)>();
+                list.Add(o);
+            }
+            int Wanted(double x, double z)
+            {
+                var (cx, cz) = Bucket(x, z);
+                int n = 0;
+                for (int a = -1; a <= 1; a++)
+                    for (int b = -1; b <= 1; b++)
+                        if (buckets.TryGetValue((((cx + a) % bx + bx) % bx, ((cz + b) % bz + bz) % bz), out var list))
+                            foreach (var o in list) if (_p.Dist(o.X, o.Z, x, z) < 720) n++;
+                return n;
+            }
             order = order.OrderByDescending(o => Wanted(o.X, o.Z) + _r.Float() * 5f).ToList();
             for (int n = 0; n < towns + hamlets; n++)
             {
@@ -348,7 +389,7 @@ public sealed class RegionPlan
             }
             if (isTown)
             {
-                int lived = 1 + (_roll.RegionCount("industry") > 0 ? _roll.RegionCount("industry") / Math.Max(1, _roll.RegionCount("town")) : 0);
+                int lived = 1 + (_roll.RegionCount("industry") > 0 ? Count("industry") / Math.Max(1, Count("town")) : 0);
                 for (int n = 0; n < lived; n++)
                 {
                     if (Choose(_roll.Industry) is not { } id) break;
@@ -374,10 +415,10 @@ public sealed class RegionPlan
                     Serves(depot, ds, town, "depot", "where the town's railway ends", hub, "road");
             }
             // Farmland lies out beyond the town, on the side with the most level ground.
-            int fields = Math.Max(0, _roll.RegionCount("farmland"));
+            int fields = Count("farmland");
             if (fields > 0 && Choose(_roll.Farm) != null)
             {
-                int perTown = Math.Max(1, (int)Math.Ceiling(fields / (double)Math.Max(1, _roll.RegionCount("town") + _roll.RegionCount("hamlet"))));
+                int perTown = Math.Max(1, (int)Math.Ceiling(fields / (double)Math.Max(1, Count("town") + Count("hamlet"))));
                 for (int n = 0; n < perTown; n++)
                 {
                     if (Choose(_roll.Farm) is not { } farm) break;
@@ -465,7 +506,7 @@ public sealed class RegionPlan
 
         void Wrecks()
         {
-            for (int k = 0, n = _roll.RegionCount("wreck_field"); k < n; k++)
+            for (int k = 0, n = Count("wreck_field"); k < n; k++)
             {
                 var o = _open[_r.Range(0, _open.Count)];
                 if (Spot(o.X, o.Z, 0, 1400, "crashed_freighter") is { } s)
@@ -479,7 +520,7 @@ public sealed class RegionPlan
         /// <summary>The rest of the theme's places, near what they'd have stood near.</summary>
         void Fill()
         {
-            int want = Math.Max(2, _roll.RegionCount("town") + _roll.RegionCount("hamlet"));
+            int want = Math.Max(2, Count("town") + Count("hamlet"));
             var hubs = _p.Places.Where(p => p.Role == "hub").ToList();
             for (int k = 0; k < want && hubs.Count > 0; k++)
             {

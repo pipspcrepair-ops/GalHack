@@ -50,6 +50,9 @@ public static partial class PoiSiting
     /// <summary>How long the last world's places took to lay out and spawn, side by side (tests read it).</summary>
     public static double LastLayoutMs;
 
+    /// <summary>The last world's planned places that never stood: no layout (skipped with a warning), or no ground found to seat them (tests read it).</summary>
+    public static int LastSkipped, LastUnseated, LastPlanned;
+
     static Dir Toward(double dx, double dz) => Math.Abs(dx) >= Math.Abs(dz) ? (dx > 0 ? Dir.East : Dir.West) : (dz > 0 ? Dir.South : Dir.North);
 
     /// <summary>The sites a plan asks for, built side by side and seated in order. Empty if the plan found no land.</summary>
@@ -120,6 +123,9 @@ public static partial class PoiSiting
             made[i] = PoiFactory.Spawn(lib, layout, j.State, j.Spawn, profile, j.Occ);
         });
         LastLayoutMs = clock.Elapsed.TotalMilliseconds;
+        LastPlanned = jobs.Count;
+        LastSkipped = made.Count(m => m == null);
+        LastUnseated = 0;
         int mark = sites.Count;
         for (int i = 0; i < jobs.Count; i++)
         {
@@ -133,7 +139,7 @@ public static partial class PoiSiting
                 double a = k * 2.399963, r = 300 + (j.Place.Primary ? 90 : 60) * k;
                 site = Seat(made[i], j.Family, bare, map, Mathx.WrapX(x + Math.Cos(a) * r, map.WidthMeters), Mathx.Wrap(z + Math.Sin(a) * r, map.HeightMeters), landing, sites);
             }
-            if (site == null) continue;
+            if (site == null) { LastUnseated++; continue; }
             site.Primary = j.Place.Primary;
             site.Planned = j.Place;
             site.Plan = plan;
