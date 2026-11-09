@@ -89,9 +89,9 @@ public static class SpaceNav
     public static bool Steps(ISolidSpace s, Vector3I a, Vector3I b, Body body) => Steps(s, a, b, body, out _);
 
     /// <summary>And the point between them it goes by, where the straight way between the two cells' points is barred but a gap on their shared face isn't.</summary>
-    static bool Steps(ISolidSpace s, Vector3I a, Vector3I b, Body body, out Vector3? via)
+    static bool Steps(ISolidSpace s, Vector3I a, Vector3I b, Body body, out Vector3[] vias)
     {
-        via = null;
+        vias = null;
         PartSet parts = s.Parts;
         if (parts == null) return true;
         if (body.Climbs) return true;
@@ -99,9 +99,7 @@ public static class SpaceNav
         // Up or down a flight the feet are between the two levels: the flat test is made at the lower.
         float y = MathF.Min(pa.Y, pb.Y);
         if (!parts.Touches(pa, body.Radius, body.Height) && !parts.Touches(pb, body.Radius, body.Height)) return true;
-        bool ok = parts.Link(a, pa with { Y = y }, b, pb with { Y = y }, body.Radius, body.Height, s.SolidCell, body.WallRadius, out via);
-        if (via is { } v) via = v + Vector3.Up * 0.5f;
-        return ok;
+        return parts.Link(a, pa with { Y = y }, b, pb with { Y = y }, body.Radius, body.Height, s.SolidCell, body.WallRadius, out vias);
     }
 
     /// <summary>The headroom a walker needs, in cells.</summary>
@@ -226,7 +224,8 @@ public static class SpaceNav
         cells.Reverse();
         for (int i = 0; i < cells.Count; i++)
         {
-            if (i > 0 && Steps(s, cells[i - 1], cells[i], body, out Vector3? via) && via is { } v) path.Add(v);
+            if (i > 0 && Steps(s, cells[i - 1], cells[i], body, out Vector3[] vias) && vias != null)
+                foreach (Vector3 v in vias) path.Add(v + Vector3.Up * 0.5f);
             path.Add(Point(s, cells[i], body));
         }
         if (found) path[^1] = to;

@@ -251,6 +251,8 @@ public static class Crawl
             Release(w, c);
             return;
         }
+        // On its floor, never further into a piece than where it stood.
+        if (parts != null && !parts.Fits(feet, pr, ph) && parts.Gap(start, pr, ph) > parts.Gap(feet, pr, ph)) feet = start;
         c.Facing = SpaceMath.Frame(f, Vector3.Up);
         c.Velocity = (feet - start) / MathF.Max(1e-4f, dt);
         c.Position = feet;

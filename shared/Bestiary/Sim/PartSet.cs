@@ -323,60 +323,115 @@ public sealed class PartSet
     public bool Step(Vector3I a, Vector3 from, Vector3I b, Vector3 to, float radius, float height, Func<int, int, int, bool> walls = null, float wallRadius = 0f) =>
         Link(a, from, b, to, radius, height, walls, wallRadius, out _);
 
+    static readonly Vector3[] NoVias = Array.Empty<Vector3>();
+
     /// <summary>
-    /// How a body gets from one cell's spot to the next's: straight (<paramref name="via"/> null), or by a point
-    /// on the face between the two cells where it fits (a gap between two pieces that isn't on the straight
-    /// line); false where neither will do. Remembered.
+    /// How a body gets from one cell's spot to the next's: straight (<paramref name="vias"/> empty), or, where a
+    /// piece bars the straight way, round it by the points of a way found over the two cells (a 6 cm lattice of
+    /// where the body fits, pulled straight between them); false where there is none. Remembered.
     /// </summary>
-    public bool Link(Vector3I a, Vector3 from, Vector3I b, Vector3 to, float radius, float height, Func<int, int, int, bool> walls, float wallRadius, out Vector3? via)
+    public bool Link(Vector3I a, Vector3 from, Vector3I b, Vector3 to, float radius, float height, Func<int, int, int, bool> walls, float wallRadius, out Vector3[] vias)
     {
         var key = (Key(a.X, a.Y, a.Z), Key(b.X, b.Y, b.Z), BodyKey(radius, height) ^ WallsKey(walls, wallRadius) * 31);
         lock (_lock)
             if (_sweeps.TryGetValue(key, out bool known))
             {
-                via = _vias.TryGetValue(key, out Vector3 v) ? v : null;
+                vias = _vias.TryGetValue(key, out Vector3[] v) ? v : NoVias;
                 return known;
             }
-        via = null;
+        vias = NoVias;
         bool ok = Sweep(from, to, radius, height, 0, walls, wallRadius);
         if (!ok && a.Y == b.Y && (a.X == b.X) != (a.Z == b.Z))
         {
-            // Through the face between them: its points nearest the middle of the way first.
-            float y = MathF.Min(from.Y, to.Y);
-            bool alongZ = a.X != b.X;
-            float face = alongZ ? MathF.Max(a.X, b.X) : MathF.Max(a.Z, b.Z);
-            float mid = alongZ ? (from.Z + to.Z) * 0.5f : (from.X + to.X) * 0.5f, lo = alongZ ? a.Z : a.X;
-            var offsets = new List<float>();
-            for (int i = 0; i < 16; i++) offsets.Add(lo + 0.03125f + i * 0.0625f);
-            offsets.Sort((p, q) => MathF.Abs(p - mid).CompareTo(MathF.Abs(q - mid)));
-            var points = new List<Vector3>();
-            foreach (float o in offsets) points.Add(alongZ ? new Vector3(face, y, o) : new Vector3(o, y, face));
-            // Then anywhere in either cell, the shortest way round first.
-            var rest = new List<Vector3>();
-            foreach (Vector3I c in new[] { a, b })
-                for (int i = 0; i < 12; i++)
-                    for (int j = 0; j < 12; j++)
-                        rest.Add(new Vector3(c.X + 0.04f + i * 0.083f, y, c.Z + 0.04f + j * 0.083f));
-            rest.Sort((p, q) => (p.DistanceTo(from) + p.DistanceTo(to)).CompareTo(q.DistanceTo(from) + q.DistanceTo(to)));
-            points.AddRange(rest);
-            foreach (Vector3 m in points)
-            {
-                if (!WallClear(m, height, walls, wallRadius) || !Fits(m, radius, height)) continue;
-                if (!Sweep(from, m, radius, height, 0, walls, wallRadius) || !Sweep(m, to, radius, height, 0, walls, wallRadius)) continue;
-                via = m;
-                ok = true;
-                break;
-            }
+            List<Vector3> way = Round(a, from, b, to, radius, height, walls, wallRadius);
+            if (way != null) { ok = true; vias = way.ToArray(); }
         }
         lock (_lock)
         {
             _sweeps[key] = ok;
-            if (via is { } w) _vias[key] = w;
+            if (vias.Length > 0) _vias[key] = vias;
         }
         return ok;
     }
 
-    readonly Dictionary<(long A, long B, int Body), Vector3> _vias = new();
+    readonly Dictionary<(long A, long B, int Body), Vector3[]> _vias = new();
+
+    /// <summary>The way round what bars two neighbouring cells' points: a search over both cells, then pulled straight (the corners between them), or null.</summary>
+    List<Vector3> Round(Vector3I a, Vector3 from, Vector3I b, Vector3 to, float radius, float height, Func<int, int, int, bool> walls, float wallRadius)
+    {
+        const float S = 0.0625f;
+        float y = MathF.Min(from.Y, to.Y);
+        int x0 = Math.Min(a.X, b.X), z0 = Math.Min(a.Z, b.Z);
+        int nx = (Math.Max(a.X, b.X) - x0 + 1) * 16, nz = (Math.Max(a.Z, b.Z) - z0 + 1) * 16;
+        Vector3 At(int i, int j) => new(x0 + (i + 0.5f) * S, y, z0 + (j + 0.5f) * S);
+        var fits = new sbyte[nx * nz]; // 0 not asked, 1 fits, -1 doesn't
+        bool Ok(int i, int j)
+        {
+            if (i < 0 || j < 0 || i >= nx || j >= nz) return false;
+            ref sbyte f = ref fits[j * nx + i];
+            if (f == 0) { Vector3 p = At(i, j); f = WallClear(p, height, walls, wallRadius) && Fits(p, radius, height) ? (sbyte)1 : (sbyte)-1; }
+            return f > 0;
+        }
+        (int, int) Nearest(Vector3 p)
+        {
+            int bi = -1, bj = -1;
+            float best = float.MaxValue;
+            int ci = (int)((p.X - x0) / S), cj = (int)((p.Z - z0) / S);
+            for (int dj = -3; dj <= 3; dj++)
+                for (int di = -3; di <= 3; di++)
+                {
+                    int i = ci + di, j = cj + dj;
+                    if (!Ok(i, j)) continue;
+                    float d = (At(i, j) - p).LengthSquared();
+                    if (d < best && Sweep(p, At(i, j), radius, height, 0, walls, wallRadius)) { best = d; bi = i; bj = j; }
+                }
+            return (bi, bj);
+        }
+        var (si, sj) = Nearest(from);
+        var (gi, gj) = Nearest(to);
+        if (si < 0 || gi < 0) return null;
+        var came = new int[nx * nz];
+        Array.Fill(came, -1);
+        var q = new Queue<int>();
+        int start = sj * nx + si, goal = gj * nx + gi;
+        came[start] = start;
+        q.Enqueue(start);
+        while (q.Count > 0 && came[goal] < 0)
+        {
+            int k = q.Dequeue(), i = k % nx, j = k / nx;
+            for (int dj = -1; dj <= 1; dj++)
+                for (int di = -1; di <= 1; di++)
+                {
+                    if (di == 0 && dj == 0) continue;
+                    int ni = i + di, nj = j + dj;
+                    if (!Ok(ni, nj) || came[nj * nx + ni] >= 0) continue;
+                    if (di != 0 && dj != 0 && (!Ok(i + di, j) || !Ok(i, j + dj))) continue;
+                    came[nj * nx + ni] = k;
+                    q.Enqueue(nj * nx + ni);
+                }
+        }
+        if (came[goal] < 0) return null;
+        var cells = new List<Vector3> { to };
+        for (int k = goal; ; k = came[k])
+        {
+            cells.Add(At(k % nx, k / nx));
+            if (k == start) break;
+        }
+        cells.Add(from);
+        cells.Reverse();
+        // Pulled straight: from each corner, on to the farthest point it sees.
+        var corners = new List<Vector3>();
+        int at = 0;
+        while (at < cells.Count - 1)
+        {
+            int next = at + 1;
+            for (int k = cells.Count - 1; k > at + 1; k--)
+                if (Sweep(cells[at], cells[k], radius, height, 0, walls, wallRadius)) { next = k; break; }
+            if (next < cells.Count - 1) corners.Add(cells[next]);
+            at = next;
+        }
+        return corners;
+    }
     /// <summary>
     /// A standing body moved sideways out of any part it is in, the least way out; it stays where it
     /// is if it is clear. Returns where it ends (still in one only if there was no way out near).

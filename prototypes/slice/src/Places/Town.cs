@@ -191,8 +191,8 @@ public sealed partial class Town
             if (i > 0 && walls != null && !_nav.RampAt(cells[i], out _) && !_nav.RampAt(cells[i - 1], out _))
             {
                 PInt3 a = cells[i - 1], b = cells[i];
-                if (_parts.Link(new Vector3I(a.X, a.Y, a.Z), path[^1], new Vector3I(b.X, b.Y, b.Z), here, PlaceParts.PersonRadius, PlaceParts.PersonHeight, walls, PlaceParts.PersonRadius, out Vector3? via) && via is { } v)
-                    path.Add(v);
+                if (_parts.Link(new Vector3I(a.X, a.Y, a.Z), path[^1], new Vector3I(b.X, b.Y, b.Z), here, PlaceParts.PersonRadius, PlaceParts.PersonHeight, walls, PlaceParts.PersonRadius, out Vector3[] vias))
+                    path.AddRange(vias);
             }
             path.Add(here);
         }
