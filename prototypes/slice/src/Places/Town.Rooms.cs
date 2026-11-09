@@ -225,7 +225,7 @@ public sealed partial class Town
     /// </summary>
     public IEnumerable<PInt3> Blocked(List<Vector3> path, int to, int from = -1)
     {
-        var solid = _parts == null ? Memory.Rooms?.Values.SelectMany(r => r.Cells).ToHashSet() ?? new HashSet<PInt3>() : new HashSet<PInt3>();
+        var solid = _fixed == null ? Memory.Rooms?.Values.SelectMany(r => r.Cells).ToHashSet() ?? new HashSet<PInt3>() : new HashSet<PInt3>();
         HashSet<PInt3> own = to >= 0 && to < _own.Count ? _own[to] : null;
         bool outOfSeat = from >= 0 && from < _own.Count && _own[from] != null;
         for (int i = 0; i < path.Count; i++)
@@ -233,7 +233,7 @@ public sealed partial class Town
             bool seatStep = i == path.Count - 1 && own != null || i == 1 && outOfSeat;
             // (Up and down a flight the way is the stair's: the parts' test is for the level.)
             bool level = i > 0 && MathF.Abs(path[i].Y - path[i - 1].Y) < 0.05f && !_nav.RampAt(Cell(path[i]), out _) && !_nav.RampAt(Cell(path[i - 1]), out _);
-            if (_parts != null && level && !seatStep && !_parts.Sweep(path[i - 1], path[i], PlaceParts.PersonRadius - 0.01f, PlaceParts.PersonHeight, 0, Place.WallsOf(_nav), PlaceParts.PersonRadius - 0.01f)) yield return Cell(path[i]);
+            if (_fixed != null && level && !seatStep && !_fixed.Sweep(path[i - 1], path[i], PlaceParts.PersonRadius - 0.01f, PlaceParts.PersonHeight, 0, Place.WallsOf(_nav), PlaceParts.PersonRadius - 0.01f)) yield return Cell(path[i]);
             // Each point, and the middle of the way to it from the last.
             for (int k = 0; k < (i == 0 ? 1 : 2); k++)
             {
@@ -262,6 +262,7 @@ public sealed partial class Town
         for (float t = 0f; t < seconds; t += dt)
         {
             _clock += dt;
+            TickWays(dt);
             bool dark = night(t);
             foreach (Person p in People)
             {

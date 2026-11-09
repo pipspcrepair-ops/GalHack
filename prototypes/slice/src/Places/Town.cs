@@ -33,6 +33,8 @@ public sealed partial class Town
     PNav _nav;
     /// <summary>The place's furniture and clutter as it really stands (null: the old whole-cell rule, tests only).</summary>
     Wildlife.PartSet _parts;
+    /// <summary>The same without the doors' leaves: what routes are worked out on (doors are opened on the way).</summary>
+    Wildlife.PartSet _fixed;
     int[] _homes;
     string _tech;
 
@@ -162,6 +164,9 @@ public sealed partial class Town
         town._tech = m.Inst.Layout.Variant?.Tech is { Length: > 0 } t ? t : m.Inst.Family.Tags.Contains("settlement") ? "low" : "mid";
         town._nav = Place.FootNavOf(m, planet);
         town._parts = PlaceParts.Of(m);
+        town._fixed = PlaceParts.Fixed(m);
+        town._ways = DoorWays.Of(m);
+        m.Bodies.Add(town.BodiesNear);
         town.Furnish(m);
         foreach (var (a, b) in data.Links.Concat(data.Routes)) town.PathBetween(a, b);
         town._homes = town.Spots.Select((s, i) => (s, i)).Where(t => t.s.Tag == "home").Select(t => t.i).ToArray();
@@ -175,7 +180,7 @@ public sealed partial class Town
     Vector3 Walk(PInt3 c)
     {
         if (_nav != null && _nav.RampAt(c, out _)) return new(c.X + 0.5f, c.Y + 0.5f, c.Z + 0.5f);
-        return (_parts != null ? Place.PersonSpot(_parts, Place.WallsOf(_nav), c) : null) ?? new Vector3(c.X + 0.5f, c.Y, c.Z + 0.5f);
+        return (_fixed != null ? Place.PersonSpot(_fixed, Place.WallsOf(_nav), c) : null) ?? new Vector3(c.X + 0.5f, c.Y, c.Z + 0.5f);
     }
 
     /// <summary>
@@ -186,14 +191,14 @@ public sealed partial class Town
     {
         if (cells == null) return null;
         var path = new List<Vector3>(cells.Count);
-        Func<int, int, int, bool> walls = _parts != null ? Place.WallsOf(_nav) : null;
+        Func<int, int, int, bool> walls = _fixed != null ? Place.WallsOf(_nav) : null;
         for (int i = 0; i < cells.Count; i++)
         {
             Vector3 here = Walk(cells[i]);
             if (i > 0 && walls != null && !_nav.RampAt(cells[i], out _) && !_nav.RampAt(cells[i - 1], out _))
             {
                 PInt3 a = cells[i - 1], b = cells[i];
-                if (_parts.Link(new Vector3I(a.X, a.Y, a.Z), path[^1], new Vector3I(b.X, b.Y, b.Z), here, PlaceParts.PersonRadius, PlaceParts.PersonHeight, walls, PlaceParts.PersonRadius, out Vector3[] vias))
+                if (_fixed.Link(new Vector3I(a.X, a.Y, a.Z), path[^1], new Vector3I(b.X, b.Y, b.Z), here, PlaceParts.PersonRadius, PlaceParts.PersonHeight, walls, PlaceParts.PersonRadius, out Vector3[] vias))
                     path.AddRange(vias);
             }
             path.Add(here);
@@ -559,6 +564,8 @@ public sealed partial class Town
             OffParts(p, p.Pos);
             return true;
         }
+        // The doors ahead opened as they come (a door they may not open: they wait where they are).
+        if (!ThroughDoors(p)) { p.Now = 0f; return true; }
         Vector3 to = p.Path[p.Step];
         Vector3 d = to - p.Pos;
         float flat = new Vector2(d.X, d.Z).Length();
@@ -572,7 +579,7 @@ public sealed partial class Town
         // (Not out of a seat or into one: that way is walked as it lies, clear of the furniture round it.)
         bool exact = p.Step == 0 && p.Seat >= 0 || p.Step >= p.Path.Count - 2 && p.Spot >= 0 && p.Spot < _own.Count && _own[p.Spot] != null;
         // (Among furniture the corner is turned at the point itself: the gap it goes through is no wider.)
-        float cut = last || exact ? 0.05f : _parts != null && _parts.Touches(to, PlaceParts.PersonRadius, PlaceParts.PersonHeight) ? 0.1f : 0.4f;
+        float cut = last || exact ? 0.05f : _fixed != null && _fixed.Touches(to, PlaceParts.PersonRadius, PlaceParts.PersonHeight) ? 0.1f : 0.4f;
         if (flat < step || flat < cut)
         {
             if (last)

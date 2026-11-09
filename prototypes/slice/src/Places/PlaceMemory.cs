@@ -59,6 +59,12 @@ public sealed class PlaceMemory
 
     /// <summary>What in it fills only part of its cell, as it collides (<see cref="PlaceParts"/>): made once, kept as blocks and pieces go.</summary>
     public Wildlife.PartSet Parts;
+    /// <summary>The same without its doors' leaves: what the people's walking grid is worked out on (they open the doors on their way).</summary>
+    public Wildlife.PartSet Fixed;
+    /// <summary>Its doors as bodies meet them (<see cref="DoorWays"/>).</summary>
+    public List<DoorWay> DoorWays;
+    /// <summary>Who is about in it (local feet, radius, height): its people, its creatures, you. A door never shuts on any of them.</summary>
+    public readonly List<System.Func<IEnumerable<(Godot.Vector3 Feet, float Radius, float Height)>>> Bodies = new();
 
     /// <summary>Its creatures (a sim of their own, kept while you are away) and its people.</summary>
     public PlaceFauna Fauna;

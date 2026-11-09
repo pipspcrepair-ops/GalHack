@@ -155,6 +155,9 @@ public sealed partial class Town
         var town = new Town(m, new Townsfolk());
         town._nav = Place.FootNavOf(m);
         town._parts = PlaceParts.Of(m);
+        town._fixed = PlaceParts.Fixed(m);
+        town._ways = DoorWays.Of(m);
+        m.Bodies.Add(town.BodiesNear);
         return town;
     }
 
@@ -171,11 +174,19 @@ public sealed partial class Town
         if (cells == null) return null;
         var path = Points(cells);
         path.Add(to);
-        return new Person { Town = this, Looks = looks, Pos = from, Path = path, Step = 0, Spot = -1, Speed = 1.3f, Spawn = new CitizenSpawn("walker", "walk", a, -1) };
+        var walker = new Person { Town = this, Looks = looks, Pos = from, Path = path, Step = 0, Spot = -1, Speed = 1.3f, Spawn = new CitizenSpawn("walker", "walk", a, -1) };
+        People.Add(walker);
+        return walker;
     }
 
     /// <summary>A walker's step along their route, as the town walks its people (true once there).</summary>
-    public bool StepWalker(Person p, float dt) => Move(p, dt);
+    public bool StepWalker(Person p, float dt)
+    {
+        _clock += dt;
+        bool there = Move(p, dt);
+        TickWays(dt);
+        return there;
+    }
 
     /// <summary>A person's body radius (their folk's width) and how tall they stand.</summary>
     public static float RadiusOf(Person p) => BodyRadius(p);
