@@ -42,7 +42,7 @@ public static class DecoStandoff
         public void Close() => Closed = Now();
     }
 
-    public static void Apply(DecoMeshData mesh, Parts parts, (Vector3 Min, Vector3 Max)? footprint)
+    public static void Apply(DecoMeshData mesh, Parts parts, (Vector3 Min, Vector3 Max)? footprint, bool floor = true)
     {
         const float Flat = 1e-4f;
         var faces = new List<Coplanar.Face>();
@@ -66,7 +66,7 @@ public static class DecoStandoff
             for (int t = 0; t < d.Triangles; t++)
             {
                 Vector3 a = d.Positions[t * 3], b = d.Positions[t * 3 + 1], c = d.Positions[t * 3 + 2];
-                if (MathF.Abs(a.Y) < Flat && MathF.Abs(b.Y) < Flat && MathF.Abs(c.Y) < Flat) { drop.Add((s, t)); loose = -1; continue; }
+                if (floor && MathF.Abs(a.Y) < Flat && MathF.Abs(b.Y) < Flat && MathF.Abs(c.Y) < Flat) { drop.Add((s, t)); loose = -1; continue; }
                 while (part + 1 < marked && parts.Starts[part + 1][s] <= t) part++;
                 int g;
                 if (part >= 0 && (parts.Closed == null || t < parts.Closed[s])) g = part;
