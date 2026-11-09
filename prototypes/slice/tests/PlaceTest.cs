@@ -1017,7 +1017,7 @@ public partial class PlaceTest : Node
                     yield return 0;
                 }
                 bool through = pair[0].Pos.DistanceTo(doorAt + outv * 3f) < 1.6f && pair[1].Pos.DistanceTo(doorAt - outv * 3f) < 1.6f; // (both past the way in)
-                Check(through && closest > need - 0.07f, $"two meeting in the way in get past each other without passing through (closest {closest:F2} m, bodies {need:F2} m; {(through ? "both through" : "not through")}; ends {pair[0].Pos.DistanceTo(doorAt + outv * 3f):F1} and {pair[1].Pos.DistanceTo(doorAt - outv * 3f):F1} m short, paths {pair[0].Path?.Count}/{pair[0].Step} {pair[1].Path?.Count}/{pair[1].Step}, indoors {pair[0].Indoors}/{pair[1].Indoors}, yield {pair[0].Yield:F1}/{pair[1].Yield:F1})");
+                Check(through && closest > need - 0.07f, $"two meeting in the way in get past each other without passing through (closest {closest:F2} m, bodies {need:F2} m; {(through ? "both through" : "not through")}; ends {pair[0].Pos.DistanceTo(doorAt + outv * 3f):F1} and {pair[1].Pos.DistanceTo(doorAt - outv * 3f):F1} m short, paths {pair[0].Path?.Count}/{pair[0].Step} {pair[1].Path?.Count}/{pair[1].Step}, indoors {pair[0].Indoors}/{pair[1].Indoors}, yield {pair[0].Yield:F1}/{pair[1].Yield:F1}{(through ? "" : $"; threat {pair[0].Threat?.Species.CommonName}/{pair[1].Threat?.Species.CommonName}, act {pair[0].Act}/{pair[1].Act}, seat {pair[0].Seat}/{pair[1].Seat}, partner {pair[0].Partner != null}/{pair[1].Partner != null}, fleeing {pair[0].Fleeing}/{pair[1].Fleeing}, walking {pair[0].Now:F1}/{pair[1].Now:F1}")})");
             }
             // One standing in the way in: you can't walk through them; walking into them presses them aside, and you get through.
             Town.Person block = town.People.Where(q => !q.Dead && !q.Indoors && !q.Away && q.Looks != null && q.Role != "guard" && q.Figure.Stage != Wildlife.LifeStage.Child).OrderBy(q => q.Pos.DistanceTo(doorAt)).FirstOrDefault();
@@ -1086,7 +1086,7 @@ public partial class PlaceTest : Node
                         yield return walking.Current;
                     }
                     float body = MathF.Max(0.2f, c.Species.Stats.Radius * 0.5f);
-                    Check(near > body, $"a creature blocks you too: you came no nearer than {near:F2} m to the {big.CommonName}'s middle (its body {body:F2} m; {(Posed() ? "posed" : "its rig never posed")}, {c.Rig?.HitCount} hit spheres, {game.Bodies?.InUse} shape parts in use{(c.Removed ? ", removed" : "")})");
+                    Check(near > body, $"a creature blocks you too: you came no nearer than {near:F2} m to the {big.CommonName}'s middle (its body {body:F2} m; {(Posed() ? "posed" : "its rig never posed")}, {c.Rig?.HitCount} hit spheres, {game.Bodies?.InUse} shape parts in use{(c.Removed ? ", removed" : "")}; the patch's sim {(ReferenceEquals(game.Zone.Wildlife.Sim, sim) ? "the same" : "another")}, in it {sim.Creatures.Contains(c)}, its rig {(c.Rig.BoundsCenter + game.Zone.Wildlife.Origin).DistanceTo(game.Survivor.WorldFeet):F1} m from you)");
                     sim.Remove(c);
                     game.Survivor.PlaceOutside((home + Vector3.Up * 0.3f).ToNumerics());
                     foreach (int x in drive.Wait(10)) yield return x;

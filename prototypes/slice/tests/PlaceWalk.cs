@@ -348,10 +348,9 @@ public sealed class PlaceWalk
     public List<Vector3> Overland(Vector3 from, Vector3 to, PoiSite target) =>
         Overland(from, to, target, 160f, 0.6f, false) ?? Overland(from, to, target, 420f, 0.6f, false) ?? Overland(from, to, target, 420f, 0.85f, false)
         ?? Overland(from, to, target, 420f, 0.85f, true) // swimming a river
-        ?? Overland(from, to, target, 420f, 1.4f, true) // and last, up the banks on the jetpack (the walk hops them)
-        ?? Overland(from, to, target, 420f, 1.4f, true, round: false); // a way in deep inside its own ground (a wreck's hatch): straight over it
+        ?? Overland(from, to, target, 420f, 1.4f, true); // and last, up the banks on the jetpack (the walk hops them)
 
-    List<Vector3> Overland(Vector3 from, Vector3 to, PoiSite target, float margin, float slope, bool swim, bool round = true)
+    List<Vector3> Overland(Vector3 from, Vector3 to, PoiSite target, float margin, float slope, bool swim)
     {
         var zone = _game.Zone;
         var src = zone.Planet.Source;
@@ -376,7 +375,7 @@ public sealed class PlaceWalk
                     if (src.CellDensity((int)MathF.Floor((float)wx), (int)MathF.Floor(h - down), (int)MathF.Floor((float)wz)) < 0f) { ok = false; break; }
             if (ok && new Vector2(x - to.X, z - to.Z).Length() > 18f && others.Any(s => _game.Places.DistanceTo(s, new Vector3(x, 0, z)) < 4f)) ok = false;
             // Round the place you are walking to, to its way in (a town is walked into from any side).
-            if (ok && round && target?.Instance.Townsfolk == null && target != null && new Vector2(x - to.X, z - to.Z).Length() > 18f && _game.Places.DistanceTo(target, new Vector3(x, 0, z)) < 2f) ok = false;
+            if (ok && target?.Instance.Townsfolk == null && target != null && new Vector2(x - to.X, z - to.Z).Length() > 18f && _game.Places.DistanceTo(target, new Vector3(x, 0, z)) < 2f) ok = false;
             return height[k] = ok ? h : float.NaN;
         }
         (int, int) Cell(Vector3 p) => ((int)MathF.Round((p.X - lo.X) / cell), (int)MathF.Round((p.Z - lo.Z) / cell));
