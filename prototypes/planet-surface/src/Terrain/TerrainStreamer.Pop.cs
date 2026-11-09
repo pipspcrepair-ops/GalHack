@@ -12,8 +12,20 @@ namespace PlanetSurface.Terrain;
 /// </summary>
 public partial class TerrainStreamer
 {
-    /// <summary>Flora's reach, m (flora.gdshader's): small growth and the near drawings to the first, large growth's far drawings to the second.</summary>
-    public const float FloraNearReach = 120f, FloraNearBand = 26f, FloraFarReach = 370f, FloraFarBand = 60f, FloraThinReach = 200f, FloraThinBand = 40f;
+    /// <summary>
+    /// Flora's drawings, by the layer each batch is (flora.gdshader's flora_layer): 0 large growth's
+    /// near drawing, 1 its far drawing, 3 the distant drawing of a share of it, 4 small growth.
+    /// </summary>
+    public const int NearLayer = 0, FarLayer = 1, DistantLayer = 3, SmallLayer = 4;
+
+    /// <summary>How far from the eye a layer's drawings can show at all, m (each plant's own reach is up to a tenth less).</summary>
+    public static (float From, float To) FloraLayerReach(int layer) => layer switch
+    {
+        NearLayer => (0f, DetailReach.Near),
+        SmallLayer => (0f, DetailReach.Small),
+        FarLayer => (DetailReach.Near * 0.9f - DetailReach.NearBand, MathF.Max(DetailReach.Far, DetailReach.Thin)),
+        _ => (DetailReach.Far * 0.9f - DetailReach.FarBand, DetailReach.Distant),
+    };
 
     readonly Dictionary<(int, int), float> _meshHeight = new();
 
@@ -37,16 +49,38 @@ public partial class TerrainStreamer
         foreach (FloraBatch b in flora)
         {
             float height = MeshHeight(b);
-            int mesh = b.Plant * 64 + b.Variant + 1;
+            int layer = b.Layer, mesh = b.Plant * 256 + b.Variant + 128 + (layer == DistantLayer ? 1 << 24 : 0);
             for (int i = 0; i < b.Count; i++)
             {
                 int o = i * 16;
                 float lx = b.Buffer[o + 3], lz = b.Buffer[o + 11];
                 float away = new Vector2(x0 + lx - eye.X, z0 + lz - eye.Z).Length();
-                float shows = FloraShows(b.Far, b.Buffer[o + 15] >= 1.5f, away, x0 + lx, z0 + lz);
+                float shows = FloraShows(layer, b.Buffer[o + 15] >= 1.5f, away, x0 + lx, z0 + lz);
                 if (shows <= 0f) continue;
                 long id = FarBuilder.ScatterId(fx, fz, (int)(lx / FarBuilder.ScatterCell), (int)(lz / FarBuilder.ScatterCell));
                 into[(id, mesh)] = (shows, height * b.Buffer[o + 5], away);
+            }
+        }
+    }
+
+    /// <summary>Every plant drawn and how much of it shows from an eye (frame coordinates), as the shader has it, by layer: tests measure flora's reach with it.</summary>
+    public IEnumerable<(float Away, int Layer, float Shows)> FloraShown(Vector3 eye)
+    {
+        double w = World.Terrain.Width, h = World.Terrain.Height;
+        foreach (FarChunk f in _far.Values)
+        {
+            if (f.Node == null || f.Flora == null) continue;
+            float x0 = (float)NearestCopy(f.Fx * FarBuilder.Size, FarBuilder.Size, eye.X, w), z0 = (float)NearestCopy(f.Fz * FarBuilder.Size, FarBuilder.Size, eye.Z, h);
+            foreach (FloraBatch b in f.Flora)
+            {
+                int layer = b.Layer;
+                for (int i = 0; i < b.Count; i++)
+                {
+                    int o = i * 16;
+                    float x = x0 + b.Buffer[o + 3], z = z0 + b.Buffer[o + 11];
+                    float away = new Vector2(x - eye.X, z - eye.Z).Length();
+                    yield return (away, layer, FloraShows(layer, b.Buffer[o + 15] >= 1.5f, away, x, z));
+                }
             }
         }
     }
@@ -86,15 +120,29 @@ public partial class TerrainStreamer
 
     /// <summary>
     /// How much of one drawing of a scattered plant shows at a distance (m, flat, from the eye), as
-    /// flora.gdshader has it: the near drawing its share, the far drawing the rest of what shows.
+    /// flora.gdshader has it: the near drawing its share, the far drawing the rest of what shows, and
+    /// the distant drawing (a share of the large growth) what shows past the far drawing's reach.
+    /// Small growth has its near drawing only; its thinning share goes at three fifths of its reach.
     /// </summary>
-    public static float FloraShows(bool far, bool thin, float away, float x, float z)
+    public static float FloraShows(int layer, bool thin, float away, float x, float z)
     {
         float s = MathF.Sin(x * 12.9898f + z * 78.233f) * 43758.5453f;
-        float own = 0.9f + 0.1f * (s - MathF.Floor(s));
-        float near = Shown(FloraNearReach * own, FloraNearBand, away);
-        if (!far) return near;
-        float most = thin ? Shown(FloraThinReach * own, FloraThinBand, away) : Shown(FloraFarReach * own, FloraFarBand, away);
-        return MathF.Max(0f, most - near);
+        float r = s - MathF.Floor(s), own = 0.9f + 0.1f * r, ownThin = 0.75f + 0.25f * r, ownSmall = 0.7f + 0.3f * r;
+        float near = Shown(DetailReach.Near * own, DetailReach.NearBand, away);
+        float far = Shown(DetailReach.Far * own, DetailReach.FarBand, away);
+        if (layer == NearLayer) return near;
+        if (layer == SmallLayer) return Shown(DetailReach.Small * (thin ? 0.6f : 1f) * ownSmall, DetailReach.SmallBand, away);
+        if (layer == FarLayer) return MathF.Max(0f, (thin ? Shown(DetailReach.Thin * ownThin, DetailReach.ThinBand, away) : far) - near);
+        return MathF.Max(0f, Shown(DetailReach.Distant * (0.95f + 0.05f * r), DetailReach.DistantBand, away) - far);
     }
+
+    /// <summary>
+    /// How much of the large growth's cover shows at a distance, all its drawings together, as
+    /// flora.gdshader has it, for a plant of the thinning share or not: 1 near, then the distant
+    /// drawings' share of it (a share of the plants, each a little bigger). It should only fall off in
+    /// bands, never in a step.
+    /// </summary>
+    public static float LargeCover(bool thin, float away, float x, float z) =>
+        FloraShows(NearLayer, thin, away, x, z) + FloraShows(FarLayer, thin, away, x, z)
+        + FloraShows(DistantLayer, thin, away, x, z) * DetailReach.DistantShare * DetailReach.DistantGrow * DetailReach.DistantGrow;
 }

@@ -110,7 +110,9 @@ public sealed class OptionsSection : IMenuSection
     {
         GameSettings s = S;
         int i = 0;
-        Rect2 r = Row(g, body, i++, "WINDOW");
+        // Eleven rows and the button under them: shorter rows where the page is short.
+        float rh = MathF.Min(RowH, (body.Size.Y - 52f) / 11f);
+        Rect2 r = Row(g, body, i++, "WINDOW", null, rh);
         int w = Choice(g, "opt:window", r, new[] { "WINDOWED", "BORDERLESS", "FULL SCREEN" }, (int)s.Window, 210);
         if (w >= 0 && w != (int)s.Window)
         {
@@ -119,7 +121,7 @@ public sealed class OptionsSection : IMenuSection
         }
 
         bool windowed = s.Window == WindowKind.Windowed;
-        r = Row(g, body, i++, "RESOLUTION");
+        r = Row(g, body, i++, "RESOLUTION", null, rh);
         List<Vector2I> sizes = Resolutions(s.Resolution);
         int at = sizes.IndexOf(s.Resolution);
         if (g.Button("opt:res-down", new Rect2(r.Position, new Vector2(64, r.Size.Y)), "<", C.Accent2, windowed && at > 0, size: 22))
@@ -134,7 +136,7 @@ public sealed class OptionsSection : IMenuSection
             Changed();
         }
 
-        r = Row(g, body, i++, "VSYNC");
+        r = Row(g, body, i++, "VSYNC", null, rh);
         int v = Choice(g, "opt:vsync", r, new[] { "ON", "OFF" }, s.Vsync ? 0 : 1, 150);
         if (v >= 0 && (v == 0) != s.Vsync)
         {
@@ -142,7 +144,7 @@ public sealed class OptionsSection : IMenuSection
             Changed();
         }
 
-        r = Row(g, body, i++, "FRAME RATE CAP");
+        r = Row(g, body, i++, "FRAME RATE CAP", null, rh);
         int[] caps = GameSettings.FpsCaps;
         int cap = Choice(g, "opt:fps", r, caps.Select(f => f == 0 ? "NONE" : $"{f}").ToArray(), Array.IndexOf(caps, s.FpsCap), 96);
         if (cap >= 0 && caps[cap] != s.FpsCap)
@@ -151,13 +153,13 @@ public sealed class OptionsSection : IMenuSection
             Changed();
         }
 
-        r = Row(g, body, i++, "RENDER SCALE", "3D view only");
+        r = Row(g, body, i++, "RENDER SCALE", "3D view only", rh);
         if (Range(g, "opt:render-scale", r, ref s.RenderScale, GameSettings.MinScale, 1f, 0.05f, x => $"{x * 100f:F0}%")) Changed();
 
-        r = Row(g, body, i++, "FIELD OF VIEW");
+        r = Row(g, body, i++, "FIELD OF VIEW", null, rh);
         if (Range(g, "opt:fov", r, ref s.Fov, GameSettings.MinFov, GameSettings.MaxFov, 1f, x => $"{x:F0} DEG")) Changed();
 
-        r = Row(g, body, i++, "SHADOWS");
+        r = Row(g, body, i++, "SHADOWS", null, rh);
         int sh = Choice(g, "opt:shadows", r, new[] { "LOW", "MEDIUM", "HIGH", "ULTRA" }, (int)s.Shadows, 150);
         if (sh >= 0 && sh != (int)s.Shadows)
         {
@@ -165,7 +167,7 @@ public sealed class OptionsSection : IMenuSection
             Changed();
         }
 
-        r = Row(g, body, i++, "GROUND DETAIL", "diggable radius");
+        r = Row(g, body, i++, "GROUND DETAIL", "diggable radius", rh);
         int[] radii = Enumerable.Range(GameSettings.MinGround, GameSettings.MaxGround - GameSettings.MinGround + 1).ToArray();
         int gd = Choice(g, "opt:ground", r, radii.Select(n => $"{n * 16} M").ToArray(), Array.IndexOf(radii, s.GroundDetail), 120);
         if (gd >= 0 && radii[gd] != s.GroundDetail)
@@ -174,10 +176,16 @@ public sealed class OptionsSection : IMenuSection
             Changed();
         }
 
-        r = Row(g, body, i++, "BRIGHTNESS");
+        r = Row(g, body, i++, "DETAIL DISTANCE", null, rh);
+        if (Range(g, "opt:detail", r, ref s.DetailDistance, DetailStepsFrom, DetailStepsTo, 20f, x => $"{x / 1000f:F1} KM")) Changed();
+
+        r = Row(g, body, i++, "SPAWN DISTANCE", null, rh);
+        if (Range(g, "opt:spawn", r, ref s.SpawnDistance, SpawnStepsFrom, SpawnStepsTo, 20f, x => $"{x:F0} M")) Changed();
+
+        r = Row(g, body, i++, "BRIGHTNESS", null, rh);
         if (Range(g, "opt:gamma", r, ref s.Gamma, GameSettings.MinGamma, GameSettings.MaxGamma, 0.05f, x => $"{x:F2}")) Changed();
 
-        float foot = body.Position.Y + i * RowH + 4;
+        float foot = body.Position.Y + i * rh + 4;
         if (View != null && g.Button("opt:view", new Rect2(body.End.X - 300, foot, 300, 44), "VIEW THE WORLD", C.Accent2)) View();
     }
 
@@ -239,9 +247,9 @@ public sealed class OptionsSection : IMenuSection
         }
         var fixedKeys = new Rect2(body.Position.X, body.End.Y - 62, body.Size.X, 58);
         g.Fill(fixedKeys, new Color(C.Panel, 0.6f));
-        g.Text("FIXED     ESC  this menu     LEFT MOUSE  use, dig, build, shoot     RIGHT MOUSE  take a block away     WHEEL  slot or shape",
+        g.Text("FIXED     ESC  MENU     LMB  USE · DIG · BUILD · SHOOT     RMB  TAKE DOWN     WHEEL  SLOT · SHAPE",
             fixedKeys.Position + new Vector2(14, 7), C.Dim, 15);
-        g.Text("IN MENUS     /  search     CTRL+A  select all     SHIFT-CLICK  move a stack     + AND -  zoom the map",
+        g.Text("IN MENUS     /  SEARCH     CTRL+A  SELECT ALL     SHIFT-CLICK  MOVE STACK     + AND -  ZOOM MAP",
             fixedKeys.Position + new Vector2(14, 31), C.Dim, 15);
     }
 
@@ -333,6 +341,16 @@ public sealed class OptionsSection : IMenuSection
         }
         return picked;
     }
+
+    /// <summary>The detail distance slider's two ends, m: the default and the horizon.</summary>
+    public const float DetailStepsFrom = PlanetSurface.Terrain.DetailReach.Default, DetailStepsTo = PlanetSurface.Terrain.DetailReach.Most;
+
+    /// <summary>The spawn distance slider's two ends, m, and the value it gives at a point along it (0..1).</summary>
+    public const float SpawnStepsFrom = Slice.Surface.SpawnReach.Default, SpawnStepsTo = Slice.Surface.SpawnReach.Most;
+    public static float SpawnAt(float t) => Mathf.Clamp(Mathf.Snapped(SpawnStepsFrom + Mathf.Clamp(t, 0f, 1f) * (SpawnStepsTo - SpawnStepsFrom), 20f), SpawnStepsFrom, SpawnStepsTo);
+
+    /// <summary>The value the detail distance slider gives at a point along it (0..1), as dragging it does.</summary>
+    public static float DetailAt(float t) => Mathf.Clamp(Mathf.Snapped(DetailStepsFrom + Mathf.Clamp(t, 0f, 1f) * (DetailStepsTo - DetailStepsFrom), 20f), DetailStepsFrom, DetailStepsTo);
 
     /// <summary>A slider over a range, snapped to a step, its value shown at its right end. True when it moved.</summary>
     static bool Range(Gui g, string id, Rect2 r, ref float value, float min, float max, float step, Func<float, string> shown)

@@ -102,7 +102,7 @@ public sealed partial class BuildTool
         if (frame is not Transform3D at)
         {
             job.Why = why;
-            Said?.Invoke($"{plan.Name}: {why.ToLowerInvariant()}", Tones.Caution);
+            Said?.Invoke($"{plan.Name} · {why}", Tones.Caution);
             yield break;
         }
         // The body and its colliders now; its look over the next frames.

@@ -110,6 +110,9 @@ public sealed class Progress
     /// <summary>A node was unlocked.</summary>
     public event Action<TechNode> Unlocked;
 
+    /// <summary>A free node came with a new level: a recipe learnt.</summary>
+    public event Action<TechNode> Learnt;
+
     /// <summary>
     /// The tabs: Large (the Big Core: Base, Hover and Flight modes, one tab since they share every
     /// block and component), Small (the Small Core: Hover and Flight), then tools, weapons and misc
@@ -157,6 +160,7 @@ public sealed class Progress
                 if (n.Cost == 0 && n.Level <= level && !_unlocked.Contains(n.Id) && ParentOk(n))
                 {
                     Grant(n);
+                    Learnt?.Invoke(n);
                     more = true;
                 }
         }
@@ -286,7 +290,7 @@ public sealed class Progress
     {
         TechNode n = Node(nodeId);
         if (n == null || IsUnlocked(nodeId)) return null;
-        return StateOf(n) == UnlockState.NeedsLevel ? $"Locked: level {n.Level} in the tech tree" : "Locked: unlock it in the tech tree (Tab)";
+        return StateOf(n) == UnlockState.NeedsLevel ? $"LOCKED · LV {n.Level}" : "LOCKED · [TAB] TECH";
     }
 
     /// <summary>Spends points on a node. False if it isn't affordable now.</summary>

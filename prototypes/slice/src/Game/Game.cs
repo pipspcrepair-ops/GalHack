@@ -73,6 +73,8 @@ public partial class Game : Node3D
 
     /// <summary>Hazards and attacks as symbols, over every menu.</summary>
     public Alerts Alerts { get; private set; }
+    /// <summary>News in its own slot: levels, unlocks, recipes learnt, claims, orders made, blueprints saved.</summary>
+    public Notices Notices { get; private set; }
     public TabMenu Menu { get; private set; }
     public CockpitConsole Console { get; private set; }
     /// <summary>The in-world screens on constructors and base-mode Big Cores (looked at to use).</summary>
@@ -243,6 +245,8 @@ public partial class Game : Node3D
         AddChild(Escape);
         Alerts = new Alerts { Name = "Alerts", Game = this };
         AddChild(Alerts);
+        Notices = new Notices { Name = "Notices", Game = this };
+        AddChild(Notices);
         Debug = new DebugHud { Name = "Debug", Game = this, Visible = false };
         AddChild(Debug);
         Said += (text, colour) => Visor.Say(text, colour);
@@ -486,7 +490,7 @@ public partial class Game : Node3D
     {
         if (!WorldRay.Cast(Zone, Survivor, 9f, Layers.World | Layers.Hull, out LookHit look) || look.Normal.Y < 0.5f)
         {
-            Say("Needs open ground", Tones.Caution);
+            Say("NEEDS OPEN GROUND", Tones.Caution);
             return;
         }
         if (Pack.Remove("hover-bike", 1) < 1) return;
@@ -585,7 +589,7 @@ public partial class Game : Node3D
         Builder.Hide();
         Slot s = Pack.InHand;
         string id = Pack.HandItem;
-        string what = s.Block == PlayerInventory.BlueprintBlock ? "Blueprint projector: the Skiff" : id != null && Zone.Data.Items.TryGet(id, out var item) ? item.Name : "empty hands";
+        string what = s.Block == PlayerInventory.BlueprintBlock ? "BLUEPRINT · SKIFF" : id != null && Zone.Data.Items.TryGet(id, out var item) ? item.Name : "EMPTY";
         string origin = Pack.OnRemoteBar && Pack.HandRemote is RemoteSlot rs ? $" ({rs.Origin})" : "";
     }
 

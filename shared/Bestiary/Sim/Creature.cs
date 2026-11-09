@@ -169,6 +169,8 @@ public sealed class Creature
 
     /// <summary>Rig update interval in frames, set by the view by distance (1 near, more far away).</summary>
     public int RigInterval = 1;
+    /// <summary>How many times less often it thinks while calm, by how far off it is (the view sets it): far off, the same creature, only slower to decide.</summary>
+    public float ThinkScale = 1f;
     /// <summary>Asleep where it is: too far from anyone to matter, so it isn't stepped at all (a large place's far rooms).</summary>
     public bool Dormant;
     public float RigPending;

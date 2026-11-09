@@ -28,7 +28,7 @@ public partial class InfraLayer : Node3D
     /// Tiles within this distance of the camera are built; past it plus a margin they are freed. As far as
     /// the far rings reach, corners included: a pad shows in the far ground, and what stands on it must be there already.
     /// </summary>
-    public static float Radius = 1320f;
+    public static float Radius => PlanetSurface.Terrain.DetailReach.InfraRadius;
 
     /// <summary>One thing to draw, in the tile its middle falls in.</summary>
     public abstract class Piece
@@ -246,7 +246,9 @@ public partial class InfraLayer : Node3D
             if (tile.Node != null)
             {
                 // Written only when it changes: a same-spot write still tells every body and mesh under the node.
+                // Far out (a long detail distance) it sinks over the round world's horizon with the land under it.
                 Vector3 at = _world.NearestCopy(new Vector3((float)(tile.Ix * TileSize), 0f, (float)(tile.Iz * TileSize)), camera);
+                at.Y = -PlanetSurface.Terrain.TerrainStreamer.RoundSink((float)TileDistance(tile.Ix, tile.Iz, cx, cz));
                 if (tile.Node.Position != at) tile.Node.Position = at;
             }
         }

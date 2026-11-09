@@ -110,6 +110,8 @@ public partial class Game
             light.DirectionalShadowMode = s.Splits;
         }
         if (Surface?.Streamer != null) Surface.Streamer.VoxelRadius = Settings.GroundDetail;
+        PlanetSurface.Terrain.DetailReach.Set(Settings.DetailDistance);
+        Slice.Surface.SpawnReach.Set(Settings.SpawnDistance);
     }
 
     /// <summary>A shadow level as the engine's numbers.</summary>

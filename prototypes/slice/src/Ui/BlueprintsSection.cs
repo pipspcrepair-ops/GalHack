@@ -369,7 +369,7 @@ public sealed class BlueprintsSection : IMenuSection
         }
         CloseSave();
         Select(saved);
-        _game.Say($"Saved: {saved.Name}", Tones.Good);
+        _game.Notices.Post(NoticeKind.Saved, "SAVED", saved.Name);
         return true;
     }
 

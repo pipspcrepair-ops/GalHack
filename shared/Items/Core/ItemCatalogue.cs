@@ -293,7 +293,7 @@ public sealed class ItemCatalogue
                 Source = ItemSource.Crafted,
                 MassKg = MassOf(made),
                 VolumeSu = VolumeOf(made),
-                Uses = s.Uses ?? (bill.Family == BlockFamily.Armour ? "Placed as any of its shapes" : "Placed as a block"),
+                Uses = s.Uses ?? (bill.Family == BlockFamily.Armour ? "Any shape" : "Block"),
                 StackSize = s.Stack ?? _blockStack[(bill.Family, small)],
                 Unlock = s.Unlock ?? bill.UnlockFor(small),
                 BlockId = bill.BlockId,
@@ -324,7 +324,7 @@ public sealed class ItemCatalogue
             Id = id, Name = name, Short = shortName, Named = true,
             Category = ItemCategory.Block, Rarity = inputs.Select(i => i.Item1.Rarity).Aggregate(Rarity.Common, Rarities.Max), Source = ItemSource.Crafted,
             MassKg = MassOf(bill), VolumeSu = VolumeOf(bill),
-            Uses = "One block places any deco piece: pick the piece from the gallery, each placement uses one block",
+            Uses = "Any deco piece · one block each",
             StackSize = 50, Unlock = unlock, BlockId = DecoCatalogue.UniversalBlock, SmallGrid = false, Family = BlockFamily.Deco,
         };
         item.Recipe = new Recipe { Output = item, Count = 1, Inputs = inputs, Seconds = 3, Tier = Math.Max(tier, inputs.Max(i => TierOf(i.Item1, null))) };

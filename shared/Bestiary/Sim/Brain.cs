@@ -18,7 +18,7 @@ public static partial class Brain
     {
         bool busy = c.Alert > 0f || c.State is CState.Chase or CState.Flee or CState.Stalk or CState.Tell or CState.Warn;
         float jitter = 0.01f * (c.Id % 6);
-        return busy ? 0.2f + jitter : 0.44f + jitter;
+        return busy ? 0.2f + jitter : (0.44f + jitter) * c.ThinkScale;
     }
 
     /// <summary>

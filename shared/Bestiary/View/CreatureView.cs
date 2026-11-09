@@ -268,6 +268,14 @@ public partial class WildlifeView : Node3D
     readonly List<Creature> _gone = new();
 
     public float NearDistance = 60f, MidDistance = 120f, FarDistance = 220f;
+
+    /// <summary>
+    /// Far off, how far up a creature's body is drawn from where the sim has it, m: the game's far land
+    /// is a coarser mesh than the sim's ground, and a body stands on what is drawn under it, never over
+    /// or in it. Left out, or nearer than <see cref="LiftFrom"/>, nothing moves.
+    /// </summary>
+    public System.Func<Creature, float> Lift;
+    public float LiftFrom = 200f;
     /// <summary>Where heavy footfalls are heard; left out, they aren't.</summary>
     public ProceduralAudio Audio;
     /// <summary>The lightest thing heard walking from any way off, kg, and how far.</summary>
@@ -284,6 +292,12 @@ public partial class WildlifeView : Node3D
     }
 
     public int ViewCount => _views.Count;
+
+    /// <summary>Whether a creature's body is drawn now (tests).</summary>
+    public bool Drawn(Creature c) => _views.TryGetValue(c, out CreatureView v) && v.Visible;
+
+    /// <summary>How far up a creature's body is drawn from where the sim has it (<see cref="Lift"/>), m (tests).</summary>
+    public float DrawnLift(Creature c) => _views.TryGetValue(c, out CreatureView v) ? v.Position.Y : 0f;
 
     /// <summary>The most new bodies built in a frame (a whole herd coming into view is spread over a few).</summary>
     public int MostNew = int.MaxValue;
@@ -351,6 +365,7 @@ public partial class WildlifeView : Node3D
             float d = WildSim.Flat(c.Position - camera).Length();
             float far = c.Species.Plan == BodyPlan.Giant ? FarDistance * 2.5f : FarDistance;
             c.RigInterval = d < NearDistance ? 1 : d < MidDistance ? 2 : d < far ? 4 : 12;
+            c.ThinkScale = d < MidDistance ? 1f : d < far ? 2f : 3f;
             bool visible = d < far;
             float shows = visible ? 1f : 0f, was = view.Shows;
             if (Fader != null)
@@ -368,7 +383,12 @@ public partial class WildlifeView : Node3D
             }
             if (fresh ? visible : view.Visible != visible) Shown?.Invoke(c, d, visible, visible ? shows : Fader != null ? was : 1f);
             if (view.Visible != visible) view.Visible = visible;
-            if (visible && (c.RigInterval == 1 || c.RigPending == 0f)) view.Sync();
+            if (visible && (c.RigInterval == 1 || c.RigPending == 0f))
+            {
+                view.Sync();
+                float lift = Lift != null && d > LiftFrom ? Lift(c) : 0f;
+                if (MathF.Abs(view.Position.Y - lift) > 0.01f) view.Position = new Vector3(0f, lift, 0f);
+            }
             view.Listen(d);
             if (Audio != null && d < StepHeard && c.Rig.Steps != c.StepsHeard)
             {

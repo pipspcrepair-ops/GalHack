@@ -14,7 +14,7 @@ namespace Wildlife;
 public partial class PersonView : Node3D
 {
     /// <summary>Beyond this a person isn't drawn at all, m.</summary>
-    public const float FarRange = 340f;
+    public static float FarRange = 340f; // a game's spawn distance can take it further
     /// <summary>The last stretch before <see cref="FarRange"/> they dissolve out over, with the game's fade, m.</summary>
     public const float FadeBand = 30f;
     /// <summary>How long a body built in sight takes to dissolve in, s.</summary>
@@ -152,12 +152,16 @@ public partial class PersonView : Node3D
     /// built in sight dissolves in over <see cref="ArriveSeconds"/>, and one near <see cref="FarRange"/>
     /// dissolves out by distance. False once none of them shows: nothing need pose them.
     /// </summary>
+    /// <summary>A body built in sight, how far off (measurements: the game's pop-in log).</summary>
+    public static System.Action<float> Arrives;
+
     public bool Fade(float distance, float dt)
     {
         if (_fresh)
         {
             _fresh = false;
             _arrived = distance < FarRange ? 0f : 1f;
+            if (distance < FarRange) Arrives?.Invoke(distance);
         }
         else if (_arrived < 1f) _arrived = MathF.Min(1f, _arrived + dt / ArriveSeconds);
         float shows = Fader == null ? (distance < FarRange ? 1f : 0f) : MathF.Min(Math.Clamp((FarRange - distance) / FadeBand, 0f, 1f), _arrived);

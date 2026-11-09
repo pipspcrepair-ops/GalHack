@@ -61,7 +61,7 @@ public partial class Spaceflight
                 return true;
             case HandKind.Block or HandKind.Device or HandKind.Blueprint:
                 Halt();
-                if (pressed) Game.Say("No building in orbit", Tones.Caution);
+                if (pressed) Game.Say("NO BUILDING IN ORBIT", Tones.Caution);
                 return true;
             default:
                 Halt();
@@ -107,7 +107,7 @@ public partial class Spaceflight
         if (!v.IsDerelict)
         {
             Halt();
-            Refuse(v.Derelict != null ? $"The {v.Name} is yours now: take its blocks down with the build tool" : "Salvage is for wrecks: nothing of yours is taken apart this way");
+            Refuse(v.Derelict != null ? $"{v.Name} · YOURS · USE BUILD TOOL" : "SALVAGE · WRECKS ONLY");
             return;
         }
         Structure s = v.Structure;
@@ -115,7 +115,7 @@ public partial class Spaceflight
         if (type.IsContainer && !v.Storage.IsEmpty)
         {
             Halt();
-            Refuse("Its hold still has things in it: E on a cargo box and take them first");
+            Refuse("HOLD NOT EMPTY · [E] CARGO BOX");
             return;
         }
         if (v != _salvaging || look.Cell != _salvageCell)
@@ -210,20 +210,20 @@ public partial class Spaceflight
         string item = Game.Pack.InHand.Item;
         if (!WorldRay.Cast(Game.Zone, Game.Survivor, Slice.Game.Game.UseReach + 1f, Layers.Hull, out LookHit look) || look.Vessel == null)
         {
-            Game.Say("Aim at a wreck's block to set the core into it", Tones.Caution);
+            Game.Say("NO WRECK BLOCK", Tones.Caution);
             return;
         }
         Vessel v = look.Vessel;
         Structure s = v.Structure;
         if (s.Core != null)
         {
-            Game.Say($"The {v.Name} already has a core", Tones.Caution);
+            Game.Say($"{v.Name} · HAS A CORE", Tones.Caution);
             return;
         }
         bool large = s.Grid.Id == "large";
         if (large != (item == PlayerInventory.BigCore))
         {
-            Game.Say(large ? "A big wreck takes a Big Core" : "A small wreck takes a Small Core", Tones.Caution);
+            Game.Say(large ? "BIG WRECK · BIG CORE ONLY" : "SMALL WRECK · SMALL CORE ONLY", Tones.Caution);
             return;
         }
         N.Vector3 n = MathX.Unrotate(v.Body.Rotation, look.Normal.ToNumerics());
@@ -234,7 +234,7 @@ public partial class Spaceflight
         PlaceError e = Building.Place(s, cell, core, null, Building.DefaultOwner);
         if (e != PlaceError.None)
         {
-            Game.Say($"The core won't seat there ({e}): try a flat face inside", Tones.Caution);
+            Game.Say($"CORE WON'T SEAT · {e}", Tones.Caution);
             return;
         }
         Game.Pack.Storage.Remove(item, 1);
@@ -243,7 +243,7 @@ public partial class Spaceflight
         v.Claimed(Game.Surface.Physics.Zone.Strength);
         Game.Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Place, look.Point, 0.7f, -2f);
         Game.Progress.Earn(40, "wreck claimed");
-        Game.Say($"Claimed: {v.Name}", Tones.Good);
+        Game.Notices.Post(Slice.Ui.NoticeKind.Claimed, "CLAIMED", v.Name);
         Claimed?.Invoke(v);
     }
 
