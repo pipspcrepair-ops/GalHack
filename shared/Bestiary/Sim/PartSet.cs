@@ -356,6 +356,15 @@ public sealed class PartSet
 
     readonly Dictionary<(long A, long B, int Body), Vector3[]> _vias = new();
 
+    /// <summary>A way from where a body stands to a point a cell or two off, round whatever bars the straight way (its corners), or null. Not remembered.</summary>
+    public List<Vector3> WayRound(Vector3 from, Vector3 to, float radius, float height, Func<int, int, int, bool> walls, float wallRadius)
+    {
+        var a = new Vector3I(Fl(from.X), Fl(from.Y + 0.05f), Fl(from.Z));
+        var b = new Vector3I(Fl(to.X), Fl(to.Y + 0.05f), Fl(to.Z));
+        if (Math.Abs(a.X - b.X) > 2 || Math.Abs(a.Z - b.Z) > 2) return null;
+        return Round(a, from, b, to, radius, height, walls, wallRadius);
+    }
+
     /// <summary>The way round what bars two neighbouring cells' points: a search over both cells, then pulled straight (the corners between them), or null.</summary>
     List<Vector3> Round(Vector3I a, Vector3 from, Vector3I b, Vector3 to, float radius, float height, Func<int, int, int, bool> walls, float wallRadius)
     {

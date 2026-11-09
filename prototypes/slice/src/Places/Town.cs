@@ -106,6 +106,8 @@ public sealed partial class Town
         public bool Indoors, Sitting, Fleeing;
         /// <summary>In a seat, or up out of it and not yet clear of it (and of the table it was drawn up to).</summary>
         public bool GettingUp;
+        /// <summary>How long they have been held where they stood by the furniture.</summary>
+        public float Blocked;
         /// <summary>In bed for the night (lying on it), and how far down into it.</summary>
         public bool Asleep;
         public float Slept;
@@ -590,6 +592,12 @@ public sealed partial class Town
         if (Ground(p.Pos) is float ground && MathF.Abs(ground - p.Pos.Y) < 0.75f) p.Pos.Y = ground;
         // And never into the furniture or the clutter: held off its real shape.
         OffParts(p, was);
+        // Held where it stood (a piece across the straight way to the next point): round it, by a way found over the cells there.
+        if ((p.Pos - was).LengthSquared() < 1e-8f && _parts != null && (p.Blocked += dt) > 0.5f)
+        {
+            p.Blocked = 0f;
+            if (_parts.WayRound(p.Pos, to, BodyRadius(p), Height(p), Place.WallsOf(_nav), PlaceParts.PersonRadius) is { Count: > 0 } round) p.Path.InsertRange(p.Step, round);
+        }
         p.Yaw = Mathf.RotateToward(p.Yaw, MathF.Atan2(-d.X, -d.Z), 5f * dt);
         p.Sitting = false;
         return false;
