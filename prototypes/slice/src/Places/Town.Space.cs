@@ -53,7 +53,10 @@ public sealed partial class Town
         foreach (Person p in People)
         {
             if (p.Dead || p.Gone || p.Indoors || p.Away || p.Looks == null || _held.Contains(p)) continue;
-            Vector3 heading = p.Now > 0.1f ? new Vector3(-MathF.Sin(p.Yaw), 0f, -MathF.Cos(p.Yaw)) : Vector3.Zero;
+            // One stepping back to let another by is still on their way: counted standing, they would have the other wait in
+            // turn, and the two would take turns giving way in a narrow way for good.
+            bool giving = p.Yield > 0f && p.Path != null && p.Step < p.Path.Count;
+            Vector3 heading = p.Now > 0.1f || giving ? new Vector3(-MathF.Sin(p.Yaw), 0f, -MathF.Cos(p.Yaw)) : Vector3.Zero;
             _space.Bodies.Add(new PersonalSpace.Body { Pos = p.Pos, Radius = BodyRadius(p), Heading = heading, Give = Give(p) });
             _bodies.Add(p);
         }
