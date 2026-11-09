@@ -59,6 +59,7 @@ public partial class LayersTest : Node
                 goto done;
             }
             Data();
+            Off();
             var worlds = RollMany(700);
             Flora(worlds);
             Creatures();

@@ -30,6 +30,9 @@ public sealed class WorldLayer
     public float Weight = 1f, Chance = 1f, Break = -1f, Settle = 1f;
     public int Streets;
     public bool Start, Blank, Soft;
+    /// <summary>Not built yet: its signature (the places, sky, hazards or marks it names) has nothing behind it in the game, so a roll never picks it and a new game's pickers don't offer it. A test or <c>--layer</c> can still force it. The words after <c>off</c> in the data say why.</summary>
+    public bool Off;
+    public string? OffWhy;
     public string? Group, Speed, Base, Arch, Kit, Net, Stamp;
     /// <summary>What a value is made of: each word has a rule. On a clash, the second word.</summary>
     public List<string> Is = new(), Needs = new(), Tags = new(), Orbit = new();
@@ -58,7 +61,7 @@ public static class LayerParser
     static readonly Dictionary<string, LayerKind> Kinds = Enum.GetValues<LayerKind>().ToDictionary(k => k.ToString().ToLowerInvariant());
 
     /// <summary>Plain words for people reading the data, or links to other documents: the game has no use for them.</summary>
-    static readonly HashSet<string> ForReaders = new() { "identity", "why", "shows", "keeps", "was", "zones", "new", "n", "to", "wear", "list", "dress" };
+    static readonly HashSet<string> ForReaders = new() { "identity", "why", "shows", "keeps", "was", "zones", "new", "n", "to", "wear", "list", "dress", "later" };
 
     public static List<WorldLayer> Parse(string text, string source)
     {
@@ -105,6 +108,7 @@ public static class LayerParser
             case "start": l.Start = One() == "yes"; break;
             case "blank": l.Blank = One() == "yes"; break;
             case "soft": l.Soft = One() == "yes"; break;
+            case "off": l.Off = true; l.OffWhy = field["off".Length..].Trim(); break;
             case "group": l.Group = One(); break;
             case "speed": l.Speed = One(); break;
             case "base": l.Base = One(); break;
@@ -351,7 +355,7 @@ public sealed class WorldRoll
             var rare = new List<WorldLayer>();
             foreach (WorldLayer l in Table(kind))
             {
-                if (where != null && !where(l) || _given.Barred(kind, l.Id)) continue;
+                if (where != null && !where(l) || l.Off || _given.Barred(kind, l.Id)) continue;
                 var (hard, soft) = Legal(l);
                 if (hard && soft) pool.Add(l);
                 else if (hard) rare.Add(l);

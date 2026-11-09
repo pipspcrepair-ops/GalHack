@@ -53,8 +53,8 @@ public sealed record WorldForce
                 if (Enum.TryParse(kind.Key, true, out LayerKind k)) given.Set(k, kind.Select(p => p[1]).ToArray());
     }
 
-    /// <summary>The values a picker offers for a layer: every value of it in the library, by id.</summary>
-    public static List<string> Values(PoiLibrary lib, LayerKind kind) => lib.Layers.Where(l => l.Kind == kind).Select(l => l.Id).ToList();
+    /// <summary>The values a picker offers for a layer: every value of it in the library that is built, by id. A value marked off (data/world-layers.txt) isn't offered, but can still be forced by id.</summary>
+    public static List<string> Values(PoiLibrary lib, LayerKind kind) => lib.Layers.Where(l => l.Kind == kind && !l.Off).Select(l => l.Id).ToList();
 
     /// <summary>A tech era from a word (low, mid, high), or null.</summary>
     public static TechLevel? Era(string? word) => word?.ToLowerInvariant() switch { "low" => TechLevel.Low, "mid" => TechLevel.Mid, "high" => TechLevel.High, _ => null };
