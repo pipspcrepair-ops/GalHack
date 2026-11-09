@@ -235,13 +235,16 @@ public sealed partial class PlanetWorld
         // Only a start world (or one a depth was asked for) has its real place yet: any other is found
         // a rim star for its sky, so its zone is still rolled by the odds rather than read off that star.
         float rollDepth = PoiSiting.StartWorld || force.Depth != null ? depth : -1f;
+        double Lap() { double t = watch.Elapsed.TotalMilliseconds; return t; }
         WorldMap map = PlanetGenerator.Generate(spec);
+        double tMap = Lap();
         LandingSite landing = Planets.Gen.Landing.Find(map, map.WidthMeters * 0.5, map.HeightMeters * 0.5);
         var bare = new PlanetTerrainSource(map);
         PoiGenerator.Gen.WorldRoll roll = catalog == null ? null : PoiSiting.RollOf(catalog.Library, map, profile, depth: rollDepth);
         PoiGenerator.Gen.WorldRoll layers = roll ?? (catalog == null ? null : PoiSiting.LayersOf(catalog.Library, map, profile, depth: rollDepth));
         if (roll != null) profile = profile with { Barred = roll.Barred };
         List<PoiSite> pois = catalog == null ? new List<PoiSite>() : PoiSiting.Place(catalog, map, bare, landing, profile: profile, depth: rollDepth);
+        double tPlaces = Lap();
         var stamps = new List<TerrainStamp>();
         var anchors = new List<TerrainDigging.Terrain.PoiSite>();
         var seated = new List<PoiSite>(pois);
@@ -265,12 +268,15 @@ public sealed partial class PlanetWorld
             anchors = kept;
         }
         // Every place inside a blast's reach takes it, the city's buildings with the rest.
+        double tAround = Lap();
         PoiSiting.Blast(pois, blasts, map.WidthMeters, map.HeightMeters);
         var source = new PlanetTerrainSource(map, stamps, anchors);
         FinishAround(spec, source, pois, around);
         // What stands off a place's footprint goes by the real ground, now that it's known.
         foreach (PoiSite p in pois)
             PoiGenerator.Gen.StateTransforms.Settle(p.Instance, (x, z) => source.SurfaceHeight(Mathx.WrapX(p.Origin.X + x + 0.5, source.Width), Mathx.Wrap(p.Origin.Z + z + 0.5, source.Height)) - p.Origin.Y, 3);
+        double tEnd = Lap();
+        LastTimes = $"map {tMap / 1000:F1} s, places {(tPlaces - tMap) / 1000:F1} s (layouts {PoiSiting.LastLayoutMs / 1000:F1} s), around {(tAround - tPlaces) / 1000:F1} s, finish {(tEnd - tAround) / 1000:F1} s";
         var world = new PlanetWorld(spec, profile, map, landing, pois, around, source, watch.Elapsed.TotalMilliseconds, PoiGenerator.Gen.WorldReading.Of(layers), blasts) { Depth = depth, Roll = roll, Layers = layers, Library = catalog?.Library };
         world.TakeChart(chart);
         world.ChartStars();
@@ -296,6 +302,9 @@ public sealed partial class PlanetWorld
     /// worlds were always inhabited (their survivors live among the old world's ruins). The same
     /// spec always rolls the same profile.
     /// </summary>
+    /// <summary>Where the last world's build time went, phase by phase (tests print it).</summary>
+    public static string LastTimes = "";
+
     public static WorldProfile ProfileFor(PlanetSpec spec, bool startWorld = false, PoiGenerator.Gen.WorldForce force = null) =>
         WorldProfile.Roll(Planets.Gen.Hash.Of(spec.Seed, 0x50F1), spec.Archetype.ToString(), startWorld, force?.Population, force?.PopulationNow);
 

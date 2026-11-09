@@ -43,12 +43,15 @@ public partial class SurfaceTest
                 int lots = w.Pois.Count(p => p.Siting == "city");
                 int places = w.Pois.Count - lots + (lots > 0 ? 1 : 0), ruins = w.Infra?.Ruins.Count ?? 0;
                 double per = places / area;
-                // The farthest any open spot lies from a place, sampled over the world (km).
+                // The farthest dry land lies from a place, sampled over the world (km): no river, above the shore (the plan's own rule), clear of the seam bands.
+                var ground = new GalHack.Terrain.PlanetTerrainSource(w.Map);
                 double gap = 0;
                 if (places > 0)
-                    for (int i = 0; i < 400; i++)
+                    for (int i = 0; i < 600; i++)
                     {
-                        double x = rand.NextDouble() * w.Width, z = rand.NextDouble() * w.Height;
+                        double x = 420 + rand.NextDouble() * (w.Width - 840), z = 420 + rand.NextDouble() * (w.Height - 840);
+                        var g = ground.Sampler.Sample(x, z, 2);
+                        if (g.InRiver || g.Height < 2.5f) continue;
                         double best = w.Pois.Min(p =>
                         {
                             double dx = Math.Abs(p.Center.X - x), dz = Math.Abs(p.Center.Z - z);
@@ -58,13 +61,14 @@ public partial class SurfaceTest
                         gap = Math.Max(gap, best / 1000.0);
                     }
                 GD.Print($"      {km}x{km / 2} km {spec.Archetype}, {w.Profile}: {places} places ({per * 100:F1} per 100 km2, {lots} city lots), {ruins} roadside ruins, " +
-                         $"planned {PoiSiting.LastPlanned}, skipped {PoiSiting.LastSkipped}, unseated {PoiSiting.LastUnseated}, farthest from a place {gap:F1} km, {watch.Elapsed.TotalSeconds:F0} s");
-                if (!w.Profile.Inhabited) continue;
+                         $"planned {PoiSiting.LastPlanned}, skipped {PoiSiting.LastSkipped}, unseated {PoiSiting.LastUnseated}, farthest dry land from a place {gap:F1} km, {watch.Elapsed.TotalSeconds:F0} s ({PlanetWorld.LastTimes})");
+                // Never lived on: sparse, but never a 20 km hole.
+                if (!w.Profile.Inhabited) { Check(places == 0 || gap <= 18, $"{km} km world nobody lived on: the farthest spot is {gap:F1} km from any place"); continue; }
                 // A peopled world of millions has a place every 17 km2 at least; fewer people, fewer places, but never an empty map.
                 double floor = w.Profile.Population >= 6 ? 0.06 : w.Profile.Population >= 3 ? 0.04 : 0.02;
                 Check(per >= floor, $"{km} km world (population {w.Profile.Population}) has {per * 100:F1} places per 100 km2 (floor {floor * 100:F1})");
                 // Anywhere on a world that had people, a place within a few minutes' flight.
-                if (w.Profile.Population >= 3) Check(gap <= 7.0, $"{km} km world (population {w.Profile.Population}): the farthest spot is {gap:F1} km from any place");
+                Check(gap <= 5.5, $"{km} km world (population {w.Profile.Population}): the farthest dry land is {gap:F1} km from any place (limit 5.5)");
                 Check(PoiSiting.LastSkipped == 0, $"{km} km world: {PoiSiting.LastSkipped} planned places had no layout");
                 Check(PoiSiting.LastUnseated <= Math.Max(2, PoiSiting.LastPlanned / 10), $"{km} km world: {PoiSiting.LastUnseated} of {PoiSiting.LastPlanned} planned places found no ground");
             }
