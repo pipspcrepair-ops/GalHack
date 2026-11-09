@@ -155,10 +155,20 @@ public sealed partial class Staging
             "decorooms" => DecoRooms(),
             "dress" => DressView(),
             "hulk" => HulkView(),
+            "visor" => VisorView(),
+            "feet" => FeetView(),
             _ => DoorViews(view),
         };
         foreach (int x in script) yield return x;
         if (_args.TryGetValue("hud", out string hud)) _game.Visor.Visible = hud != "0";
+    }
+
+    /// <summary>The visor's glass at night, frosted and pulsing red at once (cold and hurt): the edge effects blended.</summary>
+    IEnumerable<int> VisorView()
+    {
+        _game.Zone.Sky.TimeOfDay = Num("time", 0.9);
+        _game.Visor.PinnedGlass = ((float)Num("frost", 0.7), (float)Num("harm", 1.0));
+        foreach (int x in _drive.Wait(60)) yield return x;
     }
 
     /// <summary>Inside the bunker: the castaway out of the one working cryopod, the dead sleepers in theirs.</summary>
