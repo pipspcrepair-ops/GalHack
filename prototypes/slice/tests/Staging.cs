@@ -92,6 +92,7 @@ public sealed partial class Staging
             "natural" => Natural(),
             "flora" => FloraProof(),
             "flora-trees" => FloraTrees(),
+            "florareach" => FloraReachView(),
             "crouch" => CrouchView(),
             "castaway" => CastawayView(),
             "folk" => FolkView(),

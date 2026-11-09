@@ -157,7 +157,10 @@ public partial class PoiPlaces : Node3D
     }
 
     /// <summary>How far off a place is started at the speed you are going.</summary>
-    float Reach => MathF.Min(BuildRadius + Heading.Length() * AheadSeconds, MostReach);
+    float Reach => MathF.Min(BuildRadius * Stand + Heading.Length() * AheadSeconds, MostReach * Stand);
+
+    /// <summary>How far places stand as structures, as a multiple of their own radii: the detail distance takes them further (DetailReach).</summary>
+    static float Stand => PlanetSurface.Terrain.DetailReach.StandScale;
 
     /// <summary>How much a site is worth starting now: the lower the sooner. Null: not now (out of reach, or behind you and receding).</summary>
     float? Urgency(PoiSite site, Vector3 focus)
@@ -170,7 +173,7 @@ public partial class PoiPlaces : Node3D
         var hi = site.Footprint.Max;
         Vector3 to = Zone.Planet.NearestCopy(new Vector3((lo.X + hi.X + 1) * 0.5f, 0f, (lo.Z + hi.Z + 1) * 0.5f), focus) - focus;
         float along = (to.X * Heading.X + to.Z * Heading.Z) / speed;
-        if (along < 0f && d > BuildRadius * 0.5f) return null;
+        if (along < 0f && d > BuildRadius * Stand * 0.5f) return null;
         return d - along * 0.5f;
     }
 
@@ -195,7 +198,7 @@ public partial class PoiPlaces : Node3D
             // (A place stood up while the planet was still loading: its far drawing arrived after it.)
             if (!p.FarHidden) p.FarHidden = ShowFar(p.Site, false);
             float d = DistanceTo(p.Site, focus);
-            if (d <= MathF.Max(DropRadius, Reach + 140f)) { p.SetDormant(false); continue; }
+            if (d <= MathF.Max(DropRadius * Stand, Reach + 140f)) { p.SetDormant(false); continue; }
             if (p.Memory.Modified) { p.SetDormant(true); continue; }
             Drop(p);
         }
@@ -379,7 +382,7 @@ public partial class PoiPlaces : Node3D
         {
             // The first full-detail cube costs the same one-off, so it is paid here too.
             p.MeshNearNow(p.Inst.Layout.EntranceCell.Y < 0 ? new Int3(0, -1, 0) : new Int3(0, 0, 0));
-            if (DistanceTo(nearest, from) > DropRadius) Drop(p);
+            if (DistanceTo(nearest, from) > DropRadius * Stand) Drop(p);
         }
         WarmUpMs = clock.Elapsed.TotalMilliseconds;
         WorstStepMs = WorstFrameMs = 0;
