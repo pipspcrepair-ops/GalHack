@@ -350,7 +350,9 @@ public partial class ClimbTest : Node
             yield return x;
         if (note != null) { done($"climbing ({note})"); yield break; }
         foreach (int x in Hold(game, drive, () => off + Vector3.Up * 1.6f, Key.W,
-                     () => Near(game, off) && game.Survivor.Body.OnFloor, () => -Flat(game, off), 6f, r => note = r))
+                     // The landing may hold low debris (Landing lets rubble lie there): standing on it is off at the top too.
+                     () => Flat(game, off) < 0.35f && game.Survivor.WorldFeet.Y > off.Y - 0.4f && game.Survivor.WorldFeet.Y < off.Y + 0.6f && game.Survivor.Body.OnFloor,
+                     () => -Flat(game, off), 6f, r => note = r))
             yield return x;
         done(note == null ? null : $"over the top ({note})");
     }

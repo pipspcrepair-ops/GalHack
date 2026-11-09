@@ -137,10 +137,13 @@ public partial class HazardTest : Node
             }
             Check(a != null && b != null, $"the place stands round the survivor with both hazards in their room ({watch.Elapsed.TotalSeconds:F1} s)");
             if (a == null || b == null) { game.QueueFree(); yield break; }
+            // Set down before the place stood, the survivor had no floor there: into the room again now it stands.
+            game.Survivor.PlaceOutside(new System.Numerics.Vector3(feet.X, feet.Y, feet.Z));
             foreach (int x in drive.Wait(30)) yield return x;
 
             // A bolt's hurt, as the tool's shot lands it: through the place's own resolution of what was hit.
             double health = game.Suit.Vitals.Health;
+            float off = (game.Survivor.WorldFeet + Vector3.Up * 0.9f).DistanceTo(a.Node.GlobalPosition + Vector3.Up * (a.Piece.Height * 0.5f));
             int blocks = place.Memory.BlockDamage.Count, explosions = game.Places.Explosions;
             var bodyAt = a.Node.GlobalPosition + Vector3.Up * 0.3f;
             Check(game.Places.Resolve(a.Node.Body, bodyAt, Vector3.Up, out PoiPlaces.Hit hit) && hit.Piece?.Index == a.Index, $"a shot at the {a.Piece.Name} lands on it");
@@ -157,7 +160,7 @@ public partial class HazardTest : Node
             ulong blastFrame = Engine.GetPhysicsFrames();
             double GameSecondsSince() => (Engine.GetPhysicsFrames() - blastFrame) / (double)Engine.PhysicsTicksPerSecond;
             foreach (int x in drive.Wait(3)) yield return x;
-            Check(game.Suit.Vitals.Health < health, $"the survivor beside it is hurt ({health:F0} to {game.Suit.Vitals.Health:F0} health)");
+            Check(game.Suit.Vitals.Health < health, $"the survivor beside it is hurt ({health:F0} to {game.Suit.Vitals.Health:F0} health, {off:F1} m from it, reach {a.Piece.Blast.Radius:F1} m)");
             while (b.Node.Visible && GameSecondsSince() < 3) yield return 0;
             Check(!b.Node.Visible && game.Places.Explosions >= explosions + 2 && GameSecondsSince() >= PoiPlaces.ChainDelay * 0.8f,
                 $"and a moment later its neighbour, the {b.Piece.Name}, follows ({GameSecondsSince():F2} s on)");

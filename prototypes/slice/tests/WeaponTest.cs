@@ -660,6 +660,10 @@ public partial class WeaponTest : Node
         Check(Arms.Fired - fired == d.Magazine, $"{Arms.Fired - fired} hornets out of a full pouch");
         // A volley let go at once into open air, nothing alive in reach: they spread out as they wander.
         foreach (Creature w in Wild.Sim.Creatures.ToList()) if (w.Position.DistanceTo(Wild.PatchLocal(Feet)) < 50f) Wild.Sim.Remove(w);
+        // The people of a place or a hulk near by live in its own sim: they are alive in reach too.
+        foreach (var site in Wild.Sites)
+            if (site.Sim != null)
+                foreach (Creature w in site.Sim.Creatures.ToList()) if ((w.Position + site.GlobalPosition).DistanceTo(Feet) < 50f) site.Sim.Remove(w);
         foreach (int x in _drive.Wait(30)) yield return x;
         var before = Arms.Pool.Shots.Where(s => s.Live && s.Def.Base.Id == d.Id).Select(s => s.Id).ToHashSet();
         Arms.Fire(d, 8);

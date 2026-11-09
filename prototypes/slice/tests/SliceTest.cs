@@ -892,7 +892,7 @@ public partial class SliceTest : Node
         double solidsFrom = 0;
         Vector3 was = start;
         // Cruise toward the target at height, steering with the mouse stick.
-        int ticks = 0;
+        int ticks = 0, seenImpacts = _impacts.Count;
         while (ticks++ < 60 * 120)
         {
             Vector3 p = v.Body.Position.ToGodot();
@@ -917,6 +917,13 @@ public partial class SliceTest : Node
             {
                 solidsFrom = _game.Zone.Streamer.SolidsTotalMs;
                 framesFrom = probe.Frames;
+            }
+            if (_impacts.Count > seenImpacts)
+            {
+                for (int k = seenImpacts; k < _impacts.Count; k++)
+                    if (_impacts[k].Body == v.Body && _impacts[k].Speed >= 8f)
+                        GD.Print($"  (cruise contact {_impacts[k].Speed:F1} m/s on {_impacts[k].Surface} at tick {ticks}: {agl:F1} m up by the probe, {p.Y - _game.Zone.GroundAt(p.X, p.Z).Y:F1} m over the ground, velocity {v.Body.Velocity}, up {MathX.Up(v.Body.Rotation)})");
+                seenImpacts = _impacts.Count;
             }
             if (ticks > 240) profiler?.Step();
             if (ticks > 240)
