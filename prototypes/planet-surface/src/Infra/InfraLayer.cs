@@ -166,6 +166,8 @@ public partial class InfraLayer : Node3D
             {
                 var b = new TileBuilder(world, ox, oz);
                 foreach (Piece p in list) p.Emit(b);
+                // What the tile lays on what (markings on roads, plates on pads) stands off it: no two faces fight.
+                GalHack.Deco.DecoStandoff.Apply(b.Mesh, new GalHack.Deco.DecoStandoff.Parts(b.Mesh), null, floor: false);
                 return b;
             });
             _tiles[key] = tile;

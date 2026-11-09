@@ -157,6 +157,7 @@ public sealed partial class Staging
             "hulk" => HulkView(),
             "visor" => VisorView(),
             "feet" => FeetView(),
+            "zfight" => ZFightView(),
             _ => DoorViews(view),
         };
         foreach (int x in script) yield return x;

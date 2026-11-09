@@ -82,7 +82,8 @@ public sealed class DecoDisorder
             DecoPlacement pl = _plan.Placements[i];
             DecoPiece p = _forge.Catalogue.Piece(pl.Piece);
             if (pl.Support >= 0) continue;
-            if (p.Has(DecoState.Knocked) && p.Falls.Count > 0 && _rng.Chance(rules.Knock)) Knock(i);
+            // A wall piece is fixed there: it comes down a fifth as often as a thing standing loose.
+            if (p.Has(DecoState.Knocked) && p.Falls.Count > 0 && _rng.Chance(rules.Knock * (p.Mount == DecoMount.Wall ? 0.2f : 1f))) Knock(i);
             else if (!p.Fixed && p.Width * p.Depth < 1.3f && pl.Fall == DecoFall.None && _rng.Chance(rules.Scatter)) Scatter(i);
 
             var pos = new Vector2(pl.X, pl.Z);
