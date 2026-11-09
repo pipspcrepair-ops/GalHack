@@ -1,5 +1,4 @@
 using System;
-using PlanetSurface.Infra;
 
 namespace PlanetSurface.Terrain;
 
@@ -8,7 +7,7 @@ namespace PlanetSurface.Terrain;
 /// setting), from <see cref="Default"/> out to the horizon (<see cref="Most"/>). Everything that
 /// reaches by distance takes its own reach from it: the far rings' radius and their levels of
 /// detail, flora's reaches (flora.gdshader's, set on its material), places' merged blocks and full
-/// structures, and the roadside tiles (<see cref="InfraLayer.Radius"/>). It can change while
+/// structures, and the roadside tiles (<see cref="PlanetSurface.Infra.InfraLayer.Radius"/>). It can change while
 /// streaming: <see cref="Version"/> goes up and each layer lays itself out again.
 /// </summary>
 public static class DetailReach
@@ -24,7 +23,7 @@ public static class DetailReach
 
     public static float Distance { get; private set; }
 
-    /// <summary>How far the roadside tiles are built (<see cref="InfraLayer.Radius"/>), m.</summary>
+    /// <summary>How far the roadside tiles are built (<see cref="PlanetSurface.Infra.InfraLayer.Radius"/>), m.</summary>
     public static float InfraRadius { get; private set; }
     public static int Version { get; private set; }
 
