@@ -228,6 +228,14 @@ public partial class CatalogueTest : TestBase
                 n++;
                 Check(MathF.Abs(shape.Min.Y) < 0.001f, $"{p.Id} fallen {f}: touches the floor (lowest {shape.Min.Y:0.0000})");
                 Check(m.Min.Y > -0.001f, $"{p.Id} fallen {f}: doesn't sink into it (mesh lowest {m.Min.Y:0.0000})");
+                if (p.Mount == DecoMount.Wall)
+                {
+                    // Off its wall: on the floor and against the wall's face (local +z), touching both, cutting neither.
+                    float wall = p.Depth / 2;
+                    Check(MathF.Abs(shape.Max.Z - wall) < 0.002f && m.Max.Z < wall + 0.002f + GalHack.Geometry.Coplanar.Standoff,
+                        $"{p.Id} fallen {f}: lies or leans against its wall's face and not into it (back {shape.Max.Z:0.000}, mesh {m.Max.Z:0.000}, wall {wall:0.000})");
+                    continue;
+                }
                 Check(shape.Stable, $"{p.Id} fallen {f}: rests stably (its centre of mass over what touches the floor)");
                 // Independently: the centre of mass lies over the hull of the corners on the floor.
                 var contacts = shape.Model.Parts.SelectMany(DecoEmit.Vertices).Where(v => v.Y < 0.003f).Select(v => new Vector2(v.X, v.Z)).ToList();

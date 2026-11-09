@@ -140,7 +140,8 @@ public sealed class DecoForge
         Vector3 com = DecoEmit.CentreOfMass(model.Parts);
         if (fall != DecoFall.None)
         {
-            s.Settle = Topple(verts, com, fall, out bool stable);
+            bool stable = true;
+            s.Settle = piece.Mount == DecoMount.Wall ? WallFall(verts, fall, piece.Depth / 2) : Topple(verts, com, fall, out stable);
             s.Stable = stable;
             Apply(model, s.Settle);
             verts = verts.Select(v => Vector3.Transform(v, s.Settle)).ToList();
@@ -320,7 +321,8 @@ public sealed class DecoForge
             return;
         }
         // A bent frame: the whole piece leans, as far as its footprint allows.
-        bool alongX = rng.Chance(0.5f);
+        // A wall piece hangs skewed along its wall, never into it or off it.
+        bool alongX = rng.Chance(0.5f) || piece.Mount == DecoMount.Wall;
         float slackLo = alongX ? min.X - (-piece.Width / 2) : min.Z - (-piece.Depth / 2);
         float slackHi = alongX ? piece.Width / 2 - max.X : piece.Depth / 2 - max.Z;
         float lean = rng.Chance(0.5f) ? MathF.Min(0.12f * h, slackHi) : -MathF.Min(0.12f * h, slackLo);
@@ -455,6 +457,25 @@ public sealed class DecoForge
             float angle = p.OpenAngle * rng.Range(0.55f, 1f);
             p.M *= DecoGeo.About(p.Hinge, Matrix4x4.CreateFromAxisAngle(p.HingeAxis, angle * DecoGeo.Deg));
         }
+    }
+
+    /// <summary>How far a fallen wall piece leans back on its wall, degrees from upright.</summary>
+    public const float WallLean = 18f;
+
+    /// <summary>
+    /// A wall piece come off its wall (its back is local +z, the wall's face at <paramref name="wallZ"/>): fallen
+    /// back, it lies flat on its back at the foot of the wall; any other way, it stands on its bottom edge and leans
+    /// back with its top on the wall. Either way it touches the floor and the wall and goes into neither.
+    /// </summary>
+    public static Matrix4x4 WallFall(List<Vector3> verts, DecoFall fall, float wallZ)
+    {
+        Matrix4x4 t;
+        if (fall == DecoFall.Back)
+            t = Vector3.TransformNormal(Vector3.UnitZ, DecoGeo.RotX(90)).Y < 0 ? DecoGeo.RotX(90) : DecoGeo.RotX(-90);
+        else
+            t = Vector3.TransformNormal(Vector3.UnitY, DecoGeo.RotX(WallLean)).Z > 0 ? DecoGeo.RotX(WallLean) : DecoGeo.RotX(-WallLean);
+        var pts = verts.Select(v => Vector3.Transform(v, t)).ToList();
+        return t * DecoGeo.Move(0, -pts.Min(p => p.Y), wallZ - pts.Max(p => p.Z));
     }
 
     /// <summary>
