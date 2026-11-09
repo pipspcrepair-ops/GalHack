@@ -214,8 +214,8 @@ public partial class MatrixTest : Node
     void Arguments()
     {
         string fall = WorldForce.Values(WorldChoice.Library, LayerKind.Fall)[0];
-        WorldChoice w = WorldChoice.FromArgs(new[] { "--depth", "0.7", "--type", "dune", "--fall", fall, "--mid-collapse", "--era-old", "high", "--era-now=low", "--size", "32x16" });
-        Check(w is { Archetype: Planets.Gen.Archetype.Arid, Variant: 0, WidthKm: 32 } && w.Force is { Depth: 0.7f, MidCollapse: true, Before: TechLevel.High, Now: TechLevel.Low, Theme: null } && w.Force.Fall == fall,
+        WorldChoice w = WorldChoice.FromArgs(new[] { "--depth", "0.7", "--type", "dune", "--fall", fall, "--mid-collapse", "--era-old", "high", "--era-now=low", "--size", "32x16", "--pop-old", "billions", "--pop-now=survivors" });
+        Check(w is { Archetype: Planets.Gen.Archetype.Arid, Variant: 0, WidthKm: 32 } && w.Force is { Depth: 0.7f, MidCollapse: true, Before: TechLevel.High, Now: TechLevel.Low, Theme: null, Population: 9, PopulationNow: PopulationNow.Survivors } && w.Force.Fall == fall,
             $"the command line forces what it names and rolls the rest: {w}");
         Check(WorldChoice.FromArgs(new[] { "--seed", "42", "--planet", "ice" }) == new WorldChoice(42, Planets.Gen.Archetype.Ice, 0) && WorldChoice.FromArgs(new[] { "--creative" }) == null,
             "a seed and a planet alone force nothing more, and no option pins nothing");

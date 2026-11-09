@@ -61,6 +61,7 @@ public partial class SurfaceTest : Node
         try
         {
             await Run("Plans", PlanChecks);
+            await Run("Density", DensityChecks);
             await Run("Weather", WeatherChecks);
             await Run("Relief", ReliefChecks);
             await Run("Pois", PoiChecks);

@@ -78,7 +78,7 @@ public partial class StartRoot : MenuPanel
     public string Seed = "";
     public bool Typing;
 
-    public Picker Depth, Type, Theme, Fall, Mid, Old, Now, Size, Mode;
+    public Picker Depth, Type, Theme, Fall, Mid, Old, Now, PopOld, PopNow, Size, Mode;
 
     /// <summary>The presets, as the depth and type they set (everything else rolled).</summary>
     public static readonly (string Id, string Label, object Depth, object Type)[] Presets =
@@ -123,6 +123,12 @@ public partial class StartRoot : MenuPanel
         Mid.Values.AddRange(new (string, object)[] { ("ROLLED", Rolled), ("YES", true), ("NO", false) });
         Old = Era("old", "OLD TECH ERA");
         Now = Era("now", "CURRENT TECH ERA");
+        PopOld = Add("pop-old", "OLD POPULATION");
+        PopOld.Values.Add(("ROLLED", Rolled));
+        for (int i = 0; i <= 10; i++) PopOld.Values.Add((WorldProfile.PopulationWord(i).ToUpperInvariant(), i));
+        PopNow = Add("pop-now", "CURRENT POPULATION");
+        PopNow.Values.Add(("ROLLED", Rolled));
+        foreach (PopulationNow c in Enum.GetValues<PopulationNow>()) PopNow.Values.Add((c.ToString().ToUpperInvariant(), c));
         Size = Add("size", "WORLD SIZE");
         Size.Values.Add(("ROLLED", Rolled));
         foreach (int w in Planets.Gen.PlanetSpec.Widths) Size.Values.Add(($"{w} x {w / 2} KM", w));
@@ -173,6 +179,8 @@ public partial class StartRoot : MenuPanel
             MidCollapse = Mid.Value is bool m ? m : null,
             Before = Old.Value is TechLevel o ? o : null,
             Now = Now.Value is TechLevel n ? n : null,
+            Population = PopOld.Value is int pop ? pop : null,
+            PopulationNow = PopNow.Value is PopulationNow c ? c : null,
         };
         if (!force.Empty) world = world with { Force = force };
         return (world, (GameMode)Mode.Value);
@@ -222,7 +230,9 @@ public partial class StartRoot : MenuPanel
         var right = new Rect2(area.Position.X + 410, area.Position.Y + 96, area.Size.X - 430, area.Size.Y - 116);
         g.Caption("OPTIONS", right.Position, right.Size.X);
         float row = right.Position.Y + 40;
-        const float RowH = 64, Arrow = 56;
+        const float Arrow = 56;
+        // Every option and the seed fit the panel: rows close up as options are added.
+        float RowH = MathF.Min(64, MathF.Floor((right.Size.Y - 40) / (Pickers.Count + 1)));
         float valueX = right.Position.X + 340, valueW = right.Size.X - 340 - 2 * Arrow - 16;
         int i = 0;
         foreach (Picker p in Pickers)

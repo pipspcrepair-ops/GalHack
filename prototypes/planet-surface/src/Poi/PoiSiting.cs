@@ -209,6 +209,8 @@ public static partial class PoiSiting
     public static List<PoiSite> Place(PoiCatalog catalog, WorldMap map, PlanetTerrainSource bare, LandingSite landing, bool? startWorld = null, WorldProfile profile = null, float depth = -1f)
     {
         bool start = startWorld ?? StartWorld;
+        LastPlanned = LastSkipped = LastUnseated = 0;
+        LastLayoutMs = LastSeatMs = 0;
         PoiLibrary lib = catalog.Library;
         PlanetSpec spec = map.Spec;
         // The whole planet as the placement engine sees it, and the theme its kind of world has.
@@ -219,23 +221,10 @@ public static partial class PoiSiting
         WorldRoll roll = RollOf(lib, map, profile, start, depth);
         if (roll != null) profile = profile with { Barred = roll.Barred, Ruin = RuinAge.Of(roll), Paint = WorldReading.Of(roll).Paint };
         RegionPlan plan = null;
+        var planClock = System.Diagnostics.Stopwatch.StartNew();
         if (roll != null) plan = RegionPlan.Make(lib, new PlanetLand(map, bare, pmap), roll, profile, GHash.Of(spec.Seed, 0x4E41), (landing.X, landing.Y), start);
-        var world = WorldPlacement.Place(lib, pmap, theme, GHash.Of(spec.Seed, 0x504C4143), profile: profile);
-        var placed = world.Pois.Where(p => !p.Family.Space).ToList();
-        // Spread over the whole planet, but the landing site's country gets its share first.
-        double Away(PlacedPoi p) => Dist(p.X, p.Z, landing.X, landing.Y, map.WidthMeters, map.HeightMeters);
-        var byDistance = placed.OrderBy(Away).ToList();
-        int near = MaxSites / 2;
-        var far = byDistance.Skip(near).ToList();
-        int stride = Math.Max(1, far.Count / Math.Max(1, MaxSites - near));
-        var spread = far.Where((_, i) => i % stride == 0).ToList();
-        // Nearest half, then an even spread out to the far side, then the rest in case some can't be seated.
-        var order = byDistance.Take(near).Concat(spread).Concat(far.Except(spread)).ToList();
-        // The ports come first and don't count against the rest: the main one above all, an exodus world's crowd round it.
-        var ports = placed.Where(IsPort).OrderByDescending(p => p.Primary).ToList();
-        order = ports.Concat(order.Where(p => !IsPort(p))).ToList();
-        static bool IsPort(PlacedPoi p) => p.Primary || p.Port != null || p.Family.Tags.Contains("scrappy") || p.Family.Tags.Contains("exodus") || p.Family.Tags.Contains("evacuation");
-        int budget = MaxSites + ports.Count;
+        LastPlanMs = planClock.Elapsed.TotalMilliseconds;
+        LastSetDownMs = 0;
         var sites = new List<PoiSite>();
         if (ForceFamily != null && lib.Families.FirstOrDefault(f => f.Id == ForceFamily) is { } forced)
         {
@@ -256,9 +245,30 @@ public static partial class PoiSiting
         }
         if (plan is { Places.Count: >= 4 })
         {
+            var setDown = System.Diagnostics.Stopwatch.StartNew();
             SetDown(lib, plan, roll, map, bare, landing, profile, start, sites);
+            LastSetDownMs = setDown.Elapsed.TotalMilliseconds;
             if (sites.Count > 0) return sites;
         }
+        // Only the wild is scattered: a world with a plan never needs the scatter worked out.
+        var world = WorldPlacement.Place(lib, pmap, theme, GHash.Of(spec.Seed, 0x504C4143), profile: profile);
+        var placed = world.Pois.Where(p => !p.Family.Space).ToList();
+        // Spread over the whole planet, but the landing site's country gets its share first.
+        double Away(PlacedPoi p) => Dist(p.X, p.Z, landing.X, landing.Y, map.WidthMeters, map.HeightMeters);
+        var byDistance = placed.OrderBy(Away).ToList();
+        // A bigger world gets more, at the region plan's rate (area to three quarters, against a 16 x 8 km world).
+        int most = (int)Math.Round(MaxSites * Math.Max(1.0, Math.Pow(map.WidthMeters * map.HeightMeters / (16000.0 * 8000.0), 0.75)));
+        int near = most / 2;
+        var far = byDistance.Skip(near).ToList();
+        int stride = Math.Max(1, far.Count / Math.Max(1, most - near));
+        var spread = far.Where((_, i) => i % stride == 0).ToList();
+        // Nearest half, then an even spread out to the far side, then the rest in case some can't be seated.
+        var order = byDistance.Take(near).Concat(spread).Concat(far.Except(spread)).ToList();
+        // The ports come first and don't count against the rest: the main one above all, an exodus world's crowd round it.
+        var ports = placed.Where(IsPort).OrderByDescending(p => p.Primary).ToList();
+        order = ports.Concat(order.Where(p => !IsPort(p))).ToList();
+        static bool IsPort(PlacedPoi p) => p.Primary || p.Port != null || p.Family.Tags.Contains("scrappy") || p.Family.Tags.Contains("exodus") || p.Family.Tags.Contains("evacuation");
+        int budget = most + ports.Count;
         foreach (PlacedPoi p in order)
         {
             if (sites.Count >= budget + (ForceFamily != null ? 1 : 0)) break;
@@ -405,32 +415,32 @@ public static partial class PoiSiting
         bool heavy = PlanetSurface.World.Footing.Heavy(family.Tier, lx1 - lx0, lz1 - lz0, occupied.Min.Y + occupied.Size.Y);
         double width = map.WidthMeters, height = map.HeightMeters;
 
-        double bestScore = double.MaxValue, bestX = 0, bestZ = 0;
-        int bestPad = 0;
-        float bestCut = 0;
-        string bestKind = "";
-        var samples = new List<float>(64);
         // A big place looks further for its ground, a wider step at a time.
         bool wide = Math.Max(halfX, halfZ) > 100;
         double search = wide ? SearchRadius * 2 : SearchRadius, step = wide ? 20 : 10;
-
-        for (double dz = -search; dz <= search; dz += step)
-        for (double dx = -search; dx <= search; dx += step)
+        // Only the places that could crowd this one are looked at, and every spot is weighed side by side.
+        var close = others.Where(o => Dist(wantX, wantZ, (o.Stamp.MinX + o.Stamp.MaxX) * 0.5, (o.Stamp.MinZ + o.Stamp.MaxZ) * 0.5, width, height)
+                                      < search * 1.5 + Math.Max(140, Math.Max(o.Stamp.ReachX, o.Stamp.ReachZ) + Math.Max(halfX, halfZ) + Apron + 50)).ToList();
+        int span = (int)Math.Floor(search / step + 1e-9) * 2 + 1;
+        var found = new (double Score, double X, double Z, int Pad, float Cut, string Kind)[span * span];
+        System.Threading.Tasks.Parallel.For(0, span * span, idx =>
         {
+            found[idx].Score = double.MaxValue;
+            double dx = -search + idx % span * step, dz = -search + idx / span * step;
             double cx = Mathx.WrapX(wantX + dx, width), cz = Mathx.Wrap(wantZ + dz, height);
-            if (cx - halfX * 0.3 < SeamMargin || cx + halfX * 0.3 > width - SeamMargin || cz - halfZ * 0.3 < SeamMargin || cz + halfZ * 0.3 > height - SeamMargin) continue;
+            if (cx - halfX * 0.3 < SeamMargin || cx + halfX * 0.3 > width - SeamMargin || cz - halfZ * 0.3 < SeamMargin || cz + halfZ * 0.3 > height - SeamMargin) return;
             // Keep the landing spot open, and keep places from crowding each other.
-            if (Dist(cx, cz, landing.X, landing.Y, width, height) < Math.Max(160, Math.Max(halfX, halfZ) + 80)) continue;
+            if (Dist(cx, cz, landing.X, landing.Y, width, height) < Math.Max(160, Math.Max(halfX, halfZ) + 80)) return;
             bool crowded = false;
-            foreach (PoiSite o in others)
+            foreach (PoiSite o in close)
                 crowded |= Dist(cx, cz, (o.Stamp.MinX + o.Stamp.MaxX) * 0.5, (o.Stamp.MinZ + o.Stamp.MaxZ) * 0.5, width, height)
                            < Math.Max(140, Math.Max(o.Stamp.ReachX, o.Stamp.ReachZ) + Math.Max(halfX, halfZ) + Apron + 50); // stamps never pile up
-            if (crowded) continue;
+            if (crowded) return;
             // Sand only where no firm ground lies within the search at all (the middle of a dune sea).
             bool sandy = heavy && PlanetSurface.World.Footing.SandShare(map, cx, cz, halfX + Apron, halfZ + Apron) > 0.12f;
 
             // Ground across the footprint and apron.
-            samples.Clear();
+            var samples = new List<float>(16);
             bool wet = false;
             for (double sz = -halfZ - Apron; sz <= halfZ + Apron + 0.01; sz += (halfZ + Apron) / 3)
             for (double sx = -halfX - Apron; sx <= halfX + Apron + 0.01; sx += (halfX + Apron) / 3)
@@ -439,12 +449,12 @@ public static partial class PoiSiting
                 if (g.InRiver || g.Height < 2.5f) wet = true;
                 samples.Add(g.Height);
             }
-            if (wet) continue;
+            if (wet) return;
             samples.Sort();
             float median = samples[samples.Count / 2];
             int pad = (int)MathF.Round(median);
             float cut = MathF.Max(samples[^1] - pad, pad - samples[0]);
-            if (cut > MaxCutFill) continue;
+            if (cut > MaxCutFill) return;
 
             // Prominence: higher than the ground 80 m around (a ridge) or lower (a valley).
             float ring = 0f;
@@ -464,16 +474,15 @@ public static partial class PoiSiting
             };
             score += distance * 0.02;
             if (sandy) score += 100000;
-            if (score < bestScore)
-            {
-                bestScore = score;
-                bestX = cx;
-                bestZ = cz;
-                bestPad = pad;
-                bestCut = cut;
-                bestKind = prominence > 12 ? "ridge" : prominence < -12 ? "valley" : cut > 5 ? "hillside" : "flat";
-            }
-        }
+            found[idx] = (score, cx, cz, pad, cut, prominence > 12 ? "ridge" : prominence < -12 ? "valley" : cut > 5 ? "hillside" : "flat");
+        });
+        double bestScore = double.MaxValue, bestX = 0, bestZ = 0;
+        int bestPad = 0;
+        float bestCut = 0;
+        string bestKind = "";
+        // The first best in the old order (row by row), so the same spot wins however the work was split.
+        foreach (var f in found)
+            if (f.Score < bestScore) (bestScore, bestX, bestZ, bestPad, bestCut, bestKind) = f;
         if (bestScore == double.MaxValue) return null;
 
         // Origin so the occupied box is centred on the chosen spot; local y 0 is the pad surface.
