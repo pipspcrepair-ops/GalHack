@@ -183,8 +183,9 @@ public partial class LayersTest : Node
             }
             return (loose / n, ferals / n, twisted / n, kinds / n, density / n);
         }
-        var farmed = Mix(() => new WorldRoll.Given().Set(LayerKind.Trade, "herding").Set(LayerKind.Post, "L").Set(LayerKind.Phase, "spared"));
-        var works = Mix(() => new WorldRoll.Given().Set(LayerKind.Trade, "heavy_industry").Set(LayerKind.Post, "H").Set(LayerKind.Phase, "recovered"));
+        // (A hundred each: at forty, a works world's share swung from 38% to 65% and now and then met the herding worlds' less 30%.)
+        var farmed = Mix(() => new WorldRoll.Given().Set(LayerKind.Trade, "herding").Set(LayerKind.Post, "L").Set(LayerKind.Phase, "spared"), n: 100);
+        var works = Mix(() => new WorldRoll.Given().Set(LayerKind.Trade, "heavy_industry").Set(LayerKind.Post, "H").Set(LayerKind.Phase, "recovered"), n: 100);
         Check(farmed.Loose > works.Loose + 0.3f, $"stock and working beasts on farmed worlds: {farmed.Loose:P0} of herding worlds, {works.Loose:P0} of works worlds");
         var fallen = Mix(() => new WorldRoll.Given().Set(LayerKind.Phase, "fallen").Set(LayerKind.Fall, "vanishing").Set(LayerKind.Theme, "overgrown_metropolis"));
         var kept = Mix(() => new WorldRoll.Given().Set(LayerKind.Phase, "recovered").Set(LayerKind.Fall, "supply_cutoff").Set(LayerKind.Theme, "plain"));
