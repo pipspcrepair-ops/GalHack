@@ -95,7 +95,7 @@ public partial class PoiTest
         Check(loose == 0 && bars > 20, $"bars stand out of torn concrete: {bars} cells of bars, {loose} with no face to hold them{first}");
         Check(waterBlocks == 0 && badWater == 0, $"no flooding, no water blocks: {waterBlocks} cells of water, {wet} cells under a place's own water, {badWater} of them over no floor{first}");
         Check(holed == 0 && finished > 20, $"a floor's finish lies under everything set on it: {finished} things stand on a finish kept under them, {holed} left a hole in it{first}");
-        Check(unfaced == 0 && untopped == 0 && faces > 1000, $"only a full cube hides a face: {faces} faces of floors, walls and ceilings beside things drawn, {unfaced} missing; {tops} finishes under things drawn, {untopped} missing{first}");
+        Check(unfaced == 0 && untopped == 0 && faces > 1000, $"only a full cube hides a face: {faces} faces of floors, walls and ceilings beside things drawn, {unfaced} missing; {tops} floors under things painted with the finish round them, {untopped} holed or painted otherwise{first}");
 
         // The same places, young and old, gentle and violent: decay scales with the fall's age and force.
         int older = 0, greener = 0, sootier = 0, lit = 0, pairs = 0;
@@ -167,9 +167,12 @@ public partial class PoiTest
         {
             var g = p.Blocks;
             var drawn = new HashSet<(Int3 Cell, Int3 Out)>();
-            var finishTops = new HashSet<Int3>();
+            // What each floor top is painted with: its surface and its finish.
+            var paint = new Dictionary<Int3, (int Surface, Finish Finish)>();
             foreach (ChunkMesh chunk in Mesher.Build(g, p.Layout.Occupied, MeshOptions.OnPlanet(g.Min)))
-                foreach (MeshBuffer buf in chunk.Surfaces)
+                for (int si = 0; si < chunk.Surfaces.Length; si++)
+                {
+                    MeshBuffer buf = chunk.Surfaces[si];
                     for (int t = 0; t + 2 < buf.Indices.Count; t += 3)
                     {
                         int i0 = buf.Indices[t];
@@ -181,14 +184,16 @@ public partial class PoiTest
                         float plane = Along(a);
                         if (MathF.Abs(Along(b) - plane) > 1e-3f || MathF.Abs(Along(c) - plane) > 1e-3f) continue;
                         V3 mid = (a + b + c) * (1f / 3f);
-                        if (MathF.Abs(plane - MathF.Round(plane)) < 1e-3f)
+                        // A face may stand a few standoffs off its cell's plane (MeshStandoff sets fighting faces apart).
+                        if (MathF.Abs(plane - MathF.Round(plane)) < 4f * GalHack.Geometry.Coplanar.Standoff)
                         {
                             V3 inside = mid - new V3(n.X, n.Y, n.Z) * 0.5f;
-                            drawn.Add((new Int3((int)MathF.Floor(inside.X), (int)MathF.Floor(inside.Y), (int)MathF.Floor(inside.Z)), n));
+                            var cell = new Int3((int)MathF.Floor(inside.X), (int)MathF.Floor(inside.Y), (int)MathF.Floor(inside.Z));
+                            drawn.Add((cell, n));
+                            if (n.Y == 1) paint[cell] = (si, PoiGenerator.Gen.Surfaces.FinishOf(buf.Codes[i0 * 2]));
                         }
-                        else if (n.Y == 1 && MathF.Abs(plane - MathF.Floor(plane) - BlockInfo.FinishTop) < 1e-3f)
-                            finishTops.Add(new Int3((int)MathF.Floor(mid.X), (int)MathF.Floor(plane), (int)MathF.Floor(mid.Z)));
                     }
+                }
             foreach (var (c, b) in g.Blocks())
             {
                 if (BlockInfo.IsFullCube(b.Type)) continue;
@@ -199,9 +204,19 @@ public partial class PoiTest
                     faces++;
                     if (!drawn.Contains((n, c - n))) { missing++; note($"{p.Family.Id}: the face of the {g.Get(n).Role} at {n} toward the {b.Type} at {c} is not drawn"); }
                 }
-                if (!BlockInfo.IsFinish(g.Under(c).Type)) continue;
+                // Under a thing set on a finished floor the floor is painted as round it: no hole, no other finish.
+                Block fin = g.Under(c);
+                if (!BlockInfo.IsFinish(fin.Type) || !BlockInfo.IsFullCube(g.Get(c + Int3.Down).Type)) continue;
                 tops++;
-                if (!finishTops.Contains(c)) { missingTops++; note($"{p.Family.Id}: no finish drawn under the {b.Type} at {c}"); }
+                if (!paint.TryGetValue(c + Int3.Down, out var here)) { missingTops++; note($"{p.Family.Id}: no floor drawn under the {b.Type} at {c}"); continue; }
+                // A patch: the same finish lies bare beside it, and none of it is painted as this is (an edge of a
+                // roof overhead may change the look along a line, never round one cell).
+                var round = Dirs.Horizontal.Select(d => c + d.Vec()).Where(o => g.Get(o).Equals(fin) && paint.ContainsKey(o + Int3.Down)).Select(o => paint[o + Int3.Down]).ToList();
+                if (round.Count > 0 && !round.Contains(here))
+                {
+                    missingTops++;
+                    note($"{p.Family.Id}: the floor under the {b.Type} at {c} is {here.Finish} on surface {here.Surface}, round it {round[0].Finish} on {round[0].Surface}");
+                }
             }
         }
         return (faces, missing, tops, missingTops);
