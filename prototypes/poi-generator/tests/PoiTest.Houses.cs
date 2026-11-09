@@ -235,7 +235,7 @@ public partial class PoiTest
     /// <summary>
     /// The fence rules on each lot as built: straight runs along the lot lines meeting at corners on one shared post,
     /// never crossing; each run starting and ending on a post (or the wall or hedge itself), no holes along it; every
-    /// panel the mesher draws along its run (it turns a pane by what stands beside it), every railing and gate leaf
+    /// panel the mesher draws along its run (a pane faces as its layout settled it, PaneFacing), every railing and gate leaf
     /// facing along its own, never a cross-shaped rail; openings only where the path or drive is paved through, a gate
     /// post either side; one side line fenced on a street (the neighbour fences the other), both on a lot alone.
     /// </summary>
@@ -279,7 +279,7 @@ public partial class PoiTest
             {
                 Block b = g.Get(p);
                 if (b.Type == BlockType.Rail) { turnstile++; note($"{f.Kind}: a cross-shaped rail at {p}"); }
-                else if (b.Type == BlockType.Pane && (!g.Get(p + Dir.East.Vec()).IsAir || !g.Get(p + Dir.West.Vec()).IsAir) != alongX) { across++; note($"{f.Kind}: a panel across its run at {p}"); }
+                else if (b.Type == BlockType.Pane && Shapes.PaneAlongX(b) != alongX) { across++; note($"{f.Kind}: a panel across its run at {p}"); }
                 else if (b.Type == BlockType.Ladder && (b.Facing is Dir.North or Dir.South) != alongX) { across++; note($"{f.Kind}: railings or a gate across their run at {p}"); }
             }
             foreach (var run in f.Runs)
