@@ -93,7 +93,8 @@ public static class SpaceNav
     {
         via = null;
         PartSet parts = s.Parts;
-        if (parts == null || body.Climbs) return true;
+        if (parts == null) return true;
+        if (body.Climbs) return true;
         Vector3 pa = Point(s, a, body) + Vector3.Down * 0.5f, pb = Point(s, b, body) + Vector3.Down * 0.5f;
         // Up or down a flight the feet are between the two levels: the flat test is made at the lower.
         float y = MathF.Min(pa.Y, pb.Y);

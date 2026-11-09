@@ -213,9 +213,10 @@ public sealed class PartSet
     static Vector2[] BuildCandidates()
     {
         var l = new List<Vector2>();
-        for (int i = 0; i < 13; i++)
-            for (int j = 0; j < 13; j++)
-                l.Add(new Vector2(0.1f + i * 0.8f / 12f, 0.1f + j * 0.8f / 12f));
+        // Over the whole cell, its edges too: a big body among furniture may fit only astride two cells.
+        for (int i = 0; i < 16; i++)
+            for (int j = 0; j < 16; j++)
+                l.Add(new Vector2(0.03125f + i * 0.0625f, 0.03125f + j * 0.0625f));
         l.Sort((p, q) => (p - new Vector2(0.5f, 0.5f)).LengthSquared().CompareTo((q - new Vector2(0.5f, 0.5f)).LengthSquared()));
         return l.ToArray();
     }
@@ -346,16 +347,16 @@ public sealed class PartSet
             float face = alongZ ? MathF.Max(a.X, b.X) : MathF.Max(a.Z, b.Z);
             float mid = alongZ ? (from.Z + to.Z) * 0.5f : (from.X + to.X) * 0.5f, lo = alongZ ? a.Z : a.X;
             var offsets = new List<float>();
-            for (int i = 0; i < 9; i++) offsets.Add(lo + 0.1f + i * 0.1f);
+            for (int i = 0; i < 16; i++) offsets.Add(lo + 0.03125f + i * 0.0625f);
             offsets.Sort((p, q) => MathF.Abs(p - mid).CompareTo(MathF.Abs(q - mid)));
             var points = new List<Vector3>();
             foreach (float o in offsets) points.Add(alongZ ? new Vector3(face, y, o) : new Vector3(o, y, face));
             // Then anywhere in either cell, the shortest way round first.
             var rest = new List<Vector3>();
             foreach (Vector3I c in new[] { a, b })
-                for (int i = 0; i < 9; i++)
-                    for (int j = 0; j < 9; j++)
-                        rest.Add(new Vector3(c.X + 0.1f + i * 0.1f, y, c.Z + 0.1f + j * 0.1f));
+                for (int i = 0; i < 12; i++)
+                    for (int j = 0; j < 12; j++)
+                        rest.Add(new Vector3(c.X + 0.04f + i * 0.083f, y, c.Z + 0.04f + j * 0.083f));
             rest.Sort((p, q) => (p.DistanceTo(from) + p.DistanceTo(to)).CompareTo(q.DistanceTo(from) + q.DistanceTo(to)));
             points.AddRange(rest);
             foreach (Vector3 m in points)
