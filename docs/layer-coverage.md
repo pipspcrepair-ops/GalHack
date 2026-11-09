@@ -40,6 +40,8 @@ The dead references of the values that stay on (247 families, 164 tags, 137 like
 | theme | 1 | none of its places exist: fuel_fort, gang_arena, caravan_stop | road_warrens |
 | theme | 1 | none of its places exist: wall_city, hilltop_keep, toll_gate | wall_cities |
 
+A second pass (owner: nothing unfinished in the pickers) switched off 22 weak values whose headline is unbuilt, so a player would see no difference: themes moon_lakes, wrong_stars, folded_town, titans_meadows, glass_garden, empty_ark; falls sterility, rising_seas, great_quake, air_loss, meteor_swarm, grey_goo, teleport_accident, lockdown, gravity_shift, wormhole_tides, neglect, ageing_colony, magnetic_flip, mirror_burn, sinkage, last_ark. Each carries its reason in the data; 243 values are off in all. The weak values below that are still on show through their places, people or weather.
+
 Sky seam, the wall cities and the rest the owner looked for are in this list. Weak values left on:
 
 - **theme** (10): hush_suburbs, moon_lakes, wrong_stars, folded_town, lamplight, pit_worlds, teeth_trees, titans_meadows, glass_garden, empty_ark
