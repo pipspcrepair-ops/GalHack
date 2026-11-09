@@ -514,12 +514,25 @@ public sealed class Playthrough
             if ((!retry && _triedDeposits.Contains(((int)at.X, (int)at.Z))) || zone.GroundAt(at.X, at.Z).Y < 0.5f || zone.GroundAt(at.X, at.Z).Y - at.Y > Slice.Surface.DepositFinder.MaxDepth) continue;
             if (retry && NearestOre(at, at, kind) == null) continue; // dug out
             // Not in or beside a place (its rooms are dug into the ground under it).
-            if (zone.Planet.Pois.Any(poi => new Vector2(poi.Origin.X - at.X, poi.Origin.Z - at.Z).Length() < 60f)) continue;
+            // A big place (a crashed capital ship) reaches far from its origin cell: clear of its whole footprint too.
+            if (zone.Planet.Pois.Any(poi => new Vector2(poi.Origin.X - at.X, poi.Origin.Z - at.Z).Length() < 60f || OffFootprint(poi, at) < 25f)) continue;
+            // Dry: not under a lake or a river either (the sea is below 0.5 m).
+            if (zone.Water.LiquidAt(at.X, at.Z, out _)) continue;
             if (Game.Bunker != null && Game.Bunker.WayOut.Append(Game.Bunker.RoomCentre).Any(w => w.DistanceTo(at) < 10f)) continue; // dug through by the bunker
             float dist = new Vector2(at.X - from.X, at.Z - from.Z).Length();
             if (dist < bestD) { bestD = dist; best = at; }
         }
         return best;
+    }
+
+    /// <summary>How far a point lies outside a place's footprint, across the ground (0 inside it).</summary>
+    float OffFootprint(PlanetSurface.Poi.PoiSite poi, Vector3 at)
+    {
+        var box = poi.Footprint;
+        Vector3 mid = Game.Zone.Planet.NearestCopy(new Vector3((box.Min.X + box.Max.X) * 0.5f, 0f, (box.Min.Z + box.Max.Z) * 0.5f), at);
+        float dx = MathF.Max(0f, MathF.Abs(at.X - mid.X) - (box.Max.X - box.Min.X) * 0.5f);
+        float dz = MathF.Max(0f, MathF.Abs(at.Z - mid.Z) - (box.Max.Z - box.Min.Z) * 0.5f);
+        return MathF.Sqrt(dx * dx + dz * dz);
     }
 
     /// <summary>Digs ore of a kind out of the nearest deposits until the bag holds enough.</summary>

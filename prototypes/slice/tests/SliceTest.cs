@@ -892,7 +892,7 @@ public partial class SliceTest : Node
         double solidsFrom = 0;
         Vector3 was = start;
         // Cruise toward the target at height, steering with the mouse stick.
-        int ticks = 0;
+        int ticks = 0, seenImpacts = _impacts.Count;
         while (ticks++ < 60 * 120)
         {
             Vector3 p = v.Body.Position.ToGodot();
@@ -905,8 +905,14 @@ public partial class SliceTest : Node
             if (flat < 120f) break;
             Steer(v, to, flat);
             float agl = v.AboveGround;
-            _game.Controls.Hold(Key.Space, agl < 60f);
-            _game.Controls.Hold(Key.Ctrl, agl > 110f);
+            // A pilot looks ahead, not only down: a hillside or a cliff on the way is climbed over before it is reached.
+            Vector3 along = new Vector3(to.X, 0f, to.Z).Normalized();
+            float clear = float.MaxValue;
+            foreach (float d in new[] { 15f, 35f, 60f, 100f, 150f })
+                clear = MathF.Min(clear, p.Y - _game.Zone.GroundAt(p.X + along.X * d, p.Z + along.Z * d).Y);
+            _game.Controls.Hold(Key.Space, agl < 60f || clear < 45f);
+            _game.Controls.Hold(Key.Ctrl, agl > 110f && clear > 70f);
+            if (clear < 25f) _game.Controls.Hold(Key.W, false); // up first, then on
             top = MathF.Max(top, v.Body.Velocity.Length());
             bestAgl = MathF.Max(bestAgl, agl);
             mostSolids = Math.Max(mostSolids, _game.Zone.Streamer.SolidColliders);
@@ -917,6 +923,13 @@ public partial class SliceTest : Node
             {
                 solidsFrom = _game.Zone.Streamer.SolidsTotalMs;
                 framesFrom = probe.Frames;
+            }
+            if (_impacts.Count > seenImpacts)
+            {
+                for (int k = seenImpacts; k < _impacts.Count; k++)
+                    if (_impacts[k].Body == v.Body && _impacts[k].Speed >= 8f)
+                        GD.Print($"  (cruise contact {_impacts[k].Speed:F1} m/s on {_impacts[k].Surface} at tick {ticks}: {agl:F1} m up by the probe, {p.Y - _game.Zone.GroundAt(p.X, p.Z).Y:F1} m over the ground, velocity {v.Body.Velocity}, up {MathX.Up(v.Body.Rotation)})");
+                seenImpacts = _impacts.Count;
             }
             if (ticks > 240) profiler?.Step();
             if (ticks > 240)

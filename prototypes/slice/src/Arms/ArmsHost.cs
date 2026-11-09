@@ -419,7 +419,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
     }
 
     /// <summary>The solid part of a sweep: colliders first, then the voxel ground where colliders aren't loaded.</summary>
-    bool SolidHit(Vector3 a, Vector3 dir, float len, int owner, float age, ref ShotHit hit)
+    bool SolidHit(Vector3 a, Vector3 dir, float len, int owner, float age, ref ShotHit hit, int ghosts = 0)
     {
         Vessel aboard = owner == 0 ? Game.Survivor.Aboard : null;
         bool solid;
@@ -450,6 +450,15 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
             if (v != null)
             {
                 Int3 cell = StructureBridge.CellAt(v.Structure, (v.Body.ToLocal(point.ToNumerics()) - GalHack.Physics.MathX.Unrotate(v.Body.Rotation, normal.ToNumerics()) * 0.02f));
+                // A block just taken away keeps its collider until the structure's shapes are rebuilt: nothing is
+                // there, so the ray goes on through it (a mine dropping off a shot-away block lands on what is under it).
+                if (!v.Structure.Has(cell))
+                {
+                    if (ghosts >= 4 || d + 0.02f >= len) return false;
+                    if (!SolidHit(point + dir * 0.02f, dir, len - d - 0.02f, owner, age, ref hit, ghosts + 1)) return false;
+                    hit.Distance += d + 0.02f;
+                    return true;
+                }
                 hit = new ShotHit { Kind = HitKind.Block, Thing = v, CellX = cell.X, CellY = cell.Y, CellZ = cell.Z, Point = point.ToNumerics(), Normal = normal.ToNumerics(), Distance = d, Through = v.Structure.Grid.CellSize };
             }
             else hit = new ShotHit { Kind = HitKind.Ground, Point = point.ToNumerics(), Normal = normal.ToNumerics(), Distance = d };

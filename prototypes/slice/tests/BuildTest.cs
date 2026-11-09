@@ -417,7 +417,7 @@ public partial class BuildTest : Node
 
         foreach (int x in Carry("big-core", 1, 4)) yield return x;
         foreach (int x in _play.PlaceOnGround(4, _site)) yield return x;
-        _base = _game.Zone.Vessels.FirstOrDefault(v => v.IsBase && !v.IsRuin);
+        _base = _game.Zone.Vessels.FirstOrDefault(v => v.IsBase && !v.IsRuin && !v.IsWreck);
         Check(_base != null && StructureArea.ClassOf(_base) == StructureClass.Base && _base.Structure.Grid.Size == GridSize.Large && Pack["big-core"] == 0,
             "the Big Core founds a base (large grid, anchored), and is used up");
         if (_base == null) yield break;

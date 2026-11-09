@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using Godot;
 using Slice.Game;
 using Slice.Player;
@@ -60,6 +61,24 @@ public partial class GunFeelTest : Node
     }
 
     static int Nodes() => (int)Performance.GetMonitor(Performance.Monitor.ObjectNodeCount);
+
+    /// <summary>How many nodes stand under each branch a few levels down (where a count grew).</summary>
+    Dictionary<string, int> Branches()
+    {
+        var map = new Dictionary<string, int>();
+        int Walk(Node n, string path, int depth)
+        {
+            int count = 1;
+            foreach (Node c in n.GetChildren()) count += Walk(c, path + "/" + c.Name, depth + 1);
+            if (depth <= 4) map[path] = count;
+            return count;
+        }
+        Walk(GetTree().Root, "", 0);
+        return map;
+    }
+
+    static string Grown(Dictionary<string, int> a, Dictionary<string, int> b) =>
+        string.Join(", ", b.Where(kv => kv.Value != a.GetValueOrDefault(kv.Key)).OrderByDescending(kv => kv.Key.Count(ch => ch == '/')).ThenByDescending(kv => Math.Abs(kv.Value - a.GetValueOrDefault(kv.Key))).Take(12).Select(kv => $"{kv.Key} {kv.Value - a.GetValueOrDefault(kv.Key):+0;-0}"));
 
     bool AimIsExact() => _game.Camera.GlobalBasis.IsEqualApprox(_game.Survivor.Eye().Basis);
 
@@ -139,6 +158,7 @@ public partial class GunFeelTest : Node
         dir = _game.Survivor.WorldLook();
         foreach (int x in _drive.Wait(240)) yield return x;
         int warm = Nodes();
+        var warmBranches = Branches();
         int flashesBefore = fx.Flashes, maxNodes = warm;
         int shotsBefore = _game.Tool.Shots;
         string[] mix = { "bullet", "plasma", "laser", "rocket" };
@@ -155,7 +175,7 @@ public partial class GunFeelTest : Node
         Check(fx.Flashes - flashesBefore > 100 && _game.Tool.Shots - shotsBefore > 10,
             $"10 s of fire: {_game.Tool.Shots - shotsBefore} tool shots and {fx.Flashes - flashesBefore} flashes");
         Check(fx.FlashPool == 16 && maxNodes - warm <= 40 && after - warm <= 2,
-            $"the pool never grew ({fx.FlashPool} slots) and nodes held steady: {warm} before, at most {maxNodes} during, {after} after");
+            $"the pool never grew ({fx.FlashPool} slots) and nodes held steady: {warm} before, at most {maxNodes} during, {after} after (changed: {Grown(warmBranches, Branches())})");
         Check(AimIsExact(), "and the aim is still exactly where it was");
 
         // ---- Gather mode: a blue beam while the tool works, gone when it stops ----

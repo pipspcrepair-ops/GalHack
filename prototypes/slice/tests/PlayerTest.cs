@@ -278,14 +278,14 @@ public partial class PlayerTest : Node
         Creature NextPrey()
         {
             Vector3 from = _game.Survivor.WorldFeet;
-            return w.Sim.Creatures.Where(c => !c.Dead && !c.Removed && !tried.Contains(c) && !c.Species.Flies && c.Species.Plan is BodyPlan.Walker or BodyPlan.Hopper)
+            return w.Sim.Creatures.Where(c => !c.Dead && !c.Removed && !tried.Contains(c) && !c.Species.Flies && c.Species.Plan is BodyPlan.Walker or BodyPlan.Hopper && c.Species.Drops.Meat > 0)
                 .OrderBy(c => w.FromPatch(c.Position).DistanceTo(from)).FirstOrDefault();
         }
         // One you can walk to, by the way you can walk: straight at it, a hunter can go down a cliff
         // and strand the rest of the test at the bottom. The nearest of all if there is no such one.
         var ground = _play.WalkableFrom(feet);
         List<Vector3> stalk = null;
-        foreach (Creature c in w.Sim.Creatures.Where(c => !c.Dead && !c.Removed && !c.Species.Flies && c.Species.Plan is BodyPlan.Walker or BodyPlan.Hopper).OrderBy(c => w.FromPatch(c.Position).DistanceTo(feet)))
+        foreach (Creature c in w.Sim.Creatures.Where(c => !c.Dead && !c.Removed && !c.Species.Flies && c.Species.Plan is BodyPlan.Walker or BodyPlan.Hopper && c.Species.Drops.Meat > 0).OrderBy(c => w.FromPatch(c.Position).DistanceTo(feet)))
             if (_play.WayTo(ground, feet, w.FromPatch(c.Position), 2.5f) is List<Vector3> way) { _prey = c; stalk = way; break; }
         _prey ??= NextPrey();
         if (_prey == null) { Fail("no creature near to hunt"); yield break; }
@@ -552,7 +552,7 @@ public partial class PlayerTest : Node
         Vector3 site = _play.FlatSpot(_fab.GlobalPosition, 14f, 1.2f, 0.5f);
         foreach (int x in _play.StandOff(site, _game.Survivor.WorldFeet, 6f)) yield return x;
         foreach (int x in _play.PlaceOnGround(3, site)) yield return x;
-        _base = _game.Zone.Vessels.FirstOrDefault(v => v.IsBase && !v.IsRuin);
+        _base = _game.Zone.Vessels.FirstOrDefault(v => v.IsBase && !v.IsRuin && !v.IsWreck);
         Check(_base != null && _base.Structure.Mode == GalHack.Structures.CoreMode.Base && _base.Body.Motion == GalHack.Physics.Motion.Fixed,
             "the Big Core set down founds a base: large grid, base mode, a fixed body where it stands");
         if (_base == null) yield break;
@@ -683,7 +683,7 @@ public partial class PlayerTest : Node
         GD.Print($"  (the vessel's pad {pad}; the base at {_base.Body.Position.ToGodot()}; the castaway at {_game.Survivor.WorldFeet})");
         foreach (int x in _play.StandOff(pad, _base.Body.Position.ToGodot(), 5f)) yield return x;
         foreach (int x in _play.PlaceOnGround(3, pad)) yield return x;
-        _vessel = _game.Zone.Vessels.FirstOrDefault(v => !v.IsBase && !v.IsRuin && v.Structure.Grid.Size == GridSize.Small);
+        _vessel = _game.Zone.Vessels.FirstOrDefault(v => !v.IsBase && !v.IsRuin && !v.IsWreck && v.Structure.Grid.Size == GridSize.Small);
         if (_vessel == null) GD.Print($"  (no vessel: in hand {_game.Pack.Hand} {_game.Pack.InHand}, slot {_game.Pack.Selected}, says \"{_game.Builder.Verdict}\", Small Cores in the bag {_game.Pack["small-core"]}, {_game.Survivor.WorldFeet.DistanceTo(pad):F1} m from the pad)");
         Check(_vessel != null && _vessel.Controller.Frozen, "the Small Core set down starts a small craft on its build stand");
         if (_vessel == null) yield break;
