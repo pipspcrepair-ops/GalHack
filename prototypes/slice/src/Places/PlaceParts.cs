@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using GalHack.Deco;
 using GalHack.Items;
 using Godot;
@@ -41,17 +42,30 @@ public static class PlaceParts
         lock (m)
         {
             if (m.Parts != null) return m.Parts;
-            var parts = new PartSet();
-            foreach (var (c, b) in m.Inst.Blocks.Blocks()) AddBlock(parts, c, b);
-            if (m.Rooms != null && Decor.Shared is { } decor)
-                foreach (PlaceRoom room in m.Rooms.Values)
-                {
-                    HashSet<int> taken = m.DecoTaken.GetValueOrDefault(room.Module);
-                    for (int i = 0; i < room.Plan.Placements.Count; i++)
-                        if (taken == null || !taken.Contains(i)) AddPiece(parts, decor, room, i);
-                }
+            // Its doors first: what stands in a doorway's way the years forced open or tore out goes with it.
+            List<DoorWay> doors = DoorWays.Of(m);
+            m.Fixed = Build(m);
+            PartSet parts = Build(m);
+            foreach (DoorWay d in doors) DoorWays.Put(parts, d, d.Open);
             return m.Parts = parts;
         }
+    }
+
+    /// <summary>The place's parts without its doors (the people's walking grid's; null when <see cref="Legacy"/>).</summary>
+    public static PartSet Fixed(PlaceMemory m) => Of(m) == null ? null : m.Fixed;
+
+    static PartSet Build(PlaceMemory m)
+    {
+        var parts = new PartSet();
+        foreach (var (c, b) in m.Inst.Blocks.Blocks()) AddBlock(parts, c, b);
+        if (m.Rooms != null && Decor.Shared is { } decor)
+            foreach (PlaceRoom room in m.Rooms.Values)
+            {
+                HashSet<int> taken = m.DecoTaken.GetValueOrDefault(room.Module);
+                for (int i = 0; i < room.Plan.Placements.Count; i++)
+                    if (taken == null || !taken.Contains(i)) AddPiece(parts, decor, room, i);
+            }
+        return parts;
     }
 
     static void AddBlock(PartSet parts, PInt3 c, Block b)
@@ -96,17 +110,34 @@ public static class PlaceParts
         PartSet parts = m.Parts;
         if (parts == null) return;
         lock (m)
+        {
             foreach (PInt3 c in cells)
-            {
-                parts.Remove(OwnerOf(c));
-                AddBlock(parts, c, m.Inst.Blocks.Get(c));
-            }
+                foreach (PartSet set in new[] { parts, m.Fixed })
+                {
+                    if (set == null) continue;
+                    set.Remove(OwnerOf(c));
+                    AddBlock(set, c, m.Inst.Blocks.Get(c));
+                }
+            // A door blown out of its doorway: its leaves go with it.
+            if (m.DoorWays != null)
+                foreach (DoorWay d in m.DoorWays.ToList())
+                    if (d.Cells.Any(c => m.Inst.Blocks.Get(c).Type != BlockType.Door))
+                    {
+                        parts.Remove(DoorWays.OwnerOf(d, 0));
+                        parts.Remove(DoorWays.OwnerOf(d, 1));
+                        m.DoorWays.Remove(d);
+                    }
+        }
     }
 
     /// <summary>A dressed piece taken from its room: its parts go.</summary>
     public static void Taken(PlaceMemory m, int module, int index)
     {
         if (m.Parts == null) return;
-        lock (m) m.Parts.Remove(OwnerOf(module, index));
+        lock (m)
+        {
+            m.Parts.Remove(OwnerOf(module, index));
+            m.Fixed?.Remove(OwnerOf(module, index));
+        }
     }
 }

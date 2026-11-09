@@ -478,13 +478,16 @@ public partial class Place
                     if (g.Get(c).Type == BlockType.Ladder) blocked.Add(c);
                 }
         var nav = new PoiGenerator.Gen.NavGrid(new Overlay(g, blocked, foot: true), m.Inst.Layout.Occupied, null, false);
-        if (PlaceParts.Of(m) is not { } parts) return nav;
+        if (PlaceParts.Fixed(m) is not { } parts) return nav;
+        // A locked door is no way for the town's routes (nobody is sent where they would stand before it); the rest they open as they come.
+        var locked = new HashSet<Int3>(DoorWays.Of(m).Where(d => d.Clearance != null || d.Lift).SelectMany(d => d.Cells));
         // A person stands in a cell where somewhere in it they fit clear of the furniture and clutter, and steps
         // to the next where their body gets by all the way: past a monitor, beside a locker, round a chair.
         Func<int, int, int, bool> walls = WallsOf(nav);
         nav.Fits = c => PersonSpot(parts, walls, c) != null;
         nav.Passes = (a, b) =>
         {
+            if (locked.Contains(a) || locked.Contains(b)) return false;
             if (nav.RampAt(a, out _) || nav.RampAt(b, out _)) return true;
             if (PersonSpot(parts, walls, a) is not { } pa || PersonSpot(parts, walls, b) is not { } pb) return false;
             if (!parts.Touches(pa, PlaceParts.PersonRadius, PlaceParts.PersonHeight) && !parts.Touches(pb, PlaceParts.PersonRadius, PlaceParts.PersonHeight)) return true;

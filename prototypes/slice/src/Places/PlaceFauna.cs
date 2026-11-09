@@ -327,6 +327,19 @@ public sealed class PlaceFauna
             new Vector3I(g.Min.X, g.Min.Y, g.Min.Z), new Vector3I(g.Min.X + g.Size.X, g.Min.Y + g.Size.Y, g.Min.Z + g.Size.Z)) { Slope = _cells.Slope, Parts = PlaceParts.Of(memory) };
         lock (deep.Lock) PoiFauna.Spawn(sim, Population, space);
         Sim = sim;
+        // Its creatures are bodies no door shuts on.
+        memory.Bodies.Add(() => CreatureBodies(sim));
+    }
+
+    /// <summary>A sim's creatures as the doors see them (local feet, radius, height; a climber as the ball it rides in).</summary>
+    public static IEnumerable<(Vector3 Feet, float Radius, float Height)> CreatureBodies(WildSim sim)
+    {
+        foreach (Creature c in sim.Creatures.ToArray())
+        {
+            if (c.Dead || c.Removed || c.InWalls || c.Space == null) continue;
+            if (c.Species.Climbs) { float r = c.Clearance; yield return (Crawl.Center(c) - Vector3.Up * r, r, 2f * r); }
+            else yield return (c.Position, SpaceNav.PartRadius(c.Species), SpaceNav.PartHeight(c.Species));
+        }
     }
 
     /// <summary>The place stands: its creatures are drawn, heard and step again, as they were left.</summary>

@@ -26,7 +26,11 @@ public partial class Place
         public AnimatableBody3D[] Leaves;
         public Vector3[] Shut;            // each leaf's centre when shut (local)
         public Vector3 Along;             // the doorway's width direction
-        public float Width, Open, Target;
+        public float Width;
+        /// <summary>Its state, shared with what moves through the place (<see cref="DoorWay"/>).</summary>
+        public DoorWay Way = new();
+        public float Open { get => Way.Open; set => Way.Open = value; }
+        public float Target { get => Way.Target; set => Way.Target = value; }
         public bool Jammed, Blast;
         public string Clearance;
         public int Lift = -1, Stop = -1;
@@ -49,6 +53,14 @@ public partial class Place
 
     IEnumerable<int> BuildDoors()
     {
+        // The doors as bodies meet them first: what the years left standing open or tore out is settled there.
+        List<DoorWay> ways = DoorWays.Of(Memory);
+        if (!_youCounted)
+        {
+            // You are a body no door shuts on.
+            _youCounted = true;
+            Memory.Bodies.Add(() => IsInstanceValid(this) && Places != null ? new[] { (Places.Focus() - GlobalPosition, Slice.Player.Survivor.Radius, Slice.Player.Survivor.Height) } : Array.Empty<(Vector3, float, float)>());
+        }
         Layout layout = Inst.Layout;
         var locks = layout.Extras.Locks.ToDictionary(l => l.Doorway);
         var liftDoor = new Dictionary<int, (int lift, int stop)>();
@@ -151,8 +163,12 @@ public partial class Place
                 };
                 root.AddChild(door.Lamp);
             }
-            door.Open = door.Jammed ? 0.5f : Memory.DoorsOpen.TryGetValue(index, out bool open) && open ? 1f : 0f;
-            door.Target = door.Open;
+            if (ways.FirstOrDefault(w => w.Index == index) is { } way) door.Way = way;
+            else
+            {
+                door.Open = door.Jammed ? 0.5f : Memory.DoorsOpen.TryGetValue(index, out bool open) && open ? 1f : 0f;
+                door.Target = door.Open;
+            }
             PlaceLeaves(door);
             _doors.Add(door);
             // Its leaves are drawn only while its cube is (from further off the merged drawing has it, shut).
@@ -184,13 +200,14 @@ public partial class Place
     {
         foreach (Door d in _doors)
         {
-            if (Memory.Town is { GatesShut: true } && d.Target > 0.5f) { d.Target = 0f; Memory.DoorsOpen[d.Index] = false; }
+            // A settlement that won't have you shuts its way in and what you opened (its own people still use the rest).
+            if (Memory.Town is { GatesShut: true } && d.Target > 0.5f && (d.Index == -1 || d.Way.ByPlayer)) { d.Target = 0f; Memory.DoorsOpen[d.Index] = false; }
             float target = d.Jammed ? 0.5f : d.Target;
             // A shaft door stays shut unless the car is at its stop.
             if (d.Lift >= 0 && !CarAt(d.Lift, d.Stop)) target = 0f;
-            if (d.Open == target) continue;
-            d.Open = Mathf.MoveToward(d.Open, target, dt * 1.6f);
-            PlaceLeaves(d);
+            float was = d.Open;
+            DoorWays.Step(Memory, d.Way, target, dt);
+            if (d.Open != was) PlaceLeaves(d);
         }
         if (_lampTimer-- <= 0)
         {
@@ -204,6 +221,7 @@ public partial class Place
     }
 
     int _lampTimer;
+    bool _youCounted;
 
     /// <summary>E on a door: open or shut it, if you may. Returns what happened, for the visor.</summary>
     public (bool Ok, string Message) UseDoor(Door d)
@@ -219,6 +237,8 @@ public partial class Place
             return (true, "LIFT CALLED");
         }
         d.Target = d.Target > 0.5f ? 0f : 1f;
+        d.Way.ByPlayer = d.Target > 0.5f;
+        d.Way.ClearFor = 0f;
         Memory.DoorsOpen[d.Index] = d.Target > 0.5f;
         Places.Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Clank, ToWorld(d.Centre), d.Blast ? 0.6f : 0.9f, -8f);
         return (true, d.Target > 0.5f ? (d.Clearance != null ? $"{d.Clearance.ToUpperInvariant()} CARD ACCEPTED" : "") : "");
