@@ -582,9 +582,9 @@ public static class Mesher
 
             if (_o.Collision && BlockInfo.Collides(b.Type) && !BlockInfo.IsSlope(b.Type) && !BlockInfo.IsCornerSlope(b.Type))
             {
-                // Props collide as their bounding box.
-                var (lo, hi) = Shapes.CollisionBox(b);
-                CollideBox(chunk, V3.Of(p) + lo, V3.Of(p) + hi);
+                // Props collide as their real shape: a table as its top and legs, a locker as its body against the wall.
+                foreach (var (lo, hi) in Shapes.CollisionBoxes(b, p))
+                    CollideBox(chunk, V3.Of(p) + lo, V3.Of(p) + hi);
             }
         }
 
@@ -1289,6 +1289,90 @@ public static class Shapes
         BlockType.Pipe => PipeBounds(b, 0.1f, 0.9f),
         _ => (new V3(0.1f, 0, 0.1f), new V3(0.9f, 0.9f, 0.9f)),
     };
+
+    /// <summary>
+    /// What a block collides as, in its cell's frame: for furniture and fittings the solid parts of what is
+    /// drawn (a table's top and four legs with the floor open between them, a locker's body against its
+    /// back, a terminal's stand and its screen, a crate where it sits in its cell), for the rest its one box
+    /// (<see cref="CollisionBox"/>). The body's collision, the creatures' and the people's ways all go by these.
+    /// </summary>
+    public static List<(V3 lo, V3 hi)> CollisionBoxes(Block b, Int3 p)
+    {
+        var l = new List<(V3, V3)>(5);
+        void Add(float x0, float y0, float z0, float x1, float y1, float z1, Dir facing = Dir.North)
+        {
+            ShapeBox s = Box(x0, y0, z0, x1, y1, z1, default, Surface.Matte, facing);
+            l.Add((s.Lo, s.Hi));
+        }
+        Dir f = b.Facing;
+        switch (b.Type)
+        {
+            case BlockType.Terminal:
+                Add(0.15f, 0, 0.3f, 0.85f, 0.8f, 0.85f, f);
+                Add(0.2f, 0.8f, 0.42f, 0.8f, 1.35f, 0.6f, f);
+                break;
+            case BlockType.Crate:
+            {
+                uint h = Hash.Cell(p, 77);
+                float R(int k) => ((h >> (k * 4)) & 15) / 15f;
+                float lift = b.Variant == 1 ? 0.05f : 0f, sz = 0.55f + R(0) * 0.3f, ox = (1 - sz) * R(1), oz = (1 - sz) * R(2);
+                Add(ox, 0, oz, ox + sz, sz * 0.9f + lift, oz + sz);
+                break;
+            }
+            case BlockType.Table:
+            case BlockType.Meal:
+                Add(0.05f, 0.7f, 0.05f, 0.95f, 0.8f, 0.95f);
+                foreach (var (x, z) in new[] { (0.1f, 0.1f), (0.82f, 0.1f), (0.1f, 0.82f), (0.82f, 0.82f) })
+                    Add(x, 0, z, x + 0.08f, 0.7f, z + 0.08f);
+                break;
+            case BlockType.Bunk:
+                Add(0.05f, 0, 0.1f, 0.95f, 0.6f, 0.9f);
+                break;
+            case BlockType.Barricade:
+                Add(0, 0, 0.3f, 1, 0.35f, 0.7f, f);
+                Add(0.1f, 0.35f, 0.25f, 0.9f, 0.7f, 0.65f, f);
+                Add(0.25f, 0.7f, 0.35f, 0.85f, 1.0f, 0.75f, f);
+                break;
+            case BlockType.Machine:
+                Add(0.05f, 0, 0.05f, 0.95f, 0.95f, 0.95f);
+                Add(0.0f, 0.55f, 0.15f, 1.0f, 0.65f, 0.85f);
+                break;
+            case BlockType.Locker:
+                Add(0.12f, 0, 0.25f, 0.88f, 1.0f, 0.9f, f);
+                break;
+            case BlockType.Bed:
+                Add(0.1f, 0, 0.05f, 0.9f, 0.55f, 0.95f, f);
+                Add(0.2f, 0.55f, 0.1f, 0.8f, 0.65f, 0.3f, f);
+                break;
+            case BlockType.Bench:
+                Add(0.04f, 0.78f, 0.1f, 0.96f, 0.88f, 0.9f);
+                Add(0.08f, 0, 0.14f, 0.92f, 0.78f, 0.86f);
+                break;
+            case BlockType.Tank:
+                Add(0.15f, 0, 0.05f, 0.85f, 0.95f, 0.95f);
+                Add(0.05f, 0, 0.15f, 0.95f, 0.95f, 0.85f);
+                break;
+            case BlockType.Pod:
+                Add(0.18f, 0, 0.18f, 0.82f, 0.45f, 0.82f);
+                Add(0.24f, 0.45f, 0.24f, 0.76f, 1.05f, 0.76f);
+                break;
+            case BlockType.Statue:
+                Add(0.1f, 0, 0.1f, 0.9f, 0.3f, 0.9f);
+                Add(0.3f, 0.3f, 0.35f, 0.7f, 1.3f, 0.65f);
+                Add(0.36f, 1.3f, 0.38f, 0.64f, 1.65f, 0.62f);
+                Add(0.15f, 0.9f, 0.42f, 0.85f, 1.05f, 0.58f);
+                break;
+            case BlockType.Pump:
+                Add(0.15f, 0, 0.25f, 0.85f, 0.12f, 0.75f, f);
+                Add(0.22f, 0.12f, 0.3f, 0.78f, 1.25f, 0.7f, f);
+                Add(0.26f, 1.25f, 0.34f, 0.74f, 1.7f, 0.66f, f);
+                break;
+            default:
+                l.Add(CollisionBox(b));
+                break;
+        }
+        return l;
+    }
 
     static (V3 lo, V3 hi) PipeBounds(Block b, float lo, float hi) => b.Facing switch
     {

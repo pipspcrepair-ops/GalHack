@@ -38,11 +38,56 @@ public sealed partial class Town
         : p.Sitting ? 0.3f : p.Working ? 0.6f : 1f;
 
     /// <summary>Whether a body can stand here: the cell at its feet, or on a stair the one below or above (between levels a walker's height is in between).</summary>
-    bool Open(Vector3 local)
+    // (The furniture is each body's own test, at its own size, after the move: OffParts.)
+    bool Open(Vector3 local) => OnGrid(local);
+
+    /// <summary>The cell at its feet (or on a stair the one below or above) is one the walking grid stands people in.</summary>
+    bool OnGrid(Vector3 local)
     {
         if (_nav == null) return true;
         int x = (int)MathF.Floor(local.X), z = (int)MathF.Floor(local.Z);
-        return _nav.Standable(new PInt3(x, (int)MathF.Floor(local.Y + 0.05f), z)) || _nav.Standable(new PInt3(x, (int)MathF.Ceiling(local.Y - 0.05f), z));
+        // (By the blocks alone: the furniture is each body's own test, at its own size.)
+        return _nav.StandsOn(new PInt3(x, (int)MathF.Floor(local.Y + 0.05f), z)) || _nav.StandsOn(new PInt3(x, (int)MathF.Ceiling(local.Y - 0.05f), z));
+    }
+
+    /// <summary>How tall a person stands.</summary>
+    static float Height(Person p) => p.Looks != null ? MathF.Max(1f, p.Figure.Height) : PlaceParts.PersonHeight;
+
+    /// <summary>
+    /// In the furniture on purpose: sitting or lying in it, or on the last step into or the first out of the
+    /// seat or bed they use (that piece is what they are in; nothing else of the room is).
+    /// </summary>
+    bool InUse(Person p) => p.Sitting || p.GettingUp || p.Asleep || p.Slept > 0f || p.Indoors || IntoSeat(p) || InSeat(p, p.Left)
+        || p.Seat >= 0 || p.Path != null && p.Step >= p.Path.Count - 2 && p.Spot >= 0 && p.Spot < _own.Count && _own[p.Spot] != null;
+
+    /// <summary>How deep a person's body is in the place's furniture or clutter, m (0: clear, as it should always be; tests).</summary>
+    public float InParts(Person p) => _parts == null || InUse(p) ? 0f : MathF.Max(0f, -_parts.Gap(p.Pos, BodyRadius(p), Height(p)));
+
+    /// <summary>The place's furniture and clutter as people go round it (null in the old whole-cell rule; tests).</summary>
+    public Wildlife.PartSet Parts => _parts;
+
+    /// <summary>
+    /// A person's body held off the place's parts after a move: pushed out sideways where it went in, or back
+    /// where it was when that can't be done (a step into a gap too narrow for them waits rather than goes through).
+    /// </summary>
+    void OffParts(Person p, Vector3 was)
+    {
+        if (_parts == null) return;
+        float r = BodyRadius(p), h = Height(p);
+        // Getting up: out the way they sat down, till clear of the seat and the table.
+        if (p.GettingUp && _parts.Gap(p.Pos, r, h) >= 0f) p.GettingUp = false;
+        if (InUse(p)) return;
+        float gap = _parts.Gap(p.Pos, r, h);
+        if (gap >= 0f) return;
+        Vector3 to = _parts.PushOut(p.Pos, r, h);
+        to.Y = p.Pos.Y;
+        float after = _parts.Gap(to, r, h);
+        if (after >= 0f && OnGrid(to)) { p.Pos = to; return; }
+        // No way clear: never deeper in than it was (one set down in a piece gets out of it by any way not further in).
+        Vector3 best = p.Pos;
+        float most = gap;
+        if (after > most && OnGrid(to)) { best = to; most = after; }
+        p.Pos = most >= _parts.Gap(was, r, h) - 0.005f ? best : was;
     }
 
     /// <summary>Once a tick, after everyone has moved: bodies apart, you stepped round, pushes answered.</summary>
@@ -78,7 +123,9 @@ public sealed partial class Town
         {
             Person p = _bodies[i];
             PersonalSpace.Body b = _space.Bodies[i];
+            Vector3 was = p.Pos;
             p.Pos = new Vector3(b.Pos.X, p.Pos.Y, b.Pos.Z);
+            OffParts(p, was);
             if (b.Wait > 0f) p.Yield = MathF.Max(p.Yield, b.Wait);
         }
         // Two stood still in each other with no room to part (sent to the one spot in a narrow way): the second goes elsewhere.
@@ -100,6 +147,39 @@ public sealed partial class Town
             }
     }
 
+    // ---- Walking someone through a place (tests) -------------------------------------------------
+
+    /// <summary>A place's walking grid with nobody living there yet, to walk people through it one by one (tests).</summary>
+    public static Town Walking(PlaceMemory m)
+    {
+        var town = new Town(m, new Townsfolk());
+        town._nav = Place.FootNavOf(m);
+        town._parts = PlaceParts.Of(m);
+        return town;
+    }
+
+    /// <summary>Whether a person can be stood at a point by the walking grid.</summary>
+    public bool CanStand(Vector3 local) => OnGrid(local);
+
+    /// <summary>Someone of a given folk set at a point with a route to another by the walking grid (null: no route).</summary>
+    public Person Walker(Species looks, Vector3 from, Vector3 to)
+    {
+        if (_nav == null) return null;
+        PInt3 a = Cell(from), b = Cell(to);
+        if (!_nav.Standable(a) || !_nav.Standable(b)) return null;
+        System.Collections.Generic.List<PInt3> cells = _nav.FindPath(a, b, 30000);
+        if (cells == null) return null;
+        var path = Points(cells);
+        path.Add(to);
+        return new Person { Town = this, Looks = looks, Pos = from, Path = path, Step = 0, Spot = -1, Speed = 1.3f, Spawn = new CitizenSpawn("walker", "walk", a, -1) };
+    }
+
+    /// <summary>A walker's step along their route, as the town walks its people (true once there).</summary>
+    public bool StepWalker(Person p, float dt) => Move(p, dt);
+
+    /// <summary>A person's body radius (their folk's width) and how tall they stand.</summary>
+    public static float RadiusOf(Person p) => BodyRadius(p);
+    public static float HeightOf(Person p) => Height(p);
     /// <summary>A push from you: a step aside for a friend, a glare from the wary, a shove back from a guard or one who doesn't like you. Never a fight.</summary>
     void Shoved(Person p, Vector3 player)
     {

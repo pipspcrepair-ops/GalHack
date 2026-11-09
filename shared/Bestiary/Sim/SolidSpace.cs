@@ -26,6 +26,22 @@ public interface ISolidSpace
     /// way it rises, as <see cref="Slopes"/> numbers it, or -1 for a whole block or open air.
     /// </summary>
     int SlopeCell(int x, int y, int z) => -1;
+
+    /// <summary>The parts here that fill only some of their cell (furniture, clutter), in this space's frame; null where there are none.</summary>
+    PartSet Parts => null;
+
+    /// <summary>The space without its parts: its walls, floors and stairs only (what a walker stands on and is held off).</summary>
+    ISolidSpace Bare => this;
+}
+
+/// <summary>A space's walls, floors and stairs without its parts.</summary>
+public sealed class BareSpace : ISolidSpace
+{
+    readonly BlockSpace _s;
+    public BareSpace(BlockSpace s) => _s = s;
+    public float Density(Vector3 p) => _s.BareDensity(p);
+    public bool SolidCell(int x, int y, int z) => _s.SolidCell(x, y, z);
+    public int SlopeCell(int x, int y, int z) => _s.SlopeCell(x, y, z);
 }
 
 /// <summary>The ways a ramp cell can rise: 0 toward +x, 1 toward -x, 2 toward +z, 3 toward -z.</summary>
@@ -53,6 +69,8 @@ public sealed class BlockSpace : ISolidSpace
     readonly Vector3I _min, _max;
     /// <summary>How round inside corners are, metres.</summary>
     public float Fillet = 0.3f;
+    /// <summary>How round the corners are where a part meets a wall or a floor, metres.</summary>
+    public float PartFillet = 0.3f;
     /// <summary>
     /// Where the block grid sits in the sim's frame: the grid's cell (0,0,0) has its corner at this
     /// point (whole metres, so the cells stay the sim's cells). Zero when the sim works in the grid's frame.
@@ -121,7 +139,32 @@ public sealed class BlockSpace : ISolidSpace
         return MathF.Sqrt(dx * dx + dy * dy);
     }
 
+    /// <summary>
+    /// The place's parts that fill only some of their cell (in the sim's frame, as <see cref="Density"/> is
+    /// asked): their faces join the density, with the inside corners where they meet a floor or a wall
+    /// rounded as the blocks' are, so a climber crawls over a monitor on a wall or up a table's leg.
+    /// </summary>
+    public PartSet Parts { get; set; }
+
+    BareSpace _bare;
+    public ISolidSpace Bare => Parts == null ? this : _bare ??= new BareSpace(this);
+
     public float Density(Vector3 p)
+    {
+        float d = BareDensity(p);
+        if (Parts == null || !Parts.Any(p)) return d;
+        // (A part thinner than a hand, a shelf's board, is felt a little thicker: a crawler on one face never finds the other.)
+        float part = Parts.Distance(p, PartSet.Thick);
+        if (part <= 0f || d >= 0f) return MathF.Max(d, -part);
+        // Both outside: the two nearest surfaces, a little rounded where they meet.
+        float wall = -d, k = PartFillet;
+        float h = Math.Clamp(0.5f + 0.5f * (part - wall) / k, 0f, 1f);
+        float smin = part + (wall - part) * h - k * h * (1f - h);
+        return -MathF.Min(MathF.Min(wall, part), smin);
+    }
+
+    /// <summary>The density of the walls, floors and stairs alone.</summary>
+    public float BareDensity(Vector3 p)
     {
         Vector3 q = p - new Vector3(Offset.X, Offset.Y, Offset.Z);
         int cx = (int)MathF.Floor(q.X), cy = (int)MathF.Floor(q.Y), cz = (int)MathF.Floor(q.Z);
@@ -200,6 +243,18 @@ public sealed class CombinedSpace : ISolidSpace
         foreach (ISolidSpace s in _parts) if (s.SlopeCell(x, y, z) is int k && k >= 0) return k;
         return -1;
     }
+
+    public PartSet Parts
+    {
+        get
+        {
+            foreach (ISolidSpace s in _parts) if (s.Parts is { } p) return p;
+            return null;
+        }
+    }
+
+    CombinedSpace _bare;
+    public ISolidSpace Bare => Parts == null ? this : _bare ??= new CombinedSpace(Array.ConvertAll(_parts, s => s.Bare));
 }
 
 /// <summary>Geometry over a solid space: normals, distances, projecting onto surfaces, lines of sight.</summary>

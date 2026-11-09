@@ -57,6 +57,9 @@ public sealed class PlaceMemory
     /// <summary>Fractions of salvage yields not yet a whole item.</summary>
     public readonly Dictionary<string, double> SalvageCarry = new();
 
+    /// <summary>What in it fills only part of its cell, as it collides (<see cref="PlaceParts"/>): made once, kept as blocks and pieces go.</summary>
+    public Wildlife.PartSet Parts;
+
     /// <summary>Its creatures (a sim of their own, kept while you are away) and its people.</summary>
     public PlaceFauna Fauna;
     public Town Town;

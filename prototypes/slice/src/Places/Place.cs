@@ -192,7 +192,9 @@ public partial class Place : Node3D
     /// </summary>
     public void Remesh(IEnumerable<Int3> cells)
     {
+        cells = cells as ICollection<Int3> ?? new List<Int3>(cells);
         Memory.Fauna?.Forget(cells);
+        PlaceParts.Refresh(Memory, cells);
         foreach (Int3 ch in Mesher.ChunksTouching(cells, ChunkSize))
         {
             Group g = GroupAt(GroupOf(ch));
@@ -449,7 +451,8 @@ public partial class Place
     /// </summary>
     public static PoiGenerator.Gen.NavGrid FootNavOf(PlaceMemory m, PlanetSurface.World.PlanetWorld planet = null)
     {
-        var blocked = new HashSet<Int3>(m.Rooms?.Values.SelectMany(r => r.Cells) ?? Enumerable.Empty<Int3>());
+        // (The dressing's pieces and the furniture blocks are gone round as they really stand: see the parts below.)
+        var blocked = PlaceParts.Legacy ? new HashSet<Int3>(m.Rooms?.Values.SelectMany(r => r.Cells) ?? Enumerable.Empty<Int3>()) : new HashSet<Int3>();
         BlockGrid g = m.Inst.Blocks;
         Int3 min = g.Min, size = g.Size;
         // Out of doors the grid's ground is flat at the place's level, but the land round a lot or a pad is the
@@ -474,8 +477,31 @@ public partial class Place
                     var c = new Int3(x, y, z);
                     if (g.Get(c).Type == BlockType.Ladder) blocked.Add(c);
                 }
-        return new(new Overlay(g, blocked, foot: true), m.Inst.Layout.Occupied, null, false);
+        var nav = new PoiGenerator.Gen.NavGrid(new Overlay(g, blocked, foot: true), m.Inst.Layout.Occupied, null, false);
+        if (PlaceParts.Of(m) is not { } parts) return nav;
+        // A person stands in a cell where somewhere in it they fit clear of the furniture and clutter, and steps
+        // to the next where their body gets by all the way: past a monitor, beside a locker, round a chair.
+        Func<int, int, int, bool> walls = WallsOf(nav);
+        nav.Fits = c => PersonSpot(parts, walls, c) != null;
+        nav.Passes = (a, b) =>
+        {
+            if (nav.RampAt(a, out _) || nav.RampAt(b, out _)) return true;
+            if (PersonSpot(parts, walls, a) is not { } pa || PersonSpot(parts, walls, b) is not { } pb) return false;
+            if (!parts.Touches(pa, PlaceParts.PersonRadius, PlaceParts.PersonHeight) && !parts.Touches(pb, PlaceParts.PersonRadius, PlaceParts.PersonHeight)) return true;
+            return parts.Step(new Vector3I(a.X, a.Y, a.Z), pa, new Vector3I(b.X, b.Y, b.Z), pb, PlaceParts.PersonRadius, PlaceParts.PersonHeight, walls, PlaceParts.PersonRadius);
+        };
+        return nav;
     }
+
+    /// <summary>Where a person stands in a cell of the walking grid: its middle, or among the parts where they fit, never hard by a wall.</summary>
+    public static Vector3? PersonSpot(Wildlife.PartSet parts, Func<int, int, int, bool> walls, Int3 c) =>
+        parts.Spot(c.X, c.Y, c.Z, c.Y, PlaceParts.PersonRadius, PlaceParts.PersonHeight, walls, PlaceParts.PersonRadius);
+
+    /// <summary>The solid cells of a walking grid (one delegate a grid, so what's worked out against it is remembered).</summary>
+    public static Func<int, int, int, bool> WallsOf(PoiGenerator.Gen.NavGrid nav) => _walls.GetValue(nav, n => new WallsBox((x, y, z) => n.Solid(new Int3(x, y, z)))).Solid;
+
+    sealed class WallsBox { public readonly Func<int, int, int, bool> Solid; public WallsBox(Func<int, int, int, bool> s) => Solid = s; }
+    static readonly System.Runtime.CompilerServices.ConditionalWeakTable<PoiGenerator.Gen.NavGrid, WallsBox> _walls = new();
 
     /// <summary>The place's blocks as a walking route sees them, the dressing's solid pieces standing in.</summary>
     public static IBlockStructure Routed(PlaceMemory m, Dictionary<int, PlaceRoom> rooms = null) =>
@@ -500,7 +526,9 @@ public partial class Place
         {
             Block b = _g.Get(p);
             // A piece stands in its cell over whatever doesn't stop a walker there (air, a floor plate, litter).
-            if (_foot) return (_blocked.Contains(p) && !BlockInfo.IsFullCube(b.Type)) || b.Type == BlockType.Crate ? Piece : b;
+            if (_foot && PlaceParts.Legacy) return (_blocked.Contains(p) && !BlockInfo.IsFullCube(b.Type)) || b.Type == BlockType.Crate ? Piece : b;
+            // On foot what fills only part of its cell is no block: the walking grid's parts test goes round its real shape (never on top of it).
+            if (_foot) return _blocked.Contains(p) && !BlockInfo.IsFullCube(b.Type) ? Piece : BlockInfo.IsPart(b.Type) ? Block.Air : b;
             return _blocked.Contains(p) && (!BlockInfo.Collides(b.Type) || b.Type == BlockType.Growth) ? Crate : b;
         }
         public void Set(Int3 p, Block b) => _g.Set(p, b);
