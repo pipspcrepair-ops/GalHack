@@ -81,14 +81,17 @@ public sealed class NavGrid
     public bool LadderAt(Int3 p) => _grid.Get(p).Type == BlockType.Ladder;
     public bool LiftAt(Int3 p) => _liftNodes != null && _liftNodes.Contains(p);
 
-    public bool Standable(Int3 f)
+    public bool Standable(Int3 f) => StandsOn(f) && (Fits == null || RampAt(f, out _) || LadderAt(f) || LiftAt(f) || Fits(f));
+
+    /// <summary>Standable by the blocks alone (whatever fills part of the cell aside).</summary>
+    public bool StandsOn(Int3 f)
     {
         // Outside the grid the plain goes on for ever; walking is limited to the place itself.
         if (!_grid.InBounds(f)) return false;
         if (RampAt(f, out _)) return Clear(f + Int3.Up) && Clear(f + Int3.Up * 2);
         if (LadderAt(f)) return Clear(f + Int3.Up);
         if (LiftAt(f)) return Clear(f) && Clear(f + Int3.Up);
-        return Clear(f) && Clear(f + Int3.Up) && SupportsStanding(f + Int3.Down) && (Fits == null || Fits(f));
+        return Clear(f) && Clear(f + Int3.Up) && SupportsStanding(f + Int3.Down);
     }
 
     void Add(List<Int3> into, Int3 from, Int3 to)

@@ -46,7 +46,8 @@ public sealed partial class Town
     {
         if (_nav == null) return true;
         int x = (int)MathF.Floor(local.X), z = (int)MathF.Floor(local.Z);
-        return _nav.Standable(new PInt3(x, (int)MathF.Floor(local.Y + 0.05f), z)) || _nav.Standable(new PInt3(x, (int)MathF.Ceiling(local.Y - 0.05f), z));
+        // (By the blocks alone: the furniture is each body's own test, at its own size.)
+        return _nav.StandsOn(new PInt3(x, (int)MathF.Floor(local.Y + 0.05f), z)) || _nav.StandsOn(new PInt3(x, (int)MathF.Ceiling(local.Y - 0.05f), z));
     }
 
     /// <summary>How tall a person stands.</summary>
