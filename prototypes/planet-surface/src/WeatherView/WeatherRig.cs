@@ -239,7 +239,7 @@ public partial class WeatherRig : Node3D, IWeatherScene
         GroundCover g = Sim.Ground;
         RenderingServer.GlobalShaderParameterSet("weather_wind", new Vector4(dir.X, dir.Y, speed, _windTravel));
         RenderingServer.GlobalShaderParameterSet("weather_ground", new Vector4(g.Wetness, g.Snow, g.Dust, c.Solar));
-        Vector3 flash = _lightning.FlashDirection;
+        Vector3 flash = _lightning.FlashAt; // where the cloud is lit from, in the world
         RenderingServer.GlobalShaderParameterSet("weather_flash", new Vector4(flash.X, flash.Y, flash.Z, _lightning.Flash));
         Main.Sfx.SetWeather(speed, c.Rain, _shelter);
     }
