@@ -139,7 +139,7 @@ public partial class SurfaceZone : Node3D
         Host = new PhysicsHost(Physics);
         AddChild(Host);
         Physics.MotionChanged += body => VesselOf(body)?.BecomeWreck();
-        Physics.Unregistered += body => _vesselOf.Remove(body);
+        Physics.Unregistered += body => { _vesselOf.Remove(body); Held.Remove(body); };
 
         Weather = new SurfaceWeather { Name = "Weather", Zone = this };
         AddChild(Weather);
@@ -383,6 +383,46 @@ public partial class SurfaceZone : Node3D
     public override void _PhysicsProcess(double delta)
     {
         if (Planet != null) WrapFrame();
+        if (Streamer != null) HoldLoose();
+    }
+
+    /// <summary>Loose bodies lying where the ground has no collision (past the collision radius): held still, off the weather.</summary>
+    public readonly HashSet<GalHack.Physics.Body> Held = new();
+
+    /// <summary>
+    /// Terrain collides only round the player. A loose body (a wreck, a fitting cut off) that wind or a tumble carries out of it
+    /// would fall through the world, and be lifted back out by the stuck-safety, again and again. One that comes down there instead
+    /// is set on the ground, held asleep and out of the weather, and let go when collision reaches it.
+    /// </summary>
+    void HoldLoose()
+    {
+        for (int i = 0; i < Vessels.Count; i++)
+        {
+            Vessel v = Vessels[i];
+            GalHack.Physics.Body b = v.Body;
+            if (b.Motion != GalHack.Physics.Motion.Free || v.Binding is not GalHack.Physics.Engine.FreeBinding free) continue;
+            Vector3 at = b.WorldPosition.ToGodot();
+            if (Streamer.CollidesAt(at))
+            {
+                if (Held.Remove(b)) free.Wake();
+                continue;
+            }
+            Vector3 ground = GroundAt(at.X, at.Z);
+            if (!Held.Contains(b))
+            {
+                if (at.Y - ground.Y > 3f) continue; // still in the air: it may yet come down on ground that collides
+                float dy = v.DepthBelow((x, z) => GroundAt(x, z).Y); // its lowest corner on the ground, none below it
+                b.Position += System.Numerics.Vector3.UnitY * dy;
+                Held.Add(b);
+                free.Teleport();
+            }
+            free.Rigid.LinearVelocity = Vector3.Zero;
+            free.Rigid.AngularVelocity = Vector3.Zero;
+            free.Rigid.Sleeping = true;
+            b.Velocity = System.Numerics.Vector3.Zero;
+            b.AngularVelocity = System.Numerics.Vector3.Zero;
+            b.Asleep = true;
+        }
     }
 
     /// <summary>Morning fog pools on the low ground within a kilometre or so (as planet-surface does it).</summary>
