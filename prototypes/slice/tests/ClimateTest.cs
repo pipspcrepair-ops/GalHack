@@ -342,7 +342,7 @@ public partial class ClimateTest : Node
             foreach (int x in _drive.Wait(300)) yield return x;
             double lost = at - _game.Suit.Vitals.Health;
             Check(lost >= 15 && (_game.Suit.Last.Warnings & alert) != 0 && !_game.Suit.Dead,
-                $"out in a {name} health drains fast: {lost:F0} in 5 s, the visor warning {alert}");
+                $"out in a {name} health drains fast: {lost:F0} in 5 s, the visor warning {alert} (sealed {_game.Suit.InSealedRoom}, {_game.Suit.Room}, exposure {sky.Here.Exposure:F2}, warnings {_game.Suit.Last.Warnings}, aboard {Me.Aboard?.Name}, seated {Me.Seated?.Name}, feet {Me.WorldFeet}, cover {_game.UnderCover()})");
             sky.Snap(WeatherKind.Clear);
             foreach (int x in _drive.Wait(5)) yield return x;
         }
