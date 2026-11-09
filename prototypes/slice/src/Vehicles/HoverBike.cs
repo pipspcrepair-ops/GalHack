@@ -167,6 +167,17 @@ public sealed class HoverBike
         Place();
     }
 
+    /// <summary>Laid as it would lie after an upset (on its side, its roof): the tilt, at rest. Past its plates' reach it lies toppled.</summary>
+    public void Lay(Basis tilt)
+    {
+        _tumble = tilt.Orthonormalized();
+        _spin = Vector3.Zero;
+        _vy = 0f;
+        Toppled = Tilt > 1.05f;
+        Grounded = !Toppled;
+        Place();
+    }
+
     /// <summary>A throw (a tornado's fling, a crash): a change of velocity, m/s, and of spin, rad/s.</summary>
     public void Throw(Vector3 velocity, Vector3 spin)
     {
@@ -350,7 +361,7 @@ public sealed class HoverBike
         }
         // And out of anything its hull box still overlaps (a wall it slid into side on, a block it was set down in), along the contact.
         Touching = false;
-        for (int pass = 0; pass < 4; pass++)
+        for (int pass = 0; pass < 8; pass++)
         {
             Vector3 clear = _owner.PushOut(Attitude, Position);
             if (clear == Vector3.Zero) break;

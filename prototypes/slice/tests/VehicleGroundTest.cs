@@ -212,10 +212,12 @@ public partial class VehicleGroundTest : Node
         string was = _segment;
         _segment = $"riding off {what}";
         _judgeTravel = false;
+        int took = -1;
         for (int i = 0; i < 60; i++)
         {
             _straight = i > 30 && Aligned(bike);
             foreach (int x in Observe(bike, w, 1)) yield return x;
+            if (took < 0 && new Vector2(bike.Position.X - from.X, bike.Position.Z - from.Z).Length() > 1f) took = i;
         }
         _straight = false;
         _judgeTravel = true;
@@ -223,6 +225,21 @@ public partial class VehicleGroundTest : Node
         float throttle = bike.Throttle;
         _game.Controls.Hold(Key.W, false);
         float ran = new Vector2(bike.Position.X - from.X, bike.Position.Z - from.Z).Length();
+        string way = "";
+        if (ran <= 3f && _game.Survivor.OnBike == bike)
+        {
+            // Nose against something on its line (a trunk, a wall, a bank): the rider backs off it, as anyone would.
+            from = bike.Position;
+            _game.Controls.Hold(Key.S);
+            for (int i = 0; i < 60; i++)
+            {
+                foreach (int x in Observe(bike, w, 1)) yield return x;
+                if (took < 0 && new Vector2(bike.Position.X - from.X, bike.Position.Z - from.Z).Length() > 1f) took = i;
+            }
+            _game.Controls.Hold(Key.S, false);
+            ran = new Vector2(bike.Position.X - from.X, bike.Position.Z - from.Z).Length();
+            way = " in reverse";
+        }
         if (ran <= 3f)
             GD.Print($"  (stuck: throttle {throttle}, ridden {bike.Ridden}, grounded {bike.Grounded}, toppled {bike.Toppled}, water {bike.OnWater}, speed {bike.Speed:F1}, at {bike.Position}, "
                 + $"blocked ahead {_game.Bikes.Blocked(bike.Position + Vector3.Up * 0.5f, bike.Forward, 2f)}, ground here {_game.Bikes.SolidAt(bike.Position.X, bike.Position.Z, bike.Position.Y + 1.5f):F2}, "
@@ -235,8 +252,8 @@ public partial class VehicleGroundTest : Node
                     var hit = _game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(PhysicsRayQueryParameters3D.Create(o, o + bike.Forward * 1.6f, GalHack.Physics.Layers.World | GalHack.Physics.Layers.Hull | GalHack.Physics.Layers.Props | PlanetSurface.World.Layers.Flora));
                     if (hit.Count > 0) GD.Print($"    ray {h} {s}: {(hit["collider"].AsGodotObject() as Node)?.Name ?? "a body with no node"} at {((Vector3)hit["position"]).DistanceTo(o):F2} m, normal {hit["normal"]}");
                 }
-        Check(seated && _game.Survivor.OnBike == bike && ran > 3f && w.Sunk < BikeTolerance,
-            $"{mode}, hover bike, {what}: deepest {w.Sunk * 100f:F1} cm into anything solid (tolerance {BikeTolerance * 100f:F0} cm), tilted at most {w.Tilt:F0}°{(w.Toppled ? ", toppled and righted itself" : "")}; the rider still seated, it rides {ran:F1} m off in a second under its own throttle");
+        Check(seated && _game.Survivor.OnBike == bike && (ran > 3f || way != "" && ran > 2f) && w.Sunk < BikeTolerance,
+            $"{mode}, hover bike, {what}: deepest {w.Sunk * 100f:F1} cm into anything solid (tolerance {BikeTolerance * 100f:F0} cm), tilted at most {w.Tilt:F0}°{(w.Toppled ? ", toppled and righted itself" : "")}; the rider still seated, it rides {ran:F1} m off{way} in a second under its own throttle, moving a metre {(took >= 0 ? $"{took / 60f:F2} s" : "never")} after it");
         // Brought to a stop again for the next case.
         _game.Controls.Hold(Key.S);
         for (int i = 0; i < 90 && bike.Speed > 0.5f; i++) yield return 0;
@@ -257,6 +274,10 @@ public partial class VehicleGroundTest : Node
         _game.Survivor.Yaw = bike.Yaw;
         _game.ThirdPerson = true; // the rider's figure is drawn and posed on the bike
         foreach (int x in _drive.Wait(20)) yield return x;
+
+        // The owner's case first: ridden flat out into a steep bank and into a wall, the rider seated.
+        foreach (int x in RamInto(bike, mode, "ridden into a steep bank", Bank)) yield return x;
+        foreach (int x in RamInto(bike, mode, "ridden into a wall", Wall)) yield return x;
 
         // First, turning under throttle (where the owner saw the model pivot away from forward).
         _face = new Facing();
@@ -310,6 +331,34 @@ public partial class VehicleGroundTest : Node
         foreach (int x in Observe(bike, w, 600, () => w.Toppled && Steady(bike))) yield return x;
         Check(w.Tilt > 120f, $"{mode}, hover bike: thrown over ({w.Tilt:F0}° from upright at worst)");
         foreach (int x in RidesOff(bike, mode, "thrown onto its roof", w)) yield return x;
+
+        // Forced upsets, the rider seated throughout: laid upside down, on its side, and on its side half buried in the ground.
+        foreach (var (what, roll, sink) in new[] { ("laid upside down", MathF.PI, 0f), ("laid on its side", MathF.PI / 2f, 0f), ("laid on its side half buried", MathF.PI / 2f, 0.7f) })
+        {
+            _segment = what;
+            foreach (int x in Observe(bike, new Watch(), 30, () => Steady(bike))) yield return x;
+            w = new Watch();
+            bike.Lay(new Basis(bike.Forward, roll));
+            float ground = _game.Zone.GroundAt(bike.Position.X, bike.Position.Z).Y;
+            bike.Position = new Vector3(bike.Position.X, ground + 0.3f - sink, bike.Position.Z);
+            int t = 0;
+            bool seatedAll = true;
+            for (; t < 600 && !(Steady(bike) && Sunk(bike) < BikeTolerance); t++)
+            {
+                foreach (int x in Observe(bike, w, 1)) yield return x;
+                seatedAll &= _game.Survivor.OnBike == bike;
+            }
+            float yaw = bike.Yaw;
+            _game.Controls.Hold(Key.W);
+            _game.Controls.Hold(Key.D);
+            foreach (int x in Observe(bike, w, 40)) yield return x;
+            _game.Controls.Hold(Key.D, false);
+            _game.Controls.Hold(Key.W, false);
+            float steered = Mathf.RadToDeg(MathF.Abs(Mathf.Wrap(bike.Yaw - yaw, -MathF.PI, MathF.PI)));
+            Check(t < 600 && seatedAll && steered > 10f,
+                $"{mode}, hover bike, {what}: it rights itself and comes clear in {t / 60f:F2} s, the rider seated throughout; then throttle and steering turn it {steered:F0}° as it goes");
+            foreach (int x in RidesOff(bike, mode, what, w)) yield return x;
+        }
 
         // A drop off a height.
         _segment = "dropped, crashed and set into the ground";

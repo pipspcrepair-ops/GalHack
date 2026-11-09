@@ -116,8 +116,7 @@ public sealed class HullBinding : BodyBinding
         }
         // The sweep stops it at what it meets, but turning (the flight model's, the hover's tilt to the ground, a
         // bump's kick) happened before it, unswept, and can swing a corner into the ground: nothing is left inside.
-        // (Every fourth tick when it has only turned: a tick's turn swings a corner in by millimetres, and the sweep stops it going further.)
-        if (_contacts.Count > 0 || b.Rotation != _turned && ++_turns % 4 == 0) Clear();
+        if (_contacts.Count > 0 || b.Rotation != _turned) Clear();
         _turned = b.Rotation;
 
         b.Position = Hull.GlobalPosition.ToNumerics();
@@ -164,8 +163,8 @@ public sealed class HullBinding : BodyBinding
         _near.Exclude = _self ??= new Godot.Collections.Array<Rid> { Hull.GetRid() };
         if (space.IntersectShape(_near, 1).Count == 0) return false;
 
-        bool moved = false;
-        for (int pass = 0; pass < 8; pass++)
+        bool moved = false, clear = false;
+        for (int pass = 0; pass < 32; pass++) // (floors first can take several short steps up)
         {
             // The deepest overlap of any of its shapes: the way out of it is from the point on the hull to the point on what it overlaps.
             Vector3 push = Vector3.Zero, up = Vector3.Zero;
@@ -196,7 +195,7 @@ public sealed class HullBinding : BodyBinding
             // Out the top first: sunk into a floor or the ground it comes up onto it, not out through the side of a
             // block (a mesh of blocks offers a short way out sideways at every seam); a wall it then still meets, next pass.
             if (up != Vector3.Zero) push = up;
-            if (push == Vector3.Zero) break;
+            if (push == Vector3.Zero) { clear = true; break; }
             // Pointing down while it is the hull's underside that is in (sunk past a face of the ground, where the
             // shortest way out is through it): out the top instead.
             if (push.Y < -0.2f * push.Length()) push = Vector3.Up * System.MathF.Min(push.Length(), 0.5f);
@@ -205,7 +204,36 @@ public sealed class HullBinding : BodyBinding
             Pushes++;
             moved = true;
         }
+        // Still in after every pass (sunk deep in the ground, where its faces offer only short ways out): straight up
+        // to the first height it is clear at, a quarter metre at a time.
+        if (!clear && Overlaps(space))
+        {
+            Vector3 from = Hull.GlobalPosition;
+            for (float lift = 0.25f; lift <= 4f; lift += 0.25f)
+            {
+                Hull.GlobalPosition = from + Vector3.Up * lift;
+                if (!Overlaps(space)) break;
+            }
+            moved = true;
+        }
         return moved;
+    }
+
+    /// <summary>Does any of its shapes overlap anything solid by more than <see cref="Slop"/>?</summary>
+    bool Overlaps(PhysicsDirectSpaceState3D space)
+    {
+        _shape ??= new PhysicsShapeQueryParameters3D { CollisionMask = Hull.CollisionMask, Margin = 0f };
+        foreach (CollisionShape3D cs in _shapes)
+        {
+            if (!GodotObject.IsInstanceValid(cs) || cs.GetParent() != Hull || cs.Disabled || cs.Shape == null) continue;
+            _shape.Shape = cs.Shape;
+            _shape.Transform = cs.GlobalTransform;
+            _shape.Exclude = _self;
+            Godot.Collections.Array<Vector3> points = space.CollideShape(_shape, 8);
+            for (int i = 0; i + 1 < points.Count; i += 2)
+                if (points[i].DistanceTo(points[i + 1]) > Slop) return true;
+        }
+        return false;
     }
 
     /// <summary>The last push out of an overlap, and how many there have been (for tests).</summary>

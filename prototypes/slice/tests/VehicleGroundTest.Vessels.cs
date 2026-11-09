@@ -107,7 +107,13 @@ public partial class VehicleGroundTest
         bool hover = v.Structure.Mode == CoreMode.Hover;
         Key key = hover ? Key.W : Key.Space;
         _game.Controls.Hold(key);
-        foreach (int x in ObserveHull(v, w, 120)) yield return x;
+        int took = -1;
+        for (int t = 0; t < 120; t++)
+        {
+            foreach (int x in ObserveHull(v, w, 1)) yield return x;
+            N.Vector3 now = v.Body.Position;
+            if (took < 0 && (hover ? new Vector2(now.X - from.X, now.Z - from.Z).Length() > 1f : now.Y - from.Y > 1f)) took = t;
+        }
         _game.Controls.Hold(key, false);
         N.Vector3 to = v.Body.Position;
         float ran = new Vector2(to.X - from.X, to.Z - from.Z).Length(), rose = to.Y - from.Y;
@@ -129,7 +135,7 @@ public partial class VehicleGroundTest
             GD.Print($"  (stuck: frozen {v.Controller?.Frozen}, settling {v.Controller?.Settling}, asleep {v.Body.Asleep}, tossed {v.Body.Tossed:F1}, kind {v.Body.Kind}, motion {v.Body.Motion}, flight {(v.Flight != null)}, "
                 + $"input {v.Flight?.Input.Move}, can lift {v.Stats?.CanLiftOff}, pilot {v.Roles.Pilot}, message '{v.Controller?.ConsoleMessage}', velocity {v.Body.Velocity}, up {MathX.Up(v.Body.Rotation)}, hover grounded {v.Controller?.Hover?.Grounded} clearance {v.Controller?.Hover?.Clearance:F2} slope refused {v.Controller?.Hover?.SlopeRefused} steepest {v.Controller?.Hover?.SteepestAhead:F0}, on floor {v.Body.OnFloor}, pushes {(v.Binding as HullBinding)?.Pushes} last {(v.Binding as HullBinding)?.LastPush}, seated {_game.Survivor.Seated == v}, sunk now {Sunk(v):F2})");
         Check(seated && _game.Survivor.Seated == v && moved && w.Sunk < VesselTolerance,
-            $"{mode}, {v.Name}, {what}: deepest {w.Sunk * 100f:F1} cm into anything solid (tolerance {VesselTolerance * 100f:F0} cm); the pilot still seated (pilot role: {v.Roles.Pilot}), under its own power it {(hover ? $"runs {ran:F1} m {way}" : $"climbs {rose:F1} m")} in two seconds");
+            $"{mode}, {v.Name}, {what}: deepest {w.Sunk * 100f:F1} cm into anything solid (tolerance {VesselTolerance * 100f:F0} cm); the pilot still seated (pilot role: {v.Roles.Pilot}), under its own power it {(hover ? $"runs {ran:F1} m {way}" : $"climbs {rose:F1} m")} in two seconds, moving a metre {(took >= 0 ? $"{took / 60f:F2} s" : "never")} after the input");
         // Set down again for the next case, on the ground under it (flown down at full tilt over a place it once wrecked itself on a roof).
         if (!hover)
         {
@@ -191,6 +197,28 @@ public partial class VehicleGroundTest
             N.Vector3 f = fwd.ToNumerics();
             N.Quaternion level = MathX.Yaw(MathX.Heading(v.Body.Rotation));
             float feet = v.Body.Shape.FeetBelowOrigin;
+
+            // The owner's case first: flown into the ground under its own thrust by a seated pilot's keys (a small flyer):
+            // nose first at a steep angle, belly first, and skidding in shallow, pressing into the ground a second after.
+            if (!e.Large && v.Structure.Mode == CoreMode.Vessel)
+                foreach (var (what, pitch, up, keys) in new[] { ("flown nose first into the ground at 60°", -1.05f, 30f, new[] { Key.W, Key.Ctrl }), ("flown belly first into the ground", 0f, 25f, new[] { Key.Ctrl }), ("flown skidding into the ground at a shallow angle", -0.15f, 6f, new[] { Key.W, Key.Ctrl }) })
+                {
+                    var hit = Mend(v, e.Plan);
+                    N.Vector3 p = v.Body.Position;
+                    Put(v, new N.Vector3(p.X, _game.Zone.GroundAt(p.X, p.Z).Y + feet + up, p.Z), N.Quaternion.Normalize(level * MathX.AxisAngle(N.Vector3.UnitX, pitch)), N.Vector3.Zero);
+                    foreach (Key k in keys) _game.Controls.Hold(k);
+                    float fastest = 0f;
+                    int pressed = 0;
+                    for (int t = 0; t < 600 && pressed < 60; t++)
+                    {
+                        foreach (int x in ObserveHull(v, hit, 1)) yield return x;
+                        fastest = MathF.Max(fastest, v.Body.Velocity.Length());
+                        if (pressed > 0 || v.AboveGround < feet + 0.6f || v.Controller.Frozen) pressed++;
+                    }
+                    foreach (Key k in keys) _game.Controls.Hold(k, false);
+                    GD.Print($"  ({mode}, {v.Name} {what}: up to {fastest:F0} m/s, then pressed into the ground for a second)");
+                    foreach (int x in Operable(v, mode, what, hit)) yield return x;
+                }
 
             // Dropped from a height, engines idle.
             var w = Mend(v, e.Plan);

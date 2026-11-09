@@ -236,3 +236,72 @@ public partial class VehicleGroundTest
         foreach (int x in RidesOff(bike, mode, "after a tornado", w)) yield return x;
     }
 }
+
+public partial class VehicleGroundTest
+{
+    /// <summary>Ridden flat out into something (a steep bank, a wall), pressing into it a second, then ridden off by a clear way.</summary>
+    IEnumerable<int> RamInto(HoverBike bike, string mode, string what, Func<Vector3, Vector3, bool> fits)
+    {
+        Vector3 at = bike.Position;
+        Vector3? found = null;
+        for (int k = 0; k < 32 && found == null; k++)
+        {
+            Vector3 way = new Vector3(0f, 0f, -1f).Rotated(Vector3.Up, k * Mathf.Tau / 32f);
+            if (fits(at, way)) found = way;
+        }
+        if (found is not Vector3 dir) { GD.Print($"  ({mode}: no {what} within reach here: not tried)"); yield break; }
+        _segment = what;
+        _game.Survivor.Yaw = YawOf(dir);
+        for (int i = 0; i < 300 && !Aligned(bike); i++) foreach (int x in Observe(bike, new Watch(), 1)) yield return x;
+        var w = new Watch();
+        _game.Controls.Hold(Key.W);
+        _game.Controls.Hold(Key.Shift);
+        float fastest = 0f;
+        int pressed = 0;
+        for (int t = 0; t < 480 && pressed < 60; t++)
+        {
+            foreach (int x in Observe(bike, w, 1)) yield return x;
+            fastest = MathF.Max(fastest, bike.Speed);
+            if (pressed > 0 || fastest > 8f && bike.Speed < fastest * 0.5f) pressed++;
+        }
+        _game.Controls.Hold(Key.Shift, false);
+        _game.Controls.Hold(Key.W, false);
+        GD.Print($"  ({mode}: the hover bike {what} at up to {fastest:F0} m/s{(pressed > 0 ? ", then pressed into it a second" : ", never stopped by it")})");
+        foreach (int x in RidesOff(bike, mode, what, w)) yield return x;
+    }
+
+    /// <summary>A bank rising more than a metre in two within 25 m along a way.</summary>
+    bool Bank(Vector3 at, Vector3 way)
+    {
+        float last = _game.Bikes.SolidAt(at.X, at.Z, at.Y + 1.5f);
+        for (float d = 2f; d <= 25f; d += 2f)
+        {
+            Vector3 p = at + way * d;
+            if (_game.Bikes.Blocked(at + Vector3.Up * 0.5f, way, d)) return false;
+            float h = _game.Bikes.SolidAt(p.X, p.Z, last + 6f);
+            if (h - last > 1.2f) return true;
+            if (MathF.Abs(h - last) > 0.8f) return false;
+            last = h;
+        }
+        return false;
+    }
+
+    /// <summary>A wall (a place's, a rock's face, a trunk) square across a way within 25 m, the ground level up to it.</summary>
+    bool Wall(Vector3 at, Vector3 way)
+    {
+        var hit = _game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(PhysicsRayQueryParameters3D.Create(at + Vector3.Up * 0.5f, at + Vector3.Up * 0.5f + way * 25f,
+            GalHack.Physics.Layers.World | GalHack.Physics.Layers.Hull | GalHack.Physics.Layers.Props | PlanetSurface.World.Layers.Flora));
+        if (hit.Count == 0 || ((Vector3)hit["normal"]).Y > 0.3f) return false;
+        float d = ((Vector3)hit["position"]).DistanceTo(at);
+        if (d < 8f) return false;
+        float last = _game.Bikes.SolidAt(at.X, at.Z, at.Y + 1.5f);
+        for (float s = 2f; s < d - 2f; s += 2f)
+        {
+            Vector3 p = at + way * s;
+            float h = _game.Bikes.SolidAt(p.X, p.Z, last + 2f);
+            if (MathF.Abs(h - last) > 0.8f) return false;
+            last = h;
+        }
+        return true;
+    }
+}
