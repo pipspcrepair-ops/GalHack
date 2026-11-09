@@ -235,7 +235,7 @@ public partial class PoiTest
     /// <summary>
     /// The fence rules on each lot as built: straight runs along the lot lines meeting at corners on one shared post,
     /// never crossing; each run starting and ending on a post (or the wall or hedge itself), no holes along it; every
-    /// panel the mesher draws along its run (it turns a pane by what stands beside it), every railing and gate leaf
+    /// panel the mesher draws along its run (a pane faces as its layout settled it, PaneFacing), every railing and gate leaf
     /// facing along its own, never a cross-shaped rail; openings only where the path or drive is paved through, a gate
     /// post either side; one side line fenced on a street (the neighbour fences the other), both on a lot alone.
     /// </summary>
