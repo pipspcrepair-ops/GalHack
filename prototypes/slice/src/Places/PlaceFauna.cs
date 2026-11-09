@@ -375,6 +375,8 @@ public partial class Caves : Node3D
     public Func<Vector3> Look = () => Vector3.Forward;
     /// <summary>In somewhere that isn't a cave: a place's rooms, the bunker.</summary>
     public Func<bool> Indoors = () => false;
+    /// <summary>Whether a world point is ground kept clear of caves (round the start bunker): its rock is read as solid.</summary>
+    public Func<Vector3, bool> Keep;
     public PlaceFauna.Deep Deep;
 
     /// <summary>The longest search for a chamber so far, on its worker, ms (tests).</summary>
@@ -432,7 +434,7 @@ public partial class Caves : Node3D
         _searchedFrom = feet;
         float surface = Zone.GroundAt(feet.X, feet.Z).Y;
         var anchor = new Vector3(MathF.Round(feet.X), MathF.Round(feet.Y), MathF.Round(feet.Z));
-        var space = new LoadedVoxels(planet.Terrain.Store, Zone.Streamer, new Vector3I((int)anchor.X, (int)anchor.Y, (int)anchor.Z));
+        var space = new LoadedVoxels(planet.Terrain.Store, Zone.Streamer, new Vector3I((int)anchor.X, (int)anchor.Y, (int)anchor.Z), Keep);
         float time = Zone.Wildlife.Sim?.Time ?? 0f;
         Vector3 look = Look();
         look.Y = 0f;
@@ -485,26 +487,30 @@ public partial class Caves : Node3D
         readonly TD.ChunkStore _store;
         readonly TerrainStreamer _streamer;
         readonly Vector3I _offset;
+        readonly Func<Vector3, bool> _keep;
 
-        public LoadedVoxels(TD.ChunkStore store, TerrainStreamer streamer, Vector3I offset)
+        public LoadedVoxels(TD.ChunkStore store, TerrainStreamer streamer, Vector3I offset, Func<Vector3, bool> keep = null)
         {
             _store = store;
             _streamer = streamer;
             _offset = offset;
+            _keep = keep;
         }
+
+        bool Kept(float x, float y, float z) => _keep != null && _keep(new Vector3(x + _offset.X, y + _offset.Y, z + _offset.Z));
 
         bool Loaded(TD.Int3 c) => _streamer.IsReady(TD.ChunkStore.ChunkOf(c));
 
         public float Density(Vector3 p)
         {
             var w = new System.Numerics.Vector3(p.X + _offset.X, p.Y + _offset.Y, p.Z + _offset.Z);
-            return Loaded(TD.Int3.Floor(w)) ? _store.SampleDensity(w) : 1f;
+            return Loaded(TD.Int3.Floor(w)) && !Kept(p.X, p.Y, p.Z) ? _store.SampleDensity(w) : 1f;
         }
 
         public bool SolidCell(int x, int y, int z)
         {
             var c = new TD.Int3(x + _offset.X, y + _offset.Y, z + _offset.Z);
-            return !Loaded(c) || _store.IsSolid(c);
+            return !Loaded(c) || Kept(x + 0.5f, y + 0.5f, z + 0.5f) || _store.IsSolid(c);
         }
     }
 }
