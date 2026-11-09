@@ -85,6 +85,7 @@ public sealed partial class Staging
             "facades" => FacadeView(),
             "salvage" => Salvage(),
             "hoverbike" => HoverBikeView(),
+            "vehground" => VehGroundView(),
             "bunkerclose" => BunkerClose(),
             "remotebar" => RemoteBarView(),
             "decogallery" => DecoGalleryView(),
