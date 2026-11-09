@@ -148,13 +148,13 @@ public sealed partial class Town
     }
 
     /// <summary>A place's town (worker-safe), or null where nobody lives: walking routes worked out once round the room dressing.</summary>
-    public static Town For(PlaceMemory m)
+    public static Town For(PlaceMemory m, PlanetSurface.World.PlanetWorld planet = null)
     {
         Townsfolk data = m.Inst.Townsfolk;
         if (data == null || data.People.Count == 0 || data.Spots.Count < 2) return null;
         var town = new Town(m, data);
         town._tech = m.Inst.Layout.Variant?.Tech is { Length: > 0 } t ? t : m.Inst.Family.Tags.Contains("settlement") ? "low" : "mid";
-        town._nav = Place.FootNavOf(m);
+        town._nav = Place.FootNavOf(m, planet);
         town.Furnish(m);
         foreach (var (a, b) in data.Links.Concat(data.Routes)) town.PathBetween(a, b);
         town._homes = town.Spots.Select((s, i) => (s, i)).Where(t => t.s.Tag == "home").Select(t => t.i).ToArray();

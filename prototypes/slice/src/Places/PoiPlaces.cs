@@ -250,7 +250,7 @@ public partial class PoiPlaces : Node3D
         memory.Rooms = decor?.Plan(memory) ?? new Dictionary<int, PlaceRoom>();
         if (deep != null) memory.Fauna = PlaceFauna.Plan(memory, deep);
         memory.Fauna?.Populate(memory, deep);
-        memory.Town = Town.For(memory);
+        memory.Town = Town.For(memory, deep?.Planet);
         memory.Prepared = true;
     }
 

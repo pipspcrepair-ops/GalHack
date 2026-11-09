@@ -52,7 +52,8 @@ public sealed partial class Town
         // The place's own spots, each on floor a person can stand on.
         foreach (ActivitySpot s in Data.Spots)
         {
-            PInt3 c = Stand(s.Cell) ?? s.Cell;
+            // (Out of doors the land may have taken a spot's whole stretch of yard: then the nearest ground that is the place's level.)
+            PInt3 c = Stand(s.Cell) ?? Stand(s.Cell, 12) ?? s.Cell;
             Spots.Add(s with { Cell = c });
             _point.Add(Walk(c));
             _face.Add(float.NaN);
@@ -120,14 +121,14 @@ public sealed partial class Town
     }
 
     /// <summary>The nearest standable cell to a spot's own (itself where it is clear), within a few cells and a level up, or down to the floor under it (a spot left in the air over a pit or a drop).</summary>
-    PInt3? Stand(PInt3 c)
+    PInt3? Stand(PInt3 c, int reach = 3)
     {
         if (_nav.Standable(c)) return c;
         PInt3? best = null;
         int bestD = int.MaxValue;
         for (int dy = -3; dy <= 1; dy++)
-            for (int dz = -3; dz <= 3; dz++)
-                for (int dx = -3; dx <= 3; dx++)
+            for (int dz = -reach; dz <= reach; dz++)
+                for (int dx = -reach; dx <= reach; dx++)
                 {
                     var q = new PInt3(c.X + dx, c.Y + dy, c.Z + dz);
                     int d = Math.Abs(dx) + Math.Abs(dz) + Math.Abs(dy) * 4;
