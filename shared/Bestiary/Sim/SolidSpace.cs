@@ -69,6 +69,8 @@ public sealed class BlockSpace : ISolidSpace
     readonly Vector3I _min, _max;
     /// <summary>How round inside corners are, metres.</summary>
     public float Fillet = 0.3f;
+    /// <summary>How round the corners are where a part meets a wall or a floor, metres.</summary>
+    public float PartFillet = 0.3f;
     /// <summary>
     /// Where the block grid sits in the sim's frame: the grid's cell (0,0,0) has its corner at this
     /// point (whole metres, so the cells stay the sim's cells). Zero when the sim works in the grid's frame.
@@ -151,10 +153,11 @@ public sealed class BlockSpace : ISolidSpace
     {
         float d = BareDensity(p);
         if (Parts == null || !Parts.Any(p)) return d;
-        float part = Parts.Distance(p);
+        // (A part thinner than a hand, a shelf's board, is felt a little thicker: a crawler on one face never finds the other.)
+        float part = Parts.Distance(p, PartSet.Thick);
         if (part <= 0f || d >= 0f) return MathF.Max(d, -part);
         // Both outside: the two nearest surfaces, a little rounded where they meet.
-        float wall = -d, k = Fillet;
+        float wall = -d, k = PartFillet;
         float h = Math.Clamp(0.5f + 0.5f * (part - wall) / k, 0f, 1f);
         float smin = part + (wall - part) * h - k * h * (1f - h);
         return -MathF.Min(MathF.Min(wall, part), smin);

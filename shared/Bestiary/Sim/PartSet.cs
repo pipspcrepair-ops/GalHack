@@ -42,11 +42,11 @@ public sealed class PartSet
             Hi = centre + e;
         }
 
-        /// <summary>Signed distance from a point to the box: negative inside.</summary>
-        public float Distance(Vector3 p)
+        /// <summary>Signed distance from a point to the box: negative inside. <paramref name="thick"/>: no thinner than this either way.</summary>
+        public float Distance(Vector3 p, float thick = 0f)
         {
             Vector3 l = p - Centre;
-            float qx = MathF.Abs(l.Dot(X)) - Half.X, qy = MathF.Abs(l.Dot(Y)) - Half.Y, qz = MathF.Abs(l.Dot(Z)) - Half.Z;
+            float qx = MathF.Abs(l.Dot(X)) - MathF.Max(Half.X, thick), qy = MathF.Abs(l.Dot(Y)) - MathF.Max(Half.Y, thick), qz = MathF.Abs(l.Dot(Z)) - MathF.Max(Half.Z, thick);
             float ox = MathF.Max(qx, 0f), oy = MathF.Max(qy, 0f), oz = MathF.Max(qz, 0f);
             return MathF.Sqrt(ox * ox + oy * oy + oz * oz) + MathF.Min(MathF.Max(qx, MathF.Max(qy, qz)), 0f);
         }
@@ -78,7 +78,7 @@ public sealed class PartSet
     readonly List<bool> _gone = new();
     readonly Dictionary<long, List<int>> _cells = new();
     readonly Dictionary<long, List<int>> _owned = new();
-    readonly Dictionary<(long Cell, int Body), Vector3?> _spots = new();
+    readonly Dictionary<(long Cell, int Body, int Walls), Vector3?> _spots = new();
     readonly Dictionary<(long A, long B, int Body), bool> _sweeps = new();
     readonly object _lock = new();
 
@@ -120,6 +120,7 @@ public sealed class PartSet
             o.Add(i);
             _spots.Clear();
             _sweeps.Clear();
+            _vias.Clear();
         }
     }
 
@@ -136,6 +137,7 @@ public sealed class PartSet
                 if (!_gone[i]) { _gone[i] = true; Count--; }
             _spots.Clear();
             _sweeps.Clear();
+            _vias.Clear();
         }
     }
 
@@ -145,8 +147,11 @@ public sealed class PartSet
     /// <summary>Whether any part lies within reach of a point.</summary>
     public bool Any(Vector3 p) => Near(p) != null;
 
-    /// <summary>Signed distance from a point to the nearest part (negative inside one); <see cref="Reach"/> where none is near.</summary>
-    public float Distance(Vector3 p)
+    /// <summary>How thick a part is at least, as a climber feels it (<see cref="BlockSpace.Density"/>), m.</summary>
+    public const float Thick = 0.05f;
+
+    /// <summary>Signed distance from a point to the nearest part (negative inside one); <see cref="Reach"/> where none is near. <paramref name="thick"/>: each felt at least this thick.</summary>
+    public float Distance(Vector3 p, float thick = 0f)
     {
         List<int> l = Near(p);
         if (l == null) return Reach;
@@ -154,7 +159,7 @@ public sealed class PartSet
         foreach (int i in l)
         {
             if (_gone[i]) continue;
-            float d = _boxes[i].Distance(p);
+            float d = _boxes[i].Distance(p, thick);
             if (d < best) best = d;
         }
         return best;
@@ -208,33 +213,55 @@ public sealed class PartSet
     static Vector2[] BuildCandidates()
     {
         var l = new List<Vector2>();
-        for (int i = 0; i < 9; i++)
-            for (int j = 0; j < 9; j++)
-                l.Add(new Vector2(0.1f + i * 0.1f, 0.1f + j * 0.1f));
+        for (int i = 0; i < 13; i++)
+            for (int j = 0; j < 13; j++)
+                l.Add(new Vector2(0.1f + i * 0.8f / 12f, 0.1f + j * 0.8f / 12f));
         l.Sort((p, q) => (p - new Vector2(0.5f, 0.5f)).LengthSquared().CompareTo((q - new Vector2(0.5f, 0.5f)).LengthSquared()));
         return l.ToArray();
     }
 
     /// <summary>
     /// Where in a cell a body standing on its floor (at <paramref name="floorY"/>) fits nearest its middle,
-    /// or null where it fits nowhere in it. A cell no part comes near is its middle.
+    /// or null where it fits nowhere in it. A cell no part comes near is its middle. <paramref name="walls"/>:
+    /// the solid cells round it, kept <paramref name="wallRadius"/> off (a spot is never against a wall closer
+    /// than the body is held off walls).
     /// </summary>
-    public Vector3? Spot(int x, int y, int z, float floorY, float radius, float height)
+    public Vector3? Spot(int x, int y, int z, float floorY, float radius, float height, Func<int, int, int, bool> walls = null, float wallRadius = 0f)
     {
         var mid = new Vector3(x + 0.5f, floorY, z + 0.5f);
         if (!Touches(mid, radius, height)) return mid;
-        var key = (Key(x, y, z), BodyKey(radius, height));
+        var key = (Key(x, y, z), BodyKey(radius, height), WallsKey(walls, wallRadius));
         lock (_lock) if (_spots.TryGetValue(key, out Vector3? known)) return known;
         Vector3? found = null;
         foreach (Vector2 c in Candidates)
         {
             var p = new Vector3(x + c.X, floorY, z + c.Y);
-            if (Fits(p, radius, height)) { found = p; break; }
+            if (WallClear(p, height, walls, wallRadius) && Fits(p, radius, height)) { found = p; break; }
         }
         lock (_lock) _spots[key] = found;
         return found;
     }
 
+    static int WallsKey(Func<int, int, int, bool> walls, float radius) =>
+        walls == null ? 0 : HashCode.Combine(System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(walls.Target ?? walls.Method), walls.Method, (int)MathF.Round(radius * 100f));
+
+    /// <summary>Whether a standing body is <paramref name="radius"/> clear (across) of every solid cell round it, from its feet to its head.</summary>
+    public static bool WallClear(Vector3 feet, float height, Func<int, int, int, bool> walls, float radius)
+    {
+        if (walls == null || radius <= 0f) return true;
+        int y0 = Fl(feet.Y + 0.01f), y1 = Fl(feet.Y + MathF.Max(0.02f, MathF.Min(height, 1.9f) - 0.01f));
+        int x0 = Fl(feet.X - radius), x1 = Fl(feet.X + radius), z0 = Fl(feet.Z - radius), z1 = Fl(feet.Z + radius);
+        float r2 = (radius - 0.002f) * (radius - 0.002f);
+        for (int cy = y0; cy <= y1; cy++)
+        for (int cz = z0; cz <= z1; cz++)
+        for (int cx = x0; cx <= x1; cx++)
+        {
+            if (!walls(cx, cy, cz)) continue;
+            float dx = MathF.Max(MathF.Max(cx - feet.X, feet.X - (cx + 1)), 0f), dz = MathF.Max(MathF.Max(cz - feet.Z, feet.Z - (cz + 1)), 0f);
+            if (dx * dx + dz * dz < r2) return false;
+        }
+        return true;
+    }
     static readonly Vector3[] Holds = BuildHolds();
 
     static Vector3[] BuildHolds()
@@ -253,13 +280,13 @@ public sealed class PartSet
     {
         var mid = new Vector3(x + 0.5f, y + 0.5f, z + 0.5f);
         if (!Any(mid)) return mid;
-        var key = (Key(x, y, z), BodyKey(radius, 0f) | 1 << 30);
+        var key = (Key(x, y, z), BodyKey(radius, 0f) | 1 << 30, 0);
         lock (_lock) if (_spots.TryGetValue(key, out Vector3? known)) return known;
         Vector3? found = null;
         foreach (Vector3 c in Holds)
         {
             var p = new Vector3(x, y, z) + c;
-            if (Distance(p) >= radius) { found = p; break; }
+            if (Distance(p, Thick) >= radius) { found = p; break; }
         }
         lock (_lock) _spots[key] = found;
         return found;
@@ -276,27 +303,79 @@ public sealed class PartSet
         }
     }
 
-    /// <summary>Whether a body walking straight from one point to another fits all the way (sampled every 8 cm).</summary>
-    public bool Sweep(Vector3 from, Vector3 to, float radius, float height, long ignore = 0)
+    /// <summary>Whether a body walking straight from one point to another fits all the way (sampled every 8 cm), and keeps off the walls as it goes.</summary>
+    public bool Sweep(Vector3 from, Vector3 to, float radius, float height, long ignore = 0, Func<int, int, int, bool> walls = null, float wallRadius = 0f)
     {
-        if (!Touches(from, radius, height) && !Touches(to, radius, height) && !Touches((from + to) * 0.5f, radius, height)) return true;
+        bool parts = Touches(from, radius, height) || Touches(to, radius, height) || Touches((from + to) * 0.5f, radius, height);
+        if (!parts && walls == null) return true;
         float len = new Vector2(to.X - from.X, to.Z - from.Z).Length();
         int n = Math.Max(1, (int)MathF.Ceiling(len / 0.08f));
         for (int i = 0; i <= n; i++)
-            if (!Fits(from.Lerp(to, i / (float)n), radius, height, ignore)) return false;
+        {
+            Vector3 p = from.Lerp(to, i / (float)n);
+            if (parts && !Fits(p, radius, height, ignore) || !WallClear(p, height, walls, wallRadius)) return false;
+        }
         return true;
     }
 
-    /// <summary><see cref="Sweep"/> between two cells' spots, remembered.</summary>
-    public bool Step(Vector3I a, Vector3 from, Vector3I b, Vector3 to, float radius, float height)
+    /// <summary>Whether a body gets from one cell's spot to the next's (<see cref="Link"/>).</summary>
+    public bool Step(Vector3I a, Vector3 from, Vector3I b, Vector3 to, float radius, float height, Func<int, int, int, bool> walls = null, float wallRadius = 0f) =>
+        Link(a, from, b, to, radius, height, walls, wallRadius, out _);
+
+    /// <summary>
+    /// How a body gets from one cell's spot to the next's: straight (<paramref name="via"/> null), or by a point
+    /// on the face between the two cells where it fits (a gap between two pieces that isn't on the straight
+    /// line); false where neither will do. Remembered.
+    /// </summary>
+    public bool Link(Vector3I a, Vector3 from, Vector3I b, Vector3 to, float radius, float height, Func<int, int, int, bool> walls, float wallRadius, out Vector3? via)
     {
-        var key = (Key(a.X, a.Y, a.Z), Key(b.X, b.Y, b.Z), BodyKey(radius, height));
-        lock (_lock) if (_sweeps.TryGetValue(key, out bool known)) return known;
-        bool ok = Sweep(from, to, radius, height);
-        lock (_lock) _sweeps[key] = ok;
+        var key = (Key(a.X, a.Y, a.Z), Key(b.X, b.Y, b.Z), BodyKey(radius, height) ^ WallsKey(walls, wallRadius) * 31);
+        lock (_lock)
+            if (_sweeps.TryGetValue(key, out bool known))
+            {
+                via = _vias.TryGetValue(key, out Vector3 v) ? v : null;
+                return known;
+            }
+        via = null;
+        bool ok = Sweep(from, to, radius, height, 0, walls, wallRadius);
+        if (!ok && a.Y == b.Y && (a.X == b.X) != (a.Z == b.Z))
+        {
+            // Through the face between them: its points nearest the middle of the way first.
+            float y = MathF.Min(from.Y, to.Y);
+            bool alongZ = a.X != b.X;
+            float face = alongZ ? MathF.Max(a.X, b.X) : MathF.Max(a.Z, b.Z);
+            float mid = alongZ ? (from.Z + to.Z) * 0.5f : (from.X + to.X) * 0.5f, lo = alongZ ? a.Z : a.X;
+            var offsets = new List<float>();
+            for (int i = 0; i < 9; i++) offsets.Add(lo + 0.1f + i * 0.1f);
+            offsets.Sort((p, q) => MathF.Abs(p - mid).CompareTo(MathF.Abs(q - mid)));
+            var points = new List<Vector3>();
+            foreach (float o in offsets) points.Add(alongZ ? new Vector3(face, y, o) : new Vector3(o, y, face));
+            // Then anywhere in either cell, the shortest way round first.
+            var rest = new List<Vector3>();
+            foreach (Vector3I c in new[] { a, b })
+                for (int i = 0; i < 9; i++)
+                    for (int j = 0; j < 9; j++)
+                        rest.Add(new Vector3(c.X + 0.1f + i * 0.1f, y, c.Z + 0.1f + j * 0.1f));
+            rest.Sort((p, q) => (p.DistanceTo(from) + p.DistanceTo(to)).CompareTo(q.DistanceTo(from) + q.DistanceTo(to)));
+            points.AddRange(rest);
+            foreach (Vector3 m in points)
+            {
+                if (!WallClear(m, height, walls, wallRadius) || !Fits(m, radius, height)) continue;
+                if (!Sweep(from, m, radius, height, 0, walls, wallRadius) || !Sweep(m, to, radius, height, 0, walls, wallRadius)) continue;
+                via = m;
+                ok = true;
+                break;
+            }
+        }
+        lock (_lock)
+        {
+            _sweeps[key] = ok;
+            if (via is { } w) _vias[key] = w;
+        }
         return ok;
     }
 
+    readonly Dictionary<(long A, long B, int Body), Vector3> _vias = new();
     /// <summary>
     /// A standing body moved sideways out of any part it is in, the least way out; it stays where it
     /// is if it is clear. Returns where it ends (still in one only if there was no way out near).

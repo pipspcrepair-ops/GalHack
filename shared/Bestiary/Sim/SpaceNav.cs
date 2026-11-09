@@ -38,13 +38,13 @@ public static class SpaceNav
     /// place's parts are tested against (<see cref="PartSet"/>): a walker's capsule (radius, height), a
     /// climber's ball (radius).
     /// </summary>
-    public readonly record struct Body(bool Climbs, int Headroom, int Shoulders, float Radius, float Height)
+    public readonly record struct Body(bool Climbs, int Headroom, int Shoulders, float Radius, float Height, float WallRadius = 0f)
     {
-        public static Body Of(bool climbs, int headroom, int shoulders = 0) => new(climbs, headroom, shoulders, climbs ? 0.1f : 0.25f, climbs ? 0f : MathF.Min(headroom, 1.2f));
+        public static Body Of(bool climbs, int headroom, int shoulders = 0) => new(climbs, headroom, shoulders, climbs ? 0.1f : 0.25f, climbs ? 0f : MathF.Min(headroom, 1.2f), climbs ? 0f : 0.3f);
     }
 
     /// <summary>A species' body as its paths are found for.</summary>
-    public static Body BodyOf(Species s) => new(s.Climbs, Headroom(s), Shoulders(s), PartRadius(s), s.Climbs ? 0f : PartHeight(s));
+    public static Body BodyOf(Species s) => new(s.Climbs, Headroom(s), Shoulders(s), PartRadius(s), s.Climbs ? 0f : PartHeight(s), s.Climbs ? 0f : Crawl.ClearanceFor(s));
 
     /// <summary>The radius a body keeps off the place's parts: a walker its own, a climber most of the clearance it rides at.</summary>
     public static float PartRadius(Species s) => s.Climbs ? Crawl.ClearanceFor(s) * 0.8f : Math.Clamp(s.Stats.Radius, 0.05f, PartSet.Reach);
@@ -73,7 +73,7 @@ public static class SpaceNav
         for (int r = 1; r <= body.Shoulders; r++)
             if ((s.SolidCell(c.X - r, y, c.Z) || s.SolidCell(c.X + r, y, c.Z)) && (s.SolidCell(c.X, y, c.Z - r) || s.SolidCell(c.X, y, c.Z + r))) return false;
         // Somewhere in the cell its body stands clear of the parts in and round it.
-        return parts == null || parts.Spot(c.X, c.Y, c.Z, c.Y, body.Radius, body.Height) != null;
+        return parts == null || parts.Spot(c.X, c.Y, c.Z, c.Y, body.Radius, body.Height, s.SolidCell, body.WallRadius) != null;
     }
 
     /// <summary>The point a path goes through in a cell: its middle, or among parts where the body fits.</summary>
@@ -82,18 +82,25 @@ public static class SpaceNav
         PartSet parts = s.Parts;
         if (parts == null) return SpaceMath.Center(c);
         if (body.Climbs) return parts.Hold(c.X, c.Y, c.Z, body.Radius) ?? SpaceMath.Center(c);
-        return parts.Spot(c.X, c.Y, c.Z, c.Y, body.Radius, body.Height) is { } p ? p + Vector3.Up * 0.5f : SpaceMath.Center(c);
+        return parts.Spot(c.X, c.Y, c.Z, c.Y, body.Radius, body.Height, s.SolidCell, body.WallRadius) is { } p ? p + Vector3.Up * 0.5f : SpaceMath.Center(c);
     }
 
     /// <summary>Whether a walker gets straight from one cell to the next, its body clear of the parts all the way.</summary>
-    static bool Steps(ISolidSpace s, Vector3I a, Vector3I b, Body body)
+    public static bool Steps(ISolidSpace s, Vector3I a, Vector3I b, Body body) => Steps(s, a, b, body, out _);
+
+    /// <summary>And the point between them it goes by, where the straight way between the two cells' points is barred but a gap on their shared face isn't.</summary>
+    static bool Steps(ISolidSpace s, Vector3I a, Vector3I b, Body body, out Vector3? via)
     {
+        via = null;
         PartSet parts = s.Parts;
         if (parts == null || body.Climbs) return true;
         Vector3 pa = Point(s, a, body) + Vector3.Down * 0.5f, pb = Point(s, b, body) + Vector3.Down * 0.5f;
         // Up or down a flight the feet are between the two levels: the flat test is made at the lower.
         float y = MathF.Min(pa.Y, pb.Y);
-        return parts.Step(a, pa with { Y = y }, b, pb with { Y = y }, body.Radius, body.Height);
+        if (!parts.Touches(pa, body.Radius, body.Height) && !parts.Touches(pb, body.Radius, body.Height)) return true;
+        bool ok = parts.Link(a, pa with { Y = y }, b, pb with { Y = y }, body.Radius, body.Height, s.SolidCell, body.WallRadius, out via);
+        if (via is { } v) via = v + Vector3.Up * 0.5f;
+        return ok;
     }
 
     /// <summary>The headroom a walker needs, in cells.</summary>
@@ -216,7 +223,11 @@ public static class SpaceNav
             if (c == start || !came.ContainsKey(c)) break;
         }
         cells.Reverse();
-        foreach (Vector3I c in cells) path.Add(Point(s, c, body));
+        for (int i = 0; i < cells.Count; i++)
+        {
+            if (i > 0 && Steps(s, cells[i - 1], cells[i], body, out Vector3? via) && via is { } v) path.Add(v);
+            path.Add(Point(s, cells[i], body));
+        }
         if (found) path[^1] = to;
         return found;
     }

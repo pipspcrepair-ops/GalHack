@@ -140,6 +140,39 @@ public sealed partial class Town
             }
     }
 
+    // ---- Walking someone through a place (tests) -------------------------------------------------
+
+    /// <summary>A place's walking grid with nobody living there yet, to walk people through it one by one (tests).</summary>
+    public static Town Walking(PlaceMemory m)
+    {
+        var town = new Town(m, new Townsfolk());
+        town._nav = Place.FootNavOf(m);
+        town._parts = PlaceParts.Of(m);
+        return town;
+    }
+
+    /// <summary>Whether a person can be stood at a point by the walking grid.</summary>
+    public bool CanStand(Vector3 local) => OnGrid(local);
+
+    /// <summary>Someone of a given folk set at a point with a route to another by the walking grid (null: no route).</summary>
+    public Person Walker(Species looks, Vector3 from, Vector3 to)
+    {
+        if (_nav == null) return null;
+        PInt3 a = Cell(from), b = Cell(to);
+        if (!_nav.Standable(a) || !_nav.Standable(b)) return null;
+        System.Collections.Generic.List<PInt3> cells = _nav.FindPath(a, b, 30000);
+        if (cells == null) return null;
+        var path = Points(cells);
+        path.Add(to);
+        return new Person { Town = this, Looks = looks, Pos = from, Path = path, Step = 0, Spot = -1, Speed = 1.3f, Spawn = new CitizenSpawn("walker", "walk", a, -1) };
+    }
+
+    /// <summary>A walker's step along their route, as the town walks its people (true once there).</summary>
+    public bool StepWalker(Person p, float dt) => Move(p, dt);
+
+    /// <summary>A person's body radius (their folk's width) and how tall they stand.</summary>
+    public static float RadiusOf(Person p) => BodyRadius(p);
+    public static float HeightOf(Person p) => Height(p);
     /// <summary>A push from you: a step aside for a friend, a glare from the wary, a shove back from a guard or one who doesn't like you. Never a fight.</summary>
     void Shoved(Person p, Vector3 player)
     {

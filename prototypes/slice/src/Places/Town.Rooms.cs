@@ -169,7 +169,7 @@ public sealed partial class Town
         if (here is not { } h || !_nav.Standable(Spots[spot].Cell)) return null;
         List<PInt3> cells = _nav.FindPath(h, Spots[spot].Cell, 30000);
         if (cells == null) return null;
-        List<Vector3> path = cells.Select(Walk).ToList();
+        List<Vector3> path = Points(cells);
         if ((At(spot) - path[^1]).LengthSquared() > 0.01f) path.Add(At(spot));
         return path;
     }
@@ -231,7 +231,7 @@ public sealed partial class Town
         for (int i = 0; i < path.Count; i++)
         {
             bool seatStep = i == path.Count - 1 && own != null || i == 1 && outOfSeat;
-            if (_parts != null && i > 0 && !seatStep && !_parts.Sweep(path[i - 1], path[i], PlaceParts.PersonRadius - 0.01f, PlaceParts.PersonHeight)) yield return Cell(path[i]);
+            if (_parts != null && i > 0 && !seatStep && !_parts.Sweep(path[i - 1], path[i], PlaceParts.PersonRadius - 0.01f, PlaceParts.PersonHeight, 0, Place.WallsOf(_nav), PlaceParts.PersonRadius - 0.01f)) yield return Cell(path[i]);
             // Each point, and the middle of the way to it from the last.
             for (int k = 0; k < (i == 0 ? 1 : 2); k++)
             {

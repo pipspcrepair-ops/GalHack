@@ -481,16 +481,27 @@ public partial class Place
         if (PlaceParts.Of(m) is not { } parts) return nav;
         // A person stands in a cell where somewhere in it they fit clear of the furniture and clutter, and steps
         // to the next where their body gets by all the way: past a monitor, beside a locker, round a chair.
-        nav.Fits = c => parts.Spot(c.X, c.Y, c.Z, c.Y, PlaceParts.PersonRadius, PlaceParts.PersonHeight) != null;
+        Func<int, int, int, bool> walls = WallsOf(nav);
+        nav.Fits = c => PersonSpot(parts, walls, c) != null;
         nav.Passes = (a, b) =>
         {
             if (nav.RampAt(a, out _) || nav.RampAt(b, out _)) return true;
-            if (parts.Spot(a.X, a.Y, a.Z, a.Y, PlaceParts.PersonRadius, PlaceParts.PersonHeight) is not { } pa
-                || parts.Spot(b.X, b.Y, b.Z, b.Y, PlaceParts.PersonRadius, PlaceParts.PersonHeight) is not { } pb) return false;
-            return parts.Step(new Vector3I(a.X, a.Y, a.Z), pa, new Vector3I(b.X, b.Y, b.Z), pb, PlaceParts.PersonRadius, PlaceParts.PersonHeight);
+            if (PersonSpot(parts, walls, a) is not { } pa || PersonSpot(parts, walls, b) is not { } pb) return false;
+            if (!parts.Touches(pa, PlaceParts.PersonRadius, PlaceParts.PersonHeight) && !parts.Touches(pb, PlaceParts.PersonRadius, PlaceParts.PersonHeight)) return true;
+            return parts.Step(new Vector3I(a.X, a.Y, a.Z), pa, new Vector3I(b.X, b.Y, b.Z), pb, PlaceParts.PersonRadius, PlaceParts.PersonHeight, walls, PlaceParts.PersonRadius);
         };
         return nav;
     }
+
+    /// <summary>Where a person stands in a cell of the walking grid: its middle, or among the parts where they fit, never hard by a wall.</summary>
+    public static Vector3? PersonSpot(Wildlife.PartSet parts, Func<int, int, int, bool> walls, Int3 c) =>
+        parts.Spot(c.X, c.Y, c.Z, c.Y, PlaceParts.PersonRadius, PlaceParts.PersonHeight, walls, PlaceParts.PersonRadius);
+
+    /// <summary>The solid cells of a walking grid (one delegate a grid, so what's worked out against it is remembered).</summary>
+    public static Func<int, int, int, bool> WallsOf(PoiGenerator.Gen.NavGrid nav) => _walls.GetValue(nav, n => new WallsBox((x, y, z) => n.Solid(new Int3(x, y, z)))).Solid;
+
+    sealed class WallsBox { public readonly Func<int, int, int, bool> Solid; public WallsBox(Func<int, int, int, bool> s) => Solid = s; }
+    static readonly System.Runtime.CompilerServices.ConditionalWeakTable<PoiGenerator.Gen.NavGrid, WallsBox> _walls = new();
 
     /// <summary>The place's blocks as a walking route sees them, the dressing's solid pieces standing in.</summary>
     public static IBlockStructure Routed(PlaceMemory m, Dictionary<int, PlaceRoom> rooms = null) =>

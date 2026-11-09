@@ -171,7 +171,30 @@ public sealed partial class Town
     Vector3 Walk(PInt3 c)
     {
         if (_nav != null && _nav.RampAt(c, out _)) return new(c.X + 0.5f, c.Y + 0.5f, c.Z + 0.5f);
-        return _parts?.Spot(c.X, c.Y, c.Z, c.Y, PlaceParts.PersonRadius, PlaceParts.PersonHeight) ?? new Vector3(c.X + 0.5f, c.Y, c.Z + 0.5f);
+        return (_parts != null ? Place.PersonSpot(_parts, Place.WallsOf(_nav), c) : null) ?? new Vector3(c.X + 0.5f, c.Y, c.Z + 0.5f);
+    }
+
+    /// <summary>
+    /// A route's walking points: each cell's (<see cref="Walk"/>), and between two cells where furniture bars the
+    /// straight way from one's point to the next's, the gap on the face between them it goes by.
+    /// </summary>
+    List<Vector3> Points(List<PInt3> cells)
+    {
+        if (cells == null) return null;
+        var path = new List<Vector3>(cells.Count);
+        Func<int, int, int, bool> walls = _parts != null ? Place.WallsOf(_nav) : null;
+        for (int i = 0; i < cells.Count; i++)
+        {
+            Vector3 here = Walk(cells[i]);
+            if (i > 0 && walls != null && !_nav.RampAt(cells[i], out _) && !_nav.RampAt(cells[i - 1], out _))
+            {
+                PInt3 a = cells[i - 1], b = cells[i];
+                if (_parts.Link(new Vector3I(a.X, a.Y, a.Z), path[^1], new Vector3I(b.X, b.Y, b.Z), here, PlaceParts.PersonRadius, PlaceParts.PersonHeight, walls, PlaceParts.PersonRadius, out Vector3? via) && via is { } v)
+                    path.Add(v);
+            }
+            path.Add(here);
+        }
+        return path;
     }
 
     List<Vector3> PathBetween(int a, int b)
@@ -190,7 +213,7 @@ public sealed partial class Town
         // By the walking grid only (the dressing standing in, through the doors): where there is no way, nobody goes,
         // never straight across through a wall, a floor or the furniture.
         List<PInt3> cells = _nav.Standable(from) && _nav.Standable(to) ? _nav.FindPath(from, to, 30000) : null;
-        List<Vector3> path = cells?.Select(Walk).ToList();
+        List<Vector3> path = Points(cells);
         if (path != null && (At(b) - path[^1]).LengthSquared() > 0.01f) path.Add(At(b));
         _paths[(a, b)] = path;
         return path;
@@ -542,7 +565,9 @@ public sealed partial class Town
         // Turns a corner a stride early, not on the spot.
         // (Not out of a seat or into one: that way is walked as it lies, clear of the furniture round it.)
         bool exact = p.Step == 0 && p.Seat >= 0 || p.Step >= p.Path.Count - 2 && p.Spot >= 0 && p.Spot < _own.Count && _own[p.Spot] != null;
-        if (flat < step || flat < (last || exact ? 0.05f : 0.4f))
+        // (Among furniture the corner is turned at the point itself: the gap it goes through is no wider.)
+        float cut = last || exact ? 0.05f : _parts != null && _parts.Touches(to, PlaceParts.PersonRadius, PlaceParts.PersonHeight) ? 0.1f : 0.4f;
+        if (flat < step || flat < cut)
         {
             if (last)
             {

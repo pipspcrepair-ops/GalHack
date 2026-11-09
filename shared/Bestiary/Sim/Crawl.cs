@@ -239,7 +239,12 @@ public static class Crawl
         }
         // Whatever moved it (a landing, a lunge), it ends clear of the walls and the furniture, on the floor.
         feet = HoldOffWalls(s, feet, clr);
-        if (parts != null && !parts.Fits(feet, pr, ph)) feet = HoldOffWalls(s, parts.PushOut(feet, pr, ph), clr);
+        if (parts != null && !parts.Fits(feet, pr, ph))
+        {
+            feet = HoldOffWalls(s, parts.PushOut(feet, pr, ph), clr);
+            // Held between a wall and a piece with no room for it: where it stood, never in the piece.
+            if (!parts.Fits(feet, pr, ph) && parts.Gap(start, pr, ph) > parts.Gap(feet, pr, ph)) feet = start;
+        }
         if (SpaceMath.FloorBelow(s, feet.X, feet.Y + 0.45f, feet.Z, 1.4f) is float y) feet.Y = y;
         else
         {
