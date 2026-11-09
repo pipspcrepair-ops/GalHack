@@ -65,6 +65,9 @@ public sealed class HoverBike
     public float LastTurn { get; private set; }
 
     public bool Grounded { get; private set; } = true;
+
+    /// <summary>Its hull box met something this tick (a bank it scraped, a wall it slid along) and was pushed clear of it.</summary>
+    public bool Touching { get; private set; }
     public bool OnWater { get; private set; }
     public bool Ridden;
 
@@ -110,9 +113,19 @@ public sealed class HoverBike
         {
             var c = new Vector3((i & 1) == 0 ? HullMin.X : HullMax.X, (i & 2) == 0 ? HullMin.Y : HullMax.Y, (i & 4) == 0 ? HullMin.Z : HullMax.Z);
             Vector3 p = Position + b * c;
-            least = MathF.Min(least, p.Y - _owner.SolidAt(p.X, p.Z, p.Y + LookFrom));
+            least = MathF.Min(least, p.Y - _owner.SolidAt(p.X, p.Z, p.Y + 0.8f));
         }
         return least;
+    }
+
+    /// <summary>How far its lowest corner is above its underside's centre as it sits now, m (below zero: under it).</summary>
+    float Lowest()
+    {
+        Basis b = Attitude;
+        float low = float.PositiveInfinity;
+        for (int i = 0; i < 8; i++)
+            low = MathF.Min(low, (b * new Vector3((i & 1) == 0 ? HullMin.X : HullMax.X, (i & 2) == 0 ? HullMin.Y : HullMax.Y, (i & 4) == 0 ? HullMin.Z : HullMax.Z)).Y);
+        return low;
     }
 
     /// <summary>
@@ -169,12 +182,15 @@ public sealed class HoverBike
     void Turn(Vector3 push, float above, bool gripped, float dt)
     {
         var flat = new Vector3(push.X, 0f, push.Z);
-        Vector3 tip = Vector3.Up.Cross(flat) * 1.1f + Vector3.Up * flat.Length() * 0.25f; // m/s² of push over its own small size
+        Vector3 tip = Vector3.Up.Cross(flat) * 1.1f; // m/s² of push over its own small size
         // It always tries to be level in the world: its plates hard near the ground (or lying on it), its gyro more
         // gently in the air, so a tornado's grip still overpowers it and tumbles it, but a hop, a drop or a gale
         // never leaves it tilted: short of a grip the push leans it a few degrees at most.
         float most = above < Hover * 2.5f || Toppled ? PlateLevel : PlateLevel * 0.4f;
-        if (!gripped) tip = tip.LimitLength(most * 0.4f);
+        // Only a vortex's grip turns it round about up with it. Any push used to (the drag of its own speed through
+        // still air too), and that spin, folded into its heading below, swung its nose round on every ride.
+        if (gripped) tip += Vector3.Up * flat.Length() * 0.25f;
+        else tip = Vector3.Zero; // short of a grip the push only leans it a little in its own frame (Tick), never about a slanting axis that would swing its nose
         Vector3 axis = _tumble.Y.Cross(Vector3.Up);
         float tilt = Tilt;
         if (axis.LengthSquared() < 1e-6f && tilt > 1.5f) axis = Forward; // flat on its roof: it rolls back over its side
@@ -237,6 +253,8 @@ public sealed class HoverBike
             Position += Velocity * dt;
             _vy = 0f;
             Position.Y -= Clearance(); // its lowest corner on the ground: never in it
+            float sea = _owner.SurfaceAt(Position.X, Position.Z, Position.Y + LookFrom, out bool afloat);
+            if (afloat) Position.Y = MathF.Max(Position.Y, sea + 0.1f - Lowest()); // on water it floats where it lies
             if (Tilt < 0.35f)
             {
                 Toppled = false;
@@ -266,7 +284,14 @@ public sealed class HoverBike
             Vector3 probe = Position + dir * (step + 0.9f);
             float ahead = _owner.SurfaceAt(probe.X, probe.Z, Position.Y + LookFrom, out _);
             bool cliff = ahead > Position.Y - Hover + 0.8f && ahead > _owner.SurfaceAt(Position.X, Position.Z, Position.Y + LookFrom, out _) + 0.8f;
-            bool wall = _owner.Blocked(Position + Vector3.Up * 0.5f, dir, step + 1.0f);
+            // Rays from its middle out past its nose (or tail, or flank) the way it moves, low and high, middle and both
+            // sides: one ray from the middle to a metre out let its nose and corners into a wall before it saw it.
+            Vector3 side = Vector3.Up.Cross(dir).Normalized();
+            float reach = MathF.Abs(dir.Dot(fwd)) * (dir.Dot(fwd) > 0f ? -HullMin.Z : HullMax.Z) + MathF.Abs(dir.Dot(right)) * HullMax.X;
+            bool wall = false;
+            foreach (float h in new[] { 0.3f, 0.8f })
+                foreach (float s in new[] { -0.6f, 0f, 0.6f })
+                    wall = wall || _owner.Blocked(Position + Vector3.Up * h + side * s, dir, reach + step + 0.15f);
             if (cliff || wall)
             {
                 if (Speed > 6f && Ridden) _owner.Bumped?.Invoke(Position + dir);
@@ -308,8 +333,12 @@ public sealed class HoverBike
         float h0 = _owner.SurfaceAt(Position.X + fwd.X * 1.0f, Position.Z + fwd.Z * 1.0f, Position.Y + LookFrom, out _);
         float h1 = _owner.SurfaceAt(Position.X - fwd.X * 1.0f, Position.Z - fwd.Z * 1.0f, Position.Y + LookFrom, out _);
         float k = 1f - MathF.Exp(-8f * dt);
-        _pitch = Mathf.Lerp(_pitch, Grounded ? Mathf.Clamp(MathF.Atan2(h0 - h1, 2f), -0.5f, 0.5f) : 0f, k);
-        _roll = Mathf.Lerp(_roll, Mathf.Clamp(-steer * Speed * 0.012f - vs * 0.02f, -0.45f, 0.45f), k);
+        // A push short of a grip (a gale, the drag of its own speed) leans it a few degrees, nose up into a headwind, over
+        // to leeward in a crosswind, about its own axes: a tumble about a slanting axis swung its nose off its heading.
+        Vector3 lean = new Vector3(pushed.X, 0f, pushed.Z);
+        float windPitch = Mathf.Clamp(-lean.Dot(fwd) * 0.012f, -0.06f, 0.06f), windRoll = Mathf.Clamp(lean.Dot(right) * 0.012f, -0.06f, 0.06f);
+        _pitch = Mathf.Lerp(_pitch, (Grounded ? Mathf.Clamp(MathF.Atan2(h0 - h1, 2f), -0.5f, 0.5f) : 0f) + windPitch, k);
+        _roll = Mathf.Lerp(_roll, Mathf.Clamp(-steer * Speed * 0.012f - vs * 0.02f, -0.45f, 0.45f) + windRoll, k);
 
         // Nothing of it goes into the ground (or a base's hull, or a place's blocks): whatever corner a crash, a
         // drop, a tilt or the ground dug from under it put in, it is pushed straight back out.
@@ -318,6 +347,19 @@ public sealed class HoverBike
         {
             Position.Y += sunk;
             _vy = MathF.Max(0f, _vy);
+        }
+        // And out of anything its hull box still overlaps (a wall it slid into side on, a block it was set down in), along the contact.
+        Touching = false;
+        for (int pass = 0; pass < 4; pass++)
+        {
+            Vector3 clear = _owner.PushOut(Attitude, Position);
+            if (clear == Vector3.Zero) break;
+            Touching = true;
+            Position += clear;
+            Vector3 n = clear.Normalized();
+            float into = Velocity.Dot(n);
+            if (into < 0f) Velocity -= n * into;
+            if (n.Y > 0.3f) _vy = MathF.Max(0f, _vy);
         }
         Velocity.Y = _vy;
         Place();
@@ -485,10 +527,46 @@ public sealed partial class HoverBikes : Node3D
         }
         if (float.IsNegativeInfinity(ground)) ground = from - 40f;
         // A base's hull, a place's floor or roof, or the ground's own collision under it (the hull layer alone let it ride through a place's blocks).
+        // Faces seen from behind (the underside of a bridge or a roof over it, a block it is already in) are not ground under it.
         var query = PhysicsRayQueryParameters3D.Create(new Vector3(x, MathF.Max(from, ground) + 0.5f, z), new Vector3(x, ground - 0.5f, z), Layers.Hull | Layers.World);
+        query.HitBackFaces = false;
         var hit = _zone.GetWorld3D().DirectSpaceState.IntersectRay(query);
         if (hit.Count > 0) ground = MathF.Max(ground, ((Vector3)hit["position"]).Y);
         return ground;
+    }
+
+    PhysicsShapeQueryParameters3D _hullQuery;
+
+    /// <summary>
+    /// The way out of whatever a bike's hull box overlaps (the ground's collision, a place's blocks, a hull), by the engine's
+    /// own contact query: the deepest contact, from the point on the box to the point on what it is in; nothing when
+    /// clear (within a few millimetres). Pointing down while sunk past a face of the ground, it lifts instead.
+    /// </summary>
+    public Vector3 PushOut(Basis attitude, Vector3 position)
+    {
+        _hullQuery ??= new PhysicsShapeQueryParameters3D
+        {
+            Shape = new BoxShape3D { Size = HoverBike.HullMax - HoverBike.HullMin }, CollisionMask = Layers.World | Layers.Hull, Margin = 0f,
+        };
+        _hullQuery.Transform = new Transform3D(attitude, position + attitude * ((HoverBike.HullMin + HoverBike.HullMax) * 0.5f));
+        Godot.Collections.Array<Vector3> points = _zone.GetWorld3D().DirectSpaceState.CollideShape(_hullQuery, 16);
+        // Out the top first: sunk into a floor or a roof (set down in it, dropped on it) it comes up onto it, not out
+        // through the side of the block it is in (a mesh of blocks offers a short way out sideways at every seam).
+        Vector3 push = Vector3.Zero, up = Vector3.Zero;
+        float deepest = 0.005f, deepestUp = 0.005f;
+        for (int i = 0; i + 1 < points.Count; i += 2)
+        {
+            Vector3 way = points[i + 1] - points[i];
+            float depth = way.Length();
+            if (way.Y > 0.7f * depth && depth > deepestUp) { deepestUp = depth; up = way; }
+            if (depth <= deepest) continue;
+            deepest = depth;
+            push = way;
+        }
+        if (up != Vector3.Zero) push = up;
+        if (push == Vector3.Zero) return push;
+        if (push.Y < -0.2f * push.Length()) push = Vector3.Up * MathF.Min(push.Length(), 0.5f);
+        return push * 1.02f;
     }
 
     /// <summary>Is something solid in the way along a direction (a trunk, a rock, a wall)?</summary>

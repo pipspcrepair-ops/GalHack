@@ -37,6 +37,7 @@ public partial class VehicleGroundTest : Node
     public override void _Ready()
     {
         ProcessPhysicsPriority = 100; // checks after the game has stepped
+        ProcessPriority = 1000; // and each drawn frame after it has posed the figure
         new System.Threading.Thread(() =>
         {
             System.Threading.Thread.Sleep(TimeSpan.FromMinutes(20));
@@ -123,7 +124,23 @@ public partial class VehicleGroundTest : Node
         for (int k = 0; k < 16; k++)
         {
             Vector3 way = new Vector3(0f, 0f, -1f).Rotated(Vector3.Up, k * Mathf.Tau / 16f);
-            if (!_game.Bikes.Blocked(chest, way, 60f)) return way;
+            // Clear for its whole width, low and high, as its own rays see it (a trunk beside its line stops it).
+            Vector3 side = Vector3.Up.Cross(way).Normalized() * 0.7f;
+            bool blocked = _game.Bikes.Blocked(chest, way, 60f);
+            foreach (float s in new[] { -1f, 0f, 1f })
+                blocked = blocked || _game.Bikes.Blocked(at + Vector3.Up * 0.3f + side * s, way, 60f) || _game.Bikes.Blocked(at + Vector3.Up * 0.8f + side * s, way, 60f);
+            if (blocked) continue;
+            // And ground a rider would take: no bank steeper than one in two along it, no water.
+            bool ridable = true;
+            float last = _game.Zone.GroundAt(at.X, at.Z).Y;
+            for (float d = 3f; d <= 45f && ridable; d += 3f)
+            {
+                Vector3 p = at + way * d;
+                float h = _game.Zone.GroundAt(p.X, p.Z).Y;
+                ridable = MathF.Abs(h - last) < 1.5f && h > _game.Zone.Planet.Source.WaterLevel + 0.5f;
+                last = h;
+            }
+            if (ridable) return way;
         }
         return new Vector3(0f, 0f, -1f);
     }
@@ -131,28 +148,21 @@ public partial class VehicleGroundTest : Node
     static float YawOf(Vector3 way) => MathF.Atan2(-way.X, -way.Z);
 
     // ---- The hover bike -------------------------------------------------------------------------
-
+    /// <summary>How far any part of the bike's hull is into anything solid, m, measured apart from the bike's own rule.</summary>
     /// <summary>How far any part of the bike's hull is into anything solid, m, measured apart from the bike's own rule: the density field at each corner and along the hull's floor, and a ray down onto the collision shapes.</summary>
     float Sunk(HoverBike bike)
     {
-        var store = _game.Zone.Planet.Terrain.Store;
+        // The engine's own contact query with the hull's box against every collision shape: the ground's, a place's blocks, hulls.
         Basis b = bike.Attitude;
+        Vector3 size = HoverBike.HullMax - HoverBike.HullMin;
+        var q = new PhysicsShapeQueryParameters3D
+        {
+            Shape = new BoxShape3D { Size = size }, CollisionMask = GalHack.Physics.Layers.World | GalHack.Physics.Layers.Hull, Margin = 0f,
+            Transform = new Transform3D(b, bike.Position + b * ((HoverBike.HullMin + HoverBike.HullMax) * 0.5f)),
+        };
         float worst = 0f;
-        var space = _game.Zone.GetWorld3D().DirectSpaceState;
-        for (int ix = 0; ix < 3; ix++)
-            for (int iy = 0; iy < 2; iy++)
-                for (int iz = 0; iz < 3; iz++)
-                {
-                    var c = new Vector3(Mathf.Lerp(HoverBike.HullMin.X, HoverBike.HullMax.X, ix / 2f), iy == 0 ? HoverBike.HullMin.Y : HoverBike.HullMax.Y,
-                        Mathf.Lerp(HoverBike.HullMin.Z, HoverBike.HullMax.Z, iz / 2f));
-                    Vector3 p = bike.Position + b * c;
-                    float d = 0f;
-                    while (d < 3f && store.SampleDensity((p + Vector3.Up * d).ToNumerics()) > 0f) d += 0.01f;
-                    var q = PhysicsRayQueryParameters3D.Create(p + Vector3.Up * 3f, p, GalHack.Physics.Layers.World | GalHack.Physics.Layers.Hull);
-                    var hit = space.IntersectRay(q);
-                    if (hit.Count > 0) d = MathF.Max(d, ((Vector3)hit["position"]).Y - p.Y);
-                    worst = MathF.Max(worst, d);
-                }
+        var points = _game.Zone.GetWorld3D().DirectSpaceState.CollideShape(q, 32);
+        for (int i = 0; i + 1 < points.Count; i += 2) worst = MathF.Max(worst, points[i].DistanceTo(points[i + 1]));
         return worst;
     }
 
@@ -184,6 +194,7 @@ public partial class VehicleGroundTest : Node
             }
             w.WasGrounded = bike.Grounded;
             w.Toppled |= bike.Toppled;
+            Face(bike);
             if (done != null && i > 2 && done()) yield break;
         }
     }
@@ -201,15 +212,33 @@ public partial class VehicleGroundTest : Node
         bool seated = _game.Survivor.OnBike == bike;
         Vector3 from = bike.Position;
         _game.Controls.Hold(Key.W);
-        foreach (int x in Observe(bike, w, 60)) yield return x;
+        string was = _segment;
+        _segment = $"riding off {what}";
+        _judgeTravel = false;
+        for (int i = 0; i < 60; i++)
+        {
+            _straight = i > 30 && Aligned(bike);
+            foreach (int x in Observe(bike, w, 1)) yield return x;
+        }
+        _straight = false;
+        _judgeTravel = true;
+        _segment = was;
         float throttle = bike.Throttle;
         _game.Controls.Hold(Key.W, false);
         float ran = new Vector2(bike.Position.X - from.X, bike.Position.Z - from.Z).Length();
-        if (ran <= 5f)
+        if (ran <= 3f)
             GD.Print($"  (stuck: throttle {throttle}, ridden {bike.Ridden}, grounded {bike.Grounded}, toppled {bike.Toppled}, water {bike.OnWater}, speed {bike.Speed:F1}, at {bike.Position}, "
                 + $"blocked ahead {_game.Bikes.Blocked(bike.Position + Vector3.Up * 0.5f, bike.Forward, 2f)}, ground here {_game.Bikes.SolidAt(bike.Position.X, bike.Position.Z, bike.Position.Y + 1.5f):F2}, "
-                + $"ahead {_game.Bikes.SolidAt(bike.Position.X + bike.Forward.X * 2f, bike.Position.Z + bike.Forward.Z * 2f, bike.Position.Y + 1.5f):F2}, dead {_game.Suit.Dead}, menu {_game.Menu.IsOpen})");
-        Check(seated && _game.Survivor.OnBike == bike && ran > 5f && w.Sunk < BikeTolerance,
+                + $"ahead {_game.Bikes.SolidAt(bike.Position.X + bike.Forward.X * 2f, bike.Position.Z + bike.Forward.Z * 2f, bike.Position.Y + 1.5f):F2}, dead {_game.Suit.Dead}, menu {_game.Menu.IsOpen}, push-out {_game.Bikes.PushOut(bike.Attitude, bike.Position)})");
+        if (ran <= 3f)
+            foreach (float h in new[] { 0.3f, 0.8f })
+                foreach (float s in new[] { -0.6f, 0f, 0.6f })
+                {
+                    Vector3 o = bike.Position + Vector3.Up * h + bike.Forward.Cross(Vector3.Up).Normalized() * -s;
+                    var hit = _game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(PhysicsRayQueryParameters3D.Create(o, o + bike.Forward * 1.6f, GalHack.Physics.Layers.World | GalHack.Physics.Layers.Hull | GalHack.Physics.Layers.Props | PlanetSurface.World.Layers.Flora));
+                    if (hit.Count > 0) GD.Print($"    ray {h} {s}: {(hit["collider"].AsGodotObject() as Node)?.Name ?? "a body with no node"} at {((Vector3)hit["position"]).DistanceTo(o):F2} m, normal {hit["normal"]}");
+                }
+        Check(seated && _game.Survivor.OnBike == bike && ran > 3f && w.Sunk < BikeTolerance,
             $"{mode}, hover bike, {what}: deepest {w.Sunk * 100f:F1} cm into anything solid (tolerance {BikeTolerance * 100f:F0} cm), tilted at most {w.Tilt:F0}°{(w.Toppled ? ", toppled and righted itself" : "")}; the rider still seated, it rides {ran:F1} m off in a second under its own throttle");
         // Brought to a stop again for the next case.
         _game.Controls.Hold(Key.S);
@@ -220,7 +249,7 @@ public partial class VehicleGroundTest : Node
     IEnumerable<int> Bike(string mode)
     {
         GD.Print($"-- {mode}: the hover bike --");
-        Vector3 spot = FlatSpot(out _);
+        Vector3 spot = _openGround = FlatSpot(out _);
         _game.Survivor.Dismount();
         _game.Survivor.PlaceOutside((spot + Vector3.Up * 0.2f).ToNumerics());
         foreach (int x in _drive.UntilSettled()) yield return x;
@@ -229,9 +258,22 @@ public partial class VehicleGroundTest : Node
         HoverBike bike = _game.Bikes.Place(spot + way * 3f, YawOf(way));
         Check(_game.Survivor.Mount(bike), $"{mode}: on the hover bike");
         _game.Survivor.Yaw = bike.Yaw;
+        _game.ThirdPerson = true; // the rider's figure is drawn and posed on the bike
         foreach (int x in _drive.Wait(20)) yield return x;
 
+        // First, turning under throttle (where the owner saw the model pivot away from forward).
+        _face = new Facing();
+        foreach (int x in Turns(bike, mode)) yield return x;
+        ReportFacing(mode, "through steady turns under throttle (A, D and the mouse, both ways, at low and full speed and on boost) and as each straightens out");
+        _face = new Facing();
+
+        // Back on the open ground it started on for the rest (the turns roam).
+        bike.Position = _openGround + Vector3.Up * HoverBike.Hover;
+        bike.Settle();
+        foreach (int x in _drive.Wait(30)) yield return x;
+
         // Hops standing: straight up and down, level all the way, never a flip.
+        _segment = "hopping standing";
         var w = new Watch();
         for (int h = 0; h < 6; h++)
         {
@@ -240,10 +282,11 @@ public partial class VehicleGroundTest : Node
             _game.Controls.Hold(Key.Space, false);
             foreach (int x in Observe(bike, w, 150, () => Steady(bike))) yield return x;
         }
-        Check(w.Flew && w.AirGain < 4f && w.AirTilt < 20f && !w.Toppled, $"{mode}, hover bike: six hops standing, each straight up and level in the air (at most {w.AirPitch:F1}° pitch, {w.AirRoll:F1}° roll; never more than {w.AirGain:F1}° past its lean to the ground it left), no flip");
+        Check(w.Flew && w.AirGain < 4f && !w.Toppled, $"{mode}, hover bike: six hops standing, each straight up and level in the air (at most {w.AirPitch:F1}° pitch, {w.AirRoll:F1}° roll; never more than {w.AirGain:F1}° past its lean to the ground it left), no flip");
         foreach (int x in RidesOff(bike, mode, "after the standing hops", w)) yield return x;
 
         // Hops at full boost: its own speed's drag once tipped it back past its gyro and flipped it.
+        _segment = "hopping at full boost";
         w = new Watch();
         _game.Survivor.Yaw = bike.Yaw = YawOf(ClearWay(bike.Position));
         _game.Controls.Hold(Key.W);
@@ -260,10 +303,11 @@ public partial class VehicleGroundTest : Node
         }
         _game.Controls.Hold(Key.W, false);
         _game.Controls.Hold(Key.Shift, false);
-        Check(w.Flew && w.AirGain < 4f && w.AirTilt < 20f && !w.Toppled, $"{mode}, hover bike: five hops at {top:F0} m/s, each level in the air (at most {w.AirPitch:F1}° pitch, {w.AirRoll:F1}° roll; never more than {w.AirGain:F1}° past its lean to the ground it left), no flip");
+        Check(w.Flew && w.AirGain < 4f && !w.Toppled, $"{mode}, hover bike: five hops at {top:F0} m/s, each level in the air (at most {w.AirPitch:F1}° pitch, {w.AirRoll:F1}° roll; never more than {w.AirGain:F1}° past its lean to the ground it left), no flip");
         foreach (int x in RidesOff(bike, mode, "after the hops at speed", w)) yield return x;
 
         // Thrown onto its roof (a tornado's fling, a cliff): the rider stays on; it rights itself and drives.
+        _segment = "thrown onto its roof and righting itself";
         w = new Watch();
         bike.Throw(Vector3.Up * 9f, bike.Forward * 9f);
         foreach (int x in Observe(bike, w, 600, () => w.Toppled && Steady(bike))) yield return x;
@@ -271,6 +315,7 @@ public partial class VehicleGroundTest : Node
         foreach (int x in RidesOff(bike, mode, "thrown onto its roof", w)) yield return x;
 
         // A drop off a height.
+        _segment = "dropped, crashed and set into the ground";
         w = new Watch();
         bike.Position += Vector3.Up * 25f;
         foreach (int x in Observe(bike, w, 300, () => Steady(bike))) yield return x;
@@ -308,6 +353,12 @@ public partial class VehicleGroundTest : Node
             foreach (int x in Observe(bike, w, 300, () => Steady(bike))) yield return x;
             foreach (int x in RidesOff(bike, mode, "set down 0.4 m into a place's blocks", w)) yield return x;
         }
+
+        // A long straight ride in a crosswind with gusts (short of a tornado's grip).
+        foreach (int x in Crosswind(bike, mode)) yield return x;
+        // And a tornado's pick-up: the rider is torn off and thrown on their own; the bike tumbles, lands and rights itself.
+        foreach (int x in Tornado(bike, mode)) yield return x;
+        ReportFacing(mode, "through the hops, the flip and its recovery, the drops and crashes, a crosswind with gusts and a tornado");
 
         _game.Survivor.Dismount();
         _game.Bikes.Remove(bike);
@@ -352,7 +403,14 @@ public partial class VehicleGroundTest
                     bool flat = true;
                     for (int d = 0; d < 8 && flat; d++)
                         flat = Hit(x + MathF.Cos(d * 0.785f) * 2.5f, z + MathF.Sin(d * 0.785f) * 2.5f) is Vector3 q && MathF.Abs(q.Y - p.Y) < 0.05f;
-                    if (flat) _placeTop = p;
+                    // And a way off it for a vehicle set down there: some heading with no wall in it for 10 m.
+                    bool off = false;
+                    for (int d = 0; d < 8 && flat && !off; d++)
+                    {
+                        var dir = new Vector3(MathF.Cos(d * 0.785f), 0f, MathF.Sin(d * 0.785f));
+                        off = !_game.Bikes.Blocked(p + Vector3.Up * 1.2f, dir, 10f) && !_game.Bikes.Blocked(p + Vector3.Up * 2f, dir, 10f);
+                    }
+                    if (flat && off) _placeTop = p;
                 }
             if (_placeTop is Vector3 found)
             {

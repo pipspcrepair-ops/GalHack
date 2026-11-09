@@ -67,6 +67,9 @@ public sealed class HullBinding : BodyBinding
     public override Node3D Node => Hull;
     public override CollisionObject3D Collider => Hull;
 
+    /// <summary>Its rotation after the last tick's move.</summary>
+    N.Quaternion _turned;
+
     /// <summary>The transform last checked for overlap while asleep.</summary>
     Transform3D _cleared;
 
@@ -112,7 +115,8 @@ public sealed class HullBinding : BodyBinding
         }
         // The sweep stops it at what it meets, but turning (the flight model's, the hover's tilt to the ground, a
         // bump's kick) happened before it, unswept, and can swing a corner into the ground: nothing is left inside.
-        Clear();
+        if (_contacts.Count > 0 || b.Rotation != _turned) Clear();
+        _turned = b.Rotation;
 
         b.Position = Hull.GlobalPosition.ToNumerics();
         b.Velocity = host.World.ResolveContacts(b, _contacts, before.ToNumerics(), velocity.ToNumerics());
@@ -135,16 +139,23 @@ public sealed class HullBinding : BodyBinding
         PhysicsDirectSpaceState3D space = Hull.GetWorld3D()?.DirectSpaceState;
         if (space == null) return false;
         // Nothing near at all (in the air): one query of its bounds, and done.
-        Aabb bounds = default;
-        bool any = false;
-        foreach (Node n in Hull.GetChildren())
-            if (n is CollisionShape3D cs && !cs.Disabled && cs.Shape != null)
-            {
-                Aabb box = cs.Transform * BoundsOf(cs.Shape);
-                bounds = any ? bounds.Merge(box) : box;
-                any = true;
-            }
-        if (!any) return false;
+        if (Hull.GetChildCount() != _childCount)
+        {
+            // Its shapes, and their bounds in its frame, gathered again only when they change (an edit swaps chunks).
+            _childCount = Hull.GetChildCount();
+            _shapes.Clear();
+            bool first = true;
+            foreach (Node n in Hull.GetChildren())
+                if (n is CollisionShape3D cs && cs.Shape != null)
+                {
+                    _shapes.Add(cs);
+                    Aabb box = cs.Transform * BoundsOf(cs.Shape);
+                    _local = first ? box : _local.Merge(box);
+                    first = false;
+                }
+        }
+        if (_shapes.Count == 0) return false;
+        Aabb bounds = _local;
         _near ??= new PhysicsShapeQueryParameters3D { Shape = new BoxShape3D(), CollisionMask = Hull.CollisionMask, Margin = 0f };
         ((BoxShape3D)_near.Shape).Size = bounds.Size + Vector3.One * 0.02f;
         _near.Transform = Hull.GlobalTransform * new Transform3D(Basis.Identity, bounds.GetCenter());
@@ -157,9 +168,14 @@ public sealed class HullBinding : BodyBinding
             // The deepest overlap of any of its shapes: the way out of it is from the point on the hull to the point on what it overlaps.
             Vector3 push = Vector3.Zero;
             float deepest = Slop;
-            foreach (Node n in Hull.GetChildren())
+            foreach (CollisionShape3D cs in _shapes)
             {
-                if (n is not CollisionShape3D cs || cs.Disabled || cs.Shape == null) continue;
+                if (!GodotObject.IsInstanceValid(cs) || cs.GetParent() != Hull)
+                {
+                    _childCount = -1; // swapped by an edit: gathered again next time
+                    continue;
+                }
+                if (cs.Disabled || cs.Shape == null) continue;
                 _shape ??= new PhysicsShapeQueryParameters3D { CollisionMask = Hull.CollisionMask, Margin = 0f };
                 _shape.Shape = cs.Shape;
                 _shape.Transform = cs.GlobalTransform;
@@ -191,6 +207,9 @@ public sealed class HullBinding : BodyBinding
     public int Pushes;
 
     PhysicsShapeQueryParameters3D _near, _shape;
+    readonly List<CollisionShape3D> _shapes = new();
+    int _childCount = -1;
+    Aabb _local;
     Godot.Collections.Array<Rid> _self;
     readonly Dictionary<Shape3D, Aabb> _bounds = new();
 
