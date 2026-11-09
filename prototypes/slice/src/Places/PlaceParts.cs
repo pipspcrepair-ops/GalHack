@@ -45,6 +45,8 @@ public static class PlaceParts
             // Its doors first: what stands in a doorway's way the years forced open or tore out goes with it.
             List<DoorWay> doors = DoorWays.Of(m);
             m.Fixed = Build(m);
+            // A jammed door never moves: its gap is part of the routes (people go through it only where they fit).
+            foreach (DoorWay d in doors) if (d.Jammed) DoorWays.Put(m.Fixed, d, d.Open);
             PartSet parts = Build(m);
             foreach (DoorWay d in doors) DoorWays.Put(parts, d, d.Open);
             return m.Parts = parts;
