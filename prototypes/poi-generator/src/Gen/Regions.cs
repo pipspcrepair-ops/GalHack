@@ -184,6 +184,12 @@ public sealed class RegionPlan
             return place;
         }
 
+        /// <summary>
+        /// Whether the old world ran railways: where its roads and lines did (an infra layer's rail style), and where its
+        /// industry needed one (a trade that names a depot: the mines and works shipped by rail).
+        /// </summary>
+        bool Railed => _roll.Rail != "none" || _roll.Depot != null;
+
         /// <summary>Could this family stand on this world at all? A plan never asks for a place the world's tech or past rules out.</summary>
         bool Stands(string id)
         {
@@ -360,7 +366,11 @@ public sealed class RegionPlan
                     PlannedPlace? pp = Serves(plant, ps, town, "plant", "feeds the town's lines", hub, "road");
                     if (pp != null) _p.Links.Add(new PlannedLink(pp.Index, hub.Index, "power", "the plant feeds its town"));
                 }
-                if (_roll.Rail != "none" && _roll.Depot is { } depot && _profile.Before != TechLevel.High && Stands(depot) && Spot(town.X, town.Z, 460, 800, depot) is { } ds)
+                // A world that ran railways has a depot at each town's end of the line: its trade's own, or else a rail yard
+                // (a railway with nowhere built for it to end was never laid, so without this a rail world whose trade
+                // named no depot had no rail at all).
+                string? depot = _roll.Depot ?? _lib.Families.Where(f => f.Tags.Contains("rail") && Stands(f.Id)).Select(f => f.Id).OrderBy(id => id, StringComparer.Ordinal).FirstOrDefault();
+                if (Railed && depot != null && _profile.Before != TechLevel.High && Stands(depot) && Spot(town.X, town.Z, 460, 800, depot) is { } ds)
                     Serves(depot, ds, town, "depot", "where the town's railway ends", hub, "road");
             }
             // Farmland lies out beyond the town, on the side with the most level ground.
@@ -442,7 +452,7 @@ public sealed class RegionPlan
                 joined.Add(h);
             }
             // The railway: from a depot to the next depot, and on to the port. Every line ends somewhere that was built for it.
-            if (_roll.Rail == "none") return;
+            if (!Railed) return;
             var depots = _p.Places.Where(p => p.Role == "depot").ToList();
             for (int k = 0; k + 1 < depots.Count; k++)
                 _p.Links.Add(new PlannedLink(depots[k].Index, depots[k + 1].Index, "rail", "the line between the towns' depots"));

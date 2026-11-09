@@ -51,6 +51,7 @@ public sealed class StartTown
         double w = map.WidthMeters, h = map.HeightMeters;
         var rng = new PoiGenerator.Gen.Rng(PoiGenerator.Gen.Hash.Combine(seed, 0x57A27UL));
         double Dist(double ax, double az, double bx, double bz) => Math.Sqrt(Math.Pow(Mathx.WrapDelta(ax - bx, w), 2) + Math.Pow(Mathx.WrapDelta(az - bz, h), 2));
+        var rails = net.Routes.Where(rt => rt.Kind == RouteKind.Rail).ToList();
         // The spot: flat, dry, clear of places, with a place in view beyond it and no settlement near.
         // The biggest town whose ground is gentle; failing that, the gentlest of the sizes.
         double bestScore = double.MaxValue, bestRank = double.MaxValue, bx = 0, bz = 0, mainHalf = 0, block = 0, arm = 0;
@@ -66,6 +67,8 @@ public sealed class StartTown
             double cx = Mathx.WrapX(landing.X + Math.Cos(a) * r, w), cz = Mathx.Wrap(landing.Y + Math.Sin(a) * r, h);
             if (pois.Any(p => p.Family.Tags.Contains("settlement") && Dist(p.Center.X, p.Center.Z, cx, cz) < NoSettlement + 300)) continue;
             if (pois.Any(p => Dist(p.Center.X, p.Center.Z, cx, cz) < Math.Max(p.Stamp.ReachX, p.Stamp.ReachZ) + 150)) continue;
+            // Not across a railway: its houses would have no room either side of the line.
+            if (rails.Any(rt => Enumerable.Range(0, rt.Count).Any(i => Dist(rt.X[i], rt.Z[i], cx, cz) < reach * 1.5 + 40))) continue;
             // A deep place for choice: the first place a start walks to is one worth going down into.
             PoiSite mark = pois.Where(p => p.Instance.State != PoiState.Active && !p.Family.Tags.Contains("settlement"))
                 .Select(p => (p, d: Dist(p.Center.X, p.Center.Z, cx, cz))).Where(t => t.d > 420 && t.d < 1150).OrderBy(t => Deep(t.p.Instance) ? 0 : 1).ThenBy(t => t.d).Select(t => t.p).FirstOrDefault();

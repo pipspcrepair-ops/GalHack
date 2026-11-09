@@ -137,9 +137,15 @@ public static class DecoCables
             if (Vector3.DistanceSquared(pts[i], pts[i + 1]) < 1e-8f) continue;
             // Overlap a little so joints don't gap.
             Vector3 d = Vector3.Normalize(pts[i + 1] - pts[i]) * radius * 0.5f;
+            // The overlap never reaches below the lower of its two points: a length coming down onto the floor
+            // would push its end (and with its edge down, its corner) into it.
+            Vector3 a = pts[i] - d, b = pts[i + 1] + d;
+            float low = MathF.Min(pts[i].Y, pts[i + 1].Y);
+            if (a.Y < low) a.Y = low;
+            if (b.Y < low) b.Y = low;
             // Turned a quarter-face about its run: a length lying on the floor has an edge up, not a flat
             // face, so where two lengths overlap at a bend no two flat tops lie in one plane and flicker.
-            parts.Add(new DecoPart { Kind = DecoPrim.Cylinder, Segments = 4, Slot = slot, Flags = PartFlags.NoCollide, M = DecoGeo.RotY(45) * DecoGeo.Along(pts[i] - d, pts[i + 1] + d, radius * 2, radius * 2) });
+            parts.Add(new DecoPart { Kind = DecoPrim.Cylinder, Segments = 4, Slot = slot, Flags = PartFlags.NoCollide, M = DecoGeo.RotY(45) * DecoGeo.Along(a, b, radius * 2, radius * 2) });
         }
         return parts;
     }
