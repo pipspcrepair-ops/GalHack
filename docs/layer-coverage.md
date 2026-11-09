@@ -42,6 +42,8 @@ The dead references of the values that stay on (247 families, 164 tags, 137 like
 
 A second pass (owner: nothing unfinished in the pickers) switched off 22 weak values whose headline is unbuilt, so a player would see no difference: themes moon_lakes, wrong_stars, folded_town, titans_meadows, glass_garden, empty_ark; falls sterility, rising_seas, great_quake, air_loss, meteor_swarm, grey_goo, teleport_accident, lockdown, gravity_shift, wormhole_tides, neglect, ageing_colony, magnetic_flip, mirror_burn, sinkage, last_ark. Each carries its reason in the data; 243 values are off in all. The weak values below that are still on show through their places, people or weather.
 
+A third pass (owner, the same day: switch off the partly builts; they come first when layer work starts again) switched off every weak theme and fall below except orbital_bombardment and kinetic_strikes, the only falls whose strikes punch bombardment and kinetic craters: 4 themes and 33 falls, each with what it lacks in its off reason; 280 values are off in all. Themes that lost a liked fall to it: deserted_capital, sentry_world, mercy, water_tax, foundry_belt, pilgrim_roads, eye_bloom, waiting_world, liquidation (and the arm, inner and core zones lost husks_fall; their Husk occupants stay).
+
 Sky seam, the wall cities and the rest the owner looked for are in this list. Weak values left on:
 
 - **theme** (10): hush_suburbs, moon_lakes, wrong_stars, folded_town, lamplight, pit_worlds, teeth_trees, titans_meadows, glass_garden, empty_ark
