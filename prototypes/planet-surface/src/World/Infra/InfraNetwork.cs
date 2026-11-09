@@ -1948,6 +1948,41 @@ public sealed class InfraNetwork
 
         public (double X, double Z) CellCentre(int k) => ((k % _nx + 0.5) * Cell, (k / _nx + 0.5) * Cell);
 
+        /// <summary>
+        /// Reads the ground along the way a route will likely go, side by side, before the search walks it one cell
+        /// at a time: a band round the straight line between its ends. The same heights as read one by one, only sooner.
+        /// </summary>
+        void Prefetch(int start, int goal)
+        {
+            int sx = start % _nx, sz = start / _nx;
+            int dx = goal % _nx - sx, dz = goal / _nx - sz;
+            if (Math.Abs(dx) > _nx / 2) dx -= Math.Sign(dx) * _nx;
+            if (Math.Abs(dz) > _nz / 2) dz -= Math.Sign(dz) * _nz;
+            double length = Math.Sqrt(dx * dx + dz * dz);
+            int half = (int)(40 + length * 0.1);
+            int x0 = Math.Min(0, dx) - half, x1 = Math.Max(0, dx) + half, z0 = Math.Min(0, dz) - half, z1 = Math.Max(0, dz) + half;
+            System.Threading.Tasks.Parallel.For(z0, z1 + 1, oz =>
+            {
+                for (int ox = x0; ox <= x1; ox++)
+                {
+                    // Distance from the straight line, in cells.
+                    double t = length < 1e-6 ? 0 : Math.Clamp((ox * dx + oz * dz) / (length * length), 0, 1);
+                    double ex = ox - dx * t, ez = oz - dz * t;
+                    if (ex * ex + ez * ez > half * half) continue;
+                    int k = ((sz + oz) % _nz + _nz) % _nz * _nx + ((sx + ox) % _nx + _nx) % _nx;
+                    if (float.IsNaN(_height[k])) Fill(k);
+                }
+            });
+        }
+
+        void Fill(int k)
+        {
+            var (x, z) = CellCentre(k);
+            float h = Ground(x, z, 16, out bool wet, out float surface);
+            _water[k] = (byte)(!wet ? 1 : surface <= 0.01f && h < -1.5f ? 3 : 2);
+            _height[k] = h;
+        }
+
         float HeightAt(int k)
         {
             if (!float.IsNaN(_height[k])) return _height[k];
@@ -2024,6 +2059,7 @@ public sealed class InfraNetwork
         {
             int start = Free(from, to), goal = Free(to, from);
             if (start < 0 || goal < 0) return null;
+            Prefetch(start, goal);
             foreach (int t in _touched) { _cost[t] = float.PositiveInfinity; _closed[t] = false; }
             _touched.Clear();
             var open = new PriorityQueue<int, float>();

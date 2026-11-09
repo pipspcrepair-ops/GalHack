@@ -156,6 +156,15 @@ public static class FlavourRuins
     /// <summary>Forgets every layout drawn so far: a world's streets are no use to the next (a new game calls it between them).</summary>
     public static void Forget() => Layouts.Clear();
 
+    /// <summary>Time spent laying out ruins' buildings, ms, since last reset (tests print it).</summary>
+    public static double LayoutMs;
+    readonly struct Timed : System.IDisposable
+    {
+        readonly long _t0;
+        public Timed(long t0) => _t0 = t0;
+        public void Dispose() => LayoutMs += System.Diagnostics.Stopwatch.GetElapsedTime(_t0).TotalMilliseconds;
+    }
+
     /// <summary>A family's layout, turned to face a road, in the world's tech level's materials; null (with a warning) if none lays out, and the lot stays empty.</summary>
     public static Layout LayoutFor(PoiLibrary lib, FamilyDef f, int variant, Dir front = Dir.North, TechLevel? tech = null, int salt = 0, HomeHints home = null)
     {
@@ -163,6 +172,8 @@ public static class FlavourRuins
         if (home != null && Layouts.Count > 3000) Layouts.Clear();
         return Layouts.GetOrAdd((f.Id, variant, front, tech, salt, home), _ =>
         {
+            long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+            using var timed = new Timed(t0);
             Layout l = PoiFactory.TryLayout(lib, f, variant, Rarity.Common, f.Variants[variant % f.Variants.Count].Seed + (ulong)salt * 7919UL, new LayoutHints(front, tech, Home: home), out string why);
             if (l == null) Godot.GD.PushWarning($"lot left empty: {why}");
             return l;
