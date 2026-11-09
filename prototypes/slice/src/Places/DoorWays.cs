@@ -29,6 +29,8 @@ public sealed class DoorWay
     public float Open, Target;
     /// <summary>Opened by you (a settlement that turns on you shuts those).</summary>
     public bool ByPlayer;
+    /// <summary>Opened by someone of the place (a townsperson on their way): it shuts itself on the timer.</summary>
+    public bool ByFolk;
     /// <summary>How long its doorway has been clear, s.</summary>
     public float ClearFor;
     /// <summary>How open its leaves stand in the parts.</summary>
@@ -130,9 +132,9 @@ public static class DoorWays
     }
 
     /// <summary>
-    /// How long a door that was opened stands open after its doorway is last clear, s. A door opened by anyone
-    /// (a townsperson on their way, you with E, as Empyrion's doors do) shuts itself this long after the last
-    /// body has left its doorway and its leaves' way; nobody shuts one by hand any more.
+    /// How long a door one of the place's own opened stands open after its doorway is last clear, s: it shuts itself this
+    /// long after the last body has left its doorway and its leaves' way (they never shut one by hand). A door you open
+    /// stays as you leave it.
     /// </summary>
     public const float AutoClose = 4f;
 
@@ -183,10 +185,10 @@ public static class DoorWays
         if (inWay) d.ClearFor = 0f;
         else d.ClearFor += dt;
         // Opened, and the way clear for long enough: it shuts itself.
-        if (!d.Jammed && !d.Lift && d.Target > 0.5f && d.ClearFor >= AutoClose)
+        if (!d.Jammed && !d.Lift && d.ByFolk && !d.ByPlayer && d.Target > 0.5f && d.ClearFor >= AutoClose)
         {
             d.Target = 0f;
-            d.ByPlayer = false;
+            d.ByFolk = false;
             m.DoorsOpen[d.Index] = false;
             if (target > 0.5f) target = 0f;
         }

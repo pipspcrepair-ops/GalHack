@@ -238,6 +238,7 @@ public partial class Place
         }
         d.Target = d.Target > 0.5f ? 0f : 1f;
         d.Way.ByPlayer = d.Target > 0.5f;
+        if (d.Target > 0.5f) d.Way.ByFolk = false;
         d.Way.ClearFor = 0f;
         Memory.DoorsOpen[d.Index] = d.Target > 0.5f;
         Places.Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Clank, ToWorld(d.Centre), d.Blast ? 0.6f : 0.9f, -8f);

@@ -64,6 +64,7 @@ public sealed partial class Town
                         return false;
                     }
                     d.Target = 1f;
+                    d.ByFolk = true;
                     d.ClearFor = 0f;
                     Memory.DoorsOpen[d.Index] = true;
                 }
