@@ -141,6 +141,16 @@ public sealed class HoverBike
         float turn = _spin.Length() * dt;
         if (turn > 1e-6f) _tumble = new Basis(_spin.Normalized(), turn) * _tumble;
         _tumble = _tumble.Orthonormalized();
+        // What the weather turned it about the up axis turns the bike itself, its heading, so the model never
+        // drifts round from the way it drives: the tumble keeps only the tilt. (Upside down there is no telling.)
+        Vector3 up = _tumble.Y.Normalized();
+        if (up.Dot(Vector3.Up) > -0.99f)
+        {
+            var tilt = new Quaternion(Vector3.Up, up);
+            Quaternion yawOnly = tilt.Inverse() * _tumble.GetRotationQuaternion();
+            Yaw += 2f * MathF.Atan2(yawOnly.Y, yawOnly.W);
+            _tumble = new Basis(tilt);
+        }
     }
 
     /// <summary>One physics tick.</summary>
@@ -402,9 +412,11 @@ public sealed partial class HoverBikes : Node3D
         var query = PhysicsRayQueryParameters3D.Create(new Vector3(x, MathF.Max(from, ground) + 0.5f, z), new Vector3(x, ground - 0.5f, z), Layers.Hull);
         var hit = _zone.GetWorld3D().DirectSpaceState.IntersectRay(query);
         if (hit.Count > 0) ground = MathF.Max(ground, ((Vector3)hit["position"]).Y);
-        float sea = _zone.Planet.Source.WaterLevel;
-        water = ground < sea;
-        return water ? sea : ground;
+        // Any water's surface over the column, the sea, a lake or a river, as swimming reads it (and a lava sea's
+        // top too: a hover cushion rides any liquid), not just the sea level.
+        PlanetSurface.World.PlanetWorld planet = _zone.Planet;
+        water = planet.Source.WaterSurfaceAt(Planets.Gen.Mathx.WrapX(x, planet.Width), Planets.Gen.Mathx.Wrap(z, planet.Height), out float surface) && surface > ground;
+        return water ? surface : ground;
     }
 
     /// <summary>Is something solid in the way along a direction (a trunk, a rock, a wall)?</summary>

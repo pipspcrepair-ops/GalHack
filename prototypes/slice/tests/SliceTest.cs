@@ -367,6 +367,14 @@ public partial class SliceTest : Node
         Check(_game.Survivor.WorldEye().DistanceTo(bike.Position) < 2f, "the rider goes with the bike");
         float astride = Mathf.RadToDeg(Flat(-_game.Figure.GlobalTransform.Basis.Z).AngleTo(Flat(bike.Forward)));
         Check(astride < 10f, $"third person, the castaway sits the bike facing its heading ({astride:F1}° off)");
+        // The weather's spin turns the bike itself: its model always faces the way it drives (it drifted round in any wind).
+        for (int i = 0; i < 120; i++)
+        {
+            bike.Push(new Vector3(8f, 0f, 4f) * bike.Mass); // two seconds of a gale across it
+            yield return 0;
+        }
+        float drift = Mathf.RadToDeg(Flat(-bike.Node.GlobalTransform.Basis.Z).AngleTo(Flat(bike.Forward)));
+        Check(drift < 2f, $"after a gust the bike's model still faces the way it drives ({drift:F1}° off)");
         // The mouse steers: the bike comes round toward where the rider looks; Alt held looks around without steering.
         // Tried from a standstill, so the ride stays short and the bike is on its cushion for getting off after.
         _game.Controls.Hold(Key.S);
