@@ -217,6 +217,13 @@ public partial class TerrainStreamer : Node3D
     public override void _Ready()
     {
         _floraMeshes = FloraMeshes.BuildAll();
+        var sizes = new Dictionary<Flora, (float, float)>();
+        foreach (var (kind, mesh) in _floraMeshes)
+        {
+            Aabb box = mesh.GetAabb();
+            sizes[kind] = (box.End.Y, MathF.Max(MathF.Max(-box.Position.X, box.End.X), MathF.Max(-box.Position.Z, box.End.Z)));
+        }
+        FarBuilder.KindSize = sizes;
         _horizon = new MeshInstance3D { Name = "Horizon", CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
         AddChild(_horizon);
     }

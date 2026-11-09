@@ -801,7 +801,7 @@ public static class FarBuilder
                 var treeBasis = new Basis(Vector3.Up, tree.Angle).Scaled(new Vector3(tree.Scale, tree.Scale, tree.Scale));
                 if (job.Lod == 0) Add(tree.Kind, tree.Species, 0, tx, treeY, tz, treeBasis, tree.Tint, 0f, far: false);
                 if (job.Lod <= 1) Add(tree.Kind, tree.Species, -1, tx, treeY, tz, treeBasis, tree.Tint, 0f, far: true);
-                if (Distant(pal, id)) Add(tree.Kind, tree.Species, -1, tx, treeY, tz, treeBasis.Scaled(Vector3.One * DetailReach.DistantGrow), tree.Tint, 0f, far: true, distant: true);
+                if (Distant(pal, id)) Add(tree.Kind, null, 0, tx, treeY, tz, DistantBasis(tree.Kind, tree.Species, treeBasis), tree.Tint, 0f, far: true, distant: true);
                 solids?.MakeAll(tree.Kind, tree.Species, 0, id, new Vector3((float)tree.X, treeY, (float)tree.Z), tree.Scale, tree.Angle, job.Solids);
                 continue;
             }
@@ -885,7 +885,7 @@ public static class FarBuilder
             if (job.Lod == 0 || !hasFar && job.Lod == 1)
                 Add(rule.Kind, plant, plant == null ? 0 : (int)(kin * 977f) % plant.Near.Length, lx, rootY, lz, basis, tint, glow + (!hasFar && shade > 0.6f ? 2f : 0f), far: false);
             if (hasFar && job.Lod <= 1) Add(rule.Kind, plant, plant == null ? 0 : -1, lx, rootY, lz, basis, tint, glow + (shade > 0.6f ? 2f : 0f), far: true);
-            if (distant) Add(rule.Kind, plant, plant == null ? 0 : -1, lx, rootY, lz, basis.Scaled(Vector3.One * DetailReach.DistantGrow), tint, glow, far: true, distant: true);
+            if (distant) Add(rule.Kind, null, 0, lx, rootY, lz, DistantBasis(rule.Kind, plant, basis), tint, glow, far: true, distant: true);
 
             // Trunks, stalks, pipes, shards and boulders are solid: their colliders, in planet coordinates, round
             // the parts of the near mesh this one draws (whatever the level of detail draws from here).
@@ -947,6 +947,21 @@ public static class FarBuilder
             list.Add(basis.X.Z); list.Add(basis.Y.Z); list.Add(basis.Z.Z); list.Add(lz);
             list.Add(tint.R); list.Add(tint.G); list.Add(tint.B); list.Add(glow);
         }
+    }
+
+    /// <summary>
+    /// Each kind's own low mesh, its height and crown radius (the streamer sets them): a distant drawing
+    /// is its kind's mesh stretched to the plant's own size, so a chunk draws one batch a kind, not one a species.
+    /// </summary>
+    public static IReadOnlyDictionary<Flora, (float Height, float Radius)> KindSize;
+
+    /// <summary>A distant drawing's turn and size: the kind's mesh made the plant's height and crown, a little bigger (<see cref="DetailReach.DistantGrow"/>).</summary>
+    static Basis DistantBasis(Flora kind, Plant plant, Basis basis)
+    {
+        Basis grown = basis.Scaled(Vector3.One * DetailReach.DistantGrow);
+        if (plant == null || KindSize == null || !KindSize.TryGetValue(kind, out var k) || k.Height <= 0f || k.Radius <= 0f) return grown;
+        float up = plant.Height / k.Height, out_ = MathF.Max(plant.CrownRadius, plant.Height * 0.2f) / k.Radius;
+        return grown * Basis.FromScale(new Vector3(out_, up, out_));
     }
 
     /// <summary>Whether a scatter cell's large plant, if one grows there, is of the share with a distant drawing.</summary>
