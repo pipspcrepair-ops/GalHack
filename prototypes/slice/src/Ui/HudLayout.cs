@@ -14,7 +14,7 @@ namespace Slice.Ui;
 /// the right edge, a little above the middle, and the suit's lines stop short of it.
 /// </summary>
 public readonly record struct HudLayout(float Scale, Rect2 Vitals, Rect2 Toolbar, Rect2 ItemLine, Rect2 Hints, Rect2 Shapes, Rect2 Lines, Rect2 Jet,
-    Rect2 Compass, Rect2 Alerts, Rect2 BarName, Rect2 Flight, Rect2 Mode)
+    Rect2 Compass, Rect2 Alerts, Rect2 BarName, Rect2 Flight, Rect2 Mode, Rect2 Notices)
 {
     public const int Slots = 9;
     public const float VitalW = 150, VitalH = 54, VitalGap = 14, Cell = 52, CellGap = 4, WideRow = 760, JetW = 84, JetH = 150;
@@ -27,12 +27,28 @@ public readonly record struct HudLayout(float Scale, Rect2 Vitals, Rect2 Toolbar
     public const float AlertIcon = Cell, AlertTimerH = 22, AlertCell = Cell + 14;
     /// <summary>The row's width: room for the most alerts at once and the last timer's overhang, no more (the You page's bag column starts just past it).</summary>
     public const float AlertRow = AlertIcon + (Ui.Alerts.MostHazards - 1) * AlertCell + 4;
+    /// <summary>The notices' slot: its width, each row's height and the gap between rows (one row per notice shown at once).</summary>
+    public const float NoticeW = 280, NoticeRowH = 30, NoticeGap = 4;
+
+    /// <summary>
+    /// The notices' slot while a menu is up, in the menus' design units (1600 x 900): the top right of the menu's header,
+    /// which both menus keep clear of their own text and widgets. The same corner as on the visor.
+    /// </summary>
+    public static readonly Rect2 MenuNotices = new(1290, 4, 300, 66);
+
+    /// <summary>A menu's design-unit rectangle in a window's pixels (the menus fit 1600 x 900 into the window, centred).</summary>
+    public static Rect2 MenuToScreen(Rect2 design, Vector2 size)
+    {
+        float k = MathF.Min(size.X / 1600f, size.Y / 900f);
+        Vector2 offset = (size - new Vector2(1600f, 900f) * k) * 0.5f;
+        return new Rect2(offset + design.Position * k, design.Size * k);
+    }
 
     /// <summary>Every box, by name, for the overlap check.</summary>
     public IEnumerable<(string Name, Rect2 Box)> Boxes => new[]
     {
         ("vitals", Vitals), ("toolbar", Toolbar), ("item line", ItemLine), ("hints", Hints), ("shapes", Shapes), ("lines", Lines), ("jetpack gauge", Jet),
-        ("compass", Compass), ("alerts", Alerts), ("bar name", BarName), ("flight line", Flight), ("mode plate", Mode),
+        ("compass", Compass), ("alerts", Alerts), ("bar name", BarName), ("flight line", Flight), ("mode plate", Mode), ("notices", Notices),
     };
 
     /// <summary>The layout for a window size and a UI scale (1 is the default; it shrinks to fit a narrow window).</summary>
@@ -64,7 +80,14 @@ public readonly record struct HudLayout(float Scale, Rect2 Vitals, Rect2 Toolbar
         // uses, so they stay put over menus too.
         float alertsEnd = MathF.Min(barName.Position.X - 8 * s, (24 + AlertRow) * s);
         var alerts = new Rect2(24 * s, toolbar.Position.Y - AlertTimerH * s, MathF.Max(0f, alertsEnd - 24 * s), (Cell + AlertTimerH) * s);
-        return new HudLayout(s, vitals, toolbar, item, hints, shapes, lines, jet, compass, alerts, barName, flight, mode);
+        // Notices: the top right, beside the compass; where the window is too narrow for that, under the compass's
+        // right end, past the flight line (narrower and shorter if it must be), above the jetpack's gauge.
+        float nw = NoticeW * s, nh = (Ui.Notices.MostShown * NoticeRowH + (Ui.Notices.MostShown - 1) * NoticeGap) * s, right = size.X - 24 * s;
+        Rect2 notices = right - nw >= compass.End.X + 12 * s
+            ? new Rect2(right - nw, compass.Position.Y, nw, nh)
+            : new Rect2(right - MathF.Min(nw, right - flight.End.X - 12 * s), compass.End.Y + 8 * s, MathF.Min(nw, right - flight.End.X - 12 * s),
+                MathF.Min(nh, jet.Position.Y - 8 * s - (compass.End.Y + 8 * s)));
+        return new HudLayout(s, vitals, toolbar, item, hints, shapes, lines, jet, compass, alerts, barName, flight, mode, notices);
     }
 
     /// <summary>The first two boxes that overlap or leave the window, or null if the layout is sound.</summary>

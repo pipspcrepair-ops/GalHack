@@ -85,12 +85,12 @@ public partial class Visor : CanvasLayer
         if (_xp.Count > 4) _xp.RemoveAt(0);
     }
 
-    /// <summary>A new level: one of the suit's lines at the lower left, like any other, so it never covers anything.</summary>
+    /// <summary>A new level: news in the notices' slot (LEVEL · 4 · +1 PT), never on the suit's lines.</summary>
     public void LevelUp(int level, int points)
     {
-        _level = $"LVL {level}  +{points}";
+        _level = $"{level} · +{points} PT";
         _levelUntil = _time + 4.0;
-        Say(_level, C.Accent);
+        Game.Notices?.Post(NoticeKind.Level, "LEVEL", _level);
     }
 
     /// <summary>A shot landed on a creature: a hit marker at the crosshair.</summary>
@@ -460,7 +460,7 @@ public partial class Visor : CanvasLayer
 
     float _compassBottom;
 
-    /// <summary>A new level shows as one of the suit's lines (<see cref="LevelUp"/>); experience itself counts quietly.</summary>
+    /// <summary>A new level shows in the notices' slot (<see cref="LevelUp"/>); experience itself counts quietly.</summary>
     void DrawProgress() { }
 
     void DrawCrosshair()

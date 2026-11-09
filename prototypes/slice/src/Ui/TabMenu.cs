@@ -130,7 +130,7 @@ public partial class MenuRoot : MenuPanel
 
     /// <summary>The header's tabs, where they start (design units), and where your level and the mode start at the right edge.</summary>
     static readonly (MenuTab tab, string name)[] Tabs = { (MenuTab.You, "YOU"), (MenuTab.Tech, "TECH"), (MenuTab.Stats, "STATS"), (MenuTab.Core, "CORE"), (MenuTab.Blueprints, "BLUEPRINTS"), (MenuTab.Map, "MAP") };
-    const float TabsFrom = 330, LevelFrom = 1370;
+    const float TabsFrom = 330, LevelFrom = 1050; // the header's top right corner past LevelFrom + 225 is the notices' (HudLayout.MenuNotices)
 
     static float TabWidth(string name) => MathF.Max(96, Paint.TextWidth(UiTheme.Label, 18, name) + 30);
 
@@ -160,7 +160,7 @@ public partial class MenuRoot : MenuPanel
         g.Fill(area, new Color(C.Glass, Glass));
         var header = new Rect2(area.Position, new Vector2(area.Size.X, 74));
         g.Fill(header, C.Accent);
-        if (g.Drawing) g.Canvas.Stripes(new Rect2(header.Position + new Vector2(header.Size.X - 300, 0), new Vector2(300, header.Size.Y)), C.Accent, C.Accent2, 16);
+        if (g.Drawing) g.Canvas.Stripes(new Rect2(header.Position + new Vector2(HudLayout.MenuNotices.Position.X - 12, 0), new Vector2(header.Size.X - HudLayout.MenuNotices.Position.X + 12, header.Size.Y)), C.Accent, C.Accent2, 16);
         g.Text("SUIT TERMINAL", header.Position + new Vector2(24, 14), C.Glass, 26, UiTheme.Display);
 
         float tx = header.Position.X + TabsFrom;

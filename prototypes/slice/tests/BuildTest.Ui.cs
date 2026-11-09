@@ -34,6 +34,7 @@ public partial class BuildTest
         HudBoxChecks();
         foreach (int x in TechFitChecks()) yield return x;
         foreach (int x in GalaxyNameChecks()) yield return x;
+        foreach (int x in NoticeChecks()) yield return x;
         foreach (int x in WordChecks()) yield return x;
         Check(MenuRoot.Glass <= 0.6f && _game.Menu.Root.Gui.Backing < 1f && !_game.GetTree().Paused, $"the Tab menu is see-through (glass {MenuRoot.Glass:0.00}, backings {_game.Menu.Root.Gui.Backing:0.00}) and the world runs behind it");
     }
@@ -170,7 +171,8 @@ public partial class BuildTest
             foreach (int x in _drive.Wait(3)) yield return x;
             NoteLines($"escape menu, {name}", esc.Root);
             List<string> problems = RowProblems(esc.Root);
-            Check(problems.Count == 0 && esc.Root.Gui.Texts.Count > 0, $"the escape menu, {name}: the alerts' row is clear of every panel at 1080p and 1440p{(problems.Count == 0 ? "" : ": " + string.Join("; ", problems.Take(6)))}");
+            problems.AddRange(SlotProblems(esc.Root));
+            Check(problems.Count == 0 && esc.Root.Gui.Texts.Count > 0, $"the escape menu, {name}: the alerts' row is clear of every panel at 1080p and 1440p, and the notices' corner of its own text and widgets{(problems.Count == 0 ? "" : ": " + string.Join("; ", problems.Take(6)))}");
         }
         esc.Root.Confirming = false;
         esc.Root.Page = EscapePage.World;
@@ -284,8 +286,9 @@ public partial class BuildTest
             NoteLines($"menu, {name}", _game.Menu.Root);
             List<string> problems = _game.Menu.Root.Gui.TextProblems();
             List<string> strip = RowProblems(_game.Menu.Root);
+            strip.AddRange(SlotProblems(_game.Menu.Root));
             Check(problems.Count == 0 && strip.Count == 0 && _game.Menu.Root.Gui.Texts.Count > 0,
-                $"the menu's {name} page: {_game.Menu.Root.Gui.Texts.Count} lines, none overlapping or cut short, and the alerts' row clear of every panel at 1080p and 1440p{(problems.Count + strip.Count == 0 ? "" : ": " + string.Join("; ", problems.Concat(strip).Take(6)))}");
+                $"the menu's {name} page: {_game.Menu.Root.Gui.Texts.Count} lines, none overlapping or cut short, and the alerts' row and the notices' corner clear of every panel at 1080p and 1440p{(problems.Count + strip.Count == 0 ? "" : ": " + string.Join("; ", problems.Concat(strip).Take(6)))}");
         }
         _game.Menu.Root.You.ShowBlocks = false;
         _game.Menu.Close();

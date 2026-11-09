@@ -78,6 +78,9 @@ public sealed partial class BuildTool
     /// <summary>What the tool says: "No Steel block (large) left", "the Skiff is complete".</summary>
     public event Action<string, Color> Said;
 
+    /// <summary>A wreck was claimed with a core: its name (news, for the notices).</summary>
+    public event Action<string> Claimed;
+
     /// <summary>A structure came into being (a core placed), or was finished from its blueprint.</summary>
     public event Action<Vessel> Started, Finished;
 
@@ -421,7 +424,7 @@ public sealed partial class BuildTool
             return true;
         }
         _zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Place, look.Point, 0.7f, -2f);
-        Said?.Invoke($"CLAIMED · {wreck.Name}", Tones.Good);
+        Claimed?.Invoke(wreck.Name);
         Started?.Invoke(wreck);
         return true;
     }

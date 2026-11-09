@@ -243,7 +243,7 @@ public partial class Spaceflight
         v.Claimed(Game.Surface.Physics.Zone.Strength);
         Game.Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Place, look.Point, 0.7f, -2f);
         Game.Progress.Earn(40, "wreck claimed");
-        Game.Say($"CLAIMED · {v.Name}", Tones.Good);
+        Game.Notices.Post(Slice.Ui.NoticeKind.Claimed, "CLAIMED", v.Name);
         Claimed?.Invoke(v);
     }
 

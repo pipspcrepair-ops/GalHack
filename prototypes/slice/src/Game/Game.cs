@@ -73,6 +73,8 @@ public partial class Game : Node3D
 
     /// <summary>Hazards and attacks as symbols, over every menu.</summary>
     public Alerts Alerts { get; private set; }
+    /// <summary>News in its own slot: levels, unlocks, recipes learnt, claims, orders made, blueprints saved.</summary>
+    public Notices Notices { get; private set; }
     public TabMenu Menu { get; private set; }
     public CockpitConsole Console { get; private set; }
     /// <summary>The in-world screens on constructors and base-mode Big Cores (looked at to use).</summary>
@@ -243,6 +245,8 @@ public partial class Game : Node3D
         AddChild(Escape);
         Alerts = new Alerts { Name = "Alerts", Game = this };
         AddChild(Alerts);
+        Notices = new Notices { Name = "Notices", Game = this };
+        AddChild(Notices);
         Debug = new DebugHud { Name = "Debug", Game = this, Visible = false };
         AddChild(Debug);
         Said += (text, colour) => Visor.Say(text, colour);

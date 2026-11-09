@@ -430,7 +430,7 @@ public partial class Game
             Stats.Crafted += runs * job.Recipe.Count;
             int xp = runs * Math.Max(1, (int)Math.Round(job.Recipe.Seconds / Progress.Rules.Xp.CraftSecondsPerXp));
             Progress.Earn(xp, $"made {job.Item.Name}");
-            if (!now.Contains(job) && job.Lane == Lane.Order) Say($"{c.Def.Name} · {job.Count} {job.Item.Name}", Tones.Good);
+            if (!now.Contains(job) && job.Lane == Lane.Order) Notices.Post(Slice.Ui.NoticeKind.Made, "MADE", $"{job.Count} {job.Item.Name}");
         }
     }
 }
