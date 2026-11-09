@@ -119,6 +119,26 @@ public partial class VehicleGroundTest
         foreach (int x in _drive.Wait(30)) yield return x;
     }
 
+    /// <summary>
+    /// Between cases the knocks' damage is put right (as Creative builds and repairs, free), so each case starts from a
+    /// whole vessel: a chair or the lift thrusters broken by the last crash is fair damage, not what is checked here.
+    /// </summary>
+    Hull Mend(Vessel v, GalHack.Structures.Structure plan)
+    {
+        for (int pass = 0; pass < 8; pass++)
+        {
+            int placed = 0;
+            foreach (var (p, b) in plan.Blocks())
+                if (!v.Structure.Has(p) && Building.Place(v.Structure, p, b, null, Building.DefaultOwner) == PlaceError.None) placed++;
+            if (placed == 0) break;
+        }
+        foreach (var (p, _) in v.Structure.Blocks().ToList())
+            if (Building.IsDamaged(v.Structure, p)) Building.Repair(v.Structure, p, 1f);
+        v.ApplyEdits();
+        if (_game.Survivor.Seated != v) _game.Survivor.Sit(v);
+        return new Hull();
+    }
+
     /// <summary>Sets the hull somewhere, as a knock or a placement would, and lets it go.</summary>
     static void Put(Vessel v, N.Vector3 position, N.Quaternion rotation, N.Vector3 velocity)
     {
@@ -146,26 +166,26 @@ public partial class VehicleGroundTest
             float feet = v.Body.Shape.FeetBelowOrigin;
 
             // Dropped from a height, engines idle.
-            var w = new Hull();
+            var w = Mend(v, e.Plan);
             Put(v, v.Body.Position + N.Vector3.UnitY * 20f, level, N.Vector3.Zero);
             foreach (int x in ObserveHull(v, w, 600, () => Resting(v))) yield return x;
             foreach (int x in Operable(v, mode, "dropped from 20 m", w)) yield return x;
 
             // Into the ground at speed.
-            w = new Hull();
+            w = Mend(v, e.Plan);
             Put(v, v.Body.Position + N.Vector3.UnitY * 8f, level, f * 25f - N.Vector3.UnitY * 18f);
             foreach (int x in ObserveHull(v, w, 600, () => Resting(v))) yield return x;
             foreach (int x in Operable(v, mode, "a crash into the ground at 31 m/s", w)) yield return x;
 
             // A steep hit: nose down at 50°.
-            w = new Hull();
+            w = Mend(v, e.Plan);
             N.Quaternion nose = N.Quaternion.Normalize(level * MathX.AxisAngle(N.Vector3.UnitX, -0.87f));
             Put(v, v.Body.Position + N.Vector3.UnitY * 10f, nose, f * 10f - N.Vector3.UnitY * 20f);
             foreach (int x in ObserveHull(v, w, 600, () => Resting(v))) yield return x;
             foreach (int x in Operable(v, mode, "a steep hit, nose down at 50°", w)) yield return x;
 
             // Placed partly in the ground: set down landed with its keel a metre under.
-            w = new Hull();
+            w = Mend(v, e.Plan);
             N.Vector3 at = v.Body.Position;
             float ground = _game.Zone.GroundAt(at.X, at.Z).Y;
             v.Controller.PlaceLanded(v.Body, new N.Vector3(at.X, ground + feet - 1f, at.Z), MathX.Heading(v.Body.Rotation));
@@ -176,11 +196,11 @@ public partial class VehicleGroundTest
             // Against a place's blocks (the small ones: a large hull is bigger than any roof): dropped onto them, and set down partly in them.
             if (_placeTop is Vector3 top && !e.Large)
             {
-                w = new Hull();
+                w = Mend(v, e.Plan);
                 Put(v, top.ToNumerics() + N.Vector3.UnitY * (feet + 3f), level, N.Vector3.Zero);
                 foreach (int x in ObserveHull(v, w, 600, () => Resting(v))) yield return x;
                 foreach (int x in Operable(v, mode, "dropped 3 m onto a place's blocks", w)) yield return x;
-                w = new Hull();
+                w = Mend(v, e.Plan);
                 v.Controller.PlaceLanded(v.Body, top.ToNumerics() + N.Vector3.UnitY * (feet - 0.4f), MathX.Heading(v.Body.Rotation));
                 v.Binding.Teleport();
                 foreach (int x in ObserveHull(v, w, 30)) yield return x;

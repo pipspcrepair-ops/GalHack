@@ -159,7 +159,8 @@ public partial class VehicleGroundTest : Node
     /// <summary>A ridden bike's case: the rider stays seated throughout; afterwards it takes the throttle and rides off.</summary>
     sealed class Watch
     {
-        public float Sunk, AirTilt, Tilt, AirPitch, AirRoll;
+        public float Sunk, AirTilt, Tilt, AirPitch, AirRoll, Takeoff, AirGain;
+        public bool WasGrounded = true;
         public bool Toppled, Flew;
     }
 
@@ -173,12 +174,15 @@ public partial class VehicleGroundTest : Node
             w.Tilt = MathF.Max(w.Tilt, tilt);
             if (!bike.Grounded)
             {
+                if (w.WasGrounded) w.Takeoff = tilt; // the lean to the slope it left from
+                w.AirGain = MathF.Max(w.AirGain, tilt - w.Takeoff);
                 Basis b = bike.Attitude;
                 w.AirTilt = MathF.Max(w.AirTilt, tilt);
                 w.AirPitch = MathF.Max(w.AirPitch, MathF.Abs(Mathf.RadToDeg(MathF.Asin(Math.Clamp(-b.Z.Dot(Vector3.Up), -1f, 1f)))));
                 w.AirRoll = MathF.Max(w.AirRoll, MathF.Abs(Mathf.RadToDeg(MathF.Asin(Math.Clamp(b.X.Dot(Vector3.Up), -1f, 1f)))));
                 w.Flew = true;
             }
+            w.WasGrounded = bike.Grounded;
             w.Toppled |= bike.Toppled;
             if (done != null && i > 2 && done()) yield break;
         }
@@ -236,7 +240,7 @@ public partial class VehicleGroundTest : Node
             _game.Controls.Hold(Key.Space, false);
             foreach (int x in Observe(bike, w, 150, () => Steady(bike))) yield return x;
         }
-        Check(w.Flew && w.AirTilt < 12f && !w.Toppled, $"{mode}, hover bike: six hops standing, each in the air level (at most {w.AirPitch:F1}° pitch, {w.AirRoll:F1}° roll), no flip");
+        Check(w.Flew && w.AirGain < 4f && w.AirTilt < 20f && !w.Toppled, $"{mode}, hover bike: six hops standing, each straight up and level in the air (at most {w.AirPitch:F1}° pitch, {w.AirRoll:F1}° roll; never more than {w.AirGain:F1}° past its lean to the ground it left), no flip");
         foreach (int x in RidesOff(bike, mode, "after the standing hops", w)) yield return x;
 
         // Hops at full boost: its own speed's drag once tipped it back past its gyro and flipped it.
@@ -256,7 +260,7 @@ public partial class VehicleGroundTest : Node
         }
         _game.Controls.Hold(Key.W, false);
         _game.Controls.Hold(Key.Shift, false);
-        Check(w.Flew && w.AirTilt < 12f && !w.Toppled, $"{mode}, hover bike: five hops at {top:F0} m/s, each in the air level (at most {w.AirPitch:F1}° pitch, {w.AirRoll:F1}° roll), no flip");
+        Check(w.Flew && w.AirGain < 4f && w.AirTilt < 20f && !w.Toppled, $"{mode}, hover bike: five hops at {top:F0} m/s, each level in the air (at most {w.AirPitch:F1}° pitch, {w.AirRoll:F1}° roll; never more than {w.AirGain:F1}° past its lean to the ground it left), no flip");
         foreach (int x in RidesOff(bike, mode, "after the hops at speed", w)) yield return x;
 
         // Thrown onto its roof (a tornado's fling, a cliff): the rider stays on; it rights itself and drives.
