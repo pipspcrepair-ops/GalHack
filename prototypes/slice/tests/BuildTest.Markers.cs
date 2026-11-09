@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using GalHack.Physics.Engine;
 using Godot;
+using Slice.Game;
 using Slice.Ui;
 
 namespace Slice.Tests;
@@ -83,6 +84,22 @@ public partial class BuildTest
         Check(compared > 0 && worst < 3f, $"{compared} markers ({string.Join(", ", kinds)}) over {views} views from two spots sit on their targets' own projection in the {size.X:F0}x{size.Y:F0} view: worst {worst:F2} px");
         Check(boxProblems.Count == 0, $"no marker on a box of the visor at 1080p, 1440p or 720p{(boxProblems.Count == 0 ? "" : ": " + string.Join("; ", boxProblems.Take(5)))}");
         Check(labelProblems.Count == 0, $"no two labels on one another{(labelProblems.Count == 0 ? "" : ": " + string.Join("; ", labelProblems.Take(5)))}");
+
+        // The MARKERS option: kept in settings.cfg, read back after a restart, and applied live (COMPASS draws none in the world).
+        string cfg = "user://markers_test.cfg";
+        var kept = new GameSettings { MarkersInWorld = false };
+        kept.Save(cfg);
+        Check(!GameSettings.Load(cfg).MarkersInWorld && new GameSettings().MarkersInWorld, "MARKERS: COMPASS is saved and read back after a restart; the default is WORLD");
+        kept.MarkersInWorld = true;
+        kept.Save(cfg);
+        Check(GameSettings.Load(cfg).MarkersInWorld, "MARKERS: WORLD is saved and read back");
+        DirAccess.RemoveAbsolute(cfg);
+        bool was = _game.Settings.MarkersInWorld;
+        _game.Settings.MarkersInWorld = false;
+        _game.Settings.Changed();
+        Check(!visor.MarkersInWorld && HudLayout.Compute(size, 1f, true).Compass.Size.Y > HudLayout.Compute(size, 1f).Compass.Size.Y, "switching to COMPASS applies at once: the compass gets its label rows back");
+        _game.Settings.MarkersInWorld = was;
+        _game.Settings.Changed();
 
         // Behind: look straight away from the mark.
         eye = s.WorldEye();
