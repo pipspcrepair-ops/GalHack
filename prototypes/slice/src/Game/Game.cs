@@ -365,7 +365,13 @@ public partial class Game : Node3D
         Zone.AddChild(Howl);
         // The castaway seen from outside (third person and screenshots); the first-person camera leaves it out.
         Figure = CharacterModel.Build();
-        Survivor.Node.AddChild(Figure);
+        // Placed every drawn frame from the same interpolated transforms the eye and the vehicle draw
+        // with (PoseFigure), so never interpolated again on its own, and not hung off the body node:
+        // that is set down on a seat or a bike each physics tick (and lives in a cabin's own world
+        // aboard), and the figure jittered against the vehicle with it.
+        Figure.PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off;
+        Figure.TopLevel = true;
+        AddChild(Figure);
         Bodies = new CreatureBodies { Name = "CreatureBodies", Game = this };
         Zone.AddChild(Bodies);
         SetUpPlaces();

@@ -96,7 +96,6 @@ public partial class Game
         SinceGesture += (float)delta;
         if (Figure == null || Survivor == null) return;
         Slice.Player.Survivor s = Survivor;
-        if (!Figure.TopLevel) Figure.TopLevel = true; // placed in the world each frame, whatever the body node's turn
         var legs = s.Legs;
         System.Numerics.Vector3 v = s.Body.Velocity, up = System.Numerics.Vector3.Normalize(s.Body.Up);
         float climb = System.Numerics.Vector3.Dot(v, up);
@@ -129,6 +128,9 @@ public partial class Game
             if (m.Swimming) place *= new Transform3D(Basis.Identity, Vector3.Up * 1.1f) * new Transform3D(new Basis(Vector3.Right, -1.2f), Vector3.Zero) * new Transform3D(Basis.Identity, Vector3.Down * 1.1f);
         }
         Figure.GlobalTransform = place;
+        // Crouched, it squats with the eye.
+        float squat = Mathf.Clamp((s.EyeAbove - Slice.Player.Survivor.CrouchEyeHeight) / (Slice.Player.Survivor.EyeHeight - Slice.Player.Survivor.CrouchEyeHeight), 0f, 1f);
+        Figure.Scale = new Vector3(1f, Mathf.Lerp(Slice.Player.Survivor.CrouchHeight / Slice.Player.Survivor.Height, 1f, squat), 1f);
         Slice.Player.CharacterModel.Drive(Figure, m, LastGesture, SinceGesture, (float)delta);
     }
 }

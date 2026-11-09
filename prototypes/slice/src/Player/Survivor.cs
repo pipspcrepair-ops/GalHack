@@ -216,9 +216,7 @@ public sealed class Survivor
         Legs.Crouch = Crouched;
         float eye = Crouched ? CrouchEyeHeight : EyeHeight;
         _eye = carried ? eye : Mathf.Lerp(_eye, eye, 1f - MathF.Exp(-12f * dt));
-        // Seen from outside, the figure squats with it.
-        if (Node.GetNodeOrNull<Node3D>("Castaway") is Node3D figure)
-            figure.Scale = new Vector3(1f, Mathf.Lerp(CrouchHeight / Height, 1f, Mathf.Clamp((_eye - CrouchEyeHeight) / (EyeHeight - CrouchEyeHeight), 0f, 1f)), 1f);
+        // Seen from outside, the figure squats with it (Game.PoseFigure).
     }
 
     void SetCrouched(bool crouched)

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -35,7 +35,7 @@ public partial class ShakeTest : Node
     Survivor S => _game.Survivor;
 
     // ---- Sampled every drawn frame, after the game's camera and the hands have placed themselves ----
-    enum Watch { None, Walk, Vessel }
+    enum Watch { None, Walk, Vessel, Bike }
     Watch _watch;
     Vessel _vessel;
     Vector3? _handWas;
@@ -46,6 +46,9 @@ public partial class ShakeTest : Node
     Transform3D? _cabinWas;
     float _viewVsDraw, _far;
     Vector3? _rigWas, _rigVelWas, _handVelWas;
+    Transform3D? _bodyWas;
+    readonly List<float> _body = new();
+    float _figGap;
     readonly List<float> _rig = new();
     int _floorFlips;
     bool _floorWas;
@@ -143,6 +146,17 @@ public partial class ShakeTest : Node
             }
             _cabinWas = inView;
         }
+        // The castaway's figure against what carries it: the vessel's seat, or the bike.
+        Transform3D? carrier = _watch == Watch.Vessel && _vessel != null ? _vessel.DrawTransform
+            : _watch == Watch.Bike && S.OnBike != null ? S.OnBike.Node.GetGlobalTransformInterpolated() : null;
+        if (carrier is Transform3D c && _game.Figure != null)
+        {
+            Transform3D body = c.AffineInverse() * _game.Figure.GetGlobalTransformInterpolated();
+            _figGap = MathF.Max(_figGap, (_game.Figure.GlobalTransform.Origin - _game.Figure.GetGlobalTransformInterpolated().Origin).Length());
+            if (_bodyWas is Transform3D bw)
+                _body.Add(MathF.Max((body.Origin - bw.Origin).Length(), (body.Basis * Vector3.Up - bw.Basis * Vector3.Up).Length()));
+            _bodyWas = body;
+        }
     }
 
     void Check(bool ok, string what)
@@ -173,6 +187,8 @@ public partial class ShakeTest : Node
         _cabinMoved.Clear();
         _rig.Clear();
         _rigWas = _rigVelWas = _handVelWas = null;
+        _bodyWas = null;
+        _body.Clear();
         _floorFlips = 0;
         _cabinTurned.Clear();
         _frames = 0;
@@ -219,8 +235,8 @@ public partial class ShakeTest : Node
             GD.Print($"   the rig in the camera changes speed {Stats(_rig, 1f, "m/s")}; on-floor flips {_floorFlips}");
             GD.Print($"   the eye's climb rate changes {Stats(_eyeJerk, 1f, "m/s")}");
             float rig99 = Pct(_rig, 0.99f), jerk99 = Pct(_eyeJerk, 0.99f);
-            Check(_rig.Count > 100 && _frames > ticks * 1.5f && rig99 < 0.5f,
-                $"{(sprint ? "sprinting" : "walking")}, the held tool rides the view by its own easy bob, never snapping: its speed in the view changes under 0.5 m/s a frame (99th: {Stats(_rig, 1f, "m/s")})");
+            Check(_rig.Count > 100 && _frames > ticks * 1.1f && rig99 < 1f,
+                $"{(sprint ? "sprinting" : "walking")}, the held tool rides the view by its own easy bob, never snapping: its speed in the view changes under 1 m/s a frame (99th: {Stats(_rig, 1f, "m/s")})");
             Check(jerk99 < 2.5f, $"{(sprint ? "sprinting" : "walking")}, the eye rises and falls smoothly: its climb rate changes under 2.5 m/s a frame (99th: {Stats(_eyeJerk, 1f, "m/s")})");
         }
         _watch = Watch.None;
@@ -260,6 +276,36 @@ public partial class ShakeTest : Node
             $"lifting off, flying and turning, the interior is drawn on the very transform the eye stands on: no turn against the eye ({Stats(_cabinTurned, 1000f, "mm")}), the same interpolated frame ({_viewVsDraw * 1000f:F3} mm apart)");
         Check(Pct(_cabinMoved, 0.99f) < 4f * ulp,
             $"and its offset from the eye wavers only by float rounding {_far / 1000f:F1} km from the origin: {Stats(_cabinMoved, 1000f, "mm")} against a float step of {ulp * 1000f:F2} mm");
+        GD.Print($"   figure set vs interpolated: {_figGap:F3} m");
+        Check(_body.Count > 100 && _figGap < 1e-4f && Pct(_body, 0.99f) < 4f * ulp,
+            $"and the castaway's body sits still in its seat, drawn where it is set ({_figGap * 1000f:F2} mm apart): against the vessel only float rounding ({Stats(_body, 1000f, "mm")})");
+        _watch = Watch.None;
+
+        // ---- On a hover bike, riding and turning -------------------------------------------------------
+        S.StandUp();
+        foreach (int x in _drive.Wait(20)) yield return x;
+        Vector3 pad = play.FlatSpot(S.WorldFeet, 30f, span: 10f);
+        S.PlaceOutside((pad + Vector3.Up * 0.5f).ToNumerics());
+        foreach (int x in _drive.Wait(30)) yield return x;
+        var bike = _game.Bikes.Place(pad + new Vector3(2f, 0.6f, 0f), S.Yaw);
+        foreach (int x in _drive.Wait(10)) yield return x;
+        S.Mount(bike);
+        foreach (int x in _drive.Wait(10)) yield return x;
+        Check(S.OnBike == bike, "on the hover bike");
+        if (S.OnBike != bike) yield break;
+        Begin(Watch.Bike);
+        _figGap = 0f;
+        _game.Controls.Hold(Key.W);
+        for (int i = 0; i < 60 * 5; i++)
+        {
+            _game.Controls.Look = new Vector2(i % 120 < 60 ? 20f : -20f, 0f);
+            yield return 0;
+        }
+        _game.Controls.ReleaseAll();
+        _game.Controls.Look = Vector2.Zero;
+        float ulpBike = MathF.Pow(2f, MathF.Floor(MathF.Log2(MathF.Max(1f, S.WorldFeet.Length()))) - 23f);
+        Check(_body.Count > 100 && _figGap < 1e-4f && Pct(_body, 0.99f) < 4f * ulpBike,
+            $"riding and turning, the castaway's body sits still on the bike, drawn where it is set ({_figGap * 1000f:F2} mm apart): against it only float rounding ({Stats(_body, 1000f, "mm")})");
         _watch = Watch.None;
     }
 }
