@@ -110,6 +110,9 @@ public sealed class Suit : IDamageSink
         return outside with { Temperature = t, Place = "Indoors" };
     }
 
+    /// <summary>The world's own air at a spot, whatever room the survivor is in (a burning climate node near it holding its band).</summary>
+    public Exposure World(Pos p, double time) => Outside(p, time, out _);
+
     /// <summary>The world's own air at a spot (a burning climate node near it holding its band); raw is the temperature before the node.</summary>
     Exposure Outside(Pos p, double time, out double raw)
     {

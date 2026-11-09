@@ -81,6 +81,7 @@ public partial class ClimateTest : Node
         Zone.Wildlife.Frozen = true;
         foreach (int x in _drive.UntilPlaying()) yield return x;
         foreach (int x in _play.WakeAndLeave((_, _) => { })) yield return x;
+        foreach (int x in Bunker()) yield return x;
         foreach (int x in _drive.ClimbOut(_game.Bunker)) yield return x;
         foreach (int x in Sections()) yield return x;
     }
@@ -89,6 +90,7 @@ public partial class ClimateTest : Node
     {
         Check(Zone.Weather.FallStopsOnContact, "rain, snow and dust die on what they hit: no cover check, a collision with whatever is there");
         foreach (int x in Rooms()) yield return x;
+        foreach (int x in PlaceRoom()) yield return x;
         foreach (int x in Swim()) yield return x;
         foreach (int x in Storms()) yield return x;
         foreach (int x in Lava()) yield return x;
@@ -110,11 +112,12 @@ public partial class ClimateTest : Node
         Check(Zone.Weather.StrikeLight > 1f, $"and a strike nearby lights the ground ({Zone.Weather.StrikeLight:F1})");
 
         var text = new System.Text.StringBuilder("schema galhack.blueprint\nversion 1\nname \"Shut\"\ngrid large\nmode base\ngravity off\n");
+        // Wide enough that its door (east wall, at its foot) is past the reach that opens it for anyone in the middle.
         for (int y = 0; y <= 4; y++)
-        for (int z = -3; z <= 3; z++)
-        for (int x = -3; x <= 3; x++)
-            if (y == 0 || y == 4 || Math.Abs(x) == 3 || Math.Abs(z) == 3) text.Append($"block {x} {y} {z} steel\n");
-        text.Append("block 2 1 2 core\n");
+        for (int z = -5; z <= 5; z++)
+        for (int x = -5; x <= 5; x++)
+            if (y == 0 || y == 4 || Math.Abs(x) == 5 || Math.Abs(z) == 5) text.Append($"block {x} {y} {z} steel\n");
+        text.Append("block 4 1 4 core\nblock -4 1 -4 generator\n");
         var shut = Blueprint.Load(text.ToString(), Zone.Data.Catalogue, out List<string> errors);
         Check(shut != null, $"the room's blueprint loads {string.Join("; ", errors)}");
         Vector3 site = Zone.GroundAt(feet.X + 30f, feet.Z);
@@ -135,6 +138,7 @@ public partial class ClimateTest : Node
         foreach (int x in _drive.Wait(180)) yield return x;
         Check(health - _game.Suit.Vitals.Health < 1, $"a blizzard outside takes nothing from anyone in there ({health - _game.Suit.Vitals.Health:F1} in 3 s)");
         sky.Snap(WeatherKind.Clear);
+        foreach (int x in RoomAir(room)) yield return x;
         Me.PlaceOutside((feet + Vector3.Up * 0.5f).ToNumerics());
         foreach (int x in _drive.UntilSettled()) yield return x;
     }
