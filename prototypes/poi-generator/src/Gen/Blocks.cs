@@ -133,6 +133,14 @@ public static class BlockInfo
         _ => true,
     };
 
+    /// <summary>
+    /// Collides, but fills only part of its cell (furniture, fittings, posts, crates, rubble): what moves
+    /// goes round or under its real shape (<see cref="Shapes.CollisionBoxes"/>), not round its whole cell.
+    /// Doors, glass, lattices and rails keep their own rules.
+    /// </summary>
+    public static bool IsPart(BlockType t) => Collides(t) && !IsFullCube(t) && !IsSlope(t) && !IsCornerSlope(t)
+        && t is not (BlockType.SealedDoor or BlockType.Growth or BlockType.Pane or BlockType.Lattice or BlockType.Rail or BlockType.Door);
+
     /// <summary>You can stand on top of it.</summary>
     public static bool Supports(BlockType t) => t is BlockType.Cube or BlockType.Lattice or BlockType.Crate or BlockType.Breakable;
 

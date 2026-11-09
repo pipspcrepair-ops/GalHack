@@ -218,13 +218,20 @@ public sealed partial class Town
         return best;
     }
 
-    /// <summary>The cells a route crosses that a piece of the dressing stands in (none, for a route as it should be).</summary>
-    public IEnumerable<PInt3> Blocked(List<Vector3> path, int to)
+    /// <summary>
+    /// The cells where a route takes a body into the furniture or the clutter (its real shape: a walking body
+    /// swept along each step, but the step into the seat it ends in or out of the one it starts from), or off
+    /// the floor; none, for a route as it should be. In the old whole-cell rule, the cells a piece stands in.
+    /// </summary>
+    public IEnumerable<PInt3> Blocked(List<Vector3> path, int to, int from = -1)
     {
-        var solid = Memory.Rooms?.Values.SelectMany(r => r.Cells).ToHashSet() ?? new HashSet<PInt3>();
+        var solid = _parts == null ? Memory.Rooms?.Values.SelectMany(r => r.Cells).ToHashSet() ?? new HashSet<PInt3>() : new HashSet<PInt3>();
         HashSet<PInt3> own = to >= 0 && to < _own.Count ? _own[to] : null;
+        bool outOfSeat = from >= 0 && from < _own.Count && _own[from] != null;
         for (int i = 0; i < path.Count; i++)
         {
+            bool seatStep = i == path.Count - 1 && own != null || i == 1 && outOfSeat;
+            if (_parts != null && i > 0 && !seatStep && !_parts.Sweep(path[i - 1], path[i], PlaceParts.PersonRadius - 0.01f, PlaceParts.PersonHeight)) yield return Cell(path[i]);
             // Each point, and the middle of the way to it from the last.
             for (int k = 0; k < (i == 0 ? 1 : 2); k++)
             {

@@ -38,11 +38,49 @@ public sealed partial class Town
         : p.Sitting ? 0.3f : p.Working ? 0.6f : 1f;
 
     /// <summary>Whether a body can stand here: the cell at its feet, or on a stair the one below or above (between levels a walker's height is in between).</summary>
-    bool Open(Vector3 local)
+    bool Open(Vector3 local) => OnGrid(local) && (_parts == null || _parts.Fits(local, PlaceParts.PersonRadius, PlaceParts.PersonHeight));
+
+    /// <summary>The cell at its feet (or on a stair the one below or above) is one the walking grid stands people in.</summary>
+    bool OnGrid(Vector3 local)
     {
         if (_nav == null) return true;
         int x = (int)MathF.Floor(local.X), z = (int)MathF.Floor(local.Z);
         return _nav.Standable(new PInt3(x, (int)MathF.Floor(local.Y + 0.05f), z)) || _nav.Standable(new PInt3(x, (int)MathF.Ceiling(local.Y - 0.05f), z));
+    }
+
+    /// <summary>How tall a person stands.</summary>
+    static float Height(Person p) => p.Looks != null ? MathF.Max(1f, p.Figure.Height) : PlaceParts.PersonHeight;
+
+    /// <summary>
+    /// In the furniture on purpose: sitting or lying in it, or on the last step into or the first out of the
+    /// seat or bed they use (that piece is what they are in; nothing else of the room is).
+    /// </summary>
+    bool InUse(Person p) => p.Sitting || p.Asleep || p.Slept > 0f || p.Indoors || IntoSeat(p)
+        || p.Seat >= 0 || p.Path != null && p.Step >= p.Path.Count - 2 && p.Spot >= 0 && p.Spot < _own.Count && _own[p.Spot] != null;
+
+    /// <summary>How deep a person's body is in the place's furniture or clutter, m (0: clear, as it should always be; tests).</summary>
+    public float InParts(Person p) => _parts == null || InUse(p) ? 0f : MathF.Max(0f, -_parts.Gap(p.Pos, BodyRadius(p), Height(p)));
+
+    /// <summary>The place's furniture and clutter as people go round it (null in the old whole-cell rule; tests).</summary>
+    public Wildlife.PartSet Parts => _parts;
+
+    /// <summary>
+    /// A person's body held off the place's parts after a move: pushed out sideways where it went in, or back
+    /// where it was when that can't be done (a step into a gap too narrow for them waits rather than goes through).
+    /// </summary>
+    void OffParts(Person p, Vector3 was)
+    {
+        if (_parts == null || InUse(p)) return;
+        float r = BodyRadius(p), h = Height(p);
+        float gap = _parts.Gap(p.Pos, r, h);
+        if (gap >= 0f) return;
+        Vector3 to = _parts.PushOut(p.Pos, r, h);
+        to.Y = p.Pos.Y;
+        float after = _parts.Gap(to, r, h);
+        if (after >= 0f && OnGrid(to)) { p.Pos = to; return; }
+        float before = _parts.Gap(was, r, h);
+        if (before > MathF.Max(gap, after)) p.Pos = was;
+        else if (after > gap && OnGrid(to)) p.Pos = to;
     }
 
     /// <summary>Once a tick, after everyone has moved: bodies apart, you stepped round, pushes answered.</summary>
@@ -78,7 +116,9 @@ public sealed partial class Town
         {
             Person p = _bodies[i];
             PersonalSpace.Body b = _space.Bodies[i];
+            Vector3 was = p.Pos;
             p.Pos = new Vector3(b.Pos.X, p.Pos.Y, b.Pos.Z);
+            OffParts(p, was);
             if (b.Wait > 0f) p.Yield = MathF.Max(p.Yield, b.Wait);
         }
         // Two stood still in each other with no room to part (sent to the one spot in a narrow way): the second goes elsewhere.

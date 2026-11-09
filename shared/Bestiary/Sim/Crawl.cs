@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Godot;
 
 namespace Wildlife;
@@ -33,9 +33,11 @@ public static class Crawl
     /// <summary>Puts a creature on the surface nearest a point.</summary>
     public static void Place(WildSim w, Creature c, Vector3 near, Vector3? up)
     {
-        ISolidSpace s = c.Space;
+        ISolidSpace s = c.Species.Climbs ? c.Space : c.Space.Bare;
         float clr = c.Clearance;
         Vector3 p = near, n = Vector3.Up;
+        // A walker is set down clear of the furniture: beside it, never in it.
+        if (!c.Species.Climbs && c.Space.Parts is { } parts) near = parts.PushOut(near, SpaceNav.PartRadius(c.Species), SpaceNav.PartHeight(c.Species));
         if (!c.Species.Climbs || up == null)
         {
             float? floor = SpaceMath.FloorBelow(s, near.X, near.Y + 0.5f, near.Z, 8f);
@@ -181,7 +183,11 @@ public static class Crawl
     /// </summary>
     static void Walk(WildSim w, Creature c, float dt)
     {
-        ISolidSpace s = c.Space;
+        // A walker stands on the floors and stairs and is held off the walls; the place's parts
+        // (furniture, clutter) it goes round or under, its body never in one (see Parts).
+        ISolidSpace s = c.Space.Bare;
+        PartSet parts = c.Space.Parts;
+        float pr = SpaceNav.PartRadius(c.Species), ph = SpaceNav.PartHeight(c.Species);
         CrawlRules r = w.Data.Deep.Crawl;
         float clr = c.Clearance;
         Vector3 f = -c.Facing.Z;
@@ -218,10 +224,22 @@ public static class Crawl
                 break;
             }
             next.Y = fy;
-            feet = HoldOffWalls(s, next, clr);
+            next = HoldOffWalls(s, next, clr);
+            if (parts != null)
+            {
+                // Off the furniture sideways (sliding round a leg or a corner); where that can't be done, no further.
+                next = HoldOffWalls(s, parts.PushOut(next, pr, ph), clr);
+                if (!parts.Fits(next, pr, ph) && parts.Gap(next, pr, ph) < parts.Gap(feet, pr, ph))
+                {
+                    c.CrawlSpeed *= 0.5f;
+                    break;
+                }
+            }
+            feet = next;
         }
-        // Whatever moved it (a landing, a lunge), it ends clear of the walls, on the floor.
+        // Whatever moved it (a landing, a lunge), it ends clear of the walls and the furniture, on the floor.
         feet = HoldOffWalls(s, feet, clr);
+        if (parts != null && !parts.Fits(feet, pr, ph)) feet = HoldOffWalls(s, parts.PushOut(feet, pr, ph), clr);
         if (SpaceMath.FloorBelow(s, feet.X, feet.Y + 0.45f, feet.Z, 1.4f) is float y) feet.Y = y;
         else
         {
@@ -316,7 +334,8 @@ public static class Crawl
     /// <summary>Falling: gravity until it lands on whatever is below, landing on its feet.</summary>
     static void Fall(WildSim w, Creature c, float dt)
     {
-        ISolidSpace s = c.Space;
+        // A walker comes down to the floor (it never stands on the furniture; it is moved off it when it lands).
+        ISolidSpace s = c.Species.Climbs ? c.Space : c.Space.Bare;
         float clr = c.Clearance, g = w.Data.Deep.Crawl.Gravity;
         Vector3 n = c.Facing.Y;
         Vector3 center = c.Position + n * clr;

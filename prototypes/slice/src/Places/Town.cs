@@ -31,6 +31,8 @@ public sealed partial class Town
     /// <summary>Paths between linked spots (worked out once), in local cells' walk points.</summary>
     readonly Dictionary<(int, int), List<Vector3>> _paths = new();
     PNav _nav;
+    /// <summary>The place's furniture and clutter as it really stands (null: the old whole-cell rule, tests only).</summary>
+    Wildlife.PartSet _parts;
     int[] _homes;
     string _tech;
 
@@ -155,6 +157,7 @@ public sealed partial class Town
         var town = new Town(m, data);
         town._tech = m.Inst.Layout.Variant?.Tech is { Length: > 0 } t ? t : m.Inst.Family.Tags.Contains("settlement") ? "low" : "mid";
         town._nav = Place.FootNavOf(m, planet);
+        town._parts = PlaceParts.Of(m);
         town.Furnish(m);
         foreach (var (a, b) in data.Links.Concat(data.Routes)) town.PathBetween(a, b);
         town._homes = town.Spots.Select((s, i) => (s, i)).Where(t => t.s.Tag == "home").Select(t => t.i).ToArray();
@@ -164,8 +167,12 @@ public sealed partial class Town
         return town;
     }
 
-    /// <summary>A cell's walking point: the middle of its floor, or halfway up the stair or ramp standing in it.</summary>
-    Vector3 Walk(PInt3 c) => new(c.X + 0.5f, c.Y + (_nav != null && _nav.RampAt(c, out _) ? 0.5f : 0f), c.Z + 0.5f);
+    /// <summary>A cell's walking point: the middle of its floor (among furniture, where a body fits nearest it), or halfway up the stair or ramp standing in it.</summary>
+    Vector3 Walk(PInt3 c)
+    {
+        if (_nav != null && _nav.RampAt(c, out _)) return new(c.X + 0.5f, c.Y + 0.5f, c.Z + 0.5f);
+        return _parts?.Spot(c.X, c.Y, c.Z, c.Y, PlaceParts.PersonRadius, PlaceParts.PersonHeight) ?? new Vector3(c.X + 0.5f, c.Y, c.Z + 0.5f);
+    }
 
     List<Vector3> PathBetween(int a, int b)
     {
@@ -545,11 +552,14 @@ public sealed partial class Town
             p.Step++;
             return p.Step >= p.Path.Count;
         }
+        Vector3 was = p.Pos;
         p.Pos += new Vector3(d.X, 0f, d.Z) / flat * step;
         if (p.Seat >= 0 && !InSeat(p, p.Seat)) p.Seat = -1; // up and out of it
         p.Pos.Y = Mathf.Lerp(p.Pos.Y, to.Y, MathF.Min(1f, step / MathF.Max(flat, 0.01f)));
         // Feet on what is under them: the floor, or the stair's slope, never sunk into it or above it.
         if (Ground(p.Pos) is float ground && MathF.Abs(ground - p.Pos.Y) < 0.75f) p.Pos.Y = ground;
+        // And never into the furniture or the clutter: held off its real shape.
+        OffParts(p, was);
         p.Yaw = Mathf.RotateToward(p.Yaw, MathF.Atan2(-d.X, -d.Z), 5f * dt);
         p.Sitting = false;
         return false;

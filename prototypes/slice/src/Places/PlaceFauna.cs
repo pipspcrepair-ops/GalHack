@@ -268,13 +268,35 @@ public sealed class PlaceFauna
         foreach (PInt3 c in cells) _cells.Forget(c);
     }
 
-    /// <summary>Solid to a creature: the place's walls, floors and roofs and its heavy fittings; not air, doors, glass or what it can walk under. Below ground, rock outside the rooms.</summary>
+    /// <summary>
+    /// Solid to a creature: the place's walls, floors and roofs and its whole-cell fittings; not air, doors,
+    /// glass, rails or lattices, nor the furniture and clutter that fill only part of a cell (those are its
+    /// <see cref="PlaceParts"/>, gone round or under as they really stand). Below ground, rock outside the rooms.
+    /// </summary>
     public static bool Solid(PoiInstance inst, int x, int y, int z)
     {
         var c = new PInt3(x, y, z);
         Block b = inst.Blocks.Get(c);
         if (b.IsAir) return y <= Assembler.GroundY && !inst.Layout.Occupied[c];
-        return Built(b);
+        return PlaceParts.Legacy ? Built(b) : Built(b) && !BlockInfo.IsPart(b.Type);
+    }
+
+    /// <summary>A place's space as its creatures live in it: its cells, its stairs as slopes and its parts (tests make their own this way).</summary>
+    public static BlockSpace SpaceOf(PlaceMemory m)
+    {
+        PoiInstance inst = m.Inst;
+        BlockGrid g = inst.Blocks;
+        return new BlockSpace((x, y, z) => Solid(inst, x, y, z),
+            new Vector3I(g.Min.X, g.Min.Y, g.Min.Z), new Vector3I(g.Min.X + g.Size.X, g.Min.Y + g.Size.Y, g.Min.Z + g.Size.Z))
+        {
+            Slope = (x, y, z) =>
+            {
+                Block b = g.Get(new PInt3(x, y, z));
+                PInt3 v = b.Facing.Vec();
+                return b.Type is BlockType.Stair or BlockType.Ramp ? Wildlife.Slopes.Of(v.X, v.Z) : -1;
+            },
+            Parts = PlaceParts.Of(m),
+        };
     }
 
     /// <summary>Solid to a creature out on the surface: only what was built (walls, floors, roofs, heavy fittings), not the ground round it.</summary>
@@ -302,7 +324,7 @@ public sealed class PlaceFauna
         var sim = new WildSim(deep.Data, terrain, new WNav(terrain.HalfSize, 3f));
         _cells = new SolidCells(inst);
         var space = new BlockSpace(_cells.Get,
-            new Vector3I(g.Min.X, g.Min.Y, g.Min.Z), new Vector3I(g.Min.X + g.Size.X, g.Min.Y + g.Size.Y, g.Min.Z + g.Size.Z)) { Slope = _cells.Slope };
+            new Vector3I(g.Min.X, g.Min.Y, g.Min.Z), new Vector3I(g.Min.X + g.Size.X, g.Min.Y + g.Size.Y, g.Min.Z + g.Size.Z)) { Slope = _cells.Slope, Parts = PlaceParts.Of(memory) };
         lock (deep.Lock) PoiFauna.Spawn(sim, Population, space);
         Sim = sim;
     }

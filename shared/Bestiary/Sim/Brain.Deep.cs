@@ -161,8 +161,10 @@ public static partial class Brain
         Vector3 center = Crawl.Center(c);
         float d = (goal - center).Length();
         bool climbs = c.Species.Climbs;
-        int headroom = SpaceNav.Headroom(c.Species);
-        if (d < 2.5f && SpaceMath.Clear(c.Space, center, goal, 0f))
+        SpaceNav.Body body = SpaceNav.BodyOf(c.Species);
+        // Straight there when it is near and in the open: for a walker among furniture, only if its body gets by all the way.
+        if (d < 2.5f && SpaceMath.Clear(c.Space, center, goal, 0f)
+            && (climbs || c.Space.Parts is not { } parts || parts.Sweep(c.Position, goal with { Y = c.Position.Y }, body.Radius, body.Height)))
         {
             c.SpacePath.Clear();
             Vector3 straight = goal - center;
@@ -174,7 +176,7 @@ public static partial class Brain
         bool stale = c.SpacePath.Count == 0 || c.SpacePathIndex >= c.SpacePath.Count || c.SpacePathGoal.DistanceTo(goal) > 1.5f || c.SpacePathAge > 4f;
         if (stale && w.TakePathBudget())
         {
-            SpaceNav.FindPath(c.Space, center, goal, climbs, headroom, c.SpacePath, 2500, SpaceNav.Shoulders(c.Species));
+            SpaceNav.FindPath(c.Space, center, goal, body, c.SpacePath, 2500);
             c.SpacePathIndex = 0;
             c.SpacePathGoal = goal;
             c.SpacePathAge = 0f;
@@ -195,12 +197,15 @@ public static partial class Brain
     static void WaypointsPassed(Creature c, Vector3 center)
     {
         Vector3 up = c.Facing.Y;
+        PartSet parts = c.Species.Climbs ? null : c.Space.Parts;
         while (c.SpacePathIndex < c.SpacePath.Count - 1)
         {
             Vector3 to = c.SpacePath[c.SpacePathIndex] - center;
             float along = (to - up * to.Dot(up)).Length();
+            // Among furniture a walker keeps to its way's points (the gaps it fits through), cutting no corner round a leg.
+            bool close = parts != null && parts.Any(c.SpacePath[c.SpacePathIndex]) ? along < 0.3f && MathF.Abs(to.Dot(up)) < 1.6f : to.Length() < 0.9f;
             // A walker on a flight passes a cell's middle under or over it: its body stands a metre or so off it.
-            if (to.Length() < 0.9f || (c.Species.Climbs && along < 0.4f && to.Length() < 1.8f)
+            if (close || (c.Species.Climbs && along < 0.4f && to.Length() < 1.8f)
                 || (!c.Species.Climbs && along < 0.45f && MathF.Abs(to.Dot(up)) < 1.6f)) c.SpacePathIndex++;
             else break;
         }
@@ -555,8 +560,8 @@ public static partial class Brain
             c.WanderTurn = Math.Clamp(c.WanderTurn + c.Rng.Range(-0.6f, 0.6f), -1.2f, 1.2f);
             Vector3 g = c.Position + (-c.Facing.Z).Rotated(c.Facing.Y, c.WanderTurn) * c.Rng.Range(3f, 7f);
             if ((g - c.Home).Length() > radius) g = c.Home + new Vector3(c.Rng.Range(-radius, radius), c.Rng.Range(-1f, 1f), c.Rng.Range(-radius, radius)) * 0.5f;
-            Vector3I? cell = SpaceNav.Nearest(c.Space, g, c.Species.Climbs, SpaceNav.Headroom(c.Species), 2, SpaceNav.Shoulders(c.Species));
-            c.Goal = cell is { } k ? SpaceMath.Center(k) : c.Home;
+            Vector3I? cell = SpaceNav.Nearest(c.Space, g, SpaceNav.BodyOf(c.Species), 2);
+            c.Goal = cell is { } k ? SpaceNav.Point(c.Space, k, SpaceNav.BodyOf(c.Species)) : c.Home;
             c.HasGoal = true;
             c.SetState(CState.Wander);
         }
@@ -790,8 +795,8 @@ public static partial class Brain
         {
             float ang = c.Rng.Range(0f, MathF.Tau);
             Vector3 g = at + new Vector3(MathF.Cos(ang) * r, 0.5f, MathF.Sin(ang) * r);
-            Vector3I? cell = SpaceNav.Nearest(c.Space, g, c.Species.Climbs, SpaceNav.Headroom(c.Species), 2, SpaceNav.Shoulders(c.Species));
-            c.Goal = cell is { } k ? SpaceMath.Center(k) : at;
+            Vector3I? cell = SpaceNav.Nearest(c.Space, g, SpaceNav.BodyOf(c.Species), 2);
+            c.Goal = cell is { } k ? SpaceNav.Point(c.Space, k, SpaceNav.BodyOf(c.Species)) : at;
             c.HasGoal = true;
             c.SetState(c.Rng.Chance(0.5f) ? CState.Guard : CState.Wander);
         }
