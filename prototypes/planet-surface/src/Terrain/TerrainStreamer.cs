@@ -104,7 +104,7 @@ public partial class TerrainStreamer : Node3D
 
     /// <summary>The world's species as meshes, by herbarium index: near variants, and the far one.</summary>
     Mesh[][] _plantNear = System.Array.Empty<Mesh[]>();
-    Mesh[] _plantFar = System.Array.Empty<Mesh>();
+    Mesh[][] _plantFar = System.Array.Empty<Mesh[]>();
 
     // ---- Voxel state ----
     sealed class Column
@@ -281,12 +281,15 @@ public partial class TerrainStreamer : Node3D
     {
         IReadOnlyList<Plant> plants = World.Flora.Book.Plants;
         _plantNear = new Mesh[plants.Count][];
-        _plantFar = new Mesh[plants.Count];
+        _plantFar = new Mesh[plants.Count][];
         foreach (Plant p in plants)
         {
             _plantNear[p.Index] = new Mesh[p.Near.Length];
             for (int i = 0; i < p.Near.Length; i++) _plantNear[p.Index][i] = PlantMeshes.ToGodot(p.Near[i]);
-            _plantFar[p.Index] = p.Far == p.Near[0] ? _plantNear[p.Index][0] : PlantMeshes.ToGodot(p.Far);
+            // A plant's far drawing is its own near mesh: drawn without the near drawing's details round it
+            // (ground cover, colliders), but the same shape, size, paint, turn and tint, so the hand-over is
+            // never seen. (The herbarium's far meshes were other simplified shapes: a swap showed.)
+            _plantFar[p.Index] = _plantNear[p.Index];
         }
         StartCover();
     }
@@ -295,9 +298,9 @@ public partial class TerrainStreamer : Node3D
     public ShaderMaterial FloraMaterial => _floraMaterial;
     public Mesh KindMesh(Flora kind) => _floraMeshes != null && _floraMeshes.TryGetValue(kind, out Mesh m) ? m : null;
 
-    /// <summary>The mesh of one species' variant (-1: its far one), or null for what the world's herbarium doesn't hold.</summary>
+    /// <summary>The mesh of one species' variant (-1 - k: near variant k's far one), or null for what the world's herbarium doesn't hold.</summary>
     public Mesh PlantMesh(int plant, int variant) =>
-        plant < 0 || plant >= _plantNear.Length ? null : variant < 0 ? _plantFar[plant] : _plantNear[plant][variant];
+        plant < 0 || plant >= _plantNear.Length ? null : variant < 0 ? _plantFar[plant][Math.Min(-variant - 1, _plantFar[plant].Length - 1)] : _plantNear[plant][variant];
 
     ShaderMaterial TerrainMaterial(bool far)
     {
@@ -1062,7 +1065,7 @@ public partial class TerrainStreamer : Node3D
     /// only as its far stand-in, takes its first), or its kind's where the herbarium has none. What a plant
     /// is when it is close enough to touch, felled or thrown.
     /// </summary>
-    public Mesh MeshOf(in PlantSighting s) => PlantMesh(s.Plant, Math.Max(0, s.Variant)) ?? (_floraMeshes != null && _floraMeshes.TryGetValue(s.Kind, out Mesh m) ? m : null);
+    public Mesh MeshOf(in PlantSighting s) => PlantMesh(s.Plant, s.Variant < 0 ? -s.Variant - 1 : s.Variant) ?? (_floraMeshes != null && _floraMeshes.TryGetValue(s.Kind, out Mesh m) ? m : null);
 
     /// <summary>One plant seen in the scatter: its kind, where it roots, its scale, id, species and mesh, its turn, and its instance's own tint and glow.</summary>
     public readonly record struct PlantSighting(Flora Kind, Vector3 Root, float Scale, long Id, int Plant, int Variant, Basis Turn, Color Custom = default)

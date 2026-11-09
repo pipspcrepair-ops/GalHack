@@ -19,8 +19,8 @@ public static class DetailReach
     /// <summary>The most it can be: the horizon, where the far field takes over (<see cref="TerrainStreamer.HorizonDistance"/>).</summary>
     public const float Most = TerrainStreamer.HorizonDistance;
 
-    /// <summary>A share of the large growth also has a distant drawing (its far mesh, a little bigger) out to the detail distance.</summary>
-    public const float DistantShare = 0.35f, DistantGrow = 1.3f;
+    /// <summary>A share of the large growth (those of its first near mesh, half) also has a distant drawing, the same far drawing, out to the detail distance; the rest go at the far reach.</summary>
+    public const float DistantShare = 0.5f, DistantGrow = 1f;
 
     public static float Distance { get; private set; }
 

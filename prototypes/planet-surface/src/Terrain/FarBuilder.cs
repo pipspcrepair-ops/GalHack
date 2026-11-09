@@ -793,7 +793,6 @@ public static class FarBuilder
             double x = x0 + lx, z = z0 + lz;
             long id = ScatterId(job.Fx, job.Fz, gi, gj);
             if (felled != null && felled.Contains(id)) continue; // felled: gone, at every level of detail
-            if (job.Lod > 1 && !Distant(pal, id)) continue; // the coarsest level draws the distant share only
 
             // A tree through a ruin takes the cell's place in the scatter: it's the same flora from here on.
             if (pal.Planted != null && pal.Planted.TryGetValue(id, out PlantedFlora tree))
@@ -803,7 +802,7 @@ public static class FarBuilder
                 var treeBasis = new Basis(Vector3.Up, tree.Angle).Scaled(new Vector3(tree.Scale, tree.Scale, tree.Scale));
                 if (job.Lod == 0) Add(tree.Kind, tree.Species, 0, tx, treeY, tz, treeBasis, tree.Tint, 0f, far: false);
                 if (job.Lod <= 1) Add(tree.Kind, tree.Species, -1, tx, treeY, tz, treeBasis, tree.Tint, 0f, far: true);
-                if (Distant(pal, id)) Add(tree.Kind, null, 0, tx, treeY, tz, DistantBasis(tree.Kind, tree.Species, treeBasis), tree.Tint, 0f, far: true, distant: true);
+                Add(tree.Kind, tree.Species, -1, tx, treeY, tz, treeBasis, tree.Tint, 0f, far: true, distant: true);
                 solids?.MakeAll(tree.Kind, tree.Species, 0, id, new Vector3((float)tree.X, treeY, (float)tree.Z), tree.Scale, tree.Angle, job.Solids);
                 continue;
             }
@@ -830,12 +829,14 @@ public static class FarBuilder
             // (every level); small growth only a near one (levels 0 and 1).
             bool hasFar = FloraMeshes.IsLarge(rule.Kind);
             if (job.Lod > 1 && !hasFar) continue;
-            bool distant = hasFar && Distant(pal, id);
-            if (job.Lod > 1 && !distant) continue;
 
             // What grows here: the world's own species of this kind, for this biome and region. Rocks stay rocks.
             Plant plant = book?.Pick(rule.Kind, biome, x, z, kin);
             if (book != null && plant == null && book.Rolled(rule.Kind)) continue;
+            // Its near mesh, and so its far one: the distant drawing is the same far drawing, for the plants of the first.
+            int variant = plant == null ? 0 : (int)(kin * 977f) % plant.Near.Length;
+            bool distant = hasFar && (plant == null ? Distant(pal, id) : variant == 0);
+            if (job.Lod > 1 && !distant) continue;
 
             int i = Math.Clamp((int)MathF.Round(lx / step), 0, grid.Nx - 1), j = Math.Clamp((int)MathF.Round(lz / step), 0, grid.Nz - 1);
             int s = grid.Sample(i, j);
@@ -885,9 +886,10 @@ public static class FarBuilder
             // A share of the large thins out sooner far off (it was the share the far levels used to leave out),
             // and of the small (marked the same way) at the large's near reach.
             if (job.Lod == 0 || !hasFar && job.Lod == 1)
-                Add(rule.Kind, plant, plant == null ? 0 : (int)(kin * 977f) % plant.Near.Length, lx, rootY, lz, basis, tint, glow + (!hasFar && shade > 0.6f ? 2f : 0f), far: false);
-            if (hasFar && job.Lod <= 1) Add(rule.Kind, plant, plant == null ? 0 : -1, lx, rootY, lz, basis, tint, glow + (shade > 0.6f ? 2f : 0f), far: true);
-            if (distant) Add(rule.Kind, null, 0, lx, rootY, lz, DistantBasis(rule.Kind, plant, basis), tint, glow, far: true, distant: true);
+                Add(rule.Kind, plant, variant, lx, rootY, lz, basis, tint, glow + (!hasFar && shade > 0.6f ? 2f : 0f), far: false);
+            // Its far drawing is its own near mesh's far one, turned, sized and tinted as it is.
+            if (hasFar && job.Lod <= 1) Add(rule.Kind, plant, plant == null ? 0 : -1 - variant, lx, rootY, lz, basis, tint, glow + (shade > 0.6f && !distant ? 2f : 0f), far: true);
+            if (distant) Add(rule.Kind, plant, plant == null ? 0 : -1, lx, rootY, lz, basis, tint, glow, far: true, distant: true);
 
             // Trunks, stalks, pipes, shards and boulders are solid: their colliders, in planet coordinates, round
             // the parts of the near mesh this one draws (whatever the level of detail draws from here).
