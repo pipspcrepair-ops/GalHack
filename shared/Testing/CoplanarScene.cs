@@ -110,6 +110,9 @@ public sealed class CoplanarScene
         if (mesh is ArrayMesh am && am.SurfaceGetPrimitiveType(s) != Mesh.PrimitiveType.Triangles) return;
         Godot.Collections.Array arrays = mesh.SurfaceGetArrays(s);
         if (arrays == null || arrays.Count <= (int)Mesh.ArrayType.Index) return;
+        // A skinned body's arrays hold each piece in its own bone's frame, all laid over each other: BestiaryTest
+        // checks bodies piece by piece instead.
+        if (arrays[(int)Mesh.ArrayType.Bones].VariantType != Variant.Type.Nil) return;
         Vector3[] v = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
         if (v == null || v.Length < 3) return;
         Vector3[] nr = arrays[(int)Mesh.ArrayType.Normal].VariantType == Variant.Type.Nil ? null : arrays[(int)Mesh.ArrayType.Normal].AsVector3Array();

@@ -117,14 +117,22 @@ public sealed partial class Staging
         foreach (var kv in totals.OrderByDescending(k => k.Value).Take(15)) GD.Print($"ZFIGHT TOTAL {kv.Value,6}  {kv.Key}");
 
         // The worst cases over all stops, one per source, each framed from a metre and a half off its face.
+        // --at=x,y,z,nx,ny,nz;... frames those spots instead (the same spots before and after a fix, on the same world).
         int shots = (int)Num("shots", 3), taken = 0;
-        foreach (var w in worst.GroupBy(w => w.Source).Select(g => g.MaxBy(w => w.Count)).OrderByDescending(w => w.Count))
+        var spots = worst.GroupBy(w => w.Source).Select(g => g.MaxBy(w => w.Count)).OrderByDescending(w => w.Count).ToList();
+        if (_args.TryGetValue("at", out string at))
+            spots = at.Split(';').Select(s => s.Split(',').Select(v => float.Parse(v, System.Globalization.CultureInfo.InvariantCulture)).ToArray())
+                .Select(v => (Source: "given", Count: 0, At: new Vector3(v[0], v[1], v[2]), Normal: new Vector3(v[3], v[4], v[5]), Stop: "given")).ToList();
+        foreach (var w in spots)
         {
             if (taken++ >= shots) break;
-            Vector3 eye = w.At + (w.Normal + Vector3.Up * 0.6f).Normalized() * 1.5f;
+            GD.Print(System.FormattableString.Invariant($"ZFIGHT spot {w.At.X},{w.At.Y},{w.At.Z},{w.Normal.X:F2},{w.Normal.Y:F2},{w.Normal.Z:F2}"));
+            // From a metre and a half off the face, a little to one side and above, so a floor is seen at a slant.
+            Vector3 side = w.Normal.Cross(MathF.Abs(w.Normal.Y) > 0.9f ? Vector3.Right : Vector3.Up).Normalized();
+            Vector3 eye = w.At + (w.Normal * 0.9f + side * 0.6f + Vector3.Up * 0.5f).Normalized() * 1.5f;
             _game.Survivor.PlaceOutside((eye + Vector3.Down * 1.6f).ToNumerics());
             foreach (int x in _drive.Wait(90)) yield return x;
-            for (int i = 0; i < 20; i++) { _game.FixedCamera = new Transform3D(Basis.LookingAt(w.At - eye, MathF.Abs(w.Normal.Y) > 0.9f ? Vector3.Forward : Vector3.Up), eye); yield return 0; }
+            for (int i = 0; i < 20; i++) { _game.FixedCamera = new Transform3D(Basis.LookingAt(w.At - eye, Vector3.Up), eye); yield return 0; }
             GD.Print($"ZFIGHT shot {taken}: {w.Source} at {w.Stop}, {w.At}");
             foreach (int x in Shot(System.IO.Path.Combine(dir, $"{tag}-{taken}.png"))) yield return x;
             _game.FixedCamera = null;
