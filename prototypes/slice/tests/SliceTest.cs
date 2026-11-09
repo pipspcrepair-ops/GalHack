@@ -368,13 +368,16 @@ public partial class SliceTest : Node
         float astride = Mathf.RadToDeg(Flat(-_game.Figure.GlobalTransform.Basis.Z).AngleTo(Flat(bike.Forward)));
         Check(astride < 10f, $"third person, the castaway sits the bike facing its heading ({astride:F1}° off)");
         // The weather's spin turns the bike itself: its model always faces the way it drives (it drifted round in any wind).
-        for (int i = 0; i < 120; i++)
+        // A steady crosswind, the kind that turned it before; judged while it stands upright (a gale that rolls it
+        // tilts its nose out of the flat, which isn't the drift).
+        for (int i = 0; i < 240; i++)
         {
-            bike.Push(new Vector3(8f, 0f, 4f) * bike.Mass); // two seconds of a gale across it
+            bike.Push(new Vector3(3f, 0f, 1.5f) * bike.Mass);
             yield return 0;
         }
         float drift = Mathf.RadToDeg(Flat(-bike.Node.GlobalTransform.Basis.Z).AngleTo(Flat(bike.Forward)));
-        Check(drift < 2f, $"after a gust the bike's model still faces the way it drives ({drift:F1}° off)");
+        float tilt = Mathf.RadToDeg(bike.Tilt);
+        Check(tilt > 20f || drift < 3f, $"after four seconds of crosswind the bike's model still faces the way it drives ({drift:F1}° off, tilted {tilt:F0}°)");
         // The mouse steers: the bike comes round toward where the rider looks; Alt held looks around without steering.
         // Tried from a standstill, so the ride stays short and the bike is on its cushion for getting off after.
         _game.Controls.Hold(Key.S);

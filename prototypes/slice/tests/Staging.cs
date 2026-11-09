@@ -111,6 +111,7 @@ public sealed partial class Staging
             "cirruslog" => CirrusLog(),
             "storm" => StormShot(),
             "front" => FrontShot(),
+            "lightning" => LightningShot(),
             "spout" => SpoutShot(),
             "regionfront" => RegionFront(),
             "plainstornado" => PlainsTornado(),

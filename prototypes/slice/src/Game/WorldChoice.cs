@@ -97,7 +97,7 @@ public sealed record WorldChoice(ulong Seed, Archetype Archetype, int Variant, i
     /// What the command line pins, rolling everything it leaves out: <c>--seed N</c>, <c>--planet</c>
     /// or <c>--type</c> (a key such as temperate, or a world-layer type such as meadow), <c>--size 32x16</c>,
     /// <c>--depth 0.7</c> (or random), <c>--theme id</c>, <c>--fall id</c>, <c>--mid-collapse</c> or
-    /// <c>--mid-collapse=no</c>, <c>--era-old high</c> and <c>--era-now low</c>. Each takes
+    /// <c>--mid-collapse=no</c>, <c>--era-old high</c>, <c>--era-now low</c>, <c>--pop-old billions</c> and <c>--pop-now survivors</c>. Each takes
     /// <c>--name value</c> or <c>--name=value</c>. Null when it pins nothing, so the start screen
     /// (or a fresh roll) decides. Unknown values are printed and left to the roll.
     /// </summary>
@@ -139,6 +139,16 @@ public sealed record WorldChoice(ulong Seed, Archetype Archetype, int Variant, i
         }
         if (IndexOf(args, "--no-mid-collapse") >= 0) force = force with { MidCollapse = false };
         force = force with { Before = Era(args, "--era-old"), Now = Era(args, "--era-now"), Layers = Value(args, "--layer") };
+        if (Value(args, "--pop-old") is string po)
+        {
+            if (WorldForce.Pop(po) is int pop) force = force with { Population = pop };
+            else Godot.GD.PrintErr($"--pop-old {po}: 0 to 10, or none, sparse ... millions, billions");
+        }
+        if (Value(args, "--pop-now") is string pn)
+        {
+            if (WorldForce.PopNow(pn) is PopulationNow now) force = force with { PopulationNow = now };
+            else Godot.GD.PrintErr($"--pop-now {pn}: none, survivors, outposts or settled");
+        }
         return force.Empty ? null : force;
     }
 

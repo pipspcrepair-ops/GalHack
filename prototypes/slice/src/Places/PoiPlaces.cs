@@ -304,7 +304,7 @@ public partial class PoiPlaces : Node3D
         Int3 Of(Int3 c) => new(c.X >= 0 ? c.X / side : (c.X - side + 1) / side, c.Y >= 0 ? c.Y / side : (c.Y - side + 1) / side, c.Z >= 0 ? c.Z / side : (c.Z - side + 1) / side);
         foreach (var group in chunks.GroupBy(c => Of(c.Chunk)))
         {
-            p.SetGroupShapes(group.Key, group);
+            foreach (int x in p.SetGroupShapes(group.Key, group)) yield return x;
             yield return 0;
         }
         j.Stage = "fixtures";

@@ -69,6 +69,13 @@ public sealed class WorldReading
     /// <summary>The colours made things take, faded and dirtied by age and the fall; null where the roll gives no palette.</summary>
     public WorldPaint? Paint { get; private init; }
 
+    /// <summary>Every <c>bias</c> key something reads (here, and the creatures' tusks, claws and glow). A value in data/world-layers.txt that leans a key not in this set leans nothing, and the layers test says so.</summary>
+    public static readonly System.Collections.Generic.HashSet<string> Keys = new()
+    {
+        "age", "severity", "storm", "dry", "alien", "overgrown", "dead", "swollen", "fungal", "burnt", "sparse", "stock", "working", "ferals",
+        "predators", "mutagen", "barren", "desolate", "strife", "living", "ash", "fade", "dirt", "tusks", "claws", "glow",
+    };
+
     static float U(float v) => Math.Clamp(v, 0f, 1f);
 
     public static WorldReading Of(WorldRoll? roll)

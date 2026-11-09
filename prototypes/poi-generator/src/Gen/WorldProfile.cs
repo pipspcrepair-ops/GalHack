@@ -187,12 +187,19 @@ public sealed record WorldProfile
 
     // ---- rolling one ----------------------------------------------------------------------------
 
+    /// <summary>How many lived on a world before the fall, in words, by its power of ten.</summary>
+    public static string PopulationWord(int pop) => pop switch
+    {
+        <= 0 => "none", 1 => "sparse", 2 => "hundreds", 3 => "thousands", 4 => "tens of thousands", 5 => "hundreds of thousands",
+        6 => "millions", 7 => "tens of millions", 8 => "hundreds of millions", 9 => "billions", _ => "tens of billions",
+    };
+
     /// <summary>
     /// A world's profile from its seed and kind (archetype, as the planet names it: temperate, arid,
     /// ice, lava, alien...). Start worlds were always inhabited. Neighbouring seeds differ widely:
     /// colonies developed unevenly.
     /// </summary>
-    public static WorldProfile Roll(ulong seed, string archetype, bool start = false)
+    public static WorldProfile Roll(ulong seed, string archetype, bool start = false, int? forcePopulation = null, PopulationNow? forceCurrent = null)
     {
         var rng = new Rng(Hash.Combine(seed, 0x50F11EUL));
         string a = archetype.ToLowerInvariant();
@@ -202,6 +209,12 @@ public sealed record WorldProfile
         float never = a switch { "temperate" => 0.06f, "arid" => 0.12f, "ice" => 0.2f, "lava" => 0.3f, "alien" => 0.4f, _ => 0.15f };
         bool inhabited = start || !rng.Chance(never);
         int pop = inhabited ? Math.Clamp(D6() + D6() - 2 - harsh + (start ? 1 : 0), 1, 10) : 0;
+        // A new game's pick stands in for the roll, and everything that follows from it follows from the pick.
+        if (forcePopulation is int forced)
+        {
+            pop = Math.Clamp(forced, 0, 10);
+            inhabited = pop > 0;
+        }
         Trade trade = a switch
         {
             "temperate" => rng.Pick(new[] { Trade.Agricultural, Trade.Agricultural, Trade.Industrial, Trade.Commerce, Trade.Research, Trade.Military }),
@@ -243,6 +256,7 @@ public sealed record WorldProfile
         // Nobody ever settled here, so whoever's here came lately: outposts at most. A start world always has someone to find.
         if (!inhabited) current = PopulationNow.Outposts;
         if (start) current = (PopulationNow)Math.Clamp((int)current, (int)PopulationNow.Survivors, (int)PopulationNow.Outposts);
+        if (forceCurrent is PopulationNow picked) current = picked;
         // The living: survivors usually fall a level or two below the ruins; now and then a faction
         // brings stellar tech to a world whose ruins are older (never on a start world, where no faction holds ground).
         int drop = rng.Range(0, 3);

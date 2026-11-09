@@ -48,6 +48,8 @@ public interface ILand
     double Depth { get; }
     float Height(double x, double z);
     bool Wet(double x, double z);
+    /// <summary>Height and wetness together, where one look at the ground gives both.</summary>
+    (float Height, bool Wet) Ground(double x, double z) => (Height(x, z), Wet(x, z));
     /// <summary>Rich ground: where a mine would go.</summary>
     bool Rich(double x, double z);
 }
@@ -121,7 +123,30 @@ public sealed class RegionPlan
         readonly (double X, double Z) _landing;
         readonly bool _start;
         readonly List<(double X, double Z)> _open = new();
-        int MaxPlaces => 34;
+        /// <summary>
+        /// How many places a world of this size and these people wants, against a 16 x 8 km world of
+        /// a hundred thousand (the size the counts in the world-layer data are written for): its towns,
+        /// hamlets, fields, wrecks and the cap all grow with it. Area raised to three quarters, so a
+        /// big world is fuller than a small one but never dozens of times slower to build.
+        /// </summary>
+        double Scale
+        {
+            get
+            {
+                double area = _land.Width * _land.Depth / (16000.0 * 8000.0);
+                double people = _profile.Inhabited ? Math.Clamp(0.4 + _profile.Population * 0.12, 0.5, 1.6) : 0.5;
+                return Math.Pow(area, 0.75) * people;
+            }
+        }
+        int MaxPlaces => Math.Max(34, (int)Math.Round(34 * Scale));
+
+        /// <summary>A region count from the roll, for this world's size and people (never none where the roll had some).</summary>
+        int Count(string kind)
+        {
+            float rolled = _roll.Regions.GetValueOrDefault(kind);
+            int n = (int)Math.Round(rolled * Scale);
+            return rolled >= 0.5f ? Math.Max(1, n) : n;
+        }
 
         public Planner(RegionPlan p, PoiLibrary lib, ILand land, WorldRoll roll, WorldProfile profile, Rng r, (double, double) landing, bool start)
         {
@@ -139,8 +164,8 @@ public sealed class RegionPlan
                 for (int b = -2; b <= 2; b++)
                 {
                     double sx = x + a * half / 2, sz = z + b * half / 2;
-                    if (_land.Wet(Wrap(sx, _land.Width), Wrap(sz, _land.Depth))) return -1;
-                    float h = _land.Height(Wrap(sx, _land.Width), Wrap(sz, _land.Depth));
+                    var (h, wet) = _land.Ground(Wrap(sx, _land.Width), Wrap(sz, _land.Depth));
+                    if (wet) return -1;
                     lo = MathF.Min(lo, h);
                     hi = MathF.Max(hi, h);
                 }
@@ -149,12 +174,18 @@ public sealed class RegionPlan
 
         public void Run()
         {
-            for (double z = Margin; z < _land.Depth - Margin; z += 240)
-                for (double x = Margin; x < _land.Width - Margin; x += 240)
-                {
-                    float rough = Roughness(x, z, 240);
-                    if (rough >= 0 && rough < 26) _open.Add((x, z));
-                }
+            // Read side by side (a big world has tens of thousands of spots), kept in the same order.
+            int rows = (int)Math.Ceiling((_land.Depth - 2 * Margin) / 240), cols = (int)Math.Ceiling((_land.Width - 2 * Margin) / 240);
+            var open = new bool[Math.Max(0, rows) * Math.Max(0, cols)];
+            System.Threading.Tasks.Parallel.For(0, open.Length, i =>
+            {
+                double x = Margin + i % cols * 240, z = Margin + i / cols * 240;
+                if (x >= _land.Width - Margin || z >= _land.Depth - Margin) return;
+                float rough = Roughness(x, z, 240);
+                open[i] = rough >= 0 && rough < 26;
+            });
+            for (int i = 0; i < open.Length; i++)
+                if (open[i]) _open.Add((Margin + i % cols * 240, Margin + i / cols * 240));
             if (_open.Count == 0) return;
             var towns = Hubs();
             if (_start) StartCountry();
@@ -164,6 +195,7 @@ public sealed class RegionPlan
             Wrecks();
             Fill();
             Breaks();
+            Cover();
         }
 
         Region AddRegion(RegionKind kind, double x, double z, double radius, int town = -1)
@@ -173,9 +205,9 @@ public sealed class RegionPlan
             return r;
         }
 
-        PlannedPlace? Add(string family, double x, double z, Region? region, string role, string why, int serves = -1)
+        PlannedPlace? Add(string family, double x, double z, Region? region, string role, string why, int serves = -1, bool capped = true)
         {
-            if (_p.Places.Count >= MaxPlaces) return null;
+            if (capped && _p.Places.Count >= MaxPlaces) return null;
             // A place whose tech the world never had gives way to its age's own (a launch field to a caravan camp).
             if (_profile.ForAge(_lib, _lib.Family(family), Hash.Combine((ulong)_p.Places.Count, (ulong)(x * 7 + z))) is not { } aged) return null;
             family = aged.Id;
@@ -219,7 +251,7 @@ public sealed class RegionPlan
         }
 
         /// <summary>The best spot in a ring round a point for a family: level, clear, and however <paramref name="prefer"/> scores it (lower is better).</summary>
-        (double X, double Z)? Spot(double cx, double cz, double r0, double r1, string family, Func<double, double, float>? prefer = null)
+        (double X, double Z)? Spot(double cx, double cz, double r0, double r1, string family, Func<double, double, float>? prefer = null, float steepest = 24)
         {
             double half = HalfOf(_lib.Family(family));
             (double, double)? best = null;
@@ -230,7 +262,7 @@ public sealed class RegionPlan
                 double a = start + n * 2.399963, t = (n + 0.5) / 72.0, r = r0 + (r1 - r0) * Math.Sqrt(t);
                 double x = Wrap(cx + Math.Cos(a) * r, _land.Width), z = Wrap(cz + Math.Sin(a) * r, _land.Depth);
                 float rough = Roughness(x, z, half);
-                if (rough < 0 || rough > 24 || !Clear(x, z, half)) continue;
+                if (rough < 0 || rough > steepest || !Clear(x, z, half)) continue;
                 float score = rough + (prefer?.Invoke(x, z) ?? 0f) + _r.Float() * 4f;
                 if (score < bestScore) { bestScore = score; best = (x, z); }
             }
@@ -299,19 +331,42 @@ public sealed class RegionPlan
         List<(Region Region, PlannedPlace Hub)> Hubs()
         {
             var made = new List<(Region, PlannedPlace)>();
-            int towns = _roll.RegionCount("town"), hamlets = _roll.RegionCount("hamlet");
+            int towns = Count("town"), hamlets = Count("hamlet");
             var spots = new List<(double X, double Z)>();
             bool Far(double x, double z, double d) => spots.All(s => _p.Dist(s.X, s.Z, x, z) >= d) && _p.Dist(_landing.X, _landing.Z, x, z) >= (_start ? 1700 : 500);
             var order = _open.OrderBy(o => _r.Float()).ToList();
-            // A big town wants big flat ground: the middle of the open land first.
-            int Wanted(double x, double z) => _open.Count(o => _p.Dist(o.X, o.Z, x, z) < 720);
+            // A big town wants big flat ground: the middle of the open land first (counted by 720 m buckets: a big world has tens of thousands of open spots).
+            var buckets = new Dictionary<(int, int), List<(double X, double Z)>>();
+            int bx = Math.Max(1, (int)(_land.Width / 720)), bz = Math.Max(1, (int)(_land.Depth / 720));
+            (int, int) Bucket(double x, double z) => ((int)(Wrap(x, _land.Width) / _land.Width * bx) % bx, (int)(Wrap(z, _land.Depth) / _land.Depth * bz) % bz);
+            foreach (var o in _open)
+            {
+                var key = Bucket(o.X, o.Z);
+                if (!buckets.TryGetValue(key, out var list)) buckets[key] = list = new List<(double, double)>();
+                list.Add(o);
+            }
+            int Wanted(double x, double z)
+            {
+                var (cx, cz) = Bucket(x, z);
+                int n = 0;
+                for (int a = -1; a <= 1; a++)
+                    for (int b = -1; b <= 1; b++)
+                        if (buckets.TryGetValue((((cx + a) % bx + bx) % bx, ((cz + b) % bz + bz) % bz), out var list))
+                            foreach (var o in list) if (_p.Dist(o.X, o.Z, x, z) < 720) n++;
+                return n;
+            }
             order = order.OrderByDescending(o => Wanted(o.X, o.Z) + _r.Float() * 5f).ToList();
+            // The spacings tried, widest first; a spot too near the towns for one spacing stays too near (towns only
+            // come), so each spacing's scan picks up where it left off: the same towns as scanning from the start.
+            var spacings = new List<double>();
+            for (double spacing = 3200; spacing >= 1600; spacing *= 0.84) spacings.Add(spacing);
+            var from = new int[spacings.Count];
             for (int n = 0; n < towns + hamlets; n++)
             {
                 (double X, double Z)? at = null;
-                for (double spacing = 3200; spacing >= 1600 && at == null; spacing *= 0.84)
-                    foreach (var o in order)
-                        if (Far(o.X, o.Z, spacing)) { at = o; break; }
+                for (int l = 0; l < spacings.Count && at == null; l++)
+                    for (; from[l] < order.Count; from[l]++)
+                        if (Far(order[from[l]].X, order[from[l]].Z, spacings[l])) { at = order[from[l]]; break; }
                 if (at is not { } s) break;
                 spots.Add(s);
                 bool town = n < towns;
@@ -348,7 +403,7 @@ public sealed class RegionPlan
             }
             if (isTown)
             {
-                int lived = 1 + (_roll.RegionCount("industry") > 0 ? _roll.RegionCount("industry") / Math.Max(1, _roll.RegionCount("town")) : 0);
+                int lived = 1 + (_roll.RegionCount("industry") > 0 ? Count("industry") / Math.Max(1, Count("town")) : 0);
                 for (int n = 0; n < lived; n++)
                 {
                     if (Choose(_roll.Industry) is not { } id) break;
@@ -374,10 +429,10 @@ public sealed class RegionPlan
                     Serves(depot, ds, town, "depot", "where the town's railway ends", hub, "road");
             }
             // Farmland lies out beyond the town, on the side with the most level ground.
-            int fields = Math.Max(0, _roll.RegionCount("farmland"));
+            int fields = Count("farmland");
             if (fields > 0 && Choose(_roll.Farm) != null)
             {
-                int perTown = Math.Max(1, (int)Math.Ceiling(fields / (double)Math.Max(1, _roll.RegionCount("town") + _roll.RegionCount("hamlet"))));
+                int perTown = Math.Max(1, (int)Math.Ceiling(fields / (double)Math.Max(1, Count("town") + Count("hamlet"))));
                 for (int n = 0; n < perTown; n++)
                 {
                     if (Choose(_roll.Farm) is not { } farm) break;
@@ -465,7 +520,7 @@ public sealed class RegionPlan
 
         void Wrecks()
         {
-            for (int k = 0, n = _roll.RegionCount("wreck_field"); k < n; k++)
+            for (int k = 0, n = Count("wreck_field"); k < n; k++)
             {
                 var o = _open[_r.Range(0, _open.Count)];
                 if (Spot(o.X, o.Z, 0, 1400, "crashed_freighter") is { } s)
@@ -479,7 +534,7 @@ public sealed class RegionPlan
         /// <summary>The rest of the theme's places, near what they'd have stood near.</summary>
         void Fill()
         {
-            int want = Math.Max(2, _roll.RegionCount("town") + _roll.RegionCount("hamlet"));
+            int want = Math.Max(2, Count("town") + Count("hamlet"));
             var hubs = _p.Places.Where(p => p.Role == "hub").ToList();
             for (int k = 0; k < want && hubs.Count > 0; k++)
             {
@@ -490,6 +545,78 @@ public sealed class RegionPlan
                 if (Spot(near.X, near.Z, blast ? 360 : 700, blast ? 800 : 2400, id) is { } s
                     && Add(id, s.X, s.Z, _p.Regions[near.Region], "fill", blast ? "where the strike on the town came down" : "part of the town's country", near.Index) is { } p)
                     _p.Links.Add(new PlannedLink(p.Index, near.Index, "track", "a track out to it"));
+            }
+        }
+
+        /// <summary>The planned spacing of places over the land: no dry ground lies further than this from one (a little more in rough country, less by water).</summary>
+        public const double Reach = 3400;
+
+        /// <summary>
+        /// The land between: wherever dry ground lies further than a short flight from anything planned, something
+        /// stood there once: one of the theme's places, a farm by the water, or a small place of the world's other kinds
+        /// (a camp, an outpost, a wreck). Thinner in rough country, closer by water, never a hole. Out of any region,
+        /// so the towns' country stays the towns' own.
+        /// </summary>
+        void Cover()
+        {
+            const double Step = 1000;
+            var land = new List<(double X, double Z, float Rough, bool Wet)>();
+            for (double z = Margin; z < _land.Depth - Margin; z += Step)
+                for (double x = Margin; x < _land.Width - Margin; x += Step)
+                {
+                    if (_land.Wet(x, z)) continue;
+                    float rough = Roughness(x, z, 400);
+                    bool wet = false;
+                    for (int a = 0; a < 6 && !wet; a++) wet = _land.Wet(Wrap(x + Math.Cos(a * Math.PI / 3) * 700, _land.Width), Wrap(z + Math.Sin(a * Math.PI / 3) * 700, _land.Depth));
+                    land.Add((x, z, rough, wet));
+                }
+            if (land.Count == 0) return;
+            var near = new double[land.Count];
+            for (int i = 0; i < land.Count; i++)
+            {
+                near[i] = double.MaxValue;
+                foreach (PlannedPlace p in _p.Places) near[i] = Math.Min(near[i], _p.Dist(p.X, p.Z, land[i].X, land[i].Z));
+            }
+            double Allow(int i) => Reach * (land[i].Wet ? 0.85 : land[i].Rough < 0 || land[i].Rough > 40 ? 1.2 : 1.0);
+            // The small places of the world's other kinds, for wild country the theme has nothing for.
+            var small = _lib.Families.Where(f => !f.Space && f.Tier <= PoiTier.Outpost && !f.Tags.Contains("grand") && !f.Tags.Contains("flavour") && !f.Tags.Contains("city")
+                                                 && !f.Tags.Contains("scrappy") && !f.Tags.Contains("evacuation") && !Blast(f.Id) && Stands(f.Id)
+                                                 && (!_start || !ThemeDef.FactionOwned(f) || f.StateWeights[(int)PoiState.Ruined] > 0f)).Select(f => f.Id).ToList();
+            for (int guard = 0; guard < land.Count; guard++)
+            {
+                int worst = -1;
+                double most = 0;
+                for (int i = 0; i < land.Count; i++)
+                    if (near[i] / Allow(i) > most) { most = near[i] / Allow(i); worst = i; }
+                if (worst < 0 || most <= 1) break;
+                var (cx, cz, _, wet) = land[worst];
+                PlannedPlace? placed = null;
+                for (int k = 0; k < 6 && placed == null; k++)
+                {
+                    float roll = _r.Float();
+                    string? id = roll < 0.45f ? Choose(_roll.Poi) : roll < 0.6f && wet ? Choose(_roll.Farm) : null;
+                    if (id != null && Blast(id)) id = null;
+                    if (id == null && small.Count > 0) id = small[_r.Range(0, small.Count)];
+                    if (id == null) break;
+                    double r1 = k < 3 ? 1200 : 2200;
+                    if (Spot(cx, cz, 0, r1, id) is { } s)
+                        placed = Add(id, s.X, s.Z, null, "cover", wet ? "by the water, out between the towns" : "out in the country between the towns", capped: false);
+                }
+                // Rough country: a small place on the least rough ground going.
+                for (int k = 0; k < 3 && placed == null && small.Count > 0; k++)
+                {
+                    string id = small[_r.Range(0, small.Count)];
+                    if (Spot(cx, cz, 0, 2400, id, null, 40) is { } s)
+                        placed = Add(id, s.X, s.Z, null, "cover", "up in the rough country", capped: false);
+                }
+                if (placed == null)
+                {
+                    // Nowhere here will take one: let the ground round it go rather than ask again.
+                    for (int i = 0; i < land.Count; i++)
+                        if (_p.Dist(land[i].X, land[i].Z, cx, cz) < 1500) near[i] = 0;
+                    continue;
+                }
+                for (int i = 0; i < land.Count; i++) near[i] = Math.Min(near[i], _p.Dist(placed.X, placed.Z, land[i].X, land[i].Z));
             }
         }
 

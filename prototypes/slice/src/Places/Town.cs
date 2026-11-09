@@ -943,7 +943,8 @@ public sealed partial class Town
         // A few of them may not be what they seem: silent carriers, rolled as anyone is, nothing showing.
         HuskRules husks = life.Data.Husks;
         int carriers = Carriers.Roll(husks, life.Moving.Any(s => s.Husk), life.World.Coreward, People.Count, roll);
-        foreach (Person q in People.Where(q => q.Looks.Figure.Stage != LifeStage.Child).OrderBy(_ => roll.Float()).Take(carriers)) q.Carrier = true;
+        // (Only a body the worms can take: a machine never carries them.)
+        foreach (Person q in People.Where(q => q.Looks.Figure.Stage != LifeStage.Child && Husks.CanTurn(q.Looks)).OrderBy(_ => roll.Float()).Take(carriers)) q.Carrier = true;
         CarriersAtStart = People.Count(q => q.Carrier);
         foreach (Person q in People) _carried.Add(new Carried());
     }
@@ -993,7 +994,7 @@ public sealed partial class Town
         _rise.Clear();
         ITarget you = _places.Zone.Wildlife.Player;
         Carriers.Step(_places.Zone.Wildlife.Life.Data.Husks, _carried, you is { Attackable: true } ? player : null, WormsEvery, _rise);
-        for (int i = 0; i < People.Count; i++) People[i].Carrier = _carried[i].Carrier;
+        for (int i = 0; i < People.Count; i++) People[i].Carrier = _carried[i].Carrier && Husks.CanTurn(People[i].Looks);
         foreach (int i in _rise) Rise(People[i]);
     }
 
