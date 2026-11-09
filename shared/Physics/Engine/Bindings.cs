@@ -67,11 +67,24 @@ public sealed class HullBinding : BodyBinding
     public override Node3D Node => Hull;
     public override CollisionObject3D Collider => Hull;
 
+    /// <summary>The transform last checked for overlap while asleep.</summary>
+    Transform3D _cleared;
+
+    /// <summary>How deep an overlap is left alone, m (resting contact).</summary>
+    public const float Slop = 0.005f;
+
     public override void Move(PhysicsHost host, float dt)
     {
         Body b = Body;
         Hull.GlobalTransform = GodotMath.TransformOf(b); // turning, gear lifts and settling happened in the rules
-        if (b.Asleep) return;
+        if (b.Asleep)
+        {
+            // At rest it isn't swept, but what set it where it stands (settling onto its legs, a placement, a toss
+            // lying as it landed) turned or put it there without a sweep: it is pushed clear, still asleep.
+            if (Hull.GlobalTransform != _cleared && Clear()) b.Position = Hull.GlobalPosition.ToNumerics();
+            _cleared = Hull.GlobalTransform;
+            return;
+        }
 
         Vector3 before = b.Velocity.ToGodot(), velocity = before;
         Vector3 motion = before * dt;
@@ -97,6 +110,9 @@ public sealed class HullBinding : BodyBinding
             motion = hit.GetRemainder().Slide(n);
             if (motion.LengthSquared() < 1e-10f) break;
         }
+        // The sweep stops it at what it meets, but turning (the flight model's, the hover's tilt to the ground, a
+        // bump's kick) happened before it, unswept, and can swing a corner into the ground: nothing is left inside.
+        Clear();
 
         b.Position = Hull.GlobalPosition.ToNumerics();
         b.Velocity = host.World.ResolveContacts(b, _contacts, before.ToNumerics(), velocity.ToNumerics());
@@ -106,6 +122,92 @@ public sealed class HullBinding : BodyBinding
     {
         Hull.GlobalTransform = GodotMath.TransformOf(Body);
         Hull.ResetPhysicsInterpolation();
+    }
+
+    /// <summary>
+    /// Pushes the hull out of anything solid it overlaps (the ground's collision, a place's blocks, another hull)
+    /// along the deepest contact, a pass at a time, until nothing is deeper than <see cref="Slop"/>. A contact whose
+    /// normal points down (a hull sunk past a face of the ground, which the engine would push deeper still) lifts it
+    /// instead. True if it moved.
+    /// </summary>
+    public bool Clear()
+    {
+        PhysicsDirectSpaceState3D space = Hull.GetWorld3D()?.DirectSpaceState;
+        if (space == null) return false;
+        // Nothing near at all (in the air): one query of its bounds, and done.
+        Aabb bounds = default;
+        bool any = false;
+        foreach (Node n in Hull.GetChildren())
+            if (n is CollisionShape3D cs && !cs.Disabled && cs.Shape != null)
+            {
+                Aabb box = cs.Transform * BoundsOf(cs.Shape);
+                bounds = any ? bounds.Merge(box) : box;
+                any = true;
+            }
+        if (!any) return false;
+        _near ??= new PhysicsShapeQueryParameters3D { Shape = new BoxShape3D(), CollisionMask = Hull.CollisionMask, Margin = 0f };
+        ((BoxShape3D)_near.Shape).Size = bounds.Size + Vector3.One * 0.02f;
+        _near.Transform = Hull.GlobalTransform * new Transform3D(Basis.Identity, bounds.GetCenter());
+        _near.Exclude = _self ??= new Godot.Collections.Array<Rid> { Hull.GetRid() };
+        if (space.IntersectShape(_near, 1).Count == 0) return false;
+
+        bool moved = false;
+        for (int pass = 0; pass < 8; pass++)
+        {
+            // The deepest overlap of any of its shapes: the way out of it is from the point on the hull to the point on what it overlaps.
+            Vector3 push = Vector3.Zero;
+            float deepest = Slop;
+            foreach (Node n in Hull.GetChildren())
+            {
+                if (n is not CollisionShape3D cs || cs.Disabled || cs.Shape == null) continue;
+                _shape ??= new PhysicsShapeQueryParameters3D { CollisionMask = Hull.CollisionMask, Margin = 0f };
+                _shape.Shape = cs.Shape;
+                _shape.Transform = cs.GlobalTransform;
+                _shape.Exclude = _self;
+                Godot.Collections.Array<Vector3> points = space.CollideShape(_shape, 8);
+                for (int i = 0; i + 1 < points.Count; i += 2)
+                {
+                    Vector3 way = points[i + 1] - points[i];
+                    float depth = way.Length();
+                    if (depth <= deepest) continue;
+                    deepest = depth;
+                    push = way;
+                }
+            }
+            if (push == Vector3.Zero) break;
+            // Pointing down while it is the hull's underside that is in (sunk past a face of the ground, where the
+            // shortest way out is through it): out the top instead.
+            if (push.Y < -0.2f * push.Length()) push = Vector3.Up * System.MathF.Min(push.Length(), 0.5f);
+            Hull.GlobalPosition += push * 1.02f;
+            LastPush = push;
+            Pushes++;
+            moved = true;
+        }
+        return moved;
+    }
+
+    /// <summary>The last push out of an overlap, and how many there have been (for tests).</summary>
+    public Vector3 LastPush;
+    public int Pushes;
+
+    PhysicsShapeQueryParameters3D _near, _shape;
+    Godot.Collections.Array<Rid> _self;
+    readonly Dictionary<Shape3D, Aabb> _bounds = new();
+
+    /// <summary>A hull shape's own bounds (boxes and convex hulls: what a structure's colliders are).</summary>
+    Aabb BoundsOf(Shape3D shape)
+    {
+        if (_bounds.TryGetValue(shape, out Aabb a)) return a;
+        if (shape is BoxShape3D box) a = new Aabb(-box.Size * 0.5f, box.Size);
+        else if (shape is ConvexPolygonShape3D hull && hull.Points.Length > 0)
+        {
+            a = new Aabb(hull.Points[0], Vector3.Zero);
+            foreach (Vector3 p in hull.Points) a = a.Expand(p);
+        }
+        else a = shape.GetDebugMesh().GetAabb();
+        if (_bounds.Count > 4096) _bounds.Clear(); // shapes swapped by edits: never grows without end
+        _bounds[shape] = a;
+        return a;
     }
 }
 

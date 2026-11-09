@@ -88,7 +88,9 @@ public partial class VehicleGroundTest : Node
         {
             _game.Mode = mode;
             GD.Print($"== {mode} ==");
-            foreach (int x in Bike(mode.ToString())) yield return x;
+            foreach (int x in ToPlace()) yield return x;
+            if (!args.Contains("--vessels-only")) foreach (int x in Bike(mode.ToString())) yield return x;
+            if (!args.Contains("--bike-only")) foreach (int x in Vessels(mode.ToString())) yield return x;
         }
     }
 
@@ -290,7 +292,70 @@ public partial class VehicleGroundTest : Node
         foreach (int x in Observe(bike, w, 300, () => Steady(bike))) yield return x;
         foreach (int x in RidesOff(bike, mode, "set down 0.6 m into the ground", w)) yield return x;
 
+        // Against a place's blocks: dropped onto its top, and set down partly into it.
+        if (_placeTop is Vector3 roof)
+        {
+            w = new Watch();
+            bike.Position = roof + Vector3.Up * 10f;
+            foreach (int x in Observe(bike, w, 300, () => Steady(bike))) yield return x;
+            foreach (int x in RidesOff(bike, mode, "dropped 10 m onto a place's blocks", w)) yield return x;
+            w = new Watch();
+            bike.Position = roof - Vector3.Up * 0.4f;
+            foreach (int x in Observe(bike, w, 300, () => Steady(bike))) yield return x;
+            foreach (int x in RidesOff(bike, mode, "set down 0.4 m into a place's blocks", w)) yield return x;
+        }
+
         _game.Survivor.Dismount();
         _game.Bikes.Remove(bike);
+    }
+}
+
+/// <summary>A place's blocks to come down on: the flat top of a standing place's blocks near the start.</summary>
+public partial class VehicleGroundTest
+{
+    /// <summary>A flat top of a place's blocks (a roof or a floor open to the sky), clear for a few metres round, or null.</summary>
+    Vector3? _placeTop;
+
+    IEnumerable<int> ToPlace()
+    {
+        _placeTop = null;
+        Vector3 feet = _game.Survivor.WorldFeet;
+        var space = _game.Zone.GetWorld3D().DirectSpaceState;
+        var sites = _game.Zone.Planet.Pois.Where(s => s.Instance != null && s.Instance.Blocks != null).OrderBy(s => _game.Places.DistanceTo(s, feet)).Take(8).ToList();
+        foreach (var site in sites)
+        {
+            var box = site.Footprint;
+            Vector3 mid = _game.Zone.Planet.NearestCopy(new Vector3((box.Min.X + box.Max.X) * 0.5f, site.Origin.Y, (box.Min.Z + box.Max.Z) * 0.5f), feet);
+            Vector3 stand = mid + new Vector3((box.Max.X - box.Min.X) * 0.5f + 12f, 0f, 0f);
+            _game.Survivor.PlaceOutside((_game.Zone.GroundAt(stand.X, stand.Z) + Vector3.Up * 0.3f).ToNumerics());
+            for (int t = 0; t < 1800 && _game.Places.PlaceOf(site) is not { Ready: true }; t++) yield return 0;
+            foreach (int x in _drive.UntilSettled(20)) yield return x;
+            foreach (int x in _drive.Wait(20)) yield return x;
+            if (_game.Places.PlaceOf(site) is not { Ready: true }) continue;
+            Vector3 lo = _game.Zone.Planet.NearestCopy(new Vector3(box.Min.X, 0f, box.Min.Z), feet);
+            float top = site.Origin.Y + 80f;
+            Vector3? Hit(float x, float z)
+            {
+                var hit = space.IntersectRay(PhysicsRayQueryParameters3D.Create(new Vector3(x, top, z), new Vector3(x, site.Origin.Y - 30f, z), GalHack.Physics.Layers.World));
+                if (hit.Count == 0 || _game.Places.PlaceOf((GodotObject)hit["collider"]) == null || ((Vector3)hit["normal"]).Y < 0.95f) return null;
+                return (Vector3)hit["position"];
+            }
+            for (int i = 2; i < box.Max.X - box.Min.X - 2 && _placeTop == null; i += 2)
+                for (int k = 2; k < box.Max.Z - box.Min.Z - 2 && _placeTop == null; k += 2)
+                {
+                    float x = lo.X + i + 0.5f, z = lo.Z + k + 0.5f;
+                    if (Hit(x, z) is not Vector3 p) continue;
+                    bool flat = true;
+                    for (int d = 0; d < 8 && flat; d++)
+                        flat = Hit(x + MathF.Cos(d * 0.785f) * 2.5f, z + MathF.Sin(d * 0.785f) * 2.5f) is Vector3 q && MathF.Abs(q.Y - p.Y) < 0.05f;
+                    if (flat) _placeTop = p;
+                }
+            if (_placeTop is Vector3 found)
+            {
+                GD.Print($"  (a place's blocks to come down on: {site.Name}, its top at {found})");
+                yield break;
+            }
+        }
+        GD.Print("  (no flat top of a place's blocks near the start on this world)");
     }
 }

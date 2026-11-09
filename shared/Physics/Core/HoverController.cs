@@ -5,7 +5,8 @@ namespace GalHack.Physics;
 
 /// <summary>
 /// Holds a hover vessel at its ride height (ported from ship-handling's physics module, the
-/// same rules). Each hover engine probes straight down for ground or water; the vessel rides
+/// same rules). Each hover engine probes along the command chair's down for ground or water, and
+/// pushes the craft away along it; the vessel rides
 /// at the engines' average clearance. Look-ahead probes read the ground in front so it rises
 /// over rocks early instead of snagging.
 ///
@@ -61,6 +62,13 @@ public sealed class HoverController
     /// <summary>Look-ahead probes on. Only switched off to prove what they are for.</summary>
     public bool LookAhead = true;
 
+    /// <summary>
+    /// The command chair's down in the vessel's frame: the engines probe for ground along it and push the craft away
+    /// along it. Tipped onto its side or its roof, its engines face nothing below and hold nothing up: it falls and
+    /// its levelling turns it back onto them.
+    /// </summary>
+    public Vector3 Down = -Vector3.UnitY;
+
     /// <param name="engines">Engine positions in the vessel's frame: the plane they ride on.</param>
     public HoverController(Vector3[] engines)
     {
@@ -98,14 +106,16 @@ public sealed class HoverController
         _jumpCooldown -= dt;
         _jumpGrace -= dt;
 
-        // Engine probes: the ground (or water) under each engine.
+        // Engine probes: the ground (or water) under each engine, along the chair's down. On its side or its roof
+        // they face away from the ground and find none (it falls, levelling).
+        Vector3 down = MathX.Rotate(basis, Down);
         int hits = 0;
         float groundSum = 0f, engineSum = 0f;
         Vector3 normalSum = Vector3.Zero;
         foreach (Vector3 engine in _engines)
         {
             Vector3 p = pos + MathX.Rotate(basis, engine);
-            if (!world.Query.Ray(p + Vector3.UnitY * ride, p - Vector3.UnitY * depth, Layers.ProbeMask, body, out RayHit hit)
+            if (down.Y > -0.3f || !world.Query.Ray(p - down * ride, p + down * depth, Layers.ProbeMask, body, out RayHit hit)
                 || hit.Normal.Y < 0.1f)
                 continue;
             _seen[hits++] = hit.Point;
@@ -207,7 +217,10 @@ public sealed class HoverController
             else
             {
                 float limit = (wanted > velocity.Y ? h.MaxRise : h.MaxGrip) * dt;
+                float vy = velocity.Y;
                 velocity.Y = MathX.MoveToward(velocity.Y, wanted, limit);
+                // The engines push along the chair's down: what they change in the climb, tipped, pushes it sideways too.
+                velocity += new Vector3(-down.X, 0f, -down.Z) / -down.Y * (velocity.Y - vy);
             }
         }
 
