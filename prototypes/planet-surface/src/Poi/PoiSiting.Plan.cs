@@ -32,6 +32,11 @@ public static partial class PoiSiting
         public double Width { get; }
         public double Depth { get; }
         public float Height(double x, double z) => _bare.Sampler.Sample(x, z, 2).Height;
+        public (float Height, bool Wet) Ground(double x, double z)
+        {
+            GroundSample g = _bare.Sampler.Sample(x, z, 2);
+            return (g.Height, g.InRiver || g.Height < 2.5f);
+        }
         public bool Wet(double x, double z)
         {
             GroundSample g = _bare.Sampler.Sample(x, z, 2);
@@ -52,6 +57,9 @@ public static partial class PoiSiting
 
     /// <summary>The last world's planned places that never stood: no layout (skipped with a warning), or no ground found to seat them (tests read it).</summary>
     public static int LastSkipped, LastUnseated, LastPlanned;
+
+    /// <summary>The last world's place timings, ms: its region plan, setting it down, and the seating part of that (tests print them).</summary>
+    public static double LastPlanMs, LastSetDownMs, LastSeatMs;
 
     static Dir Toward(double dx, double dz) => Math.Abs(dx) >= Math.Abs(dz) ? (dx > 0 ? Dir.East : Dir.West) : (dz > 0 ? Dir.South : Dir.North);
 
@@ -126,6 +134,7 @@ public static partial class PoiSiting
         LastPlanned = jobs.Count;
         LastSkipped = made.Count(m => m == null);
         LastUnseated = 0;
+        var seatClock = System.Diagnostics.Stopwatch.StartNew();
         int mark = sites.Count;
         for (int i = 0; i < jobs.Count; i++)
         {
@@ -146,6 +155,7 @@ public static partial class PoiSiting
             j.Place.Seated = site;
             sites.Add(site);
         }
+        LastSeatMs = seatClock.Elapsed.TotalMilliseconds;
         return sites.Skip(mark).ToList();
     }
 }

@@ -276,7 +276,7 @@ public sealed partial class PlanetWorld
         foreach (PoiSite p in pois)
             PoiGenerator.Gen.StateTransforms.Settle(p.Instance, (x, z) => source.SurfaceHeight(Mathx.WrapX(p.Origin.X + x + 0.5, source.Width), Mathx.Wrap(p.Origin.Z + z + 0.5, source.Height)) - p.Origin.Y, 3);
         double tEnd = Lap();
-        LastTimes = $"map {tMap / 1000:F1} s, places {(tPlaces - tMap) / 1000:F1} s (layouts {PoiSiting.LastLayoutMs / 1000:F1} s), around {(tAround - tPlaces) / 1000:F1} s, finish {(tEnd - tAround) / 1000:F1} s";
+        LastTimes = $"map {tMap / 1000:F1} s, places {(tPlaces - tMap) / 1000:F1} s (plan {PoiSiting.LastPlanMs / 1000:F1}, layouts {PoiSiting.LastLayoutMs / 1000:F1}, seats {PoiSiting.LastSeatMs / 1000:F1} s), around {(tAround - tPlaces) / 1000:F1} s [{LastAroundTimes}], finish {(tEnd - tAround) / 1000:F1} s";
         var world = new PlanetWorld(spec, profile, map, landing, pois, around, source, watch.Elapsed.TotalMilliseconds, PoiGenerator.Gen.WorldReading.Of(layers), blasts) { Depth = depth, Roll = roll, Layers = layers, Library = catalog?.Library };
         world.TakeChart(chart);
         world.ChartStars();
@@ -304,6 +304,9 @@ public sealed partial class PlanetWorld
     /// </summary>
     /// <summary>Where the last world's build time went, phase by phase (tests print it).</summary>
     public static string LastTimes = "";
+
+    /// <summary>Where the last world's infrastructure time went, s (tests print it; empty where the infrastructure isn't compiled in).</summary>
+    public static string LastAroundTimes = "";
 
     public static WorldProfile ProfileFor(PlanetSpec spec, bool startWorld = false, PoiGenerator.Gen.WorldForce force = null) =>
         WorldProfile.Roll(Planets.Gen.Hash.Of(spec.Seed, 0x50F1), spec.Archetype.ToString(), startWorld, force?.Population, force?.PopulationNow);
