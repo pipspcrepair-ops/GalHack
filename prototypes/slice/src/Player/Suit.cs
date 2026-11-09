@@ -57,6 +57,9 @@ public sealed class Suit : IDamageSink
     /// <summary>The air of the room the survivor is in (a vessel's or base's sealed room, a place's shut one), or null.</summary>
     public RoomAir Air { get; private set; }
 
+    /// <summary>What is outside instead of the planet (space, in orbit), or null on the surface.</summary>
+    public Func<Pos, double, Exposure> Beyond;
+
     /// <summary>STAGING: tests' marked speed-up of rooms' air (1 in play).</summary>
     public double ClimateTimeScale = 1;
 
@@ -117,6 +120,12 @@ public sealed class Suit : IDamageSink
     Exposure Outside(Pos p, double time, out double raw)
     {
         raw = _climate.SealedRoomC;
+        if (Beyond != null)
+        {
+            Exposure beyond = Beyond(p, time);
+            raw = beyond.Temperature;
+            return beyond;
+        }
         PlanetWorld planet = _zone.Planet;
         if (planet == null) return SurvivalVitals.Model.Exposure.Mild;
         double x = Mathx.WrapX(p.X, planet.Width), z = Mathx.Wrap(p.Z, planet.Height);
@@ -220,7 +229,7 @@ public sealed class Suit : IDamageSink
     {
         _airClock += dt * ClimateTimeScale;
         Vessel v = survivor.Seated ?? survivor.Aboard;
-        if (Sheltered?.Invoke() ?? false)
+        if (Beyond == null && (Sheltered?.Invoke() ?? false))
         {
             (Room, Air) = (RoomKind.Bunker, null);
             return;
@@ -248,6 +257,11 @@ public sealed class Suit : IDamageSink
             return;
         }
         Godot.Vector3 feet = survivor.WorldFeet;
+        if (Beyond != null)
+        {
+            (Room, Air) = (RoomKind.None, null);
+            return;
+        }
         if (ClosedPlace?.Invoke(feet) is { } place)
         {
             Outside(here, Sim.Time, out double raw);
@@ -272,7 +286,7 @@ public sealed class Suit : IDamageSink
     {
         N.Vector3 at = survivor.Body.WorldPosition;
         Sim.Player.Position = new Pos(at.X, at.Y, at.Z);
-        InSealedRoom = InRoom(survivor) || (Sheltered?.Invoke() ?? false);
+        InSealedRoom = InRoom(survivor) || (Beyond == null && (Sheltered?.Invoke() ?? false));
         Breathe(dt, survivor);
         _riding = survivor.Seated != null || survivor.OnBike != null;
         _miningLeft -= dt;

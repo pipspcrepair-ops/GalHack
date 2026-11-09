@@ -137,6 +137,23 @@ public partial class ClimateTest
         Check(suit.InSealedRoom && RoomC < band.LowC,
             $"shut again, it starts from the cold that came in: {RoomC:F0} Â°C");
 
+        // Space outside, by the same rule (STAGING: the orbit's own outside set on the suit, as Spaceflight sets it on the way up).
+        suit.Beyond = _game.Spaceflight.Space;
+        double vacuumC = _game.Spaceflight.Space(Here, suit.Sim.Time).Temperature;
+        for (int i = 0; i < 60 * 30 && Math.Abs(RoomC - climate.SealedRoomC) > 0.5; i++) { Keep(); yield return 0; }
+        double spaceHeld = RoomC, spaceO2 = suit.Last.Exposure.OxygenPercent;
+        Check(suit.Room == RoomKind.Sealed && Math.Abs(spaceHeld - climate.SealedRoomC) <= 0.5 && spaceO2 > 20.5,
+            $"in orbit a powered sealed room holds {spaceHeld:F1} °C and {spaceO2:F0}% ({vacuumC:F0} °C and no air outside)");
+        room.PowerOn = false;
+        off = suit.Sim.Time;
+        while (Since() < climate.RoomHoldSeconds + climate.RoomDriftSeconds * 2) { Keep(); yield return 0; }
+        double spaceDrift = RoomC, spaceDriftO2 = suit.Last.Exposure.OxygenPercent;
+        double spaceShare = (climate.SealedRoomC - spaceDrift) / (climate.SealedRoomC - vacuumC);
+        Check(suit.Room == RoomKind.Unpowered && spaceShare > 0.7 && spaceDriftO2 < 4 && suit.Last.Exposure.Volume == null,
+            $"power off in orbit, it drifts toward space: {spaceDrift:F0} °C ({spaceShare:P0} of the way to {vacuumC:F0}) and {spaceDriftO2:F1}% oxygen after {Since():F0} s");
+        suit.Beyond = null;
+        room.PowerOn = true;
+
         (climate.ColdestC, climate.HottestC) = was;
         suit.ClimateTimeScale = 1;
     }
