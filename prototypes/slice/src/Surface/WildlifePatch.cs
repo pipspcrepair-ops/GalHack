@@ -140,6 +140,12 @@ public partial class WildlifePatch : Node3D
             else PlanetSurface.Fx.Fade.Set(n, 0f, shows);
         };
         PersonView.Fader = View.Fader; // people dissolve in and out at the far edge as creatures do
+        // Far off, a body stands on the far land as drawn, not the sim's finer ground under it (a far chunk is a coarser mesh).
+        View.Lift = c =>
+        {
+            if (Zone.Streamer?.DrawnGround(FromPatch(c.Position)) is not float drawn) return 0f;
+            return drawn - Sim.Terrain.Height(c.Position.X, c.Position.Z);
+        };
         PersonView.Arrives = d => PlanetSurface.Fx.PopLog.Note("person", "comes into view", d, 1.8f, 0f);
         AddChild(View);
         Audio = new ProceduralAudio { Name = "Calls" };

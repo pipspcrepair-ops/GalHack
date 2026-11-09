@@ -31,6 +31,33 @@ public partial class PopTest
         Check(near.Count == 0, $"{name}: nothing living comes into view within {AppearFloor:F0} m: {arrivals.Count} came into view, the nearest at {nearest}, {near.Count} too near ({string.Join(", ", near.Take(4).Select(p => $"{p.Kind} at {p.Distance:F0} m"))})");
     }
 
+    /// <summary>The most a drawn body's feet may be off the far ground drawn under it, m.</summary>
+    const float GroundGap = 0.3f;
+
+    /// <summary>At the most spawn distance, every body drawn past a kilometre stands on the far land as drawn under it: none floats or sinks.</summary>
+    void Grounded()
+    {
+        var patch = _game.Zone.Wildlife;
+        var streamer = _game.Zone.Streamer;
+        Vector3 eye = _game.Camera.GlobalPosition;
+        int n = 0, off = 0;
+        float worst = 0f, unlifted = 0f;
+        foreach (Creature c in patch.Sim.Creatures)
+        {
+            if (c.Removed || c.Dead || !patch.View.Drawn(c) || c.Species.Flies && !c.Landed) continue;
+            Vector3 at = patch.FromPatch(c.Position);
+            if (new Vector2(at.X - eye.X, at.Z - eye.Z).Length() < 1000f) continue;
+            if (streamer.DrawnGround(at) is not float ground) continue;
+            float sim = patch.Sim.Terrain.Height(c.Position.X, c.Position.Z), feet = sim + patch.View.DrawnLift(c);
+            float gap = MathF.Abs(feet - ground);
+            n++;
+            if (gap > GroundGap) off++;
+            worst = MathF.Max(worst, gap);
+            unlifted = MathF.Max(unlifted, MathF.Abs(sim - ground));
+        }
+        Check(n > 0 && off == 0, $"at the most spawn distance, {n} bodies drawn past 1 km stand on the far ground drawn under them: the worst {worst:F2} m off (at most {GroundGap} m); on the sim's own ground they would be up to {unlifted:F2} m off");
+    }
+
     IEnumerable<int> SpawnChecks()
     {
         GD.Print("-- spawn distance --");
@@ -67,6 +94,7 @@ public partial class PopTest
         Check(SpawnReach.Distance == top && patch.View.FarDistance == top && PersonView.FarRange == top && patch.Sim.Terrain.HalfSize >= top,
             $"at the most, live after {clock.Elapsed.TotalSeconds:F1} s: creatures drawn to {patch.View.FarDistance:F0} m, people to {PersonView.FarRange:F0} m, the patch {patch.Sim.Terrain.HalfSize:F0} m each way, {patch.Sim.Creatures.Count(c => !c.Removed && !c.Dead)} about");
         foreach (int x in Route("walk at the most spawn", null, 7f, 1.6f, 200f, 0f)) yield return x;
+        Grounded();
         _game.Settings.SpawnDistance = SpawnReach.Default;
         _game.Settings.Changed();
         for (int i = 0; i < 5; i++) yield return 0;

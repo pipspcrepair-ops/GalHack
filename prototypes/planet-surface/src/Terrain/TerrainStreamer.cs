@@ -164,6 +164,11 @@ public partial class TerrainStreamer : Node3D
         public Node3D Node;
         public List<FloraBatch> Flora;
 
+        /// <summary>Its ground mesh as drawn (chunk-local), and its triangles by 16 m cell, made the first time something asks (<see cref="DrawnGround"/>).</summary>
+        public Vector3[] Vertices;
+        public int[] Indices;
+        public List<int>[] Cells;
+
         /// <summary>Level 0: its solid flora (trunks, boulders), in planet coordinates. Null otherwise.</summary>
         public List<FloraSolid> Solids;
     }
@@ -880,6 +885,9 @@ public partial class TerrainStreamer : Node3D
             long nodeStart = Stopwatch.GetTimestamp();
             f.Node = BuildFarNode(job);
             f.Flora = job.Flora;
+            f.Vertices = job.Vertices;
+            f.Indices = job.Indices;
+            f.Cells = null;
             double nodeMs = Stopwatch.GetElapsedTime(nodeStart).TotalMilliseconds;
             if (nodeMs > WorstFarNodeMs)
             {
@@ -956,6 +964,51 @@ public partial class TerrainStreamer : Node3D
         double from = NearestCopy(a * FarBuilder.Size, FarBuilder.Span(a, planet), focus, planet);
         double to = NearestCopy(b * FarBuilder.Size, FarBuilder.Span(b, planet), focus, planet) + FarBuilder.Span(b, planet);
         return ((float)from, (float)to);
+    }
+
+    const int GroundCells = FarBuilder.Size / 16;
+
+    /// <summary>
+    /// The height of the far ground as drawn under a point (frame coordinates), m: the far chunk's own
+    /// mesh, not the generator's ground, which the coarser levels only meet at their grid points. Null
+    /// where no far chunk is drawn. What stands out on the far land stands on this (far creatures).
+    /// </summary>
+    public float? DrawnGround(Vector3 p)
+    {
+        if (World == null) return null;
+        double w = World.Terrain.Width, h = World.Terrain.Height;
+        int fx = (int)(Mod(p.X, w) / FarBuilder.Size), fz = (int)(Mod(p.Z, h) / FarBuilder.Size);
+        if (!_far.TryGetValue((fx, fz), out FarChunk f) || f.Node == null || f.Vertices == null) return null;
+        float lx = (float)Mod(p.X - fx * (double)FarBuilder.Size, w), lz = (float)Mod(p.Z - fz * (double)FarBuilder.Size, h);
+        if (f.Cells == null)
+        {
+            f.Cells = new List<int>[GroundCells * GroundCells];
+            for (int t = 0; t + 2 < f.Indices.Length; t += 3)
+            {
+                Vector3 a = f.Vertices[f.Indices[t]], b = f.Vertices[f.Indices[t + 1]], c = f.Vertices[f.Indices[t + 2]];
+                // Walls (curtains, cliff faces seen edge-on from above) are not ground.
+                float area = (b.X - a.X) * (c.Z - a.Z) - (c.X - a.X) * (b.Z - a.Z);
+                if (MathF.Abs(area) < 1e-3f) continue;
+                int i0 = Math.Clamp((int)(MathF.Min(a.X, MathF.Min(b.X, c.X)) / 16f), 0, GroundCells - 1), i1 = Math.Clamp((int)(MathF.Max(a.X, MathF.Max(b.X, c.X)) / 16f), 0, GroundCells - 1);
+                int j0 = Math.Clamp((int)(MathF.Min(a.Z, MathF.Min(b.Z, c.Z)) / 16f), 0, GroundCells - 1), j1 = Math.Clamp((int)(MathF.Max(a.Z, MathF.Max(b.Z, c.Z)) / 16f), 0, GroundCells - 1);
+                for (int j = j0; j <= j1; j++)
+                for (int i = i0; i <= i1; i++)
+                    (f.Cells[j * GroundCells + i] ??= new List<int>()).Add(t);
+            }
+        }
+        List<int> tris = f.Cells[Math.Clamp((int)(lz / 16f), 0, GroundCells - 1) * GroundCells + Math.Clamp((int)(lx / 16f), 0, GroundCells - 1)];
+        if (tris == null) return null;
+        float? best = null;
+        foreach (int t in tris)
+        {
+            Vector3 a = f.Vertices[f.Indices[t]], b = f.Vertices[f.Indices[t + 1]], c = f.Vertices[f.Indices[t + 2]];
+            float d = (b.X - a.X) * (c.Z - a.Z) - (c.X - a.X) * (b.Z - a.Z);
+            float u = ((b.X - lx) * (c.Z - lz) - (c.X - lx) * (b.Z - lz)) / d, v = ((c.X - lx) * (a.Z - lz) - (a.X - lx) * (c.Z - lz)) / d, wgt = 1f - u - v;
+            if (u < -1e-4f || v < -1e-4f || wgt < -1e-4f) continue;
+            float y = u * a.Y + v * b.Y + wgt * c.Y;
+            if (best == null || y > best) best = y;
+        }
+        return best;
     }
 
     /// <summary>Whether a far chunk's ground is in under a point (frame coordinates). Tests ask it at the seams.</summary>
