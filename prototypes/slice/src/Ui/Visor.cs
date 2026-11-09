@@ -50,6 +50,9 @@ public partial class Visor : CanvasLayer
 
     public bool ThreatShowing => _time < _threatUntil;
 
+    /// <summary>Tests only: holds the glass's frost and red pulse at these levels (the visor staging view).</summary>
+    public (float frost, float harm)? PinnedGlass;
+
     public override void _Ready()
     {
         Layer = 1;
@@ -124,6 +127,7 @@ public partial class Visor : CanvasLayer
             _harm = Mathf.MoveToward(_harm, suit.Last.Harm != Alert.None || _time < _hurtUntil ? 1f : 0f, dt * 2f);
             _frost = Mathf.MoveToward(_frost, (suit.Last.Warnings & Alert.Cold) != 0 ? 0.7f : 0f, dt * 0.2f);
         }
+        if (PinnedGlass is var (pf, ph)) { _frost = pf; _harm = ph; }
         _glass.SetShaderParameter("harm", _harm);
         _glass.SetShaderParameter("frost", _frost);
         _glass.SetShaderParameter("aspect", _hud.Size.X / Mathf.Max(1, _hud.Size.Y));

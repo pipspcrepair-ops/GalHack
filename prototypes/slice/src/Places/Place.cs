@@ -447,11 +447,26 @@ public partial class Place
     /// foot: no lifts and no ladders (they ride and climb neither), so a route never takes anyone
     /// straight up or down through a floor, and never over the furniture or a crate.
     /// </summary>
-    public static PoiGenerator.Gen.NavGrid FootNavOf(PlaceMemory m)
+    public static PoiGenerator.Gen.NavGrid FootNavOf(PlaceMemory m, PlanetSurface.World.PlanetWorld planet = null)
     {
         var blocked = new HashSet<Int3>(m.Rooms?.Values.SelectMany(r => r.Cells) ?? Enumerable.Empty<Int3>());
         BlockGrid g = m.Inst.Blocks;
         Int3 min = g.Min, size = g.Size;
+        // Out of doors the grid's ground is flat at the place's level, but the land round a lot or a pad is the
+        // planet's: where it lies off that level (a city block's street side, the slope past a yard), nobody walks
+        // there, or they would stand in the air over it or sunk in it.
+        if (planet != null && m.Site != null && 0 >= min.Y && 0 < min.Y + size.Y)
+        {
+            var o = m.Site.Origin;
+            for (int z = min.Z; z < min.Z + size.Z; z++)
+                for (int x = min.X; x < min.X + size.X; x++)
+                {
+                    var c = new Int3(x, 0, z);
+                    if (m.Inst.Layout.Occupied[c] || !g.Get(c).IsAir) continue;
+                    float land = planet.GroundHeight(Planets.Gen.Mathx.WrapX(o.X + x + 0.5, planet.Width), Planets.Gen.Mathx.Wrap(o.Z + z + 0.5, planet.Height)) - o.Y;
+                    if (MathF.Abs(land) > 0.3f) blocked.Add(c);
+                }
+        }
         for (int y = min.Y; y < min.Y + size.Y; y++)
             for (int z = min.Z; z < min.Z + size.Z; z++)
                 for (int x = min.X; x < min.X + size.X; x++)
