@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using GalHack.Plants;
 using GalHack.Terrain;
@@ -43,6 +43,9 @@ public static class CoverBuilder
     }
 
     readonly record struct Spot(int Plant, float Roll, Transform3D Place, Rgb Tint);
+
+    /// <summary>How far a tuft's leaves lie out from its root, at the most, metres.</summary>
+    public const float Reach = 0.55f;
 
     public static CoverCell Build(int cx, int cz, PlanetTerrainSource source, GroundPalette pal, IReadOnlySet<long> dug)
     {
@@ -95,6 +98,7 @@ public static class CoverBuilder
             float slope2 = hx * hx + hz * hz;
             if (slope2 > 0.8f || source.SoilCover(x, z, slope2) < 0.45f) continue;
             if (source.CellDensity(gx, (int)Math.Floor(ground - 0.6f), gz) <= 0f) continue; // a cave mouth: nothing to root in
+            // probe // its leaves would lie out over a place's opening
 
             // Roots under the low side of the slope, leaning with the land by half, so no tuft stands proud of it.
             float scale = Mathx.Lerp(0.72f, 1.28f, size);

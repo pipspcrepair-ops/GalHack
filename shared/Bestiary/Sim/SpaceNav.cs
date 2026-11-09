@@ -128,6 +128,27 @@ public static class SpaceNav
                 came[n] = cur;
                 open.Enqueue(n, ng + H(n, goal));
             }
+            // A walker goes up and down a flight (a ramp or stair rising a cell a cell) as people do:
+            // up onto the cell over a ramp rising ahead, down onto one over a ramp falling ahead.
+            if (climbs) continue;
+            foreach (Vector3I r in Slopes.Rise)
+            {
+                Vector3I n;
+                if (s.SlopeCell(cur.X + r.X, cur.Y, cur.Z + r.Z) == Slopes.Of(r.X, r.Z)) n = new Vector3I(cur.X + r.X, cur.Y + 1, cur.Z + r.Z);
+                else if (s.SlopeCell(cur.X + r.X, cur.Y - 2, cur.Z + r.Z) == Slopes.Of(-r.X, -r.Z)) n = new Vector3I(cur.X + r.X, cur.Y - 1, cur.Z + r.Z);
+                else continue;
+                if (!walk.TryGetValue(n, out bool ok))
+                {
+                    ok = Walkable(s, n, false, headroom, shoulders);
+                    walk[n] = ok;
+                }
+                if (!ok) continue;
+                float ng = g + 1.4142f;
+                if (cost.TryGetValue(n, out float old) && old <= ng) continue;
+                cost[n] = ng;
+                came[n] = cur;
+                open.Enqueue(n, ng + H(n, goal));
+            }
         }
         Expanded += expanded;
         var cells = new List<Vector3I>();

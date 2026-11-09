@@ -55,8 +55,18 @@ public static class MeshBuild
     public static MeshInstance3D Water(PoiInstance inst)
     {
         if (inst.Layout.Extras.Water.Count == 0) return null;
+        return Water(DrawnWater(inst), StillWater());
+    }
+
+    /// <summary>
+    /// The wet cells whose water is drawn: only over a whole block of floor or the ground (never over a
+    /// stair, a ramp, a drop or an opening, where the sheet would hang in the air), and not in a block.
+    /// </summary>
+    public static IEnumerable<Int3> DrawnWater(PoiInstance inst)
+    {
         var nav = inst.Nav();
-        return Water(inst.Layout.Extras.Water.Where(c => nav.Solid(c + Int3.Down) && !BlockInfo.IsFullCube(inst.Blocks.Get(c).Type)), StillWater());
+        return inst.Layout.Extras.Water.Where(c => nav.Solid(c + Int3.Down) && inst.Blocks.Get(c + Int3.Down).Type is var under && (under == BlockType.Air || BlockInfo.IsFullCube(under))
+                                                  && !BlockInfo.IsFullCube(inst.Blocks.Get(c).Type));
     }
 
     /// <summary>

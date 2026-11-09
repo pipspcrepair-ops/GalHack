@@ -219,6 +219,7 @@ public sealed class PlaceFauna
             _min = inst.Blocks.Min;
             _size = inst.Blocks.Size;
             _known = new byte[_size.X * _size.Y * _size.Z];
+            _slope = new byte[_size.X * _size.Y * _size.Z];
         }
 
         int Index(int x, int y, int z) => ((z - _min.Z) * _size.Y + y - _min.Y) * _size.X + x - _min.X;
@@ -234,7 +235,27 @@ public sealed class PlaceFauna
 
         public void Forget(PInt3 c)
         {
-            if (_inst.Blocks.InBounds(c)) _known[Index(c.X, c.Y, c.Z)] = 0;
+            if (!_inst.Blocks.InBounds(c)) return;
+            _known[Index(c.X, c.Y, c.Z)] = 0;
+            _slope[Index(c.X, c.Y, c.Z)] = 0;
+        }
+
+        readonly byte[] _slope; // 0 not read yet, 1 a whole block or air, 2.. a ramp rising (see Slopes) + 2
+
+        /// <summary>A stair or a ramp: the way it rises as the creatures' space numbers it, or -1 (only in the grid's bounds).</summary>
+        public int Slope(int x, int y, int z)
+        {
+            if (x < _min.X || y < _min.Y || z < _min.Z || x >= _min.X + _size.X || y >= _min.Y + _size.Y || z >= _min.Z + _size.Z) return -1;
+            int i = Index(x, y, z);
+            byte k = _slope[i];
+            if (k == 0)
+            {
+                Block b = _inst.Blocks.Get(new PInt3(x, y, z));
+                PInt3 v = b.Facing.Vec();
+                int slope = b.Type is BlockType.Stair or BlockType.Ramp && Get(x, y, z) ? Wildlife.Slopes.Of(v.X, v.Z) : -1;
+                _slope[i] = k = (byte)(slope + 2);
+            }
+            return k - 2;
         }
     }
 
@@ -281,7 +302,7 @@ public sealed class PlaceFauna
         var sim = new WildSim(deep.Data, terrain, new WNav(terrain.HalfSize, 3f));
         _cells = new SolidCells(inst);
         var space = new BlockSpace(_cells.Get,
-            new Vector3I(g.Min.X, g.Min.Y, g.Min.Z), new Vector3I(g.Min.X + g.Size.X, g.Min.Y + g.Size.Y, g.Min.Z + g.Size.Z));
+            new Vector3I(g.Min.X, g.Min.Y, g.Min.Z), new Vector3I(g.Min.X + g.Size.X, g.Min.Y + g.Size.Y, g.Min.Z + g.Size.Z)) { Slope = _cells.Slope };
         lock (deep.Lock) PoiFauna.Spawn(sim, Population, space);
         Sim = sim;
     }
