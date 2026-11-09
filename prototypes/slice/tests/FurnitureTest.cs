@@ -280,7 +280,6 @@ public partial class FurnitureTest : Node
             if (walkers.Count > 1) pickW.Add(walkers[^1]);
         }
         WallPieces(climbers);
-        if (System.Environment.GetEnvironmentVariable("FURNITURE_WALL_ONLY") == "1") return;
         var bodies = new List<Body>();
         Species person = rooms.Count > 0 ? rooms[0].Life.People.Person(Wildlife.Rng.Mix(1, (ulong)_rng.Next()), PersonRole.Worker, Occupancy.Friendly) : null;
         if (person != null) bodies.Add(new Body("a person", PlaceParts.PersonRadius, PlaceParts.PersonHeight, PlaceParts.PersonRadius, person, true));
