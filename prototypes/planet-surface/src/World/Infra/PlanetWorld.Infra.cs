@@ -45,7 +45,7 @@ public sealed partial class PlanetWorld
         {
             pois.AddRange(infra.City.Sites);
             stamps.AddRange(infra.City.Stamps);
-            foreach (PoiSite p in infra.City.Sites) stamps.Add(p.Stamp);
+            foreach (PoiSite p in infra.City.Sites) stamps.AddRange(p.Stamps);   // the pad, then a house's front garden
             Godot.GD.Print($"city: {infra.City.Streets.Count} streets, {infra.City.Lots.Count} lots, {infra.City.Sites.Count} buildings, fall {infra.City.Fall:F2}, {infra.City.BridgeAnchors.Count} bridge anchors, {infra.City.PlanMs:F0} ms {infra.City.Why}");
         }
         // A war's strikes, on what was worth striking: planned once the places, the city and the roads are
@@ -56,6 +56,8 @@ public sealed partial class PlanetWorld
         blasts.AddRange(strikes);
         infra.Blasts.AddRange(blasts);
         stamps.AddRange(infra.Craters.Where(c => !stamps.Contains(c)));
+        // The houses' yards where no house stands beside them, now that the strikes have taken theirs.
+        if (infra.City != null) stamps.AddRange(infra.City.Yards(map.WidthMeters, map.HeightMeters));
         if (strikes.Count > 0) Godot.GD.Print($"strikes: {strikes.Count} ({strikes.Count(s => s.Bowl)} craters, {strikes.Count(s => s.Air && !s.Naval)} airbursts, {strikes.Count(s => s.Naval)} on the water, {strikes.Count(s => s.Miss)} missed, {strikes.Count(s => s.Wild)} over open country, {strikes.Count(s => s.Within)} in the towns they hit, {strikes.Count(s => s.Field)} shell holes) on {infra.Targets.Count} targets in {infra.StrikeMs:F0} ms");
         // Flavour ruins by the roads and in the country, their pads laid before the roads.
         infra.Ruins = FlavourRuins.Plan(infra, catalog?.Library, map, bare, pois, profile, Hash.Of(spec.Seed, 0xF1A7), ruins);

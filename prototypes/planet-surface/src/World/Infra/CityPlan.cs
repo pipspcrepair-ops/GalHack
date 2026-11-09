@@ -38,6 +38,8 @@ public sealed class CityLotPlan
     public float DriveWidth;
     /// <summary>The lot's ground, world y.</summary>
     public int Pad;
+    /// <summary>A house's lot: the open ground from its front to its street's edge, metres (0: none known).</summary>
+    public double FrontGap;
     public CityLot Lot;
     public PoiSite Site;
 }
@@ -440,6 +442,7 @@ public sealed class CityPlan
             double gx = (lot.X0 + lot.X1) / 2, gz = lot.Front == Dir.North ? lot.Z0 - Inset : lot.Z1 + Inset;
             InfraRoute s = NearestOf(city.Streets, gx, gz, 20, w, h, out int at);
             lot.Pad = s != null ? (int)MathF.Round(s.Y[at]) : (int)MathF.Round(G(gx, gz).Height);
+            lot.FrontGap = s != null ? Inset - s.HalfWidth : 0;
         }
         var byCell = new Dictionary<(long, long), CityLotPlan>();
         foreach (CityLotPlan lot in city.Lots)
@@ -587,12 +590,79 @@ public sealed class CityPlan
         PoiGenerator.Gen.Int3 e = inst.Layout.EntranceCell;
         PoiGenerator.Gen.Int3 outward = inst.Layout.EntranceFacing.Vec();
         var entrance = new TInt3(origin.X + e.X, pad + e.Y, origin.Z + e.Z);
+        // A house's front garden and pavement: its lot's level out to a metre short of the street's edge (the street is at
+        // that level there), so the land between never stands up against its front wall: cut into a hill, the 1.5 m the
+        // lot eases back over left a ditch along the wall's foot and a bank up to the street.
+        var extra = new List<TerrainStamp>();
+        int front = (int)Math.Floor(lot.FrontGap - 0.5);
+        if (lot.District == "homes" && front >= 1) extra.Add(Strip(lot, family.Name + " front", lot.Front, front, stamp, w, h));
         return new PoiSite
         {
+            Extra = extra,
             Name = $"{family.Name}: {lot.District} ({inst.State.ToString().ToLowerInvariant()})",
             Family = family, Instance = inst, Origin = origin, Footprint = footprint, Stamp = stamp, Recarve = () => { },
             Siting = "city", Entrance = entrance, Gates = new List<PoiGate> { new("entrance", entrance, outward.X, outward.Z) },
         };
+    }
+
+    /// <summary>A strip of a lot's own level along one side of it, out to <paramref name="depth"/> metres, easing back to the land over 1.5 m.</summary>
+    static TerrainStamp Strip(CityLotPlan lot, string name, Dir side, int depth, TerrainStamp pad, double w, double h, int? from = null, int? to = null)
+    {
+        int x0 = (int)Math.Round(lot.X0), z0 = (int)Math.Round(lot.Z0), x1 = (int)Math.Round(lot.X1), z1 = (int)Math.Round(lot.Z1);
+        // Only part of the side's length, where given (world x along a north or south side, z along an east or west one).
+        if (side is Dir.North or Dir.South) { x0 = from ?? x0; x1 = to ?? x1; } else { z0 = from ?? z0; z1 = to ?? z1; }
+        var (fx0, fz0, fx1, fz1) = side switch
+        {
+            Dir.North => (x0, z0 - depth, x1, z0),
+            Dir.South => (x0, z1, x1, z1 + depth),
+            Dir.East => (x1, z0, x1 + depth, z1),
+            _ => (x0 - depth, z0, x0, z1),
+        };
+        return new TerrainStamp(name, (int)Mathx.WrapX(fx0, w), (int)Mathx.Wrap(fz0, h), (int)Mathx.WrapX(fx0, w) + (fx1 - fx0), (int)Mathx.Wrap(fz0, h) + (fz1 - fz0), lot.Pad,
+            0f, 1.5f, w, h) { Surface = pad.Surface, Wear = pad.Wear };
+    }
+
+    /// <summary>
+    /// A house's sides with no house beside them once the city stands as it will (a row's end, an empty lot, one that
+    /// came to nothing or a strike took): a yard's width of its level there too, added to its place's stamps and returned
+    /// to lay. Cut into a hill, a row's end had the hill a metre off its end wall.
+    /// </summary>
+    public List<TerrainStamp> Yards(double w, double h)
+    {
+        // Built ground beside it: another place's pad, or a block's.
+        var pads = Sites.Select(s => s.Stamp).Concat(Stamps).ToList();
+        var yards = new List<TerrainStamp>();
+        // Lowest first, as the houses' own pads, so where two yards meet the higher one's edge wins.
+        foreach (CityLotPlan lot in Lots.Where(l => l.Site != null && l.District == "homes").OrderBy(l => l.Pad))
+        {
+            bool Open(double x, double z)
+            {
+                double wx = Mathx.WrapX(x, w), wz = Mathx.Wrap(z, h);
+                return !pads.Any(t => t != lot.Site.Stamp && t.Weight(wx, wz) >= 0.99f);
+            }
+            int x0 = (int)Math.Round(lot.X0), z0 = (int)Math.Round(lot.Z0), x1 = (int)Math.Round(lot.X1), z1 = (int)Math.Round(lot.Z1);
+            Dir back = lot.Front == Dir.North ? Dir.South : Dir.North;
+            // Along each side but the front, a metre out, in 2 m steps: a yard over each run of open ground (lots
+            // behind needn't line up with this one, so part of a back can be open and part built).
+            foreach (Dir side in new[] { Dir.East, Dir.West, back })
+            {
+                bool alongX = side is Dir.North or Dir.South;
+                int a0 = alongX ? x0 : z0, a1 = alongX ? x1 : z1;
+                double outAt = side switch { Dir.East => x1 + 1, Dir.West => x0 - 1, Dir.South => z1 + 1, _ => z0 - 1 };
+                int? run = null;
+                for (int a = a0; a < a1 + 2; a += 2)
+                {
+                    bool open = a < a1 && (alongX ? Open(a + 1, outAt) : Open(outAt, a + 1));
+                    if (open && run == null) run = a;
+                    if (open || run == null) continue;
+                    TerrainStamp yard = Strip(lot, lot.Site.Family.Name + " yard", side, 2, lot.Site.Stamp, w, h, run, Math.Min(a, a1));
+                    lot.Site.Extra.Add(yard);
+                    yards.Add(yard);
+                    run = null;
+                }
+            }
+        }
+        return yards;
     }
 
     /// <summary>How many stretches meet at a grid node.</summary>

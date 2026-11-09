@@ -149,6 +149,8 @@ public partial class SurfaceTest
             PlanetWorld w = PlanetWorld.Build(PlanetSpec.Roll(seed, kind, 0), Main.Catalog);
             TerrainDigging.Terrain.ChunkStore store = w.Terrain.Store;
             List<PlanetSurface.Infra.FlavourRuin> ruins = w.Infra?.Ruins?.ToList() ?? new();
+            // Every lot's pad at its own level: the roadside ruins' and the places' (a city's lots are places).
+            var lots = ruins.Select(o => (Y: o.OriginY, o.Stamp)).Concat(w.Pois.Select(p => (Y: p.Origin.Y, p.Stamp))).ToList();
             float Top(float x, float z, float from)
             {
                 for (float y = from + 4f; y > from - 6f; y -= 0.1f)
@@ -183,11 +185,12 @@ public partial class SurfaceTest
                         // that is a slope, no slump. A next lot's blend reaches 24 m, so that excuses no wall outright: on a bank the last
                         // of the slope is held to the slope just before it, and ground that steepens into the wall's foot is a slump all the same.
                         double sx = fx + v.X * 1.5f, sz = fz + v.Z * 1.5f;
-                        if (ruins.Any(o => o.OriginY != oy && o.Stamp.Weight(sx, sz) > 0.05f))
+                        if (lots.Any(o => o.Y != oy && o.Stamp.Weight(sx, sz) > 0.05f))
                         {
                             float mid = Top(fx + v.X * 0.7f, fz + v.Z * 0.7f, oy), back = Top(fx + v.X * 1.1f, fz + v.Z * 1.1f, oy);
                             if (float.IsInfinity(mid) || float.IsInfinity(back)) continue;
-                            dip = mid + (mid - back) - near;
+                            // (Only ever an excuse: ground falling away from a wall down to a lower lot is no slump toward it.)
+                            dip = MathF.Min(dip, mid + (mid - back) - near);
                             banked++;
                         }
                         worst = MathF.Max(worst, dip);
@@ -384,8 +387,9 @@ public partial class SurfaceTest
             {
                 tracks++;
                 trackKm += r.Length / 1000;
-                // (Not in the first and last 48 m: the way out of a gate and into a junction keep their own line.)
-                for (int i = 12; i + 12 < r.Count; i++)
+                // (Not in the first and last 48 m: the way out of a gate and into a junction keep their own line. The
+                // whole 40 m measured, i - 5 to i + 5, lies outside them: a junction's square swing reaches 42 m in.)
+                for (int i = 17; i + 17 < r.Count; i++)
                 {
                     double a0 = Math.Atan2(r.Z[i - 3] - r.Z[i - 5], r.X[i - 3] - r.X[i - 5]), a1 = Math.Atan2(r.Z[i + 5] - r.Z[i + 3], r.X[i + 5] - r.X[i + 3]);
                     double turn = Math.Abs(Math.IEEERemainder(a1 - a0, Math.PI * 2)) * 180 / Math.PI;
@@ -1150,8 +1154,7 @@ public partial class SurfaceTest
                 StartTown town = w.StartTown;
                 if (town == null) { notes.Add($"no town on {spec.Archetype} {seed}"); continue; }
                 towns++;
-                houses += town.Houses.Count;
-                streets += town.Streets.Count;
+                houses += town.Houses.Count;                streets += town.Streets.Count;
                 if (w.Infra.Wrecks.Any(k => town.Streets.Contains(k.Route))) jams++;
                 // No living settlement within 1.5 km of the town's edge (where the bunker goes).
                 foreach (PoiSite p in w.Pois)
