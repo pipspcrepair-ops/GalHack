@@ -905,8 +905,14 @@ public partial class SliceTest : Node
             if (flat < 120f) break;
             Steer(v, to, flat);
             float agl = v.AboveGround;
-            _game.Controls.Hold(Key.Space, agl < 60f);
-            _game.Controls.Hold(Key.Ctrl, agl > 110f);
+            // A pilot looks ahead, not only down: a hillside or a cliff on the way is climbed over before it is reached.
+            Vector3 along = new Vector3(to.X, 0f, to.Z).Normalized();
+            float clear = float.MaxValue;
+            foreach (float d in new[] { 15f, 35f, 60f, 100f, 150f })
+                clear = MathF.Min(clear, p.Y - _game.Zone.GroundAt(p.X + along.X * d, p.Z + along.Z * d).Y);
+            _game.Controls.Hold(Key.Space, agl < 60f || clear < 45f);
+            _game.Controls.Hold(Key.Ctrl, agl > 110f && clear > 70f);
+            if (clear < 25f) _game.Controls.Hold(Key.W, false); // up first, then on
             top = MathF.Max(top, v.Body.Velocity.Length());
             bestAgl = MathF.Max(bestAgl, agl);
             mostSolids = Math.Max(mostSolids, _game.Zone.Streamer.SolidColliders);
