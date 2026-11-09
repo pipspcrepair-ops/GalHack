@@ -130,19 +130,23 @@ public partial class Place : Node3D
         return g;
     }
 
-    /// <summary>Puts one cube's collision in: its body is made whole before it joins the world, so the physics builds it once.</summary>
-    public void SetGroupShapes(Int3 key, IEnumerable<ChunkMesh> chunks)
+    /// <summary>
+    /// Puts one cube's collision in, a chunk a step: the physics builds each chunk's shape (its faces' tree) as it joins
+    /// the body, so a dense cube's all at once, its body made whole before it joined the world, was a hitch of tens of ms.
+    /// </summary>
+    public IEnumerable<int> SetGroupShapes(Int3 key, IEnumerable<ChunkMesh> chunks)
     {
         Group g = GroupAt(key);
         g.Body = new StaticBody3D { Name = $"Blocks {key}", CollisionLayer = Layers.World, CollisionMask = 0 };
+        AddChild(g.Body);
         foreach (ChunkMesh c in chunks)
         {
             if (c.Collision.Count == 0) continue;
             var shape = new CollisionShape3D { Name = $"Chunk {c.Chunk}", Shape = MeshBuild.ToShape(c) };
             g.Body.AddChild(shape);
             _chunks[c.Chunk] = (_chunks.GetValueOrDefault(c.Chunk).Mesh, shape);
+            yield return 0;
         }
-        AddChild(g.Body);
     }
 
     void SetChunkMesh(ChunkMesh chunk)
