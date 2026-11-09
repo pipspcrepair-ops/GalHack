@@ -204,7 +204,7 @@ public static class FarBuilder
             AddCurtains(job, grid, step, indices, source, palette, x0, z0);
             job.Indices = indices.ToArray();
 
-            BuildRiverWater(job, grid, step, level, river, height);
+            BuildRiverWater(job, grid, step, level, river, height, (i, j) => job.Lod == 0 && Opened(source, x0 + i * step, z0 + j * step, height[grid.Sample(i, j)]));
             Scatter(job, source, palette, dug, felled, grid, step, height, river, up, relief);
             job.Milliseconds = watch.Elapsed.TotalMilliseconds;
         }
@@ -711,7 +711,7 @@ public static class FarBuilder
     }
 
     /// <summary>Flat water at the river's surface over every grid square that touches the channel.</summary>
-    static void BuildRiverWater(FarJob job, Grid grid, float step, float[] level, bool[] river, float[] height)
+    static void BuildRiverWater(FarJob job, Grid grid, float step, float[] level, bool[] river, float[] height, Func<int, int, bool> opened)
     {
         int g = grid.G;
         var verts = new List<Vector3>();
@@ -753,6 +753,8 @@ public static class FarBuilder
             for (int di = -1; di <= 2 && !wet; di++)
                 wet = Wet(i + di, j + dj);
             if (!wet) continue;
+            // Never over a place's opening dug down from the bank: the sheet would hang over it.
+            if (opened(i, j) || opened(i + 1, j) || opened(i, j + 1) || opened(i + 1, j + 1)) continue;
             int a = Vertex(i, j), b = Vertex(i + 1, j), c = Vertex(i, j + 1), d = Vertex(i + 1, j + 1);
             indices.Add(a); indices.Add(b); indices.Add(c);
             indices.Add(b); indices.Add(d); indices.Add(c);
@@ -1000,6 +1002,41 @@ public static class FarBuilder
 
     /// <summary>A plant's own roll for how far it may come into a place's ground, unrelated to its other rolls.</summary>
     internal static float Feather(float roll) => roll * 7.31f % 1f;
+
+    /// <summary>
+    /// Whether the ground is open under a point's surface: a place's room or stairwell dug down from it
+    /// (its stamp's carve), or a cave mouth. Nothing that lies on the ground, and no water, goes there.
+    /// </summary>
+    public static bool Opened(PlanetTerrainSource source, double x, double z, float ground) =>
+        source.CellDensity((int)Math.Floor(x), (int)Math.Floor(ground - 0.6f), (int)Math.Floor(z)) <= 0f;
+
+    /// <summary>
+    /// Whether ground a plant's leaves would lie on is open anywhere round it, out to its reach (only
+    /// round a place, where the ground is dug: elsewhere a cave mouth under the root is enough to know).
+    /// </summary>
+    public static bool Overhangs(PlanetTerrainSource source, double x, double z, float ground, float reach)
+    {
+        if (!NearDug(source, x, z, reach + 1f)) return false;
+        foreach (var (dx, dz) in new[] { (reach, 0f), (-reach, 0f), (0f, reach), (0f, -reach) })
+        {
+            double px = x + dx, pz = z + dz;
+            if (Opened(source, px, pz, source.SurfaceHeight(px, pz))) return true;
+        }
+        return false;
+    }
+
+    /// <summary>Whether a point lies within a margin of the footprint of a place that digs into the ground.</summary>
+    static bool NearDug(PlanetTerrainSource source, double x, double z, float margin)
+    {
+        foreach (int i in source.StampsAt(x, z))
+        {
+            TerrainStamp st = source.Stamps[i];
+            if (st.Shape == StampShape.Road || st.CarveBottom >= st.PadY && st.Shape != StampShape.Buried) continue;
+            st.Offset(x, z, out double dx, out double dz);
+            if (Math.Abs(dx) <= (st.MaxX - st.MinX) * 0.5 + margin + 1 && Math.Abs(dz) <= (st.MaxZ - st.MinZ) * 0.5 + margin + 1) return true;
+        }
+        return false;
+    }
 
     /// <summary>Whether the ground has been dug under a root or beside it.</summary>
     internal static bool Dug(IReadOnlySet<long> dug, int x, int z) => dug != null && (dug.Contains(Key(x, z)) || dug.Contains(Key(x + 1, z)) || dug.Contains(Key(x, z + 1)) || dug.Contains(Key(x - 1, z)) || dug.Contains(Key(x, z - 1)));

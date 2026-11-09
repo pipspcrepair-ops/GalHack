@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -75,6 +75,7 @@ public partial class CreaturesTest : Node
             Settlements();
             DomesticAnimals();
             SensesAreReal();
+            StairsAreClimbed();
             CrouchingIsQuieter();
             WeightShows();
             NothingClipsThePlayer();
@@ -1461,6 +1462,92 @@ public partial class CreaturesTest : Node
     }
 
     /// <summary>Line of sight, the cone, memory, hearing apart from sight, the meter; and nothing alerted by what it can't sense.</summary>
+    /// <summary>
+    /// Walkers take a flight of stairs as people do: a place's stair cells are ramps to them, solid
+    /// only under the 45-degree slope, and their paths go up and down a flight. Fresh each run: a
+    /// flight of three to six stairs in a corridor, rising whichever way, and the place's prowlers
+    /// (small and long-legged, every walker the world rolls, never a climber or a flier) chasing
+    /// someone standing at its head: every one reaches the top.
+    /// </summary>
+    void StairsAreClimbed()
+    {
+        var rng = new Random((int)(System.Environment.TickCount64 & 0x7fffffff));
+        int n = rng.Next(3, 7), turn = rng.Next(4);
+        const int Len = 22, Wide = 4;
+        // The flight in its own frame: along +u from u = 6, the corridor across v = 1..3.
+        var solid = new HashSet<Vector3I>();
+        var slope = new Dictionary<Vector3I, int>();
+        Vector3I At(int u, int y, int v) => turn switch
+        {
+            0 => new Vector3I(u, y, v),
+            1 => new Vector3I(-u - 1, y, v),
+            2 => new Vector3I(v, y, u),
+            _ => new Vector3I(v, y, -u - 1),
+        };
+        int rise = turn switch { 0 => 0, 1 => 1, 2 => 2, _ => 3 };
+        for (int u = -1; u <= Len; u++)
+        for (int v = 0; v <= Wide; v++)
+        for (int y = -1; y <= n + 5; y++)
+        {
+            int stair = u - 6; // the stair at u = 6 + i stands in cell y = i
+            bool wall = v == 0 || v == Wide || u == -1 || u == Len || y == n + 5;
+            bool ground = u < 6 ? y < 0 : stair < n ? y < stair : y < n;
+            if (wall || ground) solid.Add(At(u, y, v));
+            else if (stair >= 0 && stair < n && y == stair)
+            {
+                solid.Add(At(u, y, v));
+                slope[At(u, y, v)] = rise;
+            }
+        }
+        Vector3I lo = new(int.MaxValue, int.MaxValue, int.MaxValue), hi = new(int.MinValue, int.MinValue, int.MinValue);
+        foreach (Vector3I c in solid) { lo = new Vector3I(Math.Min(lo.X, c.X), Math.Min(lo.Y, c.Y), Math.Min(lo.Z, c.Z)); hi = new Vector3I(Math.Max(hi.X, c.X), Math.Max(hi.Y, c.Y), Math.Max(hi.Z, c.Z)); }
+        var space = new BlockSpace((x, y, z) => solid.Contains(new Vector3I(x, y, z)), lo, hi + Vector3I.One)
+        {
+            Slope = (x, y, z) => slope.TryGetValue(new Vector3I(x, y, z), out int k) ? k : -1,
+        };
+        Vector3 Point(float u, float y, float v) => turn switch
+        {
+            0 => new Vector3(u, y, v),
+            1 => new Vector3(-u, y, v),
+            2 => new Vector3(v, y, u),
+            _ => new Vector3(v, y, -u),
+        };
+        var fauna = new DeepFauna(_data, (ulong)rng.Next(), 0.5f);
+        var walkers = new List<Species>();
+        foreach (PoiTheme theme in Enum.GetValues<PoiTheme>())
+            for (int depth = 0; depth < 4; depth++)
+                foreach (DeepRole role in new[] { DeepRole.Prowler, DeepRole.Lurker })
+                {
+                    Species sp = fauna.For(role, theme, depth);
+                    if (sp != null && !sp.Climbs && !sp.Flies && sp.BodyHeight < n + 4 && sp.BodyWidth < Wide - 1.2f && walkers.All(w => w.CommonName != sp.CommonName)) walkers.Add(sp);
+                }
+        int reached = 0, tried = 0;
+        var stuck = new List<string>();
+        foreach (Species sp in walkers.Take(8))
+        {
+            var sim = new WildSim(_data, new Terrain((x, z) => -50f, 80f), new NavGrid(80f, 3f));
+            Creature c = sim.SpawnIn(sp, space, Point(2.5f, 0f, Wide / 2f));
+            if (c == null) continue;
+            tried++;
+            var prey = new DummyTarget { Name = "Up there", Health = new Health(1e7f), Position = Point(6 + n + 3.5f, n, Wide / 2f) };
+            float best = c.Position.Y;
+            // Driven as the brain drives a chase (its path through the place, then its legs), at a run.
+            for (float t = 0f; t < 40f && best < n - 0.05f; t += Dt)
+            {
+                sim.RefillPathBudget();
+                Brain.Toward(sim, c, prey.Position + Vector3.Up * 0.5f, c.Stats.RunSpeed);
+                Locomotion.Move(sim, c, Dt);
+                sim.Time += Dt;
+                best = MathF.Max(best, c.Position.Y);
+            }
+            if (best >= n - 0.05f) reached++;
+            else stuck.Add($"{sp.CommonName} ({sp.BodyHeight:F1} m tall, {sp.BodyWidth:F1} m wide) got {best:F2} m up, at {c.Position}, {c.State}");
+        }
+        foreach (string w in stuck.Take(4)) GD.Print("  stuck: " + w);
+        Check(tried >= 3 && reached == tried,
+            $"walkers chasing someone up a flight of {n} stairs (rising {(turn switch { 0 => "+x", 1 => "-x", 2 => "+z", _ => "-z" })}) reach its head: {reached} of {tried} ({string.Join(", ", walkers.Take(8).Select(w => $"{w.CommonName} {w.BodyHeight:F1} m"))}){(stuck.Count > 0 ? "; " + stuck[0] : "")}");
+    }
+
     void SensesAreReal()
     {
         // Two rooms with a solid wall between them, a doorway at one end.

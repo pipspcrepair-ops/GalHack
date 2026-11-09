@@ -54,6 +54,9 @@ public partial class FloraTest : Node
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             GD.Print($"flora test run seed {RunSeed}");
             FarBuilder.Solids ??= FloraSolidRules.Load(ProjectSettings.GlobalizePath("res://data/flora-solids.json"));
+            if (OS.GetCmdlineUserArgs().Contains("--openings")) NothingOverOpenings(); // that check alone
+            else
+            {
             Spread();
             Differ();
             Stable();
@@ -61,6 +64,8 @@ public partial class FloraTest : Node
             Regions();
             Vacuum();
             Scatter();
+            NothingOverOpenings();
+            }
         }
         catch (Exception e)
         {
@@ -405,6 +410,75 @@ public partial class FloraTest : Node
         var lava = Roll(Fresh(), Archetype.Lava, 0).flora.Book;
         var green = Roll(Fresh(), Archetype.Temperate, 0).flora.Book;
         Check(lava.Plants.Count < green.Plants.Count, $"a lava world holds little life against a temperate one ({lava.Plants.Count} species to {green.Plants.Count})");
+    }
+
+    /// <summary>
+    /// Round places dug into the ground (a stairwell, rooms below the pad), on fresh worlds: no tuft of
+    /// ground cover lies out over the opening (its leaves reach over ground dug from under them), and no
+    /// river sheet runs over it. Nothing floats over a hole.
+    /// </summary>
+    void NothingOverOpenings()
+    {
+        int places = 0, tufts = 0, over = 0, sheets = 0, wet = 0;
+        var e = new List<string>();
+        foreach (var (a, v) in new[] { (Archetype.Temperate, 0), (Archetype.Temperate, 1), (Archetype.Alien, 0) })
+        {
+            PlanetWorld w = PlanetWorld.Build(PlanetSpec.Roll(Fresh(), a, v, 8), Main.Catalog);
+            var dug = w.Source.Stamps.Where(st => st.Shape == GalHack.Terrain.StampShape.Pad && st.CarveBottom < st.PadY).Take(14).ToList();
+            foreach (GalHack.Terrain.TerrainStamp st in dug)
+            {
+                places++;
+                // An opening: the ground under the surface is dug out by a place (its rooms, its stairwell).
+                bool Open(double x, double z)
+                {
+                    int gy = (int)Math.Floor(w.Source.SurfaceHeight(x, z) - 0.6f), gx = (int)Math.Floor(x), gz = (int)Math.Floor(z);
+                    foreach (int i in w.Source.StampsAt(x, z)) if (w.Source.Stamps[i].IsCarved(gx, gy, gz)) return true;
+                    return false;
+                }
+                // Ground cover over the footprint and a cell round it.
+                int c0x = (int)Math.Floor((st.MinX - 4.0) / CoverBuilder.CellSize), c1x = (int)Math.Floor((st.MaxX + 4.0) / CoverBuilder.CellSize);
+                int c0z = (int)Math.Floor((st.MinZ - 4.0) / CoverBuilder.CellSize), c1z = (int)Math.Floor((st.MaxZ + 4.0) / CoverBuilder.CellSize);
+                for (int cz = c0z; cz <= c1z; cz++)
+                for (int cx = c0x; cx <= c1x; cx++)
+                {
+                    CoverCell cell = CoverBuilder.Build(cx, cz, w.Source, w.Palette, new HashSet<long>());
+                    foreach (var (plant, buffer, count) in cell.Plants)
+                        for (int k = 0; k < count; k++)
+                        {
+                            int o = k * 16;
+                            double x = cx * (double)CoverBuilder.CellSize + buffer[o + 3], z = cz * (double)CoverBuilder.CellSize + buffer[o + 11];
+                            tufts++;
+                            float r = CoverBuilder.Reach * 0.9f;
+                            if (Open(x, z) || Open(x + r, z) || Open(x - r, z) || Open(x, z + r) || Open(x, z - r))
+                            {
+                                over++;
+                                if (e.Count < 3) e.Add($"a tuft at ({x:F1}, {z:F1}) by {st.Name}, over its opening");
+                            }
+                        }
+                }
+                // The far chunk the place stands in, at full detail: its river sheet.
+                int fx = (int)Math.Floor((st.MinX + st.MaxX) * 0.5 / FarBuilder.Size), fz = (int)Math.Floor((st.MinZ + st.MaxZ) * 0.5 / FarBuilder.Size);
+                var job = new FarJob { Fx = fx, Fz = fz, Lod = 0, SpanX = FarBuilder.Span(fx, w.Terrain.Width), SpanZ = FarBuilder.Span(fz, w.Terrain.Height) };
+                FarBuilder.Build(job, w.Source, w.Palette, new HashSet<long>());
+                if (job.Error != null) throw job.Error;
+                if (job.WaterIndices == null) continue;
+                for (int t = 0; t + 2 < job.WaterIndices.Length; t += 3)
+                {
+                    Vector3 m = (job.WaterVertices[job.WaterIndices[t]] + job.WaterVertices[job.WaterIndices[t + 1]] + job.WaterVertices[job.WaterIndices[t + 2]]) / 3f;
+                    double x = fx * (double)FarBuilder.Size + m.X, z = fz * (double)FarBuilder.Size + m.Z;
+                    if (x < st.MinX - 2 || x > st.MaxX + 2 || z < st.MinZ - 2 || z > st.MaxZ + 2) continue;
+                    wet++;
+                    if (Open(x, z))
+                    {
+                        sheets++;
+                        if (e.Count < 3) e.Add($"river water at ({x:F1}, {z:F1}) over {st.Name}'s opening");
+                    }
+                }
+            }
+        }
+        foreach (string s in e) GD.Print("  e.g. " + s);
+        Check(places >= 6 && over == 0 && sheets == 0,
+            $"round {places} places dug into the ground, no ground cover lies out over an opening ({over} of {tufts} tufts) and no river sheet runs over one ({sheets} of {wet} bits of water by them)");
     }
 
     /// <summary>Real chunks and cells on a fresh built world (roads, ruins and all).</summary>

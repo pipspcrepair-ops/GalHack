@@ -263,6 +263,64 @@ public partial class SurfaceZone : Node3D
         return water;
     }
 
+    // ---- Dry ground over the sea --------------------------------------------------------------
+
+    const int DryTexels = 256; // a metre each, round the eye
+    Image _dry;
+    ImageTexture _dryTexture;
+    Vector3 _dryAt = new(float.NaN, 0f, 0f);
+
+    /// <summary>
+    /// The sea plane is drawn by the world map's cells. A place whose pad stands dry over a sea cell, with
+    /// rooms dug below sea level, showed the plane through its openings: a sheet of water hanging at
+    /// ground level over a stairwell. Round the eye, each such place's footprint where the ground holds no
+    /// sea (as the water is decided, <see cref="PlanetTerrainSource.WaterSurfaceAt"/>) is marked dry, and
+    /// the sea draws nothing there.
+    /// </summary>
+    void KeepDry(Vector3 eye)
+    {
+        if (_seaMaterial == null || Planet == null) return;
+        if (!float.IsNaN(_dryAt.X) && new Vector2(eye.X - _dryAt.X, eye.Z - _dryAt.Z).Length() < 48f) return;
+        _dryAt = eye;
+        _dry ??= Image.CreateEmpty(DryTexels, DryTexels, false, Image.Format.R8);
+        _dry.Fill(Colors.Black);
+        PlanetTerrainSource src = Planet.Source;
+        float ox = MathF.Floor(eye.X) - DryTexels / 2, oz = MathF.Floor(eye.Z) - DryTexels / 2;
+        int marked = 0;
+        foreach (TerrainStamp st in src.Stamps)
+        {
+            if (st.Shape == StampShape.Road || st.CarveBottom >= src.WaterLevel) continue; // nothing of it dug below the sea
+            Vector3 at = Planet.NearestCopy(new Vector3(st.MinX, 0f, st.MinZ), eye);
+            int i0 = (int)(at.X - ox), k0 = (int)(at.Z - oz), w = st.MaxX - st.MinX + 1, d = st.MaxZ - st.MinZ + 1;
+            if (i0 + w < 0 || k0 + d < 0 || i0 >= DryTexels || k0 >= DryTexels) continue;
+            for (int k = Math.Max(0, k0); k < Math.Min(DryTexels, k0 + d); k++)
+            for (int i = Math.Max(0, i0); i < Math.Min(DryTexels, i0 + w); i++)
+            {
+                double x = Mathx.WrapX(ox + i + 0.5, Planet.Width), z = Mathx.Wrap(oz + k + 0.5, Planet.Height);
+                if (src.WaterSurfaceAt(x, z, out _)) continue;
+                _dry.SetPixel(i, k, Colors.White);
+                marked++;
+            }
+        }
+        DryMarked = marked;
+        if (_dryTexture == null) _dryTexture = ImageTexture.CreateFromImage(_dry);
+        else _dryTexture.Update(_dry);
+        _seaMaterial.SetShaderParameter("dry_map", _dryTexture);
+        _seaMaterial.SetShaderParameter("dry_area", new Vector4(ox, oz, DryTexels, marked > 0 ? 1f : 0f));
+    }
+
+    /// <summary>Metres of ground round the eye the sea is kept off (for tests).</summary>
+    public int DryMarked { get; private set; }
+
+    /// <summary>Whether the sea is kept off a point (for tests): it lies in the dry mask's area and is marked.</summary>
+    public bool KeptDry(float x, float z)
+    {
+        if (_dry == null || float.IsNaN(_dryAt.X)) return false;
+        float ox = MathF.Floor(_dryAt.X) - DryTexels / 2, oz = MathF.Floor(_dryAt.Z) - DryTexels / 2;
+        int i = (int)MathF.Floor(x - ox), k = (int)MathF.Floor(z - oz);
+        return i >= 0 && k >= 0 && i < DryTexels && k < DryTexels && _dry.GetPixel(i, k).R > 0.5f;
+    }
+
     // ---- Vessels --------------------------------------------------------------------------
 
     public void Track(Vessel vessel)
@@ -310,6 +368,7 @@ public partial class SurfaceZone : Node3D
         UpdateValleyFog(delta, focus);
         Vector3 eye = Camera?.GlobalPosition ?? focus;
         Sea.GlobalPosition = new Vector3(eye.X, 0f, eye.Z);
+        KeepDry(eye);
         Sky.PlaceCloudDeck(eye);
         Light.DimFog(Sky.Environment);
         Underwater.Follow(eye, Camera);
