@@ -312,7 +312,7 @@ public partial class FurnitureTest : Node
                     }
             }
             if (climbers.Count > 0)
-                foreach (var (from, to, mount, outward) in WallRuns(room, real).Take(3))
+                foreach (var (from, to, mount, outward) in WallRuns(room, real).Take(4))
                 {
                     Species sp = climbers[_rng.Next(climbers.Count)];
                     foreach (bool legacy in new[] { true, false })
@@ -547,6 +547,14 @@ public partial class FurnitureTest : Node
                     if (!PlaceFauna.Solid(inst, (int)MathF.Floor(behind.X), (int)MathF.Floor(behind.Y), (int)MathF.Floor(behind.Z)) || PlaceFauna.Solid(inst, (int)MathF.Floor(q.X - n.X * 0.2f), (int)MathF.Floor(q.Y), (int)MathF.Floor(q.Z - n.Z * 0.2f))) ok = false;
                     // Each end is open wall a climber can hold (nothing else hung there).
                     if (real.Distance(q - n * 0.1f) < 0.2f) ok = false;
+                }
+                // And only this piece is in the way along the wall (another hung beside it, or a cupboard to the ceiling, is another run).
+                var near = real.All.Where(x => x.Owner != b.Owner && x.Hi.X > MathF.Min(a.X, c.X) - 0.5f && x.Lo.X < MathF.Max(a.X, c.X) + 0.5f && x.Hi.Z > MathF.Min(a.Z, c.Z) - 0.5f && x.Lo.Z < MathF.Max(a.Z, c.Z) + 0.5f).ToList();
+                for (int k = 0; k <= 30 && ok; k++)
+                {
+                    Vector3 q = a.Lerp(c, k / 30f) - n * 0.1f;
+                    foreach (PartSet.Box x in near)
+                        if (x.Distance(q) < 0.3f) { ok = false; break; }
                 }
                 if (ok) { yield return (a, c, b, -n); break; }
             }
