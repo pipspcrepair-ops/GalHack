@@ -289,10 +289,10 @@ public partial class WildlifePatch
         {
             float a = rng.Range(0f, MathF.Tau), r = rng.Range(spawning.MinPlayerDistance + spread, MathF.Max(spawning.MinPlayerDistance + spread + 20f, AroundYou - spread));
             var at = new Vector3(you.X + MathF.Cos(a) * r, 0f, you.Z + MathF.Sin(a) * r);
-            if (MathF.Abs(at.X) > edge || MathF.Abs(at.Z) > edge || !Open(s, at, spread) || !Sim.ClearOfPlayers(at, spread)) continue;
+            if (MathF.Abs(at.X) > edge || MathF.Abs(at.Z) > edge || !Open(s, at, spread) || !Clear(at, spread)) continue;
             Vector3 spot = Sim.FreeSpot(at, rng);
             if (!s.Flies && Sim.Nav.Blocked(spot)) continue;
-            List<Creature> group = Sim.SpawnGroup(s, spot, count, p => Sim.ClearOfPlayers(p, 0f) && Open(s, p, 0f));
+            List<Creature> group = Sim.SpawnGroup(s, spot, count, p => Clear(p, 0f) && Open(s, p, 0f));
             if (group.Count > 0) return group;
         }
         return null;

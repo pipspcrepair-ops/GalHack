@@ -50,6 +50,8 @@ public partial class Game
         Survivor.Yaw = MathF.Atan2(-outward.X, -outward.Z);
         Survivor.Body.DamageSink = Suit = new Suit(Zone, Zone.Data.Survival(), (int)Zone.Spec.Seed);
         Suit.Sheltered = () => Bunker.Inside(Survivor.WorldFeet, Zone);
+        Suit.ClosedPlace = feet => Places?.PlaceAt(feet) is Slice.Places.Place p && p.Ready && p.Closed(feet) ? p : null;
+        Suit.InPlace = feet => Places?.PlaceAt(feet);
         Suit.Said += line => Say(line, Tones.Caution);
         N.Vector3 front = Bunker.CryoFront.ToNumerics();
         Suit.Sim.RespawnPoints.Add(new RespawnPoint

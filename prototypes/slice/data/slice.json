@@ -43,8 +43,18 @@
     "oxygenByAir": { "Thin": 9, "Breathable": 21, "Humid": 21, "Dusty": 18, "Ash": 13, "Sulfurous": 6, "Exotic": 11 },
     // Background radiation, RAD (the visor warns above 3).
     "radiationByArchetype": { "Temperate": 0, "Arid": 0.5, "Ice": 0.2, "Lava": 1.5, "Alien": 2 },
-    // A sealed room aboard a structure, or the cryo bunker, is heated and has air; a command chair on its own has neither.
+    // A sealed room aboard a powered structure, or the cryo bunker, is heated and has air; a command chair on its own has neither.
     "sealedRoomC": 20,
+    // A sealed room's air: with its structure powered it eases to sealedRoomC (the gap shrinks by e every roomEaseSeconds,
+    // comfortable within about a minute from -45 or 65 °C); power off, it holds roomHoldSeconds, then drifts to the
+    // outside's temperature and oxygen (the gap by e every roomDriftSeconds).
+    "roomEaseSeconds": 30,
+    "roomHoldSeconds": 120,
+    "roomDriftSeconds": 180,
+    // A shut room in a place takes placeShelter of the way from the outside's temperature to sealedRoomC (its air is the
+    // outside's), easing there by e every placeEaseSeconds. A climate node inside still holds its band.
+    "placeShelter": 0.5,
+    "placeEaseSeconds": 60,
     // Out in the weather: from stormWarnFrom of its exposure (weather.json) the visor warns, from
     // stormHarmFrom health drains at stormHealthPerSecond x exposure. Only a blizzard or a fire storm
     // reaches that (about 5 health a second). Any shelter or cover stops it at once.
