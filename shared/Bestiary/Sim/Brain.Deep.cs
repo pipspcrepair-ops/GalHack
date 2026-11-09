@@ -190,7 +190,7 @@ public static partial class Brain
     /// <summary>
     /// A waypoint is passed once it is close, or (for a climber) once it lies straight out from
     /// the surface it holds: in a corner the next cell can sit along the normal, with nothing
-    /// left to walk towards on this face.
+    /// left to walk towards on this face; or (for a walker) once it is over or under it, as on a flight.
     /// </summary>
     static void WaypointsPassed(Creature c, Vector3 center)
     {
@@ -199,7 +199,9 @@ public static partial class Brain
         {
             Vector3 to = c.SpacePath[c.SpacePathIndex] - center;
             float along = (to - up * to.Dot(up)).Length();
-            if (to.Length() < 0.9f || (c.Species.Climbs && along < 0.4f && to.Length() < 1.8f)) c.SpacePathIndex++;
+            // A walker on a flight passes a cell's middle under or over it: its body stands a metre or so off it.
+            if (to.Length() < 0.9f || (c.Species.Climbs && along < 0.4f && to.Length() < 1.8f)
+                || (!c.Species.Climbs && along < 0.45f && MathF.Abs(to.Dot(up)) < 1.6f)) c.SpacePathIndex++;
             else break;
         }
     }

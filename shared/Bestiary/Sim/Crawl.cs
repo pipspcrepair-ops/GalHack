@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Godot;
 
 namespace Wildlife;
@@ -245,6 +245,7 @@ public static class Crawl
             if (n == Vector3.Zero || d < -clr) break;
             Vector3 side = new(n.X, 0f, n.Z);
             if (side.LengthSquared() < 1e-4f) break; // the only thing near is the floor or the ceiling
+            if (n.Y > 0.3f) break; // under the body, not beside it: a ramp or a flight it stands on, the crest at its head
             side = side.Normalized();
             feet += side * MathF.Min(0.3f, d + clr + 0.005f);
         }
