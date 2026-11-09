@@ -437,9 +437,9 @@ public static partial class PoiSiting
                                       < search * 1.5 + Math.Max(140, Math.Max(o.Stamp.ReachX, o.Stamp.ReachZ) + Math.Max(halfX, halfZ) + Apron + 50)).ToList();
         int span = (int)Math.Floor(search / step + 1e-9) * 2 + 1;
         var found = new (double Score, double X, double Z, int Pad, float Cut, string Kind)[span * span];
-        System.Threading.Tasks.Parallel.For(0, span * span, idx =>
+        for (int k = 0; k < found.Length; k++) found[k].Score = double.MaxValue;
+        void Eval(int idx)
         {
-            found[idx].Score = double.MaxValue;
             double dx = -search + idx % span * step, dz = -search + idx / span * step;
             double cx = Mathx.WrapX(wantX + dx, width), cz = Mathx.Wrap(wantZ + dz, height);
             if (cx - halfX * 0.3 < SeamMargin || cx + halfX * 0.3 > width - SeamMargin || cz - halfZ * 0.3 < SeamMargin || cz + halfZ * 0.3 > height - SeamMargin) return;
@@ -489,7 +489,28 @@ public static partial class PoiSiting
             score += distance * 0.02;
             if (sandy) score += 100000;
             found[idx] = (score, cx, cz, pad, cut, prominence > 12 ? "ridge" : prominence < -12 ? "valley" : cut > 5 ? "hillside" : "flat");
-        });
+        }
+        int Best()
+        {
+            int at = -1;
+            for (int k = 0; k < found.Length; k++)
+                if (found[k].Score < double.MaxValue && (at < 0 || found[k].Score < found[at].Score)) at = k;
+            return at;
+        }
+        // Every other spot first, then the spots round the best of them; only where none of those will do, all the rest.
+        var coarse = Enumerable.Range(0, span * span).Where(k => k % span % 2 == 0 && k / span % 2 == 0).ToArray();
+        System.Threading.Tasks.Parallel.ForEach(coarse, Eval);
+        int rough = Best();
+        if (rough >= 0)
+        {
+            int rx = rough % span, rz = rough / span;
+            var round = new List<int>();
+            for (int nz = -1; nz <= 1; nz++)
+                for (int nx = -1; nx <= 1; nx++)
+                    if ((nx != 0 || nz != 0) && rx + nx >= 0 && rx + nx < span && rz + nz >= 0 && rz + nz < span) round.Add((rz + nz) * span + rx + nx);
+            System.Threading.Tasks.Parallel.ForEach(round, Eval);
+        }
+        else System.Threading.Tasks.Parallel.ForEach(Enumerable.Range(0, span * span).Where(k => !(k % span % 2 == 0 && k / span % 2 == 0)), Eval);
         double bestScore = double.MaxValue, bestX = 0, bestZ = 0;
         int bestPad = 0;
         float bestCut = 0;
