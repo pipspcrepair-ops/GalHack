@@ -40,6 +40,32 @@ public sealed partial class Staging
         foreach (int x in _drive.Wait(30)) yield return x;
     }
 
+    /// <summary>The owner's angle: standing at a base's small constructor, looking at its screen, with markers about and the use prompt up.</summary>
+    IEnumerable<int> MachineScreenView()
+    {
+        foreach (int x in BaseView(survival: true)) yield return x;
+        Vessel b0 = _game.Zone.Vessels.FirstOrDefault(v => v.IsBase && !v.IsRuin);
+        if (b0 == null) yield break;
+        _game.FixedCamera = null;
+        _game.MachineScreens.Sync();
+        foreach (int x in _drive.Wait(10)) yield return x;
+        var m = _game.MachineScreens.Screens.FirstOrDefault(e => e.Key.owner == b0 && b0.Machines.ContainsKey(e.Key.cell)).Value;
+        if (m == null) yield break;
+        Vector3 normal = m.Screen.GlobalBasis.Z.Normalized();
+        Vector3 face = m.Screen.GlobalPosition;
+        foreach (int x in StandAndLook(new Vector3(face.X, 0f, face.Z) + normal * 1.3f, face, 20)) yield return x;
+        Vector3 eye = _game.Camera.GlobalPosition;
+        Vector3 flat = new Vector3(-normal.X, 0f, -normal.Z).Normalized();
+        for (int k = -2; k <= 2; k++)
+        {
+            Vector3 w = eye + flat.Rotated(Vector3.Up, k * 0.1f) * (35f + 5f * System.Math.Abs(k));
+            _game.Spaceflight.Charts.Mark(w.X, w.Z);
+        }
+        _game.Scan();
+        foreach (int x in _drive.Wait(150)) yield return x;
+        GD.Print($"(the screen at {face}, facing {normal}; the prompt \"{_game.UsePrompt()}\"; {_game.Visor.Drawn.Count} markers up, {_game.Visor.ScreenBoxes(new Vector2(1920, 1080), 1f).Count} screen boxes)");
+    }
+
     /// <summary>The visor with a block family in hand: a long name, the count from the chosen source, the shape picker.</summary>
     IEnumerable<int> HandView()
     {
@@ -83,3 +109,4 @@ public sealed partial class Staging
         foreach (int x in _drive.Wait(30)) yield return x;
     }
 }
+

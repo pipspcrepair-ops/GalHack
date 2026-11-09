@@ -67,6 +67,7 @@ public sealed partial class Staging
             "base" => BaseView(),
             "blockbase" => BaseView(survival: true),
             "constructor" => ConstructorBlocks(),
+            "machinescreen" => MachineScreenView(),
             "hand" => HandView(),
             "storage" => StorageFilter(),
             "vessel" => VesselTakeoff(),
