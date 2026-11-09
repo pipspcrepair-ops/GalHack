@@ -486,7 +486,7 @@ public partial class Game : Node3D
     {
         if (!WorldRay.Cast(Zone, Survivor, 9f, Layers.World | Layers.Hull, out LookHit look) || look.Normal.Y < 0.5f)
         {
-            Say("Needs open ground", Tones.Caution);
+            Say("NEEDS OPEN GROUND", Tones.Caution);
             return;
         }
         if (Pack.Remove("hover-bike", 1) < 1) return;
@@ -585,7 +585,7 @@ public partial class Game : Node3D
         Builder.Hide();
         Slot s = Pack.InHand;
         string id = Pack.HandItem;
-        string what = s.Block == PlayerInventory.BlueprintBlock ? "Blueprint projector: the Skiff" : id != null && Zone.Data.Items.TryGet(id, out var item) ? item.Name : "empty hands";
+        string what = s.Block == PlayerInventory.BlueprintBlock ? "BLUEPRINT · SKIFF" : id != null && Zone.Data.Items.TryGet(id, out var item) ? item.Name : "EMPTY";
         string origin = Pack.OnRemoteBar && Pack.HandRemote is RemoteSlot rs ? $" ({rs.Origin})" : "";
     }
 

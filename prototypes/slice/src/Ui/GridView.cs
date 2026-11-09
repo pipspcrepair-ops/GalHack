@@ -226,7 +226,7 @@ public static class Slots
             moved += ItemGrid.QuickMove(from, i, to, amount);
         }
         if (moved < wanted)
-            game.Say(moved == 0 ? $"{to.Name} is full: nothing moved, it all stays in {from.Name}" : $"{to.Name} is full: {moved} of {wanted} moved, the rest stays in {from.Name}", Tones.Caution);
+            game.Say($"{to.Name.ToUpperInvariant()} FULL · {moved}/{wanted} MOVED", Tones.Caution);
         return moved;
     }
 
@@ -251,7 +251,7 @@ public static class Slots
         int want = Math.Min(from.Amount, from.Grid[from.Index].Count);
         int moved = ItemGrid.Move(from.Grid, from.Index, grid, index, from.Amount);
         if (from.Grid != grid && moved < want)
-            game.Say(moved == 0 ? $"{grid.Name} has no room for that" : $"{grid.Name} is full: {moved} of {want} moved, the rest stays", Tones.Caution);
+            game.Say($"{grid.Name.ToUpperInvariant()} FULL · {moved}/{want} MOVED", Tones.Caution);
         Selection.Clear();
     }
 
@@ -426,21 +426,21 @@ public static class Tooltips
         {
             (item.Name, new Color(Rarities.Color(item.Rarity) << 8 | 0xff)),
             ($"{Kind(item)} · {Rarities.Name(item.Rarity)}", C.Dim),
-            ($"{item.MassKg:0.##} kg · {item.VolumeSu:0.##} SU each{(count > 1 ? $"   stack of {count}: {item.MassKg * count:0.#} kg · {item.VolumeSu * count:0.#} SU" : "")}", C.Text),
+            ($"{item.MassKg:0.##} kg · {item.VolumeSu:0.##} SU{(count > 1 ? $"   ×{count} · {item.MassKg * count:0.#} kg · {item.VolumeSu * count:0.#} SU" : "")}", C.Text),
         };
         if (item.Recipe != null)
         {
-            lines.Add(($"Made from {items.Describe(item.Recipe.InputsFor(1), 4)}{(item.Recipe.Count > 1 ? $" (makes {item.Recipe.Count})" : "")}", C.Text));
-            lines.Add(($"{Maker(items, item.Recipe.Tier)} · {item.Recipe.Seconds:0.#} s a run", C.Text));
+            lines.Add(($"RECIPE · {items.Describe(item.Recipe.InputsFor(1), 4)}{(item.Recipe.Count > 1 ? $" · MAKES {item.Recipe.Count}" : "")}", C.Text));
+            lines.Add(($"{Maker(items, item.Recipe.Tier)} · {item.Recipe.Seconds:0.#} s", C.Text));
         }
         else lines.Add((Found(item), C.Text));
-        string fits = item.IsBlock ? $" · {(item.SmallGrid ? "small" : "large")} grid" : "";
-        lines.Add(($"Stacks to {item.StackSize}{fits}", C.Text));
+        string fits = item.IsBlock ? $" · {(item.SmallGrid ? "SMALL" : "LARGE")} GRID" : "";
+        lines.Add(($"STACK {item.StackSize}{fits}", C.Text));
         Progress p = game.Progress;
         if (item.Unlock != null)
         {
             bool open = p == null || p.ItemAllowed(item);
-            lines.Add((open ? $"Unlocked (tech tree, level {item.Unlock.Level})" : $"Locked: level {item.Unlock.Level}, {item.Unlock.Cost} point{(item.Unlock.Cost == 1 ? "" : "s")} in the tech tree",
+            lines.Add((open ? $"UNLOCKED · LV {item.Unlock.Level}" : $"LOCKED · LV {item.Unlock.Level} · {item.Unlock.Cost} PT",
                 open ? C.Good : C.Warn));
         }
         if (!string.IsNullOrEmpty(item.Uses)) lines.Add((item.Uses, C.Dim));
@@ -451,27 +451,27 @@ public static class Tooltips
     {
         ItemCategory.Block => item.Family switch
         {
-            BlockFamily.Armour => "Block family · any shape",
+            BlockFamily.Armour => "Block · any shape",
             BlockFamily.Deco => $"Deco piece{(item.Group != null ? $" · {item.Group}" : "")}",
-            _ => PlayerInventory.CoreItems.Contains(item.Id) ? "Core · founds a structure" : "Device block",
+            _ => PlayerInventory.CoreItems.Contains(item.Id) ? "Core" : "Device block",
         },
         ItemCategory.Raw => "Raw",
         ItemCategory.Unique => "Unique find",
-        ItemCategory.Component when PlayerInventory.CoreItems.Contains(item.Id) => "Core · founds a structure",
+        ItemCategory.Component when PlayerInventory.CoreItems.Contains(item.Id) => "Core",
         _ => item.Category.ToString(),
     };
 
-    static string Maker(ItemCatalogue items, int tier) => tier < 0 ? "Suit fabricator" : $"{Capital(items.Machines.TierName(tier))} constructor or better";
+    static string Maker(ItemCatalogue items, int tier) => tier < 0 ? "Suit fabricator" : $"{Capital(items.Machines.TierName(tier))} constructor+";
 
     static string Capital(string s) => string.IsNullOrEmpty(s) ? s : char.ToUpperInvariant(s[0]) + s[1..];
 
     static string Found(ItemDef item) =>
-        !string.IsNullOrEmpty(item.Where) ? $"Found: {item.Where}" : item.Source switch
+        !string.IsNullOrEmpty(item.Where) ? $"SOURCE · {item.Where.ToUpperInvariant()}" : item.Source switch
         {
-            ItemSource.Mined => "Mined from ore deposits",
-            ItemSource.Dug => "Dug from any rock",
-            ItemSource.Harvested => "Harvested from plants and creatures",
-            ItemSource.Found => "Found only in ruins, wrecks and derelicts",
-            _ => "Not crafted",
+            ItemSource.Mined => "SOURCE · ORE DEPOSITS",
+            ItemSource.Dug => "SOURCE · ANY ROCK",
+            ItemSource.Harvested => "SOURCE · PLANTS, CREATURES",
+            ItemSource.Found => "SOURCE · RUINS, WRECKS, DERELICTS",
+            _ => "NOT CRAFTED",
         };
 }

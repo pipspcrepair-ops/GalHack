@@ -550,13 +550,13 @@ public partial class Visor : CanvasLayer
             case HandKind.Block when pack.HandItem is string id && items.TryGet(id, out var item):
                 bool tiny = Game.Builder.TargetVessel != null && Game.Builder.TargetVessel.Structure.Grid.Size == GalHack.Structures.GridSize.Small;
                 string shape = item.Family == GalHack.Items.BlockFamily.Armour ? $", {Game.Builder.Shape.Name}" : item.IsUniversalDeco ? $", {Game.Builder.CurrentDeco(tiny)?.Name ?? "no piece"}" : "";
-                string where = Game.Mode == GalHack.Items.GameMode.Creative ? "free"
-                    : pack.OnRemoteBar ? $"{pack.HandSource.Count(id)} in {pack.HandRemote?.Origin}"
-                    : $"{pack.InHand.Count} in your stack{(pack.Linked != null && pack.Linked.Count(id) > 0 ? $" · {pack.Linked.Count(id)} in {pack.LinkedName}" : "")}";
+                string where = Game.Mode == GalHack.Items.GameMode.Creative ? "FREE"
+                    : pack.OnRemoteBar ? $"{pack.HandRemote?.Origin.ToUpperInvariant()} {pack.HandSource.Count(id)}"
+                    : $"STACK {pack.InHand.Count}{(pack.Linked != null && pack.Linked.Count(id) > 0 ? $" · {pack.LinkedName.ToUpperInvariant()} {pack.Linked.Count(id)}" : "")}";
                 return $"{bar}{item.Name}{shape} · {where}";
             case HandKind.Core: return $"{bar}{items.Item(pack.HandItem).Name}";
             case HandKind.Device: return $"{bar}{items.Item(pack.HandItem).Name}";
-            case HandKind.Blueprint: return Game.Builder.Underway != null ? $"{Game.Builder.Underway.Name}: {Game.Builder.Remaining.Count} blocks to go" : $"BLUEPRINT · {(Game.Builder.Plan?.Name ?? "Skiff").ToUpperInvariant()}";
+            case HandKind.Blueprint: return Game.Builder.Underway != null ? $"{Game.Builder.Underway.Name} · {Game.Builder.Remaining.Count} LEFT" : $"BLUEPRINT · {(Game.Builder.Plan?.Name ?? "Skiff").ToUpperInvariant()}";
             case HandKind.Consumable: return $"{bar}{items.Item(pack.HandItem).Name}";
             default: return pack.HandItem != null && items.TryGet(pack.HandItem, out var other) ? $"{bar}{other.Name}" : bar;
         }
@@ -575,7 +575,7 @@ public partial class Visor : CanvasLayer
             _ => "",
         };
         string bar = Game.Pack.OnRemoteBar ? $"{Bound("switch-bar")} YOUR TOOLBAR   " : $"{Bound("switch-bar")} REMOTE TOOLBAR   ";
-        string creative = Game.Mode == GalHack.Items.GameMode.Creative ? "   CREATIVE: BUILDING IS FREE" : "";
+        string creative = Game.Mode == GalHack.Items.GameMode.Creative ? "   CREATIVE · FREE BUILD" : "";
         return $"{keys}{bar}{Bound("torch")} TORCH {(Game.Torch.Visible ? "ON" : "OFF")}   {Bound("terminal")} MENU   LVL {Game.Progress.Level}{creative}";
     }
 
@@ -705,7 +705,7 @@ public partial class Visor : CanvasLayer
         var band = new Rect2(flight.Position, new Vector2(flight.Size.X, 34 * s));
         _hud.Block(band, new Color(C.Glass, 0.6f));
         _hud.TextIn(UiTheme.Mono, (int)(19 * s), band, line, C.Text, HorizontalAlignment.Center);
-        string message = c?.ConsoleMessageAge < 4f ? c.ConsoleMessage : v.Unanchored ? "UNANCHORED: ENGINES OFF" : v.ModeWarning ?? v.Stats.LiftWarning;
+        string message = c?.ConsoleMessageAge < 4f ? c.ConsoleMessage : v.Unanchored ? "UNANCHORED · ENGINES OFF" : v.ModeWarning ?? v.Stats.LiftWarning;
         if (!string.IsNullOrEmpty(message))
             _hud.TextIn(UiTheme.Label, (int)(20 * s), new Rect2(flight.Position.X, band.End.Y + 8 * s, flight.Size.X, 26 * s), HudLayout.Fit(UiTheme.Label, (int)(20 * s), message, flight.Size.X), C.Warn, HorizontalAlignment.Center);
     }

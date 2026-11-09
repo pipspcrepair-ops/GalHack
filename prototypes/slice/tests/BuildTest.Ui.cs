@@ -34,6 +34,7 @@ public partial class BuildTest
         HudBoxChecks();
         foreach (int x in TechFitChecks()) yield return x;
         foreach (int x in GalaxyNameChecks()) yield return x;
+        foreach (int x in WordChecks()) yield return x;
         Check(MenuRoot.Glass <= 0.6f && _game.Menu.Root.Gui.Backing < 1f && !_game.GetTree().Paused, $"the Tab menu is see-through (glass {MenuRoot.Glass:0.00}, backings {_game.Menu.Root.Gui.Backing:0.00}) and the world runs behind it");
     }
 
@@ -167,6 +168,7 @@ public partial class BuildTest
         {
             set();
             foreach (int x in _drive.Wait(3)) yield return x;
+            NoteLines($"escape menu, {name}", esc.Root);
             List<string> problems = RowProblems(esc.Root);
             Check(problems.Count == 0 && esc.Root.Gui.Texts.Count > 0, $"the escape menu, {name}: the alerts' row is clear of every panel at 1080p and 1440p{(problems.Count == 0 ? "" : ": " + string.Join("; ", problems.Take(6)))}");
         }
@@ -279,6 +281,7 @@ public partial class BuildTest
         {
             open();
             foreach (int x in _drive.Wait(3)) yield return x;
+            NoteLines($"menu, {name}", _game.Menu.Root);
             List<string> problems = _game.Menu.Root.Gui.TextProblems();
             List<string> strip = RowProblems(_game.Menu.Root);
             Check(problems.Count == 0 && strip.Count == 0 && _game.Menu.Root.Gui.Texts.Count > 0,

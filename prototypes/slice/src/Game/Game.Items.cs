@@ -131,21 +131,21 @@ public partial class Game
         if (Survivor != null && Survivor.OnBike != null && !Menu.IsOpen) return "F  Get off  ·  W/S throttle  Mouse or A/D steer  Alt look  Shift boost  Space hop";
         if (Survivor == null || Suit == null || Suit.Dead || Survivor.Seated != null || Menu.IsOpen) return "";
         if (Spaceflight.UsePrompt() is string door) return door;
-        if (Bikes?.Aimed(Survivor.WorldEye(), Survivor.WorldLook(), UseReach) != null) return "F  Ride the hover bike  ·  E  Pick it up";
+        if (Bikes?.Aimed(Survivor.WorldEye(), Survivor.WorldLook(), UseReach) != null) return "F  Ride  ·  E  Pick up";
         if (Bunker?.Mine is Slice.Start.CryoPod pod && !pod.Open && Survivor.WorldFeet.DistanceTo(Bunker.CryoStand) < 1.5f) return "F  Open the pod";
         Vector3 eye = Survivor.WorldEye(), dir = Survivor.WorldLook();
         bool hit = WorldRay.Cast(Zone, Survivor, UseReach, Layers.World | Layers.Hull | Layers.Props, out LookHit look);
         if (Zone.Loot.Pick(eye, dir, (hit ? look.Distance : UseReach) + 0.3f, out _) is Lootable loot) return $"E  Open {loot.Name.ToLowerInvariant()}";
-        if (Bunker?.SealedAlong(eye, dir, (hit ? look.Distance : UseReach) + 0.3f) is Slice.Start.BunkerLocker sealedOne) return $"Locker {sealedOne.Number}: sealed";
+        if (Bunker?.SealedAlong(eye, dir, (hit ? look.Distance : UseReach) + 0.3f) is Slice.Start.BunkerLocker sealedOne) return $"LOCKER {sealedOne.Number} · SEALED";
         if (PlacePrompt(eye, dir, hit, look) is { Length: > 0 } place) return place;
         if (!hit) return "";
-        if (Zone.Devices.FirstOrDefault(d => d.Collider == look.Collider) is Device device) return $"E  Open the {device.Label.ToLowerInvariant()}";
+        if (Zone.Devices.FirstOrDefault(d => d.Collider == look.Collider) is Device device) return $"E  Open {device.Label.ToLowerInvariant()}";
         if (look.Vessel is Vessel v && v.Structure.TryGet(look.Cell, out Block b))
         {
             BlockType type = v.Structure.TypeOf(b);
             if (type.IsContainer) return v == Bunker?.Ruin ? "E  Open locker" : "E  Open storage";
-            if (type.IsCommandChair) return "F  Take the command chair";
-            if (type.IsLight) return (b.Off ? "E  Switch the light on" : "E  Switch the light off") + "   ·   Shift+E  Colour and animation";
+            if (type.IsCommandChair) return "F  Command chair";
+            if (type.IsLight) return (b.Off ? "E  Light on" : "E  Light off") + "   ·   Shift+E  Colour";
             if (Zone.Data.Items.Machines.ForBlock(type.Id) != null) return "E  Machine";
         }
         return "";
@@ -179,7 +179,7 @@ public partial class Game
         VitalsRules r = Suit.Sim.Data.Vitals;
         if (e.Food > 0 && v.Food >= r.Food.Max - 0.5 && e.Health <= 0 && e.Oxygen <= 0)
         {
-            Say("Not hungry", Tones.Text);
+            Say("NOT HUNGRY", Tones.Text);
             return false;
         }
         string name = Zone.Data.Items.Item(s.Item).Name;
@@ -197,7 +197,7 @@ public partial class Game
         if (items == null || items.IsEmpty) return;
         Vector3 ground = Zone.GroundAt(at.X, at.Z);
         Zone.Loot.Spill(items, new Vector3(at.X, MathF.Max(at.Y - 0.2f, ground.Y), at.Z));
-        Say($"No room: {Zone.Data.Items.Describe(items, 3)} set down", Tones.Caution);
+        Say($"BAG FULL · DROPPED {Zone.Data.Items.Describe(items, 3)}", Tones.Caution);
     }
 
     /// <summary>Drops a stack from the bag onto the ground in front of you (dragged out of the inventory window).</summary>
@@ -413,7 +413,7 @@ public partial class Game
 
     void Snapshot(Constructor c)
     {
-        c.Lock ??= item => Progress.ItemAllowed(item) ? null : Progress.LockReason(item.Id)?.ToLowerInvariant();
+        c.Lock ??= item => Progress.ItemAllowed(item) ? null : Progress.LockReason(item.Id);
         if (!c.Busy) { _watch.Remove(c); return; }
         _watch[c] = c.AllJobs.Select(j => (j, j.RunsDone)).ToList();
     }
@@ -430,7 +430,7 @@ public partial class Game
             Stats.Crafted += runs * job.Recipe.Count;
             int xp = runs * Math.Max(1, (int)Math.Round(job.Recipe.Seconds / Progress.Rules.Xp.CraftSecondsPerXp));
             Progress.Earn(xp, $"made {job.Item.Name}");
-            if (!now.Contains(job) && job.Lane == Lane.Order) Say($"{c.Def.Name}: {job.Count} {job.Item.Name}", Tones.Good);
+            if (!now.Contains(job) && job.Lane == Lane.Order) Say($"{c.Def.Name} · {job.Count} {job.Item.Name}", Tones.Good);
         }
     }
 }

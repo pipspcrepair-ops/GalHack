@@ -195,14 +195,14 @@ public sealed partial class BuildTool
         if (!HasTarget || TargetVessel == null || !TargetVessel.Structure.TryGet(TargetCell, out Block b))
         {
             _ghosts.HideOutline();
-            Verdict = "Deconstruct: aim at a block of a structure";
+            Verdict = "DECONSTRUCT · NO BLOCK";
             return;
         }
         Structure s = TargetVessel.Structure;
         _ghosts.ShowOutline(TargetVessel.DrawTransform, s, TargetCell, new Color(1f, 0.55f, 0.2f, 0.9f));
         ItemDef back = BuildingBridge.ItemOf(Items, s, b);
         if (s.TypeOf(b).IsCore) Verdict = CoreStays;
-        else Verdict = Creative ? $"Deconstruct {s.TypeOf(b).Name}" : $"Deconstruct {s.TypeOf(b).Name}: +1 {back?.Name ?? "nothing"}";
+        else Verdict = Creative ? $"Deconstruct {s.TypeOf(b).Name}" : $"Deconstruct {s.TypeOf(b).Name} · +1 {back?.Name ?? "nothing"}";
         if (pressed) Remove(TargetVessel, TargetCell);
     }
 
@@ -238,13 +238,13 @@ public sealed partial class BuildTool
         if (itemId == null || !Items.TryGet(itemId, out ItemDef item) || !item.IsBlock || !_catalogue.TryGetType(item.BlockId, out BlockType type))
         {
             Hide();
-            Verdict = itemId != null && Items.TryGet(itemId, out ItemDef d) && d.Family == BlockFamily.Deco ? $"{d.Name}: deco pieces aren't placed by hand in the slice yet" : "";
+            Verdict = itemId != null && Items.TryGet(itemId, out ItemDef d) && d.Family == BlockFamily.Deco ? $"{d.Name} · NOT PLACEABLE" : "";
             return;
         }
         if (!HasTarget || TargetVessel == null)
         {
             Hide();
-            Verdict = HasTarget ? "Blocks go onto a structure: set a core down first" : "";
+            Verdict = HasTarget ? "NO STRUCTURE · CORE FIRST" : "";
             if (remove && HasTarget) Said?.Invoke(Verdict, Tones.Caution);
             return;
         }
@@ -253,7 +253,7 @@ public sealed partial class BuildTool
         var copies = Copies(s, PlaceCell, b);
         // The family in hand must be this structure's grid's (Creative too).
         bool wrongGrid = item.SmallGrid != BuildingBridge.IsSmall(s);
-        string why = wrongGrid ? $"{item.Name} is a {(item.SmallGrid ? "small" : "large")}-grid block: this is a {(item.SmallGrid ? "large" : "small")} grid"
+        string why = wrongGrid ? $"{item.Name} · {(item.SmallGrid ? "SMALL" : "LARGE")}-GRID BLOCK · {(item.SmallGrid ? "LARGE" : "SMALL")} GRID"
             : Problem(TargetVessel, PlaceCell, b) ?? SourceProblem(TargetVessel, item, slotIndex, copies.Count);
         var tinted = copies.Select(c => (c.cell, c.block, Problem(TargetVessel, c.cell, c.block) == null ? GhostPreview.Valid : GhostPreview.Invalid)).ToList();
         if (why != null) tinted = tinted.Select(t => (t.cell, t.block, GhostPreview.Invalid)).ToList();
@@ -290,13 +290,13 @@ public sealed partial class BuildTool
         if (FromStructure)
         {
             RemoteSlot slotRef = _pack.HandRemote;
-            if (slotRef == null || slotRef.ItemId != item.Id) return $"No {item.Name} on the remote toolbar slot";
-            if (!_pack.HandUsable) return $"Out of {slotRef.Origin}'s area: its storage is out of reach";
-            return slotRef.Count > 0 ? null : $"No {item.Name} left in {slotRef.Origin}'s storage: craft some there";
+            if (slotRef == null || slotRef.ItemId != item.Id) return $"REMOTE SLOT · NO {item.Name}";
+            if (!_pack.HandUsable) return $"{slotRef.Origin.ToUpperInvariant()} STORAGE · OUT OF RANGE";
+            return slotRef.Count > 0 ? null : $"{slotRef.Origin.ToUpperInvariant()} STORAGE · 0 {item.Name}";
         }
         Slot slot = _pack.Grid[slotIndex];
-        if (slot.Block != null) return $"{item.Name}: a Creative shortcut, not a stack";
-        return slot.Item == item.Id && slot.Count > 0 ? null : $"No {item.Name} left in your stack";
+        if (slot.Block != null) return $"{item.Name} · CREATIVE";
+        return slot.Item == item.Id && slot.Count > 0 ? null : $"{item.Name} · STACK 0";
     }
 
     /// <summary>Uses one block item from the chosen source (nothing in Creative). False if it has none.</summary>
@@ -347,18 +347,18 @@ public sealed partial class BuildTool
         if (!_onGround)
         {
             Hide();
-            Verdict = "Look at open ground to set it down";
+            Verdict = "NEEDS OPEN GROUND";
             return;
         }
         // A core or a device is set down from your own stack, or from the remote slot's storage while its core is in reach.
-        string from = FromStructure && !_pack.HandUsable ? $"Out of {_pack.HandRemote?.Origin}'s area: its storage is out of reach" : FromStructure && _pack.HandSource.Count(itemId) == 0 ? $"No {Items.Item(itemId).Name} left in {_pack.HandRemote?.Origin}'s storage" : null;
+        string from = FromStructure && !_pack.HandUsable ? $"{_pack.HandRemote?.Origin.ToUpperInvariant()} STORAGE · OUT OF RANGE" : FromStructure && _pack.HandSource.Count(itemId) == 0 ? $"{_pack.HandRemote?.Origin.ToUpperInvariant()} STORAGE · 0 {Items.Item(itemId).Name}" : null;
         if (what == NewThing.Device)
         {
             _ghosts.HideGhosts();
             Transform3D at = GroundFrame(_groundPoint, 0f);
             _deviceGhost.GlobalTransform = at.TranslatedLocal(Vector3.Up * 0.6f);
             _deviceGhost.Visible = true;
-            Verdict = from ?? $"{Items.Item(itemId).Name}: click to set it down";
+            Verdict = from ?? $"[LMB] SET DOWN · {Items.Item(itemId).Name}";
             if (place && from == null && TakeHand(itemId, slotIndex))
             {
                 bool climate = itemId == Device.ClimateItem;
@@ -381,8 +381,8 @@ public sealed partial class BuildTool
         _ghosts.ShowGhosts(frame, scratch, new List<(Int3, Block, Color)> { (Int3.Zero, core, from == null ? GhostPreview.Valid : GhostPreview.Invalid) });
         Verdict = from ?? what switch
         {
-            NewThing.Base => "Big Core: click to found a base here",
-            _ => "Small Core: click to start a small craft here",
+            NewThing.Base => "[LMB] FOUND BASE · Big Core",
+            _ => "[LMB] START CRAFT · Small Core",
         };
         if (!place) return;
         if (from != null)
@@ -406,7 +406,7 @@ public sealed partial class BuildTool
             return false;
         Hide();
         bool large = wreck.Structure.Grid.Id == "large", fits = large == (what == NewThing.Base);
-        Verdict = fits ? $"{Items.Item(itemId).Name}: click to set it into the {wreck.Name} and claim it" : large ? "A big wreck takes a Big Core" : "A small wreck takes a Small Core";
+        Verdict = fits ? $"[LMB] CLAIM · {wreck.Name}" : large ? "BIG WRECK · BIG CORE ONLY" : "SMALL WRECK · SMALL CORE ONLY";
         if (!place) return true;
         if (!fits) { Said?.Invoke(Verdict, Tones.Caution); return true; }
         if (!Creative && !TakeHand(itemId, slotIndex)) return true;
@@ -417,11 +417,11 @@ public sealed partial class BuildTool
         if (why != null)
         {
             if (!Creative) { if (FromStructure) _pack.HandSource.Add(itemId, 1); else _pack.Add(itemId, 1); }
-            Said?.Invoke($"{why}: try a flat face inside", Tones.Caution);
+            Said?.Invoke(why, Tones.Caution);
             return true;
         }
         _zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Place, look.Point, 0.7f, -2f);
-        Said?.Invoke($"Claimed: {wreck.Name}", Tones.Good);
+        Said?.Invoke($"CLAIMED · {wreck.Name}", Tones.Good);
         Started?.Invoke(wreck);
         return true;
     }
@@ -484,7 +484,7 @@ public sealed partial class BuildTool
         }
         if (cancel)
         {
-            Said?.Invoke(Underway == null ? "Blueprint put away" : $"Stopped following the blueprint: the {Underway.Name} stays as it is", Tones.Text);
+            Said?.Invoke(Underway == null ? "BLUEPRINT PUT AWAY" : $"BLUEPRINT STOPPED · {Underway.Name}", Tones.Text);
             StopProjecting();
             return;
         }
@@ -494,25 +494,25 @@ public sealed partial class BuildTool
             if (!_onGround)
             {
                 _planGhost.Visible = false;
-                Verdict = "Look at open ground to set the blueprint down";
+                Verdict = "NEEDS OPEN GROUND";
                 if (pressed) Said?.Invoke(Verdict, Tones.Caution); // a click that can't place never goes unanswered
                 return;
             }
             Transform3D frame = AnchorFrame(_groundPoint);
             ShowPlan(frame, all: true);
-            Verdict = $"{Plan.Name}: {Plan.Count} blocks, {Items.Describe(TotalCost(Plan), 4)} from your bag. Click to set it down";
+            Verdict = $"{Plan.Name} · {Plan.Count} BLOCKS · {Items.Describe(TotalCost(Plan), 4)}   [LMB] SET DOWN";
             if (pressed) StartFromPlan(frame);
             return;
         }
         if (Underway.IsWreck || Underway.Structure.Core == null)
         {
-            Said?.Invoke("The blueprint's vessel has no core any more", Tones.Warning);
+            Said?.Invoke("BLUEPRINT · CORE LOST", Tones.Warning);
             StopProjecting();
             return;
         }
         if (_planDirty) RefreshRemaining();
         ShowPlan(Underway.DrawTransform, all: false);
-        Verdict = $"{Plan.Name}: {Plan.Count - _remaining.Count}/{Plan.Count} blocks. Hold to build";
+        Verdict = $"{Plan.Name} · {Plan.Count - _remaining.Count}/{Plan.Count} BLOCKS   [LMB] HOLD";
         if (!held)
         {
             _placeTimer = 0f;
@@ -648,7 +648,7 @@ public sealed partial class BuildTool
         Bill bill = _placer.CostOf(s, core);
         if (!_pack.Storage.TryTake(bill))
         {
-            Said?.Invoke($"The blueprint starts from its core: {Items.Describe(bill)} in your bag", Tones.Caution);
+            Said?.Invoke($"NEEDS · {Items.Describe(bill)}", Tones.Caution);
             return;
         }
         _pack.Grid.Reconcile();
@@ -681,9 +681,9 @@ public sealed partial class BuildTool
         PlaceError e = Building.Check(s, cell, block);
         if (e != PlaceError.None) return e switch
         {
-            PlaceError.Occupied => "Something is already there",
-            PlaceError.NotAttached or PlaceError.NoSharedFace => "Blocks attach through a shared face",
-            PlaceError.OneCoreOnly => "A structure has one core",
+            PlaceError.Occupied => "OCCUPIED",
+            PlaceError.NotAttached or PlaceError.NoSharedFace => "NO SHARED FACE",
+            PlaceError.OneCoreOnly => "ONE CORE PER STRUCTURE",
             _ => e.ToString(),
         };
         BlockType type = s.TypeOf(block);
@@ -692,11 +692,11 @@ public sealed partial class BuildTool
         if (item == null)
         {
             ItemDef other = Items.BlockItem(type.Id, !small);
-            if (other != null) return $"{other.Name} is a {(small ? "large" : "small")}-grid block: this is a {(small ? "small" : "large")} grid";
-            if (!Creative) return $"{type.Name} has no item: it can't be built in Survival";
+            if (other != null) return $"{other.Name} · {(small ? "LARGE" : "SMALL")}-GRID BLOCK · {(small ? "SMALL" : "LARGE")} GRID";
+            if (!Creative) return $"{type.Name} · NO ITEM";
         }
-        if (InSurvivor(v, cell)) return "Step out of the way to build there";
-        if (!v.IsBase && InGround(v, cell)) return "Ground in the way: only a base reaches into the ground";
+        if (InSurvivor(v, cell)) return "YOU · IN THE WAY";
+        if (!v.IsBase && InGround(v, cell)) return "GROUND · IN THE WAY";
         return null;
     }
 
@@ -715,7 +715,7 @@ public sealed partial class BuildTool
             bool took = slotIndex < 0 ? _pack.Storage.Remove(item.Id, 1) == 1 : TakeOne(v, item, slotIndex);
             if (!took)
             {
-                if (!quiet) Said?.Invoke(slotIndex < 0 ? $"No {item.Name} in your bag" : SourceProblem(v, item, slotIndex) ?? $"No {item.Name} left", Tones.Caution);
+                if (!quiet) Said?.Invoke(slotIndex < 0 ? $"{item.Name} · BAG 0" : SourceProblem(v, item, slotIndex) ?? $"{item.Name} · 0", Tones.Caution);
                 return false;
             }
             if (slotIndex < 0) _pack.Grid.Reconcile();
@@ -736,7 +736,7 @@ public sealed partial class BuildTool
     /// <summary>
     /// What the tool says on a core: design 693, with no exception for the last block.
     /// </summary>
-    public const string CoreStays = "The core can't be removed, only destroyed or hijacked";
+    public const string CoreStays = "CORE · CAN'T REMOVE";
 
     /// <summary>
     /// Takes a block down: Survival gives its item back, whole, and sets down whatever has nowhere

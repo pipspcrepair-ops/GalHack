@@ -8,9 +8,9 @@ public static class Healing
 {
     public static Outcome UseMedkit(Vitals vitals, Inventory inventory, VitalsRules rules)
     {
-        if (inventory.Medkits <= 0) return Outcome.No("No medkits left.");
-        if (vitals.Starving) return Outcome.No("Too hungry to heal: eat something first.");
-        if (vitals.Health >= rules.Health.Max) return Outcome.No("Already at full health.");
+        if (inventory.Medkits <= 0) return Outcome.No("MEDKITS · 0");
+        if (vitals.Starving) return Outcome.No("TOO HUNGRY");
+        if (vitals.Health >= rules.Health.Max) return Outcome.No("HEALTH FULL");
         inventory.Medkits--;
         double gained = vitals.Heal(rules.Healing.MedkitHealth);
         return Outcome.Done($"Medkit: +{gained:F0} health.");
@@ -19,7 +19,7 @@ public static class Healing
     /// <summary>Full health, normal body temperature, radiation cleared.</summary>
     public static Outcome UseBooth(Vitals vitals, VitalsRules rules)
     {
-        if (vitals.Starving) return Outcome.No("Too hungry to heal: feed at the replicator first (F).");
+        if (vitals.Starving) return Outcome.No("TOO HUNGRY");
         vitals.Heal(rules.Health.Max);
         vitals.Normalise();
         return Outcome.Done("Healing booth: health full, body temperature normal, radiation cleared.");

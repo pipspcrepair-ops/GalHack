@@ -208,20 +208,20 @@ public partial class Place
     /// <summary>E on a door: open or shut it, if you may. Returns what happened, for the visor.</summary>
     public (bool Ok, string Message) UseDoor(Door d)
     {
-        if (d.Jammed) return (false, "Jammed: it won't move further, but there's room to squeeze through");
+        if (d.Jammed) return (false, "JAMMED · SQUEEZE THROUGH");
         // A settlement that won't have you keeps its doors shut.
         if (Memory.Town is { GatesShut: true } && d.Target < 0.5f) return (false, "BARRED");
         if (d.Clearance != null && !Places.HasClearance(d.Clearance))
-            return (false, $"LOCKED: needs a {d.Clearance.ToUpperInvariant()} keycard");
+            return (false, $"LOCKED · {d.Clearance.ToUpperInvariant()} KEYCARD");
         if (d.Lift >= 0 && !CarAt(d.Lift, d.Stop))
         {
             CallLift(d.Lift, d.Stop);
-            return (true, "The lift is coming");
+            return (true, "LIFT CALLED");
         }
         d.Target = d.Target > 0.5f ? 0f : 1f;
         Memory.DoorsOpen[d.Index] = d.Target > 0.5f;
         Places.Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Clank, ToWorld(d.Centre), d.Blast ? 0.6f : 0.9f, -8f);
-        return (true, d.Target > 0.5f ? (d.Clearance != null ? $"{d.Clearance.ToUpperInvariant()} card accepted" : "") : "");
+        return (true, d.Target > 0.5f ? (d.Clearance != null ? $"{d.Clearance.ToUpperInvariant()} CARD ACCEPTED" : "") : "");
     }
 
     // ---- Lifts ----------------------------------------------------------------------------------

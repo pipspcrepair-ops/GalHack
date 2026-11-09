@@ -74,10 +74,10 @@ public sealed partial class Vessel : ILiftHull
     /// </summary>
     public string ClaimWith(Int3 cell)
     {
-        if (Structure.Core != null) return $"The {Name} already has a core";
+        if (Structure.Core != null) return $"{Name} · HAS A CORE";
         Block core = Building.Make(Structure, Zone.Data.Catalogue.Type("core"));
         PlaceError e = Building.Place(Structure, cell, core, null, Building.DefaultOwner);
-        if (e != PlaceError.None) return $"The core won't seat there ({e})";
+        if (e != PlaceError.None) return $"CORE WON'T SEAT · {e}";
         Structure.Owner = Building.DefaultOwner;
         ApplyEdits();
         Claimed(Zone.Physics.Zone.Strength);

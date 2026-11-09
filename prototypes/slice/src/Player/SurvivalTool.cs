@@ -143,7 +143,7 @@ public sealed class SurvivalTool
         else if (OnBlock)
         {
             _cooldown = 0.4f;
-            Said?.Invoke("The survival tool doesn't dig blocks", Tones.Caution);
+            Said?.Invoke("SURVIVAL TOOL · NO BLOCKS", Tones.Caution);
         }
     }
 

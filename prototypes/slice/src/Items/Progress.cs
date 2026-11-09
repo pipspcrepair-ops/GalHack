@@ -286,7 +286,7 @@ public sealed class Progress
     {
         TechNode n = Node(nodeId);
         if (n == null || IsUnlocked(nodeId)) return null;
-        return StateOf(n) == UnlockState.NeedsLevel ? $"Locked: level {n.Level} in the tech tree" : "Locked: unlock it in the tech tree (Tab)";
+        return StateOf(n) == UnlockState.NeedsLevel ? $"LOCKED · LV {n.Level}" : "LOCKED · [TAB] TECH";
     }
 
     /// <summary>Spends points on a node. False if it isn't affordable now.</summary>
