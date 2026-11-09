@@ -27,7 +27,7 @@ namespace Slice.Tests;
 /// </summary>
 public partial class PopTest : Node
 {
-    const int WatchdogMinutes = 9;
+    const int WatchdogMinutes = 14;
 
     /// <summary>Nothing changes hard inside this, m.</summary>
     const float Inside = 100f;
@@ -78,6 +78,7 @@ public partial class PopTest : Node
 
     double _delta;
     int _farBuilt;
+    readonly List<double> _gpu = new(), _cpu = new(), _draws = new();
 
     void Check(bool ok, string what)
     {
@@ -115,6 +116,9 @@ public partial class PopTest : Node
         foreach (int x in Route("walk", any, 7f, 1.6f, 380f, -40f)) yield return x;
         foreach (int x in Route("bike", town ?? any, 38f, 3.0f, 1500f, -60f)) yield return x;
         foreach (int x in Route("fly", city ?? town ?? any, 90f, 70f, 2600f, -700f)) yield return x;
+
+        foreach (int x in ReachChecks()) yield return x;
+        foreach (int x in SpawnChecks()) yield return x;
 
         GD.Print("-- far meshes against merged blocks --");
         var sample = places?.OrderBy(_ => rng.Next()).Take(40).ToList() ?? new();
@@ -174,6 +178,11 @@ public partial class PopTest : Node
         _game.Zone.Streamer.ResetStats();
         places.ResetWorst();
         var frames = new List<double>();
+        Rid vp = GetViewport().GetViewportRid();
+        RenderingServer.ViewportSetMeasureRenderTime(vp, true);
+        _gpu.Clear();
+        _cpu.Clear();
+        _draws.Clear();
         _farBuilt = _game.Zone.Streamer.FarBuilds.Sum();
         float length = from - to, gone = 0f;
         var run = Stopwatch.StartNew();
@@ -182,6 +191,9 @@ public partial class PopTest : Node
             gone = MathF.Min(length, gone + speed * (float)Math.Min(_delta, 0.1));
             Put(start + way * gone);
             frames.Add(_delta * 1000.0);
+            _gpu.Add(RenderingServer.ViewportGetMeasuredRenderTimeGpu(vp));
+            _cpu.Add(RenderingServer.ViewportGetMeasuredRenderTimeCpu(vp));
+            _draws.Add(Performance.GetMonitor(Performance.Monitor.RenderTotalDrawCallsInFrame));
             yield return 0;
         }
         // A moment stood at the end, for what was still coming in.
@@ -256,9 +268,12 @@ public partial class PopTest : Node
         bool Hard(PopLog.Pop p) => p.Jump >= 0.5f && p.Distance < Inside;
         bool Seen(PopLog.Pop p) => p.Jump >= Sudden && Pixels(p) >= MostPixels;
         var bad = pops.Where(p => Hard(p) || Seen(p)).ToList();
+        JudgeArrivals(name, pops);
         frames.Sort();
         double p99 = frames.Count > 0 ? frames[(int)(frames.Count * 0.99)] : 0;
         GD.Print($"  {name}: {length:F0} m at {speed:F0} m/s toward {site?.Name ?? "open land"}{(site != null ? $" ({site.Siting})" : "")}; {pops.Count} changes logged, {bad.Count} seen as pops; frame 99th pct {p99:F1} ms, streaming worst {_game.Zone.Streamer.WorstFrameMs:F1} ms, places worst {_game.Places.WorstFrameMs:F1} ms; far chunks built on the way {_game.Zone.Streamer.FarBuilds.Sum() - _farBuilt}, nearest ring behind at the end {_game.Zone.Streamer.FarBehindNearest}; worst streaming frame: {_game.Zone.Streamer.WorstBreakdown}; worst far node put in {_game.Zone.Streamer.WorstFarNodeMs:F1} ms");
+        if (_gpu.Count > 0)
+            GD.Print($"  {name}: frame mean {frames.Average():F1} ms; GPU mean {_gpu.Average():F2} ms (99th {_gpu.OrderBy(x => x).ElementAt((int)(_gpu.Count * 0.99)):F1}), render CPU mean {_cpu.Average():F2} ms (99th {_cpu.OrderBy(x => x).ElementAt((int)(_cpu.Count * 0.99)):F1}), draw calls mean {_draws.Average():F0}");
         foreach (var g in pops.GroupBy(p => (p.Kind, p.What)).OrderBy(g => g.Key.Kind))
         {
             var seen = g.Where(p => Hard(p) || Seen(p)).ToList();

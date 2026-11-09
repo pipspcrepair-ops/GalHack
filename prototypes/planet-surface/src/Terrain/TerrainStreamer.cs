@@ -55,7 +55,13 @@ public partial class TerrainStreamer : Node3D
     public int CollisionRadius = 2;
     public bool CollisionEnabled = true;
     public double UploadBudgetMs = 3.0;
-    public const int FarRadius = 7, FarLod0Radius = 1, FarLod1Radius = 3;
+    /// <summary>The far rings, in 128 m chunks each way, and the last ring of levels 0 and 1: as far as the detail distance (<see cref="DetailReach"/>).</summary>
+    public static int FarRadius => DetailReach.FarRadius;
+    public static int FarLod0Radius => DetailReach.Lod0Radius;
+    public static int FarLod1Radius => DetailReach.Lod1Radius;
+
+    /// <summary>The horizon, m: from here out the far field is solid (<see cref="HorizonReach"/>, less a rebuild's way and the rim's thinning).</summary>
+    public const float HorizonDistance = HorizonReach - HorizonRebuild - 600f;
     const float HorizonSpacing = 64f, HorizonRebuild = 1200f, HorizonSink = 1000f;
 
     /// <summary>
@@ -211,6 +217,13 @@ public partial class TerrainStreamer : Node3D
     public override void _Ready()
     {
         _floraMeshes = FloraMeshes.BuildAll();
+        var sizes = new Dictionary<Flora, (float, float)>();
+        foreach (var (kind, mesh) in _floraMeshes)
+        {
+            Aabb box = mesh.GetAabb();
+            sizes[kind] = (box.End.Y, MathF.Max(MathF.Max(-box.Position.X, box.End.X), MathF.Max(-box.Position.Z, box.End.Z)));
+        }
+        FarBuilder.KindSize = sizes;
         _horizon = new MeshInstance3D { Name = "Horizon", CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
         AddChild(_horizon);
     }
@@ -272,6 +285,10 @@ public partial class TerrainStreamer : Node3D
         }
         StartCover();
     }
+
+    /// <summary>Flora's material (tests draw plants with it), and a kind's own low mesh (a distant drawing's).</summary>
+    public ShaderMaterial FloraMaterial => _floraMaterial;
+    public Mesh KindMesh(Flora kind) => _floraMeshes != null && _floraMeshes.TryGetValue(kind, out Mesh m) ? m : null;
 
     /// <summary>The mesh of one species' variant (-1: its far one), or null for what the world's herbarium doesn't hold.</summary>
     public Mesh PlantMesh(int plant, int variant) =>
@@ -763,6 +780,7 @@ public partial class TerrainStreamer : Node3D
         lead = lead.Length() < FarLeadFrom * FarLeadSeconds ? Vector3.Zero : lead.LimitLength(FarLeadMost);
         double leadX = Mod(cx + lead.X, w), leadZ = Mod(cz + lead.Z, h);
         int ffx = (int)Math.Floor(leadX / FarBuilder.Size), ffz = (int)Math.Floor(leadZ / FarBuilder.Size);
+        if (_reachVersion != DetailReach.Version) ApplyReach();
 
         if (_floraDirty.Count > 0)
         {
@@ -792,9 +810,11 @@ public partial class TerrainStreamer : Node3D
             int d = Math.Max(Math.Abs(dx), Math.Abs(dz)), back = Math.Max(Math.Abs(dx - bx), Math.Abs(dz - bz));
             wanted.Add((Mod(ffx + dx, nx), Mod(ffz + dz, nz), Math.Min(LodAt(d), LodAt(back)), Math.Min(d, back), Math.Min(d, back) - Ahead(dx, dz) * 0.5f));
         }
+        // The whole square round the focus stays too, so nothing within the detail distance of it (the
+        // distant drawings of trees reach to there) goes from behind or beside a moving focus.
         if (bx != 0 || bz != 0)
-            for (int dz = bz - FarLod1Radius; dz <= bz + FarLod1Radius; dz++)
-            for (int dx = bx - FarLod1Radius; dx <= bx + FarLod1Radius; dx++)
+            for (int dz = bz - FarRadius; dz <= bz + FarRadius; dz++)
+            for (int dx = bx - FarRadius; dx <= bx + FarRadius; dx++)
             {
                 if (Math.Max(Math.Abs(dx), Math.Abs(dz)) <= FarRadius) continue; // in the square ahead already
                 int back = Math.Max(Math.Abs(dx - bx), Math.Abs(dz - bz));
@@ -887,7 +907,10 @@ public partial class TerrainStreamer : Node3D
                 (gone ??= new List<(int, int)>()).Add(key);
                 continue;
             }
-            if (f.Node != null) f.Node.Position = new Vector3((float)NearestCopy(f.Fx * FarBuilder.Size, FarBuilder.Size, Focus.X, w), 0, (float)NearestCopy(f.Fz * FarBuilder.Size, FarBuilder.Size, Focus.Z, h));
+            if (f.Node == null) continue;
+            // Written only when it moves (a wrap round the planet): a same-spot write still tells every batch under it.
+            var at = new Vector3((float)NearestCopy(f.Fx * FarBuilder.Size, FarBuilder.Size, Focus.X, w), 0, (float)NearestCopy(f.Fz * FarBuilder.Size, FarBuilder.Size, Focus.Z, h));
+            if (f.Node.Position != at) f.Node.Position = at;
         }
         if (gone != null) foreach (var key in gone) _far.Remove(key);
 
@@ -965,7 +988,7 @@ public partial class TerrainStreamer : Node3D
             if (at.X < x0 - radius || at.X > x0 + FarBuilder.Size + radius || at.Z < z0 - radius || at.Z > z0 + FarBuilder.Size + radius) continue;
             foreach (FloraBatch b in f.Flora)
             {
-                if (b.Far && f.Lod == 0) continue; // the same plants as the near drawing's
+                if (b.Distant || b.Far && f.Lod == 0) continue; // the same plants as the near or far drawing's
                 for (int i = 0; i < b.Count; i++)
                 {
                     int o = i * 16;
@@ -991,8 +1014,8 @@ public partial class TerrainStreamer : Node3D
     /// <summary>One plant seen in the scatter: its kind, where it roots, its scale, id, species and mesh, its turn, and its instance's own tint and glow.</summary>
     public readonly record struct PlantSighting(Flora Kind, Vector3 Root, float Scale, long Id, int Plant, int Variant, Basis Turn, Color Custom = default)
     {
-        /// <summary>Its own tint and glow as it stands near (a far copy's glow carries its shade marker, +2).</summary>
-        public Color OwnTint => Variant < 0 && Custom.A >= 2f ? new Color(Custom.R, Custom.G, Custom.B, Custom.A - 2f) : Custom;
+        /// <summary>Its own tint and glow as it stands near (a far copy's glow, or small growth's, carries its thinning marker, +2).</summary>
+        public Color OwnTint => Custom.A >= 1.5f ? new Color(Custom.R, Custom.G, Custom.B, Custom.A - 2f) : Custom;
 
         public void Deconstruct(out Flora kind, out Vector3 root, out float scale, out long id)
         {
@@ -1049,17 +1072,46 @@ public partial class TerrainStreamer : Node3D
             multimesh.InstanceCount = b.Count;
             multimesh.Buffer = b.Buffer;
             // Each plant dissolves by its own distance in the shader (FloraShows); the whole batch is
-            // only dropped once the nearest of it is past all of its reach (a chunk's half-diagonal on).
+            // only drawn while some of it can be within its reach (a chunk's half-diagonal either way).
+            int layer = b.Layer;
             var flora = new MultiMeshInstance3D
             {
+                Name = $"L{layer}",
                 Multimesh = multimesh, MaterialOverride = _floraMaterial,
-                CastShadow = !b.Far ? GeometryInstance3D.ShadowCastingSetting.On : GeometryInstance3D.ShadowCastingSetting.Off,
-                VisibilityRangeEnd = (b.Far ? FloraFarReach : FloraNearReach) + FarBuilder.Size * 0.75f,
+                // Near drawings cast shadows; small growth only in the finest chunks (it reaches further, in the shadows' far splits).
+                CastShadow = layer == 0 || layer == 4 && job.Lod == 0 ? GeometryInstance3D.ShadowCastingSetting.On : GeometryInstance3D.ShadowCastingSetting.Off,
             };
-            flora.SetInstanceShaderParameter("flora_layer", b.Far ? 1f : 0f);
+            SetRange(flora, layer);
+            flora.SetInstanceShaderParameter("flora_layer", (float)layer);
             node.AddChild(flora);
         }
         return node;
+    }
+
+    int _reachVersion = -1;
+
+    /// <summary>The distances a flora batch of a layer draws between, by the nearest and furthest of it (a chunk's half-diagonal).</summary>
+    static void SetRange(GeometryInstance3D g, int layer)
+    {
+        const float half = FarBuilder.Size * 0.75f;
+        var (from, to) = FloraLayerReach(layer);
+        g.VisibilityRangeBegin = MathF.Max(0f, from - half);
+        g.VisibilityRangeEnd = to + half;
+    }
+
+    /// <summary>The detail distance changed (<see cref="DetailReach"/>): flora's reaches into its shader, and every batch drawn re-ranged. The rings lay themselves out again as they go.</summary>
+    void ApplyReach()
+    {
+        _reachVersion = DetailReach.Version;
+        _floraMaterial.SetShaderParameter("flora_reach", new Vector4(DetailReach.Near, DetailReach.Small, DetailReach.Far, DetailReach.Distant));
+        _floraMaterial.SetShaderParameter("flora_bands", new Vector4(DetailReach.NearBand, DetailReach.SmallBand, DetailReach.FarBand, DetailReach.DistantBand));
+        _floraMaterial.SetShaderParameter("flora_thin", new Vector2(DetailReach.Thin, DetailReach.ThinBand));
+        foreach (FarChunk f in _far.Values)
+        {
+            if (f.Node == null) continue;
+            foreach (Node child in f.Node.GetChildren())
+                if (child is MultiMeshInstance3D m && m.Name.ToString() is ['L', var c]) SetRange(m, c - '0');
+        }
     }
 
     void UpdateHorizon(double cx, double cz, double w, double h)
