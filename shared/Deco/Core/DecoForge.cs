@@ -697,12 +697,21 @@ public sealed class DecoForge
             return s;
         }
 
+        // Each part's triangles are kept apart, so the standoff pass can move a part whole (DecoStandoff).
+        var parts = new DecoStandoff.Parts(mesh);
         foreach (DecoPart part in model.Parts)
+        {
+            parts.Next();
             DecoEmit.Part(mesh, part, (at, n, slot) => ColorOf(part, at, n, slot), slot => SurfaceFor(part, slot), warp);
+        }
         // Cables hang now, after any toppling: spans sag, cut ones drop to the floor.
         foreach (DecoCable c in model.Cables)
             foreach (DecoPart t in DecoCables.Tubes(DecoCables.Path(c), c.Radius, c.Slot))
+            {
+                parts.Next();
                 DecoEmit.Part(mesh, t, (at, n, slot) => ColorOf(t, at, n, slot), slot => SurfaceFor(t, slot), warp);
+            }
+        parts.Close();
 
         foreach (DecoPart screen in shape.Cracked) Cracks(mesh, screen, pal, rng);
         mesh.RecomputeBounds();
@@ -758,6 +767,9 @@ public sealed class DecoForge
         mesh.RecomputeBounds();
 
         if (clampBox) mesh.Clamp(boxMin, boxMax);
+        // No two faces fight: nothing lies in the floor plane, and whatever lies on a face stands off it.
+        bool fits = upright && look.State is not (DecoState.Open or DecoState.Buried);
+        DecoStandoff.Apply(mesh, parts, fits ? (boxMin, boxMax) : null);
         DecoEmit.Collision(mesh, model.Parts);
         mesh.CentreOfMass = shape.CentreOfMass;
         if (powered)

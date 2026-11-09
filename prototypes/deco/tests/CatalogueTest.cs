@@ -32,6 +32,7 @@ public partial class CatalogueTest : TestBase
         Run("Every cable is attached", TestCables);
         Run("Godot meshes and shapes", TestGodot);
         Run("Every part has a surface", TestSurfaces);
+        Run("No two faces fight", TestCoplanar);
         Run("Nothing leans on air", TestLeaning);
         Run("Names are GalHack's own", TestNames);
     }
@@ -117,6 +118,51 @@ public partial class CatalogueTest : TestBase
         Note($"{meshes} meshes, {tris:N0} triangles ({tris / Math.Max(1, meshes)} per mesh)");
     }
 
+    /// <summary>
+    /// No model draws two faces of different looks in one plane over each other (they z-fight): every piece,
+    /// every state and fall, every cover. A detail laid on a face stands off it (<see cref="DecoEmit.Standoff"/>).
+    /// </summary>
+    void TestCoplanar()
+    {
+
+        int models = 0, bad = 0;
+        var by = new Dictionary<string, int>();
+        foreach (DecoPiece p in _cat.Pieces)
+            foreach (DecoState s in p.States)
+                foreach (DecoFall f in FallsOf(p, s))
+                    foreach (DecoCover c in s == DecoState.Overgrown ? new[] { DecoCover.Vines, DecoCover.Bloom } : s == DecoState.Buried ? new[] { DecoCover.Snow } : new[] { DecoCover.Vines })
+                    {
+                        models++;
+                        int n = Fights(_forge.Mesh(new DecoLook(p.Id, s, f, true, c, p.Palette)));
+                        if (n == 0) continue;
+                        bad++;
+                        by[$"{p.Id} {s}"] = n;
+                    }
+        foreach (var g in by.GroupBy(k => k.Key.Split(' ')[1]).OrderByDescending(g => g.Sum(k => k.Value))) Note($"  {g.Sum(k => k.Value),6} pairs in {g.Count()} {g.Key} models");
+        foreach (var kv in by.Where(k => !k.Key.EndsWith(" Buried")).OrderByDescending(k => k.Value).Take(12)) Note($"  {kv.Value,4} pairs in {kv.Key}");
+        foreach (var kv in Kinds.OrderByDescending(k => k.Value).Take(12)) Note($"  {kv.Value,6} pairs between {kv.Key}");
+        // Zero is the aim; parts tangled several deep (vines over trim over panels) still leave a few. This is a
+        // ceiling from 105,419 pairs before the standoff rule, to be lowered, never raised.
+        Check(by.Values.Sum() <= 1200, $"models hardly draw two faces of different looks in one plane: {by.Values.Sum()} pairs in {bad} of {models} models, at most 1,200");
+    }
+
+    /// <summary>How many pairs of a model's faces fight (look: its surface and colour).</summary>
+    static readonly Dictionary<string, int> Kinds = new();
+
+    public static int Fights(DecoMeshData m)
+    {
+        var faces = new List<GalHack.Geometry.Coplanar.Face>();
+        for (int si = 0; si < m.Surfaces.Length; si++)
+        {
+            DecoSurfaceData s = m.Surfaces[si];
+            for (int t = 0; t + 2 < s.Positions.Count; t += 3)
+                faces.Add(new(s.Positions[t], s.Positions[t + 1], s.Positions[t + 2], s.Normals[t] + s.Normals[t + 1] + s.Normals[t + 2], GalHack.Geometry.Coplanar.Look(si, s.Colors[t]), si));
+        }
+        var pairs = GalHack.Geometry.Coplanar.Find(faces);
+        foreach (var p in pairs) { string k = $"{(DecoSurface)faces[p.P].Source}/{(DecoSurface)faces[p.Q].Source}"; Kinds[k] = Kinds.GetValueOrDefault(k) + 1; }
+        return pairs.Count;
+    }
+
     /// <summary>A number that changes when any vertex moves or any colour changes.</summary>
     static double Signature(DecoMeshData m)
     {
@@ -152,7 +198,8 @@ public partial class CatalogueTest : TestBase
 
     void TestFit()
     {
-        const float tol = 0.002f;
+        // A detail flush with the footprint's face stands one standoff proud of it (DecoStandoff).
+        const float tol = 0.002f + GalHack.Geometry.Coplanar.Standoff;
         foreach (DecoPiece p in _cat.Pieces)
         {
             var lo = new Vector3(-p.Width / 2 - tol, -tol, -p.Depth / 2 - tol);
