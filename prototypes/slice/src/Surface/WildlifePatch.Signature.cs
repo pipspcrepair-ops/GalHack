@@ -215,7 +215,7 @@ public partial class WildlifePatch
                 {
                     float side = rng.Chance(0.5f) ? 1f : -1f;
                     Vector3 d = attempt < 6 ? _heading.Rotated(Vector3.Up, side * rng.Range(1.25f, 1.55f)) : _heading.Rotated(Vector3.Up, rng.Range(-0.7f, 0.7f));
-                    float r = attempt < 6 ? rng.Range(110f, 170f) : rng.Range(Sim.Data.Spawning.ViewDistance + 6f, AroundYou - 4f);
+                    float r = attempt < 6 ? rng.Range(110f, 170f) * AroundYou / SpawnReach.Old : rng.Range(Sim.Data.Spawning.ViewDistance + 6f, AroundYou - 4f);
                     group = PutAt(s, count, you + d * r, 0f, 4f, rng);
                 }
             if (group is { Count: > 0 } && _heading != Vector3.Zero)

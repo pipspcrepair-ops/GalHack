@@ -36,6 +36,8 @@ public sealed class GameSettings
     public int GroundDetail = 5;
     /// <summary>How far land, flora, places and ruins draw in detail, m: from the default out to the horizon (DetailReach).</summary>
     public float DetailDistance = DetailReach.Default;
+    /// <summary>How far round you life is kept and drawn, m: from the default out toward the detail distance (SpawnReach).</summary>
+    public float SpawnDistance = Slice.Surface.SpawnReach.Default;
     /// <summary>The picture's gamma: above 1 lifts the shadows, below darkens them.</summary>
     public float Gamma = 1f;
 
@@ -66,7 +68,7 @@ public sealed class GameSettings
     public void ResetGraphics()
     {
         var d = new GameSettings();
-        (Window, Resolution, Vsync, FpsCap, RenderScale, Fov, Shadows, GroundDetail, DetailDistance, Gamma) = (d.Window, d.Resolution, d.Vsync, d.FpsCap, d.RenderScale, d.Fov, d.Shadows, d.GroundDetail, d.DetailDistance, d.Gamma);
+        (Window, Resolution, Vsync, FpsCap, RenderScale, Fov, Shadows, GroundDetail, DetailDistance, SpawnDistance, Gamma) = (d.Window, d.Resolution, d.Vsync, d.FpsCap, d.RenderScale, d.Fov, d.Shadows, d.GroundDetail, d.DetailDistance, d.SpawnDistance, d.Gamma);
         Changed();
     }
 
@@ -93,6 +95,7 @@ public sealed class GameSettings
         s.Shadows = Enum.TryParse(Str(file, "graphics", "shadows"), true, out ShadowLevel sh) ? sh : s.Shadows;
         s.GroundDetail = Math.Clamp(Int(file, "graphics", "ground_detail", s.GroundDetail), MinGround, MaxGround);
         s.DetailDistance = Math.Clamp(Float(file, "graphics", "detail_distance", s.DetailDistance), DetailReach.Default, DetailReach.Most);
+        s.SpawnDistance = Math.Clamp(Float(file, "graphics", "spawn_distance", s.SpawnDistance), Slice.Surface.SpawnReach.Default, Slice.Surface.SpawnReach.Most);
         s.Gamma = Math.Clamp(Float(file, "graphics", "gamma", s.Gamma), MinGamma, MaxGamma);
         s.Sensitivity = Math.Clamp(Float(file, "mouse", "sensitivity", s.Sensitivity), MinSense, MaxSense);
         s.InvertY = Bool(file, "mouse", "invert_y", s.InvertY);
@@ -116,6 +119,7 @@ public sealed class GameSettings
         file.SetValue("graphics", "shadows", Shadows.ToString().ToLowerInvariant());
         file.SetValue("graphics", "ground_detail", GroundDetail);
         file.SetValue("graphics", "detail_distance", DetailDistance);
+        file.SetValue("graphics", "spawn_distance", SpawnDistance);
         file.SetValue("graphics", "gamma", Gamma);
         file.SetValue("mouse", "sensitivity", Sensitivity);
         file.SetValue("mouse", "invert_y", InvertY);

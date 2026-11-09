@@ -285,6 +285,9 @@ public partial class WildlifeView : Node3D
 
     public int ViewCount => _views.Count;
 
+    /// <summary>Whether a creature's body is drawn now (tests).</summary>
+    public bool Drawn(Creature c) => _views.TryGetValue(c, out CreatureView v) && v.Visible;
+
     /// <summary>The most new bodies built in a frame (a whole herd coming into view is spread over a few).</summary>
     public int MostNew = int.MaxValue;
 
@@ -351,6 +354,7 @@ public partial class WildlifeView : Node3D
             float d = WildSim.Flat(c.Position - camera).Length();
             float far = c.Species.Plan == BodyPlan.Giant ? FarDistance * 2.5f : FarDistance;
             c.RigInterval = d < NearDistance ? 1 : d < MidDistance ? 2 : d < far ? 4 : 12;
+            c.ThinkScale = d < MidDistance ? 1f : d < far ? 2f : 3f;
             bool visible = d < far;
             float shows = visible ? 1f : 0f, was = view.Shows;
             if (Fader != null)

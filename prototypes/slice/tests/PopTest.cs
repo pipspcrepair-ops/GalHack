@@ -118,6 +118,7 @@ public partial class PopTest : Node
         foreach (int x in Route("fly", city ?? town ?? any, 90f, 70f, 2600f, -700f)) yield return x;
 
         foreach (int x in ReachChecks()) yield return x;
+        foreach (int x in SpawnChecks()) yield return x;
 
         GD.Print("-- far meshes against merged blocks --");
         var sample = places?.OrderBy(_ => rng.Next()).Take(40).ToList() ?? new();
@@ -267,6 +268,7 @@ public partial class PopTest : Node
         bool Hard(PopLog.Pop p) => p.Jump >= 0.5f && p.Distance < Inside;
         bool Seen(PopLog.Pop p) => p.Jump >= Sudden && Pixels(p) >= MostPixels;
         var bad = pops.Where(p => Hard(p) || Seen(p)).ToList();
+        JudgeArrivals(name, pops);
         frames.Sort();
         double p99 = frames.Count > 0 ? frames[(int)(frames.Count * 0.99)] : 0;
         GD.Print($"  {name}: {length:F0} m at {speed:F0} m/s toward {site?.Name ?? "open land"}{(site != null ? $" ({site.Siting})" : "")}; {pops.Count} changes logged, {bad.Count} seen as pops; frame 99th pct {p99:F1} ms, streaming worst {_game.Zone.Streamer.WorstFrameMs:F1} ms, places worst {_game.Places.WorstFrameMs:F1} ms; far chunks built on the way {_game.Zone.Streamer.FarBuilds.Sum() - _farBuilt}, nearest ring behind at the end {_game.Zone.Streamer.FarBehindNearest}; worst streaming frame: {_game.Zone.Streamer.WorstBreakdown}; worst far node put in {_game.Zone.Streamer.WorstFarNodeMs:F1} ms");
