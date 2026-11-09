@@ -622,6 +622,8 @@ public partial class PlayerTest : Node
         foreach (int x in Pick(_base)) yield return x;
         foreach (int x in _drive.ClickWidget("storage:store-raw")) yield return x;
         Check(_base.Storage.Count("iron-ore") > 0, $"STORE ORE, MATERIALS fills the base's storage ({_base.Storage.UsedSu:F0} SU)");
+        // The pump's water (a start with no ice near it) goes in the base's storage with the ore: the store button moves ore and materials, not liquids.
+        if (_game.Pack["water"] > 0) _base.Storage.Add("water", _game.Pack.Storage.Remove("water", _game.Pack["water"]));
         Bill parts = new();
         foreach (var (b, small, n) in VesselBlocks) parts.Add(_game.Zone.Data.Items.Blocks.For(b, small), n);
         Bill blockParts = parts.Clone();
