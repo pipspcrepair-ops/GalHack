@@ -59,6 +59,8 @@ public partial class PopTest
         // Live: the most, and back.
         _game.Settings.SpawnDistance = top;
         _game.Settings.Changed();
+        yield return 0; // the game applies it
+        yield return 0;
         clock.Restart();
         while (clock.Elapsed.TotalSeconds < 30 && patch.Sim.Terrain.HalfSize != SpawnReach.PatchHalf(_game.Zone.Data.Rules.Wildlife.PatchHalfSize)) yield return 0;
         for (int i = 0; i < 5; i++) yield return 0;
