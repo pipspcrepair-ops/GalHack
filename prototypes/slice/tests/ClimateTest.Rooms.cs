@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using GalHack.Physics.Engine;
@@ -132,10 +132,15 @@ public partial class ClimateTest
         Check(BlockDoors.IsOpen(room, doorCell) && !suit.InSealedRoom && Math.Abs(opened - outsideOpen) < 0.5 && suit.Room == RoomKind.None,
             $"its door open, the room leaks and the outside comes in: {warm:F0} Â°C to {opened:F0} Â°C ({outsideOpen:F0} outside)");
         _game.Doors.Feet = feet;
-        for (int i = 0; i < 300 && BlockDoors.IsOpen(room, doorCell); i++) yield return 0;
+        // Out of the doorway, nobody shuts it: it shuts itself on the timer, and the room is sealed again.
+        double clearAt = _game.Suit.Sim.Time;
+        for (int i = 0; i < 60 * 12 && BlockDoors.IsOpen(room, doorCell); i++) yield return 0;
+        double shutAfter = _game.Suit.Sim.Time - clearAt;
         foreach (int x in _drive.Wait(10)) yield return x;
-        Check(suit.InSealedRoom && RoomC < band.LowC,
-            $"shut again, it starts from the cold that came in: {RoomC:F0} Â°C");
+        Check(!BlockDoors.IsOpen(room, doorCell) && shutAfter >= DoorWays.AutoClose - 0.5 && suit.InSealedRoom && RoomC < band.LowC,
+            $"it shuts itself {shutAfter:F1} s after its doorway is clear (timer {DoorWays.AutoClose:F0} s), sealed again, from the cold that came in: {RoomC:F0} °C");
+        for (int i = 0; i < 60 * 30 && RoomC < band.LowC; i++) yield return 0;
+        Check(suit.InSealedRoom && RoomC >= band.LowC, $"and its air recovers: {RoomC:F0} °C ({band.LowC:F0}-{band.HighC:F0} comfortable)");
 
         // Space outside, by the same rule (STAGING: the orbit's own outside set on the suit, as Spaceflight sets it on the way up).
         suit.Beyond = _game.Spaceflight.Space;
