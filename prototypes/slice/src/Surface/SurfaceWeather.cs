@@ -75,6 +75,8 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
     /// <summary>A strike's real light right now, and one set off by hand (tests).</summary>
     public float StrikeLight => _lightning.StrikeEnergy;
     public void StrikeAt(Vector3 at) => _lightning.Strike(at);
+    /// <summary>The lightning itself (tests and screenshots).</summary>
+    public PlanetSurface.WeatherView.LightningFx Lightning => _lightning;
 
     /// <summary>The rain falling where the camera is, 0 to 1.</summary>
     public float RainHere => Sim == null || Camera == null ? 0f : Sim.RainAt(Camera.GlobalPosition);
@@ -839,7 +841,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
         GroundCover g = Sim.Ground;
         RenderingServer.GlobalShaderParameterSet("weather_wind", new Vector4(dir.X, dir.Y, speed, _windTravel));
         RenderingServer.GlobalShaderParameterSet("weather_ground", new Vector4(g.Wetness, g.Snow, g.Dust, c.Solar));
-        Vector3 flash = _lightning.FlashDirection;
+        Vector3 flash = _lightning.FlashAt; // where the cloud is lit from, in the world
         RenderingServer.GlobalShaderParameterSet("weather_flash", new Vector4(flash.X, flash.Y, flash.Z, _lightning.Flash));
     }
 

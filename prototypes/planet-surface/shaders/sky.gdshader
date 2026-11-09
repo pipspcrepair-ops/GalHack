@@ -16,7 +16,7 @@
 shader_type sky;
 render_mode use_half_res_pass, use_quarter_res_pass;
 
-global uniform vec4 weather_flash;   // direction to the last strike, and its brightness
+global uniform vec4 weather_flash;   // where in the world the last strike lights the cloud from, and its brightness
 
 uniform vec3 zenith_day : source_color;
 uniform vec3 horizon_day : source_color;
@@ -548,8 +548,10 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter, 
 	vec3 night_lit = night_color * night_light.w * by_night * (0.75 + 1.4 * pow(max(dot(rd, night_light.xyz), 0.0), 6.0));
 	// The sky's own light on them, by night the moonlit (or starlit) sky's: dark, never black.
 	vec3 ambient = mix(cloud_shade, sky, 0.35) * (0.12 + 0.88 * day) + cloud_shade * night_color * night_light.w * by_night * 0.55;
-	// A strike lights the cloud round it most, and the rest of the sky a little.
-	float flash = weather_flash.w * (0.12 + 1.4 * pow(max(dot(rd, weather_flash.xyz), 0.0), 7.0));
+	// A strike lights only the cloud round it, falling off with distance from it: a far one its own
+	// cell, a near one (seen from under it) the deck for a good way round. Never the whole sky.
+	float flash = weather_flash.w;
+	float flash_reach = mix(1800.0, 650.0, smoothstep(700.0, 2500.0, length(weather_flash.xz - ro.xz)));
 	float fronts = 0.0; // how much of what this ray met was the front's: its shelf and deck stand out low over the horizon
 	// The shelf is a thin crisp wedge: through its band the march takes short steps (and may take more of them).
 	// Its short steps come out of their own budget: once it is spent the march goes on at the plain step,
@@ -617,7 +619,10 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter, 
 				vec3 under = cloud_underglow + night_color * night_light.w * by_night * 0.12 * (1.0 - 0.5 * cloud_dark);
 				if (glow_count > 0) under += place_glow(p.xz);
 				lum += under * (1.0 - hgt) * (1.0 - hgt);
-				lum += vec3(0.75, 0.72, 1.0) * flash * 2.5 * (1.0 - hgt * 0.3);
+				if (flash > 0.001) {
+					vec2 off = (p.xz - weather_flash.xz) / flash_reach;
+					lum += vec3(0.75, 0.72, 1.0) * flash * 2.5 * (1.0 - hgt * 0.3) * exp(-dot(off, off));
+				}
 				light += trans * lum * (1.0 - exp(-ext));
 			}
 			trans *= exp(-ext);
