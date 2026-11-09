@@ -55,7 +55,7 @@ public sealed partial class Staging
                 var space = _game.Zone.GetWorld3D().DirectSpaceState;
                 void Measure(string kind, string who, Vector3 w, string more = "")
                 {
-                    if ((w - feet).Length() > 35f) return; // colliders stream in near the survivor only
+                    if ((w - feet).Length() > 60f) return; // colliders stream in near the survivor only
                     var q = PhysicsRayQueryParameters3D.Create(w + Vector3.Up * 1.0f, w + Vector3.Down * 3f, Layers.World);
                     q.Exclude = WorldRay.Ignored;
                     var r = space.IntersectRay(q);
@@ -72,9 +72,12 @@ public sealed partial class Staging
                     if (place.Memory.Town is not { } town || !place.Ready) continue;
                     foreach (Town.Person p in town.People)
                     {
-                        if (p.Gone || p.Dead || p.Indoors || p.Away || p.Sitting) continue;
+                        if (p.Gone || p.Dead || p.Indoors || p.Away || p.Sitting || p.Seat >= 0) continue;
+                        // Getting into a seat or a bed: the ray meets the furniture itself.
+                        if (p.Spot >= 0 && p.Spot < town.Spots.Count && town.Spots[p.Spot] is { Tag: "sit" or "bed" } sp
+                            && new Vector2(p.Pos.X - sp.Cell.X - 0.5f, p.Pos.Z - sp.Cell.Z - 0.5f).Length() < 1.2f) continue;
                         if (seen.Add(("t", p))) townsfolk++;
-                        Measure("townsperson", $"{p.Job} of {place.Memory.Site.Name}", town.World(p.Pos), $", local {p.Pos.X:F1},{p.Pos.Y:F2},{p.Pos.Z:F1}, grid ground {(town.Ground(p.Pos) is float g ? g.ToString("F2") : "none")}, walking {p.Now > 0.1f}");
+                        Measure("townsperson", $"{p.Job} of {place.Memory.Site.Name}", town.World(p.Pos), $", local {p.Pos.X:F1},{p.Pos.Y:F2},{p.Pos.Z:F1}, grid ground {(town.Ground(p.Pos) is float g ? g.ToString("F2") : "none")}, walking {p.Now > 0.1f}, block {place.Memory.Inst.Blocks.Get(new PoiGenerator.Gen.Int3((int)MathF.Floor(p.Pos.X), (int)MathF.Floor(p.Pos.Y + 0.05f), (int)MathF.Floor(p.Pos.Z))).Type}, spot {(p.Spot >= 0 && p.Spot < town.Spots.Count ? town.Spots[p.Spot].Tag + " " + town.Spots[p.Spot].Cell : "-")}");
                     }
                 }
                 var wild = _game.Zone.Wildlife;
