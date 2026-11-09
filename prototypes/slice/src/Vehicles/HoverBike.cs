@@ -130,12 +130,13 @@ public sealed class HoverBike
     {
         var flat = new Vector3(push.X, 0f, push.Z);
         Vector3 alpha = Vector3.Up.Cross(flat) * 1.1f + Vector3.Up * flat.Length() * 0.25f; // m/s² of push over its own small size
-        if (above < Hover * 2.5f)
+        // It always tries to be level in the world: its plates hard near the ground, its gyro more gently in the air,
+        // so a tornado's grip still overpowers it and tumbles it, but a hop or a drop never leaves it tilted.
         {
             Vector3 axis = _tumble.Y.Cross(Vector3.Up);
             float tilt = Tilt;
             Vector3 level = (axis.LengthSquared() > 1e-8f ? axis.Normalized() * (20f * tilt) : Vector3.Zero) - _spin * 4f;
-            alpha += level.LimitLength(PlateLevel);
+            alpha += level.LimitLength(above < Hover * 2.5f ? PlateLevel : PlateLevel * 0.4f);
         }
         _spin = ((_spin + alpha * dt) * MathF.Exp(-0.3f * dt)).LimitLength(7f);
         float turn = _spin.Length() * dt;
@@ -249,11 +250,12 @@ public sealed class HoverBike
         if (Position.Y < surface + 0.35f) { Position.Y = surface + 0.35f; _vy = MathF.Max(0f, _vy); }
         Velocity.Y = _vy;
 
-        // The body leans to the slope under it and into a turn.
+        // The body leans to the slope under it and into a turn; in the air (a hop, off a ledge) it holds itself
+        // level, as a hover craft tries to, never nosing up or down with its climb.
         float h0 = _owner.SurfaceAt(Position.X + fwd.X * 1.0f, Position.Z + fwd.Z * 1.0f, Position.Y + 4f, out _);
         float h1 = _owner.SurfaceAt(Position.X - fwd.X * 1.0f, Position.Z - fwd.Z * 1.0f, Position.Y + 4f, out _);
         float k = 1f - MathF.Exp(-8f * dt);
-        _pitch = Mathf.Lerp(_pitch, Grounded ? Mathf.Clamp(MathF.Atan2(h0 - h1, 2f), -0.5f, 0.5f) : Mathf.Clamp(_vy * 0.02f, -0.35f, 0.35f), k);
+        _pitch = Mathf.Lerp(_pitch, Grounded ? Mathf.Clamp(MathF.Atan2(h0 - h1, 2f), -0.5f, 0.5f) : 0f, k);
         _roll = Mathf.Lerp(_roll, Mathf.Clamp(-steer * Speed * 0.012f - vs * 0.02f, -0.45f, 0.45f), k);
         Place();
 
