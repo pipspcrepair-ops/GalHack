@@ -122,7 +122,7 @@ public partial class TerrainStreamer
     /// How much of one drawing of a scattered plant shows at a distance (m, flat, from the eye), as
     /// flora.gdshader has it: the near drawing its share, the far drawing the rest of what shows, and
     /// the distant drawing (a share of the large growth) what shows past the far drawing's reach.
-    /// Small growth has its near drawing only; its thinning share goes at the large's near reach.
+    /// Small growth has its near drawing only; its thinning share goes at three fifths of its reach.
     /// </summary>
     public static float FloraShows(int layer, bool thin, float away, float x, float z)
     {
@@ -130,7 +130,7 @@ public partial class TerrainStreamer
         float r = s - MathF.Floor(s), own = 0.9f + 0.1f * r;
         float near = Shown(DetailReach.Near * own, DetailReach.NearBand, away);
         if (layer == NearLayer) return near;
-        if (layer == SmallLayer) return thin ? near : Shown(DetailReach.Small * own, DetailReach.SmallBand, away);
+        if (layer == SmallLayer) return Shown(DetailReach.Small * (thin ? 0.6f : 1f) * own, DetailReach.SmallBand * (thin ? 0.6f : 1f), away);
         if (layer == FarLayer)
         {
             float most = thin ? Shown(DetailReach.Thin * own, DetailReach.ThinBand, away) : Shown(DetailReach.Far * own, DetailReach.FarBand, away);

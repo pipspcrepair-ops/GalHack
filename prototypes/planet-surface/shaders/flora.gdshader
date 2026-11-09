@@ -59,7 +59,7 @@ void vertex() {
 		if (layer == 0) {
 			band = vec2(0.0, near);
 		} else if (layer == 4) {
-			band = vec2(0.0, thin ? near : shown(flora_reach.y * own, flora_bands.y, away));
+			band = vec2(0.0, shown(flora_reach.y * (thin ? 0.6 : 1.0) * own, flora_bands.y * (thin ? 0.6 : 1.0), away));
 		} else if (layer == 1) {
 			float far = thin ? shown(flora_thin.x * own, flora_thin.y, away) : shown(flora_reach.z * own, flora_bands.z, away);
 			band = vec2(near, max(far, near));

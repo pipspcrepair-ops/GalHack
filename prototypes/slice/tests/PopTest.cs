@@ -78,7 +78,7 @@ public partial class PopTest : Node
 
     double _delta;
     int _farBuilt;
-    readonly List<double> _gpu = new(), _cpu = new();
+    readonly List<double> _gpu = new(), _cpu = new(), _draws = new();
 
     void Check(bool ok, string what)
     {
@@ -181,6 +181,7 @@ public partial class PopTest : Node
         RenderingServer.ViewportSetMeasureRenderTime(vp, true);
         _gpu.Clear();
         _cpu.Clear();
+        _draws.Clear();
         _farBuilt = _game.Zone.Streamer.FarBuilds.Sum();
         float length = from - to, gone = 0f;
         var run = Stopwatch.StartNew();
@@ -191,6 +192,7 @@ public partial class PopTest : Node
             frames.Add(_delta * 1000.0);
             _gpu.Add(RenderingServer.ViewportGetMeasuredRenderTimeGpu(vp));
             _cpu.Add(RenderingServer.ViewportGetMeasuredRenderTimeCpu(vp));
+            _draws.Add(Performance.GetMonitor(Performance.Monitor.RenderTotalDrawCallsInFrame));
             yield return 0;
         }
         // A moment stood at the end, for what was still coming in.
@@ -269,7 +271,7 @@ public partial class PopTest : Node
         double p99 = frames.Count > 0 ? frames[(int)(frames.Count * 0.99)] : 0;
         GD.Print($"  {name}: {length:F0} m at {speed:F0} m/s toward {site?.Name ?? "open land"}{(site != null ? $" ({site.Siting})" : "")}; {pops.Count} changes logged, {bad.Count} seen as pops; frame 99th pct {p99:F1} ms, streaming worst {_game.Zone.Streamer.WorstFrameMs:F1} ms, places worst {_game.Places.WorstFrameMs:F1} ms; far chunks built on the way {_game.Zone.Streamer.FarBuilds.Sum() - _farBuilt}, nearest ring behind at the end {_game.Zone.Streamer.FarBehindNearest}; worst streaming frame: {_game.Zone.Streamer.WorstBreakdown}; worst far node put in {_game.Zone.Streamer.WorstFarNodeMs:F1} ms");
         if (_gpu.Count > 0)
-            GD.Print($"  {name}: frame mean {frames.Average():F1} ms; GPU mean {_gpu.Average():F2} ms (99th {_gpu.OrderBy(x => x).ElementAt((int)(_gpu.Count * 0.99)):F1}), render CPU mean {_cpu.Average():F2} ms (99th {_cpu.OrderBy(x => x).ElementAt((int)(_cpu.Count * 0.99)):F1})");
+            GD.Print($"  {name}: frame mean {frames.Average():F1} ms; GPU mean {_gpu.Average():F2} ms (99th {_gpu.OrderBy(x => x).ElementAt((int)(_gpu.Count * 0.99)):F1}), render CPU mean {_cpu.Average():F2} ms (99th {_cpu.OrderBy(x => x).ElementAt((int)(_cpu.Count * 0.99)):F1}), draw calls mean {_draws.Average():F0}");
         foreach (var g in pops.GroupBy(p => (p.Kind, p.What)).OrderBy(g => g.Key.Kind))
         {
             var seen = g.Where(p => Hard(p) || Seen(p)).ToList();

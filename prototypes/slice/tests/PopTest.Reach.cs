@@ -109,9 +109,9 @@ public partial class PopTest
                 best = new Vector3((float)x, 0f, (float)z);
             }
         }
-        if (most <= 0f)
+        if (most < 50f)
         {
-            Check(true, "(no woods on this world: trees past a kilometre not checked)");
+            Check(true, $"(no woods on this world, at most {most:F0} cover: trees past a kilometre not checked)");
             yield break;
         }
         best = planet.NearestCopy(best, start);

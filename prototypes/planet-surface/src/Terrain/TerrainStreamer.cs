@@ -799,9 +799,11 @@ public partial class TerrainStreamer : Node3D
             int d = Math.Max(Math.Abs(dx), Math.Abs(dz)), back = Math.Max(Math.Abs(dx - bx), Math.Abs(dz - bz));
             wanted.Add((Mod(ffx + dx, nx), Mod(ffz + dz, nz), Math.Min(LodAt(d), LodAt(back)), Math.Min(d, back), Math.Min(d, back) - Ahead(dx, dz) * 0.5f));
         }
+        // The whole square round the focus stays too, so nothing within the detail distance of it (the
+        // distant drawings of trees reach to there) goes from behind or beside a moving focus.
         if (bx != 0 || bz != 0)
-            for (int dz = bz - FarLod1Radius; dz <= bz + FarLod1Radius; dz++)
-            for (int dx = bx - FarLod1Radius; dx <= bx + FarLod1Radius; dx++)
+            for (int dz = bz - FarRadius; dz <= bz + FarRadius; dz++)
+            for (int dx = bx - FarRadius; dx <= bx + FarRadius; dx++)
             {
                 if (Math.Max(Math.Abs(dx), Math.Abs(dz)) <= FarRadius) continue; // in the square ahead already
                 int back = Math.Max(Math.Abs(dx - bx), Math.Abs(dz - bz));
