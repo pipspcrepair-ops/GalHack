@@ -35,7 +35,9 @@
     { "id": "carbon-ore", "name": "Carbon ore", "short": "CARBON", "category": "raw", "rarity": "common", "source": "mine", "deposit": "Carbon",
       "mass": 1.6, "volume": 1, "where": "Every planet", "uses": "Graphite · steel · propellant · polymer" },
     { "id": "ice", "name": "Ice", "short": "ICE", "category": "raw", "rarity": "common", "source": "mine", "deposit": "Water",
-      "mass": 0.9, "volume": 1, "where": "Every planet; ice worlds, moons, poles", "uses": "Polymer, concrete, oxygen" },
+      "mass": 0.9, "volume": 1, "where": "Ice worlds, moons, asteroids; ice caps elsewhere", "uses": "Melts to water" },
+    { "id": "water", "name": "Water", "short": "WATER", "category": "refined", "rarity": "common", "mass": 1.0, "volume": 1,
+      "uses": "Pumped from open water · melted from ice · oxygen, polymer", "unlock": { "level": 1, "cost": 0, "parent": "survival-constructor", "tab": "misc" } },
     { "id": "stone", "name": "Stone", "short": "STONE", "category": "raw", "rarity": "common", "source": "dig",
       "mass": 2.4, "volume": 1, "where": "Any rock, anywhere", "uses": "Ceramic, concrete" },
     { "id": "biomass", "name": "Biomass", "short": "BIOMASS", "category": "raw", "rarity": "common", "source": "harvest", "deposit": "Resin",
@@ -155,6 +157,8 @@
     // ---- Tools ------------------------------------------------------------------------------
     { "id": "survival-constructor", "name": "Survival constructor", "short": "SURVFAB", "category": "tool", "rarity": "common", "mass": 15.0, "volume": 20, "unlock": { "level": 1, "cost": 0, "tab": "misc" } },
     { "id": "climate-node", "name": "Climate node", "short": "CLIMATE", "category": "tool", "rarity": "common", "mass": 12.0, "volume": 12,
-      "uses": "Set down · biomass or fuel · steady temperature nearby", "unlock": { "level": 1, "cost": 0, "parent": "survival-constructor", "tab": "misc" } }
+      "uses": "Set down · biomass or fuel · steady temperature nearby", "unlock": { "level": 1, "cost": 0, "parent": "survival-constructor", "tab": "misc" } },
+    { "id": "water-pump", "name": "Water pump", "short": "PUMP", "category": "tool", "rarity": "common", "mass": 14.0, "volume": 14,
+      "uses": "Set down in open water · biomass or fuel · fills its tank or a core nearby", "unlock": { "level": 1, "cost": 0, "parent": "survival-constructor", "tab": "misc" } }
   ]
 }

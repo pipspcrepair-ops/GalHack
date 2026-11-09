@@ -48,6 +48,7 @@ public static class ItemModels
         // Devices are the model they have once set down (the survival constructor stands for every carried machine).
         Register("survival-constructor", _ => Device.Model(climate: false), ModelSource.Placed);
         Register(Device.ClimateItem, _ => Device.Model(climate: true), ModelSource.Placed);
+        Register(Device.PumpItem, _ => Device.PumpModel(), ModelSource.Placed);
     }
 
     /// <summary>Gives every item the rule matches this model (first registration to match wins).</summary>

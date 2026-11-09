@@ -262,7 +262,7 @@ public sealed class PlayerInventory
             if (id == "scanner") return HandKind.Scanner;
             if (CoreItems.Contains(id)) return HandKind.Core;
             if (item.IsBlock) return HandKind.Block;
-            if (id == Slice.Vessels.Device.ClimateItem || _items.Machines.All.Any(m => m.ItemId == id)) return HandKind.Device;
+            if (id == Slice.Vessels.Device.ClimateItem || id == Slice.Vessels.Device.PumpItem || _items.Machines.All.Any(m => m.ItemId == id)) return HandKind.Device;
             if (item.Category == ItemCategory.Consumable || id == "meat") return HandKind.Consumable;
             return HandKind.Other;
         }

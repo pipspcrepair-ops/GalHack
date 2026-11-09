@@ -84,7 +84,7 @@ public partial class Game
         }
         if (Zone.Devices.FirstOrDefault(d => d.Collider == look.Collider) is Device device)
         {
-            if (device.Constructor != null)
+            if (device.Constructor != null || device.IsPump)
             {
                 Menu.OpenCore(device); // the full panel: hopper beside the recipes and queue
                 return;

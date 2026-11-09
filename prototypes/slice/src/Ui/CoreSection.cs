@@ -63,7 +63,7 @@ public sealed class CoreSection : IMenuSection
         }
         foreach (Device dev in _game.Zone.Devices)
         {
-            if (dev.Constructor == null) continue; // a climate node has a hopper, not a panel
+            if (dev.Constructor == null && !dev.IsPump) continue; // a climate node has a hopper, not a panel
             float d = dev.GlobalPosition.DistanceTo(feet);
             if (d <= DeviceReach) near.Add((dev, d));
         }
@@ -106,6 +106,12 @@ public sealed class CoreSection : IMenuSection
         }
         float top = 50 + (rows - 1) * 40;
         var body = new Rect2(o + new Vector2(0, top), new Vector2(area.Size.X, area.Size.Y - top));
+        if (_picked is Device pump && pump.IsPump)
+        {
+            PumpPanel(g, new Rect2(body.Position, new Vector2(700, body.Size.Y)), pump);
+            DeviceStorage(g, new Rect2(body.Position + new Vector2(730, 0), new Vector2(area.End.X - body.Position.X - 730, body.Size.Y)), pump);
+            return;
+        }
         if (_picked is Device device)
         {
             _constructor.Build(g, new Rect2(body.Position, new Vector2(700, body.Size.Y)));
@@ -136,6 +142,29 @@ public sealed class CoreSection : IMenuSection
         {
             Title = $"{v2.Name} storage", Grid = v2.StorageGrid, Vessel = v2, Where = () => v2.Body.Position.ToGodot(),
         }));
+    }
+
+    /// <summary>The water pump's panel: labels and values (water, fuel, power, rate) and the core it sends to.</summary>
+    void PumpPanel(Gui g, Rect2 r, Device d)
+    {
+        var rules = _game.Zone.Data.Rules.WaterPump;
+        Vector2 o = r.Position;
+        g.Caption("WATER PUMP", o, r.Size.X, C.Holo);
+        float y = o.Y + 40;
+        void Row(string label, string value, Color colour)
+        {
+            g.Text(label, new Vector2(o.X, y), C.Dim, 14);
+            g.TextIn(HudLayout.Fit(UiTheme.Mono, 15, value, r.Size.X - 150), new Rect2(o.X + 150, y - 1, r.Size.X - 150, 20), colour, 15, HorizontalAlignment.Left, UiTheme.Mono);
+            y += 28;
+        }
+        Row("WATER", $"{d.Water} / {rules.Capacity}", C.Text);
+        Row("STATE", d.Burning ? "PUMPING" : "NO FUEL", d.Burning ? C.Good : C.Warn);
+        Row("RATE", $"1 / {rules.SecondsPerWater:F0} S", C.Text);
+        Row("POWER", $"{rules.Watts:F0} W", C.Text);
+        Vessel live = d.LiveTarget;
+        string target = d.Target == null ? "NONE" : live == null ? $"{d.Target.Name.ToUpperInvariant()} · OUT OF RANGE" : d.Target.Name.ToUpperInvariant();
+        y += 6;
+        if (g.Button("pump:target", new Rect2(o.X, y, r.Size.X, 34), $"TARGET · {target}", live != null ? C.Good : C.Accent2, enabled: d.CoresInRadius().Count > 0 || d.Target != null, lit: live != null, size: 15)) d.CycleTarget();
     }
 
     void DeviceStorage(Gui g, Rect2 r, Device d) =>

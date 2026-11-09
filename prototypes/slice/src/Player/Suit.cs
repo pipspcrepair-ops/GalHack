@@ -148,7 +148,7 @@ public sealed class Suit : IDamageSink
         var rules = _zone.Data.Rules.ClimateNode;
         var here = new Godot.Vector3((float)p.X, (float)p.Y, (float)p.Z);
         foreach (Device d in _zone.Devices)
-            if (d.Burning && d.GlobalPosition.DistanceSquaredTo(here) <= rules.Radius * rules.Radius)
+            if (d.IsClimate && d.Burning && d.GlobalPosition.DistanceSquaredTo(here) <= rules.Radius * rules.Radius)
             {
                 temperature = Math.Clamp(temperature, rules.LowC, rules.HighC);
                 break;
