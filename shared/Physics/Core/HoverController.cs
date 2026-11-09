@@ -115,7 +115,7 @@ public sealed class HoverController
         foreach (Vector3 engine in _engines)
         {
             Vector3 p = pos + MathX.Rotate(basis, engine);
-            if (down.Y > -0.3f || !world.Query.Ray(p - down * ride, p + down * depth, Layers.ProbeMask, body, out RayHit hit)
+            if (down.Y > -0.3f || !world.Query.Ray(p + Vector3.UnitY * ride, p - Vector3.UnitY * depth, Layers.ProbeMask, body, out RayHit hit)
                 || hit.Normal.Y < 0.1f)
                 continue;
             _seen[hits++] = hit.Point;

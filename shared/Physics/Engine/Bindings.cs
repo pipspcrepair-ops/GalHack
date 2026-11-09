@@ -69,6 +69,7 @@ public sealed class HullBinding : BodyBinding
 
     /// <summary>Its rotation after the last tick's move.</summary>
     N.Quaternion _turned;
+    int _turns;
 
     /// <summary>The transform last checked for overlap while asleep.</summary>
     Transform3D _cleared;
@@ -115,7 +116,8 @@ public sealed class HullBinding : BodyBinding
         }
         // The sweep stops it at what it meets, but turning (the flight model's, the hover's tilt to the ground, a
         // bump's kick) happened before it, unswept, and can swing a corner into the ground: nothing is left inside.
-        if (_contacts.Count > 0 || b.Rotation != _turned) Clear();
+        // (Every fourth tick when it has only turned: a tick's turn swings a corner in by millimetres, and the sweep stops it going further.)
+        if (_contacts.Count > 0 || b.Rotation != _turned && ++_turns % 4 == 0) Clear();
         _turned = b.Rotation;
 
         b.Position = Hull.GlobalPosition.ToNumerics();
