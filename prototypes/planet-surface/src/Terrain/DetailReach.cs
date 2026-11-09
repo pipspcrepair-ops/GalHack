@@ -51,6 +51,14 @@ public static class DetailReach
     /// <summary>Places' full structures reach this multiple of their own radii: at most twice, as they carry colliders, people and creatures.</summary>
     public static float StandScale => MathF.Min(Scale, 2f);
 
+    /// <summary>
+    /// How far a plant's drawings take to hand over or go, m, short of the detail distance: next to
+    /// nothing, so a plant is always whole, one drawing or the other, never half shown (it swaps in a frame). A wood still
+    /// thins gradually, as each plant has its own reach (<see cref="TerrainStreamer.FloraShows"/>).
+    /// Only the distant drawings fade out at the end, over <see cref="DistantBand"/>.
+    /// </summary>
+    public const float Swap = 0.02f;
+
     static DetailReach() => Set(Default);
 
     /// <summary>Sets the detail distance, m (kept between the default and the horizon).</summary>
@@ -64,13 +72,13 @@ public static class DetailReach
         Lod0Radius = k >= 2f ? 2 : 1;
         Lod1Radius = Math.Clamp((int)MathF.Round(3f * k), 3, 12);
         Near = 120f * Lod0Radius;
-        NearBand = 26f * Lod0Radius;
+        NearBand = Swap;
         Small = 200f * MathF.Min(k, 2f);
-        SmallBand = Small * 0.3f;
+        SmallBand = Swap;
         Far = 370f * Lod1Radius / 3f;
-        FarBand = Far * 60f / 370f;
+        FarBand = Swap;
         Thin = Far * 200f / 370f;
-        ThinBand = Thin * 0.2f;
+        ThinBand = Swap;
         Distant = d;
         DistantBand = d * 0.15f;
         // What stands on the land is built as far out as the far rings show its pads, corners included.

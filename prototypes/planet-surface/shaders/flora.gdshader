@@ -6,7 +6,7 @@
 // By distance (the far rings' scatter, TerrainStreamer): each plant has a near drawing (its own mesh)
 // and, a large one, a far drawing too (its far mesh), and they dissolve one into the other over a
 // band of distance through a fixed screen pattern, the near drawing keeping the pixels under its
-// share and the far one the rest, so nothing swaps or doubles. Past the far reach a share of the
+// share and the far one the rest, so nothing doubles; the band is next to nothing, so a plant swaps whole. Past the far reach a share of the
 // large has a distant drawing (its far mesh a little bigger) that takes over the same way, out to the
 // detail distance. Small growth dissolves away at its own reach. A thinning share of each (instance
 // alpha past 1) goes sooner, so a wood thins into the distance rather than ending in a line. Each
@@ -54,17 +54,19 @@ void vertex() {
 	if (layer != 2) {
 		float away = length(to_eye);
 		float r = fract(sin(dot(root.xz, vec2(12.9898, 78.233))) * 43758.5453);
-		float own = 0.9 + 0.1 * r;
+		// Each plant's reaches are a little its own (the thinning share's and small growth's a lot), so a
+		// wood thins gradually while each plant swaps or goes whole.
+		float own = 0.9 + 0.1 * r, own_thin = 0.75 + 0.25 * r, own_small = 0.7 + 0.3 * r;
 		float near = shown(flora_reach.x * own, flora_bands.x, away);
+		float far = shown(flora_reach.z * own, flora_bands.z, away);
 		if (layer == 0) {
 			band = vec2(0.0, near);
 		} else if (layer == 4) {
-			band = vec2(0.0, shown(flora_reach.y * (thin ? 0.6 : 1.0) * own, flora_bands.y * (thin ? 0.6 : 1.0), away));
+			band = vec2(0.0, shown(flora_reach.y * (thin ? 0.6 : 1.0) * own_small, flora_bands.y, away));
 		} else if (layer == 1) {
-			float far = thin ? shown(flora_thin.x * own, flora_thin.y, away) : shown(flora_reach.z * own, flora_bands.z, away);
-			band = vec2(near, max(far, near));
+			float most = thin ? shown(flora_thin.x * own_thin, flora_thin.y, away) : far;
+			band = vec2(near, max(most, near));
 		} else {
-			float far = shown(flora_reach.z * own, flora_bands.z, away);
 			band = vec2(far, max(shown(flora_reach.w * (0.95 + 0.05 * r), flora_bands.w, away), far));
 		}
 	}

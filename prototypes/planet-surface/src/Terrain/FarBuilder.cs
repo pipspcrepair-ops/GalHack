@@ -958,7 +958,7 @@ public static class FarBuilder
     public static IReadOnlyDictionary<Flora, (float Height, float Radius)> KindSize;
 
     /// <summary>A distant drawing's turn and size: the kind's mesh made the plant's height and crown, a little bigger (<see cref="DetailReach.DistantGrow"/>).</summary>
-    static Basis DistantBasis(Flora kind, Plant plant, Basis basis)
+    public static Basis DistantBasis(Flora kind, Plant plant, Basis basis)
     {
         Basis grown = basis.Scaled(Vector3.One * DetailReach.DistantGrow);
         if (plant == null || KindSize == null || !KindSize.TryGetValue(kind, out var k) || k.Height <= 0f || k.Radius <= 0f) return grown;

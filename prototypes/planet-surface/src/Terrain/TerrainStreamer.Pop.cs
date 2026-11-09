@@ -127,16 +127,12 @@ public partial class TerrainStreamer
     public static float FloraShows(int layer, bool thin, float away, float x, float z)
     {
         float s = MathF.Sin(x * 12.9898f + z * 78.233f) * 43758.5453f;
-        float r = s - MathF.Floor(s), own = 0.9f + 0.1f * r;
+        float r = s - MathF.Floor(s), own = 0.9f + 0.1f * r, ownThin = 0.75f + 0.25f * r, ownSmall = 0.7f + 0.3f * r;
         float near = Shown(DetailReach.Near * own, DetailReach.NearBand, away);
-        if (layer == NearLayer) return near;
-        if (layer == SmallLayer) return Shown(DetailReach.Small * (thin ? 0.6f : 1f) * own, DetailReach.SmallBand * (thin ? 0.6f : 1f), away);
-        if (layer == FarLayer)
-        {
-            float most = thin ? Shown(DetailReach.Thin * own, DetailReach.ThinBand, away) : Shown(DetailReach.Far * own, DetailReach.FarBand, away);
-            return MathF.Max(0f, most - near);
-        }
         float far = Shown(DetailReach.Far * own, DetailReach.FarBand, away);
+        if (layer == NearLayer) return near;
+        if (layer == SmallLayer) return Shown(DetailReach.Small * (thin ? 0.6f : 1f) * ownSmall, DetailReach.SmallBand, away);
+        if (layer == FarLayer) return MathF.Max(0f, (thin ? Shown(DetailReach.Thin * ownThin, DetailReach.ThinBand, away) : far) - near);
         return MathF.Max(0f, Shown(DetailReach.Distant * (0.95f + 0.05f * r), DetailReach.DistantBand, away) - far);
     }
 

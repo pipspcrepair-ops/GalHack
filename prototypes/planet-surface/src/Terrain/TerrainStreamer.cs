@@ -286,6 +286,10 @@ public partial class TerrainStreamer : Node3D
         StartCover();
     }
 
+    /// <summary>Flora's material (tests draw plants with it), and a kind's own low mesh (a distant drawing's).</summary>
+    public ShaderMaterial FloraMaterial => _floraMaterial;
+    public Mesh KindMesh(Flora kind) => _floraMeshes != null && _floraMeshes.TryGetValue(kind, out Mesh m) ? m : null;
+
     /// <summary>The mesh of one species' variant (-1: its far one), or null for what the world's herbarium doesn't hold.</summary>
     public Mesh PlantMesh(int plant, int variant) =>
         plant < 0 || plant >= _plantNear.Length ? null : variant < 0 ? _plantFar[plant] : _plantNear[plant][variant];
