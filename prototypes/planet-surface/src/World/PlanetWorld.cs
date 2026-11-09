@@ -227,7 +227,7 @@ public sealed partial class PlanetWorld
     {
         var watch = Stopwatch.StartNew();
         PoiGenerator.Gen.WorldForce force = PoiGenerator.Gen.WorldForce.Current;
-        WorldProfile profile = force.Apply(ProfileFor(spec, PoiSiting.StartWorld));
+        WorldProfile profile = force.Apply(ProfileFor(spec, PoiSiting.StartWorld, force));
         // Its star first: where it lies in the galaxy is part of what the world rolls from.
         object chart = null;
         float depth = -1f;
@@ -296,8 +296,8 @@ public sealed partial class PlanetWorld
     /// worlds were always inhabited (their survivors live among the old world's ruins). The same
     /// spec always rolls the same profile.
     /// </summary>
-    public static WorldProfile ProfileFor(PlanetSpec spec, bool startWorld = false) =>
-        WorldProfile.Roll(Planets.Gen.Hash.Of(spec.Seed, 0x50F1), spec.Archetype.ToString(), startWorld);
+    public static WorldProfile ProfileFor(PlanetSpec spec, bool startWorld = false, PoiGenerator.Gen.WorldForce force = null) =>
+        WorldProfile.Roll(Planets.Gen.Hash.Of(spec.Seed, 0x50F1), spec.Archetype.ToString(), startWorld, force?.Population, force?.PopulationNow);
 
     /// <summary>
     /// The folder planets' saves go in. Tests give each run a folder of its own: user:// is shared
