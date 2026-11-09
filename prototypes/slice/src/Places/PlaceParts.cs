@@ -25,8 +25,8 @@ public static class PlaceParts
     /// </summary>
     public static bool Legacy;
 
-    /// <summary>The body the people's walking grid is worked out for (each walks it at their own width, held off the parts as they go).</summary>
-    public const float PersonRadius = 0.3f, PersonHeight = 1.75f;
+    /// <summary>The body the people's walking grid is worked out for: as wide and as tall as the widest and tallest folk (each is held off the parts at their own size as they go).</summary>
+    public const float PersonRadius = 0.34f, PersonHeight = 1.9f;
 
     /// <summary>A block's parts belong to its cell.</summary>
     public static long OwnerOf(PInt3 c) => 1 + (((long)(c.X + 0x80000) << 40) | ((long)(c.Y + 0x80000) << 20) | (long)(c.Z + 0x80000));

@@ -247,6 +247,11 @@ public partial class FurnitureTest : Node
         List<Room> rooms = Rooms(decor, out int made);
         foreach (Room r in rooms) GD.Print($"    {r.Name}: {r.Parts} pieces over {r.Cells.Count} floor cells ({r.Density:F2} a cell)");
         Check(rooms.Count >= 6, $"{rooms.Count} crowded rooms picked from {made} places on 3 fresh worlds");
+        // How wide and tall the worlds' people are (the walking grid is worked out for one body).
+        var folk = rooms.Select(r => r.Life).Distinct().SelectMany(l => Enumerable.Range(0, 120).Select(i => l.People.Person(Wildlife.Rng.Mix((ulong)i, 77), (PersonRole)(i % 12), Occupancy.Friendly))).Where(s => s != null).ToList();
+        var widths = folk.Select(s => s.Stats.Radius * 0.78f).OrderBy(x => x).ToList();
+        var heights = folk.Select(s => s.Figure?.Height ?? 0f).OrderBy(x => x).ToList();
+        if (widths.Count > 0) GD.Print($"    people: radius {widths[0]:F2} / {widths[widths.Count / 2]:F2} / {widths[(int)(widths.Count * 0.95f)]:F2} / {widths[^1]:F2}, height {heights[0]:F2} / {heights[heights.Count / 2]:F2} / {heights[^1]:F2} (least / middle / 95th / most)");
         var fauna = new DeepFauna(_data, (ulong)_rng.NextInt64(), 0.5f);
         var walkers = new List<Species>();
         var climbers = new List<Species>();

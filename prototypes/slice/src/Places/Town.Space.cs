@@ -55,7 +55,7 @@ public sealed partial class Town
     /// In the furniture on purpose: sitting or lying in it, or on the last step into or the first out of the
     /// seat or bed they use (that piece is what they are in; nothing else of the room is).
     /// </summary>
-    bool InUse(Person p) => p.Sitting || p.Asleep || p.Slept > 0f || p.Indoors || IntoSeat(p)
+    bool InUse(Person p) => p.Sitting || p.GettingUp || p.Asleep || p.Slept > 0f || p.Indoors || IntoSeat(p) || InSeat(p, p.Left)
         || p.Seat >= 0 || p.Path != null && p.Step >= p.Path.Count - 2 && p.Spot >= 0 && p.Spot < _own.Count && _own[p.Spot] != null;
 
     /// <summary>How deep a person's body is in the place's furniture or clutter, m (0: clear, as it should always be; tests).</summary>
@@ -70,17 +70,22 @@ public sealed partial class Town
     /// </summary>
     void OffParts(Person p, Vector3 was)
     {
-        if (_parts == null || InUse(p)) return;
+        if (_parts == null) return;
         float r = BodyRadius(p), h = Height(p);
+        // Getting up: out the way they sat down, till clear of the seat and the table.
+        if (p.GettingUp && _parts.Gap(p.Pos, r, h) >= 0f) p.GettingUp = false;
+        if (InUse(p)) return;
         float gap = _parts.Gap(p.Pos, r, h);
         if (gap >= 0f) return;
         Vector3 to = _parts.PushOut(p.Pos, r, h);
         to.Y = p.Pos.Y;
         float after = _parts.Gap(to, r, h);
         if (after >= 0f && OnGrid(to)) { p.Pos = to; return; }
-        float before = _parts.Gap(was, r, h);
-        if (before > MathF.Max(gap, after)) p.Pos = was;
-        else if (after > gap && OnGrid(to)) p.Pos = to;
+        // No way clear: never deeper in than it was (one set down in a piece gets out of it by any way not further in).
+        Vector3 best = p.Pos;
+        float most = gap;
+        if (after > most && OnGrid(to)) { best = to; most = after; }
+        p.Pos = most >= _parts.Gap(was, r, h) - 0.005f ? best : was;
     }
 
     /// <summary>Once a tick, after everyone has moved: bodies apart, you stepped round, pushes answered.</summary>

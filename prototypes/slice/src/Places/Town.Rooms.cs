@@ -231,7 +231,9 @@ public sealed partial class Town
         for (int i = 0; i < path.Count; i++)
         {
             bool seatStep = i == path.Count - 1 && own != null || i == 1 && outOfSeat;
-            if (_parts != null && i > 0 && !seatStep && !_parts.Sweep(path[i - 1], path[i], PlaceParts.PersonRadius - 0.01f, PlaceParts.PersonHeight, 0, Place.WallsOf(_nav), PlaceParts.PersonRadius - 0.01f)) yield return Cell(path[i]);
+            // (Up and down a flight the way is the stair's: the parts' test is for the level.)
+            bool level = i > 0 && MathF.Abs(path[i].Y - path[i - 1].Y) < 0.05f && !_nav.RampAt(Cell(path[i]), out _) && !_nav.RampAt(Cell(path[i - 1]), out _);
+            if (_parts != null && level && !seatStep && !_parts.Sweep(path[i - 1], path[i], PlaceParts.PersonRadius - 0.01f, PlaceParts.PersonHeight, 0, Place.WallsOf(_nav), PlaceParts.PersonRadius - 0.01f)) yield return Cell(path[i]);
             // Each point, and the middle of the way to it from the last.
             for (int k = 0; k < (i == 0 ? 1 : 2); k++)
             {

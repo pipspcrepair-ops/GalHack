@@ -104,6 +104,8 @@ public sealed partial class Town
         public BodyAct Before;
         public float HeadYaw;
         public bool Indoors, Sitting, Fleeing;
+        /// <summary>In a seat, or up out of it and not yet clear of it (and of the table it was drawn up to).</summary>
+        public bool GettingUp;
         /// <summary>In bed for the night (lying on it), and how far down into it.</summary>
         public bool Asleep;
         public float Slept;
@@ -551,6 +553,8 @@ public sealed partial class Town
         if (p.Path == null || p.Step >= p.Path.Count)
         {
             p.Now = 0f;
+            // Standing about: still off the furniture (a tall one under a hanging lamp steps out from under it).
+            OffParts(p, p.Pos);
             return true;
         }
         Vector3 to = p.Path[p.Step];
@@ -572,12 +576,13 @@ public sealed partial class Town
             if (last)
             {
                 p.Pos = to;
-                if (p.Spot >= 0 && p.Spot < _own.Count && _own[p.Spot] != null) p.Seat = p.Spot;
+                if (p.Spot >= 0 && p.Spot < _own.Count && _own[p.Spot] != null) { p.Seat = p.Spot; p.GettingUp = true; }
             }
             p.Step++;
             return p.Step >= p.Path.Count;
         }
         Vector3 was = p.Pos;
+        if (p.Sitting) p.GettingUp = true;
         p.Pos += new Vector3(d.X, 0f, d.Z) / flat * step;
         if (p.Seat >= 0 && !InSeat(p, p.Seat)) p.Seat = -1; // up and out of it
         p.Pos.Y = Mathf.Lerp(p.Pos.Y, to.Y, MathF.Min(1f, step / MathF.Max(flat, 0.01f)));
