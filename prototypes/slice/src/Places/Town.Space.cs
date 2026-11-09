@@ -25,6 +25,9 @@ public sealed partial class Town
     /// <summary>Who the worst overlap was between (tests).</summary>
     public string WorstNote = "";
 
+    /// <summary>Your weight against theirs where bodies meet (your own share of a parting is never applied).</summary>
+    const float PlayerGive = 0.6f;
+
     /// <summary>A person's body radius, m: their folk's width.</summary>
     static float BodyRadius(Person p) => (p.Looks?.Stats.Radius ?? 0.35f) * 0.78f;
 
@@ -50,13 +53,17 @@ public sealed partial class Town
         foreach (Person p in People)
         {
             if (p.Dead || p.Gone || p.Indoors || p.Away || p.Looks == null || _held.Contains(p)) continue;
-            Vector3 heading = p.Now > 0.1f ? new Vector3(-MathF.Sin(p.Yaw), 0f, -MathF.Cos(p.Yaw)) : Vector3.Zero;
+            // One stepping back to let another by is still on their way: counted standing, they would have the other wait in
+            // turn, and the two would take turns giving way in a narrow way for good.
+            bool giving = p.Yield > 0f && p.Path != null && p.Step < p.Path.Count;
+            Vector3 heading = p.Now > 0.1f || giving ? new Vector3(-MathF.Sin(p.Yaw), 0f, -MathF.Cos(p.Yaw)) : Vector3.Zero;
             _space.Bodies.Add(new PersonalSpace.Body { Pos = p.Pos, Radius = BodyRadius(p), Heading = heading, Give = Give(p) });
             _bodies.Add(p);
         }
         if (_bodies.Count == 0) return;
-        // You are a body they keep off too (giving nothing); walking into them is the push rule's (Town.Colliders).
-        if (_places.Zone.Wildlife.Player is { Attackable: true }) _space.Bodies.Add(new PersonalSpace.Body { Pos = player, Radius = Slice.Player.Survivor.Radius - 0.03f, Give = 0f }); // (just inside their capsules' touch)
+        // You are a body they keep off too (you aren't moved: your share is dropped); walking into them is the push rule's
+        // (Town.Colliders). Your share isn't nothing, so one in you is moved off you at their own give: a braced guard least.
+        if (_places.Zone.Wildlife.Player is { Attackable: true }) _space.Bodies.Add(new PersonalSpace.Body { Pos = player, Radius = Slice.Player.Survivor.Radius - 0.03f, Give = PlayerGive }); // (just inside their capsules' touch)
         _space.Resolve(dt, Open, 4);
         // (Someone who moved a long way at once, far off and updated now and then, can land on another: settle it now.)
         if (_space.WorstOverlap > 0.04f) _space.Resolve(0f, Open, 6);
@@ -74,6 +81,23 @@ public sealed partial class Town
             p.Pos = new Vector3(b.Pos.X, p.Pos.Y, b.Pos.Z);
             if (b.Wait > 0f) p.Yield = MathF.Max(p.Yield, b.Wait);
         }
+        // Two stood still in each other with no room to part (sent to the one spot in a narrow way): the second goes elsewhere.
+        if (_space.WorstOverlap > 0.05f)
+            for (int i = 0; i < _bodies.Count; i++)
+            {
+                Person p = _bodies[i];
+                if (p.Now > 0.1f || p.Sitting || p.Path != null && p.Step < p.Path.Count) continue;
+                for (int j = 0; j < i; j++)
+                {
+                    Person o = _bodies[j];
+                    if (MathF.Abs(o.Pos.Y - p.Pos.Y) > 1.5f) continue;
+                    float d = new Vector2(o.Pos.X - p.Pos.X, o.Pos.Z - p.Pos.Z).Length();
+                    if (d >= BodyRadius(o) + BodyRadius(p) - 0.05f) continue;
+                    p.Wait = 0f;
+                    p.Partner = null;
+                    break;
+                }
+            }
     }
 
     /// <summary>A push from you: a step aside for a friend, a glare from the wary, a shove back from a guard or one who doesn't like you. Never a fight.</summary>

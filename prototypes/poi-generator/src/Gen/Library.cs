@@ -71,7 +71,21 @@ public sealed class PoiLibrary
     /// <summary>What each age built with and how its buildings stand (data/eras.txt).</summary>
     public EraBook Eras = new();
 
-    public FamilyDef Family(string id) => Families.First(f => f.Id == id);
+    public FamilyDef Family(string id)
+    {
+        // Looked up by id thousands of times a world: indexed, and indexed again whenever the list changes.
+        var index = _byId;
+        if (index == null || _indexed != Families.Count || _indexedList != Families)
+        {
+            index = new Dictionary<string, FamilyDef>();
+            foreach (FamilyDef f in Families) index.TryAdd(f.Id, f);
+            (_byId, _indexed, _indexedList) = (index, Families.Count, Families);
+        }
+        return index.TryGetValue(id, out FamilyDef found) ? found : Families.First(f => f.Id == id);
+    }
+    Dictionary<string, FamilyDef>? _byId;
+    int _indexed = -1;
+    List<FamilyDef>? _indexedList;
     public RoomDef Room(string id) => Rooms.TryGetValue(id, out var r) ? r : throw new KeyNotFoundException($"no room '{id}' in rooms.txt");
 
     /// <summary>Loads from (file name, text) pairs, so the caller decides where files come from.</summary>

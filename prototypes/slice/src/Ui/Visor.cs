@@ -82,11 +82,12 @@ public partial class Visor : CanvasLayer
         if (_xp.Count > 4) _xp.RemoveAt(0);
     }
 
-    /// <summary>A new level: a banner across the top for a few seconds that never blocks play.</summary>
+    /// <summary>A new level: one of the suit's lines at the lower left, like any other, so it never covers anything.</summary>
     public void LevelUp(int level, int points)
     {
-        _level = $"LEVEL UP  {level}   +{points} POINT{(points == 1 ? "" : "S")}";
-        _levelUntil = _time + 3.5;
+        _level = $"LVL {level}  +{points}";
+        _levelUntil = _time + 4.0;
+        Say(_level, C.Accent);
     }
 
     /// <summary>A shot landed on a creature: a hit marker at the crosshair.</summary>
@@ -455,18 +456,8 @@ public partial class Visor : CanvasLayer
 
     float _compassBottom;
 
-    /// <summary>A new level: a banner under the compass for a few seconds. Nothing blocks play; experience itself counts quietly.</summary>
-    void DrawProgress()
-    {
-        float s = S;
-        Vector2 size = _hud.Size;
-        if (LevelUpShowing && Mathf.PosMod((float)_time * 2f, 1f) < 0.8f)
-        {
-            var band = new Rect2(size.X / 2 - 320 * s, Layout.Flight.Position.Y, 640 * s, 48 * s);
-            _hud.Block(band, new Color(C.Accent, 0.85f));
-            _hud.TextIn(UiTheme.Display, (int)(26 * s), band, _level, C.Glass, HorizontalAlignment.Center);
-        }
-    }
+    /// <summary>A new level shows as one of the suit's lines (<see cref="LevelUp"/>); experience itself counts quietly.</summary>
+    void DrawProgress() { }
 
     void DrawCrosshair()
     {
