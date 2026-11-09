@@ -525,6 +525,7 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter, 
 		return vec4(sky, 0.0);
 	}
 	// A storm is long to look through at a low angle: cutting its path short drew a hard straight underside.
+	float slab_end = t1; // where the ray leaves the layer, before its path is cut short
 	t1 = min(t1, t0 + (stormy ? 9000.0 : 2000.0));
 	// Steps by the length of the path through the slab: a few dozen straight up, more toward the
 	// horizon, where the path is long and too few would slice the clouds into layers.
@@ -637,7 +638,11 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter, 
 	// cover takes over from what it found, so nothing steps where its reach ends.
 	if (!lit) {
 		float past = smoothstep(8000.0, 16000.0, t0);
-		hide = 1.0 - (1.0 - alpha * (1.0 - past)) * (1.0 - far_cover(ro, rd) * past);
+		// A low ray's path through the layer is cut short (2 km in a plain one): the rest of the layer is still
+		// in front of what is behind, so its cover hides that too, or stars low over the land shone through a
+		// thick layer where the march gave up.
+		float rest = smoothstep(0.0, 1500.0, slab_end - t1);
+		hide = 1.0 - (1.0 - alpha * (1.0 - past)) * (1.0 - far_cover(ro, rd) * max(past, rest));
 	}
 	// Distant clouds thin into the haze along the horizon: their look fades into the sky's colour (an
 	// opacity, laid over the sky gradient, and their colour leaning toward it).
@@ -748,7 +753,9 @@ void sky() {
 			laid = clamp(QUARTER_RES_COLOR.g, 0.0, 1.0);
 		}
 		float through_clouds = 1.0 - cover;
-		col = clouded + (col - plain) * through_clouds - points * (through_clouds - through_clouds * through_clouds);
+		// The stars' points go faster still (by the cube of what gets through): a cloud thin enough to show the
+		// glow behind it still drowns its points, so no sharp star stands on a cloud.
+		col = clouded + (col - plain) * through_clouds - points * (through_clouds - through_clouds * through_clouds * through_clouds);
 		// Cirrus: high thin streaks, a texture far overhead rather than a volume, combed along the
 		// wind's way; they sit on top of the clouds below them only where those let the sky through.
 		if (cirrus > 0.01 && tower_count == 0 && dir.y > 0.02 && !AT_CUBEMAP_PASS) {

@@ -39,7 +39,8 @@ namespace PlanetSurface;
 /// - <b>Clouds hide what is behind them.</b> At midnight on a fresh world, looking up all round, the
 ///   galaxy's light in the picture (drawn with it and without it) under a storm's deck is next to none
 ///   of what a clear sky shows, and a giant overhead is hidden there too, whether the storm is only
-///   coming (fair air round its deck) or is here; broken cloud lets part of it through its gaps
+///   coming (fair air round its deck) or is here, and under a plain thick layer, its brightest pixels
+///   (stars, core, nebulae) one by one too; broken cloud lets part of it through its gaps
 ///   (<c>--only=nightclouds</c>).
 /// - <b>A low sun never drenches the picture.</b> On a temperate coast and in arid hills, at dawn
 ///   and at dusk with the sun a few degrees up, looking toward it, across it and away from it, in
@@ -228,7 +229,8 @@ public partial class SkyTest : Node
             return light;
         }
         // What a uniform changes in the pictures, drawn with it on and off: per pixel, summed over the looks.
-        async Task<float> Adds(string uniform, IEnumerable<Vector3> at, string save)
+        // `each` keeps the change per pixel, look after look (to set beside a clear sky's).
+        async Task<float> Adds(string uniform, IEnumerable<Vector3> at, string save, List<float> each = null)
         {
             float total = 0f;
             int n = 0;
@@ -239,6 +241,7 @@ public partial class SkyTest : Node
                 sky.SetShaderParameter(uniform, false);
                 float[] without = await Light(d, null);
                 for (int i = 0; i < with.Length; i++) total += MathF.Abs(with[i] - without[i]);
+                if (each != null) for (int i = 0; i < with.Length; i++) each.Add(MathF.Abs(with[i] - without[i]));
                 if (keep != null && save != null)
                 {
                     // Where it changed the picture, brightened.
@@ -258,12 +261,15 @@ public partial class SkyTest : Node
         await Light(Vector3.Up, null);
         await Frames(60);
         var results = new Dictionary<string, (float Galaxy, float Giant)>();
+        var pixels = new Dictionary<string, List<float>>();
         foreach (var (what, cover, dark, cellular, storm) in new[]
                  {
                      ("a clear sky", 0f, 0f, 0f, false),
                      ("broken cloud", 0.45f, 0.1f, 0f, false),
                      ("a storm's deck coming in over fair air", 0.5f, 0.4f, 0f, true),
                      ("a thunderstorm", 1f, 0.85f, 0.85f, true),
+                     // The plain layer, no storm in it: thick night cloud of any kind hides what is behind it.
+                     ("a thick night layer", 1f, 0.3f, 0f, false),
                  })
         {
             rig.SetCells(cells, storm ? 4 : 0);
@@ -288,7 +294,9 @@ public partial class SkyTest : Node
             sky.SetShaderParameter("galaxy_on", false);
             float giant = await Adds("giant", new[] { Vector3.Up }, null);
             sky.SetShaderParameter("giant", false);
-            float galaxy = await Adds("galaxy_on", looks, $"night-{name}");
+            var each = new List<float>();
+            float galaxy = await Adds("galaxy_on", looks, $"night-{name}", each);
+            pixels[what] = each;
             if (keep != null)
             {
                 rig.DebugView(1);
@@ -307,6 +315,20 @@ public partial class SkyTest : Node
             var (galaxy, giant) = results[storm];
             Check(galaxy <= clearGalaxy * 0.01f && giant <= clearGiant * 0.01f,
                 $"under {storm} the galaxy is hidden ({galaxy / clearGalaxy:P2} of a clear sky's) and so is the giant ({giant / clearGiant:P2})");
+        }
+        // Not only on the whole: the brightest of it (stars, the core, nebulae) one pixel at a time, under every
+        // thick sky, the plain layer too (the storm decks alone were checked, and they hid it while a plain layer didn't).
+        List<float> clear = pixels["a clear sky"];
+        int[] brightest = Enumerable.Range(0, clear.Count).OrderByDescending(i => clear[i]).Take(clear.Count / 100).ToArray();
+        foreach (string thick in new[] { "a storm's deck coming in over fair air", "a thunderstorm", "a thick night layer" })
+        {
+            List<float> under = pixels[thick];
+            int at = brightest.OrderByDescending(i => under[i] / MathF.Max(clear[i], 1e-6f)).First();
+            float worst = under[at] / MathF.Max(clear[at], 1e-6f);
+            GD.Print($"(under {thick} the worst of the brightest: look {at / (Size * Size)}, pixel {at % Size},{at % (Size * Size) / Size}, clear {clear[at]:F3}, under {under[at]:F3}; world {world.Spec.Seed})");
+            float whole = results[thick].Galaxy / clearGalaxy;
+            Check(whole <= 0.03f && worst <= 0.05f,
+                $"under {thick} the night behind it is hidden: {whole:P2} of a clear sky's on the whole, at most {worst:P1} at any of its brightest 1% (stars, core, nebulae)");
         }
         float broken = results["broken cloud"].Galaxy;
         Check(broken > clearGalaxy * 0.05f && broken < clearGalaxy * 0.95f, $"broken cloud lets part of the galaxy through its gaps ({broken / clearGalaxy:P0} of a clear sky's)");
