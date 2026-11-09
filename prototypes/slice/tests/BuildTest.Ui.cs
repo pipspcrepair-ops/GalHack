@@ -122,7 +122,7 @@ public partial class BuildTest
         foreach (Vector2 size in new[] { new Vector2(1920, 1080), new Vector2(2560, 1440) })
         {
             HudLayout l = HudLayout.Compute(size, 1f);
-            string problem = l.Problem(size);
+            string problem = l.Problem(size) ?? HudLayout.Compute(size, 1f, true).Problem(size);
             var cells = Alerts.RowCells(l.Alerts, l.Scale, Alerts.MostHazards);
             bool apart = cells.Select((c, i) => cells.Skip(i + 1).All(d => !c.Sign.Intersects(d.Sign) && !c.Timer.Intersects(d.Timer))).All(x => x);
             bool onLine = cells.All(c => MathF.Abs(c.Sign.Position.Y - l.Toolbar.Position.Y) < 0.5f && c.Sign.Position.X < l.Toolbar.Position.X);

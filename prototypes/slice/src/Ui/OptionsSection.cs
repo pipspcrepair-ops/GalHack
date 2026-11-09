@@ -110,8 +110,8 @@ public sealed class OptionsSection : IMenuSection
     {
         GameSettings s = S;
         int i = 0;
-        // Eleven rows and the button under them: shorter rows where the page is short.
-        float rh = MathF.Min(RowH, (body.Size.Y - 52f) / 11f);
+        // Twelve rows and the button under them: shorter rows where the page is short.
+        float rh = MathF.Min(RowH, (body.Size.Y - 52f) / 12f);
         Rect2 r = Row(g, body, i++, "WINDOW", null, rh);
         int w = Choice(g, "opt:window", r, new[] { "WINDOWED", "BORDERLESS", "FULL SCREEN" }, (int)s.Window, 210);
         if (w >= 0 && w != (int)s.Window)
@@ -184,6 +184,14 @@ public sealed class OptionsSection : IMenuSection
 
         r = Row(g, body, i++, "BRIGHTNESS", null, rh);
         if (Range(g, "opt:gamma", r, ref s.Gamma, GameSettings.MinGamma, GameSettings.MaxGamma, 0.05f, x => $"{x:F2}")) Changed();
+
+        r = Row(g, body, i++, "MARKERS", null, rh);
+        int mk = Choice(g, "opt:markers", r, new[] { "COMPASS", "WORLD" }, s.MarkersInWorld ? 1 : 0, 150);
+        if (mk >= 0 && (mk == 1) != s.MarkersInWorld)
+        {
+            s.MarkersInWorld = mk == 1;
+            Changed();
+        }
 
         float foot = body.Position.Y + i * rh + 4;
         if (View != null && g.Button("opt:view", new Rect2(body.End.X - 300, foot, 300, 44), "VIEW THE WORLD", C.Accent2)) View();

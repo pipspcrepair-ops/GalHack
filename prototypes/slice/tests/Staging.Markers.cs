@@ -7,7 +7,7 @@ using WeatherKind = Weather.Model.WeatherKind;
 namespace Slice.Tests;
 
 /// <summary>
-/// Markers on the things themselves: <c>--view=markers --out=FILE.png</c>, out of the bunker in daylight with a map
+/// Markers on the things themselves: <c>--view=markers [--markers=compass] --out=FILE.png</c>, out of the bunker in daylight with a map
 /// mark set 90 m off and the scanner just pinged, looking toward the place in view from the way out: its marker on
 /// the place, the mark's and the pings' on their spots, and whatever is behind pinned to the edge.
 /// </summary>
@@ -15,6 +15,7 @@ public sealed partial class Staging
 {
     IEnumerable<int> MarkersShot()
     {
+        if (_args.GetValueOrDefault("markers", "world") == "compass") { _game.Settings.MarkersInWorld = false; _game.Settings.Changed(); } // --markers=compass: the old marks and labels on the compass strip
         _game.Zone.Sky.TimeOfDay = Num("time", 0.36);
         _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
         _game.Zone.Wildlife.Frozen = true;
@@ -26,6 +27,12 @@ public sealed partial class Staging
         Vector3 side = new(-flat.Z, 0f, flat.X);
         Vector3 mark = eye + flat * 80f + side * 35f;
         _game.Spaceflight.Charts.Mark(mark.X, mark.Z);
+        // More marks ahead, at different distances and bearings, so the view has several to show.
+        foreach (var (turn, range) in new[] { (-0.5f, 45f), (-0.2f, 120f), (0.15f, 70f), (0.45f, 200f), (0.7f, 35f) })
+        {
+            Vector3 way = flat.Rotated(Vector3.Up, turn) * range;
+            _game.Spaceflight.Charts.Mark(eye.X + way.X, eye.Z + way.Z);
+        }
         _game.Scan();
         // Toward the middle of what is marked out there, so most of it is in view.
         foreach (int x in _drive.Wait(2)) yield return x;
