@@ -77,6 +77,7 @@ public sealed partial class Staging
             "ruin" => RuinView(),
             "place" => PlaceApproach(),
             "interior" => PlaceInterior(),
+            "furnished" => FurnishedView(),
             "tell" => PlaceTell(),
             "cache" => PlaceCache(),
             "town" => TownView(),
