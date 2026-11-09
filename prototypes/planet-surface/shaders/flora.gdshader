@@ -31,9 +31,9 @@ instance uniform vec2 flora_swap = vec2(0.0, 1.0);
 
 // Reaches, m: large growth's near drawing, small growth, the far drawing, the distant; the bands
 // they dissolve over; the far drawing's thinning share's reach and band.
-uniform vec4 reach = vec4(120.0, 200.0, 370.0, 1280.0);
-uniform vec4 bands = vec4(26.0, 60.0, 60.0, 192.0);
-uniform vec2 thin_reach = vec2(200.0, 40.0);
+uniform vec4 flora_reach = vec4(120.0, 200.0, 370.0, 1280.0);
+uniform vec4 flora_bands = vec4(26.0, 60.0, 60.0, 192.0);
+uniform vec2 flora_thin = vec2(200.0, 40.0);
 
 varying vec3 tint;
 varying float glow;
@@ -55,17 +55,17 @@ void vertex() {
 		float away = length(to_eye);
 		float r = fract(sin(dot(root.xz, vec2(12.9898, 78.233))) * 43758.5453);
 		float own = 0.9 + 0.1 * r;
-		float near = shown(reach.x * own, bands.x, away);
+		float near = shown(flora_reach.x * own, flora_bands.x, away);
 		if (layer == 0) {
 			band = vec2(0.0, near);
 		} else if (layer == 4) {
-			band = vec2(0.0, thin ? near : shown(reach.y * own, bands.y, away));
+			band = vec2(0.0, thin ? near : shown(flora_reach.y * own, flora_bands.y, away));
 		} else if (layer == 1) {
-			float far = thin ? shown(thin_reach.x * own, thin_reach.y, away) : shown(reach.z * own, bands.z, away);
+			float far = thin ? shown(flora_thin.x * own, flora_thin.y, away) : shown(flora_reach.z * own, flora_bands.z, away);
 			band = vec2(near, max(far, near));
 		} else {
-			float far = shown(reach.z * own, bands.z, away);
-			band = vec2(far, max(shown(reach.w * (0.95 + 0.05 * r), bands.w, away), far));
+			float far = shown(flora_reach.z * own, flora_bands.z, away);
+			band = vec2(far, max(shown(flora_reach.w * (0.95 + 0.05 * r), flora_bands.w, away), far));
 		}
 	}
 	if (band.y <= band.x) {

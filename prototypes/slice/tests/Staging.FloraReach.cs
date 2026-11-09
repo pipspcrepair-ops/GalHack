@@ -107,6 +107,9 @@ public sealed partial class Staging
         }
         var st = _game.Zone.Streamer;
         GD.Print($"REACH {tag}: GPU {gpu.Average():F2} ms, render CPU {cpu.Average():F2} ms, frame {frame.Average():F2} ms (99th {frame.OrderBy(f => f).ElementAt(118):F1}); detail {PlanetSurface.Terrain.DetailReach.Distance:F0} m, far rings {PlanetSurface.Terrain.TerrainStreamer.FarRadius}, far complete {st.FarComplete}");
+        if (_game.FixedCamera is Transform3D cam)
+            foreach (var layer in st.FloraShown(cam.Origin).Where(f => f.Shows > 0.05f).GroupBy(f => f.Layer).OrderBy(g => g.Key))
+                GD.Print($"REACH {tag}: layer {layer.Key}: {layer.Count()} shown, to {layer.Max(f => f.Away):F0} m, {layer.Count(f => f.Away > 1000f)} past 1 km");
         Snap(tag);
     }
 }

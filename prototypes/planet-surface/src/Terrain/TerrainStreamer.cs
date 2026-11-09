@@ -1066,7 +1066,7 @@ public partial class TerrainStreamer : Node3D
                 CastShadow = layer == 0 || layer == 4 && job.Lod == 0 ? GeometryInstance3D.ShadowCastingSetting.On : GeometryInstance3D.ShadowCastingSetting.Off,
             };
             SetRange(flora, layer);
-            flora.SetInstanceShaderParameter("flora_layer", layer);
+            flora.SetInstanceShaderParameter("flora_layer", (float)layer);
             node.AddChild(flora);
         }
         return node;
@@ -1087,9 +1087,9 @@ public partial class TerrainStreamer : Node3D
     void ApplyReach()
     {
         _reachVersion = DetailReach.Version;
-        _floraMaterial.SetShaderParameter("reach", new Vector4(DetailReach.Near, DetailReach.Small, DetailReach.Far, DetailReach.Distant));
-        _floraMaterial.SetShaderParameter("bands", new Vector4(DetailReach.NearBand, DetailReach.SmallBand, DetailReach.FarBand, DetailReach.DistantBand));
-        _floraMaterial.SetShaderParameter("thin_reach", new Vector2(DetailReach.Thin, DetailReach.ThinBand));
+        _floraMaterial.SetShaderParameter("flora_reach", new Vector4(DetailReach.Near, DetailReach.Small, DetailReach.Far, DetailReach.Distant));
+        _floraMaterial.SetShaderParameter("flora_bands", new Vector4(DetailReach.NearBand, DetailReach.SmallBand, DetailReach.FarBand, DetailReach.DistantBand));
+        _floraMaterial.SetShaderParameter("flora_thin", new Vector2(DetailReach.Thin, DetailReach.ThinBand));
         foreach (FarChunk f in _far.Values)
         {
             if (f.Node == null) continue;
