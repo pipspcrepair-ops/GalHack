@@ -21,7 +21,7 @@ namespace Slice.Ui;
 /// <summary>
 /// The helmet visor, in the diegetic UI's style (its theme, fonts and glass shader): vitals
 /// along the bottom of the glass that flash while they are only a warning and turn red once
-/// they cost health, a compass with the pod, your vessels and the nearest deposits on it, the
+/// they cost health, a compass of headings with markers on the things themselves (the bunker, places, deposits, your vessels), the
 /// suit's assistant's lines, what the tool is aimed at, and a flight strip when seated. Calm
 /// vitals fade away after a few seconds. Drawn every frame onto the main canvas.
 /// </summary>
@@ -158,6 +158,7 @@ public partial class Visor : CanvasLayer
         if (Game.Menu.IsOpen) return; // the Tab menu covers the view: the visor waits behind it
         DrawTracers();
         DrawHurtEdge();
+        DrawMarkers();
         DrawCompass(survivor);
         DrawChosenStar();
         DrawLines();
@@ -364,28 +365,7 @@ public partial class Visor : CanvasLayer
                 _hud.TextIn(UiTheme.Display, (int)(16 * s), new Rect2(x - 20 * s, y - 14 * s, 40 * s, 20 * s), d switch { 0 => "N", 90 => "E", 180 => "S", _ => "W" }, C.Text, HorizontalAlignment.Center);
         }
         _hud.Text(UiTheme.Mono, (int)(16 * s), new Vector2(cx - 18 * s, y + 28 * s), Garbled($"{heading:000}", Game.WrongShown), C.Text);
-
-        Vector3 feet = survivor.WorldFeet;
-        var labels = new List<(float x, int row)>();
-        _compassBottom = (y + 44 * s + 16 * s); // grows below with each row of contact labels
-        void Mark(Vector3 at, string tag, Color colour, float alpha)
-        {
-            colour = new Color(colour, alpha);
-            Vector3 to = Game.Spaceflight.Local(at - feet);
-            float bearing = Mathf.PosMod(Mathf.RadToDeg(Mathf.Atan2(to.X, -to.Z)), 360f);
-            float off = Mathf.Clamp(Mathf.Wrap(bearing - heading, -180f, 180f), -60f, 60f);
-            float x = cx + off / 60f * width / 2;
-            float d = new Vector2(to.X, to.Z).Length();
-            _hud.Block(new Rect2(x - 5 * s, y + 4 * s, 10 * s, 10 * s), colour);
-            // The first row whose neighbourhood is free, so labels at the same bearing stack.
-            int row = 0;
-            while (labels.Exists(l => l.row == row && MathF.Abs(l.x - x) < 170 * s)) row++;
-            if (row >= HudLayout.CompassRows) return; // the mark stays; its label would crowd the view
-            labels.Add((x, row));
-            _compassBottom = MathF.Max(_compassBottom, y + (44 + (row + 1) * 16) * s);
-            _hud.TextIn(UiTheme.Label, (int)(13 * s), new Rect2(x - 110 * s, y + (44 + row * 16) * s, 220 * s, 16 * s), $"{(tag.Length > 20 ? tag[..19] + ".." : tag)} {d:F0}m", colour, HorizontalAlignment.Center);
-        }
-        foreach (CompassMark m in CompassMarks()) Mark(m.At, m.Tag, m.Colour, m.Alpha);
+        // Headings only: what is out there is marked where it is, in the world (DrawMarkers).
     }
 
     /// <summary>A readout as the wrongness has it: now and then, the more the stronger it is, one digit comes up as another for a moment.</summary>
@@ -401,22 +381,28 @@ public partial class Visor : CanvasLayer
         return new string(c);
     }
 
-    /// <summary>One mark on the compass: its label, where it is, its colour and how strongly it shows.</summary>
-    public readonly record struct CompassMark(string Tag, Vector3 At, Color Colour, float Alpha, string Kind);
+    /// <summary>One marker: its label, the point it marks in the world, its colour, how strongly it shows, and its kind (its icon).</summary>
+    public readonly record struct Marker(string Tag, Vector3 At, Color Colour, float Alpha, string Kind);
 
     /// <summary>
-    /// What the compass shows: your bunker and the place in view from its way out (both known from the
+    /// What is marked in the world: your bunker and the place in view from its way out (both known from the
     /// first moment, at any distance); then only what you have found by going near it (places,
-    /// deposits: the nearest few of each), your own vessels and backpack, and the scanner's pings
-    /// for as long as they last.
+    /// deposits: the nearest few of each), your own map marks, vessels, bases and backpack, and the
+    /// scanner's pings for as long as they last. Each marks the thing itself: a place and a deposit at
+    /// the ground there, a little above it.
     /// </summary>
-    public List<CompassMark> CompassMarks()
+    public List<Marker> Markers()
     {
-        var marks = new List<CompassMark>();
+        var marks = new List<Marker>();
         Survivor survivor = Game.Survivor;
         if (survivor == null) return marks;
         Vector3 feet = survivor.WorldFeet;
-        if (Game.Bunker != null) marks.Add(new("BUNKER", Game.Start, C.Accent2, 1f, "bunker"));
+        Vector3 Ground(Vector3 at, float lift)
+        {
+            float g = Game.Zone.GroundAt(at.X, at.Z).Y;
+            return float.IsFinite(g) ? new Vector3(at.X, g + lift, at.Z) : at;
+        }
+        if (Game.Bunker != null && !Game.InOrbit) marks.Add(new("BUNKER", Game.Start, C.Accent2, 1f, "bunker"));
         if (!Game.InOrbit && Game.Zone.Planet != null)
         {
             string startPlace = Game.Spaceflight.StartPlaceKey;
@@ -426,19 +412,24 @@ public partial class Visor : CanvasLayer
                 .Where(x => x.Key == startPlace || new Vector2(x.At.X - feet.X, x.At.Z - feet.Z).Length() < Slice.Game.Game.ScanRange)
                 .OrderBy(x => x.Key == startPlace ? 0 : 1).ThenBy(x => new Vector2(x.At.X - feet.X, x.At.Z - feet.Z).LengthSquared())
                 .Take(take).Select(x => (x.Label, x.At));
-            foreach (var (label, at) in Found("place", NearestPlaces)) marks.Add(new(label.ToUpperInvariant(), at, C.Accent, 1f, "place"));
+            foreach (var (label, at) in Found("place", NearestPlaces)) marks.Add(new(label.ToUpperInvariant(), Ground(at, PlaceLift), C.Accent, 1f, "place"));
             if (survivor.Seated == null)
-                foreach (var (label, at) in Found("deposit", NearestDeposits)) marks.Add(new(label.ToUpperInvariant(), at, C.Holo, 1f, "deposit"));
+                foreach (var (label, at) in Found("deposit", NearestDeposits)) marks.Add(new(label.ToUpperInvariant(), Ground(at, 1.5f), C.Holo, 1f, "deposit"));
+            foreach (Slice.Orbit.ChartMark m in Game.Spaceflight.Charts.OfKind("mark"))
+                marks.Add(new(m.Label.ToUpperInvariant(), Ground(Game.Zone.Planet.NearestCopy(new Vector3((float)m.X, feet.Y, (float)m.Z), feet), 2f), C.Danger, 1f, "mark"));
         }
         foreach (Vessel v in Game.Zone.Vessels)
-            if (!v.IsRuin && !v.IsWreck && (v.Seat != null || v.IsBase) && survivor.Aboard != v) marks.Add(new(v.Name.ToUpperInvariant(), v.Body.Position.ToGodot(), C.Good, 1f, "vessel"));
+            if (!v.IsRuin && !v.IsWreck && (v.Seat != null || v.IsBase) && survivor.Aboard != v) marks.Add(new(v.Name.ToUpperInvariant(), v.Body.Position.ToGodot(), C.Good, 1f, v.IsBase ? "base" : "vessel"));
         if (Game.Backpack != null) marks.Add(new("BACKPACK", Game.Backpack.Position, C.Danger, 1f, "backpack"));
         foreach (Game.Game.Ping p in Game.Pings)
-            marks.Add(new(p.Place ? "?" : p.Label.ToUpperInvariant(), p.At, p.Place ? C.Accent : C.Holo, Game.PingAlpha(p), "ping"));
+            marks.Add(new(p.Place ? "?" : p.Label.ToUpperInvariant(), p.Place ? Ground(p.At, PlaceLift) : p.At, p.Place ? C.Accent : C.Holo, Game.PingAlpha(p), "ping"));
         return marks;
     }
 
-    /// <summary>How many found deposits the compass shows (the nearest).</summary>
+    /// <summary>How high over the ground a place's marker stands, m: over its roofs, on the place itself.</summary>
+    public const float PlaceLift = 8f;
+
+    /// <summary>How many found deposits are marked (the nearest).</summary>
     public const int NearestDeposits = 3;
     // ---- Lines, warnings, aim -------------------------------------------------------------------
 
@@ -455,10 +446,8 @@ public partial class Visor : CanvasLayer
         }
     }
 
-    /// <summary>How many found places the compass shows (the nearest).</summary>
+    /// <summary>How many found places are marked (the nearest).</summary>
     public const int NearestPlaces = 3;
-
-    float _compassBottom;
 
     /// <summary>A new level shows in the notices' slot (<see cref="LevelUp"/>); experience itself counts quietly.</summary>
     void DrawProgress() { }

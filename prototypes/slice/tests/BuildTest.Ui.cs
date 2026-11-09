@@ -34,6 +34,7 @@ public partial class BuildTest
         HudBoxChecks();
         foreach (int x in TechFitChecks()) yield return x;
         foreach (int x in GalaxyNameChecks()) yield return x;
+        foreach (int x in MarkerChecks()) yield return x;
         foreach (int x in NoticeChecks()) yield return x;
         foreach (int x in WordChecks()) yield return x;
         Check(MenuRoot.Glass <= 0.6f && _game.Menu.Root.Gui.Backing < 1f && !_game.GetTree().Paused, $"the Tab menu is see-through (glass {MenuRoot.Glass:0.00}, backings {_game.Menu.Root.Gui.Backing:0.00}) and the world runs behind it");
@@ -298,13 +299,13 @@ public partial class BuildTest
     /// <summary>At the start, before anything else is found or pinged, the compass holds the bunker and the place in view from its way out, and nothing else.</summary>
     void CompassAtStart()
     {
-        var marks = _game.Visor.CompassMarks();
+        var marks = _game.Visor.Markers();
         var kinds = marks.Select(m => m.Kind).ToList();
         var seen = _game.Bunker?.Poi;
         bool landmark = seen != null && _game.Bunker.Landmark != null;
         string[] want = landmark ? new[] { "bunker", "place" } : new[] { "bunker" };
         Check(kinds.SequenceEqual(want) && (!landmark || marks[1].Tag == seen.Name.ToUpperInvariant()),
-            $"at the start the compass shows the bunker{(landmark ? $" and {seen.Name}, the place in view from its way out" : "")} and nothing else ({string.Join(", ", marks.Select(m => $"{m.Kind} {m.Tag}"))})");
+            $"at the start the markers show the bunker{(landmark ? $" and {seen.Name}, the place in view from its way out" : "")} and nothing else ({string.Join(", ", marks.Select(m => $"{m.Kind} {m.Tag}"))})");
         if (landmark)
             Check(_game.Spaceflight.Charts.Has(_game.Spaceflight.StartPlaceKey ?? "") && _game.Spaceflight.Charts.OfKind("place").Count() == 1,
                 $"it is found from the first moment, on the map too, and it is the only place found ({_game.Spaceflight.Charts.OfKind("place").Count()})");
@@ -325,14 +326,14 @@ public partial class BuildTest
         int charted = _game.Spaceflight.Charts.OfKind("deposit").Count();
         foreach (int x in _drive.Click()) yield return x;
         foreach (int x in _drive.Wait(2)) yield return x;
-        int pinged = _game.Visor.CompassMarks().Count(m => m.Kind == "ping");
+        int pinged = _game.Visor.Markers().Count(m => m.Kind == "ping");
         double at = _game.Stats.Seconds;
         Check(pinged > 0 && _game.Pings.Count == pinged, $"a click pings {pinged} things onto the compass ({string.Join(", ", _game.Pings.Select(p => p.Label ?? "?"))})");
         foreach (int x in _play.WaitFor(() => _game.Stats.Seconds - at > 8.5, 12)) yield return x;
-        var late = _game.Visor.CompassMarks().Where(m => m.Kind == "ping").ToList();
+        var late = _game.Visor.Markers().Where(m => m.Kind == "ping").ToList();
         Check(late.Count == pinged && late.All(m => m.Alpha < 1f && m.Alpha > 0f), $"after 8.5 s they are still marked, fading (alpha {(late.Count > 0 ? late[0].Alpha : 0):F2})");
         foreach (int x in _play.WaitFor(() => _game.Stats.Seconds - at > 10.2, 5)) yield return x;
-        Check(_game.Visor.CompassMarks().All(m => m.Kind != "ping"), "after ten seconds the pings are gone");
+        Check(_game.Visor.Markers().All(m => m.Kind != "ping"), "after ten seconds the pings are gone");
         Check(_game.Spaceflight.Charts.OfKind("deposit").Count() == charted, "and nothing pinged stays charted: only going near a deposit marks it");
     }
 

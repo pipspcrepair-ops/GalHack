@@ -18,9 +18,8 @@ public readonly record struct HudLayout(float Scale, Rect2 Vitals, Rect2 Toolbar
 {
     public const int Slots = 9;
     public const float VitalW = 150, VitalH = 54, VitalGap = 14, Cell = 52, CellGap = 4, WideRow = 760, JetW = 84, JetH = 150;
-    /// <summary>The compass: its width, and how many rows of labels it may grow below its strip.</summary>
+    /// <summary>The compass: its strip's width and the strip's top. Headings only: what it once marked is marked in the world.</summary>
     public const float CompassW = 640, CompassTop = 34;
-    public const int CompassRows = 2;
     /// <summary>The suit's lines shown at once.</summary>
     public const int LinesShown = 3;
     /// <summary>An alert's sign (the toolbar's height), the room for its timer above it, and the width each alert takes in the row.</summary>
@@ -68,9 +67,9 @@ public readonly record struct HudLayout(float Scale, Rect2 Vitals, Rect2 Toolbar
         var jet = new Rect2(size.X - (24 + JetW) * s, size.Y * 0.45f - JetH * s / 2f, JetW * s, JetH * s);
         float linesX = 24 * s;
         var lines = new Rect2(linesX, shapes.Position.Y - 8 * s - linesH, jet.Position.X - 12 * s - linesX, linesH);
-        // The compass strip and its labels (a label is 220 wide, centred on a mark that may sit at the strip's end).
-        float compassW = CompassW + 220;
-        var compass = new Rect2(cx - compassW * s / 2f, 14 * s, compassW * s, (CompassTop + 44 + CompassRows * 16 - 14) * s);
+        // The compass strip, its N/E/S/W letters (40 wide at a strip's end) and the heading under it.
+        float compassW = CompassW + 40;
+        var compass = new Rect2(cx - compassW * s / 2f, 14 * s, compassW * s, (CompassTop + 44 - 14) * s);
         var barName = new Rect2(toolbar.Position.X - 150 * s, toolbar.Position.Y + Cell * s / 2f - 9 * s, 142 * s, 18 * s);
         // Seated: the flight line, its message under it, and the mode plate under that (beside it, it ran off a narrow window).
         var flight = new Rect2(cx - 360 * s, compass.End.Y + 14 * s, 720 * s, 68 * s);
