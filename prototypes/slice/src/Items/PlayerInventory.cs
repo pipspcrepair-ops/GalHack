@@ -185,7 +185,7 @@ public sealed class PlayerInventory
             Bar = BarSource.Personal;
             return null;
         }
-        if (RemoteEmpty) return "The remote toolbar is empty: drag an item from a core's storage tab onto it";
+        if (RemoteEmpty) return "REMOTE TOOLBAR · EMPTY";
         Bar = BarSource.Remote;
         return null;
     }

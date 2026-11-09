@@ -240,7 +240,7 @@ public partial class Game
             KeyCard k = p.KeyAlong(eye, dir, UseReach);
             if (k == null) continue;
             Bill left = Pack.Add($"keycard-{k.Clearance}", 1);
-            if (!left.IsEmpty) { Say("No room in the bag", Tones.Caution); return true; }
+            if (!left.IsEmpty) { Say("BAG FULL", Tones.Caution); return true; }
             p.TakeKey(k);
             Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Ping, eye + dir, 1.8f, -12f);
             return true;
@@ -291,13 +291,13 @@ public partial class Game
         if (Places == null) return "";
         if (Doors.Along(eye, dir, UseReach) is var (_, _, open)) return open ? "E  Shut the door" : "E  Open the door";
         foreach (Place p in Places.Standing)
-            if (p.KeyAlong(eye, dir, UseReach) is KeyCard k) return $"E  Take the {k.Clearance} keycard";
+            if (p.KeyAlong(eye, dir, UseReach) is KeyCard k) return $"E  Take {k.Clearance} keycard";
         if (!hit || !Places.Resolve(look.Collider, look.Point, look.Normal, out PoiPlaces.Hit h)) return "";
-        if (CacheAt(h) is Slice.Items.Lootable cache) return $"E  Open the {cache.Name.ToLowerInvariant()}";
+        if (CacheAt(h) is Slice.Items.Lootable cache) return $"E  Open {cache.Name.ToLowerInvariant()}";
         if (h.Door == null) return "";
         Place.Door d = h.Door;
-        if (d.Jammed) return "Jammed";
-        if (d.Clearance != null && !Places.HasClearance(d.Clearance)) return $"LOCKED  {d.Clearance.ToUpperInvariant()} keycard";
+        if (d.Jammed) return "JAMMED";
+        if (d.Clearance != null && !Places.HasClearance(d.Clearance)) return $"LOCKED · {d.Clearance.ToUpperInvariant()} KEYCARD";
         if (d.Lift >= 0) return "E  Lift door";
         return d.Target > 0.5f ? "E  Shut the door" : "E  Open the door";
     }

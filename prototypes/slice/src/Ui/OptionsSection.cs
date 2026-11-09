@@ -245,9 +245,9 @@ public sealed class OptionsSection : IMenuSection
         }
         var fixedKeys = new Rect2(body.Position.X, body.End.Y - 62, body.Size.X, 58);
         g.Fill(fixedKeys, new Color(C.Panel, 0.6f));
-        g.Text("FIXED     ESC  this menu     LEFT MOUSE  use, dig, build, shoot     RIGHT MOUSE  take a block away     WHEEL  slot or shape",
+        g.Text("FIXED     ESC  MENU     LMB  USE · DIG · BUILD · SHOOT     RMB  TAKE DOWN     WHEEL  SLOT · SHAPE",
             fixedKeys.Position + new Vector2(14, 7), C.Dim, 15);
-        g.Text("IN MENUS     /  search     CTRL+A  select all     SHIFT-CLICK  move a stack     + AND -  zoom the map",
+        g.Text("IN MENUS     /  SEARCH     CTRL+A  SELECT ALL     SHIFT-CLICK  MOVE STACK     + AND -  ZOOM MAP",
             fixedKeys.Position + new Vector2(14, 31), C.Dim, 15);
     }
 

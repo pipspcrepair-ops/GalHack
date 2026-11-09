@@ -55,7 +55,7 @@ public sealed class StatsSection : IMenuSection
             g.Text($"{value * 100f:F0}%", new Vector2(area.Position.X + 300, y + 2), C.Text, 19, UiTheme.Mono);
             if (g.Slider($"options:volume-{key}", new Rect2(area.Position.X + 420, y, 760, 32), ref value, C.Accent2)) _game.Audio.SetVolume(key, value);
         }
-        g.Text("Graphics, keys and the mouse: Esc, OPTIONS.", new Vector2(area.Position.X + 12, area.Position.Y + 20 + 4 * 64), C.Dim, 16);
+        g.Text("GRAPHICS · KEYS · MOUSE   [ESC] OPTIONS", new Vector2(area.Position.X + 12, area.Position.Y + 20 + 4 * 64), C.Dim, 16);
     }
 
     /// <summary>Everyone whose work is in the game, generated music included. The wheel scrolls it.</summary>
@@ -81,11 +81,11 @@ public sealed class StatsSection : IMenuSection
         Progress p = _game.Progress;
         var rows = new (string, string)[]
         {
-            ("TIME SINCE THE CRASH", TimeSpan.FromSeconds(s.Seconds).ToString(@"h\:mm\:ss")),
-            ("LEVEL", $"{p.Level} ({p.Xp} XP, {p.State.PointsSpent} points spent, {p.Points} to spend)"),
+            ("TIME HERE", TimeSpan.FromSeconds(s.Seconds).ToString(@"h\:mm\:ss")),
+            ("LEVEL", $"{p.Level} · {p.Xp} XP · {p.State.PointsSpent} SPENT · {p.Points} FREE"),
             ("TECH UNLOCKED", $"{p.Nodes.Count(n => p.IsUnlocked(n.Id))} of {p.Nodes.Count}"),
             ("WALKED", $"{s.Walked / 1000f:F2} km"),
-            ("FLOWN", $"{s.Flown / 1000f:F2} km (top speed {s.TopSpeed:F0} m/s)"),
+            ("FLOWN", $"{s.Flown / 1000f:F2} km · TOP {s.TopSpeed:F0} m/s"),
             ("WORLD", $"{_game.World?.Name}   SEED {_game.World?.Seed}"),
             ("ORE CELLS DUG", $"{_game.Tool.OreCells}"),
             ("PLANTS CUT", $"{_game.Tool.PlantsCut}"),
@@ -204,8 +204,13 @@ public sealed class MapSection : IMenuSection
         }
         var legend = new Rect2(map.End.X + 30, area.Position.Y, 320, area.Size.Y);
         g.Caption($"MAP · {Range:0} M", legend.Position, legend.Size.X);
-        string[] lines = { "orange: you, the bunker", "red: your marks (right click)", "green: bases", "cream: vessels", "amber: devices, places, drops", "teal: nearest deposits", "red: your backpack", "dots: creatures" };
-        for (int i = 0; i < lines.Length; i++) g.Text(lines[i], legend.Position + new Vector2(0, 40 + i * 26), C.Dim, 15);
+        var lines = new (string Label, Color Colour)[] { ("YOU · BUNKER", C.Accent), ("YOUR MARKS [RMB]", C.Danger), ("BASES", C.Good), ("VESSELS", C.Text), ("DEVICES · PLACES · DROPS", C.Accent2), ("DEPOSITS", C.Holo), ("BACKPACK", C.Danger), ("CREATURES", C.Warn) };
+        for (int i = 0; i < lines.Length; i++)
+        {
+            Vector2 at = legend.Position + new Vector2(0, 40 + i * 26);
+            g.Fill(new Rect2(at + new Vector2(0, 4), new Vector2(12, 12)), lines[i].Colour);
+            g.Text(lines[i].Label, at + new Vector2(20, 0), C.Dim, 15);
+        }
         if (g.Button("map:near", new Rect2(legend.Position + new Vector2(0, 270), new Vector2(150, 34)), "300 M", C.Accent2, lit: Range == 300f)) { Range = 300f; Levels.LocalPan = Vector2.Zero; }
         if (g.Button("map:far", new Rect2(legend.Position + new Vector2(160, 270), new Vector2(150, 34)), "600 M", C.Accent2, lit: Range == 600f)) { Range = 600f; Levels.LocalPan = Vector2.Zero; }
         Levels.Tabs(g, legend.Position + new Vector2(0, 330));

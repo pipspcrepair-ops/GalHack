@@ -27,13 +27,13 @@
   "items": [
     // ---- Raw: common (every planet) -----------------------------------------------------
     { "id": "iron-ore", "name": "Iron ore", "short": "IRON", "category": "raw", "rarity": "common", "source": "mine", "deposit": "Iron",
-      "mass": 3.0, "volume": 1, "where": "Every planet", "uses": "Iron bars: hulls, frames, most devices" },
+      "mass": 3.0, "volume": 1, "where": "Every planet", "uses": "Iron bars · hulls · frames · devices" },
     { "id": "copper-ore", "name": "Copper ore", "short": "COPPER", "category": "raw", "rarity": "common", "source": "mine", "deposit": "Copper",
       "mass": 3.2, "volume": 1, "where": "Every planet; richest on starter worlds and asteroids", "uses": "Wiring, windings, energy cells" },
     { "id": "silicon-ore", "name": "Silicon ore", "short": "SILICON", "category": "raw", "rarity": "common", "source": "mine", "deposit": "Silicon",
-      "mass": 2.2, "volume": 1, "where": "Every planet; richest in deserts", "uses": "Wafers for circuits, glass, ceramic" },
+      "mass": 2.2, "volume": 1, "where": "Every planet; richest in deserts", "uses": "Wafers · circuits · glass · ceramic" },
     { "id": "carbon-ore", "name": "Carbon ore", "short": "CARBON", "category": "raw", "rarity": "common", "source": "mine", "deposit": "Carbon",
-      "mass": 1.6, "volume": 1, "where": "Every planet", "uses": "Graphite for steel and propellant, polymer" },
+      "mass": 1.6, "volume": 1, "where": "Every planet", "uses": "Graphite · steel · propellant · polymer" },
     { "id": "ice", "name": "Ice", "short": "ICE", "category": "raw", "rarity": "common", "source": "mine", "deposit": "Water",
       "mass": 0.9, "volume": 1, "where": "Every planet; ice worlds, moons, poles", "uses": "Polymer, concrete, oxygen" },
     { "id": "stone", "name": "Stone", "short": "STONE", "category": "raw", "rarity": "common", "source": "dig",
@@ -49,7 +49,7 @@
     { "id": "magnesium-ore", "name": "Magnesium ore", "short": "MAGNES", "category": "raw", "rarity": "uncommon", "source": "mine", "deposit": "Magnesium",
       "mass": 2.0, "volume": 1, "where": "Small deposits everywhere; rich on arid worlds and asteroids", "uses": "Explosive charges: rockets, shells" },
     { "id": "neodymium-ore", "name": "Neodymium ore", "short": "NEODYM", "category": "raw", "rarity": "uncommon", "source": "mine", "deposit": "Neodymium",
-      "mass": 3.6, "volume": 1, "where": "Small deposits everywhere; rich on moons and asteroids", "uses": "Magnets for large thrusters and gyros" },
+      "mass": 3.6, "volume": 1, "where": "Small deposits everywhere; rich on moons and asteroids", "uses": "Magnets · large thrusters · gyros" },
     { "id": "gold-ore", "name": "Gold ore", "short": "GOLD", "category": "raw", "rarity": "uncommon", "source": "mine", "deposit": "Gold",
       "mass": 4.5, "volume": 1, "where": "Scattered; richer on volcanic worlds", "uses": "Logic modules, trade value" },
     { "id": "gravium-ore", "name": "Gravium ore", "short": "GRAVIUM", "category": "raw", "rarity": "uncommon", "source": "mine", "deposit": "Gravium",
@@ -59,13 +59,13 @@
     { "id": "fold-crystal-raw", "name": "Raw fold crystal", "short": "FOLD", "category": "raw", "rarity": "rare", "source": "mine", "deposit": "Crystal",
       "mass": 1.2, "volume": 1, "where": "Irradiated ice worlds; asteroids near dead and irradiated stars", "uses": "Fold crystal: hyperdrive fuel, shields" },
     { "id": "emberite-ore", "name": "Emberite ore", "short": "EMBER", "category": "raw", "rarity": "rare", "source": "mine",
-      "mass": 2.8, "volume": 1, "where": "Lava worlds around young and dying stars", "uses": "Fusion cells, plasma charges, fusion cores" },
+      "mass": 2.8, "volume": 1, "where": "Lava worlds around young and dying stars", "uses": "Fusion cells · plasma charges · fusion cores" },
     { "id": "starsilver-ore", "name": "Starsilver ore", "short": "STARSLV", "category": "raw", "rarity": "rare", "source": "mine",
-      "mass": 4.0, "volume": 1, "where": "Barren metal worlds and dense asteroids near giant stars", "uses": "Warp coils, the advanced constructor" },
+      "mass": 4.0, "volume": 1, "where": "Barren metal worlds and dense asteroids near giant stars", "uses": "Warp coils · advanced constructor" },
 
     // ---- Raw: exotic (themed worlds; optional upgrades only) ---------------------------------
     { "id": "voidglass-shard", "name": "Voidglass shard", "short": "VOIDGLS", "category": "raw", "rarity": "exotic", "source": "mine",
-      "mass": 1.5, "volume": 1, "where": "Glass-desert worlds", "uses": "Lenses for long-range scanners and holo displays" },
+      "mass": 1.5, "volume": 1, "where": "Glass-desert worlds", "uses": "Lenses · long-range scanners · holo displays" },
     { "id": "stormcore-nodule", "name": "Stormcore nodule", "short": "STORM", "category": "raw", "rarity": "exotic", "source": "mine",
       "mass": 2.0, "volume": 1, "where": "Storm worlds", "uses": "Storm capacitors, high-output shields" },
     { "id": "rimefire-crystal", "name": "Rimefire crystal", "short": "RIMEFIR", "category": "raw", "rarity": "exotic", "source": "mine",
@@ -73,9 +73,9 @@
 
     // ---- Unique: found only, never mined, never crafted ----------------------------------
     { "id": "precursor-alloy", "name": "Precursor alloy", "short": "PRECURS", "category": "unique", "rarity": "unique", "source": "explore",
-      "mass": 5.0, "volume": 2, "where": "Alien ruins and ancient derelicts (salvage only)", "uses": "Precursor armour blocks" },
+      "mass": 5.0, "volume": 2, "where": "Alien ruins, derelicts · salvage", "uses": "Precursor armour blocks" },
     { "id": "echo-shard", "name": "Echo shard", "short": "ECHO", "category": "unique", "rarity": "unique", "source": "explore",
-      "mass": 0.5, "volume": 0.5, "where": "Alien ruins", "uses": "Charge plating for charged armour" },
+      "mass": 0.5, "volume": 0.5, "where": "Alien ruins", "uses": "Charge plating · charged armour" },
     { "id": "lattice-core", "name": "Lattice core", "short": "LATTICE", "category": "unique", "rarity": "unique", "source": "explore",
       "mass": 2.0, "volume": 2, "where": "Derelicts, faction strongholds, rare traders", "uses": "CPU extender T3" },
     { "id": "lattice-array", "name": "Lattice array", "short": "ARRAY", "category": "unique", "rarity": "unique", "source": "explore",
@@ -96,7 +96,7 @@
     { "id": "gold-bar", "name": "Gold bar", "category": "refined", "rarity": "uncommon", "mass": 4.0, "volume": 0.3 },
     { "id": "gravium-ingot", "name": "Gravium ingot", "short": "GRAV IN", "category": "refined", "rarity": "uncommon", "mass": 7.0, "volume": 0.5 },
     { "id": "fold-crystal", "name": "Fold crystal", "short": "FOLD XL", "category": "refined", "rarity": "rare", "mass": 0.8, "volume": 0.5, "fuel": 1,
-      "uses": "Hyperdrive fuel, about 1 per light year, from a fold crystal tank; shields" },
+      "uses": "Hyperdrive fuel · ~1 per light year · fold crystal tank · shields" },
     { "id": "emberite", "name": "Refined emberite", "short": "EMBERIT", "category": "refined", "rarity": "rare", "mass": 2.0, "volume": 0.5 },
     { "id": "starsilver-bar", "name": "Starsilver bar", "short": "STARBAR", "category": "refined", "rarity": "rare", "mass": 3.2, "volume": 0.4 },
     { "id": "voidglass", "name": "Voidglass pane", "short": "VOIDPAN", "category": "refined", "rarity": "exotic", "mass": 1.0, "volume": 0.5 },
@@ -137,7 +137,7 @@
     { "id": "biofuel", "name": "Biofuel", "category": "consumable", "rarity": "common", "mass": 1.0, "volume": 1, "fuel": 10, "unlock": { "level": 2, "cost": 1, "parent": "energy-cell", "tab": "misc" } },
     // Warp drive fuel, about 1 per AU from a warp cell tank. The name is data: the owner may rename it.
     { "id": "warp-cell", "name": "Warp cell", "short": "WARPCEL", "category": "consumable", "rarity": "common", "mass": 1.0, "volume": 0.5, "stack": 100,
-      "uses": "Warp drive fuel, about 1 per AU, from a warp cell tank", "unlock": { "level": 9, "cost": 1, "parent": "survival-constructor", "tab": "misc" } },
+      "uses": "Warp drive fuel · ~1 per AU · warp cell tank", "unlock": { "level": 9, "cost": 1, "parent": "survival-constructor", "tab": "misc" } },
     { "id": "energy-cell", "name": "Energy cell", "short": "CELL", "category": "consumable", "rarity": "common", "mass": 0.8, "volume": 0.5, "fuel": 15, "unlock": { "level": 1, "cost": 0, "parent": "survival-constructor", "tab": "misc" } },
     { "id": "fuel-pack", "name": "Burnstone pack", "short": "FUEL", "category": "consumable", "rarity": "common", "mass": 2.0, "volume": 1, "fuel": 30, "unlock": { "level": 3, "cost": 1, "parent": "energy-cell", "tab": "misc" } },
     { "id": "large-fuel-pack", "name": "Large burnstone pack", "short": "FUEL L", "category": "consumable", "rarity": "common", "mass": 9.0, "volume": 4, "fuel": 150, "unlock": { "level": 8, "cost": 2, "parent": "fuel-pack", "tab": "misc" } },
@@ -155,6 +155,6 @@
     // ---- Tools ------------------------------------------------------------------------------
     { "id": "survival-constructor", "name": "Survival constructor", "short": "SURVFAB", "category": "tool", "rarity": "common", "mass": 15.0, "volume": 20, "unlock": { "level": 1, "cost": 0, "tab": "misc" } },
     { "id": "climate-node", "name": "Climate node", "short": "CLIMATE", "category": "tool", "rarity": "common", "mass": 12.0, "volume": 12,
-      "uses": "Set down, fed biomass or fuel: holds the temperature steady a few metres round it", "unlock": { "level": 1, "cost": 0, "parent": "survival-constructor", "tab": "misc" } }
+      "uses": "Set down · biomass or fuel · steady temperature nearby", "unlock": { "level": 1, "cost": 0, "parent": "survival-constructor", "tab": "misc" } }
   ]
 }

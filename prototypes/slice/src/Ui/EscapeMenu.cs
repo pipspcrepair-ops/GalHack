@@ -200,11 +200,13 @@ public partial class EscapeRoot : MenuPanel
         if (Game == null) return;
         if (Viewing)
         {
-            var strip = new Rect2(area.Position, new Vector2(area.Size.X, 52));
+            // As tall as the header, so the notices' corner (HudLayout.MenuNotices) sits on it; the words stop short of that corner.
+            var strip = new Rect2(area.Position, new Vector2(area.Size.X, 74));
             g.Fill(strip, new Color(C.Glass, 0.85f));
             g.Fill(new Rect2(strip.Position, new Vector2(8, strip.Size.Y)), C.Accent2);
-            g.TextIn("VIEWING THE WORLD", strip.Grow(-20), C.Text, 18);
-            g.TextIn("CLICK OR ESC TO GO BACK", strip.Grow(-20), C.Dim, 16, HorizontalAlignment.Right);
+            var words = new Rect2(strip.Position + new Vector2(20, 0), new Vector2(HudLayout.MenuNotices.Position.X - 40, strip.Size.Y));
+            g.TextIn("VIEWING THE WORLD", words, C.Text, 18);
+            g.TextIn("CLICK OR ESC TO GO BACK", words, C.Dim, 16, HorizontalAlignment.Right);
             if (!g.Drawing && g.Pressed)
             {
                 Viewing = false;

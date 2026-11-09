@@ -57,6 +57,8 @@ public sealed partial class Staging
             "escnewgame" => EscapeNewGameShots(),
             "blueprints" => BlueprintShots(),
             "uiround" => UiRoundShots(),
+            "notices" => NoticesShots(),
+            "markers" => MarkersShot(),
             "fabicons" => FabIconShots(),
             "loot" => Loot(),
             "bolt" => Bolt(),

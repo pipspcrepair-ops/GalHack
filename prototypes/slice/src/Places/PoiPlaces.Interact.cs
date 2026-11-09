@@ -152,15 +152,15 @@ public partial class PoiPlaces
         if (m.Town != null && m.Town.Covers(h.Place.WorldOf(h.Cell)) && m.Mood != Mood.Hostile)
         {
             m.Town.Provoked();
-            return (null, "You're taking their town apart: they won't stand for it");
+            return (null, "TOWN · PROVOKED");
         }
         if (h.Place.SecretAt(h.Cell) is SecretRoom secret)
-            return (null, Hurt(h.Place, secret, damage) ? "The panel gives way: a room behind it" : "The panel cracks");
+            return (null, Hurt(h.Place, secret, damage) ? "PANEL BROKEN · HIDDEN ROOM" : "PANEL CRACKED");
         if (h.Piece != null) return WorkPiece(h, damage);
         if (h.Door != null) return (null, "");
         Block b = h.Place.Inst.Blocks.Get(h.Cell);
         Dictionary<string, double> yield = Yield(b);
-        if (yield == null) return (null, b.IsAir ? "" : "The tool can't cut that");
+        if (yield == null) return (null, b.IsAir ? "" : "TOOL CAN'T CUT");
         float hp = BlockInfo.HitPoints(b);
         float done = m.BlockDamage.GetValueOrDefault(h.Cell) + damage;
         if (done < hp)
@@ -212,7 +212,7 @@ public partial class PoiPlaces
     /// <summary>A pulse of work on a registered salvage site (a flavour ruin, a vehicle wreck).</summary>
     public (Bill Got, string Message) Work(SalvageSite s, float damage)
     {
-        if (s.Empty) return (null, $"{s.Name}: nothing left to take");
+        if (s.Empty) return (null, $"{s.Name} · EMPTY");
         s.Damage += damage;
         if (s.Damage < s.HitPoints) return (null, "");
         s.Damage = 0f;
@@ -227,7 +227,7 @@ public partial class PoiPlaces
         s.Left = s.Left.Minus(share);
         Salvaged++;
         if (s.Empty) s.Emptied?.Invoke(s);
-        return (share, s.Empty ? $"{s.Name}: stripped bare" : $"Salvaged from the {s.Name.ToLowerInvariant()}");
+        return (share, s.Empty ? $"{s.Name} · STRIPPED" : $"SALVAGED · {s.Name}");
     }
 
     /// <summary>

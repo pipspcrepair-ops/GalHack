@@ -97,14 +97,14 @@ public partial class CockpitConsole : Node3D
                 {
                     // A core with nothing to fly on: what it is set to, and what its mode lacks.
                     this.Header(w, Vessel.Name.ToUpperInvariant(), ModeFit.Name(Vessel.Structure.Mode), C.Accent2);
-                    this.Text(UiTheme.Label, UiTheme.SizeLabel, new Vector2(30, 120), Vessel.ModeWarning ?? "Anchored: no flight systems in use.", Vessel.ModeWarning == null ? C.Text : C.Warn);
-                    this.Text(UiTheme.Label, UiTheme.SizeLabel, new Vector2(30, 160), "Mode: Tab menu, CORE tab.", C.Dim);
+                    this.Text(UiTheme.Label, UiTheme.SizeLabel, new Vector2(30, 120), Vessel.ModeWarning ?? "ANCHORED · NO FLIGHT", Vessel.ModeWarning == null ? C.Text : C.Warn);
+                    this.Text(UiTheme.Label, UiTheme.SizeLabel, new Vector2(30, 160), "MODE · [TAB] CORE", C.Dim);
                     return;
                 }
                 this.Header(w, Vessel.Name.ToUpperInvariant(), "BEACON", C.Accent2);
-                this.Text(UiTheme.Label, UiTheme.SizeLabel, new Vector2(30, 120), "Distress beacon transmitting.", C.Text);
-                this.Text(UiTheme.Label, UiTheme.SizeLabel, new Vector2(30, 160), "No engines: this pod came down once.", C.Dim);
-                this.Text(UiTheme.Label, UiTheme.SizeLabel, new Vector2(30, 200), "Your locker: E where the lamp is green.", C.Dim);
+                this.Text(UiTheme.Label, UiTheme.SizeLabel, new Vector2(30, 120), "DISTRESS BEACON · ON", C.Text);
+                this.Text(UiTheme.Label, UiTheme.SizeLabel, new Vector2(30, 160), "ENGINES · NONE", C.Dim);
+                this.Text(UiTheme.Label, UiTheme.SizeLabel, new Vector2(30, 200), "LOCKER · [E] GREEN LAMP", C.Dim);
                 return;
             }
             this.Header(w, Vessel.Name.ToUpperInvariant(), st.ClassLabel.ToUpperInvariant());
@@ -119,7 +119,7 @@ public partial class CockpitConsole : Node3D
             Row("ACCEL UP / SIDE", $"{st.Accel(Direction.Up):F1} / {st.Accel(Direction.Right):F1} m/s²", C.Text);
             Row("TURN", $"{st.TurnRate:F0} °/s", C.Text);
             Row("TOP SPEED", $"{st.TopSpeed:F0} m/s", C.Text);
-            Row("LIFT MARGIN", $"{st.LiftMargin:+0;-0} kN ({st.SpareLift:F1} t spare)", st.CanLiftOff ? C.Good : C.Danger);
+            Row("LIFT MARGIN", $"{st.LiftMargin:+0;-0} kN · {st.SpareLift:F1} t SPARE", st.CanLiftOff ? C.Good : C.Danger);
             Row("MASS", $"{st.Mass:F2} t", C.Text);
             y += 6;
             this.Block(new Rect2(0, y, w, 4), C.Rule);
