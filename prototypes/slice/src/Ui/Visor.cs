@@ -497,7 +497,7 @@ public partial class Visor : CanvasLayer
             _ => "",
         };
         if (!string.IsNullOrEmpty(label))
-            _hud.TextIn(UiTheme.Label, (int)(18 * s), new Rect2(0, c.Y + 18 * s, _hud.Size.X, 24 * s), label, C.Text, HorizontalAlignment.Center);
+            _hud.TextIn(UiTheme.Label, (int)(18 * s), new Rect2(0, PromptBox(_hud.Size, UiScale, label).Position.Y, _hud.Size.X, 24 * s), label, C.Text, HorizontalAlignment.Center);
     }
 
     /// <summary>Under the crosshair with a weapon in hand: reloading, out of ammo, or the charge stage reached.</summary>

@@ -34,6 +34,7 @@ public partial class BuildTest
         HudBoxChecks();
         foreach (int x in TechFitChecks()) yield return x;
         foreach (int x in GalaxyNameChecks()) yield return x;
+        foreach (int x in ScreenClearChecks()) yield return x;
         foreach (int x in MarkerChecks()) yield return x;
         foreach (int x in NoticeChecks()) yield return x;
         foreach (int x in WordChecks()) yield return x;
