@@ -166,8 +166,8 @@ public sealed class HullBinding : BodyBinding
         for (int pass = 0; pass < 8; pass++)
         {
             // The deepest overlap of any of its shapes: the way out of it is from the point on the hull to the point on what it overlaps.
-            Vector3 push = Vector3.Zero;
-            float deepest = Slop;
+            Vector3 push = Vector3.Zero, up = Vector3.Zero;
+            float deepest = Slop, deepestUp = Slop;
             foreach (CollisionShape3D cs in _shapes)
             {
                 if (!GodotObject.IsInstanceValid(cs) || cs.GetParent() != Hull)
@@ -185,11 +185,15 @@ public sealed class HullBinding : BodyBinding
                 {
                     Vector3 way = points[i + 1] - points[i];
                     float depth = way.Length();
+                    if (way.Y > 0.7f * depth && depth > deepestUp) { deepestUp = depth; up = way; }
                     if (depth <= deepest) continue;
                     deepest = depth;
                     push = way;
                 }
             }
+            // Out the top first: sunk into a floor or the ground it comes up onto it, not out through the side of a
+            // block (a mesh of blocks offers a short way out sideways at every seam); a wall it then still meets, next pass.
+            if (up != Vector3.Zero) push = up;
             if (push == Vector3.Zero) break;
             // Pointing down while it is the hull's underside that is in (sunk past a face of the ground, where the
             // shortest way out is through it): out the top instead.

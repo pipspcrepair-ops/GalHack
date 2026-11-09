@@ -35,21 +35,48 @@ public partial class VehicleGroundTest
     /// <summary>How far any of the vessel's collision shapes are into anything solid (the ground's own collision, a place's blocks, another hull), m, by the engine's own contact query.</summary>
     float Sunk(Vessel v)
     {
-        var space = _game.Zone.GetWorld3D().DirectSpaceState;
         CollisionObject3D self = v.Binding.Collider;
-        float worst = 0f;
+        var shapes = new List<(Shape3D, Transform3D)>();
         foreach (Node n in self.GetChildren())
+            if (n is CollisionShape3D cs && cs.Shape != null && !cs.Disabled) shapes.Add((cs.Shape, cs.GlobalTransform));
+        return Separation(shapes, self.GetRid());
+    }
+
+    /// <summary>
+    /// How far a set of shapes must move to be clear of every collision shape it overlaps (the ground's, a place's blocks,
+    /// hulls), m, by the engine's own contact query: the deepest contact's way out, out the top first where it is in a floor,
+    /// a pass at a time until nothing overlaps by more than 5 mm. (A single contact's depth overstates it: a mesh of blocks
+    /// offers a long way out sideways at every seam.)
+    /// </summary>
+    float Separation(IReadOnlyList<(Shape3D shape, Transform3D at)> shapes, Rid? self)
+    {
+        var space = _game.Zone.GetWorld3D().DirectSpaceState;
+        Vector3 moved = Vector3.Zero;
+        for (int pass = 0; pass < 8; pass++)
         {
-            if (n is not CollisionShape3D cs || cs.Shape == null || cs.Disabled) continue;
-            var q = new PhysicsShapeQueryParameters3D
+            Vector3 push = Vector3.Zero, up = Vector3.Zero;
+            float deepest = 0.005f, deepestUp = 0.005f;
+            foreach (var (shape, at) in shapes)
             {
-                Shape = cs.Shape, Transform = cs.GlobalTransform, CollisionMask = Layers.World | Layers.Hull, Margin = 0f,
-                Exclude = new Godot.Collections.Array<Rid> { self.GetRid() },
-            };
-            var points = space.CollideShape(q, 16);
-            for (int i = 0; i + 1 < points.Count; i += 2) worst = MathF.Max(worst, points[i].DistanceTo(points[i + 1]));
+                var q = new PhysicsShapeQueryParameters3D
+                {
+                    Shape = shape, Transform = new Transform3D(at.Basis, at.Origin + moved), CollisionMask = Layers.World | Layers.Hull, Margin = 0f,
+                };
+                if (self is Rid rid) q.Exclude = new Godot.Collections.Array<Rid> { rid };
+                var points = space.CollideShape(q, 16);
+                for (int i = 0; i + 1 < points.Count; i += 2)
+                {
+                    Vector3 way = points[i + 1] - points[i];
+                    float depth = way.Length();
+                    if (way.Y > 0.7f * depth && depth > deepestUp) { deepestUp = depth; up = way; }
+                    if (depth > deepest) { deepest = depth; push = way; }
+                }
+            }
+            if (up != Vector3.Zero) push = up;
+            if (push == Vector3.Zero) break;
+            moved += push;
         }
-        return worst;
+        return moved.Length();
     }
 
     sealed class Hull
@@ -103,12 +130,12 @@ public partial class VehicleGroundTest
                 + $"input {v.Flight?.Input.Move}, can lift {v.Stats?.CanLiftOff}, pilot {v.Roles.Pilot}, message '{v.Controller?.ConsoleMessage}', velocity {v.Body.Velocity}, up {MathX.Up(v.Body.Rotation)}, hover grounded {v.Controller?.Hover?.Grounded} clearance {v.Controller?.Hover?.Clearance:F2} slope refused {v.Controller?.Hover?.SlopeRefused} steepest {v.Controller?.Hover?.SteepestAhead:F0}, on floor {v.Body.OnFloor}, pushes {(v.Binding as HullBinding)?.Pushes} last {(v.Binding as HullBinding)?.LastPush}, seated {_game.Survivor.Seated == v}, sunk now {Sunk(v):F2})");
         Check(seated && _game.Survivor.Seated == v && moved && w.Sunk < VesselTolerance,
             $"{mode}, {v.Name}, {what}: deepest {w.Sunk * 100f:F1} cm into anything solid (tolerance {VesselTolerance * 100f:F0} cm); the pilot still seated (pilot role: {v.Roles.Pilot}), under its own power it {(hover ? $"runs {ran:F1} m {way}" : $"climbs {rose:F1} m")} in two seconds");
-        // Down again for the next case.
+        // Set down again for the next case, on the ground under it (flown down at full tilt over a place it once wrecked itself on a roof).
         if (!hover)
         {
-            _game.Controls.Hold(Key.Ctrl);
-            for (int t = 0; t < 600 && !v.Controller.Frozen && v.AboveGround > high + 0.6f; t++) yield return 0;
-            _game.Controls.Hold(Key.Ctrl, false);
+            N.Vector3 p = v.Body.Position;
+            v.Controller.PlaceLanded(v.Body, new N.Vector3(p.X, _game.Zone.GroundAt(p.X, p.Z).Y + v.Body.Shape.FeetBelowOrigin + 1.5f, p.Z), MathX.Heading(v.Body.Rotation));
+            v.Binding.Teleport();
         }
         else
         {

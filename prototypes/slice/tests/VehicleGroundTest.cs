@@ -132,12 +132,12 @@ public partial class VehicleGroundTest : Node
             if (blocked) continue;
             // And ground a rider would take: no bank steeper than one in two along it, no water.
             bool ridable = true;
-            float last = _game.Zone.GroundAt(at.X, at.Z).Y;
-            for (float d = 3f; d <= 45f && ridable; d += 3f)
+            float last = _game.Bikes.SolidAt(at.X, at.Z, at.Y + 1.5f);
+            for (float d = 1.5f; d <= 45f && ridable; d += 1.5f)
             {
                 Vector3 p = at + way * d;
-                float h = _game.Zone.GroundAt(p.X, p.Z).Y;
-                ridable = MathF.Abs(h - last) < 1.5f && h > _game.Zone.Planet.Source.WaterLevel + 0.5f;
+                float h = _game.Bikes.SurfaceAt(p.X, p.Z, last + 2f, out bool wet);
+                ridable = h - last < 0.7f && !wet; // a step down (a roof's edge) is ridden off
                 last = h;
             }
             if (ridable) return way;
@@ -160,10 +160,7 @@ public partial class VehicleGroundTest : Node
             Shape = new BoxShape3D { Size = size }, CollisionMask = GalHack.Physics.Layers.World | GalHack.Physics.Layers.Hull, Margin = 0f,
             Transform = new Transform3D(b, bike.Position + b * ((HoverBike.HullMin + HoverBike.HullMax) * 0.5f)),
         };
-        float worst = 0f;
-        var points = _game.Zone.GetWorld3D().DirectSpaceState.CollideShape(q, 32);
-        for (int i = 0; i + 1 < points.Count; i += 2) worst = MathF.Max(worst, points[i].DistanceTo(points[i + 1]));
-        return worst;
+        return Separation(new[] { ((Shape3D)q.Shape, q.Transform) }, null);
     }
 
     /// <summary>A ridden bike's case: the rider stays seated throughout; afterwards it takes the throttle and rides off.</summary>
@@ -409,6 +406,15 @@ public partial class VehicleGroundTest
                     {
                         var dir = new Vector3(MathF.Cos(d * 0.785f), 0f, MathF.Sin(d * 0.785f));
                         off = !_game.Bikes.Blocked(p + Vector3.Up * 1.2f, dir, 10f) && !_game.Bikes.Blocked(p + Vector3.Up * 2f, dir, 10f);
+                        // and nothing it would take for a bank (a pit's side, a step up) along it
+                        float last = p.Y;
+                        for (float s = 1.5f; s <= 10f && off; s += 1.5f)
+                        {
+                            Vector3 o = p + dir * s;
+                            float h = _game.Bikes.SolidAt(o.X, o.Z, p.Y + 2f);
+                            off = h - last < 0.6f;
+                            last = h;
+                        }
                     }
                     if (flat && off) _placeTop = p;
                 }
