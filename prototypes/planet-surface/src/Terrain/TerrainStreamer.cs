@@ -104,7 +104,7 @@ public partial class TerrainStreamer : Node3D
 
     /// <summary>The world's species as meshes, by herbarium index: near variants, and the far one.</summary>
     Mesh[][] _plantNear = System.Array.Empty<Mesh[]>();
-    Mesh[] _plantFar = System.Array.Empty<Mesh>();
+    Mesh[][] _plantFar = System.Array.Empty<Mesh[]>();
 
     // ---- Voxel state ----
     sealed class Column
@@ -163,6 +163,11 @@ public partial class TerrainStreamer : Node3D
         public int Version;
         public Node3D Node;
         public List<FloraBatch> Flora;
+
+        /// <summary>Its ground mesh as drawn (chunk-local), and its triangles by 16 m cell, made the first time something asks (<see cref="DrawnGround"/>).</summary>
+        public Vector3[] Vertices;
+        public int[] Indices;
+        public List<int>[] Cells;
 
         /// <summary>Level 0: its solid flora (trunks, boulders), in planet coordinates. Null otherwise.</summary>
         public List<FloraSolid> Solids;
@@ -276,12 +281,15 @@ public partial class TerrainStreamer : Node3D
     {
         IReadOnlyList<Plant> plants = World.Flora.Book.Plants;
         _plantNear = new Mesh[plants.Count][];
-        _plantFar = new Mesh[plants.Count];
+        _plantFar = new Mesh[plants.Count][];
         foreach (Plant p in plants)
         {
             _plantNear[p.Index] = new Mesh[p.Near.Length];
             for (int i = 0; i < p.Near.Length; i++) _plantNear[p.Index][i] = PlantMeshes.ToGodot(p.Near[i]);
-            _plantFar[p.Index] = p.Far == p.Near[0] ? _plantNear[p.Index][0] : PlantMeshes.ToGodot(p.Far);
+            // A plant's far drawing is its own near mesh: drawn without the near drawing's details round it
+            // (ground cover, colliders), but the same shape, size, paint, turn and tint, so the hand-over is
+            // never seen. (The herbarium's far meshes were other simplified shapes: a swap showed.)
+            _plantFar[p.Index] = _plantNear[p.Index];
         }
         StartCover();
     }
@@ -290,9 +298,9 @@ public partial class TerrainStreamer : Node3D
     public ShaderMaterial FloraMaterial => _floraMaterial;
     public Mesh KindMesh(Flora kind) => _floraMeshes != null && _floraMeshes.TryGetValue(kind, out Mesh m) ? m : null;
 
-    /// <summary>The mesh of one species' variant (-1: its far one), or null for what the world's herbarium doesn't hold.</summary>
+    /// <summary>The mesh of one species' variant (-1 - k: near variant k's far one), or null for what the world's herbarium doesn't hold.</summary>
     public Mesh PlantMesh(int plant, int variant) =>
-        plant < 0 || plant >= _plantNear.Length ? null : variant < 0 ? _plantFar[plant] : _plantNear[plant][variant];
+        plant < 0 || plant >= _plantNear.Length ? null : variant < 0 ? _plantFar[plant][Math.Min(-variant - 1, _plantFar[plant].Length - 1)] : _plantNear[plant][variant];
 
     ShaderMaterial TerrainMaterial(bool far)
     {
@@ -880,6 +888,9 @@ public partial class TerrainStreamer : Node3D
             long nodeStart = Stopwatch.GetTimestamp();
             f.Node = BuildFarNode(job);
             f.Flora = job.Flora;
+            f.Vertices = job.Vertices;
+            f.Indices = job.Indices;
+            f.Cells = null;
             double nodeMs = Stopwatch.GetElapsedTime(nodeStart).TotalMilliseconds;
             if (nodeMs > WorstFarNodeMs)
             {
@@ -958,6 +969,51 @@ public partial class TerrainStreamer : Node3D
         return ((float)from, (float)to);
     }
 
+    const int GroundCells = FarBuilder.Size / 16;
+
+    /// <summary>
+    /// The height of the far ground as drawn under a point (frame coordinates), m: the far chunk's own
+    /// mesh, not the generator's ground, which the coarser levels only meet at their grid points. Null
+    /// where no far chunk is drawn. What stands out on the far land stands on this (far creatures).
+    /// </summary>
+    public float? DrawnGround(Vector3 p)
+    {
+        if (World == null) return null;
+        double w = World.Terrain.Width, h = World.Terrain.Height;
+        int fx = (int)(Mod(p.X, w) / FarBuilder.Size), fz = (int)(Mod(p.Z, h) / FarBuilder.Size);
+        if (!_far.TryGetValue((fx, fz), out FarChunk f) || f.Node == null || f.Vertices == null) return null;
+        float lx = (float)Mod(p.X - fx * (double)FarBuilder.Size, w), lz = (float)Mod(p.Z - fz * (double)FarBuilder.Size, h);
+        if (f.Cells == null)
+        {
+            f.Cells = new List<int>[GroundCells * GroundCells];
+            for (int t = 0; t + 2 < f.Indices.Length; t += 3)
+            {
+                Vector3 a = f.Vertices[f.Indices[t]], b = f.Vertices[f.Indices[t + 1]], c = f.Vertices[f.Indices[t + 2]];
+                // Walls (curtains, cliff faces seen edge-on from above) are not ground.
+                float area = (b.X - a.X) * (c.Z - a.Z) - (c.X - a.X) * (b.Z - a.Z);
+                if (MathF.Abs(area) < 1e-3f) continue;
+                int i0 = Math.Clamp((int)(MathF.Min(a.X, MathF.Min(b.X, c.X)) / 16f), 0, GroundCells - 1), i1 = Math.Clamp((int)(MathF.Max(a.X, MathF.Max(b.X, c.X)) / 16f), 0, GroundCells - 1);
+                int j0 = Math.Clamp((int)(MathF.Min(a.Z, MathF.Min(b.Z, c.Z)) / 16f), 0, GroundCells - 1), j1 = Math.Clamp((int)(MathF.Max(a.Z, MathF.Max(b.Z, c.Z)) / 16f), 0, GroundCells - 1);
+                for (int j = j0; j <= j1; j++)
+                for (int i = i0; i <= i1; i++)
+                    (f.Cells[j * GroundCells + i] ??= new List<int>()).Add(t);
+            }
+        }
+        List<int> tris = f.Cells[Math.Clamp((int)(lz / 16f), 0, GroundCells - 1) * GroundCells + Math.Clamp((int)(lx / 16f), 0, GroundCells - 1)];
+        if (tris == null) return null;
+        float? best = null;
+        foreach (int t in tris)
+        {
+            Vector3 a = f.Vertices[f.Indices[t]], b = f.Vertices[f.Indices[t + 1]], c = f.Vertices[f.Indices[t + 2]];
+            float d = (b.X - a.X) * (c.Z - a.Z) - (c.X - a.X) * (b.Z - a.Z);
+            float u = ((b.X - lx) * (c.Z - lz) - (c.X - lx) * (b.Z - lz)) / d, v = ((c.X - lx) * (a.Z - lz) - (a.X - lx) * (c.Z - lz)) / d, wgt = 1f - u - v;
+            if (u < -1e-4f || v < -1e-4f || wgt < -1e-4f) continue;
+            float y = u * a.Y + v * b.Y + wgt * c.Y;
+            if (best == null || y > best) best = y;
+        }
+        return best;
+    }
+
     /// <summary>Whether a far chunk's ground is in under a point (frame coordinates). Tests ask it at the seams.</summary>
     public bool FarGroundAt(Vector3 p)
     {
@@ -1009,7 +1065,7 @@ public partial class TerrainStreamer : Node3D
     /// only as its far stand-in, takes its first), or its kind's where the herbarium has none. What a plant
     /// is when it is close enough to touch, felled or thrown.
     /// </summary>
-    public Mesh MeshOf(in PlantSighting s) => PlantMesh(s.Plant, Math.Max(0, s.Variant)) ?? (_floraMeshes != null && _floraMeshes.TryGetValue(s.Kind, out Mesh m) ? m : null);
+    public Mesh MeshOf(in PlantSighting s) => PlantMesh(s.Plant, s.Variant < 0 ? -s.Variant - 1 : s.Variant) ?? (_floraMeshes != null && _floraMeshes.TryGetValue(s.Kind, out Mesh m) ? m : null);
 
     /// <summary>One plant seen in the scatter: its kind, where it roots, its scale, id, species and mesh, its turn, and its instance's own tint and glow.</summary>
     public readonly record struct PlantSighting(Flora Kind, Vector3 Root, float Scale, long Id, int Plant, int Variant, Basis Turn, Color Custom = default)

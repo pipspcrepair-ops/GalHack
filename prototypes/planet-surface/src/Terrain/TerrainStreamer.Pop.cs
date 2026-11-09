@@ -49,7 +49,7 @@ public partial class TerrainStreamer
         foreach (FloraBatch b in flora)
         {
             float height = MeshHeight(b);
-            int layer = b.Layer, mesh = b.Plant * 64 + b.Variant + 1 + (layer == DistantLayer ? 1 << 20 : 0);
+            int layer = b.Layer, mesh = b.Plant * 256 + b.Variant + 128 + (layer == DistantLayer ? 1 << 24 : 0);
             for (int i = 0; i < b.Count; i++)
             {
                 int o = i * 16;

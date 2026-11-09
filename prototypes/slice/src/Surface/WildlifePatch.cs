@@ -133,13 +133,23 @@ public partial class WildlifePatch : Node3D
             AddChild(Fish);
         }
         View = new WildlifeView { Name = "Creatures", MostNew = 2 };
-        View.Shown = (c, d, shown, jump) => PlanetSurface.Fx.PopLog.Note("creature", shown ? "comes into view" : "goes from view", d, c.Species.BodyLength, jump);
+        View.Shown = (c, d, shown, jump) =>
+        {
+            PlanetSurface.Fx.PopLog.Note("creature", shown ? "comes into view" : "goes from view", d, c.Species.BodyLength, jump);
+            if (shown && d < 90f && PlanetSurface.Fx.PopLog.On) GD.Print($"(came into view near: {c.Species.Name} at {d:F0} m, {c.Age:F1} s old, {(c.Species.Flies ? "a flyer" : "on the ground")}, kept {Kept(c)})");
+        };
         View.Fader = (n, shows) =>
         {
             if (shows >= 1f) PlanetSurface.Fx.Fade.Clear(n);
             else PlanetSurface.Fx.Fade.Set(n, 0f, shows);
         };
         PersonView.Fader = View.Fader; // people dissolve in and out at the far edge as creatures do
+        // Far off, a body stands on the far land as drawn, not the sim's finer ground under it (a far chunk is a coarser mesh).
+        View.Lift = c =>
+        {
+            if (Zone.Streamer?.DrawnGround(FromPatch(c.Position)) is not float drawn) return 0f;
+            return drawn - Sim.Terrain.Height(c.Position.X, c.Position.Z);
+        };
         PersonView.Arrives = d => PlanetSurface.Fx.PopLog.Note("person", "comes into view", d, 1.8f, 0f);
         AddChild(View);
         Audio = new ProceduralAudio { Name = "Calls" };
@@ -304,10 +314,10 @@ public partial class WildlifePatch : Node3D
                     float a = rng.Range(0f, MathF.Tau), r = rng.Range(inner, edge);
                     at = new Vector3(MathF.Cos(a) * r, 0f, MathF.Sin(a) * r);
                     // A patch taking over from another is seen arriving: only where nobody is near or looking. And on ground that holds it.
-                    found = new Vector2(at.X - clearOf.X, at.Z - clearOf.Z).Length() >= min && Open(s, at, spread) && (!carriedOver || Sim.ClearOfPlayers(at, spread)) && (attempt == 11 || Keep(s, at, rng));
+                    found = new Vector2(at.X - clearOf.X, at.Z - clearOf.Z).Length() >= min && Open(s, at, spread) && (!carriedOver || Clear(at, spread)) && (attempt == 11 || Keep(s, at, rng));
                 }
                 if (!found) continue;
-                Sim.SpawnGroup(s, Sim.FreeSpot(at, rng), count, carriedOver ? p => Sim.ClearOfPlayers(p, 0f) : null);
+                Sim.SpawnGroup(s, Sim.FreeSpot(at, rng), count, carriedOver ? p => Clear(p, 0f) : null);
             }
         }
     }
@@ -389,12 +399,12 @@ public partial class WildlifePatch : Node3D
         {
             float a = rng.Range(0f, MathF.Tau), r = rng.Range(spawning.MinPlayerDistance + spread, MathF.Max(spawning.MinPlayerDistance + spread + 20f, AroundYou - spread));
             var at = new Vector3(you.X + MathF.Cos(a) * r, 0f, you.Z + MathF.Sin(a) * r);
-            if (MathF.Abs(at.X) > edge || MathF.Abs(at.Z) > edge || !Open(s, at, spread) || !Sim.ClearOfPlayers(at, spread)) continue;
+            if (MathF.Abs(at.X) > edge || MathF.Abs(at.Z) > edge || !Open(s, at, spread) || !Clear(at, spread)) continue;
             // Each to its own ground: herds on the open, small things in scrub, hunters in the woods and hills.
             if (attempt < 15 && !Keep(s, at, rng)) continue;
             Vector3 spot = Sim.FreeSpot(at, rng);
             if (!s.Flies && (Sim.Nav.Blocked(spot) || OnPlace(spot, 3f))) continue;
-            List<Creature> group = Sim.SpawnGroup(s, spot, count, p => Sim.ClearOfPlayers(p, 0f) && (s.Flies || !OnPlace(p, 1f)));
+            List<Creature> group = Sim.SpawnGroup(s, spot, count, p => Clear(p, 0f) && (s.Flies || !OnPlace(p, 1f)));
             if (group.Count == 0) continue;
             Sim.AssignRest(group);
             return true;
@@ -504,6 +514,24 @@ public partial class WildlifePatch : Node3D
 
     /// <summary>Zone frame to patch frame and back.</summary>
     public Vector3 PatchLocal(Vector3 frame) => frame - Origin;
+
+    /// <summary>
+    /// Clear for something new to be put down (patch frame): of every player (<see cref="WildSim.ClearOfPlayers"/>),
+    /// and of the eye itself, which a fast or high body can leave a way from its feet: no nearer than the
+    /// least spawn distance, and nowhere in front of it within the view distance.
+    /// </summary>
+    bool Clear(Vector3 at, float margin)
+    {
+        if (!Sim.ClearOfPlayers(at, margin)) return false;
+        Camera3D eye = Zone.Camera;
+        if (eye == null) return true;
+        SpawnRules rules = Sim.Data.Spawning;
+        Vector3 to = WildSim.Flat(at - PatchLocal(eye.GlobalPosition));
+        float d = to.Length();
+        if (d < rules.MinPlayerDistance + margin) return false;
+        Vector3 look = WildSim.Flat(-eye.GlobalBasis.Z);
+        return !(d < rules.ViewDistance + margin && look.LengthSquared() > 1e-4f && look.Normalized().Dot(to / d) > MathF.Cos(Mathf.DegToRad(rules.ViewConeDegrees)));
+    }
     public Vector3 FromPatch(Vector3 local) => local + Origin;
 
     public void Shift(Vector3 by)
