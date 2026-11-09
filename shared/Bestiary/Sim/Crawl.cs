@@ -24,7 +24,8 @@ public static class Crawl
 {
     /// <summary>How far a species' body rides off the surface it holds.</summary>
     public static float ClearanceFor(Species s) =>
-        s.Climbs ? Math.Clamp(s.Body.Height * 0.55f, 0.1f, 0.35f) : Math.Clamp(s.Stats.Radius * 0.8f, 0.3f, 0.7f);
+        // A climber rides its own half-thickness off the face it holds (a big insect is no flatter than a small one).
+        s.Climbs ? Math.Clamp(s.Body.Height * 0.55f, 0.1f, 0.6f) :Math.Clamp(s.Stats.Radius * 0.8f, 0.3f, 0.7f);
 
     /// <summary>The body's centre: the surface point lifted by the clearance along the surface normal.</summary>
     public static Vector3 Center(Creature c) => c.Position + c.Facing.Y * c.Clearance;

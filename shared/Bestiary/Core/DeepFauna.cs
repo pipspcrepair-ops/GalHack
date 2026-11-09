@@ -65,6 +65,9 @@ public sealed class DeepFauna
     /// <summary>The bodies a place's insects come in: they crawl its walls and keep to themselves.</summary>
     public static bool Insect(string form) => form is "creeper" or "ducteel" or "mossgrub" or "scrapper" or "skitterer";
 
+    /// <summary>The insect bodies that crawl walls and ceilings (the crawler rig): what a passive insect comes as.</summary>
+    static readonly List<string> CrawlingInsects = new() { "creeper", "ducteel", "scrapper" };
+
     public Species For(DeepRole role, PoiTheme theme, int depth, bool infested = false)
     {
         DepthRules dr = _data.Deep.Depth;
@@ -166,6 +169,10 @@ public sealed class DeepFauna
         var forms = new List<string>(rd.Forms.Keys);
         forms.Sort(StringComparer.Ordinal);
         string form = rng.Weighted(forms, f => rd.Forms[f]);
+        // An insect keeps to the walls and ceilings, so it comes in a body made to crawl them: a
+        // legged one (a skitterer) is drawn standing upright and sinks into the wall it holds.
+        if (Insect(form) && !InsectsDefend && _data.Fauna.Forms.Find(f => f.Id == form) is { Rig: not RigKind.Crawler })
+            form = rng.Weighted(CrawlingInsects, _ => 1f);
         Behaviour behaviour = Enum.Parse<Behaviour>(rd.Behaviour);
         float alienness = Mathf.Lerp(_alienness, td.Alienness, 0.6f);
         Species s = _gen.RollOne(seed, form, behaviour, alienness);
