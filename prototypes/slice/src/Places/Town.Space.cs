@@ -38,7 +38,8 @@ public sealed partial class Town
         : p.Sitting ? 0.3f : p.Working ? 0.6f : 1f;
 
     /// <summary>Whether a body can stand here: the cell at its feet, or on a stair the one below or above (between levels a walker's height is in between).</summary>
-    bool Open(Vector3 local) => OnGrid(local) && (_parts == null || _parts.Fits(local, PlaceParts.PersonRadius, PlaceParts.PersonHeight));
+    // (The furniture is each body's own test, at its own size, after the move: OffParts.)
+    bool Open(Vector3 local) => OnGrid(local);
 
     /// <summary>The cell at its feet (or on a stair the one below or above) is one the walking grid stands people in.</summary>
     bool OnGrid(Vector3 local)
