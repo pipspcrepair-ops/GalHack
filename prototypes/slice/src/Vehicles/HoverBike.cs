@@ -90,10 +90,29 @@ public sealed class HoverBike
         Node.ResetPhysicsInterpolation();
     }
 
-    void Place()
+    void Place() => Node.GlobalTransform = new Transform3D(Attitude, Position);
+
+    /// <summary>How it sits in the world: the weather's tumble, its heading, and its lean to the slope and into a turn.</summary>
+    public Basis Attitude => _tumble * new Basis(Vector3.Up, Yaw) * new Basis(Vector3.Right, _pitch) * new Basis(Vector3.Forward, _roll);
+
+    /// <summary>A hop's kick off the ground, m/s.</summary>
+    public const float HopSpeed = 7f;
+
+    /// <summary>
+    /// The least height of any corner of its hull above what is solid under that corner (the ground, a base's
+    /// hull, a place's blocks; not water), m: below zero, that far into it.
+    /// </summary>
+    public float Clearance()
     {
-        Node.GlobalTransform = new Transform3D(
-            _tumble * new Basis(Vector3.Up, Yaw) * new Basis(Vector3.Right, _pitch) * new Basis(Vector3.Forward, _roll), Position);
+        Basis b = Attitude;
+        float least = float.PositiveInfinity;
+        for (int i = 0; i < 8; i++)
+        {
+            var c = new Vector3((i & 1) == 0 ? HullMin.X : HullMax.X, (i & 2) == 0 ? HullMin.Y : HullMax.Y, (i & 4) == 0 ? HullMin.Z : HullMax.Z);
+            Vector3 p = Position + b * c;
+            least = MathF.Min(least, p.Y - _owner.SolidAt(p.X, p.Z, p.Y + LookFrom));
+        }
+        return least;
     }
 
     /// <summary>
@@ -106,11 +125,25 @@ public sealed class HoverBike
     /// <summary>The most angular acceleration its hover plates put against a tumble near the ground, rad/s².</summary>
     public const float PlateLevel = 8f;
 
-    /// <summary>Came down on its side or its roof: it lies there, its plates useless, until someone rights it.</summary>
+    /// <summary>Came down on its side or its roof: no cushion and no drive while it lies there, and its plates roll it back onto them (it always tries to sit flat), then it rides again.</summary>
     public bool Toppled { get; private set; }
 
     /// <summary>How far it is tipped from upright, radians.</summary>
     public float Tilt => _tumble.Y.AngleTo(Vector3.Up);
+
+    /// <summary>
+    /// The push it takes to grip it, m/s²: past this (a tornado's pull) the weather turns it over. Short of it
+    /// (a gale, or the drag of its own speed through still air, ~5 m/s² at full boost) its gyro and plates hold
+    /// it near level: a hop at speed once flipped it over backwards, the drag of its own speed tipping it
+    /// harder than its gyro could hold in the air.
+    /// </summary>
+    public const float GripPush = 15f;
+
+    /// <summary>The hull's box about the underside's centre, m (pads to bars, nose to tail): none of it ever goes into the ground.</summary>
+    public static readonly Vector3 HullMin = new(-0.7f, -0.05f, -1.3f), HullMax = new(0.7f, 1.0f, 1.2f);
+
+    /// <summary>How far above its underside the ground under it is looked for (a roof higher than this is something it rides under).</summary>
+    const float LookFrom = 1.5f;
 
     /// <summary>The rider sets it back on its plates.</summary>
     public void SetUpright()
@@ -121,23 +154,32 @@ public sealed class HoverBike
         Place();
     }
 
+    /// <summary>A throw (a tornado's fling, a crash): a change of velocity, m/s, and of spin, rad/s.</summary>
+    public void Throw(Vector3 velocity, Vector3 spin)
+    {
+        _kick += velocity;
+        _spin += spin;
+    }
+
     /// <summary>
     /// The weather's turn on it: its push acts above its middle (stronger aloft, uneven), so a hard push
     /// tips it, and a vortex turns it round with it; its plates right it within their reach of the
     /// ground, up to their limit. A light bike in a tornado's grip tumbles.
     /// </summary>
-    void Turn(Vector3 push, float above, float dt)
+    void Turn(Vector3 push, float above, bool gripped, float dt)
     {
         var flat = new Vector3(push.X, 0f, push.Z);
-        Vector3 alpha = Vector3.Up.Cross(flat) * 1.1f + Vector3.Up * flat.Length() * 0.25f; // m/s² of push over its own small size
-        // It always tries to be level in the world: its plates hard near the ground, its gyro more gently in the air,
-        // so a tornado's grip still overpowers it and tumbles it, but a hop or a drop never leaves it tilted.
-        {
-            Vector3 axis = _tumble.Y.Cross(Vector3.Up);
-            float tilt = Tilt;
-            Vector3 level = (axis.LengthSquared() > 1e-8f ? axis.Normalized() * (20f * tilt) : Vector3.Zero) - _spin * 4f;
-            alpha += level.LimitLength(above < Hover * 2.5f ? PlateLevel : PlateLevel * 0.4f);
-        }
+        Vector3 tip = Vector3.Up.Cross(flat) * 1.1f + Vector3.Up * flat.Length() * 0.25f; // m/s² of push over its own small size
+        // It always tries to be level in the world: its plates hard near the ground (or lying on it), its gyro more
+        // gently in the air, so a tornado's grip still overpowers it and tumbles it, but a hop, a drop or a gale
+        // never leaves it tilted: short of a grip the push leans it a few degrees at most.
+        float most = above < Hover * 2.5f || Toppled ? PlateLevel : PlateLevel * 0.4f;
+        if (!gripped) tip = tip.LimitLength(most * 0.4f);
+        Vector3 axis = _tumble.Y.Cross(Vector3.Up);
+        float tilt = Tilt;
+        if (axis.LengthSquared() < 1e-6f && tilt > 1.5f) axis = Forward; // flat on its roof: it rolls back over its side
+        Vector3 level = (axis.LengthSquared() > 1e-8f ? axis.Normalized() * (20f * tilt) : Vector3.Zero) - _spin * 4f;
+        Vector3 alpha = tip + level.LimitLength(most);
         _spin = ((_spin + alpha * dt) * MathF.Exp(-0.3f * dt)).LimitLength(7f);
         float turn = _spin.Length() * dt;
         if (turn > 1e-6f) _tumble = new Basis(_spin.Normalized(), turn) * _tumble;
@@ -147,10 +189,10 @@ public sealed class HoverBike
         Vector3 up = _tumble.Y.Normalized();
         if (up.Dot(Vector3.Up) > -0.99f)
         {
-            var tilt = new Quaternion(Vector3.Up, up);
-            Quaternion yawOnly = tilt.Inverse() * _tumble.GetRotationQuaternion();
+            var tipped = new Quaternion(Vector3.Up, up);
+            Quaternion yawOnly = tipped.Inverse() * _tumble.GetRotationQuaternion();
             Yaw += 2f * MathF.Atan2(yawOnly.Y, yawOnly.W);
-            _tumble = new Basis(tilt);
+            _tumble = new Basis(tipped);
         }
     }
 
@@ -184,17 +226,22 @@ public sealed class HoverBike
         bool tossed = _push.Y > 12f || _kick.Y > 0.5f;
         Vector3 pushed = _push;
         _push = _kick = Vector3.Zero;
-        float above = Position.Y - _owner.SurfaceAt(Position.X, Position.Z, Position.Y + 4f, out _);
-        Turn(pushed, above, dt);
+        float above = Position.Y - _owner.SurfaceAt(Position.X, Position.Z, Position.Y + LookFrom, out _);
+        Turn(pushed, above, tossed || pushed.Length() > GripPush, dt);
         if (Toppled)
         {
-            // On its side or its roof: no cushion, no drive. It lies on the ground, sliding to a stop.
-            float ground = _owner.SurfaceAt(Position.X, Position.Z, Position.Y + 4f, out _);
+            // On its side or its roof: no cushion, no drive. It lies on the ground, sliding to a stop, while its
+            // plates roll it back onto them (Turn); upright again, it rides at once, its rider still in the seat.
+            // (A toppled bike that only a dismount and remount set upright left its rider unable to drive it.)
             Velocity = new Vector3(Velocity.X, 0f, Velocity.Z) * MathF.Exp(-4f * dt);
             Position += Velocity * dt;
-            Position.Y = ground + 0.35f;
             _vy = 0f;
-            _spin = Vector3.Zero;
+            Position.Y -= Clearance(); // its lowest corner on the ground: never in it
+            if (Tilt < 0.35f)
+            {
+                Toppled = false;
+                Grounded = true;
+            }
             Place();
             return;
         }
@@ -217,8 +264,8 @@ public sealed class HoverBike
         {
             Vector3 dir = move / (step / dt);
             Vector3 probe = Position + dir * (step + 0.9f);
-            float ahead = _owner.SurfaceAt(probe.X, probe.Z, Position.Y + 4f, out _);
-            bool cliff = ahead > Position.Y - Hover + 0.8f && ahead > _owner.SurfaceAt(Position.X, Position.Z, Position.Y + 4f, out _) + 0.8f;
+            float ahead = _owner.SurfaceAt(probe.X, probe.Z, Position.Y + LookFrom, out _);
+            bool cliff = ahead > Position.Y - Hover + 0.8f && ahead > _owner.SurfaceAt(Position.X, Position.Z, Position.Y + LookFrom, out _) + 0.8f;
             bool wall = _owner.Blocked(Position + Vector3.Up * 0.5f, dir, step + 1.0f);
             if (cliff || wall)
             {
@@ -232,7 +279,7 @@ public sealed class HoverBike
         Position += Velocity * dt;
 
         // Up and down: a spring to the cushion over the surface, free fall when well above it.
-        float surface = _owner.SurfaceAt(Position.X, Position.Z, Position.Y + 4f, out bool water);
+        float surface = _owner.SurfaceAt(Position.X, Position.Z, Position.Y + LookFrom, out bool water);
         OnWater = water;
         float target = surface + Hover;
         bool wasAirborne = !Grounded;
@@ -244,19 +291,35 @@ public sealed class HoverBike
             _vy += (70f * (target - Position.Y) - 16f * _vy) * dt;
             Grounded = true;
         }
-        if (hop && Grounded) { _vy = 7f; Grounded = false; }
+        // A hop: its plates kick straight off the ground along the seat's own up (away from the seat's down), not a flip.
+        if (hop && Grounded)
+        {
+            Vector3 up = Attitude.Y;
+            _vy = HopSpeed * up.Y;
+            Velocity += new Vector3(up.X, 0f, up.Z) * HopSpeed;
+            Grounded = false;
+        }
         _vy = Mathf.Clamp(_vy, -40f, 22f);
         Position.Y += _vy * dt;
         if (Position.Y < surface + 0.35f) { Position.Y = surface + 0.35f; _vy = MathF.Max(0f, _vy); }
-        Velocity.Y = _vy;
 
         // The body leans to the slope under it and into a turn; in the air (a hop, off a ledge) it holds itself
         // level, as a hover craft tries to, never nosing up or down with its climb.
-        float h0 = _owner.SurfaceAt(Position.X + fwd.X * 1.0f, Position.Z + fwd.Z * 1.0f, Position.Y + 4f, out _);
-        float h1 = _owner.SurfaceAt(Position.X - fwd.X * 1.0f, Position.Z - fwd.Z * 1.0f, Position.Y + 4f, out _);
+        float h0 = _owner.SurfaceAt(Position.X + fwd.X * 1.0f, Position.Z + fwd.Z * 1.0f, Position.Y + LookFrom, out _);
+        float h1 = _owner.SurfaceAt(Position.X - fwd.X * 1.0f, Position.Z - fwd.Z * 1.0f, Position.Y + LookFrom, out _);
         float k = 1f - MathF.Exp(-8f * dt);
         _pitch = Mathf.Lerp(_pitch, Grounded ? Mathf.Clamp(MathF.Atan2(h0 - h1, 2f), -0.5f, 0.5f) : 0f, k);
         _roll = Mathf.Lerp(_roll, Mathf.Clamp(-steer * Speed * 0.012f - vs * 0.02f, -0.45f, 0.45f), k);
+
+        // Nothing of it goes into the ground (or a base's hull, or a place's blocks): whatever corner a crash, a
+        // drop, a tilt or the ground dug from under it put in, it is pushed straight back out.
+        float sunk = -Clearance();
+        if (sunk > 0f)
+        {
+            Position.Y += sunk;
+            _vy = MathF.Max(0f, _vy);
+        }
+        Velocity.Y = _vy;
         Place();
 
         // Spray off the water, dust off the land.
@@ -281,7 +344,7 @@ public sealed class HoverBike
     /// <summary>Straight down onto the ground, as a parked bike settles (and where it starts).</summary>
     public void Settle()
     {
-        float surface = _owner.SurfaceAt(Position.X, Position.Z, Position.Y + 4f, out bool wet);
+        float surface = _owner.SurfaceAt(Position.X, Position.Z, Position.Y + LookFrom, out bool wet);
         OnWater = wet;
         Position.Y = surface + Hover;
         _vy = 0f;
@@ -386,6 +449,17 @@ public sealed partial class HoverBikes : Node3D
     /// </summary>
     public float SurfaceAt(float x, float z, float from, out bool water)
     {
+        float ground = SolidAt(x, z, from);
+        // Any water's surface over the column, the sea, a lake or a river, as swimming reads it (and a lava sea's
+        // top too: a hover cushion rides any liquid), not just the sea level.
+        PlanetSurface.World.PlanetWorld planet = _zone.Planet;
+        water = planet.Source.WaterSurfaceAt(Planets.Gen.Mathx.WrapX(x, planet.Width), Planets.Gen.Mathx.Wrap(z, planet.Height), out float surface) && surface > ground;
+        return water ? surface : ground;
+    }
+
+    /// <summary>The top of what is solid at a column, under <paramref name="from"/>: the drawn ground, a base's hull or a place's blocks, whichever is higher (water aside).</summary>
+    public float SolidAt(float x, float z, float from)
+    {
         PlanetTerrain terrain = _zone.Planet.Terrain;
         ChunkStore store = terrain.Store;
         float ground = float.NegativeInfinity;
@@ -410,15 +484,11 @@ public sealed partial class HoverBikes : Node3D
             top = next;
         }
         if (float.IsNegativeInfinity(ground)) ground = from - 40f;
-        // A base's hull or a place's roof under it.
-        var query = PhysicsRayQueryParameters3D.Create(new Vector3(x, MathF.Max(from, ground) + 0.5f, z), new Vector3(x, ground - 0.5f, z), Layers.Hull);
+        // A base's hull, a place's floor or roof, or the ground's own collision under it (the hull layer alone let it ride through a place's blocks).
+        var query = PhysicsRayQueryParameters3D.Create(new Vector3(x, MathF.Max(from, ground) + 0.5f, z), new Vector3(x, ground - 0.5f, z), Layers.Hull | Layers.World);
         var hit = _zone.GetWorld3D().DirectSpaceState.IntersectRay(query);
         if (hit.Count > 0) ground = MathF.Max(ground, ((Vector3)hit["position"]).Y);
-        // Any water's surface over the column, the sea, a lake or a river, as swimming reads it (and a lava sea's
-        // top too: a hover cushion rides any liquid), not just the sea level.
-        PlanetSurface.World.PlanetWorld planet = _zone.Planet;
-        water = planet.Source.WaterSurfaceAt(Planets.Gen.Mathx.WrapX(x, planet.Width), Planets.Gen.Mathx.Wrap(z, planet.Height), out float surface) && surface > ground;
-        return water ? surface : ground;
+        return ground;
     }
 
     /// <summary>Is something solid in the way along a direction (a trunk, a rock, a wall)?</summary>
