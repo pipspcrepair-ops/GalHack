@@ -1869,15 +1869,82 @@ public sealed class InfraNetwork
         index = -1;
         distance = double.MaxValue;
         InfraRoute best = null;
-        foreach (InfraRoute r in Routes)
-            for (int i = 0; i < r.Count && except?.Contains(r) != true; i++)
+        if (Routes.Count == 0) return null;
+        IndexRoutes();
+        // The buckets round the point; of two as near, the earlier route's earlier point (as a scan of every point found it).
+        int bx = (int)(Mathx.WrapX(x, _w) / NearBucket), bz = (int)(Mathx.Wrap(z, _h) / NearBucket);
+        int reach = (int)Math.Ceiling(within / NearBucket) + 1;
+        int spanX = Math.Min(2 * reach + 1, _nbx), spanZ = Math.Min(2 * reach + 1, _nbz);
+        int bestRoute = int.MaxValue;
+        for (int oz = 0; oz < spanZ; oz++)
+        for (int ox = 0; ox < spanX; ox++)
+        {
+            int cx = ((bx - reach + ox) % _nbx + _nbx) % _nbx, cz = ((bz - reach + oz) % _nbz + _nbz) % _nbz;
+            if (_near[cz * _nbx + cx] is not { } list) continue;
+            foreach (var (ri, i) in list)
             {
+                InfraRoute r = Routes[ri];
+                if (except?.Contains(r) == true) continue;
                 double dx = Mathx.WrapDelta(r.X[i] - x, _w), dz = Mathx.WrapDelta(r.Z[i] - z, _h);
                 if (Math.Abs(dx) > within || Math.Abs(dz) > within) continue;
                 double d = Math.Sqrt(dx * dx + dz * dz);
-                if (d < distance && d <= within) { distance = d; index = i; best = r; }
+                if (d > within) continue;
+                if (d < distance || d == distance && (ri < bestRoute || ri == bestRoute && i < index))
+                {
+                    distance = d;
+                    index = i;
+                    best = r;
+                    bestRoute = ri;
+                }
             }
+        }
         return best;
+    }
+
+    const double NearBucket = 64;
+    List<(int Route, int Point)>[] _near;
+    int _nbx, _nbz;
+    readonly List<(InfraRoute Route, double[] X, double[] Z, int Count)> _indexed = new();
+
+    /// <summary>Buckets every route point for <see cref="Nearest"/>: routes added since are bucketed on; any other change rebuilds it.</summary>
+    readonly object _indexLock = new();
+
+    void IndexRoutes()
+    {
+        lock (_indexLock) IndexRoutesLocked();
+    }
+
+    void IndexRoutesLocked()
+    {
+        if (_near == null)
+        {
+            _nbx = Math.Max(1, (int)Math.Ceiling(_w / NearBucket));
+            _nbz = Math.Max(1, (int)Math.Ceiling(_h / NearBucket));
+            _near = new List<(int, int)>[_nbx * _nbz];
+        }
+        bool same = _indexed.Count <= Routes.Count;
+        for (int k = 0; same && k < _indexed.Count; k++)
+        {
+            var e = _indexed[k];
+            InfraRoute r = Routes[k];
+            same = ReferenceEquals(e.Route, r) && ReferenceEquals(e.X, r.X) && ReferenceEquals(e.Z, r.Z) && e.Count == r.Count;
+        }
+        if (same && _indexed.Count == Routes.Count) return;
+        if (!same)
+        {
+            Array.Clear(_near);
+            _indexed.Clear();
+        }
+        for (int k = _indexed.Count; k < Routes.Count; k++)
+        {
+            InfraRoute r = Routes[k];
+            for (int i = 0; i < r.Count; i++)
+            {
+                int cx = Math.Min(_nbx - 1, (int)(Mathx.WrapX(r.X[i], _w) / NearBucket)), cz = Math.Min(_nbz - 1, (int)(Mathx.Wrap(r.Z[i], _h) / NearBucket));
+                (_near[cz * _nbx + cx] ??= new List<(int, int)>()).Add((k, i));
+            }
+            _indexed.Add((r, r.X, r.Z, r.Count));
+        }
     }
 
     public double Width => _w;

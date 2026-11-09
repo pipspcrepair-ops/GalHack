@@ -269,18 +269,18 @@ public static partial class PoiSiting
         order = ports.Concat(order.Where(p => !IsPort(p))).ToList();
         static bool IsPort(PlacedPoi p) => p.Primary || p.Port != null || p.Family.Tags.Contains("scrappy") || p.Family.Tags.Contains("exodus") || p.Family.Tags.Contains("evacuation");
         int budget = most + ports.Count;
-        foreach (PlacedPoi p in order)
+        // Each place's building made side by side, a batch at a time, then seated in order: the same places as one by one.
+        PoiInstance Make(PlacedPoi p)
         {
-            if (sites.Count >= budget + (ForceFamily != null ? 1 : 0)) break;
             int variant = p.Family.Variants.IndexOf(p.Variant);
             ulong spawnSeed = p.SpawnSeed;
             if (start)
             {
                 // A start world: any blast site lies far from the bunker, and the settlements near it are never hostile.
-                if (p.Family.Tags.Contains("radiation") && Away(p) < 3000) continue;
+                if (p.Family.Tags.Contains("radiation") && Away(p) < 3000) return null;
                 // No living settlement near the start: the bunker sits at the edge of a ruined town by the
                 // landing site, and survivors live further out (never hostile in the near country).
-                if (p.Family.Tags.Contains("settlement") && Away(p) < 3000) continue;
+                if (p.Family.Tags.Contains("settlement") && Away(p) < 3000) return null;
                 if (p.Family.Tags.Contains("settlement") && Away(p) < 4000)
                     for (ulong k = 1; k < 32 && Dressing.MoodFor(spawnSeed) == Mood.Hostile; k++) spawnSeed = PoiGenerator.Gen.Hash.Combine(p.SpawnSeed, k);
             }
@@ -288,19 +288,34 @@ public static partial class PoiSiting
             OccupancyRoll occ = roll != null && OccupancyLayer.Applies(p.Family, p.State) ? OccupancyLayer.Roll(roll.Occupancy, p.Family, spawnSeed, null, OccupancyLayer.Peopled(roll, profile) && OccupancyLayer.Livable(p.Family, p.State)) with { Tags = roll.Tags } : null;
             TechLevel? age = profile == null || WorldProfile.Unbuilt(p.Family) ? null : profile.LevelFor(p.Family, p.State);
             Layout built = PoiFactory.SpawnLayout(lib, p.Family, variant, Deeper(p.Rarity, depth, spawnSeed), spawnSeed, new LayoutHints(Dir.North, age, Ruin: profile?.Ruin), out string whyNot);
-            if (built == null) { Godot.GD.PushWarning($"place skipped: {whyNot}"); continue; }
+            if (built == null) { Godot.GD.PushWarning($"place skipped: {whyNot}"); return null; }
             PoiInstance inst = PoiFactory.Spawn(lib, built, p.State, spawnSeed, profile, occ);
-            PoiSite site = Seat(inst, p.Family, bare, map, Mathx.WrapX(p.X, map.WidthMeters), Mathx.Wrap(p.Z, map.HeightMeters), landing, sites);
-            // The main port stands somewhere: if its spot won't take it, the next good ground round it. So do its crowd, nearer in.
-            int retries = p.Primary ? 64 : IsPort(p) ? 12 : 0;
-            for (int k = 0; site == null && k < retries; k++)
+            return inst;
+        }
+        int cap = budget + (ForceFamily != null ? 1 : 0);
+        const int Batch = 16;
+        for (int at = 0; at < order.Count && sites.Count < cap; at += Batch)
+        {
+            var chunk = order.Skip(at).Take(Batch).ToList();
+            var madeHere = new PoiInstance[chunk.Count];
+            System.Threading.Tasks.Parallel.For(0, chunk.Count, i => madeHere[i] = Make(chunk[i]));
+            for (int c = 0; c < chunk.Count && sites.Count < cap; c++)
             {
-                double a = k * 2.399963, r = 300 + (p.Primary ? 90 : 60) * k;
-                site = Seat(inst, p.Family, bare, map, Mathx.WrapX(p.X + Math.Cos(a) * r, map.WidthMeters), Mathx.Wrap(p.Z + Math.Sin(a) * r, map.HeightMeters), landing, sites);
+                PlacedPoi p = chunk[c];
+                PoiInstance inst = madeHere[c];
+                if (inst == null) continue;
+                PoiSite site = Seat(inst, p.Family, bare, map, Mathx.WrapX(p.X, map.WidthMeters), Mathx.Wrap(p.Z, map.HeightMeters), landing, sites);
+                // The main port stands somewhere: if its spot won't take it, the next good ground round it. So do its crowd, nearer in.
+                int retries = p.Primary ? 64 : IsPort(p) ? 12 : 0;
+                for (int k = 0; site == null && k < retries; k++)
+                {
+                    double a = k * 2.399963, r = 300 + (p.Primary ? 90 : 60) * k;
+                    site = Seat(inst, p.Family, bare, map, Mathx.WrapX(p.X + Math.Cos(a) * r, map.WidthMeters), Mathx.Wrap(p.Z + Math.Sin(a) * r, map.HeightMeters), landing, sites);
+                }
+                if (site == null) continue;
+                site.Primary = p.Primary;
+                sites.Add(site);
             }
-            if (site == null) continue;
-            site.Primary = p.Primary;
-            sites.Add(site);
         }
         return sites;
     }
