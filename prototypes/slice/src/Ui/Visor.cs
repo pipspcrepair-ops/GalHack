@@ -219,7 +219,7 @@ public partial class Visor : CanvasLayer
             ("HEALTH", $"{v.Health:F0}", v.Health / r.Health.Max, Alert.Health),
             ("FOOD", $"{suit.FoodShare * 100:F0}%", suit.FoodShare, Alert.Food),
             ("O2", (warn & Alert.Breath) != 0 ? $"{v.Breath:F0}s" : $"{suit.OxygenShare * 100:F0}%", (warn & Alert.Breath) != 0 ? v.Breath / r.Oxygen.HoldBreathSeconds : suit.OxygenShare, Alert.Oxygen | Alert.Breath),
-            ("TEMP", $"{air:F0}°", 1 - Math.Max(0, Math.Max(r.Temperature.AmbientComfort.Low - air, air - r.Temperature.AmbientComfort.High)) / 30.0, Alert.Cold | Alert.Heat), // the air here; body temperature is on the You tab
+            (suit.Room switch { RoomKind.Sealed or RoomKind.Bunker => "SEALED", RoomKind.Unpowered => "UNPOWERED", RoomKind.Closed => "INDOORS", _ => "TEMP" }, $"{air:F0}°", 1 - Math.Max(0, Math.Max(r.Temperature.AmbientComfort.Low - air, air - r.Temperature.AmbientComfort.High)) / 30.0, Alert.Cold | Alert.Heat), // the air here; body temperature is on the You tab
             ("RAD", $"{v.Radiation:F1}", 1 - v.Radiation / (r.Radiation.DamageAbove * 1.5), Alert.Radiation),
             ("STAMINA", $"{v.Stamina:F0}", v.Stamina / r.Stamina.Max, Alert.Stamina),
         };
