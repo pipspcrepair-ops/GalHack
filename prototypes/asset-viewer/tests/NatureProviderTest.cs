@@ -49,6 +49,24 @@ public partial class NatureProviderTest : Node
                 Check(e.Build(req) != null, e.Id + " builds");
             }
         }
+        if (string.IsNullOrEmpty(only) && OS.GetCmdlineUserArgs().Contains("--all"))
+        {
+            int n = 0, built = 0;
+            foreach (AssetEntry e in registry.Entries.Where(x => x.Category is "Weather" or "Flora" or "Terrain" or "Sky" or "Worlds"))
+            {
+                foreach (ulong seed in (n++ % 4 == 0 && e.Randomisable) ? new ulong[] { 1, 9 } : new ulong[] { 1 })
+                {
+                    var req = new BuildRequest { Seed = seed };
+                    foreach (AssetOption o in e.Options) req.Options[o.Name] = o.Values[o.Default];
+                    if (seed == 9) foreach (AssetOption o in e.Options.Where(o => o.Values.Length > 1)) req.Options[o.Name] = o.Values[(o.Default + 1) % o.Values.Length];
+                    var w = Stopwatch.StartNew();
+                    try { AssetInstance a = e.Build(req); if (Check(a != null, $"{e.Key} seed {seed} builds")) { built++; a.QueueFree(); } }
+                    catch (Exception ex) { Check(false, $"{e.Key} seed {seed} threw: {ex.GetBaseException().Message}"); }
+                    if (w.ElapsedMilliseconds > 5000) GD.Print($"  slow: {e.Key} {w.ElapsedMilliseconds} ms");
+                }
+            }
+            GD.Print($"{built} builds");
+        }
         foreach (string id in string.IsNullOrEmpty(only) ? Array.Empty<string>() : only.Split(','))
         {
             AssetEntry e = registry.Entries.First(x => x.Id == id);
