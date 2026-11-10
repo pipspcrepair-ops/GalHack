@@ -46,19 +46,26 @@ Every issue the owner raised while playing the batch build. Tick an item only wh
 
 ## Order after the reset
 
-0. First finish the branches stopped for the pause, then merge: proto/water, proto/looseprops (props and vortices), proto/zfix (z-fighting regressions); proto/sparse and floradraw's shadow distance after.
-1. [Movement and physics](#movement-and-physics): ROOT MOVEMENT BUG, one job: bounces and hops on ramps, half blocks, the Outpost and city ground
-2. [Combat](#combat): FIRST COMBAT JOB: one weapon truth, then melee animations and the enemy tactics round
-3. [Building and blueprints](#building-and-blueprints): ORIENTATION SWEEP: one facing rule for every directional block
-4. [Movement and physics](#movement-and-physics): ESSENTIAL: people and animals in cluttered interiors, real collision shapes, vehicles solid in walking grids
-5. [Creatures and people](#creatures-and-people): PLACES AND UNDERGROUND TOO EMPTY, and Hollow places always get Hollow animals
-6. [Creatures and people](#creatures-and-people): ROBOTS ONLY WITH MID OR HIGH TECH
-7. [Performance](#performance): FRAME BUDGET PASS, with the city frame drops and the flora draw distance
-8. [World bugs](#world-bugs): Seeing through blocks, and z-fighting on every mesh and floor finish
-9. [Spaceflight and orbit](#spaceflight-and-orbit): LEAVING A PLANET: gravity frames, moons you can reach, flight readout
-10. [Weather and sky](#weather-and-sky): Storm damage inside a sealed player base
-11. [Sound](#sound): Rain and wind heard everywhere at the same volume
-12. [POI and world overhaul](#poi-and-world-overhaul): Partly built themes and falls, FIRST when world-layer work starts again
+Owner's priority (10 Nov): first everything that makes BUILDING satisfying and useful; the rest stays important and follows.
+
+0. Finish the branches stopped for the pause, then merge: proto/water (pump, ice, recipes), proto/looseprops (props, vortices), proto/zfix (z-fighting regressions); proto/sparse and floradraw's shadow distance after.
+
+**Building first**
+1. [Movement and physics](#movement-and-physics): ROOT MOVEMENT BUG, one job: bounces and hops on ramps, angled and half blocks, the Outpost's pad, roof, floor and doors, landing on city ground; plus the pilotless ship that drifts off through things after a ram, and vehicles stuck after ground contact leftovers.
+2. [Building and blueprints](#building-and-blueprints): ROTATE as well as turn blocks when placing (all 24 orientations).
+3. [Building and blueprints](#building-and-blueprints): what makes building useful: the core removable, doors with a floor under them, the ORIENTATION SWEEP, multi-block components at true scale (command chairs 2x2x2 to 2x2x4), the small cockpit, bigger stock blueprints, generator fuel.
+4. [Weather and sky](#weather-and-sky) and [Systems](#systems-and-design-decisions): LIFE SUPPORT in enclosed spaces: a sealed player base keeps out storm damage, sealed rooms hold air and warmth with power (climate), oxygen supply, and the water pump feeding cores.
+5. [UI](#ui): UI improvements: logistics drag between cores, the HERE map using the full area, the seed copy button, pickups to the toolbar, the Empyrion-style HUD and Tab menu round.
+
+**Then, still important**
+6. [Combat](#combat): FIRST COMBAT JOB: one weapon truth, melee animations, then the enemy tactics round.
+7. [Movement and physics](#movement-and-physics): people and animals in cluttered interiors, vehicles solid in walking grids.
+8. [Creatures and people](#creatures-and-people): places and underground too empty, Hollow places always get Hollow animals, robots only with mid or high tech, smarter spawns.
+9. [Performance](#performance): FRAME BUDGET PASS, with the city frame drops.
+10. [World bugs](#world-bugs): seeing through blocks and z-fighting.
+11. [Spaceflight and orbit](#spaceflight-and-orbit): leaving a planet, moons you can reach.
+12. [Sound](#sound): rain and wind everywhere at the same volume.
+13. [POI and world overhaul](#poi-and-world-overhaul): partly built themes and falls, then the place variety round (after capital ships).
 
 ## Playtest 8 November 2026 (owner, overnight)
 
