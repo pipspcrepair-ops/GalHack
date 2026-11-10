@@ -328,6 +328,7 @@ Design clarified: small vessels never auto-hover; only Hover Mode holds a craft 
   - Act play: strange gesture.
   - Gesture thanks (hand high): too like the wave; same clipping; the open-palm and hand-to-chest variants are all identical and must differ.
   - Bow draw (shot 14): looks wrong: the bow is held upright out to the side while the string runs to a hand up at the face, the drawing arm not along the arrow line; a draw is bow arm straight toward the target, string hand pulled back to the cheek along the arrow, the bow turning with the bow hand.
+  - Stalking (shot 15, a Husk): a full deep crouch while stalking isn't a fitting stalk for full-size people; use a low, hunched, half-crouched creep (knees bent, back curved, head forward), with the full crouch kept for hiding or waiting (owner, 10 Nov).
   - Idle, sipping from a bottle (shot 13): the arm bends the wrong way and the bottle stands in front of the face like a pole, not at the lips; held things never change orientation whatever the pose (the bottle stays upright always): a held prop must turn with the hand that grips it (tip to the lips when sipping); elbows and arms in a wrong orientation are a very common problem across idles too (owner).
   Fix together with the arm joint limits (arms-through-body item) and a body-overlap check per pose [bug list: not yet]
 - [ ] FRAME BUDGET PASS: walk, bike and fly under 16.7 ms mean, enforced by a PopTest check; spawn distance's cost measured and its default fitted (owner took the far-plant swap now, 9 Nov) [queued: after the weekly reset]
