@@ -617,6 +617,12 @@ public partial class Viewer
 
     // ---- shortcuts --------------------------------------------------------------------------------
 
+    /// <summary>Escape leaves a text box, so the keys fly the camera again.</summary>
+    public override void _Input(InputEvent e)
+    {
+        if (e is InputEventKey { Pressed: true, Keycode: Key.Escape } && TextHasFocus()) GetViewport().GuiReleaseFocus();
+    }
+
     public override void _UnhandledKeyInput(InputEvent e)
     {
         if (e is not InputEventKey k || !k.Pressed || k.Echo) return;

@@ -160,7 +160,7 @@ public partial class ViewCamera : Camera3D
         }
         else if (e is InputEventMouseMotion mm)
         {
-            if (IsFree && _looking && Input.MouseMode == Input.MouseModeEnum.Captured)
+            if (IsFree && _looking)
             {
                 _freeYaw -= mm.Relative.X * 0.0028f;
                 _freePitch -= mm.Relative.Y * 0.0028f;
@@ -197,6 +197,13 @@ public partial class ViewCamera : Camera3D
     public override void _Process(double delta)
     {
         float dt = (float)delta;
+        // A button let go over a panel never reaches us, so drop a drag whose button is no longer down.
+        bool left = Input.IsMouseButtonPressed(MouseButton.Left), right = Input.IsMouseButtonPressed(MouseButton.Right), middle = Input.IsMouseButtonPressed(MouseButton.Middle);
+        if (IsFree ? _looking && !left && !right : (_looking && !left) || (_panning && !right && !middle))
+        {
+            if (IsFree) { _looking = false; Input.MouseMode = Input.MouseModeEnum.Visible; }
+            else { if (!left) _looking = false; if (!right && !middle) _panning = false; }
+        }
         bool blocked = KeysBlocked();
         bool shift = Input.IsKeyPressed(Key.Shift);
         if (IsFree)

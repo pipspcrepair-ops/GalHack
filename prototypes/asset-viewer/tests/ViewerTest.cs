@@ -34,6 +34,58 @@ public partial class ViewerTest : Node
         for (int i = 0; i < n; i++) await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
     }
 
+    async System.Threading.Tasks.Task CameraChecks(Viewer viewer)
+    {
+        GD.Print("== camera");
+        ViewCamera cam = viewer.Cam;
+        cam.PointerInView = () => true;
+        viewer.Spin = false;
+        cam.Frame(Vector3.Zero, 2f);
+        float yaw = cam.Yaw, dist = cam.Distance;
+        // Orbit: a left drag turns, the wheel zooms.
+        Input.ParseInputEvent(new InputEventMouseButton { ButtonIndex = MouseButton.Left, Pressed = true, Position = new Vector2(800, 400) });
+        await Frames(1);
+        Input.ParseInputEvent(new InputEventMouseMotion { Position = new Vector2(860, 400), Relative = new Vector2(60, 0) });
+        await Frames(1);
+        Input.ParseInputEvent(new InputEventMouseButton { ButtonIndex = MouseButton.Left, Pressed = false, Position = new Vector2(860, 400) });
+        await Frames(1);
+        Check(!Mathf.IsEqualApprox(cam.Yaw, yaw), "a left drag turns the orbit");
+        Input.ParseInputEvent(new InputEventMouseButton { ButtonIndex = MouseButton.WheelUp, Pressed = true, Position = new Vector2(800, 400) });
+        await Frames(1);
+        Check(cam.Distance < dist, "the wheel zooms in");
+        Vector3 target = cam.Target;
+        Input.ParseInputEvent(new InputEventMouseButton { ButtonIndex = MouseButton.Right, Pressed = true, Position = new Vector2(800, 400) });
+        await Frames(1);
+        Input.ParseInputEvent(new InputEventMouseMotion { Position = new Vector2(850, 430), Relative = new Vector2(50, 30) });
+        await Frames(1);
+        Input.ParseInputEvent(new InputEventMouseButton { ButtonIndex = MouseButton.Right, Pressed = false, Position = new Vector2(850, 430) });
+        await Frames(1);
+        Check(cam.Target.DistanceTo(target) > 0.01f, "a right drag pans");
+
+        // Free camera: toggle, and W flies forward.
+        viewer.SetFreeCamera(true);
+        Check(cam.IsFree, "free camera on");
+        cam.PlaceFree(new Vector3(0, 2, 10), Vector3.Zero);
+        await Frames(2);
+        Vector3 from = cam.Position;
+        Input.ParseInputEvent(new InputEventKey { Keycode = Key.W, PhysicalKeycode = Key.W, Pressed = true });
+        for (int i = 0; i < 20; i++) await Frames(1);
+        Input.ParseInputEvent(new InputEventKey { Keycode = Key.W, PhysicalKeycode = Key.W, Pressed = false });
+        await Frames(1);
+        Check(cam.Position.DistanceTo(from) > 0.05f && cam.Position.Z < from.Z, "W flies the free camera forward");
+        float freeYaw = cam.FreeYaw;
+        Input.ParseInputEvent(new InputEventMouseButton { ButtonIndex = MouseButton.Right, Pressed = true, Position = new Vector2(800, 400) });
+        await Frames(1);
+        Input.ParseInputEvent(new InputEventMouseMotion { Position = new Vector2(830, 400), Relative = new Vector2(40, 0) });
+        await Frames(1);
+        Input.ParseInputEvent(new InputEventMouseButton { ButtonIndex = MouseButton.Right, Pressed = false, Position = new Vector2(830, 400) });
+        await Frames(2);
+        Check(!Mathf.IsEqualApprox(cam.FreeYaw, freeYaw), "holding right mouse looks round in free mode");
+        viewer.SetFreeCamera(false);
+        Check(!cam.IsFree, "back to orbit");
+        Check(cam.Distance > 0f && !float.IsNaN(cam.Position.X), "leaving free mode gives a sane orbit");
+    }
+
     async System.Threading.Tasks.Task Run()
     {
         string scratch = Path.Combine(Path.GetTempPath(), "asset-viewer-test-" + System.Environment.ProcessId);
@@ -111,6 +163,7 @@ public partial class ViewerTest : Node
             await Frames(4);
             Check(viewer.Animation != "", "an animated asset starts its first animation");
         }
+        await CameraChecks(viewer);
         viewer.SavePosition("test spot");
         Position saved = viewer.Notes.Bookmarks.Last();
         Check(saved.Asset == viewer.Entry.Key, "position records the asset");
