@@ -46,6 +46,7 @@ Every issue the owner raised while playing the batch build. Tick an item only wh
 
 ## Order after the reset
 
+0. First finish the branches stopped for the pause, then merge: proto/water, proto/looseprops (props and vortices), proto/zfix (z-fighting regressions); proto/sparse and floradraw's shadow distance after.
 1. [Movement and physics](#movement-and-physics): ROOT MOVEMENT BUG, one job: bounces and hops on ramps, half blocks, the Outpost and city ground
 2. [Combat](#combat): FIRST COMBAT JOB: one weapon truth, then melee animations and the enemy tactics round
 3. [Building and blueprints](#building-and-blueprints): ORIENTATION SWEEP: one facing rule for every directional block
