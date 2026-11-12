@@ -55,6 +55,7 @@ public partial class PoiTest
         var areas = new Dictionary<string, List<int>>();
         var corridors = new List<(string Family, float Width)>();
         var footprints = new Dictionary<string, List<(int W, int D)>>();
+        var glazing = new Dictionary<string, float>();
         foreach (FamilyDef f in _lib.Families.Where(f => !f.Tags.Contains("city") && !f.Space))
         {
             int n = f.Tags.Contains("grand") ? 2 : 4;
@@ -72,14 +73,15 @@ public partial class PoiTest
                     var floor = m.Cells.Where(c => c.Y == m.Min.Y && nav.StandsOn(c)).ToList();
                     if (floor.Count == 0) continue;
                     x0 = Math.Min(x0, m.Min.X); x1 = Math.Max(x1, m.Max.X); z0 = Math.Min(z0, m.Min.Z); z1 = Math.Max(z1, m.Max.Z);
-                    if (m.Kind == ModuleKind.Corridor)
+                    // A corridor, as planned for one (hubs, galleries, landings, catwalks and crawlways are other things).
+                    if (m.Kind == ModuleKind.Corridor && m.Purpose == "corridor")
                     {
                         // Its clear width: at each floor cell the shorter of its runs across x and z, the corridor's median
                         // (an L or a tee is as wide as its arms).
                         var set = floor.ToHashSet();
                         int Run(Int3 c, Int3 d) { int n = 1; for (Int3 q = c + d; set.Contains(q); q += d) n++; for (Int3 q = c - d; set.Contains(q); q -= d) n++; return n; }
                         var across = floor.Select(c => Math.Min(Run(c, new Int3(1, 0, 0)), Run(c, new Int3(0, 0, 1)))).OrderBy(w => w).ToList();
-                        corridors.Add((f.Id, across[across.Count / 2]));
+                        corridors.Add((m.Max.Y < 0 ? "underground" : f.Id, across[across.Count / 2]));
                     }
                     else if (refs.Rooms.ContainsKey(m.Purpose))
                     {
@@ -94,6 +96,15 @@ public partial class PoiTest
                     if (c.Y < 0) continue;
                     x0 = Math.Min(x0, c.X); x1 = Math.Max(x1, c.X); z0 = Math.Min(z0, c.Z); z1 = Math.Max(z1, c.Z);
                 }
+                // Glazing: windows against the walls they are set in, above ground (printed by family, a measure for the window rules).
+                int glass = 0, wall = 0;
+                foreach (var (c, b) in layout.Blocks.Blocks())
+                {
+                    if (c.Y < 0) continue;
+                    if (b.Role == Role.Window && b.Type == BlockType.Pane) glass++;
+                    else if (b.Role == Role.Wall && BlockInfo.IsFullCube(b.Type)) wall++;
+                }
+                if (glass + wall > 0) glazing[f.Id] = glazing.GetValueOrDefault(f.Id) + glass / (float)(glass + wall) / n;
                 if (!footprints.TryGetValue(f.Id, out var fp)) footprints[f.Id] = fp = new List<(int, int)>();
                 fp.Add((x1 - x0 + 1, z1 - z0 + 1));
             }
@@ -106,10 +117,11 @@ public partial class PoiTest
             var (min, max) = refs.Rooms[id];
             list.Sort();
             int inside = list.Count(a => a >= min * 0.75f && a <= max * 2f);
-            bool ok = inside * 4 >= list.Count * 3;
-            purposes++;
+            // Judged where there are enough of them to say (a purpose seen a handful of times is printed, not judged).
+            bool judged = list.Count >= 20, ok = !judged || inside * 4 >= list.Count * 3;
+            if (judged) purposes++;
             if (!ok) offPurposes++;
-            GD.Print($"    {(ok ? "  " : "! ")}{id,-14} {list.Count,4} rooms, area p10 {list[list.Count / 10]} median {list[list.Count / 2]} p90 {list[list.Count * 9 / 10]} m2 against {min:0}-{max:0} ({inside * 100 / list.Count}% in range)");
+            GD.Print($"    {(!judged ? "  (few) " : ok ? "  " : "! ")}{id,-14} {list.Count,4} rooms, area p10 {list[list.Count / 10]} median {list[list.Count / 2]} p90 {list[list.Count * 9 / 10]} m2 against {min:0}-{max:0} ({inside * 100 / list.Count}% in range)");
         }
         Check(offPurposes == 0, $"rooms are sized as their purpose is in the references: {purposes - offPurposes} of {purposes} purposes mostly in range");
 
@@ -124,6 +136,8 @@ public partial class PoiTest
         if (widths.Count > 0)
             GD.Print($"    corridors: {widths.Count}, width p10 {widths[widths.Count / 10]:0.0} median {widths[widths.Count / 2]:0.0} p90 {widths[widths.Count * 9 / 10]:0.0} m; too narrow or wide: {string.Join(", ", corridors.Where(c => !Wide(c)).GroupBy(c => c.Family).OrderByDescending(g => g.Count()).Take(6).Select(g => $"{g.Key} {g.Count()}"))}");
         Check(wide * 10 >= corridors.Count * 9, $"corridors are as wide as the references say: {wide} of {corridors.Count}");
+
+        GD.Print($"    glazing, share of wall cells that are windows: {string.Join(", ", glazing.OrderByDescending(k => k.Value).Select(k => $"{k.Key} {k.Value:P0}"))}");
 
         // Footprints: never smaller than the games' own places of the kind.
         var small = new List<string>();

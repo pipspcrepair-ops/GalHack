@@ -542,13 +542,15 @@ public static partial class Homes
         for (int v = 0; v < HouseV - 4; v++)
             for (int k = 0; k < 2; k++) l.Plate(f, HouseU + door + k, v, l.S.Base.Scale(1.1f));
         l.C.X.Gate = f.At(HouseU + door, 0, -1);
-        int bu = HouseU + hw + 10 + 2 * r.Range(0, 3), bv = 6 + 2 * r.Range(0, 3), bw = 14 + 2 * r.Range(0, 2), bd = 20 + 2 * r.Range(0, 3);
+        // A working farm's yard and fields at the size of one (a farm lot is about 60 m by 60 and more): the barn well across
+        // the yard, the field out to the silo's far side and twenty-odd rows deep.
+        int bu = HouseU + hw + 14 + 2 * r.Range(0, 3), bv = 6 + 2 * r.Range(0, 3), bw = 14 + 2 * r.Range(0, 2), bd = 20 + 2 * r.Range(0, 3);
         Barn(l, f.Shift(bu, bv), bw, bd);
         Silo(l, f.At(bu + bw + 7, 0, bv + 6), layout == 2 ? 16 : 12);
         // The field the place served, its rows gone to weeds, an old rail along it.
-        int fieldV = bv + bd + 6, run = 30;
+        int fieldV = bv + bd + 4, run = Math.Max(30, bu + bw + 12 - HouseU);
         var weed = new Rgb(0x6a, 0x72, 0x44);
-        for (int k = 0; k < 12 + layout * 2; k += 2)
+        for (int k = 0; k < 24 + layout * 2; k += 2)
             for (int u = 0; u < run; u++)
             {
                 Int3 p = f.At(HouseU + u, 0, fieldV + k);

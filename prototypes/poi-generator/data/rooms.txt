@@ -165,7 +165,7 @@ room command
   deco warroom
   name Command centre
   width 7 11
-  area 30 120
+  area 30 200
   kind hall
   props screen 3 table 2 bench 2
   fill 0.45
@@ -380,7 +380,7 @@ room monitor
   deco control
   name Sleeper monitoring
   width 3 5
-  area 10 30
+  area 12 60
   props screen 2 bench 3
   fill 0.5
   near cryo-bay
@@ -449,9 +449,21 @@ room generator
   tags hum industry
 
 # ---- holding ---------------------------------------------------------------------------------------
+room cell
+  deco cellblock
+  name Cell
+  width 3 5
+  area 6 12
+  props bunk 2 cell 1
+  fill 0.5
+  near cellblock guardroom
+  light dim
+  tags cluster
+
 room cellblock
   deco cellblock
   name Cell block
+  kind hall
   width 8 14
   area 50 260
   props cell 5 bunk 2
@@ -479,7 +491,7 @@ room solitary
   deco cellblock
   name Solitary
   width 3 4
-  area 6 12
+  area 6 16
   props cell 3
   fill 0.4
   near cellblock
@@ -601,6 +613,7 @@ room loading-dock
 room boiler-house
   deco industrial
   name Boiler house
+  kind hall
   width 8 14
   area 50 300
   props tank 4 machine 3

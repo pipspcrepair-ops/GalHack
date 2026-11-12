@@ -65,7 +65,7 @@ program cryo_vault
   rooms basement monitor plant storage
   rooms deep plant generator monitor
   rooms deepest vault! monitor reactor?
-  fill storage monitor
+  fill storage plant
 
 program biolab
   name Biolab
@@ -87,7 +87,7 @@ program biolab
   rooms basement lab*1-2 containment cold-store storage
   rooms deep containment*1-2 lab theatre plant
   rooms deepest vault! containment reactor?
-  fill storage lab
+  fill storage office
 
 # ---- research ------------------------------------------------------------------------------------------
 
@@ -112,7 +112,7 @@ program research_base
   rooms shallow lab*1-2 storage cold-store
   rooms basement lab containment archive plant
   rooms deepest vault! containment generator?
-  fill storage office lab
+  fill storage office archive
 
 program ice_outpost
   name Ice Research Outpost
@@ -325,7 +325,7 @@ program prison
   rooms top guardroom command
   rooms basement cellblock solitary mess storage
   rooms deepest evidence! solitary vault
-  fill cellblock storage
+  fill cell storage
 
 # ---- industry ------------------------------------------------------------------------------------------
 
