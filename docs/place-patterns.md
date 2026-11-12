@@ -323,16 +323,157 @@ A place passes when:
 
 ## 3. Tech level
 
-*To follow.*
+What separates a high-tech place (Empyrion) from a low-tech one (7 Days to Die), measured.
+
+| | Low tech | High tech |
+|---|---|---|
+| **Materials** | Wood 55 to 59% in houses and settlements; concrete 50 to 78% in civic, office, hospital, police and military; corrugated metal sheet 33 to 39% in industry and mines; brick 7 to 20% in towns and schools; steel 0 to 4%; armoured glass 1 to 2% only in police, offices and hospitals | Steel hull 22 to 41%, armoured 13 to 38%, combat steel 4 to 32% (military 32%), concrete 6 to 30% (settlements 30%); alien materials 44% of alien sites, 15 to 17% of labs and wrecks; wood under 5% |
+| **Shapes** | Pitched roofs (slopes 15 to 20%) on homes, flat roofs (4 to 8%) on everything else; many thin parts: plates, half and quarter cubes, trims, poles (30 to 45% together) | Chamfered everything: slopes 15 to 23% and corners 4 to 10% in every category; round 2 to 7%; hardly any plates, trims or poles |
+| **Room size** | Median 23 m², 5 to 7 m spans | Median 88 m², 6 m+ spans: three to four times larger |
+| **Storey** | 5 m floor to floor (4 m headroom), 4 m in small homes | 6 m (4 m headroom on a 2 m slab), halls 8 m+ |
+| **Corridors** | 1 to 2 m, 10 to 28% of floor | 2 to 4 m, 23 to 38% of floor, up to 70% in small stations |
+| **Room kinds** | Domestic and civic: kitchens, bathrooms, bedrooms, shop floors, classrooms, wards, cells, offices | Functional: hangars and bays, command, power, fabrication, labs and test chambers, armoury, containment, docking; living is a barracks block |
+| **Lighting** | One light per 11 to 15 m² in lived rooms (0.07 to 0.09 per m²), 0.04 per m² in stores and workshops; ceiling lights, lamps, porch lights, fluorescent tubes in civic places, torches and lanterns in mines | 6 to 26 lights per place, set into walls and ceilings as strips and panels; most in trade posts and factories (26), fewest in wrecks and caves (6) |
+| **Doors** | One-wide house doors, glass shop doors, roll-up and garage doors (3 to 5 m), chain-link gates; keys and breakable doors | 2 m interior doors, armoured vertical doors, shutter doors 4 to 10 m wide for vehicles, trap doors over ladders; **every window has an armoured shutter** (the commonest door-like block in every high-tech category) |
+| **Defences** | None built in: bars, boarded windows, chain-link fences, a few bulletproof panes; the danger is the residents (section 2) | A core (70 to 90% of held places), turrets outside (median 1 to 4, p90 8 to 19), interior guns (median 0 to 4, p90 15 to 25), spawners (median 3 to 9), drones (1 to 2), troop transports (half of held places) |
+| **Loot** | Everywhere in small amounts: 1 to 8 containers per 100 m² of lot, richest in clinics, shops and offices | Fewer places hold more: median 5 to 29 containers per place, richest in stations, trade posts and labs |
+
+**Rule T1.** The tech level chooses, in order: the material palette (table above), the shape mix (Rule P6), the storey and corridor sizes (P1, P3), the room library (domestic and civic below mid tech; functional above), the light fittings, the door set, and whether defences exist at all. A mid-tech place takes concrete and steel in equal parts, 5 m storeys, 2 to 3 m corridors, mixed room kinds, and shutters on the outer windows only.
+
+**Rule T2.** High-tech places close up: shuttered windows, armoured doors at zone edges (the existing airlock and blast-vestibule parts), and a core. Low-tech places are open and porous: many ways in (P4), many windows, and holes from decay. Ruins of a high-tech place keep their shutters, half of them jammed open.
+
+---
 
 ## 4. Map layout
 
-*To follow.*
+### 4.1 7 Days to Die: how places sit across a world
+
+Measured on the hand-made world and four generated worlds (`Data/Worlds/<world>/prefabs.xml`, `map_info.xml`, `biomes.png`), counting POIs with a lot of 200 m² or more; parts, signs and street tiles left out.
+
+| | Hand-made world (6.1 km) | Generated 6.1 km worlds (2) | Generated 8.2 km worlds (2) |
+|---|---|---|---|
+| POIs | 710 | 1,531 to 1,590 | 2,356 to 2,421 |
+| POIs per km² | 19 | 41 to 42 | 35 to 36 |
+| Nearest POI centre (p10 / median / p90) | 29 / 53 / 192 m | 34 / 61 / 140 m | 33 / 61 / 155 m |
+| Nearest, wilderness POIs only (median) | 134 m | 137 to 141 m | 146 to 153 m |
+| Share of POIs in towns | 53% | 79 to 80% | 77 to 78% |
+| Towns (5+ POIs, each within 110 m of another) | 20 | 12 | 19 to 20 |
+| POIs per town (p10 / median / p90) | 5 / 13 / 44 | 44 / 79 to 93 / 170 | 43 / 80 / 180 |
+| Town extent (median, p90) | 244 m, 425 m | 750 to 820 m, 1.1 km | 640 to 680 m, 1.2 km |
+| Town to nearest town (median) | 711 m | 1.2 to 1.3 km | 1.1 to 1.2 km |
+| Lots (p10 / median / p90) | 625 / 1,764 / 3,600 m² | same | same |
+| Tier mix (0 to 5) | 49 / 17 / 14 / 10 / 6 / 3% | 41 / 15 / 18 / 16 / 7 / 2% | 41 / 16 / 19 / 16 / 6 / 2% |
+
+**Density by biome** (POIs per km² in generated worlds): the hardest biome (wasteland) 44 to 63; forest 33 to 42; burnt forest 32 to 34; desert 29 to 38; snow 32 to 43. Mean tier rises only a little in the hardest biomes (1.4 to 1.5 against 1.1 to 1.4): a biome's difficulty comes from the biome itself, not from harder places.
+
+**How the generator builds towns** (`Config/rwgmixer.xml`, `Prefabs/RWGTiles/*.xml`):
+- A town is a grid of **150 x 150 m street tiles**, each a road shape: dead end, straight, corner, T and crossroads. Each tile carries its own lots and is themed by its district: downtown, commercial, industrial, residential, country town, country residential, rural, an old-west style, and a gateway (the tile where a road enters; each gateway variant at most once per world).
+- Township kinds are tied to biomes: country towns in forest, burnt forest, desert and snow; towns and cities elsewhere; the big city only in the hardest biome. Each kind has an outskirts share of rural district: 35 to 65% of its edge tiles.
+- Districts have spawn weights (residential slightly favoured, 1.1 against 1) and neighbour rules: downtown never borders rural.
+- Counts for the largest world preset: one to three big cities of 28 to 40 tiles; two to four cities of 7 to 14 in the hardest biome; one to four cities of 10 to 15; two to five towns of 7 to 8; three to six country towns of 5 to 6 (plus forest and burnt-forest ones of 4 to 6); one to three old-west hamlets of 2 to 3; 9 to 19 roadside stops; and 75 to 300 wilderness places of each of three wilderness kinds. Smaller presets scale these down (the smallest: 8 to 48 wilderness places of each kind).
+- Choosing a POI for a lot scores it: a base of 1, plus a bias and its tier over 5, **divided by how many copies the world already has**, times a weight. Repeats are pushed down and harder places nudged up. A few kinds have a minimum count per world (fuel stations: 5).
+- Some filler kinds are allowed only in one biome (rubble and craters only in the hardest biome).
+
+**Rules for GalHack (M1 to M6).**
+- **M1, towns are tiles of streets.** Our `Regions` town plan should lay a town on a grid of street tiles of about 150 m (a block of lots on each side of a road), each tile a road shape (end, straight, corner, T, cross) and a district. Districts: centre, commerce, industry, housing, edge (rural), and one gateway tile where each main road enters.
+- **M2, sizes.** A hamlet 2 to 6 tiles, a town 7 to 15, a city 15 to 40 (0.3 to 1.2 km across). The commonest settlement holds 40 to 90 places; a hamlet 5 to 15.
+- **M3, spacing.** Places in a town sit 30 to 60 m apart, centre to centre (lots 25 x 25 to 60 x 60 m); wilderness places 130 to 150 m from their nearest neighbour at the median, 220 to 250 m at p90. Towns stand 0.7 to 1.3 km from the nearest town. About 75 to 80% of places are in towns on a lived-in world, about 50% on an emptier one.
+- **M4, density.** 20 to 40 places per km² across a whole lived-in map is the reference floor. Our worlds are planet-sized, so measure it per inhabited region, not per planet. The hardest biome gets about 1.3 to 1.5 times the average.
+- **M5, variety pressure.** When choosing a family for a lot, divide its weight by (1 + copies already on this world) and add a small bias for higher-tier families. Give must-have kinds a minimum per world (a fuel stop, a clinic, a depot).
+- **M6, districts by biome.** Tie settlement kinds to the world layer's climate and theme, and keep heavy districts (centre, industry) off the rural edge.
+
+### 4.2 Empyrion: placement rules per planet
+
+From 108 planets and moons (`Content/Playfields/*/playfield_static.yaml`, the `POIs` section; `+ExamplePlanet/playfield_static_template.yaml` documents the keys). Each planet lists place groups in priority order. Each entry has a count range, a faction, an optional terrain (land, water surface, under water), allowed or excluded biomes, near and avoid rules, drones and a respawn timer.
+
+| Planet kind | Planets | Places per planet (p10 / median / p90) | Faction-held share |
+|---|---|---|---|
+| Starter planets | 6 | 94 / 104 / 131 | 64% |
+| Temperate | 10 | 44 / 137 / 226 | 74% |
+| Arid and desert | 7 | 23 / 104 / 225 | 73% |
+| Snow and ice | 6 | 17 / 33 / 187 | 54% |
+| Barren | 7 | 13 / 56 / 176 | 61% |
+| Lava | 8 | 9 / 85 / 122 | 66% |
+| Ocean | 2 | 267 (both) | 77% |
+| Alien | 2 | 18 to 104 | 71% |
+| Faction homeworlds | 20 | 10 / 22 / 76 | 93% |
+| Moons | 25 | 1 / 44 / 98 | 37% |
+| Homeworld moons | 11 | 7 / 10 / 95 | 52% |
+
+- **Order of placement**: drone bases first, then places in list order (the most important first; a third carry an explicit "important" flag), then resources. Big places go first so they find room.
+- **Control markers**: invisible marker places (lawless, infested, settled) are placed first and set the character of a region; other places then spawn near or avoid them. 247 entries anchor on the lawless marker alone.
+- **Clusters**: a main place and its satellites. Auxiliary and defence places spawn 100 to 500 m from their main (median 200 to 350 m, p90 1.8 km).
+- **Start**: places anchored to the player's start lie 0 to 3 km away (median 1 km) at the near edge of their band and 0.4 to 16 km (median 2.5 km) at the far edge.
+- **Avoidance**: a place keeps 200 m to 6 km (median 1 km) from named others; control markers keep whole regions apart (up to 45 km).
+- **Counts**: most entries are one place (median 1, p90 4). 16% of entries scale with planet size; 4% are command centres that launch base attacks.
+- **Biome and terrain**: a third of entries restrict biome (mountains for some, flats, shores or craters for others); a tenth restrict terrain (on or under water).
+- **Respawn**: 89% of places regenerate after 720 minutes, the rest after 360.
+- **Creatures**: spawn zones cluster round wrecks, abandoned places and resource deposits (radius 400 to 500 m, full rate at the centre, half at the edge); safe zones round trading stations (rate 0 at the centre rising to 0.7 at 1 km). Drones and patrols: section 2.5.
+
+**Rules for GalHack (M7 to M10).**
+- **M7, clusters.** A faction's main place comes with 2 to 6 satellites (defence posts, depots, pads) at 100 to 500 m. Our `Regions` plan already links a town to its works; do the same for faction bases.
+- **M8, markers before places.** Roll region markers (lawless, held, infested, settled) before places, then let families spawn near or avoid them. It is the same idea as our world layers, applied per region, and gives regions character instead of an even scatter.
+- **M9, counts per planet.** The reference floor is about 50 to 140 places on a lived planet (moons about 40, homeworlds about 20 big ones), with 60 to 75% held by a faction on contested worlds and under 40% on moons. Our theme maximum and outlier share sit on top of this.
+- **M10, near the start.** Start-world places within 1 to 2.5 km of the landing site, the first held place no closer than 3 km.
+
+---
 
 ## 5. Space
 
-*To follow.*
+### 5.1 What Empyrion puts in space
+
+From 96 space playfields (`Content/Playfields/*/space_dynamic.yaml`; 45 orbits, 51 deep-space sectors). An entry has a count range and a probability, so these are expected counts.
+
+| | Orbit | Deep space |
+|---|---|---|
+| Places per playfield (p10 / median / p90) | 2 / 12 / 20 | 1 / 8 / 17 |
+| Of which markers and pickets | about 4 corner beacons and one or two small defence posts | the same |
+
+**Mix over all playfields (expected count):** faction space bases and pickets about 460; stations and trade posts 160; wreck groups (small craft, capital ships, broken bases) about 110; asteroid fields 78 (usually one per playfield); asteroid mining bases 38; capital vessels 47 (probability about 0.3 each); 185 one-block boundary beacons at the corners of a deep-space sector (plus and minus 10 km, so a sector is a 20 km box).
+
+**Sizes (longest side, p10 / median / p90).** Satellites and defence platforms 18 / 50 / 78 m. Stations 62 / 122 / 186 m. Production bases and yards 48 / 108 / 202 m. Asteroid bases 86 / 134 / 242 m. Derelicts 26 / 138 / 276 m. Capital-ship wrecks about 100 m (p90 174 m). The largest single space place is about 450 m.
+
+**Spacing.** Deep-space places sit on rings round the sector centre (radius 6 to 10 km in the documented example) or in boxes 1 to 2.5 km out. Orbit places use small ring radii (1.5 to 3.5, apparently in units of the planet's size; not confirmed). Probabilities: stations 0.9 to 1, vessels 0.3, most bases 1.
+
+### 5.2 Compared with GalHack's space places
+
+GalHack's list is in `docs/space-pois.md` (on `proto/batch2`) and `prototypes/poi-generator/data/orbit.txt`.
+
+| | Empyrion (floor) | GalHack plan | Gap |
+|---|---|---|---|
+| Places per orbit | median 12 (about 8 real destinations) | 0 to 6 per orbit by tech and port; 6 to 12 per system by default, 10 to 16 in a start system | Our high-tech orbits (port A and B: 3 to 6) are **below** Empyrion's floor. Raise high-tech orbits to 6 to 10 destinations and add pickets, beacons and junk as minor objects that don't count. Low-tech orbits stay near empty (our tech rule). |
+| Places per deep-space sector | median 8 | 15 to 30 sites per whole system | Fine, if a system holds several sectors' worth of space |
+| Station size | 122 m median | M (60 to 150 m) to XL | Matches; keep stations M and up |
+| Satellites, pickets | 50 m | XS (under 20 m) | Ours are smaller; make armed pickets S (20 to 60 m) |
+| Asteroid bases | 134 m, long tunnels | `mining_outpost` | Build them M to L, corridor-heavy (50%+), cut into rock |
+| Wrecks | about 100 m (capital ships), up to 276 m | `Derelicts.cs` about 30 m hulls (class S) | **Below the floor**: capital wrecks should be M (60 to 150 m) to L |
+| Wreck share | about 1 in 8 of all space places | 35% by default, 75% in a start system | Ours is richer in wrecks, which suits salvage play; keep |
+| Faction share | most bases and stations held | faction stations and pickets in `orbit.txt` | Matches |
+
+**Rule S1.** Space places follow the high-tech room and corridor rules (P1 to P3, P5) with tighter service spaces: corridors 33 to 40% of floor in stations, 55% in asteroid bases, 60 to 70% in pickets and derelicts; headroom 4 m in stations, 2 m only in crawlways. **Rule S2.** Every held space place has turrets (median 2 to 6, p90 16 to 19 on stations) and spawners (median 6 to 8); derelicts have none inside but may carry a nest (section 2). **Rule S3.** Count markers and minor objects (beacons, buoys, junk) separately from destinations; in a busy orbit a real destination lies within 2 to 3 km of another.
+
+---
 
 ## 6. Generator checklist
 
-*To follow.*
+Ranges for the places agent to turn into generator settings and `LayoutCheck`-style checks. Each is a floor to meet or a band to fall in; ours may be bigger.
+
+| # | Check | Low tech | High tech | Space |
+|---|---|---|---|---|
+| G1 | Headroom | 3 m minimum; 4 m in civic, shops, offices | 4 m minimum; halls 8 m+ | 4 m; crawlways 2 m (never on the main way) |
+| G2 | Floor to floor | 4 m homes; 5 m civic and commercial; 6 m industry | 6 m | 6 m |
+| G3 | Room area (median, band) | about 24 m²; 9 to 110 m² | about 90 m²; 36 to 400 m² | about 80 m²; 30 to 400 m² |
+| G4 | Room narrowest span | 3 m minimum (bathrooms 2 m) | 6 m (closets and stores less) | 4 m |
+| G5 | Corridor clear width | 2 m | 2 to 4 m | 2 to 4 m |
+| G6 | Corridor share of floor | 10 to 28% | 23 to 38% | 33 to 70% |
+| G7 | Big halls (over 100 m²) | 1 to 4 per civic place | 1+ per place | 1+ per station |
+| G8 | Ways in | 2 to 4 homes, 3 to 6 offices and schools, 8 to 12 hospitals and police | 1 main, 1 vehicle, 1 to 2 service | 1 to 3 docks plus airlocks |
+| G9 | Shape shares | cube 35 to 55%; slopes 15 to 20% with pitched roofs, 4 to 8% flat; thin parts 20 to 30% | cube 50 to 67%; slopes 15 to 23%; corners 4 to 10% | as high tech |
+| G10 | Dressing per m² of room floor | 0.15 to 0.6 by room kind (P7) | about a fifth of that by count; 15 to 30% of floor covered | as high tech |
+| G11 | Containers | 1 to 8 per 100 m² of lot; by room kind per P8 | 2 to 3 per 100 m² of floor; 5 to 30 per place | 2 per 100 m² of floor; up to 90 in stations |
+| G12 | Lights | one per 11 to 15 m² lived, per 25 m² stores | strips and panels, 6 to 26 per place | as high tech |
+| G13 | Encounters | section 2.10 | section 2.10 | section 2.10 at half density |
+| G14 | Spacing on the map | town places 30 to 60 m apart; wilderness 130 to 150 m median | satellites 100 to 500 m from their main | real destinations within 2 to 3 km of each other in a busy orbit |
+| G15 | Hidden features | excluded from G3 and G4; at most 5% of spawns hidden; 1 place in 10 with a secret cache | same | same |
+
+**Sources (all read-only, nothing copied):** 7 Days to Die `Data/Prefabs/POIs/*.xml`, `*.tts`, `*.blocks.nim`, `Data/Prefabs/RWGTiles/*.xml`, `Data/Config/rwgmixer.xml`, `Data/Config/biomes.xml`, `Data/Worlds/*/prefabs.xml`, `map_info.xml`, `biomes.png`. Empyrion `Content/Prefabs/*.epb`, `Content/Configuration/BlocksConfig.ecf`, `Content/Playfields/*/playfield_static.yaml`, `space_dynamic.yaml`, and the `+ExamplePlanet` and `+ExampleSpace` templates. The readers and scripts behind these figures live in the floor-plan reference folder (`docs/floorplan-refs/tools-09`, outside git) and a scratch folder.
