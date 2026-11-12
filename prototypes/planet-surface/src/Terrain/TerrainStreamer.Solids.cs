@@ -1,3 +1,5 @@
+using System.Linq;
+using GalHack.Plants;
 using System.Collections.Generic;
 using System.Diagnostics;
 using Planets.Gen;
@@ -119,7 +121,7 @@ public partial class TerrainStreamer
         PhysicsServer3D.BodySetMode(body, PhysicsServer3D.BodyMode.Static);
         PhysicsServer3D.BodySetCollisionLayer(body, Layers.Flora);
         PhysicsServer3D.BodySetCollisionMask(body, 0);
-        foreach (FloraSolid s in solids) PhysicsServer3D.BodyAddShape(body, ShapeOf(s), s.IsCanopy ? new Transform3D(s.Basis.Scaled(Vector3.One * s.Scale), s.Center) : s.Transform);
+        foreach (FloraSolid s in solids) PhysicsServer3D.BodyAddShape(body, ShapeOf(s), s.ShapeTransform);
         PhysicsServer3D.BodySetState(body, PhysicsServer3D.BodyState.Transform, new Transform3D(Basis.Identity, ColumnOffset(c)));
         PhysicsServer3D.BodySetSpace(body, GetWorld3D().Space);
         c.Body = body;
@@ -131,17 +133,19 @@ public partial class TerrainStreamer
 
     readonly Dictionary<(int, int, int), Rid> _canopyShapes = new();
 
-    /// <summary>A canopy part's convex shape, at scale 1 (an instance's transform scales it): shared by every tree of the species and mesh.</summary>
+    /// <summary>A canopy part's convex shape at scale 1 (an instance's transform scales it).</summary>
+    public static Rid MakeCanopyShape(Plant plant, int variant, int part)
+    {
+        var shape = PhysicsServer3D.ConvexPolygonShapeCreate();
+        PhysicsServer3D.ShapeSetData(shape, plant.Canopy[variant][part].Select(p => new Vector3(p.X, p.Y, p.Z)).ToArray());
+        return shape;
+    }
+
+    /// <summary>Shared by every tree of the species and mesh.</summary>
     Rid CanopyShape(FloraSolid s)
     {
         var key = (s.Plant, s.Variant, s.Part);
-        if (_canopyShapes.TryGetValue(key, out Rid shape)) return shape;
-        var points = World.Flora.Book.Plants[s.Plant].Canopy[s.Variant][s.Part];
-        var pts = new Vector3[points.Length];
-        for (int i = 0; i < pts.Length; i++) pts[i] = new Vector3(points[i].X, points[i].Y, points[i].Z);
-        shape = PhysicsServer3D.ConvexPolygonShapeCreate();
-        PhysicsServer3D.ShapeSetData(shape, pts);
-        _canopyShapes[key] = shape;
+        if (!_canopyShapes.TryGetValue(key, out Rid shape)) _canopyShapes[key] = shape = MakeCanopyShape(World.Flora.Book.Plants[s.Plant], s.Variant, s.Part);
         return shape;
     }
 

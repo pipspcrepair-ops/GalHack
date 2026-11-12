@@ -203,6 +203,9 @@ public readonly struct FloraSolid
     public bool Fellable => Wood > 0;
     public Transform3D Transform => new(Basis, Center);
 
+    /// <summary>The transform of its collision shape: a canopy hull is kept at scale 1 and scaled here.</summary>
+    public Transform3D ShapeTransform => IsCanopy ? new(Basis.Scaled(Vector3.One * Scale), Center) : Transform;
+
     /// <summary>A point genuinely inside it: within a trunk's radius of its axis (and along it), or inside a box.</summary>
     public bool Contains(Vector3 p)
     {

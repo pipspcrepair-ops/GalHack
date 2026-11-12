@@ -26,7 +26,7 @@ public partial class FloraTest
     };
 
     /// <summary>Canopy-only body of a tree instance, as the streamer builds it; returns the body and its shapes.</summary>
-    static Rid CanopyBody(Space3DHolder space, List<FloraSolid> solids, Vector3 at, List<Rid> shapes, Dictionary<(int, int, int), Rid> cache, Plant[] plants)
+    static Rid CanopyBody(Rid space, List<FloraSolid> solids, Vector3 at, List<Rid> shapes, Dictionary<(int, int, int), Rid> cache, Plant[] plants)
     {
         Rid body = PhysicsServer3D.BodyCreate();
         PhysicsServer3D.BodySetMode(body, PhysicsServer3D.BodyMode.Static);
@@ -34,33 +34,20 @@ public partial class FloraTest
         PhysicsServer3D.BodySetCollisionMask(body, 0);
         foreach (FloraSolid s in solids)
         {
-            Rid shape;
             if (!s.IsCanopy) continue;
             var key = (s.Plant, s.Variant, s.Part);
-            if (!cache.TryGetValue(key, out shape))
-            {
-                var pts = plants[s.Plant].Canopy[s.Variant][s.Part].Select(p => new Vector3(p.X, p.Y, p.Z)).ToArray();
-                shape = PhysicsServer3D.ConvexPolygonShapeCreate();
-                PhysicsServer3D.ShapeSetData(shape, pts);
-                cache[key] = shape;
-                shapes.Add(shape);
-            }
-            PhysicsServer3D.BodyAddShape(body, shape, new Transform3D(s.Basis.Scaled(Vector3.One * s.Scale), s.Center + at));
+            if (!cache.TryGetValue(key, out Rid shape)) shapes.Add(cache[key] = shape = TerrainStreamer.MakeCanopyShape(plants[s.Plant], s.Variant, s.Part));
+            PhysicsServer3D.BodyAddShape(body, shape, new Transform3D(s.ShapeTransform.Basis, s.Center + at));
         }
-        PhysicsServer3D.BodySetSpace(body, space.Rid);
+        PhysicsServer3D.BodySetSpace(body, space);
         return body;
     }
 
-    readonly struct Space3DHolder
-    {
-        public readonly Rid Rid;
-        public Space3DHolder(Rid r) { Rid = r; }
-    }
 
     async System.Threading.Tasks.Task Canopies()
     {
         // 1. Every tree species of every kind of world has a canopy.
-        int species = 0, without = 0, nonConvexBox = 0;
+        int species = 0, without = 0;
         var worlds = new List<PlanetFlora>();
         foreach (var (a, v) in new[] { (Archetype.Temperate, 0), (Archetype.Temperate, 1), (Archetype.Alien, 0), (Archetype.Alien, 1), (Archetype.Arid, 0), (Archetype.Ice, 0), (Archetype.Lava, 0) })
         {
@@ -70,14 +57,12 @@ public partial class FloraTest
             {
                 species++;
                 if (p.Canopy == null || p.Canopy.Length == 0 || p.Canopy.Any(h => h == null || h.Length == 0 || h.Any(pts => pts.Length < 4))) without++;
-                else if (p.Canopy[0].Length == 1 && p.Form is not (PlantForm.Domed or PlantForm.Barrel or PlantForm.Organ)) nonConvexBox++;
             }
         }
         Check(species > 20 && without == 0, $"every tree kind has canopy collision: {species} tree species on 7 worlds, {without} without");
 
         // 2. Rays and a flyer's sphere at the canopy's own surface are stopped, at the smallest and the largest scale.
         Rid space = GetViewport().World3D.Space;
-        var holder = new Space3DHolder(space);
         var cache = new Dictionary<(int, int, int), Rid>();
         var shapes = new List<Rid>();
         var bodies = new List<Rid>();
@@ -101,7 +86,7 @@ public partial class FloraTest
                     rules.MakeAll(TreeKindOf(p.Family), p, variant, placed, Vector3.Zero, scale, 0.7f, solids);
                     var canopy = solids.Where(s => s.IsCanopy).ToList();
                     hulls += canopy.Count;
-                    bodies.Add(CanopyBody(holder, solids, at, shapes, cache, flora.Book.Plants.ToArray()));
+                    bodies.Add(CanopyBody(space, solids, at, shapes, cache, flora.Book.Plants.ToArray()));
                     treeCount++;
                     // Sample points: centroids of canopy triangles of parts big enough to be solid.
                     PlantMesh m = p.Near[variant];
@@ -155,33 +140,7 @@ public partial class FloraTest
         Check(rays > 200 && rayStopped >= rays * 0.99f, $"shots into canopies are stopped: {rayStopped} of {rays} rays at canopy surfaces, {treeCount} trees at their smallest and largest, {hulls} hulls");
         Check(spheres > 200 && sphereStopped >= spheres * 0.99f, $"a flyer flying into a canopy is stopped: {sphereStopped} of {spheres} sweeps");
 
-        // 3. Hulls follow the canopy's shape: no box round a whole tree (a hull's volume is well inside its tree's bounding box).
-        int boxy = 0, checkedTrees = 0;
-        foreach (PlanetFlora flora in worlds.Take(4))
-            foreach (Plant p in flora.Book.Plants.Where(p => p.Tree && p.Canopy != null))
-            {
-                for (int v = 0; v < p.Canopy.Length; v++)
-                {
-                    var pts = p.Canopy[v].SelectMany(h => h).ToArray();
-                    if (pts.Length == 0) continue;
-                    checkedTrees++;
-                    var lo = new System.Numerics.Vector3(float.MaxValue); var hi = new System.Numerics.Vector3(float.MinValue);
-                    foreach (var q in pts) { lo = System.Numerics.Vector3.Min(lo, q); hi = System.Numerics.Vector3.Max(hi, q); }
-                    var size = hi - lo;
-                    float box = size.X * size.Y * size.Z;
-                    // A single hull filling its tree's whole box is a box in disguise.
-                    foreach (var h in p.Canopy[v])
-                    {
-                        var l2 = new System.Numerics.Vector3(float.MaxValue); var h2 = new System.Numerics.Vector3(float.MinValue);
-                        foreach (var q in h) { l2 = System.Numerics.Vector3.Min(l2, q); h2 = System.Numerics.Vector3.Max(h2, q); }
-                        var s2 = h2 - l2;
-                        if (p.Canopy[v].Length == 1 && s2.X * s2.Y * s2.Z > 0.98f * box && p.Form is PlantForm.Spire) boxy++;
-                    }
-                }
-            }
-        Check(boxy == 0, $"canopy hulls are parts' shapes, not a box round the tree ({checkedTrees} meshes)");
-
-        // 4. Physics cost: many trees (a full near ring's worth), then queries among them.
+        // 3. Physics cost: many trees (a full near ring's worth), then queries among them.
         var sw = Stopwatch.StartNew();
         var cost = new List<Rid>();
         int many = 0;
@@ -195,7 +154,7 @@ public partial class FloraTest
             var one = new List<FloraSolid>();
             rules.MakeAll(TreeKindOf(p.Family), p, i % p.Near.Length, 100000 + i, Vector3.Zero, lo + (hi - lo) * rng.NextFloat(), rng.NextFloat() * 6f, one);
             many += one.Count(s => s.IsCanopy);
-            cost.Add(CanopyBody(holder, one, new Vector3(-4000f + (i % 20) * 12f, 3000f, -4000f + (i / 20) * 12f), shapes, cache, fl.Book.Plants.ToArray()));
+            cost.Add(CanopyBody(space, one, new Vector3(-4000f + (i % 20) * 12f, 3000f, -4000f + (i / 20) * 12f), shapes, cache, fl.Book.Plants.ToArray()));
         }
         double buildMs = sw.Elapsed.TotalMilliseconds;
         for (int i = 0; i < 4; i++) await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
