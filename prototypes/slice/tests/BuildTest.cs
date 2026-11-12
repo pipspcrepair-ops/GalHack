@@ -810,7 +810,10 @@ public partial class BuildTest : Node
             $"the wildlife sim knows every base and the start bunker ({sim.Structures.Count}), and keeps {clearance:F0} m clear of each");
         var (min, max) = _base.Structure.Bounds();
         Vector3 Edge(float past) => patch.PatchLocal(_base.ToWorld(StructureBridge.CellCenter(_base.Structure, max) + new N.Vector3(_base.Structure.Grid.CellSize * 0.5f + past, 0, 0)));
-        Check(sim.InBaseZone(patch.PatchLocal(_base.ToWorld(StructureBridge.CellCenter(_base.Structure, min)))) && sim.InBaseZone(Edge(clearance - 2f)) && !sim.InBaseZone(Edge(clearance + 2f)),
+        // Judged on this base's own structure: another base, a town or the start bunker may be near too, and keeps its own zone.
+        var mine = sim.Structures.Where(s => s.Name == _base.Name).ToList();
+        Check(mine.Count > 0 && sim.InBaseZone(patch.PatchLocal(_base.ToWorld(StructureBridge.CellCenter(_base.Structure, min)))) && sim.InBaseZone(Edge(clearance - 2f))
+              && Wildlife.BaseZones.Blocks(mine, Edge(clearance - 2f), clearance) && !Wildlife.BaseZones.Blocks(mine, Edge(clearance + 2f), clearance),
             "the zone runs from the footprint's edge, so a bigger base has a bigger zone");
         Wildlife.Species species = patch.Fauna.Species.First(s => s.Domestic == Wildlife.DomesticKind.None);
         int creatures = sim.Creatures.Count;
