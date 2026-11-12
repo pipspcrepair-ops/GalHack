@@ -203,7 +203,7 @@ public partial class GlobeTest : Node
         Check(misplaced == 0, $"globe: a world's type agrees with its orbit round its star ({misplaced} did not{(misplaced > 0 ? ": " + misplacedWorld : "")})");
         Check(worstNoon < 0.002, $"globe: the clock's noon is the sun on the meridian at the map's middle ({worstNoon:F4} off)");
         Check(moved == moving, $"globe: everything moves along its orbit from one day to the next ({moved} of {moving})");
-        Check(unfit == 0, $"globe: every start has a moon in reach of thrusters with warp fuel and the drive's materials, and hyperdrive fuel, hyperdrive materials and capital ship materials a warp away ({unfit} did not{(unfit > 0 ? ": " + unfitWorld : "")})");
+        Check(unfit == 0, $"globe: every start has a vacuum moon in reach of thrusters with the drive's materials, and hyperdrive materials and capital ship materials a warp away ({unfit} did not{(unfit > 0 ? ": " + unfitWorld : "")})");
         Check(unresolved == 0, $"globe: any point on a world resolves up to its orbit, its place in the system and its star ({unresolved} did not)");
     }
 

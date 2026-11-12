@@ -15,6 +15,8 @@ public enum DepositKind : byte
     Iron, Copper, Silicon, Carbon, Water, Burnstone,
     Magnesium, Cobalt, Neodymium, Gold, Gravium,
     Crystal, Resin,
+    /// <summary>The jump fuel for the warp drive (item warp-fuel-ore): only on airless worlds, see <see cref="DepositField.FuelKinds"/>.</summary>
+    WarpFuel,
 }
 
 /// <summary>One deposit: a surface outcrop (Depth 0) or a shallow one a few metres down.</summary>
@@ -71,6 +73,7 @@ public sealed class DepositField
         // Only ever a world's signature: where it is one, this often and this big.
         [DepositKind.Crystal] = new(12f, 1.9f),
         [DepositKind.Resin] = new(12f, 1.9f),
+        [DepositKind.WarpFuel] = new(12f, 1.9f),
     };
 
     /// <summary>A world's signature resource when it's an uncommon or signature-only ore: one to every so many base cells, on top of its own line.</summary>
@@ -83,6 +86,17 @@ public sealed class DepositField
     public static IEnumerable<DepositKind> EveryPlanet()
     {
         for (int k = 0; k <= (int)DepositKind.Gravium; k++) yield return (DepositKind)k;
+    }
+
+    /// <summary>
+    /// The jump fuels a world holds, from what it is and nothing else: warp fuel (<see cref="DepositKind.WarpFuel"/>)
+    /// only on an airless world, hyperspace fuel (the fold crystal's <see cref="DepositKind.Crystal"/>) on a dangerous
+    /// high-gravity one. Neither is ever marked on a map: it is found by going there.
+    /// </summary>
+    public static IEnumerable<DepositKind> FuelKinds(PlanetSpec spec)
+    {
+        if (spec.Airless) yield return DepositKind.WarpFuel;
+        if (spec.HighGravity) yield return DepositKind.Crystal;
     }
 
     /// <summary>The ores that are smaller and fewer than the commons.</summary>
@@ -112,7 +126,9 @@ public sealed class DepositField
         DepositKind signature = def.Signature;
         foreach (DepositKind kind in EveryPlanet()) Lay(kind, Ores[kind].Every / def.DepositCount, Ores[kind].Size * def.DepositSize, kind == signature);
         if ((int)signature > (int)DepositKind.Burnstone) Lay(signature, SignatureEvery / def.DepositCount, Ores[signature].Size * def.DepositSize, false, 0x516);
-        foreach (DepositKind kind in EveryPlanet())
+        foreach (DepositKind kind in FuelKinds(map.Spec))
+            if (kind != signature) Lay(kind, SignatureEvery / def.DepositCount, Ores[kind].Size * def.DepositSize, false, 0x517);
+        foreach (DepositKind kind in EveryPlanet().Concat(FuelKinds(map.Spec)))
             if (!_cells.Any(c => c.Exists(d => d.Kind == kind))) AddMissing(kind);
         Promise(Landing.Find(map, map.WidthMeters * 0.5, map.HeightMeters * 0.5));
         Count = _cells.Sum(c => c.Count);
