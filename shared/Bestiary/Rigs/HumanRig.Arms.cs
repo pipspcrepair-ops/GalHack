@@ -106,10 +106,12 @@ public sealed partial class HumanRig
     /// <summary>
     /// Shoulder to hand by IK, the elbow toward the pole, kept out of the torso: a hand asked inside
     /// it is put on its skin, and an arm that would pass through swings its elbow out to the side
-    /// (as a real one does) and, failing that, takes the hand a little further out.
+    /// (as a real one does) and, failing that, takes the hand further out to the side. A hand on a
+    /// weapon stays on its grip (the hold keeps the weapon itself clear of the body).
     /// </summary>
-    (Vector3 elbow, Vector3 wrist) Arm(Transform3D body, Vector3 shoulder, Vector3 hand, Vector3 pole, float upper, float fore, Vector3 outward, Vector3 ahead)
+    (Vector3 elbow, Vector3 wrist) Arm(Transform3D body, Vector3 shoulder, Vector3 hand, Vector3 pole, float upper, float fore, Vector3 outward, bool held)
     {
+        if (held) return LeggedRig.SolveIK(shoulder, hand, upper, fore, pole);
         if (Shell != null)
         {
             Transform3D inv = body.AffineInverse();
@@ -123,29 +125,10 @@ public sealed partial class HumanRig
             if (Sunk(body, shoulder, e, w, 0.55f) <= 0f) break;
             // The elbow out to the side and down, then the hand further out and forward.
             pole = (pole.Normalized() + outward * 0.9f + Vector3.Down * 0.15f).Normalized();
-            if (k >= 2)
-            {
-                Transform3D inv = body.AffineInverse();
-                Vector3 l = inv * hand;
-                hand = body * Shell.PushOut(l, HandRadius + 0.03f * (k - 1)) + (outward * 0.6f + ahead) * 0.025f;
-            }
+            if (k >= 1) hand += outward * 0.04f;
             (e, w) = LeggedRig.SolveIK(shoulder, hand, upper, fore, pole);
         }
         return (e, w);
-    }
-
-    /// <summary>A held weapon moved out of the torso as a whole (a puffy coat, a big chest piece): both grips and the weapon with them.</summary>
-    void ClearOfTorso(ref Hold h)
-    {
-        if (Shell == null) return;
-        Transform3D body = Pose[_body], inv = body.AffineInverse();
-        Vector3 shift = Vector3.Zero;
-        // (Only as far as the hands' middles on the skin: a weapon held hard against a coat presses into it.)
-        if (h.RW > 0f) shift = body * Shell.PushOut(inv * h.R, HandRadius * 0.4f) - h.R;
-        if (h.LW > 0f) shift += body * Shell.PushOut(inv * (h.L + shift), HandRadius * 0.4f) - (h.L + shift);
-        h.R += shift;
-        h.L += shift;
-        h.Prop = h.Prop.Translated(shift);
     }
 
     /// <summary>The arm that does a one-handed act: the right, unless it holds a weapon or the thing pointed at is off to the left.</summary>

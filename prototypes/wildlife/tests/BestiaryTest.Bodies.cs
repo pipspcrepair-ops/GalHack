@@ -103,6 +103,7 @@ public partial class BestiaryTest
                 poses++;
                 for (int i = 0; i < 2; i++)
                 {
+                    if ((i == 1 ? rig.GripRightOn : rig.GripLeftOn) >= 0.5f) continue; // (a hand on a weapon: WeaponsAreHeldRight keeps the weapon out of the body)
                     var (sh, el, wr) = rig.ArmOf(i);
                     float sunk = rig.Sunk(rig.Pose[body], sh, el, wr);
                     float arm = s.Figure.UpperArmOf(i) + s.Figure.ForearmOf(i);
@@ -132,6 +133,7 @@ public partial class BestiaryTest
             s.Figure.Prop = "bottle";
             var rig = new HumanRig(s);
             Figure f = s.Figure;
+            float coat = 0.4f * MathF.Max(0f, f.Padding - 1f); // a thick coat takes the elbows out with it
             int body = rig.Layout.Pieces.FindIndex(p => p.Name == "body");
             Vector3 Local(Vector3 p) => rig.Pose[body].AffineInverse() * p; // the body's own frame: +Y up its back, -Z its front
             Gesture At(BodyAct a, float clock, int style = 0) => new() { Feet = Vector3.Zero, Act = a, ActAmount = 1f, Clock = clock, Style = style, ActAt = new Vector3(0f, 1.2f, -4f) };
@@ -151,12 +153,12 @@ public partial class BestiaryTest
                 rig.Drive(At(BodyAct.Beckon, t));
                 {
                     var (sh, el, wr) = rig.ArmOf(1);
-                    if (Local(el).Y > Local(sh).Y - 0.1f || Local(el).X - Local(sh).X > 0.18f) beckonOut++;
+                    if (Local(el).Y > Local(sh).Y - 0.1f || Local(el).X - Local(sh).X > 0.18f + coat) beckonOut++;
                 }
                 rig.Drive(At(BodyAct.WaveOff, t));
                 {
                     var (sh, el, wr) = rig.ArmOf(1);
-                    if (Local(el).X - Local(sh).X > 0.2f || Local(el).Y > Local(sh).Y - 0.1f || Local(wr).X < -0.05f) waveOffAcross++;
+                    if (Local(el).X - Local(sh).X > 0.2f + coat || Local(el).Y > Local(sh).Y - 0.1f || Local(wr).X < -0.05f) waveOffAcross++;
                 }
                 rig.Drive(At(BodyAct.Point, t));
                 {

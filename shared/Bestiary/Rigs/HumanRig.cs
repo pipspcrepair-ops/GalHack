@@ -415,7 +415,6 @@ public sealed partial class HumanRig : Rig
 
         // Arms: each hand has a place to be, and the elbow follows it.
         Hold hold = Grips(g, kind, aimW, busy, turn, torso, hip, chest, neck, headBasis);
-        if (kind != HoldKind.None) ClearOfTorso(ref hold);
         GripRight = hold.R;
         GripLeft = hold.L;
         GripRightOn = hold.RW;
@@ -463,7 +462,7 @@ public sealed partial class HumanRig : Rig
             if (g.Reach > 0f) hand = hand.Lerp(husk ? shoulder + ahead * arm * 0.8f + Vector3.Up * 0.24f + torso.X * side * -0.16f : shoulder + ahead * arm * 0.9f + Vector3.Up * 0.05f + torso.X * side * -0.04f, g.Reach);
             if (g.Sit > 0f && !longGun) hand = hand.Lerp(hip + ahead * 0.32f + torso.X * side * 0.14f + Vector3.Up * 0.03f, g.Sit);
             // Crouched, the forearms rest over the knees, the hands hanging just past them.
-            if (g.Crouch > 0f) hand = hand.Lerp(_knee[i] + fwd * 0.1f * f.Height / 1.72f + torso.X * side * -0.02f - Vector3.Up * 0.04f, g.Crouch);
+            if (g.Crouch > 0f) hand = hand.Lerp(_knee[i] + fwd * 0.1f * f.Height / 1.72f + torso.X * side * 0.05f - Vector3.Up * 0.04f, g.Crouch);
             // Stalking, the arms hang loose and forward, ready.
             if (stalk > 0f) pole = pole.Lerp(F.V(0.5f, -0.4f, -0.8f), stalk).Normalized();
             // A hand on a weapon stays on it; the other does the gesture (a one-handed one done by the free hand).
@@ -502,7 +501,7 @@ public sealed partial class HumanRig : Rig
             // Reaching out to a weapon, the shoulder comes forward as far as it must (a little).
             float need = MathF.Max(0f, shoulder.DistanceTo(hand) - arm * 0.98f);
             if (on > 0f && need > 0f) shoulder += (hand - shoulder).Normalized() * MathF.Min(need, Reach * HumanBody.ArmScale(f)) * on;
-            (Vector3 elbow, Vector3 wrist) = Arm(Pose[_body], shoulder, hand, pole, upperArm, forearm, F.Out, ahead);
+            (Vector3 elbow, Vector3 wrist) = Arm(Pose[_body], shoulder, hand, pole, upperArm, forearm, F.Out, on >= 0.5f);
             Pose[_armU[i]] = Geo.Segment(shoulder, elbow, torso.X);
             Pose[_armL[i]] = Geo.Segment(elbow, wrist, torso.X);
             _wrist[i] = wrist;
