@@ -38,6 +38,12 @@ public static class Settle
                 removed++;
                 continue;
             }
+            // A floor's finish is paint on the block under it: where that block went, so does the paint.
+            if (BlockInfo.IsFinish(b.Type))
+            {
+                if (!Painted(g, nav, p + Int3.Down)) { g.Set(p, Block.Air); removed++; }
+                continue;
+            }
             if (!PlaceAudit.Rests(b.Type) || Kept(b) || Holds(g, nav, p + Int3.Down)) continue;
             Int3 to = p;
             int fall = 0;
@@ -106,6 +112,13 @@ public static class Settle
 
     /// <summary>What isn't built: debris, props, growth.</summary>
     static bool Loose(Block b) => b.Role is Role.Debris or Role.Prop or Role.Growth && !Kept(b);
+
+    /// <summary>What a floor's finish can be painted on: the top of a full block or a lattice, or the ground.</summary>
+    public static bool Painted(BlockGrid g, NavGrid nav, Int3 below)
+    {
+        Block b = g.Get(below);
+        return b.IsAir ? nav.IsRock(below) : BlockInfo.IsFullCube(b.Type) || b.Type == BlockType.Lattice;
+    }
 
     /// <summary>A cell a thing can fall through: air or a floor's finish, not the rock.</summary>
     static bool Open(BlockGrid g, NavGrid nav, Int3 p)

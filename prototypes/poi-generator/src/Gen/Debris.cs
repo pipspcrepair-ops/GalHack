@@ -139,15 +139,17 @@ public static class Debris
         {
             float a = size * (0.5f + r.F() * 0.9f);
             var half = new V3(a * (0.7f + r.F() * 0.6f), a * (0.45f + r.F() * 0.35f), a * (0.7f + r.F() * 0.6f));
-            Piece(l, new V3(0.15f + r.F() * 0.7f, 0, 0.15f + r.F() * 0.7f), half, new V3(r.S(0.45f), r.F() * 6f, r.S(0.45f)), Broken(c, r, Material.Concrete).Lerp(c, 0.5f), s, 0f);
+            // A chunk lies on one of its faces as it landed (a little off level), never balanced on a corner.
+            Piece(l, new V3(0.15f + r.F() * 0.7f, 0, 0.15f + r.F() * 0.7f), half, new V3(r.S(0.1f), r.F() * 6f, r.S(0.1f)), Broken(c, r, Material.Concrete).Lerp(c, 0.5f), s, 0f);
         }
         DustPatch(l, r, c);
     }
 
+    /// <summary>A little of its own dust round it: two small turned drifts in the pieces' own colour, not a pale square pad.</summary>
     static void DustPatch(List<ShapeBox> l, Pick r, Rgb c)
     {
-        float x = 0.08f + r.F() * 0.2f, z = 0.08f + r.F() * 0.2f;
-        l.Add(new ShapeBox(new V3(x, 0, z), new V3(MathF.Min(0.97f, x + 0.5f + r.F() * 0.3f), 0.012f, MathF.Min(0.97f, z + 0.45f + r.F() * 0.3f)), c.Lerp(Dust, 0.55f), Surface.Matte, true));
+        for (int i = 0; i < 2; i++)
+            Piece(l, new V3(0.25f + r.F() * 0.5f, 0, 0.25f + r.F() * 0.5f), new V3(0.1f + r.F() * 0.12f, 0.004f, 0.08f + r.F() * 0.1f), new V3(0, r.F() * 6f, 0), c.Lerp(Dust, 0.25f).Scale(0.85f + r.F() * 0.1f), Surface.Matte, 0.014f);
     }
 
     /// <summary>Where a lot came down at once: a mound of chunks over its dust, a slab across it, bars sticking out at angles.</summary>
@@ -188,13 +190,17 @@ public static class Debris
         for (int i = 0; i < 2 + r.Int(2); i++)
             Piece(l, new V3(0.2f + r.F() * 0.6f, 0, 0.2f + r.F() * 0.6f), new V3(0.08f + r.F() * 0.14f, 0.004f, 0.06f + r.F() * 0.12f), new V3(0, r.F() * 6f, 0), plaster.Scale(0.9f + r.F() * 0.15f), Surface.Matte, 0.014f);
         int n = 2 + r.Int(3);
-        float rest = 0f;
+        V3 last = default;
         for (int i = 0; i < n; i++)
         {
-            float tilt = i == n - 1 && n > 2 ? 0.25f : r.S(0.06f);
+            // The last of three or more is propped on the one before it, its low edge on the floor beside it: laid across
+            // that tile, not leaning on nothing.
+            bool propped = i == n - 1 && n > 2;
+            float tilt = propped ? 0.2f : r.S(0.03f);
             Rgb t = Tile.Lerp(new Rgb(0x8a, 0x7a, 0x5a), r.F() * 0.35f); // stained by the water that brought them down
-            var (_, top) = Piece(l, new V3(0.2f + r.F() * 0.6f, 0, 0.2f + r.F() * 0.6f), new V3(0.1f + r.F() * 0.05f, 0.008f, 0.1f + r.F() * 0.05f), new V3(tilt, r.F() * 6f, r.S(0.05f)), t.Scale(0.8f), Surface.Matte, i == n - 1 ? rest : 0f);
-            rest = MathF.Min(top, 0.05f);
+            V3 at = propped ? new V3(last.X + 0.06f, 0, last.Z) : new V3(0.2f + r.F() * 0.6f, 0, 0.2f + r.F() * 0.6f);
+            var (centre, _) = Piece(l, at, new V3(0.1f + r.F() * 0.05f, 0.008f, 0.1f + r.F() * 0.05f), new V3(tilt, propped ? 0f : r.F() * 6f, r.S(0.03f)), t.Scale(0.8f), Surface.Matte, 0f);
+            last = centre;
         }
     }
 

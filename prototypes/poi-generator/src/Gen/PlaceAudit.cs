@@ -167,11 +167,7 @@ public sealed class PlaceAudit
                     break;
             }
             // A floor's finish is paint on the top of the block under it (never a plate of its own): there must be one.
-            if (BlockInfo.IsFinish(b.Type))
-            {
-                Block under = g.Get(p + Int3.Down);
-                if (!(under.IsAir ? nav.IsRock(p + Int3.Down) || p.Y == 0 : BlockInfo.IsFullCube(under.Type) || under.Type == BlockType.Lattice)) Fault("finish: painted on nothing", p);
-            }
+            if (BlockInfo.IsFinish(b.Type) && !Settle.Painted(g, nav, p + Int3.Down)) Fault("finish: painted on nothing", p);
             // Nothing set into the rock: below ground, things stand only in the place's own dug cells.
             if (nav.IsRock(p) && b.Role is Role.Debris or Role.Prop or Role.Loot or Role.Story or Role.Growth) Fault($"in the rock: {b.Type}", p);
             // Loose things rest on what is under them.
