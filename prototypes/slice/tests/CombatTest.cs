@@ -131,6 +131,8 @@ public partial class CombatTest : Node
         Town town = place?.Memory.Town;
         Check(town != null, $"it stands with its people ({town?.People.Count}, {place?.Memory.Mood})");
         if (town == null) yield break;
+        int aims = 0, aimsBeforeFirst = -1;
+        town.Aimed += _ => aims++;
         double max = game.Suit.Sim.Data.Vitals.Health.Max;
         for (int i = 0; i < 600 && town.People.Any(p => p.Looks == null || p.View == null && !p.Indoors && !p.Away); i++) { game.Suit.Vitals.Health = max; yield return 0; }
         var armed = town.People.Where(p => p.Looks != null && Weapons.Armed(p.Figure.Prop)).ToList();
@@ -164,8 +166,6 @@ public partial class CombatTest : Node
         // Their shots, as they go.
         var shots = new List<(Town.Person Who, WeaponDef Def, Vector3 Muzzle, Vector3 Model, Vector3 Chest)>();
         var dealt = new List<float>();
-        int aims = 0, aimsBeforeFirst = -1;
-        town.Aimed += _ => aims++;
         town.ShotFired += (who, def, muzzle, dir, _) =>
         {
             if (aimsBeforeFirst < 0 && def.Delivery != Delivery.Strike) aimsBeforeFirst = aims;
@@ -230,10 +230,15 @@ public partial class CombatTest : Node
         WildSim sim = patch.Sim;
         if (sim == null) { Check(false, "the patch has a sim"); yield break; }
         double max = game.Suit.Sim.Data.Vitals.Health.Max;
-        // Somewhere open, away from the place.
-        Vector3 open = game.Survivor.WorldFeet + new Vector3(120f, 0f, 60f);
-        game.Survivor.PlaceOutside((game.Zone.GroundAt(open.X, open.Z) + Vector3.Up * 0.3f).ToNumerics());
-        for (int i = 0; i < 120; i++) { game.Suit.Vitals.Health = max; yield return 0; }
+        // Somewhere open under the sky (no roof over it).
+        Vector3 start = game.Survivor.WorldFeet;
+        for (int tries = 0; tries < 12 && (tries == 0 || game.Sheltered()); tries++)
+        {
+            Vector3 open = start + new Vector3(120f + tries * 40f, 0f, 60f - tries * 25f);
+            game.Survivor.PlaceOutside((game.Zone.GroundAt(open.X, open.Z) + Vector3.Up * 0.3f).ToNumerics());
+            for (int i = 0; i < 30; i++) { game.Suit.Vitals.Health = max; yield return 0; }
+        }
+        for (int i = 0; i < 90; i++) { game.Suit.Vitals.Health = max; yield return 0; }
         Vector3 feet = game.Survivor.WorldFeet;
         Vector3 Ground(Vector3 at) => game.Zone.GroundAt(at.X, at.Z);
         Species Raider(string prop)

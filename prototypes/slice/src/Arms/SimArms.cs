@@ -161,21 +161,21 @@ public sealed class SimArms
         }
         if ((_drawIn -= dt) > 0f) return;
         _drawIn = 0.5f;
-        DrawAll(Patch.Sim, Patch.View == null ? null : Patch.View.ViewOf);
-        foreach (DeepSite site in Patch.Sites) DrawAll(site.Sim, site.ViewOf);
+        DrawAll(Patch.Sim, Patch.View, null);
+        foreach (DeepSite site in Patch.Sites) DrawAll(site.Sim, null, site);
     }
 
     /// <summary>Hangs each armed body's weapon model on its hand (or mount), once its view is built.</summary>
-    void DrawAll(WildSim sim, Func<Creature, CreatureView> viewOf)
+    void DrawAll(WildSim sim, WildlifeView patchView, DeepSite site)
     {
-        if (sim == null || viewOf == null) return;
+        if (sim == null || patchView == null && site == null) return;
         foreach (Creature c in sim.Creatures)
         {
             if (c.Dead || c.Removed || !Arming.Fights(c.Species)) continue;
             Kit k = KitOf(c);
             if (k == null || k.Clip.Def.Id == Weapons.Fists) continue;
             if (!k.Mounted && !Weapons.DrawnByGame(c.Species.Figure.Prop)) continue;
-            CreatureView v = viewOf(c);
+            CreatureView v = patchView != null ? patchView.ViewOf(c) : site.ViewOf(c);
             if (v == null) continue;
             Node3D on = k.Mounted ? v.Part(c.Species.Figure != null ? "arm1l" : "head") : v.Part("prop");
             if (on == null || on == k.On && k.Model != null && GodotObject.IsInstanceValid(k.Model.Root)) continue;
