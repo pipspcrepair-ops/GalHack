@@ -83,6 +83,13 @@ This is the core engineering piece. It lands first, on its own, before the grid 
 
 Tests for this phase, in `building/tests`: placement in all 24 orientations; refusal on any blocked cell; removal from a filler; damage from a filler; the same results from blueprint round trips; face masks on outer and interior faces; the room seal of a 2×2×1 door.
 
+**Built on `proto/grid` (12 Nov).**
+- **Storage:** `Block.Ox/Oy/Oz` (the filler's offset), `Structure.AnchorOf`, `TryGetBlock` (a cell read as its whole block), `CellsOf`, `CentreOf`. `Structure.Set` writes a block whole from its anchor; clearing or overwriting any of its cells clears all of them. `Blocks()` now lists each block once, at its anchor; `Cells()` lists every occupied cell (space, air, light and ground use it). `Count` is cells, `BlockCount` is blocks.
+- **The size turns with the block:** local cell (x, y, z) is at anchor + R·(x, y, z), from the anchor towards +x, +y, +z (`Footprint.cs`). The build tools put the anchor so the block grows out from the face it's built on (`Footprint.AnchorFor`).
+- **Faces:** the catalogue's masks keep only a cell's outer faces. Air passes between a block's own cells unless it seals all round (then all of it is solid to air, like a cube).
+- **Colliders:** a cell-colliding block (a shut door, a container) marks each of its cells solid, fillers included, so they merge into boxes chunk by chunk; part-colliding blocks add their stretched part boxes from the anchor only.
+- **Proved on real parts given a size** (`MultiCellParts.cs`: today's door as 2×2×1, the container as 2×2×2, the thruster as 1×1×2), in building's `BuildTest` and physics-sandbox's `PhysicsTest` (it collides; a crate rests on the container's top). They aren't in the game's data yet: phase 2 adds sized parts as real items.
+
 ## 3. Block sizes and stats
 
 ### The base block and plating (owner, 12 Nov)
@@ -260,6 +267,8 @@ To do:
 1. Write a stand-on test: the player walks onto, over and off every shape in every one of its 24 orientations, at 1 m cells. Pass means no vertical bounce bigger than a few millimetres over 2 s standing still, and no stuck frames walking across.
 2. Find where the collider and the drawn shape differ. Shaped blocks may collide as a box or a stepped hull while they're drawn as a slope. The stuck guard nudges by `cell × 0.5` (`StructureBridge.cs:439`), which is 0.5 m at 1 m cells. The step-up and ground-snap logic could be fighting on a top that isn't level.
 3. Fix it, then run the same test for NPCs and animals (`NavGrid` headroom, steps).
+
+**A lead found during phase 1:** the shared stuck guard asks the physics bridge whether a point is inside a solid cell (`StructureField.IsSolid` in `physics-sandbox/src/Bridges/StructureBridge.cs`, used by `IsInside`, `Fits`, `Supports` and `TopAt`). It goes through `Structure.IsSolid`, which says every armour block is solid whatever its shape, and every colliding component fills its whole cell. So the top half of a half block's cell, the air over a slope, and the space round a chair's parts all count as solid. A player standing on a half block has their feet in a "solid" cell: the guard pushes them out by half a cell, gravity pulls them back, and they bounce. `TopAt` likewise returns the top of the cell, not of the shape. That matches the owner's "trapped inside a block". The fix is to test points against the block's real shape (its hull or part boxes), not its cell.
 
 **The owner's lead (10 to 11 Nov):** it feels like being trapped inside a block, probably because a floor is a full-cell block in the space the player occupies. **Floors are never thin blocks**: a floor finish is painted onto the face of the block below. Apply this to player builds and to places (place floors and paths are thin plates today, per `Homes.cs`). **Urgent: this is the first job after the grid** (owner, 12 Nov).
 
