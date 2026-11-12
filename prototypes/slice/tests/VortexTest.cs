@@ -14,6 +14,7 @@ namespace Slice.Tests;
 /// world, with dust-devil weather then tornado weather and a moving observer, every natural vortex is followed for its whole
 /// life, first with the thresholds off (how it was), then on. Counts: vortices born, born on ground above the thresholds,
 /// and vortex-seconds touched down on such ground (a grace of 1 s to be broken up).
+/// Pass --mesa for a canyon/mesa world (Arid variant 1).
 /// Run: --headless --fixed-fps 60 --path prototypes/slice res://tests/VortexTest.tscn
 /// </summary>
 public partial class VortexTest : Node
@@ -46,7 +47,7 @@ public partial class VortexTest : Node
 
     IEnumerable<int> Scenarios()
     {
-        _game = new Game.Game { Interactive = false, SkipIntro = true, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), WorldChoice.Tested) };
+        _game = new Game.Game { Interactive = false, SkipIntro = true, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), OS.GetCmdlineUserArgs().Contains("--mesa") ? WorldChoice.Fresh("arid") with { Variant = 1 } : WorldChoice.Tested) };
         AddChild(_game);
         _drive = new Driver(_game);
         foreach (int x in _drive.UntilPlaying()) yield return x;
@@ -103,6 +104,8 @@ public partial class VortexTest : Node
         GD.Print($"BEFORE: {before.Born} vortices born, {before.BornHigh} on ground above the thresholds, {before.StayedHigh} stayed on such ground over 1 s, {before.SecondsHigh:F0} vortex-seconds there");
         GD.Print($"AFTER:  {after.Born} vortices born, {after.BornHigh} on ground above the thresholds, {after.StayedHigh} stayed on such ground over 1 s, {after.SecondsHigh:F0} vortex-seconds there");
         Check(after.Born >= 5, $"enough vortices to judge ({after.Born})");
+        // The rules must thin vortices out over hills and mesas, not abolish them: flat ground still gets its share.
+        Check(after.Born >= 0.25f * before.Born, $"enough vortices still stand on the allowed ground: {after.Born} of the {before.Born} born with the rules off (at least 25%)");
         Check(after.BornHigh == 0 && after.StayedHigh == 0, "none spawned on, or stayed on, ground above the thresholds");
     }
 
