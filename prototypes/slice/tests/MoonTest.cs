@@ -183,14 +183,14 @@ public partial class MoonTest : Node
         var frames = new List<double>();
         bool shown = true, nearestMoon = false;
         string lost = null;
-        int handedOverAt = -1, tick = 0;
+        int handedOverAt = -1, tick = 0, worstAt = 0;
+        double worstMs = 0;
+        _game.Spaceflight.WorstSeamMs = 0;
         float topSpeed = 0f;
         var watch = Stopwatch.StartNew();
         IEnumerable<int> Route()
         {
-            // Round the world first if it stands between: the moon may be over its far side.
-            foreach (Vector3 way in OrbitTest.RoundTheGlobe(orbit, v.Body.Position.ToGodot(), Above()))
-                foreach (int x in _pilot.FlyTo(v, () => way, 200f, 120f)) yield return x;
+            foreach (int x in TowardTheMoon(_pilot, orbit, v)) yield return x;
             foreach (int x in _pilot.FlyTo(v, Above, 30f, 400f)) yield return x;
         }
         IEnumerator<int> fly = Route().GetEnumerator();
@@ -198,6 +198,7 @@ public partial class MoonTest : Node
         {
             tick++;
             frames.Add(probe.LastMs);
+            if (probe.LastMs > worstMs) (worstMs, worstAt) = (probe.LastMs, tick);
             topSpeed = MathF.Max(topSpeed, v.Body.Velocity.Length());
             if (!_game.Spaceflight.MoonInView(out string why) && lost == null) { shown = false; lost = why; }
             nearestMoon |= _game.Spaceflight.FlightLine(v).Contains(moon.Name.ToUpperInvariant());
@@ -209,12 +210,22 @@ public partial class MoonTest : Node
         frames.Sort();
         double p95 = frames.Count == 0 ? 0 : frames[(int)(frames.Count * 0.95)], worst = frames.Count == 0 ? 0 : frames[^1];
         GD.Print($"  frame times on the way: median {(frames.Count == 0 ? 0 : frames[frames.Count / 2]):F1} ms, 95th {p95:F1} ms, worst {worst:F1} ms over {frames.Count} frames (headless, machine shared with other runs)");
+        GD.Print($"  (the seam and skies took at most {_game.Spaceflight.WorstSeamMs:F1} ms of a frame: {_game.Spaceflight.WorstSeamParts}; worst frame at {worstAt / 60f:F0} s)");
         Check(v.Body.Position.ToGodot().DistanceTo(Above()) < 40f, $"flew {start / 1000:F1} km from high orbit to over the moon in {tick / 60f:F0} s of game time at up to {topSpeed:F0} m/s ({v.Body.Position.ToGodot().DistanceTo(Above()):F0} m off the point)");
         Check(handedOverAt > 0 && orbit.Anchor == moon, $"the moon took over as the frame on the way ({handedOverAt / 60f:F0} s out), so its ground waits where you see it");
         Check(shown, $"the moon was in view every frame of the way, its far look handing over to its own globe ({lost ?? "never lost"})");
         Check(nearestMoon, "the readout named the moon as the nearest body as it came near");
         Check(_game.Spaceflight.MoonSurface.Arrived && _game.Spaceflight.MoonSurface.ArriveMs < 16.7, $"its surface arrived ahead of the descent, a piece a frame, the longest {_game.Spaceflight.MoonSurface.ArriveMs:F1} ms ({_game.Spaceflight.MoonSurface.ArriveSteps})");
         Check(p95 < 16.7 && worst < 50, $"the flight keeps the frame budget: 95th percentile {p95:F1} ms (budget 16.7 ms), no hitch (worst {worst:F1} ms)");
+    }
+
+    /// <summary>Out over the world's limb on the moon's side first, if the world stands between: the moon may be over its far side.</summary>
+    internal static IEnumerable<int> TowardTheMoon(Pilot pilot, OrbitZone orbit, Vessel v)
+    {
+        Celestial home = orbit.Home;
+        Vector3 side = home.Centre + (orbit.Moon.Centre - home.Centre).Normalized() * (home.ShellRadius + 2500f);
+        foreach (Vector3 way in OrbitTest.RoundTheGlobe(orbit, v.Body.Position.ToGodot(), side))
+            foreach (int x in pilot.FlyTo(v, () => way, 200f, 120f)) yield return x;
     }
 
     // ---- Down onto it --------------------------------------------------------------------------
