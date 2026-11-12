@@ -14,6 +14,7 @@ public partial class PoiTest
         public readonly Dictionary<string, (float Min, float Max)> Rooms = new();
         public readonly Dictionary<string, (float Min, float Max)> Corridors = new();
         public readonly Dictionary<string, (float W, float D)> Footprints = new();
+        public readonly Dictionary<string, (float Min, float Max)> Clear = new();
         public (float Min, float Max) Corridor = (2, 4);
         public (float Pitch, float Min, float Max) Storey = (4, 3, 4);
 
@@ -32,6 +33,7 @@ public partial class PoiTest
                     case "corridor": r.Corridor = (F(1), F(2)); break;
                     case "storey": r.Storey = (F(1), F(2), F(3)); break;
                     case "footprint": r.Footprints[p[1]] = (F(2), F(3)); break;
+                    case "clear": r.Clear[p[1]] = (F(2), F(3)); break;
                     default:
                         if (p[0].StartsWith("corridor.")) r.Corridors[p[0]["corridor.".Length..]] = (F(1), F(2));
                         break;
@@ -39,6 +41,92 @@ public partial class PoiTest
             }
             return r;
         }
+    }
+
+    /// <summary>One tech level's tallies for the place-patterns checklist (docs/place-patterns.md section 6).</summary>
+    sealed class TechTally
+    {
+        public readonly List<int> Areas = new(), Spans = new();
+        public long RoomFloor, CorridorFloor, Cubes, Slopes, Corners, Thin, Shaped, Dressing, Containers, Lights;
+        public int Places;
+    }
+
+    /// <summary>
+    /// The place-patterns checklist (docs/place-patterns.md, section 6) by tech level, on fresh spawned places: room areas
+    /// and narrowest spans (G3, G4), corridors' share of the floor (G6), shape shares (G9), dressing, containers and lights
+    /// per m2 of room floor (G10 to G12). Printed for every level; held to the bands we already meet or have taken on:
+    /// the narrowest span (3 m and over for 9 rooms in 10), a corridor share of 5 to 45%, and half or so of the
+    /// structure plain cube (30 to 75%).
+    /// </summary>
+    void PatternChecklist()
+    {
+        var rand = new Random();
+        var tallies = new Dictionary<TechLevel, TechTally>();
+        foreach (FamilyDef f in _lib.Families.Where(f => !f.Tags.Contains("city") && !f.Space))
+            for (int i = 0; i < (f.Tags.Contains("grand") ? 1 : 2); i++)
+            {
+                TechLevel tech = f.Techs.Count > 0 ? WorldProfile.Parse(f.Techs[rand.Next(f.Techs.Count)]) : (TechLevel)rand.Next(3);
+                PoiInstance inst;
+                try
+                {
+                    Layout layout = PoiFactory.SpawnLayout(_lib, f, rand.Next(f.Variants.Count), f.Rarity, (ulong)rand.NextInt64(), new LayoutHints(Dirs.Horizontal[rand.Next(4)], tech), out _);
+                    if (layout == null) continue;
+                    inst = PoiFactory.Spawn(_lib, layout, PoiState.Abandoned, (ulong)rand.NextInt64());
+                }
+                catch (Exception) { continue; }
+                if (!tallies.TryGetValue(tech, out var t)) tallies[tech] = t = new TechTally();
+                t.Places++;
+                var nav = inst.Nav();
+                foreach (PlacedModule m in inst.Layout.Modules)
+                {
+                    var floor = m.Cells.Where(c => c.Y == m.Min.Y && nav.StandsOn(c)).ToList();
+                    if (floor.Count == 0) continue;
+                    if (m.Kind == ModuleKind.Corridor) { t.CorridorFloor += floor.Count; continue; }
+                    if (m.Kind is not (ModuleKind.Room or ModuleKind.Hall or ModuleKind.Vault)) continue;
+                    t.RoomFloor += floor.Count;
+                    t.Areas.Add(floor.Count);
+                    var set = floor.ToHashSet();
+                    int Run(Int3 c, Int3 d) { int n = 1; for (Int3 q = c + d; set.Contains(q); q += d) n++; for (Int3 q = c - d; set.Contains(q); q -= d) n++; return n; }
+                    var across = floor.Select(c => Math.Min(Run(c, new Int3(1, 0, 0)), Run(c, new Int3(0, 0, 1)))).OrderBy(w => w).ToList();
+                    t.Spans.Add(across[across.Count / 2]);
+                    foreach (Int3 c in floor)
+                    {
+                        Block b = inst.Blocks.Get(c);
+                        if (b.IsAir || BlockInfo.IsFinish(b.Type)) continue;
+                        if (b.Type is BlockType.Cache or BlockType.Crate or BlockType.Locker or BlockType.Shelf) t.Containers++;
+                        if (b.Role is Role.Prop or Role.Debris or Role.Loot or Role.Story && BlockInfo.Collides(b.Type)) t.Dressing++;
+                    }
+                }
+                t.Lights += inst.Lights.Count;
+                foreach (var (_, b) in inst.Blocks.Blocks())
+                {
+                    if (!BlockInfo.IsStructure(b.Role)) continue;
+                    t.Shaped++;
+                    if (BlockInfo.IsFullCube(b.Type)) t.Cubes++;
+                    else if (BlockInfo.IsSlope(b.Type)) t.Slopes++;
+                    else if (BlockInfo.IsCornerSlope(b.Type)) t.Corners++;
+                    else if (b.Type is BlockType.Pane or BlockType.Rail or BlockType.Pillar or BlockType.Rib or BlockType.Pipe or BlockType.Lattice) t.Thin++;
+                }
+            }
+        bool spansOk = true, shareOk = true, cubeOk = true;
+        foreach (var (tech, t) in tallies.OrderBy(k => k.Key))
+        {
+            t.Areas.Sort();
+            float roomFloor = Math.Max(1, t.RoomFloor);
+            float corridorShare = t.CorridorFloor / (float)Math.Max(1, t.CorridorFloor + t.RoomFloor);
+            float Share(long n) => n / (float)Math.Max(1, t.Shaped);
+            int wide = t.Spans.Count(w => w >= 3);
+            GD.Print($"    {tech} tech, {t.Places} places, {t.Areas.Count} rooms: area p10 {t.Areas[t.Areas.Count / 10]} median {t.Areas[t.Areas.Count / 2]} p90 {t.Areas[t.Areas.Count * 9 / 10]} m2 (G3), " +
+                $"narrowest span 3 m or more {wide * 100 / Math.Max(1, t.Spans.Count)}% (G4), corridors {corridorShare:P0} of the floor (G6), " +
+                $"cube {Share(t.Cubes):P0} slope {Share(t.Slopes):P0} corner {Share(t.Corners):P0} thin {Share(t.Thin):P0} (G9), " +
+                $"dressing {t.Dressing / roomFloor:0.00} and containers {t.Containers * 100f / roomFloor:0.0} per 100 m2, a light per {roomFloor / Math.Max(1, t.Lights):0} m2 (G10-G12)");
+            spansOk &= wide * 10 >= t.Spans.Count * 9;
+            shareOk &= corridorShare is >= 0.05f and <= 0.45f;
+            cubeOk &= Share(t.Cubes) is >= 0.3f and <= 0.75f;
+        }
+        Check(spansOk, "rooms are at least 3 m across at their narrowest, 9 in 10 at every tech level (G4)");
+        Check(shareOk, "corridors take 5 to 45% of the floor at every tech level (G6)");
+        Check(cubeOk, "about half of every place's structure is plain cube, 30 to 75% (G9)");
     }
 
     /// <summary>
@@ -56,6 +144,7 @@ public partial class PoiTest
         var corridors = new List<(string Family, float Width)>();
         var footprints = new Dictionary<string, List<(int W, int D)>>();
         var glazing = new Dictionary<string, float>();
+        var clears = new Dictionary<string, List<int>>();
         foreach (FamilyDef f in _lib.Families.Where(f => !f.Tags.Contains("city") && !f.Space))
         {
             int n = f.Tags.Contains("grand") ? 2 : 4;
@@ -85,6 +174,19 @@ public partial class PoiTest
                     }
                     else if (refs.Rooms.ContainsKey(m.Purpose))
                     {
+                        // Its clear height: floor to the first full block or slope overhead, the room's commonest.
+                        var hs = new Dictionary<int, int>();
+                        foreach (Int3 c in floor)
+                        {
+                            int h = 0;
+                            while (h < 40 && layout.Blocks.InBounds(c + Int3.Up * h) && !(layout.Blocks.Get(c + Int3.Up * h) is var cb && (cb.IsAir ? nav.IsRock(c + Int3.Up * h) : BlockInfo.IsFullCube(cb.Type) || BlockInfo.IsSlope(cb.Type)))) h++;
+                            if (h < 40 && layout.Blocks.InBounds(c + Int3.Up * h)) hs[h] = hs.GetValueOrDefault(h) + 1;
+                        }
+                        if (hs.Count > 0)
+                        {
+                            if (!clears.TryGetValue(m.Purpose, out var cl)) clears[m.Purpose] = cl = new List<int>();
+                            cl.Add(hs.MaxBy(kv => kv.Value).Key);
+                        }
                         if (!areas.TryGetValue(m.Purpose, out var list)) areas[m.Purpose] = list = new List<int>();
                         list.Add(floor.Count);
                     }
@@ -124,6 +226,17 @@ public partial class PoiTest
             GD.Print($"    {(!judged ? "  (few) " : ok ? "  " : "! ")}{id,-14} {list.Count,4} rooms, area p10 {list[list.Count / 10]} median {list[list.Count / 2]} p90 {list[list.Count * 9 / 10]} m2 against {min:0}-{max:0} ({inside * 100 / list.Count}% in range)");
         }
         Check(offPurposes == 0, $"rooms are sized as their purpose is in the references: {purposes - offPurposes} of {purposes} purposes mostly in range");
+
+        // Clear heights by purpose: ordinary rooms 3 to 4 m; the tall purposes are printed against theirs.
+        int ordinary = 0, ordinaryIn = 0;
+        foreach (var (id, list) in clears.OrderBy(k => k.Key))
+        {
+            var (lo, hi) = refs.Clear.TryGetValue(id, out var r) ? r : (3f, 4f);
+            int inside = list.Count(h => h >= lo && h <= hi);
+            if (!refs.Clear.ContainsKey(id)) { ordinary += list.Count; ordinaryIn += inside; }
+            else GD.Print($"    clear height {id}: {string.Join(" ", list.GroupBy(h => h).OrderBy(g => g.Key).Select(g => $"{g.Key} m x{g.Count()}"))} against {lo:0}-{hi:0} m");
+        }
+        Check(ordinaryIn * 10 >= ordinary * 9, $"ordinary rooms are 3 to 4 m clear: {ordinaryIn} of {ordinary}");
 
         // Corridors.
         bool Wide((string Family, float Width) c)

@@ -71,6 +71,23 @@ corridor.hospital 3 4
 corridor.underground 2 12
 door 1 2
 
+# Clear height under the ceiling by purpose, m (owner, 13 Nov): ordinary rooms 3 to 4, 4 preferred; tall where a real
+# building's room of that purpose is tall (lobbies, halls of worship, stores and works halls, plant, markets, docks).
+#   clear <id> <min> <max>; a purpose not listed is ordinary (3 to 4)
+clear lobby 4 6
+clear chapel 5 12
+clear warehouse 5 12
+clear market-hall 5 12
+clear loading-dock 5 8
+clear boiler-house 5 10
+clear pump-hall 5 15
+clear reactor 6 20
+clear generator 4 8
+clear hydroponics 4 8
+clear cryo-bay 4 8
+clear workshop 4 6
+clear mess 3 5
+
 # Storeys: floor to floor 4 m (3.9 to 4.2 for offices, 4 m in Empyrion's bases and capital vessels), 3 to 4 m clear
 storey 4 3 4
 
