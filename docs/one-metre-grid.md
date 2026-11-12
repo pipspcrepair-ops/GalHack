@@ -247,6 +247,8 @@ To do:
 2. Find where the collider and the drawn shape differ. Shaped blocks may collide as a box or a stepped hull while they're drawn as a slope. The stuck guard nudges by `cell × 0.5` (`StructureBridge.cs:439`), which is 0.5 m at 1 m cells. The step-up and ground-snap logic could be fighting on a top that isn't level.
 3. Fix it, then run the same test for NPCs and animals (`NavGrid` headroom, steps).
 
+**The owner's lead (10 to 11 Nov):** it feels like being trapped inside a block, probably because a floor is a full-cell block in the space the player occupies. **Floors are never thin blocks**: a floor finish is painted onto the face of the block below. Apply this to player builds and to places (place floors and paths are thin plates today, per `Homes.cs`). **Urgent: this is the first job after the grid** (owner, 12 Nov).
+
 ## 9. Code to change
 
 These are grouped by phase. Line numbers are from `main` on 12 Nov and will have moved on the test build.
@@ -302,11 +304,11 @@ These came up while planning the grid. Where they conflict with anything above, 
 
 **Cores and structures**
 - One core, a simple block with **no tiers**.
-- You can only place blocks on a structure with a core you own. You can place a core, build, then remove it. You can't place a core on a structure that already has one.
+- You can only place blocks on a structure with a core you own, or that your faction owns. You can place a core, build, then remove it. You can't place a core on a structure that already has one.
 - **Claiming:** a core can go on any coreless building or wreck, and it becomes yours as it stands.
 - **Welding:** a coreless structure welds onto a ship and becomes part of it. Two cored structures can't be welded together. A welded building lifts off if there's enough lift, cutting the ground free.
 - **Losing the core:** the structure becomes a coreless wreck that anyone can claim.
-- **Sections cut off from the core** become coreless wrecks. Main already does this (`Connectivity.cs`), so keep it working with blocks that span several cells.
+- **Sections cut off from the core** become coreless wrecks. Main already does this (`Connectivity.cs`), so keep it working with blocks that span several cells. **Nothing floats on a planet or in a cabin space** (owner, 12 Nov): there a cut-off piece falls or collapses. In space it may drift.
 - **Co-op:** all players are one faction (`DESIGN.md`), so everyone shares every structure.
 
 **Progression**
@@ -315,7 +317,7 @@ These came up while planning the grid. Where they conflict with anything above, 
 
 **Power** (see also [section 1](#1-one-grid))
 - No CPU and no device caps. Power draw is the limit.
-- Generators burn fuel, and fuel has to be gathered. There are three fuels: **generator fuel, warp fuel and hyperspace fuel.** Empyrion's generator fuels, for reference: bio fuel (from plant fibres, the basic one), promethium packs, hydrogen and fusion cells. Its warp fuel is pentaxid.
+- Generators burn fuel, and fuel has to be gathered. There are three kinds of fuel: **generator fuel, warp fuel and hyperspace fuel.** **Generator fuel comes in several options, following Empyrion's generator fuel options** (owner, 12 Nov), each its own item with its own energy per unit and source **(check)**. Empyrion's generator fuels, for reference: bio fuel (from plant fibres, the basic one), promethium packs, hydrogen and fusion cells. Its warp fuel is pentaxid.
 - **No water devices.** Air comes from sealed rooms and the life support block, so there is no water-to-air chain and no pump placed in water (Empyrion's water and O2 devices are not carried over). Ice keeps a place as an ingredient in some fuels.
 - **Bases are cheaper to run** because they don't power hover plates or thrusters. They still pay for life support, forcefields, fridges, fabricators and every other powered device.
 - **Capacitors** form the shared bank. They **leak** (a bank slowly loses charge) and are **volatile** (they explode when destroyed), so stacking them doesn't pay.
@@ -334,9 +336,9 @@ These came up while planning the grid. Where they conflict with anything above, 
 
 **Welding a loose piece back on.** Aim the tool at a coreless piece touching or resting on your structure and weld. The piece snaps onto your structure's grid at the nearest aligned spot, rounding its position and rotation, so there's no lining it up by hand. The piece moves, never your structure, so Base mode doesn't matter. If it can't snap cleanly (tilted too far, too far off the grid, or the spot is blocked), the tool says why, and you dismantle and re-place the blocks instead.
 
-**Tiered devices** (bigger, heavier and hungrier, but more efficient than lower tiers in the same space): thrusters, generators, storage containers, fuel tanks, landing and docking pads, warp drive, hyperdrive, fabricators, capacitors, shield generators, hover plates, gyros or RCS, solar panels, drill modules (T1 mechanical, T2 laser turret, T3 laser turret), and the comms array.
+**Tiered devices** (bigger, heavier and hungrier, but more efficient than lower tiers in the same space): thrusters, generators, storage containers, fuel tanks, landing and docking pads, warp drive, hyperdrive, fabricators, capacitors, shield generators, forcefield emitters, hover plates, gyros or RCS, solar panels, drill modules (T1 mechanical, T2 laser turret, T3 laser turret), and the comms array.
 
-**Fixed devices:** cloning bay, medical bay, command chairs, gravity generator, life support block, refrigeration, harvester module, scanners (specialist types such as deep-space scanners later), teleporter, spotlights, core, doors, forcefield emitters, grav lifts, ladders, lights.
+**Fixed devices:** cloning bay, medical bay, command chairs, gravity generator, life support block, refrigeration, harvester module, scanners (specialist types such as deep-space scanners later), teleporter, spotlights, core, doors, grav lifts, ladders, lights.
 
 **Parts**
 - **Doors and landing gear:** one item each. The size or length is picked from the block's variant list, the same way you pick an armour shape. Cost and hit points scale with the size.
