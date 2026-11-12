@@ -51,7 +51,7 @@ public static partial class PoiFauna
         }
         if (!active) Floor(poi, pop, fauna, theme, rng, infested, walkable, pr);
         if (!active && !empty) Guarded(poi, pop, fauna, theme, rng, infested);
-        if (!active && poi.Armed != null && !poi.Husks) Clash(poi, pop, fauna, theme, rng);
+        if (!active && !empty && poi.Armed != null && !poi.Husks) Clash(poi, pop, fauna, theme, rng);
         Quiet(poi, pop, rng);
         // Last: the growth's beasts, whatever else holds it (never thinned by the quiet or the caps).
         if (poi.Hollows.Count > 0) Hollow(poi, pop, fauna, theme, rng, walkable);
