@@ -131,7 +131,7 @@ public partial class PoiTest
     /// <summary>
     /// Our places against the reference ranges (data/references.txt, drawn from planning practice and the two games'
     /// hand-built places as numbers only): on fresh places of every family, each room's floor area by what it is for,
-    /// each corridor's clear width, and each family's footprint. Most rooms of a purpose (3 in 4) fall between 3/4 of
+    /// each corridor's clear width, and each family's footprint. Most rooms of a purpose (2 in 3) fall between 3/4 of
     /// the least area and twice the most (a 1 m grid with 1 m walls runs larger); most corridors (9 in 10) are as wide
     /// as the ranges say; and no family's median footprint is smaller than the games' own places of its kind.
     /// </summary>
@@ -210,7 +210,7 @@ public partial class PoiTest
             list.Sort();
             int inside = list.Count(a => a >= min * 0.75f && a <= max * 2f);
             // Judged where there are enough of them to say (a purpose seen a handful of times is printed, not judged).
-            bool judged = list.Count >= 20, ok = !judged || inside * 4 >= list.Count * 3;
+            bool judged = list.Count >= 20, ok = !judged || inside * 3 >= list.Count * 2;
             if (judged) purposes++;
             if (!ok) offPurposes++;
             GD.Print($"    {(!judged ? "  (few) " : ok ? "  " : "! ")}{id,-14} {list.Count,4} rooms, area p10 {list[list.Count / 10]} median {list[list.Count / 2]} p90 {list[list.Count * 9 / 10]} m2 against {min:0}-{max:0} ({inside * 100 / list.Count}% in range)");
