@@ -83,25 +83,36 @@ public partial class SeatedTest : Node
         }
     }
 
-    /// <summary>A floor with the chair on it, turned this many quarter turns, stood clear of the ground; seated in it, the checks.</summary>
-    IEnumerable<int> Sit(S.BlockType type, Vector3 site, int turns)
+    /// <summary>The chair's anchor on its test floor.</summary>
+    public static readonly S.Int3 Anchor = new(0, 1, 0);
+
+    /// <summary>A floor of base blocks round a core with the chair on it, turned this many quarter turns, stood clear of the ground near a site (also the screenshots').</summary>
+    public static Vessel Floor(Game.Game game, S.BlockType type, Vector3 site, int turns)
     {
-        S.Catalogue cat = _game.Zone.Data.Catalogue;
+        S.Catalogue cat = game.Zone.Data.Catalogue;
         var s = new S.Structure(cat) { Name = $"Seat {type.Id}" };
         S.BlockType floor = cat.Type("base-block");
         for (int x = -6; x <= 6; x++)
             for (int z = -6; z <= 6; z++) s.Set(new S.Int3(x, 0, z), S.Building.Make(s, x == -6 && z == -6 ? cat.CoreType : floor));
-        var anchor = new S.Int3(0, 1, 0);
-        S.Block block = S.Building.Make(s, type, null, S.Orientations.Rotate(S.Orientations.Identity, 1, turns));
-        s.Set(anchor, block);
+        s.Set(Anchor, S.Building.Make(s, type, null, S.Orientations.Rotate(S.Orientations.Identity, 1, turns)));
         s.DirtyChunks.Clear();
-        float cell = s.Grid.CellSize, highest = float.MinValue;
+        float highest = float.MinValue;
         for (int i = -8; i <= 8; i += 2)
-            for (int k = -8; k <= 8; k += 2) highest = MathF.Max(highest, _game.Zone.GroundAt(site.X + i, site.Z + k).Y);
+            for (int k = -8; k <= 8; k += 2) highest = MathF.Max(highest, game.Zone.GroundAt(site.X + i, site.Z + k).Y);
         site.Y = highest + 2f;
-        _game.Survivor.PlaceOutside((site + new Vector3(0f, 1f, -10f)).ToNumerics());
+        return Vessel.SpawnBase(game.Zone, s, (site + Vector3.Up * (s.Grid.CellSize * 0.5f + 0.05f)).ToNumerics(), 0f);
+    }
+
+    /// <summary>Seated in a chair on its own floor, turned this many quarter turns: the checks.</summary>
+    IEnumerable<int> Sit(S.BlockType type, Vector3 site, int turns)
+    {
+        _game.Survivor.PlaceOutside((site + new Vector3(0f, 3f, -10f)).ToNumerics());
         foreach (int x in _drive.Wait(20)) yield return x;
-        Vessel v = Vessel.SpawnBase(_game.Zone, s, (site + Vector3.Up * (cell * 0.5f + 0.05f)).ToNumerics(), 0f);
+        Vessel v = Floor(_game, type, site, turns);
+        S.Structure s = v.Structure;
+        S.Int3 anchor = Anchor;
+        S.Block block = s.Get(anchor);
+        float cell = s.Grid.CellSize;
         foreach (int x in _drive.Wait(20)) yield return x;
         v.TakeChair(anchor);
         _game.ThirdPerson = false;
@@ -148,6 +159,9 @@ public partial class SeatedTest : Node
         float sole = feet.SelectMany(Corners).Min(Height) + v.SeatDrop;
         Check(feet.Count == 2 && MathF.Abs(sole) < Near, $"its feet are on the chair's floor {v.SeatDrop:F2} m under the seat ({sole * 100f:F1} cm)");
         Vector3 eye = v.DrawTransform * v.Eye.ToGodot();
+        // Over the chest's front, not behind it: the padded suit's chest would hide the lap from an eye over the spine.
+        float ahead = (hips - toLocal * cam.GlobalPosition).Dot(chair.Z);
+        Check(ahead > 0.1f, $"the eye stands {ahead:F2} m ahead of the hips, so the view down passes the chest to the lap");
         Check(cam.GlobalPosition.DistanceTo(eye) < Near, $"the camera is at the chair's eye point ({cam.GlobalPosition.DistanceTo(eye) * 100f:F1} cm off)");
 
         bool Inside(Vector3 p, float margin) => Mathf.Abs(p.X - centre.X) <= half.X + margin && Mathf.Abs(p.Y - centre.Y) <= half.Y + margin && Mathf.Abs(p.Z - centre.Z) <= half.Z + margin;
