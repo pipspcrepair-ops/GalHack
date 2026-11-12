@@ -29,6 +29,8 @@ public static class Settle
         if (Doors(inst) is var lintels && lintels.Count > 0 && lintels.Any(c => !g.Get(c).IsAir))
             foreach (Int3 p in Structure.Floating(g, layout.Occupied, layout.Extras.InSpace ? LayoutCheck.StationAnchors(layout) : null, layout.Extras.Plain.Count > 0)) g.Set(p, Block.Air);
         var nav = inst.Nav();
+        // A lift's shaft is a way, not a floor: what would fall down one goes instead.
+        var shafts = layout.Extras.Lifts.SelectMany(l => l.Footprint).Select(c => (c.X, c.Z)).ToHashSet();
         // Bottom up, so a stack settles from its foot.
         // (Walls, floors and roofs are most of a place and never move: only what may is listed.)
         foreach (var (p, b) in g.Blocks().Where(x => PlaceAudit.Rests(x.Block.Type) || BlockInfo.IsFinish(x.Block.Type) || Loose(x.Block)).ToList())
@@ -55,7 +57,7 @@ public static class Settle
                 fall++;
             }
             g.Set(p, Block.Air);
-            if (fall < MaxDrop && to != p && Open(g, nav, to) && Holds(g, nav, to + Int3.Down)) g.Set(to, b);
+            if (fall < MaxDrop && to != p && Open(g, nav, to) && Holds(g, nav, to + Int3.Down) && !shafts.Contains((to.X, to.Z))) g.Set(to, b);
         }
     }
 
