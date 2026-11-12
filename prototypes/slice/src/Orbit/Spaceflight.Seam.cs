@@ -450,6 +450,8 @@ public partial class Spaceflight
             FogDensity = SurfaceShown ? env.FogDensity : 0f,
             FogColor = airFar,
             Rim = Smooth((y - cap) / 600f) * share,
+            TrueDepth = onGlobe >= 1f,
+            TrueCentre = o.Centre,
         });
 
         // Land and sea both end with the land's own mesh, and the sheet goes on from there. A flat sea

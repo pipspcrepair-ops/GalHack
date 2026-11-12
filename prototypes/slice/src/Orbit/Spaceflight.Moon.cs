@@ -225,6 +225,8 @@ public partial class Spaceflight
             FogDensity = 0f,
             FogColor = Colors.Black,
             Rim = air ? 1f : 0f,
+            TrueDepth = true,
+            TrueCentre = c.Centre,
         });
     }
 }
