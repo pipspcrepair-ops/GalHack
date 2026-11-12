@@ -23,105 +23,49 @@ namespace Slice.Tests;
 /// - every place holds what its rolled occupant says (the occupant guides);
 /// - people in the rooms of their jobs, a guard on the lookout.
 ///
-/// Run: G:\GalHack\.tools\queue\test-q.ps1 -Project prototypes/slice -Scene res://tests/SpawnTest.tscn
+/// OccupantTest --spawns runs only these.
 /// </summary>
-public partial class SpawnTest : Node
+public partial class OccupantTest
 {
-    const int WatchdogMinutes = 12;
-    int _failures, _passes;
-    readonly Stopwatch _clock = Stopwatch.StartNew();
-    readonly System.Random _rng = new();
-    PoiLibrary _lib;
-    WildlifeData _data;
-
-    public override void _Ready()
-    {
-        new System.Threading.Thread(() =>
-        {
-            System.Threading.Thread.Sleep(TimeSpan.FromMinutes(WatchdogMinutes));
-            Console.Error.WriteLine($"FAIL  the run took over {WatchdogMinutes} minutes: watchdog");
-            System.Environment.Exit(1);
-        }) { IsBackground = true }.Start();
-        try
-        {
-            _lib = WorldChoice.Library;
-            _data = DataFiles.LoadWildlife();
-            Encounters();
-            Solids();
-            Hollows();
-            Robots_();
-            Guides();
-            People();
-        }
-        catch (Exception e) { Check(false, $"the test threw: {e}"); }
-        GD.Print(_failures == 0 ? $"ALL PASSED ({_passes} checks in {_clock.Elapsed.TotalSeconds:F1} s)" : $"{_failures} CHECK(S) FAILED ({_passes} passed)");
-        Shutdown.Quit(this, _failures == 0 ? 0 : 1);
-    }
-
-    void Check(bool ok, string what)
-    {
-        if (ok) _passes++;
-        else _failures++;
-        GD.Print($"  {(ok ? "ok   " : "FAIL ")} {what}");
-    }
-
-    static readonly string[] Archetypes = { "Temperate", "Arid", "Ice", "Lava", "Alien" };
-    ulong Seed() => (ulong)_rng.NextInt64();
-
-    WorldRoll Roll(ulong seed, string arch, WorldRoll.Given given = null)
-    {
-        WorldProfile profile = WorldProfile.Roll(seed, arch, false);
-        if (!profile.Inhabited) profile = WorldProfile.Roll(seed ^ 0x5EED, arch, true);
-        return WorldRoll.Roll(_lib, seed, arch, profile, false, given, (float)_rng.NextDouble());
-    }
-
-    /// <summary>A fresh world's life, its story and eras from its roll (eras forced where given).</summary>
-    WorldLife Life(out WorldRoll roll, string arch = "Temperate", WorldRoll.Given given = null, int? before = null, int? now = null)
+    /// <summary>A fresh world's life and roll (eras forced where given).</summary>
+    WorldLife Fresh(out WorldRoll roll, string arch = "Temperate", WorldRoll.Given given = null, int? before = null, int? now = null)
     {
         ulong seed = Seed();
         roll = Roll(seed, arch, given);
-        WorldReading r = WorldReading.Of(roll);
-        var w = new WorldConditions { Seed = seed, Alienness = 0.25f, Coreward = Math.Max(0f, roll.Depth), Bloom = r.HollowWorld, Stock = r.Stock, Working = r.Working, Ferals = r.Ferals, Predators = r.Predators, Density = r.Density, Mutagen = r.Mutagen };
-        WildlifePatch.Story(w, roll, WorldProfile.Roll(seed, arch, false), r);
+        WorldConditions w = Conditions(roll, seed);
+        WildlifePatch.Story(w, roll, WorldProfile.Roll(seed, arch, false), WorldReading.Of(roll));
         if (before is int b) w.Before = b;
         if (now is int n) w.Now = n;
         return Bestiary.Roll(_data, w);
     }
-
-    List<FamilyDef> Held() => _lib.Families.Where(f => OccupancyLayer.Applies(f, PoiState.Abandoned)).ToList();
 
     PoiInstance Place(FamilyDef f, PoiState state, OccupancyRoll occ = null) =>
         PoiFactory.Spawn(_lib, PoiFactory.BuildLayout(_lib, f, 0, f.Rarity, Seed()), state, Seed(), null, occ);
 
     static PlaceMemory Memory(PoiInstance inst) => new(new PoiSite { Instance = inst, Family = inst.Family, Name = inst.Family.Id });
 
-    static PoiPlan PlanOf(PlaceMemory m, PlaceFauna.Deep deep, out PoiPopulation pop)
+    void PlacementChecks()
     {
-        pop = PlaceFauna.Plan(m, deep).Population;
-        // The plan's rooms again (the population keeps only its spawns): hops and depths by room.
-        var plan = new PoiPlan();
-        foreach (PlacedModule mod in m.Inst.Layout.Modules)
-            plan.Rooms.Add(new PoiRoom { Index = mod.Index, Depth = Math.Max(0, -mod.Storey), Kind = mod.Kind == ModuleKind.Entrance ? RoomKind.Entrance : mod.Kind == ModuleKind.Corridor ? RoomKind.Corridor : RoomKind.Room });
-        foreach (Link l in m.Inst.Layout.Links)
-        {
-            plan.Rooms.Find(r => r.Index == l.A)?.Links.Add(l.B);
-            plan.Rooms.Find(r => r.Index == l.B)?.Links.Add(l.A);
-        }
-        return plan;
+        Encounters();
+        Solids();
+        Hollows();
+        Robots_();
+        Guides();
+        People();
     }
 
     /// <summary>Encounters by depth, the floor by state, the quiet way in and quiet rooms.</summary>
     void Encounters()
     {
         GD.Print("-- encounters by depth --");
-        var families = Held();
+        var families = Applicable();
         var under = families.Where(f => f.Tags.Contains("underground")).ToList();
         int places = 0, silent = 0, withSomething = 0, levels = 0, levelsHeld = 0, quietOk = 0, quietOf = 0, gateLoud = 0, clashes = 0, guardedOf = 0, guarded = 0;
         float nearT = 0, nearR = 0, groundT = 0, groundR = 0, deepT = 0, deepR = 0, floor = 0, threats = 0;
         var byState = new Dictionary<string, (int Places, int Threats, int Vermin)>();
         for (int w = 0; w < 10; w++)
         {
-            WorldLife life = Life(out _, Archetypes[_rng.Next(Archetypes.Length)]);
+            WorldLife life = Fresh(out _, Archetypes[_rng.Next(Archetypes.Length)]);
             var deep = new PlaceFauna.Deep(life, null, (float)_rng.NextDouble());
             for (int i = 0; i < 14; i++)
             {
@@ -129,7 +73,9 @@ public partial class SpawnTest : Node
                 PoiState state = _rng.Next(3) switch { 0 => PoiState.Ruined, _ => PoiState.Abandoned };
                 PoiInstance inst = Place(f, state, i % 3 == 0 ? new OccupancyRoll(Occupant.Empty) : null);
                 PlaceMemory m = Memory(inst);
-                PoiPlan plan = PlanOf(m, deep, out PoiPopulation pop);
+                PlaceFauna fauna = PlaceFauna.Plan(m, deep);
+                PoiPopulation pop = fauna.Population;
+                PoiPlan plan = fauna.Rooms;
                 places++;
                 string key = $"{state}{(inst.Occupancy != null ? " (nobody holds it)" : "")}";
                 var spawns = pop.Silent ? new List<PoiSpawn>() : pop.Spawns;
@@ -192,13 +138,13 @@ public partial class SpawnTest : Node
     void Solids()
     {
         GD.Print("-- fair spawning --");
-        var families = Held().Where(f => f.Tags.Contains("underground") || _rng.Next(3) == 0).ToList();
+        var families = Applicable().Where(f => f.Tags.Contains("underground") || _rng.Next(3) == 0).ToList();
         Decor decor = Decor.Shared;
         int made = 0, inside = 0, dropped = 0, seen = 0, places = 0, fairMade = 0, waited = 0, left = 0;
         string example = "", seenExample = "";
         for (int w = 0; w < 3; w++)
         {
-            WorldLife life = Life(out _);
+            WorldLife life = Fresh(out _);
             var deep = new PlaceFauna.Deep(life, null, 1f);
             for (int i = 0; i < 6; i++)
             {
@@ -259,7 +205,7 @@ public partial class SpawnTest : Node
         {
             var given = new WorldRoll.Given();
             if (w % 2 == 0) given.Set(LayerKind.Flora, "hollow_overrun");
-            WorldLife life = Life(out _, Archetypes[_rng.Next(Archetypes.Length)], given);
+            WorldLife life = Fresh(out _, Archetypes[_rng.Next(Archetypes.Length)], given);
             var deep = new PlaceFauna.Deep(life, null, (float)_rng.NextDouble());
             for (int i = 0; i < 10; i++)
             {
@@ -288,14 +234,14 @@ public partial class SpawnTest : Node
     {
         GD.Print("-- robots and the tech era --");
         int lowWorlds = 0, lowClean = 0, techWorlds = 0, clockwork = 0, techMachines = 0;
-        var families = Held();
+        var families = Applicable();
         string bad = "";
         for (int w = 0; w < 16; w++)
         {
             bool low = w % 2 == 0;
             var given = new WorldRoll.Given();
             if (w % 4 < 2) given.Set(LayerKind.Fall, "machine_uprising");
-            WorldLife life = Life(out _, Archetypes[_rng.Next(Archetypes.Length)], given, low ? 0 : _rng.Next(0, 3), low ? 0 : 2);
+            WorldLife life = Fresh(out _, Archetypes[_rng.Next(Archetypes.Length)], given, low ? 0 : _rng.Next(0, 3), low ? 0 : 2);
             var deep = new PlaceFauna.Deep(life, null, 1f);
             var all = new List<Species>(life.Fauna.Species);
             all.AddRange(life.Machines);
@@ -330,13 +276,13 @@ public partial class SpawnTest : Node
     void Guides()
     {
         GD.Print("-- the occupant guides --");
-        var families = Held();
+        var families = Applicable();
         var fails = new Dictionary<string, int>();
         var counts = new Dictionary<string, int>();
         string example = "";
         for (int w = 0; w < 12; w++)
         {
-            WorldLife life = Life(out WorldRoll roll, Archetypes[_rng.Next(Archetypes.Length)]);
+            WorldLife life = Fresh(out WorldRoll roll, Archetypes[_rng.Next(Archetypes.Length)]);
             if (roll.Occupancy.Count == 0) continue;
             var deep = new PlaceFauna.Deep(life, null, (float)_rng.NextDouble());
             for (int i = 0; i < 20; i++)
@@ -383,7 +329,7 @@ public partial class SpawnTest : Node
         int towns = 0, eligible = 0, atWork = 0, lookouts = 0, twoGuards = 0;
         for (int w = 0; w < 3; w++)
         {
-            WorldLife life = Life(out _);
+            WorldLife life = Fresh(out _);
             foreach (FamilyDef f in settled.OrderBy(_ => _rng.Next()).Take(6))
             {
                 PoiInstance inst = Place(f, PoiState.Active);

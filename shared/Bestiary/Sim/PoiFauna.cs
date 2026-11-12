@@ -244,8 +244,8 @@ public static partial class PoiFauna
         // Whoever holds a place is there: only a place nobody holds (or nobody but people) may be empty and silent.
         bool held = holder is PlaceHolder.Nesters or PlaceHolder.Beasts or PlaceHolder.Hollows or PlaceHolder.Machines;
         string state = holder is PlaceHolder.People or PlaceHolder.Machines ? nameof(PlaceState.Active) : poi.State.ToString();
-        // Aliveness follows the world: a living world's places are lived in by something; a barren one's may be silent.
-        if (!poi.Husks && !held && poi.Hollows.Count == 0 && rng.Chance(pr.Silent.GetValueOrDefault(state, 0.25f) * Mathf.Lerp(0.5f, 0.1f, Math.Clamp(poi.Livable, 0f, 1f))))
+        // Aliveness follows the world: only a barren world's places may be silent; elsewhere every place has something.
+        if (!poi.Husks && !held && poi.Hollows.Count == 0 && rng.Chance(pr.Silent.GetValueOrDefault(state, 0.25f) * Math.Clamp(1f - poi.Livable / 0.35f, 0f, 1f)))
         {
             pop.Silent = true;
             pop.Note = "empty and silent";

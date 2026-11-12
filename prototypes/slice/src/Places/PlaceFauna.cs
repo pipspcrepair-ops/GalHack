@@ -58,6 +58,8 @@ public sealed class PlaceFauna
     }
 
     public PoiPopulation Population;
+    /// <summary>The rooms the population was planned over (tests read depths and hops off it).</summary>
+    public PoiPlan Rooms;
     public WildSim Sim;
     public bool Silent => Population == null || Population.Silent || Population.Spawns.Count == 0 && Population.Masses.Count == 0;
     DeepSite _site;
@@ -147,7 +149,7 @@ public sealed class PlaceFauna
         }
         PoiPopulation pop;
         lock (deep.Lock) pop = PoiFauna.Populate(plan, deep.Fauna, deep.Data.Deep);
-        return new PlaceFauna { Population = pop };
+        return new PlaceFauna { Population = pop, Rooms = plan };
     }
 
     static bool Has(OccupancyRoll o, Occupant who) => o.Main == who || o.Second == who || o.Trace == who;
