@@ -176,47 +176,14 @@ public partial class OrbitTest : Node
     IEnumerable<int> BuildSkiff()
     {
         GD.Print("-- the Skiff, built by hand --");
-        foreach (int x in new Playthrough(_game).MakeTool()) yield return x; // you wake empty-handed: the tool is made first, for what the boarding wants of it
-        // SETUP SHORTCUT (printed): the Skiff's parts and the Big Core handed over, the tech tree
-        // opened. The real-player test makes and earns all of it; this test is about orbit.
-        foreach (var (item, n) in _game.Builder.TotalCost(_game.StarterPlan)) _game.Pack.Add(item, n);
-        _game.Pack.Add("big-core", 1);
-        _game.Progress.Creative = true;
-        GD.Print($"  (setup: handed over the Skiff's parts and the Big Core, and opened the tech tree)");
-        _game.Pack.Grid.SetBlock(3, PlayerInventory.BlueprintBlock);
-        Vector3 pad = default;
+        _game.Pack.Add("big-core", 1); // for claiming a wreck
         Vessel skiff = null;
-        // As the staging does: a walk the ground blocks (a wall, a gully) leaves you too far off, so a few pads farther out are tried.
-        for (int attempt = 0; attempt < 3 && skiff == null; attempt++)
-        {
-            pad = new Playthrough(_game).FlatSpot(_game.Start, 18f + attempt * 14f, span: 10f); // room for you to stand off it and see it
-            Vector3 stand = pad + (pad - _game.Start).Normalized() * 7f;
-            foreach (int x in _drive.WalkTo(new Vector3(stand.X, 0, stand.Z), 1.5f)) yield return x;
-            if (_game.Pack.Selected != 3) foreach (int x in _drive.Tap(Key.Key4)) yield return x;
-            foreach (int x in _drive.LookAt(pad, 6)) yield return x;
-            // The ground's collision may still be coming in where you look: the ghost shows once it can go down.
-            for (int i = 0; i < 300 && !_game.Builder.PlanShown; i++)
-                foreach (int x in _drive.LookAt(pad, 1)) yield return x;
-            foreach (int x in _drive.Click()) yield return x;
-            skiff = _game.Builder.Underway;
-            if (skiff == null) GD.Print($"  (the blueprint set nothing down at {pad}, feet {_game.Survivor.WorldFeet}: {_game.Builder.Verdict})");
-        }
+        foreach (int x in _pilot.BuildSkiff(s => skiff = s)) yield return x;
         if (skiff == null)
         {
-            Fail($"the blueprint projector set nothing down (the tool says: {_game.Builder.Verdict}; shown {_game.Builder.PlanShown}, plan {_game.Builder.Plan != null}; pad {pad}, feet {_game.Survivor.WorldFeet}, slot {_game.Pack.Selected}, in hand {_game.Pack.InHand}, wish yaw {_game.Survivor.Yaw:F2})");
+            Fail($"the blueprint projector set nothing down (the tool says: {_game.Builder.Verdict})");
             yield break;
         }
-        int stalls = 0;
-        while (_game.Builder.Underway == skiff && stalls < 240)
-        {
-            int before = skiff.Structure.Count;
-            _drive.Face(skiff.Body.Position.ToGodot());
-            _game.Controls.Primary = true;
-            yield return 0;
-            stalls = skiff.Structure.Count > before ? 0 : stalls + 1;
-        }
-        _game.Controls.Primary = false;
-        foreach (int x in _drive.Wait(5)) yield return x;
         Check(skiff.Structure.Count == _game.StarterPlan.Count, $"the Skiff is built block by block: {skiff.Structure.Count} of {_game.StarterPlan.Count}");
         _skiff = skiff;
     }
@@ -692,7 +659,7 @@ public partial class OrbitTest : Node
 
     Vector3 FlatSpot(Vector3 near, float distance) => FlatSpot(_game.Zone, near, distance);
 
-    static Vector3 FlatSpot(SurfaceZone zone, Vector3 near, float distance)
+    internal static Vector3 FlatSpot(SurfaceZone zone, Vector3 near, float distance)
     {
         for (int i = 0; i < 64; i++)
         {

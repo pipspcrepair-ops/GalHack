@@ -41,16 +41,7 @@ public sealed partial class Staging
         Hurry(3);
         _game.Controls.Hold(Key.Ctrl);
         for (int i = 0; i < 60 * 90 && _game.InOrbit; i++) yield return 0;
-        for (int i = 0; i < 60 * 90 && !v.Controller.Frozen; i++)
-        {
-            float agl = v.AboveGround, vy = v.Body.Velocity.Y;
-            float wanted = agl > 260f ? -50f : agl > 70f ? -16f : agl > 25f ? -6f : agl > 6f ? -2.5f : -1f;
-            bool onGear = agl < 3f && System.MathF.Abs(vy) < 0.4f;
-            _game.Controls.Hold(Key.Ctrl, !onGear && vy > wanted + 0.5f);
-            _game.Controls.Hold(Key.Space, !onGear && vy < wanted - 0.5f);
-            yield return 0;
-        }
-        _game.Controls.ReleaseAll();
+        foreach (int x in _pilot.Land(v)) yield return x;
         Hurry(1);
         GD.Print($"(screenshot: on {(_game.Zone == _game.Spaceflight.MoonSurface ? "the moon" : _game.Zone.Name)}, landed {v.Controller.Frozen})");
         _game.FixedCamera = Game.Game.Chase(v, 2.2f, 0.6f);

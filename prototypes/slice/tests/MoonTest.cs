@@ -130,42 +130,9 @@ public partial class MoonTest : Node
     IEnumerable<int> BuildSkiff()
     {
         GD.Print("-- the Skiff --");
-        foreach (int x in new Playthrough(_game).MakeTool()) yield return x;
-        foreach (var (item, n) in _game.Builder.TotalCost(_game.StarterPlan)) _game.Pack.Add(item, n);
-        _game.Progress.Creative = true;
-        GD.Print("  (setup: handed over the Skiff's parts and opened the tech tree)");
-        _game.Pack.Grid.SetBlock(3, PlayerInventory.BlueprintBlock);
-        Vessel skiff = null;
-        for (int attempt = 0; attempt < 3 && skiff == null; attempt++)
-        {
-            Vector3 pad = new Playthrough(_game).FlatSpot(_game.Start, 18f + attempt * 14f, span: 10f);
-            Vector3 stand = pad + (pad - _game.Start).Normalized() * 7f;
-            foreach (int x in _drive.WalkTo(new Vector3(stand.X, 0, stand.Z), 1.5f)) yield return x;
-            if (_game.Pack.Selected != 3) foreach (int x in _drive.Tap(Key.Key4)) yield return x;
-            foreach (int x in _drive.LookAt(pad, 6)) yield return x;
-            for (int i = 0; i < 300 && !_game.Builder.PlanShown; i++)
-                foreach (int x in _drive.LookAt(pad, 1)) yield return x;
-            foreach (int x in _drive.Click()) yield return x;
-            skiff = _game.Builder.Underway;
-        }
-        if (skiff == null)
-        {
-            Fail($"the blueprint projector set nothing down ({_game.Builder.Verdict})");
-            yield break;
-        }
-        int stalls = 0;
-        while (_game.Builder.Underway == skiff && stalls < 240)
-        {
-            int before = skiff.Structure.Count;
-            _drive.Face(skiff.Body.Position.ToGodot());
-            _game.Controls.Primary = true;
-            yield return 0;
-            stalls = skiff.Structure.Count > before ? 0 : stalls + 1;
-        }
-        _game.Controls.Primary = false;
-        foreach (int x in _drive.Wait(5)) yield return x;
-        Check(skiff.Structure.Count == _game.StarterPlan.Count, $"the Skiff is built: {skiff.Structure.Count} of {_game.StarterPlan.Count} blocks");
-        _skiff = skiff;
+        foreach (int x in _pilot.BuildSkiff(s => _skiff = s)) yield return x;
+        Check(_skiff?.Structure.Count == _game.StarterPlan.Count, $"the Skiff is built: {_skiff?.Structure.Count} of {_game.StarterPlan.Count} blocks");
+        if (_skiff?.Structure.Count != _game.StarterPlan.Count) _skiff = null;
     }
 
     // ---- Up and out ----------------------------------------------------------------------------
@@ -274,20 +241,9 @@ public partial class MoonTest : Node
         GD.Print("-- landing --");
         Vessel v = _skiff;
         SurfaceZone surface = _game.Zone;
-        Vector3 pad = FlatSpot(surface, v.Body.Position.ToGodot(), 40f);
-        int ticks = 0;
+        Vector3 pad = OrbitTest.FlatSpot(surface, v.Body.Position.ToGodot(), 40f);
         float hurtBefore = v.Body.Damage;
-        while (!v.Controller.Frozen && ticks++ < 60 * 150)
-        {
-            float agl = v.AboveGround, vy = v.Body.Velocity.Y;
-            float wanted = agl > 260f ? -50f : agl > 70f ? -16f : agl > 25f ? -6f : agl > 6f ? -2.5f : -1f;
-            bool onGear = agl < 3f && MathF.Abs(vy) < 0.4f;
-            _game.Controls.Hold(Key.Ctrl, !onGear && vy > wanted + 0.5f);
-            _game.Controls.Hold(Key.Space, !onGear && vy < wanted - 0.5f);
-            _pilot.Creep(v, pad, agl > 3f);
-            yield return 0;
-        }
-        _game.Controls.ReleaseAll();
+        foreach (int x in _pilot.Land(v, pad)) yield return x;
         foreach (int x in _drive.Wait(30)) yield return x;
         Check(v.Controller.Frozen && v.Body.Damage == hurtBefore, $"landed on the moon on its gear, undamaged (settled {v.Controller.Frozen}, {v.AboveGround:F1} m up, damage {v.Body.Damage - hurtBefore:F2})");
         float g = surface.Physics.Zone.Strength, home = _game.Surface.Physics.Zone.Strength;
@@ -309,22 +265,5 @@ public partial class MoonTest : Node
         _game.Controls.ReleaseAll();
         Check(_game.InOrbit && _game.Spaceflight.Crossings.Count == crossings + 1 && _game.Orbit.Anchor == _game.Orbit.Moon, "the climb off the moon crossed back into orbit, the moon still the frame");
         if (_game.InOrbit) Check(_game.Spaceflight.Crossings[^1].Audit.Count == 0, "nothing lost or doubled on the way up");
-    }
-
-    static Vector3 FlatSpot(SurfaceZone zone, Vector3 near, float distance)
-    {
-        for (int i = 0; i < 96; i++)
-        {
-            float a = i * 0.61f, r = distance + (i / 16) * 10f;
-            var p = new Vector3(near.X + MathF.Cos(a) * r, 0f, near.Z + MathF.Sin(a) * r);
-            float h0 = zone.GroundAt(p.X, p.Z).Y, spread = 0f;
-            for (int k = 0; k < 8; k++)
-            {
-                float b = k * MathF.Tau / 8f;
-                spread = MathF.Max(spread, MathF.Abs(zone.GroundAt(p.X + MathF.Cos(b) * 5f, p.Z + MathF.Sin(b) * 5f).Y - h0));
-            }
-            if (spread < 0.5f) return zone.GroundAt(p.X, p.Z);
-        }
-        return zone.GroundAt(near.X, near.Z);
     }
 }
