@@ -665,6 +665,7 @@ Design clarified: small vessels never auto-hover; only Hover Mode holds a craft 
 
 ## Performance
 
+- [ ] Approaching the moon: one frame of 18-24 ms when the moon's terrain streamer is set up (`TerrainStreamer.SetWorld` can't be split further today); spread it over frames (spaceflight agent, 13 Nov) [with the FRAME BUDGET PASS] [normal]
 - [ ] FRAME BUDGET PASS: walk, bike and fly under 16.7 ms mean, enforced by a PopTest check; spawn distance's cost measured and its default fitted (owner took the far-plant swap now, 9 Nov) [queued: after the weekly reset] [high]
 - [ ] Far plants cost: drawing every far plant with its own near mesh (identical look, no swap) made bike and fly routes 7-10 ms a frame slower (near meshes average 2.6x the old low meshes). Fix: a low mesh made by simplifying each plant's OWN near mesh (outline overlap 95%+, same colours), used only far out [queued: after the weekly reset] [normal]
 - [ ] Flora draw distance very, very low (owner, 9 Nov): grass fades by 120 m and trees by 370 m today [running: floradraw, trees past 1.2 km with cheap far versions, forest tone in the far ground] [high]
