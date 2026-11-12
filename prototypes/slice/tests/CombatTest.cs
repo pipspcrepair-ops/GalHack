@@ -168,22 +168,24 @@ public partial class CombatTest : Node
         town.Aimed += _ => aims++;
         town.ShotFired += (who, def, muzzle, dir, _) =>
         {
-            if (aimsBeforeFirst < 0) aimsBeforeFirst = aims;
+            if (aimsBeforeFirst < 0 && def.Delivery != Delivery.Strike) aimsBeforeFirst = aims;
             Vector3 model = who.Model?.Muzzle is { } m && who.View is { Visible: true } ? m.GlobalPosition : muzzle;
             shots.Add((who, def, muzzle, model, town.World(who.Pos + Vector3.Up * 1.5f)));
         };
         game.Arms.Dealt += (kind, thing, amount) => { if (kind == HitKind.Player) dealt.Add(amount); };
         int rounds = armed.Sum(p => p.Kit?.Rounds ?? 0);
-        // Where they can see you, and they know you're there.
-        Town.Person first = armed.OrderBy(p => p.Pos.DistanceTo(place.FromWorld(game.Survivor.WorldFeet))).First();
-        game.Survivor.PlaceOutside(place.ToWorld(first.Pos + first.Forward * 9f + Vector3.Up * 0.2f).ToNumerics());
+        // Among them at their camp, and they know you're there.
+        game.Survivor.PlaceOutside(Local(camp.Cell).ToNumerics() + System.Numerics.Vector3.UnitY * 0.2f);
         town.Provoked();
-        for (int i = 0; i < 60 * 25 && shots.Count < 6; i++)
+        for (int i = 0; i < 60 * 40 && shots.Count(s => s.Def.Delivery != Delivery.Strike) < 4; i++)
         {
             game.Suit.Vitals.Health = max;
             yield return 0;
         }
-        Check(shots.Count > 0, $"they fire on you: {shots.Count} rounds in {(shots.Count < 6 ? "25 s" : "the time")} ({town.Engagements} in the fight, {town.Shots} shots, {town.Blows} blows)");
+        Check(shots.Count > 0, $"they fire on you: {shots.Count} rounds in 40 s ({town.Engagements} in the fight, {town.People.Count(q => q.Sees)} see you, {town.Shots} shots, {town.Blows} blows)");
+        var blows = shots.Where(s => s.Def.Delivery == Delivery.Strike).ToList();
+        shots = shots.Where(s => s.Def.Delivery != Delivery.Strike).ToList();
+        if (blows.Count > 0) Check(blows.All(s => s.Def == s.Who.Kit.Def), $"hand weapons strike with their own row ({string.Join(", ", blows.Select(s => s.Def.Id).Distinct())})");
         if (shots.Count > 0)
         {
             Check(shots.All(s => s.Def == s.Who.Kit?.Def || s.Def == s.Who.Emptied?.Def), $"every round is the shooter's own weapon row ({string.Join(", ", shots.Select(s => s.Def.Id).Distinct())})");
@@ -229,7 +231,8 @@ public partial class CombatTest : Node
         if (sim == null) { Check(false, "the patch has a sim"); yield break; }
         double max = game.Suit.Sim.Data.Vitals.Health.Max;
         // Somewhere open, away from the place.
-        game.Survivor.PlaceOutside((game.Survivor.WorldFeet + new Vector3(120f, 0f, 60f)).ToNumerics());
+        Vector3 open = game.Survivor.WorldFeet + new Vector3(120f, 0f, 60f);
+        game.Survivor.PlaceOutside((game.Zone.GroundAt(open.X, open.Z) + Vector3.Up * 0.3f).ToNumerics());
         for (int i = 0; i < 120; i++) { game.Suit.Vitals.Health = max; yield return 0; }
         Vector3 feet = game.Survivor.WorldFeet;
         Vector3 Ground(Vector3 at) => game.Zone.GroundAt(at.X, at.Z);
@@ -251,6 +254,7 @@ public partial class CombatTest : Node
             yield return 0;
         }
         SimArms.Kit kit = game.Arms.People.KitOf(rifle);
+        GD.Print($"  (the raider: {rifle.State}, you attackable {patch.Player.Attackable} (dead {game.Suit.Dead}, sheltered {game.Sheltered()}, aboard {game.Survivor.Body.Frame != null}), its gun reaches {Arming.ShootReach(rifle, patch.Player):F0} m)");
         Check(kit?.Clip.Def.Id == "line-rifle", $"a raider with a rifle carries the line rifle ({kit?.Clip.Def.Id})");
         Check(game.Arms.People.Shots - shotsBefore >= 1 && game.Arms.OthersFired > fired, $"it shoots you from range rather than closing in ({game.Arms.People.Shots - shotsBefore} rounds, at {rifle.Position.DistanceTo(patch.Player.Position):F1} m)");
         Check(kit?.Model != null, $"its rifle is drawn in its hands ({game.Arms.People.Drawn} weapons drawn on the wild's people)");

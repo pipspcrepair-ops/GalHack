@@ -136,7 +136,7 @@ public sealed partial class Town
         if (p.Looks == null || _place == null) return false;
         Arm(p);
         // (Frightened enough to run, they run: Feeling.Flees.)
-        if (mood != Mood.Hostile || !Fighter(p) || p.ScaredFor > 0f || _places.Zone.Wildlife.Player is not { Attackable: true })
+        if (mood != Mood.Hostile || !Fighter(p) || p.ScaredFor > 0f)
         {
             if (p.Engaged) Disengage(p);
             return false;
