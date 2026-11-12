@@ -104,6 +104,7 @@ public sealed class HullBinding : BodyBinding
             if (hit == null) break;
             Vector3 n = hit.GetNormal();
             GodotObject collider = hit.GetCollider();
+            if (collider == null) break; // what it hit was freed this very tick (a streamed chunk): nothing to push against
             if (_seen.Add(collider.GetInstanceId()))
             {
                 Body other = host.BodyOf(collider);
