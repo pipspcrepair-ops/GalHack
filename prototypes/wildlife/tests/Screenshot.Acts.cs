@@ -162,11 +162,11 @@ public partial class Screenshot
             ActsStart(_actList[_actIndex]);
         }
         ActScene scene = _actList[_actIndex];
-        float clock = 2f + _actTick / 60f;
         for (int i = 0; i < _actors.Count; i++)
         {
             var (c, rig) = _actors[i];
-            var g = new Gesture { Feet = c.Position, Yaw = c.Yaw, Clock = clock + i * 0.37f, ActAt = c.Position + c.Forward * 2.5f + Vector3.Up * 1.2f };
+            var g = new Gesture { Feet = c.Position, Yaw = c.Yaw, Clock = c.Age, // (the sim poses them too, on its own clock)
+                ActAt = c.Position + c.Forward * 2.5f + Vector3.Up * 1.2f };
             scene.Shape(i, ref g, rig, _actTick);
             if (scene.End != BodyEnd.Fall && _actTick == 8 && !c.Removed)
             {
@@ -175,6 +175,7 @@ public partial class Screenshot
                 c.Removed = true;
             }
             if (g.Speed > 0f) g.Feet = c.Position + c.Forward * g.Walked;
+            c.Dead |= g.Dead;
             rig.Drive(g);
         }
         m.View.Sync(m.Camera.GlobalPosition);
