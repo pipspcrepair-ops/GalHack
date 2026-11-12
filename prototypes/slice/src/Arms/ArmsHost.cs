@@ -299,7 +299,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
                     if (!ShotPool.InCone(o, nd, cos, cone.Range, at.ToNumerics()) || SolidBetween(origin, at)) continue;
                     ConeHits++;
                     PersonHits++;
-                    t.Shoot(p, d.Damage, at, dir, Game.EndOf(d.Kill));
+                    t.Shoot(p, d.Damage, at, dir, Slice.Game.Game.EndOf(d.Kill));
                     Dealt?.Invoke(HitKind.Person, p, d.Damage);
                 }
             }
@@ -675,7 +675,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
                 break;
             case HitKind.Person:
                 var p = (Town.Person)hit.Thing;
-                p.Town.Shoot(p, damage, at, dir, Game.EndOf(d.Kill));
+                p.Town.Shoot(p, damage, at, dir, Slice.Game.Game.EndOf(d.Kill));
                 PersonHits++;
                 Dealt?.Invoke(HitKind.Person, p, damage);
                 if (!tick) Game.Shots.Impact(at, n, ImpactKind.Creature);
@@ -706,7 +706,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
     void Harm(Creature c, float amount, Vector3 at, Vector3 dir, bool quiet = false, KillEffect kill = KillEffect.Normal)
     {
         if (amount <= 0f) return;
-        c.End = Game.EndOf(kill); // what a kill with this does to the body
+        c.End = Slice.Game.Game.EndOf(kill); // what a kill with this does to the body
         Zone.Wildlife.Damage(c, amount);
         CreatureHits++;
         Dealt?.Invoke(HitKind.Creature, c, amount);
@@ -787,7 +787,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
                 {
                     if (person.Dead) continue;
                     float d = t.World(person.Pos).DistanceTo(p);
-                    if (d < r) { t.Shoot(person, blast.Damage * (1f - d / r), t.World(person.Pos) + Vector3.Up, (t.World(person.Pos) - p).Normalized(), Game.EndOf(s.Def.Kill)); PersonHits++; }
+                    if (d < r) { t.Shoot(person, blast.Damage * (1f - d / r), t.World(person.Pos) + Vector3.Up, (t.World(person.Pos) - p).Normalized(), Slice.Game.Game.EndOf(s.Def.Kill)); PersonHits++; }
                 }
             }
         Fx.Blast(p, r * 0.55f);

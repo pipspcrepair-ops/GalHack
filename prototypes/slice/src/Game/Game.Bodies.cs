@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using GalHack.Items;
 using Godot;
 using Slice.Items;
 using Slice.Places;
