@@ -68,6 +68,13 @@ public partial class BestiaryTest
         }
     }
 
+    /// <summary>The thickest coat any world dresses its people in.</summary>
+    float ThickestCoat()
+    {
+        PeopleGenerator cold = Folks(World(-40f));
+        return Enumerable.Range(0, 30).Max(_ => cold.Person(Seed(), PersonRole.Worker).Figure.Padding);
+    }
+
     static readonly string[] Carried = { "", "", "bottle", "cane", "umbrella", "wrench", "hoe", "rifle", "pistol", "spear", "bow", "machete", "club" };
 
     /// <summary>
@@ -78,7 +85,8 @@ public partial class BestiaryTest
     /// </summary>
     void NoArmThroughTheBody()
     {
-        int poses = 0, through = 0, stretched = 0, bodies = 0;
+        float thickest = ThickestCoat(); // every third body wears it (the owner: worst with a big chest piece)
+        int poses = 0, through = 0, stretched = 0, bodies = 0, coats = 0;
         float worst = 0f;
         string worstWhat = "";
         var byWhat = new Dictionary<string, int>();
@@ -90,6 +98,12 @@ public partial class BestiaryTest
                 s = s0.Copy();
                 s.Figure = s0.Figure.Clone();
                 s.Figure.Prop = Carried[bodies % Carried.Length];
+                if (bodies % 3 == 0)
+                {
+                    s.Figure.Dress = "furs";
+                    s.Figure.Padding = thickest;
+                    coats++;
+                }
             }
             bodies++;
             var rig = new HumanRig(s);
@@ -115,6 +129,7 @@ public partial class BestiaryTest
                 }
             }
         }
+        GD.Print($"  (worst depth {worst * 100f:F2} cm; {coats} bodies in the thickest coat, padding {thickest:F2})");
         if (through > 0) GD.Print($"  (arms through the body by pose: {string.Join(", ", byWhat.OrderByDescending(kv => kv.Value).Take(12).Select(kv => $"{kv.Key} {kv.Value}"))}; worst {worst * 100f:F1} cm, {worstWhat})");
         Check(through == 0, $"no arm passes through the torso: {through} limb-through-torso overlaps in {poses} poses of {bodies} fresh bodies (every act, blow, hold and stance)");
         Check(stretched == 0, $"and no pose stretches an arm past its length ({stretched})");
@@ -124,6 +139,7 @@ public partial class BestiaryTest
     void ActsReadAsThemselves()
     {
         int bodies = 0;
+        float thickest = ThickestCoat();
         int cowerUp = 0, grieveUp = 0, beckonOut = 0, pointAcross = 0, shrugDown = 0, fidgetStill = 0, thanksSame = 0, sipOff = 0, sipUpright = 0, bowOff = 0, waveOffAcross = 0;
         foreach (Species s0 in ManyBodies(24).Where(s => !s.Mechanical && !s.Husk))
         {
@@ -131,6 +147,7 @@ public partial class BestiaryTest
             Species s = s0.Copy();
             s.Figure = s0.Figure.Clone();
             s.Figure.Prop = "bottle";
+            if (bodies % 2 == 0) { s.Figure.Dress = "furs"; s.Figure.Padding = thickest; } // half of them in the thickest coat
             var rig = new HumanRig(s);
             Figure f = s.Figure;
             float coat = 0.4f * MathF.Max(0f, f.Padding - 1f); // a thick coat takes the elbows out with it
@@ -170,7 +187,7 @@ public partial class BestiaryTest
                 for (int i = 0; i < 2; i++)
                 {
                     var (sh, el, wr) = rig.ArmOf(i);
-                    if (Local(wr).Y < Local(el).Y + 0.05f || Local(el).Y > Local(sh).Y - 0.12f + coat) shrugDown++;
+                    if (Local(wr).Y < Local(el).Y + 0.05f || Local(el).Y > Local(sh).Y - 0.4f * f.UpperArmOf(i)) shrugDown++; // (an adult's 12 cm, a child's less)
                 }
             }
             // Fidgeting moves: over ten seconds each hand goes somewhere else.

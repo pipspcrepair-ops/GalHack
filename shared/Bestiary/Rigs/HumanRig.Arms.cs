@@ -54,9 +54,19 @@ public sealed partial class HumanRig
     float HandRadius => 0.035f * HumanBody.Scale(_f) * _f.HandK;
 
     /// <summary>A pose by its bones: the upper arm along u, the forearm along f, from the shoulder.</summary>
-    static ArmGoal Bones(Vector3 shoulder, Vector3 u, Vector3 f, float upper, float fore)
+    ArmGoal Bones(Vector3 shoulder, Vector3 u, Vector3 f, float upper, float fore)
     {
-        Vector3 elbow = shoulder + u * upper, hand = elbow + f * fore;
+        Vector3 elbow = shoulder + u * upper;
+        if (Shell != null)
+        {
+            // An elbow asked inside a thick coat sits on its outside instead, the forearm going on from there as asked.
+            Transform3D body = Pose[_body];
+            Vector3 out_ = body * Shell.PushOut(body.AffineInverse() * elbow, UpperRadius + 0.01f), d = out_ - shoulder, up = body.Basis.Y;
+            // Out round the coat, but no higher than asked: a dropped elbow stays dropped.
+            Vector3 flat = d - up * d.Dot(up);
+            elbow = u.Dot(up) < 0f && flat.Length() < upper * 0.98f ? shoulder + flat - up * MathF.Sqrt(upper * upper - flat.LengthSquared()) : shoulder + d.Normalized() * upper;
+        }
+        Vector3 hand = elbow + f * fore;
         Vector3 pole = elbow - (shoulder + hand) * 0.5f;
         if (pole.LengthSquared() < 1e-5f) pole = u.Cross(f).LengthSquared() > 1e-5f ? u.Cross(f) : Vector3.Down;
         return new ArmGoal(hand, pole.Normalized());
@@ -120,15 +130,33 @@ public sealed partial class HumanRig
         }
         (Vector3 e, Vector3 w) = LeggedRig.SolveIK(shoulder, hand, upper, fore, pole);
         if (Shell == null) return (e, w);
-        for (int k = 0; k < 10; k++)
+        float least = Sunk(body, shoulder, e, w, 0.15f);
+        if (least <= 0f) return (e, w);
+        // Through the body: the elbow round its circle to the nearest way that clears it; failing all of
+        // them, the hand a step out to the side or forward, by turns, and round again.
+        (Vector3, Vector3) fallback = (e, w);
+        for (int k = 0; k < 12; k++)
         {
-            if (Sunk(body, shoulder, e, w, 0.55f) <= 0f) break;
-            // The elbow out to the side and down, then the hand further out and forward.
-            pole = (pole.Normalized() + outward * 0.9f + Vector3.Down * 0.15f).Normalized();
-            if (k >= 1) hand += (k % 2 == 1 ? outward : ahead) * 0.025f; // out to the side, then forward, by turns
-            (e, w) = LeggedRig.SolveIK(shoulder, hand, upper, fore, pole);
+            Vector3 axis = (hand - shoulder).Normalized();
+            Vector3 b1 = pole - axis * pole.Dot(axis);
+            if (b1.LengthSquared() < 1e-6f) b1 = outward - axis * outward.Dot(axis);
+            b1 = b1.Normalized();
+            Vector3 b2 = axis.Cross(b1);
+            float bestScore = -9f;
+            for (int j = 0; j < 16; j++)
+            {
+                float a = MathF.Tau * j / 16f;
+                Vector3 p = b1 * MathF.Cos(a) + b2 * MathF.Sin(a);
+                (Vector3 e2, Vector3 w2) = LeggedRig.SolveIK(shoulder, hand, upper, fore, p);
+                float sunk = Sunk(body, shoulder, e2, w2, 0.15f);
+                // (Near the elbow it was asked for first: a hand moved a little out reads better than an elbow thrown up.)
+                if (sunk <= 0f && MathF.Cos(a) > bestScore && (k >= 6 || MathF.Cos(a) > 0.7f)) { bestScore = MathF.Cos(a); (e, w) = (e2, w2); }
+                else if (sunk < least) { least = sunk; fallback = (e2, w2); }
+            }
+            if (bestScore > -9f) return (e, w);
+            hand += (k % 2 == 0 ? outward : ahead) * 0.05f;
         }
-        return (e, w);
+        return fallback;
     }
 
     /// <summary>The arm that does a one-handed act: the right, unless it holds a weapon or the thing pointed at is off to the left.</summary>
@@ -218,15 +246,10 @@ public sealed partial class HumanRig
             case BodyAct.Fidget: return Fidget(g, i, F, shoulder, neck, torso, upper, fore);
             case BodyAct.Taunt:
             {
-                // A fist smacked into the other palm, again and again: come on, then.
-                var Fl = new Frame(torso, -1f);
-                Vector3 shoulderL = shoulder + torso.X * (-1f - side) * _shoulderOut; // the left shoulder, whichever arm this is
-                ArmGoal palm = Bones(shoulderL, Fl.V(0.1f, -0.78f, 0.62f), Fl.V(-0.78f, 0.22f, 0.6f), f.UpperArmOf(0), f.ForearmOf(0));
-                if (i == 0) return palm;
-                float k = MathF.Pow(MathF.Max(0f, MathF.Sin(t * 6.5f)), 1.5f);
-                ArmGoal cocked = Bones(shoulder, F.V(0.4f, -0.55f, -0.2f), F.V(-0.1f, 0.75f, 0.65f), upper, fore);
-                Vector3 hit = palm.Hand + torso.X * (HandRadius * 2.2f) + F.Ahead * 0.01f;
-                return new ArmGoal(cocked.Hand.Lerp(hit, k), cocked.Pole.Lerp(F.V(0.5f, -0.85f, -0.1f), k).Normalized());
+                // A fist shaken at them, high and forward; the other balled low at the side.
+                if (i == 0) return Bones(shoulder, F.V(0.3f, -0.9f, 0.2f), F.V(0.15f, 0.35f, 0.9f), upper, fore);
+                float shake = 0.12f * MathF.Sin(t * 14f);
+                return Bones(shoulder, F.V(0.35f, 0.45f, 0.8f), F.V(0.05f + shake, 0.9f, 0.45f - shake), upper, fore);
             }
             case BodyAct.Greet when g.Style == 1:
                 // An open palm held up to them, still.
@@ -265,10 +288,10 @@ public sealed partial class HumanRig
             }
             case BodyAct.Play:
             {
-                // Clapping, hands meeting before the chest, bouncing on the toes.
+                // Clapping over the head, bouncing on the toes.
                 float c = 0.5f + 0.5f * MathF.Cos(t * 9f);
-                Vector3 mid = Shell != null ? Pose[_body] * Shell.FrontAt(f.Torso * 0.66f, 0f) : neck - torso.Y * f.Torso * 0.3f;
-                Vector3 hand = mid + F.Ahead * (0.2f + 0.04f * MathF.Sin(t * 2f)) + F.Out * (HandRadius * 1.2f + 0.16f * c) + F.Up * 0.04f * MathF.Sin(t * 4.5f);
+                Vector3 mid = neck + F.Up * (f.Neck + f.HeadRadius * 2.2f) + F.Ahead * 0.22f;
+                Vector3 hand = mid + F.Out * (HandRadius * 1.2f + 0.16f * c) + F.Up * 0.04f * MathF.Sin(t * 4.5f);
                 return new ArmGoal(hand, F.V(0.6f, -0.8f, -0.1f));
             }
             case BodyAct.Warn:

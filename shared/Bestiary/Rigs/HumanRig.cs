@@ -95,7 +95,9 @@ public sealed partial class HumanRig : Rig
         _offset = (s.Seed % 97) / 97f;
         BuildShell();
         // A shoulder joint at the edge of whatever the torso wears: a puffy coat takes the arms out with it.
-        _shoulderOut = MathF.Max(_f.ShoulderW * 0.94f, (Shell?.HalfWidth(_f.Torso * 0.9f) ?? 0f) - UpperRadius);
+        float coat = 0f;
+        for (int k = 0; k <= 4; k++) coat = MathF.Max(coat, Shell?.HalfWidth(_f.Torso * (0.5f + 0.1f * k)) ?? 0f); // its widest, from the waist up
+        _shoulderOut = MathF.Max(_f.ShoulderW * 0.94f, coat - UpperRadius);
     }
 
     readonly float _shoulderOut;
