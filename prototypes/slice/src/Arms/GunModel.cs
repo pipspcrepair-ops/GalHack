@@ -43,8 +43,16 @@ public static class GunModel
     /// <summary>The gun inside a held model's root, or null.</summary>
     public static Built Of(Node3D root) => root != null && _byRoot.TryGetValue(root, out Built b) ? b : null;
 
-    /// <summary>Marks a node as holding a built gun (a model hung on someone's hand), so <see cref="Of"/> finds it.</summary>
-    public static void Remember(Node3D root, Built b) => _byRoot.AddOrUpdate(root, b);
+    /// <summary>A weapon's model hung on someone else's hand or mount (a node named "Weapon" under it, placed there).</summary>
+    public static Built Hang(Node3D on, WeaponDef def, Transform3D at)
+    {
+        Built b = Build(def);
+        var hold = new Node3D { Name = "Weapon", Transform = at };
+        hold.AddChild(b.Root);
+        on.AddChild(hold);
+        _byRoot.AddOrUpdate(hold, b);
+        return b;
+    }
 
     /// <summary>A held gun's life in the hand: charge rings lit by stage, and a reload dips it out of line and back.</summary>
     public static void Animate(Node3D root, Gun gun, float dt)

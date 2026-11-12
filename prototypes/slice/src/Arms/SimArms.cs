@@ -180,16 +180,12 @@ public sealed class SimArms
             Node3D on = k.Mounted ? v.Part(c.Species.Figure != null ? "arm1l" : "head") : v.Part("prop");
             if (on == null || on == k.On && k.Model != null && GodotObject.IsInstanceValid(k.Model.Root)) continue;
             if (on.GetNodeOrNull<Node3D>("Weapon") is Node3D old) { k.Model = GunModel.Of(old) ?? k.Model; k.On = on; continue; } // a view rebound to another of the same kind keeps its weapon
-            GunModel.Built b = GunModel.Build(k.Clip.Def);
-            var hold = new Node3D { Name = "Weapon" };
             float size = c.Species.Figure != null ? HumanBody.ArmScale(c.Species.Figure) : 1.2f;
-            if (k.Mounted && c.Species.Figure != null) hold.Transform = new Transform3D(Clip.GunInProp.Scaled(Vector3.One * size), Vector3.Up * c.Species.Figure.Forearm);
-            else if (k.Mounted) hold.Transform = new Transform3D(Basis.Identity.Scaled(Vector3.One * size), new Vector3(0f, -c.Species.Body.HeadSize * 0.3f, -c.Species.Body.HeadSize * 0.4f));
-            else hold.Transform = new Transform3D(Clip.GunInProp.Scaled(Vector3.One * size), Vector3.Zero);
-            hold.AddChild(b.Root);
-            on.AddChild(hold);
-            GunModel.Remember(hold, b);
-            k.Model = b;
+            // In the hand or at the end of the forearm, the barrel along the limb; on a walker, under its head facing ahead.
+            Transform3D at = k.Mounted && c.Species.Figure == null
+                ? new Transform3D(Basis.Identity.Scaled(Vector3.One * size), new Vector3(0f, -c.Species.Body.HeadSize * 0.3f, -c.Species.Body.HeadSize * 0.4f))
+                : new Transform3D(Clip.GunInProp.Scaled(Vector3.One * size), k.Mounted ? Vector3.Up * c.Species.Figure.Forearm : Vector3.Zero);
+            k.Model = GunModel.Hang(on, k.Clip.Def, at);
             k.On = on;
             Drawn++;
         }

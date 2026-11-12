@@ -121,8 +121,8 @@ public sealed partial class Town
             if (_place != null) Alert(_place.FromWorld(_places.Zone.Wildlife.PlayerWorld()));
             // Hit, they know it: no aiming about it, they're in.
             if (!p.Dead && Fighter(p)) p.EngageAt = MathF.Min(p.EngageAt < 0f ? _clock : p.EngageAt, _clock + 0.2f);
-            // Hit and unarmed: they run, whatever they were doing.
-            if (!p.Dead && !Fighter(p)) p.ScaredFor = 10f;
+            // Hit themselves, it frightens them more (their mood sends them running: Town.Mood).
+            if (!p.Dead) { Bind(p); p.Feel.Hit(MoodEvent.Harm); }
         }
         if (p.Dead) Fall(p);
     }
@@ -135,7 +135,8 @@ public sealed partial class Town
     {
         if (p.Looks == null || _place == null) return false;
         Arm(p);
-        if (mood != Mood.Hostile || !Fighter(p) || _places.Zone.Wildlife.Player is not { Attackable: true })
+        // (Frightened enough to run, they run: Feeling.Flees.)
+        if (mood != Mood.Hostile || !Fighter(p) || p.ScaredFor > 0f)
         {
             if (p.Engaged) Disengage(p);
             return false;
@@ -452,12 +453,8 @@ public sealed partial class Town
     {
         Arm(p);
         if (p.View == null || p.Kit == null || p.Holder != null || p.Kit.Def.Id == Weapons.Fists || !Weapons.DrawnByGame(p.Figure.Prop)) return;
-        GunModel.Built b = GunModel.Build(p.Kit.Def);
-        p.Holder = new Node3D { Name = "Weapon" };
-        p.Holder.AddChild(b.Root);
-        p.View.AddChild(p.Holder);
-        GunModel.Remember(p.Holder, b);
-        p.Model = b;
+        p.Model = GunModel.Hang(p.View, p.Kit.Def, Transform3D.Identity);
+        p.Holder = p.View.GetNode<Node3D>("Weapon");
     }
 
     /// <summary>Keeps the weapon's model in their hand as the rig poses it.</summary>
