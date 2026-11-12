@@ -232,13 +232,14 @@ public partial class CombatTest : Node
         double max = game.Suit.Sim.Data.Vitals.Health.Max;
         // Somewhere open under the sky (no roof over it).
         Vector3 start = game.Survivor.WorldFeet;
-        for (int tries = 0; tries < 12 && (tries == 0 || game.Sheltered()); tries++)
+        for (int tries = 0; tries < 24; tries++)
         {
-            Vector3 open = start + new Vector3(120f + tries * 40f, 0f, 60f - tries * 25f);
+            float turn = tries * 2.4f, far = 150f + tries * 30f;
+            Vector3 open = start + new Vector3(MathF.Cos(turn), 0f, MathF.Sin(turn)) * far;
             game.Survivor.PlaceOutside((game.Zone.GroundAt(open.X, open.Z) + Vector3.Up * 0.3f).ToNumerics());
-            for (int i = 0; i < 30; i++) { game.Suit.Vitals.Health = max; yield return 0; }
+            for (int i = 0; i < 60; i++) { game.Suit.Vitals.Health = max; yield return 0; }
+            if (!game.Sheltered()) break;
         }
-        for (int i = 0; i < 90; i++) { game.Suit.Vitals.Health = max; yield return 0; }
         Vector3 feet = game.Survivor.WorldFeet;
         Vector3 Ground(Vector3 at) => game.Zone.GroundAt(at.X, at.Z);
         Species Raider(string prop)
