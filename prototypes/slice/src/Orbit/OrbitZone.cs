@@ -51,30 +51,45 @@ public partial class OrbitZone : SurfaceZone
     /// <summary>What every other body looks like from afar: the surface's sky paints them, and both skies show them.</summary>
     public PlanetSurface.Skies.BodySurfaces Surfaces { get; init; }
 
-    /// <summary>The globe's mapping between its directions and the map's points.</summary>
-    public GlobeMap Map { get; private set; }
+    /// <summary>The start world as a body of this zone: its globe, its frame, its surface.</summary>
+    public Celestial Home { get; }
 
-    public float GlobeRadius { get; private set; }
+    /// <summary>The start world's moon within reach of thrusters, once it is being made (null till then).</summary>
+    public Celestial Moon { get; private set; }
+
+    /// <summary>The body whose frame everything flies in: it holds still, the others move round it.</summary>
+    public Celestial Anchor { get; private set; }
+
+    /// <summary>Every body with ground in the zone, the start world first.</summary>
+    public readonly List<Celestial> Bodies = new();
+
+    /// <summary>The start world's globe's mapping between its directions and the map's points.</summary>
+    public GlobeMap Map => Home.Map;
+
+    public float GlobeRadius => Home.GlobeRadius;
 
     /// <summary>The rim of air drawn round the globe.</summary>
-    public float AtmosphereRadius { get; private set; }
+    public float AtmosphereRadius => Home.AtmosphereRadius;
 
     /// <summary>Crossing under this radius is the descent.</summary>
-    public float ShellRadius { get; private set; }
+    public float ShellRadius => Home.ShellRadius;
 
     /// <summary>The surface's atmosphere ceiling: a climb crosses here. The shell is this, less the gap, over the globe's ground.</summary>
     public float Ceiling { get; private set; }
     public float Gap { get; private set; }
 
-    public Globe Globe { get; private set; }
+    public Globe Globe => Home.Globe;
     public SpaceSky Space { get; private set; }
 
-    /// <summary>The globe's place in the world: world = Turn × globe + Shift.</summary>
-    public N.Quaternion Turn { get; private set; } = N.Quaternion.Identity;
-    public N.Vector3 Shift { get; private set; }
+    /// <summary>The start world's globe's place in the world: world = Turn × globe + Shift.</summary>
+    public N.Quaternion Turn => Home.Turn;
+    public N.Vector3 Shift => Home.Shift;
 
-    public N.Vector3 ToWorld(N.Vector3 globe) => Shift + N.Vector3.Transform(globe, Turn);
-    public N.Vector3 ToGlobe(N.Vector3 world) => N.Vector3.Transform(world - Shift, N.Quaternion.Conjugate(Turn));
+    public N.Vector3 ToWorld(N.Vector3 globe) => Home.ToWorld(globe);
+    public N.Vector3 ToGlobe(N.Vector3 world) => Home.ToGlobe(world);
+
+    /// <summary>The clock (days on the system's one clock, the surface's sky's): set by whoever runs the zone.</summary>
+    public Func<double> Days = () => 0.0;
 
     /// <summary>The wrecks set adrift so far.</summary>
     public readonly List<Vessel> Wrecks = new();
@@ -104,10 +119,12 @@ public partial class OrbitZone : SurfaceZone
         Spec = below.Spec;
         Ceiling = ceiling;
         Gap = rules.Crossing.Gap;
-        GlobeRadius = (float)(below.Width / (2 * Math.PI) * rules.Globe.RadiusScale);
-        AtmosphereRadius = GlobeRadius * (1f + (float)rules.Globe.Atmosphere);
-        ShellRadius = GlobeRadius + ceiling - Gap;
-        Map = new GlobeMap(below.Width, below.Height, GlobeRadius);
+        PlanetSurface.Skies.StarSystem model = below.StarSystem;
+        Home = new Celestial(model.Home, home: true) { World = below, Seen = model };
+        Size(Home, below.Width, below.Height, ceiling);
+        Home.AtmosphereRadius = Home.GlobeRadius * (1f + (float)rules.Globe.Atmosphere);
+        Bodies.Add(Home);
+        Anchor = Home;
         GlobeMap map = Map;
         float shell = ShellRadius;
         var library = PoiCatalog.Library;
@@ -152,21 +169,22 @@ public partial class OrbitZone : SurfaceZone
         Loot = new Lootables { Name = "Loot", Items = Data.Items };
         AddChild(Loot);
         // The globe and the moons stand in the globe's frame; the sky turns with it.
-        _sphere = new Node3D { Name = "Sphere" };
-        AddChild(_sphere);
+        Home.Sphere = new Node3D { Name = "Sphere" };
+        AddChild(Home.Sphere);
         Space = new SpaceSky { Name = "Sky" };
         AddChild(Space);
         // Under a plain node, so a parked orbit's hidden zone doesn't hide it: it is the far land from the surface too.
-        var apart = new Node { Name = "Apart" };
-        AddChild(apart);
-        Globe = new Globe { Name = "Globe" };
-        apart.AddChild(Globe);
+        _apart = new Node { Name = "Apart" };
+        AddChild(_apart);
+        Home.Globe = new Globe { Name = "Globe" };
+        _apart.AddChild(Home.Globe);
         _building = Build().GetEnumerator();
     }
 
     /// <summary>One piece of setting up, called once a frame while it waits parked: a texture, a wreck.</summary>
     public void BuildStep()
     {
+        if (Ready) MoonStep();
         if (Ready || _building == null) return;
         var watch = Stopwatch.StartNew();
         if (!_building.MoveNext())
@@ -189,6 +207,7 @@ public partial class OrbitZone : SurfaceZone
         Space.Setup(paint.Look, Below.Sky, Below.StarSystem, Rules.Space, Surfaces);
         yield return 0;
         foreach (int x in Globe.Setup(paint, GlobeRadius, AtmosphereRadius, Rules.Globe, new Vector2((float)Below.Width, (float)Below.Height))) yield return x;
+        Home.Ready = true;
         foreach (DerelictPlan p in wrecks)
         {
             yield return 0;
@@ -203,19 +222,23 @@ public partial class OrbitZone : SurfaceZone
         }
     }
 
-    Node3D _sphere;
+    Node _apart;
 
     /// <summary>
-    /// Lays the zone out so the map point (x, z) lies under the world point (sx, sz): the globe's
-    /// ground tangent to sea level there, its local east, up and south along the world's axes.
-    /// Everything in the zone moves with it rigidly, so nothing changes to the eye.
+    /// Lays the zone out so the start world's map point (x, z) lies under the world point (sx, sz):
+    /// the globe's ground tangent to sea level there, its local east, up and south along the world's
+    /// axes. Everything in the zone moves with it rigidly, so nothing changes to the eye.
     /// </summary>
-    public void Align(double x, double z, float sx, float sz)
+    public void Align(double x, double z, float sx, float sz) => Align(Home, x, z, sx, sz);
+
+    /// <summary>The same over any body's map: it becomes the anchor, laid out under the world point.</summary>
+    public void Align(Celestial c, double x, double z, float sx, float sz)
     {
-        N.Quaternion turn = N.Quaternion.Conjugate(Map.Frame(x, z));
-        var shift = new N.Vector3(sx, -GlobeRadius, sz);
-        N.Quaternion d = N.Quaternion.Normalize(turn * N.Quaternion.Conjugate(Turn));
-        N.Vector3 Moved(N.Vector3 w) => shift + N.Vector3.Transform(ToGlobe(w), turn);
+        Anchor = c;
+        N.Quaternion turn = N.Quaternion.Conjugate(c.Map.Frame(x, z));
+        var shift = new N.Vector3(sx, -c.GlobeRadius, sz);
+        N.Quaternion d = N.Quaternion.Normalize(turn * N.Quaternion.Conjugate(c.Turn));
+        N.Vector3 Moved(N.Vector3 w) => shift + N.Vector3.Transform(c.ToGlobe(w), turn);
         foreach (Body b in Physics.Bodies)
         {
             if (b.Frame != null) continue; // riders stay where they are aboard
@@ -233,15 +256,33 @@ public partial class OrbitZone : SurfaceZone
             l.Position = Moved(l.Position.ToNumerics()).ToGodot();
             if (l.Node != null) l.Node.GlobalPosition = l.Position;
         }
-        Turn = turn;
-        Shift = shift;
-        _sphere.Transform = new Transform3D(turn.ToBasis(), shift.ToGodot());
-        Globe.PlaceRing(_sphere.Transform);
+        foreach (Celestial o in Bodies)
+        {
+            if (o == c) continue;
+            o.Shift = Moved(o.Shift);
+            o.Turn = N.Quaternion.Normalize(d * o.Turn);
+            o.ShiftWas = o.Shift;
+            o.TurnWas = o.Turn;
+            Placed(o);
+        }
+        c.Turn = turn;
+        c.Shift = shift;
+        c.TurnWas = turn;
+        c.ShiftWas = shift;
+        Placed(c);
+    }
+
+    /// <summary>A body's globe-framed nodes follow it.</summary>
+    static void Placed(Celestial c)
+    {
+        if (c.Sphere == null) return;
+        c.Sphere.Transform = new Transform3D(c.Turn.ToBasis(), c.Shift.ToGodot());
+        c.Globe?.PlaceRing(c.Sphere.Transform);
     }
 
     public override void _Process(double delta) { }
 
-    public override void _PhysicsProcess(double delta) { } // no seams to wrap in space
+    public override void _PhysicsProcess(double delta) => Move(); // no seams to wrap in space: the bodies move instead
 
     /// <summary>No ground anywhere in space.</summary>
     public override Vector3 GroundAt(float x, float z) => new(x, float.NegativeInfinity, z);

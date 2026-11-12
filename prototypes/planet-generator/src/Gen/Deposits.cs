@@ -176,6 +176,24 @@ public sealed class DepositField
     public static bool Usable(WorldMap map, int cell) =>
         map.Flags[cell] is 0 or CellFlags.Riparian or CellFlags.Coast && map.Elevation[cell] >= 1.5f && map.Slope[cell] < 0.6f;
 
+    /// <summary>
+    /// Where ice may lie (the owner's rule): anywhere on an ice world (moons and
+    /// asteroids will pass it too, having no biome map); on other worlds only in the ice
+    /// caps, the cold, snow and glacier land; never on arid or lava worlds.
+    /// </summary>
+    public static bool IceAllowed(WorldMap map, int cell)
+    {
+        Archetype a = map.Spec.Archetype;
+        if (a == Archetype.Ice) return true;
+        if (a is Archetype.Arid or Archetype.Lava) return false;
+        return IceCap((Biome)map.Biome[cell]);
+    }
+
+    /// <summary>The biomes that make an ice cap: snow and glacier land and the cold ground round it.</summary>
+    public static bool IceCap(Biome b) => b is Biome.Snow or Biome.Glacier or Biome.Snowfield or Biome.BlueIce or Biome.IceTundra or Biome.Tundra;
+
+    bool Allowed(DepositKind kind, int cell) => kind != DepositKind.Water || IceAllowed(_map, cell);
+
     /// <summary>A deposit of a kind somewhere in a cell (its corner, width and height in metres), on usable land, or false if the cell has none.</summary>
     bool Place(double x0, double y0, double w, double hgt, ulong h, DepositKind kind, out Deposit deposit, float size = 1f)
     {
@@ -192,7 +210,7 @@ public sealed class DepositField
             double x = Mathx.WrapX(x0 + (0.5 + (Hash.Unit(h, attempt * 2) - 0.5) * spread) * w, _map.WidthMeters);
             double y = Mathx.Wrap(y0 + (0.5 + (Hash.Unit(h, attempt * 2 + 1) - 0.5) * spread) * hgt, _map.HeightMeters);
             int cell = _map.CellAt(x, y);
-            if (!Usable(_map, cell) || (pass == 0 && _map.Elevation[cell] < SafeElevation)) continue;
+            if (!Usable(_map, cell) || (pass == 0 && _map.Elevation[cell] < SafeElevation) || !Allowed(kind, cell)) continue;
             deposit = new Deposit(x, y, kind, amount, depth);
             return true;
         }
@@ -208,7 +226,7 @@ public sealed class DepositField
         for (int mi = mi0; mi <= mi1; mi++)
         {
             int cell = _map.Index(mi, mj);
-            if (!Usable(_map, cell) || (pass == 0 && _map.Elevation[cell] < SafeElevation)) continue;
+            if (!Usable(_map, cell) || (pass == 0 && _map.Elevation[cell] < SafeElevation) || !Allowed(kind, cell)) continue;
             double x = Math.Clamp(_map.CellX(mi), x0 + 0.5, x1 - 0.5), y = Math.Clamp(_map.CellY(mj), y0 + 0.5, y1 - 0.5);
             double d = (x - cx) * (x - cx) + (y - cy) * (y - cy);
             if (d < best)

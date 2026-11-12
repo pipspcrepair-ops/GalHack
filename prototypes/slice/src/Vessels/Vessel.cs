@@ -458,13 +458,13 @@ public sealed partial class Vessel
     {
         if (_chair is Int3 taken && Structure.TryGet(taken, out Block held) && IsChair(Structure.TypeOf(held)))
         {
-            Seat = StructureBridge.CellCenter(Structure, taken);
+            Seat = StructureBridge.BlockCenter(Structure, taken, held);
             return;
         }
         foreach (var (p, b) in Structure.Blocks())
             if (IsChair(Structure.TypeOf(b)))
             {
-                Seat = StructureBridge.CellCenter(Structure, p);
+                Seat = StructureBridge.BlockCenter(Structure, p, b);
                 return;
             }
         if (Seat != null) SeatLost?.Invoke();

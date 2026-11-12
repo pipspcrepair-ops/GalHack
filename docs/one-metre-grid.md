@@ -1,6 +1,6 @@
 # One 1 m grid: plan
 
-*Status: plan only, written on `main` (`a2ec0fa`) on 12 Nov 2026 while the test build was out of reach. Nothing here is built. Before building, check the test build first: some of this may already be decided or done there (see [Before building](#0-before-building)).*
+*Status: written on `main` (`a2ec0fa`) on 12 Nov 2026 while the test build was out of reach. Checked against the test build (`proto/batch2`, on branch `proto/grid`) the same day: see [What the test build already has](#what-the-test-build-already-has). File and line references below are the test build's.*
 
 ## The owner's brief
 
@@ -29,8 +29,22 @@ POIs already use their own block model on a 1 m grid (`poi-generator/src/Gen/Cor
 ## 0. Before building
 
 1. Get the test build onto GitHub, then branch from it, not from `main`. On `main` this would touch the same files as the unpushed work: building, cores, tech tree, blueprints, the slice.
-2. Check the test build for work that's already done: multi-cell parts, a 1 m grid, Large Hover, door sizes, the stair and NPC fixes, and a character body that can sit. On `main` the player is a single standing figure with no joints (`slice/src/Player/CharacterModel.cs`), so `Game.cs:742` hides it whenever you're seated, and you seem to vanish. The test build's people and bestiary work probably replaced it. Bring this plan up to date with what's there.
+2. Check the test build for work that's already done: multi-cell parts, a 1 m grid, Large Hover, door sizes, the stair and NPC fixes, and a character body that can sit. On `main` the player is a single standing figure with no joints (`slice/src/Player/CharacterModel.cs`), so the game hides it whenever you're seated, and you seem to vanish. The test build replaced the figure with one that sits, but still hides it (see below). Bring this plan up to date with what's there.
 3. Pull the Empyrion and 7 Days to Die reference data off the other machine (`Z:\Steam\...\Empyrion - Galactic Survival\Content\Configuration\BlocksConfig.ecf` and the earlier research). Check every number marked **(check)** against it. Empyrion is guidance, not a spec: use its proportions (how big a part is relative to a person and to other parts, what it does for its size), then **size everything in whole 1 m blocks**, our standard. No half-cell or Empyrion-unit footprints. As before, use counts and proportions only, never copied data.
+
+### What the test build already has
+
+Checked on `proto/grid` (the test build, 606 commits ahead of `main`) on 12 Nov:
+
+- **Blocks spanning several cells: none.** Every component in `building/data/components.json` is one cell. Deco is the only multi-cell thing, and it isn't stored as blocks: `BuildTool.Deco.cs` `PlanDeco` (:96) turns a piece's 0.5 m footprint (`DecoCatalogue.cs:70`) into W×H×D cells on whichever grid it's built on, per placement, with no anchor.
+- **Door sizes: one.** A single one-cell `door` component; the only variant list is the armour shapes.
+- **Stairs: built from blocks, no stairs shape.** `shapes.json` has cube, slope, corner, invcorner, wedge, half, plate and cylinder. The bunker (`slice/src/Start/Bunker.cs`, 0.5 m cells, :47) builds each step as a column 0.5 m up and two cells (1 m) deep, 1.5 m wide, with a `slope` on the last half metre of each riser (:525) and a ramp off the top step (:529-530); the top tread stands 2 cm over a whole metre (:49).
+- **Stair, NPC and phasing fixes: in.** Not on `main`: stair lips (`4192c63`), creatures taking stairs as 45° slopes (`99ab233`), routes walking stairs at their height (`c150af1`), real collision capsules for people (`2042258`), nothing inside furniture (`9243797`), insects out of walls (`9d5c54d`). Still open: half blocks and ramps bouncing the player, standing on built structures, the Outpost bounce (the root movement bug, section 8).
+- **A body that can sit: yes, but it's hidden.** `CharacterModel.cs` now runs on the people's `HumanRig` and walks, runs, crouches and sits (:15, :60, :187-188); `Game.Gestures.cs:113-120` poses it on the chair. `Game.cs:888` still culls it whenever you're seated (`Survivor.Seated == null` in the cull mask), and the hands hide too (`Hands.cs:145`). The chair is still one 0.5 m cell.
+- **Large Hover: not wired.** `CoreMode` is still `Base, Capital, Vessel, Hover` with the grid clamp (`Structure.cs:11`, `:76-81`); a large-hover blueprint loads in Capital mode (`BlueprintLibrary.cs:42`, `:114`).
+- **Rotation: all 24 orientations reachable.** R turns about up and T about X (`Game.cs:564-565`, `BuildTool.cs:147`); together they reach all 24. There's no Z key, and one-face components auto-orient to the clicked face (`BuildTool.cs:849`).
+- **Core removal: still refused** (`Building.cs:217`, `CoreHoldsStructure`).
+- **Cockpits: none** (`Catalogue.cs:142`, "There are no cockpit components").
 
 ## 1. One grid
 
@@ -68,6 +82,13 @@ This is the core engineering piece. It lands first, on its own, before the grid 
 | Navigation (`NavGrid`) | Interior cells are solid. A door counts for every cell of its opening. |
 
 Tests for this phase, in `building/tests`: placement in all 24 orientations; refusal on any blocked cell; removal from a filler; damage from a filler; the same results from blueprint round trips; face masks on outer and interior faces; the room seal of a 2×2×1 door.
+
+**Built on `proto/grid` (12 Nov).**
+- **Storage:** `Block.Ox/Oy/Oz` (the filler's offset), `Structure.AnchorOf`, `TryGetBlock` (a cell read as its whole block), `CellsOf`, `CentreOf`. `Structure.Set` writes a block whole from its anchor; clearing or overwriting any of its cells clears all of them. `Blocks()` now lists each block once, at its anchor; `Cells()` lists every occupied cell (space, air, light and ground use it). `Count` is cells, `BlockCount` is blocks.
+- **The size turns with the block:** local cell (x, y, z) is at anchor + R·(x, y, z), from the anchor towards +x, +y, +z (`Footprint.cs`). The build tools put the anchor so the block grows out from the face it's built on (`Footprint.AnchorFor`).
+- **Faces:** the catalogue's masks keep only a cell's outer faces. Air passes between a block's own cells unless it seals all round (then all of it is solid to air, like a cube).
+- **Colliders:** a cell-colliding block (a shut door, a container) marks each of its cells solid, fillers included, so they merge into boxes chunk by chunk; part-colliding blocks add their stretched part boxes from the anchor only.
+- **Proved on real parts given a size** (`MultiCellParts.cs`: today's door as 2×2×1, the container as 2×2×2, the thruster as 1×1×2), in building's `BuildTest` and physics-sandbox's `PhysicsTest` (it collides; a crate rests on the container's top). They aren't in the game's data yet: phase 2 adds sized parts as real items.
 
 ## 3. Block sizes and stats
 
@@ -127,7 +148,7 @@ Footprints don't have to be cubes or even. A thruster can be long, a hover plate
 | Device | Bottom rung (from today's small part) | Today's large part becomes | Notes |
 | --- | --- | --- | --- |
 | Core | 1×1×1 | — | **One core**, with today's large core's stats. See [section 4](#4-one-core-three-modes). |
-| Command chair, cockpits | whole 1 m blocks, Empyrion proportions **(check)** | — | **Owner, 12 Nov (agreed with the project director on the other device):** today's small-grid pilot seat is 1×1 (0.5 m). That is far too small: the character doesn't sit in it, they just disappear. Command chairs take Empyrion's proportions as guidance, sized in whole 1 m blocks, with a footprint the seated character visibly fits in **(check)**. **Cockpits come back** as parts several blocks in size, which reverses DESIGN.md:843 ("there's no cockpit component") and the note in `Catalogue.cs:102`; update both. Test: the seated pose shows the character in every chair and cockpit, with the camera at their eyes. |
+| Command chair, cockpits | whole 1 m blocks, Empyrion proportions **(check)** | — | **Owner, 12 Nov (agreed with the project director on the other device):** today's small-grid pilot seat is 1×1 (0.5 m). That is far too small: the character doesn't sit in it, they just disappear. Command chairs take Empyrion's proportions as guidance, sized in whole 1 m blocks, with a footprint the seated character visibly fits in **(check)**. **Cockpits come back** as parts several blocks in size, which reverses `docs/DESIGN.md:843` ("there's no cockpit component") and the note in `Catalogue.cs:142`; update both. Test: the seated pose shows the character in every chair and cockpit, with the camera at their eyes. |
 | Door | 1×2×1 | 2×2×1 | Owner: one door item, with its size picked from the block's variant list, the same way you pick a shape. These two are standard, and bigger sizes are more entries in the list. There's no 1×1 door. Wide vehicle openings use forcefield portals instead (section 10). |
 | Thruster | 1×1×1 | 2×2×2 | The ladder above. |
 | Generator | 1×1×1 | 2×2×2 | **(check)** |
@@ -135,7 +156,7 @@ Footprints don't have to be cubes or even. A thruster can be long, a hover plate
 | Container | 1×1×1 | 2×2×2 | Storage goes with volume: 1000 SU at 1×1×1, 8000 SU at 2×2×2. |
 | Gyro | 1×1×1 | 2×2×2 | Torque is 5000 large and 600 small today (`handling.json`) **(check)**. |
 | Hover plate | 1×1×1 | 2×1×2 | Lift 400 kN and ride height 3 m at 2×1×2; ride height 1.5 m at 1×1×1 **(check)**. |
-| Landing gear and docking pads | 1×1×1, plus longer versions | higher tiers are bigger pads **(check)** | **Tiered, like the other scaling devices (owner, 12 Nov): bigger pads at higher tiers.** Length versions within a tier are for nesting. **An attachment point, not a load-bearing part: in effect a docking pad** (owner, 12 Nov). It marks where a craft sets down and attaches: to the ground, or to another vessel to park on it. **It extends and retracts by itself, with no button.** Today it drops below 15 m and under 20 m/s, and G overrides it (`ToggleGear` in `shared/Physics/Core/VesselController.cs:173`, bound in `slice/src/Game/Game.cs:526`, ship-handling `Main.cs:145` and physics-sandbox `Main.cs:100`). Keep the automatic rule and remove the override and the G binding. It carries no load and has no leg-count or mass check. A telescoping leg is optional, and it is for function as well as looks: it extends until it reaches the surface below, so the gear touches down and attaches on uneven ground or a host's deck, each foot reaching its own ground as in capital-base. Gear without one attaches only where its own face touches. **Length versions** (for example 1×1×1, 1×2×1, 1×3×1) are for gear nested up inside the hull in a gear bay, where the leg has to reach past the hull to touch down. They differ only in length, not tier. **A weak point:** low hit points, so gear breaks first on a hard landing and can be shot off. Broken gear loses its attachment point until it is repaired or replaced. Today's gear is a load-bearing suspension with legs reaching 1.4 m (small) and 4 m (large), set in the first ship-handling commit (`cb67319`) with no stated reason. That 4 m drop is why the physics-sandbox README says to use the jetpack to get in. Replace it with the attachment rule. |
+| Landing gear and docking pads | 1×1×1, plus longer versions | higher tiers are bigger pads **(check)** | **Tiered, like the other scaling devices (owner, 12 Nov): bigger pads at higher tiers.** Length versions within a tier are for nesting. **An attachment point, not a load-bearing part: in effect a docking pad** (owner, 12 Nov). It marks where a craft sets down and attaches: to the ground, or to another vessel to park on it. **It extends and retracts by itself, with no button.** Today it drops below 15 m and under 20 m/s, and G overrides it (`ToggleGear` in `shared/Physics/Core/VesselController.cs:188`, bound in `slice/src/Game/Game.cs:649`, `ship-handling/src/Presentation/Main.cs:145` and `physics-sandbox/src/World/Main.cs:100`). Keep the automatic rule and remove the override and the G binding. It carries no load and has no leg-count or mass check. A telescoping leg is optional, and it is for function as well as looks: it extends until it reaches the surface below, so the gear touches down and attaches on uneven ground or a host's deck, each foot reaching its own ground as in capital-base. Gear without one attaches only where its own face touches. **Length versions** (for example 1×1×1, 1×2×1, 1×3×1) are for gear nested up inside the hull in a gear bay, where the leg has to reach past the hull to touch down. They differ only in length, not tier. **A weak point:** low hit points, so gear breaks first on a hard landing and can be shot off. Broken gear loses its attachment point until it is repaired or replaced. Today's gear is a load-bearing suspension with legs reaching 1.4 m (small) and 4 m (large), set in the first ship-handling commit (`cb67319`) with no stated reason. That 4 m drop is why the physics-sandbox README says to use the jetpack to get in. Replace it with the attachment rule. |
 | Turret, gatling, rocket pod | 1×1×1 | 2×2×2 | **(check)** |
 | Warp drive, warp tank | 1×1×1 | 2×2×2 | **(check)** |
 | Constructors (portable, small, large, advanced), deconstructor | already tiers | already tiers | One part per tier, each with its own footprint. The tier names stop meaning grid size **(check)**. |
@@ -179,9 +200,9 @@ Today `StructureClass` (Base, Capital, Small, Hover) and the physics `VesselClas
 
 | Today | Uses class for | After |
 | --- | --- | --- |
-| Area margin (`slice.json:84`: 30 m large, 12 m small) | building and storage range | One rule: 12 m + `sizeShare` × half the structure's longest side (sizeShare is already there). A 40 m base gets about 30 m. |
+| Area margin (`slice.json:110`: 30 m large, 12 m small) | building and storage range | One rule: 12 m + `sizeShare` × half the structure's longest side (sizeShare is already there). A 40 m base gets about 30 m. |
 | Top speeds (`handling.json`: hover 50/50, small 70/130, capital 60/100) | speed caps | Caps by mass band: under 100 t gets 70/130, 100 t and up gets 60/100, and Hover mode gets 50/50 **(check)**. |
-| `SmallVesselMaxTurn` (`Game.cs:520`) | turn cap | Same mass band. |
+| `SmallVesselMaxTurn` (`Game.cs:644`, `GameData.cs:269`) | turn cap | Same mass band. |
 | Hosts (`PhysicsWorld.IsHost`: Base, or Capital) | who can carry parked craft | Any structure hosts any craft whose landing gear attaches to it. See **Parking** in section 10. |
 | capital-base `IsLarge` (Home, hosting, pumping) | Home flag and so on | Any structure can be Home. Hosting as above. |
 
@@ -214,18 +235,18 @@ Files to replace: `lancer`, `bastion`, `outpost`, `workshop`, `pad`, `tender`, `
 - The 2 m look of the plain ruins can stay as a lattice of 1 m blocks.
 - Vehicle wrecks "built from small-grid blocks" become 1 m blocks.
 
-**Deco.** Footprints are in 0.5 m units today (`DecoCatalogue.cs:67`, `SmallCell` and `LargeCell`, `LargeCells` at 4:1). Make it one 1 m footprint, rounded up, with the mesh scaled to fit as now. Pieces that were on both grids become one.
+**Deco.** Footprints are in 0.5 m units today (`shared/Items/Core/DecoCatalogue.cs:70`, `SmallCell` and `LargeCell`, `LargeCells` at 4:1). Make it one 1 m footprint, rounded up, with the mesh scaled to fit as now. Pieces that were on both grids become one.
 
 ## 7. Saves, ids and UI
 
 - Saves aren't in the slice yet, so the `was` lists plus a blueprint version bump cover migration.
 - The capital-base and saves prototypes round-trip blueprints. Move their fixtures to the new blueprint set.
 - **UI.**
-  - Remove the S/L grid badges (`Visor.cs:478,579`, `GridView.cs:182,368`, `YouSection.cs:381,389`).
-  - The "BIG CORE / SMALL CORE" caption (`CoreSection.cs:285`) becomes the structure's name and mode.
+  - Remove the S/L grid badges (`Visor.cs:563,668-670`, `GridView.cs:182,437`, `YouSection.cs:384,401`).
+  - The `NAME · LARGE/SMALL` caption (`CoreSection.cs:318`) becomes the structure's name and mode.
   - Tooltips ("Steel block (large)", "large grid") show the part's size instead, for example "2 × 2 × 2 m".
   - `TechTree.cs` regexes that strip "(large|small)" go.
-- Claiming a wreck needs a core of the matching grid (`Spaceflight.Hands.cs:223`). That rule goes: any wreck takes the core.
+- Claiming a wreck needs a core of the matching grid (`Spaceflight.Hands.cs:223-227`, and the build tool's wreck claim at `BuildTool.cs:411-412`). That rule goes: any wreck takes the core.
 - In `Vessel.Orbit.cs:63`, a claimed wreck in orbit becomes a Flight structure. A grounded one becomes a Base.
 - XP per block placed (`progress.json`: `blockLarge 3`, `blockSmall 1`) becomes a per-item value in the data. By default it is 1 per 1 m cell a part fills, capped at 8, and 1 for an armour block. Assembly time (`blocks.json:38`: 0.4 s small, 1.6 s large) becomes per item too, by default 0.4 s for a one-cell part and 1.6 s for a 2×2×2 one.
 
@@ -247,11 +268,13 @@ To do:
 2. Find where the collider and the drawn shape differ. Shaped blocks may collide as a box or a stepped hull while they're drawn as a slope. The stuck guard nudges by `cell × 0.5` (`StructureBridge.cs:439`), which is 0.5 m at 1 m cells. The step-up and ground-snap logic could be fighting on a top that isn't level.
 3. Fix it, then run the same test for NPCs and animals (`NavGrid` headroom, steps).
 
+**A lead found during phase 1:** the shared stuck guard asks the physics bridge whether a point is inside a solid cell (`StructureField.IsSolid` in `physics-sandbox/src/Bridges/StructureBridge.cs`, used by `IsInside`, `Fits`, `Supports` and `TopAt`). It goes through `Structure.IsSolid`, which says every armour block is solid whatever its shape, and every colliding component fills its whole cell. So the top half of a half block's cell, the air over a slope, and the space round a chair's parts all count as solid. A player standing on a half block has their feet in a "solid" cell: the guard pushes them out by half a cell, gravity pulls them back, and they bounce. `TopAt` likewise returns the top of the cell, not of the shape. That matches the owner's "trapped inside a block". The fix is to test points against the block's real shape (its hull or part boxes), not its cell.
+
 **The owner's lead (10 to 11 Nov):** it feels like being trapped inside a block, probably because a floor is a full-cell block in the space the player occupies. **Floors are never thin blocks**: a floor finish is painted onto the face of the block below. Apply this to player builds and to places (place floors and paths are thin plates today, per `Homes.cs`). **Urgent: this is the first job after the grid** (owner, 12 Nov).
 
 ## 9. Code to change
 
-These are grouped by phase. Line numbers are from `main` on 12 Nov and will have moved on the test build.
+These are grouped by phase. Line numbers are the test build's (`proto/grid`, 12 Nov).
 
 1. **Blocks that span several cells**:
    - `building/src/Structures`: `Structure.cs`, `Building.cs`, `Catalogue.cs` (face tables per outer face), `Damage.cs`, `Rooms.cs`, `Connectivity.cs`, `NavGrid.cs`, `Blueprint.cs`
@@ -264,7 +287,7 @@ These are grouped by phase. Line numbers are from `main` on 12 Nov and will have
    - `physics-sandbox/data/vessel-parts.json`
    - `shared/Items/data/building-parts.json`, `building-materials.json`, `blocks.json`, `deco.json`, `machines.json`
    - `ItemCatalogue.cs` (`AddBlock`), `BlockBills.cs`, `Items.cs` (`SmallGrid`), `Validation.cs`, `BuildingBridge.cs` (`IsSmall`, `BlocksOf`, `ItemOf`, `BillOf`)
-   - `BuildTool.cs:255-257,661-667` (wrong-grid refusals), `BuildTool.Deco.cs`
+   - `BuildTool.cs:258-260,693-699` (wrong-grid refusals), `BuildTool.Deco.cs`
    - `Progress.cs` (tabs), `TechTree.cs`
 3. **One core**:
    - `Structure.cs` (`CoreMode`, the clamp), `Building.cs:306-322`, `Vessel.Mode.cs` (`ModesOf`, `Missing`)
@@ -277,7 +300,7 @@ These are grouped by phase. Line numbers are from `main` on 12 Nov and will have
 5. **Deco, POIs, UI and docs**:
    - `DecoCatalogue.cs`, the UI files in [section 7](#7-saves-ids-and-ui)
    - `DESIGN.md` §11 (the grid table, "Two classes, Large and Small", class-compatible blocks), `prototypes/building/README.md`, `shared/Items/README.md`, `docs/decided-vs-built.md`
-   - Out-of-date notes found along the way: `BlockPlacer.cs:35-36` and the shared/Items README still mention class checks and `WrongClass`, which no longer exist; `Items.cs:111` has a comment with no property; the README's count of 63 block items is out of date (66 now).
+   - Out-of-date notes found along the way: `BlockPlacer.cs:35-36` and the shared/Items README still mention class checks and `WrongClass`, which no longer exist; `Items.cs:112` has a comment with no property; the README's count of 63 block items (`shared/Items/README.md:29`) is out of date (66 now).
 6. **Movement**: [section 8](#8-movement-on-partial-blocks).
 
 **Tests that assert the old split and need rewriting:**
@@ -332,7 +355,7 @@ These came up while planning the grid. Where they conflict with anything above, 
 - **It stops lasers, rockets and similar fast projectiles.** It doesn't stop shots fired inside the bubble, or collisions with ships and structures.
 - **Several shields per ship, as long as their bubbles don't touch.** One fried generator only exposes its own area. **Bubbles that touch fry every shield generator involved,** so they can't be stacked. This applies wherever the bubbles meet: two on your own ship, or yours and another ship's.
 
-**Dismantling wrecks.** The tool dismantles coreless wrecks anywhere, returning each base block plus its plating's worth in hit points, rounded down. On main the build tool skips wrecks entirely (`slice/src/Construction/BuildTool.cs:321`), and only orbit has a salvage action (`Spaceflight.Hands.cs`), so this extends it to the ground.
+**Dismantling wrecks.** The tool dismantles coreless wrecks anywhere, returning each base block plus its plating's worth in hit points, rounded down. The build tool skips wrecks entirely (`slice/src/Construction/BuildTool.cs:324`; claiming one with a core is `:402-419`), and only orbit has a salvage action (`Spaceflight.Hands.cs`), so this extends it to the ground.
 
 **Welding a loose piece back on.** Aim the tool at a coreless piece touching or resting on your structure and weld. The piece snaps onto your structure's grid at the nearest aligned spot, rounding its position and rotation, so there's no lining it up by hand. The piece moves, never your structure, so Base mode doesn't matter. If it can't snap cleanly (tilted too far, too far off the grid, or the spot is blocked), the tool says why, and you dismantle and re-place the blocks instead.
 

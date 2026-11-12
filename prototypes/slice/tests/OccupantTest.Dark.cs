@@ -28,7 +28,7 @@ public partial class OccupantTest
         string tooTall = "";
         var crawl = new CrawlWatch(_data);
         var formsAll = new HashSet<string>();
-        bool changedIn = false, machinesIn = false, hollowsIn = false;
+        bool changedIn = false, machinesIn = false, hollowsIn = false, machinesRose = false;
         float outdoorTallest = 0f;
         int outdoorChanged = 0;
         foreach (var (fall, layer) in worlds)
@@ -41,6 +41,8 @@ public partial class OccupantTest
             WorldConditions w = Conditions(roll, seed);
             Slice.Surface.WildlifePatch.Story(w, roll, WorldProfile.Roll(seed, "Temperate", false), WorldReading.Of(roll));
             WorldLife life = Bestiary.Roll(_data, w);
+            // Machines rise only where the world's eras were mid or high tech.
+            machinesRose |= fall == "machine_uprising" && Robots.Allowed(w);
             var outdoor = life.Fauna.Species.ToDictionary(s => s, s => s.BodyHeight);
             var deep = new PlaceFauna.Deep(life, null, 1f);
             var forms = new HashSet<string>();
@@ -91,7 +93,7 @@ public partial class OccupantTest
         Check(places > 20 && withFoes >= places * 0.75f, $"places nobody holds have something dangerous in their dark: {withFoes} of {places}");
         Check(outOfRange == 0, outOfRange == 0 ? $"every one of {foes} foes met indoors stands between a child's height and a person's" : $"{outOfRange} of {foes} foes indoors out of the 1.1-1.9 m range, e.g. {tooTall}");
         Check(worldsVaried >= worlds.Length - 2 && formsAll.Count >= 6, $"the dark's foes come in many bodies: {formsAll.Count} across the worlds ({string.Join(", ", formsAll.Take(10))}), three or more on {worldsVaried} of {worlds.Length} worlds");
-        Check(changedIn && machinesIn && hollowsIn, $"the dark has the fall's changed ({changedIn}), machines where they rose ({machinesIn}) and Hollows where the growth is ({hollowsIn})");
+        Check(changedIn && (machinesIn || !machinesRose) && hollowsIn, $"the dark has the fall's changed ({changedIn}), machines where they rose ({machinesIn}) and Hollows where the growth is ({hollowsIn})");
         Check(armed > 0, $"now and then an armed group holds out in the dark ({armed} places)");
         Check(outdoorChanged == 0 && outdoorTallest > 2f, $"outside, the same kinds keep their own size ({outdoorChanged} changed; the tallest {outdoorTallest:F1} m)");
     }

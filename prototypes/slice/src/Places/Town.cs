@@ -133,6 +133,8 @@ public sealed partial class Town
         /// <summary>Their answer to your gesture (from when, for how long), and where they've been shown to look.</summary>
         /// <summary>You robbed them (they remember); a guard on your trail after a robbery, for how long.</summary>
         public bool Robbed;
+        /// <summary>Their own mood (see Town.Mood.cs).</summary>
+        public Feeling Feel = new();
         /// <summary>Waiting a moment for someone to pass (a doorway); how long since you last pushed them.</summary>
         public float Yield, ShovedFor;
         /// <summary>When a vessel last hit them (clock).</summary>
@@ -419,6 +421,7 @@ public sealed partial class Town
         Worms(player, tickDt);
         Sense(tickDt);
         Word(tickDt);
+        MoodTick(tickDt);
         // Whoever a Husk has by the head stays where they are taken.
         _held.Clear();
         if (_places.Zone.Wildlife.Sim is { } wild)
@@ -571,7 +574,8 @@ public sealed partial class Town
         float flat = new Vector2(d.X, d.Z).Length();
         // Eases into a walk and out of it, slowing only for the last of the way; corners keep their pace.
         bool last = p.Step >= p.Path.Count - 1;
-        float wanted = last ? MathF.Min(p.Speed, MathF.Max(0.3f, MathF.Sqrt(2f * PeopleAccel * flat))) : p.Speed;
+        float pace = p.Speed * p.Feel.Pace; // their mood sets their pace
+        float wanted = last ? MathF.Min(pace, MathF.Max(0.3f, MathF.Sqrt(2f * PeopleAccel * flat))) : pace;
         p.Now = Mathf.MoveToward(p.Now, wanted, PeopleAccel * dt);
         float step = p.Now * dt;
         p.Gait += step;
@@ -657,6 +661,8 @@ public sealed partial class Town
     int? Haunt(Person p, string[] tags)
     {
         if (tags == null || tags.Length == 0) return null;
+        // In a room their job is done in, most of the time (Town.Placement).
+        if (Fitting(p, tags) is int fit) return fit;
         var near = Spots.Select((s, i) => (s, i)).Where(t => Array.IndexOf(tags, t.s.Tag) >= 0).OrderBy(t => t.s.Cell.Manhattan(Spots[p.Spot].Cell) + _rng.Next(12)).Take(3).ToList();
         return near.Count == 0 ? null : near[_rng.Next(near.Count)].i;
     }
@@ -673,6 +679,8 @@ public sealed partial class Town
     {
         p.Partner = null;
         p.Working = false;
+        // Of an evening, off duty: to the fire or the common room (Town.Placement).
+        if (Gather(p)) return;
         var linked = Data.Links.Where(l => l.A == p.Spot || l.B == p.Spot).Select(l => l.A == p.Spot ? l.B : l.A).ToList();
         RoleLook day = p.Looks?.Figure.Routine;
         string moves = day?.Moves ?? "wander";
@@ -882,6 +890,7 @@ public sealed partial class Town
     /// <summary>The survivor fired in or at the town: a peaceful or wary place turns hostile, its people flee.</summary>
     public void Provoked()
     {
+        Gunshot();
         if (Memory.Mood == Mood.Hostile) return;
         _moodBefore = Memory.Mood;
         Memory.Mood = Mood.Hostile;
@@ -1002,6 +1011,8 @@ public sealed partial class Town
         foreach (Person q in People.Where(q => q.Looks.Figure.Stage != LifeStage.Child && Husks.CanTurn(q.Looks)).OrderBy(_ => roll.Float()).Take(carriers)) q.Carrier = true;
         CarriersAtStart = People.Count(q => q.Carrier);
         foreach (Person q in People) _carried.Add(new Carried());
+        // Each to their place of work, a guard up on the lookout (Town.Placement).
+        Stations();
     }
 
     /// <summary>The region at a world point: the map's temperature (as degrees) and humidity there.</summary>
@@ -1137,6 +1148,7 @@ public sealed partial class Town
             Speak(p, VoiceMood.Murmur);
         }
         else if (p.Act is BodyAct.Greet or BodyAct.Present or BodyAct.Warn or BodyAct.Taunt && p.ActHeld < 2.6f && away < GreetRearm) want = p.Act;
+        if (want == BodyAct.None && !p.Sitting && p.Now < 0.6f) want = MoodAct(p);
         // A child at ease plays, on and off.
         if (want == BodyAct.None && peaceful && f.Stage == LifeStage.Child && p.Now < 0.2f && !p.Sitting && MathF.Sin(_clock * 0.23f + p.Spot) > 0.1f) want = BodyAct.Play;
         if (want == BodyAct.HandsUp && p.Wanted != BodyAct.HandsUp) Speak(p, _rng.NextDouble() < 0.5 ? VoiceMood.Whisper : VoiceMood.Cry);
@@ -1192,6 +1204,7 @@ public sealed partial class Town
             if (d < best) { best = d; who = p; }
         }
         if (who == null) return;
+        if (Vocalise(who)) return;
         VoiceMood mood = who.Aim >= 0f ? VoiceMood.Shout
             : who.Fleeing ? (_rng.NextDouble() < 0.5 ? VoiceMood.Cry : VoiceMood.Whisper)
             : Memory.Mood == Mood.Hostile ? VoiceMood.Shout : VoiceMood.Murmur;

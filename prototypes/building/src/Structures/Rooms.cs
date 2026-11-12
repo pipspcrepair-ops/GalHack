@@ -235,7 +235,7 @@ public static class Rooms
             if (n > MaxCells) return;
             _seal = new byte[N];
             _occupied = new bool[N];
-            foreach (var (p, b) in s.Blocks())
+            foreach (var (p, b) in s.Cells())
             {
                 int i = Index(p - min);
                 _occupied[i] = true;

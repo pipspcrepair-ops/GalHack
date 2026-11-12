@@ -21,6 +21,14 @@ public sealed class PoiRoom
     /// <summary>Levels below the way in (0 at the way in).</summary>
     public int Depth;
     public bool Dark;
+    /// <summary>What the room was for (the generator's purpose: galley, ward, storage...), or empty.</summary>
+    public string Purpose = "";
+    /// <summary>A working light keeps it lit: the worst of the dark keep out of it.</summary>
+    public bool Lit;
+    /// <summary>Caches in it, and the best of their tiers (loot worth having is guarded).</summary>
+    public int Loot, LootTier;
+    /// <summary>Open ground of the place (a yard or a camp's pitch), not a room: only its holders walk it.</summary>
+    public bool Yard;
     /// <summary>Rooms it opens onto.</summary>
     public readonly List<int> Links = new();
     /// <summary>Vent grilles: their mouths on the room's walls or ceiling, and which way they face (into the room).</summary>
@@ -87,6 +95,15 @@ public sealed class PoiPlan
     /// </summary>
     public float Severity = 1f;
     public readonly List<PoiRoom> Rooms = new();
+    /// <summary>The place's open ground (yards, a camp's pitches): kept apart from its rooms, for those that hold it.</summary>
+    public readonly List<PoiRoom> Yards = new();
+    /// <summary>
+    /// The growth's beasts, where the growth took the place (its state is infested, whoever else
+    /// holds it): a place the Hollow took ALWAYS has them, in it and round it (the owner).
+    /// </summary>
+    public readonly List<Species> Hollows = new();
+    /// <summary>How dangerous the place is, 0..1 (its rarity and state): how thickly it is held (place-patterns E2).</summary>
+    public float Danger;
 }
 
 /// <summary>One creature to put in a place: its role, species, spot and how it hides.</summary>
@@ -129,6 +146,10 @@ public sealed class PoiPopulation
     public float Severity;
     /// <summary>The place's seed (its veins grow from it).</summary>
     public ulong Seed;
+    /// <summary>A mixed encounter set up (an armed group's room, the nest's room), or none.</summary>
+    public (int Armed, int Nest)? Clash;
+    /// <summary>Spawns waiting to be put down out of sight (fair spawning), and put down when they can be.</summary>
+    public readonly List<PoiSpawn> Deferred = new();
 
     public int Count(DeepRole role) => Spawns.FindAll(s => s.Role == role).Count;
 }
@@ -206,7 +227,7 @@ public sealed class Colony
 /// - Derelict ships have their own nesters in holds, ducts and engine rooms.
 /// - Caves (rooms of kind Cave) get crawlers on their walls and ceilings.
 /// </summary>
-public static class PoiFauna
+public static partial class PoiFauna
 {
     public static PoiPopulation Populate(PoiPlan poi, DeepFauna fauna, DeepTables rules)
     {
@@ -225,7 +246,8 @@ public static class PoiFauna
         // Whoever holds a place is there: only a place nobody holds (or nobody but people) may be empty and silent.
         bool held = holder is PlaceHolder.Nesters or PlaceHolder.Beasts or PlaceHolder.Hollows or PlaceHolder.Machines;
         string state = holder is PlaceHolder.People or PlaceHolder.Machines ? nameof(PlaceState.Active) : poi.State.ToString();
-        if (!poi.Husks && !held && rng.Chance(pr.Silent.GetValueOrDefault(state, 0.25f)))
+        // Aliveness follows the world: only a barren world's places may be silent; elsewhere every place has something.
+        if (!poi.Husks && !held && poi.Hollows.Count == 0 && rng.Chance(pr.Silent.GetValueOrDefault(state, 0.25f) * Math.Clamp(1f - poi.Livable / 0.35f, 0f, 1f)))
         {
             pop.Silent = true;
             pop.Note = "empty and silent";
@@ -363,6 +385,8 @@ public static class PoiFauna
         if (poi.Husks) Den(poi, pop, fauna, theme, rng);
         // Whoever holds it, after the cap too: the place is theirs before it is anything else's.
         if (poi.Holders.Count > 0 && holder is PlaceHolder.Beasts or PlaceHolder.Hollows or PlaceHolder.Machines) Held(poi, pop, fauna, theme, rng, holder);
+        // Then by purpose: the growth's always, a floor by state, loot guarded, mixed encounters, the way in kept quiet.
+        Purposes(poi, pop, fauna, theme, rng, rules, active, infested, empty);
 
         // The food chain: every hunter of the place eats every subsister in it.
         var preds = new HashSet<Species>();
@@ -462,6 +486,8 @@ public static class PoiFauna
             foreach (PoiRoom room in poi.Rooms)
                 if (room.Kind is not (RoomKind.Vent or RoomKind.Duct) && room.Size.Y >= 1.8f && (furthest == null || far.GetValueOrDefault(room.Index) > far.GetValueOrDefault(furthest.Index) || room.Size.X * room.Size.Z > furthest.Size.X * furthest.Size.Z && far.GetValueOrDefault(room.Index) == far.GetValueOrDefault(furthest.Index)))
                     furthest = room;
+        // A place with no rooms at all (a sign by the road, a camp): its Husk keeps to its open ground.
+        furthest ??= poi.Yards.Count > 0 ? poi.Yards[0] : null;
         if (furthest == null) return;
         // However light, the furthest room has its Husk and the faintest sign of them: a vein in a corner.
         if (!pop.Spawns.Exists(s => s.Room == furthest.Index && s.Species.Husk) && lurker != null)
@@ -696,6 +722,8 @@ public static class PoiFauna
     static void Held(PoiPlan poi, PoiPopulation pop, DeepFauna fauna, PoiTheme theme, Rng rng, PlaceHolder holder)
     {
         var walkable = poi.Rooms.FindAll(r => r.Kind is not (RoomKind.Vent or RoomKind.Duct) && r.Size.Y >= 2f);
+        // A place with no rooms (a clearing, a camp): its holders keep its open ground.
+        if (walkable.Count == 0) walkable = new List<PoiRoom>(poi.Yards);
         if (walkable.Count == 0) return;
         int n = Math.Clamp(walkable.Count / 3 + 1, 2, 6);
         var from = walkable.FindAll(r => r.Kind == RoomKind.Corridor);
@@ -710,6 +738,12 @@ public static class PoiFauna
                 if (Own(poi, fauna, theme, DeepRole.Prowler, width, height, rng) is not { } sp) continue;
                 pop.Spawns.Add(new PoiSpawn { Role = DeepRole.Prowler, Species = sp, Position = route[0], Room = start.Index, Route = route });
                 placed++;
+            }
+            // No beat wide enough for their frames: they stand guard in the widest room instead.
+            if (!pop.Spawns.Exists(s => s.Species.Mechanical))
+            {
+                PoiRoom wide = walkable.OrderByDescending(r => r.Width).First();
+                if (Own(poi, fauna, theme, DeepRole.Lurker, wide.Width, wide.Size.Y, rng) is { } sentry) Lurker(pop, fauna, theme, wide, rng, false, sentry);
             }
             return;
         }
@@ -883,8 +917,34 @@ public static class PoiFauna
     /// ambushers hidden inside their holes, guards round their nests, prowlers on their beats),
     /// and a colony per subsister species so the small things keep coming back.
     /// </summary>
-    public static List<Creature> Spawn(WildSim sim, PoiPopulation pop, ISolidSpace space)
+    public static List<Creature> Spawn(WildSim sim, PoiPopulation pop, ISolidSpace space, Func<Vector3, bool> allow = null)
     {
+        // Fair spawning: nothing is put down where you'd see it appear, or right beside you. A spot that
+        // fails is moved a little within reach (still in the open), else it waits (pop.Deferred) until it can be.
+        if (allow != null && !pop.Silent)
+        {
+            var fair = Rng.For(pop.Seed, "fair");
+            for (int i = pop.Spawns.Count - 1; i >= 0; i--)
+            {
+                PoiSpawn s = pop.Spawns[i];
+                if (s.Hole >= 0 || allow(s.Position)) continue; // hidden in its hole: nothing shows
+                bool moved = false;
+                for (int k = 0; k < 10 && !moved; k++)
+                {
+                    float a = fair.Range(0f, MathF.Tau), r = fair.Range(2f, 7f);
+                    Vector3 q = s.Position + new Vector3(MathF.Cos(a) * r, 0f, MathF.Sin(a) * r);
+                    if (space.Density(q + Vector3.Up * 0.5f) > 0f || !allow(q)) continue;
+                    if (s.Route != null && s.Route.Count > 0) s.Route[0] = q;
+                    s.Position = q;
+                    moved = true;
+                }
+                if (!moved)
+                {
+                    pop.Deferred.Add(pop.Spawns[i]);
+                    pop.Spawns.RemoveAt(i);
+                }
+            }
+        }
         var made = new List<Creature>();
         if (pop.Silent) return made;
         int crackBase = sim.Cracks.Count;
@@ -914,7 +974,55 @@ public static class PoiFauna
         if (placed.Count > 0 || pop.VeinRoots.Count > 0) Veins.Grow(sim.Veins, space, placed, pop.VeinRoots, pop.Severity, pop.Seed);
 
         var colonies = new Dictionary<Species, Colony>();
-        foreach (PoiSpawn s in pop.Spawns)
+        foreach (PoiSpawn s in pop.Spawns.ToArray())
+        {
+            Creature c = Put(sim, pop, space, s);
+            // Settled somewhere you'd see it (moved off a wall or out of a crowd): it waits after all.
+            if (allow != null && s.Nest < 0 && !c.Removed && !c.InWalls && !allow(c.Position))
+            {
+                sim.Remove(c);
+                pop.Spawns.Remove(s);
+                pop.Deferred.Add(s);
+                continue;
+            }
+            made.Add(c);
+            if (s.Species.Role == DeepRole.Subsister)
+            {
+                if (!colonies.TryGetValue(s.Species, out Colony col))
+                {
+                    col = new Colony { Species = s.Species, Space = space, Home = c.Home };
+                    colonies[s.Species] = col;
+                    foreach (Crack k in pop.Cracks) if (k.Kind == CrackKind.Crack) col.Sources.Add(k);
+                    sim.Colonies.Add(col);
+                }
+                col.Target++;
+            }
+        }
+        return made;
+    }
+
+    /// <summary>
+    /// Puts down the spawns that had to wait (they'd have appeared in view, or beside you) where they
+    /// can be now, out of sight, a few at a time (spread over frames); those still in view wait on. The number put down.
+    /// </summary>
+    public static int PutDeferred(WildSim sim, PoiPopulation pop, ISolidSpace space, Func<Vector3, bool> allow, int most = int.MaxValue)
+    {
+        int n = 0;
+        for (int i = pop.Deferred.Count - 1; i >= 0 && n < most; i--)
+        {
+            PoiSpawn s = pop.Deferred[i];
+            if (allow != null && !allow(s.Position)) continue;
+            pop.Deferred.RemoveAt(i);
+            pop.Spawns.Add(s);
+            Put(sim, pop, space, s);
+            n++;
+        }
+        return n;
+    }
+
+    /// <summary>One spawn into the sim: on its surface, by its nest, on its beat, in its hole.</summary>
+    static Creature Put(WildSim sim, PoiPopulation pop, ISolidSpace space, PoiSpawn s)
+    {
         {
             Nest nest = s.Nest >= 0 ? pop.Nests[s.Nest] : null;
             Creature c = sim.SpawnIn(s.Species, space, s.Position, s.Up, pack: nest?.Turns);
@@ -935,19 +1043,7 @@ public static class PoiFauna
                 c.Ambush = new AmbushPoint { Kind = s.Hide, Position = Crawl.Center(c), Normal = c.Facing.Y, Hole = hole };
                 if (hole != null) Brain.EnterCrack(sim, c, hole, park: true);
             }
-            made.Add(c);
-            if (s.Species.Role == DeepRole.Subsister)
-            {
-                if (!colonies.TryGetValue(s.Species, out Colony col))
-                {
-                    col = new Colony { Species = s.Species, Space = space, Home = c.Home };
-                    colonies[s.Species] = col;
-                    foreach (Crack k in pop.Cracks) if (k.Kind == CrackKind.Crack) col.Sources.Add(k);
-                    sim.Colonies.Add(col);
-                }
-                col.Target++;
-            }
+            return c;
         }
-        return made;
     }
 }

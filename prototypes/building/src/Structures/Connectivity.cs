@@ -11,10 +11,14 @@ namespace GalHack.Structures;
 /// </summary>
 public static class Connectivity
 {
-    public static HashSet<Int3> Reachable(Structure s, Int3 start, Int3? without = null)
+    public static HashSet<Int3> Reachable(Structure s, Int3 start, Int3? without = null) =>
+        Reachable(s, start, without is Int3 w && s.TryGetBlock(w, out Int3 anchor, out Block b) ? new HashSet<Int3>(s.CellsOf(anchor, b)) : null);
+
+    /// <summary>The cells joined to <paramref name="start"/>, as if the cells in <paramref name="without"/> were empty.</summary>
+    public static HashSet<Int3> Reachable(Structure s, Int3 start, HashSet<Int3> without)
     {
         var seen = new HashSet<Int3>();
-        if (!s.Has(start) || start == without) return seen;
+        if (!s.Has(start) || without != null && without.Contains(start)) return seen;
         var queue = new Queue<Int3>();
         seen.Add(start);
         queue.Enqueue(start);
@@ -24,7 +28,7 @@ public static class Connectivity
             foreach (Dir d in Dirs.All)
             {
                 Int3 n = p + d.Vec();
-                if (n == without || seen.Contains(n) || !s.Joined(p, d)) continue;
+                if (without != null && without.Contains(n) || seen.Contains(n) || !s.Joined(p, d)) continue;
                 seen.Add(n);
                 queue.Enqueue(n);
             }
@@ -35,13 +39,13 @@ public static class Connectivity
     /// <summary>How many blocks would lose their core if the block at <paramref name="removed"/> went.</summary>
     public static int CutOffWithout(Structure s, Int3 removed)
     {
-        if (!s.Has(removed)) return 0;
-        if (s.Core is not Int3 core || core == removed) return s.Count - 1;
+        if (!s.TryGetBlock(removed, out Int3 anchor, out Block block)) return 0;
+        if (s.Core is not Int3 core || core == anchor) return s.BlockCount - 1;
 
-        // A block joined to one neighbour or none is a leaf: removing it cuts nothing off.
-        int joined = Dirs.All.Count(d => s.Joined(removed, d));
-        if (joined <= 1) return 0;
-        return s.Count - 1 - Reachable(s, core, removed).Count;
+        // A one-cell block joined to one neighbour or none is a leaf: removing it cuts nothing off.
+        if (!s.TypeOf(block).Multi && Dirs.All.Count(d => s.Joined(anchor, d)) <= 1) return 0;
+        HashSet<Int3> kept = Reachable(s, core, removed);
+        return s.BlockCount - 1 - (s.MultiCellBlocks == 0 ? kept.Count : kept.Count(c => !s.Get(c).IsFiller));
     }
 
     /// <summary>The structure's separate pieces, largest first.</summary>
@@ -106,7 +110,8 @@ public static class Connectivity
         var wreck = new Structure(s.Catalogue, s.Grid) { Name = name, Owner = null, Mode = s.Mode, GravityOn = s.GravityOn };
         foreach (Int3 p in cells)
         {
-            Block b = s.Get(p);
+            // A block spanning several cells moves whole with its anchor: its fillers are written with it.
+            if (!s.TryGet(p, out Block b) || b.IsFiller) continue;
             foreach (Dir d in Dirs.All)
             {
                 ushort slot = b.Paint[d];
@@ -122,7 +127,7 @@ public static class Connectivity
     {
         double total = 0;
         foreach (Int3 p in cells)
-            if (s.TryGet(p, out Block b) && s.TypeOf(b).IsContainer)
+            if (s.TryGet(p, out Block b) && !b.IsFiller && s.TypeOf(b).IsContainer)
                 total += s.TypeOf(b).Storage * s.Grid.StorageScale;
         return total;
     }

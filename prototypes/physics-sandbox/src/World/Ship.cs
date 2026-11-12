@@ -397,7 +397,7 @@ public sealed class Ship
         {
             float bm = Units.Kilograms(s.StatsOf(b).Mass);
             m += bm;
-            p += bm * body.PointVelocity(body.ToParent(StructureBridge.CellCenter(s, cell)));
+            p += bm * body.PointVelocity(body.ToParent(StructureBridge.BlockCenter(s, cell, b)));
         }
         mass = (float)m;
         return p;

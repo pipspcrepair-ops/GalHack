@@ -755,8 +755,9 @@ public partial class CreaturesTest : Node
         }
         float Share(PlaceState s) => silent.GetValueOrDefault(s) / (float)total[s];
         float Per(PlaceState s) => creatures.GetValueOrDefault(s) / (float)Math.Max(1, total[s] - silent.GetValueOrDefault(s));
-        Check(Share(PlaceState.Abandoned) is > 0.1f and < 0.45f && Share(PlaceState.Ruined) is > 0.1f and < 0.5f && Share(PlaceState.Infested) == 0f && Share(PlaceState.Active) > 0.75f,
-            $"some places are empty and silent: abandoned {Share(PlaceState.Abandoned):P0}, ruined {Share(PlaceState.Ruined):P0}, infested {Share(PlaceState.Infested):P0}, active {Share(PlaceState.Active):P0} (garrisons keep theirs clear)");
+        // (A living world's places all hold something; only a barren world's may be silent: PoiFauna.)
+        Check(Share(PlaceState.Abandoned) == 0f && Share(PlaceState.Ruined) == 0f && Share(PlaceState.Infested) == 0f && Share(PlaceState.Active) > 0.75f,
+            $"on a living world only garrisons keep their places silent: abandoned {Share(PlaceState.Abandoned):P0}, ruined {Share(PlaceState.Ruined):P0}, infested {Share(PlaceState.Infested):P0}, active {Share(PlaceState.Active):P0} (garrisons keep theirs clear)");
         Check(Per(PlaceState.Infested) > Per(PlaceState.Abandoned) * 1.6f && Per(PlaceState.Active) < Per(PlaceState.Abandoned) * 0.5f,
             $"infested places are overrun ({Per(PlaceState.Infested):F1} creatures a place against {Per(PlaceState.Abandoned):F1} in abandoned ones, {Per(PlaceState.Active):F1} in active ones)");
         Check(worstPlace <= Most && worstRoom <= Math.Max(_data.Deep.Population.NestCap, RoomMost), $"places keep to their caps: at most {worstPlace} creatures in a place (cap {Most}), {worstRoom} in a room");
