@@ -177,8 +177,8 @@ public sealed class DepositField
         map.Flags[cell] is 0 or CellFlags.Riparian or CellFlags.Coast && map.Elevation[cell] >= 1.5f && map.Slope[cell] < 0.6f;
 
     /// <summary>
-    /// Where ice may lie (the owner's rule): anywhere on an ice world (and, when they exist, on moons and
-    /// asteroids, which have no biome map: they pass <see cref="IceAnywhere"/>); on other worlds only in the ice
+    /// Where ice may lie (the owner's rule): anywhere on an ice world (moons and
+    /// asteroids will pass it too, having no biome map); on other worlds only in the ice
     /// caps, the cold, snow and glacier land; never on arid or lava worlds.
     /// </summary>
     public static bool IceAllowed(WorldMap map, int cell)
@@ -191,9 +191,6 @@ public sealed class DepositField
 
     /// <summary>The biomes that make an ice cap: snow and glacier land and the cold ground round it.</summary>
     public static bool IceCap(Biome b) => b is Biome.Snow or Biome.Glacier or Biome.Snowfield or Biome.BlueIce or Biome.IceTundra or Biome.Tundra;
-
-    /// <summary>Moons and asteroids: no biomes, ice anywhere (no such world type holds deposits yet; this is the rule for when one does).</summary>
-    public const bool IceAnywhere = true;
 
     bool Allowed(DepositKind kind, int cell) => kind != DepositKind.Water || IceAllowed(_map, cell);
 
