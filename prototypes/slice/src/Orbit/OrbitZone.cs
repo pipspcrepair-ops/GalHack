@@ -121,7 +121,7 @@ public partial class OrbitZone : SurfaceZone
         Gap = rules.Crossing.Gap;
         PlanetSurface.Skies.StarSystem model = below.StarSystem;
         Home = new Celestial(model.Home, home: true) { World = below, Seen = model };
-        Size(Home, below, ceiling);
+        Size(Home, below.Width, below.Height, ceiling);
         Home.AtmosphereRadius = Home.GlobeRadius * (1f + (float)rules.Globe.Atmosphere);
         Bodies.Add(Home);
         Anchor = Home;
