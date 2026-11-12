@@ -81,6 +81,8 @@ public sealed partial class WorldLife
                 Fit.Harden(t, hardy, rng);
                 species.Add(hardy);
             }
+            // Machines only where the world's old or current era was mid or high tech.
+            if (!Robots.Allowed(World)) return;
             species.Add(Robots.Roll(World, 0));
             species.Add(Robots.Roll(World, 1));
             if (rng.Chance(0.5f)) species.Add(Robots.Roll(World, 2));
@@ -100,7 +102,7 @@ public sealed partial class WorldLife
             }
         }
         Layered();
-        if (rng.Chance(t.MachineWorld)) species.Add(Robots.Roll(World, rng.Int(0, 2)));
+        if (rng.Chance(t.MachineWorld) && Robots.Allowed(World)) species.Add(Robots.Roll(World, rng.Int(0, 2)));
         // Now and then a world has something that breaks blocks.
         if (rng.Chance(t.BreakerWorld) && Breaker((BreakerKind)rng.Int(1, 4), rng) is { } breaker) species.Add(breaker);
         // Where the world has twisted its people far enough, some have gone wild.

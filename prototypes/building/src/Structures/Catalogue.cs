@@ -113,6 +113,13 @@ public sealed class BlockType
     public Dictionary<string, int> SmallCost;
 
     // Components only.
+    /// <summary>
+    /// Cells the component spans, in its own frame (x, y, z), from its anchor towards +x, +y and
+    /// +z. One cell unless the data gives a size; its parts fill the whole of it (see <see cref="Footprint"/>).
+    /// </summary>
+    public Int3 Size = Footprint.One;
+    /// <summary>True when <see cref="Size"/> is more than one cell.</summary>
+    public bool Multi;
     public string Function = "";
     public float Power, Thrust, Storage, Fuel;
     public int AttachFaces = 0x3f, AirtightFaces, CoverFaces;
@@ -212,14 +219,35 @@ public sealed class Catalogue
 
     int FaceIndex(in Block b) => (((b.Type * _shapes.Count + b.Shape) * Orientations.Count + b.Rot) << 1) | (b.Open ? 1 : 0);
 
+    // A cell of a block that spans several cells has only the faces on the outside of the
+    // block: the faces between two of its cells don't exist. An outer face does what the
+    // component's face list says for that side, so "+z" means the whole +z side of the block.
+
     /// <summary>World faces the block touches at all (full or partial): it can attach through these.</summary>
-    public byte TouchMask(in Block b) => _touch[FaceIndex(b)];
+    public byte TouchMask(in Block b) => Outer(b, _touch[FaceIndex(b)]);
     /// <summary>World faces the block covers completely.</summary>
-    public byte FullMask(in Block b) => _full[FaceIndex(b)];
+    public byte FullMask(in Block b) => Outer(b, _full[FaceIndex(b)]);
     /// <summary>World faces fully and opaquely covered: the neighbour's face behind is hidden.</summary>
-    public byte OccludeMask(in Block b) => _occlude[FaceIndex(b)];
-    /// <summary>World faces air cannot pass.</summary>
-    public byte SealMask(in Block b) => _seal[FaceIndex(b)];
+    public byte OccludeMask(in Block b) => Outer(b, _occlude[FaceIndex(b)]);
+
+    byte Outer(in Block b, byte mask) => _types[b.Type].Multi ? (byte)(mask & Footprint.OuterMask(_types[b.Type], b)) : mask;
+
+    /// <summary>True if the whole block, all round, hides what's behind it (a block spanning several cells: every outer face).</summary>
+    public bool OpaqueAllRound(in Block b) => _occlude[FaceIndex(b)] == 0x3f;
+
+    /// <summary>
+    /// World faces air cannot pass. Inside a block that spans several cells, air passes between
+    /// its cells unless the block seals all round (then all of it is solid to air, like a cube).
+    /// </summary>
+    public byte SealMask(in Block b)
+    {
+        byte seal = _seal[FaceIndex(b)];
+        BlockType t = _types[b.Type];
+        if (!t.Multi) return seal;
+        byte outer = Footprint.OuterMask(t, b);
+        bool allRound = (b.Open ? t.AirtightFacesOpen : t.AirtightFaces) == 0x3f;
+        return (byte)((seal & outer) | (allRound ? ~outer & 0x3f : 0));
+    }
 
     void BuildFaceTables()
     {
@@ -381,6 +409,14 @@ public sealed class Catalogue
             t.CoverFacesOpen = Faces(c, "coversOpen", t.CoverFaces);
             t.Airtight = t.AirtightFaces != 0;
             t.Collide = Str(c, "collide", "cell") switch { "none" => Collide.None, "parts" => Collide.Parts, _ => Collide.Cell };
+            if (c.TryGetProperty("size", out JsonElement size))
+            {
+                int[] n = size.EnumerateArray().Select(e => e.GetInt32()).ToArray();
+                if (n.Length != 3 || n.Any(v => v < 1 || v > Footprint.MaxSize))
+                    throw new InvalidDataException($"{t.Id}: size must be three whole cell counts from 1 to {Footprint.MaxSize}");
+                t.Size = new Int3(n[0], n[1], n[2]);
+                t.Multi = t.Size != Footprint.One;
+            }
             if (c.TryGetProperty("parts", out JsonElement parts))
                 foreach (JsonElement p in parts.EnumerateArray())
                     t.Parts.Add(LoadPart(p));

@@ -54,6 +54,7 @@ public partial class BuildTest : Node
         Run("Navigation", TestNav);
         Run("Meshing performance", TestMeshing);
         Run("Device detail", TestDeviceDetail);
+        MultiCellTests();
 
         GD.Print($"\n{_passes} passed, {_failures} failed");
         GetTree().Quit(_failures == 0 ? 0 : 1);

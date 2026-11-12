@@ -215,7 +215,7 @@ public partial class CapitalWorld : Node3D, ILiftGround
         Declare(0, s.Count);
         Craft c = Adopt(id, s, new N.Vector3(at.X, mean + half, at.Y), MathX.Yaw(heading));
         c.Anchor();
-        ClearGroundInside(c, c.Structure.Blocks().Select(b => b.pos));
+        ClearGroundInside(c, c.Structure.Cells().Select(b => b.pos));
         UpdateWind(c);
         return c;
     }
@@ -671,7 +671,7 @@ public partial class CapitalWorld : Node3D, ILiftGround
     {
         c.AnchorAt(position, rotation);
         // Its blocks in the ground meet it flush again (their cells came back with the terrain's edits).
-        ClearGroundInside(c, c.Structure.Blocks().Select(b => b.pos));
+        ClearGroundInside(c, c.Structure.Cells().Select(b => b.pos));
         UpdateWind(c);
     }
 

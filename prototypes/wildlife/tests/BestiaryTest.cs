@@ -51,6 +51,13 @@ public partial class BestiaryTest : Node
                 Shutdown.Quit(this, _failures == 0 ? 0 : 1);
                 return;
             }
+            if (OS.GetCmdlineUserArgs().Contains("--outward"))
+            {
+                NothingIsInsideOut();
+                GD.Print(_failures == 0 ? $"ALL PASSED ({_checks} checks)" : $"{_failures} OF {_checks} CHECK(S) FAILED");
+                Shutdown.Quit(this, _failures == 0 ? 0 : 1);
+                return;
+            }
             if (OS.GetCmdlineUserArgs().Contains("--grips"))
             {
                 // Only the weapon checks (a quick run while working on holds).
@@ -91,6 +98,7 @@ public partial class BestiaryTest : Node
             ArmsFollowTheEra();
             BodiesAreWhole();
             NoBodyFightsItself();
+            NothingIsInsideOut();
             TempersByTech();
             TwentyPeopleAreCheap();
             LooksClusterBySettlement();

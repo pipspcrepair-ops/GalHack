@@ -253,20 +253,23 @@ public sealed partial class BuildTool
         }
         Structure s = TargetVessel.Structure;
         Block b = Make(s, type, AutoOrient(type, Rot));
-        var copies = Copies(s, PlaceCell, b);
+        // A block spanning several cells grows out from the face it's built on; its anchor may sit away from the aimed cell.
+        Int3 anchor = Footprint.AnchorFor(type, b.Rot, PlaceCell, Dirs.Closest((PlaceCell - TargetCell).ToVector3()));
+        var copies = Copies(s, anchor, b);
         // The family in hand must be this structure's grid's (Creative too).
         bool wrongGrid = item.SmallGrid != BuildingBridge.IsSmall(s);
         string why = wrongGrid ? $"{item.Name} · {(item.SmallGrid ? "SMALL" : "LARGE")}-GRID BLOCK · {(item.SmallGrid ? "LARGE" : "SMALL")} GRID"
-            : Problem(TargetVessel, PlaceCell, b) ?? SourceProblem(TargetVessel, item, slotIndex, copies.Count);
+            : Problem(TargetVessel, anchor, b) ?? SourceProblem(TargetVessel, item, slotIndex, copies.Count);
         var tinted = copies.Select(c => (c.cell, c.block, Problem(TargetVessel, c.cell, c.block) == null ? GhostPreview.Valid : GhostPreview.Invalid)).ToList();
         if (why != null) tinted = tinted.Select(t => (t.cell, t.block, GhostPreview.Invalid)).ToList();
         Verdict = why ?? $"{item.Name}{(type.IsArmor ? $", {Shape.Name}" : "")} · {Available(TargetVessel, item, slotIndex)}";
         _ghosts.ShowGhosts(TargetVessel.DrawTransform, s, tinted);
+        if (type.Multi) _ghosts.ShowBlocked(TargetVessel.DrawTransform, s, copies.SelectMany(c => Building.Blocked(s, c.cell, c.block)).ToList());
         _ghosts.ShowOutline(TargetVessel.DrawTransform, s, TargetCell, new Color(1, 1, 1, 0.8f));
         if (place)
         {
             if (why != null) Said?.Invoke(why, Tones.Caution);
-            else foreach (var (cell, block) in copies) TryPlace(TargetVessel, cell, block, quiet: cell != PlaceCell, slotIndex);
+            else foreach (var (cell, block) in copies) TryPlace(TargetVessel, cell, block, quiet: cell != anchor, slotIndex);
         }
         if (remove) Remove(TargetVessel, TargetCell);
     }
@@ -698,8 +701,11 @@ public sealed partial class BuildTool
             if (other != null) return $"{other.Name} · {(small ? "LARGE" : "SMALL")}-GRID BLOCK · {(small ? "SMALL" : "LARGE")} GRID";
             if (!Creative) return $"{type.Name} · NO ITEM";
         }
-        if (InSurvivor(v, cell)) return "YOU · IN THE WAY";
-        if (!v.IsBase && InGround(v, cell)) return "GROUND · IN THE WAY";
+        foreach (Int3 c in s.CellsOf(cell, block))
+        {
+            if (InSurvivor(v, c)) return "YOU · IN THE WAY";
+            if (!v.IsBase && InGround(v, c)) return "GROUND · IN THE WAY";
+        }
         return null;
     }
 
@@ -726,12 +732,13 @@ public sealed partial class BuildTool
         }
         Building.Place(s, cell, block);
         _placer.Sync(s, v.Storage, 0, 0, 0, spill: false); // placing only ever adds room
-        if (v.IsBase) v.ClearGround(cell);
+        if (v.IsBase)
+            foreach (Int3 c in s.CellsOf(cell, block)) v.ClearGround(c);
         v.ApplyEdits();
         if (v == Underway) v.Settle(); // a blueprint's vessel stands on the ground as it grows
         Placed++;
         _planDirty |= Underway == v;
-        _zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Place, v.ToWorld(StructureBridge.CellCenter(s, cell)), 1.3f, -6f);
+        _zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Place, v.ToWorld(StructureBridge.BlockCenter(s, cell, block)), 1.3f, -6f);
         BlockPlaced?.Invoke(v, BuildingBridge.IsSmall(s));
         return true;
     }
@@ -749,9 +756,11 @@ public sealed partial class BuildTool
     public void Remove(Vessel v, Int3 cell)
     {
         Structure s = v.Structure;
-        if (!s.TryGet(cell, out Block b)) return;
+        // Any cell of a block spanning several takes the whole block down.
+        if (!s.TryGetBlock(cell, out cell, out Block b)) return;
+        N.Vector3 centre = StructureBridge.BlockCenter(s, cell, b);
         // A base's blocks hold the ground off their faces: the ones that leave it let go.
-        var before = v.IsBase ? s.Blocks().Select(x => x.pos).ToList() : null;
+        var before = v.IsBase ? s.Cells().Select(x => x.pos).ToList() : null;
         ItemDef item = BuildingBridge.ItemOf(Items, s, b);
         Bill back = Creative || item == null ? new Bill() : Bill.Of((item.Id, 1));
         RemoveResult r = Building.Remove(s, cell, null);
@@ -765,7 +774,7 @@ public sealed partial class BuildTool
             foreach (Int3 p in before)
                 if (!s.Has(p)) _zone.Edits.ReleaseStructure(v.GroundKey(p));
         TakenDown++;
-        Vector3 at = v.ToWorld(StructureBridge.CellCenter(s, cell));
+        Vector3 at = v.ToWorld(centre);
         GiveBack(back, v, at);
         foreach (Structure piece in r.Wrecks) v.Sever(piece);
         // A container gone shrinks storage: what no longer fits is set down, never lost.
