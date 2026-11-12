@@ -224,6 +224,7 @@ public partial class Game : Node3D
     void Begin()
     {
         GD.Print($"world: {World}");
+        Wildlife.Weapons.GameDraws = _ => true; // people hold the player's own weapon models (Slice.Arms), not the body's
         Zone = new SurfaceZone { Name = "Surface", Spec = World.Spec(), Force = World.Force, PickStart = PickStart };
         AddChild(Zone);
         AddChild(new GcPacer { Name = "GC pacer" });

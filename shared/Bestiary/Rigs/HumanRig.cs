@@ -26,6 +26,12 @@ public struct Gesture
     public float Clock;
     /// <summary>The local form of the friendly gestures (a greeting, thanks): 0 a hand waved high, 1 an open palm held up, 2 a hand to the chest.</summary>
     public int Style;
+    /// <summary>
+    /// A blow with what they hold (or bare hands), 0..1: the wind-up rising to 1 at the moment it
+    /// lands, easing back after. Set by the game's combat; HOOK for the body (proto/bodies): not yet
+    /// posed (a swing, thrust or overhead by the weapon kind; a punch bare-handed).
+    /// </summary>
+    public float Strike;
 }
 
 /// <summary>

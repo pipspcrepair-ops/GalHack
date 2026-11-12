@@ -499,7 +499,7 @@ public static partial class Brain
             c.Desired = Vector3.Zero;
             return;
         }
-        if (d <= Attacks.Range(c) + 0.3f)
+        if (d <= Attacks.Range(c, p) + 0.3f)
         {
             c.Desired = Vector3.Zero;
             StrikeAt(w, c, p, tell);

@@ -698,10 +698,36 @@ public sealed class WildSim
             c.ProvokedBy = source;
             c.ProvokedAt = Time;
             c.Herd?.Alarm(source.Position, Time);
+            if (Arming.Fights(c.Species)) Rally(c, source);
         }
         if (c.Species.Rig == RigKind.Swarm)
             c.SwarmAlive = Math.Max(0, (int)MathF.Ceiling(c.Species.Body.Members * MathF.Max(0f, c.Health) / c.Stats.MaxHealth));
         if (c.Health <= 0f) Kill(c, source);
+    }
+
+    /// <summary>Rallies (tests): one of a group set on, and how many of its own it brought in.</summary>
+    public int Rallies, Rallied;
+
+    /// <summary>
+    /// One of a group of people or machines is set on: every one of its side within earshot turns on
+    /// whoever did it at once (a raider shot in sight of the rest, a machine with them). They take
+    /// it in a beat apart, the nearest first.
+    /// </summary>
+    void Rally(Creature c, ITarget source)
+    {
+        bool friendly = Arming.Friendly(c.Species);
+        Rallies++;
+        foreach (Creature o in Creatures)
+        {
+            if (o == c || o.Dead || o.Removed || !Arming.Fights(o.Species) || Arming.Friendly(o.Species) != friendly) continue;
+            float d = (o.Position - c.Position).Length();
+            if (d > Arming.RallyRadius) continue;
+            if (o.ProvokedBy == source && Time - o.ProvokedAt < 4f) continue;
+            o.ProvokedBy = source;
+            o.ProvokedAt = Time + MathF.Min(0.8f, d * 0.02f);
+            o.ThinkEvery = 0f;
+            Rallied++;
+        }
     }
 
     /// <summary>Something it can't face (a flame) sends it running from a point for so many seconds, whatever its temper; it thinks again at once.</summary>

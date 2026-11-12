@@ -161,7 +161,7 @@ public partial class SurfaceZone : Node3D
         AddChild(Blood);
         Underwater = new UnderwaterView { Name = "Underwater", Zone = this };
         AddChild(Underwater);
-        Loot = new Slice.Items.Lootables { Name = "Loot", Items = Data.Items, BodyAt = c => Wildlife.WorldOf(c), Settle = FloorUnder };
+        Loot = new Slice.Items.Lootables { Name = "Loot", Items = Data.Items, BodyAt = c => Wildlife.WorldOf(c), Settle = FloorUnder, DrawnOf = DrawnOf };
         AddChild(Loot);
 
         // Places collide on the world layer: walkers, vessels, E and the tool meet them (planet-surface's own layer is its own).
@@ -325,6 +325,14 @@ public partial class SurfaceZone : Node3D
     /// the dug ground), and never above the point: a thing left inside a ceiling or on a ledge out of
     /// reach comes down to it. With nothing below in reach, the natural ground.
     /// </summary>
+    /// <summary>A creature's drawn body, in whichever sim's view it is (the patch's, or a cave's or place's).</summary>
+    public Node3D DrawnOf(global::Wildlife.Creature c)
+    {
+        if (Wildlife?.View?.ViewOf(c) is { } v) return v;
+        if (Wildlife != null) foreach (DeepSite s in Wildlife.Sites) if (s.ViewOf(c) is { } d) return d;
+        return null;
+    }
+
     public Vector3 FloorUnder(Vector3 p)
     {
         var q = PhysicsRayQueryParameters3D.Create(p + Vector3.Up * 0.3f, p + Vector3.Down * 80f, GalHack.Physics.Layers.Solid);

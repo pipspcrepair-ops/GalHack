@@ -426,6 +426,7 @@ public partial class PoiPlaces : Node3D
                 if (!items.TryGet(li.Id, out ItemDef def)) continue;
                 bill.Add(def.Id, CountOf(def, c.Tier, Hash.Cell(c.Cell, (uint)(++k * 31))));
             }
+            Slice.Arms.ArmsLoot.Add(bill, m.Inst.Family.Tags, c.Tier, c.InVault || c.Secret, (int)m.Inst.Tech, Hash.Cell(c.Cell, 0xA77u), Zone.Data.Arms, items); // weapons by place and rarity
             string name = c.Secret ? "Hidden stash" : c.InVault ? "Vault cache" : "Cache";
             Lootable loot = Zone.Loot.Create(LootKind.Cache, name, p.WorldOf(c.Cell, 0.05f), Math.Max(4, size[0]), Math.Max(3, size[1]), bill);
             loot.Radius = 0.55f;
