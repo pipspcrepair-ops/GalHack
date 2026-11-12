@@ -494,7 +494,8 @@ public static class ChunkMesher
                 {
                     int c = Pad(x, y, z);
                     Block b = _pad[c];
-                    if (b.IsEmpty || _cube[c]) continue;
+                    // A block spanning several cells is drawn whole from its anchor; its fillers draw nothing.
+                    if (b.IsEmpty || _cube[c] || b.IsFiller) continue;
                     BlockType t = cat.Types[b.Type];
                     Vector3 centre = MeshBuffers.ToGodot((origin + new Int3(x, y, z)).ToVector3());
                     if (t.IsArmor)
@@ -522,7 +523,8 @@ public static class ChunkMesher
                             {
                                 Dir world = Orientations.ToWorld(b.Rot, mount);
                                 Int3 step = world.Vec();
-                                if (Hidden(c, world, c + step.X + step.Y * StrideY + step.Z * StrideZ)) continue;
+                                if (t.Multi ? SideHidden(s, origin + new Int3(x, y, z), b, t, world)
+                                    : Hidden(c, world, c + step.X + step.Y * StrideY + step.Z * StrideZ)) continue;
                             }
                             foreach (Polygon poly in part.Polygons)
                                 AddPart(s, b, c, centre, size, poly, part, data.Opaque);
@@ -538,12 +540,14 @@ public static class ChunkMesher
         NVec smoothCentre = part == null ? NVec.Zero : (part.Min + part.Max) * 0.5f;
         PartStyle style = part?.Style ?? PartStyle.Body;
         Basis basis = Bases[b.Rot];
+        BlockType bt = s.Catalogue.Types[b.Type];
         Dir slot;
         if (poly.Boundary is Dir local)
         {
             Dir world = Orientations.ToWorld(b.Rot, local);
             Int3 step = world.Vec();
-            if (Hidden(c, world, c + step.X + step.Y * StrideY + step.Z * StrideZ)) return;
+            if (bt.Multi ? SideHidden(s, Int3.Round(ToN(centre)), b, bt, world)
+                : Hidden(c, world, c + step.X + step.Y * StrideY + step.Z * StrideZ)) return;
             slot = world;
         }
         else slot = Dirs.Closest(ToN(basis * ToG(poly.Normal)));
@@ -552,10 +556,13 @@ public static class ChunkMesher
         ReadOnlySpan<Vector3> points = MemoryMarshal.Cast<NVec, Vector3>(poly.Points.AsSpan());
         for (int i = 0; i < points.Length; i++)
         {
-            _poly[i] = (centre + basis * points[i]) * size;
+            // A block spanning several cells stretches its parts over all of them (Footprint.PartPoint).
+            Vector3 point = bt.Multi ? ToG(Footprint.PartPoint(bt, poly.Points[i])) : points[i];
+            _poly[i] = (centre + basis * point) * size;
             if (poly.SmoothAxis >= 0)
             {
                 NVec radial = Geometry.Set(poly.Points[i] - smoothCentre, poly.SmoothAxis, 0f);
+                if (bt.Multi) radial *= ToN(new Vector3(bt.Size.X, bt.Size.Y, bt.Size.Z));
                 _normals[i] = (basis * ToG(NVec.Normalize(radial))).Normalized();
             }
         }
@@ -579,6 +586,25 @@ public static class ChunkMesher
 
     static Vector3 ToG(NVec v) => new(v.X, v.Y, v.Z);
     static NVec ToN(Vector3 v) => new(v.X, v.Y, v.Z);
+
+    /// <summary>
+    /// True if a whole side of a block spanning several cells is hidden: every cell beyond that
+    /// side is a neighbour whose face hides it. Read from the structure, since the block's far
+    /// cells can lie beyond the chunk's one-cell border.
+    /// </summary>
+    static bool SideHidden(Structure s, Int3 anchor, in Block b, BlockType t, Dir world)
+    {
+        Catalogue cat = s.Catalogue;
+        int back = 1 << ((int)world ^ 1);
+        Int3 step = world.Vec();
+        foreach (Int3 cell in Footprint.Cells(anchor, t, b.Rot))
+        {
+            Int3 beyond = cell + step;
+            if (s.TryGet(beyond, out Block n) && n.Type == b.Type && beyond + n.ToAnchor == anchor) continue; // its own cell
+            if (!s.TryGet(beyond, out n) || (cat.OccludeMask(n) & back) == 0) return false;
+        }
+        return true;
+    }
 
     // ---- Appearance ----------------------------------------------------------------------
 
@@ -705,11 +731,14 @@ public static class ChunkMesher
                     Block b = _pad[c];
                     if (b.IsEmpty) continue;
                     BlockType t = cat.Types[b.Type];
+                    // A solid block spanning several cells fills each of them, fillers too, so its
+                    // cells merge into boxes in whichever chunk holds them.
                     if (_cube[c] || (t.IsDoor ? !b.Open : !t.IsArmor && t.Collide == Collide.Cell))
                     {
                         _solid[x + S * (y + S * z)] = true;
                         continue;
                     }
+                    if (b.IsFiller) continue; // its parts' boxes come from the anchor
                     Vector3 centre = MeshBuffers.ToGodot((origin + new Int3(x, y, z)).ToVector3());
                     Basis basis = Bases[b.Rot];
                     if (t.IsArmor)
@@ -724,7 +753,7 @@ public static class ChunkMesher
                         foreach (Part part in t.Parts)
                         {
                             if (part.ClosedOnly) continue;
-                            Vector3 p0 = basis * ToG(part.Min), p1 = basis * ToG(part.Max);
+                            Vector3 p0 = basis * ToG(Footprint.PartPoint(t, part.Min)), p1 = basis * ToG(Footprint.PartPoint(t, part.Max));
                             Vector3 min = p0.Min(p1), max = p0.Max(p1);
                             data.Boxes.Add(((centre + (min + max) * 0.5f) * size, (max - min) * size));
                         }

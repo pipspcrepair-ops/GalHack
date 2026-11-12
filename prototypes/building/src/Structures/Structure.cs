@@ -30,6 +30,11 @@ public struct Block
     /// <summary>One of the 24 <see cref="Orientations"/>.</summary>
     public byte Rot;
     public BlockFlags Flags;
+    /// <summary>
+    /// A filler's offset to its block's anchor, in cells (see <see cref="Footprint"/>). Zero on
+    /// an anchor and on every one-cell block.
+    /// </summary>
+    public sbyte Ox, Oy, Oz;
     public float Hp;
     public FacePaint Paint;
 
@@ -37,9 +42,16 @@ public struct Block
     public readonly bool Open => (Flags & BlockFlags.Open) != 0;
     public readonly bool Off => (Flags & BlockFlags.Off) != 0;
 
+    /// <summary>One cell of a block that spans several, other than its anchor: it only points back.</summary>
+    public readonly bool IsFiller => Ox != 0 || Oy != 0 || Oz != 0;
+
+    /// <summary>From this cell to its block's anchor (zero on the anchor).</summary>
+    public readonly Int3 ToAnchor => new(Ox, Oy, Oz);
+
     /// <summary>Same block apart from damage: used to merge runs in blueprints.</summary>
     public readonly bool SameAs(in Block o) =>
-        Type == o.Type && Shape == o.Shape && Rot == o.Rot && Flags == o.Flags && Hp == o.Hp && Paint.Equals(o.Paint);
+        Type == o.Type && Shape == o.Shape && Rot == o.Rot && Flags == o.Flags && Hp == o.Hp && Paint.Equals(o.Paint)
+        && Ox == o.Ox && Oy == o.Oy && Oz == o.Oz;
 }
 
 /// <summary>16×16×16 cells. Structures store blocks in chunks so meshing and rebuilding stay local.</summary>
@@ -94,7 +106,16 @@ public sealed class Structure
     /// <summary>Bumped on every edit, so derived data (stats, rooms) knows when to recompute.</summary>
     public int Version { get; private set; }
 
+    /// <summary>Occupied cells. A block that spans several cells counts each of them (<see cref="BlockCount"/> counts it once).</summary>
     public int Count { get; private set; }
+
+    /// <summary>Blocks: one per anchor, however many cells each spans.</summary>
+    public int BlockCount => Count - _fillers;
+
+    /// <summary>Blocks aboard that span several cells. While there are none, nothing pays for them.</summary>
+    public int MultiCellBlocks { get; private set; }
+
+    int _fillers;
     public Int3? Core { get; private set; }
     public bool IsWreck => Core == null;
 
@@ -127,11 +148,75 @@ public sealed class Structure
     public Block Get(Int3 p) => TryGet(p, out Block b) ? b : default;
     public bool Has(Int3 p) => TryGet(p, out _);
 
+    /// <summary>The anchor of the block that holds this cell: the cell itself unless it is a filler.</summary>
+    public Int3 AnchorOf(Int3 p) => TryGet(p, out Block b) ? p + b.ToAnchor : p;
+
+    /// <summary>The block that holds a cell, read at its anchor (a filler reads as its whole block).</summary>
+    public bool TryGetBlock(Int3 p, out Int3 anchor, out Block block)
+    {
+        if (!TryGet(p, out block)) { anchor = p; return false; }
+        anchor = p + block.ToAnchor;
+        if (block.IsFiller && !TryGet(anchor, out block)) return false;
+        return true;
+    }
+
+    /// <summary>Every cell a block at <paramref name="anchor"/> fills, anchor first.</summary>
+    public IEnumerable<Int3> CellsOf(Int3 anchor, in Block b) =>
+        Footprint.IsMulti(Catalogue.Types[b.Type]) ? Footprint.Cells(anchor, Catalogue.Types[b.Type], b.Rot) : new[] { anchor };
+
+    /// <summary>The middle of a block in cell units: its anchor's centre, or the middle of all its cells.</summary>
+    public System.Numerics.Vector3 CentreOf(Int3 anchor, in Block b) =>
+        anchor.ToVector3() + Footprint.Centre(Catalogue.Types[b.Type], b.Rot);
+
     /// <summary>
-    /// Writes a cell with no rules at all (placement rules live in <see cref="Building"/>). Pass
-    /// an empty block to clear it.
+    /// Writes a block with no rules at all (placement rules live in <see cref="Building"/>). Pass
+    /// an empty block to clear it. A block that spans several cells is written whole from its
+    /// anchor, fillers and all; clearing (or overwriting) any of its cells clears all of them.
     /// </summary>
     public void Set(Int3 p, Block block)
+    {
+        bool multi = !block.IsEmpty && !block.IsFiller && Footprint.IsMulti(Catalogue.Types[block.Type]);
+        if (MultiCellBlocks == 0 && _fillers == 0 && !multi)
+        {
+            SetCell(p, block);
+            return;
+        }
+
+        // Whatever block held this cell goes first, whole, unless this rewrites that same block's cell.
+        if (TryGet(p, out Block old) && (old.IsFiller || Footprint.IsMulti(Catalogue.Types[old.Type])))
+        {
+            bool sameCell = block.IsFiller && block.Type == old.Type && block.ToAnchor == old.ToAnchor;
+            if (!sameCell) ClearBlock(p + old.ToAnchor, p);
+        }
+        if (!multi)
+        {
+            SetCell(p, block);
+            return;
+        }
+
+        foreach (Int3 cell in Footprint.Cells(p, Catalogue.Types[block.Type], block.Rot))
+        {
+            if (cell == p) continue;
+            if (TryGet(cell, out Block there) && (there.IsFiller || Footprint.IsMulti(Catalogue.Types[there.Type])) && cell + there.ToAnchor != p)
+                ClearBlock(cell + there.ToAnchor, cell);
+            SetCell(cell, Footprint.Filler(block, p, cell));
+        }
+        SetCell(p, block);
+    }
+
+    /// <summary>Clears every cell of the block anchored at <paramref name="anchor"/>, and <paramref name="from"/> if it still points there.</summary>
+    void ClearBlock(Int3 anchor, Int3 from)
+    {
+        if (TryGet(anchor, out Block a) && !a.IsFiller && Footprint.IsMulti(Catalogue.Types[a.Type]))
+        {
+            foreach (Int3 cell in Footprint.Cells(anchor, Catalogue.Types[a.Type], a.Rot))
+                if (TryGet(cell, out Block f) && (cell == anchor || f.IsFiller && cell + f.ToAnchor == anchor)) SetCell(cell, default);
+        }
+        if (TryGet(from, out Block left) && from + left.ToAnchor == anchor) SetCell(from, default);
+    }
+
+    /// <summary>Writes one cell, nothing else.</summary>
+    void SetCell(Int3 p, Block block)
     {
         Int3 c = ChunkOf(p);
         if (!_chunks.TryGetValue(c, out Chunk chunk))
@@ -145,8 +230,12 @@ public sealed class Structure
         if (_lights.Count > 0 && (block.IsEmpty || !Catalogue.Types[block.Type].IsLight)) _lights.Remove(p);
         bool was = !cell.IsEmpty, now = !block.IsEmpty;
         if (was && Core == p) Core = null;
+        if (was && cell.IsFiller) _fillers--;
+        else if (was && Footprint.IsMulti(Catalogue.Types[cell.Type])) MultiCellBlocks--;
         cell = block;
-        if (now && Catalogue.Types[block.Type].IsCore) Core = p;
+        if (now && block.IsFiller) _fillers++;
+        else if (now && Footprint.IsMulti(Catalogue.Types[block.Type])) MultiCellBlocks++;
+        if (now && !block.IsFiller && Catalogue.Types[block.Type].IsCore) Core = p;
 
         if (!was && now) { chunk.Count++; Count++; }
         else if (was && !now)
@@ -185,6 +274,7 @@ public sealed class Structure
     /// </summary>
     public void SetHp(Int3 p, float hp)
     {
+        if (_fillers > 0) p = AnchorOf(p);
         Int3 c = ChunkOf(p);
         if (!_chunks.TryGetValue(c, out Chunk chunk)) return;
         ref Block cell = ref chunk.Cells[Chunk.Index(p.X, p.Y, p.Z)];
@@ -213,10 +303,24 @@ public sealed class Structure
         {
             Int3 n = ChunkOf(p + d.Vec());
             if (n != c) DirtyChunks.Add(n);
+            // A block spanning several cells is drawn from its anchor's chunk: a change beside any
+            // of its cells can hide or show its faces there.
+            if (_fillers > 0 && TryGet(p + d.Vec(), out Block nb) && nb.IsFiller) DirtyChunks.Add(ChunkOf(p + d.Vec() + nb.ToAnchor));
         }
     }
 
+    /// <summary>
+    /// Every block, once, at its anchor: what counting, costing, saving and copying want. A
+    /// block spanning several cells is listed at its anchor only (<see cref="Cells"/> lists them all).
+    /// </summary>
     public IEnumerable<(Int3 pos, Block block)> Blocks()
+    {
+        foreach (var (p, b) in Cells())
+            if (!b.IsFiller) yield return (p, b);
+    }
+
+    /// <summary>Every occupied cell, fillers included: what space, air and light want.</summary>
+    public IEnumerable<(Int3 pos, Block block)> Cells()
     {
         foreach (var (c, chunk) in _chunks)
         {
@@ -235,7 +339,7 @@ public sealed class Structure
         if (_boundsVersion == Version) return (_min, _max);
         _min = new Int3(int.MaxValue, int.MaxValue, int.MaxValue);
         _max = new Int3(int.MinValue, int.MinValue, int.MinValue);
-        foreach (var (p, _) in Blocks())
+        foreach (var (p, _) in Cells())
         {
             _min = Int3.Min(_min, p);
             _max = Int3.Max(_max, p);
@@ -279,6 +383,8 @@ public sealed class Structure
     public bool Joined(Int3 a, Dir d)
     {
         if (!TryGet(a, out Block ba) || !TryGet(a + d.Vec(), out Block bb)) return false;
+        // The cells of one block always hold together.
+        if ((ba.IsFiller || bb.IsFiller) && ba.Type == bb.Type && ba.ToAnchor - bb.ToAnchor == d.Vec()) return true;
         return (Catalogue.TouchMask(ba) & (1 << (int)d)) != 0 && (Catalogue.TouchMask(bb) & (1 << (int)d.Opposite())) != 0;
     }
 }

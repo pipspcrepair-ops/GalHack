@@ -18,6 +18,7 @@ public partial class GhostPreview : Node3D
     const float Glide = 38f, PopScale = 0.1f;
 
     readonly List<Ghost> _ghosts = new();
+    readonly List<MeshInstance3D> _blocked = new();
     readonly Dictionary<string, ArrayMesh> _meshes = new();
     readonly Dictionary<Color, ShaderMaterial> _materials = new();
     MeshInstance3D _outline;
@@ -82,12 +83,50 @@ public partial class GhostPreview : Node3D
     public void HideGhosts()
     {
         foreach (Ghost g in _ghosts) g.Node.Visible = false;
+        foreach (MeshInstance3D m in _blocked) m.Visible = false;
     }
 
-    /// <summary>A wire outline round one cell (the block under the crosshair).</summary>
+    /// <summary>A red cell wherever a block spanning several cells is blocked by something already there.</summary>
+    public void ShowBlocked(Transform3D frame, Structure s, IReadOnlyList<Int3> cells)
+    {
+        ArrayMesh cube = OutlineCube(s);
+        while (_blocked.Count < cells.Count)
+        {
+            var node = new MeshInstance3D { Mesh = cube, MaterialOverride = MaterialFor(Invalid), CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, Visible = false };
+            AddChild(node);
+            _blocked.Add(node);
+        }
+        float size = s.Grid.CellSize;
+        for (int i = 0; i < _blocked.Count; i++)
+        {
+            _blocked[i].Visible = i < cells.Count;
+            if (i >= cells.Count) continue;
+            _blocked[i].Mesh = cube;
+            _blocked[i].GlobalTransform = frame * new Transform3D(Basis.Identity.Scaled(Vector3.One * 1.04f), new Vector3(cells[i].X, cells[i].Y, cells[i].Z) * size);
+        }
+    }
+
+    /// <summary>A wire outline round the block under the crosshair: all of it, when it spans several cells.</summary>
     public void ShowOutline(Transform3D frame, Structure s, Int3 cell, Color color)
     {
-        // A cube from the mesher, so its UVs are in block units and the shader can find the edges.
+        _outline.Mesh = OutlineCube(s);
+        _outlineMaterial.SetShaderParameter("tint", color);
+        float size = s.Grid.CellSize;
+        Vector3 centre = new(cell.X, cell.Y, cell.Z), extent = Vector3.One;
+        if (s.TryGetBlock(cell, out Int3 anchor, out Block b) && s.TypeOf(b).Multi)
+        {
+            System.Numerics.Vector3 c = s.CentreOf(anchor, b);
+            Int3 w = Footprint.WorldSize(s.TypeOf(b), b.Rot);
+            centre = new Vector3(c.X, c.Y, c.Z);
+            extent = new Vector3(w.X, w.Y, w.Z);
+        }
+        _outline.GlobalTransform = frame * new Transform3D(Basis.Identity.Scaled(extent * 1.03f), centre * size);
+        _outline.Visible = true;
+    }
+
+    /// <summary>A cube from the mesher, so its UVs are in block units and the shader can find the edges.</summary>
+    ArrayMesh OutlineCube(Structure s)
+    {
         string key = $"outline:{s.Grid.Id}";
         if (!_meshes.TryGetValue(key, out ArrayMesh cube))
         {
@@ -96,11 +135,7 @@ public partial class GhostPreview : Node3D
                 if (t != null && t.IsArmor && !t.Transparent) { armour = t; break; }
             _meshes[key] = cube = ChunkMesher.ToMesh(ChunkMesher.BuildSingle(s, Building.Make(s, armour)));
         }
-        _outline.Mesh = cube;
-        _outlineMaterial.SetShaderParameter("tint", color);
-        float size = s.Grid.CellSize;
-        _outline.GlobalTransform = frame * new Transform3D(Basis.Identity.Scaled(Vector3.One * 1.03f), new Vector3(cell.X, cell.Y, cell.Z) * size);
-        _outline.Visible = true;
+        return cube;
     }
 
     public void HideOutline() => _outline.Visible = false;

@@ -101,10 +101,37 @@ public static class Building
         return b;
     }
 
+    /// <summary>
+    /// Whether a block can go with its anchor at <paramref name="p"/>. A block spanning several
+    /// cells needs every one of them free, and attaches through any of its outer faces.
+    /// </summary>
     public static PlaceError Check(Structure s, Int3 p, in Block b)
     {
-        if (s.Has(p)) return PlaceError.Occupied;
         BlockType t = s.TypeOf(b);
+        if (!Footprint.IsMulti(t)) return CheckCell(s, p, b, t);
+        if (Blocked(s, p, b).Count > 0) return PlaceError.Occupied;
+        if (s.Count == 0) return t.IsCore ? PlaceError.None : PlaceError.StartWithCore;
+        if (t.IsCore && s.Core != null) return PlaceError.OneCoreOnly;
+
+        bool touching = false;
+        foreach (Int3 cell in Footprint.Cells(p, t, b.Rot))
+        {
+            Block mine = cell == p ? b : Footprint.Filler(b, p, cell);
+            byte outer = Footprint.OuterMask(t, mine);
+            foreach (Dir d in Dirs.All)
+            {
+                if ((outer & (1 << (int)d)) == 0 || !s.TryGet(cell + d.Vec(), out Block n)) continue;
+                touching = true;
+                if (s.AttachCoverage(mine, d) != Coverage.None && s.AttachCoverage(n, d.Opposite()) != Coverage.None)
+                    return PlaceError.None;
+            }
+        }
+        return touching ? PlaceError.NoSharedFace : PlaceError.NotAttached;
+    }
+
+    static PlaceError CheckCell(Structure s, Int3 p, in Block b, BlockType t)
+    {
+        if (s.Has(p)) return PlaceError.Occupied;
         if (s.Count == 0) return t.IsCore ? PlaceError.None : PlaceError.StartWithCore;
         if (t.IsCore && s.Core != null) return PlaceError.OneCoreOnly;
 
@@ -117,6 +144,15 @@ public static class Building
                 return PlaceError.None;
         }
         return touching ? PlaceError.NoSharedFace : PlaceError.NotAttached;
+    }
+
+    /// <summary>The cells a block anchored at <paramref name="p"/> would need that are already taken (the ghost shows them red).</summary>
+    public static List<Int3> Blocked(Structure s, Int3 p, in Block b)
+    {
+        var blocked = new List<Int3>();
+        foreach (Int3 cell in s.CellsOf(p, b))
+            if (s.Has(cell)) blocked.Add(cell);
+        return blocked;
     }
 
     /// <summary>
@@ -138,18 +174,33 @@ public static class Building
     public static List<Placement> MirrorCopies(Structure s, Int3 p, Block b, Symmetry sym)
     {
         var copies = new List<Placement> { new(p, b, 0) };
+        BlockType t = s.TypeOf(b);
+        bool multi = Footprint.IsMulti(t);
         for (int axis = 0; axis < 3; axis++)
         {
             if (!sym.On(axis)) continue;
             int count = copies.Count;
             for (int i = 0; i < count; i++)
             {
-                Int3 m = sym.Mirror(copies[i].Pos, axis);
-                if (copies.Any(c => c.Pos == m)) continue;
-                copies.Add(new Placement(m, MirrorBlock(s, copies[i].Block, axis), copies[i].Mirrors | (1 << axis)));
+                Block mirrored = MirrorBlock(s, copies[i].Block, axis);
+                // A block spanning several cells mirrors as a whole: its cells mirror, and its anchor
+                // is wherever the mirrored turn's anchor falls among them.
+                Int3 m = multi
+                    ? Footprint.MirrorAnchor(copies[i].Pos, t, copies[i].Block.Rot, mirrored.Rot, c => sym.Mirror(c, axis))
+                    : sym.Mirror(copies[i].Pos, axis);
+                if (multi ? copies.Any(c => Overlap(s, c.Pos, c.Block, m, mirrored)) : copies.Any(c => c.Pos == m)) continue;
+                copies.Add(new Placement(m, mirrored, copies[i].Mirrors | (1 << axis)));
             }
         }
         return copies;
+    }
+
+    static bool Overlap(Structure s, Int3 a, in Block ba, Int3 b, in Block bb)
+    {
+        var cells = new HashSet<Int3>(s.CellsOf(a, ba));
+        foreach (Int3 c in s.CellsOf(b, bb))
+            if (cells.Contains(c)) return true;
+        return false;
     }
 
     /// <summary>A block's mirror image: orientation through the shape's own symmetry, and its face paint swapped across the plane.</summary>
@@ -213,7 +264,8 @@ public static class Building
     /// </summary>
     public static RemoveResult Remove(Structure s, Int3 p, Inventory inventory)
     {
-        if (!s.TryGet(p, out Block b)) return new RemoveResult(RemoveStatus.Empty, default, new List<Structure>());
+        // Any cell of a block spanning several takes the whole block down, for one block's worth.
+        if (!s.TryGetBlock(p, out p, out Block b)) return new RemoveResult(RemoveStatus.Empty, default, new List<Structure>());
         if (s.TypeOf(b).IsCore) return new RemoveResult(RemoveStatus.CoreHoldsStructure, b, new List<Structure>());
         inventory?.Add(s.Catalogue.CostOf(b, s.Grid));
         s.Clear(p);
@@ -223,7 +275,7 @@ public static class Building
     /// <summary>Steel → hardened → combat, in place. Shape, orientation and paint are untouched.</summary>
     public static UpgradeStatus Upgrade(Structure s, Int3 p, Inventory inventory = null)
     {
-        if (!s.TryGet(p, out Block b)) return UpgradeStatus.Empty;
+        if (!s.TryGetBlock(p, out p, out Block b)) return UpgradeStatus.Empty;
         BlockType t = s.TypeOf(b);
         if (!t.IsArmor) return UpgradeStatus.NotArmor;
         if (t.Upgrade == null) return UpgradeStatus.AlreadyBest;
@@ -251,7 +303,7 @@ public static class Building
     /// </summary>
     public static bool Repair(Structure s, Int3 p, float share)
     {
-        if (!s.TryGet(p, out Block b)) return false;
+        if (!s.TryGetBlock(p, out p, out Block b)) return false;
         float max = s.StatsOf(b).MaxHp;
         if (b.Hp >= max - 0.01f) return false;
         s.SetHp(p, MathF.Min(max, b.Hp + max * share));
@@ -261,7 +313,7 @@ public static class Building
     /// <summary>The share of its bill a repair of this much of a block's health costs: repairs consume materials.</summary>
     public static float RepairShare(Structure s, Int3 p, float share = 1f)
     {
-        if (!s.TryGet(p, out Block b)) return 0f;
+        if (!s.TryGetBlock(p, out _, out Block b)) return 0f;
         float max = s.StatsOf(b).MaxHp;
         return MathF.Min(share, MathF.Max(0f, (max - b.Hp) / max));
     }
@@ -271,7 +323,8 @@ public static class Building
     {
         float paid = RepairShare(s, p, share);
         if (paid <= 0f) return new Dictionary<string, int>();
-        return s.Catalogue.CostOf(s.Get(p), s.Grid).ToDictionary(kv => kv.Key, kv => (int)MathF.Ceiling(kv.Value * paid));
+        s.TryGetBlock(p, out _, out Block b);
+        return s.Catalogue.CostOf(b, s.Grid).ToDictionary(kv => kv.Key, kv => (int)MathF.Ceiling(kv.Value * paid));
     }
 
     /// <summary>A repair paid for from an inventory (a structure's shared storage, the player's bag). Nothing is restored unless it can pay.</summary>
@@ -284,12 +337,12 @@ public static class Building
     }
 
     public static bool IsDamaged(Structure s, Int3 p) =>
-        s.TryGet(p, out Block b) && b.Hp < s.StatsOf(b).MaxHp - 0.01f;
+        s.TryGetBlock(p, out _, out Block b) && b.Hp < s.StatsOf(b).MaxHp - 0.01f;
 
-    /// <summary>Paints one face. <paramref name="paint"/> null strips it back to bare material.</summary>
+    /// <summary>Paints one face (a block spanning several cells takes it on that whole side). <paramref name="paint"/> null strips it back to bare material.</summary>
     public static bool PaintFace(Structure s, Int3 p, Dir face, Paint? paint)
     {
-        if (!s.TryGet(p, out Block b)) return false;
+        if (!s.TryGetBlock(p, out p, out Block b)) return false;
         ushort slot = paint is Paint value ? s.Palette.Intern(value) : (ushort)0;
         if (b.Paint[face] == slot) return false;
         b.Paint[face] = slot;
@@ -299,7 +352,7 @@ public static class Building
 
     public static Paint? PaintOf(Structure s, Int3 p, Dir face)
     {
-        if (!s.TryGet(p, out Block b) || b.Paint[face] == 0) return null;
+        if (!s.TryGetBlock(p, out _, out Block b) || b.Paint[face] == 0) return null;
         return s.Palette[b.Paint[face]];
     }
 
@@ -324,7 +377,7 @@ public static class Building
     /// <summary>Opens or closes a door, switches a light, or flips the core's gravity. Returns false if the block does nothing.</summary>
     public static bool Toggle(Structure s, Int3 p)
     {
-        if (!s.TryGet(p, out Block b)) return false;
+        if (!s.TryGetBlock(p, out p, out Block b)) return false;
         BlockType t = s.TypeOf(b);
         if (t.IsDoor) b.Flags ^= BlockFlags.Open;
         else if (t.IsLight) b.Flags ^= BlockFlags.Off;

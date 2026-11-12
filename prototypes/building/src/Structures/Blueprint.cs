@@ -242,6 +242,7 @@ public static class Blueprint
         var paintNames = new HashSet<string>(data.Paints.Select(p => p.name));
         var scratch = new Structure(catalogue, grid);
         var lineOf = new Dictionary<Int3, int>();
+        var cellLine = new Dictionary<Int3, int>();
         int cores = 0;
         foreach (BlueprintBlock b in data.Blocks)
         {
@@ -265,7 +266,18 @@ public static class Blueprint
 
             Block block = Building.Make(scratch, type, shape, rot);
             if (b.Hp is float hp && (hp <= 0 || hp > block.Hp + 0.05f)) Error($"hp {hp} is outside 0..{block.Hp:0.#}");
-            if (lineOf.TryGetValue(b.Pos, out int other)) { Error($"block at {b.Pos} overlaps the one from line {other}"); continue; }
+            // A block spanning several cells is saved at its anchor; its other cells are rebuilt here,
+            // and any of them landing on another block's cell is an error, never a silent overwrite.
+            int other = -1;
+            foreach (Int3 cell in scratch.CellsOf(b.Pos, block))
+                if (cellLine.TryGetValue(cell, out other)) break;
+            if (other >= 0)
+            {
+                Error(Footprint.IsMulti(type) ? $"block at {b.Pos} ({type.Size.X}x{type.Size.Y}x{type.Size.Z} cells) overlaps the one from line {other}"
+                    : $"block at {b.Pos} overlaps the one from line {other}");
+                continue;
+            }
+            foreach (Int3 cell in scratch.CellsOf(b.Pos, block)) cellLine[cell] = b.Line;
             lineOf[b.Pos] = b.Line;
             if (type.IsCore) cores++;
             scratch.Set(b.Pos, block);
@@ -344,7 +356,7 @@ public static class Blueprint
     static void WallOverDoors(Structure s)
     {
         if (s.Grid.Size != GridSize.Large) return;
-        foreach (var (p, b) in s.Blocks().Where(x => s.TypeOf(x.block).IsDoor).ToList())
+        foreach (var (p, b) in s.Blocks().Where(x => s.TypeOf(x.block).IsDoor && !s.TypeOf(x.block).Multi).ToList())
         {
             Int3 over = p + Orientations.ToWorld(b.Rot, Dir.PosY).Vec(), side = Orientations.ToWorld(b.Rot, Dir.PosX).Vec();
             if (s.Has(over) || !s.TryGet(over + side, out Block left) || !s.TryGet(over - side, out Block right)) continue;
