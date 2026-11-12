@@ -24,17 +24,12 @@ public partial class DamageTest : Node
     {
         _cat = GameData.Catalogue;
 
-        Buckets();
-        ShotsShowInTheMesh();
-        Materials();
-        FacesStayInTheirCell();
-        OnlyTheAffectedChunk();
-        Deterministic();
-        Crashes();
-        Repairs();
-        Devices();
-        NothingPiles();
-        RemeshCost();
+        // A check that throws still ends the run: a test never outlives itself.
+        foreach (Action test in new Action[] { Buckets, ShotsShowInTheMesh, Materials, FacesStayInTheirCell, OnlyTheAffectedChunk, Deterministic, Crashes, Repairs, Devices, NothingPiles, RemeshCost })
+        {
+            try { test(); }
+            catch (Exception e) { Check(false, $"{test.Method.Name} threw {e.Message}"); }
+        }
 
         GD.Print(_failures == 0 ? $"ALL PASSED ({_passes} checks)" : $"{_failures} CHECK(S) FAILED ({_passes} passed)");
         GetTree().Quit(_failures == 0 ? 0 : 1);
@@ -84,8 +79,8 @@ public partial class DamageTest : Node
         Check(Worst(whole.Opaque) == 0, $"an undamaged plate has no damage in its mesh ({quads} vertices)");
 
         var report = new DamageReport();
-        Damage.Hit(s, p, DamageType.Kinetic, 200f, report);
-        float expected = (200f - 10f) * 0.9f;
+        Damage.Hit(s, p, DamageType.Kinetic, 100f, report);
+        float expected = (100f - 10f) * 0.9f;
         Check(MathF.Abs(s.Get(p).Hp - (max - expected)) < 0.01f && report.BlocksHit == 1, $"a shot takes armour and resistance off: {max:F0} to {s.Get(p).Hp:F0} hit points");
         Check(s.RecentHits.Count == 1 && s.RecentHits[0].Cell == p && !s.RecentHits[0].Destroyed, "and it is noted for the effects");
 
