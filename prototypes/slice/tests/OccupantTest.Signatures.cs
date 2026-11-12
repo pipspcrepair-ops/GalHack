@@ -84,14 +84,16 @@ public partial class OccupantTest
                 if (hm.Figure.Has("suit_helmet") || hm.Figure.Dress == "suit") sealed_++;
             }
             WorldLife lowM = Life("machine_uprising", now: TechLevel.Low, before: TechLevel.Low), highM = Life("machine_uprising", now: TechLevel.High, before: TechLevel.High);
-            Species lr = lowM.Signature.Machines.First(), hr = highM.Signature.Machines.First();
-            lowHulls += lr.Colors.Base.ToHtml(false) + " ";
+            // The owner: no robots on a world whose old and current eras were both low tech, and no clockwork make anywhere.
+            int lowMachines = lowM.Signature.Machines.Count + lowM.Machines.Count + lowM.Cyborgs.Count + lowM.Fauna.Species.Count(s => s.Mechanical);
+            lowHulls += lowMachines + " ";
+            if (lowMachines == 0) lowLegs2++;
+            Species hr = highM.Signature.Machines.First();
             highHulls += hr.Colors.Base.ToHtml(false) + " ";
-            if (lr.Body.Legs == 2 && lr.CommonName.Contains("clockwork")) lowLegs2++;
-            if (hr.Body.Legs != 4 && (hr.Figure?.Build ?? 0f) < 0.2f && hr.Body.Width < 0.75f * 1.2f) highSlim++;
+            if (hr.Body.Legs != 4 && (hr.Figure?.Build ?? 0f) < 0.2f && hr.Body.Width < 0.75f * 1.2f && !hr.CommonName.Contains("clockwork")) highSlim++;
         }
         Check(clubs == lowN && rifles == highN && sealed_ >= highN * 0.4f, $"a civil war at low tech arms its militia with clubs, spears and bows ({clubs} of {lowN}), at high tech with guns ({rifles} of {highN}) and sealed helmets or suits ({sealed_})");
-        Check(lowLegs2 == n && highSlim == n, $"machines: low-tech worlds' clockwork, two-legged, brass ({lowHulls.Trim()}); high-tech worlds' sleek in white or graphite ({highHulls.Trim()})");
+        Check(lowLegs2 == n && highSlim == n, $"machines: none at all on low-tech worlds (machine kinds: {lowHulls.Trim()}); high-tech worlds' sleek in white or graphite ({highHulls.Trim()})");
 
         // Everyone on a world wears its story: masks among a plague world's townsfolk.
         float Masked(WorldLife life)

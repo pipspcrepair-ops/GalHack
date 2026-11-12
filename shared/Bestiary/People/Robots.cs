@@ -12,8 +12,17 @@ namespace Wildlife;
 /// </summary>
 public static class Robots
 {
-    /// <summary>One kind of machine for this world; <paramref name="n"/> tells a world's kinds apart.</summary>
-    public static Species Roll(WorldConditions w, int n) => Roll(w, n, -1);
+    /// <summary>
+    /// Whether the world has machines at all: only where its old or its current era was mid or high
+    /// tech (the owner: no robots on a low-tech world, and none of a low-tech make anywhere).
+    /// </summary>
+    public static bool Allowed(WorldConditions w) => Math.Max(w.Before, w.Now) >= 1;
+
+    /// <summary>The era a world's machines are of: the higher of its old and current era (mid or high).</summary>
+    public static int EraOf(WorldConditions w) => Math.Clamp(Math.Max(w.Before, w.Now), 1, 2);
+
+    /// <summary>One kind of machine for this world, of its era; <paramref name="n"/> tells a world's kinds apart.</summary>
+    public static Species Roll(WorldConditions w, int n) => Roll(w, n, EraOf(w));
 
     /// <summary>
     /// One kind of machine of an era (0 low, 1 mid, 2 high; -1 any): a low-tech world's are
@@ -23,6 +32,8 @@ public static class Robots
     /// </summary>
     public static Species Roll(WorldConditions w, int n, int era)
     {
+        // No low-tech (clockwork) make at all: a machine is mid or high tech (callers gate on Allowed first).
+        if (era == 0) era = 1;
         ulong seed = Rng.Mix(w.Seed, 0xB07 + (ulong)n + (era >= 0 ? 0x100UL * (ulong)(era + 1) : 0UL));
         var rng = Rng.For(seed, "robot");
         int legs = era switch { 0 => 2, 1 => n % 2 == 0 ? 4 : 2, 2 => n % 2 == 0 ? 6 : 2, _ => n % 3 == 0 ? 4 : n % 3 == 1 ? 6 : 2 };

@@ -80,7 +80,7 @@ public sealed partial class WorldLife
     List<Species> MakeMachines()
     {
         var list = Fauna.Species.FindAll(s => s.Mechanical && s.Figure?.Dress != "grafted");
-        if (list.Count == 0)
+        if (list.Count == 0 && Robots.Allowed(World))
         {
             list.Add(Robots.Roll(World, 2));
             list.Add(Robots.Roll(World, 0));
@@ -98,6 +98,8 @@ public sealed partial class WorldLife
     List<Species> MakeCyborgs()
     {
         var list = new List<Species>();
+        // Grafted machine is a machine too: none on a world that never had more than low tech.
+        if (!Robots.Allowed(World)) return list;
         for (int i = 0; i < 2; i++)
         {
             ulong seed = Rng.Mix(Seed, 0xC7B0 + (ulong)i);
