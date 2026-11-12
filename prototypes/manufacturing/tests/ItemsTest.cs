@@ -209,7 +209,7 @@ public partial class ItemsTest : TestBase
     void TestBlocksHavePaths()
     {
         int checkedBlocks = 0, uniqueOnly = 0;
-        foreach (BlockType t in _blocks.Types.Skip(1))
+        foreach (BlockType t in _blocks.Types.Skip(1).Where(t => t.Head == null || t.Head == t)) // a door of any size is placed from the family's one item
         {
             bool hasBill = Check(_items.Blocks.TryGet(t.Id, out BlockBill bill), $"{t.Id} has a bill");
             if (!hasBill) continue;

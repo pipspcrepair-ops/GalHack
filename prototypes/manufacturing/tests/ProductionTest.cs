@@ -369,7 +369,7 @@ public partial class ProductionTest : TestBase
         Check(storage.Count("iron-plate") == 10 && storage.Count("nozzle") == 1 && storage.Count("polymer") == 1 && Math.Abs(decon.Carry.GetValueOrDefault("polymer") - 0.5) < 1e-9,
             "salvaged wreck blocks come back as whole parts at half: 10 iron plates, a nozzle, a polymer and a half carried");
         var half = Raw(wreck).ToDictionary(kv => kv.Key, kv => kv.Value * 0.5);
-        Check(Same(Sum(Raw(Bill.Of(("iron-plate", 3))), Raw(decon.Carry)), half), "salvage gives back exactly half the ore value, counting what the machine carries");
+        Check(Same(Sum(Raw(Bill.Of(("iron-plate", 10), ("nozzle", 1), ("winding", 1), ("polymer", 1))), Raw(decon.Carry)), half), "salvage gives back exactly half the ore value, counting what the machine carries");
 
         // A full storage holds the parts in the machine until there is room.
         SharedStorage tiny = new(_items, "tiny", 0.2);
@@ -545,12 +545,12 @@ public partial class ProductionTest : TestBase
         var placer = new BlockPlacer(_items, rules, crates);
         Structure s = Base(out _);
         SharedStorage storage = new(_items, "base", BuildingBridge.StorageCapacity(s));
-        storage.TryAdd(Bill.Of(("iron-ore", 200), ("carbon-ore", 100)));
+        storage.TryAdd(Bill.Of(("iron-ore", 200), ("carbon-ore", 100), ("stone", 10))); // polymer for the base blocks is made from stone
         Constructor fab = Fab("survival", storage, rules);
         string steel = ItemOf("steel");
-        Check(fab.Order(steel, 2).Ok && fab.SubParts.Count > 0, $"the survival constructor takes an order for 2 large steel blocks and plans their parts ({fab.SubParts.Count} lines)");
+        Check(fab.Order(steel, 2).Ok && fab.SubParts.Count > 0, $"the survival constructor takes an order for 2 iron-plated blocks and plans their parts ({fab.SubParts.Count} lines)");
         RunUntilIdle(fab);
-        Check(storage[steel] == 2, "two large steel block items come out into the structure's storage");
+        Check(storage[steel] == 2, "two iron-plated block items come out into the structure's storage");
         Block slope = Building.Make(s, _blocks.Type("steel"), _blocks.Shape("slope"));
         Check(placer.Place(s, new Int3(1, 0, 0), slope, storage).Ok && storage[steel] == 1, "placed as a slope, one item used");
         Check(placer.Remove(s, new Int3(1, 0, 0), storage).Ok && storage[steel] == 2, "taken down: the item is back");
@@ -583,7 +583,7 @@ public partial class ProductionTest : TestBase
         Check(storage[thruster.Id] == 1, "and the block comes out");
 
         // Stock is used first.
-        SharedStorage stocked = Storage(contents: Bill.Of(("iron-plate", 2), ("nozzle", 1), ("winding", 1)));
+        SharedStorage stocked = Storage(contents: _items.Blocks.For("thruster-t1"));
         Constructor fab2 = Fab("small", stocked);
         fab2.Order(thruster.Id, 1);
         Check(fab2.SubParts.Count == 0 && fab2.Missing.IsEmpty, "with the parts in stock it queues no sub-parts");
@@ -645,7 +645,7 @@ public partial class ProductionTest : TestBase
         baseS.Mode = CoreMode.Base;
         Check(BuildingBridge.ClassOf(baseS) == StructureClass.Base, "a core in base mode is a base");
         Check(placer.Place(baseS, new Int3(1, 0, 0), Building.Make(baseS, _blocks.Type("concrete")), storage).Ok, "concrete goes on a base");
-        Check(placer.Place(baseS, new Int3(-1, 0, 0), Building.Make(baseS, _blocks.Type("decon")), storage).Ok, "a deconstructor goes on a base");
+        Check(placer.Place(baseS, new Int3(-2, 0, 0), Building.Make(baseS, _blocks.Type("decon")), storage).Ok, "a deconstructor goes on a base");
         Check(placer.Place(baseS, new Int3(0, 0, 1), Building.Make(baseS, _blocks.Type("thruster")), storage).Ok, "a thruster goes on a base, idle until the core is switched");
         Check(Building.ToggleCoreMode(baseS) && BuildingBridge.ClassOf(baseS) == StructureClass.Capital, "in Capital Mode it is a capital vessel, with every block as it was");
         Structure capital = Base(out _);
@@ -669,7 +669,7 @@ public partial class ProductionTest : TestBase
         storage.TryAdd(Bill.Of((ItemOf("container"), 1), (ItemOf("steel"), 1)));
         Check(placer.Place(s, new Int3(1, 0, 0), Building.Make(s, _blocks.Type("container")), storage).Ok, "a second container goes on");
         placer.Sync(s, storage, 0, 0, 0);
-        Check(Math.Abs(storage.CapacitySu - 16000) < 1e-6, "two large containers make 16,000 SU of shared storage");
+        Check(Math.Abs(storage.CapacitySu - 2000) < 1e-6, "two T1 containers make 2,000 SU of shared storage");
         Check(placer.Place(s, new Int3(2, 0, 0), Building.Make(s, _blocks.Type("steel")), storage).Ok, "a steel block goes on");
         storage.TryAdd(Bill.Of(("stone", (int)storage.FreeSu)));
         var total = Sum(Raw(storage.Contents));
@@ -682,13 +682,13 @@ public partial class ProductionTest : TestBase
         var beforeContainer = Sum(Raw(storage.Contents), Raw(crates.Total));
         TakeDownResult c = placer.Remove(s, new Int3(1, 0, 0), storage, 2, 0, 0);
         placer.Sync(s, storage, 2, 0, 0);
-        Check(c.Ok && Math.Abs(storage.CapacitySu - 8000) < 1e-6 && !storage.OverCapacity, "taking a container away shrinks storage, and it is never over-full");
+        Check(c.Ok && Math.Abs(storage.CapacitySu - 1000) < 1e-6 && !storage.OverCapacity, "taking a container away shrinks storage, and it is never over-full");
         Check(crates.Crates.Count == 1, "what no longer fits joins the nearby crate rather than littering");
         Check(Same(Sum(Raw(storage.Contents), Raw(crates.Total)), Sum(beforeContainer, Raw(Bill.Of((ItemOf("container"), 1))))),
             "storage plus crate still hold everything, the container's own item too");
 
         SpillCrate crate = crates.Crates[0];
-        storage.Remove("stone", 4000);
+        storage.Remove("stone", 500);
         Bill moved = crates.Collect(crate, storage);
         Check(!moved.IsEmpty && crates.Crates.Count == 1, "emptying part of a crate leaves the crate where it is: it never despawns");
         storage.Remove("stone", storage.Count("stone"));
@@ -708,7 +708,7 @@ public partial class ProductionTest : TestBase
         PlaceResult up = placer.Upgrade(s, new Int3(1, 0, 0), storage);
         Check(up.Ok && up.Paid.Equals(Bill.Of((ItemOf("hardened"), 1))) && storage[ItemOf("steel")] == 1,
             "steel to hardened uses one hardened block item and gives the steel one back (Empyrion's upgrade)");
-        Check(s.TypeOf(s.Get(new Int3(1, 0, 0))).Id == "hardened" && s.ShapeOf(s.Get(new Int3(1, 0, 0))).Id == "slope", "the block is hardened and keeps its shape");
+        Check(s.TypeOf(s.Get(new Int3(1, 0, 0))).Id == "hardened-plated" && s.ShapeOf(s.Get(new Int3(1, 0, 0))).Id == "slope", "the block is hardened and keeps its shape");
         placer.Upgrade(s, new Int3(1, 0, 0), storage);
         placer.Remove(s, new Int3(1, 0, 0), storage);
         Check(storage.Contents.Equals(start) && crates.Crates.Count == 0, "place, upgrade twice, take down: storage is exactly as it started");

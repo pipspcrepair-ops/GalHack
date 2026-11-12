@@ -47,7 +47,7 @@ public static class OcclusionCheck
     }
 
     /// <summary>Every block in every orientation against a cube on every side.</summary>
-    public static Result Run(Catalogue cat, string cubeType = "steel")
+    public static Result Run(Catalogue cat, string cubeType = "iron-plated")
     {
         var result = new Result();
         BlockType cube = cat.Type(cubeType);
@@ -65,7 +65,8 @@ public static class OcclusionCheck
     static void One(Catalogue cat, BlockType cubeType, string name, Block block, Dir d, Result result)
     {
         var s = new Structure(cat);
-        Int3 at = new Int3(8, 8, 8), beside = at + d.Vec();
+        // A block spanning several cells grows away from the cube, as the build tool places it: touching, never overlapping.
+        Int3 at = new Int3(8, 8, 8), beside = Footprint.AnchorFor(cat.Types[block.Type], block.Rot, at + d.Vec(), d);
         s.Set(at, Building.Make(s, cubeType));
         s.Set(beside, block);
         float size = cat.Grid.CellSize;

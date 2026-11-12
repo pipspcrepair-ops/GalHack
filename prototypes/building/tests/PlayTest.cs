@@ -116,7 +116,8 @@ public partial class PlayTest : Node
             int before = _main.Structures.Count, blocks = S.Count;
             Key(Godot.Key.K);
             var wreck = _main.Structures.FirstOrDefault(v => v != Ship && v.Structure.IsWreck);
-            Check(_main.Structures.Count == before + 1 && wreck != null, "K blasts the pylon and the nacelle breaks away as a wreck");
+            // The Lancer is an old large-grid blueprint on 1 m cells: its nacelle is thin enough now that the blast may cut it in two.
+            Check(_main.Structures.Count > before && wreck != null, $"K blasts the pylon and the nacelle breaks away as a wreck ({_main.Structures.Count - before} pieces)");
             Check(wreck != null && !wreck.Freeze && S.Count + wreck.Structure.Count < blocks,
                 $"the wreck is a free body ({wreck?.Structure.Count} blocks) and the ship lost its pylon");
             Key(Godot.Key.Key9);

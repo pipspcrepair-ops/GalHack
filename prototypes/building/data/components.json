@@ -49,7 +49,7 @@
       ]
     },
     {
-      "id": "cockpit-t1", "name": "Cockpit T1", "function": "chair", "hp": 2210, "armor": 5, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 5.76, "color": "c1121f", "glow": "6ff2e0", "attach": "all", "airtight": "all", "covers": ["-y", "+z"], "collide": "parts", "size": [3, 2, 4], "power": -0.04, "seat": [0.0, -0.2, 0.0625], "eye": [0.0, 0.2, 0.05],
+      "id": "cockpit-t1", "name": "Cockpit T1", "function": "chair", "hp": 2210, "armor": 5, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 5.76, "color": "c1121f", "glow": "6ff2e0", "attach": "all", "airtight": "all", "covers": ["-y"], "collide": "parts", "size": [3, 2, 4], "power": -0.04, "seat": [0.0, -0.2, 0.0625], "eye": [0.0, 0.2, 0.05],
       "parts": [
         {"box": [-0.5, -0.5, -0.5, 0.5, -0.45, 0.5], "style": "body"},
         {"box": [-0.5, -0.45, -0.5, -0.4667, 0.0, 0.5], "style": "body"},
@@ -71,7 +71,7 @@
       ]
     },
     {
-      "id": "cockpit-t2", "name": "Cockpit T2", "function": "chair", "hp": 2840, "armor": 5, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 6.76, "color": "c1121f", "glow": "6ff2e0", "attach": "all", "airtight": "all", "covers": ["-y", "+z"], "collide": "parts", "size": [3, 3, 5], "power": -0.04, "seat": [0.0, -0.3, 0.05], "eye": [0.0, -0.0333, 0.04],
+      "id": "cockpit-t2", "name": "Cockpit T2", "function": "chair", "hp": 2840, "armor": 5, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 6.76, "color": "c1121f", "glow": "6ff2e0", "attach": "all", "airtight": "all", "covers": ["-y"], "collide": "parts", "size": [3, 3, 5], "power": -0.04, "seat": [0.0, -0.3, 0.05], "eye": [0.0, -0.0333, 0.04],
       "parts": [
         {"box": [-0.5, -0.5, -0.5, 0.5, -0.4667, 0.5], "style": "body"},
         {"box": [-0.5, -0.4667, -0.5, -0.4667, -0.1667, 0.5], "style": "body"},
