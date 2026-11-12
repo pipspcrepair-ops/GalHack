@@ -364,10 +364,13 @@ public partial class BuildTest : Node
         foreach (int x in _drive.Wait(30)) yield return x;
     }
 
-    /// <summary>Stands at a point in the base's own frame (metres), on the ground.</summary>
+    /// <summary>A point by the base in the metres this test was written in, on 2 m cells: the same cells on today's grid.</summary>
+    N.Vector3 OnBase(float x, float y, float z) => new N.Vector3(x, y, z) * (_base.Structure.Grid.CellSize / 2f);
+
+    /// <summary>Stands at a point by the base (see <see cref="OnBase"/>), on the ground.</summary>
     IEnumerable<int> StandByBase(float x, float z)
     {
-        foreach (int t in StandAt(_base.ToWorld(new N.Vector3(x, 0, z)))) yield return t;
+        foreach (int t in StandAt(_base.ToWorld(OnBase(x, 0, z)))) yield return t;
     }
 
     /// <summary>Gets a stack of an item into the bag and onto a toolbar slot through the menu.</summary>
@@ -507,7 +510,7 @@ public partial class BuildTest : Node
         // No merging the other way: bag holds them, the structure toolbar still says none.
         _base.Storage.Remove(steel, 4);
         Pack.Add(steel, 3);
-        foreach (int x in _drive.LookAt(_base.ToWorld(new N.Vector3(0, 0, 3.5f * _base.Structure.Grid.CellSize)), 6)) yield return x;
+        foreach (int x in _drive.LookAt(_base.ToWorld(OnBase(0, 0, 7f)), 6)) yield return x;
         Check(_game.Builder.Verdict.Contains("STORAGE"), $"with none in the base's storage the structure toolbar refuses, though the bag holds some: \"{_game.Builder.Verdict}\"");
         count = _base.Structure.Count;
         foreach (int x in _drive.Click()) yield return x;
@@ -535,7 +538,7 @@ public partial class BuildTest : Node
         Check(!Pack.RemoteReady(6), "a slot whose core you are not in the area of is out of range");
         foreach (int x in _drive.Tap(Key.Key7)) yield return x;
         foreach (int x in StandByBase(0, 13)) yield return x;
-        foreach (int x in _drive.LookAt(_base.ToWorld(new N.Vector3(4, -1f, 16)), 6)) yield return x;
+        foreach (int x in _drive.LookAt(_base.ToWorld(OnBase(4, -1f, 16)), 6)) yield return x;
         int all = _game.Zone.Vessels.Count;
         foreach (int x in _drive.Click()) yield return x;
         foreach (int x in _drive.Wait(3)) yield return x;
@@ -757,7 +760,7 @@ public partial class BuildTest : Node
         Check(_base.Structure.Has(coreCell) && _game.Zone.Vessels.Count == vessels && Pack[PlayerInventory.Core] == coreItems,
             $"deconstruct refuses a core ({_base.Structure.TypeOf(coreBlock).Name}): it can only be destroyed or hijacked");
         foreach (int x in _play.Tool(ToolMode.Deconstruct)) yield return x;
-        N.Vector3 Face(Int3 c) => StructureBridge.CellCenter(_base.Structure, c) + new N.Vector3(1f, 0, 0);
+        N.Vector3 Face(Int3 c) => StructureBridge.CellCenter(_base.Structure, c) + new N.Vector3(_base.Structure.Grid.CellSize * 0.5f, 0, 0); // its +x face
         foreach (int x in StandByBase(6, 4)) yield return x;
 
         // To the bag.
@@ -780,7 +783,7 @@ public partial class BuildTest : Node
         double room = _base.Storage.FreeSu;
         _base.Storage.Add("stone", (int)(room / Items.Item("stone").VolumeSu));
         int spills = _game.Zone.Loot.All.Count();
-        foreach (int x in _drive.LookAt(_base.ToWorld(StructureBridge.CellCenter(_base.Structure, new Int3(1, 0, 0)) + new N.Vector3(0, 0, 1f)), 8)) yield return x;
+        foreach (int x in _drive.LookAt(_base.ToWorld(StructureBridge.CellCenter(_base.Structure, new Int3(1, 0, 0)) + new N.Vector3(0, 0, _base.Structure.Grid.CellSize * 0.5f)), 8)) yield return x;
         foreach (int x in _drive.Click()) yield return x;
         foreach (int x in _drive.Wait(3)) yield return x;
         Check(_game.Zone.Loot.All.Count() == spills + 1 && _game.Zone.Loot.All.Any(l => l.Grid.Storage.Count(steel) == 1), "with both full, it goes into a spill container on the ground: nothing lost");
@@ -1057,7 +1060,7 @@ public partial class BuildTest : Node
         foreach (int x in _play.PlaceBlock(2, _base, new Int3(0, 0, 2), Dir.PosZ, p => on = p)) yield return x;
         Check(on && Pack.Storage.Contents.Equals(bag), "a block from the palette places free: nothing used");
         foreach (int x in _play.Select(3)) yield return x;
-        foreach (int x in _drive.LookAt(_base.ToWorld(new N.Vector3(0, 0, 7f)), 8)) yield return x;
+        foreach (int x in _drive.LookAt(_base.ToWorld(OnBase(0, 0, 7f)), 8)) yield return x;
         foreach (int x in _drive.Click()) yield return x;
         foreach (int x in _drive.Wait(3)) yield return x;
         Check(_base.Structure.Count == count + 1 && _game.Builder.Verdict.Contains("SMALL-GRID BLOCK"), "and the same grid rule applies: a small-grid block is refused on a base");
