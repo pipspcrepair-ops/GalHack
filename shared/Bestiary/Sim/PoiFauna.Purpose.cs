@@ -103,8 +103,9 @@ public static partial class PoiFauna
         foreach (PoiRoom r in walkable) floor += r.Size.X * r.Size.Z;
         int want = (int)MathF.Round(floor / 100f * Mathf.Lerp(0.8f, 3f, Math.Clamp(poi.Danger, 0f, 1f)) * (poi.Derelict ? 0.5f : 1f));
         // Where something is first, then the deepest and darkest.
-        rooms.Sort((a, b) => Score(b).CompareTo(Score(a)));
-        float Score(PoiRoom r) => (pop.Spawns.Exists(s => s.Room == r.Index && Threat(s)) ? 100f : 0f) + r.Depth * 10f + (r.Lit ? 0f : 5f) + rng.Range(0f, 2f);
+        var score = new Dictionary<int, float>();
+        foreach (PoiRoom r in rooms) score[r.Index] = (pop.Spawns.Exists(s => s.Room == r.Index && Threat(s)) ? 100f : 0f) + r.Depth * 10f + (r.Lit ? 0f : 5f) + rng.Range(0f, 2f);
+        rooms.Sort((a, b) => score[b.Index].CompareTo(score[a.Index]));
         int have = pop.Spawns.FindAll(Threat).Count;
         // At most four rooms in five hold something (E3).
         int most = Math.Max(1, (int)(walkable.Count * 0.8f));
