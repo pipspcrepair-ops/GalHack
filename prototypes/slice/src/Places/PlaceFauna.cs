@@ -404,9 +404,6 @@ public sealed class PlaceFauna
     /// <summary>Places with spawns still waiting to be put down out of sight.</summary>
     static readonly List<PlaceFauna> Pending = new();
 
-    /// <summary>Spawns still waiting, over every place (tests).</summary>
-    public static int Waiting { get { lock (Pending) return Pending.Sum(f => f.Population.Deferred.Count); } }
-
     /// <summary>On the main thread now and then: the waiting spawns of every place put down where you can't see them appear.</summary>
     public static void PutWaiting(Deep deep)
     {

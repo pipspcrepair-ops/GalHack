@@ -142,7 +142,7 @@ public static partial class PoiFauna
         if (poi.Holder is PlaceHolder.Machines or PlaceHolder.People) return;
         Dictionary<int, int> hops = Hops(poi);
         // (Whoever holds the place keeps it: its own kinds are never thinned.)
-        bool Movable(PoiSpawn s) => Threat(s) && s.Route == null && s.Nest < 0 && !s.Species.Husk && !s.Species.Corrupted && !poi.Holders.Exists(h => s.Species.Id.StartsWith(h.Id, StringComparison.Ordinal));
+        bool Movable(PoiSpawn s) => Threat(s) && s.Route == null && s.Nest < 0 && s.Role is not (DeepRole.Nester or DeepRole.DerelictNester) && !s.Species.Husk && !s.Species.Corrupted && !poi.Holders.Exists(h => s.Species.Id.StartsWith(h.Id, StringComparison.Ordinal));
         bool Near(PoiSpawn s, int most) => hops.TryGetValue(s.Room, out int h) && h <= most && poi.Rooms.Find(r => r.Index == s.Room)?.Depth == 0;
         pop.Spawns.RemoveAll(s => Movable(s) && Near(s, 0) && poi.Rooms.Count > 2);
         var close = pop.Spawns.FindAll(s => Movable(s) && Near(s, 1));

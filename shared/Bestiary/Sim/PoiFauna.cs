@@ -964,9 +964,17 @@ public static partial class PoiFauna
         if (placed.Count > 0 || pop.VeinRoots.Count > 0) Veins.Grow(sim.Veins, space, placed, pop.VeinRoots, pop.Severity, pop.Seed);
 
         var colonies = new Dictionary<Species, Colony>();
-        foreach (PoiSpawn s in pop.Spawns)
+        foreach (PoiSpawn s in pop.Spawns.ToArray())
         {
             Creature c = Put(sim, pop, space, s);
+            // Settled somewhere you'd see it (moved off a wall or out of a crowd): it waits after all.
+            if (allow != null && s.Nest < 0 && !c.Removed && !c.InWalls && !allow(c.Position))
+            {
+                sim.Remove(c);
+                pop.Spawns.Remove(s);
+                pop.Deferred.Add(s);
+                continue;
+            }
             made.Add(c);
             if (s.Species.Role == DeepRole.Subsister)
             {

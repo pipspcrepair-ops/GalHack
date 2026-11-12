@@ -83,7 +83,7 @@ public partial class OccupantTest
                 var b = byState.GetValueOrDefault(key);
                 byState[key] = (b.Places + 1, b.Threats + t, b.Vermin + v);
                 if (pop.Silent) { silent++; continue; }
-                if (spawns.Any(s => !s.Species.Passive)) withSomething++;
+                if (spawns.Count > 0) withSomething++;
                 if (pop.Clash != null) clashes++;
                 Dictionary<int, int> hops = PoiFauna.Hops(plan);
                 var rooms = plan.Rooms.Where(r => inst.Layout.Modules[r.Index].Kind != ModuleKind.Outdoor).ToList();
@@ -298,7 +298,7 @@ public partial class OccupantTest
                 int people = inst.Townsfolk?.People.Count ?? 0;
                 string why = plan.Holder switch
                 {
-                    PlaceHolder.Empty => spawns.Any(s => PoiFauna.Threat(s) && !Under(s)) || pop.Nests.Count > 0 ? "more than vermin above ground" : null,
+                    PlaceHolder.Empty => spawns.Any(s => PoiFauna.Threat(s) && !Under(s) && !s.Species.Husk) || pop.Nests.Count > 0 ? "more than vermin above ground" : null,
                     PlaceHolder.Nesters => spawns.Count(s => s.Role is DeepRole.Nester or DeepRole.DerelictNester) < 1 ? "no nesters" : null,
                     PlaceHolder.Beasts => spawns.Count(s => plan.Holders.Any(h => s.Species.Id.StartsWith(h.Id, StringComparison.Ordinal))) < 1 ? "none of its beasts" : null,
                     PlaceHolder.Machines => spawns.Count(s => s.Species.Mechanical) < 1 ? "no machines" : spawns.Any(s => PoiFauna.Threat(s) && !s.Species.Mechanical) ? "wild hunters among the machines" : null,

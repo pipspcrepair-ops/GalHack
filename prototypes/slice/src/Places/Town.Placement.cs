@@ -37,9 +37,8 @@ public sealed partial class Town
     /// <summary>Each person's own place of work (a spot in a room their job is done in), or -1.</summary>
     readonly Dictionary<Person, int> _station = new();
 
-    /// <summary>Guards sent up to a lookout, and the number who started in a room of their job (tests).</summary>
+    /// <summary>Guards sent up to a lookout (tests).</summary>
     public int Lookouts { get; private set; }
-    public int AtStations => _station.Count(kv => kv.Key.Spot == kv.Value);
 
     string PurposeOf(int spot)
     {

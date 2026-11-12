@@ -18,9 +18,6 @@ public partial class WildlifePatch
     Vector3 _velocity, _lastWorld;
     bool _tracked;
 
-    /// <summary>Your ground velocity (world frame, smoothed), m/s.</summary>
-    public Vector3 Travel => _velocity;
-
     void TrackTravel(float dt)
     {
         if (Player == null || dt <= 0f) return;
