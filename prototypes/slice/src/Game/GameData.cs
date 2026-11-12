@@ -132,7 +132,6 @@ public sealed class SliceRules
     public MaterialRules Materials { get; set; } = new();
     public ClimateRules Climate { get; set; } = new();
     public ClimateNodeRules ClimateNode { get; set; } = new();
-    public WaterPumpRules WaterPump { get; set; } = new();
     public ToolRules Tool { get; set; } = new();
     public BuildRules Build { get; set; } = new();
     public WildlifeRules Wildlife { get; set; } = new();
@@ -202,24 +201,6 @@ public sealed class SliceRules
         public double IceWaterC { get; set; } = 2;
         public double IceWaterHealthPerSecond { get; set; } = 7;
         public double IceWaterWarnSeconds { get; set; } = 1.5;
-    }
-
-    /// <summary>
-    /// The water pump, on Empyrion's Water Generator: it stands in open water and, powered, makes one unit of water
-    /// every 120 to 270 s (here the fast end), drawing 10 W (shown; it runs on fuel from its tank, as the Empyrion one
-    /// does). Its tank holds a few hundred units. Its funnel to a core uses the core's own area.
-    /// </summary>
-    public sealed class WaterPumpRules
-    {
-        public double SecondsPerWater { get; set; } = 120;
-        public int Capacity { get; set; } = 500;
-        public double FuelRoom { get; set; } = 20;
-        public double Watts { get; set; } = 10;
-        public float MinDepth { get; set; } = 0.3f;
-        public float MaxDepth { get; set; } = 1.1f;
-
-        /// <summary>Seconds a unit of each fuel runs the pump, tried in this order.</summary>
-        public Dictionary<string, double> Fuels { get; set; } = new();
     }
 
     public sealed class ClimateNodeRules

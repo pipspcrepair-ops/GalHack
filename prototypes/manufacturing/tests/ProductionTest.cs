@@ -57,7 +57,7 @@ public partial class ProductionTest : TestBase
     Constructor Fab(string tier, SharedStorage storage, WorldRules rules = null) =>
         new(_items, _items.Machines.Get(tier), storage, rules ?? new WorldRules());
 
-    static Bill Ores(int n) => Bill.Of(("iron-ore", n), ("copper-ore", n), ("silicon-ore", n), ("carbon-ore", n), ("ice", n), ("water", n), ("stone", n),
+    static Bill Ores(int n) => Bill.Of(("iron-ore", n), ("copper-ore", n), ("silicon-ore", n), ("carbon-ore", n), ("ice", n), ("stone", n),
         ("cobalt-ore", n), ("magnesium-ore", n), ("neodymium-ore", n), ("gold-ore", n));
 
     /// <summary>Raw ore value of a bill (a part counts as the ore it was made from).</summary>
@@ -139,7 +139,7 @@ public partial class ProductionTest : TestBase
 
     void TestFifo()
     {
-        SharedStorage storage = Storage(contents: Bill.Of(("iron-bar", 20), ("water", 20), ("copper-bar", 10), ("graphite", 10)));
+        SharedStorage storage = Storage(contents: Bill.Of(("iron-bar", 20), ("ice", 20), ("copper-bar", 10), ("graphite", 10)));
         Constructor fab = Fab("survival", storage);
         Check(fab.Order("o2-bottle", 3).Ok && fab.Order("energy-cell", 4).Ok, "two orders queue up");
         List<(string Item, Lane Lane)> starts = RunUntilIdle(fab);

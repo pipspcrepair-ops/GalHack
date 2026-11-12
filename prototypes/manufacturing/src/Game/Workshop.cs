@@ -75,7 +75,7 @@ public sealed class Workshop
     /// <summary>A starting stock: enough to build and order things straight away, and ammo below its thresholds.</summary>
     public void Stock()
     {
-        Storage.TryAdd(Bill.Of(("iron-ore", 420), ("carbon-ore", 300), ("copper-ore", 160), ("silicon-ore", 140), ("ice", 40), ("water", 40), ("stone", 60),
+        Storage.TryAdd(Bill.Of(("iron-ore", 420), ("carbon-ore", 300), ("copper-ore", 160), ("silicon-ore", 140), ("ice", 40), ("stone", 60),
             ("cobalt-ore", 24), ("magnesium-ore", 16), ("gold-ore", 9),
             ("hull-plate", 64), ("glass", 12), ("winding", 6), ("servo", 3), ("circuit-board", 4),
             ("shells-40mm", 3), ("o2-bottle", 4), ("medkit", 2), ("echo-shard", 1)));
@@ -109,7 +109,7 @@ public sealed class Workshop
     /// <summary>Stands in for mining: one trip's worth of the common ores.</summary>
     public void Gather()
     {
-        Bill load = Bill.Of(("iron-ore", 60), ("carbon-ore", 45), ("copper-ore", 30), ("silicon-ore", 25), ("ice", 10), ("water", 10), ("stone", 15));
+        Bill load = Bill.Of(("iron-ore", 60), ("carbon-ore", 45), ("copper-ore", 30), ("silicon-ore", 25), ("ice", 10), ("stone", 15));
         Bill left = Storage.AddAll(load);
         Crates.Spill(left, 0, 1, 6); // on the floor by the core
         Say(left.IsEmpty ? "GATHERED 185 ORE" : "STORAGE FULL: THE REST WENT INTO A CRATE");

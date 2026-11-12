@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-using System.Linq;
 using GalHack.Items;
 using GalHack.Items.Production;
 using GalHack.Physics;
@@ -35,19 +33,6 @@ public partial class Device : Node3D
 
     public bool IsClimate => ItemId == ClimateItem;
 
-    /// <summary>The water pump's item: stands in open water, burns fuel from its tank and pumps water into it, or into a chosen core's storage in reach.</summary>
-    public const string PumpItem = "water-pump";
-
-    public bool IsPump => ItemId == PumpItem;
-
-    /// <summary>The core this pump sends its water to (the player's choice), or null: the water stays in the pump's own tank.</summary>
-    public Vessel Target;
-
-    /// <summary>Water pumped since the pump was set down, units.</summary>
-    public int Pumped;
-
-    double _pumpLeft;
-
     /// <summary>A climate node with fuel in its burner: the air round it holds steady (<see cref="Slice.Player.Suit"/>).</summary>
     public bool Burning => _burnLeft > 0.0;
 
@@ -65,89 +50,12 @@ public partial class Device : Node3D
         return d;
     }
 
-    public static Device PlacePump(SurfaceZone zone, Vector3 at, float yaw)
-    {
-        var rules = zone.Data.Rules.WaterPump;
-        var storage = new SharedStorage(zone.Data.Items, "Water pump", rules.Capacity + rules.FuelRoom);
-        var d = new Device { Name = "WaterPump", Label = "Water pump", ItemId = PumpItem, _zone = zone };
-        d.Grid = new ItemGrid(storage, 4, 3, growable: false);
-        zone.AddChild(d);
-        d.GlobalTransform = new Transform3D(new Basis(Vector3.Up, yaw), at);
-        zone.Devices.Add(d);
-        return d;
-    }
-
-    /// <summary>
-    /// Why a spot is no place for a pump, or null if it is: it stands in open water (a lake, river or sea, at a
-    /// wading depth), never lava, never ice, never dry ground.
-    /// </summary>
-    public static string PumpSite(SurfaceZone zone, Vector3 at)
-    {
-        var rules = zone.Data.Rules.WaterPump;
-        if (zone.Water.IsLava) return "LAVA · NOT WATER";
-        double x = Planets.Gen.Mathx.WrapX(at.X, zone.Planet.Width), z = Planets.Gen.Mathx.Wrap(at.Z, zone.Planet.Height);
-        if (zone.Planet.Palette.BiomeAt(x, z) == Planets.Gen.Biome.FrozenSea) return "ICE · NOT OPEN WATER";
-        if (!zone.Water.Under(at + Vector3.Up * 0.05f, out float depth)) return "NEEDS OPEN WATER";
-        if (depth < rules.MinDepth) return "TOO SHALLOW";
-        if (depth > rules.MaxDepth) return "TOO DEEP";
-        return null;
-    }
-
-    /// <summary>The cores this pump could send to: structures with a core whose area (the build area rule) holds it, nearest first.</summary>
-    public List<Vessel> CoresInRadius() =>
-        _zone.Vessels.Where(v => Slice.Construction.StructureArea.Linkable(v) && Slice.Construction.StructureArea.Contains(v, GlobalPosition, _zone.Data.Rules.Build.Area))
-            .OrderBy(v => Slice.Construction.StructureArea.Distance(v, GlobalPosition)).ToList();
-
-    /// <summary>The target, if it is still a core in reach.</summary>
-    public Vessel LiveTarget => Target != null && CoresInRadius().Contains(Target) ? Target : null;
-
-    /// <summary>Steps the target through each core in the radius, then NONE.</summary>
-    public void CycleTarget()
-    {
-        var near = CoresInRadius();
-        int at = Target == null ? -1 : near.IndexOf(Target);
-        Target = at + 1 < near.Count ? near[at + 1] : null;
-    }
-
-    /// <summary>Water in the pump's own tank.</summary>
-    public int Water => (int)Storage.Count("water");
-
-    bool HasRoom(Vessel t) => t.Storage.CapacitySu - t.Storage.UsedSu >= _zone.Data.Items.Item("water").VolumeSu;
-
-    /// <summary>Pumps while there is fuel and somewhere for the water to go: the target core while it is in reach with room, else the tank.</summary>
-    void Pump(double dt)
-    {
-        // Long steps (a test fast-forwarding) run in slices, so fuel is spent as it burns.
-        while (dt > 0) { double step = System.Math.Min(dt, 5.0); dt -= step; PumpStep(step); }
-    }
-
-    void PumpStep(double dt)
-    {
-        var rules = _zone.Data.Rules.WaterPump;
-        Vessel target = LiveTarget;
-        bool needs = (target != null && HasRoom(target)) || Water < rules.Capacity;
-        if (needs) Burn(dt, rules.Fuels);
-        else _burnLeft = System.Math.Max(0.0, _burnLeft - dt);
-        if (!Burning || !needs) return;
-        _pumpLeft += dt;
-        while (_pumpLeft >= rules.SecondsPerWater)
-        {
-            _pumpLeft -= rules.SecondsPerWater;
-            target = LiveTarget;
-            if (target != null && HasRoom(target) && target.Storage.Add("water", 1) > 0) Pumped++;
-            else if (Water < rules.Capacity && Storage.Add("water", 1) > 0) Pumped++;
-            else { _pumpLeft = 0; break; }
-        }
-    }
-
     /// <summary>Burns on, taking the next unit of fuel from the hopper when the last runs out.</summary>
-    void Burn(double dt) => Burn(dt, _zone.Data.Rules.ClimateNode.Fuels);
-
-    void Burn(double dt, IReadOnlyDictionary<string, double> fuels)
+    void Burn(double dt)
     {
         _burnLeft = System.Math.Max(0.0, _burnLeft - dt);
         if (_burnLeft > 0.0) return;
-        foreach (var (fuel, seconds) in fuels)
+        foreach (var (fuel, seconds) in _zone.Data.Rules.ClimateNode.Fuels)
             if (Storage.Count(fuel) > 0 && Storage.Remove(fuel, 1) > 0)
             {
                 _burnLeft = seconds;
@@ -172,7 +80,7 @@ public partial class Device : Node3D
     /// while it burns; anything else a constructor's cabinet on hazard feet. Procedural, no assets.
     /// The inventory icon is this same model.
     /// </summary>
-    static Node3D Look(string itemId, out MeshInstance3D panel, out StandardMaterial3D panelMaterial)
+    static Node3D Look(bool climate, out MeshInstance3D panel, out StandardMaterial3D panelMaterial)
     {
         var root = new Node3D { Name = "Look" };
         var dark = new StandardMaterial3D { AlbedoColor = new Color("1b263b"), Roughness = 0.7f };
@@ -182,20 +90,7 @@ public partial class Device : Node3D
             root.AddChild(m);
             return m;
         }
-        if (itemId == PumpItem)
-        {
-            var body = new StandardMaterial3D { AlbedoColor = new Color("3a6ea5"), Roughness = 0.5f, Metallic = 0.45f };
-            panelMaterial = new StandardMaterial3D { AlbedoColor = new Color("48cae4"), EmissionEnabled = true, Emission = new Color("48cae4"), EmissionEnergyMultiplier = 0.15f };
-            // A sealed motor drum on a flat footing, an intake pipe beside it and a spout over the drum.
-            Add(new BoxMesh { Size = new Vector3(1.0f, 0.1f, 0.8f) }, Vector3.Up * 0.05f, dark);
-            Add(new CylinderMesh { TopRadius = 0.3f, BottomRadius = 0.34f, Height = 0.7f }, new Vector3(-0.2f, 0.45f, 0f), body);
-            panel = Add(new CylinderMesh { TopRadius = 0.33f, BottomRadius = 0.33f, Height = 0.07f }, new Vector3(-0.2f, 0.62f, 0f), panelMaterial);
-            Add(new CylinderMesh { TopRadius = 0.1f, BottomRadius = 0.1f, Height = 0.9f }, new Vector3(0.28f, 0.55f, 0f), body);
-            Add(new BoxMesh { Size = new Vector3(0.45f, 0.1f, 0.1f) }, new Vector3(0.05f, 1.0f, 0f), body);
-            Add(new CylinderMesh { TopRadius = 0.06f, BottomRadius = 0.06f, Height = 0.2f }, new Vector3(-0.15f, 0.9f, 0f), dark);
-            return root;
-        }
-        if (itemId == ClimateItem)
+        if (climate)
         {
             var drum = new StandardMaterial3D { AlbedoColor = new Color("6c757d"), Roughness = 0.5f, Metallic = 0.5f };
             panelMaterial = new StandardMaterial3D { AlbedoColor = new Color("2ec4b6"), EmissionEnabled = true, Emission = new Color("2ec4b6"), EmissionEnergyMultiplier = 0.15f };
@@ -218,19 +113,14 @@ public partial class Device : Node3D
     }
 
     /// <summary>The model of a device item, as the world and the inventory icon show it.</summary>
-    public static ItemModel Model(bool climate) => new() { Root = Look(climate ? ClimateItem : "survival-constructor", out _, out _) };
-
-    /// <summary>The water pump's model.</summary>
-    public static ItemModel PumpModel() => new() { Root = Look(PumpItem, out _, out _) };
+    public static ItemModel Model(bool climate) => new() { Root = Look(climate, out _, out _) };
 
     public override void _Ready()
     {
-        AddChild(Look(ItemId, out _panel, out _panelMaterial));
+        AddChild(Look(IsClimate, out _panel, out _panelMaterial));
         _body = new StaticBody3D { Name = "Body", CollisionLayer = Layers.Props, CollisionMask = 0 };
         _body.AddChild(IsClimate
             ? new CollisionShape3D { Shape = new CylinderShape3D { Radius = 0.5f, Height = 1.2f }, Position = Vector3.Up * 0.6f }
-            : IsPump
-            ? new CollisionShape3D { Shape = new BoxShape3D { Size = new Vector3(1.0f, 1.1f, 0.8f) }, Position = Vector3.Up * 0.55f }
             : new CollisionShape3D { Shape = new BoxShape3D { Size = new Vector3(1.1f, 1.25f, 0.8f) }, Position = Vector3.Up * 0.625f });
         AddChild(_body);
     }
@@ -244,12 +134,6 @@ public partial class Device : Node3D
         if (IsClimate)
         {
             Burn(dt);
-            _panelMaterial.EmissionEnergyMultiplier = Burning ? 2.2f : 0.15f;
-            return;
-        }
-        if (IsPump)
-        {
-            Pump(dt);
             _panelMaterial.EmissionEnergyMultiplier = Burning ? 2.2f : 0.15f;
             return;
         }

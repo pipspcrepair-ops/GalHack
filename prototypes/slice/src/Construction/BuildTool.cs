@@ -361,21 +361,16 @@ public sealed partial class BuildTool
             Transform3D at = GroundFrame(_groundPoint, 0f);
             _deviceGhost.GlobalTransform = at.TranslatedLocal(Vector3.Up * 0.6f);
             _deviceGhost.Visible = true;
-            // A pump is set down only in open water; everything else only on dry ground it can stand on.
-            string site = itemId == Device.PumpItem ? Device.PumpSite(_zone, at.Origin) : null;
-            Verdict = from ?? site ?? $"[LMB] SET DOWN · {Items.Item(itemId).Name}";
-            if (site != null) _deviceGhost.Visible = false;
-            if (place && from == null && site == null && TakeHand(itemId, slotIndex))
+            Verdict = from ?? $"[LMB] SET DOWN · {Items.Item(itemId).Name}";
+            if (place && from == null && TakeHand(itemId, slotIndex))
             {
-                bool climate = itemId == Device.ClimateItem, pump = itemId == Device.PumpItem;
-                MachineDef machine = climate || pump ? null : Items.Machines.All.First(m => m.ItemId == itemId);
-                float yaw = _survivor.Yaw + YawOfFrame();
-                Device d = pump ? Device.PlacePump(_zone, at.Origin, yaw) : climate ? Device.PlaceClimate(_zone, at.Origin, yaw) : Device.Place(_zone, machine, machine.ItemId, at.Origin, yaw);
+                bool climate = itemId == Device.ClimateItem;
+                MachineDef machine = climate ? null : Items.Machines.All.First(m => m.ItemId == itemId);
+                Device d = climate ? Device.PlaceClimate(_zone, at.Origin, _survivor.Yaw + YawOfFrame()) : Device.Place(_zone, machine, machine.ItemId, at.Origin, _survivor.Yaw + YawOfFrame());
                 _zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Place, at.Origin, 0.8f, -2f);
                 DeviceSet?.Invoke(d);
             }
             else if (place && from != null) Said?.Invoke(from, Tones.Caution);
-            else if (place && site != null) Said?.Invoke(site, Tones.Caution);
             return;
         }
         _deviceGhost.Visible = false;

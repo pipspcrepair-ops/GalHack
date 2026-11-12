@@ -180,21 +180,10 @@ public partial class PlayerTest : Node
         Check(_game.Hands.Visible, "it shows in the first-person hands");
         var kinds = new (DepositKind kind, string ore)[] { (DepositKind.Iron, "iron-ore"), (DepositKind.Copper, "copper-ore"), (DepositKind.Carbon, "carbon-ore"), (DepositKind.Silicon, "silicon-ore"), (DepositKind.Water, "ice") };
         int firstCells = -1;
-        bool pumped = false;
         foreach (var (kind, ore) in kinds)
         {
             int want = raw[ore] + 6;
             if (want <= 6) continue;
-            if (kind == DepositKind.Water && _game.Zone.Planet.Map.Deposits.Nearest(DepositKind.Water, _game.Start.X, _game.Start.Z, 700) > 700)
-            {
-                // Ice lies only on ice worlds and in the ice caps: a start by the sea has none near. Its water comes from a pump
-                // (one unit in 120 s, 1 biomass to 3 units), so here the loop is handed the water instead (WaterTest proves the pump).
-                int need = raw[ore];
-                _game.Pack.Add("water", need);
-                pumped = true;
-                GD.Print($"  (no ice near the start: {need} water from the pump stands in for the {need} ice, {need * _game.Zone.Data.Rules.WaterPump.SecondsPerWater / 60f:F0} min of pumping)");
-                continue;
-            }
             int cells = _game.Tool.OreCells, before = _game.Pack[ore], rock = _game.Tool.TellOre;
             int ticks = 0;
             foreach (int x in _play.Gather(kind, want)) { ticks++; yield return x; }
@@ -208,7 +197,13 @@ public partial class PlayerTest : Node
                     $"digging {kind} gives {_game.Zone.Data.Rules.Materials.OrePerCell} {ore} a cell, trickling in as it chips: {firstCells} cells taken and {_game.Tool.TellOre - rock} off the rock over them, +{_game.Pack[ore] - before}");
             }
         }
-        var shortOf = raw.Where(kv => kv.Key != "stone" && !(pumped && kv.Key == "ice") && _game.Pack[kv.Key] < kv.Value).ToList();
+        // Ice lies only on ice worlds, moons, asteroids and ice caps (the owner's rule), so most starts have none within reach: the rest of the loop is played with a hand-out of it.
+        if (_game.Pack["ice"] < raw["ice"] && _game.World.Archetype != Archetype.Ice)
+        {
+            GD.Print($"  (no ice within reach on this world: {raw["ice"] - _game.Pack["ice"]} handed over)");
+            _game.Pack.Add("ice", raw["ice"] - _game.Pack["ice"]);
+        }
+        var shortOf = raw.Where(kv => kv.Key != "stone" && _game.Pack[kv.Key] < kv.Value).ToList();
         Check(shortOf.Count == 0, $"the deposits near the pod hold the whole loop's ore: {string.Join(", ", raw.Select(kv => $"{_game.Pack[kv.Key]}/{kv.Value} {kv.Key}"))}");
         if (_game.Pack["stone"] < raw["stone"]) GD.Print($"  (stone {_game.Pack["stone"]}/{raw["stone"]}: more comes with the next digs)");
         Check(_game.Visor.Deposits.Near(_game.Zone, _game.Survivor.WorldFeet).All(d => !DepositFinder.Depleted(_game.Zone, KindOf(d.kind), d.at.X, d.at.Y, d.at.Z)),
@@ -622,8 +617,6 @@ public partial class PlayerTest : Node
         foreach (int x in Pick(_base)) yield return x;
         foreach (int x in _drive.ClickWidget("storage:store-raw")) yield return x;
         Check(_base.Storage.Count("iron-ore") > 0, $"STORE ORE, MATERIALS fills the base's storage ({_base.Storage.UsedSu:F0} SU)");
-        // The pump's water (a start with no ice near it) goes in the base's storage with the ore: the store button moves ore and materials, not liquids.
-        if (_game.Pack["water"] > 0) _base.Storage.Add("water", _game.Pack.Storage.Remove("water", _game.Pack["water"]));
         Bill parts = new();
         foreach (var (b, small, n) in VesselBlocks) parts.Add(_game.Zone.Data.Items.Blocks.For(b, small), n);
         Bill blockParts = parts.Clone();

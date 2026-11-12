@@ -110,10 +110,6 @@
     "area": { "base": 30, "capital": 30, "small": 12, "hover": 12, "sizeShare": 0.5 }
   },
 
-  // The water pump (Empyrion's Water Generator): one unit of water every secondsPerWater, tank of capacity, 10 W (shown);
-  // each fuel in its hopper runs it for so many seconds. Min and max depth: the wading depth it may stand in.
-  "waterPump": { "secondsPerWater": 120, "capacity": 500, "fuelRoom": 20, "watts": 10, "minDepth": 0.3, "maxDepth": 1.1, "fuels": { "energy-cell": 1200, "biofuel": 800, "biomass": 360 } },
-
   // The climate node: burning, it holds the air within radius metres inside lowC to highC. Each
   // fuel in its hopper burns for so many seconds, the first found in this order.
   "climateNode": { "radius": 9, "lowC": 12, "highC": 26, "fuels": { "energy-cell": 300, "biofuel": 200, "biomass": 60 } },
