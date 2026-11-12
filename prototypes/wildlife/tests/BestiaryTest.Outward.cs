@@ -45,7 +45,6 @@ public partial class BestiaryTest
         int bad2 = 0, tris2 = 0, species = 0;
         var worst = new Dictionary<string, int>();
         var byPiece = new Dictionary<string, int>();
-        int shown = 0;
         foreach (var (name, pieces) in bodies)
         {
             species++;
@@ -57,7 +56,6 @@ public partial class BestiaryTest
                 if (bad == 0) continue;
                 worst[name] = worst.GetValueOrDefault(name) + bad;
                 string key = $"{piece.Name} {prim.Shape} {why}";
-                if (shown++ < 12) GD.Print($"      e.g. {name}: {piece.Name} {prim.Shape} size {prim.Size} sides {prim.Sides} bad {bad}");
                 byPiece[key] = byPiece.GetValueOrDefault(key) + bad;
             }
         }
