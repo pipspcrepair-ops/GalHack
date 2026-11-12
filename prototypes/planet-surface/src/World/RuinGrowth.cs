@@ -66,7 +66,7 @@ public static class RuinGrowth
                 if (plant == null) continue;
 
                 // Its own size if it fits, else smaller.
-                float scale = Mathx.Lerp(0.78f, 1.24f, Hash.Unit(h, 3));
+                float scale = pal.Flora.TreeScale(plant, Hash.Unit(h, 3), Hash.Unit(h, 7)) ?? Mathx.Lerp(0.78f, 1.24f, Hash.Unit(h, 3));
                 while (scale >= SmallestScale && !Fits(inst.Blocks, c, plant, scale)) scale *= 0.85f;
                 if (scale < SmallestScale) continue;
 
