@@ -300,22 +300,20 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
 
     /// <summary>
     /// A blow with a hand weapon (or bare hands): whatever is first along the line from where it
-    /// starts, within the row's reach, takes the row's damage as a shot of it would. True if it landed.
+    /// starts, within the row's reach, takes the row's damage as a shot of it would.
     /// </summary>
-    public bool Swing(WeaponDef d, Vector3 from, Vector3 dir, object attacker, int owner)
+    public void Swing(WeaponDef d, Vector3 from, Vector3 dir, object attacker, int owner)
     {
         dir = dir.LengthSquared() > 1e-6f ? dir.Normalized() : Vector3.Forward;
         float reach = MathF.Max(0.5f, d.Reach);
         if (!Sweep(from.ToNumerics(), (from + dir * reach).ToNumerics(), attacker, owner, 1f, out ShotHit hit))
         {
             Sounds.Play(d, VoiceKind.Mechanism, from, 1.4f, -12f); // the swish of a miss
-            return false;
+            return;
         }
         var blow = new Shot { Live = true, Def = d, Owner = owner, Pos = from.ToNumerics(), Vel = (dir * 6f).ToNumerics(), Damage = d.Damage, State = ShotState.Flying };
         Strike(ref blow, hit, d.Damage);
-        if (owner == 0 && hit.Kind == HitKind.Player) return false;
         Zone.Wildlife.Noise(from, d.Noise);
-        return true;
     }
 
     /// <summary>A random direction within so many degrees of another, evenly over the cone.</summary>
