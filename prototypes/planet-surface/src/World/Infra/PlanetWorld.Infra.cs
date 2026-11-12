@@ -37,9 +37,8 @@ public sealed partial class PlanetWorld
         var clock = System.Diagnostics.Stopwatch.StartNew();
         var laps = new List<string>();
         void Lap(string what) { laps.Add($"{what} {clock.Elapsed.TotalSeconds:F1}"); clock.Restart(); }
-        FlavourRuins.LayoutMs = 0;
         var infra = InfraNetwork.Plan(map, bare, pois, profile, Hash.Of(spec.Seed, 0x1AF7));
-        Lap($"roads ({InfraNetwork.LastSearches})");
+        Lap("roads");
         // A start world begins at the edge of a ruined town by the landing site.
         var ruins = new List<FlavourRuin>();
         if (PlanetSurface.Poi.PoiSiting.StartWorld)
@@ -72,7 +71,7 @@ public sealed partial class PlanetWorld
         foreach (FlavourRuin ruin in infra.Ruins) stamps.Add(ruin.Stamp);
         stamps.AddRange(infra.Stamps());
         foreach (FlavourRuin ruin in infra.Ruins) if (ruin.Drive != null) stamps.Add(ruin.Drive);
-        Lap($"ruins (layouts {FlavourRuins.LayoutMs / 1000:F1})");
+        Lap("ruins");
         // What runs under a town: its ways in on pads of their own, after the roads so they win there.
         if (infra.Town is StartTown town)
         {

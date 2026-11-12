@@ -219,14 +219,8 @@ public sealed class InfraNetwork
 
     // ---- planning ---------------------------------------------------------------------------
 
-    /// <summary>The last plan's road searches, for the build-time readout.</summary>
-    public static string LastSearches => $"{Router.Searches} searches, {Router.Failed} failed, {Router.Opened / 1000}k cells, {Router.SearchMs / 1000:F1} s, sea checks {Router.SeaMs / 1000:F1} s";
-
     public static InfraNetwork Plan(WorldMap map, PlanetTerrainSource bare, IReadOnlyList<PoiSite> pois, WorldProfile profile, ulong seed)
     {
-        Router.Searches = Router.Failed = 0;
-        Router.Opened = 0;
-        Router.SearchMs = Router.SeaMs = 0;
         var watch = Stopwatch.StartNew();
         var net = new InfraNetwork { Profile = profile, _w = map.WidthMeters, _h = map.HeightMeters };
         if (profile == null || !profile.Inhabited)
@@ -2128,22 +2122,10 @@ public sealed class InfraNetwork
         };
 
         /// <summary>The cells of the cheapest path between two points, or null.</summary>
-        /// <summary>The searches so far (tests print them): how many, how many cells they opened, how many found nothing, and how long.</summary>
-        public static int Searches, Failed;
-        public static long Opened;
-        public static double SearchMs, SeaMs;
-
         public List<int> Find((double X, double Z) from, (double X, double Z) to, RouteKind kind, TechLevel tech)
         {
-            long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
-            try { return FindTimed(from, to, kind, tech); }
-            finally { SearchMs += System.Diagnostics.Stopwatch.GetElapsedTime(t0).TotalMilliseconds; Searches++; }
-        }
-
-        List<int> FindTimed((double X, double Z) from, (double X, double Z) to, RouteKind kind, TechLevel tech)
-        {
             int start = Free(from, to), goal = Free(to, from);
-            if (start < 0 || goal < 0) { Failed++; return null; }
+            if (start < 0 || goal < 0) return null;
             Prefetch(start, goal);
             foreach (int t in _touched) { _cost[t] = float.PositiveInfinity; _closed[t] = false; }
             _touched.Clear();
@@ -2166,7 +2148,7 @@ public sealed class InfraNetwork
                 if (k == goal) break;
                 if (_closed[k]) continue;
                 _closed[k] = true;
-                if (++expanded > 600000) { Opened += expanded; Failed++; return null; }
+                if (++expanded > 600000) return null;
                 float ck = _cost[k];
                 int kx = k % _nx, kz = k / _nx;
                 float hk = HeightAt(k);
@@ -2204,25 +2186,17 @@ public sealed class InfraNetwork
                     open.Enqueue(m, nc + (float)(Math.Sqrt(ddx * ddx + ddz * ddz) * Cell * 1.5));
                 }
             }
-            Opened += expanded;
-            if (float.IsPositiveInfinity(_cost[goal])) { Failed++; return null; }
+            if (float.IsPositiveInfinity(_cost[goal])) return null;
             var path = new List<int> { goal };
             while (path[^1] != start) path.Add(_came[path[^1]]);
             path.Reverse();
             return path;
         }
 
-        /// <summary>Whether the sea parts two points: no way between them over land (rivers can be bridged).</summary>
-        public bool SeaBetween((double X, double Z) a, (double X, double Z) b)
-        {
-            long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
-            try { return SeaBetweenTimed(a, b); }
-            finally { SeaMs += System.Diagnostics.Stopwatch.GetElapsedTime(t0).TotalMilliseconds; }
-        }
-
         bool _allRead;
 
-        bool SeaBetweenTimed((double X, double Z) a, (double X, double Z) b)
+        /// <summary>Whether the sea parts two points: no way between them over land (rivers can be bridged).</summary>
+        public bool SeaBetween((double X, double Z) a, (double X, double Z) b)
         {
             int start = Free(a, b), goal = Free(b, a);
             if (start < 0 || goal < 0) return false;
