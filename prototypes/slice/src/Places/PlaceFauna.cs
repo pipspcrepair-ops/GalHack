@@ -306,7 +306,9 @@ public sealed class PlaceFauna
         return !b.IsAir && Built(b);
     }
 
-    static bool Built(Block b) => BlockInfo.Collides(b.Type) && b.Type is not (BlockType.Door or BlockType.Pane or BlockType.Table or BlockType.Rail or BlockType.Lattice);
+    // Glass is as solid as the pane the player meets (a window's whole cell): a creature never walks through it or is
+    // set down in it, half in the wall (places agent). Doors are their leaves (DoorWays); the rest are parts.
+    static bool Built(Block b) => BlockInfo.Collides(b.Type) && b.Type is not (BlockType.Door or BlockType.Table or BlockType.Rail or BlockType.Lattice);
 
     /// <summary>
     /// Its sim, made once (worker-safe): the place's ground round it for anything that wanders
