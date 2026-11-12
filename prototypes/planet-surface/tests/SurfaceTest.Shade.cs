@@ -33,7 +33,9 @@ public partial class SurfaceTest
         }
         float cx = (float)(world.Width * 0.5), cz = (float)(world.Height * 0.5), half = 3200f;
         var toward = new Vector2(1f, 0.3f).Normalized();
+        var clock = System.Diagnostics.Stopwatch.StartNew();
         FarShade shade = await Task.Run(() => FarShade.Build(world, cx, cz, half, toward));
+        double builtIn = clock.Elapsed.TotalSeconds;
         float cell = shade.Cell;
 
         // Ridges over valleys: a cell's rise is at least the steepest rise of the bare ground toward the sun (the trees and places only add to it).
@@ -58,7 +60,7 @@ public partial class SurfaceTest
             if (shade.Lit(x, z, 0.5f) > 0.99f) lit++;
             if (shade.Lit(x, z, 0.02f) < 0.01f) dark++;
         }
-        Check(short1 <= cells / 50, $"far shade: {cells - short1} of {cells} cells' rise covers the bare ground's steepest rise toward the sun ({short1} short, worst {worstShort:F3})");
+        Check(short1 <= cells / 50, $"far shade: {cells - short1} of {cells} cells' rise covers the bare ground's steepest rise toward the sun ({short1} short, worst {worstShort:F3}; built in {builtIn:F1} s)");
 
         // A higher sun shades less: the share of the land in shade falls as the sun climbs, from some at a sun 1 degree up to little at 40.
         float Share(float tangent)

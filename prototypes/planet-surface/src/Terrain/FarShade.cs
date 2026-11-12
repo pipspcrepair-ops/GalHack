@@ -88,7 +88,12 @@ public sealed class FarShade
             if (world.Flora != null)
                 foreach (FloraRule r in world.Flora.RulesOf(world.Palette.BiomeAt(x, z)))
                     if (FloraMeshes.IsLarge(r.Kind)) wood += r.Density;
-            top[j * N + i] = g + Canopy * Math.Clamp(wood / 6f, 0f, 1f);
+            // A cell stands as high as its highest ground, not just its middle's: a ridge or a cliff narrower than a cell still shades what lies behind it.
+            float peak = g;
+            for (int a = -1; a <= 1; a += 2)
+            for (int b = -1; b <= 1; b += 2)
+                peak = MathF.Max(peak, world.GroundHeight(x + a * cell / 4, z + b * cell / 4));
+            top[j * N + i] = peak + Canopy * Math.Clamp(wood / 6f, 0f, 1f);
         }
         // Places stand their buildings' height.
         foreach (PoiSite s in world.Pois)
