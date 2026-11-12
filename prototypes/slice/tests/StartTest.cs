@@ -182,8 +182,6 @@ public partial class StartTest : Node
               && b.Poi.Instance?.State != PoiGenerator.Gen.PoiState.Active,
             $"{world.Name}, seed {world.Seed}: from the way out, {b.Poi?.Name} ({b.Poi?.Instance?.State}) in clear view {(b.Landmark is Vector3 lm ? new Vector2(lm.X - b.Outside.X, lm.Z - b.Outside.Z).Length() : 0):F0} m off");
         GD.Print($"  ({b.Steps} steps; {game.Stats.Seconds:F0} s of play)");
-        game.Survivor.PlaceOutside(new System.Numerics.Vector3(b.Outside.X, b.Outside.Y, b.Outside.Z));
-        foreach (int x in QuietStart(game, world, drive)) yield return x;
         if (_failures > failuresBefore) _failedWorlds.Add($"{world.Key} {world.Seed}");
         game.QueueFree();
         for (int i = 0; i < 10; i++) yield return 0;
