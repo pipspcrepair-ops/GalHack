@@ -277,10 +277,14 @@ public partial class Game
         Bill drops = BodyDrops(s, Wildlife.Rng.For(s.Seed, "drop", c.Id));
         Arms?.People?.Drops(c, drops); // the weapon it carried, and the ammo it had left for it
         int[] size = Zone.Data.Rules.Containers.Corpse;
-        Vector3 at = Zone.Wildlife.WorldOf(c);
-        Lootable body = Zone.Loot.Create(LootKind.Corpse, $"{Cap(s.CommonName)} body", at, size[0], size[1], drops);
-        body.Creature = c;
-        body.Radius = MathF.Max(0.5f, s.Stats.Radius);
+        if (EndCreature(c, out Vector3 left)) Remains(s, left, drops);
+        else
+        {
+            Vector3 at = Zone.Wildlife.WorldOf(c);
+            Lootable body = Zone.Loot.Create(LootKind.Corpse, $"{Cap(s.CommonName)} body", at, size[0], size[1], drops);
+            body.Creature = c;
+            body.Radius = MathF.Max(0.5f, s.Stats.Radius);
+        }
         if (killer == Target)
         {
             Stats.Kills++;

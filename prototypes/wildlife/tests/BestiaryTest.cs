@@ -36,6 +36,21 @@ public partial class BestiaryTest : Node
         {
             _data = DataFiles.LoadWildlife();
             GD.Print($"(worlds rolled from seed {_fresh.NextU64()})");
+            if (OS.GetCmdlineUserArgs().Contains("--bodies"))
+            {
+                // Only the body checks (a quick run while working on poses, blows, hits and the dead).
+                EveryBuildWorks();
+                NoArmThroughTheBody();
+                ActsReadAsThemselves();
+                BlowsAreBlows();
+                HitsShow();
+                TheDeadFallLimp();
+                WeaponsAreHeldRight();
+                BodiesAreWhole();
+                GD.Print(_failures == 0 ? $"ALL PASSED ({_checks} checks)" : $"{_failures} OF {_checks} CHECK(S) FAILED");
+                Shutdown.Quit(this, _failures == 0 ? 0 : 1);
+                return;
+            }
             if (OS.GetCmdlineUserArgs().Contains("--outward"))
             {
                 NothingIsInsideOut();
@@ -74,6 +89,11 @@ public partial class BestiaryTest : Node
             BreakersBreakWeakBlocks();
             NobodyReactsAtOnce();
             EveryBuildWorks();
+            NoArmThroughTheBody();
+            ActsReadAsThemselves();
+            BlowsAreBlows();
+            HitsShow();
+            TheDeadFallLimp();
             WeaponsAreHeldRight();
             ArmsFollowTheEra();
             BodiesAreWhole();

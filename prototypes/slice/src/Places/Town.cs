@@ -440,8 +440,9 @@ public sealed partial class Town
             }
             if (p.Dead)
             {
-                // Going down, then lying where they fell.
+                // Going down, then lying where they fell; the hurt flash fades whatever happens.
                 if (p.View == null) MakeBody(p);
+                p.Hurt = MathF.Max(0f, p.Hurt - tickDt);
                 float lying = (player - p.Pos).Length();
                 if (p.Down >= 1f && p.Laid)
                 {
@@ -453,7 +454,8 @@ public sealed partial class Town
                     p.Saved = 0f;
                     continue;
                 }
-                p.Laid = p.Down >= 1f;
+                // Laid once the limp body has come to rest (it falls as a ragdoll, onto whatever is under it).
+                p.Laid = p.Down >= 1f && p.Rig.Settled && p.Hurt <= 0f;
                 p.Down = MathF.Min(1f, p.Down + tickDt * 1.8f);
                 Pose(p, who, lying, tickDt);
                 continue;
@@ -1197,6 +1199,7 @@ public sealed partial class Town
         _view.AddChild(p.View);
         p.View.Build(p.Rig, p.Ready);
         p.Ready = null;
+        GroundBody(p);
         HoldWeapon(p);
     }
 
@@ -1250,6 +1253,7 @@ public sealed partial class Town
             Aim = p.Raised,
             Look = p.HeadYaw,
             Down = MathF.Max(p.Down, p.Slept),
+            Dead = p.Dead,
             Crouch = p.Crouched,
             Strike = p.Strike,
             Act = p.Act,

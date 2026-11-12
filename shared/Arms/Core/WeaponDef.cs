@@ -17,6 +17,9 @@ public enum Delivery { Bolt, Pellets, Lob, Cone, Arc, Swarm, Placed, Strike }
 /// <summary>The design's three damage classes, for armour and resistance (section 5.1).</summary>
 public enum DamageClass { Kinetic, Explosive, Energy }
 
+/// <summary>What a killing hit does to the body: it falls, it is blown apart (gibs), or it is burned away to ash.</summary>
+public enum KillEffect { Normal, Gib, Vaporise }
+
 /// <summary>What kind of harm on top of the class (section 2, Tags). Fire, gas and radiation go past a personal shield.</summary>
 [Flags]
 public enum HarmTags { None = 0, Fire = 1, Bio = 2, Shock = 4, Gas = 8, Rad = 16, Force = 32 }
@@ -90,6 +93,8 @@ public sealed class WeaponDef
     public Delivery Delivery { get; init; }
     public DamageClass Class { get; init; }
     public HarmTags Tags { get; init; }
+    /// <summary>What a kill with it does to the body ("kill": normal, gib or vaporise); left out, from the class: explosive gibs, energy vaporises.</summary>
+    public KillEffect Kill { get; init; }
 
     public float Damage { get; init; } = 10f;
     public float Rpm { get; init; } = 300f;
@@ -257,6 +262,7 @@ public sealed class Armoury
                 string s => throw new InvalidDataException($"{where}: class is kin, exp or en, not '{s}'"),
             },
             Tags = ReadTags(e, where),
+            Kill = Enum<KillEffect>(e, "kill", Str(e, "class", "kin") switch { "exp" => KillEffect.Gib, "en" => KillEffect.Vaporise, _ => KillEffect.Normal }, where),
             Damage = Num(e, "damage", 10f),
             Rpm = Num(e, "rpm", 300f),
             Magazine = Math.Max(1, (int)Num(e, "magazine", 10)),

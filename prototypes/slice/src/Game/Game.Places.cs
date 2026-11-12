@@ -134,9 +134,15 @@ public partial class Game
         foreach (var kv in BodyDrops(who.Looks, Wildlife.Rng.For(who.Looks.Seed, "drop", (long)t.People.IndexOf(who)))) drops.Add(kv.Key, kv.Value);
         int[] size = Zone.Data.Rules.Containers.Corpse;
         Vector3 feet = t.World(who.Pos);
+        if (EndPerson(t, who, out Vector3 left))
+        {
+            Remains(who.Looks, left, drops);
+            return;
+        }
         // The search target is the whole body as it lies: round its middle, a body's length across.
         Slice.Items.Lootable body = Zone.Loot.Create(Slice.Items.LootKind.Corpse, $"{Cap(who.Looks.CommonName)} body", feet + who.Forward * 0.4f, size[0], size[1], drops);
         body.Radius = MathF.Max(0.85f, (who.Looks.Figure?.Height ?? 1.7f) * 0.5f);
+        body.Shape = () => PersonBalls(t, who); // (it ragdolls: the balls follow the body to where it comes to rest)
         PeopleBodies++;
     }
 

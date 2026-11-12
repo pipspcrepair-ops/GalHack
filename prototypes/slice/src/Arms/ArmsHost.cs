@@ -353,7 +353,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
                 if (SolidBetween(origin, centre)) continue;
                 if (c == ignore) continue;
                 ConeHits++;
-                Harm(c, d.Damage, centre, dir, byPlayer: owner == 0);
+                Harm(c, d.Damage, centre, dir, byPlayer: owner == 0, kill: d.Kill);
                 if (d.Dot != null)
                 {
                     Effects.Add(c, d.Dot.PerSecond, d.Dot.Seconds, d.Class, d.Tags, owner);
@@ -373,6 +373,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
                     if (!ShotPool.InCone(o, nd, cos, cone.Range, at.ToNumerics()) || SolidBetween(origin, at)) continue;
                     ConeHits++;
                     PersonHits++;
+                    t.Hit(p, at, dir, 0.3f, Slice.Game.Game.EndOf(d.Kill));
                     t.Struck(p, d.Damage, d.Class, byPlayer: owner == 0);
                     Dealt?.Invoke(HitKind.Person, p, d.Damage);
                 }
@@ -760,12 +761,13 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         {
             case HitKind.Creature:
                 var c = (Creature)hit.Thing;
-                Harm(c, damage * Zone.Wildlife.HitScale(c, at), at, dir, quiet: tick, byPlayer: s.Owner == 0);
+                Harm(c, damage * Zone.Wildlife.HitScale(c, at), at, dir, quiet: tick, byPlayer: s.Owner == 0, kill: d.Kill);
                 if (!tick && d.Dot != null && d.Stick == null) Effects.Add(c, d.Dot.PerSecond, d.Dot.Seconds, d.Class, d.Tags, s.Owner);
                 if (!tick) Game.Visor?.Hit();
                 break;
             case HitKind.Person:
                 var p = (Town.Person)hit.Thing;
+                p.Town.Hit(p, at, dir, 0.3f, Slice.Game.Game.EndOf(d.Kill));
                 p.Town.Struck(p, damage, d.Class, byPlayer: s.Owner == 0);
                 PersonHits++;
                 Dealt?.Invoke(HitKind.Person, p, damage);
@@ -810,9 +812,10 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
     }
 
     /// <summary>Harm to a creature, in whichever sim it lives: wildlife's damage (it turns on who did it), its blood and its cry.</summary>
-    void Harm(Creature c, float amount, Vector3 at, Vector3 dir, bool quiet = false, bool byPlayer = true)
+    void Harm(Creature c, float amount, Vector3 at, Vector3 dir, bool quiet = false, bool byPlayer = true, KillEffect kill = KillEffect.Normal)
     {
         if (amount <= 0f) return;
+        c.End = Slice.Game.Game.EndOf(kill);
         Zone.Wildlife.Damage(c, amount, byPlayer);
         CreatureHits++;
         Dealt?.Invoke(HitKind.Creature, c, amount);
@@ -866,7 +869,11 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
                 if (c.Dead || c.Removed) continue;
                 Vector3 centre = Centre(c, so);
                 float d = Gap(c, so, p);
-                if (d < r) Harm(c, blast.Damage * (1f - d / r), centre, (centre - p).Normalized(), byPlayer: s.Owner == 0);
+                if (d < r)
+                {
+                    Harm(c, blast.Damage * (1f - d / r), centre, (centre - p).Normalized(), byPlayer: s.Owner == 0, kill: s.Def.Kill);
+                    c.HitHeavy = MathF.Max(c.HitHeavy, 1f - d / r); // a blast staggers
+                }
             }
         }
         Vector3 chest = Game.Survivor.WorldFeet + Game.Survivor.WorldUp() * 1f;
@@ -889,7 +896,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
                 {
                     if (person.Dead) continue;
                     float d = t.World(person.Pos).DistanceTo(p);
-                    if (d < r) { t.Struck(person, blast.Damage * (1f - d / r), DamageClass.Explosive, byPlayer: s.Owner == 0); PersonHits++; }
+                    if (d < r) { t.Hit(person, t.World(person.Pos) + Vector3.Up, (t.World(person.Pos) - p).Normalized(), 1f - d / r, Slice.Game.Game.EndOf(s.Def.Kill)); t.Struck(person, blast.Damage * (1f - d / r), DamageClass.Explosive, byPlayer: s.Owner == 0); PersonHits++; }
                 }
             }
         Fx.Blast(p, r * 0.55f);

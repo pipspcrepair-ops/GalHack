@@ -227,14 +227,15 @@ public partial class CreatureView : Node3D
         }
 
         Transform3D[] pose = c.Rig.Pose;
+        Transform3D jolt = Jolt(c);
         if (c.Tumble.IsEqualApprox(Quaternion.Identity))
-            for (int i = 0; i < _parts.Count; i++) _parts[i].Transform = pose[i];
+            for (int i = 0; i < _parts.Count; i++) _parts[i].Transform = jolt * pose[i];
         else
         {
             // Thrown or downed: the whole body turned about its middle, whatever its rig does.
             Vector3 middle = c.Position + Vector3.Up * c.Species.Body.Height * 0.5f;
             var turned = new Transform3D(new Basis(c.Tumble), middle) * new Transform3D(Basis.Identity, -middle);
-            for (int i = 0; i < _parts.Count; i++) _parts[i].Transform = turned * pose[i];
+            for (int i = 0; i < _parts.Count; i++) _parts[i].Transform = turned * jolt * pose[i];
         }
 
         // Only touch the per-instance hurt flash when it changes.
@@ -261,6 +262,29 @@ public partial class CreatureView : Node3D
     }
 
     float _stirShown;
+    int _hitSeen;
+    float _hitAt = -9f;
+
+    /// <summary>
+    /// An animal struck: its whole body knocked away from the hit about its feet, at once and gone in
+    /// half a second, the bigger the less (a person's rig shows its own, part by part).
+    /// </summary>
+    Transform3D Jolt(Creature c)
+    {
+        if (c.HitSerial != _hitSeen)
+        {
+            _hitSeen = c.HitSerial;
+            _hitAt = c.Age;
+        }
+        float a = c.Age - _hitAt;
+        if (a > 0.6f || c.Rig is HumanRig || c.HitDir.LengthSquared() < 1e-4f) return Transform3D.Identity;
+        float e = a / 0.07f * MathF.Exp(1f - a / 0.07f);
+        Vector3 axis = Vector3.Up.Cross(c.HitDir);
+        if (axis.LengthSquared() < 1e-4f) return Transform3D.Identity;
+        float size = MathF.Max(0.3f, c.Species.Body.Size);
+        var tilt = new Transform3D(new Basis(axis.Normalized(), 0.3f * e * (0.5f + c.HitHeavy) / MathF.Sqrt(size)), c.Position) * new Transform3D(Basis.Identity, -c.Position);
+        return tilt.Translated(c.HitDir * 0.08f * e * MathF.Sqrt(size));
+    }
 }
 
 /// <summary>
