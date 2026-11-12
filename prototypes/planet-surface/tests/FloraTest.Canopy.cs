@@ -147,38 +147,12 @@ public partial class FloraTest
             spheres++;
             if (PhysicsServer3D.BodyTestMotion(flyer, motion, result)) sphereStopped++;
         }
-        PhysicsServer3D.FreeRid(flyer);
         Check(rays > 200 && rayStopped >= rays * 0.99f, $"shots into canopies are stopped: {rayStopped} of {rays} rays at canopy surfaces, {treeCount} trees at their smallest and largest, {hulls} hulls");
         Check(spheres > 200 && sphereStopped >= spheres * 0.99f, $"a vessel hull flying into a canopy is stopped: {sphereStopped} of {spheres} sweeps");
         // A loose prop on the Props layer is not in a vessel's way (the hull never snags on crates and people at its own deck).
         Check((GalHack.Physics.Layers.VesselMask & GalHack.Physics.Layers.Props) == 0 && (GalHack.Physics.Layers.VesselMask & Layers.Flora) != 0, "vessels collide with flora, not with loose props");
 
-        // 3. Physics cost against a baseline taken in this run: 30 falling balls with no trees, then with 400 trees in their way.
-        var balls = new List<Rid>();
-        Rid ballShape = PhysicsServer3D.SphereShapeCreate();
-        PhysicsServer3D.ShapeSetData(ballShape, 0.4f);
-        for (int i = 0; i < 30; i++)
-        {
-            Rid b = PhysicsServer3D.BodyCreate();
-            PhysicsServer3D.BodySetMode(b, PhysicsServer3D.BodyMode.Rigid);
-            PhysicsServer3D.BodyAddShape(b, ballShape);
-            PhysicsServer3D.BodySetCollisionLayer(b, 0);
-            PhysicsServer3D.BodySetCollisionMask(b, Layers.Flora);
-            PhysicsServer3D.BodySetState(b, PhysicsServer3D.BodyState.Transform, new Transform3D(Basis.Identity, new Vector3(-4000f + rng.NextFloat() * 240f, 3040f, -4000f + rng.NextFloat() * 240f)));
-            PhysicsServer3D.BodySetSpace(b, space);
-            balls.Add(b);
-        }
-        async System.Threading.Tasks.Task<double> QuietestStep()
-        {
-            var times = new List<double>();
-            for (int i = 0; i < 70; i++)
-            {
-                await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
-                if (i >= 20) times.Add(Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess));
-            }
-            return times.Min();
-        }
-        double idleStep = await QuietestStep();
+        // 3. Physics cost with 400 trees' canopies in one place (Godot's own physics-time monitor holds the slowest pass of a second, so it can't isolate this): building them, and what a player's ray and a mover's sweep cost among them.
         var sw = Stopwatch.StartNew();
         var cost = new List<Rid>();
         int many = 0;
@@ -194,20 +168,29 @@ public partial class FloraTest
             cost.Add(CanopyBody(space, one, new Vector3(-4000f + (i % 20) * 12f, 3000f, -4000f + (i / 20) * 12f), shapes, cache, fl.Book.Plants.ToArray()));
         }
         double buildMs = sw.Elapsed.TotalMilliseconds;
-        double treeStep = await QuietestStep();
+        for (int i = 0; i < 4; i++) await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
         state = PhysicsServer3D.SpaceGetDirectState(space);
+        Vector3 Spot() => new(-4000f + rng.NextFloat() * 240f, 3000f + 25f, -4000f + rng.NextFloat() * 240f);
         sw.Restart();
         for (int i = 0; i < 2000; i++)
         {
-            var from = new Vector3(-4000f + rng.NextFloat() * 240f, 3000f + 25f, -4000f + rng.NextFloat() * 240f);
+            Vector3 from = Spot();
             state.IntersectRay(PhysicsRayQueryParameters3D.Create(from, from + Vector3.Down * 30f, Layers.Flora));
         }
         double rayMs = sw.Elapsed.TotalMilliseconds / 2000.0;
-        GD.Print($"canopy physics cost: {cost.Count} trees, {many} hulls: build {buildMs:F1} ms ({buildMs / cost.Count:F3} a tree), ray {rayMs * 1000:F1} us, physics step {idleStep * 1000:F2} ms without trees, {treeStep * 1000:F2} ms with");
-        Check(buildMs / cost.Count < 2.0 && rayMs < 0.5 && treeStep - idleStep < 0.001, "many trees' canopies cost little physics time");
+        sw.Restart();
+        for (int i = 0; i < 500; i++)
+        {
+            motion.From = new Transform3D(Basis.Identity, Spot());
+            motion.Motion = Vector3.Down * 30f;
+            PhysicsServer3D.BodyTestMotion(flyer, motion, result);
+        }
+        double sweepMs = sw.Elapsed.TotalMilliseconds / 500.0;
+        GD.Print($"canopy physics cost: {cost.Count} trees, {many} hulls: build {buildMs:F1} ms ({buildMs / cost.Count:F3} a tree), ray {rayMs * 1000:F1} us, vessel-sized sweep {sweepMs * 1000:F1} us");
+        Check(buildMs / cost.Count < 2.0 && rayMs < 0.1 && sweepMs < 0.2, "many trees' canopies cost little physics time");
 
-        foreach (Rid b in bodies.Concat(cost).Concat(balls)) PhysicsServer3D.FreeRid(b);
-        PhysicsServer3D.FreeRid(ballShape);
+        PhysicsServer3D.FreeRid(flyer);
+        foreach (Rid b in bodies.Concat(cost)) PhysicsServer3D.FreeRid(b);
         foreach (Rid s in shapes) PhysicsServer3D.FreeRid(s);
     }
 
