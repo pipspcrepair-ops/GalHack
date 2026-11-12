@@ -184,7 +184,8 @@ public sealed class PlaceAudit
             if (!secret.Contains(m.Index) && Fixtures.RoomCell(m, reach) == null) Fault("room: no way in", m.Min);
             if (RoomClear(m, g, nav) is not int common) continue;
             RoomHeights[common] = RoomHeights.GetValueOrDefault(common) + 1;
-            if (m.Kind == ModuleKind.Room && common < 3) Fault("room: ceiling under 3 m", m.Min);
+            // (A wrecked aircraft's cabin is a vehicle's, not a building's room.)
+            if (m.Kind == ModuleKind.Room && common < 3 && m.Purpose != "aircraft cabin") Fault("room: ceiling under 3 m", m.Min);
         }
     }
 

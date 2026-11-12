@@ -393,7 +393,8 @@ program factory_works
   rooms ground lobby! loading-dock!
   rooms upper office control! parts-store
   rooms top office archive
-  rooms basement boiler-house! generator storage
+  hall basement boiler-house
+  rooms basement generator storage
   rooms deepest vault! plant
   fill storage parts-store
 

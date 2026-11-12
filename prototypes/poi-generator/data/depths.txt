@@ -343,7 +343,7 @@ depth prison
   rooms top guardroom! storage
   rooms deep solitary evidence
   rooms deepest vault! evidence!
-  fill storage cellblock
+  fill storage cell
   zones gate block
   lock blast
   crawl 0.4
