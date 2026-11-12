@@ -95,7 +95,7 @@
     // Holding the button on a blueprint places its blocks one at a time, in order, at this rate.
     "blueprintPlacesPerSecond": 8,
     "starterBlueprint": "starter.gbp",
-    // The BLUEPRINTS tab's starter set, in data/blueprints: shown under Large and Small by grid.
+    // The BLUEPRINTS tab's starter set, in data/blueprints.
     "library": ["starter.gbp", "rover.gbp", "dart.gbp", "shuttle.gbp", "outpost.gbp", "tank.gbp", "hauler.gbp", "frigate.gbp"],
     // Blueprints the player saves, shown under Yours.
     "saved": "user://blueprints",
