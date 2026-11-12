@@ -1231,7 +1231,7 @@ public partial class PlaceTest : Node
         var reacts = town.People.Where(q => !q.Dead).Select(q => q.ReactAt).ToList();
         Check(reacts.Count < 3 || reacts.Max() - reacts.Min() > 0.3f && reacts.Select(t => MathF.Round(t * 60f)).Distinct().Count() > reacts.Count / 2, $"nobody reacts on the same instant: they take it in over {(reacts.Count > 0 ? reacts.Max() - reacts.Min() : 0f):F2} s");
         foreach (int x in drive.Wait(300)) yield return x;
-        Check(town.People.Where(q => q.Role != "guard").All(q => q.Indoors || q.Fleeing || q.Dead), $"its people run for cover ({town.People.Count(q => q.Fleeing)} fleeing, {town.People.Count(q => q.Indoors)} indoors)");
+        Check(town.People.Where(q => q.Role != "guard" && !q.Engaged).All(q => q.Indoors || q.Fleeing || q.Dead), $"its people run for cover (those armed fight: {town.People.Count(q => q.Engaged)}) ({town.People.Count(q => q.Fleeing)} fleeing, {town.People.Count(q => q.Indoors)} indoors)");
         Check(town.GuardShots == 0 || town.GuardAims > aims, $"its guards take aim where you can see it before they fire ({town.GuardAims - aims} aims, {town.GuardShots} shots)");
         // A silent carrier: nothing shows in company; alone with you it rises a Husk, the same body.
         GD.Print($"  (TEST: {town.CarriersAtStart} carriers were rolled here; one of those still out is made a carrier, then the rest are sent off)");

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using Godot;
 using Wildlife;
 
@@ -315,7 +316,22 @@ public partial class DeepSite : Node3D
             _massViews.Add(view);
         }
         foreach (WormMassView v in _massViews) v.Sync(dt);
+        // Those alight: flame and smoke off them until they're gone.
+        if ((_flameIn -= dt) > 0f) return;
+        _flameIn = 0.12f;
+        foreach (WormMass m in Sim.Masses)
+        {
+            if (m.Dead || m.Burning <= 0f) continue;
+            Vector3 at = World(m.Middle), up = m.Normal;
+            Patch.Zone.Dust?.Sparks(at, up, new Color(1f, 0.55f, 0.18f));
+            Patch.Zone.Dust?.Puff(at + up * m.Size * 0.3f, new Color(0.12f, 0.1f, 0.09f, 0.7f), 0.6f + m.Size * 0.5f);
+        }
     }
+
+    float _flameIn;
+
+    /// <summary>Worm masses burned out to a scorch (tests).</summary>
+    public int MassesScorched => _massViews.Count(v => v.Scorched);
 
     /// <summary>Worm masses drawn so far (tests).</summary>
     public int MassesDrawn => _massViews.Count;

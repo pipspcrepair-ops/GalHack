@@ -382,6 +382,10 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
                     Dealt?.Invoke(HitKind.Person, p, d.Damage);
                 }
             }
+        // A worm mass in the wedge catches.
+        foreach (DeepSite s in w.Sites)
+            foreach (WormMass m in s.Sim.Masses)
+                if (!m.Dead && ShotPool.InCone(o, nd, cos, cone.Range, s.World(m.Middle).ToNumerics()) && !SolidBetween(origin, s.World(m.Middle) + m.Normal * 0.2f)) { WormMasses.Damage(s.Sim, m, d.Damage); MassHits++; }
         // Someone else's flame reaches the player too.
         if (owner != 0 && !Game.Suit.Dead)
         {
@@ -461,6 +465,13 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
             best = cd;
             found = true;
             hit = new ShotHit { Kind = HitKind.Creature, Thing = c, Point = cp.ToNumerics(), Normal = (-dir).ToNumerics(), Distance = cd, Through = 0.2f };
+        }
+        // A den's worm mass in the way takes it (and catches alight).
+        if (Zone.Wildlife.RaycastMass(a, dir, best, out float massAt, out _) is { } mass && massAt < best)
+        {
+            best = massAt;
+            found = true;
+            hit = new ShotHit { Kind = HitKind.Ground, Thing = mass, Point = (a + dir * massAt).ToNumerics(), Normal = (-dir).ToNumerics(), Distance = massAt };
         }
         PoiPlaces places = Game.Places;
         if (places != null && places.Standing.Count > 0)
@@ -780,11 +791,27 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
                 if (!tick) Game.Shots.Impact(at, n, ImpactKind.Block, v.Node);
                 break;
             default:
+                if (hit.Thing is WormMass wm)
+                {
+                    HurtMass(wm, damage);
+                    if (!tick) Game.Shots.Impact(at, n, ImpactKind.Creature);
+                    break;
+                }
                 GroundHits++;
                 if (!tick) Game.Shots.Impact(at, n, ImpactKind.Ground);
                 break;
         }
         if (!tick && hit.Kind != HitKind.Creature) Sounds.Play(d, VoiceKind.Impact, at, 0.9f + 0.2f * (float)_rng.NextDouble(), -6f);
+    }
+
+    /// <summary>Blows and burns dealt to worm masses (tests).</summary>
+    public int MassHits;
+
+    /// <summary>A worm mass takes harm, in whichever place's sim it lies: it catches and burns until it's gone.</summary>
+    void HurtMass(WormMass m, float amount)
+    {
+        foreach (DeepSite s in Zone.Wildlife.Sites)
+            if (s.Sim.Masses.Contains(m)) { WormMasses.Damage(s.Sim, m, amount); MassHits++; return; }
     }
 
     /// <summary>Harm to a creature, in whichever sim it lives: wildlife's damage (it turns on who did it), its blood and its cry.</summary>

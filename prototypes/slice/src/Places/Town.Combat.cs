@@ -328,6 +328,8 @@ public sealed partial class Town
         }
         p.Crouched = Mathf.MoveToward(p.Crouched, 0f, dt * 3f);
         if (!p.Sees || dist > p.Kit.Range) { p.Aim = -1f; p.Pending = 0; return; }
+        // Going wide or falling back: they get there first (unless you're on top of them).
+        if (p.Part is FightPart.Flank or FightPart.FallBack && !there && p.Pending == 0 && dist > 8f) { p.Aim = -1f; return; }
         // Facing you to shoot: they stop where they are to take it.
         p.Yaw = Mathf.LerpAngle(p.Yaw, MathF.Atan2(-to.X, -to.Z), MathF.Min(1f, dt * 7f));
         if (p.Kit.Loaded <= 0)
