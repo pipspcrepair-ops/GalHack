@@ -76,7 +76,6 @@ Shared code lives in [`shared/`](shared/): modules that prototypes compile in ra
 | Folder | What's in it |
 | --- | --- |
 | `prototypes/` | Throwaway prototypes that prove one risky idea each |
-| `prototypes/walkable-ship/` | Walking around inside a ship while it flies, rolls and warps |
 | `prototypes/planet-generator/` | Seeded planets in five archetypes, divided into regions of 24 landforms, from a relief globe in orbit down to streamed terrain |
 | `prototypes/terrain-digging/` | Remove-only grid digging: smooth Surface Nets terrain, dig anywhere but bedrock, blocks set flush into the ground, atomic audited saves |
 | `prototypes/encounters/` | Encounter director: seeded, territory-aware spawns out of sight, fuzzy signal leads, nothing a player touched is ever cleaned up |
