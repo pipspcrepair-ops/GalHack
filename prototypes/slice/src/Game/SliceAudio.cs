@@ -218,7 +218,7 @@ public partial class SliceAudio : Node
         UpdateWeather(under, dt);
 
         // The jetpack hisses while it pushes; a vessel's engines rumble with its thrust.
-        bool jetting = g.Survivor.Seated == null && !g.Survivor.Body.OnFloor && g.Survivor.Legs.Jetpack && !g.Suit.Dead;
+        bool jetting = (g.Survivor.Seated == null && !g.Survivor.Body.OnFloor && g.Survivor.Legs.Jetpack || g.Spaceflight.EvaThrusting) && !g.Suit.Dead;
         _jet.Voice.On = jetting;
         _jet.Voice.Thrust = 1f;
         _jet.Voice.Air = 1f - g.Spaceflight.AirGone;

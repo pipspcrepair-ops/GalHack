@@ -118,8 +118,18 @@ public sealed class StarSystem
     /// <summary>The least ratio between two moons' orbits round one parent.</summary>
     public const double LeastMoonStep = 1.25;
 
-    /// <summary>The farthest the fuel moon may stand from a start world's centre, in its radii: about 4 minutes at a small vessel's 130 m/s.</summary>
-    public const double ThrusterReachRadii = 14.0;
+    /// <summary>
+    /// Where a start world's thruster moon stands, centre to centre, in the world's radii. Empyrion's
+    /// scenarios put a planet's moon 8.3 to 12.3 km from the planet in its orbit playfield
+    /// (Default Akua-Omicron's Sectors.yaml: Akua Moon 11.5 km, Omicron Moon 11.8 km, Oscutune Moon
+    /// 8.3 km); for a 16 km start world and an 8 km moon this range leaves that much open space
+    /// between the top of the world's crossing band and the moon's ground: about 1 to 1.5 minutes at
+    /// a small vessel's 130 m/s.
+    /// </summary>
+    public const double ThrusterMoonFrom = 5.5, ThrusterMoonTo = 7.0;
+
+    /// <summary>The farthest the fuel moon may stand from a start world's centre, in its radii.</summary>
+    public const double ThrusterReachRadii = ThrusterMoonTo;
 
     /// <summary>The longitude whose solar time the game's clock tells, radians: the map's middle, where start sites stand.</summary>
     public const double NoonLongitude = Math.PI;
@@ -153,6 +163,31 @@ public sealed class StarSystem
     public D3 Axis { get; private set; } = new(0, 1, 0);
 
     readonly List<Orbiter> _bodies = new();
+
+    /// <summary>Seen from a body other than the start world: its globe turns by its own spin (<see cref="Turned"/>).</summary>
+    bool _spun;
+
+    /// <summary>The system as its start world sees it (itself, unless this is <see cref="SeenFrom"/> another body).</summary>
+    public StarSystem Origin { get; private set; }
+
+    /// <summary>
+    /// The same system, the same bodies on the same clock, seen from another of its bodies: that
+    /// body is <see cref="Home"/>, and its globe's frame is its own map's (its axis, its spin). A
+    /// moon's surface sky reads this, so from the moon the start world hangs where it really is.
+    /// </summary>
+    public StarSystem SeenFrom(Orbiter body)
+    {
+        if (body == null || body == Home) return this;
+        StarSystem origin = Origin ?? this;
+        if (body == origin.Home) return origin;
+        var s = new StarSystem
+        {
+            StarKey = StarKey, Star = Star, Home = body, FuelMoon = FuelMoon, Luminosity = Luminosity, Spread = Spread, Tilt = Tilt,
+            Neighbour = body.Parent?.Kind == OrbiterKind.GasGiant ? body.Parent : null, Axis = body.RingNormal, _spun = true, Origin = origin,
+        };
+        s._bodies.AddRange(_bodies);
+        return s;
+    }
 
     // ---- Where things are ----------------------------------------------------------------------
 
@@ -219,6 +254,12 @@ public sealed class StarSystem
     /// </summary>
     public Orientation Orient(double days)
     {
+        if (_spun)
+        {
+            // Another body's own spin, as its surface map and every sky that draws it have it (Turned).
+            var (axis, zero) = Turned(Home, days);
+            return new Orientation(axis.Cross(zero), axis, zero);
+        }
         D3 a = Axis, toStar = (Position(Star, days) - Position(Home, days)).Normalized;
         D3 sub = (toStar - a * toStar.Dot(a)).Normalized; // the sub-solar meridian
         double hour = (days - Math.Floor(days) - 0.5) * Math.Tau;
@@ -484,7 +525,7 @@ public sealed class StarSystem
             if (b.Kind != BodyKind.Moon) continue;
             double r = homeRadius * 0.5;
             double wanted = host != null ? host.Radius * (3.0 + 27.0 * next())
-                : first ? homeRadius * (12.0 + next()) : Math.Clamp(r / Math.Tan(b.Radius), homeRadius * 14.0, homeRadius * 40.0);
+                : first ? homeRadius * (ThrusterMoonFrom + (ThrusterMoonTo - ThrusterMoonFrom) * next()) : Math.Clamp(r / Math.Tan(b.Radius), homeRadius * 14.0, homeRadius * 40.0);
             double orbit = clearOrbit(holder, wanted), month = host != null ? giantMonth(orbit / host.Radius) : rockMonth(orbit / homeRadius);
             first = false;
             s._bodies.Add(new Orbiter
@@ -596,7 +637,7 @@ public sealed class StarSystem
                 if (b.Parent == home && b.Orbit <= homeRadius * ThrusterReachRadii && (near == null || b.Orbit < near.Orbit)) near = b;
         if (near == null)
         {
-            double radii = 12.0 + next(), chord = homeRadius * radii;
+            double radii = ThrusterMoonFrom + (ThrusterMoonTo - ThrusterMoonFrom) * next(), chord = homeRadius * radii;
             // A sister keeps one small arc ahead on the same orbit, so she is always in reach: the one shared orbit.
             near = host == null
                 ? new Orbiter
@@ -646,10 +687,20 @@ public sealed class StarSystem
             int width = b.Kind == OrbiterKind.Planet ? PlanetSpec.RollWidthKm(b.Seed)
                 : b.Parent.Kind == OrbiterKind.GasGiant ? PlanetSpec.RollWidthKm(b.Seed, WorldKind.Moon)
                 : b.Parent.Radius * Math.Tau > 20000.0 ? 16 : 8;
-            b.Spec = PlanetSpec.Roll(b.Seed, type, variant, width);
+            PlanetSpec spec = PlanetSpec.Roll(b.Seed, type, variant, width);
+            // Vacuum or not: small bodies can't hold air. Only the kinds that keep craters can be airless.
+            if (PlanetSpec.Craters(type))
+            {
+                bool vacuum = b == FuelMoon || new Rng(Hash.Of(b.Seed, 0x564143)).NextFloat() < VacuumChance(width);
+                spec = spec with { Modifiers = vacuum ? spec.Modifiers | Modifier.Cratered : spec.Modifiers & ~Modifier.Cratered };
+            }
+            b.Spec = spec;
             b.Radius = width * 1000.0 / Math.Tau;
         }
     }
+
+    /// <summary>The chance a world of a width (km) has no air: the smaller, the likelier. The start's thruster moon always has none.</summary>
+    public static double VacuumChance(int widthKm) => widthKm switch { <= 8 => 0.9, <= 16 => 0.6, <= 32 => 0.25, _ => 0.05 };
 
     /// <summary>The type a world's place makes it, from the zone table in docs/solar-systems.md, in the types the generator has.</summary>
     public static (Archetype Type, int Variant) TypeOf(Orbiter b)
