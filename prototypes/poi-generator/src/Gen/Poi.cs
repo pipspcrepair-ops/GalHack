@@ -412,7 +412,7 @@ public static class Fixtures
         {
             bool vault = slot.Module == layout.VaultModule;
             if (!vault && !slot.Sure && !rng.Chance(0.55f)) continue;
-            if (!g.Get(slot.Cell).IsAir) continue;
+            if (!g.Get(slot.Cell).IsAir || Passage(g, slot.Cell)) continue;
             var color = slot.Secret ? SecretViolet : vault ? CacheGold : accent;
             g.Set(slot.Cell, new Block(BlockType.Cache, Material.Alloy, color, Role.Loot, Dir.North, (byte)(vault || slot.Secret ? 1 : 0)));
             inst.Caches.Add(new LootCache { Cell = slot.Cell, Module = slot.Module, InVault = vault, Secret = slot.Secret });
@@ -431,7 +431,7 @@ public static class Fixtures
         if (chosen.Count == 0 && termSlots.Count > 0) chosen.Add(termSlots[0]);
         foreach (var s in chosen)
         {
-            if (!g.Get(s.Cell).IsAir) continue;
+            if (!g.Get(s.Cell).IsAir || Passage(g, s.Cell)) continue;
             g.Set(s.Cell, new Block(BlockType.Terminal, Material.Alloy, accent, Role.Terminal, FaceOpen(inst, s.Cell)));
             inst.Terminals.Add(new TerminalLog { Cell = s.Cell, Module = s.Module });
         }
@@ -464,6 +464,13 @@ public static class Fixtures
     };
 
     /// <summary>Faces a terminal toward open floor, so its screen looks into the room.</summary>
+    /// <summary>A cell that is a way through, walled either side across it (a gap in a wall): nothing is set down in one, or it shuts the way.</summary>
+    static bool Passage(BlockGrid g, Int3 c)
+    {
+        bool S(Dir d) => BlockInfo.Collides(g.Get(c + d.Vec()).Type);
+        return S(Dir.East) && S(Dir.West) && !S(Dir.North) && !S(Dir.South) || S(Dir.North) && S(Dir.South) && !S(Dir.East) && !S(Dir.West);
+    }
+
     static Dir FaceOpen(PoiInstance inst, Int3 c)
     {
         var nav = inst.Nav();
