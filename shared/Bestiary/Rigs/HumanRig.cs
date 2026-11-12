@@ -481,7 +481,9 @@ public sealed partial class HumanRig : Rig
                 Vector3 holdPole = kind == HoldKind.Bow && i == 1 ? (hold.R - hold.L).Normalized() + Vector3.Up * 0.12f + torso.X * 0.1f : Vector3.Down + torso.X * side * 0.5f + torso.Z * 0.2f;
                 pole = pole.Lerp(holdPole.Normalized(), on).Normalized();
             }
-            ArmGoal blow = StrikeArm(i, shoulder, torso, upperArm, forearm, out float blowOn);
+            // (A bow stays in the hand that holds it: the blow is the other's.)
+            float blowOn = 0f;
+            ArmGoal blow = i == 0 && kind == HoldKind.Bow ? default : StrikeArm(i, shoulder, torso, upperArm, forearm, out blowOn);
             if (blowOn > 0f && blow.On)
             {
                 hand = hand.Lerp(blow.Hand, blowOn);
@@ -692,7 +694,6 @@ public sealed partial class HumanRig : Rig
     {
         Figure f = _f;
         Vector3 hand = _wrist[1];
-        if (kind is HoldKind.LongGun or HoldKind.Pistol or HoldKind.Spear or HoldKind.Bow) return h.Prop;
         // The fist: the forearm's line, and the thumb up off it (forward when the arm hangs).
         Vector3 along = (_wrist[1] - _elbow[1]).Normalized();
         Vector3 thumb = Vector3.Up - along * along.Dot(Vector3.Up);
@@ -700,6 +701,9 @@ public sealed partial class HumanRig : Rig
         thumb = thumb.Normalized();
         // The hand piece's fist is a little short of the wrist.
         Vector3 fist = hand - along * _f.ForearmOf(1) * 0.05f;
+        if (kind == HoldKind.Bow) return h.Prop;
+        // A gun or a spear in a blow goes with the fist, along the forearm (a butt stroke, a thrust).
+        if (kind is HoldKind.LongGun or HoldKind.Pistol or HoldKind.Spear) return busy > 0f ? h.Prop.InterpolateWith(new Transform3D(Geo.AlongY(along, thumb.Cross(along)), fist), busy) : h.Prop;
         if (kind == HoldKind.Blade)
         {
             // Hanging head-down and forward; up and ready when wary; in a blow it follows the arm.
