@@ -29,13 +29,16 @@ public struct Gesture
     public float Clock;
     /// <summary>The local form of the friendly gestures (a greeting, thanks): 0 a hand waved high, 1 an open palm held up, 2 a hand to the chest.</summary>
     public int Style;
+    /// <summary>
+    /// A blow with what they hold (or bare hands), 0..1: the wind-up rising to 1 at the moment it
+    /// lands, easing back after. Which blow (<see cref="Blow"/>) is the body's own unless given.
+    /// </summary>
+    public float Strike;
+    public StrikeKind Blow;
     /// <summary>0..1: a drink at the lips (the held bottle tipped to the mouth); a low, hunched creep (a stalk, not a crouch).</summary>
     public float Sip, Stalk;
     /// <summary>Dead: the body goes limp and falls as a ragdoll (Down alone lays a sleeper down whole).</summary>
     public bool Dead;
-    /// <summary>A blow under way and how far through it (0..1: wind-up to about 0.45, the strike to 0.65, then back).</summary>
-    public StrikeKind Strike;
-    public float StrikeAt;
 }
 
 /// <summary>
@@ -143,19 +146,18 @@ public sealed partial class HumanRig : Rig
             _hitSeen = c.HitSerial;
             if (Pose[_body].Basis.Y.LengthSquared() > 0.5f) Struck(c.HitPoint, c.HitDir, c.HitHeavy);
         }
-        // A blow: wind-up, strike and recovery, read off the attack's own phases.
-        StrikeKind blow = StrikeKind.None;
-        float at = 0f;
+        // A blow, read off the attack's own phases: wound up, struck as it lands, then back.
+        float strike = 0f;
+        bool spew = false;
         if (!c.Dead && c.Phase is AttackPhase.Windup or AttackPhase.Lunge or AttackPhase.Recover)
         {
-            bool spew = c.Species.Husk && c.Species.Spit != SpitKind.None && Spitting.Wants(c) && !c.Seizing;
-            blow = spew ? StrikeKind.Spew : BlowOf(c.Species, c.Id);
+            spew = c.Species.Husk && c.Species.Spit != SpitKind.None && Spitting.Wants(c) && !c.Seizing;
             float k = c.PhaseLength > 0f ? Math.Clamp(c.PhaseTime / c.PhaseLength, 0f, 1f) : 1f;
-            at = c.Phase switch
+            strike = c.Phase switch
             {
-                AttackPhase.Windup => 0.44f * k,
-                AttackPhase.Lunge => 0.45f + 0.15f * k,
-                _ => 0.6f + 0.4f * Math.Clamp(c.PhaseTime / 0.5f, 0f, 1f),
+                AttackPhase.Windup => 0.85f * k,
+                AttackPhase.Lunge => 0.85f + 0.15f * k,
+                _ => 1f - Math.Clamp(c.PhaseTime / 0.5f, 0f, 1f),
             };
         }
         // Creeping up on something is a low, hunched stalk; only standing still (hiding, waiting) is a full crouch.
@@ -175,9 +177,9 @@ public sealed partial class HumanRig : Rig
             Stalk = stalk,
             // A Husk holding a head keeps its hands on it; anyone held by one struggles.
             Reach = c.Phase == AttackPhase.Hold ? 1f : c.HeldBy != null ? 0.6f * Rearing : 0f,
-            Retch = c.Attacking && blow != StrikeKind.Spew && c.Species.Spit != SpitKind.None && c.Species.Attack.Style != AttackStyle.Seize ? Rearing : 0f,
-            Strike = blow,
-            StrikeAt = at,
+            Retch = c.Attacking && !spew && c.Species.Spit != SpitKind.None && c.Species.Attack.Style != AttackStyle.Seize ? Rearing : 0f,
+            Strike = strike,
+            Blow = spew ? StrikeKind.Spew : StrikeKind.None,
             Look = LookYaw,
             Down = Dead,
             Dead = c.Dead,
@@ -259,7 +261,8 @@ public sealed partial class HumanRig : Rig
         float snap = _hitAge < 1f ? Envelope(_hitAge) : 0f, stagger = Stagger;
         Vector3 hitFlat = new Vector3(_hitDir.X, 0f, _hitDir.Z);
         hitFlat = hitFlat.LengthSquared() > 1e-4f ? hitFlat.Normalized() : -fwd;
-        StrikeBody(g, out float blowTwist, out float blowPitch, out float blowForward, out float blowDown);
+        ReadBlow(g);
+        StrikeBody(g.Clock, out float blowTwist, out float blowPitch, out float blowForward, out float blowDown);
         float act = g.Act == BodyAct.None ? 0f : Mathf.SmoothStep(0f, 1f, Math.Clamp(g.ActAmount, 0f, 1f)); // eased in and out, held at the top
         float keyed = act;
 
@@ -294,7 +297,7 @@ public sealed partial class HumanRig : Rig
         // A weapon up: the left shoulder comes round toward the target (an archer's side-on stance).
         HoldKind kind = Weapons.HoldOf(f.Prop);
         float squareOff = 0f; // the upper body turned to a weapon (the hips and legs stay square)
-        float strikeOn = g.Strike == StrikeKind.None ? 0f : 1f;
+        float strikeOn = _blow == StrikeKind.None ? 0f : 1f;
         float busy = Math.Clamp(MathF.Max(MathF.Max(act, g.Reach), strikeOn), 0f, 1f);
         float aimW = kind == HoldKind.None ? 0f : Math.Clamp(g.Aim, 0f, 1f) * (1f - busy);
         squareOff -= aimW * kind switch { HoldKind.Bow => 1.15f, HoldKind.Spear => 0.3f, _ => 0f };
@@ -388,9 +391,9 @@ public sealed partial class HumanRig : Rig
             sip = MathF.Max(Math.Clamp(MathF.Sin(g.Clock * 0.33f + _offset * 9f) * 5f - 3.6f, 0f, 1f) * (1f - moving), Math.Clamp(g.Sip, 0f, 1f)) * (1f - busy);
 
         // The head turns on its own, and stays nearer level than the back it sits on.
-        StrikeCurve(g.StrikeAt, out float blowWind, out float blowHit);
+        StrikeCurve(_blowAt, out float blowWind, out float blowHit);
         float headPitch = pitch * 0.35f + g.Retch * 0.5f + (longGun ? aimW * 0.3f : 0f) + act * (g.Act switch { BodyAct.Grieve => 0.5f, BodyAct.Taunt => 0.12f, BodyAct.Thanks => 0.15f, _ => 0f }) - 0.4f * sip - 0.5f * stalk;
-        if (g.Strike == StrikeKind.Spew) headPitch += 0.35f * blowWind * MathF.Abs(MathF.Sin(g.Clock * 13f)) - 0.35f * blowHit;
+        if (_blow == StrikeKind.Spew) headPitch += 0.35f * blowWind * MathF.Abs(MathF.Sin(g.Clock * 13f)) - 0.35f * blowHit;
         float headRoll = longGun ? -0.14f * aimW : 0f; // down to the sights, the cheek toward the stock
         if (g.Act == BodyAct.Shrug) headRoll += act * 0.18f;
         if (husk)
@@ -399,7 +402,7 @@ public sealed partial class HumanRig : Rig
             headRoll = f.HeadTilt + 0.22f * MathF.Sin(g.Clock * 0.8f + _offset * 13f) + 0.4f * jerk * MathF.Sin(_offset * 57f);
             // The head is held up off the hunched back (it watches you), dropping now and then; reaching, it lifts to the face it wants.
             headPitch = pitch * 0.15f + f.HeadDroop + 0.1f * MathF.Sin(g.Clock * 0.55f + _offset * 3f) + g.Retch * 0.5f - 0.35f * stalk;
-            headPitch = Mathf.Lerp(headPitch, -0.2f, Math.Clamp(MathF.Max(g.Reach, g.Strike == StrikeKind.Seize ? blowWind + blowHit : 0f), 0f, 1f));
+            headPitch = Mathf.Lerp(headPitch, -0.2f, Math.Clamp(MathF.Max(g.Reach, _blow == StrikeKind.Seize ? blowWind + blowHit : 0f), 0f, 1f));
         }
         float headYaw = g.Look + staggerSide + (g.Act == BodyAct.WaveOff ? act * 0.45f : 0f);
         Basis headBasis = turn * new Basis(Vector3.Up, headYaw) * new Basis(Vector3.Right, -headPitch) * new Basis(Vector3.Back, headRoll);
@@ -478,7 +481,7 @@ public sealed partial class HumanRig : Rig
                 Vector3 holdPole = kind == HoldKind.Bow && i == 1 ? (hold.R - hold.L).Normalized() + Vector3.Up * 0.12f + torso.X * 0.1f : Vector3.Down + torso.X * side * 0.5f + torso.Z * 0.2f;
                 pole = pole.Lerp(holdPole.Normalized(), on).Normalized();
             }
-            ArmGoal blow = StrikeArm(g, i, shoulder, torso, upperArm, forearm, out float blowOn);
+            ArmGoal blow = StrikeArm(i, shoulder, torso, upperArm, forearm, out float blowOn);
             if (blowOn > 0f && blow.On)
             {
                 hand = hand.Lerp(blow.Hand, blowOn);

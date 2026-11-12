@@ -28,6 +28,20 @@ public sealed partial class Town
         if (p.Rig != null) p.Rig.Ground = q => FloorUnder(q, p.Pos.Y);
     }
 
+    public sealed partial class Person
+    {
+        /// <summary>How the body ends if this hit kills: falls, blown apart, burned away (the last two leave nothing to pose).</summary>
+        public BodyEnd End;
+    }
+
+    /// <summary>Where a hit on one of them landed and the way it went (world), how heavy, and what a kill with it does to the body: the struck part snaps away from it.</summary>
+    public void Hit(Person p, Vector3 at, Vector3 dir, float heavy, BodyEnd end)
+    {
+        if (p.Dead || p.Rig == null) return;
+        p.Rig.Struck(_place != null ? _place.FromWorld(at) : at, dir, heavy);
+        p.End = end;
+    }
+
     /// <summary>Blown apart or burned away: nothing left to draw or pose (what they carried is left where they were).</summary>
     public void Unbody(Person p)
     {

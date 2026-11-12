@@ -120,15 +120,34 @@ public partial class Game
             Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Ping, from, 0.5f, -4f);
         };
         t.ShotAway += (from, to) => Shots.Fire(from, to, default, null);
-        t.Fired += (from, to, clear) =>
-        {
-            Shots.Fire(from, to, default, null);
-            if (!clear || Suit.Dead) return;
-            double lost = Suit.Hit(12, SurvivalVitals.Model.DamageKind.Hit);
-            Visor.Hurt(from);
-            Alerts.Attack("hostile", from);
-        };
+        // Their own weapon, fired (or swung) from their own hands: the same shots and blows as the player's.
+        t.ShotFired += (who, def, muzzle, dir, unsteady) => Arms?.FireFrom(def, muzzle, dir, unsteady, who, who.Now > 0.6f);
+        // Where one falls, what they carried: their weapon and what's left of its ammo, and a little besides.
+        t.Fell += who => PersonFell(t, who);
     }
+
+    /// <summary>A townsperson's body: a container where they lie, holding their weapon, its ammo and their pockets.</summary>
+    void PersonFell(Town t, Town.Person who)
+    {
+        if (who.Looks == null) return;
+        GalHack.Items.Bill drops = t.Leaves(who);
+        foreach (var kv in BodyDrops(who.Looks, Wildlife.Rng.For(who.Looks.Seed, "drop", (long)t.People.IndexOf(who)))) drops.Add(kv.Key, kv.Value);
+        int[] size = Zone.Data.Rules.Containers.Corpse;
+        Vector3 feet = t.World(who.Pos);
+        if (EndPerson(t, who, out Vector3 left))
+        {
+            Remains(who.Looks, left, drops);
+            return;
+        }
+        // The search target is the whole body as it lies: round its middle, a body's length across.
+        Slice.Items.Lootable body = Zone.Loot.Create(Slice.Items.LootKind.Corpse, $"{Cap(who.Looks.CommonName)} body", feet + who.Forward * 0.4f, size[0], size[1], drops);
+        body.Radius = MathF.Max(0.85f, (who.Looks.Figure?.Height ?? 1.7f) * 0.5f);
+        body.Shape = () => PersonBalls(t, who); // (it ragdolls: the balls follow the body to where it comes to rest)
+        PeopleBodies++;
+    }
+
+    /// <summary>Townsfolk bodies left to search (tests).</summary>
+    public int PeopleBodies { get; private set; }
 
     /// <summary>Whether the bag holds a keycard of this clearance or a higher one.</summary>
     bool HoldsClearance(string clearance)

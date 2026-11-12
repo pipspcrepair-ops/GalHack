@@ -56,7 +56,7 @@ public sealed partial class Town
         _rng = new Random((int)(m.Inst.SpawnSeed & 0x7fffffff));
     }
 
-    public sealed class Person : IHost
+    public sealed partial class Person : IHost
     {
         /// <summary>Seized by a Husk and turned: one of them now, out in the wild sim; this one is gone.</summary>
         public bool Gone;
@@ -88,8 +88,6 @@ public sealed partial class Town
         public Figure Figure => Looks.Figure;
         /// <summary>How far over they have gone (the dead), how far their rifle is up, how far bent to work.</summary>
         public float Down, Raised, Bent;
-        /// <summary>How the body ended: fell, blown apart, burned away (the last two leave no body to pose).</summary>
-        public BodyEnd End;
         public bool Laid;
         /// <summary>Their nerve (set once), and when they act on the latest upset: nobody reacts on the same instant.</summary>
         public float Nerve = 0.5f, ReactAt = -1f;
@@ -490,8 +488,15 @@ public sealed partial class Town
                 Pose(p, who, away, dt);
                 continue;
             }
+            // A hostile place's fighters fight you (Town.Combat); the rest go to their doors.
+            if (Combat(p, player, mood, dt))
+            {
+                Pose(p, who, away, dt);
+                continue;
+            }
             bool scared = p.ScaredFor > 0f || Barricaded;
-            bool hide = !guard && (offDuty || mood == Mood.Hostile || scared);
+            bool fighter = mood == Mood.Hostile && Fighter(p) && p.ScaredFor <= 0f;
+            bool hide = !guard && (offDuty || mood == Mood.Hostile && !fighter || scared);
             if (hide && p.Away) { p.Away = false; p.Pos = At(p.Spot); } // back from a run in time for the night
             if (p.Away)
             {
@@ -808,29 +813,11 @@ public sealed partial class Town
         }
     }
 
-    /// <summary>A guard in a wary or hostile place: watches you; hostile, takes aim (a red line you can see, a second and more) and fires.</summary>
+    /// <summary>A guard in a wary or hostile place: watches you. (Hostile, they fight with what they carry: Town.Combat.)</summary>
     void Guard(Person p, Vector3 player, Mood mood, float dt)
     {
         Vector3 d = player - p.Pos;
         p.Yaw = Mathf.LerpAngle(p.Yaw, MathF.Atan2(-d.X, -d.Z), MathF.Min(1f, dt * 6f));
-        if (mood != Mood.Hostile) return;
-        p.Cooldown -= dt;
-        if (p.Aim < 0f)
-        {
-            // One raises first; the next only a beat after: never all at once.
-            if (p.Cooldown > 0f || _clock < _nextAimAt || !CanSee(p, player)) return;
-            _nextAimAt = _clock + 0.9f + (float)_rng.NextDouble() * 1.1f;
-            p.Aim = 1.4f;
-            GuardAims++;
-            Aimed?.Invoke(_place.ToWorld(p.Pos + Vector3.Up * 1.5f));
-            return;
-        }
-        p.Aim -= dt;
-        if (p.Aim > 0f) return;
-        p.Aim = -1f;
-        p.Cooldown = 2.5f;
-        GuardShots++;
-        Fired?.Invoke(_place.ToWorld(p.Pos + Vector3.Up * 1.5f), _place.ToWorld(player + Vector3.Up * 1.2f), CanSee(p, player));
     }
 
     /// <summary>The place's standing with you (<see cref="PlaceMemory.Standing"/>); below this they treat you as a wary place would.</summary>
@@ -869,24 +856,16 @@ public sealed partial class Town
         return true;
     }
 
-    bool CanSee(Person p, Vector3 player)
-    {
-        var space = _place.GetWorld3D().DirectSpaceState;
-        Vector3 from = _place.ToWorld(p.Pos + Vector3.Up * 1.5f), to = _place.ToWorld(player + Vector3.Up * 1.4f);
-        var q = PhysicsRayQueryParameters3D.Create(from, to, GalHack.Physics.Layers.World | GalHack.Physics.Layers.Hull);
-        return space.IntersectRay(q).Count == 0;
-    }
-
-    /// <summary>A guard takes aim at you (where from), and fires (from, to, whether it can hit).</summary>
+    /// <summary>One of them takes aim at you (where from): their shot follows (<see cref="ShotFired"/>).</summary>
     public event Action<Vector3> Aimed;
-    public event Action<Vector3, Vector3, bool> Fired;
 
     // ---- Being shot at, and shooting ------------------------------------------------------------------
 
     /// <summary>The survivor fired in or at the town: a peaceful or wary place turns hostile, its people flee.</summary>
     public void Provoked()
     {
-        if (Memory.Mood == Mood.Hostile) return;
+        // Already hostile: a shot in or at the place tells them where you are.
+        if (Memory.Mood == Mood.Hostile) { if (_place != null) Alert(_place.FromWorld(_places.Zone.Wildlife.PlayerWorld())); return; }
         _moodBefore = Memory.Mood;
         Memory.Mood = Mood.Hostile;
         // Each takes it in in their own time: the bold and the near first, children and the old later.
@@ -906,7 +885,6 @@ public sealed partial class Town
     Temper _temper;
     /// <summary>The way the first to react went: the rest mostly follow it.</summary>
     Stance? _setTone;
-    float _nextAimAt;
 
     /// <summary>Whether a world point is in the town's area.</summary>
     public bool Covers(Vector3 world)
@@ -938,37 +916,16 @@ public sealed partial class Town
         return best;
     }
 
-    public void Shoot(Person p, float damage) => Shoot(p, damage, null, null);
-
-    /// <summary>
-    /// A hit, where it landed and the way it went (world; left out, from nowhere in particular), and
-    /// what a kill does to the body: the struck part snaps away from it, a heavy one staggers them.
-    /// </summary>
-    public void Shoot(Person p, float damage, Vector3? at, Vector3? dir, BodyEnd end = BodyEnd.Fall)
-    {
-        if (p.Dead) return;
-        if (p.Rig != null)
-        {
-            Vector3 point = at is Vector3 a ? (_place != null ? _place.FromWorld(a) : a) : p.Rig.ChestPoint;
-            Vector3 way = dir ?? -p.Rig.Facing; // (a place is only moved, never turned)
-            p.Rig.Struck(point, way, Math.Clamp(damage / MathF.Max(1f, (float)p.Health.Max) * 2.5f, 0.15f, 1f));
-        }
-        p.End = end;
-        p.Health.Current -= damage;
-        p.Hurt = 0.4f;
-        Did(p.Dead ? Deed.Kill : Deed.Harm);
-        Provoked();
-        if (p.Dead) Fall(p);
-    }
+    /// <summary>The survivor hurts one of them (<see cref="Struck"/>).</summary>
+    public void Shoot(Person p, float damage) => Struck(p, damage, GalHack.Arms.DamageClass.Kinetic, byPlayer: true);
 
     void Fall(Person p)
     {
         _places?.Zone.Wildlife.Sim?.Targets.Remove(p);
-        Fell?.Invoke(this, p);
+        if (p.Dropped) return;
+        p.Dropped = true;
+        Fell?.Invoke(p);
     }
-
-    /// <summary>Someone of a town died (the game leaves what they carried with the body, or where it was).</summary>
-    public static event Action<Town, Person> Fell;
 
     // ---- Bodies ---------------------------------------------------------------------------------------
 
@@ -1230,6 +1187,7 @@ public sealed partial class Town
         p.View.Build(p.Rig, p.Ready);
         p.Ready = null;
         GroundBody(p);
+        HoldWeapon(p);
     }
 
     /// <summary>This world's form of the friendly gestures.</summary>
@@ -1283,6 +1241,8 @@ public sealed partial class Town
             Look = p.HeadYaw,
             Down = MathF.Max(p.Down, p.Slept),
             Dead = p.Dead,
+            Crouch = p.Crouched,
+            Strike = p.Strike,
             Act = p.Act,
             ActAmount = p.ActAmount,
             ActAt = p.Pos + new Vector3(-MathF.Sin(p.Yaw), 0f, -MathF.Cos(p.Yaw)) * 2f + Vector3.Up * 0.9f,
@@ -1291,6 +1251,7 @@ public sealed partial class Town
         });
         p.LookFor = MathF.Max(0f, p.LookFor - dt);
         p.View.Sync();
+        PoseWeapon(p);
         p.View.Hurt(p.Hurt / 0.4f);
     }
 }

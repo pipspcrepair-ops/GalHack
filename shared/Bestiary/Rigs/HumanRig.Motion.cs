@@ -21,13 +21,33 @@ public sealed partial class HumanRig
         hit = Mathf.SmoothStep(0.42f, 0.55f, s) * (1f - Mathf.SmoothStep(0.68f, 1f, s));
     }
 
+    /// <summary>The blow this pose shows, and how far through it (0..1: wind-up to 0.44, the strike to 0.58, back by 1).</summary>
+    StrikeKind _blow;
+    float _blowAt, _strikeWas;
+    bool _strikeBack;
+
+    /// <summary>
+    /// Reads a blow off the game's one number (rising to 1 as it lands, easing back after): rising,
+    /// the wind-up and then, in its last stretch, the strike; falling, the recovery.
+    /// </summary>
+    void ReadBlow(in Gesture g)
+    {
+        float v = Math.Clamp(g.Strike, 0f, 1f);
+        if (v <= 0f) _strikeBack = false;
+        else if (v < _strikeWas) _strikeBack = true;
+        else if (v > _strikeWas) _strikeBack = false;
+        _strikeWas = v;
+        _blow = v <= 0f ? StrikeKind.None : g.Blow != StrikeKind.None ? g.Blow : BlowOf(Species);
+        _blowAt = _strikeBack ? 0.58f + 0.42f * (1f - v) : v < 0.85f ? 0.44f * v / 0.85f : 0.44f + 0.14f * (v - 0.85f) / 0.15f;
+    }
+
     /// <summary>What a blow does to the trunk: its turn, its bend, how far the hips go forward and down.</summary>
-    static void StrikeBody(in Gesture g, out float twist, out float pitch, out float forward, out float down)
+    void StrikeBody(float clock, out float twist, out float pitch, out float forward, out float down)
     {
         twist = pitch = forward = down = 0f;
-        if (g.Strike == StrikeKind.None) return;
-        StrikeCurve(g.StrikeAt, out float w, out float h);
-        switch (g.Strike)
+        if (_blow == StrikeKind.None) return;
+        StrikeCurve(_blowAt, out float w, out float h);
+        switch (_blow)
         {
             case StrikeKind.Punch:
                 twist = -0.4f * w + 0.5f * h;
@@ -49,7 +69,7 @@ public sealed partial class HumanRig
                 break;
             case StrikeKind.Spew:
                 // Doubled over, heaving, then the head and shoulders thrown forward.
-                pitch = (0.3f + 0.22f * MathF.Abs(MathF.Sin(g.Clock * 13f))) * w + 0.6f * h;
+                pitch = (0.3f + 0.22f * MathF.Abs(MathF.Sin(clock * 13f))) * w + 0.6f * h;
                 forward = 0.08f * h;
                 down = 0.06f * w;
                 break;
@@ -57,17 +77,17 @@ public sealed partial class HumanRig
     }
 
     /// <summary>Where an arm goes in a blow, and how far it is on it (its goal only counts while the blow does).</summary>
-    ArmGoal StrikeArm(in Gesture g, int i, Vector3 shoulder, Basis torso, float upper, float fore, out float weight)
+    ArmGoal StrikeArm(int i, Vector3 shoulder, Basis torso, float upper, float fore, out float weight)
     {
         weight = 0f;
-        if (g.Strike == StrikeKind.None) return default;
-        StrikeCurve(g.StrikeAt, out float w, out float h);
+        if (_blow == StrikeKind.None) return default;
+        StrikeCurve(_blowAt, out float w, out float h);
         weight = MathF.Max(w, h);
         if (weight <= 0f) return default;
         float k = h / MathF.Max(1e-4f, w + h);
         var F = new Frame(torso, i == 0 ? -1f : 1f);
         bool lead = i == 1;
-        switch (g.Strike)
+        switch (_blow)
         {
             case StrikeKind.Punch:
             {
@@ -107,10 +127,10 @@ public sealed partial class HumanRig
     static ArmGoal Blend(ArmGoal a, ArmGoal b, float k) => new(a.Hand.Lerp(b.Hand, k), a.Pole.Lerp(b.Pole, k).Normalized());
 
     /// <summary>The blow a body throws, by what it is: a machine swats or punches by its make, a person punches bare-handed and swats with a blade or a club.</summary>
-    public static StrikeKind BlowOf(Species s, int id)
+    public static StrikeKind BlowOf(Species s)
     {
         if (s.Husk) return StrikeKind.Seize;
-        if (s.Mechanical) return id % 2 == 0 ? StrikeKind.Swat : StrikeKind.Punch;
+        if (s.Mechanical) return s.Seed % 2 == 0 ? StrikeKind.Swat : StrikeKind.Punch;
         return Weapons.HoldOf(s.Figure?.Prop ?? "") == HoldKind.Blade ? StrikeKind.Swat : StrikeKind.Punch;
     }
 

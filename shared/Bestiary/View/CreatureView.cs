@@ -115,6 +115,14 @@ public partial class CreatureView : Node3D
 
     public int NodeCount => _swarm != null ? 1 : _parts.Count;
 
+    /// <summary>The node a rig piece is drawn on (it follows the piece wherever the rig puts it), or null: what a game hangs a held weapon on.</summary>
+    public Node3D Part(string piece)
+    {
+        if (Creature?.Rig == null) return null;
+        int i = Creature.Rig.Layout.Pieces.FindIndex(p => p.Name == piece);
+        return i >= 0 && i < _parts.Count ? _parts[i] : null;
+    }
+
     public void Build(Creature c)
     {
         Creature = c;

@@ -98,6 +98,8 @@ public static class Robots
         st.Retaliates = true;
         st.Hunts = true;
         s.Attack = new AttackDef { Name = "Strike", Style = AttackStyle.Lunge, Telegraph = 1.2f, Sound = "servo" };
+        // A mid world's machines mount its rifle, a high world's its beam (on the right forearm, or under the head on a walker); a clockwork one only strikes.
+        s.Mount = era switch { 1 => "line-rifle", 2 => "beam-rifle", 0 => "", _ => rng.Chance(0.5f) ? "line-rifle" : "" };
         s.Drops.Meat = 0;
         return s;
     }

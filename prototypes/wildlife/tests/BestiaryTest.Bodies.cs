@@ -50,7 +50,7 @@ public partial class BestiaryTest
                 }
         }
         foreach (StrikeKind blow in new[] { StrikeKind.Punch, StrikeKind.Swat, StrikeKind.Seize, StrikeKind.Spew })
-            for (int k = 0; k <= 12; k++) yield return ($"{blow}", new Gesture { Strike = blow, StrikeAt = k / 12f, Clock = k * 0.1f });
+            for (int k = 0; k <= 24; k++) yield return ($"{blow}", new Gesture { Blow = blow, Strike = 1f - MathF.Abs(k - 12) / 12f, Clock = k * 0.1f });
         for (int k = 0; k < 6; k++)
         {
             float c = k * 0.7f;
@@ -231,13 +231,13 @@ public partial class BestiaryTest
         foreach (Species s in ManyBodies(30))
         {
             var rig = new HumanRig(s);
-            StrikeKind kind = HumanRig.BlowOf(s, _fresh.Int(0, 9));
+            StrikeKind kind = HumanRig.BlowOf(s);
             if (s.Husk && s.Spit != SpitKind.None && _fresh.Chance(0.5f)) kind = StrikeKind.Spew;
             var at = new Dictionary<float, (Vector3 l, Vector3 r, Vector3 head)>();
             int head = rig.Layout.Pieces.FindIndex(p => p.Name == "head");
             foreach (float k in new[] { 0f, 0.4f, 0.56f })
             {
-                rig.Drive(new Gesture { Feet = Vector3.Zero, Strike = kind, StrikeAt = k, Clock = 1f });
+                rig.Drive(new Gesture { Feet = Vector3.Zero, Blow = kind, Strike = k == 0f ? 0f : k < 0.5f ? 0.75f : 1f, Clock = 1f });
                 at[k] = (rig.ArmOf(0).wrist, rig.ArmOf(1).wrist, rig.Pose[head].Origin);
             }
             blows++;

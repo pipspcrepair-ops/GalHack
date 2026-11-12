@@ -100,9 +100,16 @@ public partial class Lootables : Node3D
         distance = reach;
         foreach (Lootable l in All)
         {
+            // A body is searched wherever the look lands on it as it lies (fallen, tumbled): its drawn parts.
+            if (l.Kind == LootKind.Corpse && l.Creature != null && DrawnOf?.Invoke(l.Creature) is Node3D drawn && drawn.Visible && Along(drawn, eye, dir, distance) is float at)
+            {
+                distance = at;
+                best = l;
+                continue;
+            }
             if (l.Shape != null)
             {
-                // A body: whichever of its balls the look meets first.
+                // A town body: whichever of its balls (as it lies) the look meets first.
                 bool met = false, any = false;
                 foreach (Vector4 b in l.Shape())
                 {
@@ -125,6 +132,37 @@ public partial class Lootables : Node3D
             if (along < 0f || enter > distance) continue;
             distance = MathF.Max(0f, enter);
             best = l;
+        }
+        return best;
+    }
+
+    /// <summary>A creature's drawn body (its view), while the wildlife still draws it (set by the game): what a look at its body meets.</summary>
+    public Func<Creature, Node3D> DrawnOf;
+
+    /// <summary>Where a look first meets any drawn part of a body (each part's box as posed, a little grown), within reach; null if it misses.</summary>
+    static float? Along(Node3D body, Vector3 eye, Vector3 dir, float reach)
+    {
+        float? best = null;
+        foreach (Node n in body.GetChildren())
+        {
+            if (n is not MeshInstance3D mi || !mi.Visible || mi.Mesh == null) continue;
+            Aabb box = mi.Mesh.GetAabb().Grow(0.06f);
+            if (box.Size.LengthSquared() < 1e-6f) continue;
+            Transform3D inv = mi.GlobalTransform.AffineInverse();
+            Vector3 o = inv * eye, d = inv.Basis * dir;
+            float near = 0f, far = reach;
+            bool hit = true;
+            for (int k = 0; k < 3 && hit; k++)
+            {
+                float lo = box.Position[k], hi = box.End[k];
+                if (MathF.Abs(d[k]) < 1e-6f) { if (o[k] < lo || o[k] > hi) hit = false; continue; }
+                float t0 = (lo - o[k]) / d[k], t1 = (hi - o[k]) / d[k];
+                if (t0 > t1) (t0, t1) = (t1, t0);
+                near = MathF.Max(near, t0);
+                far = MathF.Min(far, t1);
+                if (near > far) hit = false;
+            }
+            if (hit && (best == null || near < best)) best = near;
         }
         return best;
     }
