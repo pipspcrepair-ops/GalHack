@@ -269,8 +269,8 @@ public sealed class PlaceFauna
     }
 
     /// <summary>
-    /// Solid to a creature: the place's walls, floors and roofs and its whole-cell fittings; not air, doors,
-    /// glass, rails or lattices, nor the furniture and clutter that fill only part of a cell (those are its
+    /// Solid to a creature: the place's walls, floors and roofs, its glass and its whole-cell fittings; not air, doors,
+    /// rails or lattices, nor the furniture and clutter that fill only part of a cell (those are its
     /// <see cref="PlaceParts"/>, gone round or under as they really stand). Below ground, rock outside the rooms.
     /// </summary>
     public static bool Solid(PoiInstance inst, int x, int y, int z)
