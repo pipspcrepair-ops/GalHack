@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Godot;
 using Slice.Surface;
@@ -104,14 +105,25 @@ public partial class Game
         RenderingServer.DirectionalSoftShadowFilterSetQuality(s.Filter);
         RenderingServer.PositionalSoftShadowFilterSetQuality(s.Filter);
         GetViewport().PositionalShadowAtlasSize = s.LampAtlas;
+        float reach = Settings.ShadowDistance > GameSettings.DefaultShadow ? Settings.ShadowDistance : s.Reach;
         foreach (DirectionalLight3D light in Suns())
         {
-            light.DirectionalShadowMaxDistance = s.Reach;
+            // The level's own reach, or the shadow distance setting's if above AUTO; past 320 m the near splits stay where they were
+            // (so close by stays as sharp) and the last 15% fades as the far land's own shade comes in.
+            light.DirectionalShadowMaxDistance = reach;
+            if (reach > GameSettings.DefaultShadow)
+            {
+                light.DirectionalShadowSplit1 = 32f / reach;
+                light.DirectionalShadowSplit2 = 64f / reach;
+                light.DirectionalShadowSplit3 = MathF.Max(160f, reach * 0.4f) / reach;
+                light.DirectionalShadowFadeStart = PlanetSurface.Terrain.FarShade.JoinFull;
+            }
             light.DirectionalShadowMode = s.Splits;
         }
         if (Surface?.Streamer != null) Surface.Streamer.VoxelRadius = Settings.GroundDetail;
         PlanetSurface.Terrain.DetailReach.Set(Settings.DetailDistance);
         Slice.Surface.SpawnReach.Set(Settings.SpawnDistance);
+        if (Surface?.Streamer != null) Surface.Streamer.ShadowReach = reach;
     }
 
     /// <summary>A shadow level as the engine's numbers.</summary>
@@ -119,13 +131,13 @@ public partial class Game
     /// <param name="SunAtlas">The sun's shadow map, pixels a side; <paramref name="LampAtlas"/> the torch's and lamps'.</param>
     public readonly record struct ShadowSetup(float Reach, DirectionalLight3D.ShadowMode Splits, int SunAtlas, int LampAtlas, RenderingServer.ShadowQuality Filter);
 
-    /// <summary>High is how the game has always looked: the sky's own 320 m in four splits, and the engine's default maps and filter (read from the project, so it stays so).</summary>
+    /// <summary>High and Ultra reach the most (the far land's own shade takes over past 320 m's worth of sharp splits); High keeps the engine's default maps and filter (read from the project, so it stays so).</summary>
     public static ShadowSetup Shadows(ShadowLevel level) => level switch
     {
         ShadowLevel.Low => new(120f, DirectionalLight3D.ShadowMode.Parallel2Splits, 2048, 1024, RenderingServer.ShadowQuality.Hard),
         ShadowLevel.Medium => new(220f, DirectionalLight3D.ShadowMode.Parallel4Splits, 2048, 2048, RenderingServer.ShadowQuality.SoftVeryLow),
-        ShadowLevel.Ultra => new(420f, DirectionalLight3D.ShadowMode.Parallel4Splits, 8192, 4096, RenderingServer.ShadowQuality.SoftMedium),
-        _ => new(320f, DirectionalLight3D.ShadowMode.Parallel4Splits,
+        ShadowLevel.Ultra => new(GameSettings.MostShadow, DirectionalLight3D.ShadowMode.Parallel4Splits, 8192, 4096, RenderingServer.ShadowQuality.SoftMedium),
+        _ => new(GameSettings.MostShadow, DirectionalLight3D.ShadowMode.Parallel4Splits,
             (int)ProjectSettings.GetSetting("rendering/lights_and_shadows/directional_shadow/size", 4096),
             (int)ProjectSettings.GetSetting("rendering/lights_and_shadows/positional_shadow/atlas_size", 4096),
             (RenderingServer.ShadowQuality)(int)ProjectSettings.GetSetting("rendering/lights_and_shadows/directional_shadow/soft_shadow_filter_quality", 2)),

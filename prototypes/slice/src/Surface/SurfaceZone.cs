@@ -122,6 +122,7 @@ public partial class SurfaceZone : Node3D
         Light = new SkyLight { Name = "SkyLight", Zone = this };
         AddChild(Light);
         Streamer = new TerrainStreamer { Name = "Terrain" };
+        Streamer.SunToward = () => Sky?.Sun is { } sun && sun.IsInsideTree() ? sun.GlobalBasis.Z.Normalized() : Vector3.Up;
         AddChild(Streamer);
         Sea = new MeshInstance3D
         {
