@@ -44,15 +44,20 @@ public partial class SliceTest
             bike.Yaw = MathF.Atan2(out_.X, out_.Z);
             bike.Velocity = Vector3.Zero;
             bike.SetUpright();
-            float nearest = float.MaxValue;
+            float nearest = float.MaxValue, deepest = 0f;
+            var hullQuery = new PhysicsShapeQueryParameters3D { Shape = new BoxShape3D { Size = Slice.Vehicles.HoverBike.HullMax - Slice.Vehicles.HoverBike.HullMin }, CollisionMask = PlanetSurface.World.Layers.Flora, Margin = 0f };
             _game.Controls.Hold(Key.W);
             for (int i = 0; i < 240; i++)
             {
                 yield return 0;
                 nearest = MathF.Min(nearest, new Vector2(bike.Position.X - target.X, bike.Position.Z - target.Z).Length());
+                hullQuery.Transform = new Transform3D(bike.Attitude, bike.Position + bike.Attitude * ((Slice.Vehicles.HoverBike.HullMin + Slice.Vehicles.HoverBike.HullMax) * 0.5f));
+                var contacts = _game.Zone.GetWorld3D().DirectSpaceState.CollideShape(hullQuery, 16);
+                for (int c = 0; c + 1 < contacts.Count; c += 2) deepest = MathF.Max(deepest, contacts[c].DistanceTo(contacts[c + 1]));
             }
             _game.Controls.Hold(Key.W, false);
-            Check(nearest > stop, $"a bike ridden at a {name} stops short of it: closest {nearest:F2} m to its {(name == "trunk" ? "axis" : "edge")} (solid within {stop:F2} m)");
+            Check(nearest > stop, $"a bike ridden at a {name} stops short of it: closest {nearest:F2} m to its {(name == "trunk" ? "axis" : "edge")} (solid within {stop:F2} m); never deeper than {deepest * 100:F0} cm into flora");
+            Check(deepest < 0.05f, $"a bike ridden at a {name} never overlaps it: deepest contact {deepest * 100:F1} cm");
         }
     }
 }

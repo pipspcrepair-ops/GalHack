@@ -115,7 +115,7 @@ public partial class FloraTest
                         if (extent < 0.3f) continue;
                         Vector3 flat = new Vector3(world.X, 0f, world.Z);
                         Vector3 side = flat.LengthSquared() > 0.01f ? flat.Normalized() : Vector3.Right;
-                        targets.Add((at + world + (side + Vector3.Up * 0.3f).Normalized() * (6f + scale * 4f), at + world, $"{p.Form} x{scale:F2}"));
+                        targets.Add((at + world + (side + Vector3.Up * 0.3f).Normalized() * (p.CrownRadius * scale + 3f), at + world, $"{p.Form} x{scale:F2}"));
                     }
                 }
             }
@@ -174,10 +174,10 @@ public partial class FloraTest
         async System.Threading.Tasks.Task<double> MedianStep()
         {
             var times = new List<double>();
-            for (int i = 0; i < 40; i++)
+            for (int i = 0; i < 70; i++)
             {
                 await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
-                if (i >= 5) times.Add(Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess));
+                if (i >= 20) times.Add(Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess));
             }
             return times.OrderBy(t => t).ElementAt(times.Count / 2);
         }
