@@ -102,6 +102,8 @@ public sealed class PoiPlan
     /// holds it): a place the Hollow took ALWAYS has them, in it and round it (the owner).
     /// </summary>
     public readonly List<Species> Hollows = new();
+    /// <summary>How dangerous the place is, 0..1 (its rarity and state): how thickly it is held (place-patterns E2).</summary>
+    public float Danger;
 }
 
 /// <summary>One creature to put in a place: its role, species, spot and how it hides.</summary>
@@ -999,12 +1001,12 @@ public static partial class PoiFauna
 
     /// <summary>
     /// Puts down the spawns that had to wait (they'd have appeared in view, or beside you) where they
-    /// can be now, out of sight; those still in view wait on. The number put down.
+    /// can be now, out of sight, a few at a time (spread over frames); those still in view wait on. The number put down.
     /// </summary>
-    public static int PutDeferred(WildSim sim, PoiPopulation pop, ISolidSpace space, Func<Vector3, bool> allow)
+    public static int PutDeferred(WildSim sim, PoiPopulation pop, ISolidSpace space, Func<Vector3, bool> allow, int most = int.MaxValue)
     {
         int n = 0;
-        for (int i = pop.Deferred.Count - 1; i >= 0; i--)
+        for (int i = pop.Deferred.Count - 1; i >= 0 && n < most; i--)
         {
             PoiSpawn s = pop.Deferred[i];
             if (allow != null && !allow(s.Position)) continue;

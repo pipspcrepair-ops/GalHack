@@ -77,6 +77,7 @@ public sealed class PlaceFauna
             Theme = ship ? PoiTheme.Derelict : ThemeOf(inst.Kit?.Faction ?? Faction.None, inst.Family),
             Derelict = ship,
             Livable = deep.Livable,
+            Danger = (int)inst.Rarity / 4f * 0.6f + inst.State switch { PoiState.Infested => 0.4f, PoiState.Ruined => 0.15f, _ => 0f },
         };
         // The Turned (code HSK) hold it, alone or sharing it with others: a Husk den. Where the Husks'
         // warping (WRP) holds it, a light one: the wrongness, a few of them far in.
@@ -411,7 +412,7 @@ public sealed class PlaceFauna
         foreach (PlaceFauna f in all)
         {
             if (f.Sim == null) continue;
-            lock (deep.Lock) PoiFauna.PutDeferred(f.Sim, f.Population, f._space, Fair(deep, deep.Planet, f._origin, f._space));
+            lock (deep.Lock) PoiFauna.PutDeferred(f.Sim, f.Population, f._space, Fair(deep, deep.Planet, f._origin, f._space), 2);
             if (f.Population.Deferred.Count == 0) lock (Pending) Pending.Remove(f);
         }
     }

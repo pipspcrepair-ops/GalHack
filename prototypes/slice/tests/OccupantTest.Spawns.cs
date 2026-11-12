@@ -117,13 +117,14 @@ public partial class OccupantTest
                     foreach (Link l in inst.Layout.Links) { if (l.A == c.Module) near.Add(l.B); if (l.B == c.Module) near.Add(l.A); }
                     if (spawns.Any(s => PoiFauna.Threat(s) && near.Contains(s.Room))) guarded++;
                 }
-                threats += t;
-                floor += rooms.Sum(r => inst.Layout.Modules[r.Index].Cells.Count(c => c.Y == inst.Layout.Modules[r.Index].Min.Y));
+                if (inst.Occupancy == null && state == PoiState.Abandoned && inst.Rarity == PoiGenerator.Gen.Rarity.Common) { threats += t; 
+                floor += rooms.Sum(r => inst.Layout.Modules[r.Index].Cells.Count(c => c.Y == inst.Layout.Modules[r.Index].Min.Y)); }
             }
         }
         foreach (var (k, b) in byState.OrderBy(kv => kv.Key)) GD.Print($"    {k}: {b.Places} places, {b.Threats / (float)Math.Max(1, b.Places):F1} threats and {b.Vermin / (float)Math.Max(1, b.Places):F1} vermin a place");
         float near_ = nearT / Math.Max(1f, nearR), ground = groundT / Math.Max(1f, groundR), deep_ = deepT / Math.Max(1f, deepR);
-        GD.Print($"    threats a room: by the way in {near_:F2}, further in {ground:F2}, below ground {deep_:F2}; {threats * 100f / Math.Max(1f, floor):F2} a 100 m2 of floor (place-patterns E2: 0.3 to 3)");
+        GD.Print($"    threats a room: by the way in {near_:F2}, further in {ground:F2}, below ground {deep_:F2}; {threats * 100f / Math.Max(1f, floor):F2} a 100 m2 of floor in ordinary abandoned places");
+        Check(threats * 100f / Math.Max(1f, floor) is > 0.6f and < 1.5f, $"ordinary places are held at 0.8 to 1.2 threats a 100 m2 of floor (place-patterns E2): {threats * 100f / Math.Max(1f, floor):F2}");
         Check(silent <= places * 0.15f, $"few places are silent on fresh worlds: {silent} of {places} (aliveness follows the world)");
         Check(withSomething == places - silent, $"every place that isn't silent has something in it: {withSomething} of {places - silent}");
         Check(deep_ >= near_ * 1.5f && deep_ > ground, $"encounters build with depth: {near_:F2} a room by the way in, {ground:F2} further in, {deep_:F2} below ground");

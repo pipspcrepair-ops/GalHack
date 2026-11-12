@@ -52,6 +52,7 @@ public static partial class PoiFauna
         if (!active) Floor(poi, pop, fauna, theme, rng, infested, walkable, pr);
         if (!active && !empty) Guarded(poi, pop, fauna, theme, rng, infested);
         if (!active && !empty && poi.Armed != null && !poi.Husks) Clash(poi, pop, fauna, theme, rng);
+        if (!active) Dense(poi, pop, fauna, theme, rng, infested, walkable, empty);
         Quiet(poi, pop, rng);
         // Last: the growth's beasts, whatever else holds it (never thinned by the quiet or the caps).
         if (poi.Hollows.Count > 0) Hollow(poi, pop, fauna, theme, rng, walkable);
@@ -84,6 +85,37 @@ public static partial class PoiFauna
             PoiRoom room = dark[0];
             Species sp = Dark(poi, fauna, theme, DeepRole.Lurker, room.Width, room.Size.Y, rng) ?? Fits(fauna, DeepRole.Lurker, theme, room, infested);
             if (sp != null) Lurker(pop, fauna, theme, room, rng, infested, sp);
+        }
+    }
+
+    /// <summary>
+    /// Density by danger (place-patterns E2): threats per 100 m² of floor from 0.8 in an ordinary place
+    /// to 3 in the most dangerous, half that in a wreck. Groups go where something already is, then
+    /// into the dark rooms deepest first; a group's size follows its room's volume. Nobody's place
+    /// fills only its dark below ground. The quiet rules run after, so its empty rooms stay empty.
+    /// </summary>
+    static void Dense(PoiPlan poi, PoiPopulation pop, DeepFauna fauna, PoiTheme theme, Rng rng, bool infested, List<PoiRoom> walkable, bool empty)
+    {
+        Dictionary<int, int> hops = Hops(poi);
+        var rooms = walkable.FindAll(r => r.Kind is not (RoomKind.Entrance or RoomKind.Corridor) && (r.Depth >= 1 || !empty && hops.GetValueOrDefault(r.Index, 9) > 1));
+        if (rooms.Count == 0) return;
+        float floor = 0f;
+        foreach (PoiRoom r in walkable) floor += r.Size.X * r.Size.Z;
+        int want = (int)MathF.Round(floor / 100f * Mathf.Lerp(0.8f, 3f, Math.Clamp(poi.Danger, 0f, 1f)) * (poi.Derelict ? 0.5f : 1f));
+        // Where something is first, then the deepest and darkest.
+        rooms.Sort((a, b) => Score(b).CompareTo(Score(a)));
+        float Score(PoiRoom r) => (pop.Spawns.Exists(s => s.Room == r.Index && Threat(s)) ? 100f : 0f) + r.Depth * 10f + (r.Lit ? 0f : 5f) + rng.Range(0f, 2f);
+        int have = pop.Spawns.FindAll(Threat).Count;
+        // At most four rooms in five hold something (E3).
+        int most = Math.Max(1, (int)(walkable.Count * 0.8f));
+        for (int i = 0; have < want && i < Math.Min(rooms.Count, most) * 2; i++)
+        {
+            PoiRoom room = rooms[i % Math.Min(rooms.Count, most)];
+            float volume = room.Size.X * room.Size.Y * room.Size.Z;
+            int group = volume < 150f ? 1 : volume < 3000f ? rng.Int(1, 2) : rng.Int(2, 4);
+            Species sp = (room.Lit ? null : Dark(poi, fauna, theme, DeepRole.Lurker, room.Width, room.Size.Y, rng)) ?? Fits(fauna, DeepRole.Lurker, theme, room, infested);
+            if (sp == null) continue;
+            for (int k = 0; k < group && have < want; k++, have++) Lurker(pop, fauna, theme, room, rng, infested, sp);
         }
     }
 
