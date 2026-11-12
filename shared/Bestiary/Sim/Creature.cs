@@ -8,6 +8,9 @@ public enum CState { Idle, Wander, Graze, Flee, Stalk, Chase, Hidden, Lurk, Warn
 /// <summary>Every attack runs wind-up, lunge, recover. The wind-up is the telegraph.</summary>
 public enum AttackPhase { None, Windup, Lunge, Recover, Hold }
 
+/// <summary>How a body ends: it falls (and ragdolls), it is blown apart into pieces of itself, or it is burned away to ash.</summary>
+public enum BodyEnd { Fall, Gib, Vaporise }
+
 public enum HopPhase { Ground, Crouch, Air, Land }
 
 /// <summary>Something creatures can see, flee from and attack: a player on foot or in a vessel.</summary>
@@ -87,6 +90,20 @@ public sealed class Creature
     public bool Dead, Removed, Harvested;
     public float DeadTime, MeatLeft;
     public float HurtFlash;
+    /// <summary>The last hit, for the body to show: how many so far, where it landed and the way it went (sim space), how heavy (0..1).</summary>
+    public int HitSerial;
+    public Vector3 HitPoint, HitDir;
+    public float HitHeavy;
+    /// <summary>How the body ends if this hit kills it: falls, blown apart, or burned away.</summary>
+    public BodyEnd End;
+
+    /// <summary>Where a hit landed and the way it went, precisely (the damage already told the sim it happened): the body snaps away from it.</summary>
+    public void Struck(Vector3 point, Vector3 dir, float heavy = -1f)
+    {
+        HitPoint = point;
+        if (dir.LengthSquared() > 1e-6f) HitDir = dir.Normalized();
+        if (heavy >= 0f) HitHeavy = heavy;
+    }
     public ITarget ProvokedBy;
     public float ProvokedAt = -999f;
 

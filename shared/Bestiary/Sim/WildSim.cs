@@ -683,6 +683,12 @@ public sealed class WildSim
         if (c.Dead || amount <= 0f) return;
         c.Health -= amount;
         c.HurtFlash = 1f;
+        // What the body shows of it: a hit from where the source is, heavier the more of its health it took.
+        c.HitSerial++;
+        c.HitHeavy = Math.Clamp(amount / MathF.Max(1f, c.Stats.MaxHealth) * 2.5f, 0.15f, 1f);
+        c.HitPoint = c.Rig != null && c.Rig.HitCount > 0 ? new Vector3(c.Rig.Hits[0].X, c.Rig.Hits[0].Y, c.Rig.Hits[0].Z) : c.Position + Vector3.Up * c.Species.BodyHeight * 0.6f;
+        Vector3 from = source != null ? Flat(c.Position - source.Position) : Vector3.Zero;
+        c.HitDir = from.LengthSquared() > 1e-4f ? from.Normalized() : -c.Forward;
         // It flinches: rocks back and loses its stride, the bigger the less.
         if (!c.Attacking)
         {
