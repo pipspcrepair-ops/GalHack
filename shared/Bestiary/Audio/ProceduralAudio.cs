@@ -169,89 +169,60 @@ public partial class ProceduralAudio : Node3D
     // ---- Voices ----------------------------------------------------------------------------
 
     const int Takes = 3;
-    readonly Dictionary<(Voice, VoiceMood, int), AudioStreamWav> _spoken = new();
-    readonly Dictionary<(Voice, VoiceMood, int), System.Threading.Tasks.Task<byte[]>> _rendering = new();
+    readonly Dictionary<(Voice, int, int), AudioStreamWav> _spoken = new();
+    readonly Dictionary<(Voice, int, int), System.Threading.Tasks.Task<byte[]>> _rendering = new();
     readonly List<AudioStreamPlayer3D> _throats = new();
     int _nextThroat, _take;
 
-    /// <summary>Someone says something, wordlessly. A phrase not yet heard is rendered off the main thread and spoken next time.</summary>
-    public void Say(Species person, VoiceMood mood, Vector3 at, float? volumeDb = null)
+    /// <summary>A voice's clip, rendered off the main thread the first time (null until it is ready) and kept after.</summary>
+    AudioStreamWav Clip(Voice v, int code, Func<int, short[]> render)
     {
-        Voice v = person.Figure?.Voice;
-        if (v == null || _throats.Count == 0) return;
-        var key = (v, mood, _take++ % Takes);
-        if (!_spoken.TryGetValue(key, out AudioStreamWav clip))
+        var key = (v, code, _take++ % Takes);
+        if (_spoken.TryGetValue(key, out AudioStreamWav clip)) return clip;
+        if (!_rendering.TryGetValue(key, out var task))
         {
-            if (_rendering.TryGetValue(key, out var task))
+            _rendering[key] = System.Threading.Tasks.Task.Run(() =>
             {
-                if (!task.IsCompleted) return;
-                clip = new AudioStreamWav { Format = AudioStreamWav.FormatEnum.Format16Bits, MixRate = Voice.Rate, Stereo = false, Data = task.Result };
-                _rendering.Remove(key);
-                if (_spoken.Count > 256) _spoken.Clear();
-                _spoken[key] = clip;
-            }
-            else
-            {
-                int take = key.Item3;
-                _rendering[key] = System.Threading.Tasks.Task.Run(() =>
-                {
-                    short[] pcm = v.Render(mood, take);
-                    var bytes = new byte[pcm.Length * 2];
-                    Buffer.BlockCopy(pcm, 0, bytes, 0, bytes.Length);
-                    return bytes;
-                });
-                return;
-            }
+                short[] pcm = render(key.Item3);
+                var bytes = new byte[pcm.Length * 2];
+                Buffer.BlockCopy(pcm, 0, bytes, 0, bytes.Length);
+                return bytes;
+            });
+            return null;
         }
+        if (!task.IsCompleted) return null;
+        clip = new AudioStreamWav { Format = AudioStreamWav.FormatEnum.Format16Bits, MixRate = Voice.Rate, Stereo = false, Data = task.Result };
+        _rendering.Remove(key);
+        if (_spoken.Count > 256) _spoken.Clear();
+        return _spoken[key] = clip;
+    }
+
+    void Throat(AudioStreamWav clip, Vector3 at, float db, float maxDistance)
+    {
         AudioStreamPlayer3D p = _throats[_nextThroat++ % _throats.Count];
         p.Stream = clip;
-        p.VolumeDb = volumeDb ?? mood switch { VoiceMood.Shout => 2f, VoiceMood.Cry => -3f, VoiceMood.Whisper => -14f, _ => -11f };
-        p.MaxDistance = mood == VoiceMood.Shout ? 70f : mood == VoiceMood.Whisper ? 9f : 24f;
+        p.VolumeDb = db;
+        p.MaxDistance = maxDistance;
         p.GlobalPosition = at + Origin;
         p.Play();
     }
 
-    readonly Dictionary<(Voice, VocalKind, PersonMood, int), AudioStreamWav> _vocals = new();
-    readonly Dictionary<(Voice, VocalKind, PersonMood, int), System.Threading.Tasks.Task<byte[]>> _vocalising = new();
+    /// <summary>Someone says something, wordlessly.</summary>
+    public void Say(Species person, VoiceMood mood, Vector3 at, float? volumeDb = null)
+    {
+        Voice v = person.Figure?.Voice;
+        if (v == null || _throats.Count == 0 || Clip(v, (int)mood, take => v.Render(mood, take)) is not { } clip) return;
+        Throat(clip, at, volumeDb ?? mood switch { VoiceMood.Shout => 2f, VoiceMood.Cry => -3f, VoiceMood.Whisper => -14f, _ => -11f },
+            mood == VoiceMood.Shout ? 70f : mood == VoiceMood.Whisper ? 9f : 24f);
+    }
 
-    /// <summary>
-    /// Someone makes a sound that isn't speech (a grunt, a breath, pain, effort, a call, a laugh, a cry), in their own
-    /// voice and their mood. Rendered off the main thread the first time, heard from the second.
-    /// </summary>
+    /// <summary>Someone makes a sound that isn't speech (a grunt, breath, pain, laugh, cry...), in their voice and mood.</summary>
     public void Vocal(Species person, VocalKind kind, PersonMood mood, Vector3 at, float? volumeDb = null)
     {
         Voice v = person.Figure?.Voice;
-        if (v == null || _throats.Count == 0) return;
-        var key = (v, kind, mood, _take++ % Takes);
-        if (!_vocals.TryGetValue(key, out AudioStreamWav clip))
-        {
-            if (_vocalising.TryGetValue(key, out var task))
-            {
-                if (!task.IsCompleted) return;
-                clip = new AudioStreamWav { Format = AudioStreamWav.FormatEnum.Format16Bits, MixRate = Voice.Rate, Stereo = false, Data = task.Result };
-                _vocalising.Remove(key);
-                if (_vocals.Count > 256) _vocals.Clear();
-                _vocals[key] = clip;
-            }
-            else
-            {
-                int take = key.Item4;
-                _vocalising[key] = System.Threading.Tasks.Task.Run(() =>
-                {
-                    short[] pcm = v.Vocalize(kind, mood, take);
-                    var bytes = new byte[pcm.Length * 2];
-                    Buffer.BlockCopy(pcm, 0, bytes, 0, bytes.Length);
-                    return bytes;
-                });
-                return;
-            }
-        }
-        AudioStreamPlayer3D p = _throats[_nextThroat++ % _throats.Count];
-        p.Stream = clip;
-        p.VolumeDb = volumeDb ?? (kind is VocalKind.Call or VocalKind.Pain ? 0f : kind == VocalKind.Breath ? -16f : -8f);
-        p.MaxDistance = kind is VocalKind.Call or VocalKind.Pain ? 60f : kind == VocalKind.Breath ? 8f : 22f;
-        p.GlobalPosition = at + Origin;
-        p.Play();
+        if (v == null || _throats.Count == 0 || Clip(v, 100 + (int)kind * 8 + (int)mood, take => v.Vocalize(kind, mood, take)) is not { } clip) return;
+        bool loud = kind is VocalKind.Call or VocalKind.Pain;
+        Throat(clip, at, volumeDb ?? (loud ? 0f : kind == VocalKind.Breath ? -16f : -8f), loud ? 60f : kind == VocalKind.Breath ? 8f : 22f);
     }
 
     public void Play(string clip, Vector3 at, float pitch = 1f, float volumeDb = 0f)

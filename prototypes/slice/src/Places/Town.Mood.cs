@@ -15,15 +15,11 @@ public sealed partial class Town
 {
     List<Vector3> _fires;
 
-    /// <summary>Events that have stirred moods (tests).</summary>
-    public int MoodEvents { get; private set; }
-
     /// <summary>An event at a world point reaches everyone out and about within earshot, nearer ones harder.</summary>
     public void Stir(MoodEvent e, Vector3 world, float reach = 40f)
     {
         if (_place == null) return;
         Vector3 at = _place.FromWorld(world);
-        MoodEvents++;
         foreach (Person p in People)
         {
             if (p.Dead || p.Gone || p.Away) continue;
@@ -88,7 +84,7 @@ public sealed partial class Town
             bool atFire = false;
             foreach (Vector3 f in _fires) if (!p.Indoors && (f - p.Pos).Length() < 6f) { atFire = true; break; }
             p.Feel.Step(dt, atFire);
-            if (p.Feel.Mood == PersonMood.Scared && p.Feel.Intent == MoodIntent.Flee && !p.Indoors) p.ScaredFor = MathF.Max(p.ScaredFor, 2f);
+            if (p.Feel.Flees && !p.Indoors) p.ScaredFor = MathF.Max(p.ScaredFor, 2f);
         }
     }
 

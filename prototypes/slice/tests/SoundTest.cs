@@ -120,7 +120,7 @@ public partial class SoundTest : Node
         var bold = new Slice.Places.Feeling { Nerve = 0.9f, Armed = true };
         timid.Hit(Slice.Places.MoodEvent.Shot);
         bold.Hit(Slice.Places.MoodEvent.Shot);
-        Check(timid.Mood == PersonMood.Scared && timid.Pace > 1.3f && timid.Intent == Slice.Places.MoodIntent.Flee && timid.Hunch > 0.4f, $"a shot beside a timid person scares them: {timid.Mood}, pace {timid.Pace:F2}, {timid.Intent}");
+        Check(timid.Mood == PersonMood.Scared && timid.Pace > 1.3f && timid.Flees, $"a shot beside a timid person scares them: {timid.Mood}, pace {timid.Pace:F2}");
         Check(bold.Fear < timid.Fear && bold.Anger > timid.Anger, $"the same shot stirs a bold armed person less fear ({bold.Fear:F2} against {timid.Fear:F2}) and more anger");
         Check(timid.Idle(1f, 0) == BodyAct.Cower, "and the scared one cowers when idle");
         for (int i = 0; i < 600; i++) timid.Step(0.1f, false);
@@ -141,7 +141,7 @@ public partial class SoundTest : Node
         Check(drunk.Mood != PersonMood.Drunk, $"until something frightens or angers them: {drunk.Mood}");
         var angry = new Slice.Places.Feeling { Nerve = 0.9f, Armed = true };
         angry.Hit(Slice.Places.MoodEvent.Robbed);
-        Check(angry.Mood is PersonMood.Angry or PersonMood.Scared && angry.Anger > 0.4f, $"being robbed angers a bold person: {angry.Mood}, anger {angry.Anger:F2}, {angry.Intent}");
+        Check(angry.Mood is PersonMood.Angry or PersonMood.Scared && angry.Anger > 0.4f, $"being robbed angers a bold person: {angry.Mood}, anger {angry.Anger:F2}");
     }
 
     static Voice VoiceOf(Sex sex, LifeStage stage, float height, float mass, ulong seed)
@@ -284,12 +284,13 @@ public partial class SoundTest : Node
         ex.Held = false;
         foreach (bool gap in new[] { false, true })
         {
+            int half = gap ? 5 : 3; // cells are 2 m: the shut room is 6 m across inside, the gapped one 10
             var text = new System.Text.StringBuilder(Header);
             for (int y = 0; y <= 4; y++)
-            for (int z = -5; z <= 5; z++)
-            for (int x = -5; x <= 5; x++)
-                if ((y == 0 || y == 4 || Math.Abs(x) == 5 || Math.Abs(z) == 5) && !(gap && x == 5 && Math.Abs(z) <= 1 && y >= 1 && y <= 3)) text.Append($"block {x} {y} {z} steel{Nl}");
-            text.Append("block 4 1 4 core" + Nl + "block -4 1 -4 generator" + Nl);
+            for (int z = -half; z <= half; z++)
+            for (int x = -half; x <= half; x++)
+                if ((y == 0 || y == 4 || Math.Abs(x) == half || Math.Abs(z) == half) && !(gap && x == half && Math.Abs(z) <= 1 && y >= 1 && y <= 3)) text.Append($"block {x} {y} {z} steel{Nl}");
+            text.Append($"block {half - 1} 1 {half - 1} core{Nl}block {1 - half} 1 {1 - half} generator{Nl}");
             var bp = Blueprint.Load(text.ToString(), Zone.Data.Catalogue, out List<string> errors);
             Check(bp != null, $"the room's blueprint loads {string.Join("; ", errors)}");
             Vector3 site = Zone.GroundAt(feet.X + (gap ? 80f : 30f), feet.Z);
@@ -302,7 +303,7 @@ public partial class SoundTest : Node
             ex.Survey();
             if (!gap)
             {
-                Check(ex.Cover > 0.8f, $"in the room the survey finds a roof overhead: cover {ex.Cover:F2}, walls {ex.Walled:F2}");
+                Check(ex.Cover > 0.8f && ex.Walled > 0.7f, $"in the room the survey finds a roof and walls: cover {ex.Cover:F2}, walls {ex.Walled:F2}");
                 Check(Audio.RainLevel < 0.01f && Zone.Sfx.RainDb <= -79f, $"shut in, a monsoon is silent: rain {Audio.RainLevel:F2} ({Zone.Sfx.RainDb:F0} dB)");
                 sky.Snap(WeatherKind.Hurricane);
                 foreach (int x in Settle(240)) yield return x;

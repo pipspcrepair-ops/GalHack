@@ -17,7 +17,7 @@ public partial class AmbientExposure : Node3D
     /// <summary>Roof over the eye, 0 (open sky) to 1 (solid above).</summary>
     public float Cover { get; private set; }
 
-    /// <summary>Walls around the eye within a few metres, 0 to 1.</summary>
+    /// <summary>Walls around the eye within 12 m, nearer ones counting more, 0 to 1.</summary>
     public float Walled { get; private set; }
 
     /// <summary>How much higher the ground here is than the ring of ground 60 m round it, m: ridges positive, hollows negative.</summary>
@@ -32,6 +32,7 @@ public partial class AmbientExposure : Node3D
     const float Poll = 0.2f;
     float _timer;
     const int Round = 8;
+    const float WallReach = 12f;
 
     public void Set(float cover, float walled, float relief, float lee)
     {
@@ -66,7 +67,9 @@ public partial class AmbientExposure : Node3D
         for (int i = 0; i < Round; i++)
         {
             float a = i * MathF.Tau / Round;
-            if (Blocked(eye + new Vector3(MathF.Cos(a), 0f, MathF.Sin(a)) * 7f)) walled += 1f / Round;
+            var hit = space.IntersectRay(PhysicsRayQueryParameters3D.Create(eye, eye + new Vector3(MathF.Cos(a), 0f, MathF.Sin(a)) * WallReach, Solid));
+            // A wall at arm's length counts fully, one at the edge of the reach hardly at all.
+            if (hit.Count > 0) walled += Mathf.Clamp((WallReach - eye.DistanceTo((Vector3)hit["position"])) / (WallReach - 4f), 0f, 1f) / Round;
         }
         float lee = 0f;
         Vector3 wind = Zone.Weather.Sim?.WindAt(eye) ?? Vector3.Zero;

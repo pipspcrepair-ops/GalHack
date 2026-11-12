@@ -71,6 +71,8 @@ public sealed partial class Town
     public void Rob(Person p)
     {
         p.Robbed = true;
+        Bind(p);
+        p.Feel.Hit(MoodEvent.Robbed);
         Robberies++;
         Did(Deed.Rob);
         p.ScaredFor = 8f;
