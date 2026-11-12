@@ -88,6 +88,23 @@ public sealed class Bunker
     /// <summary>Whether a point (at any height) is over the bunker's chamber or stairwell, or within a margin of them.</summary>
     public bool Over(Vector3 p, float margin) => OverSite(new Site(Origin, Heading, Steps, Landmark, 0f, Poi), p, margin);
 
+    /// <summary>
+    /// How far round the bunker nothing wild is put down, or lives in rock that opens onto it, m:
+    /// the same as a base's clearance (the data's), so the start is quiet.
+    /// </summary>
+    public const float KeepClear = 80f;
+
+    /// <summary>
+    /// The bunker's footprint as a flat rectangle (chamber and stairwell together): its middle, the
+    /// direction of its own X, and its half sizes along X and Z. Wildlife keeps the base clearance off it.
+    /// </summary>
+    public (Vector3 Centre, Vector3 Along, float HalfX, float HalfZ) Footprint()
+    {
+        float z0 = StepZ(Steps) - 0.5f, z1 = RoomZ * Cell + 0.25f, hx = MathF.Max(RoomX * Cell, StairHalf * Cell) + 0.25f;
+        Vector3 mid = At(new Vector3(0f, 0f, (z0 + z1) * 0.5f));
+        return (mid, At(new Vector3(1f, 0f, (z0 + z1) * 0.5f)) - mid, hx, (z1 - z0) * 0.5f);
+    }
+
     /// <summary>Whether a point is down in the bunker: its chamber or its stairwell, below the ground's surface.</summary>
     public bool Inside(Vector3 p, SurfaceZone zone)
     {

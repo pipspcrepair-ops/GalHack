@@ -143,33 +143,62 @@ public partial class MachineScreens : Node3D
         var holder = new Node3D { Name = "Screen" };
         d.AddChild(holder);
         // In the device's own frame: its floor is y 0, its front faces -z.
-        Transform3D local = ScreenMount.OnFace(new Vector3(0f, 0f, -0.3f), Vector3.Forward, 0f, tipBackDegrees: 8f, rise: -0.02f);
+        Transform3D local = ScreenMount.OnFace(new Vector3(0f, 0f, -0.3f), Vector3.Forward, 0f, tipBackDegrees: 8f, rise: 0.04f);
         holder.Transform = local;
         var mast = new StandardMaterial3D { AlbedoColor = new Color("1b263b"), Roughness = 0.7f };
         holder.AddChild(new MeshInstance3D { Mesh = new BoxMesh { Size = new Vector3(0.08f, 0.5f, 0.05f) }, Position = new Vector3(0f, -Size.Y * 0.5f - 0.1f, -0.06f), MaterialOverride = mast });
         return Hang(holder, new ConstructorSection(Game, () => d.Constructor, d.Label.ToUpperInvariant(), "screen"), () => MachineState(d.Constructor));
     }
 
+    /// <summary>
+    /// Where a base block's screen goes: a free side that is not the machine's own front (its work bay, gantry and
+    /// nozzle are on the front), hung far enough off the face to clear every fitting the block's model has on that
+    /// side. A machine closed in on its other sides takes the front, standing off past the gantry. Null: no free side.
+    /// </summary>
+    public static (Dir Face, float StandOff)? BlockScreenFace(Structure s, Int3 cell)
+    {
+        Block b = s.Get(cell);
+        Dir front = Orientations.ToWorld(b.Rot, Dir.NegZ);
+        Dir? pick = null;
+        var order = new[] { Dir.NegZ, Dir.PosX, Dir.NegX, Dir.PosZ };
+        foreach (Dir d in order)
+            if (d != front && !s.Has(cell + d.Vec())) { pick = d; break; }
+        if (pick == null && !s.Has(cell + front.Vec()) && System.Array.IndexOf(order, front) >= 0) pick = front;
+        if (pick is not Dir face) return null;
+        return (face, Protrusion(s, b, face) + 0.03f);
+    }
+
+    /// <summary>How far, in metres, the block's model stands out from the cell's face on this world side (its gantry, nozzle, status screen, vents).</summary>
+    public static float Protrusion(Structure s, in Block b, Dir worldFace)
+    {
+        Int3 c = Orientations.ToLocal(b.Rot, worldFace).Vec();
+        float most = 0f;
+        foreach (Part p in s.TypeOf(b).Detail)
+        {
+            float e = c.X > 0 ? p.Max.X : c.X < 0 ? -p.Min.X : c.Y > 0 ? p.Max.Y : c.Y < 0 ? -p.Min.Y : c.Z > 0 ? p.Max.Z : -p.Min.Z;
+            most = System.MathF.Max(most, e - 0.5f);
+        }
+        return most * s.Grid.CellSize;
+    }
+
+    /// <summary>A block's screen in its structure's frame: centre at eye height over the block's floor, straight out of the face, <paramref name="standOff"/> off it.</summary>
+    public static Transform3D BlockScreenLocal(Structure s, Int3 cell, Dir face, float standOff)
+    {
+        float size = s.Grid.CellSize;
+        N.Vector3 centre = StructureBridge.CellCenter(s, cell);
+        N.Vector3 n = face.Vec().ToVector3();
+        // The block's floor is half a cell under its centre.
+        var facePoint = new Vector3(centre.X + n.X * size * 0.5f, 0f, centre.Z + n.Z * size * 0.5f);
+        return ScreenMount.OnFace(facePoint, new Vector3(n.X, 0f, n.Z), centre.Y - size * 0.5f, rise: -0.1f, standOff: standOff);
+    }
+
     /// <summary>A screen on a free side of a base's block, at eye height over the ground beside it.</summary>
     Mounted OnBlock(Vessel v, Int3 cell, IMenuSection section, System.Func<string> state)
     {
-        Dir? free = null;
-        foreach (Dir d in new[] { Dir.NegZ, Dir.PosX, Dir.NegX, Dir.PosZ })
-            if (!v.Structure.Has(cell + d.Vec()))
-            {
-                free = d;
-                break;
-            }
-        if (free is not Dir face) return null;
-        float size = v.Structure.Grid.CellSize;
-        N.Vector3 centre = StructureBridge.CellCenter(v.Structure, cell);
-        N.Vector3 n = face.Vec().ToVector3();
-        // In the base's own frame (its node carries it): the block's floor is half a cell under its centre.
-        var facePoint = new Vector3(centre.X + n.X * size * 0.5f, 0f, centre.Z + n.Z * size * 0.5f);
-        Transform3D local = ScreenMount.OnFace(facePoint, new Vector3(n.X, 0f, n.Z), centre.Y - size * 0.5f, rise: -0.1f);
+        if (BlockScreenFace(v.Structure, cell) is not var (face, standOff)) return null;
         var holder = new Node3D { Name = $"Screen{cell.X}_{cell.Y}_{cell.Z}" };
-        v.Node.AddChild(holder);
-        holder.Transform = local;
+        v.Node.AddChild(holder); // in the base's own frame (its node carries it)
+        holder.Transform = BlockScreenLocal(v.Structure, cell, face, standOff);
         return Hang(holder, section, state);
     }
 

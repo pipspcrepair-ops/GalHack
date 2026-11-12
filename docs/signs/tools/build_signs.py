@@ -1155,9 +1155,12 @@ def stencil_svg(meaning, code, ops):
 FRAME2_BAND, FRAME2_SILL, FRAME2_KEY = 24, 44, 8
 
 
-def framed2_svg(meaning, code, level, ops):
-    """The firmer frame: heavier band, stronger keyline, plain round-cornered field."""
+def framed2_svg(meaning, code, level, ops, palette=None):
+    """The firmer frame: heavier band, stronger keyline, plain round-cornered field.
+    palette = (field, ink) overrides the category colours, for a draft that swaps them."""
     field, ink, _ = CATS[code]
+    if palette:
+        field, ink = palette
     x0, y0 = FRAME2_BAND + FRAME2_KEY, FRAME2_BAND + FRAME2_KEY
     fw, fh = T - 2 * x0, T - FRAME2_SILL - FRAME2_KEY - y0
     kx, ky = FRAME2_BAND, FRAME2_BAND
@@ -1330,7 +1333,387 @@ def stencil_check(masters: Path, out: Path):
     sheet.save(out)
 
 
+# --- draft 4: Husks and Hollows --------------------------------------------------
+# The final Husk and Hollow signs sit beside the approved signs (svg/ and png/, ids that start
+# husk_ or hollow_) and are not in SIGNS, so sign-sheet.png is untouched.
+# Drawn in field units like the draft 3 signs, in the firmer frame.
+#
+# The person is the plain public-sign pictogram: a round head over a simple body,
+# head and shoulders or full length.  A Husk is that person with worms coming out
+# of the face and ears.  A worm is a bold sine-bent ribbon with a blunt tip.  Where
+# a worm crosses the outline of the body it swaps colour, as a line does when it
+# goes half inside something: symbol colour outside, field colour inside.
+def _sine(x, y, ang, length, amp, waves, phase, steps=34):
+    a = math.radians(ang)
+    ux, uy = math.cos(a), math.sin(a)
+    nx, ny = -uy, ux
+    pts = []
+    for i in range(steps + 1):
+        t = i / steps
+        off = amp * math.sin(2 * math.pi * waves * t + phase)
+        pts.append((x + ux * length * t + nx * off, y + uy * length * t + ny * off))
+    return pts
+
+
+def worm(x, y, ang, length, w=13, amp=7, waves=1.4, phase=0.0, taper=0.72, cut=False):
+    """A bold wavy worm from (x, y) along ang (degrees, 0 = east, y down), thinning to a round tip."""
+    pts = _sine(x, y, ang, length, amp, waves, phase)
+    last = len(pts) - 1
+    left, right = [], []
+    for i, (px, py) in enumerate(pts):
+        a, b = pts[max(0, i - 1)], pts[min(last, i + 1)]
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        d = math.hypot(dx, dy) or 1
+        h = w / 2 * (1 - (1 - taper) * i / last)
+        left.append((px - dy / d * h, py + dx / d * h))
+        right.append((px + dy / d * h, py - dx / d * h))
+    tx, ty = pts[-1]
+    return [poly(left + right[::-1], cut), circ(tx, ty, w / 2 * taper, cut)]
+
+
+def swirm(cid, clip, *a, cutw=0.7, **kw):
+    """A worm that is symbol colour outside the clip shapes and a thinner line of field colour inside them."""
+    w = kw.pop("w", 13)
+    return (worm(*a, w=w, **kw)
+            + [f'<clipPath id="{cid}">{"".join(clip)}</clipPath>',
+               f'<g clip-path="url(#{cid})">{"".join(worm(*a, w=w * cutw, cut=True, **kw))}</g>'])
+
+
+def bust(x=0, y=0, s=1.0):
+    """Head and shoulders: a round head over a block of shoulders. (x, y) is the head's centre."""
+    return [circ(x, y, 36 * s), rect(x - 66 * s, y + 48 * s, 132 * s, 160 * s, 42 * s)]
+
+
+def bust_gap(x, y, s, g=5):
+    """The thin gap round a bust, so a bust in front separates from the ones behind it."""
+    return [circ(x, y, 36 * s + g, cut=True),
+            rect(x - 66 * s - g, y + 48 * s - g, 132 * s + 2 * g, 160 * s + g, 42 * s + g, cut=True)]
+
+
+def figure(x=0, y=0, s=1.0):
+    """Full length: round head, body, two arms, two legs. (x, y) is the middle of the body."""
+    return [circ(x, y - 52 * s, 15 * s),
+            rect(x - 18 * s, y - 31 * s, 36 * s, 56 * s, 10 * s),
+            line([(x - 27 * s, y - 25 * s), (x - 27 * s, y + 20 * s)], 11 * s, cap="round"),
+            line([(x + 27 * s, y - 25 * s), (x + 27 * s, y + 20 * s)], 11 * s, cap="round"),
+            line([(x - 10 * s, y + 30 * s), (x - 10 * s, y + 64 * s)], 14 * s, cap="round"),
+            line([(x + 10 * s, y + 30 * s), (x + 10 * s, y + 64 * s)], 14 * s, cap="round")]
+
+
+def husk_worms(cid, x, y, s, kinds, halo=False, w=None, clip=None, sides=(-1, 1), reach=1.0):
+    """Worms for a bust whose head centre is (x, y).
+    kinds: ears and horns (symbol colour, breaking out of the outline), eyes and mouth (they cross
+    the face in the field colour and come out the other side), across (lines from ear to ear).
+    halo: a thin gap round every worm so it stays clear of a bust behind it.
+    sides: which side's ears and horns to draw, -1 left, 1 right.  reach: scales ears and horns."""
+    clip = clip or bust(x, y, s)
+    w = w or max(9.0, 13 * s)
+    ops, k = [], 0
+
+    def out(*a, **kw):                     # a worm that starts at the outline
+        ink = worm(*a, w=w, **kw)
+        if not halo:
+            return ink
+        return worm(*a, w=w + 9, cut=True, **kw) + bust(x, y, s) + ink
+
+    def through(*a, **kw):                 # a worm that crosses the body and swaps colour at its edge
+        nonlocal k
+        k += 1
+        return swirm(f"{cid}{k}", clip, *a, w=w, **kw)
+
+    if "ears" in kinds:
+        for sx in sides:
+            ops += out(x + sx * 33 * s, y + 3 * s, 90 - sx * 90 + sx * 16, 46 * s * reach, amp=7 * s, waves=1.1, phase=sx * 0.7)
+    if "horns" in kinds:
+        for sx in sides:
+            ops += out(x + sx * 18 * s, y - 31 * s, -90 + sx * 24, 46 * s * reach, amp=6 * s, waves=1.2, phase=sx * 0.9)
+    if "eyes" in kinds:
+        for sx in (-1, 1):
+            ops += [circ(x + sx * 13 * s, y - 6 * s, 6 * s, cut=True)]
+            ops += through(x + sx * 13 * s, y - 6 * s, -90 + sx * 30, 58 * s, amp=7 * s, waves=1.1, phase=sx * 0.6)
+    if "mouth" in kinds:
+        ops += [rect(x - 9 * s, y + 8 * s, 18 * s, 11 * s, 4 * s, cut=True)]
+        ops += through(x, y + 14 * s, 90, 82 * s, amp=7 * s, waves=1.25)
+    if "across" in kinds:
+        for i, (dy, ph) in enumerate(((-12, 0.0), (10, 3.2))):
+            right = i % 2 == 0
+            ops += through(x + (-24 if right else 24) * s, y + dy * s, 0 if right else 180, 92 * s,
+                           amp=6 * s, waves=1.1, phase=ph)
+    return ops
+
+
+def c_husk_hazard_a():
+    # Bust. Worms from the eyes cross the face and break out over the head, one hangs from
+    # the mouth across chin and chest, and two come out of the ears.
+    return bust(0, -16) + husk_worms("ha", 0, -16, 1.0, ("ears", "eyes", "mouth"), w=14)
+
+
+def c_husk_hazard_b():
+    # Bust, face left plain, worms only breaking out of the outline: two horns, two from the
+    # ears and one hanging from the chin over the chest.
+    return (bust(0, -14) + [circ(-13, -20, 6.5, cut=True), circ(13, -20, 6.5, cut=True), rect(-10, 4, 20, 9, 4, cut=True)]
+            + husk_worms("hb", 0, -14, 1.0, ("ears", "horns"), w=14)
+            + _hang(0, -14, 1.0, 14))
+
+
+def _hang(x, y, s, w):
+    """A worm hanging from under the chin over the chest, with a gap round it."""
+    a = (x, y + 36 * s, 90, 70 * s)
+    return worm(*a, w=w + 9, amp=6, waves=1.2, cut=True) + bust(x, y, s)[1:] + worm(*a, w=w, amp=6, waves=1.2)
+
+
+def c_husk_hazard_c():
+    # Bust with worms laid straight across the face, ear to ear and out the far side.
+    return bust(0, -16) + husk_worms("hc", 0, -16, 1.0, ("across",), w=14)
+
+
+def c_husk_hazard_d():
+    # The same as A on the paper field with a black bust: the worms across the face are
+    # then in the sign's light colour.
+    return c_husk_hazard_a()
+
+
+# The crowd: busts back to front, each a gap's width clear of the ones behind it.  The rows
+# are staggered so the heads read as a crowd and never as one head with a pair of ears.
+GROUPS = {
+    "a": [(-6, -44, 0.58), (34, -54, 0.46), (4, 6, 0.88), (-34, 14, 1.0), (40, 18, 1.0)],
+    "b": [(-14, -48, 0.56), (70, -26, 0.62), (62, 12, 0.9), (14, 24, 0.96), (-36, 14, 1.02)],
+    "c": [(-82, -4, 0.7), (82, -8, 0.7), (4, -34, 0.78), (-42, 12, 1.0), (42, 18, 0.98)],
+}
+
+
+def _crowd(key, sick):
+    """sick = {index: (kinds, sides, reach)}"""
+    ops = []
+    for i, (x, y, s) in enumerate(GROUPS[key]):
+        ops += bust_gap(x, y, s, 4.5) + bust(x, y, s)
+        if i in sick:
+            kinds, sides, reach = sick[i]
+            ops += husk_worms(f"g{key}{i}", x, y, s, kinds, halo=True, w=14, sides=sides, reach=reach)
+    return ops
+
+
+def c_husk_group_a():
+    # Five in a crowd; the two at the front carry, with their worms out to the open sides.
+    return _crowd("a", {3: (("ears", "horns"), (-1,), 0.95), 4: (("ears", "horns"), (1,), 0.95)})
+
+
+def c_husk_group_b():
+    # Five people and one of them is not: a silent carrier at the front.
+    return _crowd("b", {4: (("ears", "horns"), (-1,), 0.95)})
+
+
+def c_husk_group_c():
+    # Five, and the carrier is the one behind the rest, with its worms rising over their heads.
+    return _crowd("c", {2: (("ears", "horns"), (-1, 1), 1.0)})
+
+
+def _gate(cx, inner, top=-78, arch=False):
+    """A scanner gate: two posts and a head piece, open at the bottom. inner = half the gap."""
+    px = inner + 20
+    if arch:
+        r = inner + 10
+        return [stroke(f"M{n(cx - r)} 110 V{n(top + r)} A{n(r)} {n(r)} 0 0 1 {n(cx + r)} {n(top + r)} V110", 20)]
+    return [rect(cx - px, top, 2 * px, 24, 5), rect(cx - px, top, 20, 190), rect(cx + px - 20, top, 20, 190)]
+
+
+def _scan(cx, inner, y, fig, cid):
+    """The scan line: ink across the gap, field colour where it passes through the figure."""
+    bar_ink = rect(cx - inner, y, 2 * inner, 8)
+    bar_cut = rect(cx - inner, y, 2 * inner, 8, cut=True)
+    return [bar_ink, f'<clipPath id="{cid}">{"".join(fig)}</clipPath>', f'<g clip-path="url(#{cid})">{bar_cut}</g>']
+
+
+def _screen(cx=0, inner=54, fail=False, arch=False, check=False):
+    s, fy = 0.82, 26
+    fig = figure(cx, fy, s)
+    ops = _gate(cx, inner, arch=arch) + fig + _scan(cx, inner, fy - 12, fig, "sc")
+    if fail:
+        # The head is what gives it away: worms from the ears and the face.
+        hx, hy, r = cx, fy - 52 * s, 15 * s
+        for sx in (-1, 1):
+            ops += worm(hx + sx * r * 0.8, hy + 2, 90 - sx * 90 + sx * 8, 30, w=8.5, amp=3.5, waves=1.1, phase=sx * 0.7)
+            ops += worm(hx + sx * r * 0.45, hy - r * 0.6, -90 + sx * 24, 28, w=8.5, amp=3.5, waves=1.2, phase=sx * 0.9)
+    if check:
+        ops += [line([(cx + inner + 38, 6), (cx + inner + 58, 28), (cx + inner + 98, -30)], 19, join="miter")]
+    return ops
+
+
+def c_screening_a():
+    # A figure standing in a gate with the scan line across it: clear to pass.
+    return _screen()
+
+
+def c_screening_b():
+    # The same figure with worms at the head: the gate has found something.
+    return _screen(fail=True)
+
+
+def c_screening_c():
+    # Gate and figure to one side and a check to the other.
+    return _screen(cx=-38, inner=40, check=True)
+
+
+def c_screening_d():
+    # The arch version of the gate.
+    return _screen(inner=46, arch=True)
+
+
+def c_screening_e():
+    # The arch version, failed.
+    return _screen(inner=46, arch=True, fail=True)
+
+
+def cap(x, y, rx, ry, spots=True):
+    """A mushroom cap with its flat underside at y, and spots cut into it."""
+    k = 0.5523
+    d = (f"M{n(x - rx)} {n(y)} C{n(x - rx)} {n(y - ry * k)} {n(x - rx * k)} {n(y - ry)} {n(x)} {n(y - ry)} "
+         f"C{n(x + rx * k)} {n(y - ry)} {n(x + rx)} {n(y - ry * k)} {n(x + rx)} {n(y)} Q{n(x)} {n(y - ry * 0.22)} {n(x - rx)} {n(y)} Z")
+    ops = [path(d)]
+    if spots:
+        ops += [circ(x - rx * 0.38, y - ry * 0.55, rx * 0.13, cut=True), circ(x + rx * 0.22, y - ry * 0.68, rx * 0.1, cut=True),
+                circ(x + rx * 0.5, y - ry * 0.38, rx * 0.09, cut=True)]
+    return ops
+
+
+def bootprint(x=0, y=0, s=1.0, rot=0):
+    """A sole: wide forefoot, narrow heel, tread cut across."""
+    ops = [rect(-27, -60, 54, 68, 25), rect(-20, 16, 40, 42, 15)]
+    ops += [rect(-18, ty, 36, 7, cut=True) for ty in (-38, -22, -6)]
+    return [group(ops, translate=(x, y), rotate=rot, scale=s)]
+
+
+def spores(pts, r=7):
+    return [circ(x, y, r) for x, y in pts]
+
+
+def c_hollow_hazard_a():
+    # A cap upper left, spores falling from it, and the boot they land on.
+    return (cap(-44, -30, 46, 40) + [rect(-55, -32, 22, 38, 4)]
+            + spores([(-50, 20), (-32, 36), (-10, 24), (10, 44), (28, 30)], 7.5)
+            + bootprint(56, 22, 0.62, 16))
+
+
+def c_hollow_hazard_b():
+    # A single cap standing on the ground, shedding spores all round it.
+    ring_pts = [(82 * math.cos(math.radians(a)), -2 + 74 * math.sin(math.radians(a))) for a in range(-170, -9, 22)]
+    return (cap(0, 32, 56, 48) + [rect(-12, 30, 24, 40, 4), rect(-62, 68, 124, 14, 4)] + spores(ring_pts, 8))
+
+
+def c_hollow_hazard_c():
+    # The print of a boot with caps growing from its toe: fungus travels on boots.
+    return (bootprint(-38, 18, 1.0, -12) + [rect(24, -2, 18, 74, 4)] + cap(33, -2, 40, 34)
+            + [rect(66, 30, 12, 38, 3)] + cap(72, 32, 20, 18, spots=False))
+
+
+def c_hollow_hazard_d():
+    # Three caps in a row on the ground, a spray of spores over them.
+    return (cap(-56, 38, 32, 26, spots=False) + [rect(-65, 36, 18, 28, 3), rect(-96, 62, 192, 14, 4)]
+            + cap(56, 38, 32, 26, spots=False) + [rect(47, 36, 18, 28, 3)]
+            + cap(0, 14, 40, 38) + [rect(-9, 12, 18, 52, 3)]
+            + spores([(-66, -34), (-34, -58), (0, -68), (34, -58), (66, -34), (-24, -26), (24, -26)], 8))
+
+
+def beast(x=0, y=0, s=1.0, extra=()):
+    """A plain four-legged animal, side on, facing right: body, neck, head, ear, four legs, tail.
+    The same plain-pictogram manner as the person. extra is drawn inside its own space."""
+    ops = [rect(-62, -12, 104, 52, 24),
+           line([(24, -4), (56, -28)], 28, cap="round"),
+           rect(44, -46, 42, 28, 11),
+           poly([(50, -44), (56, -62), (66, -44)]),
+           line([(-60, -2), (-80, -24)], 10, cap="round")]
+    for lx, drift in ((-48, -4), (-26, 3), (6, -3), (28, 5)):
+        ops.append(line([(lx, 28), (lx + drift, 74)], 14, cap="round"))
+    return [group(ops + list(extra), translate=(x, y), scale=s)]
+
+
+def toadstool(x, y, h, rx, ry=None, spots=True):
+    """A cap on a stem growing up out of (x, y)."""
+    return [rect(x - rx * 0.24, y - h, rx * 0.48, h + 4, 3)] + cap(x, y - h + 4, rx, ry or rx * 0.8, spots)
+
+
+def c_hollow_beast_a():
+    # A beast with toadstools growing out of its back and one out of its head. Hollows only
+    # take wildlife, so the infection is drawn on the animal.
+    return (beast(-6, 0) + toadstool(-52, -10, 28, 17) + toadstool(-20, -10, 46, 22) + toadstool(10, -10, 24, 14)
+            + toadstool(70, -36, 14, 10, spots=False))
+
+
+def c_hollow_beast_b():
+    # A beast under one great cap, with spores drifting off it.
+    return (beast(-10, 4) + toadstool(-12, -4, 22, 46, 34)
+            + spores([(46, -62), (68, -48), (22, -78), (-66, -62), (-84, -40)], 7.5))
+
+
+def c_hollow_beast_c():
+    # A beast gone to mould: spots cut into its body, caps on its back, spores falling.
+    mould = [circ(-44, 4, 6, cut=True), circ(-24, 20, 5, cut=True), circ(-2, 6, 7, cut=True), circ(20, 22, 5, cut=True),
+             circ(-60, 24, 4, cut=True)]
+    return (beast(-6, 2, extra=mould) + toadstool(-40, -8, 34, 20) + toadstool(2, -8, 22, 14)
+            + spores([(70, 36), (82, 54)], 7))
+
+
+#     id                          meaning                   code      pips  drawing              palette           label on the final sheet
+FINAL = [
+    ("hollow_hazard",            "Hollow hazard",           "Danger", 2, c_hollow_beast_c,  None,           "Hollow hazard: an infected beast"),
+    ("hollow_spread_boots",      "Hollow spread on boots",  "Danger", 2, c_hollow_hazard_a, None,           "Hollow spread: on boots"),
+    ("husk_hazard",              "Husk hazard",             "Danger", 3, c_husk_hazard_c,   None,           "Husk hazard: worms across the face"),
+    ("husk_hazard_paper",        "Husk hazard",             "Danger", 3, c_husk_hazard_d,   (PAPER, INK),   "Husk hazard: black on paper"),
+    ("husk_group",               "Husk group",              "Danger", 3, c_husk_group_c,    None,           "Husk group: an infested crowd"),
+    ("husk_screening_gate",      "Husk screening point",    "Order",  0, c_screening_a,     None,           "Husk screening point: gate"),
+    ("husk_screening_gate_pass", "Husk screening: pass",    "Order",  0, c_screening_c,     None,           "Husk screening: gate, pass"),
+    ("husk_screening_gate_fail", "Husk screening: fail",    "Order",  0, c_screening_b,     None,           "Husk screening: gate, fail"),
+    ("husk_screening_arch",      "Husk screening point",    "Order",  0, c_screening_d,     None,           "Husk screening point: arch"),
+    ("husk_screening_arch_fail", "Husk screening: fail",    "Order",  0, c_screening_e,     None,           "Husk screening: arch, fail"),
+]
+
+# Drafts that were not picked. They are drawn as they were reviewed and kept in attempts/husks-hollows/,
+# out of the live set.
+ATTEMPTS = [
+    ("husk_hazard_a", "Husk hazard", "Danger", 3, c_husk_hazard_a, None),
+    ("husk_hazard_b", "Husk hazard", "Danger", 3, c_husk_hazard_b, None),
+    ("husk_group_a", "Husk group", "Danger", 3, c_husk_group_a, None),
+    ("husk_group_b", "Husk group", "Danger", 3, c_husk_group_b, None),
+    ("hollow_hazard_b", "Hollow hazard", "Danger", 2, c_hollow_hazard_b, None),
+    ("hollow_hazard_c", "Hollow hazard", "Danger", 2, c_hollow_hazard_c, None),
+    ("hollow_hazard_d", "Hollow hazard", "Danger", 2, c_hollow_hazard_d, None),
+    ("hollow_beast_a", "Hollow hazard", "Danger", 2, c_hollow_beast_a, None),
+    ("hollow_beast_b", "Hollow hazard", "Danger", 2, c_hollow_beast_b, None),
+]
+ATTEMPTS_DIR = ROOT / "attempts" / "husks-hollows"
+
+
+def build_husks_hollows():
+    """Write the final Husk and Hollow signs beside the approved signs (svg/ and png/), and the drafts
+    that were not picked into attempts/husks-hollows/. Touches nothing else. Returns {final id: 1024 px master}."""
+    src, out = RENDER_TMP / "hh-sign-src", RENDER_TMP / "hh-sign-masters"
+    for p in (src, out):
+        shutil.rmtree(p, ignore_errors=True)
+    src.mkdir(parents=True)
+    rows = [(sid, meaning, code, level, fn, pal, True) for sid, meaning, code, level, fn, pal, _label in FINAL]
+    rows += [(sid, meaning, code, level, fn, pal, False) for sid, meaning, code, level, fn, pal in ATTEMPTS]
+    for sub in ("svg", "png"):
+        (ROOT / sub).mkdir(exist_ok=True)
+        (ATTEMPTS_DIR / sub).mkdir(parents=True, exist_ok=True)
+    for sid, meaning, code, level, fn, pal, final in rows:
+        svg = framed2_svg(meaning, code, level, fn(), pal)
+        (src / f"{sid}.svg").write_text(svg, encoding="utf-8")
+        (ROOT / "svg" if final else ATTEMPTS_DIR / "svg").joinpath(f"{sid}.svg").write_text(svg, encoding="utf-8")
+    render(src, out, 4.0)
+    tiles = {}
+    for sid, *_rest, final in rows:
+        im = Image.open(out / f"{sid}.png").convert("RGBA")
+        im.resize((256, 256), Image.LANCZOS).save((ROOT / "png" if final else ATTEMPTS_DIR / "png") / f"{sid}.png")
+        if final:
+            tiles[sid] = im
+    print(len(FINAL), "Husk and Hollow signs built,", len(ATTEMPTS), "attempts kept")
+    return tiles
+
+
 def main():
+    if "--husks-hollows" in sys.argv:    # only the Husk and Hollow signs; no approved file is touched
+        build_husks_hollows()
+        return
     for folder in ("svg", "svg-stencil", "png"):
         shutil.rmtree(ROOT / folder, ignore_errors=True)
         (ROOT / folder).mkdir()
@@ -1356,6 +1739,7 @@ def main():
         out = Path(sys.argv[idx]) if idx < len(sys.argv) else RENDER_TMP / "stencil-check.png"
         stencil_check(stencils, out)
     print(len(SIGNS), "signs built")
+    build_husks_hollows()                # a full rebuild clears svg/ and png/, so put the Husk and Hollow signs back
 
 
 if __name__ == "__main__":

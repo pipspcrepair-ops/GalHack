@@ -806,8 +806,8 @@ public partial class BuildTest : Node
         patch.SyncBases();
         Wildlife.WildSim sim = patch.Sim;
         float clearance = sim.Data.Spawning.BaseClearance;
-        Check(clearance > 0 && sim.Structures.Count(s => s.IsBase) == _game.Zone.Vessels.Count(v => v.IsBase && v.Structure.Core != null),
-            $"the wildlife sim knows every base ({sim.Structures.Count}), and keeps {clearance:F0} m clear of each");
+        Check(clearance > 0 && sim.Structures.Count(s => s.IsBase) == _game.Zone.Vessels.Count(v => v.IsBase && v.Structure.Core != null) + (patch.Bunker != null ? 1 : 0),
+            $"the wildlife sim knows every base and the start bunker ({sim.Structures.Count}), and keeps {clearance:F0} m clear of each");
         var (min, max) = _base.Structure.Bounds();
         Vector3 Edge(float past) => patch.PatchLocal(_base.ToWorld(StructureBridge.CellCenter(_base.Structure, max) + new N.Vector3(_base.Structure.Grid.CellSize * 0.5f + past, 0, 0)));
         Check(sim.InBaseZone(patch.PatchLocal(_base.ToWorld(StructureBridge.CellCenter(_base.Structure, min)))) && sim.InBaseZone(Edge(clearance - 2f)) && !sim.InBaseZone(Edge(clearance + 2f)),
