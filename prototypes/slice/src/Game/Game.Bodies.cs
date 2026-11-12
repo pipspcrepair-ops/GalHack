@@ -29,7 +29,7 @@ public partial class Game
 
     void SetUpBodies()
     {
-        Gibs = new Gibs { Name = "Gibs" };
+        Gibs = new Gibs { Name = "Gibs", Layer = GalHack.Physics.Layers.Props, Mask = GalHack.Physics.Layers.World | GalHack.Physics.Layers.Hull | GalHack.Physics.Layers.Interior | GalHack.Physics.Layers.Props };
         Zone.AddChild(Gibs);
         Town.Fell += OnPersonFell;
     }

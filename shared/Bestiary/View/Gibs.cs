@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using GalHack.Physics;
 using Godot;
 
 namespace Wildlife;
@@ -17,6 +16,8 @@ public partial class Gibs : Node3D
 {
     /// <summary>Most pieces in the world at once, and how long a piece may tumble before it is held where it lies.</summary>
     public int MostPieces = 90;
+    /// <summary>The physics layer pieces are on, and what they land on (the game's: props, and the world, hulls, cabins and props).</summary>
+    public uint Layer = 1u << 5, Mask = 1u | 1u << 1 | 1u << 2 | 1u << 5;
     public const float MostTumble = 7f;
 
     sealed class Gib
@@ -103,8 +104,8 @@ public partial class Gibs : Node3D
         {
             Name = "Gib",
             Mass = Math.Clamp(volume * 700f, 0.2f, 60f),
-            CollisionLayer = Layers.Props,
-            CollisionMask = Layers.World | Layers.Hull | Layers.Interior | Layers.Props,
+            CollisionLayer = Layer,
+            CollisionMask = Mask,
             ContinuousCd = true,
             CanSleep = true,
             LinearDamp = 0.05f,
