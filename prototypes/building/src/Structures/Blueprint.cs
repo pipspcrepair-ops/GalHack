@@ -273,8 +273,7 @@ public static class Blueprint
                 if (cellLine.TryGetValue(cell, out int taken)) { other = taken; break; }
             if (other >= 0)
             {
-                Error(Footprint.IsMulti(type) ? $"block at {b.Pos} ({type.Size.X}x{type.Size.Y}x{type.Size.Z} cells) overlaps the one from line {other}"
-                    : $"block at {b.Pos} overlaps the one from line {other}");
+                Error($"block at {b.Pos}{(type.Multi ? $" ({type.Size.X}x{type.Size.Y}x{type.Size.Z} cells)" : "")} overlaps the one from line {other}");
                 continue;
             }
             foreach (Int3 cell in scratch.CellsOf(b.Pos, block)) cellLine[cell] = b.Line;

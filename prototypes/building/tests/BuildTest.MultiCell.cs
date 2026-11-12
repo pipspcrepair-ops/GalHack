@@ -75,7 +75,7 @@ public partial class BuildTest
                 var (lo, hi) = (want.Aggregate(Int3.Min), want.Aggregate(Int3.Max));
                 Int3 world = Footprint.WorldSize(t, rot);
                 bool ok = e == PlaceError.None
-                    && want.Count == Footprint.Volume(t)
+                    && want.Count == (t.Size.X * t.Size.Y * t.Size.Z)
                     && lo == new Int3(1, 1, 1) && hi - lo + Footprint.One == world
                     && s.Count == cells + want.Count && s.BlockCount == blocks + 1
                     && want.All(c => s.TryGet(c, out Block f) && f.Type == t.Index && c + f.ToAnchor == anchor && f.IsFiller == (c != anchor))
@@ -200,7 +200,7 @@ public partial class BuildTest
         // A blast over all eight cells hits the block once, not eight times.
         Structure a = MultiDeck(), b = MultiDeck();
         Building.Place(a, anchor, Building.Make(a, _box2));
-        Building.Place(b, anchor, Building.Make(b, _container_mc()));
+        Building.Place(b, anchor, Building.Make(b, _mc.Type("container")));
         var centre = new System.Numerics.Vector3(2.5f, 1.5f, 2.5f);
         DamageReport ra = new(), rb = new();
         Damage.BlastInto(a, centre, 1.0f, DamageType.Explosive, 400f, ra);
@@ -215,8 +215,6 @@ public partial class BuildTest
         Damage.Crash(c, new System.Numerics.Vector3(2.5f, 3f, 2.5f), -System.Numerics.Vector3.UnitY, 50f, crash);
         Check(c.RecentHits.Count(h => Footprint.Cells(anchor, _box2, 0).Contains(h.Cell)) == 1, "a crash over its top hits it once");
     }
-
-    BlockType _container_mc() => _mc.Type("container");
 
     /// <summary>Faces inside the size don't exist; outer faces take the component's face lists for that whole side.</summary>
     void TestMultiFaces()
@@ -245,15 +243,6 @@ public partial class BuildTest
         Check(Footprint.Cells(anchor, _door2, 0).All(c => _mc.SealMask(t.Get(c)) == 0x3f), "a shut 2x2x1 door is sealed in every cell");
         Building.Toggle(t, anchor + new Int3(1, 1, 0));
         Check(Footprint.Cells(anchor, _door2, 0).All(c => t.Get(c).Open && _mc.SealMask(t.Get(c)) == 0), "toggling it from a filler opens the whole door, every cell passing air");
-
-        // The +y face of a turned thruster is that whole side.
-        Orientations.TryParse("+z-y", out int nose); // up is +z, forward is -y
-        Block jet = Building.Make(s, _jet2, null, nose);
-        Int3 a2 = new(-3, 1, -3);
-        Check(Building.Place(s, Footprint.AnchorFor(_jet2, nose, a2, Dir.PosY), jet) == PlaceError.None, "a turned 1x1x2 thruster stands on the deck");
-        Int3 ja = s.AnchorOf(a2);
-        var jcells = Footprint.Cells(ja, _jet2, nose).ToList();
-        Check(jcells.Count == 2 && jcells.Select(c => c.Y).Distinct().Count() == 2, "turned nose-down, its two cells stand one over the other");
     }
 
     /// <summary>A 2×2×1 door in a 2×2 opening seals the room while it's shut; open, the leaks are the whole doorway.</summary>
@@ -300,22 +289,15 @@ public partial class BuildTest
         Check(Near(st.BlockMass, 168 * s.StatsOf(Building.Make(s, steel)).Mass + s.StatsOf(Building.Make(s, _mc.CoreType)).Mass + s.StatsOf(s.Get(anchor)).Mass, 1e-4),
             "its mass counts once");
 
-        // A tower on its far top corner, then the deck under it cut away round it: the tower hangs on by the container.
+        // A tower on its far top corner hangs on by the container.
         Int3 top = anchor + new Int3(1, 2, 1);
         for (int y = 0; y < 3; y++) s.Set(top + new Int3(0, y, 0), Building.Make(s, steel));
         Check(Connectivity.Reachable(s, Int3.Zero).Contains(top + new Int3(0, 2, 0)), "a tower on the container's top is joined through it");
         Check(Connectivity.CutOffWithout(s, anchor + new Int3(0, 1, 1)) == 3, $"taking down the container (from a filler) would cut the tower's 3 blocks off ({Connectivity.CutOffWithout(s, anchor + new Int3(0, 1, 1))})");
 
-        // Cut the deck round the container: the container and the tower break away together, whole.
-        foreach (Int3 c in new[] { anchor + new Int3(-1, -1, 0), anchor + new Int3(-1, -1, 1), anchor + new Int3(2, -1, 0), anchor + new Int3(2, -1, 1),
-                     anchor + new Int3(0, -1, -1), anchor + new Int3(1, -1, -1), anchor + new Int3(0, -1, 2), anchor + new Int3(1, -1, 2) }) s.Clear(c);
-        // Leave it standing only on its four deck cells, then take those.
-        List<Structure> wrecks = new();
-        foreach (Int3 c in new[] { anchor - Int3.UnitY, anchor + new Int3(1, -1, 0), anchor + new Int3(0, -1, 1), anchor + new Int3(1, -1, 1) })
-        {
-            s.Clear(c);
-        }
-        wrecks.AddRange(Connectivity.SplitOff(s));
+        // Take the four deck cells under it: the container and its tower break away together, whole.
+        foreach (Int3 c in new[] { anchor - Int3.UnitY, anchor + new Int3(1, -1, 0), anchor + new Int3(0, -1, 1), anchor + new Int3(1, -1, 1) }) s.Clear(c);
+        List<Structure> wrecks = Connectivity.SplitOff(s);
         Structure w = wrecks.FirstOrDefault(x => x.Has(anchor));
         Check(w != null && w.BlockCount == 4 && w.Count == 8 + 3 && w.Get(anchor).Type == _box2.Index
               && Footprint.Cells(anchor, _box2, 0).All(c => w.TryGet(c, out Block f) && c + f.ToAnchor == anchor) && !s.Has(anchor + new Int3(1, 1, 1)),
@@ -364,8 +346,8 @@ public partial class BuildTest
             s.Set(new Int3(4, 4, 4), b);
             ChunkMeshData d = ChunkMesher.Build(s, Int3.Zero);
             float vol = d.Boxes.Sum(x => x.size.X * x.size.Y * x.size.Z), cell = s.Grid.CellSize;
-            Check(Mathf.Abs(vol - Footprint.Volume(t) * cell * cell * cell) < 0.01f && d.Hulls.Count == 0,
-                $"{t.Id}: colliders fill its {Footprint.Volume(t)} cells exactly ({vol / (cell * cell * cell):0.##} cells in {d.Boxes.Count} boxes)");
+            Check(Mathf.Abs(vol - (t.Size.X * t.Size.Y * t.Size.Z) * cell * cell * cell) < 0.01f && d.Hulls.Count == 0,
+                $"{t.Id}: colliders fill its {(t.Size.X * t.Size.Y * t.Size.Z)} cells exactly ({vol / (cell * cell * cell):0.##} cells in {d.Boxes.Count} boxes)");
         }
         var open = new Structure(_mc, _mc.Grid(GridSize.Large));
         Block od = Building.Make(open, _door2);

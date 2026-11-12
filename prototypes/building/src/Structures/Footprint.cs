@@ -22,26 +22,15 @@ public static class Footprint
 
     public static readonly Int3 One = new(1, 1, 1);
 
-    public static bool IsMulti(BlockType t) => t != null && t.Multi;
-
-    /// <summary>The block's cells as offsets from its anchor, anchor first.</summary>
-    public static IEnumerable<Int3> Offsets(BlockType t, int rot)
-    {
-        Int3 size = t.Size;
-        Mat3 m = Orientations.Matrix(rot);
-        for (int z = 0; z < size.Z; z++)
-            for (int y = 0; y < size.Y; y++)
-                for (int x = 0; x < size.X; x++)
-                    yield return m.Apply(new Int3(x, y, z));
-    }
-
     /// <summary>The block's cells in structure coordinates, anchor first.</summary>
     public static IEnumerable<Int3> Cells(Int3 anchor, BlockType t, int rot)
     {
-        foreach (Int3 o in Offsets(t, rot)) yield return anchor + o;
+        Mat3 m = Orientations.Matrix(rot);
+        for (int z = 0; z < t.Size.Z; z++)
+            for (int y = 0; y < t.Size.Y; y++)
+                for (int x = 0; x < t.Size.X; x++)
+                    yield return anchor + m.Apply(new Int3(x, y, z));
     }
-
-    public static int Volume(BlockType t) => t.Size.X * t.Size.Y * t.Size.Z;
 
     /// <summary>The smallest and largest offset from the anchor that the turned size covers (inclusive).</summary>
     public static (Int3 min, Int3 max) Box(BlockType t, int rot)
@@ -71,18 +60,14 @@ public static class Footprint
         return p * size + (size - Vector3.One) * 0.5f;
     }
 
-    /// <summary>The cell of the block a structure cell holds, in the block's own frame (0..size-1 on each axis).</summary>
-    public static Int3 LocalCell(in Block b) =>
-        Orientations.Matrix(b.Rot).Transposed().Apply(-b.ToAnchor);
-
     /// <summary>
     /// The structure faces of this cell that are outer faces of its block (the next cell over is
     /// not the same block). One bit per <see cref="Dir"/>; every face of a one-cell block.
     /// </summary>
     public static byte OuterMask(BlockType t, in Block b)
     {
-        if (!IsMulti(t)) return 0x3f;
-        Int3 local = LocalCell(b), size = t.Size;
+        if (!t.Multi) return 0x3f;
+        Int3 local = Orientations.Matrix(b.Rot).Transposed().Apply(-b.ToAnchor), size = t.Size;
         byte mask = 0;
         foreach (Dir world in Dirs.All)
         {
@@ -123,7 +108,6 @@ public static class Footprint
     /// <summary>The anchor of a block's mirror image across a plane: the mirrored cells, filled by the mirrored turn.</summary>
     public static Int3 MirrorAnchor(Int3 anchor, BlockType t, int rot, int mirroredRot, Func<Int3, Int3> mirror)
     {
-        if (!IsMulti(t)) return mirror(anchor);
         var low = new Int3(int.MaxValue, int.MaxValue, int.MaxValue);
         foreach (Int3 c in Cells(anchor, t, rot)) low = Int3.Min(low, mirror(c));
         return low - Box(t, mirroredRot).min;

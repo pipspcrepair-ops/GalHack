@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 
 namespace GalHack.Structures;
@@ -92,8 +93,8 @@ public static class Damage
         if (distance > 1.5f) centre = nearest.ToVector3();
 
         float radius = Math.Clamp(1.5f + MathF.Cbrt(hp / MathF.Max(1f, s.MaxHp(s.Get(nearest)))), 1.5f, MaxCrashRadius);
-        var struck = new List<(Int3 p, float weight)>();
-        float total = 0f;
+        // Keyed by anchor: a block spanning several cells takes its share once, as hard as its nearest cell.
+        var struck = new Dictionary<Int3, float>();
         int r = (int)MathF.Ceiling(radius);
         Int3 c = Int3.Round(centre);
         for (int x = -r; x <= r; x++)
@@ -101,30 +102,19 @@ public static class Damage
                 for (int z = -r; z <= r; z++)
                 {
                     Int3 q = c + new Int3(x, y, z);
-                    if (!s.TryGet(q, out Block cellBlock)) continue;
+                    if (!s.TryGet(q, out Block cell)) continue;
                     float d = Vector3.Distance(q.ToVector3(), centre);
                     if (d > radius) continue;
                     float weight = 1f - d / radius * 0.75f;
                     weight *= weight; // concentrated where it struck, so the worst of it shows there
-                    // A block spanning several cells takes its share once, at its anchor, as hard as its nearest cell.
-                    if (cellBlock.IsFiller || s.Catalogue.Types[cellBlock.Type].Multi)
-                    {
-                        Int3 anchor = q + cellBlock.ToAnchor;
-                        int at = struck.FindIndex(e => e.p == anchor);
-                        if (at >= 0)
-                        {
-                            if (weight > struck[at].weight) { total += weight - struck[at].weight; struck[at] = (anchor, weight); }
-                            continue;
-                        }
-                        q = anchor;
-                    }
-                    struck.Add((q, weight));
-                    total += weight;
+                    Int3 anchor = q + cell.ToAnchor;
+                    struck[anchor] = MathF.Max(weight, struck.GetValueOrDefault(anchor));
                 }
 
+        float total = struck.Values.Sum();
         foreach (var (q, weight) in struck)
         {
-            if (!s.TryGet(q, out Block b)) continue;
+            Block b = s.Get(q);
             float dealt = hp * weight / total * (1f - s.StatsOf(b).Resist[DamageType.Kinetic]);
             Apply(s, q, b, dealt, report, q.ToVector3() - into * 0.5f, -into);
         }
@@ -165,39 +155,23 @@ public static class Damage
     {
         int r = (int)MathF.Ceiling(radius);
         Int3 c = Int3.Round(centre);
-        // A block spanning several cells is hit once, by its nearest cell.
-        HashSet<Int3> anchorsHit = s.MultiCellBlocks > 0 ? NearestCells(s, c, r, centre, radius) : null;
+        // Each block is hit once, by its nearest cell, however many cells it spans.
+        var nearest = new Dictionary<Int3, (Int3 cell, float distance)>();
         for (int x = -r; x <= r; x++)
             for (int y = -r; y <= r; y++)
                 for (int z = -r; z <= r; z++)
                 {
                     Int3 p = c + new Int3(x, y, z);
                     float distance = Vector3.Distance(p.ToVector3(), centre);
-                    if (distance > radius) continue;
-                    if (anchorsHit != null && s.TryGet(p, out Block cell) && (cell.IsFiller || s.Catalogue.Types[cell.Type].Multi) && !anchorsHit.Contains(p)) continue;
-                    Vector3 away = p.ToVector3() - centre;
-                    Hit(s, p, type, amount * (1f - distance / radius * 0.75f), report, p.ToVector3(),
-                        away.LengthSquared() > 1e-4f ? Vector3.Normalize(away) : Vector3.Zero);
-                }
-    }
-
-    /// <summary>For each block spanning several cells in the blast, the one cell of it nearest the centre.</summary>
-    static HashSet<Int3> NearestCells(Structure s, Int3 c, int r, Vector3 centre, float radius)
-    {
-        var nearest = new Dictionary<Int3, (Int3 cell, float d)>();
-        for (int x = -r; x <= r; x++)
-            for (int y = -r; y <= r; y++)
-                for (int z = -r; z <= r; z++)
-                {
-                    Int3 p = c + new Int3(x, y, z);
-                    if (!s.TryGet(p, out Block b) || !s.Catalogue.Types[b.Type].Multi) continue;
-                    float d = Vector3.Distance(p.ToVector3(), centre);
-                    if (d > radius) continue;
+                    if (distance > radius || !s.TryGet(p, out Block b)) continue;
                     Int3 anchor = p + b.ToAnchor;
-                    if (!nearest.TryGetValue(anchor, out var best) || d < best.d) nearest[anchor] = (p, d);
+                    if (!nearest.TryGetValue(anchor, out var best) || distance < best.distance) nearest[anchor] = (p, distance);
                 }
-        var cells = new HashSet<Int3>();
-        foreach (var (cell, _) in nearest.Values) cells.Add(cell);
-        return cells;
+        foreach (var (p, distance) in nearest.Values)
+        {
+            Vector3 away = p.ToVector3() - centre;
+            Hit(s, p, type, amount * (1f - distance / radius * 0.75f), report, p.ToVector3(),
+                away.LengthSquared() > 1e-4f ? Vector3.Normalize(away) : Vector3.Zero);
+        }
     }
 }

@@ -92,7 +92,7 @@ public partial class GhostPreview : Node3D
         ArrayMesh cube = OutlineCube(s);
         while (_blocked.Count < cells.Count)
         {
-            var node = new MeshInstance3D { Mesh = cube, MaterialOverride = MaterialFor(Invalid), CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, Visible = false };
+            var node = new MeshInstance3D { MaterialOverride = MaterialFor(Invalid), CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, Visible = false };
             AddChild(node);
             _blocked.Add(node);
         }
@@ -113,12 +113,11 @@ public partial class GhostPreview : Node3D
         _outlineMaterial.SetShaderParameter("tint", color);
         float size = s.Grid.CellSize;
         Vector3 centre = new(cell.X, cell.Y, cell.Z), extent = Vector3.One;
-        if (s.TryGetBlock(cell, out Int3 anchor, out Block b) && s.TypeOf(b).Multi)
+        if (s.TryGetBlock(cell, out Int3 anchor, out Block b))
         {
             System.Numerics.Vector3 c = s.CentreOf(anchor, b);
             Int3 w = Footprint.WorldSize(s.TypeOf(b), b.Rot);
-            centre = new Vector3(c.X, c.Y, c.Z);
-            extent = new Vector3(w.X, w.Y, w.Z);
+            (centre, extent) = (new Vector3(c.X, c.Y, c.Z), new Vector3(w.X, w.Y, w.Z));
         }
         _outline.GlobalTransform = frame * new Transform3D(Basis.Identity.Scaled(extent * 1.03f), centre * size);
         _outline.Visible = true;

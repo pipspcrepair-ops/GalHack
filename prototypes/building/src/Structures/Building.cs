@@ -107,14 +107,13 @@ public static class Building
     /// </summary>
     public static PlaceError Check(Structure s, Int3 p, in Block b)
     {
-        BlockType t = s.TypeOf(b);
-        if (!Footprint.IsMulti(t)) return CheckCell(s, p, b, t);
         if (Blocked(s, p, b).Count > 0) return PlaceError.Occupied;
+        BlockType t = s.TypeOf(b);
         if (s.Count == 0) return t.IsCore ? PlaceError.None : PlaceError.StartWithCore;
         if (t.IsCore && s.Core != null) return PlaceError.OneCoreOnly;
 
         bool touching = false;
-        foreach (Int3 cell in Footprint.Cells(p, t, b.Rot))
+        foreach (Int3 cell in s.CellsOf(p, b))
         {
             Block mine = cell == p ? b : Footprint.Filler(b, p, cell);
             byte outer = Footprint.OuterMask(t, mine);
@@ -125,23 +124,6 @@ public static class Building
                 if (s.AttachCoverage(mine, d) != Coverage.None && s.AttachCoverage(n, d.Opposite()) != Coverage.None)
                     return PlaceError.None;
             }
-        }
-        return touching ? PlaceError.NoSharedFace : PlaceError.NotAttached;
-    }
-
-    static PlaceError CheckCell(Structure s, Int3 p, in Block b, BlockType t)
-    {
-        if (s.Has(p)) return PlaceError.Occupied;
-        if (s.Count == 0) return t.IsCore ? PlaceError.None : PlaceError.StartWithCore;
-        if (t.IsCore && s.Core != null) return PlaceError.OneCoreOnly;
-
-        bool touching = false;
-        foreach (Dir d in Dirs.All)
-        {
-            if (!s.TryGet(p + d.Vec(), out Block n)) continue;
-            touching = true;
-            if (s.AttachCoverage(b, d) != Coverage.None && s.AttachCoverage(n, d.Opposite()) != Coverage.None)
-                return PlaceError.None;
         }
         return touching ? PlaceError.NoSharedFace : PlaceError.NotAttached;
     }
@@ -175,7 +157,6 @@ public static class Building
     {
         var copies = new List<Placement> { new(p, b, 0) };
         BlockType t = s.TypeOf(b);
-        bool multi = Footprint.IsMulti(t);
         for (int axis = 0; axis < 3; axis++)
         {
             if (!sym.On(axis)) continue;
@@ -183,25 +164,15 @@ public static class Building
             for (int i = 0; i < count; i++)
             {
                 Block mirrored = MirrorBlock(s, copies[i].Block, axis);
-                // A block spanning several cells mirrors as a whole: its cells mirror, and its anchor
-                // is wherever the mirrored turn's anchor falls among them.
-                Int3 m = multi
-                    ? Footprint.MirrorAnchor(copies[i].Pos, t, copies[i].Block.Rot, mirrored.Rot, c => sym.Mirror(c, axis))
-                    : sym.Mirror(copies[i].Pos, axis);
-                if (multi ? copies.Any(c => Overlap(s, c.Pos, c.Block, m, mirrored)) : copies.Any(c => c.Pos == m)) continue;
+                Int3 m = Footprint.MirrorAnchor(copies[i].Pos, t, copies[i].Block.Rot, mirrored.Rot, c => sym.Mirror(c, axis));
+                if (copies.Any(c => Overlap(s, c.Pos, c.Block, m, mirrored))) continue;
                 copies.Add(new Placement(m, mirrored, copies[i].Mirrors | (1 << axis)));
             }
         }
         return copies;
     }
 
-    static bool Overlap(Structure s, Int3 a, in Block ba, Int3 b, in Block bb)
-    {
-        var cells = new HashSet<Int3>(s.CellsOf(a, ba));
-        foreach (Int3 c in s.CellsOf(b, bb))
-            if (cells.Contains(c)) return true;
-        return false;
-    }
+    static bool Overlap(Structure s, Int3 a, Block ba, Int3 b, Block bb) => s.CellsOf(a, ba).Intersect(s.CellsOf(b, bb)).Any();
 
     /// <summary>A block's mirror image: orientation through the shape's own symmetry, and its face paint swapped across the plane.</summary>
     public static Block MirrorBlock(Structure s, Block b, int axis)

@@ -161,8 +161,7 @@ public sealed class Structure
     }
 
     /// <summary>Every cell a block at <paramref name="anchor"/> fills, anchor first.</summary>
-    public IEnumerable<Int3> CellsOf(Int3 anchor, in Block b) =>
-        Footprint.IsMulti(Catalogue.Types[b.Type]) ? Footprint.Cells(anchor, Catalogue.Types[b.Type], b.Rot) : new[] { anchor };
+    public IEnumerable<Int3> CellsOf(Int3 anchor, in Block b) => Footprint.Cells(anchor, Catalogue.Types[b.Type], b.Rot);
 
     /// <summary>The middle of a block in cell units: its anchor's centre, or the middle of all its cells.</summary>
     public System.Numerics.Vector3 CentreOf(Int3 anchor, in Block b) =>
@@ -175,44 +174,31 @@ public sealed class Structure
     /// </summary>
     public void Set(Int3 p, Block block)
     {
-        bool multi = !block.IsEmpty && !block.IsFiller && Footprint.IsMulti(Catalogue.Types[block.Type]);
-        if (MultiCellBlocks == 0 && _fillers == 0 && !multi)
+        bool multi = !block.IsEmpty && !block.IsFiller && Catalogue.Types[block.Type].Multi;
+        if (MultiCellBlocks > 0 || _fillers > 0)
         {
-            SetCell(p, block);
-            return;
+            // Whatever block held this cell goes first, whole, unless this rewrites that same block's cell.
+            if (TryGet(p, out Block old) && InMulti(old) && !(block.IsFiller && block.Type == old.Type && block.ToAnchor == old.ToAnchor))
+                ClearBlock(p + old.ToAnchor);
         }
-
-        // Whatever block held this cell goes first, whole, unless this rewrites that same block's cell.
-        if (TryGet(p, out Block old) && (old.IsFiller || Footprint.IsMulti(Catalogue.Types[old.Type])))
-        {
-            bool sameCell = block.IsFiller && block.Type == old.Type && block.ToAnchor == old.ToAnchor;
-            if (!sameCell) ClearBlock(p + old.ToAnchor, p);
-        }
-        if (!multi)
-        {
-            SetCell(p, block);
-            return;
-        }
-
-        foreach (Int3 cell in Footprint.Cells(p, Catalogue.Types[block.Type], block.Rot))
-        {
-            if (cell == p) continue;
-            if (TryGet(cell, out Block there) && (there.IsFiller || Footprint.IsMulti(Catalogue.Types[there.Type])) && cell + there.ToAnchor != p)
-                ClearBlock(cell + there.ToAnchor, cell);
-            SetCell(cell, Footprint.Filler(block, p, cell));
-        }
+        if (multi)
+            foreach (Int3 cell in CellsOf(p, block))
+            {
+                if (cell == p) continue;
+                if (TryGet(cell, out Block there) && InMulti(there) && cell + there.ToAnchor != p) ClearBlock(cell + there.ToAnchor);
+                SetCell(cell, Footprint.Filler(block, p, cell));
+            }
         SetCell(p, block);
     }
 
-    /// <summary>Clears every cell of the block anchored at <paramref name="anchor"/>, and <paramref name="from"/> if it still points there.</summary>
-    void ClearBlock(Int3 anchor, Int3 from)
+    bool InMulti(in Block b) => b.IsFiller || Catalogue.Types[b.Type].Multi;
+
+    /// <summary>Clears every cell still pointing at <paramref name="anchor"/>: a whole block, or what's left of a broken one.</summary>
+    void ClearBlock(Int3 anchor)
     {
-        if (TryGet(anchor, out Block a) && !a.IsFiller && Footprint.IsMulti(Catalogue.Types[a.Type]))
-        {
-            foreach (Int3 cell in Footprint.Cells(anchor, Catalogue.Types[a.Type], a.Rot))
-                if (TryGet(cell, out Block f) && (cell == anchor || f.IsFiller && cell + f.ToAnchor == anchor)) SetCell(cell, default);
-        }
-        if (TryGet(from, out Block left) && from + left.ToAnchor == anchor) SetCell(from, default);
+        if (!TryGet(anchor, out Block a)) return;
+        foreach (Int3 cell in CellsOf(anchor, a))
+            if (TryGet(cell, out Block f) && f.Type == a.Type && cell + f.ToAnchor == anchor) SetCell(cell, default);
     }
 
     /// <summary>Writes one cell, nothing else.</summary>
@@ -231,10 +217,10 @@ public sealed class Structure
         bool was = !cell.IsEmpty, now = !block.IsEmpty;
         if (was && Core == p) Core = null;
         if (was && cell.IsFiller) _fillers--;
-        else if (was && Footprint.IsMulti(Catalogue.Types[cell.Type])) MultiCellBlocks--;
+        else if (was && Catalogue.Types[cell.Type].Multi) MultiCellBlocks--;
         cell = block;
         if (now && block.IsFiller) _fillers++;
-        else if (now && Footprint.IsMulti(Catalogue.Types[block.Type])) MultiCellBlocks++;
+        else if (now && Catalogue.Types[block.Type].Multi) MultiCellBlocks++;
         if (now && !block.IsFiller && Catalogue.Types[block.Type].IsCore) Core = p;
 
         if (!was && now) { chunk.Count++; Count++; }

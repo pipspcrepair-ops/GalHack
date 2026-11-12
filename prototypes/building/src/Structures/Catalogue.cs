@@ -224,11 +224,13 @@ public sealed class Catalogue
     // component's face list says for that side, so "+z" means the whole +z side of the block.
 
     /// <summary>World faces the block touches at all (full or partial): it can attach through these.</summary>
-    public byte TouchMask(in Block b) => _types[b.Type].Multi ? (byte)(_touch[FaceIndex(b)] & Footprint.OuterMask(_types[b.Type], b)) : _touch[FaceIndex(b)];
+    public byte TouchMask(in Block b) => Outer(b, _touch[FaceIndex(b)]);
     /// <summary>World faces the block covers completely.</summary>
-    public byte FullMask(in Block b) => _types[b.Type].Multi ? (byte)(_full[FaceIndex(b)] & Footprint.OuterMask(_types[b.Type], b)) : _full[FaceIndex(b)];
+    public byte FullMask(in Block b) => Outer(b, _full[FaceIndex(b)]);
     /// <summary>World faces fully and opaquely covered: the neighbour's face behind is hidden.</summary>
-    public byte OccludeMask(in Block b) => _types[b.Type].Multi ? (byte)(_occlude[FaceIndex(b)] & Footprint.OuterMask(_types[b.Type], b)) : _occlude[FaceIndex(b)];
+    public byte OccludeMask(in Block b) => Outer(b, _occlude[FaceIndex(b)]);
+
+    byte Outer(in Block b, byte mask) => _types[b.Type].Multi ? (byte)(mask & Footprint.OuterMask(_types[b.Type], b)) : mask;
 
     /// <summary>True if the whole block, all round, hides what's behind it (a block spanning several cells: every outer face).</summary>
     public bool OpaqueAllRound(in Block b) => _occlude[FaceIndex(b)] == 0x3f;

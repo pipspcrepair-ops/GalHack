@@ -11,12 +11,8 @@ namespace GalHack.Structures;
 /// </summary>
 public static class Connectivity
 {
-    public static HashSet<Int3> Reachable(Structure s, Int3 start, Int3? without = null)
-    {
-        if (without is Int3 gone && s.MultiCellBlocks > 0 && s.TryGetBlock(gone, out Int3 anchor, out Block b))
-            return Reachable(s, start, new HashSet<Int3>(s.CellsOf(anchor, b)));
-        return Reachable(s, start, without is Int3 w ? new HashSet<Int3> { w } : null);
-    }
+    public static HashSet<Int3> Reachable(Structure s, Int3 start, Int3? without = null) =>
+        Reachable(s, start, without is Int3 w && s.TryGetBlock(w, out Int3 anchor, out Block b) ? new HashSet<Int3>(s.CellsOf(anchor, b)) : null);
 
     /// <summary>The cells joined to <paramref name="start"/>, as if the cells in <paramref name="without"/> were empty.</summary>
     public static HashSet<Int3> Reachable(Structure s, Int3 start, HashSet<Int3> without)
@@ -46,16 +42,10 @@ public static class Connectivity
         if (!s.TryGetBlock(removed, out Int3 anchor, out Block block)) return 0;
         if (s.Core is not Int3 core || core == anchor) return s.BlockCount - 1;
 
-        if (s.MultiCellBlocks == 0)
-        {
-            // A block joined to one neighbour or none is a leaf: removing it cuts nothing off.
-            int joined = Dirs.All.Count(d => s.Joined(removed, d));
-            if (joined <= 1) return 0;
-            return s.Count - 1 - Reachable(s, core, removed).Count;
-        }
-        // Counted in blocks: a block spanning several cells goes, and counts, as one.
-        HashSet<Int3> kept = Reachable(s, core, new HashSet<Int3>(s.CellsOf(anchor, block)));
-        return s.BlockCount - 1 - kept.Count(c => !s.Get(c).IsFiller);
+        // A one-cell block joined to one neighbour or none is a leaf: removing it cuts nothing off.
+        if (!s.TypeOf(block).Multi && Dirs.All.Count(d => s.Joined(anchor, d)) <= 1) return 0;
+        HashSet<Int3> kept = Reachable(s, core, removed);
+        return s.BlockCount - 1 - (s.MultiCellBlocks == 0 ? kept.Count : kept.Count(c => !s.Get(c).IsFiller));
     }
 
     /// <summary>The structure's separate pieces, largest first.</summary>

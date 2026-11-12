@@ -52,7 +52,7 @@ public partial class BlockDoors : Node3D
 
     /// <summary>Whether you are in a door's doorway or its leaves' way.</summary>
     static bool InWay(Vessel v, Int3 cell, Vector3 feet) =>
-        v.ToWorld(Centre(v, cell)).DistanceTo(feet + Vector3.Up * 0.9f) < v.Structure.Grid.CellSize * 0.5f * Span(v, cell) + Slice.Player.Survivor.Radius + 0.1f;
+        v.ToWorld(Centre(v, cell)).DistanceTo(feet + Vector3.Up * 0.9f) < Reach(v, cell) + Slice.Player.Survivor.Radius + 0.1f;
 
     /// <summary>A door's middle, structure metres: all of it, when it spans several cells.</summary>
     static N.Vector3 Centre(Vessel v, Int3 cell) =>
@@ -61,11 +61,11 @@ public partial class BlockDoors : Node3D
     /// <summary>A door's size in cells, in its own frame (one cell for most).</summary>
     static Int3 SizeOf(Vessel v, Int3 cell) => v.Structure.TryGet(cell, out Block b) ? v.Structure.TypeOf(b).Size : GalHack.Structures.Footprint.One;
 
-    /// <summary>A door's widest side, in cells.</summary>
-    static int Span(Vessel v, Int3 cell)
+    /// <summary>Half a door's widest side, m.</summary>
+    static float Reach(Vessel v, Int3 cell)
     {
         Int3 n = SizeOf(v, cell);
-        return Math.Max(n.X, Math.Max(n.Y, n.Z));
+        return v.Structure.Grid.CellSize * 0.5f * Math.Max(n.X, Math.Max(n.Y, n.Z));
     }
     int _tick;
     static StandardMaterial3D _body, _band;
@@ -95,12 +95,11 @@ public partial class BlockDoors : Node3D
         foreach (var (v, k) in _known)
         {
             if (v.IsWreck) continue;
-            float size = v.Structure.Grid.CellSize;
             foreach (Int3 cell in k.Doors)
             {
                 Vector3 c = v.ToWorld(Centre(v, cell));
                 float along = (c - eye).Dot(dir);
-                if (along < 0f || along > nearest || (eye + dir * along - c).Length() > size * 0.5f * Span(v, cell)) continue;
+                if (along < 0f || along > nearest || (eye + dir * along - c).Length() > Reach(v, cell)) continue;
                 nearest = along;
                 best = (v, cell, _slides.TryGetValue((v, cell), out Slide s) ? s.Target > 0.5f : IsOpen(v, cell));
             }
@@ -157,7 +156,7 @@ public partial class BlockDoors : Node3D
     static void Pose(Slide s, float size)
     {
         // Sliding apart into the frame: each leaf narrows toward its side as it goes.
-        float w = MathF.Max(0.02f, 1f - s.Open), y = -0.02f * size * (s.Vessel.Structure.TryGet(s.Cell, out Block b) ? s.Vessel.Structure.TypeOf(b).Size.Y : 1);
+        float w = MathF.Max(0.02f, 1f - s.Open), y = -0.02f * size;
         s.A.Scale = new Vector3(w, 1f, 1f);
         s.B.Scale = new Vector3(w, 1f, 1f);
         s.A.Position = new Vector3(-s.Half * (0.5f + s.Open * 0.5f), y, 0f);

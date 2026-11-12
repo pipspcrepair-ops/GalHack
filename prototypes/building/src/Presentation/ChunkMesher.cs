@@ -521,10 +521,7 @@ public static class ChunkMesher
                             if (part.Grid is GridSize g && g != s.Grid.Size) continue;
                             if (part.Mount is Dir mount)
                             {
-                                Dir world = Orientations.ToWorld(b.Rot, mount);
-                                Int3 step = world.Vec();
-                                if (t.Multi ? SideHidden(s, origin + new Int3(x, y, z), b, t, world)
-                                    : Hidden(c, world, c + step.X + step.Y * StrideY + step.Z * StrideZ)) continue;
+                                if (FaceHidden(s, b, c, centre, Orientations.ToWorld(b.Rot, mount))) continue;
                             }
                             foreach (Polygon poly in part.Polygons)
                                 AddPart(s, b, c, centre, size, poly, part, data.Opaque);
@@ -545,9 +542,7 @@ public static class ChunkMesher
         if (poly.Boundary is Dir local)
         {
             Dir world = Orientations.ToWorld(b.Rot, local);
-            Int3 step = world.Vec();
-            if (bt.Multi ? SideHidden(s, Int3.Round(ToN(centre)), b, bt, world)
-                : Hidden(c, world, c + step.X + step.Y * StrideY + step.Z * StrideZ)) return;
+            if (FaceHidden(s, b, c, centre, world)) return;
             slot = world;
         }
         else slot = Dirs.Closest(ToN(basis * ToG(poly.Normal)));
@@ -562,7 +557,6 @@ public static class ChunkMesher
             if (poly.SmoothAxis >= 0)
             {
                 NVec radial = Geometry.Set(poly.Points[i] - smoothCentre, poly.SmoothAxis, 0f);
-                if (bt.Multi) radial *= ToN(new Vector3(bt.Size.X, bt.Size.Y, bt.Size.Z));
                 _normals[i] = (basis * ToG(NVec.Normalize(radial))).Normalized();
             }
         }
@@ -588,20 +582,20 @@ public static class ChunkMesher
     static NVec ToN(Vector3 v) => new(v.X, v.Y, v.Z);
 
     /// <summary>
-    /// True if a whole side of a block spanning several cells is hidden: every cell beyond that
-    /// side is a neighbour whose face hides it. Read from the structure, since the block's far
-    /// cells can lie beyond the chunk's one-cell border.
+    /// True if the block's face towards <paramref name="world"/> is hidden. A block spanning several
+    /// cells is read from the structure, since its far cells can lie beyond the chunk's one-cell
+    /// border: that whole side is hidden only if every cell beyond it hides it.
     /// </summary>
-    static bool SideHidden(Structure s, Int3 anchor, in Block b, BlockType t, Dir world)
+    static bool FaceHidden(Structure s, in Block b, int c, Vector3 centre, Dir world)
     {
-        Catalogue cat = s.Catalogue;
-        int back = 1 << ((int)world ^ 1);
         Int3 step = world.Vec();
-        foreach (Int3 cell in Footprint.Cells(anchor, t, b.Rot))
+        if (!s.Catalogue.Types[b.Type].Multi) return Hidden(c, world, c + step.X + step.Y * StrideY + step.Z * StrideZ);
+        Int3 anchor = Int3.Round(ToN(centre));
+        int back = 1 << ((int)world ^ 1);
+        foreach (Int3 cell in s.CellsOf(anchor, b))
         {
-            Int3 beyond = cell + step;
-            if (s.TryGet(beyond, out Block n) && n.Type == b.Type && beyond + n.ToAnchor == anchor) continue; // its own cell
-            if (!s.TryGet(beyond, out n) || (cat.OccludeMask(n) & back) == 0) return false;
+            if (!s.TryGet(cell + step, out Block n)) return false;
+            if (cell + step + n.ToAnchor != anchor && (s.Catalogue.OccludeMask(n) & back) == 0) return false;
         }
         return true;
     }
