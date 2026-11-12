@@ -22,6 +22,8 @@ public sealed class MeshBuffer
     public readonly List<float> Colors = new();
     public readonly List<float> Codes = new();
     public readonly List<int> Indices = new();
+    /// <summary>The first vertex of each grid cell face (a cube's or the ground's, or a merged run of them): four vertices of its own, never over another (<see cref="MeshStandoff"/>).</summary>
+    internal readonly List<int> Grid = new();
     public int VertexCount => Positions.Count / 3;
 
     public void Vertex(V3 p, V3 n, float r, float g, float b, float a, float code = 0f, float seed = 0f)
@@ -636,9 +638,17 @@ public static class Mesher
                 bool solid = _o.Collision && (!CollidesFull(n) || IsRock(n));
                 if (!_o.Drawn && !solid) continue;
                 planes ??= _planes.TryGetValue(ch, out Planes got) ? got : _planes[ch] = new Planes();
-                Block fb = f == 4 && Painted(p) is Block paint ? paint : b;
-                Surface fs = fb.Equals(b) ? bodySurf : Shapes.SurfaceOf(fb.Material);
-                int key = Key(fb.Equals(b) ? body : fb.Color, fs, _o.Drawn ? (int)FaceCode(fb.Equals(b) ? p : PaintedLike(p, fb), fb, Normals[f], false, fs) & 0xFF : 0);
+                int key = 0;
+                if (_o.Drawn)
+                {
+                    // (Not Block.Equals: on a plain struct it boxes both, and this runs for every face of every cube.)
+                    if (f == 4 && Painted(p) is Block paint)
+                    {
+                        Surface ps = Shapes.SurfaceOf(paint.Material);
+                        key = Key(paint.Color, ps, (int)FaceCode(PaintedLike(p, paint), paint, Normals[f], false, ps) & 0xFF);
+                    }
+                    else key = Key(body, bodySurf, (int)FaceCode(p, b, Normals[f], false, bodySurf) & 0xFF);
+                }
                 var (u, v, k) = Face2(f, l);
                 int plane = f * side + k;
                 if (_o.Drawn) Plane(planes.Drawn, plane, side)[v * side + u] = key;
@@ -713,6 +723,7 @@ public static class Mesher
             Corners(f, out V3 c0, out V3 c1, out V3 c2, out V3 c3);
             V3 At(V3 c) => new(at.X + c.X * size.X, at.Y + c.Y * size.Y, at.Z + c.Z * size.Z);
             int i0 = buf.VertexCount;
+            buf.Grid.Add(i0);
             V3 n = Normals[f];
             buf.Vertex(At(c0), n, r, g, b, alpha, code, _seed);
             buf.Vertex(At(c1), n, r, g, b, alpha, code, _seed);
@@ -753,10 +764,14 @@ public static class Mesher
             foreach (Dir d in Dirs.Horizontal)
             {
                 Int3 q = p + d.Vec();
-                if (_g.Get(q + Int3.Up).Equals(paint) && BlockInfo.IsFullCube(_g.Get(q).Type)) return q;
+                if (Same(_g.Get(q + Int3.Up), paint) && BlockInfo.IsFullCube(_g.Get(q).Type)) return q;
             }
             return p;
         }
+
+        /// <summary>Two blocks alike in every field (Block.Equals would box both).</summary>
+        static bool Same(in Block a, in Block b) =>
+            a.Type == b.Type && a.Material == b.Material && a.Role == b.Role && a.Facing == b.Facing && a.Variant == b.Variant && a.Color == b.Color;
 
         void Cube(Int3 p, Block b)
         {
@@ -874,6 +889,7 @@ public static class Mesher
             V3 o = V3.Of(p);
             float shade = (surf == Surface.Glow ? 1f : FaceShade[f]) * jitter;
             int i0 = buf.VertexCount;
+            buf.Grid.Add(i0);
             Int3 outN = p + Dirs.All[f].Vec();
             float a0 = Corner(c0), a1 = Corner(c1), a2 = Corner(c2), a3 = Corner(c3);
 
