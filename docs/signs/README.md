@@ -92,7 +92,7 @@ The marks have two small rules of their own:
 
 They were invented for GalHack, not taken from the historic hobo signs. Where a mark came close to a historic sign as remembered, it was changed: way out began as a ring and arrow and became a gap in a wall, and the nest's eggs were pulled apart so they don't interlock.
 
-The warding mark is deliberately left unexplained here. Keep it that way in game: no label, no tooltip, no codex entry.
+The scribbled warding mark (`marks/warding`) and its three companions mean "something wrong here". They are for places Husks have warped and for anomalies in general. Keep all four unexplained in game: no label, no tooltip, no codex entry. The Husk and Hollow marks are listed under Husks and Hollows below.
 
 ## Faction sigils
 
@@ -106,7 +106,7 @@ One sigil for each of the seven factions in section 17 of `docs/DESIGN.md`, draw
 | Ledger Exchange | A coin split on a step: one side given, one side got. Final |
 | Carrion Reavers | A kill tally: four bars and the strike that closes the gate. Final |
 | Freeholders | A lantern: somebody left the light on, and that is all a safe place is. Final |
-| Hollow Bloom | Grown, not built. Left out of the rounds so far: its files are still in `sigils/`, but it isn't on the sheet |
+| Hollow Bloom | Retired. Hollows are now a fungal infection of wildlife, so there is no faction, and Husks have no sigil: it is not that sort of race. Its files are still in `sigils/`, off the sheet |
 
 Two sheets record the rounds. `sigils-attempts.png` shows three ideas per faction beside the sigils of that time, with files in `sigils/attempts/`. `sigils-freeholders.png` shows the Freeholders reroll in line with the chosen five, with files in `sigils/attempts-freeholders/`.
 
@@ -126,6 +126,38 @@ Blocks come first, then bars. A tile has room for two blocks and four bars, so o
 
 The six wings are cobalt (solid), orange (centre stripe), yellow (checker), green (chevrons), magenta (diagonals) and white (notched edge). Red and black are left out so a marker is never mistaken for a warning or for Void. Patterns repeat every 64 units, so a run of tiles has no seam. `zones/` holds a sample of 14. `tools/build_zones.py` can make any other wing and level.
 
+## Husks and Hollows
+
+The final set is on `husks-hollows-final.png`, each piece at 256 and at 64 pixels with its meaning. Husks are people taken over by worm parasites. Hollows are a fungal infection of wildlife only: people can't catch it. Husks have no sigil, as they are not that sort of race, and the old bloom sigil stays retired.
+
+### Traveller marks
+
+All are in `marks/`, in the same chalk style as the rest. Where a meaning has several marks they are regional variants: survivors in different places draw it differently.
+
+| Meaning | Files |
+|---|---|
+| **Something wrong here**: places Husks have warped, and anomalies in general | `warding` (the scribble), `wrong_room` (a room that doesn't fit), `wrong_needle` (a needle that won't settle), `wrong_shadows` (two shadows) |
+| **Husks here**: six variants | `husk_mouth_ears` (head with worms from mouth and ears), `husk_eyes` (worms from the eyes), `husk_open_head` (worms from an open head), `husk_eye` (an eye and its worm), `husk_hanging` (the mound mark turned over, ground taken away), `warding_2` (the mound mark as approved) |
+| **Hollow**: the beast wearing it, with no slash | `hollow_beast_back` (caps on its back), `hollow_beast_long` (long-necked), `hollow_beast_low` (low, a row of caps), `hollow_beast_horned` (horns gone to caps) |
+
+### Signs
+
+These sit with the approved signs in `svg/` and `png/`, in the firmer frame. They are not in the 81-sign set, so `sign-sheet.png` doesn't show them. None has any text in it. The person is a plain public-sign pictogram, a round head over a simple body, and the beast is the same manner. Both are drawn from scratch for GalHack.
+
+| Meaning | Files | Notes |
+|---|---|---|
+| **Hollow hazard** | `hollow_hazard` | Danger, two pips. An infected beast, with caps growing from its back and mould spots in its body |
+| **Hollow spread on boots** | `hollow_spread_boots` | Danger, two pips. A cap, spores falling, and the boot print they land on |
+| **Husk hazard**: quarantine zones, screening points, infested facilities | `husk_hazard`, `husk_hazard_paper` | Danger, three pips. A head-and-shoulders pictogram with worms laid across the face and out past the outline. The worms swap colour where they cross the outline, as a line does when it goes half inside something. Two colourways: red field, and black on a paper field |
+| **Husk group**: Husks among people | `husk_group` | Danger, three pips. A crowd of busts, front ones larger, with thin gaps between. The carrier is the one behind the rest, with worms rising over the others |
+| **Husk screening**: scanner gates at facility entrances | `husk_screening_gate`, `husk_screening_gate_pass`, `husk_screening_gate_fail`, `husk_screening_arch`, `husk_screening_arch_fail` | Order, no pips. A full-length pictogram in a gate or an arch, with the scan line swapping colour across the figure. Plain is a screening point, a check is a pass, and worms at the head is a fail |
+
+The Husk signs have no stencils yet.
+
+### Attempts
+
+The drafts that were not picked are kept, as they were reviewed, in `attempts/husks-hollows/`: the old cap-and-slash Hollow marks in `marks/`, the other sign drafts in `svg/` and `png/`, and the round 2 review sheet `husks-hollows-sheet.png`. They are not part of the live set.
+
 ## Rebuilding
 
 Run these from `tools/`, signs first, as the others import from it and the sigil sheet uses its PNGs:
@@ -136,7 +168,10 @@ python build_marks.py
 python build_sigils.py
 python build_freeholders_attempts.py
 python build_zones.py
+python build_husks_hollows.py
 ```
+
+`build_husks_hollows.py` writes only the Husk and Hollow pieces, the drafts that were not picked, and `husks-hollows-final.png`, and touches no approved file. `build_signs.py` and `build_marks.py` also take `--husks-hollows` to write just those pieces. A full run of either puts them back after clearing its folders.
 
 Each clears its own output folders, writes SVGs, renders them with Godot's built-in SVG rasteriser and composes its sheets with PIL. Set `GALHACK_GODOT` if Godot isn't at the default path. Nothing else needs installing.
 
@@ -151,3 +186,5 @@ Each finished sign was compared by eye, one at a time, with the reference sheet 
 Other redraws came from shapes that read as something else. Explosives was a six-pointed star, which reads as a religious symbol, and it is now an uneven nine-point burst. Sealed by order read as the letter phi, and bulkhead door as a sigma.
 
 The traveller marks were compared with the historic hobo signs from memory, not against a source. The Traveller T5 symbol font wasn't available, so it hasn't been compared or consulted.
+
+The Husk and Hollow signs use a plain person and a plain four-legged animal, each drawn from scratch in the scripts. The owner's reference pictograms were not traced. Worms, caps, spores and the boot print are our own shapes, and the frame is the existing one.
