@@ -44,6 +44,20 @@ public sealed partial class WorldLife
             Aggressive(h, 8f);
             list.Add(h);
         }
+        // A world with nothing of its own that walks (a dead or airless one): the growth still has its
+        // beasts, a stalker of the world's make taken by it, so a place it took always holds them.
+        if (list.Count == 0)
+        {
+            ulong seed = Rng.Mix(Seed, 0x4012);
+            Species h = _generator.RollOne(seed, "stalker", Behaviour.Predator, Alienness);
+            h.Mate = null;
+            h.Young = null;
+            h.Index = 299;
+            h.Id = $"{Seed:x}-stalker-hollow";
+            _generator.CorruptSpecies(h, Rng.Mix(seed, 0x4011));
+            Aggressive(h, 8f);
+            list.Add(h);
+        }
         return list;
     }
 
