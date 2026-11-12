@@ -205,6 +205,8 @@ public partial class MoonTest : Node
             if (!_game.Spaceflight.MoonInView(out string why) && lost == null) { shown = false; lost = why; }
             nearestMoon |= _game.Spaceflight.FlightLine(v).Contains(moon.Name.ToUpperInvariant());
             if (handedOverAt < 0 && orbit.Anchor == moon) handedOverAt = tick;
+            if (tick % 1200 == 0)
+                GD.Print($"  ({tick / 60} s: {v.Body.Position.ToGodot().DistanceTo(Above()):F0} m to go at {v.Body.Velocity.Length():F0} m/s, {moon.Height(v.Body.Position.ToGodot()):F0} m over the moon, frame {orbit.Anchor.Name}, band {_game.Spaceflight.Band:F2}, aligned {_game.Spaceflight.Aligned}, in {_game.Zone.Name}, cpu {probe.LastCpuMs:F1} ms)");
             yield return fly.Current;
         }
         double seconds = watch.Elapsed.TotalSeconds;
