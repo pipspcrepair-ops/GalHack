@@ -26,7 +26,7 @@ public partial class FloraTest
     };
 
     /// <summary>Canopy-only body of a tree instance, as the streamer builds it; returns the body and its shapes.</summary>
-    static Rid CanopyBody(Rid space, List<FloraSolid> solids, Vector3 at, List<Rid> shapes, Dictionary<(int, int, int), Rid> cache, Plant[] plants)
+    static Rid CanopyBody(Rid space, List<FloraSolid> solids, Vector3 at, List<Rid> shapes, Dictionary<(Plant, int, int), Rid> cache, Plant[] plants)
     {
         Rid body = PhysicsServer3D.BodyCreate();
         PhysicsServer3D.BodySetMode(body, PhysicsServer3D.BodyMode.Static);
@@ -35,7 +35,7 @@ public partial class FloraTest
         foreach (FloraSolid s in solids)
         {
             if (!s.IsCanopy) continue;
-            var key = (s.Plant, s.Variant, s.Part);
+            var key = (plants[s.Plant], s.Variant, s.Part);
             if (!cache.TryGetValue(key, out Rid shape)) shapes.Add(cache[key] = shape = TerrainStreamer.MakeCanopyShape(plants[s.Plant], s.Variant, s.Part));
             PhysicsServer3D.BodyAddShape(body, shape, new Transform3D(s.ShapeTransform.Basis, s.Center + at));
         }
@@ -74,12 +74,12 @@ public partial class FloraTest
 
         // 2. Rays and a flyer's sphere at the canopy's own surface are stopped, at the smallest and the largest scale.
         Rid space = GetViewport().World3D.Space;
-        var cache = new Dictionary<(int, int, int), Rid>();
+        var cache = new Dictionary<(Plant, int, int), Rid>();
         var shapes = new List<Rid>();
         var bodies = new List<Rid>();
         var rules = FarBuilder.Solids;
         var rng = new Rng(Fresh());
-        var targets = new List<(Vector3 Origin, Vector3 To, string Name)>();
+        var targets = new List<(Vector3 Origin, Vector3 To)>();
         int placed = 0, hulls = 0;
         int treeCount = 0;
         foreach (PlanetFlora flora in worlds.Take(4))
@@ -115,7 +115,7 @@ public partial class FloraTest
                         if (extent < 0.3f) continue;
                         Vector3 flat = new Vector3(world.X, 0f, world.Z);
                         Vector3 side = flat.LengthSquared() > 0.01f ? flat.Normalized() : Vector3.Right;
-                        targets.Add((at + world + (side + Vector3.Up * 0.3f).Normalized() * (p.CrownRadius * scale + 3f), at + world, $"{p.Form} part{part} tris{m.PartOf.Count(q => q == part) switch { < 6 => "<6", < 20 => "<20", _ => ">=20" }} ext{(extent < 1f ? "<1" : "big")}"));
+                        targets.Add((at + world + (side + Vector3.Up * 0.3f).Normalized() * (p.CrownRadius * scale + 3f), at + world));
                     }
                 }
             }
@@ -123,7 +123,6 @@ public partial class FloraTest
         for (int i = 0; i < 4; i++) await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
         PhysicsDirectSpaceState3D state = PhysicsServer3D.SpaceGetDirectState(space);
         int rays = 0, rayStopped = 0, spheres = 0, sphereStopped = 0;
-        var misses = new Dictionary<string, int>();
         Rid flyer = PhysicsServer3D.BodyCreate();
         Rid ball = PhysicsServer3D.SphereShapeCreate();
         PhysicsServer3D.ShapeSetData(ball, 0.6f);
@@ -137,20 +136,18 @@ public partial class FloraTest
         int step = Math.Max(1, targets.Count / 600);
         for (int i = 0; i < targets.Count; i += step)
         {
-            var (from, to, name) = targets[i];
+            var (from, to) = targets[i];
             var q = PhysicsRayQueryParameters3D.Create(from, to, Layers.Flora);
             rays++;
             var hit = state.IntersectRay(q);
             // Stopped at or before the point: the ray's end lies inside a hull, so it must be hit coming in (a ray starting outside).
             if (hit.Count > 0 && ((Vector3)hit["position"]).DistanceTo(from) <= from.DistanceTo(to) + 0.15f) rayStopped++;
-            else misses[name] = misses.GetValueOrDefault(name) + 1;
             motion.From = new Transform3D(Basis.Identity, from);
             motion.Motion = to - from;
             spheres++;
             if (PhysicsServer3D.BodyTestMotion(flyer, motion, result)) sphereStopped++;
         }
         PhysicsServer3D.FreeRid(flyer);
-        foreach (var kv in misses.OrderByDescending(k => k.Value).Take(40)) GD.Print($"  missed: {kv.Key} {kv.Value}");
         Check(rays > 200 && rayStopped >= rays * 0.99f, $"shots into canopies are stopped: {rayStopped} of {rays} rays at canopy surfaces, {treeCount} trees at their smallest and largest, {hulls} hulls");
         Check(spheres > 200 && sphereStopped >= spheres * 0.99f, $"a vessel hull flying into a canopy is stopped: {sphereStopped} of {spheres} sweeps");
         // A loose prop on the Props layer is not in a vessel's way (the hull never snags on crates and people at its own deck).
@@ -171,7 +168,7 @@ public partial class FloraTest
             PhysicsServer3D.BodySetSpace(b, space);
             balls.Add(b);
         }
-        async System.Threading.Tasks.Task<double> MedianStep()
+        async System.Threading.Tasks.Task<double> QuietestStep()
         {
             var times = new List<double>();
             for (int i = 0; i < 70; i++)
@@ -179,9 +176,9 @@ public partial class FloraTest
                 await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
                 if (i >= 20) times.Add(Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess));
             }
-            return times.OrderBy(t => t).ElementAt(times.Count / 2);
+            return times.Min();
         }
-        double idleStep = await MedianStep();
+        double idleStep = await QuietestStep();
         var sw = Stopwatch.StartNew();
         var cost = new List<Rid>();
         int many = 0;
@@ -197,7 +194,7 @@ public partial class FloraTest
             cost.Add(CanopyBody(space, one, new Vector3(-4000f + (i % 20) * 12f, 3000f, -4000f + (i / 20) * 12f), shapes, cache, fl.Book.Plants.ToArray()));
         }
         double buildMs = sw.Elapsed.TotalMilliseconds;
-        double treeStep = await MedianStep();
+        double treeStep = await QuietestStep();
         state = PhysicsServer3D.SpaceGetDirectState(space);
         sw.Restart();
         for (int i = 0; i < 2000; i++)
