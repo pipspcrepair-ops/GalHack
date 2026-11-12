@@ -36,6 +36,18 @@ public partial class Game
         return Bunker.ExitOf(site);
     }
 
+    /// <summary>Creative: every player weapon (guns and the rest) and the ammo each mode takes, in the locker.</summary>
+    void StockArmoury(SharedStorage locker)
+    {
+        ItemCatalogue items = Zone.Data.Items;
+        foreach (GalHack.Arms.WeaponDef def in Zone.Data.Arms.All)
+        {
+            if (items.Has(def.Item)) locker.Add(def.Item, def.Ammo == def.Item ? 20 : 1); // a mine is its own ammo
+            foreach (GalHack.Arms.WeaponDef d in System.Linq.Enumerable.Prepend(def.Modes, def))
+                if (d.Ammo != "" && d.Ammo != def.Item && items.Has(d.Ammo) && locker.Count(d.Ammo) == 0) locker.Add(d.Ammo, 20);
+        }
+    }
+
     /// <summary>The castaway in their cryopod, the kit in the locker, the bunker their respawn point.</summary>
     void WakeInBunker()
     {
@@ -43,6 +55,7 @@ public partial class Game
         Bunker = Bunker.Dig(Zone, site);
         Zone.Wildlife?.SetBunker(Bunker);
         foreach (var (id, n) in Zone.Data.Rules.Materials.StartKit) Bunker.MineLocker.Loot.Storage.Add(id, n);
+        if (Mode == GameMode.Creative) StockArmoury(Bunker.MineLocker.Loot.Storage);
         Bunker.MineLocker.Loot.Grid.Reconcile();
 
         N.Vector3 stand = Bunker.CryoStand.ToNumerics();
