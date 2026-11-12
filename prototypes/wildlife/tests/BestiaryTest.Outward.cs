@@ -45,6 +45,7 @@ public partial class BestiaryTest
         int bad2 = 0, tris2 = 0, species = 0;
         var worst = new Dictionary<string, int>();
         var byPiece = new Dictionary<string, int>();
+        int shown = 0;
         foreach (var (name, pieces) in bodies)
         {
             species++;
@@ -56,6 +57,7 @@ public partial class BestiaryTest
                 if (bad == 0) continue;
                 worst[name] = worst.GetValueOrDefault(name) + bad;
                 string key = $"{piece.Name} {prim.Shape} {why}";
+                if (shown++ < 12) GD.Print($"      e.g. {name}: {piece.Name} {prim.Shape} size {prim.Size} sides {prim.Sides} bad {bad}");
                 byPiece[key] = byPiece.GetValueOrDefault(key) + bad;
             }
         }
@@ -110,13 +112,20 @@ public partial class BestiaryTest
             if (sn.Dot(n) < -1e-4f) badNormal++;
             // From just outside the face, a ray along its outward side leaves the closed shape: an even count of crossings.
             Vector3 o = centre[t] + n * 1e-3f;
-            int hits = 0;
-            for (int u = 0; u < tris; u++)
+            // Three rays, tilted a little along the face's own edges: a ray through a shared edge can miscount, so most must agree.
+            Vector3 ea = (m.V[m.I[t * 3 + 1]] - m.V[m.I[t * 3]]).Normalized(), eb = (m.V[m.I[t * 3 + 2]] - m.V[m.I[t * 3]]).Normalized();
+            int odd = 0;
+            foreach (Vector3 d in new[] { n, (n + ea * 0.3f).Normalized(), (n + eb * 0.3f).Normalized() })
             {
-                if (u == t) continue;
-                if (Hit(o, n, m.V[m.I[u * 3]], m.V[m.I[u * 3 + 1]], m.V[m.I[u * 3 + 2]])) hits++;
+                int hits = 0;
+                for (int u = 0; u < tris; u++)
+                {
+                    if (u == t) continue;
+                    if (Hit(o, d, m.V[m.I[u * 3]], m.V[m.I[u * 3 + 1]], m.V[m.I[u * 3 + 2]])) hits++;
+                }
+                if (hits % 2 == 1) odd++;
             }
-            if (hits % 2 == 1) badWinding++;
+            if (odd >= 2) badWinding++;
         }
         // A shape with an open side has no inside to measure by: only its normals count then.
         bool closed = badWinding < tris * 0.9f || badWinding == 0;
