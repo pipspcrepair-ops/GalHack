@@ -118,7 +118,7 @@ public sealed partial class HumanRig
         }
         (Vector3 e, Vector3 w) = LeggedRig.SolveIK(shoulder, hand, upper, fore, pole);
         if (Shell == null) return (e, w);
-        for (int k = 0; k < 6; k++)
+        for (int k = 0; k < 10; k++)
         {
             if (Sunk(body, shoulder, e, w, 0.55f) <= 0f) break;
             // The elbow out to the side and down, then the hand further out and forward.
@@ -140,8 +140,9 @@ public sealed partial class HumanRig
         if (Shell == null) return;
         Transform3D body = Pose[_body], inv = body.AffineInverse();
         Vector3 shift = Vector3.Zero;
-        if (h.RW > 0f) shift = body * Shell.PushOut(inv * h.R, HandRadius + 0.012f) - h.R;
-        if (h.LW > 0f) shift += body * Shell.PushOut(inv * (h.L + shift), HandRadius + 0.012f) - (h.L + shift);
+        // (Only as far as the hands' middles on the skin: a weapon held hard against a coat presses into it.)
+        if (h.RW > 0f) shift = body * Shell.PushOut(inv * h.R, HandRadius * 0.4f) - h.R;
+        if (h.LW > 0f) shift += body * Shell.PushOut(inv * (h.L + shift), HandRadius * 0.4f) - (h.L + shift);
         h.R += shift;
         h.L += shift;
         h.Prop = h.Prop.Translated(shift);
@@ -199,13 +200,13 @@ public sealed partial class HumanRig
                 // Elbow low by the side; the forearm flicks out and away from the body, again and again.
                 float s = 0.5f + 0.5f * MathF.Sin(t * 5.5f);
                 float a = -0.25f + 1.45f * s;
-                return Bones(shoulder, F.V(0.18f, -0.78f, 0.55f), F.V(MathF.Sin(a), 0.3f, MathF.Cos(a)), upper, fore);
+                return Bones(shoulder, F.V(0.15f, -0.7f, 0.7f), F.V(MathF.Sin(a), 0.3f, MathF.Cos(a)), upper, fore);
             }
             case BodyAct.Beckon:
             {
                 // Elbow down, the forearm out to them, then curling up and back toward the chest: come here.
                 float c = 0.5f + 0.5f * MathF.Sin(t * 4.5f);
-                return Bones(shoulder, F.V(0.14f, -0.8f, 0.55f), F.V(0.08f, 0.15f + 0.9f * c, 1f - 1.05f * c), upper, fore);
+                return Bones(shoulder, F.V(0.12f, -0.7f, 0.7f), F.V(0.06f, 0.15f + 0.9f * c, 1f - 0.9f * c), upper, fore);
             }
             case BodyAct.Point:
             {
@@ -223,7 +224,7 @@ public sealed partial class HumanRig
             {
                 // Elbows at the sides, forearms out and up, palms up.
                 float lift = 0.1f * MathF.Max(0f, MathF.Sin(t * 3f));
-                return Bones(shoulder, F.V(0.3f, -0.9f, 0.12f), F.V(0.55f, 0.62f + lift, 0.6f), upper, fore);
+                return Bones(shoulder, F.V(0.35f, -0.85f, 0.25f), F.V(0.55f, 0.62f + lift, 0.6f), upper, fore);
             }
             case BodyAct.Grieve:
             {
