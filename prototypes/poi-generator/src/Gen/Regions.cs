@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -549,7 +549,7 @@ public sealed class RegionPlan
         }
 
         /// <summary>The planned spacing of places over the land: no dry ground lies further than this from one (a little more in rough country, less by water).</summary>
-        public const double Reach = 3200;
+        public const double Reach = 3400;
 
         /// <summary>
         /// The land between: wherever dry ground lies further than a short flight from anything planned, something
