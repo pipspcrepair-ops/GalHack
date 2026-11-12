@@ -110,7 +110,7 @@ public partial class Screenshot
         _aim = () =>
         {
             // From the front and a little to the side, as the owner looked; or square from the side.
-            Vector3 eye = _actSide ? Ground(_actOrigin + _actRight * 7.5f + _actFwd * 1.5f) + Vector3.Up * 1.3f : Ground(_actOrigin + _actFwd * 6.5f - _actRight * 2.6f) + Vector3.Up * 1.5f;
+            Vector3 eye = _actSide ? Ground(_actOrigin + _actRight * 6f + _actFwd * 1.2f) + Vector3.Up * 1.2f : Ground(_actOrigin + _actFwd * 5f - _actRight * 2f) + Vector3.Up * 1.4f;
             return (eye, _actOrigin + Vector3.Up * 0.9f);
         };
         m.Camera.Fov = 55f;
@@ -136,7 +136,7 @@ public partial class Screenshot
                 copy.Figure.Prop = scene.Prop;
             }
             Creature c = m.Sim.Spawn(copy, _actOrigin + _actRight * (i - 1.5f) * 1.7f);
-            c.Yaw = MathF.Atan2(_actFwd.X, _actFwd.Z);
+            c.Yaw = MathF.Atan2(-_actFwd.X, -_actFwd.Z); // facing the camera
             c.Rig.Reset(m.Sim, c);
             _actors.Add((c, (HumanRig)c.Rig));
         }
