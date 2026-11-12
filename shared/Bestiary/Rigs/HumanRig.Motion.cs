@@ -115,7 +115,7 @@ public sealed partial class HumanRig
             case StrikeKind.Spew:
             {
                 ArmGoal clutch = Shell != null
-                    ? new ArmGoal(Pose[_body] * Shell.FrontAt(_f.Torso * 0.42f, (i == 0 ? -1f : 1f) * Shell.HalfWidth(_f.Torso * 0.42f) * 0.35f) + F.Ahead * (HandRadius + 0.01f), F.V(0.75f, -0.65f, 0f))
+                    ? new ArmGoal(Pose[_body] * Shell.FrontAt(_f.Torso * 0.42f, (i == 0 ? -1f : 1f) * Shell.HalfWidth(_f.Torso * 0.42f) * 0.35f) + F.Ahead * (HandRadius + 0.04f), F.V(0.55f, -0.6f, 0.55f))
                     : Bones(shoulder, F.V(0.2f, -0.9f, 0.3f), F.V(-0.6f, 0f, 0.8f), upper, fore);
                 ArmGoal flung = Bones(shoulder, F.V(0.45f, -0.82f, -0.28f), F.V(0.25f, -0.9f, -0.2f), upper, fore);
                 return Blend(clutch, flung, k);

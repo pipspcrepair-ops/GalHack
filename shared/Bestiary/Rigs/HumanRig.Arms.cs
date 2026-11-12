@@ -134,6 +134,19 @@ public sealed partial class HumanRig
         return (e, w);
     }
 
+    /// <summary>A held weapon moved out of the torso as a whole (a puffy coat, a big chest piece): both grips and the weapon with them.</summary>
+    void ClearOfTorso(ref Hold h)
+    {
+        if (Shell == null) return;
+        Transform3D body = Pose[_body], inv = body.AffineInverse();
+        Vector3 shift = Vector3.Zero;
+        if (h.RW > 0f) shift = body * Shell.PushOut(inv * h.R, HandRadius + 0.012f) - h.R;
+        if (h.LW > 0f) shift += body * Shell.PushOut(inv * (h.L + shift), HandRadius + 0.012f) - (h.L + shift);
+        h.R += shift;
+        h.L += shift;
+        h.Prop = h.Prop.Translated(shift);
+    }
+
     /// <summary>The arm that does a one-handed act: the right, unless it holds a weapon or the thing pointed at is off to the left.</summary>
     static int Doer(in Gesture g, bool rightHeld, Vector3 chest, Basis torso)
     {
@@ -210,7 +223,7 @@ public sealed partial class HumanRig
             {
                 // Elbows at the sides, forearms out and up, palms up.
                 float lift = 0.1f * MathF.Max(0f, MathF.Sin(t * 3f));
-                return Bones(shoulder, F.V(0.3f, -0.9f, 0.12f), F.V(0.6f, 0.38f + lift, 0.72f), upper, fore);
+                return Bones(shoulder, F.V(0.3f, -0.9f, 0.12f), F.V(0.55f, 0.62f + lift, 0.6f), upper, fore);
             }
             case BodyAct.Grieve:
             {
@@ -223,7 +236,7 @@ public sealed partial class HumanRig
             {
                 // A fist smacked into the other palm, again and again: come on, then.
                 var Fl = new Frame(torso, -1f);
-                Vector3 shoulderL = shoulder + torso.X * (-1f - side) * f.ShoulderW * 0.94f; // the left shoulder, whichever arm this is
+                Vector3 shoulderL = shoulder + torso.X * (-1f - side) * _shoulderOut; // the left shoulder, whichever arm this is
                 ArmGoal palm = Bones(shoulderL, Fl.V(0.1f, -0.78f, 0.62f), Fl.V(-0.78f, 0.22f, 0.6f), f.UpperArmOf(0), f.ForearmOf(0));
                 if (i == 0) return palm;
                 float k = MathF.Pow(MathF.Max(0f, MathF.Sin(t * 6.5f)), 1.5f);
