@@ -134,10 +134,10 @@ public sealed partial class HumanRig
         if (least <= 0f) return (e, w);
         // Through the body: the elbow round its circle to the nearest way that clears it; failing all of
         // them, the shoulder brought forward a little (as one reaching across the chest does), then the
-        // hand a step out to the side or forward, by turns, and round again.
+        // hand a step out to the side, forward or up, by turns, and round again.
         (Vector3, Vector3) fallback = (e, w);
         Vector3 fallbackShoulder = shoulder;
-        for (int k = 0; k < 14; k++)
+        for (int k = 0; k < 17; k++)
         {
             Vector3 axis = (hand - shoulder).Normalized();
             Vector3 b1 = pole - axis * pole.Dot(axis);
@@ -157,7 +157,7 @@ public sealed partial class HumanRig
             }
             if (bestScore > -9f) return (e, w);
             if (k < 2) shoulder += ahead * 0.025f;
-            else hand += (k % 2 == 0 ? outward : ahead) * 0.05f;
+            else hand += (k % 3 == 0 ? outward : k % 3 == 1 ? ahead : body.Basis.Y) * 0.05f;
         }
         shoulder = fallbackShoulder;
         return fallback;

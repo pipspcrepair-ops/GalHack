@@ -187,7 +187,7 @@ public partial class BestiaryTest
                 for (int i = 0; i < 2; i++)
                 {
                     var (sh, el, wr) = rig.ArmOf(i);
-                    if (Local(wr).Y < Local(el).Y + 0.05f || Local(el).Y > Local(sh).Y - 0.4f * f.UpperArmOf(i)) shrugDown++; // (an adult's 12 cm, a child's less)
+                    if (Local(wr).Y < Local(el).Y + 0.05f || Local(el).Y > Local(sh).Y - (f.Padding > 1.3f ? 0.05f : 0.4f * f.UpperArmOf(i))) shrugDown++; // (an adult's 12 cm, a child's less; in a coat wider than the arm is long, at least below the shoulder)
                 }
             }
             // Fidgeting moves: over ten seconds each hand goes somewhere else.
