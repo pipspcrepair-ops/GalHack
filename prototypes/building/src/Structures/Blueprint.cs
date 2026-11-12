@@ -66,7 +66,6 @@ public static class Blueprint
     {
         BlueprintData data = Parse(text);
         OldDoorTops(data, catalogue);
-        if (OldGrids.Contains(data.Grid)) OldCellsMakeRoom(data, catalogue);
         errors = Validate(data, catalogue);
         return errors.Count > 0 ? null : Build(data, catalogue, owner);
     }
@@ -231,13 +230,16 @@ public static class Blueprint
     /// <summary>
     /// Rejects bad data: syntax errors, a missing or second core, overlapping blocks, unknown
     /// ids, and blocks that claim to belong to the structure but are not attached to its core.
+    /// An old grid's data is first made to fit the 1 m grid, in place: see <see cref="OldGrids"/>.
     /// </summary>
     public static List<string> Validate(BlueprintData data, Catalogue catalogue)
     {
         var errors = new List<string>(data.Errors);
         if (data.Schema != SchemaName) errors.Add($"schema must be '{SchemaName}' (found '{data.Schema ?? "nothing"}')");
         if (data.Version != CurrentVersion) errors.Add($"unsupported version {data.Version} (expected {CurrentVersion})");
-        if (data.Grid != catalogue.Grid.Id && !OldGrids.Contains(data.Grid)) { errors.Add($"unknown grid '{data.Grid}'"); return errors; }
+        bool old = OldGrids.Contains(data.Grid);
+        if (data.Grid != catalogue.Grid.Id && !old) { errors.Add($"unknown grid '{data.Grid}'"); return errors; }
+        if (old) OldCellsMakeRoom(data, catalogue);
 
         var paintNames = new HashSet<string>(data.Paints.Select(p => p.name));
         var scratch = new Structure(catalogue);
@@ -288,6 +290,13 @@ public static class Blueprint
         {
             HashSet<Int3> attached = Connectivity.Reachable(scratch, core);
             var detached = lineOf.Keys.Where(p => !attached.Contains(p)).OrderBy(p => lineOf[p]).ToList();
+            // An old grid's block may have hung on one that gave way to a bigger block (OldCellsMakeRoom): it goes with it.
+            if (old)
+            {
+                var gone = detached.ToHashSet();
+                data.Blocks.RemoveAll(b => gone.Contains(b.Pos));
+                detached.Clear();
+            }
             foreach (Int3 p in detached.Take(8))
                 errors.Add($"line {lineOf[p]}: block at {p} is not attached to the core");
             if (detached.Count > 8) errors.Add($"... and {detached.Count - 8} more detached blocks");
@@ -333,7 +342,8 @@ public static class Blueprint
     // Blueprints from the 2 m and 0.5 m grids load on the 1 m grid as they are, a cell for a cell.
     // Some of their one-cell blocks are bigger now (a door is 1x2x1), so they may run into their
     // neighbours: a device keeps its cells and the armour in its way gives way; a block running
-    // into a device, or armour into armour, is left out. These files are replaced, not converted.
+    // into a device, or armour into armour, is left out, and so is whatever hung only on what was
+    // left out. These files are replaced, not converted.
 
     /// <summary>The grids blueprints were saved on before the one 1 m grid.</summary>
     public static readonly string[] OldGrids = { "large", "small" };
