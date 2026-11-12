@@ -54,7 +54,8 @@ public partial class FloraTest : Node
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             GD.Print($"flora test run seed {RunSeed}");
             FarBuilder.Solids ??= FloraSolidRules.Load(ProjectSettings.GlobalizePath("res://data/flora-solids.json"));
-            if (OS.GetCmdlineUserArgs().Contains("--openings")) NothingOverOpenings(); // that check alone
+            if (OS.GetEnvironment("FLORA_ONLY") == "canopy") await Canopies();
+            else if (OS.GetCmdlineUserArgs().Contains("--openings")) NothingOverOpenings(); // that check alone
             else
             {
             Spread();

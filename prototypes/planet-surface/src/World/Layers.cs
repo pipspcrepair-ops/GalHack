@@ -14,7 +14,7 @@ public static class Layers
     /// fixed to the planet, its World layer). Separate here so ground probes (heights, digging)
     /// see only the ground.
     /// </summary>
-    public const uint Flora = 1 << 5;
+    public const uint Flora = GalHack.Physics.Layers.Flora;
 
     /// <summary>Everything a body stands on and walks into.</summary>
     public const uint Solid = Terrain | Structure | Poi | Flora;
