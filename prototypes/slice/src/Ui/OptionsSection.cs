@@ -182,6 +182,9 @@ public sealed class OptionsSection : IMenuSection
         r = Row(g, body, i++, "SPAWN DISTANCE", null, rh);
         if (Range(g, "opt:spawn", r, ref s.SpawnDistance, SpawnStepsFrom, SpawnStepsTo, 20f, x => $"{x:F0} M")) Changed();
 
+        r = Row(g, body, i++, "SHADOW DISTANCE", null, rh);
+        if (Range(g, "opt:shadow", r, ref s.ShadowDistance, GameSettings.DefaultShadow, GameSettings.MostShadow, 20f, x => x <= GameSettings.DefaultShadow ? "AUTO" : $"{x:F0} M")) Changed();
+
         r = Row(g, body, i++, "BRIGHTNESS", null, rh);
         if (Range(g, "opt:gamma", r, ref s.Gamma, GameSettings.MinGamma, GameSettings.MaxGamma, 0.05f, x => $"{x:F2}")) Changed();
 
