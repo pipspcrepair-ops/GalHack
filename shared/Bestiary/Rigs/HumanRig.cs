@@ -478,7 +478,7 @@ public sealed partial class HumanRig : Rig
             {
                 hand = hand.Lerp(i == 1 ? hold.R : hold.L, on);
                 // Holding something out in front, the elbow hangs down and a little out; drawing a bow, the elbow up and back along the arrow.
-                Vector3 holdPole = kind == HoldKind.Bow && i == 1 ? (hold.R - hold.L).Normalized() + Vector3.Up * 0.12f + torso.X * 0.1f : Vector3.Down + torso.X * side * 0.5f + torso.Z * 0.2f;
+                Vector3 holdPole = kind == HoldKind.Bow && i == 1 ? (hold.R - hold.L).Normalized() * 0.7f + torso.X * 0.6f - Vector3.Up * 0.1f : Vector3.Down + torso.X * side * 0.5f + torso.Z * 0.2f;
                 pole = pole.Lerp(holdPole.Normalized(), on).Normalized();
             }
             // (A bow stays in the hand that holds it: the blow is the other's.)

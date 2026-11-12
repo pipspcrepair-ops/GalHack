@@ -123,6 +123,8 @@ public partial class Screenshot
         Main m = _main;
         m.Sim.Clear();
         _actors.Clear();
+        _gibs.QueueFree();
+        AddChild(_gibs = new Gibs());
         List<Species> who = scene.Husk ? _actHusks : scene.End != BodyEnd.Fall ? _actMixed : _actPeople;
         for (int i = 0; i < who.Count; i++)
         {
