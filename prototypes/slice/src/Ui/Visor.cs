@@ -488,7 +488,7 @@ public partial class Visor : CanvasLayer
         string label = Game.UsePrompt();
         if (string.IsNullOrEmpty(label)) label = Game.Builder.Projecting ? Game.Builder.Verdict : Game.Pack.Hand switch
         {
-            HandKind.Tool => Game.Tool.Mode == ToolMode.Deconstruct ? Game.Builder.Verdict : Game.Tool.TargetLabel,
+            HandKind.Tool => Game.Tool.Mode is ToolMode.Deconstruct or ToolMode.Plate ? Game.Builder.Verdict : Game.Tool.TargetLabel,
             HandKind.Block or HandKind.Core or HandKind.Device or HandKind.Blueprint => Game.Builder.Verdict,
             HandKind.Consumable => "[LMB] USE",
             HandKind.Vehicle => "[LMB] SET DOWN",
@@ -548,6 +548,7 @@ public partial class Visor : CanvasLayer
                 {
                     ToolMode.Shoot => $"{toolName} · SHOOT",
                     ToolMode.Deconstruct => $"{toolName} · DECONSTRUCT",
+                    ToolMode.Plate => $"{toolName} · PLATE · {Game.Builder.PlateOf(Game.Builder.Plating).Name}",
                     _ => $"{toolName} · GATHER",
                 };
             case HandKind.Vehicle:
@@ -579,7 +580,12 @@ public partial class Visor : CanvasLayer
         HandKind hand = Game.Pack.Hand;
         string keys = hand switch
         {
-            HandKind.Tool => Game.Tool.Mode == ToolMode.Deconstruct ? $"{Bound("tool-mode")} MODE  [LMB] TAKE DOWN   " : $"{Bound("tool-mode")} MODE   ",
+            HandKind.Tool => Game.Tool.Mode switch
+            {
+                ToolMode.Deconstruct => $"{Bound("tool-mode")} MODE  [LMB] TAKE DOWN   ",
+                ToolMode.Plate => $"{Bound("tool-mode")} MODE  [WHEEL] PLATE  [LMB] SPRAY  [RMB] STRIP   ",
+                _ => $"{Bound("tool-mode")} MODE   ",
+            },
             HandKind.Weapon => Game.Zone.Data.Arms.OfItem(Game.Pack.HandItem)?.Modes.Count > 1 ? $"{Bound("rotate")} RELOAD  {Bound("tool-mode")} MODE   " : $"{Bound("rotate")} RELOAD   ",
             HandKind.Block when Game.Pack.HandItem == GalHack.Items.DecoCatalogue.UniversalItem => $"[WHEEL] PIECE  {Bound("style")} THEME  {Bound("rotate")} TURN  [RMB] TAKE DOWN   ",
             HandKind.Block => $"[WHEEL] SHAPE  {Bound("rotate", "tilt")} TURN  {Bound("mirror")} MIRROR{(Game.Builder.MirrorX ? " ON" : "")}  [RMB] TAKE DOWN   ",
