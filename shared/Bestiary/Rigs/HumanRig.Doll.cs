@@ -123,7 +123,7 @@ public sealed partial class HumanRig
         int N => _prop ? Count + 2 : Count;
 
         /// <summary>A blow to one part (and a share of it to the trunk), as velocity.</summary>
-        public void Shove(HumanRig rig, Part part, Vector3 dir, float heavy)
+        public void Shove(Part part, Vector3 dir, float heavy)
         {
             Vector3 hard = dir * (1.6f + 3.4f * heavy) * H, soft = dir * (0.7f + 1.6f * heavy) * H;
             int[] struck = part switch
@@ -142,7 +142,7 @@ public sealed partial class HumanRig
         }
 
         /// <summary>No hit to go by: the top of the body tips over one way and the knees go.</summary>
-        public void Topple(HumanRig rig, Vector3 dir)
+        public void Topple(Vector3 dir)
         {
             foreach (int i in new[] { Chest, Neck, Crown, Shoulder, Shoulder + 1 }) _old[i] -= dir * 1.1f * H;
             for (int i = 0; i < 2; i++) _old[Knee + i] -= -dir * 0.6f * H;
@@ -262,8 +262,6 @@ public sealed partial class HumanRig
             for (int i = 0; i < N; i++) worst = MathF.Min(worst, _p[i].Y - _r[i] - ground(_p[i]));
             return worst;
         }
-
-        public Vector3 Point(int i) => _p[i];
     }
 
     /// <summary>How the dead body lies against the ground: the least gap under any of its points (below 0 sunk in), m; 0 if it isn't a ragdoll.</summary>

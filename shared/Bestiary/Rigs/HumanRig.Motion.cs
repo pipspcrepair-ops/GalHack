@@ -143,9 +143,8 @@ public sealed partial class HumanRig
     Vector3 _hitDir;
     float _hitHeavy, _hitAge = 99f, _clock = float.NaN, _dt;
 
-    /// <summary>How hard the last hit still shows (0..1), for the tests: the snap, and the stagger.</summary>
-    public float Snap => _hitAge < 1f ? Envelope(_hitAge) : 0f;
-    public float Stagger => _hitHeavy >= 0.5f ? StaggerOf(_hitAge) * _hitHeavy : 0f;
+    /// <summary>How far the last heavy hit still staggers the body (0..1).</summary>
+    float Stagger => _hitHeavy >= 0.5f ? StaggerOf(_hitAge) * _hitHeavy : 0f;
 
     /// <summary>The snap: up to full in 70 ms, gone in half a second.</summary>
     static float Envelope(float a)
@@ -191,7 +190,7 @@ public sealed partial class HumanRig
         Try(Part.ArmR, Pose[_armL[1]].Origin);
         Try(Part.LegL, _knee[0]);
         Try(Part.LegR, _knee[1]);
-        _doll?.Shove(this, _hitPart, dir, _hitHeavy);
+        _doll?.Shove(_hitPart, dir, _hitHeavy);
     }
 
     /// <summary>Time since the last pose, from the clock the game drives with (0 the first time or if it went back).</summary>
@@ -212,8 +211,6 @@ public sealed partial class HumanRig
 
     /// <summary>Whether the dead body has come to rest (and stays as it lies).</summary>
     public bool Settled => _doll?.Settled == true;
-    /// <summary>Whether this body is a ragdoll now.</summary>
-    public bool Ragdolled => _doll != null;
 
     /// <summary>Where each joint is this frame, for the ragdoll to start from: see <see cref="Doll"/> for the order.</summary>
     readonly Vector3[] _joints = new Vector3[Doll.Count], _jointsBefore = new Vector3[Doll.Count];
@@ -254,14 +251,11 @@ public sealed partial class HumanRig
         if (_doll == null)
         {
             _doll = new Doll(this, _joints, _jointsBefore, _jointsKnown && _jointsDt > 0f ? _jointsDt : 1f / 60f);
-            if (_hitAge < 0.4f) _doll.Shove(this, _hitPart, _hitDir, MathF.Max(0.35f, _hitHeavy));
-            else _doll.Topple(this, -Facing);
+            if (_hitAge < 0.4f) _doll.Shove(_hitPart, _hitDir, MathF.Max(0.35f, _hitHeavy));
+            else _doll.Topple(-Facing);
         }
         float feet = g.Feet.Y;
         _doll.Step(this, _dt, p => GroundUnder(p, feet));
         _doll.Pose(this);
     }
-
-    /// <summary>Back to life (a body reused for the living): the ragdoll goes.</summary>
-    public void Revive() => _doll = null;
 }
