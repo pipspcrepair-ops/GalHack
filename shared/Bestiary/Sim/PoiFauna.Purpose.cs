@@ -94,7 +94,7 @@ public static partial class PoiFauna
     }
 
     /// <summary>
-    /// Density by danger (place-patterns E2): threats per 100 m² of floor from 0.8 in an ordinary place
+    /// Density by danger (place-patterns E2): threats per 100 m² of floor from 1 in an ordinary place (0.8 to 1.2 once the quiet rules thin it)
     /// to 3 in the most dangerous, half that in a wreck. Groups go where something already is, then
     /// into the dark rooms deepest first; a group's size follows its room's volume. Nobody's place
     /// fills only its dark below ground. The quiet rules run after, so its empty rooms stay empty.
@@ -106,7 +106,7 @@ public static partial class PoiFauna
         if (rooms.Count == 0) return;
         float floor = 0f;
         foreach (PoiRoom r in walkable) floor += r.Size.X * r.Size.Z;
-        int want = (int)MathF.Round(floor / 100f * Mathf.Lerp(0.8f, 3f, Math.Clamp(poi.Danger, 0f, 1f)) * (poi.Derelict ? 0.5f : 1f));
+        int want = (int)MathF.Round(floor / 100f * Mathf.Lerp(1f, 3f, Math.Clamp(poi.Danger, 0f, 1f)) * (poi.Derelict ? 0.5f : 1f));
         // Where something is first, then the deepest and darkest.
         var score = new Dictionary<int, float>();
         foreach (PoiRoom r in rooms) score[r.Index] = (pop.Spawns.Exists(s => s.Room == r.Index && Threat(s)) ? 100f : 0f) + r.Depth * 10f + (r.Lit ? 0f : 5f) + rng.Range(0f, 2f);
