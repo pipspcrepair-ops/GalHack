@@ -544,7 +544,7 @@ public static partial class Homes
         l.C.X.Gate = f.At(HouseU + door, 0, -1);
         // A working farm's yard and fields at the size of one (a farm lot is about 60 m by 60 and more): the barn well across
         // the yard, the field out to the silo's far side and twenty-odd rows deep.
-        int bu = HouseU + hw + 20 + 2 * r.Range(0, 3), bv = 6 + 2 * r.Range(0, 3), bw = 14 + 2 * r.Range(0, 2), bd = 20 + 2 * r.Range(0, 3);
+        int bu = HouseU + hw + 24 + 2 * r.Range(0, 3), bv = 6 + 2 * r.Range(0, 3), bw = 14 + 2 * r.Range(0, 2), bd = 20 + 2 * r.Range(0, 3);
         Barn(l, f.Shift(bu, bv), bw, bd);
         Silo(l, f.At(bu + bw + 7, 0, bv + 6), layout == 2 ? 16 : 12);
         // The field the place served, its rows gone to weeds, an old rail along it.

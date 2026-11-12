@@ -127,7 +127,7 @@ public sealed partial class Building
         if (def.AMax > 0)
         {
             float a = r.Area;
-            s += a >= def.AMin * 0.75f && a <= def.AMax * 1.5f ? 2f : -3f * (a < def.AMin ? (def.AMin - a) / def.AMin : (a - def.AMax) / def.AMax);
+            s += a >= def.AMin * 0.75f && a <= def.AMax * 1.5f ? 2f : -6f * (a < def.AMin ? (def.AMin - a) / def.AMin : (a - def.AMax) / def.AMax);
         }
         if (def.Kind == ModuleKind.Hall && r.Area >= 60) s += 1.5f;
         float toCore = (Math.Abs(r.Mid.x - (Cx + 2)) + Math.Abs(r.Mid.z - Zs)) / (W + D), toEntrance = r.Mid.x / W;

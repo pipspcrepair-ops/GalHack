@@ -98,8 +98,8 @@ internal sealed partial class Depths
             if (def.AMax > 0)
             {
                 float a = s.Area * 4f;
-                if (a < def.AMin * 0.75f) score += (def.AMin - a) / def.AMin * 6f;
-                else if (a > def.AMax * 1.5f) score += (a - def.AMax) / def.AMax * 6f;
+                if (a < def.AMin * 0.75f) score += (def.AMin - a) / def.AMin * 12f;
+                else if (a > def.AMax * 1.5f) score += (a - def.AMax) / def.AMax * 12f;
             }
             if (def.Kind == ModuleKind.Hall && s.Area < 30) score += 8f;
             if (def.Kind != ModuleKind.Hall && s.Module == ModuleKind.Hall) score += 4f;
