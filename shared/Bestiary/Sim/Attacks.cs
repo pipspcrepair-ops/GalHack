@@ -55,6 +55,16 @@ public static class Attacks
     /// <summary>How close it has to be to start a bite that will reach: no nearer than its jaws let it.</summary>
     public static float Range(Creature c) => Spitting.Can(c) ? Spitting.ReachOf(c.Species) : MathF.Max(c.Stats.AttackRange, Jaws(c) + Stretch(c) + BodyRadius + 0.2f);
 
+    /// <summary>The same for one target: someone with a gun (rounds and a clear line, <see cref="Arming"/>) shoots from as far as it reaches.</summary>
+    public static float Range(Creature c, ITarget t)
+    {
+        float shoot = Arming.ShootReach(c, t);
+        return shoot > 0f ? MathF.Max(shoot, Range(c)) : Range(c);
+    }
+
+    /// <summary>Whether this attack is a shot: it carries a gun that reaches, and the target isn't already within its blow.</summary>
+    static bool Shooting(Creature c, ITarget t) => t != null && Arming.ShootReach(c, t) > 0f && WildSim.Flat(t.Position - c.Position).Length() > Range(c) + 0.3f;
+
     /// <summary>How far a lunge's pose throws its head forward, on top of its jaws at rest.</summary>
     public static float Stretch(Creature c) => c.Species.Rig == RigKind.Legged ? c.Species.Body.Size * 0.3f : c.Species.Body.Size * 0.08f;
 
@@ -157,7 +167,18 @@ public static class Attacks
                 CommitIfDue(w, c, t);
                 if (c.PhaseTime >= c.PhaseLength)
                 {
-                    if (Spitting.Wants(c))
+                    if (Arming.Fire != null && Shooting(c, t))
+                    {
+                        // A gun, not a lunge: it fires from where it stands, and waits as its weapon makes it.
+                        float wait = Arming.Fire(w, c, t);
+                        c.RememberAttack(t, w.Time);
+                        c.Phase = AttackPhase.Recover;
+                        c.PhaseTime = 0f;
+                        c.PhaseLength = MathF.Max(0.15f, wait);
+                        c.Rear = 0f;
+                        c.Lunge = 0f;
+                    }
+                    else if (Spitting.Wants(c))
                     {
                         // A throat, not teeth: it lets go from where it stands.
                         Spitting.Launch(w, c);
@@ -299,6 +320,9 @@ public static class Attacks
         c.PhaseLength = r.AttackCooldown;
     }
 
+    /// <summary>What its blow deals: its hand weapon's (or bare hands') where it's a person or machine that carries one, else its body's own.</summary>
+    public static float BlowOf(Creature c) => Arming.BlowDamage?.Invoke(c) is float b && b >= 0f ? b : c.Stats.Damage;
+
     /// <summary>A blow lands or doesn't: the damage, and everyone told. What the body does next is its own business.</summary>
     internal static void Deliver(WildSim w, Creature c, ITarget t, bool hit)
     {
@@ -309,10 +333,10 @@ public static class Attacks
             if (t is CreatureTarget prey)
             {
                 float before = prey.Creature.Health;
-                w.Damage(prey.Creature, c.Stats.Damage, c.AsTarget);
+                w.Damage(prey.Creature, BlowOf(c), c.AsTarget);
                 dealt = before - MathF.Max(0f, prey.Creature.Health);
             }
-            else dealt = t.Health.Apply(c.Stats.Damage);
+            else dealt = t.Health.Apply(BlowOf(c));
         }
         c.RememberAttack(t, w.Time);
         w.RaiseAttacked(new AttackEvent

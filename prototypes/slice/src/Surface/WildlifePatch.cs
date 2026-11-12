@@ -621,11 +621,11 @@ public partial class WildlifePatch : Node3D
         return 1f;
     }
 
-    /// <summary>The survivor hurts a creature, in whichever sim it lives.</summary>
-    public void Damage(Creature c, float amount)
+    /// <summary>The survivor hurts a creature, in whichever sim it lives (or someone else did: then it doesn't turn on the survivor).</summary>
+    public void Damage(Creature c, float amount, bool byPlayer = true)
     {
         WildSim sim = SimOf(c, out _, out ITarget player);
-        sim?.Damage(c, amount, player);
+        sim?.Damage(c, amount, byPlayer ? player : null);
     }
 
     /// <summary>The survivor's feet in the zone.</summary>

@@ -224,6 +224,7 @@ public partial class Game : Node3D
     void Begin()
     {
         GD.Print($"world: {World}");
+        Wildlife.Weapons.GameDraws = _ => true; // people hold the player's own weapon models (Slice.Arms), not the body's
         Zone = new SurfaceZone { Name = "Surface", Spec = World.Spec(), Force = World.Force, PickStart = PickStart };
         AddChild(Zone);
         AddChild(new GcPacer { Name = "GC pacer" });
@@ -342,8 +343,9 @@ public partial class Game : Node3D
             if (!e.Creature.Species.Husk) Alerts.Attack(Alerts.SignFor(e.Creature.Species), from);
         };
         Zone.Wildlife.Died += OnCreatureDied;
+        SetUpBodies();
         Zone.Weather.Observer = () => Survivor.WorldFeet;
-        Zone.Weather.Bridge.Shelter = body => Sheltered(body.WorldPosition.ToGodot());
+        Zone.Weather.Bridge.Shelter = body => Zone.Held.Contains(body) || Sheltered(body.WorldPosition.ToGodot());
         Zone.Weather.Shelter = Sheltered;
         Suit.UnderCover = UnderCover;
         Zone.Weather.Enclosed = () => Survivor.Aboard is { } ship && !Survivor.OnOuterHull && !Slice.Surface.SkyLight.Stands(ship);
@@ -765,6 +767,7 @@ public partial class Game : Node3D
         Species s = c.Species;
         bool swarm = s.Rig == RigKind.Swarm;
         Zone.Wildlife.SimOf(c, out Vector3 origin, out _);
+        c.Struck(point - origin, dir); // the struck part snaps away from where it landed
         float pitch = Math.Clamp(1.2f / MathF.Sqrt(MathF.Max(0.3f, s.Body.Size)), 0.6f, 1.6f);
         Zone.Wildlife.Sound(origin, a => a.Play(swarm ? "pop" : "hit", c.Position + Vector3.Up * 0.5f, pitch, -2f));
         if (swarm) Zone.Blood.Pop(point, s.Blood, 8);

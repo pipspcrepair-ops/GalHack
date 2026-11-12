@@ -303,6 +303,14 @@ public sealed class FreeBinding : BodyBinding
     Vector3 _expected;
     bool _hasExpected;
     readonly List<Contact> _contacts = new();
+    int _still;
+
+    /// <summary>The friction against the ground a free body is given: the weather and everything else judge "can this push move it" by it.</summary>
+    public const float Friction = 0.8f;
+
+    /// <summary>Slower than this (m/s and rad/s) for <see cref="SleepAfter"/> ticks on end, a free body is at rest: it sleeps.</summary>
+    public const float RestSpeed = 0.05f;
+    public const int SleepAfter = 30;
 
     public FreeBinding(RigidBody3D rigid, Body body)
     {
@@ -323,7 +331,7 @@ public sealed class FreeBinding : BodyBinding
         rigid.CenterOfMassMode = RigidBody3D.CenterOfMassModeEnum.Custom;
         rigid.CenterOfMass = body.CenterOfMass.ToGodot();
         // Free bodies don't bounce, so a velocity change along the normal is the full closing speed.
-        rigid.PhysicsMaterialOverride ??= new PhysicsMaterial { Bounce = 0f, Friction = 0.8f };
+        rigid.PhysicsMaterialOverride ??= new PhysicsMaterial { Bounce = 0f, Friction = Friction };
     }
 
     public override Node3D Node => Rigid;
@@ -343,6 +351,22 @@ public sealed class FreeBinding : BodyBinding
         b.Velocity = vcom.ToNumerics() - N.Vector3.Cross(b.AngularVelocity, b.CenterOfMassPosition - b.Position);
         b.Asleep = Rigid.Sleeping;
         b.OnFloor = false;
+
+        // Gravity reaches a free body as a force every tick, and a force keeps the engine's body awake for ever: a prop lying
+        // still would be solved against the ground sixty times a second, creeping and hopping. One that has been still for half
+        // a second is put to sleep instead; anything that really pushes it (a strong enough gust, a hit, ground dug away) wakes it.
+        if (!b.Asleep && Rigid.LinearVelocity.Length() < RestSpeed && Rigid.AngularVelocity.Length() < RestSpeed && !b.Water.InWater)
+        {
+            if (++_still >= SleepAfter)
+            {
+                Rigid.LinearVelocity = Vector3.Zero;
+                Rigid.AngularVelocity = Vector3.Zero;
+                Rigid.Sleeping = true;
+                b.Asleep = true;
+                _still = 0;
+            }
+        }
+        else _still = 0;
 
         if (!_hasExpected) return;
         _hasExpected = false;
