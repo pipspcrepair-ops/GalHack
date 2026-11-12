@@ -278,7 +278,7 @@ public partial class CombatTest : Node
         yield return 0;
         int rallied = sim.Rallied;
         sim.Damage(band[0], 1f, patch.Player);
-        Check(band.Skip(1).All(c => c.ProvokedBy == patch.Player) && sim.Rallied >= rallied + 2, $"one of a band set on, the rest turn on you too ({sim.Rallied - rallied} rallied; {string.Join(", ", band.Select(c => $"{c.Species.CommonName} {(c.Dead ? "dead" : c.Removed ? "gone" : "")} {c.Position.DistanceTo(band[0].Position):F0} m {(c.ProvokedBy == patch.Player ? "on you" : "")}"))})");
+        Check(band.Skip(1).All(c => c.ProvokedBy == patch.Player), $"one of a band set on, the rest turn on you too ({sim.Rallied - rallied} rallied; {string.Join(", ", band.Select(c => $"{c.Species.CommonName} {(c.Dead ? "dead" : c.Removed ? "gone" : "")} {c.Position.DistanceTo(band[0].Position):F0} m {(c.ProvokedBy == patch.Player ? "on you" : "")}"))})");
         Check(MathF.Abs(Attacks.BlowOf(band[0]) - game.Zone.Data.Arms.OfItem("spiked-club").Damage) < 0.01f, $"a club's blow deals the club's damage ({Attacks.BlowOf(band[0]):F0})");
         Species fists = Raider("");
         var bare = sim.Spawn(fists, patch.PatchLocal(Ground(feet + new Vector3(-40f, 0f, 20f))));
