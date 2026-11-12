@@ -411,7 +411,8 @@ program farmhouse
   levels 1 1
   windows 0.6
   secrets 0 1
-  rooms ground farm-kitchen! quarters storage
+  hall ground farm-kitchen
+  rooms ground quarters storage
   rooms upper quarters washroom
   rooms basement cellar!
   rooms deepest vault! cellar
