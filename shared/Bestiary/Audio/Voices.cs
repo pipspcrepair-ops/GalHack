@@ -41,7 +41,7 @@ public sealed class Dialect
 /// child's short one high, age thins and roughens it. Rendered by a small formant synthesiser
 /// into syllables that aren't words. All sound is generated here; nothing is recorded.
 /// </summary>
-public sealed class Voice
+public sealed partial class Voice
 {
     public const int Rate = 22050;
 
@@ -55,6 +55,8 @@ public sealed class Voice
     public float Breath, Rasp;
     /// <summary>How quick they are, as a share of their world's rate.</summary>
     public float Pace;
+    /// <summary>How much the voice shakes: the old tremble, a child barely.</summary>
+    public float Tremor;
 
     /// <summary>The voice a body has. The same person always sounds the same.</summary>
     public static Voice For(Figure f, Dialect dialect, ulong seed)
@@ -72,6 +74,7 @@ public sealed class Voice
             Throat = (1.75f / f.Height) * (f.Sex == Sex.Female ? 1.12f : 1f) * (f.Stage == LifeStage.Child ? 1.1f : 1f) * rng.Range(0.95f, 1.05f),
             Breath = Math.Clamp(rng.Range(0.05f, 0.3f) + (f.Stage == LifeStage.Elder ? 0.25f : 0f), 0f, 1f),
             Rasp = Math.Clamp(rng.Range(0f, 0.3f) + (f.Stage == LifeStage.Elder ? 0.3f : 0f) + (f.Role == PersonRole.Drunk ? 0.3f : 0f) + (f.Role == PersonRole.Raider ? 0.25f : 0f), 0f, 1f),
+            Tremor = f.Stage == LifeStage.Elder ? rng.Range(0.12f, 0.28f) : f.Stage == LifeStage.Child ? 0.03f : 0.015f,
             Pace = rng.Range(0.82f, 1.2f) * (f.Stage == LifeStage.Elder ? 0.8f : 1f) * (f.Role == PersonRole.Drunk ? 0.72f : 1f),
         };
     }
