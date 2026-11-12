@@ -77,7 +77,7 @@ public partial class SystemsTest : Node
         SunsAndGiants(systems);
         HeavyWorlds(systems);
         StartMoons(systems, out List<(StarSystem System, WorldMap Moon)> moons);
-        Fuels(systems, moons);
+        NoWaterOnBareWorlds(Fuels(systems, moons), moons);
         Flyer(systems);
         Loot();
         NoMarkers(systems);
@@ -216,7 +216,7 @@ public partial class SystemsTest : Node
 
     // ---- 4 and 5. The jump fuels ------------------------------------------------------------------------------
 
-    void Fuels(List<StarSystem> systems, List<(StarSystem System, WorldMap Moon)> moons)
+    List<(StarSystem System, Orbiter Body, WorldMap Map)> Fuels(List<StarSystem> systems, List<(StarSystem System, WorldMap Moon)> moons)
     {
         // Every landable world, its coarse map made here (the first map of a start moon is reused).
         var worlds = systems.SelectMany(s => Landable(s).Select(b => (System: s, Body: b))).ToList();
@@ -241,6 +241,7 @@ public partial class SystemsTest : Node
         Check(warpWrong == 0 && bare > 0, $"warp fuel: it lies on {warpOn} worlds, every airless one of {bare} and no world with air ({warpWrong} wrong)");
         Check(hyperMissing == 0 && heavy > 0, $"hyperspace fuel: every one of the {heavy} dangerous high-gravity worlds holds some ({hyperMissing} did not)");
         Check(hyperElsewhere == 0, $"hyperspace fuel: it lies nowhere else, but on the alien crystal worlds that always had it ({hyperElsewhere} other worlds had it)");
+        return worlds.Select((w, i) => (w.System, w.Body, maps[i])).ToList();
     }
 
     // ---- 8. Every world has what the cheapest flyer takes ------------------------------------------------------------
@@ -325,6 +326,41 @@ public partial class SystemsTest : Node
             }
         }
         Check(spaceWarp > 0 && spaceWarp < sites, $"loot: {spaceWarp} of {sites} wrecks in space hold warp cells, some and not all");
+    }
+
+    // ---- 10. Vacuum worlds have no liquid water -------------------------------------------------------------------
+
+    /// <summary>No sea, lake or river on an airless world: no water or river cell, no ground under the waterline. Ice deposits stay.</summary>
+    static bool Dry(WorldMap map)
+    {
+        for (int k = 0; k < map.Count; k++)
+            if (map.Has(k, CellFlags.Water) || map.Has(k, CellFlags.River) || map.Elevation[k] < 0f || map.RiverFlow[k] > 0f) return false;
+        return true;
+    }
+
+    void NoWaterOnBareWorlds(List<(StarSystem System, Orbiter Body, WorldMap Map)> coarse, List<(StarSystem System, WorldMap Moon)> moons)
+    {
+        int bare = 0, wet = 0, wetOnes = 0, withAir = 0, watery = 0, ice = 0;
+        foreach (var (_, body, map) in coarse)
+        {
+            if (!body.Spec.Airless)
+            {
+                withAir++;
+                if (!Dry(map)) watery++;
+                continue;
+            }
+            bare++;
+            if (!Dry(map)) wet++;
+            if (body.Spec.Archetype == Archetype.Ice && map.Deposits.All().Any(d => d.Kind == DepositKind.Water)) ice++;
+        }
+        // The same at the game's own resolution, on every start's moon.
+        var full = new bool[moons.Count];
+        System.Threading.Tasks.Parallel.For(0, moons.Count, i => full[i] = Dry(PlanetGenerator.Generate(moons[i].System.FuelMoon.Spec)));
+        wetOnes = full.Count(d => !d);
+        Check(bare > 0 && wet == 0, $"no water: none of {bare} airless worlds has a sea, lake or river, or ground under the waterline ({wet} had) ; {withAir} worlds with air keep theirs ({watery} have some)");
+        Check(watery > 0, "no water: the worlds with air still have their seas and rivers (the rule is the vacuum's alone)");
+        Check(wetOnes == 0, $"no water: and at the game's own resolution none of the {full.Length} start moons has any ({wetOnes} had)");
+        Check(ice > 0, $"no water: ice deposits stay on airless ice worlds ({ice} such worlds had them)");
     }
 
     // ---- 9. No map marker for warp fuel -----------------------------------------------------------------------

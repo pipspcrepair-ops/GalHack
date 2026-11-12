@@ -230,7 +230,8 @@ public partial class GlobeTest : Node
                     if (b == s.Home || b.Kind is not (PlanetSurface.Skies.OrbiterKind.Planet or PlanetSurface.Skies.OrbiterKind.Moon)) continue;
                     worlds++;
                     if (b.Spec == null) { bare++; continue; }
-                    bool fits = b.Kind == PlanetSurface.Skies.OrbiterKind.Moon || b.Spec.Archetype switch
+                    // A body too small to keep its air is bare rock (or ice, out in the cold) wherever it stands (StarSystem.Dress).
+                    bool fits = b.Kind == PlanetSurface.Skies.OrbiterKind.Moon || b.Spec.Airless && b.Spec.Archetype is Planets.Gen.Archetype.Arid or Planets.Gen.Archetype.Ice || b.Spec.Archetype switch
                     {
                         Planets.Gen.Archetype.Lava => b.Zone == 1,
                         Planets.Gen.Archetype.Arid => b.Zone is 2 or 3,
