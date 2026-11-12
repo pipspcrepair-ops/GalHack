@@ -270,7 +270,7 @@ public static class Blueprint
             // and any of them landing on another block's cell is an error, never a silent overwrite.
             int other = -1;
             foreach (Int3 cell in scratch.CellsOf(b.Pos, block))
-                if (cellLine.TryGetValue(cell, out other)) break;
+                if (cellLine.TryGetValue(cell, out int taken)) { other = taken; break; }
             if (other >= 0)
             {
                 Error(Footprint.IsMulti(type) ? $"block at {b.Pos} ({type.Size.X}x{type.Size.Y}x{type.Size.Z} cells) overlaps the one from line {other}"
