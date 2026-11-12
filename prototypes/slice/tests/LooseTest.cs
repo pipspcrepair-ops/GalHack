@@ -73,8 +73,27 @@ public partial class LooseTest : Node
         public readonly List<float> Heights = new();
     }
 
-    /// <summary>How far the lowest corner of the piece's real shape is below the ground under it (the collider where there is one), m (positive: sunk).</summary>
-    float Sinking(Vessel v) => v.DepthBelow((x, z) => ColliderTop(new Vector3(x, Zone.GroundAt(x, z).Y, z)) is float top && float.IsFinite(top) ? top : Zone.GroundAt(x, z).Y);
+    /// <summary>How far the lowest corner of the piece's actual collision shapes (what the engine collides) is below the collider under it, m (positive: sunk).</summary>
+    float Sinking(Vessel v)
+    {
+        float deepest = float.MinValue;
+        foreach (CollisionShape3D cs in ((FreeBinding)v.Binding).Rigid.GetChildren().OfType<CollisionShape3D>())
+        {
+            Vector3[] points = cs.Shape switch
+            {
+                BoxShape3D b => Enumerable.Range(0, 8).Select(k => new Vector3((k & 1) == 0 ? -1 : 1, (k & 2) == 0 ? -1 : 1, (k & 4) == 0 ? -1 : 1) * b.Size * 0.5f).ToArray(),
+                ConvexPolygonShape3D c => c.Points,
+                _ => Array.Empty<Vector3>(),
+            };
+            foreach (Vector3 p in points)
+            {
+                Vector3 w = cs.GlobalTransform * p;
+                float top = ColliderTop(w);
+                deepest = MathF.Max(deepest, (float.IsFinite(top) ? top : Zone.GroundAt(w.X, w.Z).Y) - w.Y);
+            }
+        }
+        return deepest;
+    }
 
     /// <summary>The top of the solid ground by a ray from above, or NaN where nothing collides.</summary>
     float ColliderTop(Vector3 w)
