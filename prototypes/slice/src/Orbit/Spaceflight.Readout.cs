@@ -20,9 +20,8 @@ public partial class Spaceflight
     public (string Name, float ToSurface, Orbiter Body) Nearest(Vector3 world)
     {
         OrbitZone o = Orbit;
-        string home = Game.World?.Name?.ToUpperInvariant() ?? "WORLD";
         N.Vector3 q = o.ToGlobe(world.ToNumerics());
-        (string, float, Orbiter) best = (home, q.Length() - o.GlobeRadius, null);
+        (string, float, Orbiter) best = ("YOUR WORLD", q.Length() - o.GlobeRadius, null); // as the system map names it
         StarSystem model = Game.Surface.Planet.StarSystem;
         double days = Game.Surface.Sky.Days;
         var eye = new D3(q.X, q.Y, q.Z);

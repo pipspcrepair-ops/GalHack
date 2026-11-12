@@ -21,8 +21,10 @@ public sealed partial class Staging
         foreach (int x in _pilot.Stop()) yield return x;
         for (int i = 0; i < 60 * 300 && (o.Moon?.Ready != true || _game.Spaceflight.MoonSurface?.Made == null); i++) yield return 0;
         Celestial moon = o.Moon;
-        Where("high orbit");
         if (moon == null || !_game.InOrbit) yield break;
+        foreach (int x in MoonTest.TowardTheMoon(_pilot, o, v)) yield return x; // over the limb, the moon ahead
+        foreach (int x in _pilot.Stop()) yield return x;
+        Where("high orbit");
         Hurry(1);
         _game.Visor.Visible = true;
         LookFromBehind(v, moon.Centre);
@@ -32,7 +34,6 @@ public sealed partial class Staging
         Hurry(4);
         var (tx, tz) = moon.Map.MapPoint(moon.ToGlobe(v.Body.Position));
         Vector3 Over() => moon.ToWorld(moon.Map.Direction(tx, tz) * moon.RadiusFor(moon.Ceiling + o.Rules.Crossing.Band + 400f)).ToGodot();
-        foreach (int x in MoonTest.TowardTheMoon(_pilot, o, v)) yield return x;
         foreach (int x in _pilot.FlyTo(v, Over, 30f, 400f)) yield return x;
         Where("over the moon");
         Hurry(1);
