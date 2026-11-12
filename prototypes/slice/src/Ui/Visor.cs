@@ -442,7 +442,7 @@ public partial class Visor : CanvasLayer
                 marks.Add(new(m.Label.ToUpperInvariant(), Ground(Game.Zone.Planet.NearestCopy(new Vector3((float)m.X, feet.Y, (float)m.Z), feet), 2f), C.Danger, 1f, "mark"));
         }
         foreach (Vessel v in Game.Zone.Vessels)
-            if (!v.IsRuin && !v.IsWreck && (v.Seat != null || v.IsBase) && survivor.Aboard != v) marks.Add(new(v.Name.ToUpperInvariant(), v.Body.Position.ToGodot(), C.Good, 1f, v.IsBase ? "base" : "vessel"));
+            if (!v.IsRuin && !v.IsWreck && !v.Structure.IsWreck && (v.Seat != null || v.IsBase) && survivor.Aboard != v) marks.Add(new(v.Name.ToUpperInvariant(), v.Body.Position.ToGodot(), C.Good, 1f, v.IsBase ? "base" : "vessel"));
         if (Game.Backpack != null) marks.Add(new("BACKPACK", Game.Backpack.Position, C.Danger, 1f, "backpack"));
         foreach (Game.Game.Ping p in Game.Pings)
             marks.Add(new(p.Place ? "?" : p.Label.ToUpperInvariant(), p.Place ? Ground(p.At, PlaceLift) : p.At, p.Place ? C.Accent : C.Holo, Game.PingAlpha(p), "ping"));

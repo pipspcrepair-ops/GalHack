@@ -507,7 +507,7 @@ public partial class BuildTest : Node
         // No merging the other way: bag holds them, the structure toolbar still says none.
         _base.Storage.Remove(steel, 4);
         Pack.Add(steel, 3);
-        foreach (int x in _drive.LookAt(_base.ToWorld(new N.Vector3(0, 0, 7f)), 6)) yield return x;
+        foreach (int x in _drive.LookAt(_base.ToWorld(new N.Vector3(0, 0, 3.5f * _base.Structure.Grid.CellSize)), 6)) yield return x;
         Check(_game.Builder.Verdict.Contains("STORAGE"), $"with none in the base's storage the structure toolbar refuses, though the bag holds some: \"{_game.Builder.Verdict}\"");
         count = _base.Structure.Count;
         foreach (int x in _drive.Click()) yield return x;
@@ -880,7 +880,8 @@ public partial class BuildTest : Node
         foreach (int x in StandByBase(7, 1)) yield return x;
         foreach (int x in _play.PlaceBlock(5, _base, Int3.Zero, Dir.PosX, p => on &= p)) yield return x;
         foreach (int x in _drive.Tap(Key.Y)) yield return x;
-        Check(on && _base.Machines.Count == 1 && _base.Powered, "a constructor and a generator built on the base from its own storage");
+        Check(on && _base.Machines.Count == 1 && _base.Powered, $"a constructor and a generator built on the base from its own storage (placed {on}, {_base.Machines.Count} machines, powered {_base.Powered}; in storage {_base.Storage.Count(fab)} {fab}, {_base.Storage.Count(gen)} {gen}, {_base.Storage.FreeSu:F0} SU free)");
+        if (_base.Machines.Count == 0) yield break;
         _game.Progress.Creative = false;
         Constructor c = _base.Machines.Values.First();
         Bill ores = Bill.Of(("iron-ore", 60), ("carbon-ore", 60));
