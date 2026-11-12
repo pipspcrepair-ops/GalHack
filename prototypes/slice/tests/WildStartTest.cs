@@ -13,12 +13,97 @@ namespace Slice.Tests;
 /// is ever inside its walls or interior, nothing is first seen within its clearance (surface and caves
 /// alike), no aggressive creature turns up near it, and creatures set against its outside, or put
 /// inside it, never end a step in it.
+///
+/// Split out of StartTest (it took about 100 s a world). Run: .	ools	est.ps1 -Project prototypes/slice -Scene res://tests/WildStartTest.tscn
+/// (-- --seeds N: that many random worlds; -- --seed N --planet type: replay one)
 /// </summary>
-public partial class StartTest
+public partial class WildStartTest : Node
 {
     const float WildSeconds = 100f;
 
-    IEnumerable<int> QuietStart(Game.Game game, WorldChoice world, Driver drive)
+    const int WatchdogMinutes = 25;
+    const int WorldsPerRun = 3;
+    IEnumerator<int> _run;
+    int _failures, _passes;
+    readonly System.Diagnostics.Stopwatch _clock = System.Diagnostics.Stopwatch.StartNew();
+
+    public override void _Ready()
+    {
+        var thread = new System.Threading.Thread(() =>
+        {
+            System.Threading.Thread.Sleep(TimeSpan.FromMinutes(WatchdogMinutes));
+            Console.Error.WriteLine($"FAIL  the run took over {WatchdogMinutes} minutes: watchdog");
+            System.Environment.Exit(1);
+        }) { IsBackground = true };
+        thread.Start();
+        ProcessPhysicsPriority = 100;
+        _run = Scenario().GetEnumerator();
+    }
+
+    public override void _PhysicsProcess(double delta)
+    {
+        bool more;
+        try { more = _run.MoveNext(); }
+        catch (Exception e) { Check(false, $"scenario threw: {e}"); more = false; }
+        if (more) return;
+        GD.Print(_failures == 0 ? $"ALL PASSED ({_passes} checks in {_clock.Elapsed.TotalSeconds:F1} s)" : $"{_failures} CHECK(S) FAILED ({_passes} passed)");
+        SetPhysicsProcess(false);
+        Wildlife.Shutdown.Quit(this, _failures == 0 ? 0 : 1);
+    }
+
+    void Check(bool ok, string what)
+    {
+        if (ok) _passes++;
+        else _failures++;
+        GD.Print($"  {(ok ? "ok   " : "FAIL ")} {what}");
+    }
+
+    IEnumerable<int> Scenario()
+    {
+        string[] args = OS.GetCmdlineUserArgs();
+        int random = WorldsPerRun;
+        for (int i = 0; i < args.Length - 1; i++) if (args[i] == "--seeds") int.TryParse(args[i + 1], out random);
+        var worlds = new List<WorldChoice>();
+        if (WorldChoice.FromArgs(args) is WorldChoice only) worlds.Add(only);
+        else
+        {
+            for (int i = 0; i < random; i++) worlds.Add(WorldChoice.Fresh("random"));
+            worlds.Add(WorldChoice.Fresh("ice"));
+        }
+        foreach (WorldChoice pinned in worlds)
+            foreach (int x in OneWorld(pinned)) yield return x;
+    }
+
+    IEnumerable<int> OneWorld(WorldChoice pinned)
+    {
+        var game = new Game.Game { Interactive = false, World = pinned };
+        AddChild(game);
+        yield return 0;
+        WorldChoice world = game.World;
+        GD.Print($"-- {world} --");
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        while (game.Phase != Phase.Playing && watch.Elapsed.TotalSeconds < 120)
+        {
+            if (game.Zone.IsBuilt && game.Bunker == null) break;
+            yield return 0;
+        }
+        if (game.Bunker == null || game.Phase != Phase.Playing)
+        {
+            Check(false, $"{world}: no start site found, or the castaway never woke");
+            game.QueueFree();
+            yield return 0;
+            yield break;
+        }
+        game.Zone.Weather.Bridge.Calm = true;
+        game.Zone.Wildlife.Frozen = true;
+        Bunker b = game.Bunker;
+        game.Survivor.PlaceOutside(new System.Numerics.Vector3(b.Outside.X, b.Outside.Y, b.Outside.Z));
+        foreach (int x in QuietStart(game, world)) yield return x;
+        game.QueueFree();
+        for (int i = 0; i < 10; i++) yield return 0;
+    }
+
+    IEnumerable<int> QuietStart(Game.Game game, WorldChoice world)
     {
         Bunker b = game.Bunker;
         var patch = game.Zone.Wildlife;
