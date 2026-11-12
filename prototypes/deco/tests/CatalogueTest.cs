@@ -50,12 +50,11 @@ public partial class CatalogueTest : TestBase
         Check(_cat.Sets.Count >= 15, $"15 or more theme sets ({_cat.Sets.Count})");
         foreach (DecoPiece p in _cat.Pieces)
         {
-            if (p.OnLarge) Check(p.UnlockLarge != null && p.UnlockLarge.Level >= 1 && p.UnlockLarge.Tab == "deco", $"{p.Id}: a large-grid tech-tree node on the deco tab");
-            if (p.OnSmall) Check(p.UnlockSmall != null, $"{p.Id}: a small-grid tech-tree node");
+            Check(p.Unlock != null && p.Unlock.Level >= 1 && p.Unlock.Tab == "deco", $"{p.Id}: a tech-tree node on the deco tab");
         }
         // Roots: one per set with no parent; the rest hang under it.
         foreach (DecoSet s in _cat.Sets)
-            Check(_cat.OfSet(s.Id).Count(p => p.UnlockLarge?.Parent == null && p.OnLarge) == 1, $"set '{s.Id}' has one root on the deco tab");
+            Check(_cat.OfSet(s.Id).Count(p => p.Unlock.Parent == null) == 1, $"set '{s.Id}' has one root on the deco tab");
         // A broken file is refused at load.
         string json = File.ReadAllText(Path.Combine(DataPaths.Items, DecoCatalogue.FileName));
         bool Refused(string text) { try { DecoCatalogue.Load(text); return false; } catch (InvalidDataException) { return true; } }
@@ -208,12 +207,12 @@ public partial class CatalogueTest : TestBase
             {
                 DecoMeshData m = _forge.Mesh(p.Id, s);
                 bool fits = m.Min.X >= lo.X && m.Min.Y >= lo.Y && m.Min.Z >= lo.Z && m.Max.X <= hi.X && m.Max.Y <= hi.Y && m.Max.Z <= hi.Z;
-                Check(fits, $"{p.Id} {s}: fits {p.SizeX}x{p.SizeY}x{p.SizeZ} small cells ({p.Width}x{p.Height}x{p.Depth} m): mesh {m.Min} .. {m.Max}");
+                Check(fits, $"{p.Id} {s}: fits {p.SizeX}x{p.SizeY}x{p.SizeZ} half metres ({p.Width}x{p.Height}x{p.Depth} m): mesh {m.Min} .. {m.Max}");
                 if (s == DecoState.Intact && p.Mount is DecoMount.Floor or DecoMount.Top)
                     Check(MathF.Abs(m.Min.Y) < 0.002f, $"{p.Id}: stands on the floor (lowest point {m.Min.Y:0.000} m)");
             }
-            var (lx, ly, lz) = p.LargeCells;
-            Check(lx * DecoPiece.LargeCell >= p.Width && ly * DecoPiece.LargeCell >= p.Height && lz * DecoPiece.LargeCell >= p.Depth, $"{p.Id}: fits {lx}x{ly}x{lz} large cells");
+            var (cx, cy, cz) = p.Cells;
+            Check(cx >= p.Width && cy >= p.Height && cz >= p.Depth && cx < p.Width + 1 && cy < p.Height + 1 && cz < p.Depth + 1, $"{p.Id}: fits {cx}x{cy}x{cz} 1 m cells, rounded up");
         }
     }
 

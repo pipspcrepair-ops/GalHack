@@ -589,7 +589,7 @@ public partial class PhysicsTest : Node
         }
         foreach (var (pos, block) in destroyed)
         {
-            float bm = Units.Kilograms(ship.Structure.Catalogue.StatsFor(block, ship.Structure.Grid).Mass);
+            float bm = Units.Kilograms(ship.Structure.Catalogue.StatsFor(block).Mass);
             m1 += bm;
             p1 += bm * ship.Body.PointVelocity(ship.Body.ToParent(StructureBridge.CellCenter(ship.Structure, pos)));
         }
