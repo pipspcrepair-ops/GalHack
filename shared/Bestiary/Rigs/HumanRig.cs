@@ -183,15 +183,24 @@ public sealed partial class HumanRig : Rig
             Dead = c.Dead,
             Clock = c.Age,
         });
-        Vector3 chest = ChestPoint;
-        Vector3 head = HeadPoint;
-        SetHit(0, chest, 0.32f);
-        SetHit(1, head, Species.Body.HeadSize * 0.6f);
-        SetHit(2, (Pose[_legU[0]].Origin + _drawn[0]) * 0.5f, 0.2f);
-        SetHit(3, (Pose[_legU[1]].Origin + _drawn[1]) * 0.5f, 0.2f);
-        SetBounds(chest, _f.Height * 0.65f);
+        UpdateHits();
         BodyClearance = Pose[_body].Origin.Y - c.Position.Y;
     }
+
+    /// <summary>The spheres shots (and a search) meet, from the body as it is posed now, standing or lying: chest, head, each leg.</summary>
+    public void UpdateHits()
+    {
+        Vector3 chest = ChestPoint;
+        SetHit(0, chest, 0.32f);
+        SetHit(1, HeadPoint, Species.Body.HeadSize * 0.6f);
+        SetHit(2, (Pose[_legU[0]].Origin + _drawn[0]) * 0.5f, 0.2f);
+        SetHit(3, (Pose[_legU[1]].Origin + _drawn[1]) * 0.5f, 0.2f);
+        SetHit(4, Pose[_body].Origin + Pose[_body].Basis.Y * _f.Torso * 0.2f, 0.26f);
+        SetBounds(chest, _f.Height * 0.65f);
+    }
+
+    /// <summary>The way the last hit went (world), for what a blast does with the body.</summary>
+    public Vector3 HitDir => _hitDir;
 
     int _hitSeen;
 

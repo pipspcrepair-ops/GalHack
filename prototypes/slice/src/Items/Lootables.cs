@@ -35,6 +35,8 @@ public sealed class Lootable
     public SharedStorage Storage => Grid.Storage;
     /// <summary>The creature this is the body of, while the wildlife still draws it.</summary>
     public Creature Creature;
+    /// <summary>A body's own shape as it lies, as balls (world xyz, radius w): a search meets the body itself, not a point where it stood. Left out, a ball round <see cref="Position"/>.</summary>
+    public Func<IEnumerable<Vector4>> Shape;
     public Node3D Node;
     public bool IsEmpty => Storage.IsEmpty;
 }
@@ -98,6 +100,24 @@ public partial class Lootables : Node3D
         distance = reach;
         foreach (Lootable l in All)
         {
+            if (l.Shape != null)
+            {
+                // A body: whichever of its balls the look meets first.
+                bool met = false, any = false;
+                foreach (Vector4 b in l.Shape())
+                {
+                    any = true;
+                    Vector3 bc = new(b.X, b.Y, b.Z);
+                    float br = b.W + 0.12f, ba = (bc - eye).Dot(dir), bo = (eye + dir * ba - bc).Length();
+                    if (bo > br || ba < 0f) continue;
+                    float be = ba - MathF.Sqrt(br * br - bo * bo);
+                    if (be > distance) continue;
+                    distance = MathF.Max(0f, be);
+                    best = l;
+                    met = true;
+                }
+                if (met || any) continue; // (no shape left, a body cleared away: the ball where it lay)
+            }
             Vector3 c = l.Position + Vector3.Up * (l.Kind == LootKind.Corpse ? l.Radius * 0.6f : 0.25f);
             float r = l.Radius + 0.25f, along = (c - eye).Dot(dir), off = (eye + dir * along - c).Length();
             if (off > r) continue;

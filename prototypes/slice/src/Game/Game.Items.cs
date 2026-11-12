@@ -276,10 +276,21 @@ public partial class Game
         }
         Bill drops = BodyDrops(s, Wildlife.Rng.For(s.Seed, "drop", c.Id));
         int[] size = Zone.Data.Rules.Containers.Corpse;
-        Vector3 at = Zone.Wildlife.WorldOf(c);
-        Lootable body = Zone.Loot.Create(LootKind.Corpse, $"{Cap(s.CommonName)} body", at, size[0], size[1], drops);
-        body.Creature = c;
-        body.Radius = MathF.Max(0.5f, s.Stats.Radius);
+        if (EndCreature(c, out Vector3 left))
+        {
+            // Blown apart or burned away: what it had is left where it was.
+            Lootable remains = Zone.Loot.Create(LootKind.Corpse, $"Remains of {s.CommonName}", left, size[0], size[1], drops);
+            remains.Radius = MathF.Max(0.5f, MathF.Min(1.2f, s.Stats.Radius));
+        }
+        else
+        {
+            Vector3 at = Zone.Wildlife.WorldOf(c);
+            Lootable body = Zone.Loot.Create(LootKind.Corpse, $"{Cap(s.CommonName)} body", at, size[0], size[1], drops);
+            body.Creature = c;
+            body.Radius = MathF.Max(0.5f, s.Stats.Radius);
+            // Searched on the body itself, as it lies.
+            body.Shape = () => BodyBalls(c);
+        }
         if (killer == Target)
         {
             Stats.Kills++;

@@ -279,7 +279,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
                 if (!BodyInWedge(c, so, o, nd, cos, cone.Range, out Vector3 centre)) continue;
                 if (SolidBetween(origin, centre)) continue;
                 ConeHits++;
-                Harm(c, d.Damage, centre, dir);
+                Harm(c, d.Damage, centre, dir, kill: d.Kill);
                 if (d.Dot != null)
                 {
                     Effects.Add(c, d.Dot.PerSecond, d.Dot.Seconds, d.Class, d.Tags, 0);
@@ -299,7 +299,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
                     if (!ShotPool.InCone(o, nd, cos, cone.Range, at.ToNumerics()) || SolidBetween(origin, at)) continue;
                     ConeHits++;
                     PersonHits++;
-                    t.Shoot(p, d.Damage);
+                    t.Shoot(p, d.Damage, at, dir, Game.EndOf(d.Kill));
                     Dealt?.Invoke(HitKind.Person, p, d.Damage);
                 }
             }
@@ -669,13 +669,13 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         {
             case HitKind.Creature:
                 var c = (Creature)hit.Thing;
-                Harm(c, damage * Zone.Wildlife.HitScale(c, at), at, dir, quiet: tick);
+                Harm(c, damage * Zone.Wildlife.HitScale(c, at), at, dir, quiet: tick, kill: d.Kill);
                 if (!tick && d.Dot != null && d.Stick == null) Effects.Add(c, d.Dot.PerSecond, d.Dot.Seconds, d.Class, d.Tags, s.Owner);
                 if (!tick) Game.Visor?.Hit();
                 break;
             case HitKind.Person:
                 var p = (Town.Person)hit.Thing;
-                p.Town.Shoot(p, damage);
+                p.Town.Shoot(p, damage, at, dir, Game.EndOf(d.Kill));
                 PersonHits++;
                 Dealt?.Invoke(HitKind.Person, p, damage);
                 if (!tick) Game.Shots.Impact(at, n, ImpactKind.Creature);
@@ -703,9 +703,10 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
     }
 
     /// <summary>Harm to a creature, in whichever sim it lives: wildlife's damage (it turns on who did it), its blood and its cry.</summary>
-    void Harm(Creature c, float amount, Vector3 at, Vector3 dir, bool quiet = false)
+    void Harm(Creature c, float amount, Vector3 at, Vector3 dir, bool quiet = false, KillEffect kill = KillEffect.Normal)
     {
         if (amount <= 0f) return;
+        c.End = Game.EndOf(kill); // what a kill with this does to the body
         Zone.Wildlife.Damage(c, amount);
         CreatureHits++;
         Dealt?.Invoke(HitKind.Creature, c, amount);
@@ -759,7 +760,11 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
                 if (c.Dead || c.Removed) continue;
                 Vector3 centre = Centre(c, so);
                 float d = Gap(c, so, p);
-                if (d < r) Harm(c, blast.Damage * (1f - d / r), centre, (centre - p).Normalized());
+                if (d < r)
+                {
+                    Harm(c, blast.Damage * (1f - d / r), centre, (centre - p).Normalized(), kill: s.Def.Kill);
+                    c.HitHeavy = MathF.Max(c.HitHeavy, 1f - d / r); // a blast staggers
+                }
             }
         }
         Vector3 chest = Game.Survivor.WorldFeet + Game.Survivor.WorldUp() * 1f;
@@ -782,7 +787,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
                 {
                     if (person.Dead) continue;
                     float d = t.World(person.Pos).DistanceTo(p);
-                    if (d < r) { t.Shoot(person, blast.Damage * (1f - d / r)); PersonHits++; }
+                    if (d < r) { t.Shoot(person, blast.Damage * (1f - d / r), t.World(person.Pos) + Vector3.Up, (t.World(person.Pos) - p).Normalized(), Game.EndOf(s.Def.Kill)); PersonHits++; }
                 }
             }
         Fx.Blast(p, r * 0.55f);

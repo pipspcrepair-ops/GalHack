@@ -88,6 +88,8 @@ public sealed partial class Town
         public Figure Figure => Looks.Figure;
         /// <summary>How far over they have gone (the dead), how far their rifle is up, how far bent to work.</summary>
         public float Down, Raised, Bent;
+        /// <summary>How the body ended: fell, blown apart, burned away (the last two leave no body to pose).</summary>
+        public BodyEnd End;
         public bool Laid;
         /// <summary>Their nerve (set once), and when they act on the latest upset: nobody reacts on the same instant.</summary>
         public float Nerve = 0.5f, ReactAt = -1f;
@@ -437,8 +439,9 @@ public sealed partial class Town
             }
             if (p.Dead)
             {
-                // Going down, then lying where they fell.
+                // Going down, then lying where they fell; the hurt flash fades whatever happens.
                 if (p.View == null) MakeBody(p);
+                p.Hurt = MathF.Max(0f, p.Hurt - tickDt);
                 float lying = (player - p.Pos).Length();
                 if (p.Down >= 1f && p.Laid)
                 {
@@ -450,7 +453,8 @@ public sealed partial class Town
                     p.Saved = 0f;
                     continue;
                 }
-                p.Laid = p.Down >= 1f;
+                // Laid once the limp body has come to rest (it falls as a ragdoll, onto whatever is under it).
+                p.Laid = p.Down >= 1f && p.Rig.Settled && p.Hurt <= 0f;
                 p.Down = MathF.Min(1f, p.Down + tickDt * 1.8f);
                 Pose(p, who, lying, tickDt);
                 continue;
@@ -934,8 +938,22 @@ public sealed partial class Town
         return best;
     }
 
-    public void Shoot(Person p, float damage)
+    public void Shoot(Person p, float damage) => Shoot(p, damage, null, null);
+
+    /// <summary>
+    /// A hit, where it landed and the way it went (world; left out, from nowhere in particular), and
+    /// what a kill does to the body: the struck part snaps away from it, a heavy one staggers them.
+    /// </summary>
+    public void Shoot(Person p, float damage, Vector3? at, Vector3? dir, BodyEnd end = BodyEnd.Fall)
     {
+        if (p.Dead) return;
+        if (p.Rig != null)
+        {
+            Vector3 point = at is Vector3 a ? (_place != null ? _place.FromWorld(a) : a) : p.Rig.ChestPoint;
+            Vector3 way = dir ?? -p.Rig.Facing; // (a place is only moved, never turned)
+            p.Rig.Struck(point, way, Math.Clamp(damage / MathF.Max(1f, (float)p.Health.Max) * 2.5f, 0.15f, 1f));
+        }
+        p.End = end;
         p.Health.Current -= damage;
         p.Hurt = 0.4f;
         Did(p.Dead ? Deed.Kill : Deed.Harm);
@@ -946,7 +964,11 @@ public sealed partial class Town
     void Fall(Person p)
     {
         _places?.Zone.Wildlife.Sim?.Targets.Remove(p);
+        Fell?.Invoke(this, p);
     }
+
+    /// <summary>Someone of a town died (the game leaves what they carried with the body, or where it was).</summary>
+    public static event Action<Town, Person> Fell;
 
     // ---- Bodies ---------------------------------------------------------------------------------------
 
@@ -1207,6 +1229,7 @@ public sealed partial class Town
         _view.AddChild(p.View);
         p.View.Build(p.Rig, p.Ready);
         p.Ready = null;
+        GroundBody(p);
     }
 
     /// <summary>This world's form of the friendly gestures.</summary>
@@ -1259,6 +1282,7 @@ public sealed partial class Town
             Aim = p.Raised,
             Look = p.HeadYaw,
             Down = MathF.Max(p.Down, p.Slept),
+            Dead = p.Dead,
             Act = p.Act,
             ActAmount = p.ActAmount,
             ActAt = p.Pos + new Vector3(-MathF.Sin(p.Yaw), 0f, -MathF.Cos(p.Yaw)) * 2f + Vector3.Up * 0.9f,
