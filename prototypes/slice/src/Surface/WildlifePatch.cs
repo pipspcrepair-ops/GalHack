@@ -554,7 +554,8 @@ public partial class WildlifePatch : Node3D
         SpawnRules rules = Sim.Data.Spawning;
         Vector3 to = WildSim.Flat(at - PatchLocal(eye.GlobalPosition));
         float d = to.Length();
-        if (d < rules.MinPlayerDistance + margin) return false;
+        // (The faster you go, the further out: SpawnLead.)
+        if (d < rules.MinPlayerDistance + margin + (d > 1e-3f ? Lead(to / d) : 0f)) return false;
         Vector3 look = WildSim.Flat(-eye.GlobalBasis.Z);
         return !(d < rules.ViewDistance + margin && look.LengthSquared() > 1e-4f && look.Normalized().Dot(to / d) > MathF.Cos(Mathf.DegToRad(rules.ViewConeDegrees)));
     }
@@ -687,6 +688,7 @@ public partial class WildlifePatch : Node3D
             _baseSync = 0f;
             SyncBases();
         }
+        TrackTravel((float)delta);
         Refill((float)delta);
         Haunting((float)delta);
         Own((float)delta);
