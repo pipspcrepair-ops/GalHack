@@ -92,6 +92,31 @@ public sealed partial class Town
         }
     }
 
+    /// <summary>
+    /// A sound that isn't speech, in their voice and mood: the scared call out or breathe fast, the angry bark, the grieving
+    /// cry, the content laugh, the unsettled breathe short, a worker grunts with effort. False: say something instead.
+    /// </summary>
+    bool Vocalise(Person who)
+    {
+        PersonMood m = who.Feel.Mood;
+        bool child = who.Figure.Stage == LifeStage.Child;
+        double roll = _rng.NextDouble();
+        VocalKind? kind = m switch
+        {
+            PersonMood.Scared => roll < 0.4 ? VocalKind.Call : roll < 0.7 ? VocalKind.Breath : child || roll < 0.85 ? VocalKind.Cry : VocalKind.Pain,
+            PersonMood.Angry => roll < 0.6 ? VocalKind.Call : VocalKind.Grunt,
+            PersonMood.Grieving => roll < 0.7 ? VocalKind.Cry : VocalKind.Breath,
+            PersonMood.Content => roll < 0.6 ? VocalKind.Laugh : null,
+            PersonMood.Uneasy => roll < 0.5 ? VocalKind.Breath : null,
+            PersonMood.Drunk => roll < 0.4 ? VocalKind.Laugh : roll < 0.6 ? VocalKind.Grunt : null,
+            _ => who.Working ? (roll < 0.6 ? VocalKind.Effort : VocalKind.Grunt) : roll < 0.08 ? VocalKind.Breath : null,
+        };
+        if (kind is not { } k) return false;
+        Vector3 at = World(who.Pos + Vector3.Up * who.Figure.Height * 0.9f);
+        _places.Zone.Wildlife.Sound(Vector3.Zero, a => a.Vocal(who.Looks, k, m, at));
+        return true;
+    }
+
     /// <summary>The idle gesture their mood asks for, or none.</summary>
     BodyAct MoodAct(Person p) => p.Feel.Idle(_clock, People.IndexOf(p));
 }

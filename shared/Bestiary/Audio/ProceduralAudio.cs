@@ -211,6 +211,49 @@ public partial class ProceduralAudio : Node3D
         p.Play();
     }
 
+    readonly Dictionary<(Voice, VocalKind, PersonMood, int), AudioStreamWav> _vocals = new();
+    readonly Dictionary<(Voice, VocalKind, PersonMood, int), System.Threading.Tasks.Task<byte[]>> _vocalising = new();
+
+    /// <summary>
+    /// Someone makes a sound that isn't speech (a grunt, a breath, pain, effort, a call, a laugh, a cry), in their own
+    /// voice and their mood. Rendered off the main thread the first time, heard from the second.
+    /// </summary>
+    public void Vocal(Species person, VocalKind kind, PersonMood mood, Vector3 at, float? volumeDb = null)
+    {
+        Voice v = person.Figure?.Voice;
+        if (v == null || _throats.Count == 0) return;
+        var key = (v, kind, mood, _take++ % Takes);
+        if (!_vocals.TryGetValue(key, out AudioStreamWav clip))
+        {
+            if (_vocalising.TryGetValue(key, out var task))
+            {
+                if (!task.IsCompleted) return;
+                clip = new AudioStreamWav { Format = AudioStreamWav.FormatEnum.Format16Bits, MixRate = Voice.Rate, Stereo = false, Data = task.Result };
+                _vocalising.Remove(key);
+                if (_vocals.Count > 256) _vocals.Clear();
+                _vocals[key] = clip;
+            }
+            else
+            {
+                int take = key.Item4;
+                _vocalising[key] = System.Threading.Tasks.Task.Run(() =>
+                {
+                    short[] pcm = v.Vocalize(kind, mood, take);
+                    var bytes = new byte[pcm.Length * 2];
+                    Buffer.BlockCopy(pcm, 0, bytes, 0, bytes.Length);
+                    return bytes;
+                });
+                return;
+            }
+        }
+        AudioStreamPlayer3D p = _throats[_nextThroat++ % _throats.Count];
+        p.Stream = clip;
+        p.VolumeDb = volumeDb ?? (kind is VocalKind.Call or VocalKind.Pain ? 0f : kind == VocalKind.Breath ? -16f : -8f);
+        p.MaxDistance = kind is VocalKind.Call or VocalKind.Pain ? 60f : kind == VocalKind.Breath ? 8f : 22f;
+        p.GlobalPosition = at + Origin;
+        p.Play();
+    }
+
     public void Play(string clip, Vector3 at, float pitch = 1f, float volumeDb = 0f)
     {
         if (!_clips.TryGetValue(clip, out var stream) || _pool.Count == 0) return;

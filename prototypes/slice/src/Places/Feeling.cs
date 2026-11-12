@@ -3,9 +3,6 @@ using Wildlife;
 
 namespace Slice.Places;
 
-/// <summary>How one person feels right now. A settlement has a mood towards you; each person has their own.</summary>
-public enum PersonMood { Calm, Uneasy, Scared, Angry, Grieving, Drunk, Content }
-
 /// <summary>What happened near them that moves a mood.</summary>
 public enum MoodEvent { Shot, SawDeath, LostKin, Threat, Harm, Gift, Fire, Robbed }
 

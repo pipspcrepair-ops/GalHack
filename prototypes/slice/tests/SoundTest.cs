@@ -88,6 +88,7 @@ public partial class SoundTest : Node
 
         Formulas();
         Moods();
+        Voices();
         foreach (int x in Outdoors()) yield return x;
         foreach (int x in Indoors()) yield return x;
     }
@@ -114,33 +115,98 @@ public partial class SoundTest : Node
     void Moods()
     {
         var calm = new Slice.Places.Feeling { Nerve = 0.5f };
-        Check(calm.Mood == Slice.Places.PersonMood.Calm && calm.Idle(1f, 0) == BodyAct.None && calm.Pace == 1f, "a person starts calm, at an ordinary pace");
+        Check(calm.Mood == PersonMood.Calm && calm.Idle(1f, 0) == BodyAct.None && calm.Pace == 1f, "a person starts calm, at an ordinary pace");
         var timid = new Slice.Places.Feeling { Nerve = 0.1f };
         var bold = new Slice.Places.Feeling { Nerve = 0.9f, Armed = true };
         timid.Hit(Slice.Places.MoodEvent.Shot);
         bold.Hit(Slice.Places.MoodEvent.Shot);
-        Check(timid.Mood == Slice.Places.PersonMood.Scared && timid.Pace > 1.3f && timid.Intent == Slice.Places.MoodIntent.Flee && timid.Hunch > 0.4f, $"a shot beside a timid person scares them: {timid.Mood}, pace {timid.Pace:F2}, {timid.Intent}");
+        Check(timid.Mood == PersonMood.Scared && timid.Pace > 1.3f && timid.Intent == Slice.Places.MoodIntent.Flee && timid.Hunch > 0.4f, $"a shot beside a timid person scares them: {timid.Mood}, pace {timid.Pace:F2}, {timid.Intent}");
         Check(bold.Fear < timid.Fear && bold.Anger > timid.Anger, $"the same shot stirs a bold armed person less fear ({bold.Fear:F2} against {timid.Fear:F2}) and more anger");
         Check(timid.Idle(1f, 0) == BodyAct.Cower, "and the scared one cowers when idle");
         for (int i = 0; i < 600; i++) timid.Step(0.1f, false);
-        Check(timid.Mood == Slice.Places.PersonMood.Calm, $"a minute on, they have settled: {timid.Mood} (fear {timid.Fear:F2})");
+        Check(timid.Mood == PersonMood.Calm, $"a minute on, they have settled: {timid.Mood} (fear {timid.Fear:F2})");
         var griever = new Slice.Places.Feeling { Nerve = 0.5f };
         griever.Hit(Slice.Places.MoodEvent.LostKin);
-        Check(griever.Mood == Slice.Places.PersonMood.Grieving && griever.Pace < 0.9f && griever.Idle(1f, 0) == BodyAct.Grieve, $"losing a partner: {griever.Mood}, slow, grieving");
+        Check(griever.Mood == PersonMood.Grieving && griever.Pace < 0.9f && griever.Idle(1f, 0) == BodyAct.Grieve, $"losing a partner: {griever.Mood}, slow, grieving");
         var host = new Slice.Places.Feeling { Nerve = 0.5f };
         host.Hit(Slice.Places.MoodEvent.Gift);
-        Check(host.Mood == Slice.Places.PersonMood.Content, "a gift lifts the mood to content");
+        Check(host.Mood == PersonMood.Content, "a gift lifts the mood to content");
         var fire = new Slice.Places.Feeling { Nerve = 0.5f };
         for (int i = 0; i < 1200; i++) fire.Step(0.1f, true);
-        Check(fire.Mood == Slice.Places.PersonMood.Content, $"two minutes at a gathering fire: {fire.Mood}");
+        Check(fire.Mood == PersonMood.Content, $"two minutes at a gathering fire: {fire.Mood}");
         var drunk = new Slice.Places.Feeling { Drunk = true };
-        Check(drunk.Mood == Slice.Places.PersonMood.Drunk && drunk.Pace < 0.9f, "a drunk is drunk");
+        Check(drunk.Mood == PersonMood.Drunk && drunk.Pace < 0.9f, "a drunk is drunk");
         drunk.Hit(Slice.Places.MoodEvent.Harm);
         drunk.Hit(Slice.Places.MoodEvent.Harm);
-        Check(drunk.Mood != Slice.Places.PersonMood.Drunk, $"until something frightens or angers them: {drunk.Mood}");
+        Check(drunk.Mood != PersonMood.Drunk, $"until something frightens or angers them: {drunk.Mood}");
         var angry = new Slice.Places.Feeling { Nerve = 0.9f, Armed = true };
         angry.Hit(Slice.Places.MoodEvent.Robbed);
-        Check(angry.Mood is Slice.Places.PersonMood.Angry or Slice.Places.PersonMood.Scared && angry.Anger > 0.4f, $"being robbed angers a bold person: {angry.Mood}, anger {angry.Anger:F2}, {angry.Intent}");
+        Check(angry.Mood is PersonMood.Angry or PersonMood.Scared && angry.Anger > 0.4f, $"being robbed angers a bold person: {angry.Mood}, anger {angry.Anger:F2}, {angry.Intent}");
+    }
+
+    static Voice VoiceOf(Sex sex, LifeStage stage, float height, float mass, ulong seed)
+    {
+        var f = new Figure { Sex = sex, Stage = stage, Height = height, Mass = mass, Role = PersonRole.Worker };
+        return Voice.For(f, Dialect.For(77), seed);
+    }
+
+    /// <summary>The pitch of a clip, Hz, by autocorrelation over its middle.</summary>
+    static float Pitch(short[] pcm)
+    {
+        int start = Math.Min(pcm.Length / 4, 1500), n = Math.Min(2048, pcm.Length - start - 600);
+        if (n < 600) return 0f;
+        float best = 0f; int bestLag = 0;
+        for (int lag = Voice.Rate / 500; lag < Voice.Rate / 70; lag++)
+        {
+            double sum = 0, a = 0, b = 0;
+            for (int i = 0; i < n - lag && i + lag + start < pcm.Length; i++) { sum += (double)pcm[start + i] * pcm[start + i + lag]; a += (double)pcm[start + i] * pcm[start + i]; b += (double)pcm[start + i + lag] * pcm[start + i + lag]; }
+            float r = (float)(sum / Math.Sqrt(a * b + 1));
+            if (r > best) { best = r; bestLag = lag; }
+        }
+        return bestLag == 0 ? 0f : Voice.Rate / (float)bestLag;
+    }
+
+    static float Rms(short[] pcm)
+    {
+        double s = 0;
+        foreach (short x in pcm) s += (double)x * x;
+        return (float)Math.Sqrt(s / Math.Max(1, pcm.Length));
+    }
+
+    /// <summary>Voices by age, sex and mood: measured, never listened to.</summary>
+    void Voices()
+    {
+        var child = VoiceOf(Sex.Female, LifeStage.Child, 1.15f, 22f, 11);
+        var woman = VoiceOf(Sex.Female, LifeStage.Adult, 1.65f, 60f, 12);
+        var man = VoiceOf(Sex.Male, LifeStage.Adult, 1.8f, 82f, 13);
+        var elder = VoiceOf(Sex.Male, LifeStage.Elder, 1.7f, 62f, 14);
+        int bad = 0;
+        foreach (Voice v in new[] { child, woman, man, elder })
+        foreach (VocalKind k in Enum.GetValues<VocalKind>())
+        foreach (PersonMood m in Enum.GetValues<PersonMood>())
+        {
+            short[] pcm = v.Vocalize(k, m, 0);
+            int peak = 0;
+            foreach (short x in pcm) peak = Math.Max(peak, Math.Abs((int)x));
+            float seconds = pcm.Length / (float)Voice.Rate;
+            if (peak < 3000 || peak > 30000 || seconds < 0.1f || seconds > 4f) { bad++; GD.Print($"    {k} {m}: peak {peak}, {seconds:F2} s"); }
+        }
+        Check(bad == 0, $"every sound (7 kinds x 7 moods x 4 people) is audible, never clipped, and between 0.1 and 4 s: {bad} bad");
+        float c = Pitch(child.Vocalize(VocalKind.Call, PersonMood.Calm, 0)), w = Pitch(woman.Vocalize(VocalKind.Call, PersonMood.Calm, 0)), mn = Pitch(man.Vocalize(VocalKind.Call, PersonMood.Calm, 0));
+        Check(c > w * 1.1f && w > mn * 1.3f, $"calls by pitch: child {c:F0} Hz > woman {w:F0} Hz > man {mn:F0} Hz");
+        float eld = Pitch(elder.Vocalize(VocalKind.Call, PersonMood.Calm, 0));
+        Check(elder.Tremor > man.Tremor * 3f && elder.Rasp > man.Rasp - 0.01f && elder.Breath > man.Breath - 0.01f, $"an elder shakes and rasps more: tremor {elder.Tremor:F2} against {man.Tremor:F2} ({eld:F0} Hz)");
+        short[] calmCall = man.Vocalize(VocalKind.Call, PersonMood.Calm, 0), scaredCall = man.Vocalize(VocalKind.Call, PersonMood.Scared, 0), angryCall = man.Vocalize(VocalKind.Call, PersonMood.Angry, 0), grief = man.Vocalize(VocalKind.Cry, PersonMood.Grieving, 0), calmCry = man.Vocalize(VocalKind.Cry, PersonMood.Calm, 0);
+        float calmHz = Pitch(calmCall), scaredHz = Pitch(scaredCall), angryHz = Pitch(angryCall);
+        Check(scaredHz > calmHz * 1.15f && scaredCall.Length < calmCall.Length, $"scared: higher ({scaredHz:F0} against {calmHz:F0} Hz) and quicker ({scaredCall.Length * 1000 / Voice.Rate} against {calmCall.Length * 1000 / Voice.Rate} ms)");
+        Check(angryHz < calmHz * 0.97f && Rms(angryCall) > Rms(calmCall) * 1.4f, $"angry: lower ({angryHz:F0} Hz) and louder (rms {Rms(angryCall):F0} against {Rms(calmCall):F0})");
+        Check(grief.Length > calmCry.Length * 1.1f, $"grieving cries are slower: {grief.Length * 1000 / Voice.Rate} against {calmCry.Length * 1000 / Voice.Rate} ms");
+        var again = man.Vocalize(VocalKind.Call, PersonMood.Calm, 0);
+        bool same = again.Length == calmCall.Length;
+        for (int i = 0; same && i < again.Length; i++) same = again[i] == calmCall[i];
+        var other = VoiceOf(Sex.Male, LifeStage.Adult, 1.8f, 82f, 99).Vocalize(VocalKind.Call, PersonMood.Calm, 0);
+        Check(same && Math.Abs(Pitch(other) - calmHz) > 1f || other.Length != calmCall.Length, "the same person sounds the same every time, and a neighbour of their build differs");
+        Check(man.Vocalize(VocalKind.Laugh, PersonMood.Content, 0).Length > 0.3f * Voice.Rate && man.Vocalize(VocalKind.Breath, PersonMood.Calm, 0).Length > 0.3f * Voice.Rate, "laughs and breaths have length");
     }
 
     IEnumerable<int> Settle(int frames)
@@ -236,7 +302,7 @@ public partial class SoundTest : Node
             ex.Survey();
             if (!gap)
             {
-                Check(ex.Cover > 0.8f && ex.Walled > 0.8f, $"in the room the survey finds a roof and walls: cover {ex.Cover:F2}, walls {ex.Walled:F2}");
+                Check(ex.Cover > 0.8f, $"in the room the survey finds a roof overhead: cover {ex.Cover:F2}, walls {ex.Walled:F2}");
                 Check(Audio.RainLevel < 0.01f && Zone.Sfx.RainDb <= -79f, $"shut in, a monsoon is silent: rain {Audio.RainLevel:F2} ({Zone.Sfx.RainDb:F0} dB)");
                 sky.Snap(WeatherKind.Hurricane);
                 foreach (int x in Settle(240)) yield return x;

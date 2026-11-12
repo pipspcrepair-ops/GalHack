@@ -1198,6 +1198,7 @@ public sealed partial class Town
             if (d < best) { best = d; who = p; }
         }
         if (who == null) return;
+        if (Vocalise(who)) return;
         VoiceMood mood = who.Aim >= 0f ? VoiceMood.Shout
             : who.Fleeing ? (_rng.NextDouble() < 0.5 ? VoiceMood.Cry : VoiceMood.Whisper)
             : Memory.Mood == Mood.Hostile ? VoiceMood.Shout : VoiceMood.Murmur;
