@@ -63,12 +63,14 @@ public static partial class PoiFauna
     /// </summary>
     static void Floor(PoiPlan poi, PoiPopulation pop, DeepFauna fauna, PoiTheme theme, Rng rng, bool infested, List<PoiRoom> walkable, PopulationRules pr)
     {
-        if (walkable.Count == 0) return;
-        if (!pop.Spawns.Exists(s => !s.Species.Passive))
+        // Vermin at least: where the food was, else any room, else the open ground of a place with none.
+        var any = walkable.Count > 0 ? walkable : poi.Yards;
+        for (int i = 0; i < 4 && any.Count > 0 && !pop.Spawns.Exists(s => !s.Species.Passive); i++)
         {
-            PoiRoom vermin = walkable.Find(r => Food(r.Purpose)) ?? walkable[rng.Int(0, walkable.Count - 1)];
+            PoiRoom vermin = i == 0 ? any.Find(r => Food(r.Purpose)) ?? any[rng.Int(0, any.Count - 1)] : any[rng.Int(0, any.Count - 1)];
             Subsisters(pop, fauna, theme, vermin, rng, infested, 4f, pr);
         }
+        if (walkable.Count == 0) return;
         int deepest = 0;
         foreach (PoiRoom r in walkable) deepest = Math.Max(deepest, r.Depth);
         for (int d = 1; d <= deepest; d++)

@@ -146,6 +146,8 @@ public sealed class PoiPopulation
     public ulong Seed;
     /// <summary>A mixed encounter set up (an armed group's room, the nest's room), or none.</summary>
     public (int Armed, int Nest)? Clash;
+    /// <summary>Spawns waiting to be put down out of sight (fair spawning), and put down when they can be.</summary>
+    public readonly List<PoiSpawn> Deferred = new();
 
     public int Count(DeepRole role) => Spawns.FindAll(s => s.Role == role).Count;
 }
@@ -243,7 +245,7 @@ public static partial class PoiFauna
         bool held = holder is PlaceHolder.Nesters or PlaceHolder.Beasts or PlaceHolder.Hollows or PlaceHolder.Machines;
         string state = holder is PlaceHolder.People or PlaceHolder.Machines ? nameof(PlaceState.Active) : poi.State.ToString();
         // Aliveness follows the world: a living world's places are lived in by something; a barren one's may be silent.
-        if (!poi.Husks && !held && poi.Hollows.Count == 0 && rng.Chance(pr.Silent.GetValueOrDefault(state, 0.25f) * Mathf.Lerp(1f, 0.25f, Math.Clamp(poi.Livable, 0f, 1f))))
+        if (!poi.Husks && !held && poi.Hollows.Count == 0 && rng.Chance(pr.Silent.GetValueOrDefault(state, 0.25f) * Mathf.Lerp(0.5f, 0.1f, Math.Clamp(poi.Livable, 0f, 1f))))
         {
             pop.Silent = true;
             pop.Note = "empty and silent";
@@ -716,6 +718,8 @@ public static partial class PoiFauna
     static void Held(PoiPlan poi, PoiPopulation pop, DeepFauna fauna, PoiTheme theme, Rng rng, PlaceHolder holder)
     {
         var walkable = poi.Rooms.FindAll(r => r.Kind is not (RoomKind.Vent or RoomKind.Duct) && r.Size.Y >= 2f);
+        // A place with no rooms (a clearing, a camp): its holders keep its open ground.
+        if (walkable.Count == 0) walkable = new List<PoiRoom>(poi.Yards);
         if (walkable.Count == 0) return;
         int n = Math.Clamp(walkable.Count / 3 + 1, 2, 6);
         var from = walkable.FindAll(r => r.Kind == RoomKind.Corridor);
@@ -906,7 +910,7 @@ public static partial class PoiFauna
     public static List<Creature> Spawn(WildSim sim, PoiPopulation pop, ISolidSpace space, Func<Vector3, bool> allow = null)
     {
         // Fair spawning: nothing is put down where you'd see it appear, or right beside you. A spot that
-        // fails is moved a little within reach (still in the open), else that one isn't put down at all.
+        // fails is moved a little within reach (still in the open), else it waits (pop.Deferred) until it can be.
         if (allow != null && !pop.Silent)
         {
             var fair = Rng.For(pop.Seed, "fair");
@@ -924,7 +928,11 @@ public static partial class PoiFauna
                     s.Position = q;
                     moved = true;
                 }
-                if (!moved) pop.Spawns.RemoveAt(i);
+                if (!moved)
+                {
+                    pop.Deferred.Add(pop.Spawns[i]);
+                    pop.Spawns.RemoveAt(i);
+                }
             }
         }
         var made = new List<Creature>();
@@ -958,6 +966,46 @@ public static partial class PoiFauna
         var colonies = new Dictionary<Species, Colony>();
         foreach (PoiSpawn s in pop.Spawns)
         {
+            Creature c = Put(sim, pop, space, s);
+            made.Add(c);
+            if (s.Species.Role == DeepRole.Subsister)
+            {
+                if (!colonies.TryGetValue(s.Species, out Colony col))
+                {
+                    col = new Colony { Species = s.Species, Space = space, Home = c.Home };
+                    colonies[s.Species] = col;
+                    foreach (Crack k in pop.Cracks) if (k.Kind == CrackKind.Crack) col.Sources.Add(k);
+                    sim.Colonies.Add(col);
+                }
+                col.Target++;
+            }
+        }
+        return made;
+    }
+
+    /// <summary>
+    /// Puts down the spawns that had to wait (they'd have appeared in view, or beside you) where they
+    /// can be now, out of sight; those still in view wait on. The number put down.
+    /// </summary>
+    public static int PutDeferred(WildSim sim, PoiPopulation pop, ISolidSpace space, Func<Vector3, bool> allow)
+    {
+        int n = 0;
+        for (int i = pop.Deferred.Count - 1; i >= 0; i--)
+        {
+            PoiSpawn s = pop.Deferred[i];
+            if (allow != null && !allow(s.Position)) continue;
+            pop.Deferred.RemoveAt(i);
+            pop.Spawns.Add(s);
+            Put(sim, pop, space, s);
+            n++;
+        }
+        return n;
+    }
+
+    /// <summary>One spawn into the sim: on its surface, by its nest, on its beat, in its hole.</summary>
+    static Creature Put(WildSim sim, PoiPopulation pop, ISolidSpace space, PoiSpawn s)
+    {
+        {
             Nest nest = s.Nest >= 0 ? pop.Nests[s.Nest] : null;
             Creature c = sim.SpawnIn(s.Species, space, s.Position, s.Up, pack: nest?.Turns);
             c.Hunger = c.Rng.Range(0.2f, 0.7f);
@@ -977,19 +1025,7 @@ public static partial class PoiFauna
                 c.Ambush = new AmbushPoint { Kind = s.Hide, Position = Crawl.Center(c), Normal = c.Facing.Y, Hole = hole };
                 if (hole != null) Brain.EnterCrack(sim, c, hole, park: true);
             }
-            made.Add(c);
-            if (s.Species.Role == DeepRole.Subsister)
-            {
-                if (!colonies.TryGetValue(s.Species, out Colony col))
-                {
-                    col = new Colony { Species = s.Species, Space = space, Home = c.Home };
-                    colonies[s.Species] = col;
-                    foreach (Crack k in pop.Cracks) if (k.Kind == CrackKind.Crack) col.Sources.Add(k);
-                    sim.Colonies.Add(col);
-                }
-                col.Target++;
-            }
+            return c;
         }
-        return made;
     }
 }

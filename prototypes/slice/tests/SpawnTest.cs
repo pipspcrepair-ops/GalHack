@@ -194,7 +194,7 @@ public partial class SpawnTest : Node
         GD.Print("-- fair spawning --");
         var families = Held().Where(f => f.Tags.Contains("underground") || _rng.Next(3) == 0).ToList();
         Decor decor = Decor.Shared;
-        int made = 0, inside = 0, dropped = 0, seen = 0, places = 0, fairMade = 0;
+        int made = 0, inside = 0, dropped = 0, seen = 0, places = 0, fairMade = 0, waited = 0, left = 0;
         string example = "", seenExample = "";
         for (int w = 0; w < 3; w++)
         {
@@ -239,12 +239,12 @@ public partial class SpawnTest : Node
                         if (pass == 1 && !c.InWalls && !PlaceFauna.Unseen(eye, look, MathF.Cos(Mathf.DegToRad(_data.Spawning.ViewConeDegrees)), _data.Spawning.ViewDistance, _data.Spawning.CaveClearance, space, c.Position) && seen++ == 0)
                             seenExample = $"; e.g. a {c.Species.CommonName} {c.Position.DistanceTo(eye):F1} m off in {f.Id}";
                     }
-                    if (pass == 1 && planned > 0 && cs.Count == 0) GD.Print($"    (all {planned} of {f.Id} were in view of the way in)");
+                    if (pass == 1) { waited += pop.Deferred.Count; PoiFauna.PutDeferred(sim, pop, space, null); left += pop.Deferred.Count; }
                 }
             }
         }
         Check(made > 100 && inside == 0, $"nothing starts inside a wall, floor, furniture or brick: {inside} of {made} in {places} places ({dropped} put down nowhere){example}");
-        Check(fairMade > 30 && seen == 0, $"with you at the way in, nothing is put down in view, beside or behind you: {seen} of {fairMade}{seenExample}");
+        Check(fairMade > 30 && seen == 0 && left == 0, $"with you at the way in, nothing is put down in view, beside or behind you: {seen} of {fairMade}{seenExample}; {waited} waited until out of sight, none lost ({left})");
     }
 
     /// <summary>A place the growth took always has its Hollow beasts, in it and round it, however it is held and whatever it is (a camp too).</summary>

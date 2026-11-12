@@ -361,6 +361,10 @@ public sealed class PlaceFauna
             new Vector3I(g.Min.X, g.Min.Y, g.Min.Z), new Vector3I(g.Min.X + g.Size.X, g.Min.Y + g.Size.Y, g.Min.Z + g.Size.Z)) { Slope = _cells.Slope, Parts = PlaceParts.Of(memory) };
         lock (deep.Lock) PoiFauna.Spawn(sim, Population, space, Fair(deep, planet, o, space));
         Sim = sim;
+        // Those that would have appeared in your sight wait, and are put down once they can be unseen.
+        _space = space;
+        _origin = o;
+        if (Population.Deferred.Count > 0) lock (Pending) Pending.Add(this);
         // Its creatures are bodies no door shuts on.
         memory.Bodies.Add(() => CreatureBodies(sim));
     }
@@ -391,6 +395,27 @@ public sealed class PlaceFauna
         if (d < 30f && look.Dot(new Vector3(to.X, 0f, to.Z).Normalized()) < 0.3f) return false;
         if (d > viewDistance) return true;
         return !(look.Dot(to / d) > cone && SpaceMath.Clear(space, eye, body, 0f));
+    }
+
+    ISolidSpace _space;
+    Vector3 _origin;
+    /// <summary>Places with spawns still waiting to be put down out of sight.</summary>
+    static readonly List<PlaceFauna> Pending = new();
+
+    /// <summary>Spawns still waiting, over every place (tests).</summary>
+    public static int Waiting { get { lock (Pending) return Pending.Sum(f => f.Population.Deferred.Count); } }
+
+    /// <summary>On the main thread now and then: the waiting spawns of every place put down where you can't see them appear.</summary>
+    public static void PutWaiting(Deep deep)
+    {
+        PlaceFauna[] all;
+        lock (Pending) all = Pending.ToArray();
+        foreach (PlaceFauna f in all)
+        {
+            if (f.Sim == null) continue;
+            lock (deep.Lock) PoiFauna.PutDeferred(f.Sim, f.Population, f._space, Fair(deep, deep.Planet, f._origin, f._space));
+            if (f.Population.Deferred.Count == 0) lock (Pending) Pending.Remove(f);
+        }
     }
 
     /// <summary>A sim's creatures as the doors see them (local feet, radius, height; a climber as the ball it rides in).</summary>
@@ -472,6 +497,7 @@ public partial class Caves : Node3D
         _timer -= delta;
         if (_timer > 0) return;
         _timer = 2.0;
+        PlaceFauna.PutWaiting(Deep);
         Vector3 feet = Feet();
         var planet = Zone.Planet;
         foreach (Cave c in _caves.Values)
