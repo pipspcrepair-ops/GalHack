@@ -53,7 +53,8 @@ public static class DeviceDetail
             case "gear": Leg(k); break;
             case "weapon": Weapon(k, t); break;
             case "turret": Turret(k); break;
-            case "ladder": break;
+            case "ladder":
+            case "stairs": break;
             default: Fallback(k); break;
         }
         return k.Parts;

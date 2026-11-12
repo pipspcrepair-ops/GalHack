@@ -39,18 +39,21 @@ namespace Slice.Start;
 public sealed class Bunker
 {
     // ---- The shape, in 1 m cells: x starboard, y up, -z out of the door ----------------------------
-    // Halved from the 0.5 m cells it was first built in, so the room keeps its size; the stairs are
-    // a 45° ramp, a slope a metre (it rises a cell per cell), walked up, never stepped over.
+    // Halved from the 0.5 m cells it was first built in, so the room keeps its size; the stairs
+    // rise a cell per cell, each cell a stairs block of two 0.5 m steps (the riser they always had).
 
     /// <summary>Room: interior x -3..3, y 1..3, z -2..2 (7 x 3 x 5 m); walls round it; the door in the -z wall.</summary>
     const int RoomX = 4, RoomZ = 3, RoomTop = 4;
-    /// <summary>Stairwell interior x 0 (1 m), walls at ±1; each step a slope 1 m up and 1 m deep.</summary>
+    /// <summary>Stairwell interior x 0 (1 m), walls at ±1; each cell a stairs block, 1 m up and 1 m deep.</summary>
     const int StairHalf = 1;
     const float Cell = 1f;
     /// <summary>The top of a floor block over its centre: half a cell.</summary>
     const float Floor = Cell * 0.5f;
-    /// <summary>A roofed step's roof, in cells over the step.</summary>
-    const int RoofAbove = 3;
+    /// <summary>
+    /// A roofed step's roof, in cells over the step: 3 m over its upper tread, so a walker stepping up
+    /// the next 0.5 m riser lifts clear of it (at 3 cells, 2 m over the upper tread stopped every step).
+    /// </summary>
+    const int RoofAbove = 4;
     /// <summary>How far the top tread stands over a whole metre (the ground dug level outside it lies on one).</summary>
     const float TreadAbove = 0.02f;
 
@@ -514,20 +517,24 @@ public sealed class Bunker
         b.AppendLine($"block -{StairHalf - 1}..{StairHalf - 1} {RoomTop - 1} -{RoomZ} steel paint=hazard");
         b.AppendLine($"block -{RoomX}..{RoomX} {RoomTop} -{RoomZ}..{RoomZ} steel paint=wall");
 
-        // The stairwell: a landing at the door, then a slope up each metre, the ground outside meeting
-        // the top one's high edge. Under the open sky its roof has fallen in; below ground it is roofed over.
+        // The stairwell: a landing at the door, then a stairs block up each metre (two 0.5 m steps,
+        // the riser the stairs always had), the ground outside meeting the top one's upper tread.
+        // Under the open sky its roof has fallen in; below ground it is roofed over.
         for (int k = 0; k <= steps; k++)
         {
             int z = -(RoomZ + 1 + k);
             string paint = k % 2 == 0 ? "floor" : "wall";
             b.AppendLine(k == 0 ? $"block -{StairHalf}..{StairHalf} 0 {z} steel paint={paint}" : $"block -{StairHalf}..{StairHalf} 0..{k - 1} {z} steel paint={paint}");
-            if (k >= 1) b.AppendLine($"block -{StairHalf - 1}..{StairHalf - 1} {k} {z} steel slope rot=+y+z paint={paint}");
+            if (k >= 1) b.AppendLine($"block -{StairHalf - 1}..{StairHalf - 1} {k} {z} stairs rot=+y+z paint={paint}");
             bool roofed = buried(k);
             int wallTop = roofed ? k + RoofAbove - 1 : k + 1;
             b.AppendLine($"block -{StairHalf} {(k == 0 ? 1 : k)}..{wallTop} {z} steel paint=wall");
             b.AppendLine($"block {StairHalf} {(k == 0 ? 1 : k)}..{wallTop} {z} steel paint=wall");
             if (roofed) b.AppendLine($"block -{StairHalf}..{StairHalf} {k + RoofAbove} {z} steel paint=wall");
         }
+        // A ramp off the top step's front edge, sunk into the ground outside: the way out meets the
+        // ground on a slope you walk down, never a lip where the ground rounds off into the cut.
+        b.AppendLine($"block -{StairHalf}..{StairHalf} {steps} {-(RoomZ + 2 + steps)} steel slope paint=floor");
         return b.ToString();
     }
 
@@ -598,10 +605,11 @@ public sealed class Bunker
             float top = roofed ? (k + RoofAbove) * Cell + Floor : (k + 1) * Cell + Floor;
             // The top step's front meets the ground outside: no margin there, or the cells just
             // in front of its riser would be dug out to the floor and leave a slot to catch a foot.
-            // The top step: dug only above its tread. Under it the ground can stay (the step is solid
-            // to the floor), and cells dug there that reach past its riser left a slot in front of it.
+            // The top step: dug only from its stairs block up. Under it the ground can stay (the steps
+            // below are solid to the floor), and cells dug there that reach past its riser left a slot
+            // in front of it; over its lower tread the ground's cell (centred 2 cm under the tread) goes.
             bool last = k == site.Steps;
-            float bottom = last ? k * Cell + Floor : -Floor - m;
+            float bottom = last ? k * Cell - Floor : -Floor - m;
             Box(new N.Vector3(-outer - m, bottom, zc - half - (last ? 0f : m)), new N.Vector3(outer + m, top + m, zc + half + m));
             // Under the open sky, the way up: clear above the step, the walls' width, to the sky.
             if (!roofed) Box(new N.Vector3(-outer, k * Cell + Floor, zc - half), new N.Vector3(outer, GroundOver(zone, site, k) - floorY + 3f, zc + half));
@@ -702,9 +710,9 @@ public sealed class Bunker
 }
 
 /// <summary>
-/// The bunker's stuck field: the structure's own, except that its ramps (the slopes on the
-/// stairs' risers and off the top step) are walked on, not stood inside. A body counts as inside
-/// only where a whole block is.
+/// The bunker's stuck field: the structure's own, except that its stairs and the ramp off the top
+/// step are walked on, not stood inside. A body counts as inside only where a whole block is, or
+/// inside a step of a stairs block (a part of a block that collides by its parts).
 /// </summary>
 sealed class RampField : IStuckField
 {
@@ -719,8 +727,21 @@ sealed class RampField : IStuckField
     public bool IsSolid(Body body, N.Vector3 point)
     {
         Structure s = _inner.Structure;
-        N.Vector3 local = _inner.Body.ToLocal(point);
-        return s.TryGet(StructureBridge.CellAt(s, local), out Block b) && s.IsSolid(b) && s.ShapeOf(b).Id == "cube";
+        N.Vector3 local = _inner.Body.ToLocal(point) / s.Grid.CellSize;
+        Int3 cell = Int3.Round(local);
+        if (!s.TryGet(cell, out Block b) || !s.IsSolid(b)) return false;
+        BlockType t = s.TypeOf(b);
+        if (t.IsArmor) return s.ShapeOf(b).IsCube;
+        if (t.Collide != Collide.Parts) return true;
+        // In the block's own frame, from its anchor's centre: solid only inside one of its parts.
+        N.Vector3 q = Orientations.Matrix(b.Rot).Transposed().Apply(local - (cell + b.ToAnchor).ToVector3());
+        foreach (Part p in t.Parts)
+        {
+            if (p.ClosedOnly && b.Open) continue;
+            N.Vector3 lo = Footprint.PartPoint(t, p.Min), hi = Footprint.PartPoint(t, p.Max);
+            if (q.X >= lo.X && q.Y >= lo.Y && q.Z >= lo.Z && q.X <= hi.X && q.Y <= hi.Y && q.Z <= hi.Z) return true;
+        }
+        return false;
     }
 
     public bool IsInside(Body body, N.Vector3 feet, StuckShape shape)
