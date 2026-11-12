@@ -728,11 +728,10 @@ public sealed partial class HumanRig : Rig
                 return new Transform3D(Geo.AlongY((along + thumb * 0.35f).Normalized(), right), fist);
             case "bottle":
             {
-                // Up out of the fist; drinking, its neck to the lips and its foot tipped up.
-                Vector3 axis = (head.Z * 0.72f - head.Y * 0.69f).Normalized();
-                Vector3 up = thumb.Lerp(axis, sip).Normalized();
-                Vector3 at = fist.Lerp(mouth - axis * 0.19f * HumanBody.Scale(f), sip * sip);
-                return new Transform3D(Geo.AlongY(up, along.Cross(up).LengthSquared() > 1e-4f ? along.Cross(up) : right), at);
+                // Up out of the fist; drinking, from the fist to the lips, its foot tipped up.
+                Vector3 to = mouth - fist;
+                Vector3 up = thumb.Lerp(to.LengthSquared() > 1e-4f ? to.Normalized() : thumb, sip).Normalized();
+                return new Transform3D(Geo.AlongY(up, along.Cross(up).LengthSquared() > 1e-4f ? along.Cross(up) : right), fist);
             }
             default:
                 return new Transform3D(Geo.AlongY(thumb, right), fist);
