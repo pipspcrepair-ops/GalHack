@@ -85,6 +85,7 @@ public partial class PhysicsTest : Node
         for (int i = 0; i < 5; i++) yield return 0;
 
         StructureChecks();
+        foreach (int x in MultiCellBlocks()) yield return x;
         foreach (int x in ForcePath()) yield return x;
         foreach (int x in NoAutoOrientation()) yield return x;
         foreach (int x in DamageAndCraters()) yield return x;

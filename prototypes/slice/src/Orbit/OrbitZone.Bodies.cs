@@ -30,8 +30,6 @@ public partial class OrbitZone
         c.Reach = c.IsHome ? float.PositiveInfinity : c.GlobeRadius + ceiling + Rules.Crossing.Band + Rules.Space.TakesOverWithin;
     }
 
-    void Size(Celestial c, PlanetWorld world, float ceiling) => Size(c, world.Width, world.Height, ceiling);
-
     /// <summary>
     /// Adds a moon of the start world, its surface being made (<paramref name="surface"/>, parked): its
     /// globe is painted from that surface's own map once it is there, and set up a piece a frame.

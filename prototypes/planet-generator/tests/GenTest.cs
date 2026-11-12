@@ -50,6 +50,7 @@ public partial class GenTest : Node
         Run("FlatLand", FlatLand);
         Run("Globe", GlobeChecks);
         Run("EveryOreOnEveryPlanet", EveryOreOnEveryPlanet);
+        Run("IceRule", IceRule);
         Run("SizeClasses", SizeClasses);
         Run("SizedWorlds", SizedWorlds);
         Run("TerrainCeiling", TerrainCeiling);
@@ -407,7 +408,8 @@ public partial class GenTest : Node
                 {
                     LandingSite site = Landing.Find(map, map.WidthMeters * l / 4, map.HeightMeters / 2);
                     for (int kind = 0; kind < DepositField.CommonKinds; kind++)
-                        worstLanding = Math.Max(worstLanding, field.Nearest((DepositKind)kind, site.X, site.Y));
+                        if ((DepositKind)kind != DepositKind.Water) // ice has its own rule: ice caps and ice worlds
+                            worstLanding = Math.Max(worstLanding, field.Nearest((DepositKind)kind, site.X, site.Y));
                 }
 
                 // The start's landing: the first ores within their promise.
@@ -423,7 +425,8 @@ public partial class GenTest : Node
                     if (!DepositField.Usable(map, map.CellAt(x, y))) continue;
                     p++;
                     for (int kind = 0; kind < DepositField.CommonKinds; kind++)
-                        worst = Math.Max(worst, field.Nearest((DepositKind)kind, x, y));
+                        if ((DepositKind)kind != DepositKind.Water)
+                            worst = Math.Max(worst, field.Nearest((DepositKind)kind, x, y));
                     // The scanner's marks here: the kinds with a deposit within its 600 m.
                     spots++;
                     foreach (DepositKind kind in DepositField.EveryPlanet())
@@ -432,9 +435,41 @@ public partial class GenTest : Node
             }
             float dryShare = dry / (float)Math.Max(deposits, 1);
             Check(worst <= Reach && worstLanding <= Reach && worstStart <= DepositField.StartReach + 1 && tooDeep == 0 && unusable == 0 && dryShare > 0.97f,
-                $"starter materials {a}/{v}: iron, copper, silicon, carbon, water and burnstone all within {worst:F0} m of any walkable spot " +
+                $"starter materials {a}/{v}: iron, copper, silicon, carbon and burnstone all within {worst:F0} m of any walkable spot " +
                 $"({worstLanding:F0} m from landing sites; iron, copper, silicon and carbon within {worstStart:F0} m of the start's); {deposits / 4} deposits per planet, {dryShare:P1} on dry ground, none deeper than 3 m; the scanner shows {marks / Math.Max(1, spots):F1} kinds on average");
         }
+    }
+
+    /// <summary>
+    /// The ice rule (owner's decision): ice ore on any ice world, in the ice caps (snow, glacier, snowfield, blue ice,
+    /// ice tundra and tundra) on any other living world, and never on an arid or lava world. Fresh worlds of every
+    /// type; the counts by archetype are printed.
+    /// </summary>
+    void IceRule()
+    {
+        var byArchetype = new Dictionary<Archetype, (int worlds, int withIce, int ice, int misplaced, int capCells)>();
+        foreach (var (a, v) in Variants())
+            for (int i = 0; i < 3; i++)
+            {
+                ulong seed = (ulong)Random.Shared.NextInt64(1, long.MaxValue);
+                var map = PlanetGenerator.Generate(PlanetSpec.Roll(seed, a, v, 16));
+                var ice = map.Deposits.All().Where(d => d.Kind == DepositKind.Water).ToList();
+                int misplaced = ice.Count(d =>
+                {
+                    int cell = map.CellAt(d.X, d.Y);
+                    return a == Archetype.Ice ? false : a is Archetype.Arid or Archetype.Lava || !DepositField.IceCap((Biome)map.Biome[cell]);
+                });
+                int caps = 0;
+                for (int c = 0; c < map.Count; c++) if (DepositField.IceCap((Biome)map.Biome[c])) caps++;
+                var t = byArchetype.GetValueOrDefault(a);
+                byArchetype[a] = (t.worlds + 1, t.withIce + (ice.Count > 0 ? 1 : 0), t.ice + ice.Count, t.misplaced + misplaced, t.capCells + caps);
+            }
+        foreach (var (a, t) in byArchetype.OrderBy(k => k.Key))
+            GD.Print($"  ice {a}: {t.worlds} worlds, {t.ice} ice deposits ({t.ice / (float)t.worlds:F0} a world), {t.withIce} worlds with any, {t.misplaced} misplaced, {t.capCells / t.worlds} cap cells a world");
+        Check(byArchetype.All(k => k.Value.misplaced == 0), "ice deposits lie only where the rule allows: any ice world, ice caps elsewhere");
+        Check(byArchetype[Archetype.Arid].ice == 0 && byArchetype[Archetype.Lava].ice == 0, $"no ice on arid or lava worlds ({byArchetype[Archetype.Arid].worlds} arid, {byArchetype[Archetype.Lava].worlds} lava)");
+        Check(byArchetype[Archetype.Ice].withIce == byArchetype[Archetype.Ice].worlds && byArchetype[Archetype.Ice].ice / (float)byArchetype[Archetype.Ice].worlds >= 100,
+            $"ice worlds keep plenty: {byArchetype[Archetype.Ice].ice / (float)byArchetype[Archetype.Ice].worlds:F0} deposits a world");
     }
 
     /// <summary>
@@ -450,12 +485,14 @@ public partial class GenTest : Node
             DepositField field = map.Deposits;
             var deposits = field.All().ToList();
             var counts = deposits.GroupBy(d => d.Kind).ToDictionary(g => g.Key, g => g.Count());
-            var missing = DepositField.EveryPlanet().Where(k => !counts.ContainsKey(k)).ToList();
+            // Ice goes only where it belongs (the ice rule below): a world without ice caps has none, an arid or lava world never.
+            var ores = DepositField.EveryPlanet().Where(k => k != DepositKind.Water || a == Archetype.Ice).ToList();
+            var missing = ores.Where(k => !counts.ContainsKey(k)).ToList();
             float Size(DepositKind k) => deposits.Where(d => d.Kind == k).Average(d => d.Amount);
             double far = 0;
             var site = Landing.Find(map, map.WidthMeters / 2, map.HeightMeters / 2);
-            foreach (DepositKind k in DepositField.EveryPlanet()) far = Math.Max(far, field.Nearest(k, site.X, site.Y));
-            bool fewer = missing.Count == 0 && DepositField.EveryPlanet().Where(k => DepositField.IsScarce(k) && k != map.Def.Signature)
+            foreach (DepositKind k in ores) far = Math.Max(far, field.Nearest(k, site.X, site.Y));
+            bool fewer = missing.Count == 0 && ores.Where(k => DepositField.IsScarce(k) && k != map.Def.Signature)
                 .All(k => counts[k] < counts[DepositKind.Iron] / 4 && Size(k) < Size(DepositKind.Iron));
             bool dry = deposits.All(d => DepositField.Usable(map, map.CellAt(d.X, d.Y)) && d.Depth <= DepositField.MaxShallowDepth);
             Check(missing.Count == 0 && fewer && dry && far < 3000,

@@ -205,7 +205,7 @@ public sealed class Craft : ILiftHull
     /// <summary>Every block's box (components and slopes count as whole cells).</summary>
     public IEnumerable<BlockBox> Boxes()
     {
-        foreach (var (p, _) in Structure.Blocks()) yield return BoxOf(p);
+        foreach (var (p, _) in Structure.Cells()) yield return BoxOf(p);
     }
 
     /// <summary>How far the hull is tilted from level, radians.</summary>
@@ -313,7 +313,7 @@ public sealed class Craft : ILiftHull
     {
         const float Step = 0.05f, Reach = 1f;
         float half = Structure.Grid.CellSize * 0.5f, inset = half * 0.95f, best = float.PositiveInfinity;
-        foreach (var (p, b) in Structure.Blocks())
+        foreach (var (p, b) in Structure.Cells())
         {
             if (!Structure.IsSolid(b) || Structure.Has(new GalHack.Structures.Int3(p.X, p.Y - 1, p.Z))) continue;
             N.Vector3 centre = StructureBridge.CellCenter(Structure, p) - N.Vector3.UnitY * half;
@@ -426,7 +426,7 @@ public partial class CraftView : Node3D
         foreach (var (p, b) in s.Blocks())
         {
             BlockType t = s.TypeOf(b);
-            N.Vector3 centre = StructureBridge.CellCenter(s, p);
+            N.Vector3 centre = StructureBridge.BlockCenter(s, p, b);
             if (t.IsThruster)
             {
                 N.Vector3 push = Orientations.ToWorld(b.Rot, Dir.NegZ).Normal();

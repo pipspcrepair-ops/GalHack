@@ -21,9 +21,9 @@
     { "make": "silicon-wafer",    "count": 1, "from": { "silicon-ore": 2 },               "seconds": 2.5, "tier": 0 },
     { "make": "graphite",         "count": 1, "from": { "carbon-ore": 2 },                "seconds": 2,   "tier": 0 },
     { "make": "glass",            "count": 2, "from": { "silicon-ore": 3 },               "seconds": 3,   "tier": 0 },
-    { "make": "polymer",          "count": 2, "from": { "carbon-ore": 2, "ice": 1 },      "seconds": 3,   "tier": 0 },
+    { "make": "polymer",          "count": 2, "from": { "stone": 2 },                      "seconds": 3,   "tier": 0 },
     { "make": "ceramic",          "count": 2, "from": { "stone": 2, "silicon-ore": 1 },   "seconds": 3,   "tier": 0 },
-    { "make": "concrete-mix",     "count": 2, "from": { "stone": 3, "ice": 1 },           "seconds": 2,   "tier": 0 },
+    { "make": "concrete-mix",     "count": 2, "from": { "stone": 3 },                    "seconds": 2,   "tier": 0 },
     { "make": "cobalt-bar",       "count": 1, "from": { "cobalt-ore": 2 },                "seconds": 3,   "tier": 1 },
     { "make": "magnesium-powder", "count": 2, "from": { "magnesium-ore": 2 },             "seconds": 2,   "tier": 1 },
     { "make": "neodymium-bar",    "count": 1, "from": { "neodymium-ore": 2 },             "seconds": 3,   "tier": 1 },
@@ -65,7 +65,7 @@
     { "make": "charge-plating",   "count": 1, "from": { "echo-shard": 2, "gravium-ingot": 2 }, "seconds": 16, "tier": 3 },
 
     // ---- Consumables --------------------------------------------------------------------------
-    { "make": "o2-bottle",        "count": 1, "from": { "ice": 2, "iron-bar": 1 },        "seconds": 2,   "tier": 0 },
+    { "make": "o2-bottle",        "count": 1, "from": { "iron-bar": 1 },                    "seconds": 2,   "tier": 0 },
     { "make": "medkit",           "count": 1, "from": { "biomass": 2, "polymer": 1 },     "seconds": 3,   "tier": 0 },
     { "make": "biofuel",          "count": 1, "from": { "biomass": 3 },                   "seconds": 2,   "tier": 0 },
     { "make": "warp-cell",        "count": 2, "from": { "copper-bar": 2, "graphite": 1, "glass": 1 }, "seconds": 4, "tier": 1 },

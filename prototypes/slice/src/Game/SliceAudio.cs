@@ -1,6 +1,7 @@
 using System;
 using Godot;
 using Slice.Items;
+using Slice.Surface;
 using Slice.Vessels;
 
 namespace Slice.Game;
@@ -210,15 +211,11 @@ public partial class SliceAudio : Node
         if (g?.Survivor == null || g.Phase != Phase.Playing) return;
         float dt = (float)delta;
         // Weather on the surface: planet-surface's wind and rain, muffled inside a structure.
-        var w = g.Zone.Weather;
-        float shelter = g.Survivor.Aboard != null && !g.Survivor.OnOuterHull ? 0.8f : g.Survivor.Seated != null ? 0.6f : 0f;
-        shelter = Mathf.Max(shelter, g.Spaceflight.AirGone); // the wind thins away with the air
-        shelter = Mathf.Max(shelter, 0.9f * (1f - (g.Zone.Light?.EyeOpen ?? 1f))); // (the orbit's zone has no sky light) // and with the walls: a sealed room hears little of it
         // Under water everything comes through it, dull and far off; the weather not at all.
         bool under = g.Zone.Underwater?.CameraUnder == true;
         Muffle(under);
         Fade(_under, under, -20f, dt);
-        g.Zone.Sfx.SetWeather(under ? 0f : w.Wind2D.Length(), under ? 0f : w.RainHere, shelter);
+        UpdateWeather(under, dt);
 
         // The jetpack hisses while it pushes; a vessel's engines rumble with its thrust.
         bool jetting = (g.Survivor.Seated == null && !g.Survivor.Body.OnFloor && g.Survivor.Legs.Jetpack || g.Spaceflight.EvaThrusting) && !g.Suit.Dead;
@@ -258,6 +255,37 @@ public partial class SliceAudio : Node
         if (g.Tool.Shots != _shots) { _shots = g.Tool.Shots; _ui.Play("zap", g.Tool.Muzzle(), 1.3f, -10f); }
         if (g.Builder.Placed != _placed) { _placed = g.Builder.Placed; _ui.Play("place", g.Survivor.WorldEye(), 1f, -8f); }
         if (g.Builder.TakenDown != _taken) { _taken = g.Builder.TakenDown; _ui.Play("remove", g.Survivor.WorldEye(), 1f, -8f); }
+    }
+
+    float _windNow, _rainNow;
+
+    /// <summary>The wind's and rain's loudness now (linear), after exposure (tests).</summary>
+    public float WindLevel => _windNow;
+    public float RainLevel => _rainNow;
+
+    /// <summary>
+    /// Wind by the LOCAL wind speed (ridges, hollows, woods, gusts) and rain by what falls HERE, both
+    /// shaped by <see cref="AmbientExposure"/>: roof, walls, lee and relief; sealed rooms hear neither.
+    /// </summary>
+    void UpdateWeather(bool under, float dt)
+    {
+        Game g = Game;
+        var w = g.Zone.Weather;
+        float wantWind = 0f, wantRain = 0f;
+        if (!under && w.Sim != null && w.Camera != null)
+        {
+            AmbientExposure e = g.Exposure;
+            bool cockpit = g.Survivor.Seated != null;
+            bool aboard = g.Survivor.Aboard != null && !g.Survivor.OnOuterHull;
+            bool shut = aboard || w.SkyAtEye < 0.2f;
+            float speed = w.Sim.WindAt(w.Camera.GlobalPosition).Length();
+            float air = 1f - g.Spaceflight.AirGone; // the wind thins away with the air
+            wantWind = AmbientExposure.WindLevel(speed, e.Cover, e.Walled, e.Relief, e.Lee, shut, cockpit) * air;
+            wantRain = AmbientExposure.RainLevel(w.RainHere, e.Cover, e.Walled, shut, cockpit) * air;
+        }
+        _windNow = Mathf.MoveToward(_windNow, wantWind, dt * 1.2f);
+        _rainNow = Mathf.MoveToward(_rainNow, wantRain, dt * 1.2f);
+        g.Zone.Sfx.SetLevels(_windNow, _rainNow);
     }
 
     /// <summary>A low-pass on the effects and ambience buses (the music stays clear), there once (a new game reloads the scene, the buses stay) and on only under water.</summary>

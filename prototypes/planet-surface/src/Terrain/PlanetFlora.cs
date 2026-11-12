@@ -195,6 +195,36 @@ public sealed class PlanetFlora
         return Book.Pick((int)biome, family, RegionAt(x, z), GroveRoll(x, z, random));
     }
 
+    /// <summary>
+    /// How tall this world lets a kind of tree grow, as a multiple of its species' own height: each kind
+    /// on each world rolls its own least and most. Null for what is not a tree (shrubs, ground cover,
+    /// crystal), which keeps its small spread of sizes.
+    /// </summary>
+    public (float Min, float Max)? ScaleRange(PlantFamily family)
+    {
+        if (family is not (PlantFamily.Conifer or PlantFamily.Broadleaf or PlantFamily.Jungle or PlantFamily.Palm or PlantFamily.Cactus or PlantFamily.GiantFungus)) return null;
+        ulong h = Hash.Of(_map.Spec.Seed, 0x48475452, (long)family);
+        return (0.35f + 0.4f * Hash.Unit(h, 0), 1.3f + 0.45f * Hash.Unit(h, 1));
+    }
+
+    /// <summary>The height range a species stands in on this world, m: its kind's scale range on its own height (null where it isn't a tree).</summary>
+    public (float Min, float Max)? HeightRange(Plant p) => ScaleRange(p.Family) is var (lo, hi) ? (p.Height * lo, p.Height * hi) : null;
+
+    /// <summary>
+    /// The size one tree grows to, a uniform scale on its species' mesh (so trunk and crown keep their
+    /// proportions): its age picks a place in the kind's range, young and old mixed (a third young,
+    /// over half grown, a tenth ancient). Two rolls, 0..1; null for a plant that isn't a tree.
+    /// </summary>
+    public float? TreeScale(Plant p, float ageRoll, float spread)
+    {
+        if (ScaleRange(p.Family) is not var (lo, hi)) return null;
+        float age = ageRoll < 0.34f ? 0.3f * (ageRoll / 0.34f)
+                  : ageRoll < 0.9f ? 0.3f + 0.45f * ((ageRoll - 0.34f) / 0.56f)
+                  : 0.75f + 0.25f * ((ageRoll - 0.9f) / 0.1f);
+        age = Math.Clamp(age + (spread - 0.5f) * 0.08f, 0f, 1f);
+        return lo + (hi - lo) * age;
+    }
+
     /// <summary>Whether this kind is a plant, from the module, on this world.</summary>
     public bool Rolled(Flora kind) => FamilyOf(kind) != null;
 

@@ -1,3 +1,5 @@
+using System.Linq;
+using GalHack.Plants;
 using System.Collections.Generic;
 using System.Diagnostics;
 using Planets.Gen;
@@ -119,7 +121,7 @@ public partial class TerrainStreamer
         PhysicsServer3D.BodySetMode(body, PhysicsServer3D.BodyMode.Static);
         PhysicsServer3D.BodySetCollisionLayer(body, Layers.Flora);
         PhysicsServer3D.BodySetCollisionMask(body, 0);
-        foreach (FloraSolid s in solids) PhysicsServer3D.BodyAddShape(body, ShapeOf(s), s.Transform);
+        foreach (FloraSolid s in solids) PhysicsServer3D.BodyAddShape(body, ShapeOf(s), s.ShapeTransform);
         PhysicsServer3D.BodySetState(body, PhysicsServer3D.BodyState.Transform, new Transform3D(Basis.Identity, ColumnOffset(c)));
         PhysicsServer3D.BodySetSpace(body, GetWorld3D().Space);
         c.Body = body;
@@ -129,12 +131,31 @@ public partial class TerrainStreamer
     Vector3 ColumnOffset(SolidColumn c) => new(
         (c.Cx - Mod(c.Cx, World.Terrain.ChunksX)) * S, 0f, (c.Cz - Mod(c.Cz, World.Terrain.ChunksZ)) * S);
 
+    readonly Dictionary<(int, int, int), Rid> _canopyShapes = new();
+
+    /// <summary>A canopy part's convex shape at scale 1 (an instance's transform scales it).</summary>
+    public static Rid MakeCanopyShape(Plant plant, int variant, int part)
+    {
+        var shape = PhysicsServer3D.ConvexPolygonShapeCreate();
+        PhysicsServer3D.ShapeSetData(shape, plant.Canopy[variant][part].Select(p => new Vector3(p.X, p.Y, p.Z)).ToArray());
+        return shape;
+    }
+
+    /// <summary>Shared by every tree of the species and mesh.</summary>
+    Rid CanopyShape(FloraSolid s)
+    {
+        var key = (s.Plant, s.Variant, s.Part);
+        if (!_canopyShapes.TryGetValue(key, out Rid shape)) _canopyShapes[key] = shape = MakeCanopyShape(World.Flora.Book.Plants[s.Plant], s.Variant, s.Part);
+        return shape;
+    }
+
     /// <summary>
     /// A shape shared by every solid of about one size: widths to 4 cm, heights to 20 cm, so a
     /// planet's trees need a few dozen shapes, not one each.
     /// </summary>
     Rid ShapeOf(FloraSolid s)
     {
+        if (s.IsCanopy) return CanopyShape(s);
         var key = (s.IsTrunk, Mathf.RoundToInt(s.Extents.X * 25f), Mathf.RoundToInt(s.Extents.Y * 5f), Mathf.RoundToInt(s.Extents.Z * 25f));
         if (_solidShapes.TryGetValue(key, out Rid shape)) return shape;
         var e = new Vector3(key.Item2 / 25f, key.Item3 / 5f, key.Item4 / 25f);
@@ -189,6 +210,8 @@ public partial class TerrainStreamer
         foreach (SolidColumn c in _solidColumns.Values) FreeSolids(c);
         _solidColumns.Clear();
         _felledSnapshot = new HashSet<long>();
+        foreach (Rid shape in _canopyShapes.Values) PhysicsServer3D.FreeRid(shape);
+        _canopyShapes.Clear();
         SolidColliders = SolidBodies = SolidReach = 0;
         SolidsReady = false;
     }
@@ -198,6 +221,8 @@ public partial class TerrainStreamer
         if (World != null) ClearSolids();
         foreach (Rid shape in _solidShapes.Values) PhysicsServer3D.FreeRid(shape);
         _solidShapes.Clear();
+        foreach (Rid shape in _canopyShapes.Values) PhysicsServer3D.FreeRid(shape);
+        _canopyShapes.Clear();
     }
 
     // ---- Felling, hits and queries ----------------------------------------------------------
@@ -210,9 +235,11 @@ public partial class TerrainStreamer
     {
         foreach (SolidColumn c in _solidColumns.Values)
         {
-            int i = c.Solids.FindIndex(s => s.Id == id);
-            if (i < 0 || !c.Body.IsValid) continue;
-            PhysicsServer3D.BodySetShapeDisabled(c.Body, i, true);
+            for (int i = 0; i < c.Solids.Count; i++)
+            {
+                if (c.Solids[i].Id != id || !c.Body.IsValid) continue;
+                PhysicsServer3D.BodySetShapeDisabled(c.Body, i, true);
+            }
         }
         _felledSnapshot = new HashSet<long>(World.Felled);
         var (fx, fz) = FarBuilder.ChunkOfScatter(id);
@@ -248,14 +275,17 @@ public partial class TerrainStreamer
         foreach (SolidColumn c in _solidColumns.Values)
         {
             if (c.Body != body || shape < 0 || shape >= c.Solids.Count) continue;
-            solid = c.Solids[shape];
+            FloraSolid hit = c.Solids[shape];
+            long id = hit.Id;
+            // A canopy is its tree: what you hit through it is the trunk, so the tool still aims at (and fells) the tree.
+            solid = hit.IsCanopy ? c.Solids.Find(s => s.Id == id && !s.IsCanopy) : hit;
             return !World.Felled.Contains(solid.Id);
         }
         return false;
     }
 
     /// <summary>The loaded solids near a point (frame coordinates, returned in the frame), for tests and stuck-safety.</summary>
-    public IEnumerable<(FloraSolid solid, Vector3 offset)> SolidsNear(Vector3 p, float radius)
+    public IEnumerable<(FloraSolid solid, Vector3 offset)> SolidsNear(Vector3 p, float radius, bool canopies = false)
     {
         double w = World.Terrain.Width, h = World.Terrain.Height;
         foreach (FarChunk f in _far.Values)
@@ -267,7 +297,7 @@ public partial class TerrainStreamer
             foreach (FloraSolid s in f.Solids)
             {
                 Vector3 c = s.Center + offset;
-                if (Mathf.Abs(c.X - p.X) > radius || Mathf.Abs(c.Z - p.Z) > radius || World.Felled.Contains(s.Id)) continue;
+                if (s.IsCanopy && !canopies || Mathf.Abs(c.X - p.X) > radius || Mathf.Abs(c.Z - p.Z) > radius || World.Felled.Contains(s.Id)) continue;
                 yield return (s, offset);
             }
         }

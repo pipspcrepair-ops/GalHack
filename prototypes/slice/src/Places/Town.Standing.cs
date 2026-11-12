@@ -46,6 +46,7 @@ public sealed partial class Town
     {
         Memory.Standing = Math.Clamp(Memory.Standing + by, StandingMin, StandingMax);
         StandingChanged?.Invoke(why, by);
+        if (_place != null) MoodOf(why);
         if (Memory.Standing <= StandingHostile && Memory.Mood != Mood.Hostile) Provoked();
     }
 
@@ -70,6 +71,8 @@ public sealed partial class Town
     public void Rob(Person p)
     {
         p.Robbed = true;
+        Bind(p);
+        p.Feel.Hit(MoodEvent.Robbed);
         Robberies++;
         Did(Deed.Rob);
         p.ScaredFor = 8f;
