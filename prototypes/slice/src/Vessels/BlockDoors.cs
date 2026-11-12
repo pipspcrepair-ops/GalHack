@@ -7,6 +7,7 @@ using Godot;
 using PhysicsSandbox.Bridges;
 using Slice.Places;
 using Slice.Surface;
+using N = System.Numerics;
 
 namespace Slice.Vessels;
 
@@ -51,7 +52,21 @@ public partial class BlockDoors : Node3D
 
     /// <summary>Whether you are in a door's doorway or its leaves' way.</summary>
     static bool InWay(Vessel v, Int3 cell, Vector3 feet) =>
-        v.ToWorld(StructureBridge.CellCenter(v.Structure, cell)).DistanceTo(feet + Vector3.Up * 0.9f) < v.Structure.Grid.CellSize * 0.5f + Slice.Player.Survivor.Radius + 0.1f;
+        v.ToWorld(Centre(v, cell)).DistanceTo(feet + Vector3.Up * 0.9f) < Reach(v, cell) + Slice.Player.Survivor.Radius + 0.1f;
+
+    /// <summary>A door's middle, structure metres: all of it, when it spans several cells.</summary>
+    static N.Vector3 Centre(Vessel v, Int3 cell) =>
+        v.Structure.TryGetBlock(cell, out Int3 anchor, out Block b) ? StructureBridge.BlockCenter(v.Structure, anchor, b) : StructureBridge.CellCenter(v.Structure, cell);
+
+    /// <summary>A door's size in cells, in its own frame (one cell for most).</summary>
+    static Int3 SizeOf(Vessel v, Int3 cell) => v.Structure.TryGet(cell, out Block b) ? v.Structure.TypeOf(b).Size : GalHack.Structures.Footprint.One;
+
+    /// <summary>Half a door's widest side, m.</summary>
+    static float Reach(Vessel v, Int3 cell)
+    {
+        Int3 n = SizeOf(v, cell);
+        return v.Structure.Grid.CellSize * 0.5f * Math.Max(n.X, Math.Max(n.Y, n.Z));
+    }
     int _tick;
     static StandardMaterial3D _body, _band;
 
@@ -64,7 +79,7 @@ public partial class BlockDoors : Node3D
     /// <summary>E on a door block: open or shut it. True if it was a door.</summary>
     public bool Use(Vessel v, Int3 cell)
     {
-        if (!v.Structure.TryGet(cell, out Block b) || !v.Structure.TypeOf(b).IsDoor) return false;
+        if (!v.Structure.TryGetBlock(cell, out cell, out Block b) || !v.Structure.TypeOf(b).IsDoor) return false;
         bool open = _slides.TryGetValue((v, cell), out Slide s) ? s.Target > 0.5f : b.Open;
         Set(v, cell, !open);
         if (open) _heldShut.Add((v, cell));
@@ -80,12 +95,11 @@ public partial class BlockDoors : Node3D
         foreach (var (v, k) in _known)
         {
             if (v.IsWreck) continue;
-            float size = v.Structure.Grid.CellSize;
             foreach (Int3 cell in k.Doors)
             {
-                Vector3 c = v.ToWorld(StructureBridge.CellCenter(v.Structure, cell));
+                Vector3 c = v.ToWorld(Centre(v, cell));
                 float along = (c - eye).Dot(dir);
-                if (along < 0f || along > nearest || (eye + dir * along - c).Length() > size * 0.5f) continue;
+                if (along < 0f || along > nearest || (eye + dir * along - c).Length() > Reach(v, cell)) continue;
                 nearest = along;
                 best = (v, cell, _slides.TryGetValue((v, cell), out Slide s) ? s.Target > 0.5f : IsOpen(v, cell));
             }
@@ -102,7 +116,7 @@ public partial class BlockDoors : Node3D
         }
         s.Target = open ? 1f : 0f;
         if (open && !IsOpen(v, cell)) Flip(v, cell); // the way is clear at once
-        Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Clank, v.ToWorld(StructureBridge.CellCenter(v.Structure, cell)), 1.1f, -14f);
+        Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Clank, v.ToWorld(Centre(v, cell)), 1.1f, -14f);
         if (open) Opened++;
         else Shut++;
     }
@@ -122,11 +136,13 @@ public partial class BlockDoors : Node3D
         _band ??= new StandardMaterial3D { AlbedoColor = new Color("2b2d42"), Roughness = 0.7f };
         Mat3 m = Orientations.Matrix(b.Rot);
         var basis = new Basis(m.X.ToVector3().ToGodot(), m.Y.ToVector3().ToGodot(), m.Z.ToVector3().ToGodot());
-        var root = new Node3D { Name = "Door leaves", Transform = new Transform3D(basis, StructureBridge.CellCenter(v.Structure, cell).ToGodot()) };
+        var root = new Node3D { Name = "Door leaves", Transform = new Transform3D(basis, Centre(v, cell).ToGodot()) };
         v.Node.AddChild(root);
-        float half = 0.44f * size;
-        // The block's leaf: x -0.44..0.44, y -0.5..0.46, z -0.1..0.1 of a cell.
-        var leaf = new BoxMesh { Size = new Vector3(half, 0.96f * size, 0.2f * size) };
+        // A door spanning several cells has leaves as wide and tall as all of them.
+        Int3 n = SizeOf(v, cell);
+        float half = 0.44f * size * n.X;
+        // The block's leaf: x -0.44..0.44, y -0.5..0.46, z -0.1..0.1 of a cell (of the whole door).
+        var leaf = new BoxMesh { Size = new Vector3(half, 0.96f * size * n.Y, 0.2f * size * n.Z) };
         var a = new MeshInstance3D { Mesh = leaf, MaterialOverride = _body };
         var c = new MeshInstance3D { Mesh = leaf, MaterialOverride = _body };
         root.AddChild(a);
@@ -187,7 +203,7 @@ public partial class BlockDoors : Node3D
             }
             foreach (Int3 cell in k.Doors)
             {
-                float d = v.ToWorld(StructureBridge.CellCenter(v.Structure, cell)).DistanceTo(feet + Vector3.Up * 0.9f);
+                float d = v.ToWorld(Centre(v, cell)).DistanceTo(feet + Vector3.Up * 0.9f);
                 bool open = _slides.TryGetValue((v, cell), out Slide s) ? s.Target > 0.5f : IsOpen(v, cell);
                 if (d > ShutRange) _heldShut.Remove((v, cell));
                 if (d < OpenRange && !open && !_heldShut.Contains((v, cell))) Set(v, cell, true);
@@ -208,7 +224,8 @@ public partial class BlockDoors : Node3D
                 if (!IsOpen(v, cell) || !v.Structure.TryGet(cell, out Block b)) continue;
                 Vector3 z = Orientations.Matrix(b.Rot).Z.ToVector3().ToGodot();
                 float open = _slides.TryGetValue((v, cell), out Slide s) ? s.Open : 1f;
-                yield return new OpenDoor(v.ToWorld(StructureBridge.CellCenter(v.Structure, cell)), z, new Vector2(size, size), open);
+                Int3 n = SizeOf(v, cell);
+                yield return new OpenDoor(v.ToWorld(Centre(v, cell)), z, new Vector2(size * n.X, size * n.Y), open);
             }
         }
         if (places == null) yield break;
