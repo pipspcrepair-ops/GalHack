@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Godot;
 
 namespace Wildlife;
@@ -50,6 +51,9 @@ public static partial class PoiFauna
             s.Position = FloorPoint(dark, rng, MathF.Max(0.8f, s.Species.TurnCircle * 0.5f));
         }
         if (!active) Floor(poi, pop, fauna, theme, rng, infested, walkable, pr);
+        // A nesters' place keeps its nesters, whatever the caps took: a couple more in its biggest room.
+        if (poi.Holder == PlaceHolder.Nesters && pop.Spawns.Count(s => s.Role == DeepRole.Nester) < 2 && walkable.Count > 0)
+            NestIn(pop, fauna, theme, walkable.OrderByDescending(r => r.Size.X * r.Size.Z).First(), rng, infested, 1f, rules, DeepRole.Nester, false);
         if (!active && !empty) Guarded(poi, pop, fauna, theme, rng, infested);
         if (!active && !empty && poi.Armed != null && !poi.Husks) Clash(poi, pop, fauna, theme, rng);
         if (!active) Dense(poi, pop, fauna, theme, rng, infested, walkable, empty);
