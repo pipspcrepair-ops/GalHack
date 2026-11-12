@@ -887,7 +887,8 @@ public partial class BuildTest : Node
         if (_base.Machines.Count == 0) yield break;
         _game.Progress.Creative = false;
         Constructor c = _base.Machines.Values.First();
-        Bill ores = Bill.Of(("iron-ore", 60), ("carbon-ore", 60));
+        // A plated block is its base block (polymer, from stone) and its plates (iron and carbon).
+        Bill ores = Bill.Of(("iron-ore", 60), ("carbon-ore", 60), ("stone", 10));
         _base.Storage.TryAdd(ores);
         Pack.Add("iron-ore", 40);
         Pack.Add("biomass", 4);
@@ -1027,8 +1028,8 @@ public partial class BuildTest : Node
         foreach (int x in Hover(Item("steel"))) yield return x;
         string block = All();
         GD.Print($"  (a block's tooltip: {block})");
-        Check(block.Contains("Steel block (large)") && block.Contains("8 Hull plate") && block.Contains("LARGE GRID") && block.Contains("STACK 250") && block.Contains("   ×"),
-            "a block's tooltip: name, recipe, stack, the grid it fits, the whole stack's mass");
+        Check(block.Contains("Iron plated block") && block.Contains("4 Iron plate") && block.Contains("1 × 1 × 1 m") && block.Contains("STACK 250") && block.Contains("   ×"),
+            "a block's tooltip: name, recipe, stack, its size, the whole stack's mass");
         foreach (int x in Hover("iron-ore")) yield return x;
         string ore = All();
         GD.Print($"  (an ore's tooltip: {ore})");
@@ -1036,7 +1037,7 @@ public partial class BuildTest : Node
         foreach (int x in Hover("iron-plate")) yield return x;
         string part = All();
         GD.Print($"  (a part's tooltip: {part})");
-        Check(part.Contains("Hull plate") && part.Contains("RECIPE") && part.Contains("constructor") && part.Contains(" s"), "a crafted part's tooltip: its inputs, its constructor and its time");
+        Check(part.Contains("Iron plate") && part.Contains("RECIPE") && part.Contains("constructor") && part.Contains(" s"), "a crafted part's tooltip: its inputs, its constructor and its time");
         ItemDef locked = Items.BlockItem("combat-plated");
         var lines = Tooltips.For(_game, locked, 0);
         Check(lines.Any(l => l.Text.Contains("LOCKED · LV 12")), "a locked item's tooltip says at which level");
@@ -1051,19 +1052,11 @@ public partial class BuildTest : Node
         GD.Print("-- Creative: free, unlimited, every block; the same rules of structure --");
         _game.Mode = GameMode.Creative;
         foreach (int x in StandByBase(0, 12)) yield return x;
-        string steelS = Item("steel");
         Pack.Grid.SetBlock(2, Item("steel"));
-        Pack.Grid.SetBlock(3, steelS);
         Bill bag = Pack.Storage.Contents;
         bool on = false;
-        int count = _base.Structure.Count;
         foreach (int x in _play.PlaceBlock(2, _base, new Int3(0, 0, 2), Dir.PosZ, p => on = p)) yield return x;
         Check(on && Pack.Storage.Contents.Equals(bag), "a block from the palette places free: nothing used");
-        foreach (int x in _play.Select(3)) yield return x;
-        foreach (int x in _drive.LookAt(_base.ToWorld(OnBase(0, 0, 7f)), 8)) yield return x;
-        foreach (int x in _drive.Click()) yield return x;
-        foreach (int x in _drive.Wait(3)) yield return x;
-        Check(_base.Structure.Count == count + 1 && _game.Builder.Verdict.Contains("SMALL-GRID BLOCK"), "and the same grid rule applies: a small-grid block is refused on a base");
         _game.Mode = GameMode.Survival;
     }
 }

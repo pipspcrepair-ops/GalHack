@@ -72,7 +72,7 @@ public partial class BuildTest : Node
     /// </summary>
     void TestDeviceDetail()
     {
-        foreach (BlockType t in _cat.Types.Skip(1).Where(t => !t.IsArmor && !t.IsLadder))
+        foreach (BlockType t in _cat.Types.Skip(1).Where(t => !t.IsArmor && !t.IsLadder && t.Function != "stairs")) // ladders and stairs are no devices
             Check(t.Detail.Count > 0, $"{t.Id} has detail from its rule ({t.Detail.Count} parts)");
 
         // A screen's symbol: pattern 7, the symbol in the stencil bits, and the accent's centre inside the polygon.

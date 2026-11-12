@@ -374,8 +374,8 @@ public sealed class StructureSection : IMenuSection
             Row("ACCEL UP / SIDE", $"{h.Accel(Direction.Up):F1} / {h.Accel(Direction.Right):F1} m/s²", C.Text);
             Row("TURN", h.TurnRate <= cap ? $"{h.TurnRate:F0} °/s" : $"{cap:F0} °/s · CAPPED", C.Text);
             Row("TOP SPEED", $"{h.TopSpeed:F0} m/s", C.Text);
-            Row("LIFT MARGIN", $"{h.LiftMargin:+0;-0} kN · {h.SpareLift:F1} t SPARE", h.CanLiftOff ? C.Good : C.Danger);
-            if (!h.CanLiftOff && !string.IsNullOrEmpty(h.LiftWarning)) { g.Text(h.LiftWarning, new Vector2(o.X, y), C.Warn, 12); y += 20; }
+            // Too heavy says so in the row itself: a line of its own ran the page onto the alerts' row.
+            Row("LIFT MARGIN", h.CanLiftOff ? $"{h.LiftMargin:+0;-0} kN · {h.SpareLift:F1} t SPARE" : $"{h.LiftMargin:+0;-0} kN · TOO HEAVY", h.CanLiftOff ? C.Good : C.Danger);
         }
     }
 }

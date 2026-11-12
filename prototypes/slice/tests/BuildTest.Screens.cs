@@ -61,17 +61,16 @@ public partial class BuildTest
     {
         Block b = s.Get(cell);
         float size = s.Grid.CellSize;
-        Vector3 centre = new Vector3(cell.X, cell.Y, cell.Z) * size;
-        Vector3 Axis(Dir d) { Int3 v = d.Vec(); return new Vector3(v.X, v.Y, v.Z); }
-        Vector3 ax = Axis(Orientations.ToWorld(b.Rot, Dir.PosX)), ay = Axis(Orientations.ToWorld(b.Rot, Dir.PosY)), az = Axis(Orientations.ToWorld(b.Rot, Dir.PosZ));
         var boxes = new List<(Vector3, Vector3)>();
         foreach (Part p in s.TypeOf(b).Detail)
         {
             Vector3 lo = new(float.MaxValue, float.MaxValue, float.MaxValue), hi = -lo;
             for (int k = 0; k < 8; k++)
             {
-                var c = new Vector3((k & 1) == 0 ? p.Min.X : p.Max.X, (k & 2) == 0 ? p.Min.Y : p.Max.Y, (k & 4) == 0 ? p.Min.Z : p.Max.Z);
-                Vector3 w = centre + (ax * c.X + ay * c.Y + az * c.Z) * size;
+                var c = new System.Numerics.Vector3((k & 1) == 0 ? p.Min.X : p.Max.X, (k & 2) == 0 ? p.Min.Y : p.Max.Y, (k & 4) == 0 ? p.Min.Z : p.Max.Z);
+                // The parts' box stands for the whole block, however many cells it spans.
+                System.Numerics.Vector3 q = s.PointOf(cell, b, c) * size;
+                var w = new Vector3(q.X, q.Y, q.Z);
                 lo = lo.Min(w);
                 hi = hi.Max(w);
             }
@@ -96,9 +95,11 @@ public partial class BuildTest
                     var st = new Structure(cat);
                     st.Set(Int3.Zero, Building.Make(st, t, rot: rot));
                     Dir front = Orientations.ToWorld(rot, Dir.NegZ);
+                    // Boxed in: blocks against every cell of each side but the front (outside a block spanning several cells).
                     if (boxed == 1)
-                        foreach (Dir d in new[] { Dir.NegZ, Dir.PosX, Dir.NegX, Dir.PosZ })
-                            if (d != front) st.Set(d.Vec(), Building.Make(st, armour));
+                        foreach (Int3 c in Footprint.Cells(Int3.Zero, t, rot))
+                            foreach (Dir d in new[] { Dir.NegZ, Dir.PosX, Dir.NegX, Dir.PosZ })
+                                if (d != front && !st.Has(c + d.Vec())) st.Set(c + d.Vec(), Building.Make(st, armour));
                     var boxes = ModelBoxes(st, Int3.Zero);
                     // Before: the first free side from NegZ, 3.5 cm off the face.
                     Dir? old = null;
