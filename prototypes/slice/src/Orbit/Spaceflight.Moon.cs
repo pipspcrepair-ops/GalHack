@@ -212,7 +212,7 @@ public partial class Spaceflight
             FlatFrom = 0f,
             Eye = eye,
             RingRadius = R,
-            RingShown = 0f,
+            RingShown = 1f,
             Flat = 0f,
             Taper = 1f,
             Local = 3000f,
