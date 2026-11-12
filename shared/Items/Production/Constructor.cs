@@ -117,8 +117,6 @@ public sealed class Constructor
     public WorldRules Rules { get; }
     public AmmoRestock Restock { get; } = new();
 
-    /// <summary>The structure's CPU efficiency: over budget, constructors slow down (design section 13).</summary>
-    public double Efficiency { get; set; } = 1;
     public int Version { get; private set; }
 
     public IReadOnlyList<Job> Orders => _orders;
@@ -153,7 +151,7 @@ public sealed class Constructor
     public bool CanMake(ItemDef item) => Knows(item) && (Rules.Creative || Lock?.Invoke(item) == null);
 
     /// <summary>Seconds one run takes here.</summary>
-    public double RunSeconds(Recipe r) => r.Seconds / (Def.Speed * Math.Clamp(Efficiency, 0.05, 1));
+    public double RunSeconds(Recipe r) => r.Seconds / Def.Speed;
 
     /// <summary>Have = in storage or waiting in the tray.</summary>
     int Have(string id) => Storage.Count(id) + _tray[id];

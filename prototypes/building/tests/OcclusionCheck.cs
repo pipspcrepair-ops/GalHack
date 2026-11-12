@@ -26,9 +26,9 @@ public static class OcclusionCheck
         public readonly SortedSet<string> Hiders = new(StringComparer.Ordinal);
     }
 
-    public static IEnumerable<(string name, Block block)> EveryBlock(Catalogue cat, GridDef grid)
+    public static IEnumerable<(string name, Block block)> EveryBlock(Catalogue cat)
     {
-        var s = new Structure(cat, grid);
+        var s = new Structure(cat);
         foreach (BlockType t in cat.Types.Skip(1))
         {
             if (t.IsArmor)
@@ -47,28 +47,28 @@ public static class OcclusionCheck
     }
 
     /// <summary>Every block in every orientation against a cube on every side.</summary>
-    public static Result Run(Catalogue cat, GridDef grid, string cubeType = "steel")
+    public static Result Run(Catalogue cat, string cubeType = "steel")
     {
         var result = new Result();
         BlockType cube = cat.Type(cubeType);
-        foreach (var (name, proto) in EveryBlock(cat, grid))
+        foreach (var (name, proto) in EveryBlock(cat))
             for (int rot = 0; rot < Orientations.Count; rot++)
                 foreach (Dir d in Dirs.All)
                 {
                     Block b = proto;
                     b.Rot = (byte)rot;
-                    One(cat, grid, cube, name, b, d, result);
+                    One(cat, cube, name, b, d, result);
                 }
         return result;
     }
 
-    static void One(Catalogue cat, GridDef grid, BlockType cubeType, string name, Block block, Dir d, Result result)
+    static void One(Catalogue cat, BlockType cubeType, string name, Block block, Dir d, Result result)
     {
-        var s = new Structure(cat, grid);
+        var s = new Structure(cat);
         Int3 at = new Int3(8, 8, 8), beside = at + d.Vec();
         s.Set(at, Building.Make(s, cubeType));
         s.Set(beside, block);
-        float size = grid.CellSize;
+        float size = cat.Grid.CellSize;
         int axis = d.Axis();
         float plane = (at[axis] + d.Sign() * 0.5f) * size;
         Vector3 outward = MeshBuffers.ToGodot(d.Normal());
@@ -79,7 +79,7 @@ public static class OcclusionCheck
         if (Covered(face, at, axis, d, size) == Samples * Samples) return; // the cube's face is there: nothing to hide it
         result.Culled++;
 
-        var alone = new Structure(cat, grid);
+        var alone = new Structure(cat);
         alone.Set(beside, block);
         ChunkMeshData solo = ChunkMesher.Build(alone, Int3.Zero, colliders: false);
         int covered = Covered(TrianglesOn(solo.Opaque, axis, plane, -outward), at, axis, d, size);

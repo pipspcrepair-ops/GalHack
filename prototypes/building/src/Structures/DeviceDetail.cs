@@ -13,8 +13,7 @@ public enum DeviceSymbol : byte { None, Gear, Bolt, Drop, Ring, Chevron, Grid, C
 /// ports, vents, fins, gauges, valves, screens with symbols and hazard trim. None of it is drawn
 /// per device by hand: each kind of device (its function) has one rule, and the rule reads the
 /// type's own numbers (its mass, its parts) for how heavy and how busy it is, so every
-/// constructor is built the same way and a heavier one comes out bigger and busier. The Big Core
-/// and the Small Core are one type; the rule gives the large grid the heavier housing.
+/// constructor is built the same way and a heavier one comes out bigger and busier.
 ///
 /// All of it is a few boxes, discs and bands per device, merged into the chunk mesh with the
 /// rest, and looks only: never solid, never covering or sealing a face. Each piece names the face
@@ -47,7 +46,6 @@ public static class DeviceDetail
             case "chair": Chair(k); break;
             case "door": Door(k); break;
             case "light": Light(k); break;
-            case "cpu-extender": CpuExtender(k, t); break;
             case "warp-drive":
             case "hyperdrive": Drive(k, t); break;
             case "warp-tank":
@@ -61,7 +59,7 @@ public static class DeviceDetail
         return k.Parts;
     }
 
-    /// <summary>0 for the lightest device of its kind to 1 for the heaviest: a constructor's 3 t is light, a factory's 16 t heavy.</summary>
+    /// <summary>0 for the lightest device of its kind to 1 for the heaviest: a portable fabricator's 0.04 t is light, Fabricator T3's 1.7 t heavy.</summary>
     static float Heft(BlockType t, float light, float heavy) => Math.Clamp((t.Mass - light) / (heavy - light), 0f, 1f);
 
     // ---- Finishes -------------------------------------------------------------------------
@@ -112,59 +110,37 @@ public static class DeviceDetail
     // ---- Rules ----------------------------------------------------------------------------
 
     /// <summary>
-    /// A core: a heavy armoured housing with corner posts, a glowing heart on every side that beats
-    /// over the status ring, data ports, and hazard trim round the foot. On the large grid (the Big
-    /// Core) the posts are thicker, an armour rim runs round the top, the ports are doubled and a
-    /// crown of fins stands on it; the Small Core is the same machine, compact.
+    /// A core: a heavy armoured housing with corner posts standing proud of its top as capped
+    /// towers, a glowing heart on every side that beats over the status ring, doubled data ports,
+    /// hazard trim round the foot, an armour rim round the top and a crown of fins on it.
     /// </summary>
     static void Core(Kit k)
     {
-        foreach (GridSize g in new[] { GridSize.Large, GridSize.Small })
+        const float w = 0.15f, o = 0.016f, r = 0.2f, top = 0.56f;
+        foreach (int sx in new[] { -1, 1 })
+            foreach (int sz in new[] { -1, 1 })
+            {
+                k.Box(new Vector3(sx * (0.5f + o), -0.5f, sz * (0.5f + o)), new Vector3(sx * (0.5f - w), top, sz * (0.5f - w)), PartStyle.Dark, Armour());
+                k.Box(new Vector3(sx * (0.5f + o - 0.025f), top, sz * (0.5f + o - 0.025f)), new Vector3(sx * (0.5f - w + 0.025f), top + 0.025f, sz * (0.5f - w + 0.025f)), PartStyle.Accent, Hazard);
+            }
+        foreach (Dir d in Sides)
         {
-            k.Grid = g;
-            bool big = g == GridSize.Large;
-            float w = big ? 0.15f : 0.1f, o = 0.016f, r = big ? 0.2f : 0.15f;
-            foreach (int sx in new[] { -1, 1 })
-                foreach (int sz in new[] { -1, 1 })
-                {
-                    // Corner posts; the Big Core's stand proud of its top as capped towers.
-                    float top = big ? 0.56f : 0.5f;
-                    k.Box(new Vector3(sx * (0.5f + o), -0.5f, sz * (0.5f + o)), new Vector3(sx * (0.5f - w), top, sz * (0.5f - w)), PartStyle.Dark, Armour());
-                    if (big)
-                        k.Box(new Vector3(sx * (0.5f + o - 0.025f), top, sz * (0.5f + o - 0.025f)), new Vector3(sx * (0.5f - w + 0.025f), top + 0.025f, sz * (0.5f - w + 0.025f)), PartStyle.Accent, Hazard);
-                }
-            foreach (Dir d in Sides)
-            {
-                float u0 = -0.5f + w, u1 = 0.5f - w;
-                k.Face(d, u0, -0.47f, u1, -0.37f, 0.012f, PartStyle.Accent, Hazard);
-                k.Face(d, u0, 0.11f, u1, 0.145f, 0.012f, PartStyle.Dark, Armour());
-                k.Face(d, u0, -0.145f, u1, -0.11f, 0.012f, PartStyle.Dark, Armour());
-                k.Disc(d, 0f, 0f, r, 0.03f, PartStyle.Dark, Armour());
-                k.Disc(d, 0f, 0f, r * 0.62f, 0.014f, PartStyle.Glow, Pulse(0.35f), lift: 0.03f);
-                if (big)
-                {
-                    k.Face(d, u0, 0.34f, u1, 0.45f, 0.02f, PartStyle.Dark, Armour(3));
-                    Port(k, d, -0.22f, -0.26f, 0.7f);
-                    Port(k, d, 0.22f, -0.26f, 0.45f);
-                }
-                else Port(k, d, 0.2f, -0.26f, 0.6f);
-            }
-            if (big)
-            {
-                k.Face(Dir.PosY, -0.3f, -0.3f, 0.3f, 0.3f, 0.035f, PartStyle.Dark, Armour(3));
-                for (int i = 0; i < 5; i++)
-                {
-                    float u = -0.24f + i * 0.12f;
-                    k.Face(Dir.PosY, u - 0.022f, -0.24f, u + 0.022f, 0.24f, 0.09f, PartStyle.Dark, Armour(), lift: 0.035f);
-                }
-            }
-            else
-            {
-                k.Face(Dir.PosY, -0.19f, -0.19f, 0.19f, 0.19f, 0.022f, PartStyle.Dark, Armour());
-                k.Disc(Dir.PosY, 0f, 0f, 0.1f, 0.012f, PartStyle.Glow, Pulse(0.35f), lift: 0.022f);
-            }
+            float u0 = -0.5f + w, u1 = 0.5f - w;
+            k.Face(d, u0, -0.47f, u1, -0.37f, 0.012f, PartStyle.Accent, Hazard);
+            k.Face(d, u0, 0.11f, u1, 0.145f, 0.012f, PartStyle.Dark, Armour());
+            k.Face(d, u0, -0.145f, u1, -0.11f, 0.012f, PartStyle.Dark, Armour());
+            k.Disc(d, 0f, 0f, r, 0.03f, PartStyle.Dark, Armour());
+            k.Disc(d, 0f, 0f, r * 0.62f, 0.014f, PartStyle.Glow, Pulse(0.35f), lift: 0.03f);
+            k.Face(d, u0, 0.34f, u1, 0.45f, 0.02f, PartStyle.Dark, Armour(3));
+            Port(k, d, -0.22f, -0.26f, 0.7f);
+            Port(k, d, 0.22f, -0.26f, 0.45f);
         }
-        k.Grid = null;
+        k.Face(Dir.PosY, -0.3f, -0.3f, 0.3f, 0.3f, 0.035f, PartStyle.Dark, Armour(3));
+        for (int i = 0; i < 5; i++)
+        {
+            float u = -0.24f + i * 0.12f;
+            k.Face(Dir.PosY, u - 0.022f, -0.24f, u + 0.022f, 0.24f, 0.09f, PartStyle.Dark, Armour(), lift: 0.035f);
+        }
     }
 
     /// <summary>
@@ -175,7 +151,7 @@ public static class DeviceDetail
     /// </summary>
     static void Fabricator(Kit k, BlockType t, DeviceSymbol symbol)
     {
-        float heft = Heft(t, 3f, 16f);
+        float heft = Heft(t, 0.04f, 1.72f);
         // The bay: the type's largest dark part flush on its front.
         Part bayPart = t.Parts.Where(p => p.Style == PartStyle.Dark && p.Min.Z <= -0.5f && p.Max.Z <= -0.49f)
             .OrderByDescending(p => (p.Max.X - p.Min.X) * (p.Max.Y - p.Min.Y)).FirstOrDefault();
@@ -379,23 +355,10 @@ public static class DeviceDetail
             k.Box(new Vector3(x - 0.012f, -e + b, z0 + 0.004f), new Vector3(x + 0.012f, e - b, z0 + 0.02f), PartStyle.Dark, Bare);
     }
 
-    /// <summary>A CPU extender: rack slots between its bands and a row of blinking lamps.</summary>
-    static void CpuExtender(Kit k, BlockType t)
-    {
-        foreach (Dir d in Sides)
-            k.Face(d, -0.38f, -0.17f, 0.38f, 0.17f, 0.008f, PartStyle.Dark, Vent);
-        for (int i = 0; i < 2 + t.ExtenderTier; i++)
-        {
-            float u = -0.3f + i * 0.6f / (1 + t.ExtenderTier);
-            k.Face(Dir.NegZ, u - 0.025f, 0.34f, u + 0.025f, 0.39f, 0.012f, PartStyle.Glow, Blink(0.3f + 0.17f * i));
-        }
-        Bolts(k, Dir.NegZ, 0.05f, 0.02f);
-    }
-
     /// <summary>A warp drive or hyperdrive: field coils round it, a framed emitter on its front, a status screen; heavier drives carry more coils, lit between.</summary>
     static void Drive(Kit k, BlockType t)
     {
-        float heft = Heft(t, 8f, 20f);
+        float heft = Heft(t, 10f, 12f);
         int coils = 2 + (int)MathF.Round(heft * 2f);
         for (int i = 0; i < coils; i++)
         {
@@ -473,8 +436,6 @@ public static class DeviceDetail
     sealed class Kit
     {
         public readonly List<Part> Parts = new();
-        /// <summary>Parts added while set are drawn on this grid only.</summary>
-        public GridSize? Grid;
         /// <summary>Parts added while set belong to a door's leaf.</summary>
         public bool ClosedOnly;
 
@@ -493,7 +454,7 @@ public static class DeviceDetail
 
         Part Add(PartStyle style, PartFinish finish, List<Polygon> polygons, Vector3 min, Vector3 max, Dir? mount)
         {
-            var p = new Part { Style = style, Finish = finish, Polygons = polygons, Min = min, Max = max, Grid = Grid, Mount = mount, ClosedOnly = ClosedOnly };
+            var p = new Part { Style = style, Finish = finish, Polygons = polygons, Min = min, Max = max, Mount = mount, ClosedOnly = ClosedOnly };
             Parts.Add(p);
             return p;
         }

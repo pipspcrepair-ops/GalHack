@@ -1,20 +1,26 @@
-// Components: functional blocks. They carry the same stats as armour (per large-grid block)
-// plus their function, and have a fixed look made of parts. Every component works on bases and
-// capital ships alike; cost is the large-grid recipe, smallCost the cheap small-grid one
-// (common materials only, see grids.json).
-//   function   core, cockpit, thruster, generator, fuel, container, door, light, turret,
-//              cpu-extender or ladder
-//   power      MW: positive generates, negative is drawn at full load
-//   thrust     kN, pushing the structure forward (-Z) out of the exhaust at +Z
-//   storage    SU added to the one shared storage of the structure
+// Components: functional blocks on the one 1 m grid. Every stat is the block's own, nothing is
+// scaled at load. Devices that tier up are ladders, one entry per rung ("thruster-t1".."-t5"),
+// sized and weighted from docs/grid-figures.md (Empyrion's proportions, counted in 1 m cells).
+// Units, one constant per quantity, anchored so today's small part x 8 is about the bottom rung:
+//   hp         hit points (a plated iron cube is 158)
+//   mass       tonnes (the figures' kg / 1000)
+//   power      MW: positive generates, negative is drawn at full load; the figures' kW x 0.0005
+//   thrust     kN, pushing the structure forward (-Z) out of the exhaust at +Z; the figures' index x 0.5
+//   fuel       units held; the figures' kWh x 0.5
+//   storage    SU added to the one shared storage of the structure (the figures' SU as is)
+//   function   core, chair, thruster, generator, fuel, container, door, light, turret or ladder
+//   size       cells [x, y, z] (default one); parts boxes span -0.5..0.5 over the whole size.
+//              A thruster's exhaust axis is z, so its long side (the figures' height) is z here
+//   group      a variant family placed from one item, the size picked like a shape (doors)
+//   seat, eye  chairs: where a seated person's hips rest and where their eyes are, in the
+//              block's -0.5..0.5 box
+//   was        old ids this block replaces, so old blueprints still load
 //   attach     faces other blocks can attach to ("all", "none" or a list such as ["-y"])
 //   airtight   faces that seal air (doors: airtightOpen applies while open)
 //   covers     faces that may hide the cell face behind them (for culling). Only ever a limit:
 //              a face hides nothing unless an opaque part really covers the whole of it
 //   collide    cell, parts (the part boxes) or none
-//   extenderTier  cpu-extender only: the highest CPU tier it counts towards (default 2). Tiers 3
-//              and 4 take extenders built round lattice parts found in POIs (design 883)
-//   parts      boxes or cylinders in cell units; style body (takes paint), dark, accent, glow,
+//   parts      boxes or cylinders in box units; style body (takes paint), dark, accent, glow,
 //              glass; closedOnly parts belong to a door leaf. A part may also set its finish:
 //              color, accent, pattern (a paint pattern, fine-hazard or grille), texture, metal,
 //              symbol (shown on a glow part, stencilled on anything else), anim and speed (a glow
@@ -25,176 +31,306 @@
   "version": 1,
   "components": [
     {
-      "id": "core", "name": "Core", "function": "core",
-      "hp": 1500, "armor": 30, "resist": { "kinetic": 0.25, "explosive": 0.25, "energy": 0.25 },
-      "mass": 4, "cpu": 0, "color": "2b2d42", "glow": "ffb627",
-      "attach": "all", "airtight": "all", "covers": "all",
-      "cost": { "iron": 30, "electronics": 20, "crystal": 4 }, "smallCost": { "iron": 6, "copper": 4, "silicon": 2 },
+      "id": "core", "name": "Core", "function": "core", "hp": 250, "armor": 30, "resist": {"kinetic": 0.25, "explosive": 0.25, "energy": 0.25}, "mass": 0.14, "color": "2b2d42", "glow": "ffb627", "attach": "all", "airtight": "all", "covers": "all", "power": -0.0025,
       "parts": [
-        { "box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body" },
-        { "box": [-0.505, -0.11, -0.505, 0.505, 0.11, 0.505], "style": "glow" },
-        { "box": [-0.3, 0.5, -0.3, 0.3, 0.505, 0.3], "style": "accent" }
+        {"box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body"},
+        {"box": [-0.505, -0.11, -0.505, 0.505, 0.11, 0.505], "style": "glow"},
+        {"box": [-0.3, 0.5, -0.3, 0.3, 0.505, 0.3], "style": "accent"}
       ]
     },
     {
-      "id": "chair", "name": "Command chair", "function": "chair",
-      "hp": 400, "armor": 5, "resist": { "kinetic": 0.1, "explosive": 0.1, "energy": 0.1 },
-      "mass": 1.5, "cpu": 1500, "power": -0.05, "color": "c1121f", "glow": "6ff2e0",
-      "attach": ["-y"], "airtight": "none", "covers": "none", "collide": "parts",
-      "cost": { "iron": 12, "electronics": 10 }, "smallCost": { "iron": 4, "copper": 2, "silicon": 2 },
+      "id": "command-chair", "name": "Command chair", "function": "chair", "hp": 695, "armor": 5, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 1.92, "color": "c1121f", "glow": "6ff2e0", "attach": ["-y"], "airtight": "none", "covers": "none", "collide": "parts", "size": [1, 2, 3], "was": ["chair", "cockpit"], "power": -0.04, "seat": [0.0, -0.25, 0.0833], "eye": [0.0, 0.15, 0.0667],
       "parts": [
-        { "box": [-0.16, -0.5, -0.05, 0.16, -0.22, 0.22], "style": "dark" },
-        { "box": [-0.3, -0.22, -0.15, 0.3, -0.08, 0.3], "style": "body" },
-        { "box": [-0.3, -0.08, 0.2, 0.3, 0.42, 0.32], "style": "body" },
-        { "box": [-0.42, -0.5, -0.5, 0.42, -0.08, -0.3], "style": "dark" },
-        { "box": [-0.34, -0.08, -0.47, 0.34, 0.14, -0.4], "style": "glow", "symbol": "chevron" }
+        {"box": [-0.15, -0.5, 0.0333, 0.15, -0.3, 0.1667], "style": "dark"},
+        {"box": [-0.3, -0.3, -0.0167, 0.3, -0.25, 0.1833], "style": "body"},
+        {"box": [-0.3, -0.25, 0.1833, 0.3, 0.15, 0.2233], "style": "body"},
+        {"box": [-0.42, -0.5, -0.5, 0.42, -0.075, -0.3167], "style": "dark"},
+        {"box": [-0.34, -0.225, -0.3167, 0.34, -0.1, -0.3133], "style": "glow", "symbol": "chevron"}
       ]
     },
     {
-      "id": "thruster", "name": "Thruster", "function": "thruster",
-      "hp": 600, "armor": 15, "resist": { "kinetic": 0.15, "explosive": 0.15, "energy": 0.15 },
-      "mass": 3, "cpu": 2500, "power": -1.5, "thrust": 1200, "color": "3a3f47", "glow": "ff8a1c",
-      "attach": ["+x", "-x", "+y", "-y", "-z"], "airtight": ["+x", "-x", "+y", "-y", "-z"],
-      "covers": ["-z"],
-      "cost": { "iron": 20, "tungsten": 6, "electronics": 4 }, "smallCost": { "iron": 4, "copper": 3 },
+      "id": "cockpit-t1", "name": "Cockpit T1", "function": "chair", "hp": 2210, "armor": 5, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 5.76, "color": "c1121f", "glow": "6ff2e0", "attach": "all", "airtight": "all", "covers": ["-y", "+z"], "collide": "parts", "size": [3, 2, 4], "power": -0.04, "seat": [0.0, -0.2, 0.0625], "eye": [0.0, 0.2, 0.05],
       "parts": [
-        { "box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.2], "style": "body" },
-        { "cylinder": "z", "segments": 16, "box": [-0.47, -0.47, 0.2, 0.47, 0.47, 0.26], "style": "dark" },
-        { "cylinder": "z", "segments": 16, "box": [-0.27, -0.27, 0.44, 0.27, 0.27, 0.495], "style": "glow" }
+        {"box": [-0.5, -0.5, -0.5, 0.5, -0.45, 0.5], "style": "body"},
+        {"box": [-0.5, -0.45, -0.5, -0.4667, 0.0, 0.5], "style": "body"},
+        {"box": [0.4667, -0.45, -0.5, 0.5, 0.0, 0.5], "style": "body"},
+        {"box": [-0.5, -0.45, -0.5, 0.5, 0.0, -0.475], "style": "body"},
+        {"box": [-0.5, -0.45, 0.475, 0.5, 0.5, 0.5], "style": "body"},
+        {"box": [-0.5, 0.0, 0.15, -0.4667, 0.5, 0.475], "style": "body"},
+        {"box": [0.4667, 0.0, 0.15, 0.5, 0.5, 0.475], "style": "body"},
+        {"box": [-0.5, 0.45, 0.15, 0.5, 0.5, 0.475], "style": "body"},
+        {"box": [-0.5, 0.0, -0.5, -0.4867, 0.5, 0.15], "style": "glass"},
+        {"box": [0.4867, 0.0, -0.5, 0.5, 0.5, 0.15], "style": "glass"},
+        {"box": [-0.4867, 0.48, -0.5, 0.4867, 0.5, 0.15], "style": "glass"},
+        {"box": [-0.4867, 0.0, -0.5, 0.4867, 0.48, -0.49], "style": "glass"},
+        {"box": [-0.05, -0.45, 0.025, 0.05, -0.25, 0.125], "style": "dark"},
+        {"box": [-0.1, -0.25, -0.0125, 0.1, -0.2, 0.1375], "style": "body"},
+        {"box": [-0.1, -0.2, 0.1375, 0.1, 0.2, 0.1675], "style": "body"},
+        {"box": [-0.2667, -0.45, -0.475, 0.2667, -0.075, -0.3], "style": "dark"},
+        {"box": [-0.2333, -0.075, -0.425, 0.2333, -0.07, -0.3125], "style": "glow", "symbol": "chevron"}
       ]
     },
     {
-      "id": "generator", "name": "Generator", "function": "generator",
-      "hp": 800, "armor": 15, "resist": { "kinetic": 0.15, "explosive": 0.1, "energy": 0.2 },
-      "mass": 6, "cpu": 4000, "power": 12, "color": "0a9396", "glow": "8ef6e4",
-      "attach": "all", "airtight": "all", "covers": "all",
-      "cost": { "iron": 24, "copper": 12, "electronics": 8 }, "smallCost": { "iron": 5, "copper": 4 },
+      "id": "cockpit-t2", "name": "Cockpit T2", "function": "chair", "hp": 2840, "armor": 5, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 6.76, "color": "c1121f", "glow": "6ff2e0", "attach": "all", "airtight": "all", "covers": ["-y", "+z"], "collide": "parts", "size": [3, 3, 5], "power": -0.04, "seat": [0.0, -0.3, 0.05], "eye": [0.0, -0.0333, 0.04],
       "parts": [
-        { "box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body" },
-        { "box": [0.5, -0.36, -0.36, 0.505, 0.36, 0.36], "style": "dark" },
-        { "box": [-0.505, -0.36, -0.36, -0.5, 0.36, 0.36], "style": "dark" },
-        { "box": [0.505, -0.28, -0.07, 0.51, 0.28, 0.07], "style": "glow" },
-        { "box": [-0.51, -0.28, -0.07, -0.505, 0.28, 0.07], "style": "glow" },
-        { "box": [-0.36, 0.5, -0.08, 0.36, 0.505, 0.08], "style": "glow" }
+        {"box": [-0.5, -0.5, -0.5, 0.5, -0.4667, 0.5], "style": "body"},
+        {"box": [-0.5, -0.4667, -0.5, -0.4667, -0.1667, 0.5], "style": "body"},
+        {"box": [0.4667, -0.4667, -0.5, 0.5, -0.1667, 0.5], "style": "body"},
+        {"box": [-0.5, -0.4667, -0.5, 0.5, -0.1667, -0.48], "style": "body"},
+        {"box": [-0.5, -0.4667, 0.48, 0.5, 0.5, 0.5], "style": "body"},
+        {"box": [-0.5, -0.1667, 0.22, -0.4667, 0.5, 0.48], "style": "body"},
+        {"box": [0.4667, -0.1667, 0.22, 0.5, 0.5, 0.48], "style": "body"},
+        {"box": [-0.5, 0.4667, 0.22, 0.5, 0.5, 0.48], "style": "body"},
+        {"box": [-0.5, -0.1667, -0.5, -0.4867, 0.5, 0.22], "style": "glass"},
+        {"box": [0.4867, -0.1667, -0.5, 0.5, 0.5, 0.22], "style": "glass"},
+        {"box": [-0.4867, 0.4867, -0.5, 0.4867, 0.5, 0.22], "style": "glass"},
+        {"box": [-0.4867, -0.1667, -0.5, 0.4867, 0.4867, -0.492], "style": "glass"},
+        {"box": [-0.05, -0.4667, 0.02, 0.05, -0.3333, 0.1], "style": "dark"},
+        {"box": [-0.1, -0.3333, -0.01, 0.1, -0.3, 0.11], "style": "body"},
+        {"box": [-0.1, -0.3, 0.11, 0.1, -0.0333, 0.134], "style": "body"},
+        {"box": [-0.2667, -0.4667, -0.48, 0.2667, -0.2167, -0.34], "style": "dark"},
+        {"box": [-0.2333, -0.2167, -0.44, 0.2333, -0.2133, -0.35], "style": "glow", "symbol": "chevron"}
       ]
     },
     {
-      "id": "fueltank", "name": "Fuel tank", "function": "fuel",
-      "hp": 500, "armor": 10, "resist": { "kinetic": 0.1, "explosive": 0.0, "energy": 0.1 },
-      "mass": 2, "cpu": 600, "fuel": 4000, "color": "e85d04", "accent": "2b2d42",
-      "attach": ["+y", "-y"], "airtight": ["+y", "-y"], "covers": ["+y", "-y"],
-      "cost": { "iron": 12 }, "smallCost": { "iron": 3 },
+      "id": "thruster-t1", "name": "Thruster T1", "function": "thruster", "hp": 474, "armor": 15, "resist": {"kinetic": 0.15, "explosive": 0.15, "energy": 0.15}, "mass": 1.47, "color": "3a3f47", "glow": "ff8a1c", "attach": ["+x", "-x", "+y", "-y", "-z"], "airtight": ["+x", "-x", "+y", "-y", "-z"], "covers": ["-z"], "was": ["thruster"], "power": -0.08, "thrust": 300.0,
       "parts": [
-        { "cylinder": "y", "segments": 16, "box": [-0.46, -0.42, -0.46, 0.46, 0.42, 0.46], "style": "body" },
-        { "cylinder": "y", "segments": 16, "box": [-0.475, -0.06, -0.475, 0.475, 0.06, 0.475], "style": "accent" },
-        { "box": [-0.5, -0.5, -0.5, 0.5, -0.42, 0.5], "style": "dark" },
-        { "box": [-0.5, 0.42, -0.5, 0.5, 0.5, 0.5], "style": "dark" }
+        {"box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.2], "style": "body"},
+        {"cylinder": "z", "segments": 16, "box": [-0.47, -0.47, 0.2, 0.47, 0.47, 0.26], "style": "dark"},
+        {"cylinder": "z", "segments": 16, "box": [-0.27, -0.27, 0.44, 0.27, 0.27, 0.495], "style": "glow"}
       ]
     },
     {
-      "id": "container", "name": "Container", "function": "container",
-      "hp": 600, "armor": 10, "resist": { "kinetic": 0.1, "explosive": 0.1, "energy": 0.1 },
-      "mass": 2, "cpu": 800, "storage": 8000, "color": "f4a100", "texture": "ribbed",
-      "attach": "all", "airtight": "all", "covers": "all",
-      "cost": { "iron": 16 }, "smallCost": { "iron": 3 },
+      "id": "thruster-t2", "name": "Thruster T2", "function": "thruster", "hp": 948, "armor": 15, "resist": {"kinetic": 0.15, "explosive": 0.15, "energy": 0.15}, "mass": 2.26, "color": "3a3f47", "glow": "ff8a1c", "attach": ["+x", "-x", "+y", "-y", "-z"], "airtight": ["+x", "-x", "+y", "-y", "-z"], "covers": ["-z"], "size": [1, 1, 2], "power": -0.128, "thrust": 680.0,
       "parts": [
-        { "box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body" },
-        { "box": [-0.505, -0.5, -0.505, -0.4, 0.5, -0.4], "style": "dark" },
-        { "box": [0.4, -0.5, -0.505, 0.505, 0.5, -0.4], "style": "dark" },
-        { "box": [-0.505, -0.5, 0.4, -0.4, 0.5, 0.505], "style": "dark" },
-        { "box": [0.4, -0.5, 0.4, 0.505, 0.5, 0.505], "style": "dark" }
+        {"box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.2], "style": "body"},
+        {"cylinder": "z", "segments": 16, "box": [-0.47, -0.47, 0.2, 0.47, 0.47, 0.26], "style": "dark"},
+        {"cylinder": "z", "segments": 16, "box": [-0.27, -0.27, 0.44, 0.27, 0.27, 0.495], "style": "glow"}
       ]
     },
     {
-      "id": "door", "name": "Door", "function": "door",
-      "hp": 700, "armor": 20, "resist": { "kinetic": 0.2, "explosive": 0.15, "energy": 0.15 },
-      "mass": 1.5, "cpu": 300, "power": -0.01, "color": "f4a100", "accent": "2b2d42",
-      "attach": "all", "airtight": "all", "airtightOpen": "none",
-      "covers": ["+x", "-x"],
-      "cost": { "iron": 14, "electronics": 2 }, "smallCost": { "iron": 3, "copper": 1 },
+      "id": "thruster-t3", "name": "Thruster T3", "function": "thruster", "hp": 295, "armor": 15, "resist": {"kinetic": 0.15, "explosive": 0.15, "energy": 0.15}, "mass": 0.551, "color": "3a3f47", "glow": "ff8a1c", "attach": ["+x", "-x", "+y", "-y", "-z"], "airtight": ["+x", "-x", "+y", "-y", "-z"], "covers": ["-z"], "size": [1, 1, 2], "power": -0.0498, "thrust": 1045.0,
       "parts": [
-        { "box": [-0.5, -0.5, -0.5, -0.44, 0.5, 0.5], "style": "dark" },
-        { "box": [0.44, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "dark" },
-        { "box": [-0.44, 0.46, -0.5, 0.44, 0.5, 0.5], "style": "dark" },
-        { "box": [-0.44, -0.5, -0.1, 0.44, 0.46, 0.1], "style": "body", "closedOnly": true },
-        { "box": [-0.44, -0.1, -0.105, 0.44, 0.0, 0.105], "style": "accent", "closedOnly": true }
+        {"box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.2], "style": "body"},
+        {"cylinder": "z", "segments": 16, "box": [-0.47, -0.47, 0.2, 0.47, 0.47, 0.26], "style": "dark"},
+        {"cylinder": "z", "segments": 16, "box": [-0.27, -0.27, 0.44, 0.27, 0.27, 0.495], "style": "glow"}
       ]
     },
     {
-      "id": "light", "name": "Light", "function": "light",
-      "hp": 80, "armor": 0, "mass": 0.1, "cpu": 50, "power": -0.005, "color": "2b2d42", "glow": "ffe2b0",
-      "attach": ["+z"], "airtight": "none", "covers": "none", "collide": "none",
-      "cost": { "iron": 1, "copper": 2 }, "smallCost": { "copper": 1, "silicon": 1 },
+      "id": "thruster-t4", "name": "Thruster T4", "function": "thruster", "hp": 1790, "armor": 15, "resist": {"kinetic": 0.15, "explosive": 0.15, "energy": 0.15}, "mass": 2.82, "color": "3a3f47", "glow": "ff8a1c", "attach": ["+x", "-x", "+y", "-y", "-z"], "airtight": ["+x", "-x", "+y", "-y", "-z"], "covers": ["-z"], "size": [2, 2, 4], "power": -0.279, "thrust": 13100.0,
       "parts": [
-        { "box": [-0.3, -0.3, 0.44, 0.3, 0.3, 0.5], "style": "dark" },
-        { "box": [-0.22, -0.22, 0.4, 0.22, 0.22, 0.44], "style": "glow" }
+        {"box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.2], "style": "body"},
+        {"cylinder": "z", "segments": 16, "box": [-0.47, -0.47, 0.2, 0.47, 0.47, 0.26], "style": "dark"},
+        {"cylinder": "z", "segments": 16, "box": [-0.27, -0.27, 0.44, 0.27, 0.27, 0.495], "style": "glow"}
       ]
     },
     {
-      "id": "turret", "name": "Turret (placeholder)", "function": "turret",
-      "hp": 1200, "armor": 30, "resist": { "kinetic": 0.3, "explosive": 0.3, "energy": 0.3 },
-      "mass": 5, "cpu": 8000, "power": -0.8, "color": "4d5563", "glow": "ff5e3a",
-      "attach": ["-y"], "airtight": ["-y"], "covers": ["-y"], "collide": "parts",
-      "cost": { "iron": 30, "tungsten": 10, "electronics": 12 }, "smallCost": { "iron": 6, "copper": 3, "carbon": 2 },
+      "id": "thruster-t5", "name": "Thruster T5", "function": "thruster", "hp": 5290, "armor": 15, "resist": {"kinetic": 0.15, "explosive": 0.15, "energy": 0.15}, "mass": 7.86, "color": "3a3f47", "glow": "ff8a1c", "attach": ["+x", "-x", "+y", "-y", "-z"], "airtight": ["+x", "-x", "+y", "-y", "-z"], "covers": ["-z"], "size": [3, 3, 6], "power": -0.78, "thrust": 57500.0,
       "parts": [
-        { "box": [-0.5, -0.5, -0.5, 0.5, -0.32, 0.5], "style": "body" },
-        { "cylinder": "y", "segments": 16, "box": [-0.42, -0.32, -0.42, 0.42, -0.2, 0.42], "style": "dark" },
-        { "cylinder": "y", "segments": 16, "box": [-0.34, -0.2, -0.34, 0.34, 0.18, 0.34], "style": "body" },
-        { "box": [-0.17, -0.02, -0.5, -0.07, 0.08, -0.2], "style": "dark" },
-        { "box": [0.07, -0.02, -0.5, 0.17, 0.08, -0.2], "style": "dark" },
-        { "box": [-0.25, 0.18, -0.12, 0.25, 0.22, 0.12], "style": "glow" }
+        {"box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.2], "style": "body"},
+        {"cylinder": "z", "segments": 16, "box": [-0.47, -0.47, 0.2, 0.47, 0.47, 0.26], "style": "dark"},
+        {"cylinder": "z", "segments": 16, "box": [-0.27, -0.27, 0.44, 0.27, 0.27, 0.495], "style": "glow"}
       ]
     },
     {
-      "id": "cpuext", "name": "CPU extender", "function": "cpu-extender",
-      "hp": 600, "armor": 15, "resist": { "kinetic": 0.15, "explosive": 0.15, "energy": 0.1 },
-      "mass": 2, "cpu": 0, "power": -0.2, "color": "1b263b", "glow": "6ff2e0",
-      "attach": "all", "airtight": "all", "covers": "all",
-      "cost": { "iron": 10, "electronics": 24, "crystal": 2 }, "smallCost": { "copper": 4, "silicon": 3 },
+      "id": "generator-t1", "name": "Generator T1", "function": "generator", "hp": 395, "armor": 15, "resist": {"kinetic": 0.15, "explosive": 0.1, "energy": 0.2}, "mass": 1.18, "color": "0a9396", "glow": "8ef6e4", "attach": "all", "airtight": "all", "covers": "all", "was": ["generator"], "power": 2.8,
       "parts": [
-        { "box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body" },
-        { "box": [-0.505, 0.22, -0.505, 0.505, 0.27, 0.505], "style": "glow" },
-        { "box": [-0.505, -0.27, -0.505, 0.505, -0.22, 0.505], "style": "glow" }
+        {"box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body"},
+        {"box": [0.5, -0.36, -0.36, 0.505, 0.36, 0.36], "style": "dark"},
+        {"box": [-0.505, -0.36, -0.36, -0.5, 0.36, 0.36], "style": "dark"},
+        {"box": [0.505, -0.28, -0.07, 0.51, 0.28, 0.07], "style": "glow"},
+        {"box": [-0.51, -0.28, -0.07, -0.505, 0.28, 0.07], "style": "glow"},
+        {"box": [-0.36, 0.5, -0.08, 0.36, 0.505, 0.08], "style": "glow"}
       ]
     },
     {
-      "id": "ladder", "name": "Ladder", "function": "ladder",
-      "hp": 150, "armor": 5, "mass": 0.2, "cpu": 0, "color": "f4a100",
-      "attach": ["+z"], "airtight": "none", "covers": "none", "collide": "none",
-      "cost": { "iron": 3 }, "smallCost": { "iron": 1 },
+      "id": "generator-t2", "name": "Generator T2", "function": "generator", "hp": 632, "armor": 15, "resist": {"kinetic": 0.15, "explosive": 0.1, "energy": 0.2}, "mass": 2.1, "color": "0a9396", "glow": "8ef6e4", "attach": "all", "airtight": "all", "covers": "all", "size": [1, 2, 1], "power": 6.15,
       "parts": [
-        { "box": [-0.4, -0.5, 0.36, -0.32, 0.5, 0.46], "style": "dark" },
-        { "box": [0.32, -0.5, 0.36, 0.4, 0.5, 0.46], "style": "dark" },
-        { "box": [-0.32, -0.4, 0.38, 0.32, -0.35, 0.44], "style": "body" },
-        { "box": [-0.32, -0.15, 0.38, 0.32, -0.1, 0.44], "style": "body" },
-        { "box": [-0.32, 0.1, 0.38, 0.32, 0.15, 0.44], "style": "body" },
-        { "box": [-0.32, 0.35, 0.38, 0.32, 0.4, 0.44], "style": "body" }
+        {"box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body"},
+        {"box": [0.5, -0.36, -0.36, 0.505, 0.36, 0.36], "style": "dark"},
+        {"box": [-0.505, -0.36, -0.36, -0.5, 0.36, 0.36], "style": "dark"},
+        {"box": [0.505, -0.28, -0.07, 0.51, 0.28, 0.07], "style": "glow"},
+        {"box": [-0.51, -0.28, -0.07, -0.505, 0.28, 0.07], "style": "glow"},
+        {"box": [-0.36, 0.5, -0.08, 0.36, 0.505, 0.08], "style": "glow"}
       ]
     },
     {
-      "id": "cpuext3", "name": "CPU extender T3", "function": "cpu-extender", "extenderTier": 3,
-      "hp": 600, "armor": 15, "resist": { "kinetic": 0.15, "explosive": 0.15, "energy": 0.1 },
-      "mass": 2, "cpu": 0, "power": -0.3, "color": "1b263b", "glow": "b98cff",
-      "attach": "all", "airtight": "all", "covers": "all",
-      "cost": { "iron": 10, "electronics": 24, "crystal": 2 }, "smallCost": { "copper": 4, "silicon": 3 },
+      "id": "generator-t3", "name": "Generator T3", "function": "generator", "hp": 79, "armor": 15, "resist": {"kinetic": 0.15, "explosive": 0.1, "energy": 0.2}, "mass": 1.67, "color": "0a9396", "glow": "8ef6e4", "attach": "all", "airtight": "all", "covers": "all", "size": [3, 1, 1], "power": 10.15,
       "parts": [
-        { "box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body" },
-        { "box": [-0.505, 0.22, -0.505, 0.505, 0.27, 0.505], "style": "glow" },
-        { "box": [-0.505, -0.27, -0.505, 0.505, -0.22, 0.505], "style": "glow" },
-        { "box": [-0.505, -0.05, -0.505, 0.505, 0.05, 0.505], "style": "glow" }
+        {"box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body"},
+        {"box": [0.5, -0.36, -0.36, 0.505, 0.36, 0.36], "style": "dark"},
+        {"box": [-0.505, -0.36, -0.36, -0.5, 0.36, 0.36], "style": "dark"},
+        {"box": [0.505, -0.28, -0.07, 0.51, 0.28, 0.07], "style": "glow"},
+        {"box": [-0.51, -0.28, -0.07, -0.505, 0.28, 0.07], "style": "glow"},
+        {"box": [-0.36, 0.5, -0.08, 0.36, 0.505, 0.08], "style": "glow"}
       ]
     },
     {
-      "id": "cpuext4", "name": "CPU extender T4", "function": "cpu-extender", "extenderTier": 4,
-      "hp": 600, "armor": 15, "resist": { "kinetic": 0.15, "explosive": 0.15, "energy": 0.1 },
-      "mass": 2, "cpu": 0, "power": -0.4, "color": "1b263b", "glow": "ffc46b",
-      "attach": "all", "airtight": "all", "covers": "all",
-      "cost": { "iron": 10, "electronics": 24, "crystal": 2 }, "smallCost": { "copper": 4, "silicon": 3 },
+      "id": "generator-t4", "name": "Generator T4", "function": "generator", "hp": 158, "armor": 15, "resist": {"kinetic": 0.15, "explosive": 0.1, "energy": 0.2}, "mass": 4.67, "color": "0a9396", "glow": "8ef6e4", "attach": "all", "airtight": "all", "covers": "all", "size": [6, 2, 2], "power": 89.5,
       "parts": [
-        { "box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body" },
-        { "box": [-0.505, 0.22, -0.505, 0.505, 0.27, 0.505], "style": "glow" },
-        { "box": [-0.505, -0.27, -0.505, 0.505, -0.22, 0.505], "style": "glow" },
-        { "box": [-0.505, -0.05, -0.505, 0.505, 0.05, 0.505], "style": "glow" }
+        {"box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body"},
+        {"box": [0.5, -0.36, -0.36, 0.505, 0.36, 0.36], "style": "dark"},
+        {"box": [-0.505, -0.36, -0.36, -0.5, 0.36, 0.36], "style": "dark"},
+        {"box": [0.505, -0.28, -0.07, 0.51, 0.28, 0.07], "style": "glow"},
+        {"box": [-0.51, -0.28, -0.07, -0.505, 0.28, 0.07], "style": "glow"},
+        {"box": [-0.36, 0.5, -0.08, 0.36, 0.505, 0.08], "style": "glow"}
+      ]
+    },
+    {
+      "id": "fuel-tank-t1", "name": "Fuel tank T1", "function": "fuel", "hp": 158, "armor": 10, "resist": {"kinetic": 0.1, "explosive": 0.0, "energy": 0.1}, "mass": 0.336, "color": "e85d04", "accent": "2b2d42", "attach": ["+y", "-y"], "airtight": ["+y", "-y"], "covers": ["+y", "-y"], "was": ["fueltank"], "power": -0.004, "fuel": 1200.0,
+      "parts": [
+        {"cylinder": "y", "segments": 16, "box": [-0.46, -0.42, -0.46, 0.46, 0.42, 0.46], "style": "body"},
+        {"cylinder": "y", "segments": 16, "box": [-0.475, -0.06, -0.475, 0.475, 0.06, 0.475], "style": "accent"},
+        {"box": [-0.5, -0.5, -0.5, 0.5, -0.42, 0.5], "style": "dark"},
+        {"box": [-0.5, 0.42, -0.5, 0.5, 0.5, 0.5], "style": "dark"}
+      ]
+    },
+    {
+      "id": "fuel-tank-t2", "name": "Fuel tank T2", "function": "fuel", "hp": 158, "armor": 10, "resist": {"kinetic": 0.1, "explosive": 0.0, "energy": 0.1}, "mass": 0.672, "color": "e85d04", "accent": "2b2d42", "attach": ["+z", "-z"], "airtight": ["+z", "-z"], "covers": ["+z", "-z"], "size": [1, 1, 2], "power": -0.004, "fuel": 2640.0,
+      "parts": [
+        {"cylinder": "z", "segments": 16, "box": [-0.46, -0.46, -0.42, 0.46, 0.46, 0.42], "style": "body"},
+        {"cylinder": "z", "segments": 16, "box": [-0.475, -0.475, -0.03, 0.475, 0.475, 0.03], "style": "accent"},
+        {"box": [-0.5, -0.5, -0.5, 0.5, 0.5, -0.42], "style": "dark"},
+        {"box": [-0.5, -0.5, 0.42, 0.5, 0.5, 0.5], "style": "dark"}
+      ]
+    },
+    {
+      "id": "fuel-tank-t3", "name": "Fuel tank T3", "function": "fuel", "hp": 25, "armor": 10, "resist": {"kinetic": 0.1, "explosive": 0.0, "energy": 0.1}, "mass": 0.314, "color": "e85d04", "accent": "2b2d42", "attach": ["+y", "-y"], "airtight": ["+y", "-y"], "covers": ["+y", "-y"], "size": [1, 2, 1], "power": -0.0001, "fuel": 2905.0,
+      "parts": [
+        {"cylinder": "y", "segments": 16, "box": [-0.46, -0.42, -0.46, 0.46, 0.42, 0.46], "style": "body"},
+        {"cylinder": "y", "segments": 16, "box": [-0.475, -0.06, -0.475, 0.475, 0.06, 0.475], "style": "accent"},
+        {"box": [-0.5, -0.5, -0.5, 0.5, -0.42, 0.5], "style": "dark"},
+        {"box": [-0.5, 0.42, -0.5, 0.5, 0.5, 0.5], "style": "dark"}
+      ]
+    },
+    {
+      "id": "fuel-tank-t4", "name": "Fuel tank T4", "function": "fuel", "hp": 25, "armor": 10, "resist": {"kinetic": 0.1, "explosive": 0.0, "energy": 0.1}, "mass": 0.446, "color": "e85d04", "accent": "2b2d42", "attach": ["+y", "-y"], "airtight": ["+y", "-y"], "covers": ["+y", "-y"], "size": [2, 2, 1], "power": -0.0001, "fuel": 6400.0,
+      "parts": [
+        {"cylinder": "y", "segments": 16, "box": [-0.48, -0.42, -0.46, -0.02, 0.42, 0.46], "style": "body"},
+        {"cylinder": "y", "segments": 16, "box": [-0.49, -0.06, -0.475, -0.01, 0.06, 0.475], "style": "accent"},
+        {"cylinder": "y", "segments": 16, "box": [0.02, -0.42, -0.46, 0.48, 0.42, 0.46], "style": "body"},
+        {"cylinder": "y", "segments": 16, "box": [0.01, -0.06, -0.475, 0.49, 0.06, 0.475], "style": "accent"},
+        {"box": [-0.5, -0.5, -0.5, 0.5, -0.42, 0.5], "style": "dark"},
+        {"box": [-0.5, 0.42, -0.5, 0.5, 0.5, 0.5], "style": "dark"}
+      ]
+    },
+    {
+      "id": "container-t1", "name": "Container T1", "function": "container", "hp": 316, "armor": 10, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 0.44, "color": "f4a100", "texture": "ribbed", "attach": "all", "airtight": "all", "covers": "all", "was": ["container"], "power": -0.012, "storage": 1000,
+      "parts": [
+        {"box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body"},
+        {"box": [-0.505, -0.5, -0.505, -0.4, 0.5, -0.4], "style": "dark"},
+        {"box": [0.4, -0.5, -0.505, 0.505, 0.5, -0.4], "style": "dark"},
+        {"box": [-0.505, -0.5, 0.4, -0.4, 0.5, 0.505], "style": "dark"},
+        {"box": [0.4, -0.5, 0.4, 0.505, 0.5, 0.505], "style": "dark"}
+      ]
+    },
+    {
+      "id": "container-t2", "name": "Container T2", "function": "container", "hp": 126, "armor": 10, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 0.36, "color": "f4a100", "texture": "ribbed", "attach": "all", "airtight": "all", "covers": "all", "power": -0.004, "storage": 1100,
+      "parts": [
+        {"box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body"},
+        {"box": [-0.505, -0.5, -0.505, -0.4, 0.5, -0.4], "style": "dark"},
+        {"box": [0.4, -0.5, -0.505, 0.505, 0.5, -0.4], "style": "dark"},
+        {"box": [-0.505, -0.5, 0.4, -0.4, 0.5, 0.505], "style": "dark"},
+        {"box": [0.4, -0.5, 0.4, 0.505, 0.5, 0.505], "style": "dark"}
+      ]
+    },
+    {
+      "id": "container-t3", "name": "Container T3", "function": "container", "hp": 32, "armor": 10, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 0.075, "color": "f4a100", "texture": "ribbed", "attach": "all", "airtight": "all", "covers": "all", "power": -0.0001, "storage": 1210,
+      "parts": [
+        {"box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body"},
+        {"box": [-0.505, -0.5, -0.505, -0.4, 0.5, -0.4], "style": "dark"},
+        {"box": [0.4, -0.5, -0.505, 0.505, 0.5, -0.4], "style": "dark"},
+        {"box": [-0.505, -0.5, 0.4, -0.4, 0.5, 0.505], "style": "dark"},
+        {"box": [0.4, -0.5, 0.4, 0.505, 0.5, 0.505], "style": "dark"}
+      ]
+    },
+    {
+      "id": "container-t4", "name": "Container T4", "function": "container", "hp": 158, "armor": 10, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 0.125, "color": "f4a100", "texture": "ribbed", "attach": "all", "airtight": "all", "covers": "all", "size": [2, 1, 1], "power": -0.0001, "storage": 2660,
+      "parts": [
+        {"box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body"},
+        {"box": [-0.505, -0.5, -0.505, -0.4, 0.5, -0.4], "style": "dark"},
+        {"box": [0.4, -0.5, -0.505, 0.505, 0.5, -0.4], "style": "dark"},
+        {"box": [-0.505, -0.5, 0.4, -0.4, 0.5, 0.505], "style": "dark"},
+        {"box": [0.4, -0.5, 0.4, 0.505, 0.5, 0.505], "style": "dark"}
+      ]
+    },
+    {
+      "id": "door-1x2x1", "name": "Door 1×2", "function": "door", "hp": 76, "armor": 20, "resist": {"kinetic": 0.2, "explosive": 0.15, "energy": 0.15}, "mass": 0.04, "color": "f4a100", "accent": "2b2d42", "attach": "all", "airtight": "all", "airtightOpen": "none", "covers": ["+x", "-x"], "size": [1, 2, 1], "was": ["door"], "group": "door", "power": -0.0005,
+      "parts": [
+        {"box": [-0.5, -0.5, -0.5, -0.44, 0.5, 0.5], "style": "dark"},
+        {"box": [0.44, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "dark"},
+        {"box": [-0.44, 0.48, -0.5, 0.44, 0.5, 0.5], "style": "dark"},
+        {"box": [-0.44, -0.5, -0.1, 0.44, 0.48, 0.1], "style": "body", "closedOnly": true},
+        {"box": [-0.44, -0.025, -0.105, 0.44, 0.0, 0.105], "style": "accent", "closedOnly": true}
+      ]
+    },
+    {
+      "id": "door-2x2x1", "name": "Door 2×2", "function": "door", "hp": 152, "armor": 20, "resist": {"kinetic": 0.2, "explosive": 0.15, "energy": 0.15}, "mass": 0.08, "color": "f4a100", "accent": "2b2d42", "attach": "all", "airtight": "all", "airtightOpen": "none", "covers": ["+x", "-x"], "size": [2, 2, 1], "group": "door", "power": -0.0005,
+      "parts": [
+        {"box": [-0.5, -0.5, -0.5, -0.47, 0.5, 0.5], "style": "dark"},
+        {"box": [0.47, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "dark"},
+        {"box": [-0.47, 0.48, -0.5, 0.47, 0.5, 0.5], "style": "dark"},
+        {"box": [-0.47, -0.5, -0.1, 0.47, 0.48, 0.1], "style": "body", "closedOnly": true},
+        {"box": [-0.47, -0.025, -0.105, 0.47, 0.0, 0.105], "style": "accent", "closedOnly": true}
+      ]
+    },
+    {
+      "id": "door-3x3x1", "name": "Door 3×3", "function": "door", "hp": 341, "armor": 20, "resist": {"kinetic": 0.2, "explosive": 0.15, "energy": 0.15}, "mass": 0.18, "color": "f4a100", "accent": "2b2d42", "attach": "all", "airtight": "all", "airtightOpen": "none", "covers": ["+x", "-x"], "size": [3, 3, 1], "group": "door", "power": -0.0005,
+      "parts": [
+        {"box": [-0.5, -0.5, -0.5, -0.48, 0.5, 0.5], "style": "dark"},
+        {"box": [0.48, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "dark"},
+        {"box": [-0.48, 0.4867, -0.5, 0.48, 0.5, 0.5], "style": "dark"},
+        {"box": [-0.48, -0.5, -0.1, 0.48, 0.4867, 0.1], "style": "body", "closedOnly": true},
+        {"box": [-0.48, -0.0167, -0.105, 0.48, 0.0, 0.105], "style": "accent", "closedOnly": true}
+      ]
+    },
+    {
+      "id": "door-4x4x1", "name": "Door 4×4", "function": "door", "hp": 604, "armor": 20, "resist": {"kinetic": 0.2, "explosive": 0.15, "energy": 0.15}, "mass": 0.32, "color": "f4a100", "accent": "2b2d42", "attach": "all", "airtight": "all", "airtightOpen": "none", "covers": ["+x", "-x"], "size": [4, 4, 1], "group": "door", "power": -0.0005,
+      "parts": [
+        {"box": [-0.5, -0.5, -0.5, -0.485, 0.5, 0.5], "style": "dark"},
+        {"box": [0.485, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "dark"},
+        {"box": [-0.485, 0.49, -0.5, 0.485, 0.5, 0.5], "style": "dark"},
+        {"box": [-0.485, -0.5, -0.1, 0.485, 0.49, 0.1], "style": "body", "closedOnly": true},
+        {"box": [-0.485, -0.0125, -0.105, 0.485, 0.0, 0.105], "style": "accent", "closedOnly": true}
+      ]
+    },
+    {
+      "id": "door-5x5x1", "name": "Door 5×5", "function": "door", "hp": 942, "armor": 20, "resist": {"kinetic": 0.2, "explosive": 0.15, "energy": 0.15}, "mass": 0.5, "color": "f4a100", "accent": "2b2d42", "attach": "all", "airtight": "all", "airtightOpen": "none", "covers": ["+x", "-x"], "size": [5, 5, 1], "group": "door", "power": -0.0005,
+      "parts": [
+        {"box": [-0.5, -0.5, -0.5, -0.488, 0.5, 0.5], "style": "dark"},
+        {"box": [0.488, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "dark"},
+        {"box": [-0.488, 0.492, -0.5, 0.488, 0.5, 0.5], "style": "dark"},
+        {"box": [-0.488, -0.5, -0.1, 0.488, 0.492, 0.1], "style": "body", "closedOnly": true},
+        {"box": [-0.488, -0.01, -0.105, 0.488, 0.0, 0.105], "style": "accent", "closedOnly": true}
+      ]
+    },
+    {
+      "id": "light", "name": "Light", "function": "light", "hp": 80, "armor": 0, "mass": 0.0004, "color": "2b2d42", "glow": "ffe2b0", "attach": ["+z"], "airtight": "none", "covers": "none", "collide": "none", "power": -0.0005,
+      "parts": [
+        {"box": [-0.3, -0.3, 0.44, 0.3, 0.3, 0.5], "style": "dark"},
+        {"box": [-0.22, -0.22, 0.4, 0.22, 0.22, 0.44], "style": "glow"}
+      ]
+    },
+    {
+      "id": "turret", "name": "Turret (placeholder)", "function": "turret", "hp": 379, "armor": 30, "resist": {"kinetic": 0.3, "explosive": 0.3, "energy": 0.3}, "mass": 0.445, "color": "4d5563", "glow": "ff5e3a", "attach": ["-y"], "airtight": ["-y"], "covers": ["-y"], "collide": "parts", "power": -0.1,
+      "parts": [
+        {"box": [-0.5, -0.5, -0.5, 0.5, -0.32, 0.5], "style": "body"},
+        {"cylinder": "y", "segments": 16, "box": [-0.42, -0.32, -0.42, 0.42, -0.2, 0.42], "style": "dark"},
+        {"cylinder": "y", "segments": 16, "box": [-0.34, -0.2, -0.34, 0.34, 0.18, 0.34], "style": "body"},
+        {"box": [-0.17, -0.02, -0.5, -0.07, 0.08, -0.2], "style": "dark"},
+        {"box": [0.07, -0.02, -0.5, 0.17, 0.08, -0.2], "style": "dark"},
+        {"box": [-0.25, 0.18, -0.12, 0.25, 0.22, 0.12], "style": "glow"}
+      ]
+    },
+    {
+      "id": "ladder", "name": "Ladder", "function": "ladder", "hp": 100, "armor": 5, "mass": 0.015, "color": "f4a100", "attach": ["+z"], "airtight": "none", "covers": "none", "collide": "none",
+      "parts": [
+        {"box": [-0.4, -0.5, 0.36, -0.32, 0.5, 0.46], "style": "dark"},
+        {"box": [0.32, -0.5, 0.36, 0.4, 0.5, 0.46], "style": "dark"},
+        {"box": [-0.32, -0.4, 0.38, 0.32, -0.35, 0.44], "style": "body"},
+        {"box": [-0.32, -0.15, 0.38, 0.32, -0.1, 0.44], "style": "body"},
+        {"box": [-0.32, 0.1, 0.38, 0.32, 0.15, 0.44], "style": "body"},
+        {"box": [-0.32, 0.35, 0.38, 0.32, 0.4, 0.44], "style": "body"}
       ]
     }
   ]

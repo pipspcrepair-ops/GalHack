@@ -4,9 +4,9 @@ using System.Collections.Generic;
 namespace GalHack.Structures;
 
 /// <summary>
-/// What a core is set to run as. There are two cores: a Big Core (large grid) in Base Mode or Capital
-/// Mode, and a Small Core (small grid) in Vessel Mode or Hover Mode. Every block works in both of its
-/// core's modes; only what the blocks do changes.
+/// What a core is set to run as. Every structure is anchored (Base Mode) or flies (Capital Mode);
+/// one with hover plates may ride them (Hover Mode). Vessel Mode is old data and reads as Capital.
+/// Every block works in every mode; only what the blocks do changes.
 /// </summary>
 public enum CoreMode { Base, Capital, Vessel, Hover }
 
@@ -75,19 +75,16 @@ public sealed class Chunk
 public sealed class Structure
 {
     public Catalogue Catalogue { get; }
-    public GridDef Grid { get; }
+    public GridDef Grid => Catalogue.Grid;
     public string Name = "Structure";
 
     /// <summary>Who owns it, set by placing the core. Null for an unowned wreck.</summary>
     public string Owner;
 
-    /// <summary>
-    /// The core's mode, always one its grid's core has: a value from the other grid reads as the
-    /// flying mode (old data said "capital" on a small grid, which is Vessel Mode).
-    /// </summary>
+    /// <summary>The core's mode: Base, Hover, or else Capital (old data's Vessel Mode flies as Capital).</summary>
     public CoreMode Mode
     {
-        get => Grid.Size == GridSize.Small ? (_mode == CoreMode.Hover ? CoreMode.Hover : CoreMode.Vessel) : (_mode == CoreMode.Base ? CoreMode.Base : CoreMode.Capital);
+        get => _mode is CoreMode.Base or CoreMode.Hover ? _mode : CoreMode.Capital;
         set => _mode = value;
     }
     CoreMode _mode = CoreMode.Capital;
@@ -123,11 +120,7 @@ public sealed class Structure
     int _boundsVersion = -1;
     Int3 _min, _max;
 
-    public Structure(Catalogue catalogue, GridDef grid)
-    {
-        Catalogue = catalogue;
-        Grid = grid;
-    }
+    public Structure(Catalogue catalogue) => Catalogue = catalogue;
 
     public IReadOnlyDictionary<Int3, Chunk> Chunks => _chunks;
 
@@ -338,9 +331,9 @@ public sealed class Structure
 
     public BlockType TypeOf(in Block b) => Catalogue.Types[b.Type];
     public ShapeDef ShapeOf(in Block b) => Catalogue.Shapes[b.Shape];
-    public BlockStats StatsOf(in Block b) => Catalogue.StatsFor(b, Grid);
+    public BlockStats StatsOf(in Block b) => Catalogue.StatsFor(b);
 
-    public float MaxHp(in Block b) => Catalogue.MaxHp(b, Grid);
+    public float MaxHp(in Block b) => Catalogue.MaxHp(b);
 
     /// <summary>How much of a cell face the block touches, for attaching blocks to each other.</summary>
     public Coverage AttachCoverage(in Block b, Dir world)

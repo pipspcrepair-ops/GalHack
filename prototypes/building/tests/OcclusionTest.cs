@@ -21,11 +21,10 @@ public partial class OcclusionTest : Node
     public override void _Ready()
     {
         _cat = GameData.Catalogue;
-        foreach (GridDef grid in _cat.Grids)
         {
-            OcclusionCheck.Result r = OcclusionCheck.Run(_cat, grid);
-            foreach (string w in r.Worst) GD.Print($"      {grid.Id}: {w}");
-            Check(r.Holes == 0, $"{grid.Id} grid: every block in every orientation against a cube on every side, {r.Cases} cases: {r.Culled} cube faces hidden, {r.Holes} of them left a hole");
+            OcclusionCheck.Result r = OcclusionCheck.Run(_cat);
+            foreach (string w in r.Worst) GD.Print($"      {w}");
+            Check(r.Holes == 0, $"every block in every orientation against a cube on every side, {r.Cases} cases: {r.Culled} cube faces hidden, {r.Holes} of them left a hole");
             GD.Print($"      hiders: {string.Join(", ", r.Hiders)}");
         }
 
@@ -65,13 +64,13 @@ public partial class OcclusionTest : Node
 
     Block Rotated(string id)
     {
-        var s = new Structure(_cat, _cat.Grid(GridSize.Large));
+        var s = new Structure(_cat);
         return Building.Make(s, _cat.Type(id));
     }
 
     Structure Pair(string a, string b)
     {
-        var s = new Structure(_cat, _cat.Grid(GridSize.Large));
+        var s = new Structure(_cat);
         s.Set(Int3.Zero, Building.Make(s, _cat.Type(a)));
         s.Set(new Int3(1, 0, 0), Building.Make(s, _cat.Type(b)));
         return s;
@@ -98,7 +97,7 @@ public partial class OcclusionTest : Node
     void Seams()
     {
         var rand = new Random();
-        var s = new Structure(_cat, _cat.Grid(GridSize.Large));
+        var s = new Structure(_cat);
         const int Lo = -9, Hi = 11;
         for (int x = Lo; x <= Hi; x++)
             for (int y = Lo; y <= Hi; y++)
@@ -155,7 +154,7 @@ public partial class OcclusionTest : Node
     /// <summary>What honest culling costs: a hull with thrusters set into it, meshed.</summary>
     void Cost()
     {
-        var s = new Structure(_cat, _cat.Grid(GridSize.Small));
+        var s = new Structure(_cat);
         for (int x = 0; x < 16; x++)
             for (int y = 0; y < 16; y++)
                 for (int z = 0; z < 16; z++)
@@ -163,7 +162,7 @@ public partial class OcclusionTest : Node
                         s.Set(new Int3(x, y, z), Building.Make(s, _cat.Type((x + y + z) % 5 == 0 ? "thruster" : "steel")));
         // The same chunk with plain steel where the thrusters are, turn about in the same run: what a
         // thruster costs to mesh at all, whatever else the machine is doing.
-        var plain = new Structure(_cat, _cat.Grid(GridSize.Small));
+        var plain = new Structure(_cat);
         foreach (var (p, _) in s.Blocks()) plain.Set(p, Building.Make(plain, _cat.Type("steel")));
         var data = new ChunkMeshData();
         double best = double.MaxValue, bestPlain = double.MaxValue;

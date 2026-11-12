@@ -19,13 +19,10 @@ public partial class DamageTest : Node
 {
     int _passes, _failures;
     Catalogue _cat;
-    GridDef _large, _small;
 
     public override void _Ready()
     {
         _cat = GameData.Catalogue;
-        _large = _cat.Grid(GridSize.Large);
-        _small = _cat.Grid(GridSize.Small);
 
         Buckets();
         ShotsShowInTheMesh();
@@ -50,9 +47,9 @@ public partial class DamageTest : Node
         else _failures++;
     }
 
-    Structure Plate(int width, int depth, string type = "steel", GridDef grid = null)
+    Structure Plate(int width, int depth, string type = "steel")
     {
-        var s = new Structure(_cat, grid ?? _large);
+        var s = new Structure(_cat);
         for (int x = 0; x < width; x++)
             for (int z = 0; z < depth; z++)
                 s.Set(new Int3(x, 0, z), Building.Make(s, _cat.Type(type)));
@@ -138,10 +135,10 @@ public partial class DamageTest : Node
 
     void FacesStayInTheirCell()
     {
-        foreach (GridDef grid in new[] { _large, _small })
-            for (int bucket = 2; bucket <= 3; bucket++)
+        GridDef grid = _cat.Grid;
+        for (int bucket = 2; bucket <= 3; bucket++)
             {
-                Structure s = Plate(1, 1, "steel", grid);
+                Structure s = Plate(1, 1);
                 Wear(s, Int3.Zero, bucket == 2 ? 0.4f : 0.1f);
                 ChunkMeshData data = ChunkMesher.Build(s, Int3.Zero);
                 float half = grid.CellSize * 0.5f + 1e-3f;
@@ -242,7 +239,7 @@ public partial class DamageTest : Node
         Damage.Crash(far, new N.Vector3(1f, -6f, 1f), N.Vector3.UnitY, 100f, off);
         Check(off.BlocksHit > 0, "struck well away from any block (a leg's foot), the nearest block takes it");
 
-        Damage.Crash(new Structure(_cat, _large), point, N.Vector3.UnitY, 100f, new DamageReport());
+        Damage.Crash(new Structure(_cat), point, N.Vector3.UnitY, 100f, new DamageReport());
         Check(true, "an empty structure takes a crash without complaint");
     }
 
@@ -279,7 +276,7 @@ public partial class DamageTest : Node
 
     void Devices()
     {
-        var s = new Structure(_cat, _small);
+        var s = new Structure(_cat);
         var p = new Int3(2, 0, 0);
         s.Set(p, Building.Make(s, _cat.Type("generator")));
         Check(ChunkMesher.Build(s, Int3.Zero).Smoking.Count == 0, "a healthy device doesn't smoke");
@@ -290,7 +287,7 @@ public partial class DamageTest : Node
         Building.Repair(s, p);
         Check(ChunkMesher.Build(s, Int3.Zero).Smoking.Count == 0, "repaired, it stops");
 
-        var lamp = new Structure(_cat, _small);
+        var lamp = new Structure(_cat);
         lamp.Set(Int3.Zero, Building.Make(lamp, _cat.Type("light")));
         Wear(lamp, Int3.Zero, 0.1f);
         bool lit = ChunkMesher.Build(lamp, Int3.Zero).Opaque.UV2s.Any(uv => (((int)uv.Y >> BlockMaterials.GlowShift) & 1) == 1);
@@ -308,7 +305,7 @@ public partial class DamageTest : Node
     /// <summary>A chunk's whole shell at one health, and the best of three timings of remeshing it (mesh only).</summary>
     (double ms, int vertices, int faces) ShellCost(float health)
     {
-        var s = new Structure(_cat, _small);
+        var s = new Structure(_cat);
         for (int x = 0; x < 16; x++)
             for (int y = 0; y < 16; y++)
                 for (int z = 0; z < 16; z++)
