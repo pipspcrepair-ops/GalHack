@@ -165,7 +165,8 @@ public sealed class PlaceAudit
             // Nothing set into the rock: below ground, things stand only in the place's own dug cells.
             if (nav.IsRock(p) && b.Role is Role.Debris or Role.Prop or Role.Loot or Role.Story or Role.Growth) Fault($"in the rock: {b.Type}", p);
             // Loose things rest on what is under them.
-            else if (Rests(b.Type) && !Settle.Holds(g, nav, p + Int3.Down)) Fault($"rests on nothing: {b.Type}", p);
+            else if (Rests(b.Type) && !Settle.Holds(g, nav, p + Int3.Down))
+                Fault(b.Type is BlockType.Cache or BlockType.Terminal or BlockType.Core ? $"kept, on nothing: {b.Type}" : $"rests on nothing: {b.Type}", p);
         }
     }
 

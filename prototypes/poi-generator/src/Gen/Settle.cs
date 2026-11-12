@@ -10,7 +10,7 @@ namespace PoiGenerator.Gen;
 /// <list type="bullet">
 /// <item>Something that stands on the floor of its cell (a crate, a table, rubble, a bed, a pod) with nothing under
 /// it drops straight down onto the first thing that holds it, if the way down is clear; where it isn't, or it would
-/// fall out of the place, it goes; the plan's caches, terminals and core move with their records, or stay.</item>
+/// fall out of the place, it goes. The plan's caches, terminals and core are never moved.</item>
 /// <item>Below ground, loose things lie only in the place's own dug cells: debris left in the rock (a wall below
 /// ground broken into rubble where there was rock behind it) goes.</item>
 /// </list>
@@ -44,7 +44,8 @@ public static class Settle
                 if (!Painted(g, nav, p + Int3.Down)) g.Set(p, Block.Air);
                 continue;
             }
-            if (!PlaceAudit.Rests(b.Type) || Holds(g, nav, p + Int3.Down)) continue;
+            // The plan's own caches, terminals and core are kept by cell and checked by the validator's walk: never moved here.
+            if (!PlaceAudit.Rests(b.Type) || b.Type is BlockType.Cache or BlockType.Terminal or BlockType.Core || Holds(g, nav, p + Int3.Down)) continue;
             Int3 to = p;
             int fall = 0;
             while (fall < MaxDrop && Open(g, nav, to + Int3.Down) && !Holds(g, nav, to + Int3.Down))
@@ -52,16 +53,8 @@ public static class Settle
                 to += Int3.Down;
                 fall++;
             }
-            bool lands = fall < MaxDrop && to != p && Open(g, nav, to) && Holds(g, nav, to + Int3.Down);
-            // The plan's own things (caches, terminals, the core) are kept by cell: they move with their records, and stay if they can't land.
-            bool kept = b.Type is BlockType.Cache or BlockType.Terminal or BlockType.Core;
-            if (kept && !lands) continue;
             g.Set(p, Block.Air);
-            if (!lands) continue;
-            g.Set(to, b);
-            foreach (LootCache c in inst.Caches) if (c.Cell == p) c.Cell = to;
-            foreach (TerminalLog t in inst.Terminals) if (t.Cell == p) t.Cell = to;
-            if (inst.CoreCell == p) inst.CoreCell = to;
+            if (fall < MaxDrop && to != p && Open(g, nav, to) && Holds(g, nav, to + Int3.Down)) g.Set(to, b);
         }
     }
 
