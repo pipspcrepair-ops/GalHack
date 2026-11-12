@@ -282,7 +282,7 @@ public partial class TerrainStreamer
     }
 
     /// <summary>The loaded solids near a point (frame coordinates, returned in the frame), for tests and stuck-safety.</summary>
-    public IEnumerable<(FloraSolid solid, Vector3 offset)> SolidsNear(Vector3 p, float radius)
+    public IEnumerable<(FloraSolid solid, Vector3 offset)> SolidsNear(Vector3 p, float radius, bool canopies = false)
     {
         double w = World.Terrain.Width, h = World.Terrain.Height;
         foreach (FarChunk f in _far.Values)
@@ -294,7 +294,7 @@ public partial class TerrainStreamer
             foreach (FloraSolid s in f.Solids)
             {
                 Vector3 c = s.Center + offset;
-                if (s.IsCanopy || Mathf.Abs(c.X - p.X) > radius || Mathf.Abs(c.Z - p.Z) > radius || World.Felled.Contains(s.Id)) continue;
+                if (s.IsCanopy && !canopies || Mathf.Abs(c.X - p.X) > radius || Mathf.Abs(c.Z - p.Z) > radius || World.Felled.Contains(s.Id)) continue;
                 yield return (s, offset);
             }
         }
