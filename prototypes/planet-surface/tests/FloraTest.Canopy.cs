@@ -115,7 +115,7 @@ public partial class FloraTest
                         if (extent < 0.3f) continue;
                         Vector3 flat = new Vector3(world.X, 0f, world.Z);
                         Vector3 side = flat.LengthSquared() > 0.01f ? flat.Normalized() : Vector3.Right;
-                        targets.Add((at + world + (side + Vector3.Up * 0.3f).Normalized() * (p.CrownRadius * scale + 3f), at + world, $"{p.Form} x{scale:F2}"));
+                        targets.Add((at + world + (side + Vector3.Up * 0.3f).Normalized() * (p.CrownRadius * scale + 3f), at + world, $"{p.Form} part{part} tris{m.PartOf.Count(q => q == part) switch { < 6 => "<6", < 20 => "<20", _ => ">=20" }} ext{(extent < 1f ? "<1" : "big")}"));
                     }
                 }
             }
@@ -150,7 +150,7 @@ public partial class FloraTest
             if (PhysicsServer3D.BodyTestMotion(flyer, motion, result)) sphereStopped++;
         }
         PhysicsServer3D.FreeRid(flyer);
-        foreach (var kv in misses.OrderByDescending(k => k.Value).Take(12)) GD.Print($"  missed: {kv.Key} {kv.Value}");
+        foreach (var kv in misses.OrderByDescending(k => k.Value).Take(40)) GD.Print($"  missed: {kv.Key} {kv.Value}");
         Check(rays > 200 && rayStopped >= rays * 0.99f, $"shots into canopies are stopped: {rayStopped} of {rays} rays at canopy surfaces, {treeCount} trees at their smallest and largest, {hulls} hulls");
         Check(spheres > 200 && sphereStopped >= spheres * 0.99f, $"a vessel hull flying into a canopy is stopped: {sphereStopped} of {spheres} sweeps");
         // A loose prop on the Props layer is not in a vessel's way (the hull never snags on crates and people at its own deck).

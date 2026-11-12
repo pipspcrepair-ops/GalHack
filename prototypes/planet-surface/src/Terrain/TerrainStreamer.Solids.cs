@@ -275,7 +275,10 @@ public partial class TerrainStreamer
         foreach (SolidColumn c in _solidColumns.Values)
         {
             if (c.Body != body || shape < 0 || shape >= c.Solids.Count) continue;
-            solid = c.Solids[shape];
+            FloraSolid hit = c.Solids[shape];
+            long id = hit.Id;
+            // A canopy is its tree: what you hit through it is the trunk, so the tool still aims at (and fells) the tree.
+            solid = hit.IsCanopy ? c.Solids.Find(s => s.Id == id && !s.IsCanopy) : hit;
             return !World.Felled.Contains(solid.Id);
         }
         return false;
