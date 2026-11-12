@@ -452,12 +452,8 @@ public sealed partial class Town
     {
         Arm(p);
         if (p.View == null || p.Kit == null || p.Holder != null || p.Kit.Def.Id == Weapons.Fists || !Weapons.DrawnByGame(p.Figure.Prop)) return;
-        GunModel.Built b = GunModel.Build(p.Kit.Def);
-        p.Holder = new Node3D { Name = "Weapon" };
-        p.Holder.AddChild(b.Root);
-        p.View.AddChild(p.Holder);
-        GunModel.Remember(p.Holder, b);
-        p.Model = b;
+        p.Model = GunModel.Hang(p.View, p.Kit.Def, Transform3D.Identity);
+        p.Holder = p.View.GetNode<Node3D>("Weapon");
     }
 
     /// <summary>Keeps the weapon's model in their hand as the rig poses it.</summary>
