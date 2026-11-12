@@ -35,7 +35,7 @@ public sealed class Pilot
     static float MaxTurn(Vessel v, Game.Game game)
     {
         float rate = v.Stats?.TurnRate ?? 60f;
-        float cap = v.Structure.Grid.Size == GalHack.Structures.GridSize.Small && rate > 0f ? MathF.Min(1f, game.Zone.Data.Rules.Build.SmallVesselMaxTurn / rate) : 1f;
+        float cap = rate > 0f ? MathF.Min(1f, game.Zone.Data.Rules.Build.MaxTurn / rate) : 1f;
         return MathF.Max(10f, rate * cap);
     }
 

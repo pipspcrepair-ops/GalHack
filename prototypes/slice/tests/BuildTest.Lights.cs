@@ -12,7 +12,7 @@ public partial class BuildTest
     void LightChecks()
     {
         Catalogue cat = Blocks;
-        var s = new Structure(cat, cat.Grid(GridSize.Large));
+        var s = new Structure(cat);
         s.Set(Int3.Zero, Building.Make(s, cat.Types.First(t => t != null && t.IsCore), null, 0));
         BlockType lamp = cat.Types.First(t => t != null && t.IsLight);
         var rng = new Random();

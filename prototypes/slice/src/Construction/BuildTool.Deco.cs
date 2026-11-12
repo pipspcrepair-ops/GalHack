@@ -35,55 +35,55 @@ public sealed partial class BuildTool
     MeshInstance3D _decoGhost;
     string _decoGhostPiece;
 
-    /// <summary>The pieces the gallery offers: those unlocked (every one in Creative) for a grid, in the chosen theme.</summary>
-    public List<DecoPiece> DecoChoices(bool smallGrid)
+    /// <summary>The pieces the gallery offers: those unlocked (every one in Creative), in the chosen theme.</summary>
+    public List<DecoPiece> DecoChoices()
     {
         Decor decor = Decor.Shared;
         if (decor == null) return new List<DecoPiece>();
         return decor.Catalogue.Pieces
-            .Where(p => (smallGrid ? p.OnSmall : p.OnLarge) && (DecoTheme == null || p.InSet(DecoTheme))
-                        && (Creative || Progress == null || (Items.BlockItem(p.Id, smallGrid) is ItemDef i && Progress.ItemAllowed(i))))
+            .Where(p => (DecoTheme == null || p.InSet(DecoTheme))
+                        && (Creative || Progress == null || (Items.BlockItem(p.Id) is ItemDef i && Progress.ItemAllowed(i))))
             .OrderBy(p => p.Set != DecoTheme).ThenBy(p => p.Set, StringComparer.Ordinal).ThenBy(p => p.Name, StringComparer.Ordinal)
             .ToList();
     }
 
     /// <summary>The themes that have any piece to offer on a grid.</summary>
-    public List<DecoSet> DecoThemes(bool smallGrid)
+    public List<DecoSet> DecoThemes()
     {
         Decor decor = Decor.Shared;
         if (decor == null) return new List<DecoSet>();
         string was = DecoTheme;
         DecoTheme = null;
-        var offered = DecoChoices(smallGrid).Select(p => p.Set).ToHashSet();
+        var offered = DecoChoices().Select(p => p.Set).ToHashSet();
         DecoTheme = was;
         return decor.Catalogue.Sets.Where(s => offered.Contains(s.Id)).ToList();
     }
 
     /// <summary>The gallery's current piece (the first on offer if none is chosen yet).</summary>
-    public DecoPiece CurrentDeco(bool smallGrid)
+    public DecoPiece CurrentDeco()
     {
-        List<DecoPiece> choices = DecoChoices(smallGrid);
+        List<DecoPiece> choices = DecoChoices();
         if (choices.Count == 0) return null;
         return choices.FirstOrDefault(p => p.Id == DecoPieceId) ?? choices[0];
     }
 
     /// <summary>Wheel: the next or previous piece in the gallery.</summary>
-    public void NextPiece(int step, bool smallGrid)
+    public void NextPiece(int step)
     {
-        List<DecoPiece> choices = DecoChoices(smallGrid);
+        List<DecoPiece> choices = DecoChoices();
         if (choices.Count == 0) return;
         int at = Math.Max(0, choices.FindIndex(p => p.Id == DecoPieceId));
         DecoPieceId = choices[(at + (step > 0 ? 1 : -1) + choices.Count) % choices.Count].Id;
     }
 
     /// <summary>G: the next theme (every theme, then each in turn).</summary>
-    public void NextTheme(bool smallGrid)
+    public void NextTheme()
     {
-        List<DecoSet> themes = DecoThemes(smallGrid);
+        List<DecoSet> themes = DecoThemes();
         if (themes.Count == 0) return;
         int at = DecoTheme == null ? -1 : themes.FindIndex(t => t.Id == DecoTheme);
         DecoTheme = at + 1 >= themes.Count ? null : themes[at + 1].Id;
-        DecoPieceId = DecoChoices(smallGrid).FirstOrDefault()?.Id;
+        DecoPieceId = DecoChoices().FirstOrDefault()?.Id;
     }
 
     public void TurnDeco() => DecoYaw = (DecoYaw + 1) & 3;
@@ -106,8 +106,8 @@ public sealed partial class BuildTool
         if (piece.Mount == DecoMount.Wall && !wall) return (none, default, 0, $"{piece.Name} · WALL ONLY");
         if (piece.Mount is DecoMount.Floor or DecoMount.Top && !floor) return (none, default, 0, $"{piece.Name} · FLOOR ONLY");
 
-        // Footprint in cells (the piece's size is in half-metres).
-        int W = Math.Max(1, (int)MathF.Ceiling(piece.Width / cell - 1e-4f)), D = Math.Max(1, (int)MathF.Ceiling(piece.Depth / cell - 1e-4f)), H = Math.Max(1, (int)MathF.Ceiling(piece.Height / cell - 1e-4f));
+        // Footprint in whole 1 m cells (the piece's size is in half-metres, rounded up).
+        var (W, H, D) = piece.Cells;
         var cells = new List<Int3>();
         Vector3 centre;
         float yawDeg;
@@ -157,8 +157,7 @@ public sealed partial class BuildTool
         _deviceGhost.Visible = false;
         _ghosts.HideGhosts();
         Aim();
-        bool small = TargetVessel != null && BuildingBridge.IsSmall(TargetVessel.Structure);
-        DecoPiece piece = CurrentDeco(small);
+        DecoPiece piece = CurrentDeco();
         if (Decor.Shared == null || piece == null)
         {
             HideDeco();
@@ -178,7 +177,6 @@ public sealed partial class BuildTool
             return;
         }
         var (cells, local, _, why) = PlanDeco(v, piece, TargetCell, PlaceCell, DecoYaw);
-        why ??= (small ? piece.OnSmall : piece.OnLarge) ? null : $"{piece.Name} · {(small ? "LARGE" : "SMALL")}-GRID PIECE";
         why ??= InSurvivorAny(v, cells) ? "YOU · IN THE WAY" : null;
         why ??= SourceProblem(v, item, slotIndex);
         if (cells.Count > 0) ShowDecoGhost(v, piece, local, why == null);

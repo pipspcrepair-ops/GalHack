@@ -560,8 +560,7 @@ public partial class Visor : CanvasLayer
                 string count = held == null ? "" : w.Ammo == w.Item ? $" · {pack[w.Item]} LEFT" : $" · {held.Loaded}/{held.Def.Magazine} · {held.Reserve} {ammo}";
                 return $"{bar}{w.Name.ToUpperInvariant()}{mode}{count}";
             case HandKind.Block when pack.HandItem is string id && items.TryGet(id, out var item):
-                bool tiny = Game.Builder.TargetVessel != null && Game.Builder.TargetVessel.Structure.Grid.Size == GalHack.Structures.GridSize.Small;
-                string shape = item.Family == GalHack.Items.BlockFamily.Armour ? $", {Game.Builder.Shape.Name}" : item.IsUniversalDeco ? $", {Game.Builder.CurrentDeco(tiny)?.Name ?? "no piece"}" : "";
+                string shape = item.Family == GalHack.Items.BlockFamily.Armour ? $", {Game.Builder.Shape.Name}" : item.IsUniversalDeco ? $", {Game.Builder.CurrentDeco()?.Name ?? "no piece"}" : "";
                 string where = Game.Mode == GalHack.Items.GameMode.Creative ? "FREE"
                     : pack.OnRemoteBar ? $"{pack.HandRemote?.Origin.ToUpperInvariant()} {pack.HandSource.Count(id)}"
                     : $"STACK {pack.InHand.Count}{(pack.Linked != null && pack.Linked.Count(id) > 0 ? $" · {pack.LinkedName.ToUpperInvariant()} {pack.Linked.Count(id)}" : "")}";
@@ -665,9 +664,8 @@ public partial class Visor : CanvasLayer
     {
         float s = layout.Scale;
         var builder = Game.Builder;
-        bool small = builder.TargetVessel != null && builder.TargetVessel.Structure.Grid.Size == GalHack.Structures.GridSize.Small;
-        var choices = builder.DecoChoices(small);
-        var cur = builder.CurrentDeco(small);
+        var choices = builder.DecoChoices();
+        var cur = builder.CurrentDeco();
         Rect2 r = layout.Shapes;
         var chip = new Rect2(r.Position, new Vector2(92 * s, r.Size.Y));
         string theme = builder.DecoTheme == null ? "ALL THEMES" : Slice.Places.Decor.Shared?.Catalogue.Set(builder.DecoTheme).Name.ToUpperInvariant() ?? builder.DecoTheme;

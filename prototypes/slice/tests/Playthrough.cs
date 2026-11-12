@@ -383,13 +383,16 @@ public sealed class Playthrough
         foreach (int x in Drive.DragWidget($"bag:{from}", $"bar:{slot}")) yield return x;
     }
 
-    /// <summary>The block family item of a block on a grid.</summary>
-    public string BlockItem(string blockId, bool small) => Game.Zone.Data.Items.BlockItem(blockId, small).Id;
+    /// <summary>The block a block id (any it has had) is carried and priced as: a door family's head.</summary>
+    public string BlockOf(string blockId) => GalHack.Items.Bridge.BuildingBridge.ItemBlockOf(Game.Zone.Data.Catalogue.Type(blockId));
+
+    /// <summary>The item of a block, by any id it has had.</summary>
+    public string BlockItem(string blockId) => Game.Zone.Data.Items.BlockItem(BlockOf(blockId)).Id;
 
     /// <summary>Drags a stack of a block's item from the bag onto a toolbar slot (blocks are items, carried in stacks).</summary>
-    public IEnumerable<int> BlockToToolbar(string blockId, bool small, int slot)
+    public IEnumerable<int> BlockToToolbar(string blockId, int slot)
     {
-        string item = BlockItem(blockId, small);
+        string item = BlockItem(blockId);
         if (Game.Mode != GalHack.Items.GameMode.Creative)
         {
             foreach (int x in ToToolbar(item, slot)) yield return x;

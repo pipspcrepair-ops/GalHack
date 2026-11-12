@@ -197,8 +197,7 @@ public sealed partial class BuildTool
         float radius = 0.5f * MathF.Sqrt(sx * sx + sz * sz);
         // Level enough: a share of its size, within limits. A vessel stands on its legs, one end higher off
         // the ground than the other on a slope; a base sinks into its high side, as far as half a block.
-        bool large = plan.Grid.Size == GridSize.Large;
-        float tolerance = isBase ? Math.Clamp(0.1f * radius, 0.5f, 2.5f) : Math.Clamp(0.2f * radius, 0.75f, large ? 6f : 2f);
+        float tolerance = isBase ? Math.Clamp(0.1f * radius, 0.5f, 2.5f) : Math.Clamp(0.2f * radius, 0.75f, 6f);
         float step = MathF.Max(cell, MathF.Max(sx, sz) / 8f);
         Vector3 from = _survivor.WorldFeet;
         int water = 0, steep = 0, blocked = 0;

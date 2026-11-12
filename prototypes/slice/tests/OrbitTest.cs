@@ -180,7 +180,7 @@ public partial class OrbitTest : Node
         // SETUP SHORTCUT (printed): the Skiff's parts and the Big Core handed over, the tech tree
         // opened. The real-player test makes and earns all of it; this test is about orbit.
         foreach (var (item, n) in _game.Builder.TotalCost(_game.StarterPlan)) _game.Pack.Add(item, n);
-        _game.Pack.Add("big-core", 1);
+        _game.Pack.Add("core", 1);
         _game.Progress.Creative = true;
         GD.Print($"  (setup: handed over the Skiff's parts and the Big Core, and opened the tech tree)");
         _game.Pack.Grid.SetBlock(3, PlayerInventory.BlueprintBlock);
@@ -500,7 +500,7 @@ public partial class OrbitTest : Node
         foreach (int x in _pilot.FloatTo(() => Door + Outward * 3f, 1.0f, 25f)) yield return x;
         foreach (int x in _pilot.Stop()) yield return x;
         Check(_game.Survivor.WorldEye().DistanceTo(Door) < 5f, "back out through its door");
-        int coreSlot = _game.Pack.Grid.Slots.FindIndex(sl => sl.Item == "big-core");
+        int coreSlot = _game.Pack.Grid.Slots.FindIndex(sl => sl.Item == "core");
         ItemGrid.Move(_game.Pack.Grid, coreSlot, _game.Pack.Grid, 4);
         foreach (int x in _drive.Tap(Key.Key5)) yield return x;
         Vector3 hull = CellAt(_door.X, 1, _door.Z + 2); // the flat of the hull beside the door
@@ -509,8 +509,8 @@ public partial class OrbitTest : Node
         _game.Spaceflight.Claimed += _ => claimed = true;
         foreach (int x in _drive.Click()) yield return x;
         foreach (int x in _drive.Wait(4)) yield return x;
-        Check(claimed && ship.Core != null && _wreck.Body.Core?.On == true && !_wreck.IsDerelict && _game.Pack["big-core"] == 0,
-            $"the Big Core set into its hull claims it: it is yours, and its core holds anyone aboard to its floor (hand {_game.Pack.Hand}, bag {_game.Pack["big-core"]}, said: {_said})");
+        Check(claimed && ship.Core != null && _wreck.Body.Core?.On == true && !_wreck.IsDerelict && _game.Pack["core"] == 0,
+            $"the Big Core set into its hull claims it: it is yours, and its core holds anyone aboard to its floor (hand {_game.Pack.Hand}, bag {_game.Pack["core"]}, said: {_said})");
         foreach (int x in _drive.Tap(Key.Key1)) yield return x;
     }
 

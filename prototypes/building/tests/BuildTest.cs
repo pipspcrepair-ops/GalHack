@@ -687,7 +687,7 @@ public partial class BuildTest : Node
         foreach (CoreMode expected in new[] { CoreMode.Capital, CoreMode.Base, CoreMode.Capital })
         {
             Building.ToggleCoreMode(s);
-            allSame &= s.Mode == expected && s.Count == before.Count
+            allSame &= s.Mode == expected && s.BlockCount == before.Count
                 && before.All(kv => s.TryGet(kv.Key, out Block b) && b.SameAs(kv.Value));
             allValid &= Blueprint.Validate(Blueprint.Parse(Blueprint.Save(s)), _cat).Count == 0;
             StructureStats st = StructureStats.Compute(s);

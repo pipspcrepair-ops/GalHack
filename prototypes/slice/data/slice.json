@@ -99,9 +99,9 @@
     "library": ["starter.gbp", "rover.gbp", "dart.gbp", "shuttle.gbp", "outpost.gbp", "tank.gbp", "hauler.gbp", "frigate.gbp"],
     // Blueprints the player saves, shown under Yours.
     "saved": "user://blueprints",
-    // Small vessels turn no faster than this, °/s, however light they are (the handling model's
-    // turn rate is gyro torque over mass, so a light first vessel spins too fast to fly well).
-    "smallVesselMaxTurn": 110,
+    // A vessel turns no faster than this, °/s, however light it is (the handling model's turn
+    // rate is gyro torque over mass, so a light first vessel spins too fast to fly well).
+    "maxTurn": 110,
     // A structure's area: its blocks' bounding box grown by a margin, per class, plus a share of
     // its own size (so a big base reaches further). Inside it you are linked to its one shared
     // storage (its toolbar, the CORE tab, its containers and constructors); outside, only your

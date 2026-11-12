@@ -83,7 +83,7 @@ public partial class BuildTest
         Pack.Add(Item("steel", false), 5);
         foreach (int x in _play.ToToolbar("mining-drill", 7)) yield return x;
         foreach (int x in _play.ToToolbar("plasma-drill", 6)) yield return x;
-        foreach (int x in _play.BlockToToolbar("steel", false, 5)) yield return x;
+        foreach (int x in _play.BlockToToolbar("steel", 5)) yield return x;
         foreach (int x in _play.CloseMenu()) yield return x;
         foreach (var (id, slot) in new[] { ("survival-tool", 0), ("mining-drill", 7), ("plasma-drill", 6), ("scanner", 8) })
         {

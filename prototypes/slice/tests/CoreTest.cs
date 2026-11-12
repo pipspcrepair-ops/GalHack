@@ -97,28 +97,28 @@ public partial class CoreTest : Node
     {
         ItemCatalogue items = Data.Items;
         var cores = items.Items.Where(i => i.BlockId == "core").Select(i => (i.Id, i.Name)).OrderBy(c => c.Id).ToList();
-        Check(cores.SequenceEqual(new[] { ("big-core", "Big Core"), ("small-core", "Small Core") }), $"the core block has two items: {string.Join(", ", cores)}");
+        Check(cores.SequenceEqual(new[] { ("core", "Big Core"), ("core", "Small Core") }), $"the core block has two items: {string.Join(", ", cores)}");
         string[] gone = { "base-core", "capital-core", "vessel-core", "hover-core" };
         Check(!items.Items.Any(i => gone.Contains(i.Id)), "no old core is an item of its own");
-        var named = items.Items.Where(i => i.Id != "big-core" && i.Id != "small-core" && i.Id != "fusion-core" && i.Id != "lattice-core" && i.Name.EndsWith(" core", StringComparison.OrdinalIgnoreCase)).Select(i => i.Name).ToList();
+        var named = items.Items.Where(i => i.Id != "core" && i.Id != "core" && i.Id != "fusion-core" && i.Id != "lattice-core" && i.Name.EndsWith(" core", StringComparison.OrdinalIgnoreCase)).Select(i => i.Name).ToList();
         Check(named.Count == 0, $"nothing else calls itself a structure's core{(named.Count > 0 ? ": " + string.Join(", ", named) : "")}");
-        Check(PlayerInventory.CoreItems.OrderBy(c => c).SequenceEqual(new[] { "big-core", "small-core" }), "two core items found structures");
+        Check(PlayerInventory.CoreItems.OrderBy(c => c).SequenceEqual(new[] { "core", "core" }), "two core items found structures");
         var tree = new Progress(Data.Progress, items, Data.Catalogue);
         var nodes = tree.Nodes.Where(n => n.BlockId == "core").Select(n => (n.Id, n.Tab)).OrderBy(n => n.Id).ToList();
-        Check(nodes.SequenceEqual(new[] { ("big-core", "large"), ("small-core", "small") }), $"one core node on each tab: {string.Join(", ", nodes)}");
+        Check(nodes.SequenceEqual(new[] { ("core", "large"), ("core", "small") }), $"one core node on each tab: {string.Join(", ", nodes)}");
         Check(!tree.Nodes.Any(n => gone.Contains(n.Id) || gone.Contains(n.Unlock.Parent)), "no node is or hangs from an old core");
-        Check(tree.Node("small-core").Level == 1 && tree.Node("big-core").Level == 1, "both cores open at level 1");
-        Check(items.Item("big-core").ShortName.Length <= 8 && items.Item("small-core").ShortName.Length <= 8, $"the short names fit a slot: {items.Item("big-core").ShortName}, {items.Item("small-core").ShortName}");
+        Check(tree.Node("core").Level == 1 && tree.Node("core").Level == 1, "both cores open at level 1");
+        Check(items.Item("core").ShortName.Length <= 8 && items.Item("core").ShortName.Length <= 8, $"the short names fit a slot: {items.Item("core").ShortName}, {items.Item("core").ShortName}");
     }
 
     void OldData()
     {
         ItemCatalogue items = Data.Items;
-        foreach (var (old, now) in new[] { ("base-core", "big-core"), ("capital-core", "big-core"), ("vessel-core", "small-core"), ("hover-core", "small-core") })
+        foreach (var (old, now) in new[] { ("base-core", "core"), ("capital-core", "core"), ("vessel-core", "core"), ("hover-core", "core") })
             Check(items.Item(old).Id == now, $"the old id {old} reads as {now}");
         var saved = new ProgressState { PointsEarned = 9, PointsSpent = 3, Unlocked = new List<string> { "vessel-core", "hover-core", "capital-core" } };
         var tree = new Progress(Data.Progress, items, Data.Catalogue, saved);
-        Check(tree.IsUnlocked("small-core") && tree.IsUnlocked("big-core"), "a saved tech tree keeps its cores unlocked under the new ids");
+        Check(tree.IsUnlocked("core") && tree.IsUnlocked("core"), "a saved tech tree keeps its cores unlocked under the new ids");
 
         // A blueprint from before: "mode capital" on a small grid, a hover pad on the block list.
         const string oldPrint = "schema galhack.blueprint\nversion 1\nname \"Old rover\"\ngrid small\nmode capital\nblock 0 0 0 core\nblock 0 -1 0 hover\n";

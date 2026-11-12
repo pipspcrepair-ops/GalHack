@@ -558,13 +558,12 @@ public partial class Game : Node3D
         if (hand is HandKind.Block or HandKind.Core or HandKind.Blueprint)
         {
             bool decoInHand = hand == HandKind.Block && Pack.HandItem == GalHack.Items.DecoCatalogue.UniversalItem;
-            bool smallGrid = Builder.TargetVessel != null && Builder.TargetVessel.Structure.Grid.Size == GalHack.Structures.GridSize.Small;
             if (c.Wheel != 0 && hand == HandKind.Block)
             {
-                if (decoInHand) Builder.NextPiece(c.Wheel, smallGrid);
+                if (decoInHand) Builder.NextPiece(c.Wheel);
                 else Builder.NextShape(c.Wheel);
             }
-            if (decoInHand && c.WasPressed(Key.G)) Builder.NextTheme(smallGrid);
+            if (decoInHand && c.WasPressed(Key.G)) Builder.NextTheme();
             if (decoInHand && c.WasPressed(Key.R)) Builder.TurnDeco();
             else if (c.WasPressed(Key.R)) Builder.Rotate(1);
             if (c.WasPressed(Key.T)) Builder.Rotate(0);
@@ -644,9 +643,9 @@ public partial class Game : Node3D
         }
         if (vessel.Flight == null) return;
         var move = new Vector3(c.Axis(Key.D, Key.A), c.Axis(Key.Space, Key.Ctrl), c.Axis(Key.S, Key.W));
-        // Small vessels turn no faster than the data's cap, however light (the stick asks for a share of it).
-        float cap = vessel.Structure.Grid.Size == GridSize.Small && vessel.Stats is HandlingStats st && st.TurnRate > 0f
-            ? Mathf.Min(1f, Zone.Data.Rules.Build.SmallVesselMaxTurn / st.TurnRate) : 1f;
+        // A vessel turns no faster than the data's cap, however light (the stick asks for a share of it).
+        float cap = vessel.Stats is HandlingStats st && st.TurnRate > 0f
+            ? Mathf.Min(1f, Zone.Data.Rules.Build.MaxTurn / st.TurnRate) : 1f;
         var turn = new Vector3(-_stick.Y, -_stick.X, c.Axis(Key.Q, Key.E)) * cap;
         // Anyone in a seat can reach the ship's systems; only the pilot role's holder flies it.
         if (vessel.Roles.Pilot != Vessel.Player) return;

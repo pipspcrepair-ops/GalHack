@@ -291,7 +291,7 @@ public partial class BuildTest : Node
                 int placed = 0;
                 for (int rot = 0; rot < Orientations.Count; rot++)
                 {
-                    var s = new Structure(Blocks, Blocks.Grid(small ? GridSize.Small : GridSize.Large)) { Mode = CoreMode.Capital };
+                    var s = new Structure(Blocks) { Mode = CoreMode.Capital };
                     Building.Place(s, Int3.Zero, Building.Make(s, Blocks.CoreType));
                     Block b = Building.Make(s, type, null, rot);
                     Int3? cell = null;
@@ -315,7 +315,7 @@ public partial class BuildTest : Node
             Check(true, $"{devices} device types on the {(small ? "small" : "large")} grid in all {Orientations.Count} orientations: the same power, CPU, storage, crafting, control and torque; a thruster changes only its axis");
         }
         // A chair gives no air: only a sealed room does.
-        var room = new Structure(Blocks, Blocks.Grid(GridSize.Small)) { Mode = CoreMode.Capital };
+        var room = new Structure(Blocks) { Mode = CoreMode.Capital };
         Building.Place(room, new Int3(0, -1, 0), Building.Make(room, Blocks.CoreType));
         for (int x = -1; x <= 1; x++)
             for (int y = -1; y <= 2; y++)
@@ -417,12 +417,12 @@ public partial class BuildTest : Node
         Check(_game.Zone.Vessels.Count == structures && Pack[steelL] == 12 && _game.Builder.Verdict.Contains("CORE FIRST"),
             $"a block can't be placed in the open without a structure: \"{_game.Builder.Verdict}\"");
 
-        foreach (int x in Carry("big-core", 1, 4)) yield return x;
+        foreach (int x in Carry("core", 1, 4)) yield return x;
         // The base this test founds: the world may already hold others (a hulk, a faction's, a claimable one).
         var existing = new HashSet<Vessel>(_game.Zone.Vessels);
         foreach (int x in _play.PlaceOnGround(4, _site)) yield return x;
         _base = _game.Zone.Vessels.FirstOrDefault(v => !existing.Contains(v) && v.IsBase && !v.IsRuin && !v.IsWreck);
-        Check(_base != null && StructureArea.ClassOf(_base) == StructureClass.Base && _base.Structure.Grid.Size == GridSize.Large && Pack["big-core"] == 0,
+        Check(_base != null && StructureArea.ClassOf(_base) == StructureClass.Base && _base.Structure.Grid.Size == GridSize.Large && Pack["core"] == 0,
             "the Big Core founds a base (large grid, anchored), and is used up");
         if (_base == null) yield break;
 
@@ -442,8 +442,8 @@ public partial class BuildTest : Node
         // A structure's class is its core and that core's mode: the two cores make all four.
         foreach (var (core, mode, cls, slot, offset) in new[]
                  {
-                     ("small-core", CoreMode.Vessel, StructureClass.Small, 5, new Vector3(20, 0, 0)), ("small-core", CoreMode.Hover, StructureClass.Hover, 6, new Vector3(-20, 0, 0)),
-                     ("big-core", CoreMode.Capital, StructureClass.Capital, 7, new Vector3(0, 0, 20)),
+                     ("core", CoreMode.Vessel, StructureClass.Small, 5, new Vector3(20, 0, 0)), ("core", CoreMode.Hover, StructureClass.Hover, 6, new Vector3(-20, 0, 0)),
+                     ("core", CoreMode.Capital, StructureClass.Capital, 7, new Vector3(0, 0, 20)),
                  })
         {
             Vector3 spot = _play.FlatSpot(_site + offset, 4f, 1.4f, 0.5f);
@@ -536,9 +536,9 @@ public partial class BuildTest : Node
 
         // A remote core goes down only while its origin is in reach: a slot from a core you are not near is out of range.
         var far = new SharedStorage(Items, "Far core", 200);
-        far.Add("small-core", 1);
+        far.Add("core", 1);
         Pack.Bar = BarSource.Remote;
-        Pack.SetRemote(6, far, "Far core", "small-core");
+        Pack.SetRemote(6, far, "Far core", "core");
         Check(!Pack.RemoteReady(6), "a slot whose core you are not in the area of is out of range");
         foreach (int x in _drive.Tap(Key.Key7)) yield return x;
         foreach (int x in StandByBase(0, 13)) yield return x;
@@ -546,7 +546,7 @@ public partial class BuildTest : Node
         int all = _game.Zone.Vessels.Count;
         foreach (int x in _drive.Click()) yield return x;
         foreach (int x in _drive.Wait(3)) yield return x;
-        Check(_game.Zone.Vessels.Count == all && far.Count("small-core") == 1, $"a core from a storage out of reach can't be set down: \"{_game.Builder.Verdict}\"");
+        Check(_game.Zone.Vessels.Count == all && far.Count("core") == 1, $"a core from a storage out of reach can't be set down: \"{_game.Builder.Verdict}\"");
         Pack.Bar = BarSource.Personal;
         Pack.ClearRemote(6);
         foreach (int x in RemoteRules()) yield return x;
@@ -928,11 +928,11 @@ public partial class BuildTest : Node
         var stray = fresh.Nodes.Where(n => !Progress.Tabs.Contains(n.Tab)).Select(n => $"{n.Id}:{n.Tab}").ToList();
         Check(stray.Count == 0, $"every node sits on one of them{(stray.Count > 0 ? ": " + string.Join(", ", stray) : "")}");
         Check(fresh.Nodes.Select(n => n.Id).Distinct().Count() == fresh.Nodes.Count, "no node is listed twice (a block shared by a base and a capital vessel is one node)");
-        Check(fresh.Node("thruster@large").Tab == "large" && fresh.Node("big-core").Tab == "large" && fresh.Node("thruster@large").Unlock.Parent == "big-core", "the Big Core heads the Large tab, the large thruster under it");
-        Check(fresh.Node("hover@small").Tab == "small" && fresh.Node("small-core").Tab == "small" && fresh.Node("hover@small").Unlock.Parent == "small-core", "the Small Core heads the Small tab, the hover plate under it");
+        Check(fresh.Node("thruster@large").Tab == "large" && fresh.Node("core").Tab == "large" && fresh.Node("thruster@large").Unlock.Parent == "core", "the Big Core heads the Large tab, the large thruster under it");
+        Check(fresh.Node("hover@small").Tab == "small" && fresh.Node("core").Tab == "small" && fresh.Node("hover@small").Unlock.Parent == "core", "the Small Core heads the Small tab, the hover plate under it");
         Check(fresh.Node("thruster@small").Unlock.Parent == "hover@small", "hover plates are the thruster's prerequisite on Small");
         Check(fresh.Level == 1 && fresh.Points == 3, $"a new character starts at level 1 with 3 unlock points ({fresh.Points})");
-        Check(fresh.Unlock("small-core") && fresh.Unlock("hover@small") && fresh.Points == 1, "the Small Core and the hover plate both open at level 1, with a point to spare");
+        Check(fresh.Unlock("core") && fresh.Unlock("hover@small") && fresh.Points == 1, "the Small Core and the hover plate both open at level 1, with a point to spare");
         Check(fresh.StateOf(fresh.Node("thruster@small")) == UnlockState.NeedsLevel, "and the thruster behind them waits for its level");
         fresh.Earn(fresh.Rules.XpFor(5), "test");
         Check(fresh.StateOf(fresh.Node("thruster@small")) == UnlockState.Affordable && fresh.Unlock("thruster@small"), $"at level {fresh.Level} the thruster unlocks with its hover plate in hand");

@@ -14,7 +14,7 @@ namespace Slice.Tests;
 
 /// <summary>
 /// A machine's screen is clear: from where its user stands, a grid of rays over the glass meets nothing of the machine's own
-/// model (its gantry and nozzle, vents, status screen, hopper) for every constructor block (each grid, all 24 turns, free on
+/// model (its gantry and nozzle, vents, status screen, hopper) for every constructor block (all 24 turns, free on
 /// every side and boxed in but for its front), every core, and the survival constructor; and up close at the survival
 /// constructor no marker and no use prompt covers the glass. The "before" figures replay the old placement and drawing.
 /// </summary>
@@ -67,7 +67,6 @@ public partial class BuildTest
         var boxes = new List<(Vector3, Vector3)>();
         foreach (Part p in s.TypeOf(b).Detail)
         {
-            if (p.Grid is GridSize g && g != s.Grid.Size) continue;
             Vector3 lo = new(float.MaxValue, float.MaxValue, float.MaxValue), hi = -lo;
             for (int k = 0; k < 8; k++)
             {
@@ -90,32 +89,31 @@ public partial class BuildTest
         int cast = 0, before = 0, after = 0, cases = 0, fronts = 0;
         var worst = "";
         var size = new Vector2(0.52f, 0.74f);
-        foreach (GridDef grid in cat.Grids)
-            foreach (BlockType t in kinds)
-                for (int rot = 0; rot < Orientations.Count; rot++)
-                    for (int boxed = 0; boxed < 2; boxed++)
-                    {
-                        var st = new Structure(cat, grid);
-                        st.Set(Int3.Zero, Building.Make(st, t, rot: rot));
-                        Dir front = Orientations.ToWorld(rot, Dir.NegZ);
-                        if (boxed == 1)
-                            foreach (Dir d in new[] { Dir.NegZ, Dir.PosX, Dir.NegX, Dir.PosZ })
-                                if (d != front) st.Set(d.Vec(), Building.Make(st, armour));
-                        var boxes = ModelBoxes(st, Int3.Zero);
-                        // Before: the first free side from NegZ, 3.5 cm off the face.
-                        Dir? old = null;
+        foreach (BlockType t in kinds)
+            for (int rot = 0; rot < Orientations.Count; rot++)
+                for (int boxed = 0; boxed < 2; boxed++)
+                {
+                    var st = new Structure(cat);
+                    st.Set(Int3.Zero, Building.Make(st, t, rot: rot));
+                    Dir front = Orientations.ToWorld(rot, Dir.NegZ);
+                    if (boxed == 1)
                         foreach (Dir d in new[] { Dir.NegZ, Dir.PosX, Dir.NegX, Dir.PosZ })
-                            if (!st.Has(d.Vec())) { old = d; break; }
-                        if (old is Dir od) before += RaysBlocked(MachineScreens.BlockScreenLocal(st, Int3.Zero, od, 0.035f), size, boxes, out _);
-                        if (MachineScreens.BlockScreenFace(st, Int3.Zero) is not var (face, off)) continue;
-                        int hit = RaysBlocked(MachineScreens.BlockScreenLocal(st, Int3.Zero, face, off), size, boxes, out int n);
-                        cast += n;
-                        after += hit;
-                        cases++;
-                        if (face == front) fronts++;
-                        if (hit > 0 && worst == "") worst = $"{t.Id} grid {grid.Id} turn {rot} boxed {boxed} on {face}";
-                    }
-        Check(cases > 0 && after == 0, $"every machine block's screen (constructors and cores, {cases} cases over {cat.Grids.Count} grids and 24 turns, {fronts} boxed in so on the front) meets none of its own model: {after} of {cast} rays blocked ({before} blocked by the old placement){(worst == "" ? "" : "; first " + worst)}");
+                            if (d != front) st.Set(d.Vec(), Building.Make(st, armour));
+                    var boxes = ModelBoxes(st, Int3.Zero);
+                    // Before: the first free side from NegZ, 3.5 cm off the face.
+                    Dir? old = null;
+                    foreach (Dir d in new[] { Dir.NegZ, Dir.PosX, Dir.NegX, Dir.PosZ })
+                        if (!st.Has(d.Vec())) { old = d; break; }
+                    if (old is Dir od) before += RaysBlocked(MachineScreens.BlockScreenLocal(st, Int3.Zero, od, 0.035f), size, boxes, out _);
+                    if (MachineScreens.BlockScreenFace(st, Int3.Zero) is not var (face, off)) continue;
+                    int hit = RaysBlocked(MachineScreens.BlockScreenLocal(st, Int3.Zero, face, off), size, boxes, out int n);
+                    cast += n;
+                    after += hit;
+                    cases++;
+                    if (face == front) fronts++;
+                    if (hit > 0 && worst == "") worst = $"{t.Id} turn {rot} boxed {boxed} on {face}";
+                }
+        Check(cases > 0 && after == 0, $"every machine block's screen (constructors and cores, {cases} cases in 24 turns, {fronts} boxed in so on the front) meets none of its own model: {after} of {cast} rays blocked ({before} blocked by the old placement){(worst == "" ? "" : "; first " + worst)}");
 
         // The survival constructor and a screen near it, from where its user stands.
         Vector3 spot = Ground(_site + new Vector3(-9f, 0f, 6f));

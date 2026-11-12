@@ -53,7 +53,7 @@ public static class CoreCraft
     /// </summary>
     public static Structure Ship(Catalogue blocks, bool thrusters, Func<Structure, bool> enough)
     {
-        var s = new Structure(blocks, blocks.Grid(GridSize.Large)) { Name = "Test ship", Mode = CoreMode.Base, GravityOn = true };
+        var s = new Structure(blocks) { Name = "Test ship", Mode = CoreMode.Base, GravityOn = true };
         Building.Place(s, Int3.Zero, Building.Make(s, blocks.CoreType));
         for (int x = -2; x <= 2; x++)
             for (int z = -2; z <= 2; z++)

@@ -86,11 +86,10 @@ public partial class DamageTest : Node
         foreach (int x in _drive.Wait(30)) yield return x;
 
         // The slice's catalogue has blocks building's own doesn't: constructors, guns, precursor alloy.
-        foreach (GridDef grid in Cat.Grids)
         {
-            BlockBuilding.OcclusionCheck.Result r = BlockBuilding.OcclusionCheck.Run(Cat, grid);
-            foreach (string w in r.Worst) GD.Print($"      {grid.Id}: {w}");
-            Check(r.Holes == 0, $"no block leaves a hole: {grid.Id} grid, {r.Cases} cases, {r.Culled} cube faces hidden, {r.Holes} holes");
+            BlockBuilding.OcclusionCheck.Result r = BlockBuilding.OcclusionCheck.Run(Cat);
+            foreach (string w in r.Worst) GD.Print($"      {w}");
+            Check(r.Holes == 0, $"no block leaves a hole: {r.Cases} cases, {r.Culled} cube faces hidden, {r.Holes} holes");
         }
 
         foreach (int x in Shots()) yield return x;
@@ -115,9 +114,9 @@ public partial class DamageTest : Node
     }
 
     /// <summary>A flat wall of blocks, x along it, z through it, as a base: nothing ever moves it.</summary>
-    Vessel Wall(int width, int height, N.Vector3 at, string type = "steel", GridSize grid = GridSize.Small, int depth = 1)
+    Vessel Wall(int width, int height, N.Vector3 at, string type = "steel", int depth = 1)
     {
-        var s = new Structure(Cat, Cat.Grid(grid)) { Name = $"Wall{_walls++}" };
+        var s = new Structure(Cat) { Name = $"Wall{_walls++}" };
         for (int x = 0; x < width; x++)
             for (int y = 0; y < height; y++)
                 for (int z = 0; z < depth; z++)
@@ -302,7 +301,7 @@ public partial class DamageTest : Node
         var rng = new Random(7);
 
         // The barrage the game should expect: a sound hull wall across several chunks, hit all over in one frame.
-        Vessel fresh = Wall(64, 12, Spot(-70f, 1f), grid: GridSize.Small, depth: 2);
+        Vessel fresh = Wall(64, 12, Spot(-70f, 1f), depth: 2);
         foreach (int x in _drive.Wait(3)) yield return x;
         var healthy = (ms: 0.0, frames: 0, chunks: 0);
         foreach (int x in Barrages(fresh, rng, "sound hull", r => healthy = r)) yield return x;
@@ -310,7 +309,7 @@ public partial class DamageTest : Node
         Check(fresh.View.Fx.Bursts <= 3 * 12, $"and shows as a handful of bursts, not 600 ({fresh.View.Fx.Bursts} all told)");
 
         // The dearest thing there is to redraw: both faces of a whole wall holed already.
-        Vessel v = Wall(64, 12, Spot(-90f, 1f), grid: GridSize.Small, depth: 2);
+        Vessel v = Wall(64, 12, Spot(-90f, 1f), depth: 2);
         foreach (var (p, b) in v.Structure.Blocks().ToList()) v.Structure.SetHp(p, v.Structure.MaxHp(b) * 0.24f);
         v.View.Queue(v.Structure.DirtyChunks);
         v.Structure.DirtyChunks.Clear();
@@ -337,7 +336,7 @@ public partial class DamageTest : Node
 
         // The same with blocks going: the edit path runs too, once a frame however many went.
         var lost = (ms: double.MaxValue, gone: 0);
-        Vessel w = Wall(64, 12, Spot(-110f, 1f), grid: GridSize.Small, depth: 2);
+        Vessel w = Wall(64, 12, Spot(-110f, 1f), depth: 2);
         foreach (int x in _drive.Wait(2)) yield return x;
         for (int window = 0; window < 3; window++)
         {
@@ -379,7 +378,7 @@ public partial class DamageTest : Node
 
     IEnumerable<int> Severing()
     {
-        var s = new Structure(Cat, Cat.Grid(GridSize.Small)) { Name = "Spar" };
+        var s = new Structure(Cat) { Name = "Spar" };
         s.Set(Int3.Zero, Building.Make(s, Cat.CoreType));
         for (int x = 1; x < 8; x++) s.Set(new Int3(x, 0, 0), Building.Make(s, Cat.Type("steel")));
         s.DirtyChunks.Clear();
@@ -402,7 +401,7 @@ public partial class DamageTest : Node
         foreach (int x in _drive.Wait(2)) yield return x;
         Check(_game.Survivor.Sit(v), "the castaway sits at the controls");
         foreach (int x in _drive.Wait(5)) yield return x;
-        Int3 cockpit = s.Blocks().First(b => s.TypeOf(b.block).IsCockpit).pos;
+        Int3 cockpit = s.Blocks().First(b => s.TypeOf(b.block).IsCommandChair).pos;
         Shoot(v, cockpit, 1e6f, DamageType.Kinetic);
         foreach (int x in _drive.Wait(3)) yield return x;
         Check(_game.Survivor.Seated == null && v.Seat == null, "the cockpit shot away, the pilot is out of the seat, and nothing falls over");
@@ -460,7 +459,7 @@ public partial class DamageTest : Node
 
     IEnumerable<int> Hull()
     {
-        var s = new Structure(Cat, Cat.Grid(GridSize.Small)) { Name = "Grown" };
+        var s = new Structure(Cat) { Name = "Grown" };
         s.Set(Int3.Zero, Building.Make(s, Cat.CoreType));
         s.DirtyChunks.Clear();
         Vessel v = Vessel.Spawn(Zone, s, Spot(-310f, 3f), 0f, landed: true);
