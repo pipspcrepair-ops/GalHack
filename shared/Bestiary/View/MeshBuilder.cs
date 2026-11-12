@@ -47,11 +47,14 @@ public sealed class MeshBuilder
         // Vertex colours go in linear: the shader treats COLOR as linear albedo.
         Color c = p.Color.SrgbToLinear();
         c.A = Math.Clamp(p.Glow, 0f, 1f);
-        int start = _v.Count;
+        int start = _v.Count, istart = _i.Count;
         _prims.Add(start);
+        // A mirrored or turned-inside-out transform (negative determinant) reverses every triangle's winding.
+        bool mirrored = p.Local.Basis.Determinant() < 0f;
         if (p.Shape == Shape.Loft)
         {
             Loft(p, c);
+            if (mirrored) Reverse(istart);
             return;
         }
         switch (p.Shape)
@@ -63,7 +66,9 @@ public sealed class MeshBuilder
             case Shape.Cone: Cylinder(p.Size.X * 0.5f, 0f, p.Size.Y, p.Sides > 0 ? p.Sides : 8); break;
             case Shape.Taper: Taper(p.Size.X * 0.5f, p.Size.Z * 0.5f, p.Size.Y, p.Sides > 0 ? p.Sides : 10); break;
         }
-        Basis nb = p.Local.Basis;
+        // Normals move by the inverse transpose: a squashed or stretched part keeps them square to its surface.
+        Basis nb = p.Local.Basis.Inverse().Transposed();
+        if (mirrored) Reverse(istart);
         bool worm = p.Material > Mat.Eye + 0.5f;
         for (int i = start; i < _v.Count; i++)
         {
@@ -74,6 +79,12 @@ public sealed class MeshBuilder
             _c.Add(c);
             _uv.Add(new Vector2(u, p.Material));
         }
+    }
+
+    /// <summary>Turns the triangles from index <paramref name="from"/> on to face the other way.</summary>
+    void Reverse(int from)
+    {
+        for (int i = from; i + 2 < _i.Count; i += 3) (_i[i + 1], _i[i + 2]) = (_i[i + 2], _i[i + 1]);
     }
 
     /// <summary>
@@ -346,14 +357,19 @@ public sealed class MeshBuilder
         int segs = p.Sides > 0 ? p.Sides : 14, n = f.Count, start = _v.Count;
         Color under = p.Color2.SrgbToLinear();
         under.A = top.A;
+        // Stations are taken in rising Z whichever way the profile was written (heads run from the nape forward, so
+        // their Z falls): the winding and the end caps below assume it, and a falling profile came out inside out.
+        bool falling = n > 1 && f.Z[n - 1] < f.Z[0];
+        int At(int i) => falling ? n - 1 - i : i;
         var local = new Vector3[n * (segs + 1)];
         for (int i = 0; i < n; i++)
         for (int x = 0; x <= segs; x++)
         {
             float theta = x / (float)segs * MathF.Tau;
-            local[i * (segs + 1) + x] = new Vector3(f.W[i] * MathF.Cos(theta), f.Y[i] + f.H[i] * MathF.Sin(theta), f.Z[i]);
+            int k = At(i);
+            local[i * (segs + 1) + x] = new Vector3(f.W[k] * MathF.Cos(theta), f.Y[k] + f.H[k] * MathF.Sin(theta), f.Z[k]);
         }
-        Basis nb = p.Local.Basis;
+        Basis nb = p.Local.Basis.Inverse().Transposed();
         for (int i = 0; i < n; i++)
         for (int x = 0; x <= segs; x++)
         {
@@ -362,7 +378,7 @@ public sealed class MeshBuilder
             Vector3 du = local[i * (segs + 1) + xp] - local[i * (segs + 1) + xm];
             Vector3 dv = local[ip * (segs + 1) + x] - local[im * (segs + 1) + x];
             Vector3 normal = du.Cross(dv);
-            if (normal.LengthSquared() < 1e-12f || f.W[i] < 1e-4f) normal = i < n / 2 ? Vector3.Back * -1f : Vector3.Back;
+            if (normal.LengthSquared() < 1e-12f || f.W[At(i)] < 1e-4f) normal = i < n / 2 ? Vector3.Back * -1f : Vector3.Back;
             float s = MathF.Sin(x / (float)segs * MathF.Tau);
             float belly = Math.Clamp((0.15f - s) / 0.75f, 0f, 1f);
             belly = belly * belly * (3f - 2f * belly);
