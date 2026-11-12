@@ -52,8 +52,9 @@ public static partial class PoiFauna
         }
         if (!active) Floor(poi, pop, fauna, theme, rng, infested, walkable, pr);
         // A nesters' place keeps its nesters, whatever the caps took: a couple more in its biggest room.
-        if (poi.Holder == PlaceHolder.Nesters && pop.Spawns.Count(s => s.Role == DeepRole.Nester) < 2 && walkable.Count > 0)
-            NestIn(pop, fauna, theme, walkable.OrderByDescending(r => r.Size.X * r.Size.Z).First(), rng, infested, 1f, rules, DeepRole.Nester, false);
+        var nesting = walkable.Count > 0 ? walkable : poi.Yards;
+        if (poi.Holder == PlaceHolder.Nesters && pop.Spawns.Count(s => s.Role == DeepRole.Nester) < 2 && nesting.Count > 0)
+            NestIn(pop, fauna, theme, nesting.OrderByDescending(r => r.Size.X * r.Size.Z).First(), rng, infested, 1f, rules, DeepRole.Nester, false);
         if (!active && !empty) Guarded(poi, pop, fauna, theme, rng, infested);
         if (!active && !empty && poi.Armed != null && !poi.Husks) Clash(poi, pop, fauna, theme, rng);
         if (!active) Dense(poi, pop, fauna, theme, rng, infested, walkable, empty);
