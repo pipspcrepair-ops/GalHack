@@ -39,7 +39,7 @@ public sealed partial class PlanetWorld
         void Lap(string what) { laps.Add($"{what} {clock.Elapsed.TotalSeconds:F1}"); clock.Restart(); }
         FlavourRuins.LayoutMs = 0;
         var infra = InfraNetwork.Plan(map, bare, pois, profile, Hash.Of(spec.Seed, 0x1AF7));
-        Lap("roads");
+        Lap($"roads ({InfraNetwork.LastSearches})");
         // A start world begins at the edge of a ruined town by the landing site.
         var ruins = new List<FlavourRuin>();
         if (PlanetSurface.Poi.PoiSiting.StartWorld)

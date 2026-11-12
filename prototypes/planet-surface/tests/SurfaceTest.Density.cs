@@ -32,8 +32,13 @@ public partial class SurfaceTest
         PoiGenerator.Gen.WorldForce.Current = new PoiGenerator.Gen.WorldForce();
         Check(crowded.Profile is { Population: 9, Current: PoiGenerator.Gen.PopulationNow.Settled, Inhabited: true }, $"a forced crowded world builds crowded: {crowded.Profile}, {crowded.Pois.Count} places, {crowded.Pois.Count(q => q.Siting == "city")} city buildings");
         var kinds = new[] { Archetype.Temperate, Archetype.Arid, Archetype.Ice };
-        foreach (int km in PlanetSpec.Widths)
-            for (int n = 0; n < (km >= 64 ? 1 : 2); n++)
+        // -- --sizes=64 (or 32,64) builds just those sizes, three worlds each (for timing).
+        var sizes = PlanetSpec.Widths.ToList();
+        int each = 0;
+        foreach (string arg in OS.GetCmdlineUserArgs())
+            if (arg.StartsWith("--sizes=")) { sizes = arg["--sizes=".Length..].Split(',').Select(int.Parse).ToList(); each = 3; }
+        foreach (int km in sizes)
+            for (int n = 0; n < (each > 0 ? each : km >= 64 ? 1 : 2); n++)
             {
                 var watch = Stopwatch.StartNew();
                 var spec = PlanetSpec.Roll((ulong)rand.NextInt64(), kinds[rand.Next(kinds.Length)], 0, km);
