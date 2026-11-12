@@ -42,6 +42,7 @@ public sealed partial class Staging
         Snap("over");
         _game.FixedCamera = null;
         Hurry(3);
+        foreach (int x in MoonTest.Upright(_pilot, moon, v)) yield return x;
         _game.Controls.Hold(Key.Ctrl);
         for (int i = 0; i < 60 * 90 && _game.InOrbit; i++) yield return 0;
         foreach (int x in _pilot.Land(v)) yield return x;

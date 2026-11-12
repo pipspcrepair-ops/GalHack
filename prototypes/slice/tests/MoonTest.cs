@@ -236,6 +236,14 @@ public partial class MoonTest : Node
             foreach (int x in pilot.FlyTo(v, () => way, 200f, 120f)) yield return x;
     }
 
+    /// <summary>Turns the vessel's top to a body's sky over the point under it, nose north, so Ctrl takes it straight down.</summary>
+    internal static IEnumerable<int> Upright(Pilot pilot, Celestial body, Vessel v)
+    {
+        var (x, z) = body.Under(v.Body.Position.ToGodot());
+        N.Quaternion toWorld = N.Quaternion.Normalize(body.Turn * body.Map.Frame(x, z));
+        return pilot.TurnTo(v, N.Vector3.Transform(-N.Vector3.UnitZ, toWorld).ToGodot(), N.Vector3.Transform(N.Vector3.UnitY, toWorld).ToGodot());
+    }
+
     // ---- Down onto it --------------------------------------------------------------------------
 
     IEnumerable<int> Descent()
@@ -244,10 +252,7 @@ public partial class MoonTest : Node
         Vessel v = _skiff;
         Celestial moon = _game.Orbit.Moon;
         var (tx, tz) = moon.Under(v.Body.Position.ToGodot());
-        N.Quaternion toWorld = N.Quaternion.Normalize(moon.Turn * moon.Map.Frame(tx, tz));
-        Vector3 nose = N.Vector3.Transform(-N.Vector3.UnitZ, toWorld).ToGodot();
-        Vector3 top = N.Vector3.Transform(N.Vector3.UnitY, toWorld).ToGodot();
-        foreach (int x in _pilot.TurnTo(v, nose, top)) yield return x;
+        foreach (int x in Upright(_pilot, moon, v)) yield return x;
         int crossings = _game.Spaceflight.Crossings.Count;
         _game.Controls.Hold(Key.Ctrl);
         for (int i = 0; i < 60 * 120 && _game.Spaceflight.Crossings.Count == crossings; i++) yield return 0;
