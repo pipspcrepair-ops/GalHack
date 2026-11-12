@@ -311,7 +311,7 @@ public sealed partial class HumanRig : Rig
             // A long gun in both hands, carried or up; a short reach past a thick chest turns further, the left shoulder to the fore-end.
             float ua = HumanBody.ArmScale(f), armL = f.UpperArmOf(0) + f.ForearmOf(0);
             float lack = f.ChestD * f.Padding * 1.05f + 0.5f * ua - (armL * 0.97f + Reach * ua);
-            squareOff -= (0.3f + Math.Clamp(lack / _shoulderOut, 0f, 0.5f)) * (1f - busy);
+            squareOff -= (0.3f + Math.Clamp(lack / (f.ShoulderW * 0.94f), 0f, 0.5f)) * (1f - busy);
         }
         if (husk)
         {
@@ -428,7 +428,8 @@ public sealed partial class HumanRig : Rig
             float side = i == 0 ? -1f : 1f;
             var F = new Frame(torso, side);
             float upperArm = f.UpperArmOf(i), forearm = f.ForearmOf(i), arm = upperArm + forearm;
-            Vector3 shoulder = chest + torso.X * side * _shoulderOut + torso.Y * shrug;
+            // (A hand on a weapon draws its shoulder in: the stock presses the coat.)
+            Vector3 shoulder = chest + torso.X * side * Mathf.Lerp(_shoulderOut, f.ShoulderW * 0.94f, i == 1 ? hold.RW : hold.LW) + torso.Y * shrug;
             // A Husk's arms don't keep time with its legs: one swings late and loose, the other leads, reaching.
             float lag = husk ? (i == 0 ? 1.4f : -0.5f) : 0f;
             float swing = (i == 0 ? 1f : -1f) * MathF.Sin(cycle - lag) * moving * (0.38f + 0.5f * run) * (husk ? 1.5f : 1f) * (1f - 0.5f * stalk) + 0.04f + 0.3f * run + 0.35f * stalk;
@@ -561,7 +562,7 @@ public sealed partial class HumanRig : Rig
         float u = HumanBody.ArmScale(f), T = f.Torso, d = f.ChestD * f.Padding;
         Vector3 fwd = turn * Vector3.Forward, right = turn * Vector3.Right, ahead = -torso.Z, up = torso.Y;
         Vector3 look = turn * new Basis(Vector3.Up, Math.Clamp(g.Look, -0.6f, 0.6f)) * Vector3.Forward;
-        Vector3 shoulderR = chest + torso.X * _shoulderOut, shoulderL = chest - torso.X * _shoulderOut;
+        Vector3 shoulderR = chest + torso.X * f.ShoulderW * 0.94f, shoulderL = chest - torso.X * f.ShoulderW * 0.94f;
         float armR = f.UpperArmOf(1) + f.ForearmOf(1), armL = f.UpperArmOf(0) + f.ForearmOf(0);
         Vector3 grip, dir;
         switch (kind)
@@ -656,7 +657,7 @@ public sealed partial class HumanRig : Rig
             case HoldKind.Blade:
             {
                 // Hanging clear of the hip, head down; raised before the shoulder, swinging wide of the body between.
-                Vector3 hangs = shoulderR + Vector3.Down * armR * 0.84f + torso.X * MathF.Max(0.17f * u, MathF.Max(f.HipW, f.WaistW) * f.Padding - _shoulderOut + 0.12f * u) + ahead * 0.06f * u;
+                Vector3 hangs = shoulderR + Vector3.Down * armR * 0.84f + torso.X * MathF.Max(0.17f * u, MathF.Max(f.HipW, f.WaistW) * f.Padding - f.ShoulderW * 0.94f + 0.12f * u) + ahead * 0.06f * u;
                 Vector3 raised = shoulderR + Vector3.Up * 0.02f * u + ahead * 0.28f * u + torso.X * 0.05f * u;
                 float wide = MathF.Sin(MathF.PI * aim);
                 h.R = hangs.Lerp(raised, aim) + (torso.X * 0.1f + ahead * 0.12f) * u * wide;

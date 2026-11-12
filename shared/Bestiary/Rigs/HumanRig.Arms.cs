@@ -125,7 +125,7 @@ public sealed partial class HumanRig
             if (Sunk(body, shoulder, e, w, 0.55f) <= 0f) break;
             // The elbow out to the side and down, then the hand further out and forward.
             pole = (pole.Normalized() + outward * 0.9f + Vector3.Down * 0.15f).Normalized();
-            if (k >= 1) hand += outward * 0.04f;
+            if (k >= 1) hand += outward * 0.025f;
             (e, w) = LeggedRig.SolveIK(shoulder, hand, upper, fore, pole);
         }
         return (e, w);

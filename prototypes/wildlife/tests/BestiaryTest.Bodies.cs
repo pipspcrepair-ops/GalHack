@@ -170,7 +170,7 @@ public partial class BestiaryTest
                 for (int i = 0; i < 2; i++)
                 {
                     var (sh, el, wr) = rig.ArmOf(i);
-                    if (Local(wr).Y < Local(el).Y + 0.05f || Local(el).Y > Local(sh).Y - 0.12f) shrugDown++;
+                    if (Local(wr).Y < Local(el).Y + 0.05f || Local(el).Y > Local(sh).Y - 0.12f + coat) shrugDown++;
                 }
             }
             // Fidgeting moves: over ten seconds each hand goes somewhere else.
