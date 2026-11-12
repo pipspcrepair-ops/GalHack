@@ -509,7 +509,7 @@ public sealed partial class HumanRig : Rig
             // Reaching out to a weapon, the shoulder comes forward as far as it must (a little).
             float need = MathF.Max(0f, shoulder.DistanceTo(hand) - arm * 0.98f);
             if (on > 0f && need > 0f) shoulder += (hand - shoulder).Normalized() * MathF.Min(need, Reach * HumanBody.ArmScale(f)) * on;
-            (Vector3 elbow, Vector3 wrist) = Arm(Pose[_body], shoulder, hand, pole, upperArm, forearm, F.Out, ahead, on >= 0.5f);
+            (Vector3 elbow, Vector3 wrist) = Arm(Pose[_body], ref shoulder, hand, pole, upperArm, forearm, F.Out, ahead, on >= 0.5f);
             Pose[_armU[i]] = Geo.Segment(shoulder, elbow, torso.X);
             Pose[_armL[i]] = Geo.Segment(elbow, wrist, torso.X);
             _wrist[i] = wrist;

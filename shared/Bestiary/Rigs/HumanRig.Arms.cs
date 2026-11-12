@@ -119,7 +119,7 @@ public sealed partial class HumanRig
     /// (as a real one does) and, failing that, takes the hand further out to the side. A hand on a
     /// weapon stays on its grip (the hold keeps the weapon itself clear of the body).
     /// </summary>
-    (Vector3 elbow, Vector3 wrist) Arm(Transform3D body, Vector3 shoulder, Vector3 hand, Vector3 pole, float upper, float fore, Vector3 outward, Vector3 ahead, bool held)
+    (Vector3 elbow, Vector3 wrist) Arm(Transform3D body, ref Vector3 shoulder, Vector3 hand, Vector3 pole, float upper, float fore, Vector3 outward, Vector3 ahead, bool held)
     {
         if (held) return LeggedRig.SolveIK(shoulder, hand, upper, fore, pole);
         if (Shell != null)
@@ -133,9 +133,11 @@ public sealed partial class HumanRig
         float least = Sunk(body, shoulder, e, w, 0.15f);
         if (least <= 0f) return (e, w);
         // Through the body: the elbow round its circle to the nearest way that clears it; failing all of
-        // them, the hand a step out to the side or forward, by turns, and round again.
+        // them, the shoulder brought forward a little (as one reaching across the chest does), then the
+        // hand a step out to the side or forward, by turns, and round again.
         (Vector3, Vector3) fallback = (e, w);
-        for (int k = 0; k < 12; k++)
+        Vector3 fallbackShoulder = shoulder;
+        for (int k = 0; k < 14; k++)
         {
             Vector3 axis = (hand - shoulder).Normalized();
             Vector3 b1 = pole - axis * pole.Dot(axis);
@@ -151,11 +153,13 @@ public sealed partial class HumanRig
                 float sunk = Sunk(body, shoulder, e2, w2, 0.15f);
                 // (Near the elbow it was asked for first: a hand moved a little out reads better than an elbow thrown up.)
                 if (sunk <= 0f && MathF.Cos(a) > bestScore && (k >= 6 || MathF.Cos(a) > 0.7f)) { bestScore = MathF.Cos(a); (e, w) = (e2, w2); }
-                else if (sunk < least) { least = sunk; fallback = (e2, w2); }
+                else if (sunk < least) { least = sunk; fallback = (e2, w2); fallbackShoulder = shoulder; }
             }
             if (bestScore > -9f) return (e, w);
-            hand += (k % 2 == 0 ? outward : ahead) * 0.05f;
+            if (k < 2) shoulder += ahead * 0.025f;
+            else hand += (k % 2 == 0 ? outward : ahead) * 0.05f;
         }
+        shoulder = fallbackShoulder;
         return fallback;
     }
 
