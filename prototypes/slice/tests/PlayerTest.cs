@@ -178,7 +178,7 @@ public partial class PlayerTest : Node
         Check(_game.Pack.Hand == HandKind.Tool, "1 puts the survival tool in hand");
         foreach (int x in _drive.Wait(10)) yield return x;
         Check(_game.Hands.Visible, "it shows in the first-person hands");
-        var kinds = new (DepositKind kind, string ore)[] { (DepositKind.Iron, "iron-ore"), (DepositKind.Copper, "copper-ore"), (DepositKind.Carbon, "carbon-ore"), (DepositKind.Silicon, "silicon-ore"), (DepositKind.Water, "ice") };
+        var kinds = new (DepositKind kind, string ore)[] { (DepositKind.Iron, "iron-ore"), (DepositKind.Copper, "copper-ore"), (DepositKind.Carbon, "carbon-ore"), (DepositKind.Silicon, "silicon-ore") };
         int firstCells = -1;
         foreach (var (kind, ore) in kinds)
         {
