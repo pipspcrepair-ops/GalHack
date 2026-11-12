@@ -735,6 +735,12 @@ public static partial class PoiFauna
                 pop.Spawns.Add(new PoiSpawn { Role = DeepRole.Prowler, Species = sp, Position = route[0], Room = start.Index, Route = route });
                 placed++;
             }
+            // No beat wide enough for their frames: they stand guard in the widest room instead.
+            if (!pop.Spawns.Exists(s => s.Species.Mechanical))
+            {
+                PoiRoom wide = walkable.OrderByDescending(r => r.Width).First();
+                if (Own(poi, fauna, theme, DeepRole.Lurker, wide.Width, wide.Size.Y, rng) is { } sentry) Lurker(pop, fauna, theme, wide, rng, false, sentry);
+            }
             return;
         }
         if (holder == PlaceHolder.Beasts)
