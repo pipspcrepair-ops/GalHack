@@ -371,6 +371,7 @@ public sealed class Herbarium
             PlantForms.Build(p, s, new Dice(Dice.Of(seed, i)), paints, false, i == 0 ? body : new Anatomy());
             p.Near[i] = s.Finish();
             p.Columns[i] = s.Columns.ToArray();
+            if (p.Tree) (p.Canopy ??= new Vector3[meshes][][])[i] = PlantCanopy.Hulls(p.Near[i], p.Columns[i]);
         }
         if (p.Large)
         {

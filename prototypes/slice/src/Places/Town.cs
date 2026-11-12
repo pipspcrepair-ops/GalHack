@@ -668,6 +668,8 @@ public sealed partial class Town
     int? Haunt(Person p, string[] tags)
     {
         if (tags == null || tags.Length == 0) return null;
+        // In a room their job is done in, most of the time (Town.Placement).
+        if (Fitting(p, tags) is int fit) return fit;
         var near = Spots.Select((s, i) => (s, i)).Where(t => Array.IndexOf(tags, t.s.Tag) >= 0).OrderBy(t => t.s.Cell.Manhattan(Spots[p.Spot].Cell) + _rng.Next(12)).Take(3).ToList();
         return near.Count == 0 ? null : near[_rng.Next(near.Count)].i;
     }
@@ -684,6 +686,8 @@ public sealed partial class Town
     {
         p.Partner = null;
         p.Working = false;
+        // Of an evening, off duty: to the fire or the common room (Town.Placement).
+        if (Gather(p)) return;
         var linked = Data.Links.Where(l => l.A == p.Spot || l.B == p.Spot).Select(l => l.A == p.Spot ? l.B : l.A).ToList();
         RoleLook day = p.Looks?.Figure.Routine;
         string moves = day?.Moves ?? "wander";
@@ -984,6 +988,8 @@ public sealed partial class Town
         foreach (Person q in People.Where(q => q.Looks.Figure.Stage != LifeStage.Child && Husks.CanTurn(q.Looks)).OrderBy(_ => roll.Float()).Take(carriers)) q.Carrier = true;
         CarriersAtStart = People.Count(q => q.Carrier);
         foreach (Person q in People) _carried.Add(new Carried());
+        // Each to their place of work, a guard up on the lookout (Town.Placement).
+        Stations();
     }
 
     /// <summary>The region at a world point: the map's temperature (as degrees) and humidity there.</summary>

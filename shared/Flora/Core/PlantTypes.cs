@@ -155,6 +155,9 @@ public sealed class Plant
     public PlantMesh[] Near;
     /// <summary>Each near mesh's solid parts as columns (a trunk and its thick limbs, every pipe of a cluster, a stalk and its cap, a crystal's shards): what its colliders are.</summary>
     public PlantColumn[][] Columns;
+
+    /// <summary>Each near mesh's canopy as convex hulls (point sets, plant frame, scale 1): what a canopy collider is (trees only).</summary>
+    public System.Numerics.Vector3[][][] Canopy;
     public PlantMesh Far;
 
     /// <summary>A trunk, for a collider. Off for what you walk through.</summary>

@@ -789,6 +789,7 @@ public partial class TerrainStreamer : Node3D
         double leadX = Mod(cx + lead.X, w), leadZ = Mod(cz + lead.Z, h);
         int ffx = (int)Math.Floor(leadX / FarBuilder.Size), ffz = (int)Math.Floor(leadZ / FarBuilder.Size);
         if (_reachVersion != DetailReach.Version) ApplyReach();
+        UpdateShade();
 
         if (_floraDirty.Count > 0)
         {
@@ -1134,8 +1135,8 @@ public partial class TerrainStreamer : Node3D
             {
                 Name = $"L{layer}",
                 Multimesh = multimesh, MaterialOverride = _floraMaterial,
-                // Near drawings cast shadows; small growth only in the finest chunks (it reaches further, in the shadows' far splits).
-                CastShadow = layer == 0 || layer == 4 && job.Lod == 0 ? GeometryInstance3D.ShadowCastingSetting.On : GeometryInstance3D.ShadowCastingSetting.Off,
+                // Every drawing of a tree casts its shadow (as far as the sun's shadows reach); small growth only in the finest chunks.
+                CastShadow = layer != 4 || job.Lod == 0 ? GeometryInstance3D.ShadowCastingSetting.On : GeometryInstance3D.ShadowCastingSetting.Off,
             };
             SetRange(flora, layer);
             flora.SetInstanceShaderParameter("flora_layer", (float)layer);
@@ -1356,6 +1357,18 @@ public partial class TerrainStreamer : Node3D
     }
 
     public bool IsLoaded(Int3 key) => _chunks.ContainsKey(key);
+
+    /// <summary>
+    /// Whether the ground at a point has collision to land on: its column is built and every chunk in it that has a surface has a
+    /// live shape. Beyond the collision radius it hasn't, and a loose body there would fall through the world.
+    /// </summary>
+    public bool CollidesAt(Vector3 p)
+    {
+        if (!_columns.TryGetValue(((int)MathF.Floor(p.X / S), (int)MathF.Floor(p.Z / S)), out Column c) || !c.Built) return false;
+        foreach (VChunk chunk in c.Chunks)
+            if (chunk.HasTriangles && (chunk.Shape == null || chunk.Shape.Disabled)) return false;
+        return true;
+    }
 
     /// <summary>Whether a loaded chunk has live collision (tests).</summary>
     public bool Collides(Int3 key) => _chunks.TryGetValue(key, out VChunk c) && c.Shape != null && !c.Shape.Disabled;

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 
 namespace GalHack.Structures;
@@ -49,7 +50,8 @@ public static class Damage
     /// <summary>The same, knowing where it struck (cell units) and which way the hit came from, for sparks and marks.</summary>
     public static void Hit(Structure s, Int3 p, DamageType type, float amount, DamageReport report, Vector3 point, Vector3 outward)
     {
-        if (!s.TryGet(p, out Block b)) return;
+        // A hit on any cell of a block spanning several goes to its anchor: one block, one pool of hit points.
+        if (!s.TryGetBlock(p, out p, out Block b)) return;
         Apply(s, p, b, Effective(s.StatsOf(b), type, amount), report, point, outward);
     }
 
@@ -69,7 +71,7 @@ public static class Damage
             return;
         }
         bool core = s.TypeOf(b).IsCore;
-        s.Clear(p);
+        s.Clear(p); // the whole block, every cell of it
         report.Destroyed.Add((p, b));
         if (core) s.Owner = null; // ownership lives in the core
     }
@@ -91,8 +93,8 @@ public static class Damage
         if (distance > 1.5f) centre = nearest.ToVector3();
 
         float radius = Math.Clamp(1.5f + MathF.Cbrt(hp / MathF.Max(1f, s.MaxHp(s.Get(nearest)))), 1.5f, MaxCrashRadius);
-        var struck = new List<(Int3 p, float weight)>();
-        float total = 0f;
+        // Keyed by anchor: a block spanning several cells takes its share once, as hard as its nearest cell.
+        var struck = new Dictionary<Int3, float>();
         int r = (int)MathF.Ceiling(radius);
         Int3 c = Int3.Round(centre);
         for (int x = -r; x <= r; x++)
@@ -100,15 +102,16 @@ public static class Damage
                 for (int z = -r; z <= r; z++)
                 {
                     Int3 q = c + new Int3(x, y, z);
-                    if (!s.Has(q)) continue;
+                    if (!s.TryGet(q, out Block cell)) continue;
                     float d = Vector3.Distance(q.ToVector3(), centre);
                     if (d > radius) continue;
                     float weight = 1f - d / radius * 0.75f;
                     weight *= weight; // concentrated where it struck, so the worst of it shows there
-                    struck.Add((q, weight));
-                    total += weight;
+                    Int3 anchor = q + cell.ToAnchor;
+                    struck[anchor] = MathF.Max(weight, struck.GetValueOrDefault(anchor));
                 }
 
+        float total = struck.Values.Sum();
         foreach (var (q, weight) in struck)
         {
             Block b = s.Get(q);
@@ -123,7 +126,7 @@ public static class Damage
         if (s.Has(c)) return c;
         Int3 best = default;
         float closest = float.MaxValue;
-        foreach (var (p, _) in s.Blocks())
+        foreach (var (p, _) in s.Cells())
         {
             float d = Vector3.DistanceSquared(p.ToVector3(), point);
             if (d < closest)
@@ -152,16 +155,23 @@ public static class Damage
     {
         int r = (int)MathF.Ceiling(radius);
         Int3 c = Int3.Round(centre);
+        // Each block is hit once, by its nearest cell, however many cells it spans.
+        var nearest = new Dictionary<Int3, (Int3 cell, float distance)>();
         for (int x = -r; x <= r; x++)
             for (int y = -r; y <= r; y++)
                 for (int z = -r; z <= r; z++)
                 {
                     Int3 p = c + new Int3(x, y, z);
                     float distance = Vector3.Distance(p.ToVector3(), centre);
-                    if (distance > radius) continue;
-                    Vector3 away = p.ToVector3() - centre;
-                    Hit(s, p, type, amount * (1f - distance / radius * 0.75f), report, p.ToVector3(),
-                        away.LengthSquared() > 1e-4f ? Vector3.Normalize(away) : Vector3.Zero);
+                    if (distance > radius || !s.TryGet(p, out Block b)) continue;
+                    Int3 anchor = p + b.ToAnchor;
+                    if (!nearest.TryGetValue(anchor, out var best) || distance < best.distance) nearest[anchor] = (p, distance);
                 }
+        foreach (var (p, distance) in nearest.Values)
+        {
+            Vector3 away = p.ToVector3() - centre;
+            Hit(s, p, type, amount * (1f - distance / radius * 0.75f), report, p.ToVector3(),
+                away.LengthSquared() > 1e-4f ? Vector3.Normalize(away) : Vector3.Zero);
+        }
     }
 }

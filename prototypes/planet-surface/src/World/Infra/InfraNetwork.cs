@@ -1869,15 +1869,82 @@ public sealed class InfraNetwork
         index = -1;
         distance = double.MaxValue;
         InfraRoute best = null;
-        foreach (InfraRoute r in Routes)
-            for (int i = 0; i < r.Count && except?.Contains(r) != true; i++)
+        if (Routes.Count == 0) return null;
+        IndexRoutes();
+        // The buckets round the point; of two as near, the earlier route's earlier point (as a scan of every point found it).
+        int bx = (int)(Mathx.WrapX(x, _w) / NearBucket), bz = (int)(Mathx.Wrap(z, _h) / NearBucket);
+        int reach = (int)Math.Ceiling(within / NearBucket) + 1;
+        int spanX = Math.Min(2 * reach + 1, _nbx), spanZ = Math.Min(2 * reach + 1, _nbz);
+        int bestRoute = int.MaxValue;
+        for (int oz = 0; oz < spanZ; oz++)
+        for (int ox = 0; ox < spanX; ox++)
+        {
+            int cx = ((bx - reach + ox) % _nbx + _nbx) % _nbx, cz = ((bz - reach + oz) % _nbz + _nbz) % _nbz;
+            if (_near[cz * _nbx + cx] is not { } list) continue;
+            foreach (var (ri, i) in list)
             {
+                InfraRoute r = Routes[ri];
+                if (except?.Contains(r) == true) continue;
                 double dx = Mathx.WrapDelta(r.X[i] - x, _w), dz = Mathx.WrapDelta(r.Z[i] - z, _h);
                 if (Math.Abs(dx) > within || Math.Abs(dz) > within) continue;
                 double d = Math.Sqrt(dx * dx + dz * dz);
-                if (d < distance && d <= within) { distance = d; index = i; best = r; }
+                if (d > within) continue;
+                if (d < distance || d == distance && (ri < bestRoute || ri == bestRoute && i < index))
+                {
+                    distance = d;
+                    index = i;
+                    best = r;
+                    bestRoute = ri;
+                }
             }
+        }
         return best;
+    }
+
+    const double NearBucket = 64;
+    List<(int Route, int Point)>[] _near;
+    int _nbx, _nbz;
+    readonly List<(InfraRoute Route, double[] X, double[] Z, int Count)> _indexed = new();
+
+    /// <summary>Buckets every route point for <see cref="Nearest"/>: routes added since are bucketed on; any other change rebuilds it.</summary>
+    readonly object _indexLock = new();
+
+    void IndexRoutes()
+    {
+        lock (_indexLock) IndexRoutesLocked();
+    }
+
+    void IndexRoutesLocked()
+    {
+        if (_near == null)
+        {
+            _nbx = Math.Max(1, (int)Math.Ceiling(_w / NearBucket));
+            _nbz = Math.Max(1, (int)Math.Ceiling(_h / NearBucket));
+            _near = new List<(int, int)>[_nbx * _nbz];
+        }
+        bool same = _indexed.Count <= Routes.Count;
+        for (int k = 0; same && k < _indexed.Count; k++)
+        {
+            var e = _indexed[k];
+            InfraRoute r = Routes[k];
+            same = ReferenceEquals(e.Route, r) && ReferenceEquals(e.X, r.X) && ReferenceEquals(e.Z, r.Z) && e.Count == r.Count;
+        }
+        if (same && _indexed.Count == Routes.Count) return;
+        if (!same)
+        {
+            Array.Clear(_near);
+            _indexed.Clear();
+        }
+        for (int k = _indexed.Count; k < Routes.Count; k++)
+        {
+            InfraRoute r = Routes[k];
+            for (int i = 0; i < r.Count; i++)
+            {
+                int cx = Math.Min(_nbx - 1, (int)(Mathx.WrapX(r.X[i], _w) / NearBucket)), cz = Math.Min(_nbz - 1, (int)(Mathx.Wrap(r.Z[i], _h) / NearBucket));
+                (_near[cz * _nbx + cx] ??= new List<(int, int)>()).Add((k, i));
+            }
+            _indexed.Add((r, r.X, r.Z, r.Count));
+        }
     }
 
     public double Width => _w;
@@ -1947,6 +2014,41 @@ public sealed class InfraNetwork
         }
 
         public (double X, double Z) CellCentre(int k) => ((k % _nx + 0.5) * Cell, (k / _nx + 0.5) * Cell);
+
+        /// <summary>
+        /// Reads the ground along the way a route will likely go, side by side, before the search walks it one cell
+        /// at a time: a band round the straight line between its ends. The same heights as read one by one, only sooner.
+        /// </summary>
+        void Prefetch(int start, int goal)
+        {
+            int sx = start % _nx, sz = start / _nx;
+            int dx = goal % _nx - sx, dz = goal / _nx - sz;
+            if (Math.Abs(dx) > _nx / 2) dx -= Math.Sign(dx) * _nx;
+            if (Math.Abs(dz) > _nz / 2) dz -= Math.Sign(dz) * _nz;
+            double length = Math.Sqrt(dx * dx + dz * dz);
+            int half = (int)(40 + length * 0.1);
+            int x0 = Math.Min(0, dx) - half, x1 = Math.Max(0, dx) + half, z0 = Math.Min(0, dz) - half, z1 = Math.Max(0, dz) + half;
+            System.Threading.Tasks.Parallel.For(z0, z1 + 1, oz =>
+            {
+                for (int ox = x0; ox <= x1; ox++)
+                {
+                    // Distance from the straight line, in cells.
+                    double t = length < 1e-6 ? 0 : Math.Clamp((ox * dx + oz * dz) / (length * length), 0, 1);
+                    double ex = ox - dx * t, ez = oz - dz * t;
+                    if (ex * ex + ez * ez > half * half) continue;
+                    int k = ((sz + oz) % _nz + _nz) % _nz * _nx + ((sx + ox) % _nx + _nx) % _nx;
+                    if (float.IsNaN(_height[k])) Fill(k);
+                }
+            });
+        }
+
+        void Fill(int k)
+        {
+            var (x, z) = CellCentre(k);
+            float h = Ground(x, z, 16, out bool wet, out float surface);
+            _water[k] = (byte)(!wet ? 1 : surface <= 0.01f && h < -1.5f ? 3 : 2);
+            _height[k] = h;
+        }
 
         float HeightAt(int k)
         {
@@ -2024,6 +2126,7 @@ public sealed class InfraNetwork
         {
             int start = Free(from, to), goal = Free(to, from);
             if (start < 0 || goal < 0) return null;
+            Prefetch(start, goal);
             foreach (int t in _touched) { _cost[t] = float.PositiveInfinity; _closed[t] = false; }
             _touched.Clear();
             var open = new PriorityQueue<int, float>();
@@ -2090,11 +2193,23 @@ public sealed class InfraNetwork
             return path;
         }
 
+        bool _allRead;
+
         /// <summary>Whether the sea parts two points: no way between them over land (rivers can be bridged).</summary>
         public bool SeaBetween((double X, double Z) a, (double X, double Z) b)
         {
             int start = Free(a, b), goal = Free(b, a);
             if (start < 0 || goal < 0) return false;
+            // The walk below may cross a whole continent: the ground is read everywhere once, side by side, rather than cell by cell on the way.
+            if (!_allRead)
+            {
+                System.Threading.Tasks.Parallel.For(0, _nz, z =>
+                {
+                    for (int x = 0, k = z * _nx; x < _nx; x++, k++)
+                        if (float.IsNaN(_height[k])) Fill(k);
+                });
+                _allRead = true;
+            }
             var seen = new bool[_nx * _nz];
             var queue = new Queue<int>();
             queue.Enqueue(start);

@@ -228,7 +228,7 @@ public sealed partial class Vessel
     {
         float cell = Structure.Grid.CellSize;
         var groups = new SortedDictionary<(int, int), List<(TerrainDigging.Terrain.VolumeKey, TerrainDigging.Terrain.StructureVolume)>>();
-        foreach (var (p, _) in Structure.Blocks())
+        foreach (var (p, _) in Structure.Cells())
         {
             Vector3 at = ToWorld(StructureBridge.CellCenter(Structure, p));
             if (at.Y - cell > Zone.GroundAt(at.X, at.Z).Y) continue;

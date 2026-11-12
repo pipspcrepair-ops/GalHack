@@ -44,7 +44,7 @@ public partial class Spaceflight
     public bool TakeHands(float dt, HandKind hand, bool primary, bool pressed)
     {
         _shotCooldown -= dt;
-        if (!Game.InOrbit) return false;
+        if (!Game.InOrbit && !OnOtherBody) return false; // on the moon as in orbit: its ground's tools come later
         switch (hand)
         {
             case HandKind.Tool:

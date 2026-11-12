@@ -81,6 +81,7 @@ public partial class SpaceSky : Node3D
         uniform vec3 zero = vec3(1.0, 0.0, 0.0);
         uniform float shade = 1.0;   // the share of the sun it sees: another body's shadow hides the rest
         uniform float red = 0.0;     // how deep it stands in a shadow reddened by a world's air
+        uniform float fade = 1.0;    // how much of it this far look draws: its own globe takes over near it
         varying vec3 normal_w;
         varying vec3 view_w;
         void vertex() {
@@ -114,7 +115,7 @@ public partial class SpaceSky : Node3D
                 glows = own.a;
             }
             ALBEDO = surface * (banded ? 0.07 + 0.93 * lit + 0.22 * limb : 0.05 + 1.1 * lit + glows * 0.8) + vec3(0.32, 0.06, 0.025) * red;
-            ALPHA = 1.0; // in the transparent queue, for its order against the rings, which write no depth
+            ALPHA = fade; // in the transparent queue, for its order against the rings, which write no depth
         }
         """;
 
@@ -262,6 +263,10 @@ public partial class SpaceSky : Node3D
         }
         foreach (var (node, body, material) in _bodies)
         {
+            float fade = _fade.TryGetValue(body, out float f) ? f : 1f;
+            node.Visible = fade > 0.002f;
+            if (!node.Visible) continue;
+            material.SetShaderParameter("fade", fade);
             Sighting s = model.See(body, days, eyeGlobe, o);
             int order = s.Distance < ringsFrom ? 4 : 2;
             if (material.RenderPriority != order) material.RenderPriority = order;
@@ -294,6 +299,17 @@ public partial class SpaceSky : Node3D
             }
         }
     }
+
+    /// <summary>How much of a body this far look draws, 0 to 1 (its own globe drawn under it takes over as you near it).</summary>
+    public void Fade(Orbiter body, float fade) => _fade[body] = Math.Clamp(fade, 0f, 1f);
+
+    /// <summary>How much of a body the far look draws now, 0 to 1.</summary>
+    public float FadeOf(Orbiter body) => _fade.TryGetValue(body, out float f) ? f : 1f;
+
+    /// <summary>The bodies are drawn here (over the top of the band), not by a surface's sky.</summary>
+    public bool BodiesShown => _bodiesShown;
+
+    readonly Dictionary<Orbiter, float> _fade = new();
 
     static Vector3 V(D3 d) => new((float)d.X, (float)d.Y, (float)d.Z);
 
