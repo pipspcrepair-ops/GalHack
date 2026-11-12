@@ -35,7 +35,7 @@
     { "id": "carbon-ore", "name": "Carbon ore", "short": "CARBON", "category": "raw", "rarity": "common", "source": "mine", "deposit": "Carbon",
       "mass": 1.6, "volume": 1, "where": "Every planet", "uses": "Graphite · steel · propellant" },
     { "id": "ice", "name": "Ice", "short": "ICE", "category": "raw", "rarity": "common", "source": "mine", "deposit": "Water",
-      "mass": 0.9, "volume": 1, "where": "Ice worlds, moons, asteroids; ice caps elsewhere", "uses": "Nothing yet; some fuels later" },
+      "mass": 0.9, "volume": 1, "where": "Ice worlds, moons, asteroids; ice caps elsewhere", "uses": "Fuel" },
     { "id": "stone", "name": "Stone", "short": "STONE", "category": "raw", "rarity": "common", "source": "dig",
       "mass": 2.4, "volume": 1, "where": "Any rock, anywhere", "uses": "Ceramic, concrete" },
     { "id": "biomass", "name": "Biomass", "short": "BIOMASS", "category": "raw", "rarity": "common", "source": "harvest", "deposit": "Resin",
