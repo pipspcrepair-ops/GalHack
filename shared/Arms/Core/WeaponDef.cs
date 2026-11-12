@@ -11,8 +11,8 @@ namespace GalHack.Arms;
 /// <summary>How a weapon fires (docs/weapon-ideas.md section 2, Trigger).</summary>
 public enum Trigger { Semi, Auto, Burst, Pump, Charge, Hold }
 
-/// <summary>How the effect travels (section 2, Delivery). Lob is a bolt under gravity; the parts say the rest.</summary>
-public enum Delivery { Bolt, Pellets, Lob, Cone, Arc, Swarm, Placed }
+/// <summary>How the effect travels (section 2, Delivery). Lob is a bolt under gravity; the parts say the rest. Strike: a hand weapon's blow, landing within <see cref="WeaponDef.Reach"/>.</summary>
+public enum Delivery { Bolt, Pellets, Lob, Cone, Arc, Swarm, Placed, Strike }
 
 /// <summary>The design's three damage classes, for armour and resistance (section 5.1).</summary>
 public enum DamageClass { Kinetic, Explosive, Energy }
@@ -111,6 +111,8 @@ public sealed class WeaponDef
     public float Blocks { get; init; } = 1f;
     /// <summary>The share of the planet's gravity the shot falls under (0: none).</summary>
     public float Gravity { get; init; }
+    /// <summary>A strike's reach from the shoulder, m (0 for anything that flies).</summary>
+    public float Reach { get; init; }
 
     public string Ammo { get; init; } = "";
     /// <summary>Rounds one ammo item gives (0: the item's own round count, or 1).</summary>
@@ -269,6 +271,7 @@ public sealed class Armoury
             Noise = Num(e, "noise", 40f),
             Blocks = Num(e, "blocks", 1f),
             Gravity = Num(e, "gravity", 0f),
+            Reach = Num(e, "reach", 0f),
             Ammo = e["ammo"] is JsonObject am ? Str(am, "item", "") : "",
             PerItem = e["ammo"] is JsonObject ap ? (int)Num(ap, "perItem", 0) : 0,
             Charge = e["charge"] is JsonObject c ? new ChargePart(Math.Max(1, (int)Num(c, "stages", 4)), Num(c, "seconds", 0.4f), Num(c, "speed", 0f), (int)Num(c, "pierce", 0), Num(c, "damage", 0f)) : null,

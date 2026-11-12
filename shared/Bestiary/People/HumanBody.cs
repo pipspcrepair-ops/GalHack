@@ -147,7 +147,8 @@ public static class HumanBody
         if (f.Prop.Length > 0)
         {
             var prop = new Piece("prop");
-            Prop(prop, f);
+            // (A weapon the game draws, as the player's own model in this hand, leaves the piece empty: the rig still places it.)
+            if (!Weapons.DrawnByGame(f.Prop)) Prop(prop, f);
             layout.Add(prop);
             // A bow's string: two pieces the rig draws from the limb tips to the nock (unit length along +Y).
             if (f.Prop == "bow")
