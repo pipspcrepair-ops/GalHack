@@ -242,6 +242,7 @@ public partial class SurfaceZone : Node3D
         Underwater.SetWorld(Planet);
         Weather.SetWorld(Planet);
         yield return "weather";
+        if (Planet.Sky.Density < SurfaceWeather.NoAir) yield break; // no air, no life: nothing to work out for it
         Wildlife.SetWorld(Planet, landing);
         yield return "wildlife";
     }

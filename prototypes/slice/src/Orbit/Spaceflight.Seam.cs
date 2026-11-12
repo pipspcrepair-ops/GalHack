@@ -159,8 +159,11 @@ public partial class Spaceflight
         N.Vector3 q = c.ToGlobe(eye.ToNumerics()), h = o.Home.ToGlobe(eye.ToNumerics());
         var inHome = ViewFrom ?? new PlanetSurface.Skies.D3(h.X, h.Y, h.Z);
         var inHere = c.IsHome ? inHome : new PlanetSurface.Skies.D3(q.X, q.Y, q.Z);
-        s.Sky.Stand(c.Turn.ToBasis().Transposed(), inHere);
-        s.Sky.Track();
+        if (s.Arrived)
+        {
+            s.Sky.Stand(c.Turn.ToBasis().Transposed(), inHere);
+            s.Sky.Track();
+        }
         o.Space.Track(Game.Surface.Planet.StarSystem, s.Sky.Days, o.Home.Turn.ToBasis(), inHome, eye, Height(eye) < Rules.Crossing.TrueGlobeAt ? 38000f : 0f);
     }
 

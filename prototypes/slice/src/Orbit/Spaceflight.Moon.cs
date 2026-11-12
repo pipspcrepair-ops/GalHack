@@ -63,8 +63,6 @@ public partial class Spaceflight
         };
         Game.AddChild(zone);
         Mute(zone);
-        // No air, no life: nothing walks there (the design's rare space creatures come later).
-        zone.Wildlife.ProcessMode = ProcessModeEnum.Disabled;
         float ceiling = Rules.OrbitAltitude("default");
         zone.Physics.Zone.Strength = MoonGravity(home.Physics.Zone.Strength, moon.Radius, model.Home.Radius);
         zone.Physics.Zone.Ceiling = ceiling;
