@@ -25,7 +25,7 @@ public static class PieceFacing
         int turned = 0;
         bool Wall(BlockGrid g, CellMask occupied, Int3 p) => PieceFacing.Wall(g, occupied, p, space);
         var ladders = new List<Int3>();
-        foreach (var (p, b) in g.Blocks().ToList())
+        foreach (var (p, b) in g.Blocks().Where(x => x.Block.Type is BlockType.Terminal or BlockType.Locker or BlockType.Sign or BlockType.Bed or BlockType.Ladder).ToList())
         {
             if (!b.Facing.IsHorizontal()) continue;
             Dir f = b.Facing, want = f;

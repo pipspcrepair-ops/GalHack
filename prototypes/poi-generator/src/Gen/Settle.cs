@@ -25,12 +25,13 @@ public static class Settle
     {
         BlockGrid g = inst.Blocks;
         Layout layout = inst.Layout;
-        // A lintel only a broken door held up comes down with it.
-        if (Doors(inst))
+        // A lintel only a broken door held up comes down with it (the repair runs only where a door went from under one).
+        if (Doors(inst) is var lintels && lintels.Count > 0 && lintels.Any(c => !g.Get(c).IsAir))
             foreach (Int3 p in Structure.Floating(g, layout.Occupied, layout.Extras.InSpace ? LayoutCheck.StationAnchors(layout) : null, layout.Extras.Plain.Count > 0)) g.Set(p, Block.Air);
         var nav = inst.Nav();
         // Bottom up, so a stack settles from its foot.
-        foreach (var (p, b) in g.Blocks().ToList())
+        // (Walls, floors and roofs are most of a place and never move: only what may is listed.)
+        foreach (var (p, b) in g.Blocks().Where(x => PlaceAudit.Rests(x.Block.Type) || BlockInfo.IsFinish(x.Block.Type) || Loose(x.Block)).ToList())
         {
             if (g.Get(p).Type != b.Type) continue; // already moved or taken
             if (nav.IsRock(p) && Loose(b))
@@ -82,9 +83,9 @@ public static class Settle
     /// pieces (a lone 1 m leaf, a strip a metre high), took the wall from either end of it or the floor from under it, what
     /// is left of the door goes and the doorway is a gap.
     /// </summary>
-    static bool Doors(PoiInstance inst)
+    static List<Int3> Doors(PoiInstance inst)
     {
-        bool any = false;
+        var over = new List<Int3>();
         var nav = inst.Nav();
         BlockGrid g = inst.Blocks;
         Layout layout = inst.Layout;
@@ -95,9 +96,9 @@ public static class Settle
             bool whole = d.H >= 2 && d.Cells.Count == d.W * d.H * d.D;
             if (whole && Held(d.EndA) && Held(d.EndB) && d.Cells.Where(c => c.Y == d.Lo.Y).All(c => Holds(g, nav, c + Int3.Down))) continue;
             foreach (Int3 c in d.Cells) g.Set(c, Block.Air);
-            any = true;
+            over.AddRange(d.Cells.Where(c => c.Y == d.Hi.Y).Select(c => c + Int3.Up));
         }
-        return any;
+        return over;
     }
 
     /// <summary>What isn't built: debris, props, growth.</summary>

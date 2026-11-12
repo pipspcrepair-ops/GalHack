@@ -369,7 +369,7 @@ depth hive
   room 2 3
   plan any organic 6
   rooms any containment?
-  rooms deep containment*1-2 cryo-bay?
+  rooms deep containment*1-2
   rooms deepest vault! containment
   fill containment storage
   crawl 0

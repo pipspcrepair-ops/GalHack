@@ -176,13 +176,15 @@ public sealed class PlaceAudit
         var reach = nav.Reachable(layout.EntranceCell);
         // A hidden room's way in is its breakable wall: found from the room it faces, opened by a shot or a dig.
         var secret = layout.Extras.Secrets.Select(s => s.Module).ToHashSet();
+        var built = new NavGrid(layout.Blocks, layout.Occupied, layout.Extras.Lifts, layout.Extras.InSpace);
         foreach (PlacedModule m in layout.Modules)
         {
             // (A room bricked up whole, its plan's cells filled in, is a wall now, not a room.)
             if (m.Kind is not (ModuleKind.Room or ModuleKind.Hall or ModuleKind.Vault) || m.Shape.Occupied.Count == 0) continue;
             Rooms++;
             if (!secret.Contains(m.Index) && Fixtures.RoomCell(m, reach) == null) Fault("room: no way in", m.Min);
-            if (RoomClear(m, g, nav) is not int common) continue;
+            // As built: a ruin's fallen ceiling makes a low room, its builders didn't.
+            if (RoomClear(m, layout.Blocks, built) is not int common) continue;
             RoomHeights[common] = RoomHeights.GetValueOrDefault(common) + 1;
             // (A wrecked aircraft's cabin is a vehicle's, not a building's room.)
             if (m.Kind == ModuleKind.Room && common < 3 && m.Purpose != "aircraft cabin") Fault("room: ceiling under 3 m", m.Min);
