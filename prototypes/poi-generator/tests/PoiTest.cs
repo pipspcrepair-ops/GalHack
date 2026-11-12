@@ -43,12 +43,11 @@ public partial class PoiTest : Node
             ("LootByRarity", LootByRarity), ("LootByDepth", LootByDepth), ("Carved", Carved), ("Hidden", Hidden),
             ("Breaches", Breaches), ("Keys", Keys), ("PlacementRules", PlacementRules), ("NoRepeatsInSystem", NoRepeatsInSystem),
             ("SeenWeighting", SeenWeighting), ("RegrowthPolicy", RegrowthPolicy), ("RevealDistances", RevealDistances),
-            ("WorldPlacement", WorldPlacementCheck), ("WorldProfiles", WorldProfiles), ("Ports", PortsAndPeople), ("StartWorlds", StartWorlds), ("Tethers", Tethers), ("Stamps", Stamps), ("Geometry", Geometry), ("RequiredRooms", RequiredRooms), ("Ages", Ages), ("FactionMix", FactionMix), ("Townsfolk", TownsfolkCheck), ("Blasts", Blasts), ("StartSystems", StartSystems), ("PlainRuins", PlainRuins), ("Houses", Houses), ("Doors", Doors), ("DoorwaySolids", DoorwaySolids), ("Surfaces", Surfaces), ("Rails", Rails), ("Decay", DecayPass), ("Coplanar", CoplanarFaces), ("Panes", Panes), ("Landmarks", Landmarks), ("ShooterTags", ShooterTags), ("Hulks", Hulks), ("Eras", Eras), ("Fallbacks", Fallbacks), ("Standard", Standard), ("References", ReferenceRanges), ("Patterns", PatternChecklist), ("Probe", Probe), ("Performance", Performance),
+            ("WorldPlacement", WorldPlacementCheck), ("WorldProfiles", WorldProfiles), ("Ports", PortsAndPeople), ("StartWorlds", StartWorlds), ("Tethers", Tethers), ("Stamps", Stamps), ("Geometry", Geometry), ("RequiredRooms", RequiredRooms), ("Ages", Ages), ("FactionMix", FactionMix), ("Townsfolk", TownsfolkCheck), ("Blasts", Blasts), ("StartSystems", StartSystems), ("PlainRuins", PlainRuins), ("Houses", Houses), ("Doors", Doors), ("DoorwaySolids", DoorwaySolids), ("Surfaces", Surfaces), ("Rails", Rails), ("Decay", DecayPass), ("Coplanar", CoplanarFaces), ("Panes", Panes), ("Landmarks", Landmarks), ("ShooterTags", ShooterTags), ("Hulks", Hulks), ("Eras", Eras), ("Fallbacks", Fallbacks), ("Standard", Standard), ("References", ReferenceRanges), ("Patterns", PatternChecklist), ("Performance", Performance),
         };
         try
         {
             _lib = GameData.Load();
-            if (only == "MeshTimes") { MeshTimes(); Finish(); return; }
             foreach (var (name, run) in checks)
                 if (only == null || only.Split(',').Contains(name))
                 {

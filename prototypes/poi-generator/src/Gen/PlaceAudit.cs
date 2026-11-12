@@ -27,10 +27,6 @@ public sealed class PlaceAudit
     public readonly Dictionary<string, int> DoorSizes = new();
     /// <summary>Rooms by their clear height, m.</summary>
     public readonly Dictionary<int, int> RoomHeights = new();
-    /// <summary>Rooms with no way in, by what they are for.</summary>
-    public readonly Dictionary<string, int> Shut = new();
-    /// <summary>Rooms under 3 m clear, by what they are for.</summary>
-    public readonly Dictionary<string, int> Low = new();
     public int Doors, Pieces, Rooms;
 
     public int Count(string kind) => Faults.TryGetValue(kind, out var f) ? f.Count : 0;
@@ -56,55 +52,53 @@ public sealed class PlaceAudit
     public static PlaceAudit Of(Layout layout, BlockGrid g, NavGrid nav)
     {
         var a = new PlaceAudit();
-        a.ReadDoors(layout, g, nav);
-        a.ReadPieces(g, nav);
+        bool Wall(Int3 p) => PieceFacing.Wall(g, layout.Occupied, p, layout.Extras.InSpace);
+        a.ReadDoors(layout, g, nav, Wall);
+        a.ReadPieces(g, nav, Wall);
         a.ReadRooms(layout, g, nav);
         return a;
     }
 
-    bool Wall(BlockGrid g, NavGrid nav, Int3 p)
+    /// <summary>A cell's clear height over the floor it stands on, to the first full block, slope or rock overhead (not a lamp, a cable or a shelf); null if open to the sky.</summary>
+    public static int? ClearHeight(BlockGrid g, NavGrid nav, Int3 c)
     {
-        Block b = g.Get(p);
-        return b.IsAir ? nav.IsRock(p) : BlockInfo.IsFullCube(b.Type) || b.Type is BlockType.Pane or BlockType.Lattice or BlockType.SealedDoor or BlockType.Pillar or BlockType.Rib;
+        for (int h = 0; h < 40; h++)
+        {
+            Int3 q = c + Int3.Up * h;
+            if (!g.InBounds(q)) return null;
+            Block b = g.Get(q);
+            if (b.IsAir ? nav.IsRock(q) : BlockInfo.IsFullCube(b.Type) || BlockInfo.IsSlope(b.Type) || BlockInfo.IsCornerSlope(b.Type)) return h;
+        }
+        return null;
     }
 
-    static bool Floor(BlockGrid g, NavGrid nav, Int3 below) => Settle.Holds(g, nav, below);
-
-    void ReadDoors(Layout layout, BlockGrid g, NavGrid nav)
+    /// <summary>How wide a floor is at a cell: the shorter of its runs across x and z within the floor.</summary>
+    public static int Span(HashSet<Int3> floor, Int3 c)
     {
-        var groups = layout.Doorways.Select(d => (d.Cells, d.Facing)).ToList();
-        groups.Add((layout.ExitCells, layout.EntranceFacing));
-        var seen = new HashSet<Int3>();
-        foreach (var (cells, facing) in groups)
+        int Run(Int3 d) { int n = 1; for (Int3 q = c + d; floor.Contains(q); q += d) n++; for (Int3 q = c - d; floor.Contains(q); q -= d) n++; return n; }
+        return Math.Min(Run(new Int3(1, 0, 0)), Run(new Int3(0, 0, 1)));
+    }
+
+    void ReadDoors(Layout layout, BlockGrid g, NavGrid nav, Func<Int3, bool> wall)
+    {
+        foreach (Settle.DoorShape d in Settle.DoorsOf(layout, g))
         {
-            var doors = cells.Where(c => g.Get(c).Type == BlockType.Door && seen.Add(c)).ToList();
-            if (doors.Count == 0) continue;
             Doors++;
-            Int3 lo = doors.Aggregate(Int3.Min), hi = doors.Aggregate(Int3.Max);
-            int ex = hi.X - lo.X + 1, ez = hi.Z - lo.Z + 1, h = hi.Y - lo.Y + 1;
-            bool alongX = facing is Dir.North or Dir.South;
-            int w = alongX ? ex : ez, d = alongX ? ez : ex;
-            string size = $"{w}x{h}x{d}";
+            string size = $"{d.W}x{d.H}x{d.D}";
             DoorSizes[size] = DoorSizes.GetValueOrDefault(size) + 1;
-            // The leaf runs along the wall: the doorway's long side is across its facing, and the cells either end of the
-            // leaf (at its foot) are wall, while the cells in front of and behind it are not.
-            Int3 endA = alongX ? lo + new Int3(-1, 0, 0) : lo + new Int3(0, 0, -1);
-            Int3 endB = alongX ? hi with { Y = lo.Y } + new Int3(1, 0, 0) : hi with { Y = lo.Y } + new Int3(0, 0, 1);
-            Int3 frontA = lo - facing.Vec(), frontB = lo + facing.Vec();
-            bool endsWall = Wall(g, nav, endA) && Wall(g, nav, endB);
-            bool acrossWall = Wall(g, nav, frontA) && Wall(g, nav, frontB);
-            if (d > w || d == w && !endsWall && acrossWall) Fault("door: turned 90 degrees", lo);
-            foreach (Int3 c in doors)
-                if (g.Get(c).Facing.IsHorizontal() && (g.Get(c).Facing is Dir.North or Dir.South) != alongX) { Fault("door: leaf block turned", c); break; }
-            if (w == 1 && h == 1) Fault("door: 1x1", lo);
-            else if (d > 1) Fault("door: deeper than 1 m", lo);
-            else if (!(h == 2 && w is 1 or 2) && !(w >= 3 && h >= 3)) Fault("door: off the 1x2 and 2x2 standard", lo);
-            foreach (Int3 c in doors)
-                if (c.Y == lo.Y && !Floor(g, nav, c + Int3.Down)) { Fault("door: no floor under it", c); break; }
+            // The leaf runs along the wall: the doorway's long side is across its facing, the cells at the leaf's ends are
+            // wall, and those in front of and behind it are not.
+            bool alongX = d.Facing is Dir.North or Dir.South;
+            if (d.D > d.W || d.D == d.W && !(wall(d.EndA) && wall(d.EndB)) && wall(d.Lo - d.Facing.Vec()) && wall(d.Lo + d.Facing.Vec())) Fault("door: turned 90 degrees", d.Lo);
+            if (d.Cells.Any(c => g.Get(c).Facing.IsHorizontal() && (g.Get(c).Facing is Dir.North or Dir.South) != alongX)) Fault("door: leaf block turned", d.Lo);
+            if (d.W == 1 && d.H == 1) Fault("door: 1x1", d.Lo);
+            else if (d.D > 1) Fault("door: deeper than 1 m", d.Lo);
+            else if (!(d.H == 2 && d.W is 1 or 2) && !(d.W >= 3 && d.H >= 3)) Fault("door: off the 1x2 and 2x2 standard", d.Lo);
+            if (d.Cells.Any(c => c.Y == d.Lo.Y && !Settle.Holds(g, nav, c + Int3.Down))) Fault("door: no floor under it", d.Lo);
         }
     }
 
-    void ReadPieces(BlockGrid g, NavGrid nav)
+    void ReadPieces(BlockGrid g, NavGrid nav, Func<Int3, bool> Wall)
     {
         foreach (var (p, b) in g.Blocks())
         {
@@ -131,8 +125,8 @@ public sealed class PlaceAudit
                     var run = new List<Int3>();
                     for (Int3 q = p; g.Get(q).Type == BlockType.Ladder; q += Int3.Up) run.Add(q);
                     Pieces += run.Count;
-                    int Backs(Dir d) => run.Count(q => Wall(g, nav, q - d.Vec()) && !Wall(g, nav, q + d.Vec()));
-                    int own = run.Count(q => Wall(g, nav, q - f.Vec()));
+                    int Backs(Dir d) => run.Count(q => Wall(q - d.Vec()) && !Wall(q + d.Vec()));
+                    int own = run.Count(q => Wall(q - f.Vec()));
                     if (Dirs.Horizontal.Any(d => d != f && Backs(d) > own)) Fault("ladder: turned off its wall", p);
                     break;
                 }
@@ -141,8 +135,8 @@ public sealed class PlaceAudit
                     if (!f.IsHorizontal()) break;
                     Pieces++;
                     // A plate across its facing: on a wall behind it or in front of it, never with its edge to the wall.
-                    bool flat = Wall(g, nav, p - f.Vec()) || Wall(g, nav, p + f.Vec());
-                    bool edge = Wall(g, nav, p + f.RotateCw(1).Vec()) || Wall(g, nav, p + f.RotateCw(3).Vec());
+                    bool flat = Wall(p - f.Vec()) || Wall(p + f.Vec());
+                    bool edge = Wall(p + f.RotateCw(1).Vec()) || Wall(p + f.RotateCw(3).Vec());
                     if (!flat && edge) Fault("sign: turned edge-on to its wall", p);
                     break;
                 }
@@ -151,17 +145,17 @@ public sealed class PlaceAudit
                     if (!f.IsHorizontal()) break;
                     Pieces++;
                     // Head toward Facing: a bed with its foot on the wall and its head in the room is backwards.
-                    if (Wall(g, nav, p - f.Vec()) && !Wall(g, nav, p + f.Vec()) && g.Get(p + f.Vec()).Type != BlockType.Bed) Fault("bed: backwards", p);
+                    if (Wall(p - f.Vec()) && !Wall(p + f.Vec()) && g.Get(p + f.Vec()).Type != BlockType.Bed) Fault("bed: backwards", p);
                     break;
                 }
                 default:
                     if (Backed(b.Type) && f.IsHorizontal())
                     {
                         Pieces++;
-                        bool front = Wall(g, nav, p + f.Vec()), back = Wall(g, nav, p - f.Vec());
+                        bool front = Wall(p + f.Vec()), back = Wall(p - f.Vec());
                         // Wrong only where its spot offers a right way: a wall to back onto with the room in front.
-                        bool could = Dirs.Horizontal.Any(d => Wall(g, nav, p - d.Vec()) && !Wall(g, nav, p + d.Vec()));
-                        if (front && !back && Dirs.Horizontal.Any(d => !Wall(g, nav, p + d.Vec()))) Fault($"{b.Type.ToString().ToLowerInvariant()}: backwards (faces its wall)", p);
+                        bool could = Dirs.Horizontal.Any(d => Wall(p - d.Vec()) && !Wall(p + d.Vec()));
+                        if (front && !back && Dirs.Horizontal.Any(d => !Wall(p + d.Vec()))) Fault($"{b.Type.ToString().ToLowerInvariant()}: backwards (faces its wall)", p);
                         else if (!(back && !front) && could) Fault($"{b.Type.ToString().ToLowerInvariant()}: turned (side to its wall)", p);
                     }
                     break;
@@ -171,7 +165,7 @@ public sealed class PlaceAudit
             // Nothing set into the rock: below ground, things stand only in the place's own dug cells.
             if (nav.IsRock(p) && b.Role is Role.Debris or Role.Prop or Role.Loot or Role.Story or Role.Growth) Fault($"in the rock: {b.Type}", p);
             // Loose things rest on what is under them.
-            else if (Rests(b.Type) && !Floor(g, nav, p + Int3.Down)) Fault($"rests on nothing: {b.Type}", p);
+            else if (Rests(b.Type) && !Settle.Holds(g, nav, p + Int3.Down)) Fault($"rests on nothing: {b.Type}", p);
         }
     }
 
@@ -186,33 +180,18 @@ public sealed class PlaceAudit
             // (A room bricked up whole, its plan's cells filled in, is a wall now, not a room.)
             if (m.Kind is not (ModuleKind.Room or ModuleKind.Hall or ModuleKind.Vault) || m.Shape.Occupied.Count == 0) continue;
             Rooms++;
-            if (!secret.Contains(m.Index) && Fixtures.RoomCell(m, reach) == null)
-            {
-                Fault("room: no way in", m.Min);
-                Shut[m.Purpose] = Shut.GetValueOrDefault(m.Purpose) + 1;
-            }
-            // Clear height: from the floor up to the first solid, over the room's floor cells; the room's commonest.
-            var heights = new Dictionary<int, int>();
-            foreach (Int3 c in m.Cells)
-            {
-                // At the room's own floor (what the years heaped on it raises nothing).
-                if (c.Y != m.Min.Y || !nav.StandsOn(c)) continue;
-                int hgt = 0;
-                // Up to the ceiling: the first full block (or the rock) overhead, not a lamp, a cable or a shelf's top.
-                bool Ceiling(Int3 q) => g.Get(q) is var cb && (cb.IsAir ? nav.IsRock(q) : BlockInfo.IsFullCube(cb.Type) || BlockInfo.IsSlope(cb.Type) || BlockInfo.IsCornerSlope(cb.Type));
-                while (hgt < 40 && !Ceiling(c + Int3.Up * hgt) && g.InBounds(c + Int3.Up * hgt)) hgt++;
-                if (hgt >= 40 || !g.InBounds(c + Int3.Up * hgt)) continue; // open to the sky
-                heights[hgt] = heights.GetValueOrDefault(hgt) + 1;
-            }
-            if (heights.Count == 0) continue;
-            int common = heights.MaxBy(kv => kv.Value).Key;
+            if (!secret.Contains(m.Index) && Fixtures.RoomCell(m, reach) == null) Fault("room: no way in", m.Min);
+            if (RoomClear(m, g, nav) is not int common) continue;
             RoomHeights[common] = RoomHeights.GetValueOrDefault(common) + 1;
-            if (m.Kind == ModuleKind.Room && common < 3)
-            {
-                Fault("room: ceiling under 3 m", m.Min);
-                Low[m.Purpose] = Low.GetValueOrDefault(m.Purpose) + 1;
-            }
+            if (m.Kind == ModuleKind.Room && common < 3) Fault("room: ceiling under 3 m", m.Min);
         }
+    }
+
+    /// <summary>A room's clear height: the commonest over its own floor (what the years heaped on it raises nothing).</summary>
+    public static int? RoomClear(PlacedModule m, BlockGrid g, NavGrid nav)
+    {
+        var heights = m.Cells.Where(c => c.Y == m.Min.Y && nav.StandsOn(c)).Select(c => ClearHeight(g, nav, c)).OfType<int>().ToList();
+        return heights.Count == 0 ? null : heights.GroupBy(h => h).MaxBy(x => x.Count())!.Key;
     }
 
     /// <summary>Another audit's counts added to this one's.</summary>
@@ -221,8 +200,6 @@ public sealed class PlaceAudit
         foreach (var kv in o.Faults) Faults[kv.Key] = Faults.TryGetValue(kv.Key, out var f) ? (f.Count + kv.Value.Count, f.First) : kv.Value;
         foreach (var kv in o.DoorSizes) DoorSizes[kv.Key] = DoorSizes.GetValueOrDefault(kv.Key) + kv.Value;
         foreach (var kv in o.RoomHeights) RoomHeights[kv.Key] = RoomHeights.GetValueOrDefault(kv.Key) + kv.Value;
-        foreach (var kv in o.Shut) Shut[kv.Key] = Shut.GetValueOrDefault(kv.Key) + kv.Value;
-        foreach (var kv in o.Low) Low[kv.Key] = Low.GetValueOrDefault(kv.Key) + kv.Value;
         Doors += o.Doors;
         Pieces += o.Pieces;
         Rooms += o.Rooms;

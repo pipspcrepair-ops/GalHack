@@ -86,8 +86,7 @@ public partial class PoiTest
                     t.RoomFloor += floor.Count;
                     t.Areas.Add(floor.Count);
                     var set = floor.ToHashSet();
-                    int Run(Int3 c, Int3 d) { int n = 1; for (Int3 q = c + d; set.Contains(q); q += d) n++; for (Int3 q = c - d; set.Contains(q); q -= d) n++; return n; }
-                    var across = floor.Select(c => Math.Min(Run(c, new Int3(1, 0, 0)), Run(c, new Int3(0, 0, 1)))).OrderBy(w => w).ToList();
+                    var across = floor.Select(c => PlaceAudit.Span(set, c)).OrderBy(w => w).ToList();
                     t.Spans.Add(across[across.Count / 2]);
                     foreach (Int3 c in floor)
                     {
@@ -168,24 +167,15 @@ public partial class PoiTest
                         // Its clear width: at each floor cell the shorter of its runs across x and z, the corridor's median
                         // (an L or a tee is as wide as its arms).
                         var set = floor.ToHashSet();
-                        int Run(Int3 c, Int3 d) { int n = 1; for (Int3 q = c + d; set.Contains(q); q += d) n++; for (Int3 q = c - d; set.Contains(q); q -= d) n++; return n; }
-                        var across = floor.Select(c => Math.Min(Run(c, new Int3(1, 0, 0)), Run(c, new Int3(0, 0, 1)))).OrderBy(w => w).ToList();
+                        var across = floor.Select(c => PlaceAudit.Span(set, c)).OrderBy(w => w).ToList();
                         corridors.Add((m.Max.Y < 0 ? "underground" : f.Id, across[across.Count / 2]));
                     }
                     else if (refs.Rooms.ContainsKey(m.Purpose))
                     {
-                        // Its clear height: floor to the first full block or slope overhead, the room's commonest.
-                        var hs = new Dictionary<int, int>();
-                        foreach (Int3 c in floor)
-                        {
-                            int h = 0;
-                            while (h < 40 && layout.Blocks.InBounds(c + Int3.Up * h) && !(layout.Blocks.Get(c + Int3.Up * h) is var cb && (cb.IsAir ? nav.IsRock(c + Int3.Up * h) : BlockInfo.IsFullCube(cb.Type) || BlockInfo.IsSlope(cb.Type)))) h++;
-                            if (h < 40 && layout.Blocks.InBounds(c + Int3.Up * h)) hs[h] = hs.GetValueOrDefault(h) + 1;
-                        }
-                        if (hs.Count > 0)
+                        if (PlaceAudit.RoomClear(m, layout.Blocks, nav) is int clear)
                         {
                             if (!clears.TryGetValue(m.Purpose, out var cl)) clears[m.Purpose] = cl = new List<int>();
-                            cl.Add(hs.MaxBy(kv => kv.Value).Key);
+                            cl.Add(clear);
                         }
                         if (!areas.TryGetValue(m.Purpose, out var list)) areas[m.Purpose] = list = new List<int>();
                         list.Add(floor.Count);

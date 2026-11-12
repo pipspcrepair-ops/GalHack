@@ -21,13 +21,12 @@ public static class Settle
     /// <summary>How far a thing may fall to its rest, cells; further and it goes.</summary>
     const int MaxDrop = 24;
 
-    /// <summary>Settles a spawned place; returns how many things moved and how many went.</summary>
-    public static (int Moved, int Removed) Apply(PoiInstance inst)
+    /// <summary>Settles a spawned place.</summary>
+    public static void Apply(PoiInstance inst)
     {
         BlockGrid g = inst.Blocks;
-        Doors(inst);
         var nav = inst.Nav();
-        int moved = 0, removed = 0;
+        Doors(inst, nav);
         // Bottom up, so a stack settles from its foot.
         foreach (var (p, b) in g.Blocks().ToList())
         {
@@ -35,13 +34,12 @@ public static class Settle
             if (nav.IsRock(p) && Loose(b))
             {
                 g.Set(p, Block.Air);
-                removed++;
                 continue;
             }
             // A floor's finish is paint on the block under it: where that block went, so does the paint.
             if (BlockInfo.IsFinish(b.Type))
             {
-                if (!Painted(g, nav, p + Int3.Down)) { g.Set(p, Block.Air); removed++; }
+                if (!Painted(g, nav, p + Int3.Down)) g.Set(p, Block.Air);
                 continue;
             }
             if (!PlaceAudit.Rests(b.Type) || Kept(b) || Holds(g, nav, p + Int3.Down)) continue;
@@ -53,60 +51,47 @@ public static class Settle
                 fall++;
             }
             g.Set(p, Block.Air);
-            if (fall < MaxDrop && to != p && Open(g, nav, to) && Holds(g, nav, to + Int3.Down))
-            {
-                g.Set(to, b);
-                moved++;
-            }
-            else removed++;
+            if (fall < MaxDrop && to != p && Open(g, nav, to) && Holds(g, nav, to + Int3.Down)) g.Set(to, b);
         }
-        return (moved, removed);
     }
 
-    /// <summary>
-    /// A door is a whole door in a whole wall, or it isn't there: where the years broke a doorway's leaves into pieces
-    /// (a lone 1 m leaf, a strip a metre high) or took the wall from either end of it, what is left of the door goes,
-    /// and the doorway is a gap. Returns how many door cells went.
-    /// </summary>
-    public static int Doors(PoiInstance inst)
+    /// <summary>A doorway's door as it stands: its door cells, which way the doorway faces, its box, and the cells at its leaf's two ends.</summary>
+    public readonly record struct DoorShape(List<Int3> Cells, Dir Facing, Int3 Lo, Int3 Hi, int W, int H, int D, Int3 EndA, Int3 EndB);
+
+    /// <summary>Every doorway with a door in it (the way in too), each door cell counted once.</summary>
+    public static IEnumerable<DoorShape> DoorsOf(Layout layout, BlockGrid g)
     {
-        BlockGrid g = inst.Blocks;
-        var nav = inst.Nav();
-        Layout layout = inst.Layout;
-        var groups = layout.Doorways.Select(d => (d.Cells, d.Facing)).ToList();
-        groups.Add((layout.ExitCells, layout.EntranceFacing));
-        int gone = 0;
-        // What holds a door's leaf at its ends: a wall, a post, the next door's frame, the rock.
-        bool Held(Int3 p) => PieceFacing.Wall(g, layout.Occupied, p, layout.Extras.InSpace) || g.Get(p).Type is BlockType.Door;
-        foreach (var (cells, facing) in groups)
+        var seen = new HashSet<Int3>();
+        foreach (var (cells, facing) in layout.Doorways.Select(d => (d.Cells, d.Facing)).Append((layout.ExitCells, layout.EntranceFacing)))
         {
-            var doors = cells.Where(c => g.Get(c).Type == BlockType.Door).Distinct().ToList();
+            var doors = cells.Where(c => g.Get(c).Type == BlockType.Door && seen.Add(c)).ToList();
             if (doors.Count == 0) continue;
             Int3 lo = doors.Aggregate(Int3.Min), hi = doors.Aggregate(Int3.Max);
             bool alongX = facing is Dir.North or Dir.South;
-            int w = alongX ? hi.X - lo.X + 1 : hi.Z - lo.Z + 1, d = alongX ? hi.Z - lo.Z + 1 : hi.X - lo.X + 1, h = hi.Y - lo.Y + 1;
-            Int3 endA = alongX ? lo + new Int3(-1, 0, 0) : lo + new Int3(0, 0, -1);
-            Int3 endB = alongX ? hi with { Y = lo.Y } + new Int3(1, 0, 0) : hi with { Y = lo.Y } + new Int3(0, 0, 1);
-            bool whole = h >= 2 && doors.Count == w * h * d;
-            // ...and with floor under its foot (where the years took the floor from under a doorway, the door went with it).
-            bool walled = Held(endA) && Held(endB) && doors.Where(c => c.Y == lo.Y).All(c => Holds(g, nav, c + Int3.Down));
-            if (whole && walled) continue;
-            if (!whole) System.Threading.Interlocked.Increment(ref Broken);
-            else
-            {
-                System.Threading.Interlocked.Increment(ref Unwalled);
-                lock (Ends) { Ends[Name(g.Get(endA))] = Ends.GetValueOrDefault(Name(g.Get(endA))) + 1; Ends[Name(g.Get(endB))] = Ends.GetValueOrDefault(Name(g.Get(endB))) + 1; }
-            }
-            foreach (Int3 c in doors) g.Set(c, Block.Air);
-            gone += doors.Count;
+            int ex = hi.X - lo.X + 1, ez = hi.Z - lo.Z + 1;
+            Int3 side = alongX ? new Int3(1, 0, 0) : new Int3(0, 0, 1);
+            yield return new DoorShape(doors, facing, lo, hi, alongX ? ex : ez, hi.Y - lo.Y + 1, alongX ? ez : ex, lo - side, (hi with { Y = lo.Y }) + side);
         }
-        return gone;
     }
 
-    /// <summary>Doors taken out as broken or as left with no wall at an end, and what stood at the ends (tests read them).</summary>
-    public static int Broken, Unwalled;
-    public static readonly Dictionary<string, int> Ends = new();
-    static string Name(Block b) => b.IsAir ? "air" : b.Type.ToString();
+    /// <summary>
+    /// A door is a whole door in a whole wall over a floor, or it isn't there: where the years broke a doorway's leaves into
+    /// pieces (a lone 1 m leaf, a strip a metre high), took the wall from either end of it or the floor from under it, what
+    /// is left of the door goes and the doorway is a gap.
+    /// </summary>
+    static void Doors(PoiInstance inst, NavGrid nav)
+    {
+        BlockGrid g = inst.Blocks;
+        Layout layout = inst.Layout;
+        // What holds a leaf at its ends: a wall, a post, the next door's frame, the rock.
+        bool Held(Int3 p) => PieceFacing.Wall(g, layout.Occupied, p, layout.Extras.InSpace) || g.Get(p).Type is BlockType.Door;
+        foreach (DoorShape d in DoorsOf(layout, g).ToList())
+        {
+            bool whole = d.H >= 2 && d.Cells.Count == d.W * d.H * d.D;
+            if (whole && Held(d.EndA) && Held(d.EndB) && d.Cells.Where(c => c.Y == d.Lo.Y).All(c => Holds(g, nav, c + Int3.Down))) continue;
+            foreach (Int3 c in d.Cells) g.Set(c, Block.Air);
+        }
+    }
 
     /// <summary>The plan's own things, recorded by cell: never moved here.</summary>
     static bool Kept(Block b) => b.Type is BlockType.Cache or BlockType.Terminal or BlockType.Core || b.Role is Role.Loot or Role.Core or Role.Terminal or Role.Story;
