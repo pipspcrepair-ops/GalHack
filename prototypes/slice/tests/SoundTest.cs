@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using GalHack.Physics.Engine;
 using GalHack.Structures;
+using Wildlife;
 using Godot;
 using Slice.Game;
 using Slice.Surface;
@@ -63,6 +65,9 @@ public partial class SoundTest : Node
         GD.Print($"  {(ok ? "ok   " : "FAIL ")} {what}");
     }
 
+    static readonly string Nl = ((char)10).ToString();
+    static readonly string Header = string.Join(Nl, "schema galhack.blueprint", "version 1", "name \"Shut\"", "grid large", "mode base", "gravity off") + Nl;
+
     SurfaceZone Zone => _game.Zone;
     Slice.Player.Survivor Me => _game.Survivor;
     SliceAudio Audio => _game.Audio;
@@ -82,6 +87,7 @@ public partial class SoundTest : Node
         foreach (int x in _drive.ClimbOut(_game.Bunker)) yield return x;
 
         Formulas();
+        Moods();
         foreach (int x in Outdoors()) yield return x;
         foreach (int x in Indoors()) yield return x;
     }
@@ -102,6 +108,39 @@ public partial class SoundTest : Node
         float indoors = AmbientExposure.WindLevel(25f, 1f, 1f, 0f, 0f, false, false);
         Check(indoors < gale * 0.15f && AmbientExposure.WindLevel(25f, 1f, 1f, 0f, 0f, true, false) == 0f, $"wind: muffled indoors ({indoors:F2} of {gale:F2}), gone in a shut room");
         Check(WindHowl.Loudness(3f) == 0f && WindHowl.Loudness(30f) > WindHowl.Loudness(12f) && WindHowl.Loudness(12f) > 0f, "howl: silent in a calm, louder as the wind rises");
+    }
+
+    /// <summary>Per-person moods: events move them, time settles them, nerve and job colour them, and they show.</summary>
+    void Moods()
+    {
+        var calm = new Slice.Places.Feeling { Nerve = 0.5f };
+        Check(calm.Mood == Slice.Places.PersonMood.Calm && calm.Idle(1f, 0) == BodyAct.None && calm.Pace == 1f, "a person starts calm, at an ordinary pace");
+        var timid = new Slice.Places.Feeling { Nerve = 0.1f };
+        var bold = new Slice.Places.Feeling { Nerve = 0.9f, Armed = true };
+        timid.Hit(Slice.Places.MoodEvent.Shot);
+        bold.Hit(Slice.Places.MoodEvent.Shot);
+        Check(timid.Mood == Slice.Places.PersonMood.Scared && timid.Pace > 1.3f && timid.Intent == Slice.Places.MoodIntent.Flee && timid.Hunch > 0.4f, $"a shot beside a timid person scares them: {timid.Mood}, pace {timid.Pace:F2}, {timid.Intent}");
+        Check(bold.Fear < timid.Fear && bold.Anger > timid.Anger, $"the same shot stirs a bold armed person less fear ({bold.Fear:F2} against {timid.Fear:F2}) and more anger");
+        Check(timid.Idle(1f, 0) == BodyAct.Cower, "and the scared one cowers when idle");
+        for (int i = 0; i < 600; i++) timid.Step(0.1f, false);
+        Check(timid.Mood == Slice.Places.PersonMood.Calm, $"a minute on, they have settled: {timid.Mood} (fear {timid.Fear:F2})");
+        var griever = new Slice.Places.Feeling { Nerve = 0.5f };
+        griever.Hit(Slice.Places.MoodEvent.LostKin);
+        Check(griever.Mood == Slice.Places.PersonMood.Grieving && griever.Pace < 0.9f && griever.Idle(1f, 0) == BodyAct.Grieve, $"losing a partner: {griever.Mood}, slow, grieving");
+        var host = new Slice.Places.Feeling { Nerve = 0.5f };
+        host.Hit(Slice.Places.MoodEvent.Gift);
+        Check(host.Mood == Slice.Places.PersonMood.Content, "a gift lifts the mood to content");
+        var fire = new Slice.Places.Feeling { Nerve = 0.5f };
+        for (int i = 0; i < 1200; i++) fire.Step(0.1f, true);
+        Check(fire.Mood == Slice.Places.PersonMood.Content, $"two minutes at a gathering fire: {fire.Mood}");
+        var drunk = new Slice.Places.Feeling { Drunk = true };
+        Check(drunk.Mood == Slice.Places.PersonMood.Drunk && drunk.Pace < 0.9f, "a drunk is drunk");
+        drunk.Hit(Slice.Places.MoodEvent.Harm);
+        drunk.Hit(Slice.Places.MoodEvent.Harm);
+        Check(drunk.Mood != Slice.Places.PersonMood.Drunk, $"until something frightens or angers them: {drunk.Mood}");
+        var angry = new Slice.Places.Feeling { Nerve = 0.9f, Armed = true };
+        angry.Hit(Slice.Places.MoodEvent.Robbed);
+        Check(angry.Mood is Slice.Places.PersonMood.Angry or Slice.Places.PersonMood.Scared && angry.Anger > 0.4f, $"being robbed angers a bold person: {angry.Mood}, anger {angry.Anger:F2}, {angry.Intent}");
     }
 
     IEnumerable<int> Settle(int frames)
@@ -179,21 +218,12 @@ public partial class SoundTest : Node
         ex.Held = false;
         foreach (bool gap in new[] { false, true })
         {
-            var text = new System.Text.StringBuilder("schema galhack.blueprint
-version 1
-name \"Shut\"
-grid large
-mode base
-gravity off
-");
+            var text = new System.Text.StringBuilder(Header);
             for (int y = 0; y <= 4; y++)
             for (int z = -5; z <= 5; z++)
             for (int x = -5; x <= 5; x++)
-                if ((y == 0 || y == 4 || Math.Abs(x) == 5 || Math.Abs(z) == 5) && !(gap && x == 5 && Math.Abs(z) <= 1 && y >= 1 && y <= 3)) text.Append($"block {x} {y} {z} steel
-");
-            text.Append("block 4 1 4 core
-block -4 1 -4 generator
-");
+                if ((y == 0 || y == 4 || Math.Abs(x) == 5 || Math.Abs(z) == 5) && !(gap && x == 5 && Math.Abs(z) <= 1 && y >= 1 && y <= 3)) text.Append($"block {x} {y} {z} steel{Nl}");
+            text.Append("block 4 1 4 core" + Nl + "block -4 1 -4 generator" + Nl);
             var bp = Blueprint.Load(text.ToString(), Zone.Data.Catalogue, out List<string> errors);
             Check(bp != null, $"the room's blueprint loads {string.Join("; ", errors)}");
             Vector3 site = Zone.GroundAt(feet.X + (gap ? 80f : 30f), feet.Z);
