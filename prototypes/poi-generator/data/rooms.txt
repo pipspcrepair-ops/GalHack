@@ -476,7 +476,7 @@ room cellblock
 room guardroom
   deco guardpost
   name Guard room
-  width 4 7
+  width 3 5
   area 10 30
   props locker 3 table 1 screen 1
   fill 0.5

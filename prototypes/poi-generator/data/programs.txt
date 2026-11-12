@@ -478,7 +478,8 @@ program cathedral
   rooms ground lobby! chapel! archive
   rooms upper chapel archive monitor
   rooms top chapel monitor
-  rooms deepest vault! cryo-bay
+  hall deepest cryo-bay
+  rooms deepest vault!
   fill chapel archive
 
 # A shed: one long room, a workbench and whatever was left in it.
