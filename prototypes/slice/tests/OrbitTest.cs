@@ -623,7 +623,7 @@ public partial class OrbitTest : Node
             if (back.Id == null || back.Blocks != h.Blocks || back.Zone != h.Zone || !back.Items.Equals(h.Items)) missing.Add(h.Name);
         }
         Check(missing.Count == 0, $"every structure, device and container left on the surface is as it was: {_left.Count(h => h.Zone == ZoneLedger.Surface)} holders ({string.Join(", ", missing)})");
-        Check(_game.Survivor.Seated == _skiff && _skiff.Structure.Count == _game.StarterPlan.Count, $"the Skiff came home whole: {_skiff.Structure.Count} blocks");
+        Check(_game.Survivor.Seated == _skiff && _skiff.Structure.Count == _game.StarterPlan.Count && _skiff.Body.Damage == 0f, $"the Skiff came home whole and undamaged from the whole trip: {_skiff.Structure.Count} blocks, damage {_skiff.Body.Damage:F2}");
         if (_wreck != null)
             Check(_wreck.Structure.Count == _salvagedTo + 1 && _wreck.Storage.IsEmpty && _wreck.Structure.Core != null,
                 $"orbit waits as it was left: the wreck salvaged ({_salvagedTo} blocks and the core), emptied ({_lootedFrom} items gone) and claimed");

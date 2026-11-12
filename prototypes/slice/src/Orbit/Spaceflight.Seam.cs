@@ -73,7 +73,7 @@ public partial class Spaceflight
         Celestial c = Here;
         N.Vector3 q = c.ToGlobe(world.ToNumerics());
         (x, z) = c.Map.MapPoint(q);
-        Vector3 near = _leftAt.TryGetValue(c, out Vector3 left) ? left : Vector3.Zero;
+        Vector3 near = _leftAt.TryGetValue(c, out Vector3 left) ? left : new Vector3((float)c.Map.Width / 2f, 0f, (float)c.Map.Height / 2f);
         return new Vector3((float)PlanetSurface.Terrain.TerrainStreamer.NearestCopy(x, 0, near.X, c.Map.Width), c.SurfaceHeight(q.Length()),
             (float)PlanetSurface.Terrain.TerrainStreamer.NearestCopy(z, 0, near.Z, c.Map.Height));
     }
