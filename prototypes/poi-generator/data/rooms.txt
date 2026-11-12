@@ -453,7 +453,7 @@ room cell
   deco cellblock
   name Cell
   width 3 5
-  area 6 12
+  area 6 16
   props bunk 2 cell 1
   fill 0.5
   near cellblock guardroom

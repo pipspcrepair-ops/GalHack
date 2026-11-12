@@ -46,7 +46,7 @@ room plant 10 120
 room reactor 60 400
 room generator 15 120
 room cellblock 50 260
-room cell 6 12
+room cell 6 16
 room guardroom 10 30
 room solitary 6 16
 room evidence 15 40

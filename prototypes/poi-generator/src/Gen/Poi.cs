@@ -343,7 +343,6 @@ public static class PoiFactory
         Structure.DropUntethered(inst.Blocks); // cables and tendrils always hang from something
         // Repair after decay: anything the passes above left hanging in the air (a canopy cut off by a
         // ruin, a wall stub after the timber rotted) comes down. The flood fill in Spawn then checks the way in.
-        Settle.Doors(inst); // before the repair: a lintel a broken door held up comes down with it
         var anchors = layout.Extras.InSpace ? LayoutCheck.StationAnchors(layout) : null;
         foreach (Int3 p in Structure.Floating(inst.Blocks, layout.Occupied, anchors, layout.Extras.Plain.Count > 0)) inst.Blocks.Set(p, Block.Air);
         Structure.DropUntethered(inst.Blocks);

@@ -321,7 +321,8 @@ program prison
   windows 0.15
   secrets 2 3
   rooms ground security! guardroom lobby
-  rooms upper cellblock*2-3 guardroom
+  hall upper cellblock
+  rooms upper guardroom cell*2-4
   rooms top guardroom command
   rooms basement cellblock solitary mess storage
   rooms deepest evidence! solitary vault
@@ -388,7 +389,8 @@ program factory_works
   lift 0.3
   windows 0.45
   secrets 0 1
-  rooms ground lobby! loading-dock! warehouse
+  hall ground warehouse
+  rooms ground lobby! loading-dock!
   rooms upper office control! parts-store
   rooms top office archive
   rooms basement boiler-house! generator storage

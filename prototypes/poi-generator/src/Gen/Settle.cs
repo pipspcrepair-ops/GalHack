@@ -10,8 +10,7 @@ namespace PoiGenerator.Gen;
 /// <list type="bullet">
 /// <item>Something that stands on the floor of its cell (a crate, a table, rubble, a bed, a pod) with nothing under
 /// it drops straight down onto the first thing that holds it, if the way down is clear; where it isn't, or it would
-/// fall out of the place, it goes. Kept records (caches, terminals, the core) are never moved: they are the plan's,
-/// and their checks are the validator's.</item>
+/// fall out of the place, it goes; the plan's caches, terminals and core move with their records, or stay.</item>
 /// <item>Below ground, loose things lie only in the place's own dug cells: debris left in the rock (a wall below
 /// ground broken into rubble where there was rock behind it) goes.</item>
 /// </list>
@@ -25,6 +24,10 @@ public static class Settle
     public static void Apply(PoiInstance inst)
     {
         BlockGrid g = inst.Blocks;
+        Layout layout = inst.Layout;
+        // A lintel only a broken door held up comes down with it.
+        if (Doors(inst))
+            foreach (Int3 p in Structure.Floating(g, layout.Occupied, layout.Extras.InSpace ? LayoutCheck.StationAnchors(layout) : null, layout.Extras.Plain.Count > 0)) g.Set(p, Block.Air);
         var nav = inst.Nav();
         // Bottom up, so a stack settles from its foot.
         foreach (var (p, b) in g.Blocks().ToList())
@@ -41,7 +44,7 @@ public static class Settle
                 if (!Painted(g, nav, p + Int3.Down)) g.Set(p, Block.Air);
                 continue;
             }
-            if (!PlaceAudit.Rests(b.Type) || Kept(b) || Holds(g, nav, p + Int3.Down)) continue;
+            if (!PlaceAudit.Rests(b.Type) || Holds(g, nav, p + Int3.Down)) continue;
             Int3 to = p;
             int fall = 0;
             while (fall < MaxDrop && Open(g, nav, to + Int3.Down) && !Holds(g, nav, to + Int3.Down))
@@ -49,8 +52,16 @@ public static class Settle
                 to += Int3.Down;
                 fall++;
             }
+            bool lands = fall < MaxDrop && to != p && Open(g, nav, to) && Holds(g, nav, to + Int3.Down);
+            // The plan's own things (caches, terminals, the core) are kept by cell: they move with their records, and stay if they can't land.
+            bool kept = b.Type is BlockType.Cache or BlockType.Terminal or BlockType.Core;
+            if (kept && !lands) continue;
             g.Set(p, Block.Air);
-            if (fall < MaxDrop && to != p && Open(g, nav, to) && Holds(g, nav, to + Int3.Down)) g.Set(to, b);
+            if (!lands) continue;
+            g.Set(to, b);
+            foreach (LootCache c in inst.Caches) if (c.Cell == p) c.Cell = to;
+            foreach (TerminalLog t in inst.Terminals) if (t.Cell == p) t.Cell = to;
+            if (inst.CoreCell == p) inst.CoreCell = to;
         }
     }
 
@@ -78,8 +89,9 @@ public static class Settle
     /// pieces (a lone 1 m leaf, a strip a metre high), took the wall from either end of it or the floor from under it, what
     /// is left of the door goes and the doorway is a gap.
     /// </summary>
-    public static void Doors(PoiInstance inst)
+    static bool Doors(PoiInstance inst)
     {
+        bool any = false;
         var nav = inst.Nav();
         BlockGrid g = inst.Blocks;
         Layout layout = inst.Layout;
@@ -90,14 +102,13 @@ public static class Settle
             bool whole = d.H >= 2 && d.Cells.Count == d.W * d.H * d.D;
             if (whole && Held(d.EndA) && Held(d.EndB) && d.Cells.Where(c => c.Y == d.Lo.Y).All(c => Holds(g, nav, c + Int3.Down))) continue;
             foreach (Int3 c in d.Cells) g.Set(c, Block.Air);
+            any = true;
         }
+        return any;
     }
 
-    /// <summary>The plan's own things, recorded by cell: never moved here.</summary>
-    static bool Kept(Block b) => b.Type is BlockType.Cache or BlockType.Terminal or BlockType.Core || b.Role is Role.Loot or Role.Core or Role.Terminal or Role.Story;
-
     /// <summary>What isn't built: debris, props, growth.</summary>
-    static bool Loose(Block b) => b.Role is Role.Debris or Role.Prop or Role.Growth && !Kept(b);
+    static bool Loose(Block b) => b.Role is Role.Debris or Role.Prop or Role.Growth;
 
     /// <summary>What a floor's finish can be painted on: the top of a full block or a lattice, or the ground.</summary>
     public static bool Painted(BlockGrid g, NavGrid nav, Int3 below)
