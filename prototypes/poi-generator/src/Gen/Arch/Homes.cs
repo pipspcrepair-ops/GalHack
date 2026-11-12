@@ -22,7 +22,7 @@ public sealed record PlainBox(Int3 Min, Int3 Max, int Eave, Dir Front);
 /// They are built the way a player builds. POI cells are 1 m and the player's large block is 2 m, so
 /// everything keeps to a 2 m lattice in plan and in storeys, in shapes the player has: walls and
 /// slabs are large half blocks (1 m thick on their 2 m module), roofs are 45 degree slopes (a pair of
-/// 1 m ramps and the fill under them is one large slope), floors and paths are thin plates, doors are
+/// 1 m ramps and the fill under them is one large slope), floors and paths are never blocks of their own but a finish painted on the top of the block or the ground under them (<see cref="BlockInfo.IsFinish"/>), doors are
 /// the standard door (one large block, nothing low over the way to it) and windows are panes in a 2 m wide opening, and everything is plain paint on a
 /// plain material. You can read a ruin and rebuild it block for block.
 ///
