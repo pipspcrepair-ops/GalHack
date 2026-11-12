@@ -151,6 +151,9 @@ public sealed partial class Vessel
     /// <summary>How far the chair reaches out from its seat across the floor, m: getting up puts you past it.</summary>
     public float ChairReach { get; private set; }
 
+    /// <summary>How far the seat stands above the floor its sitter's feet rest on, m (the figure's legs reach down to it).</summary>
+    public float SeatDrop { get; private set; }
+
     string _legsKey = "";
 
     Vessel(SurfaceZone zone, Structure structure, Body body)
@@ -463,6 +466,25 @@ public sealed partial class Vessel
         Eye = StructureBridge.EyePoint(Structure, anchor, chair);
         Int3 size = Footprint.WorldSize(Structure.TypeOf(chair), chair.Rot);
         ChairReach = MathF.Max(size.X, size.Z) * Structure.Grid.CellSize;
+        SeatDrop = FloorUnder(Structure.TypeOf(chair), Structure.Grid.CellSize);
+    }
+
+    /// <summary>Where a seated person's feet come down, m ahead of the seat point: past the seat's front edge, short of a console.</summary>
+    const float FeetAhead = 0.4f;
+
+    /// <summary>
+    /// How far a chair's seat stands above what its sitter's feet rest on, m: the highest of its own
+    /// parts under the feet and below the seat (a cockpit's floor), or the bottom of its box (an open
+    /// chair stands on the block under it). The chair faces -z in its own frame.
+    /// </summary>
+    static float FloorUnder(BlockType t, float cell)
+    {
+        N.Vector3 size = t.Size.ToVector3() * cell, seat = t.Seat;
+        float z = seat.Z - FeetAhead / size.Z, floor = -0.5f;
+        foreach (Part p in t.Parts)
+            if (!p.ClosedOnly && p.Max.Y < seat.Y - 0.02f && p.Min.X <= seat.X && p.Max.X >= seat.X && p.Min.Z <= z && p.Max.Z >= z)
+                floor = MathF.Max(floor, p.Max.Y);
+        return (seat.Y - floor) * size.Y;
     }
 
     string LegsKey() => Spec == null ? "" : string.Join(";", Spec.Legs.Select(l => l.Hip.ToString())) + "|" + string.Join(";", Spec.HoverPoints);

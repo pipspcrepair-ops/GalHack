@@ -889,7 +889,10 @@ public partial class Game : Node3D
         if (Survivor == null) return;
         LoadAhead(delta);
         PoseFigure(delta);
-        Camera.SetCullMaskValue(2, (ThirdPerson || FixedCamera != null) && Survivor.Seated == null);
+        // Seen from outside, the whole figure; in first person only seated (its lap under the view), and never the head the eye is in.
+        bool outside = ThirdPerson || FixedCamera != null;
+        Camera.SetCullMaskValue(Slice.Player.CharacterModel.BodyLayer, outside || Survivor.Seated != null);
+        Camera.SetCullMaskValue(Slice.Player.CharacterModel.HeadLayer, outside);
         Camera.GlobalTransform = FixedCamera ?? (Survivor.Seated is Vessel v && ThirdPerson
             ? Chase(v, 1.6f, 0.5f)
             : ThirdPerson ? Survivor.Eye().TranslatedLocal(new Vector3(0f, 0.6f, 4.5f)) : CloseUpView(Survivor.Eye()));

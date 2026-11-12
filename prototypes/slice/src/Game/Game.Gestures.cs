@@ -79,7 +79,7 @@ public partial class Game
         Gestured?.Invoke(g);
     }
 
-    /// <summary>The castaway's figure as seen from outside (third person, screenshots): its arms make your gestures.</summary>
+    /// <summary>The castaway's figure as seen from outside (third person, screenshots) and, seated, from its own eyes: its arms make your gestures.</summary>
     public Node3D Figure { get; private set; }
 
     /// <summary>Seconds of play since the last gesture was made (the figure's clock: it stops with the world).</summary>
@@ -111,13 +111,14 @@ public partial class Game
             Ladder = legs.Climb != GalHack.Physics.ClimbMode.None,
             Riding = s.OnBike != null,
             Seated = s.Seated != null,
+            SeatDrop = s.Seated?.SeatDrop ?? 0f,
             Pitch = s.Pitch,
         };
         Transform3D place;
         if (s.OnBike is Slice.Vehicles.HoverBike bike)
             place = bike.Node.GetGlobalTransformInterpolated() * new Transform3D(Basis.Identity, new Vector3(0f, 0.07f, 0.35f));
         else if (s.Seated is Slice.Vessels.Vessel seat && seat.Seat is System.Numerics.Vector3 chair)
-            place = seat.DrawTransform * new Transform3D(seat.ChairBasis, chair.ToGodot() - seat.ChairBasis.Y * 0.32f);
+            place = seat.DrawTransform * new Transform3D(seat.ChairBasis, chair.ToGodot() - seat.ChairBasis.Y * seat.SeatDrop); // on the floor under the seat: the figure puts its hips on the seat
         else
         {
             // The view's own frame with its pitch taken out: the eye's heading, feet under it.
