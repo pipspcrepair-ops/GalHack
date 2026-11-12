@@ -227,8 +227,6 @@ public partial class CombatTest : Node
     {
         GD.Print("-- people and machines in the wild --");
         var patch = game.Zone.Wildlife;
-        WildSim sim = patch.Sim;
-        if (sim == null) { Check(false, "the patch has a sim"); yield break; }
         double max = game.Suit.Sim.Data.Vitals.Health.Max;
         // Somewhere open under the sky (no roof over it).
         Vector3 start = game.Survivor.WorldFeet;
@@ -240,6 +238,8 @@ public partial class CombatTest : Node
             for (int i = 0; i < 60; i++) { game.Suit.Vitals.Health = max; yield return 0; }
             if (!game.Sheltered()) break;
         }
+        WildSim sim = patch.Sim; // (the patch's sim where you are now: a long move swaps it)
+        if (sim == null) { Check(false, "the patch has a sim"); yield break; }
         Vector3 feet = game.Survivor.WorldFeet;
         Vector3 Ground(Vector3 at) => game.Zone.GroundAt(at.X, at.Z);
         Species Raider(string prop)
