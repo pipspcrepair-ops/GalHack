@@ -361,7 +361,7 @@ public partial class OrbitTest : Node
     }
 
     /// <summary>Points to fly by when a straight line to a wreck would go through the globe (the far side of it): an arc over the limb at the height of the higher end. None if the line is clear.</summary>
-    static List<Vector3> RoundTheGlobe(OrbitZone orbit, Vector3 from, Vector3 to)
+    internal static List<Vector3> RoundTheGlobe(OrbitZone orbit, Vector3 from, Vector3 to)
     {
         N.Vector3 a = orbit.ToGlobe(from.ToNumerics()), b = orbit.ToGlobe(to.ToNumerics());
         float along = Math.Clamp(N.Vector3.Dot(-a, b - a) / (b - a).LengthSquared(), 0f, 1f);

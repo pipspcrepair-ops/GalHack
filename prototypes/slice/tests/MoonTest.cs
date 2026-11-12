@@ -186,7 +186,14 @@ public partial class MoonTest : Node
         int handedOverAt = -1, tick = 0;
         float topSpeed = 0f;
         var watch = Stopwatch.StartNew();
-        IEnumerator<int> fly = _pilot.FlyTo(v, Above, 30f, 400f).GetEnumerator();
+        IEnumerable<int> Route()
+        {
+            // Round the world first if it stands between: the moon may be over its far side.
+            foreach (Vector3 way in OrbitTest.RoundTheGlobe(orbit, v.Body.Position.ToGodot(), Above()))
+                foreach (int x in _pilot.FlyTo(v, () => way, 200f, 120f)) yield return x;
+            foreach (int x in _pilot.FlyTo(v, Above, 30f, 400f)) yield return x;
+        }
+        IEnumerator<int> fly = Route().GetEnumerator();
         while (fly.MoveNext())
         {
             tick++;

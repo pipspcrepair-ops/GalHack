@@ -23,7 +23,9 @@ public sealed partial class Staging
         if (moon == null) yield break;
         var (tx, tz) = moon.Map.MapPoint(moon.ToGlobe(v.Body.Position));
         Vector3 Over(float height) => moon.ToWorld(moon.Map.Direction(tx, tz) * moon.RadiusFor(height)).ToGodot();
-        foreach (int x in _pilot.FlyTo(v, () => Over(3000f), 30f, 30f)) yield return x; // part of the way out
+        foreach (Vector3 way in OrbitTest.RoundTheGlobe(o, v.Body.Position.ToGodot(), Over(3000f)))
+            foreach (int x in _pilot.FlyTo(v, () => way, 200f, 120f)) yield return x;
+        foreach (int x in _pilot.FlyTo(v, () => Over(3000f), 30f, 20f)) yield return x; // part of the way out
         foreach (int x in _pilot.Stop()) yield return x;
         Hurry(1);
         _game.Visor.Visible = true;
