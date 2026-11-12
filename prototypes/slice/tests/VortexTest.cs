@@ -14,7 +14,7 @@ namespace Slice.Tests;
 /// world, with dust-devil weather then tornado weather and a moving observer, every natural vortex is followed for its whole
 /// life, first with the thresholds off (how it was), then on. Counts: vortices born, born on ground above the thresholds,
 /// and vortex-seconds touched down on such ground (a grace of 1 s to be broken up).
-/// Pass --mesa for a canyon/mesa world (Arid variant 1).
+/// Plays an Arid canyon world (mesas and hills): the other types seldom raise enough vortices to judge.
 /// Run: --headless --fixed-fps 60 --path prototypes/slice res://tests/VortexTest.tscn
 /// </summary>
 public partial class VortexTest : Node
@@ -47,7 +47,7 @@ public partial class VortexTest : Node
 
     IEnumerable<int> Scenarios()
     {
-        _game = new Game.Game { Interactive = false, SkipIntro = true, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), OS.GetCmdlineUserArgs().Contains("--mesa") ? WorldChoice.Fresh("arid") with { Variant = 1 } : WorldChoice.Tested) };
+        _game = new Game.Game { Interactive = false, SkipIntro = true, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), WorldChoice.Fresh("arid") with { Variant = 1 }) };
         AddChild(_game);
         _drive = new Driver(_game);
         foreach (int x in _drive.UntilPlaying()) yield return x;
