@@ -189,7 +189,7 @@ public sealed partial class BuildTool
             Said?.Invoke(why, Tones.Caution);
             return;
         }
-        if (!TakeOne(v, item, slotIndex))
+        if (!Take(v, item, slotIndex, 1))
         {
             Said?.Invoke(SourceProblem(v, item, slotIndex) ?? $"{item.Name} · 0", Tones.Caution);
             return;

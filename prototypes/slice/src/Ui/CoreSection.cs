@@ -345,13 +345,13 @@ public sealed class StructureSection : IMenuSection
         if (Toggle("core:power", "POWER", v.PowerOn)) v.PowerOn = !v.PowerOn;
         if (Toggle("core:lights", "LIGHTS", v.LightsOn)) v.LightsOn = !v.LightsOn;
         y = LightStyle(g, v, new Vector2(o.X, y), area.Size.X);
-        if (large && Toggle("core:home", "HOME", v.Home))
+        if (Toggle("core:home", "HOME", v.Home))
         {
             bool now = !v.Home;
             foreach (Vessel other in _game.Zone.Vessels) other.Home = false; // one Home at a time
             v.Home = now;
         }
-        if (!large && Toggle("core:transmit", "AUTO-TRANSMIT TO HOME", v.AutoTransmit)) v.AutoTransmit = !v.AutoTransmit;
+        if (Toggle("core:transmit", "AUTO-TRANSMIT TO HOME", v.AutoTransmit)) v.AutoTransmit = !v.AutoTransmit;
 
         // ---- Numbers ----------------------------------------------------------------------------
         StructureStats st = v.StructureStats;

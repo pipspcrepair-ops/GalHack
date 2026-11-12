@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using GalHack.Items;
+using GalHack.Items.Bridge;
 using GalHack.Physics;
 using GalHack.Physics.Engine;
 using GalHack.Structures;
@@ -151,9 +152,12 @@ public partial class PlayerTest : Node
         need.Add("survival-constructor", 1);
         need.Add("core", 1);
         need.Add("core", 1);
-        foreach (var (block, small, n) in BaseBlocks.Concat(VesselBlocks)) need.Add(items.Blocks.For(block, small), n);
+        foreach (var (block, small, n) in BaseBlocks.Concat(VesselBlocks)) need.Add(items.Blocks.For(ItemBlock(block)), n);
         return items.Graph.Expand(need).Leaves;
     }
+
+    /// <summary>The block a block id (any it has had) is priced as.</summary>
+    static string ItemBlock(string block) => BuildingBridge.ItemBlockOf(GameData.Shared.Catalogue.Type(block));
 
     static readonly (string block, bool small, int n)[] BaseBlocks =
     {
@@ -612,7 +616,7 @@ public partial class PlayerTest : Node
         foreach (int x in _drive.ClickWidget("storage:store-raw")) yield return x;
         Check(_base.Storage.Count("iron-ore") > 0, $"STORE ORE, MATERIALS fills the base's storage ({_base.Storage.UsedSu:F0} SU)");
         Bill parts = new();
-        foreach (var (b, small, n) in VesselBlocks) parts.Add(_game.Zone.Data.Items.Blocks.For(b, small), n);
+        foreach (var (b, small, n) in VesselBlocks) parts.Add(_game.Zone.Data.Items.Blocks.For(ItemBlock(b)), n);
         Bill blockParts = parts.Clone();
         // And what its core is made of, so making the core later leaves the blocks' parts whole.
         parts.Add(_game.Zone.Data.Items.Item("core").Recipe.InputsFor(1));
@@ -683,7 +687,7 @@ public partial class PlayerTest : Node
         GD.Print($"  (the vessel's pad {pad}; the base at {_base.Body.Position.ToGodot()}; the castaway at {_game.Survivor.WorldFeet})");
         foreach (int x in _play.StandOff(pad, _base.Body.Position.ToGodot(), 5f)) yield return x;
         foreach (int x in _play.PlaceOnGround(3, pad)) yield return x;
-        _vessel = _game.Zone.Vessels.FirstOrDefault(v => !v.IsBase && !v.IsRuin && !v.IsWreck && v.Structure.Grid.Size == GridSize.Small);
+        _vessel = _game.Zone.Vessels.FirstOrDefault(v => !v.IsBase && !v.IsRuin && !v.IsWreck);
         if (_vessel == null) GD.Print($"  (no vessel: in hand {_game.Pack.Hand} {_game.Pack.InHand}, slot {_game.Pack.Selected}, says \"{_game.Builder.Verdict}\", Small Cores in the bag {_game.Pack["core"]}, {_game.Survivor.WorldFeet.DistanceTo(pad):F1} m from the pad)");
         Check(_vessel != null && _vessel.Controller.Frozen, "the Small Core set down starts a small craft on its build stand");
         if (_vessel == null) yield break;

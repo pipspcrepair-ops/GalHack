@@ -47,7 +47,8 @@ public partial class BuildTest : Node
     ItemCatalogue Items => _game?.Zone.Data.Items ?? GameData.Shared.Items;
     Catalogue Blocks => GameData.Shared.Catalogue;
     PlayerInventory Pack => _game.Pack;
-    string Item(string block, bool small) => Items.BlockItem(block, small).Id;
+    /// <summary>The item a block, by any id it has had, is placed from.</summary>
+    string Item(string block) => Items.BlockItem(BuildingBridge.ItemBlockOf(Blocks.Type(block))).Id;
 
     const int WatchdogMinutes = 20;
 
@@ -151,8 +152,7 @@ public partial class BuildTest : Node
         foreach (int x in Areas()) yield return x;
         foreach (int x in Machines()) yield return x;
         TechTabs();
-        foreach (int x in CpuExtender()) yield return x;
-        LatticeGate();
+        foreach (int x in DeviceUnlock()) yield return x;
         foreach (int x in MenuChecks()) yield return x;
         foreach (int x in UiRound()) yield return x;
         foreach (int x in Creative()) yield return x;
@@ -281,53 +281,54 @@ public partial class BuildTest : Node
     /// <summary>Every device, in all 24 orientations, on a small and a large grid: the same stats; a thruster only changes axis.</summary>
     void OrientationChecks()
     {
-        foreach (bool small in new[] { true, false })
+        int devices = 0;
+        foreach (BlockType type in Blocks.Types.Where(t => t != null && !t.IsArmor && !t.IsCore))
         {
-            int devices = 0;
-            foreach (BlockType type in Blocks.Types.Where(t => t != null && !t.IsArmor && !t.IsCore))
+            var seen = new HashSet<string>();
+            var axes = new HashSet<Dir>();
+            int placed = 0;
+            for (int rot = 0; rot < Orientations.Count; rot++)
             {
-                var seen = new HashSet<string>();
-                var axes = new HashSet<Dir>();
-                int placed = 0;
-                for (int rot = 0; rot < Orientations.Count; rot++)
+                var s = new Structure(Blocks) { Mode = CoreMode.Capital };
+                Building.Place(s, Int3.Zero, Building.Make(s, Blocks.CoreType));
+                Block b = Building.Make(s, type, null, rot);
+                Int3? cell = null;
+                foreach (Dir d in Dirs.All)
                 {
-                    var s = new Structure(Blocks) { Mode = CoreMode.Capital };
-                    Building.Place(s, Int3.Zero, Building.Make(s, Blocks.CoreType));
-                    Block b = Building.Make(s, type, null, rot);
-                    Int3? cell = null;
-                    foreach (Dir d in Dirs.All)
-                        if (Building.Check(s, d.Vec(), b) == PlaceError.None) { cell = d.Vec(); break; }
-                    if (cell == null) { Fail($"{type.Id} in orientation {rot} attaches to no face of the core"); continue; }
-                    Building.Place(s, cell.Value, b);
-                    placed++;
-                    StructureStats st = StructureStats.Compute(s);
-                    var spec = new StructureVessel(s, GameData.Shared.Handling);
-                    double thrust = st.Thrust.Sum();
-                    seen.Add(string.Join("|", st.PowerOut, st.PowerUse, st.CpuUsed, st.CpuLimit, st.StorageCapacity, st.Fuel, st.Mass, thrust,
-                        st.Containers, st.Generators, st.Lights, st.LifeSupport, BuildingBridge.MachinesOn(Items, s).Count(),
-                        spec.Gyros.Sum(g => g.Torque), spec.HoverEngines.Count, spec.LandingGear.Count, s.Blocks().Count(x => s.TypeOf(x.block).IsCommandChair)));
-                    if (type.IsThruster) axes.Add(Orientations.ToWorld(rot, Dir.NegZ));
+                    Int3 at = Footprint.AnchorFor(type, rot, d.Vec(), d);
+                    if (Building.Check(s, at, b) == PlaceError.None) { cell = at; break; }
                 }
-                devices++;
-                if (placed == Orientations.Count && seen.Count != 1) Fail($"{type.Id} ({(small ? "small" : "large")}): its stats change with its facing: {string.Join(" / ", seen.Take(3))}");
-                if (type.IsThruster && axes.Count != 6) Fail($"a thruster's axis should follow its facing: {axes.Count} axes");
+                if (cell == null) { Fail($"{type.Id} in orientation {rot} attaches to no face of the core"); continue; }
+                Building.Place(s, cell.Value, b);
+                placed++;
+                StructureStats st = StructureStats.Compute(s);
+                var spec = new StructureVessel(s, GameData.Shared.Handling);
+                double thrust = st.Thrust.Sum();
+                seen.Add(string.Join("|", st.PowerOut, st.PowerUse, st.StorageCapacity, st.Fuel, st.Mass, thrust,
+                    st.Containers, st.Generators, st.Lights, st.LifeSupport, BuildingBridge.MachinesOn(Items, s).Count(),
+                    spec.Gyros.Sum(g => g.Torque), spec.HoverEngines.Count, spec.LandingGear.Count, s.Blocks().Count(x => s.TypeOf(x.block).IsCommandChair)));
+                if (type.IsThruster) axes.Add(Orientations.ToWorld(rot, Dir.NegZ));
             }
-            Check(true, $"{devices} device types on the {(small ? "small" : "large")} grid in all {Orientations.Count} orientations: the same power, CPU, storage, crafting, control and torque; a thruster changes only its axis");
+            devices++;
+            if (placed == Orientations.Count && seen.Count != 1) Fail($"{type.Id}: its stats change with its facing: {string.Join(" / ", seen.Take(3))}");
+            if (type.IsThruster && axes.Count != 6) Fail($"a thruster's axis should follow its facing: {axes.Count} axes");
         }
+        Check(true, $"{devices} device types in all {Orientations.Count} orientations: the same power, storage, crafting, control and torque; a thruster changes only its axis");
         // A chair gives no air: only a sealed room does.
         var room = new Structure(Blocks) { Mode = CoreMode.Capital };
         Building.Place(room, new Int3(0, -1, 0), Building.Make(room, Blocks.CoreType));
+        // The shell round a 1x2x3 chair: its cells are x 0, y 0..1, z 0..2.
         for (int x = -1; x <= 1; x++)
             for (int y = -1; y <= 2; y++)
-                for (int z = -1; z <= 1; z++)
-                    if ((x != 0 || z != 0 || y is -1 or 2) && !(x == 0 && y == -1 && z == 0) && !room.Has(new Int3(x, y, z)))
+                for (int z = -1; z <= 3; z++)
+                    if ((x != 0 || z is < 0 or > 2 || y is -1 or 2) && !(x == 0 && y == -1 && z == 0) && !room.Has(new Int3(x, y, z)))
                         Building.Place(room, new Int3(x, y, z), Building.Make(room, Blocks.Type("steel")));
         Int3 chair = new(0, 0, 0);
-        Building.Place(room, chair, Building.Make(room, Blocks.Type("chair")));
+        Check(Building.Place(room, chair, Building.Make(room, Blocks.Type("command-chair"))) == PlaceError.None, "a 1x2x3 command chair fits a 1 m wide, 2 m tall, 3 m deep space");
         Check(Rooms.Detect(room).Sealed.Any(r => r.Cells.Contains(chair)), "a command chair inside a sealed shell sits in a sealed room");
-        Building.Remove(room, new Int3(0, 1, 1), null);
+        Building.Remove(room, new Int3(1, 1, 1), null);
         Check(!Rooms.Detect(room).Sealed.Any(r => r.Cells.Contains(chair)), "open a hole and the room leaks: the chair is no help");
-        Check(Blocks.TryGetType("cockpit", out BlockType old) && old.IsCommandChair && old.IsCockpit, "old blueprints' cockpit id reads as the command chair");
+        Check(Blocks.TryGetType("cockpit", out BlockType old) && old.Id == "command-chair", "old blueprints' cockpit id reads as the command chair");
     }
 
     // ---- In the world ----------------------------------------------------------------------------
@@ -377,7 +378,7 @@ public partial class BuildTest : Node
         foreach (int x in _play.CloseMenu()) yield return x;
     }
 
-    Vessel _base, _small, _hover, _capital;
+    Vessel _base, _craft, _hover, _capital;
     Vector3 _site;
 
     IEnumerable<int> Founding()
@@ -406,15 +407,14 @@ public partial class BuildTest : Node
             GD.Print($"  (the site at {_site} keeps {ridge:F1} m of ground{(standing ? " and something standing on it" : "")}: on to another)");
         }
         foreach (int x in StandAt(_site + new Vector3(6, 0, 0))) yield return x;
-        string steelL = Item("steel", false), steelS = Item("steel", true);
-        foreach (int x in Carry(steelL, 12, 2)) yield return x;
-        foreach (int x in Carry(steelS, 12, 3)) yield return x;
+        string steel = Item("steel");
+        foreach (int x in Carry(steel, 12, 2)) yield return x;
         int structures = _game.Zone.Vessels.Count;
         foreach (int x in _play.Select(2)) yield return x;
         foreach (int x in _drive.LookAt(_site, 8)) yield return x;
         foreach (int x in _drive.Click()) yield return x;
         foreach (int x in _drive.Wait(3)) yield return x;
-        Check(_game.Zone.Vessels.Count == structures && Pack[steelL] == 12 && _game.Builder.Verdict.Contains("CORE FIRST"),
+        Check(_game.Zone.Vessels.Count == structures && Pack[steel] == 12 && _game.Builder.Verdict.Contains("CORE FIRST"),
             $"a block can't be placed in the open without a structure: \"{_game.Builder.Verdict}\"");
 
         foreach (int x in Carry("core", 1, 4)) yield return x;
@@ -422,27 +422,20 @@ public partial class BuildTest : Node
         var existing = new HashSet<Vessel>(_game.Zone.Vessels);
         foreach (int x in _play.PlaceOnGround(4, _site)) yield return x;
         _base = _game.Zone.Vessels.FirstOrDefault(v => !existing.Contains(v) && v.IsBase && !v.IsRuin && !v.IsWreck);
-        Check(_base != null && StructureArea.ClassOf(_base) == StructureClass.Base && _base.Structure.Grid.Size == GridSize.Large && Pack["core"] == 0,
-            "the Big Core founds a base (large grid, anchored), and is used up");
+        Check(_base != null && StructureArea.ClassOf(_base) == StructureClass.Base && Pack["core"] == 0,
+            "the core founds a base (anchored), and is used up");
         if (_base == null) yield break;
-
-        // A small-grid block is refused on a base, with a clear message.
-        foreach (int x in _play.Select(3)) yield return x;
-        foreach (int x in _drive.LookAt(_base.ToWorld(new N.Vector3(1f, 0, 0)), 8)) yield return x;
-        foreach (int x in _drive.Click()) yield return x;
-        foreach (int x in _drive.Wait(3)) yield return x;
-        Check(_base.Structure.Count == 1 && Pack[steelS] == 12 && _game.Builder.Verdict.Contains("SMALL-GRID BLOCK"), $"a small-grid block is refused on a base: \"{_game.Builder.Verdict}\" (the eye {_game.Survivor.WorldEye().DistanceTo(_base.ToWorld(new N.Vector3(1f, 0, 0))):F1} m off it, feet {_game.Survivor.WorldFeet}, core at {_base.Body.Position}, site {_site}, ground there {_game.Zone.GroundAt(_site.X, _site.Z).Y:F2})");
 
         // Building onto the founded structure works.
         bool on = false;
         foreach (int x in StandByBase(7, 1)) yield return x;
         foreach (int x in _play.PlaceBlock(2, _base, Int3.Zero, Dir.PosX, p => on = p)) yield return x;
-        Check(on && Pack[steelL] == 11, "a large block goes onto the base's core, one item used");
+        Check(on && Pack[steel] == 11, "a block goes onto the base's core, one item used");
 
-        // A structure's class is its core and that core's mode: the two cores make all four.
+        // A structure's class is its core's mode: the one core makes every class, and old data's Vessel Mode flies as Capital.
         foreach (var (core, mode, cls, slot, offset) in new[]
                  {
-                     ("core", CoreMode.Vessel, StructureClass.Small, 5, new Vector3(20, 0, 0)), ("core", CoreMode.Hover, StructureClass.Hover, 6, new Vector3(-20, 0, 0)),
+                     ("core", CoreMode.Vessel, StructureClass.Capital, 5, new Vector3(20, 0, 0)), ("core", CoreMode.Hover, StructureClass.Hover, 6, new Vector3(-20, 0, 0)),
                      ("core", CoreMode.Capital, StructureClass.Capital, 7, new Vector3(0, 0, 20)),
                  })
         {
@@ -453,30 +446,30 @@ public partial class BuildTest : Node
             foreach (int x in _play.PlaceOnGround(slot, spot)) yield return x;
             Vessel v = _game.Zone.Vessels.FirstOrDefault(n => !before.Contains(n));
             v?.SwitchMode(mode);
-            Check(v != null && StructureArea.ClassOf(v) == cls && (v.Structure.Grid.Size == GridSize.Small) == StructureClasses.IsSmallGrid(cls),
+            Check(v != null && StructureArea.ClassOf(v) == cls,
                 $"{Items.Item(core).Name} in {mode} Mode is a {StructureClasses.Name(cls)}: {v?.Name}");
-            if (cls == StructureClass.Small) _small = v;
-            else if (cls == StructureClass.Hover) _hover = v;
+            if (slot == 5) _craft = v;
+            else if (slot == 6) _hover = v;
             else _capital = v;
         }
-        if (_small == null || _capital == null) yield break;
+        if (_craft == null || _capital == null) yield break;
 
         // No block is limited to a mode: what used to be for one class goes on the other.
-        foreach (int x in StandAt(_small.Body.Position.ToGodot() + new Vector3(3, 0, 0))) yield return x;
-        foreach (int x in Carry(Item("hover", true), 1, 8)) yield return x;
+        foreach (int x in StandAt(_craft.Body.Position.ToGodot() + new Vector3(3, 0, 0))) yield return x;
+        foreach (int x in Carry(Item("hover"), 1, 8)) yield return x;
         foreach (int x in _play.Select(8)) yield return x;
-        foreach (int x in _drive.LookAt(_small.Body.Position.ToGodot(), 8)) yield return x;
-        Check(_game.Builder.TargetVessel == _small && !_game.Builder.Verdict.Contains("only"), $"a hover plate goes on a craft in Vessel Mode: \"{_game.Builder.Verdict}\"");
+        foreach (int x in _drive.LookAt(_craft.Body.Position.ToGodot(), 8)) yield return x;
+        Check(_game.Builder.TargetVessel == _craft && !_game.Builder.Verdict.Contains("only"), $"a hover plate goes on a craft in Capital Mode: \"{_game.Builder.Verdict}\"");
     }
 
     IEnumerable<int> Sources()
     {
         GD.Print("-- you choose the source: your stack, or the structure's storage --");
-        string steel = Item("steel", false);
+        string steel = Item("steel");
         // A container, so the base has a storage; its stock is the base's, not yours.
         foreach (int x in StandByBase(0, 8)) yield return x;
         Pack.Remove(steel, Pack[steel]);
-        foreach (int x in Carry(Item("container", false), 1, 2)) yield return x;
+        foreach (int x in Carry(Item("container"), 1, 2)) yield return x;
         bool on = false;
         foreach (int x in _play.PlaceBlock(2, _base, Int3.Zero, Dir.PosZ, p => on = p)) yield return x;
         foreach (int x in StandByBase(0, 11)) yield return x;
@@ -559,7 +552,7 @@ public partial class BuildTest : Node
     IEnumerable<int> RemoteRules()
     {
         GD.Print("-- the remote toolbar's rules --");
-        string steel = Item("steel", false), rounds = "pistol-rounds";
+        string steel = Item("steel"), rounds = "pistol-rounds";
         for (int i = 0; i < PlayerInventory.ToolbarSlots; i++) Pack.ClearRemote(i);
         Pack.Bar = BarSource.Personal;
         string refused = Pack.ToggleBar();
@@ -606,7 +599,7 @@ public partial class BuildTest : Node
     IEnumerable<int> StorageMenu()
     {
         GD.Print("-- the storage menu --");
-        string steel = Item("steel", false), conc = Item("concrete", false);
+        string steel = Item("steel"), conc = Item("concrete");
         string tab = $"stab:{YouSection.TabKey(_base)}";
         string said = "";
         void Hear(string t, Godot.Color c) => said = t;
@@ -699,15 +692,15 @@ public partial class BuildTest : Node
         Check(!survival.Knows(block) && small.Knows(block), "the survival tier doesn't make the deco block; the small constructor does");
         var pieces = Items.Items.Where(i => i.IsDecoPiece).ToList();
         Check(pieces.Count > 100 && !block.IsDecoPiece && pieces.All(p => p.Group != null), $"individual deco items ({pieces.Count}) are marked as pieces, kept off the constructor lists");
-        Check(Items.Has("ceiling-light@large") && Items.Has("strip-light@small"), "ceiling lights and strip lights are in the deco catalogue");
+        Check(Items.Has("ceiling-light") && Items.Has("strip-light"), "ceiling lights and strip lights are in the deco catalogue");
 
         // The gallery.
         _game.Progress.Creative = true;
         var tool = _game.Builder;
-        int all = tool.DecoChoices(false).Count;
+        int all = tool.DecoChoices().Count;
         tool.DecoTheme = "industrial";
-        int industrial = tool.DecoChoices(false).Count;
-        Check(all > industrial && industrial >= 10 && tool.DecoThemes(false).Count > 5, $"the gallery filters by theme ({all} pieces, {industrial} industrial, {tool.DecoThemes(false).Count} themes)");
+        int industrial = tool.DecoChoices().Count;
+        Check(all > industrial && industrial >= 10 && tool.DecoThemes().Count > 5, $"the gallery filters by theme ({all} pieces, {industrial} industrial, {tool.DecoThemes().Count} themes)");
         tool.DecoTheme = null;
 
         // Pieces go on the grid: floor, wall and ceiling, and nothing overlaps.
@@ -756,12 +749,12 @@ public partial class BuildTest : Node
     IEnumerable<int> BackIntoInventories()
     {
         GD.Print("-- taking down: nothing is lost --");
-        string steel = Item("steel", false);
+        string steel = Item("steel");
         // The core stays, however little is left on it.
         var (coreCell, coreBlock) = _base.Structure.Blocks().First(c => _base.Structure.TypeOf(c.block).IsCore);
-        int vessels = _game.Zone.Vessels.Count, coreItems = PlayerInventory.CoreItems.Sum(id => Pack[id]);
+        int vessels = _game.Zone.Vessels.Count, coreItems = Pack[PlayerInventory.Core];
         _game.Builder.Remove(_base, coreCell);
-        Check(_base.Structure.Has(coreCell) && _game.Zone.Vessels.Count == vessels && PlayerInventory.CoreItems.Sum(id => Pack[id]) == coreItems,
+        Check(_base.Structure.Has(coreCell) && _game.Zone.Vessels.Count == vessels && Pack[PlayerInventory.Core] == coreItems,
             $"deconstruct refuses a core ({_base.Structure.TypeOf(coreBlock).Name}): it can only be destroyed or hijacked");
         foreach (int x in _play.Tool(ToolMode.Deconstruct)) yield return x;
         N.Vector3 Face(Int3 c) => StructureBridge.CellCenter(_base.Structure, c) + new N.Vector3(1f, 0, 0);
@@ -828,7 +821,7 @@ public partial class BuildTest : Node
         GD.Print("-- a structure's storage works inside its area --");
         NoSpawnsByBases();
         var rules = _game.Zone.Data.Rules.Build.Area;
-        foreach (Vessel v in new[] { _base, _capital, _small, _hover })
+        foreach (Vessel v in new[] { _base, _capital, _craft, _hover })
         {
             if (v == null) continue;
             float margin = StructureArea.Margin(v, rules);
@@ -857,14 +850,14 @@ public partial class BuildTest : Node
         if (_base != null)
         {
             // The small vessel's core started 30 m off: inside the base's area, and the base inside neither.
-            Vector3 point = _small.Body.Position.ToGodot() + new Vector3(0, -1, 3);
-            Check(StructureArea.Contains(_base, point, rules) && StructureArea.Contains(_small, point, rules), "beside a vessel parked by a base you are in both their areas");
-            Check(StructureArea.Linked(_game.Zone, point, rules, _small) == _small && StructureArea.Linked(_game.Zone, point, rules, _base) == _base, "the one you are building on is the one you link to");
+            Vector3 point = _craft.Body.Position.ToGodot() + new Vector3(0, -1, 3);
+            Check(StructureArea.Contains(_base, point, rules) && StructureArea.Contains(_craft, point, rules), "beside a vessel parked by a base you are in both their areas");
+            Check(StructureArea.Linked(_game.Zone, point, rules, _craft) == _craft && StructureArea.Linked(_game.Zone, point, rules, _base) == _base, "the one you are building on is the one you link to");
             foreach (int x in StandAt(point)) yield return x;
             foreach (int x in _play.OpenMenu(MenuTab.Core)) yield return x;
             foreach (int x in _drive.Wait(2)) yield return x;
             List<object> near = _game.Menu.Root.Core.Near();
-            Check(near.Contains(_base) && near.Contains(_small), "and the CORE tab lets you pick either");
+            Check(near.Contains(_base) && near.Contains(_craft), "and the CORE tab lets you pick either");
             foreach (int x in _play.CloseMenu()) yield return x;
         }
     }
@@ -875,7 +868,7 @@ public partial class BuildTest : Node
         _game.CraftTimeScale = 40f;
         foreach (int x in StandByBase(0, 11)) yield return x;
         // A small constructor and a generator on the base, from its own storage, on the structure toolbar.
-        string fab = Item("smallfab", false), gen = Item("generator", false);
+        string fab = Item("smallfab"), gen = Item("generator");
         _game.Progress.Creative = true;
         _base.Storage.Add(fab, 1);
         _base.Storage.Add(gen, 1);
@@ -895,7 +888,7 @@ public partial class BuildTest : Node
         Pack.Add("iron-ore", 40);
         Pack.Add("biomass", 4);
         Bill bag = Pack.Storage.Contents;
-        string steel = Item("steel", false);
+        string steel = Item("steel");
         int before = _base.Storage.Count(steel);
         Check(c.Order(steel, 1).Ok, "the base's constructor takes an order for a steel block");
         foreach (int x in _play.WaitFor(() => !c.Busy, 60)) yield return x;
@@ -924,27 +917,30 @@ public partial class BuildTest : Node
         GD.Print("-- the tech tree: one tab for Large (Big Core), one for Small (Small Core) --");
         var data = _game.Zone.Data;
         var fresh = new Progress(data.Progress, data.Items, data.Catalogue);
-        Check(Progress.Tabs.SequenceEqual(new[] { "large", "small", "tools", "weapons", "misc" }), $"five tabs: {string.Join(", ", Progress.Tabs)}");
+        Check(Progress.Tabs.SequenceEqual(new[] { "structures", "tools", "weapons", "deco", "misc" }), $"five tabs: {string.Join(", ", Progress.Tabs)}");
         var stray = fresh.Nodes.Where(n => !Progress.Tabs.Contains(n.Tab)).Select(n => $"{n.Id}:{n.Tab}").ToList();
         Check(stray.Count == 0, $"every node sits on one of them{(stray.Count > 0 ? ": " + string.Join(", ", stray) : "")}");
-        Check(fresh.Nodes.Select(n => n.Id).Distinct().Count() == fresh.Nodes.Count, "no node is listed twice (a block shared by a base and a capital vessel is one node)");
-        Check(fresh.Node("thruster@large").Tab == "large" && fresh.Node("core").Tab == "large" && fresh.Node("thruster@large").Unlock.Parent == "core", "the Big Core heads the Large tab, the large thruster under it");
-        Check(fresh.Node("hover@small").Tab == "small" && fresh.Node("core").Tab == "small" && fresh.Node("hover@small").Unlock.Parent == "core", "the Small Core heads the Small tab, the hover plate under it");
-        Check(fresh.Node("thruster@small").Unlock.Parent == "hover@small", "hover plates are the thruster's prerequisite on Small");
+        Check(fresh.Nodes.Select(n => n.Id).Distinct().Count() == fresh.Nodes.Count, "no node is listed twice");
+        var orphans = fresh.Nodes.Where(n => n.Unlock.Parent != null && fresh.Node(n.Unlock.Parent) == null).Select(n => n.Id).ToList();
+        Check(orphans.Count == 0, $"every parent is a node{(orphans.Count > 0 ? ": not " + string.Join(", ", orphans) : "")}");
+        Check(fresh.Node("core").Tab == "structures" && fresh.Node("core").Unlock.Parent == null && fresh.Node("iron-plated").Tab == "structures",
+            "the core heads the Structures tab, every structure block on it");
+        Check(new[] { "thruster", "generator", "fuel-tank", "container", "gyro", "pad" }.All(f => fresh.Node($"{f}-t2").Unlock.Parent == $"{f}-t1"),
+            "each device's tiers chain: T1, then T2");
         Check(fresh.Level == 1 && fresh.Points == 3, $"a new character starts at level 1 with 3 unlock points ({fresh.Points})");
-        Check(fresh.Unlock("core") && fresh.Unlock("hover@small") && fresh.Points == 1, "the Small Core and the hover plate both open at level 1, with a point to spare");
-        Check(fresh.StateOf(fresh.Node("thruster@small")) == UnlockState.NeedsLevel, "and the thruster behind them waits for its level");
+        Check(fresh.IsUnlocked("core") && fresh.IsUnlocked("iron-plated") && fresh.IsUnlocked("generator-t1"), "the core, plated blocks and the first generator are free at level 1");
+        Check(fresh.StateOf(fresh.Node("thruster-t1")) == UnlockState.NeedsLevel, "and Thruster T1 waits for its level");
         fresh.Earn(fresh.Rules.XpFor(5), "test");
-        Check(fresh.StateOf(fresh.Node("thruster@small")) == UnlockState.Affordable && fresh.Unlock("thruster@small"), $"at level {fresh.Level} the thruster unlocks with its hover plate in hand");
+        Check(fresh.StateOf(fresh.Node("thruster-t1")) == UnlockState.Affordable && fresh.Unlock("thruster-t1"), $"at level {fresh.Level} Thruster T1 unlocks");
     }
 
-    /// <summary>In Survival: the CPU extender can be unlocked, crafted in the base's own constructor, placed, and it raises the structure's CPU tier.</summary>
-    IEnumerable<int> CpuExtender()
+    /// <summary>In Survival: a device behind a tier can be unlocked, crafted in the base's own constructor and placed, and it adds what it does.</summary>
+    IEnumerable<int> DeviceUnlock()
     {
-        GD.Print("-- the CPU extender: unlock, craft, place, a higher CPU tier --");
+        GD.Print("-- a device's tier: unlock, craft, place --");
         Check(_game.Mode == GameMode.Survival && !_game.Progress.Creative, "in Survival");
-        TechNode node = _game.Progress.NodeOfBlock("cpuext", false);
-        Check(node != null, "the CPU extender is a node on the tech tree");
+        TechNode node = _game.Progress.NodeOfBlock("container-t3");
+        Check(node != null, "Container T3 is a node on the tech tree");
         if (node == null) yield break;
         // Level it up by playing (XP), then buy it and its parents with the points that brings.
         _game.Progress.Earn(1_000_000, "test");
@@ -953,39 +949,25 @@ public partial class BuildTest : Node
         foreach (TechNode n in chain)
             if (!_game.Progress.IsUnlocked(n.Id)) _game.Progress.Unlock(n.Id);
         Check(_game.Progress.IsUnlocked(node.Id), $"unlocked on the tech tree through {string.Join(" > ", chain.Select(n => n.Id))}");
-        string ext = Item("cpuext", false);
-        ItemDef def = Items.Item(ext);
+        string box = Item("container-t3");
+        ItemDef def = Items.Item(box);
         Constructor c = _base.Machines.Values.First();
         Check(c.Knows(def) && _game.Progress.ItemAllowed(def), $"the base's {c.Def.Name} (tier {c.Def.Tier}) knows the recipe (tier {def.Recipe.Tier}) and it is allowed");
         // Its parts come out of the constructor's own lane; stock them as the earlier steps would have made them.
         foreach (var (id, n) in def.Recipe.Inputs) _base.Storage.Add(id.Id, n);
-        int before = _base.Storage.Count(ext);
-        Check(c.Order(ext, 1).Ok, "the constructor takes an order for the CPU extender");
+        int before = _base.Storage.Count(box);
+        Check(c.Order(box, 1).Ok, "the constructor takes an order for Container T3");
         foreach (int x in _play.WaitFor(() => !c.Busy, 60)) yield return x;
-        Check(_base.Storage.Count(ext) == before + 1, "and makes it into the base's storage");
-        int tier = _base.StructureStats.Tier, extenders = _base.StructureStats.Extenders;
-        Pack.SetRemote(6, _base.Storage, _base.Name, ext);
-        _base.Storage.Add(ext, 0);
+        Check(_base.Storage.Count(box) == before + 1, "and makes it into the base's storage");
+        double room = _base.StructureStats.StorageRaw;
+        Pack.SetRemote(6, _base.Storage, _base.Name, box);
+        _base.Storage.Add(box, 0);
         foreach (int x in _drive.Tap(Key.Y)) yield return x;
         bool on = false;
         foreach (int x in StandByBase(7, 1)) yield return x;
         foreach (int x in _play.PlaceBlock(6, _base, new Int3(1, 0, 0), Dir.PosX, p => on = p)) yield return x;
         foreach (int x in _drive.Tap(Key.Y)) yield return x;
-        Check(on && _base.StructureStats.Extenders == extenders + 1, $"placed on the base: {_base.StructureStats.Extenders} extender(s)");
-        // The tiers climb with the count (one extender is the second tier); add the rest until it does.
-        Check(_base.StructureStats.Tier > tier || _base.StructureStats.Extenders < _base.Structure.Catalogue.ExtendersPerTier[Math.Min(tier, _base.Structure.Catalogue.ExtendersPerTier.Length - 1)],
-            $"CPU tier {tier} -> {_base.StructureStats.Tier}, limit {_base.StructureStats.CpuLimit}");
-    }
-
-    /// <summary>The lattice extenders are real blocks, but no amount of ore pays for one: the parts are found in places.</summary>
-    void LatticeGate()
-    {
-        foreach (string block in new[] { "cpuext3", "cpuext4" })
-        {
-            ItemDef def = Items.Item(Item(block, false));
-            Check(def.Recipe.InputsFor(1).Ids.Any(id => Items.Item(id).IsUnique && Items.Item(id).Recipe == null), $"{def.Name} needs a part found in places");
-            Check(_base.Structure.Catalogue.Type(block).IsCpuExtender, $"{def.Name} is a CPU extender on the structure");
-        }
+        Check(on && _base.StructureStats.StorageRaw == room + Blocks.Type("container-t3").Storage, $"placed on the base, its {Blocks.Type("container-t3").Storage} SU join the shared storage");
     }
 
     IEnumerable<int> MenuChecks()
@@ -993,8 +975,8 @@ public partial class BuildTest : Node
         GD.Print("-- filters, typing and tooltips on the menu --");
         Pack.Remove("biomass", Pack["biomass"]);
         Pack.Add("iron-ore", 20);
-        Pack.Add("hull-plate", 3);
-        Pack.Add(Item("steel", false), 2);
+        Pack.Add("iron-plate", 3);
+        Pack.Add(Item("steel"), 2);
         foreach (int x in _play.OpenMenu(MenuTab.You)) yield return x;
         foreach (int x in _drive.Wait(2)) yield return x;
         Check(_game.Menu.RectOf("bag:filter") != null && _game.Menu.RectOf("bag:sort") != null && _game.Menu.RectOf("bag:cat:blocks") != null
@@ -1038,7 +1020,7 @@ public partial class BuildTest : Node
             _game.Controls.Mouse = r.GetCenter();
             foreach (int x in _drive.Wait(3)) yield return x;
         }
-        foreach (int x in Hover(Item("steel", false))) yield return x;
+        foreach (int x in Hover(Item("steel"))) yield return x;
         string block = All();
         GD.Print($"  (a block's tooltip: {block})");
         Check(block.Contains("Steel block (large)") && block.Contains("8 Hull plate") && block.Contains("LARGE GRID") && block.Contains("STACK 250") && block.Contains("   ×"),
@@ -1047,11 +1029,11 @@ public partial class BuildTest : Node
         string ore = All();
         GD.Print($"  (an ore's tooltip: {ore})");
         Check(ore.Contains("Iron ore") && !ore.Contains("RECIPE") && ore.Contains("SOURCE"), "an ore's tooltip says where it is found, not how it is made");
-        foreach (int x in Hover("hull-plate")) yield return x;
+        foreach (int x in Hover("iron-plate")) yield return x;
         string part = All();
         GD.Print($"  (a part's tooltip: {part})");
         Check(part.Contains("Hull plate") && part.Contains("RECIPE") && part.Contains("constructor") && part.Contains(" s"), "a crafted part's tooltip: its inputs, its constructor and its time");
-        ItemDef locked = Items.BlockItem("combat", false);
+        ItemDef locked = Items.BlockItem("combat-plated");
         var lines = Tooltips.For(_game, locked, 0);
         Check(lines.Any(l => l.Text.Contains("LOCKED · LV 12")), "a locked item's tooltip says at which level");
         Rect2 box = Gui.TipBox(new Rect2(0, 0, 1600, 900), new Rect2(1560, 860, 40, 40), lines);
@@ -1065,8 +1047,8 @@ public partial class BuildTest : Node
         GD.Print("-- Creative: free, unlimited, every block; the same rules of structure --");
         _game.Mode = GameMode.Creative;
         foreach (int x in StandByBase(0, 12)) yield return x;
-        string steelS = Item("steel", true);
-        Pack.Grid.SetBlock(2, Item("steel", false));
+        string steelS = Item("steel");
+        Pack.Grid.SetBlock(2, Item("steel"));
         Pack.Grid.SetBlock(3, steelS);
         Bill bag = Pack.Storage.Contents;
         bool on = false;

@@ -115,7 +115,7 @@ public sealed class BlueprintLibrary
             Size = new Vector3(max.X - min.X + 1, max.Y - min.Y + 1, max.Z - min.Z + 1) * cell,
             MassT = st.Mass, Blocks = plan.Count, Handling = h,
             Families = BuildingBridge.BlocksOf(plan).Select(b => (b.BlockId, b.Count))
-                .OrderByDescending(f => f.Item2).ThenBy(f => f.Key, StringComparer.Ordinal).ToList(),
+                .OrderByDescending(f => f.Item2).ThenBy(f => f.Item1, StringComparer.Ordinal).ToList(),
         };
     }
 
