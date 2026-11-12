@@ -203,7 +203,8 @@ public partial class WildlifePatch : Node3D
         sim.SightLine = (a, b) => SightClear(ToGlobal(a), ToGlobal(b));
         // Places standing on the surface are solid to everything walking out there.
         // And so are the houses and farmsteads along the roads: nothing walks through their walls.
-        sim.SolidAt = p => SolidAt != null && SolidAt(FromPatch(p)) || InHome(FromPatch(p));
+        // So is the start bunker, chamber and stairwell: its walls, floor and roof are not the ground's.
+        sim.SolidAt = p => SolidAt != null && SolidAt(FromPatch(p)) || InHome(FromPatch(p)) || Bunker != null && Bunker.Over(FromPatch(p), 0.3f);
         // Creatures see by the same light the eye does; scent goes with the weather.
         sim.LightAt = p => Zone.Light?.LightAt(ToGlobal(p)) ?? 1f;
         sim.Clicked += c => Audio.Click(c);
@@ -437,6 +438,19 @@ public partial class WildlifePatch : Node3D
     /// measured from each footprint's edge (design 310). A structure counts while its core is in
     /// base mode; a capital vessel blocks nothing. Run on every new patch and once a second.
     /// </summary>
+    /// <summary>The start bunker: a base to the spawn clearance, and solid to everything that walks.</summary>
+    public Slice.Start.Bunker Bunker;
+
+    /// <summary>The bunker is dug: it becomes a base to the clearance, and whatever was put down within it (the patch is made first) goes.</summary>
+    public void SetBunker(Slice.Start.Bunker bunker)
+    {
+        Bunker = bunker;
+        SyncBases();
+        if (Sim == null) return;
+        foreach (Creature c in Sim.Creatures.ToArray())
+            if (!c.Removed && Sim.InBaseZone(c.Position)) Sim.Remove(c);
+    }
+
     public void SyncBases()
     {
         if (Sim == null || _planet == null) return;
@@ -456,6 +470,18 @@ public partial class WildlifePatch : Node3D
                 Mode = CoreMode.Base,
                 Center = PatchLocal(_planet.NearestCopy(centre, Origin)),
                 HalfExtents = new Vector2(MathF.Abs(hi.X - lo.X) * 0.5f + half, MathF.Abs(hi.Z - lo.Z) * 0.5f + half),
+                Yaw = MathF.Atan2(-along.Z, along.X),
+            });
+        }
+        if (Bunker != null)
+        {
+            var (centre, along, hx, hz) = Bunker.Footprint();
+            Sim.Structures.Add(new Wildlife.Structure
+            {
+                Name = "Bunker",
+                Mode = CoreMode.Base,
+                Center = PatchLocal(_planet.NearestCopy(centre, Origin)),
+                HalfExtents = new Vector2(hx, hz),
                 Yaw = MathF.Atan2(-along.Z, along.X),
             });
         }

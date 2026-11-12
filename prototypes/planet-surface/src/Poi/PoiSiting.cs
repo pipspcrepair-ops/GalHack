@@ -621,7 +621,7 @@ public static partial class PoiSiting
         PInt3 e = inst.Layout.EntranceCell;
         return new PoiSite
         {
-            Name = $"{family.Name}: {inst.Layout.Name} ({inst.State.ToString().ToLowerInvariant()})",
+            Name = family.Name, // the kind of place only: the layout's own name repeats across worlds and the state shows when you get there
             Family = family, Instance = inst, Origin = origin, Footprint = footprint, Stamp = stamp,
             Recarve = Recarve, Siting = bestKind, CutFill = bestCut, Entrance = new TInt3(ox + e.X, bestPad + e.Y, oz + e.Z), Gates = gates, Extra = extra, HalfBuried = ruin,
         };

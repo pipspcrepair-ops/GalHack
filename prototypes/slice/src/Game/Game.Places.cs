@@ -54,6 +54,8 @@ public partial class Game
             Name = "Caves", Zone = Zone, Feet = () => Survivor.WorldFeet, Look = () => Survivor.WorldLook(), Deep = Places.Fauna,
             OnFoot = () => Survivor.Seated == null && Survivor.Body.Frame == null && !Suit.Dead,
             Indoors = () => Places.PlaceAt(Survivor.WorldFeet) != null || Bunker.Inside(Survivor.WorldFeet, Zone),
+            // The bunker is dug rock, but it is not a cave: no cave creature is put in it, nor in rock near it.
+            Keep = p => Bunker != null && Bunker.Over(p, Slice.Start.Bunker.KeepClear),
         };
         Zone.AddChild(Caves);
         Doors = new BlockDoors { Name = "BlockDoors", Zone = Zone, Feet = () => Survivor.WorldFeet };

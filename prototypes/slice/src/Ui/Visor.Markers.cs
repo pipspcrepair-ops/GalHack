@@ -52,6 +52,7 @@ public partial class Visor
         HudLayout layout = HudLayout.Compute(size, uiScale);
         float s = layout.Scale;
         var boxes = layout.Boxes.Select(b => b.Box).ToList();
+        boxes.AddRange(ScreenBoxes(size, s));
         Vector2 centre = size / 2f;
         var inner = new Rect2(new Vector2(MarkerMargin, MarkerMargin) * s, size - new Vector2(MarkerMargin, MarkerMargin) * 2f * s);
         Transform3D view = cam.GlobalTransform.AffineInverse();
@@ -128,6 +129,68 @@ public partial class Visor
         }
         if (_marks.Count > 64) foreach (string k in _marks.Where(e => e.Value.Seen != _layoutPass).Select(e => e.Key).ToList()) _marks.Remove(k);
         return placed;
+    }
+
+    /// <summary>Off only for a test that measures what the screens' boxes change.</summary>
+    public static bool HoldScreensClear = true;
+
+    /// <summary>How near, in metres, a machine's screen is held clear of markers and the use prompt.</summary>
+    public const float ScreenRange = 6f;
+
+    /// <summary>
+    /// Where the machine screens up close (within <see cref="ScreenRange"/>, facing the camera) project to in a window of this
+    /// size, bezel and a margin included. Markers are hidden under these boxes (the same hysteresis as for the visor's
+    /// own boxes) and the use prompt keeps out of them. One that is too close to project fills the window.
+    /// </summary>
+    public List<Rect2> ScreenBoxes(Vector2 size, float s)
+    {
+        var boxes = new List<Rect2>();
+        Camera3D cam = Game.Camera;
+        if (!HoldScreensClear || cam == null || Game.MachineScreens == null || size.X < 10 || size.Y < 10) return boxes;
+        Transform3D view = cam.GlobalTransform.AffineInverse();
+        float focal = size.Y / 2f / MathF.Tan(Mathf.DegToRad(cam.Fov) / 2f);
+        var window = new Rect2(Vector2.Zero, size);
+        foreach (var m in Game.MachineScreens.Screens.Values)
+        {
+            DiegeticUi.Screens.WorldScreen sc = m.Screen;
+            if (!IsInstanceValid(sc) || !sc.IsVisibleInTree()) continue;
+            Vector3 to = cam.GlobalPosition - sc.GlobalPosition;
+            if (to.Length() > ScreenRange || to.Dot(sc.GlobalBasis.Z) <= 0f) continue;
+            float hx = sc.SizeMeters.X / 2f + sc.Bezel, hy = sc.SizeMeters.Y / 2f + sc.Bezel;
+            Rect2 r = default;
+            bool first = true, close = false;
+            foreach (var (cx, cy) in new[] { (-hx, hy), (hx, hy), (hx, -hy), (-hx, -hy) })
+            {
+                Vector3 l = view * (sc.GlobalTransform * new Vector3(cx, cy, 0f));
+                if (l.Z > -0.05f) { close = true; break; }
+                Vector2 p = size / 2f + new Vector2(l.X, -l.Y) * focal / -l.Z;
+                r = first ? new Rect2(p, Vector2.Zero) : r.Expand(p);
+                first = false;
+            }
+            if (close) r = window;
+            r = r.Grow(6f * s);
+            if (r.Intersects(window)) boxes.Add(r);
+        }
+        return boxes;
+    }
+
+    /// <summary>
+    /// Where the use prompt goes: under the crosshair, or, with that on a machine's screen, below the screen's box (above it
+    /// where the visor's key hints are in the way), so it never covers the glass.
+    /// </summary>
+    public Rect2 PromptBox(Vector2 size, float uiScale, string label)
+    {
+        HudLayout layout = HudLayout.Compute(size, uiScale);
+        float s = layout.Scale, h = 24f * s;
+        float w = Paint.TextWidth(UiTheme.Label, (int)(18 * s), label) + 8f * s;
+        var r = new Rect2(size.X / 2f - w / 2f, size.Y / 2f + 18f * s, w, h);
+        foreach (Rect2 b in ScreenBoxes(size, s))
+        {
+            if (!b.Intersects(r)) continue;
+            r.Position = new Vector2(r.Position.X, b.End.Y + 2f * s);
+            if (r.End.Y > layout.Hints.Position.Y) r.Position = new Vector2(r.Position.X, b.Position.Y - 2f * s - h);
+        }
+        return r;
     }
 
     /// <summary>Where a ray from the centre in this direction leaves the rectangle.</summary>
