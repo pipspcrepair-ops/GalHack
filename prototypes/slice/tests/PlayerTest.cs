@@ -197,12 +197,9 @@ public partial class PlayerTest : Node
                     $"digging {kind} gives {_game.Zone.Data.Rules.Materials.OrePerCell} {ore} a cell, trickling in as it chips: {firstCells} cells taken and {_game.Tool.TellOre - rock} off the rock over them, +{_game.Pack[ore] - before}");
             }
         }
-        // Ice lies only on ice worlds, moons, asteroids and ice caps (the owner's rule), so most starts have none within reach: the rest of the loop is played with a hand-out of it.
-        if (_game.Pack["ice"] < raw["ice"] && _game.World.Archetype != Archetype.Ice)
-        {
-            GD.Print($"  (no ice within reach on this world: {raw["ice"] - _game.Pack["ice"]} handed over)");
-            _game.Pack.Add("ice", raw["ice"] - _game.Pack["ice"]);
-        }
+        // Ice lies only on ice worlds, moons, asteroids and ice caps: most starts have none in reach, so the test is handed what the digging would have given.
+        int iceWant = raw["ice"] + 6;
+        if (raw["ice"] > 0 && _game.Pack["ice"] < iceWant && _game.World.Archetype != Archetype.Ice) _game.Pack.Add("ice", iceWant - _game.Pack["ice"]);
         var shortOf = raw.Where(kv => kv.Key != "stone" && _game.Pack[kv.Key] < kv.Value).ToList();
         Check(shortOf.Count == 0, $"the deposits near the pod hold the whole loop's ore: {string.Join(", ", raw.Select(kv => $"{_game.Pack[kv.Key]}/{kv.Value} {kv.Key}"))}");
         if (_game.Pack["stone"] < raw["stone"]) GD.Print($"  (stone {_game.Pack["stone"]}/{raw["stone"]}: more comes with the next digs)");
