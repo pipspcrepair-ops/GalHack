@@ -728,28 +728,36 @@ public sealed class Playthrough
     }
 
     /// <summary>
-    /// The small vessel the real-player test and the screenshots build on a core: a deck of a
-    /// generator, struts and a gyro round the core, a main engine at the back, a seat on top
-    /// (reached with a hop on the jetpack), and under the outer blocks two lift jets, a fuel tank
-    /// and three legs, all reachable from outside the vessel's footprint. Each
-    /// block goes on a face its mounting allows (a seat by its base, a fuel tank top or bottom, a
-    /// thruster not by its nozzle, a leg by its top).
+    /// The small vessel the real-player test and the screenshots build on a core set down on the
+    /// ground: a column up from the core to a deck above head height, a generator, struts and a
+    /// gyro round it, a main engine at the back, the seat and a fuel tank on top (reached with a hop
+    /// on the jetpack), and under the deck two lift jets and three legs, looked up at from beside.
+    /// Each block goes on a face its mounting allows (a seat by its base, a fuel tank top or bottom,
+    /// a thruster not by its nozzle, a leg by its top).
     /// </summary>
-    public static readonly (string block, Int3 on, Dir face, Dir? push)[] VesselLayout =
+    public static readonly (string block, Int3 on, Dir face, Dir? push)[] VesselLayout = DeckLayout();
+
+    static (string block, Int3 on, Dir face, Dir? push)[] DeckLayout()
     {
-        // The deck round the core, from its sides.
-        ("generator", Int3.Zero, Dir.PosX, null), ("steel", Int3.Zero, Dir.NegX, null), ("steel", Int3.Zero, Dir.NegZ, null),
-        ("steel", new Int3(0, 0, -1), Dir.NegZ, null), ("gyro", Int3.Zero, Dir.PosZ, null), ("thruster", new Int3(0, 0, 1), Dir.PosZ, Dir.NegZ),
-        ("steel", new Int3(0, 0, 1), Dir.PosX, null), ("steel", new Int3(0, 0, 1), Dir.NegX, null),
-        // A retro at the nose, to brake.
-        ("thruster", new Int3(0, 0, -2), Dir.NegZ, Dir.PosZ),
-        // On top, from hops: the seat, and a jet pushing down, to come down under control.
-        ("chair", Int3.Zero, Dir.PosY, null), ("thruster", new Int3(1, 0, 0), Dir.PosY, Dir.NegY),
-        // Under the outer blocks, from outside: lift jets, the fuel tank, three legs.
-        ("thruster", new Int3(1, 0, 0), Dir.NegY, Dir.PosY), ("thruster", new Int3(-1, 0, 0), Dir.NegY, Dir.PosY),
-        ("fueltank", new Int3(-1, 0, 1), Dir.NegY, null), ("gear", new Int3(1, 0, 1), Dir.NegY, null),
-        ("gear", new Int3(0, 0, -2), Dir.NegY, null), ("gear", new Int3(-1, -1, 1), Dir.NegY, null),
-    };
+        Int3 deck = new(0, 2, 0);
+        Int3 at(int x, int z) => deck + new Int3(x, 0, z);
+        return new (string, Int3, Dir, Dir?)[]
+        {
+            // The column, from hops: the deck's underside clears the castaway's eyes, so legs can go under it.
+            ("steel", Int3.Zero, Dir.PosY, null), ("steel", new Int3(0, 1, 0), Dir.PosY, null),
+            // The deck round the column's top, from its sides.
+            ("generator", deck, Dir.PosX, null), ("steel", deck, Dir.NegX, null), ("steel", deck, Dir.NegZ, null),
+            ("steel", at(0, -1), Dir.NegZ, null), ("gyro", deck, Dir.PosZ, null), ("thruster", at(0, 1), Dir.PosZ, Dir.NegZ),
+            ("steel", at(0, 1), Dir.PosX, null), ("steel", at(0, 1), Dir.NegX, null),
+            // A retro at the nose, to brake.
+            ("thruster", at(0, -2), Dir.NegZ, Dir.PosZ),
+            // On top, from hops: the seat, the fuel tank, and a jet pushing down, to come down under control.
+            ("chair", deck, Dir.PosY, null), ("fueltank", at(-1, 1), Dir.PosY, null), ("thruster", at(1, 0), Dir.PosY, Dir.NegY),
+            // Under the deck, from beside: lift jets and three legs.
+            ("thruster", at(1, 0), Dir.NegY, Dir.PosY), ("thruster", at(-1, 0), Dir.NegY, Dir.PosY),
+            ("gear", at(1, 1), Dir.NegY, null), ("gear", at(0, -2), Dir.NegY, null), ("gear", at(-1, 1), Dir.NegY, null),
+        };
+    }
 
     /// <summary>Builds <see cref="VesselLayout"/> on a vessel's core, from toolbar slots by block, walking round it to see each face. Counts what went down.</summary>
     public IEnumerable<int> BuildVessel(Vessel v, IReadOnlyDictionary<string, int> slots, Action<int> placed)

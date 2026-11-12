@@ -82,5 +82,5 @@ public static class CoreCraft
     public static Dictionary<Int3, Block> Blocks(Structure s) => s.Blocks().ToDictionary(b => b.pos, b => b.block);
 
     public static bool SameBlocks(Structure s, Dictionary<Int3, Block> before) =>
-        s.Count == before.Count && before.All(kv => s.TryGet(kv.Key, out Block b) && b.SameAs(kv.Value));
+        s.BlockCount == before.Count && before.All(kv => s.TryGet(kv.Key, out Block b) && b.SameAs(kv.Value));
 }

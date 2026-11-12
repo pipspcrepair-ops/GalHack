@@ -181,6 +181,7 @@ public partial class CoreTest : Node
         blocks = CoreCraft.Blocks(s); // a branch on the way up is no part of this: the blocks as they are now
         v.SwitchMode(CoreMode.Hover); // as old data may: the CORE tab only offers it with plates aboard
         Check(s.Mode == CoreMode.Hover && CoreCraft.SameBlocks(s, blocks), "put in Hover Mode in flight, with no hover plates: nothing refuses it, no block changed");
+        foreach (int x in _drive.Wait(2)) yield return x; // the handling model reads the new mode on its next step
         Check(v.Stats.Class == ShipHandling.Handling.VesselClass.Hover && !v.Stats.CanLiftOff && v.ModeWarning?.Contains("HOVER PLATES") == true, $"the console says what's missing: \"{v.ModeWarning}\"");
         float falling = 0f;
         for (int t = 0; t < 60 * 12 && !v.Controller.Frozen; t++)

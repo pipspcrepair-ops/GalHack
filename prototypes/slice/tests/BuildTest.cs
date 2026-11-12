@@ -197,8 +197,8 @@ public partial class BuildTest : Node
         var view = new ItemView();
         bool Shows(Func<ItemDef, bool> test) => view.Visible(grid).Select(i => Items.Item(grid[i].Item)).All(test);
         Check(view.Visible(grid).Count == grid.Count, "unfiltered and as arranged, every slot shows");
-        view.Text = "StEeL";
-        Check(view.Visible(grid).Count > 0 && Shows(i => i.Name.Contains("steel", StringComparison.OrdinalIgnoreCase) || ItemView.CategoryWords(i).Contains("steel")), $"text filter, case-insensitive: \"StEeL\" shows {view.Visible(grid).Count} stacks, all steel");
+        view.Text = "PlAtEd";
+        Check(view.Visible(grid).Count > 0 && Shows(i => i.Name.Contains("plated", StringComparison.OrdinalIgnoreCase) || ItemView.CategoryWords(i).Contains("plated")), $"text filter, case-insensitive: \"PlAtEd\" shows {view.Visible(grid).Count} stacks, all plated");
         view.Text = "raw";
         Check(view.Visible(grid).Count > 0 && Shows(i => i.Category == ItemCategory.Raw), "text filter on a category name: \"raw\" shows raw items");
         view.Text = "";
