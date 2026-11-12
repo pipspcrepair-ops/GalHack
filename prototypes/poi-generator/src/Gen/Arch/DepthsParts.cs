@@ -739,12 +739,12 @@ internal sealed partial class Depths
             var (si, sk) = P(0, x0);
             w.I = si; w.K = sk;
             // Floor rooms: under the gallery, doors through the long wall.
-            string? purpose = cells ? "cellblock" : null;
+            string? purpose = cells ? "cell" : null;
             RoomsAlong(lv, w, neg: !pos, pos: pos, density: 0.8f, from: 2, to: Hl - 3, minW: cells ? 2 : 3, maxW: cells ? 2 : 6, minD: 3, maxD: cells ? 3 : 6, purpose: purpose, height: 2);
             // Gallery rooms: a storey up, their doors onto the gallery.
             var gw = new Way { S = pos ? right : left, D = d, Len = Hl, Wid = Hw, I = si, K = sk };
             RoomsAlong(lv, gw, neg: !pos, pos: pos, density: 0.75f, from: 2, to: Hl - 3, minW: cells ? 2 : 3, maxW: cells ? 2 : 5, minD: 3, maxD: cells ? 3 : 5,
-                purpose: cells ? "cellblock" : ops ? (R.Chance(0.5f) ? "control" : "monitor") : null, height: 2);
+                purpose: cells ? "cell" : ops ? (R.Chance(0.5f) ? "control" : "monitor") : null, height: 2);
         }
         // On out of the far end at floor level.
         var exitFace = Face(hall, d, lv.J);
@@ -902,7 +902,7 @@ internal sealed partial class Depths
             var g = From(lv, hub, sd, R.Between(10, 16), R.Between(2, 3), Math.Min(lv.H, 3), kind: "gallery", purpose: "corridor", minLen: 6);
             if (g == null) continue;
             blocks++;
-            RoomsAlong(lv, g, density: 0.95f, from: 1, minW: 2, maxW: 2, minD: 3, maxD: 3, purpose: "cellblock", height: 2);
+            RoomsAlong(lv, g, density: 0.95f, from: 1, minW: 2, maxW: 2, minD: 3, maxD: 3, purpose: "cell", height: 2);
             EndRoom(lv, g, 3, 3, purpose: "solitary", height: 2);
         }
         return blocks > 0;

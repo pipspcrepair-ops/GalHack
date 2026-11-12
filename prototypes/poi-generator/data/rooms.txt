@@ -121,7 +121,7 @@ room lab
 room cold-store
   deco coldstore
   name Cold store
-  width 4 7
+  width 3 6
   area 10 50
   props shelf 3 tank 2
   fill 0.6
