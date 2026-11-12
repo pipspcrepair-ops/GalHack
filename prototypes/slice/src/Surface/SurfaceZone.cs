@@ -402,9 +402,7 @@ public partial class SurfaceZone : Node3D
             GalHack.Physics.Body b = v.Body;
             if (b.Motion != GalHack.Physics.Motion.Free || v.Binding is not GalHack.Physics.Engine.FreeBinding free) continue;
             Vector3 at = b.WorldPosition.ToGodot();
-            // A hurricane carries one 0.6 m a tick: look a third of a second ahead, or it is across the edge before it is held.
-            Vector3 ahead = at + b.Velocity.ToGodot() * 0.3f;
-            if (Streamer.CollidesAt(at) && Streamer.CollidesAt(ahead))
+            if (Streamer.CollidesAt(at))
             {
                 if (Held.Remove(b)) free.Wake();
                 continue;
