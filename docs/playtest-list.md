@@ -678,6 +678,7 @@ Design clarified: small vessels never auto-hover; only Hover Mode holds a craft 
 
 ## Tests and gate fixes
 
+- [ ] SurfaceTest on random temperate worlds fails many infrastructure and place checks (gate agent, 13 Nov): powered house drop to a plant; places and ruins on a road (89 of 222 ruins without); abandoned vehicles keep the way open; flavour ruins; power lines anchored and only where they make sense; a city lot at the water's edge; river edges still proud (volume: 27 ends over 0.3 m, worst 1.6 m; drawn sheet: 4,956 edge points, worst 3.1 m, mostly natural ground at LOD 0; `SurfaceTest.Infra.cs` about lines 1488-1489) [queued: an infrastructure and water fix agent after proto/sparse and proto/places merge] [normal]
 - [ ] BuildTest: "the zone runs from the footprint's edge, so a bigger base has a bigger zone" fails on worlds with another base (a one-base assumption, like the base pick fixed in 67236d4) [gate fix round] [normal]
 - [ ] PopTest (windowed): on the bike two creatures came into view at 74 m (limit 90 m); spawns at bike speed need more lead [gate fix round] [normal]
 - [ ] Vehicles left from proto/vehground: bike model reads up to 3.4 deg off heading while tipped just after a crash; one 16.6 cm side overlap in a creative turn (limit 5 cm); physics sandbox hover rover now stops 1.5 m down the 4.1 m crater (needs 2.5 m); hard-landing screenshot not taken [gate fix round] [normal]
