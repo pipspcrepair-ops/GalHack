@@ -192,7 +192,7 @@ public partial class CombatTest : Node
             Check(shots.All(s => s.Muzzle.DistanceTo(s.Model) < 0.05f), $"from the muzzle of the model in their hands (worst {shots.Max(s => s.Muzzle.DistanceTo(s.Model)):F2} m off)");
             Check(shots.All(s => s.Def.Delivery == Delivery.Strike || s.Muzzle.DistanceTo(s.Chest) > 0.2f), $"never from the chest (nearest {shots.Min(s => s.Muzzle.DistanceTo(s.Chest)):F2} m from it)");
             Check(aimsBeforeFirst >= 1, $"the first was aimed where you could see it ({aimsBeforeFirst} aims before it)");
-            Check(dealt.Count == 0 || dealt.All(d => shots.Any(s => MathF.Abs(s.Def.Damage - d) < 0.01f)), $"what hit you was their weapon's damage ({string.Join(", ", dealt.Take(6).Select(d => $"{d:F0}"))} of {string.Join("/", shots.Select(s => $"{s.Def.Id} {s.Def.Damage}").Distinct())})");
+            Check(dealt.Count == 0 || dealt.All(d => shots.Concat(blows).Any(s => MathF.Abs(s.Def.Damage - d) < 0.01f)), $"what hit you was their weapon's damage ({string.Join(", ", dealt.Take(6).Select(d => $"{d:F0}"))} of {string.Join("/", shots.Concat(blows).Select(s => $"{s.Def.Id} {s.Def.Damage}").Distinct())})");
             int left = armed.Sum(p => p.Kit?.Rounds ?? 0) + armed.Sum(p => p.Emptied?.Rounds ?? 0);
             Check(left < rounds, $"rounds are used up ({rounds} carried, {left} left)");
         }
