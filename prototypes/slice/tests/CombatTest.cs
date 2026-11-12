@@ -238,7 +238,15 @@ public partial class CombatTest : Node
             for (int i = 0; i < 60; i++) { game.Suit.Vitals.Health = max; yield return 0; }
             if (!game.Sheltered()) break;
         }
-        WildSim sim = patch.Sim; // (the patch's sim where you are now: a long move swaps it)
+        // A long move swaps the patch's sim: wait for the one round you now to settle.
+        WildSim sim = patch.Sim;
+        for (int i = 0, same = 0; i < 60 * 20 && same < 180; i++)
+        {
+            same = patch.Sim == sim ? same + 1 : 0;
+            sim = patch.Sim;
+            game.Suit.Vitals.Health = max;
+            yield return 0;
+        }
         if (sim == null) { Check(false, "the patch has a sim"); yield break; }
         Vector3 feet = game.Survivor.WorldFeet;
         Vector3 Ground(Vector3 at) => game.Zone.GroundAt(at.X, at.Z);
