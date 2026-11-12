@@ -73,34 +73,18 @@ public partial class LooseTest : Node
         public readonly List<float> Heights = new();
     }
 
-    /// <summary>How far the lowest corner of the piece's actual collision shapes (what the engine collides) is below the collider under it, m (positive: sunk).</summary>
+    /// <summary>How deep the body's collision shapes overlap the world right now, m: the engine's own contact depth, not a height difference.</summary>
     float Sinking(Vessel v)
     {
-        float deepest = float.MinValue;
+        var space = Zone.GetWorld3D().DirectSpaceState;
+        float deepest = 0f;
         foreach (CollisionShape3D cs in ((FreeBinding)v.Binding).Rigid.GetChildren().OfType<CollisionShape3D>())
         {
-            Vector3[] points = cs.Shape switch
-            {
-                BoxShape3D b => Enumerable.Range(0, 8).Select(k => new Vector3((k & 1) == 0 ? -1 : 1, (k & 2) == 0 ? -1 : 1, (k & 4) == 0 ? -1 : 1) * b.Size * 0.5f).ToArray(),
-                ConvexPolygonShape3D c => c.Points,
-                _ => Array.Empty<Vector3>(),
-            };
-            foreach (Vector3 p in points)
-            {
-                Vector3 w = cs.GlobalTransform * p;
-                float top = ColliderTop(w);
-                deepest = MathF.Max(deepest, (float.IsFinite(top) ? top : Zone.GroundAt(w.X, w.Z).Y) - w.Y);
-            }
+            var q = new PhysicsShapeQueryParameters3D { Shape = cs.Shape, Transform = cs.GlobalTransform, CollisionMask = GalHack.Physics.Layers.World, Margin = 0f };
+            Godot.Collections.Array<Vector3> pairs = space.CollideShape(q, 32); // on-shape and on-world contact points, in pairs
+            for (int k = 0; k + 1 < pairs.Count; k += 2) deepest = MathF.Max(deepest, pairs[k].DistanceTo(pairs[k + 1]));
         }
         return deepest;
-    }
-
-    /// <summary>The top of the solid ground by a ray from above, or NaN where nothing collides.</summary>
-    float ColliderTop(Vector3 w)
-    {
-        var q = PhysicsRayQueryParameters3D.Create(w + Vector3.Up * 0.6f, w + Vector3.Down * 8f, GalHack.Physics.Layers.World);
-        var hit = Zone.GetWorld3D().DirectSpaceState.IntersectRay(q);
-        return hit.Count == 0 ? float.NaN : ((Vector3)hit["position"]).Y;
     }
 
     /// <summary>Dry, level ground near a spot east and south of the player (no water, no slope), so the props are judged on ground.</summary>
@@ -175,7 +159,7 @@ public partial class LooseTest : Node
             foreach (Track t in new[] { tracks[0], tracks[3] })
             {
                 Vector3 w = t.V.ToWorld(N.Vector3.Zero);
-                GD.Print($"  t{i / 60f:F1}s {t.V.Name}: y {w.Y:F2} ground {Zone.GroundAt(w.X, w.Z).Y:F2} v {t.V.Body.Velocity.Length():F2} asleep {t.V.Body.Asleep} sink {Sinking(t.V) * 100f:F0} cm, collider top {ColliderTop(w):F2}, {t.V.HullShapes.ShapeCount} shapes, f grav {t.V.Body.LastForce(ForceKind.Gravity).Y:F0} weather {t.V.Body.LastForce(ForceKind.Weather).Length():F1} contact {t.V.Body.LastForce(ForceKind.Contact).Length():F0} other {t.V.Body.LastForce(ForceKind.Other).Length():F0} water {t.V.Body.LastForce(ForceKind.Water).Length():F0} rot {t.V.Body.Rotation}");
+                GD.Print($"  t{i / 60f:F1}s {t.V.Name}: y {w.Y:F2} ground {Zone.GroundAt(w.X, w.Z).Y:F2} v {t.V.Body.Velocity.Length():F2} asleep {t.V.Body.Asleep} sink {Sinking(t.V) * 100f:F0} cm, {t.V.HullShapes.ShapeCount} shapes, f grav {t.V.Body.LastForce(ForceKind.Gravity).Y:F0} weather {t.V.Body.LastForce(ForceKind.Weather).Length():F1} contact {t.V.Body.LastForce(ForceKind.Contact).Length():F0} other {t.V.Body.LastForce(ForceKind.Other).Length():F0} water {t.V.Body.LastForce(ForceKind.Water).Length():F0} rot {t.V.Body.Rotation}");
             }
         }
 
