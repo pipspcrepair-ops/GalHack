@@ -318,8 +318,8 @@ public partial class BestiaryTest
             float clock = 0f;
             for (int k = 0; k < 3; k++) rig.Drive(new Gesture { Feet = Vector3.Zero, Clock = clock += 1f / 60f, Act = _fresh.Chance(0.3f) ? BodyAct.HandsUp : BodyAct.None, ActAmount = 1f });
             int body = rig.Layout.Pieces.FindIndex(p => p.Name == "body");
-            int arm = rig.Layout.Pieces.FindIndex(p => p.Name == "arm1u");
-            Basis armToBody0 = rig.Pose[body].Basis.Inverse() * rig.Pose[arm].Basis;
+            int[] limbs = new[] { "arm0u", "arm1u", "leg0u", "leg1u" }.Select(n => rig.Layout.Pieces.FindIndex(p => p.Name == n)).ToArray();
+            Vector3[] set0 = limbs.Select(l => (rig.Pose[body].Basis.Inverse() * rig.Pose[l].Basis).Y).ToArray();
             rig.Struck(rig.ChestPoint, new Vector3(_fresh.Range(-1f, 1f), 0f, _fresh.Range(-1f, 1f)), _fresh.Range(0.3f, 1f));
             for (int k = 0; k < 600 && !rig.Settled; k++)
             {
@@ -332,9 +332,8 @@ public partial class BestiaryTest
             if (gap > 0.02f) floating++;
             if (gap < -0.01f) sunk++;
             worstGap = MathF.Max(worstGap, MathF.Abs(gap));
-            // Limp: the arm's set to the body has changed (it isn't the last pose turned over).
-            Basis armToBody = rig.Pose[body].Basis.Inverse() * rig.Pose[arm].Basis;
-            if ((armToBody.Y - armToBody0.Y).Length() < 0.05f) rigid++;
+            // Limp: the limbs' set to the body has changed (it isn't the last pose turned over).
+            if (limbs.Select((l, k) => ((rig.Pose[body].Basis.Inverse() * rig.Pose[l].Basis).Y - set0[k]).Length()).Max() < 0.05f) rigid++;
             // And it lies down: the chest near the ground.
             if (rig.ChestPoint.Y - rig.ChestPoint.X * slope > s.Figure.Height * 0.4f) floating++;
         }

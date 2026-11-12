@@ -91,7 +91,7 @@ public sealed partial class HumanRig
         {
             case StrikeKind.Punch:
             {
-                if (!lead) return Bones(shoulder, F.V(0.15f, -0.75f, 0.45f), F.V(-0.4f, 0.8f, 0.42f), upper, fore); // a guard up at the chin
+                if (!lead) return Bones(shoulder, F.V(0.2f, -0.85f, 0.3f), F.V(-0.45f, 0.85f, 0.3f), upper, fore); // a guard up at the chin
                 ArmGoal cocked = Bones(shoulder, F.V(0.3f, -0.72f, -0.38f), F.V(-0.12f, 0.85f, 0.5f), upper, fore);
                 ArmGoal thrown = Bones(shoulder, F.V(-0.08f, 0.04f, 1f), F.V(-0.06f, 0.06f, 1f), upper, fore);
                 return Blend(cocked, thrown, k);
