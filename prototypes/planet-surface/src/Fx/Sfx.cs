@@ -59,6 +59,18 @@ public partial class Sfx : Node3D
         _rain.VolumeDb = r < 0.02f ? -80f : Mathf.LinearToDb(r) - 10f;
     }
 
+    /// <summary>Sets the weather loops from loudness already worked out for where you stand: wind 0 to 1.3, rain 0 to 1.</summary>
+    public void SetLevels(float wind, float rain)
+    {
+        _wind.VolumeDb = wind < 0.02f ? -80f : Mathf.LinearToDb(wind) - 8f;
+        _wind.PitchScale = 0.8f + Mathf.Min(wind, 1f) * 0.5f;
+        _rain.VolumeDb = rain < 0.02f ? -80f : Mathf.LinearToDb(rain) - 10f;
+    }
+
+    /// <summary>The weather loops' volume now, dB (-80 is silent): tests measure indoors and out.</summary>
+    public float WindDb => _wind.VolumeDb;
+    public float RainDb => _rain.VolumeDb;
+
     public void Play(Sound sound, Vector3 at, float pitch = 1f, float volumeDb = 0f)
     {
         AudioStreamPlayer3D voice = _voices[_next];
