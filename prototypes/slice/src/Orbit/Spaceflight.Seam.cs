@@ -373,7 +373,7 @@ public partial class Spaceflight
         if (!s.Arrived)
         {
             // Its surface hasn't arrived yet (it does while you are still far over it): the whole globe, where it is.
-            DrawFar(o, eye, 0f, 0f);
+            DrawFar(o, eye);
             return;
         }
         float cap = Ceiling, R = o.GlobeRadius;

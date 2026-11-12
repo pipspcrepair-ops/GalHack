@@ -140,7 +140,6 @@ public partial class Spaceflight
         if (o == null || o.Bodies.Count < 2) return;
         Vector3 eye = Game.Camera.GlobalPosition;
         bool space = Game.InOrbit && _band >= 1f;
-        float hereHeight = Here.Height(eye);
         foreach (Celestial c in o.Bodies)
         {
             if (c == Here || c.Globe == null) continue;
@@ -161,9 +160,7 @@ public partial class Spaceflight
                 c.Globe.Visible = false;
                 continue;
             }
-            // Under the true globe's height the body you are near is drawn back along its eye rays: the others stand past it.
-            bool behind = hereHeight < Rules.Crossing.TrueGlobeAt;
-            DrawFar(c, eye, behind ? 40000f : 0f, behind ? 56000f : 0f);
+            DrawFar(c, eye);
         }
     }
 
@@ -185,8 +182,8 @@ public partial class Spaceflight
         return false;
     }
 
-    /// <summary>A body you are not near, drawn as a whole globe at its true place (or along its eye rays, past the one you are near).</summary>
-    void DrawFar(Celestial c, Vector3 eye, float near, float far)
+    /// <summary>A body you are not near, drawn as a whole globe at its true place.</summary>
+    void DrawFar(Celestial c, Vector3 eye)
     {
         N.Vector3 q = c.ToGlobe(eye.ToNumerics());
         float distance = q.Length();
@@ -218,7 +215,7 @@ public partial class Spaceflight
             CloudBend = 1f / R,
             CloudLift = (float)Rules.Globe.CloudHeight * R,
             OverLand = 1f,
-            Near = near, Far = far,
+
             ToSun = (Orbit.Home.Turn.ToBasis() * Orbit.Space.ToSun).Normalized(),
             FogDensity = 0f,
             FogColor = Colors.Black,
