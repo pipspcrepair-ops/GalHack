@@ -486,6 +486,8 @@ public static partial class PoiFauna
             foreach (PoiRoom room in poi.Rooms)
                 if (room.Kind is not (RoomKind.Vent or RoomKind.Duct) && room.Size.Y >= 1.8f && (furthest == null || far.GetValueOrDefault(room.Index) > far.GetValueOrDefault(furthest.Index) || room.Size.X * room.Size.Z > furthest.Size.X * furthest.Size.Z && far.GetValueOrDefault(room.Index) == far.GetValueOrDefault(furthest.Index)))
                     furthest = room;
+        // A place with no rooms at all (a sign by the road, a camp): its Husk keeps to its open ground.
+        furthest ??= poi.Yards.Count > 0 ? poi.Yards[0] : null;
         if (furthest == null) return;
         // However light, the furthest room has its Husk and the faintest sign of them: a vein in a corner.
         if (!pop.Spawns.Exists(s => s.Room == furthest.Index && s.Species.Husk) && lurker != null)
