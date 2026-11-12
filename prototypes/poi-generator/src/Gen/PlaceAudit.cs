@@ -198,7 +198,9 @@ public sealed class PlaceAudit
                 // At the room's own floor (what the years heaped on it raises nothing).
                 if (c.Y != m.Min.Y || !nav.StandsOn(c)) continue;
                 int hgt = 0;
-                while (hgt < 40 && !nav.Solid(c + Int3.Up * hgt) && g.InBounds(c + Int3.Up * hgt)) hgt++;
+                // Up to the ceiling: the first full block (or the rock) overhead, not a lamp, a cable or a shelf's top.
+                bool Ceiling(Int3 q) => g.Get(q) is var cb && (cb.IsAir ? nav.IsRock(q) : BlockInfo.IsFullCube(cb.Type) || BlockInfo.IsSlope(cb.Type) || BlockInfo.IsCornerSlope(cb.Type));
+                while (hgt < 40 && !Ceiling(c + Int3.Up * hgt) && g.InBounds(c + Int3.Up * hgt)) hgt++;
                 if (hgt >= 40 || !g.InBounds(c + Int3.Up * hgt)) continue; // open to the sky
                 heights[hgt] = heights.GetValueOrDefault(hgt) + 1;
             }

@@ -88,7 +88,8 @@ public static class Settle
             Int3 endA = alongX ? lo + new Int3(-1, 0, 0) : lo + new Int3(0, 0, -1);
             Int3 endB = alongX ? hi with { Y = lo.Y } + new Int3(1, 0, 0) : hi with { Y = lo.Y } + new Int3(0, 0, 1);
             bool whole = h >= 2 && doors.Count == w * h * d;
-            bool walled = Held(endA) && Held(endB);
+            // ...and with floor under its foot (where the years took the floor from under a doorway, the door went with it).
+            bool walled = Held(endA) && Held(endB) && doors.Where(c => c.Y == lo.Y).All(c => Holds(g, nav, c + Int3.Down));
             if (whole && walled) continue;
             if (!whole) System.Threading.Interlocked.Increment(ref Broken);
             else
