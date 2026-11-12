@@ -462,7 +462,12 @@ public sealed partial class HumanRig : Rig
             if (g.Reach > 0f) hand = hand.Lerp(husk ? shoulder + ahead * arm * 0.8f + Vector3.Up * 0.24f + torso.X * side * -0.16f : shoulder + ahead * arm * 0.9f + Vector3.Up * 0.05f + torso.X * side * -0.04f, g.Reach);
             if (g.Sit > 0f && !longGun) hand = hand.Lerp(hip + ahead * 0.32f + torso.X * side * 0.14f + Vector3.Up * 0.03f, g.Sit);
             // Crouched, the forearms rest over the knees, the hands hanging just past them.
-            if (g.Crouch > 0f) hand = hand.Lerp(_knee[i] + fwd * 0.1f * f.Height / 1.72f + torso.X * side * 0.05f - Vector3.Up * 0.04f, g.Crouch);
+            if (g.Crouch > 0f)
+            {
+                // (Elbows out over the thighs, so a big coat's front stays clear of the arms.)
+                hand = hand.Lerp(_knee[i] + fwd * 0.1f * f.Height / 1.72f + torso.X * side * 0.08f - Vector3.Up * 0.04f, g.Crouch);
+                pole = pole.Lerp(F.V(0.85f, -0.25f, 0.2f), g.Crouch).Normalized();
+            }
             // Stalking, the arms hang loose and forward, ready.
             if (stalk > 0f) pole = pole.Lerp(F.V(0.5f, -0.4f, -0.8f), stalk).Normalized();
             // A hand on a weapon stays on it; the other does the gesture (a one-handed one done by the free hand).
