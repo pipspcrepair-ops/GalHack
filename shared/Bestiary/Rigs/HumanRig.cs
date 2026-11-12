@@ -6,6 +6,9 @@ namespace Wildlife;
 /// <summary>What a body says without words. Each is only where the hands, the back and the head go.</summary>
 public enum BodyAct { None, HandsUp, Cower, WaveOff, Beckon, Point, Shrug, Warn, Celebrate, Grieve, Panic, Fidget, Taunt, Present, Greet, Startle, Play, Thanks }
 
+/// <summary>A blow with the body: a straight punch, an overhand swat, a Husk's two-handed seize, or its retch and spew.</summary>
+public enum StrikeKind { None, Punch, Swat, Seize, Spew }
+
 /// <summary>What someone is doing, for the rig to show. Everything a game has to say about a person's body.</summary>
 public struct Gesture
 {
@@ -26,6 +29,11 @@ public struct Gesture
     public float Clock;
     /// <summary>The local form of the friendly gestures (a greeting, thanks): 0 a hand waved high, 1 an open palm held up, 2 a hand to the chest.</summary>
     public int Style;
+    /// <summary>0..1: a drink at the lips (the held bottle tipped to the mouth); a low, hunched creep (a stalk, not a crouch).</summary>
+    public float Sip, Stalk;
+    /// <summary>A blow under way and how far through it (0..1: wind-up to about 0.45, the strike to 0.65, then back).</summary>
+    public StrikeKind Strike;
+    public float StrikeAt;
 }
 
 /// <summary>
@@ -149,6 +157,15 @@ public sealed class HumanRig : Rig
         SetBounds(chest, _f.Height * 0.65f);
         BodyClearance = Pose[_body].Origin.Y - c.Position.Y;
     }
+
+    /// <summary>Where the chest and the head are now, which way the body faces and its right side (stagings, tests).</summary>
+    public Vector3 ChestPoint => Pose[_body].Origin + Pose[_body].Basis.Y * _f.Torso * 0.65f;
+    public Vector3 HeadPoint => Pose[_head].Origin + Pose[_head].Basis.Y * (_f.Neck + _f.HeadRadius);
+    public Vector3 Facing => -Pose[_body].Basis.Z.Normalized();
+    public Vector3 Side => Pose[_body].Basis.X.Normalized();
+
+    /// <summary>A hit lands: where (world), the way it travels, and how heavy it is (0..1, 1 a stagger).</summary>
+    public void Struck(Vector3 point, Vector3 dir, float heavy) { }
 
     float GroundAt(float x, float z, float fallback) => _world != null ? GroundY(_world, _creature, x, z) : fallback;
 
