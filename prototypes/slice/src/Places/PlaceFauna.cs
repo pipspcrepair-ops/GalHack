@@ -100,7 +100,6 @@ public sealed class PlaceFauna
             if (m.Kind == ModuleKind.Outdoor)
             {
                 // Open ground: a yard or a camp's pitch, for those that hold the place (the growth's on a camp it took).
-                
                 var floor = m.Cells.Where(c => c.Y == m.Min.Y).ToList();
                 if (floor.Count < 9) continue;
                 plan.Yards.Add(new PoiRoom
