@@ -26,7 +26,6 @@ public static class Settle
     {
         BlockGrid g = inst.Blocks;
         var nav = inst.Nav();
-        Doors(inst, nav);
         // Bottom up, so a stack settles from its foot.
         foreach (var (p, b) in g.Blocks().ToList())
         {
@@ -79,8 +78,9 @@ public static class Settle
     /// pieces (a lone 1 m leaf, a strip a metre high), took the wall from either end of it or the floor from under it, what
     /// is left of the door goes and the doorway is a gap.
     /// </summary>
-    static void Doors(PoiInstance inst, NavGrid nav)
+    public static void Doors(PoiInstance inst)
     {
+        var nav = inst.Nav();
         BlockGrid g = inst.Blocks;
         Layout layout = inst.Layout;
         // What holds a leaf at its ends: a wall, a post, the next door's frame, the rock.

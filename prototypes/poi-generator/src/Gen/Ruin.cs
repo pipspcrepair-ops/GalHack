@@ -89,7 +89,7 @@ public static partial class StateTransforms
                 Dir toWall = Dirs.Horizontal.OrderBy(d => { int n = 1; while (n < 6 && !BlockInfo.IsFullCube(g.Get(at + d.Vec() * n).Type)) n++; return n; }).First();
                 foreach (Int3 c in floor)
                 {
-                    if (!g.Get(c).IsAir) continue;
+                    if (!(g.Get(c).IsAir || BlockInfo.IsFinish(g.Get(c).Type))) continue; // onto the tiles, which stay under it
                     Int3 off = c - at;
                     int along = off.X * toWall.Vec().X + off.Z * toWall.Vec().Z;
                     float d = c.FlatDistance(at);

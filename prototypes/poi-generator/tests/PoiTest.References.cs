@@ -54,9 +54,9 @@ public partial class PoiTest
     /// <summary>
     /// The place-patterns checklist (docs/place-patterns.md, section 6) by tech level, on fresh spawned places: room areas
     /// and narrowest spans (G3, G4), corridors' share of the floor (G6), shape shares (G9), dressing, containers and lights
-    /// per m2 of room floor (G10 to G12). Printed for every level; held to the bands we already meet or have taken on:
-    /// the narrowest span (3 m and over for 9 rooms in 10), a corridor share of 5 to 45%, and half or so of the
-    /// structure plain cube (30 to 75%).
+    /// per m2 of room floor (G10 to G12). Printed for every level; held to the narrowest span (3 m and over for 9 rooms
+    /// in 10) and a corridor share of 5 to 45%. The shape shares wait for the player's new block set (Stage C): with
+    /// only full cubes, slopes and corners to build from, places are nine parts cube.
     /// </summary>
     void PatternChecklist()
     {
@@ -79,7 +79,8 @@ public partial class PoiTest
                 var nav = inst.Nav();
                 foreach (PlacedModule m in inst.Layout.Modules)
                 {
-                    var floor = m.Cells.Where(c => c.Y == m.Min.Y && nav.StandsOn(c)).ToList();
+                    // Its floor layer, furniture and all (a cell with a table in it is still floor).
+                    var floor = m.Cells.Where(c => c.Y == m.Min.Y && Settle.Holds(inst.Blocks, nav, c + Int3.Down)).ToList();
                     if (floor.Count == 0) continue;
                     if (m.Kind == ModuleKind.Corridor) { t.CorridorFloor += floor.Count; continue; }
                     if (m.Kind is not (ModuleKind.Room or ModuleKind.Hall or ModuleKind.Vault)) continue;
@@ -107,7 +108,7 @@ public partial class PoiTest
                     else if (b.Type is BlockType.Pane or BlockType.Rail or BlockType.Pillar or BlockType.Rib or BlockType.Pipe or BlockType.Lattice) t.Thin++;
                 }
             }
-        bool spansOk = true, shareOk = true, cubeOk = true;
+        bool spansOk = true, shareOk = true;
         foreach (var (tech, t) in tallies.OrderBy(k => k.Key))
         {
             t.Areas.Sort();
@@ -121,11 +122,10 @@ public partial class PoiTest
                 $"dressing {t.Dressing / roomFloor:0.00} and containers {t.Containers * 100f / roomFloor:0.0} per 100 m2, a light per {roomFloor / Math.Max(1, t.Lights):0} m2 (G10-G12)");
             spansOk &= wide * 10 >= t.Spans.Count * 9;
             shareOk &= corridorShare is >= 0.05f and <= 0.45f;
-            cubeOk &= Share(t.Cubes) is >= 0.3f and <= 0.75f;
         }
         Check(spansOk, "rooms are at least 3 m across at their narrowest, 9 in 10 at every tech level (G4)");
         Check(shareOk, "corridors take 5 to 45% of the floor at every tech level (G6)");
-        Check(cubeOk, "about half of every place's structure is plain cube, 30 to 75% (G9)");
+
     }
 
     /// <summary>

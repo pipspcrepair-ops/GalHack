@@ -169,7 +169,7 @@ public static class Debris
                 var (_, t) = Piece(l, new V3(0.5f + MathF.Cos(ang) * d, 0, 0.5f + MathF.Sin(ang) * d), half, new V3(r.S(0.5f), r.F() * 6f, r.S(0.5f)), Broken(c, r, m), s, y);
                 top = MathF.Max(top, t);
             }
-            y = y + (top - y) * 0.6f;
+            y = MathF.Min(y + (top - y) * 0.6f, 0.75f); // the slab across the top stays in its cell
         }
         // A slab caught across the top of it.
         Piece(l, new V3(0.5f + r.S(0.1f), 0, 0.5f + r.S(0.1f)), new V3(0.26f, 0.05f, 0.34f), new V3(0.25f + r.F() * 0.3f, r.F() * 6f, r.S(0.2f)), c.Scale(0.95f), s, y - 0.06f);
