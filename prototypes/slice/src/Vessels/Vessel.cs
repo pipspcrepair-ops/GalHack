@@ -129,7 +129,8 @@ public sealed partial class Vessel
         return true;
     }
 
-    public bool IsWreck => Body.Kind == BodyKind.Wreck;
+    /// <summary>A wreck: adrift in space, or lying on a planet with no core yet (fixed like a base, but nobody's base till claimed).</summary>
+    public bool IsWreck => Body.Kind == BodyKind.Wreck || GroundWreck && Structure.Core == null;
 
     /// <summary>
     /// The start's bunker: an ordinary structure of ordinary blocks, flagged only so it is named
