@@ -132,6 +132,8 @@ public sealed class WeatherBridge : IForceProvider
         {
             if (InShelter || _bridge._world == null) return;
             if (HeldByFriction(force)) return;
+            // Air pushes along the ground and lifts, never down into it: a steady downward gust on a free prop outruns the contact and buries it.
+            if (_body.Motion == GalHack.Physics.Motion.Free && _body.Frame == null && force.Y < 0f) force.Y = 0f;
             // A vessel the weather (a tornado's grip, a hurricane's gust) pulls harder than its thrusters can hold is at its mercy until it has come down.
             if (_body.Kind == BodyKind.Vessel && !_bridge._world.IsSheltered(_body)
                 && force.Length() > TossShare * _body.Mass * _bridge._world.Zone.Strength)
