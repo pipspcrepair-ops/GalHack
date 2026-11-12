@@ -26,9 +26,20 @@ public static class Interpenetration
     public static bool Inside(WildSim w, Creature c)
     {
         if (c.Removed || c.InWalls || c.Species.Rig == RigKind.Swarm) return false;
-        if (c.Space != null) return !c.Falling && c.Space.Density(Crawl.Center(c)) > Tolerance;
+        if (c.Space != null) return !c.Falling && InSpace(c);
         if (w.SolidAt == null || c.Species.Flies && !c.Landed || c.Thrown) return false;
         return w.SolidAt(Middle(c));
+    }
+
+    /// <summary>
+    /// In a cave or a place: a climber's middle in its rock or walls or on the wrong side of a part's face;
+    /// a walker's middle in the walls, or its body in a piece of furniture (<see cref="PartSet"/>).
+    /// </summary>
+    static bool InSpace(Creature c)
+    {
+        Vector3 mid = Crawl.Center(c);
+        if (c.Species.Climbs || c.Space.Parts is not { } parts) return c.Space.Density(mid) > Tolerance;
+        return c.Space.Bare.Density(mid) > Tolerance || parts.Gap(c.Position, SpaceNav.PartRadius(c.Species), SpaceNav.PartHeight(c.Species)) < -Tolerance;
     }
 
     /// <summary>Whether a body of this species standing on the surface at a point would be inside a place's blocks.</summary>
@@ -94,7 +105,7 @@ public static class Interpenetration
                 for (int h = 0; h < headroom && open; h++) open = !s.SolidCell(x, y + h, z);
                 if (!open) continue;
                 Crawl.Place(w, c, new Vector3(x + 0.5f, y + 0.05f, z + 0.5f), null);
-                if (s.Density(Crawl.Center(c)) <= Tolerance) return true;
+                if (!InSpace(c)) return true;
             }
         return false;
     }

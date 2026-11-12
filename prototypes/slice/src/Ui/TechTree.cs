@@ -116,7 +116,7 @@ public sealed class TechLayout
 /// tile per node with its item's icon, name, cost and state. Large and Small are split into lanes:
 /// the core and what every mode shares, then hover tech and flight tech side by side as parallel
 /// branches. Misc keeps the deco sets below its own nodes: pick a set, its pieces show. Pointing at
-/// a tile lights what it needs and what it opens and dims the rest; one you can afford unlocks on a
+/// a tile marks it and its tip says what it needs and what it opens; one you can afford unlocks on a
 /// click. Nothing scrolls: the tiles shrink to fit the screen.
 /// </summary>
 public sealed class TechSection : IMenuSection
@@ -280,7 +280,6 @@ public sealed class TechSection : IMenuSection
         foreach (int level in levels)
             g.TextIn($"LV {level}", new Rect2(ColX(colOf[level]), top, tileW, headH - 4), p.Level >= level ? C.Good : C.Dim, 13, HorizontalAlignment.Left, UiTheme.Mono);
 
-        // Pointing at a tile: what it needs and what it opens stay lit.
         TechLayout.Cell hover = null;
         var at = new Dictionary<TechLayout.Cell, Rect2>();
         float y = top + headH;
@@ -305,10 +304,9 @@ public sealed class TechSection : IMenuSection
                 }
             }
             y += laneH + laneGap;
-        }        HashSet<TechLayout.Cell> path = hover == null ? null : lay.PathTo(hover), opens = hover == null ? null : lay.Opens(hover);
-        bool Lit(TechLayout.Cell c) => hover == null || path.Contains(c) || opens.Contains(c);
-
-        foreach (var (c, r) in at) Tile(g, p, c, r, Lit(c), c == hover);
+        }
+        // Every tile stays lit; the one pointed at is marked and its tip says what it needs and opens.
+        foreach (var (c, r) in at) Tile(g, p, c, r, true, c == hover);
 
         if (hover != null)
         {
@@ -321,8 +319,8 @@ public sealed class TechSection : IMenuSection
                 ($"LEVEL {n.Level} · {n.Cost} PT", C.Text),
                 (state == UnlockState.Unlocked ? "UNLOCKED" : p.Needs(n), state == UnlockState.Unlocked ? C.Good : state == UnlockState.Affordable ? C.Accent : C.Warn),
             };
-            if (hover.Parent != null) lines.Add(($"Needs {Plain(hover.Parent.Node, out _)}", C.Dim));
-            if (hover.Kids.Count > 0) lines.Add(($"Opens {string.Join(", ", hover.Kids.Take(4).Select(k => Plain(k.Node, out _)))}{(hover.Kids.Count > 4 ? "..." : "")}", C.Dim));
+            if (hover.Parent != null) lines.Add(($"NEEDS · {Plain(hover.Parent.Node, out _)}", C.Dim));
+            if (hover.Kids.Count > 0) lines.Add(($"OPENS · {string.Join(", ", hover.Kids.Take(4).Select(k => Plain(k.Node, out _)))}{(hover.Kids.Count > 4 ? "..." : "")}", C.Dim));
             g.SetTip(at[hover], () => lines);
         }
     }

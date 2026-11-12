@@ -17,6 +17,8 @@ public sealed class MeshBuilder
     readonly List<Color> _c = new();
     readonly List<Vector2> _uv = new();
     readonly List<int> _i = new();
+    /// <summary>Where each prim's vertices start (they run to the next one's).</summary>
+    readonly List<int> _prims = new();
 
     static readonly ConditionalWeakTable<Piece, ArrayMesh> Cache = new();
 
@@ -46,6 +48,7 @@ public sealed class MeshBuilder
         Color c = p.Color.SrgbToLinear();
         c.A = Math.Clamp(p.Glow, 0f, 1f);
         int start = _v.Count;
+        _prims.Add(start);
         if (p.Shape == Shape.Loft)
         {
             Loft(p, c);
@@ -194,8 +197,53 @@ public sealed class MeshBuilder
         }
     }
 
+    /// <summary>
+    /// No two prims of one piece fight: where faces of different looks lie in one plane over each other (a coat's
+    /// tuft on a flank, a plate on a shell), the smaller prim stands <see cref="GalHack.Geometry.Coplanar.Standoff"/>
+    /// out along its face. Piece by piece: each sits on its own bone, in its own frame.
+    /// </summary>
+    void Standoff(List<int> bones)
+    {
+        if (_prims.Count < 2) return;
+        var primOf = new int[_v.Count];
+        for (int k = 0; k < _prims.Count; k++)
+            for (int v = _prims[k]; v < (k + 1 < _prims.Count ? _prims[k + 1] : _v.Count); v++) primOf[v] = k;
+        var byBone = new Dictionary<int, List<int>>();
+        for (int t = 0; t + 2 < _i.Count; t += 3)
+        {
+            int bone = bones == null ? 0 : bones[_i[t]];
+            if (!byBone.TryGetValue(bone, out var list)) byBone[bone] = list = new List<int>();
+            list.Add(t);
+        }
+        var size = new float[_prims.Count];
+        System.Numerics.Vector3 N(Vector3 v) => new(v.X, v.Y, v.Z);
+        foreach (List<int> tris in byBone.Values)
+        {
+            var faces = new List<GalHack.Geometry.Coplanar.Face>(tris.Count);
+            var group = new List<int>(tris.Count);
+            foreach (int t in tris)
+            {
+                int a = _i[t], b = _i[t + 1], c = _i[t + 2];
+                Color k = _c[a];
+                // The winding says which side is drawn (counter-clockwise from outside, here): the smoothed normals may not.
+                faces.Add(new(N(_v[a]), N(_v[b]), N(_v[c]), System.Numerics.Vector3.Zero,
+                    GalHack.Geometry.Coplanar.Look((int)(_uv[a].Y * 16f), new System.Numerics.Vector4(k.R, k.G, k.B, k.A)), 0));
+                group.Add(primOf[a]);
+                size[primOf[a]] += (_v[b] - _v[a]).Cross(_v[c] - _v[a]).Length() * 0.5f;
+            }
+            System.Numerics.Vector3[] off = GalHack.Geometry.Coplanar.Separate(faces, group, size, rounds: 24); // feathers and scales lie many deep
+            for (int k = 0; k < _prims.Count; k++)
+            {
+                if (off[k] == System.Numerics.Vector3.Zero) continue;
+                var o = new Vector3(off[k].X, off[k].Y, off[k].Z);
+                for (int v = _prims[k]; v < (k + 1 < _prims.Count ? _prims[k + 1] : _v.Count); v++) _v[v] += o;
+            }
+        }
+    }
+
     Prepared Prepare(List<int> bones)
     {
+        Standoff(bones);
         for (int i = 0; i + 2 < _i.Count; i += 3) (_i[i + 1], _i[i + 2]) = (_i[i + 2], _i[i + 1]);
         var p = new Prepared { V = _v.ToArray(), N = _n.ToArray(), C = _c.ToArray(), Uv = _uv.ToArray(), I = _i.ToArray() };
         if (bones != null)
@@ -211,6 +259,7 @@ public sealed class MeshBuilder
     {
         var mesh = new ArrayMesh();
         if (_v.Count == 0) return mesh;
+        Standoff(bones);
         // The shapes above are wound counter-clockwise seen from outside; Godot's front faces
         // are clockwise, so flip every triangle once here.
         for (int i = 0; i + 2 < _i.Count; i += 3) (_i[i + 1], _i[i + 2]) = (_i[i + 2], _i[i + 1]);

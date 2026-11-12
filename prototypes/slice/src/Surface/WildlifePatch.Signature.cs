@@ -215,7 +215,7 @@ public partial class WildlifePatch
                 {
                     float side = rng.Chance(0.5f) ? 1f : -1f;
                     Vector3 d = attempt < 6 ? _heading.Rotated(Vector3.Up, side * rng.Range(1.25f, 1.55f)) : _heading.Rotated(Vector3.Up, rng.Range(-0.7f, 0.7f));
-                    float r = attempt < 6 ? rng.Range(110f, 170f) : rng.Range(Sim.Data.Spawning.ViewDistance + 6f, AroundYou - 4f);
+                    float r = attempt < 6 ? rng.Range(110f, 170f) * AroundYou / SpawnReach.Old : rng.Range(Sim.Data.Spawning.ViewDistance + 6f, AroundYou - 4f);
                     group = PutAt(s, count, you + d * r, 0f, 4f, rng);
                 }
             if (group is { Count: > 0 } && _heading != Vector3.Zero)
@@ -289,10 +289,10 @@ public partial class WildlifePatch
         {
             float a = rng.Range(0f, MathF.Tau), r = rng.Range(spawning.MinPlayerDistance + spread, MathF.Max(spawning.MinPlayerDistance + spread + 20f, AroundYou - spread));
             var at = new Vector3(you.X + MathF.Cos(a) * r, 0f, you.Z + MathF.Sin(a) * r);
-            if (MathF.Abs(at.X) > edge || MathF.Abs(at.Z) > edge || !Open(s, at, spread) || !Sim.ClearOfPlayers(at, spread)) continue;
+            if (MathF.Abs(at.X) > edge || MathF.Abs(at.Z) > edge || !Open(s, at, spread) || !Clear(at, spread)) continue;
             Vector3 spot = Sim.FreeSpot(at, rng);
             if (!s.Flies && Sim.Nav.Blocked(spot)) continue;
-            List<Creature> group = Sim.SpawnGroup(s, spot, count, p => Sim.ClearOfPlayers(p, 0f) && Open(s, p, 0f));
+            List<Creature> group = Sim.SpawnGroup(s, spot, count, p => Clear(p, 0f) && Open(s, p, 0f));
             if (group.Count > 0) return group;
         }
         return null;

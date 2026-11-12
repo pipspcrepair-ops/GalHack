@@ -183,6 +183,15 @@ public sealed class SliceRules
         public Dictionary<string, double> RadiationByArchetype { get; set; } = new();
         public double SealedRoomC { get; set; } = 20;
 
+        /// <summary>A sealed room's air, seconds: how fast its life support brings it to sealedRoomC (the gap shrinks by e each), how long it holds once the power is off, and how fast it then drifts to the outside's.</summary>
+        public double RoomEaseSeconds { get; set; } = 30;
+        public double RoomHoldSeconds { get; set; } = 120;
+        public double RoomDriftSeconds { get; set; } = 180;
+
+        /// <summary>A shut room in a place: the share of the way from the outside's temperature to sealedRoomC its walls take it, and how fast it gets there, seconds.</summary>
+        public double PlaceShelter { get; set; } = 0.5;
+        public double PlaceEaseSeconds { get; set; } = 60;
+
         /// <summary>The weather's exposure (weather.json) at which the visor warns and at which an exposed body loses health, and how fast: health per second per exposure.</summary>
         public double StormWarnFrom { get; set; } = 0.5;
         public double StormHarmFrom { get; set; } = 1;

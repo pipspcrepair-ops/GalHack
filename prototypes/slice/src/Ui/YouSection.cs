@@ -243,7 +243,7 @@ public sealed class YouSection : IMenuSection
                 g.SetTip(s, () =>
                 {
                     List<(string Text, Color Colour)> tip = Tooltips.For(_game, item, n);
-                    tip.Insert(1, ($"Remote: {n} in {rs.Origin}{(ready ? "" : " · OUT OF RANGE")}", ready ? PipOf(pack.ColourOf(rs.Source)) : C.Danger));
+                    tip.Insert(1, ($"REMOTE · {n} · {rs.Origin}{(ready ? "" : " · OUT OF RANGE")}", ready ? PipOf(pack.ColourOf(rs.Source)) : C.Danger));
                     return tip;
                 });
             if (g.RightClicked(s) && rs != null)
@@ -257,7 +257,7 @@ public sealed class YouSection : IMenuSection
                 {
                     case SlotRef sr when sr.Grid[sr.Index].Item is string sid:
                         Vessel core = CoreOf(sr.Grid);
-                        if (core == null) _game.Say("Core storage only", Tones.Caution);
+                        if (core == null) _game.Say("CORE STORAGE ONLY", Tones.Caution);
                         else
                         {
                             pack.SetRemote(i, core.Storage, core.Name, sid);
@@ -332,14 +332,14 @@ public sealed class YouSection : IMenuSection
         {
             var only = view.Filtering ? new HashSet<int>(shown) : null;
             Bill moved = ItemGrid.MoveAll(grid, _game.Pack.Grid, true, only == null ? null : only.Contains);
-            if (moved.IsEmpty && !grid.Storage.IsEmpty && !(view.Filtering && shown.Count == 0)) _game.Say("No room in your bag", Tones.Caution);
+            if (moved.IsEmpty && !grid.Storage.IsEmpty && !(view.Filtering && shown.Count == 0)) _game.Say("BAG FULL", Tones.Caution);
         }
         if (g.Button("box:store-all", new Rect2(r.Position.X + 240, y, 220, 44), bagView.Filtering ? "STORE SHOWN" : "STORE ALL", C.Accent2))
         {
             IReadOnlyList<int> bagShown = bagView.Visible(_game.Pack.Grid, PlayerInventory.ToolbarSlots);
             var only = bagView.Filtering ? new HashSet<int>(bagShown) : null;
             Bill moved = ItemGrid.MoveAll(_game.Pack.Grid, grid, false, only == null ? null : only.Contains);
-            if (moved.IsEmpty) _game.Say("Nothing stored", Tones.Caution);
+            if (moved.IsEmpty) _game.Say("NOTHING STORED", Tones.Caution);
         }
         if (g.Button("box:close", new Rect2(r.Position.X, y + 56, 120, 34), "CLOSE", C.Danger))
         {

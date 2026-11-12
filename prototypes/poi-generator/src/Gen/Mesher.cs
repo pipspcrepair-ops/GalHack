@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using FaceSide = PoiGenerator.Gen.Side;
 
 namespace PoiGenerator.Gen;
@@ -86,6 +87,8 @@ public sealed class MeshOptions
     public Func<Int3, bool>? Only;
     /// <summary>Small floor clutter (papers, ash, scorch, weeds). Off for distant views.</summary>
     public bool Detail = true;
+    /// <summary>Set apart faces that would z-fight (<see cref="MeshStandoff"/>).</summary>
+    public bool Standoff = true;
     /// <summary>
     /// How many cells of buried ground below ground level hide no faces. On a planet nothing keeps the
     /// ground where it was generated: it dips round a room carved under the pad, a cut or a bank leaves it
@@ -161,7 +164,9 @@ public static class Mesher
                         if (ctx.IsRock(p)) ctx.Rock(p);
                     }
         ctx.Flush();
+        ctx.MergeFaces();
         var list = new List<ChunkMesh>(chunks.Values);
+        if (opt.Standoff) MeshStandoff.Apply(list);
         list.Sort((a, b) => (a.Chunk.Y, a.Chunk.Z, a.Chunk.X).CompareTo((b.Chunk.Y, b.Chunk.Z, b.Chunk.X)));
         return list;
     }
@@ -551,10 +556,9 @@ public static class Mesher
 
         public void Block(Int3 p, Block b)
         {
-            // The floor's finish under what stands in the cell (the tiles under a table) is drawn whole under it:
-            // only a full cube hides a floor.
-            Block floor = BlockInfo.IsFullCube(b.Type) || BlockInfo.IsFinish(b.Type) ? default : _g.Under(p);
-            if (!floor.IsAir) Block(p, floor);
+            // A floor's finish is paint on the top of the floor block under it (see Painted): it has no body of its
+            // own, so nothing set in its cell cuts it and it can't fight the floor.
+            if (BlockInfo.IsFinish(b.Type)) return;
             if (b.Type == BlockType.Door && !_o.Doors) return;
             if (!_o.Detail && b.Type is BlockType.Scatter or BlockType.Scorch or BlockType.Ash or BlockType.Plant or BlockType.Remains or BlockType.Rebar) return;
             if (BlockInfo.IsFullCube(b.Type))
@@ -568,9 +572,7 @@ public static class Mesher
             if (boxes > 0)
             {
                 var shape = Shapes.For(b, p, _g);
-                // Something lower than the finish it was set on (a scorch, papers, moss) lies on top of it, not in it.
-                V3 lift = !floor.IsAir && shape.TrueForAll(s => s.Hi.Y <= 0.1f) ? new V3(0, BlockInfo.FinishTop, 0) : default;
-                for (int i = 0; i < shape.Count && i < boxes; i++) AddBox(chunk, p, shape[i] with { Lo = shape[i].Lo + lift, Hi = shape[i].Hi + lift }, b);
+                for (int i = 0; i < shape.Count && i < boxes; i++) AddBox(chunk, p, shape[i], b);
             }
             // A stair is steps up close; from further off, a slope.
             if (b.Type == BlockType.Ramp || _o.Merged && b.Type == BlockType.Stair) Ramp(chunk, p, b, draw: _o.Drawn);
@@ -580,9 +582,9 @@ public static class Mesher
 
             if (_o.Collision && BlockInfo.Collides(b.Type) && !BlockInfo.IsSlope(b.Type) && !BlockInfo.IsCornerSlope(b.Type))
             {
-                // Props collide as their bounding box.
-                var (lo, hi) = Shapes.CollisionBox(b);
-                CollideBox(chunk, V3.Of(p) + lo, V3.Of(p) + hi);
+                // Props collide as their real shape: a table as its top and legs, a locker as its body against the wall.
+                foreach (var (lo, hi) in Shapes.CollisionBoxes(b, p))
+                    CollideBox(chunk, V3.Of(p) + lo, V3.Of(p) + hi);
             }
         }
 
@@ -634,7 +636,9 @@ public static class Mesher
                 bool solid = _o.Collision && (!CollidesFull(n) || IsRock(n));
                 if (!_o.Drawn && !solid) continue;
                 planes ??= _planes.TryGetValue(ch, out Planes got) ? got : _planes[ch] = new Planes();
-                int key = Key(body, bodySurf, _o.Drawn ? (int)FaceCode(p, b, Normals[f], false, bodySurf) & 0xFF : 0);
+                Block fb = f == 4 && Painted(p) is Block paint ? paint : b;
+                Surface fs = fb.Equals(b) ? bodySurf : Shapes.SurfaceOf(fb.Material);
+                int key = Key(fb.Equals(b) ? body : fb.Color, fs, _o.Drawn ? (int)FaceCode(fb.Equals(b) ? p : PaintedLike(p, fb), fb, Normals[f], false, fs) & 0xFF : 0);
                 var (u, v, k) = Face2(f, l);
                 int plane = f * side + k;
                 if (_o.Drawn) Plane(planes.Drawn, plane, side)[v * side + u] = key;
@@ -728,6 +732,32 @@ public static class Mesher
             Tri(chunk, a, c, d);
         }
 
+        /// <summary>The finish laid on the floor block at <paramref name="p"/>: in the cell over it, or kept under what stands there.</summary>
+        Block? Painted(Int3 p)
+        {
+            Int3 up = p + Int3.Up;
+            Block a = _g.Get(up);
+            if (BlockInfo.IsFinish(a.Type)) return a;
+            if (a.IsAir || BlockInfo.IsFullCube(a.Type)) return null;
+            Block under = _g.Under(up);
+            return BlockInfo.IsFinish(under.Type) ? under : null;
+        }
+
+        /// <summary>
+        /// Whose floor a painted top is coded as: its own, or under something standing on it, a bare neighbour's with
+        /// the same finish, so the floor under a table is painted exactly as round it.
+        /// </summary>
+        Int3 PaintedLike(Int3 p, Block paint)
+        {
+            if (BlockInfo.IsFinish(_g.Get(p + Int3.Up).Type)) return p;
+            foreach (Dir d in Dirs.Horizontal)
+            {
+                Int3 q = p + d.Vec();
+                if (_g.Get(q + Int3.Up).Equals(paint) && BlockInfo.IsFullCube(_g.Get(q).Type)) return q;
+            }
+            return p;
+        }
+
         void Cube(Int3 p, Block b)
         {
             var chunk = Chunk(p);
@@ -744,9 +774,19 @@ public static class Mesher
                 var nb = _g.Get(n);
                 if (glass ? (!nb.IsAir && nb.Type == BlockType.Cube && (nb.Material == b.Material || !BlockInfo.IsTransparent(nb.Material))) || IsRock(n) && Hides(n) : Hides(n))
                     continue;
-                float code = FaceCode(p, b, Normals[f], false, surf);
-                // A finished face keeps its colour even: the shader's own variation does the work the mottle did.
-                Face(chunk, surf, p, f, body, glass ? 0.35f : 1f, code != 0f ? 1f : jitter, ao: surf != Surface.Glow, code);
+                // The top of a floor laid with a finish wears the finish, painted on (tiles, boards, carpet).
+                if (f == 4 && Painted(p) is Block paint)
+                {
+                    Surface ps = Shapes.SurfaceOf(paint.Material);
+                    float pc = FaceCode(PaintedLike(p, paint), paint, Normals[f], false, ps);
+                    Face(chunk, ps, p, f, paint.Color, 1f, pc != 0f ? 1f : jitter, ao: true, pc);
+                }
+                else
+                {
+                    float code = FaceCode(p, b, Normals[f], false, surf);
+                    // A finished face keeps its colour even: the shader's own variation does the work the mottle did.
+                    Face(chunk, surf, p, f, body, glass ? 0.35f : 1f, code != 0f ? 1f : jitter, ao: surf != Surface.Glow, code);
+                }
                 if (glyph) Glyph(chunk, p, f, b.Color);
                 if (b.Type == BlockType.Breakable && f < 4) Glyph(chunk, p, f, b.Color.Scale(0.35f), Surface.Matte, crack: true);
                 if (_o.Collision && (!CollidesFull(n) || IsRock(n))) CollideFace(chunk, p, f);
@@ -893,13 +933,55 @@ public static class Mesher
             }
         }
 
+        /// <summary>A whole cell face that collides: kept until the chunk is done, then merged with its coplanar neighbours (<see cref="MergeFaces"/>).</summary>
         void CollideFace(ChunkMesh chunk, Int3 p, int f)
         {
-            Corners(f, out V3 a, out V3 b, out V3 c, out V3 d);
-            V3 o = V3.Of(p);
-            Tri(chunk, o + a, o + b, o + c);
-            Tri(chunk, o + a, o + c, o + d);
+            if (!_faces.TryGetValue(chunk, out var list)) _faces[chunk] = list = new List<(int, Int3)>();
+            list.Add((f, p));
         }
+
+        readonly Dictionary<ChunkMesh, List<(int F, Int3 P)>> _faces = new();
+
+        /// <summary>The axis a face looks along (z, x, z, x, y, y), and the two it spans.</summary>
+        static readonly int[] FaceAxis = { 2, 0, 2, 0, 1, 1 };
+
+        /// <summary>
+        /// Every chunk's colliding cell faces as the fewest rectangles: those facing the same way in one plane are merged
+        /// greedily, so a wall or a floor is a few triangles, not two a cell (the physics builds each chunk's shape on the main
+        /// thread, at a cost that grows with its triangles).
+        /// </summary>
+        public void MergeFaces()
+        {
+            foreach (var (chunk, faces) in _faces)
+            {
+                foreach (var plane in faces.GroupBy(q => (q.F, Of(q.P, FaceAxis[q.F]))))
+                {
+                    int f = plane.Key.F, n = FaceAxis[f], ua = n == 0 ? 1 : 0, va = n == 2 ? 1 : 2;
+                    var open = new HashSet<(int U, int V)>(plane.Select(q => (Of(q.P, ua), Of(q.P, va))));
+                    foreach (var start in open.OrderBy(c => c.V).ThenBy(c => c.U).ToList())
+                    {
+                        if (!open.Contains(start)) continue;
+                        int u1 = start.U, v1 = start.V;
+                        while (open.Contains((u1 + 1, start.V))) u1++;
+                        bool Row(int v) { for (int u = start.U; u <= u1; u++) if (!open.Contains((u, v))) return false; return true; }
+                        while (Row(v1 + 1)) v1++;
+                        for (int v = start.V; v <= v1; v++)
+                            for (int u = start.U; u <= u1; u++) open.Remove((u, v));
+                        var lo = new int[3];
+                        var hi = new int[3];
+                        lo[n] = plane.Key.Item2; hi[n] = plane.Key.Item2 + 1;
+                        lo[ua] = start.U; hi[ua] = u1 + 1;
+                        lo[va] = start.V; hi[va] = v1 + 1;
+                        BoxFace(f, new V3(lo[0], lo[1], lo[2]), new V3(hi[0], hi[1], hi[2]), out V3 a, out V3 b, out V3 c, out V3 d);
+                        Tri(chunk, a, b, c);
+                        Tri(chunk, a, c, d);
+                    }
+                }
+            }
+            _faces.Clear();
+        }
+
+        static int Of(Int3 p, int axis) => axis == 0 ? p.X : axis == 1 ? p.Y : p.Z;
 
         static void Tri(ChunkMesh chunk, V3 a, V3 b, V3 c)
         {
@@ -1139,8 +1221,8 @@ public readonly record struct ShapeBox(V3 Lo, V3 Hi, Rgb Color, Surface Surface,
 /// <summary>What each non-cube block looks like: a few boxes in cell-local units (0 to 1).</summary>
 public static class Shapes
 {
-    /// <summary>A floor plate's top over the floor it lies on, m.</summary>
-    public const float PlateTop = 0.02f;
+    /// <summary>A floor finish's top over the floor it is painted on, m: none, it is paint (Mesher.Ctx.Painted).</summary>
+    public const float PlateTop = 0f;
 
     public static readonly Rgb ScreenOn = new(0x7c, 0xff, 0xb0);
     public static readonly Rgb ScreenDim = new(0x2a, 0x6a, 0x48);
@@ -1179,6 +1261,17 @@ public static class Shapes
             new V3(MathF.Max(a.X, b.X), MathF.Max(a.Y, b.Y), MathF.Max(a.Z, b.Z)), c, s);
     }
 
+    /// <summary>Whether a pane's sheet runs along x (its facing is north or south, across z) rather than along z; set when the place was laid out (<see cref="PaneFacing"/>).</summary>
+    public static bool PaneAlongX(Block b) => b.Facing is Dir.North or Dir.South;
+
+    /// <summary>A pane with another of its wall's panes in front of it (a wall two cells thick has glass in both): the outer one is the sheet, so a window is one plane.</summary>
+    public static bool PaneHidden(Block b, Int3 p, IBlockStructure g)
+    {
+        if (!b.Facing.IsHorizontal() || b.Role == Role.Prop) return false;
+        Block front = g.Get(p + b.Facing.Vec());
+        return front.Type == BlockType.Pane && front.Role != Role.Prop && PaneAlongX(front) == PaneAlongX(b);
+    }
+
     public static (V3 lo, V3 hi) CollisionBox(Block b) => b.Type switch
     {
         BlockType.Pillar => (new V3(0.3f, 0, 0.3f), new V3(0.7f, 1, 0.7f)),
@@ -1196,6 +1289,90 @@ public static class Shapes
         BlockType.Pipe => PipeBounds(b, 0.1f, 0.9f),
         _ => (new V3(0.1f, 0, 0.1f), new V3(0.9f, 0.9f, 0.9f)),
     };
+
+    /// <summary>
+    /// What a block collides as, in its cell's frame: for furniture and fittings the solid parts of what is
+    /// drawn (a table's top and four legs with the floor open between them, a locker's body against its
+    /// back, a terminal's stand and its screen, a crate where it sits in its cell), for the rest its one box
+    /// (<see cref="CollisionBox"/>). The body's collision, the creatures' and the people's ways all go by these.
+    /// </summary>
+    public static List<(V3 lo, V3 hi)> CollisionBoxes(Block b, Int3 p)
+    {
+        var l = new List<(V3, V3)>(5);
+        void Add(float x0, float y0, float z0, float x1, float y1, float z1, Dir facing = Dir.North)
+        {
+            ShapeBox s = Box(x0, y0, z0, x1, y1, z1, default, Surface.Matte, facing);
+            l.Add((s.Lo, s.Hi));
+        }
+        Dir f = b.Facing;
+        switch (b.Type)
+        {
+            case BlockType.Terminal:
+                Add(0.15f, 0, 0.3f, 0.85f, 0.8f, 0.85f, f);
+                Add(0.2f, 0.8f, 0.42f, 0.8f, 1.35f, 0.6f, f);
+                break;
+            case BlockType.Crate:
+            {
+                uint h = Hash.Cell(p, 77);
+                float R(int k) => ((h >> (k * 4)) & 15) / 15f;
+                float lift = b.Variant == 1 ? 0.05f : 0f, sz = 0.55f + R(0) * 0.3f, ox = (1 - sz) * R(1), oz = (1 - sz) * R(2);
+                Add(ox, 0, oz, ox + sz, sz * 0.9f + lift, oz + sz);
+                break;
+            }
+            case BlockType.Table:
+            case BlockType.Meal:
+                Add(0.05f, 0.7f, 0.05f, 0.95f, 0.8f, 0.95f);
+                foreach (var (x, z) in new[] { (0.1f, 0.1f), (0.82f, 0.1f), (0.1f, 0.82f), (0.82f, 0.82f) })
+                    Add(x, 0, z, x + 0.08f, 0.7f, z + 0.08f);
+                break;
+            case BlockType.Bunk:
+                Add(0.05f, 0, 0.1f, 0.95f, 0.6f, 0.9f);
+                break;
+            case BlockType.Barricade:
+                Add(0, 0, 0.3f, 1, 0.35f, 0.7f, f);
+                Add(0.1f, 0.35f, 0.25f, 0.9f, 0.7f, 0.65f, f);
+                Add(0.25f, 0.7f, 0.35f, 0.85f, 1.0f, 0.75f, f);
+                break;
+            case BlockType.Machine:
+                Add(0.05f, 0, 0.05f, 0.95f, 0.95f, 0.95f);
+                Add(0.0f, 0.55f, 0.15f, 1.0f, 0.65f, 0.85f);
+                break;
+            case BlockType.Locker:
+                Add(0.12f, 0, 0.25f, 0.88f, 1.0f, 0.9f, f);
+                break;
+            case BlockType.Bed:
+                Add(0.1f, 0, 0.05f, 0.9f, 0.55f, 0.95f, f);
+                Add(0.2f, 0.55f, 0.1f, 0.8f, 0.65f, 0.3f, f);
+                break;
+            case BlockType.Bench:
+                Add(0.04f, 0.78f, 0.1f, 0.96f, 0.88f, 0.9f);
+                Add(0.08f, 0, 0.14f, 0.92f, 0.78f, 0.86f);
+                break;
+            case BlockType.Tank:
+                Add(0.15f, 0, 0.05f, 0.85f, 0.95f, 0.95f);
+                Add(0.05f, 0, 0.15f, 0.95f, 0.95f, 0.85f);
+                break;
+            case BlockType.Pod:
+                Add(0.18f, 0, 0.18f, 0.82f, 0.45f, 0.82f);
+                Add(0.24f, 0.45f, 0.24f, 0.76f, 1.05f, 0.76f);
+                break;
+            case BlockType.Statue:
+                Add(0.1f, 0, 0.1f, 0.9f, 0.3f, 0.9f);
+                Add(0.3f, 0.3f, 0.35f, 0.7f, 1.3f, 0.65f);
+                Add(0.36f, 1.3f, 0.38f, 0.64f, 1.65f, 0.62f);
+                Add(0.15f, 0.9f, 0.42f, 0.85f, 1.05f, 0.58f);
+                break;
+            case BlockType.Pump:
+                Add(0.15f, 0, 0.25f, 0.85f, 0.12f, 0.75f, f);
+                Add(0.22f, 0.12f, 0.3f, 0.78f, 1.25f, 0.7f, f);
+                Add(0.26f, 1.25f, 0.34f, 0.74f, 1.7f, 0.66f, f);
+                break;
+            default:
+                l.Add(CollisionBox(b));
+                break;
+        }
+        return l;
+    }
 
     static (V3 lo, V3 hi) PipeBounds(Block b, float lo, float hi) => b.Facing switch
     {
@@ -1300,11 +1477,9 @@ public static class Shapes
                 l.Add(Box(0.1f, 0.42f, 0.1f, 0.9f, 0.58f, 0.9f, c.Scale(0.85f), s));
                 break;
             case BlockType.Pane:
-            {
-                bool alongX = !g.Get(p + Dir.East.Vec()).IsAir || !g.Get(p + Dir.West.Vec()).IsAir;
-                l.Add(alongX ? Box(0, 0, 0.42f, 1, 1, 0.58f, c, s) : Box(0.42f, 0, 0, 0.58f, 1, 1, c, s));
+                // A sheet in the plane of its wall, as its facing says (PaneFacing); a wall of several layers is one sheet, in its outermost.
+                if (!PaneHidden(b, p, g)) l.Add(PaneAlongX(b) ? Box(0, 0, 0.42f, 1, 1, 0.58f, c, s) : Box(0.42f, 0, 0, 0.58f, 1, 1, c, s));
                 break;
-            }
             case BlockType.Lattice:
             {
                 const float t = 0.13f;

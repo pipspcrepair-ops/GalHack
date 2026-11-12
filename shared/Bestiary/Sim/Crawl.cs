@@ -24,7 +24,8 @@ public static class Crawl
 {
     /// <summary>How far a species' body rides off the surface it holds.</summary>
     public static float ClearanceFor(Species s) =>
-        s.Climbs ? Math.Clamp(s.Body.Height * 0.55f, 0.1f, 0.35f) : Math.Clamp(s.Stats.Radius * 0.8f, 0.3f, 0.7f);
+        // A climber rides its own half-thickness off the face it holds (a big insect is no flatter than a small one).
+        s.Climbs ? Math.Clamp(s.Body.Height * 0.55f, 0.1f, 0.6f) :Math.Clamp(s.Stats.Radius * 0.8f, 0.3f, 0.7f);
 
     /// <summary>The body's centre: the surface point lifted by the clearance along the surface normal.</summary>
     public static Vector3 Center(Creature c) => c.Position + c.Facing.Y * c.Clearance;
@@ -32,9 +33,11 @@ public static class Crawl
     /// <summary>Puts a creature on the surface nearest a point.</summary>
     public static void Place(WildSim w, Creature c, Vector3 near, Vector3? up)
     {
-        ISolidSpace s = c.Space;
+        ISolidSpace s = c.Species.Climbs ? c.Space : c.Space.Bare;
         float clr = c.Clearance;
         Vector3 p = near, n = Vector3.Up;
+        // A walker is set down clear of the furniture: beside it, never in it.
+        if (!c.Species.Climbs && c.Space.Parts is { } parts) near = parts.PushOut(near, SpaceNav.PartRadius(c.Species), SpaceNav.PartHeight(c.Species));
         if (!c.Species.Climbs || up == null)
         {
             float? floor = SpaceMath.FloorBelow(s, near.X, near.Y + 0.5f, near.Z, 8f);
@@ -180,7 +183,11 @@ public static class Crawl
     /// </summary>
     static void Walk(WildSim w, Creature c, float dt)
     {
-        ISolidSpace s = c.Space;
+        // A walker stands on the floors and stairs and is held off the walls; the place's parts
+        // (furniture, clutter) it goes round or under, its body never in one (see Parts).
+        ISolidSpace s = c.Space.Bare;
+        PartSet parts = c.Space.Parts;
+        float pr = SpaceNav.PartRadius(c.Species), ph = SpaceNav.PartHeight(c.Species);
         CrawlRules r = w.Data.Deep.Crawl;
         float clr = c.Clearance;
         Vector3 f = -c.Facing.Z;
@@ -217,16 +224,35 @@ public static class Crawl
                 break;
             }
             next.Y = fy;
-            feet = HoldOffWalls(s, next, clr);
+            next = HoldOffWalls(s, next, clr);
+            if (parts != null)
+            {
+                // Off the furniture sideways (sliding round a leg or a corner); where that can't be done, no further.
+                next = HoldOffWalls(s, parts.PushOut(next, pr, ph), clr);
+                if (!parts.Fits(next, pr, ph) && parts.Gap(next, pr, ph) < parts.Gap(feet, pr, ph))
+                {
+                    c.CrawlSpeed *= 0.5f;
+                    break;
+                }
+            }
+            feet = next;
         }
-        // Whatever moved it (a landing, a lunge), it ends clear of the walls, on the floor.
+        // Whatever moved it (a landing, a lunge), it ends clear of the walls and the furniture, on the floor.
         feet = HoldOffWalls(s, feet, clr);
+        if (parts != null && !parts.Fits(feet, pr, ph))
+        {
+            feet = HoldOffWalls(s, parts.PushOut(feet, pr, ph), clr);
+            // Held between a wall and a piece with no room for it: where it stood, never in the piece.
+            if (!parts.Fits(feet, pr, ph) && parts.Gap(start, pr, ph) > parts.Gap(feet, pr, ph)) feet = start;
+        }
         if (SpaceMath.FloorBelow(s, feet.X, feet.Y + 0.45f, feet.Z, 1.4f) is float y) feet.Y = y;
         else
         {
             Release(w, c);
             return;
         }
+        // On its floor, never further into a piece than where it stood.
+        if (parts != null && !parts.Fits(feet, pr, ph) && parts.Gap(start, pr, ph) > parts.Gap(feet, pr, ph)) feet = start;
         c.Facing = SpaceMath.Frame(f, Vector3.Up);
         c.Velocity = (feet - start) / MathF.Max(1e-4f, dt);
         c.Position = feet;
@@ -245,6 +271,7 @@ public static class Crawl
             if (n == Vector3.Zero || d < -clr) break;
             Vector3 side = new(n.X, 0f, n.Z);
             if (side.LengthSquared() < 1e-4f) break; // the only thing near is the floor or the ceiling
+            if (n.Y > 0.3f) break; // under the body, not beside it: a ramp or a flight it stands on, the crest at its head
             side = side.Normalized();
             feet += side * MathF.Min(0.3f, d + clr + 0.005f);
         }
@@ -314,7 +341,8 @@ public static class Crawl
     /// <summary>Falling: gravity until it lands on whatever is below, landing on its feet.</summary>
     static void Fall(WildSim w, Creature c, float dt)
     {
-        ISolidSpace s = c.Space;
+        // A walker comes down to the floor (it never stands on the furniture; it is moved off it when it lands).
+        ISolidSpace s = c.Species.Climbs ? c.Space : c.Space.Bare;
         float clr = c.Clearance, g = w.Data.Deep.Crawl.Gravity;
         Vector3 n = c.Facing.Y;
         Vector3 center = c.Position + n * clr;

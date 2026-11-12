@@ -48,6 +48,10 @@ public partial class BlockDoors : Node3D
     readonly Dictionary<Vessel, Known> _known = new();
     /// <summary>Doors you shut by hand while beside them: they stay shut until you have stepped away.</summary>
     readonly HashSet<(Vessel, Int3)> _heldShut = new();
+
+    /// <summary>Whether you are in a door's doorway or its leaves' way.</summary>
+    static bool InWay(Vessel v, Int3 cell, Vector3 feet) =>
+        v.ToWorld(StructureBridge.CellCenter(v.Structure, cell)).DistanceTo(feet + Vector3.Up * 0.9f) < v.Structure.Grid.CellSize * 0.5f + Slice.Player.Survivor.Radius + 0.1f;
     int _tick;
     static StandardMaterial3D _body, _band;
 
@@ -147,8 +151,11 @@ public partial class BlockDoors : Node3D
     {
         if (Zone?.Planet == null || Feet == null) return;
         float dt = (float)delta;
+        Vector3 you = Feet();
         foreach (var (key, s) in _slides.ToList())
         {
+            // Shutting on you: it opens again (a door never shuts on anyone).
+            if (s.Target < 0.5f && InWay(s.Vessel, s.Cell, you)) s.Target = 1f;
             if (!GodotObject.IsInstanceValid(s.Root) || !s.Vessel.Structure.TryGet(s.Cell, out _))
             {
                 if (GodotObject.IsInstanceValid(s.Root)) s.Root.QueueFree();

@@ -26,6 +26,7 @@ public partial class OccupantTest
         (string Fall, string Layer)[] worlds = { ("biohazard", null), ("machine_uprising", null), ("nuclear_war", null), ("civil_war", null), (null, "hollow_overrun"), (null, null), (null, null), ("slow_fade", null) };
         int places = 0, withFoes = 0, nests = 0, armed = 0, foes = 0, outOfRange = 0, insects = 0, insectsClimb = 0, insectsBite = 0, worldsVaried = 0;
         string tooTall = "";
+        var crawl = new CrawlWatch(_data);
         var formsAll = new HashSet<string>();
         bool changedIn = false, machinesIn = false, hollowsIn = false;
         float outdoorTallest = 0f;
@@ -60,6 +61,7 @@ public partial class OccupantTest
                         if (s.Species.Stats.Hunts) insectsBite++;
                     }
                     if (occ == null) { places++; if (aggressors.Count > 0) withFoes++; }
+                    if (occ == null && crawl.Places < 8 && pop.Spawns.Any(s => s.Species.Passive)) crawl.Run(inst, pop);
                     if (aggressors.Any(s => s.Species.Figure is { Occupancy: Occupancy.Raider })) armed++;
                     foreach (PoiSpawn s in aggressors)
                     {
@@ -84,11 +86,62 @@ public partial class OccupantTest
         }
         Check(nests == 0, $"no nest is built in any place ({nests} found)");
         Check(insects > 40 && insectsClimb == insects && insectsBite == 0, $"insects are many ({insects}), passive (none hunt) and climb walls and ceilings ({insectsClimb})");
+        Check(crawl.Insects > 20 && crawl.Legged == 0 && crawl.Inside == 0 && crawl.Faces >= 2,
+            $"insects crawl on their faces, never in them: {crawl.Insects} in {crawl.Places} places over a minute each, {crawl.Inside} body or segment points inside a wall, floor or ceiling (worst {crawl.Worst:F2} m), {crawl.Legged} on a body not made to crawl, on {crawl.Faces} kinds of face{crawl.Example}");
         Check(places > 20 && withFoes >= places * 0.75f, $"places nobody holds have something dangerous in their dark: {withFoes} of {places}");
         Check(outOfRange == 0, outOfRange == 0 ? $"every one of {foes} foes met indoors stands between a child's height and a person's" : $"{outOfRange} of {foes} foes indoors out of the 1.1-1.9 m range, e.g. {tooTall}");
         Check(worldsVaried >= worlds.Length - 2 && formsAll.Count >= 6, $"the dark's foes come in many bodies: {formsAll.Count} across the worlds ({string.Join(", ", formsAll.Take(10))}), three or more on {worldsVaried} of {worlds.Length} worlds");
         Check(changedIn && machinesIn && hollowsIn, $"the dark has the fall's changed ({changedIn}), machines where they rose ({machinesIn}) and Hollows where the growth is ({hollowsIn})");
         Check(armed > 0, $"now and then an armed group holds out in the dark ({armed} places)");
         Check(outdoorChanged == 0 && outdoorTallest > 2f, $"outside, the same kinds keep their own size ({outdoorChanged} changed; the tallest {outdoorTallest:F1} m)");
+    }
+
+    /// <summary>A place's insects let loose for a minute in its blocks: their bodies stay on the faces they crawl.</summary>
+    sealed class CrawlWatch
+    {
+        readonly WildlifeData _data;
+        public int Places, Insects, Inside, Legged, Faces;
+        public float Worst = float.MinValue;
+        public string Example = "";
+        bool _floor, _wall, _ceiling;
+
+        public CrawlWatch(WildlifeData data) => _data = data;
+
+        public void Run(PoiInstance inst, PoiPopulation pop)
+        {
+            Places++;
+            BlockGrid g = inst.Blocks;
+            var terrain = new Wildlife.Terrain((x, z) => -50f, 64f);
+            var sim = new WildSim(_data, terrain, new Wildlife.NavGrid(terrain.HalfSize, 3f));
+            var space = new BlockSpace((x, y, z) => PlaceFauna.Solid(inst, x, y, z),
+                new Vector3I(g.Min.X, g.Min.Y, g.Min.Z), new Vector3I(g.Min.X + g.Size.X, g.Min.Y + g.Size.Y, g.Min.Z + g.Size.Z));
+            List<Creature> bugs = PoiFauna.Spawn(sim, pop, space).Where(c => c.Species.Passive).ToList();
+            Insects += bugs.Count;
+            Legged += bugs.Count(c => c.Rig is not CrawlRig);
+            for (int step = 0; step < 1200; step++)
+            {
+                sim.Step(0.05f);
+                if (step % 4 != 0) continue;
+                foreach (Creature c in bugs)
+                {
+                    if (c.InWalls || c.Removed || c.Dead) continue;
+                    var points = new List<Vector3> { Crawl.Center(c) };
+                    if (c.Rig is CrawlRig rig) points.AddRange(rig.SegmentCenters);
+                    foreach (Vector3 q in points)
+                    {
+                        // Inside a block, the density is the depth to the nearest open air.
+                        float d = space.Density(q);
+                        Worst = MathF.Max(Worst, d);
+                        if (d > 0.02f && Inside++ == 0) Example = $"; e.g. {c.Species.CommonName} at {q}, {d:F2} m in, up {c.Facing.Y}";
+                    }
+                    if (c.Falling) continue;
+                    float ny = c.Facing.Y.Y;
+                    _floor |= ny > 0.8f;
+                    _wall |= MathF.Abs(ny) < 0.35f;
+                    _ceiling |= ny < -0.8f;
+                }
+            }
+            Faces = (_floor ? 1 : 0) + (_wall ? 1 : 0) + (_ceiling ? 1 : 0);
+        }
     }
 }

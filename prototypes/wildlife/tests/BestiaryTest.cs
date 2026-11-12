@@ -42,6 +42,7 @@ public partial class BestiaryTest : Node
                 WeaponsAreHeldRight();
                 ArmsFollowTheEra();
                 BodiesAreWhole();
+                NoBodyFightsItself();
                 GD.Print(_failures == 0 ? $"ALL PASSED ({_checks} checks)" : $"{_failures} OF {_checks} CHECK(S) FAILED");
                 Shutdown.Quit(this, _failures == 0 ? 0 : 1);
                 return;
@@ -69,6 +70,7 @@ public partial class BestiaryTest : Node
             WeaponsAreHeldRight();
             ArmsFollowTheEra();
             BodiesAreWhole();
+            NoBodyFightsItself();
             TempersByTech();
             TwentyPeopleAreCheap();
             LooksClusterBySettlement();

@@ -80,8 +80,8 @@ public sealed class HandlingStats
 
     /// <summary>The console's warning, shown before anyone tries to take off. Null when all is well.</summary>
     public string LiftWarning => CanLiftOff ? null : IsHover
-        ? UpwardThrust <= 0f ? "NO HOVER LIFT: no hover plates fitted" : $"TOO HEAVY TO HOVER: lift margin {LiftMargin:+0;-0} kN. Drop {-SpareLift:F1} t"
-        : $"TOO HEAVY TO TAKE OFF: lift margin {LiftMargin:+0;-0} kN. Drop {-SpareLift:F1} t";
+        ? UpwardThrust <= 0f ? "NO HOVER LIFT · HOVER PLATES · 0" : $"TOO HEAVY TO HOVER · {LiftMargin:+0;-0} kN · -{-SpareLift:F1} t"
+        : $"TOO HEAVY TO TAKE OFF · {LiftMargin:+0;-0} kN · -{-SpareLift:F1} t";
 
     /// <summary>The four numbers as console lines, the same wherever they are shown.</summary>
     public IEnumerable<string> ConsoleLines()

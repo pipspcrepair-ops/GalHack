@@ -300,6 +300,7 @@ public partial class Spaceflight : Node
         _surfaceFar = g.Camera.Far;
         _surfaceAir ??= g.Suit.Sim.Environment;
         g.Suit.Sim.Environment = Vacuum;
+        g.Suit.Beyond = Space;
         Crossings.Add(new Crossing(true, x, z, GlobeMap.HeadingDegrees(b.Rotation), p, b.Rotation, b.Velocity, b.Position, b.Rotation, b.Velocity, to.Turn, watch.Elapsed.TotalMilliseconds, Ledger.Audit(Holders(), totals)));
         Report();
         g.Progress.Discover("orbit", 60, "reached orbit");
@@ -361,6 +362,7 @@ public partial class Spaceflight : Node
         GD.Print($"[lap park {watch.Elapsed.TotalMilliseconds:F1}]"); // orbit waits, wrecks as you left them
         _aligned = false;
         if (_surfaceAir != null) g.Suit.Sim.Environment = _surfaceAir;
+        g.Suit.Beyond = null;
         Crossings.Add(new Crossing(false, x, z, GlobeMap.HeadingDegrees(b.Rotation), p, b.Rotation, b.Velocity, b.Position, b.Rotation, b.Velocity, from.Turn, watch.Elapsed.TotalMilliseconds, Ledger.Audit(Holders(), totals)));
         Report();
     }
@@ -368,7 +370,7 @@ public partial class Spaceflight : Node
     string Where(double x, double z)
     {
         double latitude = 90 - z / Game.Surface.Planet.Height * 180, longitude = x / Game.Surface.Planet.Width * 360;
-        return $"{Math.Abs(latitude):F0}Â°{(latitude >= 0 ? "N" : "S")} {longitude:F0}Â°E";
+        return $"{Math.Abs(latitude):F0}°{(latitude >= 0 ? "N" : "S")} {longitude:F0}°E";
     }
 
     static void Wake(SurfaceZone zone)
@@ -408,7 +410,7 @@ public partial class Spaceflight : Node
 
     void Refused()
     {
-        Game.Say($"The crossing was refused ({Ledger.Trouble})", Tones.Warning);
+        Game.Say($"CROSSING REFUSED · {Ledger.Trouble}", Tones.Warning);
         GD.PrintErr($"crossing refused: {Ledger.Trouble}");
     }
 
@@ -502,19 +504,14 @@ public partial class Spaceflight : Node
     // ---- The suit in space ---------------------------------------------------------------------
 
     /// <summary>
-    /// Space as the suit feels it: no air (the helmet seals, the suit's oxygen runs down), a sealed
-    /// suit's slow chill, background radiation. Only a breathable room gives air: a sealed interior
-    /// of a structure with a running core. A chair in an open hull is still in vacuum.
+    /// Space as the suit feels it: the suit's own rule for rooms (a sealed room's air follows its
+    /// structure's power, as on the surface), with <see cref="Space"/> outside. A chair in an open
+    /// hull is still in vacuum.
     /// </summary>
-    Exposure Vacuum(Pos p, double time)
-    {
-        Survivor s = Game.Survivor;
-        Vessel aboard = s.Aboard;
-        bool room = aboard?.Structure.Core != null && aboard.Interior.Contains(s.Body.Position + s.Body.Up * 0.9f);
-        return room
-            ? new Exposure(20, 21, 0, VolumeKind.Room, aboard.Name, double.PositiveInfinity)
-            : new Exposure(Rules.Space.VacuumC, 0, Rules.Space.Radiation, null, "Space", double.PositiveInfinity);
-    }
+    Exposure Vacuum(Pos p, double time) => Game.Suit.Exposure(p, time);
+
+    /// <summary>Space itself: no air (the helmet seals, the suit's oxygen runs down), a sealed suit's slow chill, background radiation.</summary>
+    public Exposure Space(Pos p, double time) => new(Rules.Space.VacuumC, 0, Rules.Space.Radiation, null, "Space", double.PositiveInfinity);
 
     /// <summary>The visor's flight line in orbit: speed, height, the place under you.</summary>
     public string FlightLine(Vessel v)

@@ -157,7 +157,7 @@ public sealed class Charts
     /// <summary>What the model knows of a body, for the side of the map.</summary>
     static string Facts(Orbiter b, StarSystem system)
     {
-        string where = b.Parent == system.Star ? $"{b.Orbit / StarSystem.AuMetres:0.0} AU, {b.Period:0}-day year" : $"{b.Orbit / 1000.0:0} km round {Tidy(b.Parent.Name)}, {b.Period:0.0}-day month";
+        string where = b.Parent == system.Star ? $"{b.Orbit / StarSystem.AuMetres:0.0} AU · YEAR {b.Period:0} d" : $"{b.Orbit / 1000.0:0} km · {Tidy(b.Parent.Name)} · MONTH {b.Period:0.0} d";
         string held = b.Deposits.Count == 0 ? "" : ", " + string.Join(", ", b.Deposits.ConvertAll(d => d.Replace('-', ' ')));
         return $"{where}, {b.Temperature:0} K{held}";
     }

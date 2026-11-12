@@ -16,7 +16,7 @@
 shader_type sky;
 render_mode use_half_res_pass, use_quarter_res_pass;
 
-global uniform vec4 weather_flash;   // direction to the last strike, and its brightness
+global uniform vec4 weather_flash;   // where in the world the last strike lights the cloud from, and its brightness
 
 uniform vec3 zenith_day : source_color;
 uniform vec3 horizon_day : source_color;
@@ -525,6 +525,7 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter, 
 		return vec4(sky, 0.0);
 	}
 	// A storm is long to look through at a low angle: cutting its path short drew a hard straight underside.
+	float slab_end = t1; // where the ray leaves the layer, before its path is cut short
 	t1 = min(t1, t0 + (stormy ? 9000.0 : 2000.0));
 	// Steps by the length of the path through the slab: a few dozen straight up, more toward the
 	// horizon, where the path is long and too few would slice the clouds into layers.
@@ -548,8 +549,10 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter, 
 	vec3 night_lit = night_color * night_light.w * by_night * (0.75 + 1.4 * pow(max(dot(rd, night_light.xyz), 0.0), 6.0));
 	// The sky's own light on them, by night the moonlit (or starlit) sky's: dark, never black.
 	vec3 ambient = mix(cloud_shade, sky, 0.35) * (0.12 + 0.88 * day) + cloud_shade * night_color * night_light.w * by_night * 0.55;
-	// A strike lights the cloud round it most, and the rest of the sky a little.
-	float flash = weather_flash.w * (0.12 + 1.4 * pow(max(dot(rd, weather_flash.xyz), 0.0), 7.0));
+	// A strike lights only the cloud round it, falling off with distance from it: a far one its own
+	// cell, a near one (seen from under it) the deck for a good way round. Never the whole sky.
+	float flash = weather_flash.w;
+	float flash_reach = mix(1800.0, 650.0, smoothstep(700.0, 2500.0, length(weather_flash.xz - ro.xz)));
 	float fronts = 0.0; // how much of what this ray met was the front's: its shelf and deck stand out low over the horizon
 	// The shelf is a thin crisp wedge: through its band the march takes short steps (and may take more of them).
 	// Its short steps come out of their own budget: once it is spent the march goes on at the plain step,
@@ -617,7 +620,10 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter, 
 				vec3 under = cloud_underglow + night_color * night_light.w * by_night * 0.12 * (1.0 - 0.5 * cloud_dark);
 				if (glow_count > 0) under += place_glow(p.xz);
 				lum += under * (1.0 - hgt) * (1.0 - hgt);
-				lum += vec3(0.75, 0.72, 1.0) * flash * 2.5 * (1.0 - hgt * 0.3);
+				if (flash > 0.001) {
+					vec2 off = (p.xz - weather_flash.xz) / flash_reach;
+					lum += vec3(0.75, 0.72, 1.0) * flash * 2.5 * (1.0 - hgt * 0.3) * exp(-dot(off, off));
+				}
 				light += trans * lum * (1.0 - exp(-ext));
 			}
 			trans *= exp(-ext);
@@ -632,7 +638,11 @@ vec4 march_clouds(vec3 ro, vec3 rd, vec3 sun, vec3 sky, bool lit, float jitter, 
 	// cover takes over from what it found, so nothing steps where its reach ends.
 	if (!lit) {
 		float past = smoothstep(8000.0, 16000.0, t0);
-		hide = 1.0 - (1.0 - alpha * (1.0 - past)) * (1.0 - far_cover(ro, rd) * past);
+		// A low ray's path through the layer is cut short (2 km in a plain one): the rest of the layer is still
+		// in front of what is behind, so its cover hides that too, or stars low over the land shone through a
+		// thick layer where the march gave up.
+		float rest = smoothstep(0.0, 1500.0, slab_end - t1);
+		hide = 1.0 - (1.0 - alpha * (1.0 - past)) * (1.0 - far_cover(ro, rd) * max(past, rest));
 	}
 	// Distant clouds thin into the haze along the horizon: their look fades into the sky's colour (an
 	// opacity, laid over the sky gradient, and their colour leaning toward it).
@@ -699,14 +709,18 @@ void sky() {
 		vec4 b = solid * (1.0 - overcast * 0.9);
 		// The stars' points apart from the soft light round them: a thin veil of cloud dims the
 		// points faster, so it blurs the night into its glow before it hides it.
-		vec3 points = vec3(0.0);
+		vec3 points = vec3(0.0), backdrop = vec3(0.0);
 		if (starlight > 0.0) {
 			vec3 soft = night_sky(dir, false);
 			vec3 full = AT_CUBEMAP_PASS ? soft : night_sky(dir, true);
 			points = (full - soft) * starlight * (1.0 - solid.a);
-			col += full * starlight * (1.0 - solid.a);
+			backdrop = full * starlight * (1.0 - solid.a);
+			col += backdrop;
 		}
-		col = col * (1.0 - b.a * mix(0.88, 1.0, 1.0 - day)) + b.rgb;
+		float before_bodies = 1.0 - b.a * mix(0.88, 1.0, 1.0 - day);
+		col = col * before_bodies + b.rgb;
+		points *= before_bodies;
+		backdrop *= before_bodies;
 
 		// The sun itself, in front of everything but cloud: dimmer and warmer low down, behind more air.
 		// Low over a hot world it wavers in the rising air.
@@ -743,7 +757,12 @@ void sky() {
 			laid = clamp(QUARTER_RES_COLOR.g, 0.0, 1.0);
 		}
 		float through_clouds = 1.0 - cover;
-		col = clouded + (col - plain) * through_clouds - points * (through_clouds - through_clouds * through_clouds);
+		// The night backdrop (stars, nebulae, the core, the galaxy's band) goes by the cube of what gets through,
+		// its sharp points by the fifth power: it is many times brighter than white, so dimmed only by the
+		// cloud's own share it still burnt through as bright as ever wherever a cloud was not quite solid
+		// (looking straight up through a thin deck the stars stood undimmed on it).
+		float t3 = through_clouds * through_clouds * through_clouds;
+		col = clouded + (col - plain) * through_clouds - backdrop * (through_clouds - t3) - points * (t3 - t3 * through_clouds * through_clouds);
 		// Cirrus: high thin streaks, a texture far overhead rather than a volume, combed along the
 		// wind's way; they sit on top of the clouds below them only where those let the sky through.
 		if (cirrus > 0.01 && tower_count == 0 && dir.y > 0.02 && !AT_CUBEMAP_PASS) {

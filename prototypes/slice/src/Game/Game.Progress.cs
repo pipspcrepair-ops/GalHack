@@ -4,6 +4,7 @@ using GalHack.Physics.Engine;
 using Godot;
 using Slice.Items;
 using Slice.Surface;
+using Slice.Ui;
 using Slice.Vessels;
 using Wildlife;
 using Layers = GalHack.Physics.Layers;
@@ -21,8 +22,11 @@ public partial class Game
         Tool.OreDug += cells => Progress.Earn(cells * xp.OreCell, "ore");
         Tool.PlantCut += () => Progress.Earn(xp.Plant, "plant cut");
         Builder.BlockPlaced += (v, small) => { Stats.Placed++; Progress.Earn(small ? xp.BlockSmall : xp.BlockLarge, "building"); };
-        // Experience counts quietly (the Tab menu shows it); only a new level gets its banner.
+        // Experience counts quietly (the Tab menu shows it); a new level, an unlock and a recipe learnt are news, in the notices' slot.
         Progress.LevelledUp += (level, points) => Visor.LevelUp(level, points);
+        Progress.Unlocked += n => Notices.Post(NoticeKind.Unlock, "UNLOCKED", n.Name);
+        Progress.Learnt += n => Notices.Post(NoticeKind.Learnt, "LEARNT", n.Name);
+        Builder.Claimed += name => Notices.Post(NoticeKind.Claimed, "CLAIMED", name);
     }
 
     /// <summary>Exploring experience, a few times a second: deposits you come near, species you meet.</summary>

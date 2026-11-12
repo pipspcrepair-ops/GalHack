@@ -254,7 +254,7 @@ public sealed partial class Staging
     /// <summary>The castaway's own body, hidden for a staged eye that would have them in the shot.</summary>
     void HideCastaway(bool hide)
     {
-        if (_game.Survivor.Node.GetNodeOrNull<Node3D>("Castaway") is { } body) body.Visible = !hide;
+        if (_game.Figure is { } body) body.Visible = !hide;
     }
 
     /// <summary>The floor under a point of a den's sim (its own solid space), or the point's height if none is found.</summary>

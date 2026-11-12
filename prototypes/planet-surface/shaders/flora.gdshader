@@ -6,10 +6,13 @@
 // By distance (the far rings' scatter, TerrainStreamer): each plant has a near drawing (its own mesh)
 // and, a large one, a far drawing too (its far mesh), and they dissolve one into the other over a
 // band of distance through a fixed screen pattern, the near drawing keeping the pixels under its
-// share and the far one the rest, so nothing swaps or doubles. Small growth dissolves away at the
-// near reach, large past the far reach; a thinning share of the large (instance alpha past 1) goes
-// sooner, so a wood thins into the distance rather than ending in a line. Each plant's reach is a
-// little its own. Keep in step with TerrainStreamer.FloraShows.
+// share and the far one the rest, so nothing doubles; the band is next to nothing, so a plant swaps whole. Past the far reach a share of the
+// large has a distant drawing (its far mesh a little bigger) that takes over the same way, out to the
+// detail distance. Small growth dissolves away at its own reach. A thinning share of each (instance
+// alpha past 1) goes sooner, so a wood thins into the distance rather than ending in a line. Each
+// plant's reach is a little its own. The reaches come from TerrainStreamer (DetailReach), and past
+// 2 km plants sink over the round world's horizon with the land. Keep in step with
+// TerrainStreamer.FloraShows.
 shader_type spatial;
 render_mode cull_disabled, diffuse_burley;
 
@@ -18,19 +21,19 @@ render_mode cull_disabled, diffuse_burley;
 global uniform vec4 weather_wind;    // direction x, z, speed m/s, distance travelled (gust phase)
 global uniform vec4 weather_ground;  // wetness, snow, dust, solar
 
-// 0: the near drawing; 1: the far; 2 (anything else that draws with this): whole at every distance.
+// 0: large growth's near drawing; 1: its far; 3: its distant; 4: small growth; 2 (anything else
+// that draws with this): whole at every distance.
 instance uniform float flora_layer = 2.0;
 // A chunk's new drawing dissolving in over its old one (TerrainStreamer.StepSwaps): the part of a
 // second screen pattern, independent of the first, each draws, the new [0, t) and the old [t, 1).
 // What both draw alike looks the same throughout; what is new or gone fades.
 instance uniform vec2 flora_swap = vec2(0.0, 1.0);
 
-const float NEAR_REACH = 120.0;
-const float NEAR_BAND = 26.0;
-const float FAR_REACH = 370.0;
-const float FAR_BAND = 60.0;
-const float THIN_REACH = 200.0;
-const float THIN_BAND = 40.0;
+// Reaches, m: large growth's near drawing, small growth, the far drawing, the distant; the bands
+// they dissolve over; the far drawing's thinning share's reach and band.
+uniform vec4 flora_reach = vec4(120.0, 200.0, 370.0, 1280.0);
+uniform vec4 flora_bands = vec4(26.0, 60.0, 60.0, 192.0);
+uniform vec2 flora_thin = vec2(200.0, 40.0);
 
 varying vec3 tint;
 varying float glow;
@@ -45,13 +48,27 @@ void vertex() {
 	bool thin = INSTANCE_CUSTOM.a >= 1.5;
 	glow = INSTANCE_CUSTOM.a - (thin ? 2.0 : 0.0);
 	band = vec2(0.0, 1.0);
-	if (flora_layer < 1.5) {
-		vec3 root = MODEL_MATRIX[3].xyz;
-		float away = distance(root.xz, MAIN_CAM_INV_VIEW_MATRIX[3].xz);
-		float own = 0.9 + 0.1 * fract(sin(dot(root.xz, vec2(12.9898, 78.233))) * 43758.5453);
-		float near = shown(NEAR_REACH * own, NEAR_BAND, away);
-		float far = thin ? shown(THIN_REACH * own, THIN_BAND, away) : shown(FAR_REACH * own, FAR_BAND, away);
-		band = flora_layer < 0.5 ? vec2(0.0, near) : vec2(near, max(far, near));
+	int layer = int(flora_layer + 0.5);
+	vec3 root = MODEL_MATRIX[3].xyz;
+	vec2 to_eye = root.xz - MAIN_CAM_INV_VIEW_MATRIX[3].xz;
+	if (layer != 2) {
+		float away = length(to_eye);
+		float r = fract(sin(dot(root.xz, vec2(12.9898, 78.233))) * 43758.5453);
+		// Each plant's reaches are a little its own (the thinning share's and small growth's a lot), so a
+		// wood thins gradually while each plant swaps or goes whole.
+		float own = 0.9 + 0.1 * r, own_thin = 0.75 + 0.25 * r, own_small = 0.7 + 0.3 * r;
+		float near = shown(flora_reach.x * own, flora_bands.x, away);
+		float far = shown(flora_reach.z * own, flora_bands.z, away);
+		if (layer == 0) {
+			band = vec2(0.0, near);
+		} else if (layer == 4) {
+			band = vec2(0.0, shown(flora_reach.y * (thin ? 0.6 : 1.0) * own_small, flora_bands.y, away));
+		} else if (layer == 1) {
+			float most = thin ? shown(flora_thin.x * own_thin, flora_thin.y, away) : far;
+			band = vec2(near, max(most, near));
+		} else {
+			band = vec2(far, max(shown(flora_reach.w * (0.95 + 0.05 * r), flora_bands.w, away), far));
+		}
 	}
 	if (band.y <= band.x) {
 		VERTEX = vec3(0.0); // none of it shows: nothing to draw
@@ -63,6 +80,7 @@ void vertex() {
 		float strength = min(weather_wind.z, 30.0) * 0.012 * (0.4 + 0.6 * gust);
 		float flutter = sin(TIME * 2.3 + world.x * 0.3 + world.z * 0.2) * 0.04;
 		vec3 push = vec3(weather_wind.x, 0.0, weather_wind.y) * (strength + flutter) * sway * max(COLOR.a, 0.8) * 3.0;
+		push.y -= round_sink(to_eye); // over the round world's horizon, with the far land
 		VERTEX += (inverse(MODEL_MATRIX) * vec4(push, 0.0)).xyz;
 	}
 }

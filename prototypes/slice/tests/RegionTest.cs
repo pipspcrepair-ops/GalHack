@@ -104,8 +104,9 @@ public partial class RegionTest : Node
             }
             if (mountains) mountainWorlds++;
             int before = tornadoes;
-            // Storms over four stretches of its land, a quarter of an hour each.
-            for (int stretch = 0; stretch < 4; stretch++)
+            // Storms over eight stretches of its land, a quarter of an hour each (since the landforms bar rugged
+            // country, four left some runs of ten worlds with ten tornadoes or fewer).
+            for (int stretch = 0; stretch < 8; stretch++)
             {
                 WeatherSim sim = Sim(w, WeatherKind.Tornado);
                 sim.FrontsOff = true;
@@ -196,7 +197,9 @@ public partial class RegionTest : Node
                 Conditions c = sim.LocalAt(p);
                 float coldness = Regions.ColdGround(_rules, g);
                 if (coldness > 0.9f) { cold++; if (c.Snow > 0.3f) coldSnow++; }
-                else if (coldness < 0.05f && g.Warmth > 0.5f && g.Height < 200f)
+                // Warm as the sim reckons it: its air is the world's own at the world's mean warmth, so on a hot world
+                // ground a little over half warm is that world's cold side (2 °C under its rain), where sleet is fair.
+                else if (coldness < 0.05f && g.Warmth > MathF.Max(0.5f, sim.MeanWarmth) && g.Height < 200f)
                 {
                     warm++;
                     if (c.Rain > 0.2f && c.Snow < 0.05f) warmRain++;
@@ -251,11 +254,13 @@ public partial class RegionTest : Node
             Front f = sim.Front;
             if (f == null || f.Ahead(observer) < 3000f || sim.FrontWeather == null) continue;
             WeatherKind before = sim.FrontWeather.FromKind, behind = sim.FrontWeather.Kind;
-            if (_data.State(before).Lightning > 0.2f) continue; // a storm already here: nothing to tell apart
+            float boltsAhead = sim.LocalAt(observer).LightningPerMinute, boltsUnder = 0f;
+            // A storm already here: nothing to tell apart (the front's own weather before it, or the weather of the hour
+            // still running where its edge hasn't come yet).
+            if (_data.State(before).Lightning > 0.2f || boltsAhead >= 0.3f) continue;
             float along = f.Along(observer);
             Vector3 start = f.EdgeAt(along, observer);
             var crossed = new HashSet<string>();
-            float boltsAhead = sim.LocalAt(observer).LightningPerMinute, boltsUnder = 0f;
             for (int i = 0; i < 1200 && sim.Front != null; i++)
             {
                 sim.Step(1f, observer);
@@ -268,6 +273,8 @@ public partial class RegionTest : Node
                 }
             }
             if (sim.Front == null) continue;
+            // A front whose edge ran over open sea the whole way (an island world) can't show one region giving way to the next: another world.
+            if (crossed.Count < 2 && attempt < 11) continue;
             float moved = new Vector2(sim.Front.EdgeAt(along, observer).X - start.X, sim.Front.EdgeAt(along, observer).Z - start.Z).Length();
             Check(moved > 5000f && crossed.Count >= 2,
                 $"a front advances {moved / 1000f:F1} km across the map in 20 minutes, over {crossed.Count} kinds of ground ({string.Join(", ", crossed)})");

@@ -791,6 +791,7 @@ public partial class Place
         {
             taken.Add(i);
             hit.Room.Solid.Remove(i);
+            PlaceParts.Taken(Memory, hit.Room.Module, i);
             if (view == null || view.Pieces[i] is not DecoNode n) continue;
             if (n.Body != null) _pieceOf.Remove(n.Body.GetInstanceId());
             n.Visible = false;

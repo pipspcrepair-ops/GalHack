@@ -9,15 +9,32 @@ namespace PlanetSurface.WeatherView;
 /// <summary>
 /// Ported from the weather prototype (bolts rise from this planet's cloud base). Lightning you can see coming: while a strike charges, its target glows and crackles (St
 /// Elmo's fire) and the cloud above flickers; then a branching bolt, a flash that lights the
-/// whole sky, and a few re-strokes. Bolts are camera-facing ribbons rebuilt only while visible.
+/// cloud round it, and a few re-strokes. Near and far differ: a near strike has its bolt, a wide
+/// flash and a shadow-casting light; a far one is a glow inside its own cell, now and then a
+/// thin bolt, no light on the ground; between them it fades by distance. Bolts are camera-facing
+/// strips, one unbroken strip per channel (a quad per segment overlapped its neighbours' ends and
+/// drew rungs across the bolt), rebuilt only while visible.
 /// </summary>
 public partial class LightningFx : Node3D
 {
     public IWeatherScene Fx;
 
-    /// <summary>0..~1.5: how bright the last strike is right now, for the sky, fog and ambient light.</summary>
+    /// <summary>0..~1.5: how bright the last strike's glow in the cloud is right now (the sky lights the cloud round <see cref="FlashAt"/> with it).</summary>
     public float Flash { get; private set; }
-    public Vector3 FlashDirection { get; private set; } = Vector3.Up;
+    /// <summary>Where in the world the cloud is lit from: over the last strike, or the cell flashing within.</summary>
+    public Vector3 FlashAt { get; private set; } = new(0f, -1e6f, 0f);
+
+    /// <summary>How near a strike is, 1 (bolt, wide flash, shadows) to 0 (a glow in its cloud), by metres from the eye.</summary>
+    public static float Nearness(float metres) => 1f - Mathf.SmoothStep(NearUpTo, FarFrom, metres);
+    public const float NearUpTo = 700f, FarFrom = 2500f;
+
+    /// <summary>Tests and screenshots: holds the last strike as it is now; and lets no other strike or cloud flash in.</summary>
+    public bool Held, Closed;
+    /// <summary>How often a far strike's bolt shows below its cloud (the rest stay hidden in it).</summary>
+    public float FarBoltChance = 0.35f;
+    /// <summary>The last strike's nearness, and whether its bolt is showing (a far one's only now and then).</summary>
+    public float LastNearness { get; private set; }
+    public bool BoltShown => _bolt.Visible;
 
     /// <summary>How much of a strike's real light reaches the eye's surroundings, 0 to 1: a game with rooms says none in a sealed one.</summary>
     public Func<float> LightShare = () => 1f;
@@ -33,9 +50,10 @@ public partial class LightningFx : Node3D
     ImmediateMesh _boltMesh;
     MeshInstance3D _bolt;
     OmniLight3D _strikeLight;
-    readonly List<(Vector3 a, Vector3 b, float width, float alpha)> _segments = new();
-    readonly List<(Vector3 a, Vector3 b, float width, float alpha)> _crackles = new();
+    readonly List<Channel> _segments = new();
+    readonly List<Channel> _crackles = new();
     float _boltAge = 99f;
+    bool _drawBolt;
     Vector3 _boltTarget;
     readonly RandomNumberGenerator _rng = new() { Seed = 4242 };
 
@@ -124,18 +142,21 @@ public partial class LightningFx : Node3D
         Vector3 camera = Fx.Camera.GlobalPosition;
         UpdateCharges(dt, camera);
 
-        _boltAge += dt;
+        if (!Held) _boltAge += dt;
         float stroke = Stroke(_boltAge);
-        float distance = camera.DistanceTo(_boltTarget);
-        float near = 1f / (1f + distance / 350f);
-        Flash = Mathf.Max(stroke * (0.25f + 0.6f * near), Flash - dt * 4f);
-        _strikeLight.LightEnergy = stroke * 14f * LightShare();
+        float near = Nearness(camera.DistanceTo(_boltTarget));
+        // The glow in the cloud: a far strike's stays in its own cell (the sky keeps it round FlashAt), a near one's is wider and brighter.
+        Flash = Mathf.Max(stroke * (0.45f + 0.65f * near), Flash - dt * 4f);
+        // Light on the ground, and its shadows, only from a near strike.
+        _strikeLight.LightEnergy = stroke * 14f * near * near * LightShare();
         _strikeLight.Visible = _strikeLight.LightEnergy > 0.01f;
-        _bolt.Visible = _boltAge < BoltLife;
+        _strikeLight.ShadowEnabled = near > 0.3f;
+        _bolt.Visible = _drawBolt && _boltAge < BoltLife;
         if (_bolt.Visible)
         {
-            _boltMaterial.SetShaderParameter("energy", 2f + 7f * stroke);
-            DrawRibbons(_boltMesh, _segments, camera, 0.4f + 0.6f * stroke);
+            // Far off, a thin dim channel with no halo to bloom into a flash.
+            _boltMaterial.SetShaderParameter("energy", (2f + 7f * stroke) * (0.35f + 0.65f * near));
+            DrawRibbons(_boltMesh, _segments, camera, 0.4f + 0.6f * stroke, 0.35f + 0.65f * near, near);
         }
     }
 
@@ -155,6 +176,7 @@ public partial class LightningFx : Node3D
     {
         int used = 0;
         float skyFlicker = 0f;
+        Vector3 flickerAt = default;
         foreach (Hazard h in Fx.Hazards)
         {
             if (h.Kind != HazardKind.Lightning || used >= _charges.Count) continue;
@@ -172,12 +194,17 @@ public partial class LightningFx : Node3D
             {
                 c.NextCrackle = Mathf.Lerp(0.2f, 0.05f, p);
                 BuildCrackles(h.Target, p);
-                DrawRibbons(c.Crackle, _crackles, camera, 0.3f + 0.7f * p);
+                DrawRibbons(c.Crackle, _crackles, camera, 0.3f + 0.7f * p, 1f, 1f);
             }
-            skyFlicker = Mathf.Max(skyFlicker, p * p * (_rng.Randf() < 0.15f ? 0.35f : 0.05f));
+            float flicker = p * p * (_rng.Randf() < 0.15f ? 0.35f : 0.05f);
+            if (flicker > skyFlicker) { skyFlicker = flicker; flickerAt = h.Target; }
         }
         for (int i = used; i < _charges.Count; i++) _charges[i].Root.Visible = false;
-        if (skyFlicker > Flash) Flash = skyFlicker; // the cloud above flickers as the charge builds
+        if (!Closed && skyFlicker > Flash) // the cloud above it flickers as the charge builds
+        {
+            Flash = skyFlicker;
+            FlashAt = new Vector3(flickerAt.X, Mathf.Max(Fx.CloudBaseY, flickerAt.Y + 150f) + 120f, flickerAt.Z);
+        }
     }
 
     /// <summary>Short streamers reaching up from the target, more and longer as the charge builds.</summary>
@@ -195,12 +222,15 @@ public partial class LightningFx : Node3D
     /// <summary>The strike: a branching bolt from the cloud base down to the target.</summary>
     public void Strike(Vector3 target)
     {
+        if (Closed) return;
         _boltAge = 0f;
         _boltTarget = target;
         _strikeLight.GlobalPosition = target + Vector3.Up * 6f;
         Vector3 cloud = target + new Vector3(_rng.RandfRange(-90f, 90f), 0f, _rng.RandfRange(-90f, 90f));
         cloud.Y = Mathf.Max(Fx.CloudBaseY, target.Y + 150f);
-        FlashDirection = (cloud - Fx.Camera.GlobalPosition).Normalized();
+        FlashAt = cloud + Vector3.Up * 120f;
+        LastNearness = Nearness(Fx.Camera.GlobalPosition.DistanceTo(target));
+        _drawBolt = LastNearness > 0.15f || _rng.Randf() < FarBoltChance; // far off, mostly hidden in the cloud
         _segments.Clear();
         Jag(_segments, cloud, target, 7, 1.1f, 1f, 0);
     }
@@ -208,12 +238,13 @@ public partial class LightningFx : Node3D
     /// <summary>Lightning inside a cloud: no bolt, just the tower lighting up from within.</summary>
     public void CloudFlash(Vector3 at, float brightness)
     {
-        FlashDirection = (at - Fx.Camera.GlobalPosition).Normalized();
-        Flash = Mathf.Max(Flash, brightness);
+        if (Closed || brightness < Flash) return;
+        FlashAt = at;
+        Flash = brightness;
     }
 
     /// <summary>Midpoint displacement: a jagged path, with branches forking off and fading.</summary>
-    void Jag(List<(Vector3 a, Vector3 b, float width, float alpha)> into, Vector3 from, Vector3 to, int levels, float width, float alpha, int depth)
+    void Jag(List<Channel> into, Vector3 from, Vector3 to, int levels, float width, float alpha, int depth)
     {
         var points = new List<Vector3> { from, to };
         float rough = 0.22f;
@@ -231,38 +262,76 @@ public partial class LightningFx : Node3D
             points = next;
         }
 
+        into.Add(new Channel(points, width, alpha));
         for (int i = 0; i < points.Count - 1; i++)
         {
-            float taper = Mathf.Lerp(0.6f, 1f, i / (float)points.Count);
-            into.Add((points[i], points[i + 1], width * taper, alpha));
             if (depth < 2 && levels > 3 && _rng.Randf() < (depth == 0 ? 0.09f : 0.05f))
             {
                 Vector3 down = (to - from).Normalized();
-                float length = from.DistanceTo(to) * _rng.RandfRange(0.15f, 0.35f);
+                float length = from.DistanceTo(to) * _rng.RandfRange(0.1f, 0.25f);
                 Vector3 side = new Vector3(_rng.RandfRange(-1f, 1f), 0f, _rng.RandfRange(-1f, 1f)).Normalized();
-                Jag(into, points[i], points[i] + (down * 0.6f + side * 0.8f).Normalized() * length, levels - 2, width * 0.45f, alpha * 0.55f, depth + 1);
+                Vector3 end = points[i] + (down * 0.6f + side * 0.8f).Normalized() * length;
+                end.Y = Mathf.Max(end.Y, to.Y + (from.Y - to.Y) * 0.25f); // forks spread out under the cloud and die in the air, never into the ground
+                Jag(into, points[i], end, levels - 2, width * 0.45f, alpha * 0.55f, depth + 1);
             }
         }
     }
 
-    /// <summary>Each segment as a quad turned to face the camera: a hot core plus a wide soft halo.</summary>
-    static void DrawRibbons(ImmediateMesh mesh, List<(Vector3 a, Vector3 b, float width, float alpha)> segments, Vector3 camera, float brightness)
+    /// <summary>One channel of a bolt: its jagged path, its width and how bright it is.</summary>
+    public sealed record Channel(List<Vector3> Points, float Width, float Alpha);
+
+    /// <summary>A bolt from <paramref name="from"/> to <paramref name="to"/>, with its forks, for tests.</summary>
+    public static List<Channel> TestBolt(Vector3 from, Vector3 to, ulong seed)
+    {
+        var fx = new LightningFx();
+        fx._rng.Seed = seed;
+        var into = new List<Channel>();
+        fx.Jag(into, from, to, 7, 1.1f, 1f, 0);
+        fx.Free();
+        return into;
+    }
+
+    /// <summary>
+    /// A channel's strip: at each point of its path a left and a right edge, shared by the pieces
+    /// either side of it, so the strip runs unbroken; it narrows to a point at both ends, so nothing
+    /// lies across the channel anywhere.
+    /// </summary>
+    public static (Vector3 left, Vector3 right)[] Strip(Channel c, Vector3 camera, float width)
+    {
+        List<Vector3> p = c.Points;
+        var edges = new (Vector3, Vector3)[p.Count];
+        Vector3 last = Vector3.Zero;
+        for (int i = 0; i < p.Count; i++)
+        {
+            Vector3 along = p[Math.Min(i + 1, p.Count - 1)] - p[Math.Max(i - 1, 0)];
+            Vector3 side = along.Cross(camera - p[i]);
+            side = side.LengthSquared() > 1e-12f ? side.Normalized() : last;
+            if (i > 0 && side.Dot(last) < 0f) side = -side; // never twisted over between two points
+            last = side;
+            float f = i / (float)(p.Count - 1);
+            float taper = Mathf.Min(1f, Mathf.Min(f, 1f - f) * 12f) * Mathf.Lerp(1f, 0.6f, f);
+            float scale = Mathf.Max(1f, camera.DistanceTo(p[i]) * 0.004f); // stays a few pixels wide far away
+            Vector3 half = side * c.Width * width * scale * taper * 0.5f;
+            edges[i] = (p[i] - half, p[i] + half);
+        }
+        return edges;
+    }
+
+    /// <summary>Each channel as strips turned to face the camera: a hot core plus a soft halo (<paramref name="halo"/> 0 drops it).</summary>
+    static void DrawRibbons(ImmediateMesh mesh, List<Channel> channels, Vector3 camera, float brightness, float width, float halo)
     {
         mesh.ClearSurfaces();
-        if (segments.Count == 0) return;
+        if (channels.Count == 0) return;
         mesh.SurfaceBegin(Mesh.PrimitiveType.Triangles);
-        foreach (var (a, b, width, alpha) in segments)
+        foreach (Channel c in channels)
         {
-            Vector3 mid = (a + b) / 2f;
-            float scale = Mathf.Max(1f, camera.DistanceTo(mid) * 0.004f); // stays a few pixels wide far away
-            Vector3 side = (b - a).Cross(camera - mid).Normalized();
-            Quad(mesh, a, b, side * width * scale * 0.5f, new Color(1, 1, 1, alpha * brightness));
-            Quad(mesh, a, b, side * width * scale * 3f, new Color(0.7f, 0.6f, 1f, alpha * brightness * 0.09f));
+            StripMesh(mesh, Strip(c, camera, width), new Color(1, 1, 1, c.Alpha * brightness));
+            if (halo > 0.01f) StripMesh(mesh, Strip(c, camera, width * 5f), new Color(0.7f, 0.6f, 1f, c.Alpha * brightness * 0.08f * halo));
         }
         mesh.SurfaceEnd();
     }
 
-    static void Quad(ImmediateMesh mesh, Vector3 a, Vector3 b, Vector3 half, Color color)
+    static void StripMesh(ImmediateMesh mesh, (Vector3 left, Vector3 right)[] e, Color color)
     {
         void V(Vector3 p, float u)
         {
@@ -270,7 +339,10 @@ public partial class LightningFx : Node3D
             mesh.SurfaceSetUV(new Vector2(u, 0));
             mesh.SurfaceAddVertex(p);
         }
-        V(a - half, 0); V(a + half, 1); V(b + half, 1);
-        V(a - half, 0); V(b + half, 1); V(b - half, 0);
+        for (int i = 0; i < e.Length - 1; i++)
+        {
+            V(e[i].left, 0); V(e[i].right, 1); V(e[i + 1].right, 1);
+            V(e[i].left, 0); V(e[i + 1].right, 1); V(e[i + 1].left, 0);
+        }
     }
 }

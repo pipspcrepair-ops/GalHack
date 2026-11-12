@@ -234,7 +234,7 @@ public partial class EscapeMenuTest : Node
             }
             StartRoot start = next.StartScreen?.Root;
             Check(start != null && next.Zone == null && next.IsInsideTree() && (name.Contains('@') || next.Name == name) && Gone(held.Game) && Gone(held.Zone)
-                  && start.Pickers.Count == 9 && start.CurrentPreset == "default" && start.Seed == "" && GetChildren().OfType<Game.Game>().Count() == 1,
+                  && start.Pickers.Count == 11 && start.CurrentPreset == "default" && start.Seed == "" && GetChildren().OfType<Game.Game>().Count() == 1,
                 $"NEW GAME {k + 1}, YES: the world torn down and freed, and in its place the start screen as at launch (preset {start?.CurrentPreset}, {start?.Pickers.Count} options and the seed)");
             Check(!held.Game.IsAlive && !held.Zone.IsAlive && !held.Planet.IsAlive,
                 $"NEW GAME {k + 1}: nothing holds the last game, its zone or its planet after a collection (game {held.Game.IsAlive}, zone {held.Zone.IsAlive}, planet {held.Planet.IsAlive}; {watch.Elapsed.TotalSeconds:F1} s)");

@@ -415,7 +415,23 @@ public sealed class PlaceWalk
                 open.Enqueue(n, c + new Vector2(i - goal.Item1, j - goal.Item2).Length() * cell);
             }
         }
-        Notes.Add($"no way over the land ({expanded} cells searched, {height.Count} probed, {height.Values.Count(float.IsNaN)} refused; start {start} {H(start.Item1, start.Item2):F1}, goal {goal} {H(goal.Item1, goal.Item2):F1})");
+        // Out from the goal eight ways: where each is first stopped (cells out, and the step's rise or refused ground).
+        var ways = new List<string>();
+        for (int k = 0; k < 8; k++)
+        {
+            int di = (int)MathF.Round(MathF.Cos(k * MathF.PI / 4f)), dj = (int)MathF.Round(MathF.Sin(k * MathF.PI / 4f));
+            float prev = H(goal.Item1, goal.Item2);
+            string stop = "clear";
+            for (int s = 1; s <= 20; s++)
+            {
+                float h = H(goal.Item1 + di * s, goal.Item2 + dj * s);
+                if (float.IsNaN(h)) { stop = $"{s} refused"; break; }
+                if (!float.IsNaN(prev) && MathF.Abs(h - prev) > cell * (di != 0 && dj != 0 ? 1.414f : 1f) * slope) { stop = $"{s} rise {h - prev:F1}"; break; }
+                prev = h;
+            }
+            ways.Add(stop);
+        }
+        Notes.Add($"no way over the land ({expanded} cells searched, {height.Count} probed, {height.Values.Count(float.IsNaN)} refused; start {start} {H(start.Item1, start.Item2):F1}, goal {goal} {H(goal.Item1, goal.Item2):F1}, out from the goal {string.Join("/", ways)})");
         return null;
     }
 

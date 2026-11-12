@@ -52,7 +52,8 @@ public sealed partial class Town
         // The place's own spots, each on floor a person can stand on.
         foreach (ActivitySpot s in Data.Spots)
         {
-            PInt3 c = Stand(s.Cell) ?? s.Cell;
+            // (Out of doors the land may have taken a spot's whole stretch of yard: then the nearest ground that is the place's level.)
+            PInt3 c = Stand(s.Cell) ?? Stand(s.Cell, 12) ?? s.Cell;
             Spots.Add(s with { Cell = c });
             _point.Add(Walk(c));
             _face.Add(float.NaN);
@@ -120,14 +121,14 @@ public sealed partial class Town
     }
 
     /// <summary>The nearest standable cell to a spot's own (itself where it is clear), within a few cells and a level up, or down to the floor under it (a spot left in the air over a pit or a drop).</summary>
-    PInt3? Stand(PInt3 c)
+    PInt3? Stand(PInt3 c, int reach = 3)
     {
         if (_nav.Standable(c)) return c;
         PInt3? best = null;
         int bestD = int.MaxValue;
         for (int dy = -3; dy <= 1; dy++)
-            for (int dz = -3; dz <= 3; dz++)
-                for (int dx = -3; dx <= 3; dx++)
+            for (int dz = -reach; dz <= reach; dz++)
+                for (int dx = -reach; dx <= reach; dx++)
                 {
                     var q = new PInt3(c.X + dx, c.Y + dy, c.Z + dz);
                     int d = Math.Abs(dx) + Math.Abs(dz) + Math.Abs(dy) * 4;
@@ -168,7 +169,7 @@ public sealed partial class Town
         if (here is not { } h || !_nav.Standable(Spots[spot].Cell)) return null;
         List<PInt3> cells = _nav.FindPath(h, Spots[spot].Cell, 30000);
         if (cells == null) return null;
-        List<Vector3> path = cells.Select(Walk).ToList();
+        List<Vector3> path = Points(cells);
         if ((At(spot) - path[^1]).LengthSquared() > 0.01f) path.Add(At(spot));
         return path;
     }
@@ -217,13 +218,22 @@ public sealed partial class Town
         return best;
     }
 
-    /// <summary>The cells a route crosses that a piece of the dressing stands in (none, for a route as it should be).</summary>
-    public IEnumerable<PInt3> Blocked(List<Vector3> path, int to)
+    /// <summary>
+    /// The cells where a route takes a body into the furniture or the clutter (its real shape: a walking body
+    /// swept along each step, but the step into the seat it ends in or out of the one it starts from), or off
+    /// the floor; none, for a route as it should be. In the old whole-cell rule, the cells a piece stands in.
+    /// </summary>
+    public IEnumerable<PInt3> Blocked(List<Vector3> path, int to, int from = -1)
     {
-        var solid = Memory.Rooms?.Values.SelectMany(r => r.Cells).ToHashSet() ?? new HashSet<PInt3>();
+        var solid = _fixed == null ? Memory.Rooms?.Values.SelectMany(r => r.Cells).ToHashSet() ?? new HashSet<PInt3>() : new HashSet<PInt3>();
         HashSet<PInt3> own = to >= 0 && to < _own.Count ? _own[to] : null;
+        bool outOfSeat = from >= 0 && from < _own.Count && _own[from] != null;
         for (int i = 0; i < path.Count; i++)
         {
+            bool seatStep = i == path.Count - 1 && own != null || i == 1 && outOfSeat;
+            // (Up and down a flight the way is the stair's: the parts' test is for the level.)
+            bool level = i > 0 && MathF.Abs(path[i].Y - path[i - 1].Y) < 0.05f && !_nav.RampAt(Cell(path[i]), out _) && !_nav.RampAt(Cell(path[i - 1]), out _);
+            if (_fixed != null && level && !seatStep && !_fixed.Sweep(path[i - 1], path[i], PlaceParts.PersonRadius - 0.01f, PlaceParts.PersonHeight, 0, Place.WallsOf(_nav), PlaceParts.PersonRadius - 0.01f)) yield return Cell(path[i]);
             // Each point, and the middle of the way to it from the last.
             for (int k = 0; k < (i == 0 ? 1 : 2); k++)
             {
@@ -252,6 +262,7 @@ public sealed partial class Town
         for (float t = 0f; t < seconds; t += dt)
         {
             _clock += dt;
+            TickWays(dt);
             bool dark = night(t);
             foreach (Person p in People)
             {

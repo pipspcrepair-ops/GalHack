@@ -198,6 +198,8 @@ public partial class DressTest : Node
         var hangars = new List<(string Where, bool Fits, bool Craft)>();
         var cabins = new List<(string Where, bool Fits)>();
         var seen = new SortedDictionary<string, int>();
+        var falseFrames = new List<string>();
+        int frames = 0;
         foreach (Rolled r in rolled)
         {
             bool culture = r.Inst.Kit?.Id is "precursor" or "vharn" or "kessari" || (r.Family.Style ?? "").StartsWith("alien_", StringComparison.Ordinal);
@@ -210,6 +212,28 @@ public partial class DressTest : Node
                 HashSet<int> taken = r.Memory.DecoTaken.GetValueOrDefault(room.Module) ?? new HashSet<int>();
                 var pieces = room.Plan.Placements.Where((_, i) => !taken.Contains(i)).Select(pl => decor.Catalogue.Piece(pl.Piece)).ToList();
                 bool officeRole = words.Any(OfficeWords.Contains);
+                // A timber set (a support) spans an open way: a post at each wall, open floor and headroom
+                // through its middle and in front of it and behind, never against a blank wall framing nothing.
+                for (int i = 0; i < room.Plan.Placements.Count; i++)
+                {
+                    DecoPlacement pl = room.Plan.Placements[i];
+                    if (taken.Contains(i) || !decor.Catalogue.Piece(pl.Piece).Has("support")) continue;
+                    frames++;
+                    var centre = new NV2(room.Corner.X + pl.X, room.Corner.Z + pl.Z);
+                    NV2 normal = DecoGeo.Yaw(new NV2(0f, 1f), pl.Yaw);
+                    var shut = new List<string>();
+                    foreach (float off in new[] { -0.8f, 0f, 0.8f })
+                    {
+                        NV2 at = centre + normal * off;
+                        foreach (int up in new[] { 0, 1 })
+                        {
+                            var cell = new PoiGenerator.Gen.Int3((int)MathF.Floor(at.X), room.Corner.Y + up, (int)MathF.Floor(at.Y));
+                            Block b = r.Inst.Blocks.Get(cell);
+                            if (!b.IsAir && !(up == 0 && b.Type is BlockType.Plate or BlockType.Scatter or BlockType.Puddle or BlockType.Ash)) shut.Add($"{b.Type} at {cell}");
+                        }
+                    }
+                    if (shut.Count > 0) falseFrames.Add($"{r.Name}, {room.Room.RoomId} {room.Room.Width:F0}x{room.Room.Depth:F0}: {pl} frames {string.Join(", ", shut.Take(3))}");
+                }
                 // Office furniture of the office set's own, as a room's set: only in a room that is an office.
                 if (room.Room.Set == "office" && !officeRole) officeOut.Add($"{r.Name}: '{room.Room.RoomId}' furnished as an office");
                 if (culture) continue;
@@ -228,6 +252,30 @@ public partial class DressTest : Node
             }
         }
         foreach (string s in officeOut.Take(4).Concat(mineOff.Take(4)).Concat(hangars.Where(h => !h.Fits).Select(h => h.Where).Take(4)).Concat(cabins.Where(c => !c.Fits).Select(c => c.Where).Take(4))) GD.Print("  e.g. " + s);
+        foreach (string f in falseFrames.Take(4)) GD.Print("  e.g. " + f);
+        Check(falseFrames.Count == 0, $"every timber set spans an open way, open through it and on both sides: none against a wall framing nothing ({frames - falseFrames.Count} of {frames})");
+        // The rule on its own: a drift as wide as a timber set gets sets across it, a post at each wall, spaced
+        // along it; a wide gallery none (there is no wall-to-wall span a set could hold up, and none stands against a wall).
+        int across = 0, against = 0, wideSets = 0;
+        for (int n = 0; n < 12; n++)
+        {
+            ulong seed = (ulong)(System.Environment.TickCount64 + n * 7919);
+            var drift = new DecoRoom { Width = 2.2f, Depth = 14f, Height = 2.9f, RoomId = "drift", Seed = seed, State = "abandoned" };
+            drift.Doors.Add(new DecoDoor(DecoWall.North, 1.1f, 2f));
+            drift.Doors.Add(new DecoDoor(DecoWall.South, 1.1f, 2f));
+            foreach (DecoPlacement pl in decor.Poi.Dress(drift).Placements.Where(pl => decor.Catalogue.Piece(pl.Piece).Has("support")))
+            {
+                DecoRect fp = DecoLayout.Footprint(decor.Forge, pl);
+                var (lo, hi) = (fp.Corners().Min(c => c.X), fp.Corners().Max(c => c.X));
+                if (lo < 0.2f && hi > drift.Width - 0.2f) across++;
+                else against++;
+            }
+            var gallery = new DecoRoom { Width = 8f, Depth = 20f, Height = 3f, RoomId = "drift", Seed = seed, State = "abandoned" };
+            gallery.Doors.Add(new DecoDoor(DecoWall.North, 4f, 2f));
+            wideSets += decor.Poi.Dress(gallery).Placements.Count(pl => decor.Catalogue.Piece(pl.Piece).Has("support"));
+        }
+        Check(across >= 12 && against == 0 && wideSets == 0,
+            $"a drift a set wide gets timber sets across it, wall to wall ({across} in 12 drifts, {against} not spanning it); a wide gallery none ({wideSets})");
         Check(officeOut.Count == 0, $"only a room that is an office is furnished as one ({officeOut.Count} others)");
         Check(mineOff.Count == 0, $"no desk, filing cabinet or bookshelf down a mine but in its offices ({mineOff.Count} rooms)");
         Check(hangars.Count > 0 && hangars.All(h => h.Fits), $"an airfield's hangars are furnished as hangars: benches, tool racks, engines, tugs, no office furniture ({hangars.Count(h => h.Fits)} of {hangars.Count})");

@@ -71,7 +71,7 @@ public static class CutFree
             plan.DeepestBurial = MathF.Max(plan.DeepestBurial, buried);
             if (need > rules.MaxClimb)
             {
-                plan.Refusal = $"LIFT-OFF REFUSED: a block is buried over {rules.MaxClimb:F0} m deep. Dig it out first.";
+                plan.Refusal = $"LIFT-OFF REFUSED · BURIED > {rules.MaxClimb:F0} m";
                 plan.Climb = need;
                 return plan;
             }
@@ -119,11 +119,11 @@ public static class CutFree
             TInt3 first = plan.Refused[0];
             Verdict why = check(first);
             plan.Refusal = why == Verdict.Bedrock
-                ? $"LIFT-OFF REFUSED: the hull is keyed into bedrock at {first} ({plan.Refused.Count} cells). Build it free or dig round it."
-                : $"LIFT-OFF REFUSED: {plan.Refused.Count} cells the terrain won't give up ({why}) hold the hull at {first}.";
+                ? $"LIFT-OFF REFUSED · BEDROCK · {plan.Refused.Count} CELLS"
+                : $"LIFT-OFF REFUSED · {why.ToString().ToUpperInvariant()} · {plan.Refused.Count} CELLS";
         }
         else if (plan.Cells.Count > rules.MaxCells)
-            plan.Refusal = $"LIFT-OFF REFUSED: {plan.Cells.Count} m³ of ground hold the hull (most a lift-off cuts is {rules.MaxCells}). Dig some of it out first.";
+            plan.Refusal = $"LIFT-OFF REFUSED · GROUND {plan.Cells.Count}/{rules.MaxCells} m³";
         return plan;
     }
 

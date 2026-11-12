@@ -43,11 +43,11 @@ public static class ModeFit
         if (mode == CoreMode.Hover)
         {
             if (spec.HoverEngines.Count == 0) missing.Add("hover plates");
-            else if (!stats.CanLiftOff) missing.Add($"{-stats.LiftMargin:F0} kN more hover lift");
+            else if (!stats.CanLiftOff) missing.Add($"+{-stats.LiftMargin:F0} kN HOVER LIFT");
         }
         if (spec.Thrusters.Count == 0) missing.Add("thrusters");
         else if (!powered) missing.Add("generator");
-        else if (mode != CoreMode.Hover && !stats.CanLiftOff) missing.Add($"{-stats.LiftMargin:F0} kN more upward thrust");
+        else if (mode != CoreMode.Hover && !stats.CanLiftOff) missing.Add($"+{-stats.LiftMargin:F0} kN UP THRUST");
         return missing;
     }
 
@@ -171,7 +171,7 @@ public sealed partial class Vessel
         _legsKey = LegsKey();
         N.Quaternion rotation = Body.Rotation;
         N.Vector3 position = Body.Position;
-        Body.Controller = new VesselController(Flight, Spec.HoverPoints, Spec.Legs);
+        Body.Controller = NewController();
         Controller.PlaceLanded(Body, Body.Position, MathX.Heading(rotation));
         Body.Rotation = rotation;
         // A claimed wreck stays where it lies (in the ground it came down in, if it did) until it lifts off.

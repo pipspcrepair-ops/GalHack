@@ -156,10 +156,10 @@ public partial class CapitalTest : Node
         Check(CutFree.Plan(new[] { above }, 0f, rules, Flat).Cells.Count == 0, "a hull standing clear of the ground cuts nothing");
         Verdict Rock(TInt3 c) => c.Y < 10 ? Verdict.Bedrock : Verdict.AlreadyAir;
         CutPlan refused = CutFree.Plan(new[] { buried }, 0f, rules, Rock);
-        Check(!refused.Ok && refused.Refusal.Contains("bedrock"), $"keyed into bedrock: refused ({refused.Refusal})");
+        Check(!refused.Ok && refused.Refusal.Contains("BEDROCK"), $"keyed into bedrock: refused ({refused.Refusal})");
         var deep = new BlockBox(new N.Vector3(0.5f, -60f, 0.5f), N.Quaternion.Identity, new N.Vector3(1f), 0f);
         CutPlan tooDeep = CutFree.Plan(new[] { deep }, 0f, rules, Flat);
-        Check(!tooDeep.Ok && tooDeep.Refusal.Contains("buried"), "buried 70 m deep: refused, nothing cut");
+        Check(!tooDeep.Ok && tooDeep.Refusal.Contains("BURIED"), "buried 70 m deep: refused, nothing cut");
     }
 
     // ==== The world ================================================================================

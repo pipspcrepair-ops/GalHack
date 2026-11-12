@@ -62,21 +62,21 @@ public sealed class Replicator
     public Outcome FeedToFull(Vitals vitals, Inventory player, double foodMax)
     {
         double hunger = foodMax - vitals.Food;
-        if (hunger < 0.5) return Outcome.No("Already full.");
+        if (hunger < 0.5) return Outcome.No("FULL");
         FeedQuote cost = Quote(hunger);
         double share = Math.Min(1, Math.Min(OrganicsAvailable(player) / cost.Organics, Energy.Available / cost.Energy));
         if (share <= 0)
             return Outcome.No(OrganicsAvailable(player) <= 0
-                ? $"{Tier.Name}: no organics. Pick fruit, or carry organics from storage."
-                : $"{Tier.Name}: out of energy.");
+                ? $"{Tier.Name.ToUpperInvariant()} · ORGANICS · 0"
+                : $"{Tier.Name.ToUpperInvariant()} · ENERGY · 0");
 
         TakeOrganics(cost.Organics * share, player);
         Energy.Draw(cost.Energy * share);
         vitals.Food = Math.Min(foodMax, vitals.Food + hunger * share);
-        string used = $"{cost.Organics * share:F1} kg organics, {cost.Energy * share:F0} energy";
+        string used = $"-{cost.Organics * share:F1} kg ORGANICS · -{cost.Energy * share:F0} ENERGY";
         return share >= 1
-            ? Outcome.Done($"Fed to full ({used}).")
-            : Outcome.Done($"Fed to {vitals.Food / foodMax:P0}: ran short ({used}).");
+            ? Outcome.Done($"FED · FULL · {used}")
+            : Outcome.Done($"FED · {vitals.Food / foodMax:P0} · {used}");
     }
 
     public bool CanMake(FoodKind food) => food.Tier >= 1 && food.Tier <= Tier.Tier;
@@ -85,12 +85,12 @@ public sealed class Replicator
     public Outcome Craft(FoodKind food, Inventory player, double now)
     {
         if (!CanMake(food))
-            return Outcome.No($"{food.Name} needs a tier {food.Tier} replicator; this {Tier.Name.ToLowerInvariant()} is tier {Tier.Tier}.");
+            return Outcome.No($"{food.Name.ToUpperInvariant()} · TIER {Tier.Tier}/{food.Tier}");
         FeedQuote cost = Quote(food.Nourishment);
         if (OrganicsAvailable(player) < cost.Organics)
-            return Outcome.No($"{food.Name} needs {cost.Organics:F1} kg organics; {OrganicsAvailable(player):F1} kg to hand.");
+            return Outcome.No($"{food.Name.ToUpperInvariant()} · ORGANICS {OrganicsAvailable(player):F1}/{cost.Organics:F1} kg");
         if (Energy.Available < cost.Energy)
-            return Outcome.No($"{Tier.Name}: not enough energy for {food.Name.ToLowerInvariant()}.");
+            return Outcome.No($"{Tier.Name.ToUpperInvariant()} · LOW ENERGY");
         TakeOrganics(cost.Organics, player);
         Energy.Draw(cost.Energy);
         player.Food.Add(new FoodItem { Kind = food.Id, MadeAt = now });
@@ -114,9 +114,9 @@ public static class Deployment
 {
     public static Outcome Check(ReplicatorTier tier, Pos at, Planet planet)
     {
-        if (!tier.Portable) return Outcome.No($"A {tier.Name.ToLowerInvariant()} is built into a base or vessel.");
+        if (!tier.Portable) return Outcome.No($"{tier.Name.ToUpperInvariant()} · FIXED");
         if (planet.TerritoryAt(at) is Territory land)
-            return Outcome.No($"Can't set down a {tier.Name.ToLowerInvariant()} inside {land.Name}. Step outside the red ring.");
-        return Outcome.Done($"{tier.Name} set down.");
+            return Outcome.No($"CAN'T SET DOWN · {land.Name}");
+        return Outcome.Done($"{tier.Name.ToUpperInvariant()} · SET DOWN");
     }
 }

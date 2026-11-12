@@ -154,23 +154,6 @@ public static partial class Homes
                 if (isPost && k.Body == "wall") c.Set(f.At(u, tall, v), Post(tall));
             }
         }
-        // A panel the mesher would turn across its run (something solid beside it) becomes a post, so every panel runs along its run.
-        if (k.Body == "panel")
-            foreach (var run in runs)
-            {
-                bool alongX = f.At(run[0].U, 0, run[0].V).X != f.At(run[^1].U, 0, run[^1].V).X;
-                foreach (var (u, v) in run)
-                    for (int y = 0; y < tall; y++)
-                    {
-                        Int3 p = f.At(u, y, v);
-                        if (c.Get(p).Type != BlockType.Pane) continue;
-                        bool meshX = !c.Get(p + Dir.East.Vec()).IsAir || !c.Get(p + Dir.West.Vec()).IsAir;
-                        if (meshX == alongX) continue;
-                        for (int yy = 0; yy < tall; yy++) c.Set(f.At(u, yy, v), Post(yy));
-                        posts.Add((u, v));
-                        break;
-                    }
-            }
         // The gates stand open inside the lot: a barred leaf hung on each gate post, as tall as the fence allows.
         var leaves = new List<List<(int U, int V)>>();
         if (k.Body is not "edging")

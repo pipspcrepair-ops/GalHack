@@ -57,6 +57,8 @@ public sealed partial class Staging
             "escnewgame" => EscapeNewGameShots(),
             "blueprints" => BlueprintShots(),
             "uiround" => UiRoundShots(),
+            "notices" => NoticesShots(),
+            "markers" => MarkersShot(),
             "fabicons" => FabIconShots(),
             "loot" => Loot(),
             "bolt" => Bolt(),
@@ -65,6 +67,7 @@ public sealed partial class Staging
             "base" => BaseView(),
             "blockbase" => BaseView(survival: true),
             "constructor" => ConstructorBlocks(),
+            "machinescreen" => MachineScreenView(),
             "hand" => HandView(),
             "storage" => StorageFilter(),
             "vessel" => VesselTakeoff(),
@@ -77,12 +80,14 @@ public sealed partial class Staging
             "ruin" => RuinView(),
             "place" => PlaceApproach(),
             "interior" => PlaceInterior(),
+            "furnished" => FurnishedView(),
             "tell" => PlaceTell(),
             "cache" => PlaceCache(),
             "town" => TownView(),
             "facades" => FacadeView(),
             "salvage" => Salvage(),
             "hoverbike" => HoverBikeView(),
+            "vehground" => VehGroundView(),
             "bunkerclose" => BunkerClose(),
             "remotebar" => RemoteBarView(),
             "decogallery" => DecoGalleryView(),
@@ -92,6 +97,7 @@ public sealed partial class Staging
             "natural" => Natural(),
             "flora" => FloraProof(),
             "flora-trees" => FloraTrees(),
+            "florareach" => FloraReachView(),
             "crouch" => CrouchView(),
             "castaway" => CastawayView(),
             "folk" => FolkView(),
@@ -111,6 +117,7 @@ public sealed partial class Staging
             "cirruslog" => CirrusLog(),
             "storm" => StormShot(),
             "front" => FrontShot(),
+            "lightning" => LightningShot(),
             "spout" => SpoutShot(),
             "regionfront" => RegionFront(),
             "plainstornado" => PlainsTornado(),
@@ -154,10 +161,21 @@ public sealed partial class Staging
             "decorooms" => DecoRooms(),
             "dress" => DressView(),
             "hulk" => HulkView(),
+            "visor" => VisorView(),
+            "feet" => FeetView(),
+            "zfight" => ZFightView(),
             _ => DoorViews(view),
         };
         foreach (int x in script) yield return x;
         if (_args.TryGetValue("hud", out string hud)) _game.Visor.Visible = hud != "0";
+    }
+
+    /// <summary>The visor's glass at night, frosted and pulsing red at once (cold and hurt): the edge effects blended.</summary>
+    IEnumerable<int> VisorView()
+    {
+        _game.Zone.Sky.TimeOfDay = Num("time", 0.9);
+        _game.Visor.PinnedGlass = ((float)Num("frost", 0.7), (float)Num("harm", 1.0));
+        foreach (int x in _drive.Wait(60)) yield return x;
     }
 
     /// <summary>Inside the bunker: the castaway out of the one working cryopod, the dead sleepers in theirs.</summary>

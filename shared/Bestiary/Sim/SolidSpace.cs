@@ -20,6 +20,40 @@ public interface ISolidSpace
 
     /// <summary>Whether the 1 m cell whose minimum corner is (x, y, z) is solid.</summary>
     bool SolidCell(int x, int y, int z);
+
+    /// <summary>
+    /// A solid cell that is a ramp or a stair of a flight (45 degrees, a metre up across the cell): the
+    /// way it rises, as <see cref="Slopes"/> numbers it, or -1 for a whole block or open air.
+    /// </summary>
+    int SlopeCell(int x, int y, int z) => -1;
+
+    /// <summary>The parts here that fill only some of their cell (furniture, clutter), in this space's frame; null where there are none.</summary>
+    PartSet Parts => null;
+
+    /// <summary>The space without its parts: its walls, floors and stairs only (what a walker stands on and is held off).</summary>
+    ISolidSpace Bare => this;
+}
+
+/// <summary>A space's walls, floors and stairs without its parts.</summary>
+public sealed class BareSpace : ISolidSpace
+{
+    readonly BlockSpace _s;
+    public BareSpace(BlockSpace s) => _s = s;
+    public float Density(Vector3 p) => _s.BareDensity(p);
+    public bool SolidCell(int x, int y, int z) => _s.SolidCell(x, y, z);
+    public int SlopeCell(int x, int y, int z) => _s.SlopeCell(x, y, z);
+}
+
+/// <summary>The ways a ramp cell can rise: 0 toward +x, 1 toward -x, 2 toward +z, 3 toward -z.</summary>
+public static class Slopes
+{
+    public static readonly Vector3I[] Rise = { new(1, 0, 0), new(-1, 0, 0), new(0, 0, 1), new(0, 0, -1) };
+
+    /// <summary>The slope number rising toward a level unit step, or -1.</summary>
+    public static int Of(int dx, int dz) => dx > 0 ? 0 : dx < 0 ? 1 : dz > 0 ? 2 : dz < 0 ? 3 : -1;
+
+    /// <summary>How high a ramp's surface stands over the bottom of its cell at a point (0 to 1 m).</summary>
+    public static float Height(int slope, float lx, float lz) => Math.Clamp(slope switch { 0 => lx, 1 => 1f - lx, 2 => lz, _ => 1f - lz }, 0f, 1f);
 }
 
 /// <summary>
@@ -35,6 +69,8 @@ public sealed class BlockSpace : ISolidSpace
     readonly Vector3I _min, _max;
     /// <summary>How round inside corners are, metres.</summary>
     public float Fillet = 0.3f;
+    /// <summary>How round the corners are where a part meets a wall or a floor, metres.</summary>
+    public float PartFillet = 0.3f;
     /// <summary>
     /// Where the block grid sits in the sim's frame: the grid's cell (0,0,0) has its corner at this
     /// point (whole metres, so the cells stay the sim's cells). Zero when the sim works in the grid's frame.
@@ -59,15 +95,87 @@ public sealed class BlockSpace : ISolidSpace
 
     public bool SolidCell(int x, int y, int z) => _solid(x - Offset.X, y - Offset.Y, z - Offset.Z);
 
+    /// <summary>
+    /// Ramps and stairs among the solid cells (in the grid's frame): the way each rises (see
+    /// <see cref="Slopes"/>), or -1. Such a cell is solid only under its 45-degree surface, so a
+    /// walker goes up a flight as people do, not into a metre-high step.
+    /// </summary>
+    public Func<int, int, int, int> Slope;
+
+    public int SlopeCell(int x, int y, int z) => Slope == null ? -1 : Slope(x - Offset.X, y - Offset.Y, z - Offset.Z);
+
+    int SlopeAt(int x, int y, int z) => Slope == null ? -1 : Slope(x, y, z);
+
+    const float InvSqrt2 = 0.70710678f;
+
+    /// <summary>Distance from a point to a solid cell: its box, or for a ramp its wedge.</summary>
+    float CellDistance(Vector3 q, int x, int y, int z)
+    {
+        int slope = SlopeAt(x, y, z);
+        if (slope < 0) return BoxDistance(q, x, y, z);
+        // In the wedge's own terms: s along the way it rises, t up, w across; it fills 0 <= t <= s <= 1.
+        float lx = q.X - x, lz = q.Z - z, t = q.Y - y;
+        float sAlong = slope switch { 0 => lx, 1 => 1f - lx, 2 => lz, _ => 1f - lz };
+        float w = slope < 2 ? lz : lx;
+        float dw = MathF.Max(MathF.Max(-w, w - 1f), 0f);
+        float d2 = TriangleDistance(sAlong, t);
+        return MathF.Sqrt(d2 * d2 + dw * dw);
+    }
+
+    /// <summary>Distance in the plane from (s, t) to the triangle (0,0), (1,0), (1,1); zero inside it.</summary>
+    static float TriangleDistance(float s, float t)
+    {
+        if (t >= 0f && s <= 1f && t <= s) return 0f;
+        float best = Segment(s, t, 0f, 0f, 1f, 0f);
+        best = MathF.Min(best, Segment(s, t, 1f, 0f, 1f, 1f));
+        return MathF.Min(best, Segment(s, t, 0f, 0f, 1f, 1f));
+    }
+
+    static float Segment(float px, float py, float ax, float ay, float bx, float by)
+    {
+        float vx = bx - ax, vy = by - ay;
+        float k = Math.Clamp(((px - ax) * vx + (py - ay) * vy) / (vx * vx + vy * vy), 0f, 1f);
+        float dx = px - ax - vx * k, dy = py - ay - vy * k;
+        return MathF.Sqrt(dx * dx + dy * dy);
+    }
+
+    /// <summary>
+    /// The place's parts that fill only some of their cell (in the sim's frame, as <see cref="Density"/> is
+    /// asked): their faces join the density, with the inside corners where they meet a floor or a wall
+    /// rounded as the blocks' are, so a climber crawls over a monitor on a wall or up a table's leg.
+    /// </summary>
+    public PartSet Parts { get; set; }
+
+    BareSpace _bare;
+    public ISolidSpace Bare => Parts == null ? this : _bare ??= new BareSpace(this);
+
     public float Density(Vector3 p)
+    {
+        float d = BareDensity(p);
+        if (Parts == null || !Parts.Any(p)) return d;
+        // (A part thinner than a hand, a shelf's board, is felt a little thicker: a crawler on one face never finds the other.)
+        float part = Parts.Distance(p, PartSet.Thick);
+        if (part <= 0f || d >= 0f) return MathF.Max(d, -part);
+        // Both outside: the two nearest surfaces, a little rounded where they meet.
+        float wall = -d, k = PartFillet;
+        float h = Math.Clamp(0.5f + 0.5f * (part - wall) / k, 0f, 1f);
+        float smin = part + (wall - part) * h - k * h * (1f - h);
+        return -MathF.Min(MathF.Min(wall, part), smin);
+    }
+
+    /// <summary>The density of the walls, floors and stairs alone.</summary>
+    public float BareDensity(Vector3 p)
     {
         Vector3 q = p - new Vector3(Offset.X, Offset.Y, Offset.Z);
         int cx = (int)MathF.Floor(q.X), cy = (int)MathF.Floor(q.Y), cz = (int)MathF.Floor(q.Z);
-        if (_solid(cx, cy, cz))
+        int here = _solid(cx, cy, cz) ? SlopeAt(cx, cy, cz) : -2;
+        // In a ramp's cell: under its surface is inside, over it is in the open.
+        float underRamp = here >= 0 ? (Slopes.Height(here, q.X - cx, q.Z - cz) - (q.Y - cy)) * InvSqrt2 : 1f;
+        if (here == -1 || here >= 0 && underRamp > 0f)
         {
             // Inside: how deep, against the nearest open cell. Only the neighbouring cells can be
             // nearer than a metre, and nothing here cares about more than a metre.
-            float best = 1f;
+            float best = here >= 0 ? underRamp : 1f;
             for (int dz = -1; dz <= 1; dz++)
             for (int dy = -1; dy <= 1; dy++)
             for (int dx = -1; dx <= 1; dx++)
@@ -80,15 +188,18 @@ public sealed class BlockSpace : ISolidSpace
         }
         // Outside: distance to the nearest solid cell, with inside corners smoothed.
         float d1 = 1f, d2 = 1f;
+        bool nearRamp = false;
         for (int dz = -1; dz <= 1; dz++)
         for (int dy = -1; dy <= 1; dy++)
         for (int dx = -1; dx <= 1; dx++)
         {
             if (!_solid(cx + dx, cy + dy, cz + dz)) continue;
-            float d = BoxDistance(q, cx + dx, cy + dy, cz + dz);
-            if (d < d1) { d2 = d1; d1 = d; }
+            float d = CellDistance(q, cx + dx, cy + dy, cz + dz);
+            if (d < d1) { d2 = d1; d1 = d; nearRamp = SlopeAt(cx + dx, cy + dy, cz + dz) >= 0; }
             else if (d < d2) d2 = d;
         }
+        // Over a ramp the next step's edge lies on its own surface: no corner there to round.
+        if (nearRamp) return -d1;
         // The two nearest blocks: if both are close (a corner), pull the surface in a little.
         float k = Fillet;
         float h = Math.Clamp(0.5f + 0.5f * (d2 - d1) / k, 0f, 1f);
@@ -126,6 +237,24 @@ public sealed class CombinedSpace : ISolidSpace
         foreach (ISolidSpace s in _parts) if (s.SolidCell(x, y, z)) return true;
         return false;
     }
+
+    public int SlopeCell(int x, int y, int z)
+    {
+        foreach (ISolidSpace s in _parts) if (s.SlopeCell(x, y, z) is int k && k >= 0) return k;
+        return -1;
+    }
+
+    public PartSet Parts
+    {
+        get
+        {
+            foreach (ISolidSpace s in _parts) if (s.Parts is { } p) return p;
+            return null;
+        }
+    }
+
+    CombinedSpace _bare;
+    public ISolidSpace Bare => Parts == null ? this : _bare ??= new CombinedSpace(Array.ConvertAll(_parts, s => s.Bare));
 }
 
 /// <summary>Geometry over a solid space: normals, distances, projecting onto surfaces, lines of sight.</summary>

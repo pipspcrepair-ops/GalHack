@@ -11,6 +11,7 @@ id, so a rebuild gives the same drawing.  Run:  python build_marks.py
 import math
 import random
 import shutil
+import sys
 import zlib
 from pathlib import Path
 
@@ -84,6 +85,20 @@ class Hand:
     def loop(self, cx, cy, rx, ry=None, w=W, start=-100):
         """A closed-ish loop: the ends overlap and do not quite meet."""
         self.arc(cx, cy, rx, ry or rx, start, start + 368, w)
+
+    def worm(self, x, y, ang, length, amp=14, waves=1.25, w=20, phase=0.0, tip=0):
+        """A worm: one even, blunt, sine-bent stroke, not flicked off like a line. tip = radius of a round head."""
+        a = math.radians(ang)
+        ux, uy = math.cos(a), math.sin(a)
+        nx, ny = -uy, ux
+        pts = []
+        for i in range(26):
+            t = i / 25
+            off = amp * math.sin(6.283 * waves * t + phase)
+            pts.append((x + ux * length * t + nx * off, y + uy * length * t + ny * off))
+        self.stroke(pts, w, 1.2, lift=False)
+        if tip:
+            self.dot(pts[-1][0], pts[-1][1], tip)
 
     def dot(self, x, y, r=15):
         pts = []
@@ -431,6 +446,254 @@ def m_warding_2(h):
     h.line(24, 254, 246, 216, 22, 2.5)
 
 
+# --- draft 4: Husks and Hollows ---------------------------------------------------
+# The final Husk and Hollow marks are not in MARKS, so marks-sheet.png is untouched.
+def m_husk_hanging(h):
+    # The old tendril mark turned over, with its ground taken away: a round body and
+    # the tendrils hanging from it. A regional way of drawing "Husks here".
+    cx, cy = 128, 88
+    h.loop(cx, cy, 44, 42, 22)
+    for deg, kinks in ((152, (-10, 16, -22)), (125, (14, -18, 20)), (102, (-12, 20, -16, 18)),
+                       (80, (12, -22, 16)), (56, (-16, 22, -20)), (30, (14, -20, 24))):
+        a = math.radians(deg)
+        x, y = cx + 42 * math.cos(a), cy + 42 * math.sin(a)
+        pts = [(x, y)]
+        for kink in kinks:
+            b = math.radians(deg + kink)
+            step = 104 / len(kinks)
+            x, y = x + step * math.cos(b), y + step * math.sin(b)
+            pts.append((x, y))
+        h.stroke(pts, 17, 1.5)
+
+
+def _shroom(h, x, top, rim, rx, stem_w, foot):
+    """A mushroom as one closed outline, so a slash through it cannot hide it: up the stem,
+    out along the rim, over the dome and back down the other side."""
+    dome = [(x + rx * math.cos(math.radians(a)), rim - (rim - top) * math.sin(math.radians(a))) for a in range(180, -1, -12)]
+    pts = [(x - stem_w / 2, foot), (x - stem_w / 2 + 2, rim + 8), (x - rx, rim + 6)] + dome[1:]
+    pts += [(x + rx - 2, rim + 6), (x + stem_w / 2 + 2, rim + 8), (x + stem_w / 2, foot), (x - stem_w / 2 + 4, foot + 2)]
+    h.stroke(pts, W, 2.0, lift=False)
+
+
+def m_hollow_a(h):
+    # Fungus here, do not touch: a cap on its stem, spores coming down, struck out.
+    _shroom(h, 120, 40, 120, 92, 40, 206)
+    for x, y in ((186, 170), (214, 204), (170, 232)):
+        h.dot(x, y, 14)
+    strike(h)
+
+
+def m_hollow_b(h):
+    # A spotted cap and nothing else, with spores falling from under it.
+    dome = [(128 + 100 * math.cos(math.radians(a)), 150 - 96 * math.sin(math.radians(a))) for a in range(180, -1, -12)]
+    h.stroke(dome + [(124, 164), (30, 152)], W, 2.0, lift=False)
+    for x, y, r in ((82, 118, 13), (136, 92, 12), (178, 128, 13)):
+        h.dot(x, y, r)
+    for x, y in ((62, 204), (120, 232), (186, 204)):
+        h.dot(x, y, 14)
+    strike(h)
+
+
+def m_hollow_c(h):
+    # A small cap in a cloud of its own spores.
+    _shroom(h, 128, 82, 134, 58, 28, 196)
+    for x, y in ((46, 112), (34, 168), (214, 100), (224, 160), (62, 222), (130, 232), (198, 222), (84, 38), (172, 34)):
+        h.dot(x, y, 12)
+    strike(h)
+
+
+def _head(h, cx=128, cy=104, rx=60, ry=64):
+    h.loop(cx, cy, rx, ry, W)
+    h.dot(cx - 22, cy - 10, 11)
+    h.dot(cx + 22, cy - 10, 11)
+
+
+def m_husk_a(h):
+    # A head with its mouth open and a worm hanging out of it, two more rising from the ears.
+    _head(h, cy=112)
+    h.dot(128, 142, 15)
+    h.worm(128, 148, 90, 96, amp=15, waves=1.25, tip=12)
+    h.worm(72, 106, -150, 66, amp=9, waves=1.0, w=18, phase=0.6, tip=10)
+    h.worm(184, 106, -30, 66, amp=9, waves=1.0, w=18, phase=0.6, tip=10)
+
+
+def m_husk_b(h):
+    # The same head with worms standing up out of the eyes, and one from the mouth.
+    _head(h, cy=132, rx=56, ry=60)
+    h.dot(128, 160, 14)
+    h.worm(106, 114, -108, 100, amp=12, waves=1.2, w=19, tip=11)
+    h.worm(150, 114, -72, 100, amp=12, waves=1.2, w=19, phase=2.2, tip=11)
+    h.worm(128, 166, 90, 66, amp=11, waves=1.0, w=19, tip=11)
+
+
+def m_husk_c(h):
+    # A head with the top of it open and three worms reaching up out of the opening.
+    h.arc(128, 166, 62, 66, 300, 600, W)
+    h.dot(106, 164, 11)
+    h.dot(150, 164, 11)
+    h.line(104, 202, 152, 202, 17)
+    h.worm(106, 110, -112, 84, amp=12, waves=1.1, w=21, tip=13)
+    h.worm(128, 104, -90, 88, amp=14, waves=1.4, w=21, phase=1.4, tip=13)
+    h.worm(150, 110, -66, 80, amp=12, waves=1.0, w=21, phase=3.0, tip=13)
+
+
+def m_husk_d(h):
+    # An eye, and the thing that has come out of it.
+    h.arc(128, 150, 92, 68, 200, 340, W)
+    h.arc(128, 106, 92, 68, 20, 160, W)
+    h.dot(120, 128, 21)
+    h.worm(124, 132, 62, 118, amp=15, waves=1.1, w=20, tip=13)
+
+
+def m_wrong_a(h):
+    # A room that does not fit its own walls: the sides lean, the corners overrun, and a
+    # second room sits inside it, turned, with one corner out through the wall.
+    h.line(38, 58, 204, 48, W)
+    h.line(208, 52, 214, 202, W)
+    h.line(214, 206, 52, 222, W)
+    h.line(56, 224, 40, 58, W)
+    h.line(84, 112, 238, 96, 19)
+    h.line(236, 98, 196, 182, 19)
+    h.line(198, 182, 70, 168, 19)
+    h.line(72, 168, 86, 108, 19)
+
+
+def m_wrong_b(h):
+    # A needle that will not settle: the same needle drawn at three bearings.
+    h.arc(128, 128, 92, 92, 10, 350, W)
+    h.dot(128, 128, 15)
+    h.line(128, 128, 178, 60, 21)
+    h.line(178, 60, 146, 72, 19)
+    h.line(178, 60, 172, 92, 19)
+    h.line(128, 128, 196, 150, 17)
+    h.line(128, 128, 76, 178, 17)
+
+
+def m_wrong_c(h):
+    # One stake, two shadows pointing opposite ways, and a light for each.
+    h.stroke([(128, 200), (128, 80)], 32, 2)
+    h.dot(128, 46, 20)
+    h.line(128, 232, 22, 226, 19)
+    h.line(128, 232, 222, 238, 19)
+    h.dot(44, 62, 14)
+    h.dot(212, 86, 14)
+
+
+def _legs(h, legs, y0, y1, w=17):
+    """Four legs mid-stride: (x at the belly, how far the foot lands from it)."""
+    for x, drift in legs:
+        h.line(x, y0, x + drift, y1, w)
+
+
+def _toadstool(h, x, y, height, rx, w=17):
+    """A cap on a stem growing straight up out of (x, y): a stem, and a dome over the top of it."""
+    h.line(x, y, x, y - height, w, 1.5)
+    h.arc(x, y - height + 4, rx, rx * 0.78, 180, 360, w, 1.5)
+
+
+# Hollows only ever take wildlife, so the Hollow mark is the animal wearing it. There is no
+# slash: the caps on the beast are the warning.
+def m_hollow_beast_a(h):
+    # A beast side on, toadstools growing out of its back.
+    h.loop(104, 152, 66, 28, 22)
+    _legs(h, ((52, -10), (80, 2), (128, -2), (154, 12)), 174, 232)
+    h.line(40, 140, 14, 106, 16)                              # tail
+    h.stroke([(162, 138), (190, 106), (234, 114)], 26, 2)     # neck and snout
+    h.line(194, 100, 190, 76, 13)                             # ear
+    _toadstool(h, 66, 128, 44, 24)
+    _toadstool(h, 108, 124, 70, 30)
+    _toadstool(h, 148, 130, 36, 20)
+
+
+def m_hollow_beast_b(h):
+    # A long-necked grazer with caps up its back and one on its neck.
+    h.loop(86, 162, 58, 26, 22)
+    _legs(h, ((50, -8), (74, 4), (106, -2), (126, 10)), 182, 234)
+    h.line(34, 152, 12, 122, 16)
+    h.stroke([(132, 148), (166, 106), (176, 68)], 24, 2)
+    h.stroke([(172, 70), (208, 62), (234, 78)], 22, 2)
+    _toadstool(h, 62, 140, 40, 22)
+    _toadstool(h, 100, 138, 58, 26)
+    _toadstool(h, 152, 120, 30, 17)
+
+
+def m_hollow_beast_c(h):
+    # A low, heavy beast with a row of caps along its spine.
+    h.loop(108, 172, 82, 30, 24)
+    _legs(h, ((52, -8), (80, 2), (140, -2), (166, 10)), 192, 236)
+    h.stroke([(30, 160), (10, 140), (16, 118)], 16, 1)
+    h.stroke([(184, 166), (224, 162), (240, 176)], 30, 2)    # a heavy head
+    h.line(196, 150, 200, 130, 13)
+    _toadstool(h, 62, 150, 38, 20)
+    _toadstool(h, 108, 142, 60, 27)
+    _toadstool(h, 154, 150, 34, 18)
+
+
+def m_hollow_beast_d(h):
+    # A horned beast whose horns have gone to caps, and one more on its back.
+    h.loop(98, 166, 62, 28, 22)
+    _legs(h, ((54, -10), (80, 2), (120, -2), (144, 12)), 188, 236)
+    h.line(40, 156, 16, 124, 16)
+    h.stroke([(154, 150), (178, 118), (212, 118)], 26, 2)
+    _toadstool(h, 176, 108, 50, 15, 14)
+    _toadstool(h, 212, 110, 34, 13, 14)
+    _toadstool(h, 90, 142, 56, 26)
+
+
+# id, label on the final sheet, drawing, title in the file, seed. The seed is the id the wobble was first
+# drawn with, kept so each mark looks exactly as it did when it was picked.
+FINAL = [
+    ("wrong_room", "Something wrong here: a room that does not fit", m_wrong_a, "Warding mark", "wrong_a"),
+    ("wrong_needle", "Something wrong here: a needle that will not settle", m_wrong_b, "Warding mark", "wrong_b"),
+    ("wrong_shadows", "Something wrong here: two shadows", m_wrong_c, "Warding mark", "wrong_c"),
+    ("husk_mouth_ears", "Husks here: head, mouth and ears", m_husk_a, "Husks here", "husk_a"),
+    ("husk_eyes", "Husks here: worms from the eyes", m_husk_b, "Husks here", "husk_b"),
+    ("husk_open_head", "Husks here: worms from an open head", m_husk_c, "Husks here", "husk_c"),
+    ("husk_eye", "Husks here: an eye and its worm", m_husk_d, "Husks here", "husk_d"),
+    ("husk_hanging", "Husks here: tendrils hanging", m_husk_hanging, "Husks here", "husk_hanging"),
+    ("hollow_beast_back", "Hollow: a beast, caps on its back", m_hollow_beast_a, "Hollow here", "hollow_beast_a"),
+    ("hollow_beast_long", "Hollow: a long-necked beast", m_hollow_beast_b, "Hollow here", "hollow_beast_b"),
+    ("hollow_beast_low", "Hollow: a low beast, a row of caps", m_hollow_beast_c, "Hollow here", "hollow_beast_c"),
+    ("hollow_beast_horned", "Hollow: horns gone to caps", m_hollow_beast_d, "Hollow here", "hollow_beast_d"),
+]
+
+# Drafts that were not picked, kept in attempts/husks-hollows/marks, out of the live set.
+ATTEMPTS = [
+    ("hollow_a", m_hollow_a, "Hollow here"),
+    ("hollow_b", m_hollow_b, "Hollow here"),
+    ("hollow_c", m_hollow_c, "Hollow here"),
+]
+ATTEMPTS_DIR = ROOT / "attempts" / "husks-hollows" / "marks"
+
+
+def build_husks_hollows():
+    """Write the final Husk and Hollow marks beside the approved marks, and the drafts that were not picked
+    into attempts/husks-hollows/marks. Touches nothing else. Returns {final id: 1024 px master}."""
+    src, out = RENDER_TMP / "hh-mark-src", RENDER_TMP / "hh-mark-masters"
+    for p in (src, out):
+        shutil.rmtree(p, ignore_errors=True)
+    src.mkdir(parents=True)
+    OUT.mkdir(exist_ok=True)
+    ATTEMPTS_DIR.mkdir(parents=True, exist_ok=True)
+    rows = [(sid, fn, title, seed, True) for sid, _label, fn, title, seed in FINAL]
+    rows += [(sid, fn, title, sid, False) for sid, fn, title in ATTEMPTS]
+    for sid, fn, title, seed, final in rows:
+        h = Hand(seed)
+        fn(h)
+        svg = h.svg(title)
+        (src / f"{sid}.svg").write_text(svg, encoding="utf-8")
+        ((OUT if final else ATTEMPTS_DIR) / f"{sid}.svg").write_text(svg, encoding="utf-8")
+    render(src, out, 4.0)
+    tiles = {}
+    for sid, _fn, _title, _seed, final in rows:
+        im = Image.open(out / f"{sid}.png").convert("RGBA")
+        im.resize((256, 256), Image.LANCZOS).save((OUT if final else ATTEMPTS_DIR) / f"{sid}.png")
+        if final:
+            tiles[sid] = im
+    print(len(FINAL), "Husk and Hollow marks built,", len(ATTEMPTS), "attempts kept")
+    return tiles
+
+
 #      id              label on the review sheet
 MARKS = [
     ("safe_camp",   "Safe camp",                  m_safe_camp),
@@ -449,8 +712,8 @@ MARKS = [
     ("hostile",     "Hostile people",             m_hostile),
     ("nest",        "Creatures nest here",        m_nest),
     ("sick",        "Sick here",                  m_sick),
-    ("warding",     "Warding mark (Hollow here)", m_warding),
-    ("warding_2",   "Warding mark (Husks here)",  m_warding_2),
+    ("warding",     "Something wrong here",      m_warding),
+    ("warding_2",   "Husks here",                 m_warding_2),
     ("salvage",     "Salvage here",               m_salvage),
     ("wreck",       "Wreck here",                 m_wreck),
     ("fuel",        "Fuel here",                  m_fuel),
@@ -503,7 +766,11 @@ def build():
         sheet.paste(im, (margin + (i % per_row) * step, strip_y + 58 + (i // per_row) * 84), im)
     sheet.save(ROOT / "marks-sheet.png", optimize=True)
     print(len(MARKS), "marks built")
+    build_husks_hollows()                # a full rebuild clears marks/, so put the Husk and Hollow marks back
 
 
 if __name__ == "__main__":
-    build()
+    if "--husks-hollows" in sys.argv:    # only the Husk and Hollow marks; no approved file is touched
+        build_husks_hollows()
+    else:
+        build()

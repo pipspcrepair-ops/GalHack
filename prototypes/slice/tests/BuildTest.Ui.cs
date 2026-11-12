@@ -34,6 +34,10 @@ public partial class BuildTest
         HudBoxChecks();
         foreach (int x in TechFitChecks()) yield return x;
         foreach (int x in GalaxyNameChecks()) yield return x;
+        foreach (int x in ScreenClearChecks()) yield return x;
+        foreach (int x in MarkerChecks()) yield return x;
+        foreach (int x in NoticeChecks()) yield return x;
+        foreach (int x in WordChecks()) yield return x;
         Check(MenuRoot.Glass <= 0.6f && _game.Menu.Root.Gui.Backing < 1f && !_game.GetTree().Paused, $"the Tab menu is see-through (glass {MenuRoot.Glass:0.00}, backings {_game.Menu.Root.Gui.Backing:0.00}) and the world runs behind it");
     }
 
@@ -119,7 +123,7 @@ public partial class BuildTest
         foreach (Vector2 size in new[] { new Vector2(1920, 1080), new Vector2(2560, 1440) })
         {
             HudLayout l = HudLayout.Compute(size, 1f);
-            string problem = l.Problem(size);
+            string problem = l.Problem(size) ?? HudLayout.Compute(size, 1f, true).Problem(size);
             var cells = Alerts.RowCells(l.Alerts, l.Scale, Alerts.MostHazards);
             bool apart = cells.Select((c, i) => cells.Skip(i + 1).All(d => !c.Sign.Intersects(d.Sign) && !c.Timer.Intersects(d.Timer))).All(x => x);
             bool onLine = cells.All(c => MathF.Abs(c.Sign.Position.Y - l.Toolbar.Position.Y) < 0.5f && c.Sign.Position.X < l.Toolbar.Position.X);
@@ -167,8 +171,10 @@ public partial class BuildTest
         {
             set();
             foreach (int x in _drive.Wait(3)) yield return x;
+            NoteLines($"escape menu, {name}", esc.Root);
             List<string> problems = RowProblems(esc.Root);
-            Check(problems.Count == 0 && esc.Root.Gui.Texts.Count > 0, $"the escape menu, {name}: the alerts' row is clear of every panel at 1080p and 1440p{(problems.Count == 0 ? "" : ": " + string.Join("; ", problems.Take(6)))}");
+            problems.AddRange(SlotProblems(esc.Root));
+            Check(problems.Count == 0 && esc.Root.Gui.Texts.Count > 0, $"the escape menu, {name}: the alerts' row is clear of every panel at 1080p and 1440p, and the notices' corner of its own text and widgets{(problems.Count == 0 ? "" : ": " + string.Join("; ", problems.Take(6)))}");
         }
         esc.Root.Confirming = false;
         esc.Root.Page = EscapePage.World;
@@ -279,10 +285,12 @@ public partial class BuildTest
         {
             open();
             foreach (int x in _drive.Wait(3)) yield return x;
+            NoteLines($"menu, {name}", _game.Menu.Root);
             List<string> problems = _game.Menu.Root.Gui.TextProblems();
             List<string> strip = RowProblems(_game.Menu.Root);
+            strip.AddRange(SlotProblems(_game.Menu.Root));
             Check(problems.Count == 0 && strip.Count == 0 && _game.Menu.Root.Gui.Texts.Count > 0,
-                $"the menu's {name} page: {_game.Menu.Root.Gui.Texts.Count} lines, none overlapping or cut short, and the alerts' row clear of every panel at 1080p and 1440p{(problems.Count + strip.Count == 0 ? "" : ": " + string.Join("; ", problems.Concat(strip).Take(6)))}");
+                $"the menu's {name} page: {_game.Menu.Root.Gui.Texts.Count} lines, none overlapping or cut short, and the alerts' row and the notices' corner clear of every panel at 1080p and 1440p{(problems.Count + strip.Count == 0 ? "" : ": " + string.Join("; ", problems.Concat(strip).Take(6)))}");
         }
         _game.Menu.Root.You.ShowBlocks = false;
         _game.Menu.Close();
@@ -292,13 +300,13 @@ public partial class BuildTest
     /// <summary>At the start, before anything else is found or pinged, the compass holds the bunker and the place in view from its way out, and nothing else.</summary>
     void CompassAtStart()
     {
-        var marks = _game.Visor.CompassMarks();
+        var marks = _game.Visor.Markers();
         var kinds = marks.Select(m => m.Kind).ToList();
         var seen = _game.Bunker?.Poi;
         bool landmark = seen != null && _game.Bunker.Landmark != null;
         string[] want = landmark ? new[] { "bunker", "place" } : new[] { "bunker" };
         Check(kinds.SequenceEqual(want) && (!landmark || marks[1].Tag == seen.Name.ToUpperInvariant()),
-            $"at the start the compass shows the bunker{(landmark ? $" and {seen.Name}, the place in view from its way out" : "")} and nothing else ({string.Join(", ", marks.Select(m => $"{m.Kind} {m.Tag}"))})");
+            $"at the start the markers show the bunker{(landmark ? $" and {seen.Name}, the place in view from its way out" : "")} and nothing else ({string.Join(", ", marks.Select(m => $"{m.Kind} {m.Tag}"))})");
         if (landmark)
             Check(_game.Spaceflight.Charts.Has(_game.Spaceflight.StartPlaceKey ?? "") && _game.Spaceflight.Charts.OfKind("place").Count() == 1,
                 $"it is found from the first moment, on the map too, and it is the only place found ({_game.Spaceflight.Charts.OfKind("place").Count()})");
@@ -319,14 +327,14 @@ public partial class BuildTest
         int charted = _game.Spaceflight.Charts.OfKind("deposit").Count();
         foreach (int x in _drive.Click()) yield return x;
         foreach (int x in _drive.Wait(2)) yield return x;
-        int pinged = _game.Visor.CompassMarks().Count(m => m.Kind == "ping");
+        int pinged = _game.Visor.Markers().Count(m => m.Kind == "ping");
         double at = _game.Stats.Seconds;
         Check(pinged > 0 && _game.Pings.Count == pinged, $"a click pings {pinged} things onto the compass ({string.Join(", ", _game.Pings.Select(p => p.Label ?? "?"))})");
         foreach (int x in _play.WaitFor(() => _game.Stats.Seconds - at > 8.5, 12)) yield return x;
-        var late = _game.Visor.CompassMarks().Where(m => m.Kind == "ping").ToList();
+        var late = _game.Visor.Markers().Where(m => m.Kind == "ping").ToList();
         Check(late.Count == pinged && late.All(m => m.Alpha < 1f && m.Alpha > 0f), $"after 8.5 s they are still marked, fading (alpha {(late.Count > 0 ? late[0].Alpha : 0):F2})");
         foreach (int x in _play.WaitFor(() => _game.Stats.Seconds - at > 10.2, 5)) yield return x;
-        Check(_game.Visor.CompassMarks().All(m => m.Kind != "ping"), "after ten seconds the pings are gone");
+        Check(_game.Visor.Markers().All(m => m.Kind != "ping"), "after ten seconds the pings are gone");
         Check(_game.Spaceflight.Charts.OfKind("deposit").Count() == charted, "and nothing pinged stays charted: only going near a deposit marks it");
     }
 

@@ -19,7 +19,7 @@ namespace Slice.Tests;
 /// pinned), lived-in places (a coal power station's hall among them, held by squatters,
 /// scavengers, cultists or keepers, and settlements as they stand) are dressed as in play and
 /// their people walked through a day, a night and a morning: every person's feet stay within
-/// 0.3 m of a floor, a stair or a ramp; no route crosses a piece of furniture or dressing; going
+/// 0.3 m of a floor, a stair or a ramp; no route crosses a piece of furniture or dressing, and no one's body is ever in one (its real shape); going
 /// from one part of a place to another is done through a doorway; people go into rooms and come
 /// out again, sleep in beds, sit on seats and stand at benches; and nobody is stuck on their way
 /// for over 5 s.
@@ -87,7 +87,9 @@ public partial class TownWalkTest : Node
         var held = _lib.Families.Where(f => OccupancyLayer.Applies(f, PoiState.Abandoned)).ToList();
         var settled = _lib.Families.Where(f => f.Tags.Contains("settlement")).ToList();
         int places = 0, people = 0, samples = 0, sunk = 0, routes = 0, crossing = 0, changes = 0, doorless = 0, ins = 0, outs = 0, slept = 0, sat = 0, worked = 0, stuck = 0, beds = 0, seats = 0;
-        float worst = 0f, longest = 0f;
+        float worst = 0f, longest = 0f, deepest = 0f;
+        int inParts = 0;
+        var inAt = new List<string>();
         var sunkAt = new List<string>();
         var crossAt = new List<string>();
         var doorAt = new List<string>();
@@ -145,6 +147,9 @@ public partial class TownWalkTest : Node
                             return;
                         }
                         samples++;
+                        // Never in the furniture or the clutter (its real shape), but the seat or bed in use.
+                        float into = town.InParts(p);
+                        if (into > 0.01f) { inParts++; deepest = MathF.Max(deepest, into); if (inAt.Count < 3) inAt.Add($"{f.Id}: {p.Role} {into:F2} m in at {p.Pos.X:F2},{p.Pos.Y:F2},{p.Pos.Z:F2}, spot {p.Spot} {town.Spots[p.Spot].Tag}, left {p.Left}, step {p.Step}/{p.Path?.Count ?? -1}, seat {p.Seat}, {Town.HeightOf(p):F2} m tall, r {Town.RadiusOf(p):F2}"); }
                         float? g = town.Ground(p.Pos);
                         float off = g is float h ? MathF.Abs(h - p.Pos.Y) : 9f;
                         if (!p.Sitting && !(p.Slept > 0f) && !town.IntoSeat(p))
@@ -168,7 +173,7 @@ public partial class TownWalkTest : Node
                         if (inRoom && !was.InRoom && module >= 0) { ins++; wasIn = true; }
                         if (!inRoom && was.InRoom && module >= 0 && wasIn) outs++;
                         float still = walking && (p.Pos - was.At).Length() < 0.02f ? was.Still + 0.1f : 0f;
-                        if (still > 5f && was.Still <= 5f) { stuck++; if (stuckAt.Count < 3) stuckAt.Add($"{f.Id}: {p.Role} at {p.Pos.X:F1},{p.Pos.Y:F1},{p.Pos.Z:F1}"); }
+                        if (still > 5f && was.Still <= 5f) { stuck++; if (stuckAt.Count < 3) stuckAt.Add($"{f.Id}: {p.Role} at {p.Pos.X:F2},{p.Pos.Y:F2},{p.Pos.Z:F2} heading {(p.Step < p.Path.Count ? p.Path[p.Step].ToString() : "-")} step {p.Step}/{p.Path.Count}, spot {p.Spot} {town.Spots[p.Spot].Tag}, left {p.Left}, seat {p.Seat}, up {p.GettingUp}, gap {(town.Parts != null ? town.Parts.Gap(p.Pos, Town.RadiusOf(p), Town.HeightOf(p)) : 9f):F2}, next gap {(town.Parts != null && p.Step < p.Path.Count ? town.Parts.Gap(p.Path[p.Step], Town.RadiusOf(p), Town.HeightOf(p)) : 9f):F2}, path {string.Join(" ", p.Path.Take(4).Select(q => $"{q.X:F2},{q.Z:F2}"))}{(p.Step < p.Path.Count && DoorWays.At(memory, new PInt3((int)MathF.Floor(p.Path[p.Step].X), (int)MathF.Floor(p.Path[p.Step].Y + 0.05f), (int)MathF.Floor(p.Path[p.Step].Z))) is { } dw ? $", door {dw.Index} open {dw.Open:F2} target {dw.Target:F2} jammed {dw.Jammed} lift {dw.Lift} card {dw.Clearance ?? "-"} gap {dw.Gap:F2}" : "")}"); }
                         longest = MathF.Max(longest, still);
                         last[p] = (module >= 0 ? module : was.Module, t, p.Pos, still, module >= 0 ? inRoom : was.InRoom, wasIn);
                         if (!walking && p.Spot < town.Spots.Count)
@@ -182,7 +187,7 @@ public partial class TownWalkTest : Node
                 foreach (var (a, b, path) in town.Routes)
                 {
                     routes++;
-                    var bad = town.Blocked(path, b).ToList();
+                    var bad = town.Blocked(path, b, a).ToList();
                     // From one part of the place to another on the level: by a doorway, or where the two lie open to each other.
                     for (int k = 1; k < path.Count; k++)
                     {
@@ -201,6 +206,7 @@ public partial class TownWalkTest : Node
         Check(places >= 8 && people > 0, $"{places} lived-in places walked, {people} people, {samples} steps watched ({beds} beds and {seats} seats furnished as spots)");
         Check(sunk == 0, $"every person's feet stay within 0.3 m of a floor, a stair or a ramp (worst {worst:F2} m; {sunk} steps off){(sunkAt.Count > 0 ? "; e.g. " + string.Join("; ", sunkAt) : "")}");
         Check(crossing == 0, $"no route crosses a piece of furniture or dressing ({routes} routes){(crossAt.Count > 0 ? "; e.g. " + string.Join("; ", crossAt) : "")}");
+        Check(inParts == 0, $"no one's body is ever in a piece of furniture or clutter as it really stands ({inParts} steps in one, deepest {deepest:F2} m){(inAt.Count > 0 ? "; e.g. " + string.Join("; ", inAt) : "")}");
         Check(changes > 0 && doorless == 0, $"from one part of a place to another through a doorway ({changes} crossings, {doorless} not by a door){(doorAt.Count > 0 ? "; e.g. " + string.Join("; ", doorAt) : "")}");
         Check(ins > 0 && outs > 0, $"people go into rooms and come out again ({ins} in, {outs} out)");
         Check(slept > 0 && sat + worked > 0, $"and use them: {slept} slept in beds, {sat} steps sat on seats, {worked} steps at benches and counters");

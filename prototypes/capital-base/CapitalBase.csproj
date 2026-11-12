@@ -9,6 +9,8 @@
     <Optimize>true</Optimize>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Coplanar faces: found (tests) and set apart (meshers), engine-free. -->
+    <Compile Include="..\..\shared\Geometry\**\*.cs" />
     <!-- Shared modules, compiled in where they live: physics (rules and engine adapters) and the
          planet as diggable voxels. -->
     <Compile Include="..\..\shared\Physics\**\*.cs" />
@@ -48,6 +50,7 @@
     <Compile Include="..\planet-surface\src\Terrain\TerrainStreamer.Cover.cs" />
     <Compile Include="..\planet-surface\src\Terrain\TerrainStreamer.Pop.cs" />
     <Compile Include="..\planet-surface\src\Terrain\TerrainStreamer.Swap.cs" />
+    <Compile Include="..\planet-surface\src\Terrain\DetailReach.cs" />
     <Compile Include="..\planet-surface\src\Terrain\RockLook.cs" />
     <Compile Include="..\planet-surface\src\Fx\PopLog.cs" />
     <Compile Include="..\planet-surface\src\Terrain\FloraSolids.cs" />

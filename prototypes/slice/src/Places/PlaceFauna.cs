@@ -219,6 +219,7 @@ public sealed class PlaceFauna
             _min = inst.Blocks.Min;
             _size = inst.Blocks.Size;
             _known = new byte[_size.X * _size.Y * _size.Z];
+            _slope = new byte[_size.X * _size.Y * _size.Z];
         }
 
         int Index(int x, int y, int z) => ((z - _min.Z) * _size.Y + y - _min.Y) * _size.X + x - _min.X;
@@ -234,7 +235,27 @@ public sealed class PlaceFauna
 
         public void Forget(PInt3 c)
         {
-            if (_inst.Blocks.InBounds(c)) _known[Index(c.X, c.Y, c.Z)] = 0;
+            if (!_inst.Blocks.InBounds(c)) return;
+            _known[Index(c.X, c.Y, c.Z)] = 0;
+            _slope[Index(c.X, c.Y, c.Z)] = 0;
+        }
+
+        readonly byte[] _slope; // 0 not read yet, 1 a whole block or air, 2.. a ramp rising (see Slopes) + 2
+
+        /// <summary>A stair or a ramp: the way it rises as the creatures' space numbers it, or -1 (only in the grid's bounds).</summary>
+        public int Slope(int x, int y, int z)
+        {
+            if (x < _min.X || y < _min.Y || z < _min.Z || x >= _min.X + _size.X || y >= _min.Y + _size.Y || z >= _min.Z + _size.Z) return -1;
+            int i = Index(x, y, z);
+            byte k = _slope[i];
+            if (k == 0)
+            {
+                Block b = _inst.Blocks.Get(new PInt3(x, y, z));
+                PInt3 v = b.Facing.Vec();
+                int slope = b.Type is BlockType.Stair or BlockType.Ramp && Get(x, y, z) ? Wildlife.Slopes.Of(v.X, v.Z) : -1;
+                _slope[i] = k = (byte)(slope + 2);
+            }
+            return k - 2;
         }
     }
 
@@ -247,13 +268,35 @@ public sealed class PlaceFauna
         foreach (PInt3 c in cells) _cells.Forget(c);
     }
 
-    /// <summary>Solid to a creature: the place's walls, floors and roofs and its heavy fittings; not air, doors, glass or what it can walk under. Below ground, rock outside the rooms.</summary>
+    /// <summary>
+    /// Solid to a creature: the place's walls, floors and roofs and its whole-cell fittings; not air, doors,
+    /// glass, rails or lattices, nor the furniture and clutter that fill only part of a cell (those are its
+    /// <see cref="PlaceParts"/>, gone round or under as they really stand). Below ground, rock outside the rooms.
+    /// </summary>
     public static bool Solid(PoiInstance inst, int x, int y, int z)
     {
         var c = new PInt3(x, y, z);
         Block b = inst.Blocks.Get(c);
         if (b.IsAir) return y <= Assembler.GroundY && !inst.Layout.Occupied[c];
-        return Built(b);
+        return PlaceParts.Legacy ? Built(b) : Built(b) && !BlockInfo.IsPart(b.Type);
+    }
+
+    /// <summary>A place's space as its creatures live in it: its cells, its stairs as slopes and its parts (tests make their own this way).</summary>
+    public static BlockSpace SpaceOf(PlaceMemory m)
+    {
+        PoiInstance inst = m.Inst;
+        BlockGrid g = inst.Blocks;
+        return new BlockSpace((x, y, z) => Solid(inst, x, y, z),
+            new Vector3I(g.Min.X, g.Min.Y, g.Min.Z), new Vector3I(g.Min.X + g.Size.X, g.Min.Y + g.Size.Y, g.Min.Z + g.Size.Z))
+        {
+            Slope = (x, y, z) =>
+            {
+                Block b = g.Get(new PInt3(x, y, z));
+                PInt3 v = b.Facing.Vec();
+                return b.Type is BlockType.Stair or BlockType.Ramp ? Wildlife.Slopes.Of(v.X, v.Z) : -1;
+            },
+            Parts = PlaceParts.Of(m),
+        };
     }
 
     /// <summary>Solid to a creature out on the surface: only what was built (walls, floors, roofs, heavy fittings), not the ground round it.</summary>
@@ -281,9 +324,22 @@ public sealed class PlaceFauna
         var sim = new WildSim(deep.Data, terrain, new WNav(terrain.HalfSize, 3f));
         _cells = new SolidCells(inst);
         var space = new BlockSpace(_cells.Get,
-            new Vector3I(g.Min.X, g.Min.Y, g.Min.Z), new Vector3I(g.Min.X + g.Size.X, g.Min.Y + g.Size.Y, g.Min.Z + g.Size.Z));
+            new Vector3I(g.Min.X, g.Min.Y, g.Min.Z), new Vector3I(g.Min.X + g.Size.X, g.Min.Y + g.Size.Y, g.Min.Z + g.Size.Z)) { Slope = _cells.Slope, Parts = PlaceParts.Of(memory) };
         lock (deep.Lock) PoiFauna.Spawn(sim, Population, space);
         Sim = sim;
+        // Its creatures are bodies no door shuts on.
+        memory.Bodies.Add(() => CreatureBodies(sim));
+    }
+
+    /// <summary>A sim's creatures as the doors see them (local feet, radius, height; a climber as the ball it rides in).</summary>
+    public static IEnumerable<(Vector3 Feet, float Radius, float Height)> CreatureBodies(WildSim sim)
+    {
+        foreach (Creature c in sim.Creatures.ToArray())
+        {
+            if (c.Dead || c.Removed || c.InWalls || c.Space == null) continue;
+            if (c.Species.Climbs) { float r = c.Clearance; yield return (Crawl.Center(c) - Vector3.Up * r, r, 2f * r); }
+            else yield return (c.Position, SpaceNav.PartRadius(c.Species), SpaceNav.PartHeight(c.Species));
+        }
     }
 
     /// <summary>The place stands: its creatures are drawn, heard and step again, as they were left.</summary>
@@ -319,6 +375,8 @@ public partial class Caves : Node3D
     public Func<Vector3> Look = () => Vector3.Forward;
     /// <summary>In somewhere that isn't a cave: a place's rooms, the bunker.</summary>
     public Func<bool> Indoors = () => false;
+    /// <summary>Whether a world point is ground kept clear of caves (round the start bunker): its rock is read as solid.</summary>
+    public Func<Vector3, bool> Keep;
     public PlaceFauna.Deep Deep;
 
     /// <summary>The longest search for a chamber so far, on its worker, ms (tests).</summary>
@@ -376,7 +434,7 @@ public partial class Caves : Node3D
         _searchedFrom = feet;
         float surface = Zone.GroundAt(feet.X, feet.Z).Y;
         var anchor = new Vector3(MathF.Round(feet.X), MathF.Round(feet.Y), MathF.Round(feet.Z));
-        var space = new LoadedVoxels(planet.Terrain.Store, Zone.Streamer, new Vector3I((int)anchor.X, (int)anchor.Y, (int)anchor.Z));
+        var space = new LoadedVoxels(planet.Terrain.Store, Zone.Streamer, new Vector3I((int)anchor.X, (int)anchor.Y, (int)anchor.Z), Keep);
         float time = Zone.Wildlife.Sim?.Time ?? 0f;
         Vector3 look = Look();
         look.Y = 0f;
@@ -429,26 +487,30 @@ public partial class Caves : Node3D
         readonly TD.ChunkStore _store;
         readonly TerrainStreamer _streamer;
         readonly Vector3I _offset;
+        readonly Func<Vector3, bool> _keep;
 
-        public LoadedVoxels(TD.ChunkStore store, TerrainStreamer streamer, Vector3I offset)
+        public LoadedVoxels(TD.ChunkStore store, TerrainStreamer streamer, Vector3I offset, Func<Vector3, bool> keep = null)
         {
             _store = store;
             _streamer = streamer;
             _offset = offset;
+            _keep = keep;
         }
+
+        bool Kept(float x, float y, float z) => _keep != null && _keep(new Vector3(x + _offset.X, y + _offset.Y, z + _offset.Z));
 
         bool Loaded(TD.Int3 c) => _streamer.IsReady(TD.ChunkStore.ChunkOf(c));
 
         public float Density(Vector3 p)
         {
             var w = new System.Numerics.Vector3(p.X + _offset.X, p.Y + _offset.Y, p.Z + _offset.Z);
-            return Loaded(TD.Int3.Floor(w)) ? _store.SampleDensity(w) : 1f;
+            return Loaded(TD.Int3.Floor(w)) && !Kept(p.X, p.Y, p.Z) ? _store.SampleDensity(w) : 1f;
         }
 
         public bool SolidCell(int x, int y, int z)
         {
             var c = new TD.Int3(x + _offset.X, y + _offset.Y, z + _offset.Z);
-            return !Loaded(c) || _store.IsSolid(c);
+            return !Loaded(c) || Kept(x + 0.5f, y + 0.5f, z + 0.5f) || _store.IsSolid(c);
         }
     }
 }

@@ -31,6 +31,10 @@ public sealed partial class Town
     /// <summary>Paths between linked spots (worked out once), in local cells' walk points.</summary>
     readonly Dictionary<(int, int), List<Vector3>> _paths = new();
     PNav _nav;
+    /// <summary>The place's furniture and clutter as it really stands (null: the old whole-cell rule, tests only).</summary>
+    Wildlife.PartSet _parts;
+    /// <summary>The same without the doors' leaves: what routes are worked out on (doors are opened on the way).</summary>
+    Wildlife.PartSet _fixed;
     int[] _homes;
     string _tech;
 
@@ -102,6 +106,10 @@ public sealed partial class Town
         public BodyAct Before;
         public float HeadYaw;
         public bool Indoors, Sitting, Fleeing;
+        /// <summary>In a seat, or up out of it and not yet clear of it (and of the table it was drawn up to).</summary>
+        public bool GettingUp;
+        /// <summary>How long they have been held where they stood by the furniture.</summary>
+        public float Blocked;
         /// <summary>In bed for the night (lying on it), and how far down into it.</summary>
         public bool Asleep;
         public float Slept;
@@ -148,13 +156,17 @@ public sealed partial class Town
     }
 
     /// <summary>A place's town (worker-safe), or null where nobody lives: walking routes worked out once round the room dressing.</summary>
-    public static Town For(PlaceMemory m)
+    public static Town For(PlaceMemory m, PlanetSurface.World.PlanetWorld planet = null)
     {
         Townsfolk data = m.Inst.Townsfolk;
         if (data == null || data.People.Count == 0 || data.Spots.Count < 2) return null;
         var town = new Town(m, data);
         town._tech = m.Inst.Layout.Variant?.Tech is { Length: > 0 } t ? t : m.Inst.Family.Tags.Contains("settlement") ? "low" : "mid";
-        town._nav = Place.FootNavOf(m);
+        town._nav = Place.FootNavOf(m, planet);
+        town._parts = PlaceParts.Of(m);
+        town._fixed = PlaceParts.Fixed(m);
+        town._ways = DoorWays.Of(m);
+        m.Bodies.Add(town.BodiesNear);
         town.Furnish(m);
         foreach (var (a, b) in data.Links.Concat(data.Routes)) town.PathBetween(a, b);
         town._homes = town.Spots.Select((s, i) => (s, i)).Where(t => t.s.Tag == "home").Select(t => t.i).ToArray();
@@ -164,8 +176,35 @@ public sealed partial class Town
         return town;
     }
 
-    /// <summary>A cell's walking point: the middle of its floor, or halfway up the stair or ramp standing in it.</summary>
-    Vector3 Walk(PInt3 c) => new(c.X + 0.5f, c.Y + (_nav != null && _nav.RampAt(c, out _) ? 0.5f : 0f), c.Z + 0.5f);
+    /// <summary>A cell's walking point: the middle of its floor (among furniture, where a body fits nearest it), or halfway up the stair or ramp standing in it.</summary>
+    Vector3 Walk(PInt3 c)
+    {
+        if (_nav != null && _nav.RampAt(c, out _)) return new(c.X + 0.5f, c.Y + 0.5f, c.Z + 0.5f);
+        return (_fixed != null ? Place.PersonSpot(_fixed, Place.WallsOf(_nav), c) : null) ?? new Vector3(c.X + 0.5f, c.Y, c.Z + 0.5f);
+    }
+
+    /// <summary>
+    /// A route's walking points: each cell's (<see cref="Walk"/>), and between two cells where furniture bars the
+    /// straight way from one's point to the next's, the gap on the face between them it goes by.
+    /// </summary>
+    List<Vector3> Points(List<PInt3> cells)
+    {
+        if (cells == null) return null;
+        var path = new List<Vector3>(cells.Count);
+        Func<int, int, int, bool> walls = _fixed != null ? Place.WallsOf(_nav) : null;
+        for (int i = 0; i < cells.Count; i++)
+        {
+            Vector3 here = Walk(cells[i]);
+            if (i > 0 && walls != null && !_nav.RampAt(cells[i], out _) && !_nav.RampAt(cells[i - 1], out _))
+            {
+                PInt3 a = cells[i - 1], b = cells[i];
+                if (_fixed.Link(new Vector3I(a.X, a.Y, a.Z), path[^1], new Vector3I(b.X, b.Y, b.Z), here, PlaceParts.PersonRadius, PlaceParts.PersonHeight, walls, PlaceParts.PersonRadius, out Vector3[] vias))
+                    path.AddRange(vias);
+            }
+            path.Add(here);
+        }
+        return path;
+    }
 
     List<Vector3> PathBetween(int a, int b)
     {
@@ -183,7 +222,7 @@ public sealed partial class Town
         // By the walking grid only (the dressing standing in, through the doors): where there is no way, nobody goes,
         // never straight across through a wall, a floor or the furniture.
         List<PInt3> cells = _nav.Standable(from) && _nav.Standable(to) ? _nav.FindPath(from, to, 30000) : null;
-        List<Vector3> path = cells?.Select(Walk).ToList();
+        List<Vector3> path = Points(cells);
         if (path != null && (At(b) - path[^1]).LengthSquared() > 0.01f) path.Add(At(b));
         _paths[(a, b)] = path;
         return path;
@@ -521,8 +560,12 @@ public sealed partial class Town
         if (p.Path == null || p.Step >= p.Path.Count)
         {
             p.Now = 0f;
+            // Standing about: still off the furniture (a tall one under a hanging lamp steps out from under it).
+            OffParts(p, p.Pos);
             return true;
         }
+        // The doors ahead opened as they come (a door they may not open: they wait where they are).
+        if (!ThroughDoors(p)) { p.Now = 0f; return true; }
         Vector3 to = p.Path[p.Step];
         Vector3 d = to - p.Pos;
         float flat = new Vector2(d.X, d.Z).Length();
@@ -535,21 +578,33 @@ public sealed partial class Town
         // Turns a corner a stride early, not on the spot.
         // (Not out of a seat or into one: that way is walked as it lies, clear of the furniture round it.)
         bool exact = p.Step == 0 && p.Seat >= 0 || p.Step >= p.Path.Count - 2 && p.Spot >= 0 && p.Spot < _own.Count && _own[p.Spot] != null;
-        if (flat < step || flat < (last || exact ? 0.05f : 0.4f))
+        // (Among furniture the corner is turned at the point itself: the gap it goes through is no wider.)
+        float cut = last || exact ? 0.05f : _fixed != null && _fixed.Touches(to, PlaceParts.PersonRadius, PlaceParts.PersonHeight) ? 0.1f : 0.4f;
+        if (flat < step || flat < cut)
         {
             if (last)
             {
                 p.Pos = to;
-                if (p.Spot >= 0 && p.Spot < _own.Count && _own[p.Spot] != null) p.Seat = p.Spot;
+                if (p.Spot >= 0 && p.Spot < _own.Count && _own[p.Spot] != null) { p.Seat = p.Spot; p.GettingUp = true; }
             }
             p.Step++;
             return p.Step >= p.Path.Count;
         }
+        Vector3 was = p.Pos;
+        if (p.Sitting) p.GettingUp = true;
         p.Pos += new Vector3(d.X, 0f, d.Z) / flat * step;
         if (p.Seat >= 0 && !InSeat(p, p.Seat)) p.Seat = -1; // up and out of it
         p.Pos.Y = Mathf.Lerp(p.Pos.Y, to.Y, MathF.Min(1f, step / MathF.Max(flat, 0.01f)));
         // Feet on what is under them: the floor, or the stair's slope, never sunk into it or above it.
         if (Ground(p.Pos) is float ground && MathF.Abs(ground - p.Pos.Y) < 0.75f) p.Pos.Y = ground;
+        // And never into the furniture or the clutter: held off its real shape.
+        OffParts(p, was);
+        // Held where it stood (a piece across the straight way to the next point): round it, by a way found over the cells there.
+        if ((p.Pos - was).LengthSquared() < 1e-8f && _parts != null && (p.Blocked += dt) > 0.5f)
+        {
+            p.Blocked = 0f;
+            if (_parts.WayRound(p.Pos, to, BodyRadius(p), Height(p), Place.WallsOf(_nav), PlaceParts.PersonRadius) is { Count: > 0 } round) p.Path.InsertRange(p.Step, round);
+        }
         p.Yaw = Mathf.RotateToward(p.Yaw, MathF.Atan2(-d.X, -d.Z), 5f * dt);
         p.Sitting = false;
         return false;
@@ -943,7 +998,8 @@ public sealed partial class Town
         // A few of them may not be what they seem: silent carriers, rolled as anyone is, nothing showing.
         HuskRules husks = life.Data.Husks;
         int carriers = Carriers.Roll(husks, life.Moving.Any(s => s.Husk), life.World.Coreward, People.Count, roll);
-        foreach (Person q in People.Where(q => q.Looks.Figure.Stage != LifeStage.Child).OrderBy(_ => roll.Float()).Take(carriers)) q.Carrier = true;
+        // (Only a body the worms can take: a machine never carries them.)
+        foreach (Person q in People.Where(q => q.Looks.Figure.Stage != LifeStage.Child && Husks.CanTurn(q.Looks)).OrderBy(_ => roll.Float()).Take(carriers)) q.Carrier = true;
         CarriersAtStart = People.Count(q => q.Carrier);
         foreach (Person q in People) _carried.Add(new Carried());
     }
@@ -993,7 +1049,7 @@ public sealed partial class Town
         _rise.Clear();
         ITarget you = _places.Zone.Wildlife.Player;
         Carriers.Step(_places.Zone.Wildlife.Life.Data.Husks, _carried, you is { Attackable: true } ? player : null, WormsEvery, _rise);
-        for (int i = 0; i < People.Count; i++) People[i].Carrier = _carried[i].Carrier;
+        for (int i = 0; i < People.Count; i++) People[i].Carrier = _carried[i].Carrier && Husks.CanTurn(People[i].Looks);
         foreach (int i in _rise) Rise(People[i]);
     }
 

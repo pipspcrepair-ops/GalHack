@@ -8,6 +8,8 @@
     <Optimize>true</Optimize>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Coplanar faces: found (tests) and set apart (meshers), engine-free. -->
+    <Compile Include="..\..\shared\Geometry\**\*.cs" />
     <!-- The item catalogue (bills, items, the deco catalogue loader), compiled from where it lives. -->
     <Compile Include="..\..\shared\Items\Core\**\*.cs" />
     <!-- The decorations library: plain C# models, variants and room dressing, plus its Godot adapter. -->
