@@ -116,6 +116,12 @@
     // what a sealed suit feels, °C: in vacuum it loses heat slowly, so a cool day, not a deep
     // freeze. And space's background radiation, RAD (the visor warns above 3).
     "vacuumC": 4,
-    "radiation": 0.4
+    "radiation": 0.4,
+    // The jetpack in zero g (EVA): the same keys as on the ground, in any direction along your
+    // look (WASD, Space up, Ctrl down). The speed it pushes to, with sprint held, and how hard,
+    // m/s and m/s^2. Let go and you drift on.
+    "jetpackSpeed": 12,
+    "jetpackSprint": 20,
+    "jetpackAccel": 8
   }
 }

@@ -145,6 +145,7 @@ public partial class Spaceflight : Node
         // Afloat in a structure you right yourself with its decks, so a door in a tilted hull fits you.
         Survivor s = g.Survivor;
         if (s.Seated == null && s.Body.Frame != null && s.Legs.Floating) Riding.SetUp(s.Body, N.Vector3.UnitY);
+        JetpackInZeroG(s);
         if (_pending != null)
         {
             if (Ledger.Committing) HoldAtCap(Carrier());
@@ -242,6 +243,21 @@ public partial class Spaceflight : Node
 
     /// <summary>The start system's seed: the world's own, so the same world always has the same wrecks round it.</summary>
     public static ulong SystemSeed(PlanetSpec spec) => PoiGenerator.Gen.Hash.Combine(spec.Seed, 0x0B17UL);
+
+    /// <summary>The jetpack firing in zero g: floating free and pushing in some direction (its hiss, the figure's pose).</summary>
+    public bool EvaThrusting { get; private set; }
+
+    /// <summary>
+    /// In zero g the jetpack is how you move, with the keys it has on the ground: WASD along your
+    /// look, Space up and Ctrl down, in any direction; sprint pushes harder. Let go and you drift.
+    /// </summary>
+    void JetpackInZeroG(Survivor s)
+    {
+        var legs = s.Legs;
+        legs.ZeroGSpeed = legs.Sprint ? Rules.Space.JetpackSprint : Rules.Space.JetpackSpeed;
+        legs.ZeroGAccel = Rules.Space.JetpackAccel;
+        EvaThrusting = s.Seated == null && s.OnBike == null && legs.Floating && (legs.Move.LengthSquared() > 1e-4f || MathF.Abs(legs.Vertical) > 1e-3f);
+    }
 
     // ---- Up ------------------------------------------------------------------------------------
 
@@ -512,23 +528,4 @@ public partial class Spaceflight : Node
 
     /// <summary>Space itself: no air (the helmet seals, the suit's oxygen runs down), a sealed suit's slow chill, background radiation.</summary>
     public Exposure Space(Pos p, double time) => new(Rules.Space.VacuumC, 0, Rules.Space.Radiation, null, "Space", double.PositiveInfinity);
-
-    /// <summary>The visor's flight line in orbit: speed, height, the place under you.</summary>
-    public string FlightLine(Vessel v)
-    {
-        Vector3 p = v.Body.Position.ToGodot();
-        var (x, z) = Orbit.Under(p);
-        string cruise = v.Flight.State.Cruise ? "   CRUISE" : "";
-        return $"{v.Body.Velocity.Length():F0} m/s   ALT {Height(p):F0} m   OVER {Where(x, z)}{cruise}";
-    }
-
-    /// <summary>A direction in the local frame of the place under you (east, up, south), for the compass: north stays north in orbit.</summary>
-    public Vector3 Local(Vector3 direction)
-    {
-        if (!Game.InOrbit) return direction;
-        if (_aligned) return direction; // the world's axes are the local ones here
-        var (x, z) = Orbit.Under(Game.Survivor.WorldFeet);
-        N.Quaternion toGlobe = N.Quaternion.Conjugate(Orbit.Turn);
-        return MathX.Unrotate(Orbit.Map.Frame(x, z), N.Vector3.Transform(direction.ToNumerics(), toGlobe)).ToGodot();
-    }
 }
