@@ -862,6 +862,8 @@ public static class FarBuilder
             if (source.CellDensity(cx, (int)Math.Floor(h - 0.6f), cz) <= 0f) continue; // a cave mouth or overhang: nothing to root in
 
             float scale = plant != null ? Mathx.Lerp(0.78f, 1.24f, size) : Mathx.Lerp(0.7f, 1.35f, size) * FloraMeshes.BaseScale(rule.Kind);
+            // A tree takes its size from its kind's range on this world, by its age: the one scale draws it near and far and sizes its colliders.
+            if (plant != null && book.TreeScale(plant, Hash.Unit(Hash.Of(pal.Map.Spec.Seed, id, 0xA6E), 0), size) is float grown) scale = grown;
             float angle = turn * Mathf.Tau;
             Rgb tint = plant != null && !plant.Mineral ? book.Tint(plant, shade, x, z) : Tint(rule, shade, pal, x, z);
             // A wide crown keeps out of what's built, as its trunk does: a road's verge, a wall, a yard.
