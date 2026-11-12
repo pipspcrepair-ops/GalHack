@@ -45,7 +45,7 @@ public sealed class SimArms
     }
 
     /// <summary>Shots fired and blows struck by the sims' people and machines (tests).</summary>
-    public int Shots, Reloads, Drawn;
+    public int Shots, Drawn;
 
     public SimArms(ArmsHost host)
     {
@@ -110,7 +110,6 @@ public sealed class SimArms
         {
             // Out: it reloads where it stands (the sound of it), or has nothing left.
             if (!k.Clip.Reload()) return 0.4f;
-            Reloads++;
             _host.Sounds.Play(k.Clip.Def, VoiceKind.Reload, WorldOf(c, out _));
             return k.Clip.Def.Reload;
         }
@@ -131,42 +130,12 @@ public sealed class SimArms
         return k.Mounted ? -1f : _host.Table.Get(Weapons.Fists).Damage * 1.5f;
     }
 
-    /// <summary>Where its shots leave: the muzzle of the model in its hand or on its mount, else from its rig.</summary>
+    /// <summary>Where its shots leave: the muzzle of the model in its hand or on its mount (undrawn, far off: about where it would be).</summary>
     public Vector3 Muzzle(Creature c, Kit k, Vector3 origin)
     {
         if (k.Model != null && GodotObject.IsInstanceValid(k.Model.Muzzle) && k.Model.Muzzle.IsInsideTree()) return k.Model.Muzzle.GlobalPosition;
-        if (c.Rig != null && (Mount(c, out Transform3D at) || Hand(c, out at))) return at * Vector3.Zero + origin + at.Basis.Y.Normalized() * 0.5f;
         float h = c.Species.Figure?.Height ?? c.Species.BodyHeight;
         return c.Position + origin + Vector3.Up * h * 0.75f + c.Forward * 0.5f;
-    }
-
-    static bool Hand(Creature c, out Transform3D at) => PieceAt(c, "prop", out at);
-
-    /// <summary>A machine's mount: the end of its right forearm on two legs, under its head on more.</summary>
-    static bool Mount(Creature c, out Transform3D at)
-    {
-        at = default;
-        if (!c.Species.Mechanical) return false;
-        if (c.Species.Figure != null)
-        {
-            if (!PieceAt(c, "arm1l", out at)) return false;
-            at = at.TranslatedLocal(Vector3.Up * c.Species.Figure.Forearm);
-            return true;
-        }
-        if (!PieceAt(c, "head", out at)) return false;
-        float hs = c.Species.Body.HeadSize;
-        // Under the head, pointing where it faces.
-        at = new Transform3D(Geo.AlongY(c.Forward, c.Forward.Cross(Vector3.Up)), at.Origin + Vector3.Down * hs * 0.3f);
-        return true;
-    }
-
-    static bool PieceAt(Creature c, string name, out Transform3D at)
-    {
-        at = default;
-        int i = c.Rig.Layout.Pieces.FindIndex(p => p.Name == name);
-        if (i < 0) return false;
-        at = c.Rig.Pose[i];
-        return true;
     }
 
     /// <summary>Every physics tick: bursts under way go round by round, and new bodies in view get their weapon drawn.</summary>

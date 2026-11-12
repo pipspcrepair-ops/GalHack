@@ -79,8 +79,6 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
     /// <summary>The weapons of the wildlife sims' people and machines.</summary>
     public SimArms People { get; private set; }
 
-    /// <summary>People carry the player's own weapon models: the bodies leave every weapon out of their mesh but the bow.</summary>
-    static ArmsHost() => Weapons.GameDraws = _ => true;
 
     /// <summary>What stops a shot: the ground and what is fixed to it, structures' hulls, trees. (Creatures and people are their own hit spheres.)</summary>
     const uint SolidMask = Layers.World | Layers.Hull | PlanetSurface.World.Layers.Flora;
@@ -263,8 +261,8 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
 
     float _swingIn;
 
-    /// <summary>Shots someone else fired (people, robots), and blows they struck (tests).</summary>
-    public int OthersFired, OthersStruck;
+    /// <summary>Shots someone else fired: people, machines (tests).</summary>
+    public int OthersFired;
 
     /// <summary>The owner of a shot fired by anyone but the player: it can hit the player (it isn't friendly fire).</summary>
     public const int Hostile = -1;
@@ -308,7 +306,6 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
     {
         dir = dir.LengthSquared() > 1e-6f ? dir.Normalized() : Vector3.Forward;
         float reach = MathF.Max(0.5f, d.Reach);
-        if (owner != 0) OthersStruck++;
         if (!Sweep(from.ToNumerics(), (from + dir * reach).ToNumerics(), attacker, owner, 1f, out ShotHit hit))
         {
             Sounds.Play(d, VoiceKind.Mechanism, from, 1.4f, -12f); // the swish of a miss

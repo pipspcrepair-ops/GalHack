@@ -35,9 +35,6 @@ public partial class WormMassView : Node3D
         return new StandardMaterial3D { AlbedoTexture = tex, Transparency = BaseMaterial3D.TransparencyEnum.Alpha, Roughness = 1f, DepthDrawMode = BaseMaterial3D.DepthDrawModeEnum.Disabled };
     }
 
-    /// <summary>Burned away to its scorch (tests).</summary>
-    public bool Scorched => _scorch != null;
-
     public void Build(WormMass m)
     {
         Mass = m;

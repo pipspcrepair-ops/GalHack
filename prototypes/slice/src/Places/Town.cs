@@ -854,14 +854,6 @@ public sealed partial class Town
         return true;
     }
 
-    bool CanSee(Person p, Vector3 player)
-    {
-        var space = _place.GetWorld3D().DirectSpaceState;
-        Vector3 from = _place.ToWorld(p.Pos + Vector3.Up * 1.5f), to = _place.ToWorld(player + Vector3.Up * 1.4f);
-        var q = PhysicsRayQueryParameters3D.Create(from, to, GalHack.Physics.Layers.World | GalHack.Physics.Layers.Hull);
-        return space.IntersectRay(q).Count == 0;
-    }
-
     /// <summary>One of them takes aim at you (where from): their shot follows (<see cref="ShotFired"/>).</summary>
     public event Action<Vector3> Aimed;
 

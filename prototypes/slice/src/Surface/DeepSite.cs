@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using Godot;
 using Wildlife;
 
@@ -329,9 +328,6 @@ public partial class DeepSite : Node3D
     }
 
     float _flameIn;
-
-    /// <summary>Worm masses burned out to a scorch (tests).</summary>
-    public int MassesScorched => _massViews.Count(v => v.Scorched);
 
     /// <summary>Worm masses drawn so far (tests).</summary>
     public int MassesDrawn => _massViews.Count;

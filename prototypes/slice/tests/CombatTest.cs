@@ -143,6 +143,23 @@ public partial class CombatTest : Node
         Check(items, $"each carries the item for their weapon ({string.Join(", ", armed.Take(4).Select(p => $"{p.Figure.Prop}: {p.Kit?.Def.Id}"))})");
         var drawn = armed.Where(p => p.View != null && p.Figure.Prop != "bow").ToList();
         Check(drawn.All(p => p.Model != null && p.Holder?.GetParent() == p.View), $"held as the player's own model of it, in the hand ({drawn.Count(p => p.Model != null)} of {drawn.Count} drawn)");
+        // (--shots=<folder>: a picture of each of a few of them, close, with what they hold.)
+        string shots0 = OS.GetCmdlineUserArgs().FirstOrDefault(a => a.StartsWith("--shots="))?.Substring(8);
+        if (shots0 != null)
+            foreach (Town.Person p in drawn.Where(q => !q.Indoors).Take(3))
+            {
+                Vector3 front = place.ToWorld(p.Pos + p.Forward * 2.6f + p.Forward.Cross(Vector3.Up) * 0.8f + Vector3.Up * 0.2f);
+                game.Survivor.PlaceOutside(front.ToNumerics());
+                for (int i = 0; i < 40; i++)
+                {
+                    game.Suit.Vitals.Health = max;
+                    drive.Face(place.ToWorld(p.Pos + Vector3.Up * p.Figure.Height * 0.6f));
+                    yield return 0;
+                }
+                string file = System.IO.Path.Combine(shots0, $"armed-{p.Figure.Prop}-{town.People.IndexOf(p)}.png");
+                GetViewport().GetTexture().GetImage().SavePng(file);
+                GD.Print($"  (shot: {file}, {p.Figure.Prop} as {p.Kit?.Def.Id})");
+            }
 
         // Their shots, as they go.
         var shots = new List<(Town.Person Who, WeaponDef Def, Vector3 Muzzle, Vector3 Model, Vector3 Chest)>();
@@ -173,7 +190,6 @@ public partial class CombatTest : Node
             Check(shots.All(s => s.Muzzle.DistanceTo(s.Model) < 0.05f), $"from the muzzle of the model in their hands (worst {shots.Max(s => s.Muzzle.DistanceTo(s.Model)):F2} m off)");
             Check(shots.All(s => s.Def.Delivery == Delivery.Strike || s.Muzzle.DistanceTo(s.Chest) > 0.2f), $"never from the chest (nearest {shots.Min(s => s.Muzzle.DistanceTo(s.Chest)):F2} m from it)");
             Check(aimsBeforeFirst >= 1, $"the first was aimed where you could see it ({aimsBeforeFirst} aims before it)");
-            var rows = shots.Select(s => s.Def.Damage).Concat(shots.Where(s => s.Def.Pellets != null).Select(s => s.Def.Damage)).ToHashSet();
             Check(dealt.Count == 0 || dealt.All(d => shots.Any(s => MathF.Abs(s.Def.Damage - d) < 0.01f)), $"what hit you was their weapon's damage ({string.Join(", ", dealt.Take(6).Select(d => $"{d:F0}"))} of {string.Join("/", shots.Select(s => $"{s.Def.Id} {s.Def.Damage}").Distinct())})");
             int left = armed.Sum(p => p.Kit?.Rounds ?? 0) + armed.Sum(p => p.Emptied?.Rounds ?? 0);
             Check(left < rounds, $"rounds are used up ({rounds} carried, {left} left)");
@@ -201,7 +217,7 @@ public partial class CombatTest : Node
             for (int i = 0; i < 90; i++) { game.Suit.Vitals.Health = max; yield return 0; }
             Check(unarmed.Fleeing || unarmed.Indoors || unarmed.Engaged, $"an unarmed one hit runs for it, or (a raider with the nerve) goes in with their fists ({(unarmed.Engaged ? $"fists, {unarmed.Part}" : unarmed.Fleeing ? "fleeing" : unarmed.Indoors ? "indoors" : "stood")})");
         }
-        GD.Print($"  (fight: {town.Engagements} engaged, {town.Flanks} flanking, {town.FallBacks} fell back, {town.Reloads} reloads, {town.Shots} shots, {town.Blows} blows)");
+        GD.Print($"  (fight: {town.Engagements} engaged, {town.Flanks} flanking, {town.FallBacks} fell back, {town.Shots} shots, {town.Blows} blows)");
     }
 
     /// <summary>Out in the wild: a raider's rifle, a band's rally, a machine's mount, a club's blow.</summary>
@@ -241,7 +257,6 @@ public partial class CombatTest : Node
         Check(muzzles.Count == 0 || muzzles.Max() < 0.05f, $"from the muzzle of the model ({(muzzles.Count > 0 ? muzzles.Max() : 0f):F2} m off)");
         Check(kit != null && kit.Clip.Fired > 0, $"using up its rounds ({kit?.Clip.Fired} fired, {kit?.Clip.Rounds} left)");
         // Killed: the rifle and what's left of its rounds in the body.
-        int loot = game.Zone.Loot.All.Count;
         sim.Damage(rifle, 9999f, patch.Player);
         for (int i = 0; i < 10; i++) yield return 0;
         var corpse = game.Zone.Loot.All.FirstOrDefault(l => l.Creature == rifle);
@@ -259,6 +274,16 @@ public partial class CombatTest : Node
         var bare = sim.Spawn(fists, patch.PatchLocal(Ground(feet + new Vector3(-40f, 0f, 20f))));
         Check(MathF.Abs(Attacks.BlowOf(bare) - game.Zone.Data.Arms.OfItem(Weapons.Fists).Damage) < 0.01f, $"bare hands punch for the fists' damage ({Attacks.BlowOf(bare):F0})");
         foreach (Creature c in band.Append(bare)) sim.Kill(c, null);
+
+        // A Husk clump hurt catches, burns down and is gone.
+        var clump = new WormMass { Position = patch.PatchLocal(Ground(feet + new Vector3(30f, 0f, 30f))), Size = 0.8f, Seed = (ulong)_rng.NextInt64() };
+        sim.Masses.Add(clump);
+        yield return 0;
+        WormMasses.Damage(sim, clump, 1f);
+        float lit = clump.Burning;
+        for (int i = 0; i < 60 * 12 && !clump.Dead; i++) { game.Suit.Vitals.Health = max; yield return 0; }
+        Check(lit > 0f && clump.Dead && clump.BurntOut, $"a Husk clump hurt catches alight and burns out ({(clump.Dead ? $"gone after {clump.Burning:F1} s" : $"still {clump.Health:F0} health after 12 s")})");
+        sim.Masses.Remove(clump);
 
         // A machine fires its mount.
         Species robot = Robots.Roll(patch.Life.World, 7, 1);

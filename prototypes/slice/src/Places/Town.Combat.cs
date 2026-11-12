@@ -60,8 +60,6 @@ public sealed partial class Town
     public int Engagements { get; private set; }
     public int Flanks { get; private set; }
     public int FallBacks { get; private set; }
-    public int Reloads { get; private set; }
-    public int Alerts { get; private set; }
 
     /// <summary>One of them fires (or swings) their weapon: who, the row, from where and which way (world), and how unsteady (degrees).</summary>
     public event Action<Person, WeaponDef, Vector3, Vector3, float> ShotFired;
@@ -101,7 +99,6 @@ public sealed partial class Town
         _seenClock = _clock;
         if (_alert) return;
         _alert = true;
-        Alerts++;
         foreach (Person q in People)
         {
             if (q.Dead || q.Gone || q.Engaged) continue;
@@ -335,7 +332,7 @@ public sealed partial class Town
         if (p.Kit.Loaded <= 0)
         {
             // Empty: a reload from what they carry (the rounds go in at the end of it).
-            if (!p.Kit.Spent) { p.Reloading = d.Reload; Reloads++; }
+            if (!p.Kit.Spent) p.Reloading = d.Reload;
             return;
         }
         if (p.Pending == 0)
@@ -371,7 +368,7 @@ public sealed partial class Town
             p.Aim = -1f;
             // The one pinning you keeps at it; the rest take a breath.
             p.Pause = (p.Part == FightPart.Pin ? 0.35f : 0.8f) + (float)_rng.NextDouble() * 0.7f + d.Pump;
-            if (p.Kit.Loaded <= 0 && !p.Kit.Spent) { p.Reloading = d.Reload; Reloads++; }
+            if (p.Kit.Loaded <= 0 && !p.Kit.Spent) p.Reloading = d.Reload;
         }
     }
 
@@ -441,16 +438,10 @@ public sealed partial class Town
         return space.IntersectRay(q).Count == 0;
     }
 
-    /// <summary>Where their shots leave (world): the muzzle of the gun in their hands as drawn, else where it would be.</summary>
+    /// <summary>Where their shots leave (world): the muzzle of the gun in their hands as drawn (undrawn: about where it would be).</summary>
     public Vector3 Muzzle(Person p)
     {
         if (p.Model?.Muzzle != null && GodotObject.IsInstanceValid(p.Model.Muzzle) && p.Model.Muzzle.IsInsideTree() && p.View is { Visible: true }) return p.Model.Muzzle.GlobalPosition;
-        if (p.Rig != null && PropIndex(p) is int i and >= 0)
-        {
-            Transform3D hand = p.Rig.Pose[i] * new Transform3D(Clip.GunInProp.Scaled(Vector3.One * HumanBody.ArmScale(p.Figure)), Vector3.Zero);
-            Vector3 tip = p.Kit != null ? new Vector3(0f, 0.02f, -(p.Kit.Def.Look.Body + p.Kit.Def.Look.Barrel + 0.05f)) : Vector3.Zero;
-            return World(hand * tip);
-        }
         return World(p.Pos + Vector3.Up * Height(p) * 0.78f + p.Forward * 0.55f);
     }
 
