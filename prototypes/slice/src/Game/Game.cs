@@ -368,6 +368,8 @@ public partial class Game : Node3D
         AddChild(Audio);
         Howl = new WindHowl { Name = "Howl", Zone = Zone, Eye = () => Survivor.WorldEye(), Quiet = () => Spaceflight.AirGone > 0.5f };
         Zone.AddChild(Howl);
+        Exposure = new AmbientExposure { Name = "Exposure", Zone = Zone, Eye = () => Survivor.WorldEye() };
+        Zone.AddChild(Exposure);
         // The castaway seen from outside (third person and screenshots); the first-person camera leaves it out.
         Figure = CharacterModel.Build();
         // Placed every drawn frame from the same interpolated transforms the eye and the vehicle draw
@@ -385,6 +387,9 @@ public partial class Game : Node3D
 
     /// <summary>Wind moaning in the openings around you.</summary>
     public WindHowl Howl { get; private set; }
+
+    /// <summary>Roof, walls, lee and relief round the eye: what the weather's sound hears.</summary>
+    public AmbientExposure Exposure { get; private set; }
 
     /// <summary>Small 3D icons of items, each rendered once.</summary>
     public Slice.Ui.ItemIcons Icons { get; private set; }

@@ -62,7 +62,7 @@ public partial class WindHowl : Node3D
 
     void Look()
     {
-        float wind = Zone.Weather.Wind2D.Length();
+        float wind = Zone.Weather.Sim?.WindAt(Eye()).Length() ?? 0f; // the wind HERE: gusts, ridges and woods
         if (wind < LeastWind || Quiet() || Zone.Underwater?.CameraUnder == true)
         {
             _target = 0f;
@@ -88,8 +88,11 @@ public partial class WindHowl : Node3D
         Vector3 at = eye + new Vector3(MathF.Cos(heading), 0f, MathF.Sin(heading)) * across;
         if (Opening == null) _sound.GlobalPosition = at;
         Opening = at;
-        _target = Mathf.Clamp((wind - LeastWind) / (FullWind - LeastWind), 0.2f, 1f);
+        _target = Loudness(wind);
     }
+
+    /// <summary>How loud an opening howls in this wind, m/s: none below the least, rising to full.</summary>
+    public static float Loudness(float wind) => wind < LeastWind ? 0f : Mathf.Clamp((wind - LeastWind) / (FullWind - LeastWind), 0.2f, 1f);
 
     /// <summary>
     /// The direction of the widest-reaching opening in a ring of ray lengths, or -1: enough of the ring

@@ -121,8 +121,8 @@ public sealed partial class Town
             if (_place != null) Alert(_place.FromWorld(_places.Zone.Wildlife.PlayerWorld()));
             // Hit, they know it: no aiming about it, they're in.
             if (!p.Dead && Fighter(p)) p.EngageAt = MathF.Min(p.EngageAt < 0f ? _clock : p.EngageAt, _clock + 0.2f);
-            // Hit and unarmed: they run, whatever they were doing.
-            if (!p.Dead && !Fighter(p)) p.ScaredFor = 10f;
+            // Hit themselves, it frightens them more (their mood sends them running: Town.Mood).
+            if (!p.Dead) { Bind(p); p.Feel.Hit(MoodEvent.Harm); }
         }
         if (p.Dead) Fall(p);
     }
@@ -135,7 +135,8 @@ public sealed partial class Town
     {
         if (p.Looks == null || _place == null) return false;
         Arm(p);
-        if (mood != Mood.Hostile || !Fighter(p) || _places.Zone.Wildlife.Player is not { Attackable: true })
+        // (Frightened enough to run, they run: Feeling.Flees.)
+        if (mood != Mood.Hostile || !Fighter(p) || p.ScaredFor > 0f || _places.Zone.Wildlife.Player is not { Attackable: true })
         {
             if (p.Engaged) Disengage(p);
             return false;
