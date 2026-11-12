@@ -1,0 +1,84 @@
+# What our places are measured against: ranges taken from real buildings' planning practice and from two games'
+# hand-built places (Empyrion's bases and 7 Days to Die's prefabs), as numbers only. Nothing here is a layout, a
+# name or a table from either game; the notes behind it live outside the repo (docs/floorplan-refs, reference only).
+# Rules, not copies: PoiTest's References check holds fresh places to these distributions.
+#
+#   room <id> <min> <max>       floor area of a room of that purpose (data/rooms.txt ids), m2. Ours may run larger
+#                               (a 1 m grid and 1 m walls round everything): the check allows down to 3/4 of min and
+#                               up to twice max, and wants most rooms of a purpose inside that.
+#   corridor <min> <max>        clear width of a corridor, m (any place)
+#   corridor.<tag> <min> <max>  ...for families with that tag or id
+#   storey <pitch> <clearmin> <clearmax>   floor to floor, and clear under the ceiling, m
+#   footprint <family|tag> <w> <d>         the least footprint (x by z of what it occupies, m) a family's median
+#                               may have: the games' own places are the floor, ours may be bigger, never capped to theirs
+#   door <min> <max>            door widths, m (person's doors; vehicle ways 3 or more)
+
+# Rooms (planning practice: police, fire, school, hospital, prison, bunker and base, housing, shops)
+room lobby 20 120
+room security 10 30
+room airlock 6 16
+room decon 6 20
+room office 12 100
+room archive 20 80
+room lab 40 150
+room cold-store 10 50
+room containment 20 80
+room control 12 60
+room command 30 120
+room workshop 40 120
+room storage 10 80
+room armoury 12 36
+room quarters 9 36
+room mess 30 100
+room galley 10 40
+room washroom 6 24
+room chapel 30 150
+room ward 30 80
+room nurses 10 24
+room theatre 36 64
+room pharmacy 10 30
+room quarantine 14 80
+room mortuary 30 80
+room cryo-bay 40 160
+room monitor 10 30
+room hydroponics 40 200
+room plant 10 120
+room reactor 60 400
+room generator 15 120
+room cellblock 50 260
+room guardroom 10 30
+room solitary 6 12
+room evidence 15 40
+room ore-store 20 120
+room magazine 10 40
+room pump-hall 60 400
+room vault 10 80
+room warehouse 150 2500
+room loading-dock 50 400
+room boiler-house 50 300
+room parts-store 15 80
+room farm-kitchen 15 40
+room cellar 10 60
+room grow-room 30 200
+room market-hall 300 4000
+room shop 15 250
+
+# Circulation: corridors 1.8 to 2.4 m in civic buildings, wider in hospitals; Empyrion's capital interiors run 4 m
+corridor 2 4
+corridor.hospital 3 4
+door 1 2
+
+# Storeys: floor to floor 4 m (3.9 to 4.2 for offices, 4 m in Empyrion's bases and capital vessels), 3 to 4 m clear
+storey 4 3 4
+
+# Least footprints, m: 7 Days to Die's median lots by kind (whole lots, yard and all) and Empyrion's median base;
+# ours stand at least this large.
+footprint hospital 80 80
+footprint school 51 51
+footprint campus 51 51
+footprint old_farm 60 60
+footprint freeholder_farm 60 60
+footprint farmstead 60 60
+footprint factory 42 42
+footprint works 42 42
+footprint grand 52 50

@@ -269,8 +269,8 @@ public sealed class PlaceFauna
     }
 
     /// <summary>
-    /// Solid to a creature: the place's walls, floors and roofs and its whole-cell fittings; not air, doors,
-    /// glass, rails or lattices, nor the furniture and clutter that fill only part of a cell (those are its
+    /// Solid to a creature: the place's walls, floors and roofs, its glass and its whole-cell fittings; not air, doors,
+    /// rails or lattices, nor the furniture and clutter that fill only part of a cell (those are its
     /// <see cref="PlaceParts"/>, gone round or under as they really stand). Below ground, rock outside the rooms.
     /// </summary>
     public static bool Solid(PoiInstance inst, int x, int y, int z)
@@ -306,7 +306,9 @@ public sealed class PlaceFauna
         return !b.IsAir && Built(b);
     }
 
-    static bool Built(Block b) => BlockInfo.Collides(b.Type) && b.Type is not (BlockType.Door or BlockType.Pane or BlockType.Table or BlockType.Rail or BlockType.Lattice);
+    // Glass is as solid as the pane the player meets (a window's whole cell): a creature never walks through it or is
+    // set down in it, half in the wall (places agent). Doors are their leaves (DoorWays); the rest are parts.
+    static bool Built(Block b) => BlockInfo.Collides(b.Type) && b.Type is not (BlockType.Door or BlockType.Table or BlockType.Rail or BlockType.Lattice);
 
     /// <summary>
     /// Its sim, made once (worker-safe): the place's ground round it for anything that wanders

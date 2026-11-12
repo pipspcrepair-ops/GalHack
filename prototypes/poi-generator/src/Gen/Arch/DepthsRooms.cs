@@ -94,6 +94,13 @@ internal sealed partial class Depths
             float score = 0f;
             if (shortSide < def.WMin) score += (def.WMin - shortSide) * 2f;
             if (shortSide > def.WMax + 6) score += (shortSide - def.WMax - 6) * 0.5f;
+            // Its floor area as a room of its purpose has (a space's columns are 2 m square).
+            if (def.AMax > 0)
+            {
+                float a = s.Area * 4f;
+                if (a < def.AMin * 0.75f) score += (def.AMin - a) / def.AMin * 6f;
+                else if (a > def.AMax * 1.5f) score += (a - def.AMax) / def.AMax * 6f;
+            }
             if (def.Kind == ModuleKind.Hall && s.Area < 30) score += 8f;
             if (def.Kind != ModuleKind.Hall && s.Module == ModuleKind.Hall) score += 4f;
             int d = dist.GetValueOrDefault(s, 0);

@@ -123,6 +123,12 @@ public sealed partial class Building
         float s = 0f;
         int w = Math.Max(r.Width, r.Depth);
         s += w >= def.WMin && w <= def.WMax + 2 ? 2f : -0.5f * (w < def.WMin ? def.WMin - w : w - def.WMax);
+        // Its floor area as a room of its purpose has (data/rooms.txt "area", from the references): a cell block isn't a cupboard.
+        if (def.AMax > 0)
+        {
+            float a = r.Area;
+            s += a >= def.AMin * 0.75f && a <= def.AMax * 1.5f ? 2f : -3f * (a < def.AMin ? (def.AMin - a) / def.AMin : (a - def.AMax) / def.AMax);
+        }
         if (def.Kind == ModuleKind.Hall && r.Area >= 60) s += 1.5f;
         float toCore = (Math.Abs(r.Mid.x - (Cx + 2)) + Math.Abs(r.Mid.z - Zs)) / (W + D), toEntrance = r.Mid.x / W;
         switch (def.Prefer)
