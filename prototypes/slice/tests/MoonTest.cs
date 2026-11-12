@@ -235,7 +235,7 @@ public partial class MoonTest : Node
         Celestial home = orbit.Home;
         Vector3 side = home.Centre + (orbit.Moon.Centre - home.Centre).Normalized() * (home.ShellRadius + 2500f);
         foreach (Vector3 way in OrbitTest.RoundTheGlobe(orbit, v.Body.Position.ToGodot(), side))
-            foreach (int x in pilot.FlyTo(v, () => way, 200f, 120f)) yield return x;
+            foreach (int x in pilot.FlyTo(v, () => way, 300f, 120f, through: true)) yield return x;
     }
 
     /// <summary>Turns the vessel's top to a body's sky over the point under it, nose north, so Ctrl takes it straight down.</summary>

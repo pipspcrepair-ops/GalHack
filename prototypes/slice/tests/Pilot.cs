@@ -135,7 +135,8 @@ public sealed class Pilot
     /// thrust while far, let go in time for the assist to brake. Returns when stopped there or
     /// after the time limit.
     /// </summary>
-    public IEnumerable<int> FlyTo(Vessel v, Func<Vector3> target, float within, float seconds = 120f)
+    /// <param name="through">A waypoint: fly on through it at speed rather than stopping there.</param>
+    public IEnumerable<int> FlyTo(Vessel v, Func<Vector3> target, float within, float seconds = 120f, bool through = false)
     {
         int ticks = (int)(seconds * 60);
         float brake = MathF.Max(8f, v.Stats?.Accel(Direction.Back) ?? 8f);
@@ -144,9 +145,9 @@ public sealed class Pilot
             Vector3 p = v.Body.Position.ToGodot(), to = target() - p;
             float d = to.Length(), speed = v.Body.Velocity.Length();
             float closing = v.Body.Velocity.ToGodot().Dot(to.Normalized());
-            if (d < within && speed < 0.6f) break;
+            if (d < within && (through || speed < 0.6f)) break;
             float off = Aim(v, to);
-            float stopping = closing * closing / (2f * brake) + within * 0.5f + 4f;
+            float stopping = through ? 0f : closing * closing / (2f * brake) + within * 0.5f + 4f;
             bool thrust = off < 12f && d > stopping;
             C.Hold(Key.W, thrust);
             yield return 0;
