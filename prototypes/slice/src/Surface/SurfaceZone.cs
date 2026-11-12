@@ -32,6 +32,17 @@ public partial class SurfaceZone : Node3D
     /// <summary>What the new game forced onto this world's roll (depth, theme, fall, mid-collapse, eras), or null for nothing.</summary>
     public PoiGenerator.Gen.WorldForce Force;
 
+    /// <summary>
+    /// Another body of a world's system (its moon), made from <see cref="Body"/>'s own spec: it shares
+    /// that world's galaxy, star and system (its sky is the system seen from here), and its places
+    /// come later. Null: the start world, which owns the system.
+    /// </summary>
+    public PlanetWorld ShareFrom;
+    public Orbiter Body;
+
+    /// <summary>A moon or another body of the start world's system, not the start world itself.</summary>
+    public bool IsOtherBody => ShareFrom != null;
+
     /// <summary>Where streaming centres: the player, or the vessel they fly.</summary>
     public Func<Vector3> Focus = () => Vector3.Zero;
 
@@ -161,6 +172,19 @@ public partial class SurfaceZone : Node3D
         Infra = new PlanetSurface.Infra.InfraLayer { Name = "Infra" };
         AddChild(Infra);
         PlanetSpec spec = Spec;
+        if (ShareFrom != null)
+        {
+            // Another body of the system: no places yet (they come with the vacuum worlds' own families), its sky the system's.
+            PlanetWorld of = ShareFrom;
+            Orbiter body = Body;
+            _building = Task.Run(() =>
+            {
+                PlanetWorld w = PlanetWorld.Build(spec, null);
+                w.ShareSystem(of, body);
+                return w;
+            });
+            return;
+        }
         PlanetSurface.Poi.PoiCatalog catalog = PoiCatalog;
         // Every game starts on a start world: no faction holds ground there (the POI siting's rule).
         PlanetSurface.Poi.PoiSiting.StartWorld = true;
@@ -181,10 +205,18 @@ public partial class SurfaceZone : Node3D
 
     void Arrive()
     {
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        ArriveInner();
+        ArriveMs = watch.Elapsed.TotalMilliseconds;
+        Built?.Invoke();
+    }
+
+    void ArriveInner()
+    {
         if (_building.IsFaulted) throw new InvalidOperationException("the planet failed to build", _building.Exception);
         Planet = _building.Result;
         _building = null;
-        RenderingServer.GlobalShaderParameterSet("planet_size", new Vector2((float)Planet.Width, (float)Planet.Height));
+        if (!IsOtherBody) Use(); // another body's is set when you get there: the world you are on keeps its own till then
 
         Edits = new PlanetEdits(Planet.Terrain, Streamer, Physics);
         Edits.Edited += edit => Infra.GroundDug(edit.Removed); // an ore rock doesn't hang on over a hole
@@ -204,7 +236,35 @@ public partial class SurfaceZone : Node3D
         Underwater.SetWorld(Planet);
         Weather.SetWorld(Planet);
         Wildlife.SetWorld(Planet, landing);
-        Built?.Invoke();
+    }
+
+    /// <summary>Finishes arriving once the planet has been made, without waiting for it (a body made while you are elsewhere). True once it has.</summary>
+    public bool TryArrive()
+    {
+        if (Planet != null) return true;
+        if (_building == null || !_building.IsCompleted) return false;
+        Arrive();
+        return true;
+    }
+
+    /// <summary>The world, once made, whether or not it has arrived in the scene yet (any thread may read its maps).</summary>
+    public PlanetWorld Made => Planet ?? (_building is { IsCompletedSuccessfully: true } b ? b.Result : null);
+
+    /// <summary>How long arriving took on the main thread, ms (tests read it: it must not show as a hitch).</summary>
+    public double ArriveMs { get; private set; }
+
+    /// <summary>
+    /// This is the world you are on now: the shaders' world-wide settings are its own (its map's
+    /// size, and on a body with no air, no weather on the ground).
+    /// </summary>
+    public void Use()
+    {
+        if (Planet == null) return;
+        RenderingServer.GlobalShaderParameterSet("planet_size", new Vector2((float)Planet.Width, (float)Planet.Height));
+        if (Weather?.Sim != null) return;
+        RenderingServer.GlobalShaderParameterSet("weather_wind", Vector4.Zero);
+        RenderingServer.GlobalShaderParameterSet("weather_ground", Vector4.Zero);
+        RenderingServer.GlobalShaderParameterSet("weather_flash", Vector4.Zero);
     }
 
     /// <summary>

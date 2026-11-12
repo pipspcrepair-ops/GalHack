@@ -122,6 +122,12 @@
     // m/s and m/s^2. Let go and you drift on.
     "jetpackSpeed": 12,
     "jetpackSprint": 20,
-    "jetpackAccel": 8
+    "jetpackAccel": 8,
+    // A moon takes over as the frame you fly in this far past the top of its crossing band, m:
+    // from there it holds still and the world you left moves round it, as the system has them.
+    "takesOverWithin": 2500,
+    // The moon's own globe, painted from the map you land on, fades in over its far look
+    // (the sky's coarse paint of it) between these distances from its ground, m.
+    "moonGlobeFrom": [ 9000, 7000 ]
   }
 }

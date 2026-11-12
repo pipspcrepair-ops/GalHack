@@ -75,6 +75,10 @@ public sealed class OrbitRules
         public float JetpackSpeed { get; set; } = 12f;
         public float JetpackSprint { get; set; } = 20f;
         public float JetpackAccel { get; set; } = 8f;
+        /// <summary>How far past the top of a moon's crossing band it takes over as the frame you fly in, m.</summary>
+        public float TakesOverWithin { get; set; } = 2500f;
+        /// <summary>A moon's own globe fades in over its far look between these distances from its ground, m.</summary>
+        public float[] MoonGlobeFrom { get; set; } = { 9000f, 7000f };
     }
 
     static readonly JsonSerializerOptions Json = new()

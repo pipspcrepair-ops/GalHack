@@ -166,6 +166,21 @@ public sealed record SkySystem
         };
     }
 
+    /// <summary>
+    /// A body with no air under a system's star: nothing scatters the light, so the sky is black by
+    /// day as by night, the stars out in daylight, no haze, no clouds, no sunset glow.
+    /// </summary>
+    public static SkySystem Vacuum(SkySystem star)
+    {
+        var black = new Rgb(0.004f, 0.004f, 0.006f);
+        return star with
+        {
+            Air = AirKind.Thin, Density = 0.02f, Zenith = black, Horizon = black, Haze = black, Sunset = black,
+            NightZenith = black, StarsByDay = 1f, Nebula = star.Nebula,
+            Summary = $"{StarName(star.Star)} star · no air",
+        };
+    }
+
     static StarClass PickStar(PlanetSpec spec, ref Rng rng)
     {
         float r = rng.NextFloat();

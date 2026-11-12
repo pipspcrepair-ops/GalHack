@@ -28,7 +28,7 @@ public sealed partial class PlanetWorld
     public readonly PlanetTerrain Terrain;
     public readonly LandingSite Landing;
     public readonly IReadOnlyList<PoiSite> Pois;
-    public readonly SkySystem Sky;
+    public SkySystem Sky { get; private set; }
     public readonly WorldLook Look;
 
     /// <summary>Every plant on this world, rolled from its seed, climate, air and star: scatter, ruins, cover and weeds all read it.</summary>
