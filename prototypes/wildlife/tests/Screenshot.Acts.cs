@@ -16,7 +16,7 @@ public partial class Screenshot
 {
     delegate void ActShape(int who, ref Gesture g, HumanRig rig, int tick);
 
-    sealed record ActScene(string Name, ActShape Shape, string Prop = null, bool Husk = false, int Hold = 40);
+    sealed record ActScene(string Name, ActShape Shape, string Prop = null, bool Husk = false, int Hold = 40, BodyEnd End = BodyEnd.Fall);
 
     static ActScene Act(string name, BodyAct act, int style = 0) => new(name, (int who, ref Gesture g, HumanRig rig, int tick) =>
     {
@@ -62,13 +62,17 @@ public partial class Screenshot
         new("hit-chest", (int who, ref Gesture g, HumanRig rig, int tick) => { if (tick == 30) rig.Struck(rig.ChestPoint, rig.Facing * -1f + Vector3.Right * 0.3f * (who - 1.5f), 0.4f); }, Hold: 34),
         new("hit-heavy", (int who, ref Gesture g, HumanRig rig, int tick) => { if (tick == 26) rig.Struck(rig.ChestPoint + Vector3.Up * 0.1f, rig.Facing * -1f, 1f); }, Hold: 36),
         new("hit-head", (int who, ref Gesture g, HumanRig rig, int tick) => { if (tick == 30) rig.Struck(rig.HeadPoint, rig.Facing * -1f + rig.Side * 0.6f, 0.5f); }, Hold: 34),
-        new("dead", (int who, ref Gesture g, HumanRig rig, int tick) => { if (tick == 2) rig.Struck(rig.ChestPoint, rig.Facing * -1f + rig.Side * (who - 1.5f) * 0.5f, 1f); g.Down = 1f; }, Hold: 200),
+        new("dead", (int who, ref Gesture g, HumanRig rig, int tick) => { if (tick == 2) rig.Struck(rig.ChestPoint, rig.Facing * -1f + rig.Side * (who - 1.5f) * 0.5f, 1f); g.Dead = tick >= 2; g.Down = 1f; }, Hold: 200),
+        // Blown apart (people, a Husk, a machine: no blood, its own plates and works) and burned away.
+        new("gib", (int who, ref Gesture g, HumanRig rig, int tick) => { }, Hold: 200, End: BodyEnd.Gib),
+        new("ash", (int who, ref Gesture g, HumanRig rig, int tick) => { }, Hold: 60, End: BodyEnd.Vaporise),
     };
 
     List<ActScene> _actList;
     int _actIndex = -1, _actTick, _actShot;
     readonly List<(Creature c, HumanRig rig)> _actors = new();
-    List<Species> _actPeople, _actHusks;
+    List<Species> _actPeople, _actHusks, _actMixed;
+    Gibs _gibs;
     Vector3 _actOrigin, _actFwd, _actRight;
     bool _actSide, _actBusy;
 
@@ -94,6 +98,9 @@ public partial class Screenshot
             _actPeople.Add(s);
         }
         _actHusks = HuskHosts().Take(4).ToList();
+        _actMixed = new List<Species> { _actPeople[0], _actHusks[0], _actPeople[2] };
+        for (int n = 0; n < 40 && _actMixed.Count < 4; n++) if (Robots.Roll(new WorldConditions { Seed = rng.NextU64() }, n) is { Rig: RigKind.Humanoid } r) _actMixed.Add(r);
+        AddChild(_gibs = new Gibs());
         _actFwd = Turn(SunFlat(), 0.35f);
         _actRight = _actFwd.Cross(Vector3.Up).Normalized();
         _actOrigin = Ground(new Vector3(-20f, 0f, 30f));
@@ -116,7 +123,7 @@ public partial class Screenshot
         Main m = _main;
         m.Sim.Clear();
         _actors.Clear();
-        List<Species> who = scene.Husk ? _actHusks : _actPeople;
+        List<Species> who = scene.Husk ? _actHusks : scene.End != BodyEnd.Fall ? _actMixed : _actPeople;
         for (int i = 0; i < who.Count; i++)
         {
             Species s = who[i];
@@ -161,6 +168,12 @@ public partial class Screenshot
             var (c, rig) = _actors[i];
             var g = new Gesture { Feet = c.Position, Yaw = c.Yaw, Clock = clock + i * 0.37f, ActAt = c.Position + c.Forward * 2.5f + Vector3.Up * 1.2f };
             scene.Shape(i, ref g, rig, _actTick);
+            if (scene.End != BodyEnd.Fall && _actTick == 8 && !c.Removed)
+            {
+                if (scene.End == BodyEnd.Gib) _gibs.Burst(c.Species, rig.Layout, rig.Pose, c.Position + new Vector3(0.6f, -0.3f, 0.8f), 7f);
+                else _gibs.Ash(c.Position, Vector3.Up, 0.55f, c.Species.Seed);
+                c.Removed = true;
+            }
             if (g.Speed > 0f) g.Feet = c.Position + c.Forward * g.Walked;
             rig.Drive(g);
         }
