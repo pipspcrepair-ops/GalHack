@@ -101,7 +101,7 @@ public sealed partial class Vessel
     public void TakeChair(Int3 chair)
     {
         _chair = chair;
-        Seat = StructureBridge.CellCenter(Structure, chair);
+        if (Structure.TryGetBlock(chair, out Int3 anchor, out Block b)) SitAt(anchor, b);
     }
 
     Int3? _chair;

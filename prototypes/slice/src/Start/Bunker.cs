@@ -28,7 +28,7 @@ namespace Slice.Start;
 /// broken to live in as it is, but it is built of ordinary blocks: build onto it, make it part of
 /// your first base, or take it apart for materials (each block refunds its bill).
 ///
-/// It is a fixed small-grid structure (the slice's own blocks: steel walls, lights)
+/// It is a fixed structure on the 1 m grid (the slice's own blocks: steel walls, lights)
 /// set into rooms dug out of the terrain through the terrain's edit API before any ground
 /// streams in, so the floor, walls and stairs are always solid and the ground around them is
 /// whole. The site is searched near the generator's landing site on any seed: dry, above the
@@ -38,13 +38,19 @@ namespace Slice.Start;
 /// </summary>
 public sealed class Bunker
 {
-    // ---- The shape, in small-grid cells (0.5 m): x starboard, y up, -z out of the door ----------
+    // ---- The shape, in 1 m cells: x starboard, y up, -z out of the door ----------------------------
+    // Halved from the 0.5 m cells it was first built in, so the room keeps its size; the stairs are
+    // a 45° ramp, a slope a metre (it rises a cell per cell), walked up, never stepped over.
 
-    /// <summary>Room: interior x -6..6, y 1..6, z -4..4 (6.5 x 3 x 4.5 m); walls round it; the door in the -z wall.</summary>
-    const int RoomX = 7, RoomZ = 5, RoomTop = 7;
-    /// <summary>Stairwell interior x -1..1 (1.5 m), walls at ±2; each step 0.5 m up and 1 m deep.</summary>
-    const int StairHalf = 2;
-    const float Cell = 0.5f;
+    /// <summary>Room: interior x -3..3, y 1..3, z -2..2 (7 x 3 x 5 m); walls round it; the door in the -z wall.</summary>
+    const int RoomX = 4, RoomZ = 3, RoomTop = 4;
+    /// <summary>Stairwell interior x 0 (1 m), walls at ±1; each step a slope 1 m up and 1 m deep.</summary>
+    const int StairHalf = 1;
+    const float Cell = 1f;
+    /// <summary>The top of a floor block over its centre: half a cell.</summary>
+    const float Floor = Cell * 0.5f;
+    /// <summary>A roofed step's roof, in cells over the step.</summary>
+    const int RoofAbove = 3;
     /// <summary>How far the top tread stands over a whole metre (the ground dug level outside it lies on one).</summary>
     const float TreadAbove = 0.02f;
 
@@ -57,24 +63,24 @@ public sealed class Bunker
     public N.Vector3 Origin { get; private set; }
 
     /// <summary>Where the castaway stands in their cryopod (feet), facing out.</summary>
-    public Vector3 CryoStand => At(new Vector3(PodX, 0.25f, 1.75f));
+    public Vector3 CryoStand => At(new Vector3(PodX, Floor, 1.75f));
     /// <summary>Just outside the pod, in the room.</summary>
-    public Vector3 CryoFront => At(new Vector3(PodX, 0.25f, 0.6f));
-    public Vector3 RoomCentre => At(new Vector3(0f, 0.25f, 0f));
+    public Vector3 CryoFront => At(new Vector3(PodX, Floor, 0.6f));
+    public Vector3 RoomCentre => At(new Vector3(0f, Floor, 0f));
     /// <summary>The working pod's locker (the middle of its door) and where to stand to open it.</summary>
     public Vector3 Locker => At(MineLocker.Front);
     public Vector3 LockerFront => At(MineLocker.Stand);
-    public Vector3 Door => At(new Vector3(0f, 0.25f, -RoomZ * Cell));
+    public Vector3 Door => At(new Vector3(0f, Floor, -RoomZ * Cell));
     /// <summary>The top step, and the ground a few metres beyond it (outside).</summary>
-    public Vector3 StairTop => At(new Vector3(0f, 0.25f + Steps * Cell, StepZ(Steps) - 0.25f));
-    public Vector3 Outside => At(new Vector3(0f, 0.25f + Steps * Cell, StepZ(Steps) - 4f));
+    public Vector3 StairTop => At(new Vector3(0f, Floor + Steps * Cell, StepZ(Steps) - Floor));
+    public Vector3 Outside => At(new Vector3(0f, Floor + Steps * Cell, StepZ(Steps) - 4f));
     /// <summary>The walk from the cryopod to the open air, waypoint by waypoint (and back in, reversed).</summary>
     public IReadOnlyList<Vector3> WayOut
     {
         get
         {
-            var w = new List<Vector3> { CryoFront, At(new Vector3(0f, 0.25f, -1.2f)), Door, At(new Vector3(0f, 0.25f, -3.25f)) };
-            for (int k = 4; k < Steps; k += 4) w.Add(At(new Vector3(0f, 0.25f + k * Cell, StepZ(k) - 0.25f)));
+            var w = new List<Vector3> { CryoFront, At(new Vector3(0f, Floor, -1.2f)), Door, At(new Vector3(0f, Floor, StepZ(0))) };
+            for (int k = 4; k < Steps; k += 4) w.Add(At(new Vector3(0f, Floor + k * Cell, StepZ(k) - Floor)));
             w.Add(StairTop);
             w.Add(Outside);
             return w;
@@ -83,7 +89,7 @@ public sealed class Bunker
 
     /// <summary>Where a site's stairs come out: on the ground a few metres beyond the top step.</summary>
     public static Vector3 ExitOf(Site site) =>
-        (site.Origin + MathX.Rotate(MathX.Yaw(site.Heading), new N.Vector3(0f, 0.25f + site.Steps * Cell, StepZ(site.Steps) - 4f))).ToGodot();
+        (site.Origin + MathX.Rotate(MathX.Yaw(site.Heading), new N.Vector3(0f, Floor + site.Steps * Cell, StepZ(site.Steps) - 4f))).ToGodot();
 
     /// <summary>Whether a point (at any height) is over the bunker's chamber or stairwell, or within a margin of them.</summary>
     public bool Over(Vector3 p, float margin) => OverSite(new Site(Origin, Heading, Steps, Landmark, 0f, Poi), p, margin);
@@ -100,7 +106,7 @@ public sealed class Bunker
     /// </summary>
     public (Vector3 Centre, Vector3 Along, float HalfX, float HalfZ) Footprint()
     {
-        float z0 = StepZ(Steps) - 0.5f, z1 = RoomZ * Cell + 0.25f, hx = MathF.Max(RoomX * Cell, StairHalf * Cell) + 0.25f;
+        float z0 = StepZ(Steps) - 0.5f, z1 = RoomZ * Cell + Floor, hx = MathF.Max(RoomX * Cell, StairHalf * Cell) + Floor;
         Vector3 mid = At(new Vector3(0f, 0f, (z0 + z1) * 0.5f));
         return (mid, At(new Vector3(1f, 0f, (z0 + z1) * 0.5f)) - mid, hx, (z1 - z0) * 0.5f);
     }
@@ -109,8 +115,8 @@ public sealed class Bunker
     public bool Inside(Vector3 p, SurfaceZone zone)
     {
         N.Vector3 l = MathX.Unrotate(MathX.Yaw(Heading), p.ToNumerics() - Origin);
-        bool room = MathF.Abs(l.X) <= RoomX * Cell + 0.25f && MathF.Abs(l.Z) <= RoomZ * Cell + 0.25f && l.Y > -0.5f && l.Y < RoomTop * Cell + 0.25f;
-        bool stairs = MathF.Abs(l.X) <= StairHalf * Cell + 0.25f && l.Z < -RoomZ * Cell && l.Z > StepZ(Steps) - 0.5f && l.Y > -0.5f
+        bool room = MathF.Abs(l.X) <= RoomX * Cell + Floor && MathF.Abs(l.Z) <= RoomZ * Cell + Floor && l.Y > -0.5f && l.Y < RoomTop * Cell + Floor;
+        bool stairs = MathF.Abs(l.X) <= StairHalf * Cell + Floor && l.Z < -RoomZ * Cell && l.Z > StepZ(Steps) - 0.5f && l.Y > -0.5f
                       && p.Y < zone.GroundAt(p.X, p.Z).Y - 0.8f;
         return room || stairs;
     }
@@ -145,13 +151,13 @@ public sealed class Bunker
     const float PodX = 0.75f;
 
     /// <summary>The z of a step's middle (step 0 is the landing at the door).</summary>
-    static float StepZ(int k) => k == 0 ? -(RoomZ + 1) * Cell : -(RoomZ + 2) * Cell - (k - 1) * 2 * Cell - 0.25f;
+    static float StepZ(int k) => -(RoomZ + 1 + k) * Cell;
 
     /// <summary>A point in the bunker's own frame (metres; x starboard, y up from the floor block's centre, -z out of the door) in the world.</summary>
     public Vector3 At(Vector3 local) => (Origin + MathX.Rotate(MathX.Yaw(Heading), local.ToNumerics())).ToGodot();
 
     /// <summary>A point on the ground beyond the way out: this far on from it, and to starboard.</summary>
-    public Vector3 Ahead(float metres, float side = 0f) => At(new Vector3(side, 0.25f + Steps * Cell, StepZ(Steps) - 4f - metres));
+    public Vector3 Ahead(float metres, float side = 0f) => At(new Vector3(side, Floor + Steps * Cell, StepZ(Steps) - 4f - metres));
 
     // ---- Finding a site --------------------------------------------------------------------------
 
@@ -369,8 +375,8 @@ public sealed class Bunker
     static bool OverSite(Site site, Vector3 p, float margin)
     {
         N.Vector3 l = MathX.Unrotate(MathX.Yaw(site.Heading), p.ToNumerics() - site.Origin);
-        bool room = MathF.Abs(l.X) <= RoomX * Cell + 0.25f + margin && MathF.Abs(l.Z) <= RoomZ * Cell + 0.25f + margin;
-        bool stairs = MathF.Abs(l.X) <= StairHalf * Cell + 0.25f + margin && l.Z <= -RoomZ * Cell && l.Z >= StepZ(site.Steps) - 0.5f - margin;
+        bool room = MathF.Abs(l.X) <= RoomX * Cell + Floor + margin && MathF.Abs(l.Z) <= RoomZ * Cell + Floor + margin;
+        bool stairs = MathF.Abs(l.X) <= StairHalf * Cell + Floor + margin && l.Z <= -RoomZ * Cell && l.Z >= StepZ(site.Steps) - 0.5f - margin;
         return room || stairs;
     }
 
@@ -407,14 +413,14 @@ public sealed class Bunker
             hi = MathF.Max(hi, h);
         }
         if (hi - lo > uneven) return null;
-        float floor = lo - cover - RoomTop * Cell - 0.25f; // the floor block's centre
-        if (floor - 0.25f < aboveSea) return null; // above the sea
+        float floor = lo - cover - RoomTop * Cell - Floor; // the floor block's centre
+        if (floor - Floor < aboveSea) return null; // above the sea
         // Steps up until the tread is at the ground's height where it stands.
         for (int k = 1; k <= 30; k++)
         {
             Vector3 g = At(0f, StepZ(k));
             float ground = zone.GroundAt(g.X, g.Z).Y;
-            float tread = floor + 0.25f + k * Cell;
+            float tread = floor + Floor + k * Cell;
             if (ground < 1.5f) return null; // the stairs would come up in water
             if (tread < ground - 0.3f) continue;
             // The top tread a hair over a whole metre: the terrain's cells are whole metres, so
@@ -423,7 +429,7 @@ public sealed class Bunker
             foreach (float top in new[] { MathF.Round(tread) + TreadAbove, MathF.Round(tread) + (MathF.Round(tread) + TreadAbove > tread ? -1f : 1f) + TreadAbove })
             {
                 float shifted = floor + (top - tread);
-                if (shifted - 0.25f < aboveSea || top < ground - 0.3f) continue;
+                if (shifted - Floor < aboveSea || top < ground - 0.3f) continue;
                 // Out: the ground beyond the top is open, not a wall of earth, and not a drop.
                 bool level = true;
                 for (float d = 1f; d <= 4f && level; d += 1f)
@@ -485,7 +491,7 @@ public sealed class Bunker
         b.AppendLine("schema galhack.blueprint");
         b.AppendLine("version 1");
         b.AppendLine("name \"Cryo Bunker\"");
-        b.AppendLine("grid small");
+        b.AppendLine("grid 1m");
         b.AppendLine("mode capital");
         b.AppendLine("gravity off");
         b.AppendLine("paint wall base=5c677d grime=3");
@@ -505,29 +511,23 @@ public sealed class Bunker
         b.AppendLine($"block -{RoomX}..{RoomX} 1..{RoomTop - 1} {RoomZ} steel paint=band");
         b.AppendLine($"block -{RoomX}..-{StairHalf} 1..{RoomTop - 1} -{RoomZ} steel paint=wall");
         b.AppendLine($"block {StairHalf}..{RoomX} 1..{RoomTop - 1} -{RoomZ} steel paint=wall");
-        b.AppendLine($"block -{StairHalf - 1}..{StairHalf - 1} 6 -{RoomZ} steel paint=hazard");
+        b.AppendLine($"block -{StairHalf - 1}..{StairHalf - 1} {RoomTop - 1} -{RoomZ} steel paint=hazard");
         b.AppendLine($"block -{RoomX}..{RoomX} {RoomTop} -{RoomZ}..{RoomZ} steel paint=wall");
 
-        // The stairwell: a landing at the door, then a step up each metre. Under the open sky its
-        // roof has fallen in; below ground it is roofed over.
+        // The stairwell: a landing at the door, then a slope up each metre, the ground outside meeting
+        // the top one's high edge. Under the open sky its roof has fallen in; below ground it is roofed over.
         for (int k = 0; k <= steps; k++)
         {
-            int z0 = k == 0 ? -(RoomZ + 1) : -(RoomZ + 2) - (k - 1) * 2, z1 = k == 0 ? z0 : z0 - 1;
-            string zs = z0 == z1 ? $"{z0}" : $"{z1}..{z0}";
-            b.AppendLine($"block -{StairHalf}..{StairHalf} 0..{k} {zs} steel paint={(k % 2 == 0 ? "floor" : "wall")}");
+            int z = -(RoomZ + 1 + k);
+            string paint = k % 2 == 0 ? "floor" : "wall";
+            b.AppendLine(k == 0 ? $"block -{StairHalf}..{StairHalf} 0 {z} steel paint={paint}" : $"block -{StairHalf}..{StairHalf} 0..{k - 1} {z} steel paint={paint}");
+            if (k >= 1) b.AppendLine($"block -{StairHalf - 1}..{StairHalf - 1} {k} {z} steel slope rot=+y+z paint={paint}");
             bool roofed = buried(k);
-            int wallTop = roofed ? k + 5 : k + 2;
-            b.AppendLine($"block -{StairHalf} {k + 1}..{wallTop} {zs} steel paint=wall");
-            b.AppendLine($"block {StairHalf} {k + 1}..{wallTop} {zs} steel paint=wall");
-            if (roofed) b.AppendLine($"block -{StairHalf}..{StairHalf} {k + 6} {zs} steel paint=wall");
-            // Each riser is a short ramp, on the last half metre of the step below: walked up, not
-            // stepped over (a half-metre riser is at the edge of what a walker steps up).
-            if (k >= 1) b.AppendLine($"block -{StairHalf - 1}..{StairHalf - 1} {k} {z0 + 1} steel slope rot=+y+z paint={(k % 2 == 0 ? "wall" : "floor")}");
+            int wallTop = roofed ? k + RoofAbove - 1 : k + 1;
+            b.AppendLine($"block -{StairHalf} {(k == 0 ? 1 : k)}..{wallTop} {z} steel paint=wall");
+            b.AppendLine($"block {StairHalf} {(k == 0 ? 1 : k)}..{wallTop} {z} steel paint=wall");
+            if (roofed) b.AppendLine($"block -{StairHalf}..{StairHalf} {k + RoofAbove} {z} steel paint=wall");
         }
-        // A ramp off the top step's front edge, sunk into the ground outside: the way out meets
-        // the ground on a slope you walk up, never a riser to step over.
-        int ramp = -(RoomZ + 2) - (steps - 1) * 2 - 2;
-        b.AppendLine($"block -{StairHalf}..{StairHalf} {steps} {ramp} steel slope paint=floor");
         return b.ToString();
     }
 
@@ -562,7 +562,7 @@ public sealed class Bunker
     }
 
     /// <summary>A step is roofed while there is earth over its roof; nearer the top its roof has fallen in.</summary>
-    static bool Buried(SurfaceZone zone, Site site, int k) => site.Origin.Y + (k + 6) * Cell + 0.25f + 0.6f < GroundOver(zone, site, k) - 0.5f;
+    static bool Buried(SurfaceZone zone, Site site, int k) => site.Origin.Y + (k + RoofAbove) * Cell + Floor + 0.6f < GroundOver(zone, site, k) - 0.5f;
 
     /// <summary>
     /// The terrain cells the bunker takes: the structure's whole volume (walls too) and a margin
@@ -589,25 +589,25 @@ public sealed class Bunker
         // A hair round the structure only: the walls (half a metre thick) take any ground that
         // rounds into them, and no slot is left beside them to fall into.
         const float m = 0.05f;
-        float floorY = site.Origin.Y, outer = StairHalf * Cell + 0.25f;
-        Box(new N.Vector3(-RoomX * Cell - 0.25f - m, -0.25f - m, -RoomZ * Cell - 0.25f - m), new N.Vector3(RoomX * Cell + 0.25f + m, RoomTop * Cell + 0.25f + m, RoomZ * Cell + 0.25f + m));
+        float floorY = site.Origin.Y, outer = StairHalf * Cell + Floor;
+        Box(new N.Vector3(-RoomX * Cell - Floor - m, -Floor - m, -RoomZ * Cell - Floor - m), new N.Vector3(RoomX * Cell + Floor + m, RoomTop * Cell + Floor + m, RoomZ * Cell + Floor + m));
         for (int k = 0; k <= site.Steps; k++)
         {
-            float zc = StepZ(k), half = k == 0 ? 0.25f : 0.5f;
+            float zc = StepZ(k), half = Floor;
             bool roofed = Buried(zone, site, k);
-            float top = roofed ? (k + 6) * Cell + 0.25f : (k + 2) * Cell + 0.25f;
+            float top = roofed ? (k + RoofAbove) * Cell + Floor : (k + 1) * Cell + Floor;
             // The top step's front meets the ground outside: no margin there, or the cells just
             // in front of its riser would be dug out to the floor and leave a slot to catch a foot.
             // The top step: dug only above its tread. Under it the ground can stay (the step is solid
             // to the floor), and cells dug there that reach past its riser left a slot in front of it.
             bool last = k == site.Steps;
-            float bottom = last ? k * Cell + 0.25f : -0.25f - m;
+            float bottom = last ? k * Cell + Floor : -Floor - m;
             Box(new N.Vector3(-outer - m, bottom, zc - half - (last ? 0f : m)), new N.Vector3(outer + m, top + m, zc + half + m));
             // Under the open sky, the way up: clear above the step, the walls' width, to the sky.
-            if (!roofed) Box(new N.Vector3(-outer, k * Cell + 0.25f, zc - half), new N.Vector3(outer, GroundOver(zone, site, k) - floorY + 3f, zc + half));
+            if (!roofed) Box(new N.Vector3(-outer, k * Cell + Floor, zc - half), new N.Vector3(outer, GroundOver(zone, site, k) - floorY + 3f, zc + half));
         }
         // The way out: clear above the top step's height for a few metres beyond it.
-        float tread = site.Steps * Cell + 0.25f;
+        float tread = site.Steps * Cell + Floor;
         Box(new N.Vector3(-outer, tread, StepZ(site.Steps) - 5f), new N.Vector3(outer, GroundOver(zone, site, site.Steps) - floorY + 3f, StepZ(site.Steps)));
         return cells;
     }
@@ -649,12 +649,12 @@ public sealed class Bunker
     {
         Node3D at = Ruin.Node;
         // Four pods along the back wall, numbered 1 to 4 from port; the castaway's is the third.
-        float[] pods = { -2.25f, -0.75f, PodX, 2.25f };
+        float[] pods = { -2.25f, -0.75f, PodX, 2.25f }; // metres across the room, whatever its cells
         for (int slot = 0; slot < pods.Length; slot++)
         {
             var pod = new CryoPod { Name = pods[slot] == PodX ? "YourCryopod" : "Cryopod", Alive = pods[slot] == PodX, Slot = slot };
             at.AddChild(pod);
-            pod.Position = new Vector3(pods[slot], 0.25f, 1.8f);
+            pod.Position = new Vector3(pods[slot], Floor, 1.8f);
             Pods.Add(pod);
             if (pod.Alive) Mine = pod;
             else Dead.Add(pod);
@@ -666,12 +666,12 @@ public sealed class Bunker
             var locker = new BunkerLocker { Name = $"Locker {slot + 1}", Slot = slot, Port = port };
             at.AddChild(locker);
             float side = port ? -1f : 1f, z = slot % 2 == 0 ? -0.75f : 0.25f;
-            float wall = RoomX * Cell - 0.25f; // the inner face of the side wall
-            locker.Position = new Vector3(side * (wall - BunkerLocker.Depth / 2f - 0.01f), 0.25f + 0.01f, z);
+            float wall = RoomX * Cell - Floor; // the inner face of the side wall
+            locker.Position = new Vector3(side * (wall - BunkerLocker.Depth / 2f - 0.01f), Floor + 0.01f, z);
             locker.RotationDegrees = new Vector3(0f, port ? -90f : 90f, 0f);
             float front = wall - BunkerLocker.Depth - 0.04f;
-            locker.Front = new Vector3(side * front, 0.25f + 1f, z);
-            locker.Stand = new Vector3(side * (front - 1f), 0.25f, z);
+            locker.Front = new Vector3(side * front, Floor + 1f, z);
+            locker.Stand = new Vector3(side * (front - 1f), Floor, z);
             Lockers.Add(locker);
         }
         MineLocker = Lockers[Mine.Slot];

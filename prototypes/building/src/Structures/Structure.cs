@@ -156,6 +156,10 @@ public sealed class Structure
     /// <summary>Every cell a block at <paramref name="anchor"/> fills, anchor first.</summary>
     public IEnumerable<Int3> CellsOf(Int3 anchor, in Block b) => Footprint.Cells(anchor, Catalogue.Types[b.Type], b.Rot);
 
+    /// <summary>A point given in a block's -0.5..0.5 box (a chair's seat or eye), in the structure's cells.</summary>
+    public System.Numerics.Vector3 PointOf(Int3 anchor, in Block b, System.Numerics.Vector3 box) =>
+        anchor.ToVector3() + Orientations.Matrix(b.Rot).Apply(Footprint.PartPoint(Catalogue.Types[b.Type], box));
+
     /// <summary>The middle of a block in cell units: its anchor's centre, or the middle of all its cells.</summary>
     public System.Numerics.Vector3 CentreOf(Int3 anchor, in Block b) =>
         anchor.ToVector3() + Footprint.Centre(Catalogue.Types[b.Type], b.Rot);

@@ -142,8 +142,14 @@ public sealed partial class Vessel
     public HandlingStats Stats => Flight?.Stats;
     public string Name => Structure.Name;
 
-    /// <summary>The command chair (structure frame, metres), or null if it has none.</summary>
+    /// <summary>The chair in use: where its sitter rests (structure frame, metres), or null if it has none.</summary>
     public N.Vector3? Seat { get; private set; }
+
+    /// <summary>The seated eye in that chair (structure frame, metres), from the chair's data.</summary>
+    public N.Vector3 Eye { get; private set; }
+
+    /// <summary>How far the chair reaches out from its seat across the floor, m: getting up puts you past it.</summary>
+    public float ChairReach { get; private set; }
 
     string _legsKey = "";
 
@@ -451,19 +457,27 @@ public sealed partial class Vessel
         return -N.Vector3.UnitY;
     }
 
+    void SitAt(Int3 anchor, in Block chair)
+    {
+        Seat = StructureBridge.SeatPoint(Structure, anchor, chair);
+        Eye = StructureBridge.EyePoint(Structure, anchor, chair);
+        Int3 size = Footprint.WorldSize(Structure.TypeOf(chair), chair.Rot);
+        ChairReach = MathF.Max(size.X, size.Z) * Structure.Grid.CellSize;
+    }
+
     string LegsKey() => Spec == null ? "" : string.Join(";", Spec.Legs.Select(l => l.Hip.ToString())) + "|" + string.Join(";", Spec.HoverPoints);
 
     void RefreshSeat()
     {
-        if (_chair is Int3 taken && Structure.TryGet(taken, out Block held) && IsChair(Structure.TypeOf(held)))
+        if (_chair is Int3 taken && Structure.TryGetBlock(taken, out Int3 anchor, out Block held) && IsChair(Structure.TypeOf(held)))
         {
-            Seat = StructureBridge.BlockCenter(Structure, taken, held);
+            SitAt(anchor, held);
             return;
         }
         foreach (var (p, b) in Structure.Blocks())
             if (IsChair(Structure.TypeOf(b)))
             {
-                Seat = StructureBridge.BlockCenter(Structure, p, b);
+                SitAt(p, b);
                 return;
             }
         if (Seat != null) SeatLost?.Invoke();

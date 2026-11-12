@@ -211,13 +211,17 @@ public static class StructureBridge
         _ => StructureClass.Small,
     };
 
-    /// <summary>Where the command chair is (structure frame, metres), or the origin if there is none.</summary>
+    /// <summary>Where the first command chair's seat is (structure frame, metres), or the origin if there is none.</summary>
     public static N.Vector3 SeatOf(Structure s)
     {
         foreach (var (p, b) in s.Blocks())
-            if (s.TypeOf(b).IsCommandChair) return BlockCenter(s, p, b);
+            if (s.TypeOf(b).IsCommandChair) return SeatPoint(s, p, b);
         return N.Vector3.Zero;
     }
+
+    /// <summary>Where a chair's sitter rests and where their eyes are (structure frame, metres), from the chair's data.</summary>
+    public static N.Vector3 SeatPoint(Structure s, Int3 anchor, in Block b) => s.PointOf(anchor, b, s.TypeOf(b).Seat) * s.Grid.CellSize;
+    public static N.Vector3 EyePoint(Structure s, Int3 anchor, in Block b) => s.PointOf(anchor, b, s.TypeOf(b).Eye) * s.Grid.CellSize;
 }
 
 /// <summary>
@@ -306,7 +310,11 @@ public sealed class StructureVessel : IVesselStructure
             else if (t.Function == "gyro") _gyros.Add(new GyroSpec(t.Id, at, t.Torque, 0f));
             else if (t.Function == "hover" && hovering) _hover.Add(new HoverEngineSpec(t.Id, underside, t.Lift, t.RideHeight, 0f));
             else if (t.Function == "gear") _gear.Add(new GearSpec(t.Id, underside, t.LegLength, 0f));
-            else if (t.IsCommandChair) _cockpit = at + GVector3.Up * 0.8f;
+            else if (t.IsCommandChair)
+            {
+                N.Vector3 eye = StructureBridge.EyePoint(_s, p, b);
+                _cockpit = new GVector3(eye.X, eye.Y, eye.Z);
+            }
         }
 
         // A structure's class is its core's mode, never the blocks on it.
