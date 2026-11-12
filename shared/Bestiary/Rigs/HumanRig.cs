@@ -441,7 +441,7 @@ public sealed partial class HumanRig : Rig
             if (g.Work > 0f)
             {
                 float beat = MathF.Sin(g.Clock * 1.7f);
-                Vector3 work = chest + ahead * (0.34f + 0.1f * beat) * f.Height / 1.72f + down * (0.34f - 0.22f * beat) + torso.X * side * 0.1f;
+                Vector3 work = chest + ahead * ((0.34f + 0.1f * beat) * f.Height / 1.72f + 1.5f * f.ChestD * (f.Padding - 1f)) + down * (0.34f - 0.22f * beat) + torso.X * side * 0.1f;
                 hand = hand.Lerp(work, g.Work);
             }
             if (f.Prop == "umbrella" && i == 1)
@@ -507,7 +507,7 @@ public sealed partial class HumanRig : Rig
             // Reaching out to a weapon, the shoulder comes forward as far as it must (a little).
             float need = MathF.Max(0f, shoulder.DistanceTo(hand) - arm * 0.98f);
             if (on > 0f && need > 0f) shoulder += (hand - shoulder).Normalized() * MathF.Min(need, Reach * HumanBody.ArmScale(f)) * on;
-            (Vector3 elbow, Vector3 wrist) = Arm(Pose[_body], shoulder, hand, pole, upperArm, forearm, F.Out, on >= 0.5f);
+            (Vector3 elbow, Vector3 wrist) = Arm(Pose[_body], shoulder, hand, pole, upperArm, forearm, F.Out, ahead, on >= 0.5f);
             Pose[_armU[i]] = Geo.Segment(shoulder, elbow, torso.X);
             Pose[_armL[i]] = Geo.Segment(elbow, wrist, torso.X);
             _wrist[i] = wrist;

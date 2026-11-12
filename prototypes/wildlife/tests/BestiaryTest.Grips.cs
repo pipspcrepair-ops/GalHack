@@ -80,7 +80,7 @@ public partial class BestiaryTest
                                 if ((side == 1 ? rig.GripRightOn : rig.GripLeftOn) > 0f) continue;
                                 Vector3 knee = rig.Pose[rig.Layout.Pieces.FindIndex(p => p.Name == $"leg{side}l")].Origin;
                                 float off = rig.WristOf(side).DistanceTo(knee);
-                                if (off > 0.3f * f.Height / 1.72f) { kneels++; kneelWhat = what + $" ({off:F2} m from the knee)"; Tally("knee " + key); }
+                                if (off > 0.3f * f.Height / 1.72f + 0.4f * MathF.Max(0f, f.Padding - 1f)) // (a thick coat keeps the arm out round its front) { kneels++; kneelWhat = what + $" ({off:F2} m from the knee)"; Tally("knee " + key); }
                             }
                         // A long gun's second hand is on its fore-end whenever it isn't busy.
                         if (kind == HoldKind.LongGun && mode != 2)

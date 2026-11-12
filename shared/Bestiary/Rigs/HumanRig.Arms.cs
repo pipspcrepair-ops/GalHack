@@ -109,7 +109,7 @@ public sealed partial class HumanRig
     /// (as a real one does) and, failing that, takes the hand further out to the side. A hand on a
     /// weapon stays on its grip (the hold keeps the weapon itself clear of the body).
     /// </summary>
-    (Vector3 elbow, Vector3 wrist) Arm(Transform3D body, Vector3 shoulder, Vector3 hand, Vector3 pole, float upper, float fore, Vector3 outward, bool held)
+    (Vector3 elbow, Vector3 wrist) Arm(Transform3D body, Vector3 shoulder, Vector3 hand, Vector3 pole, float upper, float fore, Vector3 outward, Vector3 ahead, bool held)
     {
         if (held) return LeggedRig.SolveIK(shoulder, hand, upper, fore, pole);
         if (Shell != null)
@@ -125,7 +125,7 @@ public sealed partial class HumanRig
             if (Sunk(body, shoulder, e, w, 0.55f) <= 0f) break;
             // The elbow out to the side and down, then the hand further out and forward.
             pole = (pole.Normalized() + outward * 0.9f + Vector3.Down * 0.15f).Normalized();
-            if (k >= 1) hand += outward * 0.025f;
+            if (k >= 1) hand += (outward + ahead) * 0.018f;
             (e, w) = LeggedRig.SolveIK(shoulder, hand, upper, fore, pole);
         }
         return (e, w);

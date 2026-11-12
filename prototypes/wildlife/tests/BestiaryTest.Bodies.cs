@@ -213,7 +213,7 @@ public partial class BestiaryTest
             float armL = a2.Figure.UpperArmOf(0) + a2.Figure.ForearmOf(0);
             Vector3 line = (lwr - rwr).Normalized();
             Vector3 off = (rel - rwr) - line * (rel - rwr).Dot(line);
-            if (lsh.DistanceTo(lwr) < armL * 0.93f || (lwr - lsh).Normalized().Dot(Vector3.Forward) < 0.8f || off.Length() > 0.18f) bowOff++; // (a draw's elbow rides a little above the arrow)
+            if (lsh.DistanceTo(lwr) < armL * 0.93f || (lwr - lsh).Normalized().Dot(Vector3.Forward) < 0.8f || off.Length() > 0.18f + coat) bowOff++; // (a draw's elbow rides a little above the arrow)
         }
         Check(cowerUp == 0 && grieveUp == 0, $"cowering and grieving keep the elbows down ({cowerUp}, {grieveUp} elbows up, {bodies} people)");
         Check(beckonOut == 0, $"a beckon keeps the elbow down by the side ({beckonOut} out)");
