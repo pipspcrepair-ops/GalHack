@@ -1036,7 +1036,9 @@ public sealed class WeatherSim
         {
             if (Land == null) return;
             Ground d = GroundAt(t.Position);
-            if (Regions.DustGround(Data.Regions, d) < 0.3f || CellCover(t.Position) > 0.05f || Current.CloudCover > Data.Regions.Dust.DevilCloud * 1.3f) t.Dissipate();
+            if (Regions.DustGround(Data.Regions, d) < 0.3f || CellCover(t.Position) > 0.05f || Current.CloudCover > Data.Regions.Dust.DevilCloud * 1.3f
+                || !Regions.Stands(Data.Regions, Land, t.Position)) t.Dissipate();
+            else Deflect(t);
             return;
         }
         if (t.Kind != TornadoKind.Tornado) return;
@@ -1053,8 +1055,24 @@ public sealed class WeatherSim
         if (Land == null) return;
         RegionRules r = Data.Regions;
         Ground g = GroundAt(t.Position);
-        if (Regions.Barred(r, g)) t.Dissipate();
+        if (Regions.Barred(r, g) || !Regions.Stands(r, Land, t.Position)) t.Dissipate();
+        else if (Deflect(t)) { }
         else if (g.Forest >= r.Tornado.DenseForest && _hazardRng.NextFloat() < 0.25f * dt) t.Dissipate();
+    }
+
+    /// <summary>
+    /// Ground rising sharply ahead of a moving whirl (a mesa wall, a steep hill) turns it aside to the lower
+    /// way, or breaks it up if both are as steep. Returns whether it was turned or broken.
+    /// </summary>
+    bool Deflect(Tornado t)
+    {
+        if (Land == null) return false;
+        RegionRules r = Data.Regions;
+        if (Regions.RiseAhead(r, Land, t.Position, t.Heading) <= r.AheadRise) return false;
+        float left = Regions.RiseAhead(r, Land, t.Position, t.Heading - 0.9f), right = Regions.RiseAhead(r, Land, t.Position, t.Heading + 0.9f);
+        if (MathF.Min(left, right) > r.AheadRise * 0.6f || t.Homing) t.Dissipate();
+        else t.SetHeading(t.Heading + (left < right ? -0.9f : 0.9f));
+        return true;
     }
 
     // ---- Dust devils --------------------------------------------------------------------
@@ -1077,7 +1095,7 @@ public sealed class WeatherSim
             Vector3 p = observer + RandomOffset(900f);
             if (Flat(p - observer).Length() < 120f || CellCover(p) > 0.02f || (OpenWater?.Invoke(p.X, p.Z) ?? false)) continue;
             Ground g = GroundAt(p);
-            if (Regions.DustGround(Data.Regions, g) < 0.6f || g.Warmth < rules.DevilWarmth) continue;
+            if (Regions.DustGround(Data.Regions, g) < 0.6f || g.Warmth < rules.DevilWarmth || !Regions.Stands(Data.Regions, Land, p)) continue;
             SpawnDevil(p);
             return;
         }
