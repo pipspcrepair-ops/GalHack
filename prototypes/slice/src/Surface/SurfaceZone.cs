@@ -206,12 +206,13 @@ public partial class SurfaceZone : Node3D
     void Arrive()
     {
         var watch = System.Diagnostics.Stopwatch.StartNew();
-        ArriveInner();
+        foreach (string _ in Arriving()) { }
         ArriveMs = watch.Elapsed.TotalMilliseconds;
         Built?.Invoke();
     }
 
-    void ArriveInner()
+    /// <summary>Setting the world up on the main thread, a piece at a time (each piece's name as it is done).</summary>
+    IEnumerable<string> Arriving()
     {
         if (_building.IsFaulted) throw new InvalidOperationException("the planet failed to build", _building.Exception);
         Planet = _building.Result;
@@ -226,31 +227,60 @@ public partial class SurfaceZone : Node3D
         Physics.StuckFields.Add(Ground);
         Water = new PlanetWater(Planet);
         Physics.Water = Water;
-
+        yield return "ground";
         Pois.Build(Planet);
+        yield return "places";
         Infra.Build(Planet);
+        yield return "infrastructure";
         Vector3 landing = Start = PickStart?.Invoke() ?? LandingSite;
         Streamer.SetWorld(Planet, landing, _riverMaterial = WaterMaterial(sea: false));
+        yield return "terrain";
         Sea.MaterialOverride = _seaMaterial = WaterMaterial(sea: true);
+        yield return "sea";
         Sky.SetWorld(Planet);
+        yield return "sky";
         Underwater.SetWorld(Planet);
         Weather.SetWorld(Planet);
+        yield return "weather";
         Wildlife.SetWorld(Planet, landing);
+        yield return "wildlife";
     }
 
-    /// <summary>Finishes arriving once the planet has been made, without waiting for it (a body made while you are elsewhere). True once it has.</summary>
+    IEnumerator<string> _arriving;
+
+    /// <summary>Set up, ready to be the zone you are in.</summary>
+    public bool Arrived => Planet != null && _arriving == null;
+
+    /// <summary>
+    /// For a body made while you are elsewhere: once its world is made, one piece of setting it up
+    /// on the main thread per call, so none of it shows as a hitch. True once it has all arrived.
+    /// </summary>
     public bool TryArrive()
     {
-        if (Planet != null) return true;
-        if (_building == null || !_building.IsCompleted) return false;
-        Arrive();
+        if (Arrived) return true;
+        if (_arriving == null)
+        {
+            if (_building == null || !_building.IsCompleted) return false;
+            _arriving = Arriving().GetEnumerator();
+        }
+        long started = System.Diagnostics.Stopwatch.GetTimestamp();
+        bool more = _arriving.MoveNext();
+        double ms = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+        ArriveMs = Math.Max(ArriveMs, ms);
+        if (more) ArriveSteps += $"{_arriving.Current} {ms:F0} ms, ";
+        if (more) return false;
+        _arriving = null;
+        Built?.Invoke();
         return true;
     }
+
+    /// <summary>What each piece of a stepped arrival took (tests print it).</summary>
+    public string ArriveSteps { get; private set; } = "";
 
     /// <summary>The world, once made, whether or not it has arrived in the scene yet (any thread may read its maps).</summary>
     public PlanetWorld Made => Planet ?? (_building is { IsCompletedSuccessfully: true } b ? b.Result : null);
 
-    /// <summary>How long arriving took on the main thread, ms (tests read it: it must not show as a hitch).</summary>
+    /// <summary>How long arriving took on the main thread, ms: all of it at once, or the longest piece of a stepped arrival (tests read it: it must not show as a hitch).</summary>
     public double ArriveMs { get; private set; }
 
     /// <summary>
@@ -417,7 +447,7 @@ public partial class SurfaceZone : Node3D
             if (!_building.IsCompleted) return;
             Arrive();
         }
-        if (Planet == null) return;
+        if (!Arrived) return;
         Vector3 focus = Focus();
         Streamer.SetFocus(focus);
         float latitude = (float)(Mathx.Wrap(focus.Z, Planet.Height) / Planet.Height * 2.0 - 1.0);

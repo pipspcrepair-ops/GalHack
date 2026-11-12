@@ -72,7 +72,7 @@ public partial class Spaceflight
         {
             zone.Ground.Ceiling = ceiling;
             Mute(zone);
-            GD.Print($"the moon is made: {moon.Spec}, gravity {zone.Physics.Zone.Strength:F1} m/s², arrived in {zone.ArriveMs:F0} ms");
+            GD.Print($"the moon is made: {moon.Spec}, gravity {zone.Physics.Zone.Strength:F1} m/s²");
         };
         Orbit.AddMoon(moon, zone, ceiling);
         _surfaceShownOf[zone] = false;
@@ -90,8 +90,8 @@ public partial class Spaceflight
     void MoonComing()
     {
         SurfaceZone m = MoonSurface;
-        if (m == null || m.Planet != null || !Game.InOrbit || Here != Orbit.Moon) return;
-        if (m.TryArrive()) GD.Print($"[the moon's surface arrived: {m.ArriveMs:F0} ms]");
+        if (m == null || m.Arrived || !Game.InOrbit || Here != Orbit.Moon) return;
+        if (m.TryArrive()) GD.Print($"[the moon's surface arrived, a piece a frame: {m.ArriveSteps}]");
     }
 
     /// <summary>

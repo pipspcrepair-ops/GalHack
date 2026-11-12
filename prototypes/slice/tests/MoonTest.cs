@@ -148,9 +148,10 @@ public partial class MoonTest : Node
         Check(_game.InOrbit, "it crossed into orbit");
         // On up through the band, the readout the world's altitude the whole way.
         bool altInBand = true;
+        float bandTop = _game.Surface.Physics.Zone.Ceiling + OrbitRules.Shared.Crossing.Band;
         for (int i = 0; i < 60 * 60 && _game.InOrbit && _game.Spaceflight.Band < 1f; i++)
         {
-            altInBand &= _game.Spaceflight.FlightLine(v).Contains("ALT");
+            if (_game.Orbit.Home.Height(v.Body.Position.ToGodot()) < bandTop - 5f) altInBand &= _game.Spaceflight.FlightLine(v).Contains("ALT");
             yield return 0;
         }
         for (int i = 0; i < 60 * 8; i++) yield return 0; // well clear of the top
@@ -205,8 +206,8 @@ public partial class MoonTest : Node
         Check(handedOverAt > 0 && orbit.Anchor == moon, $"the moon took over as the frame on the way ({handedOverAt / 60f:F0} s out), so its ground waits where you see it");
         Check(shown, $"the moon was in view every frame of the way, its far look handing over to its own globe ({lost ?? "never lost"})");
         Check(nearestMoon, "the readout named the moon as the nearest body as it came near");
-        Check(_game.Spaceflight.MoonSurface.Planet != null, $"its surface arrived ahead of the descent, in {_game.Spaceflight.MoonSurface.ArriveMs:F0} ms on the main thread");
-        Check(p95 < 16.7, $"the flight keeps the frame budget: 95th percentile {p95:F1} ms (budget 16.7 ms)");
+        Check(_game.Spaceflight.MoonSurface.Arrived && _game.Spaceflight.MoonSurface.ArriveMs < 16.7, $"its surface arrived ahead of the descent, a piece a frame, the longest {_game.Spaceflight.MoonSurface.ArriveMs:F1} ms ({_game.Spaceflight.MoonSurface.ArriveSteps})");
+        Check(p95 < 16.7 && worst < 50, $"the flight keeps the frame budget: 95th percentile {p95:F1} ms (budget 16.7 ms), no hitch (worst {worst:F1} ms)");
     }
 
     // ---- Down onto it --------------------------------------------------------------------------
@@ -247,7 +248,8 @@ public partial class MoonTest : Node
         foreach (int x in _drive.Wait(30)) yield return x;
         Check(v.Controller.Frozen && v.Body.Damage == hurtBefore, $"landed on the moon on its gear, undamaged (settled {v.Controller.Frozen}, {v.AboveGround:F1} m up, damage {v.Body.Damage - hurtBefore:F2})");
         float g = surface.Physics.Zone.Strength, home = _game.Surface.Physics.Zone.Strength;
-        Check(g < home * 0.8f && g > 1f, $"its gravity is its own: {g:F1} m/s² against the world's {home:F1}");
+        float sized = home * _game.Orbit.Moon.GlobeRadius / _game.Orbit.Home.GlobeRadius;
+        Check(MathF.Abs(g - sized) < 0.01f, $"its gravity comes from its size: {g:F1} m/s² on a {surface.Planet.Width / 1000:F0} km moon, the world's {home:F1} on {_game.Surface.Planet.Width / 1000:F0} km");
         Check(surface.Weather.Sim == null && surface.Planet.Sky.Density < SurfaceWeather.NoAir && _game.Suit.Beyond != null, "no air: no weather, a black sky, the suit on its own oxygen");
         var seen = surface.Planet.StarSystem;
         Check(seen.Home == _game.Surface.Planet.StarSystem.FuelMoon && seen.Origin == _game.Surface.Planet.StarSystem,

@@ -110,7 +110,7 @@ public partial class Spaceflight : Node
         {
             SurfaceZone s = Below;
             if (_highest.TryGetValue(s, out float h)) return h;
-            if (s.Planet == null) return 0f;
+            if (!s.Arrived) return 0f;
             return _highest[s] = s.Planet.Map.Elevation.Max();
         }
     }
@@ -361,7 +361,7 @@ public partial class Spaceflight : Node
         // In the band world coordinates are the surface's: what is under you is what you land on.
         StreamAhead(v.Dot((at - Here.Centre).Normalized()) < 0f || y < Ceiling, at);
         if (y >= Ceiling - Rules.Crossing.Gap) return;
-        if (Below.Planet != null && Below.Streamer.ReadyAround(at, 1, needCollision: false))
+        if (Below.Arrived && Below.Streamer.ReadyAround(at, 1, needCollision: false))
         {
             BeginCrossing(carrier, up: false);
             return;

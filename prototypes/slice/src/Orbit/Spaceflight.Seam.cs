@@ -329,7 +329,7 @@ public partial class Spaceflight
     void StreamAhead(bool on, Vector3 focus)
     {
         SurfaceZone s = Below;
-        if (on && s.Planet == null) return; // not arrived yet: nothing to stream
+        if (on && !s.Arrived) return; // not arrived yet: nothing to stream
         if (on != _streaming)
         {
             _streaming = on;
@@ -367,7 +367,7 @@ public partial class Spaceflight
         SurfaceZone s = Below;
         Vector3 eye = Game.Camera.GlobalPosition;
         bool orbit = Game.InOrbit;
-        if (s.Planet == null)
+        if (!s.Arrived)
         {
             // Its surface hasn't arrived yet (it does while you are still far over it): the whole globe, where it is.
             DrawFar(o, eye, 0f, 0f);
