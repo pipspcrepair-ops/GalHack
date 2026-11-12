@@ -147,12 +147,22 @@ public partial class BestiaryTest
             Species s = s0.Copy();
             s.Figure = s0.Figure.Clone();
             s.Figure.Prop = "bottle";
-            if (bodies % 2 == 0) { s.Figure.Dress = "furs"; s.Figure.Padding = thickest; } // half of them in the thickest coat
             var rig = new HumanRig(s);
+            // And the same person in the thickest coat, for the shrug (the owner's shot: forearms hanging).
+            Species heavy = s.Copy();
+            heavy.Figure = s.Figure.Clone();
+            heavy.Figure.Dress = "furs";
+            heavy.Figure.Padding = thickest;
+            var coated = new HumanRig(heavy);
             Figure f = s.Figure;
-            float coat = 0.4f * MathF.Max(0f, f.Padding - 1f); // a thick coat takes the elbows out with it
             int body = rig.Layout.Pieces.FindIndex(p => p.Name == "body");
             Vector3 Local(Vector3 p) => rig.Pose[body].AffineInverse() * p; // the body's own frame: +Y up its back, -Z its front
+            // How far an elbow stands out beyond the shoulder or the coat beside it, whichever is wider; how far down a dropped elbow is.
+            float Out(Vector3 sh, Vector3 el) => Local(el).X - MathF.Max(Local(sh).X, rig.Shell.HalfWidth(Local(el).Y));
+            // (Where the coat bulges out past the shoulder an elbow can't hang low in front of it: then it need only be below the shoulder.)
+            rig.Drive(At(BodyAct.None, 0f));
+            float shoulderX = Local(rig.ArmOf(1).shoulder).X, shoulderY = Local(rig.ArmOf(1).shoulder).Y;
+            float drop = rig.Shell.HalfWidth(shoulderY - 0.2f) > shoulderX + 0.05f ? 0.03f : 0.33f * f.UpperArmOf(1);
             Gesture At(BodyAct a, float clock, int style = 0) => new() { Feet = Vector3.Zero, Act = a, ActAmount = 1f, Clock = clock, Style = style, ActAt = new Vector3(0f, 1.2f, -4f) };
             for (int k = 0; k < 6; k++)
             {
@@ -170,12 +180,12 @@ public partial class BestiaryTest
                 rig.Drive(At(BodyAct.Beckon, t));
                 {
                     var (sh, el, wr) = rig.ArmOf(1);
-                    if (Local(el).Y > Local(sh).Y - 0.1f || Local(el).X - Local(sh).X > 0.18f + coat) beckonOut++;
+                    if (Local(el).Y > Local(sh).Y - drop || Out(sh, el) > 0.18f) beckonOut++;
                 }
                 rig.Drive(At(BodyAct.WaveOff, t));
                 {
                     var (sh, el, wr) = rig.ArmOf(1);
-                    if (Local(el).X - Local(sh).X > 0.2f + coat || Local(el).Y > Local(sh).Y - 0.1f || Local(wr).X < -0.05f) waveOffAcross++;
+                    if (Out(sh, el) > 0.2f || Local(el).Y > Local(sh).Y - drop || Local(wr).X < -0.05f) waveOffAcross++;
                 }
                 rig.Drive(At(BodyAct.Point, t));
                 {
@@ -183,11 +193,17 @@ public partial class BestiaryTest
                     Vector3 d = (wr - sh).Normalized();
                     if (d.Dot(Vector3.Forward) < 0.85f) pointAcross++;
                 }
-                rig.Drive(At(BodyAct.Shrug, t));
-                for (int i = 0; i < 2; i++)
+                foreach (HumanRig who in new[] { rig, coated })
                 {
-                    var (sh, el, wr) = rig.ArmOf(i);
-                    if (Local(wr).Y < Local(el).Y + 0.05f || Local(el).Y > Local(sh).Y - (f.Padding > 1.3f ? 0.05f : 0.4f * f.UpperArmOf(i))) shrugDown++; // (an adult's 12 cm, a child's less; in a coat wider than the arm is long, at least below the shoulder)
+                    who.Drive(At(BodyAct.Shrug, t));
+                    Transform3D inv = who.Pose[body].AffineInverse();
+                    bool thick = who == coated;
+                    for (int i = 0; i < 2; i++)
+                    {
+                        var (sh, el, wr) = who.ArmOf(i);
+                        // Forearms up from elbows by the sides: an adult's 12 cm below the shoulder, a child's less; in a coat wider than the arm is long, at least below it.
+                        if ((inv * wr).Y < (inv * el).Y + 0.05f || (inv * el).Y > (inv * sh).Y - (thick ? 0.05f : 0.4f * f.UpperArmOf(i))) shrugDown++;
+                    }
                 }
             }
             // Fidgeting moves: over ten seconds each hand goes somewhere else.
@@ -230,7 +246,7 @@ public partial class BestiaryTest
             float armL = a2.Figure.UpperArmOf(0) + a2.Figure.ForearmOf(0);
             Vector3 line = (lwr - rwr).Normalized();
             Vector3 off = (rel - rwr) - line * (rel - rwr).Dot(line);
-            if (lsh.DistanceTo(lwr) < armL * 0.93f || (lwr - lsh).Normalized().Dot(Vector3.Forward) < 0.8f || off.Length() > 0.18f + coat) bowOff++; // (a draw's elbow rides a little above the arrow)
+            if (lsh.DistanceTo(lwr) < armL * 0.93f || (lwr - lsh).Normalized().Dot(Vector3.Forward) < 0.8f || off.Length() > 0.18f) bowOff++; // (a draw's elbow rides a little above the arrow)
         }
         Check(cowerUp == 0 && grieveUp == 0, $"cowering and grieving keep the elbows down ({cowerUp}, {grieveUp} elbows up, {bodies} people)");
         Check(beckonOut == 0, $"a beckon keeps the elbow down by the side ({beckonOut} out)");

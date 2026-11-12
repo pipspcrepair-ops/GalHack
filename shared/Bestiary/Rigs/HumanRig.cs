@@ -306,7 +306,7 @@ public sealed partial class HumanRig : Rig
         float strikeOn = _blow == StrikeKind.None ? 0f : 1f;
         float busy = Math.Clamp(MathF.Max(MathF.Max(act, g.Reach), strikeOn), 0f, 1f);
         float aimW = kind == HoldKind.None ? 0f : Math.Clamp(g.Aim, 0f, 1f) * (1f - busy);
-        squareOff -= aimW * kind switch { HoldKind.Bow => 1.15f, HoldKind.Spear => 0.3f, _ => 0f };
+        squareOff -= aimW * kind switch { HoldKind.Bow => 1.45f, HoldKind.Spear => 0.3f, _ => 0f };
         if (kind is HoldKind.LongGun or HoldKind.Spear or HoldKind.Pistol or HoldKind.Bow) twist *= 1f - 0.8f * aimW; // steady on the target, even walking
         if (kind == HoldKind.LongGun)
         {
@@ -640,10 +640,8 @@ public sealed partial class HumanRig : Rig
                 Vector3 hang = shoulderL + Vector3.Down * armL * 0.84f + ahead * 0.14f * u - torso.X * 0.09f * u;
                 Vector3 hangDir = (Vector3.Up * 0.95f + fwd * 0.2f - right * 0.12f).Normalized();
                 Vector3 cheek = neck + head.Y * (f.Neck + f.HeadRadius * 0.55f) + head.X * f.HeadRadius * 0.85f - head.Z * f.HeadRadius * 0.35f;
-                // The bow hand on the arrow's line from the cheek along the look, as far out as the straight bow arm puts it.
-                Vector3 toCheek = cheek - shoulderL;
-                float along = toCheek.Dot(look), reach = armL * 0.96f, disc = along * along - toCheek.LengthSquared() + reach * reach;
-                Vector3 held = disc > 0f ? cheek + look * (-along + MathF.Sqrt(disc)) : shoulderL + look * reach;
+                // The bow arm straight at the target; stood side-on, the cheek is behind it on the arrow's line.
+                Vector3 held = shoulderL + look * armL * 0.96f;
                 Vector3 arrow = (held - cheek).Normalized();
                 Vector3 heldDir = (Vector3.Up - arrow * Vector3.Up.Dot(arrow)).Normalized() + right * 0.08f;
                 grip = hang.Lerp(held, aim);
