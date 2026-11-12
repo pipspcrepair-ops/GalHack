@@ -82,7 +82,7 @@ public partial class Spaceflight : Node
     sealed record Pending(Vessel Carrier, bool Up);
     Pending _pending;
 
-    Vector3 _leftSurfaceAt;
+
     float _surfaceFar = 12000f;
     Func<Pos, double, Exposure> _surfaceAir;
     readonly Dictionary<object, string> _ids = new(ReferenceEqualityComparer.Instance);
@@ -100,10 +100,20 @@ public partial class Spaceflight : Node
         if (what == NotificationPredelete && Orbit != null && IsInstanceValid(Orbit) && !Orbit.IsInsideTree()) Orbit.Free();
     }
 
-    float Ceiling => Game.Surface.Physics.Zone.Ceiling;
+    /// <summary>The crossing height of the body you are near, on or over, m.</summary>
+    float Ceiling => Below.Physics.Zone.Ceiling;
 
-    /// <summary>The world's highest ground, m.</summary>
-    public float Highest { get; private set; }
+    /// <summary>The highest ground of the body you are near, on or over, m.</summary>
+    public float Highest
+    {
+        get
+        {
+            SurfaceZone s = Below;
+            if (_highest.TryGetValue(s, out float h)) return h;
+            if (s.Planet == null) return 0f;
+            return _highest[s] = s.Planet.Map.Elevation.Max();
+        }
+    }
 
     /// <summary>The highest anything you were in stood on the surface, m: the cap holds it (tests read this).</summary>
     public float HighestInAir { get; private set; }
@@ -118,7 +128,7 @@ public partial class Spaceflight : Node
     internal void PlanetBuilt()
     {
         SurfaceZone s = Game.Surface;
-        Highest = s.Planet.Map.Elevation.Max();
+        _highest[s] = s.Planet.Map.Elevation.Max();
         float altitude = Rules.OrbitAltitude(s.Planet.Sky.Air.ToString());
         s.Physics.Zone.Ceiling = altitude;
         s.Ground.Ceiling = altitude;
@@ -202,6 +212,7 @@ public partial class Spaceflight : Node
             }
             return;
         }
+        if (g.Zone != g.Surface) return; // the moon has no places of its own yet
         var planet = g.Surface.Planet;
         double x = Mathx.WrapX(at.X, planet.Width), z = Mathx.Wrap(at.Z, planet.Height);
         Charts.LookAround(planet.Pois.Select((p, i) => ($"poi{i}", p.Name, (double)p.Origin.X, (double)p.Origin.Z)), x, z, planet.Width, planet.Height);
@@ -239,6 +250,9 @@ public partial class Spaceflight : Node
             ProcessMode = ProcessModeEnum.Disabled, Visible = false, Surfaces = s.Sky.Surfaces,
         };
         Ledger = new ZoneLedger(LedgerFolder ?? System.IO.Path.Combine(OS.GetUserDataDir(), "zones", $"{Game.Surface.Spec.Seed}"));
+        Orbit.Home.Surface = s;
+        Orbit.Days = () => Below.Sky.Days;
+        MakeMoon();
     }
 
     /// <summary>The start system's seed: the world's own, so the same world always has the same wrecks round it.</summary>
@@ -304,8 +318,9 @@ public partial class Spaceflight : Node
         var totals = ZoneLedger.Totals(Holders());
 
         // The orbit is laid out over the point under you: nothing about you changes.
-        _leftSurfaceAt = new Vector3(p.X, p.Y, p.Z);
-        to.Align(x, z, p.X, p.Z);
+        Celestial body = Here;
+        _leftAt[body] = new Vector3(p.X, p.Y, p.Z);
+        to.Align(body, x, z, p.X, p.Z);
         _aligned = true;
         HoldSurfaceBehind();
         Wake(to);
@@ -314,7 +329,7 @@ public partial class Spaceflight : Node
         from.ProcessMode = ProcessModeEnum.Disabled;
         GD.Print($"[lap disabled {watch.Elapsed.TotalMilliseconds:F1}]"); // the surface waits, exactly as it was left (still on screen: the seam)
         _surfaceFar = g.Camera.Far;
-        _surfaceAir ??= g.Suit.Sim.Environment;
+        if (from == g.Surface) _surfaceAir ??= g.Suit.Sim.Environment;
         g.Suit.Sim.Environment = Vacuum;
         g.Suit.Beyond = Space;
         Crossings.Add(new Crossing(true, x, z, GlobeMap.HeadingDegrees(b.Rotation), p, b.Rotation, b.Velocity, b.Position, b.Rotation, b.Velocity, to.Turn, watch.Elapsed.TotalMilliseconds, Ledger.Audit(Holders(), totals)));
@@ -337,22 +352,22 @@ public partial class Spaceflight : Node
         {
             // Well ahead of the band the ground under you starts streaming in; at the band the
             // orbit is laid out over it. Moving everything rigidly changes nothing you can see.
-            Vector3 centre = orbit.ToWorld(N.Vector3.Zero).ToGodot();
+            Vector3 centre = Here.Centre;
             bool inward = v.Dot((at - centre).Normalized()) < 0f;
             StreamAhead(inward && y < Ceiling + Rules.Crossing.Band * Rules.Crossing.StreamAhead, SurfacePoint(at, out _, out _));
             if (y < band && inward) AlignHere(at);
             return;
         }
         // In the band world coordinates are the surface's: what is under you is what you land on.
-        StreamAhead(v.Dot((at - orbit.ToWorld(N.Vector3.Zero).ToGodot()).Normalized()) < 0f || y < Ceiling, at);
+        StreamAhead(v.Dot((at - Here.Centre).Normalized()) < 0f || y < Ceiling, at);
         if (y >= Ceiling - Rules.Crossing.Gap) return;
-        if (Game.Surface.Streamer.ReadyAround(at, 1, needCollision: false))
+        if (Below.Planet != null && Below.Streamer.ReadyAround(at, 1, needCollision: false))
         {
             BeginCrossing(carrier, up: false);
             return;
         }
         // The ground isn't there yet: the crossing waits at the edge until it is.
-        Vector3 up = (at - orbit.ToWorld(N.Vector3.Zero).ToGodot()).Normalized();
+        Vector3 up = (at - Here.Centre).Normalized();
         float inwards = v.Dot(up);
         if (inwards < 0f) b.Velocity -= (up * inwards).ToNumerics();
         (carrier?.Binding as BodyBinding ?? Game.Survivor.Binding).Teleport();
@@ -363,7 +378,7 @@ public partial class Spaceflight : Node
         GameNode g = Game;
         var watch = Stopwatch.StartNew();
         OrbitZone from = Orbit;
-        SurfaceZone to = g.Surface;
+        SurfaceZone to = Below;
         Survivor s = g.Survivor;
         Body b = carrier?.Body ?? s.Body;
         N.Vector3 p = b.Position;
@@ -372,20 +387,31 @@ public partial class Spaceflight : Node
 
         ReleaseSurface();
         Wake(to);
+        to.Use();
         Handover.Move(from, to, s, carrier, p, b.Rotation, b.Velocity);
         g.EnterZone(to);
         Park(from);
         GD.Print($"[lap park {watch.Elapsed.TotalMilliseconds:F1}]"); // orbit waits, wrecks as you left them
         _aligned = false;
-        if (_surfaceAir != null) g.Suit.Sim.Environment = _surfaceAir;
-        g.Suit.Beyond = null;
+        if (to == g.Surface)
+        {
+            if (_surfaceAir != null) g.Suit.Sim.Environment = _surfaceAir;
+            g.Suit.Beyond = null;
+        }
+        else
+        {
+            // A world with no air is space at your feet: the suit's own oxygen, as up there.
+            g.Suit.Sim.Environment = Vacuum;
+            g.Suit.Beyond = to.Planet.Sky.Density < SurfaceWeather.NoAir ? Space : null;
+            g.Progress.Discover("moon", 120, "landed on the moon");
+        }
         Crossings.Add(new Crossing(false, x, z, GlobeMap.HeadingDegrees(b.Rotation), p, b.Rotation, b.Velocity, b.Position, b.Rotation, b.Velocity, from.Turn, watch.Elapsed.TotalMilliseconds, Ledger.Audit(Holders(), totals)));
         Report();
     }
 
     string Where(double x, double z)
     {
-        double latitude = 90 - z / Game.Surface.Planet.Height * 180, longitude = x / Game.Surface.Planet.Width * 360;
+        double latitude = 90 - z / Here.Map.Height * 180, longitude = x / Here.Map.Width * 360;
         return $"{Math.Abs(latitude):F0}°{(latitude >= 0 ? "N" : "S")} {longitude:F0}°E";
     }
 
@@ -407,7 +433,7 @@ public partial class Spaceflight : Node
     void BeginCrossing(Vessel carrier, bool up)
     {
         string id = carrier != null ? IdOf(carrier) : ZoneLedger.Castaway;
-        if (Ledger.Begin(Holders(), id, up ? ZoneLedger.Orbit : ZoneLedger.Surface)) _pending = new Pending(carrier, up);
+        if (Ledger.Begin(Holders(), id, up ? ZoneLedger.Orbit : ZoneName(Below))) _pending = new Pending(carrier, up);
         else Refused();
     }
 
@@ -443,7 +469,7 @@ public partial class Spaceflight : Node
         Vessel aboard = s.Seated ?? (s.Body.Frame != null ? s.Aboard : null);
         string castawayZone = aboard != null ? ZoneLedger.Cabin(IdOf(aboard)) : ZoneName(s.Zone);
         yield return new Holder(ZoneLedger.Castaway, "castaway", castawayZone, aboard != null ? IdOf(aboard) : null, "Castaway", g.Pack.Storage.Contents, 0);
-        foreach (SurfaceZone zone in new SurfaceZone[] { g.Surface, Orbit })
+        foreach (SurfaceZone zone in new SurfaceZone[] { g.Surface, Orbit, MoonSurface })
         {
             if (zone?.Physics == null) continue;
             string name = ZoneName(zone);
@@ -469,7 +495,7 @@ public partial class Spaceflight : Node
         foreach (var (id, n) in from) to.Add(id, n);
     }
 
-    string ZoneName(SurfaceZone z) => z is OrbitZone ? ZoneLedger.Orbit : ZoneLedger.Surface;
+    string ZoneName(SurfaceZone z) => z is OrbitZone ? ZoneLedger.Orbit : z == Game.Surface ? ZoneLedger.Surface : ZoneLedger.Moon;
 
     /// <summary>A record id that stays with a thing for the game.</summary>
     string IdOf(object thing)
@@ -501,9 +527,10 @@ public partial class Spaceflight : Node
             if (g.Zone is OrbitZone orbit)
             {
                 Vector3 p = v.Body.Position.ToGodot();
-                if (orbit.AboveShell(p) > 1f) continue;
-                Vector3 up = p.Normalized();
-                v.Body.Position = (up * (orbit.ShellRadius + 1f)).ToNumerics();
+                Celestial near = orbit.OwnerOf(p);
+                if (near.AboveShell(p) > 1f) continue;
+                Vector3 up = (p - near.Centre).Normalized();
+                v.Body.Position = (near.Centre + up * (near.ShellRadius + 1f)).ToNumerics();
                 float inward = v.Body.Velocity.ToGodot().Dot(up);
                 if (inward < 0f) v.Body.Velocity -= (up * inward).ToNumerics();
             }

@@ -52,7 +52,7 @@ public partial class Spaceflight
         float speed = v.Body.Velocity.Length();
         if (NearSurface(p))
         {
-            var (x, z) = Orbit.Under(p);
+            var (x, z) = Here.Under(p);
             return $"{speed:F0} m/s   ALT {Height(p):F0} m   OVER {Where(x, z)}{cruise}";
         }
         var (name, toSurface, _) = Nearest(p);
@@ -64,9 +64,9 @@ public partial class Spaceflight
     {
         if (!Game.InOrbit) return direction;
         if (_aligned) return direction; // the world's axes are the local ones here
-        var (x, z) = Orbit.Under(Game.Survivor.WorldFeet);
-        N.Quaternion toGlobe = N.Quaternion.Conjugate(Orbit.Turn);
-        return MathX.Unrotate(Orbit.Map.Frame(x, z), N.Vector3.Transform(direction.ToNumerics(), toGlobe)).ToGodot();
+        var (x, z) = Here.Under(Game.Survivor.WorldFeet);
+        N.Quaternion toGlobe = N.Quaternion.Conjugate(Here.Turn);
+        return MathX.Unrotate(Here.Map.Frame(x, z), N.Vector3.Transform(direction.ToNumerics(), toGlobe)).ToGodot();
     }
 
     /// <summary>
