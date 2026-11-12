@@ -145,9 +145,10 @@ public partial class Screenshot
 
     void ActsEach()
     {
-        if (_actBusy) return;
+        if (_actIndex >= _actList.Count) return;
         Main m = _main;
-        if (_actIndex < 0 || _actTick >= _actList[_actIndex].Hold + 6)
+        // (While a shot is taken they're still posed: the sim poses them too, without the act.)
+        if (!_actBusy && (_actIndex < 0 || _actTick >= _actList[_actIndex].Hold + 6))
         {
             _actIndex++;
             if (_actIndex >= _actList.Count)
@@ -166,7 +167,7 @@ public partial class Screenshot
         {
             var (c, rig) = _actors[i];
             var g = new Gesture { Feet = c.Position, Yaw = c.Yaw, Clock = c.Age, // (the sim poses them too, on its own clock)
-                ActAt = c.Position + c.Forward * 2.5f + Vector3.Up * 1.2f };
+                ActAt = c.Position + _actFwd * 2.5f + Vector3.Up * 1.2f };
             scene.Shape(i, ref g, rig, _actTick);
             if (scene.End != BodyEnd.Fall && _actTick == 8 && !c.Removed)
             {
@@ -174,11 +175,12 @@ public partial class Screenshot
                 else _gibs.Ash(c.Position, Vector3.Up, 0.55f, c.Species.Seed);
                 c.Removed = true;
             }
-            if (g.Speed > 0f) g.Feet = c.Position + c.Forward * g.Walked;
+            if (g.Speed > 0f) g.Feet = c.Position + _actFwd * g.Walked;
             c.Dead |= g.Dead;
             rig.Drive(g);
         }
         m.View.Sync(m.Camera.GlobalPosition);
+        if (_actBusy) return;
         if (_actTick == scene.Hold) ActsCapture($"{_actIndex + 1:00}-{scene.Name}-front.png", false);
         if (_actTick == scene.Hold + 3) ActsCapture($"{_actIndex + 1:00}-{scene.Name}-side.png", true);
         _actTick++;
