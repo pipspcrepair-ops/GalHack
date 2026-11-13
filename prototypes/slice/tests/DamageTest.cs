@@ -165,15 +165,17 @@ public partial class DamageTest : Node
         Check(v.View.Rebuilt > rebuilt && v.View.Waiting == 0, "and its chunk is redrawn within two frames");
         Check(v.Body.Damage > 0f, $"and it counts on the hull, down the same path as a crash ({v.Body.Damage:F4})");
 
+        // A plated 1 m cube outlasts many tool bolts: heavier ones, sized to wear it away in six.
+        float wear = hp / 5.5f / 0.9f + 10f;
         var seen = new List<int>();
         for (int i = 0; i < 7 && v.Structure.Has(cell); i++)
         {
             seen.Add(WorstInMesh(v, cell));
-            Shoot(v, cell, shot);
+            Shoot(v, cell, wear);
             foreach (int x in _drive.Wait(2)) yield return x;
         }
         Check(!v.Structure.Has(cell) && seen.Distinct().Count() >= 3 && seen.SequenceEqual(seen.OrderBy(b => b)),
-            $"seven bolts wear a small steel block away stage by stage, then it's gone: {string.Join(" ", seen)}");
+            $"six heavy bolts wear a plated cube away stage by stage, then it's gone: {string.Join(" ", seen)}");
         Check(v.View.Fx.Marks > 0 && v.View.Fx.Bursts > 0, $"each hit leaves sparks and an impact mark ({v.View.Fx.Bursts} bursts, {v.View.Fx.Marks} marks)");
         Check(v.View.Fx.Chips > 0, $"a destroyed block throws chips ({v.View.Fx.Chips})");
 

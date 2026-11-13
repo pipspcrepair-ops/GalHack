@@ -743,7 +743,7 @@ public partial class PlayerTest : Node
         Vector3 target = _play.FlatSpot(start, 560f, 0.5f, 0.3f);
         _game.Controls.Hold(Key.Space);
         for (int i = 0; i < 120; i++) yield return 0;
-        Check(!v.Controller.Frozen && v.Body.Position.Y > start.Y + 3f, $"Space lifts it off: {v.Body.Position.Y - start.Y:F1} m up after 2 s");
+        Check(!v.Controller.Frozen && v.Body.Position.Y > start.Y + 3f, $"Space lifts it off: {v.Body.Position.Y - start.Y:F1} m up after 2 s (damage {v.Body.Damage:F3})");
         float top = 0f;
         for (int t = 0; t < 60 * 120; t++)
         {
@@ -769,7 +769,7 @@ public partial class PlayerTest : Node
             Steer(v, to, new Vector2(to.X, to.Z).Length());
             _game.Controls.Hold(Key.W, false);
             float agl = v.AboveGround, vy = v.Body.Velocity.Y, wanted = agl > 20f ? -5f : agl > 5f ? -2.5f : -1.0f;
-            if (t % 120 == 0) GD.Print($"  (landing: {agl:F1} m up, falling {-vy:F1} m/s, up {MathX.Up(v.Body.Rotation).Y:F2}, gear {v.Controller.Gear?.Deployed}, y {v.Body.Position.Y:F0})");
+            if (t % 120 == 0) GD.Print($"  (landing: {agl:F1} m up, falling {-vy:F1} m/s, up {MathX.Up(v.Body.Rotation).Y:F2}, gear {v.Controller.Gear?.Deployed}, y {v.Body.Position.Y:F0}, damage {v.Body.Damage:F3})");
             _game.Controls.Hold(Key.Ctrl, vy > wanted + 0.4f);
             _game.Controls.Hold(Key.Space, vy < wanted - 0.4f);
             yield return 0;
