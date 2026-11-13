@@ -675,10 +675,13 @@ public sealed partial class BuildTool
             _ => e.ToString(),
         };
         if (!Creative && BuildingBridge.ItemOf(Items, s, block) == null) return $"{s.TypeOf(block).Name} · NO ITEM";
+        // A blueprint's craft rests on its lowest block (Vessel.Settle): one going on under all of it (its gear, a lift jet
+        // under the deck) is in the ground only until the craft stands up onto it, as it does once it is on.
+        int lowest = v == Underway ? s.Bounds().min.Y : int.MinValue;
         foreach (Int3 c in s.CellsOf(cell, block))
         {
             if (InSurvivor(v, c)) return "YOU · IN THE WAY";
-            if (!v.IsBase && InGround(v, c)) return "GROUND · IN THE WAY";
+            if (!v.IsBase && c.Y >= lowest && InGround(v, c)) return "GROUND · IN THE WAY";
         }
         return null;
     }

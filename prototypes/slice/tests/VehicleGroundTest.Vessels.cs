@@ -81,6 +81,9 @@ public partial class VehicleGroundTest
     sealed class Hull
     {
         public float Sunk;
+        /// <summary>What the craft was doing when it was deepest in, for a failure to say.</summary>
+        public string Deepest = "";
+        public int Ticks;
     }
 
     IEnumerable<int> ObserveHull(Vessel v, Hull w, int ticks, Func<bool> done = null)
@@ -88,7 +91,14 @@ public partial class VehicleGroundTest
         for (int i = 0; i < ticks; i++)
         {
             yield return 0;
-            if (i % 2 == 0) w.Sunk = MathF.Max(w.Sunk, Sunk(v));
+            w.Ticks++;
+            if (i % 2 == 0 && Sunk(v) is float sunk && sunk > w.Sunk)
+            {
+                w.Sunk = sunk;
+                VesselController c = v.Controller;
+                w.Deepest = $"{w.Ticks} ticks into the case: frozen {c?.Frozen}, settling {c?.Settling}, gear attached {c?.Gear?.Attached}, tossed {v.Body.Tossed:F1}, "
+                    + $"{v.Body.Velocity.Length():F1} m/s, up {MathX.Up(v.Body.Rotation)}";
+            }
             if (done != null && i > 5 && done()) yield break;
         }
     }
@@ -132,9 +142,10 @@ public partial class VehicleGroundTest
         }
         if (!moved)
             GD.Print($"  (stuck: frozen {v.Controller?.Frozen}, settling {v.Controller?.Settling}, asleep {v.Body.Asleep}, tossed {v.Body.Tossed:F1}, kind {v.Body.Kind}, motion {v.Body.Motion}, flight {(v.Flight != null)}, "
-                + $"input {v.Flight?.Input.Move}, can lift {v.Stats?.CanLiftOff}, pilot {v.Roles.Pilot}, message '{v.Controller?.ConsoleMessage}', velocity {v.Body.Velocity}, up {MathX.Up(v.Body.Rotation)}, hover grounded {v.Controller?.Hover?.Grounded} clearance {v.Controller?.Hover?.Clearance:F2} slope refused {v.Controller?.Hover?.SlopeRefused} steepest {v.Controller?.Hover?.SteepestAhead:F0}, on floor {v.Body.OnFloor}, pushes {(v.Binding as HullBinding)?.Pushes} last {(v.Binding as HullBinding)?.LastPush}, seated {_game.Survivor.Seated == v}, sunk now {Sunk(v):F2})");
+                + $"input {v.Flight?.Input.Move}, can lift {v.Stats?.CanLiftOff}, pilot {v.Roles.Pilot}, message '{v.Controller?.ConsoleMessage}', velocity {v.Body.Velocity}, up {MathX.Up(v.Body.Rotation)}, hover grounded {v.Controller?.Hover?.Grounded} clearance {v.Controller?.Hover?.Clearance:F2} slope refused {v.Controller?.Hover?.SlopeRefused} steepest {v.Controller?.Hover?.SteepestAhead:F0}, on floor {v.Body.OnFloor}, pushes {(v.Binding as HullBinding)?.Pushes} last {(v.Binding as HullBinding)?.LastPush}, seated {_game.Survivor.Seated == v}, sunk now {Sunk(v):F2}, damage {v.Body.Damage:F2}, "
+                + $"{v.Spec?.Thrusters.Count} thrusters, {v.Structure.Count} blocks, parked on {v.Body.ParkedOn?.Kind.ToString() ?? "nothing"}, underfoot {v.Body.Underfoot?.Kind.ToString() ?? "nothing"})");
         Check(seated && _game.Survivor.Seated == v && moved && w.Sunk < VesselTolerance,
-            $"{mode}, {v.Name}, {what}: deepest {w.Sunk * 100f:F1} cm into anything solid (tolerance {VesselTolerance * 100f:F0} cm); the pilot still seated (pilot role: {v.Roles.Pilot}), under its own power it {(hover ? $"runs {ran:F1} m {way}" : $"climbs {rose:F1} m")} in two seconds, moving a metre {(took >= 0 ? $"{took / 60f:F2} s" : "never")} after the input");
+            $"{mode}, {v.Name}, {what}: deepest {w.Sunk * 100f:F1} cm into anything solid (tolerance {VesselTolerance * 100f:F0} cm{(w.Sunk >= VesselTolerance ? $"; {w.Deepest}" : "")}); the pilot still seated (pilot role: {v.Roles.Pilot}), under its own power it {(hover ? $"runs {ran:F1} m {way}" : $"climbs {rose:F1} m")} in two seconds, moving a metre {(took >= 0 ? $"{took / 60f:F2} s" : "never")} after the input");
         // Set down again for the next case, on the ground under it (flown down at full tilt over a place it once wrecked itself on a roof).
         if (!hover)
         {

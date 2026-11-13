@@ -81,14 +81,15 @@ public partial class OrbitTest : Node
         Wildlife.Shutdown.Quit(this, _failures == 0 ? 0 : 1);
     }
 
-    void Check(bool ok, string what)
+    bool Check(bool ok, string what)
     {
         if (ok) _passes++;
         else _failures++;
         GD.Print($"  {(ok ? "ok   " : "FAIL ")} {what}");
+        return ok;
     }
 
-    void Fail(string what) => Check(false, what);
+    void Fail(string what) => _ = Check(false, what);
 
     /// <summary>
     /// Every tick: the castaway and the Skiff are each registered in exactly one zone's world, the
@@ -184,7 +185,11 @@ public partial class OrbitTest : Node
             Fail($"the blueprint projector set nothing down (the tool says: {_game.Builder.Verdict})");
             yield break;
         }
-        Check(skiff.Structure.Count == _game.StarterPlan.Count, $"the Skiff is built block by block: {skiff.Structure.Count} of {_game.StarterPlan.Count}");
+        var left = _game.Builder.Underway == skiff ? _game.Builder.Remaining.Where(r => !r.block.IsFiller)
+            .Select(r => $"{skiff.Structure.TypeOf(r.block).Id} at {r.cell} ({Building.Check(skiff.Structure, r.cell, r.block)})").ToList() : new List<string>();
+        // Not whole, nothing after it can be flown: it stops here, saying what wouldn't go on and why.
+        if (!Check(skiff.Structure.Count == _game.StarterPlan.Count, $"the Skiff is built block by block: {skiff.Structure.Count} of {_game.StarterPlan.Count}"
+                + (left.Count > 0 ? $" (left: {string.Join(", ", left)}; the tool last said '{_said}')" : ""))) yield break;
         _skiff = skiff;
     }
 

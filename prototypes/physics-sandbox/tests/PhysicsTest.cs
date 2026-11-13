@@ -916,12 +916,14 @@ public partial class PhysicsTest : Node
         p.Yaw = -MathF.PI / 2f; // facing starboard
         p.Pitch = 0f;
         for (int i = 0; i < 20; i++) yield return 0;
+        string before = $"on the roof {p.OnHull == ship}, the ship at {ship.Body.Velocity.Length():F1} m/s turning {Units.Degrees(ship.Body.AngularVelocity.Length()):F0}°/s";
         var off = new HullWalk();
         foreach (int x in WalkOn(ship, off, q => q.Body.Frame == null, 240)) yield return x;
         N.Vector3 fall = MathX.Unrotate(ship.Body.Rotation, p.Body.Velocity - ship.Body.PointVelocity(p.Body.Position));
         Check(p.Body.Frame == null && off.Edges == 0 && off.Walls == 0 && off.LowestUp > 0.999f && fall.Y < -1f,
             $"walked off the roof's edge, nothing carries them onto the hull's side: they fall off it ship-down ({-fall.Y:F1} m/s) " +
-            $"and let go of the ship after {off.LongestOff:F2} s out of contact, never turned off ship-up");
+            $"and let go of the ship after {off.LongestOff:F2} s out of contact, never turned off ship-up ({before} before the walk; {off.Ticks} ticks walked, " +
+            $"{MathX.Unrotate(ship.Body.Rotation, p.Body.WorldPosition - ship.Body.Position)} off the ship after)");
         for (int i = 0; i < 5; i++) yield return 0;
 
         // Knocked off the roof by a bump that throws them clear for less than the grace time: still aboard.
@@ -1429,6 +1431,12 @@ public partial class PhysicsTest : Node
 
         // A capital ship flying on at 4 m/s with nobody at the controls (its autopilot holds course).
         Ship tender = w.SpawnVessel("tender.gbp", new N.Vector3(50f, 110f, 30f), 0f, landed: false);
+        // The tender was the big ship at the old scale; in 1 m cells the Corsair outweighs it, and a host's thrust has to
+        // cover what is parked on it. Four more lift jets under its keel, copies of its own, let it carry its load.
+        Block lift = tender.Structure.Get(new SInt3(-2, -1, -5));
+        foreach (SInt3 at in new[] { new SInt3(-2, -2, -3), new SInt3(2, -2, -3), new SInt3(-2, -2, 2), new SInt3(2, -2, 2) })
+            Building.Place(tender.Structure, at, lift);
+        tender.ApplyEdits();
         tender.Body.Velocity = MathX.Forward(tender.Body.Rotation) * 4f;
         tender.Flight.Input = PilotInput.Autopilot;
         for (int i = 0; i < 3; i++) yield return 0;
