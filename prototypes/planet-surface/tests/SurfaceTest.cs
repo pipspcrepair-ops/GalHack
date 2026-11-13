@@ -90,7 +90,8 @@ public partial class SurfaceTest : Node
             await Run("Blast", BlastChecks);
             await Run("RoadLines", RoadLineChecks);
             await Run("Lazy", LazyChecks);
-            await Run("Airport", AirportChecks);
+            await Run("Airport", () => TypedChecks("airfield", "airport", "airstrip"));
+            await Run("Spaceport", () => TypedChecks("abandoned_spaceport", "starport", "spaceport", "landing_field"));
             if (_only.Contains("InfraScan")) await Run("InfraScan", InfraScan);
             _main = new Main { Interactive = false };
             AddChild(_main);

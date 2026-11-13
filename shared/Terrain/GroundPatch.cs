@@ -31,6 +31,8 @@ public enum GroundPattern : byte
     Runway = 4,
     /// <summary>A taxiway: laid, a yellow centre line and edge lines; of earth or gravel, graded straight.</summary>
     Taxiway = 5,
+    /// <summary>A landing pad: a ring and a cross marked on it, its middle scorched by every lift-off.</summary>
+    Pad = 6,
 }
 
 /// <summary>

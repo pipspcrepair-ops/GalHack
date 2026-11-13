@@ -32,8 +32,9 @@ public sealed class TypedPlace
     public (double X0, double Z0, double X1, double Z1) World(SketchBox b) => (X + b.X0, Z + b.Z0, X + b.X1, Z + b.Z1);
 
     /// <summary>
-    /// Its laid ground as the terrain shader paints it: the runway over its shoulders with its markings, the taxiways
-    /// and links with theirs, the apron in slabs, the car park in bays, the access road; worn by the place's age.
+    /// Its laid ground as the terrain shader paints it: the runway over its shoulders with its markings, each pad in its
+    /// blast apron, the taxiways and links with theirs, the apron in slabs, the car park in bays, the access road; worn
+    /// by the place's age.
     /// </summary>
     public IEnumerable<GroundPatch> Grounds(float wear)
     {
@@ -41,22 +42,28 @@ public sealed class TypedPlace
         {
             var (x0, z0, x1, z1) = World(box);
             MadeCover cover = item.Part.What switch { "tarmac" => MadeCover.Tarmac, "concrete" => MadeCover.Concrete, "gravel" => MadeCover.Gravel, _ => MadeCover.Dirt };
-            float shoulder = item.Rolled.GetValueOrDefault("shoulder");
+            bool pad = item.Part.Kind == "pads";
+            float shoulder = item.Rolled.GetValueOrDefault(pad ? "apron" : "shoulder");
             // (A strip or taxiway of earth or gravel keeps its pattern: graded straight, the earth one rutted and marked.)
             GroundPattern pattern = item.Part.Id switch
             {
+                _ when pad => GroundPattern.Pad,
                 "runway" => GroundPattern.Runway,
                 "taxiway" or "link" => GroundPattern.Taxiway,
                 "carpark" => cover is MadeCover.Tarmac or MadeCover.Concrete ? GroundPattern.Bays : GroundPattern.Plain,
                 _ => cover == MadeCover.Concrete ? GroundPattern.Slabs : GroundPattern.Plain,
             };
-            int layer = item.Part.Id switch { "runway" => 4, "taxiway" => 3, "link" => 2, _ => 1 };
+            int layer = pad ? 4 : item.Part.Id switch { "runway" => 4, "taxiway" => 3, "link" => 2, _ => 1 };
             if (shoulder > 0f && cover != MadeCover.Dirt)
             {
-                // The shoulders: the full width, older-looking and plain, under the runway proper.
-                yield return GroundPatch.Box(x0, z0, x1, z1, PadY, cover == MadeCover.Dirt ? MadeCover.Dirt : MadeCover.Gravel, GroundPattern.Plain, Math.Min(1f, wear + 0.15f), layer - 1, round: 0.5f);
+                // The shoulders: the full width, older-looking and plain, under the runway proper; a pad's blast apron all
+                // round it, in slabs.
+                var under = GroundPatch.Box(x0, z0, x1, z1, PadY, pad ? MadeCover.Concrete : MadeCover.Gravel, pad ? GroundPattern.Slabs : GroundPattern.Plain, Math.Min(1f, wear + 0.15f), layer - 1, round: 0.5f);
+                if (pad) under.Slab = 7.5f;
+                yield return under;
                 bool alongX = x1 - x0 >= z1 - z0;
-                if (alongX) (z0, z1) = (z0 + shoulder, z1 - shoulder); else (x0, x1) = (x0 + shoulder, x1 - shoulder);
+                if (alongX || pad) (z0, z1) = (z0 + shoulder, z1 - shoulder);
+                if (!alongX || pad) (x0, x1) = (x0 + shoulder, x1 - shoulder);
             }
             var patch = GroundPatch.Box(x0, z0, x1, z1, PadY, cover, pattern, wear, layer, round: 0.5f);
             if (cover == MadeCover.Concrete) patch.Slab = 7.5f;
@@ -155,8 +162,10 @@ public static partial class PoiSiting
         TechLevel? age = profile?.LevelFor(family, state);
         Sketch first = ForceType is { } forced && lib.Types.FirstOrDefault(t => t.Id == forced) is { } type
             ? PlaceTypes.Plan(type, spawn, map.WidthMeters, map.HeightMeters)
-            : PlaceTypes.PlanFor(lib, family, age, spawn, map.WidthMeters, map.HeightMeters);
-        var sketches = family.Types.Where(t => t != first.Type.Id).Select(t => PlaceTypes.Plan(lib.Types.First(x => x.Id == t), spawn, map.WidthMeters, map.HeightMeters)).Where(s => !s.TooBig).Prepend(first);
+            : PlaceTypes.PlanFor(lib, family, age, spawn, map.WidthMeters, map.HeightMeters, family.Variants.ElementAtOrDefault(variant)?.Port ?? profile?.Starport);
+        // (Where no ground takes it as rolled, the same type at its low ends: a real one still, only shorter.)
+        var sketches = family.Types.Where(t => t != first.Type.Id).Select(t => PlaceTypes.Plan(lib.Types.First(x => x.Id == t), spawn, map.WidthMeters, map.HeightMeters)).Where(s => !s.TooBig)
+            .Prepend(first.Fitted > 0f ? PlaceTypes.Plan(first.Type, spawn, map.WidthMeters, map.HeightMeters, 0f) : null).Where(s => s != null).Prepend(first);
         foreach (Sketch sketch in sketches)
         {
             if (SeatType(lib, family, variant, state, spawn, profile, bare, map, x, z, landing, others, sketch) is { } typed) return typed;

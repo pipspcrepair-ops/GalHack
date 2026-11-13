@@ -757,11 +757,19 @@ vec4 paint_ground(Patch g, vec2 p, vec3 land, float fw, float near, out float co
 		float keys = step(6.0, in_) * step(in_, 36.0) * step(abs(v), hv - 3.0) * band(abs(fract(v / 3.6 + 0.5) - 0.5) * 3.6, 0.9, fw);
 		float aim = step(300.0, in_) * step(in_, 345.0) * band(abs(v) - hv * 0.4, 4.5, fw);
 		c = mix(c, vec3(0.62, 0.62, 0.6), max(max(edge, centre), max(keys, aim)) * flake);
-	} else if (g.pattern > 4.5 && hard) {
+	} else if (g.pattern > 4.5 && g.pattern < 5.5 && hard) {
 		// A taxiway: a yellow centre line and edge lines.
 		float v = g.local.y, hv = g.half_.y;
 		float line = max(band(v, 0.15, fw), band(hv - 1.0 - abs(v), 0.15, fw));
 		c = mix(c, vec3(0.55, 0.42, 0.06), line * flake);
+	} else if (g.pattern > 5.5 && hard) {
+		// A landing pad: two rings and a cross marked on it, the middle scorched black by every lift-off, ragged at its edge.
+		float hu = min(g.half_.x, g.half_.y), rr = length(g.local);
+		float ring = max(band(abs(rr - hu * 0.8), 0.9, fw), band(abs(rr - hu * 0.64), 0.45, fw));
+		float cross = max(band(g.local.x, 1.2, fw) * step(abs(g.local.y), hu * 0.3), band(g.local.y, 1.2, fw) * step(abs(g.local.x), hu * 0.3));
+		c = mix(c, vec3(0.62, 0.6, 0.55), max(ring, cross) * flake);
+		float burn = 1.0 - smoothstep(hu * 0.2, hu * 0.6, rr + (pn2(p, 0.12) - 0.5) * hu * 0.25);
+		c = mix(c, vec3(0.045, 0.04, 0.035), burn * (0.6 + 0.3 * wear));
 	}
 	// A kerb along a laid edge: a line of pale stones, a little chipped.
 	float kerb = 0.0;

@@ -15,12 +15,12 @@ namespace PlanetSurface;
 public partial class SurfaceTest
 {
     /// <summary>
-    /// The airfield on real worlds, fresh seeds, a world each: sited from its sketch with no layout made while the world
+    /// A typed place (the airfield, the spaceport) on real worlds, fresh seeds, a world each of its types in turn: sited from its sketch with no layout made while the world
     /// loads; graded level across all of it and eased out to the land with no wall or pit at its edge; the world's road
     /// at its gate; then every part built as the builder builds it, measured on its blocks against its type's real ranges,
     /// nothing of one part in another or on the laid ground, and what the builder spends on it.
     /// </summary>
-    async Task AirportChecks()
+    async Task TypedChecks(string family, params string[] types)
     {
         var rand = new Random();
         string forced = PoiSiting.ForceFamily;
@@ -32,17 +32,17 @@ public partial class SurfaceTest
         var notes = new List<string>();
         try
         {
-            PoiSiting.ForceFamily = "airfield";
+            PoiSiting.ForceFamily = family;
             for (int k = 0; k < 3; k++)
             {
                 var spec = PlanetSpec.Roll((ulong)rand.NextInt64(1, long.MaxValue), Archetype.Temperate, 0);
-                PoiSiting.ForceType = k == 1 ? "airstrip" : "airport";
+                PoiSiting.ForceType = types[k % types.Length];
                 PoiSite.LoadLayouts = 0;
                 PlanetWorld w = await Task.Run(() => PlanetWorld.Build(spec, Main.Catalog));
                 worlds++;
                 loadLayouts += PoiSite.LoadLayouts;
                 TypedPlace place = w.Pois.Select(p => p.Whole).FirstOrDefault(t => t != null);
-                if (place == null) { notes.Add($"{spec}: no airfield sited (last search: {PoiSiting.LastTypedRejects})"); continue; }
+                if (place == null) { notes.Add($"{spec}: no {family} sited (last search: {PoiSiting.LastTypedRejects})"); continue; }
                 sited++;
                 notes.Add($"{spec} ({w.Map.WidthMeters / 1000:F0} x {w.Map.HeightMeters / 1000:F0} km): {place.Why}; {PoiSiting.LastTyped} typed places on the world sited in {PoiSiting.LastTypedMs:F0} ms; {place.Parts.Count} parts, {place.Parts.Count(p => p.Pending)} not laid out at load");
                 if (w.Infra.Routes.Any(r => r.From == place.Anchor || r.To == place.Anchor)) roads++;
@@ -100,12 +100,17 @@ public partial class SurfaceTest
                     string kind = PlaceTypes.Pieces(place.Sketch, place.Turn)[place.Parts.IndexOf(p)].Plan.Parts[0].Arg("what");
                     // Walked as a body walks it: from the way in to the apron through the terminal, onto a hangar's floor, up the tower to its cab.
                     string goal = kind switch { "terminal" => "gate stand", "hangar" => "hangar floor", "tower" => "control cab", _ => null };
-                    if (goal != null && inst.Layout.Modules.FirstOrDefault(md => md.Purpose == goal) is { } target)
+                    if (goal != null && inst.Layout.Modules.FirstOrDefault(md => md.Purpose == goal || kind == "terminal" && md.Purpose == "stand") is { } target)
                     {
                         var reachable = inst.Nav().Reachable(inst.Layout.EntranceCell);
                         walks++;
                         if (target.Cells.Any(reachable.Contains)) walked++;
                         else bad.Add($"{kind}: no way from its way in to its {goal}");
+                    }
+                    // A ship's hall: wide enough for the craft its pads are for (two fifths of a pad) and 12 m high at least.
+                    if (kind == "hangar" && place.Sketch.Of("pads").FirstOrDefault() is { } pad)
+                    {
+                        if (Math.Min(sx, sz) < pad.Rolled["side"] * 0.4f || top < 12) bad.Add($"{place.Sketch.Type.Id} hangar {sx} x {sz} m, {top} m high, for {pad.Rolled["side"]:F0} m pads");
                     }
                     if (place.Sketch.Type.Id == "airport")
                     {
@@ -128,6 +133,10 @@ public partial class SurfaceTest
                     }
                 }
                 // The laid ground at its real sizes.
+                // Fuel and oxidiser stores apart (a port's), and both off the terminal.
+                var stores = PlaceTypes.Pieces(place.Sketch, place.Turn).Where(p => p.Item.Part.Id is "fuel" or "oxidiser").ToList();
+                if (stores.Count == 2 && stores[0].Box.Gap(stores[1].Box) < (place.Sketch.Type.Id == "landing_field" ? 150 : 400))
+                    bad.Add($"{place.Sketch.Type.Id}: fuel and oxidiser {stores[0].Box.Gap(stores[1].Box):F0} m apart");
                 var runway = ground.Where(q => q.Pattern == GroundPattern.Runway || q.Layer == 4).OrderByDescending(q => q.HalfU).FirstOrDefault();
                 if (place.Sketch.Type.Id == "airport" && runway != null && !(runway.HalfU * 2 is >= 1500 and <= 2501 && runway.HalfV * 2 is >= 44 and <= 46))
                     bad.Add($"runway {runway.HalfU * 2:F0} x {runway.HalfV * 2:F0} m");
@@ -136,7 +145,7 @@ public partial class SurfaceTest
         finally { (PoiSiting.ForceFamily, PoiSiting.ForceType) = (forced, null); }
         foreach (string n in notes) GD.Print($"      {n}");
         foreach (string b in bad.Distinct().Take(8)) GD.Print($"      {b}");
-        Check(sited == worlds, $"an airfield sited on {sited} of {worlds} fresh worlds");
+        Check(sited == worlds, $"a {family} sited on {sited} of {worlds} fresh worlds");
         Check(loadLayouts == 0, $"its share of a new world's load is no layouts: {loadLayouts} made while the worlds loaded");
         Check(roads == sited, $"the world's road comes to its gate on {roads} of {sited}");
         Check(worstOff < 1.01f && worstGrade < 0.35f, $"graded: the ground across it within {worstOff:F2} m of its level, the run out to the land at most {worstGrade:P0} steeper than the land's own ({worstAt})");

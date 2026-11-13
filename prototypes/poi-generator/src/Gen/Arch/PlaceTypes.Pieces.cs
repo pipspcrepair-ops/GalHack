@@ -26,9 +26,11 @@ public static partial class PlaceTypes
     /// A family's sketch for one spawn on a world: its first type built at the world's age whose sketch fits the world
     /// (an airport on a world too small for one gives way to the airstrip, never a shrunken airport), else its last.
     /// </summary>
-    public static Sketch PlanFor(PoiLibrary lib, FamilyDef family, TechLevel? tech, ulong seed, double worldWidth, double worldHeight)
+    public static Sketch PlanFor(PoiLibrary lib, FamilyDef family, TechLevel? tech, ulong seed, double worldWidth, double worldHeight, Starport? port = null)
     {
+        // (A spaceport's types by class, biggest first: none above the world's class.)
         var types = family.Types.Select(id => lib.Types.First(t => t.Id == id)).ToList();
+        if (port is { } most && types.Any(t => t.Classes.Count > 0)) types = types.Where(t => t.Classes.Count == 0 || t.Classes.Min() <= most).DefaultIfEmpty(types[^1]).ToList();
         var fitting = types.Where(t => tech == null || t.Techs.Count == 0 || t.Techs.Any(x => WorldProfile.Parse(x) == tech)).DefaultIfEmpty(types[^1]).ToList();
         Sketch? last = null;
         foreach (PlaceType t in fitting)
@@ -58,15 +60,15 @@ public static partial class PlaceTypes
 
     static Dir Way(float x, float z) => MathF.Abs(x) >= MathF.Abs(z) ? (x > 0 ? Dir.East : Dir.West) : (z > 0 ? Dir.South : Dir.North);
 
-    /// <summary>The ground laid flat and surfaced (the runway, taxiways, apron, car park, the access road), turned.</summary>
+    /// <summary>The ground laid flat and surfaced (the runway or the pads, taxiways, apron, car park, the access road), turned.</summary>
     public static IEnumerable<(SketchItem Item, SketchBox Box)> Grounds(Sketch s, int turn) =>
-        s.Items.Where(i => i.Part.Kind is "surface" or "road").Select(i => (i, Turn(i.Box, turn)));
+        s.Items.Where(i => i.Part.Kind is "surface" or "road" or "pads").Select(i => (i, Turn(i.Box, turn)));
 
     /// <summary>Everything that stands, each a place of its own: the buildings, the fuel farm, the approach lights, the fence in runs.</summary>
     public static List<TypePiece> Pieces(Sketch s, int turn)
     {
         var pieces = new List<TypePiece>();
-        SketchBox runway = s.Items[0].Box, apron = s.Of("apron").FirstOrDefault()?.Box ?? runway;
+        SketchBox runway = s.Box(s.Items[0].Part.Id), apron = s.Of("apron").FirstOrDefault()?.Box ?? runway;
         foreach (SketchItem i in s.Items)
         {
             if (i.Part.Kind == "fence") { pieces.AddRange(FenceRuns(s, i, turn)); continue; }

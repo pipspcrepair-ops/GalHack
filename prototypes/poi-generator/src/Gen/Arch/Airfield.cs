@@ -232,7 +232,10 @@ public static class Airfield
         int stand = p.RoomOf(ModuleKind.Outdoor, "stand", 0, cells);
         p.Door(Math.Max(ow + 3, mid), 0, 0, true, hall, stand);
         c.Link(stand, p.Yard);
-        p.Glazed(ow + 3, 1, 0, I1 - 2, 0);
+        // Glazed either side of the airside door, a pier of wall left round it (so a wall's panels head level).
+        int dI = Math.Max(ow + 3, mid);
+        if (dI - 2 >= ow + 3) p.Glazed(ow + 3, 1, 0, dI - 2, 0);
+        if (I1 - 2 >= dI + 2) p.Glazed(dI + 2, 1, 0, I1 - 2, 0);
         Furnish(p, "office", 1, 1, ow, K1 - 1, 0, office, false);
         int du = 2 * Math.Max(ow + 3, mid);
         for (int u = 2 * ow + 6; u < 2 * I1 - 1; u += 3)
@@ -369,7 +372,7 @@ public static class Airfield
         Canvas c = p.C;
         Fab f = p.F;
         var (I1, K1) = Frame(part);
-        int H = Math.Max(4, part.Int("h", 16) / 2 - 1);
+        int H = Math.Max(4, (int)MathF.Ceiling((part.Num("h", 16) - 2f) / 2f));   // (its top, a block over the hall, at least as high as rolled)
         p.Approach(I1 / 2, -2, Dir.North);
         int hall = p.Hall("hangar floor", ModuleKind.Hall, 0, 0, 0, I1, K1, 0, H, f.Wall, f.Roof);
         int d0 = I1 > 8 ? 2 : 1, d1 = I1 - d0, dh = H - 2;

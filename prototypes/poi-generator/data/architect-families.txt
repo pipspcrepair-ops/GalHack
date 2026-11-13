@@ -351,10 +351,10 @@ family abandoned_spaceport
   siting flat
   rise 30
   name Abandoned Spaceport
-  pitch A rocket still standing on its pad, fuelled and crewed and never cleared to go.
+  pitch Pads in their blast aprons, the halls the ships went into, a terminal and a tower over it all, fuel and oxidiser stored well apart.
   faction none
   roster oldworld
-  site spaceport
+  types starport spaceport landing_field
   core none
   owner none
   landmark
@@ -374,15 +374,12 @@ family abandoned_spaceport
     port b
   variant Ascension Yard
     seed 9203
-    site spaceport_grand
     port a
   variant Landing Field Nine
     seed 9204
-    site spaceport_field
     port c
   variant Depot Field
     seed 9205
-    site port_d
     port d
 
 family military_base

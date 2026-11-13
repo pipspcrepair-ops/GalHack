@@ -77,8 +77,8 @@ public partial class Screenshot : Node
         var planet = PlanetSpec.Roll(seed, (Archetype)a, variant);
         WeatherKind? weather = _args.TryGetValue("weather", out string w) ? Enum.Parse<WeatherKind>(w) : null;
         _args.TryGetValue("force", out string force);
-        if (_args.TryGetValue("type", out string type)) (PlanetSurface.Poi.PoiSiting.ForceType, force) = (type, "airfield");
-        if (_args.ContainsKey("airfield")) force = "airfield";
+        if (_args.TryGetValue("type", out string type)) (PlanetSurface.Poi.PoiSiting.ForceType, force) = (type, Main.Catalog.Library.Families.First(f => f.Types.Contains(type)).Id);
+        if (_args.ContainsKey("airfield")) force ??= "airfield";
         if (_args.TryGetValue("state", out string state)) PlanetSurface.Poi.PoiSiting.ForceState = Enum.Parse<PoiGenerator.Gen.PoiState>(state, true);
         if (_args.ContainsKey("forcevariant")) PlanetSurface.Poi.PoiSiting.ForceVariant = Int("forcevariant", 0);
         if (_args.ContainsKey("tiered")) PlanetSurface.Poi.PoiLayer.Tiered = true;
@@ -298,7 +298,7 @@ public partial class Screenshot : Node
     }
 
     /// <summary>
-    /// An airfield's frames (--airfield=all, or one by name; --type=airport|airstrip): the whole of it from the air, the
+    /// A typed place's frames (--airfield=all, or one by name; --type=airport, airstrip, starport...): the whole of it from the air, the
     /// terminal's landside and airside, a hangar with its door open to the apron, the tower, the runway from standing height.
     /// </summary>
     List<Shot> AirfieldShots(Main m, string which)
@@ -336,11 +336,11 @@ public partial class Screenshot : Node
             shots.Add(Aim("hangar", Out(hangar, 35, 1.7f) + new Vector3(4, 0, 4), At(hangar.Box, 4)));
         if (pieces.FirstOrDefault(p => p.Item.Part.Id == "tower") is { } tower)
             shots.Add(Aim("tower", Out(tower, 70, 1.7f) + new Vector3(10, 0, 10), At(tower.Box, tower.Item.H * 0.6f)));
-        if (pieces.Count > 0 && PoiGenerator.Gen.PlaceTypes.Grounds(place.Sketch, place.Turn).First(g => g.Item.Part.Id == "runway").Box is var rw)
+        if (pieces.Count > 0 && PoiGenerator.Gen.PlaceTypes.Grounds(place.Sketch, place.Turn).First(g => g.Item.Part.Id == place.Sketch.Items[0].Part.Id).Box is var rw)
         {
             bool alongX = rw.W >= rw.D;
             var end = At(rw, 1.7f) + (alongX ? new Vector3(-rw.W / 2 + 40, 0, rw.D * 0.15f) : new Vector3(rw.W * 0.15f, 0, -rw.D / 2 + 40));
-            shots.Add(Aim("runway", end, At(rw, 1.2f)));
+            shots.Add(Aim(place.Sketch.Items[0].Part.Id == "pads" ? "pad" : "runway", end, At(rw, 1.2f)));
         }
         return which == "all" ? shots : shots.Where(s => s.Name == which).ToList();
     }
