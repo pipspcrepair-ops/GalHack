@@ -75,6 +75,18 @@ public enum BlockType : byte
     Chamfer,    // a slope hung from the top of its cell, full height toward Facing: a ramp upside down
     ChamferCorner,    // Corner upside down
     ChamferInvCorner, // InvCorner upside down
+    // Round things' rims (Round lays them): full-height prisms cut in plan where a circle crosses the cell, so a tank, a
+    // stack or a dome reads round from above at every course. Each is drawn and collides as its plan (Shapes.Plan); the
+    // cut faces the way between Facing and the next way clockwise (North: north-east), or Facing's side for the slants.
+    Wedge,      // cut corner to corner: the half away from the cut
+    WedgeTip,   // cut across a corner from mid-edge to mid-edge: the small corner (an eighth) away from the cut
+    WedgeClip,  // the same cut: the rest of the cube, its corner clipped
+    Slant,      // cut from a corner to the middle of the far side (1 in 2): the quarter away from the cut
+    SlantM,     // Slant mirrored
+    SlantFill,  // the same cut: the three quarters away from it
+    SlantFillM, // SlantFill mirrored
+    RoundOut,   // a quarter round (radius 1) about a corner: Wedge's ends, bowed out
+    RoundIn,    // a cube less a quarter round about the opposite corner: Wedge's ends, bowed in
 }
 
 /// <summary>What a block counts as in the place-patterns shape shares (docs/place-patterns.md section 1.5, rule P6).</summary>
@@ -154,7 +166,10 @@ public static class BlockInfo
     /// The places' own shaped structure (half and quarter cubes, thin walls, beams, hung slopes, round columns): part of
     /// the building, so the walking grids take its whole cell as solid, while bodies collide with its real shape.
     /// </summary>
-    public static bool IsShaped(BlockType t) => t is >= BlockType.Half and <= BlockType.ChamferInvCorner;
+    public static bool IsShaped(BlockType t) => t is >= BlockType.Half and <= BlockType.RoundIn;
+
+    /// <summary>A round thing's rim piece: a full-height prism cut in plan (<see cref="Shapes.Plan"/>).</summary>
+    public static bool IsPlanCut(BlockType t) => t is >= BlockType.Wedge and <= BlockType.RoundIn;
 
     /// <summary>A slope hung upside down from the top of its cell: a chamfer or one of its corners.</summary>
     public static bool IsHung(BlockType t) => t is BlockType.Chamfer or BlockType.ChamferCorner or BlockType.ChamferInvCorner;
@@ -168,7 +183,7 @@ public static class BlockInfo
         BlockType.Partition => ShapeClass.Plate,
         BlockType.Ramp or BlockType.Chamfer => ShapeClass.Slope,
         BlockType.Corner or BlockType.InvCorner or BlockType.ChamferCorner or BlockType.ChamferInvCorner => ShapeClass.Corner,
-        BlockType.Column or BlockType.Pipe => ShapeClass.Round,
+        BlockType.Column or BlockType.Pipe or >= BlockType.Wedge and <= BlockType.RoundIn => ShapeClass.Round,
         BlockType.Pillar or BlockType.Rib or BlockType.Beam or BlockType.Lattice => ShapeClass.Pole,
         BlockType.Stair => ShapeClass.Stair,
         BlockType.Pane => ShapeClass.Window,
