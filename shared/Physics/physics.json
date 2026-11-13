@@ -112,10 +112,7 @@
     // Anything up to stepHeight (m) tall is a step, for every walking body on terrain, a cabin
     // floor or an outer hull: walking into it steps up onto it, walking off a ledge that deep
     // steps down without leaving the floor. Taller is a wall.
-    "stepHeight": 0.6,
-    // On ground too steep to stand on a body slides, as on scree, no faster than slideSpeed (m/s)
-    // down the slope: a long hillside is slid down, not fallen down.
-    "slideSpeed": 6
+    "stepHeight": 0.6
   },
 
   "water": {

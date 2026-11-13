@@ -84,48 +84,6 @@ public partial class PhysicsTest
     }
 
     /// <summary>
-    /// Ground too steep to stand on (a long 60° hillside, on the world layer like the terrain's own collision): the sleeper
-    /// slides down it, as on scree, no faster than a slide goes, and walks away from the foot unhurt.
-    /// </summary>
-    IEnumerable<int> Slide()
-    {
-        Player p = _w.Player;
-        N.Vector3 at = _w.Ground(-60f, 70f) + new N.Vector3(0f, 60f, 0f);
-        const float Length = 40f, Angle = 60f;
-        float rad = Angle * MathF.PI / 180f;
-        var hill = new StaticBody3D { Name = "Hillside", CollisionLayer = GalHack.Physics.Layers.World, CollisionMask = 0 };
-        hill.AddChild(new CollisionShape3D { Shape = new BoxMesh { Size = new Vector3(6f, 1f, Length) }.CreateTrimeshShape() });
-        var foot = new CollisionShape3D { Shape = new BoxMesh { Size = new Vector3(30f, 1f, 30f) }.CreateTrimeshShape() };
-        hill.AddChild(foot);
-        _w.AddChild(hill);
-        // The slab tilted down toward +z, its top face the hillside; a level floor at its foot.
-        hill.GlobalPosition = at.ToGodot();
-        ((CollisionShape3D)hill.GetChild(0)).Basis = new Basis(Vector3.Right, rad);
-        float drop = Length * 0.5f * MathF.Sin(rad), run = Length * 0.5f * MathF.Cos(rad);
-        foot.Position = new Vector3(0f, -drop - 0.5f, run + 15f - 0.5f);
-        // On the hillside itself, 3 m down from its top: a slide, not a walk off its brow (that is a fall).
-        N.Vector3 downhill = new(0f, -MathF.Sin(rad), MathF.Cos(rad)), normal = new(0f, MathF.Cos(rad), MathF.Sin(rad));
-        p.PlaceOutside(at + new N.Vector3(0f, drop, -run) + downhill * 3f + normal * 0.55f);
-        p.Yaw = MathF.PI; // facing down the hill (+z)
-        float health = p.Health.Current, fastest = 0f;
-        for (int t = 0; t < 360; t++)
-        {
-            p.Legs.Move = t < 300 ? new N.Vector2(0f, -1f) : N.Vector2.Zero;
-            yield return 0;
-            fastest = MathF.Max(fastest, p.Body.Velocity.Length());
-        }
-        p.Legs.Move = N.Vector2.Zero;
-        float lost = health - p.Health.Current;
-        bool down = p.Body.OnFloor && p.Body.Position.Y < at.Y - drop + 0.3f;
-        GD.Print($"  (down a {Length:F0} m {Angle:F0}° hillside, {2 * drop:F0} m high: fastest {fastest:F1} m/s, {lost:F0} health lost of {p.Health.Max:F0})");
-        Check(down && lost <= 0f && fastest < 12f, $"a hillside too steep to stand on is slid down, as on scree: at most {fastest:F1} m/s, unhurt ({lost:F0} lost), standing at its foot ({down})");
-        hill.GetParent().RemoveChild(hill);
-        hill.QueueFree();
-        p.PlaceOutside(_w.Ground(1.5f, 8.5f) + N.Vector3.UnitY * 0.05f);
-        for (int i = 0; i < 10; i++) yield return 0;
-    }
-
-    /// <summary>
     /// Hilltops: set down on the crest of the sandbox's jagged ridge at five points, the sleeper stands there, and walks off
     /// it every way (north, south, east, west), never held on the top and never rescued from it.
     /// </summary>
