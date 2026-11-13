@@ -381,7 +381,7 @@ public partial class Screenshot : Node
             (Vector3 eye, Vector3 at) = a[2] switch
             {
                 "back" => (mid + toward * (reach + 30) + Vector3.Up * 1.7f, mid + Vector3.Up * top * 0.45f),
-                "above" => (mid + toward * 6f + Vector3.Up * (top + reach * 2.2f + 8), mid + Vector3.Up * top),
+                "above" => (mid + toward * 4f + Vector3.Up * (top + reach * 1.3f + 4), mid + Vector3.Up * top),
                 "owner" => (mid + toward * (reach + 9) + Vector3.Up * (top + 3), mid + Vector3.Up * (top - 2)),
                 _ => (mid + toward * (reach + 10) + Vector3.Up * 1.7f, mid + Vector3.Up * Mathf.Min(top * 0.5f, 8f)),
             };

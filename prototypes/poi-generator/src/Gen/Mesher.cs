@@ -1689,7 +1689,7 @@ public static class Shapes
     public const byte RimRailVariant = 1;
 
     /// <summary>
-    /// A rail round a round thing's top, along its outline: over a rim piece, along its cut; over a whole block, along its
+    /// A rail round a round thing's top, along its outline: over a rim piece or a half, along its cut; over a whole block, along its
     /// face toward Facing; a hand in from the edge, a post at its start, so the runs of the cells round it meet end to end.
     /// </summary>
     static void RimRail(List<ShapeBox> l, Block b, Int3 p, IBlockStructure g, Rgb c, Surface s)
@@ -1697,9 +1697,8 @@ public static class Shapes
         Block under = g.Get(p + Int3.Down);
         var line = new List<V3>();
         V3 inward;
-        if (BlockInfo.IsPlanCut(under.Type))
+        if (!BlockInfo.IsFullCube(under.Type) && PlanOf(under) is { } plan)
         {
-            V3[] plan = Plan(under);
             int n = plan.Length;
             int start = Enumerable.Range(0, n).First(i => OnSide(plan[(i - 1 + n) % n], plan[i]) != null && OnSide(plan[i], plan[(i + 1) % n]) == null);
             for (int i = start; ; i = (i + 1) % n) { line.Add(plan[i]); if (OnSide(plan[i], plan[(i + 1) % n]) != null) break; }
