@@ -553,8 +553,10 @@ public partial class Game : Node3D
         }
         if (hand == HandKind.Tool && c.WasPressed(Key.Q))
         {
-            Tool.Mode = Tool.Mode switch { ToolMode.Gather => ToolMode.Shoot, ToolMode.Shoot => ToolMode.Deconstruct, _ => ToolMode.Gather };
+            Tool.Mode = Tool.Mode switch { ToolMode.Gather => ToolMode.Shoot, ToolMode.Shoot => ToolMode.Deconstruct, ToolMode.Deconstruct => ToolMode.Plate, _ => ToolMode.Gather };
         }
+        bool plating = hand == HandKind.Tool && Tool.Mode == ToolMode.Plate;
+        if (plating && c.Wheel != 0) Builder.NextPlating(c.Wheel);
         if (hand is HandKind.Block or HandKind.Core or HandKind.Blueprint)
         {
             bool decoInHand = hand == HandKind.Block && Pack.HandItem == GalHack.Items.DecoCatalogue.UniversalItem;
@@ -572,7 +574,7 @@ public partial class Game : Node3D
                 Builder.MirrorX = !Builder.MirrorX;
             }
         }
-        else if (c.Wheel != 0) Select((Pack.Selected + Math.Sign(c.Wheel) + PlayerInventory.ToolbarSlots) % PlayerInventory.ToolbarSlots);
+        else if (c.Wheel != 0 && !plating) Select((Pack.Selected + Math.Sign(c.Wheel) + PlayerInventory.ToolbarSlots) % PlayerInventory.ToolbarSlots);
     }
 
     /// <summary>How soon a number pressed again counts as a double tap, seconds.</summary>
@@ -716,7 +718,7 @@ public partial class Game : Node3D
         bool primary = hands && Controls.Primary, pressed = hands && Controls.PrimaryPressed;
         if (hand == HandKind.Tool) ToolEquipped = true;
         if (hands && Spaceflight.TakeHands(dt, hand, primary, pressed)) hands = false; // in space: salvage, claiming
-        bool deconstruct = hand == HandKind.Tool && Tool.Mode == ToolMode.Deconstruct;
+        bool deconstruct = hand == HandKind.Tool && Tool.Mode == ToolMode.Deconstruct, plating = hand == HandKind.Tool && Tool.Mode == ToolMode.Plate;
         bool building = Builder.Projecting || hand is HandKind.Block or HandKind.Core or HandKind.Device or HandKind.Blueprint;
         if (hands && Builder.Projecting) Builder.Tick(dt, HandKind.Blueprint, Pack.InHand, Pack.Selected, primary, pressed, Controls.SecondaryPressed);
         else if (hands && deconstruct)
@@ -724,6 +726,12 @@ public partial class Game : Node3D
             Builder.TickDeconstruct(pressed);
             if (primary && Builder.HasTarget && Builder.TargetVessel is Vessel dv && dv.Structure.TryGet(Builder.TargetCell, out _))
                 Tool.ShowBeam(dv.ToWorld(PhysicsSandbox.Bridges.StructureBridge.CellCenter(dv.Structure, Builder.TargetCell)));
+        }
+        else if (hands && plating)
+        {
+            Builder.TickPlate(pressed, Controls.SecondaryPressed);
+            if (primary && Builder.HasTarget && Builder.TargetVessel is Vessel pv)
+                Tool.ShowBeam(pv.ToWorld(PhysicsSandbox.Bridges.StructureBridge.CellCenter(pv.Structure, Builder.TargetCell)));
         }
         else if (hands && hand == HandKind.Tool) { Tool.ItemId = Pack.HandItem; Tool.Tick(dt, primary); }
         else if (hands && hand == HandKind.Weapon) Arms.Hold(dt, Pack.HandItem, primary, pressed);
@@ -733,7 +741,7 @@ public partial class Game : Node3D
         else if (hands && hand == HandKind.Vehicle && pressed) PlaceBike();
         else if (hands && hand == HandKind.Scanner && pressed) Scan();
         TickPings();
-        if (!hands || !(building || deconstruct)) Builder.Hide();
+        if (!hands || !(building || deconstruct || plating)) Builder.Hide();
         if (!hands || hand != HandKind.Weapon) Arms.Idle(dt);
         TickMachines(dt);
         CheckDeath();
@@ -889,7 +897,10 @@ public partial class Game : Node3D
         if (Survivor == null) return;
         LoadAhead(delta);
         PoseFigure(delta);
-        Camera.SetCullMaskValue(2, (ThirdPerson || FixedCamera != null) && Survivor.Seated == null);
+        // Seen from outside, the whole figure; in first person only seated (its lap under the view), and never the head the eye is in.
+        bool outside = ThirdPerson || FixedCamera != null;
+        Camera.SetCullMaskValue(Slice.Player.CharacterModel.BodyLayer, outside || Survivor.Seated != null);
+        Camera.SetCullMaskValue(Slice.Player.CharacterModel.HeadLayer, outside);
         Camera.GlobalTransform = FixedCamera ?? (Survivor.Seated is Vessel v && ThirdPerson
             ? Chase(v, 1.6f, 0.5f)
             : ThirdPerson ? Survivor.Eye().TranslatedLocal(new Vector3(0f, 0.6f, 4.5f)) : CloseUpView(Survivor.Eye()));

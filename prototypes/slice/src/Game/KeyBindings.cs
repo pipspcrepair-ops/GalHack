@@ -38,7 +38,7 @@ public sealed class KeyBindings
             new("sprint", Key.Shift, "Sprint / boost", "foot · bike · vessel", Move),
             new("use", Key.E, "Use", "open · take · pick up · roll right", Hands),
             new("seat", Key.F, "Sit / ride", "seat · bike · pod · get up", Hands),
-            new("tool-mode", Key.Q, "Tool mode", "gather · shoot · take down · fire mode · roll left", Hands),
+            new("tool-mode", Key.Q, "Tool mode", "gather · shoot · take down · plate · fire mode · roll left", Hands),
             new("helmet", Key.H, "Helmet", "open · seal", Hands),
             new("replicator", Key.B, "Replicator", "set down · pack up", Hands),
             new("torch", Key.L, "Head torch", "on · off", Hands),
