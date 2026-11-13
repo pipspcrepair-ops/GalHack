@@ -229,7 +229,7 @@ public sealed partial class BuildTool
                 Vector3 origin = at - basis * new Vector3(centre.X, 0f, centre.Z);
                 origin.X = MathF.Round(origin.X / cell) * cell;
                 origin.Z = MathF.Round(origin.Z / cell) * cell;
-                if (!Ground(origin, basis, lo, hi, step, tolerance, out float top, out float low, out bool wet))
+                if (!Ground(origin, basis, lo, hi, step, tolerance, !isBase, out float top, out float low, out bool wet))
                 {
                     if (wet) water++;
                     else steep++;
@@ -259,12 +259,17 @@ public sealed partial class BuildTool
         return feet;
     }
 
-    /// <summary>The ground under a footprint: its highest and lowest, and false if it is too uneven or under water.</summary>
-    bool Ground(Vector3 origin, Basis basis, Vector3 lo, Vector3 hi, float step, float tolerance, out float top, out float low, out bool wet)
+    /// <summary>
+    /// The ground under a footprint: its highest and lowest, and false if it is too uneven or under water. A vessel
+    /// (<paramref name="feet"/>) stands on the highest of the ground's collision, which its feet meet, not the natural
+    /// height between its faces; a base meets the natural ground, which its blocks clear.
+    /// </summary>
+    bool Ground(Vector3 origin, Basis basis, Vector3 lo, Vector3 hi, float step, float tolerance, bool feet, out float top, out float low, out bool wet)
     {
         top = float.MinValue;
         low = float.MaxValue;
         wet = false;
+        float stand = float.MinValue;
         int nx = Math.Max(1, (int)MathF.Ceiling((hi.X - lo.X) / step)), nz = Math.Max(1, (int)MathF.Ceiling((hi.Z - lo.Z) / step));
         for (int i = 0; i <= nx; i++)
             for (int j = 0; j <= nz; j++)
@@ -275,11 +280,13 @@ public sealed partial class BuildTool
                     wet = true;
                     return false;
                 }
-                float h = _zone.GroundTop(p.X, p.Z); // its feet meet the ground's collision, not the natural height between its faces
+                float h = _zone.GroundAt(p.X, p.Z).Y;
                 top = MathF.Max(top, h);
                 low = MathF.Min(low, h);
                 if (top - low > tolerance) return false;
+                if (feet) stand = MathF.Max(stand, _zone.GroundTop(p.X, p.Z));
             }
+        if (feet) top = stand;
         return true;
     }
 
