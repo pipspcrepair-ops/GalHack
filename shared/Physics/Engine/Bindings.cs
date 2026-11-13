@@ -292,8 +292,8 @@ public sealed class HullBinding : BodyBinding
 
     const int SunkProbes = 16;
 
-    /// <summary>Ground deeper than this over a shape's underside, m, is a hull sunk in it (less is resting on rough ground).</summary>
-    const float SunkDeep = 0.1f;
+    /// <summary>Ground deeper than this over a box's underside, m, is a hull sunk in it (less is resting on rough ground).</summary>
+    const float SunkDeep = 0.05f;
     readonly List<CollisionShape3D> _lowest = new();
 
     /// <summary>Does any of its shapes overlap anything solid by more than <see cref="Slop"/>?</summary>
