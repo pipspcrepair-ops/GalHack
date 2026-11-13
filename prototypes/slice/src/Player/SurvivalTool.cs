@@ -550,7 +550,7 @@ public sealed class SurvivalTool
             var entry = new Vector3(entered.X, entered.Y, entered.Z); // the face the ray entered through
             normal = entry.LengthSquared() > 0.5f ? entry.Normalized() : -dir;
         }
-        uint mask = Layers.World | Layers.Hull | Layers.Props | PlanetSurface.World.Layers.Flora;
+        uint mask = Layers.World | Layers.Hull | Layers.Props | Layers.Flora;
         // The voxel cast counts whole cubes, and a cube's corner stands proud of the smooth ground that is
         // drawn: a block behind it (a bunker wall at an angle to the grid) is what the bolt meets, and down
         // along a slope the drawn ground lies many metres further on, however steep the shot. So the world's

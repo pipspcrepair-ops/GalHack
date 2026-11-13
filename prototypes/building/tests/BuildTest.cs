@@ -55,6 +55,7 @@ public partial class BuildTest : Node
         Run("Core mode", TestCoreMode);
         Run("Core mode never touches blocks", TestModeKeepsEveryBlock);
         Run("Navigation", TestNav);
+        Run("Navigation on shapes", TestNavShapes);
         Run("Meshing performance", TestMeshing);
         Run("Device detail", TestDeviceDetail);
         MultiCellTests();
@@ -791,6 +792,29 @@ public partial class BuildTest : Node
         var s = new Structure(_cat);
         Building.Place(s, Int3.Zero, Block(s, _core));
         return s;
+    }
+
+    /// <summary>Floors are the blocks' real shapes: a half block is a step up, a slope a ramp onto the block behind it, a full block a wall, stairs a way up.</summary>
+    void TestNavShapes()
+    {
+        var s = new Structure(_cat);
+        for (int x = -3; x <= 3; x++)
+            for (int z = -3; z <= 3; z++)
+                s.Set(new Int3(x, 0, z), Block(s, x == 0 && z == -3 ? _core : _steel));
+        s.Set(new Int3(0, 1, 0), Block(s, _steel, "half"));
+        s.Set(new Int3(2, 1, 0), Block(s, _steel));
+        s.Set(new Int3(-2, 1, 0), Block(s, _steel, "slope"));
+        s.Set(new Int3(-2, 1, 1), Block(s, _steel));
+        NavGrid nav = NavGrid.Build(s);
+        bool Linked(Int3 a, Int3 b) => nav.LinksFrom(a).Any(l => l.To == b) && nav.LinksFrom(b).Any(l => l.To == a);
+        Check(nav.Floor.TryGetValue(new Int3(0, 1, 0), out float half) && MathF.Abs(half - 1f) < 0.06f && Linked(new Int3(0, 1, 1), new Int3(0, 1, 0)),
+            $"a half block is stood on in its own cell, half a block up ({half:F2}), and stepped onto from the floor beside it");
+        Check(!nav.Nodes.ContainsKey(new Int3(2, 1, 0)) && nav.Nodes.ContainsKey(new Int3(2, 2, 0)) && !Linked(new Int3(1, 1, 0), new Int3(2, 2, 0)),
+            "a full block is a wall: its top is floor, but not a step up from beside it");
+        Check(Linked(new Int3(-2, 1, -1), new Int3(-2, 1, 0)) && Linked(new Int3(-2, 1, 0), new Int3(-2, 2, 1)),
+            "a slope is a ramp: up from the floor and on onto the block behind it");
+        List<Int3> path = nav.FindPath(new Int3(-2, 1, -2), new Int3(-2, 2, 1));
+        Check(path != null, $"A* walks up the slope onto the block ({path?.Count ?? 0} steps)");
     }
 
     Block Block(Structure s, BlockType t, string shape = null, int rot = 0) =>

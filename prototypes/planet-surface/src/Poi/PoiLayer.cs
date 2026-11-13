@@ -6,6 +6,7 @@ using PoiGenerator;
 using PoiGenerator.Gen;
 using PlanetSurface.World;
 using Material = Godot.Material;
+using Layers = GalHack.Physics.Layers;
 
 namespace PlanetSurface.Poi;
 
@@ -53,7 +54,7 @@ public partial class PoiLayer : Node3D
     public IReadOnlyList<PoiSite> Sites => _world?.Pois ?? new List<PoiSite>();
 
     /// <summary>The physics layer the places' collision is on: planet-surface's own by default; a game puts it on its world layer.</summary>
-    public static uint PlaceLayer = Layers.Poi;
+    public static uint PlaceLayer = Layers.Hull;
 
     /// <summary>The node drawn for a place, once built (null before): a game that stands a near place up itself hides this one's blocks.</summary>
     public Node3D NodeOf(PoiSite site) => _places.FirstOrDefault(p => p.Site == site)?.Node;

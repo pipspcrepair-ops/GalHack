@@ -372,6 +372,35 @@ public sealed class Structure
         return t.Collide != Collide.None;
     }
 
+    /// <summary>
+    /// True if a point (structure frame, in cells; cell (0,0,0) is centred on the origin) is inside a block's real shape, as
+    /// it collides: an armour block's hull, a part-colliding block's parts (stretched over all its cells), a whole cell for the
+    /// rest. The air over a half block or a slope, or above a stair's step, is open. A point on a face is outside.
+    /// </summary>
+    public bool SolidAt(System.Numerics.Vector3 local)
+    {
+        Int3 cell = Int3.Round(local);
+        if (!TryGet(cell, out Block b) || !IsSolid(b)) return false;
+        BlockType t = TypeOf(b);
+        if (t.IsArmor ? ShapeOf(b).IsCube : t.Collide != Collide.Parts) return true;
+        const float Eps = 1e-3f;
+        // In the block's own frame (unturned), from its anchor's centre.
+        System.Numerics.Vector3 q = Orientations.Matrix(b.Rot).Transposed().Apply(local - (cell + b.ToAnchor).ToVector3());
+        if (t.IsArmor)
+        {
+            foreach (Polygon f in ShapeOf(b).Polygons)
+                if (System.Numerics.Vector3.Dot(f.Normal, q - f.Points[0]) > -Eps) return false;
+            return true;
+        }
+        foreach (Part p in t.Parts)
+        {
+            if (p.ClosedOnly && b.Open) continue;
+            System.Numerics.Vector3 lo = Footprint.PartPoint(t, p.Min), hi = Footprint.PartPoint(t, p.Max);
+            if (q.X > lo.X + Eps && q.Y > lo.Y + Eps && q.Z > lo.Z + Eps && q.X < hi.X - Eps && q.Y < hi.Y - Eps && q.Z < hi.Z - Eps) return true;
+        }
+        return false;
+    }
+
     /// <summary>Two neighbouring blocks are joined if both touch their shared face (structural connection).</summary>
     public bool Joined(Int3 a, Dir d)
     {

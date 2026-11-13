@@ -87,8 +87,9 @@
     // A rider of a ship lives in its cabin world, inside it or out on its hull. Out on the hull
     // it lets go of the ship when it jumps, or once it has been out of contact for letGoAfter (s)
     // or is more than letGoDistance (m) off the hull, so bumps and edges never drop anyone. It
-    // can't rejoin the same ship for rejoinAfter (s).
-    "letGoAfter": 0.4,
+    // can't rejoin the same ship for rejoinAfter (s). letGoAfter outlasts the drop off a block on the
+    // 1 m grid (1 m under gravity is 0.45 s): walking off a slope or a step on a deck is no letting go.
+    "letGoAfter": 0.8,
     "letGoDistance": 1.5,
     "rejoinAfter": 0.5,
     // Out on the hull, down is the gravity the rider is in, as inside: the ship's core gravity,

@@ -557,7 +557,7 @@ public sealed partial class HoverBikes : Node3D
     {
         _hullQuery ??= new PhysicsShapeQueryParameters3D
         {
-            Shape = new BoxShape3D { Size = HoverBike.HullMax - HoverBike.HullMin }, CollisionMask = Layers.World | Layers.Hull | PlanetSurface.World.Layers.Flora, Margin = 0f,
+            Shape = new BoxShape3D { Size = HoverBike.HullMax - HoverBike.HullMin }, CollisionMask = Layers.World | Layers.Hull | Layers.Flora, Margin = 0f,
         };
         _hullQuery.Transform = new Transform3D(attitude, position + attitude * ((HoverBike.HullMin + HoverBike.HullMax) * 0.5f));
         Godot.Collections.Array<Vector3> points = _zone.GetWorld3D().DirectSpaceState.CollideShape(_hullQuery, 16);
@@ -583,7 +583,7 @@ public sealed partial class HoverBikes : Node3D
     /// <summary>Is something solid in the way along a direction (a trunk, a rock, a wall)?</summary>
     public bool Blocked(Vector3 from, Vector3 dir, float length)
     {
-        var query = PhysicsRayQueryParameters3D.Create(from, from + dir * length, Layers.World | Layers.Hull | Layers.Props | PlanetSurface.World.Layers.Flora);
+        var query = PhysicsRayQueryParameters3D.Create(from, from + dir * length, Layers.World | Layers.Hull | Layers.Props | Layers.Flora);
         var hit = _zone.GetWorld3D().DirectSpaceState.IntersectRay(query);
         if (hit.Count == 0) return false;
         // A gentle slope is ridden up, not a wall.

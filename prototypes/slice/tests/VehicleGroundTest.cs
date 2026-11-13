@@ -249,7 +249,7 @@ public partial class VehicleGroundTest : Node
                 foreach (float s in new[] { -0.6f, 0f, 0.6f })
                 {
                     Vector3 o = bike.Position + Vector3.Up * h + bike.Forward.Cross(Vector3.Up).Normalized() * -s;
-                    var hit = _game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(PhysicsRayQueryParameters3D.Create(o, o + bike.Forward * 1.6f, GalHack.Physics.Layers.World | GalHack.Physics.Layers.Hull | GalHack.Physics.Layers.Props | PlanetSurface.World.Layers.Flora));
+                    var hit = _game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(PhysicsRayQueryParameters3D.Create(o, o + bike.Forward * 1.6f, GalHack.Physics.Layers.World | GalHack.Physics.Layers.Hull | GalHack.Physics.Layers.Props | GalHack.Physics.Layers.Flora));
                     if (hit.Count > 0) GD.Print($"    ray {h} {s}: {(hit["collider"].AsGodotObject() as Node)?.Name ?? "a body with no node"} at {((Vector3)hit["position"]).DistanceTo(o):F2} m, normal {hit["normal"]}");
                 }
         Check(seated && _game.Survivor.OnBike == bike && (ran > 3f || way != "" && ran > 2f) && w.Sunk < BikeTolerance,

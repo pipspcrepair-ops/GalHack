@@ -187,8 +187,11 @@ public sealed class StuckGuard
     public Vector3 FindOpen(Body body, Vector3 feet, StuckShape shape)
     {
         List<IStuckField> fields = Applicable(body);
+        // A rider aboard is rescued within its own structure, near where it is: never to a spot the ground offers far
+        // below the ship (in orbit, the terrain's open space is hundreds of metres down).
+        bool Ours(IStuckField f) => body.Frame == null || f.Owner == body.Frame;
         foreach (IStuckField field in fields)
-            if (field.TryFindOpen(body, feet, shape, out Vector3 open) && FitsAll(body, fields, open, shape))
+            if (Ours(field) && field.TryFindOpen(body, feet, shape, out Vector3 open) && FitsAll(body, fields, open, shape))
                 return open;
 
         var start = new Vector3(MathF.Floor(feet.X), MathF.Floor(feet.Y + shape.Height * 0.5f), MathF.Floor(feet.Z));
@@ -207,7 +210,7 @@ public sealed class StuckGuard
         }
 
         float top = float.NegativeInfinity;
-        foreach (IStuckField field in fields) top = MathF.Max(top, field.TopAt(body, feet.X, feet.Z));
+        foreach (IStuckField field in fields) if (Ours(field)) top = MathF.Max(top, field.TopAt(body, feet.X, feet.Z));
         return float.IsFinite(top) ? new Vector3(feet.X, top + 0.1f, feet.Z) : feet + Vector3.UnitY * 2f;
     }
 

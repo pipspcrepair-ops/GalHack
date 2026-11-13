@@ -292,7 +292,7 @@ public partial class Screenshot : Node
             Frame(a[5]);
             return;
         }
-        // place:<family>:<state>:<out|in|inN|low>[:wear/violence/water[/falling]] spawns a family fresh and frames it as a lot
+        // place:<family>:<state>:<out|near|in|inN|low>[:wear/violence/water[/falling]] spawns a family fresh and frames it as a lot
         // is framed; low stands in a corner of the biggest room on its lowest storey. The optional fifth part is the
         // world's fall as decay reads it, as the lot view's seventh.
         if (view.StartsWith("place:"))
@@ -429,7 +429,7 @@ public partial class Screenshot : Node
         }
         var b = m.Stage.SurfaceBounds();
         float r = 0.5f * b.Size.Length();
-        float dist = Mathf.Clamp(r * 2f, 28f, 260f);
+        float dist = shot == "near" ? Mathf.Clamp(r * 0.8f, 16f, 120f) : Mathf.Clamp(r * 2f, 28f, 260f); // (near: the same view, closer in)
         Vector3 target = m.Stage.ToGlobal(b.GetCenter() with { Y = b.Position.Y + b.Size.Y * 0.3f });
         float yaw = Mathf.DegToRad(m.EntranceYaw() + 32f), pitch = Mathf.DegToRad(22f);
         Vector3 from = target + new Vector3(Mathf.Sin(yaw) * Mathf.Cos(pitch), Mathf.Sin(pitch), Mathf.Cos(yaw) * Mathf.Cos(pitch)) * dist;

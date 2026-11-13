@@ -6,6 +6,7 @@ using Planets.Gen;
 using Planets.Look;
 using Godot;
 using PlanetSurface.World;
+using Layers = GalHack.Physics.Layers;
 
 namespace PlanetSurface.Terrain;
 
@@ -95,19 +96,30 @@ public partial class TerrainStreamer
         SolidsFocus = (fcx, fcz);
     }
 
-    /// <summary>The solids standing in a column (frame key), if its level-0 far chunk is in.</summary>
+    /// <summary>
+    /// The solids standing in a column (frame key), if its level-0 far chunk is in: from that chunk and its neighbours,
+    /// since a tree's limb can reach over the edge of the chunk that rolled the tree (its middle in the next one).
+    /// </summary>
     bool SolidsOfColumn(int cx, int cz, out List<FloraSolid> list)
     {
         list = null;
         int ccx = Mod(cx, World.Terrain.ChunksX), ccz = Mod(cz, World.Terrain.ChunksZ);
         int per = FarBuilder.Size / S;
         int fx = ccx / per, fz = ccz / per; // the far grid tiles the planet, a chunk cut short before a seam included
-        if (!_far.TryGetValue((fx, fz), out FarChunk f) || f.Lod != 0 || f.Solids == null) return false;
+        if (!_far.TryGetValue((fx, fz), out FarChunk home) || home.Lod != 0 || home.Solids == null) return false;
         list = new List<FloraSolid>();
         float x0 = ccx * S, z0 = ccz * S;
-        foreach (FloraSolid s in f.Solids)
-            if (s.Center.X >= x0 && s.Center.X < x0 + S && s.Center.Z >= z0 && s.Center.Z < z0 + S && !World.Felled.Contains(s.Id))
-                list.Add(s);
+        int farX = (World.Terrain.ChunksX + per - 1) / per, farZ = (World.Terrain.ChunksZ + per - 1) / per;
+        var seen = new HashSet<(int, int)>();
+        for (int dz = -1; dz <= 1; dz++)
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                var key = (Mod(fx + dx, farX), Mod(fz + dz, farZ));
+                if (!seen.Add(key) || !_far.TryGetValue(key, out FarChunk f) || f.Lod != 0 || f.Solids == null) continue;
+                foreach (FloraSolid s in f.Solids)
+                    if (s.Center.X >= x0 && s.Center.X < x0 + S && s.Center.Z >= z0 && s.Center.Z < z0 + S && !World.Felled.Contains(s.Id))
+                        list.Add(s);
+            }
         return true;
     }
 
@@ -180,13 +192,16 @@ public partial class TerrainStreamer
         c.Solids.Clear();
     }
 
-    /// <summary>A level-0 far chunk's flora was rebuilt (dug ground, a felled tree): its near columns take the new list at once.</summary>
+    /// <summary>A level-0 far chunk's flora was rebuilt (dug ground, a felled tree): its near columns, and its neighbours', take the new list at once.</summary>
     void SolidsChanged(int fx, int fz)
     {
         int per = FarBuilder.Size / S;
+        int farX = (World.Terrain.ChunksX + per - 1) / per, farZ = (World.Terrain.ChunksZ + per - 1) / per;
         foreach (SolidColumn c in _solidColumns.Values)
         {
-            if (Mod(c.Cx, World.Terrain.ChunksX) / per != fx || Mod(c.Cz, World.Terrain.ChunksZ) / per != fz) continue;
+            // Its own columns, and its neighbours' (its trees' limbs can reach into them).
+            int ox = Mod(Mod(c.Cx, World.Terrain.ChunksX) / per - fx + 1, farX), oz = Mod(Mod(c.Cz, World.Terrain.ChunksZ) / per - fz + 1, farZ);
+            if (ox > 2 || oz > 2) continue;
             FreeSolids(c);
             if (SolidsOfColumn(c.Cx, c.Cz, out List<FloraSolid> list)) Build(c, list);
         }
@@ -343,7 +358,9 @@ public partial class TerrainStreamer
     /// <summary>
     /// Stuck-safety for solid flora: if a body's core (its axis, from <paramref name="radius"/> above its
     /// feet to <paramref name="radius"/> below its top) is inside a trunk or a boulder, where its feet
-    /// should go instead: beside it, clear by its radius. Null when it isn't inside one.
+    /// should go instead: beside it, clear by its radius. Null when it isn't inside one. Only a solid whose
+    /// collider stands there counts (the engine is asked): one still waiting for its collider can't have
+    /// trapped anyone.
     /// </summary>
     public Vector3? OutOfSolids(Vector3 feet, float height, float radius)
     {
@@ -355,12 +372,22 @@ public partial class TerrainStreamer
             for (int k = 0; k <= 2; k++)
             {
                 Vector3 p = feet + Vector3.Up * Mathf.Lerp(radius, Mathf.Max(radius, height - radius), k / 2f) - offset;
-                if (!s.Contains(p)) continue;
+                if (!s.Contains(p) || !FloraAt(p + offset)) continue;
                 Vector3 beside = s.Beside(p, radius + 0.05f) + offset;
                 float ground = World.GroundHeight(Mathx.WrapX(beside.X, World.Width), Mathx.Wrap(beside.Z, World.Height));
                 return new Vector3(beside.X, Mathf.Max(feet.Y, ground + 0.05f), beside.Z);
             }
         }
         return null;
+    }
+
+    PhysicsPointQueryParameters3D _floraPoint;
+
+    /// <summary>A flora collider holds this point (frame coordinates).</summary>
+    bool FloraAt(Vector3 p)
+    {
+        _floraPoint ??= new PhysicsPointQueryParameters3D { CollisionMask = Layers.Flora };
+        _floraPoint.Position = p;
+        return GetWorld3D()?.DirectSpaceState.IntersectPoint(_floraPoint, 1).Count > 0;
     }
 }

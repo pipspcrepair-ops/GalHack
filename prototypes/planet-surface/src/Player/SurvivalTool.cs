@@ -6,6 +6,7 @@ using PlanetSurface.Fx;
 using PlanetSurface.Terrain;
 using PlanetSurface.World;
 using TerrainDigging.Terrain;
+using Layers = GalHack.Physics.Layers;
 
 namespace PlanetSurface.Player;
 
@@ -85,7 +86,7 @@ public partial class SurvivalTool : Node
         Vector3 eye = Player.EyePosition, dir = Player.LookDirection;
         HasTarget = Terrain.Store.Raycast(ToN(eye), ToN(dir), Reach, out Int3 cell, out Int3 face, out float distance);
         AimingAtStructure = false;
-        var query = PhysicsRayQueryParameters3D.Create(eye, eye + dir * Reach, Layers.Structure | Layers.Poi);
+        var query = PhysicsRayQueryParameters3D.Create(eye, eye + dir * Reach, Layers.Hull);
         var hit = Player.GetWorld3D().DirectSpaceState.IntersectRay(query);
         if (hit.Count > 0 && (!HasTarget || eye.DistanceTo((Vector3)hit["position"]) < distance))
         {

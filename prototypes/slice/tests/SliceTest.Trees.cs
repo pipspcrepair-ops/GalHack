@@ -45,7 +45,7 @@ public partial class SliceTest
             bike.Velocity = Vector3.Zero;
             bike.SetUpright();
             float nearest = float.MaxValue, deepest = 0f;
-            var hullQuery = new PhysicsShapeQueryParameters3D { Shape = new BoxShape3D { Size = Slice.Vehicles.HoverBike.HullMax - Slice.Vehicles.HoverBike.HullMin }, CollisionMask = PlanetSurface.World.Layers.Flora, Margin = 0f };
+            var hullQuery = new PhysicsShapeQueryParameters3D { Shape = new BoxShape3D { Size = Slice.Vehicles.HoverBike.HullMax - Slice.Vehicles.HoverBike.HullMin }, CollisionMask = GalHack.Physics.Layers.Flora, Margin = 0f };
             _game.Controls.Hold(Key.W);
             for (int i = 0; i < 240; i++)
             {

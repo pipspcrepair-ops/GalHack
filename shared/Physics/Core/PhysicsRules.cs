@@ -151,7 +151,7 @@ public sealed class PhysicsRules
     public sealed class RidingData
     {
         /// <summary>An outer-hull rider out of contact this long lets go of the ship, s. A jump lets go at once.</summary>
-        public float LetGoAfter { get; set; } = 0.4f;
+        public float LetGoAfter { get; set; } = 0.8f;
 
         /// <summary>An outer-hull rider farther than this from any block lets go at once, m.</summary>
         public float LetGoDistance { get; set; } = 1.5f;

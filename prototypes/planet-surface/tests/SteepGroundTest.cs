@@ -9,6 +9,7 @@ using Planets.Gen;
 using PlanetSurface.World;
 using Archetype = Planets.Gen.Archetype;
 using NV = System.Numerics.Vector3;
+using Layers = GalHack.Physics.Layers;
 
 namespace PlanetSurface;
 
@@ -594,7 +595,7 @@ public partial class SteepGroundTest : Node
                 if (float.IsInfinity(t)) continue;
                 _tally.Touched++;
                 NV to = from + d * (t + 1.5f);
-                var query = PhysicsRayQueryParameters3D.Create(eye, new Vector3(to.X, to.Y, to.Z), Layers.Terrain);
+                var query = PhysicsRayQueryParameters3D.Create(eye, new Vector3(to.X, to.Y, to.Z), Layers.World);
                 Godot.Collections.Dictionary r = space.IntersectRay(query);
                 if (r.Count != 0 && MathF.Abs(eye.DistanceTo((Vector3)r["position"]) - t) <= 0.05f) continue;
                 _tally.Untouched++;

@@ -4,6 +4,7 @@ using PlanetSurface.World;
 using Weather.Forces;
 using WaterForces = GalHack.Physics.WaterForces;
 using WaterRules = GalHack.Physics.PhysicsRules.WaterData;
+using Layers = GalHack.Physics.Layers;
 
 namespace PlanetSurface.Player;
 
@@ -93,7 +94,7 @@ public partial class Walker : CharacterBody3D, IForceBody
         AddChild(_shape);
         _standProbe = new CapsuleShape3D { Radius = Radius - 0.03f, Height = StandHeight - 0.1f };
         CollisionLayer = Layers.Player;
-        CollisionMask = Layers.Solid | Layers.Props;
+        CollisionMask = Layers.PlayerMask;
         FloorMaxAngle = Mathf.DegToRad(50f);
         FloorSnapLength = 0.35f;
         FloorConstantSpeed = true;
@@ -239,7 +240,7 @@ public partial class Walker : CharacterBody3D, IForceBody
         {
             Shape = _standProbe,
             Transform = new Transform3D(Basis.Identity, GlobalPosition + Vector3.Up * (0.08f + _standProbe.Height / 2f)),
-            CollisionMask = Layers.Solid | Layers.Props,
+            CollisionMask = Layers.PlayerMask,
             Exclude = new Godot.Collections.Array<Rid> { GetRid() },
         };
         return GetWorld3D().DirectSpaceState.IntersectShape(query, 1).Count == 0;

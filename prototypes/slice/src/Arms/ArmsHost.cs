@@ -81,7 +81,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
 
 
     /// <summary>What stops a shot: the ground and what is fixed to it, structures' hulls, trees. (Creatures and people are their own hit spheres.)</summary>
-    const uint SolidMask = Layers.World | Layers.Hull | PlanetSurface.World.Layers.Flora;
+    const uint SolidMask = Layers.World | Layers.Hull | Layers.Flora;
 
     public override void _PhysicsProcess(double delta)
     {

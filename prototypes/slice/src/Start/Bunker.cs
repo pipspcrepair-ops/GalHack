@@ -591,9 +591,6 @@ public sealed class Bunker
         var solid = CellsFor(zone, site).Where(c => store.MaterialAt(c) != CellMaterial.Air).ToList();
         if (solid.Count > 0) zone.Edits.DigCells(solid);
         bunker.Ruin = Vessel.SpawnBase(zone, s, site.Origin, site.Heading);
-        // Its ramps are walked on: the stuck guard asks a field that knows them for what they are.
-        int field = zone.Physics.StuckFields.IndexOf(bunker.Ruin.Field);
-        if (field >= 0) zone.Physics.StuckFields[field] = new RampField(bunker.Ruin.Field);
         bunker.Ruin.IsRuin = true;
         WalkableWays(zone, site, out _, bunker.Ways);
         bunker.Furnish(zone);
@@ -728,56 +725,6 @@ public sealed class Bunker
         at.AddChild(new OmniLight3D { Name = "Lamp", Position = new Vector3(-2.2f, 2.8f, 0f), LightColor = new Color(1f, 0.9f, 0.75f), LightEnergy = 0.9f, OmniRange = 6f });
         at.AddChild(new OmniLight3D { Name = "Stairs", Position = new Vector3(0f, 2.2f, StepZ(Math.Max(1, Steps / 2))), LightColor = new Color(1f, 0.6f, 0.3f), LightEnergy = 0.7f, OmniRange = 6f });
     }
-}
-
-/// <summary>
-/// The bunker's stuck field: the structure's own, except that its stairs and the ramp off the top
-/// step are walked on, not stood inside. A body counts as inside only where a whole block is, or
-/// inside a step of a stairs block (a part of a block that collides by its parts).
-/// </summary>
-sealed class RampField : IStuckField
-{
-    readonly StructureField _inner;
-
-    public RampField(StructureField inner) => _inner = inner;
-
-    public string Name => _inner.Name;
-    public Body Owner => _inner.Owner;
-    public bool Applies(Body body) => _inner.Applies(body);
-
-    public bool IsSolid(Body body, N.Vector3 point)
-    {
-        Structure s = _inner.Structure;
-        N.Vector3 local = _inner.Body.ToLocal(point) / s.Grid.CellSize;
-        Int3 cell = Int3.Round(local);
-        if (!s.TryGet(cell, out Block b) || !s.IsSolid(b)) return false;
-        BlockType t = s.TypeOf(b);
-        if (t.IsArmor) return s.ShapeOf(b).IsCube;
-        if (t.Collide != Collide.Parts) return true;
-        // In the block's own frame, from its anchor's centre: solid only inside one of its parts.
-        N.Vector3 q = Orientations.Matrix(b.Rot).Transposed().Apply(local - (cell + b.ToAnchor).ToVector3());
-        foreach (Part p in t.Parts)
-        {
-            if (p.ClosedOnly && b.Open) continue;
-            N.Vector3 lo = Footprint.PartPoint(t, p.Min), hi = Footprint.PartPoint(t, p.Max);
-            if (q.X >= lo.X && q.Y >= lo.Y && q.Z >= lo.Z && q.X <= hi.X && q.Y <= hi.Y && q.Z <= hi.Z) return true;
-        }
-        return false;
-    }
-
-    public bool IsInside(Body body, N.Vector3 feet, StuckShape shape)
-    {
-        float bottom = shape.Radius, top = MathF.Max(shape.Height - shape.Radius, shape.Radius);
-        int steps = Math.Max(1, (int)MathF.Ceiling((top - bottom) / 0.25f));
-        for (int i = 0; i <= steps; i++)
-            if (IsSolid(body, feet + N.Vector3.UnitY * (bottom + (top - bottom) * i / steps))) return true;
-        return false;
-    }
-
-    public bool Fits(Body body, N.Vector3 feet, StuckShape shape) => _inner.Fits(body, feet, shape);
-    public bool Supports(Body body, N.Vector3 feet) => _inner.Supports(body, feet);
-    public float TopAt(Body body, float x, float z) => _inner.TopAt(body, x, z);
-    public bool TryFindOpen(Body body, N.Vector3 feet, StuckShape shape, out N.Vector3 openFeet) => _inner.TryFindOpen(body, feet, shape, out openFeet);
 }
 
 /// <summary>
