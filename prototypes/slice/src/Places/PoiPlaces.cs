@@ -18,7 +18,7 @@ namespace Slice.Places;
 /// The planet's places as part of the surface world you walk in. planet-surface's POI layer
 /// draws every place on the planet (solid, on the world layer, so a vessel lands on a roof and
 /// nothing flies through a wall); a place within <see cref="BuildRadius"/> of the focus is stood
-/// up here as a real structure (<see cref="Place"/>): doors, keycards, caches, hidden rooms,
+/// up here as a real structure (<see cref="Place"/>): doors, caches, hidden rooms,
 /// ladders, lifts, its rooms dressed, its creatures and people. The build runs on a worker and
 /// then a few milliseconds a frame, so it never hitches, and finishes long before you are close
 /// enough to see in; only then does the far drawing's block mesh give way to it, in the same
@@ -30,9 +30,6 @@ public partial class PoiPlaces : Node3D
 {
     public SurfaceZone Zone;
     public Func<Vector3> Focus = () => Vector3.Zero;
-
-    /// <summary>Whether the survivor carries a keycard of at least this clearance (the game asks the bag).</summary>
-    public Func<string, bool> Holds = _ => false;
 
     /// <summary>Places within this of the focus (to the nearest edge of their footprint) stand as structures.</summary>
     public float BuildRadius = 320f;
@@ -85,8 +82,6 @@ public partial class PoiPlaces : Node3D
             if (at is Place p) return p.Ready ? p : null;
         return null;
     }
-
-    public bool HasClearance(string clearance) => clearance == null || Holds(clearance);
 
     /// <summary>Where the drawing is seen from (tests can say; otherwise the camera).</summary>
     public Func<Vector3> Eye;

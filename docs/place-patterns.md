@@ -264,7 +264,7 @@ Empyrion, over 1,600 place blueprints:
 2. **The shell**: turrets on roofs, corners and over the way in, in the upper half of the building's height and within the outer third of its plan; interior guns covering the entry hall, the hangar and any long corridor end.
 3. **The inside**: guards spread through rooms at the E2 density, slightly heavier on the lower storeys.
 
-The core goes deep (in the inner third of the plan, in the lower half of the height), sealed behind a locked door or solid wall, at least 10 m from the nearest loot cache. The existing `Dressing.cs` guards-at-the-entrance, turret-on-top and hover-at-the-door spawns fit rings 1 and 2. Add the spread through rooms and the core rule.
+The core goes deep (in the inner third of the plan, in the lower half of the height), sealed behind a locked door or solid wall, at least 10 m from the nearest loot cache. The existing `Dressing.cs` guards-at-the-entrance, turret-on-top and hover-at-the-door spawns fit rings 1 and 2. Add the spread through rooms and the core rule. *Owner override, 13 Nov: no locked doors and no key cards in any place; the core is protected by depth, guards and turrets, never by a lock, and every door opens by hand.*
 
 ### 2.6 Patrols
 
@@ -334,7 +334,7 @@ What separates a high-tech place (Empyrion) from a low-tech one (7 Days to Die),
 | **Corridors** | 1 to 2 m, 10 to 28% of floor | 2 to 4 m, 23 to 38% of floor, up to 70% in small stations |
 | **Room kinds** | Domestic and civic: kitchens, bathrooms, bedrooms, shop floors, classrooms, wards, cells, offices | Functional: hangars and bays, command, power, fabrication, labs and test chambers, armoury, containment, docking; living is a barracks block |
 | **Lighting** | One light per 11 to 15 m² in lived rooms (0.07 to 0.09 per m²), 0.04 per m² in stores and workshops; ceiling lights, lamps, porch lights, fluorescent tubes in civic places, torches and lanterns in mines | 6 to 26 lights per place, set into walls and ceilings as strips and panels; most in trade posts and factories (26), fewest in wrecks and caves (6) |
-| **Doors** | One-wide house doors, glass shop doors, roll-up and garage doors (3 to 5 m), chain-link gates; keys and breakable doors | 2 m interior doors, armoured vertical doors, shutter doors 4 to 10 m wide for vehicles, trap doors over ladders; **every window has an armoured shutter** (the commonest door-like block in every high-tech category) |
+| **Doors** | One-wide house doors, glass shop doors, roll-up and garage doors (3 to 5 m), chain-link gates; keys (*owner override, 13 Nov: no locked doors and no key cards; every door opens by hand*) and breakable doors | 2 m interior doors, armoured vertical doors, shutter doors 4 to 10 m wide for vehicles, trap doors over ladders; **every window has an armoured shutter** (the commonest door-like block in every high-tech category) |
 | **Defences** | None built in: bars, boarded windows, chain-link fences, a few bulletproof panes; the danger is the residents (section 2) | A core (70 to 90% of held places), turrets outside (median 1 to 4, p90 8 to 19), interior guns (median 0 to 4, p90 15 to 25), spawners (median 3 to 9), drones (1 to 2), troop transports (half of held places) |
 | **Loot** | Everywhere in small amounts: 1 to 8 containers per 100 m² of lot, richest in clinics, shops and offices | Fewer places hold more: median 5 to 29 containers per place, richest in stations, trade posts and labs |
 

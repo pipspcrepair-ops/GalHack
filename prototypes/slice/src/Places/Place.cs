@@ -13,7 +13,7 @@ namespace Slice.Places;
 /// <summary>
 /// A place near the survivor stood up as a real structure in the surface world: its blocks as
 /// meshes and collision (on the world layer, so walking, E, the tool and every ray meet them),
-/// its doors as sliding leaves, its lift cars, its keycards lying where they fell, the tells of
+/// its doors as sliding leaves, its lift cars, the tells of
 /// its hidden rooms, the lamps nearest you, its rooms dressed from the decorations library, and
 /// its creatures. The node's local space is the place's grid: one unit a cell, cell (x, y, z)
 /// spanning [x, x+1], with the grid's origin at the site's origin in the world (the copy nearest
@@ -394,7 +394,6 @@ public partial class Place : Node3D
         foreach (int x in BuildDoors()) yield return x;
         BuildLifts();
         yield return 0;
-        BuildKeys();
         BuildTells();
         BuildFittings();
         yield return 0;
@@ -409,7 +408,7 @@ public partial class Place : Node3D
         Dormant = dormant;
         foreach (Node n in GetChildren())
             if (n is CollisionObject3D body) body.ProcessMode = dormant ? ProcessModeEnum.Disabled : ProcessModeEnum.Inherit;
-            else if (n is Light3D || n is CpuParticles3D || n.Name.ToString().StartsWith("Deco") || n.Name == "Keys" || n.Name == "Creatures") ((Node3D)n).Visible = !dormant;
+            else if (n is Light3D || n is CpuParticles3D || n.Name.ToString().StartsWith("Deco") || n.Name == "Creatures") ((Node3D)n).Visible = !dormant;
         foreach (Door d in _doors) d.Root.ProcessMode = dormant ? ProcessModeEnum.Disabled : ProcessModeEnum.Inherit;
     }
 
@@ -479,15 +478,15 @@ public partial class Place
                 }
         var nav = new PoiGenerator.Gen.NavGrid(new Overlay(g, blocked, foot: true), m.Inst.Layout.Occupied, null, false);
         if (PlaceParts.Fixed(m) is not { } parts) return nav;
-        // A locked door is no way for the town's routes (nobody is sent where they would stand before it); the rest they open as they come.
-        var locked = new HashSet<Int3>(DoorWays.Of(m).Where(d => d.Clearance != null || d.Lift).SelectMany(d => d.Cells));
+        // A lift door is no way for the town's routes (nobody is sent where they would stand before it); the rest they open as they come.
+        var lifts = new HashSet<Int3>(DoorWays.Of(m).Where(d => d.Lift).SelectMany(d => d.Cells));
         // A person stands in a cell where somewhere in it they fit clear of the furniture and clutter, and steps
         // to the next where their body gets by all the way: past a monitor, beside a locker, round a chair.
         Func<int, int, int, bool> walls = WallsOf(nav);
         nav.Fits = c => PersonSpot(parts, walls, c) != null;
         nav.Passes = (a, b) =>
         {
-            if (locked.Contains(a) || locked.Contains(b)) return false;
+            if (lifts.Contains(a) || lifts.Contains(b)) return false;
             if (nav.RampAt(a, out _) || nav.RampAt(b, out _)) return true;
             if (PersonSpot(parts, walls, a) is not { } pa || PersonSpot(parts, walls, b) is not { } pb) return false;
             if (!parts.Touches(pa, PlaceParts.PersonRadius, PlaceParts.PersonHeight) && !parts.Touches(pb, PlaceParts.PersonRadius, PlaceParts.PersonHeight)) return true;
