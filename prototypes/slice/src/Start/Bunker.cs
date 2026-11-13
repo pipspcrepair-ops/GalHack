@@ -390,6 +390,23 @@ public sealed class Bunker
     /// <summary>The place the way out looks at is still in view from it.</summary>
     public bool SeesPoi(SurfaceZone zone) => Landmark is Vector3 l && LineOfSight(zone, Outside + Vector3.Up * 1.6f, l);
 
+    /// <summary>How far a site keeps from anything the planet stood on the ground, round the bunker and its way out, m.</summary>
+    const float ClearBy = 12f;
+
+    /// <summary>Tests: false searches without keeping clear of the planet's own things (to count what they would have crowded).</summary>
+    public static bool KeepsClear = true;
+
+    /// <summary>What of the planet's (places, ruins, wrecks, roads, rail, power, town, city) stands on or by this bunker: its chamber, stairwell and a few metres of the way out.</summary>
+    public IEnumerable<string> Crowding(SurfaceZone zone) => Crowding(zone, z => At(new Vector3(0f, 0f, z)), Steps);
+
+    /// <summary>What stands on or by a bunker of this many steps, given its frame (a point on its axis, by z): the planet lays it all out before the bunker has a site, so the search asks.</summary>
+    static IEnumerable<string> Crowding(SurfaceZone zone, Func<float, Vector3> onAxis, int steps)
+    {
+        float z0 = StepZ(steps) - 5f, z1 = RoomZ * Cell + 0.25f;
+        Vector3 mid = onAxis((z0 + z1) * 0.5f);
+        return zone.Planet.Occupants(mid.X, mid.Z, MathF.Sqrt(MathF.Pow(RoomX * Cell + 0.25f, 2) + MathF.Pow((z1 - z0) * 0.5f, 2)) + ClearBy);
+    }
+
     /// <summary>The room's floor height and the steps to the surface for a spot and a heading, if the ground there will do.</summary>
     static (N.Vector3 origin, int steps)? Fit(SurfaceZone zone, Vector3 p, float heading, bool strict)
     {
@@ -434,6 +451,9 @@ public sealed class Bunker
                     level = MathF.Abs(beyond - top) <= 0.5f && beyond >= 1.5f;
                 }
                 if (!level) continue;
+                // Nothing stands on the bunker or over its way out: no place, hulk, ruin or wreck
+                // (the planet laid them out knowing only the landing site, not where the bunker goes).
+                if (KeepsClear && Crowding(zone, z => At(0f, z), k).Any()) continue;
                 Vector3 c = At(0f, 0f);
                 return (new N.Vector3(c.X, shifted, c.Z), k);
             }

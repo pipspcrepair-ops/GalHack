@@ -21,7 +21,7 @@ public readonly record struct OpenDoor(Vector3 Centre, Vector3 Normal, Vector2 S
 /// as you come up and shut behind you ("doors open for the player faction on their own"). The
 /// block's own Open flag (building's) stays the truth for rooms, pathing and collision: opening
 /// flips it at once so the way is clear while the leaves draw back; shutting flips it as the
-/// leaves meet, so nobody is shut inside one. Locks and keycards are the places' (<see cref="Place.Door"/>).
+/// leaves meet, so nobody is shut inside one.
 /// </summary>
 public partial class BlockDoors : Node3D
 {

@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Linq;
 using GalHack.Physics;
 using Godot;
+using GalHack.Physics.Engine;
 using Slice.Game;
 using Slice.Start;
 using Slice.Ui;
@@ -73,7 +74,13 @@ public partial class StartTest : Node
         string[] args = OS.GetCmdlineUserArgs();
         int random = WorldsPerRun;
         for (int i = 0; i < args.Length - 1; i++) if (args[i] == "--seeds") int.TryParse(args[i + 1], out random);
+        _exitOnly = args.Contains("--exit-only");
         var seeds = new List<ulong>();
+        if (args.Contains("--crowd"))
+        {
+            foreach (int x in Crowd(random)) yield return x;
+            yield break;
+        }
 
         // Two fresh games, nothing pinned: each rolls its own world.
         if (WorldChoice.FromArgs(args) == null)
@@ -106,6 +113,71 @@ public partial class StartTest : Node
     }
 
     readonly List<string> _failedWorlds = new();
+
+    /// <summary>
+    /// -- --crowd --seeds N: no walk, no physics. On N fresh worlds the start site is found without keeping clear of the
+    /// planet's things, and what each kind of them would have crowded is counted (what the guard is for).
+    /// </summary>
+    IEnumerable<int> Crowd(int worlds)
+    {
+        var counts = new SortedDictionary<string, int>();
+        int crowded = 0, found = 0;
+        Bunker.KeepsClear = false;
+        for (int i = 0; i < worlds; i++)
+        {
+            var game = new Game.Game { Interactive = false, World = WorldChoice.Fresh("random") };
+            AddChild(game);
+            var watch = Stopwatch.StartNew();
+            while (game.Bunker == null && watch.Elapsed.TotalSeconds < 120) yield return 0;
+            if (game.Bunker != null)
+            {
+                found++;
+                List<string> kinds = game.Bunker.Crowding(game.Zone).Distinct().ToList();
+                if (kinds.Count > 0) crowded++;
+                foreach (string k in kinds) counts[k] = counts.GetValueOrDefault(k) + 1;
+                GD.Print($"  {game.World}: {(kinds.Count == 0 ? "clear" : string.Join(", ", kinds))}");
+            }
+            game.QueueFree();
+            for (int k = 0; k < 5; k++) yield return 0;
+        }
+        Bunker.KeepsClear = true;
+        GD.Print($"crowded: {crowded} of {found} sites; by kind: {string.Join(", ", counts.Select(c => $"{c.Key} {c.Value}"))}");
+        _passes++;
+    }
+
+    /// <summary>-- --exit-only: just the way-out check on each world (cheap, for many worlds).</summary>
+    bool _exitOnly;
+
+    /// <summary>
+    /// What stands over the way out, or null: the sky above the open steps, the top step and the ground beyond it,
+    /// 1.5 m wide, 40 m up, asked of every solid there is (terrain, structures, wrecks, hulks) and of the
+    /// physics server (places, rocks, trunks), the bunker's own blocks aside.
+    /// </summary>
+    static string Covered(Game.Game game)
+    {
+        Bunker b = game.Bunker;
+        var crowding = b.Crowding(game.Zone).Distinct().ToList();
+        if (crowding.Count > 0) return $"the planet's {string.Join(", ", crowding)} stand on it or by it";
+        Vector3 across = (b.At(new Vector3(1f, 0f, 0f)) - b.At(Vector3.Zero)).Normalized();
+        var space = game.Zone.GetWorld3D().DirectSpaceState;
+        var spots = new List<Vector3>();
+        for (int i = 0; i <= 8; i++) spots.Add(b.StairTop.Lerp(b.Outside, i / 8f));
+        foreach (Vector3 w in b.WayOut) if (w.Y > game.Zone.GroundAt(w.X, w.Z).Y - 0.5f) spots.Add(w);
+        foreach (Vector3 spot in spots)
+            foreach (float side in new[] { -0.6f, 0f, 0.6f })
+            {
+                Vector3 p = spot + across * side;
+                var hit = space.IntersectRay(PhysicsRayQueryParameters3D.Create(p + Vector3.Up * 0.4f, p + Vector3.Up * 40f));
+                if (hit.Count > 0 && hit["collider"].AsGodotObject() is Node n && n != b.Ruin.Node && !b.Ruin.Node.IsAncestorOf(n)) return $"{n.GetPath()} ({n.GetType().Name}) {((Vector3)hit["position"]).Y - p.Y:F1} m over {p}";
+                for (float up = 0.4f; up <= 40f; up += 0.5f)
+                {
+                    var at = (p + Vector3.Up * up).ToNumerics();
+                    foreach (var f in game.Zone.Physics.StuckFields)
+                        if (f.Owner != b.Ruin.Body && f.IsSolid(game.Survivor.Body, at)) return $"{f.Name} {up:F1} m over {p}";
+                }
+            }
+        return null;
+    }
 
     IEnumerable<int> OneWorld(WorldChoice pinned, List<ulong> seeds)
     {
@@ -175,6 +247,16 @@ public partial class StartTest : Node
         double roomC = game.Zone.Data.Rules.Climate.SealedRoomC;
         Check(sealedIn && chamber.Temperature == roomC && chamber.OxygenPercent == 21 && (world.Archetype != Planets.Gen.Archetype.Ice || outside.Temperature < roomC),
             $"{world.Name}, seed {world.Seed}: the world's {outside.Temperature:F0} °C and {outside.OxygenPercent:F0}% oxygen outside don't reach the chamber: {chamber.Temperature:F0} °C, {chamber.OxygenPercent:F0}%");
+        // Nothing solid (ground, a place, a hulk, a wreck, a ruin, a rock, a tree) stands over the way out's open sky.
+        foreach (int x in drive.Wait(600)) yield return x;
+        string covered = Covered(game);
+        Check(covered == null, $"{world.Name}, seed {world.Seed}: the way out is open to the sky{(covered == null ? "" : $": {covered}")}");
+        if (_exitOnly)
+        {
+            game.QueueFree();
+            for (int i = 0; i < 10; i++) yield return 0;
+            yield break;
+        }
         foreach (int x in Watched(play.WakeAndLeave(Check, $"{world.Name}, seed {world.Seed}: "))) yield return x;
         Check(rescues == 0 && worstStep < 1.5f, $"{world.Name}, seed {world.Seed}: no teleports (largest move in a tick {worstStep:F2} m), never rescued");
         Bunker b = game.Bunker;

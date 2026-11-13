@@ -470,7 +470,7 @@ public partial class FurnitureTest : Node
     void Doors(Species person, List<Species> animals)
     {
         GD.Print("-- doors --");
-        int shutOnBody = DoorWays.ShutOnBody, tried = 0, crossed = 0, shutAfter = 0, inLeaf = 0, locked = 0, lockedOpen = 0, stopped = 0, through = 0, jams = 0, jamFit = 0, jamTooBig = 0;
+        int shutOnBody = DoorWays.ShutOnBody, tried = 0, crossed = 0, shutAfter = 0, inLeaf = 0, stopped = 0, through = 0, jams = 0, jamFit = 0, jamTooBig = 0;
         string held = "no case";
         var notes = new List<string>();
         foreach (PlaceMemory m in _places)
@@ -483,20 +483,6 @@ public partial class FurnitureTest : Node
                 Vector3 a = d.Centre - n * 1.3f, b = d.Centre + n * 1.3f;
                 a.Y = b.Y = d.Bottom;
                 int Side(Vector3 p) => MathF.Abs((p - d.Centre).Dot(d.Along)) < d.Width / 2f + 0.2f && p.Y < d.Bottom + d.Height ? MathF.Sign((p - d.Centre).Dot(n)) : 0;
-                if (d.Clearance != null)
-                {
-                    // A child and a worker carry no card a lock asks more of.
-                    locked++;
-                    Town town = Town.Walking(m);
-                    Town.Person kid = town.Walker(person, a, a);
-                    if (kid != null)
-                    {
-                        kid.Job = PersonRole.Child;
-                        if (town.MayOpen(kid, d)) lockedOpen++;
-                    }
-                    if (!d.Shut) lockedOpen++;
-                    continue;
-                }
                 if (!d.Jammed && d.Shut)
                 {
                     Town town = Town.Walking(m);
@@ -572,7 +558,6 @@ public partial class FurnitureTest : Node
         Check(tried >= 4 && crossed >= tried * 0.85f && shutAfter >= crossed, $"people cross shut doors by opening them: {crossed} of {tried}; shut again {DoorWays.AutoClose:F0} s after the way was clear: {shutAfter}");
         Check(held.StartsWith("held"), $"a door holds open over a person stopped in it: {held}");
         Check(inLeaf == 0 && closedOn == 0, $"no body is ever in a door's leaf ({inLeaf} steps), and no leaf ever closed into one ({closedOn})");
-        Check(lockedOpen == 0, $"locked doors never open for one without the card: {locked} locked, {lockedOpen} opened");
         Check(through == 0 && stopped > 0, $"animals are stopped by shut doors: {stopped} stopped, {through} through");
         Check(jamTooBig == 0, $"a jammed door lets through only what fits its gap: {jams} tries, {jamFit} through that fit, {jamTooBig} that didn't");
     }

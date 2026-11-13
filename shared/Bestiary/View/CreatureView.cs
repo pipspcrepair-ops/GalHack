@@ -96,7 +96,10 @@ public static class CreatureMaterials
 }
 
 /// <summary>
-/// Draws one creature: a mesh per rig piece, posed straight from the rig every physics tick
+/// Draws one creature: its rig's pieces as one skinned body (a mesh for its solid pieces that cast
+/// shadows, one for those that don't, one for its blurs), each piece a bone posed straight from the rig;
+/// its small parts drop out by size on screen through the mesh's levels of detail, as a person's do.
+/// (The old way, a mesh per rig piece, stays behind <see cref="Merged"/> for measuring.) Posed from the rig every physics tick
 /// (physics interpolation smooths it on fast screens). Pieces are direct children of a node at
 /// the origin, so a pose is just a local transform. Swarms are one MultiMesh.
 /// </summary>
@@ -106,7 +109,17 @@ public partial class CreatureView : Node3D
 
     /// <summary>How much of it shows (0..1) as the view last faded it, and how far it has come in since it was built (WildlifeView.Fader).</summary>
     public float Shows = 1f, Arrived = 1f;
+
+    /// <summary>A body as a few skinned meshes rather than a node per piece (one draw a material, and nothing to move but the bones).</summary>
+    public static bool Merged = true;
+
+    /// <summary>Each species' body meshes, made once: its shadowed, unshadowed and blur pieces.</summary>
+    static readonly ConditionalWeakTable<Species, List<(ArrayMesh Mesh, bool Shadow, bool Blur)>> Bodies = new();
+
+    /// <summary>The meshes drawn: the skinned body's few, or (not merged) one a piece.</summary>
     readonly List<MeshInstance3D> _parts = new();
+    Skeleton3D _skeleton;
+    Dictionary<string, BoneAttachment3D> _attached;
     MultiMeshInstance3D _swarm;
     float _hurtShown, _wakeShown;
     AudioStreamPlayer3D _hum;
@@ -120,7 +133,15 @@ public partial class CreatureView : Node3D
     {
         if (Creature?.Rig == null) return null;
         int i = Creature.Rig.Layout.Pieces.FindIndex(p => p.Name == piece);
-        return i >= 0 && i < _parts.Count ? _parts[i] : null;
+        if (i < 0) return null;
+        if (_skeleton == null) return i < _parts.Count ? _parts[i] : null;
+        _attached ??= new Dictionary<string, BoneAttachment3D>();
+        if (!_attached.TryGetValue(piece, out BoneAttachment3D at))
+        {
+            _attached[piece] = at = new BoneAttachment3D { Name = piece, BoneIdx = i };
+            _skeleton.AddChild(at);
+        }
+        return at;
     }
 
     public void Build(Creature c)
@@ -147,6 +168,29 @@ public partial class CreatureView : Node3D
                 VisibilityRangeEnd = range,
             };
             AddChild(_swarm);
+        }
+        else if (Merged)
+        {
+            var pieces = c.Rig.Layout.Pieces;
+            _skeleton = new Skeleton3D { Name = "Bones" };
+            var skin = new Skin();
+            for (int i = 0; i < pieces.Count; i++)
+            {
+                _skeleton.AddBone(pieces[i].Name);
+                skin.AddBind(i, Transform3D.Identity);
+            }
+            AddChild(_skeleton);
+            foreach (var (mesh, shadow, blur) in Bodies.GetValue(c.Species, _ => BodyMeshes(pieces)))
+            {
+                var mi = new MeshInstance3D
+                {
+                    Mesh = mesh, Skin = skin, MaterialOverride = blur ? CreatureMaterials.Blur : material, VisibilityRangeEnd = range,
+                    CastShadow = shadow ? GeometryInstance3D.ShadowCastingSetting.On : GeometryInstance3D.ShadowCastingSetting.Off,
+                };
+                _skeleton.AddChild(mi);
+                mi.Skeleton = new NodePath("..");
+                _parts.Add(mi);
+            }
         }
         else
         {
@@ -183,6 +227,18 @@ public partial class CreatureView : Node3D
         foreach (var p in _parts) p.ResetPhysicsInterpolation();
     }
 
+    /// <summary>A body's meshes: its solid pieces that cast shadows, those that don't, and its blurs, each piece on its own bone; small parts drop out by size on screen as a person's do.</summary>
+    static List<(ArrayMesh, bool, bool)> BodyMeshes(IReadOnlyList<Piece> pieces)
+    {
+        var meshes = new List<(ArrayMesh, bool, bool)>();
+        foreach (var (shadow, blur) in new[] { (true, false), (false, false), (false, true) })
+        {
+            ArrayMesh m = MeshBuilder.Skinning(pieces, PersonView.Keep, PersonView.Edges, p => p.Blur == blur && (blur || p.Shadow == shadow)).Commit();
+            if (m.GetSurfaceCount() > 0) meshes.Add((m, shadow, blur));
+        }
+        return meshes;
+    }
+
     /// <summary>A hoverer's hum runs while it is up and someone is near enough to hear; nothing plays for the rest.</summary>
     public void Listen(float distance)
     {
@@ -205,7 +261,7 @@ public partial class CreatureView : Node3D
     {
         // Only its own body: another of its kind (another person, the other sex) has other proportions,
         // and its meshes on this rig would leave gaps at every joint.
-        if (_swarm != null || !SameBody(Creature, c) || c.Rig.Layout.Pieces.Count != _parts.Count) return false;
+        if (_swarm != null || !SameBody(Creature, c) || c.Rig.Layout.Pieces.Count != (_skeleton?.GetBoneCount() ?? _parts.Count)) return false;
         Creature = c;
         Sync();
         ResetPhysicsInterpolation();
@@ -228,15 +284,18 @@ public partial class CreatureView : Node3D
 
         Transform3D[] pose = c.Rig.Pose;
         Transform3D jolt = Jolt(c);
-        if (c.Tumble.IsEqualApprox(Quaternion.Identity))
-            for (int i = 0; i < _parts.Count; i++) _parts[i].Transform = jolt * pose[i];
-        else
+        if (!c.Tumble.IsEqualApprox(Quaternion.Identity))
         {
             // Thrown or downed: the whole body turned about its middle, whatever its rig does.
             Vector3 middle = c.Position + Vector3.Up * c.Species.Body.Height * 0.5f;
-            var turned = new Transform3D(new Basis(c.Tumble), middle) * new Transform3D(Basis.Identity, -middle);
-            for (int i = 0; i < _parts.Count; i++) _parts[i].Transform = turned * jolt * pose[i];
+            jolt = new Transform3D(new Basis(c.Tumble), middle) * new Transform3D(Basis.Identity, -middle) * jolt;
         }
+        if (_skeleton != null)
+        {
+            if (_skeleton.Transform != jolt) _skeleton.Transform = jolt;
+            for (int i = 0; i < pose.Length; i++) _skeleton.SetBonePose(i, pose[i]);
+        }
+        else for (int i = 0; i < _parts.Count; i++) _parts[i].Transform = jolt * pose[i];
 
         // Only touch the per-instance hurt flash when it changes.
         float hurt = MathF.Round(c.HurtFlash * 10f) / 10f;

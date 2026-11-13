@@ -68,6 +68,7 @@ public partial class Screenshot : Node
         }
         if (_view == "city" || _view == "facades" && _args.ContainsKey("city")) PlanetSurface.Infra.CityPlan.Force = true; // a city on any lived-in world
         if (_view == "craters" && _args.GetValueOrDefault("pick", "gz") == "gz") { PlanetSurface.Infra.CityPlan.Force = true; PoiGenerator.Gen.StrikePlan.Force = "capital"; } // a city for the war to hit, and its first strike on it
+        if (_view == "corescan") CoreScanStage.ForceCoreFamily(); // a place that keeps a core, near the start
         if (_view == "hulk") HulkTest.Force(); // a long hauler down near the start
         if (_view == "zfight") { PlanetSurface.Infra.CityPlan.Force = true; HulkTest.Force(); } // a city and a hulk among the stops
         if (_view == "placesurf")

@@ -33,7 +33,7 @@ You start in the air over a planet patch.
 | N | | a new layout from a random seed | |
 | S | | next state: active, abandoned, infested, ruined | |
 | R | | next rarity: common to unique | |
-| E | | | use: take a keycard, break a cracked wall, call or ride a lift, open a cache |
+| E | | | use: open a door, break a cracked wall, call or ride a lift, open a cache |
 | L | | | head torch (on by default except when active) |
 | Tab | | layout map | layout map |
 | Esc | free the mouse | | |
@@ -66,7 +66,7 @@ Both produce the same `Layout` (blocks, modules, doorways, slots), so fixtures, 
 
    A pattern already used on another storey is less likely again. A storey whose plan signature matches another storey's is planned again. Shape follows purpose: hospitals and prisons spread their wings, towers climb, bunkers and mines go down.
 3. **Rooms.** The space left over is cut into rooms by recursive wall splits. Each room gets a purpose from the program's demands (`rooms ground lobby! nurses ...`) and from the room library (`rooms.txt`). The library gives each room its size, props, adjacency, and a deco set for the decorations library. Slivers become hidden rooms behind breakable walls, each with its tells.
-4. **Doors and locks.** Every room reaches a corridor, either directly or through a room it belongs with. Some doors need a keycard, and the keycard always lies on the reachable side of its lock. The vault sits on the deepest level. A program's must-have rooms (`lobby!`) are guaranteed: a plan that leaves one out is planned again.
+4. **Doors.** Every room reaches a corridor, either directly or through a room it belongs with. Every door opens by hand (a blast door is only heavier to look at): no locks, no keycards. The vault sits on the deepest level. A program's must-have rooms (`lobby!`) are guaranteed: a plan that leaves one out is planned again.
 5. **Verticality.**
    - Stairs, with 3 cells of headroom over every step.
    - Ladders, and lifts with cars.
@@ -331,7 +331,6 @@ The tests run headless and exit 0 or 1. Add `-- --only=Name,Name` to run only th
   - Underground levels are carved.
   - Hidden rooms open only when broken, and each has its tells.
   - Collapse breaches lead in.
-  - Keycards lie before their locks.
   - Cables and tendrils always hang from an anchor.
   - No stray geometry: every vertex inside its place, no triangle edge over 24 m (what catches a stroke thrown across the landscape).
   - Circulation varies within a type: no pattern walks more than 45% of a type's storeys.

@@ -127,12 +127,8 @@ public struct Block
 public static class DoorState
 {
     public const byte Closed = 0, Jammed = 1, Open = 2;
-    /// <summary>Shut until a keycard of the doorway's clearance is swiped, or it is hacked or breached.</summary>
-    public const byte Locked = 3;
-    /// <summary>A blast door: heavy, shut, and locked like a security door.</summary>
+    /// <summary>A blast door: heavy to look at, and opened by hand like any door.</summary>
     public const byte Blast = 4;
-
-    public static bool IsLocked(byte v) => v is Locked or Blast;
 }
 
 public static class BlockInfo

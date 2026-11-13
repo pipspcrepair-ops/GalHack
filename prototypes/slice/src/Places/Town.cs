@@ -402,20 +402,44 @@ public sealed partial class Town
     const int BodiesPerTick = 3;
     /// <summary>Close enough that someone sees you and answers with their body (greets, waves you off, startles), m.</summary>
     const float ActRange = 48f;
-    int _tick;
+    /// <summary>Physics ticks so far, and how many this town step covers (a far town steps every few ticks with the time between).</summary>
+    int _tick, _step = 1;
+    float _owed;
+
+    /// <summary>Far towns step less often, as their people already pose less often (<see cref="PersonView.PoseEvery"/>): measurements switch it off.</summary>
+    public static bool Spaced = true;
+
+    /// <summary>Whether a person this far off is due a step this town step: every <see cref="PersonView.PoseEvery"/> ticks, whichever tick of the step's span that falls on.</summary>
+    bool Due(int who, float away) => (_tick + who) % PersonView.PoseEvery(away) < _step;
+
+    /// <summary>How far a point (the place's frame) is from the place's nearest cell, flat, m.</summary>
+    float Away(Vector3 local)
+    {
+        BlockGrid g = Memory.Inst.Blocks;
+        float dx = MathF.Max(0f, MathF.Max(g.Min.X - local.X, local.X - (g.Min.X + g.Size.X)));
+        float dz = MathF.Max(0f, MathF.Max(g.Min.Z - local.Z, local.Z - (g.Min.Z + g.Size.Z)));
+        return MathF.Sqrt(dx * dx + dz * dz);
+    }
 
     void Tick(float tickDt)
     {
         if (_place == null || !_place.Ready || _place.Dormant || !Rolled) return;
+        Vector3 player = _place.FromWorld(_places.Zone.Wildlife.PlayerWorld());
+        // A town whose nearest cell is far off steps as seldom as its nearest person would be posed, with the time it missed.
+        _owed += tickDt;
+        _tick++;
+        int every = Spaced ? PersonView.PoseEvery(Away(player)) : 1;
+        if (_tick % every != 0) return;
+        _step = every;
+        tickDt = _owed;
+        _owed = 0f;
         bool night = Night();
         float time = (float)_places.Zone.Sky.TimeOfDay;
-        Vector3 player = _place.FromWorld(_places.Zone.Wildlife.PlayerWorld());
         // Where you are looking, in the place's frame: what you point at, people see.
         Vector3 eye = player + Vector3.Up * 1.6f;
         ITarget you = _places.Zone.Wildlife.Player;
         Vector3 look = you == null ? Vector3.Forward : (_place.FromWorld(_places.Zone.Wildlife.PlayerWorld() + you.Forward) - player);
         look = look.LengthSquared() > 1e-4f ? look.Normalized() : Vector3.Forward;
-        _tick++;
         _clock += tickDt;
         Voices(player, tickDt);
         Worms(player, tickDt);
@@ -448,7 +472,7 @@ public sealed partial class Town
                 {
                     // Down: only seen or not as you come and go, and posed where they lie when they come into view.
                     p.Saved += tickDt;
-                    if ((_tick + who) % PersonView.PoseEvery(lying) != 0) continue;
+                    if (!Due(who, lying)) continue;
                     bool was = p.View.Visible;
                     if (Shown(p, lying, p.Saved) && !was) PoseBody(p, who, p.Saved);
                     p.Saved = 0f;
@@ -466,7 +490,7 @@ public sealed partial class Town
             p.Saved += tickDt;
             float away = (player - p.Pos).Length();
             p.Far = away > FarSchedule;
-            if ((_tick + who) % PersonView.PoseEvery(away) != 0) continue;
+            if (!Due(who, away)) continue;
             float dt = p.Saved;
             p.Saved = 0f;
             if (away < ActRange && p.Looks != null && !p.Asleep) Acts(p, player, eye, look, away, dt);

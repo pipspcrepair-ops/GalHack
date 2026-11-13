@@ -9,10 +9,9 @@ namespace Slice.Places;
 
 /// <summary>
 /// A place's moving and usable parts: doors (two leaves that slide into the walls beside the
-/// doorway, E to open and shut; locked ones need a keycard of their clearance, and a lamp beside
-/// them says which), lift cars (the shaft is ridden Empyrion's way, up and down with Space and
+/// doorway, E to open and shut), lift cars (the shaft is ridden Empyrion's way, up and down with Space and
 /// Ctrl, the car under your feet; a shaft door opens only with the car there, and E on it calls
-/// the car), keycards lying where their owners fell, the draft that gives a hidden room away, and
+/// the car), the draft that gives a hidden room away, and
 /// a few real lamps for the place's lights nearest you.
 /// </summary>
 public partial class Place
@@ -32,10 +31,8 @@ public partial class Place
         public float Open { get => Way.Open; set => Way.Open = value; }
         public float Target { get => Way.Target; set => Way.Target = value; }
         public bool Jammed, Blast;
-        public string Clearance;
         public int Lift = -1, Stop = -1;
         public Vector3 Centre;            // local, mid-height
-        public MeshInstance3D Lamp;
         public List<Int3> Cells;
         public bool IsShut => Open < 0.05f;
     }
@@ -62,7 +59,6 @@ public partial class Place
             Memory.Bodies.Add(() => IsInstanceValid(this) && Places != null ? new[] { (Places.Focus() - GlobalPosition, Slice.Player.Survivor.Radius, Slice.Player.Survivor.Height) } : Array.Empty<(Vector3, float, float)>());
         }
         Layout layout = Inst.Layout;
-        var locks = layout.Extras.Locks.ToDictionary(l => l.Doorway);
         var liftDoor = new Dictionary<int, (int lift, int stop)>();
         for (int li = 0; li < layout.Extras.Lifts.Count; li++)
             for (int s = 0; s < layout.Extras.Lifts[li].StopDoors.Count; s++) liftDoor[layout.Extras.Lifts[li].StopDoors[s]] = (li, s);
@@ -108,7 +104,6 @@ public partial class Place
             {
                 Index = index, Root = root, Along = along, Width = width, Centre = centre, Cells = cells,
                 Jammed = b0.Variant == DoorState.Jammed, Blast = blast,
-                Clearance = index >= 0 && locks.TryGetValue(index, out DoorLock lk) ? lk.Clearance : null,
                 Leaves = new AnimatableBody3D[2], Shut = new Vector3[2],
             };
             if (lift) (door.Lift, door.Stop) = liftDoor[index];
@@ -150,19 +145,6 @@ public partial class Place
                 door.Leaves[side] = leaf;
                 _doorOf[leaf.GetInstanceId()] = door;
             }
-            if (door.Clearance != null)
-            {
-                // The lock's lamp beside the doorway, in its clearance's colour (green once you can open it).
-                Vector3 side = along * (width / 2f + 0.3f);
-                Vector3 outward = new Vector3(facing.Vec().X, 0, facing.Vec().Z) * (thick / 2f + 0.52f);
-                door.Lamp = new MeshInstance3D
-                {
-                    Name = "Lock lamp", Mesh = new BoxMesh { Size = new Vector3(0.12f, 0.18f, 0.12f) },
-                    Position = centre + side + outward + Vector3.Down * 0.2f,
-                    MaterialOverride = LampMaterial(ClearanceColor(door.Clearance)),
-                };
-                root.AddChild(door.Lamp);
-            }
             if (ways.FirstOrDefault(w => w.Index == index) is { } way) door.Way = way;
             else
             {
@@ -179,16 +161,6 @@ public partial class Place
         }
     }
 
-    static StandardMaterial3D LampMaterial(Color c) => new()
-    {
-        AlbedoColor = c, EmissionEnabled = true, Emission = c, EmissionEnergyMultiplier = 1.6f, Roughness = 0.4f,
-    };
-
-    public static Color ClearanceColor(string clearance)
-    {
-        Rgb c = Fixtures.ClearanceColor(clearance);
-        return new Color(c.R / 255f, c.G / 255f, c.B / 255f);
-    }
 
     void PlaceLeaves(Door d)
     {
@@ -209,18 +181,8 @@ public partial class Place
             DoorWays.Step(Memory, d.Way, target, dt);
             if (d.Open != was) PlaceLeaves(d);
         }
-        if (_lampTimer-- <= 0)
-        {
-            _lampTimer = 20;
-            foreach (Door d in _doors.Where(d => d.Lamp != null))
-            {
-                bool may = Places.HasClearance(d.Clearance);
-                d.Lamp.MaterialOverride = LampMaterial(may ? new Color("3fcf5e") : ClearanceColor(d.Clearance));
-            }
-        }
     }
 
-    int _lampTimer;
     bool _youCounted;
 
     /// <summary>E on a door: open or shut it, if you may. Returns what happened, for the visor.</summary>
@@ -229,8 +191,6 @@ public partial class Place
         if (d.Jammed) return (false, "JAMMED · SQUEEZE THROUGH");
         // A settlement that won't have you keeps its doors shut.
         if (Memory.Town is { GatesShut: true } && d.Target < 0.5f) return (false, "BARRED");
-        if (d.Clearance != null && !Places.HasClearance(d.Clearance))
-            return (false, $"LOCKED · {d.Clearance.ToUpperInvariant()} KEYCARD");
         if (d.Lift >= 0 && !CarAt(d.Lift, d.Stop))
         {
             CallLift(d.Lift, d.Stop);
@@ -242,7 +202,7 @@ public partial class Place
         d.Way.ClearFor = 0f;
         Memory.DoorsOpen[d.Index] = d.Target > 0.5f;
         Places.Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Clank, ToWorld(d.Centre), d.Blast ? 0.6f : 0.9f, -8f);
-        return (true, d.Target > 0.5f ? (d.Clearance != null ? $"{d.Clearance.ToUpperInvariant()} CARD ACCEPTED" : "") : "");
+        return (true, "");
     }
 
     // ---- Lifts ----------------------------------------------------------------------------------
@@ -351,56 +311,6 @@ public partial class Place
             Memory.LiftY[i] = c.Y;
             c.Body.Position = c.Centre + Vector3.Up * (c.Y - 0.1f);
         }
-    }
-
-    // ---- Keycards -------------------------------------------------------------------------------
-
-    readonly List<(KeyCard Key, Node3D Node)> _keys = new();
-
-    void BuildKeys()
-    {
-        var holder = new Node3D { Name = "Keys" };
-        AddChild(holder);
-        foreach (KeyCard k in Inst.Extras.Keys)
-        {
-            if (Memory.KeysTaken.Contains(k)) continue;
-            Color c = ClearanceColor(k.Clearance);
-            var card = new MeshInstance3D
-            {
-                Name = $"Keycard {k.Clearance}", Mesh = new BoxMesh { Size = new Vector3(0.09f, 0.008f, 0.056f) },
-                MaterialOverride = new StandardMaterial3D { AlbedoColor = c, EmissionEnabled = true, Emission = c, EmissionEnergyMultiplier = 0.5f },
-                Position = new Vector3(k.Cell.X + 0.55f, k.Cell.Y + 0.08f, k.Cell.Z + 0.42f), RotationDegrees = new Vector3(0, 23, 0),
-            };
-            holder.AddChild(card);
-            _keys.Add((k, card));
-        }
-    }
-
-    /// <summary>The keycard nearest a look ray within reach (local space), or null.</summary>
-    public KeyCard KeyAlong(Vector3 eyeWorld, Vector3 dir, float reach)
-    {
-        Vector3 eye = FromWorld(eyeWorld);
-        KeyCard best = null;
-        float bestAlong = reach;
-        foreach (var (k, node) in _keys)
-        {
-            Vector3 c = node.Position;
-            float along = (c - eye).Dot(dir);
-            if (along < 0f || along > bestAlong) continue;
-            if ((eye + dir * along - c).Length() > 0.35f) continue;
-            bestAlong = along;
-            best = k;
-        }
-        return best;
-    }
-
-    public void TakeKey(KeyCard k)
-    {
-        Memory.KeysTaken.Add(k);
-        int i = _keys.FindIndex(e => e.Key == k);
-        if (i < 0) return;
-        _keys[i].Node.QueueFree();
-        _keys.RemoveAt(i);
     }
 
     // ---- Hidden rooms' tells ----------------------------------------------------------------------

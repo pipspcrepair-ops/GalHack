@@ -284,6 +284,8 @@ public sealed partial class Staging
         _game.Zone.Sky.TimeOfDay = Num("time", 0.42);
         _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
         string dir = Folder("fauna");
+        // --bodies=pieces: drawn the old way, a node a rig piece (to compare with the one skinned body).
+        if (_args.GetValueOrDefault("bodies") == "pieces") CreatureView.Merged = false;
         foreach (int x in _drive.UntilSettled()) yield return x;
         foreach (int x in _drive.ClimbOut(_game.Bunker)) yield return x;
         WorldLife life = _game.Zone.Wildlife.Life;

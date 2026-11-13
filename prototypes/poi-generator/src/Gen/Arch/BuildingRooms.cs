@@ -5,7 +5,7 @@ using System.Linq;
 
 namespace PoiGenerator.Gen;
 
-/// <summary>Rooms and features of a building: purposes, doors, furniture, keycards, breaches, caverns, roofs.</summary>
+/// <summary>Rooms and features of a building: purposes, doors, furniture, breaches, caverns, roofs.</summary>
 public sealed partial class Building
 {
     // ---- purposes ------------------------------------------------------------------------
@@ -276,8 +276,8 @@ public sealed partial class Building
                 C.Modules[r.Module].Shape.Occupied.Clear();
             }
             // Rooms that belong together get a door between them, as well as their own.
-            foreach (var r in plan.Rooms.Where(r => !r.Secret && r.Door >= 0 && r.Def?.Lock == null))
-                foreach (var n in r.Adj.Where(n => !n.Secret && !n.Walled && n.Def != null && n.Def.Lock == null && r.Module < n.Module))
+            foreach (var r in plan.Rooms.Where(r => !r.Secret && r.Door >= 0 && r.Def?.Secure != true))
+                foreach (var n in r.Adj.Where(n => !n.Secret && !n.Walled && n.Def != null && !n.Def.Secure && r.Module < n.Module))
                 {
                     if (!(r.Def!.Near.Contains(n.Def!.Id) || n.Def.Near.Contains(r.Def.Id)) || !Rng.Chance(0.6f)) continue;
                     var spots = DoorSpots(plan, r, (x, z) => plan.R[x, z] == plan.Rooms.IndexOf(n));
@@ -632,72 +632,13 @@ public sealed partial class Building
         _ => S.Kit.Light,
     };
 
-    // ---- keycards ----------------------------------------------------------------------
+    // ---- blast doors -------------------------------------------------------------------
 
-    static readonly string[] Clearances = { "staff", "science", "security", "command" };
-
-    /// <summary>
-    /// Secure rooms get locked doors; each clearance's keycard lies in a room you can reach with
-    /// every lock still shut, on the same storey or above, where someone would have carried it.
-    /// </summary>
-    void Locks()
+    /// <summary>A room whose library entry says so gets a blast door: heavy to look at, opened by hand like the rest.</summary>
+    void Blasts()
     {
-        var all = _plans.Values.SelectMany(p => p.Rooms).Where(r => !r.Secret && r.Def != null && r.Door >= 0 && r.Module >= 0).ToList();
-        var locked = new List<(RoomPlan Room, string Clearance)>();
-        foreach (var r in all)
-        {
-            string? c = r.Def!.Lock;
-            if (r.Def.Id == "vault") c ??= "command";
-            if (c == null) continue;
-            locked.Add((r, c));
-            C.X.Locks.Add(new DoorLock { Doorway = r.Door, Clearance = c, Blast = r.Def.Blast });
-        }
-        if (locked.Count == 0) return;
-        // What can be walked to with every lock shut.
-        var lockedDoors = new HashSet<int>(locked.Select(l => l.Room.Door));
-        var shut = new HashSet<(int, int)>(lockedDoors.Select(i => (C.Doorways[i].ModuleA, C.Doorways[i].ModuleB)));
-        var adj = new Dictionary<int, List<int>>();
-        foreach (var (a, b) in C.Edges)
-        {
-            if (shut.Contains((a, b)) || shut.Contains((b, a))) continue;
-            (adj.TryGetValue(a, out var la) ? la : adj[a] = new List<int>()).Add(b);
-            (adj.TryGetValue(b, out var lb) ? lb : adj[b] = new List<int>()).Add(a);
-        }
-        var open = new HashSet<int> { Out.EntranceModule };
-        var q = new Queue<int>();
-        q.Enqueue(Out.EntranceModule);
-        while (q.Count > 0)
-        {
-            int m = q.Dequeue();
-            if (!adj.TryGetValue(m, out var next)) continue;
-            foreach (int n in next) if (open.Add(n)) q.Enqueue(n);
-        }
-        foreach (string clearance in Clearances)
-        {
-            var doors = locked.Where(l => l.Clearance == clearance).ToList();
-            if (doors.Count == 0) continue;
-            int shallowest = doors.Max(l => l.Room.Storey);
-            var candidates = all.Where(r => open.Contains(r.Module) && !locked.Any(l => l.Room == r))
-                .OrderByDescending(r => r.Storey >= shallowest ? 1 : 0).ThenByDescending(r => r.Def!.Has("keyspot") ? 2 : 0)
-                .ThenBy(r => Math.Abs(r.Storey - shallowest)).ThenBy(_ => Rng.Float()).ToList();
-            if (candidates.Count == 0) continue;
-            foreach (var room in candidates)
-            {
-                var plan = _plans[room.Storey];
-                int y = plan.Y;
-                Int3? spot = null;
-                foreach (var (x, z) in room.Cells.OrderBy(c => Rng.Float()))
-                {
-                    Int3 p = L(x, y, z);
-                    if (C.Get(p).IsAir && !C.Get(p + Int3.Down).IsAir && !C.Slots.Any(s => s.Cell == p) && !C.Doorways.Any(d => d.Cells.Any(dc => dc.Manhattan(p) <= 2))) { spot = p; break; }
-                }
-                if (spot is not Int3 sp) continue;
-                C.Set(sp, new Block(BlockType.Remains, Material.Cloth, new Rgb(0x7a, 0x74, 0x64), Role.Story, R(Dir.North), 2));
-                C.X.Keys.Add(new KeyCard { Clearance = clearance, Cell = sp, Module = room.Module, On = "remains" });
-                C.X.Story.Add(new StoryProp("keycard", sp, $"A {clearance} keycard, still clipped to what's left of its owner."));
-                break;
-            }
-        }
+        foreach (var r in _plans.Values.SelectMany(p => p.Rooms).Where(r => !r.Secret && r.Def is { Blast: true } && r.Door >= 0 && r.Module >= 0))
+            C.X.BlastDoors.Add(r.Door);
     }
 
     // ---- below ground ------------------------------------------------------------------

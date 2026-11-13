@@ -20,7 +20,7 @@ internal sealed partial class Depths
         Storeys();
         foreach (var s in Live) foreach (var (i, j, k) in s.Blocks()) if (j < 0) P.Dig(i, j, k, i, j, k);
         Line();
-        Locks();
+        Blasts();
         foreach (var s in Live.Where(s => s.Run != null)) RunBuild(s);
         foreach (var l in _ladders) LadderBuild(l);
         foreach (var (shaft, stops) in _lifts) if (!shaft.Dead) LiftBuild(shaft, stops.Where(x => !x.Dead).ToList());
@@ -36,7 +36,6 @@ internal sealed partial class Depths
         foreach (var s in Live.Where(s => s.Def != null && !s.Secret && s.Mod >= 0)) Furnish(s);
         foreach (var s in Live.Where(s => s.Mod >= 0 && s.Def == null && !s.Secret && s.Kind is not ("stair" or "ramp" or "shaft" or "lift" or "breach"))) WayLights(s);
         BreachBuild();
-        Keycards();
         Stories();
         Signatures();
         _vault = _vaultSpace?.Mod ?? -1;
@@ -171,21 +170,16 @@ internal sealed partial class Depths
             }
     }
 
-    // ---- locks -------------------------------------------------------------------------------------
+    // ---- blast doors -------------------------------------------------------------------------------
 
-    /// <summary>Doors that want a card or a blast door: the vault's, a room's whose library entry locks it, the blast locks between zones.</summary>
-    void Locks()
+    /// <summary>Doors that are blast doors: the vault's now and then, a room's whose library entry says so. Heavy to look at, opened by hand.</summary>
+    void Blasts()
     {
-        foreach (var j in Joints.Where(j => j.Kind is "door" or "locked"))
+        foreach (var j in Joints.Where(j => j.Kind == "door"))
         {
-            var room = j.B;
-            if (room.Def is not { } def) continue;
-            if (def.Id == "vault") { j.Kind = Culture is "orderly" && R.Chance(0.4f) || Def.Blast > 0.5f && R.Chance(0.5f) ? "blast" : "locked"; j.Clearance = "command"; }
-            else if (def.Blast) { j.Kind = "blast"; j.Clearance = def.Lock ?? "security"; }
-            else if (def.Lock != null) { j.Kind = "locked"; j.Clearance = def.Lock; }
+            if (j.B.Def is not { } def) continue;
+            if (def.Id == "vault" ? Culture is "orderly" && R.Chance(0.4f) || Def.Blast > 0.5f && R.Chance(0.5f) : def.Blast) j.Kind = "blast";
         }
-        foreach (var j in Joints.Where(j => j.Kind == "locked" && j.Clearance == null)) j.Clearance = "command";
-        foreach (var j in Joints.Where(j => j.Kind == "blast" && j.Clearance == null)) j.Clearance = "security";
     }
 
     // ---- stairs and ramps ------------------------------------------------------------------------------
@@ -350,13 +344,13 @@ internal sealed partial class Depths
             case "open":
                 P.C.Link(a, b);
                 break;
-            case "door" or "hazard" or "hatch" or "locked" or "blast":
+            case "door" or "hazard" or "hatch" or "blast":
             {
                 if (a < 0 || b < 0) return;
                 Frame(j);
                 int d = P.Door(j.I, j.J, j.K, j.AlongI, a, b);
                 if (j.Kind is "hazard" or "blast") P.C.Doorways[d].Hazard = true;
-                if (j.Kind is "locked" or "blast") P.C.X.Locks.Add(new DoorLock { Doorway = d, Clearance = j.Clearance ?? "security", Blast = j.Kind == "blast" });
+                if (j.Kind == "blast") P.C.X.BlastDoors.Add(d);
                 RecordDoor(j);
                 break;
             }
@@ -845,65 +839,6 @@ internal sealed partial class Depths
             "screen" => new Block(BlockType.Pane, Material.Glass, new Rgb(0x9f, 0xd3, 0xe0), Role.Prop, facing),
             _ => new Block(BlockType.Crate, Material.Scrap, CrateBrown, Role.Prop, facing),
         };
-    }
-
-    // ---- keycards ----------------------------------------------------------------------------------
-
-    /// <summary>Each clearance's card lies in a room you can walk to with every lock still shut, on remains, where someone carried it.</summary>
-    void Keycards()
-    {
-        if (P.C.X.Locks.Count == 0) return;
-        var shut = new HashSet<(int, int)>();
-        foreach (var l in P.C.X.Locks)
-        {
-            var d = P.C.Doorways[l.Doorway];
-            shut.Add((d.ModuleA, d.ModuleB));
-        }
-        var adj = new Dictionary<int, List<int>>();
-        foreach (var (a, b) in P.C.Edges)
-        {
-            if (shut.Contains((a, b)) || shut.Contains((b, a))) continue;
-            (adj.TryGetValue(a, out var la) ? la : adj[a] = new List<int>()).Add(b);
-            (adj.TryGetValue(b, out var lb) ? lb : adj[b] = new List<int>()).Add(a);
-        }
-        var open = new HashSet<int>();
-        int start = _yard >= 0 ? _yard : _headModule;
-        var q = new Queue<int>();
-        open.Add(start);
-        q.Enqueue(start);
-        while (q.Count > 0)
-        {
-            int m = q.Dequeue();
-            if (!adj.TryGetValue(m, out var next)) continue;
-            foreach (int n in next) if (open.Add(n)) q.Enqueue(n);
-        }
-        foreach (string clearance in P.C.X.Locks.Select(l => l.Clearance).Distinct().ToList())
-        {
-            var rooms = Live.Where(s => s.Mod >= 0 && open.Contains(s.Mod) && !s.Secret && s.Kind is "room" or "hall" or "landing" or "corridor" or "hub")
-                .OrderByDescending(s => s.Def?.Has("keyspot") == true ? 1 : 0).ThenBy(s => s.Kind == "room" ? 0 : 1).ThenBy(_ => R.Float()).ToList();
-            foreach (var room in rooms)
-            {
-                int y = 2 * room.J;
-                (int U, int V)? spot = null;
-                foreach (var (i, k) in room.Foot.OrderBy(_ => R.Float()))
-                {
-                    if (room.FloorAt(i, k) != room.J) continue;
-                    int u = 2 * i + R.Range(0, 2), v = 2 * k + R.Range(0, 2);
-                    // A free floor cell: nothing on it, and floor (or the rock) under it.
-                    if (!P.Get(u, y, v).IsAir || !room.Raw && P.Get(u, y - 1, v).IsAir) continue;
-                    if (_doorCells.Any(d => Math.Abs(d.U - u) + Math.Abs(d.V - v) <= 2 && d.Y == y)) continue;
-                    var cell = P.Cell(u, y, v);
-                    if (P.C.Slots.Any(sl => sl.Cell == cell)) continue;
-                    spot = (u, v);
-                    break;
-                }
-                if (spot is not { } sp) continue;
-                P.Put(sp.U, y, sp.V, new Block(BlockType.Remains, Material.Cloth, new Rgb(0x7a, 0x74, 0x64), Role.Story, Dir.North, 2));
-                P.C.X.Keys.Add(new KeyCard { Clearance = clearance, Cell = P.Cell(sp.U, y, sp.V), Module = room.Mod, On = "remains" });
-                P.C.X.Story.Add(new StoryProp("keycard", P.Cell(sp.U, y, sp.V), $"A {clearance} keycard, still clipped to what's left of its owner."));
-                break;
-            }
-        }
     }
 
     // ---- signatures -----------------------------------------------------------------------------------

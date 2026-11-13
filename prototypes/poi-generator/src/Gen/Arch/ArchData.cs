@@ -28,9 +28,9 @@ public sealed class RoomDef
     public int SpawnMin, SpawnMax = 1;
     public int TerminalMin, TerminalMax;
     public string Light = "warm";      // warm, cold, dim, red, green, none, glyph
-    public string? Lock;               // the keycard clearance its door needs
+    public bool Secure;                // a secure room: no extra doors to its neighbours
     public bool Blast;                 // its door is a blast door
-    public List<string> Tags = new();  // keyspot, core, secure, quarantine, story...
+    public List<string> Tags = new();  // core, secure, quarantine, story...
     public List<string> Story = new(); // environmental scenes it can host
     /// <summary>The decorations library's set or theme for this room (wired in after proto/deco merges).</summary>
     public string Deco = "";
@@ -173,7 +173,7 @@ public static class ArchParser
                 case "spawns": R().SpawnMin = I(p[1]); R().SpawnMax = I(p[^1]); break;
                 case "terminals": R().TerminalMin = I(p[1]); R().TerminalMax = I(p[^1]); break;
                 case "light": R().Light = p[1]; break;
-                case "lock": R().Lock = p[1]; break;
+                case "secure": R().Secure = true; break;
                 case "blast": R().Blast = true; break;
                 case "tags": R().Tags = p.Skip(1).ToList(); break;
                 case "story": R().Story = p.Skip(1).ToList(); break;

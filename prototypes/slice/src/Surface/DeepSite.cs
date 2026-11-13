@@ -48,6 +48,7 @@ public partial class DeepSite : Node3D
     /// <summary>Past this from the eye a creature isn't stepped (unless something just stirred it up).</summary>
     public float SleepDistance = 100f;
     const double BudgetMs = 1.2;
+    double _allow;
 
     readonly Dictionary<Creature, CreatureView> _views = new();
     readonly List<Creature> _gone = new();
@@ -177,6 +178,8 @@ public partial class DeepSite : Node3D
             GCMemoryInfo gc = GC.GetGCMemoryInfo(GCKind.Any);
             WorstPauseNote = $"gen{gc.Generation} {(gc.Concurrent ? "background" : "blocking")}{(gc.Compacted ? ", compacted" : "")}, {gc.PromotedBytes / 1e6:F0} MB promoted, heap {gc.HeapSizeBytes / 1e6:F0} MB";
         }
+        // This frame's share of the loading allowance, shared with the places and the other sites (bodies, lair marks, masses made).
+        _allow = PlanetSurface.Fx.LoadBudget.Left(BudgetMs);
         Vector3? eye = Patch.Zone.Camera != null ? Local(Patch.Zone.Camera.GlobalPosition) : null;
         if (eye is Vector3 lairEye) TickLairs(lairEye, clock);
         double lairMs = clock.Elapsed.TotalMilliseconds;
@@ -185,6 +188,7 @@ public partial class DeepSite : Node3D
         if (eye is Vector3 at) SyncViews(at, clock);
         SyncMasses((float)delta, clock);
         _pausedAtLastFrame = GC.GetTotalPauseDuration();
+        PlanetSurface.Fx.LoadBudget.Spend(lairMs + _buildMs);
         double all = clock.Elapsed.TotalMilliseconds, stopped = (_pausedAtLastFrame - paused).TotalMilliseconds, ms = all - stopped;
         if (ms > WorstViewMs)
         {
@@ -202,7 +206,7 @@ public partial class DeepSite : Node3D
     {
         if (++_lairFrame % 20 != 0) return;
         int count = Sim.Cracks.Count + Sim.Food.Count + Sim.Nests.Count;
-        for (int k = 0; k < count && clock.Elapsed.TotalMilliseconds < BudgetMs; k++)
+        for (int k = 0; k < count && clock.Elapsed.TotalMilliseconds < _allow; k++)
         {
             float d = (MarkAt(k) - eye).Length();
             if (d < LairReach && !_lairViews.ContainsKey(k)) _lairViews[k] = BuildLair(k);
@@ -253,7 +257,7 @@ public partial class DeepSite : Node3D
             if (c.RigInterval < 4 && _unseen.Contains(c)) c.RigInterval = 4;
             if (!_views.TryGetValue(c, out CreatureView view))
             {
-                if (d > FarDistance || clock.Elapsed.TotalMilliseconds > BudgetMs) continue;
+                if (d > FarDistance || clock.Elapsed.TotalMilliseconds > _allow) continue;
                 double before = clock.Elapsed.TotalMilliseconds;
                 view = new CreatureView();
                 _creatures.AddChild(view);
@@ -307,7 +311,7 @@ public partial class DeepSite : Node3D
         }
         if (Sim.Masses.Count == 0) return;
         if (_masses == null) AddChild(_masses = new Node3D { Name = "WormMasses" });
-        while (_massViews.Count < Sim.Masses.Count && clock.Elapsed.TotalMilliseconds < BudgetMs)
+        while (_massViews.Count < Sim.Masses.Count && clock.Elapsed.TotalMilliseconds < _allow)
         {
             var view = new WormMassView();
             _masses.AddChild(view);

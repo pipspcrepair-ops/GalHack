@@ -9,9 +9,9 @@ namespace PoiGenerator;
 
 /// <summary>
 /// One place, built from a POI instance: chunked block meshes, collision for walking, doors that
-/// slide open as you come close (and collide while shut; locked ones need their keycard), lift
+/// slide open as you come close (and collide while shut), lift
 /// cars that ride their shafts, ladders to climb, the lights that still work, figures where
-/// enemies wait, and the terminals, caches, keycards, core and hidden walls you can interact with.
+/// enemies wait, and the terminals, caches, core and hidden walls you can interact with.
 ///
 /// The node's local space is the generator's grid: one unit per cell, cell (x, y, z) spans
 /// [x, x+1] and so on. Place the node at a multiple of <see cref="Tile"/> so its rock plug lines
@@ -27,10 +27,6 @@ public partial class PoiView : Node3D
     public Vector2I PlugMin, PlugMax;
     public Node3D Watcher;                 // the player or camera that opens doors
     public float Time;
-    /// <summary>Keycards the visitor carries, by clearance.</summary>
-    public readonly HashSet<string> Held = new();
-    /// <summary>For tests and screenshots: every locked door opens as if its card were held.</summary>
-    public bool AllKeys;
 
     public record Interactable(Vector3 Position, string Title, string Text, Action Use = null);
     public readonly List<Interactable> Interactables = new();
@@ -54,10 +50,8 @@ public partial class PoiView : Node3D
         public Vector3 Closed;
         public float Height, Open, Stuck; // Stuck: how far a jammed door hangs open
         public bool Jammed;
-        public string Clearance;           // a locked door's keycard, or null
         public int Lift = -1, Stop = -1;   // a lift's shaft door at one of its stops
         public Vector3 Center;
-        public OmniLight3D Lamp;
     }
 
     sealed class LiftCar
@@ -152,7 +146,6 @@ public partial class PoiView : Node3D
     void BuildDoors()
     {
         var layout = Poi.Layout;
-        var locks = layout.Extras.Locks.ToDictionary(l => l.Doorway);
         var liftDoor = new Dictionary<int, (int lift, int stop)>();
         for (int li = 0; li < layout.Extras.Lifts.Count; li++)
             for (int s = 0; s < layout.Extras.Lifts[li].StopDoors.Count; s++) liftDoor[layout.Extras.Lifts[li].StopDoors[s]] = (li, s);
@@ -198,29 +191,17 @@ public partial class PoiView : Node3D
             });
             AddChild(body);
             body.Position = center;
-            string clearance = index >= 0 && locks.TryGetValue(index, out var lk) ? lk.Clearance : null;
             var door = new Door
             {
-                Body = body, Closed = center, Height = size.Y, Center = center, Clearance = clearance,
+                Body = body, Closed = center, Height = size.Y, Center = center,
                 Jammed = b0.Variant == DoorState.Jammed,
                 Stuck = b0.Variant == DoorState.Jammed ? 0.72f : 0f,
             };
             if (lift) (door.Lift, door.Stop) = liftDoor[index];
             door.Open = door.Stuck;
-            if (clearance != null)
-            {
-                // A lock light beside the door in its clearance's colour.
-                door.Lamp = new OmniLight3D { LightColor = Look.ToColor(Fixtures.ClearanceColor(clearance)), LightEnergy = 0.8f, OmniRange = 2.5f, Position = center + Vector3.Up * 1.1f };
-                AddChild(door.Lamp);
-            }
             _doors.Add(door);
         }
     }
-
-    static readonly string[] Rank = { "staff", "science", "security", "command" };
-
-    public bool HasClearance(string clearance) =>
-        AllKeys || clearance == null || Held.Any(h => Array.IndexOf(Rank, h) >= Array.IndexOf(Rank, clearance));
 
     // ---- lifts ------------------------------------------------------------------------
 
@@ -409,15 +390,8 @@ public partial class PoiView : Node3D
             Interactables.Add(new Interactable(new Vector3(c.Cell.X + 0.5f, c.Cell.Y + 0.6f, c.Cell.Z + 0.5f),
                 title, $"{items}\n\nWorth {c.Value} cr  ·  tier {c.Tier}" + (c.PickedOver ? "  (picked over)" : "")));
         }
-        foreach (var s in Poi.Story.Where(s => s.Kind != "keycard"))
+        foreach (var s in Poi.Story)
             Interactables.Add(new Interactable(new Vector3(s.Cell.X + 0.5f, s.Cell.Y + 0.5f, s.Cell.Z + 0.5f), s.Kind.ToUpperInvariant(), s.Note));
-        foreach (var k in Poi.Extras.Keys)
-        {
-            var key = k;
-            Interactables.Add(new Interactable(new Vector3(k.Cell.X + 0.5f, k.Cell.Y + 0.4f, k.Cell.Z + 0.5f), "KEYCARD",
-                $"A {k.Clearance} keycard, still clipped to what's left of its owner.\n\nYou take it: doors marked {k.Clearance} open for you now.",
-                () => Held.Add(key.Clearance)));
-        }
         foreach (var s in Poi.Extras.Secrets)
         {
             var secret = s;
@@ -528,12 +502,10 @@ public partial class PoiView : Node3D
         foreach (var d in _doors)
         {
             bool near = watcher is Vector3 w && new Vector2(w.X - d.Center.X, w.Z - d.Center.Z).Length() < 3.6f && Math.Abs(w.Y - (d.Center.Y - 1.5f)) < 2.5f;
-            bool allowed = HasClearance(d.Clearance);
-            if (d.Lift >= 0) allowed &= LiftArrived(d.Lift, d.Stop);
+            bool allowed = d.Lift < 0 || LiftArrived(d.Lift, d.Stop);
             float target = d.Jammed ? d.Stuck : near && allowed ? 1f : 0f;
             d.Open = Mathf.MoveToward(d.Open, target, dt * 2.6f);
             d.Body.Position = d.Closed + Vector3.Up * d.Open * (d.Height - 0.15f);
-            if (d.Lamp != null) d.Lamp.LightColor = allowed ? new Color("3fcf5e") : Look.ToColor(Fixtures.ClearanceColor(d.Clearance));
         }
     }
 
