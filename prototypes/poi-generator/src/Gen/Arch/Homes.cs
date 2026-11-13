@@ -8,7 +8,7 @@ namespace PoiGenerator.Gen;
 /// <summary>What a placer asks of a layout it is about to set down: which way its front looks (at the road), and the world's tech level.</summary>
 /// <param name="Ruin">How long ago and how hard its world fell: places below ground plan their collapses, caves and squatters by it.</param>
 /// <param name="Culture">Its builders' habit, where the world knows it (a street's culture, a region's): otherwise rolled per place.</param>
-public sealed record LayoutHints(Dir Front = Dir.North, TechLevel? Tech = null, CityLot? Lot = null, HomeHints? Home = null, RuinAge? Ruin = null, int? Culture = null);
+public sealed record LayoutHints(Dir Front = Dir.North, TechLevel? Tech = null, CityLot? Lot = null, HomeHints? Home = null, RuinAge? Ruin = null, int? Culture = null, SiteDef? Site = null);
 
 /// <summary>One plain building of a lot: its box (roof and all), the height of its eaves and the way its front looks.</summary>
 public sealed record PlainBox(Int3 Min, Int3 Max, int Eave, Dir Front);

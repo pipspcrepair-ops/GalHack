@@ -318,17 +318,16 @@ family missile_silo
     seed 9713
 # ---- landmarks: hand-authored site plans --------------------------------------------------------
 
-family old_airfield
-  ground tarmac
+family airfield
+  types airport airstrip
   tier base
-  tech mid high
-  siting flat
+  tech low mid high
+  siting open
   rise 18
-  name Old Airfield
-  pitch A cracked runway, hangars, a control tower, and a bunker under the tower.
+  name Airfield
+  pitch A runway, its taxiways and apron, a terminal, a control tower, hangars and a fuel farm inside the perimeter fence.
   faction none
   roster oldworld
-  site old_airfield
   core none
   owner none
   landmark
@@ -385,10 +384,6 @@ family abandoned_spaceport
     seed 9205
     site port_d
     port d
-  variant Marker Field
-    seed 9206
-    site port_e
-    port e
 
 family military_base
   tier base

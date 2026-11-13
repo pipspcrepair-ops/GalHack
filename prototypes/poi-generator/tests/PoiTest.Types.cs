@@ -165,3 +165,107 @@ public partial class PoiTest
         Check(each < 5, $"a sketch costs {each:F2} ms ({sketches} made): what a type adds to a world's load");
     }
 }
+
+public partial class PoiTest
+{
+    /// <summary>A sketch's piece laid out as the world lays it out (its front, its world's age, its own plan).</summary>
+    Layout BuildPiece(TypePiece p, ulong seed, TechLevel tech)
+    {
+        try { return PoiFactory.BuildLayout(_lib, _lib.Family("airfield")!, 0, Rarity.Rare, Hash.Combine(seed, Hash.Of(p.Plan.Id), (ulong)(p.OffsetX * 7919 + p.OffsetZ)), new LayoutHints(p.Front, tech, Site: p.Plan)); }
+        catch (InvalidOperationException e) { throw new InvalidOperationException($"{p.Plan.Parts[0].Arg("what")} facing {p.Front} ({string.Join(" ", p.Plan.Parts[0].Args.Select(a => a.Key + " " + a.Value))}): {e.Message}"); }
+    }
+
+    /// <summary>A built piece's blocks in the turned sketch's frame (metres): every solid cell at or above the ground.</summary>
+    static IEnumerable<(int X, int Y, int Z)> Standing(Layout l, TypePiece p) =>
+        l.Blocks.Blocks().Where(b => b.Cell.Y >= 0 && BlockInfo.Collides(b.Block.Type)).Select(b => (b.Cell.X + p.OffsetX, b.Cell.Y, b.Cell.Z + p.OffsetZ));
+
+    /// <summary>
+    /// The airfields as built, on fresh seeds: every building laid out at its sketch's size and front (Scale: the terminal,
+    /// tower and hangars measured on their blocks, a hangar's door a craft fits through), no two terminals or towers one plan
+    /// (Fresh), and nothing built on anything else or on the laid ground (Yards), every way in on laid ground or open ground
+    /// beside it, and what each costs the builder.
+    /// </summary>
+    void TypesBuilt()
+    {
+        var rand = new Random();
+        var bad = new List<string>();
+        var plans = new Dictionary<string, List<string>>();
+        var cost = new Dictionary<string, List<double>>();
+        int pieces = 0, shared = 0, onGround = 0;
+        foreach (PlaceType t in _lib.Types)
+            for (int k = 0; k < 3; k++)
+            {
+                ulong seed = FreshSeed(rand);
+                Sketch s = PlaceTypes.Plan(t, seed, 32000, 16000);
+                int turn = rand.Next(4);
+                TechLevel tech = WorldProfile.Parse(t.Techs[rand.Next(t.Techs.Count)]);
+                var ground = PlaceTypes.Grounds(s, turn).Select(g => g.Box).ToList();
+                var owner = new Dictionary<(int, int, int), string>();
+                foreach (TypePiece p in PlaceTypes.Pieces(s, turn))
+                {
+                    var clock = Stopwatch.StartNew();
+                    Layout l = BuildPiece(p, seed, tech);
+                    clock.Stop();
+                    pieces++;
+                    string what = p.Plan.Parts[0].Arg("what");
+                    if (!cost.TryGetValue($"{t.Id}.{what}", out var list)) cost[$"{t.Id}.{what}"] = list = new List<double>();
+                    list.Add(clock.Elapsed.TotalMilliseconds);
+                    var cells = Standing(l, p).ToList();
+                    if (cells.Count == 0) { bad.Add($"{t.Id}.{what}: nothing built"); continue; }
+                    int x0 = cells.Min(c => c.X), x1 = cells.Max(c => c.X) + 1, z0 = cells.Min(c => c.Z), z1 = cells.Max(c => c.Z) + 1, top = cells.Max(c => c.Y) + 1;
+                    // Fills its box (the tower's cab stands a block proud of its shaft).
+                    float slack = what == "tower" ? 4.5f : 0.5f;
+                    if (x0 < p.Box.X0 - slack || x1 > p.Box.X1 + slack || z0 < p.Box.Z0 - slack || z1 > p.Box.Z1 + slack || what is "terminal" or "hangar" && (x1 - x0 < p.Box.W - 2 || z1 - z0 < p.Box.D - 2))
+                        bad.Add($"{t.Id}.{what} ({p.Front}) built {x0}..{x1} x {z0}..{z1}, its box {p.Box.X0:F0}..{p.Box.X1:F0} x {p.Box.Z0:F0}..{p.Box.Z1:F0}");
+                    float L = p.Front is Dir.North or Dir.South ? x1 - x0 : z1 - z0;
+                    if (t.Id == "airport")
+                    {
+                        void Real(bool ok, string why) { if (!ok) bad.Add($"airport.{what}: {why}"); }
+                        if (what == "terminal") Real(L is >= 120 and <= 200 && top is >= 12 and <= 20, $"{L} m long, {top} m high");
+                        if (what == "tower") Real(top is >= 30 and <= 50, $"{top} m high");
+                        if (what == "hangar")
+                        {
+                            // The door: the widest run of open cells along its front at 4 m, and how high it stays open.
+                            int door = 0, run = 0, high = 0;
+                            var set = cells.ToHashSet();
+                            for (int a = 0; a < L; a++)
+                            {
+                                var (cx, cz) = Front(p, a);
+                                bool open = !set.Contains((cx, 4, cz));
+                                run = open ? run + 1 : 0;
+                                door = Math.Max(door, run);
+                                if (open && a == (int)L / 2) while (!set.Contains((cx, high, cz)) && high < 40) high++;
+                            }
+                            Real(L is >= 45 and <= 60 && top >= 15 && door >= 30 && high >= 8, $"{L} m span, {top} m high, door {door} m wide and {high} m high");
+                        }
+                    }
+                    if (what is "terminal" or "tower")
+                    {
+                        if (!plans.TryGetValue($"{t.Id}.{what}", out var sigs)) plans[$"{t.Id}.{what}"] = sigs = new List<string>();
+                        sigs.Add(string.Join(" ", l.Modules.Select(m => $"{m.Purpose}{m.Shape.Occupied.Count}")));
+                    }
+                    foreach (var c in cells)
+                    {
+                        if (owner.TryGetValue(c, out string? o) && o != p.Plan.Id + p.OffsetX + "," + p.OffsetZ) shared++;
+                        owner[c] = p.Plan.Id + p.OffsetX + "," + p.OffsetZ;
+                    }
+                    if (what is not ("fence" or "lights"))
+                        onGround += cells.Count(c => c.Y <= 2 && ground.Any(g => c.X >= g.X0 && c.X < g.X1 && c.Z >= g.Z0 && c.Z < g.Z1));
+                }
+            }
+        foreach (var (k, sigs) in plans)
+            if (sigs.Distinct().Count() < sigs.Count) bad.Add($"{k}: {sigs.Count - sigs.Distinct().Count()} of {sigs.Count} spawns share a plan");
+        foreach (string b in bad.Distinct().Take(8)) GD.Print($"      {b}");
+        GD.Print("      builder time per piece: " + string.Join(", ", cost.Select(kv => $"{kv.Key} {kv.Value.Average():F0} ms (worst {kv.Value.Max():F0})")));
+        Check(bad.Count == 0 && shared == 0 && onGround == 0, $"{pieces} pieces of fresh airfields built at their sketches' sizes ({bad.Count} out), {shared} cells shared between pieces, {onGround} built on laid ground");
+    }
+
+    /// <summary>A cell along a piece's front edge, a metres along it, one cell inside.</summary>
+    static (int X, int Z) Front(TypePiece p, int a) => p.Front switch
+    {
+        Dir.North => ((int)p.Box.X0 + a, (int)p.Box.Z0),
+        Dir.South => ((int)p.Box.X1 - 1 - a, (int)p.Box.Z1 - 1),
+        Dir.East => ((int)p.Box.X1 - 1, (int)p.Box.Z0 + a),
+        _ => ((int)p.Box.X0, (int)p.Box.Z1 - 1 - a),
+    };
+}

@@ -169,7 +169,7 @@ public sealed class Sketch
 /// it names (along, beside, between, ends, round, from), tried again elsewhere when it would overlap anything, with fewer
 /// of a counted part where there isn't room. The world's size caps the long parts (the type's share of the world's area).
 /// </summary>
-public static class PlaceTypes
+public static partial class PlaceTypes
 {
     const float Clear = 6f;
     const int Tries = 24;
@@ -348,3 +348,4 @@ public static class PlaceTypes
         return new SketchBox(a.Cx - len / 2, z0, a.Cx + len / 2, z0 + depth);
     }
 }
+
