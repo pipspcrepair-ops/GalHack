@@ -401,7 +401,7 @@ public partial class PlayerTest : Node
             var pBills = folk.Select((s, i) => Game.Game.BodyDrops(s, Wildlife.Rng.For(s.Seed, "drop", i))).ToList();
             bool known(Bill b) => b.Ids.All(_game.Zone.Data.Items.Has);
             Check(machines.Count > 0 && mBills.All(b => !Flesh(b) && b["iron-bar"] > 0 && known(b)),
-                $"a machine's body holds salvage, no meat or hide ({machines.Count} kinds; {_game.Zone.Data.Items.Describe(mBills[0])})");
+                $"a machine's body holds salvage, no meat or hide ({machines.Count} kinds; {(mBills.Count > 0 ? _game.Zone.Data.Items.Describe(mBills[0]) : "none on this world")})");
             Check(pBills.All(b => !Flesh(b) && known(b)), $"a person's body holds what they carried, no meat or hide ({folk.Count} people; {string.Join(" | ", pBills.Where(b => !b.IsEmpty).Take(3).Select(b => _game.Zone.Data.Items.Describe(b)))})");
         }
         foreach (int x in _drive.WalkTo(body.Position, 1.6f, 30f)) yield return x;
