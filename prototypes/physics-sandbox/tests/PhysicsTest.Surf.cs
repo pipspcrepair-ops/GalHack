@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using GalHack.Physics;
 using GalHack.Physics.Engine;
 using Godot;
@@ -120,6 +121,49 @@ public partial class PhysicsTest
         Check(down && lost <= 0f && fastest < 12f, $"a hillside too steep to stand on is slid down, as on scree: at most {fastest:F1} m/s, unhurt ({lost:F0} lost), standing at its foot ({down})");
         hill.GetParent().RemoveChild(hill);
         hill.QueueFree();
+        p.PlaceOutside(_w.Ground(1.5f, 8.5f) + N.Vector3.UnitY * 0.05f);
+        for (int i = 0; i < 10; i++) yield return 0;
+    }
+
+    /// <summary>
+    /// Hilltops: set down on the crest of the sandbox's jagged ridge at five points, the sleeper stands there, and walks off
+    /// it every way (north, south, east, west), never held on the top and never rescued from it.
+    /// </summary>
+    IEnumerable<int> Hilltops()
+    {
+        Player p = _w.Player;
+        int rescues = _rescues.Count(r => r.Body == p.Body), walks = 0, stuck = 0;
+        var notes = new List<string>();
+        foreach (float x in new[] { -50f, -25f, 0f, 25f, 50f })
+        {
+            float bestZ = -50f, top = float.NegativeInfinity;
+            for (float z = -80f; z <= -25f; z += 0.5f)
+                if (_w.Ground(x, z).Y > top) { top = _w.Ground(x, z).Y; bestZ = z; }
+            for (int d = 0; d < 4; d++)
+            {
+                p.PlaceOutside(new N.Vector3(x, top + 0.4f, bestZ));
+                p.Yaw = d * MathF.PI / 2f;
+                p.Pitch = 0f;
+                for (int i = 0; i < 40; i++) yield return 0;
+                N.Vector3 from = p.Body.Position;
+                for (int t = 0; t < 240; t++)
+                {
+                    p.Legs.Move = new N.Vector2(0f, -1f);
+                    yield return 0;
+                }
+                p.Legs.Move = N.Vector2.Zero;
+                walks++;
+                float moved = MathX.Flat(p.Body.Position - from).Length();
+                if (moved < 3f)
+                {
+                    stuck++;
+                    notes.Add($"x {x:F0}, heading {d * 90}°: only {moved:F1} m off the top in 4 s");
+                }
+            }
+        }
+        int rescued = _rescues.Count(r => r.Body == p.Body) - rescues;
+        foreach (string n in notes) GD.Print($"    {n}");
+        Check(stuck == 0 && rescued == 0, $"set down on a jagged crest at five points, the sleeper walks off it every way ({walks - stuck} of {walks}), never rescued ({rescued})");
         p.PlaceOutside(_w.Ground(1.5f, 8.5f) + N.Vector3.UnitY * 0.05f);
         for (int i = 0; i < 10; i++) yield return 0;
     }
