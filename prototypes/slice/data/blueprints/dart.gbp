@@ -15,7 +15,7 @@ gravity on
 
 paint hull base=ece3c8 grime=1
 paint belly base=2b2d42 grime=2
-paint deck base=4a4e57 texture=plates grime=1
+paint deck base=4a4e57 grime=1
 paint chev base=ece3c8 accent=e85d04 pattern=chevrons grime=1
 paint red base=c1121f grime=1
 

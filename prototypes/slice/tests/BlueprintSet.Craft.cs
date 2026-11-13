@@ -81,7 +81,7 @@ three lift jets, a down jet, a side jet on each wingtip, three pads.");
     static string Shuttle(Catalogue cat)
     {
         var d = new Designer(cat, "Shuttle", CoreMode.Capital);
-        ushort hull = d.Paint("hull", Coat(0xece3c8)), inner = d.Paint("inner", Coat(0xd8d2c2, 0, FaceTexture.Smooth)), deck = d.Paint("deck", Deck);
+        ushort hull = d.Paint("hull", Coat(0xece3c8)), inner = d.Paint("inner", Coat(0xd8d2c2, 0)), deck = d.Paint("deck", Deck);
         ushort band = d.Paint("band", Coat(0x0a9396)), pod = d.Paint("pod", Coat(0xe85d04)), hazard = d.Paint("hazard", Hazard);
 
         // A cabin 4 m wide, 3 m tall and 11 m long; a windscreen, a window band down each side.
@@ -171,7 +171,7 @@ each sponson.");
     static string Hauler(Catalogue cat)
     {
         var d = new Designer(cat, "Hauler", CoreMode.Capital);
-        ushort cream = d.Paint("cream", Coat(0xece3c8)), inner = d.Paint("inner", Coat(0xd8d2c2, 0, FaceTexture.Smooth)), deck = d.Paint("deck", Deck);
+        ushort cream = d.Paint("cream", Coat(0xece3c8)), inner = d.Paint("inner", Coat(0xd8d2c2, 0)), deck = d.Paint("deck", Deck);
         ushort spine = d.Paint("spine", Coat(0x2b2d42, 2)), pod = d.Paint("pod", Coat(0xe85d04).WithPattern(Pattern.Stripes, 0x2b2d42)), hazard = d.Paint("hazard", Hazard);
 
         // The cab: 4 m wide, 3 m clear, 5 m deep, a windscreen and a door to port up a step.
@@ -219,7 +219,7 @@ corners, two down jets, a side jet each way, four pads.");
     static string Frigate(Catalogue cat)
     {
         var d = new Designer(cat, "Frigate", CoreMode.Capital);
-        ushort hull = d.Paint("hull", Coat(0xc9ccd1)), inner = d.Paint("inner", Coat(0xd8d2c2, 0, FaceTexture.Smooth)), deck = d.Paint("deck", Deck);
+        ushort hull = d.Paint("hull", Coat(0xc9ccd1)), inner = d.Paint("inner", Coat(0xd8d2c2, 0)), deck = d.Paint("deck", Deck);
         ushort keel = d.Paint("keel", Coat(0x2b2d42, 2)), red = d.Paint("red", Coat(0xc1121f)), hazard = d.Paint("hazard", Hazard);
 
         // The hangar aft: 10 m wide, 6 m clear and 16 m deep, open at the stern.

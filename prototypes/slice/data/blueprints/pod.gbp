@@ -13,9 +13,9 @@ mode base
 gravity on
 
 paint hull base=e85d04 grime=2
-paint inner base=d8d2c2 texture=smooth
-paint deck base=4a4e57 texture=plates grime=1
-paint shield base=2b2d42 texture=ribbed grime=3
+paint inner base=d8d2c2
+paint deck base=4a4e57 grime=1
+paint shield base=2b2d42 grime=3
 
 block 0 0 -3 stairs paint=hull
 block -2..2 0 -2 iron-plated paint=hull,hull,hull,shield,hull,hull

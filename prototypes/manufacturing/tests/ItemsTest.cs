@@ -305,23 +305,23 @@ public partial class ItemsTest : TestBase
 
     void TestStarterVessel()
     {
-        Structure gadfly = DataPaths.LoadBlueprint("gadfly.gbp");
-        List<BlockCount> blocks = BuildingBridge.BlocksOf(gadfly);
+        Structure skiff = DataPaths.LoadBlueprint(DataPaths.Slice("starter.gbp"));
+        List<BlockCount> blocks = BuildingBridge.BlocksOf(skiff);
         Bill parts = _items.Blocks.Total(blocks);
         Expansion vessel = _items.Graph.Expand(parts);
         ReferenceRates reference = _items.Machines.Reference;
         Expansion foothold = _items.Graph.Expand(_items.Blocks.Total(reference.Foothold));
         Expansion fuel = _items.Graph.Expand(reference.StarterFuel);
 
-        var stats = StructureStats.Compute(gadfly);
-        Note($"Gadfly: {gadfly.Count} small blocks, {stats.Mass * 1000:0} kg, thrust/weight {stats.ThrustToWeightMax:0.0} g, flies: {stats.Flies}");
+        var stats = StructureStats.Compute(skiff);
+        Note($"Skiff: {skiff.BlockCount} blocks, {stats.Mass * 1000:0} kg, thrust/weight {stats.ThrustToWeightMax:0.0} g, flies: {stats.Flies}");
         Note($"  parts: {_items.Describe(parts)}");
         Note($"  ore:   {_items.Describe(vessel.Leaves)}  = {vessel.Leaves.Total} ore");
         Note($"  craft: {vessel.Runs} constructor runs, {vessel.Seconds / 60:0.0} min on a small constructor");
         Note($"Foothold base: {_items.Describe(foothold.Leaves)} = {foothold.Leaves.Total} ore, {foothold.Seconds / 60 / _items.Machines.Get("survival").Speed:0.0} min on the survival constructor");
         Note($"Fuel (20 energy cells): {fuel.Leaves.Total} ore");
 
-        Check(stats.Flies && stats.ThrustToWeightMax > 1.2, "the Gadfly is a working small vessel (powered, lifts its own weight)");
+        Check(stats.Flies && stats.ThrustToWeightMax > 1.2, "the Skiff is a working small vessel (powered, lifts its own weight)");
         var allowed = new HashSet<string>(_items.Items.Where(i => i.IsRaw && (EveryPlanet.Contains(i.DepositKind) || i.Source == ItemSource.Dug)).Select(i => i.Id));
         Check(vessel.Leaves.Ids.All(allowed.Contains) && foothold.Leaves.Ids.All(allowed.Contains) && fuel.Leaves.Ids.All(allowed.Contains),
             "everything for the first vessel comes from what every planet has (iron, copper, silicon, carbon, ice, dug stone)");
@@ -330,7 +330,7 @@ public partial class ItemsTest : TestBase
         double ore = vessel.Leaves.Total + foothold.Leaves.Total + fuel.Leaves.Total;
         double gather = ore / reference.GatherOrePerMinute;
         double craft = foothold.Seconds / 60 / _items.Machines.Get("survival").Speed + (vessel.Seconds + fuel.Seconds) / 60 / _items.Machines.Get("small").Speed;
-        double place = (gadfly.Count + reference.Foothold.Sum(b => b.Count)) * reference.PlaceSecondsPerBlock / 60;
+        double place = (skiff.BlockCount + reference.Foothold.Sum(b => b.Count)) * reference.PlaceSecondsPerBlock / 60;
         double worst = gather + craft + place;                    // nothing overlaps
         double best = Math.Max(gather, craft) + place;            // the constructor works while the player gathers
         Note($"TOTAL first vessel from the crash: {ore:0} ore; gather {gather:0} min at {reference.GatherOrePerMinute:0}/min, craft {craft:0} min, place {place:0} min");
@@ -338,17 +338,10 @@ public partial class ItemsTest : TestBase
         Check(vessel.Leaves.Total is >= 400 and <= 2500, $"the vessel costs a sensible amount of ore ({vessel.Leaves.Total})");
         Check(best >= 30 && worst <= 120, $"the first vessel takes {best:0}-{worst:0} min, inside an hour or two with the rest of survival");
 
-        // For comparison: the physics sandbox's walk-in shuttle, if it is there.
-        string corsairPath = Path.Combine(DataPaths.Repo, "prototypes", "physics-sandbox", "data", "blueprints", "corsair.gbp");
-        if (File.Exists(corsairPath))
-        {
-            Structure corsair = Blueprint.Load(File.ReadAllText(corsairPath), _blocks, out List<string> errors);
-            if (corsair != null && errors.Count == 0)
-            {
-                Expansion c = _items.Graph.Expand(_items.Blocks.Total(BuildingBridge.BlocksOf(corsair)));
-                Note($"Corsair 9 (walk-in shuttle, {corsair.Count} blocks): {c.Leaves.Total} ore, {c.Seconds / 60:0} min of crafting");
-            }
-        }
+        // For comparison: the walk-in Shuttle.
+        Structure shuttle = DataPaths.LoadBlueprint(DataPaths.Slice("shuttle.gbp"));
+        Expansion c = _items.Graph.Expand(_items.Blocks.Total(BuildingBridge.BlocksOf(shuttle)));
+        Note($"Shuttle (walk-in, {shuttle.BlockCount} blocks): {c.Leaves.Total} ore, {c.Seconds / 60:0} min of crafting");
     }
 
     // ---- Deposits ---------------------------------------------------------------------------

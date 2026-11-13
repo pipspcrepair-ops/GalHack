@@ -14,12 +14,12 @@ mode base
 gravity on
 
 paint wall base=e9dfc4 grime=1
-paint inner base=d8d2c2 texture=smooth
-paint deck base=4a4e57 texture=plates grime=1
+paint inner base=d8d2c2
+paint deck base=4a4e57 grime=1
 paint band base=0a9396 grime=1
 paint roof base=3a3f47 grime=2
 paint hazard base=f4a100 pattern=hazard grime=2
-paint pad base=5a5e66 texture=plates grime=2
+paint pad base=5a5e66 grime=2
 
 block 7..18 0 -6 base-block paint=pad,pad,hazard,pad,pad,pad
 block -5..6 0 -5 concrete-plated paint=wall

@@ -1242,8 +1242,8 @@ public partial class PlaceTest : Node
                 if (high - low < rise) { rise = high - low; ahead = p; }
             }
         GD.Print($"  (the gate stands where the ground rises {rise:F2} m along the way through)");
-        ahead.Y = game.Zone.GroundAt(ahead.X, ahead.Z).Y + 1f;
-        string plan = "schema galhack.blueprint\nversion 1\nname \"Gate\"\ngrid large\nmode base\ngravity off\nblock -3..-1 0 0 steel\nblock 1..3 0 0 steel\nblock -3..3 1 0 steel\nblock 0 0 0 door\nblock 4 0 0 core\n";
+        ahead.Y = game.Zone.GroundAt(ahead.X, ahead.Z).Y + 0.5f; // its lowest cells' feet on the ground
+        string plan = "schema galhack.blueprint\nversion 1\nname \"Gate\"\ngrid 1m\nmode base\ngravity off\nblock -3..-1 0..1 0 iron-plated\nblock 1..3 0..1 0 iron-plated\nblock -3..3 2 0 iron-plated\nblock 0 0 0 door-1x2x1\nblock 4 0 0 core\n";
         var s = GalHack.Structures.Blueprint.Load(plan, game.Zone.Data.Catalogue, out List<string> errors);
         Check(s != null && errors.Count == 0, $"the gate's blueprint loads {string.Join("; ", errors)}");
         if (s == null) yield break;

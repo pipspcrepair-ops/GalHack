@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -642,24 +642,24 @@ public partial class BuildTest : Node
     void TestValidator()
     {
         const string head = "schema galhack.blueprint\nversion 1\nname \"t\"\ngrid 1m\n";
-        Check(Blueprint.Validate(Blueprint.Parse(head + "block 0 0 0 core\nblock 1 0 0 steel slope rot=+y+x\n"), _cat).Count == 0,
+        Check(Blueprint.Validate(Blueprint.Parse(head + "block 0 0 0 core\nblock 1 0 0 iron-plated slope rot=+y+x\n"), _cat).Count == 0,
             "a good blueprint passes");
 
         var cases = new (string text, string expect, string what)[]
         {
-            (head + "block 0 0 0 steel\n", "no core", "no core"),
+            (head + "block 0 0 0 iron-plated\n", "no core", "no core"),
             (head + "block 0 0 0 core\nblock 1 0 0 core\n", "cores", "two cores"),
-            (head + "block 0 0 0 core\nblock 1..3 0 0 steel\nblock 2 0 0 hardened\n", "overlaps", "overlapping blocks"),
+            (head + "block 0 0 0 core\nblock 1..3 0 0 iron-plated\nblock 2 0 0 hardened-plated\n", "overlaps", "overlapping blocks"),
             (head + "block 0 0 0 core\nblock 1 0 0 unobtanium\n", "unknown block id", "an unknown block id"),
-            (head + "block 0 0 0 core\nblock 1 0 0 steel blob\n", "unknown shape", "an unknown shape"),
-            (head + "block 0 0 0 core\nblock 1 0 0 steel paint=nope\n", "unknown paint", "an unknown paint"),
-            (head + "block 0 0 0 core\nblock 1 0 0 steel rot=+y+y\n", "bad rot", "an impossible rotation"),
+            (head + "block 0 0 0 core\nblock 1 0 0 iron-plated blob\n", "unknown shape", "an unknown shape"),
+            (head + "block 0 0 0 core\nblock 1 0 0 iron-plated paint=nope\n", "unknown paint", "an unknown paint"),
+            (head + "block 0 0 0 core\nblock 1 0 0 iron-plated rot=+y+y\n", "bad rot", "an impossible rotation"),
             (head + "block 0 0 0 core\nblock 1 0 0 thruster-t1 slope\n", "takes no shape", "a shape on a component"),
-            (head + "block 0 0 0 core\nblock 1 0 0 steel\nblock 5 5 5 steel\n", "not attached", "a detached block marked as attached"),
-            (head + "block 0 0 0 core\nblock 1 0 0 steel half\nblock 1 1 0 steel\n", "not attached", "a block touching only a half block's open top"),
+            (head + "block 0 0 0 core\nblock 1 0 0 iron-plated\nblock 5 5 5 iron-plated\n", "not attached", "a detached block marked as attached"),
+            (head + "block 0 0 0 core\nblock 1 0 0 iron-plated half\nblock 1 1 0 iron-plated\n", "not attached", "a block touching only a half block's open top"),
             ("schema galhack.blueprint\nversion 9\ngrid 1m\nblock 0 0 0 core\n", "version", "an unknown version"),
             ("schema galhack.blueprint\nversion 1\ngrid 3m\nblock 0 0 0 core\n", "unknown grid", "an unknown grid"),
-            (head + "block 0 0 0 core\nblock 1 0 0 steel hp=99999\n", "outside", "hit points above the maximum"),
+            (head + "block 0 0 0 core\nblock 1 0 0 iron-plated hp=99999\n", "outside", "hit points above the maximum"),
             (head + "block 0 0 0 core\nwibble\n", "unknown statement", "a junk line"),
         };
         foreach (var (text, expect, what) in cases)

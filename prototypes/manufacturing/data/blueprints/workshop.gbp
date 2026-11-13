@@ -1,44 +1,180 @@
-# Workshop: the manufacturing prototype's base, written by hand.
-#
-# Large grid (2 m cells). x is starboard, y up, -z forward. A plated floor with the core near
-# the front edge; along the back wall, from port to starboard: a generator, the small
-# constructor, a container, the deconstructor, a container, the blueprint factory and a fuel
-# tank. Two turrets stand on the containers, and a gatling and a rocket pod point out of the back
-# wall, so the constructor has three kinds of ammo to keep stocked. Every machine's screen faces
-# the floor.
-
+# Workshop: the manufacturing prototype's base. A concrete hall 14 x 8 m and 4 m floor to
+# ceiling, a double door up a step; along the back wall a generator, the fabricator, four lockers,
+# the deconstructor, the blueprint factory and fuel; a command chair by the west wall. Two turrets on
+# the roof, a gatling and a rocket pod out of the back wall, so the fabricator has three kinds of
+# ammo to keep stocked.
+# Written by slice/tests/BlueprintSet.cs (Designer); regenerate rather than edit.
+# GalHack blueprint. One statement per line; '#' starts a comment.
+# block <x> <y> <z> <type> [shape] [rot=<up><forward>] [paint=<name> | paint=<+x>,<-x>,<+y>,<-y>,<+z>,<-z>] [hp=<n>] [open] [off] [light=<rrggbb[+rrggbb]>:<mode>:<hz>:<seed>]
+# Cells: x right, y up, -z forward; a..b is an inclusive range. rot defaults to +y-z; '-' is bare metal.
 schema galhack.blueprint
 version 1
 name "Workshop"
-grid large
+grid 1m
 mode base
 gravity on
 
-paint floor base=b9b2a4 texture=plates grime=2
-paint hull base=ece3c8 grime=1
-paint stripe base=ece3c8 accent=e85d04 pattern=stripes grime=1
-paint hazard base=f4a100 accent=2b2d42 pattern=hazard grime=2
-paint dark base=3a3f47 texture=plates grime=2
+paint wall base=e9dfc4 grime=1
+paint inner base=d8d2c2
+paint deck base=4a4e57 grime=1
+paint band base=0a9396 grime=1
+paint roof base=3a3f47 grime=2
 
-# --- Floor (y 0) ------------------------------------------------------------------------
-block -4..4 0 -3..2 steel paint=floor
-block -4..-1 0 3 steel paint=hazard
-block 0 0 3 core
-block 1..4 0 3 steel paint=hazard
-
-# --- The back wall of machines (y 1, z -3) ---------------------------------------------
-block -4 1 -3 generator
-block -3 1 -3 smallfab
-block -2 1 -3 container
-block -1 1 -3 steel paint=stripe
-block 0 1 -3 decon
-block 1 1 -3 steel paint=stripe
-block 2 1 -3 container
-block 3 1 -3 factory
-block 4 1 -3 fueltank
-
-# --- Guns ----------------------------------------------------------------------------------
-block -2 2 -3 turret
-block 2 2 -3 turret
-block 0 1 -4 gatling
-block 1 1 -4 rocketpod
+block -8..7 0 -5 concrete-plated paint=wall
+block -8 0 -4 concrete-plated paint=wall
+block -7..6 0 -4 concrete-plated paint=wall,wall,deck,wall,wall,wall
+block 7 0 -4 concrete-plated paint=wall
+block -8 0 -3 concrete-plated paint=wall
+block -7..6 0 -3 concrete-plated paint=wall,wall,deck,wall,wall,wall
+block 7 0 -3 concrete-plated paint=wall
+block -8 0 -2 concrete-plated paint=wall
+block -7..6 0 -2 concrete-plated paint=wall,wall,deck,wall,wall,wall
+block 7 0 -2 concrete-plated paint=wall
+block -8 0 -1 concrete-plated paint=wall
+block -7..6 0 -1 concrete-plated paint=wall,wall,deck,wall,wall,wall
+block 7 0 -1 concrete-plated paint=wall
+block -8 0 0 concrete-plated paint=wall
+block -7..6 0 0 concrete-plated paint=wall,wall,deck,wall,wall,wall
+block 7 0 0 concrete-plated paint=wall
+block -8 0 1 concrete-plated paint=wall
+block -7..-1 0 1 concrete-plated paint=wall,wall,deck,wall,wall,wall
+block 0 0 1 core
+block 1..6 0 1 concrete-plated paint=wall,wall,deck,wall,wall,wall
+block 7 0 1 concrete-plated paint=wall
+block -8 0 2 concrete-plated paint=wall
+block -7..6 0 2 concrete-plated paint=wall,wall,deck,wall,wall,wall
+block 7 0 2 concrete-plated paint=wall
+block -8 0 3 concrete-plated paint=wall
+block -7..6 0 3 concrete-plated paint=wall,wall,deck,wall,wall,wall
+block 7 0 3 concrete-plated paint=wall
+block -8..7 0 4 concrete-plated paint=wall
+block -1..0 0 5 stairs rot=+y+z paint=wall
+block -8 1 -5 concrete-plated paint=wall
+block -7..6 1 -5 concrete-plated paint=wall,wall,wall,wall,inner,wall
+block 7 1 -5 concrete-plated paint=wall
+block -8 1 -4 concrete-plated paint=inner,wall,wall,wall,wall,wall
+block -7 1 -4 generator-t1
+block -6 1 -4 fabricator-t1
+block -5..-4 1 -4 container-t1
+block -3 1 -4 decon
+block -1..0 1 -4 container-t1
+block 1 1 -4 factory
+block 2 1 -4 fuel-tank-t1
+block 7 1 -4 concrete-plated paint=wall,inner,wall,wall,wall,wall
+block -8 1 -3 concrete-plated paint=inner,wall,wall,wall,wall,wall
+block 7 1 -3 concrete-plated paint=wall,inner,wall,wall,wall,wall
+block -8 1 -2 concrete-plated paint=inner,wall,wall,wall,wall,wall
+block 7 1 -2 concrete-plated paint=wall,inner,wall,wall,wall,wall
+block -8 1 -1 concrete-plated paint=inner,wall,wall,wall,wall,wall
+block 7 1 -1 concrete-plated paint=wall,inner,wall,wall,wall,wall
+block -8 1 0 concrete-plated paint=inner,wall,wall,wall,wall,wall
+block 7 1 0 concrete-plated paint=wall,inner,wall,wall,wall,wall
+block -8 1 1 concrete-plated paint=inner,wall,wall,wall,wall,wall
+block -7 1 1 command-chair
+block 7 1 1 concrete-plated paint=wall,inner,wall,wall,wall,wall
+block -8 1 2 concrete-plated paint=inner,wall,wall,wall,wall,wall
+block 7 1 2 concrete-plated paint=wall,inner,wall,wall,wall,wall
+block -8 1 3 concrete-plated paint=inner,wall,wall,wall,wall,wall
+block 7 1 3 concrete-plated paint=wall,inner,wall,wall,wall,wall
+block -8 1 4 concrete-plated paint=wall
+block -7..-2 1 4 concrete-plated paint=wall,wall,wall,wall,wall,inner
+block 0 1 4 door-2x2x1 rot=+y+z
+block 1..6 1 4 concrete-plated paint=wall,wall,wall,wall,wall,inner
+block 7 1 4 concrete-plated paint=wall
+block -8 2 -5 concrete-plated paint=wall
+block -7..6 2 -5 concrete-plated paint=wall,wall,wall,wall,inner,wall
+block 7 2 -5 concrete-plated paint=wall
+block -8 2 -4 concrete-plated paint=inner,wall,wall,wall,wall,wall
+block 7 2 -4 concrete-plated paint=wall,inner,wall,wall,wall,wall
+block -8 2 -3 concrete-plated paint=inner,wall,wall,wall,wall,wall
+block 7 2 -3 concrete-plated paint=wall,inner,wall,wall,wall,wall
+block -8 2 -2 concrete-plated paint=inner,wall,wall,wall,wall,wall
+block 7 2 -2 concrete-plated paint=wall,inner,wall,wall,wall,wall
+block -8 2 -1 concrete-plated paint=inner,wall,wall,wall,wall,wall
+block 7 2 -1 concrete-plated paint=wall,inner,wall,wall,wall,wall
+block -8 2 0 concrete-plated paint=inner,wall,wall,wall,wall,wall
+block 7 2 0 concrete-plated paint=wall,inner,wall,wall,wall,wall
+block -8 2 1 concrete-plated paint=inner,wall,wall,wall,wall,wall
+block 7 2 1 concrete-plated paint=wall,inner,wall,wall,wall,wall
+block -8 2 2 concrete-plated paint=inner,wall,wall,wall,wall,wall
+block 7 2 2 concrete-plated paint=wall,inner,wall,wall,wall,wall
+block -8 2 3 concrete-plated paint=inner,wall,wall,wall,wall,wall
+block 7 2 3 concrete-plated paint=wall,inner,wall,wall,wall,wall
+block -8 2 4 concrete-plated paint=wall
+block -7..-2 2 4 concrete-plated paint=wall,wall,wall,wall,wall,inner
+block 1..6 2 4 concrete-plated paint=wall,wall,wall,wall,wall,inner
+block 7 2 4 concrete-plated paint=wall
+block -2 3 -6 gatling
+block 1 3 -6 rocketpod
+block -8..7 3 -5 concrete-plated paint=wall,wall,wall,wall,band,band
+block -8 3 -4 concrete-plated paint=inner,wall,wall,wall,band,band
+block 7 3 -4 concrete-plated paint=wall,inner,wall,wall,band,band
+block -8 3 -3 concrete-plated paint=inner,wall,wall,wall,band,band
+block 7 3 -3 concrete-plated paint=wall,inner,wall,wall,band,band
+block -8 3 -2 concrete-plated paint=inner,wall,wall,wall,band,band
+block 7 3 -2 concrete-plated paint=wall,inner,wall,wall,band,band
+block -8 3 -1 concrete-plated paint=inner,wall,wall,wall,band,band
+block 7 3 -1 concrete-plated paint=wall,inner,wall,wall,band,band
+block -8 3 0 concrete-plated paint=inner,wall,wall,wall,band,band
+block 7 3 0 concrete-plated paint=wall,inner,wall,wall,band,band
+block -8 3 1 concrete-plated paint=inner,wall,wall,wall,band,band
+block 7 3 1 concrete-plated paint=wall,inner,wall,wall,band,band
+block -8 3 2 concrete-plated paint=inner,wall,wall,wall,band,band
+block 7 3 2 concrete-plated paint=wall,inner,wall,wall,band,band
+block -8 3 3 concrete-plated paint=inner,wall,wall,wall,band,band
+block 7 3 3 concrete-plated paint=wall,inner,wall,wall,band,band
+block -8..7 3 4 concrete-plated paint=wall,wall,wall,wall,band,band
+block -8 4 -5 concrete-plated paint=wall
+block -7..6 4 -5 concrete-plated paint=wall,wall,wall,wall,inner,wall
+block 7 4 -5 concrete-plated paint=wall
+block -8 4 -4 concrete-plated paint=inner,wall,wall,wall,wall,wall
+block 7 4 -4 concrete-plated paint=wall,inner,wall,wall,wall,wall
+block -8 4 -3 concrete-plated paint=inner,wall,wall,wall,wall,wall
+block 7 4 -3 concrete-plated paint=wall,inner,wall,wall,wall,wall
+block -8 4 -2 concrete-plated paint=inner,wall,wall,wall,wall,wall
+block -4 4 -2 light rot=+z-y
+block 4 4 -2 light rot=+z-y
+block 7 4 -2 concrete-plated paint=wall,inner,wall,wall,wall,wall
+block -8 4 -1 concrete-plated paint=inner,wall,wall,wall,wall,wall
+block 7 4 -1 concrete-plated paint=wall,inner,wall,wall,wall,wall
+block -8 4 0 concrete-plated paint=inner,wall,wall,wall,wall,wall
+block 7 4 0 concrete-plated paint=wall,inner,wall,wall,wall,wall
+block -8 4 1 concrete-plated paint=inner,wall,wall,wall,wall,wall
+block 7 4 1 concrete-plated paint=wall,inner,wall,wall,wall,wall
+block -8 4 2 concrete-plated paint=inner,wall,wall,wall,wall,wall
+block -4 4 2 light rot=+z-y
+block 4 4 2 light rot=+z-y
+block 7 4 2 concrete-plated paint=wall,inner,wall,wall,wall,wall
+block -8 4 3 concrete-plated paint=inner,wall,wall,wall,wall,wall
+block 7 4 3 concrete-plated paint=wall,inner,wall,wall,wall,wall
+block -8 4 4 concrete-plated paint=wall
+block -7..6 4 4 concrete-plated paint=wall,wall,wall,wall,wall,inner
+block 7 4 4 concrete-plated paint=wall
+block -8..7 5 -5 concrete-plated paint=wall,wall,roof,wall,wall,wall
+block -8 5 -4 concrete-plated paint=wall,wall,roof,wall,wall,wall
+block -7..6 5 -4 concrete-plated paint=wall,wall,roof,inner,wall,wall
+block 7 5 -4 concrete-plated paint=wall,wall,roof,wall,wall,wall
+block -8 5 -3 concrete-plated paint=wall,wall,roof,wall,wall,wall
+block -7..6 5 -3 concrete-plated paint=wall,wall,roof,inner,wall,wall
+block 7 5 -3 concrete-plated paint=wall,wall,roof,wall,wall,wall
+block -8 5 -2 concrete-plated paint=wall,wall,roof,wall,wall,wall
+block -7..6 5 -2 concrete-plated paint=wall,wall,roof,inner,wall,wall
+block 7 5 -2 concrete-plated paint=wall,wall,roof,wall,wall,wall
+block -8 5 -1 concrete-plated paint=wall,wall,roof,wall,wall,wall
+block -7..6 5 -1 concrete-plated paint=wall,wall,roof,inner,wall,wall
+block 7 5 -1 concrete-plated paint=wall,wall,roof,wall,wall,wall
+block -8 5 0 concrete-plated paint=wall,wall,roof,wall,wall,wall
+block -7..6 5 0 concrete-plated paint=wall,wall,roof,inner,wall,wall
+block 7 5 0 concrete-plated paint=wall,wall,roof,wall,wall,wall
+block -8 5 1 concrete-plated paint=wall,wall,roof,wall,wall,wall
+block -7..6 5 1 concrete-plated paint=wall,wall,roof,inner,wall,wall
+block 7 5 1 concrete-plated paint=wall,wall,roof,wall,wall,wall
+block -8 5 2 concrete-plated paint=wall,wall,roof,wall,wall,wall
+block -7..6 5 2 concrete-plated paint=wall,wall,roof,inner,wall,wall
+block 7 5 2 concrete-plated paint=wall,wall,roof,wall,wall,wall
+block -8 5 3 concrete-plated paint=wall,wall,roof,wall,wall,wall
+block -7..6 5 3 concrete-plated paint=wall,wall,roof,inner,wall,wall
+block 7 5 3 concrete-plated paint=wall,wall,roof,wall,wall,wall
+block -8..7 5 4 concrete-plated paint=wall,wall,roof,wall,wall,wall
+block -4 6 -1 turret
+block 3 6 -1 turret

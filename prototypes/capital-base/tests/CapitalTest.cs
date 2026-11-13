@@ -50,8 +50,8 @@ public partial class CapitalTest : Node
     Craft Prospector => _w.CraftById("prospector");
     Craft Outpost => _w.CraftById("outpost");
 
-    /// <summary>Bastion's landing pad, in its own frame: the middle of the roof aft of the tower.</summary>
-    static readonly N.Vector3 Pad = new(0f, 7f, 6f);
+    /// <summary>Bastion's landing pad, in its own frame: the middle of its hall's roof.</summary>
+    static readonly N.Vector3 Pad = new(-0.5f, 5.5f, 2.5f);
 
     public override void _Ready()
     {
@@ -178,7 +178,7 @@ public partial class CapitalTest : Node
         Check(_w.Spots.Count >= 4, $"planet built in {_w.PlanetBuildMs:F0} ms; {_w.Patch.ChunkCount} voxel chunks around the site; landing spots: {string.Join("; ", _w.Spots)}");
 
         Spot a = _w.Spots[0];
-        _w.SpawnBase("outpost", "outpost.gbp", _w.Spots[3].Flat, 0.6f);
+        _w.SpawnBase("outpost", "prototypes/slice/data/blueprints/outpost.gbp", _w.Spots[3].Flat, 0.6f);
         _w.SpawnFlying("bastion", "bastion.gbp", new N.Vector3(a.X, a.Ground + 45f, a.Z), 0f);
         _w.Spawn("prospector", "prospector.gbp", N.Vector3.Zero, N.Quaternion.Identity);
         _w.DockAt(Prospector, Bastion, Pad, 0f);

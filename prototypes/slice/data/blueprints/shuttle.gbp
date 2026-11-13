@@ -14,8 +14,8 @@ mode capital
 gravity on
 
 paint hull base=ece3c8 grime=1
-paint inner base=d8d2c2 texture=smooth
-paint deck base=4a4e57 texture=plates grime=1
+paint inner base=d8d2c2
+paint deck base=4a4e57 grime=1
 paint band base=0a9396 grime=1
 paint pod base=e85d04 grime=1
 paint hazard base=f4a100 pattern=hazard grime=2

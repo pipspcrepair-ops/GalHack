@@ -97,11 +97,11 @@ public partial class DarkTest : Node
     /// <summary>A sealed box of large blocks, a core inside: 8 m across inside, and nothing in it that lights.</summary>
     static string SealedRoom()
     {
-        var b = new StringBuilder("schema galhack.blueprint\nversion 1\nname \"Sealed\"\ngrid large\nmode base\ngravity off\n");
+        var b = new StringBuilder("schema galhack.blueprint\nversion 1\nname \"Sealed\"\ngrid 1m\nmode base\ngravity off\n");
         for (int y = 0; y <= 4; y++)
         for (int z = -3; z <= 3; z++)
         for (int x = -3; x <= 3; x++)
-            if (y == 0 || y == 4 || Math.Abs(x) == 3 || Math.Abs(z) == 3) b.Append($"block {x} {y} {z} steel\n");
+            if (y == 0 || y == 4 || Math.Abs(x) == 3 || Math.Abs(z) == 3) b.Append($"block {x} {y} {z} iron-plated\n");
         b.Append("block 2 1 2 core\n");
         return b.ToString();
     }
@@ -138,8 +138,8 @@ public partial class DarkTest : Node
         Vector3 site = zone.GroundAt(outside.X + 30f, outside.Z);
         Vessel room = Vessel.SpawnBase(zone, s, (site + Vector3.Up * 4f).ToNumerics(), 0f);
         foreach (int x in Refreshed()) yield return x;
-        Vector3 centre = room.ToWorld(new System.Numerics.Vector3(0f, 2f * 2f, 0f));
-        Vector3 wall = room.ToWorld(new System.Numerics.Vector3(5f, 2f * 2f, 0f));
+        Vector3 centre = room.ToWorld(new System.Numerics.Vector3(0f, 2f, 0f));
+        Vector3 wall = room.ToWorld(new System.Numerics.Vector3(2.4f, 1.5f, 0f));
         Check(Light.Field.Holds(Mathf.FloorToInt(centre.X), Mathf.FloorToInt(centre.Y), Mathf.FloorToInt(centre.Z)), "the room is inside the field");
         float noonIn = At(centre, noon), nightIn = At(centre, midnight);
         Check(noonIn < NearZero, $"a sealed room is black at noon ({noonIn:F4})");
@@ -149,15 +149,15 @@ public partial class DarkTest : Node
         // A vessel carries its dark with it, field or no field (flying, in orbit).
         var own = new StructureSky();
         own.Flood(s);
-        Check(own.DarkAt(new Vector3(0f, 4f, 0f)) > 0.99f, $"the room's own flood is dark inside ({own.DarkAt(new Vector3(0f, 4f, 0f)):F2})");
-        Check(own.DarkAt(new Vector3(0f, 12f, 0f)) < 0.01f, "and open over its roof");
-        Check(own.DarkAt(new Vector3(9f, 4f, 0f)) < 0.01f, "and outside its walls");
+        Check(own.DarkAt(new Vector3(0f, 2f, 0f)) > 0.99f, $"the room's own flood is dark inside ({own.DarkAt(new Vector3(0f, 2f, 0f)):F2})");
+        Check(own.DarkAt(new Vector3(0f, 6f, 0f)) < 0.01f, "and open over its roof");
+        Check(own.DarkAt(new Vector3(5f, 2f, 0f)) < 0.01f, "and outside its walls");
 
         var lamp = new OmniLight3D { LightEnergy = 1.5f, OmniRange = 8f };
         AddChild(lamp);
-        lamp.GlobalPosition = centre + Vector3.Up * 2f;
+        lamp.GlobalPosition = centre + Vector3.Up;
         foreach (int x in _drive.Wait(2)) yield return x;
-        float lit = At(centre, noon), farCorner = At(room.ToWorld(new System.Numerics.Vector3(4f, 3f, 4f)), noon);
+        float lit = At(centre, noon), farCorner = At(room.ToWorld(new System.Numerics.Vector3(2f, 1f, 2f)), noon);
         Check(lit > 0.2f, $"a lamp lights it ({lit:F2})");
         Check(farCorner < lit, $"and falls off with distance ({lit:F2} by it, {farCorner:F2} in the corner)");
         lamp.Free();
@@ -168,7 +168,7 @@ public partial class DarkTest : Node
         for (int y = 1; y <= 2; y++) room.Structure.Clear(new Int3(3, y, 0));
         foreach (int x in Refreshed()) yield return x;
         foreach (int x in _drive.Wait(30)) yield return x;
-        float byHole = At(wall, noon), farSide = At(room.ToWorld(new System.Numerics.Vector3(-5f, 4f, 0f)), noon);
+        float byHole = At(wall, noon), farSide = At(room.ToWorld(new System.Numerics.Vector3(-2.4f, 1.5f, 0f)), noon);
         Check(byHole > 0.15f, $"a breach lets daylight in ({byHole:F2} beside it)");
         Check(farSide < byHole, $"and it fades across the room ({farSide:F3} on the far side)");
 

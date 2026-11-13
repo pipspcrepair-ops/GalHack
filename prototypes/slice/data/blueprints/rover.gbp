@@ -14,7 +14,7 @@ gravity on
 
 paint body base=f4a100 grime=1
 paint belly base=2b2d42 grime=2
-paint deck base=4a4e57 texture=plates grime=1
+paint deck base=4a4e57 grime=1
 paint stripe base=f4a100 pattern=stripes grime=1
 paint hazard base=f4a100 pattern=hazard grime=2
 

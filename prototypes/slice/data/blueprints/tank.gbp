@@ -15,7 +15,7 @@ gravity on
 
 paint sand base=c8b48a grime=2
 paint belly base=2b2d42 grime=2
-paint deck base=4a4e57 texture=plates grime=1
+paint deck base=4a4e57 grime=1
 paint flash base=c8b48a accent=0a9396 pattern=stripes grime=2
 paint hazard base=f4a100 pattern=hazard grime=2
 

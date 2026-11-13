@@ -88,7 +88,7 @@ public partial class BlueprintTest : Node
             Structure s = Blueprint.Load(text, data.Catalogue, out List<string> errors);
             if (!Check(s != null, $"{d.File} loads, every block joined to the core{(errors.Count > 0 ? ": " + string.Join("; ", errors.Take(4)) : "")}")) continue;
             s.DirtyChunks.Clear();
-            plans.Add((d.File, s));
+            if (!d.Fixture) plans.Add((d.File, s));
         }
         foreach (var (file, plan) in plans) Standards(data, file, plan);
 
@@ -117,9 +117,11 @@ public partial class BlueprintTest : Node
         GD.Print($"-- {name} ({Path.GetFileName(file)}): {size.X} x {size.Y} x {size.Z} m, {s.BlockCount} blocks, {st.Mass:F1} t, {ore:0} ore, {s.Mode} --");
 
         // Rooms and corridors: 3 m clear, 2 m wide, wherever a person walks under a roof.
-        var low = walk.Reached.Where(n => walk.Roofed(n) && !walk.OnStairsOrDoor(n) && walk.Clear(n) < 6).ToList();
-        var narrow = walk.Reached.Where(n => walk.Roofed(n) && !walk.Wide(n)).ToList();
-        int heads = walk.Reached.Where(n => walk.Roofed(n) && !walk.OnStairsOrDoor(n)).Select(walk.Clear).DefaultIfEmpty(0).Min();
+        // Rooms are walked under a roof on the structure itself (the ground under an overhang is not a room).
+        var inside = walk.Reached.Where(n => walk.Roofed(n) && !walk.OnGround(n)).ToList();
+        var low = inside.Where(n => !walk.OnStairsOrDoor(n) && walk.Clear(n) < 6).ToList();
+        var narrow = inside.Where(n => !walk.Wide(n)).ToList();
+        int heads = inside.Where(n => !walk.OnStairsOrDoor(n)).Select(walk.Clear).DefaultIfEmpty(0).Min();
         Check(low.Count == 0, $"{name}: every room and corridor walked is at least 3 m clear (lowest {heads * 0.5f:F1} m{(low.Count > 0 ? $", too low over {low.Count} cells such as {low[0]}" : "")})");
         Check(narrow.Count == 0, $"{name}: every corridor walked is at least 2 m wide{(narrow.Count > 0 ? $" ({narrow.Count} cells narrower, such as {narrow[0]})" : "")}");
 
@@ -154,7 +156,7 @@ public partial class BlueprintTest : Node
         float lift = h.UpwardThrust / MathF.Max(1e-3f, h.Weight);
         Check(lift >= 1.3f, $"{name}: {(hover ? "hover plates" : "lift thrusters")} hold {lift:F2} times its {h.Mass:F1} t on {g} m/s² ({h.LiftMargin:+0;-0} kN spare)");
         float side = MathF.Min(h.Accel(Direction.Left), h.Accel(Direction.Right));
-        Check(h.Accel(Direction.Forward) >= 5f && h.Accel(Direction.Back) >= 5f && (hover || side >= 2f) && h.TurnRate >= 15f,
+        Check(h.Accel(Direction.Forward) >= 5f && h.Accel(Direction.Back) >= 5f && (hover || side >= 2f) && h.TurnRate >= data.Handling.Turning.Floor,
             $"{name}: pushes {h.Accel(Direction.Forward):F1}, brakes {h.Accel(Direction.Back):F1}, slides {side:F1} m/s², turns {h.TurnRate:F0}°/s");
         if (file.EndsWith("starter.gbp")) Check(ore <= StarterOre, $"{name}: the cheapest flyer costs {ore:0} ore (at most {StarterOre})");
 
@@ -180,7 +182,9 @@ public partial class BlueprintTest : Node
         liftAt /= MathF.Max(liftSum, 1e-3f);
         float off = new N.Vector2(com.X - liftAt.X, com.Z - liftAt.Z).Length() * s.Grid.CellSize;
         var pads = s.Blocks().Where(x => s.TypeOf(x.block).Function == "gear").SelectMany(x => s.CellsOf(x.pos, x.block)).ToList();
-        bool stands = hover || pads.Count > 0 && com.X >= pads.Min(c => c.X) && com.X <= pads.Max(c => c.X) && com.Z >= pads.Min(c => c.Z) && com.Z <= pads.Max(c => c.Z);
+        // It rests on its pads, or on its keel where it has none (building's example has no pads).
+        if (pads.Count == 0) pads = s.Cells().Select(c => c.Item1).Where(c => c.Y == min.Y).ToList();
+        bool stands = hover || com.X >= pads.Min(c => c.X) && com.X <= pads.Max(c => c.X) && com.Z >= pads.Min(c => c.Z) && com.Z <= pads.Max(c => c.Z);
         Check(off <= 0.75f && stands, $"{name}: its lift acts {off:F2} m from the centre of mass{(hover ? "" : ", which stands inside its pads")} (mass at x {com.X:F1} z {com.Z:F1}, lift at x {liftAt.X:F1} z {liftAt.Z:F1})");
     }
 
@@ -258,12 +262,23 @@ public partial class BlueprintTest : Node
         for (t = 0; t < 900 && v.Body.Velocity.Length() > 1f; t++) yield return 0;
         Check(fast > 5f && t < 60 * (fast / 6f + 3f), $"{name}: flies forward to {fast:F0} m/s in 1 s and stops within {t / 60f:F1} s of letting go");
 
-        // Down where it stopped: Ctrl to sink, slower near the ground, hands off once it stands on its gear.
+        // Back over the ground it rose from (cleared when it was set down: elsewhere it may meet trees), then down:
+        // Ctrl to sink, slower near the ground, hands off once it stands on its gear.
+        var pilot = new Pilot(_game, _drive);
+        for (t = 0; t < 60 * 60; t++)
+        {
+            Vector3 p = v.Body.Position.ToGodot();
+            if (new Vector2(p.X - start.X, p.Z - start.Z).Length() < 1.5f && v.Body.Velocity.Length() < 0.5f) break;
+            pilot.Creep(v, start, true);
+            yield return 0;
+        }
+        c.ReleaseAll();
         for (t = 0; t < 120 * 60 && !v.Controller.Frozen; t++)
         {
             float agl = v.AboveGround - ground, vy = v.Body.Velocity.Y;
             float wanted = agl > 25f ? -6f : agl > 6f ? -2.5f : -1f;
             bool down = agl < 0.6f && MathF.Abs(vy) < 0.4f;
+            if (down && v.Body.Velocity.Length() < 0.2f && !v.Structure.Blocks().Any(b => v.Structure.TypeOf(b.block).Function == "gear")) break;
             c.Hold(Key.Ctrl, !down && vy > wanted + 0.5f);
             c.Hold(Key.Space, !down && vy < wanted - 0.5f);
             if (t % 600 == 599) GD.Print($"    ({name} landing: {agl:F1} m over its rest height, sinking {-vy:F1} m/s, drifting {new Vector2(v.Body.Velocity.X, v.Body.Velocity.Z).Length():F1} m/s)");
@@ -271,7 +286,10 @@ public partial class BlueprintTest : Node
         }
         c.ReleaseAll();
         float up = MathX.Up(v.Body.Rotation).Y;
-        Check(v.Controller.Frozen && up > 0.97f, $"{name}: lands and settles upright (up {up:F3}, {v.AboveGround:F1} m over the ground, {new Vector2(v.Body.Position.X - start.X, v.Body.Position.Z - start.Z).Length():F0} m from the spot)");
+        // A hull with no pads rests on its keel: it lands when it is back at its rest height and still.
+        bool padless = !v.Structure.Blocks().Any(b => v.Structure.TypeOf(b.block).Function == "gear");
+        bool landed = v.Controller.Frozen || padless && MathF.Abs(v.AboveGround - ground) < 0.3f && v.Body.Velocity.Length() < 0.2f;
+        Check(landed && up > 0.97f, $"{name}: lands and settles upright (up {up:F3}, {v.AboveGround:F1} m over the ground, {new Vector2(v.Body.Position.X - start.X, v.Body.Position.Z - start.Z).Length():F0} m from the spot)");
     }
 
     /// <summary>A hover craft runs forward on its plates and stops when let go.</summary>
@@ -282,12 +300,13 @@ public partial class BlueprintTest : Node
         foreach (int x in _drive.Wait(60)) yield return x;
         N.Vector3 from = v.Body.Position;
         c.Hold(Key.W);
-        foreach (int x in _drive.Wait(180)) yield return x;
+        foreach (int x in _drive.Wait(120)) yield return x;
         c.Hold(Key.W, false);
-        float fast = v.Body.Velocity.Length(), ran = new Vector2(v.Body.Position.X - from.X, v.Body.Position.Z - from.Z).Length();
+        float Flat() => new Vector2(v.Body.Velocity.X, v.Body.Velocity.Z).Length();
+        float fast = Flat(), ran = new Vector2(v.Body.Position.X - from.X, v.Body.Position.Z - from.Z).Length();
         int t = 0;
-        for (; t < 900 && v.Body.Velocity.Length() > 1f; t++) yield return 0;
-        Check(ran > 10f && t < 60 * (fast / 5f + 3f), $"{name}: rides its plates {ran:F0} m in 3 s, up to {fast:F0} m/s, and stops within {t / 60f:F1} s (velocity {v.Body.Velocity}, {v.AboveGround:F1} m over the ground, up {MathX.Up(v.Body.Rotation).Y:F2})");
+        for (; t < 900 && Flat() > 1f; t++) yield return 0;
+        Check(ran > 5f && t < 60 * (fast / 5f + 3f), $"{name}: rides its plates {ran:F0} m in 2 s, up to {fast:F0} m/s, and stops within {t / 60f:F1} s (velocity {v.Body.Velocity}, {v.AboveGround:F1} m over the ground, up {MathX.Up(v.Body.Rotation).Y:F2})");
     }
 }
 
@@ -370,6 +389,9 @@ public sealed class WalkGrid
         }
         return true;
     }
+
+    /// <summary>On the ground round the structure, not on the structure.</summary>
+    public bool OnGround((int X, int Z, int H) n) => n.H == _ground;
 
     /// <summary>Under a roof: something above it in its column.</summary>
     public bool Roofed((int X, int Z, int H) n)

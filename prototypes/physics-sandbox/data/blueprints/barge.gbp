@@ -1,61 +1,209 @@
-# Deck Barge: a flat small-grid work barge for the mag-boot walking tests, written by hand.
-#
-# Small grid (0.5 m cells). x is starboard, y up, -z forward. A deck 8 m wide and 12 m long, two
-# blocks (1 m) thick with square edges; amidships a superstructure two blocks tall, a lip one
-# block (0.5 m) tall down the starboard side and a stair of three one-block steps to port; aft a
-# deckhouse 3 m tall with a door, and the same lip across its floor; a seat at the bow and two
-# engines at the stern. Outside the deckhouse all of it is outer hull: in mag boots you can walk
-# on any face of it.
-
+# Deck Barge: a flat iron work barge for walking on a hull. A deck 8 m wide and 16 m long, two
+# blocks thick with square edges; amidships a superstructure 2 m square and 2 m tall, a lip 0.5 m
+# tall down the starboard side and a stair of three 0.5 m steps to port; aft a deckhouse 4 m clear
+# inside with a door, and a lip 0.5 m tall across its floor. A seat at the bow, the machinery in the
+# deck, thrusters all round it, four pads.
+# Written by slice/tests/BlueprintSet.cs (Designer); regenerate rather than edit.
+# GalHack blueprint. One statement per line; '#' starts a comment.
+# block <x> <y> <z> <type> [shape] [rot=<up><forward>] [paint=<name> | paint=<+x>,<-x>,<+y>,<-y>,<+z>,<-z>] [hp=<n>] [open] [off] [light=<rrggbb[+rrggbb]>:<mode>:<hz>:<seed>]
+# Cells: x right, y up, -z forward; a..b is an inclusive range. rot defaults to +y-z; '-' is bare metal.
 schema galhack.blueprint
 version 1
 name "Deck Barge"
-grid small
+grid 1m
 mode capital
 gravity on
 
-paint deck base=3a3f47 texture=plates grime=2
-paint house base=ece3c8 grime=1
-paint lip base=f4a100 accent=2b2d42 pattern=hazard grime=2
-paint stair base=0a9396 grime=1
+paint hull base=c9ccd1 grime=1
+paint deck base=4a4e57 grime=1
+paint inner base=d8d2c2
+paint hazard base=f4a100 pattern=hazard grime=2
+paint yellow base=f4a100 grime=1
 
-# --- Deck (y -1..0) with the core, a generator and a gyro set into its top -------------------
-block -8..7 -1 -8..15 steel paint=deck
-block -8..7 0 -8..-1 steel paint=deck
-block -8..-1 0 0 steel paint=deck
-block 0 0 0 core
-block 1..7 0 0 steel paint=deck
-block -8..7 0 1..2 steel paint=deck
-block -8..-5 0 3 steel paint=deck
-block -4 0 3 generator
-block -3..3 0 3 steel paint=deck
-block 4 0 3 gyro
-block 5..7 0 3 steel paint=deck
-block -8..7 0 4..15 steel paint=deck
-
-# --- The superstructure: 2 m by 2 m, two blocks tall ----------------------------------------
-block -2..1 1..2 -2..1 steel paint=house
-
-# --- A lip one block tall down the starboard side -------------------------------------------
-block 5 1 -6..6 steel paint=lip
-
-# --- A stair of three steps to port, each one block high and deep, climbing toward the bow -----
-block -7..-6 1 1..5 steel paint=stair
-block -7..-6 2 1..4 steel paint=stair
-block -7..-6 3 1..3 steel paint=stair
-
-# --- The deckhouse aft: 4 m by 3.5 m and 3 m tall inside, a door 1 m by 2 m facing forward,
-# and a lip one block tall across its floor --------------------------------------------------
-block -4 1..6 9..15 steel paint=house
-block 3 1..6 9..15 steel paint=house
-block -3..2 1..6 15 steel paint=house
-block -3..-2 1..6 9 steel paint=house
-block 1..2 1..6 9 steel paint=house
-block -1..0 5..6 9 steel paint=house
-block -4..3 7 9..15 steel paint=house
-block -3..2 1 12 steel paint=lip
-
-# --- A seat at the bow, two engines at the stern ----------------------------------------------
-block 0 1 -7 chair
-block -5 -1 16 thruster
-block 4 -1 16 thruster
+block -3 -1 -7 thruster-t1 rot=+y+z
+block 2 -1 -7 thruster-t1 rot=+y+z
+block -4 -1 -6 pad-t1
+block -3..2 -1 -6 iron-plated paint=hull
+block 3 -1 -6 pad-t1
+block -3..2 -1 -5 iron-plated paint=hull
+block -5 -1 -4 thruster-t1 rot=+y+x
+block -4..3 -1 -4 iron-plated paint=hull
+block 4 -1 -4 thruster-t1 rot=+y-x
+block -4 -1 -3 iron-plated paint=hull
+block -3 -1 -3 thruster-t1 rot=+z+y
+block -2..1 -1 -3 iron-plated paint=hull
+block 2 -1 -3 thruster-t1 rot=+z+y
+block 3 -1 -3 iron-plated paint=hull
+block -4..3 -1 -2 iron-plated paint=hull
+block -4..3 -1 -1 iron-plated paint=hull
+block -4..3 -1 0 iron-plated paint=hull
+block -4..3 -1 1 iron-plated paint=hull
+block -4..-3 -1 2 iron-plated paint=hull
+block -2 -1 2 fuel-tank-t1
+block -1 -1 2 generator-t1
+block 0 -1 2 core
+block 1 -1 2 gyro-t1
+block 2..3 -1 2 iron-plated paint=hull
+block -4..3 -1 3 iron-plated paint=hull
+block -4..3 -1 4 iron-plated paint=hull
+block -4..3 -1 5 iron-plated paint=hull
+block -5 -1 6 thruster-t1 rot=+y+x
+block -4 -1 6 iron-plated paint=hull
+block -3 -1 6 thruster-t1 rot=+z+y
+block -2..1 -1 6 iron-plated paint=hull
+block 2 -1 6 thruster-t1 rot=+z+y
+block 3 -1 6 iron-plated paint=hull
+block 4 -1 6 thruster-t1 rot=+y-x
+block -4 -1 7 pad-t1
+block -3..2 -1 7 iron-plated paint=hull
+block 3 -1 7 pad-t1
+block -3..2 -1 8 iron-plated paint=hull
+block -4..3 -1 9 iron-plated paint=hull
+block -3 -1 10 thruster-t1
+block 2 -1 10 thruster-t1
+block -4..3 0 -6 iron-plated paint=hull,hull,deck,hull,hull,hull
+block -4..3 0 -5 iron-plated paint=hull,hull,deck,hull,hull,hull
+block -4..3 0 -4 iron-plated paint=hull,hull,deck,hull,hull,hull
+block -4..3 0 -3 iron-plated paint=hull,hull,deck,hull,hull,hull
+block -4..3 0 -2 iron-plated paint=hull,hull,deck,hull,hull,hull
+block -4..3 0 -1 iron-plated paint=hull,hull,deck,hull,hull,hull
+block -4..3 0 0 iron-plated paint=hull,hull,deck,hull,hull,hull
+block -4..3 0 1 iron-plated paint=hull,hull,deck,hull,hull,hull
+block -4..3 0 2 iron-plated paint=hull,hull,deck,hull,hull,hull
+block -4 0 3 iron-plated paint=hull,hull,deck,hull,hull,hull
+block -3..2 0 3 iron-plated paint=hull
+block 3 0 3 iron-plated paint=hull,hull,deck,hull,hull,hull
+block -4 0 4 iron-plated paint=hull,hull,deck,hull,hull,hull
+block -3 0 4 iron-plated paint=hull
+block -2..1 0 4 iron-plated paint=hull,hull,deck,hull,hull,hull
+block 2 0 4 iron-plated paint=hull
+block 3 0 4 iron-plated paint=hull,hull,deck,hull,hull,hull
+block -4 0 5 iron-plated paint=hull,hull,deck,hull,hull,hull
+block -3 0 5 iron-plated paint=hull
+block -2..1 0 5 iron-plated paint=hull,hull,deck,hull,hull,hull
+block 2 0 5 iron-plated paint=hull
+block 3 0 5 iron-plated paint=hull,hull,deck,hull,hull,hull
+block -4 0 6 iron-plated paint=hull,hull,deck,hull,hull,hull
+block -3 0 6 iron-plated paint=hull
+block -2..1 0 6 iron-plated paint=hull,hull,deck,hull,hull,hull
+block 2 0 6 iron-plated paint=hull
+block 3 0 6 iron-plated paint=hull,hull,deck,hull,hull,hull
+block -4 0 7 iron-plated paint=hull,hull,deck,hull,hull,hull
+block -3 0 7 iron-plated paint=hull
+block -2..1 0 7 iron-plated paint=hull,hull,deck,hull,hull,hull
+block 2 0 7 iron-plated paint=hull
+block 3 0 7 iron-plated paint=hull,hull,deck,hull,hull,hull
+block -4 0 8 iron-plated paint=hull,hull,deck,hull,hull,hull
+block -3 0 8 iron-plated paint=hull
+block -2..1 0 8 iron-plated paint=hull,hull,deck,hull,hull,hull
+block 2 0 8 iron-plated paint=hull
+block 3 0 8 iron-plated paint=hull,hull,deck,hull,hull,hull
+block -4 0 9 iron-plated paint=hull,hull,deck,hull,hull,hull
+block -3..2 0 9 iron-plated paint=hull
+block 3 0 9 iron-plated paint=hull,hull,deck,hull,hull,hull
+block -1 1 -6 command-chair
+block 2 1 -6 iron-plated half paint=hazard
+block 2 1 -5 iron-plated half paint=hazard
+block 2 1 -4 iron-plated half paint=hazard
+block 2 1 -3 iron-plated half paint=hazard
+block 2 1 -2 iron-plated half paint=hazard
+block -1..0 1 -1 iron-plated paint=yellow
+block 2 1 -1 iron-plated half paint=hazard
+block -4..-3 1 0 iron-plated paint=yellow
+block -1..0 1 0 iron-plated paint=yellow
+block 2 1 0 iron-plated half paint=hazard
+block -4..-3 1 1 iron-plated paint=yellow
+block 2 1 1 iron-plated half paint=hazard
+block -4..-3 1 2 iron-plated half paint=hazard
+block 2 1 2 iron-plated half paint=hazard
+block -3 1 3 iron-plated paint=hull
+block -2 1 3 iron-plated paint=hull,hull,hull,hull,inner,hull
+block -1 1 3 door-1x2x1
+block 0..1 1 3 iron-plated paint=hull,hull,hull,hull,inner,hull
+block 2 1 3 iron-plated paint=hull
+block -3 1 4 iron-plated paint=inner,hull,hull,hull,hull,hull
+block 2 1 4 iron-plated paint=hull,inner,hull,hull,hull,hull
+block -3 1 5 iron-plated paint=inner,hull,hull,hull,hull,hull
+block 2 1 5 iron-plated paint=hull,inner,hull,hull,hull,hull
+block -3 1 6 iron-plated paint=inner,hull,hull,hull,hull,hull
+block -2..1 1 6 iron-plated half paint=hazard
+block 2 1 6 iron-plated paint=hull,inner,hull,hull,hull,hull
+block -3 1 7 iron-plated paint=inner,hull,hull,hull,hull,hull
+block -2..1 1 7 iron-plated half paint=hazard
+block 2 1 7 iron-plated paint=hull,inner,hull,hull,hull,hull
+block -3 1 8 iron-plated paint=inner,hull,hull,hull,hull,hull
+block 2 1 8 iron-plated paint=hull,inner,hull,hull,hull,hull
+block -3 1 9 iron-plated paint=hull
+block -2..1 1 9 iron-plated paint=hull,hull,hull,hull,hull,inner
+block 2 1 9 iron-plated paint=hull
+block -1..0 2 -1 iron-plated paint=yellow
+block -4..-3 2 0 iron-plated half paint=hazard
+block -1..0 2 0 iron-plated paint=yellow
+block -3 2 3 iron-plated paint=hull
+block -2 2 3 iron-plated paint=hull,hull,hull,hull,inner,hull
+block 0..1 2 3 iron-plated paint=hull,hull,hull,hull,inner,hull
+block 2 2 3 iron-plated paint=hull
+block -3 2 4 iron-plated paint=inner,hull,hull,hull,hull,hull
+block 2 2 4 iron-plated paint=hull,inner,hull,hull,hull,hull
+block -3 2 5 iron-plated paint=inner,hull,hull,hull,hull,hull
+block 2 2 5 iron-plated paint=hull,inner,hull,hull,hull,hull
+block -3 2 6 iron-plated paint=inner,hull,hull,hull,hull,hull
+block 2 2 6 iron-plated paint=hull,inner,hull,hull,hull,hull
+block -3 2 7 iron-plated paint=inner,hull,hull,hull,hull,hull
+block 2 2 7 iron-plated paint=hull,inner,hull,hull,hull,hull
+block -3 2 8 iron-plated paint=inner,hull,hull,hull,hull,hull
+block 2 2 8 iron-plated paint=hull,inner,hull,hull,hull,hull
+block -3 2 9 iron-plated paint=hull
+block -2..1 2 9 iron-plated paint=hull,hull,hull,hull,hull,inner
+block 2 2 9 iron-plated paint=hull
+block -1..0 3 -1 thruster-t1 rot=+z-y
+block -3 3 3 iron-plated paint=hull
+block -2..1 3 3 iron-plated paint=hull,hull,hull,hull,inner,hull
+block 2 3 3 iron-plated paint=hull
+block -3 3 4 iron-plated paint=inner,hull,hull,hull,hull,hull
+block 2 3 4 iron-plated paint=hull,inner,hull,hull,hull,hull
+block -3 3 5 iron-plated paint=inner,hull,hull,hull,hull,hull
+block 2 3 5 iron-plated paint=hull,inner,hull,hull,hull,hull
+block -3 3 6 iron-plated paint=inner,hull,hull,hull,hull,hull
+block 2 3 6 iron-plated paint=hull,inner,hull,hull,hull,hull
+block -3 3 7 iron-plated paint=inner,hull,hull,hull,hull,hull
+block 2 3 7 iron-plated paint=hull,inner,hull,hull,hull,hull
+block -3 3 8 iron-plated paint=inner,hull,hull,hull,hull,hull
+block 2 3 8 iron-plated paint=hull,inner,hull,hull,hull,hull
+block -3 3 9 iron-plated paint=hull
+block -2..1 3 9 iron-plated paint=hull,hull,hull,hull,hull,inner
+block 2 3 9 iron-plated paint=hull
+block -3 4 3 iron-plated paint=hull
+block -2..1 4 3 iron-plated paint=hull,hull,hull,hull,inner,hull
+block 2 4 3 iron-plated paint=hull
+block -3 4 4 iron-plated paint=inner,hull,hull,hull,hull,hull
+block 2 4 4 iron-plated paint=hull,inner,hull,hull,hull,hull
+block -3 4 5 iron-plated paint=inner,hull,hull,hull,hull,hull
+block -1 4 5 light rot=+z-y
+block 2 4 5 iron-plated paint=hull,inner,hull,hull,hull,hull
+block -3 4 6 iron-plated paint=inner,hull,hull,hull,hull,hull
+block 2 4 6 iron-plated paint=hull,inner,hull,hull,hull,hull
+block -3 4 7 iron-plated paint=inner,hull,hull,hull,hull,hull
+block 2 4 7 iron-plated paint=hull,inner,hull,hull,hull,hull
+block -3 4 8 iron-plated paint=inner,hull,hull,hull,hull,hull
+block 2 4 8 iron-plated paint=hull,inner,hull,hull,hull,hull
+block -3 4 9 iron-plated paint=hull
+block -2..1 4 9 iron-plated paint=hull,hull,hull,hull,hull,inner
+block 2 4 9 iron-plated paint=hull
+block -3..2 5 3 iron-plated paint=hull
+block -3 5 4 iron-plated paint=hull
+block -2..1 5 4 iron-plated paint=hull,hull,hull,inner,hull,hull
+block 2 5 4 iron-plated paint=hull
+block -3 5 5 iron-plated paint=hull
+block -2..1 5 5 iron-plated paint=hull,hull,hull,inner,hull,hull
+block 2 5 5 iron-plated paint=hull
+block -3 5 6 iron-plated paint=hull
+block -2..1 5 6 iron-plated paint=hull,hull,hull,inner,hull,hull
+block 2 5 6 iron-plated paint=hull
+block -3 5 7 iron-plated paint=hull
+block -2..1 5 7 iron-plated paint=hull,hull,hull,inner,hull,hull
+block 2 5 7 iron-plated paint=hull
+block -3 5 8 iron-plated paint=hull
+block -2..1 5 8 iron-plated paint=hull,hull,hull,inner,hull,hull
+block 2 5 8 iron-plated paint=hull
+block -3..2 5 9 iron-plated paint=hull

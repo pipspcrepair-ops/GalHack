@@ -12,7 +12,8 @@ namespace Slice.Tests;
 /// </summary>
 public static partial class BlueprintSet
 {
-    public sealed record Design(string File, Func<Catalogue, string> Make);
+    /// <summary>A stock blueprint. A fixture is a test prop, not a structure anyone uses (a wreck, a bare pad): it is only checked to load whole.</summary>
+    public sealed record Design(string File, Func<Catalogue, string> Make, bool Fixture = false);
 
     /// <summary>Every stock blueprint, by its file under the repository root.</summary>
     public static readonly Design[] All =
@@ -26,17 +27,24 @@ public static partial class BlueprintSet
         new("prototypes/slice/data/blueprints/tank.gbp", Tank),
         new("prototypes/slice/data/blueprints/hauler.gbp", Hauler),
         new("prototypes/slice/data/blueprints/frigate.gbp", Frigate),
+        new("prototypes/capital-base/data/blueprints/bastion.gbp", Bastion),
+        new("prototypes/capital-base/data/blueprints/prospector.gbp", Prospector),
+        new("prototypes/manufacturing/data/blueprints/workshop.gbp", Workshop),
+        new("prototypes/manufacturing/data/blueprints/wreck.gbp", Wreck, Fixture: true),
+        new("prototypes/physics-sandbox/data/blueprints/barge.gbp", Barge),
+        new("prototypes/physics-sandbox/data/blueprints/tender.gbp", Tender),
+        new("prototypes/physics-sandbox/data/blueprints/pad.gbp", FieldPad, Fixture: true),
+        new("prototypes/building/data/blueprints/lancer.gbp", Lancer),
     };
 
     static Int3 P(int x, int y, int z) => new(x, y, z);
 
     // ---- Shared liveries ---------------------------------------------------------------------------
 
-    static Paint Coat(uint color, int grime = 1, FaceTexture texture = FaceTexture.Panel) =>
-        GalHack.Structures.Paint.Solid(color) with { Grime = (byte)grime, Texture = texture };
+    static Paint Coat(uint color, int grime = 1) => GalHack.Structures.Paint.Solid(color) with { Grime = (byte)grime };
 
     /// <summary>The deck finish every walked floor takes on its top face.</summary>
-    static Paint Deck => Coat(0x4a4e57, 1, FaceTexture.Plates);
+    static Paint Deck => Coat(0x4a4e57, 1);
 
     static Paint Hazard => Coat(0xf4a100, 2).WithPattern(Pattern.Hazard, 0x2b2d42);
 
@@ -92,9 +100,9 @@ two mains, a retro, a side jet each way, a lift jet, a down jet and three pads."
     static string Outpost(Catalogue cat)
     {
         var d = new Designer(cat, "Outpost", CoreMode.Base);
-        ushort wall = d.Paint("wall", Coat(0xe9dfc4)), inner = d.Paint("inner", Coat(0xd8d2c2, 0, FaceTexture.Smooth)), deck = d.Paint("deck", Deck);
+        ushort wall = d.Paint("wall", Coat(0xe9dfc4)), inner = d.Paint("inner", Coat(0xd8d2c2, 0)), deck = d.Paint("deck", Deck);
         ushort band = d.Paint("band", Coat(0x0a9396)), roof = d.Paint("roof", Coat(0x3a3f47, 2)), hazard = d.Paint("hazard", Hazard);
-        ushort pad = d.Paint("pad", Coat(0x5a5e66, 2, FaceTexture.Plates));
+        ushort pad = d.Paint("pad", Coat(0x5a5e66, 2));
 
         // The hall: 10 x 9 m inside, 4 m floor to ceiling, concrete plated.
         d.Room(P(-4, 1, -4), P(5, 4, 4), "concrete-plated", wall, inner, deck);
@@ -130,8 +138,8 @@ with the floor.");
     static string Pod(Catalogue cat)
     {
         var d = new Designer(cat, "Escape Pod", CoreMode.Base);
-        ushort hull = d.Paint("hull", Coat(0xe85d04, 2)), inner = d.Paint("inner", Coat(0xd8d2c2, 0, FaceTexture.Smooth)), deck = d.Paint("deck", Deck);
-        ushort shield = d.Paint("shield", Coat(0x2b2d42, 3, FaceTexture.Ribbed));
+        ushort hull = d.Paint("hull", Coat(0xe85d04, 2)), inner = d.Paint("inner", Coat(0xd8d2c2, 0)), deck = d.Paint("deck", Deck);
+        ushort shield = d.Paint("shield", Coat(0x2b2d42, 3));
 
         // A shell 3 x 4 m inside and 3 m tall, a scorched heat shield under it.
         d.Room(P(-1, 1, -1), P(1, 3, 2), "iron-plated", hull, inner, deck);
