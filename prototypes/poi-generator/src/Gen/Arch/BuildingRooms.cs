@@ -118,6 +118,19 @@ public sealed partial class Building
 
     static IEnumerable<RoomPlan> Neighbours(RoomPlan r) => r.Adj.Concat(r.Across).Where(n => !n.Secret).Distinct();
 
+    /// <summary>How far a room stands from the middle of its storey's plan, as a share of the plan's half size (0 the middle, 1 its edge).</summary>
+    float ToMiddle(RoomPlan r) => ToMiddle(r.Storey, r.Mid.x, r.Mid.z);
+
+    float ToMiddle(int storey, float px, float pz)
+    {
+        var foot = _foot[storey];
+        int x0 = W, x1 = 0, z0 = D, z1 = 0;
+        for (int z = 0; z < D; z++)
+            for (int x = 0; x < W; x++)
+                if (foot[x, z]) { x0 = Math.Min(x0, x); x1 = Math.Max(x1, x); z0 = Math.Min(z0, z); z1 = Math.Max(z1, z); }
+        return Math.Max(Math.Abs(px - (x0 + x1) / 2f) / Math.Max(1f, (x1 - x0) / 2f), Math.Abs(pz - (z0 + z1) / 2f) / Math.Max(1f, (z1 - z0) / 2f));
+    }
+
     float Score(RoomPlan r, RoomDef def)
     {
         float s = 0f;
@@ -136,6 +149,7 @@ public sealed partial class Building
             case "entrance": s += Hut ? -toCore * 3f : -toEntrance * 4f; break;
             case "end": s += toCore * 3f + toEntrance * 1.5f; break;
             case "core": s -= toCore * 3f; break;
+            case "middle": s -= ToMiddle(r) * 12f; break;
         }
         foreach (var n in Neighbours(r))
         {
@@ -533,9 +547,13 @@ public sealed partial class Building
             C.Slots.Add(new Slot { Kind = SlotKind.Terminal, Cell = L(c.x, y, c.z), Module = r.Module, Sure = true });
             terms--;
         }
-        if (def.Has("core") && Fam.Core == CoreRule.Owned && C.CoreModule < 0 && Spec.MayHoldCore)
+        // A program with a core vault keeps its core there (rule E5, owner 13 Nov), whatever other core room came first.
+        bool coreVault = def.Id == "core-vault";
+        if (def.Has("core") && Fam.Core == CoreRule.Owned && (C.CoreModule < 0 || coreVault) && Spec.MayHoldCore)
         {
-            var spot = interior.Where(c => !Perimeter(c) && !keep.Contains(c)).OrderBy(c => Math.Abs(c.x - r.Mid.x) + Math.Abs(c.z - r.Mid.z)).FirstOrDefault();
+            if (coreVault) C.Slots.RemoveAll(s => s.Kind == SlotKind.Core);
+            // (In a core vault, the spot nearest the middle of the plan: the core sits deep in the base.)
+            var spot = interior.Where(c => !Perimeter(c) && !keep.Contains(c)).OrderBy(c => coreVault ? ToMiddle(r.Storey, c.x, c.z) : Math.Abs(c.x - r.Mid.x) + Math.Abs(c.z - r.Mid.z)).FirstOrDefault();
             if (spot != default) needsAccess.Add(spot);
             if (spot != default && Take(spot))
             {

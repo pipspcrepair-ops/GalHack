@@ -65,7 +65,20 @@ public enum BlockType : byte
     InvCorner,  // inner corner slope: three raised corners, the low one opposite Corner's raised one
     // Added with the decay pass.
     Rebar,      // bent bars standing out of a torn concrete face, the face toward Facing; never blocks
+    // The places' own shaped blocks on the 1 m grid (Shaping lays them; docs/place-patterns.md rule P6). Each is
+    // solid to the walking grids and collides as its real shape; like a cube's, its Variant is its finish.
+    Half,       // half a cube, against the face toward Facing (Down: the lower half, Up: the upper half)
+    Quarter,    // a bar a quarter of the cube in section (0.5 by 0.5), along the bottom edge toward Facing
+    Partition,  // a thin wall (0.2 m) down the middle of its cell, across Facing (its normal, as a pane's)
+    Beam,       // a 0.3 m beam under the top of its cell, along Facing's axis
+    Column,     // a round column (eight flats, 0.8 m across), standing
+    Chamfer,    // a slope hung from the top of its cell, full height toward Facing: a ramp upside down
+    ChamferCorner,    // Corner upside down
+    ChamferInvCorner, // InvCorner upside down
 }
+
+/// <summary>What a block counts as in the place-patterns shape shares (docs/place-patterns.md section 1.5, rule P6).</summary>
+public enum ShapeClass : byte { Cube, Part, Plate, Slope, Corner, Round, Pole, Stair, Window, Rail, Other }
 
 /// <summary>What a block is made of. Drives how it renders and what salvage it gives.</summary>
 public enum Material : byte
@@ -134,8 +147,34 @@ public static class BlockInfo
     /// goes round or under its real shape (<see cref="Shapes.CollisionBoxes"/>), not round its whole cell.
     /// Doors, glass, lattices and rails keep their own rules.
     /// </summary>
-    public static bool IsPart(BlockType t) => Collides(t) && !IsFullCube(t) && !IsSlope(t) && !IsCornerSlope(t)
+    public static bool IsPart(BlockType t) => Collides(t) && !IsFullCube(t) && !IsSlope(t) && !IsCornerSlope(t) && !IsShaped(t)
         && t is not (BlockType.SealedDoor or BlockType.Growth or BlockType.Pane or BlockType.Lattice or BlockType.Rail or BlockType.Door);
+
+    /// <summary>
+    /// The places' own shaped structure (half and quarter cubes, thin walls, beams, hung slopes, round columns): part of
+    /// the building, so the walking grids take its whole cell as solid, while bodies collide with its real shape.
+    /// </summary>
+    public static bool IsShaped(BlockType t) => t is >= BlockType.Half and <= BlockType.ChamferInvCorner;
+
+    /// <summary>A slope hung upside down from the top of its cell: a chamfer or one of its corners.</summary>
+    public static bool IsHung(BlockType t) => t is BlockType.Chamfer or BlockType.ChamferCorner or BlockType.ChamferInvCorner;
+
+    /// <summary>What a block counts as in the shape shares (rule P6): the class of its shape, whatever its role.</summary>
+    public static ShapeClass ShapeOf(Block b) => b.Type switch
+    {
+        BlockType.Cube when IsTransparent(b.Material) => ShapeClass.Window, // a glass block is a window
+        BlockType.Cube or BlockType.Breakable => ShapeClass.Cube,
+        BlockType.Half or BlockType.Quarter => ShapeClass.Part,
+        BlockType.Partition => ShapeClass.Plate,
+        BlockType.Ramp or BlockType.Chamfer => ShapeClass.Slope,
+        BlockType.Corner or BlockType.InvCorner or BlockType.ChamferCorner or BlockType.ChamferInvCorner => ShapeClass.Corner,
+        BlockType.Column or BlockType.Pipe => ShapeClass.Round,
+        BlockType.Pillar or BlockType.Rib or BlockType.Beam or BlockType.Lattice => ShapeClass.Pole,
+        BlockType.Stair => ShapeClass.Stair,
+        BlockType.Pane => ShapeClass.Window,
+        BlockType.Rail => ShapeClass.Rail,
+        _ => ShapeClass.Other,
+    };
 
     /// <summary>You can stand on top of it.</summary>
     public static bool Supports(BlockType t) => t is BlockType.Cube or BlockType.Lattice or BlockType.Crate or BlockType.Breakable;

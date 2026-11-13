@@ -127,9 +127,12 @@ public partial class PoiPlaces
         float share = b.Type switch
         {
             BlockType.Cube or BlockType.Breakable => 1f,
-            BlockType.Ramp or BlockType.Stair => 0.5f,
-            BlockType.Corner => 1f / 6f,
-            BlockType.InvCorner => 5f / 6f,
+            BlockType.Ramp or BlockType.Stair or BlockType.Half or BlockType.Chamfer => 0.5f,
+            BlockType.Corner or BlockType.ChamferCorner => 1f / 6f,
+            BlockType.InvCorner or BlockType.ChamferInvCorner => 5f / 6f,
+            BlockType.Quarter => 0.25f,
+            BlockType.Partition or BlockType.Beam => 0.2f,
+            BlockType.Column => 0.5f,
             BlockType.Rib => 0.4f,
             BlockType.Pillar => 0.25f,
             BlockType.Lattice => 0.3f,

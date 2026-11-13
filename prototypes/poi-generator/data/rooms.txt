@@ -12,7 +12,7 @@
 #     fill        share of the wall cells that get furniture
 #     island      furniture in rows across the middle of big rooms (pod rows, bed rows, tables)
 #     near/avoid  rooms it should and shouldn't share a wall with (or face across the corridor)
-#     prefer      any, entrance (near the way in), end (far from the stair), core (by the stair)
+#     prefer      any, entrance (near the way in), end (far from the stair), core (by the stair), middle (the plan's middle)
 #     loot a b    caches; terminals a b; spawns a b
 #     light       warm, cold, dim, red, green, cryo, glyph, none
 #     secure      a secure room: no extra doors to its neighbours
@@ -574,6 +574,30 @@ room pump-hall
   tags hum industry
 
 # ---- the prize ---------------------------------------------------------------------------------------
+room core-vault
+  deco control
+  name Core vault
+  width 6 10
+  area 36 80
+  props machine 2 screen 1
+  fill 0.3
+  prefer middle
+  loot 0 0
+  spawns 3 5
+  light cold
+  tags core military
+room vehicle-bay
+  deco workshop
+  name Vehicle bay
+  kind hall
+  width 8 14
+  area 60 300
+  props machine 2 crate 2 tank 1 shelf 1
+  fill 0.4
+  prefer entrance
+  loot 0 1
+  light cold
+  tags industry military
 room vault
   deco vault
   name Vault
