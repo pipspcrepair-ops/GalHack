@@ -59,7 +59,7 @@
     "container-t2": {"bill": {"iron-plate": 8, "polymer": 2}, "unlock": {"level": 1, "cost": 0, "parent": "container-t1", "tab": "structures"}},
     "container-t3": {"bill": {"iron-plate": 10, "polymer": 2, "iron-bar": 2}, "unlock": {"level": 1, "cost": 1, "parent": "container-t2", "tab": "structures"}},
     "container-t4": {"bill": {"iron-plate": 20, "polymer": 4, "iron-bar": 4}, "unlock": {"level": 1, "cost": 1, "parent": "container-t3", "tab": "structures"}, "was": ["container@large"]},
-    "thruster-t1": {"bill": {"iron-plate": 8, "nozzle": 2, "winding": 2}, "unlock": {"level": 5, "cost": 1, "parent": "generator-t1", "tab": "structures"}, "was": ["thruster@small"]},
+    "thruster-t1": {"bill": {"iron-plate": 8, "nozzle": 2, "winding": 2}, "unlock": {"level": 5, "cost": 1, "parent": "hover-t1", "tab": "structures"}, "was": ["thruster@small"]},
     "thruster-t2": {"bill": {"iron-plate": 12, "nozzle": 4, "winding": 4}, "unlock": {"level": 7, "cost": 2, "parent": "thruster-t1", "tab": "structures"}},
     "thruster-t3": {"bill": {"iron-plate": 10, "thrust-assembly": 2}, "unlock": {"level": 7, "cost": 3, "parent": "thruster-t2", "tab": "structures"}, "was": ["thruster@large"]},
     "thruster-t4": {"bill": {"iron-plate": 30, "thrust-assembly": 6, "control-unit": 1}, "unlock": {"level": 15, "cost": 3, "parent": "thruster-t3", "tab": "structures"}},

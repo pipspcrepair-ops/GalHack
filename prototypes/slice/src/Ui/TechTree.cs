@@ -47,9 +47,8 @@ public sealed class TechLayout
 
     public readonly List<Cell> Cells = new();
     public readonly Dictionary<string, Cell> ById = new();
-    /// <summary>Structures: the lanes in order, each with its cells and rows, and the columns the widest needs.</summary>
+    /// <summary>Structures: the lanes in order, each with its cells and rows.</summary>
     public readonly List<(string Name, List<Cell> Cells, int Rows)> Lanes = new();
-    public int Cols;
 
     public TechLayout(IEnumerable<TechNode> nodes, bool lanes = false)
     {
@@ -114,7 +113,6 @@ public sealed class TechLayout
                 Take(h, spot / width, spot % width, taken);
             }
             Lanes.Add((name, cells, cells.Max(c => c.Row) + 1));
-            Cols = Math.Max(Cols, cells.Max(c => c.Col) + 1);
         }
     }
 
@@ -220,16 +218,26 @@ public sealed class TechSection : IMenuSection
     {
         const float ColGap = 16, LaneGap = 8;
         int rows = lay.Lanes.Sum(l => l.Rows);
-        float tileW = Math.Min(MaxTileW, (GridArea.Size.X - LaneW + ColGap) / lay.Cols - ColGap);
         float tileH = Math.Min(MaxTileH, (GridArea.Size.Y - LaneGap * (lay.Lanes.Count - 1) + Gap) / rows - Gap);
+        // A lane beside the visor's alerts' row (bottom left, over every menu) starts right of it.
+        Rect2 alerts = HudLayout.Compute(new Vector2(Gui.Width, Gui.Height), 1f).Alerts.Grow(4);
+        var bands = new List<(float Y, float H, float X, int Cols)>();
         float y = GridArea.Position.Y;
-        foreach (var (name, cells, laneRows) in lay.Lanes)
+        foreach (var (_, cells, laneRows) in lay.Lanes)
         {
             float laneH = laneRows * (tileH + Gap) - Gap;
-            LaneLabel(g, name, GridArea.Position.X, y, laneH);
-            foreach (TechLayout.Cell c in cells)
-                at[c] = new Rect2(GridArea.Position.X + LaneW + c.Col * (tileW + ColGap), y + c.Row * (tileH + Gap), tileW, tileH);
+            bool beside = new Rect2(GridArea.Position.X, y, GridArea.Size.X, laneH).Intersects(alerts);
+            bands.Add((y, laneH, beside ? alerts.End.X : GridArea.Position.X, cells.Max(c => c.Col) + 1));
             y += laneH + LaneGap;
+        }
+        float tileW = Math.Min(MaxTileW, bands.Min(b => (GridArea.End.X - b.X - LaneW + ColGap) / b.Cols - ColGap));
+        for (int i = 0; i < lay.Lanes.Count; i++)
+        {
+            var (name, cells, _) = lay.Lanes[i];
+            var (top, h, x, _) = bands[i];
+            LaneLabel(g, name, x, top, h);
+            foreach (TechLayout.Cell c in cells)
+                at[c] = new Rect2(x + LaneW + c.Col * (tileW + ColGap), top + c.Row * (tileH + Gap), tileW, tileH);
         }
         if (!g.Drawing) return;
         // Out of the parent's right edge, down the gap beside it, into the child's left edge.
