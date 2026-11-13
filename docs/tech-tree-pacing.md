@@ -203,7 +203,7 @@ Not installed here. Revised after a second research pass: the built-in browser o
 
 1. **No level is empty on Structures or Weapons.** Each of the two has at least one new node on every level from 1 to 25. The map needs no exceptions, so none are allowed. Hard rule, checkable by a test.
 2. **Tools and Misc may rest, but only for two levels in a row.** They're small tabs and can't fill every level without padding. No level is quiet across the whole tree anyway, because rule 1 holds on two tabs.
-3. **About ten nodes a tab a level.** With 25 levels, each level has to carry more, so the limit is ten new nodes on one tab at one level. Level 1 and the first level of a new vessel class may go over, because a starter set is cheap and most of it is free. Only one level does: Structures has 23 at level 1, and 14 of those cost nothing.
+3. **About ten nodes a tab a level.** With 25 levels, each level has to carry more, so the limit is ten new nodes on one tab at one level. Level 1 and the first level of a new vessel class may go over, because a starter set is cheap and most of it is free. Structures goes over at level 1 (15, and 13 of those cost nothing) and at level 10 (15), where the figures put the third tiers (section 3b).
 4. **Every level offers more than the points can buy.** At each level from 2 to 24, the cost of everything open to you and not yet bought is more than the points you have, even if you've spent every point so far. So each level-up is a choice of what to take first. Level 25 closes the gap. A rule that each level's own new nodes must cost more than its own grant can't hold on every level, because those grants would then never add up to the tree's cost. So the test uses the running total, and the own-level version holds through most of the climb (section 3d).
 5. **The whole tree opens by level 25 from levels alone.** Total points granted by level 25 must be at least the total cost of the tree, deco included. Finds, missions and past-cap points only speed the player up.
 6. **Every level is a real step.** A level always has at least one node that changes what you can do, not only a bigger number, on Structures or Weapons. A tier ladder never waits more than 8 levels for its next step.
@@ -219,21 +219,21 @@ Marks: **E** is in the data at that level (`shared/Items/data/blocks.json` for S
 
 | Lv | Structures | Tools | Misc | Weapons |
 | --- | --- | --- | --- | --- |
-| 1 | Core, Base block, Window block, Stairs, Iron plated, Concrete plated, Glass plated, Command chair, Cockpit T1 and T2, Generator T1 to T3, Fuel tank T1 to T3, Container T1 to T4, Light, Ladder, Hover plate T1 (E) | Survival tool, Hover bike, Trail ration, Patch kit, Air cell (E) | Survival constructor, O2 bottle, Energy cell (E) | BW1 Cord Sling, ME1 Work Knife, PS1 Crash Ward (N) |
-| 2 | Door, Fabricator T1 (E); Spotlight (N) | Chainsaw (N) | Medkit, Biofuel (E) | Pistol rounds (E); SA2 Tack Pistol, GR1 Stick Bomb, FL1 Fire Bottle, TE3 Bola Thrower, JK2 Saw Thrower (N) |
-| 3 | Portable fabricator (E); Replicator T1, Harvester module (N) | Multi-tool T1 (N) | Burnstone pack (E) | MG1 Hand Organ, BW2 Hunter's Bow, RK1 Fire Rack, MN1 Powder Keg, LT1 Dynamo Snapper, CH3 Reek Pot, LV1 Wasp Jar (N) |
+| 1 | Core, Base block, Window block, Stairs, Iron plated, Concrete plated, Glass plated, Command chair, Cockpit T1, Generator T1, Fuel tank T1, Container T1, Light, Ladder, Hover plate T1 (E) | Survival tool, Hover bike, Trail ration, Patch kit, Air cell (E) | Survival constructor, O2 bottle, Energy cell (E) | BW1 Cord Sling, ME1 Work Knife, PS1 Crash Ward (N) |
+| 2 | Door (E); Spotlight (N) | Chainsaw (N) | Medkit, Biofuel (E) | Pistol rounds (E); SA2 Tack Pistol, GR1 Stick Bomb, FL1 Fire Bottle, TE3 Bola Thrower, JK2 Saw Thrower (N) |
+| 3 | Portable fabricator, Fabricator T1, Cockpit T2, Generator T2, Fuel tank T2, Container T2 (E); Replicator T1, Harvester module (N) | Multi-tool T1 (N) | Burnstone pack (E) | MG1 Hand Organ, BW2 Hunter's Bow, RK1 Fire Rack, MN1 Powder Keg, LT1 Dynamo Snapper, CH3 Reek Pot, LV1 Wasp Jar (N) |
 | 4 | Deconstructor (E) | Mining drill, Paint (E) | Survival tent, Light suit (N) | SM1 Stamp Gun, SG1 Scatterbuss, FL4 Tallow Sprayer, ME4 Maul (N) |
-| 5 | Thruster T1, Gyro T1, Landing pad T1 (E); Medical bay, Solar panel (N) | Hand detector (N) | Insulation booster (N) | RF1 Long Arm, BW4 Rack Bow, GL1 Stovepipe, AR1 Iron Bombard, DF1 Bull Shield, HV9 Ram Spike (N) |
+| 5 | Thruster T1, Gyro T1, Landing pad T1, Fabricator T2 (E); Medical bay, Solar panel (N) | Hand detector (N) | Insulation booster (N) | RF1 Long Arm, BW4 Rack Bow, GL1 Stovepipe, AR1 Iron Bombard, DF1 Bull Shield, HV9 Ram Spike (N) |
 | 6 | Hardened plated (E); Scanner (N) |  | Weapon bench, Portable heater and cooler (N) | MG6 Chatter Gun, small mount, 12 mm belt (E); SG2 Pump Scattergun, ME6 Shock Baton, PS2 Mesh Ward (N) |
-| 7 | Thruster T2 and T3, Gyro T2, Landing pad T2 to T4 (E) |  | Medium suit, Emergency O2 and water unit (N) | SA3 Six-Chamber, RF2 Line Rifle, GR2 Frag Ball, MN3 Trip Line, AC1 Scrap Coil, FL5 Pressure Thrower, SU1 Patch Gun (N) |
-| 8 | Fabricator T2 (E) | Plasma drill (E) | Large burnstone pack (E); Armour locker (N) | HV3 Deck Gun, large mount, 40 mm shells (E); SM2 Corridor Gun, BW6 Pump Gun, GL2 Break Launcher, TE1 Harpoon Rig, MI1 Dread Horn, BT1 Breaching Pipe, PS10 Ward Cell (N) |
+| 7 | Thruster T2, Gyro T2 (E) |  | Medium suit, Emergency O2 and water unit (N) | SA3 Six-Chamber, RF2 Line Rifle, GR2 Frag Ball, MN3 Trip Line, AC1 Scrap Coil, FL5 Pressure Thrower, SU1 Patch Gun (N) |
+| 8 | Hover plate T2 (E) | Plasma drill (E) | Large burnstone pack (E); Armour locker (N) | HV3 Deck Gun, large mount, 40 mm shells (E); SM2 Corridor Gun, BW6 Pump Gun, GL2 Break Launcher, TE1 Harpoon Rig, MI1 Dread Horn, BT1 Breaching Pipe, PS10 Ward Cell (N) |
 | 9 | Shield generator T1, Capacitor T1, Vessel drill T1 (N) |  | Warp cell (E); Jetpack booster (N) | MG6L Chatter Gun, large mount, RK10 Rocket Pod, small mount, Rockets (E); SA4 Glint Pistol, RK3 Shoulder Tube, LS1 Cutter Beam, CH1 Etch Sprayer, LV10 Bile Pod, DF4 Flare and Chaff Pod, PS6 Quick Ward (N) |
-| 10 | Hover plate T2, Gyro T3, Blueprint factory (E); Cloning bay (N) | Hijack Tool T1 (N) | Oxygen booster (N) | HV3S Deck Gun, small mount (E); LG2 Stalking Rifle, GR4 Clinger, AR2 Knee Mortar, MN13 Prox Mine, LT2 Wire Biter, ME8 Piston Fist, MA1 Sentry Stalk (N) |
+| 10 | Thruster T3, Gyro T3, Landing pad T2 to T4, Generator T3, Fuel tank T3, Container T3, Fabricator T3, Blueprint factory, Warp drive, Warp tank, Hyperdrive T1, Fold tank (E); Cloning bay (N) | Hijack Tool T1 (N) | Oxygen booster (N) | HV3S Deck Gun, small mount (E); LG2 Stalking Rifle, GR4 Clinger, AR2 Knee Mortar, MN13 Prox Mine, LT2 Wire Biter, ME8 Piston Fist, MA1 Sentry Stalk (N) |
 | 11 | Replicator T2 (N) | Multi-tool T2 (N) | EVA booster, Multi-charge (N) | RK10L Rocket Pod, large mount (E); SG4 Drum Sweeper, MG2 Squad Belt, FL10 Drag Flame, LV2 Hornet Hive, HV1 Drum Cannon, EW1 Paint Lamp, JK1 Junk Cannon, PS3 Field Ward (N) |
-| 12 | Combat plated, Warp drive, Warp tank (E) | Suit scanner (N) | Heavy suit (N) | RF4 Long Glint, GL4 Gum Launcher, SN1 Basslance, CD2 Frost Lance, SK5 Heat Dart, SU3 Weld Beam (N) |
+| 12 | Combat plated (E) | Suit scanner (N) | Heavy suit (N) | RF4 Long Glint, GL4 Gum Launcher, SN1 Basslance, CD2 Frost Lance, SK5 Heat Dart, SU3 Weld Beam (N) |
 | 13 | Capacitor T2 (N) |  | Armour booster (N) | SM4 Pingback Carbine, GR7 Flash Cracker, RK4 Lock Tube, LS2 Stutter Lamp, LT6 Skycall Rod, CH5 Tangle Gun, HV2 Chain Cannon, HV4 Flak Burst, PS7 Bulk Ward (N) |
 | 14 | Comms array T1 (N) |  | Fusion cell (E); Radiation booster (N) | LG3 Bench Gun, MN6 Remote Satchel, AC3 Stage Rifle, FL6 Jelly Thrower, LV6 Wormspitter, MA3 Crawl Mine, PS12 Ward Post (N) |
-| 15 | Generator T4, Fuel tank T4, Thruster T4, Fabricator T3, Hyperdrive T1, Fold tank (E); Hover plate T3 (N) | Drill T3 (N) |  | Artillery shells (E); MG4 Spin Gun, AR5 Fortress Howitzer, GV1 Shove Cannon, DF3 Pop Dome, HV5 Torpedo Tube, BT2 Quake Spike (N) |
+| 15 | Generator T4, Fuel tank T4, Container T4, Thruster T4 (E); Hover plate T3 (N) | Drill T3 (N) |  | Artillery shells (E); MG4 Spin Gun, AR5 Fortress Howitzer, GV1 Shove Cannon, DF3 Pop Dome, HV5 Torpedo Tube, BT2 Quake Spike (N) |
 | 16 | Teleporter, Shield generator T2 (N) |  | Mobility booster (N) | PB3 Static Cannon, LT3 Fork Gun, ME10 Hum Blade, SK1 Bend Rounds, EW2 Jam Pod, PS4 Line Ward (N) |
 | 17 | Vessel drill T2 (N) | Hijack Tool T2 (N) |  | SG5 Shardcaster, GL7 Hop Launcher, RK11 Sky Battery, AC6 Fighter Rail, FL12 Gate Jet, DF6 Needle Curtain, NU1 Hand Bomb (N) |
 | 18 | Warp drive T2 (N) |  | Large medkit (N) | GR8 Pulse Ball, LS3 Scorch Line, LT4 Storm Rope, PS8 Snap Ward (N) |
@@ -249,7 +249,7 @@ Node totals by tab (Structures counts each block once: there is one grid):
 
 | Tab | Nodes today | New | Total nodes | Points today | Points new | Total points | Most on one level |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Structures | 53 | 30 | 83 | 78 | 102 | 180 | 23 (level 1) |
+| Structures | 53 | 30 | 83 | 78 | 102 | 180 | 15 (levels 1 and 10) |
 | Tools | 8 | 10 | 18 | 6 | 28 | 34 | 4 (level 1) |
 | Misc | 9 | 20 | 29 | 10 | 54 | 64 | 3 (level 1) |
 | Weapons | 12 | 150 | 162 | 25 | 456 | 481 | 10 (level 9) |
@@ -260,16 +260,17 @@ Deco stays a separate cosmetic tab: 13 paid sets costing 18 points, at levels 3 
 Notes on the map:
 
 - **Size.** 292 nodes is about 11.7 a level across the four tabs, about six or seven of them weapons, and no tab goes over ten except the Structures starter set at level 1. The tree in the data has 82 nodes. The two old vessel columns held 132 nodes; one Structures tree holds 83. Most of the 49 went in the merge itself (a block on both grids is one node, one core replaces four, and the small, hover and capital tiers of one device are one ladder); the rest are things the grid plan drops (below), less three new rungs that fill levels the merge left empty.
-- **Gates.** The reference gates become: hover at 1 (Hover plate T1), portable fabricator at 3, the first one-cell thruster at 5, and the first multi-block thrusters (Thruster T2 and T3, today's large thruster) at 7.
+- **Tier levels.** Every tier opens at `docs/grid-figures.md`'s unlock level. Where it gives none (its container levels are Empyrion's crafting group, and the cockpits sit in one group too), a tier opens with the generator of the same tier: T1 at 1, T2 at 3, T3 at 10, T4 at 15. No tier opens before the one below it, so the landing pads' T3 and T4 (7 in the figures) wait for T2 at 10. The design doc's gates win over the figures: Hover plate T1 stays at 1 (figures: 3) and the portable fabricator at 3 (figures: 1).
+- **Gates.** The reference gates become: hover at 1 (Hover plate T1), portable fabricator at 3, the first one-cell thruster at 5, and the first multi-block thruster (Thruster T2) at 7; today's large thruster, Thruster T3, opens at 10.
 - **Tiers.** In the real list a tier should change something a player can feel (capacity, output, mass, footprint), not only a bigger number.
 - **Finds.** The late tiers lean on finds as well as points. Precursor alloy and echo shards are found only (lattice cores went with the CPU). The tree node opens by level and points; the parts come from exploration.
-- **Hover plates.** Hover plates are a prerequisite for thrusters (owner decision): Thruster T1 hangs under Hover plate T1, so hover and flight run as parallel branches from the core. Plate tiers sit at 1, 10, 15 and 20; thruster tiers at 5, 7, 7, 15 and 20.
+- **Hover plates.** Hover plates are a prerequisite for thrusters (owner decision): Thruster T1 hangs under Hover plate T1, so hover and flight run as parallel branches from the core. Plate tiers sit at 1, 8, 15 and 20; thruster tiers at 5, 7, 10, 15 and 20.
 - **Items dropped from the old map.** The design doc has air handled by the core, with no refill stations to place, so the oxygen station is gone. It lists replicators, not hydroponic bays, so food is on replicator tiers.
 - **Dropped or folded in the merge** (`docs/one-metre-grid.md` sections 3, 5 and 10). The four cores are one Core. The capital and hover chairs are the command chair. CPU extenders T1 to T4 go with the CPU. Repair bays T1 and T2 and the field repair station go: repair is by the plating gun. Shutters and ramps go: one door family, no ramps. The hover cargo bay and the medium and large containers are Container T1 to T4. The hover armour skirt and the canopy sets are base-block shapes and the cockpit tiers. Landing gear and the docking pad are Landing pad T1 to T4; the large hover block is Hover plate T2. The small, hover and base shields are one Shield generator ladder, and the shield extender goes (bubbles may not touch). Jet and retro thrusters go (Empyrion's jet family is not carried over; one thruster ladder). The vehicle detector is the scanner, the long-range teleporter is the teleporter (no range limit), the remote-control console is the comms array, and the salvager is the tool's dismantling. Warp drive T4 goes, leaving Hyperdrive T3 and the hyperspace gate as the capstones.
-- **New rungs where the merge left a level empty:** Capacitor T2 (13) and T3 (21) and Comms array T1 (14); Hover plate T3 and T4 take 15 and 20, after Hover plate T2 moved to 10.
-- **Two ladders wait too long.** Generator and Fuel tank T3 are today's large parts at level 1 and T4 is at 15 (figures doc), a 14-level wait that breaks rule 6. A rung between (for example at 8) or T4 earlier would fix it; the owner's call.
+- **New rungs where the merge left a level empty:** Capacitor T2 (13) and T3 (21) and Comms array T1 (14); Hover plate T3 and T4 take 15 and 20, after Hover plate T2 at 8.
+- **Level 10 is a lump.** At the figures' levels, 14 Structures nodes open at 10 (the T3 of thrusters, generators, fuel tanks and containers, gyro T3, landing pads T2 to T4, fabricator T3, the blueprint factory and the warp and hyperdrive set), over rule 3's ten. Moving two of them (for example the fold tank and warp tank to 11 or 12) would fix it, at the cost of leaving the figures; the owner's call.
 - **Ranks or separate nodes.** Reforged Eden 2 merged some tier nodes into their parent to cut points and clutter (Reported, changelog read directly). If the owner wants fewer nodes, the tier rows can become ranks of one node, as long as each rank-up still shows as something new on its level.
-- **The level-1 lump.** Starting each T1 at the lower of today's two levels and today's large part at its own level puts 23 nodes at level 1: today's large generator, fuel tank and container were level-1 base parts, so Generator T1 to T3, Fuel tank T1 to T3 and Container T1 to T4 all open there. It could be split (T2 at 3, T3 at 5) if the owner wants a gentler start. That is a data change only.
+- **The level-1 set.** With the tiers at the figures' levels, level 1 holds 15 Structures nodes, 13 of them free; the T2s of the generator, fuel tank, container and cockpit wait for level 3, and their T3s for 10.
 - **Capstones.** The hyperspace gate, Hyperdrive T3, the Spinal Lance, the Speck Rifle and the Bow Gun sit at 25. Per rule 9, each should point at something to do, such as a found part to build it with. Which part is a world-design decision for the owner, and none of this adds a gate to the tree node.
 
 ### 3c. Categories and their tiers (Inferred)
@@ -279,19 +280,19 @@ Each ladder has as many tiers as 25 levels can use, with no thin, numbered fille
 | Category | Tiers today | Levels in the map |
 | --- | --- | --- |
 | Plating | 6 (iron, concrete, glass, hardened, combat, precursor) | Iron, concrete and glass 1, hardened 6, combat 12, precursor 20, charged 22 |
-| Thrusters | 5 | 5, 7, 7, 15, 20 |
-| Generators | 4 | 1, 1, 1, 15 |
+| Thrusters | 5 | 5, 7, 10, 15, 20 |
+| Generators | 4 | 1, 3, 10, 15 |
 | Shields | 0 | 9, 16, 23 |
 | Capacitors | 0 | 9, 13, 21 |
-| Fuel tanks | 4 | 1, 1, 1, 15 |
-| Containers | 4 | 1, 1, 1, 1 |
+| Fuel tanks | 4 | 1, 3, 10, 15 |
+| Containers | 4 | 1, 3, 10, 15 |
 | Gyros | 3 | 5, 7, 10 |
-| Landing pads | 4 | 5, 7, 7, 7 |
-| Cockpits | 2, under the command chair | 1, 1 |
+| Landing pads | 4 | 5, 10, 10, 10 |
+| Cockpits | 2, under the command chair | 1, 3 |
 | Replicators | 0 | 3, 11, 19 |
-| Warp and jump | warp 1, hyperdrive 2 | Warp 12, 18, 23. Hyperdrive 15, 20, 25. Fold gate 23, hyperspace gate 25 |
-| Constructors | Survival, portable, Fabricator T1 to T3 | Portable 3, Fabricator T1 to T3 at 2, 8, 15, deconstructor 4. Adds the matter assembler at 24 |
-| Hover plates | 2 | 1, 10, 15, 20 |
+| Warp and jump | warp 1, hyperdrive 2 | Warp 10, 18, 23. Hyperdrive 10, 20, 25. Fold gate 23, hyperspace gate 25 |
+| Constructors | Survival, portable, Fabricator T1 to T3 | Portable 3, Fabricator T1 to T3 at 3, 5, 10, deconstructor 4. Adds the matter assembler at 24 |
+| Hover plates | 2 | 1, 8, 15, 20 |
 | Medical and clone | 0 | Medical bay 5, cloning bay 10 |
 | Comms array | 0 | 14, 20 |
 | Vessel drills | 0 | 9, 17 |
@@ -316,7 +317,7 @@ Each ladder has as many tiers as 25 levels can use, with no thin, numbered fille
 
 The curve is the two-tab curve scaled to the smaller tree (about 0.83 of each grant). `startPoints` is in the data now: the player would otherwise start with no points, and Hover plate T1 costs 1, which leaves the design's "hover at level 1" gate out of reach until level 2.
 
-**Until the new nodes land**, `progress.json` carries a curve for the tree that is in the data: 161 points (Structures 53 nodes and 78 points; each deco piece is a node, but a set is bought once, at its first piece), against 3 to start and grants of 3 rising to 9 a level, 162 by level 25 and 153 by 24. BuildTest checks that the tree is paid for at the cap and not before.
+**Until the new nodes land**, `progress.json` carries a curve for the tree that is in the data: 161 points (Structures 53 nodes and 78 points; each deco piece is a node, but a set is bought once, at its first piece), against 3 to start and grants of 2 rising to 9 a level, exactly 161 by level 25 and 152 by 24. With the tiers at the figures' levels, level 1's starter set costs 2 of the 3 points; level 2's grant of 2 keeps that level short of what it offers, and from there every level leaves something unbought until the cap. BuildTest checks that the tree is paid for at the cap and not before.
 
 **The sum.**
 
@@ -330,21 +331,21 @@ Level by level. "Still unaffordable" is the cost so far minus the points so far:
 
 | Lv | New nodes: Structures, Tools, Misc, Weapons | Cost of new nodes (with deco) | Grant | Points so far | Cost so far | Still unaffordable |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | 23, 4, 3, 3 | 9 | 3 | 3 | 9 | 6 |
-| 2 | 3, 2, 2, 6 | 12 | 8 | 11 | 21 | 10 |
-| 3 | 3, 1, 1, 7 | 14 | 10 | 21 | 35 | 14 |
-| 4 | 1, 2, 2, 4 | 13 | 12 | 33 | 48 | 15 |
-| 5 | 5, 1, 1, 6 | 25 | 15 | 48 | 73 | 25 |
-| 6 | 2, 0, 2, 5 | 19 | 17 | 65 | 92 | 27 |
-| 7 | 6, 0, 2, 7 | 27 | 19 | 84 | 119 | 35 |
-| 8 | 1, 1, 2, 9 | 28 | 21 | 105 | 147 | 42 |
-| 9 | 3, 0, 2, 10 | 29 | 23 | 128 | 176 | 48 |
-| 10 | 4, 1, 1, 8 | 32 | 26 | 154 | 208 | 54 |
-| 11 | 1, 1, 2, 9 | 39 | 27 | 181 | 247 | 66 |
-| 12 | 3, 1, 1, 6 | 32 | 30 | 211 | 279 | 68 |
-| 13 | 1, 0, 1, 9 | 33 | 32 | 243 | 312 | 69 |
-| 14 | 1, 0, 2, 7 | 31 | 34 | 277 | 343 | 66 |
-| 15 | 7, 1, 0, 7 | 48 | 36 | 313 | 391 | 78 |
+| 1 | 15, 4, 3, 3 | 2 | 3 | 3 | 2 | -1 |
+| 2 | 2, 2, 2, 6 | 11 | 8 | 11 | 13 | 2 |
+| 3 | 8, 1, 1, 7 | 18 | 10 | 21 | 31 | 10 |
+| 4 | 1, 2, 2, 4 | 13 | 12 | 33 | 44 | 11 |
+| 5 | 6, 1, 1, 6 | 28 | 15 | 48 | 72 | 24 |
+| 6 | 2, 0, 2, 5 | 19 | 17 | 65 | 91 | 26 |
+| 7 | 2, 0, 2, 7 | 22 | 19 | 84 | 113 | 29 |
+| 8 | 1, 1, 2, 9 | 27 | 21 | 105 | 140 | 35 |
+| 9 | 3, 0, 2, 10 | 29 | 23 | 128 | 169 | 41 |
+| 10 | 15, 1, 1, 8 | 51 | 26 | 154 | 220 | 66 |
+| 11 | 1, 1, 2, 9 | 39 | 27 | 181 | 259 | 78 |
+| 12 | 1, 1, 1, 6 | 29 | 30 | 211 | 288 | 77 |
+| 13 | 1, 0, 1, 9 | 33 | 32 | 243 | 321 | 78 |
+| 14 | 1, 0, 2, 7 | 31 | 34 | 277 | 352 | 75 |
+| 15 | 5, 1, 0, 7 | 39 | 36 | 313 | 391 | 78 |
 | 16 | 2, 0, 1, 6 | 27 | 38 | 351 | 418 | 67 |
 | 17 | 1, 1, 0, 7 | 36 | 40 | 391 | 454 | 63 |
 | 18 | 1, 0, 1, 4 | 24 | 41 | 432 | 478 | 46 |
@@ -358,13 +359,13 @@ Level by level. "Still unaffordable" is the cost so far minus the points so far:
 
 What the table shows:
 
-- At every level from 2 to 24 something stays out of reach. The gap peaks at 78 points at level 15, about two levels' grant, and closes at 25. Level 1 already leaves 6 points of starter tiers to choose between.
-- A level's own new nodes cost more than its grant at levels 2 to 13 and at 15 and 20. Later levels pay down the backlog, so the last levels feel like catching up on what you passed by.
+- At every level from 2 to 24 something stays out of reach. The gap peaks at 78 points at levels 11, 13 and 15, about two levels' grant, and closes at 25. Level 2 is the tightest, 2 points short: its new nodes are few now that the tiers wait for their own levels.
+- A level's own new nodes cost more than its grant at levels 2 to 11, 13, 15 and 20. Later levels pay down the backlog, so the last levels feel like catching up on what you passed by.
 - Players who skip whole tabs will have points to spare near the top, which suits the design's "specialise, then fill in".
 
 ### 3e. Checks a test can make
 
-A test can read the data, with no game running, and list any level or tab that breaks these. The map above passes checks 1 to 5, 7, 9 and 10 (counted by hand for the Structures column). Check 8 fails on two ladders, Generator and Fuel tank (section 3b). Check 6 holds in the data: the slice's BuildTest walks every structure block's parents to the core and every tier's parent to the tier below.
+A test can read the data, with no game running, and list any level or tab that breaks these. The map above passes checks 1, 2, 4, 5 and 7 to 10 (counted by hand for the Structures column; check 7's multi-block thruster at 7 is Thruster T2). Check 3 fails at level 10, the figures' lump (section 3b). Check 6 holds in the data: the slice's BuildTest walks every structure block's parents to the core and every tier's parent to the tier below.
 
 1. For each level 1 to 25, Structures and Weapons each have at least one new node.
 2. Tools and Misc never go more than 2 levels in a row without a new node.
@@ -372,7 +373,7 @@ A test can read the data, with no game running, and list any level or tab that b
 4. Running cost is more than running points at every level from 2 to 24.
 5. Total points by level 25 are at least the total tree cost, deco included. The curve has one entry per level.
 6. Every node's parent exists, has a level no higher than the node's own, and no chain loops.
-7. The reference gates hold: Hover plate T1 at 1, portable fabricator at 3, Thruster T1 at 5, the multi-block thrusters at 7.
+7. The reference gates hold: Hover plate T1 at 1, portable fabricator at 3, Thruster T1 at 5, the first multi-block thruster at 7.
 8. Thruster T1 comes after Hover plate T1, its parent, and no tier ladder waits more than 8 levels for its next step. A tier's id names its ladder (`thruster-t3`).
 9. Personal weapons appear on every level. Melee, placed, living and support weapons never go more than 5 levels without a new node, and personal shields never more than 4.
 10. Every weapon entry reaches the player one way only: as a node, a recipe under one node, or a listed find, reward, relic, cyber module or salvage.
