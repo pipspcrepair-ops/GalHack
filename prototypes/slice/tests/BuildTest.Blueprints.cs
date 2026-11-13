@@ -36,21 +36,14 @@ public partial class BuildTest
         GameData data = GameData.Shared;
         float g = data.Rules.Planet.Gravity;
         var library = new BlueprintLibrary(data, g, TestFolder);
-        Check(library.Starters.Count == data.Rules.Build.Library.Count && library.Starters.Count(e => e.Large) >= 4 && library.Starters.Count(e => !e.Large) >= 4,
-            $"the starter set loads: {string.Join(", ", library.Starters.Select(e => $"{e.Name} ({(e.Large ? "L" : "S")} {BlueprintsSection.ModeLabel(e)})"))}");
+        Check(library.Starters.Count == data.Rules.Build.Library.Count,
+            $"the starter set loads: {string.Join(", ", library.Starters.Select(e => $"{e.Name} ({BlueprintsSection.ModeLabel(e)})"))}");
         foreach (LibraryEntry e in library.Starters)
         {
             Structure s = e.Plan;
             StructureStats st = StructureStats.Compute(s);
-            Check(s.Core != null && st.Powered && st.Efficiency >= 1.0 && s.Owner == Building.DefaultOwner,
-                $"{e.Name}: {s.Count} blocks, {st.Mass:F1} t, powers on ({st.PowerOut:F2} MW out, {st.PowerUse:F2} MW at full load; CPU {st.CpuUsed:N0} of {st.CpuLimit:N0})");
-            if (BlueprintsSection.Unwired(e))
-            {
-                var hover = new StructureVessel(s, data.Handling, CoreMode.Hover);
-                Check(e.Large && s.Mode == CoreMode.Capital && hover.HoverEngines.Count == 0 && s.Blocks().Count(b => s.TypeOf(b.block).Function == "hover") >= 8,
-                    $"{e.Name}: Large Hover isn't wired: its {s.Blocks().Count(b => s.TypeOf(b.block).Function == "hover")} large hover plates lift nothing on a Big Core, and it loads in Flight Mode");
-                continue;
-            }
+            Check(s.Core != null && st.Powered && s.Owner == Building.DefaultOwner,
+                $"{e.Name}: {s.Count} blocks, {st.Mass:F1} t, powers on ({st.PowerOut:F2} MW out, {st.PowerUse:F2} MW at full load)");
             if (s.Mode == CoreMode.Base)
             {
                 Check(st.Generators > 0 && st.Fuel > 0 && st.Containers > 0 && BuildingBridge.MachinesOn(data.Items, s).Any(), $"{e.Name}: a constructor, storage, a generator and fuel");
@@ -62,19 +55,19 @@ public partial class BuildTest
                 $"{e.Name}: fitted for {BlueprintsSection.ModeLabel(e)} ({h.Accel(Direction.Forward):F1} m/s², {h.TurnRate:F0} °/s, {h.TopSpeed:F0} m/s, lift margin {h.LiftMargin:+0;-0} kN){(missing.Count > 0 ? $": missing {string.Join(", ", missing)}" : "")}");
         }
         LibraryEntry fighter = library.Starters.FirstOrDefault(e => e.Plan.Blocks().Any(b => e.Plan.TypeOf(b.block).Function == "weapon"));
-        LibraryEntry shuttle = library.Starters.FirstOrDefault(e => !e.Large && e.Plan.Blocks().Count(b => e.Plan.TypeOf(b.block).IsCommandChair) >= 2);
+        LibraryEntry shuttle = library.Starters.FirstOrDefault(e => e.Plan.Blocks().Count(b => e.Plan.TypeOf(b.block).IsCommandChair) >= 2);
         Check(fighter != null && shuttle != null && shuttle.Plan.Blocks().Count(b => shuttle.Plan.TypeOf(b.block).Function == "container") >= 4,
             $"the fighter carries guns ({fighter?.Name}), the shuttle two seats and cargo ({shuttle?.Name})");
 
         // The frigate's hangar: an empty box open to the outside at one end, the Skiff standing on its legs inside with room round it.
         LibraryEntry skiff = library.Starters.First(e => e.File == data.Rules.Build.StarterBlueprint);
-        LibraryEntry carrier = library.Starters.FirstOrDefault(e => e.Large && e.Declared != CoreMode.Base && e.Plan.Blocks().Count(b => e.Plan.TypeOf(b.block).IsCommandChair) >= 2);
+        LibraryEntry carrier = library.Starters.OrderByDescending(e => e.Plan.Count).FirstOrDefault(e => e.Plan.Mode != CoreMode.Base && e.Plan.Blocks().Count(b => e.Plan.TypeOf(b.block).IsCommandChair) >= 2);
         float legs = new StructureVessel(skiff.Plan, data.Handling).LandingGear.Select(l => l.Length).DefaultIfEmpty(0f).Max();
         var need = new Vector3(skiff.Size.X, skiff.Size.Y + legs, skiff.Size.Z) + Vector3.One;
         Check(carrier != null && Hangar(carrier.Plan, need), $"the {carrier?.Name}'s hangar takes the Skiff with a metre to spare ({need.X:F1} x {need.Y:F1} x {need.Z:F1} m), open at one end");
 
         RoundTrip(data, skiff.Plan);
-        RoundTrip(data, library.Starters.First(e => e.Large && e.Declared == CoreMode.Base).Plan);
+        RoundTrip(data, library.Starters.First(e => e.Plan.Mode == CoreMode.Base).Plan);
     }
 
     /// <summary>A structure saved and read back is the same structure: blocks, shapes, turns, paint, doors, lights; every block whole.</summary>
@@ -297,14 +290,9 @@ public partial class BuildTest
     /// <summary>Into its seat, and does it move as its mode says: Flight climbs on its thrusters, Hover runs along the ground on its plates.</summary>
     IEnumerable<int> Moves(LibraryEntry e, Vessel v)
     {
-        if (v.IsBase || e.Declared == CoreMode.Base)
+        if (v.IsBase || e.Plan.Mode == CoreMode.Base)
         {
             Check(v.IsBase && v.Machines.Count > 0 && v.StructureStats.StorageCapacity > 0, $"{e.Name}: anchored as a base, its constructor ({v.Machines.Values.First().Def.Tag}) and storage ready");
-            yield break;
-        }
-        if (BlueprintsSection.Unwired(e))
-        {
-            GD.Print($"  ({e.Name}: not flown. Large Hover isn't wired: on a Big Core its hover plates lift nothing ({v.Spec.HoverEngines.Count} working of {v.Structure.Blocks().Count(b => v.Structure.TypeOf(b.block).Function == "hover")}))");
             yield break;
         }
         Check(_game.Survivor.Sit(v), $"{e.Name}: in its seat");

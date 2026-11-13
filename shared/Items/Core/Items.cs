@@ -31,8 +31,8 @@ public static class Rarities
 
 /// <summary>
 /// What kind of thing an item is. Raw and unique items have no recipe; everything else has exactly
-/// one. <see cref="Block"/> items are block families (Empyrion's way): one item per block and grid,
-/// carried in stacks and placed as any of the family's shapes. <see cref="Weapon"/> items are hand
+/// one. <see cref="Block"/> items are blocks (Empyrion's way): one item per block, carried in
+/// stacks and placed as any of its shapes (an armour block) or sizes (a door). <see cref="Weapon"/> items are hand
 /// weapons (shared/Arms has their rows).
 /// </summary>
 public enum ItemCategory { Raw, Unique, Refined, Part, Component, Consumable, Ammo, Tool, Block, Weapon }
@@ -44,16 +44,13 @@ public enum ItemCategory { Raw, Unique, Refined, Part, Component, Consumable, Am
 public enum BlockFamily { None, Armour, Device, Deco }
 
 /// <summary>
-/// The four classes of structure, as in Empyrion. A structure's class is its core and that core's
-/// mode: a Big Core in Base or Capital Mode, a Small Core in Vessel or Hover Mode. No block is
-/// limited to a class: bases and capital vessels share every large block, small and hover vessels
-/// every small one.
+/// The classes of structure, as in Empyrion. A structure's class is its core's mode, nothing else:
+/// no block is limited to a class.
 /// </summary>
 public enum StructureClass { Base, Capital, Small, Hover }
 
 public static class StructureClasses
 {
-    public static bool IsSmallGrid(StructureClass c) => c is StructureClass.Small or StructureClass.Hover;
     public static string Name(StructureClass c) => c switch
     {
         StructureClass.Base => "base",
@@ -108,10 +105,7 @@ public sealed class ItemDef
     public Unlock Unlock { get; init; }
     /// <summary>Block items: building's block id this item places (any of its shapes, for armour).</summary>
     public string BlockId { get; init; }
-    /// <summary>Block items: true for the small grid, false for the large. The two grids are separate families.</summary>
-    public bool SmallGrid { get; init; }
     public BlockFamily Family { get; init; }
-    /// <summary>Block items: the structure classes it can be placed on (Empyrion's base, capital, small and hover vessels).</summary>
     /// <summary>A sub-group for long lists and the tech tree: a deco piece's theme set.</summary>
     public string Group { get; init; }
     /// <summary>True once the item was given its name explicitly (data), so building's names don't replace it.</summary>
@@ -141,7 +135,7 @@ public sealed class ItemDef
 /// A tech-tree node, carried by the item or block it unlocks (there is no separate tree file):
 /// unlockable from character level <see cref="Level"/> for <see cref="Cost"/> points, once its
 /// <see cref="Parent"/> node is unlocked, shown on tab <see cref="Tab"/>. A parent is another
-/// node's id: an item id, or a block's <see cref="BlockBill.NodeId"/>.
+/// node's id: an item id (a block item's id is its block's).
 /// </summary>
 public sealed record Unlock(int Level, int Cost, string Parent, string Tab);
 

@@ -383,13 +383,16 @@ public sealed class Playthrough
         foreach (int x in Drive.DragWidget($"bag:{from}", $"bar:{slot}")) yield return x;
     }
 
-    /// <summary>The block family item of a block on a grid.</summary>
-    public string BlockItem(string blockId, bool small) => Game.Zone.Data.Items.BlockItem(blockId, small).Id;
+    /// <summary>The block a block id (any it has had) is carried and priced as: a door family's head.</summary>
+    public string BlockOf(string blockId) => GalHack.Items.Bridge.BuildingBridge.ItemBlockOf(Game.Zone.Data.Catalogue.Type(blockId));
+
+    /// <summary>The item of a block, by any id it has had.</summary>
+    public string BlockItem(string blockId) => Game.Zone.Data.Items.BlockItem(BlockOf(blockId)).Id;
 
     /// <summary>Drags a stack of a block's item from the bag onto a toolbar slot (blocks are items, carried in stacks).</summary>
-    public IEnumerable<int> BlockToToolbar(string blockId, bool small, int slot)
+    public IEnumerable<int> BlockToToolbar(string blockId, int slot)
     {
-        string item = BlockItem(blockId, small);
+        string item = BlockItem(blockId);
         if (Game.Mode != GalHack.Items.GameMode.Creative)
         {
             foreach (int x in ToToolbar(item, slot)) yield return x;
@@ -725,28 +728,36 @@ public sealed class Playthrough
     }
 
     /// <summary>
-    /// The small vessel the real-player test and the screenshots build on a core: a deck of a
-    /// generator, struts and a gyro round the core, a main engine at the back, a seat on top
-    /// (reached with a hop on the jetpack), and under the outer blocks two lift jets, a fuel tank
-    /// and three legs, all reachable from outside the vessel's footprint. Each
-    /// block goes on a face its mounting allows (a seat by its base, a fuel tank top or bottom, a
-    /// thruster not by its nozzle, a leg by its top).
+    /// The small vessel the real-player test and the screenshots build on a core set down on the
+    /// ground: a column up from the core to a deck above head height, a generator, struts and a
+    /// gyro round it, a main engine at the back, the seat and a fuel tank on top (reached with a hop
+    /// on the jetpack), and under the deck two lift jets and three legs, looked up at from beside.
+    /// Each block goes on a face its mounting allows (a seat by its base, a fuel tank top or bottom,
+    /// a thruster not by its nozzle, a leg by its top).
     /// </summary>
-    public static readonly (string block, Int3 on, Dir face, Dir? push)[] VesselLayout =
+    public static readonly (string block, Int3 on, Dir face, Dir? push)[] VesselLayout = DeckLayout();
+
+    static (string block, Int3 on, Dir face, Dir? push)[] DeckLayout()
     {
-        // The deck round the core, from its sides.
-        ("generator", Int3.Zero, Dir.PosX, null), ("steel", Int3.Zero, Dir.NegX, null), ("steel", Int3.Zero, Dir.NegZ, null),
-        ("steel", new Int3(0, 0, -1), Dir.NegZ, null), ("gyro", Int3.Zero, Dir.PosZ, null), ("thruster", new Int3(0, 0, 1), Dir.PosZ, Dir.NegZ),
-        ("steel", new Int3(0, 0, 1), Dir.PosX, null), ("steel", new Int3(0, 0, 1), Dir.NegX, null),
-        // A retro at the nose, to brake.
-        ("thruster", new Int3(0, 0, -2), Dir.NegZ, Dir.PosZ),
-        // On top, from hops: the seat, and a jet pushing down, to come down under control.
-        ("chair", Int3.Zero, Dir.PosY, null), ("thruster", new Int3(1, 0, 0), Dir.PosY, Dir.NegY),
-        // Under the outer blocks, from outside: lift jets, the fuel tank, three legs.
-        ("thruster", new Int3(1, 0, 0), Dir.NegY, Dir.PosY), ("thruster", new Int3(-1, 0, 0), Dir.NegY, Dir.PosY),
-        ("fueltank", new Int3(-1, 0, 1), Dir.NegY, null), ("gear", new Int3(1, 0, 1), Dir.NegY, null),
-        ("gear", new Int3(0, 0, -2), Dir.NegY, null), ("gear", new Int3(-1, -1, 1), Dir.NegY, null),
-    };
+        Int3 deck = new(0, 2, 0);
+        Int3 at(int x, int z) => deck + new Int3(x, 0, z);
+        return new (string, Int3, Dir, Dir?)[]
+        {
+            // The column, from hops: the deck's underside clears the castaway's eyes, so legs can go under it.
+            ("steel", Int3.Zero, Dir.PosY, null), ("steel", new Int3(0, 1, 0), Dir.PosY, null),
+            // The deck round the column's top, from its sides.
+            ("generator", deck, Dir.PosX, null), ("steel", deck, Dir.NegX, null), ("steel", deck, Dir.NegZ, null),
+            ("steel", at(0, -1), Dir.NegZ, null), ("gyro", deck, Dir.PosZ, null), ("thruster", at(0, 1), Dir.PosZ, Dir.NegZ),
+            ("steel", at(0, 1), Dir.PosX, null), ("steel", at(0, 1), Dir.NegX, null),
+            // A retro at the nose, to brake.
+            ("thruster", at(0, -2), Dir.NegZ, Dir.PosZ),
+            // On top, from hops: the seat, the fuel tank, and a jet pushing down, to come down under control.
+            ("chair", deck, Dir.PosY, null), ("fueltank", at(-1, 1), Dir.PosY, null), ("thruster", at(1, 0), Dir.PosY, Dir.NegY),
+            // Under the deck, from beside: lift jets and three legs.
+            ("thruster", at(1, 0), Dir.NegY, Dir.PosY), ("thruster", at(-1, 0), Dir.NegY, Dir.PosY),
+            ("gear", at(1, 1), Dir.NegY, null), ("gear", at(0, -2), Dir.NegY, null), ("gear", at(-1, 1), Dir.NegY, null),
+        };
+    }
 
     /// <summary>Builds <see cref="VesselLayout"/> on a vessel's core, from toolbar slots by block, walking round it to see each face. Counts what went down.</summary>
     public IEnumerable<int> BuildVessel(Vessel v, IReadOnlyDictionary<string, int> slots, Action<int> placed)
@@ -767,7 +778,8 @@ public sealed class Playthrough
             bool done = false;
             // Where to stand: tried nearer and further until the crosshair is on that very face,
             // as a player shuffles until the ghost sits where they want it.
-            float[] distances = face == Dir.NegY ? new[] { 0.1f, 0.75f, 1.1f } : face == Dir.PosY ? new[] { 1.6f, 1.2f, 2.2f } : new[] { 2.4f, 1.8f, 3.2f };
+            // Under the deck, further out last: a block spanning two cells (a landing pad) hangs where you'd stand.
+            float[] distances = face == Dir.NegY ? new[] { 0.1f, 0.75f, 1.1f, 1.7f, 2.3f } : face == Dir.PosY ? new[] { 1.6f, 1.2f, 2.2f } : new[] { 2.4f, 1.8f, 3.2f };
             foreach (float d in distances)
             {
                 if (done) break;
@@ -875,6 +887,18 @@ public sealed class Playthrough
                 if (h0 > 1f && worst < allow && clear && MathF.Abs(h0 - near.Y) <= within) return g;
             }
         return zone.GroundAt(near.X + distance, near.Z);
+    }
+
+    /// <summary>
+    /// A clearing: every tree and boulder rooted within this reach of a point is felled for good. Vessels collide with trunks
+    /// and crowns, so a craft tested among them is held by them. Returns how many went.
+    /// </summary>
+    public static int Clearing(SurfaceZone zone, Vector3 at, float reach)
+    {
+        int n = 0;
+        foreach (var (solid, _) in zone.Streamer.SolidsNear(at, reach, canopies: true).ToList())
+            if (zone.Planet.Felled.Add(solid.Id)) { zone.Streamer.Fell(solid.Id); n++; }
+        return n;
     }
 
     /// <summary>A ruin, a road's works or a building within a span of this point: they stand on the flat ground, and the ground's height doesn't show them.</summary>

@@ -27,15 +27,15 @@ public sealed partial class Staging
         foreach (int x in Play.PlaceOnGround(2, spot)) yield return x;
         Device fab = _game.Zone.Devices.FirstOrDefault();
         if (fab == null) yield break;
-        fab.Storage.AddAll(new Bill().Add("iron-ore", 160).Add("carbon-ore", 120).Add("copper-ore", 60).Add("silicon-ore", 20).Add(Play.BlockItem("steel", false), 6));
+        fab.Storage.AddAll(new Bill().Add("iron-ore", 160).Add("carbon-ore", 120).Add("copper-ore", 60).Add("silicon-ore", 20).Add(Play.BlockItem("steel"), 6));
         foreach (int x in Play.OpenMenu(MenuTab.Core)) yield return x;
-        foreach (int x in Play.Order("core", Play.BlockItem("container", false), 1)) yield return x;
-        foreach (int x in Play.Order("core", Play.BlockItem("steel", false), 5)) yield return x;
+        foreach (int x in Play.Order("core", Play.BlockItem("container"), 1)) yield return x;
+        foreach (int x in Play.Order("core", Play.BlockItem("steel"), 5)) yield return x;
         foreach (int x in _drive.ClickWidget("recipes:core:cat:all")) yield return x;
         foreach (int x in _drive.ClickWidget("recipes:core:cat:blocks")) yield return x;
         fab.Tick(2.5);
         foreach (int x in _drive.Wait(4)) yield return x;
-        if (_game.Menu.RectOf($"order:core:{Play.BlockItem("steel", false)}:1") is Rect2 r)
+        if (_game.Menu.RectOf($"order:core:{Play.BlockItem("steel")}:1") is Rect2 r)
             _game.Controls.Mouse = r.Position + new Vector2(-200, 12);
         foreach (int x in _drive.Wait(30)) yield return x;
     }
@@ -73,7 +73,7 @@ public sealed partial class Staging
         Vessel b0 = _game.Zone.Vessels.FirstOrDefault(v => v.IsBase && !v.IsRuin);
         if (b0 == null) yield break;
         _game.FixedCamera = null;
-        string hardened = Play.BlockItem("hardened", false);
+        string hardened = Play.BlockItem("hardened");
         Hand((hardened, 12));
         b0.Storage.Add(hardened, 340);
         foreach (int x in Play.ToToolbar(hardened, 1)) yield return x;

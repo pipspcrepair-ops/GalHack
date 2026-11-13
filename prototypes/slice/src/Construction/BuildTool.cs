@@ -20,17 +20,16 @@ using Structure = GalHack.Structures.Structure;
 namespace Slice.Construction;
 
 /// <summary>What placing something new starts.</summary>
-public enum NewThing { None, Base, Vessel, Device }
+public enum NewThing { None, Base, Device }
 
 /// <summary>
 /// Building with what is on the toolbar, on building's structure model and rules (attach through
 /// a shared face, one core, nothing lost when something is cut loose), its ghosts and mesher,
 /// and shared/Items' rule that blocks are craftable items (Empyrion's way).
 ///
-/// A block family item in hand places that block, in any of its shapes (wheel: shape, R / T
-/// rotate, X mirror), on the face under the crosshair, and only on a structure: every structure
-/// starts with its core. It goes only on the grid and the classes of structure its family allows
-/// (Empyrion's base, capital, small and hover). In Survival each placement uses one item from the
+/// A block item in hand places that block, in any of its shapes or sizes (wheel: shape or door
+/// size, R / T rotate, X mirror), on the face under the crosshair, and only on a structure: every
+/// structure starts with its core. Any block goes on any structure. In Survival each placement uses one item from the
 /// source you chose: your own toolbar's stack, or, on the structure toolbar, the shared storage of
 /// the structure you are building on while you are in its area. An empty stack can't place.
 /// Taking a block down (the survival tool's deconstruct mode, or right click with a block in
@@ -38,8 +37,8 @@ public enum NewThing { None, Base, Vessel, Device }
 /// structure toolbar), then the structure's storage, then a container on the ground. Creative is
 /// free and unlimited, with every block available, and follows the same core-first rule.
 ///
-/// A core item in hand founds a new structure on open ground (the Big Core a base, fixed where it
-/// stands; the Small Core a small craft on a build stand), and the CORE tab sets its mode. A device
+/// A core item in hand founds a new structure on open ground, a base fixed where it stands, and
+/// the CORE tab sets its mode. A device
 /// item (the survival constructor) is set down as itself. The blueprint projector is not
 /// on the toolbar: the BLUEPRINTS tab starts it (<see cref="Project"/>), and it builds a blueprint block by
 /// block while the button is held, each block one item from your bag.
@@ -84,8 +83,8 @@ public sealed partial class BuildTool
     /// <summary>A structure came into being (a core placed), or was finished from its blueprint.</summary>
     public event Action<Vessel> Started, Finished;
 
-    /// <summary>A block was placed (on a large or small grid), for experience.</summary>
-    public event Action<Vessel, bool> BlockPlaced;
+    /// <summary>A block was placed, and the experience it is worth.</summary>
+    public event Action<Vessel, int> BlockPlaced;
 
     /// <summary>A device was set down.</summary>
     public event Action<Device> DeviceSet;
@@ -136,14 +135,18 @@ public sealed partial class BuildTool
     bool Creative => _zone.WorldRules.Creative;
     ItemCatalogue Items => _zone.Data.Items;
 
-    /// <summary>How high a new vessel's core is set up above the ground it is placed on, m.</summary>
-    public const float BuildHeight = 2.75f;
-
     /// <summary>The armour shapes the wheel steps through.</summary>
     public IReadOnlyList<ShapeDef> Shapes => _catalogue.Shapes;
     public ShapeDef Shape => _catalogue.Shapes[Math.Clamp(ShapeIndex, 0, _catalogue.Shapes.Count - 1)];
 
     public void NextShape(int step) => ShapeIndex = (ShapeIndex + step + _catalogue.Shapes.Count) % _catalogue.Shapes.Count;
+
+    /// <summary>The size of a variant family the wheel has picked (a door's); any other type is itself.</summary>
+    BlockType Variant(BlockType t)
+    {
+        IReadOnlyList<BlockType> all = _catalogue.VariantsOf(t);
+        return all[ShapeIndex % all.Count];
+    }
     public void Rotate(int axis) => Rot = Orientations.Rotate(Rot, axis, 1);
 
     public void Hide()
@@ -163,7 +166,7 @@ public sealed partial class BuildTool
         switch (hand)
         {
             case HandKind.Block: TickBlock(item, slotIndex, pressed, removePressed); break;
-            case HandKind.Core: TickNew(NewThingOf(item), item, slotIndex, pressed); break;
+            case HandKind.Core: TickNew(NewThing.Base, item, slotIndex, pressed); break;
             case HandKind.Device: TickNew(NewThing.Device, item, slotIndex, pressed); break;
             case HandKind.Blueprint:
                 if (Plan == null && Underway == null) Follow(_zone.Data.Blueprint(_rules.StarterBlueprint));
@@ -172,11 +175,6 @@ public sealed partial class BuildTool
             default: Hide(); break;
         }
     }
-
-    static NewThing NewThingOf(string coreItem) => coreItem == PlayerInventory.BigCore ? NewThing.Base : NewThing.Vessel;
-
-    /// <summary>A new Small Core's mode: hover plates open at level 1 and thrusters at level 5, so a first craft hovers.</summary>
-    public const CoreMode NewSmallCoreMode = CoreMode.Hover;
 
     /// <summary>
     /// The survival tool's deconstruct mode: the crosshair on a block outlines it and says what
@@ -205,7 +203,7 @@ public sealed partial class BuildTool
         _ghosts.ShowOutline(TargetVessel.DrawTransform, s, TargetCell, new Color(1f, 0.55f, 0.2f, 0.9f));
         ItemDef back = BuildingBridge.ItemOf(Items, s, b);
         if (s.TypeOf(b).IsCore) Verdict = CoreStays;
-        else Verdict = Creative ? $"Deconstruct {s.TypeOf(b).Name}" : $"Deconstruct {s.TypeOf(b).Name} · +1 {back?.Name ?? "nothing"}";
+        else Verdict = Creative ? $"Deconstruct {s.TypeOf(b).Name}" : $"Deconstruct {s.TypeOf(b).Name} · +{s.TypeOf(b).Units} {back?.Name ?? "nothing"}";
         if (pressed) Remove(TargetVessel, TargetCell);
     }
 
@@ -244,6 +242,7 @@ public sealed partial class BuildTool
             Verdict = itemId != null && Items.TryGet(itemId, out ItemDef d) && d.Family == BlockFamily.Deco ? $"{d.Name} · NOT PLACEABLE" : "";
             return;
         }
+        type = Variant(type);
         if (!HasTarget || TargetVessel == null)
         {
             Hide();
@@ -256,13 +255,10 @@ public sealed partial class BuildTool
         // A block spanning several cells grows out from the face it's built on; its anchor may sit away from the aimed cell.
         Int3 anchor = Footprint.AnchorFor(type, b.Rot, PlaceCell, Dirs.Closest((PlaceCell - TargetCell).ToVector3()));
         var copies = Copies(s, anchor, b);
-        // The family in hand must be this structure's grid's (Creative too).
-        bool wrongGrid = item.SmallGrid != BuildingBridge.IsSmall(s);
-        string why = wrongGrid ? $"{item.Name} · {(item.SmallGrid ? "SMALL" : "LARGE")}-GRID BLOCK · {(item.SmallGrid ? "LARGE" : "SMALL")} GRID"
-            : Problem(TargetVessel, anchor, b) ?? SourceProblem(TargetVessel, item, slotIndex, copies.Count);
+        string why = Problem(TargetVessel, anchor, b) ?? SourceProblem(TargetVessel, item, slotIndex, copies.Count * type.Units);
         var tinted = copies.Select(c => (c.cell, c.block, Problem(TargetVessel, c.cell, c.block) == null ? GhostPreview.Valid : GhostPreview.Invalid)).ToList();
         if (why != null) tinted = tinted.Select(t => (t.cell, t.block, GhostPreview.Invalid)).ToList();
-        Verdict = why ?? $"{item.Name}{(type.IsArmor ? $", {Shape.Name}" : "")} · {Available(TargetVessel, item, slotIndex)}";
+        Verdict = why ?? $"{item.Name}{(type.IsArmor ? $", {Shape.Name}" : type.Group != null ? $", {Footprint.Label(type, _catalogue.Grid.CellSize)}" : "")} · {Available(TargetVessel, item, slotIndex)}";
         _ghosts.ShowGhosts(TargetVessel.DrawTransform, s, tinted);
         if (type.Multi) _ghosts.ShowBlocked(TargetVessel.DrawTransform, s, copies.SelectMany(c => Building.Blocked(s, c.cell, c.block)).ToList());
         _ghosts.ShowOutline(TargetVessel.DrawTransform, s, TargetCell, new Color(1, 1, 1, 0.8f));
@@ -298,20 +294,22 @@ public sealed partial class BuildTool
             RemoteSlot slotRef = _pack.HandRemote;
             if (slotRef == null || slotRef.ItemId != item.Id) return $"REMOTE SLOT · NO {item.Name}";
             if (!_pack.HandUsable) return $"{slotRef.Origin.ToUpperInvariant()} STORAGE · OUT OF RANGE";
-            return slotRef.Count > 0 ? null : $"{slotRef.Origin.ToUpperInvariant()} STORAGE · 0 {item.Name}";
+            return slotRef.Count >= n ? null : $"{slotRef.Origin.ToUpperInvariant()} STORAGE · {slotRef.Count} {item.Name}";
         }
         Slot slot = _pack.Grid[slotIndex];
         if (slot.Block != null) return $"{item.Name} · CREATIVE";
-        return slot.Item == item.Id && slot.Count > 0 ? null : $"{item.Name} · STACK 0";
+        return slot.Item == item.Id && slot.Count >= n ? null : $"{item.Name} · STACK {(slot.Item == item.Id ? slot.Count : 0)}";
     }
 
     /// <summary>Uses one block item from the chosen source (nothing in Creative). False if it has none.</summary>
-    bool TakeOne(Vessel v, ItemDef item, int slotIndex)
+    bool Take(Vessel v, ItemDef item, int slotIndex, int n)
     {
         if (Creative) return true;
-        if (FromStructure) return _pack.HandUsable && _pack.HandSource.Remove(item.Id, 1) == 1;
+        if (FromStructure) return _pack.HandUsable && _pack.HandSource.Count(item.Id) >= n && _pack.HandSource.Remove(item.Id, n) == n;
         Slot slot = _pack.Grid[slotIndex];
-        return slot.Item == item.Id && _pack.Grid.TakeOne(slotIndex);
+        if (slot.Item != item.Id || slot.Count < n) return false;
+        for (int i = 0; i < n; i++) _pack.Grid.TakeOne(slotIndex);
+        return true;
     }
 
     /// <summary>Uses one of the item in hand: from your stack, or from the remote slot's storage.</summary>
@@ -377,19 +375,12 @@ public sealed partial class BuildTool
             return;
         }
         _deviceGhost.Visible = false;
-        bool large = what == NewThing.Base;
-        var scratch = new Structure(_catalogue, _catalogue.Grid(large ? GridSize.Large : GridSize.Small));
+        var scratch = new Structure(_catalogue);
         Block core = Building.Make(scratch, _catalogue.CoreType);
-        // A base sits on the ground; a vessel's core is set up on a build stand, 2 m up, so you can
-        // build under it as well as round it (Empyrion's way: a vessel holds where it is built
-        // until it is first flown, then lands on its own legs).
-        Transform3D frame = GroundFrame(_groundPoint, scratch.Grid.CellSize * 0.5f + (what == NewThing.Base ? 0f : BuildHeight));
+        // A new structure sits on the ground as a base; the CORE tab lifts it off once it can fly.
+        Transform3D frame = GroundFrame(_groundPoint, scratch.Grid.CellSize * 0.5f);
         _ghosts.ShowGhosts(frame, scratch, new List<(Int3, Block, Color)> { (Int3.Zero, core, from == null ? GhostPreview.Valid : GhostPreview.Invalid) });
-        Verdict = from ?? what switch
-        {
-            NewThing.Base => "[LMB] FOUND BASE · Big Core",
-            _ => "[LMB] START CRAFT · Small Core",
-        };
+        Verdict = from ?? "[LMB] FOUND BASE · Core";
         if (!place) return;
         if (from != null)
         {
@@ -397,24 +388,22 @@ public sealed partial class BuildTool
             return;
         }
         if (!Creative && !TakeHand(itemId, slotIndex)) return;
-        Vessel v = StartStructure(frame, what);
+        Vessel v = StartStructure(frame);
         if (v == null && !Creative) { if (FromStructure) _pack.HandSource.Add(itemId, 1); else _pack.Add(itemId, 1); }
     }
 
     /// <summary>
     /// A core in hand aimed at a wreck with no core (a crashed hulk, a severed section): set into it, it claims it
-    /// (design: "Any wreck with no core ... can be claimed by placing a core in it"), a Big Core a large wreck and a
-    /// Small Core a small one. True while a wreck is under the crosshair.
+    /// (design: "Any wreck with no core ... can be claimed by placing a core in it"): any wreck takes the core.
+    /// True while a wreck is under the crosshair.
     /// </summary>
     bool ClaimAim(NewThing what, string itemId, int slotIndex, bool place)
     {
         if (!WorldRay.Cast(_zone, _survivor, Slice.Game.Game.UseReach + 1f, Layers.Hull, out LookHit look) || look.Vessel is not { } wreck || wreck.Structure.Core != null)
             return false;
         Hide();
-        bool large = wreck.Structure.Grid.Id == "large", fits = large == (what == NewThing.Base);
-        Verdict = fits ? $"[LMB] CLAIM · {wreck.Name}" : large ? "BIG WRECK · BIG CORE ONLY" : "SMALL WRECK · SMALL CORE ONLY";
+        Verdict = $"[LMB] CLAIM · {wreck.Name}";
         if (!place) return true;
-        if (!fits) { Said?.Invoke(Verdict, Tones.Caution); return true; }
         if (!Creative && !TakeHand(itemId, slotIndex)) return true;
         N.Vector3 n = MathX.Unrotate(wreck.Body.Rotation, look.Normal.ToNumerics());
         N.Vector3 a = N.Vector3.Abs(n);
@@ -433,27 +422,20 @@ public sealed partial class BuildTool
     }
 
     /// <summary>A new structure where a core item was set down. The item is its price.</summary>
-    Vessel StartStructure(Transform3D frame, NewThing what)
+    Vessel StartStructure(Transform3D frame)
     {
         _structures++;
-        bool large = what == NewThing.Base;
-        var s = new Structure(_catalogue, _catalogue.Grid(large ? GridSize.Large : GridSize.Small))
-        {
-            Name = large ? $"Base {_structures}" : $"Vessel {_structures}",
-            Mode = large ? CoreMode.Base : NewSmallCoreMode,
-            GravityOn = true,
-        };
+        var s = new Structure(_catalogue) { Name = $"Base {_structures}", Mode = CoreMode.Base, GravityOn = true };
         Building.Place(s, Int3.Zero, Building.Make(s, _catalogue.CoreType));
         s.DirtyChunks.Clear();
         N.Vector3 origin = frame.Origin.ToNumerics();
         float heading = MathX.Heading(frame.Basis.GetRotationQuaternion().ToNumerics());
-        Vessel v = large ? Vessel.SpawnBase(_zone, s, origin, heading) : Vessel.Spawn(_zone, s, origin, heading, landed: true);
-        if (large) v.ClearGround(Int3.Zero);
-        else v.Stand = v.Body.Position;
+        Vessel v = Vessel.SpawnBase(_zone, s, origin, heading);
+        v.ClearGround(Int3.Zero);
         Placed++;
         _zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Place, frame.Origin, 0.7f, -2f);
         Started?.Invoke(v);
-        BlockPlaced?.Invoke(v, !large);
+        BlockPlaced?.Invoke(v, XpOf(s, s.Get(Int3.Zero)));
         return v;
     }
 
@@ -670,17 +652,17 @@ public sealed partial class BuildTool
         _planDirty = true;
     }
 
-    /// <summary>An empty structure with a plan's grid, mode, gravity and paints (so its blocks' paint slots mean the same).</summary>
+    /// <summary>An empty structure with a plan's mode, gravity and paints (so its blocks' paint slots mean the same).</summary>
     Structure Like(Structure plan)
     {
-        var s = new Structure(_catalogue, plan.Grid) { Name = plan.Name, Mode = plan.Mode, GravityOn = plan.GravityOn };
+        var s = new Structure(_catalogue) { Name = plan.Name, Mode = plan.Mode, GravityOn = plan.GravityOn };
         for (int i = 1; i < plan.Palette.Count; i++) s.Palette.Intern(plan.Palette[(ushort)i], plan.Palette.NameOf((ushort)i));
         return s;
     }
 
     // ---- Placing and removing ------------------------------------------------------------------
 
-    /// <summary>Why a block can't go here, or null: the rules, the grid and class, the survivor in the way, the ground.</summary>
+    /// <summary>Why a block can't go here, or null: the rules, the survivor in the way, the ground.</summary>
     string Problem(Vessel v, Int3 cell, in Block block)
     {
         Structure s = v.Structure;
@@ -692,15 +674,7 @@ public sealed partial class BuildTool
             PlaceError.OneCoreOnly => "ONE CORE PER STRUCTURE",
             _ => e.ToString(),
         };
-        BlockType type = s.TypeOf(block);
-        bool small = BuildingBridge.IsSmall(s);
-        ItemDef item = Items.BlockItem(type.Id, small);
-        if (item == null)
-        {
-            ItemDef other = Items.BlockItem(type.Id, !small);
-            if (other != null) return $"{other.Name} · {(small ? "LARGE" : "SMALL")}-GRID BLOCK · {(small ? "SMALL" : "LARGE")} GRID";
-            if (!Creative) return $"{type.Name} · NO ITEM";
-        }
+        if (!Creative && BuildingBridge.ItemOf(Items, s, block) == null) return $"{s.TypeOf(block).Name} · NO ITEM";
         foreach (Int3 c in s.CellsOf(cell, block))
         {
             if (InSurvivor(v, c)) return "YOU · IN THE WAY";
@@ -709,7 +683,7 @@ public sealed partial class BuildTool
         return null;
     }
 
-    /// <summary>Places one block, using one of its item from the chosen source (<paramref name="slotIndex"/> -1: the projector, from your bag).</summary>
+    /// <summary>Places one block, using its item from the chosen source (<paramref name="slotIndex"/> -1: the projector, from your bag): one, or a door's units.</summary>
     bool TryPlace(Vessel v, Int3 cell, Block block, bool quiet, int slotIndex)
     {
         Structure s = v.Structure;
@@ -719,16 +693,17 @@ public sealed partial class BuildTool
             return false;
         }
         ItemDef item = BuildingBridge.ItemOf(Items, s, block);
+        int units = s.TypeOf(block).Units;
         if (!Creative && item != null)
         {
-            bool took = slotIndex < 0 ? _pack.Storage.Remove(item.Id, 1) == 1 : TakeOne(v, item, slotIndex);
+            bool took = slotIndex < 0 ? _pack.Storage.Count(item.Id) >= units && _pack.Storage.Remove(item.Id, units) == units : Take(v, item, slotIndex, units);
             if (!took)
             {
-                if (!quiet) Said?.Invoke(slotIndex < 0 ? $"{item.Name} · BAG 0" : SourceProblem(v, item, slotIndex) ?? $"{item.Name} · 0", Tones.Caution);
+                if (!quiet) Said?.Invoke(slotIndex < 0 ? $"{item.Name} · BAG {_pack.Storage.Count(item.Id)}" : SourceProblem(v, item, slotIndex, units) ?? $"{item.Name} · 0", Tones.Caution);
                 return false;
             }
             if (slotIndex < 0) _pack.Grid.Reconcile();
-            Count(Bill.Of((item.Id, 1)));
+            Count(Bill.Of((item.Id, units)));
         }
         Building.Place(s, cell, block);
         _placer.Sync(s, v.Storage, 0, 0, 0, spill: false); // placing only ever adds room
@@ -739,7 +714,7 @@ public sealed partial class BuildTool
         Placed++;
         _planDirty |= Underway == v;
         _zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Place, v.ToWorld(StructureBridge.BlockCenter(s, cell, block)), 1.3f, -6f);
-        BlockPlaced?.Invoke(v, BuildingBridge.IsSmall(s));
+        BlockPlaced?.Invoke(v, XpOf(s, block));
         return true;
     }
 
@@ -877,9 +852,13 @@ public sealed partial class BuildTool
         return best;
     }
 
-    /// <summary>What placing a block uses on a grid: one of its item (nothing in Creative).</summary>
-    public Bill CostOf(string blockId, bool small) =>
-        Creative || Items.BlockItem(blockId, small) is not ItemDef item ? new Bill() : Bill.Of((item.Id, 1));
+    /// <summary>Experience for placing a block: its item's (shared/Items blocks.json), a door's for each unit.</summary>
+    int XpOf(Structure s, in Block b) =>
+        Items.Blocks.TryGet(BuildingBridge.ItemBlockOf(s.TypeOf(b)), out BlockBill bill) ? bill.Xp * s.TypeOf(b).Units : 1;
+
+    /// <summary>What placing a block uses: one of its item (nothing in Creative).</summary>
+    public Bill CostOf(string blockId) =>
+        Creative || Items.BlockItem(blockId) is not ItemDef item ? new Bill() : Bill.Of((item.Id, 1));
 
     /// <summary>A whole blueprint's block items, one per block (what the projector uses from your bag).</summary>
     public Bill TotalCost(Structure plan)

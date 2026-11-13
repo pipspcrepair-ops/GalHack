@@ -268,7 +268,7 @@ public sealed class SliceRules
         public List<string> Library { get; set; } = new() { "starter.gbp" };
         /// <summary>Where blueprints the player saves go (the library's Yours).</summary>
         public string Saved { get; set; } = "user://blueprints";
-        public float SmallVesselMaxTurn { get; set; } = 110f;
+        public float MaxTurn { get; set; } = 110f;
         public AreaRules Area { get; set; } = new();
     }
 

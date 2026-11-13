@@ -30,8 +30,8 @@ namespace Slice.Vessels;
 /// </summary>
 public sealed class VesselDamage : ILocatedDamageSink
 {
-    /// <summary>How much lightning does to a large block, per point it does to a person. Grids scale it, as they scale hit points.</summary>
-    const float LightningToBlocks = 6f;
+    /// <summary>How much lightning does to a block, per point it does to a person (a plated iron cube has 158 hit points).</summary>
+    const float LightningToBlocks = 1.9f;
 
     readonly record struct Pending(float Raw, float Hp, N.Vector3 Point, N.Vector3 Into, Int3 Cell, DamageType Type, float Radius, HitKind Kind);
 
@@ -83,7 +83,7 @@ public sealed class VesselDamage : ILocatedDamageSink
         if (e.Kind != WeatherEventKind.LightningStrike || e.DamageRadius <= 0f || _v.Zone.VesselOf(_v.Body) != _v) return;
         N.Vector3 at = new(e.Position.X, e.Position.Y, e.Position.Z);
         if (_v.DistanceFromHull(_v.Body.ToLocal(at), e.DamageRadius) >= e.DamageRadius) return;
-        Blast(at, e.DamageRadius, e.Damage * LightningToBlocks * S.Grid.HpScale, DamageType.Energy);
+        Blast(at, e.DamageRadius, e.Damage * LightningToBlocks, DamageType.Energy);
     }
 
     /// <summary>

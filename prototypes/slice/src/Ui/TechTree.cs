@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.RegularExpressions;
 using DiegeticUi.Theme;
 using Godot;
 using Slice.Items;
@@ -111,11 +110,11 @@ public sealed class TechLayout
 }
 
 /// <summary>
-/// TECH: the tech tree on one screen, one tab per kind of thing (Large, Small, tools, weapons, misc),
-/// built from the unlock on every item and block. Each tab is a compact grid: a column per level, a
-/// tile per node with its item's icon, name, cost and state. Large and Small are split into lanes:
-/// the core and what every mode shares, then hover tech and flight tech side by side as parallel
-/// branches. Misc keeps the deco sets below its own nodes: pick a set, its pieces show. Pointing at
+/// TECH: the tech tree on one screen, one tab per kind of thing (structures, tools, weapons, deco,
+/// misc), built from the unlock on every item and block. Each tab is a compact grid: a column per
+/// level, a tile per node with its item's icon, name, cost and state. Structures is split into
+/// lanes: the core and what every mode shares, then hover tech and flight tech side by side as
+/// parallel branches. Deco shows one set at a time: pick a set, its pieces show. Pointing at
 /// a tile marks it and its tip says what it needs and what it opens; one you can afford unlocks on a
 /// click. Nothing scrolls: the tiles shrink to fit the screen.
 /// </summary>
@@ -123,8 +122,8 @@ public sealed class TechSection : IMenuSection
 {
     static Palette C => UiTheme.Colors;
     readonly Game.Game _game;
-    public string Tab = "large";
-    /// <summary>The deco set shown on the misc tab.</summary>
+    public string Tab = "structures";
+    /// <summary>The deco set shown on the deco tab.</summary>
     public string Group;
     /// <summary>Kept for scripts that scrolled the old tree; nothing scrolls now.</summary>
     public int ColOff, RowOff;
@@ -165,13 +164,6 @@ public sealed class TechSection : IMenuSection
         if (n.Group != null) Group = n.Group;
     }
 
-    /// <summary>"Steel block (large)" to "Steel block" and its grid: L, S, or none.</summary>
-    static string Plain(TechNode n, out string tag)
-    {
-        tag = n.Small switch { true => "S", false => "L", _ => null };
-        return Regex.Replace(n.Name, @"\s*\((large|small)\)\s*$", "", RegexOptions.IgnoreCase);
-    }
-
     /// <summary>Text shrunk (down to <paramref name="min"/>) and then cut with an ellipsis until it fits the width.</summary>
     static (string Text, int Size) Fit(string text, int size, int min, float width, Font font)
     {
@@ -182,7 +174,7 @@ public sealed class TechSection : IMenuSection
         return (text.TrimEnd() + "…", s);
     }
 
-    /// <summary>Which lane a node of Large or Small sits in: hover tech, flight tech, or the core and what every mode shares. The nearest hover plate or thruster up its line decides.</summary>
+    /// <summary>Which lane a structures node sits in: hover tech, flight tech, or the core and what every mode shares. The nearest hover plate or thruster up its line decides.</summary>
     public static string LaneOf(TechLayout.Cell c)
     {
         for (TechLayout.Cell x = c; x != null; x = x.Parent)
@@ -198,7 +190,7 @@ public sealed class TechSection : IMenuSection
     List<(string Name, List<TechLayout.Cell> Cells)> Lanes(TechLayout lay, string group)
     {
         var lanes = new List<(string, List<TechLayout.Cell>)>();
-        if (Tab is "large" or "small")
+        if (Tab == "structures")
             foreach (string lane in new[] { "CORE", "HOVER", "FLIGHT" })
             {
                 var cells = lay.Cells.Where(c => LaneOf(c) == lane).ToList();
@@ -312,15 +304,14 @@ public sealed class TechSection : IMenuSection
         {
             TechNode n = hover.Node;
             UnlockState state = p.StateOf(n);
-            string plain = Plain(n, out string tg);
             var lines = new List<(string, Color)>
             {
-                (plain + (tg == "L" ? "  (large)" : tg == "S" ? "  (small)" : ""), C.Accent),
+                (n.Name, C.Accent),
                 ($"LEVEL {n.Level} · {n.Cost} PT", C.Text),
                 (state == UnlockState.Unlocked ? "UNLOCKED" : p.Needs(n), state == UnlockState.Unlocked ? C.Good : state == UnlockState.Affordable ? C.Accent : C.Warn),
             };
-            if (hover.Parent != null) lines.Add(($"NEEDS · {Plain(hover.Parent.Node, out _)}", C.Dim));
-            if (hover.Kids.Count > 0) lines.Add(($"OPENS · {string.Join(", ", hover.Kids.Take(4).Select(k => Plain(k.Node, out _)))}{(hover.Kids.Count > 4 ? "..." : "")}", C.Dim));
+            if (hover.Parent != null) lines.Add(($"NEEDS · {hover.Parent.Node.Name}", C.Dim));
+            if (hover.Kids.Count > 0) lines.Add(($"OPENS · {string.Join(", ", hover.Kids.Take(4).Select(k => k.Node.Name))}{(hover.Kids.Count > 4 ? "..." : "")}", C.Dim));
             g.SetTip(at[hover], () => lines);
         }
     }
@@ -348,7 +339,7 @@ public sealed class TechSection : IMenuSection
         UnlockState state = p.StateOf(n);
         Color tone = state switch { UnlockState.Unlocked => C.Good, UnlockState.Affordable => C.Accent, UnlockState.NeedsPoints => C.Accent2, _ => C.Dim };
         if (g.Button($"tech:{n.Id}", r, "", tone, enabled: state == UnlockState.Affordable, lit: false) && p.Unlock(n.Id)) g.Sound = "unlock";
-        string name = Plain(n, out _);
+        string name = n.Name;
         bool tall = r.Size.Y >= 42;
         float icon = Math.Min(r.Size.Y - 6, 40);
         float textX = r.Position.X + 9 + icon + 5, textW = r.End.X - 4 - textX;
@@ -358,7 +349,7 @@ public sealed class TechSection : IMenuSection
             UnlockState.Unlocked => "",
             UnlockState.Affordable => "UNLOCK",
             UnlockState.NeedsLevel => $"LV {n.Level}",
-            UnlockState.NeedsParent => "NEEDS " + (c.Parent != null ? Plain(c.Parent.Node, out _).ToUpperInvariant() : "PARENT"),
+            UnlockState.NeedsParent => "NEEDS " + (c.Parent != null ? c.Parent.Node.Name.ToUpperInvariant() : "PARENT"),
             _ => "POINTS",
         };
         string cost = state == UnlockState.Unlocked ? "" : $"{n.Cost}";

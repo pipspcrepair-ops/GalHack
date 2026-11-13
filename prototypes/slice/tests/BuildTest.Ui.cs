@@ -112,8 +112,8 @@ public partial class BuildTest
                         $"tech {name}: all {want.Count} nodes on one 1080p screen, tiles {minW * Px:F0} x {minH * Px:F0} px or larger, none overlapping{(missing.Count + outside.Count + overlaps == 0 ? "" : $": missing {missing.Count}, outside {outside.Count}, overlaps {overlaps}")}");
             }
         }
-        Check(_game.Progress.Nodes.Where(n => n.Tab == "large").Select(n => TechSection.LaneOf(new TechLayout(_game.Progress.Nodes.Where(m => m.Tab == "large")).ById[n.Id])).Distinct().Count() == 3,
-            "the Large tab has its core lane and hover and flight as parallel lanes");
+        Check(_game.Progress.Nodes.Where(n => n.Tab == "structures").Select(n => TechSection.LaneOf(new TechLayout(_game.Progress.Nodes.Where(m => m.Tab == "structures")).ById[n.Id])).Distinct().Count() == 3,
+            "the Structures tab has its core lane and hover and flight as parallel lanes");
         _game.Menu.Close();
     }
 

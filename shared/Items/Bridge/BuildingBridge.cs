@@ -39,16 +39,21 @@ public static class BuildingBridge
         });
     }
 
-    public static bool IsSmall(Structure s) => s.Grid.Size == GridSize.Small;
+    /// <summary>The block id a type is priced and carried as: a variant family's head (every door is a door).</summary>
+    public static string ItemBlockOf(BlockType t) => (t.Head ?? t).Id;
 
-    /// <summary>A structure's blocks as a build list (by block id and grid).</summary>
+    /// <summary>A structure's blocks as a build list, by item: a door family counts its doors' units.</summary>
     public static List<BlockCount> BlocksOf(Structure s) =>
-        s.Blocks().GroupBy(x => s.TypeOf(x.block).Id)
-            .Select(g => new BlockCount(g.Key, IsSmall(s), g.Count()))
+        s.Blocks().GroupBy(x => ItemBlockOf(s.TypeOf(x.block)))
+            .Select(g => new BlockCount(g.Key, g.Sum(x => s.TypeOf(x.block).Units)))
             .OrderBy(b => b.BlockId, StringComparer.Ordinal).ToList();
 
-    /// <summary>The block family item a placed block is made from (any shape of an armour material is its family's item), or null.</summary>
-    public static ItemDef ItemOf(ItemCatalogue items, Structure s, in Block b) => items.BlockItem(s.TypeOf(b).Id, IsSmall(s));
+    /// <summary>The block item a placed block is made from (any shape of an armour block, any size of a door), or null.</summary>
+    public static ItemDef ItemOf(ItemCatalogue items, Structure s, in Block b) => items.BlockItem(ItemBlockOf(s.TypeOf(b)));
+
+    /// <summary>What placing a block uses, and taking it down gives back: one of its item, or a door's units of the door item.</summary>
+    public static Bill ItemsOf(ItemCatalogue items, Structure s, in Block b) =>
+        ItemOf(items, s, b) is ItemDef item ? Bill.Of((item.Id, s.TypeOf(b).Units)) : new Bill();
 
     /// <summary>A structure's class: its core and that core's mode, nothing else.</summary>
     public static StructureClass ClassOf(Structure s) => s.Mode switch
@@ -59,22 +64,38 @@ public static class BuildingBridge
         _ => StructureClass.Small,
     };
 
-    /// <summary>Names the block items after building's blocks: "Steel block (large)", "Thruster (small)".</summary>
-    public static void NameBlockItems(ItemCatalogue items, Catalogue blocks) =>
+    /// <summary>
+    /// Links the block items to building's blocks: named after them ("Iron plated block", "Thruster
+    /// T1"), and each bill told how many cells its block fills (for its assembly time and XP).
+    /// </summary>
+    public static void NameBlockItems(ItemCatalogue items, Catalogue blocks)
+    {
         items.NameBlockItems(id => blocks.TryGetType(id, out BlockType t) ? (t.IsArmor ? $"{t.Name} block" : t.Name) : null);
+        foreach (BlockBill bill in items.Blocks.All)
+            if (bill.Family != BlockFamily.Deco && blocks.TryGetType(bill.BlockId, out BlockType t)) bill.Cells = t.Cells;
+    }
 
-    /// <summary>The bill of one placed block. Every shape of a material shares its cube's bill.</summary>
-    public static Bill BillOf(ItemCatalogue items, Structure s, in Block b) => items.Blocks.For(s.TypeOf(b).Id, IsSmall(s));
+    /// <summary>The bill of one placed block. Every shape of an armour block shares its cube's bill; a door is its units of the door's.</summary>
+    public static Bill BillOf(ItemCatalogue items, Structure s, in Block b)
+    {
+        BlockType t = s.TypeOf(b);
+        Bill one = items.Blocks.For(ItemBlockOf(t));
+        return t.Units == 1 ? one : new Bill().Add(one, t.Units);
+    }
+
+    /// <summary>Seconds the blueprint factory takes to fit one placed block, and a deconstructor to take it apart.</summary>
+    public static double AssemblySeconds(ItemCatalogue items, Structure s, in Block b) =>
+        items.Blocks.TryGet(ItemBlockOf(s.TypeOf(b)), out BlockBill bill) ? bill.AssemblySeconds * s.TypeOf(b).Units : 0.4;
 
     /// <summary>True if the block has a bill (creative can place anything; survival only what it can price).</summary>
-    public static bool Priced(ItemCatalogue items, Structure s, in Block b) => items.Blocks.TryGet(s.TypeOf(b).Id, out _);
+    public static bool Priced(ItemCatalogue items, Structure s, in Block b) => items.Blocks.TryGet(ItemBlockOf(s.TypeOf(b)), out _);
 
     /// <summary>The ammo the structure's guns fire, in a stable order: what its constructors restock.</summary>
     public static List<string> AmmoInUse(ItemCatalogue items, Structure s) =>
         s.Blocks().Select(x => items.Blocks.AmmoFor(s.TypeOf(x.block).Id)).Where(a => a != null)
             .Distinct().OrderBy(a => a, StringComparer.Ordinal).ToList();
 
-    /// <summary>The structure's shared storage capacity: every container's, capped per grid.</summary>
+    /// <summary>The structure's shared storage capacity: every container's, capped.</summary>
     public static double StorageCapacity(Structure s) => StructureStats.Compute(s).StorageCapacity;
 
     /// <summary>Production machines on a structure, with where they sit.</summary>

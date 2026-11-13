@@ -96,6 +96,7 @@ public sealed class PhysicsWorld
             Label = spec.Label,
             Mass = spec.Mass,
             DragArea = spec.DragArea,
+            DragBox = spec.DragBox,
             Class = spec.Class,
             CenterOfMass = spec.CenterOfMass,
             Position = spec.Position,

@@ -64,6 +64,9 @@ public sealed class BodySpec
     /// <summary>Drag coefficient × frontal area, m². Wind pushes with ½ρ·CdA·|v|·v.</summary>
     public float DragArea;
 
+    /// <summary>A loose body's shape as a box in its own frame, m (see <see cref="Body.WindArea"/>); zero: <see cref="DragArea"/> as given.</summary>
+    public Vector3 DragBox;
+
     /// <summary>Vessels: hover, small or capital. Capital ships carry the vessels parked on them.</summary>
     public StructureClass Class;
 
@@ -136,6 +139,26 @@ public sealed class Body
 
     /// <summary>CdA, m².</summary>
     public float DragArea { get; set; }
+
+    /// <summary>A loose body's shape as a box in its own frame, m; zero for bodies whose <see cref="DragArea"/> is fixed.</summary>
+    public Vector3 DragBox { get; set; }
+
+    /// <summary>
+    /// CdA a level wind meets, m². With a <see cref="DragBox"/>, the side the box shows as it lies now: a lamp blown off a
+    /// wall lying flat shows its edge, not its face (its mass is a fraction of a kilogram, so the difference is whether a
+    /// breeze carries it off). Otherwise <see cref="DragArea"/>.
+    /// </summary>
+    public float WindArea()
+    {
+        if (DragBox == Vector3.Zero) return DragArea;
+        Matrix4x4 r = Matrix4x4.CreateFromQuaternion(Rotation);
+        Vector3 Axis(Vector3 local) => Vector3.Abs(Vector3.Transform(local, r));
+        Vector3 extent = Axis(Vector3.UnitX * DragBox.X) + Axis(Vector3.UnitY * DragBox.Y) + Axis(Vector3.UnitZ * DragBox.Z);
+        return extent.Y * (extent.X + extent.Z) * 0.5f * DragCoefficient;
+    }
+
+    /// <summary>The drag coefficient a structure's area is taken at (a blunt box).</summary>
+    public const float DragCoefficient = 0.8f;
 
     public StructureClass Class { get; set; }
 

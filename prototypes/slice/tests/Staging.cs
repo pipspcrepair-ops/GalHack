@@ -103,6 +103,7 @@ public sealed partial class Staging
             "plantshadows" => PlantShadows(),
             "plantshadows-ab" => PlantShadowsAb(),
             "crouch" => CrouchView(),
+            "seated" => SeatedView(),
             "castaway" => CastawayView(),
             "folk" => FolkView(),
             "crowd" => CrowdView(),

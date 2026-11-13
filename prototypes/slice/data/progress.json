@@ -3,11 +3,10 @@
 //
 //   levels         experience needed to reach each level, from level 2 up to the cap (level 1 is
 //                  where everyone starts, with 0). Tuned so an experienced player playing the
-//                  loop (gather, craft the foothold base, build it) reaches level 5, the small
+//                  loop (gather, craft the foothold base, build it) reaches level 5, the first
 //                  vessel's gate, in about 30 to 40 minutes, when its base can make the vessel's parts
 //   points         unlock points granted on reaching each level, from level 2 up
-//   startPoints    unlock points a new character starts with: enough for the Small Core and the hover
-//                  plate at level 1, with one to spare
+//   startPoints    unlock points a new character starts with
 //   pastCap        past the cap, one more point for every this much experience
 //   xp             what each thing done is worth
 {
@@ -24,9 +23,7 @@
     "plant": 2,
     // Crafting: per finished run, a point per this many recipe seconds (at least one).
     "craftSecondsPerXp": 3,
-    // Building: per block placed (large blocks take more work than small ones).
-    "blockLarge": 3,
-    "blockSmall": 1,
+    // Building: per block placed, each block's own (shared/Items blocks.json "xp").
     // Exploring: the first time you come within 30 m of a deposit; the first of a species you meet.
     "deposit": 15,
     "species": 10,

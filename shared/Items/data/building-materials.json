@@ -1,15 +1,17 @@
-// Armour that building's catalogue doesn't have yet, appended to its materials the same way
-// building-parts.json is appended to its components. Precursor alloy is the design's prize
-// armour: it can't be crafted, only salvaged from alien ruins and derelicts, so its bill
-// (blocks.json) is marked uniqueOnly.
+// Plating that building's catalogue doesn't have yet, appended to its materials the same way
+// building-parts.json is appended to its components. Precursor plating is the design's prize
+// armour: its plates can't be crafted from ore, only from alloy salvaged from alien ruins and
+// derelicts, so its bill (blocks.json) is marked uniqueOnly. Per 1 m cube: Empyrion's alien cube
+// scaled as the other platings are (hp x 0.316, mass x 0.089).
 {
   "schema": "galhack.materials",
   "version": 1,
   "materials": [
     {
-      "id": "precursor", "name": "Precursor alloy",
-      "hp": 2750, "armor": 60, "resist": { "kinetic": 0.4, "explosive": 0.4, "energy": 0.4 },
-      "mass": 5.0, "color": "8a7350", "metal": 3, "damageLook": "alien"
+      "id": "precursor-plated", "name": "Precursor plated", "was": ["precursor"],
+      "hp": 869, "armor": 60, "resist": { "kinetic": 0.4, "explosive": 0.4, "energy": 0.4 },
+      "mass": 0.445, "color": "8a7350", "metal": 3, "damageLook": "alien",
+      "base": "base-block", "plate": "precursor-plate", "plates": 4
     }
   ]
 }

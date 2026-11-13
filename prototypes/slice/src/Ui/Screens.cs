@@ -49,7 +49,7 @@ public partial class CockpitConsole : Node3D
     {
         Screen = new WorldScreen { Name = "Screen", Pixels = new Vector2I(960, 600), SizeMeters = new Vector2(0.48f, 0.30f), Pickable = false, MovesCamera = false, Bezel = 0.02f };
         AddChild(Screen);
-        _page = new ConsolePage();
+        _page = new ConsolePage { Game = Game };
         Screen.SetContent(_page);
         Visible = false;
     }
@@ -77,6 +77,7 @@ public partial class CockpitConsole : Node3D
     public sealed partial class ConsolePage : SlicePage
     {
         public Vessel Vessel;
+        public Game.Game Game;
 
         protected override string Signature()
         {
@@ -125,11 +126,11 @@ public partial class CockpitConsole : Node3D
             this.Block(new Rect2(0, y, w, 4), C.Rule);
             y += 18;
             VesselController c = Vessel.Controller;
-            // Over the cap you are in space, and "up" is away from the globe.
-            var space = Vessel.Zone as Slice.Orbit.OrbitZone;
-            string state = c == null ? "" : space != null ? "IN SPACE" : c.Frozen ? "LANDED" : c.Gear?.Deployed == true ? "GEAR DOWN" : "FLYING";
-            float altitude = space != null ? space.SurfaceHeight(space.ToGlobe(Vessel.Body.Position).Length()) : Vessel.Body.Position.Y;
-            this.Text(UiTheme.Mono, 28, new Vector2(30, y), $"{Vessel.Body.Velocity.Length():F0} m/s   ALT {altitude:F0} m   {state}{(Vessel.Flight.State.Cruise ? "  CRUISE" : "")}", C.Text);
+            // Over the cap you are in space: the HUD's own flight line there.
+            string state = c == null ? "" : c.Frozen ? "LANDED" : c.Gear?.Deployed == true ? "GEAR DOWN" : "FLYING";
+            string line = Vessel.Zone is Slice.Orbit.OrbitZone ? Game.Spaceflight.FlightLine(Vessel)
+                : $"{Vessel.Body.Velocity.Length():F0} m/s   ALT {Vessel.Body.Position.Y:F0} m   {state}{(Vessel.Flight.State.Cruise ? "  CRUISE" : "")}";
+            this.Text(UiTheme.Mono, 28, new Vector2(30, y), line, C.Text);
             string message = c?.ConsoleMessageAge < 4f ? c.ConsoleMessage : st.LiftWarning;
             if (!string.IsNullOrEmpty(message)) this.Text(UiTheme.Label, UiTheme.SizeSmall, new Vector2(30, y + 44), message, C.Warn);
         }

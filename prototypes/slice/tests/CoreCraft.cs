@@ -53,7 +53,7 @@ public static class CoreCraft
     /// </summary>
     public static Structure Ship(Catalogue blocks, bool thrusters, Func<Structure, bool> enough)
     {
-        var s = new Structure(blocks, blocks.Grid(GridSize.Large)) { Name = "Test ship", Mode = CoreMode.Base, GravityOn = true };
+        var s = new Structure(blocks) { Name = "Test ship", Mode = CoreMode.Base, GravityOn = true };
         Building.Place(s, Int3.Zero, Building.Make(s, blocks.CoreType));
         for (int x = -2; x <= 2; x++)
             for (int z = -2; z <= 2; z++)
@@ -82,5 +82,5 @@ public static class CoreCraft
     public static Dictionary<Int3, Block> Blocks(Structure s) => s.Blocks().ToDictionary(b => b.pos, b => b.block);
 
     public static bool SameBlocks(Structure s, Dictionary<Int3, Block> before) =>
-        s.Count == before.Count && before.All(kv => s.TryGet(kv.Key, out Block b) && b.SameAs(kv.Value));
+        s.BlockCount == before.Count && before.All(kv => s.TryGet(kv.Key, out Block b) && b.SameAs(kv.Value));
 }
