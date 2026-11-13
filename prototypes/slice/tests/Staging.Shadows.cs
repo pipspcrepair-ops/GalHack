@@ -185,13 +185,36 @@ public sealed partial class Staging
         yield return 0;
         Vector3 sun = sky.Sun.GlobalBasis.Z.Normalized();
         Vector3 across = new Vector3(-sun.Z, 0f, sun.X).Normalized();
+        // A site of dry, level, lit ground with land all the way along the view (so no camera in the sea, no dune's shade on it).
+        float Gh(Vector3 p, float k) => planet.GroundHeight(Mathx.WrapX(p.X + across.X * k, planet.Width), Mathx.Wrap(p.Z + across.Z * k, planet.Height));
+        Vector3? site = Best(_game.Survivor.WorldFeet, (x, z) =>
+        {
+            var p = new Vector3((float)x, 0f, (float)z);
+            float h = Gh(p, 0f);
+            // (And lit: no ridge toward the sun within 3 km rises above a sun a degree lower than asked.)
+            Vector3 toSun = new Vector3(sun.X, 0f, sun.Z).Normalized();
+            float rise = MathF.Tan(Mathf.DegToRad((float)Num("elev", 7) - 1f));
+            for (float k = 60f; k <= 3000f; k += 60f)
+                if (planet.GroundHeight(Mathx.WrapX(p.X + toSun.X * k, planet.Width), Mathx.Wrap(p.Z + toSun.Z * k, planet.Height)) - h > k * rise) return 0f;
+            return new[] { -25f, -12f, 12f, 25f }.All(k => MathF.Abs(Gh(p, k) - h) < 0.8f) && new[] { 30f, 80f, 150f, 300f }.All(k => Gh(p, k) > 3f && MathF.Abs(Gh(p, k) - h) < 25f) ? 1f : 0f;
+        });
+        if (site is Vector3 level) foreach (int x in Arrive(level)) yield return x;
+        foreach (int x in SunAt((float)Num("elev", 7))) yield return x;
+        for (int i = 0; i < 60 * 40 && !(s.FarComplete && s.FarBehind == 0); i++) yield return 0;
+        sky.TimeOfDay = _sunTime;
+        yield return 0;
+        yield return 0;
         Vector3 feet = _game.Survivor.WorldFeet;
         Vector3 at = Feet(feet + across * 6f);
-        _game.Settings.Fov = 30f;
+        _game.Settings.Fov = _args.ContainsKey("acne") ? 70f : 30f;
         _game.Settings.Changed();
         var drawn = new List<(string Name, Mesh Mesh, float Size)>();
-        foreach (Plant p in planet.Flora.Book.Plants.Where(p => p.Large).Take(3)) drawn.Add(($"{p.Family}-{p.Form}", s.PlantMesh(p.Index, 0), p.Height));
+        // The thinnest and the broadest large plant of the world (crown over height), and a rock.
+        var large = planet.Flora.Book.Plants.Where(p => p.Large).OrderBy(p => p.CrownRadius / p.Height).ToList();
+        if (large.Count > 0) drawn.Add(("thin", s.PlantMesh(large[0].Index, 0), large[0].Height));
+        if (large.Count > 1) drawn.Add(("broad", s.PlantMesh(large[^1].Index, 0), large[^1].Height));
         if (s.KindMesh(Flora.Rock) is Mesh rock) drawn.Add(("rock", rock, 1.5f));
+        if (!_args.ContainsKey("acne")) GD.Print($"PLANTSHADOW-AB thin: {large.FirstOrDefault()?.Family} {large.FirstOrDefault()?.Form} {large.FirstOrDefault()?.Height:F1} m; broad: {large.LastOrDefault()?.Family} {large.LastOrDefault()?.Form} {large.LastOrDefault()?.Height:F1} m");
         if (_args.ContainsKey("bias")) sky.Sun.ShadowBias = (float)Num("bias", 0.1);
         if (_args.ContainsKey("nbias")) sky.Sun.ShadowNormalBias = (float)Num("nbias", 2);
         if (_args.ContainsKey("blur")) sky.Sun.ShadowBlur = (float)Num("blur", 1);
@@ -221,6 +244,20 @@ public sealed partial class Staging
             _game.AddChild(m);
             return m;
         }
+        if (_args.ContainsKey("acne"))
+        {
+            // One wide frame along the dune slopes, near to far, every cascade in view.
+            Vector3 eyeAt = Feet(feet) + Vector3.Up * 4f;
+            for (int i = 0; i < 90; i++)
+            {
+                sky.TimeOfDay = _sunTime;
+                _game.FixedCamera = new Transform3D(Basis.LookingAt(across + Vector3.Down * 0.08f, Vector3.Up), eyeAt);
+                yield return 0;
+            }
+            FloraShot("acne");
+            _game.FixedCamera = null;
+            yield break;
+        }
         bool measured = false;
         foreach (var (name, mesh, size) in drawn)
         foreach (float d in _args.GetValueOrDefault("dist", "30,80,112,150,250,300").Split(',').Select(float.Parse))
@@ -228,7 +265,7 @@ public sealed partial class Staging
             int layer = d < DetailReach.Near * 0.95f ? 0 : d < DetailReach.Far * 0.95f ? 1 : 3;
             Vector3 eye = Feet(at + across * d), look = at + Vector3.Up * size * 0.5f;
             if (eye.Y < 3f) { GD.Print($"PLANTSHADOW-AB {name} at {d} m: the camera would stand in the sea, skipped"); continue; }
-            eye.Y = MathF.Max(eye.Y, at.Y) + 5f + d * 0.05f; // over the land between
+            eye.Y = MathF.Max(eye.Y, at.Y) + 2.5f + d * 0.02f; // over the land between
             var frames = new List<Image>();
             foreach (int l in new[] { 2, layer })
             {
