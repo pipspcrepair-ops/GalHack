@@ -441,15 +441,16 @@ public sealed class PhysicsWorld
     /// <summary>
     /// Terrain or a structure changed in this region, or a zone was loaded into it: wake
     /// everything nearby (a landed ship whose ground was dug out must fall, not hover), and
-    /// check it for being stuck now rather than next tick.
+    /// check it for being stuck now rather than next tick. <paramref name="footingGone"/>: something
+    /// a craft may have stood on is gone (a tree broken), and a craft that did comes down again.
     /// </summary>
-    public void NotifyChanged(Region region)
+    public void NotifyChanged(Region region, bool footingGone = false)
     {
         Region near = region.Grow(2f);
         foreach (Body b in _bodies)
         {
             if (b.Frame != null || !near.Contains(b.Position) && !near.Contains(b.CenterOfMassPosition)) continue;
-            if (b.Controller is VesselController v && (v.Frozen || v.Settling)) v.Wake(b, footingGone: true);
+            if (b.Controller is VesselController v && (v.Frozen || v.Settling)) v.Wake(b, footingGone);
             else b.Asleep = false;
             Stuck.Check(b);
         }

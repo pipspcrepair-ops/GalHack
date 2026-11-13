@@ -219,6 +219,13 @@ public partial class BlueprintTest : Node
         // breaks under a craft its trunk can't take, and holds or turns aside a light one (vessels collide with flora).
         GD.Print($"    ({name}: {CrownsOver(v)} crown(s) over it above PLACE's head room)");
         foreach (int x in _drive.Wait(30)) yield return x;
+        // Set down on trees PLACE then fells, or with its feet hanging clear of the ground, a craft comes down onto what is
+        // under it first: the sleeper boards it at rest.
+        for (int t = 0, still = 0; t < 300 && still < 10; t++)
+        {
+            still = v.Body.Velocity.Length() < 0.1f ? still + 1 : 0;
+            yield return 0;
+        }
 
         // Seated: drawn, the camera at the chair's eye.
         _game.ThirdPerson = false;

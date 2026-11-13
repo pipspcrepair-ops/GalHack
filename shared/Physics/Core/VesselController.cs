@@ -84,6 +84,9 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
     /// </summary>
     public const float GyroLevel = 1.2f, PlateLevel = 4f;
 
+    /// <summary>The most a craft knocked off its landing falls to ground it sees under its keel, m: a tall tree's crown.</summary>
+    public const float DropReach = 60f;
+
     public IFlightRules Flight { get; }
     public HoverController Hover { get; }
     public LandingGear Gear { get; }
@@ -266,8 +269,10 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
         // that can't (no power, too heavy) has its engines flat out already, and sinks or floats by
         // its density.
         // Knocked off its footing with nobody asking for thrust: no lift, and no assist braking its fall, till it stands again.
+        // Only onto ground it can see under it: none there (its collision not streamed, or being rebuilt) holds it as it is.
         if (Flight.Seated && Flight.AnyThrust) _footingGone = false;
-        bool dropping = _footingGone && Hover == null && Gear is not { Attached: true } && !body.OnFloor;
+        bool dropping = _footingGone && Hover == null && Gear is not { Attached: true } && !body.OnFloor
+                        && GroundDistance < body.Shape.FeetBelowOrigin + DropReach;
         if (dropping) v.Y = v0.Y;
         Vector3 gravity = world.GravityAt(body);
         bool holding = !dropping && (Stats.CanLiftOff || Zone.Gravity <= 0f);

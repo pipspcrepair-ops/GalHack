@@ -61,7 +61,7 @@ public partial class SurfaceZone : IFloraField
         if (_goneIds.Count == 0) return;
         foreach (Vector3 at in _goneAt) Read(ChunkAt(Planet.Canonical(at))); // known through the rebuild the felling starts
         Streamer.Fell(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_goneIds));
-        foreach (Vector3 at in _goneAt) Physics.NotifyChanged(Region.Around(at.ToNumerics(), TreeReach));
+        foreach (Vector3 at in _goneAt) Physics.NotifyChanged(Region.Around(at.ToNumerics(), TreeReach), footingGone: true);
         _goneIds.Clear();
         _goneAt.Clear();
     }
