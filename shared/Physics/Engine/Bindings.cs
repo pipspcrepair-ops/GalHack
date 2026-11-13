@@ -112,7 +112,7 @@ public sealed class HullBinding : BodyBinding
                 Body other = host.BodyOf(collider);
                 Surface surface = other != null ? Surface.Body : collider != null ? GodotQuery.SurfaceOf(collider) : GodotQuery.SurfaceOf(hit.GetColliderRid());
                 _contacts.Add(new Contact(hit.GetPosition().ToNumerics(), n.ToNumerics(), other, surface,
-                    GodotQuery.PartOf(surface, hit.GetColliderRid(), hit.GetColliderShapeIndex())));
+                    collider == null ? GodotQuery.PartOf(surface, hit.GetColliderRid(), hit.GetColliderShapeIndex()) : null));
             }
             if (velocity.Dot(n) < 0f) velocity = velocity.Slide(n);
             motion = hit.GetRemainder().Slide(n);

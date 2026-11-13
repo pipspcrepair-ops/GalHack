@@ -16,9 +16,10 @@ public readonly record struct GearLeg(Vector3 Hip, float Length);
 /// under it, so on uneven ground or a host's deck every foot stands on its own ground. A foot on a
 /// surface attaches the craft there: to the ground, or to another structure (it is then parked on
 /// it). It carries no load and nothing counts legs or mass: what holds a craft up is its hull's
-/// collision and, once attached and landed, its being landed. A foot never stands on a tree too
-/// thin for the craft's weight (<see cref="PhysicsWorld.Footing"/>): the hull breaks that tree. Gear is a weak point: a pad shot off or
-/// broken on a hard landing is simply gone from the structure, and its attachment with it.
+/// collision and, once attached and landed, its being landed. A foot never stands on a tree too thin
+/// for the craft's weight (<see cref="PhysicsWorld.Footing"/>): the hull breaks that tree. Gear is a
+/// weak point: a pad shot off or broken on a hard landing is simply gone from the structure, and its
+/// attachment with it.
 /// </summary>
 public sealed class LandingGear
 {

@@ -38,10 +38,16 @@ public sealed class GodotQuery : IWorldQuery
         }
         GodotObject collider = result["collider"].AsGodotObject();
         Body body = _host.BodyOf(collider);
-        Rid rid = result["rid"].AsRid();
-        Surface surface = body != null ? Surface.Body : collider != null ? SurfaceOf(collider) : SurfaceOf(rid);
-        hit = new RayHit(result["position"].AsVector3().ToNumerics(), result["normal"].AsVector3().ToNumerics(),
-            body, surface, PartOf(surface, rid, result["shape"].AsInt32()));
+        Surface surface = body != null ? Surface.Body : SurfaceOf(collider);
+        object part = null;
+        if (collider == null)
+        {
+            // A body made on the physics server alone (the flora's): only then are its body and shape read (rays are many).
+            Rid rid = result["rid"].AsRid();
+            surface = SurfaceOf(rid);
+            part = PartOf(surface, rid, result["shape"].AsInt32());
+        }
+        hit = new RayHit(result["position"].AsVector3().ToNumerics(), result["normal"].AsVector3().ToNumerics(), body, surface, part);
         return true;
     }
 
@@ -64,10 +70,8 @@ public sealed class GodotQuery : IWorldQuery
     public void Forget(Body body) => _excludes.Remove(body);
 
     /// <summary>What an unregistered collider is, by its layer.</summary>
-    public static Surface SurfaceOf(GodotObject collider)
-    {
-        return collider is CollisionObject3D o ? SurfaceOfLayer(o.CollisionLayer) : Surface.Static;
-    }
+    public static Surface SurfaceOf(GodotObject collider) =>
+        collider is CollisionObject3D o ? SurfaceOfLayer(o.CollisionLayer) : Surface.Static;
 
     static Surface SurfaceOfLayer(uint layer) =>
         (layer & Layers.World) != 0 ? Surface.Ground : (layer & Layers.Water) != 0 ? Surface.Water : (layer & Layers.Flora) != 0 ? Surface.Flora : Surface.Static;

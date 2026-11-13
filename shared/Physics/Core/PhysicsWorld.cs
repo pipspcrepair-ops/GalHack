@@ -584,6 +584,7 @@ public sealed class PhysicsWorld
         hit = default;
         return false;
     }
+
     /// <summary>The weight a body puts on what holds it up, N: its own and everything parked on it.</summary>
     public float WeightOf(Body body) => (body.Mass + body.Carried) * GravityAt(body).Length();
 

@@ -281,7 +281,7 @@ public partial class BlueprintTest : Node
         Check(fast > 5f && t < 60 * (fast / 6f + 3f), $"{name}: flies forward to {fast:F0} m/s in 1 s and stops within {t / 60f:F1} s of letting go");
 
         // Back over the ground it rose from (cleared when it was set down: elsewhere it may meet trees), then down:
-        // Ctrl to sink, slower near the ground, hands off once it stands on its gear.
+        // Ctrl to sink, slower near the ground, hands off once it stops sinking.
         var pilot = new Pilot(_game, _drive);
         for (t = 0; t < 60 * 60; t++)
         {
@@ -300,8 +300,9 @@ public partial class BlueprintTest : Node
             heights.Enqueue(agl);
             float wanted = agl > 25f ? -6f : agl > 6f ? -2.5f : -1f;
             float vy = heights.Count > 30 ? (agl - heights.Dequeue()) * 2f : wanted;
-            bool down = heights.Count >= 30 && agl < 0.6f && MathF.Abs(vy) < 0.2f;
-            if (down && !v.Structure.Blocks().Any(b => v.Structure.TypeOf(b.block).Function == "gear")) { keel = true; break; }
+            // Down on whatever it came to (the ground, or a tree that takes it): hands off, and it lands there.
+            bool down = heights.Count >= 30 && MathF.Abs(vy) < 0.2f;
+            if (down && agl < 0.6f && !v.Structure.Blocks().Any(b => v.Structure.TypeOf(b.block).Function == "gear")) { keel = true; break; }
             float now = v.Body.Velocity.Y; // steer on the hull's own velocity, judge touchdown on the height
             c.Hold(Key.Ctrl, !down && now > wanted + 0.5f);
             c.Hold(Key.Space, !down && now < 2f * wanted - 1f);
