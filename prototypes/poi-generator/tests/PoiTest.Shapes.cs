@@ -87,7 +87,9 @@ public partial class PoiTest
                 string kind = ShapeKind(inst);
                 var t = tally.TryGetValue(kind, out var x) ? x : tally[kind] = new long[names.Length];
                 t[0]++;
+                long faults = t.Skip(3).Sum();
                 AuditShapes(plain.Blocks, inst.Blocks, inst.Layout.Occupied, t, inst);
+                if (t.Skip(3).Sum() > faults) GD.Print($"      coherent: {f.Id} ({tech}) has {t.Skip(3).Sum() - faults} faults");
             }
         GD.Print($"      coherent: {rerolled} places left out, rolled again after the shaping (not the plain one's twin)");
         foreach (var (kind, t) in tally)

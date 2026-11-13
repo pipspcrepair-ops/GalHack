@@ -237,7 +237,7 @@ public sealed partial class PlanetWorld
         var watch = Stopwatch.StartNew();
         // From here until the game says its sleeper stands, a place built because something read it unasked is counted (PoiSite.Loading).
         PoiSite.Loading = true;
-        PoiSite.UnaskedLoadBuilds = 0;
+        PoiSite.UnaskedLoadBuilds = PoiSite.LoadLayouts = 0;
         PoiGenerator.Gen.WorldForce force = PoiGenerator.Gen.WorldForce.Current;
         WorldProfile profile = force.Apply(ProfileFor(spec, PoiSiting.StartWorld, force));
         // Its star first: where it lies in the galaxy is part of what the world rolls from.

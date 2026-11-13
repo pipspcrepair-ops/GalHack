@@ -52,6 +52,7 @@ public partial class PoiTest
                 sw.Restart();
                 Ornament.Apply(orn);
                 cost.Add(sw.Elapsed.TotalMilliseconds);
+                if (sw.Elapsed.TotalMilliseconds >= 30) GD.Print($"      ornament on {f.Id} ({tech}, {inst.Blocks.CountBlocks()} blocks): {sw.Elapsed.TotalMilliseconds:F1} ms");
                 added.Add(orn.Ornaments.Sum(p => p.Cells.Count));
                 string sig = Ornament.For(orn).Sig;
                 ulong who = Ornament.Builder(orn);

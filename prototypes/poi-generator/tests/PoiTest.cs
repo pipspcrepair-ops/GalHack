@@ -2062,7 +2062,7 @@ public partial class PoiTest : Node
     // riding lifts and climbing ladders. Proves the meshes, collision, doors, lifts and grid agree.
     readonly (string Family, int Variant, Rarity Rarity, PoiState State, bool Lifts, string Goal)[] _walks =
     {
-        ("airfield", 0, Rarity.Rare, PoiState.Abandoned, true, "deep"),
+        ("airfield", 0, Rarity.Rare, PoiState.Abandoned, true, "vault"),
         ("research_base", 0, Rarity.Uncommon, PoiState.Abandoned, true, "deep"),
         ("ominous_tower", 0, Rarity.Uncommon, PoiState.Ruined, false, "top+deep"),
         ("deep_bunker", 0, Rarity.Rare, PoiState.Infested, false, "deep"),
