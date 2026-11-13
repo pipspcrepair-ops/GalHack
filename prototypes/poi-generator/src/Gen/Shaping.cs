@@ -84,6 +84,21 @@ public static class Shaping
         }
         bool Outside(Int3 q) => Air(q) && !Rock(q) && !Room(q);
         bool Solid(Int3 q) => BlockInfo.IsFullCube(g.Get(q).Type) || Rock(q);
+        // An object's shape comes from the object alone (a building with its wings, one tank, one container): to a cell, another
+        // object's block, or its room's air, is open air outside, except what bears this object, which is ground. What keeps
+        // things safe (what is stood on, what the place set against a wall after) still reads the grid as it is; an object's
+        // own fixtures hang on itself, so another's never hold a cell.
+        var objects = layout.Objects;
+        int Of(Int3 q) => objects.Count == 0 ? 0 : objects.GetValueOrDefault(q);
+        var roomOf = new Dictionary<Int3, int>();
+        if (objects.Count > 0) foreach (PlacedModule m in layout.Modules) if (m.Object != 0) foreach (Int3 q in m.Cells) roomOf[q] = m.Object;
+        bool Away(Int3 c, Int3 q) { if (objects.Count == 0) return false; int a = Of(c), b = Of(q); return a != 0 && b != 0 && a != b && !Air(q) && !(Of(q + Int3.Up) == a && !Air(q + Int3.Up)); }
+        bool Theirs(Int3 c, Int3 q) => roomOf.Count > 0 && Of(c) != 0 && roomOf.TryGetValue(q, out int o) && o != Of(c);
+        bool Same(Int3 a, Int3 b) => Of(a) == Of(b);
+        bool Out(Int3 c, Int3 q) => Outside(q) || Away(c, q) || Theirs(c, q) && Room(q);
+        bool RoomTo(Int3 c, Int3 q) => Room(q) && !Theirs(c, q);
+        bool SolidTo(Int3 c, Int3 q) => Solid(q) && !Away(c, q);
+        bool Has(HashSet<Int3> set, Int3 c, Int3 q) => set.Contains(q) && Same(c, q);
         bool Wall(Int3 q) { Block b = g.Get(q); return BlockInfo.IsFullCube(b.Type) && !Opening(b); }
         static bool Plain(Block b) => b.Type == BlockType.Cube && b.Role is Role.Wall or Role.Floor or Role.Roof or Role.Decor
             && !BlockInfo.IsTransparent(b.Material) && !BlockInfo.IsEmissive(b.Material);
@@ -96,12 +111,14 @@ public static class Shaping
                 || n.Role is Role.Wall or Role.Floor or Role.Roof or Role.Decor or Role.Rock && n.Type is BlockType.Cube or BlockType.Ramp or BlockType.Corner or BlockType.InvCorner or BlockType.Lattice && !BlockInfo.IsEmissive(n.Material)
                 || n.Role == Role.Debris && n.Type is BlockType.Scatter or BlockType.Scorch or BlockType.Ash or BlockType.Puddle or BlockType.Plant or BlockType.Remains or BlockType.Rubble;
         }
-        bool Quiet(Int3 c) => Dirs.All.All(d => Calm(c + d.Vec()) && (!d.IsHorizontal() || !Air(c + d.Vec()) || Calm(c + d.Vec() + Int3.Up) && Calm(c + d.Vec() + Int3.Down)));
+        bool CalmTo(Int3 c, Int3 q) => Away(c, q) || Calm(q);
+        bool AirTo(Int3 c, Int3 q) => Away(c, q) || Air(q);
+        bool Quiet(Int3 c) => Dirs.All.All(d => CalmTo(c, c + d.Vec()) && (!d.IsHorizontal() || !AirTo(c, c + d.Vec()) || CalmTo(c, c + d.Vec() + Int3.Up) && CalmTo(c, c + d.Vec() + Int3.Down)));
         // (A panel or a thin wall may stand behind furniture on the floor: nothing hangs on it.)
         bool Stands(Int3 q) => Standing(g.Get(q).Type) && Solid(q + Int3.Down);
         // (Nor what is behind a set-back panel, whose back face stays whole.)
-        bool Behind(Int3 c, Dir? back = null) => Dirs.All.All(d => d == back || Calm(c + d.Vec()) || d.IsHorizontal() && Stands(c + d.Vec()))
-            && Dirs.Horizontal.All(d => d == back || !Air(c + d.Vec()) || (Calm(c + d.Vec() + Int3.Up) || Stands(c + d.Vec() + Int3.Up)) && (Calm(c + d.Vec() + Int3.Down) || Stands(c + d.Vec() + Int3.Down)));
+        bool Behind(Int3 c, Dir? back = null) => Dirs.All.All(d => d == back || CalmTo(c, c + d.Vec()) || d.IsHorizontal() && Stands(c + d.Vec()))
+            && Dirs.Horizontal.All(d => d == back || !AirTo(c, c + d.Vec()) || (CalmTo(c, c + d.Vec() + Int3.Up) || Stands(c + d.Vec() + Int3.Up)) && (CalmTo(c, c + d.Vec() + Int3.Down) || Stands(c + d.Vec() + Int3.Down)));
         static int M(int v, int m) => ((v % m) + m) % m;
 
         var lamps = inst.Lights.Select(l => l.Cell).Concat(inst.Growth.Select(s => s.Cell)).ToHashSet(); // (and where trees may root)
@@ -126,10 +143,12 @@ public static class Shaping
         // (A panel's top is whole at its back: only what is stood on over it rules it out.)
         bool Panel(Int3 c, Dir? back = null) => Plain(g.Get(c)) && Behind(c, back) && !walked.Contains(c + Int3.Up) && !roots.Contains(c + Int3.Up);
         // An outside face's cell that can be cut back: no room under it or beside it, and not open behind (a thin wall).
-        bool OutOk(Int3 c, Dir d) => !Room(c + Int3.Down) && !Outside(c - d.Vec()) && Dirs.Horizontal.All(h => h == d.Opposite() || !Room(c + h.Vec()));
-        bool Frame(Int3 c, Dir d, bool thin = false) => Framed(c, d, g.Get, q => Air(q) && !Rock(q), thin);
+        bool OutOk(Int3 c, Dir d) => !RoomTo(c, c + Int3.Down) && !Out(c, c - d.Vec()) && Dirs.Horizontal.All(h => h == d.Opposite() || !RoomTo(c, c + h.Vec()));
+        bool Frame(Int3 c, Dir d, bool thin = false) => Framed(c, d, q => Away(c, q) ? Block.Air : g.Get(q), q => Air(q) && !Rock(q) || Away(c, q), thin);
         // Into a room: its air, or furniture standing in it.
-        bool Inside(Int3 q) => Room(q) || occ[q] && Stands(q);
+        bool Ends(List<Int3> line, Dir d) => new[] { (line[0], d.RotateCw(3).Vec()), (line[^1], d.RotateCw(1).Vec()) }
+            .All(e => !Air(e.Item1 + e.Item2) || Rock(e.Item1 + e.Item2) || Out(e.Item1, e.Item1 + e.Item2 + d.Vec()));
+        bool Inside(Int3 c, Int3 q) => !Theirs(c, q) && (Room(q) || occ[q] && Stands(q));
 
         var shaped = new Dictionary<Int3, Block>();
         void Put(Int3 c, BlockType t, Dir f) => shaped[c] = g.Get(c) with { Type = t, Facing = f };
@@ -140,57 +159,64 @@ public static class Shaping
         var inner = Dirs.Horizontal.ToDictionary(d => d, _ => new HashSet<Int3>());
         var between = new[] { Dir.North, Dir.East }.ToDictionary(d => d, _ => new HashSet<Int3>());
         var ceilings = new HashSet<Int3>();
+        var tops = new List<Int3>();
         foreach (var (c, b) in g.Blocks())
         {
             if (!Wall(c)) continue;
-            bool roomUp = Room(c + Int3.Up), roomDown = Room(c + Int3.Down), outs = Dirs.Horizontal.Any(h => Outside(c + h.Vec()));
+            if (Outside(c + Int3.Up)) tops.Add(c);
+            bool roomUp = RoomTo(c, c + Int3.Up), roomDown = RoomTo(c, c + Int3.Down), outs = Dirs.Horizontal.Any(h => Out(c, c + h.Vec()));
             foreach (Dir d in Dirs.Horizontal)
-                if (Outside(c + d.Vec())) { if (c.Y >= 0 || space) outer[d].Add(c); }
-                else if (!outs && Inside(c + d.Vec()) && Solid(c - d.Vec()) && !roomUp && !roomDown) inner[d].Add(c);
+                if (Out(c, c + d.Vec())) { if (c.Y >= 0 || space) outer[d].Add(c); }
+                else if (!outs && Inside(c, c + d.Vec()) && SolidTo(c, c - d.Vec()) && !roomUp && !roomDown) inner[d].Add(c);
             foreach (Dir d in between.Keys)
-                if (!outs && !roomUp && !roomDown && b.Role == Role.Wall && Inside(c + d.Vec()) && Inside(c - d.Vec()) && !Frame(c, d, true)) between[d].Add(c);
-            if (roomDown && !outs && !Dirs.Horizontal.Any(h => Room(c + h.Vec()))) ceilings.Add(c);
+                if (!outs && !roomUp && !roomDown && b.Role == Role.Wall && Inside(c, c + d.Vec()) && Inside(c, c - d.Vec()) && !Frame(c, d, true)) between[d].Add(c);
+            if (roomDown && !outs && !Dirs.Horizontal.Any(h => RoomTo(c, c + h.Vec()))) ceilings.Add(c);
         }
 
         // Storey lines, per wall plane: a course a floor's slab meets along at least half the wall (high tech adds a line
         // every sixth course up a tall blank wall).
         static int Plane(Int3 c, Dir d) => d is Dir.North or Dir.South ? c.Z : c.X;
-        var courses = new Dictionary<(Dir, int, int), (int All, int Slab)>();
+        var courses = new Dictionary<(Dir, int, int, int), (int All, int Slab)>();
         foreach (var (d, set) in outer)
             foreach (Int3 c in set)
             {
-                var k = (d, Plane(c, d), c.Y);
+                var k = (d, Plane(c, d), c.Y, Of(c));
                 var (all, slab) = courses.GetValueOrDefault(k);
-                courses[k] = (all + 1, slab + (Solid(c - d.Vec()) && Room(c - d.Vec() + Int3.Up) ? 1 : 0));
+                courses[k] = (all + 1, slab + (SolidTo(c, c - d.Vec()) && RoomTo(c, c - d.Vec() + Int3.Up) ? 1 : 0));
             }
-        bool Slab(Dir d, int plane, int y) => courses.TryGetValue((d, plane, y), out var r) && r.Slab > 0 && r.Slab * 2 >= r.All;
-        bool Storey(Dir d, Int3 c) => Slab(d, Plane(c, d), c.Y)
-            || high && M(c.Y, 6) == 5 && !Enumerable.Range(c.Y - 2, 5).Any(y => Slab(d, Plane(c, d), y));
+        bool Slab(Dir d, Int3 c, int y) => courses.TryGetValue((d, Plane(c, d), y, Of(c)), out var r) && r.Slab > 0 && r.Slab * 2 >= r.All;
+        // (Counted from the object's own foot where it stands above the ground: a container stacked on another lines as it would alone.)
+        var feet = new Dictionary<int, int>();
+        foreach (var (q, o) in objects) feet[o] = System.Math.Min(feet.GetValueOrDefault(o, int.MaxValue), q.Y);
+        int Foot(Int3 c) => Of(c) == 0 ? 0 : System.Math.Max(0, feet[Of(c)]);
+        bool Storey(Dir d, Int3 c) => Slab(d, c, c.Y)
+            || high && M(c.Y - Foot(c), 6) == 5 && !Enumerable.Range(c.Y - 2, 5).Any(y => Slab(d, c, y));
 
         // Runs: each line of a face at one height takes one profile, along its whole length or not at all.
         var runs = new List<(Dir D, List<Int3> Cells, BlockType P, bool On)>();
         var fields = Dirs.Horizontal.ToDictionary(d => d, _ => new HashSet<Int3>());
         foreach (var (d, set) in outer)
-            foreach (List<Int3> line in Lines(set, d.RotateCw(1).Vec()))
+            foreach (List<Int3> line in Lines(set, d.RotateCw(1).Vec(), Same))
             {
-                void On(BlockType p) { if (line.All(c => Free(c) && OutOk(c, d))) runs.Add((d, line, p, true)); }
-                if (line.All(c => Outside(c + Int3.Up))) { if (line.All(c => !Outside(c + Int3.Down))) On(BlockType.Ramp); } // a coping
-                else if (line.All(c => set.Contains(c + Int3.Up) && Outside(c + Int3.Up * 2) && set.Contains(c + Int3.Down))) On(BlockType.Chamfer); // a cornice
+                // (A run's end shows its side: it may end against what it meets or open air in front, never a pocket the face doesn't see.)
+                void On(BlockType p) { if (line.All(c => Free(c) && OutOk(c, d)) && Ends(line, d)) runs.Add((d, line, p, true)); }
+                if (line.All(c => Out(c, c + Int3.Up))) { if (line.All(c => !Out(c, c + Int3.Down))) On(BlockType.Ramp); } // a coping
+                else if (line.All(c => Has(set, c, c + Int3.Up) && Out(c, c + Int3.Up * 2) && Has(set, c, c + Int3.Down))) On(BlockType.Chamfer); // a cornice
                 else if (Storey(d, line[0])) On(high ? BlockType.Chamfer : BlockType.Ramp); // a storey's band (low tech: a weathered string course)
                 else
                     foreach (Int3 c in line)
-                        if (!Outside(c + d.RotateCw(1).Vec()) && !Outside(c + d.RotateCw(3).Vec()) && OutOk(c, d) && !Frame(c, d)) fields[d].Add(c); // (quoins, piers and frames stand)
+                        if (!Out(c, c + d.RotateCw(1).Vec()) && !Out(c, c + d.RotateCw(3).Vec()) && OutOk(c, d) && !Frame(c, d)) fields[d].Add(c); // (quoins, piers and frames stand)
             }
         var panels = Dirs.Horizontal.ToDictionary(d => d, _ => new HashSet<Int3>());
         foreach (var (d, set) in inner)
-            foreach (List<Int3> line in Lines(set, d.RotateCw(1).Vec()))
+            foreach (List<Int3> line in Lines(set, d.RotateCw(1).Vec(), Same))
             {
-                bool Cove(Int3 c) => Solid(c + Int3.Up) && !Inside(c + d.Vec() + Int3.Up);
-                bool Kick(Int3 c) => high && Solid(c + Int3.Down) && !Inside(c + d.Vec() + Int3.Down);
+                bool Cove(Int3 c) => SolidTo(c, c + Int3.Up) && !Inside(c, c + d.Vec() + Int3.Up);
+                bool Kick(Int3 c) => high && Solid(c + Int3.Down) && !Inside(c, c + d.Vec() + Int3.Down);
                 if (line.All(Cove) || line.All(Kick)) { if (line.All(c => Panel(c))) runs.Add((d, line, line.All(Cove) ? BlockType.Ramp : BlockType.Chamfer, true)); }
                 else if (!line.Any(c => Cove(c) || Kick(c)))
                     foreach (Int3 c in line)
-                        if (!Inside(c + d.RotateCw(1).Vec()) && !Inside(c + d.RotateCw(3).Vec()) && !Frame(c, d)) panels[d].Add(c); // (a room's outer corners and frames stand)
+                        if (!Inside(c, c + d.RotateCw(1).Vec()) && !Inside(c, c + d.RotateCw(3).Vec()) && !Frame(c, d)) panels[d].Add(c); // (a room's outer corners and frames stand)
             }
 
         // (A run that is only another's corner cell is that one's, or nothing.)
@@ -211,7 +237,7 @@ public static class Shaping
             {
                 if (at.TryGetValue((e, s), out int k) && k > i && runs[k].P == p) turns.Add((e, i, k, false, CornerFacing(d.Opposite(), s.Opposite())));
                 Int3 j = e + s.Vec();
-                if (at.TryGetValue((j + d.Vec(), s.Opposite()), out k) && k > i && runs[k].P == p && !Dirs.Horizontal.Any(h => at.ContainsKey((j, h)))) turns.Add((j, i, k, true, CornerFacing(d.Opposite(), s)));
+                if (Same(j, e) && Same(j + d.Vec(), e) && at.TryGetValue((j + d.Vec(), s.Opposite()), out k) && k > i && runs[k].P == p && !Dirs.Horizontal.Any(h => at.ContainsKey((j, h)))) turns.Add((j, i, k, true, CornerFacing(d.Opposite(), s)));
             }
         }
         for (bool changed = true; changed;)
@@ -228,12 +254,13 @@ public static class Shaping
         foreach (var t in turns.Where(t => runs[t.A].On && runs[t.B].On))
             Put(t.C, t.In ? Turns(runs[t.A].P)!.Value.Inner : Turns(runs[t.A].P)!.Value.Outer, t.F);
 
+        var laid = new List<(Dir F, List<Int3> Cells)>(); // (each panel as laid, all its bays)
         // Panels: each storey of a facade set back whole between its storey lines, quoins and frames.
         // Each panel is cut in equal bays by piers, about every 9 m in masonry and every 3 m in timber (its posts).
         foreach (var (d, set) in fields)
-            foreach (List<Int3> part in Parts(set, d.RotateCw(1).Vec(), Int3.Up))
+            foreach (List<Int3> part in Parts(set, Same, d.RotateCw(1).Vec(), Int3.Up))
             {
-                List<Int3> panel = Level(part, d, q => Frame(q, d) || Outside(q + d.RotateCw(1).Vec()) || Outside(q + d.RotateCw(3).Vec()) || !OutOk(q, d));
+                List<Int3> panel = Level(part, d, q => Frame(q, d) || Out(q, q + d.RotateCw(1).Vec()) || Out(q, q + d.RotateCw(3).Vec()) || !OutOk(q, d) || !Same(q, part[0]));
                 if (panel.Count == 0 || !panel.All(c => Panel(c, d.Opposite()))) continue;
                 int U(Int3 c) => d is Dir.North or Dir.South ? c.X : c.Z;
                 int bay = panel.Count(c => g.Get(c).Material == Material.Timber) * 2 > panel.Count ? 3 : 9;
@@ -247,26 +274,39 @@ public static class Shaping
                 for (int k = 1; k < bays; k++)
                     foreach (int u in new[] { 0, 1, -1, 2, -2 }.Select(o => lo + wide * k / bays + o))
                         if (Whole(u) && !piers.Contains(u - 1) && !piers.Contains(u) && !piers.Contains(u + 1)) { piers.Add(u); break; }
-                foreach (Int3 c in panel) if (!piers.Contains(U(c))) Put(c, BlockType.Half, d.Opposite());
+                var bayCells = panel.Where(c => !piers.Contains(U(c))).ToList();
+                foreach (Int3 c in bayCells) Put(c, BlockType.Half, d.Opposite());
+                laid.Add((d.Opposite(), bayCells));
             }
         // A room's walls with more behind them are set back whole between the cove and the kick (or the floor), the
         // room's corners standing as piers and its doorways framed.
         foreach (var (d, set) in panels)
-            foreach (List<Int3> panel in Parts(set, d.RotateCw(1).Vec(), Int3.Up).Select(p => Level(p, d, q => Frame(q, d) || Inside(q + d.RotateCw(1).Vec()) || Inside(q + d.RotateCw(3).Vec()))))
-                if (panel.All(c => Panel(c, d.Opposite()))) foreach (Int3 c in panel) Put(c, BlockType.Half, d.Opposite());
+            foreach (List<Int3> panel in Parts(set, Same, d.RotateCw(1).Vec(), Int3.Up).Select(p => Level(p, d, q => Frame(q, d) || Inside(q, q + d.RotateCw(1).Vec()) || Inside(q, q + d.RotateCw(3).Vec()) || !Same(q, p[0]))))
+                if (panel.All(c => Panel(c, d.Opposite()))) { foreach (Int3 c in panel) Put(c, BlockType.Half, d.Opposite()); laid.Add((d.Opposite(), panel)); }
         // A wall between two rooms is thin, the whole wall, its doorways framed.
         foreach (var (d, set) in between)
-            foreach (List<Int3> wall in Parts(set, d.RotateCw(1).Vec(), Int3.Up).Select(p => Level(p, d, q => !set.Contains(q))))
+            foreach (List<Int3> wall in Parts(set, Same, d.RotateCw(1).Vec(), Int3.Up).Select(p => Level(p, d, q => !set.Contains(q) || !Same(q, p[0]))))
                 if (wall.All(c => Panel(c))) foreach (Int3 c in wall) Put(c, BlockType.Partition, d);
 
-        // (No panel steps: each set-back panel, as laid, is cut level at its lowest head under plain wall.)
+        // (No panel steps: each set-back panel, as laid, every bay of it and any panel it runs into, is cut level at its
+        // lowest head under plain wall.)
         foreach (Dir f in Dirs.Horizontal)
         {
             Dir open = f.Opposite();
             var set = shaped.Where(x => x.Value.Type == BlockType.Half && x.Value.Facing == f).Select(x => x.Key).ToHashSet();
-            bool Head(Int3 q) => !shaped.ContainsKey(q) && Wall(q) && !Frame(q, open) && Solid(q - open.Vec())
-                && Dirs.Horizontal.Where(h => h != open && h != f).All(h => !Air(q + h.Vec()) && !Stands(q + h.Vec()));
-            foreach (List<Int3> panel in Parts(set, open.RotateCw(1).Vec(), Int3.Up))
+            bool Head(Int3 q) => !shaped.ContainsKey(q) && Wall(q) && !Away(q + Int3.Down, q) && !Frame(q, open) && SolidTo(q, q - open.Vec())
+                && Dirs.Horizontal.Where(h => h != open && h != f).All(h => !Air(q + h.Vec()) && !Away(q, q + h.Vec()) && !Stands(q + h.Vec()));
+            var parts = Parts(set, Same, open.RotateCw(1).Vec(), Int3.Up).ToList();
+            var partOf = new Dictionary<Int3, int>();
+            for (int i = 0; i < parts.Count; i++) foreach (Int3 q in parts[i]) partOf[q] = i;
+            var root = Enumerable.Range(0, parts.Count).ToArray();
+            int Root(int i) => root[i] == i ? i : root[i] = Root(root[i]);
+            foreach (var (lf, cells) in laid.Where(l => l.F == f))
+            {
+                var ids = cells.Where(partOf.ContainsKey).Select(q => Root(partOf[q])).Distinct().ToList();
+                foreach (int i in ids.Skip(1)) root[Root(i)] = ids[0];
+            }
+            foreach (var panel in parts.SelectMany(p => p).GroupBy(q => Root(partOf[q])))
             {
                 var heads = panel.Where(q => !set.Contains(q + Int3.Up) && Head(q + Int3.Up)).ToList();
                 if (heads.Count == 0) continue;
@@ -281,14 +321,14 @@ public static class Shaping
         // many lamps as can hang from a joist (or a rib) do.
         var raised = new List<List<Int3>>(); // (beams, posts and timber sets, each never to cut a room off from the way in)
         bool Bay(Int3 c) => Free(c) && g.Get(c + Int3.Up).Role != Role.Wall;
-        foreach (List<Int3> region in Parts(ceilings, Dir.East.Vec(), Dir.South.Vec()))
+        foreach (List<Int3> region in Parts(ceilings, Same, Dir.East.Vec(), Dir.South.Vec()))
         {
             var cells = region.ToHashSet();
             int w = region.Max(c => c.X) - region.Min(c => c.X), l = region.Max(c => c.Z) - region.Min(c => c.Z);
             Dir along = high == (w >= l) ? Dir.East : Dir.South, across = along == Dir.East ? Dir.South : Dir.East;
             int At(Int3 c) => along == Dir.East ? c.Z : c.X;
             int from = region.Min(At);
-            var lines = Lines(cells, along.Vec()).ToList();
+            var lines = Lines(cells, along.Vec(), Same).ToList();
             List<(List<Int3> Line, BlockType T, Dir F)> Lay(int off)
             {
                 var laid = new List<(List<Int3>, BlockType, Dir)>();
@@ -387,7 +427,12 @@ public static class Shaping
 
 
         foreach (var (c, b) in shaped) g.Set(c, b);
+        inst.Survey = new Survey(walked, shaped.Where(x => BlockInfo.IsSlope(x.Value.Type)).Select(x => x.Key).ToList(), outer, tops);
     }
+
+    /// <summary>What the shaping found of a place, for the ornament after it: where anyone walked before it, the slopes it laid,
+    /// each outside face's wall cells by the way the face looks, and every top open to the sky.</summary>
+    public sealed record Survey(HashSet<Int3> Walked, List<Int3> Slopes, Dictionary<Dir, HashSet<Int3>> Outer, List<Int3> Tops);
 
     /// <summary>
     /// Whether <paramref name="c"/>, in a wall facing <paramref name="d"/>, frames something: beside a way through the
@@ -430,20 +475,21 @@ public static class Shaping
         return panel.Where(c => c.Y < top).ToList();
     }
 
-    /// <summary>A set's straight lines along a step, each whole from end to end.</summary>
-    public static IEnumerable<List<Int3>> Lines(HashSet<Int3> set, Int3 step)
+    /// <summary>A set's straight lines along a step, each whole from end to end (and, given <paramref name="join"/>, only between cells it joins).</summary>
+    public static IEnumerable<List<Int3>> Lines(HashSet<Int3> set, Int3 step, System.Func<Int3, Int3, bool>? join = null)
     {
+        bool In(Int3 from, Int3 q) => set.Contains(q) && (join == null || join(from, q));
         foreach (Int3 c in set)
         {
-            if (set.Contains(c - step)) continue;
-            var line = new List<Int3>();
-            for (Int3 q = c; set.Contains(q); q += step) line.Add(q);
+            if (In(c, c - step)) continue;
+            var line = new List<Int3> { c };
+            for (Int3 q = c + step; In(q - step, q); q += step) line.Add(q);
             yield return line;
         }
     }
 
-    /// <summary>A set's parts, joined along the given steps either way.</summary>
-    static IEnumerable<List<Int3>> Parts(HashSet<Int3> set, params Int3[] steps)
+    /// <summary>A set's parts, joined along the given steps either way, between cells <paramref name="join"/> joins.</summary>
+    static IEnumerable<List<Int3>> Parts(HashSet<Int3> set, System.Func<Int3, Int3, bool> join, params Int3[] steps)
     {
         var seen = new HashSet<Int3>();
         foreach (Int3 c in set)
@@ -453,7 +499,7 @@ public static class Shaping
             for (int i = 0; i < part.Count; i++)
                 foreach (Int3 s in steps)
                     foreach (Int3 n in new[] { part[i] + s, part[i] - s })
-                        if (set.Contains(n) && seen.Add(n)) part.Add(n);
+                        if (set.Contains(n) && join(part[i], n) && seen.Add(n)) part.Add(n);
             yield return part;
         }
     }

@@ -52,7 +52,7 @@ public partial class Game
     /// <summary>The sleeper in their cryopod, the kit in the locker, the bunker their respawn point.</summary>
     void WakeInBunker()
     {
-        if (_site is not Bunker.Site site) throw new InvalidOperationException($"no start site for a bunker on {World} ({Zone.Planet.Pois.Count} places on the planet: {string.Join(", ", System.Linq.Enumerable.Select(Zone.Planet.Pois, q => $"{q.Name} {q.Instance?.State} {new Vector2(q.Origin.X - Zone.LandingSite.X, q.Origin.Z - Zone.LandingSite.Z).Length():F0} m off, {q.Siting}"))})");
+        if (_site is not Bunker.Site site) throw new InvalidOperationException($"no start site for a bunker on {World} ({Zone.Planet.Pois.Count} places on the planet: {string.Join(", ", System.Linq.Enumerable.Select(Zone.Planet.Pois, q => $"{q.Name} {q.State} {new Vector2(q.Origin.X - Zone.LandingSite.X, q.Origin.Z - Zone.LandingSite.Z).Length():F0} m off, {q.Siting}"))})");
         Bunker = Bunker.Dig(Zone, site);
         Zone.Wildlife?.SetBunker(Bunker);
         foreach (var (id, n) in Zone.Data.Rules.Materials.StartKit) Bunker.MineLocker.Loot.Storage.Add(id, n);
@@ -96,6 +96,7 @@ public partial class Game
         if ((Zone.Infra.Hurry || !orbit) && _waiting.Elapsed.TotalSeconds < MostWait) return;
         Zone.Infra.Hurry = false;
         Spaceflight.ChartStartPlace(); // on the compass and the map with the bunker, from the first moment
+        PlanetSurface.Poi.PoiSite.Loading = false;   // the rest of the places are built from here on, nearest first (PoiBuilds)
         Phase = Phase.Playing;
         Woke?.Invoke();
     }

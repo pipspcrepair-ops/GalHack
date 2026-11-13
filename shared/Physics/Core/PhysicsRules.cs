@@ -152,7 +152,10 @@ public sealed class PhysicsRules
     public sealed class RidingData
     {
         /// <summary>An outer-hull rider out of contact this long lets go of the ship, s. A jump lets go at once.</summary>
-        public float LetGoAfter { get; set; } = 0.8f;
+        public float LetGoAfter { get; set; } = 0.4f;
+
+        /// <summary>Out of contact counts toward letting go only this far off the hull, m: dropping off a block beside a deck is no letting go.</summary>
+        public float LetGoNear { get; set; } = 0.5f;
 
         /// <summary>An outer-hull rider farther than this from any block lets go at once, m.</summary>
         public float LetGoDistance { get; set; } = 1.5f;

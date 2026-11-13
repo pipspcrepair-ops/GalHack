@@ -162,7 +162,7 @@ public partial class SurfaceTest
     /// A dungeon is a deep place: rooms below ground, enough of them to be a place you go into, and someone or
     /// something living there. Ordinary start worlds still roll them, and one lies within reach of the start.
     /// </summary>
-    static bool Dungeon(PoiSite p) => p.Instance != null && StartTown.Deep(p.Instance) && StartTown.Lived(p.Instance);
+    static bool Dungeon(PoiSite p) => StartTown.Deep(p.Layout) && StartTown.Lived(p.Instance);
 
     /// <summary>The distance from the start (the start town's edge, or the landing) to the nearest dungeon, metres.</summary>
     static double ToDungeon(PlanetWorld w, out int count)
@@ -194,7 +194,7 @@ public partial class SurfaceTest
                 if (d <= DungeonReach) reached++;
                 nearest.Add(d);
                 var deep = w.Pois.Where(Dungeon).Take(4).Select(p => $"{p.Family.Id} ({p.Instance.State}, {p.Instance.Occupancy?.Main.ToString() ?? "-"})");
-                double deepest = w.Pois.Where(p => p.Instance != null && StartTown.Deep(p.Instance))
+                double deepest = w.Pois.Where(p => StartTown.Deep(p.Layout))
                     .Select(p => Math.Sqrt(Math.Pow(Mathx.WrapDelta(p.Center.X - (w.StartTown?.EdgeX ?? w.Landing.X), w.Width), 2) + Math.Pow(Mathx.WrapDelta(p.Center.Z - (w.StartTown?.EdgeZ ?? w.Landing.Y), w.Height), 2))).DefaultIfEmpty(-1).Min();
                 GD.Print($"      {spec}: {count} dungeons of {w.Pois.Count} places, nearest {(d < double.MaxValue ? $"{d:F0} m" : "none")} from the start (deep place nearest {deepest:F0} m; " +
                          $"{(w.StartTown == null ? "no start town" : $"start town's dungeon {w.StartTown.Dungeon?.Family.Id ?? "none"}, landmark {w.StartTown.Landmark.Family.Id}")}); {string.Join(", ", deep)}");

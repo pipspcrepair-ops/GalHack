@@ -70,8 +70,8 @@ public sealed class StartTown
             // Not across a railway: its houses would have no room either side of the line.
             if (rails.Any(rt => Enumerable.Range(0, rt.Count).Any(i => Dist(rt.X[i], rt.Z[i], cx, cz) < reach * 1.5 + 40))) continue;
             // A deep place for choice: the first place a start walks to is one worth going down into.
-            PoiSite mark = pois.Where(p => p.Instance.State != PoiState.Active && !p.Family.Tags.Contains("settlement"))
-                .Select(p => (p, d: Dist(p.Center.X, p.Center.Z, cx, cz))).Where(t => t.d > 420 && t.d < 1150).OrderBy(t => Deep(t.p.Instance) ? 0 : 1).ThenBy(t => t.d).Select(t => t.p).FirstOrDefault();
+            PoiSite mark = pois.Where(p => p.State != PoiState.Active && !p.Family.Tags.Contains("settlement"))
+                .Select(p => (p, d: Dist(p.Center.X, p.Center.Z, cx, cz))).Where(t => t.d > 420 && t.d < 1150).OrderBy(t => Deep(t.p.Layout) ? 0 : 1).ThenBy(t => t.d).Select(t => t.p).FirstOrDefault();
             if (mark == null) continue;
             float lo = float.MaxValue, hi = float.MinValue;
             bool wet = false;
@@ -86,7 +86,7 @@ public sealed class StartTown
             if (wet) continue;
             double score = (hi - lo) + r * 0.004;
             // Rougher ground is worth it for a deep place in view: a start should have somewhere to go down into.
-            double rank = score + (Deep(mark.Instance) ? 0 : 25);
+            double rank = score + (Deep(mark.Layout) ? 0 : 25);
             if (rank < bestRank) { bestRank = rank; bestScore = score; bx = cx; bz = cz; bestMark = mark; (mainHalf, block, arm) = size; }
         }
         }
@@ -174,16 +174,20 @@ public sealed class StartTown
     public PoiSite Dungeon;
 
     /// <summary>A deep place: enough rooms to be somewhere you go into, two or more of them below ground, or five storeys or more of them (a tower is deep the other way).</summary>
-    public static bool Deep(PoiInstance inst) => Rooms(inst) >= 8 && (Below(inst) >= 2 || Levels(inst) >= 5);
+    public static bool Deep(Layout l) => Rooms(l) >= 8 && (Below(l) >= 2 || Levels(l) >= 5);
 
-    static int Rooms(PoiInstance inst) => inst.Layout.Modules.Count(m => m.Kind is not (ModuleKind.Outdoor or ModuleKind.Stair));
-    static int Below(PoiInstance inst) => inst.Layout.Modules.Count(m => m.Kind != ModuleKind.Outdoor && (m.Storey < 0 || m.Underground));
-    static int Levels(PoiInstance inst) => inst.Layout.Modules.Where(m => m.Kind != ModuleKind.Outdoor).Select(m => m.Storey).Distinct().Count();
+    static int Rooms(Layout l) => l.Modules.Count(m => m.Kind is not (ModuleKind.Outdoor or ModuleKind.Stair));
+    static int Below(Layout l) => l.Modules.Count(m => m.Kind != ModuleKind.Outdoor && (m.Storey < 0 || m.Underground));
+    static int Levels(Layout l) => l.Modules.Where(m => m.Kind != ModuleKind.Outdoor).Select(m => m.Storey).Distinct().Count();
 
     /// <summary>Someone or something lives there: the Bloom, a roster, the occupancy layer's people or beasts, or a faction at home.</summary>
     public static bool Lived(PoiInstance inst) =>
         inst.State == PoiState.Infested || inst.Enemies.Count > 0 || inst.Occupancy is { Main: not Occupant.Empty }
         || inst.State == PoiState.Active && inst.Family.Faction != Faction.None;
+
+    /// <summary>The same, read from what the world rolled for a place not yet built (its roster's own enemies aside).</summary>
+    static bool Lived(PoiSite p) =>
+        p.State == PoiState.Infested || p.Occupancy is { Main: not Occupant.Empty } || p.State == PoiState.Active && p.Family.Faction != Faction.None;
 
     /// <summary>
     /// The nearest deep place to the town that someone lives in; failing one within reach, the nearest deep place
@@ -193,15 +197,17 @@ public sealed class StartTown
     {
         double Dist(PoiSite p) => Math.Sqrt(Math.Pow(Mathx.WrapDelta(p.Center.X - x, w), 2) + Math.Pow(Mathx.WrapDelta(p.Center.Z - z, h), 2));
         // Below ground first, then up a tower; failing both, the biggest place in reach that you can go into.
-        var deep = pois.Where(p => p.Instance != null && Deep(p.Instance) && Dist(p) <= DungeonReach).OrderBy(p => Below(p.Instance) >= 2 ? 0 : 1).ThenBy(Dist).ToList();
-        if (deep.FirstOrDefault(p => Lived(p.Instance)) is { } lived) return lived;
-        PoiSite empty = deep.FirstOrDefault(p => OccupancyLayer.Applies(p.Family, p.Instance.State))
-            ?? pois.Where(p => p.Instance != null && Dist(p) <= DungeonReach && Rooms(p.Instance) >= 6 && OccupancyLayer.Applies(p.Family, p.Instance.State)).OrderByDescending(p => Rooms(p.Instance)).FirstOrDefault();
+        var deep = pois.Where(p => Deep(p.Layout) && Dist(p) <= DungeonReach).OrderBy(p => Below(p.Layout) >= 2 ? 0 : 1).ThenBy(Dist).ToList();
+        if (deep.FirstOrDefault(Lived) is { } lived) return lived;
+        PoiSite empty = deep.FirstOrDefault(p => OccupancyLayer.Applies(p.Family, p.State))
+            ?? pois.Where(p => Dist(p) <= DungeonReach && Rooms(p.Layout) >= 6 && OccupancyLayer.Applies(p.Family, p.State)).OrderByDescending(p => Rooms(p.Layout)).FirstOrDefault();
         if (empty == null) return null;
         var mix = (net.RegionPlan?.Roll.Occupancy ?? new Dictionary<string, float>()).Where(kv => kv.Key != "EMP" && kv.Value > 0f).ToDictionary(kv => kv.Key, kv => kv.Value);
         OccupancyRoll occ = OccupancyLayer.Roll(mix, empty.Family, seed);
         if (occ.Main == Occupant.Empty) occ = new OccupancyRoll(Occupant.Nesters);
-        OccupancyLayer.Apply(lib, empty.Instance, occ with { Tags = net.RegionPlan?.Roll.Tags ?? new List<string>() }, new PoiGenerator.Gen.Rng(seed));
+        var given = occ with { Tags = net.RegionPlan?.Roll.Tags ?? new List<string>() };
+        empty.Occupancy = given;
+        empty.Fit.Add(inst => OccupancyLayer.Apply(lib, inst, given, new PoiGenerator.Gen.Rng(seed)));
         return empty;
     }
 

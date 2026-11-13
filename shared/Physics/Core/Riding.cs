@@ -59,7 +59,8 @@ public static class Riding
 
     /// <summary>
     /// Whether an outer-hull rider lets go of its ship this tick. A jump lets go at once; otherwise
-    /// only after it has been out of contact for <see cref="PhysicsRules.RidingData.LetGoAfter"/>
+    /// only after it has been out of contact for <see cref="PhysicsRules.RidingData.LetGoAfter"/> while more than
+    /// <see cref="PhysicsRules.RidingData.LetGoNear"/> off the hull,
     /// or has drifted more than <see cref="PhysicsRules.RidingData.LetGoDistance"/> from the hull,
     /// so walking over a bump or an edge never drops anyone. Inside the interior nothing lets go.
     /// </summary>
@@ -73,7 +74,7 @@ public static class Riding
         }
         if (jumped) return true;
         rider.LostContactFor = touching ? 0f : rider.LostContactFor + dt;
-        return rider.LostContactFor > rules.LetGoAfter || distanceFromHull > rules.LetGoDistance;
+        return rider.LostContactFor > rules.LetGoAfter && distanceFromHull > rules.LetGoNear || distanceFromHull > rules.LetGoDistance;
     }
 
     /// <summary>

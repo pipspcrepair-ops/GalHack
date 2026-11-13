@@ -46,7 +46,7 @@ public partial class Hulks : Node
         Vector3 at = Focus();
         foreach (PoiSite site in Zone.Planet.Pois)
         {
-            if (site.Instance == null || Down.ContainsKey(site) || CapitalHull.Of(site.Instance.Layout) == null) continue;
+            if (site.Layout == null || Down.ContainsKey(site) || CapitalHull.Of(site.Layout) == null) continue;
             Vector3 o = Zone.Planet.NearestCopy(new Vector3(site.Origin.X, site.Origin.Y, site.Origin.Z), at);
             if (new Vector2(o.X - at.X, o.Z - at.Z).Length() > Reach) continue;
             SetDown(site);
@@ -85,26 +85,26 @@ public partial class Hulks : Node
         if (Down.TryGetValue(site, out var done)) return done;
         var list = new List<Vessel>();
         Down[site] = list;
-        CapitalHull.HullPlan plan = CapitalHull.Of(site.Instance.Layout);
+        CapitalHull.HullPlan plan = CapitalHull.Of(site.Layout);
         if (plan == null) return list;
         Catalogue catalogue = Zone.Data.Catalogue;
         Vector3 origin = Zone.Planet.NearestCopy(new Vector3(site.Origin.X, site.Origin.Y, site.Origin.Z), Focus());
-        ulong seed = site.Instance.Layout.Seed;
+        ulong seed = site.Layout.Seed;
         var rng = new Random(unchecked((int)(seed ^ (seed >> 32))));
         for (int i = 0; i < plan.Pieces.Count; i++)
         {
             CapitalHull.HullPiece piece = plan.Pieces[i];
-            HashSet<PoiGenerator.Gen.Int3> gone = piece.Damage(site.Instance.State, seed + (ulong)i * 7919UL);
+            HashSet<PoiGenerator.Gen.Int3> gone = piece.Damage(site.State, seed + (ulong)i * 7919UL);
             Structure s = Build(piece.Text(site.Family.Name, gone), catalogue, site.Family.Name + piece.Name);
             if (s == null) continue;
             var at = (origin + new Vector3(piece.Origin.X, piece.Origin.Y, piece.Origin.Z)).ToNumerics();
             Vessel v = Vessel.SpawnGroundWreck(Zone, s, at, piece.Rotation);
             v.Derelict = new Slice.Orbit.DerelictPlan { Id = $"hulk-{site.Origin.X}-{site.Origin.Z}-{i}", Name = s.Name, Structure = s, Position = at, Rotation = piece.Rotation };
-            Stock(v, rng, site.Instance.State);
+            Stock(v, rng, site.State);
             list.Add(v);
             Set?.Invoke(site, v);
         }
-        GD.Print($"hulk: {site.Family.Name} '{site.Instance.Layout.Variant?.Name}' ({site.Instance.State}) set down as {list.Count} wreck(s), {list.Sum(v => v.Structure.Count)} blocks");
+        GD.Print($"hulk: {site.Family.Name} '{site.Layout.Variant?.Name}' ({site.State}) set down as {list.Count} wreck(s), {list.Sum(v => v.Structure.Count)} blocks");
         return list;
     }
 

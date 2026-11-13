@@ -155,6 +155,28 @@ public sealed partial class Staging
                 }
             }
         }
+        if (Want("roads"))
+        {
+            // A composed site's planned roads (the --force family, set down near the start): from its gate at eye height
+            // looking along the road in, and from the air.
+            string force = _args.GetValueOrDefault("force", "exchange_depot");
+            PoiSite site = planet.Pois.Where(s => s.Family.Id == force && s.Instance.Layout.Extras.Roads != null).OrderBy(Away).FirstOrDefault();
+            if (site == null) GD.Print($"placesurf: no {force} with planned roads on this world");
+            else
+            {
+                foreach (int x in GoTo(site, Gate(site) + Vector3.Up * 0.1f)) yield return x;
+                Place p = _game.Places.PlaceOf(site);
+                RoadPlan plan = site.Instance.Layout.Extras.Roads;
+                RoadRun run = plan.Runs.Where(r => r.Kind == "road").Skip(1).FirstOrDefault() ?? plan.Runs[0];
+                if (p != null)
+                {
+                    Vector3 eye = p.WorldOf(run.Cells[0], 2.7f);
+                    eye.Y = Math.Max(eye.Y, _game.Zone.GroundAt(eye.X, eye.Z).Y + 1.7f);
+                    foreach (int x in Frame(eye, p.WorldOf(run.Cells[Math.Min(run.Cells.Count - 1, 24)], 1f), Name("roads-standing"))) yield return x;
+                    foreach (int x in SurfAir(p, Name("roads-above"))) yield return x;
+                }
+            }
+        }
         if (Want("fence"))
         {
             // A city lot's fence or railing at its foot, from 5 m off across the line, at eye height.

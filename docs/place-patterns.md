@@ -152,6 +152,10 @@ Empyrion (`BlocksConfig.ecf` shape lists, read through each block's variant):
 
 **Rule P6 (shapes).** About half of every place is plain cube. Low tech: slopes 15 to 20% where roofs are pitched (houses, settlements, farms) and 4 to 8% where they are flat (shops, offices, civic, industry); part cubes and plates 20 to 30% (counters, shelves, thin partitions, kerbs); poles and beams 3 to 8%, up to 17% in mines (props and timbering); windows 2 to 6%. High tech: slopes 15 to 23% everywhere (chamfered edges, sloped armour, roofs), corners 4 to 7%, round 2 to 4% (7% in industry), almost no plates or poles. A check: a generated place's shape shares should fall within these bands for its tech, give or take 5 points.
 
+**An object's shape comes from the object alone.** A building with all its wings, one tank, one container, one vehicle is each one object; shaping reads another object's blocks and rooms beside or above it as open air outside, and what it stands on as ground, so a tank against a shed keeps its cap all round and the shed's wall behind it is panelled as if the tank weren't there. Only what keeps things safe (what is stood on, what the place later sets against a wall) reads the grid as it is. Stacked containers each keep their own caps, as real ones show every box's edges.
+
+**Ornament.** After shaping, each builder (world, tech level, faction or culture) adds its own small vocabulary of whole elements set out from the building's lines: fins on the piers and quoins at the bay spacing, masts at the corners of the highest roof, hoods over the ways in, pipes along the walls of places with machines, frames across halls, and bars along every torn concrete edge. An element that can't be laid whole is left out, and nothing goes where a body walks.
+
 ### 1.6 Dressing density and where it sits, per room kind
 
 7 Days to Die, per m² of room floor (median for dressing, mean for containers and lights). Dressing = furniture and clutter cells standing on the floor. Wall share = the share of floor dressing touching a wall.
@@ -475,5 +479,19 @@ Ranges for the places agent to turn into generator settings and `LayoutCheck`-st
 | G13 | Encounters | section 2.10 | section 2.10 | section 2.10 at half density |
 | G14 | Spacing on the map | town places 30 to 60 m apart; wilderness 130 to 150 m median | satellites 100 to 500 m from their main | real destinations within 2 to 3 km of each other in a busy orbit |
 | G15 | Hidden features | excluded from G3 and G4; at most 5% of spawns hidden; 1 place in 10 with a secret cache | same | same |
+
+## 7. The standard a redone place must pass
+
+A place type is redone from `data/place-types.txt` (what it has, real size ranges, relations; never positions) and passes all of these before its old plan is deleted:
+
+| # | Standard | Proved by |
+|---|---|---|
+| R1 | Real proportions: every part inside its type's real range, rooms as tall and big as the real thing (P1, P2) | PoiTest Scale |
+| R2 | The study's rooms and flows, a guarded core vault and hidden rooms (section 2), no locks or key cards | PoiTest Standard, Hidden, NoLocks |
+| R3 | Everything agrees with its neighbours: nothing in or against a wall, no yard object on a building or laid ground, every door and bay reachable | PoiTest Yards, Roads, Coherent |
+| R4 | Furnished interiors, no bare shells | PoiTest Patterns |
+| R5 | Nothing bespoke: every spawn its own arrangement, counts, sizes and room plans; no fixed coordinates, no text | PoiTest Fresh |
+| R6 | Takes plating and welds on the 1 m grid | BuildTest on the place |
+| R7 | Holds the frame budget (16.7 ms) and doesn't pop in: its layout's share of new-world load is zero (a sketch only), its buildings stand up off the main thread | PoiTest TypeSizes (sketch cost), StartTest load line, PlacePerf |
 
 **Sources (all read-only, nothing copied):** 7 Days to Die `Data/Prefabs/POIs/*.xml`, `*.tts`, `*.blocks.nim`, `Data/Prefabs/RWGTiles/*.xml`, `Data/Config/rwgmixer.xml`, `Data/Config/biomes.xml`, `Data/Worlds/*/prefabs.xml`, `map_info.xml`, `biomes.png`. Empyrion `Content/Prefabs/*.epb`, `Content/Configuration/BlocksConfig.ecf`, `Content/Playfields/*/playfield_static.yaml`, `space_dynamic.yaml`, and the `+ExamplePlanet` and `+ExampleSpace` templates. The readers and scripts behind these figures live in the floor-plan reference folder (`docs/floorplan-refs/tools-09`, outside git) and a scratch folder.

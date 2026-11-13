@@ -361,7 +361,7 @@ public static class FlavourRuins
         }
         // A survivor town's landing clearing, at its edge, with a track in, where traders set down.
         if (lib.Families.FirstOrDefault(f => f.Id == "landing_clearing") is { } clearing)
-            foreach (PoiSite p in pois.Where(p => p.Family.Id == "survivor_town" && p.Instance.State == PoiState.Active))
+            foreach (PoiSite p in pois.Where(p => p.Family.Id == "survivor_town" && p.State == PoiState.Active))
             {
                 if (!rng.Chance(0.7f)) continue;
                 Layout layout = LayoutFor(lib, clearing, rng.Range(0, clearing.Variants.Count));
@@ -386,7 +386,7 @@ public static class FlavourRuins
         // Round a blast: the ruin ring, every ruin in it flattened outward from ground zero.
         foreach (PoiSite p in pois)
         {
-            if (p.GroundZero is not (double gx, double gz) || p.Instance.Layout.Extras.Blast is not BlastZone zone) continue;
+            if (p.GroundZero is not (double gx, double gz) || p.Layout.Extras.Blast is not BlastZone zone) continue;
             double inner = Math.Max(p.Stamp.ReachX, p.Stamp.ReachZ) + 24, outer = zone.Fade * (WorldReach - 1);
             if (outer <= inner) outer = inner + 120;
             for (int k = 0, placed = 0; k < 120 && placed < 12; k++)

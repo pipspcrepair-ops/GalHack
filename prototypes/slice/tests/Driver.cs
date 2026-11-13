@@ -102,17 +102,21 @@ public sealed class Driver
         int ticks = (int)(seconds * Engine.PhysicsTicksPerSecond);
         float stuck = 0f, jet = 0f, best = float.MaxValue, noProgress = 0f, side = 0f, sideFor = 0f;
         bool sideLeft = false;
-        bool digging = false, climbed = false;
+        bool digging = false;
+        int climbs = 0;
         Vector3 last = Game.Survivor.WorldFeet;
         for (int i = 0; i < ticks; i++)
         {
             Vector3 feet = Game.Survivor.WorldFeet;
             // Down in the bunker (fallen into its stairwell from the side, say) and going
             // somewhere above: up its stairs first, as a person would.
-            // Once: if its way out doesn't take you (a bank at the head of the stairs), the walk's own hops and digging must.
-            if (!_following && !climbed && Game.Bunker is Slice.Start.Bunker b && b.Inside(feet, Game.Zone) && !b.Inside(target, Game.Zone))
+            // Back inside and getting nowhere (the way on dug back down into the chamber, against its pods), out by the way
+            // out again, as a player would. A few times: if its way out doesn't take you (a bank at the head of the stairs),
+            // the walk's own hops and digging must.
+            if (!_following && climbs < 3 && (climbs == 0 || noProgress > 2f) && Game.Bunker is Slice.Start.Bunker b && b.Inside(feet, Game.Zone) && !b.Inside(target, Game.Zone))
             {
-                climbed = true;
+                climbs++;
+                noProgress = 0f;
                 Controls.Hold(Key.W, false);
                 Controls.Hold(Key.Space, false);
                 foreach (int x in ClimbOut(b)) yield return x;
@@ -146,8 +150,10 @@ public sealed class Driver
             bool buried = target.Y - feet.Y > 2.5f && Game.Zone.GroundAt(feet.X, feet.Z).Y - feet.Y > 2.5f;
             bool canDig = dig && Game.Pack.Hand == Slice.Items.HandKind.Tool && Game.Tool.Mode == Slice.Player.ToolMode.Gather;
             digging = canDig && (noProgress > 2f || buried);
-            // Nose to a tree or wedged under a parked hull, with nothing to dig with: back off and sidestep, further each time.
-            if (!canDig && !_following && noProgress > 1.5f && side <= 0f)
+            // Nose to a tree or wedged under a parked hull, with nothing to dig with, or hopped up into a tree's limbs (digging
+            // can't help up there): back off and sidestep, further each time, as a player would.
+            bool upATree = feet.Y - Game.Zone.GroundAt(feet.X, feet.Z).Y > 1.5f && !Game.Survivor.Body.OnFloor;
+            if ((!canDig || upATree) && !_following && noProgress > 1.5f && side <= 0f)
             {
                 sideFor += 0.8f;
                 side = sideFor;

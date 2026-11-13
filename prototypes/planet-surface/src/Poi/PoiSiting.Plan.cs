@@ -106,8 +106,8 @@ public static partial class PoiSiting
             OccupancyRoll occ = OccupancyLayer.Applies(f, state) ? OccupancyLayer.Roll(roll.Occupancy, f, spawn, null, peopled && OccupancyLayer.Livable(f, state)) with { Tags = roll.Tags } : null;
             jobs.Add((p, f, state, variant, spawn, occ));
         }
-        // Whole works take a moment each: they're built side by side, then seated in order.
-        var made = new PoiInstance[jobs.Count];
+        // Whole works take a moment each: they're laid out side by side, then seated in order; each is spawned when it is first wanted.
+        var made = new Layout[jobs.Count];
         var clock = System.Diagnostics.Stopwatch.StartNew();
         Parallel.For(0, jobs.Count, i =>
         {
@@ -128,7 +128,7 @@ public static partial class PoiSiting
             // A place that won't lay out is left off the map with a warning, never a crash.
             if (layout == null) { Godot.GD.PushWarning($"place skipped: {why}"); return; }
             layout.Name = j.Family.Variants[j.Variant].Name;
-            made[i] = PoiFactory.Spawn(lib, layout, j.State, j.Spawn, profile, j.Occ);
+            made[i] = layout;
         });
         LastLayoutMs = clock.Elapsed.TotalMilliseconds;
         LastPlanned = jobs.Count;
@@ -141,15 +141,18 @@ public static partial class PoiSiting
             var j = jobs[i];
             if (made[i] == null) continue;
             double x = Mathx.WrapX(j.Place.X, map.WidthMeters), z = Mathx.Wrap(j.Place.Z, map.HeightMeters);
-            PoiSite site = Seat(made[i], j.Family, bare, map, x, z, landing, sites);
+            PoiSite site = Seat(made[i], j.State, j.Family, bare, map, x, z, landing, sites);
             int retries = j.Place.Primary ? 64 : j.Place.Role is "hub" or "port" or "need" or "industry" or "plant" ? 12 : 4;
             for (int k = 0; site == null && k < retries; k++)
             {
                 double a = k * 2.399963, r = 300 + (j.Place.Primary ? 90 : 60) * k;
-                site = Seat(made[i], j.Family, bare, map, Mathx.WrapX(x + Math.Cos(a) * r, map.WidthMeters), Mathx.Wrap(z + Math.Sin(a) * r, map.HeightMeters), landing, sites);
+                site = Seat(made[i], j.State, j.Family, bare, map, Mathx.WrapX(x + Math.Cos(a) * r, map.WidthMeters), Mathx.Wrap(z + Math.Sin(a) * r, map.HeightMeters), landing, sites);
             }
             if (site == null) { LastUnseated++; continue; }
             site.Primary = j.Place.Primary;
+            Layout layout = made[i];
+            site.Occupancy = j.Occ;
+            site.Make = () => PoiFactory.Spawn(lib, layout, j.State, j.Spawn, profile, j.Occ);
             site.Planned = j.Place;
             site.Plan = plan;
             j.Place.Seated = site;

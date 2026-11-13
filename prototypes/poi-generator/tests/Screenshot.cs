@@ -292,6 +292,58 @@ public partial class Screenshot : Node
             Frame(a[5]);
             return;
         }
+        // objects:<tech>[:cut]: a shed with a tank against its wall, two tanks in the open and a pile of containers, each shaped by
+        // itself alone (proof frames for Objects); cut takes the tank against the shed away after, to show the wall behind it.
+        if (view.StartsWith("objects:"))
+        {
+            string[] a = view.Split(':');
+            var tech = System.Enum.Parse<TechLevel>(a[1], true);
+            var lib = m.Library;
+            FamilyDef fam = lib.Families.First(f => f.Site != null && !f.Space && lib.Sites[f.Site].Parts.Any(p => p.Kind == "tanks"));
+            SitePart Part(string kind, int x, int z, params (string, string)[] args)
+            {
+                var p = new SitePart { Kind = kind, X = x, Z = z };
+                foreach (var (k, v) in args) p.Args[k] = v;
+                return p;
+            }
+            Layout Lay(ulong seed, params SitePart[] parts)
+            {
+                var canvas = new Canvas(lib.Kits[fam.Style ?? lib.Sites[fam.Site!].Style]) { Tech = tech };
+                Sites.Compose(lib, canvas, new SiteDef { Id = "objects", Style = lib.Sites[fam.Site!].Style, EntranceX = -30, EntranceZ = 0, Parts = parts.ToList() }, fam, Rarity.Common, new Rng(seed), new LayoutHints(Dir.West, tech));
+                var l = canvas.Finish(fam, fam.Variants[0], Rarity.Common, seed, "objects");
+                l.Tech = tech;
+                return l;
+            }
+            SitePart shed = Part("building", 0, 0, ("program", "shed"));
+            var alone = Lay(_seed, shed).Objects.Keys.ToList();
+            Int3 lo = alone.Aggregate(Int3.Min), hi = alone.Aggregate(Int3.Max);
+            int r = 3, mz = (lo.Z + hi.Z) / 2;
+            Layout layout = null;
+            for (ulong s = _seed; layout == null || !layout.Objects.Keys.Any(q => q.Y >= 4 && q.Z > hi.Z + 4); s++) // (until the containers pile up)
+                layout = Lay(s, shed, Part("tanks", hi.X + 1 + r, mz, ("count", "1"), ("r", "3"), ("h", "7")), Part("tanks", hi.X + 1 + r, mz - 2 * r - 6, ("count", "2"), ("r", "3"), ("h", "7"), ("gap", "5"), ("axis", "x")),
+                    Part("containers", lo.X, hi.Z + 6, ("rows", "1"), ("cols", "2")));
+            Ornament.Enabled = false; // (the shapes alone: the ornament has its own frames)
+            var inst = PoiFactory.Spawn(lib, layout, PoiState.Abandoned, _seed);
+            Int3 against = new(hi.X + 1 + r, 1, mz);
+            if (a.Length > 2 && a[2] == "cut")
+            {
+                int o = inst.ObjectOf(against);
+                foreach (Int3 q in layout.Objects.Where(x => x.Value == o).Select(x => x.Key)) inst.Blocks.Set(q, Block.Air);
+            }
+            m.Show(inst);
+            m.HideHud(true);
+            // (Along the shed's wall from beside the tank, low, so the tank's top edge shows against the sky at the joint.)
+            Vector3 at = m.Stage.ToGlobal(new Vector3(against.X - r + 1f, 6f, against.Z + 0.5f));
+            Vector3 eye = m.Stage.ToGlobal(new Vector3(against.X + 4f, 10f, against.Z + 15f));
+            if (a.Length > 2 && a[2] == "pile") // (or on the pile of containers: each box keeps its own caps)
+            {
+                at = m.Stage.ToGlobal(new Vector3(lo.X + 8f, 3.5f, hi.Z + 8f));
+                eye = m.Stage.ToGlobal(new Vector3(lo.X + 20f, 9f, hi.Z + 22f));
+            }
+            m.Camera.GlobalTransform = new Transform3D(Basis.Identity, eye).LookingAt(at, Vector3.Up);
+            m.FreezeCamera = true;
+            return;
+        }
         // place:<family>:<state>:<out|near|in|inN|low>[:wear/violence/water[/falling]] spawns a family fresh and frames it as a lot
         // is framed; low stands in a corner of the biggest room on its lowest storey. The optional fifth part is the
         // world's fall as decay reads it, as the lot view's seventh.
@@ -303,11 +355,52 @@ public partial class Screenshot : Node
             // (Or the fifth part is a tech level, low, mid or high, its shapes as that world builds; --plain leaves them plain cubes.)
             TechLevel? tech = a.Length > 4 && System.Enum.TryParse(a[4], true, out TechLevel t) ? t : null;
             float[] w = a.Length > 4 && tech == null ? a[4].Split('/').Take(3).Select(x => float.Parse(x, System.Globalization.CultureInfo.InvariantCulture)).ToArray() : null;
-            var world = tech is TechLevel lv ? new WorldProfile { Before = lv, Now = lv } : w == null ? null : new WorldProfile { Ruin = new RuinAge(w[0], a[4].EndsWith("/falling"), w[1], w[2]) };
+            // (A sixth part names the world's trade, so a frame can show another world's builders.)
+            Trade trade = a.Length > 5 && System.Enum.TryParse(a[5], true, out Trade tr) ? tr : Trade.Industrial;
+            var world = tech is TechLevel lv ? new WorldProfile { Before = lv, Now = lv, Trade = trade } : w == null ? null : new WorldProfile { Ruin = new RuinAge(w[0], a[4].EndsWith("/falling"), w[1], w[2]) };
             Shaping.Enabled = !OS.GetCmdlineUserArgs().Contains("--plain");
-            m.Show(PoiFactory.Generate(m.Library, f, rng.Range(0, f.Variants.Count), f.Rarity, System.Enum.Parse<PoiState>(a[2], true), rng.NextU64(), world: world));
+            int variant = rng.Range(0, f.Variants.Count);
+            ulong spawn = rng.NextU64();
+            PoiInstance Make() => PoiFactory.Generate(m.Library, f, variant, f.Rarity, System.Enum.Parse<PoiState>(a[2], true), spawn, world: world);
+            // (piece-<kind>: framed on its biggest ornament of that kind; --no-ornament shows the same place and frame without it.)
+            var made = Make();
+            GD.Print($"ornament: {Ornament.For(made).Sig}; " + string.Join(", ", made.Ornaments.GroupBy(p => p.Kind).Select(g => $"{g.Count()} {g.Key}")));
+            var piece = a[3].StartsWith("piece-") ? made.Ornaments.Where(p => p.Kind == a[3][6..]).MaxBy(p => p.Cells.Count) : null;
+            if (OS.GetCmdlineUserArgs().Contains("--plain") || OS.GetCmdlineUserArgs().Contains("--no-ornament"))
+            {
+                Ornament.Enabled = false;
+                made = Make();
+                Ornament.Enabled = true;
+            }
+            m.Show(made);
             m.HideHud(true);
-            Frame(a[3]);
+            if (piece == null) { Frame(a[3].StartsWith("piece-") ? "near" : a[3]); return; }
+            var cells = piece.Cells;
+            if (piece.Kind == "frames" && made.Layout.Modules.FirstOrDefault(x => x.Cells.Contains(cells[0])) is { } hall)
+            {
+                // (Inside the hall, from a corner a little above the floor, across its frames.)
+                Vector3 from = m.Stage.ToGlobal(new Vector3(hall.Min.X + 0.7f, hall.Min.Y + 1.6f, hall.Min.Z + 0.7f));
+                Vector3 to = m.Stage.ToGlobal(new Vector3(hall.Max.X + 0.5f, hall.Max.Y - 0.5f, hall.Max.Z + 0.5f));
+                m.Camera.GlobalTransform = new Transform3D(Basis.Identity, from).LookingAt(to, Vector3.Up);
+                m.Camera.Fov = 80f;
+                m.FreezeCamera = true;
+                m.Player.Lamp.Visible = false;
+                m.Camera.AddChild(new OmniLight3D { LightColor = new Color("fff0dc"), LightEnergy = 0.9f, OmniRange = 40f, OmniAttenuation = 0.8f, ShadowEnabled = false });
+                return;
+            }
+            Int3 lo = cells.Aggregate(Int3.Min), hi = cells.Aggregate(Int3.Max);
+            Vector3 mid = new((lo.X + hi.X + 1) * 0.5f, (lo.Y + hi.Y + 1) * 0.5f, (lo.Z + hi.Z + 1) * 0.5f);
+            // (From the side with the most open air, far enough to take the whole element in.)
+            Int3 c0 = new((int)mid.X, (int)mid.Y, (int)mid.Z);
+            Dir away = Dirs.Horizontal.MaxBy(d => Enumerable.Range(1, 10).TakeWhile(k => made.Blocks.Get(c0 + d.Vec() * k).IsAir).Count());
+            float span = Mathf.Max(6f, Mathf.Max(hi.X - lo.X, Mathf.Max(hi.Y - lo.Y, hi.Z - lo.Z)) * 1.1f);
+            Int3 o = away.Vec(), side = away.RotateCw(1).Vec();
+            Vector3 eye = mid + new Vector3(o.X, 0, o.Z) * Mathf.Min(span, 9f) + new Vector3(side.X, 0, side.Z) * span * 0.35f + Vector3.Up * 1.5f;
+            m.Camera.GlobalTransform = new Transform3D(Basis.Identity, m.Stage.ToGlobal(eye)).LookingAt(m.Stage.ToGlobal(mid), Vector3.Up);
+            m.Camera.Fov = 75f;
+            m.FreezeCamera = true;
+            m.Player.Lamp.Visible = false;
+            m.Camera.AddChild(new OmniLight3D { LightColor = new Color("fff0dc"), LightEnergy = 0.7f, OmniRange = 26f, OmniAttenuation = 1.0f, ShadowEnabled = false });
             return;
         }
         // door:<family>:<state>: a fresh layout's way in, a 1.8 m figure beside it, from 7.5 m out at eye height, by day.
@@ -429,9 +522,10 @@ public partial class Screenshot : Node
         }
         var b = m.Stage.SurfaceBounds();
         float r = 0.5f * b.Size.Length();
-        float dist = shot == "near" ? Mathf.Clamp(r * 0.8f, 16f, 120f) : Mathf.Clamp(r * 2f, 28f, 260f); // (near: the same view, closer in)
+        // (near: the same view, closer in; above: steeply down over the whole site, its ground plan)
+        float dist = shot == "near" ? Mathf.Clamp(r * 0.8f, 16f, 120f) : shot == "above" ? Mathf.Clamp(r * 1.5f, 28f, 300f) : Mathf.Clamp(r * 2f, 28f, 260f);
         Vector3 target = m.Stage.ToGlobal(b.GetCenter() with { Y = b.Position.Y + b.Size.Y * 0.3f });
-        float yaw = Mathf.DegToRad(m.EntranceYaw() + 32f), pitch = Mathf.DegToRad(22f);
+        float yaw = Mathf.DegToRad(m.EntranceYaw() + 32f), pitch = Mathf.DegToRad(shot == "above" ? 62f : 22f);
         Vector3 from = target + new Vector3(Mathf.Sin(yaw) * Mathf.Cos(pitch), Mathf.Sin(pitch), Mathf.Cos(yaw) * Mathf.Cos(pitch)) * dist;
         m.Camera.GlobalTransform = new Transform3D(Basis.Identity, from).LookingAt(target, Vector3.Up);
         m.FreezeCamera = true;
