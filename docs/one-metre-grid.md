@@ -359,6 +359,16 @@ These came up while planning the grid. Where they conflict with anything above, 
 
 **Welding a loose piece back on.** Aim the tool at a coreless piece touching or resting on your structure and weld. The piece snaps onto your structure's grid at the nearest aligned spot, rounding its position and rotation, so there's no lining it up by hand. The piece moves, never your structure, so Base mode doesn't matter. If it can't snap cleanly (tilted too far, too far off the grid, or the spot is blocked), the tool says why, and you dismantle and re-place the blocks instead.
 
+**Which side moves (owner, 14 Nov).** The side that can move does the snapping:
+- **A loose coreless piece** (a wreck chunk, a cut-off section) snaps to your structure, as above.
+- **A coreless structure fixed in the ground** (a place's building, a buried wreck) can't move, so your structure must, and the two become one structure under your core.
+- **Both fixed** (your base beside a place): no weld. Put a core on the coreless structure to claim it, and build onto it directly.
+
+**The weld silhouette and the weld instruction (owner, 14 Nov).**
+- Pointing the welding tool shows a **silhouette** of the thing that will move, where it will weld: snapped to the other structure's grid in position and rotation, so you see the result before you commit. It shows when the spot is blocked or can't be snapped to.
+- Confirming sets a **weld instruction**. A loose piece snaps to its silhouette. Your own structure **flies itself to its silhouette by remote control**: it uses its own thrusters and hover plates and spends power and fuel as it goes. There is no free glide or teleport. It must be in Hover or Flight mode. If it can't move, it doesn't; if it is slow, it is slow; if it can't reach the spot (not enough lift, something in the way, the fuel runs out), it gets as far as it can and keeps trying. The weld happens when it arrives and settles in the silhouette.
+- **One weld instruction at a time.** You can cancel it, and putting the welding tool away cancels it.
+
 **Tiered devices** (bigger, heavier and hungrier, but more efficient than lower tiers in the same space): thrusters, generators, storage containers, fuel tanks, landing and docking pads, warp drive, hyperdrive, fabricators, capacitors, shield generators, forcefield emitters, hover plates, gyros or RCS, solar panels, drill modules (T1 mechanical, T2 laser turret, T3 laser turret), and the comms array.
 
 **Fixed devices:** cloning bay, medical bay, command chairs, gravity generator, life support block, refrigeration, harvester module, scanners (specialist types such as deep-space scanners later), teleporter, spotlights, core, doors, grav lifts, ladders, lights.
