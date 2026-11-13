@@ -99,8 +99,9 @@ public static class Shaping
         bool Quiet(Int3 c) => Dirs.All.All(d => Calm(c + d.Vec()) && (!d.IsHorizontal() || !Air(c + d.Vec()) || Calm(c + d.Vec() + Int3.Up) && Calm(c + d.Vec() + Int3.Down)));
         // (A panel or a thin wall may stand behind furniture on the floor: nothing hangs on it.)
         bool Stands(Int3 q) => Standing(g.Get(q).Type) && Solid(q + Int3.Down);
-        bool Behind(Int3 c) => Dirs.All.All(d => Calm(c + d.Vec()) || d.IsHorizontal() && Stands(c + d.Vec()))
-            && Dirs.Horizontal.All(d => !Air(c + d.Vec()) || (Calm(c + d.Vec() + Int3.Up) || Stands(c + d.Vec() + Int3.Up)) && (Calm(c + d.Vec() + Int3.Down) || Stands(c + d.Vec() + Int3.Down)));
+        // (Nor what is behind a set-back panel, whose back face stays whole.)
+        bool Behind(Int3 c, Dir? back = null) => Dirs.All.All(d => d == back || Calm(c + d.Vec()) || d.IsHorizontal() && Stands(c + d.Vec()))
+            && Dirs.Horizontal.All(d => d == back || !Air(c + d.Vec()) || (Calm(c + d.Vec() + Int3.Up) || Stands(c + d.Vec() + Int3.Up)) && (Calm(c + d.Vec() + Int3.Down) || Stands(c + d.Vec() + Int3.Down)));
         static int M(int v, int m) => ((v % m) + m) % m;
 
         var lamps = inst.Lights.Select(l => l.Cell).Concat(inst.Growth.Select(s => s.Cell)).ToHashSet(); // (and where trees may root)
@@ -123,10 +124,10 @@ public static class Shaping
         bool Top(Int3 c) => (Solid(c + Int3.Up) || Outside(c + Int3.Up) && walked.Count > 0) && !walked.Contains(c + Int3.Up) && !roots.Contains(c + Int3.Up);
         bool Free(Int3 c) => free.TryGetValue(c, out bool f) ? f : free[c] = Plain(g.Get(c)) && Quiet(c) && Top(c);
         // (A panel's top is whole at its back: only what is stood on over it rules it out.)
-        bool Panel(Int3 c) => Plain(g.Get(c)) && Behind(c) && !walked.Contains(c + Int3.Up) && !roots.Contains(c + Int3.Up);
+        bool Panel(Int3 c, Dir? back = null) => Plain(g.Get(c)) && Behind(c, back) && !walked.Contains(c + Int3.Up) && !roots.Contains(c + Int3.Up);
         // An outside face's cell that can be cut back: no room under it or beside it, and not open behind (a thin wall).
         bool OutOk(Int3 c, Dir d) => !Room(c + Int3.Down) && !Outside(c - d.Vec()) && Dirs.Horizontal.All(h => h == d.Opposite() || !Room(c + h.Vec()));
-        bool Frame(Int3 c, Dir d) => Framed(c, d, g.Get, q => Air(q) && !Rock(q));
+        bool Frame(Int3 c, Dir d, bool thin = false) => Framed(c, d, g.Get, q => Air(q) && !Rock(q), thin);
         // Into a room: its air, or furniture standing in it.
         bool Inside(Int3 q) => Room(q) || occ[q] && Stands(q);
 
@@ -147,7 +148,7 @@ public static class Shaping
                 if (Outside(c + d.Vec())) { if (c.Y >= 0 || space) outer[d].Add(c); }
                 else if (!outs && Inside(c + d.Vec()) && Solid(c - d.Vec()) && !roomUp && !roomDown) inner[d].Add(c);
             foreach (Dir d in between.Keys)
-                if (!outs && !roomUp && !roomDown && b.Role == Role.Wall && Inside(c + d.Vec()) && Inside(c - d.Vec()) && !Frame(c, d)) between[d].Add(c);
+                if (!outs && !roomUp && !roomDown && b.Role == Role.Wall && Inside(c + d.Vec()) && Inside(c - d.Vec()) && !Frame(c, d, true)) between[d].Add(c);
             if (roomDown && !outs && !Dirs.Horizontal.Any(h => Room(c + h.Vec()))) ceilings.Add(c);
         }
 
@@ -186,7 +187,7 @@ public static class Shaping
             {
                 bool Cove(Int3 c) => Solid(c + Int3.Up) && !Inside(c + d.Vec() + Int3.Up);
                 bool Kick(Int3 c) => high && Solid(c + Int3.Down) && !Inside(c + d.Vec() + Int3.Down);
-                if (line.All(Cove) || line.All(Kick)) { if (line.All(Panel)) runs.Add((d, line, line.All(Cove) ? BlockType.Ramp : BlockType.Chamfer, true)); }
+                if (line.All(Cove) || line.All(Kick)) { if (line.All(c => Panel(c))) runs.Add((d, line, line.All(Cove) ? BlockType.Ramp : BlockType.Chamfer, true)); }
                 else if (!line.Any(c => Cove(c) || Kick(c)))
                     foreach (Int3 c in line)
                         if (!Inside(c + d.RotateCw(1).Vec()) && !Inside(c + d.RotateCw(3).Vec()) && !Frame(c, d)) panels[d].Add(c); // (a room's outer corners and frames stand)
@@ -233,7 +234,7 @@ public static class Shaping
             foreach (List<Int3> part in Parts(set, d.RotateCw(1).Vec(), Int3.Up))
             {
                 List<Int3> panel = Level(part, d, q => Frame(q, d) || Outside(q + d.RotateCw(1).Vec()) || Outside(q + d.RotateCw(3).Vec()) || !OutOk(q, d));
-                if (panel.Count == 0 || !panel.All(Panel)) continue;
+                if (panel.Count == 0 || !panel.All(c => Panel(c, d.Opposite()))) continue;
                 int U(Int3 c) => d is Dir.North or Dir.South ? c.X : c.Z;
                 int bay = panel.Count(c => g.Get(c).Material == Material.Timber) * 2 > panel.Count ? 3 : 9;
                 int lo = panel.Min(U), wide = panel.Max(U) - lo + 1, bays = (wide + bay - 1) / bay;
@@ -252,11 +253,11 @@ public static class Shaping
         // room's corners standing as piers and its doorways framed.
         foreach (var (d, set) in panels)
             foreach (List<Int3> panel in Parts(set, d.RotateCw(1).Vec(), Int3.Up).Select(p => Level(p, d, q => Frame(q, d) || Inside(q + d.RotateCw(1).Vec()) || Inside(q + d.RotateCw(3).Vec()))))
-                if (panel.All(Panel)) foreach (Int3 c in panel) Put(c, BlockType.Half, d.Opposite());
+                if (panel.All(c => Panel(c, d.Opposite()))) foreach (Int3 c in panel) Put(c, BlockType.Half, d.Opposite());
         // A wall between two rooms is thin, the whole wall, its doorways framed.
         foreach (var (d, set) in between)
             foreach (List<Int3> wall in Parts(set, d.RotateCw(1).Vec(), Int3.Up).Select(p => Level(p, d, q => !set.Contains(q))))
-                if (wall.All(Panel)) foreach (Int3 c in wall) Put(c, BlockType.Partition, d);
+                if (wall.All(c => Panel(c))) foreach (Int3 c in wall) Put(c, BlockType.Partition, d);
 
         // (No panel steps: each set-back panel, as laid, is cut level at its lowest head under plain wall.)
         foreach (Dir f in Dirs.Horizontal)
@@ -278,6 +279,7 @@ public static class Shaping
         // short way every fourth metre, a beam under each joist from wall to wall over a room at least 3 m clear. High tech:
         // folded in V-bays the long way, two hung slopes to a fold, every fourth metre across. The bays are set out so as
         // many lamps as can hang from a joist (or a rib) do.
+        var raised = new List<List<Int3>>(); // (beams, posts and timber sets, each never to cut a room off from the way in)
         bool Bay(Int3 c) => Free(c) && g.Get(c + Int3.Up).Role != Role.Wall;
         foreach (List<Int3> region in Parts(ceilings, Dir.East.Vec(), Dir.South.Vec()))
         {
@@ -313,13 +315,15 @@ public static class Shaping
                 var beam = joist.Select(c => c + Int3.Down).ToList();
                 if (beam.All(c => Enumerable.Range(0, 3).All(k => Air(c + Int3.Down * k)) && !lamps.Contains(c) && !NearDoor(c) && !walked.Contains(c) && !walked.Contains(c + Int3.Down) && !rootColumns.Contains((c.X, c.Z)))
                     && Solid(beam[0] - along.Vec()) && Solid(beam[^1] + along.Vec()))
+                {
                     foreach (Int3 c in beam) shaped[c] = g.Get(c - Int3.Down) with { Type = BlockType.Beam, Facing = along, Role = Role.Decor };
+                    raised.Add(beam);
+                }
             }
         }
 
         // Posts (or round columns) on a 6 m grid in a big hall, floor to ceiling (or to a beam), each with 2 m of clear floor
         // all round it, and never in a way (a lift's shaft): one that would cut a room off from the way in isn't raised.
-        var posts = new List<List<Int3>>();
         foreach (PlacedModule m in layout.Modules)
         {
             if (m.Kind is not (ModuleKind.Room or ModuleKind.Hall)) continue;
@@ -334,25 +338,9 @@ public static class Shaping
                 if (h < 2 || !(Plain(over) || over.Type == BlockType.Beam) || rootColumns.Contains((f.X, f.Z))) continue;
                 var post = Enumerable.Range(0, h).Select(y => f + Int3.Up * y).ToList();
                 foreach (Int3 q in post) shaped[q] = over with { Type = high ? BlockType.Column : BlockType.Pillar, Role = Role.Decor, Facing = Dir.Up };
-                posts.Add(post);
+                raised.Add(post);
             }
         }
-        if (posts.Count > 0 && walked.Count > 0)
-        {
-            var rooms = layout.Modules.Where(m => Fixtures.RoomCell(m, walked) != null).ToList();
-            bool Cuts(IEnumerable<List<Int3>> raised)
-            {
-                var was = raised.SelectMany(p => p).ToDictionary(q => q, g.Get);
-                foreach (Int3 q in was.Keys) g.Set(q, shaped[q]);
-                var reach = inst.Nav().Reachable(layout.EntranceCell);
-                foreach (var (q, b) in was) g.Set(q, b);
-                return rooms.Any(m => Fixtures.RoomCell(m, reach) == null);
-            }
-            if (Cuts(posts))
-                foreach (var post in posts.Where(p => Cuts(new[] { p })).ToList())
-                    foreach (Int3 q in post) shaped.Remove(q);
-        }
-
         // A mine is timbered in whole sets: every fourth metre along a drift wide enough, a post against each wall, floor to
         // roof, and a cap beam across between them under the roof.
         if (layout.Family.Tags.Contains("mine") || layout.Family.Tags.Contains("ore"))
@@ -372,7 +360,31 @@ public static class Shaping
                         var timber = new Block(BlockType.Pillar, Material.Timber, new Rgb(0x6a, 0x4c, 0x30), Role.Decor, Dir.Up);
                         for (int y = 0; y < h; y++) { shaped[p + Int3.Up * y] = timber; shaped[p + d.Vec() * (w - 1) + Int3.Up * y] = timber; }
                         for (int k = 1; k < w - 1; k++) shaped[p + d.Vec() * k + Int3.Up * (h - 1)] = timber with { Type = BlockType.Beam, Facing = d };
+                        raised.Add(Enumerable.Range(0, h).SelectMany(y => new[] { p + Int3.Up * y, p + d.Vec() * (w - 1) + Int3.Up * y })
+                            .Concat(Enumerable.Range(1, w - 2).Select(k => p + d.Vec() * k + Int3.Up * (h - 1))).ToList());
                     }
+
+        if (raised.Count > 0 && walked.Count > 0)
+        {
+            var rooms = layout.Modules.Where(m => m.Cells.Any(walked.Contains)).ToList();
+            bool Cuts(IEnumerable<List<Int3>> pieces)
+            {
+                var was = pieces.SelectMany(p => p).Distinct().ToDictionary(q => q, g.Get);
+                foreach (Int3 q in was.Keys) g.Set(q, shaped[q]);
+                var reach = inst.Nav().Reachable(layout.EntranceCell);
+                foreach (var (q, b) in was) g.Set(q, b);
+                return rooms.Any(m => !m.Cells.Any(reach.Contains));
+            }
+            if (Cuts(raised))
+            {
+                var gone = raised.Where(p => Cuts(new[] { p })).SelectMany(p => p).ToHashSet();
+                // (and a post that stood under a beam taken down goes with it)
+                foreach (var post in raised.Where(p => gone.Contains(p[^1] + Int3.Up)))
+                    gone.UnionWith(post);
+                foreach (Int3 q in gone) shaped.Remove(q);
+            }
+        }
+
 
         foreach (var (c, b) in shaped) g.Set(c, b);
     }
@@ -380,9 +392,9 @@ public static class Shaping
     /// <summary>
     /// Whether <paramref name="c"/>, in a wall facing <paramref name="d"/>, frames something: beside a way through the
     /// wall in either wall it stands in (a window, a door, a doorway, a hole or the wall's free end), or round a fixture
-    /// set against it. A frame stands whole.
+    /// set against its face (or, a <paramref name="thin"/> wall, either face). A frame stands whole.
     /// </summary>
-    public static bool Framed(Int3 c, Dir d, System.Func<Int3, Block> get, System.Func<Int3, bool> open)
+    public static bool Framed(Int3 c, Dir d, System.Func<Int3, Block> get, System.Func<Int3, bool> open, bool thin = false)
     {
         bool Way(Int3 q) => open(q) || Opening(get(q));
         static bool Mounted(Block b) => Fixture(b) || Opening(b);
@@ -393,7 +405,7 @@ public static class Shaping
             {
                 Int3 q = c + a * i + Int3.Up * y;
                 if (q != c && (Opening(get(q)) || n == d && open(q) && Way(q + n.Vec()) && Way(q - n.Vec()))
-                    || n == d && (Feature(get(q)) || Fixture(get(q)) || Mounted(get(q + d.Vec())) || Mounted(get(q - d.Vec())))) return true;
+                    || n == d && (Feature(get(q)) || Fixture(get(q)) || Mounted(get(q + d.Vec())) || get(q - d.Vec()).Type == BlockType.Rebar || thin && Mounted(get(q - d.Vec())))) return true;
             }
         }
         return false;

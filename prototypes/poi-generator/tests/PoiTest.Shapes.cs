@@ -106,7 +106,7 @@ public partial class PoiTest
         bool Roofed(Int3 q) => q.Y <= Assembler.GroundY || Enumerable.Range(1, 16).Any(k => BlockInfo.Collides(before.Get(q + Int3.Up * k).Type));
         // What a face looks into: 0 nothing (closed), 1 a room (its air, or furniture standing in it), 2 out of doors.
         int Kind(Int3 q) => occ[q] && Shaping.Standing(before.Get(q).Type) && Solid(q + Int3.Down) ? 1 : !Open(q) ? 0 : occ[q] && Roofed(q) ? 1 : 2;
-        bool InFrame(Int3 c, Dir d) => Shaping.Framed(c, d, before.Get, Open);
+        bool InFrame(Int3 c, Dir d, bool thin = false) => Shaping.Framed(c, d, before.Get, Open, thin);
         static bool Run(BlockType ty) => ty is BlockType.Ramp or BlockType.Chamfer or BlockType.Half or BlockType.Partition;
         bool Same(Int3 q, Block b) => shaped.Contains(q) && g.Get(q).Type == b.Type && g.Get(q).Facing == b.Facing;
         // How a run along a, open to o, ends at n: 0 fine, 1 loose (the plain face goes on), 2 a corner left unturned, 3 a profile change.
@@ -126,7 +126,7 @@ public partial class PoiTest
                 return Shaping.Turns(b.Type) != null && BlockInfo.IsFullCube(nb.Type) && Kind(n + a.Vec()) == k && Same(n - o.Vec(), b with { Facing = a.Opposite() }) ? 2 : 0;
             if (shaped.Contains(n)) return Run(nb.Type) && nb.Facing.IsHorizontal() && (b.Type == BlockType.Partition) == (nb.Type == BlockType.Partition) && !(thin && b.Type != BlockType.Partition) ? 3 : 0;
             if (!BlockInfo.IsFullCube(nb.Type) || Shaping.Opening(nb)) return 0;
-            if (b.Type == BlockType.Partition) return Open(n - b.Facing.Vec()) && !Open(n + Int3.Up) && !Open(n + Int3.Down) && !InFrame(n, b.Facing) ? 1 : 0;
+            if (b.Type == BlockType.Partition) return Open(n - b.Facing.Vec()) && !Open(n + Int3.Up) && !Open(n + Int3.Down) && !InFrame(n, b.Facing, true) ? 1 : 0;
             if (thin || b.Type == BlockType.Half && Same(n + a.Vec(), b)) return 0; // (or a pier between two bays)
             return b.Type == BlockType.Half && o.IsHorizontal() && InFrame(n, o) ? 0 : 1;
         }
