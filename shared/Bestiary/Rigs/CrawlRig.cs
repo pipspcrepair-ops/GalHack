@@ -120,7 +120,8 @@ public sealed class CrawlRig : Rig
         _gait += speed * dt / MathF.Max(0.08f, _legLen * 0.8f);
 
         // The head leads: lifted off the surface by a rear (the telegraph) or a crouch's opposite.
-        float flat = 1f - 0.45f * Crouch;
+        // (The dead come down off their legs onto their backs: the body's own half height over the surface.)
+        float flat = Mathf.Lerp(1f - 0.45f * Crouch, b.Height * 0.5f / MathF.Max(0.01f, _clearance), Dead);
         Vector3 headCenter = c.Position + up * (_clearance * flat + Rearing * b.Size * 0.22f);
         _p[0] = headCenter - fwd * _segLen * 0.5f;
         _n[0] = up;
@@ -168,14 +169,16 @@ public sealed class CrawlRig : Rig
         foreach (Leg leg in _legs)
         {
             Basis sb = Pose[_segs[leg.Seg]].Basis;
-            Vector3 sUp = sb.Y, sFwd = -sb.Z, sSide = sb.X;
+            // (Rolled over dead, up is still away from the surface: the legs curl up over the belly, never down through the floor.)
+            Vector3 sUp = Dead > 0.5f ? _n[leg.Seg] : sb.Y, sFwd = -sb.Z, sSide = sb.X;
             Vector3 hip = _p[leg.Seg] + sFwd * leg.Along * _segLen + sSide * leg.Side * b.Width * 0.42f;
             Vector3 target = FootTargetFrom(c, hip, sUp, sFwd, sSide, leg);
             if (airborne || Dead > 0.5f || space == null)
             {
                 // Off the surface (a drop, a leap, death): legs splay out, or curl up dead.
-                Vector3 spread = hip + (sSide * leg.Side * 0.8f + sFwd * MathF.Sin(leg.Splay) * 0.6f - sUp * 0.25f).Normalized() * _legLen * (Dead > 0.5f ? 0.4f : 0.85f);
-                if (Dead > 0.5f) spread += sUp * _legLen * 0.5f;
+                Vector3 spread = Dead > 0.5f
+                    ? hip + sUp * 0.3f * _legLen // (curled: folded across the belly, the foot back over its own hip)
+                    : hip + (sSide * leg.Side * 0.8f + sFwd * MathF.Sin(leg.Splay) * 0.6f - sUp * 0.25f).Normalized() * _legLen * 0.85f;
                 leg.Foot = leg.Foot.Lerp(spread, MathF.Min(1f, dt * 10f));
                 leg.Planted = false;
                 leg.Swing = 1f;
@@ -205,6 +208,7 @@ public sealed class CrawlRig : Rig
             float span = (leg.Foot - hip).Length();
             float rise = MathF.Sqrt(MathF.Max(0f, _legLen * _legLen * 0.36f - span * span * 0.25f)) + _legLen * 0.12f;
             Vector3 knee = mid + sUp * rise + sSide * leg.Side * _legLen * 0.05f;
+            if (Dead > 0.5f) knee = hip + (sUp * 0.18f - sSide * leg.Side * 0.5f) * _legLen; // (the knee over to the other side, low)
             if (leg.Upper >= 0) Pose[leg.Upper] = Geo.Segment(hip, knee, sFwd, _legLen * 0.55f);
             if (leg.Lower >= 0) Pose[leg.Lower] = Geo.Segment(knee, leg.Foot, sFwd, _legLen * 0.62f);
         }

@@ -270,14 +270,14 @@ public sealed partial class HumanRig
             {
                 // Elbow low by the side; the forearm flicks out and away from the body, again and again.
                 float s = 0.5f + 0.5f * MathF.Sin(t * 5.5f);
-                float a = -0.25f + 1.45f * s;
-                return Bones(shoulder, F.V(0.15f, -0.7f, 0.7f), F.V(MathF.Sin(a), 0.3f, MathF.Cos(a)), upper, fore).With(HandTable.Mix("waveoff-in", "waveoff-out", s, i));
+                float a = -0.35f + 1.5f * s;
+                return Bones(shoulder, F.V(0.2f, -0.55f, 0.75f), F.V(MathF.Sin(a), 0.6f, MathF.Cos(a)), upper, fore).With(HandTable.Mix("waveoff-in", "waveoff-out", s, i));
             }
             case BodyAct.Beckon:
             {
-                // Elbow down, the forearm out to them, then curling up and back toward the chest: come here.
+                // Elbow down, the forearm out to them palm up, then scooped up and back toward the shoulder, the fingers hooking in: come here.
                 float c = 0.5f + 0.5f * MathF.Sin(t * 4.5f);
-                return Bones(shoulder, F.V(0.12f, -0.7f, 0.7f), F.V(0.06f, 0.15f + 0.9f * c, 1f - 0.9f * c), upper, fore).With(HandTable.Mix("beckon-out", "beckon-in", c, i));
+                return Bones(shoulder, F.V(0.12f, -0.7f, 0.7f), F.V(0.06f - 0.1f * c, 0.1f + 0.85f * c, 1f - 0.7f * c), upper, fore).With(HandTable.Mix("beckon-out", "beckon-in", c, i));
             }
             case BodyAct.Point:
             {
@@ -307,8 +307,8 @@ public sealed partial class HumanRig
             case BodyAct.Fidget: return Fidget(g, i, F, shoulder, neck, torso, upper, fore);
             case BodyAct.Taunt:
             {
-                // A fist shaken at them, high and forward; the other balled low at the side.
-                if (i == 0) return Bones(shoulder, F.V(0.3f, -0.9f, 0.2f), F.V(0.15f, 0.35f, 0.9f), upper, fore).With(HandTable.At("taunt", i));
+                // A fist shaken at them, high and forward (the free hand's, when the right keeps a weapon); the other balled low at the side.
+                if (!doer) return Bones(shoulder, F.V(0.3f, -0.9f, 0.2f), F.V(0.15f, 0.35f, 0.9f), upper, fore).With(HandTable.At("taunt", i));
                 float shake = 0.12f * MathF.Sin(t * 14f);
                 return Bones(shoulder, F.V(0.35f, 0.45f, 0.8f), F.V(0.05f + shake, 0.9f, 0.45f - shake), upper, fore).With(HandTable.At("taunt", i));
             }
@@ -357,8 +357,8 @@ public sealed partial class HumanRig
                 return new ArmGoal(hand, F.V(0.6f, -0.8f, -0.1f)).With(HandTable.Mix("clap-closed", "clap-open", c, i));
             }
             case BodyAct.Warn:
-                // Stop: the arm out, the palm up and out at them.
-                return Bones(shoulder, F.V(0.18f, -0.05f, 0.98f), F.V(0.02f, 0.85f, 0.5f), upper, fore).With(HandTable.At("warn", i));
+                // Stop: the arm thrust out at them, all but straight, the palm square to them and the fingers up.
+                return Bones(shoulder, F.V(0.12f, 0.05f, 0.98f), F.V(0f, 0.32f, 0.94f), upper, fore).With(HandTable.At("warn", i));
             case BodyAct.Celebrate:
             {
                 float e = MathF.Max(0f, MathF.Sin(t * 8f + i * 1.3f));
@@ -377,7 +377,8 @@ public sealed partial class HumanRig
                 // A hand swept out to the wares, palm up.
                 return Bones(shoulder, F.V(0.35f, -0.8f, 0.45f), F.V(0.65f, 0.18f, 0.75f), upper, fore).With(HandTable.At("present", i));
             case BodyAct.Startle:
-                return Bones(shoulder, F.V(0.6f, -0.45f, 0.42f), F.V(0.15f, 0.95f, 0.3f), upper, fore).With(HandTable.At("startle", i));
+                // A flinch: the elbows in, the hands thrown up before the chest (not over the head: that is hands up).
+                return Bones(shoulder, F.V(0.4f, -0.75f, 0.3f), F.V(-0.1f, 0.75f, 0.6f), upper, fore).With(HandTable.At("startle", i));
         }
         return default;
     }

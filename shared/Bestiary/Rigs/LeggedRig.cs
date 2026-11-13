@@ -179,9 +179,22 @@ public sealed class LeggedRig : Rig
         float bob = MathF.Sin(_gait * MathF.Tau * 2f) * 0.035f * legLen * MathF.Min(1f, speed / walk);
         float breathe = MathF.Sin(c.Age * 1.7f + c.Id) * 0.01f * H;
         float bodyY = groundMid + hip + H * 0.25f + bob + breathe;
-        float deadY = groundMid + H * 0.5f;
+        // A mouth that cannot reach the grass on its neck alone brings the body to it: the front dips (up to half a radian), then the legs fold.
+        float grazeDip = 0f;
+        if (Graze > 0.01f)
+        {
+            bool hasNeck = _neckLen > L * 0.12f;
+            float shortBy = hip + H * (hasNeck ? 0.53f : 0.37f) - (hasNeck ? _neckLen * 0.95f : 0f) - b.HeadSize * 0.6f;
+            if (shortBy > 0f)
+            {
+                grazeDip = MathF.Asin(MathF.Min(shortBy / (L * 0.42f), 0.48f));
+                bodyY -= Graze * MathF.Min(shortBy - L * 0.42f * MathF.Sin(grazeDip), hip * 0.55f);
+            }
+        }
+        // (The dead lie on their side: on the body's width, not its height.)
+        float deadY = groundMid + 0.5f * MathF.Sqrt(H * H * 0.05f + W * W * 0.95f);
         bodyY = Mathf.Lerp(bodyY, deadY, Dead);
-        float pitch = MathF.Atan2(gF - gB, 0.7f * L) + Rearing * 0.35f - Lunging * 0.15f + Graze * 0.04f - Bracing * 0.1f;
+        float pitch = MathF.Atan2(gF - gB, 0.7f * L) + Rearing * 0.35f - Lunging * 0.15f + Graze * (0.04f - grazeDip) - Bracing * 0.1f;
         float roll = Math.Clamp(-YawRate * speed * 0.03f, -0.15f, 0.15f) + Dead * 1.35f + Twitch(c) * 0.08f;
         // A charge's wind-up rocks the body back and forth, like a bull pawing the ground.
         float paw = Bracing * MathF.Sin(c.Age * 9f) * 0.035f * L;
@@ -242,7 +255,16 @@ public sealed class LeggedRig : Rig
             Vector3 hipW = bodyT * leg.Anchor;
             float reach = leg.Upper + leg.Lower;
 
-            if (leg.Stepping)
+            if (dead)
+            {
+                // The dead keep no footing: each leg slides out along the ground from its hip, as far as it reaches.
+                Vector3 away = WildSim.Flat(hipW - bodyT.Origin);
+                away = away.LengthSquared() > 1e-4f ? away.Normalized() : yaw * Vector3.Right;
+                float up = hipW.Y - Ground(w, hipW).Y, far = MathF.Sqrt(MathF.Max(reach * reach * 0.05f, reach * reach * 0.9f - up * up));
+                leg.Stepping = false;
+                leg.Foot = leg.Foot.Lerp(Ground(w, hipW + away * far), MathF.Min(1f, dt * 3f) * Dead);
+            }
+            else if (leg.Stepping)
             {
                 leg.T += dt / duration;
                 leg.To = home; // keep re-aiming while in the air, so turning feet land true
@@ -253,7 +275,7 @@ public sealed class LeggedRig : Rig
                     leg.Foot = leg.To;
                 }
             }
-            else if (!dead)
+            else
             {
                 float err = WildSim.Flat(home - leg.Foot).Length();
                 float stretch = (leg.Foot - hipW).Length();
@@ -280,7 +302,7 @@ public sealed class LeggedRig : Rig
                 foot = leg.From.Lerp(leg.To, t) + Vector3.Up * lift * MathF.Sin(leg.T * MathF.PI);
             }
 
-            Vector3 pole = bodyT.Basis * leg.Pole;
+            Vector3 pole = dead ? Vector3.Up : bodyT.Basis * leg.Pole;
             (Vector3 knee, Vector3 drawn) = SolveIK(hipW, foot, leg.Upper, leg.Lower, pole);
             leg.Drawn = drawn;
             Vector3 side = bodyT.Basis.X;

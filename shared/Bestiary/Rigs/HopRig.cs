@@ -72,9 +72,9 @@ public sealed class HopRig : Rig
             case HopPhase.Crouch: squash = 0.15f + 0.6f * c.HopTime; ext = -0.3f * c.HopTime; break;
             case HopPhase.Air: squash = c.Velocity.Y > 0f ? -0.35f : -0.1f; ext = c.Velocity.Y > 0f ? 1f : 0.35f; break;
             case HopPhase.Land: squash = 0.7f * (1f - c.HopTime); ext = 0f; break;
-            default: squash = 0.12f + MathF.Sin(c.Age * 2f + c.Id) * 0.03f; ext = 0f; break;
+            default: squash = 0.12f + MathF.Sin(c.Age * 2f + c.Id) * 0.03f; ext = -0.3f * Crouch; break; // (settled down to rest or to hide, the legs fold deep under it)
         }
-        squash = Mathf.Lerp(squash, 0.5f, Math.Clamp(Hidden + Crouch * 0.5f + Bracing * 0.5f, 0f, 1f)) * (1f - Dead);
+        squash = Mathf.Lerp(squash, 0.5f, Math.Clamp(Hidden + Crouch * 0.5f + Bracing * 0.5f + Graze * 0.4f, 0f, 1f)) * (1f - Dead);
         _squash = Geo.Smooth(_squash, squash, 18f, dt);
         _ext = Geo.Smooth(_ext, ext, 16f, dt);
 
@@ -96,11 +96,13 @@ public sealed class HopRig : Rig
         _lastPhase = c.Hop;
 
         bool airborne = c.Hop == HopPhase.Air;
-        float height = _restHeight * (1f - 0.35f * Math.Max(0f, _squash));
+        // (Resting, it settles down onto its folded legs.)
+        float height = _restHeight * (1f - 0.35f * Math.Max(0f, _squash)) * (1f - 0.15f * Crouch * (c.Hop == HopPhase.Ground ? 1f : 0f));
         float bodyY = airborne ? c.Position.Y + _restHeight : ground + height;
         bodyY = Mathf.Lerp(bodyY, ground + H * 0.45f, Dead);
         float pitch = airborne ? Math.Clamp(c.Velocity.Y * 0.06f, -0.5f, 0.5f) : 0.18f + 0.15f * Math.Max(0f, _squash);
-        pitch += Rearing * 0.35f - Lunging * 0.2f;
+        // (Feeding, the nose goes down to the ground; resting, the body lies level.)
+        pitch += Rearing * 0.35f - Lunging * 0.2f - (airborne ? 0f : Graze * 0.5f + Crouch * 0.12f);
         if (boulder) pitch = 0f;
         Basis yaw = new(Vector3.Up, c.Yaw);
         Basis frame = yaw * new Basis(Vector3.Right, pitch) * new Basis(Vector3.Back, Dead * 1.4f);
@@ -158,7 +160,7 @@ public sealed class HopRig : Rig
             for (int i = 0; i < _tail.Length; i++)
             {
                 pitchAcc -= 0.15f;
-                Vector3 d = frame * Geo.Backward(MathF.Sin(c.Age * 2f + i) * 0.15f, pitchAcc);
+                Vector3 d = OnGround(w, c, p, frame * Geo.Backward(MathF.Sin(c.Age * 2f + i) * 0.15f, pitchAcc), seg, W * 0.06f);
                 Pose[_tail[i]] = Geo.Segment(p, p + d * seg, frame.X);
                 p += d * seg;
             }

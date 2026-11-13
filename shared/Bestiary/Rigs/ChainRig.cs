@@ -111,12 +111,22 @@ public sealed class ChainRig : Rig
         // The head, driven along the path with the wave; then everyone follows.
         Vector3 drive = WildSim.Flat(c.Position) + right * MathF.Sin(_wave) * amp;
         _p[0] = Lift(w, drive, 0, sink);
+        // At rest it draws itself into a coil round a point beside its head (and pays out again as the head moves off).
+        float coil = c.State == CState.Rest && !c.Dead && speed < 0.05f ? MathF.Min(1f, 2.5f * dt) : 0f;
+        float turn0 = MathF.Max(1.3f * rmax, _segLen * 0.9f), turn = turn0, round = 0f;
+        Vector3 centre = WildSim.Flat(c.Position) + right * turn0;
         for (int i = 1; i < _p.Length; i++)
         {
             Vector3 d = WildSim.Flat(_p[i] - _p[i - 1]);
             d = d.LengthSquared() > 1e-6f ? d.Normalized() : -fwd;
             float spacing = _segLen * (i < 4 ? 1f - Rearing * 0.35f : 1f);
             Vector3 q = WildSim.Flat(_p[i - 1]) + d * spacing;
+            if (coil > 0f)
+            {
+                round += _segLen / turn;
+                turn = turn0 + 2.1f * rmax * round / MathF.Tau;
+                q = q.Lerp(centre - (right * MathF.Cos(round) + fwd * MathF.Sin(round)) * turn, coil);
+            }
             _p[i] = Lift(w, q, i, sink);
         }
 
@@ -130,7 +140,8 @@ public sealed class ChainRig : Rig
         }
 
         Vector3 headFwd = -bases[0].Z;
-        Basis headB = Facing(headFwd) * new Basis(Vector3.Up, LookYaw * 0.4f) * new Basis(Vector3.Right, -Rearing * 0.5f + Lunging * 0.1f);
+        // (Feeding, the head goes down and noses from side to side.)
+        Basis headB = Facing(headFwd) * new Basis(Vector3.Up, LookYaw * 0.4f + Graze * 0.3f * MathF.Sin(c.Age * 1.3f)) * new Basis(Vector3.Right, -Rearing * 0.5f + Lunging * 0.1f - Graze * 0.45f);
         var headT = new Transform3D(headB, _p[0] + headFwd * _r[0] * 0.55f + headFwd * Lunging * b.Size * 0.12f);
         if (_head >= 0) Pose[_head] = headT;
 

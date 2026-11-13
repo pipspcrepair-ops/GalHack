@@ -252,7 +252,14 @@ public sealed partial class HumanRig : Rig
             return;
         }
         _doll = null;
-        DriveAlive(g);
+        if (g.Down > 0f)
+        {
+            // Lying down, nobody topples like a plank: down into a squat first, then back onto the ground, the legs going out straight last.
+            Gesture q = g;
+            q.Crouch = MathF.Max(g.Crouch, Mathf.SmoothStep(0f, 0.4f, g.Down) * (1f - Mathf.SmoothStep(0.55f, 1f, g.Down)));
+            DriveAlive(q);
+        }
+        else DriveAlive(g);
     }
 
     void DriveAlive(in Gesture g)
@@ -261,7 +268,7 @@ public sealed partial class HumanRig : Rig
         float stalk = Math.Clamp(g.Stalk, 0f, 1f);
         float run = Math.Clamp((g.Speed - 2f) / 1.4f, 0f, 1f);
         float moving = Math.Clamp(g.Speed / 0.45f, 0f, 1f);
-        float strideLength = f.LegLength * Mathf.Lerp(1.36f, 2.5f, run) * (1f - 0.35f * stalk);
+        float strideLength = f.LegLength * Mathf.Lerp(1.36f, 2.5f, run) * (1f - MathF.Max(0.35f * stalk, 0.45f * g.Crouch));
         float phase = g.Walked / strideLength + _offset;
         // A Husk is worked like a puppet on a bad string: its stride hitches (one step quick, the
         // next dragged), and a sudden jerk runs through it now and then, each its own.
@@ -287,10 +294,13 @@ public sealed partial class HumanRig : Rig
         float keyed = act;
 
         // Hips: over the feet, dropping as a step lands; low in a crouch, on the seat when sitting.
-        float bob = moving * (0.012f + 0.024f * run) * f.Height * MathF.Cos(cycle * 2f);
+        // (Walking, the hips are highest over the standing leg and lowest with both feet down; running, lowest on the standing leg and highest in the air.)
+        float duty = Mathf.Lerp(0.62f, 0.32f, run);
+        float bob = moving * Mathf.Lerp(0.012f, -0.018f, run) * f.Height * MathF.Cos(cycle * 2f - MathF.Tau * duty);
         float slump = g.Act switch { BodyAct.Cower => 0.5f, BodyAct.Grieve => 0.18f, BodyAct.Startle => 0.15f, _ => 0f } * Math.Clamp(g.ActAmount, 0f, 1f);
         float hop = g.Act == BodyAct.Play ? act * 0.035f * f.Height * MathF.Abs(MathF.Sin(g.Clock * 4.5f)) : 0f;
-        float hipY = f.LegLength * (0.99f - 0.022f * moving - 0.07f * run - 0.42f * MathF.Max(g.Crouch, slump) - 0.24f * stalk) + bob + hop - blowDown * f.Height / 1.72f;
+        // (Standing, the legs are all but straight; a crouch on the move is a half crouch, the knees clear of the ground.)
+        float hipY = f.LegLength * (0.995f - 0.035f * moving - 0.04f * run - MathF.Max((0.42f - 0.17f * moving) * g.Crouch, 0.42f * slump) - 0.24f * stalk) + bob + hop - blowDown * f.Height / 1.72f;
         if (_hitPart is Part.LegL or Part.LegR) hipY -= 0.07f * snap * f.LegLength;
         hipY = Mathf.Lerp(hipY, f.LowerLeg + 0.05f, g.Sit);
         float sway = moving * 0.018f * f.Height * MathF.Sin(cycle);
@@ -339,7 +349,10 @@ public sealed partial class HumanRig : Rig
             pitch = Mathf.Lerp(pitch, 0.08f, 0.8f * g.Reach);
         }
         Basis torso = turn * new Basis(Vector3.Up, twist + squareOff) * new Basis(Vector3.Right, -pitch) * new Basis(Vector3.Back, roll);
-        Vector3 hipsX = (turn * new Basis(Vector3.Up, twist) * new Basis(Vector3.Right, -pitch) * new Basis(Vector3.Back, roll)).X;
+        // An archer stands side-on from the feet up (standing; on the move the legs go where the body goes).
+        Basis legs = kind == HoldKind.Bow ? turn * new Basis(Vector3.Up, 0.75f * squareOff * (1f - moving)) : turn;
+        Vector3 fwdL = legs * Vector3.Forward, rightL = legs * Vector3.Right;
+        Vector3 hipsX = (legs * new Basis(Vector3.Up, twist) * new Basis(Vector3.Right, -pitch) * new Basis(Vector3.Back, roll)).X;
         // Struck: the upper body thrown away from the hit, the more the closer to the chest it landed.
         Vector3 hitAxis = Vector3.Up.Cross(hitFlat);
         float throwBack = snap * (_hitPart switch { Part.Chest => 0.32f, Part.Head => 0.12f, Part.LegL or Part.LegR => 0.1f, _ => 0.08f }) * (0.6f + _hitHeavy) + 0.3f * stagger;
@@ -349,7 +362,6 @@ public sealed partial class HumanRig : Rig
         PoseTail(g, hip, torso, cycle, moving, jerk);
 
         // Legs: a foot on the ground moves back under the body at walking speed, one in the air comes through high.
-        float duty = Mathf.Lerp(0.62f, 0.4f, run);
         int stepper = hitFlat.Dot(right) > 0f ? 1 : 0;
         for (int i = 0; i < 2; i++)
         {
@@ -370,11 +382,12 @@ public sealed partial class HumanRig : Rig
                 lift = MathF.Sin(s * MathF.PI);
             }
             float half = strideLength * duty * 0.5f;
-            float forward = moving * reach * half + g.Sit * f.UpperLeg * 0.8f + g.Crouch * 0.05f * side + stalk * 0.08f * side;
-            Vector3 hipJoint = hip + hipsX * side * f.HipW * 0.55f + Vector3.Down * f.HipW * 0.1f;
+            // (A foot lands a little ahead of the hips and leaves well behind them, on its toe.)
+            float forward = moving * (reach - Mathf.Lerp(0.25f, 0.4f, run)) * half + g.Sit * f.UpperLeg * 0.8f + g.Crouch * 0.05f * side + stalk * 0.08f * side;
+            Vector3 hipJoint = hip + hipsX * side * f.HipW * 0.55f + Vector3.Up * f.HipW * 0.1f;
             float wide = g.Act is BodyAct.Taunt or BodyAct.Warn or BodyAct.Startle or BodyAct.Panic ? 0.12f * keyed : 0f; // a wide stance for a threat or a fright
-            wide += stalk * 0.06f;
-            Vector3 foot = g.Feet + recoil * 0.6f + fwd * forward + right * side * (f.HipW * 0.7f + staggerSide * 0.6f + g.Sit * 0.04f + g.Crouch * 0.06f + wide);
+            wide += stalk * 0.06f + 0.07f * aimW * (1f - moving); // (and a braced one behind a weapon)
+            Vector3 foot = g.Feet + recoil * 0.6f + fwdL * forward + rightL * side * (f.HipW * 0.7f + staggerSide * 0.6f + g.Sit * 0.04f + g.Crouch * 0.06f + wide);
             // Staggered: one foot steps out along the hit to catch the weight, the other follows a little.
             float stepLift = 0f;
             if (stagger > 0f)
@@ -384,21 +397,21 @@ public sealed partial class HumanRig : Rig
             }
             float ground = GroundAt(foot.X, foot.Z, g.Feet.Y);
             // The heel comes up as a foot trails behind; the swing clears the ground.
-            float heel = stance ? MathF.Max(0f, -reach - 0.25f) * 0.22f * f.LegLength : 0f;
+            float heel = stance ? MathF.Max(0f, -reach - 0.25f) * (0.22f + 0.15f * run) * f.LegLength : 0f;
             // A Husk drags one foot and throws the other up too high.
             float step = husk ? (i == (_offset > 0.5f ? 1 : 0) ? 0.3f : 1.7f) : 1f;
             foot.Y = ground + f.Ankle + moving * (heel + lift * step * f.LegLength * Mathf.Lerp(0.13f, 0.34f, run) * (1f - 0.5f * stalk)) + stepLift;
             _feet[i] = foot;
-            bool grounded = stance || moving <= 0f;
+            bool grounded = stance && (run < 0.5f || heel <= 0f) || moving <= 0f; // (running, a foot is off the ground from the moment its heel leaves it)
             if (grounded && !_planted[i]) Steps++;
             _planted[i] = grounded;
-            (Vector3 knee, Vector3 drawn) = LeggedRig.SolveIK(hipJoint, foot, f.UpperLeg, f.LowerLeg, fwd + right * side * 0.12f);
+            (Vector3 knee, Vector3 drawn) = LeggedRig.SolveIK(hipJoint, foot, f.UpperLeg, f.LowerLeg, fwdL + rightL * side * 0.12f);
             _knee[i] = knee;
             _drawn[i] = drawn;
-            Pose[_legU[i]] = Geo.Segment(hipJoint, knee, right);
-            Pose[_legL[i]] = Geo.Segment(knee, drawn, right);
+            Pose[_legU[i]] = Geo.Segment(hipJoint, knee, rightL);
+            Pose[_legL[i]] = Geo.Segment(knee, drawn, rightL);
             float toe = stance ? (reach > 0f ? 0.25f * reach : 0.3f * reach) * moving : -0.35f * moving * lift;
-            Pose[_foot[i]] = new Transform3D(turn * new Basis(Vector3.Right, toe), drawn);
+            Pose[_foot[i]] = new Transform3D(legs * new Basis(Vector3.Right, toe), drawn);
         }
 
         Vector3 neck = hip + torso.Y * f.Torso;
@@ -433,6 +446,17 @@ public sealed partial class HumanRig : Rig
         // Arms: each hand has a place to be, and the elbow follows it.
         Hold hold = Grips(g, kind, aimW, busy, turn, torso, hip, chest, neck, headBasis);
         if (kind != HoldKind.None) KeepFistsClear(ref hold, kind, torso);
+        if (g.Act == BodyAct.HandsUp && act > 0f && kind != HoldKind.None)
+        {
+            // Hands up is both hands, whatever one of them holds: the weapon goes up in its fist, by the grip.
+            int wi = kind == HoldKind.Bow ? 0 : 1;
+            float ws = wi == 0 ? -1f : 1f;
+            ArmGoal up = ActArm(g, wi, true, chest + torso.X * ws * f.ShoulderW * 0.94f, neck, torso, headBasis, f.UpperArmOf(wi), f.ForearmOf(wi));
+            Vector3 lift = (up.Hand + torso.Y * HandMake.Fist.Y * _handSize[wi] - (wi == 1 ? hold.R : hold.L)) * act * (wi == 1 ? hold.RW : hold.LW);
+            if (wi == 1) hold.R += lift;
+            else hold.L += lift;
+            hold.Prop.Origin += lift;
+        }
         GripRight = hold.R;
         GripLeft = hold.L;
         GripRightOn = hold.RW;
@@ -453,17 +477,19 @@ public sealed partial class HumanRig : Rig
             Vector3 shoulder = chest + torso.X * side * Mathf.Lerp(_shoulderOut, f.ShoulderW * 0.94f, i == 1 ? hold.RW : hold.LW) + torso.Y * shrug;
             // A Husk's arms don't keep time with its legs: one swings late and loose, the other leads, reaching.
             float lag = husk ? (i == 0 ? 1.4f : -0.5f) : 0f;
-            float swing = (i == 0 ? 1f : -1f) * MathF.Sin(cycle - lag) * moving * (0.38f + 0.5f * run) * (husk ? 1.5f : 1f) * (1f - 0.5f * stalk) + 0.04f + 0.3f * run + 0.35f * stalk;
+            // The upper arm swings from the shoulder against its leg; the elbow is all but straight walking (bending as the hand comes forward) and square in a run, the fists pumping.
+            float beat = (i == 0 ? 1f : -1f) * MathF.Sin(cycle - lag) * moving;
+            float swing = beat * (0.38f + 0.3f * run) * (husk ? 1.5f : 1f) * (1f - 0.5f * stalk) + 0.04f - 0.12f * run + 0.35f * stalk;
             if (husk) swing += 0.3f * jerk * side + (i == f.LongArm ? 0.25f * moving : 0f);
-            Vector3 hang = (down * MathF.Cos(swing) + ahead * MathF.Sin(swing)).Normalized();
-            float bend = 0.95f - 0.28f * run - 0.12f * stalk;
+            float flex = swing + 0.2f + MathF.Max(0f, beat) * (0.3f + 0.25f * run) + (husk ? 0.55f : 1.25f) * run + 0.4f * stalk;
+            Vector3 hang = (down * MathF.Cos(swing) + ahead * MathF.Sin(swing)).Normalized(), lower = (down * MathF.Cos(flex) + ahead * MathF.Sin(flex) - torso.X * side * 0.2f * run).Normalized();
             // (A holstered pistol is by the hip: the hand hangs out past it.)
-            Vector3 hand = shoulder + hang * arm * bend + torso.X * side * (0.03f + 0.04f * (f.Padding - 1f) * 2f + (kind == HoldKind.Pistol && i == 1 ? 0.035f * f.Height / 1.72f : 0f));
+            Vector3 hand = shoulder + hang * upperArm + lower * forearm * 0.98f + torso.X * side * (0.03f + 0.04f * (f.Padding - 1f) * 2f + (kind == HoldKind.Pistol && i == 1 ? 0.035f * f.Height / 1.72f : 0f));
             Vector3 pole = torso.Z + down * 0.2f + torso.X * side * 0.3f;
             if (g.Work > 0f)
             {
-                float beat = MathF.Sin(g.Clock * 1.7f);
-                Vector3 work = chest + ahead * ((0.34f + 0.1f * beat) * f.Height / 1.72f + 1.5f * f.ChestD * (f.Padding - 1f)) + down * (0.34f - 0.22f * beat) + torso.X * side * 0.1f;
+                float stroke = MathF.Sin(g.Clock * 1.7f);
+                Vector3 work = chest + ahead * ((0.34f + 0.1f * stroke) * f.Height / 1.72f + 1.5f * f.ChestD * (f.Padding - 1f)) + down * (0.34f - 0.22f * stroke) + torso.X * side * 0.1f;
                 hand = hand.Lerp(work, g.Work);
             }
             if (f.Prop == "umbrella" && i == 1)
@@ -487,7 +513,7 @@ public sealed partial class HumanRig : Rig
             if (g.Crouch > 0f)
             {
                 // (Elbows out over the thighs, so a big coat's front stays clear of the arms.)
-                hand = hand.Lerp(_knee[i] + fwd * 0.1f * f.Height / 1.72f + torso.X * side * 0.08f - Vector3.Up * 0.04f, g.Crouch);
+                hand = hand.Lerp(_knee[i] + (Vector3.Up * 0.07f - fwdL * 0.02f) * f.Height / 1.72f + torso.X * side * 0.1f, g.Crouch * (1f - 0.7f * moving)); // (creeping, they hang ready)
                 pole = pole.Lerp(F.V(0.85f, -0.25f, 0.2f), g.Crouch).Normalized();
             }
             // Stalking, the arms hang loose and forward, ready.
@@ -577,7 +603,7 @@ public sealed partial class HumanRig : Rig
         if (g.Down > 0f)
         {
             // Laid down (asleep): the whole body goes over about the feet, backwards.
-            var fall = new Transform3D(new Basis(right, g.Down * MathF.PI * 0.49f), g.Feet);
+            var fall = new Transform3D(new Basis(right, Mathf.SmoothStep(0.3f, 1f, g.Down) * MathF.PI * 0.49f), g.Feet);
             Transform3D lay = fall * new Transform3D(Basis.Identity, -g.Feet);
             for (int i = 0; i < Pose.Length; i++) Pose[i] = lay * Pose[i];
         }
@@ -658,7 +684,9 @@ public sealed partial class HumanRig : Rig
                 float drawn = Math.Clamp((aim - 0.15f) / 0.85f, 0f, 1f);
                 Vector3 low = hip + up * T * 0.45f + torso.X * 0.12f * u + ahead * (d + 0.2f * u);
                 Vector3 lowDir = (fwd * 0.6f + Vector3.Down * 0.8f).Normalized();
-                Vector3 raised = chest + Vector3.Up * 0.02f * u + right * 0.03f * u + look * armR * 0.85f;
+                // Up in both hands on the line from the eye to the target.
+                Vector3 raised = chest + right * 0.03f * u + look * armR * 0.85f;
+                raised.Y = (neck + head.Y * (f.Neck + f.HeadRadius)).Y - 0.05f * u;
                 Vector3 off = raised - shoulderR;
                 if (off.Length() > armR * 0.95f) raised = shoulderR + off.Normalized() * armR * 0.95f;
                 float clear = Math.Min(1f, drawn * 2.5f);

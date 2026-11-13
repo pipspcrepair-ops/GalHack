@@ -66,11 +66,10 @@ public partial class BestiaryTest
                 rig.Drive(At(BodyAct.Warn, t));
                 {
                     var (palm, fingers, shape) = Hand(1);
-                    Vector3 fore = (rig.ArmOf(1).wrist - rig.ArmOf(1).elbow).Normalized();
                     Want(palm.Dot(Ahead()) > 0.7f, "a stop: palm ahead");
                     Want(fingers.Dot(Up()) > 0.7f, "a stop: fingers up");
                     Want(shape == HandShape.Open, "a stop: open");
-                    Want(fingers.Dot(fore) > 0.99f, "fingers go on from the forearm");
+                    Want((rig.ArmOf(1).wrist - rig.ArmOf(1).shoulder).Normalized().Dot(Ahead()) > 0.85f, "a stop: the arm thrust out at them, the hand bent up at the wrist");
                 }
                 rig.Drive(At(BodyAct.HandsUp, t));
                 for (int i = 0; i < 2; i++)

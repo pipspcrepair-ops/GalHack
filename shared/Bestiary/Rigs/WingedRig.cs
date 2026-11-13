@@ -159,7 +159,7 @@ public sealed class WingedRig : Rig
             {
                 yawAcc += MathF.Sin(c.Age * 1.8f - i * 0.9f) * 0.12f - YawRate * 0.08f;
                 pitchAcc += MathF.Sin(_phase - i * 0.8f) * 0.06f * _flapBlend - 0.05f;
-                Vector3 d = body * Geo.Backward(yawAcc, pitchAcc);
+                Vector3 d = OnGround(w, c, q, body * Geo.Backward(yawAcc, pitchAcc), seg, b.Width * 0.05f);
                 Pose[_tail[i]] = Geo.Segment(q, q + d * seg, body.X);
                 q += d * seg;
             }

@@ -70,6 +70,16 @@ public abstract class Rig
         return c?.Space != null ? c.Position.Y : w.Terrain.Height(x, z);
     }
 
+    /// <summary>The way a tail's next piece goes from a point, turned up to lie along the ground where it would have gone under it (clear: how far its middle rides over the ground).</summary>
+    protected static Vector3 OnGround(WildSim w, Creature c, Vector3 from, Vector3 dir, float length, float clear)
+    {
+        Vector3 to = from + dir * length;
+        float ground = GroundY(w, c, to.X, to.Z) + clear;
+        if (to.Y >= ground) return dir;
+        to.Y = ground;
+        return (to - from).Normalized();
+    }
+
     /// <summary>Snap to a resting pose at the creature's spawn point (feet planted, chains laid out).</summary>
     public abstract void Reset(WildSim w, Creature c);
 

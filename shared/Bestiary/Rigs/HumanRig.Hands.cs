@@ -45,10 +45,10 @@ public static class HandTable
         // Gestures.
         ["handsup"] = Both(Open(0, 0, 1)), ["cower"] = Both(Open(-0.3f, 0, -1)),
         ["waveoff-in"] = Both(Open(0, -1, 0)), ["waveoff-out"] = Both(Open(0, -1, 0)),
-        ["beckon-out"] = Both(Open(0, 1, 0)), ["beckon-in"] = Both(Open(0, 0.4f, -1)),
+        ["beckon-out"] = Both(Open(0, 1, 0)), ["beckon-in"] = Both(Open(0, 0.4f, -1).Toward(-0.1f, 0.5f, -0.85f)),
         ["point"] = Both(Point(-1, -0.3f, 0)), ["point-up"] = Both(Point(-1, 0, 0.2f)), ["point-down"] = Both(Point(-1, 0, -0.2f)), ["point-side"] = Both(Point(-0.3f, -1, 0)),
         ["shrug"] = Both(Open(0, 1, 0)), ["grieve"] = Both(Open(-0.3f, 0, -1).Toward(-0.2f, 1, 0.1f)), ["taunt"] = Both(Fist(-1, 0, 0)),
-        ["greet-wave"] = Both(Open(0, 0, 1)), ["greet-palm"] = Both(Open(0, 0, 1)), ["thanks-offer"] = Both(Open(0, 1, 0)), ["warn"] = Both(Open(0, 0, 1)),
+        ["greet-wave"] = Both(Open(0, 0, 1)), ["greet-palm"] = Both(Open(0, 0, 1)), ["thanks-offer"] = Both(Open(0, 1, 0)), ["warn"] = Both(Open(0, 0, 1).Toward(0, 1, 0.12f)),
         ["celebrate-low"] = Both(Fist(-1, 0, 0)), ["celebrate-high"] = Both(Fist(-1, 0, 0)), ["present"] = Both(Open(0, 1, 0)), ["startle"] = Both(Open(0, 0, 1)),
         ["panic-flail"] = Both(Open(0, 0, 1)), ["panic-clutch"] = Both(Open(-1, 0, 0).Toward(-0.2f, 1, 0)), ["fidget-wring"] = Both(Open(-1, 0.3f, 0)),
         ["fidget-nape"] = Pair(Open(-1, 0, 0), Open(0, 0, -1).Toward(0.7f, 0.7f, 0)),
@@ -56,7 +56,7 @@ public static class HandTable
         ["spew-clutch"] = Both(Open(0, 0, -1)), ["greet-chest"] = Both(Open(0, 0, -1)), ["thanks-chest"] = Both(Open(0, 0, -1)),
         ["salute-brow"] = Both(Open(0, -1, 0)), ["salute-out"] = Both(Open(0, 0, 1)),
         // Stances.
-        ["sit"] = Both(Open(0, -1, 0)), ["crouch"] = Both(Open(0, -1, 0)), ["reach"] = Both(Open(0, -1, 0)),
+        ["sit"] = Both(Open(0, -1, 0)), ["crouch"] = Both(Open(0, -1, 0).Toward(0, -0.8f, 0.6f)), ["run-a"] = Both(Fist(-1, 0, 0)), ["reach"] = Both(Open(0, -1, 0)),
         ["work-low"] = Both(Fist(-1, 0, 0)), ["work-high"] = Both(Fist(-1, 0, 0)), ["sip"] = Both(Fist(-1, 0.3f, 0.5f)),
         // Carrying and holding: a fist (a grip decides how it wraps what it holds; the palm here is the side it prefers).
         ["carry-cane"] = Both(Fist(-1, 0, 0)), ["carry-umbrella"] = Both(Fist(-1, 0, 0)), ["carry-wrench"] = Both(Fist(-1, 0, 0)), ["carry-hoe"] = Both(Fist(-1, 0, 0)),
