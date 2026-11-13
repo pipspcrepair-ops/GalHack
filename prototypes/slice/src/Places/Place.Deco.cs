@@ -593,6 +593,8 @@ public partial class Place
     {
         public Node3D Node;
         public readonly List<DecoNode> Pieces = new();
+        /// <summary>The room's collision: one static body for each layer its pieces sit on, every piece's boxes on it at the piece's own transform (a piece is a shape owner, so a ray's shape says which).</summary>
+        public readonly Dictionary<uint, StaticBody3D> Bodies = new();
         /// <summary>How far the room's pieces have dissolved in (0..1), and which way they are going (+1 in, -1 out, 0 still).</summary>
         public float Blend;
         public int Way;
@@ -696,11 +698,8 @@ public partial class Place
         Dressed d = _dressed[module];
         PlanetSurface.Fx.PopLog.Note("props", "room undressed", Away(Memory.Rooms[module], FromWorld(Places.EyeAt())), 1.2f, 1f / (60f * DressBlendSeconds));
         foreach (DecoNode n in d.Pieces)
-            if (n?.Body != null)
-            {
-                _pieceOf.Remove(n.Body.GetInstanceId());
-                n.Body.ProcessMode = ProcessModeEnum.Disabled; // nothing to aim at or bump while it goes
-            }
+            if (n != null) _pieceOf.Remove(n.GetInstanceId());
+        foreach (StaticBody3D body in d.Bodies.Values) body.ProcessMode = ProcessModeEnum.Disabled; // nothing to aim at or bump while it goes
         d.Way = -1;
         if (!_dressFading.Contains(d)) _dressFading.Add(d);
         _dressed.Remove(module);
@@ -723,7 +722,7 @@ public partial class Place
             var at = new Transform3D(new Basis(Vector3.Up, Mathf.DegToRad(pl.Yaw)), new Vector3(pl.X, pl.Y, pl.Z));
             DecoNode.CollisionLayer = room.Solid.Contains(i) ? Layers.World : SceneryLayer;
             DecoNode n;
-            try { n = DecoNode.Create(decor.Meshes, pl.Look, at, collide: true, lights: false); }
+            try { n = DecoNode.Create(decor.Meshes, pl.Look, at, collide: false, lights: false); }
             catch (Exception e)
             {
                 GD.PushWarning($"could not dress {room.Room.RoomId} with {pl.Piece}: {e.Message}");
@@ -733,7 +732,18 @@ public partial class Place
             d.Node.AddChild(n);
             PlanetSurface.Fx.Fade.Set(n, 0f, 0f); // the room's pieces dissolve in together once all are in
             d.Pieces.Add(n);
-            if (n.Body != null) _pieceOf[n.Body.GetInstanceId()] = (room, i);
+            _pieceOf[n.GetInstanceId()] = (room, i);
+            if (!d.Bodies.TryGetValue(DecoNode.CollisionLayer, out StaticBody3D body))
+            {
+                d.Bodies[DecoNode.CollisionLayer] = body = new StaticBody3D { Name = "Body", CollisionLayer = DecoNode.CollisionLayer, CollisionMask = 0 };
+                d.Node.AddChild(body);
+            }
+            foreach (var (shape, xf) in decor.Meshes.Shapes(pl.Look))
+            {
+                uint owner = body.CreateShapeOwner(n);
+                body.ShapeOwnerAddShape(owner, shape);
+                body.ShapeOwnerSetTransform(owner, at * xf);
+            }
             if (clock.Elapsed.TotalMilliseconds > 1.2)
             {
                 yield return 0;
@@ -777,9 +787,11 @@ public partial class Place
         }
     }
 
-    public DecoHit PieceOf(GodotObject collider)
+    /// <summary>The piece a ray met: the body it hit and the shape of that body (-1: none known).</summary>
+    public DecoHit PieceOf(GodotObject collider, int shape)
     {
-        if (collider == null || !_pieceOf.TryGetValue(collider.GetInstanceId(), out var at)) return null;
+        if (collider is not CollisionObject3D body || shape < 0) return null;
+        if (body.ShapeOwnerGetOwner(body.ShapeFindOwner(shape)) is not DecoNode hit || !_pieceOf.TryGetValue(hit.GetInstanceId(), out var at)) return null;
         if (!_dressed.TryGetValue(at.Room.Module, out Dressed d) || d.Pieces[at.Index] is not DecoNode node) return null;
         DecoPiece piece = Decor.Shared.Catalogue.Piece(node.Look.Piece);
         return new DecoHit(at.Room, at.Index, piece, node);
@@ -799,7 +811,10 @@ public partial class Place
             hit.Room.Solid.Remove(i);
             PlaceParts.Taken(Memory, hit.Room.Module, i);
             if (view == null || view.Pieces[i] is not DecoNode n) continue;
-            if (n.Body != null) _pieceOf.Remove(n.Body.GetInstanceId());
+            _pieceOf.Remove(n.GetInstanceId());
+            foreach (StaticBody3D body in view.Bodies.Values)
+                foreach (uint owner in body.GetShapeOwners().ToList())
+                    if (body.ShapeOwnerGetOwner(owner) == n) body.RemoveShapeOwner(owner);
             n.Visible = false;
             n.ProcessMode = ProcessModeEnum.Disabled;
         }
