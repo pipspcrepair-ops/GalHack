@@ -403,7 +403,7 @@ public partial class DamageTest : Node
         s.Name = "Seated";
         Vessel v = Vessel.Spawn(Zone, s, Spot(-210f, 3f), 0f, landed: true);
         foreach (int x in _drive.Wait(2)) yield return x;
-        Check(_game.Survivor.Sit(v), "the castaway sits at the controls");
+        Check(_game.Survivor.Sit(v), "the sleeper sits at the controls");
         foreach (int x in _drive.Wait(5)) yield return x;
         Int3 cockpit = s.Blocks().First(b => s.TypeOf(b.block).IsCommandChair).pos;
         Shoot(v, cockpit, 1e6f, DamageType.Kinetic);

@@ -242,7 +242,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
         {
             Name = "Stops", Size = new Vector3(StopsSize, StopsHeight, StopsSize), Resolution = GpuParticlesCollisionHeightField3D.ResolutionEnum.Resolution256,
             UpdateMode = GpuParticlesCollisionHeightField3D.UpdateModeEnum.WhenMoved, Visible = false, PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off,
-            HeightfieldMask = 0xFFFFFFFFu & ~(1u << 1), // not the castaway's own body
+            HeightfieldMask = 0xFFFFFFFFu & ~(1u << 1), // not the sleeper's own body
         };
         AddChild(_stops);
         _splash = AddSplash();
@@ -343,7 +343,7 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
         };
     }
 
-    /// <summary>Seconds of the opening with no severe weather: a castaway's first job is the pod, not a tornado.</summary>
+    /// <summary>Seconds of the opening with no severe weather: a sleeper's first job is the pod, not a tornado.</summary>
     public const double CalmOpening = 12 * 60;
 
     /// <summary>

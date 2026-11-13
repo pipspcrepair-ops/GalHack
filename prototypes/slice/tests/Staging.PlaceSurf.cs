@@ -340,7 +340,7 @@ public sealed partial class Staging
         foreach (int x in Frame(eye, at + outward * 0.5f + Vector3.Up * 0.2f, file)) yield return x;
     }
 
-    /// <summary>The camera fixed at an eye looking at a point, the castaway out of the shot behind it, the ground and place in, then the shot.</summary>
+    /// <summary>The camera fixed at an eye looking at a point, the sleeper out of the shot behind it, the ground and place in, then the shot.</summary>
     IEnumerable<int> Frame(Vector3 eye, Vector3 look, string file, int settle = 120)
     {
         Vector3 back = (eye - look) with { Y = 0f };

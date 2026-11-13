@@ -86,6 +86,15 @@ public partial class PlacePerf
             }
         GD.Print($"PERF city street at {best.At.X:F0},{best.At.Z:F0}: {best.Score:F0} m of tower along 300 m of it, the tallest in the city {towers.Max(t => t.Tall):F0} m");
         foreach (int x in Scene("city street", best.At, best.At + best.Way * 200f + Vector3.Up * 30f, 1.7f, _args.ContainsKey("profile"))) yield return x;
+        // Through the city on foot along its street and then over its roofs: every piece that comes in must get its body.
+        foreach (int x in Cross(best.At, best.Way * 400f, 1f, 22f)) yield return x;
+        foreach (int x in Cross(best.At, -best.Way * 600f, 40f, 60f)) yield return x;
+        if (JoltWatch.Failed > 0)
+        {
+            GD.PrintErr($"FAIL audit: {JoltWatch.Failed} bodies failed to create (the engine's body limit): their pieces have no collision");
+            _failed = true;
+        }
+        else GD.Print("PERF bodies: none failed to create");
         if (_args.TryGetValue("occlcheck", out string shots))
         {
             // Nothing wrongly hidden: the street four ways round (facades, windows), then inside a standing place looking out at its way in.
@@ -142,6 +151,25 @@ public partial class PlacePerf
         if (!only.Contains("air")) yield break;
         Vector3 edge = centre + (start - centre).Normalized() * (float)city.Radius;
         foreach (int x in Scene("city air", edge, centre + Vector3.Up * 20f, 120f)) yield return x;
+    }
+
+    /// <summary>Moves along a line at a speed, a height over the ground, the way a rider or flyer would stream things in.</summary>
+    IEnumerable<int> Cross(Vector3 from, Vector3 line, float height, float speed)
+    {
+        float length = line.Length(), along = 0f;
+        Vector3 dir = line / length;
+        while (along < length)
+        {
+            along += speed / Engine.PhysicsTicksPerSecond;
+            Vector3 p = from + dir * along;
+            p.Y = Ground(p) + height;
+            _game.Survivor.PlaceOutside(p.ToNumerics());
+            _drive.Face(p + dir * 20f);
+            yield return 0;
+        }
+        foreach (int x in _drive.Wait(120)) yield return x;
+        var (bodies, shapes) = JoltWatch.Census(GetTree().Root);
+        GD.Print($"PERF crossed {length:F0} m at {speed:F0} m/s: live bodies {bodies}, shapes {shapes}, failed to create {JoltWatch.Failed}");
     }
 
     /// <summary>

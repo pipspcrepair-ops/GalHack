@@ -70,7 +70,7 @@ public sealed class VesselRoles
 public sealed partial class Vessel
 {
     /// <summary>The one player of the slice, by name in the roles (co-op brings the rest).</summary>
-    public const string Player = "castaway";
+    public const string Player = "sleeper";
 
     /// <summary>Who sits where, and who flies.</summary>
     public readonly VesselRoles Roles = new();

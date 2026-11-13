@@ -9,7 +9,7 @@ using WeatherKind = Weather.Model.WeatherKind;
 namespace Slice.Tests;
 
 /// <summary>
-/// --view=seated: the castaway in every chair and cockpit (<see cref="SeatedTest.Floor"/>), from its
+/// --view=seated: the sleeper in every chair and cockpit (<see cref="SeatedTest.Floor"/>), from its
 /// own eyes looking ahead and looking down at its lap, and from outside, in front of the chair.
 /// --out=DIR is the folder (three PNGs a chair).
 /// </summary>

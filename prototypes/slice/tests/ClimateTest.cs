@@ -273,9 +273,9 @@ public partial class ClimateTest : Node
         }
         Exposure far = _game.Suit.Exposure(new Pos(near.X, near.Y, near.Z), _game.Suit.Sim.Time);
         Exposure at = _game.Suit.Exposure(new Pos(shore.X, shore.Y, shore.Z), _game.Suit.Sim.Time);
-        Check(at.LavaMetres <= 3, $"at the shore the suit reads lava {at.LavaMetres:F0} m off ({(double.IsInfinity(far.LavaMetres) ? "none" : far.LavaMetres.ToString("F0") + " m")} where the castaway stood)");
+        Check(at.LavaMetres <= 3, $"at the shore the suit reads lava {at.LavaMetres:F0} m off ({(double.IsInfinity(far.LavaMetres) ? "none" : far.LavaMetres.ToString("F0") + " m")} where the sleeper stood)");
         Check(_game.Suit.Exposure(new Pos(inside.X, inside.Y, inside.Z), _game.Suit.Sim.Time).LavaMetres == 0, "in it the distance is nothing");
-        // STAGING: the castaway set down on the shore, then in it.
+        // STAGING: the sleeper set down on the shore, then in it.
         Me.PlaceOutside((shore + Vector3.Up * 0.2f).ToNumerics());
         foreach (int x in _drive.UntilSettled()) yield return x;
         _game.Suit.Vitals.Health = _game.Suit.Sim.Data.Vitals.Health.Max;
@@ -302,7 +302,7 @@ public partial class ClimateTest : Node
         Check(warned && before - _game.Suit.Vitals.Health >= 12, $"ice water: the visor warns first, then health goes fast: {before - _game.Suit.Vitals.Health:F0} in 4 s");
     }
 
-    /// <summary>Back on dry open ground, whole and fed: each section starts as a castaway would.</summary>
+    /// <summary>Back on dry open ground, whole and fed: each section starts as a sleeper would.</summary>
     IEnumerable<int> OnOpenGround(Vector3 near)
     {
         Vector3 spot = Open(near);
@@ -439,7 +439,7 @@ public partial class ClimateTest : Node
         beast.Removed = true;
     }
 
-    /// <summary>The nearest deep water to the castaway, found in the generator's own columns; null on a dry world.</summary>
+    /// <summary>The nearest deep water to the sleeper, found in the generator's own columns; null on a dry world.</summary>
     public static Vector3? DeepWater(SurfaceZone zone, Vector3 near, float depth, float within)
     {
         for (float r = 40f; r <= within; r += 40f)
@@ -464,7 +464,7 @@ public partial class ClimateTest : Node
         foreach (int x in _drive.UntilSettled()) yield return x;
         foreach (int x in _drive.Wait(120)) yield return x;
         bool floats = Me.Legs.Swimming && !Me.Body.Water.Underwater && Me.WorldEye().Y > water.Y;
-        Check(floats, $"dropped in, the castaway floats and swims with the head out: swimming {Me.Legs.Swimming}, eye {Me.WorldEye().Y - water.Y:F2} m over the surface");
+        Check(floats, $"dropped in, the sleeper floats and swims with the head out: swimming {Me.Legs.Swimming}, eye {Me.WorldEye().Y - water.Y:F2} m over the surface");
         Check(!Zone.Underwater.CameraUnder, "with the head out the view stays above the surface");
 
         double oxygen = _game.Suit.Vitals.Oxygen;

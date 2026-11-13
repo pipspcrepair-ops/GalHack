@@ -7,7 +7,7 @@ time per system are not. Numbers to re-measure on a quiet machine are marked (q)
 
 ## How it was measured
 
-- `PlacePerf --audit=1` (tests/PlacePerf.Audit.cs): a fresh world with a city (CityPlan.Force); the castaway
+- `PlacePerf --audit=1` (tests/PlacePerf.Audit.cs): a fresh world with a city (CityPlan.Force); the sleeper
   jumps to open country (the spot furthest from any place, looking at the horizon), a town (from 30 m off its
   edge), the city's middle at eye height looking along the street with the most tower along it, and over the
   city's edge from 120 m up. Per scene: how long each kind took to come in after the jump, then 240 frames.

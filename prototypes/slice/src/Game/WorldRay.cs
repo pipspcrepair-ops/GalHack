@@ -10,7 +10,7 @@ using Slice.Vessels;
 namespace Slice.Game;
 
 /// <summary>What a look ray hit, in the zone's world (frame coordinates).</summary>
-public readonly record struct LookHit(Vector3 Point, Vector3 Normal, float Distance, Vessel Vessel, Int3 Cell, GodotObject Collider)
+public readonly record struct LookHit(Vector3 Point, Vector3 Normal, float Distance, Vessel Vessel, Int3 Cell, GodotObject Collider, int Shape = -1)
 {
     /// <summary>A structure's block (its cell is <see cref="Cell"/>).</summary>
     public bool OnBlock => Vessel != null;
@@ -74,7 +74,7 @@ public static class WorldRay
                 var collider = (GodotObject)z["collider"];
                 Vessel v = zone.VesselOf(zone.Host.BodyOf(collider));
                 Int3 cell = v == null ? default : CellOf(v, v.Body.ToLocal(point.ToNumerics()).ToGodot(), MathX.Unrotate(v.Body.Rotation, normal.ToNumerics()).ToGodot());
-                hit = new LookHit(point, normal, d, v, cell, collider);
+                hit = new LookHit(point, normal, d, v, cell, collider, (int)z["shape"]);
                 found = true;
             }
         }

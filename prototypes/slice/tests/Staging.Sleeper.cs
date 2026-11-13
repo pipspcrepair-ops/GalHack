@@ -7,15 +7,15 @@ using Weather.Model;
 namespace Slice.Tests;
 
 /// <summary>
-/// --view=castaway: the castaway's own figure in third person, on the world's own ground and weather:
+/// --view=sleeper: the sleeper's own figure in third person, on the world's own ground and weather:
 /// walking, mid-jump, on the jetpack and astride the hover bike. --out=DIR is the folder.
 /// </summary>
 public sealed partial class Staging
 {
-    IEnumerable<int> CastawayView()
+    IEnumerable<int> SleeperView()
     {
         _game.Zone.Sky.TimeOfDay = Num("time", 0.4);
-        string dir = _args.GetValueOrDefault("out", "castaway");
+        string dir = _args.GetValueOrDefault("out", "sleeper");
         Directory.CreateDirectory(dir);
         Slice.Player.Survivor s = _game.Survivor;
         Vector3 spot = Play.FlatSpot(s.WorldFeet, 25f, span: 12f);
@@ -31,13 +31,13 @@ public sealed partial class Staging
         foreach (int x in _drive.Wait(2)) yield return x;
         _game.Controls.Hold(Key.Space, false);
         foreach (int x in _drive.Wait(14)) yield return x;
-        GD.Print($"(castaway: jump: floor {s.Body.OnFloor}, up {s.Body.Velocity.Y:F2}, feet {s.WorldFeet.Y:F2}, ground {_game.Zone.GroundAt(s.WorldFeet.X, s.WorldFeet.Z).Y:F2})");
+        GD.Print($"(sleeper: jump: floor {s.Body.OnFloor}, up {s.Body.Velocity.Y:F2}, feet {s.WorldFeet.Y:F2}, ground {_game.Zone.GroundAt(s.WorldFeet.X, s.WorldFeet.Z).Y:F2})");
         foreach (int x in Shot(Path.Combine(dir, "2-mid-jump.png"))) yield return x;
         _game.Controls.ReleaseAll();
         foreach (int x in _drive.Wait(60)) yield return x;
         _game.Controls.Hold(Key.Space);
         foreach (int x in _drive.Wait(50)) yield return x;
-        GD.Print($"(castaway: jet: floor {s.Body.OnFloor}, firing {s.Legs.JetpackFiring}, fuel {s.Legs.JetpackFuel:F2}, feet {s.WorldFeet.Y:F2}, ground {_game.Zone.GroundAt(s.WorldFeet.X, s.WorldFeet.Z).Y:F2})");
+        GD.Print($"(sleeper: jet: floor {s.Body.OnFloor}, firing {s.Legs.JetpackFiring}, fuel {s.Legs.JetpackFuel:F2}, feet {s.WorldFeet.Y:F2}, ground {_game.Zone.GroundAt(s.WorldFeet.X, s.WorldFeet.Z).Y:F2})");
         foreach (int x in Shot(Path.Combine(dir, "3-jetpack.png"))) yield return x;
         _game.Controls.ReleaseAll();
         foreach (int x in _drive.Wait(150)) yield return x;
