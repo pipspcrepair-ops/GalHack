@@ -155,6 +155,8 @@ public sealed class LayoutExtras
     public List<HomeNote> Homes = new();
     /// <summary>A blast site: ground zero and the radii of its crater, blown-down ring, dead zone and fade.</summary>
     public BlastZone? Blast;
+    /// <summary>A composed site's roads and paths as planned (<see cref="SiteRoads"/>); null on every other place.</summary>
+    public RoadPlan? Roads;
 }
 
 /// <summary>What the planner decided about one room, for tests and the overlay.</summary>
