@@ -86,10 +86,67 @@ public partial class PlacePerf
             }
         GD.Print($"PERF city street at {best.At.X:F0},{best.At.Z:F0}: {best.Score:F0} m of tower along 300 m of it, the tallest in the city {towers.Max(t => t.Tall):F0} m");
         foreach (int x in Scene("city street", best.At, best.At + best.Way * 200f + Vector3.Up * 30f, 1.7f, _args.ContainsKey("profile"))) yield return x;
+        if (_args.TryGetValue("occlcheck", out string shots))
+        {
+            // Nothing wrongly hidden: the street four ways round (facades, windows), then inside a standing place looking out at its way in.
+            Vector3 eye = best.At + Vector3.Up * (Ground(best.At) - best.At.Y + 1.7f);
+            for (int k = 0; k < 4; k++)
+                foreach (int x in OcclusionCheck(shots, $"street{k}", new Transform3D(Basis.LookingAt(best.Way.Rotated(Vector3.Up, k * MathF.PI / 2f) + Vector3.Up * 0.1f, Vector3.Up), eye))) yield return x;
+            var inside = _game.Places.Standing.OrderBy(p => Flat(p.WorldOrigin, best.At)).Select(p =>
+            {
+                var reach = p.Nav().Reachable(p.Inst.Layout.EntranceCell);
+                var roofed = reach.Where(c => p.Roofed(p.WorldOf(c, 0.2f))).ToList();
+                return (Place: p, Cell: roofed.Count > 0 ? roofed[roofed.Count / 2] : (PoiGenerator.Gen.Int3?)null);
+            }).FirstOrDefault(t => t.Cell != null);
+            if (inside.Place != null)
+            {
+                Vector3 at = inside.Place.WorldOf(inside.Cell.Value, 1.6f), door = inside.Place.WorldOf(inside.Place.Inst.Layout.EntranceCell, 1.2f);
+                _game.Survivor.PlaceOutside(inside.Place.WorldOf(inside.Cell.Value, 0.1f).ToNumerics());
+                foreach (int x in OcclusionCheck(shots, "inside", new Transform3D(Basis.LookingAt(door - at, Vector3.Up), at))) yield return x;
+            }
+        }
         // Over its edge, looking in across it.
         if (!only.Contains("air")) yield break;
         Vector3 edge = centre + (start - centre).Normalized() * (float)city.Radius;
         foreach (int x in Scene("city air", edge, centre + Vector3.Up * 20f, 120f)) yield return x;
+    }
+
+    /// <summary>
+    /// One view drawn with the occluders off, off again (what moves between frames anyway) and on: the share of
+    /// pixels that differ each way, and the frames and a map of the differences (red: off and on differ) beside --occlcheck.
+    /// </summary>
+    IEnumerable<int> OcclusionCheck(string dir, string tag, Transform3D view)
+    {
+        System.IO.Directory.CreateDirectory(dir);
+        _game.FixedCamera = view;
+        _game.Zone.Wildlife.Frozen = true;
+        foreach (int x in _drive.Wait(60)) yield return x;
+        Image Shot() => GetViewport().GetTexture().GetImage();
+        GetViewport().UseOcclusionCulling = false;
+        foreach (int x in _drive.Wait(10)) yield return x;
+        Image off1 = Shot();
+        foreach (int x in _drive.Wait(10)) yield return x;
+        Image off2 = Shot();
+        GetViewport().UseOcclusionCulling = true;
+        foreach (int x in _drive.Wait(10)) yield return x;
+        Image on = Shot();
+        var map = Image.CreateEmpty(on.GetWidth(), on.GetHeight(), false, Image.Format.Rgb8);
+        int noise = 0, differ = 0, n = on.GetWidth() * on.GetHeight();
+        for (int y = 0; y < on.GetHeight(); y++)
+            for (int x = 0; x < on.GetWidth(); x++)
+            {
+                Color a = off1.GetPixel(x, y), b = off2.GetPixel(x, y), c = on.GetPixel(x, y);
+                bool moved = Differ(a, b), changed = Differ(b, c);
+                if (moved) noise++;
+                if (changed) differ++;
+                map.SetPixel(x, y, changed && !moved ? new Color(1f, 0f, 0f) : c.Darkened(0.6f));
+            }
+        off2.SavePng(System.IO.Path.Combine(dir, $"{tag}-off.png"));
+        on.SavePng(System.IO.Path.Combine(dir, $"{tag}-on.png"));
+        map.SavePng(System.IO.Path.Combine(dir, $"{tag}-diff.png"));
+        GD.Print($"PERF occlusion check {tag}: {differ * 100.0 / n:F3}% of pixels differ off against on, {noise * 100.0 / n:F3}% off against off; draws on {GetViewport().GetRenderInfo(Viewport.RenderInfoType.Visible, Viewport.RenderInfo.DrawCallsInFrame)}");
+        _game.Zone.Wildlife.Frozen = false;
+        static bool Differ(Color a, Color b) => MathF.Max(MathF.Abs(a.R - b.R), MathF.Max(MathF.Abs(a.G - b.G), MathF.Abs(a.B - b.B))) > 0.06f;
     }
 
     static float Flat(TerrainDigging.Terrain.Int3 a, TerrainDigging.Terrain.Int3 b) => MathF.Sqrt((float)(a.X - b.X) * (a.X - b.X) + (float)(a.Z - b.Z) * (a.Z - b.Z));
@@ -145,6 +202,15 @@ public partial class PlacePerf
         foreach (int x in Measure(name)) yield return x;
         Census(_game);
         Lights();
+        // --ticks=8,3,2: the same scene with each cap on physics ticks a frame (the engine's max_physics_steps_per_frame).
+        int cap = Engine.MaxPhysicsStepsPerFrame;
+        foreach (string n in _args.GetValueOrDefault("ticks", "").Split(',', StringSplitOptions.RemoveEmptyEntries))
+        {
+            Engine.MaxPhysicsStepsPerFrame = int.Parse(n);
+            foreach (int x in _drive.Wait(10)) yield return x;
+            foreach (int x in Measure($"{name} at most {n} ticks", 120)) yield return x;
+        }
+        Engine.MaxPhysicsStepsPerFrame = cap;
         // --toggle=occlusion,loadbudget: the same scene with a fix switched off, then on again (the order evens out what still loads).
         foreach (string ab in _args.GetValueOrDefault("toggle", "").Split(',', StringSplitOptions.RemoveEmptyEntries))
         {
