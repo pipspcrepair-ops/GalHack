@@ -429,9 +429,10 @@ public partial class Screenshot : Node
         }
         var b = m.Stage.SurfaceBounds();
         float r = 0.5f * b.Size.Length();
-        float dist = shot == "near" ? Mathf.Clamp(r * 0.8f, 16f, 120f) : Mathf.Clamp(r * 2f, 28f, 260f); // (near: the same view, closer in)
+        // (near: the same view, closer in; above: steeply down over the whole site, its ground plan)
+        float dist = shot == "near" ? Mathf.Clamp(r * 0.8f, 16f, 120f) : shot == "above" ? Mathf.Clamp(r * 1.5f, 28f, 300f) : Mathf.Clamp(r * 2f, 28f, 260f);
         Vector3 target = m.Stage.ToGlobal(b.GetCenter() with { Y = b.Position.Y + b.Size.Y * 0.3f });
-        float yaw = Mathf.DegToRad(m.EntranceYaw() + 32f), pitch = Mathf.DegToRad(22f);
+        float yaw = Mathf.DegToRad(m.EntranceYaw() + 32f), pitch = Mathf.DegToRad(shot == "above" ? 62f : 22f);
         Vector3 from = target + new Vector3(Mathf.Sin(yaw) * Mathf.Cos(pitch), Mathf.Sin(pitch), Mathf.Cos(yaw) * Mathf.Cos(pitch)) * dist;
         m.Camera.GlobalTransform = new Transform3D(Basis.Identity, from).LookingAt(target, Vector3.Up);
         m.FreezeCamera = true;
