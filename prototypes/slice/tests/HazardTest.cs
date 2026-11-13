@@ -8,6 +8,7 @@ using Godot;
 using PlanetSurface.Poi;
 using Slice.Game;
 using Slice.Places;
+using Layers = GalHack.Physics.Layers;
 using PInt3 = PoiGenerator.Gen.Int3;
 
 namespace Slice.Tests;
@@ -146,7 +147,11 @@ public partial class HazardTest : Node
             float off = (game.Survivor.WorldFeet + Vector3.Up * 0.9f).DistanceTo(a.Node.GlobalPosition + Vector3.Up * (a.Piece.Height * 0.5f));
             int blocks = place.Memory.BlockDamage.Count, explosions = game.Places.Explosions;
             var bodyAt = a.Node.GlobalPosition + Vector3.Up * 0.3f;
-            Check(game.Places.Resolve(a.Node.Body, bodyAt, Vector3.Up, out PoiPlaces.Hit hit) && hit.Piece?.Index == a.Index, $"a shot at the {a.Piece.Name} lands on it");
+            // The way the tool's ray meets it: down onto the piece from above, the body and shape that answer.
+            var down = PhysicsRayQueryParameters3D.Create(bodyAt + Vector3.Up * (a.Piece.Height + 1f), bodyAt - Vector3.Up * 0.2f, Layers.World | Place.SceneryLayer);
+            var met = game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(down);
+            PoiPlaces.Hit hit = default;
+            Check(met.Count > 0 && game.Places.Resolve(met["collider"].AsGodotObject(), bodyAt, Vector3.Up, out hit, (int)met["shape"]) && hit.Piece?.Index == a.Index, $"a shot at the {a.Piece.Name} lands on it");
             float shots = 0f;
             while (game.Places.Explosions == explosions && shots < 40)
             {

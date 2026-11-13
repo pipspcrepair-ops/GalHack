@@ -246,7 +246,7 @@ public partial class Game
     /// <summary>E on a place: a door opens or shuts, a shaft door calls its car.</summary>
     bool UsePlace(LookHit look)
     {
-        if (Places == null || !Places.Resolve(look.Collider, look.Point, look.Normal, out PoiPlaces.Hit h)) return false;
+        if (Places == null || !Places.Resolve(look.Collider, look.Point, look.Normal, out PoiPlaces.Hit h, look.Shape)) return false;
         if (h.Door != null)
         {
             var (ok, message) = h.Place.UseDoor(h.Door);
@@ -285,7 +285,7 @@ public partial class Game
     {
         if (Places == null) return "";
         if (Doors.Along(eye, dir, UseReach) is var (_, _, open)) return open ? "E  Shut the door" : "E  Open the door";
-        if (!hit || !Places.Resolve(look.Collider, look.Point, look.Normal, out PoiPlaces.Hit h)) return "";
+        if (!hit || !Places.Resolve(look.Collider, look.Point, look.Normal, out PoiPlaces.Hit h, look.Shape)) return "";
         if (CacheAt(h) is Slice.Items.Lootable cache) return $"E  Open {cache.Name.ToLowerInvariant()}";
         if (h.Door == null) return "";
         Place.Door d = h.Door;
