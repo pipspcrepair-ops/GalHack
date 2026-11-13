@@ -31,6 +31,7 @@ public static class Shaping
 
     /// <summary>Off for a measurement against the plain cubes (tests).</summary>
     public static bool Enabled = true;
+    public static readonly long[] Dbg = new long[16]; // TEMP
 
     /// <summary>The corner pieces a run's profile turns with, outer and inner (none: it doesn't turn).</summary>
     public static (BlockType Outer, BlockType Inner)? Turns(BlockType profile) => profile switch
@@ -47,7 +48,15 @@ public static class Shaping
     public static bool Clear(Block b) => b.IsAir || BlockInfo.IsFinish(b.Type) || b.Role == Role.Debris && !BlockInfo.Collides(b.Type);
 
     /// <summary>A way through a wall: a window, a door, glass.</summary>
-    public static bool Opening(Block b) => b.Role == Role.Window || b.Type is BlockType.Door or BlockType.SealedDoor || !b.IsAir && BlockInfo.IsTransparent(b.Material);
+    public static bool Opening(Block b) => b.Role == Role.Window || b.Type is BlockType.Door or BlockType.SealedDoor || BlockInfo.IsTransparent(b.Material) && b.Type is BlockType.Cube or BlockType.Pane;
+
+    /// <summary>Furniture standing on the floor: a panel or a thin wall may stand behind it, as nothing hangs on it.</summary>
+    public static bool Standing(BlockType t) => t is BlockType.Crate or BlockType.Locker or BlockType.Shelf or BlockType.Table or BlockType.Meal or BlockType.Bench
+        or BlockType.Bed or BlockType.Bunk or BlockType.Cache or BlockType.Barricade or BlockType.Tank or BlockType.Machine or BlockType.Statue;
+
+    /// <summary>Set against a wall: a lamp, a sign, a ladder, a terminal; its wall stays whole round it, as a mount.</summary>
+    public static bool Fixture(Block b) => !Clear(b) && !BlockInfo.IsFullCube(b.Type) && !Opening(b) && !Standing(b.Type)
+        && b.Role is not (Role.Wall or Role.Floor or Role.Roof or Role.Decor or Role.Rock);
 
     public static void Apply(PoiInstance inst)
     {
@@ -80,14 +89,13 @@ public static class Shaping
         bool Calm(Int3 q)
         {
             Block n = g.Get(q);
-            return n.IsAir || BlockInfo.IsFinish(n.Type)
+            return Clear(n)
                 || n.Role is Role.Wall or Role.Floor or Role.Roof or Role.Decor or Role.Rock && n.Type is BlockType.Cube or BlockType.Ramp or BlockType.Corner or BlockType.InvCorner or BlockType.Lattice && !BlockInfo.IsEmissive(n.Material)
                 || n.Role == Role.Debris && n.Type is BlockType.Scatter or BlockType.Scorch or BlockType.Ash or BlockType.Puddle or BlockType.Plant or BlockType.Remains or BlockType.Rubble;
         }
         bool Quiet(Int3 c) => Dirs.All.All(d => Calm(c + d.Vec()) && (!d.IsHorizontal() || !Air(c + d.Vec()) || Calm(c + d.Vec() + Int3.Up) && Calm(c + d.Vec() + Int3.Down)));
         // (A panel or a thin wall may stand behind furniture on the floor: nothing hangs on it.)
-        bool Stands(Int3 q) => g.Get(q).Type is BlockType.Crate or BlockType.Locker or BlockType.Shelf or BlockType.Table or BlockType.Meal or BlockType.Bench
-            or BlockType.Bed or BlockType.Bunk or BlockType.Cache or BlockType.Barricade or BlockType.Tank or BlockType.Machine or BlockType.Statue && Solid(q + Int3.Down);
+        bool Stands(Int3 q) => Standing(g.Get(q).Type) && Solid(q + Int3.Down);
         bool Behind(Int3 c) => Dirs.All.All(d => Calm(c + d.Vec()) || d.IsHorizontal() && Stands(c + d.Vec()))
             && Dirs.Horizontal.All(d => !Air(c + d.Vec()) || (Calm(c + d.Vec() + Int3.Up) || Stands(c + d.Vec() + Int3.Up)) && (Calm(c + d.Vec() + Int3.Down) || Stands(c + d.Vec() + Int3.Down)));
         static int M(int v, int m) => ((v % m) + m) % m;
@@ -163,7 +171,7 @@ public static class Shaping
                 void On(BlockType p) { if (line.All(c => Free(c) && OutOk(c, d))) runs.Add((d, line, p, true)); }
                 if (line.All(c => Outside(c + Int3.Up))) { if (line.All(c => !Outside(c + Int3.Down))) On(BlockType.Ramp); } // a coping
                 else if (line.All(c => set.Contains(c + Int3.Up) && Outside(c + Int3.Up * 2) && set.Contains(c + Int3.Down))) On(BlockType.Chamfer); // a cornice
-                else if (Storey(d, line[0])) { if (high) On(BlockType.Chamfer); } // a storey's band (low tech: a plain string course)
+                else if (Storey(d, line[0])) On(high ? BlockType.Chamfer : BlockType.Ramp); // a storey's band (low tech: a weathered string course)
                 else
                     foreach (Int3 c in line)
                         if (!Outside(c + d.RotateCw(1).Vec()) && !Outside(c + d.RotateCw(3).Vec()) && !Frame(c, d)) fields[d].Add(c); // (quoins and frames stand)
@@ -172,8 +180,8 @@ public static class Shaping
         foreach (var (d, set) in inner)
             foreach (List<Int3> line in Lines(set, d.RotateCw(1).Vec()))
             {
-                bool Cove(Int3 c) => Solid(c + Int3.Up) && !Room(c + d.Vec() + Int3.Up);
-                bool Kick(Int3 c) => high && Solid(c + Int3.Down) && !Room(c + d.Vec() + Int3.Down);
+                bool Cove(Int3 c) => Solid(c + Int3.Up) && !Inside(c + d.Vec() + Int3.Up);
+                bool Kick(Int3 c) => high && Solid(c + Int3.Down) && !Inside(c + d.Vec() + Int3.Down);
                 if (line.All(Cove) || line.All(Kick)) { if (line.All(Panel)) runs.Add((d, line, line.All(Cove) ? BlockType.Ramp : BlockType.Chamfer, true)); }
                 else if (!line.Any(c => Cove(c) || Kick(c)))
                     foreach (Int3 c in line)
@@ -218,16 +226,17 @@ public static class Shaping
         // Low tech's panels: each storey of a facade set back whole between its storey lines, quoins and frames.
         foreach (var (d, set) in fields)
             foreach (List<Int3> panel in Parts(set, d.RotateCw(1).Vec(), Int3.Up))
-                if (panel.All(c => Free(c) && OutOk(c, d))) foreach (Int3 c in panel) Put(c, BlockType.Half, d.Opposite());
+                if (panel.All(c => Free(c) && OutOk(c, d))) { Dbg[0] += panel.Count; foreach (Int3 c in panel) Put(c, BlockType.Half, d.Opposite()); }
+                else { Dbg[1] += panel.Count; Int3 bad = panel.First(c => !(Free(c) && OutOk(c, d))); Dbg[!Plain(g.Get(bad)) ? 2 : !Quiet(bad) ? 3 : !Top(bad) ? 4 : 5]++; }
         // A room's walls with more behind them are set back whole between the cove and the kick (or the floor), the
         // room's corners standing as piers and its doorways framed.
         foreach (var (d, set) in panels)
             foreach (List<Int3> panel in Parts(set, d.RotateCw(1).Vec(), Int3.Up))
-                if (panel.All(Panel)) foreach (Int3 c in panel) Put(c, BlockType.Half, d.Opposite());
+                if (panel.All(Panel)) { Dbg[6] += panel.Count; foreach (Int3 c in panel) Put(c, BlockType.Half, d.Opposite()); } else Dbg[7] += panel.Count;
         // A wall between two rooms is thin, the whole wall, its doorways framed.
         foreach (var (d, set) in between)
             foreach (List<Int3> wall in Parts(set, d.RotateCw(1).Vec(), Int3.Up))
-                if (wall.All(Panel)) foreach (Int3 c in wall) Put(c, BlockType.Partition, d);
+                if (wall.All(Panel)) { Dbg[8] += wall.Count; foreach (Int3 c in wall) Put(c, BlockType.Partition, d); } else { Dbg[9] += wall.Count; Int3 bad = wall.First(c => !Panel(c)); Dbg[!Plain(g.Get(bad)) ? 10 : !Behind(bad) ? 11 : 12]++; }
 
         // Ceilings under more floor, room by room across the whole span. Low tech: bays raised between joists that span the
         // short way every fourth metre, a beam under each joist from wall to wall over a room at least 3 m clear. High tech:
@@ -289,7 +298,7 @@ public static class Shaping
             }
         }
 
-        // A mine is timbered in whole sets: every third metre along a drift wide enough, a post against each wall, floor to
+        // A mine is timbered in whole sets: every fourth metre along a drift wide enough, a post against each wall, floor to
         // roof, and a cap beam across between them under the roof.
         if (layout.Family.Tags.Contains("mine") || layout.Family.Tags.Contains("ore"))
             foreach (PlacedModule m in layout.Modules.Where(m => m.Kind == ModuleKind.Corridor && m.Max.Y < 0))
@@ -297,7 +306,7 @@ public static class Shaping
                     foreach (Dir d in new[] { Dir.East, Dir.South })
                     {
                         // From the wall on one side across to the other, at a set's spacing along the drift.
-                        if (M(d == Dir.East ? p.Z : p.X, 3) != 0 || !Solid(p - d.Vec()) || !Room(p) || !Solid(p + Int3.Down)) continue;
+                        if (M(d == Dir.East ? p.Z : p.X, 4) != 0 || !Solid(p - d.Vec()) || !Room(p) || !Solid(p + Int3.Down)) continue;
                         int w = 0;
                         while (w < 9 && Room(p + d.Vec() * w) && Solid(p + d.Vec() * w + Int3.Down)) w++;
                         if (w < 4 || w > 8 || !Solid(p + d.Vec() * w)) continue;
@@ -314,17 +323,21 @@ public static class Shaping
     }
 
     /// <summary>
-    /// Whether <paramref name="c"/>, in a wall facing <paramref name="d"/>, is beside a way through it in its plane (a
-    /// window, a door, a doorway, a hole or the wall's free end): its frame, which stands whole.
+    /// Whether <paramref name="c"/>, in a wall facing <paramref name="d"/>, frames something: beside a way through the
+    /// wall in either wall it stands in (a window, a door, a doorway, a hole or the wall's free end), or round a fixture
+    /// set against it. A frame stands whole.
     /// </summary>
     public static bool Framed(Int3 c, Dir d, System.Func<Int3, Block> get, System.Func<Int3, bool> open)
     {
-        Int3 a = d.RotateCw(1).Vec();
         bool Way(Int3 q) => open(q) || Opening(get(q));
-        for (int i = -1; i <= 1; i++) for (int y = -1; y <= 1; y++)
+        foreach (Dir n in new[] { d, d.RotateCw(1) })
         {
-            Int3 q = c + a * i + Int3.Up * y;
-            if (q != c && (Opening(get(q)) || open(q) && Way(q + d.Vec()) && Way(q - d.Vec()))) return true;
+            Int3 a = n.RotateCw(1).Vec();
+            for (int i = -1; i <= 1; i++) for (int y = -1; y <= 1; y++)
+            {
+                Int3 q = c + a * i + Int3.Up * y;
+                if (q != c && (Opening(get(q)) || n == d && open(q) && Way(q + n.Vec()) && Way(q - n.Vec())) || n == d && (Fixture(get(q + d.Vec())) || Fixture(get(q - d.Vec())))) return true;
+            }
         }
         return false;
     }
