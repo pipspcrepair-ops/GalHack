@@ -681,8 +681,8 @@ vec4 paint_ground(Patch g, vec2 p, vec3 land, float fw, float near, out float co
 		float across = abs(dot(f - 0.5 - vec2(0.2 * (fract(h * 7.0) - 0.5)), vec2(cos(ang), sin(ang)))) * s;
 		seam = max(seam, band(across, jw * 0.6, fw) * step(h, 0.08 + 0.45 * wear * wear) * detail);
 	} else if (g.cover < 2.5) {
-		// Tarmac: black when laid, greying with age.
-		c = mix(vec3(0.032, 0.032, 0.034), vec3(0.085, 0.082, 0.077), wear);
+		// Tarmac: black when laid, greying only a little with age (it reads dark beside pale concrete, always).
+		c = mix(vec3(0.028, 0.028, 0.03), vec3(0.055, 0.053, 0.05), wear);
 		c *= 0.85 + 0.3 * pn2(p, 0.11) + 0.12 * (pn2(p, 2.0) - 0.5) * near;
 		// Where it has broken up it crazes into blocks; the worst of that lifts out in pieces.
 		float crazed = smoothstep(0.66, 0.74, pn2(p, 0.09) + 0.25 * wear);

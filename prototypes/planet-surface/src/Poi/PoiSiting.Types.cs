@@ -89,8 +89,8 @@ public static partial class PoiSiting
 
     /// <summary>
     /// The world's ground at a coarse step, made once per world and shared by every typed place: running sums over 64 m
-    /// cells of the land's height and its square, of wet cells (sea or river) and of steep ones, so any box's mean, spread,
-    /// wetness and cliffs read in a few lookups.
+    /// cells of the land's height and its square, of wet cells (sea, or a river wider than <see cref="Culvert"/>) and of
+    /// steep ones, so any box's mean, spread, wetness and cliffs read in a few lookups.
     /// </summary>
     sealed class CoarseGround
     {
@@ -115,7 +115,7 @@ public static partial class PoiSiting
                         {
                             int c = (j * f + b) * map.Width + i * f + a;
                             t += map.Elevation[c];
-                            if (map.Elevation[c] < 2.5f || map.RiverFlow[c] > 0f) isWet[j * W + i] = true;
+                            if (map.Elevation[c] < 2.5f || map.RiverFlow[c] > 0f && Hydrology.RiverWidth(map, map.RiverFlow[c]) > Culvert) isWet[j * W + i] = true;
                         }
                     mean[j * W + i] = t / (f * f);
                 }
@@ -149,6 +149,9 @@ public static partial class PoiSiting
 
     static readonly System.Runtime.CompilerServices.ConditionalWeakTable<WorldMap, CoarseGround> coarse = new();
 
+    /// <summary>The widest stream a typed place's made ground is laid over, in a culvert, m; a wider river turns it away.</summary>
+    const float Culvert = 12f;
+
     /// <summary>
     /// Sites a typed place as near where the plan wanted it as good ground allows. One coarse pass over the whole world's
     /// ground (<see cref="CoarseGround"/>) ranks every spot and quarter turn; the best few, apart, are then weighed on the
@@ -160,11 +163,12 @@ public static partial class PoiSiting
         // Its type as the world's age and size pick it, then any other of its types that fits the world (an airport with no
         // ground anywhere for it gives way to an airstrip).
         TechLevel? age = profile?.LevelFor(family, state);
-        Sketch first = ForceType is { } forced && lib.Types.FirstOrDefault(t => t.Id == forced) is { } type
+        Sketch first = ForceType is { } forced && family.Types.Contains(forced) && lib.Types.FirstOrDefault(t => t.Id == forced) is { } type
             ? PlaceTypes.Plan(type, spawn, map.WidthMeters, map.HeightMeters)
             : PlaceTypes.PlanFor(lib, family, age, spawn, map.WidthMeters, map.HeightMeters, family.Variants.ElementAtOrDefault(variant)?.Port ?? profile?.Starport);
-        // (Where no ground takes it as rolled, the same type at its low ends: a real one still, only shorter.)
-        var sketches = family.Types.Where(t => t != first.Type.Id).Select(t => PlaceTypes.Plan(lib.Types.First(x => x.Id == t), spawn, map.WidthMeters, map.HeightMeters)).Where(s => !s.TooBig)
+        // (Where no ground takes it as rolled, the same type at its low ends: a real one still, only shorter; then the
+        // smaller types after it, never a bigger one.)
+        var sketches = family.Types.SkipWhile(t => t != first.Type.Id).Skip(1).Select(t => PlaceTypes.Plan(lib.Types.First(x => x.Id == t), spawn, map.WidthMeters, map.HeightMeters)).Where(s => !s.TooBig)
             .Prepend(first.Fitted > 0f ? PlaceTypes.Plan(first.Type, spawn, map.WidthMeters, map.HeightMeters, 0f) : null).Where(s => s != null).Prepend(first);
         foreach (Sketch sketch in sketches)
         {
@@ -334,7 +338,8 @@ public static partial class PoiSiting
 
     /// <summary>
     /// A spot weighed on the ground itself: what must stand dry and even (the lights and the fence may cross a stream),
-    /// every 50 m or so, with no water and no cliff, and the rest of it at least off the sea; then its cut and spread.
+    /// every 50 m or so, with no sea, no river too wide for a culvert and no cliff, and the rest of it at least off the
+    /// sea; then its cut and spread.
     /// </summary>
     static (double Score, int Pad, float Cut, Reject Why) Weigh(Sketch sketch, int turn, double cx, double cz, double width, double height, PlanetTerrainSource bare)
     {
@@ -345,8 +350,9 @@ public static partial class PoiSiting
         for (int k = 0; k < nz; k++)
             for (int i = 0; i < nx; i++)
             {
-                GroundSample g = bare.Sampler.Sample(Mathx.WrapX(cx0 + core.W * i / (nx - 1), width), cz0 + core.D * k / (nz - 1), 2);
-                if (g.InRiver || g.Height < 2.5f) return (0, 0, 0, Reject.Wet);
+                double sx = Mathx.WrapX(cx0 + core.W * i / (nx - 1), width), sz = cz0 + core.D * k / (nz - 1);
+                GroundSample g = bare.Sampler.Sample(sx, sz, 2);
+                if (g.Height < 2.5f || g.InRiver && Wide(bare.Map, sx, sz)) return (0, 0, 0, Reject.Wet);
                 h[k * nx + i] = g.Height;
             }
         for (int i = 0; i <= 8; i++)
@@ -367,6 +373,16 @@ public static partial class PoiSiting
         // Room to grade it out before a seam's ghost band.
         if (Math.Min(Math.Min(bx0, width - bx1), Math.Min(bz0, height - bz1)) - SeamMargin < Math.Min(cut * 12f + 20f, b.Long / 3f)) return (0, 0, 0, Reject.Seam);
         return (cut * 3 + Math.Sqrt(h.Average(v => (v - pad) * (v - pad))) * 4, pad, cut, Reject.None);
+    }
+
+    /// <summary>Whether a river at a point is too wide to be laid over in a culvert (the widest round its map cell).</summary>
+    static bool Wide(WorldMap map, double x, double z)
+    {
+        int i = (int)Math.Floor(x / map.CellSize), j = (int)Math.Floor(z / map.CellSize);
+        for (int b = -1; b <= 1; b++)
+            for (int a = -1; a <= 1; a++)
+                if (map.RiverFlow[map.Index(i + a, j + b)] is > 0f and var flow && Hydrology.RiverWidth(map, flow) > Culvert) return true;
+        return false;
     }
 
     /// <summary>How far the gate turns from the landing country, where the world's roads come from: 0 straight at it, 2 away.</summary>

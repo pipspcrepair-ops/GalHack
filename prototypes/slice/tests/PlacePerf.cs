@@ -19,8 +19,8 @@ namespace Slice.Tests;
 /// else measures what a frame really costs. Vsync is off and the cap lifted, so a frame takes what
 /// it takes.
 ///   godot --path prototypes/slice res://tests/PlacePerf.tscn -- --family=sewage_works [--seed=N] [--planet=temperate] [--variant=0]
-/// --type=airport: the forced family planned as that type. --fly: a typed place (an airfield) is held back from the builder until a craft at top speed flies in from where it
-/// first comes into view; --compare-force: then the same world without it, over the same routes.
+/// --as=airport: the forced family planned as that type. --fly=1: a typed place (an airfield) is held back from the builder until a craft at top speed flies in from where it
+/// first comes into view; --compare-force=1: then the same world without it, over the same routes.
 /// One PERF line per stage: far off, riding in from a kilometre out, at the gate, inside. Prints each
 /// frame's visible time (average, 95th, 99th, worst), the renderer's own CPU and GPU time, and what
 /// was drawn.
@@ -92,7 +92,7 @@ public partial class PlacePerf : Node
         DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Disabled);
         Engine.MaxFps = 0;
         if (_args.TryGetValue("family", out string family) && !_args.ContainsKey("asrolled")) PoiSiting.ForceFamily = family;
-        if (_args.TryGetValue("type", out string type)) PoiSiting.ForceType = type;
+        if (_args.TryGetValue("as", out string type)) PoiSiting.ForceType = type;
         if (_args.ContainsKey("fly")) PoiBuilds.Withhold = s => s.Whole != null;
         if (_args.ContainsKey("audit")) PlanetSurface.Infra.CityPlan.Force = true;
         if (_args.GetValueOrDefault("bodies") == "pieces") Wildlife.CreatureView.Merged = false;
