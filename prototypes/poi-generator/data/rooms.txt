@@ -6,6 +6,7 @@
 #     name        what it's called
 #     kind        room, hall or vault (what the dressing and the validator treat it as)
 #     width a b   interior width along the corridor it prefers, in cells
+#     area a b    the floor area it wants, m2: planning practice for its purpose (data/references.txt)
 #     props       perimeter furniture and weights: bench machine shelf locker crate table bunk
 #                 bed pod tank statue crystal cell pillar barricade planter screen
 #     fill        share of the wall cells that get furniture
@@ -25,6 +26,7 @@ room lobby
   deco reception
   name Lobby
   width 6 11
+  area 20 120
   props table 2 screen 1 planter 2 pillar 1
   fill 0.3
   prefer entrance
@@ -37,6 +39,7 @@ room security
   deco guardpost
   name Security post
   width 4 7
+  area 10 30
   props locker 3 table 1 screen 1
   fill 0.45
   prefer entrance
@@ -51,6 +54,7 @@ room airlock
   deco airlock
   name Airlock
   width 4 5
+  area 6 16
   props locker 3 shelf 1
   fill 0.5
   prefer entrance
@@ -61,7 +65,8 @@ room airlock
 room decon
   deco decon
   name Decontamination
-  width 4 6
+  width 3 5
+  area 6 20
   props locker 2 tank 1 screen 1
   fill 0.4
   near airlock quarantine
@@ -73,6 +78,7 @@ room office
   deco office
   name Offices
   width 5 9
+  area 12 100
   props table 3 shelf 2 locker 1
   fill 0.45
   island table
@@ -87,6 +93,7 @@ room archive
   deco archive
   name Archive
   width 5 9
+  area 20 80
   props shelf 5 crate 1
   fill 0.6
   near office lab
@@ -97,7 +104,8 @@ room archive
 room lab
   deco lab
   name Laboratory
-  width 6 10
+  width 7 12
+  area 40 150
   props bench 4 machine 2 shelf 1 tank 1
   fill 0.5
   island bench
@@ -113,7 +121,8 @@ room lab
 room cold-store
   deco coldstore
   name Cold store
-  width 4 7
+  width 3 5
+  area 10 50
   props shelf 3 tank 2
   fill 0.6
   near lab
@@ -125,6 +134,7 @@ room containment
   deco containment
   name Containment
   width 6 10
+  area 20 80
   props cell 4 machine 1
   fill 0.55
   near lab
@@ -139,6 +149,7 @@ room control
   deco control
   name Control room
   width 5 9
+  area 12 60
   props screen 2 bench 3 machine 1
   fill 0.5
   prefer core
@@ -154,6 +165,7 @@ room command
   deco warroom
   name Command centre
   width 7 11
+  area 30 200
   kind hall
   props screen 3 table 2 bench 2
   fill 0.45
@@ -170,6 +182,7 @@ room workshop
   deco workshop
   name Workshop
   width 6 10
+  area 40 120
   props bench 3 machine 3 shelf 2 crate 1
   fill 0.55
   near storage plant
@@ -182,6 +195,7 @@ room storage
   deco storage
   name Storage
   width 4 10
+  area 10 80
   props crate 4 shelf 3
   fill 0.6
   near workshop lab
@@ -193,6 +207,7 @@ room armoury
   deco armoury
   name Armoury
   width 4 8
+  area 12 36
   props locker 4 shelf 2
   fill 0.65
   near security command
@@ -206,6 +221,7 @@ room quarters
   deco quarters
   name Quarters
   width 5 10
+  area 9 36
   props bunk 5 locker 2
   fill 0.6
   near mess washroom
@@ -219,6 +235,7 @@ room mess
   deco canteen
   name Mess
   width 7 11
+  area 30 100
   kind hall
   props table 1 machine 1 shelf 1
   fill 0.25
@@ -232,6 +249,7 @@ room galley
   deco galley
   name Galley
   width 4 7
+  area 10 40
   props bench 3 machine 2 shelf 2
   fill 0.6
   near mess storage
@@ -242,7 +260,8 @@ room galley
 room washroom
   deco washroom
   name Washroom
-  width 4 6
+  width 3 5
+  area 6 24
   props tank 2 locker 2
   fill 0.45
   near quarters
@@ -252,6 +271,7 @@ room chapel
   deco chapel
   name Chapel
   width 6 10
+  area 30 150
   props statue 1 table 2 planter 1
   fill 0.25
   island table
@@ -264,6 +284,7 @@ room ward
   deco ward
   name Ward
   width 7 11
+  area 30 80
   props bed 5 locker 1 screen 1
   fill 0.6
   island bed
@@ -277,6 +298,7 @@ room nurses
   deco nursestation
   name Nurses' station
   width 4 7
+  area 10 24
   props table 2 shelf 2 screen 1
   fill 0.45
   near ward pharmacy
@@ -289,6 +311,7 @@ room theatre
   deco theatre
   name Operating theatre
   width 6 9
+  area 36 64
   props machine 2 bench 2 tank 1 screen 1
   fill 0.4
   island bed
@@ -301,6 +324,7 @@ room pharmacy
   deco pharmacy
   name Pharmacy
   width 4 7
+  area 10 30
   props shelf 5 locker 1
   fill 0.65
   near ward nurses theatre
@@ -313,6 +337,7 @@ room quarantine
   deco quarantine
   name Quarantine ward
   width 7 11
+  area 14 80
   props bed 4 screen 3 tank 1
   fill 0.55
   island bed
@@ -327,6 +352,7 @@ room mortuary
   deco morgue
   name Mortuary
   width 5 9
+  area 30 80
   props locker 5 bench 1
   fill 0.6
   near theatre
@@ -336,11 +362,23 @@ room mortuary
   tags medical
 
 # ---- sleep and life support ----------------------------------------------------------------------------
+room cryo-niche
+  deco cryo
+  name Pod niche
+  width 2 4
+  area 4 24
+  props pod 3
+  fill 0.8
+  spawns 0 1
+  light cryo
+  tags science ice
+
 room cryo-bay
   deco cryo
   name Cryo bay
   kind hall
   width 8 11
+  area 40 160
   props pod 6 machine 1
   fill 0.75
   island pod
@@ -352,7 +390,8 @@ room cryo-bay
 room monitor
   deco control
   name Sleeper monitoring
-  width 4 7
+  width 3 5
+  area 12 60
   props screen 2 bench 3
   fill 0.5
   near cryo-bay
@@ -365,6 +404,7 @@ room hydroponics
   deco hydroponics
   name Hydroponics
   width 7 11
+  area 40 200
   kind hall
   props planter 5 tank 2
   fill 0.6
@@ -379,6 +419,7 @@ room plant
   deco plant
   name Life support
   width 5 9
+  area 10 120
   props machine 4 tank 3
   fill 0.6
   near reactor control workshop
@@ -391,7 +432,8 @@ room reactor
   deco reactor
   name Reactor
   kind hall
-  width 7 11
+  width 8 16
+  area 60 400
   props machine 3 tank 3
   fill 0.5
   island tank
@@ -408,6 +450,7 @@ room generator
   deco plant
   name Generator hall
   width 6 10
+  area 15 120
   props machine 4 tank 2
   fill 0.55
   near plant
@@ -417,10 +460,23 @@ room generator
   tags hum industry
 
 # ---- holding ---------------------------------------------------------------------------------------
+room cell
+  deco cellblock
+  name Cell
+  width 3 5
+  area 6 16
+  props bunk 2 cell 1
+  fill 0.5
+  near cellblock guardroom
+  light dim
+  tags cluster
+
 room cellblock
   deco cellblock
   name Cell block
-  width 7 11
+  kind hall
+  width 8 14
+  area 50 260
   props cell 5 bunk 2
   fill 0.7
   near guardroom
@@ -431,7 +487,8 @@ room cellblock
 room guardroom
   deco guardpost
   name Guard room
-  width 4 7
+  width 3 5
+  area 10 30
   props locker 3 table 1 screen 1
   fill 0.5
   near cellblock armoury
@@ -444,7 +501,8 @@ room guardroom
 room solitary
   deco cellblock
   name Solitary
-  width 4 7
+  width 3 4
+  area 6 16
   props cell 3
   fill 0.4
   near cellblock
@@ -457,6 +515,7 @@ room evidence
   deco evidence
   name Confiscation lockers
   width 4 7
+  area 15 40
   props locker 5 shelf 2
   fill 0.7
   near guardroom
@@ -482,6 +541,7 @@ room ore-store
   deco mine
   name Ore store
   width 4 8
+  area 20 120
   props crate 5
   fill 0.65
   near stope
@@ -493,6 +553,7 @@ room magazine
   deco armoury
   name Powder magazine
   width 4 6
+  area 10 40
   props crate 3 locker 2
   fill 0.6
   avoid quarters
@@ -506,6 +567,7 @@ room pump-hall
   name Pump hall
   kind hall
   width 7 11
+  area 60 400
   props tank 4 machine 3
   fill 0.55
   island tank
@@ -519,6 +581,7 @@ room vault
   name Vault
   kind vault
   width 4 9
+  area 10 80
   props shelf 2 locker 2
   fill 0.4
   prefer end
@@ -535,7 +598,8 @@ room warehouse
   deco industrial
   name Warehouse
   kind hall
-  width 8 14
+  width 12 24
+  area 150 2500
   props shelf 6 crate 4
   fill 0.7
   island
@@ -547,7 +611,8 @@ room warehouse
 room loading-dock
   deco industrial
   name Loading dock
-  width 6 12
+  width 8 16
+  area 50 400
   props crate 5 machine 1
   fill 0.4
   near warehouse
@@ -559,7 +624,9 @@ room loading-dock
 room boiler-house
   deco industrial
   name Boiler house
-  width 6 10
+  kind hall
+  width 8 14
+  area 50 300
   props tank 4 machine 3
   fill 0.6
   near generator plant
@@ -572,6 +639,7 @@ room parts-store
   deco industrial
   name Parts store
   width 4 8
+  area 15 80
   props shelf 5 locker 2
   fill 0.75
   near workshop control
@@ -583,6 +651,7 @@ room farm-kitchen
   deco farm
   name Farm kitchen
   width 4 8
+  area 15 40
   props table 3 shelf 2
   fill 0.5
   island
@@ -596,6 +665,7 @@ room cellar
   deco farm
   name Cellar
   width 4 9
+  area 10 60
   props shelf 4 crate 3 tank 1
   fill 0.6
   near farm-kitchen
@@ -608,6 +678,7 @@ room grow-room
   name Grow room
   kind hall
   width 6 12
+  area 30 200
   props planter 4 shelf 2
   fill 0.5
   island
@@ -623,6 +694,7 @@ room market-hall
   name Market hall
   kind hall
   width 10 16
+  area 300 4000
   props table 6 crate 3 shelf 2
   fill 0.5
   island
@@ -636,6 +708,7 @@ room shop
   deco market
   name Shop
   width 4 8
+  area 15 250
   props shelf 4 table 1 crate 1
   fill 0.6
   near market-hall

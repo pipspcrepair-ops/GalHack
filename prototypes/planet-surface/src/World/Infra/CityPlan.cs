@@ -580,9 +580,30 @@ public sealed class CityPlan
         var footprint = new CellBox(new TInt3((int)Mathx.WrapX(x0, w), pad + Math.Min(0, inst.Layout.Occupied.Min.Y), (int)Mathx.Wrap(z0, h)),
             new TInt3((int)Mathx.WrapX(x0, w) + (x1 - x0), top, (int)Mathx.Wrap(z0, h) + (z1 - z0)));
         bool green = lot.Kind is "house" or "terrace" or "civic";
-        var stamp = new TerrainStamp(family.Name, (int)Mathx.WrapX(x0, w), (int)Mathx.Wrap(z0, h), (int)Mathx.WrapX(x0, w) + (x1 - x0), (int)Mathx.Wrap(z0, h) + (z1 - z0), pad,
-            0f, lot.District == "homes" ? 1.5f : 0f, w, h)
+        // Its floor layer and anything below the pad are carved out of the ground, as every place's are: left in, the ground's
+        // top lay in the plane of the building's floor, and the two fought (places agent, z-fighting).
+        CellMask occ = inst.Layout.Occupied;
+        int carveH = Math.Max(0, -occ.Min.Y);
+        bool[] carve = null, walls = null;
+        if (carveH > 0)
         {
+            carve = new bool[carveH * occ.Size.Z * occ.Size.X];
+            walls = new bool[carve.Length];
+            for (int y = 0; y < carveH; y++)
+            for (int z = 0; z < occ.Size.Z; z++)
+            for (int x = 0; x < occ.Size.X; x++)
+            {
+                var cell = new PoiGenerator.Gen.Int3(occ.Min.X + x, occ.Min.Y + y, occ.Min.Z + z);
+                carve[(y * occ.Size.Z + z) * occ.Size.X + x] = Structure.Carved(inst.Layout.Blocks, occ, cell);
+                walls[(y * occ.Size.Z + z) * occ.Size.X + x] = Structure.OuterWall(inst.Layout.Blocks, occ, cell);
+            }
+            if (!carve.Contains(true)) (carve, walls, carveH) = (null, null, 0);
+        }
+        var stamp = new TerrainStamp(family.Name, (int)Mathx.WrapX(x0, w), (int)Mathx.Wrap(z0, h), (int)Mathx.WrapX(x0, w) + (x1 - x0), (int)Mathx.Wrap(z0, h) + (z1 - z0), pad,
+            0f, lot.District == "homes" ? 1.5f : 0f, w, h,
+            (int)Mathx.WrapX(px + occ.Min.X, w), pad + occ.Min.Y, (int)Mathx.Wrap(pz + occ.Min.Z, h), occ.Size.X, carveH, occ.Size.Z, carve)
+        {
+            Walls = walls,
             Surface = green ? StampSurface.Lawn : lot.Kind is "works" or "station" ? StampSurface.Gravel : StampSurface.Concrete,
             Wear = 0.4f + lot.Lot.Fall * 0.5f,
         };

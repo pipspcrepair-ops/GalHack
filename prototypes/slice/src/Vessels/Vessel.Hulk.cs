@@ -37,6 +37,9 @@ public sealed partial class Vessel : ILiftHull
     HandlingFlight ILiftHull.Flight => Flight;
     void ILiftHull.LetGoOfGround() => Zone.Edits?.ReleaseStructures(Body.Id);
 
+    /// <summary>Came down on a planet as a wreck (<see cref="SpawnGroundWreck"/>): a wreck until a core claims it.</summary>
+    public bool GroundWreck { get; private set; }
+
     /// <summary>
     /// A wreck lying where it came down on a planet: one fixed body, as a base is (nothing moves it, it walks like a
     /// base, the ground meets it), turned as it lies, with no core.
@@ -57,7 +60,7 @@ public sealed partial class Vessel : ILiftHull
             Position = at,
             Rotation = rotation,
         });
-        var vessel = new Vessel(zone, s, body);
+        var vessel = new Vessel(zone, s, body) { GroundWreck = true };
         var node = new StaticBody3D { Name = s.Name.Replace(" ", "").Replace("(", "").Replace(")", "") };
         zone.AddChild(node);
         vessel.Binding = zone.Host.Bind(body, new FixedBinding(node));
