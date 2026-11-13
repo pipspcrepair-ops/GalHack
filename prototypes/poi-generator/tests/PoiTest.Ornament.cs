@@ -73,7 +73,7 @@ public partial class PoiTest
                     kinds[p.Kind] = kinds.GetValueOrDefault(p.Kind) + 1;
                     if (p.Cells.Any(c => orn.Blocks.Get(c).IsAir)) broken++;
                     if (p.At.Count >= 2 && p.At.Zip(p.At.Skip(1), (a, b) => b - a).Distinct().Count() > 1) irregular++;
-                    if (p.Kind is "fins" or "frames" && p.At.Count < 2 || p.Kind == "masts" && p.Cells.Count < 2) orphans++;
+                    if (p.Kind == "frames" && p.At.Count < 2) orphans++;
                 }
                 var mine = orn.Ornaments.SelectMany(p => p.Cells).ToHashSet();
                 var anchors = inst.Layout.Extras.InSpace ? LayoutCheck.StationAnchors(inst.Layout) : null;

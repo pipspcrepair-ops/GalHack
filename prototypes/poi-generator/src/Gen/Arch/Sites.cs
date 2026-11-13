@@ -179,22 +179,25 @@ public static class Sites
 
     // ---- structures in the yard ---------------------------------------------------------------
 
-    /// <summary>A cylinder of blocks standing on the ground (tanks, stacks, silos).</summary>
-    static void Cylinder(Ctx x, int cx, int cz, float r, int y0, int h, Block b, bool hollow = false)
+    /// <summary>A round standing on the ground, its middle at a cell's middle, solid (tanks, stacks): courses shaded alternately every four metres.</summary>
+    static RoundBody Cylinder(Ctx x, int cx, int cz, int y0, int y1, Func<int, double> r, Block b) =>
+        Round.Lay(x.C, cx + 0.5, cz + 0.5, y0, y1, y => (r(y), 0), y => b with { Color = b.Color.Scale(0.94f + 0.1f * ((y >> 2) & 1)) });
+
+    /// <summary>Whether a round's outline runs straight along a grid line across the cell column through its middle on each side (a ladder's or a fin's flat).</summary>
+    static bool Flat(List<(double X, double Z)> pts, int cx, int cz)
     {
-        int ri = (int)MathF.Ceiling(r);
-        for (int y = y0; y < y0 + h; y++)
-            for (int dz = -ri; dz <= ri; dz++)
-                for (int dx = -ri; dx <= ri; dx++)
-                {
-                    float d = MathF.Sqrt(dx * dx + dz * dz);
-                    if (d > r) continue;
-                    if (hollow && d < r - 1f && y > y0 && y < y0 + h - 1) continue;
-                    Int3 c = new(cx + dx, y, cz + dz);
-                    var bb = b;
-                    bb.Color = b.Color.Scale(0.94f + 0.1f * ((y >> 2) & 1)); // courses round the tank
-                    x.C.Set(c, bb);
-                }
+        double Pole(Func<(double X, double Z), bool> on, Func<(double X, double Z), double> by, bool max) => max ? pts.Where(on).Select(by).DefaultIfEmpty(double.NaN).Max() : pts.Where(on).Select(by).DefaultIfEmpty(double.NaN).Min();
+        bool Whole(double a, double b) => a == b && a == Math.Floor(a);
+        return Whole(Pole(q => q.X == cx, q => q.Z, true), Pole(q => q.X == cx + 1, q => q.Z, true)) && Whole(Pole(q => q.X == cx, q => q.Z, false), Pole(q => q.X == cx + 1, q => q.Z, false))
+            && Whole(Pole(q => q.Z == cz, q => q.X, true), Pole(q => q.Z == cz + 1, q => q.X, true)) && Whole(Pole(q => q.Z == cz, q => q.X, false), Pole(q => q.Z == cz + 1, q => q.X, false));
+    }
+
+    /// <summary>A rail that follows a round's outline (<see cref="Shapes.RimRail"/>), over the cell its solid side is in.</summary>
+    static Block RimRail(Round.Run run, Rgb c)
+    {
+        Dir along = run.Z0 == run.Z1 && run.Z0 == run.CellZ ? Dir.North : run.Z0 == run.Z1 && run.Z0 == run.CellZ + 1 ? Dir.South
+            : run.X0 == run.X1 && run.X0 == run.CellX ? Dir.West : Dir.East;
+        return new Block(BlockType.Rail, Material.Steel, c, Role.Decor, along, Shapes.RimRailVariant);
     }
 
     /// <summary>Tank farm: round tanks with a ladder up each and rails round the top.</summary>
@@ -208,29 +211,27 @@ public static class Sites
             x.C.Begin(); // (each one its own object: its shape is its own)
             int cx = p.X + (alongX ? i * (2 * r + gap) : 0), cz = p.Z + (alongX ? 0 : i * (2 * r + gap));
             var shell = new Block(BlockType.Cube, Material.Steel, i % 2 == 0 ? steel : steel.Lerp(new Rgb(0x8a, 0x5a, 0x3a), 0.4f), Role.Wall);
-            Cylinder(x, cx, cz, r + 0.4f, 0, h, shell);
-            // A hazard band.
-            for (int dz = -r - 1; dz <= r + 1; dz++)
-                for (int dx = -r - 1; dx <= r + 1; dx++)
-                {
-                    Int3 c = new(cx + dx, h / 2, cz + dz);
-                    if (x.C.Get(c).Material == Material.Steel && MathF.Sqrt(dx * dx + dz * dz) > r - 0.6f)
-                        x.C.Set(c, new Block(BlockType.Cube, Material.Steel, Hazard.Scale(0.85f), Role.Decor));
-                }
-            // Ladder up the south side, from the ground to the top.
-            int lz = cz + r + 1;
+            // (Its radius eased till the outline runs flat across the ladder's side.)
+            double flat = Round.Fit(cx + 0.5, cz + 0.5, r + 0.4, pts => Flat(pts, cx, cz));
+            double R = Cylinder(x, cx, cz, 0, h - 1, _ => flat, shell).Outer[0];
+            var course = Round.Ring(cx + 0.5, cz + 0.5, R);
+            // A hazard band, round the outside course.
+            foreach (Round.Piece q in course.Solid)
+            {
+                Int3 c = new(q.X, h / 2, q.Z);
+                if (Math.Sqrt((q.X - cx) * (q.X - cx) + (q.Z - cz) * (q.Z - cz)) > R - 1.1)
+                    x.C.Set(c, x.C.Get(c) with { Color = Hazard.Scale(0.85f), Role = Role.Decor });
+            }
+            // Ladder up the south side, from the ground to the top, against the flat there.
+            int lz = (int)Round.Outline(cx + 0.5, cz + 0.5, R).Where(q => q.X == cx).Max(q => q.Z);
             for (int y = 0; y < h; y++)
                 x.C.Blocks[new Int3(cx, y, lz)] = new Block(BlockType.Ladder, Material.Steel, new Rgb(0x70, 0x70, 0x70), Role.Traverse, Dir.South);
-            // Rails round the rim, open where the ladder arrives.
-            for (int dz = -r; dz <= r; dz++)
-                for (int dx = -r; dx <= r; dx++)
-                {
-                    float d = MathF.Sqrt(dx * dx + dz * dz);
-                    if (d > r + 0.4f || d < r - 0.6f) continue;
-                    Int3 c = new(cx + dx, h, cz + dz);
-                    if (Math.Abs(dx) <= 1 && dz > 0) continue;
-                    x.C.Blocks[c] = new Block(BlockType.Rail, Material.Steel, new Rgb(0xd0, 0xa0, 0x20), Role.Decor);
-                }
+            // Rails round the rim, along its outline, open where the ladder arrives.
+            foreach (Round.Run run in course.Rim)
+            {
+                if (Math.Abs(run.CellX - cx) <= 1 && run.CellZ > cz) continue;
+                x.C.Blocks[new Int3(run.CellX, h, run.CellZ)] = RimRail(run, new Rgb(0xd0, 0xa0, 0x20));
+            }
             var top = new List<Int3> { new(cx, h, cz), new(cx, h + 1, cz) };
             int m = x.C.AddModule(ModuleKind.Outdoor, "tank top", 0, top);
             x.C.Link(x.Yard, m);
@@ -595,41 +596,29 @@ public static class Sites
                 Int3 c = new(p.X + (int)MathF.Round(MathF.Cos(t) * (r - 0.5f)), y, p.Z + (int)MathF.Round(MathF.Sin(t) * (r - 0.5f)));
                 x.C.Set(c, new Block(BlockType.Cube, Material.Steel, bell, Role.Wall));
             }
-        // Hull: decks every four metres, a ladder through the middle.
-        var deckCells = new List<List<Int3>>();
-        for (int d = 0; d < decks; d++)
+        // Hull: decks every four metres, a ladder through the middle; round outside, a metre thick, flat across each fin and the hatch.
+        var deckCells = Enumerable.Range(0, decks).Select(_ => new List<Int3>()).ToList();
+        int top = baseY + decks * 4;
+        double R = Round.Fit(p.X + 0.5, p.Z + 0.5, r + 0.3, pts => Flat(pts, p.X, p.Z));
+        Round.Lay(x.C, p.X + 0.5, p.Z + 0.5, baseY, top, y => ((y - baseY) % 4 == 0 ? (R, 0) : (R, R - 1)), y =>
         {
-            int y0 = baseY + d * 4; // the deck's floor slab
-            var cells = new List<Int3>();
-            for (int y = y0; y <= y0 + 4; y++)
-                for (int dz = -r; dz <= r; dz++)
-                    for (int dx = -r; dx <= r; dx++)
-                    {
-                        float dist = MathF.Sqrt(dx * dx + dz * dz);
-                        if (dist > r + 0.3f) continue;
-                        Int3 c = new(p.X + dx, y, p.Z + dz);
-                        bool wall = dist > r - 0.7f;
-                        bool slab = y == y0 || y == y0 + 4;
-                        if (wall || slab)
-                        {
-                            bool window = wall && y == y0 + 2 && (dx == 0 || dz == 0) && d >= decks - 2;
-                            Rgb col = (d % 3 == 1 && wall) ? band : hull.Scale(0.92f + 0.08f * (d & 1));
-                            x.C.Set(c, window ? new Block(BlockType.Cube, Material.Alloy, new Rgb(0x30, 0x40, 0x48), Role.Window) : new Block(BlockType.Cube, Material.Alloy, col, slab ? Role.Floor : Role.Wall));
-                        }
-                        else if (y > y0 && y < y0 + 4)
-                        {
-                            x.C.Clear(c);
-                            if (y <= y0 + 3) cells.Add(c);
-                        }
-                    }
-            deckCells.Add(cells);
-        }
+            int d = Math.Min(decks - 1, (y - baseY) / 4);
+            bool slab = (y - baseY) % 4 == 0;
+            return new Block(BlockType.Cube, Material.Alloy, !slab && d % 3 == 1 ? band : hull.Scale(0.92f + 0.08f * (d & 1)), slab ? Role.Floor : Role.Wall);
+        }, inside: c => { x.C.Clear(c); deckCells[(c.Y - baseY) / 4].Add(c); });
+        // Windows on the top two decks, where the hull runs flat across the axes.
+        for (int d = decks - 2; d < decks; d++)
+            foreach (var (dx, dz) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) })
+                for (int k = r + 1; k >= 1; k--)
+                {
+                    Int3 c = new(p.X + dx * k, baseY + d * 4 + 2, p.Z + dz * k);
+                    Block w = x.C.Get(c);
+                    if (w.IsAir) continue;
+                    if (w.Type == BlockType.Cube) x.C.Set(c, new Block(BlockType.Cube, Material.Alloy, new Rgb(0x30, 0x40, 0x48), Role.Window));
+                    break;
+                }
         // The nose cone.
-        for (int k = 0; k < r + 2; k++)
-        {
-            float rr = r * (1f - k / (float)(r + 2));
-            Cylinder(x, p.X, p.Z, rr, baseY + decks * 4 + 1 + k, 1, new Block(BlockType.Cube, Material.Alloy, hull, Role.Roof));
-        }
+        Cylinder(x, p.X, p.Z, top + 1, top + r + 2, y => r * (1.0 - (y - top - 1) / (double)(r + 2)), new Block(BlockType.Cube, Material.Alloy, hull, Role.Roof));
         // Fins at the foot.
         // Three fins; the fourth was torn off when the access stair went up on the hatch side.
         foreach (var (fx, fz) in new[] { (1, 0), (0, 1), (0, -1) })
@@ -1248,17 +1237,10 @@ public static class Sites
         {
             x.C.Begin(); // (each one its own object: its shape is its own)
             int cx = p.X + (alongX ? i * (2 * r + gap) : 0), cz = p.Z + (alongX ? 0 : i * (2 * r + gap));
-            for (int dz = -r; dz <= r; dz++)
-                for (int dx = -r; dx <= r; dx++)
-                {
-                    float d = MathF.Sqrt(dx * dx + dz * dz);
-                    if (d > r + 0.4f) continue;
-                    Int3 floor = new(cx + dx, -1, cz + dz);
-                    x.C.Set(floor, new Block(BlockType.Cube, Material.Concrete, rim.Scale(0.7f), Role.Floor));
-                    if (d > r - 0.6f)
-                        for (int y = 0; y < h; y++) x.C.Set(floor + Int3.Up * (y + 1), new Block(BlockType.Cube, Material.Concrete, rim.Scale(y == h - 1 ? 1f : 0.9f), Role.Wall));
-                    else x.C.Wet(floor + Int3.Up); // standing water
-                }
+            // The floor in the ground, and the rim wall two metres thick, round.
+            Round.Lay(x.C, cx + 0.5, cz + 0.5, -1, h - 1, y => y < 0 ? (r + 0.4, 0) : (r + 0.4, r - 1.6),
+                y => new Block(BlockType.Cube, Material.Concrete, y < 0 ? rim.Scale(0.7f) : rim.Scale(y == h - 1 ? 1f : 0.9f), y < 0 ? Role.Floor : Role.Wall),
+                inside: c => { if (c.Y == 0) x.C.Wet(c); }); // standing water
             // The clarifier's walkway bridge across the middle, rails both sides, a gearbox at its centre.
             for (int t = -r; t <= r; t++)
             {
@@ -1349,18 +1331,18 @@ public static class Sites
             }
             return false;
         }
-        // The shell is measured from the sphere's centre, so it stays one thickness all the way over.
+        // The shell is measured from the sphere's centre, so it stays one thickness (two metres) all the way over; each course round.
+        const double Shell = 2;
+        double Across(double rad, int y) => y < wall ? rad : rad * rad > (y - wall) * (y - wall) ? Math.Sqrt(rad * rad - (y - wall) * (y - wall)) : 0;
+        Round.Lay(x.C, p.X + 0.5, p.Z + 0.5, 0, wall + r - 1, y => (Across(r, y), Across(r - Shell, y)),
+            y => new Block(BlockType.Cube, Material.Concrete, col.Scale(y % 5 == 4 ? 0.8f : 0.95f), Role.Wall));
+        // The wedges fallen in, and the door: an opening through the ring wall on the west side.
         for (int y = 0; y < wall + r; y++)
-            for (int dz = -r; dz <= r; dz++)
-                for (int dx = -r; dx <= r; dx++)
+            for (int dz = -r - 1; dz <= r + 1; dz++)
+                for (int dx = -r - 1; dx <= r + 1; dx++)
                 {
-                    float d = MathF.Sqrt(dx * dx + dz * dz);
-                    float from = y < wall ? d : MathF.Sqrt(d * d + (y - wall) * (y - wall));
-                    if (from > r || from <= r - 1.8f) continue;
-                    if (Breached(dx, dz, y)) continue;
-                    // The door: an opening through the ring wall on the west side.
-                    if (dx < 0 && Math.Abs(dz) <= 2 && y < 4) continue;
-                    x.C.Set(new Int3(p.X + dx, y, p.Z + dz), new Block(BlockType.Cube, Material.Concrete, col.Scale(y % 5 == 4 ? 0.8f : 0.95f), Role.Wall));
+                    double d = Math.Sqrt(dx * dx + dz * dz);
+                    if (d > Across(r, y) - Shell - 1 && (Breached(dx, dz, y) || dx < 0 && Math.Abs(dz) <= 2 && y < 4)) x.C.Remove(new Int3(p.X + dx, y, p.Z + dz));
                 }
         // A floor of rubble under each wedge that fell in.
         foreach (float w in wedges)
@@ -1564,12 +1546,11 @@ public static class Sites
         {
             x.C.Begin(); // (each one its own object: its shape is its own)
             int cx = p.X + i * (2 * r + gap), cz = p.Z;
-            for (int y = 0; y < h; y++)
+            Round.Lay(x.C, cx + 0.5, cz + 0.5, 0, h - 1, y =>
             {
-                float t = y / (float)h;
-                float rr = cooling ? r * (1f - 0.35f * MathF.Sin(t * MathF.PI)) + 0.3f : r * (1f - 0.25f * t);
-                Cylinder(x, cx, cz, rr, y, 1, new Block(BlockType.Cube, Material.Concrete, col.Scale(y % 6 == 5 ? 0.75f : 0.95f), Role.Wall), hollow: true);
-            }
+                double t = y / (double)h;
+                return (cooling ? r * (1 - 0.35 * Math.Sin(t * Math.PI)) + 0.3 : r * (1 - 0.25 * t), 0);
+            }, y => new Block(BlockType.Cube, Material.Concrete, col.Scale(y % 6 == 5 ? 0.75f : 0.95f), Role.Wall));
             // A lamp at the lip that once warned aircraft.
             Int3 lamp = new(cx + r - 1, h, cz);
             x.C.Set(lamp, new Block(BlockType.Cube, Material.Lumen, new Rgb(0xff, 0x40, 0x30), Role.Light));

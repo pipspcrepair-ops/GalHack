@@ -390,10 +390,10 @@ public static partial class Homes
         }
     }
 
-    sealed record Snap(Dictionary<Int3, Block> Blocks, Dictionary<Int3, Block> Under, HashSet<Int3> Occ, int Modules, int Doorways, int Slots, int Edges, int Plain, HashSet<Int3> Lasting, int Service, int Homes, int Entrance, Int3 Cell, Dir Facing, Int3 Gate, int Levels);
+    sealed record Snap(Dictionary<Int3, Block> Blocks, Dictionary<Int3, Block> Under, HashSet<Int3> Occ, int Modules, int Doorways, int Slots, int Edges, int Plain, HashSet<Int3> Lasting, int Rounds, int Service, int Homes, int Entrance, Int3 Cell, Dir Facing, Int3 Gate, int Levels);
 
     static Snap Snapshot(Canvas c) => new(new Dictionary<Int3, Block>(c.Blocks), new Dictionary<Int3, Block>(c.Blocks.Under), new HashSet<Int3>(c.Occ), c.Modules.Count, c.Doorways.Count, c.Slots.Count, c.Edges.Count,
-        c.X.Plain.Count, new HashSet<Int3>(c.X.Lasting), c.X.Service.Count, c.X.Homes.Count, c.EntranceModule, c.EntranceCell, c.EntranceFacing, c.X.Gate, c.X.Levels.Count);
+        c.X.Plain.Count, new HashSet<Int3>(c.X.Lasting), c.X.Rounds.Count, c.X.Service.Count, c.X.Homes.Count, c.EntranceModule, c.EntranceCell, c.EntranceFacing, c.X.Gate, c.X.Levels.Count);
 
     static void Restore(Canvas c, Snap s)
     {
@@ -412,6 +412,7 @@ public static partial class Homes
         c.X.Levels.RemoveRange(s.Levels, c.X.Levels.Count - s.Levels);
         c.X.Lasting.Clear();
         c.X.Lasting.UnionWith(s.Lasting);
+        c.X.Rounds.RemoveRange(s.Rounds, c.X.Rounds.Count - s.Rounds);
         c.EntranceModule = s.Entrance;
         c.EntranceCell = s.Cell;
         c.EntranceFacing = s.Facing;

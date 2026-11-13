@@ -514,28 +514,42 @@ public sealed class Plot
         return x * x + z * z <= r * r;
     }
 
-    /// <summary>A drum of whole blocks: walls a block thick on a circle, from level j0 to j1. Below ground the inside is dug out.</summary>
-    public void Drum(double ci, double ck, double r, int j0, int j1, Stuff2 wall, Func<int, Stuff2>? course = null)
+    /// <summary>A point of the place's frame (cells, not whole) on the map: where a round's middle stands.</summary>
+    public (double X, double Z) At(double u, double v) => _q switch
     {
-        int rr = (int)Math.Ceiling(r) + 1;
-        for (int k = (int)ck - rr; k <= (int)ck + rr; k++)
-            for (int i = (int)ci - rr; i <= (int)ci + rr; i++)
-            {
-                if (!In(ci, ck, r, i, k)) continue;
-                bool shell = !In(ci, ck, r - 1.0, i, k);
-                for (int j = j0; j <= j1; j++)
-                    if (shell) Fill(i, j, k, i, j, k, Cube(course?.Invoke(j) ?? wall, Role.Wall));
-                    else Dig(i, j, k, i, j, k);
-            }
+        0 => (_ox + u, _oz + v),
+        1 => (_ox - v, _oz + u),
+        2 => (_ox - u, _oz - v),
+        _ => (_ox + v, _oz - u),
+    };
+
+    /// <summary>The block (in the place's frame) a map cell is part of.</summary>
+    public (int I, int K) BlockAt(Int3 c)
+    {
+        int u = _q switch { 0 => c.X - _ox, 1 => c.Z - _oz, 2 => _ox - 1 - c.X, _ => _oz - 1 - c.Z };
+        int v = _q switch { 0 => c.Z - _oz, 1 => _ox - 1 - c.X, 2 => _oz - 1 - c.Z, _ => c.X - _ox };
+        return (u >> 1, v >> 1);
     }
 
-    /// <summary>A disc of whole blocks.</summary>
+    /// <summary>
+    /// The round a drum or disc of blocks r across is laid at: through the outer corners of the blocks whose middles are
+    /// inside r, as the blocks stood, cut round on the cell grid (<see cref="Round"/>).
+    /// </summary>
+    static double Rim(double r) => 2 * r + 0.5;
+
+    /// <summary>A drum: walls a block thick round its middle, from level j0 to j1, round outside; inside, whole blocks as the rooms in it are planned, dug out.</summary>
+    public void Drum(double ci, double ck, double r, int j0, int j1, Stuff2 wall, Func<int, Stuff2>? course = null)
+    {
+        var (x, z) = At(2 * ci, 2 * ck);
+        Round.Lay(C, x, z, 2 * j0, 2 * j1 + 1, _ => (Rim(r), 0), y => Cube(course?.Invoke(y >> 1) ?? wall, Role.Wall),
+            c => BlockAt(c) is var (i, k) && In(ci, ck, r - 1.0, i, k), c => C.Clear(c));
+    }
+
+    /// <summary>A disc a level thick, round.</summary>
     public void Disc(double ci, double ck, double r, int j, Block b)
     {
-        int rr = (int)Math.Ceiling(r) + 1;
-        for (int k = (int)ck - rr; k <= (int)ck + rr; k++)
-            for (int i = (int)ci - rr; i <= (int)ci + rr; i++)
-                if (In(ci, ck, r, i, k)) Fill(i, j, k, i, j, k, b);
+        var (x, z) = At(2 * ci, 2 * ck);
+        Round.Lay(C, x, z, 2 * j, 2 * j + 1, _ => (Rim(r), 0), _ => b);
     }
 
     /// <summary>
