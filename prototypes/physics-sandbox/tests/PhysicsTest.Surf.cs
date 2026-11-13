@@ -21,7 +21,7 @@ public partial class PhysicsTest
     IEnumerable<int> Surf()
     {
         Player p = _w.Player;
-        float lane = SandboxTerrain.LaneZ;
+        float lane = SandboxTerrain.LaneZ - 6f; // beside the rover parked on the lane, still on its eased ground
         p.PlaceOutside(_w.Ground(-45f, lane) + N.Vector3.UnitY * 0.05f);
         p.Yaw = -MathF.PI / 2f; // facing east, along the lane
         p.Pitch = 0f;
