@@ -65,7 +65,7 @@ public static class HandTable
         ["rifle-low"] = Pair(Fist(-0.3f, 1, 0), Fist(-1, 0, 0)), ["rifle-aim"] = Pair(Fist(-0.3f, 1, 0), Fist(-1, 0, 0)),
         ["pistol-holster"] = Both(Fist(-1, 0, 0)), ["pistol-low"] = Both(Fist(-1, 0, 0)),
         ["pistol-raised"] = Both(Fist(-1, 0, 0)), ["spear-upright"] = Both(Fist(-1, 0, 0)), ["spear-level"] = Both(Fist(-1, 0, 0)), ["bow-hang"] = Both(Fist(-1, 0, 0)),
-        ["bow-drawn"] = Both(Fist(-1, 0, 0)), ["blade-hang"] = Both(Fist(-1, 0, 0)), ["blade-raised"] = Both(Fist(-1, 0, 0)),
+        ["bow-drawn"] = Pair(Fist(-1, 0, 0), Fist(0, 0, -1)), ["blade-hang"] = Both(Fist(-1, 0, 0)), ["blade-raised"] = Both(Fist(-1, 0, 0)),
     };
 
     /// <summary>A row for an arm (0 left, 1 right).</summary>
@@ -130,12 +130,12 @@ public sealed partial class HumanRig
     /// A hand round something it grips, a pole along <paramref name="axis"/>: the knuckles run along it and the
     /// palm faces as near the way <paramref name="palm"/> says as that allows, the fingers going the forearm's way
     /// (the wrist bends to make up the difference). A bow's hands go the forearm's way first, the palm second:
-    /// the archer's arm points where the torso does not.
+    /// the archer's arm points where the torso does not; the string hand has no such lead, only its palm to the face.
     /// </summary>
-    Basis HandGrip(Vector3 axis, Vector3 fore, Vector3 across, Vector3 otherwise, Vector3 palm)
+    Basis HandGrip(int arm, Vector3 axis, Vector3 fore, Vector3 across, Vector3 otherwise, Vector3 palm)
     {
         Vector3 facing = palm - axis * palm.Dot(axis);
-        if (!_bowman && facing.LengthSquared() > 0.25f)
+        if (!(_bowman && arm == 0) && facing.LengthSquared() > 0.25f)
         {
             Vector3 face = facing.Normalized(), knuckles = axis, fingers = face.Cross(knuckles);
             if (fingers.Dot(fore) < 0f) (knuckles, fingers) = (-knuckles, -fingers);
@@ -157,10 +157,10 @@ public sealed partial class HumanRig
     }
 
     /// <summary>The frame a hand takes: from its spec on the forearm, closed round what it grips as far as it grips.</summary>
-    Basis HandFrame(in HandSpec spec, in Frame F, Vector3 axis, float gripW, Vector3 fore, Vector3 gripFore)
+    Basis HandFrame(int arm, in HandSpec spec, in Frame F, Vector3 axis, float gripW, Vector3 fore, Vector3 gripFore)
     {
         Basis open = HandBasis(spec, F, fore);
-        return gripW > 0f ? Between(open, HandGrip(axis.Normalized(), gripFore, F.Ahead, -F.Out, F.Mix(spec.Palm)), Math.Min(1f, gripW)) : open;
+        return gripW > 0f ? Between(open, HandGrip(arm, axis.Normalized(), gripFore, F.Ahead, -F.Out, F.Mix(spec.Palm)), Math.Min(1f, gripW)) : open;
     }
 
     /// <summary>Between two frames, turned the short way (t 0 the first).</summary>
@@ -180,8 +180,13 @@ public sealed partial class HumanRig
                 if ((i == 1 ? h.RW : h.LW) < 0.05f) continue;
                 var F = new Frame(torso, i == 0 ? -1f : 1f);
                 Vector3 grip = i == 1 ? h.R : h.L, shoulder = Pose[_body].Origin + torso.Y * _f.Torso * 0.9f + F.Out * _f.ShoulderW * 0.94f;
-                Basis frame = HandGrip((i == 1 ? h.RAxis : h.LAxis).Normalized(), (grip - shoulder).Normalized(), F.Ahead, -F.Out, F.Mix((i == 1 ? h.RHand : h.LHand).Palm));
-                Vector3 push = HandClear(new Transform3D(frame, grip - frame * (HandMake.Fist * _handSize[i])), HandShape.Fist, i, 0.03f);
+                Vector3 push = Vector3.Zero;
+                for (int flip = 1; flip >= (kind == HoldKind.Bow ? 1 : -1); flip -= 2) // (the fingers go on from the forearm, which the arm settles later: clear of the fist whichever way round it ends; the string hand's palm is the whole of its frame)
+                {
+                    Basis frame = HandGrip(i, (i == 1 ? h.RAxis : h.LAxis).Normalized(), (grip - shoulder).Normalized() * flip, F.Ahead, -F.Out, F.Mix((i == 1 ? h.RHand : h.LHand).Palm));
+                    Vector3 p = HandClear(new Transform3D(frame, grip - frame * (HandMake.Fist * _handSize[i])), HandShape.Fist, i, 0.03f);
+                    if (p.LengthSquared() > push.LengthSquared()) push = p;
+                }
                 if (kind == HoldKind.Bow && i == 1) pulled = push; // (the string hand is not on the bow: it alone goes)
                 else if (push.LengthSquared() > shift.LengthSquared()) shift = push;
             }

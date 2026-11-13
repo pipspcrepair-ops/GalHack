@@ -548,17 +548,17 @@ public sealed partial class HumanRig : Rig
                 {
                     (Vector3 e0, Vector3 w0) = LeggedRig.SolveIK(shoulder, want, upperArm, forearm, pole);
                     gripFore = (w0 - e0).Normalized();
-                    want = hand - HandGrip(axis.Normalized(), gripFore, ahead, -F.Out, F.Mix(spec.Palm)) * (HandMake.Fist * _handSize[i]) * gripW;
+                    want = hand - HandGrip(i, axis.Normalized(), gripFore, ahead, -F.Out, F.Mix(spec.Palm)) * (HandMake.Fist * _handSize[i]) * gripW;
                 }
                 hand = want;
             }
             // Reaching out to a weapon, the shoulder comes forward as far as it must (a little).
             float need = MathF.Max(0f, shoulder.DistanceTo(hand) - arm * 0.98f);
-            if (on > 0f && need > 0f) shoulder += (hand - shoulder).Normalized() * MathF.Min(need, Reach * HumanBody.ArmScale(f)) * on;
+            if (on > 0f && need > 0f) shoulder += (hand - shoulder).Normalized() * MathF.Min(need, Reach * HumanBody.ArmScale(f) * f.Padding) * on; // (a thick coat's shoulder rolls further forward)
             (Vector3 elbow, Vector3 wrist) = Arm(Pose[_body], ref shoulder, hand, pole, upperArm, forearm, F, i, spec, axis, gripW, gripFore, on >= 0.999f);
             Pose[_armU[i]] = Geo.Segment(shoulder, elbow, torso.X);
             Pose[_armL[i]] = Geo.Segment(elbow, wrist, torso.X);
-            PoseHand(i, HandFrame(spec, F, axis, gripW, (wrist - elbow).Normalized(), gripFore), wrist, spec.Shape);
+            PoseHand(i, HandFrame(i, spec, F, axis, gripW, (wrist - elbow).Normalized(), gripFore), wrist, spec.Shape);
             _wrist[i] = wrist;
             _elbow[i] = elbow;
             _shoulder[i] = shoulder;
@@ -706,7 +706,7 @@ public sealed partial class HumanRig : Rig
                 Vector3 hangDir = (Vector3.Up * 0.95f + fwd * 0.2f - right * 0.12f).Normalized();
                 Vector3 cheek = neck + head.Y * (f.Neck + f.HeadRadius * 0.55f) + head.X * f.HeadRadius * 0.85f - head.Z * f.HeadRadius * 0.35f;
                 Vector3 skull = neck + head.Y * (f.Neck + f.HeadRadius);
-                Vector3 fistAt = cheek + (cheek - skull).Normalized() * (HandMake.Extent(HandShape.Fist).hi.Z - HandMake.Fist.Z + 0.12f) * _handSize[1]; // (the string hand's fist, off the cheek by its own depth)
+                Vector3 fistAt = cheek + (cheek - skull).Normalized() * (HandMake.Extent(HandShape.Fist).hi.Z - HandMake.Fist.Z + 0.01f) * _handSize[1]; // (the string hand's fist, palm to the face: off the cheek by the depth of its curled fingers)
                 // The bow arm straight at the target; stood side-on, the cheek is behind it on the arrow's line.
                 Vector3 held = shoulderL + look * (armL * 0.945f + HandMake.Fist.Y * _handSize[0]); // (the bow's grip is a hand's length past the wrist)
                 Vector3 arrow = (held - cheek).Normalized();
