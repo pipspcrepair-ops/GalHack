@@ -17,6 +17,7 @@ shader_type spatial;
 render_mode cull_disabled, diffuse_burley;
 
 #include "res://shaders/noise.gdshaderinc"
+#include "res://shaders/shade.gdshaderinc"
 
 global uniform vec4 weather_wind;    // direction x, z, speed m/s, distance travelled (gust phase)
 global uniform vec4 weather_ground;  // wetness, snow, dust, solar
@@ -86,6 +87,7 @@ void vertex() {
 }
 
 void fragment() {
+	far_sun = far_lit((INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz, CAMERA_POSITION_WORLD);
 	if (band.x > 0.0 || band.y < 1.0) {
 		float n = fract(52.9829189 * fract(dot(FRAGCOORD.xy, vec2(0.06711056, 0.00583715))));
 		if (n < band.x || n >= band.y) discard;

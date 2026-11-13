@@ -38,6 +38,15 @@ public sealed class PlaceFauna
         /// <summary>The world's life: whoever holds a place is one of its own kinds.</summary>
         public readonly WorldLife Life;
 
+        /// <summary>
+        /// Where the survivor's eye is and which way they look (world frame), as last seen on the main
+        /// thread: a place filled on a worker puts nothing where they'd see it appear, or beside them.
+        /// Null until known (tests, the start).
+        /// </summary>
+        public volatile Viewer Eye;
+
+        public sealed record Viewer(Vector3 At, Vector3 Look);
+
         public Deep(WorldLife life, PlanetSurface.World.PlanetWorld planet, float livable = 1f)
         {
             Life = life;
@@ -49,6 +58,8 @@ public sealed class PlaceFauna
     }
 
     public PoiPopulation Population;
+    /// <summary>The rooms the population was planned over (tests read depths and hops off it).</summary>
+    public PoiPlan Rooms;
     public WildSim Sim;
     public bool Silent => Population == null || Population.Silent || Population.Spawns.Count == 0 && Population.Masses.Count == 0;
     DeepSite _site;
@@ -66,6 +77,7 @@ public sealed class PlaceFauna
             Theme = ship ? PoiTheme.Derelict : ThemeOf(inst.Kit?.Faction ?? Faction.None, inst.Family),
             Derelict = ship,
             Livable = deep.Livable,
+            Danger = (int)inst.Rarity / 4f * 0.6f + inst.State switch { PoiState.Infested => 0.4f, PoiState.Ruined => 0.15f, _ => 0f },
         };
         // The Turned (code HSK) hold it, alone or sharing it with others: a Husk den. Where the Husks'
         // warping (WRP) holds it, a light one: the wrongness, a few of them far in.
@@ -86,8 +98,23 @@ public sealed class PlaceFauna
         var byIndex = new Dictionary<int, PoiRoom>();
         foreach (PlacedModule m in layout.Modules)
         {
-            if (m.Kind == ModuleKind.Outdoor) continue;
+            if (m.Kind == ModuleKind.Outdoor)
+            {
+                // Open ground: a yard or a camp's pitch, for those that hold the place (the growth's on a camp it took).
+                var floor = m.Cells.Where(c => c.Y == m.Min.Y).ToList();
+                if (floor.Count < 9) continue;
+                plan.Yards.Add(new PoiRoom
+                {
+                    Index = m.Index, Kind = RoomKind.Room, Yard = true, Purpose = m.Purpose ?? "",
+                    Min = new Vector3(floor.Min(c => c.X), m.Min.Y, floor.Min(c => c.Z)),
+                    Max = new Vector3(floor.Max(c => c.X) + 1, m.Min.Y + 6, floor.Max(c => c.Z) + 1),
+                });
+                continue;
+            }
             if (Decor.Interior(inst, m) is not { } inside || inside.Height < 2) continue;
+            // A working light keeps the room lit (steady and strong enough), whatever the place's state.
+            bool lit = inst.Lights.Any(l => l.Module == m.Index && l.Mode is LightMode.Steady or LightMode.Beacon && l.Energy >= 0.9f);
+            var caches = inst.Caches.Where(c => c.Module == m.Index && !c.PickedOver).ToList();
             var room = new PoiRoom
             {
                 Index = m.Index,
@@ -95,7 +122,11 @@ public sealed class PlaceFauna
                 Min = new Vector3(inside.X0, inside.Y, inside.Z0),
                 Max = new Vector3(inside.X1 + 1, inside.Y + inside.Height, inside.Z1 + 1),
                 Depth = Math.Max(0, -m.Storey),
-                Dark = inst.State != PoiState.Active || m.Underground,
+                Dark = (inst.State != PoiState.Active || m.Underground) && !lit,
+                Lit = lit,
+                Purpose = m.Purpose ?? "",
+                Loot = caches.Count,
+                LootTier = caches.Count == 0 ? 0 : caches.Max(c => c.Tier) + (caches.Any(c => c.InVault) ? 1 : 0),
             };
             byIndex[m.Index] = room;
             plan.Rooms.Add(room);
@@ -118,7 +149,7 @@ public sealed class PlaceFauna
         }
         PoiPopulation pop;
         lock (deep.Lock) pop = PoiFauna.Populate(plan, deep.Fauna, deep.Data.Deep);
-        return new PlaceFauna { Population = pop };
+        return new PlaceFauna { Population = pop, Rooms = plan };
     }
 
     static bool Has(OccupancyRoll o, Occupant who) => o.Main == who || o.Second == who || o.Trace == who;
@@ -138,8 +169,11 @@ public sealed class PlaceFauna
             if (inst.State != PoiState.Infested) return;
             plan.Holder = PlaceHolder.Hollows;
             plan.Holders.AddRange(life.Hollows);
+            plan.Hollows.AddRange(life.Hollows);
             return;
         }
+        // The growth took it, whoever else holds it now: its Hollow beasts are always in it and round it.
+        if (inst.State == PoiState.Infested) plan.Hollows.AddRange(life.Hollows);
         Occupant main = Creatures(occ.Main) || occ.Second is not { } second || !Creatures(second) ? occ.Main : second;
         plan.Holder = HolderOf(main);
         switch (main)
@@ -269,8 +303,8 @@ public sealed class PlaceFauna
     }
 
     /// <summary>
-    /// Solid to a creature: the place's walls, floors and roofs and its whole-cell fittings; not air, doors,
-    /// glass, rails or lattices, nor the furniture and clutter that fill only part of a cell (those are its
+    /// Solid to a creature: the place's walls, floors and roofs, its glass and its whole-cell fittings; not air, doors,
+    /// rails or lattices, nor the furniture and clutter that fill only part of a cell (those are its
     /// <see cref="PlaceParts"/>, gone round or under as they really stand). Below ground, rock outside the rooms.
     /// </summary>
     public static bool Solid(PoiInstance inst, int x, int y, int z)
@@ -306,7 +340,9 @@ public sealed class PlaceFauna
         return !b.IsAir && Built(b);
     }
 
-    static bool Built(Block b) => BlockInfo.Collides(b.Type) && b.Type is not (BlockType.Door or BlockType.Pane or BlockType.Table or BlockType.Rail or BlockType.Lattice);
+    // Glass is as solid as the pane the player meets (a window's whole cell): a creature never walks through it or is
+    // set down in it, half in the wall (places agent). Doors are their leaves (DoorWays); the rest are parts.
+    static bool Built(Block b) => BlockInfo.Collides(b.Type) && b.Type is not (BlockType.Door or BlockType.Table or BlockType.Rail or BlockType.Lattice);
 
     /// <summary>
     /// Its sim, made once (worker-safe): the place's ground round it for anything that wanders
@@ -325,10 +361,60 @@ public sealed class PlaceFauna
         _cells = new SolidCells(inst);
         var space = new BlockSpace(_cells.Get,
             new Vector3I(g.Min.X, g.Min.Y, g.Min.Z), new Vector3I(g.Min.X + g.Size.X, g.Min.Y + g.Size.Y, g.Min.Z + g.Size.Z)) { Slope = _cells.Slope, Parts = PlaceParts.Of(memory) };
-        lock (deep.Lock) PoiFauna.Spawn(sim, Population, space);
+        lock (deep.Lock) PoiFauna.Spawn(sim, Population, space, Fair(deep, planet, o, space));
         Sim = sim;
+        // Those that would have appeared in your sight wait, and are put down once they can be unseen.
+        _space = space;
+        _origin = o;
+        if (Population.Deferred.Count > 0) lock (Pending) Pending.Add(this);
         // Its creatures are bodies no door shuts on.
         memory.Bodies.Add(() => CreatureBodies(sim));
+    }
+
+    /// <summary>
+    /// Fair spawning, in a place's frame: never within the clearance of the survivor, never behind or
+    /// beside them close by, and never where they can see it from where they stand (in their view cone,
+    /// with a clear line). Null (anything goes) while nobody is about.
+    /// </summary>
+    public static Func<Vector3, bool> Fair(Deep deep, PlanetSurface.World.PlanetWorld planet, Vector3 origin, ISolidSpace space)
+    {
+        if (deep.Eye is not { } v) return null;
+        Vector3 eye = (planet != null ? planet.NearestCopy(v.At, origin) : v.At) - origin;
+        Vector3 look = new Vector3(v.Look.X, 0f, v.Look.Z);
+        look = look.LengthSquared() > 1e-4f ? look.Normalized() : Vector3.Forward;
+        SpawnRules rules = deep.Data.Spawning;
+        float cone = MathF.Cos(Mathf.DegToRad(rules.ViewConeDegrees));
+        return p => Unseen(eye, look, cone, rules.ViewDistance, rules.CaveClearance, space, p);
+    }
+
+    /// <summary>Whether a spot is fair to put something down at, seen from an eye looking one way (tests too).</summary>
+    public static bool Unseen(Vector3 eye, Vector3 look, float cone, float viewDistance, float clearance, ISolidSpace space, Vector3 p)
+    {
+        Vector3 body = p + Vector3.Up * 0.6f, to = body - eye;
+        float d = to.Length();
+        if (d < clearance) return false;
+        // Behind or beside you, close: never (you'd turn round into it).
+        if (d < 30f && look.Dot(new Vector3(to.X, 0f, to.Z).Normalized()) < 0.3f) return false;
+        if (d > viewDistance) return true;
+        return !(look.Dot(to / d) > cone && SpaceMath.Clear(space, eye, body, 0f));
+    }
+
+    ISolidSpace _space;
+    Vector3 _origin;
+    /// <summary>Places with spawns still waiting to be put down out of sight.</summary>
+    static readonly List<PlaceFauna> Pending = new();
+
+    /// <summary>On the main thread now and then: the waiting spawns of every place put down where you can't see them appear.</summary>
+    public static void PutWaiting(Deep deep)
+    {
+        PlaceFauna[] all;
+        lock (Pending) all = Pending.ToArray();
+        foreach (PlaceFauna f in all)
+        {
+            if (f.Sim == null) continue;
+            lock (deep.Lock) PoiFauna.PutDeferred(f.Sim, f.Population, f._space, Fair(deep, deep.Planet, f._origin, f._space), 2);
+            if (f.Population.Deferred.Count == 0) lock (Pending) Pending.Remove(f);
+        }
     }
 
     /// <summary>A sim's creatures as the doors see them (local feet, radius, height; a climber as the ball it rides in).</summary>
@@ -395,6 +481,9 @@ public partial class Caves : Node3D
 
     /// <summary>How far ahead of you the search looks, and how far you walk between searches, m.</summary>
     const float Ahead = 14f, SearchEvery = 12f;
+    /// <summary>At most this many filled caves stand within this far of you: walking a long tunnel doesn't fill it again and again.</summary>
+    const int MostNear = 3;
+    const float NearCaves = 60f;
 
     /// <summary>Caves found and filled so far (tests).</summary>
     public int Found => _caves.Count;
@@ -402,9 +491,12 @@ public partial class Caves : Node3D
     public override void _PhysicsProcess(double delta)
     {
         if (Zone?.Planet == null || Deep == null) return;
+        // Where you are and look, for the places filled on workers (fair spawning).
+        Deep.Eye = new PlaceFauna.Deep.Viewer(Feet() + Vector3.Up * 1.6f, Look());
         _timer -= delta;
         if (_timer > 0) return;
         _timer = 2.0;
+        PlaceFauna.PutWaiting(Deep);
         Vector3 feet = Feet();
         var planet = Zone.Planet;
         foreach (Cave c in _caves.Values)
@@ -431,6 +523,10 @@ public partial class Caves : Node3D
         }
         if (!OnFoot() || Indoors()) return;
         if (_searchedFrom is { } from && from.DistanceTo(feet) < SearchEvery) return;
+        // Repeat spawns capped: while enough caves stand round you, no more are filled.
+        int near = 0;
+        foreach (Cave c in _caves.Values) if (c.Site != null && planet.NearestCopy(c.Anchor, feet).DistanceTo(feet) < NearCaves) near++;
+        if (near >= MostNear) return;
         _searchedFrom = feet;
         float surface = Zone.GroundAt(feet.X, feet.Z).Y;
         var anchor = new Vector3(MathF.Round(feet.X), MathF.Round(feet.Y), MathF.Round(feet.Z));
@@ -461,12 +557,8 @@ public partial class Caves : Node3D
         SpawnRules rules = Deep.Data.Spawning;
         Vector3 eye = feet + Vector3.Up * 1.6f;
         float cone = MathF.Cos(Mathf.DegToRad(rules.ViewConeDegrees));
-        bool Unseen(Vector3 p)
-        {
-            Vector3 to = p - eye;
-            float d = to.Length();
-            return d >= rules.CaveClearance && !(look.Dot(to / d) > cone && SpaceMath.Clear(space, eye, p, 0f));
-        }
+        // Never beside or behind you, never in your sight (PlaceFauna.Unseen).
+        bool Unseen(Vector3 p) => PlaceFauna.Unseen(eye, look, cone, rules.ViewDistance, rules.CaveClearance, space, p);
         List<Creature> made;
         lock (Deep.Lock) made = CaveFauna.Populate(cave.Sim, space, Deep.Fauna, floor + Vector3.Up, 16f, seed, depth, crawlers: 1, subsisters: (int)MathF.Round(3f * Deep.Livable), allow: Unseen, dark: Deep.Life.Dark);
         if (made.Count == 0) return (null, default); // nowhere out of your sight: the next search may do better

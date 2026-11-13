@@ -60,7 +60,7 @@ public sealed class PoiInstance
     {
         if (Age != Age.OldWorld || module < 0 || module >= Layout.Modules.Count) return Age;
         var m = Layout.Modules[module];
-        bool sealedRoom = m.Kind == ModuleKind.Vault || m.Purpose is "cryo-bay" or "cold-store" or "vault" || Layout.Extras.Secrets.Any(s => s.Module == module)
+        bool sealedRoom = m.Kind == ModuleKind.Vault || m.Purpose is "cryo-bay" or "cryo-niche" or "cold-store" or "vault" || Layout.Extras.Secrets.Any(s => s.Module == module)
                           || Layout.Extras.Locks.Any(l => l.Blast && (Layout.Doorways[l.Doorway].ModuleA == module || Layout.Doorways[l.Doorway].ModuleB == module));
         return sealedRoom ? Age.Preserved : Age.OldWorld;
     }
@@ -356,6 +356,12 @@ public static class PoiFactory
             if (inst.Blocks.Get(c.Cell).IsAir && (state == PoiState.Active || Hash.Cell(c.Cell, 0xC409) % 3 == 0)) inst.Crops.Add(c);
         // Who's in it comes last, on the place as the years left it: the layout is whoever's.
         if (occupancy != null) OccupancyLayer.Apply(lib, inst, occupancy, rng.Fork("occupancy"));
+        // Loose things come to rest, and nothing is left in the rock; then every directional piece faces as its spot says, whoever set it down.
+        using (Prof.Time("settle"))
+        {
+            Settle.Apply(inst);
+            PieceFacing.Apply(inst.Blocks, layout.Occupied, layout.Extras.InSpace);
+        }
         // How its faces are finished and how far the years took them, the walls' and roofs' fixed while their colours are their own.
         PlaceLook.Stamp(inst);
         // Made things in the world's own paint, as worn as the world: places, houses and city lots alike.
@@ -406,7 +412,7 @@ public static class Fixtures
         {
             bool vault = slot.Module == layout.VaultModule;
             if (!vault && !slot.Sure && !rng.Chance(0.55f)) continue;
-            if (!g.Get(slot.Cell).IsAir) continue;
+            if (!g.Get(slot.Cell).IsAir || Passage(g, slot.Cell)) continue;
             var color = slot.Secret ? SecretViolet : vault ? CacheGold : accent;
             g.Set(slot.Cell, new Block(BlockType.Cache, Material.Alloy, color, Role.Loot, Dir.North, (byte)(vault || slot.Secret ? 1 : 0)));
             inst.Caches.Add(new LootCache { Cell = slot.Cell, Module = slot.Module, InVault = vault, Secret = slot.Secret });
@@ -425,7 +431,7 @@ public static class Fixtures
         if (chosen.Count == 0 && termSlots.Count > 0) chosen.Add(termSlots[0]);
         foreach (var s in chosen)
         {
-            if (!g.Get(s.Cell).IsAir) continue;
+            if (!g.Get(s.Cell).IsAir || Passage(g, s.Cell)) continue;
             g.Set(s.Cell, new Block(BlockType.Terminal, Material.Alloy, accent, Role.Terminal, FaceOpen(inst, s.Cell)));
             inst.Terminals.Add(new TerminalLog { Cell = s.Cell, Module = s.Module });
         }
@@ -458,6 +464,13 @@ public static class Fixtures
     };
 
     /// <summary>Faces a terminal toward open floor, so its screen looks into the room.</summary>
+    /// <summary>A cell that is a way through, walled either side across it (a gap in a wall): nothing is set down in one, or it shuts the way.</summary>
+    static bool Passage(BlockGrid g, Int3 c)
+    {
+        bool S(Dir d) => BlockInfo.Collides(g.Get(c + d.Vec()).Type);
+        return S(Dir.East) && S(Dir.West) && !S(Dir.North) && !S(Dir.South) || S(Dir.North) && S(Dir.South) && !S(Dir.East) && !S(Dir.West);
+    }
+
     static Dir FaceOpen(PoiInstance inst, Int3 c)
     {
         var nav = inst.Nav();

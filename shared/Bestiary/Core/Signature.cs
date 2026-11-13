@@ -237,6 +237,8 @@ public sealed partial class WorldLife
         switch (k.Body)
         {
             case "machine":
+                // No machines on a world that never had more than low tech.
+                if (!Robots.Allowed(World)) return null;
                 s = Robots.Roll(World, n, era);
                 break;
             case "beast":

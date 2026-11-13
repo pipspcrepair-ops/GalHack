@@ -148,14 +148,13 @@ public sealed class BodySurfaces
         return pixels;
     }
 
-    /// <summary>A giant: its colour and band, in bands that wander and shear, with one great storm.</summary>
+    /// <summary>A giant: its colour and band, in bands that wander and shear, with its great storm and the lesser ones (its <see cref="Geography"/>).</summary>
     static byte[] Giant(Orbiter b)
     {
         var drift = new Fractal(Hash.Of(b.Seed, 0x5752), 0.8, 4);
         var streaks = new Fractal(Hash.Of(b.Seed, 0x5354), 0.3, 4, 0.55f);
-        var rng = new Rng(Hash.Of(b.Seed, 0x4F56));
-        float phase = rng.NextFloat() * 6f, count = 15f + rng.NextFloat() * 10f;
-        double stormLat = (rng.NextFloat() - 0.5f) * 1.1, stormLon = rng.NextFloat() * Math.Tau, stormSize = 0.1 + 0.1 * rng.NextFloat();
+        Geography geo = b.Geography;
+        float phase = geo.BandPhase, count = geo.BandCount;
         var pixels = new byte[Width * Height * 4];
         System.Threading.Tasks.Parallel.For(0, Height, py =>
         {
@@ -170,9 +169,12 @@ public sealed class BodySurfaces
                 float fine = streaks.Fbm(new P3(p.X * 0.5, p.Y * 6.0 + w * 0.8, p.Z * 0.5), 1e-4);
                 float mix = Math.Clamp(bands * 0.72f + (fine - 0.5f) * 0.9f, 0f, 1f);
                 Rgb c = Rgb.Lerp(b.Color, b.Band, mix);
-                double dLon = Math.IEEERemainder(lon - stormLon, Math.Tau) * 0.55, dLat = lat - stormLat;
-                double storm = Math.Sqrt(dLon * dLon + dLat * dLat * 3.0) / stormSize;
-                if (storm < 1.0) c = Rgb.Lerp(c, Rgb.Lerp(b.Band, new Rgb(0.9f, 0.5f, 0.35f), 0.5f), (float)Math.Clamp((1.0 - storm) * 3.0, 0.0, 1.0) * (0.75f + 0.25f * (float)Math.Sin(storm * 12.0)));
+                foreach (Mark m in geo.Marks)
+                {
+                    double dLon = Math.IEEERemainder(lon - m.Longitude, Math.Tau) * 0.55, dLat = lat - m.Latitude;
+                    double storm = Math.Sqrt(dLon * dLon + dLat * dLat * 3.0) / m.Size;
+                    if (storm < 1.0) c = Rgb.Lerp(c, Rgb.Lerp(b.Band, new Rgb(0.9f, 0.5f, 0.35f), 0.5f), (float)Math.Clamp((1.0 - storm) * 3.0, 0.0, 1.0) * (0.75f + 0.25f * (float)Math.Sin(storm * 12.0)));
+                }
                 int o = (py * Width + px) * 4;
                 pixels[o] = Rgb.Byte(c.R);
                 pixels[o + 1] = Rgb.Byte(c.G);

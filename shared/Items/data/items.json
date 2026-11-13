@@ -55,6 +55,8 @@
       "mass": 4.5, "volume": 1, "where": "Scattered; richer on volcanic worlds", "uses": "Logic modules, trade value" },
     { "id": "gravium-ore", "name": "Gravium ore", "short": "GRAVIUM", "category": "raw", "rarity": "uncommon", "source": "mine", "deposit": "Gravium",
       "mass": 6.0, "volume": 1, "where": "High-gravity worlds", "uses": "Hardened and combat steel" },
+    { "id": "warp-fuel-ore", "name": "Warp fuel ore", "short": "WARPORE", "category": "raw", "rarity": "uncommon", "source": "mine", "deposit": "WarpFuel",
+      "mass": 2.4, "volume": 1, "where": "Airless worlds only", "uses": "Warp drive fuel: warp cells" },
 
     // ---- Raw: rare (further out: irradiated, young, dying and giant stars) --------------------
     { "id": "fold-crystal-raw", "name": "Raw fold crystal", "short": "FOLD", "category": "raw", "rarity": "rare", "source": "mine", "deposit": "Crystal",

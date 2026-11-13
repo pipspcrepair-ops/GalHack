@@ -70,8 +70,8 @@ public partial class OccupantTest
 
         // The era: the same fall at low tech and high tech gives different gear, weapons and machines.
         int clubs = 0, rifles = 0, sealed_ = 0, lowN = 0, highN = 0, n = 6;
-        string lowHulls = "", highHulls = "";
-        int lowLegs2 = 0, highSlim = 0;
+        string highHulls = "";
+        int highSlim = 0;
         for (int i = 0; i < n; i++)
         {
             WorldLife low = Life("civil_war", now: TechLevel.Low), high = Life("civil_war", now: TechLevel.High);
@@ -83,15 +83,13 @@ public partial class OccupantTest
                 if (Weapons.Modern(hm.Figure.Prop)) rifles++;
                 if (hm.Figure.Has("suit_helmet") || hm.Figure.Dress == "suit") sealed_++;
             }
-            WorldLife lowM = Life("machine_uprising", now: TechLevel.Low, before: TechLevel.Low), highM = Life("machine_uprising", now: TechLevel.High, before: TechLevel.High);
-            Species lr = lowM.Signature.Machines.First(), hr = highM.Signature.Machines.First();
-            lowHulls += lr.Colors.Base.ToHtml(false) + " ";
+            // (Low-tech worlds have no machines at all: OccupantTest.Spawns, robots and the tech era.)
+            Species hr = Life("machine_uprising", now: TechLevel.High, before: TechLevel.High).Signature.Machines.First();
             highHulls += hr.Colors.Base.ToHtml(false) + " ";
-            if (lr.Body.Legs == 2 && lr.CommonName.Contains("clockwork")) lowLegs2++;
             if (hr.Body.Legs != 4 && (hr.Figure?.Build ?? 0f) < 0.2f && hr.Body.Width < 0.75f * 1.2f) highSlim++;
         }
         Check(clubs == lowN && rifles == highN && sealed_ >= highN * 0.4f, $"a civil war at low tech arms its militia with clubs, spears and bows ({clubs} of {lowN}), at high tech with guns ({rifles} of {highN}) and sealed helmets or suits ({sealed_})");
-        Check(lowLegs2 == n && highSlim == n, $"machines: low-tech worlds' clockwork, two-legged, brass ({lowHulls.Trim()}); high-tech worlds' sleek in white or graphite ({highHulls.Trim()})");
+        Check(highSlim == n, $"machines: high-tech worlds' sleek in white or graphite ({highHulls.Trim()})");
 
         // Everyone on a world wears its story: masks among a plague world's townsfolk.
         float Masked(WorldLife life)

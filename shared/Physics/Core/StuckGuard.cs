@@ -106,7 +106,10 @@ public sealed class StuckGuard
         foreach (IStuckField field in _world.StuckFields)
         {
             if (!field.Applies(body)) continue;
+            // A loose structure's centre of mass may sit in a thin fitting lying on the ground, a few centimetres off the density's
+            // surface: it counts as buried only when a little above its centre is solid too.
             bool stuck = IsStructure(body) ? field.IsSolid(body, body.CenterOfMassPosition)
+                    && (body.Motion != Motion.Free || field.IsSolid(body, body.CenterOfMassPosition + Vector3.UnitY * 0.15f))
                 : body.Frame == null && body.Up.Y > 0.999f ? field.IsInside(body, Feet(body), body.Shape)
                 : InsideAlongUp(body, field);
             if (stuck) return field;

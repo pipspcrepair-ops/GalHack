@@ -16,6 +16,8 @@ public sealed class RoomDef
     public string Name = "";
     public ModuleKind Kind = ModuleKind.Room;
     public int WMin = 4, WMax = 10;
+    /// <summary>The floor area it wants, m2 (0: any): planning practice for a room of its purpose (data/references.txt).</summary>
+    public int AMin, AMax;
     public List<(string Prop, float Weight)> Props = new();
     public float Fill = 0.35f;
     public List<string> Island = new();
@@ -158,6 +160,7 @@ public static class ArchParser
                 case "name": R().Name = string.Join(' ', p.Skip(1)); break;
                 case "kind": R().Kind = Enum.Parse<ModuleKind>(p[1], true); break;
                 case "width": R().WMin = I(p[1]); R().WMax = I(p[^1]); break;
+                case "area": R().AMin = I(p[1]); R().AMax = I(p[^1]); break;
                 case "props":
                     for (int i = 1; i + 1 < p.Length; i += 2) R().Props.Add((p[i], F(p[i + 1])));
                     break;

@@ -554,7 +554,8 @@ public partial class WildlifePatch : Node3D
         SpawnRules rules = Sim.Data.Spawning;
         Vector3 to = WildSim.Flat(at - PatchLocal(eye.GlobalPosition));
         float d = to.Length();
-        if (d < rules.MinPlayerDistance + margin) return false;
+        // (The faster you go, the further out: SpawnLead.)
+        if (d < rules.MinPlayerDistance + margin + (d > 1e-3f ? Lead(to / d) : 0f)) return false;
         Vector3 look = WildSim.Flat(-eye.GlobalBasis.Z);
         return !(d < rules.ViewDistance + margin && look.LengthSquared() > 1e-4f && look.Normalized().Dot(to / d) > MathF.Cos(Mathf.DegToRad(rules.ViewConeDegrees)));
     }
@@ -620,11 +621,11 @@ public partial class WildlifePatch : Node3D
         return 1f;
     }
 
-    /// <summary>The survivor hurts a creature, in whichever sim it lives.</summary>
-    public void Damage(Creature c, float amount)
+    /// <summary>The survivor hurts a creature, in whichever sim it lives (or someone else did: then it doesn't turn on the survivor).</summary>
+    public void Damage(Creature c, float amount, bool byPlayer = true)
     {
         WildSim sim = SimOf(c, out _, out ITarget player);
-        sim?.Damage(c, amount, player);
+        sim?.Damage(c, amount, byPlayer ? player : null);
     }
 
     /// <summary>The survivor's feet in the zone.</summary>
@@ -687,6 +688,7 @@ public partial class WildlifePatch : Node3D
             _baseSync = 0f;
             SyncBases();
         }
+        TrackTravel((float)delta);
         Refill((float)delta);
         Haunting((float)delta);
         Own((float)delta);

@@ -215,9 +215,13 @@ public sealed class Decor
         if (pl.Support >= 0 || onFloor) return true;
         if (piece.Mount == DecoMount.Ceiling)
         {
-            // Under a ceiling: the ceiling over all of it.
+            // Under a ceiling: the ceiling over all of it, a slab of full blocks (a pipe, a rail or a lamp overhead is
+            // no ceiling: a courtyard's ceiling piece hung in the air under one).
             foreach (Int3 c in CellsOf(DecoLayout.Footprint(Forge, pl), room.Corner, 0.05f))
-                if (!nav.Solid(c with { Y = room.Corner.Y + (int)MathF.Floor(room.Floor + pl.Y + piece.Height + 0.05f) })) return false;
+            {
+                Int3 over = c with { Y = room.Corner.Y + (int)MathF.Floor(room.Floor + pl.Y + piece.Height + 0.05f) };
+                if (!(inst.Blocks.Get(over) is var b && (b.IsAir ? nav.IsRock(over) : BlockInfo.IsFullCube(b.Type)))) return false;
+            }
             return true;
         }
         // Up a wall: the wall behind it, all along its back and from its foot to its top (an opening into

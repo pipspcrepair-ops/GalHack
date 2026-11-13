@@ -187,6 +187,7 @@ public partial class Screenshot : Node
         Player p = m.Player;
         if (HuskSetup()) return;
         if (ArmedSetup()) return;
+        if (ActsSetup()) return;
         switch (_view)
         {
             case "discovery":

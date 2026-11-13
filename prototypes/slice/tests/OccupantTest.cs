@@ -46,6 +46,8 @@ public partial class OccupantTest : Node
             _lib = WorldChoice.Library;
             _data = DataFiles.LoadWildlife();
             // -- --own: only the world's own kinds (the quick part).
+            // -- --spawns: only placement by purpose (OccupantTest.Spawns).
+            if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--spawns") >= 0) { PlacementChecks(); Finish(); return; }
             bool own = Array.IndexOf(OS.GetCmdlineUserArgs(), "--own") >= 0, dark = Array.IndexOf(OS.GetCmdlineUserArgs(), "--dark") >= 0;
             if (!own && !dark && Array.IndexOf(OS.GetCmdlineUserArgs(), "--queued") < 0)
             {
@@ -61,8 +63,14 @@ public partial class OccupantTest : Node
                 if (!own) DarkPlaces();
             }
             if (!own && !dark || queued) Queued();
+            if (!own && !dark && !queued) PlacementChecks();
         }
         catch (Exception e) { Check(false, $"the test threw: {e}"); }
+        Finish();
+    }
+
+    void Finish()
+    {
         GD.Print(_failures == 0 ? $"ALL PASSED ({_passes} checks in {_clock.Elapsed.TotalSeconds:F1} s)" : $"{_failures} CHECK(S) FAILED ({_passes} passed)");
         Shutdown.Quit(this, _failures == 0 ? 0 : 1);
     }

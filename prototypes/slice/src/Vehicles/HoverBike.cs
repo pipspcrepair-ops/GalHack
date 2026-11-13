@@ -557,7 +557,7 @@ public sealed partial class HoverBikes : Node3D
     {
         _hullQuery ??= new PhysicsShapeQueryParameters3D
         {
-            Shape = new BoxShape3D { Size = HoverBike.HullMax - HoverBike.HullMin }, CollisionMask = Layers.World | Layers.Hull, Margin = 0f,
+            Shape = new BoxShape3D { Size = HoverBike.HullMax - HoverBike.HullMin }, CollisionMask = Layers.World | Layers.Hull | PlanetSurface.World.Layers.Flora, Margin = 0f,
         };
         _hullQuery.Transform = new Transform3D(attitude, position + attitude * ((HoverBike.HullMin + HoverBike.HullMax) * 0.5f));
         Godot.Collections.Array<Vector3> points = _zone.GetWorld3D().DirectSpaceState.CollideShape(_hullQuery, 16);

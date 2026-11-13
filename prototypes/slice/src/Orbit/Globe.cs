@@ -124,6 +124,12 @@ public readonly record struct WorldView
     /// <summary>The radius of the sphere the world's ring stands round, m (<see cref="Globe.RingSphere"/>), and how much of it shows (0 to 1).</summary>
     public float RingRadius { get; init; }
     public float RingShown { get; init; }
+
+    /// <summary>In space: each pixel's depth is where its ray meets the true globe, round <see cref="TrueCentre"/> (what stands behind the world is hidden by it).</summary>
+    public bool TrueDepth { get; init; }
+
+    /// <summary>The true globe's centre in the world.</summary>
+    public Vector3 TrueCentre { get; init; }
 }
 
 /// <summary>
@@ -244,6 +250,30 @@ public partial class Globe : Node3D
         }
         """;
 
+    /// <summary>
+    /// What stands in front of what, in space. The sheet and its clouds, rim and ring are drawn along
+    /// their eye rays wherever suits the climb, but each pixel's depth is where its ray meets the
+    /// true globe (or its cloud shell, its air, its ring): so a wreck or a moon behind the world is
+    /// hidden by it, and one in front of it stands in front. Where a ray misses the true globe the
+    /// pixel keeps the depth it is drawn at.
+    /// </summary>
+    const string TrueDepthCode = """
+        uniform float true_depth = 0.0;
+        uniform vec3 globe_centre = vec3(0.0);
+        float depth_of(vec3 world, mat4 view, mat4 projection) {
+            vec4 c = projection * view * vec4(world, 1.0);
+            return c.z / c.w;
+        }
+        // Where a ray from o along d first meets a sphere round the globe's centre, or -1.
+        float sphere_hit(vec3 o, vec3 d, float r) {
+            vec3 oc = o - globe_centre;
+            float b = dot(oc, d), h = b * b - dot(oc, oc) + r * r;
+            if (h < 0.0) return -1.0;
+            float t = -b - sqrt(h);
+            return t > 0.0 ? t : -1.0;
+        }
+        """;
+
     /// <summary>A map as the sheet shows it at a point, filtered by how the lookup really moves across the screen: the sphere's map swells on the sheet.</summary>
     const string Paint = """
         vec4 paint(sampler2D map, MapPoint m) {
@@ -303,6 +333,7 @@ public partial class Globe : Node3D
         {{SheetCode}}
         {{Paint}}
         {{UmbraCode}}
+        {{TrueDepthCode}}
         varying vec3 round_normal;
 
         float ground_at(vec2 o, float lod) {
@@ -347,6 +378,8 @@ public partial class Globe : Node3D
             EMISSION = paint(glow_map, m).rgb * (day_glow + night * night_glow);
             ALPHA = mix(over_land, 1.0, smoothstep(4800.0, 5800.0, max(abs(offset.x), abs(offset.y))));
             FOG = vec4(fog_color, 1.0 - exp(-fog_density * distance));
+            float hit = true_depth > 0.5 ? sphere_hit(CAMERA_POSITION_WORLD, normalize(mat3(INV_VIEW_MATRIX) * VERTEX), radius) : -1.0;
+            DEPTH = hit > 0.0 ? depth_of(CAMERA_POSITION_WORLD + normalize(mat3(INV_VIEW_MATRIX) * VERTEX) * hit, VIEW_MATRIX, PROJECTION_MATRIX) : FRAGCOORD.z;
         }
         """;
 
@@ -365,6 +398,7 @@ public partial class Globe : Node3D
         uniform sampler2D cloud_map : source_color, filter_linear_mipmap, repeat_enable;
         uniform float cloud_lift = 30.0;
         uniform float live = 0.0;
+        {{TrueDepthCode}}
         uniform sampler2D cloud_noise : filter_linear_mipmap, repeat_enable;
         uniform vec2 cloud_scale = vec2(8000.0);
         uniform vec2 cloud_drift = vec2(0.0);
@@ -558,6 +592,9 @@ public partial class Globe : Node3D
             float over_layer = max(over_land, smoothstep(cloud_lift, cloud_lift + 200.0, height));
             ALPHA = c.alpha * over_layer * mix(over_land, 1.0, smoothstep(4800.0, 5800.0, max(abs(offset.x), abs(offset.y))));
             FOG = vec4(fog_color, 1.0 - exp(-fog_density * distance));
+            vec3 ray_w = normalize(mat3(INV_VIEW_MATRIX) * VERTEX);
+            float hit = true_depth > 0.5 ? sphere_hit(CAMERA_POSITION_WORLD, ray_w, radius + cloud_lift) : -1.0;
+            DEPTH = hit > 0.0 ? depth_of(CAMERA_POSITION_WORLD + ray_w * hit, VIEW_MATRIX, PROJECTION_MATRIX) : FRAGCOORD.z;
         }
         """;
 
@@ -569,7 +606,7 @@ public partial class Globe : Node3D
     /// it fits whatever the curve is: over the limb the glow thins away with the height of the
     /// ray's lowest point, over the disc it thins toward the middle, meeting at the ground's edge.
     /// </summary>
-    const string AirSource = """
+    const string AirSource = $$"""
         shader_type spatial;
         render_mode world_vertex_coords, unshaded, blend_add, depth_draw_never, cull_front, fog_disabled, shadows_disabled;
         uniform vec3 color : source_color;
@@ -580,13 +617,17 @@ public partial class Globe : Node3D
         uniform float thickness = 0.1;
         uniform float eye_height = 1.0;
         uniform float shell = 15000.0;
+        uniform float air_radius = 1.0;
         varying vec3 ray;
+        {{TrueDepthCode}}
         void vertex() {
             ray = VERTEX;
             VERTEX = CAMERA_POSITION_WORLD + VERTEX * shell;
         }
         void fragment() {
             vec3 r = normalize(ray);
+            float hit = true_depth > 0.5 ? sphere_hit(CAMERA_POSITION_WORLD, r, air_radius) : -1.0;
+            DEPTH = hit > 0.0 ? depth_of(CAMERA_POSITION_WORLD + r * hit, VIEW_MATRIX, PROJECTION_MATRIX) : FRAGCOORD.z;
             vec3 eye = eye_up * (ground + eye_height);
             vec3 low = eye + r * max(-dot(eye, r), 0.0);
             float lowest = length(low);
@@ -637,7 +678,7 @@ public partial class Globe : Node3D
     /// it, behind what you fly near. It writes no depth, or everything behind it would be cut out at
     /// its rim, gaps and all.
     /// </summary>
-    const string RingSource = """
+    const string RingSource = $$"""
         shader_type spatial;
         render_mode world_vertex_coords, unshaded, blend_mix, cull_disabled, depth_draw_never, shadows_disabled, fog_disabled;
         uniform vec3 color : source_color;
@@ -650,6 +691,7 @@ public partial class Globe : Node3D
         uniform float sheet_radius = 2546.0;
         uniform float stand_at = 0.0;
         uniform float fade = 1.0;
+        {{TrueDepthCode}}
         void vertex() {
             if (stand_at > 0.0) {
                 vec3 to = VERTEX - CAMERA_POSITION_WORLD;
@@ -671,6 +713,7 @@ public partial class Globe : Node3D
             float gap = smoothstep(0.0, 0.02, abs(r - 0.62)) * smoothstep(0.0, 0.05, r) * smoothstep(1.0, 0.94, r);
             ALBEDO = color * (0.45 + 0.55 * clamp(bands, 0.0, 1.0)) * (0.8 + 0.3 * bands) * (0.35 + 0.65 * clamp(abs(dot(axis, to_sun)) * 1.5, 0.0, 1.0));
             ALPHA = gap * mix(0.95, 1.0, clamp(bands, 0.0, 1.0)) * fade;
+            DEPTH = true_depth > 0.5 ? depth_of(ro + rd * t, VIEW_MATRIX, PROJECTION_MATRIX) : FRAGCOORD.z;
         }
         """;
 
@@ -843,6 +886,12 @@ public partial class Globe : Node3D
             Vector3 sheetCentre = v.Eye - v.Up * (v.Height + rho);
             RingFit = (_ring.GlobalPosition.DistanceTo(sheetCentre), RingInner * v.RingRadius / rho);
         }
+        foreach (ShaderMaterial m in new[] { _ground, _clouds, _air, _ringMaterial })
+        {
+            m.SetShaderParameter("true_depth", v.TrueDepth ? 1f : 0f);
+            m.SetShaderParameter("globe_centre", v.TrueCentre);
+        }
+        _air.SetShaderParameter("air_radius", Radius + _airThickness);
         _air.SetShaderParameter("eye_up", v.Up);
         _air.SetShaderParameter("ground", rho);
         _air.SetShaderParameter("thickness", _airThickness);

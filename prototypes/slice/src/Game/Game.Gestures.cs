@@ -105,7 +105,7 @@ public partial class Game
             Climb = climb,
             Grounded = s.Body.OnFloor,
             Crouched = s.Crouched,
-            Jetting = legs.JetpackFiring,
+            Jetting = legs.JetpackFiring || Spaceflight?.EvaThrusting == true,
             Swimming = legs.Swimming,
             Floating = legs.Floating,
             Ladder = legs.Climb != GalHack.Physics.ClimbMode.None,

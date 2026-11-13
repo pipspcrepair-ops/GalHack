@@ -12,20 +12,29 @@ namespace Wildlife;
 /// </summary>
 public static class Robots
 {
-    /// <summary>One kind of machine for this world; <paramref name="n"/> tells a world's kinds apart.</summary>
-    public static Species Roll(WorldConditions w, int n) => Roll(w, n, -1);
+    /// <summary>
+    /// Whether the world has machines at all: only where its old or its current era was mid or high
+    /// tech (the owner: no robots on a low-tech world, and none of a low-tech make anywhere).
+    /// </summary>
+    public static bool Allowed(WorldConditions w) => Math.Max(w.Before, w.Now) >= 1;
+
+    /// <summary>The era a world's machines are of: the higher of its old and current era (mid or high).</summary>
+    public static int EraOf(WorldConditions w) => Math.Clamp(Math.Max(w.Before, w.Now), 1, 2);
+
+    /// <summary>One kind of machine for this world, of its era; <paramref name="n"/> tells a world's kinds apart.</summary>
+    public static Species Roll(WorldConditions w, int n) => Roll(w, n, EraOf(w));
 
     /// <summary>
-    /// One kind of machine of an era (0 low, 1 mid, 2 high; -1 any): a low-tech world's are
-    /// clockwork, two-legged, bulky and brass, slow; a mid world's crude and bulky, boxy plate in
-    /// drab or rust on four legs or two, a red eye; a high world's sleek, slim and long-legged in
-    /// white or graphite, six legs or two, a bright cold eye, fast.
+    /// One kind of machine of an era (mid or high; there is no low-tech make): a mid world's crude
+    /// and bulky, boxy plate in drab or rust on four legs or two, a red eye; a high world's sleek,
+    /// slim and long-legged in white or graphite, six legs or two, a bright cold eye, fast.
     /// </summary>
     public static Species Roll(WorldConditions w, int n, int era)
     {
-        ulong seed = Rng.Mix(w.Seed, 0xB07 + (ulong)n + (era >= 0 ? 0x100UL * (ulong)(era + 1) : 0UL));
+        era = Math.Clamp(era, 1, 2);
+        ulong seed = Rng.Mix(w.Seed, 0xB07 + (ulong)n + 0x100UL * (ulong)(era + 1));
         var rng = Rng.For(seed, "robot");
-        int legs = era switch { 0 => 2, 1 => n % 2 == 0 ? 4 : 2, 2 => n % 2 == 0 ? 6 : 2, _ => n % 3 == 0 ? 4 : n % 3 == 1 ? 6 : 2 };
+        int legs = n % 2 == 1 ? 2 : era == 1 ? 4 : 6;
         var s = new Species
         {
             Id = $"robot-{seed:x}",
@@ -50,30 +59,25 @@ public static class Robots
         s.Parts["head"] = "dome";
         Color hull = era switch
         {
-            0 => new Color(0.56f, 0.42f, 0.2f).Lerp(new Color(0.3f, 0.27f, 0.24f), rng.Range(0f, 0.45f)),
             1 => (rng.Chance(0.5f) ? new Color(0.36f, 0.37f, 0.27f) : new Color(0.45f, 0.31f, 0.22f)).Lerp(new Color(0.33f, 0.33f, 0.32f), rng.Range(0f, 0.3f)),
-            2 => rng.Chance(0.5f) ? new Color(0.84f, 0.86f, 0.88f) : new Color(0.13f, 0.14f, 0.16f),
-            _ => new Color(0.34f, 0.35f, 0.33f).Lerp(Color.FromHsv(rng.Range(0f, 1f), 0.35f, 0.42f), rng.Range(0f, 0.5f)),
+            _ => rng.Chance(0.5f) ? new Color(0.84f, 0.86f, 0.88f) : new Color(0.13f, 0.14f, 0.16f),
         };
         s.Colors.Base = hull;
         s.Colors.Accent = era == 2 ? (hull.V > 0.5f ? new Color(0.16f, 0.17f, 0.2f) : new Color(0.7f, 0.72f, 0.75f)) : hull.Darkened(0.35f);
         s.Colors.Belly = hull.Darkened(0.2f);
-        s.Colors.Glow = era switch { 0 => Color.FromHsv(0.08f, 0.8f, 1f), 1 => Color.FromHsv(0f, 0.9f, 1f), 2 => Color.FromHsv(rng.Pick(new[] { 0.5f, 0.56f }), 0.75f, 1f), _ => Color.FromHsv(rng.Pick(new[] { 0f, 0.08f, 0.5f, 0.56f }), 0.85f, 1f) };
-        s.Colors.GlowStrength = era switch { 0 => 0.35f, 1 => 0.7f, 2 => 1f, _ => 0.9f };
+        s.Colors.Glow = era == 1 ? Color.FromHsv(0f, 0.9f, 1f) : Color.FromHsv(rng.Pick(new[] { 0.5f, 0.56f }), 0.75f, 1f);
+        s.Colors.GlowStrength = era == 1 ? 0.7f : 1f;
         s.Colors.Pattern = Pattern.Plain;
-        if (era >= 0) s.CommonName = era switch { 0 => "clockwork machine", 1 => legs == 2 ? "walking machine" : "four-legged machine", _ => legs == 2 ? "sleek machine" : "six-legged machine" };
+        if (era == 2) s.CommonName = legs == 2 ? "sleek machine" : "six-legged machine";
         Proportions b = s.Body;
-        float k = era switch { 0 => rng.Range(1.05f, 1.2f), 1 => rng.Range(1f, 1.2f), 2 => rng.Range(0.95f, 1.1f), _ => rng.Range(0.9f, 1.25f) };
+        float k = era == 1 ? rng.Range(1f, 1.2f) : rng.Range(0.95f, 1.1f);
         if (legs == 2)
         {
             s.Figure = Automaton(rng, k, hull);
-            // Bulk by era: a clockwork or a crude frame stands broad, a sleek one slim.
-            if (era >= 0)
-            {
-                s.Figure.Build = era switch { 0 => 0.85f, 1 => 0.65f, _ => 0.05f };
-                if (era == 2) { s.Figure.Height = MathF.Min(s.Figure.Height * 1.04f, 2.1f); s.Figure.Trim = s.Colors.Accent; }
-                s.Figure.Measure();
-            }
+            // Bulk by era: a crude frame stands broad, a sleek one slim.
+            s.Figure.Build = era == 1 ? 0.65f : 0.05f;
+            if (era == 2) { s.Figure.Height = MathF.Min(s.Figure.Height * 1.04f, 2.1f); s.Figure.Trim = s.Colors.Accent; }
+            s.Figure.Measure();
             Figure f = s.Figure;
             b.Size = f.Torso; b.Width = f.ShoulderW * 2f; b.Height = f.Torso; b.LegLength = f.LegLength; b.LegThickness = 0.1f; b.HeadSize = f.HeadRadius / 0.6f; b.NeckLength = f.Neck; b.Legs = 2;
         }
@@ -88,8 +92,7 @@ public static class Robots
         Stats st = s.Stats;
         st.MaxHealth = 180f * k;
         st.WalkSpeed = 1.4f;
-        st.RunSpeed = era switch { 0 => 2.2f, 2 => legs == 2 ? 4.4f : 6f, _ => legs == 4 ? 5f : 3.2f };
-        if (era == 0) st.WalkSpeed = 1.0f;
+        st.RunSpeed = era == 2 ? (legs == 2 ? 4.4f : 6f) : legs == 4 ? 5f : 3.2f;
         st.Damage = 16f * k;
         st.AttackRange = 1.6f;
         st.Perception = 45f;
@@ -98,6 +101,8 @@ public static class Robots
         st.Retaliates = true;
         st.Hunts = true;
         s.Attack = new AttackDef { Name = "Strike", Style = AttackStyle.Lunge, Telegraph = 1.2f, Sound = "servo" };
+        // A mid world's machines mount its rifle, a high world's its beam (on the right forearm, or under the head on a walker); a clockwork one only strikes.
+        s.Mount = era switch { 1 => "line-rifle", 2 => "beam-rifle", 0 => "", _ => rng.Chance(0.5f) ? "line-rifle" : "" };
         s.Drops.Meat = 0;
         return s;
     }

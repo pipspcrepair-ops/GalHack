@@ -23,6 +23,7 @@ o2-bottle           common    medical,space,ship         Oxygen bottle
 medkit              common    medical                    Medkit
 biofuel             common    fuel,food                  Biofuel
 energy-cell         common    tech,fuel                  Energy cell
+warp-cell           common    fuel,ship,wreck,space      Warp cell
 fuel-pack           common    fuel,industry              Burnstone pack
 pistol-rounds       common    military,ammo              Pistol rounds
 belt-12mm           common    military,ammo              12 mm belt
@@ -52,7 +53,7 @@ cobalt-ore          uncommon  ore                        Cobalt ore
 gold-ore            uncommon  ore,mine                   Gold ore
 
 # ---- rare ------------------------------------------------------------------------------------
-fold-crystal        rare      science,alien              Fold crystal
+fold-crystal        rare      science,alien,ship,wreck   Fold crystal
 emberite            rare      industry,volcanic          Refined emberite
 starsilver-bar      rare      metal,vault                Starsilver bar
 field-emitter       rare      tech,science               Field emitter

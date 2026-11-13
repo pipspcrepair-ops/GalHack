@@ -94,10 +94,12 @@ public sealed class GameData
         var arms = GalHack.Arms.Armoury.LoadFile(SharedPath("Arms", "data", "weapons.json"));
         foreach (GalHack.Arms.WeaponDef w in arms.All)
         {
+            bool strike = w.Delivery == GalHack.Arms.Delivery.Strike; // a hand weapon needs no ammo; bare hands are no item
+            if (strike && !items.Has(w.Item)) continue;
             if (!items.TryGet(w.Item, out var item) || item.Category != GalHack.Items.ItemCategory.Weapon)
                 throw new InvalidDataException($"weapon '{w.Id}': '{w.Item}' is not a weapon item");
             foreach (GalHack.Arms.WeaponDef m in w.Modes)
-                if (!items.TryGet(m.Ammo, out _)) throw new InvalidDataException($"weapon '{w.Id}': no ammo item '{m.Ammo}'");
+                if (!(strike && m.Ammo == "") && !items.TryGet(m.Ammo, out _)) throw new InvalidDataException($"weapon '{w.Id}': no ammo item '{m.Ammo}'");
         }
         foreach (var item in items.InCategory(GalHack.Items.ItemCategory.Weapon))
             if (arms.OfItem(item.Id) == null) throw new InvalidDataException($"weapon item '{item.Id}' has no row in shared/Arms/data/weapons.json");

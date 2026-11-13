@@ -71,6 +71,14 @@ public sealed class OrbitRules
         public float SunEnergy { get; set; } = 1.6f;
         public double VacuumC { get; set; } = 4;
         public double Radiation { get; set; } = 0.4;
+        /// <summary>The jetpack in zero g: the top speed it pushes to, with sprint held, and how hard, m/s and m/s².</summary>
+        public float JetpackSpeed { get; set; } = 12f;
+        public float JetpackSprint { get; set; } = 20f;
+        public float JetpackAccel { get; set; } = 8f;
+        /// <summary>How far past the top of a moon's crossing band it takes over as the frame you fly in, m.</summary>
+        public float TakesOverWithin { get; set; } = 2500f;
+        /// <summary>A moon's own globe fades in over its far look between these distances from its ground, m.</summary>
+        public float[] MoonGlobeFrom { get; set; } = { 9000f, 7000f };
     }
 
     static readonly JsonSerializerOptions Json = new()

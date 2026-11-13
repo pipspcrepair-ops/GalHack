@@ -327,16 +327,19 @@ public partial class WeaponTest : Node
 
     // ---- The data, the models and the sounds ---------------------------------------------------
 
+    static readonly string[] Twelve = { "SA2", "RF2", "SG2", "GL2", "RK3", "MN13", "AC3", "LT3", "LV2", "LV6", "SK1", "FL5" };
+    /// <summary>The player's crafted guns (section 8); the rows people carry are CombatTest's.</summary>
+    IEnumerable<WeaponDef> Crafted => Arms.Table.All.Where(w => Array.IndexOf(Twelve, w.Code) >= 0);
+
     IEnumerable<int> Data()
     {
         Armoury table = Arms.Table;
-        string[] twelve = { "SA2", "RF2", "SG2", "GL2", "RK3", "MN13", "AC3", "LT3", "LV2", "LV6", "SK1", "FL5" };
-        Check(twelve.All(code => table.All.Any(w => w.Code == code)) && table.All.Count == 12, $"the twelve of section 8 are all rows: {string.Join(", ", table.All.Select(w => w.Code))}");
-        var parts = table.All.SelectMany(w => w.Modes).SelectMany(w => w.Parts()).Distinct().OrderBy(p => p).ToList();
+        Check(Twelve.All(code => table.All.Any(w => w.Code == code)) && Crafted.Count() == 12, $"the twelve of section 8 are all rows: {string.Join(", ", Crafted.Select(w => w.Code))}");
+        var parts = Crafted.SelectMany(w => w.Modes).SelectMany(w => w.Parts()).Distinct().OrderBy(p => p).ToList();
         string[] shared = { "arc", "bounce", "charge", "cone", "dot", "gravity", "homing", "pellets", "pierce", "placed", "stick", "swarm" };
         Check(shared.All(parts.Contains), $"the rows combine all twelve shared parts: {string.Join(" ", parts)}");
         var items = Zone.Data.Items;
-        foreach (WeaponDef w in table.All)
+        foreach (WeaponDef w in Crafted)
         {
             var item = items.Item(w.Item);
             Check(item.Category == GalHack.Items.ItemCategory.Weapon && item.Recipe != null && item.Unlock?.Tab == "weapons" && w.Modes.All(m => items.TryGet(m.Ammo, out _)),
@@ -351,11 +354,11 @@ public partial class WeaponTest : Node
             "each sits at the pacing doc's level, at its level's cost (1 to level 4, 2 to 10, 3 to 16)");
         Check(items.Items.Where(i => i.IsAmmo && i.Unlock?.Parent != null && levels.ContainsKey(i.Unlock.Parent)).All(i => i.Unlock.Cost == 0),
             "a weapon's own new ammo costs nothing and opens with it");
-        Check(table.All.Where(w => w.Look.Band == Band.Living).All(w => w.Ammo == "biomass"), "living weapons eat plain biomass");
+        Check(Crafted.Where(w => w.Look.Band == Band.Living).All(w => w.Ammo == "biomass"), "living weapons eat plain biomass");
         Check(table.Rules.SelfHarm && !table.Rules.FriendlyFire, "self-harm on, friendly fire off by default (a server setting)");
 
         // Models from parts: each band has its own look, and every gun has a grip and a muzzle.
-        foreach (WeaponDef w in table.All)
+        foreach (WeaponDef w in Crafted)
         {
             GunModelSpec m = GunLook.Build(w);
             bool ok = m.Parts.Count >= 6 && m.Length > 0.05f && m.Parts.Any(p => p.Role == Role.Receiver || p.Role == Role.Sac) && (w.Delivery == Delivery.Placed || m.Parts.Any(p => p.Role == Role.Grip));
@@ -373,7 +376,7 @@ public partial class WeaponTest : Node
         built.Root.Free();
 
         // Sounds from parts: every gun has its own, and they differ by calibre, energy and life.
-        Check(Arms.Sounds.Clips >= 12 * 4 && table.All.All(w => Arms.Sounds.Has(w, VoiceKind.Report) && Arms.Sounds.Has(w, VoiceKind.Reload) && Arms.Sounds.Has(w, VoiceKind.Impact)),
+        Check(Arms.Sounds.Clips >= 12 * 4 && Crafted.All(w => Arms.Sounds.Has(w, VoiceKind.Report) && Arms.Sounds.Has(w, VoiceKind.Reload) && Arms.Sounds.Has(w, VoiceKind.Impact)),
             $"every weapon's report, action, reload and impact are synthesised at load ({Arms.Sounds.Clips} clips)");
         float[] pistol = GunVoice.Make(table.Get("tack-pistol"), VoiceKind.Report), tube = GunVoice.Make(table.Get("shoulder-tube"), VoiceKind.Report);
         float[] fork = GunVoice.Make(table.Get("fork-gun"), VoiceKind.Report), worm = GunVoice.Make(table.Get("wormspitter"), VoiceKind.Report);
@@ -882,7 +885,7 @@ public partial class WeaponTest : Node
         Vector3 vd = Bearing(18f, 0f, cd, wd);
         foreach (int x in _drive.Wait(10)) yield return x;
         GD.Print($"      targets: player at {Feet} aboard {_game.Survivor.Aboard?.Name ?? "nothing"}, hand {_game.Pack.Hand}, dead {_game.Suit.Dead}, menu {_game.Menu.IsOpen}");
-        foreach (WeaponDef d in Arms.Table.All)
+        foreach (WeaponDef d in Crafted)
         {
             int fired0 = Arms.Fired;
             Arm(d.Id, 30);

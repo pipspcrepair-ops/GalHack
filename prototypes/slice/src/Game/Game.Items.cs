@@ -275,11 +275,16 @@ public partial class Game
             return;
         }
         Bill drops = BodyDrops(s, Wildlife.Rng.For(s.Seed, "drop", c.Id));
+        Arms?.People?.Drops(c, drops); // the weapon it carried, and the ammo it had left for it
         int[] size = Zone.Data.Rules.Containers.Corpse;
-        Vector3 at = Zone.Wildlife.WorldOf(c);
-        Lootable body = Zone.Loot.Create(LootKind.Corpse, $"{Cap(s.CommonName)} body", at, size[0], size[1], drops);
-        body.Creature = c;
-        body.Radius = MathF.Max(0.5f, s.Stats.Radius);
+        if (EndCreature(c, out Vector3 left)) Remains(s, left, drops);
+        else
+        {
+            Vector3 at = Zone.Wildlife.WorldOf(c);
+            Lootable body = Zone.Loot.Create(LootKind.Corpse, $"{Cap(s.CommonName)} body", at, size[0], size[1], drops);
+            body.Creature = c;
+            body.Radius = MathF.Max(0.5f, s.Stats.Radius);
+        }
         if (killer == Target)
         {
             Stats.Kills++;
@@ -290,7 +295,7 @@ public partial class Game
     /// <summary>
     /// What a body holds follows what it was. A machine (robot, drone, cyborg) leaves salvage by
     /// its size: metal, wiring, and a board or plate by chance. A person leaves what they carried
-    /// (rounds for a rifle, a ration, a bit of scrap), never meat or hide. An animal, a Husk or a
+    /// (a ration, a bit of scrap; their weapon and its ammo are added from what they really had), never meat or hide. An animal, a Husk or a
     /// Hollow leaves meat and hide (no coat has a material of its own yet) and its rare part by chance.
     /// </summary>
     public static Bill BodyDrops(Species s, Wildlife.Rng rng)
@@ -310,8 +315,8 @@ public partial class Game
         {
             switch (s.Figure.Prop)
             {
-                case "rifle": drops.Add("rifle-rounds", rng.Int(4, 14)); break;
-                case "club" or "hoe" or "cane": if (rng.Chance(0.5f)) drops.Add("iron-bar", 1); break;
+                // (A weapon and its ammo are what they carried: Slice.Arms.SimArms.Drops.)
+                case "hoe" or "cane": if (rng.Chance(0.5f)) drops.Add("iron-bar", 1); break;
                 case "umbrella": drops.Add("polymer", 1); break;
             }
             if (rng.Chance(0.45f)) drops.Add("trail-ration", 1);

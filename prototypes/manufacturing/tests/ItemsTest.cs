@@ -23,7 +23,7 @@ public partial class ItemsTest : TestBase
 
     // The deposit kinds the planet generator places today (Planets.Gen.DepositKind), and the commons
     // it guarantees on every planet near any start.
-    static readonly string[] PlanetKinds = { "Iron", "Copper", "Silicon", "Carbon", "Water", "Burnstone", "Magnesium", "Cobalt", "Neodymium", "Gold", "Gravium", "Crystal", "Resin" };
+    static readonly string[] PlanetKinds = { "Iron", "Copper", "Silicon", "Carbon", "Water", "Burnstone", "Magnesium", "Cobalt", "Neodymium", "Gold", "Gravium", "Crystal", "Resin", "WarpFuel" };
     static readonly string[] EveryPlanet = { "Iron", "Copper", "Silicon", "Carbon", "Water", "Burnstone" };
 
     protected override void RunAll()

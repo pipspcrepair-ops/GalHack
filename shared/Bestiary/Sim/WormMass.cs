@@ -30,6 +30,13 @@ public sealed class WormMass
     public readonly List<Latch> Latches = new();
     public readonly Dictionary<object, float> Spared = new();
 
+    /// <summary>Set burning by a blow: seconds it has burned so far (0: not alight). It burns until it's gone.</summary>
+    public float Burning;
+    /// <summary>Burned away: nothing of it left but a scorch.</summary>
+    public bool BurntOut;
+    /// <summary>How long a whole mass takes to burn out once alight, s.</summary>
+    public const float BurnSeconds = 7f;
+
     public float MaxHealth => 30f + 70f * Size;
     /// <summary>The middle of what can be hit.</summary>
     public Vector3 Middle => Position + Normal * Size * 0.25f;
@@ -67,6 +74,15 @@ public static class WormMasses
                 m.Stir = m.Eager = 0f;
                 m.Latches.Clear();
                 continue;
+            }
+            if (m.Burning > 0f)
+            {
+                // Alight: it writhes and lets go, and burns down until nothing is left of it.
+                m.Burning += dt;
+                m.Stir = 1f;
+                if (m.Latches.Count > 0) LetGo(w, m);
+                m.Health -= m.MaxHealth / WormMass.BurnSeconds * dt;
+                if (m.Health <= 0f) { Die(w, m); continue; }
             }
             float reach = 2f + m.Size * 3f, best = reach, grab = Grab(r, m);
             Vector3 to = Vector3.Zero;
@@ -203,14 +219,21 @@ public static class WormMasses
         if (m.Health < 0f) m.Health = m.MaxHealth;
         m.Health -= amount;
         m.Stir = 1f;
+        // Hurt, it catches: it burns from then on until it's gone.
+        if (m.Burning <= 0f) m.Burning = 0.001f;
         // Hurt, its worms let go of whoever they held (a shot, a cut).
         LetGo(w, m);
-        if (m.Health <= 0f)
-        {
-            m.Dead = true;
-            m.Health = 0f;
-            w.RaiseMassDied(m);
-        }
+        if (m.Health <= 0f) Die(w, m);
+    }
+
+    /// <summary>Gone: burned (or cut) away to a scorch on the surface it lay on.</summary>
+    static void Die(WildSim w, WormMass m)
+    {
+        m.Dead = true;
+        m.BurntOut = true;
+        m.Health = 0f;
+        m.Latches.Clear();
+        w.RaiseMassDied(m);
     }
 
     /// <summary>

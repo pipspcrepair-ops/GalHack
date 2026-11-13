@@ -105,6 +105,8 @@ public sealed class Species
     public float Scarcity = 1f;
     /// <summary>What its throat throws at you, if anything.</summary>
     public SpitKind Spit;
+    /// <summary>A machine's mounted weapon: a weapon item (shared/Arms), fired from its mount; "" for none (it strikes).</summary>
+    public string Mount = "";
 
     /// <summary>
     /// The landforms it lives in: it spawns only where they hold (and near their borders, as

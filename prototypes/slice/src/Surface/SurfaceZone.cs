@@ -32,6 +32,17 @@ public partial class SurfaceZone : Node3D
     /// <summary>What the new game forced onto this world's roll (depth, theme, fall, mid-collapse, eras), or null for nothing.</summary>
     public PoiGenerator.Gen.WorldForce Force;
 
+    /// <summary>
+    /// Another body of a world's system (its moon), made from <see cref="Body"/>'s own spec: it shares
+    /// that world's galaxy, star and system (its sky is the system seen from here), and its places
+    /// come later. Null: the start world, which owns the system.
+    /// </summary>
+    public PlanetWorld ShareFrom;
+    public Orbiter Body;
+
+    /// <summary>A moon or another body of the start world's system, not the start world itself.</summary>
+    public bool IsOtherBody => ShareFrom != null;
+
     /// <summary>Where streaming centres: the player, or the vessel they fly.</summary>
     public Func<Vector3> Focus = () => Vector3.Zero;
 
@@ -122,6 +133,7 @@ public partial class SurfaceZone : Node3D
         Light = new SkyLight { Name = "SkyLight", Zone = this };
         AddChild(Light);
         Streamer = new TerrainStreamer { Name = "Terrain" };
+        Streamer.SunToward = () => Sky?.Sun is { } sun && sun.IsInsideTree() ? sun.GlobalBasis.Z.Normalized() : Vector3.Up;
         AddChild(Streamer);
         Sea = new MeshInstance3D
         {
@@ -139,7 +151,7 @@ public partial class SurfaceZone : Node3D
         Host = new PhysicsHost(Physics);
         AddChild(Host);
         Physics.MotionChanged += body => VesselOf(body)?.BecomeWreck();
-        Physics.Unregistered += body => _vesselOf.Remove(body);
+        Physics.Unregistered += body => { _vesselOf.Remove(body); Held.Remove(body); };
 
         Weather = new SurfaceWeather { Name = "Weather", Zone = this };
         AddChild(Weather);
@@ -149,7 +161,7 @@ public partial class SurfaceZone : Node3D
         AddChild(Blood);
         Underwater = new UnderwaterView { Name = "Underwater", Zone = this };
         AddChild(Underwater);
-        Loot = new Slice.Items.Lootables { Name = "Loot", Items = Data.Items, BodyAt = c => Wildlife.WorldOf(c), Settle = FloorUnder };
+        Loot = new Slice.Items.Lootables { Name = "Loot", Items = Data.Items, BodyAt = c => Wildlife.WorldOf(c), Settle = FloorUnder, DrawnOf = DrawnOf };
         AddChild(Loot);
 
         // Places collide on the world layer: walkers, vessels, E and the tool meet them (planet-surface's own layer is its own).
@@ -161,6 +173,19 @@ public partial class SurfaceZone : Node3D
         Infra = new PlanetSurface.Infra.InfraLayer { Name = "Infra" };
         AddChild(Infra);
         PlanetSpec spec = Spec;
+        if (ShareFrom != null)
+        {
+            // Another body of the system: no places yet (they come with the vacuum worlds' own families), its sky the system's.
+            PlanetWorld of = ShareFrom;
+            Orbiter body = Body;
+            _building = Task.Run(() =>
+            {
+                PlanetWorld w = PlanetWorld.Build(spec, null);
+                w.ShareSystem(of, body);
+                return w;
+            });
+            return;
+        }
         PlanetSurface.Poi.PoiCatalog catalog = PoiCatalog;
         // Every game starts on a start world: no faction holds ground there (the POI siting's rule).
         PlanetSurface.Poi.PoiSiting.StartWorld = true;
@@ -181,10 +206,19 @@ public partial class SurfaceZone : Node3D
 
     void Arrive()
     {
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        foreach (string _ in Arriving()) { }
+        ArriveMs = watch.Elapsed.TotalMilliseconds;
+        Built?.Invoke();
+    }
+
+    /// <summary>Setting the world up on the main thread, a piece at a time (each piece's name as it is done).</summary>
+    IEnumerable<string> Arriving()
+    {
         if (_building.IsFaulted) throw new InvalidOperationException("the planet failed to build", _building.Exception);
         Planet = _building.Result;
         _building = null;
-        RenderingServer.GlobalShaderParameterSet("planet_size", new Vector2((float)Planet.Width, (float)Planet.Height));
+        if (!IsOtherBody) Use(); // another body's is set when you get there: the world you are on keeps its own till then
 
         Edits = new PlanetEdits(Planet.Terrain, Streamer, Physics);
         Edits.Edited += edit => Infra.GroundDug(edit.Removed); // an ore rock doesn't hang on over a hole
@@ -194,17 +228,75 @@ public partial class SurfaceZone : Node3D
         Physics.StuckFields.Add(Ground);
         Water = new PlanetWater(Planet);
         Physics.Water = Water;
-
+        yield return "ground";
         Pois.Build(Planet);
+        yield return "places";
         Infra.Build(Planet);
+        yield return "infrastructure";
         Vector3 landing = Start = PickStart?.Invoke() ?? LandingSite;
         Streamer.SetWorld(Planet, landing, _riverMaterial = WaterMaterial(sea: false));
+        yield return "terrain";
         Sea.MaterialOverride = _seaMaterial = WaterMaterial(sea: true);
+        yield return "sea";
         Sky.SetWorld(Planet);
+        yield return "sky";
         Underwater.SetWorld(Planet);
         Weather.SetWorld(Planet);
+        yield return "weather";
+        if (Planet.Sky.Density < SurfaceWeather.NoAir) yield break; // no air, no life: nothing to work out for it
         Wildlife.SetWorld(Planet, landing);
+        yield return "wildlife";
+    }
+
+    IEnumerator<string> _arriving;
+
+    /// <summary>Set up, ready to be the zone you are in.</summary>
+    public bool Arrived => Planet != null && _arriving == null;
+
+    /// <summary>
+    /// For a body made while you are elsewhere: once its world is made, one piece of setting it up
+    /// on the main thread per call, so none of it shows as a hitch. True once it has all arrived.
+    /// </summary>
+    public bool TryArrive()
+    {
+        if (Arrived) return true;
+        if (_arriving == null)
+        {
+            if (_building == null || !_building.IsCompleted) return false;
+            _arriving = Arriving().GetEnumerator();
+        }
+        long started = System.Diagnostics.Stopwatch.GetTimestamp();
+        bool more = _arriving.MoveNext();
+        double ms = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+        ArriveMs = Math.Max(ArriveMs, ms);
+        if (more) ArriveSteps += $"{_arriving.Current} {ms:F0} ms, ";
+        if (more) return false;
+        _arriving = null;
         Built?.Invoke();
+        return true;
+    }
+
+    /// <summary>What each piece of a stepped arrival took (tests print it).</summary>
+    public string ArriveSteps { get; private set; } = "";
+
+    /// <summary>The world, once made, whether or not it has arrived in the scene yet (any thread may read its maps).</summary>
+    public PlanetWorld Made => Planet ?? (_building is { IsCompletedSuccessfully: true } b ? b.Result : null);
+
+    /// <summary>How long arriving took on the main thread, ms: all of it at once, or the longest piece of a stepped arrival (tests read it: it must not show as a hitch).</summary>
+    public double ArriveMs { get; private set; }
+
+    /// <summary>
+    /// This is the world you are on now: the shaders' world-wide settings are its own (its map's
+    /// size, and on a body with no air, no weather on the ground).
+    /// </summary>
+    public void Use()
+    {
+        if (Planet == null) return;
+        RenderingServer.GlobalShaderParameterSet("planet_size", new Vector2((float)Planet.Width, (float)Planet.Height));
+        if (Weather?.Sim != null) return;
+        RenderingServer.GlobalShaderParameterSet("weather_wind", Vector4.Zero);
+        RenderingServer.GlobalShaderParameterSet("weather_ground", Vector4.Zero);
+        RenderingServer.GlobalShaderParameterSet("weather_flash", Vector4.Zero);
     }
 
     /// <summary>
@@ -233,6 +325,14 @@ public partial class SurfaceZone : Node3D
     /// the dug ground), and never above the point: a thing left inside a ceiling or on a ledge out of
     /// reach comes down to it. With nothing below in reach, the natural ground.
     /// </summary>
+    /// <summary>A creature's drawn body, in whichever sim's view it is (the patch's, or a cave's or place's).</summary>
+    public Node3D DrawnOf(global::Wildlife.Creature c)
+    {
+        if (Wildlife?.View?.ViewOf(c) is { } v) return v;
+        if (Wildlife != null) foreach (DeepSite s in Wildlife.Sites) if (s.ViewOf(c) is { } d) return d;
+        return null;
+    }
+
     public Vector3 FloorUnder(Vector3 p)
     {
         var q = PhysicsRayQueryParameters3D.Create(p + Vector3.Up * 0.3f, p + Vector3.Down * 80f, GalHack.Physics.Layers.Solid);
@@ -357,7 +457,7 @@ public partial class SurfaceZone : Node3D
             if (!_building.IsCompleted) return;
             Arrive();
         }
-        if (Planet == null) return;
+        if (!Arrived) return;
         Vector3 focus = Focus();
         Streamer.SetFocus(focus);
         float latitude = (float)(Mathx.Wrap(focus.Z, Planet.Height) / Planet.Height * 2.0 - 1.0);
@@ -383,6 +483,46 @@ public partial class SurfaceZone : Node3D
     public override void _PhysicsProcess(double delta)
     {
         if (Planet != null) WrapFrame();
+        if (Streamer != null) HoldLoose();
+    }
+
+    /// <summary>Loose bodies lying where the ground has no collision (past the collision radius): held still, off the weather.</summary>
+    public readonly HashSet<GalHack.Physics.Body> Held = new();
+
+    /// <summary>
+    /// Terrain collides only round the player. A loose body (a wreck, a fitting cut off) that wind or a tumble carries out of it
+    /// would fall through the world, and be lifted back out by the stuck-safety, again and again. One that comes down there instead
+    /// is set on the ground, held asleep and out of the weather, and let go when collision reaches it.
+    /// </summary>
+    void HoldLoose()
+    {
+        for (int i = 0; i < Vessels.Count; i++)
+        {
+            Vessel v = Vessels[i];
+            GalHack.Physics.Body b = v.Body;
+            if (b.Motion != GalHack.Physics.Motion.Free || v.Binding is not GalHack.Physics.Engine.FreeBinding free) continue;
+            Vector3 at = b.WorldPosition.ToGodot();
+            if (Streamer.CollidesAt(at))
+            {
+                if (Held.Remove(b)) free.Wake();
+                continue;
+            }
+            Vector3 ground = GroundAt(at.X, at.Z);
+            if (!Held.Contains(b))
+            {
+                if (at.Y - ground.Y > 3f) continue; // still in the air: it may yet come down on ground that collides
+                float dy = v.DepthBelow((x, z) => GroundAt(x, z).Y); // its lowest corner on the ground, none below it
+                b.Position += System.Numerics.Vector3.UnitY * dy;
+                Held.Add(b);
+                free.Teleport();
+            }
+            free.Rigid.LinearVelocity = Vector3.Zero;
+            free.Rigid.AngularVelocity = Vector3.Zero;
+            free.Rigid.Sleeping = true;
+            b.Velocity = System.Numerics.Vector3.Zero;
+            b.AngularVelocity = System.Numerics.Vector3.Zero;
+            b.Asleep = true;
+        }
     }
 
     /// <summary>Morning fog pools on the low ground within a kilometre or so (as planet-surface does it).</summary>
