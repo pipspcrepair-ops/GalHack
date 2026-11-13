@@ -526,6 +526,15 @@ public partial class PoiLayer
     /// <summary>Whether a place in reach still waits for its merged blocks (tests and proof frames wait for none).</summary>
     public bool MidPending { get; private set; } = true;
 
+    /// <summary>How a place shows just now (tests): 0 a plain block or nothing, 1 its far mesh (or its city tile's), 2 its merged blocks, dissolved in.</summary>
+    public int Shows(PoiSite site)
+    {
+        Place p = _places.Find(x => x.Site == site);
+        if (p?.Node == null) return 0;
+        if (!p.Whole || p.Mid is not { Visible: true } || p.Way != 0 || p.Low is { Visible: true }) return 1;
+        return _tileOf.TryGetValue(p, out Tile t) && (t.Low is { Visible: true } || t.Way != 0) ? 1 : 2;
+    }
+
     /// <summary>Whether a place's mid blocks are in (tests).</summary>
     public bool MidReady(PoiSite site) => _places.Find(x => x.Site == site)?.Whole == true;
 }

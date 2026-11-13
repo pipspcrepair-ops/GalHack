@@ -36,6 +36,9 @@ public sealed class PoiBuilds : IDisposable
     public int Built;
     public double AllInRangeMs = -1;
 
+    /// <summary>Where the builder's time went, ms (tests): building, and held while a place stood up.</summary>
+    public double BusyMs, HeldMs;
+
     public PoiBuilds(IReadOnlyList<PoiSite> sites, double width, double height, double focusX, double focusZ)
     {
         _sites = sites;
@@ -77,7 +80,9 @@ public sealed class PoiBuilds : IDisposable
             while (next == null && _asked.TryDequeue(out PoiSite a)) if (a.Built == null && !_failed.Contains(a)) next = a;
             if (next == null && Hold?.Invoke() == true)
             {
+                double held = _clock.Elapsed.TotalMilliseconds;
                 _wake.WaitOne(50);
+                HeldMs += _clock.Elapsed.TotalMilliseconds - held;
                 continue;
             }
             if (next == null)
@@ -98,7 +103,8 @@ public sealed class PoiBuilds : IDisposable
                     continue;
                 }
             }
-            try { next.Build(); Built++; }
+            double began = _clock.Elapsed.TotalMilliseconds;
+            try { next.Build(); Built++; BusyMs += _clock.Elapsed.TotalMilliseconds - began; }
             catch (Exception e) { Godot.GD.PushError($"could not build {next.Name}: {e.GetBaseException().Message}"); _failed.Add(next); }
         }
     }
