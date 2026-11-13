@@ -149,6 +149,7 @@ public static class GunModel
                 break;
             case "blade":
                 Part(new CylinderMesh { TopRadius = 0.017f, BottomRadius = 0.017f, Height = 0.13f, RadialSegments = 8, Rings = 1 }, new Vector3(0f, 0f, 0.04f), new Vector3(-90f, 0f, 0f), wood, 0f);
+                Part(new BoxMesh { Size = new Vector3(0.03f, 0.075f, 0.012f) }, new Vector3(0f, 0.004f, -0.025f), Vector3.Zero, dark, 0.6f); // the guard between grip and blade
                 Part(new BoxMesh { Size = new Vector3(0.008f, 0.05f, len * 0.8f) }, new Vector3(0f, 0.004f, -0.025f - len * 0.4f), Vector3.Zero, steel, 0.8f);
                 Part(new BoxMesh { Size = new Vector3(0.008f, 0.065f, len * 0.16f) }, new Vector3(0f, 0.008f, -0.025f - len * 0.88f), Vector3.Zero, steel, 0.8f);
                 tip = new Vector3(0f, 0f, -0.025f - len);
@@ -157,6 +158,7 @@ public static class GunModel
                 Part(new CylinderMesh { TopRadius = 0.016f, BottomRadius = 0.017f, Height = len, RadialSegments = 8, Rings = 1 }, new Vector3(0f, 0f, 0.15f - len * 0.5f), new Vector3(-90f, 0f, 0f), wood, 0f);
                 Part(new CylinderMesh { TopRadius = 0.034f, BottomRadius = 0.034f, Height = 0.07f, RadialSegments = 8, Rings = 1 }, new Vector3(0f, 0f, 0.15f - len), new Vector3(-90f, 0f, 0f), dark, 0.2f);
                 Part(new BoxMesh { Size = new Vector3(0.012f, 0.05f, 0.22f) }, new Vector3(0f, 0f, 0.15f - len - 0.13f), Vector3.Zero, steel, 0.8f);
+                Part(new CylinderMesh { TopRadius = 0.02f, BottomRadius = 0.02f, Height = 0.04f, RadialSegments = 8, Rings = 1 }, new Vector3(0f, 0f, 0.15f), new Vector3(-90f, 0f, 0f), dark, 0.6f); // the butt's cap
                 tip = new Vector3(0f, 0f, 0.15f - len - 0.24f);
                 break;
         }

@@ -79,8 +79,24 @@ public static partial class StateTransforms
             {
                 Int3 at = rng.Pick(floor);
                 if (Ceiling(g, at) is not int top) continue;
+                // What fell is what the ceiling was: its tiles and plaster under a finished ceiling, else pieces of the
+                // slab itself. It lies in a drift under the hole, thickest there and spilling to the nearest wall, never
+                // an even sprinkle across the room.
+                Block ceiling = g.Get(at with { Y = top });
+                bool tiled = ceiling.Material is Material.Concrete or Material.Alloy or Material.Steel && rng.Chance(0.5f);
+                Block Fallen(Int3 c) => tiled ? Debris.Of(Material.Ceramic, Plaster, Debris.Tiles, Dirs.Horizontal[rng.Range(0, 4)])
+                    : Debris.Of(ceiling, c == at ? Debris.KindOf(ceiling) : Debris.Chunks);
+                Dir toWall = Dirs.Horizontal.OrderBy(d => { int n = 1; while (n < 6 && !BlockInfo.IsFullCube(g.Get(at + d.Vec() * n).Type)) n++; return n; }).First();
                 foreach (Int3 c in floor)
-                    if (c.FlatDistance(at) < 1.7f && g.Get(c).IsAir && rng.Chance(0.45f)) g.Set(c, Debris.Of(Material.Ceramic, Plaster, Debris.Tiles, Dirs.Horizontal[rng.Range(0, 4)]));
+                {
+                    if (!(g.Get(c).IsAir || BlockInfo.IsFinish(g.Get(c).Type))) continue; // onto the tiles, which stay under it
+                    Int3 off = c - at;
+                    int along = off.X * toWall.Vec().X + off.Z * toWall.Vec().Z;
+                    float d = c.FlatDistance(at);
+                    // Under the hole, and a tail of it toward the wall the pieces slid against.
+                    float chance = d < 0.5f ? 1f : d < 1.5f ? (along > 0 ? 0.6f : 0.25f) : along > 0 && d < 2.6f ? 0.3f : 0f;
+                    if (rng.Chance(chance)) g.Set(c, Fallen(c));
+                }
                 for (int n = 0; n < 3; n++)
                 {
                     Int3 hang = new(at.X + rng.Range(-1, 2), top - 1, at.Z + rng.Range(-1, 2));

@@ -95,7 +95,7 @@ public sealed partial class Staging
     {
         foreach (int x in DamageSetting()) yield return x;
         var cat = _game.Zone.Data.Catalogue;
-        var s = new Structure(cat, cat.Grid(GridSize.Large)) { Name = "Stages" };
+        var s = new Structure(cat) { Name = "Stages" };
         string[] rows = { "precursor", "glass", "concrete", "steel" };
         float[] health = { 1f, 0.7f, 0.4f, 0.1f };
         for (int y = 0; y < rows.Length; y++)
@@ -122,7 +122,7 @@ public sealed partial class Staging
     {
         foreach (int x in DamageSetting()) yield return x;
         var cat = _game.Zone.Data.Catalogue;
-        var s = new Structure(cat, cat.Grid(GridSize.Large)) { Name = "Thrust" };
+        var s = new Structure(cat) { Name = "Thrust" };
         // A hollow box with an open back, three thrusters in a row along its top edge, nozzles out.
         for (int x = 0; x < 5; x++)
             for (int y = 0; y < 4; y++)
@@ -149,7 +149,7 @@ public sealed partial class Staging
     {
         foreach (int x in DamageSetting()) yield return x;
         var cat = _game.Zone.Data.Catalogue;
-        var s = new Structure(cat, cat.Grid(GridSize.Large)) { Name = "Mended" };
+        var s = new Structure(cat) { Name = "Mended" };
         for (int x = 0; x < 2; x++)
             for (int y = 0; y < 2; y++) s.Set(new Int3(x, y, 0), Building.Make(s, cat.Type("steel")));
         s.DirtyChunks.Clear();

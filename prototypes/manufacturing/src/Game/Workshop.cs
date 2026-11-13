@@ -77,11 +77,10 @@ public sealed class Workshop
     {
         Storage.TryAdd(Bill.Of(("iron-ore", 420), ("carbon-ore", 300), ("copper-ore", 160), ("silicon-ore", 140), ("ice", 40), ("stone", 60),
             ("cobalt-ore", 24), ("magnesium-ore", 16), ("gold-ore", 9),
-            ("hull-plate", 64), ("glass", 12), ("winding", 6), ("servo", 3), ("circuit-board", 4),
+            ("iron-plate", 64), ("glass", 12), ("winding", 6), ("servo", 3), ("circuit-board", 4),
             ("shells-40mm", 3), ("o2-bottle", 4), ("medkit", 2), ("echo-shard", 1)));
         // Blocks are items: a few made already, so the multi-tool can build straight away.
-        Storage.TryAdd(Bill.Of((Items.BlockItem("steel", false).Id, 24), (Items.BlockItem("glass", false).Id, 6), (Items.BlockItem("container", false).Id, 1),
-            (Items.BlockItem("generator", false).Id, 1), (Items.BlockItem("turret", false).Id, 1)));
+        Storage.TryAdd(Bill.Of(("iron-plated", 24), ("glass-plated", 6), ("container-t1", 1), ("generator-t1", 1), ("turret", 1)));
         Version++;
     }
 
@@ -151,15 +150,16 @@ public sealed class Workshop
     {
         if (_salvage.Count == 0) return;
         _salvageClock += dt;
-        double every = Items.Blocks.AssemblySeconds(BuildingBridge.IsSmall(Wreck)) / Decon.Def.Speed;
-        while (_salvageClock >= every && _salvage.Count > 0)
+        while (_salvage.Count > 0)
         {
-            _salvageClock -= every;
+            if (!Wreck.TryGet(_salvage.Peek(), out Block b)) { _salvage.Dequeue(); continue; }
+            double fit = BuildingBridge.AssemblySeconds(Items, Wreck, b);
+            if (_salvageClock < fit / Decon.Def.Speed) break;
+            _salvageClock -= fit / Decon.Def.Speed;
             Int3 p = _salvage.Dequeue();
-            if (!Wreck.TryGet(p, out Block b)) continue;
             Bill bill = BuildingBridge.Priced(Items, Wreck, b) ? BuildingBridge.BillOf(Items, Wreck, b) : new Bill();
             Wreck.Clear(p);
-            Decon.BreakBlocks(bill, 1, BuildingBridge.IsSmall(Wreck), $"wreck {Wreck.TypeOf(b).Name.ToLowerInvariant()}");
+            Decon.BreakBlocks(bill, fit, $"wreck {Wreck.TypeOf(b).Name.ToLowerInvariant()}");
         }
         if (_salvage.Count == 0) _salvageClock = 0;
         Version++;

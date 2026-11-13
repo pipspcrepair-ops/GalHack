@@ -62,16 +62,16 @@ public sealed class ItemCatalogue
         Graph = new RecipeGraph(this);
     }
 
-    /// <summary>Every block family item (one per block and grid it goes on).</summary>
+    /// <summary>Every block item (one per block).</summary>
     public IEnumerable<ItemDef> BlockItems => _items.Where(i => i.IsBlock);
 
-    /// <summary>The block family item that places a block on a grid, or null.</summary>
-    public ItemDef BlockItem(string blockId, bool smallGrid) => Blocks.ItemFor(blockId, smallGrid);
+    /// <summary>The block item that places a block, or null.</summary>
+    public ItemDef BlockItem(string blockId) => Blocks.ItemFor(blockId);
 
     /// <summary>
     /// Names block items from building's catalogue (<paramref name="baseName"/> gives a block's name,
-    /// "Steel block" or "Thruster", or null to leave it): "Steel block (large)". Items named in the
-    /// data (the cores) keep their names.
+    /// "Iron plated block" or "Thruster T1", or null to leave it). Items named in the data (the
+    /// core, the door) keep their names.
     /// </summary>
     public void NameBlockItems(Func<string, string> baseName)
     {
@@ -80,16 +80,19 @@ public sealed class ItemCatalogue
             if (item.Named) continue;
             string n = baseName(item.BlockId);
             if (string.IsNullOrEmpty(n)) continue;
-            item.Name = $"{n} ({(item.SmallGrid ? "small" : "large")})";
-            item.Short = BlockShort(n, item.SmallGrid);
+            item.Name = n;
+            item.Short = BlockShort(n);
         }
     }
 
-    static string BlockShort(string name, bool small)
+    /// <summary>A tile's name: the first word, cut to six letters, and a tier if it has one ("THRUST T1").</summary>
+    static string BlockShort(string name)
     {
-        string word = new string(name.Split(' ', '-')[0].Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
+        string[] words = name.Split(' ', '-');
+        string word = new string(words[0].Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
         if (word.Length > 6) word = word[..6];
-        return $"{word}-{(small ? "S" : "L")}";
+        string tier = words.Length > 1 && words[^1].Length == 2 && words[^1][0] == 'T' && char.IsDigit(words[^1][1]) ? $" {words[^1]}" : "";
+        return word + tier;
     }
 
     /// <summary>"12 Iron ore, 3 Copper ore", or "nothing".</summary>
@@ -135,6 +138,7 @@ public sealed class ItemCatalogue
                 Uses = DataJson.Str(e, "uses", ""),
                 DepositKind = DataJson.Str(e, "deposit", null),
                 FuelUnits = DataJson.Int(e, "fuel", 0),
+                Range = (float)DataJson.Num(e, "range", 0),
                 Rounds = DataJson.Int(e, "rounds", 0),
                 RestockDefault = DataJson.Int(e, "restock", 0),
                 StackSize = DataJson.Int(e, "stack", DefaultStack(category)),
@@ -146,6 +150,7 @@ public sealed class ItemCatalogue
             item.Index = _items.Count;
             _items.Add(item);
             _byId[item.Id] = item;
+            foreach (string old in Was(e)) _was[old] = item.Id;
         }
     }
 
@@ -178,23 +183,16 @@ public sealed class ItemCatalogue
         }
     }
 
-    // Block item defaults per family and grid (blocks.json "items"): stack size and craft seconds.
-    readonly Dictionary<(BlockFamily, bool), int> _blockStack = new()
-    {
-        [(BlockFamily.Armour, true)] = 500, [(BlockFamily.Armour, false)] = 250,
-        [(BlockFamily.Device, true)] = 25, [(BlockFamily.Device, false)] = 10,
-        [(BlockFamily.Deco, true)] = 20, [(BlockFamily.Deco, false)] = 10,
-    };
-    readonly Dictionary<(BlockFamily, bool), double> _blockSeconds = new()
-    {
-        [(BlockFamily.Armour, true)] = 1, [(BlockFamily.Armour, false)] = 2,
-        [(BlockFamily.Device, true)] = 3, [(BlockFamily.Device, false)] = 6,
-        [(BlockFamily.Deco, true)] = 2, [(BlockFamily.Deco, false)] = 4,
-    };
+    // Block item defaults per family (blocks.json "items"): stack size and craft seconds.
+    readonly Dictionary<BlockFamily, int> _blockStack = new() { [BlockFamily.Armour] = 250, [BlockFamily.Device] = 10, [BlockFamily.Deco] = 10 };
+    readonly Dictionary<BlockFamily, double> _blockSeconds = new() { [BlockFamily.Armour] = 2, [BlockFamily.Device] = 6, [BlockFamily.Deco] = 4 };
 
-    /// <summary>What the data says about one grid's block item beyond its bill (all optional).</summary>
-    internal sealed record BlockItemSpec(string Id = null, string Name = null, string Short = null, int? Stack = null, double? Seconds = null,
-        int? Tier = null, Unlock Unlock = null, string Group = null, string Uses = null, string[] Was = null);
+    /// <summary>What the data says about a block's item beyond its bill (all optional).</summary>
+    internal sealed record BlockItemSpec(string Name = null, string Short = null, int? Stack = null, double? Seconds = null,
+        int? Tier = null, string Group = null, string Uses = null, IReadOnlyList<string> Was = null);
+
+    static IEnumerable<string> Was(JsonElement e) =>
+        e.TryGetProperty("was", out JsonElement was) ? was.EnumerateArray().Select(x => x.GetString()) : Array.Empty<string>();
 
     static BlockFamily ParseFamily(string s, string where) => s switch
     {
@@ -206,113 +204,85 @@ public sealed class ItemCatalogue
 
     void LoadBlocks(JsonElement root)
     {
-        if (root.TryGetProperty("assembly", out JsonElement a))
-        {
-            Blocks.AssemblySmall = DataJson.Num(a, "small", 0.4);
-            Blocks.AssemblyLarge = DataJson.Num(a, "large", 1.6);
-        }
         if (root.TryGetProperty("items", out JsonElement defaults))
-        {
             foreach (BlockFamily f in new[] { BlockFamily.Armour, BlockFamily.Device, BlockFamily.Deco })
             {
                 string key = f.ToString().ToLowerInvariant();
-                if (defaults.TryGetProperty("stack", out JsonElement st) && st.TryGetProperty(key, out JsonElement sf))
-                    foreach (bool small in new[] { true, false }) _blockStack[(f, small)] = DataJson.Int(sf, small ? "small" : "large", _blockStack[(f, small)]);
-                if (defaults.TryGetProperty("seconds", out JsonElement se) && se.TryGetProperty(key, out JsonElement sef))
-                    foreach (bool small in new[] { true, false }) _blockSeconds[(f, small)] = DataJson.Num(sef, small ? "small" : "large", _blockSeconds[(f, small)]);
+                if (defaults.TryGetProperty("stack", out JsonElement st)) _blockStack[f] = DataJson.Int(st, key, _blockStack[f]);
+                if (defaults.TryGetProperty("seconds", out JsonElement se)) _blockSeconds[f] = DataJson.Num(se, key, _blockSeconds[f]);
             }
-        }
         foreach (JsonProperty p in root.GetProperty("blocks").EnumerateObject())
         {
             JsonElement e = p.Value;
             string where = $"block '{p.Name}'";
-            if (e.TryGetProperty("places", out _))
-                throw new InvalidDataException($"{where}: no block is limited to a core's mode; 'grids' says which grids it comes on");
             string ammo = DataJson.Str(e, "ammo", null);
             if (ammo != null && Known(ammo, $"{where} ammo").Category != ItemCategory.Ammo)
                 throw new InvalidDataException($"{where}: '{ammo}' is not ammo");
-            bool unlocks = e.TryGetProperty("unlock", out JsonElement u);
-            string[] grids = e.TryGetProperty("grids", out JsonElement gr) ? gr.EnumerateArray().Select(x => x.GetString()).ToArray() : new[] { "small", "large" };
-            bool onSmall = grids.Contains("small"), onLarge = grids.Contains("large");
             var bill = new BlockBill
             {
                 BlockId = p.Name,
-                Small = onSmall ? ReadBill(e.GetProperty("small"), where) : new Bill(),
-                Large = onLarge ? ReadBill(e.GetProperty("large"), where) : new Bill(),
-                OnSmall = onSmall,
-                OnLarge = onLarge,
+                Bill = ReadBill(e.GetProperty("bill"), where),
                 UniqueOnly = DataJson.Bool(e, "uniqueOnly", false),
                 Ammo = ammo,
                 Family = ParseFamily(DataJson.Str(e, "family", "device"), where),
-                UnlockSmall = unlocks && onSmall ? ReadUnlock(u, where, "small") : null,
-                UnlockLarge = unlocks && onLarge ? ReadUnlock(u, where, "large") : null,
+                Unlock = ReadUnlock(e, where),
+                Assembly = e.TryGetProperty("assembly", out JsonElement asm) ? asm.GetDouble() : null,
+                PlaceXp = e.TryGetProperty("xp", out JsonElement xp) ? xp.GetInt32() : null,
             };
-            AddBlock(bill, small =>
-            {
-                string grid = small ? "small" : "large";
-                JsonElement item = e.TryGetProperty("item", out JsonElement it) && it.TryGetProperty(grid, out JsonElement ig) ? ig : default;
-                bool has = item.ValueKind == JsonValueKind.Object;
-                int? stack = has && item.TryGetProperty("stack", out _) ? DataJson.Int(item, "stack", 1)
-                    : e.TryGetProperty("stack", out JsonElement es) && es.TryGetProperty(grid, out JsonElement esg) ? esg.GetInt32() : null;
-                double? seconds = e.TryGetProperty("seconds", out JsonElement sec) && sec.TryGetProperty(grid, out JsonElement secg) ? secg.GetDouble() : null;
-                int? tier = e.TryGetProperty("tier", out JsonElement t) ? t.GetInt32() : null;
-                return new BlockItemSpec(has ? DataJson.Str(item, "id", null) : null, has ? DataJson.Str(item, "name", null) : null,
-                    has ? DataJson.Str(item, "short", null) : null, stack, seconds, tier, Uses: has ? DataJson.Str(item, "uses", null) : null,
-                    Was: has && item.TryGetProperty("was", out JsonElement was) ? was.EnumerateArray().Select(x => x.GetString()).ToArray() : null);
-            });
+            JsonElement item = e.TryGetProperty("item", out JsonElement it) ? it : default;
+            bool has = item.ValueKind == JsonValueKind.Object;
+            AddBlock(bill, new BlockItemSpec(
+                has ? DataJson.Str(item, "name", null) : null,
+                has ? DataJson.Str(item, "short", null) : null,
+                has && item.TryGetProperty("stack", out JsonElement istack) ? istack.GetInt32() : e.TryGetProperty("stack", out JsonElement stack) ? stack.GetInt32() : null,
+                e.TryGetProperty("seconds", out JsonElement sec) ? sec.GetDouble() : null,
+                e.TryGetProperty("tier", out JsonElement t) ? t.GetInt32() : null,
+                Uses: has ? DataJson.Str(item, "uses", null) : null,
+                Was: Was(e).ToList()));
         }
     }
 
     /// <summary>
-    /// Adds a block's bill and makes its family items, one per grid it is on: crafted from the bill
-    /// (one item a run), by the lowest constructor tier that can make everything in it, as heavy
-    /// and as bulky as what it is made of, of its rarest input's rarity, unlocked by the block's
-    /// tech-tree node on that grid. Any block goes on any structure of its grid.
+    /// Adds a block's bill and makes its item, by the block's id: crafted from the bill (one item
+    /// a run), by the lowest fabricator tier that can make everything in it, as heavy and as bulky
+    /// as what it is made of, of its rarest input's rarity, unlocked by the block's tech-tree node.
+    /// Any block goes on any structure.
     /// </summary>
-    internal void AddBlock(BlockBill bill, Func<bool, BlockItemSpec> spec)
+    internal void AddBlock(BlockBill bill, BlockItemSpec s)
     {
         Blocks.Add(bill);
-        foreach (bool small in new[] { true, false })
+        Bill made = bill.Bill;
+        if (made.IsEmpty) return; // Validate reports it
+        var inputs = made.Select(kv => (Item(kv.Key), kv.Value)).ToList();
+        string id = bill.BlockId;
+        var item = new ItemDef
         {
-            if (!bill.On(small)) continue;
-            Bill made = bill.For(small);
-            if (made.IsEmpty) continue; // Validate reports it
-            BlockItemSpec s = spec?.Invoke(small) ?? new BlockItemSpec();
-            var inputs = made.Select(kv => (Item(kv.Key), kv.Value)).ToList();
-            string grid = small ? "small" : "large";
-            string id = s.Id ?? BlockBill.NodeId(bill.BlockId, small);
-            string fallback = $"{char.ToUpperInvariant(bill.BlockId[0])}{bill.BlockId[1..]} ({grid})";
-            var item = new ItemDef
-            {
-                Id = id,
-                Name = s.Name ?? fallback,
-                Short = s.Short ?? BlockShort(s.Name ?? bill.BlockId, small),
-                Named = s.Name != null,
-                Category = ItemCategory.Block,
-                Rarity = inputs.Select(i => i.Item1.Rarity).Aggregate(Rarity.Common, Rarities.Max),
-                Source = ItemSource.Crafted,
-                MassKg = MassOf(made),
-                VolumeSu = VolumeOf(made),
-                Uses = s.Uses ?? (bill.Family == BlockFamily.Armour ? "Any shape" : "Block"),
-                StackSize = s.Stack ?? _blockStack[(bill.Family, small)],
-                Unlock = s.Unlock ?? bill.UnlockFor(small),
-                BlockId = bill.BlockId,
-                SmallGrid = small,
-                Family = bill.Family,
-                Group = s.Group,
-            };
-            if (item.StackSize <= 0) throw new InvalidDataException($"block item '{id}': stack must be positive");
-            if (_byId.ContainsKey(id)) throw new InvalidDataException($"block item '{id}' clashes with an item id");
-            int tier = s.Tier ?? Math.Max(0, inputs.Max(i => TierOf(i.Item1, null)));
-            item.Recipe = new Recipe { Output = item, Count = 1, Inputs = inputs, Seconds = s.Seconds ?? _blockSeconds[(bill.Family, small)], Tier = tier };
-            item.Index = _items.Count;
-            _items.Add(item);
-            _byId[id] = item;
-            foreach (string old in s.Was ?? Array.Empty<string>()) _was[old] = id;
-            _recipes.Add(item.Recipe);
-            if (small) bill.ItemSmall = item;
-            else bill.ItemLarge = item;
-        }
+            Id = id,
+            Name = s.Name ?? $"{char.ToUpperInvariant(id[0])}{id[1..]}",
+            Short = s.Short ?? BlockShort(s.Name ?? id),
+            Named = s.Name != null,
+            Category = ItemCategory.Block,
+            Rarity = inputs.Select(i => i.Item1.Rarity).Aggregate(Rarity.Common, Rarities.Max),
+            Source = ItemSource.Crafted,
+            MassKg = MassOf(made),
+            VolumeSu = VolumeOf(made),
+            Uses = s.Uses ?? (bill.Family == BlockFamily.Armour ? "Any shape" : "Block"),
+            StackSize = s.Stack ?? _blockStack[bill.Family],
+            Unlock = bill.Unlock,
+            BlockId = id,
+            Family = bill.Family,
+            Group = s.Group,
+        };
+        if (item.StackSize <= 0) throw new InvalidDataException($"block item '{id}': stack must be positive");
+        if (_byId.ContainsKey(id)) throw new InvalidDataException($"block item '{id}' clashes with an item id");
+        int tier = s.Tier ?? Math.Max(0, inputs.Max(i => TierOf(i.Item1, null)));
+        item.Recipe = new Recipe { Output = item, Count = 1, Inputs = inputs, Seconds = s.Seconds ?? _blockSeconds[bill.Family], Tier = tier };
+        item.Index = _items.Count;
+        _items.Add(item);
+        _byId[id] = item;
+        foreach (string old in s.Was ?? Array.Empty<string>()) _was[old] = id;
+        _recipes.Add(item.Recipe);
+        bill.Item = item;
     }
 
     /// <summary>Adds the one universal deco block item (see <see cref="DecoCatalogue.AddUniversalBlockTo"/>).</summary>
@@ -325,7 +295,7 @@ public sealed class ItemCatalogue
             Category = ItemCategory.Block, Rarity = inputs.Select(i => i.Item1.Rarity).Aggregate(Rarity.Common, Rarities.Max), Source = ItemSource.Crafted,
             MassKg = MassOf(bill), VolumeSu = VolumeOf(bill),
             Uses = "Any deco piece · one block each",
-            StackSize = 50, Unlock = unlock, BlockId = DecoCatalogue.UniversalBlock, SmallGrid = false, Family = BlockFamily.Deco,
+            StackSize = 50, Unlock = unlock, BlockId = DecoCatalogue.UniversalBlock, Family = BlockFamily.Deco,
         };
         item.Recipe = new Recipe { Output = item, Count = 1, Inputs = inputs, Seconds = 3, Tier = Math.Max(tier, inputs.Max(i => TierOf(i.Item1, null))) };
         item.Index = _items.Count;
@@ -392,7 +362,7 @@ public sealed class ItemCatalogue
             var foothold = new List<BlockCount>();
             if (r.TryGetProperty("foothold", out JsonElement list))
                 foreach (JsonElement b in list.EnumerateArray())
-                    foothold.Add(new BlockCount(DataJson.Str(b, "block"), DataJson.Str(b, "grid", "large") == "small", DataJson.Int(b, "count", 1)));
+                    foothold.Add(new BlockCount(DataJson.Str(b, "block"), DataJson.Int(b, "count", 1)));
             Machines.Reference = new ReferenceRates
             {
                 GatherOrePerMinute = DataJson.Num(r, "gatherOrePerMinute", 45),
@@ -409,10 +379,10 @@ public sealed class ItemCatalogue
         var bill = new Bill();
         foreach (JsonProperty p in e.EnumerateObject())
         {
-            Known(p.Name, where);
+            string id = Known(p.Name, where).Id;
             int n = p.Value.GetInt32();
             if (n <= 0) throw new InvalidDataException($"{where}: counts must be positive");
-            bill.Add(p.Name, n);
+            bill.Add(id, n);
         }
         return bill;
     }
@@ -441,7 +411,7 @@ public sealed class ItemCatalogue
     internal static Unlock ToUnlock(int level, int cost, string parent, string tab) => new(level, cost, parent, tab);
 
     ItemDef Known(string id, string where) =>
-        _byId.TryGetValue(id, out ItemDef item) ? item : throw new InvalidDataException($"{where}: unknown item '{id}'");
+        _byId.TryGetValue(Current(id), out ItemDef item) ? item : throw new InvalidDataException($"{where}: unknown item '{id}'");
 }
 
 /// <summary>JSON helpers shared by the loaders: comments and trailing commas allowed, schema checked.</summary>

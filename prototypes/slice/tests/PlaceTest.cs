@@ -262,12 +262,8 @@ public partial class PlaceTest : Node
         // In through the way in, and a door opened with E on the way to a cache.
         // A cache a level or more down where the place has one you can get to (the stairs are walked on
         // the way); a farmhouse keeps everything on the one floor, and then there are no stairs to walk.
-        // (Not one behind a locked door: the keycard comes further on.)
-        bool Locked(PoiGenerator.Gen.Int3 c) => place.Doors.Any(d => d.Clearance != null && (d.Cells.Contains(c) || d.Cells.Contains(c + PoiGenerator.Gen.Int3.Up)));
         var ways = inst.Caches.Where(c => !c.Secret && nav.AccessCell(c.Cell) is PoiGenerator.Gen.Int3)
-            .Select(c => (Cache: c, Steps: FreeSteps(nav.FindPath(walk.Here(place, nav), nav.AccessCell(c.Cell).Value, 200_000)))).ToList();
-        // No card in the bag yet: a way through a locked door is no way at all.
-        int FreeSteps(List<PoiGenerator.Gen.Int3> path) => path == null || path.Any(Locked) ? 9999 : path.Count;
+            .Select(c => (Cache: c, Steps: nav.FindPath(walk.Here(place, nav), nav.AccessCell(c.Cell).Value, 200_000)?.Count ?? 9999)).ToList();
         bool Below((LootCache Cache, int Steps) w) => w.Steps < 9999 && w.Cache.Cell.Y <= entry.Y - 4;
         bool downstairs = ways.Any(Below);
         LootCache cache = ways.OrderBy(w => Below(w) ? 0 : 1).ThenBy(w => w.Steps).First().Cache;
@@ -293,63 +289,10 @@ public partial class PlaceTest : Node
         else GD.Print($"  ({inst.Caches.Count} caches, none below the way in here: no stairs to walk down to one)");
 
 
-        // A locked door: refused without its card; the card, lying where its owner fell, taken with E; then it opens.
-        var held = new HashSet<string>();
-        Place.Door locked = null;
-        KeyCard key = null;
-        foreach (KeyCard k in inst.Extras.Keys.OrderBy(k => nav.FindPath(walk.Here(place, nav), k.Cell, 200_000)?.Count ?? 9999))
-        {
-            var toKey = nav.FindPath(walk.Here(place, nav), k.Cell, 200_000);
-            if (toKey == null || toKey.Any(c => place.Doors.Any(d => d.Clearance != null && (d.Cells.Contains(c) || d.Cells.Contains(c + PoiGenerator.Gen.Int3.Up))))) continue;
-            int rank = Array.IndexOf(Game.Game.Clearances, k.Clearance);
-            locked = place.Doors.Where(d => d.Clearance != null && Array.IndexOf(Game.Game.Clearances, d.Clearance) <= rank)
-                .OrderBy(d => d.Cells.Min(c => c.Manhattan(k.Cell))).FirstOrDefault();
-            if (locked == null) continue;
-            key = k;
-            break;
-        }
-        if (inst.Extras.Keys.Count > 0 && key == null) // what became of each lock, when no key finds one
-            GD.Print($"  ({inst.Family.Id} {inst.State}: locks {string.Join("; ", inst.Extras.Locks.Select(l => $"{l.Clearance} at doorway {l.Doorway}: {string.Join(" ", inst.Layout.Doorways[l.Doorway].Cells.Select(c => $"{inst.Blocks.Get(c).Type}/{inst.Blocks.Get(c).Variant}"))}"))}; keys {string.Join(", ", inst.Extras.Keys.Select(k => $"{k.Clearance} at {k.Cell}"))})");
-        if (inst.Extras.Keys.Count > 0) // a mine or a farm has none
-            Check(key != null, $"a keycard ({key?.Clearance}) lies within reach, and a door it opens ({inst.Extras.Keys.Count} keys, {place.Doors.Count(d => d.Clearance != null)} locked doors)");
-        if (key != null)
-        {
-            // To the locked door first: E says what it needs.
-            PoiGenerator.Gen.Int3 side = DoorSide(place, nav, locked, walk.Here(place, nav));
-            foreach (int x in Watched(walk.To(place, side, r => ok = r))) yield return x;
-            foreach (int x in Watched(drive.LookAt(place.ToWorld(locked.Centre), 6))) yield return x;
-            string refusedPrompt = game.UsePrompt();
-            foreach (int x in Watched(drive.Tap(Key.E))) yield return x;
-            foreach (int x in Watched(drive.Wait(60))) yield return x;
-            Check(ok && locked.IsShut && refusedPrompt.Contains("LOCKED"), $"at the {locked.Clearance} door without its card: '{refusedPrompt}', and E leaves it shut (walked there {ok}, to {side}, feet {place.FromWorld(game.Survivor.WorldFeet)}, door {locked.Index} at {locked.Centre}, {game.Survivor.WorldEye().DistanceTo(place.ToWorld(locked.Centre)):F1} m off, lift {locked.Lift}, seen {DoorSight(game, place)}{(walk.Notes.Count > 0 ? $"; {walk.Notes[^1]}" : "")})");
-            // The card.
-            foreach (int x in Watched(walk.To(place, nav.AccessCell(key.Cell) ?? key.Cell, r => ok = r))) yield return x;
-            foreach (int x in Watched(drive.LookAt(place.ToWorld(new Vector3(key.Cell.X + 0.55f, key.Cell.Y + 0.08f, key.Cell.Z + 0.42f)), 8))) yield return x;
-            string cardPrompt = game.UsePrompt();
-            foreach (int x in Watched(drive.Tap(Key.E))) yield return x;
-            Check(ok && game.Pack.Storage.Count($"keycard-{key.Clearance}") == 1, $"'{cardPrompt}': E takes the {key.Clearance} keycard off its dead owner into the bag");
-            // Back to the door: it opens now, and through it.
-            side = DoorSide(place, nav, locked, walk.Here(place, nav));
-            foreach (int x in Watched(walk.To(place, side, r => ok = r))) yield return x;
-            foreach (int x in Watched(drive.LookAt(place.ToWorld(locked.Centre), 6))) yield return x;
-            string openPrompt = game.UsePrompt(), sight = DoorSight(game, place);
-            foreach (int x in Watched(drive.Tap(Key.E))) yield return x;
-            foreach (int x in Watched(play.WaitFor(() => locked.Open > 0.95f, 3))) yield return x;
-            Check(locked.Open > 0.95f, $"E on the {locked.Clearance} door with the card: it slides open ({walk.DoorsOpened + 1} doors opened with E{(locked.Open > 0.95f ? "" : $"; walked back {ok}, to {side}, feet {place.FromWorld(game.Survivor.WorldFeet)}, prompt '{openPrompt}', open {locked.Open:F2}, seen {sight}{(walk.Notes.Count > 0 ? $"; {walk.Notes[^1]}" : "")}")})");
-        }
-
         // A hidden room: the cracked panel's draft gives it away; the survival tool breaks it, and the stash behind is looted.
         SecretRoom secret = inst.Extras.Secrets.FirstOrDefault();
         if (secret != null)
         {
-            // The other keycards first: the wall may lie behind a door that wants a higher one.
-            foreach (KeyCard other in inst.Extras.Keys.Where(k => k != key && !place.Memory.KeysTaken.Contains(k)).ToList())
-            {
-                foreach (int x in Watched(walk.To(place, nav.AccessCell(other.Cell) ?? other.Cell, r => ok = r))) yield return x;
-                foreach (int x in Watched(drive.LookAt(place.ToWorld(new Vector3(other.Cell.X + 0.55f, other.Cell.Y + 0.08f, other.Cell.Z + 0.42f)), 8))) yield return x;
-                foreach (int x in Watched(drive.Tap(Key.E))) yield return x;
-                GD.Print($"  (the other keycard: {other.Clearance} at {other.Cell}, reached {ok}, in the bag {game.Pack.Storage.Count($"keycard-{other.Clearance}")})");
-            }
             PoiGenerator.Gen.Int3 low = secret.WallCells.OrderBy(c => c.Y).First();
             PoiGenerator.Gen.Int3 front = low + place.FoundFrom(secret);
             // The nearest clear spot in front of the panel; where the Bloom has grown over the way to
@@ -663,37 +606,6 @@ public partial class PlaceTest : Node
                 GD.Print($"  (tell: {e.Kind} from a {e.Creature?.Species.CommonName} ({e.Creature?.Species.Role}), {s.World(e.Position).DistanceTo(game.Survivor.WorldFeet):F1} m off)");
             };
         }
-    }
-
-    /// <summary>A standable cell a step or two from a door, on the side reachable from here without passing it.</summary>
-    /// <summary>What the crosshair lands on, for a door the aim didn't find.</summary>
-    static string DoorSight(Game.Game game, Place p)
-    {
-        if (!WorldRay.Cast(game.Zone, game.Survivor, Game.Game.UseReach, GalHack.Physics.Layers.World | GalHack.Physics.Layers.Hull | GalHack.Physics.Layers.Props, out LookHit look)) return "nothing in reach";
-        return $"{(look.Collider as Node)?.GetParent()?.Name}/{(look.Collider as Node)?.Name} on layer {(look.Collider as CollisionObject3D)?.CollisionLayer} at {look.Distance:F1} m, cell {p.FromWorld(look.Point)}, door {p.DoorOf(look.Collider)?.Index}, piece {p.PieceOf(look.Collider as GodotObject)?.Piece.Id}";
-    }
-
-    static PoiGenerator.Gen.Int3 DoorSide(Place p, PoiGenerator.Gen.NavGrid nav, Place.Door d, PoiGenerator.Gen.Int3 from)
-    {
-        int y = d.Cells.Min(c => c.Y);
-        var cells = d.Cells.Where(c => c.Y == y).ToList();
-        Vector3 n = d.Along.Cross(Vector3.Up).Normalized();
-        var step = new PoiGenerator.Gen.Int3((int)MathF.Round(n.X), 0, (int)MathF.Round(n.Z));
-        PoiGenerator.Gen.Int3 best = cells[0];
-        int bestLen = int.MaxValue;
-        var seen = new List<string>();
-        foreach (var c in cells)
-            foreach (int k in new[] { 1, -1, 2, -2 })
-            {
-                var q = c + step * k;
-                if (!nav.Standable(q)) { seen.Add($"{q} not standable"); continue; }
-                var path = nav.FindPath(from, q, 400_000);
-                seen.Add($"{q} {(path == null ? "no path" : path.Any(r => d.Cells.Contains(r)) ? "through it" : $"{path.Count}")}");
-                if (path == null || path.Any(r => d.Cells.Contains(r))) continue;
-                if (path.Count < bestLen) { bestLen = path.Count; best = q; }
-            }
-        if (bestLen == int.MaxValue) GD.Print($"  (no side of door {d.Index} ({string.Join(" ", d.Cells)}) from {from}: {string.Join("; ", seen)})");
-        return best;
     }
 
     /// <summary>
@@ -1413,7 +1325,7 @@ public partial class PlaceTest : Node
         }
         places.Eye = null;
         Check(p.NearGroups > 0 && p.NearGroups < p.Groups || p.Groups <= 8, $"the cubes near the eye are drawn in full ({p.NearGroups} of {p.Groups}), the rest stay merged");
-        GD.Print($"  doors {p.Doors.Count} ({p.Doors.Count(d => d.Clearance != null)} locked, {p.Doors.Count(d => d.Jammed)} jammed), deco rooms {p.DecoRooms}, caches {p.Memory.Caches.Count}, creatures {p.Memory.Fauna?.Sim?.Creatures.Count}");
+        GD.Print($"  doors {p.Doors.Count} ({p.Doors.Count(d => d.Jammed)} jammed), deco rooms {p.DecoRooms}, caches {p.Memory.Caches.Count}, creatures {p.Memory.Fauna?.Sim?.Creatures.Count}");
         game.QueueFree();
         yield return 0;
     }
@@ -1470,7 +1382,7 @@ public partial class PlaceTest : Node
             var fauna = PlaceFauna.Plan(mem, deep);
             mem.Rooms = Decor.Shared?.Plan(mem);
             GD.Print($"{d,6:F0} m  {site.Name} [{site.Family.Id}] {inst.State} {site.Family.Tier}: {layout.Modules.Count} modules, storeys {layout.Modules.Min(m => m.Storey)}..{layout.Modules.Max(m => m.Storey)}, " +
-                     $"{doors} shut doors, {layout.Extras.Locks.Count} locks, {layout.Extras.Keys.Count} keys, {layout.Extras.Secrets.Count} secrets, {ladders} ladder cells, {stairs} stair cells, " +
+                     $"{doors} shut doors, {layout.Extras.Secrets.Count} secrets, {ladders} ladder cells, {stairs} stair cells, " +
                      $"{layout.Extras.Lifts.Count} lifts, {inst.Caches.Count} caches, town {(inst.Townsfolk != null ? $"{inst.Townsfolk.People.Count} people {inst.Mood}" : "none")}, " +
                      $"fauna {(fauna.Silent ? "silent" : string.Join(" ", fauna.Population.Spawns.GroupBy(s => s.Role).Select(g => $"{g.Key}x{g.Count()}")))}");
         }

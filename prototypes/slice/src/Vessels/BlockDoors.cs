@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using GalHack.Physics;
 using GalHack.Physics.Engine;
 using GalHack.Structures;
 using Godot;
@@ -20,7 +21,7 @@ public readonly record struct OpenDoor(Vector3 Centre, Vector3 Normal, Vector2 S
 /// as you come up and shut behind you ("doors open for the player faction on their own"). The
 /// block's own Open flag (building's) stays the truth for rooms, pathing and collision: opening
 /// flips it at once so the way is clear while the leaves draw back; shutting flips it as the
-/// leaves meet, so nobody is shut inside one. Locks and keycards are the places' (<see cref="Place.Door"/>).
+/// leaves meet, so nobody is shut inside one.
 /// </summary>
 public partial class BlockDoors : Node3D
 {
@@ -94,7 +95,7 @@ public partial class BlockDoors : Node3D
         float nearest = reach;
         foreach (var (v, k) in _known)
         {
-            if (v.IsWreck) continue;
+            if (v.Body.Kind == BodyKind.Wreck) continue; // (a hulk lying on a planet keeps its doors working)
             foreach (Int3 cell in k.Doors)
             {
                 Vector3 c = v.ToWorld(Centre(v, cell));
@@ -189,7 +190,7 @@ public partial class BlockDoors : Node3D
         Vector3 feet = Feet();
         foreach (Vessel v in Zone.Vessels)
         {
-            if (v.IsWreck || v.IsRuin || v.Structure.Count == 0) continue; // your own bases and vessels
+            if (v.Body.Kind == BodyKind.Wreck || v.IsRuin || v.Structure.Count == 0) continue; // your own bases and vessels, and hulks on the ground
             var (min, max) = v.Structure.Bounds();
             float reach = (max - min).ToVector3().Length() * v.Structure.Grid.CellSize * 0.6f + ShutRange + 2f;
             if (v.Body.WorldPosition.ToGodot().DistanceTo(feet) > reach) continue;
@@ -217,7 +218,7 @@ public partial class BlockDoors : Node3D
     {
         foreach (Vessel v in Zone.Vessels)
         {
-            if (v.IsWreck || !_known.TryGetValue(v, out Known k)) continue;
+            if (v.Body.Kind == BodyKind.Wreck || !_known.TryGetValue(v, out Known k)) continue;
             float size = v.Structure.Grid.CellSize;
             foreach (Int3 cell in k.Doors)
             {

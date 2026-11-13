@@ -86,7 +86,7 @@ depth fallout
   lift 0.2
   main 3 4 3 3
   side 2 3 2 3
-  room 2 3
+  room 2 2
   plan top gallery 3 hall 2
   plan upper hall 2 gallery 2 grid 1
   plan deep gallery 2 grid 1 hall 1
@@ -151,7 +151,7 @@ depth cryo
   lift 0.8
   main 4 4 3 3
   side 2 3 2 3
-  room 2 3
+  room 2 2
   plan top spine 2 hub 1
   plan upper pods 5 ring 1
   plan deep pods 4 gallery 1
@@ -183,7 +183,7 @@ depth biolab
   lift 0.6
   main 4 4 3 3
   side 2 3 2 3
-  room 2 3
+  room 2 2
   plan top grid 2 spine 2 ring 1
   plan upper grid 1 hub 2 gallery 1
   plan deep cells 3 hub 1 ring 1
@@ -215,7 +215,7 @@ depth research
   lift 0.7
   main 4 4 3 3
   side 2 3 2 3
-  room 2 3
+  room 2 2
   plan top grid 2 spine 2 hub 1
   plan upper ring 1 hall 1 grid 1 gallery 1
   plan deep chamber 2 hub 1 spine 1
@@ -343,7 +343,7 @@ depth prison
   rooms top guardroom! storage
   rooms deep solitary evidence
   rooms deepest vault! evidence!
-  fill storage cellblock
+  fill storage cell
   zones gate block
   lock blast
   crawl 0.4
@@ -366,10 +366,10 @@ depth hive
   lift 0
   main 2 3 2 3
   side 2 2 2 2
-  room 2 3
+  room 2 2
   plan any organic 6
   rooms any containment?
-  rooms deep containment*1-2 cryo-bay?
+  rooms deep containment*1-2
   rooms deepest vault! containment
   fill containment storage
   crawl 0
@@ -393,7 +393,7 @@ depth library
   lift 0
   main 3 3 3 3
   side 2 2 2 3
-  room 2 3
+  room 2 2
   plan top gallery 2 organic 1
   plan upper organic 2 gallery 2 chamber 1
   plan deep chamber 2 organic 1

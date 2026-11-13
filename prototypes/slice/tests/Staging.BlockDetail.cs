@@ -17,12 +17,12 @@ namespace Slice.Tests;
 
 /// <summary>
 /// The block detail proof, frame by frame into --dir, every name led by --tag (before, after), in
-/// daylight: every device close up on each grid (device-ID-large, device-ID-small), a wall of each
+/// daylight: every device close up (device-ID), a wall of each
 /// armour material at 2 m and 20 m (wall-ID-2m, wall-ID-20m), the Outpost and Frigate set down
 /// through the BLUEPRINTS tab and seen from outside and from inside (bp-NAME-outside, bp-NAME-inside),
 /// a PERF line of frame time and triangles at the Frigate, the first devices powered, unpowered and
 /// damaged (status-*), and an icon sheet of every block item (icons). --part=devices|walls|blueprints|icons runs one part; the default is all of them.
-/// The showrooms are set down whole (STAGING): one large-grid base and one small-grid plate.
+/// The showroom is set down whole (STAGING): one base.
 /// </summary>
 public sealed partial class Staging
 {
@@ -45,18 +45,15 @@ public sealed partial class Staging
         _game.Visor.Visible = true;
     }
 
-    /// <summary>Every component on a showroom floor, one grid at a time, each shot from its front quarter.</summary>
+    /// <summary>Every component on a showroom floor, each shot from its front quarter.</summary>
     IEnumerable<int> DeviceShots(string dir, string tag)
     {
         Catalogue cat = _game.Zone.Data.Catalogue;
         List<BlockType> devices = cat.Types.Skip(1).Where(t => !t.IsArmor).ToList();
-        foreach (GridSize size in new[] { GridSize.Large, GridSize.Small })
         {
-            if (size == GridSize.Small && _args.TryGetValue("grid", out string g) && g == "large") continue;
-            if (size == GridSize.Large && _args.TryGetValue("grid", out string g2) && g2 == "small") continue;
-            GridDef grid = cat.Grid(size);
-            var s = new Structure(cat, grid) { Name = $"Showroom {size}" };
-            const int perRow = 8, gap = 3;
+            GridDef grid = cat.Grid;
+            var s = new Structure(cat) { Name = "Showroom" };
+            const int perRow = 8, gap = 7; // room for the biggest rungs (6 cells)
             int rows = (devices.Count + perRow - 1) / perRow;
             BlockType steel = cat.Type("steel");
             for (int x = -1; x <= perRow * gap; x++)
@@ -80,7 +77,7 @@ public sealed partial class Staging
             s.DirtyChunks.Clear();
             float cell = grid.CellSize;
             float span = (perRow * gap + 2) * cell;
-            Vector3 site = Play.FlatSpot(_game.Start, 60f + (size == GridSize.Small ? 40f : 0f), 0.4f, 0.5f, span: MathF.Max(10f, span * 0.6f));
+            Vector3 site = Play.FlatSpot(_game.Start, 60f, 0.4f, 0.5f, span: MathF.Max(10f, span * 0.6f));
             _game.Survivor.PlaceOutside((site + new Vector3(-span * 0.5f - 6f, 1f, -8f)).ToNumerics());
             foreach (int x in _drive.Wait(30)) yield return x;
             Vector3 corner = site - new Vector3(span * 0.5f, 0f, rows * gap * cell * 0.5f);
@@ -88,7 +85,6 @@ public sealed partial class Staging
             Vessel v = Vessel.SpawnBase(_game.Zone, s, (corner + Vector3.Up * (cell * 0.5f + 0.05f)).ToNumerics(), 0f);
             foreach (var (c, _) in s.Blocks().ToList()) v.ClearGround(c);
             foreach (int x in _drive.Wait(60)) yield return x;
-            string grid0 = size == GridSize.Large ? "large" : "small";
             foreach (BlockType t in devices)
             {
                 Int3 c = at[t];
@@ -99,15 +95,15 @@ public sealed partial class Staging
                 Vector3 eye = v.ToWorld(eyeLocal), look = v.ToWorld(centre + new N.Vector3(0f, t.Function == "hover" ? -0.1f : 0f, 0f));
                 _game.FixedCamera = new Transform3D(Basis.LookingAt((look - eye).Normalized(), Vector3.Up), eye);
                 foreach (int x in _drive.Wait(4)) yield return x;
-                foreach (int x in Shot($"{dir}/{tag}device-{t.Id}-{grid0}.png")) yield return x;
+                foreach (int x in Shot($"{dir}/{tag}device-{t.Id}.png")) yield return x;
             }
             // The whole showroom at a glance.
             var mid = new N.Vector3(perRow * gap * 0.5f, 1f, rows * gap * 0.5f) * cell;
             Vector3 over = v.ToWorld(mid + new N.Vector3(0f, rows * gap * 0.9f, -rows * gap * 1.2f) * cell);
             _game.FixedCamera = new Transform3D(Basis.LookingAt((v.ToWorld(mid) - over).Normalized(), Vector3.Up), over);
             foreach (int x in _drive.Wait(6)) yield return x;
-            foreach (int x in Shot($"{dir}/{tag}showroom-{grid0}.png")) yield return x;
-            if (size == GridSize.Large) foreach (int x in StatusShots(v, devices.Take(4).Select(t => at[t]).ToList(), dir, tag)) yield return x;
+            foreach (int x in Shot($"{dir}/{tag}showroom.png")) yield return x;
+            foreach (int x in StatusShots(v, devices.Take(4).Select(t => at[t]).ToList(), dir, tag)) yield return x;
             _game.FixedCamera = null;
         }
     }
@@ -143,12 +139,11 @@ public sealed partial class Staging
     IEnumerable<int> WallShots(string dir, string tag)
     {
         Catalogue cat = _game.Zone.Data.Catalogue;
-        GridDef grid = cat.Grid(GridSize.Large);
-        float cell = grid.CellSize;
+        float cell = cat.Grid.CellSize;
         int n = 0;
         foreach (BlockType t in cat.Types.Skip(1).Where(t => t.IsArmor))
         {
-            var s = new Structure(cat, grid) { Name = $"Wall {t.Id}" };
+            var s = new Structure(cat) { Name = $"Wall {t.Id}" };
             for (int x = 0; x < 6; x++)
                 for (int y = 0; y < 4; y++)
                     s.Set(new Int3(x, y, 0), Building.Make(s, t));
@@ -366,12 +361,12 @@ public sealed partial class Staging
               $"render cpu {_cpu.Average():0.00} ms, gpu avg {_gpu.Average():0.00} ms p95 {P(_gpu, 0.95):0.00} ms, primitives {_prims.Average():0}";
     }
 
-    /// <summary>Every block item's icon on one sheet, large grid then small, ten to a row.</summary>
+    /// <summary>Every block item's icon on one sheet, ten to a row.</summary>
     IEnumerable<int> IconSheet(string dir, string tag)
     {
         ItemIcons icons = _game.Icons;
         List<ItemDef> blocks = _game.Zone.Data.Items.Items.Where(i => i.IsBlock && _game.Zone.Data.Catalogue.TryGetType(i.BlockId, out _))
-            .OrderBy(i => i.SmallGrid).ThenBy(i => _game.Zone.Data.Catalogue.Type(i.BlockId).IsArmor ? 0 : 1).ThenBy(i => i.BlockId, StringComparer.Ordinal).ToList();
+            .OrderBy(i => _game.Zone.Data.Catalogue.Type(i.BlockId).IsArmor ? 0 : 1).ThenBy(i => i.BlockId, StringComparer.Ordinal).ToList();
         foreach (ItemDef i in blocks) icons.Get(i);
         for (int t = 0; t < 900 && blocks.Any(i => icons.Get(i) == null); t++) yield return 0;
         const int cols = 10, size = ItemIcons.Size, pad = 6;

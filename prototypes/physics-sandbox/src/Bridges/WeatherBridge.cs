@@ -92,7 +92,7 @@ public sealed class WeatherBridge : IForceProvider
         /// No air reaches a sheltered body (the shared module's one rule: a base, a vessel parked on
         /// a base or a capital ship, a rider inside an interior), and there is none above the atmosphere.
         /// </summary>
-        public float DragArea => Sheltered || InSpace ? 0f : _body.DragArea;
+        public float DragArea => Sheltered || InSpace ? 0f : _body.WindArea();
 
         bool Sheltered => (_bridge._world?.IsSheltered(_body) ?? false) || InShelter;
         bool InShelter => _bridge.Shelter?.Invoke(_body) ?? false;

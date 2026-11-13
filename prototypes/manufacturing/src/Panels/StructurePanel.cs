@@ -111,7 +111,7 @@ public partial class StructurePanel : PanelContainer
         {
             _statsSeen = s.Version;
             StructureStats st = StructureStats.Compute(s);
-            _summary.Text = $"{(st.HasCore ? "BASE, CORE ONLINE" : "NO CORE")}  -  {st.Blocks} BLOCKS  -  {st.Mass:0.0} T  -  CPU {st.CpuUsed:0} / {st.CpuLimit}  -  {st.Lights} LIGHTS";
+            _summary.Text = $"{(st.HasCore ? "BASE, CORE ONLINE" : "NO CORE")}  -  {st.Blocks} BLOCKS  -  {st.Mass:0.0} T  -  {st.Lights} LIGHTS";
         }
         SetToggle(RestockToggle, _w.Fab.Restock.Enabled);
         SetToggle(CreativeToggle, _w.Rules.Creative);

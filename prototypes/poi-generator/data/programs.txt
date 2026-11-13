@@ -65,7 +65,7 @@ program cryo_vault
   rooms basement monitor plant storage
   rooms deep plant generator monitor
   rooms deepest vault! monitor reactor?
-  fill storage monitor
+  fill storage plant
 
 program biolab
   name Biolab
@@ -87,7 +87,7 @@ program biolab
   rooms basement lab*1-2 containment cold-store storage
   rooms deep containment*1-2 lab theatre plant
   rooms deepest vault! containment reactor?
-  fill storage lab
+  fill storage office
 
 # ---- research ------------------------------------------------------------------------------------------
 
@@ -112,7 +112,7 @@ program research_base
   rooms shallow lab*1-2 storage cold-store
   rooms basement lab containment archive plant
   rooms deepest vault! containment generator?
-  fill storage office lab
+  fill storage office archive
 
 program ice_outpost
   name Ice Research Outpost
@@ -321,11 +321,12 @@ program prison
   windows 0.15
   secrets 2 3
   rooms ground security! guardroom lobby
-  rooms upper cellblock*2-3 guardroom
+  hall upper cellblock
+  rooms upper guardroom cell*2-4
   rooms top guardroom command
   rooms basement cellblock solitary mess storage
   rooms deepest evidence! solitary vault
-  fill cellblock storage
+  fill cell storage
 
 # ---- industry ------------------------------------------------------------------------------------------
 
@@ -388,10 +389,12 @@ program factory_works
   lift 0.3
   windows 0.45
   secrets 0 1
-  rooms ground lobby! loading-dock! warehouse
+  hall ground warehouse
+  rooms ground lobby! loading-dock!
   rooms upper office control! parts-store
   rooms top office archive
-  rooms basement boiler-house! generator storage
+  hall basement boiler-house
+  rooms basement generator storage
   rooms deepest vault! plant
   fill storage parts-store
 
@@ -408,7 +411,8 @@ program farmhouse
   levels 1 1
   windows 0.6
   secrets 0 1
-  rooms ground farm-kitchen! quarters storage
+  hall ground farm-kitchen
+  rooms ground quarters storage
   rooms upper quarters washroom
   rooms basement cellar!
   rooms deepest vault! cellar
@@ -475,7 +479,8 @@ program cathedral
   rooms ground lobby! chapel! archive
   rooms upper chapel archive monitor
   rooms top chapel monitor
-  rooms deepest vault! cryo-bay
+  hall deepest cryo-bay
+  rooms deepest vault!
   fill chapel archive
 
 # A shed: one long room, a workbench and whatever was left in it.

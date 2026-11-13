@@ -269,7 +269,6 @@ public partial class CapitalWorld : Node3D, ILiftGround
     /// </summary>
     public string SwitchMode(Craft c, CoreMode mode)
     {
-        if (!c.IsLarge) return Reply("A small-grid core is always a vessel.");
         if (c.Structure.Mode == mode) return Reply($"{c.Name} is already in {Label(mode)} mode.");
         if (_liftoffs.ContainsKey(c)) return Reply("Lift-off in progress.");
 
@@ -392,10 +391,9 @@ public partial class CapitalWorld : Node3D, ILiftGround
     public LiftOff LiftOffOf(Craft c) => _liftoffs.TryGetValue(c, out LiftOff run) ? run : null;
     public bool IsLiftingOff(Craft c) => _liftoffs.ContainsKey(c);
 
-    /// <summary>Flags exactly one base or capital ship as Home. A new flag clears the old one.</summary>
+    /// <summary>Flags exactly one structure as Home. A new flag clears the old one.</summary>
     public string FlagHome(Craft c)
     {
-        if (!c.IsLarge) return Reply("HOME REFUSED: only a base or a capital ship can be Home.");
         string old = Home.Flag(c.Id);
         Craft was = old == null ? null : CraftById(old);
         return Reply(was != null ? $"HOME: {c.Name} (was {was.Name})." : $"HOME: {c.Name}.");
@@ -429,7 +427,7 @@ public partial class CapitalWorld : Node3D, ILiftGround
             Say("Can't build there: bedrock fills that space.");
             return (PlaceError.Occupied, 0);
         }
-        Dictionary<string, int> cost = c.Structure.Catalogue.CostOf(block, c.Structure.Grid);
+        Dictionary<string, int> cost = c.Structure.Catalogue.CostOf(block);
         bool paid = !Inventory.Creative;
         PlaceError error = Building.Place(c.Structure, cell, block, Inventory, c.Structure.Owner ?? Building.DefaultOwner);
         if (error != PlaceError.None) return (error, 0);
@@ -607,7 +605,7 @@ public partial class CapitalWorld : Node3D, ILiftGround
         N.Vector3 from = c.Body.CenterOfMassPosition;
         if (!Physics.Query.Ray(from, from - N.Vector3.UnitY * 12f, Layers.Hull, c.Body, out RayHit hit)) return;
         Craft host = CraftOf(hit.Body);
-        if (host == null || host == c || !host.IsLarge || host.Pin is { Docked: true }) return;
+        if (host == null || host == c || host.Pin is { Docked: true }) return;
         Dock(c, host);
     }
 
@@ -654,7 +652,7 @@ public partial class CapitalWorld : Node3D, ILiftGround
         {
             _transmitTimer = 0f;
             foreach (Craft c in Crafts)
-                if (!c.IsLarge) Pump(c);
+                Pump(c);
         }
     }
 

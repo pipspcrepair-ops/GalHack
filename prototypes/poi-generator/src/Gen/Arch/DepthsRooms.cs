@@ -94,6 +94,13 @@ internal sealed partial class Depths
             float score = 0f;
             if (shortSide < def.WMin) score += (def.WMin - shortSide) * 2f;
             if (shortSide > def.WMax + 6) score += (shortSide - def.WMax - 6) * 0.5f;
+            // Its floor area as a room of its purpose has (a space's columns are 2 m square).
+            if (def.AMax > 0)
+            {
+                float a = s.Area * 4f;
+                if (a < def.AMin * 0.75f) score += (def.AMin - a) / def.AMin * 12f;
+                else if (a > def.AMax * 1.5f) score += (a - def.AMax) / def.AMax * 12f;
+            }
             if (def.Kind == ModuleKind.Hall && s.Area < 30) score += 8f;
             if (def.Kind != ModuleKind.Hall && s.Module == ModuleKind.Hall) score += 4f;
             int d = dist.GetValueOrDefault(s, 0);
@@ -134,7 +141,7 @@ internal sealed partial class Depths
     // ---- dead ends ---------------------------------------------------------------------------
 
     /// <summary>
-    /// A short way off a corridor that goes nowhere: at its end a vault behind a locked door, a hidden room behind
+    /// A short way off a corridor that goes nowhere: at its end a vault, a hidden room behind
     /// a wall that sounds hollow, or nothing but a wall (and what someone left there).
     /// </summary>
     DSpace? DeadEnd(Level lv, bool vault)
@@ -148,7 +155,7 @@ internal sealed partial class Depths
                 if (stub == null) continue;
                 if (vault || R.Chance(0.5f))
                 {
-                    var room = EndRoom(lv, stub, R.Between(4, 6), R.Between(4, 6), purpose: vault ? "vault" : null, mk: vault ? ModuleKind.Vault : ModuleKind.Room, door: vault ? "locked" : "door");
+                    var room = EndRoom(lv, stub, R.Between(4, 6), R.Between(4, 6), purpose: vault ? "vault" : null, mk: vault ? ModuleKind.Vault : ModuleKind.Room);
                     if (room == null) { Drop(stub.S, lv); continue; }
                     room.Raw = false;
                     if (vault)

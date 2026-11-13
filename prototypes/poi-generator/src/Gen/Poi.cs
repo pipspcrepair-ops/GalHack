@@ -60,8 +60,8 @@ public sealed class PoiInstance
     {
         if (Age != Age.OldWorld || module < 0 || module >= Layout.Modules.Count) return Age;
         var m = Layout.Modules[module];
-        bool sealedRoom = m.Kind == ModuleKind.Vault || m.Purpose is "cryo-bay" or "cold-store" or "vault" || Layout.Extras.Secrets.Any(s => s.Module == module)
-                          || Layout.Extras.Locks.Any(l => l.Blast && (Layout.Doorways[l.Doorway].ModuleA == module || Layout.Doorways[l.Doorway].ModuleB == module));
+        bool sealedRoom = m.Kind == ModuleKind.Vault || m.Purpose is "cryo-bay" or "cryo-niche" or "cold-store" or "vault" || Layout.Extras.Secrets.Any(s => s.Module == module)
+                          || Layout.Extras.BlastDoors.Any(i => Layout.Doorways[i].ModuleA == module || Layout.Doorways[i].ModuleB == module);
         return sealedRoom ? Age.Preserved : Age.OldWorld;
     }
 
@@ -356,6 +356,12 @@ public static class PoiFactory
             if (inst.Blocks.Get(c.Cell).IsAir && (state == PoiState.Active || Hash.Cell(c.Cell, 0xC409) % 3 == 0)) inst.Crops.Add(c);
         // Who's in it comes last, on the place as the years left it: the layout is whoever's.
         if (occupancy != null) OccupancyLayer.Apply(lib, inst, occupancy, rng.Fork("occupancy"));
+        // Loose things come to rest, and nothing is left in the rock; then every directional piece faces as its spot says, whoever set it down.
+        using (Prof.Time("settle"))
+        {
+            Settle.Apply(inst);
+            PieceFacing.Apply(inst.Blocks, layout.Occupied, layout.Extras.InSpace);
+        }
         // How its faces are finished and how far the years took them, the walls' and roofs' fixed while their colours are their own.
         PlaceLook.Stamp(inst);
         // Made things in the world's own paint, as worn as the world: places, houses and city lots alike.
@@ -406,7 +412,7 @@ public static class Fixtures
         {
             bool vault = slot.Module == layout.VaultModule;
             if (!vault && !slot.Sure && !rng.Chance(0.55f)) continue;
-            if (!g.Get(slot.Cell).IsAir) continue;
+            if (!g.Get(slot.Cell).IsAir || Passage(g, slot.Cell)) continue;
             var color = slot.Secret ? SecretViolet : vault ? CacheGold : accent;
             g.Set(slot.Cell, new Block(BlockType.Cache, Material.Alloy, color, Role.Loot, Dir.North, (byte)(vault || slot.Secret ? 1 : 0)));
             inst.Caches.Add(new LootCache { Cell = slot.Cell, Module = slot.Module, InVault = vault, Secret = slot.Secret });
@@ -425,21 +431,19 @@ public static class Fixtures
         if (chosen.Count == 0 && termSlots.Count > 0) chosen.Add(termSlots[0]);
         foreach (var s in chosen)
         {
-            if (!g.Get(s.Cell).IsAir) continue;
+            if (!g.Get(s.Cell).IsAir || Passage(g, s.Cell)) continue;
             g.Set(s.Cell, new Block(BlockType.Terminal, Material.Alloy, accent, Role.Terminal, FaceOpen(inst, s.Cell)));
             inst.Terminals.Add(new TerminalLog { Cell = s.Cell, Module = s.Module });
         }
 
-        // Doors in every doorway, and at the way in. They never block a path; locked ones need a
-        // keycard (or a hack, or a charge).
-        var locks = layout.Extras.Locks.ToDictionary(l => l.Doorway);
+        // Doors in every doorway, and at the way in. They never block a path: every one opens by hand.
         for (int i = 0; i < layout.Doorways.Count; i++)
         {
             var d = layout.Doorways[i];
             bool vaultDoor = d.ModuleB == layout.VaultModule;
-            byte state = locks.TryGetValue(i, out var lk) ? (lk.Blast ? DoorState.Blast : DoorState.Locked) : vaultDoor ? (byte)1 : (byte)0;
-            if (vaultDoor && state == 1 && layout.Family.Generator != Generator.Kit) state = DoorState.Locked;
-            var color = lk != null ? (lk.Blast ? new Rgb(0x5a, 0x5c, 0x58) : ClearanceColor(lk.Clearance)) : vaultDoor ? CacheGold.Scale(0.8f) : accent.Scale(0.85f);
+            bool blast = layout.Extras.BlastDoors.Contains(i);
+            byte state = blast ? DoorState.Blast : vaultDoor && layout.Family.Generator == Generator.Kit ? (byte)1 : (byte)0;
+            var color = blast ? new Rgb(0x5a, 0x5c, 0x58) : vaultDoor ? CacheGold.Scale(0.8f) : accent.Scale(0.85f);
             var b = layout.Extras.PlainDoor is Rgb leaf ? new Block(BlockType.Door, layout.Extras.PlainDoorSteel ? Material.Steel : Material.Timber, leaf, Role.Door, d.Facing, DoorState.Closed) : new Block(BlockType.Door, Material.Steel, color, Role.Door, d.Facing, state);
             foreach (Int3 c in d.Cells) g.Set(c, b);
         }
@@ -447,17 +451,14 @@ public static class Fixtures
             g.Set(c, new Block(BlockType.Door, Material.Steel, accent.Scale(0.85f), Role.Door, layout.EntranceFacing));
     }
 
-    /// <summary>Keycard colours, shared with the doors they open.</summary>
-    public static Rgb ClearanceColor(string clearance) => clearance switch
-    {
-        "staff" => new Rgb(0x3f, 0xcf, 0x5e),
-        "science" => new Rgb(0x3d, 0x8b, 0xff),
-        "security" => new Rgb(0xff, 0xbf, 0x2e),
-        "command" => new Rgb(0xe0, 0x30, 0x30),
-        _ => new Rgb(0x9a, 0xa3, 0xad),
-    };
-
     /// <summary>Faces a terminal toward open floor, so its screen looks into the room.</summary>
+    /// <summary>A cell that is a way through, walled either side across it (a gap in a wall): nothing is set down in one, or it shuts the way.</summary>
+    static bool Passage(BlockGrid g, Int3 c)
+    {
+        bool S(Dir d) => BlockInfo.Collides(g.Get(c + d.Vec()).Type);
+        return S(Dir.East) && S(Dir.West) && !S(Dir.North) && !S(Dir.South) || S(Dir.North) && S(Dir.South) && !S(Dir.East) && !S(Dir.West);
+    }
+
     static Dir FaceOpen(PoiInstance inst, Int3 c)
     {
         var nav = inst.Nav();
@@ -479,7 +480,7 @@ public static class Fixtures
 
     /// <summary>
     /// Marks the cells that keep every key place reachable: shortest paths from the way in to
-    /// the vault, the core, each cache, each terminal, each keycard and each key room, with
+    /// the vault, the core, each cache, each terminal and each key room, with
     /// headroom and the floor under them. Later passes may scar a place but never touch these cells.
     /// </summary>
     public static void Protect(PoiInstance inst)
@@ -503,7 +504,7 @@ public static class Fixtures
                 if (cache.InVault) vaultAccess ??= ac;
             }
         }
-        var fixtures = inst.Terminals.Select(t => t.Cell).Concat(layout.Extras.Keys.Select(k => k.Cell));
+        IEnumerable<Int3> fixtures = inst.Terminals.Select(t => t.Cell);
         if (inst.HasCore) fixtures = fixtures.Append(inst.CoreCell);
         foreach (Int3 fixture in fixtures)
         {

@@ -119,8 +119,7 @@ public sealed class Craft : ILiftHull
     }
 
     public CharacterBody3D Hull => Binding.Hull;
-    public bool IsLarge => Structure.Grid.Size == GridSize.Large;
-    public bool IsBase => Structure.Mode == CoreMode.Base && IsLarge;
+    public bool IsBase => Structure.Mode == CoreMode.Base;
     public string Name => Structure.Name;
 
     public CraftState State
@@ -283,7 +282,7 @@ public sealed class Craft : ILiftHull
     /// </summary>
     public bool CheckRestingOnHull(float dt)
     {
-        bool near = Pin == null && !Vessel.Frozen && !Vessel.Settling && !Body.Asleep && IsLarge
+        bool near = Pin == null && !Vessel.Frozen && !Vessel.Settling && !Body.Asleep
                     && Body.Velocity.Length() < 6f && (Vessel.Gear == null || Vessel.Gear.FootAltitude < 6f);
         HullClearance = near ? MeasureClearance() : float.PositiveInfinity;
 

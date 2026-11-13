@@ -362,16 +362,16 @@ public partial class CapitalTest : Node
         _w.Inventory.Creative = !survival;
         if (survival)
         {
-            _w.Inventory.Add(new Dictionary<string, int> { ["iron"] = 120 });
-            _w.Declare(120, 0); // a stock to build with, given on purpose
+            _w.Inventory.Add(new Dictionary<string, int> { ["polymer"] = 12, ["iron-plate"] = 48 });
+            _w.Declare(60, 0); // a stock to build with, given on purpose
         }
 
         // A foundation pylon from the keel, where the ground under the hull stands highest, built
         // down block by block until it is in the ground (at least the plane of the feet).
         SInt3 column = PylonColumn(b);
         Block hazard = s.Get(new SInt3(-3, 3, -1));
-        BlockType steel = Type("steel");
-        int iron = _w.Inventory["iron"];
+        BlockType steel = Type("iron-plated");
+        int polymer = _w.Inventory["polymer"], plates = _w.Inventory["iron-plate"];
         int cleared = 0, placed = 0, pylon = 0;
         for (int y = -1; y >= -6 && (y >= -3 || cleared == 0); y--)
         {
@@ -384,22 +384,23 @@ public partial class CapitalTest : Node
         placed += pylon;
         // A container on the roof: more storage, built onto a base.
         SInt3 roof = new[] { new SInt3(3, 4, -3), new SInt3(-3, 4, -3), new SInt3(3, 4, -4) }[n - 1];
-        var (containerError, _) = _w.PlaceBlock(b, roof, Building.Make(s, Type("container")));
+        var (containerError, _) = _w.PlaceBlock(b, roof, Building.Make(s, Type("container-t1")));
         if (containerError == PlaceError.None) placed++;
         yield return 0;
         Check(placed == pylon + 1 && pylon >= 3 && cleared > 0,
             $"built onto the base in {(survival ? "survival" : "creative")}: a {pylon}-block foundation pylon into the ground (its ground cut through the edit API: {cleared} cells) and a container on the roof");
         if (survival)
         {
-            int cost = pylon * 10 + 16;
-            Check(_w.Inventory["iron"] == iron - cost, $"survival pays: {cost} iron for {pylon} steel blocks and a container ({iron} → {_w.Inventory["iron"]})");
-            BlockType combat = Type("combat");
+            // A plated block is its base block (one polymer) and four plates; a device's bill lives with the items, not here.
+            Check(_w.Inventory["polymer"] == polymer - pylon && _w.Inventory["iron-plate"] == plates - 4 * pylon,
+                $"survival pays: {pylon} polymer and {4 * pylon} iron plates for {pylon} iron-plated blocks ({plates} → {_w.Inventory["iron-plate"]} plates)");
+            BlockType combat = Type("combat-plated");
             int count = s.Count;
             var (refusedError, _) = _w.PlaceBlock(b, new SInt3(-3, 4, -4), Building.Make(s, combat));
-            Check(refusedError == PlaceError.NotEnoughMaterials && s.Count == count, "survival refuses a block the player can't pay for (no tungsten), changing nothing");
+            Check(refusedError == PlaceError.NotEnoughMaterials && s.Count == count, "survival refuses a block the player can't pay for (no combat plates), changing nothing");
             _w.Inventory.Creative = true;
         }
-        else Check(_w.Inventory["iron"] == iron, "creative places for free");
+        else Check(_w.Inventory["polymer"] == polymer && _w.Inventory["iron-plate"] == plates, "creative places for free");
         Check(_w.Ground.History.Last(e => e.Why == Cut.Build).Removed > 0, "the cleared ground is in the terrain log");
         Conserved("built onto");
     }
@@ -553,29 +554,27 @@ public partial class CapitalTest : Node
     {
         Craft b = Bastion;
         Structure s = b.Structure;
-        BlockType combat = Type("combat");
+        BlockType combat = Type("combat-plated");
         Block dark = s.Get(new SInt3(-4, 1, 9));
         var bunker = new List<SInt3>();
-        foreach (int x in new[] { -5, 5 })
-        {
-            for (int z = 0; z <= 8; z++) bunker.Add(new SInt3(x, 2, z));
-            for (int z = 2; z <= 4; z++) bunker.Add(new SInt3(x, 3, z));
-        }
-        foreach (SInt3 c in bunker)
-        {
-            Block block = Building.Make(s, combat);
-            block.Paint = dark.Paint;
-            _w.PlaceBlock(b, c, block);
-        }
+        // Walls on both flanks, a course at a time, until the hull can't lift them: however much lift it has.
+        for (int y = 2; y < 64 && _w.LiftMargin(b).margin >= 0f; y++)
+            foreach (int x in new[] { -5, 5 })
+                for (int z = 0; z <= 8; z++)
+                {
+                    Block block = Building.Make(s, combat);
+                    block.Paint = dark.Paint;
+                    if (_w.PlaceBlock(b, new SInt3(x, y, z), block).error == PlaceError.None) bunker.Add(new SInt3(x, y, z));
+                }
         yield return 0;
         int edits = _w.Ground.History.Count;
         CraftState state = b.State;
         string reply = _w.LiftOffFrom(b);
         Check(reply.Contains("TOO HEAVY") && reply.Contains("Drop") && !_w.IsLiftingOff(b) && _w.Ground.History.Count == edits && b.State == state,
-            $"a bunker of {bunker.Count} combat-steel blocks ({bunker.Count * 4} t) makes it too heavy: refused with a clear message and nothing cut ({reply})");
+            $"a bunker of {bunker.Count} combat-plated blocks ({bunker.Count * combat.Mass:F0} t) makes it too heavy: refused with a clear message and nothing cut ({reply})");
         foreach (SInt3 c in bunker.AsEnumerable().Reverse()) _w.RemoveBlock(b, c);
         yield return 0;
-        Check(!bunker.Any(s.Has), $"the bunker comes off again (its materials to the player): {_w.Inventory["iron"]} iron in hand");
+        Check(!bunker.Any(s.Has), $"the bunker comes off again (its materials to the player): {_w.Inventory["combat-plate"]} combat plates in hand");
         Conserved("bunker built and taken down");
     }
 

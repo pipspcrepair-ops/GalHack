@@ -235,7 +235,7 @@ public static class ChunkMesher
                     _full[i] = cat.FullMask(b);
                     _glass[i] = t.Transparent ? b.Type : (ushort)0;
                     _cube[i] = t.IsArmor && cat.Shapes[b.Shape].IsCube;
-                    _damage[i] = inside ? (byte)Damage.Bucket(b.Hp, cat.MaxHp(b, s.Grid)) : (byte)0;
+                    _damage[i] = inside ? (byte)Damage.Bucket(b.Hp, cat.MaxHp(b)) : (byte)0;
                 }
 
         float size = s.Grid.CellSize;
@@ -248,7 +248,7 @@ public static class ChunkMesher
     /// <summary>One block on its own, with nothing culled: the ghost preview.</summary>
     public static ChunkMeshData BuildSingle(Structure s, Block block)
     {
-        var scratch = new Structure(s.Catalogue, s.Grid);
+        var scratch = new Structure(s.Catalogue);
         foreach (Dir d in Dirs.All)
             if (block.Paint[d] != 0) block.Paint[d] = scratch.Palette.Intern(s.Palette[block.Paint[d]]);
         scratch.Set(Int3.Zero, block);
@@ -514,11 +514,10 @@ public static class ChunkMesher
                             foreach (Polygon poly in part.Polygons)
                                 AddPart(s, b, c, centre, size, poly, part, target);
                         }
-                        // The device's detail: on its grid, while the face it sits on shows.
+                        // The device's detail, while the face it sits on shows.
                         foreach (Part part in t.Detail)
                         {
                             if (part.ClosedOnly && b.Open) continue;
-                            if (part.Grid is GridSize g && g != s.Grid.Size) continue;
                             if (part.Mount is Dir mount)
                             {
                                 if (FaceHidden(s, b, c, centre, Orientations.ToWorld(b.Rot, mount))) continue;

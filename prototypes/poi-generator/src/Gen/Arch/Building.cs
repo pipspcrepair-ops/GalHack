@@ -50,7 +50,7 @@ public sealed class BuiltBuilding
 ///      where a room meets a corridor or (enfilade) the next room, and anything left without a way in
 ///      becomes a hidden room behind a breakable wall or is walled up solid;
 ///   5. no two storeys alike: a storey whose plan signature matches one below it is re-planned;
-///   6. then the features: keycards, the vault at the deepest point, collapse breaches, a cavern,
+///   6. then the features: blast doors, the vault at the deepest point, collapse breaches, a cavern,
 ///      holes in floors, roofs, landmarks, light and furniture (see BuildingRooms.cs).
 /// Everything is cell-exact on the 1 m grid and seeded.
 /// </summary>
@@ -197,7 +197,7 @@ public sealed partial class Building
         foreach (var plan in _plans.Values.OrderBy(p => p.S))
             foreach (var r in plan.Rooms.Where(r => !r.Secret && !r.Walled)) Furnish(r, plan);
         foreach (var plan in _plans.Values) Notes(plan);
-        Locks();
+        Blasts();
         if (Rng.Chance(P.Cavern) && Levels > 0) Cavern();
         Roofscape();
         Levelinfo();
@@ -648,11 +648,11 @@ public sealed partial class Building
             }
             plan.Rooms.Add(r);
         }
-        if (hall != null && plan.Rooms.Count > 0)
+        // (Only if the storey has a room big enough to be one: a small storey's biggest room is no hall.)
+        if (hall != null && plan.Rooms.Count > 0 && plan.Rooms.Where(r => !r.Secret).MaxBy(r => r.Area) is { } biggest && biggest.Area >= Lib.Room(hall).AMin * 0.75f)
         {
-            var big = plan.Rooms.Where(r => !r.Secret).OrderByDescending(r => r.Area).First();
-            big.Def = Lib.Room(hall);
-            big.Hall = true;
+            biggest.Def = Lib.Room(hall);
+            biggest.Hall = true;
         }
         // Mines keep only the stopes at the drifts: the rest is rock.
         if (pattern == "drifts")

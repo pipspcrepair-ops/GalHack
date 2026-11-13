@@ -176,7 +176,7 @@ public partial class OrbitTest : Node
     IEnumerable<int> BuildSkiff()
     {
         GD.Print("-- the Skiff, built by hand --");
-        _game.Pack.Add("big-core", 1); // for claiming a wreck
+        _game.Pack.Add("core", 1); // for claiming a wreck
         Vessel skiff = null;
         foreach (int x in _pilot.BuildSkiff(s => skiff = s)) yield return x;
         if (skiff == null)
@@ -467,7 +467,7 @@ public partial class OrbitTest : Node
         foreach (int x in _pilot.FloatTo(() => Door + Outward * 3f, 1.0f, 25f)) yield return x;
         foreach (int x in _pilot.Stop()) yield return x;
         Check(_game.Survivor.WorldEye().DistanceTo(Door) < 5f, "back out through its door");
-        int coreSlot = _game.Pack.Grid.Slots.FindIndex(sl => sl.Item == "big-core");
+        int coreSlot = _game.Pack.Grid.Slots.FindIndex(sl => sl.Item == "core");
         ItemGrid.Move(_game.Pack.Grid, coreSlot, _game.Pack.Grid, 4);
         foreach (int x in _drive.Tap(Key.Key5)) yield return x;
         Vector3 hull = CellAt(_door.X, 1, _door.Z + 2); // the flat of the hull beside the door
@@ -476,8 +476,8 @@ public partial class OrbitTest : Node
         _game.Spaceflight.Claimed += _ => claimed = true;
         foreach (int x in _drive.Click()) yield return x;
         foreach (int x in _drive.Wait(4)) yield return x;
-        Check(claimed && ship.Core != null && _wreck.Body.Core?.On == true && !_wreck.IsDerelict && _game.Pack["big-core"] == 0,
-            $"the Big Core set into its hull claims it: it is yours, and its core holds anyone aboard to its floor (hand {_game.Pack.Hand}, bag {_game.Pack["big-core"]}, said: {_said})");
+        Check(claimed && ship.Core != null && _wreck.Body.Core?.On == true && !_wreck.IsDerelict && _game.Pack["core"] == 0,
+            $"the Big Core set into its hull claims it: it is yours, and its core holds anyone aboard to its floor (hand {_game.Pack.Hand}, bag {_game.Pack["core"]}, said: {_said})");
         foreach (int x in _drive.Tap(Key.Key1)) yield return x;
     }
 

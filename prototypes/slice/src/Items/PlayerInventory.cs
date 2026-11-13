@@ -6,7 +6,7 @@ using GalHack.Items;
 namespace Slice.Items;
 
 /// <summary>What the selected toolbar slot puts in your hands.</summary>
-public enum HandKind { Empty, Tool, Block, Core, Device, Consumable, Blueprint, Vehicle, Scanner, Other, Weapon }
+public enum HandKind { Empty, Tool, Block, Core, Device, Consumable, Blueprint, Vehicle, Scanner, CoreScanner, Other, Weapon }
 
 /// <summary>Which toolbar the number keys use: your own, or the remote one (items left in cores' storage).</summary>
 public enum BarSource { Personal, Remote }
@@ -50,9 +50,8 @@ public sealed class PlayerInventory
     /// <summary>The hand tools, plainest first: each is the survival tool's gather, shoot and deconstruct, faster.</summary>
     public static readonly string[] ToolItems = { "survival-tool", "mining-drill", "plasma-drill" };
 
-    /// <summary>The two cores' items: the Big Core runs a base or a capital vessel, the Small Core a small or hover vessel.</summary>
-    public const string BigCore = "big-core", SmallCore = "small-core";
-    public static readonly string[] CoreItems = { BigCore, SmallCore };
+    /// <summary>The core's item: it founds a structure, whatever its mode.</summary>
+    public const string Core = "core";
 
     public readonly SharedStorage Storage;
     public readonly ItemGrid Grid;
@@ -260,7 +259,8 @@ public sealed class PlayerInventory
             if (item.Category == ItemCategory.Weapon) return HandKind.Weapon;
             if (id == "hover-bike") return HandKind.Vehicle;
             if (id == "scanner") return HandKind.Scanner;
-            if (CoreItems.Contains(id)) return HandKind.Core;
+            if (id == "core-scanner") return HandKind.CoreScanner;
+            if (id == Core) return HandKind.Core;
             if (item.IsBlock) return HandKind.Block;
             if (id == Slice.Vessels.Device.ClimateItem || _items.Machines.All.Any(m => m.ItemId == id)) return HandKind.Device;
             if (item.Category == ItemCategory.Consumable || id == "meat") return HandKind.Consumable;

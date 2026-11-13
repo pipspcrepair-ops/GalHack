@@ -34,6 +34,7 @@ jolt_physics_3d/simulation/speculative_contact_distance=0.05
 limits/global_shader_variables/buffer_size=524288
 
 renderer/rendering_method="mobile"
+occlusion_culling/use_occlusion_culling=true
 anti_aliasing/quality/msaa_3d=2
 
 [shader_globals]

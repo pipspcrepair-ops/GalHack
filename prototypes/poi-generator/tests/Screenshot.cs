@@ -237,7 +237,6 @@ public partial class Screenshot : Node
             string[] a = view.Split(':');
             m.Inspect(a[1], int.Parse(a[2]), System.Enum.Parse<Rarity>(a[3], true), System.Enum.Parse<PoiState>(a[4], true), ulong.Parse(a[5]));
             m.SetMode(Main.Mode.Walk);
-            m.Stage.AllKeys = true;
             StandInRoom(a.Length > 6 ? a[6] : "any");
             return;
         }
@@ -248,7 +247,6 @@ public partial class Screenshot : Node
             string[] a = view.Split(':');
             m.Inspect(a[1], int.Parse(a[2]), System.Enum.Parse<Rarity>(a[3], true), System.Enum.Parse<PoiState>(a[4], true), ulong.Parse(a[5]));
             m.SetMode(Main.Mode.Walk);
-            m.Stage.AllKeys = true;
             WalkOnStorey(a[6], a.Length > 7 ? float.Parse(a[7], System.Globalization.CultureInfo.InvariantCulture) : 0.5f);
             return;
         }
@@ -259,7 +257,6 @@ public partial class Screenshot : Node
             string[] a = view.Split(':');
             m.Inspect(a[1], int.Parse(a[2]), System.Enum.Parse<Rarity>(a[3], true), System.Enum.Parse<PoiState>(a[4], true), ulong.Parse(a[5]));
             m.SetMode(Main.Mode.Walk);
-            m.Stage.AllKeys = true;
             LookAtFeature(a[0] == "tell");
             return;
         }

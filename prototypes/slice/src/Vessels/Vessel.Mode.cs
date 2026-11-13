@@ -27,9 +27,9 @@ public static class ModeFit
         _ => "VESSEL MODE",
     };
 
-    /// <summary>The modes a structure's core has: Base and Capital on a Big Core, Hover and Vessel on a Small Core.</summary>
+    /// <summary>The modes a structure's core has: Base and Capital, and Hover once hover plates are aboard.</summary>
     public static CoreMode[] ModesOf(Structure s) =>
-        BuildingBridge.IsSmall(s) ? new[] { CoreMode.Hover, CoreMode.Vessel } : new[] { CoreMode.Base, CoreMode.Capital };
+        s.Blocks().Any(x => s.TypeOf(x.block).Function == "hover") ? new[] { CoreMode.Base, CoreMode.Capital, CoreMode.Hover } : new[] { CoreMode.Base, CoreMode.Capital };
 
     /// <summary>What's missing for a mode to hold a structure up and move it, or nothing. Base Mode needs nothing.</summary>
     public static List<string> Missing(Structure s, CoreMode mode, Tunables tunables, float gravity)
@@ -57,12 +57,11 @@ public static class ModeFit
 }
 
 /// <summary>
-/// A core's mode on the body in the world. One value changes and no block does: a Big Core's
-/// structure anchors (Base Mode: a fixed body, walked on in the zone's world, nothing moves it) or
-/// flies (Capital Mode: the same hull as any vessel, on the flight model); a Small Core's craft rides
-/// its hover plates or flies on its thrusters. Nothing refuses a switch. A flying Big Core set to
-/// Base Mode cuts its engines, falls until it lands and anchors there; in space it comes to rest and
-/// anchors as a station.
+/// A core's mode on the body in the world. One value changes and no block does: a structure
+/// anchors (Base Mode: a fixed body, walked on in the zone's world, nothing moves it), flies
+/// (Capital Mode: the same hull as any vessel, on the flight model) or rides its hover plates
+/// (Hover Mode). Nothing refuses a switch. A flying structure set to Base Mode cuts its engines,
+/// falls until it lands and anchors there; in space it comes to rest and anchors as a station.
 /// </summary>
 public sealed partial class Vessel
 {

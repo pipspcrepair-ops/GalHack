@@ -111,7 +111,7 @@ public partial class WildlifePatch
             if (there >= h.Want) continue;
             var rng = Rng.For(Life.Seed, "haunt", ++_refills);
             Species s = h.Kinds[rng.Int(0, h.Kinds.Count - 1)];
-            int count = Math.Min(h.Want - there, Math.Max(1, rng.Int(s.GroupMin, Math.Min(3, s.GroupMax))));
+            int count = Math.Min(h.Want - there, Math.Max(1, rng.Int(Math.Min(s.GroupMin, 3), Math.Min(3, s.GroupMax))));
             if (PutAt(s, count, at, h.Radius, h.Radius + HauntReach, rng) is { Count: > 0 } group)
             {
                 foreach (Creature c in group) c.Home = at;

@@ -442,10 +442,12 @@ public partial class Visor : CanvasLayer
                 marks.Add(new(m.Label.ToUpperInvariant(), Ground(Game.Zone.Planet.NearestCopy(new Vector3((float)m.X, feet.Y, (float)m.Z), feet), 2f), C.Danger, 1f, "mark"));
         }
         foreach (Vessel v in Game.Zone.Vessels)
-            if (!v.IsRuin && !v.IsWreck && (v.Seat != null || v.IsBase) && survivor.Aboard != v) marks.Add(new(v.Name.ToUpperInvariant(), v.Body.Position.ToGodot(), C.Good, 1f, v.IsBase ? "base" : "vessel"));
+            if (!v.IsRuin && !v.IsWreck && !v.Structure.IsWreck && (v.Seat != null || v.IsBase) && survivor.Aboard != v) marks.Add(new(v.Name.ToUpperInvariant(), v.Body.Position.ToGodot(), C.Good, 1f, v.IsBase ? "base" : "vessel"));
         if (Game.Backpack != null) marks.Add(new("BACKPACK", Game.Backpack.Position, C.Danger, 1f, "backpack"));
         foreach (Game.Game.Ping p in Game.Pings)
             marks.Add(new(p.Place ? "?" : p.Label.ToUpperInvariant(), p.Place ? Ground(p.At, PlaceLift) : p.At, p.Place ? C.Accent : C.Holo, Game.PingAlpha(p), "ping"));
+        // The core scanner's cores, through the walls: the visor draws over everything, so a marker on a core shows wherever it lies.
+        foreach (var c in Game.CoresInRange(survivor.WorldEye())) marks.Add(new("", c.At, C.Accent2, c.Alpha, "core"));
         return marks;
     }
 
@@ -488,7 +490,7 @@ public partial class Visor : CanvasLayer
         string label = Game.UsePrompt();
         if (string.IsNullOrEmpty(label)) label = Game.Builder.Projecting ? Game.Builder.Verdict : Game.Pack.Hand switch
         {
-            HandKind.Tool => Game.Tool.Mode == ToolMode.Deconstruct ? Game.Builder.Verdict : Game.Tool.TargetLabel,
+            HandKind.Tool => Game.Tool.Mode is ToolMode.Deconstruct or ToolMode.Plate ? Game.Builder.Verdict : Game.Tool.TargetLabel,
             HandKind.Block or HandKind.Core or HandKind.Device or HandKind.Blueprint => Game.Builder.Verdict,
             HandKind.Consumable => "[LMB] USE",
             HandKind.Vehicle => "[LMB] SET DOWN",
@@ -548,6 +550,7 @@ public partial class Visor : CanvasLayer
                 {
                     ToolMode.Shoot => $"{toolName} · SHOOT",
                     ToolMode.Deconstruct => $"{toolName} · DECONSTRUCT",
+                    ToolMode.Plate => $"{toolName} · PLATE · {Game.Builder.PlateOf(Game.Builder.Plating).Name}",
                     _ => $"{toolName} · GATHER",
                 };
             case HandKind.Vehicle:
@@ -560,8 +563,7 @@ public partial class Visor : CanvasLayer
                 string count = held == null ? "" : w.Ammo == w.Item ? $" · {pack[w.Item]} LEFT" : $" · {held.Loaded}/{held.Def.Magazine} · {held.Reserve} {ammo}";
                 return $"{bar}{w.Name.ToUpperInvariant()}{mode}{count}";
             case HandKind.Block when pack.HandItem is string id && items.TryGet(id, out var item):
-                bool tiny = Game.Builder.TargetVessel != null && Game.Builder.TargetVessel.Structure.Grid.Size == GalHack.Structures.GridSize.Small;
-                string shape = item.Family == GalHack.Items.BlockFamily.Armour ? $", {Game.Builder.Shape.Name}" : item.IsUniversalDeco ? $", {Game.Builder.CurrentDeco(tiny)?.Name ?? "no piece"}" : "";
+                string shape = item.Family == GalHack.Items.BlockFamily.Armour ? $", {Game.Builder.Shape.Name}" : item.IsUniversalDeco ? $", {Game.Builder.CurrentDeco()?.Name ?? "no piece"}" : "";
                 string where = Game.Mode == GalHack.Items.GameMode.Creative ? "FREE"
                     : pack.OnRemoteBar ? $"{pack.HandRemote?.Origin.ToUpperInvariant()} {pack.HandSource.Count(id)}"
                     : $"STACK {pack.InHand.Count}{(pack.Linked != null && pack.Linked.Count(id) > 0 ? $" · {pack.LinkedName.ToUpperInvariant()} {pack.Linked.Count(id)}" : "")}";
@@ -580,7 +582,12 @@ public partial class Visor : CanvasLayer
         HandKind hand = Game.Pack.Hand;
         string keys = hand switch
         {
-            HandKind.Tool => Game.Tool.Mode == ToolMode.Deconstruct ? $"{Bound("tool-mode")} MODE  [LMB] TAKE DOWN   " : $"{Bound("tool-mode")} MODE   ",
+            HandKind.Tool => Game.Tool.Mode switch
+            {
+                ToolMode.Deconstruct => $"{Bound("tool-mode")} MODE  [LMB] TAKE DOWN   ",
+                ToolMode.Plate => $"{Bound("tool-mode")} MODE  [WHEEL] PLATE  [LMB] SPRAY  [RMB] STRIP   ",
+                _ => $"{Bound("tool-mode")} MODE   ",
+            },
             HandKind.Weapon => Game.Zone.Data.Arms.OfItem(Game.Pack.HandItem)?.Modes.Count > 1 ? $"{Bound("rotate")} RELOAD  {Bound("tool-mode")} MODE   " : $"{Bound("rotate")} RELOAD   ",
             HandKind.Block when Game.Pack.HandItem == GalHack.Items.DecoCatalogue.UniversalItem => $"[WHEEL] PIECE  {Bound("style")} THEME  {Bound("rotate")} TURN  [RMB] TAKE DOWN   ",
             HandKind.Block => $"[WHEEL] SHAPE  {Bound("rotate", "tilt")} TURN  {Bound("mirror")} MIRROR{(Game.Builder.MirrorX ? " ON" : "")}  [RMB] TAKE DOWN   ",
@@ -665,9 +672,8 @@ public partial class Visor : CanvasLayer
     {
         float s = layout.Scale;
         var builder = Game.Builder;
-        bool small = builder.TargetVessel != null && builder.TargetVessel.Structure.Grid.Size == GalHack.Structures.GridSize.Small;
-        var choices = builder.DecoChoices(small);
-        var cur = builder.CurrentDeco(small);
+        var choices = builder.DecoChoices();
+        var cur = builder.CurrentDeco();
         Rect2 r = layout.Shapes;
         var chip = new Rect2(r.Position, new Vector2(92 * s, r.Size.Y));
         string theme = builder.DecoTheme == null ? "ALL THEMES" : Slice.Places.Decor.Shared?.Catalogue.Set(builder.DecoTheme).Name.ToUpperInvariant() ?? builder.DecoTheme;

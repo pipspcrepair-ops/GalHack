@@ -52,39 +52,34 @@ public static class Validation
         }
 
         foreach (BlockBill b in c.Blocks.All)
-            foreach (bool small in new[] { true, false })
-            {
-                if (!b.On(small)) continue;
-                Bill bill = b.For(small);
-                string grid = small ? "small" : "large";
-                if (bill.IsEmpty) { problems.Add($"block {b.BlockId}: empty {grid} bill"); continue; }
-                bool needsUnique = bill.Ids.Any(id => !c.Graph.FromGathered(c.Item(id), out _));
-                if (b.UniqueOnly && !needsUnique) problems.Add($"block {b.BlockId}: marked unique-only but its {grid} bill needs no unique find");
-                if (!b.UniqueOnly && needsUnique) problems.Add($"block {b.BlockId}: its {grid} bill needs a unique find but isn't marked unique-only");
-                // Deco may use raw harvested and dug goods (wood and fabric from biomass, sandbags of stone).
-                if (b.Family != BlockFamily.Deco)
-                    foreach (string id in bill.Ids)
-                        if (c.Item(id).IsRaw) problems.Add($"block {b.BlockId}: blocks take refined materials and parts, not raw {id}");
-            }
+        {
+            Bill bill = b.Bill;
+            if (bill.IsEmpty) { problems.Add($"block {b.BlockId}: empty bill"); continue; }
+            bool needsUnique = bill.Ids.Any(id => !c.Graph.FromGathered(c.Item(id), out _));
+            if (b.UniqueOnly && !needsUnique) problems.Add($"block {b.BlockId}: marked unique-only but its bill needs no unique find");
+            if (!b.UniqueOnly && needsUnique) problems.Add($"block {b.BlockId}: its bill needs a unique find but isn't marked unique-only");
+            // Deco may use raw harvested and dug goods (wood and fabric from biomass, sandbags of stone).
+            if (b.Family != BlockFamily.Deco)
+                foreach (string id in bill.Ids)
+                    if (c.Item(id).IsRaw) problems.Add($"block {b.BlockId}: blocks take refined materials and parts, not raw {id}");
 
-        // Blocks are craftable items (Empyrion's way): every block family on every grid it goes on
-        // is an item with a recipe, a stack, a mass, a volume and a tech-tree node.
-        foreach (BlockBill b in c.Blocks.All)
-            foreach (bool small in new[] { true, false })
-            {
-                if (!b.On(small)) continue;
-                string grid = small ? "small" : "large";
-                ItemDef item = b.ItemFor(small);
-                if (item == null) { problems.Add($"block {b.BlockId}: no {grid} block item"); continue; }
-                if (item.Recipe == null) problems.Add($"{item.Id}: a block item needs a recipe");
-                else if (!item.Recipe.InputsFor(1).Equals(b.For(small))) problems.Add($"{item.Id}: its recipe isn't its block's bill");
-                if (item.StackSize <= 0) problems.Add($"{item.Id}: no stack size");
-                if (item.MassKg <= 0 || item.VolumeSu <= 0) problems.Add($"{item.Id}: no mass or volume");
-                if (item.Unlock == null) problems.Add($"{item.Id}: no tech-tree node");
-            }
+            // Blocks are craftable items (Empyrion's way): every block is an item with a recipe, a
+            // stack, a mass, a volume and a tech-tree node.
+            ItemDef item = b.Item;
+            if (item == null) { problems.Add($"block {b.BlockId}: no block item"); continue; }
+            if (item.Recipe == null) problems.Add($"{item.Id}: a block item needs a recipe");
+            else if (!item.Recipe.InputsFor(1).Equals(bill)) problems.Add($"{item.Id}: its recipe isn't its block's bill");
+            if (item.StackSize <= 0) problems.Add($"{item.Id}: no stack size");
+            if (item.MassKg <= 0 || item.VolumeSu <= 0) problems.Add($"{item.Id}: no mass or volume");
+            if (item.Unlock == null) problems.Add($"{item.Id}: no tech-tree node");
+            else if (item.Unlock.Parent is string parent && !(c.TryGet(parent, out ItemDef up) && up.Unlock != null))
+                problems.Add($"{item.Id}: its tech-tree parent '{parent}' is not a node");
+            else if (item.Unlock.Parent != null && c.Item(item.Unlock.Parent).Unlock.Level > item.Unlock.Level)
+                problems.Add($"{item.Id}: it unlocks before its parent '{item.Unlock.Parent}'");
+        }
         // The foothold base's blocks come out of the carried survival constructor.
         foreach (BlockCount f in c.Machines.Reference.Foothold)
-            if (c.Blocks.ItemFor(f.BlockId, f.Small) is ItemDef fi && fi.Recipe.Tier > 0)
+            if (c.Blocks.ItemFor(f.BlockId) is ItemDef fi && fi.Recipe.Tier > 0)
                 problems.Add($"{fi.Id}: the foothold needs it, but only a {c.Machines.TierName(fi.Recipe.Tier)} constructor makes it");
 
         // The ladder climbs itself: each machine is built from recipes a lower tier already knows.
@@ -93,7 +88,7 @@ public static class Validation
             int limit = m.Kind == MachineKind.Constructor ? m.Tier - 1 : topTier - 1;
             if (m.Kind == MachineKind.Constructor && m.Tier == 0) limit = 0;
             Bill bill = m.ItemId != null ? c.Item(m.ItemId).Recipe?.InputsFor(1) ?? new Bill()
-                : c.Blocks.For(m.BlockId, smallGrid: false).Add(c.Blocks.For(m.BlockId, smallGrid: true));
+                : c.Blocks.For(m.BlockId);
             foreach (string id in bill.Ids)
             {
                 int need = c.Graph.TierNeeded(c.Item(id));

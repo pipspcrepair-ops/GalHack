@@ -13,7 +13,7 @@ public sealed class ProgressRules
     public int[] Levels { get; set; } = Array.Empty<int>();
     public int[] Points { get; set; } = Array.Empty<int>();
     public int PastCap { get; set; } = 1500;
-    /// <summary>Unlock points a new character starts with (the Small Core and the hover plate open at level 1).</summary>
+    /// <summary>Unlock points a new character starts with.</summary>
     public int StartPoints { get; set; }
     public XpRules Xp { get; set; } = new();
 
@@ -25,8 +25,6 @@ public sealed class ProgressRules
         public int OreCell { get; set; } = 3;
         public int Plant { get; set; } = 2;
         public double CraftSecondsPerXp { get; set; } = 2;
-        public int BlockLarge { get; set; } = 3;
-        public int BlockSmall { get; set; } = 1;
         public int Deposit { get; set; } = 15;
         public int Species { get; set; } = 10;
         public float DepositRadius { get; set; } = 30;
@@ -69,8 +67,8 @@ public sealed class ProgressState
     public List<string> Found { get; set; } = new();
 }
 
-/// <summary>One node of the tech tree: an item or a block on a grid that has an unlock.</summary>
-public sealed record TechNode(string Id, string Name, Unlock Unlock, string ItemId, string BlockId, bool? Small)
+/// <summary>One node of the tech tree: an item or a block that has an unlock.</summary>
+public sealed record TechNode(string Id, string Name, Unlock Unlock, string ItemId, string BlockId)
 {
     /// <summary>A sub-group on its tab (a deco piece's theme set), or null.</summary>
     public string Group { get; init; }
@@ -113,24 +111,13 @@ public sealed class Progress
     /// <summary>A free node came with a new level: a recipe learnt.</summary>
     public event Action<TechNode> Learnt;
 
-    /// <summary>
-    /// The tabs: Large (the Big Core: Base, Hover and Flight modes, one tab since they share every
-    /// block and component), Small (the Small Core: Hover and Flight), then tools, weapons and misc
-    /// (the deco sets live there too).
-    /// </summary>
-    public static readonly string[] Tabs = { "large", "small", "tools", "weapons", "misc" };
+    /// <summary>The tabs: every structure block (one grid, so one tab), tools, weapons, the deco sets, and misc.</summary>
+    public static readonly string[] Tabs = { "structures", "tools", "weapons", "deco", "misc" };
 
-    /// <summary>The tab a data name lands on: base and capital are Large, hover is Small, deco is part of misc.</summary>
-    public static string TabOf(string tab) => tab switch { "base" or "capital" => "large", "hover" => "small", "deco" => "misc", _ => tab };
+    /// <summary>The tab a data name lands on: the old per-grid and per-class tabs are all Structures.</summary>
+    public static string TabOf(string tab) => tab switch { "base" or "capital" or "hover" or "large" or "small" => "structures", _ => tab };
 
-    public static string TabName(string tab) => tab switch
-    {
-        "large" => "LARGE",
-        "small" => "SMALL",
-        "tools" => "TOOLS",
-        "weapons" => "WEAPONS",
-        _ => "MISC",
-    };
+    public static string TabName(string tab) => tab.ToUpperInvariant();
 
     public Progress(ProgressRules rules, ItemCatalogue items, GalHack.Structures.Catalogue blocks, ProgressState state = null)
     {
@@ -146,8 +133,7 @@ public sealed class Progress
 
     /// <summary>
     /// Nodes that cost nothing unlock themselves as soon as their level and parent are reached:
-    /// the starting essentials at level 1, and later the free blocks under a node you bought
-    /// (the small vessel's hull and legs once the Small Core is unlocked and its level reached).
+    /// the starting essentials at level 1, and later the free blocks under a node you bought.
     /// </summary>
     void GrantFree()
     {
@@ -168,16 +154,17 @@ public sealed class Progress
 
     static List<TechNode> Build(ItemCatalogue items, GalHack.Structures.Catalogue blocks)
     {
-        // Blocks are items: a block family's node is its item's (steel@large), so crafting and the
-        // tree agree. Deco pieces are block items too, grouped by their theme set on the deco tab.
+        // Blocks are items: a block's node is its item's (iron-plated), so crafting and the tree
+        // agree. Deco pieces are block items too, grouped by their theme set on the deco tab.
         var nodes = new List<TechNode>();
         foreach (ItemDef i in items.Items)
-            if (i.Unlock != null) nodes.Add(new TechNode(i.Id, i.Name, i.Unlock, i.Id, i.BlockId, i.IsBlock ? i.SmallGrid : null) { Group = i.Group });
+            if (i.Unlock != null) nodes.Add(new TechNode(i.Id, i.Name, i.Unlock, i.Id, i.BlockId) { Group = i.Group });
         return nodes.OrderBy(n => Array.IndexOf(Tabs, n.Tab)).ThenBy(n => n.Level).ThenBy(n => n.Name, StringComparer.Ordinal).ToList();
     }
 
     public TechNode Node(string id) => id != null && _byId.TryGetValue(id, out TechNode n) ? n : null;
-    public TechNode NodeOfBlock(string blockId, bool small) => Node(BlockBill.NodeId(blockId, small));
+    /// <summary>A block's node, by the block its item places (a door family's head).</summary>
+    public TechNode NodeOfBlock(string blockId) => Node(blockId);
 
     // ---- Levels --------------------------------------------------------------------------------
 
@@ -255,14 +242,10 @@ public sealed class Progress
     public bool ItemAllowed(ItemDef item) => item.Unlock == null || IsUnlocked(item.Id);
 
     /// <summary>
-    /// Is this block family unlocked on this grid? (Blocks without a node always are.) Unlocks gate
-    /// crafting, as in Empyrion: a block item you carry (looted, say) places whether or not it is.
+    /// Is this block unlocked? (Blocks without a node always are.) Unlocks gate crafting, as in
+    /// Empyrion: a block item you carry (looted, say) places whether or not it is.
     /// </summary>
-    public bool BlockAllowed(string blockId, bool small)
-    {
-        string id = BlockBill.NodeId(blockId, small);
-        return Node(id) == null || IsUnlocked(id);
-    }
+    public bool BlockAllowed(string blockId) => Node(blockId) == null || IsUnlocked(blockId);
 
     bool ParentOk(TechNode n) => n.Unlock.Parent == null || Node(n.Unlock.Parent) == null || _unlocked.Contains(n.Unlock.Parent);
 

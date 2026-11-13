@@ -10,8 +10,6 @@ namespace GalHack.Structures;
 
 public enum DamageType { Kinetic, Explosive, Energy }
 
-public enum GridSize { Large, Small }
-
 public enum BlockKind { Armor, Component }
 
 /// <summary>How a component collides: as a whole cell, as its part boxes, or not at all (ladders, lights).</summary>
@@ -29,17 +27,11 @@ public readonly record struct Resist(float Kinetic, float Explosive, float Energ
     public float this[DamageType t] => t switch { DamageType.Kinetic => Kinetic, DamageType.Explosive => Explosive, _ => Energy };
 }
 
-/// <summary>
-/// A grid size. Stats in the data files are for a large-grid cube; a grid scales them, so one
-/// catalogue serves both grids and a small block is never a separate definition.
-/// </summary>
+/// <summary>The one block grid: its cell size and how much a structure's containers may hold.</summary>
 public sealed class GridDef
 {
     public string Id;
-    public GridSize Size;
     public float CellSize;
-    public float HpScale, MassScale, CpuScale, CostScale, StorageScale, FunctionScale;
-    public long[] CpuTiers;
     public double StorageCap;
 }
 
@@ -56,8 +48,6 @@ public sealed class Part
     public PartFinish Finish;
 
     // Detail parts only (see BlockType.Detail).
-    /// <summary>Drawn on this grid only, or on both.</summary>
-    public GridSize? Grid;
     /// <summary>The face it sits on: hidden, with all of it, when a neighbour hides that face.</summary>
     public Dir? Mount;
 }
@@ -97,8 +87,8 @@ public sealed class BlockType
     public int Index;
     public BlockKind Kind;
 
-    // Stats for a full large-grid cube. Shapes scale hit points and mass by volume.
-    public float Hp, Armor, Mass, Cpu;
+    // Stats for a full cube. Shapes scale hit points, mass and plates by volume.
+    public float Hp, Armor, Mass;
     public Resist Resist;
 
     public bool Airtight, Transparent;
@@ -109,8 +99,12 @@ public sealed class BlockType
     public string UpgradesTo;
     public BlockType Upgrade;
     public Dictionary<string, int> Cost = new();
-    /// <summary>The small-grid recipe, from common materials. Null falls back to Cost × the grid's costScale.</summary>
-    public Dictionary<string, int> SmallCost;
+
+    // Plated armour only: the block under the plating, and the plate item sprayed on per full cube.
+    public BlockType Base;
+    public string Plate;
+    public int Plates;
+    public bool IsPlated => Plate != null;
 
     // Components only.
     /// <summary>
@@ -122,6 +116,19 @@ public sealed class BlockType
     public bool Multi;
     public string Function = "";
     public float Power, Thrust, Storage, Fuel;
+    // What the handling model reads: gyro torque, hover lift (kN) and ride height (m), leg reach (m).
+    public float Torque, Lift, RideHeight, LegLength;
+    /// <summary>Chairs: where a seated person's hips rest and where their eyes are, in the block's -0.5..0.5 box.</summary>
+    public Vector3 Seat, Eye;
+
+    /// <summary>
+    /// A variant family placed from one item, its size picked like a shape (doors), or null. The
+    /// first type listed in the family is its head, the one the item names.
+    /// </summary>
+    public string Group;
+    public BlockType Head;
+    /// <summary>How many of the family's item one block takes: its cells over the head's, rounded up.</summary>
+    public int Units = 1;
     public int AttachFaces = 0x3f, AirtightFaces, CoverFaces;
 
     // A door's faces seal and hide what is behind them only while it is closed.
@@ -143,13 +150,9 @@ public sealed class BlockType
     public bool IsThruster => Function == "thruster";
     public bool IsGenerator => Function == "generator";
     public bool IsContainer => Function == "container";
-    public bool IsCpuExtender => Function == "cpu-extender";
-    /// <summary>A CPU extender: the highest CPU tier it counts towards.</summary>
-    public int ExtenderTier;
-    /// <summary>The one block that gives control: a seat with a small console. There are no cockpit components.</summary>
+    /// <summary>A seat that gives control: the command chair, or a cockpit built round one.</summary>
     public bool IsCommandChair => Function == "chair";
-    /// <summary>Old name for <see cref="IsCommandChair"/>, kept for branches that still use it.</summary>
-    public bool IsCockpit => IsCommandChair;
+    public int Cells => Size.X * Size.Y * Size.Z;
 
     public static bool Has(int mask, Dir d) => (mask & (1 << (int)d)) != 0;
 }
@@ -163,25 +166,23 @@ public sealed class Catalogue
     public const string GridsFile = "grids.json", MaterialsFile = "materials.json",
         ShapesFile = "shapes.json", ComponentsFile = "components.json";
 
-    readonly List<GridDef> _grids = new();
     readonly List<ShapeDef> _shapes = new();
     readonly List<BlockType> _types = new() { null }; // type 0 is "empty"
     readonly Dictionary<string, ShapeDef> _shapeById = new();
     readonly Dictionary<string, BlockType> _typeById = new();
+    readonly List<(string old, string now)> _was = new(); // old ids, read as the types that replaced them
 
-    public IReadOnlyList<GridDef> Grids => _grids;
+    public GridDef Grid { get; private set; }
     public IReadOnlyList<ShapeDef> Shapes => _shapes;
     public IReadOnlyList<BlockType> Types => _types;
     public ShapeDef Cube => _shapes[0];
     public BlockType CoreType { get; private set; }
-    public int[] ExtendersPerTier { get; private set; } = { 0, 1, 2, 4 };
     public double CargoMassPerSu { get; private set; } = 0.001;
 
-    /// <summary>Materials found on any planet; small-grid recipes use only these.</summary>
-    public string[] CommonMaterials { get; private set; } = Array.Empty<string>();
+    /// <summary>A variant family's types in data order, head first (just the type itself when it has no family).</summary>
+    public IReadOnlyList<BlockType> VariantsOf(BlockType t) =>
+        t.Group == null ? new[] { t } : _types.Skip(1).Where(v => v.Group == t.Group).ToList();
 
-    public GridDef Grid(GridSize size) => _grids.First(g => g.Size == size);
-    public GridDef GridById(string id) => _grids.FirstOrDefault(g => g.Id == id);
     public bool TryGetShape(string id, out ShapeDef shape) => _shapeById.TryGetValue(id, out shape);
     public bool TryGetType(string id, out BlockType type) => _typeById.TryGetValue(id, out type);
     public BlockType Type(string id) => _typeById.TryGetValue(id, out var t) ? t : throw new KeyNotFoundException($"unknown block type '{id}'");
@@ -200,12 +201,16 @@ public sealed class Catalogue
         c.LoadMaterials(Parse(readFile(MaterialsFile), "galhack.materials"));
         c.LoadComponents(Parse(readFile(ComponentsFile), "galhack.components"));
         foreach (BlockType t in c._types.Skip(1))
+        {
             if (t.UpgradesTo != null) t.Upgrade = c.Type(t.UpgradesTo);
-        foreach (BlockType t in c._types.Skip(1))
             if (!t.IsArmor) t.Detail = DeviceDetail.For(t);
+            if (t.Group == null) continue;
+            t.Head = c._types.Skip(1).First(v => v.Group == t.Group);
+            t.Units = (t.Cells + t.Head.Cells - 1) / t.Head.Cells;
+        }
+        foreach (var (old, now) in c._was)
+            if (!c._typeById.TryAdd(old, c.Type(now))) throw new InvalidDataException($"'{old}' is listed as replaced but is a block id");
         c.CoreType = c._types.Skip(1).FirstOrDefault(t => t.IsCore) ?? throw new InvalidDataException("no core component in components.json");
-        // Old blueprints name the command chair by its old id.
-        if (c._typeById.TryGetValue("chair", out BlockType chair)) c._typeById["cockpit"] = chair;
         c.BuildFaceTables();
         return c;
     }
@@ -303,11 +308,16 @@ public sealed class Catalogue
         return false;
     }
 
-    /// <summary>Full hit points of a placed block: the type's, scaled by the grid and the shape's volume.</summary>
-    public float MaxHp(in Block b, GridDef grid)
+    /// <summary>Full hit points of a placed block: the type's, scaled by the shape's volume.</summary>
+    public float MaxHp(in Block b) => _types[b.Type].Hp * VolumeOf(b);
+
+    float VolumeOf(in Block b) => _types[b.Type].IsArmor ? _shapes[b.Shape].Volume : 1f;
+
+    /// <summary>Plates a plated block of this shape carries: the cube's share by volume, never fewer than one.</summary>
+    public int PlatesOf(in Block b)
     {
         BlockType t = _types[b.Type];
-        return t.Hp * grid.HpScale * (t.IsArmor ? _shapes[b.Shape].Volume : 1f);
+        return t.IsPlated ? Math.Max(1, (int)MathF.Round(t.Plates * VolumeOf(b))) : 0;
     }
 
     static JsonElement Parse(string json, string schema)
@@ -322,29 +332,9 @@ public sealed class Catalogue
 
     void LoadGrids(JsonElement root)
     {
-        foreach (JsonElement g in root.GetProperty("grids").EnumerateArray())
-        {
-            string id = Str(g, "id");
-            _grids.Add(new GridDef
-            {
-                Id = id,
-                Size = id == "small" ? GridSize.Small : GridSize.Large,
-                CellSize = Num(g, "cellSize"),
-                HpScale = Num(g, "hpScale", 1),
-                MassScale = Num(g, "massScale", 1),
-                CpuScale = Num(g, "cpuScale", 1),
-                CostScale = Num(g, "costScale", 1),
-                StorageScale = Num(g, "storageScale", 1),
-                FunctionScale = Num(g, "functionScale", 1),
-                CpuTiers = g.GetProperty("cpuTiers").EnumerateArray().Select(e => e.GetInt64()).ToArray(),
-                StorageCap = Num(g, "storageCap"),
-            });
-        }
-        if (root.TryGetProperty("extendersPerTier", out JsonElement ext))
-            ExtendersPerTier = ext.EnumerateArray().Select(e => e.GetInt32()).ToArray();
+        JsonElement g = root.GetProperty("grids").EnumerateArray().Single();
+        Grid = new GridDef { Id = Str(g, "id"), CellSize = Num(g, "cellSize"), StorageCap = Num(g, "storageCap") };
         CargoMassPerSu = Num(root, "cargoMassPerSu", 0.001f);
-        if (root.TryGetProperty("commonMaterials", out JsonElement common))
-            CommonMaterials = common.EnumerateArray().Select(e => e.GetString()).ToArray();
     }
 
     void LoadShapes(JsonElement root)
@@ -388,6 +378,12 @@ public sealed class Catalogue
             t.Transparent = Bool(m, "transparent", false);
             t.UpgradesTo = m.TryGetProperty("upgradesTo", out JsonElement up) ? up.GetString() : null;
             Add(t);
+            if (!m.TryGetProperty("base", out JsonElement under)) continue;
+            // A plated block is made of its base block and its plates.
+            t.Base = Type(under.GetString());
+            t.Plate = Str(m, "plate");
+            t.Plates = Int(m, "plates", 1);
+            t.Cost = new Dictionary<string, int>(t.Base.Cost) { [t.Plate] = t.Plates };
         }
     }
 
@@ -397,11 +393,17 @@ public sealed class Catalogue
         {
             BlockType t = Common(c, BlockKind.Component);
             t.Function = Str(c, "function", "");
-            t.ExtenderTier = t.IsCpuExtender ? Int(c, "extenderTier", 2) : 0;
             t.Power = Num(c, "power", 0);
             t.Thrust = Num(c, "thrust", 0);
             t.Storage = Num(c, "storage", 0);
             t.Fuel = Num(c, "fuel", 0);
+            t.Torque = Num(c, "torque", 0);
+            t.Lift = Num(c, "lift", 0);
+            t.RideHeight = Num(c, "rideHeight", 0);
+            t.LegLength = Num(c, "legLength", 0);
+            if (c.TryGetProperty("group", out JsonElement group)) t.Group = group.GetString();
+            if (c.TryGetProperty("seat", out JsonElement seat)) t.Seat = Vec(seat);
+            if (c.TryGetProperty("eye", out JsonElement eye)) t.Eye = Vec(eye);
             t.AttachFaces = Faces(c, "attach", 0x3f);
             t.AirtightFaces = Faces(c, "airtight", 0);
             t.CoverFaces = Faces(c, "covers", 0);
@@ -475,7 +477,6 @@ public sealed class Catalogue
             Hp = Num(e, "hp"),
             Armor = Num(e, "armor", 0),
             Mass = Num(e, "mass"),
-            Cpu = Num(e, "cpu", 0),
             Metal = (byte)Int(e, "metal", 0),
         };
         t.Name = Str(e, "name", t.Id);
@@ -490,12 +491,8 @@ public sealed class Catalogue
         if (e.TryGetProperty("cost", out JsonElement cost))
             foreach (JsonProperty item in cost.EnumerateObject())
                 t.Cost[item.Name] = item.Value.GetInt32();
-        if (e.TryGetProperty("smallCost", out JsonElement smallCost))
-        {
-            t.SmallCost = new Dictionary<string, int>();
-            foreach (JsonProperty item in smallCost.EnumerateObject())
-                t.SmallCost[item.Name] = item.Value.GetInt32();
-        }
+        if (e.TryGetProperty("was", out JsonElement was))
+            foreach (JsonElement old in was.EnumerateArray()) _was.Add((old.GetString(), t.Id));
         return t;
     }
 
@@ -511,32 +508,23 @@ public sealed class Catalogue
     // ---- Per-block numbers --------------------------------------------------------------
 
     /// <summary>A placed block's stats: hit points and mass scale with shape volume, armour and resistances don't.</summary>
-    public BlockStats StatsFor(in Block b, GridDef grid)
+    public BlockStats StatsFor(in Block b)
     {
         BlockType t = _types[b.Type];
-        float volume = t.IsArmor ? _shapes[b.Shape].Volume : 1f;
-        return new BlockStats(
-            t.Hp * grid.HpScale * volume,
-            t.Armor,
-            t.Resist,
-            t.Mass * grid.MassScale * volume,
-            t.Cpu * grid.CpuScale);
+        float volume = VolumeOf(b);
+        return new BlockStats(t.Hp * volume, t.Armor, t.Resist, t.Mass * volume);
     }
 
     /// <summary>
-    /// The materials a block is built from, returned when it is taken down. Small-grid blocks use
-    /// their own cheap recipe of common materials, so a first small vessel comes quickly.
-    /// The core's mode never changes a recipe.
+    /// The materials a block is built from, returned when it is taken down: each by the shape's
+    /// volume, never fewer than one. The core's mode never changes a recipe.
     /// </summary>
-    public Dictionary<string, int> CostOf(in Block b, GridDef grid)
+    public Dictionary<string, int> CostOf(in Block b)
     {
-        BlockType t = _types[b.Type];
-        float volume = t.IsArmor ? _shapes[b.Shape].Volume : 1f;
-        bool small = grid.Size == GridSize.Small && t.SmallCost != null;
-        float scale = small ? 1f : grid.CostScale;
+        float volume = VolumeOf(b);
         var cost = new Dictionary<string, int>();
-        foreach (var (item, n) in small ? t.SmallCost : t.Cost)
-            cost[item] = Math.Max(1, (int)MathF.Round(n * volume * scale));
+        foreach (var (item, n) in _types[b.Type].Cost)
+            cost[item] = Math.Max(1, (int)MathF.Round(n * volume));
         return cost;
     }
 
@@ -587,8 +575,8 @@ public sealed class Catalogue
     }
 
     public override string ToString() =>
-        string.Create(CultureInfo.InvariantCulture, $"{_types.Count - 1} block types, {_shapes.Count} shapes, {_grids.Count} grids");
+        string.Create(CultureInfo.InvariantCulture, $"{_types.Count - 1} block types, {_shapes.Count} shapes");
 }
 
-/// <summary>A placed block's numbers, after grid and shape scaling.</summary>
-public readonly record struct BlockStats(float MaxHp, float Armor, Resist Resist, float Mass, float Cpu);
+/// <summary>A placed block's numbers, after shape scaling.</summary>
+public readonly record struct BlockStats(float MaxHp, float Armor, Resist Resist, float Mass);

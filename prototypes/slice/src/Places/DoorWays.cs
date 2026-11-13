@@ -24,7 +24,6 @@ public sealed class DoorWay
     public Vector3 Centre, Along;     // local, mid-height; the doorway's width direction
     public float Width, Height, Thick, Bottom;
     public bool Jammed, Blast, Lift;
-    public string Clearance;
     /// <summary>How far open (0 shut, 1 open), and where it is going.</summary>
     public float Open, Target;
     /// <summary>Opened by you (a settlement that turns on you shuts those).</summary>
@@ -76,7 +75,6 @@ public static class DoorWays
             var list = new List<DoorWay>();
             PoiInstance inst = m.Inst;
             Layout layout = inst.Layout;
-            var locks = layout.Extras.Locks.ToDictionary(l => l.Doorway);
             var liftDoor = new HashSet<int>();
             foreach (LiftShaft s in layout.Extras.Lifts) foreach (int d in s.StopDoors) liftDoor.Add(d);
             var groups = layout.Doorways.Select((d, i) => (d.Cells, d.Facing, i)).ToList();
@@ -108,7 +106,6 @@ public static class DoorWays
                     Index = index, Cells = cells, Facing = facing, Along = alongX ? Vector3.Right : Vector3.Back,
                     Centre = (lo + hi) / 2f, Width = alongX ? hi.X - lo.X : hi.Z - lo.Z, Height = hi.Y - lo.Y, Bottom = lo.Y,
                     Thick = blast ? 0.4f : 0.18f, Jammed = b0.Variant == DoorState.Jammed, Blast = blast, Lift = lift,
-                    Clearance = index >= 0 && locks.TryGetValue(index, out DoorLock lk) ? lk.Clearance : null,
                 };
                 way.Open = way.Jammed ? 0.5f : m.DoorsOpen.TryGetValue(index, out bool open) && open ? 1f : 0f;
                 way.Target = way.Open;

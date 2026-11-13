@@ -58,7 +58,7 @@ public partial class Game
         }
         Vector3 eye = Survivor.WorldEye(), dir = Survivor.WorldLook();
         if (PickUpBike(eye, dir)) return;
-        if (UseKeycard(eye, dir)) return;
+        if (UseBuiltDoor(eye, dir)) return;
         bool hit = WorldRay.Cast(Zone, Survivor, UseReach, Layers.World | Layers.Hull | Layers.Props, out LookHit look);
         float reach = hit ? look.Distance : UseReach;
         // A living creature in the way stops the reach (its body is solid to E as well).
