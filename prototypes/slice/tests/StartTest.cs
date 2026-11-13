@@ -172,10 +172,10 @@ public partial class StartTest : Node
         Vector3 across = (b.At(new Vector3(1f, 0f, 0f)) - b.At(Vector3.Zero)).Normalized();
         var space = game.Zone.GetWorld3D().DirectSpaceState;
         var spots = new List<Vector3>();
-        for (int i = 0; i <= 8; i++) spots.Add(b.StairTop.Lerp(b.Outside, i / 8f));
+        for (int i = 0; i <= 18; i++) spots.Add(b.StairTop.Lerp(b.Outside, i / 8f)); // and as far again beyond the way out
         foreach (Vector3 w in b.WayOut) if (w.Y > game.Zone.GroundAt(w.X, w.Z).Y - 0.5f) spots.Add(w);
         foreach (Vector3 spot in spots)
-            foreach (float side in new[] { -0.6f, 0f, 0.6f })
+            foreach (float side in new[] { -1.4f, -0.7f, 0f, 0.7f, 1.4f })
             {
                 Vector3 p = spot + across * side;
                 var hit = space.IntersectRay(PhysicsRayQueryParameters3D.Create(p + Vector3.Up * 0.4f, p + Vector3.Up * 40f));
@@ -259,7 +259,9 @@ public partial class StartTest : Node
         Check(sealedIn && chamber.Temperature == roomC && chamber.OxygenPercent == 21 && (world.Archetype != Planets.Gen.Archetype.Ice || outside.Temperature < roomC),
             $"{world.Name}, seed {world.Seed}: the world's {outside.Temperature:F0} °C and {outside.OxygenPercent:F0}% oxygen outside don't reach the chamber: {chamber.Temperature:F0} °C, {chamber.OxygenPercent:F0}%");
         // Nothing solid (ground, a place, a hulk, a wreck, a ruin, a rock, a tree) stands over the way out's open sky.
-        foreach (int x in drive.Wait(600)) yield return x;
+        // The ground streamed in round the way out (terrain, then the colliders of its flora and the dressing), then a while more.
+        for (int k = 0; k < 1200 && !game.Zone.Streamer.ReadyAround(game.Bunker.Outside, 1, true); k++) yield return 0;
+        foreach (int x in drive.Wait(300)) yield return x;
         string covered = Covered(game);
         Check(covered == null, $"{world.Name}, seed {world.Seed}: the way out is open to the sky{(covered == null ? "" : $": {covered}")}");
         Check(WellWidth(game.Bunker) == 2, $"{world.Name}, seed {world.Seed}: the stairwell is 2 m clear, two stairs blocks side by side on every step ({WellWidth(game.Bunker)})");
