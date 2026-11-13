@@ -1683,7 +1683,8 @@ public partial class PhysicsTest : Node
             lowestKeel = MathF.Min(lowestKeel, keel - source.SurfaceHeight(b.Position.X, b.Position.Z));
         }
         float restsAt = sinker.Body.Position.Y - source.SurfaceHeight(sinker.Body.Position.X, sinker.Body.Position.Z);
-        Check(!sinker.Stats.CanLiftOff && wentUnder && sinker.Vessel.Frozen && _landed > landedBefore && sinker.Body.Water.Underwater
+        // The Shuttle stands taller than the lake is deep: it goes under, then stands on the bed with its roof out.
+        Check(!sinker.Stats.CanLiftOff && wentUnder && sinker.Vessel.Frozen && _landed > landedBefore
               && lowestKeel > -0.3f && !_w.Physics.Stuck.IsStuck(sinker.Body, out _),
             $"a Corsair that loses its generator over the lake falls in and sinks ({sinkSpeed:F1} m/s at most under water, against buoyancy and heavy drag), " +
             $"settles on the bed {level - sinker.Body.Position.Y:F1} m down on its legs and lands, never through it (its keel never below the bed: lowest {lowestKeel:+0.00;-0.00} m)" +

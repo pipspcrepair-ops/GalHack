@@ -440,8 +440,10 @@ public partial class CoreTest : Node
     {
         GD.Print("-- Large Hover: a hover tank rides, drives, and can't climb out of its band --");
         _site = _play.FlatSpot(_game.Start, 200f, 2.4f, 0.4f, span: 24f);
-        GD.Print($"  (a clearing: {Playthrough.Clearing(_game.Zone, _site, 60f)} trees and boulders felled)");
+        // 200 m out, the ground and its trees stream in round the sleeper first: a tank spawned before them falls through.
         _game.Survivor.PlaceOutside((_site + new Vector3(0f, 1f, 12f)).ToNumerics());
+        foreach (int x in _drive.UntilSettled(20)) yield return x;
+        GD.Print($"  (a clearing: {Playthrough.Clearing(_game.Zone, _site, 60f)} trees and boulders felled)");
         foreach (int x in _drive.Wait(60)) yield return x;
         Structure s = CoreCraft.HoverTank(Data.Catalogue, 14f, _game.Zone.Physics.Zone.Strength);
         s.DirtyChunks.Clear();

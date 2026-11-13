@@ -298,7 +298,10 @@ public partial class CapitalTest : Node
             yield return 0;
         }
         for (int i = 0; i < 40; i++) yield return 0;
-        Check(t < limit, $"{c.Name} landed at ({spot.X:F0}, {spot.Y:F0}) after {t / 60f:F1} s of flight");
+        LandingGear gear = c.Vessel.Gear;
+        Check(t < limit, $"{c.Name} landed at ({spot.X:F0}, {spot.Y:F0}) after {t / 60f:F1} s of flight" + (t < limit ? "" :
+            $" (still {c.State}: {MathX.Flat(c.Body.Position - over).Length():F1} m off the spot, {c.Body.Position.Y - altitude:+0.0;-0.0} m from the altitude asked, " +
+            $"{c.Body.Velocity.Length():F2} m/s, gear out {gear?.Extension:F2}, attached {gear?.Attached}, {(gear == null ? 0 : Enumerable.Range(0, gear.Count).Count(gear.Touching))} feet touching, on a floor {c.Body.OnFloor})"));
     }
 
     bool PadPoseKept()
