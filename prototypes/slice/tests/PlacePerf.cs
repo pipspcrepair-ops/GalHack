@@ -247,7 +247,7 @@ public partial class PlacePerf : Node
         }
 
         string family = _args.GetValueOrDefault("family");
-        var sites = zone.Planet.Pois.Where(s => family != null ? s.Family.Id == family : s.Family.Tags.Contains("grand")).OrderBy(s => _game.Places.DistanceTo(s, _game.Survivor.WorldFeet)).Take(int.Parse(_args.GetValueOrDefault("sites", "1")));
+        var sites = zone.Planet.Pois.Where(s => (family != null ? s.Family.Id == family : s.Family.Tags.Contains("grand")) && (s.Whole == null || s.Whole.Anchor == s)).OrderBy(s => _game.Places.DistanceTo(s, _game.Survivor.WorldFeet)).Take(int.Parse(_args.GetValueOrDefault("sites", "1")));
         foreach (PoiSite site in sites.ToList())
             foreach (int x in OnePlace(site)) yield return x;
     }
