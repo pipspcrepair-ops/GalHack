@@ -258,6 +258,24 @@ public static class Shaping
             foreach (List<Int3> wall in Parts(set, d.RotateCw(1).Vec(), Int3.Up).Select(p => Level(p, d, q => !set.Contains(q))))
                 if (wall.All(Panel)) foreach (Int3 c in wall) Put(c, BlockType.Partition, d);
 
+        // (No panel steps: a set-back cell stands no higher than the panel beside it, where plain wall heads that one.)
+        for (bool again = true; again;)
+        {
+            again = false;
+            foreach (var (c, b) in shaped.Where(x => x.Value.Type == BlockType.Half && x.Value.Facing.IsHorizontal()).ToList())
+            {
+                Dir open = b.Facing.Opposite();
+                bool Set(Int3 q) => shaped.TryGetValue(q, out Block s) && s.Type == BlockType.Half && s.Facing == b.Facing;
+                bool Head(Int3 q) => !shaped.ContainsKey(q) && Wall(q) && !Frame(q, open) && Solid(q - open.Vec())
+                    && Dirs.Horizontal.Where(h => h != open && h != b.Facing).All(h => !Air(q + h.Vec()) && !Stands(q + h.Vec()));
+                if (Set(c + Int3.Down) && new[] { open.RotateCw(1).Vec(), open.RotateCw(3).Vec() }.Any(a => Head(c + a) && Set(c + a + Int3.Down)))
+                {
+                    for (Int3 q = c; Set(q); q += Int3.Up) shaped.Remove(q); // (and the panel above it)
+                    again = true;
+                }
+            }
+        }
+
         // Ceilings under more floor, room by room across the whole span. Low tech: bays raised between joists that span the
         // short way every fourth metre, a beam under each joist from wall to wall over a room at least 3 m clear. High tech:
         // folded in V-bays the long way, two hung slopes to a fold, every fourth metre across. The bays are set out so as
