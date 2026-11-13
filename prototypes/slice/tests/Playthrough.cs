@@ -896,13 +896,13 @@ public sealed class Playthrough
     public static int Clearing(SurfaceZone zone, Vector3 at, float reach)
     {
         int n = 0;
-        foreach (var (solid, _) in zone.Streamer.SolidsNear(at, reach, canopies: true).ToList())
-            if (zone.Planet.Felled.Add(solid.Id)) { zone.Streamer.Fell(solid.Id); n++; }
+        foreach (var (solid, offset) in zone.Streamer.SolidsNear(at, reach, canopies: true).ToList())
+            if (zone.Fell(solid.Id, solid.Center + offset)) n++;
         return n;
     }
 
     /// <summary>A ruin, a road's works or a building within a span of this point: they stand on the flat ground, and the ground's height doesn't show them.</summary>
-    bool RuinAt(Vector3 ground, float span)
+    public bool RuinAt(Vector3 ground, float span)
     {
         var query = new PhysicsShapeQueryParameters3D
         {

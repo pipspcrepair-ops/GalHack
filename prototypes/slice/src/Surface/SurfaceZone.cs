@@ -228,6 +228,7 @@ public partial class SurfaceZone : Node3D
         Physics.StuckFields.Add(Ground);
         Water = new PlanetWater(Planet);
         Physics.Water = Water;
+        Physics.Flora = this;
         yield return "ground";
         Pois.Build(Planet);
         yield return "places";

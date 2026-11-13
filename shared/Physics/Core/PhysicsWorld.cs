@@ -35,6 +35,9 @@ public sealed class PhysicsWorld
     /// <summary>Where the water is (seas, rivers, lakes): a volume bodies go into. Null: a dry zone.</summary>
     public IWaterField Water { get; set; }
 
+    /// <summary>The planet's trees, which a structure breaks (<see cref="Breaks"/>). Null: flora holds like the ground.</summary>
+    public IFloraField Flora { get; set; }
+
     public List<IForceProvider> ForceProviders { get; } = new();
     public List<IStuckField> StuckFields { get; } = new();
     public StuckGuard Stuck { get; }
@@ -486,6 +489,13 @@ public sealed class PhysicsWorld
                 velocity = Ram(body, c.Other, c, before, velocity);
                 continue;
             }
+            if (c.Surface == Surface.Flora && Breaks(body, c, before))
+            {
+                // It gave way: the craft goes on as if it had never met it (the sweep's slide along it is put back).
+                float into = Vector3.Dot(before, c.Normal), now = Vector3.Dot(velocity, c.Normal);
+                if (into < now) velocity += c.Normal * (into - now);
+                continue;
+            }
             if (c.Normal.Y > 0.6f) body.OnFloor = true;
             float closing = -Vector3.Dot(before, c.Normal);
             if (closing > most)
@@ -497,6 +507,47 @@ public sealed class PhysicsWorld
         if (hardest >= 0) velocity = HitFixed(body, contacts[hardest], before, velocity);
         return velocity;
     }
+
+    /// <summary>
+    /// A structure's contact with a tree: the tree breaks, felled for good at once, when the load is more than its trunk
+    /// takes (<see cref="PhysicsRules.FloraData"/>): the weight resting on it (all the craft carries, by the share of the
+    /// contact under it) and the blow into it. Only vessels break trees; creatures and sleepers are held by them, and rock
+    /// never gives way. A hover craft with no gear has nothing to stand on a crown with (its plates see only the ground, and
+    /// it never sets down on its hull), so its weight on one breaks it: nothing is held up where it can't land.
+    /// </summary>
+    public bool Breaks(Body body, in Contact c, Vector3 before)
+    {
+        if (Flora == null || body.Kind != BodyKind.Vessel || !Flora.TreeAt(c.Point, out long tree, out float trunk)) return false;
+        float resting = MathF.Max(0f, c.Normal.Y), closing = MathF.Max(0f, -Vector3.Dot(before, c.Normal));
+        float load = WeightOf(body) * resting + (body.Mass + body.Carried) * closing / Rules.Flora.BlowTime;
+        bool standless = resting > 0.6f && body.Controller is VesselController { Hover: not null, Gear: null };
+        if (!standless && load <= Rules.Flora.Takes(trunk)) return false;
+        // It falls away from the craft's middle, the way the craft was going.
+        Flora.Fell(tree, c.Point, c.Point - body.CenterOfMassPosition + before);
+        return true;
+    }
+
+    /// <summary>
+    /// The first thing under a structure's foot it can stand on (<see cref="Layers.GearMask"/>): the ground, a deck, rock,
+    /// or a tree that takes its weight. A tree that can't is looked through: coming down on it, the hull breaks it
+    /// (<see cref="Breaks"/>), so the gear never stands on what won't hold the craft, and gear and hull always agree.
+    /// </summary>
+    public bool Footing(Body body, Vector3 from, Vector3 to, out RayHit hit)
+    {
+        Vector3 along = Vector3.Normalize(to - from);
+        for (int i = 0; i < 8; i++)
+        {
+            if (!Query.Ray(from, to, Layers.GearMask, body, out hit)) return false;
+            if (hit.Surface != Surface.Flora || Flora == null || !Flora.TreeAt(hit.Point, out _, out float trunk) || WeightOf(body) <= Rules.Flora.Takes(trunk))
+                return true;
+            from = hit.Point + along * 0.05f; // (a ray from inside a crown passes out of it)
+        }
+        hit = default;
+        return false;
+    }
+
+    /// <summary>The weight a body puts on what holds it up, N: its own and everything parked on it.</summary>
+    public float WeightOf(Body body) => (body.Mass + body.Carried) * GravityAt(body).Length();
 
     /// <summary>Something fixed: bounce a little, scrape only if it was a real impact.</summary>
     Vector3 HitFixed(Body body, in Contact c, Vector3 before, Vector3 velocity)

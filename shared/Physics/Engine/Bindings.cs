@@ -53,7 +53,7 @@ public sealed class HullBinding : BodyBinding
 {
     public readonly CharacterBody3D Hull;
     readonly List<Contact> _contacts = new();
-    readonly HashSet<ulong> _seen = new();
+    readonly HashSet<(ulong, int)> _seen = new();
 
     public HullBinding(CharacterBody3D hull)
     {
@@ -104,12 +104,14 @@ public sealed class HullBinding : BodyBinding
             if (hit == null) break;
             Vector3 n = hit.GetNormal();
             GodotObject collider = hit.GetCollider();
-            if (collider == null) break; // what it hit was freed this very tick (a streamed chunk): nothing to push against
-            if (_seen.Add(collider.GetInstanceId()))
+            // No node: a body made on the physics server alone (the flora's), one contact per shape (each a tree's part).
+            // A node gone: what it hit was freed this very tick (a streamed chunk), nothing to push against.
+            if (collider == null && hit.GetColliderId() != 0) break;
+            if (_seen.Add(collider != null ? (collider.GetInstanceId(), -1) : (hit.GetColliderRid().Id, hit.GetColliderShapeIndex())))
             {
                 Body other = host.BodyOf(collider);
                 _contacts.Add(new Contact(hit.GetPosition().ToNumerics(), n.ToNumerics(), other,
-                    other != null ? Surface.Body : GodotQuery.SurfaceOf(collider)));
+                    other != null ? Surface.Body : collider != null ? GodotQuery.SurfaceOf(collider) : GodotQuery.SurfaceOf(hit.GetColliderRid())));
             }
             if (velocity.Dot(n) < 0f) velocity = velocity.Slide(n);
             motion = hit.GetRemainder().Slide(n);

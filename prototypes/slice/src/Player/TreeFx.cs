@@ -22,6 +22,13 @@ public sealed partial class TreeFx : Node3D
 
     public int Stumps => _stumps.GetChildCount() - Holes;
 
+    /// <summary>The kinds that fall over when felled, leaving a stump.</summary>
+    public static bool IsTree(Flora kind) => kind is Flora.Conifer or Flora.Broadleaf or Flora.JungleTree or Flora.Palm or Flora.GiantMushroom;
+
+    /// <summary>What flies off a plant: its species' own colour, or its kind's.</summary>
+    public static Color LeafOf(Flora kind, GalHack.Plants.Plant species) =>
+        species != null ? new Color(species.Leaf.R, species.Leaf.G, species.Leaf.B) : LeafColour(kind);
+
     /// <summary>The colour of a plant's leaves (or what stands in for them).</summary>
     public static Color LeafColour(Flora kind) => kind switch
     {

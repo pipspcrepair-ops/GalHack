@@ -156,10 +156,7 @@ public sealed partial class BuildTool
         foreach (var plant in new List<PlanetSurface.Terrain.TerrainStreamer.PlantSighting>(_zone.Streamer.FloraNear(mid, reach)))
         {
             Vector3 at = toLocal * plant.Root;
-            if (at.X < lo.X || at.X > hi.X || at.Z < lo.Z || at.Z > hi.Z || _zone.Planet.Felled.Contains(plant.Id)) continue;
-            _zone.Planet.Felled.Add(plant.Id);
-            _zone.Streamer.Fell(plant.Id);
-            n++;
+            if (at.X >= lo.X && at.X <= hi.X && at.Z >= lo.Z && at.Z <= hi.Z && _zone.Fell(plant.Id, plant.Root)) n++;
         }
         Vector3 top = hi + Vector3.Up * HeadRoom;
         var query = new PhysicsShapeQueryParameters3D
@@ -169,11 +166,7 @@ public sealed partial class BuildTool
             CollisionMask = GalHack.Physics.Layers.Flora,
         };
         foreach (Godot.Collections.Dictionary hit in _zone.GetWorld3D().DirectSpaceState.IntersectShape(query, 64))
-        {
-            if (!_zone.Streamer.SolidHit((Rid)hit["rid"], (int)hit["shape"], out PlanetSurface.Terrain.FloraSolid tree) || !_zone.Planet.Felled.Add(tree.Id)) continue;
-            _zone.Streamer.Fell(tree.Id);
-            n++;
-        }
+            if (_zone.Streamer.SolidHit((Rid)hit["rid"], (int)hit["shape"], out PlanetSurface.Terrain.FloraSolid tree) && _zone.Fell(tree.Id, mid)) n++;
         return n;
     }
 

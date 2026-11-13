@@ -18,6 +18,9 @@ public enum Surface
 
     /// <summary>Something solid that isn't registered (a static prop, a base that never moves).</summary>
     Static,
+
+    /// <summary>A planet's trunks, crowns and boulders (the flora layer): fixed like the ground, but a structure can break a tree (<see cref="IFloraField"/>).</summary>
+    Flora,
 }
 
 /// <summary>One contact as a mover found it. The normal points out of what was hit, toward the body.</summary>

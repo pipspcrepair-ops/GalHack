@@ -215,12 +215,9 @@ public partial class BlueprintTest : Node
             for (int t = 0; t < 300 && v != null && (v.PendingShapes > 0 || v.View.Waiting > 0); t++) yield return 0;
         }
         if (!Check(v != null, $"{name}: set down whole by Creative's PLACE{(v == null ? $" (five spots refused, the last: {why})" : "")}")) yield break;
-        // PLACE fells what stands in its box and its head room; a crown higher over the footprint stops a climb and
-        // catches a hull coming down (vessels collide with flora), and the flight leg runs off to one side. Fly from and
-        // land on clear ground: the crowns left over it are counted first, to show what was there.
-        int crowns = CrownsOver(v);
-        int cleared = Playthrough.Clearing(_game.Zone, v.Body.Position.ToGodot(), radius + 20f);
-        GD.Print($"    ({name}: {crowns} crown(s) over it above PLACE's head room; {cleared} trees and rocks cleared round it)");
+        // PLACE fells what stands in its box and its head room; the rest stands. A crown met higher up or on the flight leg
+        // breaks under a craft its trunk can't take, and holds or turns aside a light one (vessels collide with flora).
+        GD.Print($"    ({name}: {CrownsOver(v)} crown(s) over it above PLACE's head room)");
         foreach (int x in _drive.Wait(30)) yield return x;
 
         // Seated: drawn, the camera at the chair's eye.
