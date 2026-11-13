@@ -275,7 +275,7 @@ public static class HumanBody
                 break;
             case "satchel":
                 Sling(p, skin, -W * 0.8f, W * 0.95f, T * 0.28f, 0.03f * u, f.Leather);
-                p.Add(Shape.Box, new Vector3(0.09f, 0.22f, 0.26f) * u, new Vector3(W * 1.02f, T * 0.2f, -d * 0.1f), f.Leather.Lightened(0.12f));
+                p.Add(Shape.Box, new Vector3(0.09f, 0.22f, 0.26f) * u, new Vector3(skin.HalfWidth(T * 0.2f) + 0.045f * u, T * 0.2f, -d * 0.1f), f.Leather.Lightened(0.12f)); // (hung at the body's side at the hip, where its strap ends)
                 break;
             case "tool_belt":
                 for (int i = 0; i < 3; i++)
@@ -384,9 +384,10 @@ public static class HumanBody
             case "medic_band":
                 // A white shoulder bag: the medic's sign is the kit, and the cross on the armband.
                 Sling(p, skin, W * 0.8f, -W * 0.95f, T * 0.28f, 0.03f * u, new Color(0.8f, 0.8f, 0.76f));
-                p.Add(Shape.Box, new Vector3(0.09f, 0.2f, 0.24f) * u, new Vector3(-W * 1.02f, T * 0.2f, -d * 0.1f), new Color(0.82f, 0.82f, 0.78f));
-                p.Add(Shape.Box, new Vector3(0.1f, 0.13f, 0.04f) * u, new Vector3(-W * 1.05f, T * 0.2f, -d * 0.1f), new Color(0.65f, 0.08f, 0.07f));
-                p.Add(Shape.Box, new Vector3(0.1f, 0.04f, 0.13f) * u, new Vector3(-W * 1.05f, T * 0.2f, -d * 0.1f), new Color(0.65f, 0.08f, 0.07f));
+                float bagX = -skin.HalfWidth(T * 0.2f) - 0.045f * u;
+                p.Add(Shape.Box, new Vector3(0.09f, 0.2f, 0.24f) * u, new Vector3(bagX, T * 0.2f, -d * 0.1f), new Color(0.82f, 0.82f, 0.78f));
+                p.Add(Shape.Box, new Vector3(0.1f, 0.13f, 0.04f) * u, new Vector3(bagX - 0.03f * W, T * 0.2f, -d * 0.1f), new Color(0.65f, 0.08f, 0.07f));
+                p.Add(Shape.Box, new Vector3(0.1f, 0.04f, 0.13f) * u, new Vector3(bagX - 0.03f * W, T * 0.2f, -d * 0.1f), new Color(0.65f, 0.08f, 0.07f));
                 break;
         }
     }
