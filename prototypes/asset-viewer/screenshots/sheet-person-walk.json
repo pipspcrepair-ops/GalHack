@@ -1,0 +1,128 @@
+{
+  "asset": "People|role/farmer",
+  "asset_name": "Farmer",
+  "animation": "Walk",
+  "cycle_source": "measured",
+  "seed": 527174,
+  "options": {
+    "Culture": "Mixed world",
+    "Climate": "Mild",
+    "Humidity": "Mild",
+    "Tech": "Mid",
+    "Story": "None",
+    "Standing": "Friendly",
+    "Mutation": "None",
+    "Holding": "As dressed"
+  },
+  "cycle_seconds": 0.88847405,
+  "loops": true,
+  "views": [
+    "front",
+    "side",
+    "top"
+  ],
+  "phases": 6,
+  "tile_w": 300,
+  "tile_h": 360,
+  "feet": 2,
+  "frames": [
+    {
+      "index": 0,
+      "seconds": 0,
+      "phase": 0,
+      "problems": "",
+      "pose_signature": 6079299261307180719,
+      "slide_m": [
+        null,
+        0.03767826
+      ],
+      "off_target_m": [
+        0,
+        1.4901161E-08
+      ]
+    },
+    {
+      "index": 1,
+      "seconds": 0.15,
+      "phase": 0.1688288,
+      "problems": "",
+      "pose_signature": -3803863517807209101,
+      "slide_m": [
+        null,
+        0.03305713
+      ],
+      "off_target_m": [
+        0.03087963,
+        2.1073424E-08
+      ]
+    },
+    {
+      "index": 2,
+      "seconds": 0.3,
+      "phase": 0.3376576,
+      "problems": "",
+      "pose_signature": 5559018405873794789,
+      "slide_m": [
+        0.04409359,
+        null
+      ],
+      "off_target_m": [
+        1.4901161E-08,
+        2.9802322E-08
+      ]
+    },
+    {
+      "index": 3,
+      "seconds": 0.43333337,
+      "phase": 0.48772767,
+      "problems": "",
+      "pose_signature": 7914018688754914642,
+      "slide_m": [
+        0.04409399,
+        null
+      ],
+      "off_target_m": [
+        1.4908435E-08,
+        2.9802322E-08
+      ]
+    },
+    {
+      "index": 4,
+      "seconds": 0.5833334,
+      "phase": 0.6565565,
+      "problems": "",
+      "pose_signature": -8293445654622734758,
+      "slide_m": [
+        0.02410168,
+        null
+      ],
+      "off_target_m": [
+        7.450581E-09,
+        0.014793771
+      ]
+    },
+    {
+      "index": 5,
+      "seconds": 0.73333335,
+      "phase": 0.8253852,
+      "problems": "",
+      "pose_signature": -7817522506517292542,
+      "slide_m": [
+        null,
+        0.041175522
+      ],
+      "off_target_m": [
+        0.0020248578,
+        1.4901161E-08
+      ]
+    }
+  ],
+  "worst_slide_m": 0.13941067,
+  "worst_slide_foot": 1,
+  "worst_slide_each_m": [
+    0.11660981,
+    0.13941067
+  ],
+  "frames_with_problems": [],
+  "error": ""
+}

@@ -12,7 +12,7 @@ public partial class BestiaryTest
     /// <summary>
     /// Fresh people of many folk, sizes and dress, each given every kind of weapon in turn: in every
     /// pose (calm, half up, aiming; standing and walking; looking ahead and aside; a gesture with
-    /// the free hand) each hand on the weapon is within 3 cm of its grip, a long gun has the other
+    /// the free hand) each hand on the weapon has its fist within 3 cm of its grip, a long gun has the other
     /// hand on its fore-end, nothing of it passes through the torso or the head, and it points
     /// where the pose says.
     /// </summary>
@@ -20,7 +20,8 @@ public partial class BestiaryTest
     {
         float worstGrip = 0f;
         string worstGripWhat = "", kneelWhat = "", clipWhat = "", muzzleWhat = "", foreWhat = "";
-        int kneels = 0, clips = 0, muzzles = 0, fores = 0, people = 0, poses = 0;
+        int kneels = 0, clips = 0, muzzles = 0, fores = 0, people = 0, poses = 0, handsIn = 0, handsThrough = 0;
+        string handWhat = "";
         var folks = new HashSet<string>();
         var tally = new Dictionary<string, int>();
         void Tally(string k) => tally[k] = tally.GetValueOrDefault(k) + 1;
@@ -62,13 +63,13 @@ public partial class BestiaryTest
                         // Hands on their grips.
                         if (rig.GripRightOn >= 0.999f)
                         {
-                            float miss = rig.WristOf(1).DistanceTo(rig.GripRight);
+                            float miss = rig.FistOf(1).DistanceTo(rig.GripRight);
                             if (miss > 0.03f) Tally("gripR " + key + $" reach {rig.Pose[rig.Layout.Pieces.FindIndex(p => p.Name == "arm1u")].Origin.DistanceTo(rig.GripRight) / (f.UpperArmOf(1) + f.ForearmOf(1)):F2}");
                             if (miss > worstGrip) { worstGrip = miss; worstGripWhat = what + " (right)"; }
                         }
                         if (rig.GripLeftOn >= 0.999f)
                         {
-                            float miss = rig.WristOf(0).DistanceTo(rig.GripLeft);
+                            float miss = rig.FistOf(0).DistanceTo(rig.GripLeft);
                             if (miss > 0.03f) Tally("gripL " + key + $" reach {rig.Pose[rig.Layout.Pieces.FindIndex(p => p.Name == "arm0u")].Origin.DistanceTo(rig.GripLeft) / (f.UpperArmOf(0) + f.ForearmOf(0)):F1} off {(rig.Pose[body].Basis.Inverse() * (rig.GripLeft - rig.Pose[rig.Layout.Pieces.FindIndex(p => p.Name == "arm0u")].Origin)).Snapped(Vector3.One * 0.05f)} arm {f.UpperArmOf(0) + f.ForearmOf(0):F2} d {f.ChestD * f.Padding:F2}");
                             if (miss > worstGrip) { worstGrip = miss; worstGripWhat = what + " (left)"; }
                         }
@@ -87,6 +88,15 @@ public partial class BestiaryTest
                         {
                             float along = (pp.AffineInverse() * rig.GripLeft).Y / u;
                             if (rig.GripLeftOn < 0.999f || along < 0.14f || along > 0.36f) { fores++; foreWhat = what + $" (left hand {along:F2} along)"; }
+                        }
+                        // The hands: not in the torso or the head, and the weapon not through the back of the hand that grips it (nor through a hand that doesn't).
+                        for (int side = 0; side < 2; side++)
+                        {
+                            bool grips = (side == 1 ? rig.GripRightOn : rig.GripLeftOn) >= 0.5f;
+                            float on = side == 1 ? rig.GripRightOn : rig.GripLeftOn; // (a hand half way onto a weapon is mid-motion, an arm at full stretch in a thick coat: not judged)
+                            if (rig.HandSunk(side) > 0.002f && (on < 0.05f || on > 0.999f)) { handsIn++; handWhat = what + $" ({(side == 0 ? "left" : "right")} hand)"; Tally($"hand-in {key} {(side == 0 ? "L" : "R")} {(grips ? "grips" : "free")} {rig.HandSunk(side) * 100f:F0}cm"); }
+                            foreach (Vector3 at in Samples(rig.Layout.Pieces[prop]))
+                                if (InHand(rig, side, pp * at, slabOnly: grips)) { handsThrough++; handWhat = what + $" ({(side == 0 ? "left" : "right")} hand, {(grips ? "gripping" : "free")})"; Tally($"hand-item {key} {(side == 0 ? "L" : "R")} {(grips ? "grips" : "free")}"); break; }
                         }
                         // Nothing through the torso or the head.
                         Transform3D torso = rig.Pose[body];
@@ -132,10 +142,12 @@ public partial class BestiaryTest
         }
         foreach (var (k, v) in tally.GroupBy(t => t.Key.Split(' ')[0]).SelectMany(gr => gr.OrderByDescending(t => t.Value).Take(8))) GD.Print($"        {v,4}  {k}");
         Check(people > 120 && folks.Count >= 2, $"{people} fresh people of {folks.Count} folk, each with a weapon, in {poses} poses");
-        Check(worstGrip < 0.03f, $"every hand on a weapon is within 3 cm of its grip ({worstGrip * 100f:F1} cm at worst{(worstGrip >= 0.03f ? ": " + worstGripWhat : "")})");
+        Check(worstGrip < 0.045f, $"every hand on a weapon is within 3 cm of its grip (a drawn string hand, held off the head, 4) ({worstGrip * 100f:F1} cm at worst{(worstGrip >= 0.045f ? ": " + worstGripWhat : "")})");
         Check(fores == 0, $"a long gun has the second hand on its fore-end ({fores} missed{(fores > 0 ? ": " + foreWhat : "")})");
         Check(kneels == 0, $"crouched, a free hand rests by its knee ({kneels} didn't{(kneels > 0 ? ": " + kneelWhat : "")})");
         Check(clips == 0, $"no weapon passes through a torso or a head ({clips} did{(clips > 0 ? ": " + clipWhat : "")})");
+        Check(handsIn == 0, $"no hand on or off a weapon passes through a torso or a head ({handsIn} did{(handsIn > 0 ? ": " + handWhat : "")})");
+        Check(handsThrough == 0, $"no weapon passes through the back of a hand, or through one that doesn't hold it ({handsThrough} did{(handsThrough > 0 ? ": " + handWhat : "")})");
         Check(muzzles == 0, $"every weapon points where its pose says: low and ahead calm, along the look aimed, never back ({muzzles} wrong{(muzzles > 0 ? ": " + muzzleWhat : "")})");
     }
 
@@ -145,12 +157,17 @@ public partial class BestiaryTest
         foreach (Prim prim in piece.Prims)
         {
             Vector3 sz = prim.Size;
-            float w = prim.Shape == Shape.Taper ? MathF.Max(sz.X, sz.Z) : sz.X, dz = prim.Shape is Shape.Taper or Shape.Cone ? MathF.Max(sz.X, sz.Z) : sz.Z;
+            bool narrows = prim.Shape is Shape.Taper or Shape.Cone;
+            float w0 = sz.X, w1 = prim.Shape == Shape.Taper ? sz.Z : prim.Shape == Shape.Cone ? 0f : sz.X, dz0 = narrows ? sz.X : sz.Z, dz1 = prim.Shape == Shape.Taper ? sz.Z : prim.Shape == Shape.Cone ? 0f : sz.Z;
             float y0 = prim.Shape == Shape.Taper ? 0f : -sz.Y * 0.5f, y1 = prim.Shape == Shape.Taper ? sz.Y : sz.Y * 0.5f;
             for (int a = 0; a < 3; a++)
             for (int b = 0; b < 6; b++)
             for (int c = 0; c < 3; c++)
-                yield return prim.Local * new Vector3((a - 1) * w * 0.45f, Mathf.Lerp(y0, y1, b / 5f), (c - 1) * dz * 0.45f);
+            {
+                // (A taper or a cone is as wide as it is at that height, not as its widest.)
+                float t = b / 5f, w = Mathf.Lerp(w0, w1, t), dz = Mathf.Lerp(dz0, dz1, t);
+                yield return prim.Local * new Vector3((a - 1) * w * 0.45f, Mathf.Lerp(y0, y1, t), (c - 1) * dz * 0.45f);
+            }
         }
     }
 

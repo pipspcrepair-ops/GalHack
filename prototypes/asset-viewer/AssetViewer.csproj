@@ -1,0 +1,32 @@
+<Project Sdk="Godot.NET.Sdk/4.7.2">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <RootNamespace>AssetViewer</RootNamespace>
+    <Nullable>disable</Nullable>
+    <!-- Generators, meshers and creature rigs are tight numeric loops. -->
+    <Optimize>true</Optimize>
+    <!-- Where the prototypes and shared modules live, for the provider .props files. -->
+    <ProtoRoot>$(MSBuildProjectDirectory)\..\</ProtoRoot>
+    <SharedRoot>$(MSBuildProjectDirectory)\..\..\shared\</SharedRoot>
+  </PropertyGroup>
+
+  <!--
+    The viewer shows what the game is made of, so it compiles the game's own generators in place
+    (never copies). Each provider group owns one folder, src/Providers/<Group>/, and lists the
+    sources it needs in a <Group>.props file there; every .props below is imported on its own, so
+    two groups never touch the same file. Two groups may list the same source: the target at the
+    bottom drops the repeats before compiling.
+  -->
+  <Import Project="src\Providers\**\*.props" />
+
+  <Target Name="DropRepeatedSources" BeforeTargets="CheckForDuplicateItems;CoreCompile">
+    <RemoveDuplicates Inputs="@(Compile->'%(FullPath)')">
+      <Output TaskParameter="Filtered" ItemName="_UniqueSource" />
+    </RemoveDuplicates>
+    <ItemGroup>
+      <Compile Remove="@(Compile)" />
+      <Compile Include="@(_UniqueSource)" />
+    </ItemGroup>
+  </Target>
+</Project>
