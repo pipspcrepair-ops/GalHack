@@ -97,7 +97,8 @@ public partial class PhysicsTest
             if (_t._w.Physics.Stuck.IsStuck(Body, out _)) Inside++;
             N.Vector3 now = Local;
             if (_settle > 0) _settle--;
-            else if (N.Vector3.Distance(now, _last) > 0.75f)
+            // More than a step up and on (Steps.Up moves on by at least 0.4 of the radius) and a tick's stride: a teleport.
+            else if (N.Vector3.Distance(now, _last) > _t._w.Rules.Walking.StepHeight + 0.4f * Body.Shape.Radius + 0.25f)
             {
                 Teleports++;
                 Jump = MathF.Max(Jump, N.Vector3.Distance(now, _last));
@@ -249,18 +250,20 @@ public partial class PhysicsTest
 
     /// <summary>
     /// Walkable across, by the block's own shape along every line the walker's width covers: every rise is either a ramp no
-    /// steeper than the walker climbs or a single step no taller than a step.
+    /// steeper than the walker climbs or a step (a run of steeper rise) no taller than a step.
     /// </summary>
     bool Walkable(Structure s, SInt3 o, float radius)
     {
         float step = _w.Rules.Walking.StepHeight, deck = o.Y + 0.5f, dz = 0.02f, ramp = dz * MathF.Tan(45.5f * MathF.PI / 180f);
         for (int k = -2; k <= 2; k++)
         {
-            float x = o.X + MathF.Min(radius, 0.49f) * k / 2f, last = deck;
+            // A rise steeper than a ramp is a step for as long as it keeps rising so steeply: the whole of it counts.
+            float x = o.X + MathF.Min(radius, 0.49f) * k / 2f, last = deck, steep = 0f;
             for (float z = o.Z + 0.6f; z >= o.Z - 0.6f; z -= dz)
             {
-                float h = TopAt(s, x, z, o.Y + 1.49f, deck);
-                if (h - last > ramp + 1e-3f && h - last > step) return false;
+                float h = TopAt(s, x, z, o.Y + 1.49f, deck), rise = h - last;
+                steep = rise > ramp + 1e-3f ? steep + rise : 0f;
+                if (steep > step) return false;
                 last = h;
             }
         }
@@ -384,6 +387,11 @@ public partial class PhysicsTest
             p.Legs.Move = N.Vector2.Zero;
             p.Legs.Jump = p.Legs.Jetpack = false;
         }
+        IEnumerable<int> Landed()
+        {
+            for (int t = 0; t < 120 && !p.Body.OnFloor; t++)
+                foreach (int x in rig.Tick()) yield return x;
+        }
         const float Deck = 0.5f, North = 0f, South = MathF.PI;
 
         // The door: in from outside and out again; then jetpacked into from a run-up, and walked out of.
@@ -394,9 +402,11 @@ public partial class PhysicsTest
         bool outAgain = rig.Local.Z > 8.5f;
         Check(doorIn && inside && outAgain, $"the base's open door is walked through, in and out again (in {inside}, out {outAgain})");
         rig.Place(new N.Vector3(3f, Deck + 0.02f, 12f), North);
-        foreach (int x in Walk(North, l => l.Z < 5.5f, 150, jump: true, jet: 50)) yield return x;
+        // A short burst at the opening, as a player hopping in: it carries the sleeper into the doorway's head height.
+        foreach (int x in Walk(North, l => l.Z < 5.5f, 150, jump: true, jet: 14)) yield return x;
         foreach (int x in rig.Ticks(60)) yield return x;
         foreach (int x in Walk(South, l => l.Z > 9f, 240)) yield return x;
+        foreach (int x in Landed()) yield return x;
         Check(rig.Local.Z > 8.5f && MathF.Abs(rig.Local.Y - Deck) < 0.1f, $"jetpacked into the doorway, then walked out of it onto the deck (at z {rig.Local.Z:F1}, {rig.Local.Y - Deck:F2} m over the deck)");
 
         // The pad of thin plates: walked onto, stood on, jumped onto, stood on.
@@ -415,12 +425,13 @@ public partial class PhysicsTest
         bool onRoof = rig.Local.Y > 4.4f;
         float ridge = 0f;
         foreach (int x in Walk(South, l => { ridge = MathF.Max(ridge, l.Y); return l.Z > 8f; }, 300)) yield return x;
+        foreach (int x in Landed()) yield return x;
         Check(onRoof && ridge > 5.3f && rig.Local.Z > 7.5f && MathF.Abs(rig.Local.Y - Deck) < 0.1f,
             $"the roof is stood on, and walked up its slope onto the ridge ({ridge:F2} m), down the far slope and off its edge to the deck");
 
         // The container's top: jumped onto, and stood on at its very edge, half the feet over it.
         rig.Place(new N.Vector3(10.5f, Deck + 0.02f, 11.5f), North);
-        foreach (int x in Walk(North, l => l.Z < 9.3f, 90, jump: true)) yield return x;
+        foreach (int x in Walk(North, l => l.Z < 9.3f, 90, jump: true, jet: 10)) yield return x;
         foreach (int x in rig.Stand(m => Bounce("on the container, jumped onto", m))) yield return x;
         bool onBox = rig.Local.Y > 1.4f;
         rig.Place(new N.Vector3(11f, 1.52f, 9.35f), North);
