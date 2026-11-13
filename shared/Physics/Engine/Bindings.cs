@@ -254,7 +254,7 @@ public sealed class HullBinding : BodyBinding
     PhysicsRayQueryParameters3D _down;
 
     /// <summary>
-    /// How far the ground's surface stands above the hull's underside, m: for each of its lowest shapes a ray from the
+    /// How far the ground's surface stands above the hull's underside, m: for each of its lowest boxes a ray from the
     /// point on its top straight above its middle to the point on its underside straight below, against the world layer;
     /// a surface met on the way is ground over that shape's underside. Only through the hull's own shapes, so a hull
     /// resting on a slope, tilted or on its legs is never lifted. 0 when clear.
@@ -265,7 +265,7 @@ public sealed class HullBinding : BodyBinding
         _down.Exclude = _self;
         _lowest.Clear();
         foreach (CollisionShape3D cs in _shapes)
-            if (GodotObject.IsInstanceValid(cs) && !cs.Disabled && cs.Shape != null) _lowest.Add(cs);
+            if (GodotObject.IsInstanceValid(cs) && !cs.Disabled && cs.Shape is BoxShape3D) _lowest.Add(cs); // a box's underside is its bounds' (a slope's is not)
         _lowest.Sort((p, q) => p.GlobalPosition.Y.CompareTo(q.GlobalPosition.Y));
         float most = 0f;
         for (int i = 0; i < _lowest.Count && i < SunkProbes; i++)
