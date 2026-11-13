@@ -36,7 +36,7 @@ The owner's rule: "nothing should be bespoke, it should all be because a combina
 | Fall | `moment` | 17 | The moment it fell | New |
 | Identity | `theme` | 45 | A small mood | The 112 |
 | Present | `running` | 20 | What's still running | New |
-| Present | `presence` | 39 | Factions, groups, what's working the place | Overhaul's presences, widened |
+| Present | `presence` | 40 | Factions, groups, what's working the place | Overhaul's presences, widened |
 | Present | `creed` | 19 | What survivors believe | New |
 | Present | `occ` | 17 | Per place: who's in it | 13 codes, plus 4 |
 | Surface | `feature` | 95 | Landmarks and big works | Overhaul's features, widened |
