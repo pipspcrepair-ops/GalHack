@@ -121,9 +121,9 @@ public partial class PlacePerf : Node
         WorldChoice world = _game.World;
         _game.QueueFree();
         for (int i = 0; i < 10; i++) yield return 0;
-        PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad = false;
+        PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad = !PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad;
         NewGame(world);
-        GD.Print("PERF mode: places built after standing, the same world");
+        GD.Print($"PERF mode: places {(PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad ? "built at load (old)" : "built after standing")}, the same world");
         foreach (int x in Scenario()) yield return x;
     }
 
