@@ -431,7 +431,8 @@ public partial class PhysicsTest
 
         // The container's top: jumped onto, and stood on at its very edge, half the feet over it.
         rig.Place(new N.Vector3(10.5f, Deck + 0.02f, 12.5f), North);
-        foreach (int x in Walk(North, l => l.Z < 9.3f, 120, jump: true, jet: 20)) yield return x;
+        foreach (int x in Walk(North, l => l.Z < 10.9f, 90)) yield return x; // the run-up, then the jump a stride from it
+        foreach (int x in Walk(North, l => l.Z < 9.3f, 90, jump: true, jet: 12)) yield return x;
         foreach (int x in rig.Stand(m => Bounce("on the container, jumped onto", m))) yield return x;
         bool onBox = rig.Local.Y > 1.4f;
         N.Vector3 boxAt = rig.Local;

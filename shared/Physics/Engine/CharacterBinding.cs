@@ -178,34 +178,39 @@ public sealed class CharacterBinding : BodyBinding
 
     /// <summary>
     /// On ground too steep to stand on the body slides, as on scree: downhill along the slope it goes no faster than
-    /// <paramref name="most"/> m/s, so a long hillside is slid down, not fallen down. It holds for a moment after each touch
-    /// (a slide on rough ground bounces off it), never on ground it can stand on, a wall or an overhang, and never uphill.
+    /// <paramref name="most"/> m/s, so a long hillside is slid down, not fallen down. A slide bounces off rough ground, and
+    /// a walker holding forward is carried off it in the air: for a while after a touch the slope counts while it is still
+    /// just under the feet. Never on ground it can stand on, a wall or an overhang, and never uphill.
     /// </summary>
     void Scree(float most, float dt)
     {
         Body b = Body;
         float floor = Mathf.Cos(Character.FloorMaxAngle);
-        for (int i = 0; i < Character.GetSlideCollisionCount(); i++)
+        bool Steep(N.Vector3 n) => N.Vector3.Dot(n, b.Up) >= 0.2f && N.Vector3.Dot(n, b.Up) < floor;
+        bool near = false;
+        for (int i = 0; i < Character.GetSlideCollisionCount() && !near; i++)
         {
             N.Vector3 n = Character.GetSlideCollision(i).GetNormal().ToNumerics();
-            float d = N.Vector3.Dot(n, b.Up);
-            if (d < 0.2f || d >= floor) continue; // a wall, an overhang, or ground to stand on
+            if (!Steep(n)) continue;
             _scree = n;
             _screeFor = ScreeHold;
-            break;
+            near = true;
         }
         if (_screeFor <= 0f) return;
         _screeFor -= dt;
-        // Bounced off it, but ground too steep to stand on is still just underfoot: still sliding on it, not falling.
-        if (_screeFor <= 0f && Ray(b.Position, b.Position - _scree * ScreeReach, out _, out N.Vector3 under)
-            && N.Vector3.Dot(under, b.Up) >= 0.2f && N.Vector3.Dot(under, b.Up) < floor) _screeFor = ScreeHold;
+        if (!near)
+        {
+            if (!Ray(b.Position + b.Up * 0.1f, b.Position - b.Up * ScreeReach, out _, out N.Vector3 under) || !Steep(under)) return;
+            _scree = under;
+        }
         N.Vector3 v = b.Velocity, across = _scree * N.Vector3.Dot(v, _scree), along = v - across;
         if (N.Vector3.Dot(along, b.Up) >= 0f || along.LengthSquared() <= most * most) return;
         b.Velocity = across + N.Vector3.Normalize(along) * most;
         Character.Velocity = b.Velocity.ToGodot();
     }
 
-    const float ScreeHold = 0.25f, ScreeReach = 1f;
+    /// <summary>How long after touching a slope it still counts when just underfoot, s, and how far under, m.</summary>
+    const float ScreeHold = 1.5f, ScreeReach = 1.5f;
     N.Vector3 _scree;
     float _screeFor;
 
