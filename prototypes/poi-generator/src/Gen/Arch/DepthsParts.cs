@@ -635,7 +635,7 @@ internal sealed partial class Depths
         for (int m = 0; m + 1 < cross.Count; m++)
             for (int q = 0; q + 1 < nAlong; q++)
             {
-                var s = NewSpace("room", "room", ModuleKind.Room, lv.J, Math.Min(lv.H, RoomH + (R.Chance(0.25f) ? 1 : 0)), lv);
+                var s = NewSpace("room", "room", ModuleKind.Room, lv.J, Math.Min(lv.H, RoomH), lv);
                 for (int t = m * spacing + wid + 1; t <= (m + 1) * spacing - 2; t++)
                     for (int x = x0 + q * spacing + wid + 1; x <= x0 + (q + 1) * spacing - 2; x++) { var (ci, ck) = P(t, x); s.Column(ci, ck); }
                 if (s.Columns < 9 || !Take(s, lv)) continue;
@@ -739,12 +739,12 @@ internal sealed partial class Depths
             var (si, sk) = P(0, x0);
             w.I = si; w.K = sk;
             // Floor rooms: under the gallery, doors through the long wall.
-            string? purpose = cells ? "cellblock" : null;
+            string? purpose = cells ? "cell" : null;
             RoomsAlong(lv, w, neg: !pos, pos: pos, density: 0.8f, from: 2, to: Hl - 3, minW: cells ? 2 : 3, maxW: cells ? 2 : 6, minD: 3, maxD: cells ? 3 : 6, purpose: purpose, height: 2);
             // Gallery rooms: a storey up, their doors onto the gallery.
             var gw = new Way { S = pos ? right : left, D = d, Len = Hl, Wid = Hw, I = si, K = sk };
             RoomsAlong(lv, gw, neg: !pos, pos: pos, density: 0.75f, from: 2, to: Hl - 3, minW: cells ? 2 : 3, maxW: cells ? 2 : 5, minD: 3, maxD: cells ? 3 : 5,
-                purpose: cells ? "cellblock" : ops ? (R.Chance(0.5f) ? "control" : "monitor") : null, height: 2);
+                purpose: cells ? "cell" : ops ? (R.Chance(0.5f) ? "control" : "monitor") : null, height: 2);
         }
         // On out of the far end at floor level.
         var exitFace = Face(hall, d, lv.J);
@@ -854,7 +854,7 @@ internal sealed partial class Depths
         var w = From(lv, a, d, R.Between(16, 30), wid, h, kind: "gallery", purpose: "gallery", minLen: 8);
         if (w == null) return false;
         int aw = R.Between(2, 3), ad = R.Between(2, 3);
-        string alcove = Def.Id switch { "library" => "archive", "prison" => "solitary", "cryo" => "cryo-bay", "fallout" => "quarters", _ => "storage" };
+        string alcove = Def.Id switch { "library" => "archive", "prison" => "solitary", "cryo" => "cryo-niche", "fallout" => "quarters", _ => "storage" };
         bool doors = Def.Id is "prison" || R.Chance(0.2f);
         foreach (bool pos in new[] { false, true })
             for (int p = 1; p + aw <= w.Len - 1; p += aw + 1)
@@ -902,7 +902,7 @@ internal sealed partial class Depths
             var g = From(lv, hub, sd, R.Between(10, 16), R.Between(2, 3), Math.Min(lv.H, 3), kind: "gallery", purpose: "corridor", minLen: 6);
             if (g == null) continue;
             blocks++;
-            RoomsAlong(lv, g, density: 0.95f, from: 1, minW: 2, maxW: 2, minD: 3, maxD: 3, purpose: "cellblock", height: 2);
+            RoomsAlong(lv, g, density: 0.95f, from: 1, minW: 2, maxW: 2, minD: 3, maxD: 3, purpose: "cell", height: 2);
             EndRoom(lv, g, 3, 3, purpose: "solitary", height: 2);
         }
         return blocks > 0;

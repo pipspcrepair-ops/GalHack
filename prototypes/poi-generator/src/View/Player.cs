@@ -110,7 +110,8 @@ public partial class Player : CharacterBody3D
             Vector3 to = (target - GlobalPosition) with { Y = 0 };
             wish = to.Length() > 0.05f ? to.Normalized() * WalkSpeed : Vector3.Zero;
         }
-        float accel = onFloor ? GroundAccel : AirAccel;
+        // On a ladder you hold on: your feet don't carry you on past it as they would through the air.
+        float accel = onFloor || Climbing ? GroundAccel : AirAccel;
         v.X = Mathf.MoveToward(v.X, wish.X, accel * dt);
         v.Z = Mathf.MoveToward(v.Z, wish.Z, accel * dt);
         if ((onFloor || Climbing) && Held(Key.Space) && !Crouching && AutoTarget == null) v.Y = JumpSpeed;

@@ -43,7 +43,7 @@ public partial class PoiTest : Node
             ("LootByRarity", LootByRarity), ("LootByDepth", LootByDepth), ("Carved", Carved), ("Hidden", Hidden),
             ("Breaches", Breaches), ("Keys", Keys), ("PlacementRules", PlacementRules), ("NoRepeatsInSystem", NoRepeatsInSystem),
             ("SeenWeighting", SeenWeighting), ("RegrowthPolicy", RegrowthPolicy), ("RevealDistances", RevealDistances),
-            ("WorldPlacement", WorldPlacementCheck), ("WorldProfiles", WorldProfiles), ("Ports", PortsAndPeople), ("StartWorlds", StartWorlds), ("Tethers", Tethers), ("Stamps", Stamps), ("Geometry", Geometry), ("RequiredRooms", RequiredRooms), ("Ages", Ages), ("FactionMix", FactionMix), ("Townsfolk", TownsfolkCheck), ("Blasts", Blasts), ("StartSystems", StartSystems), ("PlainRuins", PlainRuins), ("Houses", Houses), ("Doors", Doors), ("DoorwaySolids", DoorwaySolids), ("Surfaces", Surfaces), ("Rails", Rails), ("Decay", DecayPass), ("Coplanar", CoplanarFaces), ("Panes", Panes), ("Landmarks", Landmarks), ("ShooterTags", ShooterTags), ("Hulks", Hulks), ("Eras", Eras), ("Performance", Performance),
+            ("WorldPlacement", WorldPlacementCheck), ("WorldProfiles", WorldProfiles), ("Ports", PortsAndPeople), ("StartWorlds", StartWorlds), ("Tethers", Tethers), ("Stamps", Stamps), ("Geometry", Geometry), ("RequiredRooms", RequiredRooms), ("Ages", Ages), ("FactionMix", FactionMix), ("Townsfolk", TownsfolkCheck), ("Blasts", Blasts), ("StartSystems", StartSystems), ("PlainRuins", PlainRuins), ("Houses", Houses), ("Doors", Doors), ("DoorwaySolids", DoorwaySolids), ("Surfaces", Surfaces), ("Rails", Rails), ("Decay", DecayPass), ("Coplanar", CoplanarFaces), ("Panes", Panes), ("Landmarks", Landmarks), ("ShooterTags", ShooterTags), ("Hulks", Hulks), ("Eras", Eras), ("Fallbacks", Fallbacks), ("Standard", Standard), ("References", ReferenceRanges), ("Patterns", PatternChecklist), ("Performance", Performance),
         };
         try
         {
@@ -375,7 +375,9 @@ public partial class PoiTest : Node
             int q0 = plain.Sum(m => m.Quads), q1 = merged.Sum(m => m.Quads);
             int t0 = plain.Sum(m => m.Collision.Count), t1 = merged.Sum(m => m.Collision.Count);
             Check(Math.Abs(a0 - a1) < a0 * 1e-4, $"{id}: what you touch from further off is what you touch up close: {a1:F0} m² of collision merged, {a0:F0} plain");
-            Check(q1 * 3 < q0 && t1 * 5 < t0 * 2, $"{id}: merged, {q1} faces for {q0}, {t1 / 9} collision triangles for {t0 / 9}");
+            // (Collision is merged into the fewest rectangles in both: every chunk's colliding faces are, near or far. So the
+            // merged mesh's collision is only held to no more than the plain one's, give or take a few split rectangles.)
+            Check(q1 * 3 < q0 && t1 <= t0 + t0 / 500 + 9, $"{id}: merged, {q1} faces for {q0}, {t1 / 9} collision triangles for {t0 / 9}");
             ChunkMesh far = Mesher.Coarse(g, inst.Layout.Occupied);
             Check(far.Quads > 0 && far.Quads * 20 < q0, $"{id}: the far mesh is {far.Quads} faces");
         }

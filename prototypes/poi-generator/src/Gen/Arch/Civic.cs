@@ -145,7 +145,7 @@ public static class Civic
         p.Finish();
     }
 
-    /// <summary>A stall: a counter three blocks long, goods on it, crates behind, an awning on four posts.</summary>
+    /// <summary>A stall: a counter three blocks long, goods on it, crates behind, a pitched awning on four posts (slopes either side of a ridge, as a player would roof it).</summary>
     static void Stall(Plot p, int i, int k, Stuff2 cloth, int room)
     {
         Fab f = p.F;
@@ -153,7 +153,11 @@ public static class Civic
         {
             p.Prop(u, 0, 2 * k, BlockType.Bench, Material.Steel, f.Steel.C);
             for (int v = 2 * k - 1; v <= 2 * k + 3; v++)
-                p.Put(u, 5, v, new Block(BlockType.Plate, cloth.M, cloth.C, Role.Decor));
+            {
+                int ridge = 2 * k + 1;
+                p.Put(u, 5, v, v == ridge ? new Block(BlockType.Cube, cloth.M, cloth.C, Role.Decor)
+                    : new Block(BlockType.Ramp, cloth.M, cloth.C, Role.Decor, v < ridge ? Dir.South : Dir.North));
+            }
         }
         foreach (int u in new[] { 2 * i, 2 * i + 5 })
             foreach (int v in new[] { 2 * k - 1, 2 * k + 3 })

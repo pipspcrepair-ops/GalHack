@@ -648,11 +648,11 @@ public sealed partial class Building
             }
             plan.Rooms.Add(r);
         }
-        if (hall != null && plan.Rooms.Count > 0)
+        // (Only if the storey has a room big enough to be one: a small storey's biggest room is no hall.)
+        if (hall != null && plan.Rooms.Count > 0 && plan.Rooms.Where(r => !r.Secret).MaxBy(r => r.Area) is { } biggest && biggest.Area >= Lib.Room(hall).AMin * 0.75f)
         {
-            var big = plan.Rooms.Where(r => !r.Secret).OrderByDescending(r => r.Area).First();
-            big.Def = Lib.Room(hall);
-            big.Hall = true;
+            biggest.Def = Lib.Room(hall);
+            biggest.Hall = true;
         }
         // Mines keep only the stopes at the drifts: the rest is rock.
         if (pattern == "drifts")

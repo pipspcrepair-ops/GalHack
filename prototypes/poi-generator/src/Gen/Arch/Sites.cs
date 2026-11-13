@@ -345,12 +345,13 @@ public static class Sites
                     var inside = new List<Int3>();
                     for (int i = 0; i < 7; i++)
                         for (int j = 0; j < 4; j++)
-                            for (int y = 0; y < 3; y++)
+                            for (int y = 0; y < 4; y++)
                             {
-                                Int3 cell = new(ox + i, layer * 3 + y, oz + j);
-                                bool shell = i == 0 || i == 6 || j == 0 || j == 3 || y == 2 || (y == 0 && layer > 0);
+                                // A box on the 1 m grid, 3 m clear inside like any room, with its end doors 2 by 2.
+                                Int3 cell = new(ox + i, layer * 4 + y, oz + j);
+                                bool shell = i == 0 || i == 6 || j == 0 || j == 3 || y == 3 || (y == 0 && layer > 0);
                                 if (open && i == 0 && j is 1 or 2 && y < 2) shell = false;
-                                if (!shell && layer == 0 && y < 2) { if (open) inside.Add(cell); else x.C.Set(cell, new Block(BlockType.Cube, Material.Rust, col.Scale(0.6f), Role.Wall)); continue; }
+                                if (!shell && layer == 0 && y < 3) { if (open) inside.Add(cell); else x.C.Set(cell, new Block(BlockType.Cube, Material.Rust, col.Scale(0.6f), Role.Wall)); continue; }
                                 if (!shell) { x.C.Set(cell, new Block(BlockType.Cube, Material.Rust, col.Scale(0.6f), Role.Wall)); continue; }
                                 x.C.Set(cell, new Block(BlockType.Cube, Material.Rust, col.Scale(0.85f + 0.15f * (i % 2)), Role.Wall)); // corrugated
                             }
@@ -924,14 +925,14 @@ public static class Sites
             }
         // The ladder up the front of the mezzanine: its top rung at the walkway's floor, you step on at the gap in the rail.
         for (int y = 0; y <= my; y++) x.C.Blocks[W(2, y, mz - 1)] = new Block(BlockType.Ladder, Material.Steel, new Rgb(0x70, 0x70, 0x70), Role.Traverse, Dir.North);
-        // The office: a box on the mezzanine's far end with a window over the floor.
+        // The office: a box on the mezzanine's far end with a window over the floor, 3 m clear under its roof.
         var office = new List<Int3>();
-        int o0 = w - 9;
+        int o0 = w - 9, top = Math.Min(my + 4, h - 1);
         for (int i = o0; i < w - 1; i++)
             for (int j = mz; j < d - 1; j++)
-                for (int y = my + 1; y <= my + 3; y++)
+                for (int y = my + 1; y <= top; y++)
                 {
-                    bool shell = i == o0 || j == mz || y == my + 3;
+                    bool shell = i == o0 || j == mz || y == top;
                     bool door = i == o0 && (j == mz + 1 || j == mz + 2) && y <= my + 2;
                     bool glass = j == mz && y == my + 2 && i > o0 && i < w - 2;
                     Int3 c = W(i, y, j);
@@ -939,7 +940,7 @@ public static class Sites
                     if (glass) { x.C.Set(c, new Block(BlockType.Pane, Material.Glass, new Rgb(0x8a, 0xa4, 0xa8), Role.Window)); continue; }
                     if (shell) { x.C.Set(c, new Block(BlockType.Cube, Material.Steel, wall.Scale(0.9f), Role.Wall)); continue; }
                     x.C.Clear(c);
-                    if (y <= my + 2) office.Add(c);
+                    if (y < top) office.Add(c);
                 }
         int mezzModule = x.C.AddModule(ModuleKind.Outdoor, "mezzanine", 0, mezz.Where(c => !x.C.Blocks.ContainsKey(c)).ToList());
         int officeModule = x.C.AddModule(ModuleKind.Room, "foreman's office", 0, office);
