@@ -94,8 +94,8 @@ public static class Sites
                 default: throw new ArgumentException($"site {site.Id}: unknown part '{part.Kind}'");
             }
         }
-        if (!site.Space)
-            SiteRoads.Plan(c, fam, x.Tech ?? (fam.Techs.Count > 0 ? WorldProfile.Parse(fam.Techs[0]) : TechLevel.Mid), e, site.EntranceFacing, x.Runways, x.Wants, x.Doors);
+        if (!site.Space && SiteRoads.Enabled)
+            using (Prof.Time("site roads")) SiteRoads.Plan(c, fam, x.Tech ?? (fam.Techs.Count > 0 ? WorldProfile.Parse(fam.Techs[0]) : TechLevel.Mid), e, site.EntranceFacing, x.Runways, x.Wants, x.Doors);
         c.VaultModule = x.VaultModule >= 0 ? x.VaultModule : x.DeepestModule >= 0 ? x.DeepestModule : x.Yard;
         // Levels for the whole site: the union of every building's storeys.
         c.X.Levels = c.X.Levels.GroupBy(l => l.Storey).Select(g => g.First()).OrderBy(l => l.Storey).ToList();

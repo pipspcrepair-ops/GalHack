@@ -36,6 +36,9 @@ public sealed record RoadDoor(List<Int3> Cells, Dir Out, bool Forecourt = false)
 /// </summary>
 public static class SiteRoads
 {
+    /// <summary>Off for the tests that measure what the planner costs (and for comparing with the place unplanned).</summary>
+    public static bool Enabled = true;
+
     /// <summary>Something vehicles use: the ground cells a road may end on (y -1), what it paves once reached, and whether the road ends in a turning place.</summary>
     public sealed record Want(string Kind, List<Int3> Goal, List<Int3> Pave, bool Turn = false, int Clear = 3);
 
@@ -49,6 +52,9 @@ public static class SiteRoads
     {
         public readonly int X0, Z0, W, D;
         public readonly byte[] Dist;
+        /// <summary>The route search's tables, made once per grid and reused by every search over it.</summary>
+        public float[]? Cost;
+        public int[]? Prev;
         /// <summary>Blocked where anything stands up to <paramref name="top"/> (5 for a vehicle, 1 for a person on foot).</summary>
         public Grid(Canvas c, Int3 entrance, int top)
         {
@@ -190,21 +196,28 @@ public static class SiteRoads
         return x.Plan;
     }
 
-    /// <summary>The cheapest way over open ground from any of the sources to any target: straight runs (a turn costs), kept clear of what stands.</summary>
+    /// <summary>
+    /// The cheapest way over open ground from any of the sources to any target: straight runs (a turn costs), kept clear
+    /// of what stands. A* toward the targets' bounding box, so a search goes only as far as its way needs.
+    /// </summary>
     static List<Int3>? Route(Grid g, IEnumerable<int> from, HashSet<int> targets, int minClear, int want, int only = -1)
     {
         int n = g.W * g.D;
-        var cost = new float[n * 4];
-        var prev = new int[n * 4];
+        var cost = g.Cost ??= new float[n * 4];
+        var prev = g.Prev ??= new int[n * 4];
         Array.Fill(cost, float.MaxValue);
+        int tx0 = int.MaxValue, tz0 = int.MaxValue, tx1 = int.MinValue, tz1 = int.MinValue;
+        foreach (int t in targets) { int x = t % g.W, z = t / g.W; tx0 = Math.Min(tx0, x); tx1 = Math.Max(tx1, x); tz0 = Math.Min(tz0, z); tz1 = Math.Max(tz1, z); }
+        float H(int i) { int x = i % g.W, z = i / g.W; return Math.Max(0, Math.Max(tx0 - x, x - tx1)) + Math.Max(0, Math.Max(tz0 - z, z - tz1)); }
         var open = new PriorityQueue<int, float>();
         foreach (int s in from)
             for (int d = 0; d < 4; d++)
-                if (only < 0 || d == only) { cost[s * 4 + d] = 0; prev[s * 4 + d] = -1; open.Enqueue(s * 4 + d, 0); }
-        while (open.TryDequeue(out int st, out float at))
+                if (only < 0 || d == only) { cost[s * 4 + d] = 0; prev[s * 4 + d] = -1; open.Enqueue(s * 4 + d, H(s)); }
+        while (open.TryDequeue(out int st, out float f))
         {
-            if (at > cost[st]) continue;
             int cell = st >> 2, dir = st & 3;
+            float at = cost[st];
+            if (f > at + H(cell) + 0.001f) continue;
             if (targets.Contains(cell))
             {
                 var path = new List<Int3>();
@@ -223,7 +236,7 @@ public static class SiteRoads
                 if (c >= cost[ns]) continue;
                 cost[ns] = c;
                 prev[ns] = st;
-                open.Enqueue(ns, c);
+                open.Enqueue(ns, c + H(nb));
             }
         }
         return null;
