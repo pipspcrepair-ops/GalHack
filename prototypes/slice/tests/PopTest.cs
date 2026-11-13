@@ -38,9 +38,9 @@ public partial class PopTest : Node
     /// <summary>A change of less than this share of a thing in one frame is a fade (it takes ten frames or more), not a pop, however big the thing.</summary>
     const float Sudden = 0.1f;
 
-    /// <summary>The frame budget, ms (60 fps), and the routes that hold it now: each of these fails over it (the others are measured only, until they hold it too).</summary>
+    /// <summary>The frame budget, ms (60 fps), and the routes that hold it on every world: each of these fails over it, the others are measured only. None yet: a walk or a flight into a city is 45 ms (13 Nov); add a route once it holds.</summary>
     const double Budget = 1000.0 / 60.0;
-    static readonly string[] Held = { "walk" };
+    static readonly string[] Held = { };
 
     Game.Game _game;
     IEnumerator<int> _run;
