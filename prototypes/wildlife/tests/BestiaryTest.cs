@@ -35,6 +35,13 @@ public partial class BestiaryTest : Node
         try
         {
             _data = DataFiles.LoadWildlife();
+            foreach (string a in OS.GetCmdlineUserArgs())
+                if (a.StartsWith("--posedump="))
+                {
+                    DumpPoses(a.Substring("--posedump=".Length));
+                    Shutdown.Quit(this, 0);
+                    return;
+                }
             GD.Print($"(worlds rolled from seed {_fresh.NextU64()})");
             if (OS.GetCmdlineUserArgs().Contains("--bodies"))
             {
