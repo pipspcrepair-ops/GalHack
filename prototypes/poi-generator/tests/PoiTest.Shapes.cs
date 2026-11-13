@@ -121,9 +121,9 @@ public partial class PoiTest
             if (k == 0 || k != Kind(n - a.Vec() + front.Vec()) || b.Type == BlockType.Partition && (Kind(n - front.Vec()) == 0 || Kind(n - front.Vec()) != Kind(n - a.Vec() - front.Vec()))) return 0;
             if (o.IsHorizontal() ? Open(n + Int3.Up) || Open(n + Int3.Down) : Dirs.Horizontal.Any(h => Open(n + h.Vec()))) return 0; // (over or under an opening)
             bool thin = o.IsHorizontal() && !Solid(n - o.Vec());
-            // The face turns a corner at n: left unturned if the other face's run of this profile comes off it.
+            // The face turns a corner at n: left unturned if the other face, looking into the same kind of space, has a run of this profile off it.
             if (o.IsHorizontal() && (BlockInfo.IsFullCube(nb.Type) || shaped.Contains(n)) && Kind(n + a.Vec()) != 0)
-                return Shaping.Turns(b.Type) != null && BlockInfo.IsFullCube(nb.Type) && Same(n - o.Vec(), b with { Facing = a.Opposite() }) ? 2 : 0;
+                return Shaping.Turns(b.Type) != null && BlockInfo.IsFullCube(nb.Type) && Kind(n + a.Vec()) == k && Same(n - o.Vec(), b with { Facing = a.Opposite() }) ? 2 : 0;
             if (shaped.Contains(n)) return Run(nb.Type) && nb.Facing.IsHorizontal() && (b.Type == BlockType.Partition) == (nb.Type == BlockType.Partition) && !(thin && b.Type != BlockType.Partition) ? 3 : 0;
             if (!BlockInfo.IsFullCube(nb.Type) || Shaping.Opening(nb)) return 0;
             if (b.Type == BlockType.Partition) return Open(n - b.Facing.Vec()) && !Open(n + Int3.Up) && !Open(n + Int3.Down) && !InFrame(n, b.Facing) ? 1 : 0;
