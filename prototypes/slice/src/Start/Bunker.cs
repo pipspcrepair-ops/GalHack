@@ -413,9 +413,9 @@ public sealed class Bunker
     /// <summary>What stands on or by a bunker of this many steps, given its frame (a point on its axis, by z): the planet lays it all out before the bunker has a site, so the search asks.</summary>
     static IEnumerable<string> Crowding(SurfaceZone zone, Func<float, Vector3> onAxis, int steps)
     {
-        float z0 = StepZ(steps) - 5f, z1 = RoomZ * Cell + 0.25f;
+        float z0 = StepZ(steps) - 5f, z1 = RoomZ * Cell + Floor;
         Vector3 mid = onAxis((z0 + z1) * 0.5f);
-        return zone.Planet.Occupants(mid.X, mid.Z, MathF.Sqrt(MathF.Pow(RoomX * Cell + 0.25f, 2) + MathF.Pow((z1 - z0) * 0.5f, 2)) + ClearBy);
+        return zone.Planet.Occupants(mid.X, mid.Z, MathF.Sqrt(MathF.Pow(RoomX * Cell + Floor, 2) + MathF.Pow((z1 - z0) * 0.5f, 2)) + ClearBy);
     }
 
     /// <summary>The room's floor height and the steps to the surface for a spot and a heading, if the ground there will do.</summary>

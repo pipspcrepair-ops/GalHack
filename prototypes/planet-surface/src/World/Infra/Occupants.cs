@@ -12,7 +12,7 @@ public sealed partial class PlanetWorld
     /// <summary>
     /// What the world stands on the ground within a circle (centre x, z; metres), a kind for each thing that reaches it: "place",
     /// "city" (a lot of the ruined city), "ruin", "town" (a house of the start town), "wreck", "road", "rail", "street"
-    /// (the town's or the city's), "pole", "pylon", "power" (a substation), "landing". The planet lays all of these out
+    /// (the town's or the city's), "pole", "pylon", "power" (a substation), "crater", "ore tell" (the rocks over a deposit), "landing". The planet lays all of these out
     /// before anything else is sited, so whatever sites something later (the start bunker) asks here.
     /// </summary>
     public IEnumerable<string> Occupants(double x, double z, float radius)
@@ -44,6 +44,15 @@ public sealed partial class PlanetWorld
             double reach = radius + (pole.Pylon ? 8 : pole.Role == PowerRole.Substation ? 12 : 1);
             if (Math.Pow(Mathx.WrapDelta(pole.X - x, Width), 2) + Math.Pow(Mathx.WrapDelta(pole.Z - z, Height), 2) < reach * reach)
                 yield return pole.Role == PowerRole.Substation ? "power" : pole.Pylon ? "pylon" : "pole";
+        }
+        foreach (TerrainStamp crater in net.Craters)
+            if (Stamped(crater)) yield return "crater";
+        // An ore deposit's tell (InfraLayer.OrePieces: rocks stood over the deposits that show): its slabs and boulders spread to the body's edge.
+        float seen = DepositField.MaxBodyRadius + radius;
+        foreach (Deposit dep in Map.Deposits.InRect(x - seen, z - seen, x + seen, z + seen))
+        {
+            float reach = PlanetTerrainSource.OreRadius(dep) * 1.05f + radius;
+            if (Math.Pow(Mathx.WrapDelta(dep.X - x, Width), 2) + Math.Pow(Mathx.WrapDelta(dep.Y - z, Height), 2) < reach * reach && InfraLayer.HasTell(this, dep)) yield return "ore tell";
         }
         foreach (LandingSpot l in net.LandingSpots)
             if (Reaches(l.X, l.Z, l.Radius, l.Radius)) yield return "landing";
