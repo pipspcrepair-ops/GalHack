@@ -36,7 +36,7 @@ type airport
   part apron    surface concrete len 300..600 depth 150..250 beside taxiway away runway
   part terminal building terminal len 120..200 depth 30..60 h 12..20 concourse 6 beside apron away taxiway faces apron
   part tower    building control_tower len 10..14 depth 10..14 h 30..50 cab 8..12 beside apron away taxiway near terminal 20..250 sees runway
-  part hangar   building hangar count 2..5 len 45..60 depth 45..70 h 15..22 beside apron away taxiway faces apron gap 10..40
+  part hangar   building hangar count 2..5 len 45..60 depth 45..70 h 15..22 beside apron away taxiway faces apron gap 0..8
   part fuel     tanks count 3..6 r 6..12 h 8..14 beside taxiway away runway far terminal 300..
   part carpark  surface tarmac   len 80..200 depth 60..120 beside terminal away apron gap 8..20
   part access   road tarmac      w 7..10 from carpark
@@ -55,7 +55,7 @@ type airstrip
   part apron    surface gravel   len 80..160 depth 50..90 beside taxiway away runway
   part terminal building terminal len 20..40 depth 12..20 h 4..8 beside apron away taxiway faces apron
   part tower    building control_tower len 5..8 depth 5..8 h 8..15 cab 4..6 beside apron away taxiway near terminal 10..80 sees runway
-  part hangar   building hangar count 1..2 len 20..30 depth 20..30 h 6..9 beside apron away taxiway faces apron gap 6..20
+  part hangar   building hangar count 1..2 len 20..30 depth 20..30 h 6..9 beside apron away taxiway faces apron gap 0..4
   part fuel     tanks count 1..3 r 2..4 h 3..5 beside taxiway away runway far terminal 80..
   part carpark  surface dirt     len 20..50 depth 15..30 beside terminal away apron gap 4..10
   part access   road dirt        w 4..6 from carpark

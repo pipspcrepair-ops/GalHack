@@ -280,7 +280,7 @@ public static class PlaceTypes
                 for (int k = 0; k < count; k++)
                     for (int t = 0; t < Tries; t++)
                     {
-                        float off = gapSpan.Roll(r) + (p.Kind == "surface" ? 0f : Clear);
+                        float off = gapSpan.Roll(r) + (p.Kind == "surface" ? 0f : Clear + 1f);
                         float z0 = way > 0 ? a.Z1 + off : a.Z0 - off - depth;
                         float x0 = r.Float(a.X0, MathF.Max(a.X0, a.X1 - len));
                         var box = new SketchBox(x0, z0, x0 + len, z0 + depth);
@@ -290,8 +290,20 @@ public static class PlaceTypes
                         placed++;
                         break;
                     }
-                // Fewer where there is no room, never none of a part the type has.
-                if (placed == 0) s.Items.Add(Item(Fallback(s, a, way, len, depth)));
+                // No luck rolling: the first spot along it that fits, from a rolled end; fewer where there is no room, never none of a part the type has.
+                if (placed == 0)
+                {
+                    float off = gapSpan.Lo + (p.Kind == "surface" ? 0f : Clear + 1f), z0 = way > 0 ? a.Z1 + off : a.Z0 - off - depth;
+                    bool fromLow = r.Chance(0.5f);
+                    SketchBox? spot = null;
+                    for (float x = 0; x <= a.W - len && spot == null; x += MathF.Max(4f, len / 4))
+                    {
+                        float x0 = fromLow ? a.X0 + x : a.X1 - len - x;
+                        var box = new SketchBox(x0, z0, x0 + len, z0 + depth);
+                        if (Fits(s, p, box, a)) spot = box;
+                    }
+                    s.Items.Add(Item(spot ?? Fallback(s, a, way, len, depth)));
+                }
                 continue;
             }
             throw new InvalidOperationException($"{type.Id}.{p.Id}: no relation places it");

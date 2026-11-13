@@ -38,6 +38,8 @@ public partial class PoiTest
 
     const double FreshMargin = 0.05;
 
+    static string Boxes(Sketch s) => string.Join("; ", s.Items.Select(i => $"{i.Part.Id} {i.Box.X0:F0},{i.Box.Z0:F0}..{i.Box.X1:F0},{i.Box.Z1:F0}"));
+
     /// <summary>How far apart two sketches' parts are: each part's boxes matched in order, centre and size apart, summed; a part one has more of counts its whole size.</summary>
     static double Difference(Sketch a, Sketch b)
     {
@@ -93,7 +95,7 @@ public partial class PoiTest
                 Real(terminal.Box.W is >= 120 and <= 200, $"terminal {terminal.Box.W:F0} m long");
                 Real(s.Of("tower").All(x => x.H is >= 30 and <= 50), $"tower {s.Of("tower").First().H:F0} m");
                 Real(s.Of("hangar").Any() && s.Of("hangar").All(x => x.Box.W is >= 45 and <= 60 && x.H >= 15), $"hangars {string.Join(", ", s.Of("hangar").Select(x => $"{x.Box.W:F0} m span {x.H:F0} m high"))}");
-                Real(s.Of("fuel").All(f => f.Box.Gap(terminal.Box) >= 300), $"fuel farm {s.Of("fuel").Min(f => f.Box.Gap(terminal.Box)):F0} m from the terminal");
+                Real(s.Of("fuel").All(f => f.Box.Gap(terminal.Box) >= 300), $"fuel farm {s.Of("fuel").Min(f => f.Box.Gap(terminal.Box)):F0} m from the terminal ({Boxes(s)})");
                 Real(s.Of("lights").Count() == 2, "approach lights off each end");
             }
         foreach (string b in bad.Distinct().Take(6)) GD.Print($"      {b}");
@@ -127,7 +129,7 @@ public partial class PoiTest
                     if (a.Part.Kind == "building" && ground.Where(g => g.Part.Kind == "surface").Min(g => g.Box.Gap(a.Box)) > 40)
                     {
                         cut++;
-                        if (first == "") first = $"{t.Id}: {a.Part.Id} {ground.Min(g => g.Box.Gap(a.Box)):F0} m from any laid ground";
+                        if (first == "") first = $"{t.Id}: {a.Part.Id} {ground.Min(g => g.Box.Gap(a.Box)):F0} m from any laid ground ({Boxes(s)})";
                     }
                 }
             }
