@@ -10,7 +10,7 @@ namespace Slice.Tests;
 /// chairs, full-block floors with a painted finish. Cells: x starboard (east), y up, -z forward
 /// (north). The blueprint test writes these files (--write) and checks them; nothing else does.
 /// </summary>
-public static class BlueprintSet
+public static partial class BlueprintSet
 {
     public sealed record Design(string File, Func<Catalogue, string> Make);
 
@@ -20,6 +20,12 @@ public static class BlueprintSet
         new("prototypes/slice/data/blueprints/starter.gbp", Skiff),
         new("prototypes/slice/data/blueprints/outpost.gbp", Outpost),
         new("prototypes/slice/data/blueprints/pod.gbp", Pod),
+        new("prototypes/slice/data/blueprints/rover.gbp", Rover),
+        new("prototypes/slice/data/blueprints/dart.gbp", Dart),
+        new("prototypes/slice/data/blueprints/shuttle.gbp", Shuttle),
+        new("prototypes/slice/data/blueprints/tank.gbp", Tank),
+        new("prototypes/slice/data/blueprints/hauler.gbp", Hauler),
+        new("prototypes/slice/data/blueprints/frigate.gbp", Frigate),
     };
 
     static Int3 P(int x, int y, int z) => new(x, y, z);
@@ -47,7 +53,7 @@ public static class BlueprintSet
         // Belly (y -1), the core in it; its top is the cockpit floor.
         d.Fill(P(-2, -1, -5), P(2, -1, 3), "base-block", belly).Face(P(-1, -1, -3), P(1, -1, 0), Dir.PosY, deck);
         d.Face(P(-2, -1, 0), P(-2, -1, 0), Dir.PosY, deck);
-        d.Put("core", P(0, -1, 1));
+        d.Put("core", P(1, -1, 1));
         // Nose: a ramp, the dash, a clear windscreen at eye height.
         d.Fill(P(-2, 0, -5), P(2, 0, -5), "base-block", hull, "slope");
         d.Fill(P(-2, 0, -4), P(2, 0, -4), "base-block", hull);
@@ -63,12 +69,12 @@ public static class BlueprintSet
         d.Face(P(-2, 0, 3), P(2, 0, 3), Dir.PosZ, hazard);
         d.Thruster("thruster-t1", P(-1, 0, 4), Dir.NegZ);
         d.Thruster("thruster-t1", P(1, 0, 4), Dir.NegZ);
-        // Retro under the nose, a side jet each way, two lift jets in the belly under the hump.
+        // Retro under the nose, a side jet each way, a lift jet in the belly under the hump and a down jet on it.
         d.Thruster("thruster-t1", P(0, -1, -6), Dir.PosZ);
         d.Thruster("thruster-t1", P(3, 0, 2), Dir.NegX);
         d.Thruster("thruster-t1", P(-3, 0, 2), Dir.PosX);
-        d.Thruster("thruster-t1", P(-1, -1, 1), Dir.PosY);
-        d.Thruster("thruster-t1", P(1, -1, 1), Dir.PosY);
+        d.Thruster("thruster-t1", P(0, -1, 1), Dir.PosY);
+        d.Thruster("thruster-t1", P(0, 1, 2), Dir.NegY);
         // Three pads, flush with the belly; a step up to port.
         d.Put("pad-t1", P(0, -1, -4));
         d.Put("pad-t1", P(-2, -1, 2));
@@ -77,7 +83,7 @@ public static class BlueprintSet
         return d.Text(@"Skiff: the slice's starter vessel and the cheapest flyer in the game: an open-cockpit
 hopper of plain base blocks, painted. A command chair behind a clear windscreen, a cockpit tub you
 step into from the port step, an engine hump behind with the generator, gyro and fuel,
-two mains, a retro, a side jet each way, two lift jets and three pads.");
+two mains, a retro, a side jet each way, a lift jet, a down jet and three pads.");
     }
 
     // ---- Bases -------------------------------------------------------------------------------------

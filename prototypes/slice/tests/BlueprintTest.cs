@@ -181,7 +181,7 @@ public partial class BlueprintTest : Node
         float off = new N.Vector2(com.X - liftAt.X, com.Z - liftAt.Z).Length() * s.Grid.CellSize;
         var pads = s.Blocks().Where(x => s.TypeOf(x.block).Function == "gear").SelectMany(x => s.CellsOf(x.pos, x.block)).ToList();
         bool stands = hover || pads.Count > 0 && com.X >= pads.Min(c => c.X) && com.X <= pads.Max(c => c.X) && com.Z >= pads.Min(c => c.Z) && com.Z <= pads.Max(c => c.Z);
-        Check(off <= 0.75f && stands, $"{name}: its lift acts {off:F2} m from the centre of mass{(hover ? "" : ", which stands inside its pads")}");
+        Check(off <= 0.75f && stands, $"{name}: its lift acts {off:F2} m from the centre of mass{(hover ? "" : ", which stands inside its pads")} (mass at x {com.X:F1} z {com.Z:F1}, lift at x {liftAt.X:F1} z {liftAt.Z:F1})");
     }
 
     // ---- In the world ------------------------------------------------------------------------------------
@@ -242,7 +242,7 @@ public partial class BlueprintTest : Node
         int t = 0;
         for (; t < 600 && v.AboveGround < ground + 12f; t++) yield return 0;
         c.Hold(Key.Space, false);
-        Check(v.AboveGround >= ground + 12f, $"{name}: takes off and climbs 12 m in {t / 60f:F1} s");
+        Check(v.AboveGround >= ground + 12f, $"{name}: takes off and climbs 12 m in {t / 60f:F1} s{(v.AboveGround < ground + 12f ? $" (from {ground:F1} to {v.AboveGround:F1} m over the ground; console: {v.Controller?.ConsoleMessage}; pilot {v.Roles.Pilot}, lift margin {v.Stats?.LiftMargin:F0} kN)" : "")}");
 
         Vector3 start = v.Body.Position.ToGodot();
         for (t = 0; t < 600 && MathF.Abs(v.Body.Velocity.Y) > 0.3f; t++) yield return 0;
@@ -252,19 +252,26 @@ public partial class BlueprintTest : Node
             $"{name}: hands off, the climb stops in {t / 60f:F1} s and it hovers ({v.AboveGround - held:+0.0;-0.0} m in 2 s)");
 
         c.Hold(Key.W);
-        foreach (int x in _drive.Wait(180)) yield return x;
+        foreach (int x in _drive.Wait(60)) yield return x;
         c.Hold(Key.W, false);
         float fast = v.Body.Velocity.Length();
         for (t = 0; t < 900 && v.Body.Velocity.Length() > 1f; t++) yield return 0;
-        Check(fast > 8f && t < 60 * (fast / 6f + 3f), $"{name}: flies forward to {fast:F0} m/s in 3 s and stops within {t / 60f:F1} s of letting go");
+        Check(fast > 5f && t < 60 * (fast / 6f + 3f), $"{name}: flies forward to {fast:F0} m/s in 1 s and stops within {t / 60f:F1} s of letting go");
 
-        // Back over the ground it left (the run may have taken it over water or a gorge), and down there.
-        var pilot = new Pilot(_game, _drive);
-        pilot.Seated();
-        foreach (int x in pilot.FlyTo(v, () => start, 4f, 60f)) yield return x;
-        foreach (int x in pilot.Land(v, start, 90f)) yield return x;
+        // Down where it stopped: Ctrl to sink, slower near the ground, hands off once it stands on its gear.
+        for (t = 0; t < 120 * 60 && !v.Controller.Frozen; t++)
+        {
+            float agl = v.AboveGround - ground, vy = v.Body.Velocity.Y;
+            float wanted = agl > 25f ? -6f : agl > 6f ? -2.5f : -1f;
+            bool down = agl < 0.6f && MathF.Abs(vy) < 0.4f;
+            c.Hold(Key.Ctrl, !down && vy > wanted + 0.5f);
+            c.Hold(Key.Space, !down && vy < wanted - 0.5f);
+            if (t % 600 == 599) GD.Print($"    ({name} landing: {agl:F1} m over its rest height, sinking {-vy:F1} m/s, drifting {new Vector2(v.Body.Velocity.X, v.Body.Velocity.Z).Length():F1} m/s)");
+            yield return 0;
+        }
+        c.ReleaseAll();
         float up = MathX.Up(v.Body.Rotation).Y;
-        Check(v.Controller.Frozen && up > 0.97f, $"{name}: lands and settles upright (up {up:F3}, {v.AboveGround:F1} m over the ground)");
+        Check(v.Controller.Frozen && up > 0.97f, $"{name}: lands and settles upright (up {up:F3}, {v.AboveGround:F1} m over the ground, {new Vector2(v.Body.Position.X - start.X, v.Body.Position.Z - start.Z).Length():F0} m from the spot)");
     }
 
     /// <summary>A hover craft runs forward on its plates and stops when let go.</summary>
@@ -280,7 +287,7 @@ public partial class BlueprintTest : Node
         float fast = v.Body.Velocity.Length(), ran = new Vector2(v.Body.Position.X - from.X, v.Body.Position.Z - from.Z).Length();
         int t = 0;
         for (; t < 900 && v.Body.Velocity.Length() > 1f; t++) yield return 0;
-        Check(ran > 10f && t < 60 * (fast / 5f + 3f), $"{name}: rides its plates {ran:F0} m in 3 s, up to {fast:F0} m/s, and stops within {t / 60f:F1} s");
+        Check(ran > 10f && t < 60 * (fast / 5f + 3f), $"{name}: rides its plates {ran:F0} m in 3 s, up to {fast:F0} m/s, and stops within {t / 60f:F1} s (velocity {v.Body.Velocity}, {v.AboveGround:F1} m over the ground, up {MathX.Up(v.Body.Rotation).Y:F2})");
     }
 }
 

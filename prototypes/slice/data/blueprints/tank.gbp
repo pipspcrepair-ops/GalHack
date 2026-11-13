@@ -1,85 +1,127 @@
-# Hover Tank: a Big Core in Hover Mode. A low armoured hull on ten large hover plates, a raked
-# hardened glacis, armoured sponsons down both flanks, a driver's cupola, and a turret ring with a
-# long barrel over the deck.
-#
-# Large grid (2 m cells). x is starboard, y up, -z forward. The core sits in the hull.
-# Large Hover isn't wired yet: today a Big Core's hover plates lift nothing, so it sits on its
-# plates. Two mains in the stern and retros on the sponsons push it once it rides.
-
+# Hover Tank: a low iron hull on four Hover plate T2s, a hardened glacis and armoured
+# sponsons. Up the stair at the stern onto the deck: the driver's Cockpit T1 forward, the turret
+# behind it. Generator, gyro, fuel and a locker in the hull; two mains at the stern and a retro on
+# each sponson.
+# Written by slice/tests/BlueprintSet.cs (Designer); regenerate rather than edit.
+# GalHack blueprint. One statement per line; '#' starts a comment.
+# block <x> <y> <z> <type> [shape] [rot=<up><forward>] [paint=<name> | paint=<+x>,<-x>,<+y>,<-y>,<+z>,<-z>] [hp=<n>] [open] [off] [light=<rrggbb[+rrggbb]>:<mode>:<hz>:<seed>]
+# Cells: x right, y up, -z forward; a..b is an inclusive range. rot defaults to +y-z; '-' is bare metal.
 schema galhack.blueprint
 version 1
 name "Hover Tank"
-grid large
+grid 1m
 mode hover
 gravity on
 
-# Livery: sand hull, charcoal running gear and barrel, a teal flash, hazard on the stern plate.
-paint sand base=c9a66b grime=2
-paint dark base=2b2d42 grime=2
-paint grey base=4d5563 grime=2
-paint flash base=c9a66b accent=0a9396 pattern=chevrons grime=2
-paint hazard base=f4a100 accent=2b2d42 pattern=hazard grime=2
+paint sand base=c8b48a grime=2
+paint belly base=2b2d42 grime=2
+paint deck base=4a4e57 texture=plates grime=1
+paint flash base=c8b48a accent=0a9396 pattern=stripes grime=2
+paint hazard base=f4a100 pattern=hazard grime=2
 
-# --- Running gear (y -1): ten hover plates, a keel between them --------------------------------
-block -3 -1 -3 hover
-block 3 -1 -3 hover
-block -2 -1 -3 hover
-block 2 -1 -3 hover
-block -2 -1 0 hover
-block 2 -1 0 hover
-block -2 -1 3 hover
-block 2 -1 3 hover
-block -3 -1 3 hover
-block 3 -1 3 hover
-block -1..1 -1 -3..3 steel paint=dark
-
-# --- Hull (y 0), the core inside; the glacis and the stern ------------------------------------
-block -2..2 0 -4..-1 hardened paint=sand
-block -2 0 0 hardened paint=sand
-block -1 0 0 generator
-block 0 0 0 core
-block 1 0 0 gyro
-block 2 0 0 hardened paint=sand
-block -2..2 0 1 hardened paint=sand
-block -2..-1 0 2 hardened paint=sand
-block 0 0 2 generator
-block 1..2 0 2 hardened paint=sand
-block -2..-1 0 3 hardened paint=sand
-block 0 0 3 gyro
-block 1..2 0 3 hardened paint=sand
-block -2..2 0 4 hardened paint=sand
-block -2..2 0 -5 hardened slope paint=sand
-
-# --- Sponsons (x ±3): armoured flanks, raked at the front, chamfered on top -------------------
-block -3 0 -4..4 hardened paint=flash
-block 3 0 -4..4 hardened paint=flash
-block -3 0 -5 hardened slope paint=sand
-block 3 0 -5 hardened slope paint=sand
-block -3 1 -4..4 hardened slope rot=+y-x paint=sand
-block 3 1 -4..4 hardened slope rot=+y+x paint=sand
-
-# --- Deck (y 1): the glacis carried up, the driver's seat behind a vision slit -------------------
-block -2..2 1 -4 hardened slope paint=sand
-block -2 1 -3..4 steel paint=sand
-block -1 1 -3 glass slope
-block -1 1 -2 chair
-block 0..2 1 -3..4 steel paint=sand
-block -1 1 -1..4 steel paint=sand
-
-# --- Turret (y 2): a ring three by three, bevelled, the gun on top, a long barrel forward ------
-block -1..1 2 0..2 hardened paint=grey
-block -1..1 2 -1 hardened slope paint=grey
-block -1..1 2 3 hardened slope rot=+y+z paint=grey
-block 0 3 1 turret
-block 0 3 0 hardened paint=grey
-block 0 3 -4..-1 steel cylinder rot=+z-y paint=dark
-
-# --- Stern: two mains in an engine plate; retros on the sponson fronts -------------------------
-block -2..2 0 5 steel paint=hazard
-block -1 0 6 thruster
-block 1 0 6 thruster
-block -4 0 -3 thruster rot=+y+z
-block 4 0 -3 thruster rot=+y+z
-block -2 1 5 steel slope rot=+y+z paint=sand
-block 2 1 5 steel slope rot=+y+z paint=sand
-block -1..1 1 5 steel paint=dark
+block -4..4 -1 -8 hardened-plated paint=sand
+block -4..4 -1 -7 iron-plated paint=sand,sand,sand,belly,sand,sand
+block -5 -1 -6 hardened-plated paint=flash
+block -4 -1 -6 hover-t2
+block -2..2 -1 -6 iron-plated paint=sand,sand,sand,belly,sand,sand
+block 3 -1 -6 hover-t2
+block 5 -1 -6 hardened-plated paint=flash
+block -5 -1 -5 hardened-plated paint=flash
+block -2..2 -1 -5 iron-plated paint=sand,sand,sand,belly,sand,sand
+block 5 -1 -5 hardened-plated paint=flash
+block -5 -1 -4 hardened-plated paint=flash
+block -4..4 -1 -4 iron-plated paint=sand,sand,sand,belly,sand,sand
+block 5 -1 -4 hardened-plated paint=flash
+block -5 -1 -3 hardened-plated paint=flash
+block -4..4 -1 -3 iron-plated paint=sand,sand,sand,belly,sand,sand
+block 5 -1 -3 hardened-plated paint=flash
+block -5 -1 -2 hardened-plated paint=flash
+block -4..4 -1 -2 iron-plated paint=sand,sand,sand,belly,sand,sand
+block 5 -1 -2 hardened-plated paint=flash
+block -5 -1 -1 hardened-plated paint=flash
+block -4..4 -1 -1 iron-plated paint=sand,sand,sand,belly,sand,sand
+block 5 -1 -1 hardened-plated paint=flash
+block -5 -1 0 hardened-plated paint=flash
+block -4..-1 -1 0 iron-plated paint=sand,sand,sand,belly,sand,sand
+block 0 -1 0 core
+block 1..4 -1 0 iron-plated paint=sand,sand,sand,belly,sand,sand
+block 5 -1 0 hardened-plated paint=flash
+block -5 -1 1 hardened-plated paint=flash
+block -4..4 -1 1 iron-plated paint=sand,sand,sand,belly,sand,sand
+block 5 -1 1 hardened-plated paint=flash
+block -5 -1 2 hardened-plated paint=flash
+block -4..-2 -1 2 iron-plated paint=sand,sand,sand,belly,sand,sand
+block -1 -1 2 generator-t2
+block 0 -1 2 gyro-t2
+block 1 -1 2 fuel-tank-t2
+block 2 -1 2 container-t1
+block 3..4 -1 2 iron-plated paint=sand,sand,sand,belly,sand,sand
+block 5 -1 2 hardened-plated paint=flash
+block -5 -1 3 hardened-plated paint=flash
+block -4..0 -1 3 iron-plated paint=sand,sand,sand,belly,sand,sand
+block 2..4 -1 3 iron-plated paint=sand,sand,sand,belly,sand,sand
+block 5 -1 3 hardened-plated paint=flash
+block -5 -1 4 hardened-plated paint=flash
+block -4..4 -1 4 iron-plated paint=sand,sand,sand,belly,sand,sand
+block 5 -1 4 hardened-plated paint=flash
+block -5 -1 5 hardened-plated paint=flash
+block -4 -1 5 hover-t2
+block -2..2 -1 5 iron-plated paint=sand,sand,sand,belly,sand,sand
+block 3 -1 5 hover-t2
+block 5 -1 5 hardened-plated paint=flash
+block -5 -1 6 hardened-plated paint=flash
+block -2..2 -1 6 iron-plated paint=sand,sand,sand,belly,sand,sand
+block 5 -1 6 hardened-plated paint=flash
+block -4..4 -1 7 iron-plated paint=sand,sand,sand,belly,hazard,sand
+block -1..0 -1 8 iron-plated paint=sand
+block -1..0 -1 9 stairs rot=+y+z paint=sand
+block -4..4 0 -8 hardened-plated slope paint=sand
+block -5 0 -7 thruster-t2 rot=+y+z
+block -4..4 0 -7 iron-plated paint=sand,sand,deck,sand,sand,sand
+block 5 0 -7 thruster-t2 rot=+y+z
+block -5 0 -6 hardened-plated paint=flash
+block -4..4 0 -6 iron-plated paint=sand,sand,deck,sand,sand,sand
+block 5 0 -6 hardened-plated paint=flash
+block -5 0 -5 hardened-plated paint=flash
+block -4..4 0 -5 iron-plated paint=sand,sand,deck,sand,sand,sand
+block 5 0 -5 hardened-plated paint=flash
+block -5 0 -4 hardened-plated paint=flash
+block -4..4 0 -4 iron-plated paint=sand,sand,deck,sand,sand,sand
+block 5 0 -4 hardened-plated paint=flash
+block -5 0 -3 hardened-plated paint=flash
+block -4..4 0 -3 iron-plated paint=sand,sand,deck,sand,sand,sand
+block 5 0 -3 hardened-plated paint=flash
+block -5 0 -2 hardened-plated paint=flash
+block -4..4 0 -2 iron-plated paint=sand,sand,deck,sand,sand,sand
+block 5 0 -2 hardened-plated paint=flash
+block -5 0 -1 hardened-plated paint=flash
+block -4..4 0 -1 iron-plated paint=sand,sand,deck,sand,sand,sand
+block 5 0 -1 hardened-plated paint=flash
+block -5 0 0 hardened-plated paint=flash
+block -4..4 0 0 iron-plated paint=sand,sand,deck,sand,sand,sand
+block 5 0 0 hardened-plated paint=flash
+block -5 0 1 hardened-plated paint=flash
+block -4..4 0 1 iron-plated paint=sand,sand,deck,sand,sand,sand
+block 5 0 1 hardened-plated paint=flash
+block -5 0 2 hardened-plated paint=flash
+block -4..-2 0 2 iron-plated paint=sand,sand,deck,sand,sand,sand
+block 0..4 0 2 iron-plated paint=sand,sand,deck,sand,sand,sand
+block 5 0 2 hardened-plated paint=flash
+block -5 0 3 hardened-plated paint=flash
+block -4..4 0 3 iron-plated paint=sand,sand,deck,sand,sand,sand
+block 5 0 3 hardened-plated paint=flash
+block -5 0 4 hardened-plated paint=flash
+block -4..4 0 4 iron-plated paint=sand,sand,deck,sand,sand,sand
+block 5 0 4 hardened-plated paint=flash
+block -5 0 5 hardened-plated paint=flash
+block -4..4 0 5 iron-plated paint=sand,sand,deck,sand,sand,sand
+block 5 0 5 hardened-plated paint=flash
+block -5 0 6 hardened-plated paint=flash
+block -4..4 0 6 iron-plated paint=sand,sand,deck,sand,sand,sand
+block 5 0 6 hardened-plated paint=flash
+block -4..4 0 7 iron-plated paint=sand,sand,deck,sand,hazard,sand
+block -3 0 8 thruster-t2
+block -1..0 0 8 stairs rot=+y+z paint=sand
+block 3 0 8 thruster-t2
+block -1 1 -6 cockpit-t1
+block 0 1 1 turret
