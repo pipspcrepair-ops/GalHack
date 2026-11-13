@@ -360,7 +360,7 @@ public partial class PoiLayer : Node3D
         _building.Clear();
         _animated.Clear();
         _styled.Clear();
-        _midJob = null;
+        _midJobs.Clear();
         _blending.Clear();
         _tilesBlending.Clear();
         _world = null;

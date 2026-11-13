@@ -32,7 +32,13 @@ public partial class PoiLayer
     const double TierBudgetMs = 2f;
 
     int _tierTimer;
-    Place _midJob;
+
+    /// <summary>Places whose merged blocks are being built (on workers, then put in a little a frame), at most <see cref="MidJobs"/> at once.</summary>
+    readonly List<Place> _midJobs = new();
+    const int MidJobs = 3;
+    readonly List<(float Rank, Place Place)> _midWanted = new();
+
+    static bool Building(Place p) => p.MidMeshes != null;
 
     /// <summary>
     /// A city's buildings far off: a tile of the city at a time, their far meshes merged into one, one draw for
@@ -223,15 +229,14 @@ public partial class PoiLayer
             BuildTile(t);
             built = true;
         }
-        if (_midJob != null) WorkMid();
+        if (_midJobs.Count > 0) WorkMid();
         foreach (Place p in _blending) StepBlend(p, dt);
         _blending.RemoveAll(p => p.Way == 0);
         foreach (Tile t in _tilesBlending) StepBlend(t, dt);
         _tilesBlending.RemoveAll(t => t.Way == 0);
         if (--_tierTimer > 0) return;
         _tierTimer = 12;
-        Place next = null;
-        float best = float.MaxValue;
+        _midWanted.Clear();
         float speed = new Vector2(Heading.X, Heading.Z).Length();
         float ahead = Mathf.Min(speed * AheadSeconds, MostAhead);
         // Merged blocks reach as far as the detail distance takes them (DetailReach): out to the horizon at the top.
@@ -256,7 +261,7 @@ public partial class PoiLayer
                 // Out of reach: the far mesh dissolves back in over the merged blocks, and they go once it has.
                 if (p.Whole && d > drop && p.Way != -1) Blend(p, -1);
                 else if (p.Whole && d <= drop && p.Way == -1) Blend(p, +1);
-                if (p.Mid != null && !p.Whole && d > drop && p != _midJob && p.Way == 0) FreeMid(p);
+                if (p.Mid != null && !p.Whole && d > drop && !Building(p) && p.Way == 0) FreeMid(p);
                 if (p.Way == 0)
                 {
                     bool low = !p.Whole && d > InsideFar;
@@ -268,7 +273,7 @@ public partial class PoiLayer
                 }
                 SinkFar(p.Low, d);
             }
-            if (p.Mid == null && p != _midJob && d < radius && p.Way == 0)
+            if (p.Mid == null && !Building(p) && d < radius && p.Way == 0)
             {
                 // The way you are going first; what you are leaving, not at all once it is half the reach off.
                 float along = 0f;
@@ -280,12 +285,7 @@ public partial class PoiLayer
                     along = (to.X * Heading.X + to.Z * Heading.Z) / speed;
                 }
                 if (along < 0f && d > radius * 0.5f) continue;
-                float rank = d - along * 0.5f - radius;
-                if (rank < best)
-                {
-                    best = rank;
-                    next = p;
-                }
+                _midWanted.Add((d - along * 0.5f - radius, p));
             }
         }
         foreach (Tile t in _tiles)
@@ -297,16 +297,21 @@ public partial class PoiLayer
             else if (t.Distance > drop && !t.Low.Visible) Blend(t, -1);
             else if (t.Distance > drop && t.Low.Visible)
                 foreach (Place p in t.Members)
-                    if (p.Mid != null && p != _midJob) FreeMid(p);
+                    if (p.Mid != null && !Building(p)) FreeMid(p);
         }
-        MidPending = next != null || _midJob != null;
-        if (next != null && _midJob == null)
-        {
-            _midJob = next;
-            BlockGrid g = next.Site.Instance.Blocks;
-            CellMask occupied = next.Site.Instance.Layout.Occupied;
-            next.MidMeshes = Task.Run(() => Mesher.Build(g, occupied, MidOptions(g)));
-        }
+        MidPending = _midWanted.Count > 0 || _midJobs.Count > 0;
+        if (_midJobs.Count >= MidJobs || _midWanted.Count == 0) return;
+        _midWanted.Sort(static (a, b) => a.Rank.CompareTo(b.Rank));
+        for (int i = 0; i < _midWanted.Count && _midJobs.Count < MidJobs; i++) StartMid(_midWanted[i].Place);
+    }
+
+    /// <summary>A place's merged blocks built on a worker.</summary>
+    void StartMid(Place p)
+    {
+        _midJobs.Add(p);
+        BlockGrid g = p.Site.Instance.Blocks;
+        CellMask occupied = p.Site.Instance.Layout.Occupied;
+        p.MidMeshes = Task.Run(() => Mesher.Build(g, occupied, MidOptions(g)));
     }
 
     readonly List<Place> _blending = new();
@@ -395,27 +400,33 @@ public partial class PoiLayer
         {
             Fx.Fade.Clear(t.Low);
             foreach (Place p in t.Members)
-                if (p.Mid != null && p != _midJob) FreeMid(p);
+                if (p.Mid != null && !Building(p)) FreeMid(p);
             t.Way = 0;
         }
     }
 
+    /// <summary>The finished places' merged blocks put in, nearest first, within one budget a frame.</summary>
     void WorkMid()
     {
-        Place p = _midJob;
-        if (!p.MidMeshes.IsCompleted) return;
+        var clock = Stopwatch.StartNew();
+        for (int i = 0; i < _midJobs.Count && clock.Elapsed.TotalMilliseconds < TierBudgetMs; i++)
+            if (WorkMid(_midJobs[i], clock)) _midJobs.RemoveAt(i--);
+    }
+
+    /// <summary>Puts in what it can of one place's merged blocks; true once it is done with (all in, or failed).</summary>
+    bool WorkMid(Place p, Stopwatch clock)
+    {
+        if (!p.MidMeshes.IsCompleted) return false;
         if (p.MidMeshes.IsFaulted)
         {
             GD.PushError($"could not draw {p.Site.Name}: {p.MidMeshes.Exception?.GetBaseException()}");
             p.MidMeshes = null;
-            _midJob = null;
-            return;
+            return true;
         }
         p.Mid ??= new Node3D { Name = "Mid", Visible = false };
         if (p.Mid.GetParent() == null) p.Node.AddChild(p.Mid);
         List<ChunkMesh> meshes = p.MidMeshes.Result;
         Material[] materials = MaterialsFor(p.Site.Instance).BySurface;
-        var clock = Stopwatch.StartNew();
         while (p.MidNext < meshes.Count && clock.Elapsed.TotalMilliseconds < TierBudgetMs)
         {
             ChunkMesh c = meshes[p.MidNext++];
@@ -423,15 +434,15 @@ public partial class PoiLayer
             p.Mid.AddChild(cube);
             p.Cells[c.Chunk] = cube;
         }
-        if (p.MidNext < meshes.Count) return;
+        if (p.MidNext < meshes.Count) return false;
         p.Whole = true;
         p.MidMeshes = null;
         p.MidNext = 0;
-        _midJob = null;
         // A city's building waits for the rest of its tile, hidden; a lone place dissolves in now.
-        if (_tileOf.ContainsKey(p)) return;
+        if (_tileOf.ContainsKey(p)) return true;
         p.Blend = 0f;
         Blend(p, +1);
+        return true;
     }
 
     /// <summary>
