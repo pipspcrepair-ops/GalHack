@@ -413,14 +413,17 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
     }
 
     /// <summary>
-    /// Comes to rest where it is (each telescoping leg already reaches its own ground), then stops
-    /// simulating.
+    /// Comes to rest where it is, then stops simulating. Set down on its gear it rights itself
+    /// level (a craft that came down nose first stands on its feet again): each telescoping leg
+    /// reaches its own ground, so it needs no tilt to stand on uneven ground.
     /// </summary>
     void Settle(PhysicsWorld world, Body body, float dt)
     {
         body.Velocity = Vector3.Zero;
         body.AngularVelocity = Vector3.Zero;
         LocalSpin = Vector3.Zero;
+        if (Gear is { Attached: true })
+            body.Rotation = Quaternion.Normalize(Quaternion.Slerp(body.Rotation, MathX.Level(body.Rotation), 1f - MathF.Exp(-10f * dt)));
         _settleLeft -= dt;
         if (_settleLeft > 0f) return;
         _settleLeft = 0f;
