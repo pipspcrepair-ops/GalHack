@@ -76,6 +76,7 @@ public partial class LooseTest : Node
     /// <summary>How deep the body's collision shapes overlap the world right now, m: the engine's own contact depth, not a height difference.</summary>
     float Sinking(Vessel v)
     {
+        if (v.Structure.Count == 0) return 0f; // broken up and gone: counted by the checks below
         var space = Zone.GetWorld3D().DirectSpaceState;
         float deepest = 0f;
         foreach (CollisionShape3D cs in ((FreeBinding)v.Binding).Rigid.GetChildren().OfType<CollisionShape3D>())
@@ -148,7 +149,7 @@ public partial class LooseTest : Node
         }
         foreach (int x in _drive.Wait(3)) yield return x;
         var tracks = Zone.Vessels.Where(v => v.IsWreck && v.Structure.Count == 1).Select(v => new Track { V = v }).ToList();
-        GD.Print($"{tracks.Count} loose fittings; {string.Join(", ", tracks.Select(t => $"{t.V.Body.Mass:F1} kg / {t.V.Body.DragArea:F2} m2"))}");
+        GD.Print($"{tracks.Count} loose fittings; {string.Join(", ", tracks.Select(t => $"{t.V.Body.Mass:F1} kg / {t.V.Body.WindArea():F2} m2"))}");
         Check(tracks.Count == spars.Count, "every fitting cut off became its own loose piece");
 
         for (int i = 0; i < 60 * 12; i++) // they fall and settle
@@ -177,6 +178,8 @@ public partial class LooseTest : Node
         Zone.Weather.Bridge.Calm = false;
         sim.Snap(WeatherKind.Clouds);
         float windNormal = sim.Current.WindSpeed;
+        float grav = Zone.Physics.GravityAt(tracks[0].V.Body).Length();
+        GD.Print($"  at rest, g {grav:F2} m/s2: wind areas {string.Join(", ", tracks.Select(t => $"{t.V.Body.WindArea():F3}"))} m2, so held below {string.Join(", ", tracks.Select(t => $"{MathF.Sqrt(GalHack.Physics.Engine.FreeBinding.Friction * t.V.Body.Mass * grav / (0.5f * 1.225f * MathF.Max(t.V.Body.WindArea(), 1e-4f))):F1}"))} m/s");
         foreach (Track t in tracks) { t.Rested = t.V.ToWorld(N.Vector3.Zero); t.Deepest = float.MinValue; t.Heights.Clear(); }
         int asleep = 0, ticks = 0;
         for (int i = 0; i < 60 * NormalSeconds; i++)
@@ -204,6 +207,7 @@ public partial class LooseTest : Node
         Check(sink1 <= 0.02f, "in a normal wind no loose prop sinks more than 2 cm into the ground");
         Check(jit1 <= 0.01f, "and none jitters more than 1 cm at rest");
         Check(moved == 0, "and none of them moves");
+        Check(tracks.All(t => t.V.Structure.Count > 0), $"and none is blown into anything and broken ({tracks.Count(t => t.V.Structure.Count == 0)} gone)");
 
         // A gale.
         sim.Snap(WeatherKind.Hurricane);

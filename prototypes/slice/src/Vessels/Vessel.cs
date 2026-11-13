@@ -389,6 +389,7 @@ public sealed partial class Vessel
             Body.Integrity = MathF.Max(Body.Integrity, HullPoints(Zone, mass.Mass));
             if (Binding is FreeBinding free)
             {
+                Body.DragBox = StructureBridge.DragBox(Structure);
                 free.Rigid.Mass = mass.Mass;
                 free.Rigid.CenterOfMass = mass.CenterOfMass.ToGodot();
             }
@@ -536,6 +537,7 @@ public sealed partial class Vessel
             Mass = mass.Mass,
             CenterOfMass = mass.CenterOfMass,
             DragArea = StructureBridge.DragArea(piece),
+            DragBox = StructureBridge.DragBox(piece), // loose: the wind meets its real shape as it lies
             Shape = StructureBridge.ShapeOf(piece),
         });
         piece.DirtyChunks.Clear();
@@ -558,6 +560,7 @@ public sealed partial class Vessel
             if (child is not CollisionShape3D) child.Reparent(rigid, false);
         var free = Zone.Host.Rebind(Body, new FreeBinding(rigid, Body));
         Binding = free;
+        Body.DragBox = StructureBridge.DragBox(Structure);
         free.Teleport();
         hull.Hull.GetParent().RemoveChild(hull.Hull);
         hull.Hull.QueueFree();

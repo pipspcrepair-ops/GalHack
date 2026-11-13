@@ -236,7 +236,42 @@ public static class StructureBridge
     {
         var (min, max) = s.Bounds();
         float cell = s.Grid.CellSize;
-        return (max.X - min.X + 1) * (max.Y - min.Y + 1) * cell * cell * 0.8f;
+        return (max.X - min.X + 1) * (max.Y - min.Y + 1) * cell * cell * Body.DragCoefficient;
+    }
+
+    /// <summary>Every box that makes up a loose structure's shape, structure frame, metres: solid cells whole, fittings and parts as their parts.</summary>
+    public static IEnumerable<(N.Vector3 Min, N.Vector3 Max)> ShapeBoxes(Structure s)
+    {
+        float cell = s.Grid.CellSize;
+        foreach (var (p, b) in s.Blocks())
+        {
+            N.Vector3 centre = CellCenter(s, p);
+            BlockType t = s.TypeOf(b);
+            if (s.IsSolid(b) && t.Collide != Collide.Parts)
+            {
+                yield return (centre - new N.Vector3(cell * 0.5f), centre + new N.Vector3(cell * 0.5f));
+                continue;
+            }
+            Mat3 rot = Orientations.Matrix(b.Rot);
+            foreach (Part part in t.Parts)
+            {
+                if (part.ClosedOnly && b.Open) continue;
+                N.Vector3 lo = rot.Apply(part.Min), hi = rot.Apply(part.Max);
+                yield return (centre + N.Vector3.Min(lo, hi) * cell, centre + N.Vector3.Max(lo, hi) * cell);
+            }
+        }
+    }
+
+    /// <summary>The size of the box round a loose structure's real shape, m: what the wind meets (<see cref="Body.WindArea"/>).</summary>
+    public static N.Vector3 DragBox(Structure s)
+    {
+        N.Vector3 min = new(float.MaxValue), max = new(float.MinValue);
+        foreach (var (lo, hi) in ShapeBoxes(s))
+        {
+            min = N.Vector3.Min(min, lo);
+            max = N.Vector3.Max(max, hi);
+        }
+        return max.X >= min.X ? max - min : N.Vector3.Zero;
     }
 
     /// <summary>The shared module's class for a vessel: the handling model's own (hover, small, capital).</summary>
