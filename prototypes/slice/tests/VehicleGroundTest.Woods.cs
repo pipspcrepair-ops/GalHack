@@ -84,6 +84,23 @@ public partial class VehicleGroundTest
     /// <summary>The standing trees whose colliders the hull's own shapes overlap.</summary>
     int TreesInHull(Vessel v) => Touching(v, 0f).Count(s => s.StartsWith("tree"));
 
+    /// <summary>The standing trees under the hull within 5 cm of it, their surface facing up into it: what could hold it up.</summary>
+    int TreesBearing(Vessel v)
+    {
+        var space = _game.Zone.GetWorld3D().DirectSpaceState;
+        var q = new PhysicsShapeQueryParameters3D { CollisionMask = Layers.Flora, Margin = 0.05f };
+        var trees = new HashSet<long>();
+        foreach (Node n in v.Binding.Collider.GetChildren())
+        {
+            if (n is not CollisionShape3D cs || cs.Shape == null || cs.Disabled) continue;
+            q.Shape = cs.Shape;
+            q.Transform = cs.GlobalTransform;
+            var rest = space.GetRestInfo(q);
+            if (rest.Count > 0 && rest["normal"].AsVector3().Y > 0.3f && _game.Zone.TreeAt(((Rid)rest["rid"], (int)rest["shape"]), out long tree, out float r) && r > 0f) trees.Add(tree);
+        }
+        return trees.Count;
+    }
+
     /// <summary>What the hull's own shapes touch within a margin: each standing tree (its trunk), or anything else solid by its node.</summary>
     HashSet<string> Touching(Vessel v, float margin)
     {
@@ -142,7 +159,8 @@ public partial class VehicleGroundTest
         void Frame()
         {
             if (breaking && probe.LastCpuMs > worstBreaking) (worstBreaking, worstAt) = (probe.LastCpuMs, breakingFrames);
-            int felled = _game.Zone.Planet.Felled.Count;            breaking = felled > felledAt || _game.Zone.Toppling > 0;
+            int felled = _game.Zone.Planet.Felled.Count;
+            breaking = felled > felledAt || _game.Zone.Toppling > 0;
             if (breaking) breakingFrames++;
             broke += felled - felledAt;
             felledAt = felled;
@@ -152,10 +170,12 @@ public partial class VehicleGroundTest
         {
             float agl = v.Body.Position.Y - feet - _game.Zone.GroundAt(v.Body.Position.X, v.Body.Position.Z).Y;
             float wanted = agl > 8f ? -3f : -1f, vy = v.Body.Velocity.Y;
-            still = MathF.Abs(vy) < 0.2f ? still + 1 : 0;
-            if (v.Controller.Frozen || v.Controller.Gear is { Attached: true } || still > 120) break; // on its feet, or held fast
-            c.Hold(Key.Ctrl, vy > wanted + 0.5f);
-            c.Hold(Key.Space, vy < 2f * wanted - 1f);
+            // Hands off while it stands on its gear (it lands there); on again should its footing give way under it.
+            bool onGear = v.Controller.Gear is { Attached: true };
+            still = !onGear && MathF.Abs(vy) < 0.2f ? still + 1 : 0;
+            if (v.Controller.Frozen || still > 120) break; // landed, or held fast
+            c.Hold(Key.Ctrl, !onGear && vy > wanted + 0.5f);
+            c.Hold(Key.Space, !onGear && vy < 2f * wanted - 1f);
             yield return 0;
             Frame();
         }
@@ -186,10 +206,11 @@ public partial class VehicleGroundTest
                 Vector3 l = toLocal * b.At;
                 return l.X > (lo.X - 0.5f) * cell && l.X < (hi.X + 0.5f) * cell && l.Z > (lo.Z - 0.5f) * cell && l.Z < (hi.Z + 0.5f) * cell;
             }).ToList();
-            // Every one it came down on is felled: none left touching it (one too short to reach its belly may stand).
-            int standing = under.Count(b => !_game.Zone.Planet.Felled.Contains(b.Id)), touching = Touching(v, 0.05f).Count(s => s.StartsWith("tree"));
-            Check(ctl.Frozen && gear is { Attached: true } && onTree.Count == 0 && under.Count > standing && touching == 0,
-                $"{name}: let down on a wood, it ends on its gear on the ground, {under.Count - standing} of the {under.Count} trees under it felled, none left touching it ({standing} short ones still standing beneath; {how})");
+            // Every one it came down on is felled: none left bearing it up (one too short to reach its belly may stand, and one
+            // it slid down beside may still lean on its side).
+            int standing = under.Count(b => !_game.Zone.Planet.Felled.Contains(b.Id)), bearing = TreesBearing(v);
+            Check(ctl.Frozen && gear is { Attached: true } && onTree.Count == 0 && under.Count > standing && bearing == 0,
+                $"{name}: let down on a wood, it ends on its gear on the ground, {under.Count - standing} of the {under.Count} trees under it felled, none left bearing it up ({bearing}; {standing} short ones still standing beneath; {how})");
             Check(_game.Zone.Trees.Stumps > 0, $"{name}: the trees it broke leave what harvesting leaves: {_game.Zone.Trees.Stumps} stumps, their trunks and crowns fallen");
             Check(broke > 0 && worstBreaking < 16.7,
                 $"{name}: no frame a tree breaks or falls in goes over the budget in CPU time: worst {worstBreaking:F1} ms (frame {worstAt} of {breakingFrames}), {broke} trees (budget 16.7; headless)");
