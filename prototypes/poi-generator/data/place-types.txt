@@ -72,7 +72,8 @@ type airstrip
 # 5 km off); SpaceX landing zones LZ-1 and LZ-2 are 86 m circles about 300 m apart for an 18 m leg span; LC-39A keeps its
 # liquid oxygen and liquid hydrogen spheres (about 3,400 and 3,200 m3, near 19 m across) on opposite sides of the pad,
 # some 400 m apart (NFPA 55 and DoD 6055.09 separate oxidiser from fuel and both from inhabited buildings); the
-# Vehicle Assembly Building's doors are 139 m tall. This game's Small class runs about 10 to 30 m, its Large class
+# Vehicle Assembly Building's doors are 139 m tall. NFPA 55 asks tens of metres between bulk oxidiser and fuel: a
+# landing field's small stores keep 80 m, a spaceport's 300, a starport's 400 as LC-39A does. This game's Small class runs about 10 to 30 m, its Large class
 # to about 120 m: pads two to three times the craft (40 to 60 m small, 100 to 160 m large), blast aprons 10 to 40 m.
 type starport
   name Starport
@@ -105,7 +106,7 @@ type spaceport
   part tower    building control_tower len 10..14 depth 10..14 h 30..45 cab 8..12 beside apron away taxiway near terminal 20..250 sees pads
   part hangar   building hangar count 2..4 len 80..120 depth 70..110 h 36..50 beside apron away taxiway faces apron gap 6..20
   part fuel     tanks count 3..5 r 6..10 h 10..16 beside pads away taxiway far terminal 300..
-  part oxidiser tanks count 2..4 r 6..10 h 10..16 beside pads away taxiway far fuel 400.. far terminal 400..
+  part oxidiser tanks count 2..4 r 6..10 h 10..16 beside pads away taxiway far fuel 300.. far terminal 400..
   part carpark  surface tarmac   len 100..200 depth 60..120 beside terminal away apron gap 8..20
   part access   road tarmac      w 8..12 from carpark
   part fence    fence            h 2..3 round 60..120
@@ -123,7 +124,7 @@ type landing_field
   part tower    building control_tower len 8..10 depth 8..10 h 15..25 cab 5..7 beside apron away taxiway near terminal 10..120 sees pads
   part hangar   building hangar count 1..2 len 40..60 depth 40..60 h 22..30 beside apron away taxiway faces apron gap 4..10
   part fuel     tanks count 2..3 r 3..5 h 5..8 beside pads away taxiway far terminal 100..
-  part oxidiser tanks count 1..2 r 3..5 h 5..8 beside pads away taxiway far fuel 150.. far terminal 100..
+  part oxidiser tanks count 1..2 r 3..5 h 5..8 beside pads away taxiway far fuel 80.. far terminal 100..
   part carpark  surface gravel   len 30..60 depth 20..40 beside terminal away apron gap 4..10
   part access   road gravel      w 6..8 from carpark
   part fence    fence            h 2..3 round 20..40

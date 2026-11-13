@@ -244,10 +244,10 @@ public static partial class PoiSiting
         var place = new TypedPlace { Sketch = sketch, Turn = best.Turn, X = best.X, Z = best.Z, PadY = best.Pad };
         SketchBox fb = PlaceTypes.Turn(sketch.Footprint, best.Turn);
         // Graded the way a real one is: the whole of it at one level, eased out to the land over as long a run as the
-        // ground at its edge asks for (a gentle bank, never a wall or a pit), up to a third of its length.
+        // ground at its edge asks for (a gentle bank, never a wall or a pit), up to a third of its length and 300 m (Ease).
         // (Never out into a seam's ghost band.)
         double clearX = Math.Min(best.X + fb.X0, width - (best.X + fb.X1)), clearZ = Math.Min(best.Z + fb.Z0, height - (best.Z + fb.Z1));
-        float most = (float)Math.Max(20, Math.Min(Math.Max(120f, fb.Long / 3f), Math.Min(clearX, clearZ) - SeamMargin - Apron)), blend = Math.Min(40f, most);
+        float most = (float)Math.Max(20, Math.Min(Ease(fb), Math.Min(clearX, clearZ) - SeamMargin - Apron)), blend = Math.Min(40f, most);
         for (int pass = 0; pass < 8; pass++)
         {
             // The land round its edge, out across the easing: along every side and round the corners.
@@ -322,16 +322,20 @@ public static partial class PoiSiting
         return wet > 0 ? Reject.Wet : steep > 0 ? Reject.Cliff : rms * 2 > TypedCutFill ? Reject.Deep : Reject.None;
     }
 
-    /// <summary>Whether a spot runs into another place's ground.</summary>
+    /// <summary>The longest a typed place's grading eases out to the land, m: a third of its length, 120 to 300.</summary>
+    static float Ease(SketchBox b) => Math.Clamp(b.Long / 3f, 120f, 300f);
+
+    /// <summary>Whether a spot, with the bank it may be graded out over, runs into another place's ground.</summary>
     static bool Crowded(Sketch sketch, int turn, double cx, double cz, List<PoiSite> others, double width, double height)
     {
         SketchBox b = PlaceTypes.Turn(sketch.Footprint, turn);
+        float ease = Ease(b);
         double mx = cx + (b.X0 + b.X1) / 2, mz = cz + (b.Z0 + b.Z1) / 2;
         foreach (PoiSite o in others)
         {
             TerrainStamp t = o.Whole?.Stamp ?? o.Stamp;
-            if (Math.Abs(Mathx.WrapDelta(o.Center.X - mx, width)) < t.ReachX + b.W / 2 + 60
-                && Math.Abs(Mathx.WrapDelta(o.Center.Z - mz, height)) < t.ReachZ + b.D / 2 + 60) return true;
+            if (Math.Abs(Mathx.WrapDelta(o.Center.X - mx, width)) < t.ReachX + b.W / 2 + ease + 60
+                && Math.Abs(Mathx.WrapDelta(o.Center.Z - mz, height)) < t.ReachZ + b.D / 2 + ease + 60) return true;
         }
         return false;
     }
@@ -371,7 +375,7 @@ public static partial class PoiSiting
         float cut = MathF.Max(sorted[^1] - pad, pad - sorted[0]);
         if (cut > TypedCutFill) return (0, 0, 0, Reject.Deep);
         // Room to grade it out before a seam's ghost band.
-        if (Math.Min(Math.Min(bx0, width - bx1), Math.Min(bz0, height - bz1)) - SeamMargin < Math.Min(cut * 12f + 20f, b.Long / 3f)) return (0, 0, 0, Reject.Seam);
+        if (Math.Min(Math.Min(bx0, width - bx1), Math.Min(bz0, height - bz1)) - SeamMargin < Math.Min(cut * 12f + 20f, Ease(b))) return (0, 0, 0, Reject.Seam);
         return (cut * 3 + Math.Sqrt(h.Average(v => (v - pad) * (v - pad))) * 4, pad, cut, Reject.None);
     }
 
