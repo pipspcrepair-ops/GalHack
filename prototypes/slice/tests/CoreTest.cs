@@ -86,7 +86,7 @@ public partial class CoreTest : Node
         _game.Zone.Weather.Sim.Snap(Weather.Model.WeatherKind.Clear);
         _game.Zone.Wildlife.Frozen = true;
         _site = _play.FlatSpot(_game.Start, 70f, 0.6f, 0.4f, span: 14f);
-        Playthrough.Clearing(_game.Zone, _site, 50f); // room to fly: vessels collide with trunks and crowns
+        GD.Print($"  (a clearing: {Playthrough.Clearing(_game.Zone, _site, 50f)} trees and boulders felled)"); // room to fly: vessels collide with trunks and crowns
         _game.Survivor.PlaceOutside((_site + new Vector3(0f, 1f, 8f)).ToNumerics());
         foreach (int x in _drive.Wait(90)) yield return x;
 
@@ -151,8 +151,15 @@ public partial class CoreTest : Node
         foreach (int x in _drive.Wait(5)) yield return x;
     }
 
-    /// <summary>What may hold a craft up or down: the trees standing within 12 m of it (vessels collide with their trunks and crowns).</summary>
-    string Near(Vessel v) => $"{_game.Zone.Streamer.FloraNear(v.Body.Position.ToGodot(), 12f).Count()} trees within 12 m, at {v.Body.Position.ToGodot()}, {v.Body.Velocity.Length():F1} m/s";
+    /// <summary>What may hold a craft up or down: the trees standing within 12 m of it (vessels collide with their trunks and crowns), and what is under it.</summary>
+    string Near(Vessel v)
+    {
+        Vector3 at = v.Body.Position.ToGodot();
+        var q = PhysicsRayQueryParameters3D.Create(at, at + Vector3.Down * 40f, uint.MaxValue, new Godot.Collections.Array<Rid> { v.Binding.Collider.GetRid() });
+        var hit = _game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(q);
+        string under = hit.Count == 0 ? "nothing" : hit["collider"].AsGodotObject() is CollisionObject3D c ? $"{c.GetPath()} (layer {c.CollisionLayer}) {at.Y - hit["position"].AsVector3().Y:F1} m down" : "?";
+        return $"{_game.Zone.Streamer.FloraNear(at, 12f).Count()} trees within 12 m, under it {under}, at {at}, {v.Body.Velocity.Length():F1} m/s";
+    }
 
     IEnumerable<int> Hold(Key key, int ticks)
     {
@@ -208,7 +215,7 @@ public partial class CoreTest : Node
         GD.Print("-- fitted with hover plates and thrusters, one craft does both --");
         // A fresh craft: the fall above can break anything on the first, legs included.
         _site = _play.FlatSpot(_game.Start, 110f, 2.4f, 0.4f, span: 14f);
-        Playthrough.Clearing(_game.Zone, _site, 50f);
+        GD.Print($"  (a clearing: {Playthrough.Clearing(_game.Zone, _site, 50f)} trees and boulders felled)");
         _game.Survivor.PlaceOutside((_site + new Vector3(0f, 1f, 8f)).ToNumerics());
         foreach (int x in _drive.Wait(60)) yield return x;
         s = CoreCraft.Skiff(Data);
@@ -234,7 +241,7 @@ public partial class CoreTest : Node
         Vector3 to = v.Body.Position.ToGodot();
         float ride = v.Stats.RideHeight;
         Check(new Vector2(to.X - from.X, to.Z - from.Z).Length() > 4f, $"thrusters push it along ({new Vector2(to.X - from.X, to.Z - from.Z).Length():F0} m)");
-        Check(v.Controller.Hover.Grounded, $"riding on its plates ({v.Controller.Hover.Clearance:F2} m clear, rides at {ride:F1})");
+        Check(v.Controller.Hover.Grounded, $"riding on its plates ({v.Controller.Hover.Clearance:F2} m clear, rides at {ride:F1}; {Near(v)})");
         foreach (int x in Hold(Key.Space, 180)) yield return x;
         Check(v.AboveGround < 8f, $"Space lifts it no higher: thrusters don't climb in Hover Mode ({v.AboveGround:F1} m up)");
         foreach (int x in _drive.Wait(90)) yield return x;
