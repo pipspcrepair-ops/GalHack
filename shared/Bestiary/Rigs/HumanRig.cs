@@ -348,6 +348,8 @@ public sealed partial class HumanRig : Rig
             // Reaching for a head, it straightens to bring its face to yours.
             pitch = Mathf.Lerp(pitch, 0.08f, 0.8f * g.Reach);
         }
+        // Bent forward standing (a stoop, work, a crouch, a Husk's hunch), the hips go back to keep the weight over the feet; a run's lean and a blow's are thrown forward on purpose.
+        hip -= fwd * 0.3f * f.Torso * MathF.Sin(Math.Clamp(pitch - 0.26f * run - blowPitch, 0f, 1.2f)) * (1f - g.Sit);
         Basis torso = turn * new Basis(Vector3.Up, twist + squareOff) * new Basis(Vector3.Right, -pitch) * new Basis(Vector3.Back, roll);
         // An archer stands side-on from the feet up (standing; on the move the legs go where the body goes).
         Basis legs = kind == HoldKind.Bow ? turn * new Basis(Vector3.Up, 0.75f * squareOff * (1f - moving)) : turn;

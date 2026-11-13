@@ -179,7 +179,7 @@ public sealed class LeggedRig : Rig
         float bob = MathF.Sin(_gait * MathF.Tau * 2f) * 0.035f * legLen * MathF.Min(1f, speed / walk);
         float breathe = MathF.Sin(c.Age * 1.7f + c.Id) * 0.01f * H;
         float bodyY = groundMid + hip + H * 0.25f + bob + breathe;
-        // A mouth that cannot reach the grass on its neck alone brings the body to it: the front dips (up to half a radian), then the legs fold.
+        // A mouth that cannot reach the grass on its neck alone brings the body to it: it bows about its hind hips (up to half a radian, the rump staying where it was), then the legs fold.
         float grazeDip = 0f;
         if (Graze > 0.01f)
         {
@@ -187,8 +187,9 @@ public sealed class LeggedRig : Rig
             float shortBy = hip + H * (hasNeck ? 0.53f : 0.37f) - (hasNeck ? _neckLen * 0.95f : 0f) - b.HeadSize * 0.6f;
             if (shortBy > 0f)
             {
-                grazeDip = MathF.Asin(MathF.Min(shortBy / (L * 0.42f), 0.48f));
-                bodyY -= Graze * MathF.Min(shortBy - L * 0.42f * MathF.Sin(grazeDip), hip * 0.55f);
+                grazeDip = MathF.Asin(MathF.Min(shortBy / (L * 0.77f), 0.48f));
+                float bow = MathF.Sin(grazeDip);
+                bodyY -= Graze * MathF.Min(L * 0.35f * bow + shortBy - L * 0.77f * bow, hip * 0.55f);
             }
         }
         // (The dead lie on their side: on the body's width, not its height.)
