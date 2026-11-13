@@ -324,6 +324,7 @@ public static class Mesher
                                 f |= FCollides;
                                 if (!BlockInfo.IsTransparent(b.Material)) f |= FOccludes;
                             }
+                            else if (o.Merged && Shapes.FarAsCube(b)) f |= FOccludes;
                             if (BlockInfo.Supports(b.Type) || BlockInfo.IsSlope(b.Type) || b.Type == BlockType.Rubble) f |= FStands;
                             if (Covers(b)) f |= FCover;
                         }
@@ -569,18 +570,21 @@ public static class Mesher
                 else Cube(p, b);
                 return;
             }
+            // From further off a shaped wall, floor or ceiling is drawn as the cube it was cut from (it still collides as itself).
+            bool far = _o.Merged && Shapes.FarAsCube(b), drawn = _o.Drawn && !far;
+            if (far) Mark(p, b, collide: false);
             var chunk = Chunk(p);
-            int boxes = !_o.Drawn ? 0 : _o.Merged ? BoxesWhenMerged(b.Type) : int.MaxValue;
+            int boxes = !drawn ? 0 : _o.Merged ? BoxesWhenMerged(b.Type) : int.MaxValue;
             if (boxes > 0)
             {
                 var shape = Shapes.For(b, p, _g);
                 for (int i = 0; i < shape.Count && i < boxes; i++) AddBox(chunk, p, shape[i], b);
             }
             // A stair is steps up close; from further off, a slope.
-            if (b.Type == BlockType.Ramp || _o.Merged && b.Type == BlockType.Stair || b.Type == BlockType.Chamfer) Ramp(chunk, p, b, draw: _o.Drawn);
+            if (b.Type == BlockType.Ramp || _o.Merged && b.Type == BlockType.Stair || b.Type == BlockType.Chamfer) Ramp(chunk, p, b, draw: drawn);
             else if (b.Type == BlockType.Stair) Ramp(chunk, p, b, draw: false); // drawn as steps, walked as a slope
             else if (b.Type == BlockType.Spike && !_o.Merged) Spike(chunk, p, b);
-            else if (BlockInfo.IsCornerSlope(b.Type) || BlockInfo.IsHung(b.Type)) CornerSlope(chunk, p, b, _o.Drawn);
+            else if (BlockInfo.IsCornerSlope(b.Type) || BlockInfo.IsHung(b.Type)) CornerSlope(chunk, p, b, drawn);
 
             if (_o.Collision && BlockInfo.Collides(b.Type) && !BlockInfo.IsSlope(b.Type) && !BlockInfo.IsCornerSlope(b.Type) && !BlockInfo.IsHung(b.Type))
             {
@@ -636,7 +640,7 @@ public static class Mesher
         static int Key(Rgb c, Surface s, int finish) => 1 + (c.R >> 3 | (c.G >> 3) << 5 | (c.B >> 3) << 10 | (int)s << 15 | (finish & 0xFF) << 18);
 
         /// <summary>A full cube's open faces, as the plain mesher would pick them, into the planes.</summary>
-        void Mark(Int3 p, Block b)
+        void Mark(Int3 p, Block b, bool collide = true)
         {
             int side = _o.ChunkSize;
             Int3 ch = new(FloorDiv(p.X, side), FloorDiv(p.Y, side), FloorDiv(p.Z, side));
@@ -652,7 +656,7 @@ public static class Mesher
                 var nb = _g.Get(n);
                 if (glass ? (!nb.IsAir && nb.Type == BlockType.Cube && (nb.Material == b.Material || !BlockInfo.IsTransparent(nb.Material))) || IsRock(n) && Hides(n) : Hides(n))
                     continue;
-                bool solid = _o.Collision && (!CollidesFull(n) || IsRock(n));
+                bool solid = collide && _o.Collision && (!CollidesFull(n) || IsRock(n));
                 if (!_o.Drawn && !solid) continue;
                 planes ??= _planes.TryGetValue(ch, out Planes got) ? got : _planes[ch] = new Planes();
                 int key = 0;
@@ -1132,9 +1136,10 @@ public static class Mesher
             if (draw)
             {
                 Quad(sLL, sLR, sHR, sHL, 0.97f, slopeCode);                  // the slope
-                Quad(sBR, sBL, sHL, sHR, 0.82f, slopeCode);                  // the tall back
-                TriFace(sBL, sLL, sHL, 0.78f, slopeCode);                    // sides
-                TriFace(sLR, sBR, sHR, 0.78f, slopeCode);
+                // The tall back and the sides, where nothing whole hides them (a chamfer or a cove in a wall is against more wall).
+                if (!Hides(p + b.Facing.Vec())) Quad(sBR, sBL, sHL, sHR, 0.82f, slopeCode);
+                if (!Hides(p + b.Facing.RotateCw(3).Vec())) TriFace(sBL, sLL, sHL, 0.78f, slopeCode);
+                if (!Hides(p + b.Facing.RotateCw(1).Vec())) TriFace(sLR, sBR, sHR, 0.78f, slopeCode);
                 // The underside, for a ramp nothing stands under: an eave or a roof seen from inside (a chamfer's top, under what it hangs from).
                 if (!Hides(p + (hung ? Int3.Up : Int3.Down))) Quad(sBL, sBR, sLR, sLL, 0.62f, FaceCode(p, b, new V3(0, hung ? 1 : -1, 0), false, rs));
             }
@@ -1453,6 +1458,20 @@ public static class Shapes
                 break;
         }
     }
+
+    /// <summary>A shaped wall, floor or ceiling (and a slope cut from one), drawn from further off as the cube it was cut from.</summary>
+    public static bool FarAsCube(Block b) => (BlockInfo.IsShaped(b.Type) && b.Type is not (BlockType.Beam or BlockType.Column or BlockType.Quarter)
+        || b.Type is BlockType.Ramp or BlockType.Corner or BlockType.InvCorner && b.Role is Role.Wall or Role.Floor or Role.Decor) && !BlockInfo.IsTransparent(b.Material);
+
+    /// <summary>Whether a block's face on one side is the whole face of its cell (something can be hung on it, or stand against it).</summary>
+    public static bool FlatToward(Block b, Dir side) => b.Type switch
+    {
+        BlockType.Cube or BlockType.Breakable => true,
+        BlockType.Half => b.Facing == side,
+        BlockType.Ramp => b.Facing == side || side == Dir.Down,
+        BlockType.Chamfer => b.Facing == side || side == Dir.Up,
+        _ => false,
+    };
 
     /// <summary>Whether a shaped block runs on into its neighbour that way, their faces meeting whole (halves side by side, a thin wall up its storey, a beam along its line).</summary>
     public static bool RunsOn(Block a, Block n, Dir d)

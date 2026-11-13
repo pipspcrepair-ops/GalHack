@@ -166,6 +166,7 @@ public static class BlockInfo
     /// <summary>What a block counts as in the shape shares (rule P6): the class of its shape, whatever its role.</summary>
     public static ShapeClass ShapeOf(Block b) => b.Type switch
     {
+        BlockType.Cube when IsTransparent(b.Material) => ShapeClass.Window, // a glass block is a window
         BlockType.Cube or BlockType.Breakable => ShapeClass.Cube,
         BlockType.Half or BlockType.Quarter => ShapeClass.Part,
         BlockType.Partition => ShapeClass.Plate,

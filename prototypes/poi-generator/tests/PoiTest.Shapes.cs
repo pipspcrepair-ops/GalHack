@@ -8,8 +8,8 @@ public partial class PoiTest
 {
     /// <summary>
     /// The manner and kind a place's shape shares are judged by (data/references.txt "shapes"): high tech (and alien)
-    /// chamfers, industry rounder; low and mid tech pitch the roofs of houses, farms and settlements, timber mines, and
-    /// build the rest flat-roofed.
+    /// chamfers, industry rounder; low and mid tech pitch the roofs of houses, sheds and farms, timber mines, and build
+    /// the rest flat-roofed (a survivors' settlement's shacks and a farm's works among them).
     /// </summary>
     static string ShapeKind(PoiInstance inst)
     {
@@ -17,13 +17,14 @@ public partial class PoiTest
         bool Any(params string[] t) => t.Any(tags.Contains);
         if (Shaping.High(inst)) return Any("industry", "utility", "machine", "power") ? "high industry" : "high base";
         if (Any("mine", "ore")) return "low mine";
-        return Any("house", "farm", "farmstead", "settlement", "shed", "homestead") ? "low pitched" : "low flat";
+        return Any("house", "farm", "farmstead", "shed") && !Any("industry") ? "low pitched" : "low flat";
     }
 
     /// <summary>
     /// A place's shapes by class into <paramref name="by"/>, over the blocks it shows: its structure (and stairs) with a
-    /// face to the air or to what doesn't fill its cell. Buried fill (the core of a thick wall, a slab under a slab) is
-    /// left out, as the games' own tallies leave out rock. Returns how many were counted.
+    /// face to the air or to what doesn't fill its cell. Buried fill (the core of a thick wall, a slab under a slab) and
+    /// the made ground (a yard's or a pad's paving, open only to the sky) are left out, as the games' own tallies leave
+    /// out rock and terrain; so are lamps, as devices. Returns how many were counted.
     /// </summary>
     static long CountShapes(PoiInstance inst, long[] by)
     {
@@ -38,7 +39,9 @@ public partial class PoiTest
         long seen = 0;
         foreach (var (c, b) in g.Blocks())
         {
-            if (!BlockInfo.IsStructure(b.Role) && b.Type != BlockType.Stair || BlockInfo.IsFinish(b.Type) || !Dirs.All.Any(d => Open(c + d.Vec()))) continue;
+            if (!BlockInfo.IsStructure(b.Role) && b.Type != BlockType.Stair || b.Role == Role.Light || BlockInfo.IsFinish(b.Type)) continue;
+            var open = Dirs.All.Where(d => Open(c + d.Vec())).ToList();
+            if (open.Count == 0 || c.Y <= Assembler.GroundY && open.Count == 1 && open[0] == Dir.Up && !Enumerable.Range(1, 16).Any(k => BlockInfo.Collides(g.Get(c + Int3.Up * k).Type))) continue;
             by[(int)BlockInfo.ShapeOf(b)]++;
             seen++;
         }

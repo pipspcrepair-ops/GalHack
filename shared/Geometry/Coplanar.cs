@@ -191,7 +191,7 @@ public static class Coplanar
         }
 
         List<Pair> pairs;
-        if (n < ParallelFrom) pairs = Try(0, buckets);
+        if (n < ParallelFrom || buckets < 2) pairs = Try(0, buckets);
         else
         {
             var parts = new System.Collections.Concurrent.ConcurrentBag<List<Pair>>();

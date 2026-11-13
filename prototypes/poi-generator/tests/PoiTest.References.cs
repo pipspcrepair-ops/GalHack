@@ -70,7 +70,7 @@ public partial class PoiTest
         var tallies = new Dictionary<TechLevel, TechTally>();
         var shapes = new Dictionary<string, (int Places, long Seen, long[] By)>();
         foreach (FamilyDef f in _lib.Families.Where(f => !f.Tags.Contains("city") && !f.Space))
-            for (int i = 0; i < (f.Tags.Contains("grand") ? 1 : 2); i++)
+            for (int i = 0; i < (f.Tags.Contains("grand") ? 2 : 3); i++)
             {
                 TechLevel tech = f.Techs.Count > 0 ? WorldProfile.Parse(f.Techs[rand.Next(f.Techs.Count)]) : (TechLevel)rand.Next(3);
                 PoiInstance inst;
@@ -125,7 +125,6 @@ public partial class PoiTest
         Check(spansOk, "rooms are at least 3 m across at their narrowest, 9 in 10 at every tech level (G4)");
         Check(shareOk, "corridors take 5 to 45% of the floor at every tech level (G6)");
 
-        foreach (var kv in Shaping.Why.OrderByDescending(k => k.Value).Take(45)) GD.Print($"      why {kv.Key} {kv.Value}");
         // Shape shares (G9) by manner and kind, judged where enough places of a kind were drawn.
         var refs = References.Load();
         var off = new List<string>();

@@ -122,6 +122,8 @@ public sealed class PoiInstance
     public CellMask Protected = null!;
     public bool HasCore;
     public Int3 CoreCell;
+    /// <summary>The armoured glass round the core in its vault, if it stands in a case (empty if not).</summary>
+    public List<Int3> CoreCase = new();
     public List<Int3> CriticalPath = new();
     public List<LootCache> Caches = new();
     public List<TerminalLog> Terminals = new();
@@ -310,7 +312,8 @@ public static class PoiFactory
         if (!nav.Standable(inst.Layout.EntranceCell)) return false;
         var reach = nav.Reachable(inst.Layout.EntranceCell);
         if (inst.Caches.Any(c => !c.Secret && nav.AccessCell(c.Cell, reach) is not Int3)) return false;
-        return !inst.HasCore || nav.AccessCell(inst.CoreCell, reach) is Int3;
+        // A core in a glass case is reached by breaking the case: some pane of it can be walked up to.
+        return !inst.HasCore || nav.AccessCell(inst.CoreCell, reach) is Int3 || inst.CoreCase.Any(c => nav.AccessCell(c, reach) is Int3);
     }
 
     static PoiInstance SpawnOnce(PoiLibrary lib, Layout layout, PoiState state, ulong spawnSeed, WorldProfile? world, OccupancyRoll? occupancy = null)
@@ -407,6 +410,22 @@ public static class Fixtures
             Int3 core = coreSlot?.Cell ?? FreeCell(inst, coreModule, rng);
             g.Set(core, new Block(BlockType.Core, Material.Lumen, CoreColor, Role.Core));
             inst.CoreCell = core;
+            // In a core vault, one in two cores stands in a case of armoured glass to its ceiling: seen from the whole
+            // room, reached only by breaking through (never walled in where it can't be seen, never locked: owner, 13 Nov).
+            if (coreModule >= 0 && layout.Modules[coreModule].Purpose == "core-vault" && rng.Chance(0.5f))
+            {
+                var ring = new List<Int3>();
+                for (int y = 0; y <= 2; y++)
+                    for (int z = -1; z <= 1; z++)
+                        for (int x = -1; x <= 1; x++)
+                            if (x != 0 || z != 0 || y == 2) ring.Add(core + new Int3(x, y, z));
+                if (ring.All(c => g.Get(c).IsAir && layout.Occupied[c]) && ring.Where(c => c.Y == core.Y).All(c => Settle.Holds(g, inst.Nav(), c + Int3.Down)))
+                {
+                    var glass = new Block(BlockType.Cube, Material.Glass, new Rgb(0xa8, 0xdc, 0xe8), Role.Window);
+                    foreach (Int3 c in ring) g.Set(c, glass);
+                    inst.CoreCase = ring;
+                }
+            }
         }
 
         // Loot: every slot in the vault and every planned slot; about half of a kit's others.

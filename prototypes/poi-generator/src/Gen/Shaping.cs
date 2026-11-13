@@ -11,11 +11,12 @@ namespace PoiGenerator.Gen;
 /// a sign a wall stays plain), so no piece is left standing off a wall; and a shape keeps whole the face the room or
 /// the next cell sees where that face was a wall, so nothing shows through it.
 /// <list type="bullet">
-/// <item>Low and mid tech build with part cubes, thin walls and posts: facades in panels set back between pilasters
-/// over a plinth, a string course at every floor; coffered ceilings; thin walls between rooms; posts in big halls.</item>
+/// <item>Low and mid tech build with part cubes, thin walls and posts: facades in panels set back between pilasters, a
+/// string course at every floor and a cornice under the roof's edge; walls with more behind them coved and panelled;
+/// joists across the ceilings with beams under them; thin walls between rooms; posts in big halls; timbered mines.</item>
 /// <item>High tech chamfers: every storey of a facade with a sloped foot and a chamfered head, its corners turned with
 /// corner slopes; every room's walls coved at the ceiling and cut back at the floor, the inner corners turned the same;
-/// round columns in big halls; fewer coffers.</item>
+/// ceilings folded in V-bays between ribs; round columns in big halls.</item>
 /// <item>Every roof's edge and wall top is sloped (a coping, or a chamfer), its corners turned.</item>
 /// </list>
 /// </summary>
@@ -25,10 +26,12 @@ public static class Shaping
     public static bool High(PoiInstance inst) =>
         (inst.Tech ?? inst.Layout.Tech ?? TechLevel.Mid) == TechLevel.High || (inst.Layout.Family.Style?.StartsWith("alien", System.StringComparison.Ordinal) ?? false);
 
-    public static readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> Why = new();
-    static void W(string k) => Why.AddOrUpdate(k, 1, (_, v) => v + 1);
+    /// <summary>Off for a measurement against the plain cubes (tests).</summary>
+    public static bool Enabled = true;
+
     public static void Apply(PoiInstance inst)
     {
+        if (!Enabled) return;
         Layout layout = inst.Layout;
         BlockGrid g = inst.Blocks;
         CellMask occ = layout.Occupied;
@@ -51,41 +54,46 @@ public static class Shaping
         bool Solid(Int3 q) => BlockInfo.IsFullCube(g.Get(q).Type) || Rock(q);
         static bool Plain(Block b) => b.Type == BlockType.Cube && b.Role is Role.Wall or Role.Floor or Role.Roof or Role.Decor
             && !BlockInfo.IsTransparent(b.Material) && !BlockInfo.IsEmissive(b.Material);
-        // Nothing against it: every cell round it is air, rock, building or litter on the floor (a lamp, a door, a pane, a piece or a sign keeps it as it is).
-        bool Quiet(Int3 c)
+        // Nothing against it: each cell beside it, and over and under each open cell beside it, is air, rock, building or
+        // litter on the floor (a lamp, a door, a pane, a piece or a sign by it keeps it as it is).
+        bool Calm(Int3 q)
         {
-            for (int y = -1; y <= 1; y++)
-                for (int z = -1; z <= 1; z++)
-                    for (int x = -1; x <= 1; x++)
-                    {
-                        Block n = g.Get(c + new Int3(x, y, z));
-                        if (n.IsAir || BlockInfo.IsFinish(n.Type)) continue;
-                        if (n.Role is Role.Wall or Role.Floor or Role.Roof or Role.Decor or Role.Rock && n.Type is BlockType.Cube or BlockType.Ramp or BlockType.Corner or BlockType.InvCorner or BlockType.Lattice
-                            && !BlockInfo.IsEmissive(n.Material)) continue;
-                        if (n.Role == Role.Debris && n.Type is BlockType.Scatter or BlockType.Scorch or BlockType.Ash or BlockType.Puddle or BlockType.Plant or BlockType.Remains or BlockType.Rubble) continue;
-                        return false;
-                    }
-            return true;
+            Block n = g.Get(q);
+            return n.IsAir || BlockInfo.IsFinish(n.Type)
+                || n.Role is Role.Wall or Role.Floor or Role.Roof or Role.Decor or Role.Rock && n.Type is BlockType.Cube or BlockType.Ramp or BlockType.Corner or BlockType.InvCorner or BlockType.Lattice && !BlockInfo.IsEmissive(n.Material)
+                || n.Role == Role.Debris && n.Type is BlockType.Scatter or BlockType.Scorch or BlockType.Ash or BlockType.Puddle or BlockType.Plant or BlockType.Remains or BlockType.Rubble;
         }
+        bool Quiet(Int3 c) => Dirs.All.All(d => Calm(c + d.Vec()) && (!d.IsHorizontal() || !Air(c + d.Vec()) || Calm(c + d.Vec() + Int3.Up) && Calm(c + d.Vec() + Int3.Down)));
         // The facing a corner piece takes for its raised (or, inner, its low) corner between two ways.
+        static int M(int v, int m) => ((v % m) + m) % m;
         static Dir CornerFacing(Dir a, Dir b) => Dirs.Horizontal.First(f => f == a && f.RotateCw(3) == b || f == b && f.RotateCw(3) == a);
 
+        var lamps = inst.Lights.Select(l => l.Cell).ToHashSet();
+        // Where anyone walks: a top on the way (a tank's rim to its ladder, a roof to its hatch) is never shaped.
+        NavGrid nav = inst.Nav();
+        var walked = nav.Standable(layout.EntranceCell) ? nav.Reachable(layout.EntranceCell) : new HashSet<Int3>();
+        bool NearDoor(Int3 q)
+        {
+            for (int y = -3; y <= 0; y++) for (int z = -2; z <= 2; z++) for (int x = -2; x <= 2; x++)
+                if (g.Get(q + new Int3(x, y, z)).Type is BlockType.Door or BlockType.SealedDoor) return true;
+            return false;
+        }
         var shaped = new Dictionary<Int3, Block>();
         var coves = new Dictionary<Int3, (Dir Into, bool Top)>();
         void Put(Int3 c, Block b, BlockType t, Dir f) => shaped[c] = b with { Type = t, Facing = f };
 
         foreach (var (c, b) in g.Blocks().ToList())
         {
-            if (!Plain(b)) { W("notplain " + b.Type + " " + b.Role); continue; }
-            if (!Quiet(c)) { W("busy"); continue; }
-            if (false) W("cand " + (high ? "H " : "L ") + string.Join("", Dirs.Horizontal.Select(d => Outside(c + d.Vec()) ? "o" : Room(c + d.Vec()) ? "r" : Solid(c + d.Vec()) ? "s" : "x")) + (Outside(c + Int3.Up) ? " Uo" : Room(c + Int3.Up) ? " Ur" : " Us") + (Room(c + Int3.Down) ? " Dr" : Outside(c + Int3.Down) ? " Do" : " Ds"));
+            if (!Plain(b) || !Dirs.All.Any(d => Air(c + d.Vec()) && !Rock(c + d.Vec())) || !Quiet(c)) continue;
             var outs = Dirs.Horizontal.Where(d => Outside(c + d.Vec())).ToList();
             var ins = Dirs.Horizontal.Where(d => Room(c + d.Vec())).ToList();
             bool roomUp = Room(c + Int3.Up), roomDown = Room(c + Int3.Down);
             bool square = outs.Count == 2 && outs[0] != outs[1].Opposite();
+            // Only under building or rock, or a roof's or a wall's top edge: a top anything stands on, or can, stays whole.
+            if (!Solid(c + Int3.Up) && !(outs.Count > 0 && Outside(c + Int3.Up)) || walked.Contains(c + Int3.Up)) continue;
             if (outs.Count > 0 && (c.Y >= 0 || space))
             {
-                if (ins.Any(d => outs.Contains(d.Opposite()) == false) || roomDown) { W("fac skip ins/roomDown " + ins.Count + " " + roomDown); continue; }
+                if (ins.Any(d => outs.Contains(d.Opposite()) == false) || roomDown) continue;
                 if (Outside(c + Int3.Up))
                 {
                     // A roof's edge or a wall's top: a coping or a chamfer sloping up from the edge, its corners turned.
@@ -94,12 +102,13 @@ public static class Shaping
                     else if (square) Put(c, b, BlockType.Corner, CornerFacing(outs[0].Opposite(), outs[1].Opposite()));
                     continue;
                 }
-                if (outs.Count > 2 || outs.Count == 2 && !square) { W("fac skip outs " + outs.Count + (Outside(c+Int3.Up) ? " up" : "")); continue; }
+                if (outs.Count > 2 || outs.Count == 2 && !square) continue;
                 Dir d = outs[0];
                 // A facade cell (not a top), and a floor's slab meeting the facade there: the courses of each storey.
                 bool Face(Int3 q) => BlockInfo.IsFullCube(g.Get(q).Type) && Outside(q + d.Vec()) && !Outside(q + Int3.Up);
-                bool Slab(Int3 q) => Solid(q - d.Vec()) && Room(q - d.Vec() + Int3.Up);
-                if (Slab(c)) { W("fac slab"); continue; }
+                // (A storey's slab where one meets the facade, and every sixth course up a tall blank wall.)
+                bool Slab(Int3 q) => Solid(q - d.Vec()) && Room(q - d.Vec() + Int3.Up) || high && M(q.Y, 6) == 5;
+                if (Slab(c)) continue;
                 bool foot = !Face(c + Int3.Down) || Slab(c + Int3.Down), head = !Face(c + Int3.Up) || Slab(c + Int3.Up);
                 if (high)
                 {
@@ -107,9 +116,10 @@ public static class Shaping
                     if (square) Put(c, b, foot ? BlockType.Corner : BlockType.ChamferCorner, CornerFacing(outs[0].Opposite(), outs[1].Opposite()));
                     else Put(c, b, foot ? BlockType.Ramp : BlockType.Chamfer, d.Opposite());
                 }
-                else if (!square && Face(c + Int3.Down) && Face(c + Int3.Up) && (d is Dir.North or Dir.South ? c.X : c.Z) % 4 != 0)
-                    Put(c, b, BlockType.Half, d.Opposite()); // a panel set back between pilasters over the plinth, its back the room's wall
-                else W("fac low keep sq" + square + " dn" + Face(c + Int3.Down) + " up" + Face(c + Int3.Up) + " under " + g.Get(c+Int3.Down).Type + "/" + g.Get(c+Int3.Down).Role + " over " + g.Get(c+Int3.Up).Type+ "/" + g.Get(c+Int3.Up).Role);
+                else if (!Face(c + Int3.Up) && Face(c + Int3.Down)) // a cornice under the roof's edge
+                    Put(c, b, square ? BlockType.ChamferCorner : BlockType.Chamfer, square ? CornerFacing(outs[0].Opposite(), outs[1].Opposite()) : d.Opposite());
+                else if (!square && M(d is Dir.North or Dir.South ? c.X : c.Z, 8) != 0)
+                    Put(c, b, BlockType.Half, d.Opposite()); // a panel set back between pilasters, its back the room's wall
                 continue;
             }
             if (outs.Count > 0) continue;
@@ -120,25 +130,29 @@ public static class Shaping
             }
             if (ins.Count == 1 && !roomUp && !roomDown)
             {
-                // A room's wall with more behind it: high tech coves it at the ceiling and cuts it back at the floor; low tech
-                // sets it back in panels between pilasters over a skirting.
+                // A room's wall with more behind it: coved at the ceiling, high tech cutting it back at the floor too, and
+                // set back in panels between pilasters between.
                 Dir d = ins[0];
                 if (!Solid(c - d.Vec())) continue;
-                bool top = !Room(c + d.Vec() + Int3.Up) && Solid(c + Int3.Up), foot = !Room(c + d.Vec() + Int3.Down) && Solid(c + Int3.Down);
-                if (!high || !top && !foot)
+                bool top = !Room(c + d.Vec() + Int3.Up) && Solid(c + Int3.Up), foot = !Room(c + d.Vec() + Int3.Down) && Solid(c + Int3.Down) && high;
+                if (top == foot)
                 {
-                    if (!foot && (d is Dir.North or Dir.South ? c.X : c.Z) % 4 != 0) Put(c, b, BlockType.Half, d.Opposite());
+                    if (M(d is Dir.North or Dir.South ? c.X : c.Z, 8) != 0) Put(c, b, BlockType.Half, d.Opposite());
                     continue;
                 }
                 Put(c, b, top ? BlockType.Ramp : BlockType.Chamfer, d.Opposite());
                 coves[c] = (d, top);
                 continue;
             }
-            if (ins.Count == 0 && (roomDown || Outside(c + Int3.Down) && c.Y >= 0) && !roomUp && !Outside(c + Int3.Up) == !Air(c + Int3.Up))
+            if (ins.Count == 0 && (roomDown || Outside(c + Int3.Down) && c.Y >= 0) && g.Get(c + Int3.Up).Role != Role.Wall)
             {
-                // A ceiling or a soffit: low tech lays joists across it, every third row, high tech coffers it between beams.
-                static int M(int v, int m) => ((v % m) + m) % m;
-                if (high ? M(c.X, 4) is 1 or 2 && M(c.Z, 4) is 1 or 2 : M(c.X, 3) != 0) Put(c, b, BlockType.Half, Dir.Up);
+                // A ceiling or a soffit (not under a wall: a wall stands on a whole block): low tech lays joists across it,
+                // every fourth row; high tech folds it in V-bays between ribs, two hung slopes to a bay.
+                if (high && M(c.X, 4) != 0 && M(c.Z, 4) is 1 or 2) Put(c, b, BlockType.Chamfer, M(c.Z, 4) == 1 ? Dir.North : Dir.South); // a folded bay between ribs
+                else if (!high && M(c.X, 4) != 0) Put(c, b, BlockType.Half, Dir.Up);
+                // Under a low-tech room's joist a beam shows, over a room at least 3 m clear, clear of its lamps and of the head of any door near it.
+                else if (!high && roomDown && Enumerable.Range(1, 3).All(k => Air(c + Int3.Down * k)) && !lamps.Contains(c + Int3.Down) && !NearDoor(c + Int3.Down))
+                    shaped[c + Int3.Down] = b with { Type = BlockType.Beam, Facing = Dir.North, Role = Role.Decor };
             }
         }
 
@@ -152,7 +166,7 @@ public static class Shaping
                 Put(e, g.Get(e), top ? BlockType.InvCorner : BlockType.ChamferInvCorner, CornerFacing(into.Opposite(), along));
             }
 
-        // Posts (or round columns) on a 6 m grid in a big hall, floor to ceiling, each with clear floor all round it.
+        // Posts (or round columns) on a 6 m grid in a big hall, floor to ceiling, each with 2 m of clear floor all round it.
         foreach (PlacedModule m in layout.Modules)
         {
             if (m.Kind is not (ModuleKind.Room or ModuleKind.Hall)) continue;
@@ -162,32 +176,33 @@ public static class Shaping
             {
                 if ((f.X - m.Min.X) % 6 != 3 || (f.Z - m.Min.Z) % 6 != 3) continue;
                 int h = 0;
-                while (h < 12 && Air(f + Int3.Up * h) && Enumerable.Range(-1, 3).All(x => Enumerable.Range(-1, 3).All(z => floor.Contains(f with { X = f.X + x, Z = f.Z + z }) && Air(f + new Int3(x, h, z))))) h++;
+                while (h < 12 && Air(f + Int3.Up * h) && Enumerable.Range(-2, 5).All(x => Enumerable.Range(-2, 5).All(z => floor.Contains(f with { X = f.X + x, Z = f.Z + z }) && Air(f + new Int3(x, h, z))))) h++;
                 Block over = g.Get(f + Int3.Up * h);
                 if (h < 2 || !Plain(over)) continue;
-                for (int y = 0; y < h; y++) shaped[f + Int3.Up * y] = over with { Type = high ? BlockType.Column : BlockType.Pillar, Role = Role.Wall, Facing = Dir.Up };
+                for (int y = 0; y < h; y++) shaped[f + Int3.Up * y] = over with { Type = high ? BlockType.Column : BlockType.Pillar, Role = Role.Decor, Facing = Dir.Up };
             }
         }
 
-        foreach (var (c, b) in shaped) g.Set(c, b);
-        foreach (var (c, b) in g.Blocks().ToList())
-            if (Plain(b) && Dirs.All.Any(d => Air(c + d.Vec()) && !Rock(c + d.Vec())))
-            {
-                string pat = string.Join("", Dirs.Horizontal.Select(d => Outside(c + d.Vec()) ? "o" : Room(c + d.Vec()) ? "r" : Solid(c + d.Vec()) ? "s" : "x"));
-                string kind = Room(c + Int3.Up) ? "floor" : pat.Contains('o') ? "facade" : pat.Contains('r') ? "inner" : Outside(c + Int3.Up) ? (c.Y < 0 ? "ground" : "roof") : Room(c + Int3.Down) || Outside(c + Int3.Down) ? "ceiling" : "other " + pat;
-                string why = "";
-                if (!Quiet(c))
-                    for (int y = -1; y <= 1 && why == ""; y++) for (int z = -1; z <= 1 && why == ""; z++) for (int x = -1; x <= 1 && why == ""; x++)
+        // A mine is timbered: every third metre along a drift wide enough, a post against each wall, floor to roof, and a
+        // cap beam across between them under the roof.
+        if (layout.Family.Tags.Contains("mine") || layout.Family.Tags.Contains("ore"))
+            foreach (PlacedModule m in layout.Modules.Where(m => m.Kind == ModuleKind.Corridor && m.Max.Y < 0))
+                foreach (Int3 p in m.Cells.Where(c => c.Y == m.Min.Y))
+                    foreach (Dir d in new[] { Dir.East, Dir.South })
                     {
-                        Block n = g.Get(c + new Int3(x, y, z));
-                        if (n.IsAir || BlockInfo.IsFinish(n.Type)) continue;
-                        if (n.Role is Role.Wall or Role.Floor or Role.Roof or Role.Decor or Role.Rock && n.Type is BlockType.Cube or BlockType.Ramp or BlockType.Corner or BlockType.InvCorner or BlockType.Lattice && !BlockInfo.IsEmissive(n.Material)) continue;
-                        if (n.Role == Role.Debris && n.Type is BlockType.Scatter or BlockType.Scorch or BlockType.Ash or BlockType.Puddle or BlockType.Plant or BlockType.Remains or BlockType.Rubble) continue;
-                        if (BlockInfo.IsShaped(n.Type) || BlockInfo.IsFullCube(n.Type) && n.Role is Role.Wall or Role.Floor or Role.Roof) continue;
-                        why = $" by {n.Type}/{n.Role}";
+                        // From the wall on one side across to the other, at a set's spacing along the drift.
+                        if (M(d == Dir.East ? p.Z : p.X, 3) != 0 || !Solid(p - d.Vec()) || !Room(p) || !Solid(p + Int3.Down)) continue;
+                        int w = 0;
+                        while (w < 9 && Room(p + d.Vec() * w) && Solid(p + d.Vec() * w + Int3.Down)) w++;
+                        if (w < 4 || w > 8 || !Solid(p + d.Vec() * w)) continue;
+                        int h = 0;
+                        while (h < 8 && Enumerable.Range(0, w).All(k => Air(p + d.Vec() * k + Int3.Up * h) && !shaped.ContainsKey(p + d.Vec() * k + Int3.Up * h))) h++;
+                        if (h < 3 || Enumerable.Range(0, w).Any(k => !Solid(p + d.Vec() * k + Int3.Up * h))) continue;
+                        var timber = new Block(BlockType.Pillar, Material.Timber, new Rgb(0x6a, 0x4c, 0x30), Role.Decor, Dir.Up);
+                        for (int y = 0; y < h; y++) { shaped[p + Int3.Up * y] = timber; shaped[p + d.Vec() * (w - 1) + Int3.Up * y] = timber; }
+                        for (int k = 1; k < w - 1; k++) shaped[p + d.Vec() * k + Int3.Up * (h - 1)] = timber with { Type = BlockType.Beam, Facing = d };
                     }
-                W("left " + (high ? "H " : "L ") + kind + why);
-            }
-        foreach (var (c, b) in g.Blocks()) if (b.Type == BlockType.Cube && !Plain(b) && BlockInfo.IsStructure(b.Role) && Dirs.All.Any(d => Air(c + d.Vec()) && !Rock(c + d.Vec()))) W("nonplain " + (high ? "H " : "L ") + b.Role + " " + b.Material);
+
+        foreach (var (c, b) in shaped) g.Set(c, b);
     }
 }
