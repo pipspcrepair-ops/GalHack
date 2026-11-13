@@ -357,6 +357,13 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
         WeatherData data = Zone.Data.Weather;
         string archetype = ArchetypeFor(planet.Spec);
         World = WorldOf(data, planet);
+        if (planet.Sky.Density < NoAir)
+        {
+            // A body with no air (a vacuum moon) has no weather at all: no wind, cloud, rain or storm.
+            Bridge = null;
+            Zone.Physics.ForceProviders.Clear();
+            return;
+        }
         WeatherSim sim = null;
         for (ulong k = 0; k < 1024; k++)
         {
@@ -381,6 +388,9 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
         Zone.Physics.ForceProviders.Clear();
         Zone.Physics.ForceProviders.Add(Bridge);
     }
+
+    /// <summary>Under this density a world's sky has no air to speak of, and no weather.</summary>
+    public const float NoAir = 0.05f;
 
     /// <summary>The drawn funnel of a tornado (tests), or null.</summary>
     public TornadoFx FunnelOf(int id) => _tornadoes.TryGetValue(id, out TornadoFx fx) ? fx : null;

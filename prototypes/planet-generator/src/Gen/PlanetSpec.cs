@@ -41,6 +41,21 @@ public sealed record PlanetSpec(ulong Seed, Archetype Archetype, int Variant, Mo
 
     public bool Has(Modifier modifier) => (Modifiers & modifier) != 0;
 
+    /// <summary>The width every start world has, km: gravity is measured against it.</summary>
+    public const int StartWidthKm = 16;
+
+    /// <summary>The gravity ratio from which a world is dangerous (Empyrion's high-gravity worlds pull 25 or more against its usual 5 to 12): 32 km worlds and up.</summary>
+    public const float DangerousGravity = 1.8f;
+
+    /// <summary>
+    /// Surface gravity against a start world's, from the world's size alone (the same rock all through: a
+    /// body pulls in step with its radius, so an 8 km world half as hard and a 64 km one four times).
+    /// </summary>
+    public float GravityScale => WidthKm / (float)StartWidthKm;
+
+    /// <summary>A dangerous high-gravity world: the ones that hold hyperspace fuel.</summary>
+    public bool HighGravity => GravityScale >= DangerousGravity;
+
     /// <summary>
     /// Whether natural impact craters stay on a kind of world: barren rock with no air or water to wear
     /// them away (the generator's airless bodies are cratered arid, ice and lava worlds). A living world

@@ -57,6 +57,9 @@ public static class StructureBridge
     /// <summary>A cell's centre in the structure's frame, metres. Cell (0,0,0) is centred on the origin.</summary>
     public static N.Vector3 CellCenter(Structure s, Int3 p) => p.ToVector3() * s.Grid.CellSize;
 
+    /// <summary>A block's centre in the structure's frame, metres: the middle of all its cells when it spans several.</summary>
+    public static N.Vector3 BlockCenter(Structure s, Int3 anchor, in Block b) => s.CentreOf(anchor, b) * s.Grid.CellSize;
+
     /// <summary>The cell a structure-frame point falls in.</summary>
     public static Int3 CellAt(Structure s, N.Vector3 local) => Int3.Round(local / s.Grid.CellSize);
 
@@ -67,8 +70,8 @@ public static class StructureBridge
         var containers = new List<N.Vector3>();
         foreach (var (p, b) in s.Blocks())
         {
-            points.Add((CellCenter(s, p), Units.Kilograms(s.StatsOf(b).Mass)));
-            if (s.TypeOf(b).IsContainer) containers.Add(CellCenter(s, p));
+            points.Add((MassPoint(s, p, b), Units.Kilograms(s.StatsOf(b).Mass)));
+            if (s.TypeOf(b).IsContainer) containers.Add(BlockCenter(s, p, b));
         }
         float cargo = Units.Kilograms((float)(s.CargoSu * s.Catalogue.CargoMassPerSu));
         if (cargo > 0f && containers.Count > 0)
@@ -76,21 +79,45 @@ public static class StructureBridge
         return MassProperties.Of(points);
     }
 
+    /// <summary>
+    /// Where a block's own mass sits: a full cell's middle, but a fitting (a lamp plate on a wall's face, an open door's frame) is
+    /// where its parts are, so a lamp cut off lies as the thin plate it is and its centre of mass is inside it, not a cell's width away.
+    /// </summary>
+    static N.Vector3 MassPoint(Structure s, Int3 p, Block b)
+    {
+        BlockType t = s.TypeOf(b);
+        N.Vector3 centre = BlockCenter(s, p, b);
+        if (t.IsArmor || (s.IsSolid(b) && t.Collide != Collide.Parts) || t.Parts == null || t.Parts.Count == 0) return centre;
+        float volume = 0f;
+        N.Vector3 sum = N.Vector3.Zero;
+        foreach (Part part in t.Parts)
+        {
+            N.Vector3 size = part.Max - part.Min;
+            float v = MathF.Max(1e-6f, MathF.Abs(size.X * size.Y * size.Z));
+            sum += (part.Min + part.Max) * 0.5f * v;
+            volume += v;
+        }
+        N.Vector3 local = sum / volume;
+        return centre + Orientations.Matrix(b.Rot).Apply(local * t.Size.ToVector3()) * s.Grid.CellSize; // parts span the whole footprint
+    }
+
     /// <summary>Colliders for some of a structure's chunks (all of them when <paramref name="chunks"/> is null).</summary>
-    public static List<ChunkColliders> Colliders(Structure s, IEnumerable<Int3> chunks = null)
+    public static List<ChunkColliders> Colliders(Structure s, IEnumerable<Int3> chunks = null, bool fittings = false)
     {
         var list = new List<ChunkColliders>();
         foreach (Int3 c in chunks ?? s.Chunks.Keys)
-            list.Add(ChunkColliders(s, c));
+            list.Add(ChunkColliders(s, c, fittings));
         return list;
     }
 
     /// <summary>
     /// One chunk: full cells (cubes, cell-colliding components, closed doors) merged into boxes;
     /// one convex hull per sloped block; part boxes for components that collide by their parts.
-    /// Open doors, ladders and lights don't collide.
+    /// Open doors, ladders and lights don't collide, while they hang on something you walk through: a body that is loose
+    /// (a wreck, cut off and free) asks for <paramref name="fittings"/>, and every part of them then collides in its real shape,
+    /// so a lamp cut off a wall lies on the ground instead of falling through it.
     /// </summary>
-    public static ChunkColliders ChunkColliders(Structure s, Int3 chunk)
+    public static ChunkColliders ChunkColliders(Structure s, Int3 chunk, bool fittings = false)
     {
         var result = new ChunkColliders { Chunk = new ChunkKey(chunk.X, chunk.Y, chunk.Z) };
         float cell = s.Grid.CellSize;
@@ -102,11 +129,23 @@ public static class StructureBridge
             for (int i = 0; i < Chunk.Volume; i++)
             {
                 Block b = data.Cells[i];
-                if (b.IsEmpty || !s.IsSolid(b)) continue;
+                if (b.IsEmpty) continue;
                 var local = new Int3(i & Chunk.Mask, (i >> Chunk.Bits) & Chunk.Mask, i >> (2 * Chunk.Bits));
                 Int3 p = origin + local;
                 BlockType t = s.TypeOf(b);
                 Mat3 rot = Orientations.Matrix(b.Rot);
+                if (!s.IsSolid(b))
+                {
+                    if (!fittings || t.IsArmor || t.Parts == null) continue;
+                    foreach (Part part in t.Parts)
+                    {
+                        if (part.ClosedOnly && b.Open) continue;
+                        N.Vector3 a = rot.Apply(part.Min), z = rot.Apply(part.Max);
+                        N.Vector3 min = N.Vector3.Min(a, z), max = N.Vector3.Max(a, z);
+                        result.Boxes.Add(new BoxCollider((p.ToVector3() + (min + max) * 0.5f) * cell, (max - min) * cell));
+                    }
+                    continue;
+                }
                 if (t.IsArmor && !s.ShapeOf(b).IsCube)
                 {
                     // Sloped blocks: one convex hull per straight run of the same shape and turn,
@@ -133,10 +172,12 @@ public static class StructureBridge
                 }
                 else if (!t.IsArmor && t.Collide == Collide.Parts)
                 {
+                    // A block spanning several cells: its parts, stretched over all of them, from the anchor only.
+                    if (b.IsFiller) continue;
                     foreach (Part part in t.Parts)
                     {
                         if (part.ClosedOnly && b.Open) continue;
-                        N.Vector3 a = rot.Apply(part.Min), z = rot.Apply(part.Max);
+                        N.Vector3 a = rot.Apply(Footprint.PartPoint(t, part.Min)), z = rot.Apply(Footprint.PartPoint(t, part.Max));
                         N.Vector3 min = N.Vector3.Min(a, z), max = N.Vector3.Max(a, z);
                         result.Boxes.Add(new BoxCollider((p.ToVector3() + (min + max) * 0.5f) * cell, (max - min) * cell));
                     }
@@ -210,7 +251,7 @@ public static class StructureBridge
     public static N.Vector3 SeatOf(Structure s)
     {
         foreach (var (p, b) in s.Blocks())
-            if (s.TypeOf(b).IsCommandChair) return CellCenter(s, p);
+            if (s.TypeOf(b).IsCommandChair) return BlockCenter(s, p, b);
         return N.Vector3.Zero;
     }
 }
@@ -290,8 +331,9 @@ public sealed class StructureVessel : IVesselStructure
         foreach (var (p, b) in _s.Blocks())
         {
             BlockType t = _s.TypeOf(b);
-            GVector3 at = new GVector3(p.X, p.Y, p.Z) * cell;
-            GVector3 underside = at + GVector3.Down * (cell * 0.5f);
+            N.Vector3 centre = StructureBridge.BlockCenter(_s, p, b);
+            GVector3 at = new GVector3(centre.X, centre.Y, centre.Z);
+            GVector3 underside = at + GVector3.Down * (cell * 0.5f * Footprint.WorldSize(t, b.Rot).Y);
             if (t.IsThruster)
             {
                 // A thruster's exhaust leaves through its back (+Z), pushing the structure toward its local -Z.

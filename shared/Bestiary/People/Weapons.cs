@@ -29,6 +29,39 @@ public static class Weapons
     public static bool Modern(string prop) => prop is "rifle" or "shotgun" or "pistol" or "laser_rifle" or "energy_pistol";
     public static bool Energy(string prop) => prop is "laser_rifle" or "energy_pistol";
 
+    /// <summary>
+    /// The weapon item (a row of shared/Arms/data/weapons.json) a carried weapon is: the same item the
+    /// player picks up, fires and drops. Anything that isn't a weapon is "fists" (no item).
+    /// </summary>
+    public static string ItemOf(string prop) => prop switch
+    {
+        "rifle" => "line-rifle",
+        "shotgun" => "pump-scattergun",
+        "pistol" => "tack-pistol",
+        "musket" => "ball-musket",
+        "crossbow" => "crank-crossbow",
+        "bow" => "hunting-bow",
+        "laser_rifle" => "beam-rifle",
+        "energy_pistol" => "beam-pistol",
+        "club" => "spiked-club",
+        "machete" => "machete",
+        "spear" => "spear",
+        _ => Fists,
+    };
+
+    /// <summary>The bare-hands row: what the unarmed hit with.</summary>
+    public const string Fists = "fists";
+
+    /// <summary>
+    /// Carried weapons whose model the game draws itself (the player's own generated gun or hand
+    /// weapon, set in the hand): the body leaves them out of its mesh. Null: the body draws them all
+    /// (the bestiary viewer). The bow stays the body's: its string is drawn by the rig.
+    /// </summary>
+    public static Func<string, bool> GameDraws;
+
+    /// <summary>Whether the body leaves this carried thing to the game to draw.</summary>
+    public static bool DrawnByGame(string prop) => prop != "bow" && Armed(prop) && GameDraws?.Invoke(prop) == true;
+
     static readonly (string prop, float weight)[] Low = { ("spear", 0.3f), ("bow", 0.24f), ("crossbow", 0.14f), ("machete", 0.12f), ("club", 0.12f), ("musket", 0.08f) };
     static readonly (string prop, float weight)[] Mid = { ("rifle", 0.55f), ("shotgun", 0.25f), ("pistol", 0.2f) };
     static readonly (string prop, float weight)[] High = { ("laser_rifle", 0.35f), ("energy_pistol", 0.15f), ("rifle", 0.3f), ("shotgun", 0.1f), ("pistol", 0.1f) };

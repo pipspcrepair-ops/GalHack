@@ -346,7 +346,8 @@ public partial class BuildController : Node
         BlockType type = SelectedType;
         int rot = AutoOrient(type, face, Rot);
         Block block = Building.Make(s, type, SelectedShape, rot);
-        var copies = Building.MirrorCopies(s, cell, block, Symmetry);
+        // A block spanning several cells grows out from the face it's built on.
+        var copies = Building.MirrorCopies(s, Footprint.AnchorFor(type, rot, cell, face), block, Symmetry);
         var result = new List<(Int3, Block, PlaceError)>();
         foreach (Placement c in copies)
             result.Add((c.Pos, c.Block, Building.Check(s, c.Pos, c.Block)));
@@ -375,6 +376,7 @@ public partial class BuildController : Node
         Color tint = blocked || first != PlaceError.None ? GhostPreview.Invalid : warning != null ? GhostPreview.Warning : GhostPreview.Valid;
         var ghosts = candidates.Select(c => (c.cell, c.block, c.error == PlaceError.None && !blocked ? tint : GhostPreview.Invalid)).ToList();
         _ghost.ShowGhosts(aim.View.GlobalTransform, s, ghosts);
+        if (SelectedType.Multi) _ghost.ShowBlocked(aim.View.GlobalTransform, s, candidates.SelectMany(c => Building.Blocked(s, c.cell, c.block)).ToList());
 
         if (blocked) SetHint("You're standing there", GhostPreview.Invalid);
         else if (first != PlaceError.None) SetHint(Explain(first, s), GhostPreview.Invalid);
@@ -489,7 +491,7 @@ public partial class BuildController : Node
         BlockType type = SelectedType;
         Block block = Building.Make(st, type, SelectedShape, AutoOrient(type, aim.Face, Rot));
         bool claiming = type.IsCore && st.IsWreck;
-        var results = Building.PlaceSymmetric(st, cell, block, Symmetry, Inventory);
+        var results = Building.PlaceSymmetric(st, Footprint.AnchorFor(type, block.Rot, cell, aim.Face), block, Symmetry, Inventory);
         if (results[0].error != PlaceError.None)
         {
             Refuse(Explain(results[0].error, st));
@@ -519,8 +521,8 @@ public partial class BuildController : Node
         Structure s = view.Structure;
 
         var cells = new List<Int3> { aim.Cell };
-        if (Symmetry.Any)
-            foreach (Placement c in Building.MirrorCopies(s, aim.Cell, s.Get(aim.Cell), Symmetry).Skip(1))
+        if (Symmetry.Any && s.TryGetBlock(aim.Cell, out Int3 anchor, out Block aimed))
+            foreach (Placement c in Building.MirrorCopies(s, anchor, aimed, Symmetry).Skip(1))
                 if (s.Has(c.Pos)) cells.Add(c.Pos);
 
         if (s.Core == aim.Cell && s.Count > 1)

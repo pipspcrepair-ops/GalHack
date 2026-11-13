@@ -26,7 +26,7 @@ public readonly record struct Holder(string Id, string Type, string Zone, string
 /// </summary>
 public sealed class ZoneLedger
 {
-    public const string Surface = "surface", Orbit = "orbit";
+    public const string Surface = "surface", Orbit = "orbit", Moon = "moon";
     public const string Castaway = "castaway";
 
     /// <summary>The zone of anything riding in a vessel's cabin (saves' convention).</summary>

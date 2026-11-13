@@ -21,7 +21,7 @@ public partial class Spaceflight
     {
         SurfaceZone s = Game.Surface;
         // While the surface runs it steps its own weather (its physics' force provider): never both.
-        if (Orbit == null || !Game.InOrbit || s?.Weather?.Sim is not WeatherSim sim || s.ProcessMode != ProcessModeEnum.Disabled) return;
+        if (Orbit == null || !Game.InOrbit || !Here.IsHome || s?.Weather?.Sim is not WeatherSim sim || s.ProcessMode != ProcessModeEnum.Disabled) return;
         Vessel carrier = Carrier();
         Vector3 at = carrier != null ? carrier.Body.Position.ToGodot() : Game.Survivor.WorldFeet;
         Vector3 under = SurfacePoint(at, out _, out _);

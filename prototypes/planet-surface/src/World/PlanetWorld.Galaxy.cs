@@ -47,6 +47,21 @@ public sealed partial class PlanetWorld
         Depth = galaxy.DepthOf(HomeStar);
     }
 
+    /// <summary>
+    /// This world is another body of a world's system (its moon): the same galaxy, the same star and
+    /// the same system on the same clock, seen from here. Set before the surface is laid out.
+    /// </summary>
+    public void ShareSystem(PlanetWorld of, Orbiter body)
+    {
+        of.FindHomeStar();
+        Catalogue = of.Catalogue;
+        HomeStar = of.HomeStar;
+        Depth = of.Depth;
+        _system = of.StarSystem.SeenFrom(body);
+        // Its sky's star is the system's; with no air to scatter it, the sky is black space by day too.
+        Sky = Spec.Airless ? SkySystem.Vacuum(of.Sky) : Sky with { Star = of.Sky.Star, StarColor = of.Sky.StarColor, SunEnergy = of.Sky.SunEnergy, Bodies = of.Sky.Bodies, DayMinutes = of.Sky.DayMinutes };
+    }
+
     partial void SystemSeedOf(ref ulong seed)
     {
         FindHomeStar();

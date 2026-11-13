@@ -30,7 +30,7 @@ public static class HumanBody
         _ => "",
     };
 
-    static float Scale(Figure f) => f.Height / 1.72f;
+    public static float Scale(Figure f) => f.Height / 1.72f;
 
     /// <summary>A layer's own colour: a pale base, a knit insulation layer, a wind layer in the outer cloth; coveralls in the work colour.</summary>
     static Color LayerColour(Figure f, string id) => id switch
@@ -104,8 +104,9 @@ public static class HumanBody
             au.Taper(Vector3.Zero, Vector3.Up * upper, 0.05f * u * b * pad, 0.04f * u * b * pad, longArm ? f.Skin : sleeve, 0f, 0f, Mat.Skin, 7);
             var al = new Piece($"arm{side}l");
             al.Taper(Vector3.Zero, Vector3.Up * fore * 0.86f, 0.04f * u * b * pad, 0.03f * u * pad, longArm ? f.Skin : forearm, 0f, 0f, longArm || forearm == f.Skin ? skinMat : Mat.Skin, 7);
-            al.Add(Shape.Sphere, new Vector3(0.062f, 0.11f, 0.045f) * u * f.HandK * (longArm ? 1.25f : f.Dress is "furs" or "suit" ? 1.25f : 1f), Vector3.Up * fore * 0.95f, longArm ? f.Skin : hand, 0f, 0f, null, 7, hand == f.Leather ? Mat.Skin : skinMat);
-            FolkBody.Hand(al, f, fore, hand, forearm == f.Skin);
+            FolkBody.Glow(al, f, fore, forearm == f.Skin);
+            Color bare = longArm ? f.Skin : hand;
+            HandMake.Build(layout, f, side, bare, bare.Lightened(0.2f), hand == f.Leather ? Mat.Skin : skinMat, FolkBody.Clawed(f));
             var lu = new Piece($"leg{side}u");
             lu.Taper(Vector3.Zero, Vector3.Up * f.UpperLeg, 0.082f * u * b * pad, 0.056f * u * b * pad, trouser, 0f, 0f, Mat.Skin, 8);
             var ll = new Piece($"leg{side}l");
@@ -147,7 +148,8 @@ public static class HumanBody
         if (f.Prop.Length > 0)
         {
             var prop = new Piece("prop");
-            Prop(prop, f);
+            // (A weapon the game draws, as the player's own model in this hand, leaves the piece empty: the rig still places it.)
+            if (!Weapons.DrawnByGame(f.Prop)) Prop(prop, f);
             layout.Add(prop);
             // A bow's string: two pieces the rig draws from the limb tips to the nock (unit length along +Y).
             if (f.Prop == "bow")

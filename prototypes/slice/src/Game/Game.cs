@@ -224,6 +224,7 @@ public partial class Game : Node3D
     void Begin()
     {
         GD.Print($"world: {World}");
+        Wildlife.Weapons.GameDraws = _ => true; // people hold the player's own weapon models (Slice.Arms), not the body's
         Zone = new SurfaceZone { Name = "Surface", Spec = World.Spec(), Force = World.Force, PickStart = PickStart };
         AddChild(Zone);
         AddChild(new GcPacer { Name = "GC pacer" });
@@ -342,8 +343,9 @@ public partial class Game : Node3D
             if (!e.Creature.Species.Husk) Alerts.Attack(Alerts.SignFor(e.Creature.Species), from);
         };
         Zone.Wildlife.Died += OnCreatureDied;
+        SetUpBodies();
         Zone.Weather.Observer = () => Survivor.WorldFeet;
-        Zone.Weather.Bridge.Shelter = body => Sheltered(body.WorldPosition.ToGodot());
+        Zone.Weather.Bridge.Shelter = body => Zone.Held.Contains(body) || Sheltered(body.WorldPosition.ToGodot());
         Zone.Weather.Shelter = Sheltered;
         Suit.UnderCover = UnderCover;
         Zone.Weather.Enclosed = () => Survivor.Aboard is { } ship && !Survivor.OnOuterHull && !Slice.Surface.SkyLight.Stands(ship);
@@ -367,6 +369,8 @@ public partial class Game : Node3D
         AddChild(Audio);
         Howl = new WindHowl { Name = "Howl", Zone = Zone, Eye = () => Survivor.WorldEye(), Quiet = () => Spaceflight.AirGone > 0.5f };
         Zone.AddChild(Howl);
+        Exposure = new AmbientExposure { Name = "Exposure", Zone = Zone, Eye = () => Survivor.WorldEye() };
+        Zone.AddChild(Exposure);
         // The castaway seen from outside (third person and screenshots); the first-person camera leaves it out.
         Figure = CharacterModel.Build();
         // Placed every drawn frame from the same interpolated transforms the eye and the vehicle draw
@@ -384,6 +388,9 @@ public partial class Game : Node3D
 
     /// <summary>Wind moaning in the openings around you.</summary>
     public WindHowl Howl { get; private set; }
+
+    /// <summary>Roof, walls, lee and relief round the eye: what the weather's sound hears.</summary>
+    public AmbientExposure Exposure { get; private set; }
 
     /// <summary>Small 3D icons of items, each rendered once.</summary>
     public Slice.Ui.ItemIcons Icons { get; private set; }
@@ -760,6 +767,7 @@ public partial class Game : Node3D
         Species s = c.Species;
         bool swarm = s.Rig == RigKind.Swarm;
         Zone.Wildlife.SimOf(c, out Vector3 origin, out _);
+        c.Struck(point - origin, dir); // the struck part snaps away from where it landed
         float pitch = Math.Clamp(1.2f / MathF.Sqrt(MathF.Max(0.3f, s.Body.Size)), 0.6f, 1.6f);
         Zone.Wildlife.Sound(origin, a => a.Play(swarm ? "pop" : "hit", c.Position + Vector3.Up * 0.5f, pitch, -2f));
         if (swarm) Zone.Blood.Pop(point, s.Blood, 8);
@@ -887,7 +895,7 @@ public partial class Game : Node3D
         PoseFigure(delta);
         Camera.SetCullMaskValue(2, (ThirdPerson || FixedCamera != null) && Survivor.Seated == null);
         Camera.GlobalTransform = FixedCamera ?? (Survivor.Seated is Vessel v && ThirdPerson
-            ? Chase(v, 1.6f, 0.5f)
+            ? Chase(v, 1.6f, 0.5f, Spaceflight?.ShipFrame ?? 0f)
             : ThirdPerson ? Survivor.Eye().TranslatedLocal(new Vector3(0f, 0.6f, 4.5f)) : CloseUpView(Survivor.Eye()));
     }
 
@@ -938,17 +946,22 @@ public partial class Game : Node3D
     }
 
     /// <summary>A chase camera behind and above a vessel, sized to it.</summary>
-    public static Transform3D Chase(Vessel vessel, float distance, float height)
+    /// <param name="shipFrame">0: behind it on the world's up (a world under you); 1: in the vessel's own frame (open space, where no world's up means anything).</param>
+    public static Transform3D Chase(Vessel vessel, float distance, float height, float shipFrame = 0f)
     {
         Transform3D t = vessel.DrawTransform;
         var (min, max) = vessel.Structure.Bounds();
         float size = MathF.Max(3f, (max - min).ToVector3().Length() * vessel.Structure.Grid.CellSize);
-        Vector3 target = t.Origin + Vector3.Up * size * 0.15f;
+        Vector3 shipUp = t.Basis.Y.Normalized();
+        Vector3 up = shipFrame <= 0f ? Vector3.Up : Vector3.Up.Lerp(shipUp, shipFrame);
+        up = up.LengthSquared() < 1e-4f ? shipUp : up.Normalized();
+        Vector3 target = t.Origin + up * size * 0.15f;
         Vector3 back = t.Basis.Z;
-        back.Y = 0f;
-        back = back.LengthSquared() < 1e-4f ? Vector3.Back : back.Normalized();
-        Vector3 eye = target + back * size * distance + Vector3.Up * size * height;
-        return new Transform3D(Basis.LookingAt(target - eye, Vector3.Up), eye);
+        back -= up * back.Dot(up);
+        if (back.LengthSquared() < 1e-4f) back = MathF.Abs(up.Dot(Vector3.Back)) < 0.99f ? Vector3.Back - up * up.Dot(Vector3.Back) : Vector3.Right;
+        back = back.Normalized();
+        Vector3 eye = target + back * size * distance + up * size * height;
+        return new Transform3D(Basis.LookingAt(target - eye, up), eye);
     }
 
     /// <summary>Runs <see cref="Game.AfterPhysics"/> once the physics host (-10) and the world's logic (0) have stepped.</summary>

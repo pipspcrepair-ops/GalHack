@@ -15,6 +15,8 @@ public enum DepositKind : byte
     Iron, Copper, Silicon, Carbon, Water, Burnstone,
     Magnesium, Cobalt, Neodymium, Gold, Gravium,
     Crystal, Resin,
+    /// <summary>The jump fuel for the warp drive (item warp-fuel-ore): only on airless worlds, see <see cref="DepositField.FuelKinds"/>.</summary>
+    WarpFuel,
 }
 
 /// <summary>One deposit: a surface outcrop (Depth 0) or a shallow one a few metres down.</summary>
@@ -71,6 +73,7 @@ public sealed class DepositField
         // Only ever a world's signature: where it is one, this often and this big.
         [DepositKind.Crystal] = new(12f, 1.9f),
         [DepositKind.Resin] = new(12f, 1.9f),
+        [DepositKind.WarpFuel] = new(12f, 1.9f),
     };
 
     /// <summary>A world's signature resource when it's an uncommon or signature-only ore: one to every so many base cells, on top of its own line.</summary>
@@ -83,6 +86,17 @@ public sealed class DepositField
     public static IEnumerable<DepositKind> EveryPlanet()
     {
         for (int k = 0; k <= (int)DepositKind.Gravium; k++) yield return (DepositKind)k;
+    }
+
+    /// <summary>
+    /// The jump fuels a world holds, from what it is and nothing else: warp fuel (<see cref="DepositKind.WarpFuel"/>)
+    /// only on an airless world, hyperspace fuel (the fold crystal's <see cref="DepositKind.Crystal"/>) on a dangerous
+    /// high-gravity one. Neither is ever marked on a map: it is found by going there.
+    /// </summary>
+    public static IEnumerable<DepositKind> FuelKinds(PlanetSpec spec)
+    {
+        if (spec.Airless) yield return DepositKind.WarpFuel;
+        if (spec.HighGravity) yield return DepositKind.Crystal;
     }
 
     /// <summary>The ores that are smaller and fewer than the commons.</summary>
@@ -112,7 +126,9 @@ public sealed class DepositField
         DepositKind signature = def.Signature;
         foreach (DepositKind kind in EveryPlanet()) Lay(kind, Ores[kind].Every / def.DepositCount, Ores[kind].Size * def.DepositSize, kind == signature);
         if ((int)signature > (int)DepositKind.Burnstone) Lay(signature, SignatureEvery / def.DepositCount, Ores[signature].Size * def.DepositSize, false, 0x516);
-        foreach (DepositKind kind in EveryPlanet())
+        foreach (DepositKind kind in FuelKinds(map.Spec))
+            if (kind != signature) Lay(kind, SignatureEvery / def.DepositCount, Ores[kind].Size * def.DepositSize, false, 0x517);
+        foreach (DepositKind kind in EveryPlanet().Concat(FuelKinds(map.Spec)))
             if (!_cells.Any(c => c.Exists(d => d.Kind == kind))) AddMissing(kind);
         Promise(Landing.Find(map, map.WidthMeters * 0.5, map.HeightMeters * 0.5));
         Count = _cells.Sum(c => c.Count);
@@ -176,6 +192,24 @@ public sealed class DepositField
     public static bool Usable(WorldMap map, int cell) =>
         map.Flags[cell] is 0 or CellFlags.Riparian or CellFlags.Coast && map.Elevation[cell] >= 1.5f && map.Slope[cell] < 0.6f;
 
+    /// <summary>
+    /// Where ice may lie (the owner's rule): anywhere on an ice world (moons and
+    /// asteroids will pass it too, having no biome map); on other worlds only in the ice
+    /// caps, the cold, snow and glacier land; never on arid or lava worlds.
+    /// </summary>
+    public static bool IceAllowed(WorldMap map, int cell)
+    {
+        Archetype a = map.Spec.Archetype;
+        if (a == Archetype.Ice) return true;
+        if (a is Archetype.Arid or Archetype.Lava) return false;
+        return IceCap((Biome)map.Biome[cell]);
+    }
+
+    /// <summary>The biomes that make an ice cap: snow and glacier land and the cold ground round it.</summary>
+    public static bool IceCap(Biome b) => b is Biome.Snow or Biome.Glacier or Biome.Snowfield or Biome.BlueIce or Biome.IceTundra or Biome.Tundra;
+
+    bool Allowed(DepositKind kind, int cell) => kind != DepositKind.Water || IceAllowed(_map, cell);
+
     /// <summary>A deposit of a kind somewhere in a cell (its corner, width and height in metres), on usable land, or false if the cell has none.</summary>
     bool Place(double x0, double y0, double w, double hgt, ulong h, DepositKind kind, out Deposit deposit, float size = 1f)
     {
@@ -192,7 +226,7 @@ public sealed class DepositField
             double x = Mathx.WrapX(x0 + (0.5 + (Hash.Unit(h, attempt * 2) - 0.5) * spread) * w, _map.WidthMeters);
             double y = Mathx.Wrap(y0 + (0.5 + (Hash.Unit(h, attempt * 2 + 1) - 0.5) * spread) * hgt, _map.HeightMeters);
             int cell = _map.CellAt(x, y);
-            if (!Usable(_map, cell) || (pass == 0 && _map.Elevation[cell] < SafeElevation)) continue;
+            if (!Usable(_map, cell) || (pass == 0 && _map.Elevation[cell] < SafeElevation) || !Allowed(kind, cell)) continue;
             deposit = new Deposit(x, y, kind, amount, depth);
             return true;
         }
@@ -208,7 +242,7 @@ public sealed class DepositField
         for (int mi = mi0; mi <= mi1; mi++)
         {
             int cell = _map.Index(mi, mj);
-            if (!Usable(_map, cell) || (pass == 0 && _map.Elevation[cell] < SafeElevation)) continue;
+            if (!Usable(_map, cell) || (pass == 0 && _map.Elevation[cell] < SafeElevation) || !Allowed(kind, cell)) continue;
             double x = Math.Clamp(_map.CellX(mi), x0 + 0.5, x1 - 0.5), y = Math.Clamp(_map.CellY(mj), y0 + 0.5, y1 - 0.5);
             double d = (x - cx) * (x - cx) + (y - cy) * (y - cy);
             if (d < best)

@@ -38,6 +38,9 @@ public sealed class GameSettings
     public float DetailDistance = DetailReach.Default;
     /// <summary>How far round you life is kept and drawn, m: from the default out toward the detail distance (SpawnReach).</summary>
     public float SpawnDistance = Slice.Surface.SpawnReach.Default;
+    /// <summary>How far the sun's real-time shadows reach, m; past it the far land shades itself (TerrainStreamer.FarShade).</summary>
+    public float ShadowDistance = DefaultShadow;
+    public const float DefaultShadow = 320f, MostShadow = 1500f;
     /// <summary>The picture's gamma: above 1 lifts the shadows, below darkens them.</summary>
     public float Gamma = 1f;
     /// <summary>Where what is out there is marked: true in the scene on the things themselves (WORLD), false on the compass strip (COMPASS).</summary>
@@ -70,7 +73,7 @@ public sealed class GameSettings
     public void ResetGraphics()
     {
         var d = new GameSettings();
-        (Window, Resolution, Vsync, FpsCap, RenderScale, Fov, Shadows, GroundDetail, DetailDistance, SpawnDistance, Gamma, MarkersInWorld) = (d.Window, d.Resolution, d.Vsync, d.FpsCap, d.RenderScale, d.Fov, d.Shadows, d.GroundDetail, d.DetailDistance, d.SpawnDistance, d.Gamma, d.MarkersInWorld);
+        (Window, Resolution, Vsync, FpsCap, RenderScale, Fov, Shadows, GroundDetail, DetailDistance, SpawnDistance, ShadowDistance, Gamma, MarkersInWorld) = (d.Window, d.Resolution, d.Vsync, d.FpsCap, d.RenderScale, d.Fov, d.Shadows, d.GroundDetail, d.DetailDistance, d.SpawnDistance, d.ShadowDistance, d.Gamma, d.MarkersInWorld);
         Changed();
     }
 
@@ -97,6 +100,7 @@ public sealed class GameSettings
         s.Shadows = Enum.TryParse(Str(file, "graphics", "shadows"), true, out ShadowLevel sh) ? sh : s.Shadows;
         s.GroundDetail = Math.Clamp(Int(file, "graphics", "ground_detail", s.GroundDetail), MinGround, MaxGround);
         s.DetailDistance = Math.Clamp(Float(file, "graphics", "detail_distance", s.DetailDistance), DetailReach.Default, DetailReach.Most);
+        s.ShadowDistance = Math.Clamp(Float(file, "graphics", "shadow_distance", s.ShadowDistance), DefaultShadow, MostShadow);
         s.SpawnDistance = Math.Clamp(Float(file, "graphics", "spawn_distance", s.SpawnDistance), Slice.Surface.SpawnReach.Default, Slice.Surface.SpawnReach.Most);
         s.Gamma = Math.Clamp(Float(file, "graphics", "gamma", s.Gamma), MinGamma, MaxGamma);
         s.MarkersInWorld = !string.Equals(Str(file, "graphics", "markers"), "compass", StringComparison.OrdinalIgnoreCase);
@@ -123,6 +127,7 @@ public sealed class GameSettings
         file.SetValue("graphics", "ground_detail", GroundDetail);
         file.SetValue("graphics", "detail_distance", DetailDistance);
         file.SetValue("graphics", "spawn_distance", SpawnDistance);
+        file.SetValue("graphics", "shadow_distance", ShadowDistance);
         file.SetValue("graphics", "gamma", Gamma);
         file.SetValue("graphics", "markers", MarkersInWorld ? "world" : "compass");
         file.SetValue("mouse", "sensitivity", Sensitivity);

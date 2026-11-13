@@ -95,7 +95,7 @@ public sealed partial class Vessel : ILiftHull
         float cell = Structure.Grid.CellSize;
         // Each block's lever arm is from the hull's middle, which is what it would turn about as it levels.
         var centres = new List<N.Vector3>();
-        foreach (var (p, _) in Structure.Blocks()) centres.Add(Body.ToParent(StructureBridge.CellCenter(Structure, p)));
+        foreach (var (p, _) in Structure.Cells()) centres.Add(Body.ToParent(StructureBridge.CellCenter(Structure, p)));
         N.Vector3 middle = N.Vector3.Zero;
         foreach (N.Vector3 c in centres) middle += c;
         middle /= Math.Max(1, centres.Count);

@@ -60,6 +60,8 @@ public partial class SurfaceTest : Node
         if (System.IO.Directory.Exists(saves)) System.IO.Directory.Delete(saves, recursive: true);
         try
         {
+            await Run("Shade", ShadeChecks);
+            await Run("Dump", DumpChecks);
             await Run("Plans", PlanChecks);
             await Run("Density", DensityChecks);
             await Run("Weather", WeatherChecks);

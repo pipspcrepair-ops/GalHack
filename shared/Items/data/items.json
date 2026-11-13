@@ -33,9 +33,9 @@
     { "id": "silicon-ore", "name": "Silicon ore", "short": "SILICON", "category": "raw", "rarity": "common", "source": "mine", "deposit": "Silicon",
       "mass": 2.2, "volume": 1, "where": "Every planet; richest in deserts", "uses": "Wafers · circuits · glass · ceramic" },
     { "id": "carbon-ore", "name": "Carbon ore", "short": "CARBON", "category": "raw", "rarity": "common", "source": "mine", "deposit": "Carbon",
-      "mass": 1.6, "volume": 1, "where": "Every planet", "uses": "Graphite · steel · propellant · polymer" },
+      "mass": 1.6, "volume": 1, "where": "Every planet", "uses": "Graphite · steel · propellant" },
     { "id": "ice", "name": "Ice", "short": "ICE", "category": "raw", "rarity": "common", "source": "mine", "deposit": "Water",
-      "mass": 0.9, "volume": 1, "where": "Every planet; ice worlds, moons, poles", "uses": "Polymer, concrete, oxygen" },
+      "mass": 0.9, "volume": 1, "where": "Ice worlds, moons, asteroids; ice caps elsewhere", "uses": "Fuel" },
     { "id": "stone", "name": "Stone", "short": "STONE", "category": "raw", "rarity": "common", "source": "dig",
       "mass": 2.4, "volume": 1, "where": "Any rock, anywhere", "uses": "Ceramic, concrete" },
     { "id": "biomass", "name": "Biomass", "short": "BIOMASS", "category": "raw", "rarity": "common", "source": "harvest", "deposit": "Resin",
@@ -54,6 +54,8 @@
       "mass": 4.5, "volume": 1, "where": "Scattered; richer on volcanic worlds", "uses": "Logic modules, trade value" },
     { "id": "gravium-ore", "name": "Gravium ore", "short": "GRAVIUM", "category": "raw", "rarity": "uncommon", "source": "mine", "deposit": "Gravium",
       "mass": 6.0, "volume": 1, "where": "High-gravity worlds", "uses": "Hardened and combat steel" },
+    { "id": "warp-fuel-ore", "name": "Warp fuel ore", "short": "WARPORE", "category": "raw", "rarity": "uncommon", "source": "mine", "deposit": "WarpFuel",
+      "mass": 2.4, "volume": 1, "where": "Airless worlds only", "uses": "Warp drive fuel: warp cells" },
 
     // ---- Raw: rare (further out: irradiated, young, dying and giant stars) --------------------
     { "id": "fold-crystal-raw", "name": "Raw fold crystal", "short": "FOLD", "category": "raw", "rarity": "rare", "source": "mine", "deposit": "Crystal",

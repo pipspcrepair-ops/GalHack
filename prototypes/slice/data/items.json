@@ -77,6 +77,27 @@
     { "id": "bend-rounds", "name": "Bend Rounds", "short": "BEND", "category": "weapon", "rarity": "uncommon", "mass": 3.0, "volume": 4,
       "uses": "Homing rounds", "unlock": { "level": 16, "cost": 3, "tab": "weapons" } },
 
+    // ---- What the world's people carry: found on them and in their places, never made ----
+    { "id": "ball-musket", "name": "Ball Musket", "short": "MUSKET", "category": "weapon", "rarity": "common", "source": "explore", "mass": 4.5, "volume": 5,
+      "where": "Low-tech people", "uses": "One ball · slow to load" },
+    { "id": "crank-crossbow", "name": "Crank Crossbow", "short": "XBOW", "category": "weapon", "rarity": "common", "source": "explore", "mass": 3.8, "volume": 5,
+      "where": "Low-tech people", "uses": "Quiet · bolts" },
+    { "id": "hunting-bow", "name": "Hunting Bow", "short": "BOW", "category": "weapon", "rarity": "common", "source": "explore", "mass": 1.2, "volume": 4,
+      "where": "Low-tech people", "uses": "Quiet · arrows" },
+    { "id": "beam-rifle", "name": "Beam Rifle", "short": "BEAM", "category": "weapon", "rarity": "rare", "source": "explore", "mass": 3.4, "volume": 4,
+      "where": "High-tech people", "uses": "Energy · cells" },
+    { "id": "beam-pistol", "name": "Beam Pistol", "short": "BEAM-P", "category": "weapon", "rarity": "uncommon", "source": "explore", "mass": 1.0, "volume": 1.5,
+      "where": "High-tech people", "uses": "Energy sidearm · cells" },
+    { "id": "spiked-club", "name": "Spiked Club", "short": "CLUB", "category": "weapon", "rarity": "common", "source": "explore", "mass": 2.0, "volume": 3,
+      "where": "Low-tech people", "uses": "Strike" },
+    { "id": "machete", "name": "Machete", "short": "MACHETE", "category": "weapon", "rarity": "common", "source": "explore", "mass": 0.9, "volume": 2,
+      "where": "Low-tech people", "uses": "Strike" },
+    { "id": "spear", "name": "Spear", "short": "SPEAR", "category": "weapon", "rarity": "common", "source": "explore", "mass": 1.8, "volume": 4,
+      "where": "Low-tech people", "uses": "Strike · long reach" },
+    { "id": "musket-balls", "name": "Musket balls", "short": "BALLS", "category": "ammo", "rarity": "common", "source": "explore", "mass": 0.6, "volume": 0.3, "rounds": 12 },
+    { "id": "crossbow-bolts", "name": "Crossbow bolts", "short": "BOLTS", "category": "ammo", "rarity": "common", "source": "explore", "mass": 0.6, "volume": 0.6, "rounds": 10 },
+    { "id": "arrows", "name": "Arrows", "short": "ARROWS", "category": "ammo", "rarity": "common", "source": "explore", "mass": 0.5, "volume": 0.8, "rounds": 12 },
+
     // ---- Their ammo (pistol rounds, rockets, energy cells and burnstone packs are the catalogue's own) ----
     { "id": "rifle-rounds", "name": "Rifle rounds", "short": "RIFLE", "category": "ammo", "rarity": "common", "mass": 0.9, "volume": 0.5, "rounds": 30, "restock": 4,
       "unlock": { "level": 7, "cost": 0, "parent": "line-rifle", "tab": "weapons" } },
