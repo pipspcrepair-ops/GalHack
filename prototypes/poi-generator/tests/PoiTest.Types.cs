@@ -59,9 +59,10 @@ public partial class PoiTest
     }
 
     /// <summary>
-    /// The airport is the size of a real one, on fresh seeds: a 1,500 to 2,500 m runway 45 m wide with shoulders; a 23 m
-    /// taxiway; an apron at least 300 x 150 m; a terminal 120 to 200 m long; a tower 30 to 50 m tall that sees the runway;
-    /// hangars 45 to 60 m across and 15 m or more high. A port is a launch complex's size (0.4 to 3.5 km long), its fuel
+    /// The airport in a real one's proportions, scaled to our worlds, on fresh seeds: a 200 to 350 m runway 30 m wide (the
+    /// biggest craft it takes, a Small-class vessel, about 30 m across) with shoulders; a 15 m taxiway; an apron at least
+    /// 120 x 60 m; a terminal 40 to 70 m long; a tower 15 to 22 m tall that sees the runway; hangars 40 to 48 m across and
+    /// 16 m or more high. A port is 150 to 1,500 m long, sized by its craft, its fuel
     /// and oxidiser stores as far apart and off the terminal as its type says, its halls as wide as two fifths of its pads. And every type's parts hold their own ranges.
     /// </summary>
     void Scale()
@@ -91,7 +92,7 @@ public partial class PoiTest
                 {
                     void Port(bool ok, string what) { if (!ok) bad.Add($"{t.Id}: {what}"); }
                     // (Each store as far from what it keeps away from as its type says.)
-                    Port(s.Footprint.Long is >= 400 and <= 3500, $"{s.Footprint.Long:F0} m long");
+                    Port(s.Footprint.Long is >= 150 and <= 1500, $"{s.Footprint.Long:F0} m long");
                     foreach (SketchItem store in s.Of("fuel").Concat(s.Of("oxidiser")))
                         foreach (var (rel, to, gap) in store.Part.Rel.Where(x => x.Rel == "far"))
                             Port(s.Of(to[0]).All(o => o.Box.Gap(store.Box) >= gap!.Value.Lo), $"{store.Part.Id} {s.Of(to[0]).Min(o => o.Box.Gap(store.Box)):F0} m from the {to[0]}, at least {gap!.Value.Lo:F0}");
@@ -100,13 +101,13 @@ public partial class PoiTest
                 if (t.Id != "airport") continue;
                 SketchItem runway = s.Of("runway").First(), apron = s.Of("apron").First(), terminal = s.Of("terminal").First();
                 void Real(bool ok, string what) { if (!ok) bad.Add($"airport: {what}"); }
-                Real(runway.Rolled["len"] is >= 1500 and <= 2500 && runway.Rolled["w"] == 45 && runway.Box.D >= 60, $"runway {runway.Rolled["len"]:F0} x {runway.Rolled["w"]:F0} m ({runway.Box.D:F0} with shoulders)");
-                Real(s.Of("taxiway").All(x => Math.Abs(x.Box.D - 23) < 0.5f), "taxiway 23 m");
-                Real(apron.Box.W >= 300 && apron.Box.D >= 150, $"apron {apron.Box.W:F0} x {apron.Box.D:F0} m");
-                Real(terminal.Box.W is >= 120 and <= 200, $"terminal {terminal.Box.W:F0} m long");
-                Real(s.Of("tower").All(x => x.H is >= 30 and <= 50), $"tower {s.Of("tower").First().H:F0} m");
-                Real(s.Of("hangar").Any() && s.Of("hangar").All(x => x.Box.W is >= 45 and <= 60 && x.H >= 15), $"hangars {string.Join(", ", s.Of("hangar").Select(x => $"{x.Box.W:F0} m span {x.H:F0} m high"))}");
-                Real(s.Of("fuel").All(f => f.Box.Gap(terminal.Box) >= 300), $"fuel farm {s.Of("fuel").Min(f => f.Box.Gap(terminal.Box)):F0} m from the terminal ({Boxes(s)})");
+                Real(runway.Rolled["len"] is >= 200 and <= 350 && runway.Rolled["w"] == 30 && runway.Box.D >= 40, $"runway {runway.Rolled["len"]:F0} x {runway.Rolled["w"]:F0} m ({runway.Box.D:F0} with shoulders)");
+                Real(s.Of("taxiway").All(x => Math.Abs(x.Box.D - 15) < 0.5f), "taxiway 15 m");
+                Real(apron.Box.W >= 120 && apron.Box.D >= 60, $"apron {apron.Box.W:F0} x {apron.Box.D:F0} m");
+                Real(terminal.Box.W is >= 40 and <= 70, $"terminal {terminal.Box.W:F0} m long");
+                Real(s.Of("tower").All(x => x.H is >= 15 and <= 22), $"tower {s.Of("tower").First().H:F0} m");
+                Real(s.Of("hangar").Any() && s.Of("hangar").All(x => x.Box.W is >= 40 and <= 48 && x.H >= 16), $"hangars {string.Join(", ", s.Of("hangar").Select(x => $"{x.Box.W:F0} m span {x.H:F0} m high"))}");
+                Real(s.Of("fuel").All(f => f.Box.Gap(terminal.Box) >= 60), $"fuel farm {s.Of("fuel").Min(f => f.Box.Gap(terminal.Box)):F0} m from the terminal ({Boxes(s)})");
                 Real(s.Of("lights").Count() == 2, "approach lights off each end");
             }
         foreach (string b in bad.Distinct().Take(6)) GD.Print($"      {b}");
@@ -233,8 +234,8 @@ public partial class PoiTest
                     if (t.Id == "airport" || pad != null && what == "hangar")
                     {
                         void Real(bool ok, string why) { if (!ok) bad.Add($"{t.Id}.{what}: {why}"); }
-                        if (what == "terminal") Real(L is >= 120 and <= 200 && top is >= 12 and <= 20, $"{L} m long, {top} m high");
-                        if (what == "tower") Real(top is >= 30 and <= 50, $"{top} m high");
+                        if (what == "terminal") Real(L is >= 40 and <= 70 && top is >= 10 and <= 16, $"{L} m long, {top} m high");
+                        if (what == "tower") Real(top is >= 15 and <= 24, $"{top} m high");
                         if (what == "hangar")
                         {
                             // The door: the widest run of open cells along its front at 4 m, and how high it stays open.
@@ -250,7 +251,7 @@ public partial class PoiTest
                             }
                             // (A port's hall takes the craft its pads are for: its door two fifths of a pad wide, a quarter high.)
                             if (pad != null) Real(door >= pad.Rolled["side"] * 0.4f && high >= pad.Rolled["side"] * 0.25f, $"door {door} m wide and {high} m high for {pad.Rolled["side"]:F0} m pads");
-                            else Real(L is >= 45 and <= 60 && top >= 15 && door >= 30 && high >= 8, $"{L} m span, {top} m high, door {door} m wide and {high} m high");
+                            else Real(L is >= 40 and <= 48 && top >= 16 && door >= 30 && high >= 8, $"{L} m span, {top} m high, door {door} m wide and {high} m high");
                         }
                     }
                     if (what is "terminal" or "tower")

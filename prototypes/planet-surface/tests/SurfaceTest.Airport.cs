@@ -115,9 +115,9 @@ public partial class SurfaceTest
                     if (place.Sketch.Type.Id == "airport")
                     {
                         int along = Math.Max(sx, sz);
-                        if (kind == "terminal" && !(along is >= 120 and <= 202 && top is >= 12 and <= 20)) bad.Add($"terminal {sx} x {sz} m, {top} m high");
-                        if (kind == "tower" && top is < 30 or > 50) bad.Add($"tower {top} m high");
-                        if (kind == "hangar" && !(Math.Min(sx, sz) >= 44 && top >= 15)) bad.Add($"hangar {sx} x {sz} m, {top} m high");
+                        if (kind == "terminal" && !(along is >= 40 and <= 72 && top is >= 10 and <= 16)) bad.Add($"terminal {sx} x {sz} m, {top} m high");
+                        if (kind == "tower" && top is < 15 or > 24) bad.Add($"tower {top} m high");
+                        if (kind == "hangar" && !(Math.Min(sx, sz) >= 30 && top >= 16)) bad.Add($"hangar {sx} x {sz} m, {top} m high");
                     }
                     foreach (var c in cells)
                     {
@@ -138,7 +138,7 @@ public partial class SurfaceTest
                 if (stores.Count == 2 && stores[1].Item.Part.Rel.FirstOrDefault(x => x.Rel == "far" && x.To[0] == "fuel") is { Gap: { } apart } && stores[0].Box.Gap(stores[1].Box) < apart.Lo)
                     bad.Add($"{place.Sketch.Type.Id}: fuel and oxidiser {stores[0].Box.Gap(stores[1].Box):F0} m apart");
                 var runway = ground.Where(q => q.Pattern == GroundPattern.Runway || q.Layer == 4).OrderByDescending(q => q.HalfU).FirstOrDefault();
-                if (place.Sketch.Type.Id == "airport" && runway != null && !(runway.HalfU * 2 is >= 1500 and <= 2501 && runway.HalfV * 2 is >= 44 and <= 46))
+                if (place.Sketch.Type.Id == "airport" && runway != null && !(runway.HalfU * 2 is >= 200 and <= 351 && runway.HalfV * 2 is >= 29 and <= 31))
                     bad.Add($"runway {runway.HalfU * 2:F0} x {runway.HalfV * 2:F0} m");
             }
         }

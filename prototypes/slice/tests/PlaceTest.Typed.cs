@@ -51,6 +51,7 @@ public partial class PlaceTest
         }
         Vector3 World(float x, float y, float z) => game.Zone.Planet.NearestCopy(new Vector3(x, y, z), game.Survivor.WorldFeet);
         var walk = new PlaceWalk(game, drive);
+        Vector3? leave = null;
         foreach (int x in drive.ClimbOut(game.Bunker)) yield return x;
         var gate = field.Anchor.Gates[0];
         game.Survivor.PlaceOutside((World(gate.Cell.X + 0.5f, field.PadY + 0.3f, gate.Cell.Z + 0.5f)).ToNumerics());
@@ -68,7 +69,10 @@ public partial class PlaceTest
             front /= reach;
             // (The terminal's front is its airside: its landside way in is the other way.)
             Vector3 way = kind == "terminal" ? World(cx, field.PadY, cz) - front * reach : World(site.Entrance.X + 0.5f, field.PadY, site.Entrance.Z + 0.5f);
+            // (Out of the last one by its own way in first, as a player leaves a hall.)
+            if (leave is { } back) foreach (int x in Watched(drive.WalkTo(back, 2f, 120f, dig: false, hop: false))) yield return x;
             if (kind != "terminal") foreach (int x in Watched(drive.WalkTo(way + front * 30f, 2f, 120f, dig: false, hop: false))) yield return x;
+            leave = kind == "terminal" ? null : way + front * 30f;
             foreach (int x in Watched(drive.WalkTo(way, 1.2f, 120f, sprint: false, dig: false, hop: false))) yield return x;
             for (int i = 0; i < 1800 && game.Places.PlaceOf(site) is not { Ready: true }; i++) yield return 0;
             Place place = game.Places.PlaceOf(site);
