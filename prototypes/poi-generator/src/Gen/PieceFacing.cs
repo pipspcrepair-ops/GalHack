@@ -87,6 +87,7 @@ public static class PieceFacing
     {
         Block b = g.Get(p);
         if (b.IsAir) return !space && p.Y <= Assembler.GroundY && !occupied[p];
-        return BlockInfo.IsFullCube(b.Type) || b.Type is BlockType.Pane or BlockType.Lattice or BlockType.SealedDoor or BlockType.Pillar or BlockType.Rib;
+        return BlockInfo.IsFullCube(b.Type) || b.Type is BlockType.Pane or BlockType.Lattice or BlockType.SealedDoor or BlockType.Pillar or BlockType.Rib
+            || (BlockInfo.IsShaped(b.Type) || b.Type is BlockType.Ramp or BlockType.Corner or BlockType.InvCorner) && b.Role == Role.Wall; // (a shaped wall: set back, thin or coved)
     }
 }

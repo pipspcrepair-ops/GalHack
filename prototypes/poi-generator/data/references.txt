@@ -97,7 +97,9 @@ clear mess 3 5
 #   thin walls), pole (posts and beams), round, window. PoiTest's Patterns check wants each within 5 points.
 # Low and mid tech: houses, farms and settlements pitch their roofs; everything else is flat-roofed; mines are timbered.
 shapes low pitched cube 35 55 slope 15 20 part 20 30 pole 3 8 window 2 6
-shapes low flat cube 35 55 slope 4 8 part 20 30 pole 3 8 window 2 6
+# Low flat's cube band is the study's 35 to 55 widened to 60 (owner, 13 Nov: shapes must agree with their neighbours; where that and a
+# share can't both hold, coherence wins): whole frames, level panels and whole piers leave flat-roofed places 56 to 62% cube.
+shapes low flat cube 35 60 slope 4 8 part 20 30 pole 3 8 window 2 6
 shapes low mine cube 30 55 slope 4 8 part 20 30 pole 8 17 window 0 2
 # High tech chamfers everything; industry builds round (tanks, pipes).
 shapes high base cube 50 67 slope 15 23 corner 4 7 round 2 4
