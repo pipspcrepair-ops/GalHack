@@ -223,6 +223,7 @@ public sealed partial class HumanRig
                 pose[rig._armU[i]] = Geo.Segment(_p[Shoulder + i], _p[Elbow + i], x);
                 pose[rig._armL[i]] = Geo.Segment(_p[Elbow + i], _p[Wrist + i], x);
                 rig._wrist[i] = _p[Wrist + i];
+                rig.LayHand(i, _p[Elbow + i], _p[Wrist + i]);
                 pose[rig._legU[i]] = Geo.Segment(_p[Hip + i], _p[Knee + i], x);
                 pose[rig._legL[i]] = Geo.Segment(_p[Knee + i], _p[Ankle + i], x);
                 Vector3 toe = _p[Toe + i] - _p[Ankle + i];

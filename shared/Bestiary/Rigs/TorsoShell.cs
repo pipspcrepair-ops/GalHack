@@ -149,11 +149,25 @@ public sealed class TorsoShell
     }
 
     /// <summary>The front of the torso at a height and a sideways offset (the chest under a hand laid on it), in the piece's space.</summary>
-    public Vector3 FrontAt(float y, float x)
+    public Vector3 FrontAt(float y, float x) => Surface(y, x, true);
+
+    /// <summary>The back of the torso at a height and a sideways offset, in the piece's space.</summary>
+    public Vector3 BackAt(float y, float x) => Surface(y, x, false);
+
+    Vector3 Surface(float y, float x, bool front)
     {
-        At(y, out float w, out float front, out _);
-        float k = Math.Clamp(x / w, -0.95f, 0.95f);
-        return new Vector3(x, y, -front * MathF.Sqrt(1f - k * k));
+        At(y, out float w, out float f, out float b);
+        float k = Math.Clamp(x / w, -0.95f, 0.95f), z = (front ? f : b) * MathF.Sqrt(1f - k * k);
+        return new Vector3(x, y, front ? -z : z);
+    }
+
+    /// <summary>How high the torso reaches at a sideways offset: the top of the shoulder there.</summary>
+    public float TopAt(float x)
+    {
+        x = MathF.Abs(x);
+        for (int i = Slices - 1; i >= 0; i--)
+            if (_w[i] >= x) return i == Slices - 1 ? Top : Bottom + _step * (i + (_w[i] - x) / MathF.Max(1e-4f, _w[i] - _w[i + 1]));
+        return Bottom;
     }
 
     /// <summary>Half the torso's width at a height.</summary>

@@ -55,6 +55,8 @@ public sealed partial class HumanRig : Rig
     readonly Vector3[] _wrist = new Vector3[2], _knee = new Vector3[2];
     /// <summary>Where each hand is to hold the carried thing this frame, and how far it's on it (0..1): the right (1) and the left (0).</summary>
     public Vector3 GripRight, GripLeft;
+    /// <summary>The axis of the thing each hand grips, where it does (the knuckles run along it).</summary>
+    public Vector3 GripAxisRight, GripAxisLeft;
     public float GripRightOn, GripLeftOn;
     /// <summary>The wrist each arm reached this frame (0 left, 1 right).</summary>
     public Vector3 WristOf(int i) => _wrist[i];
@@ -84,7 +86,19 @@ public sealed partial class HumanRig : Rig
             _legU[i] = pieces.FindIndex(p => p.Name == $"leg{side}u");
             _legL[i] = pieces.FindIndex(p => p.Name == $"leg{side}l");
             _foot[i] = pieces.FindIndex(p => p.Name == $"leg{side}f");
+            _handSize[i] = HandMake.Size(_f, side);
+            for (int k = 0; k < 3; k++)
+            {
+                int shape = k;
+                _handP[i * 3 + k] = pieces.FindIndex(p => p.Name == HandMake.PieceName((HandShape)shape, side));
+                _corners[i * 3 + k] = new Vector3[9];
+                HandMake.Corners((HandShape)k, i == 0, _handSize[i], _corners[i * 3 + k]);
+                (_lo[i * 3 + k], _hi[i * 3 + k]) = HandMake.Box((HandShape)k, i == 0, _handSize[i]);
+            }
         }
+        _ = HandTable.At("stand", 0); // (the table builds with the first body, not in the middle of a frame)
+        _bowman = _f.Prop == "bow";
+        _carryRow = _f.Prop.Length > 0 && Weapons.HoldOf(_f.Prop) == HoldKind.None ? "carry-" + _f.Prop : null;
         int bones = s.Mechanical ? 0 : FolkBody.TailBones(_f);
         _tail = new int[bones];
         for (int i = 0; i < bones; i++)
@@ -331,6 +345,7 @@ public sealed partial class HumanRig : Rig
         float throwBack = snap * (_hitPart switch { Part.Chest => 0.32f, Part.Head => 0.12f, Part.LegL or Part.LegR => 0.1f, _ => 0.08f }) * (0.6f + _hitHeavy) + 0.3f * stagger;
         if (throwBack > 0f && hitAxis.LengthSquared() > 1e-4f) torso = new Basis(hitAxis.Normalized(), throwBack) * torso;
         Pose[_body] = new Transform3D(torso, hip);
+        _bodyInv = Pose[_body].AffineInverse();
         PoseTail(g, hip, torso, cycle, moving, jerk);
 
         // Legs: a foot on the ground moves back under the body at walking speed, one in the air comes through high.
@@ -417,13 +432,17 @@ public sealed partial class HumanRig : Rig
 
         // Arms: each hand has a place to be, and the elbow follows it.
         Hold hold = Grips(g, kind, aimW, busy, turn, torso, hip, chest, neck, headBasis);
+        if (kind != HoldKind.None) KeepFistsClear(ref hold, kind, torso);
         GripRight = hold.R;
         GripLeft = hold.L;
         GripRightOn = hold.RW;
         GripLeftOn = hold.LW;
+        GripAxisRight = hold.RAxis;
+        GripAxisLeft = hold.LAxis;
         int doer = Doer(g, hold.RW > 0f, chest, torso);
         float shrug = g.Act == BodyAct.Shrug ? act * (0.03f + 0.03f * MathF.Max(0f, MathF.Sin(g.Clock * 3f))) * f.Height / 1.72f : 0f;
         Vector3 mouth = neck + headBasis.Y * (f.Neck + f.HeadRadius * 0.55f) - headBasis.Z * f.HeadRadius * 0.95f;
+        Vector3 sipAxis = (headBasis.Z * 0.72f - headBasis.Y * 0.69f).Normalized(); // the bottle's way from the hand to the lips
         float rightOff = 0f; // how far the right hand is off its usual hold (a gesture, a blow), for what it carries
         for (int i = 0; i < 2; i++)
         {
@@ -438,7 +457,8 @@ public sealed partial class HumanRig : Rig
             if (husk) swing += 0.3f * jerk * side + (i == f.LongArm ? 0.25f * moving : 0f);
             Vector3 hang = (down * MathF.Cos(swing) + ahead * MathF.Sin(swing)).Normalized();
             float bend = 0.95f - 0.28f * run - 0.12f * stalk;
-            Vector3 hand = shoulder + hang * arm * bend + torso.X * side * (0.03f + 0.04f * (f.Padding - 1f) * 2f);
+            // (A holstered pistol is by the hip: the hand hangs out past it.)
+            Vector3 hand = shoulder + hang * arm * bend + torso.X * side * (0.03f + 0.04f * (f.Padding - 1f) * 2f + (kind == HoldKind.Pistol && i == 1 ? 0.035f * f.Height / 1.72f : 0f));
             Vector3 pole = torso.Z + down * 0.2f + torso.X * side * 0.3f;
             if (g.Work > 0f)
             {
@@ -456,8 +476,7 @@ public sealed partial class HumanRig : Rig
             if (sip > 0f && i == 1)
             {
                 // The bottle's neck to the lips, its foot tipped up: the hand before the face, the elbow down and out.
-                Vector3 axis = (headBasis.Z * 0.72f - headBasis.Y * 0.69f).Normalized();
-                Vector3 grip = mouth - axis * 0.19f * HumanBody.Scale(f);
+                Vector3 grip = mouth - sipAxis * 0.19f * HumanBody.Scale(f);
                 hand = hand.Lerp(grip, sip);
                 pole = pole.Lerp(F.V(0.6f, -0.78f, 0.15f), sip).Normalized();
             }
@@ -473,6 +492,8 @@ public sealed partial class HumanRig : Rig
             }
             // Stalking, the arms hang loose and forward, ready.
             if (stalk > 0f) pole = pole.Lerp(F.V(0.5f, -0.4f, -0.8f), stalk).Normalized();
+            // The hand's shape and where its palm faces, eased the way the hand is.
+            HandSpec spec = StanceHand(i, g, kind, hold, moving, run, stalk, sip);
             // A hand on a weapon stays on it; the other does the gesture (a one-handed one done by the free hand).
             bool keeps = i == 1 ? hold.RW > 0f : kind == HoldKind.Bow;
             if (act > 0f && !keeps)
@@ -482,6 +503,7 @@ public sealed partial class HumanRig : Rig
                 {
                     hand = hand.Lerp(a.Hand, act);
                     pole = pole.Lerp(a.Pole, act).Normalized();
+                    spec = HandSpec.Lerp(spec, a.Spec, act);
                     if (i == 1) rightOff = MathF.Max(rightOff, act);
                 }
             }
@@ -489,6 +511,7 @@ public sealed partial class HumanRig : Rig
             if (on > 0f)
             {
                 hand = hand.Lerp(i == 1 ? hold.R : hold.L, on);
+                spec = HandSpec.Lerp(spec, i == 1 ? hold.RHand : hold.LHand, on);
                 // Holding something out in front, the elbow hangs down and a little out; drawing a bow, the elbow up and back along the arrow.
                 Vector3 holdPole = kind == HoldKind.Bow && i == 1 ? (hold.R - hold.L).Normalized() * 0.7f + torso.X * 0.6f - Vector3.Up * 0.1f : Vector3.Down + torso.X * side * 0.5f + torso.Z * 0.2f;
                 pole = pole.Lerp(holdPole.Normalized(), on).Normalized();
@@ -500,28 +523,52 @@ public sealed partial class HumanRig : Rig
             {
                 hand = hand.Lerp(blow.Hand, blowOn);
                 pole = pole.Lerp(blow.Pole, blowOn).Normalized();
+                spec = HandSpec.Lerp(spec, blow.Spec, blowOn);
                 if (i == 1) rightOff = MathF.Max(rightOff, blowOn);
             }
             // Struck on this arm, it is knocked along the hit; a heavy hit throws both arms out for balance.
             if (_hitPart == (i == 0 ? Part.ArmL : Part.ArmR)) hand += _hitDir * 0.26f * snap * (0.6f + _hitHeavy);
             hand += (F.Out * 0.14f + F.Up * 0.1f) * stagger;
             if (husk && g.Reach < 0.5f && act <= 0f && blowOn <= 0f) pole = (pole + torso.X * side * 0.6f + Vector3.Up * 0.3f * jerk).Normalized(); // elbows out, slack
+            // What the hand grips: a weapon's own axis, or a carried thing's, as far as the hand is still on it.
+            Vector3 axis = i == 1 ? hold.RAxis : hold.LAxis;
+            float gripW = on * (1f - blowOn);
+            if (i == 1 && _carryRow != null)
+            {
+                axis = PropAxis(g, torso, fwd, right, sip, sipAxis);
+                gripW = axis.Length() * (1f - rightOff);
+            }
+            Vector3 gripFore = Vector3.Zero;
+            if (gripW > 0f)
+            {
+                // The fist closes on the grip, not the wrist: the wrist goes back from it by the length of the hand (twice round, as the forearm moves with it;
+                // the hand keeps the frame it was placed by, the wrist bending to make up the rest).
+                Vector3 want = hand;
+                for (int pass = 0; pass < 2; pass++)
+                {
+                    (Vector3 e0, Vector3 w0) = LeggedRig.SolveIK(shoulder, want, upperArm, forearm, pole);
+                    gripFore = (w0 - e0).Normalized();
+                    want = hand - HandGrip(i, axis.Normalized(), gripFore, ahead, -F.Out, F.Mix(spec.Palm)) * (HandMake.Fist * _handSize[i]) * gripW;
+                }
+                hand = want;
+            }
             // Reaching out to a weapon, the shoulder comes forward as far as it must (a little).
             float need = MathF.Max(0f, shoulder.DistanceTo(hand) - arm * 0.98f);
-            if (on > 0f && need > 0f) shoulder += (hand - shoulder).Normalized() * MathF.Min(need, Reach * HumanBody.ArmScale(f)) * on;
-            (Vector3 elbow, Vector3 wrist) = Arm(Pose[_body], ref shoulder, hand, pole, upperArm, forearm, F.Out, ahead, on >= 0.5f);
+            if (on > 0f && need > 0f) shoulder += (hand - shoulder).Normalized() * MathF.Min(need, Reach * HumanBody.ArmScale(f) * f.Padding) * on; // (a thick coat's shoulder rolls further forward)
+            (Vector3 elbow, Vector3 wrist) = Arm(Pose[_body], ref shoulder, hand, pole, upperArm, forearm, F, i, spec, axis, gripW, gripFore, on >= 0.999f);
             Pose[_armU[i]] = Geo.Segment(shoulder, elbow, torso.X);
             Pose[_armL[i]] = Geo.Segment(elbow, wrist, torso.X);
+            PoseHand(i, HandFrame(i, spec, F, axis, gripW, (wrist - elbow).Normalized(), gripFore), wrist, spec.Shape);
             _wrist[i] = wrist;
             _elbow[i] = elbow;
             _shoulder[i] = shoulder;
         }
-        if (_prop >= 0) Pose[_prop] = PropPose(g, kind, hold, aimW, torso, fwd, right, sip, mouth, headBasis, rightOff);
+        if (_prop >= 0) Pose[_prop] = PropPose(g, kind, hold, torso, fwd, right, sip, sipAxis, rightOff);
         if (_string0 >= 0 && _string1 >= 0)
         {
             // The string from each limb tip to the nock: straight at rest, drawn to the right hand.
             Transform3D bow = Pose[_prop];
-            Vector3 nock = (bow * new Vector3(0f, 0f, HumanBody.BowTip(f, 1).Z)).Lerp(_wrist[1], hold.RW);
+            Vector3 nock = (bow * new Vector3(0f, 0f, HumanBody.BowTip(f, 1).Z)).Lerp(FistOf(1), hold.RW);
             Pose[_string0] = Geo.Segment(bow * HumanBody.BowTip(f, 1), nock, right, 1f);
             Pose[_string1] = Geo.Segment(bow * HumanBody.BowTip(f, -1), nock, right, 1f);
         }
@@ -546,6 +593,9 @@ public sealed partial class HumanRig : Rig
         public Vector3 R, L;
         public float RW, LW;
         public Transform3D Prop;
+        /// <summary>What each hand wraps, the weapon's axis at its grip (world), and the hand that goes with the hold (the owner's rows for it).</summary>
+        public Vector3 RAxis, LAxis;
+        public HandSpec RHand, LHand;
     }
 
     /// <summary>
@@ -579,26 +629,31 @@ public sealed partial class HumanRig : Rig
                 grip = lowButt.Lerp(aimButt, aim) + dir * 0.3f * u;
                 // A short reach (thick clothes, short arms): the gun comes across and up toward the
                 // left shoulder, never back into the body, until the fore-end is in hand.
-                grip = Across(grip, dir, 0.15f * u, shoulderL, armL * 0.97f + Reach * u, ahead);
+                grip = Across(grip, dir, 0.2f * u, shoulderL, armL * 0.97f + Reach * u, ahead);
                 // Still short: the stock presses back into a thick coat (it gives), never into the chest under it.
                 float give = MathF.Max(0f, (grip - dir * 0.3f * u - hip).Dot(ahead) - f.ChestD * (1f + 0.4f * (f.Padding - 1f)) * 1.03f);
-                float shortR = grip.DistanceTo(shoulderR) - (armR * 0.97f + Reach * u), shortL = (grip + dir * 0.15f * u).DistanceTo(shoulderL) - (armL * 0.97f + Reach * u);
+                float shortR = grip.DistanceTo(shoulderR) - (armR * 0.97f + Reach * u), shortL = (grip + dir * 0.2f * u).DistanceTo(shoulderL) - (armL * 0.97f + Reach * u);
                 if (MathF.Max(shortR, shortL) > 0f) grip -= ahead * MathF.Min(give, MathF.Max(shortR, shortL) * 1.2f);
                 // The other hand busy: carried in the right, muzzle down beside the leg.
-                Vector3 carry = hip + up * T * 0.3f + torso.X * (f.ShoulderW * f.Padding + 0.07f * u) + ahead * 0.04f * u;
+                Vector3 carry = hip + up * T * 0.3f + torso.X * (f.ShoulderW * f.Padding + 0.11f * u) + ahead * 0.06f * u;
                 grip = grip.Lerp(carry, busy);
                 dir = dir.Lerp((Vector3.Down * 0.8f + fwd * 0.6f).Normalized(), busy).Normalized();
                 h.R = grip;
                 h.RW = 1f;
-                h.L = Along(shoulderL, armL + Reach * u, grip, dir, 0.15f * u, 0.3f * u);
+                h.L = Along(shoulderL, armL + Reach * u, grip, dir, 0.24f * u, 0.32f * u);
                 h.LW = 1f - busy;
                 h.Prop = new Transform3D(Geo.AlongY(dir, right), grip);
+                (h.RAxis, h.LAxis) = (h.Prop.Basis.Z, h.Prop.Basis.Y); // the grip is a handle standing up, the fore-end a rail along the barrel
+                // The right fist sits low on the grip, under the action; the left rides the fore-end, up where the wood is.
+                h.R -= h.Prop.Basis.Z * 0.1f * u;
+                h.L += h.Prop.Basis.Z * 0.035f * u;
+                (h.RHand, h.LHand) = (HandTable.Mix("rifle-low", "rifle-aim", aim, 1), HandTable.Mix("rifle-low", "rifle-aim", aim, 0));
                 break;
             }
             case HoldKind.Pistol:
             {
                 // Holstered on the right hip, muzzle down, the grip back and up.
-                Vector3 holster = hip + up * T * 0.12f + torso.X * (MathF.Max(f.HipW, f.WaistW) * f.Padding + 0.06f * u) + ahead * 0.02f * u;
+                Vector3 holster = hip + up * T * 0.12f + torso.X * 0.09f * u + ahead * (d + 0.07f * u); // (in front of the belt, out of the way of the hands swinging by the hips)
                 Vector3 holsterDir = (Vector3.Down + fwd * 0.12f).Normalized();
                 float drawn = Math.Clamp((aim - 0.15f) / 0.85f, 0f, 1f);
                 Vector3 low = hip + up * T * 0.45f + torso.X * 0.12f * u + ahead * (d + 0.2f * u);
@@ -614,13 +669,21 @@ public sealed partial class HumanRig : Rig
                 h.L = grip - right * 0.045f * u + Vector3.Down * 0.03f * u;
                 h.LW = Mathf.SmoothStep(0.5f, 1f, drawn);
                 h.Prop = new Transform3D(Geo.AlongY(dir, aim > 0.15f ? right : torso.X), grip);
+                h.RAxis = h.LAxis = h.Prop.Basis.Z;
+                (h.R, h.L) = (h.R - h.Prop.Basis.Z * 0.04f * u, h.L - h.Prop.Basis.Z * 0.04f * u); // (low on the handle, under the slide)
+                for (int arm = 0; arm < 2; arm++)
+                {
+                    HandSpec spec = HandSpec.Lerp(HandSpec.Lerp(HandTable.At("pistol-holster", arm), HandTable.At("pistol-low", arm), clear), HandTable.At("pistol-raised", arm), drawn);
+                    if (arm == 0) h.LHand = spec;
+                    else h.RHand = spec;
+                }
                 break;
             }
             case HoldKind.Spear:
             {
-                Vector3 staff = shoulderR + Vector3.Down * armR * 0.82f + ahead * 0.12f * u + torso.X * 0.07f * u;
+                Vector3 staff = shoulderR + Vector3.Down * armR * 0.82f + ahead * 0.12f * u + torso.X * 0.1f * u;
                 Vector3 staffDir = (Vector3.Up + fwd * 0.08f).Normalized();
-                Vector3 level = hip + up * T * 0.4f + torso.X * 0.15f * u + ahead * (d + 0.08f * u);
+                Vector3 level = hip + up * T * 0.4f + torso.X * 0.15f * u + ahead * (d + 0.13f * u);
                 Vector3 levelDir = (look - right * 0.24f + Vector3.Up * 0.08f).Normalized();
                 // Swung out and round from upright to level, the butt clear of the hip on the way.
                 grip = staff.Lerp(level, aim) + (torso.X * 0.1f + ahead * 0.08f) * u * MathF.Sin(MathF.PI * aim);
@@ -631,6 +694,8 @@ public sealed partial class HumanRig : Rig
                 h.L = Along(shoulderL, armL + Reach * u, grip, dir, 0.16f * u, 0.45f * u);
                 h.LW = aim;
                 h.Prop = new Transform3D(Geo.AlongY(dir, right), grip);
+                h.RAxis = h.LAxis = h.Prop.Basis.Y;
+                (h.RHand, h.LHand) = (HandTable.Mix("spear-upright", "spear-level", aim, 1), HandTable.Mix("spear-upright", "spear-level", aim, 0));
                 break;
             }
             case HoldKind.Bow:
@@ -640,8 +705,10 @@ public sealed partial class HumanRig : Rig
                 Vector3 hang = shoulderL + Vector3.Down * armL * 0.84f + ahead * 0.14f * u - torso.X * 0.09f * u;
                 Vector3 hangDir = (Vector3.Up * 0.95f + fwd * 0.2f - right * 0.12f).Normalized();
                 Vector3 cheek = neck + head.Y * (f.Neck + f.HeadRadius * 0.55f) + head.X * f.HeadRadius * 0.85f - head.Z * f.HeadRadius * 0.35f;
+                Vector3 skull = neck + head.Y * (f.Neck + f.HeadRadius);
+                Vector3 fistAt = cheek + (cheek - skull).Normalized() * (HandMake.Extent(HandShape.Fist).hi.Z - HandMake.Fist.Z + 0.01f) * _handSize[1]; // (the string hand's fist, palm to the face: off the cheek by the depth of its curled fingers)
                 // The bow arm straight at the target; stood side-on, the cheek is behind it on the arrow's line.
-                Vector3 held = shoulderL + look * armL * 0.96f;
+                Vector3 held = shoulderL + look * (armL * 0.945f + HandMake.Fist.Y * _handSize[0]); // (the bow's grip is a hand's length past the wrist)
                 Vector3 arrow = (held - cheek).Normalized();
                 Vector3 heldDir = (Vector3.Up - arrow * Vector3.Up.Dot(arrow)).Normalized() + right * 0.08f;
                 grip = hang.Lerp(held, aim);
@@ -649,9 +716,11 @@ public sealed partial class HumanRig : Rig
                 Vector3 facing = fwd.Lerp(arrow, aim).Normalized();
                 h.L = grip;
                 h.LW = 1f;
-                h.R = cheek;
+                h.R = fistAt;
                 h.RW = aim;
                 h.Prop = new Transform3D(Geo.AlongY(dir, dir.Cross(facing)), grip);
+                h.RAxis = h.LAxis = h.Prop.Basis.Y; // (the string hand closes on the string, which runs along the limbs)
+                (h.RHand, h.LHand) = (HandTable.Mix("bow-hang", "bow-drawn", aim, 1), HandTable.Mix("bow-hang", "bow-drawn", aim, 0));
                 break;
             }
             case HoldKind.Blade:
@@ -662,6 +731,11 @@ public sealed partial class HumanRig : Rig
                 float wide = MathF.Sin(MathF.PI * aim);
                 h.R = hangs.Lerp(raised, aim) + (torso.X * 0.1f + ahead * 0.12f) * u * wide;
                 h.RW = 1f;
+                // Hanging head-down and forward; up and ready when wary.
+                Vector3 blade = (Vector3.Down * 0.7f + fwd * 0.7f - right * 0.08f).Normalized().Lerp((Vector3.Up + fwd * 0.25f).Normalized(), aim).Normalized();
+                h.Prop = new Transform3D(Geo.AlongY(blade, right), h.R);
+                h.RAxis = blade;
+                h.RHand = HandTable.Mix("blade-hang", "blade-raised", aim, 1);
                 break;
             }
         }
@@ -669,7 +743,7 @@ public sealed partial class HumanRig : Rig
     }
 
     /// <summary>How far a shoulder comes forward to reach out to a held weapon, m for a 1.72 m human's arms.</summary>
-    const float Reach = 0.06f;
+    const float Reach = 0.1f;
 
     /// <summary>A weapon held out of the left hand's reach comes across and up toward the left shoulder (never back into the body) until its near grip is in reach.</summary>
     static Vector3 Across(Vector3 grip, Vector3 dir, float near, Vector3 shoulder, float reach, Vector3 ahead)
@@ -699,55 +773,33 @@ public sealed partial class HumanRig : Rig
     }
 
     /// <summary>
-    /// Where the carried thing goes: a weapon where its hold puts it; anything else turns with the
-    /// hand that grips it (a bottle stands in a fist held level and tips to the lips to drink, an
-    /// umbrella stands up out of the fist), and a cane keeps its tip on the ground unless the hand is busy.
+    /// The way a carried thing (not a weapon, which a hold places) lies along the fist that closes on it,
+    /// as a vector as long as the grip is firm (zero: no preference, it goes where the thumb points): a
+    /// cane stands on the ground, a hoe rides the shoulder or works, a bottle tips to the lips.
     /// </summary>
-    Transform3D PropPose(in Gesture g, HoldKind kind, in Hold h, float aim, Basis torso, Vector3 fwd, Vector3 right, float sip, Vector3 mouth, Basis head, float busy)
+    Vector3 PropAxis(in Gesture g, Basis torso, Vector3 fwd, Vector3 right, float sip, Vector3 sipAxis) => _f.Prop switch
     {
-        Figure f = _f;
-        Vector3 hand = _wrist[1];
-        // The fist: the forearm's line, and the thumb up off it (forward when the arm hangs).
-        Vector3 along = (_wrist[1] - _elbow[1]).Normalized();
-        Vector3 thumb = Vector3.Up - along * along.Dot(Vector3.Up);
-        if (thumb.LengthSquared() < 0.04f) thumb = -torso.Z - along * along.Dot(-torso.Z);
-        thumb = thumb.Normalized();
-        // The hand piece's fist is a little short of the wrist.
-        Vector3 fist = hand - along * _f.ForearmOf(1) * 0.05f;
+        "cane" => (Vector3.Down + fwd * 0.05f).Normalized(),
+        "hoe" => ((Vector3.Up * 1.2f - torso.Z * 0.3f + right * 0.1f).Normalized()).Lerp((fwd + Vector3.Down * (0.8f + 0.5f * MathF.Sin(g.Clock * 1.7f))).Normalized(), g.Work).Normalized(),
+        "bottle" => sipAxis * sip,
+        _ => Vector3.Zero,
+    };
+
+    /// <summary>
+    /// Where the carried thing goes: a weapon where its hold puts it (and, in a blow, with the fist);
+    /// anything else along its own axis through the fist, or the way the thumb points when it has no
+    /// preference (an umbrella stands up out of a fist held so).
+    /// </summary>
+    Transform3D PropPose(in Gesture g, HoldKind kind, in Hold h, Basis torso, Vector3 fwd, Vector3 right, float sip, Vector3 sipAxis, float busy)
+    {
+        // The fist the hand has made: where it closes, which way the fingers go, where the thumb is.
+        Vector3 fist = FistOf(1), along = _handAt[1].Basis.Y, thumb = _handAt[1].Basis.X;
         if (kind == HoldKind.Bow) return h.Prop;
-        // A gun or a spear in a blow goes with the fist, along the forearm (a butt stroke, a thrust).
-        if (kind is HoldKind.LongGun or HoldKind.Pistol or HoldKind.Spear) return busy > 0f ? h.Prop.InterpolateWith(new Transform3D(Geo.AlongY(along, thumb.Cross(along)), fist), busy) : h.Prop;
-        if (kind == HoldKind.Blade)
-        {
-            // Hanging head-down and forward; up and ready when wary; in a blow it follows the arm.
-            Vector3 blade = (Vector3.Down * 0.7f + fwd * 0.7f - right * 0.08f).Normalized().Lerp((Vector3.Up + fwd * 0.25f).Normalized(), aim).Normalized();
-            blade = blade.Lerp(thumb, busy).Normalized();
-            return new Transform3D(Geo.AlongY(blade, right), fist);
-        }
-        switch (f.Prop)
-        {
-            case "cane":
-            {
-                Vector3 shaft = (Vector3.Down + fwd * 0.05f).Normalized().Lerp(-thumb, busy).Normalized();
-                return new Transform3D(Geo.AlongY(shaft, right), fist);
-            }
-            case "hoe":
-            {
-                // Over the shoulder on the way; head down and working when bent to it.
-                Vector3 shaft = ((Vector3.Up * 1.2f - torso.Z * 0.3f + right * 0.1f).Normalized()).Lerp((fwd + Vector3.Down * (0.8f + 0.5f * MathF.Sin(g.Clock * 1.7f))).Normalized(), g.Work).Normalized();
-                return new Transform3D(Geo.AlongY(shaft, right), fist);
-            }
-            case "wrench":
-                return new Transform3D(Geo.AlongY((along + thumb * 0.35f).Normalized(), right), fist);
-            case "bottle":
-            {
-                // Up out of the fist; drinking, from the fist to the lips, its foot tipped up.
-                Vector3 to = mouth - fist;
-                Vector3 up = thumb.Lerp(to.LengthSquared() > 1e-4f ? to.Normalized() : thumb, sip).Normalized();
-                return new Transform3D(Geo.AlongY(up, along.Cross(up).LengthSquared() > 1e-4f ? along.Cross(up) : right), fist);
-            }
-            default:
-                return new Transform3D(Geo.AlongY(thumb, right), fist);
-        }
+        // A gun, a spear or a blade in a blow goes with the fist (a butt stroke, a thrust, a swing).
+        if (kind != HoldKind.None)
+            return busy > 0f ? h.Prop.InterpolateWith(new Transform3D(kind == HoldKind.Blade ? Geo.AlongY(thumb, right) : Geo.AlongY(along, thumb.Cross(along)), fist), busy) : h.Prop;
+        Vector3 axis = PropAxis(g, torso, fwd, right, sip, sipAxis);
+        float firm = axis.Length() * (1f - busy);
+        return new Transform3D(Geo.AlongY(firm > 0f ? thumb.Lerp(axis / axis.Length(), firm).Normalized() : thumb, right), fist);
     }
 }

@@ -35,6 +35,13 @@ public partial class BestiaryTest : Node
         try
         {
             _data = DataFiles.LoadWildlife();
+            foreach (string a in OS.GetCmdlineUserArgs())
+                if (a.StartsWith("--posedump="))
+                {
+                    DumpPoses(a.Substring("--posedump=".Length));
+                    Shutdown.Quit(this, 0);
+                    return;
+                }
             GD.Print($"(worlds rolled from seed {_fresh.NextU64()})");
             if (OS.GetCmdlineUserArgs().Contains("--bodies"))
             {
@@ -42,6 +49,8 @@ public partial class BestiaryTest : Node
                 EveryBuildWorks();
                 NoArmThroughTheBody();
                 ActsReadAsThemselves();
+                HandsFaceTheWay();
+                StrapsLieOnTheBody();
                 BlowsAreBlows();
                 HitsShow();
                 TheDeadFallLimp();
@@ -54,6 +63,14 @@ public partial class BestiaryTest : Node
             if (OS.GetCmdlineUserArgs().Contains("--skins"))
             {
                 SkinnedBodiesAreSound();
+                GD.Print(_failures == 0 ? $"ALL PASSED ({_checks} checks)" : $"{_failures} OF {_checks} CHECK(S) FAILED");
+                Shutdown.Quit(this, _failures == 0 ? 0 : 1);
+                return;
+            }
+            if (OS.GetCmdlineUserArgs().Contains("--cost"))
+            {
+                // Only what a crowd of people costs to pose (a quick run while changing bodies).
+                TwentyPeopleAreCheap();
                 GD.Print(_failures == 0 ? $"ALL PASSED ({_checks} checks)" : $"{_failures} OF {_checks} CHECK(S) FAILED");
                 Shutdown.Quit(this, _failures == 0 ? 0 : 1);
                 return;
@@ -99,6 +116,8 @@ public partial class BestiaryTest : Node
             EveryBuildWorks();
             NoArmThroughTheBody();
             ActsReadAsThemselves();
+            HandsFaceTheWay();
+            StrapsLieOnTheBody();
             BlowsAreBlows();
             HitsShow();
             TheDeadFallLimp();
@@ -1318,7 +1337,9 @@ public partial class BestiaryTest : Node
             view.Build(rig);
             crowd.Add((rig, view));
         }
-        double worst = 0;
+        double worst = 0, total = 0;
+        var times = new List<double>();
+        long posed = 0, synced = 0;
         long bytes = 0;
         for (int f = 0; f < 120; f++)
         {
@@ -1326,12 +1347,22 @@ public partial class BestiaryTest : Node
             for (int i = 0; i < crowd.Count; i++)
             {
                 float t = f / 60f + i;
+                long a = System.Diagnostics.Stopwatch.GetTimestamp();
                 crowd[i].rig.Drive(new Gesture { Feet = new Vector3(i, 0f, -t * 1.3f), Speed = 1.3f, Walked = t * 1.3f, Clock = t, Act = i % 3 == 0 ? BodyAct.Greet : BodyAct.None, ActAmount = 1f });
+                long b = System.Diagnostics.Stopwatch.GetTimestamp();
                 crowd[i].view.Sync();
+                if (f > 10) (posed, synced) = (posed + b - a, synced + System.Diagnostics.Stopwatch.GetTimestamp() - b);
             }
             bytes += GC.GetAllocatedBytesForCurrentThread() - alloc;
-            if (f > 10) worst = Math.Max(worst, System.Diagnostics.Stopwatch.GetElapsedTime(from).TotalMilliseconds);
+            if (f > 10)
+            {
+                double ms = System.Diagnostics.Stopwatch.GetElapsedTime(from).TotalMilliseconds;
+                worst = Math.Max(worst, ms);
+                total += ms;
+                times.Add(ms);
+            }
         }
+        GD.Print($"  (pose and sync, 20 people: {total / 109:F3} ms a frame on average, {times.OrderBy(t => t).ElementAt(times.Count / 2):F3} typical, of which posing {posed * 1000.0 / System.Diagnostics.Stopwatch.Frequency / 109:F3} and handing it to the view {synced * 1000.0 / System.Diagnostics.Stopwatch.Frequency / 109:F3}; {crowd.Average(c => c.rig.Layout.Pieces.Count):F1} bones a person)");
         Check(crowd.All(c => c.view.DrawnNear == 1), "each person is one drawn body close to, not a node per piece");
         // From a distance the small parts drop out by size, and every rig piece keeps its body.
         int pieces = 0, kept = 0;
