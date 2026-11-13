@@ -120,5 +120,7 @@ City street before (runs A-D): 150-290 ms a frame at 8 physics ticks. After (run
 | 11/12 | city lights: 1356 omni lights; the mobile renderer's 8 a object means occlusion changes which lamp lights a facade (seen in --occlcheck): check a walk past lamps for popping | left | look and render CPU | PoiLayer.Tiers.cs |
 | - | first measure after a jump shows 30-38 M shadow primitives and 10-14 k shadow draws in the city (later halves ~7 M / 622) | left | the sun's shadow splits (shadows agent) | Game.Settings.cs |
 
+| - | Jolt's body limit: a walk into a city logged `Failed to create underlying Jolt Physics body` at the 10240-body limit (6-9 k dressing pieces each with a StaticBody3D, plus blocks, people, debris): pieces past it don't collide | left, high | merge a room's dressing boxes into one body, or raise jolt_physics_3d/limits/max_bodies | slice Places/Place.Deco.cs, shared Deco DecoNode |
+
 Tried and dropped: places' creature sims stepping every 8 ticks while asleep (no gain); posing on workers (no gain here).
-Not measured: routes after the fixes (PopTest now fails the walk over 16.7 ms), monsoon rain, the crossing hitch (OrbitTest still 53.9-230 ms).
+Routes after (PopTest on the merged tip e8e72f9, a fresh world): walk into a city 45.2 ms mean, bike 11.0, fly into a city 12.4 (p99 46); before: walk 12.7 (open land), bike 20.3, fly into a city 27.8 (p99 109). Not measured, monsoon rain, the crossing hitch (OrbitTest still 53.9-230 ms).
