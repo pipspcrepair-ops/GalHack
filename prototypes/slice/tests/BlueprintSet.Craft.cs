@@ -103,16 +103,17 @@ three lift jets, a down jet, a side jet on each wingtip, three pads.");
         d.Face(P(-3, 0, 6), P(2, 2, 6), Dir.PosZ, hazard);
         d.Stairs(P(-1, -1, 7), Dir.NegZ, hull);
         d.Stairs(P(0, -1, 7), Dir.NegZ, hull);
-        // Engine pods on the flanks with the power, gyro and fuel; mains, side jets, retros, lift and down jets.
-        d.Fill(P(-5, 0, 0), P(-4, 1, 5), "iron-plated", pod).Fill(P(3, 0, 0), P(4, 1, 5), "iron-plated", pod);
-        d.Put("generator-t1", P(-5, 0, 2));
-        d.Put("gyro-t1", P(-4, 0, 2));
-        d.Put("fuel-tank-t1", P(-5, 1, 2));
-        d.Put("generator-t1", P(4, 0, 2));
-        d.Put("fuel-tank-t1", P(3, 0, 2));
-        foreach (int x in new[] { -5, -4, 3, 4 }) d.Thruster("thruster-t1", P(x, 0, 6), Dir.NegZ);
-        d.Thruster("thruster-t1", P(-6, 0, 3), Dir.PosX);
-        d.Thruster("thruster-t1", P(5, 0, 3), Dir.NegX);
+        // Engine pods on the flanks, each on a pylon, with the power, gyro and fuel; the mains in their tails.
+        d.Fill(P(-4, 0, 2), P(-4, 1, 3), "iron-plated", hull).Fill(P(3, 0, 2), P(3, 1, 3), "iron-plated", hull);
+        d.Fill(P(-6, 0, 0), P(-5, 1, 5), "iron-plated", pod).Fill(P(4, 0, 0), P(5, 1, 5), "iron-plated", pod);
+        d.Put("generator-t1", P(-6, 0, 2));
+        d.Put("gyro-t1", P(-5, 0, 2));
+        d.Put("fuel-tank-t1", P(-6, 1, 2));
+        d.Put("generator-t1", P(5, 0, 2));
+        d.Put("fuel-tank-t1", P(4, 0, 2));
+        foreach (int x in new[] { -6, -5, 4, 5 }) d.Thruster("thruster-t1", P(x, 0, 6), Dir.NegZ);
+        d.Thruster("thruster-t1", P(-7, 0, 3), Dir.PosX);
+        d.Thruster("thruster-t1", P(6, 0, 3), Dir.NegX);
         d.Thruster("thruster-t1", P(-2, 0, -7), Dir.PosZ);
         d.Thruster("thruster-t1", P(1, 0, -7), Dir.PosZ);
         foreach (int x in new[] { -3, 2 })
@@ -125,11 +126,12 @@ three lift jets, a down jet, a side jet on each wingtip, three pads.");
         }
         return d.Text(@"Shuttle: a boxy people-and-cargo runner. An iron cabin 4 m wide, 3 m floor to ceiling and
 11 m long: two command chairs side by side behind the windscreen, eight lockers down the walls
-either side of a 2 m aisle, a double hatch at the back up a step. An engine pod on each flank holds
-the generators, gyro and fuel; four mains, two retros, two side jets, four lift jets, a down jet.");
+either side of a 2 m aisle, a double hatch at the back up a step. An engine pod on a pylon on each
+flank holds a generator and fuel (and the gyro to port); four mains in the pods, two retros, two
+side jets, four lift jets, a down jet.");
     }
 
-    /// <summary>The Hover Tank: a low iron hull on four big hover plates, a cockpit and a turret on its deck.</summary>
+    /// <summary>The Hover Tank: a low iron hull on eight hover plates, a cockpit and a turret on its deck.</summary>
     static string Tank(Catalogue cat)
     {
         var d = new Designer(cat, "Hover Tank", CoreMode.Hover);
@@ -146,8 +148,8 @@ the generators, gyro and fuel; four mains, two retros, two side jets, four lift 
         d.Put("gyro-t2", P(0, -1, 2));
         d.Put("fuel-tank-t2", P(1, -1, 2));
         d.Put("container-t1", P(2, -1, 2));
-        foreach (int x in new[] { -4, 3 })
-            foreach (int z in new[] { -6, 5 }) d.Put("hover-t2", P(x, -1, z));
+        foreach (int x in new[] { -4, 4 })
+            foreach (int z in new[] { -6, -2, 2, 6 }) d.Put("hover-t1", P(x, -1, z));
         // On deck: the driver's cockpit at the front, the turret behind it.
         d.Put("cockpit-t1", P(-1, 1, -6));
         d.Put("turret", P(0, 1, 1));
@@ -161,7 +163,7 @@ the generators, gyro and fuel; four mains, two retros, two side jets, four lift 
         d.Stairs(P(0, 0, 8), Dir.NegZ, sand);
         d.Stairs(P(-1, -1, 9), Dir.NegZ, sand);
         d.Stairs(P(0, -1, 9), Dir.NegZ, sand);
-        return d.Text(@"Hover Tank: a low iron hull on four Hover plate T2s, a hardened glacis and armoured
+        return d.Text(@"Hover Tank: a low iron hull on eight Hover plate T1s, a hardened glacis and armoured
 sponsons. Up the stair at the stern onto the deck: the driver's Cockpit T1 forward, the turret
 behind it. Generator, gyro, fuel and a locker in the hull; two mains at the stern and a retro on
 each sponson.");
@@ -270,7 +272,7 @@ corners, two down jets, a side jet each way, four pads.");
         d.Thruster("thruster-t3", P(2, 11, -12), Dir.NegY);
         d.Thruster("thruster-t3", P(-3, 8, 6), Dir.NegY);
         d.Thruster("thruster-t3", P(2, 8, 6), Dir.NegY);
-        foreach (var (x, z) in new[] { (-8, -18), (7, -18), (-6, 10), (5, 10) }) d.Put("pad-t3", P(x, 0, z));
+        foreach (var (x, z) in new[] { (-8, -18), (7, -18), (-6, 10), (5, 10) }) d.Put("pad-t1", P(x, 0, z));
         d.Stairs(P(-1, 0, 14), Dir.NegZ, hull);
         d.Stairs(P(0, 0, 14), Dir.NegZ, hull);
         return d.Text(@"Frigate: a small capital ship in iron. Forward, two decks 4 m floor to ceiling joined by a

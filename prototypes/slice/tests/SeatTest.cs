@@ -29,7 +29,10 @@ public partial class SeatTest : Node
         name "Two Seats"
         grid 1m
         mode capital
-        block -4..3 0 -2..2 base-block
+        block -4..-1 0 -2..2 base-block
+        block 1..3 0 -2..2 base-block
+        block 0 0 -2..-1 base-block
+        block 0 0 1..2 base-block
         block 0 0 3 gyro-t1
         block 0 0 0 core
         block 2 1 -1 command-chair

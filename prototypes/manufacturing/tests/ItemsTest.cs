@@ -336,7 +336,9 @@ public partial class ItemsTest : TestBase
         Note($"TOTAL first vessel from the crash: {ore:0} ore; gather {gather:0} min at {reference.GatherOrePerMinute:0}/min, craft {craft:0} min, place {place:0} min");
         Note($"  => {best:0} to {worst:0} minutes for an experienced player (the design asks for 1 to 2 hours)");
         Check(vessel.Leaves.Total is >= 400 and <= 2500, $"the vessel costs a sensible amount of ore ({vessel.Leaves.Total})");
-        Check(best >= 30 && worst <= 120, $"the first vessel takes {best:0}-{worst:0} min, inside an hour or two with the rest of survival");
+        // The Skiff is the cheapest flyer (owner, 13 Nov: about 600 ore, every world has the ores), which brings the
+        // first vessel under the design's hour: at least 20 minutes, never past two hours.
+        Check(best >= 20 && worst <= 120, $"the first vessel takes {best:0}-{worst:0} min, at least 20 minutes and never past two hours with the rest of survival");
 
         // For comparison: the walk-in Shuttle.
         Structure shuttle = DataPaths.LoadBlueprint(DataPaths.Slice("shuttle.gbp"));

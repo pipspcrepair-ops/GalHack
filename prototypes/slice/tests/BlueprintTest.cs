@@ -273,12 +273,16 @@ public partial class BlueprintTest : Node
             yield return 0;
         }
         c.ReleaseAll();
+        var heights = new Queue<float>();
         for (t = 0; t < 120 * 60 && !v.Controller.Frozen; t++)
         {
-            float agl = v.AboveGround - ground, vy = v.Body.Velocity.Y;
+            // The sink rate it really makes over half a second (pressed onto the ground, the flight model still asks for some).
+            float agl = v.AboveGround - ground;
+            heights.Enqueue(agl);
             float wanted = agl > 25f ? -6f : agl > 6f ? -2.5f : -1f;
-            bool down = agl < 0.6f && MathF.Abs(vy) < 0.4f;
-            if (down && v.Body.Velocity.Length() < 0.2f && !v.Structure.Blocks().Any(b => v.Structure.TypeOf(b.block).Function == "gear")) break;
+            float vy = heights.Count > 30 ? (agl - heights.Dequeue()) * 2f : wanted;
+            bool down = heights.Count >= 30 && agl < 0.6f && MathF.Abs(vy) < 0.2f;
+            if (down && !v.Structure.Blocks().Any(b => v.Structure.TypeOf(b.block).Function == "gear")) break;
             c.Hold(Key.Ctrl, !down && vy > wanted + 0.5f);
             c.Hold(Key.Space, !down && vy < wanted - 0.5f);
             if (t % 600 == 599) GD.Print($"    ({name} landing: {agl:F1} m over its rest height, sinking {-vy:F1} m/s, drifting {new Vector2(v.Body.Velocity.X, v.Body.Velocity.Z).Length():F1} m/s)");

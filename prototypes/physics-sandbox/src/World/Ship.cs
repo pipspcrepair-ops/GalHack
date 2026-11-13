@@ -307,11 +307,9 @@ public sealed class Ship
         return (report.Destroyed, wrecks);
     }
 
-    /// <summary>The cells that mount the port engine pod to the hull: shoot these and the pod comes off.</summary>
-    public static readonly Int3[] PortPodMount =
-    {
-        new(-4, 1, 6), new(-4, 2, 6), new(-4, 3, 6), new(-3, 1, 6), new(-3, 2, 6), new(-3, 3, 6),
-    };
+    /// <summary>The Shuttle's pylons that mount its engine pods to the hull: shoot one and its pod comes off.</summary>
+    public static readonly Int3[] PortPodMount = { new(-4, 0, 2), new(-4, 1, 2), new(-4, 0, 3), new(-4, 1, 3) },
+        StarboardPodMount = { new(3, 0, 2), new(3, 1, 2), new(3, 0, 3), new(3, 1, 3) };
 
     /// <summary>
     /// Makes a body for a section that has just been split off this structure (it has the same

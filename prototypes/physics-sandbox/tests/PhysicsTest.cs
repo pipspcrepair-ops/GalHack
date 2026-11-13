@@ -246,8 +246,8 @@ public partial class PhysicsTest : Node
         // One block edited: only its chunk's colliders are rebuilt (hull and cabin), never the whole body.
         Ship scratch = _w.SpawnVessel(SandboxWorld.Shuttle, new N.Vector3(90f, 150f, 90f), 0f, landed: false);
         int chunks = scratch.Structure.Chunks.Count, shapesBefore = scratch.HullShapes.ShapeCount;
-        var cell = new SInt3(5, 3, 4);
-        Building.Place(scratch.Structure, cell, Building.Make(scratch.Structure, scratch.Structure.Catalogue.Type("steel")));
+        var cell = new SInt3(0, 4, 3); // on the roof
+        Building.Place(scratch.Structure, cell, Building.Make(scratch.Structure, scratch.Structure.Catalogue.Type("iron-plated")));
         var watch = Stopwatch.StartNew();
         scratch.ApplyEdits();
         double ms = watch.Elapsed.TotalMilliseconds;
@@ -618,8 +618,7 @@ public partial class PhysicsTest : Node
             $"the engine's wreck body carries on with the momentum it inherited ({expected.Length():F1} m/s at its centre of mass): one engine step later it has changed by exactly gravity and drag over its mass ({drift.Length():F3} m/s, off by {N.Vector3.Distance(drift, pushed):E1})");
 
         // The second pod, shot with a blast behind it: thrown clear and tumbling.
-        SInt3[] starboard = Ship.PortPodMount.Select(c => new SInt3(-c.X, c.Y, c.Z)).ToArray();
-        var (_, more) = ship.ShootThrough(starboard, push: 6f);
+        var (_, more) = ship.ShootThrough(Ship.StarboardPodMount, push: 6f);
         float tumble = 0f;
         for (int i = 0; i < 45; i++)
         {
@@ -635,8 +634,8 @@ public partial class PhysicsTest : Node
 
     // ==== Riding: one mechanism, the cabin world, inside and out on the hull =====================
 
-    /// <summary>Spots on the Shuttle, in its own frame: on its roof (clear of the down jet), at the roof's starboard edge, behind its hatch on the step.</summary>
-    static readonly N.Vector3 OnRoof = new(-2f, 3.53f, -3f), RoofEdge = new(1f, 3.53f, -3f), OnStep = new(-0.5f, -0.47f, 6.9f);
+    /// <summary>Spots on the Shuttle, in its own frame: on its roof over its middle (clear of the down jet), at the roof's starboard edge, behind its hatch on the step.</summary>
+    static readonly N.Vector3 OnRoof = new(0.5f, 3.53f, 0.5f), RoofEdge = new(1.5f, 3.53f, -3f), OnStep = new(-0.5f, -0.47f, 6.9f);
 
     IEnumerable<int> HullRider()
     {
@@ -1044,7 +1043,7 @@ public partial class PhysicsTest : Node
         float stepHeight = _w.Rules.Walking.StepHeight, grace = _w.Rules.Riding.LetGoAfter;
 
         // Into the superstructure's side, two blocks (2 m) tall: a wall, never a floor.
-        p.PlaceAboard(barge, new N.Vector3(-0.25f, 0.53f, 3.0f));
+        p.PlaceAboard(barge, new N.Vector3(-0.25f, 0.53f, 2.0f));
         p.Yaw = 0f; // facing the superstructure
         p.Pitch = 0f;
         for (int i = 0; i < 10; i++) yield return 0;
@@ -1337,10 +1336,10 @@ public partial class PhysicsTest : Node
     IEnumerable<int> GearOnDugGround()
     {
         var site = new N.Vector2(-42f, -8f);
-        // Dig a pit where the nose leg will come down and a scrape under the port rear leg, on
+        // Dig a pit where the port front leg will come down and a scrape under the starboard rear leg, on
         // sloping ground, so no two feet agree.
-        _w.Terrain.Dig(TInt3.Floor(_w.Ground(site.X, site.Y - 4f) - N.Vector3.UnitY * 0.2f), 1.2f);
-        _w.Terrain.Dig(TInt3.Floor(_w.Ground(site.X - 1.5f, site.Y + 2.5f)), 0.6f);
+        _w.Terrain.Dig(TInt3.Floor(_w.Ground(site.X - 3f, site.Y - 4.5f) - N.Vector3.UnitY * 0.2f), 1.2f);
+        _w.Terrain.Dig(TInt3.Floor(_w.Ground(site.X + 2f, site.Y + 4.5f)), 0.6f);
         Ship ship = _w.SpawnVessel(SandboxWorld.Shuttle, _w.Ground(site.X, site.Y) + N.Vector3.UnitY * 9f, 0f, landed: false);
         int landed = _landed;
         for (int t = 0; t < 600 && _landed == landed; t++)
@@ -1590,7 +1589,7 @@ public partial class PhysicsTest : Node
         sinker.Flight.Input = PilotInput.Autopilot;
         watched.Add(sinker.Body);
         for (int i = 0; i < 20; i++) yield return 0;
-        sinker.ShootThrough(new[] { new SInt3(-2, 0, 3) }); // the generator, set into the deck
+        sinker.ShootThrough(new[] { new SInt3(-6, 0, 2), new SInt3(5, 0, 2) }); // the generators, one in each pod
         int landedBefore = _landed;
         float lowestKeel = float.PositiveInfinity, sinkSpeed = 0f;
         bool wentUnder = false;

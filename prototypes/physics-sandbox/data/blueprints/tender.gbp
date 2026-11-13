@@ -23,6 +23,9 @@ block -3 -2 -10 pad-t4
 block 2 -2 -10 pad-t4
 block -3 -2 10 pad-t4
 block 2 -2 10 pad-t4
+block -1..0 -2 16 iron-plated paint=keel
+block -1..0 -2 17 iron-plated paint=keel
+block -1..0 -2 18 stairs rot=+y+z paint=hull
 block -4 -1 -15 thruster-t3 rot=+y+z
 block 3 -1 -15 thruster-t3 rot=+y+z
 block -4..3 -1 -14 iron-plated paint=keel
@@ -74,6 +77,8 @@ block 3 -1 12 thruster-t3 rot=+z+y
 block -4..3 -1 13 iron-plated paint=keel
 block -4 -1 14 thruster-t3
 block 3 -1 14 thruster-t3
+block -1..0 -1 16 iron-plated paint=keel
+block -1..0 -1 17 stairs rot=+y+z paint=hull
 block -10..9 0 -16 iron-plated paint=hull,hull,hazard,hull,hull,hull
 block -10..9 0 -15 iron-plated paint=hull,hull,deck,hull,hull,hull
 block -10..9 0 -14 iron-plated paint=hull,hull,deck,hull,hull,hull
@@ -107,6 +112,7 @@ block -10..9 0 12 iron-plated paint=hull,hull,deck,hull,hull,hull
 block -10..9 0 13 iron-plated paint=hull,hull,deck,hull,hull,hull
 block -10..9 0 14 iron-plated paint=hull,hull,deck,hull,hull,hull
 block -10..9 0 15 iron-plated paint=hull,hull,hazard,hull,hull,hull
+block -1..0 0 16 stairs rot=+y+z paint=hull
 block -1..1 1 -16 iron-plated paint=hull
 block 0 1 -15 command-chair
 block -9 1 -8 thruster-t3 rot=+z-y

@@ -559,8 +559,8 @@ public partial class CapitalTest : Node
         var bunker = new List<SInt3>();
         // Walls on both flanks, a course at a time, until the hull can't lift them: however much lift it has.
         for (int y = 2; y < 64 && _w.LiftMargin(b).margin >= 0f; y++)
-            foreach (int x in new[] { -5, 5 })
-                for (int z = 0; z <= 8; z++)
+            foreach (int x in new[] { -5, -4, 4, 5 })
+                for (int z = -3; z <= 8; z++)
                 {
                     Block block = Building.Make(s, combat);
                     block.Paint = dark.Paint;

@@ -40,12 +40,12 @@ public static partial class BlueprintSet
         }
         // Engineering: lockers to port, power, fuel and gyros to starboard.
         for (int z = -4; z <= 2; z++) d.Put("container-t4", P(-5, 1, z));
+        d.Put("generator-t2", P(4, 1, -4));
         d.Put("generator-t2", P(4, 1, -3));
-        d.Put("generator-t2", P(4, 1, -2));
-        d.Put("fuel-tank-t2", P(4, 1, -1));
-        d.Put("fuel-tank-t2", P(4, 1, 1));
+        d.Put("fuel-tank-t2", P(4, 1, -2));
+        d.Put("fuel-tank-t2", P(4, 1, 0));
+        d.Put("gyro-t2", P(4, 1, 2));
         d.Put("gyro-t2", P(4, 1, 3));
-        d.Put("gyro-t2", P(4, 1, 4));
         // Nacelles either side of the hall, the mains in their tails; lift jets and pads in the keel.
         d.Fill(P(-8, 1, -4), P(-7, 3, 8), "iron-plated", chev).Fill(P(6, 1, -4), P(7, 3, 8), "iron-plated", chev);
         foreach (int x in new[] { -8, -7, 6, 7 }) d.Thruster("thruster-t3", P(x, 2, 9), Dir.NegZ);
