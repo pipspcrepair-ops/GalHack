@@ -205,6 +205,8 @@ public partial class BodyTest : Node
             GD.Print($"  the place holds {bodies} bodies and {shapes} shapes, {place.DecoPieces} dressing pieces standing");
 
             // Rays: from each side of a piece, at each of its boxes' middle heights, into the box's middle.
+            int rayMatched = 0, rayTried = 0;
+            float rayWorst = 0f;
             foreach (DecoHit h in hits)
             {
                 int matched = 0, tried = 0;
@@ -222,8 +224,9 @@ public partial class BodyTest : Node
                         if (expect == null ? met.Count == 0 : met.Count > 0 && MathF.Abs(got - expect.Value) <= Tolerance) matched++;
                         else worst = MathF.Max(worst, expect == null ? 9f : MathF.Abs(got - expect.Value));
                     }
-                Check(tried > 0 && matched == tried, $"a ray at the {h.Piece.Name} meets it where its boxes are ({matched} of {tried} rays within a centimetre{(worst > 0 ? $", worst off by {worst:F3} m" : "")})");
+                (rayMatched, rayTried, rayWorst) = (rayMatched + matched, rayTried + tried, MathF.Max(rayWorst, worst));
             }
+            Check(rayTried > 0 && rayMatched == rayTried, $"rays at the table, chair and locker meet them where their boxes are ({rayMatched} of {rayTried} rays within a centimetre{(rayWorst > 0 ? $", worst off by {rayWorst:F3} m" : "")})");
 
             // Capsules (the survivor's, a creature's) standing on the floor and walked at each piece along its own axes
             // stop where they stopped against that piece's own body of boxes, one a piece, as dressing was before.
