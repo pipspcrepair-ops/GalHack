@@ -40,7 +40,7 @@ public static class Architect
             string kitId = family.Style ?? (family.Site != null || variant.Site != null
                 ? lib.Sites[variant.Site ?? family.Site!].Style
                 : lib.Programs[variant.Program ?? family.Program!].Style);
-            var canvas = new Canvas(lib.Kits[kitId]);
+            var canvas = new Canvas(lib.Kits[kitId]) { Tech = hints?.Tech };
             canvas.X.Wrong = rng.Chance(family.Wrong);
             try
             {

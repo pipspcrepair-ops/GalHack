@@ -257,7 +257,7 @@ public partial class DeepSite : Node3D
             if (c.RigInterval < 4 && _unseen.Contains(c)) c.RigInterval = 4;
             if (!_views.TryGetValue(c, out CreatureView view))
             {
-                if (d > FarDistance || clock.Elapsed.TotalMilliseconds > _allow) continue;
+                if (d > FarDistance || clock.Elapsed.TotalMilliseconds > _allow || !CreatureView.Ready(c)) continue;
                 double before = clock.Elapsed.TotalMilliseconds;
                 view = new CreatureView();
                 _creatures.AddChild(view);

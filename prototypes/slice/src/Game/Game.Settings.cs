@@ -108,14 +108,16 @@ public partial class Game
         float reach = Settings.ShadowDistance > GameSettings.DefaultShadow ? Settings.ShadowDistance : s.Reach;
         foreach (DirectionalLight3D light in Suns())
         {
-            // The level's own reach, or the shadow distance setting's if above AUTO; past 320 m the near splits stay where they were
-            // (so close by stays as sharp) and the last 15% fades as the far land's own shade comes in.
+            // The level's own reach, or the shadow distance setting's if above AUTO: the splits grow by one ratio from the
+            // first (so a texel grows with distance, a plant's shadow is as sharp at 300 m as at 80) and the last 15% fades as the far land's own shade comes in.
             light.DirectionalShadowMaxDistance = reach;
+            light.ShadowNormalBias = NormalBias;
             if (reach > GameSettings.DefaultShadow)
             {
-                light.DirectionalShadowSplit1 = 32f / reach;
-                light.DirectionalShadowSplit2 = 64f / reach;
-                light.DirectionalShadowSplit3 = MathF.Max(160f, reach * 0.4f) / reach;
+                float ratio = MathF.Pow(reach / FirstSplit, 1f / 3f);
+                light.DirectionalShadowSplit1 = FirstSplit / reach;
+                light.DirectionalShadowSplit2 = FirstSplit * ratio / reach;
+                light.DirectionalShadowSplit3 = FirstSplit * ratio * ratio / reach;
                 light.DirectionalShadowFadeStart = PlanetSurface.Terrain.FarShade.JoinFull;
             }
             light.DirectionalShadowMode = s.Splits;
@@ -125,6 +127,9 @@ public partial class Game
         Slice.Surface.SpawnReach.Set(Settings.SpawnDistance);
         if (Surface?.Streamer != null) Surface.Streamer.ShadowReach = reach;
     }
+
+    /// <summary>The sun's shadow normal bias (the engine's is 2, in texels: a lift off the ground the size of a texel or two, which at a low sun hid small shadows and set the rest off their bases) and the first split's distance, m.</summary>
+    const float NormalBias = 0.6f, FirstSplit = 30f;
 
     /// <summary>A shadow level as the engine's numbers.</summary>
     /// <param name="Reach">How far from the eye the sun's shadows are drawn, m.</param>

@@ -122,6 +122,11 @@ public sealed class PoiInstance
     public CellMask Protected = null!;
     public bool HasCore;
     public Int3 CoreCell;
+    /// <summary>The armoured glass round the core in its vault, if it stands in a case (empty if not).</summary>
+    public List<Int3> CoreCase = new();
+
+    /// <summary>Whether the core can be walked up to from what the way in reaches: itself, or (in a glass case, reached by breaking it) some pane of its case.</summary>
+    public bool CoreReached(NavGrid nav, HashSet<Int3> reach) => nav.AccessCell(CoreCell, reach) is Int3 || CoreCase.Any(c => nav.AccessCell(c, reach) is Int3);
     public List<Int3> CriticalPath = new();
     public List<LootCache> Caches = new();
     public List<TerminalLog> Terminals = new();
@@ -310,7 +315,7 @@ public static class PoiFactory
         if (!nav.Standable(inst.Layout.EntranceCell)) return false;
         var reach = nav.Reachable(inst.Layout.EntranceCell);
         if (inst.Caches.Any(c => !c.Secret && nav.AccessCell(c.Cell, reach) is not Int3)) return false;
-        return !inst.HasCore || nav.AccessCell(inst.CoreCell, reach) is Int3;
+        return !inst.HasCore || inst.CoreReached(nav, reach);
     }
 
     static PoiInstance SpawnOnce(PoiLibrary lib, Layout layout, PoiState state, ulong spawnSeed, WorldProfile? world, OccupancyRoll? occupancy = null)
@@ -339,6 +344,10 @@ public static class PoiFactory
         StateTransforms.Weather(inst, rng.Fork("weather")); // a century or two after the fall
         using (Prof.Time("decay")) Decay.Apply(inst, rng.Fork("decay"));
         using (Prof.Time("dressing")) Dressing.Apply(lib, inst, rng.Fork("dressing"));
+        // The core is not where the loot is (rule E5): no cache within 10 m of it, but the vault keeps one.
+        if (inst.HasCore)
+            foreach (var k in inst.Caches.Where(k => (k.Cell - inst.CoreCell) is var o && o.X * o.X + o.Y * o.Y + o.Z * o.Z < 100).ToList())
+                if (!k.InVault || inst.Caches.Count(v => v.InVault) > 1) { inst.Blocks.Set(k.Cell, Block.Air); inst.Caches.Remove(k); }
         using (Prof.Time("aftermath")) StateTransforms.Aftermath(inst, rng.Fork("aftermath"));
         Structure.DropUntethered(inst.Blocks); // cables and tendrils always hang from something
         // Repair after decay: anything the passes above left hanging in the air (a canopy cut off by a
@@ -362,6 +371,8 @@ public static class PoiFactory
             Settle.Apply(inst);
             PieceFacing.Apply(inst.Blocks, layout.Occupied, layout.Extras.InSpace);
         }
+        // Then its plain cubes take the shapes its builders used (rule P6), round what is set down, not under it.
+        using (Prof.Time("shaping")) Shaping.Apply(inst);
         // How its faces are finished and how far the years took them, the walls' and roofs' fixed while their colours are their own.
         PlaceLook.Stamp(inst);
         // Made things in the world's own paint, as worn as the world: places, houses and city lots alike.
@@ -405,6 +416,22 @@ public static class Fixtures
             Int3 core = coreSlot?.Cell ?? FreeCell(inst, coreModule, rng);
             g.Set(core, new Block(BlockType.Core, Material.Lumen, CoreColor, Role.Core));
             inst.CoreCell = core;
+            // In a core vault, one in two cores stands in a case of armoured glass to its ceiling: seen from the whole
+            // room, reached only by breaking through (never walled in where it can't be seen, never locked: owner, 13 Nov).
+            if (coreModule >= 0 && layout.Modules[coreModule].Purpose == "core-vault" && rng.Chance(0.5f))
+            {
+                var ring = new List<Int3>();
+                for (int y = 0; y <= 2; y++)
+                    for (int z = -1; z <= 1; z++)
+                        for (int x = -1; x <= 1; x++)
+                            if (x != 0 || z != 0 || y == 2) ring.Add(core + new Int3(x, y, z));
+                if (ring.All(c => g.Get(c).IsAir && layout.Occupied[c]) && ring.Where(c => c.Y == core.Y).All(c => Settle.Holds(g, inst.Nav(), c + Int3.Down)))
+                {
+                    var glass = new Block(BlockType.Cube, Material.Glass, new Rgb(0xa8, 0xdc, 0xe8), Role.Window);
+                    foreach (Int3 c in ring) g.Set(c, glass);
+                    inst.CoreCase = ring;
+                }
+            }
         }
 
         // Loot: every slot in the vault and every planned slot; about half of a kit's others.
