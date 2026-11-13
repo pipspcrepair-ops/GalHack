@@ -647,14 +647,10 @@ public partial class Game : Node3D
         }
         if (vessel.Flight == null) return;
         var move = new Vector3(c.Axis(Key.D, Key.A), c.Axis(Key.Space, Key.Ctrl), c.Axis(Key.S, Key.W));
-        // A vessel turns no faster than the data's cap, however light (the stick asks for a share of it).
-        float cap = vessel.Stats is HandlingStats st && st.TurnRate > 0f
-            ? Mathf.Min(1f, Zone.Data.Rules.Build.MaxTurn / st.TurnRate) : 1f;
-        var turn = new Vector3(-_stick.Y, -_stick.X, c.Axis(Key.Q, Key.E)) * cap;
+        var turn = new Vector3(-_stick.Y, -_stick.X, c.Axis(Key.Q, Key.E));
         // Anyone in a seat can reach the ship's systems; only the pilot role's holder flies it.
         if (vessel.Roles.Pilot != Vessel.Player) return;
         vessel.Flight.Input = PilotInput.Hands(move, turn, c.IsHeld(Key.Shift));
-        if (c.WasPressed(Key.G)) vessel.Controller?.ToggleGear();
         if (c.WasPressed(Key.C)) vessel.Flight.ToggleCruise();
     }
 

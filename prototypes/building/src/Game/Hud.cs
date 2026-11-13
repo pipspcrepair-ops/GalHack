@@ -249,7 +249,7 @@ public partial class Hud : CanvasLayer
         string owner = s.Owner ?? "unowned";
         string power = st.Generators > 0 ? $"{st.PowerOut:0.#} MW made   ·   {st.PowerUse:0.#} MW peak use" : "no generator";
         string thrust = s.Mode == CoreMode.Base && !s.IsWreck
-            ? "bases don't fly (B for capital)"
+            ? "base mode"
             : st.Thrusters == 0 ? "no thrusters"
             : $"{st.ThrustToWeightForward:0.00} g forward   ·   best axis {st.ThrustToWeightMax:0.00} g";
         string air = rooms == null ? "…"

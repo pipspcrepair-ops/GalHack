@@ -108,7 +108,7 @@ public partial class CockpitConsole : Node3D
                 this.Text(UiTheme.Label, UiTheme.SizeLabel, new Vector2(30, 200), "LOCKER · [E] GREEN LAMP", C.Dim);
                 return;
             }
-            this.Header(w, Vessel.Name.ToUpperInvariant(), st.ClassLabel.ToUpperInvariant());
+            this.Header(w, Vessel.Name.ToUpperInvariant(), ModeFit.Name(Vessel.Structure.Mode));
             float y = 112;
             void Row(string label, string value, Color colour)
             {

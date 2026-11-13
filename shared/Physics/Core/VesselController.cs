@@ -60,7 +60,7 @@ public interface IFlightRules
 
 /// <summary>
 /// One vessel's body rules (ported from ship-handling's Vessel): it flies by the flight rules,
-/// rides on hover engines or lands on gear, and stops simulating once landed (zero cost) until
+/// rides on hover engines, sets down on its gear or its hull, and stops simulating once landed (zero cost) until
 /// thrust or a knock wakes it. A vessel with no hull points left loses power and becomes a free
 /// wreck the engine tumbles. The world resolves its contacts with the same rules as everything.
 /// </summary>
@@ -145,8 +145,8 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
     }
 
     /// <summary>
-    /// Puts the vessel down landed: gear out, settled, not simulating. Put down on a base or a
-    /// capital ship's deck, it parks there on its first tick.
+    /// Puts the vessel down landed: gear out, settled, not simulating. Put down with its gear on
+    /// another structure's deck, it parks there on its first tick.
     /// </summary>
     public void PlaceLanded(Body body, Vector3 position, float headingRadians)
     {
@@ -159,7 +159,7 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
     }
 
     /// <summary>
-    /// Docks the vessel to a host (a base or a capital ship) where it is now: it stops simulating,
+    /// Docks the vessel to a host (any other structure) where it is now: it stops simulating,
     /// parked on the host, riding it and out of the wind, until its pilot applies thrust.
     /// </summary>
     public void Dock(PhysicsWorld world, Body body, Body host)
@@ -185,12 +185,6 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
         _idle = 0f;
     }
 
-    public void ToggleGear()
-    {
-        if (Gear == null) Say(Stats.IsHover ? "No landing gear in Hover Mode" : "No landing gear fitted");
-        else Gear.Toggle();
-    }
-
     public void Say(string message)
     {
         ConsoleMessage = message;
@@ -212,7 +206,7 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
             {
                 _lookForHost = false;
                 Gear?.Probe(world, body);
-                if (PhysicsWorld.IsHost(Gear?.StandingOn)) world.Park(body, Gear.StandingOn);
+                world.Park(body, Gear?.StandingOn);
             }
             body.Asleep = true;
             return; // landed: no physics at all
@@ -247,7 +241,7 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
         else if (Stats.IsHover) v.Y -= Zone.Gravity * dt; // Hover Mode with no plates fitted: nothing holds it up
         body.Rotation = rotation;
         body.AngularVelocity = AngularVelocity(before, rotation, dt);
-        Gear?.Step(world, body, ref v, dt);
+        Gear?.Step(world, body, dt);
 
         // The flight rules said what velocity they want; the engines make the force for it. The
         // world adds gravity, water and weather on top, so the thrust here cancels the weight it
@@ -266,11 +260,10 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
         if (body.Asleep || body.Motion != Motion.Kinematic) return;
         CheckLanding(world, body, dt);
 
-        // Resting on a base or a capital ship (on its gear, or on its belly), with nobody pushing
-        // the controls: parked there, out of the wind. Under thrust, or off it, it isn't.
+        // Attached to another structure by its gear (or resting on it on its hull), with nobody
+        // pushing the controls: parked there, out of the wind. Moving under its own power, it isn't.
         Body host = Flight.Seated && Flight.AnyThrust ? null : RestingOn(body);
-        if (PhysicsWorld.IsHost(host)) world.Park(body, host);
-        else world.Unpark(body);
+        if (!world.Park(body, host)) world.Unpark(body);
     }
 
     /// <summary>The registered body the vessel rests on: under its feet, or under its hull.</summary>
@@ -406,8 +399,8 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
         _idle = idle ? _idle + dt : 0f;
 
         bool tooHeavy = !Stats.CanLiftOff && Zone.Gravity > 0f;
-        bool onGear = Gear != null && Gear.Deployed && Gear.Contact;
-        bool onGround = onGear || (tooHeavy && body.OnFloor);
+        // Attached by its gear, or resting on its hull: nothing floats.
+        bool onGround = Gear is { Attached: true } || body.OnFloor;
         // Slow against whatever it is standing on: a deck can be moving.
         Vector3 under = RestingOn(body) is Body deck ? deck.PointVelocity(body.Position) : Vector3.Zero;
         bool slow = (body.Velocity - under).Length() < t.LandSpeed;
@@ -419,25 +412,14 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
     }
 
     /// <summary>
-    /// Settles onto the gear: tilts to the ground under its feet (level on flat ground, never
-    /// more than the settle limit on dug or rocky ground), feet down, then stops simulating.
+    /// Comes to rest where it is (each telescoping leg already reaches its own ground), then stops
+    /// simulating.
     /// </summary>
     void Settle(PhysicsWorld world, Body body, float dt)
     {
         body.Velocity = Vector3.Zero;
         body.AngularVelocity = Vector3.Zero;
         LocalSpin = Vector3.Zero;
-        if (Gear != null && Gear.Deployed)
-        {
-            float k = 1f - MathF.Exp(-10f * dt);
-            Gear.Probe(world, body);
-            Vector3 up = Gear.GroundUp(body, Units.Radians(world.Rules.Gear.MaxSettleTilt));
-            Quaternion target = MathX.TiltToward(MathX.Level(body.Rotation), up, 1f);
-            body.Rotation = Quaternion.Normalize(Quaternion.Slerp(body.Rotation, target, k));
-            Gear.Probe(world, body);
-            if (float.IsFinite(Gear.MinClearance)) body.Position -= Vector3.UnitY * Gear.MinClearance * k;
-        }
-
         _settleLeft -= dt;
         if (_settleLeft > 0f) return;
         _settleLeft = 0f;

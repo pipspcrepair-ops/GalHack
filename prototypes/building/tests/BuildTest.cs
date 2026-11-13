@@ -636,18 +636,20 @@ public partial class BuildTest : Node
         Structure s = NewShip();
         Place(s, 0, 0, 1, _thruster);
         Place(s, 0, 1, 0, _generator);
-        Check(s.Mode == CoreMode.Capital && StructureStats.Compute(s).Flies, "a core in Capital Mode flies");
-        Check(Building.ToggleCoreMode(s) && s.Mode == CoreMode.Base, "B switches the core to base");
+        Check(s.Mode == CoreMode.Flight && StructureStats.Compute(s).Flies, "a core in Flight Mode flies");
+        Check(Building.ToggleCoreMode(s) && s.Mode == CoreMode.Hover, "B steps the core to Hover Mode, hover plates or none");
+        Check(Building.ToggleCoreMode(s) && s.Mode == CoreMode.Flight, "then to Flight Mode");
+        Check(Building.ToggleCoreMode(s) && s.Mode == CoreMode.Base, "then to base");
         StructureStats st = StructureStats.Compute(s);
         Check(!st.Flies && st.Thrust.Sum() == 0 && st.Blocks == 3, "a base keeps every block but does not fly");
         Structure loaded = Blueprint.Load(Blueprint.Save(s), _cat, out _);
         Check(loaded?.Mode == CoreMode.Base, "the mode is saved in the blueprint");
-        Check(Building.ToggleCoreMode(s) && s.Mode == CoreMode.Capital, "and switches back to capital");
 
-        Check(Building.ToggleCoreMode(s) && s.Mode == CoreMode.Base, "with no hover plates aboard it never steps to Hover Mode");
-        s.Mode = CoreMode.Vessel;
-        Check(s.Mode == CoreMode.Capital && Blueprint.Load(Blueprint.Save(s).Replace("mode capital", "mode vessel"), _cat, out _)?.Mode == CoreMode.Capital,
-            "old data's Vessel Mode flies as Capital Mode");
+        s.Mode = CoreMode.Flight;
+        string saved = Blueprint.Save(s);
+        Check(saved.Contains("mode flight") && Blueprint.Load(saved.Replace("mode flight", "mode vessel"), _cat, out _)?.Mode == CoreMode.Flight
+              && Blueprint.Load(saved.Replace("mode flight", "mode capital"), _cat, out _)?.Mode == CoreMode.Flight,
+            "saved as flight; old data's capital and vessel modes load as Flight Mode");
         s.Mode = CoreMode.Hover;
         Check(Blueprint.Load(Blueprint.Save(s), _cat, out _)?.Mode == CoreMode.Hover, "Hover Mode is saved in the blueprint");
     }
@@ -684,7 +686,7 @@ public partial class BuildTest : Node
         var before = s.Blocks().ToDictionary(x => x.pos, x => x.block);
         StructureStats statsBefore = StructureStats.Compute(s);
         bool allSame = true, allValid = true;
-        foreach (CoreMode expected in new[] { CoreMode.Capital, CoreMode.Base, CoreMode.Capital })
+        foreach (CoreMode expected in new[] { CoreMode.Hover, CoreMode.Flight, CoreMode.Base, CoreMode.Hover, CoreMode.Flight })
         {
             Building.ToggleCoreMode(s);
             allSame &= s.Mode == expected && s.BlockCount == before.Count
@@ -694,10 +696,10 @@ public partial class BuildTest : Node
             allSame &= st.Blocks == statsBefore.Blocks && Near(st.Mass, statsBefore.Mass)
                 && st.StorageCapacity == statsBefore.StorageCapacity && Near(st.PowerOut, statsBefore.PowerOut);
         }
-        Check(allSame, $"switching base â†’ capital â†’ base â†’ capital keeps all {before.Count} blocks exactly as they were");
-        Check(allValid, "and the structure validates in both modes");
-        Check(s.Mode == CoreMode.Capital && StructureStats.Compute(s).Thrust.Sum() > 0,
-            "the same thrusters push once it is a capital ship (only flying depends on the mode)");
+        Check(allSame, $"switching base, hover, flight, base, hover, flight keeps all {before.Count} blocks exactly as they were");
+        Check(allValid, "and the structure validates in every mode");
+        Check(s.Mode == CoreMode.Flight && StructureStats.Compute(s).Thrust.Sum() > 0,
+            "the same thrusters push once it flies (only flying depends on the mode)");
     }
 
     // ---- Navigation -----------------------------------------------------------------------

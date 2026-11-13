@@ -262,9 +262,9 @@ public partial class CapitalWorld : Node3D, ILiftGround
     // ==== The core console ========================================================================
 
     /// <summary>
-    /// Switches a large core between base and capital mode. One field changes; no block, item or
+    /// Switches a core between base and flight mode. One field changes; no block, item or
     /// pose does. Base mode needs the ship down (landed on its gear or its own blocks): it is then
-    /// anchored where it stands. Capital mode lets it fly again; if it is keyed into the ground it
+    /// anchored where it stands. Flight mode lets it fly again; if it is keyed into the ground it
     /// stays held until lift-off cuts it free.
     /// </summary>
     public string SwitchMode(Craft c, CoreMode mode)
@@ -277,35 +277,35 @@ public partial class CapitalWorld : Node3D, ILiftGround
             if (c.State == CraftState.Flying)
                 return Reply($"BASE MODE REFUSED: {c.Name} is flying. Land first: a base can't hang in the air.");
             if (c.State == CraftState.Docked) return Reply($"BASE MODE REFUSED: {c.Name} is parked on another structure.");
-            ToggleMode(c);
+            SetMode(c, mode);
             if (c.Pin == null) c.Anchor();
             UpdateWind(c);
             return Reply($"BASE MODE: {c.Name} is anchored where it stands. It can't fly and no wind moves it; storage, power and life support carry on.");
         }
 
-        ToggleMode(c);
+        SetMode(c, mode);
         CutPlan plan = PlanCut(c);
         if (plan.Cells.Count > 0 || plan.Refused.Count > 0)
         {
             UpdateWind(c);
-            return Reply($"CAPITAL MODE: {c.Name} is keyed into the ground ({plan.Cells.Count + plan.Refused.Count} m³ hold it). Lift-off cuts it free.");
+            return Reply($"FLIGHT MODE: {c.Name} is keyed into the ground ({plan.Cells.Count + plan.Refused.Count} m³ hold it). Lift-off cuts it free.");
         }
         Ground.ReleaseAll(c.Body.Id); // nothing holds it: any block that only touched the ground lets go of it
         c.Release();
         UpdateWind(c);
-        return Reply($"CAPITAL MODE: {c.Name} can fly. Ready to lift off.");
+        return Reply($"FLIGHT MODE: {c.Name} can fly. Ready to lift off.");
     }
 
-    /// <summary>Flips the core's mode. Building marks the core's chunk dirty for it; its look doesn't change, so nothing is remeshed.</summary>
-    static void ToggleMode(Craft c)
+    /// <summary>Sets the core's mode. Building marks the core's chunk dirty for it; its look doesn't change, so nothing is remeshed.</summary>
+    static void SetMode(Craft c, CoreMode mode)
     {
         var dirty = new HashSet<SInt3>(c.Structure.DirtyChunks);
-        Building.ToggleCoreMode(c.Structure);
+        Building.SetCoreMode(c.Structure, mode);
         c.Structure.DirtyChunks.Clear();
         c.Structure.DirtyChunks.UnionWith(dirty);
     }
 
-    static string Label(CoreMode m) => m == CoreMode.Base ? "base" : "capital";
+    static string Label(CoreMode m) => m.ToString().ToLowerInvariant();
 
     string Reply(string message)
     {
@@ -316,7 +316,7 @@ public partial class CapitalWorld : Node3D, ILiftGround
     /// <summary>The wind rules: bases and parked or keyed hulls are never pushed; anything flying or simply landed is.</summary>
     int ILiftGround.Pending => Patch.Pending;
     float ILiftGround.ClimbSpeed => Rules.Liftoff.ClimbSpeed;
-    float ILiftGround.TopSpeed(ILiftHull hull) => hull.Flight.Stats?.TopSpeed ?? Handling.Class(((Craft)hull).Spec.Class).TopSpeedAir;
+    float ILiftGround.TopSpeed(ILiftHull hull) => hull.Flight.Stats?.TopSpeed ?? Handling.Band(HandlingModel.Mass(((Craft)hull).Spec)).TopSpeedAir;
     void ILiftGround.Settle(ILiftHull hull) => UpdateWind((Craft)hull);
 
     public void UpdateWind(Craft c)
@@ -358,7 +358,7 @@ public partial class CapitalWorld : Node3D, ILiftGround
     public string LiftOffFrom(Craft c)
     {
         if (_liftoffs.ContainsKey(c)) return Reply("Lift-off in progress.");
-        if (c.IsBase) return Reply($"LIFT-OFF REFUSED: {c.Name} is a base. Switch the core to capital mode first.");
+        if (c.IsBase) return Reply($"LIFT-OFF REFUSED: {c.Name} is a base. Switch the core to flight mode first.");
         if (c.State == CraftState.Flying) return Reply($"{c.Name} is already flying.");
         if (c.State == CraftState.Docked) return Reply($"{c.Name} is parked on another structure: just fly off.");
         if (!c.Stats.Powered) return Reply($"LIFT-OFF REFUSED: {c.Name} has no power.");

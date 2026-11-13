@@ -22,22 +22,25 @@ public static class ModeFit
     public static string Name(CoreMode mode) => mode switch
     {
         CoreMode.Base => "BASE MODE",
-        CoreMode.Capital => "CAPITAL MODE",
         CoreMode.Hover => "HOVER MODE",
-        _ => "VESSEL MODE",
+        _ => "FLIGHT MODE",
     };
 
-    /// <summary>The modes a structure's core has: Base and Capital, and Hover once hover plates are aboard.</summary>
-    public static CoreMode[] ModesOf(Structure s) =>
-        s.Blocks().Any(x => s.TypeOf(x.block).Function == "hover") ? new[] { CoreMode.Base, CoreMode.Capital, CoreMode.Hover } : new[] { CoreMode.Base, CoreMode.Capital };
+    /// <summary>Every structure's core has all three modes.</summary>
+    public static readonly CoreMode[] Modes = Enum.GetValues<CoreMode>();
 
-    /// <summary>What's missing for a mode to hold a structure up and move it, or nothing. Base Mode needs nothing.</summary>
-    public static List<string> Missing(Structure s, CoreMode mode, Tunables tunables, float gravity)
+    /// <summary>
+    /// What's missing for a mode to hold a structure up and move it, or nothing. Base Mode needs
+    /// nothing; Hover a command chair, hover plates with enough lift, thrusters and power; Flight a
+    /// command chair, thrusters with enough upward thrust and power. <paramref name="carried"/> is
+    /// the tonnes parked on it, which its lift has to carry too.
+    /// </summary>
+    public static List<string> Missing(Structure s, CoreMode mode, Tunables tunables, float gravity, float carried = 0f)
     {
         var missing = new List<string>();
         if (mode == CoreMode.Base) return missing;
         var spec = new StructureVessel(s, tunables, mode);
-        HandlingStats stats = HandlingModel.Compute(spec, new FlightConditions(gravity, true), tunables);
+        HandlingStats stats = HandlingModel.Compute(spec, new FlightConditions(gravity, true), tunables, carried);
         bool powered = StructureStats.Compute(s).Powered;
         if (!s.Blocks().Any(b => s.TypeOf(b.block).IsCommandChair)) missing.Add("command chair");
         if (mode == CoreMode.Hover)
@@ -59,21 +62,21 @@ public static class ModeFit
 /// <summary>
 /// A core's mode on the body in the world. One value changes and no block does: a structure
 /// anchors (Base Mode: a fixed body, walked on in the zone's world, nothing moves it), flies
-/// (Capital Mode: the same hull as any vessel, on the flight model) or rides its hover plates
-/// (Hover Mode). Nothing refuses a switch. A flying structure set to Base Mode cuts its engines,
+/// (Flight Mode: the same hull as any vessel, on the flight model) or rides its hover plates near
+/// the ground (Hover Mode: a hover tank, a land carrier, a mobile base). Nothing refuses a switch. A flying structure set to Base Mode cuts its engines,
 /// falls until it lands and anchors there; in space it comes to rest and anchors as a station.
 /// </summary>
 public sealed partial class Vessel
 {
     /// <summary>What a mode lacks on this structure, here (empty: nothing).</summary>
-    public List<string> MissingFor(CoreMode mode) => ModeFit.Missing(Structure, mode, Zone.Data.Handling, Zone.Physics.Zone.Strength);
+    public List<string> MissingFor(CoreMode mode) => ModeFit.Missing(Structure, mode, Zone.Data.Handling, Zone.Physics.Zone.Strength, Units.Tonnes(Body.Carried));
 
     /// <summary>The console's warning for the mode it is in, or null: worked out again only when the build or the mode changes.</summary>
     public string ModeWarning
     {
         get
         {
-            var key = (Structure.Version, Structure.Mode);
+            var key = (Structure.Version, Structure.Mode, Body.Carried);
             if (key != _warned)
             {
                 _warned = key;
@@ -83,7 +86,7 @@ public sealed partial class Vessel
         }
     }
 
-    (int, CoreMode) _warned = (-1, CoreMode.Base);
+    (int, CoreMode, float) _warned = (-1, CoreMode.Base, 0f);
     string _warning;
 
     /// <summary>In Base Mode but not anchored yet: still falling or coming to rest.</summary>
@@ -108,12 +111,11 @@ public sealed partial class Vessel
         Structure.DirtyChunks.Clear();
         Structure.DirtyChunks.UnionWith(dirty);
         if (IsBase && mode != CoreMode.Base) TakeFlight();
-        if (Spec != null) Body.Class = StructureBridge.ClassOf(Spec);
         RefreshLegs();
         TickMode();
     }
 
-    /// <summary>Each tick: the next chunk of collision still to build, if any; a Big Core in Base Mode anchors once it has come to rest, and a hull that has left its footings lets go of them.</summary>
+    /// <summary>Each tick: the next chunk of collision still to build, if any; a structure in Base Mode anchors once it has come to rest, and a hull that has left its footings lets go of them.</summary>
     public void TickMode()
     {
         BuildPendingShapes();

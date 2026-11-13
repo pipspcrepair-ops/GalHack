@@ -234,7 +234,7 @@ public sealed partial class Staging
         foreach (int x in Play.PlaceOnGround(3, pad)) yield return x;
         Vessel v = _game.Zone.Vessels.FirstOrDefault(x => !x.IsBase && !x.IsRuin);
         if (v == null) yield break;
-        v.SwitchMode(CoreMode.Vessel);
+        v.SwitchMode(CoreMode.Flight);
         foreach (int x in Play.BuildVessel(v, slots, _ => { })) yield return x;
         Vector3 ground = v.Body.Position.ToGodot();
         foreach (int x in _drive.Board(v)) yield return x;

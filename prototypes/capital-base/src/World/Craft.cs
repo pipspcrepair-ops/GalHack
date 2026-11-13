@@ -458,12 +458,7 @@ public partial class CraftView : Node3D
         for (int i = 0; i < _legs.Count && gear != null; i++)
         {
             GearLeg leg = gear.Leg(i);
-            float reach = Mathf.Max(0.05f, leg.Length * gear.Extension);
-            if (gear.Extension > 0.99f && gear.FootFound[i])
-            {
-                float drop = body.ToParent(leg.Hip).Y - gear.FootGround[i].Y;
-                if (drop > 0f && drop < leg.Length + 1f) reach = Mathf.Max(0.05f, drop); // the foot telescopes onto its own ground
-            }
+            float reach = Mathf.Max(0.05f, gear.Reach(i)); // the foot telescopes onto its own ground
             Vector3 hip = leg.Hip.ToGodot();
             var (strut, foot) = _legs[i];
             strut.Position = hip + Vector3.Down * (reach * 0.5f);

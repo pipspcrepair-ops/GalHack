@@ -25,7 +25,7 @@ public sealed partial class Staging
         Catalogue cat = _game.Zone.Data.Catalogue;
         var tune = _game.Zone.Data.Handling;
         float g = _game.Zone.Physics.Zone.Strength;
-        Structure big = CoreCraft.Ship(cat, true, x => ModeFit.Missing(x, CoreMode.Capital, tune, g).Count == 0);
+        Structure big = CoreCraft.Ship(cat, true, x => ModeFit.Missing(x, CoreMode.Flight, tune, g).Count == 0);
         BlockType lamp = cat.Types.First(t => t != null && t.IsLight);
         var cells = new[] { new Int3(-1, 0, -3), new Int3(0, 0, -3), new Int3(1, 0, -3) };
         foreach (Int3 c in cells) big.Set(c, Building.Make(big, lamp));

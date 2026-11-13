@@ -377,13 +377,8 @@ public static class Building
         return true;
     }
 
-    /// <summary>Steps a core to its next mode: Base, Capital, then Hover when it has hover plates aboard.</summary>
-    public static bool ToggleCoreMode(Structure s) => SetCoreMode(s, s.Mode switch
-    {
-        CoreMode.Base => CoreMode.Capital,
-        CoreMode.Capital when s.Blocks().Any(x => s.TypeOf(x.block).Function == "hover") => CoreMode.Hover,
-        _ => CoreMode.Base,
-    });
+    /// <summary>Steps a core to its next mode: Base, Hover, Flight, and round again. Every structure has all three.</summary>
+    public static bool ToggleCoreMode(Structure s) => SetCoreMode(s, (CoreMode)(((int)s.Mode + 1) % 3));
 
     /// <summary>Opens or closes a door, switches a light, or flips the core's gravity. Returns false if the block does nothing.</summary>
     public static bool Toggle(Structure s, Int3 p)

@@ -38,7 +38,7 @@ public partial class ProductionTest : TestBase
         Run("Survival and creative placement", TestPlacementModes);
         Run("Craft a block, place it, take it down", TestCraftPlaceRemove);
         Run("Auto sub-parts through block items", TestAutoSubParts);
-        Run("Block families go on their classes of structure", TestClasses);
+        Run("Every block goes on every structure, in every mode", TestClasses);
         Run("Full storage spills to a crate", TestSpill);
         Run("Upgrading in place conserves materials", TestUpgrade);
         Run("Creative machines", TestCreativeMachines);
@@ -643,19 +643,16 @@ public partial class ProductionTest : TestBase
         storage.TryAdd(Bill.Of((ItemOf("steel"), 4), (ItemOf("decon"), 1), (ItemOf("concrete"), 2), (ItemOf("thruster"), 1), (ItemOf("steel"), 2), (ItemOf("concrete"), 1)));
         Structure baseS = Base(out _);
         baseS.Mode = CoreMode.Base;
-        Check(BuildingBridge.ClassOf(baseS) == StructureClass.Base, "a core in base mode is a base");
         Check(placer.Place(baseS, new Int3(1, 0, 0), Building.Make(baseS, _blocks.Type("concrete")), storage).Ok, "concrete goes on a base");
         Check(placer.Place(baseS, new Int3(-2, 0, 0), Building.Make(baseS, _blocks.Type("decon")), storage).Ok, "a deconstructor goes on a base");
         Check(placer.Place(baseS, new Int3(0, 0, 1), Building.Make(baseS, _blocks.Type("thruster")), storage).Ok, "a thruster goes on a base, idle until the core is switched");
-        Check(Building.ToggleCoreMode(baseS) && BuildingBridge.ClassOf(baseS) == StructureClass.Capital, "in Capital Mode it is a capital vessel, with every block as it was");
-        Structure capital = Base(out _);
-        Check(BuildingBridge.ClassOf(capital) == StructureClass.Capital, "a new structure reads as Capital Mode until set");
-        Check(placer.Place(capital, new Int3(1, 0, 0), Building.Make(capital, _blocks.Type("concrete")), storage).Ok, "concrete goes on a capital vessel: bases and capital vessels share every block");
-        capital.Mode = CoreMode.Vessel;
-        Check(BuildingBridge.ClassOf(capital) == StructureClass.Capital && placer.Place(capital, new Int3(2, 0, 0), Building.Make(capital, _blocks.Type("steel")), storage).Ok,
-            "old data's Vessel Mode flies as Capital Mode, and takes the same blocks");
-        capital.Mode = CoreMode.Hover;
-        Check(BuildingBridge.ClassOf(capital) == StructureClass.Hover, "in Hover Mode it is a hover vessel");
+        Check(Building.ToggleCoreMode(baseS) && baseS.Mode == CoreMode.Hover && Building.ToggleCoreMode(baseS) && baseS.Mode == CoreMode.Flight,
+            "the same structure steps to Hover Mode and Flight Mode, with every block as it was");
+        Structure craft = Base(out _);
+        Check(craft.Mode == CoreMode.Flight, "a new structure reads as Flight Mode until set");
+        Check(placer.Place(craft, new Int3(1, 0, 0), Building.Make(craft, _blocks.Type("concrete")), storage).Ok, "concrete goes on a flying structure: every structure takes every block");
+        craft.Mode = CoreMode.Hover;
+        Check(placer.Place(craft, new Int3(2, 0, 0), Building.Make(craft, _blocks.Type("steel")), storage).Ok, "and in Hover Mode it takes the same blocks");
     }
 
     void TestSpill()

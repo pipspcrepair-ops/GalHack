@@ -257,9 +257,8 @@ public sealed class BlueprintsSection : IMenuSection
         HandlingStats h = e.Handling;
         if (h != null)
         {
-            float turn = MathF.Min(h.TurnRate, _game.Zone.Data.Rules.Build.MaxTurn);
             Row("ACCELERATION", $"{h.Accel(Direction.Forward):F1} m/s²", C.Text);
-            Row("TURN RATE", $"{turn:F0} °/s", C.Text);
+            Row("TURN RATE", $"{h.TurnRate:F0} °/s", C.Text);
             Row("TOP SPEED", $"{h.TopSpeed:F0} m/s", C.Text);
             Row("LIFT MARGIN", $"{h.LiftMargin:+0;-0} kN", h.CanLiftOff ? C.Good : C.Danger);
         }

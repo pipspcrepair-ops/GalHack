@@ -62,7 +62,7 @@ public sealed partial class Vessel
         Cabin.SetGravity(Body.Core);
         if (inOrbit)
         {
-            Structure.Mode = CoreMode.Capital;
+            Structure.Mode = CoreMode.Flight;
             TakeFlight();
         }
         else

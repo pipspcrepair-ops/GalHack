@@ -268,26 +268,14 @@ public sealed class SliceRules
         public List<string> Library { get; set; } = new() { "starter.gbp" };
         /// <summary>Where blueprints the player saves go (the library's Yours).</summary>
         public string Saved { get; set; } = "user://blueprints";
-        public float MaxTurn { get; set; } = 110f;
         public AreaRules Area { get; set; } = new();
     }
 
-    /// <summary>A structure's area: its bounding box plus a margin per class and a share of its size, m.</summary>
+    /// <summary>A structure's area: its bounding box plus one margin and a share of its size, m.</summary>
     public sealed class AreaRules
     {
-        public float Base { get; set; } = 30f;
-        public float Capital { get; set; } = 30f;
-        public float Small { get; set; } = 12f;
-        public float Hover { get; set; } = 12f;
-        public float SizeShare { get; set; } = 0.5f;
-
-        public float Margin(GalHack.Items.StructureClass c) => c switch
-        {
-            GalHack.Items.StructureClass.Base => Base,
-            GalHack.Items.StructureClass.Capital => Capital,
-            GalHack.Items.StructureClass.Small => Small,
-            _ => Hover,
-        };
+        public float Margin { get; set; } = 12f;
+        public float SizeShare { get; set; } = 0.9f;
     }
 
     public sealed class TorchRules

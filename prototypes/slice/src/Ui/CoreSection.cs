@@ -239,18 +239,18 @@ public sealed class StructureSection : IMenuSection
     /// <summary>The switch, in its stripes: one button a mode, the one it is in lit, and what each mode still lacks. Returns the y below it.</summary>
     float ModeSwitch(Gui g, Vessel v, Vector2 at, float width)
     {
-        const float Band = 14, Rows = 122;
+        const float Band = 14, Rows = 140;
         Structure s = v.Structure;
         var panel = new Rect2(at, new Vector2(width, Rows));
         g.Stripes(panel, Band, C.Warn);
         Rect2 inner = panel.Grow(-Band);
         g.Fill(inner, new Color(C.Glass, 0.92f));
-        CoreMode[] modes = ModeFit.ModesOf(s);
-        float half = (inner.Size.X - 18) / 2;
+        CoreMode[] modes = ModeFit.Modes;
+        float each = (inner.Size.X - 6 * (modes.Length + 1)) / modes.Length;
         for (int i = 0; i < modes.Length; i++)
         {
             CoreMode m = modes[i];
-            var r = new Rect2(inner.Position.X + 6 + i * (half + 6), inner.Position.Y + 6, half, 36);
+            var r = new Rect2(inner.Position.X + 6 + i * (each + 6), inner.Position.Y + 6, each, 36);
             if (g.Button($"core:mode:{m.ToString().ToLowerInvariant()}", r, ModeFit.Name(m), C.Warn, lit: s.Mode == m, size: 16) && s.Mode != m) Switch(v, m);
         }
         float y = inner.Position.Y + 48;
@@ -369,10 +369,9 @@ public sealed class StructureSection : IMenuSection
         Row("STORAGE", $"{v.Storage.UsedSu:F0} / {st.StorageCapacity:F0} SU", C.Text);
         if (v.Stats is HandlingStats h && !v.IsBase)
         {
-            float cap = _game.Zone.Data.Rules.Build.MaxTurn;
             Row("ACCEL F / B", $"{h.Accel(Direction.Forward):F1} / {h.Accel(Direction.Back):F1} m/s²", C.Text);
             Row("ACCEL UP / SIDE", $"{h.Accel(Direction.Up):F1} / {h.Accel(Direction.Right):F1} m/s²", C.Text);
-            Row("TURN", h.TurnRate <= cap ? $"{h.TurnRate:F0} °/s" : $"{cap:F0} °/s · CAPPED", C.Text);
+            Row("TURN", h.TurnCapped ? $"{h.TurnRate:F0} °/s · CAPPED" : $"{h.TurnRate:F0} °/s", C.Text);
             Row("TOP SPEED", $"{h.TopSpeed:F0} m/s", C.Text);
             // Too heavy says so in the row itself: a line of its own ran the page onto the alerts' row.
             Row("LIFT MARGIN", h.CanLiftOff ? $"{h.LiftMargin:+0;-0} kN · {h.SpareLift:F1} t SPARE" : $"{h.LiftMargin:+0;-0} kN · TOO HEAVY", h.CanLiftOff ? C.Good : C.Danger);

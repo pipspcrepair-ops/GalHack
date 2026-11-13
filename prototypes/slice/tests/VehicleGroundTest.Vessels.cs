@@ -25,7 +25,7 @@ public partial class VehicleGroundTest
     List<LibraryEntry> Kinds()
     {
         var all = _game.Menu.Root.Blueprints.Library.Starters;
-        var flyers = all.Where(e => e.Plan.Mode == CoreMode.Capital).OrderBy(e => e.Plan.Count).ToList();
+        var flyers = all.Where(e => e.Plan.Mode == CoreMode.Flight).OrderBy(e => e.Plan.Count).ToList();
         _bigFlyer = flyers.Count > 1 ? flyers[^1] : null;
         return new[] { flyers.FirstOrDefault(), all.Where(e => e.Plan.Mode == CoreMode.Hover).OrderBy(e => e.Plan.Count).FirstOrDefault(), _bigFlyer }
             .Where(e => e != null).ToList();
@@ -199,7 +199,7 @@ public partial class VehicleGroundTest
 
             // The owner's case first: flown into the ground under its own thrust by a seated pilot's keys (a small flyer):
             // nose first at a steep angle, belly first, and skidding in shallow, pressing into the ground a second after.
-            if (e != _bigFlyer && v.Structure.Mode == CoreMode.Capital)
+            if (e != _bigFlyer && v.Structure.Mode == CoreMode.Flight)
                 foreach (var (what, pitch, up, keys) in new[] { ("flown nose first into the ground at 60°", -1.05f, 30f, new[] { Key.W, Key.Ctrl }), ("flown belly first into the ground", 0f, 25f, new[] { Key.Ctrl }), ("flown skidding into the ground at a shallow angle", -0.15f, 6f, new[] { Key.W, Key.Ctrl }) })
                 {
                     var hit = Mend(v, e.Plan);

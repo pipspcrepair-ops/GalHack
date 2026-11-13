@@ -737,7 +737,7 @@ public partial class Visor : CanvasLayer
         float s = S;
         Vector2 size = _hud.Size;
         CoreMode mode = v.Structure.Mode;
-        Color tone = mode switch { CoreMode.Base => C.Good, CoreMode.Capital => C.Accent, CoreMode.Hover => C.Holo, _ => C.Accent2 };
+        Color tone = mode switch { CoreMode.Base => C.Good, CoreMode.Hover => C.Holo, _ => C.Accent };
         Rect2 box = Layout.Mode;
         _hud.Block(box, new Color(C.Glass, 0.75f));
         _hud.Block(new Rect2(box.Position, new Vector2(5 * s, box.Size.Y)), tone);
@@ -747,7 +747,7 @@ public partial class Visor : CanvasLayer
         _hud.TextIn(UiTheme.Label, (int)(17 * s), new Rect2(box.Position + new Vector2(54 * s, 0), new Vector2(box.Size.X - 58 * s, box.Size.Y)), ModeFit.Name(mode), tone, HorizontalAlignment.Left);
     }
 
-    /// <summary>A little picture of the mode: a hull on hover lines, a craft climbing, an anchored block, a long hull under way.</summary>
+    /// <summary>A little picture of the mode: a hull on hover lines, an anchored block, a craft climbing.</summary>
     void DrawModeGlyph(CoreMode mode, Vector2 at, Color tone, float s)
     {
         void Line(float x0, float y0, float x1, float y1) => _hud.DrawLine(at + new Vector2(x0, y0) * s, at + new Vector2(x1, y1) * s, tone, 2.2f * s);
@@ -762,12 +762,6 @@ public partial class Visor : CanvasLayer
                 Line(4, 3, 10, 3);
                 Line(-6, 8, 6, 8);
                 break;
-            case CoreMode.Vessel:
-                Line(0, -9, -9, 8);
-                Line(0, -9, 9, 8);
-                Line(-9, 8, 0, 3);
-                Line(9, 8, 0, 3);
-                break;
             case CoreMode.Base:
                 Line(-8, -8, 8, -8);
                 Line(-8, -8, -8, 3);
@@ -778,12 +772,10 @@ public partial class Visor : CanvasLayer
                 Line(8, 3, 11, 9);
                 break;
             default:
-                Line(-12, -4, 8, -4);
-                Line(-12, 4, 8, 4);
-                Line(8, -4, 13, 0);
-                Line(8, 4, 13, 0);
-                Line(-12, -4, -12, 4);
-                Line(-12, 0, -16, 0);
+                Line(0, -9, -9, 8);
+                Line(0, -9, 9, 8);
+                Line(-9, 8, 0, 3);
+                Line(9, 8, 0, 3);
                 break;
         }
     }

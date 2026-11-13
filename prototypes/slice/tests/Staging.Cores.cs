@@ -77,7 +77,7 @@ public sealed partial class Staging
         foreach (int x in Shot($"{dir}/core-tab-small-core.png")) yield return x;
         foreach (int x in Play.CloseMenu()) yield return x;
 
-        foreach (int x in ClickMode(CoreMode.Vessel)) yield return x;
+        foreach (int x in ClickMode(CoreMode.Flight)) yield return x;
         _game.Controls.Hold(Key.Space);
         foreach (int x in _drive.Wait(30)) yield return x;
         _game.Controls.Hold(Key.Space, false);
@@ -98,7 +98,7 @@ public sealed partial class Staging
         foreach (int x in _drive.Wait(60)) yield return x;
         var tune = _game.Zone.Data.Handling;
         float g = _game.Zone.Physics.Zone.Strength;
-        Structure big = CoreCraft.Ship(_game.Zone.Data.Catalogue, true, x => ModeFit.Missing(x, CoreMode.Capital, tune, g).Count == 0);
+        Structure big = CoreCraft.Ship(_game.Zone.Data.Catalogue, true, x => ModeFit.Missing(x, CoreMode.Flight, tune, g).Count == 0);
         big.DirtyChunks.Clear();
         Vessel b = Vessel.SpawnBase(_game.Zone, big, (ground + Vector3.Up * 1.4f).ToNumerics(), 0f);
         foreach (var (p, _) in big.Blocks().ToList()) b.ClearGround(p);
@@ -110,7 +110,7 @@ public sealed partial class Staging
         foreach (int x in _drive.Wait(4)) yield return x;
         foreach (int x in Shot($"{dir}/core-tab-big-core.png")) yield return x;
         foreach (int x in Play.CloseMenu()) yield return x;
-        foreach (int x in ClickMode(CoreMode.Capital)) yield return x;
+        foreach (int x in ClickMode(CoreMode.Flight)) yield return x;
         _game.Controls.Hold(Key.Space);
         foreach (int x in _drive.Wait(24)) yield return x;
         _game.Controls.Hold(Key.Space, false);

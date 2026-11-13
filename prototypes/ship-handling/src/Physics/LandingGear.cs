@@ -5,8 +5,7 @@ namespace ShipHandling.Physics;
 
 /// <summary>
 /// Landing legs. They drop by themselves near the ground at low speed and come up again when
-/// the ship climbs or speeds away; the G key overrides that until the automatic choice next
-/// changes its mind. Each foot probes straight down and works as a stiff suspension: it never
+/// the ship climbs or speeds away, with no button. Each foot probes straight down and works as a stiff suspension: it never
 /// sinks into the ground, and a gentle touchdown costs nothing.
 /// </summary>
 public sealed class LandingGear
@@ -22,9 +21,6 @@ public sealed class LandingGear
 
     public bool Deployed => Extension >= 0.999f;
 
-    /// <summary>True while the last change came from the G key rather than the automatic rule.</summary>
-    public bool Manual { get; private set; }
-
     /// <summary>Feet on (or within a hand's width of) the ground.</summary>
     public bool Contact { get; private set; }
 
@@ -36,18 +32,11 @@ public sealed class LandingGear
 
     internal LandingGear(Vessel vessel) => _v = vessel;
 
-    public void Toggle()
-    {
-        Down = !Down;
-        Manual = true;
-    }
-
     internal void Reset(bool down)
     {
         Down = down;
         _autoWant = down;
         Extension = down ? 1f : 0f;
-        Manual = false;
         Contact = false;
     }
 
@@ -58,15 +47,10 @@ public sealed class LandingGear
 
         // The automatic wish, with hysteresis so it doesn't flicker at the threshold.
         float speed = _v.Speed;
-        bool want = _autoWant
+        _autoWant = _autoWant
             ? !(FootAltitude > t.DeployAltitude + t.Hysteresis || speed > t.DeploySpeed + t.Hysteresis)
             : FootAltitude < t.DeployAltitude && speed < t.DeploySpeed;
-        if (want != _autoWant)
-        {
-            _autoWant = want;
-            Manual = false; // the automatic rule speaks again
-        }
-        if (!Manual) Down = _autoWant;
+        Down = _autoWant;
 
         Extension = Mathf.MoveToward(Extension, Down ? 1f : 0f, dt / Mathf.Max(t.ExtendTime, 1e-3f));
         Probe();

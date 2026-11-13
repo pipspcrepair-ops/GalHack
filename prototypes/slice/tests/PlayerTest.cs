@@ -41,7 +41,7 @@ namespace Slice.Tests;
 ///   6  craft a core in it
 ///   7  found a base, build onto it: two containers, a generator, a small constructor, steel
 ///   8  earn level 5, unlock the vessel's blocks, make a second core and the parts in the base's constructor
-///   9  set the second core down, build a vessel on it, switch it to Capital Mode, fly 500 m and land
+///   9  set the second core down, build a vessel on it, switch it to Flight Mode, fly 500 m and land
 ///   10 every Tab menu tab, the head torch, and dying: your backpack, recovered from its marker
 ///
 /// Run: .\tools\test.ps1 -Project prototypes/slice -Scene res://tests/PlayerTest.tscn
@@ -706,13 +706,13 @@ public partial class PlayerTest : Node
         Vessel v = _vessel;
         int ok = 0;
         foreach (int x in _play.BuildVessel(v, Slots, n => ok = n)) yield return x;
-        // Built, it flies: the CORE tab's switch puts it in Capital Mode, on its legs.
+        // Built, it flies: the CORE tab's switch puts it in Flight Mode, on its legs.
         foreach (int x in _play.OpenMenu(MenuTab.Core)) yield return x;
         foreach (int x in Pick(v)) yield return x;
         foreach (int x in _drive.ClickWidget("core:mode:capital")) yield return x;
         foreach (int x in _play.CloseMenu()) yield return x;
         foreach (int x in _drive.Wait(30)) yield return x;
-        Check(v.Structure.Mode == GalHack.Structures.CoreMode.Capital && !v.IsBase && v.Flight != null, "the CORE tab's switch puts it in Capital Mode: it is a craft on the flight model");
+        Check(v.Structure.Mode == GalHack.Structures.CoreMode.Flight && !v.IsBase && v.Flight != null, "the CORE tab's switch puts it in Flight Mode: it is a craft on the flight model");
         if (v.Flight == null) yield break;
         HandlingStats st = v.Stats;
         GD.Print($"  {v.Name}: {v.Structure.BlockCount} blocks, {st.Mass:F2} t, accel f/up {st.Accel(Direction.Forward):F1}/{st.Accel(Direction.Up):F1} m/s², turn {st.TurnRate:F0}°/s, lift margin {st.LiftMargin:F0} kN, damage {v.Body.Damage:F3}");

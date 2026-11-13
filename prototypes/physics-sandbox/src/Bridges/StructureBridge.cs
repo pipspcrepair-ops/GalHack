@@ -274,14 +274,6 @@ public static class StructureBridge
         return max.X >= min.X ? max - min : N.Vector3.Zero;
     }
 
-    /// <summary>The shared module's class for a vessel: the handling model's own (hover, small, capital).</summary>
-    public static StructureClass ClassOf(StructureVessel vessel) => vessel.Class switch
-    {
-        VesselClass.Hover => StructureClass.Hover,
-        VesselClass.Capital => StructureClass.Capital,
-        _ => StructureClass.Small,
-    };
-
     /// <summary>Where the first command chair's seat is (structure frame, metres), or the origin if there is none.</summary>
     public static N.Vector3 SeatOf(Structure s)
     {
@@ -314,7 +306,7 @@ public sealed class StructureVessel : IVesselStructure
     readonly List<HoverEngineSpec> _hover = new();
     readonly List<GearSpec> _gear = new();
     float _mass;
-    VesselClass _class;
+    bool _hoverMode;
     GVector3 _cockpit;
 
     /// <param name="asMode">Reads the structure as if its core were in this mode, to ask what that mode would do; null: its own mode.</param>
@@ -329,7 +321,7 @@ public sealed class StructureVessel : IVesselStructure
     public Structure Structure => _s;
     public string Name => _s.Name;
 
-    public VesselClass Class { get { Refresh(); return _class; } }
+    public bool HoverMode { get { Refresh(); return _hoverMode; } }
     public float HullMass { get { Refresh(); return _mass; } }
     public float CargoMass => 0f;
     public IReadOnlyList<ThrusterSpec> Thrusters { get { Refresh(); return _thrusters; } }
@@ -343,8 +335,8 @@ public sealed class StructureVessel : IVesselStructure
     /// <summary>Hover plate positions for the shared hover controller: the bottom face of each plate (none outside Hover Mode).</summary>
     public N.Vector3[] HoverPoints => HoverEngines.Select(h => new N.Vector3(h.Position.X, h.Position.Y, h.Position.Z)).ToArray();
 
-    /// <summary>Landing legs for the shared gear, each hanging from the bottom face of its housing. They stay folded in Hover Mode.</summary>
-    public GearLeg[] Legs => Class == VesselClass.Hover ? Array.Empty<GearLeg>() : LandingGear.Select(g => new GearLeg(new N.Vector3(g.Position.X, g.Position.Y, g.Position.Z), g.Length)).ToArray();
+    /// <summary>Landing pads for the shared gear, each on the bottom face of its block. They stay folded in Hover Mode.</summary>
+    public GearLeg[] Legs => HoverMode ? Array.Empty<GearLeg>() : LandingGear.Select(g => new GearLeg(new N.Vector3(g.Position.X, g.Position.Y, g.Position.Z), g.Length)).ToArray();
 
     void Refresh()
     {
@@ -388,8 +380,7 @@ public sealed class StructureVessel : IVesselStructure
             }
         }
 
-        // A structure's class is its core's mode, never the blocks on it.
-        _class = hovering ? VesselClass.Hover : VesselClass.Capital;
+        _hoverMode = hovering;
     }
 }
 

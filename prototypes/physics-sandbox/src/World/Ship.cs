@@ -73,7 +73,6 @@ public sealed class Ship
             Mass = mass.Mass,
             CenterOfMass = mass.CenterOfMass,
             DragArea = StructureBridge.DragArea(s),
-            Class = StructureBridge.ClassOf(new StructureVessel(s, world.Handling)),
             Shape = StructureBridge.ShapeOf(s),
             Position = at,
             Rotation = MathX.Yaw(heading),

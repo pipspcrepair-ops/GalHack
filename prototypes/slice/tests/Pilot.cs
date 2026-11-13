@@ -31,13 +31,8 @@ public sealed class Pilot
 
     Controls C => _game.Controls;
 
-    /// <summary>The largest turn rate the stick asks for, degrees a second (small vessels are capped).</summary>
-    static float MaxTurn(Vessel v, Game.Game game)
-    {
-        float rate = v.Stats?.TurnRate ?? 60f;
-        float cap = rate > 0f ? MathF.Min(1f, game.Zone.Data.Rules.Build.MaxTurn / rate) : 1f;
-        return MathF.Max(10f, rate * cap);
-    }
+    /// <summary>The largest turn rate the stick asks for, degrees a second (its mass band caps it).</summary>
+    static float MaxTurn(Vessel v, Game.Game game) => MathF.Max(10f, v.Stats?.TurnRate ?? 60f);
 
     /// <summary>Moves the mouse so the stick sits at a place next tick (x yaws right, y pitches down).</summary>
     void Stick(Vector2 wanted)

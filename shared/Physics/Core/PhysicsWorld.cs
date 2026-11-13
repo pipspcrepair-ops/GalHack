@@ -97,7 +97,6 @@ public sealed class PhysicsWorld
             Mass = spec.Mass,
             DragArea = spec.DragArea,
             DragBox = spec.DragBox,
-            Class = spec.Class,
             CenterOfMass = spec.CenterOfMass,
             Position = spec.Position,
             Rotation = spec.Rotation,
@@ -263,7 +262,7 @@ public sealed class PhysicsWorld
     /// goes through (<see cref="AddForce"/> drops weather pushes on a sheltered body, and providers
     /// may ask first to skip the work). Sheltered are:
     /// - a structure in base mode: nothing ever moves a base;
-    /// - a vessel parked on a base or a capital ship (landed on it, resting on it, docked to it): it
+    /// - a vessel parked on another structure (attached by its gear, resting on it, docked to it): it
     ///   rides its host and feels no wind of its own (the host's own push is the host's);
     /// - a rider inside a structure's interior.
     /// Everything else is pushed by its own mass and drag: players, creatures, crates, wrecks and
@@ -272,23 +271,36 @@ public sealed class PhysicsWorld
     public bool IsSheltered(Body body) =>
         body.Kind == BodyKind.Base || body.ParkedOn != null || body.Frame != null && !body.OnOuterHull;
 
-    /// <summary>A body other vessels park on and ride: a base, or a capital ship.</summary>
-    public static bool IsHost(Body body) =>
-        body != null && (body.Kind == BodyKind.Base || body.Kind == BodyKind.Vessel && body.Class == StructureClass.Capital);
+    /// <summary>
+    /// Whether <paramref name="body"/> may park on <paramref name="host"/>: any structure (a base or a
+    /// vessel, whatever its size or mode) hosts any craft, one way only. Two craft never park on each
+    /// other, and no chain loops back: A on B on C, C can't park on A.
+    /// </summary>
+    public static bool CanHost(Body host, Body body)
+    {
+        if (host == null || host.Kind is not (BodyKind.Base or BodyKind.Vessel)) return false;
+        for (Body h = host; h != null; h = h.ParkedOn)
+            if (h == body) return false;
+        return true;
+    }
 
     /// <summary>
-    /// Parks a vessel on a host (landed on it, resting on it, or docked): from now on no wind reaches
-    /// it, and while it is landed (not simulating) it moves with its host, exactly. Vessel controllers
-    /// park and unpark themselves as they land, rest and lift off; a game docks a vessel by calling this.
+    /// Parks a vessel on a host (attached to it by its gear, resting on it, or docked): from now on
+    /// no wind reaches it, and while it is landed (not simulating) it moves with its host, exactly,
+    /// and its mass is carried in its host's (<see cref="Body.Carried"/>). Vessel controllers park
+    /// and unpark themselves as they land, rest and lift off; a game docks a vessel by calling this.
+    /// False when it can't park there (see <see cref="CanHost"/>).
     /// </summary>
-    public void Park(Body body, Body host)
+    public bool Park(Body body, Body host)
     {
-        if (body.ParkedOn == host || !IsHost(host) || host == body) return;
+        if (body.ParkedOn == host && host != null) return true;
+        if (!CanHost(host, body)) return false;
         Unpark(body);
         body.ParkedOn = host;
         body.HostStartPosition = host.Position;
         body.HostStartRotation = host.Rotation;
         Parked?.Invoke(body, host);
+        return true;
     }
 
     /// <summary>The vessel leaves its host (it lifted off, or was knocked off it): the wind reaches it again.</summary>
@@ -303,26 +315,34 @@ public sealed class PhysicsWorld
     /// <summary>
     /// After every body has moved: each landed vessel parked on a host moves by exactly what its
     /// host did this tick, turning included, and takes on the host's velocity there, so it rides it
-    /// whatever order the two step in. A parked vessel that is simulating (resting on its gear,
+    /// whatever order the two step in. Chains carry down: a host parked on another is carried
+    /// first, so A on B on C all ride C. A parked vessel that is simulating (resting on its gear,
     /// about to land or lift off) moves itself.
     /// </summary>
     public void CarryParked()
     {
-        foreach (Body b in _bodies)
+        _carried.Clear();
+        foreach (Body b in _bodies) Carry(b);
+    }
+
+    readonly HashSet<Body> _carried = new();
+
+    void Carry(Body b)
+    {
+        Body host = b.ParkedOn;
+        if (host == null || !_carried.Add(b)) return;
+        Carry(host);
+        if (!b.Asleep) return;
+        if (host.Position != b.HostStartPosition || host.Rotation != b.HostStartRotation)
         {
-            Body host = b.ParkedOn;
-            if (host == null || !b.Asleep) continue;
-            if (host.Position != b.HostStartPosition || host.Rotation != b.HostStartRotation)
-            {
-                Quaternion turn = Quaternion.Normalize(host.Rotation * Quaternion.Conjugate(b.HostStartRotation));
-                b.Position = host.Position + MathX.Rotate(turn, b.Position - b.HostStartPosition);
-                b.Rotation = Quaternion.Normalize(turn * b.Rotation);
-            }
-            b.Velocity = host.PointVelocity(b.Position);
-            b.AngularVelocity = host.AngularVelocity;
-            b.HostStartPosition = host.Position;
-            b.HostStartRotation = host.Rotation;
+            Quaternion turn = Quaternion.Normalize(host.Rotation * Quaternion.Conjugate(b.HostStartRotation));
+            b.Position = host.Position + MathX.Rotate(turn, b.Position - b.HostStartPosition);
+            b.Rotation = Quaternion.Normalize(turn * b.Rotation);
         }
+        b.Velocity = host.PointVelocity(b.Position);
+        b.AngularVelocity = host.AngularVelocity;
+        b.HostStartPosition = host.Position;
+        b.HostStartRotation = host.Rotation;
     }
 
     // ---- Stepping ---------------------------------------------------------------------
@@ -332,11 +352,14 @@ public sealed class PhysicsWorld
         Tick++;
         _pairs.Clear();
         // Where each parked body's host starts this tick: carrying moves it by the host's whole motion.
+        // And what each host carries, chains included: its thrust has to move that too.
+        foreach (Body b in _bodies) b.Carried = 0f;
         foreach (Body b in _bodies)
         {
             if (b.ParkedOn == null) continue;
             b.HostStartPosition = b.ParkedOn.Position;
             b.HostStartRotation = b.ParkedOn.Rotation;
+            for (Body h = b.ParkedOn; h != null; h = h.ParkedOn) h.Carried += b.Mass;
         }
     }
 

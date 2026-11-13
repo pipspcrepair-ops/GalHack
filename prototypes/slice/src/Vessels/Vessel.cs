@@ -138,7 +138,7 @@ public sealed partial class Vessel
     /// for its materials (every block refunds its bill).
     /// </summary>
     public bool IsRuin { get; set; }
-    /// <summary>A structure anchored in Base Mode: it never moves (shared physics' fixed body). A Big Core switched to Base Mode in flight is anchored only once it has come to rest.</summary>
+    /// <summary>A structure anchored in Base Mode: it never moves (shared physics' fixed body). One switched to Base Mode in flight is anchored only once it has come to rest.</summary>
     public bool IsBase => Body.Kind == BodyKind.Base;
     public HandlingStats Stats => Flight?.Stats;
     public string Name => Structure.Name;
@@ -246,7 +246,6 @@ public sealed partial class Vessel
         });
         body.Core = new CoreGravity { On = s.GravityOn, Strength = zone.Physics.Zone.Strength };
         var vessel = new Vessel(zone, s, body);
-        body.Class = StructureBridge.ClassOf(vessel.Spec);
         vessel._legsKey = vessel.LegsKey();
         body.Controller = vessel.NewController();
 
@@ -444,6 +443,9 @@ public sealed partial class Vessel
             N.Quaternion rotation = Body.Rotation;
             Controller.PlaceLanded(Body, Body.Position, MathX.Heading(rotation));
             Body.Rotation = rotation;
+            // It stood on gear that's gone now (a pad shot off): no longer attached, it drops onto its hull.
+            Controller.Gear?.Probe(Zone.Physics, Body);
+            if (old?.Gear?.Attached == true && Controller.Gear?.Attached != true) Controller.Wake(Body);
         }
         else Controller.LocalSpin = old.LocalSpin; // in flight it carries on as it was: speed, attitude and spin
     }

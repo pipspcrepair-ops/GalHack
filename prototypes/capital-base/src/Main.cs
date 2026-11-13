@@ -163,7 +163,7 @@ public partial class Main : Node3D
             RoomReport rooms = Rooms.Detect(c.Structure);
             var (margin, _, _, carried) = World.LiftMargin(c);
             console.Append($"CORE CONSOLE  {c.Name}{(World.Home.IsHome(c.Id) ? "   [HOME]" : "")}").Append('\n');
-            console.Append($"MODE  {(c.IsBase ? "BASE" : "CAPITAL")}     STATE  {c.State}{(World.IsLiftingOff(c) ? $" (lift-off: {World.LiftOffOf(c).Phase})" : "")}").Append('\n');
+            console.Append($"MODE  {c.Structure.Mode.ToString().ToUpperInvariant()}     STATE  {c.State}{(World.IsLiftingOff(c) ? $" (lift-off: {World.LiftOffOf(c).Phase})" : "")}").Append('\n');
             console.Append(c.IsBase
                 ? $"MASS  {c.Tonnes:F0} t     LIFT  none: a base doesn't fly"
                 : $"MASS  {c.Tonnes:F0} t{(carried > 0 ? $" + {carried:F1} t parked" : "")}     LIFT  {margin:+0;-0} kN ({margin / World.Physics.Zone.Strength:+0;-0} t spare)").Append('\n');
@@ -185,7 +185,7 @@ public partial class Main : Node3D
         string log = string.Join("\n", World.Log.Skip(Math.Max(0, World.Log.Count - 6)));
         string help =
             $"Tab  select ({_selected?.Name})   WASD Space Ctrl  fly   arrows Q E  turn   Shift  boost\n" +
-            "G  land here   B  core: base / capital   L  lift off   H  flag Home\n" +
+            "G  land here   B  core: base / flight   L  lift off   H  flag Home\n" +
             "X  drill (Prospector)   T  auto-transmit   K  weather\n" +
             $"left click  build {Materials[_material]} (1-5)   Shift+click  remove   middle click  dig\n" +
             $"M  game mode: {(World.Inventory.Creative ? "creative" : "survival")}   F5 / F9  save / load   right drag, wheel  camera   F1  help";
@@ -222,7 +222,7 @@ public partial class Main : Node3D
                 _autoland = false;
                 break;
             case Key.G: _autoland = c != null && c.State == CraftState.Flying; break;
-            case Key.B when c != null: World.SwitchMode(c, c.IsBase ? CoreMode.Capital : CoreMode.Base); break;
+            case Key.B when c != null: World.SwitchMode(c, c.IsBase ? CoreMode.Flight : CoreMode.Base); break;
             case Key.L when c != null: World.LiftOffFrom(c); break;
             case Key.H when c != null: World.FlagHome(c); break;
             case Key.T:

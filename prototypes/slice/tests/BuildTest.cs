@@ -21,7 +21,6 @@ using Slice.Ui;
 using Slice.Vessels;
 using N = System.Numerics;
 using Structure = GalHack.Structures.Structure;
-using StructureClass = GalHack.Items.StructureClass;
 using Survivor = Slice.Player.Survivor;
 
 namespace Slice.Tests;
@@ -289,7 +288,7 @@ public partial class BuildTest : Node
             int placed = 0;
             for (int rot = 0; rot < Orientations.Count; rot++)
             {
-                var s = new Structure(Blocks) { Mode = CoreMode.Capital };
+                var s = new Structure(Blocks) { Mode = CoreMode.Flight };
                 Building.Place(s, Int3.Zero, Building.Make(s, Blocks.CoreType));
                 Block b = Building.Make(s, type, null, rot);
                 Int3? cell = null;
@@ -315,7 +314,7 @@ public partial class BuildTest : Node
         }
         Check(true, $"{devices} device types in all {Orientations.Count} orientations: the same power, storage, crafting, control and torque; a thruster changes only its axis");
         // A chair gives no air: only a sealed room does.
-        var room = new Structure(Blocks) { Mode = CoreMode.Capital };
+        var room = new Structure(Blocks) { Mode = CoreMode.Flight };
         Building.Place(room, new Int3(0, -1, 0), Building.Make(room, Blocks.CoreType));
         // The shell round a 1x2x3 chair: its cells are x 0, y 0..1, z 0..2.
         for (int x = -1; x <= 1; x++)
@@ -425,7 +424,7 @@ public partial class BuildTest : Node
         var existing = new HashSet<Vessel>(_game.Zone.Vessels);
         foreach (int x in _play.PlaceOnGround(4, _site)) yield return x;
         _base = _game.Zone.Vessels.FirstOrDefault(v => !existing.Contains(v) && v.IsBase && !v.IsRuin && !v.IsWreck);
-        Check(_base != null && StructureArea.ClassOf(_base) == StructureClass.Base && Pack["core"] == 0,
+        Check(_base != null && _base.Structure.Mode == CoreMode.Base && Pack["core"] == 0,
             "the core founds a base (anchored), and is used up");
         if (_base == null) yield break;
 
@@ -435,11 +434,11 @@ public partial class BuildTest : Node
         foreach (int x in _play.PlaceBlock(2, _base, Int3.Zero, Dir.PosX, p => on = p)) yield return x;
         Check(on && Pack[steel] == 11, "a block goes onto the base's core, one item used");
 
-        // A structure's class is its core's mode: the one core makes every class, and old data's Vessel Mode flies as Capital.
-        foreach (var (core, mode, cls, slot, offset) in new[]
+        // The one core makes every structure: each is in whichever mode its core is set to.
+        foreach (var (core, mode, slot, offset) in new[]
                  {
-                     ("core", CoreMode.Vessel, StructureClass.Capital, 5, new Vector3(20, 0, 0)), ("core", CoreMode.Hover, StructureClass.Hover, 6, new Vector3(-20, 0, 0)),
-                     ("core", CoreMode.Capital, StructureClass.Capital, 7, new Vector3(0, 0, 20)),
+                     ("core", CoreMode.Flight, 5, new Vector3(20, 0, 0)), ("core", CoreMode.Hover, 6, new Vector3(-20, 0, 0)),
+                     ("core", CoreMode.Flight, 7, new Vector3(0, 0, 20)),
                  })
         {
             Vector3 spot = _play.FlatSpot(_site + offset, 4f, 1.4f, 0.5f);
@@ -449,8 +448,8 @@ public partial class BuildTest : Node
             foreach (int x in _play.PlaceOnGround(slot, spot)) yield return x;
             Vessel v = _game.Zone.Vessels.FirstOrDefault(n => !before.Contains(n));
             v?.SwitchMode(mode);
-            Check(v != null && StructureArea.ClassOf(v) == cls,
-                $"{Items.Item(core).Name} in {mode} Mode is a {StructureClasses.Name(cls)}: {v?.Name}");
+            Check(v != null && v.Structure.Mode == mode,
+                $"{Items.Item(core).Name} set to {mode} Mode: {v?.Name}");
             if (slot == 5) _craft = v;
             else if (slot == 6) _hover = v;
             else _capital = v;
@@ -462,7 +461,7 @@ public partial class BuildTest : Node
         foreach (int x in Carry(Item("hover"), 1, 8)) yield return x;
         foreach (int x in _play.Select(8)) yield return x;
         foreach (int x in _drive.LookAt(_craft.Body.Position.ToGodot(), 8)) yield return x;
-        Check(_game.Builder.TargetVessel == _craft && !_game.Builder.Verdict.Contains("only"), $"a hover plate goes on a craft in Capital Mode: \"{_game.Builder.Verdict}\"");
+        Check(_game.Builder.TargetVessel == _craft && !_game.Builder.Verdict.Contains("only"), $"a hover plate goes on a craft in Flight Mode: \"{_game.Builder.Verdict}\"");
     }
 
     IEnumerable<int> Sources()
@@ -831,10 +830,11 @@ public partial class BuildTest : Node
             var (min, max) = v.Structure.Bounds();
             N.Vector3 edge = StructureBridge.CellCenter(v.Structure, max) + new N.Vector3(v.Structure.Grid.CellSize * 0.5f, 0, 0);
             Vector3 inside = v.ToWorld(edge + new N.Vector3(margin - 0.25f, 0, 0)), outside = v.ToWorld(edge + new N.Vector3(margin + 0.25f, 0, 0));
-            Check(_game.Builder.CanDrawFrom(v, inside) && !_game.Builder.CanDrawFrom(v, outside),
-                $"{StructureClasses.Name(StructureArea.ClassOf(v))}: its storage can be drawn on {margin - 0.25f:F2} m from its blocks, refused at {margin + 0.25f:F2} m");
+            var (lo, hi) = v.Structure.Bounds();
+            float half = MathF.Max(hi.X - lo.X, MathF.Max(hi.Y - lo.Y, hi.Z - lo.Z)) * v.Structure.Grid.CellSize * 0.5f + v.Structure.Grid.CellSize * 0.5f;
+            Check(_game.Builder.CanDrawFrom(v, inside) && !_game.Builder.CanDrawFrom(v, outside) && MathF.Abs(margin - (rules.Margin + rules.SizeShare * half)) < 1e-3f,
+                $"{v.Name} ({v.Structure.Mode}): one rule, {rules.Margin:F0} m + {rules.SizeShare} x {half:F1} m; its storage can be drawn on {margin - 0.25f:F2} m from its blocks, refused at {margin + 0.25f:F2} m");
         }
-        Check(rules.Margin(StructureClass.Base) > rules.Margin(StructureClass.Small), "a base reaches further than a small vessel");
 
         // Out of every area: nothing linked, the CORE tab says so.
         if (_base != null)
