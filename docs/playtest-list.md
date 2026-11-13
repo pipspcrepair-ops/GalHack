@@ -392,7 +392,7 @@ Design clarified: small vessels never auto-hover; only Hover Mode holds a craft 
 - [ ] Nothing templated: the 7 faction families move off hand-made kit modules onto the architect, right after world themes and POIs are playable [running: rollout; market, hospital, water works and bunker converted, six kit families left] [normal]
 - [ ] Presence: huge brutalist industrial complexes in the spirit of 1970s and 80s sci-fi, with towers, pipework, gantries and hazard markings (our own designs) [batch] [normal]
 - [ ] Scale: houses 2x, facilities 4x, some 5x, well beyond double outside too [batch] [normal]
-- [ ] POIs on the 2 m grid, using the player's blocks and shapes [batch] [normal]
+- [ ] ALL POIs ON THE PLAYER'S 1 m BLOCKS AND SHAPES (owner, 13 Nov: every POI updated after the 1 m change, with the cryo bunker and the blueprints). Places, hulks, wrecks and space places are built from the blocks, shapes, doors (1x2x1, 2x2x1) and devices the player builds with, so claiming, salvage, damage and walking work as in the player's own builds. Floors are painted on, never thin blocks. Rooms 3 to 4 m clear, halls 5 to 6 m. Hulks and wrecks come from the new blueprints; orbit derelicts are rewritten in 1 m cells. [queued: starts when grid phase 2 merges, after proto/places] [high]
 - [ ] PLACES in the asset viewer (owner, 10 Nov; 4 shots kept locally in reference-photos/places-viewer/):
   - Rooms with no reachable door: every room must have a way in a person can walk; a check that every room is reachable from an entrance.
   - Debris and loot crates spawning under the ground or out in the void beside a place (shot 837, a Cryo Vault cutaway): nothing placed outside the place's built cells or underground unless it is in a real dug space.
