@@ -227,12 +227,14 @@ public sealed class Decor
         // Up a wall: the wall behind it, all along its back and from its foot to its top (an opening into
         // the next room is no wall to hang a rack on).
         NV2 back = DecoGeo.Yaw(new NV2(0, 1), pl.Yaw), side = new(-back.Y, back.X);
+        // The wall's face toward the piece must be whole: a coved or panelled wall (Shaping) is set back there.
+        Dir face = MathF.Abs(back.X) > MathF.Abs(back.Y) ? (back.X > 0 ? Dir.West : Dir.East) : (back.Y > 0 ? Dir.North : Dir.South);
         foreach (float a in new[] { -0.4f, 0f, 0.4f })
             foreach (float h in new[] { pl.Y + 0.1f, pl.Y + piece.Height - 0.1f })
             {
                 NV2 behind = new NV2(pl.X, pl.Z) + back * (piece.Depth / 2f + 0.1f) + side * (a * piece.Width);
                 var c = new Int3(room.Corner.X + (int)MathF.Floor(behind.X), room.Corner.Y + (int)MathF.Floor(room.Floor + h), room.Corner.Z + (int)MathF.Floor(behind.Y));
-                if (!nav.Solid(c)) return false;
+                if (!nav.Solid(c) || inst.Blocks.Get(c) is var wb && (BlockInfo.IsShaped(wb.Type) || wb.Type == BlockType.Ramp) && !Shapes.FlatToward(wb, face)) return false;
             }
         return true;
     }

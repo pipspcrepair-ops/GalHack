@@ -224,10 +224,10 @@ public sealed class PlaceLook
         // Only what stands: walking every cell of a big works' box would make every empty chunk of it.
         foreach (var (c, found) in g.Blocks().ToList())
         {
-            if (found.Variant != 0 || found.Type is not (BlockType.Cube or BlockType.Ramp or BlockType.Corner or BlockType.InvCorner)) continue;
+            if (found.Variant != 0 || found.Type is not (BlockType.Cube or BlockType.Ramp or BlockType.Corner or BlockType.InvCorner) && !BlockInfo.IsShaped(found.Type)) continue;
             ref Block b = ref g.At(c);
             if (b.Role is not (Role.Wall or Role.Roof or Role.Decor) || b.Material is Material.Glass or Material.Lumen or Material.Glyph or Material.Crystal) continue;
-            bool slope = b.Type != BlockType.Cube;
+            bool slope = b.Type is BlockType.Ramp or BlockType.Corner or BlockType.InvCorner || BlockInfo.IsHung(b.Type);
             Finish f = look.Pick(b, b.Role == Role.Roof || slope ? Side.Roof : Side.Out, slope, 0).Finish;
             if (f != Finish.Plain) b.Variant = (byte)(1 + (int)f);
         }
@@ -322,7 +322,7 @@ public static class Surfaces
 {
     /// <summary>A block's own finish (its Variant on a wall, floor or roof cube or slope), or Plain.</summary>
     public static Finish Own(Block b) =>
-        b.Variant != 0 && b.Type is BlockType.Cube or BlockType.Ramp or BlockType.Corner or BlockType.InvCorner && b.Variant <= (byte)Finish.Glass + 1
+        b.Variant != 0 && (b.Type is BlockType.Cube or BlockType.Ramp or BlockType.Corner or BlockType.InvCorner || BlockInfo.IsShaped(b.Type)) && b.Variant <= (byte)Finish.Glass + 1
             ? (Finish)(b.Variant - 1) : Finish.Plain;
 
     /// <summary>What a house's cladding is drawn as (HouseStyle.Wall and Cover words), as a block's Variant: set it on the block and the house draws its real surface.</summary>
