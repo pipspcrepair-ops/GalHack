@@ -172,12 +172,16 @@ public partial class StartTest : Node
         Vector3 across = (b.At(new Vector3(1f, 0f, 0f)) - b.At(Vector3.Zero)).Normalized();
         var space = game.Zone.GetWorld3D().DirectSpaceState;
         var spots = new List<Vector3>();
-        for (int i = 0; i <= 18; i++) spots.Add(b.StairTop.Lerp(b.Outside, i / 8f)); // and as far again beyond the way out
+        for (int i = 0; i <= 8; i++) spots.Add(b.StairTop.Lerp(b.Outside, i / 8f));
         foreach (Vector3 w in b.WayOut) if (w.Y > game.Zone.GroundAt(w.X, w.Z).Y - 0.5f) spots.Add(w);
-        foreach (Vector3 spot in spots)
-            foreach (float side in new[] { -1.4f, -0.7f, 0f, 0.7f, 1.4f })
+        int inWell = spots.Count;
+        // And the open ground beyond the way out, a few metres either side: whatever stands on it or over it.
+        for (int i = 9; i <= 20; i++) spots.Add(b.StairTop.Lerp(b.Outside, i / 8f));
+        for (int k = 0; k < spots.Count; k++)
+            foreach (float side in k < inWell ? new[] { -0.8f, 0f, 0.8f } : new[] { -2.5f, -1.2f, 0f, 1.2f, 2.5f })
             {
-                Vector3 p = spot + across * side;
+                Vector3 p = spots[k] + across * side;
+                if (k >= inWell) p.Y = MathF.Max(p.Y, game.Zone.GroundAt(p.X, p.Z).Y); // standing on the ground there
                 var hit = space.IntersectRay(PhysicsRayQueryParameters3D.Create(p + Vector3.Up * 0.4f, p + Vector3.Up * 40f));
                 if (hit.Count > 0 && hit["collider"].AsGodotObject() is Node n && n != b.Ruin.Node && !b.Ruin.Node.IsAncestorOf(n)) return $"{n.GetPath()} ({n.GetType().Name}) {((Vector3)hit["position"]).Y - p.Y:F1} m over {p}";
                 for (float up = 0.4f; up <= 40f; up += 0.5f)
