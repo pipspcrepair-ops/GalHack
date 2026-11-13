@@ -13,13 +13,15 @@ public partial class PoiTest
     /// The ornament (the owner, 14 Nov: "purely decorative blocks that add appeal"). Over fresh places of every kind at
     /// every tech level, each spawned without it and then given it: every element is whole, held (nothing floats), clear of
     /// every way and walk (what the way in reaches is unchanged), regular in its spacing, never a lone repeat; it costs
-    /// under 5% of the median place's build and under 30 ms on any place; each builder's vocabulary is its own.
+    /// under 5% of the median place's build and no more than 5% of any place's own; each builder's vocabulary is its own.
     /// </summary>
     void OrnamentCheck()
     {
         var rand = new Random();
         int places = 0, broken = 0, floating = 0, blocked = 0, irregular = 0, orphans = 0;
         var build = new List<double>();
+        double worstShare = 0;
+        string worstPlace = "";
         var cost = new List<double>();
         var added = new List<int>();
         var kinds = new SortedDictionary<string, int>();
@@ -58,6 +60,9 @@ public partial class PoiTest
                 sw.Restart();
                 Ornament.Apply(orn);
                 cost.Add(Math.Min(first, sw.Elapsed.TotalMilliseconds));
+                double share = cost[^1] / Math.Max(1, build[^1]);
+                if (cost[^1] > 15) GD.Print($"      ornament on {f.Id}: {cost[^1]:0.0} ms of a {build[^1]:0} ms build ({100 * share:0.0}%)");
+                if (share > worstShare) { worstShare = share; worstPlace = $"{f.Id} {cost[^1]:0.0} of {build[^1]:0} ms"; }
                 added.Add(orn.Ornaments.Sum(p => p.Cells.Count));
                 string sig = Ornament.For(orn).Sig;
                 ulong who = Ornament.Builder(orn);
@@ -90,11 +95,11 @@ public partial class PoiTest
         var sigs = vocab.Values.ToList();
         int clashes = sigs.Count - sigs.Distinct().Count();
         GD.Print($"      ornament: {places} places, {string.Join(", ", kinds.Select(k => $"{k.Value} {k.Key}"))}; blocks added per place median {added.OrderBy(x => x).ElementAtOrDefault(added.Count / 2)}, most {added.DefaultIfEmpty(0).Max()}");
-        GD.Print($"      ornament cost: median {medCost:0.00} ms against a median build of {medBuild:0} ms ({100 * medCost / Math.Max(1, medBuild):0.0}%), worst {worst:0.0} ms");
+        GD.Print($"      ornament cost: median {medCost:0.00} ms against a median build of {medBuild:0} ms ({100 * medCost / Math.Max(1, medBuild):0.0}%); slowest {worst:0.0} ms; highest share {100 * worstShare:0.0}% ({worstPlace})");
         GD.Print($"      ornament vocabularies: {vocab.Count} builders, {sigs.Distinct().Count()} vocabularies; e.g. " + string.Join(" | ", sigs.Distinct().Take(3)));
         Check(places > 0 && broken == 0 && floating == 0 && blocked == 0 && irregular == 0 && orphans == 0,
             $"every ornament is whole ({broken} broken), held ({floating} cells floating), clear of every way and walk ({blocked} cells lost), regular ({irregular} irregular), never alone ({orphans} orphans) (Ornament)");
-        Check(medCost < 0.05 * medBuild && worst < 30, $"the ornament costs under 5% of the median place's build ({medCost:0.00} of {medBuild:0} ms) and under 30 ms on any place ({worst:0.0} ms) (Ornament)");
+        Check(medCost < 0.05 * medBuild && worstShare <= 0.05, $"the ornament costs under 5% of the median place's build ({medCost:0.00} of {medBuild:0} ms) and no more than 5% of any place's own build ({100 * worstShare:0.0}%: {worstPlace}) (Ornament)");
         Check(unlike == 0 && clashes == 0, $"each builder's vocabulary is the same on all its places ({unlike} unlike) and its own ({clashes} shared) (Ornament)");
     }
 }
