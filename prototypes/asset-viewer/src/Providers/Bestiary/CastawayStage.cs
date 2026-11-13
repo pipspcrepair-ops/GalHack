@@ -122,6 +122,7 @@ sealed partial class CastawayStage : AssetInstance, IStageProbe
 
     public Node3D Subject => _figure;
     public Vector3 Anchor => Vector3.Zero;
+    public float Heading => 0f;
     public Vector3? GroundShift => new Vector3(0f, 0f, _walked);
 
     /// <summary>The suit's feet are not tracked by the rig: one is on the ground when it is down at the ground.</summary>

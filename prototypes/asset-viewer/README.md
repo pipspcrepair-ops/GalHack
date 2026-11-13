@@ -23,6 +23,29 @@ Command line, after `--`:
 | `--notes=<folder>` | Where the JSON files go |
 | `--free`, `--hide-panels`, `--fresh`, `--demo` | Free camera; hide panels; ignore the saved position; fill in sample notes |
 
+## Animation filmstrips (for reviewing motion from pictures)
+
+A sheet is one PNG: columns are evenly spaced phases of one animation, rows are camera views, every tile of a row framed the same way, with the ground marked in half metres. A JSON beside it has the numbers. Stepping is by fixed 1/60 s ticks, so the same seed gives the same sheet. Run through the queue wrapper, from the worktree root.
+
+```
+# one sheet: 8 phases, front and side (the default); add --views=front,side,three,top, --sheet=N, --tile=WxH, --sheet-seconds=S
+godot-q.ps1 -Console --path prototypes/asset-viewer -After "--select=People|role/farmer","--anim=Walk","--sheet=8","--shot=out/walk.png"
+
+# every animation of one asset, in one run: out/<asset>/<animation>.png + .json, and out/index.json
+godot-q.ps1 -Console --path prototypes/asset-viewer -After "--select=People|role/farmer","--sweep=out"
+
+# every animation of the first N assets of a category (people or creatures); fresh seeds, recorded in index.json
+godot-q.ps1 -Console --path prototypes/asset-viewer -After "--category=creatures","--limit=10","--sweep=out"
+```
+
+Give `--seed=N` (and `--option=Name=Value`) to make a sheet again exactly; the seeds and options of every sheet are in its JSON and in `index.json`. A run ends by itself: `--timeout=S` (default 240 s for a sheet, 1500 s for a sweep) and the process then ends itself a little later if the engine does not.
+
+**Reading a sheet.** The subject faces right in the side view and towards you in the front view; top has the front at the top. A loop is one period of the animation; a one-shot (death, gestures, sit) runs its whole length, first frame to last (the title says which). Ground ticks sit in the ground's own frame, so they slide past a walker: a foot that is planted stays on the same tick from tile to tile. On each foot: a **dot at the rig's foot target**, green while the foot should hold the ground, orange in the air; a **ring where the foot is drawn**; a pink line between them when they differ. Posture and arm positions are read off the body, timing off the spacing of the seconds labels and how far the feet carry between tiles.
+
+Samples: `screenshots/sheet-person-walk.png` (a farmer walking, three views) and `screenshots/sheet-strider-run.png` (an eight-legged runner), each with its JSON.
+
+**The JSON** (read it first): `asset`, `seed`, `options`, `animation`, `cycle_seconds` and `cycle_source` (`scripted` from the stage, `measured` from the pose repeating, `default` 4 s when nothing repeats), `loops`, `views`, `feet`; `frames`, one per tile, each with `seconds`, `phase`, `problems` (the stage's own check: empty when sound), `pose_signature`, `slide_m` per foot (metres the drawn foot has moved since it came down while planted, null in the air) and `off_target_m` per foot; and a summary: `worst_slide_m` (over every tick, not only the tiles), `worst_slide_foot`, `worst_slide_each_m`, `frames_with_problems`. Slide is of the drawn foot, so a heel rolling on a planted foot counts a few centimetres; a skate is tens of centimetres.
+
 ## Controls
 
 **Orbit camera** (default): left drag turns, right or middle drag pans, wheel zooms. W and S zoom, A and D pan sideways, Q and E pan down and up, arrows turn, Shift is faster.

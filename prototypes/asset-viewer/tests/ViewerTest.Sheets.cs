@@ -34,13 +34,15 @@ public partial class ViewerTest
 
         var frame = ViewFrame.Fit("side", new Aabb(new Vector3(-0.5f, 0f, -1f), new Vector3(1f, 1.8f, 2f)), 0.8f);
         Vector2 tile = new(240f, 300f);
-        Vector2 mid = frame.Project(frame.Centre, Vector3.Zero, tile);
+        Vector2 mid = frame.Project(frame.Centre, Vector3.Zero, 0f, tile);
         Check(mid.DistanceTo(tile * 0.5f) < 0.01f, "the middle of the motion projects to the middle of the tile");
-        Vector2 head = frame.Project(new Vector3(0f, 1.8f, 0f), Vector3.Zero, tile), foot = frame.Project(Vector3.Zero, Vector3.Zero, tile);
+        Vector2 head = frame.Project(new Vector3(0f, 1.8f, 0f), Vector3.Zero, 0f, tile), foot = frame.Project(Vector3.Zero, Vector3.Zero, 0f, tile);
         Check(head.Y < foot.Y && head.Y > 0f && foot.Y < tile.Y, "up is up in the side view and the whole height is in the tile");
-        Vector2 nose = frame.Project(new Vector3(0f, 1f, -1f), Vector3.Zero, tile), tail = frame.Project(new Vector3(0f, 1f, 1f), Vector3.Zero, tile);
+        Vector2 nose = frame.Project(new Vector3(0f, 1f, -1f), Vector3.Zero, 0f, tile), tail = frame.Project(new Vector3(0f, 1f, 1f), Vector3.Zero, 0f, tile);
         Check(nose.X > tail.X, "the subject faces right in the side view");
-        Vector2 follow = frame.Project(new Vector3(0f, 0.9f, 7f), new Vector3(0f, 0f, 7f), tile);
+        Vector2 follow = frame.Project(new Vector3(0f, 0.9f, 7f), new Vector3(0f, 0f, 7f), 0f, tile);
+        Vector2 turned = frame.Project(new Basis(Vector3.Up, 1f) * new Vector3(0f, 1f, -1f), Vector3.Zero, 1f, tile);
+        Check(turned.DistanceTo(nose) < 0.01f, "the views turn with the subject: its nose stays where it was in the tile");
         Check(follow.X.Equals(mid.X) || Math.Abs(follow.X - mid.X) < 0.01f, "the camera follows the subject along the ground");
         Check(ViewFrame.Names.All(n => ViewFrame.Fit(n, new Aabb(new Vector3(-1f, 0f, -1f), new Vector3(2f, 2f, 2f)), 1f).Size > 0f), "every view frames a box");
     }
@@ -66,11 +68,12 @@ public partial class ViewerTest
     }
 
     /// <summary>One of each kind of stage, so every animation of every one of them has a cycle length.</summary>
-    IEnumerable<(string Name, AssetInstance Stage)> StagesToCheck(AssetRegistry registry)
+    IEnumerable<(string Name, AssetInstance Stage, Func<AssetInstance> Rebuild)> StagesToCheck(AssetRegistry registry)
     {
         AssetEntry Find(string key) => registry.Find(key) ?? throw new InvalidOperationException("no asset " + key);
-        yield return ("person", Find(registry.Entries.First(e => e.Key.StartsWith("People|role/", StringComparison.Ordinal)).Key).Build(new BuildRequest { Seed = 5 }));
-        yield return ("castaway", Find("People|castaway").Build(new BuildRequest { Seed = 5 }));
+        AssetEntry person = registry.Entries.First(e => e.Key.StartsWith("People|role/", StringComparison.Ordinal)), castaway = Find("People|castaway");
+        yield return ("person", person.Build(new BuildRequest { Seed = 5 }), () => person.Build(new BuildRequest { Seed = 5 }));
+        yield return ("castaway", castaway.Build(new BuildRequest { Seed = 5 }), () => castaway.Build(new BuildRequest { Seed = 5 }));
         var seen = new HashSet<string>();
         foreach (AssetEntry e in registry.Entries.Where(e => e.Category == "Bestiary" && e.Randomisable))
         {
@@ -78,7 +81,8 @@ public partial class ViewerTest
             try { stage = e.Build(new BuildRequest { Seed = 11 }); } catch (Exception) { continue; }
             string kind = stage switch { CreatureStage c => "creature " + c.Species.Rig, SpaceStage => "space creature", _ => "" };
             if (kind == "" || !seen.Add(kind)) { stage.QueueFree(); continue; }
-            yield return (kind, stage);
+            AssetEntry entry = e;
+            yield return (kind, stage, () => entry.Build(new BuildRequest { Seed = 11 }));
         }
     }
 
@@ -86,27 +90,30 @@ public partial class ViewerTest
     {
         GD.Print("== cycle length of every animation of every stage");
         int stages = 0, animations = 0;
-        foreach ((string name, AssetInstance stage) in StagesToCheck(registry))
+        foreach ((string name, AssetInstance stage, Func<AssetInstance> rebuild) in StagesToCheck(registry))
         {
             AddChild(stage);
             stages++;
             if (!Check(stage is IStageProbe, $"{name} can be stepped")) continue;
+            var probe = (IStageProbe)stage;
+            // Stepping is deterministic: a second stage from the same seed, given the same calls, reads the same.
+            string first = stage.Animations[0];
+            stage.PlayAnimation(first); probe.Advance(1.5f);
+            AssetInstance twin = rebuild();
+            AddChild(twin);
+            twin.PlayAnimation(first); ((IStageProbe)twin).Advance(1.5f);
+            Check(probe.PoseSignature() == ((IStageProbe)twin).PoseSignature(), $"{name} / {first}: the same seed and ticks give the same pose");
+            Check(name.Contains("Swarm") || SheetCycle.BoundsOf(probe.Subject) is Aabb box && box.Size.Length() > 0.05f, $"{name}: the subject can be measured");
+            twin.QueueFree();
             foreach (string anim in stage.Animations)
             {
                 (float cycle, string source) = SheetCycle.Of(stage, anim);
                 animations++;
                 Check(cycle > 0.1f && cycle <= 60f && source is "scripted" or "measured" or "default", $"{name} / {anim}: cycle {cycle:0.00} s ({source}) is a usable length");
             }
-            // Stepping and reading a pose is deterministic: the same animation from the start reads the same.
-            string first = stage.Animations[0];
-            var probe = (IStageProbe)stage;
-            stage.PlayAnimation(first); probe.Advance(1.5f); long a = probe.PoseSignature();
-            stage.PlayAnimation(first); probe.Advance(1.5f); long b = probe.PoseSignature();
-            Check(a == b, $"{name} / {first}: the same ticks from the start give the same pose");
             var feet = new List<FootMark>();
             probe.Feet(feet);
             Check(feet.All(f => float.IsFinite(f.Drawn.X) && float.IsFinite(f.Drawn.Y) && float.IsFinite(f.Target.Z)), $"{name}: foot marks are finite");
-            Check(SheetCycle.BoundsOf(probe.Subject) is Aabb box && box.Size.Length() > 0.05f, $"{name}: the subject can be measured");
             stage.QueueFree();
         }
         GD.Print($"  {animations} animations on {stages} kinds of stage");

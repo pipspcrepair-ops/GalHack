@@ -100,7 +100,7 @@ public static class SheetCycle
 {
     /// <summary>Used when a pose never repeats (a held stance, a brain's wandering): a few seconds is enough to see it breathe.</summary>
     public const float Fallback = 4f;
-    const float Step = 1f / 30f;
+    const float Step = 1f / 60f;   // every tick: a wingbeat sampled slower than it beats reads as a slower one
 
     /// <summary>Starts the animation and returns its cycle length in seconds and where the number came from: "scripted", "measured" or "default".</summary>
     public static (float Seconds, string Source) Of(AssetInstance stage, string animation)
@@ -110,7 +110,7 @@ public static class SheetCycle
         if (stage is not IStageProbe probe) return (Fallback, "default");
         probe.Advance(2f);
         var samples = new List<float[]>();
-        for (int i = 0; i < 300; i++)
+        for (int i = 0; i < 480; i++)
         {
             probe.Advance(Step);
             samples.Add(PoseOf(probe));
@@ -124,23 +124,29 @@ public static class SheetCycle
     {
         var v = new List<float>(256);
         Vector3 at = probe.Anchor;
+        Basis face = new Basis(Vector3.Up, -probe.Heading);
         foreach ((Transform3D t, _) in Parts(probe.Subject))
         {
-            Vector3 o = t.Origin - at, x = t.Basis.X * 0.5f, y = t.Basis.Y * 0.5f;
+            Vector3 o = face * (t.Origin - at), x = face * t.Basis.X * 0.5f, y = face * t.Basis.Y * 0.5f;
             v.AddRange(new[] { o.X, o.Y, o.Z, x.X, x.Y, x.Z, y.X, y.Y, y.Z });
         }
         return v.ToArray();
     }
 
-    /// <summary>The box round the subject now, in world space: its meshes, and a hand's breadth round each bone of a skinned body (whose mesh box does not follow the pose). Null if empty.</summary>
-    public static Aabb? BoundsOf(Node subject)
+    /// <summary>
+    /// The box round the subject now, measured in the frame <paramref name="into"/> takes world space to (identity: the world's own): its meshes,
+    /// and a hand's breadth round each bone of a skinned body (whose mesh box does not follow the pose). Null if empty.
+    /// </summary>
+    public static Aabb? BoundsOf(Node subject, Transform3D? into = null)
     {
+        Transform3D frame = into ?? Transform3D.Identity;
         Aabb? total = null;
         foreach ((Transform3D t, Aabb local) in Parts(subject))
-        {
-            Aabb world = t * local;
-            total = total.HasValue ? total.Value.Merge(world) : world;
-        }
+            for (int i = 0; i < 8; i++)
+            {
+                var corner = new Aabb(frame * t * local.GetEndpoint(i), Vector3.Zero);
+                total = total.HasValue ? total.Value.Merge(corner) : corner;
+            }
         return total;
     }
 
@@ -156,14 +162,14 @@ public static class SheetCycle
                 yield return (sk.GlobalTransform * sk.GetBoneGlobalPose(i), new Aabb(Vector3.One * -BoneMargin, Vector3.One * (2f * BoneMargin)));
             yield break;
         }
-        if (n is MeshInstance3D m && m.Skin == null && m.GetAabb().Size.LengthSquared() > 0f) yield return (m.GlobalTransform, m.GetAabb());
+        if (n is VisualInstance3D { } v and (MeshInstance3D { Skin: null } or MultiMeshInstance3D) && v.GetAabb().Size.LengthSquared() > 0f) yield return (v.GlobalTransform, v.GetAabb());
         foreach (Node c in n.GetChildren())
             foreach (var part in Parts(c)) yield return part;
     }
 
     /// <summary>
     /// The shortest lag, in seconds, at which the series comes back to itself (0 if it never does): the mean squared distance between
-    /// samples a lag apart leaves its starting trough, then falls into a deep one.
+    /// samples a lag apart leaves its starting trough, then falls into a trough (a gait that is only roughly regular still dips to a third of its range).
     /// </summary>
     public static float Period(IReadOnlyList<float[]> samples, float step, float minSeconds = 0.2f, float maxSeconds = 6f)
     {
@@ -185,12 +191,13 @@ public static class SheetCycle
             d[lag] = count == 0 ? 0 : sum / count;
         }
         double top = d.Skip(1).Max();
-        if (top < 1e-9) return 0f;
+        // Under about 3 mm of wobble per reading it is a held pose, whatever its tiny shimmer repeats at.
+        if (top / Math.Max(1, samples[0].Length) < 1e-5) return 0f;
         int l = 1;
         while (l <= maxLag && d[l] < 0.3 * top) l++;
         for (l = Math.Max(l, (int)(minSeconds / step)); l <= maxLag; l++)
         {
-            if (d[l] >= 0.15 * top || d[l] > d[l - 1] || d[l] > d[l + 1]) continue;
+            if (d[l] >= 0.3 * top || d[l] > d[l - 1] || d[l] > d[l + 1]) continue;
             double a = d[l - 1], b = d[l], c = d[l + 1], den = a - 2 * b + c;
             double off = den > 1e-12 ? 0.5 * (a - c) / den : 0;
             return (float)((l + Math.Clamp(off, -0.5, 0.5)) * step);
@@ -241,18 +248,23 @@ public sealed class ViewFrame
         return new ViewFrame { Name = name, Toward = toward, Right = right, Up = up, Size = size, Centre = c, Aspect = aspect };
     }
 
-    Vector3 CentreAt(Vector3 anchor) => new(anchor.X + Centre.X, Centre.Y, anchor.Z + Centre.Z);
+    /// <summary>The subject's own frame: its position along the ground with the middle of the motion, turned to face the way it faces.</summary>
+    Vector3 CentreAt(Vector3 anchor, float heading) => new Vector3(anchor.X, 0f, anchor.Z) + new Basis(Vector3.Up, heading) * new Vector3(Centre.X, 0f, Centre.Z) + new Vector3(0f, Centre.Y, 0f);
 
-    /// <summary>The camera's transform while the subject is at <paramref name="anchor"/>.</summary>
-    public Transform3D Eye(Vector3 anchor) => new(new Basis(Right, Up, Toward), CentreAt(anchor) + Toward * (Size * 4f + 20f));
+    /// <summary>The camera's transform while the subject is at <paramref name="anchor"/> facing <paramref name="heading"/>.</summary>
+    public Transform3D Eye(Vector3 anchor, float heading)
+    {
+        var turn = new Basis(Vector3.Up, heading);
+        return new Transform3D(turn * new Basis(Right, Up, Toward), CentreAt(anchor, heading) + turn * Toward * (Size * 4f + 20f));
+    }
 
     public float Near => 0.1f;
     public float Far => Size * 8f + 60f;
 
     /// <summary>Where a point lands in a tile of the given pixel size.</summary>
-    public Vector2 Project(Vector3 p, Vector3 anchor, Vector2 tile)
+    public Vector2 Project(Vector3 p, Vector3 anchor, float heading, Vector2 tile)
     {
-        Vector3 v = p - CentreAt(anchor);
+        Vector3 v = new Basis(Vector3.Up, -heading) * (p - CentreAt(anchor, heading));
         return new Vector2((v.Dot(Right) / (Size * Aspect) + 0.5f) * tile.X, (0.5f - v.Dot(Up) / Size) * tile.Y);
     }
 }

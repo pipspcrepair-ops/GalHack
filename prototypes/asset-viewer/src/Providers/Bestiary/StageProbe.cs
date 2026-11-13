@@ -22,6 +22,8 @@ public interface IStageProbe
     Node3D Subject { get; }
     /// <summary>Where the subject is, which a travelling animation's camera follows (the world slides under a walker, so mostly the origin).</summary>
     Vector3 Anchor { get; }
+    /// <summary>Which way the subject faces, as a turn about Y from facing -Z (a creature walking a ring turns; the sheet's views turn with it).</summary>
+    float Heading { get; }
     /// <summary>How far the ground has been slid from where it stands in the world, or null for a stage with no ground to read travel by.</summary>
     Vector3? GroundShift { get; }
     /// <summary>Adds each foot's mark, in a fixed order, to the list.</summary>

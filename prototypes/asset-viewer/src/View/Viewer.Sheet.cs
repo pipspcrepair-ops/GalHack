@@ -57,7 +57,7 @@ public partial class Viewer
     }
 
     long _sheetDeadlineMs;
-    bool TimedOut => (long)Time.GetTicksMsec() > _sheetDeadlineMs;
+    bool TimedOut => _sheetDeadlineMs > 0 && (long)Time.GetTicksMsec() > _sheetDeadlineMs;
 
     void StartSheetMode(SheetArgs a)
     {
@@ -183,8 +183,8 @@ public partial class Viewer
         if (a.Seconds is float over) { cycle = over; source = "override"; }
         bool loops = inst.CycleLoops;
         int cycleTicks = Math.Max(1, (int)MathF.Round(cycle * 60f));
-        // A loop is settled first, for whole cycles, so a gait is in its stride and a script is at its own start.
-        int warm = loops ? (int)MathF.Ceiling(2f / cycle) * cycleTicks : 0;
+        // A loop is settled first, for at least five seconds of whole cycles, so a gait is in its stride, a flyer is up and a script is at its own start.
+        int warm = loops ? (int)MathF.Ceiling(5f / cycle) * cycleTicks : 0;
         var layout = SheetLayout.Make(a.Phases, a.Views.Length, a.TileW, a.TileH);
         const float dt = 1f / 60f;
 
@@ -194,11 +194,12 @@ public partial class Viewer
         for (int t = 0; t < warm + cycleTicks; t++)
         {
             if (t > 0) probe.Advance(dt);
-            if (t >= warm && (t - warm) % 4 == 0 && SheetCycle.BoundsOf(probe.Subject) is Aabb b)
+            if (t >= warm && (t - warm) % 4 == 0)
             {
+                // In the subject's own frame: along the ground relative to it, in height absolute.
                 Vector3 at = probe.Anchor;
-                var rel = new Aabb(b.Position - new Vector3(at.X, 0f, at.Z), b.Size);
-                span = span.HasValue ? span.Value.Merge(rel) : rel;
+                var face = new Basis(Vector3.Up, -probe.Heading);
+                if (SheetCycle.BoundsOf(probe.Subject, new Transform3D(face, face * new Vector3(-at.X, 0f, -at.Z))) is Aabb b) span = span.HasValue ? span.Value.Merge(b) : b;
             }
         }
         Aabb extent = span ?? new Aabb(new Vector3(-1f, 0f, -1f), new Vector3(2f, 2f, 2f));
@@ -233,12 +234,18 @@ public partial class Viewer
         var tile = new Vector2(layout.TileW, layout.TileH);
         Restart(inst, anim);
         int next = 0;
+        // Puts the ground marks and the cameras where the subject is.
+        void Place(Vector3 at)
+        {
+            ground.Lay(probe.GroundShift, at, probe.Heading, reach, extent.Size.Length() * 0.03f);
+            for (int v = 0; v < frames.Length && Rendering; v++) cameras[v].Transform = frames[v].Eye(at, probe.Heading);
+        }
         try
         {
             // The first draw of a new viewport comes out without its shadows and sky: draw once and throw it away.
             if (Rendering)
             {
-                for (int v = 0; v < frames.Length; v++) cameras[v].Transform = frames[v].Eye(probe.Anchor);
+                Place(probe.Anchor);
                 await Draw(viewports);
             }
             for (int t = 0; t < warm + cycleTicks && next < phaseTicks.Length; t++)
@@ -251,7 +258,7 @@ public partial class Viewer
                 {
                     int p = next++;
                     Vector3 at = probe.Anchor;
-                    ground.Lay(probe.GroundShift, at.Z + extent.GetCenter().Z - reach, at.Z + extent.GetCenter().Z + reach, extent.Size.Length() * 0.03f);
+                    Place(at);
                     float seconds = phaseTicks[p] * dt;
                     report.Frames.Add(new FrameRecord
                     {
@@ -261,13 +268,12 @@ public partial class Viewer
                     });
                     report.Feet = feet.Count;
                     if (!Rendering) continue;
-                    for (int v = 0; v < frames.Length; v++) cameras[v].Transform = frames[v].Eye(at);
                     await Draw(viewports);
                     for (int v = 0; v < frames.Length; v++)
                     {
                         tiles[p, v] = ImageTexture.CreateFromImage(viewports[v].GetTexture().GetImage());
                         var m = new TileMarks { Label = $"{p + 1}/{layout.Phases}  {seconds:0.00} s", View = frames[v].Name };
-                        foreach (FootMark f in feet) m.Feet.Add((frames[v].Project(f.Target, at, tile), frames[v].Project(f.Drawn, at, tile), f.Planted));
+                        foreach (FootMark f in feet) m.Feet.Add((frames[v].Project(f.Target, at, probe.Heading, tile), frames[v].Project(f.Drawn, at, probe.Heading, tile), f.Planted));
                         marks[p, v] = m;
                     }
                 }

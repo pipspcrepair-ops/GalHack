@@ -113,6 +113,10 @@ public partial class ViewerTest : Node
         }
         GD.Print($"  {built} built");
 
+        LayoutChecks();
+        SlideChecks();
+        CycleChecks(registry);
+
         GD.Print("== notes file");
         var store = new NoteStore(scratch);
         var entry = registry.Entries[0];
@@ -164,6 +168,7 @@ public partial class ViewerTest : Node
             Check(viewer.Animation != "", "an animated asset starts its first animation");
         }
         await CameraChecks(viewer);
+        await SweepChecks(viewer, registry, scratch);
         viewer.SavePosition("test spot");
         Position saved = viewer.Notes.Bookmarks.Last();
         Check(saved.Asset == viewer.Entry.Key, "position records the asset");

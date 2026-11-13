@@ -1,0 +1,190 @@
+{
+  "asset": "Bestiary|form/strider",
+  "asset_name": "Strider (legged)",
+  "animation": "Run",
+  "cycle_source": "measured",
+  "seed": 343979618,
+  "options": {
+    "Behaviour": "Scavenger",
+    "Alienness": "Familiar",
+    "Climate": "Hot",
+    "Mutation": "Half",
+    "Fungus": "None",
+    "Age": "Adult",
+    "Sex": "As rolled"
+  },
+  "cycle_seconds": 0.48585197,
+  "loops": true,
+  "views": [
+    "side",
+    "front"
+  ],
+  "phases": 8,
+  "tile_w": 240,
+  "tile_h": 300,
+  "feet": 4,
+  "frames": [
+    {
+      "index": 0,
+      "seconds": 0,
+      "phase": 0,
+      "problems": "",
+      "pose_signature": 5249305747907176988,
+      "slide_m": [
+        0,
+        null,
+        null,
+        0
+      ],
+      "off_target_m": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "index": 1,
+      "seconds": 0.06666667,
+      "phase": 0.13721602,
+      "problems": "",
+      "pose_signature": 6596336962446398430,
+      "slide_m": [
+        2.9802322E-08,
+        null,
+        null,
+        0
+      ],
+      "off_target_m": [
+        0,
+        0.28539276,
+        0.29821074,
+        0
+      ]
+    },
+    {
+      "index": 2,
+      "seconds": 0.116666675,
+      "phase": 0.24012803,
+      "problems": "",
+      "pose_signature": -5154380427510933661,
+      "slide_m": [
+        2.9802322E-08,
+        null,
+        null,
+        0
+      ],
+      "off_target_m": [
+        0,
+        0.6181511,
+        0.66644,
+        0
+      ]
+    },
+    {
+      "index": 3,
+      "seconds": 0.18333334,
+      "phase": 0.377344,
+      "problems": "",
+      "pose_signature": -1015949193062984631,
+      "slide_m": [
+        2.9802322E-08,
+        null,
+        null,
+        0
+      ],
+      "off_target_m": [
+        0,
+        1.1457472,
+        1.2514417,
+        0
+      ]
+    },
+    {
+      "index": 4,
+      "seconds": 0.23333335,
+      "phase": 0.48025605,
+      "problems": "",
+      "pose_signature": 4667237050667222133,
+      "slide_m": [
+        2.9802322E-08,
+        0,
+        0,
+        null
+      ],
+      "off_target_m": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "index": 5,
+      "seconds": 0.3,
+      "phase": 0.61747205,
+      "problems": "",
+      "pose_signature": 6005778727423869237,
+      "slide_m": [
+        null,
+        0,
+        0,
+        null
+      ],
+      "off_target_m": [
+        0.2067261,
+        0,
+        0,
+        0.28417954
+      ]
+    },
+    {
+      "index": 6,
+      "seconds": 0.36666667,
+      "phase": 0.754688,
+      "problems": "",
+      "pose_signature": 3891183860299773954,
+      "slide_m": [
+        null,
+        0,
+        0,
+        null
+      ],
+      "off_target_m": [
+        0.66993225,
+        0,
+        0,
+        0.7439638
+      ]
+    },
+    {
+      "index": 7,
+      "seconds": 0.4166667,
+      "phase": 0.8576001,
+      "problems": "",
+      "pose_signature": -3293649215750229411,
+      "slide_m": [
+        null,
+        0,
+        0,
+        null
+      ],
+      "off_target_m": [
+        1.1196982,
+        0,
+        0,
+        1.1354883
+      ]
+    }
+  ],
+  "worst_slide_m": 5.9604645E-08,
+  "worst_slide_foot": 0,
+  "worst_slide_each_m": [
+    5.9604645E-08,
+    4.2146848E-08,
+    5.9604645E-08,
+    4.2146848E-08
+  ],
+  "frames_with_problems": [],
+  "error": ""
+}

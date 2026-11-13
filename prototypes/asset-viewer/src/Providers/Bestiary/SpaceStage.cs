@@ -341,6 +341,7 @@ sealed partial class SpaceStage : AssetInstance, IStageProbe
     public Creature Creature => _c;
     public Node3D Subject => _view;
     public Vector3 Anchor => _c.Position + _world.Position;
+    public float Heading { get { Vector3 f = _c.Forward3(); return MathF.Atan2(-f.X, -f.Z); } }
     public Vector3? GroundShift => null;
 
     public void Feet(List<FootMark> into) => FootMarks.From(_c.Rig, _world.Position, into);

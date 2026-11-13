@@ -59,7 +59,7 @@ sealed partial class CreatureStage : AssetInstance
     /// </summary>
     public static float ScriptedCycle(string anim, out bool loops)
     {
-        loops = anim is not (Death or Thrown or Hurt);
+        loops = anim is not (Death or Thrown);
         return anim switch
         {
             Death => 9f, Thrown => 7f, Hurt => 2.2f, Warn => 5f, Tell => 6f, Hide => 9f, Root => 8f, Feed => 5f,
@@ -688,6 +688,7 @@ sealed partial class CreatureStage : IStageProbe
     public Species Species => _s;
     public Node3D Subject => _view;
     public Vector3 Anchor => _c.Position + _world.Position;
+    public float Heading => MathF.Atan2(-_c.Forward.X, -_c.Forward.Z);
     public Vector3? GroundShift => _world.Position;
 
     public void Feet(List<FootMark> into) => FootMarks.From(_c.Rig, _world.Position, into);

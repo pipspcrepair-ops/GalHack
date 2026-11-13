@@ -28,20 +28,25 @@ public partial class GroundMarks : Node3D
         AddChild(_line);
     }
 
-    /// <summary>Lays the line and its ticks over Z from <paramref name="from"/> to <paramref name="to"/>, with the ground slid by <paramref name="shift"/>; null hides them (no ground to read). <paramref name="unit"/> is the size of a tick, m.</summary>
-    public void Lay(Vector3? shift, float from, float to, float unit)
+    /// <summary>Lays the line and its ticks <paramref name="reach"/> either way of the subject at <paramref name="at"/> facing <paramref name="heading"/>, with the ground slid by <paramref name="shift"/>; null hides them (no ground to read). <paramref name="unit"/> is the size of a tick, m.</summary>
+    public void Lay(Vector3? shift, Vector3 at, float heading, float reach, float unit)
     {
         Visible = shift.HasValue;
         if (shift is not Vector3 s) return;
-        to = MathF.Min(to, from + Capacity * Spacing * 0.98f);
-        int k0 = (int)MathF.Ceiling((from - s.Z) / Spacing), k1 = (int)MathF.Floor((to - s.Z) / Spacing);
+        // The line runs the way the subject faces, through its feet; ticks are at whole half metres of ground along it.
+        Position = new Vector3(at.X, 0f, at.Z);
+        Rotation = new Vector3(0f, heading, 0f);
+        Vector3 back = new(MathF.Sin(heading), 0f, MathF.Cos(heading));
+        float along = (at.X - s.X) * back.X + (at.Z - s.Z) * back.Z;
+        float to = MathF.Min(reach, Capacity * Spacing * 0.49f), from = -to;
+        int k0 = (int)MathF.Ceiling((from + along) / Spacing), k1 = (int)MathF.Floor((to + along) / Spacing);
         int n = Math.Clamp(k1 - k0 + 1, 0, Capacity);
         for (int i = 0; i < n; i++)
         {
             int k = k0 + i;
             bool metre = k % 2 == 0;
             float h = metre ? unit * 2f : unit;
-            _ticks.SetInstanceTransform(i, new Transform3D(Basis.Identity.Scaled(new Vector3(unit * 4f, h, unit * 0.3f)), new Vector3(0f, s.Y + h * 0.5f, k * Spacing + s.Z)));
+            _ticks.SetInstanceTransform(i, new Transform3D(Basis.Identity.Scaled(new Vector3(unit * 4f, h, unit * 0.3f)), new Vector3(0f, s.Y + h * 0.5f, k * Spacing - along)));
             _ticks.SetInstanceColor(i, metre ? new Color(1f, 0.95f, 0.5f) : new Color(0.08f, 0.08f, 0.08f));
         }
         _ticks.VisibleInstanceCount = n;

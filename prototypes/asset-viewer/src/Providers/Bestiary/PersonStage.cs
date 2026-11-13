@@ -111,7 +111,7 @@ sealed partial class PersonStage : AssetInstance, IStageProbe
     public override void SetSpeed(float scale) => _speed = scale;
     public override float CycleSeconds => _cycle;
     public override bool CycleLoops => _loops;
-    public override void PlayAnimation(string name) { base.PlayAnimation(name); Begin(name); if (FastForward.Seconds > 0f) Advance(FastForward.Seconds); }
+    public override void PlayAnimation(string name) { base.PlayAnimation(name); Begin(name); Tick(0f); if (FastForward.Seconds > 0f) Advance(FastForward.Seconds); }
 
     public override IEnumerable<(string Label, string Value)> Facts()
     {
@@ -312,6 +312,7 @@ sealed partial class PersonStage : AssetInstance, IStageProbe
 
     public Node3D Subject => _folk;
     public Vector3 Anchor => Vector3.Zero;
+    public float Heading => 0f;
     public Vector3? GroundShift => new Vector3(0f, 0f, _walked);
 
     public void Feet(List<FootMark> into)
