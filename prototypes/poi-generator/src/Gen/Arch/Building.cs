@@ -634,7 +634,7 @@ public sealed partial class Building
         var K = plan.K;
         // High tech plans its rooms three to four times larger (rule P2: a median near 90 m2, 6 m across and more).
         bool high = C.Tech == TechLevel.High;
-        int maxW = pattern == "hall" ? 22 : high ? 16 : 11, maxD = pattern == "hall" ? 18 : high ? 13 : 9, maxA = pattern == "hall" ? 300 : high ? 190 : 84;
+        int maxW = pattern == "hall" ? 22 : high ? 15 : 11, maxD = pattern == "hall" ? 18 : high ? 12 : 9, maxA = pattern == "hall" ? 300 : high ? 160 : 84;
         var pieces = new List<List<(int x, int z)>>();
         foreach (var comp in Components(K, Free))
             SplitInto(comp, pieces, K, rng, maxW, maxD, maxA);

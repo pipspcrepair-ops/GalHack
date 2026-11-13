@@ -124,6 +124,9 @@ public sealed class PoiInstance
     public Int3 CoreCell;
     /// <summary>The armoured glass round the core in its vault, if it stands in a case (empty if not).</summary>
     public List<Int3> CoreCase = new();
+
+    /// <summary>Whether the core can be walked up to from what the way in reaches: itself, or (in a glass case, reached by breaking it) some pane of its case.</summary>
+    public bool CoreReached(NavGrid nav, HashSet<Int3> reach) => nav.AccessCell(CoreCell, reach) is Int3 || CoreCase.Any(c => nav.AccessCell(c, reach) is Int3);
     public List<Int3> CriticalPath = new();
     public List<LootCache> Caches = new();
     public List<TerminalLog> Terminals = new();
@@ -312,8 +315,7 @@ public static class PoiFactory
         if (!nav.Standable(inst.Layout.EntranceCell)) return false;
         var reach = nav.Reachable(inst.Layout.EntranceCell);
         if (inst.Caches.Any(c => !c.Secret && nav.AccessCell(c.Cell, reach) is not Int3)) return false;
-        // A core in a glass case is reached by breaking the case: some pane of it can be walked up to.
-        return !inst.HasCore || nav.AccessCell(inst.CoreCell, reach) is Int3 || inst.CoreCase.Any(c => nav.AccessCell(c, reach) is Int3);
+        return !inst.HasCore || inst.CoreReached(nav, reach);
     }
 
     static PoiInstance SpawnOnce(PoiLibrary lib, Layout layout, PoiState state, ulong spawnSeed, WorldProfile? world, OccupancyRoll? occupancy = null)
