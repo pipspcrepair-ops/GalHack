@@ -34,8 +34,12 @@ public partial class PlacePerf : Node
     long _last;
     List<double> _times;
     readonly List<double> _cpu = new(), _gpu = new();
-    long _prims, _draws, _objs, _shadowPrims, _shadowDraws;
+    long _prims, _draws, _objs, _shadowPrims, _shadowDraws, _mainAlloc, _allAlloc;
+    int _gcAt0, _gcAt1, _gcAt2;
+    double _physics;
     PlanetSurface.FrameProbe _probe;
+    SystemSplit _split;
+    AllocCensus _allocs;
     readonly List<double> _script = new();
     readonly List<string> _hitches = new();
     int _gc0, _gc2;
@@ -83,6 +87,7 @@ public partial class PlacePerf : Node
         DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Disabled);
         Engine.MaxFps = 0;
         if (_args.TryGetValue("family", out string family) && !_args.ContainsKey("asrolled")) PoiSiting.ForceFamily = family;
+        if (_args.ContainsKey("audit")) PlanetSurface.Infra.CityPlan.Force = true;
         if (_args.TryGetValue("variant", out string v)) PoiSiting.ForceVariant = int.Parse(v);
         if (_args.TryGetValue("state", out string st)) PoiSiting.ForceState = Enum.Parse<PoiState>(st, true);
         ProcessPhysicsPriority = 100;
@@ -131,6 +136,7 @@ public partial class PlacePerf : Node
         _objs = Math.Max(_objs, v.GetRenderInfo(Viewport.RenderInfoType.Visible, Viewport.RenderInfo.ObjectsInFrame));
         _shadowPrims = Math.Max(_shadowPrims, v.GetRenderInfo(Viewport.RenderInfoType.Shadow, Viewport.RenderInfo.PrimitivesInFrame));
         _shadowDraws = Math.Max(_shadowDraws, v.GetRenderInfo(Viewport.RenderInfoType.Shadow, Viewport.RenderInfo.DrawCallsInFrame));
+        _physics = Math.Max(_physics, Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess) * 1000.0);
     }
 
     void Begin()
@@ -140,6 +146,12 @@ public partial class PlacePerf : Node
         _cpu.Clear();
         _gpu.Clear();
         _prims = _draws = _objs = _shadowPrims = _shadowDraws = 0;
+        _physics = 0;
+        _split?.Reset();
+        _allocs?.Take();
+        _mainAlloc = GC.GetAllocatedBytesForCurrentThread();
+        _allAlloc = GC.GetTotalAllocatedBytes();
+        (_gcAt0, _gcAt1, _gcAt2) = (GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2));
     }
 
     void End(string stage)
@@ -153,6 +165,9 @@ public partial class PlacePerf : Node
         string line = string.Create(CultureInfo.InvariantCulture,
             $"PERF {stage,-16} frames {t.Count,4} avg {t.Average(),6:F1} p50 {P(0.5),6:F1} p95 {P(0.95),6:F1} p99 {P(0.99),6:F1} worst {t[^1],7:F1} over33 {hitches,3} | cpu {_cpu.DefaultIfEmpty(0).Average(),5:F1} gpu {_gpu.DefaultIfEmpty(0).Average(),5:F1} | prims {_prims / 1000,6}k draws {_draws,5} objs {_objs,5} shadow {_shadowPrims / 1000,6}k/{_shadowDraws,5} | script {_script.DefaultIfEmpty(0).Average(),5:F1} nodes {Performance.GetMonitor(Performance.Monitor.ObjectNodeCount),6} active {Performance.GetMonitor(Performance.Monitor.Physics3DActiveObjects),4} pairs {Performance.GetMonitor(Performance.Monitor.Physics3DCollisionPairs),5}");
         GD.Print(line);
+        GD.Print(string.Create(CultureInfo.InvariantCulture, $"PERF {stage,-16} alloc a frame {(GC.GetAllocatedBytesForCurrentThread() - _mainAlloc) / 1024.0 / t.Count,7:F1} KB main thread, {(GC.GetTotalAllocatedBytes() - _allAlloc) / 1024.0 / t.Count,7:F1} KB all threads; collections gen0 {GC.CollectionCount(0) - _gcAt0} gen1 {GC.CollectionCount(1) - _gcAt1} gen2 {GC.CollectionCount(2) - _gcAt2}; physics callbacks worst {_physics:F1} ms; video memory {Performance.GetMonitor(Performance.Monitor.RenderVideoMemUsed) / 1048576.0:F0} MB"));
+        if (_split != null) GD.Print($"PERF {stage,-16} script by system, cpu ms: {_split.Report()}");
+        if (_allocs != null) GD.Print($"PERF {stage,-16} allocated, by type: {_allocs.Take()}");
         foreach (string h in _hitches) GD.Print($"PERF hitch {h}");
         _hitches.Clear();
     }
@@ -176,6 +191,8 @@ public partial class PlacePerf : Node
     IEnumerable<int> Scenario()
     {
         foreach (int x in _drive.UntilPlaying(300)) yield return x;
+        _split = new SystemSplit(_game, _game.Zone, _game.Zone.Wildlife, _game.Places);
+        if (_args.ContainsKey("audit")) _allocs = new AllocCensus { On = true };
         var zone = _game.Zone;
         zone.Weather.Bridge.Calm = true;
         zone.Sky.TimeOfDay = 0.4;
@@ -185,6 +202,11 @@ public partial class PlacePerf : Node
         foreach (var s in zone.Planet.Pois.OrderBy(s => _game.Places.DistanceTo(s, _game.Survivor.WorldFeet)))
             GD.Print($"PERF site {s.Family.Id} '{s.Name}' {s.Instance.State} {_game.Places.DistanceTo(s, _game.Survivor.WorldFeet):F0} m, footprint {s.Footprint.Max.X - s.Footprint.Min.X}x{s.Footprint.Max.Z - s.Footprint.Min.Z}, blocks {s.Instance.Blocks.CountBlocks()}");
         foreach (int x in Measure("start", 120)) yield return x;
+        if (_args.ContainsKey("audit"))
+        {
+            foreach (int x in Audit()) yield return x;
+            yield break;
+        }
 
         string family = _args.GetValueOrDefault("family");
         var sites = zone.Planet.Pois.Where(s => family != null ? s.Family.Id == family : s.Family.Tags.Contains("grand")).OrderBy(s => _game.Places.DistanceTo(s, _game.Survivor.WorldFeet)).Take(int.Parse(_args.GetValueOrDefault("sites", "1")));
@@ -207,6 +229,16 @@ public partial class PlacePerf : Node
         }
         Walk(root, "", 0);
         foreach (var (k, v) in nodes.OrderByDescending(kv => kv.Value).Take(24)) GD.Print($"PERF census {v,6} nodes, {meshes.GetValueOrDefault(k),5} meshes {k}");
+        // And by class: where the bodies, shapes, lights and people are.
+        var kinds = new Dictionary<string, int>();
+        void Count(Node n)
+        {
+            string k = n.GetType().Name;
+            if (n is not Node3D n3 || n3.IsVisibleInTree() || n is CollisionObject3D or CollisionShape3D) kinds[k] = kinds.GetValueOrDefault(k) + 1;
+            foreach (Node c in n.GetChildren()) Count(c);
+        }
+        Count(root);
+        GD.Print($"PERF classes {string.Join(", ", kinds.OrderByDescending(kv => kv.Value).Take(22).Select(kv => $"{kv.Key} {kv.Value}"))}");
     }
 
     IEnumerable<int> OnePlace(PoiSite site)

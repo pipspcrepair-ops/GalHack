@@ -108,6 +108,9 @@ public partial class PoiPlaces : Node3D
     /// <summary>The place being stood up just now, if any (measurements).</summary>
     public string Building => _job?.Place.Site.Name;
 
+    /// <summary>Nothing being stood up and nothing in reach waiting to be (measurements).</summary>
+    public bool Idle => _job == null && Next(Focus()) == null;
+
     /// <summary>Starts the worst-frame figures over (measurements).</summary>
     public void ResetWorst() => WorstStepMs = WorstFrameMs = 0;
 
