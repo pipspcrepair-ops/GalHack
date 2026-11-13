@@ -135,7 +135,7 @@ public partial class SurfaceTest
                 // The laid ground at its real sizes.
                 // Fuel and oxidiser stores apart (a port's), and both off the terminal.
                 var stores = PlaceTypes.Pieces(place.Sketch, place.Turn).Where(p => p.Item.Part.Id is "fuel" or "oxidiser").ToList();
-                if (stores.Count == 2 && stores[0].Box.Gap(stores[1].Box) < (place.Sketch.Type.Id == "landing_field" ? 150 : 400))
+                if (stores.Count == 2 && stores[1].Item.Part.Rel.FirstOrDefault(x => x.Rel == "far" && x.To[0] == "fuel") is { Gap: { } apart } && stores[0].Box.Gap(stores[1].Box) < apart.Lo)
                     bad.Add($"{place.Sketch.Type.Id}: fuel and oxidiser {stores[0].Box.Gap(stores[1].Box):F0} m apart");
                 var runway = ground.Where(q => q.Pattern == GroundPattern.Runway || q.Layer == 4).OrderByDescending(q => q.HalfU).FirstOrDefault();
                 if (place.Sketch.Type.Id == "airport" && runway != null && !(runway.HalfU * 2 is >= 1500 and <= 2501 && runway.HalfV * 2 is >= 44 and <= 46))

@@ -104,7 +104,7 @@ type spaceport
   part terminal building terminal len 100..160 depth 30..50 h 12..18 concourse 6 beside apron away taxiway faces apron
   part tower    building control_tower len 10..14 depth 10..14 h 30..45 cab 8..12 beside apron away taxiway near terminal 20..250 sees pads
   part hangar   building hangar count 2..4 len 80..120 depth 70..110 h 36..50 beside apron away taxiway faces apron gap 6..20
-  part fuel     tanks count 3..5 r 6..10 h 10..16 beside taxiway away pads far terminal 400..
+  part fuel     tanks count 3..5 r 6..10 h 10..16 beside taxiway away pads far terminal 300..
   part oxidiser tanks count 2..4 r 6..10 h 10..16 beside pads away taxiway far fuel 400.. far terminal 400..
   part carpark  surface tarmac   len 100..200 depth 60..120 beside terminal away apron gap 8..20
   part access   road tarmac      w 8..12 from carpark
@@ -122,8 +122,8 @@ type landing_field
   part terminal building terminal len 30..60 depth 16..24 h 6..10 beside apron away taxiway faces apron
   part tower    building control_tower len 8..10 depth 8..10 h 15..25 cab 5..7 beside apron away taxiway near terminal 10..120 sees pads
   part hangar   building hangar count 1..2 len 40..60 depth 40..60 h 22..30 beside apron away taxiway faces apron gap 4..10
-  part fuel     tanks count 2..3 r 3..5 h 5..8 beside taxiway away pads far terminal 150..
-  part oxidiser tanks count 1..2 r 3..5 h 5..8 beside pads away taxiway far fuel 150.. far terminal 150..
+  part fuel     tanks count 2..3 r 3..5 h 5..8 beside taxiway away pads far terminal 100..
+  part oxidiser tanks count 1..2 r 3..5 h 5..8 beside pads away taxiway far fuel 150.. far terminal 100..
   part carpark  surface gravel   len 30..60 depth 20..40 beside terminal away apron gap 4..10
   part access   road gravel      w 6..8 from carpark
   part fence    fence            h 2..3 round 20..40

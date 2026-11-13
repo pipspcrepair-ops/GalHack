@@ -324,14 +324,17 @@ public static partial class PlaceTypes
                 {
                     float off = gapSpan.Lo + (p.Kind == "surface" ? 0f : Clear + 1f), z0 = way > 0 ? a.Z1 + off : a.Z0 - off - depth;
                     bool fromLow = r.Chance(0.5f);
-                    SketchBox? spot = null;
+                    SketchBox? spot = null, clear = null;
+                    float farthest = -1f;
                     for (float x = 0; x <= a.W - len && spot == null; x += MathF.Max(4f, len / 4))
                     {
                         float x0 = fromLow ? a.X0 + x : a.X1 - len - x;
                         var box = new SketchBox(x0, z0, x0 + len, z0 + depth);
                         if (Fits(s, p, box, a)) spot = box;
+                        // (Clear of everything but short of its far ranges: the one farthest from what it keeps away from.)
+                        else if (Fits(s, p, box, a, ranges: false) && Away(s, p, box) > farthest) (clear, farthest) = (box, Away(s, p, box));
                     }
-                    s.Items.Add(Item(spot ?? Fallback(s, a, way, len, depth)));
+                    s.Items.Add(Item(spot ?? clear ?? Fallback(s, a, way, len, depth)));
                 }
                 continue;
             }
@@ -354,7 +357,7 @@ public static partial class PlaceTypes
     static float Edge(Sketch s, int side) => side > 0 ? s.Items.Max(i => i.Box.Z1) : s.Items.Min(i => i.Box.Z0);
 
     /// <summary>Clear of everything placed (its anchor it may touch, if it is laid ground), and within its near and far ranges.</summary>
-    static bool Fits(Sketch s, TypePart p, SketchBox box, SketchBox anchor)
+    static bool Fits(Sketch s, TypePart p, SketchBox box, SketchBox anchor, bool ranges = true)
     {
         foreach (SketchItem i in s.Items)
         {
@@ -363,12 +366,16 @@ public static partial class PlaceTypes
         }
         foreach (var (rel, to, gap) in p.Rel)
         {
-            if (rel is not ("near" or "far")) continue;
+            if (!ranges || rel is not ("near" or "far")) continue;
             float d = s.Items.Where(i => i.Part.Id == to[0]).Select(i => i.Box.Gap(box)).DefaultIfEmpty(float.MaxValue).Min();
             if (!gap!.Value.Holds(d, 0f)) return false;
         }
         return true;
     }
+
+    /// <summary>The least gap from a box to the parts its type keeps it far from, metres.</summary>
+    static float Away(Sketch s, TypePart p, SketchBox box) =>
+        p.Rel.Where(x => x.Rel == "far").SelectMany(x => s.Of(x.To[0])).Select(i => i.Box.Gap(box)).DefaultIfEmpty(0f).Min();
 
     /// <summary>Past everything on that side: where a part goes when the anchor's side has no room for it.</summary>
     static SketchBox Fallback(Sketch s, SketchBox a, int way, float len, float depth)

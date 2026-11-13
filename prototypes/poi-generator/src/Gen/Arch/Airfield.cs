@@ -6,14 +6,14 @@ using System.Linq;
 namespace PoiGenerator.Gen;
 
 /// <summary>
-/// The buildings and yard works of an airfield, each a place of its own drawn on the player's 2 m lattice, at the size
-/// its type's sketch rolled (data/place-types.txt; PlaceTypes.Pieces hands each its box and front). Each fills its box
+/// The buildings and yard works of an airfield or a spaceport, each a place of its own drawn on the player's 2 m lattice,
+/// at the size its type's sketch rolled (data/place-types.txt; PlaceTypes.Pieces hands each its box and front). Each fills its box
 /// exactly, frame blocks i 0..L/2-1 along its front and k 0..D/2-1 back from it, its way in on open ground outside:
 ///   a terminal: a concourse along the airside with gate doors onto the apron, a band of rooms (security, baggage,
 ///     shops, offices) between it and the check-in hall, the landside doors into the hall, offices upstairs;
 ///   a control tower: a shaft of equipment rooms climbed by a ladder through every floor, a glazed cab over it all;
-///   a hangar: one clear-span hall with a door a craft goes through across its front, offices at the back;
-///   a fuel farm: tanks in a bunded yard; a fence run with its gates; a line of approach lights.
+///   a hangar (a port's ship hall): one clear-span hall with a door a craft goes through across its front, offices at the back;
+///   a fuel farm (or a port's oxidiser store): tanks in a bunded yard; a fence run with its gates; a line of approach lights.
 /// Sizes and the plan inside come from the part's arguments and the spawn's seed, never fixed coordinates.
 /// </summary>
 public static class Airfield

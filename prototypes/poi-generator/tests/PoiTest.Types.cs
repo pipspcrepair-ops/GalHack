@@ -62,8 +62,7 @@ public partial class PoiTest
     /// The airport is the size of a real one, on fresh seeds: a 1,500 to 2,500 m runway 45 m wide with shoulders; a 23 m
     /// taxiway; an apron at least 300 x 150 m; a terminal 120 to 200 m long; a tower 30 to 50 m tall that sees the runway;
     /// hangars 45 to 60 m across and 15 m or more high. A port is a launch complex's size (0.4 to 3.5 km long), its fuel
-    /// and oxidiser stores apart (400 m, a landing field's 150) and both well off the terminal, its halls as wide as
-    /// two fifths of its pads. And every type's parts hold their own ranges.
+    /// and oxidiser stores as far apart and off the terminal as its type says, its halls as wide as two fifths of its pads. And every type's parts hold their own ranges.
     /// </summary>
     void Scale()
     {
@@ -91,11 +90,11 @@ public partial class PoiTest
                 if (s.Of("pads").FirstOrDefault() is { } pad)
                 {
                     void Port(bool ok, string what) { if (!ok) bad.Add($"{t.Id}: {what}"); }
-                    float apart = t.Id == "landing_field" ? 150 : 400;
-                    SketchItem term = s.Of("terminal").First();
+                    // (Each store as far from what it keeps away from as its type says.)
                     Port(s.Footprint.Long is >= 400 and <= 3500, $"{s.Footprint.Long:F0} m long");
-                    Port(s.Of("fuel").All(f => s.Of("oxidiser").All(o => f.Box.Gap(o.Box) >= apart)), $"fuel and oxidiser {s.Of("fuel").Min(f => s.Of("oxidiser").Min(o => f.Box.Gap(o.Box))):F0} m apart");
-                    Port(s.Of("fuel").Concat(s.Of("oxidiser")).All(f => f.Box.Gap(term.Box) >= apart), "a store near the terminal");
+                    foreach (SketchItem store in s.Of("fuel").Concat(s.Of("oxidiser")))
+                        foreach (var (rel, to, gap) in store.Part.Rel.Where(x => x.Rel == "far"))
+                            Port(s.Of(to[0]).All(o => o.Box.Gap(store.Box) >= gap!.Value.Lo), $"{store.Part.Id} {s.Of(to[0]).Min(o => o.Box.Gap(store.Box)):F0} m from the {to[0]}, at least {gap!.Value.Lo:F0}");
                     Port(s.Of("hangar").All(h => h.Box.Short >= pad.Rolled["side"] * 0.4f), $"halls {string.Join(", ", s.Of("hangar").Select(h => $"{h.Box.Short:F0}"))} m for {pad.Rolled["side"]:F0} m pads");
                 }
                 if (t.Id != "airport") continue;

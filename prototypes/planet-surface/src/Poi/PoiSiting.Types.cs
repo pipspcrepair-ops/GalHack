@@ -215,10 +215,10 @@ public static partial class PoiSiting
         var tried = new List<(double X, double Z)>();
         (double Score, double X, double Z, int Turn, int Pad, float Cut) best = (double.MaxValue, 0, 0, 0, 0, 0);
         int next = 0;
-        for (int batch = 0; batch < 8 && best.Score == double.MaxValue && next < order.Count; batch++)
+        for (int batch = 0; batch < 10 && best.Score == double.MaxValue && next < order.Count; batch++)
         {
             var pick = new List<(double Score, double X, double Z, int Turn)>();
-            for (; next < order.Count && pick.Count < 12; next++)
+            for (; next < order.Count && pick.Count < 8; next++)
             {
                 var r = order[next];
                 if (tried.Any(t => Dist(t.X, t.Z, r.X, r.Z, width, height) < step * 1.5)) continue;
@@ -338,14 +338,14 @@ public static partial class PoiSiting
 
     /// <summary>
     /// A spot weighed on the ground itself: what must stand dry and even (the lights and the fence may cross a stream),
-    /// every 50 m or so, with no sea, no river too wide for a culvert and no cliff, and the rest of it at least off the
+    /// every 75 m or so (the coarse pass has looked at every 64 m), with no sea, no river too wide for a culvert and no cliff, and the rest of it at least off the
     /// sea; then its cut and spread.
     /// </summary>
     static (double Score, int Pad, float Cut, Reject Why) Weigh(Sketch sketch, int turn, double cx, double cz, double width, double height, PlanetTerrainSource bare)
     {
         SketchBox b = PlaceTypes.Turn(sketch.Footprint, turn), core = PlaceTypes.Turn(sketch.Core, turn);
         double bx0 = cx + b.X0, bz0 = cz + b.Z0, bx1 = cx + b.X1, bz1 = cz + b.Z1, cx0 = cx + core.X0, cz0 = cz + core.Z0;
-        int nx = Math.Clamp((int)(core.W / 50) + 1, 3, 60), nz = Math.Clamp((int)(core.D / 50) + 1, 3, 30);
+        int nx = Math.Clamp((int)(core.W / 75) + 1, 3, 48), nz = Math.Clamp((int)(core.D / 75) + 1, 3, 20);
         var h = new float[nx * nz];
         for (int k = 0; k < nz; k++)
             for (int i = 0; i < nx; i++)
