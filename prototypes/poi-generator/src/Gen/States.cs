@@ -81,7 +81,7 @@ public static partial class StateTransforms
         foreach (var d in inst.Layout.Doorways)
         {
             if (d.ModuleB == inst.Layout.VaultModule) continue; // vault doors hold
-            if (d.Cells.Count > 0 && DoorState.IsLocked(inst.Blocks.Get(d.Cells[0]).Variant)) continue; // so do locks
+            if (d.Cells.Count > 0 && inst.Blocks.Get(d.Cells[0]).Variant == DoorState.Blast) continue; // so do blast doors
             if (inst.Layout.Extras.Lifts.Any(l => l.StopDoors.Contains(inst.Layout.Doorways.IndexOf(d)))) continue; // lift doors follow the car
             byte state = rng.Chance(0.7f) ? usual : other;
             foreach (Int3 c in d.Cells) inst.Blocks.At(c).Variant = state;
@@ -94,9 +94,9 @@ public static partial class StateTransforms
         foreach (var d in inst.Layout.Doorways)
         {
             bool lift = inst.Layout.Extras.Lifts.Any(l => l.StopDoors.Contains(inst.Layout.Doorways.IndexOf(d)));
-            bool locked = d.Cells.Count > 0 && DoorState.IsLocked(inst.Blocks.Get(d.Cells[0]).Variant);
+            bool blast = d.Cells.Count > 0 && inst.Blocks.Get(d.Cells[0]).Variant == DoorState.Blast;
             foreach (Int3 c in d.Cells)
-                if (d.ModuleB == inst.Layout.VaultModule || locked) continue;          // vault and secure doors hold
+                if (d.ModuleB == inst.Layout.VaultModule || blast) continue;           // vault and blast doors hold
                 else if (lift) inst.Blocks.At(c).Variant = DoorState.Closed;
                 else inst.Blocks.Set(c, Block.Air);
         }

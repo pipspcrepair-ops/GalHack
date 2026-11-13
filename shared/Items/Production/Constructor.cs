@@ -125,7 +125,15 @@ public sealed class Constructor
     public IEnumerable<Job> AllJobs => _subParts.Concat(_orders).Concat(_restock);
     /// <summary>Products waiting for room in storage.</summary>
     public Bill Tray => _tray.Clone();
-    public Job Current => AllJobs.FirstOrDefault(j => j.Running);
+    /// <summary>The job running now, if any (asked every tick by every machine: no allocation).</summary>
+    public Job Current => Running(_subParts) ?? Running(_orders) ?? Running(_restock);
+
+    static Job Running(List<Job> jobs)
+    {
+        foreach (Job j in jobs)
+            if (j.Running) return j;
+        return null;
+    }
     public bool Busy => _orders.Count + _subParts.Count + _restock.Count > 0;
 
     public Constructor(ItemCatalogue items, MachineDef def, SharedStorage storage, WorldRules rules)

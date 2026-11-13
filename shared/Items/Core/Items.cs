@@ -93,6 +93,8 @@ public sealed class ItemDef
     /// <summary>The planet generator's deposit kind for this ore, if it places it today.</summary>
     public string DepositKind { get; init; }
     public int FuelUnits { get; init; }
+    /// <summary>Tools that reach: how far, m (data: <c>range</c>).</summary>
+    public float Range { get; init; }
     /// <summary>Ammo: rounds in one box, belt or rack.</summary>
     public int Rounds { get; init; }
     /// <summary>Ammo: the default auto-restock threshold, in boxes.</summary>

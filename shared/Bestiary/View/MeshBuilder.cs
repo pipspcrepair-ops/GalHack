@@ -113,7 +113,8 @@ public sealed class MeshBuilder
     /// is drawn once <paramref name="edges"/>[k - 1] metres would cover less than a pixel (the
     /// renderer's own mesh LOD), so the parts drop by size on screen, in one mesh and one draw call.
     /// </summary>
-    public static Prepared Skinning(IReadOnlyList<Piece> pieces, Func<Vector3, bool, int> keep, float[] edges)
+    /// <remarks>Only the pieces <paramref name="only"/> takes go in (all, left out), each still on its own bone: one body drawn as a few meshes, a material or a shadow setting each.</remarks>
+    public static Prepared Skinning(IReadOnlyList<Piece> pieces, Func<Vector3, bool, int> keep, float[] edges, Func<Piece, bool> only = null)
     {
         var b = new MeshBuilder();
         var bones = new List<int>();
@@ -121,6 +122,7 @@ public sealed class MeshBuilder
         var parts = new List<(int From, int To, Vector3 Size)>();
         for (int i = 0; i < pieces.Count; i++)
         {
+            if (only != null && !only(pieces[i])) continue;
             parts.Clear();
             foreach (Prim prim in pieces[i].Prims)
             {
@@ -189,10 +191,16 @@ public sealed class MeshBuilder
             arrays[(int)Mesh.ArrayType.Color] = C;
             arrays[(int)Mesh.ArrayType.TexUV] = Uv;
             arrays[(int)Mesh.ArrayType.Index] = I;
+            var format = (Mesh.ArrayFormat)0;
             if (Bones != null)
             {
                 arrays[(int)Mesh.ArrayType.Bones] = Bones;
                 arrays[(int)Mesh.ArrayType.Weights] = Weights;
+                // Each vertex where it stands in its own piece (the skinning moves VERTEX): the pattern rides on the piece.
+                var rest = new float[V.Length * 4];
+                for (int v = 0; v < V.Length; v++) (rest[v * 4], rest[v * 4 + 1], rest[v * 4 + 2], rest[v * 4 + 3]) = (V[v].X, V[v].Y, V[v].Z, 1f);
+                arrays[(int)Mesh.ArrayType.Custom0] = rest;
+                format = (Mesh.ArrayFormat)((long)Mesh.ArrayCustomFormat.RgbaFloat << (int)Mesh.ArrayFormat.FormatCustom0Shift);
             }
             Godot.Collections.Dictionary lods = null;
             if (Lods != null)
@@ -203,7 +211,7 @@ public sealed class MeshBuilder
                 for (int k = 0; k < Lods.Length; k++)
                     if (Lods[k].Length > 0 && Lods[k].Length < last) { lods[Edges[k]] = Lods[k]; last = Lods[k].Length; }
             }
-            mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays, null, lods);
+            mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays, null, lods, format);
             return mesh;
         }
     }

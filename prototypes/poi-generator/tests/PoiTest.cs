@@ -41,7 +41,7 @@ public partial class PoiTest : Node
             ("KitAuthored", KitAuthored), ("ArchAuthored", ArchAuthored), ("Thousands", Thousands), ("Corridors", Corridors),
             ("Sense", Sense), ("Variety", Variety), ("Depths", Depths), ("DepthsSheet", DepthsSheet), ("Underground", UndergroundNet), ("Cores", Cores), ("Lights", LightsApi), ("StateTransforms", StateTransforms),
             ("LootByRarity", LootByRarity), ("LootByDepth", LootByDepth), ("Carved", Carved), ("Hidden", Hidden),
-            ("Breaches", Breaches), ("Keys", Keys), ("PlacementRules", PlacementRules), ("NoRepeatsInSystem", NoRepeatsInSystem),
+            ("Breaches", Breaches), ("NoLocks", NoLocks), ("PlacementRules", PlacementRules), ("NoRepeatsInSystem", NoRepeatsInSystem),
             ("SeenWeighting", SeenWeighting), ("RegrowthPolicy", RegrowthPolicy), ("RevealDistances", RevealDistances),
             ("WorldPlacement", WorldPlacementCheck), ("WorldProfiles", WorldProfiles), ("Ports", PortsAndPeople), ("StartWorlds", StartWorlds), ("Tethers", Tethers), ("Stamps", Stamps), ("Geometry", Geometry), ("RequiredRooms", RequiredRooms), ("Ages", Ages), ("FactionMix", FactionMix), ("Townsfolk", TownsfolkCheck), ("Blasts", Blasts), ("StartSystems", StartSystems), ("PlainRuins", PlainRuins), ("Houses", Houses), ("Doors", Doors), ("DoorwaySolids", DoorwaySolids), ("Surfaces", Surfaces), ("Rails", Rails), ("Decay", DecayPass), ("Coplanar", CoplanarFaces), ("Panes", Panes), ("Landmarks", Landmarks), ("ShooterTags", ShooterTags), ("Hulks", Hulks), ("Eras", Eras), ("Fallbacks", Fallbacks), ("Standard", Standard), ("References", ReferenceRanges), ("Patterns", PatternChecklist), ("Performance", Performance),
         };
@@ -644,7 +644,7 @@ public partial class PoiTest : Node
                         else GD.PrintErr($"      {f.Variants[v]} {r} {s}: {issues[0]}");
                     }
         Check(ok == total, $"{ok}/{total} named architect layouts (every variant of {Arch.Count()} families, three rarities, four states) pass validation: " +
-                           "every room, storey and cache reachable, the deepest point reachable, keycards before their locks, nothing floating, no overlaps, cores only where held");
+                           "every room, storey and cache reachable, the deepest point reachable, nothing floating, no overlaps, cores only where held");
     }
 
     /// <summary>
@@ -1260,18 +1260,34 @@ public partial class PoiTest : Node
                                                      $"from the surface into its room and on to the vault ({toVault}), validated like any room");
     }
 
-    void Keys()
+    /// <summary>The owner's rule: no locked doors, no key cards. Every door of a fresh place is an ordinary door, and every room is on foot from the way in.</summary>
+    void NoLocks()
     {
-        int places = 0, locks = 0, fine = 0;
+        int places = 0, doors = 0, odd = 0, shut = 0;
+        var notes = new List<string>();
+        ulong fresh = (ulong)Random.Shared.NextInt64();
         foreach (var f in Arch)
             for (int i = 0; i < 6; i++)
             {
-                var p = PoiFactory.Generate(_lib, f, i, Rarity.Rare, (PoiState)(i % 4), (ulong)(700 + i), Hash.Combine(0x4E7UL, (ulong)i, Hash.Of(f.Id)));
+                var p = PoiFactory.Generate(_lib, f, i, Rarity.Rare, (PoiState)(i % 4), (ulong)Random.Shared.NextInt64(), Hash.Combine(fresh, (ulong)i, Hash.Of(f.Id)));
                 places++;
-                locks += p.Extras.Locks.Count;
-                if (Validator.KeyOrder(p) == null) fine++;
+                var layout = p.Layout;
+                var reach = p.Nav().Reachable(layout.EntranceCell);
+                foreach (var d in layout.Doorways)
+                {
+                    if (d.Cells.Count == 0 || d.ModuleB < 0) continue;
+                    doors++;
+                    Block leaf = p.Blocks.Get(d.Cells[0]);
+                    if (leaf.Type == BlockType.Door && leaf.Variant is not (DoorState.Closed or DoorState.Jammed or DoorState.Open or DoorState.Blast)) { odd++; if (notes.Count < 4) notes.Add($"{f.Id}: door variant {leaf.Variant}"); }
+                    if (!layout.Modules[d.ModuleB].Cells.Any(reach.Contains) && !layout.Extras.Secrets.Any(s => s.Module == d.ModuleB))
+                    {
+                        shut++;
+                        if (notes.Count < 4) notes.Add($"{f.Id}: room {layout.Modules[d.ModuleB]} is not on foot from the way in");
+                    }
+                }
             }
-        Check(fine == places && locks > 50, $"keycards and locks: {locks} locked doors in {places} places, every keycard reachable before the doors it opens ({fine}/{places})");
+        foreach (string n in notes) GD.PrintErr("      " + n);
+        Check(odd == 0 && shut == 0, $"no locks: {doors} doors in {places} fresh places, every one an ordinary door ({odd} odd) and every room on foot from the way in ({shut} cut off)");
     }
 
     // ---- placement (the kit engine's per-planet rules) -------------------------------------
@@ -2042,7 +2058,7 @@ public partial class PoiTest : Node
     // ---- walking it -------------------------------------------------------------------
 
     // A body really walks from outside each place to its deepest point and back: through doors
-    // (locked ones open as if the walker held the cards), along the corridors, down every stair,
+    // along the corridors, down every stair,
     // riding lifts and climbing ladders. Proves the meshes, collision, doors, lifts and grid agree.
     readonly (string Family, int Variant, Rarity Rarity, PoiState State, bool Lifts, string Goal)[] _walks =
     {
@@ -2076,7 +2092,6 @@ public partial class PoiTest : Node
         _walkRoot = new Node3D { Name = "Walk" };
         AddChild(_walkRoot);
         _view = PoiView.Build(poi, Gen.Biome.Rock, new PoiView.Options(Lights: false, Figures: false));
-        _view.AllKeys = true;
         _walkRoot.AddChild(_view);
         var hole = new Rect2I(_view.PlugMin, _view.PlugMax - _view.PlugMin + Vector2I.One);
         _walkRoot.AddChild(Terrain.Build(new Vector2I(-200, -200), new Vector2I(50, 50), (x, z) => Colors.Gray, new List<Rect2I> { hole }, true, 0f));

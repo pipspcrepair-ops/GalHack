@@ -264,6 +264,10 @@ public partial class Visor
                 _hud.DrawRect(new Rect2(P(-0.6f, -0.6f), new Vector2(1.2f, 1.5f) * r), tone, false, w);
                 Line(-0.6f, -0.1f, 0.6f, -0.1f); Line(-0.25f, -0.6f, -0.25f, -0.9f); Line(0.25f, -0.6f, 0.25f, -0.9f); Line(-0.25f, -0.9f, 0.25f, -0.9f);
                 break;
+            case "core": // a core: a diamond round a lit heart
+                _hud.DrawPolyline(new[] { P(0f, -0.95f), P(0.85f, 0f), P(0f, 0.95f), P(-0.85f, 0f), P(0f, -0.95f) }, tone, w);
+                _hud.DrawCircle(c, 0.3f * r, tone);
+                break;
             case "mark": // a pin
                 _hud.DrawCircle(P(0f, -0.35f), 0.5f * r, tone);
                 _hud.DrawColoredPolygon(new[] { P(-0.4f, -0.1f), P(0.4f, -0.1f), P(0f, 0.95f) }, tone);

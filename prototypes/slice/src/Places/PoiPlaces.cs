@@ -18,7 +18,7 @@ namespace Slice.Places;
 /// The planet's places as part of the surface world you walk in. planet-surface's POI layer
 /// draws every place on the planet (solid, on the world layer, so a vessel lands on a roof and
 /// nothing flies through a wall); a place within <see cref="BuildRadius"/> of the focus is stood
-/// up here as a real structure (<see cref="Place"/>): doors, keycards, caches, hidden rooms,
+/// up here as a real structure (<see cref="Place"/>): doors, caches, hidden rooms,
 /// ladders, lifts, its rooms dressed, its creatures and people. The build runs on a worker and
 /// then a few milliseconds a frame, so it never hitches, and finishes long before you are close
 /// enough to see in; only then does the far drawing's block mesh give way to it, in the same
@@ -30,9 +30,6 @@ public partial class PoiPlaces : Node3D
 {
     public SurfaceZone Zone;
     public Func<Vector3> Focus = () => Vector3.Zero;
-
-    /// <summary>Whether the survivor carries a keycard of at least this clearance (the game asks the bag).</summary>
-    public Func<string, bool> Holds = _ => false;
 
     /// <summary>Places within this of the focus (to the nearest edge of their footprint) stand as structures.</summary>
     public float BuildRadius = 320f;
@@ -86,8 +83,6 @@ public partial class PoiPlaces : Node3D
         return null;
     }
 
-    public bool HasClearance(string clearance) => clearance == null || Holds(clearance);
-
     /// <summary>Where the drawing is seen from (tests can say; otherwise the camera).</summary>
     public Func<Vector3> Eye;
     internal Vector3 EyeAt() => Eye?.Invoke() ?? Zone.Camera?.GlobalPosition ?? Focus();
@@ -107,6 +102,9 @@ public partial class PoiPlaces : Node3D
 
     /// <summary>The place being stood up just now, if any (measurements).</summary>
     public string Building => _job?.Place.Site.Name;
+
+    /// <summary>Nothing being stood up and nothing in reach waiting to be (measurements).</summary>
+    public bool Idle => _job == null && Next(Focus()) == null;
 
     /// <summary>Starts the worst-frame figures over (measurements).</summary>
     public void ResetWorst() => WorstStepMs = WorstFrameMs = 0;
@@ -138,8 +136,7 @@ public partial class PoiPlaces : Node3D
     /// </summary>
     void Keep(Place p, Vector3 focus)
     {
-        Vector3 at = Zone.Planet.NearestCopy(p.Origin, focus);
-        if (p.Position != at) p.Position = at;
+        p.MoveTo(Zone.Planet.NearestCopy(p.Origin, focus));
     }
 
     public override void _Process(double delta)
@@ -238,8 +235,8 @@ public partial class PoiPlaces : Node3D
     {
         PlaceMemory memory = MemoryOf(site);
         Place place = Place.Create(this, memory);
-        place.Position = Zone.Planet.NearestCopy(place.Origin, Focus());
         AddChild(place);
+        place.MoveTo(Zone.Planet.NearestCopy(place.Origin, Focus()));
         _placeOf[site] = place;
         _job = new Job { Place = place, Clock = Stopwatch.StartNew(), Meshing = _ahead == site ? _aheadMeshing : Meshing(memory) };
         _ahead = null;
@@ -262,7 +259,9 @@ public partial class PoiPlaces : Node3D
     {
         var frame = Stopwatch.StartNew();
         Job j = _job;
-        while (frame.Elapsed.TotalMilliseconds < BudgetMs)
+        // The frame's loading allowance, shared with the places' own (their cubes and rooms): at least one step a frame, so a place always comes.
+        double budget = Math.Max(PlanetSurface.Fx.LoadBudget.Left(BudgetMs), 0.001);
+        while (frame.Elapsed.TotalMilliseconds < budget)
         {
             var step = Stopwatch.StartNew();
             int collections = GC.CollectionCount(0);
@@ -277,6 +276,7 @@ public partial class PoiPlaces : Node3D
             if (!more || _job != j) break;
         }
         WorstFrameMs = Math.Max(WorstFrameMs, frame.Elapsed.TotalMilliseconds);
+        PlanetSurface.Fx.LoadBudget.Spend(frame.Elapsed.TotalMilliseconds);
     }
 
     /// <summary>One piece of main-thread work; false once nothing more can be done this frame.</summary>

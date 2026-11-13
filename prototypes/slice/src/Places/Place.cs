@@ -13,7 +13,7 @@ namespace Slice.Places;
 /// <summary>
 /// A place near the survivor stood up as a real structure in the surface world: its blocks as
 /// meshes and collision (on the world layer, so walking, E, the tool and every ray meet them),
-/// its doors as sliding leaves, its lift cars, its keycards lying where they fell, the tells of
+/// its doors as sliding leaves, its lift cars, the tells of
 /// its hidden rooms, the lamps nearest you, its rooms dressed from the decorations library, and
 /// its creatures. The node's local space is the place's grid: one unit a cell, cell (x, y, z)
 /// spanning [x, x+1], with the grid's origin at the site's origin in the world (the copy nearest
@@ -76,9 +76,23 @@ public partial class Place : Node3D
     /// <summary>The grid's origin in the world, canonical (x, z on the planet).</summary>
     public Vector3 Origin => new(Site.Origin.X, Site.Origin.Y, Site.Origin.Z);
 
+    /// <summary>Where its grid's origin stands in the world now (the copy nearest the focus), kept as it is moved: a person's or a creature's every look at a place is then no call into the engine.</summary>
+    public Vector3 WorldOrigin { get; private set; }
+
+    /// <summary>Puts the place at a point of the zone (the planet's copy nearest the focus).</summary>
+    internal void MoveTo(Vector3 at)
+    {
+        if (at == _at && IsInsideTree()) return;
+        _at = at;
+        Position = at;
+        WorldOrigin = GlobalPosition;
+    }
+
+    Vector3 _at;
+
     public Int3 CellAt(Vector3 world)
     {
-        Vector3 p = world - GlobalPosition;
+        Vector3 p = world - WorldOrigin;
         return new Int3(Mathf.FloorToInt(p.X), Mathf.FloorToInt(p.Y), Mathf.FloorToInt(p.Z));
     }
 
@@ -93,10 +107,10 @@ public partial class Place : Node3D
     }
 
     /// <summary>A cell's middle in the world.</summary>
-    public Vector3 WorldOf(Int3 c, float up = 0.5f) => GlobalPosition + new Vector3(c.X + 0.5f, c.Y + up, c.Z + 0.5f);
+    public Vector3 WorldOf(Int3 c, float up = 0.5f) => WorldOrigin + new Vector3(c.X + 0.5f, c.Y + up, c.Z + 0.5f);
 
-    public Vector3 ToWorld(Vector3 local) => GlobalPosition + local;
-    public Vector3 FromWorld(Vector3 world) => world - GlobalPosition;
+    public Vector3 ToWorld(Vector3 local) => WorldOrigin + local;
+    public Vector3 FromWorld(Vector3 world) => world - WorldOrigin;
 
     // ---- Blocks ---------------------------------------------------------------------------------
 
@@ -198,6 +212,7 @@ public partial class Place : Node3D
         foreach (Int3 ch in Mesher.ChunksTouching(cells, ChunkSize))
         {
             Group g = GroupAt(GroupOf(ch));
+            if (!g.Modified) Places.Zone.Pois.Unocclude(Site, g.Key);
             g.Modified = true;
             ChunkMesh mesh = Mesher.BuildChunk(Inst.Blocks, Inst.Layout.Occupied, ch, ChunkSize, m => Options(m)) ?? new ChunkMesh { Chunk = ch };
             if (g.Near) SetChunkMesh(mesh);
@@ -241,7 +256,10 @@ public partial class Place : Node3D
                 continue;
             }
             List<ChunkMesh> built = g.Meshing.Result;
-            while (g.Next < built.Count && clock.Elapsed.TotalMilliseconds < Places.BudgetMs) SetChunkMesh(built[g.Next++]);
+            double budget = PlanetSurface.Fx.LoadBudget.Left(Places.BudgetMs);
+            double before = clock.Elapsed.TotalMilliseconds;
+            while (g.Next < built.Count && clock.Elapsed.TotalMilliseconds < budget) SetChunkMesh(built[g.Next++]);
+            PlanetSurface.Fx.LoadBudget.Spend(clock.Elapsed.TotalMilliseconds - before);
             if (g.Next < built.Count) break;
             g.Meshing = null;
             g.Next = 0;
@@ -394,7 +412,6 @@ public partial class Place : Node3D
         foreach (int x in BuildDoors()) yield return x;
         BuildLifts();
         yield return 0;
-        BuildKeys();
         BuildTells();
         BuildFittings();
         yield return 0;
@@ -409,7 +426,7 @@ public partial class Place : Node3D
         Dormant = dormant;
         foreach (Node n in GetChildren())
             if (n is CollisionObject3D body) body.ProcessMode = dormant ? ProcessModeEnum.Disabled : ProcessModeEnum.Inherit;
-            else if (n is Light3D || n is CpuParticles3D || n.Name.ToString().StartsWith("Deco") || n.Name == "Keys" || n.Name == "Creatures") ((Node3D)n).Visible = !dormant;
+            else if (n is Light3D || n is CpuParticles3D || n.Name.ToString().StartsWith("Deco") || n.Name == "Creatures") ((Node3D)n).Visible = !dormant;
         foreach (Door d in _doors) d.Root.ProcessMode = dormant ? ProcessModeEnum.Disabled : ProcessModeEnum.Inherit;
     }
 
@@ -479,15 +496,15 @@ public partial class Place
                 }
         var nav = new PoiGenerator.Gen.NavGrid(new Overlay(g, blocked, foot: true), m.Inst.Layout.Occupied, null, false);
         if (PlaceParts.Fixed(m) is not { } parts) return nav;
-        // A locked door is no way for the town's routes (nobody is sent where they would stand before it); the rest they open as they come.
-        var locked = new HashSet<Int3>(DoorWays.Of(m).Where(d => d.Clearance != null || d.Lift).SelectMany(d => d.Cells));
+        // A lift door is no way for the town's routes (nobody is sent where they would stand before it); the rest they open as they come.
+        var lifts = new HashSet<Int3>(DoorWays.Of(m).Where(d => d.Lift).SelectMany(d => d.Cells));
         // A person stands in a cell where somewhere in it they fit clear of the furniture and clutter, and steps
         // to the next where their body gets by all the way: past a monitor, beside a locker, round a chair.
         Func<int, int, int, bool> walls = WallsOf(nav);
         nav.Fits = c => PersonSpot(parts, walls, c) != null;
         nav.Passes = (a, b) =>
         {
-            if (locked.Contains(a) || locked.Contains(b)) return false;
+            if (lifts.Contains(a) || lifts.Contains(b)) return false;
             if (nav.RampAt(a, out _) || nav.RampAt(b, out _)) return true;
             if (PersonSpot(parts, walls, a) is not { } pa || PersonSpot(parts, walls, b) is not { } pb) return false;
             if (!parts.Touches(pa, PlaceParts.PersonRadius, PlaceParts.PersonHeight) && !parts.Touches(pb, PlaceParts.PersonRadius, PlaceParts.PersonHeight)) return true;
