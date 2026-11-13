@@ -1,81 +1,76 @@
-# Skiff: the slice's starter vessel. A small-grid open-cockpit hopper, the first thing a
-# castaway can build: an hour's gathering for an experienced player, a few minutes in the slice.
-#
-# Small grid (0.5 m cells). x is starboard, y up, -z forward. The core sits in the deck.
-# A seat behind a glass windscreen, low side rails, an engine hump behind with the generator,
-# the gyro and a cargo container in it; two main engines in the tail, retros at the bow, a
-# side jet each side, two lift jets under the deck and one down jet on the hump; three legs.
-#
-# Its four numbers come from these blocks: about 3.4 t, about 22 m/s² forward and back, a
-# lift margin of about +40 kN (4 t spare) on a 9.8 m/s² world.
-
+# Skiff: the slice's starter vessel and the cheapest flyer in the game: an open-cockpit
+# hopper of plain base blocks, painted. A command chair behind a clear windscreen, a cockpit tub you
+# step into from the port step, an engine hump behind with the generator, gyro, fuel and a locker,
+# two mains, a retro, a side jet each way, two lift jets and three pads.
+# Written by slice/tests/BlueprintSet.cs (Designer); regenerate rather than edit.
+# GalHack blueprint. One statement per line; '#' starts a comment.
+# block <x> <y> <z> <type> [shape] [rot=<up><forward>] [paint=<name> | paint=<+x>,<-x>,<+y>,<-y>,<+z>,<-z>] [hp=<n>] [open] [off] [light=<rrggbb[+rrggbb]>:<mode>:<hz>:<seed>]
+# Cells: x right, y up, -z forward; a..b is an inclusive range. rot defaults to +y-z; '-' is bare metal.
 schema galhack.blueprint
 version 1
 name "Skiff"
-grid small
+grid 1m
 mode capital
 gravity on
 
-# Livery: cream hull, charcoal belly, an orange racing stripe down the rails, teal chevrons on
-# the engine hump, a red chin and hazard stripes on the tail.
 paint hull base=ece3c8 grime=1
 paint belly base=2b2d42 grime=2
+paint deck base=4a4e57 texture=plates grime=1
 paint stripe base=ece3c8 accent=e85d04 pattern=stripes grime=1
 paint chev base=0a9396 accent=f4a100 pattern=chevrons grime=1
-paint red base=c1121f grime=1
-paint orange base=e85d04 grime=1
-paint hazard base=f4a100 accent=2b2d42 pattern=hazard grime=2
+paint hazard base=f4a100 pattern=hazard grime=2
 
-# --- Deck (y 0), the core in the middle ----------------------------------------------------
-block -3..3 0 -5..-1 steel paint=belly
-block -3..-1 0 0 steel paint=belly
-block 0 0 0 core
-block 1..3 0 0 steel paint=belly
-block -3..3 0 1..6 steel paint=belly
-
-# --- Bow: a red chin in hardened steel, a cream rake above it -------------------------------
-block -3..3 0 -6 hardened slope paint=red
-block -3..3 1 -5 steel slope paint=hull
-
-# --- Side rails (y 1), the stripe outside ---------------------------------------------------
-block -3 1 -4..3 steel paint=hull -x=stripe
-block 3 1 -4..3 steel paint=hull +x=stripe
-
-# --- Windscreen on two pillars ---------------------------------------------------------------
-block -3 2 -4 steel slope paint=hull
-block 3 2 -4 steel slope paint=hull
-block -2..2 2 -4 glass slope
-
-# --- The pilot's seat ------------------------------------------------------------------------
-block 0 1 -3 chair
-
-# --- Engine hump (y 1..2, z 4..6): generator, gyro and container inside, mains in the tail ---
-block -3..3 1 4 steel paint=chev
-block -3 1 5 steel paint=hull -x=stripe
-block -2 1 5 generator
-block -1 1 5 steel paint=hull
-block 0 1 5 gyro
-block 1 1 5 container
-block 2..3 1 5 steel paint=hull +x=stripe
-block -3 1 6 steel paint=hazard
-block -2 1 6 thruster
-block -1..1 1 6 steel paint=hazard
-block 2 1 6 thruster
-block 3 1 6 steel paint=hazard
-block -3..3 2 4 steel slope paint=chev
-block -3..3 2 5 steel paint=orange
-block -3..3 2 6 steel slope rot=+y+z paint=hull
-
-# --- Manoeuvring: a down jet on the hump, retros at the bow, a side jet each side ------------
-block 0 3 5 thruster rot=+z-y
-block -4 0 -4 thruster rot=+y+z
-block 4 0 -4 thruster rot=+y+z
-block 4 1 1 thruster rot=+y-x
-block -4 1 1 thruster rot=+y+x
-
-# --- Under the deck: two lift jets and three landing legs -----------------------------------
-block 0 -1 -3 thruster rot=+z+y
-block 0 -1 3 thruster rot=+z+y
-block 0 -1 -5 gear
-block -3 -1 5 gear
-block 3 -1 5 gear
+block 0 -1 -6 thruster-t1 rot=+y+z
+block -2..2 -1 -5 base-block paint=belly
+block -2..-1 -1 -4 base-block paint=belly
+block 0 -1 -4 pad-t1
+block 1..2 -1 -4 base-block paint=belly
+block -2 -1 -3 base-block paint=belly
+block -1 -1 -3 base-block paint=belly,belly,deck,belly,belly,belly
+block 1 -1 -3 base-block paint=belly,belly,deck,belly,belly,belly
+block 2 -1 -3 base-block paint=belly
+block -2 -1 -2 base-block paint=belly
+block -1..1 -1 -2 base-block paint=belly,belly,deck,belly,belly,belly
+block 2 -1 -2 base-block paint=belly
+block -2 -1 -1 base-block paint=belly
+block -1..1 -1 -1 base-block paint=belly,belly,deck,belly,belly,belly
+block 2 -1 -1 base-block paint=belly
+block -3 -1 0 stairs rot=+y-x paint=hull
+block -2..1 -1 0 base-block paint=belly,belly,deck,belly,belly,belly
+block 2 -1 0 base-block paint=belly
+block -2 -1 1 base-block paint=belly
+block -1 -1 1 thruster-t1 rot=+z+y
+block 0 -1 1 core
+block 1 -1 1 thruster-t1 rot=+z+y
+block 2 -1 1 base-block paint=belly
+block -2 -1 2 pad-t1
+block -1..1 -1 2 base-block paint=belly
+block 2 -1 2 pad-t1
+block -1..1 -1 3 base-block paint=belly
+block -2..2 0 -5 base-block slope paint=hull
+block -2..2 0 -4 base-block paint=hull
+block -2 0 -3 base-block paint=stripe
+block 0 0 -3 command-chair
+block 2 0 -3 base-block paint=stripe
+block -2 0 -2 base-block paint=stripe
+block 2 0 -2 base-block paint=stripe
+block -2 0 -1 base-block paint=stripe
+block 2 0 -1 base-block paint=stripe
+block 2 0 0 base-block paint=stripe
+block -2..2 0 1 base-block paint=chev
+block -3 0 2 thruster-t1 rot=+y+x
+block -2 0 2 base-block paint=chev
+block -1 0 2 generator-t1
+block 0 0 2 gyro-t1
+block 1 0 2 fuel-tank-t1
+block 2 0 2 base-block paint=chev
+block 3 0 2 thruster-t1 rot=+y-x
+block -2..2 0 3 base-block paint=chev,chev,chev,chev,hazard,chev
+block -1 0 4 thruster-t1
+block 1 0 4 thruster-t1
+block -1..1 1 -4 window-block slope
+block -2..2 1 1 base-block slope paint=chev
+block -2..-1 1 2 base-block paint=chev
+block 0 1 2 container-t1
+block 1..2 1 2 base-block paint=chev
+block -2..2 1 3 base-block paint=chev,chev,chev,chev,hazard,chev

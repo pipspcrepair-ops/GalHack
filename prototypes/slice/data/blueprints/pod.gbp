@@ -1,47 +1,100 @@
-# Escape pod: the slice's crash-landing capsule. Small grid (0.5 m cells), x starboard, y up,
-# -z forward. Not a vessel any more (no engines): a shelter, a respawn point and a locker.
-#
-# A 3.5 m square hull, 3 m tall, an open hatchway at the front (2 m high: you walk out and in), a seat facing it, a locker
-# (container) at the back, a light, and a scorched orange heat shield underneath.
-
+# Escape pod: a crash-landed capsule kept as a shelter. An iron shell 3 x 4 m inside and
+# 3 m tall, a door at the front up one step, a command chair facing it, a locker, a generator and its
+# fuel along the back wall, a light, and a scorched heat shield underneath.
+# Written by slice/tests/BlueprintSet.cs (Designer); regenerate rather than edit.
+# GalHack blueprint. One statement per line; '#' starts a comment.
+# block <x> <y> <z> <type> [shape] [rot=<up><forward>] [paint=<name> | paint=<+x>,<-x>,<+y>,<-y>,<+z>,<-z>] [hp=<n>] [open] [off] [light=<rrggbb[+rrggbb]>:<mode>:<hz>:<seed>]
+# Cells: x right, y up, -z forward; a..b is an inclusive range. rot defaults to +y-z; '-' is bare metal.
 schema galhack.blueprint
 version 1
 name "Escape Pod"
-grid small
-mode capital
+grid 1m
+mode base
 gravity on
 
-paint shell base=e85d04 grime=3
-paint band base=ece3c8 accent=2b2d42 pattern=stripes grime=3
-paint shield base=2b2d42 grime=3
-paint hazard base=f4a100 accent=2b2d42 pattern=hazard grime=3
+paint hull base=e85d04 grime=2
+paint inner base=d8d2c2 texture=smooth
+paint deck base=4a4e57 texture=plates grime=1
+paint shield base=2b2d42 texture=ribbed grime=3
 
-# Floor and heat shield
-block -3..3 0 -3..-1 steel paint=shield
-block -3..-1 0 0 steel paint=shield
+block 0 0 -3 stairs paint=hull
+block -2..2 0 -2 iron-plated paint=hull,hull,hull,shield,hull,hull
+block -2 0 -1 iron-plated paint=hull,hull,hull,shield,hull,hull
+block -1..1 0 -1 iron-plated paint=hull,hull,deck,shield,hull,hull
+block 2 0 -1 iron-plated paint=hull,hull,hull,shield,hull,hull
+block -2 0 0 iron-plated paint=hull,hull,hull,shield,hull,hull
+block -1 0 0 iron-plated paint=hull,hull,deck,shield,hull,hull
 block 0 0 0 core
-block 1..3 0 0 steel paint=shield
-block -3..3 0 1..3 steel paint=shield
-
-# Walls (y 1..4); the hatchway is the gap x -1..1 in the front wall
-block -3 1..2 -3..3 steel paint=shell
-block 3 1..2 -3..3 steel paint=shell
-block -3 4 -3..3 steel paint=shell
-block 3 4 -3..3 steel paint=shell
-block -2..2 1..4 3 steel paint=shell
-block -2 1..4 -3 steel paint=hazard
-block 2 1..4 -3 steel paint=hazard
-block -3 3 -3..3 steel paint=band
-block 3 3 -3..3 steel paint=band
-
-# Roof (y 5): bevelled edges
-block -2..2 5 -2..2 steel paint=shell
-block -2..2 5 -3 steel slope paint=shell
-block -2..2 5 3 steel slope rot=+y+z paint=shell
-block -3 5 -3..3 steel slope rot=+y-x paint=shell
-block 3 5 -3..3 steel slope rot=+y+x paint=shell
-
-# Inside: the seat facing the hatch, the locker, a light
-block 0 1 1 chair
-block -2 1 2 container
-block 0 4 2 light rot=+z-y
+block 1 0 0 iron-plated paint=hull,hull,deck,shield,hull,hull
+block 2 0 0 iron-plated paint=hull,hull,hull,shield,hull,hull
+block -2 0 1 iron-plated paint=hull,hull,hull,shield,hull,hull
+block -1..1 0 1 iron-plated paint=hull,hull,deck,shield,hull,hull
+block 2 0 1 iron-plated paint=hull,hull,hull,shield,hull,hull
+block -2 0 2 iron-plated paint=hull,hull,hull,shield,hull,hull
+block -1..1 0 2 iron-plated paint=hull,hull,deck,shield,hull,hull
+block 2 0 2 iron-plated paint=hull,hull,hull,shield,hull,hull
+block -2..2 0 3 iron-plated paint=hull,hull,hull,shield,hull,hull
+block -2 1 -2 iron-plated paint=hull
+block -1 1 -2 iron-plated paint=hull,hull,hull,hull,inner,hull
+block 0 1 -2 door-1x2x1
+block 1 1 -2 iron-plated paint=hull,hull,hull,hull,inner,hull
+block 2 1 -2 iron-plated paint=hull
+block -2 1 -1 iron-plated paint=inner,hull,hull,hull,hull,hull
+block 1 1 -1 command-chair
+block 2 1 -1 iron-plated paint=hull,inner,hull,hull,hull,hull
+block -2 1 0 iron-plated paint=inner,hull,hull,hull,hull,hull
+block 2 1 0 iron-plated paint=hull,inner,hull,hull,hull,hull
+block -2 1 1 iron-plated paint=inner,hull,hull,hull,hull,hull
+block 2 1 1 iron-plated paint=hull,inner,hull,hull,hull,hull
+block -2 1 2 iron-plated paint=inner,hull,hull,hull,hull,hull
+block -1 1 2 container-t1
+block 0 1 2 generator-t1
+block 1 1 2 fuel-tank-t1
+block 2 1 2 iron-plated paint=hull,inner,hull,hull,hull,hull
+block -2 1 3 iron-plated paint=hull
+block -1..1 1 3 iron-plated paint=hull,hull,hull,hull,hull,inner
+block 2 1 3 iron-plated paint=hull
+block -2 2 -2 iron-plated paint=hull
+block -1 2 -2 iron-plated paint=hull,hull,hull,hull,inner,hull
+block 1 2 -2 iron-plated paint=hull,hull,hull,hull,inner,hull
+block 2 2 -2 iron-plated paint=hull
+block -2 2 -1 iron-plated paint=inner,hull,hull,hull,hull,hull
+block 2 2 -1 iron-plated paint=hull,inner,hull,hull,hull,hull
+block -2 2 0 iron-plated paint=inner,hull,hull,hull,hull,hull
+block 2 2 0 iron-plated paint=hull,inner,hull,hull,hull,hull
+block -2 2 1 iron-plated paint=inner,hull,hull,hull,hull,hull
+block 2 2 1 iron-plated paint=hull,inner,hull,hull,hull,hull
+block -2 2 2 iron-plated paint=inner,hull,hull,hull,hull,hull
+block 2 2 2 iron-plated paint=hull,inner,hull,hull,hull,hull
+block -2 2 3 iron-plated paint=hull
+block -1..1 2 3 iron-plated paint=hull,hull,hull,hull,hull,inner
+block 2 2 3 iron-plated paint=hull
+block -2 3 -2 iron-plated paint=hull
+block -1..1 3 -2 iron-plated paint=hull,hull,hull,hull,inner,hull
+block 2 3 -2 iron-plated paint=hull
+block -2 3 -1 iron-plated paint=inner,hull,hull,hull,hull,hull
+block 2 3 -1 iron-plated paint=hull,inner,hull,hull,hull,hull
+block -2 3 0 iron-plated paint=inner,hull,hull,hull,hull,hull
+block 0 3 0 light rot=+z-y
+block 2 3 0 iron-plated paint=hull,inner,hull,hull,hull,hull
+block -2 3 1 iron-plated paint=inner,hull,hull,hull,hull,hull
+block 2 3 1 iron-plated paint=hull,inner,hull,hull,hull,hull
+block -2 3 2 iron-plated paint=inner,hull,hull,hull,hull,hull
+block 2 3 2 iron-plated paint=hull,inner,hull,hull,hull,hull
+block -2 3 3 iron-plated paint=hull
+block -1..1 3 3 iron-plated paint=hull,hull,hull,hull,hull,inner
+block 2 3 3 iron-plated paint=hull
+block -2..2 4 -2 iron-plated slope paint=hull
+block -2 4 -1 iron-plated paint=hull
+block -1..1 4 -1 iron-plated paint=hull,hull,hull,inner,hull,hull
+block 2 4 -1 iron-plated paint=hull
+block -2 4 0 iron-plated paint=hull
+block -1..1 4 0 iron-plated paint=hull,hull,hull,inner,hull,hull
+block 2 4 0 iron-plated paint=hull
+block -2 4 1 iron-plated paint=hull
+block -1..1 4 1 iron-plated paint=hull,hull,hull,inner,hull,hull
+block 2 4 1 iron-plated paint=hull
+block -2 4 2 iron-plated paint=hull
+block -1..1 4 2 iron-plated paint=hull,hull,hull,inner,hull,hull
+block 2 4 2 iron-plated paint=hull
+block -2..2 4 3 iron-plated slope rot=+y+z paint=hull
