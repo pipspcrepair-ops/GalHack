@@ -18,7 +18,7 @@ namespace Slice.Tests;
 /// and the wildlife's Husk odds rise with depth. Then the matrix: depth bands (the rim as a default
 /// game rolls it, then outer, inner and core) by tech eras, each cell a fresh random world of a
 /// random type and fall, mid-collapse or not, started through the real game: it starts, what was
-/// forced took, the depth gates hold on it, and the castaway wakes, climbs out, walks off and back.
+/// forced took, the depth gates hold on it, and the sleeper wakes, climbs out, walks off and back.
 /// Nothing is pinned: every run rolls new worlds.
 ///
 /// Run: .\tools\test.ps1 -Project prototypes/slice -Scene res://tests/MatrixTest.tscn
@@ -262,12 +262,12 @@ public partial class MatrixTest : Node
                        || planet.Pois.Any(p => ThemeDef.FactionOwned(p.Family) && p.Instance?.State == PoiState.Active);
         Check(!faction, $"no faction holds ground here ({(depth < 0.25f ? "the rim" : "a start world")})");
         Check(Math.Abs(game.Zone.Wildlife.Life.World.Coreward - depth) < 1e-4f, $"the wildlife knows its depth: coreward {game.Zone.Wildlife.Life.World.Coreward:0.00}");
-        // The start is playable: the castaway wakes, climbs out, walks off and comes back in.
+        // The start is playable: the sleeper wakes, climbs out, walks off and comes back in.
         game.Zone.Weather.Bridge.Calm = true;
         game.Zone.Wildlife.Frozen = true;
         var play = new Playthrough(game);
         foreach (int x in play.WakeAndLeave(Check, $"{band}: ")) yield return x;
-        Check(!game.Suit.Dead, "the castaway is alive at the end");
+        Check(!game.Suit.Dead, "the sleeper is alive at the end");
         game.QueueFree();
         for (int i = 0; i < 10; i++) yield return 0;
     }

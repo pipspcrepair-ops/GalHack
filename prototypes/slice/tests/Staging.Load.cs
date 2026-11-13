@@ -12,7 +12,7 @@ namespace Slice.Tests;
 /// How far ahead the world loads, in real time: --mode=foot, bike or vessel goes flat out for
 /// --seconds from place to place at the speed of each (--speed=m/s to set it; a vessel 200 m up),
 /// printing what the queues hold and a summary at the end. Run windowed, without --fixed-fps: a frame
-/// budget means nothing on a fixed clock. The castaway is moved along the route by hand, so every run
+/// budget means nothing on a fixed clock. The sleeper is moved along the route by hand, so every run
 /// holds its speed through whatever is in the way: all that's measured is what loads, and when.
 /// </summary>
 public sealed partial class Staging

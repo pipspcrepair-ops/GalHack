@@ -352,7 +352,7 @@ The generator's public API only grew. Nothing was renamed or removed, and downst
 | slice `tests/Driver.cs` | Walking to a seat never digs | The stuck rescue dug beside the hull, the dig woke the landed vessel, and Space on an awake vessel raises no `LiftedOff` |
 | slice `src/Game/Game.cs` | The flight stick snaps to zero under 1e-4 | Its decay never reached zero, so two hops started on different inputs; the difference showed as 1 ULP of height. The check stays exact |
 | slice `tests/SliceTest.cs` | The hunter spawns on dry ground | On a low shore it could spawn in the water creatures keep out of, and stand there |
-| slice `tests/SliceTest.cs` | The pilot lets go once its feet are down; the landing check counts only damage from the flight; a plant over the castaway's head counts as out of reach | The new ground is steeper at the start site. The castaway can bump the parked Skiff, and the nearest plant can be up a bank |
+| slice `tests/SliceTest.cs` | The pilot lets go once its feet are down; the landing check counts only damage from the flight; a plant over the sleeper's head counts as out of reach | The new ground is steeper at the start site. The sleeper can bump the parked Skiff, and the nearest plant can be up a bank |
 | slice `tests/Playthrough.cs` | `PlaceBlock` clicks only with the ghost on the wanted face | On a slope the walker drifts, and a stray click spent a thruster's parts |
 
 **Still to do:**

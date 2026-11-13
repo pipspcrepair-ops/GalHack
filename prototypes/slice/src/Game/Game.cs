@@ -25,12 +25,12 @@ using Structure = GalHack.Structures.Structure;
 
 namespace Slice.Game;
 
-/// <summary>Where the run is: the planet generating (and the castaway asleep in the cryopod), or play.</summary>
+/// <summary>Where the run is: the planet generating (and the sleeper asleep in the cryopod), or play.</summary>
 public enum Phase { Generating, Playing }
 
 /// <summary>
 /// The playable slice: wake in a buried cryopod bunker, survive, gather, craft, build a base and
-/// machines, build a vessel and fly it. It owns the surface zone and the castaway (body, suit,
+/// machines, build a vessel and fly it. It owns the surface zone and the sleeper (body, suit,
 /// inventory, tools and progress), turns one tick's <see cref="Controls"/> into what they do, and
 /// places the camera. Tests and screenshots run this same node and drive it through
 /// <see cref="Controls"/>.
@@ -371,7 +371,7 @@ public partial class Game : Node3D
         Zone.AddChild(Howl);
         Exposure = new AmbientExposure { Name = "Exposure", Zone = Zone, Eye = () => Survivor.WorldEye() };
         Zone.AddChild(Exposure);
-        // The castaway seen from outside (third person and screenshots); the first-person camera leaves it out.
+        // The sleeper seen from outside (third person and screenshots); the first-person camera leaves it out.
         Figure = CharacterModel.Build();
         // Placed every drawn frame from the same interpolated transforms the eye and the vehicle draw
         // with (PoseFigure), so never interpolated again on its own, and not hung off the body node:
@@ -989,7 +989,7 @@ public sealed class PlayerTarget : ITarget
     readonly Game _game;
     public PlayerTarget(Game game) => _game = game;
 
-    public string Name => "Castaway";
+    public string Name => "Sleeper";
     public Vector3 Position => _game.Zone.Wildlife.PatchLocal(_game.Survivor.WorldFeet);
     public Vector3 Forward => _game.Survivor.WorldLook();
     public bool Crouched => _game.Survivor.Crouched && OnFoot;

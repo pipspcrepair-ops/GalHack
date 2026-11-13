@@ -92,7 +92,7 @@ public sealed partial class Staging
         Vector3 stand = best ?? p.ToWorld(at + new Vector3(5f, 0f, 0f));
         GD.Print($"LAYERS standing {(best == null ? "nowhere good" : bestScore < 100f ? "in clear view" : "with something in the way")}");
         Vector3 eye = stand + Vector3.Up * lift;
-        // The castaway stands a little behind the camera, so the view isn't through their own head.
+        // The sleeper stands a little behind the camera, so the view isn't through their own head.
         Vector3 back = (eye - target) with { Y = 0f };
         _game.Survivor.PlaceOutside((stand + back.Normalized() * 1.2f).ToNumerics());
         foreach (int x in _drive.Wait(40)) yield return x;

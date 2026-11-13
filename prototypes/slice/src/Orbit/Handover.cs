@@ -11,7 +11,7 @@ namespace Slice.Orbit;
 
 /// <summary>
 /// Moves what crosses a zone's edge into the next zone in one step on the main thread: a vessel
-/// with whoever rides in its cabin (the castaway in its seat or aboard), or the castaway alone.
+/// with whoever rides in its cabin (the sleeper in its seat or aboard), or the sleeper alone.
 /// The bodies keep their identity (shared physics' <see cref="PhysicsWorld.Release"/> and
 /// <see cref="PhysicsWorld.Adopt"/>: riders stay aboard, nothing lets go), their nodes move under
 /// the new zone (a vessel's cabin, and anyone in it, inside its hull), and nothing is ever in both

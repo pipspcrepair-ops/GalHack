@@ -14,13 +14,13 @@ using WeatherKind = Weather.Model.WeatherKind;
 namespace Slice.Tests;
 
 /// <summary>
-/// The screenshot views of the planet's places. A view stages its moment by moving the castaway
+/// The screenshot views of the planet's places. A view stages its moment by moving the sleeper
 /// there (screenshots only; the real-player test walks), lets the place stand up in its own time,
 /// and then uses the game's own controls.
 /// </summary>
 public sealed partial class Staging
 {
-    /// <summary>Puts the castaway on a spot and waits until the place near it stands and the ground is in.</summary>
+    /// <summary>Puts the sleeper on a spot and waits until the place near it stands and the ground is in.</summary>
     IEnumerable<int> GoTo(PoiSite site, Vector3 feet)
     {
         _game.Survivor.PlaceOutside(feet.ToNumerics());

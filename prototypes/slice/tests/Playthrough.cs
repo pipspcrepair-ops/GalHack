@@ -117,7 +117,7 @@ public sealed class Playthrough
         foreach (int x in Drive.Wait(40)) yield return x;
         check(b.Mine.Open, $"{label}F opens the cryopod");
         foreach (int x in Drive.WalkTo(b.CryoFront, 0.3f, 10f)) yield return x;
-        check(Game.Survivor.WorldFeet.DistanceTo(b.CryoStand) > 0.7f && Game.Survivor.Body.OnFloor, $"{label}and the castaway steps out into the chamber");
+        check(Game.Survivor.WorldFeet.DistanceTo(b.CryoStand) > 0.7f && Game.Survivor.Body.OnFloor, $"{label}and the sleeper steps out into the chamber");
 
         foreach (int x in Drive.WalkTo(b.LockerFront, 0.4f, 15f)) yield return x;
         foreach (int x in Drive.LookAt(b.Locker, 8)) yield return x;
@@ -651,7 +651,7 @@ public sealed class Playthrough
 
     /// <summary>
     /// Places the block on a toolbar slot against one face of a structure's block, by looking at
-    /// that face and clicking, from where the castaway stands. True if a block went down there.
+    /// that face and clicking, from where the sleeper stands. True if a block went down there.
     /// </summary>
     public IEnumerable<int> PlaceBlock(int slot, Vessel v, Int3 on, Dir face, Action<bool> placed = null)
     {
@@ -743,7 +743,7 @@ public sealed class Playthrough
         Int3 at(int x, int z) => deck + new Int3(x, 0, z);
         return new (string, Int3, Dir, Dir?)[]
         {
-            // The column, from hops: the deck's underside clears the castaway's eyes, so legs can go under it.
+            // The column, from hops: the deck's underside clears the sleeper's eyes, so legs can go under it.
             ("steel", Int3.Zero, Dir.PosY, null), ("steel", new Int3(0, 1, 0), Dir.PosY, null),
             // The deck round the column's top, from its sides.
             ("generator", deck, Dir.PosX, null), ("steel", deck, Dir.NegX, null), ("steel", deck, Dir.NegZ, null),

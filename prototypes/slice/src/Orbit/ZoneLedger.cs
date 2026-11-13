@@ -8,7 +8,7 @@ using GalHack.Persistence;
 
 namespace Slice.Orbit;
 
-/// <summary>Something the ledger keeps a record of: the castaway, a structure, a container on the ground or a device.</summary>
+/// <summary>Something the ledger keeps a record of: the sleeper, a structure, a container on the ground or a device.</summary>
 public readonly record struct Holder(string Id, string Type, string Zone, string Ship, string Name, Bill Items, int Blocks);
 
 /// <summary>
@@ -27,12 +27,12 @@ public readonly record struct Holder(string Id, string Type, string Zone, string
 public sealed class ZoneLedger
 {
     public const string Surface = "surface", Orbit = "orbit", Moon = "moon";
-    public const string Castaway = "castaway";
+    public const string Sleeper = "sleeper";
 
     /// <summary>The zone of anything riding in a vessel's cabin (saves' convention).</summary>
     public static string Cabin(string shipId) => "cabin/" + shipId;
 
-    public static readonly string[] Types = { "castaway", "structure", "container", "device" };
+    public static readonly string[] Types = { "sleeper", "structure", "container", "device" };
 
     public readonly SaveStore Store;
     public readonly RecordTable Table = new();
@@ -58,6 +58,7 @@ public sealed class ZoneLedger
     {
         var s = new RecordSchemas();
         foreach (string type in Types) s.Register(type, 1, Count);
+        s.Register("castaway", 1, Count); // the old name of "sleeper", still read from saves written before the rename
         return s;
     }
 
@@ -82,7 +83,7 @@ public sealed class ZoneLedger
         foreach (var (id, n) in h.Items) if (n > 0) p.Items[id] = n;
         return new SaveRecord
         {
-            Id = h.Id, Type = h.Type, ZoneId = h.Zone, ShipId = h.Ship, Owner = h.Type == "castaway" ? "player" : null,
+            Id = h.Id, Type = h.Type, ZoneId = h.Zone, ShipId = h.Ship, Owner = h.Type == "sleeper" ? "player" : null,
             Items = p.Items.Values.Sum(), Blocks = h.Blocks, Payload = JsonSerializer.Serialize(p, Json),
         };
     }

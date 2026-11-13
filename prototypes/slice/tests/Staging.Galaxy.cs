@@ -510,7 +510,7 @@ public sealed partial class Staging
     }
 
     /// <summary>
-    /// The sky over the map's north and south seam: the castaway set down row by row across it
+    /// The sky over the map's north and south seam: the sleeper set down row by row across it
     /// (STAGING: the walk is long; the sky is what is looked at), the camera fixed on one direction.
     /// </summary>
     IEnumerable<int> GalaxySeam()

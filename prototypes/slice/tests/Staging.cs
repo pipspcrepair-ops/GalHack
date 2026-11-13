@@ -104,7 +104,7 @@ public sealed partial class Staging
             "plantshadows-ab" => PlantShadowsAb(),
             "crouch" => CrouchView(),
             "seated" => SeatedView(),
-            "castaway" => CastawayView(),
+            "sleeper" => SleeperView(),
             "folk" => FolkView(),
             "crowd" => CrowdView(),
             "peoples" => PeoplesView(),
@@ -183,7 +183,7 @@ public sealed partial class Staging
         foreach (int x in _drive.Wait(60)) yield return x;
     }
 
-    /// <summary>Inside the bunker: the castaway out of the one working cryopod, the dead sleepers in theirs.</summary>
+    /// <summary>Inside the bunker: the sleeper out of the one working cryopod, the dead sleepers in theirs.</summary>
     IEnumerable<int> BunkerView()
     {
         _game.Zone.Sky.TimeOfDay = Num("time", 0.3);

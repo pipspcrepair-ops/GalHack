@@ -49,7 +49,7 @@ public partial class Staging
     {
         Figure(foot + outward * 1.5f + along * (width * 0.3f));
         Vector3 eye = foot + outward * 7.5f - along * 2.5f + Vector3.Up * 1.7f;
-        // The castaway stands behind the camera, out of the frame.
+        // The sleeper stands behind the camera, out of the frame.
         Vector3 behind = foot + outward * 10f;
         _game.Survivor.PlaceOutside((_game.Zone.GroundAt(behind.X, behind.Z) + Vector3.Up * 0.2f).ToNumerics());
         foreach (int x in _drive.UntilSettled(20)) yield return x;
