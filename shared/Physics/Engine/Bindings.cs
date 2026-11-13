@@ -317,6 +317,9 @@ public sealed class HullBinding : BodyBinding
     public Vector3 LastPush;
     public int Pushes;
 
+    /// <summary>What it touched in its last move (for tests): a hull at rest still has what holds it.</summary>
+    public int Contacts => _contacts.Count;
+
     PhysicsShapeQueryParameters3D _near, _shape;
     readonly List<CollisionShape3D> _shapes = new();
     int _childCount = -1;

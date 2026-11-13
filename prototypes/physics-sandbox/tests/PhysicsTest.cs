@@ -72,7 +72,7 @@ public partial class PhysicsTest : Node
     IEnumerable<int> Scenarios()
     {
         bool standOnOnly = OS.GetCmdlineUserArgs().Contains("--stand-on"), surfOnly = OS.GetCmdlineUserArgs().Contains("--surf");
-        if (!standOnOnly && !surfOnly)
+        if (!standOnOnly && !surfOnly && !OS.GetCmdlineUserArgs().Contains("--hulls"))
         {
             GD.Print("-- determinism: two identical worlds, side by side --");
             foreach (int x in Determinism()) yield return x;
@@ -88,6 +88,12 @@ public partial class PhysicsTest : Node
         _w.Weather.Calm = true;
         for (int i = 0; i < 5; i++) yield return 0;
 
+        if (OS.GetCmdlineUserArgs().Contains("--hulls"))
+        {
+            GD.Print("-- hulls set into the ground --");
+            foreach (int x in HullsInGround()) yield return x;
+            yield break;
+        }
         if (surfOnly)
         {
             GD.Print("-- Space: jetpack surfing and a held landing --");
