@@ -149,6 +149,8 @@ public sealed class PoiInstance
     public LayoutExtras Extras => Layout.Extras;
     public int LootValue => Caches.Sum(c => c.Value);
     public NavGrid Nav() => new(Blocks, Layout.Occupied, Layout.Extras.Lifts, Layout.Extras.InSpace);
+    /// <summary>The object a cell's block was built as (0: the place as a whole).</summary>
+    public int ObjectOf(Int3 q) => Layout.Objects.TryGetValue(q, out int o) ? o : 0;
     public float RemovedFraction => StructureBefore == 0 ? 0f : 1f - StructureAfter / (float)StructureBefore;
 }
 
