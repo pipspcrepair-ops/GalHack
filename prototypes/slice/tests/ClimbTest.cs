@@ -435,8 +435,7 @@ public partial class ClimbTest : Node
         game.Zone.Wildlife.Frozen = true;
         GD.Print($"-- a built ladder, {game.World} --");
         S.Catalogue cat = game.Zone.Data.Catalogue;
-        S.GridDef grid = cat.Grid(S.GridSize.Large);
-        var s = new S.Structure(cat, grid) { Name = "Ladder test" };
+        var s = new S.Structure(cat) { Name = "Ladder test" };
         S.BlockType steel = cat.Type("steel"), ladderType = cat.Type("ladder");
         for (int x = -2; x <= 2; x++)
             for (int z = -3; z <= 3; z++) s.Set(new S.Int3(x, 0, z), S.Building.Make(s, steel));
@@ -447,7 +446,7 @@ public partial class ClimbTest : Node
         int rot = S.Orientations.Identity;
         for (int y = 1; y <= 2; y++) s.Set(new S.Int3(0, y, 0), S.Building.Make(s, ladderType, null, rot));
         s.DirtyChunks.Clear();
-        float cell = grid.CellSize;
+        float cell = s.Grid.CellSize;
         var play = new Playthrough(game);
         Vector3 site = play.FlatSpot(game.Start, 40f, 0.4f, 0.5f, span: 12f);
         // Stood up clear of the ground (a base holds where it is put), so no bank or tunnel round it decides the climb.

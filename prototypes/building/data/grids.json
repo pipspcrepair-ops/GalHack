@@ -1,36 +1,12 @@
-// Grid sizes. Every stat in materials.json and components.json is for a LARGE-grid cube; each
-// grid scales them, so one catalogue serves both grids.
-//   hpScale       small blocks have about a tenth of the hit points per cube
-//   massScale     mass goes with volume: a 0.5 m cube is 1/64 of a 2 m cube
-//   cpuScale      CPU cost per block, matching the grid's tier limits
-//   costScale     materials a block costs when it has no smallCost recipe of its own
-//   storageScale  container capacity (8000 SU large, 125 SU small)
-//   functionScale thrust, power and fuel: small vessels are nimbler for their mass
-// Nothing here depends on the core's mode: bases and capital ships share every block.
+// The one block grid: every structure is built on 1 m cells, and every stat in materials.json and
+// components.json is the block's own, so nothing is scaled at load.
+//   storageCap      the most SU a structure's containers add up to
+//   cargoMassPerSu  tonnes per storage unit of cargo, for the mass readout
 {
   "schema": "galhack.grids",
   "version": 1,
   "grids": [
-    {
-      "id": "large", "cellSize": 2.0,
-      "hpScale": 1.0, "massScale": 1.0, "cpuScale": 1.0, "costScale": 1.0, "storageScale": 1.0, "functionScale": 1.0,
-      "cpuTiers": [200000, 500000, 1500000, 10000000],
-      "storageCap": 320000
-    },
-    {
-      "id": "small", "cellSize": 0.5,
-      "hpScale": 0.1, "massScale": 0.015625, "cpuScale": 0.03, "costScale": 0.125, "storageScale": 0.015625, "functionScale": 0.03125,
-      "cpuTiers": [6000, 15000, 40000, 100000],
-      "storageCap": 32000
-    }
+    { "id": "1m", "cellSize": 1.0, "storageCap": 320000 }
   ],
-  // CPU extenders needed for tiers 1 to 4. The core alone gives tier 1. An extender only counts
-  // towards tiers up to its own extenderTier (components.json), so the plain one stops at tier 2
-  // and tiers 3 and 4 take the lattice extenders, however many plain ones are aboard.
-  "extendersPerTier": [0, 1, 2, 4],
-  // Tonnes per storage unit of cargo, for the mass readout.
-  "cargoMassPerSu": 0.001,
-  // Found on any planet. Every small-grid recipe uses only these, so a first small vessel is
-  // an hour or two of gathering, not a hunt for rare ore.
-  "commonMaterials": ["iron", "copper", "silicon", "carbon"]
+  "cargoMassPerSu": 0.001
 }

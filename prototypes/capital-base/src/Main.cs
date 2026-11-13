@@ -144,7 +144,7 @@ public partial class Main : Node3D
         UpdateHud();
     }
 
-    Craft ConsoleCraft => _selected != null && _selected.IsLarge ? _selected : World.HomeCraft ?? World.CraftById("bastion");
+    Craft ConsoleCraft => _selected ?? World.HomeCraft ?? World.CraftById("bastion");
 
     string GroundLine(Craft c)
     {

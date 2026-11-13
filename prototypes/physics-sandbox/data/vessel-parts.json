@@ -1,48 +1,78 @@
 // Components the handling model needs that the building catalogue doesn't have yet: gyros,
-// hover plates and landing legs. Same format as prototypes/building/data/components.json (stats
-// for a large-grid block; each grid scales them). The sandbox appends these to the building
-// catalogue when it loads it; nothing in prototypes/building changes.
-//
-// What they DO comes from the handling model's parts table (prototypes/ship-handling/data/
-// handling.json, "parts"): gyro torque, hover lift and ride height, leg length, by grid size
-// (small grid uses the "small" part, large grid the "large" one). Mass comes from here, like
-// every other block, so the four numbers are always the build's own.
+// hover plates and landing pads, as tier ladders. Same format and units as
+// prototypes/building/data/components.json. The sandbox appends these to the building catalogue
+// when it loads it; nothing in prototypes/building changes.
+//   torque      gyro turning torque; the figures' torque index x 6
+//   lift        hover lift, kN; the figures' lift index x 0.2
+//   rideHeight  hover ride height, m (an estimate: 1.5 m at one cell, 3 m at two)
+//   legLength   landing leg reach, m (today's gear behaviour, until pads become attachment points)
 {
   "schema": "galhack.components",
   "version": 1,
   "components": [
     {
-      "id": "gyro", "name": "Gyro", "function": "gyro",
-      "hp": 500, "armor": 10, "resist": { "kinetic": 0.1, "explosive": 0.1, "energy": 0.1 },
-      "mass": 8, "cpu": 1500, "power": -0.5, "color": "2b2d42", "glow": "6ff2e0",
-      "attach": "all", "airtight": "all", "covers": "all",
-      "cost": { "iron": 14, "copper": 6, "electronics": 6 }, "smallCost": { "iron": 3, "copper": 2 },
+      "id": "gyro-t1", "name": "Gyro T1", "function": "gyro", "hp": 158, "armor": 10, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 2.05, "color": "2b2d42", "glow": "6ff2e0", "attach": "all", "airtight": "all", "covers": "all", "was": ["gyro"], "power": -0.04, "torque": 4800,
       "parts": [
-        { "box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "dark" },
-        { "cylinder": "y", "segments": 16, "box": [-0.505, -0.12, -0.505, 0.505, 0.12, 0.505], "style": "glow" }
+        {"box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "dark"},
+        {"cylinder": "y", "segments": 16, "box": [-0.505, -0.12, -0.505, 0.505, 0.12, 0.505], "style": "glow"}
       ]
     },
     {
-      "id": "hover", "name": "Hover plate", "function": "hover",
-      "hp": 450, "armor": 10, "resist": { "kinetic": 0.1, "explosive": 0.1, "energy": 0.1 },
-      "mass": 6, "cpu": 1500, "power": -1, "color": "3a3f47", "glow": "5ee0e6",
-      "attach": ["+y"], "airtight": ["+y"], "covers": ["+y"],
-      "cost": { "iron": 16, "electronics": 6 }, "smallCost": { "iron": 3, "copper": 2 },
+      "id": "gyro-t2", "name": "Gyro T2", "function": "gyro", "hp": 158, "armor": 10, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 2.0, "color": "2b2d42", "glow": "6ff2e0", "attach": "all", "airtight": "all", "covers": "all", "power": -0.0016, "torque": 7500,
       "parts": [
-        { "box": [-0.5, 0.1, -0.5, 0.5, 0.5, 0.5], "style": "body" },
-        { "cylinder": "y", "segments": 16, "box": [-0.46, -0.4, -0.46, 0.46, 0.1, 0.46], "style": "dark" },
-        { "cylinder": "y", "segments": 16, "box": [-0.34, -0.5, -0.34, 0.34, -0.4, 0.34], "style": "glow", "pattern": "grille" }
+        {"box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "dark"},
+        {"cylinder": "y", "segments": 16, "box": [-0.505, -0.12, -0.505, 0.505, 0.12, 0.505], "style": "glow"}
       ]
     },
     {
-      "id": "gear", "name": "Landing leg", "function": "gear",
-      "hp": 400, "armor": 10, "resist": { "kinetic": 0.1, "explosive": 0.1, "energy": 0.1 },
-      "mass": 4, "cpu": 400, "power": -0.02, "color": "3a3f47", "accent": "f4a100",
-      "attach": ["+y"], "airtight": ["+y"], "covers": ["+y"],
-      "cost": { "iron": 10 }, "smallCost": { "iron": 2 },
+      "id": "gyro-t3", "name": "Gyro T3", "function": "gyro", "hp": 158, "armor": 10, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 2.4, "color": "2b2d42", "glow": "6ff2e0", "attach": "all", "airtight": "all", "covers": "all", "power": -0.0031, "torque": 112800,
       "parts": [
-        { "box": [-0.4, -0.5, -0.4, 0.4, 0.5, 0.4], "style": "dark" },
-        { "box": [-0.42, -0.2, -0.42, 0.42, -0.05, 0.42], "style": "accent" }
+        {"box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "dark"},
+        {"cylinder": "y", "segments": 16, "box": [-0.505, -0.12, -0.505, 0.505, 0.12, 0.505], "style": "glow"}
+      ]
+    },
+    {
+      "id": "hover-t1", "name": "Hover plate T1", "function": "hover", "hp": 316, "armor": 10, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 1.12, "color": "3a3f47", "glow": "5ee0e6", "attach": ["+y"], "airtight": ["+y"], "covers": ["+y"], "was": ["hover"], "power": -0.04, "lift": 320.0, "rideHeight": 1.5,
+      "parts": [
+        {"box": [-0.5, 0.1, -0.5, 0.5, 0.5, 0.5], "style": "body"},
+        {"cylinder": "y", "segments": 16, "box": [-0.46, -0.4, -0.46, 0.46, 0.1, 0.46], "style": "dark"},
+        {"cylinder": "y", "segments": 16, "box": [-0.34, -0.5, -0.34, 0.34, -0.4, 0.34], "style": "glow", "pattern": "grille"}
+      ]
+    },
+    {
+      "id": "hover-t2", "name": "Hover plate T2", "function": "hover", "hp": 1110, "armor": 10, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 2.72, "color": "3a3f47", "glow": "5ee0e6", "attach": ["+y"], "airtight": ["+y"], "covers": ["+y"], "size": [2, 1, 2], "power": -0.16, "lift": 1408.0, "rideHeight": 3.0,
+      "parts": [
+        {"box": [-0.5, 0.1, -0.5, 0.5, 0.5, 0.5], "style": "body"},
+        {"cylinder": "y", "segments": 16, "box": [-0.46, -0.4, -0.46, 0.46, 0.1, 0.46], "style": "dark"},
+        {"cylinder": "y", "segments": 16, "box": [-0.34, -0.5, -0.34, 0.34, -0.4, 0.34], "style": "glow", "pattern": "grille"}
+      ]
+    },
+    {
+      "id": "pad-t1", "name": "Landing pad T1", "function": "gear", "hp": 158, "armor": 10, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 1.37, "color": "3a3f47", "accent": "f4a100", "attach": ["+y"], "airtight": ["+y"], "covers": ["+y"], "size": [1, 1, 2], "was": ["gear"], "power": -0.0005, "legLength": 1.4,
+      "parts": [
+        {"box": [-0.4, -0.5, -0.4, 0.4, 0.5, 0.4], "style": "dark"},
+        {"box": [-0.42, -0.2, -0.42, 0.42, -0.05, 0.42], "style": "accent"}
+      ]
+    },
+    {
+      "id": "pad-t2", "name": "Landing pad T2", "function": "gear", "hp": 253, "armor": 10, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 1.86, "color": "3a3f47", "accent": "f4a100", "attach": ["+y"], "airtight": ["+y"], "covers": ["+y"], "size": [2, 1, 2], "power": -0.0005, "legLength": 1.4,
+      "parts": [
+        {"box": [-0.4, -0.5, -0.4, 0.4, 0.5, 0.4], "style": "dark"},
+        {"box": [-0.42, -0.2, -0.42, 0.42, -0.05, 0.42], "style": "accent"}
+      ]
+    },
+    {
+      "id": "pad-t3", "name": "Landing pad T3", "function": "gear", "hp": 111, "armor": 10, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 0.212, "color": "3a3f47", "accent": "f4a100", "attach": ["+y"], "airtight": ["+y"], "covers": ["+y"], "size": [1, 1, 2], "power": -0.0005, "legLength": 4.0,
+      "parts": [
+        {"box": [-0.4, -0.5, -0.4, 0.4, 0.5, 0.4], "style": "dark"},
+        {"box": [-0.42, -0.2, -0.42, 0.42, -0.05, 0.42], "style": "accent"}
+      ]
+    },
+    {
+      "id": "pad-t4", "name": "Landing pad T4", "function": "gear", "hp": 205, "armor": 10, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 0.229, "color": "3a3f47", "accent": "f4a100", "attach": ["+y"], "airtight": ["+y"], "covers": ["+y"], "size": [2, 1, 2], "power": -0.0005, "legLength": 4.0,
+      "parts": [
+        {"box": [-0.4, -0.5, -0.4, 0.4, 0.5, 0.4], "style": "dark"},
+        {"box": [-0.42, -0.2, -0.42, 0.42, -0.05, 0.42], "style": "accent"}
       ]
     }
   ]

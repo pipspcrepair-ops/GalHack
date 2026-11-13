@@ -75,15 +75,15 @@ public sealed class BlueprintFactory
 
     public FactoryQuote Quote(string name, IEnumerable<BlockCount> blocks)
     {
-        var list = blocks.GroupBy(b => (b.BlockId, b.Small))
-            .Select(g => new BlockCount(g.Key.BlockId, g.Key.Small, g.Sum(b => b.Count)))
-            .OrderBy(b => b.BlockId, StringComparer.Ordinal).ThenBy(b => b.Small).ToList();
+        var list = blocks.GroupBy(b => b.BlockId)
+            .Select(g => new BlockCount(g.Key, g.Sum(b => b.Count)))
+            .OrderBy(b => b.BlockId, StringComparer.Ordinal).ToList();
         var problems = list.Where(b => !Items.Blocks.TryGet(b.BlockId, out _)).Select(b => $"no bill for block '{b.BlockId}'").ToList();
         var known = list.Where(b => Items.Blocks.TryGet(b.BlockId, out _)).ToList();
 
         Bill parts = Items.Blocks.Total(known);
         Expansion e = Items.Graph.Expand(parts, PaysIn);
-        double seconds = e.Seconds + known.Sum(b => Items.Blocks.AssemblySeconds(b.Small) * b.Count);
+        double seconds = e.Seconds + known.Sum(b => Items.Blocks.Get(b.BlockId).AssemblySeconds * b.Count);
         return new FactoryQuote
         {
             Name = name,

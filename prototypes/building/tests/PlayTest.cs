@@ -82,17 +82,17 @@ public partial class PlayTest : Node
         }));
         _steps.Add(("remove with the mirror", () =>
         {
-            int iron = Build.Inventory["iron"];
+            int plates = Build.Inventory["iron-plate"];
             Click(MouseButton.Right);
-            Check(!S.Has(new Int3(3, 4, 1)) && !S.Has(new Int3(-3, 4, 1)) && Build.Inventory["iron"] == iron + 20,
-                "right click removes both mirrored blocks and returns 20 iron");
+            Check(!S.Has(new Int3(3, 4, 1)) && !S.Has(new Int3(-3, 4, 1)) && Build.Inventory["iron-plate"] == plates + 8,
+                "right click removes both mirrored blocks and returns their 8 iron plates");
             Key(Godot.Key.X);
             Aim(new Vector3(9f, 16f, -1f), Top(3, 4, -1));
         }));
         _steps.Add(("upgrade and paint", () =>
         {
             Key(Godot.Key.U);
-            Check(S.TypeOf(S.Get(new Int3(3, 4, -1))).Id == "hardened", "U upgrades steel to hardened in place");
+            Check(S.TypeOf(S.Get(new Int3(3, 4, -1))).Id == "hardened-plated", "U upgrades iron plating to hardened in place");
             Key(Godot.Key.P);
             Key(Godot.Key.Key2);
             Click(MouseButton.Left);
@@ -116,10 +116,10 @@ public partial class PlayTest : Node
             int before = _main.Structures.Count, blocks = S.Count;
             Key(Godot.Key.K);
             var wreck = _main.Structures.FirstOrDefault(v => v != Ship && v.Structure.IsWreck);
-            Check(_main.Structures.Count == before + 1 && wreck != null, "K blasts the pylon and the nacelle breaks away as a wreck");
+            // The Lancer is an old large-grid blueprint on 1 m cells: its nacelle is thin enough now that the blast may cut it in two.
+            Check(_main.Structures.Count > before && wreck != null, $"K blasts the pylon and the nacelle breaks away as a wreck ({_main.Structures.Count - before} pieces)");
             Check(wreck != null && !wreck.Freeze && S.Count + wreck.Structure.Count < blocks,
                 $"the wreck is a free body ({wreck?.Structure.Count} blocks) and the ship lost its pylon");
-            Key(Godot.Key.G);
             Key(Godot.Key.Key9);
             Aim(new Vector3(-20f, 6f, 30f), new Vector3(-24f, World.PadTop, 30f));
         }));
@@ -128,8 +128,8 @@ public partial class PlayTest : Node
             int before = _main.Structures.Count;
             Click(MouseButton.Left);
             var vessel = _main.Structures.LastOrDefault();
-            Check(_main.Structures.Count == before + 1 && vessel?.Structure.Grid.Size == GridSize.Small && vessel.Structure.Core != null,
-                "a core on the pad starts a new small-grid vessel");
+            Check(_main.Structures.Count == before + 1 && vessel?.Structure.Core != null,
+                "a core on the pad starts a new structure");
             Build.SetActive(Ship);
             Key(Godot.Key.F5);
             Check(FileAccess.FileExists("res://saves/quicksave.gbp"), "F5 saves the blueprint");

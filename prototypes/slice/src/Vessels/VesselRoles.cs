@@ -80,14 +80,15 @@ public sealed partial class Vessel
 
     public static bool IsChair(BlockType type) => type.IsCommandChair;
 
-    /// <summary>The chair nearest a world point, and how far it is (a structure with none: infinitely far).</summary>
+    /// <summary>The chair nearest a world point, and how far it is to its seat (a structure with none: infinitely far).</summary>
     public float NearestChair(Vector3 world, out Int3 chair)
     {
         float best = float.PositiveInfinity;
         chair = default;
         foreach (Int3 c in Chairs)
         {
-            float d = ToWorld(StructureBridge.CellCenter(Structure, c)).DistanceTo(world);
+            // To its seat: a chair spans several cells, and its anchor is at one end of them.
+            float d = ToWorld(StructureBridge.SeatPoint(Structure, c, Structure.Get(c))).DistanceTo(world);
             if (d < best)
             {
                 best = d;
@@ -101,7 +102,7 @@ public sealed partial class Vessel
     public void TakeChair(Int3 chair)
     {
         _chair = chair;
-        Seat = StructureBridge.CellCenter(Structure, chair);
+        if (Structure.TryGetBlock(chair, out Int3 anchor, out Block b)) SitAt(anchor, b);
     }
 
     Int3? _chair;

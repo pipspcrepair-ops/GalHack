@@ -8,7 +8,7 @@ namespace BlockBuilding;
 
 /// <summary>
 /// The build HUD, styled like a paperback cover's lettering: a stats panel for the structure in
-/// view (mass, CPU and tier, power, thrust-to-mass, storage, air), the hotbar, the tool line,
+/// view (mass, power, thrust-to-mass, storage, air), the hotbar, the tool line,
 /// a hint under the crosshair and toasts for anything that just happened.
 /// </summary>
 public partial class Hud : CanvasLayer
@@ -22,7 +22,6 @@ public partial class Hud : CanvasLayer
 
     Font _font, _bold;
     Label _tool, _hint, _toast, _help, _stats, _statsTitle, _visorTag;
-    Bar _cpuBar;
     ColorRect _visor;
     readonly List<(PanelContainer panel, Label name, ColorRect chip, Label number)> _slots = new();
     float _toastTime;
@@ -124,7 +123,7 @@ public partial class Hud : CanvasLayer
             BlockType t = Build.SelectedType;
             string shape = "";
             _tool.Text = $"MULTI-TOOL   {BuildController.Describe(t, Build.SelectedShape).ToUpperInvariant()}{shape}   ·   facing {Orientations.Name(Build.Rot)}{sym}\n" +
-                         $"new cores: {(Build.NewCoreGrid == GridSize.Large ? "large grid 2 m" : "small grid 0.5 m")}   ·   salvage: {InventoryText()}";
+                         $"salvage: {InventoryText()}";
         }
         else
         {
@@ -228,10 +227,8 @@ public partial class Hud : CanvasLayer
         panel.AddChild(box);
         _statsTitle = MakeLabel(22, Ink, bold: true);
         box.AddChild(_statsTitle);
-        _cpuBar = new Bar { CustomMinimumSize = new Vector2(0, 12) };
         _stats = MakeLabel(15, Ink);
         box.AddChild(_stats);
-        box.AddChild(_cpuBar);
     }
 
     void UpdateStats()
@@ -241,7 +238,6 @@ public partial class Hud : CanvasLayer
         {
             _statsTitle.Text = "NO STRUCTURE";
             _stats.Text = "Look at a structure, or place a core (9)\non the pad to start one.";
-            _cpuBar.Visible = false;
             return;
         }
         Structure s = view.Structure;
@@ -251,9 +247,8 @@ public partial class Hud : CanvasLayer
         string mode = s.IsWreck ? "WRECK" : s.Mode.ToString().ToUpperInvariant();
         _statsTitle.Text = $"{s.Name.ToUpperInvariant()}   [{mode}]";
         string owner = s.Owner ?? "unowned";
-        string cpu = st.CpuLimit > 0 ? $"{st.CpuUsed:N0} / {st.CpuLimit:N0}   T{st.Tier}   {st.Efficiency:P0}" : "no core, no CPU";
         string power = st.Generators > 0 ? $"{st.PowerOut:0.#} MW made   ·   {st.PowerUse:0.#} MW peak use" : "no generator";
-        string thrust = s.Mode == CoreMode.Base && s.Grid.Size == GridSize.Large && !s.IsWreck
+        string thrust = s.Mode == CoreMode.Base && !s.IsWreck
             ? "bases don't fly (B for capital)"
             : st.Thrusters == 0 ? "no thrusters"
             : $"{st.ThrustToWeightForward:0.00} g forward   ·   best axis {st.ThrustToWeightMax:0.00} g";
@@ -262,16 +257,13 @@ public partial class Hud : CanvasLayer
         string gravity = !st.HasCore ? "none" : !s.GravityOn ? "off (E on the core)" : st.GravityActive ? "on" : "on, but unpowered";
 
         _stats.Text =
-            $"{(s.Grid.Size == GridSize.Large ? "large grid · 2 m" : "small grid · 0.5 m")}   ·   {st.Blocks:N0} blocks   ·   {owner}\n" +
+            $"{st.Blocks:N0} blocks   ·   {owner}\n" +
             $"MASS      {st.Mass:N1} t{(st.CargoMass > 0 ? $"  (cargo {st.CargoMass:N1} t)" : "")}\n" +
             $"POWER     {power}\n" +
             $"THRUST    {thrust}\n" +
             $"STORAGE   {st.StorageCapacity:N0} SU shared   ·   {st.Containers} containers{(st.StorageRaw > st.StorageCapacity ? "  (at cap)" : "")}\n" +
             $"AIR       {air}\n" +
-            $"GRAVITY   {gravity}   ·   LIFE SUPPORT {(st.LifeSupport ? "on" : "off")}\n" +
-            $"CPU       {cpu}";
-        _cpuBar.Visible = st.CpuLimit > 0;
-        _cpuBar.Value = st.CpuLimit > 0 ? (float)(st.CpuUsed / st.CpuLimit) : 0f;
+            $"GRAVITY   {gravity}   ·   LIFE SUPPORT {(st.LifeSupport ? "on" : "off")}";
     }
 
     RoomReport RoomsFor(StructureView view)
@@ -323,7 +315,7 @@ public partial class Hud : CanvasLayer
     const string BuildHelp =
         "LMB place   ·   RMB remove   ·   MMB pick block   ·   1-9 block (again: variant)   ·   wheel / Tab shape\n" +
         "R T Y rotate (Shift back)   ·   X V Z mirror (again: between cells)   ·   U repair / upgrade armour\n" +
-        "E door, light, core gravity   ·   B core base / capital   ·   G grid for new cores   ·   O air visor\n" +
+        "E door, light, core gravity   ·   B core mode   ·   O air visor\n" +
         "K blaster   ·   P paint sprayer   ·   F5 / F9 save / load blueprint   ·   N fly   ·   F1 hide help";
 
     const string PaintHelp =
@@ -354,29 +346,3 @@ public partial class Crosshair : Control
     }
 }
 
-/// <summary>The CPU bar: green under the limit, amber near it, red past it.</summary>
-public partial class Bar : Control
-{
-    float _value;
-
-    public float Value
-    {
-        get => _value;
-        set
-        {
-            if (Mathf.IsEqualApprox(_value, value)) return;
-            _value = value;
-            QueueRedraw();
-        }
-    }
-
-    public override void _Draw()
-    {
-        Vector2 size = Size;
-        DrawRect(new Rect2(Vector2.Zero, size), new Color(1, 1, 1, 0.1f));
-        float fill = Mathf.Clamp(_value, 0f, 1f);
-        Color color = _value > 1f ? new Color("ff5a3c") : _value > 0.85f ? new Color("ffc145") : new Color("2ee6a6");
-        DrawRect(new Rect2(Vector2.Zero, new Vector2(size.X * fill, size.Y)), color);
-        if (_value > 1f) DrawRect(new Rect2(size.X - 4, 0, 4, size.Y), Colors.White);
-    }
-}

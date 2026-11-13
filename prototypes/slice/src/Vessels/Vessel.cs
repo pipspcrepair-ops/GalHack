@@ -143,8 +143,17 @@ public sealed partial class Vessel
     public HandlingStats Stats => Flight?.Stats;
     public string Name => Structure.Name;
 
-    /// <summary>The command chair (structure frame, metres), or null if it has none.</summary>
+    /// <summary>The chair in use: where its sitter rests (structure frame, metres), or null if it has none.</summary>
     public N.Vector3? Seat { get; private set; }
+
+    /// <summary>The seated eye in that chair (structure frame, metres), from the chair's data.</summary>
+    public N.Vector3 Eye { get; private set; }
+
+    /// <summary>How far the chair reaches out from its seat across the floor, m: getting up puts you past it.</summary>
+    public float ChairReach { get; private set; }
+
+    /// <summary>How far the seat stands above the floor its sitter's feet rest on, m (the figure's legs reach down to it).</summary>
+    public float SeatDrop { get; private set; }
 
     string _legsKey = "";
 
@@ -380,6 +389,7 @@ public sealed partial class Vessel
             Body.Integrity = MathF.Max(Body.Integrity, HullPoints(Zone, mass.Mass));
             if (Binding is FreeBinding free)
             {
+                Body.DragBox = StructureBridge.DragBox(Structure);
                 free.Rigid.Mass = mass.Mass;
                 free.Rigid.CenterOfMass = mass.CenterOfMass.ToGodot();
             }
@@ -454,19 +464,46 @@ public sealed partial class Vessel
         return -N.Vector3.UnitY;
     }
 
+    void SitAt(Int3 anchor, in Block chair)
+    {
+        Seat = StructureBridge.SeatPoint(Structure, anchor, chair);
+        Eye = StructureBridge.EyePoint(Structure, anchor, chair);
+        Int3 size = Footprint.WorldSize(Structure.TypeOf(chair), chair.Rot);
+        ChairReach = MathF.Max(size.X, size.Z) * Structure.Grid.CellSize;
+        SeatDrop = FloorUnder(Structure.TypeOf(chair), Structure.Grid.CellSize);
+    }
+
+    /// <summary>Where a seated person's feet come down, m ahead of the seat point: past the seat's front edge, short of a console.</summary>
+    const float FeetAhead = 0.4f;
+
+    /// <summary>
+    /// How far a chair's seat stands above what its sitter's feet rest on, m: the highest of its own
+    /// parts under the feet and below the seat (a cockpit's floor), or the bottom of its box (an open
+    /// chair stands on the block under it). The chair faces -z in its own frame.
+    /// </summary>
+    static float FloorUnder(BlockType t, float cell)
+    {
+        N.Vector3 size = t.Size.ToVector3() * cell, seat = t.Seat;
+        float z = seat.Z - FeetAhead / size.Z, floor = -0.5f;
+        foreach (Part p in t.Parts)
+            if (!p.ClosedOnly && p.Max.Y < seat.Y - 0.02f && p.Min.X <= seat.X && p.Max.X >= seat.X && p.Min.Z <= z && p.Max.Z >= z)
+                floor = MathF.Max(floor, p.Max.Y);
+        return (seat.Y - floor) * size.Y;
+    }
+
     string LegsKey() => Spec == null ? "" : string.Join(";", Spec.Legs.Select(l => l.Hip.ToString())) + "|" + string.Join(";", Spec.HoverPoints);
 
     void RefreshSeat()
     {
-        if (_chair is Int3 taken && Structure.TryGet(taken, out Block held) && IsChair(Structure.TypeOf(held)))
+        if (_chair is Int3 taken && Structure.TryGetBlock(taken, out Int3 anchor, out Block held) && IsChair(Structure.TypeOf(held)))
         {
-            Seat = StructureBridge.BlockCenter(Structure, taken, held);
+            SitAt(anchor, held);
             return;
         }
         foreach (var (p, b) in Structure.Blocks())
             if (IsChair(Structure.TypeOf(b)))
             {
-                Seat = StructureBridge.BlockCenter(Structure, p, b);
+                SitAt(p, b);
                 return;
             }
         if (Seat != null) SeatLost?.Invoke();
@@ -500,6 +537,7 @@ public sealed partial class Vessel
             Mass = mass.Mass,
             CenterOfMass = mass.CenterOfMass,
             DragArea = StructureBridge.DragArea(piece),
+            DragBox = StructureBridge.DragBox(piece), // loose: the wind meets its real shape as it lies
             Shape = StructureBridge.ShapeOf(piece),
         });
         piece.DirtyChunks.Clear();
@@ -522,6 +560,7 @@ public sealed partial class Vessel
             if (child is not CollisionShape3D) child.Reparent(rigid, false);
         var free = Zone.Host.Rebind(Body, new FreeBinding(rigid, Body));
         Binding = free;
+        Body.DragBox = StructureBridge.DragBox(Structure);
         free.Teleport();
         hull.Hull.GetParent().RemoveChild(hull.Hull);
         hull.Hull.QueueFree();

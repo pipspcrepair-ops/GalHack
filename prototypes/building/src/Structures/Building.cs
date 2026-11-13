@@ -20,7 +20,8 @@ public enum PlaceError
 
 public enum RemoveStatus { Removed, Empty, CoreHoldsStructure }
 
-public enum UpgradeStatus { Upgraded, NotArmor, AlreadyBest, NotEnoughMaterials, Empty }
+/// <summary>What plating (or upgrading) a block did. WrongBase: the plate goes on another base block (glass only on windows).</summary>
+public enum UpgradeStatus { Upgraded, NotArmor, AlreadyBest, NotEnoughMaterials, Empty, WrongBase }
 
 public enum RepairStatus { Repaired, NotDamaged, NotEnoughMaterials }
 
@@ -145,7 +146,7 @@ public static class Building
     {
         PlaceError error = Check(s, p, b);
         if (error != PlaceError.None) return error;
-        if (inventory != null && !inventory.TryTake(s.Catalogue.CostOf(b, s.Grid))) return PlaceError.NotEnoughMaterials;
+        if (inventory != null && !inventory.TryTake(s.Catalogue.CostOf(b))) return PlaceError.NotEnoughMaterials;
         b.Hp = s.StatsOf(b).MaxHp;
         s.Set(p, b);
         if (s.TypeOf(b).IsCore) s.Owner = owner;
@@ -238,31 +239,66 @@ public static class Building
         // Any cell of a block spanning several takes the whole block down, for one block's worth.
         if (!s.TryGetBlock(p, out p, out Block b)) return new RemoveResult(RemoveStatus.Empty, default, new List<Structure>());
         if (s.TypeOf(b).IsCore) return new RemoveResult(RemoveStatus.CoreHoldsStructure, b, new List<Structure>());
-        inventory?.Add(s.Catalogue.CostOf(b, s.Grid));
+        inventory?.Add(s.Catalogue.CostOf(b));
         s.Clear(p);
         return new RemoveResult(RemoveStatus.Removed, b, Connectivity.SplitOff(s));
     }
 
-    /// <summary>Steel → hardened → combat, in place. Shape, orientation and paint are untouched.</summary>
+    /// <summary>The next plating up, in place: base → iron → hardened → combat, window → glass (see <see cref="Plate"/>).</summary>
     public static UpgradeStatus Upgrade(Structure s, Int3 p, Inventory inventory = null)
+    {
+        if (!s.TryGetBlock(p, out _, out Block b)) return UpgradeStatus.Empty;
+        BlockType t = s.TypeOf(b);
+        if (!t.IsArmor) return UpgradeStatus.NotArmor;
+        return t.Upgrade == null ? UpgradeStatus.AlreadyBest : Plate(s, p, t.Upgrade, inventory);
+    }
+
+    // ---- Plating ----------------------------------------------------------------------------
+    // A structural block's material is its plating: a plated block is its own type, its base block
+    // plus that material's plates. Spraying plates on (or a different plating over the old) and
+    // stripping them give back the old plating's worth by the block's hit-point share, rounded
+    // down, so a damaged block returns less. Shape, orientation and paint are untouched.
+
+    /// <summary>Sprays <paramref name="plated"/>'s plates onto an armour block: a bare base takes them, a plated one swaps its plating. The block comes out whole.</summary>
+    public static UpgradeStatus Plate(Structure s, Int3 p, BlockType plated, Inventory inventory = null)
+    {
+        if (!s.TryGetBlock(p, out p, out Block b)) return UpgradeStatus.Empty;
+        BlockType t = s.TypeOf(b);
+        if (!t.IsArmor || !plated.IsPlated) return UpgradeStatus.NotArmor;
+        if (t == plated) return UpgradeStatus.AlreadyBest;
+        if ((t.Base ?? t) != plated.Base) return UpgradeStatus.WrongBase;
+        Block next = b;
+        next.Type = (ushort)plated.Index;
+        if (inventory != null && !inventory.TryTake(new Dictionary<string, int> { [plated.Plate] = s.Catalogue.PlatesOf(next) }))
+            return UpgradeStatus.NotEnoughMaterials;
+        inventory?.Add(PlatingWorth(s, b));
+        next.Hp = s.StatsOf(next).MaxHp;
+        s.Set(p, next);
+        return UpgradeStatus.Upgraded;
+    }
+
+    /// <summary>Strips a block's plating back to its base block, which keeps the block's hit-point share.</summary>
+    public static UpgradeStatus Strip(Structure s, Int3 p, Inventory inventory = null)
     {
         if (!s.TryGetBlock(p, out p, out Block b)) return UpgradeStatus.Empty;
         BlockType t = s.TypeOf(b);
         if (!t.IsArmor) return UpgradeStatus.NotArmor;
-        if (t.Upgrade == null) return UpgradeStatus.AlreadyBest;
-
-        Block upgraded = b;
-        upgraded.Type = (ushort)t.Upgrade.Index;
-        var before = s.Catalogue.CostOf(b, s.Grid);
-        var extra = s.Catalogue.CostOf(upgraded, s.Grid)
-            .Select(kv => (kv.Key, n: kv.Value - (before.TryGetValue(kv.Key, out int had) ? had : 0)))
-            .Where(x => x.n > 0)
-            .ToDictionary(x => x.Key, x => x.n);
-        if (inventory != null && !inventory.TryTake(extra)) return UpgradeStatus.NotEnoughMaterials;
-
-        upgraded.Hp = s.StatsOf(upgraded).MaxHp;
-        s.Set(p, upgraded);
+        if (!t.IsPlated) return UpgradeStatus.AlreadyBest;
+        inventory?.Add(PlatingWorth(s, b));
+        float share = b.Hp / s.StatsOf(b).MaxHp;
+        Block bare = b;
+        bare.Type = (ushort)t.Base.Index;
+        bare.Hp = s.StatsOf(bare).MaxHp * share;
+        s.Set(p, bare);
         return UpgradeStatus.Upgraded;
+    }
+
+    /// <summary>What a block's plating is worth back: its plates by the block's hit-point share, rounded down.</summary>
+    public static Dictionary<string, int> PlatingWorth(Structure s, in Block b)
+    {
+        BlockType t = s.TypeOf(b);
+        int n = t.IsPlated ? (int)MathF.Floor(s.Catalogue.PlatesOf(b) * b.Hp / s.StatsOf(b).MaxHp + 1e-4f) : 0;
+        return n > 0 ? new Dictionary<string, int> { [t.Plate] = n } : new Dictionary<string, int>();
     }
 
     /// <summary>Brings a damaged block back to full health. Returns false if there was nothing to fix.</summary>
@@ -289,13 +325,18 @@ public static class Building
         return MathF.Min(share, MathF.Max(0f, (max - b.Hp) / max));
     }
 
-    /// <summary>What repairing this much of the block costs: that share of its recipe, rounded up, so no repair is free.</summary>
+    /// <summary>
+    /// What repairing this much of the block costs: that share of its recipe, rounded up, so no
+    /// repair is free. A plated block is topped up with its plates alone.
+    /// </summary>
     public static Dictionary<string, int> RepairCost(Structure s, Int3 p, float share = 1f)
     {
         float paid = RepairShare(s, p, share);
         if (paid <= 0f) return new Dictionary<string, int>();
         s.TryGetBlock(p, out _, out Block b);
-        return s.Catalogue.CostOf(b, s.Grid).ToDictionary(kv => kv.Key, kv => (int)MathF.Ceiling(kv.Value * paid));
+        BlockType t = s.TypeOf(b);
+        Dictionary<string, int> bill = t.IsPlated ? new() { [t.Plate] = s.Catalogue.PlatesOf(b) } : s.Catalogue.CostOf(b);
+        return bill.ToDictionary(kv => kv.Key, kv => (int)MathF.Ceiling(kv.Value * paid));
     }
 
     /// <summary>A repair paid for from an inventory (a structure's shared storage, the player's bag). Nothing is restored unless it can pay.</summary>
@@ -336,13 +377,12 @@ public static class Building
         return true;
     }
 
-    /// <summary>Switches a core to its other mode: a Big Core between Base and Capital, a Small Core between Vessel and Hover.</summary>
+    /// <summary>Steps a core to its next mode: Base, Capital, then Hover when it has hover plates aboard.</summary>
     public static bool ToggleCoreMode(Structure s) => SetCoreMode(s, s.Mode switch
     {
         CoreMode.Base => CoreMode.Capital,
-        CoreMode.Capital => CoreMode.Base,
-        CoreMode.Hover => CoreMode.Vessel,
-        _ => CoreMode.Hover,
+        CoreMode.Capital when s.Blocks().Any(x => s.TypeOf(x.block).Function == "hover") => CoreMode.Hover,
+        _ => CoreMode.Base,
     });
 
     /// <summary>Opens or closes a door, switches a light, or flips the core's gravity. Returns false if the block does nothing.</summary>

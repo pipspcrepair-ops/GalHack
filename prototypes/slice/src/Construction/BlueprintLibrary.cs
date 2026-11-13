@@ -27,7 +27,6 @@ public sealed class LibraryEntry
     public BlueprintSource Source;
     public Structure Plan;
     public string Name => Plan.Name;
-    public bool Large => Plan.Grid.Size == GridSize.Large;
 
     /// <summary>Its bounding box, metres (x across, y up, z long).</summary>
     public Vector3 Size;
@@ -36,12 +35,6 @@ public sealed class LibraryEntry
 
     /// <summary>The four numbers in its own mode on the zone's gravity; null in Base Mode, which never moves.</summary>
     public HandlingStats Handling;
-
-    /// <summary>
-    /// The mode its file asks for. The same as the plan's, except a Large blueprint in Hover Mode:
-    /// Large Hover isn't in the game yet, so such a plan loads in Flight Mode.
-    /// </summary>
-    public CoreMode Declared;
 
     /// <summary>Every block family it uses, by block id, and how many.</summary>
     public IReadOnlyList<(string BlockId, int Count)> Families;
@@ -111,7 +104,6 @@ public sealed class BlueprintLibrary
 
     LibraryEntry Entry(Structure plan, string file, BlueprintSource source, string text)
     {
-        bool largeHover = plan.Grid.Size == GridSize.Large && Blueprint.Parse(text).Mode == CoreMode.Hover;
         var (min, max) = plan.Bounds();
         float cell = plan.Grid.CellSize;
         StructureStats st = StructureStats.Compute(plan);
@@ -119,11 +111,11 @@ public sealed class BlueprintLibrary
             : HandlingModel.Compute(new StructureVessel(plan, _data.Handling), new FlightConditions(_gravity, true), _data.Handling);
         return new LibraryEntry
         {
-            File = file, Source = source, Plan = plan, Declared = largeHover ? CoreMode.Hover : plan.Mode,
+            File = file, Source = source, Plan = plan,
             Size = new Vector3(max.X - min.X + 1, max.Y - min.Y + 1, max.Z - min.Z + 1) * cell,
             MassT = st.Mass, Blocks = plan.Count, Handling = h,
-            Families = plan.Blocks().GroupBy(b => plan.TypeOf(b.block).Id).Select(g => (g.Key, g.Count()))
-                .OrderByDescending(f => f.Item2).ThenBy(f => f.Key, StringComparer.Ordinal).ToList(),
+            Families = BuildingBridge.BlocksOf(plan).Select(b => (b.BlockId, b.Count))
+                .OrderByDescending(f => f.Item2).ThenBy(f => f.Item1, StringComparer.Ordinal).ToList(),
         };
     }
 
@@ -161,7 +153,7 @@ public sealed class BlueprintLibrary
     /// <summary>A copy of a structure as a design: its blocks, shapes, turns, paint, doors and lights, every block whole.</summary>
     public static Structure Design(Structure s, string name)
     {
-        var copy = new Structure(s.Catalogue, s.Grid) { Name = name, Mode = s.Mode, GravityOn = s.GravityOn, Owner = Building.DefaultOwner };
+        var copy = new Structure(s.Catalogue) { Name = name, Mode = s.Mode, GravityOn = s.GravityOn, Owner = Building.DefaultOwner };
         for (int i = 1; i < s.Palette.Count; i++) copy.Palette.Intern(s.Palette[(ushort)i], s.Palette.NameOf((ushort)i));
         foreach (var (p, b) in s.Blocks())
         {
@@ -186,13 +178,11 @@ public sealed class BlueprintLibrary
 
     // ---- What it takes ---------------------------------------------------------------------------
 
-    /// <summary>The block items a blueprint uses, one per block (what the projector draws from your bag).</summary>
+    /// <summary>The block items a blueprint uses, one per block, a door's units (what the projector draws from your bag).</summary>
     public static Bill Cost(ItemCatalogue items, Structure plan)
     {
         var bill = new Bill();
-        bool small = BuildingBridge.IsSmall(plan);
-        foreach (var (_, b) in plan.Blocks())
-            if (items.BlockItem(plan.TypeOf(b).Id, small) is ItemDef item) bill.Add(item.Id, 1);
+        foreach (var (_, b) in plan.Blocks()) bill.Add(BuildingBridge.ItemsOf(items, plan, b));
         return bill;
     }
 }

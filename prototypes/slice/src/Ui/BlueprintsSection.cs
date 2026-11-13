@@ -118,8 +118,7 @@ public sealed class BlueprintsSection : IMenuSection
             rows.Add((caption, null));
             foreach (LibraryEntry x in some) rows.Add((null, x));
         }
-        Group("LARGE", Library.Starters.Where(x => x.Large));
-        Group("SMALL", Library.Starters.Where(x => !x.Large));
+        Group("STARTERS", Library.Starters);
         Group("YOURS", Library.Yours);
 
         int fits = (int)(list.Size.Y / RowH);
@@ -141,13 +140,6 @@ public sealed class BlueprintsSection : IMenuSection
             if (g.Button($"bp:entry:{index}", row, "", C.Accent2, lit: entry == selected)) Select(entry);
             Color ink = entry == selected ? C.Glass : C.Text;
             float x = row.Position.X + 14;
-            if (entry.Source == BlueprintSource.Yours)
-            {
-                var tag = new Rect2(x, row.Position.Y + 7, 22, row.Size.Y - 14);
-                g.Fill(tag, entry == selected ? C.Glass : C.Accent2);
-                g.TextIn(entry.Large ? "L" : "S", tag, entry == selected ? C.Accent2 : C.Glass, 13, HorizontalAlignment.Center, UiTheme.Mono);
-                x += 30;
-            }
             g.TextIn(entry.Name.ToUpperInvariant(), new Rect2(x, row.Position.Y, row.End.X - x - 120, row.Size.Y), ink, 16);
             g.TextIn(SizeText(entry), new Rect2(row.End.X - 128, row.Position.Y, 118, row.Size.Y), entry == selected ? C.Glass : C.Dim, 13, HorizontalAlignment.Right, UiTheme.Mono);
         }
@@ -158,7 +150,7 @@ public sealed class BlueprintsSection : IMenuSection
         g.Caption("SAVE", new Vector2(r.Position.X, top), r.Size.X);
         Vessel t = _target;
         g.Text("TARGET", new Vector2(r.Position.X, top + 36), C.Dim, 14);
-        g.TextIn(t == null ? "-" : $"{t.Name.ToUpperInvariant()} · {(BuildingBridge.IsSmall(t.Structure) ? "SMALL" : "LARGE")}",
+        g.TextIn(t == null ? "-" : $"{t.Name.ToUpperInvariant()} · {ModeLabel(t.Structure.Mode)}",
             new Rect2(r.Position.X + 80, top + 30, r.Size.X - 80, 26), t == null ? C.Dim : C.Text, 15, HorizontalAlignment.Right, UiTheme.Mono);
         if (g.Button("bp:save", new Rect2(r.Position.X, top + 60, r.Size.X, 48), "SAVE", C.Accent, enabled: t != null, size: 20)) OpenSave();
     }
@@ -170,21 +162,12 @@ public sealed class BlueprintsSection : IMenuSection
     void Preview(Gui g, Rect2 r, LibraryEntry e)
     {
         string mode = ModeLabel(e);
-        float x = r.End.X;
-        foreach (string chip in new[] { mode, e.Large ? "LARGE" : "SMALL" })
-        {
-            float w = DiegeticUi.Theme.Paint.TextWidth(UiTheme.Label, 15, chip) + 26;
-            x -= w;
-            var c = new Rect2(x, r.Position.Y + 6, w, 30);
-            g.Fill(c, chip == mode && Unwired(e) ? C.Warn : C.Accent2);
-            g.TextIn(chip, c, C.Glass, 15, HorizontalAlignment.Center);
-            x -= 8;
-        }
-        if (Unwired(e))
-        {
-            x -= 104;
-            g.TextIn("NOT YET", new Rect2(x, r.Position.Y + 6, 100, 30), C.Warn, 14, HorizontalAlignment.Right);
-        }
+        float w = DiegeticUi.Theme.Paint.TextWidth(UiTheme.Label, 15, mode) + 26;
+        float x = r.End.X - w;
+        var chip = new Rect2(x, r.Position.Y + 6, w, 30);
+        g.Fill(chip, C.Accent2);
+        g.TextIn(mode, chip, C.Glass, 15, HorizontalAlignment.Center);
+        x -= 8;
         g.TextIn(HudLayout.Fit(UiTheme.Display, 28, e.Name.ToUpperInvariant(), x - r.Position.X - 12), new Rect2(r.Position.X, r.Position.Y, x - r.Position.X - 12, 40), C.Accent, 28, HorizontalAlignment.Left, UiTheme.Display);
         var view = new Rect2(r.Position.X, r.Position.Y + 48, r.Size.X, r.Size.Y - 48);
         g.Fill(view, g.Back(new Color(C.Panel, 0.55f)));
@@ -236,16 +219,15 @@ public sealed class BlueprintsSection : IMenuSection
 
     // ---- Numbers, what it takes, PLACE -----------------------------------------------------------
 
-    /// <summary>Large and Small: Base, Hover or Flight (the old Capital and Vessel modes are both Flight).</summary>
-    public static string ModeLabel(LibraryEntry e) => e.Declared switch
+    /// <summary>Base, Hover or Flight (the old Capital and Vessel modes are both Flight).</summary>
+    public static string ModeLabel(LibraryEntry e) => ModeLabel(e.Plan.Mode);
+
+    public static string ModeLabel(CoreMode mode) => mode switch
     {
         CoreMode.Base => "BASE",
         CoreMode.Hover => "HOVER",
         _ => "FLIGHT",
     };
-
-    /// <summary>A mode the game doesn't run yet on its class (Large Hover).</summary>
-    public static bool Unwired(LibraryEntry e) => e.Declared != e.Plan.Mode;
 
     bool Creative => _game.Mode == GameMode.Creative;
 
@@ -255,8 +237,7 @@ public sealed class BlueprintsSection : IMenuSection
     /// <summary>Its devices the tech tree hasn't opened yet (none in Creative).</summary>
     public List<string> Locked(LibraryEntry e)
     {
-        bool small = !e.Large;
-        return e.Families.Where(f => !e.Plan.Catalogue.Type(f.BlockId).IsArmor && !_game.Progress.BlockAllowed(f.BlockId, small))
+        return e.Families.Where(f => !e.Plan.Catalogue.Type(f.BlockId).IsArmor && !_game.Progress.BlockAllowed(f.BlockId))
             .Select(f => f.BlockId).ToList();
     }
 
@@ -274,25 +255,22 @@ public sealed class BlueprintsSection : IMenuSection
         Row("BLOCKS", $"{e.Blocks:N0}", C.Text);
         Row("MASS", e.MassT >= 100 ? $"{e.MassT:N0} t" : $"{e.MassT:F2} t", C.Text);
         HandlingStats h = e.Handling;
-        if (h != null && !Unwired(e))
+        if (h != null)
         {
-            float turn = e.Large ? h.TurnRate : MathF.Min(h.TurnRate, _game.Zone.Data.Rules.Build.SmallVesselMaxTurn);
+            float turn = MathF.Min(h.TurnRate, _game.Zone.Data.Rules.Build.MaxTurn);
             Row("ACCELERATION", $"{h.Accel(Direction.Forward):F1} m/s²", C.Text);
             Row("TURN RATE", $"{turn:F0} °/s", C.Text);
             Row("TOP SPEED", $"{h.TopSpeed:F0} m/s", C.Text);
             Row("LIFT MARGIN", $"{h.LiftMargin:+0;-0} kN", h.CanLiftOff ? C.Good : C.Danger);
         }
-        else if (Unwired(e))
-            foreach (string label in new[] { "ACCELERATION", "TURN RATE", "TOP SPEED", "LIFT MARGIN" }) Row(label, "-", C.Dim);
 
-        // What it takes: each block family, how many, what you carry, and its lock.
+        // What it takes: each block item, how many, what you carry, and its lock.
         y += 10;
         Bill cost = BlueprintLibrary.Cost(_game.Zone.Data.Items, e.Plan);
         g.Caption("COST", new Vector2(r.Position.X, y), r.Size.X);
         g.TextIn(Creative ? "FREE" : $"{cost.Sum(kv => kv.Value):N0} BLOCKS", new Rect2(r.Position.X, y - 4, r.Size.X, 22), Creative ? C.Good : C.Dim, 13, HorizontalAlignment.Right, UiTheme.Mono);
         y += 34;
         List<string> locked = Creative ? new List<string>() : Locked(e);
-        bool small = !e.Large;
         float bottom = r.End.Y - 96;
         int shown = 0, rowsFit = (int)((bottom - y) / 23f);
         foreach (var (blockId, count) in e.Families)
@@ -302,8 +280,8 @@ public sealed class BlueprintsSection : IMenuSection
                 g.Text($"+{e.Families.Count - shown} MORE", new Vector2(r.Position.X + 30, y + 2), C.Dim, 13);
                 break;
             }
-            ItemDef item = _game.Zone.Data.Items.BlockItem(blockId, small);
-            string name = (item?.Name ?? e.Plan.Catalogue.Type(blockId).Name).Replace(small ? " (small)" : " (large)", "", StringComparison.Ordinal);
+            ItemDef item = _game.Zone.Data.Items.BlockItem(blockId);
+            string name = item?.Name ?? e.Plan.Catalogue.Type(blockId).Name;
             bool isLocked = locked.Contains(blockId);
             if (item != null && ItemIcons.Shared?.Get(item) is Texture2D icon) g.Image(icon, new Rect2(r.Position.X, y + 1, 20, 20), Colors.White);
             if (item != null) g.SetTip(new Rect2(r.Position.X, y, r.Size.X, 22), () => Tooltips.For(_game, item, count));
@@ -386,7 +364,7 @@ public sealed class BlueprintsSection : IMenuSection
         if (t != null)
         {
             g.Text("STRUCTURE", inner.Position + new Vector2(0, 56), C.Dim, 14);
-            g.TextIn($"{t.Name.ToUpperInvariant()} · {(BuildingBridge.IsSmall(t.Structure) ? "SMALL" : "LARGE")} · {t.Structure.Count:N0} BLOCKS",
+            g.TextIn($"{t.Name.ToUpperInvariant()} · {ModeLabel(t.Structure.Mode)} · {t.Structure.Count:N0} BLOCKS",
                 new Rect2(inner.Position.X + 130, inner.Position.Y + 50, inner.Size.X - 130, 26), C.Text, 15, HorizontalAlignment.Right, UiTheme.Mono);
         }
         g.Text("NAME", inner.Position + new Vector2(0, 104), C.Dim, 14);

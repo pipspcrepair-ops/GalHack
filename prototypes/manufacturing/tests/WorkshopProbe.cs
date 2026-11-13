@@ -112,7 +112,7 @@ public partial class WorkshopProbe : Node
             $"restock has settled: {w.Fab.Restock.Status}");
 
         // The multi-tool places a steel block item from storage, and gives it back.
-        string steel = w.Items.BlockItem("steel", false).Id;
+        string steel = "iron-plated";
         int plates = w.Storage.Count(steel);
         _main.SelectSlot(0);
         _main.AimAt(new Int3(4, 0, 2), new Int3(5, 0, 2));

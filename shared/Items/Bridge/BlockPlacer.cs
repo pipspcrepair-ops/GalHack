@@ -25,15 +25,14 @@ public readonly record struct TakeDownResult(RemoveResult Removal, Bill Refunded
 
 /// <summary>
 /// Placing and taking down blocks in either game mode, through building's own rules. Blocks are
-/// craftable items (Empyrion's way): a block family item places as any of its shapes.
+/// craftable items (Empyrion's way): a block item places as any of its shapes or sizes.
 ///
 /// Survival: placing a block uses one of its family item from the source the caller names (a
 /// player's stack, or a structure's one shared storage), and taking it down gives that one item
 /// back, nothing lost; whatever the storage can't take goes into a spill crate that never
 /// despawns. A container taken away shrinks storage (<see cref="Sync"/>), and what no longer fits
 /// spills the same way. Creative: placing is free and unlimited, removing gives nothing, and every
-/// block can be placed. In both, a block only goes on the classes of structure its family allows
-/// (base, capital, small, hover), as Empyrion's blocks say where they may be placed.
+/// block can be placed. Any block goes on any structure.
 /// </summary>
 public sealed class BlockPlacer
 {
@@ -48,9 +47,8 @@ public sealed class BlockPlacer
         Crates = crates;
     }
 
-    /// <summary>What placing this block would use here, now: one of its item (nothing in creative).</summary>
-    public Bill CostOf(Structure s, in Block b) =>
-        Rules.Creative || BuildingBridge.ItemOf(Items, s, b) is not ItemDef item ? new Bill() : Bill.Of((item.Id, 1));
+    /// <summary>What placing this block would use here, now: one of its item, a door its units (nothing in creative).</summary>
+    public Bill CostOf(Structure s, in Block b) => Rules.Creative ? new Bill() : BuildingBridge.ItemsOf(Items, s, b);
 
     /// <summary>
     /// Places a block, using one of its item from <paramref name="source"/> in survival. Call
@@ -64,9 +62,8 @@ public sealed class BlockPlacer
         Bill paid = new();
         if (Rules.Survival)
         {
-            ItemDef item = BuildingBridge.ItemOf(Items, s, b);
-            if (item == null) return new(PlaceStatus.NoBill, PlaceError.None, new Bill(), new Bill());
-            paid = Bill.Of((item.Id, 1));
+            paid = BuildingBridge.ItemsOf(Items, s, b);
+            if (paid.IsEmpty) return new(PlaceStatus.NoBill, PlaceError.None, new Bill(), new Bill());
             if (!source.TryTake(paid)) return new(PlaceStatus.NotEnoughMaterials, PlaceError.NotEnoughMaterials, new Bill(), paid);
         }
         Building.Place(s, p, b); // already checked, and building's own inventory is not used
@@ -82,7 +79,7 @@ public sealed class BlockPlacer
     public TakeDownResult Remove(Structure s, Int3 p, SharedStorage into, double x = 0, double y = 0, double z = 0)
     {
         if (!s.TryGet(p, out Block b)) return new(Building.Remove(s, p, null), new Bill(), new Bill(), null);
-        Bill refund = Rules.Survival && BuildingBridge.ItemOf(Items, s, b) is ItemDef item ? Bill.Of((item.Id, 1)) : new Bill();
+        Bill refund = Rules.Survival ? BuildingBridge.ItemsOf(Items, s, b) : new Bill();
         RemoveResult removal = Building.Remove(s, p, null);
         if (removal.Status != RemoveStatus.Removed) return new(removal, new Bill(), new Bill(), null);
 
@@ -92,8 +89,8 @@ public sealed class BlockPlacer
     }
 
     /// <summary>
-    /// Steel to hardened to combat, in place (Empyrion's upgrade): survival uses one of the better
-    /// block's item from the source and gives the old block's item back, as one step.
+    /// The next plating up, in place (Empyrion's upgrade): survival uses one of the better block's
+    /// item from the source and gives the old block's item back, as one step.
     /// </summary>
     public PlaceResult Upgrade(Structure s, Int3 p, SharedStorage source, double x = 0, double y = 0, double z = 0)
     {
@@ -103,7 +100,7 @@ public sealed class BlockPlacer
         Bill paid = new();
         if (Rules.Survival)
         {
-            ItemDef better = Items.BlockItem(t.Upgrade.Id, BuildingBridge.IsSmall(s));
+            ItemDef better = Items.BlockItem(t.Upgrade.Id);
             if (better == null) return new(PlaceStatus.NoBill, PlaceError.None, new Bill(), new Bill());
             paid = Bill.Of((better.Id, 1));
             if (!source.TryTake(paid)) return new(PlaceStatus.NotEnoughMaterials, PlaceError.NotEnoughMaterials, new Bill(), paid);

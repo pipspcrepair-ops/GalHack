@@ -28,9 +28,6 @@ public static class StructureArea
     /// <summary>The structure's class, from its core's mode.</summary>
     public static StructureClass ClassOf(Vessel v) => BuildingBridge.ClassOf(v.Structure);
 
-    /// <summary>The core item that founds a structure and, taken down last, comes back: there is one for each grid.</summary>
-    public static string CoreItem(Vessel v) => BuildingBridge.IsSmall(v.Structure) ? Slice.Items.PlayerInventory.SmallCore : Slice.Items.PlayerInventory.BigCore;
-
     /// <summary>How far past its blocks a structure's area reaches, m.</summary>
     public static float Margin(Vessel v, SliceRules.AreaRules rules)
     {

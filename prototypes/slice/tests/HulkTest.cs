@@ -135,7 +135,7 @@ public partial class HulkTest : Node
 
         GD.Print("-- a coreless vessel of real blocks --");
         var stats = StructureStats.Compute(v.Structure);
-        Check(v.Structure.Core == null && v.IsDerelict && v.Structure.Grid.Id == "large", $"{v.Name}: no core, a large-grid wreck of {v.Structure.Count} blocks");
+        Check(v.Structure.Core == null && v.IsDerelict, $"{v.Name}: no core, a wreck of {v.Structure.Count} blocks");
         Check(stats.Thrusters > 0 && stats.Generators > 0 && stats.Containers > 0 && stats.Fuel > 0, $"its devices count as devices: {stats.Thrusters} thrusters, {stats.Generators} generators, {stats.Containers} containers, {stats.Fuel:F0} fuel");
         int chairs = v.Structure.Blocks().Count(b => v.Structure.TypeOf(b.block).IsCommandChair);
         Check(chairs >= 1, $"{chairs} command chairs came through");
@@ -162,8 +162,8 @@ public partial class HulkTest : Node
         double weight = stats.Mass * StructureStats.G * _game.Zone.Physics.Zone.Strength / 9.81;
         double up = stats.Thrust[(int)GalHack.Structures.Dir.PosY];
         Check(put > 0 && missingFor.Count == 0, $"{put} blocks put back; Capital Mode lacks nothing{(missingFor.Count > 0 ? ": " + string.Join(", ", missingFor) : "")}");
-        Check(up > weight && stats.Powered && stats.PowerOut >= stats.PowerUse * 0.99 && stats.Fuel > 0 && stats.Efficiency > 0.99,
-            $"thrust {up / 1000:F0} MN up against {weight / 1000:F0} MN of weight, {stats.PowerOut:F0} MW for {stats.PowerUse:F0} MW drawn, {stats.Fuel:F0} fuel, CPU {stats.CpuUsed:F0} of {stats.CpuLimit} (tier {stats.Tier})");
+        Check(up > weight && stats.Powered && stats.PowerOut >= stats.PowerUse * 0.99 && stats.Fuel > 0,
+            $"thrust {up / 1000:F0} MN up against {weight / 1000:F0} MN of weight, {stats.PowerOut:F0} MW for {stats.PowerUse:F0} MW drawn, {stats.Fuel:F0} fuel");
 
         for (int i = 0; i < 1800 && _game.Places.PlaceOf(site) is not { Ready: true }; i++) yield return 0;
         GD.Print($"-- lifted off, the ground crumbling away (its place stood up: {_game.Places.PlaceOf(site)?.Ready ?? false}) --");

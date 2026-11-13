@@ -18,7 +18,7 @@ namespace Slice.Tests;
 /// <summary>
 /// Loose props on the ground in wind. Fittings (lights) cut off a base or a hull become free bodies; this tracks every one near
 /// the player, in the weather's normal wind then a gale: how deep any corner of it sinks into the ground (limit 2 cm), how much
-/// it jitters vertically while resting (limit 1 cm), how many move in a normal wind (none, for lamp-sized props), and that in a
+/// it jitters vertically while resting (limit 1 cm), how many move in a normal wind (none whose friction holds it against the gusts), and that in a
 /// gale they may slide and tumble but never sink. Fresh random world every run.
 /// Run: --headless --fixed-fps 60 --path prototypes/slice res://tests/LooseTest.tscn
 /// </summary>
@@ -51,12 +51,12 @@ public partial class LooseTest : Node
         if (!ok) _failures++;
     }
 
-    /// <summary>A short spar of steel with a fitting on its end, set down as a base; shooting the middle cuts the fitting loose.</summary>
-    Vessel Spar(Vector3 at, GridSize grid, string fitting)
+    /// <summary>A short spar of plated blocks with a fitting on its end, set down as a base; shooting the middle cuts the fitting loose.</summary>
+    Vessel Spar(Vector3 at, string fitting)
     {
-        var s = new Structure(Cat, Cat.Grid(grid)) { Name = $"Spar{_n++}" };
-        s.Set(new Int3(0, 0, 0), Building.Make(s, Cat.Type("steel")));
-        s.Set(new Int3(1, 0, 0), Building.Make(s, Cat.Type("steel")));
+        var s = new Structure(Cat) { Name = $"Spar{_n++}" };
+        s.Set(new Int3(0, 0, 0), Building.Make(s, Cat.Type("iron-plated")));
+        s.Set(new Int3(1, 0, 0), Building.Make(s, Cat.Type("iron-plated")));
         s.Set(new Int3(2, 0, 0), Building.Make(s, Cat.Type(fitting)));
         s.DirtyChunks.Clear();
         return Vessel.SpawnBase(Zone, s, at.ToNumerics(), 0f);
@@ -68,7 +68,7 @@ public partial class LooseTest : Node
     sealed class Track
     {
         public Vessel V;
-        public float Deepest, Jitter;
+        public float Deepest, Jitter, HeldBelow;
         public Vector3 Rested;
         public readonly List<float> Heights = new();
     }
@@ -76,6 +76,7 @@ public partial class LooseTest : Node
     /// <summary>How deep the body's collision shapes overlap the world right now, m: the engine's own contact depth, not a height difference.</summary>
     float Sinking(Vessel v)
     {
+        if (v.Structure.Count == 0) return 0f; // broken up and gone: counted by the checks below
         var space = Zone.GetWorld3D().DirectSpaceState;
         float deepest = 0f;
         foreach (CollisionShape3D cs in ((FreeBinding)v.Binding).Rigid.GetChildren().OfType<CollisionShape3D>())
@@ -128,12 +129,11 @@ public partial class LooseTest : Node
         Zone.Physics.Rescued += r => { rescues++; if (rescues <= 12) GD.Print($"  rescue {r.Body.Label}: {r.From.Y:F2} -> {r.To.Y:F2} inside {r.Inside}"); };
         var spars = new List<Vessel>();
         int k = 0;
-        foreach (GridSize grid in new[] { GridSize.Small, GridSize.Large })
-            for (int i = 0; i < 3; i++, k++)
-            {
-                Vector3 g = DrySpot(-8f + k * 3.5f, 8f + (k % 2) * 4f);
-                spars.Add(Spar(g + Vector3.Up * 0.2f, grid, "light"));
-            }
+        for (; k < 6; k++)
+        {
+            Vector3 g = DrySpot(-8f + k * 3.5f, 8f + (k % 2) * 4f);
+            spars.Add(Spar(g + Vector3.Up * 0.2f, "light"));
+        }
         foreach (int x in _drive.Wait(3)) yield return x;
         foreach (Vessel v in spars)
         {
@@ -149,7 +149,7 @@ public partial class LooseTest : Node
         }
         foreach (int x in _drive.Wait(3)) yield return x;
         var tracks = Zone.Vessels.Where(v => v.IsWreck && v.Structure.Count == 1).Select(v => new Track { V = v }).ToList();
-        GD.Print($"{tracks.Count} loose fittings; {string.Join(", ", tracks.Select(t => $"{t.V.Body.Mass:F1} kg / {t.V.Body.DragArea:F2} m2"))}");
+        GD.Print($"{tracks.Count} loose fittings; {string.Join(", ", tracks.Select(t => $"{t.V.Body.Mass:F1} kg / {t.V.Body.WindArea():F2} m2"))}");
         Check(tracks.Count == spars.Count, "every fitting cut off became its own loose piece");
 
         for (int i = 0; i < 60 * 12; i++) // they fall and settle
@@ -178,7 +178,15 @@ public partial class LooseTest : Node
         Zone.Weather.Bridge.Calm = false;
         sim.Snap(WeatherKind.Clouds);
         float windNormal = sim.Current.WindSpeed;
-        foreach (Track t in tracks) { t.Rested = t.V.ToWorld(N.Vector3.Zero); t.Deepest = float.MinValue; t.Heights.Clear(); }
+        float grav = Zone.Physics.GravityAt(tracks[0].V.Body).Length();
+        // A prop is held by friction against a wind up to sqrt(mu m g / (rho/2 CdA)): a 0.4 kg lamp lying flat is, one standing on its edge may not be.
+        float gusts = windNormal * (1f + sim.Current.Gustiness);
+        foreach (Track t in tracks)
+        {
+            t.Rested = t.V.ToWorld(N.Vector3.Zero); t.Deepest = float.MinValue; t.Heights.Clear();
+            t.HeldBelow = MathF.Sqrt(GalHack.Physics.Engine.FreeBinding.Friction * t.V.Body.Mass * grav / (0.5f * 1.225f * MathF.Max(t.V.Body.WindArea(), 1e-4f)));
+        }
+        GD.Print($"  at rest, g {grav:F2} m/s2: wind areas {string.Join(", ", tracks.Select(t => $"{t.V.Body.WindArea():F3}"))} m2, so held below {string.Join(", ", tracks.Select(t => $"{t.HeldBelow:F1}"))} m/s; gusts to {gusts:F1}");
         int asleep = 0, ticks = 0;
         for (int i = 0; i < 60 * NormalSeconds; i++)
         {
@@ -191,11 +199,13 @@ public partial class LooseTest : Node
             }
             ticks += tracks.Count;
         }
-        int moved = 0;
+        int moved = 0, heldMoved = 0;
         foreach (Track t in tracks)
         {
             Vector3 now = t.V.ToWorld(N.Vector3.Zero);
-            if (new Vector2(now.X - t.Rested.X, now.Z - t.Rested.Z).Length() > 0.5f) moved++;
+            bool went = new Vector2(now.X - t.Rested.X, now.Z - t.Rested.Z).Length() > 0.5f;
+            if (went) moved++;
+            if (went && t.HeldBelow > gusts) heldMoved++;
             List<float> late = t.Heights.Skip(t.Heights.Count / 2).ToList();
             t.Jitter = late.Max() - late.Min();
         }
@@ -204,7 +214,8 @@ public partial class LooseTest : Node
         GD.Print($"NORMAL WIND {windNormal:F1} m/s for {NormalSeconds} s: deepest overlap {sink1 * 100f:F2} cm, worst resting jitter {jit1 * 100f:F1} cm, {moved}/{tracks.Count} moved over 0.5 m, asleep {100f * asleep / ticks:F0}% of the time");
         Check(sink1 <= 0.02f, "in a normal wind no loose prop sinks more than 2 cm into the ground");
         Check(jit1 <= 0.01f, "and none jitters more than 1 cm at rest");
-        Check(moved == 0, "and none of them moves");
+        Check(heldMoved == 0, $"and none that its friction holds against the gusts moves ({tracks.Count(t => t.HeldBelow > gusts)} held, {heldMoved} of them moved)");
+        Check(tracks.All(t => t.V.Structure.Count > 0), $"and none is blown into anything and broken ({tracks.Count(t => t.V.Structure.Count == 0)} gone)");
 
         // A gale.
         sim.Snap(WeatherKind.Hurricane);

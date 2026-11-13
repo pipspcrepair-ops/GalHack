@@ -18,18 +18,17 @@ public partial class VehicleGroundTest
     /// <summary>The deepest a vessel's collision shapes may go into anything solid, m.</summary>
     const float VesselTolerance = 0.1f;
 
-    /// <summary>The kinds the player can have: a small flyer, a small hover craft, a large flyer.</summary>
+    /// <summary>The big flyer of <see cref="Kinds"/>: a hull bigger than any roof.</summary>
+    LibraryEntry _bigFlyer;
+
+    /// <summary>The kinds the player can have: the smallest flyer, the smallest hover craft, the biggest flyer.</summary>
     List<LibraryEntry> Kinds()
     {
         var all = _game.Menu.Root.Blueprints.Library.Starters;
-        var kinds = new List<LibraryEntry>();
-        void Add(LibraryEntry e) { if (e != null) kinds.Add(e); }
-        Add(all.Where(e => !e.Large && e.Plan.Mode == CoreMode.Vessel && !BlueprintsSection.Unwired(e)).OrderBy(e => e.Plan.Count).FirstOrDefault());
-        Add(all.Where(e => !e.Large && e.Plan.Mode == CoreMode.Hover && !BlueprintsSection.Unwired(e)).OrderBy(e => e.Plan.Count).FirstOrDefault());
-        Add(all.Where(e => e.Large && e.Plan.Mode == CoreMode.Capital && !BlueprintsSection.Unwired(e)).OrderBy(e => e.Plan.Count).FirstOrDefault());
-        foreach (LibraryEntry e in all.Where(BlueprintsSection.Unwired))
-            GD.Print($"  ({e.Name}: Large Hover isn't wired, so it is not a vehicle the player can have yet)");
-        return kinds;
+        var flyers = all.Where(e => e.Plan.Mode == CoreMode.Capital).OrderBy(e => e.Plan.Count).ToList();
+        _bigFlyer = flyers.Count > 1 ? flyers[^1] : null;
+        return new[] { flyers.FirstOrDefault(), all.Where(e => e.Plan.Mode == CoreMode.Hover).OrderBy(e => e.Plan.Count).FirstOrDefault(), _bigFlyer }
+            .Where(e => e != null).ToList();
     }
 
     /// <summary>How far any of the vessel's collision shapes are into anything solid (the ground's own collision, a place's blocks, another hull), m, by the engine's own contact query.</summary>
@@ -187,7 +186,7 @@ public partial class VehicleGroundTest
     {
         foreach (LibraryEntry e in Kinds())
         {
-            GD.Print($"-- {mode}: {e.Name} ({(e.Large ? "large" : "small")}, {e.Plan.Mode}) --");
+            GD.Print($"-- {mode}: {e.Name} ({e.Plan.Count} blocks, {e.Plan.Mode}) --");
             Vessel v = null;
             foreach (int x in SetDown(e, r => v = r)) yield return x;
             if (!Check(v != null && v.Flight != null, $"{mode}: the {e.Name} set down whole{(v == null ? $" ({_game.Builder.Verdict})" : "")}")) continue;
@@ -200,7 +199,7 @@ public partial class VehicleGroundTest
 
             // The owner's case first: flown into the ground under its own thrust by a seated pilot's keys (a small flyer):
             // nose first at a steep angle, belly first, and skidding in shallow, pressing into the ground a second after.
-            if (!e.Large && v.Structure.Mode == CoreMode.Vessel)
+            if (e != _bigFlyer && v.Structure.Mode == CoreMode.Capital)
                 foreach (var (what, pitch, up, keys) in new[] { ("flown nose first into the ground at 60°", -1.05f, 30f, new[] { Key.W, Key.Ctrl }), ("flown belly first into the ground", 0f, 25f, new[] { Key.Ctrl }), ("flown skidding into the ground at a shallow angle", -0.15f, 6f, new[] { Key.W, Key.Ctrl }) })
                 {
                     var hit = Mend(v, e.Plan);
@@ -249,7 +248,7 @@ public partial class VehicleGroundTest
             foreach (int x in Operable(v, mode, "placed with its keel 1 m in the ground", w)) yield return x;
 
             // Against a place's blocks (the small ones: a large hull is bigger than any roof): dropped onto them, and set down partly in them.
-            if (_placeTop is Vector3 top && !e.Large)
+            if (_placeTop is Vector3 top && e != _bigFlyer)
             {
                 w = Mend(v, e.Plan);
                 Put(v, top.ToNumerics() + N.Vector3.UnitY * (feet + 3f), level, N.Vector3.Zero);
