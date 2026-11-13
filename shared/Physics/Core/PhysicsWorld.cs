@@ -449,7 +449,7 @@ public sealed class PhysicsWorld
         foreach (Body b in _bodies)
         {
             if (b.Frame != null || !near.Contains(b.Position) && !near.Contains(b.CenterOfMassPosition)) continue;
-            if (b.Controller is VesselController v && (v.Frozen || v.Settling)) v.Wake(b);
+            if (b.Controller is VesselController v && (v.Frozen || v.Settling)) v.Wake(b, footingGone: true);
             else b.Asleep = false;
             Stuck.Check(b);
         }

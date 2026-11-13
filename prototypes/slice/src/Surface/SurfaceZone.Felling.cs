@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using GalHack.Physics;
 using GalHack.Physics.Engine;
 using Godot;
@@ -51,13 +52,14 @@ public partial class SurfaceZone : IFloraField
         return true;
     }
 
-    readonly System.Collections.Generic.List<long> _goneIds = new();
-    readonly System.Collections.Generic.List<Vector3> _goneAt = new();
+    readonly List<long> _goneIds = new();
+    readonly List<Vector3> _goneAt = new();
 
     /// <summary>The trees felled since the streamer last heard: their colliders and far chunks go in one call, and whatever rested on them wakes.</summary>
     void TakeBroken()
     {
         if (_goneIds.Count == 0) return;
+        foreach (Vector3 at in _goneAt) Read(ChunkAt(Planet.Canonical(at))); // known through the rebuild the felling starts
         Streamer.Fell(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_goneIds));
         foreach (Vector3 at in _goneAt) Physics.NotifyChanged(Region.Around(at.ToNumerics(), TreeReach));
         _goneIds.Clear();
@@ -67,7 +69,7 @@ public partial class SurfaceZone : IFloraField
     /// <summary>Broken trees still to fall, one a frame (<see cref="Topple"/>): a dozen trunks and leaf bursts made at once overran the frame.</summary>
     public int Toppling => _toppling.Count;
 
-    readonly System.Collections.Generic.Queue<(ulong Frame, System.Action Fall)> _toppling = new();
+    readonly Queue<(ulong Frame, System.Action Fall)> _toppling = new();
 
     /// <summary>The next broken tree's trunk and crown fall, once a frame, from the frame after the one that broke it (which has the breaking to do).</summary>
     void Topple()
@@ -120,8 +122,18 @@ public partial class SurfaceZone : IFloraField
         trunkRadius = 0f;
         if (Planet == null || part is not (Rid body, int shape)) return false;
         bool standing = Streamer.SolidHit(body, shape, out FloraSolid solid);
-        // A crown with no trunk under it (a shrub's): it gives way to any structure.
-        if (solid.Extents == Vector3.Zero) return CrownOnly(body, shape, out tree);
+        Vector3 at = solid.Extents == Vector3.Zero ? PhysicsServer3D.BodyGetShapeTransform(body, shape).Origin : solid.Center;
+        // The first flora met in a chunk (by a foot's ray, mostly, long before the hull is near): all its trees are read
+        // then, not in the tick something breaks one.
+        Read(ChunkAt(at));
+        if (solid.Extents == Vector3.Zero)
+        {
+            // A crown with nothing else of its tree in its column: its tree by where it stands, and that tree's trunk if it
+            // has one (a crown spilling over from the next column holds as its tree does; a shrub's gives way to any structure).
+            if (!CrownAt(at, out tree)) return false;
+            trunkRadius = Planet.Felled.Contains(tree) ? 0f : _trunks.GetValueOrDefault(tree);
+            return true;
+        }
         tree = solid.Id;
         if (!standing) return true; // felled, its collider not yet gone: nothing left to hold
         if (solid.Fellable)
@@ -130,37 +142,55 @@ public partial class SurfaceZone : IFloraField
             return true;
         }
         if (FarBuilder.Solids?.Of(solid.Kind) is not { Wood: > 0 }) return false; // rock, a crystal's shard: never gives way
-        // A limb: the tree is its trunk, looked up once per tree (feet and hulls meet limbs every tick). Not found while its
-        // far chunk is being rebuilt (another tree felled there): it holds this tick, and is looked up again next.
-        if (_trunks.TryGetValue(tree, out trunkRadius)) return true;
-        foreach (var (s, _) in Streamer.SolidsNear(Planet.NearestCopy(Planet.Canonical(solid.Center), Focus()), TreeReach))
-            if (s.Id == tree && s.Fellable)
-            {
-                _trunks[tree] = trunkRadius = s.Extents.X;
-                return true;
-            }
-        return false;
+        return TrunkOf(tree, solid.Center, out trunkRadius); // a limb: the tree is its trunk
     }
 
-    readonly System.Collections.Generic.Dictionary<long, float> _trunks = new();
-    readonly System.Collections.Generic.Dictionary<(ulong, int), long> _crowns = new();
+    /// <summary>
+    /// The trees' trunks (id: radius) and crown shapes (where each stands: its tree) of every far chunk a lookup has needed,
+    /// read from the chunk while it is in. Feet and hulls meet limbs and crowns every tick, and a chunk being rebuilt (a tree
+    /// felled in it) lists nothing for a moment: what a tree is never changes, so it is read once and kept.
+    /// </summary>
+    readonly Dictionary<long, float> _trunks = new();
+    readonly Dictionary<(int, int, int), long> _crowns = new();
+    readonly HashSet<(int, int)> _read = new();
+
+    /// <summary>A crown shape's place (planet coordinates, as its column holds it), to the centimetre.</summary>
+    static (int, int, int) Key(Vector3 p) => (Mathf.RoundToInt(p.X * 100f), Mathf.RoundToInt(p.Y * 100f), Mathf.RoundToInt(p.Z * 100f));
+
+    // A tree's trunk, and the tree a crown shape is, from what is read; not there, the far chunk round the place (planet
+    // coordinates) is read again (it may have been read while still coming in). False if still unknown: it holds this tick.
+    bool TrunkOf(long tree, Vector3 at, out float radius) => _trunks.TryGetValue(tree, out radius) || Reread(at) && _trunks.TryGetValue(tree, out radius);
+
+    bool CrownAt(Vector3 at, out long tree) => _crowns.TryGetValue(Key(at), out tree) || Reread(at) && _crowns.TryGetValue(Key(at), out tree);
+
+    static (int, int) ChunkAt(Vector3 at) => (Mathf.FloorToInt(at.X / FarBuilder.Size), Mathf.FloorToInt(at.Z / FarBuilder.Size));
+
+    bool Reread(Vector3 at)
+    {
+        _read.Remove(ChunkAt(at));
+        return Read(ChunkAt(at));
+    }
 
     /// <summary>
-    /// Which plant a trunkless crown's shape is: the one whose crown stands where the shape does (planet coordinates, as the
-    /// column holds them). Not found while its far chunk is being rebuilt: it holds this tick, and is looked up again next.
+    /// Reads a far chunk's trees, with a crown's reach round it (a limb's trunk, a crown's tree, may stand in the next one).
+    /// False if it was read already. Done before a chunk is rebuilt for a felling, so its trees are known through the rebuild.
     /// </summary>
-    bool CrownOnly(Rid body, int shape, out long tree)
+    bool Read((int x, int z) chunk)
     {
-        if (_crowns.TryGetValue((body.Id, shape), out tree)) return true;
-        Vector3 at = PhysicsServer3D.BodyGetShapeTransform(body, shape).Origin;
-        foreach (var (s, _) in Streamer.SolidsNear(Planet.NearestCopy(at, Focus()), 2f, canopies: true))
-            if (s.IsCanopy && s.ShapeTransform.Origin.IsEqualApprox(at))
-            {
-                if (_crowns.Count > 4096) _crowns.Clear(); // columns are rebuilt with new bodies: never grows without end
-                _crowns[(body.Id, shape)] = tree = s.Id;
-                return true;
-            }
-        return false;
+        if (!_read.Add(chunk)) return false;
+        if (_read.Count > 256)
+        {
+            // A long journey: what is far behind is read again if ever needed.
+            _read.Clear();
+            _trunks.Clear();
+            _crowns.Clear();
+            _read.Add(chunk);
+        }
+        var middle = new Vector3((chunk.x + 0.5f) * FarBuilder.Size, 0f, (chunk.z + 0.5f) * FarBuilder.Size);
+        foreach (var (s, _) in Streamer.SolidsNear(Planet.NearestCopy(middle, Focus()), FarBuilder.Size * 0.5f + TreeReach, canopies: true))
+            if (s.IsCanopy) _crowns[Key(s.ShapeTransform.Origin)] = s.Id;
+            else if (s.Fellable) _trunks[s.Id] = s.Extents.X;
+        return true;
     }
 
     public void Fell(long tree, N.Vector3 point, N.Vector3 away)
