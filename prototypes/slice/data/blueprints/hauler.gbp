@@ -10,7 +10,7 @@ schema galhack.blueprint
 version 1
 name "Hauler"
 grid 1m
-mode capital
+mode flight
 gravity on
 
 paint cream base=ece3c8 grime=1
