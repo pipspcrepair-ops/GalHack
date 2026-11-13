@@ -362,6 +362,8 @@ public static class PoiFactory
             Settle.Apply(inst);
             PieceFacing.Apply(inst.Blocks, layout.Occupied, layout.Extras.InSpace);
         }
+        // Then its plain cubes take the shapes its builders used (rule P6), round what is set down, not under it.
+        using (Prof.Time("shaping")) Shaping.Apply(inst);
         // How its faces are finished and how far the years took them, the walls' and roofs' fixed while their colours are their own.
         PlaceLook.Stamp(inst);
         // Made things in the world's own paint, as worn as the world: places, houses and city lots alike.

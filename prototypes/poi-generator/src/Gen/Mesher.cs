@@ -577,17 +577,32 @@ public static class Mesher
                 for (int i = 0; i < shape.Count && i < boxes; i++) AddBox(chunk, p, shape[i], b);
             }
             // A stair is steps up close; from further off, a slope.
-            if (b.Type == BlockType.Ramp || _o.Merged && b.Type == BlockType.Stair) Ramp(chunk, p, b, draw: _o.Drawn);
+            if (b.Type == BlockType.Ramp || _o.Merged && b.Type == BlockType.Stair || b.Type == BlockType.Chamfer) Ramp(chunk, p, b, draw: _o.Drawn);
             else if (b.Type == BlockType.Stair) Ramp(chunk, p, b, draw: false); // drawn as steps, walked as a slope
             else if (b.Type == BlockType.Spike && !_o.Merged) Spike(chunk, p, b);
-            else if (BlockInfo.IsCornerSlope(b.Type)) CornerSlope(chunk, p, b, _o.Drawn);
+            else if (BlockInfo.IsCornerSlope(b.Type) || BlockInfo.IsHung(b.Type)) CornerSlope(chunk, p, b, _o.Drawn);
 
-            if (_o.Collision && BlockInfo.Collides(b.Type) && !BlockInfo.IsSlope(b.Type) && !BlockInfo.IsCornerSlope(b.Type))
+            if (_o.Collision && BlockInfo.Collides(b.Type) && !BlockInfo.IsSlope(b.Type) && !BlockInfo.IsCornerSlope(b.Type) && !BlockInfo.IsHung(b.Type))
             {
                 // Props collide as their real shape: a table as its top and legs, a locker as its body against the wall.
+                bool shaped = BlockInfo.IsShaped(b.Type);
                 foreach (var (lo, hi) in Shapes.CollisionBoxes(b, p))
-                    CollideBox(chunk, V3.Of(p) + lo, V3.Of(p) + hi);
+                    CollideBox(chunk, V3.Of(p) + lo, V3.Of(p) + hi, shaped ? (f => Shut(p, b, lo, hi, f, CollidesFull)) : null);
             }
+        }
+
+        /// <summary>
+        /// Whether a shaped block's box face is shut: it lies on its cell's side and what is next to it covers it
+        /// (a full block, or the same shape running on, as halves along a panel or a thin wall up its storey).
+        /// </summary>
+        bool Shut(Int3 p, Block b, V3 lo, V3 hi, int f, Func<Int3, bool> full)
+        {
+            const float e = 0.001f;
+            bool side = f switch { 0 => lo.Z < e, 1 => hi.X > 1 - e, 2 => hi.Z > 1 - e, 3 => lo.X < e, 4 => hi.Y > 1 - e, _ => lo.Y < e };
+            if (!side) return false;
+            Dir d = Dirs.All[f];
+            Int3 n = p + d.Vec();
+            return full(n) || Shapes.RunsOn(b, _g.Get(n), d);
         }
 
         /// <summary>How many of a block's boxes are drawn from further off (the structural ones first in each shape); none for the small things.</summary>
@@ -596,6 +611,8 @@ public static class Mesher
             BlockType.Pillar or BlockType.Pane or BlockType.Door or BlockType.SealedDoor or BlockType.Tank => 1,
             BlockType.Rib or BlockType.Machine or BlockType.Pipe or BlockType.Barricade or BlockType.Statue or BlockType.Pump => 2,
             BlockType.Rail or BlockType.Lattice => 4,
+            BlockType.Half or BlockType.Quarter or BlockType.Partition or BlockType.Beam => 1,
+            BlockType.Column => 2,
             _ => 0,
         };
 
@@ -1007,10 +1024,11 @@ public static class Mesher
             l.Add(c.X); l.Add(c.Y); l.Add(c.Z);
         }
 
-        void CollideBox(ChunkMesh chunk, V3 lo, V3 hi)
+        void CollideBox(ChunkMesh chunk, V3 lo, V3 hi, Func<int, bool>? shut = null)
         {
             for (int f = 0; f < 6; f++)
             {
+                if (shut != null && shut(f)) continue;
                 BoxFace(f, lo, hi, out V3 a, out V3 b, out V3 c, out V3 d);
                 Tri(chunk, a, b, c);
                 Tri(chunk, a, c, d);
@@ -1033,9 +1051,11 @@ public static class Mesher
             V3 mid = (box.Lo + box.Hi) * 0.5f;
             // A box is finished as what it is made of: a crate's boards, a machine's plate, a slab's concrete; a pane is framed glass.
             float side = float.NaN, top = float.NaN, under = float.NaN;
+            bool shaped = BlockInfo.IsShaped(b.Type) && !tilted;
             for (int f = 0; f < 6; f++)
             {
                 if (box.SkipBottom && f == 5) continue;
+                if (shaped && Shut(p, b, box.Lo, box.Hi, f, Hides)) continue;
                 BoxFace(f, o + box.Lo, o + box.Hi, out V3 a, out V3 bb, out V3 c, out V3 d);
                 V3 n = Normals[f];
                 float k = box.Surface == Surface.Glow ? 1f : FaceShade[f];
@@ -1080,9 +1100,10 @@ public static class Mesher
 
         void Ramp(ChunkMesh chunk, Int3 p, Block b, bool draw)
         {
-            // Built rising toward north, then turned to face the block's direction.
+            // Built rising toward north, then turned to face the block's direction; a chamfer is the same hung upside down.
             V3 o = V3.Of(p);
-            V3 R(V3 v) => o + Shapes.Turn(v, b.Facing);
+            bool hung = b.Type == BlockType.Chamfer;
+            V3 R(V3 v) => o + Shapes.Turn(hung ? new V3(v.X, 1f - v.Y, v.Z) : v, b.Facing);
             V3 lowL = new(0, 0, 1), lowR = new(1, 0, 1), highL = new(0, 1, 0), highR = new(1, 1, 0), backL = new(0, 0, 0), backR = new(1, 0, 0);
             Surface rs = Shapes.SurfaceOf(b.Material);
             var buf = chunk.Surfaces[(int)rs];
@@ -1093,6 +1114,7 @@ public static class Mesher
             if (slopeCode != 0f) j = 1f;
             void Quad(V3 a, V3 bb, V3 c, V3 d, float shade, float code)
             {
+                if (hung) (bb, d) = (d, bb); // mirrored, so wound the other way round
                 V3 n = V3.Cross(bb - a, c - a).Normalized();
                 int i0 = buf.VertexCount;
                 foreach (V3 v in new[] { a, bb, c, d }) buf.Vertex(v, n, b.Color.R / 255f * shade * j, b.Color.G / 255f * shade * j, b.Color.B / 255f * shade * j, 1f, code, _seed);
@@ -1101,6 +1123,7 @@ public static class Mesher
             }
             void TriFace(V3 a, V3 bb, V3 c, float shade, float code)
             {
+                if (hung) (bb, c) = (c, bb);
                 V3 n = V3.Cross(bb - a, c - a).Normalized();
                 int i0 = buf.VertexCount;
                 foreach (V3 v in new[] { a, bb, c }) buf.Vertex(v, n, b.Color.R / 255f * shade * j, b.Color.G / 255f * shade * j, b.Color.B / 255f * shade * j, 1f, code, _seed);
@@ -1112,14 +1135,15 @@ public static class Mesher
                 Quad(sBR, sBL, sHL, sHR, 0.82f, slopeCode);                  // the tall back
                 TriFace(sBL, sLL, sHL, 0.78f, slopeCode);                    // sides
                 TriFace(sLR, sBR, sHR, 0.78f, slopeCode);
-                // The underside, for a ramp nothing stands under: an eave or a roof seen from inside.
-                if (!Hides(p + Int3.Down)) Quad(sBL, sBR, sLR, sLL, 0.62f, FaceCode(p, b, new V3(0, -1, 0), false, rs));
+                // The underside, for a ramp nothing stands under: an eave or a roof seen from inside (a chamfer's top, under what it hangs from).
+                if (!Hides(p + (hung ? Int3.Up : Int3.Down))) Quad(sBL, sBR, sLR, sLL, 0.62f, FaceCode(p, b, new V3(0, hung ? 1 : -1, 0), false, rs));
             }
             if (_o.Collision)
             {
-                Tri(chunk, sLL, sLR, sHR); Tri(chunk, sLL, sHR, sHL);
-                Tri(chunk, sBR, sBL, sHL); Tri(chunk, sBR, sHL, sHR);
-                Tri(chunk, sBL, sLL, sHL); Tri(chunk, sLR, sBR, sHR);
+                void T(V3 a, V3 bb, V3 c) { if (hung) Tri(chunk, a, c, bb); else Tri(chunk, a, bb, c); }
+                T(sLL, sLR, sHR); T(sLL, sHR, sHL);
+                T(sBR, sBL, sHL); T(sBR, sHL, sHR);
+                T(sBL, sLL, sHL); T(sLR, sBR, sHR);
             }
         }
 
@@ -1132,13 +1156,16 @@ public static class Mesher
         void CornerSlope(ChunkMesh chunk, Int3 p, Block b, bool draw)
         {
             V3 o = V3.Of(p);
-            V3 R(float x, float y, float z) => o + Shapes.Turn(new V3(x, y, z), b.Facing);
+            // A chamfer's corners are the same hung upside down.
+            bool hung = BlockInfo.IsHung(b.Type), outer = b.Type is BlockType.Corner or BlockType.ChamferCorner;
+            V3 R(float x, float y, float z) => o + Shapes.Turn(new V3(x, hung ? 1f - y : y, z), b.Facing);
             Surface cs = Shapes.SurfaceOf(b.Material);
             var buf = chunk.Surfaces[(int)cs];
             float j = 1f + ((Hash.Cell(p, 5) % 100) / 1000f - 0.05f) * _o.Mottle;
-            V3 centre = b.Type == BlockType.Corner ? R(0.25f, 0.25f, 0.25f) : R(0.45f, 0.45f, 0.45f);
+            V3 centre = outer ? R(0.25f, 0.25f, 0.25f) : R(0.45f, 0.45f, 0.45f);
             void Face(V3[] pts, Int3? side, float shade)
             {
+                if (hung && side is { } sv && sv.X == 0 && sv.Z == 0) side = sv * -1;
                 if (side is { } s && Hides(p + s)) return;
                 V3 n = V3.Cross(pts[1] - pts[0], pts[2] - pts[0]).Normalized();
                 // Wound to face away from the piece's middle, whatever the turn did.
@@ -1157,7 +1184,7 @@ public static class Mesher
                     for (int k = 1; k + 1 < pts.Length; k++) Tri(chunk, pts[0], pts[k], pts[k + 1]);
             }
             Int3 Side(float x, float z) => Shapes.Turn(new V3(x, 0.5f, z), b.Facing) is var v ? new Int3(v.X < 0.01f ? -1 : v.X > 0.99f ? 1 : 0, 0, v.Z < 0.01f ? -1 : v.Z > 0.99f ? 1 : 0) : default;
-            if (b.Type == BlockType.Corner)
+            if (outer)
             {
                 V3 a = R(0, 0, 0), bb = R(1, 0, 0), c = R(0, 0, 1), apex = R(0, 1, 0);
                 Face(new[] { a, bb, c }, Int3.Down, 0.62f);
@@ -1383,11 +1410,64 @@ public static class Shapes
                 Add(0.22f, 0.12f, 0.3f, 0.78f, 1.25f, 0.7f, f);
                 Add(0.26f, 1.25f, 0.34f, 0.74f, 1.7f, 0.66f, f);
                 break;
+            case BlockType.Half or BlockType.Quarter or BlockType.Partition or BlockType.Beam or BlockType.Column:
+                foreach (ShapeBox s in Structural(b, default, Surface.Matte)) l.Add((s.Lo, s.Hi));
+                break;
             default:
                 l.Add(CollisionBox(b));
                 break;
         }
         return l;
+    }
+
+    /// <summary>
+    /// The places' own shaped structure (<see cref="BlockInfo.IsShaped"/>) as boxes, drawn and collided alike: a half
+    /// against its face, a quarter bar along its bottom edge, a thin wall across its facing (its normal, as a pane's),
+    /// a beam under the top along its axis, a round column of eight flats. A chamfer is drawn as a hung slope instead.
+    /// </summary>
+    public static IEnumerable<ShapeBox> Structural(Block b, Rgb c, Surface s)
+    {
+        Dir f = b.Facing;
+        switch (b.Type)
+        {
+            case BlockType.Half:
+                yield return f switch
+                {
+                    Dir.Down => new ShapeBox(new V3(0, 0, 0), new V3(1, 0.5f, 1), c, s),
+                    Dir.Up => new ShapeBox(new V3(0, 0.5f, 0), new V3(1, 1, 1), c, s),
+                    _ => Box(0, 0, 0, 1, 1, 0.5f, c, s, f),
+                };
+                break;
+            case BlockType.Quarter:
+                yield return Box(0, 0, 0, 1, 0.5f, 0.5f, c, s, f.IsHorizontal() ? f : Dir.North);
+                break;
+            case BlockType.Partition:
+                yield return Box(0, 0, 0.4f, 1, 1, 0.6f, c, s, f.IsHorizontal() ? f : Dir.North);
+                break;
+            case BlockType.Beam:
+                yield return Box(0.35f, 0.7f, 0, 0.65f, 1, 1, c, s, f.IsHorizontal() ? f : Dir.North);
+                break;
+            case BlockType.Column:
+                yield return new ShapeBox(new V3(0.27f, 0, 0.1f), new V3(0.73f, 1, 0.9f), c, s);
+                yield return new ShapeBox(new V3(0.1f, 0, 0.27f), new V3(0.9f, 1, 0.73f), c, s);
+                break;
+        }
+    }
+
+    /// <summary>Whether a shaped block runs on into its neighbour that way, their faces meeting whole (halves side by side, a thin wall up its storey, a beam along its line).</summary>
+    public static bool RunsOn(Block a, Block n, Dir d)
+    {
+        if (n.Type != a.Type || n.Facing != a.Facing || n.Variant != a.Variant) return false;
+        bool along(Dir axis) => d == axis || d == axis.Opposite();
+        return a.Type switch
+        {
+            BlockType.Half => !along(a.Facing),
+            BlockType.Quarter => d.IsHorizontal() && !along(a.Facing),
+            BlockType.Partition => !along(a.Facing),
+            BlockType.Beam => along(a.Facing),
+            BlockType.Column => !d.IsHorizontal(),
+            _ => false,
+        };
     }
 
     static (V3 lo, V3 hi) PipeBounds(Block b, float lo, float hi) => b.Facing switch
@@ -1485,6 +1565,9 @@ public static class Shapes
 
         switch (b.Type)
         {
+            case BlockType.Half or BlockType.Quarter or BlockType.Partition or BlockType.Beam or BlockType.Column:
+                l.AddRange(Structural(b, c, s));
+                break;
             case BlockType.Pillar:
                 l.Add(Box(0.3f, 0, 0.3f, 0.7f, 1, 0.7f, c, s));
                 break;
@@ -1783,6 +1866,7 @@ public static class Shapes
             case BlockType.Spike:
             case BlockType.Corner:
             case BlockType.InvCorner:
+            case BlockType.Chamfer or BlockType.ChamferCorner or BlockType.ChamferInvCorner:
                 break;
             default:
                 l.Add(Box(0.1f, 0, 0.1f, 0.9f, 0.9f, 0.9f, c, s));

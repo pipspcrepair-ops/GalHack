@@ -89,6 +89,18 @@ clear cryo-bay 4 8
 clear workshop 4 6
 clear mess 3 5
 
+# Shape shares (docs/place-patterns.md section 1.5, rule P6), % of a place's seen blocks (structure with a face to
+# the air; buried fill is left out as the games' tallies leave out rock), by the builders' manner and the kind of place:
+#   shapes <low|high> <kind> <class> <min> <max> ...   classes: cube, slope, corner, part (half and quarter cubes and
+#   thin walls), pole (posts and beams), round, window. PoiTest's Patterns check wants each within 5 points.
+# Low and mid tech: houses, farms and settlements pitch their roofs; everything else is flat-roofed; mines are timbered.
+shapes low pitched cube 35 55 slope 15 20 part 20 30 pole 3 8 window 2 6
+shapes low flat cube 35 55 slope 4 8 part 20 30 pole 3 8 window 2 6
+shapes low mine cube 30 55 slope 4 8 part 20 30 pole 8 17 window 0 2
+# High tech chamfers everything; industry builds round (tanks, pipes).
+shapes high base cube 50 67 slope 15 23 corner 4 7 round 2 4
+shapes high industry cube 50 67 slope 15 23 corner 4 7 round 4 7
+
 # Storeys: floor to floor 4 m (3.9 to 4.2 for offices, 4 m in Empyrion's bases and capital vessels), 3 to 4 m clear
 storey 4 3 4
 

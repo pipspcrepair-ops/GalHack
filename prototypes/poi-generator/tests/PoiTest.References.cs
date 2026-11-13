@@ -15,6 +15,8 @@ public partial class PoiTest
         public readonly Dictionary<string, (float Min, float Max)> Corridors = new();
         public readonly Dictionary<string, (float W, float D)> Footprints = new();
         public readonly Dictionary<string, (float Min, float Max)> Clear = new();
+        /// <summary>Shape shares by manner and kind ("low pitched"), each class's band in %.</summary>
+        public readonly Dictionary<string, Dictionary<string, (float Min, float Max)>> Shapes = new();
         public (float Min, float Max) Corridor = (2, 4);
         public (float Pitch, float Min, float Max) Storey = (4, 3, 4);
 
@@ -34,6 +36,10 @@ public partial class PoiTest
                     case "storey": r.Storey = (F(1), F(2), F(3)); break;
                     case "footprint": r.Footprints[p[1]] = (F(2), F(3)); break;
                     case "clear": r.Clear[p[1]] = (F(2), F(3)); break;
+                    case "shapes":
+                        var bands = r.Shapes[$"{p[1]} {p[2]}"] = new();
+                        for (int i = 3; i + 2 < p.Length; i += 3) bands[p[i]] = (F(i + 1), F(i + 2));
+                        break;
                     default:
                         if (p[0].StartsWith("corridor.")) r.Corridors[p[0]["corridor.".Length..]] = (F(1), F(2));
                         break;
@@ -47,7 +53,7 @@ public partial class PoiTest
     sealed class TechTally
     {
         public readonly List<int> Areas = new(), Spans = new();
-        public long RoomFloor, CorridorFloor, Cubes, Slopes, Corners, Thin, Shaped, Dressing, Containers, Lights;
+        public long RoomFloor, CorridorFloor, Dressing, Containers, Lights;
         public int Places;
     }
 
@@ -55,13 +61,14 @@ public partial class PoiTest
     /// The place-patterns checklist (docs/place-patterns.md, section 6) by tech level, on fresh spawned places: room areas
     /// and narrowest spans (G3, G4), corridors' share of the floor (G6), shape shares (G9), dressing, containers and lights
     /// per m2 of room floor (G10 to G12). Printed for every level; held to the narrowest span (3 m and over for 9 rooms
-    /// in 10) and a corridor share of 5 to 45%. The shape shares wait for the player's new block set (Stage C): with
-    /// only full cubes, slopes and corners to build from, places are nine parts cube.
+    /// in 10), a corridor share of 5 to 45%, and the shape shares of each manner and kind of place within 5 points of
+    /// the references' bands (rule P6), counted over the blocks a place shows (<see cref="ShapeKind"/>).
     /// </summary>
     void PatternChecklist()
     {
         var rand = new Random();
         var tallies = new Dictionary<TechLevel, TechTally>();
+        var shapes = new Dictionary<string, (int Places, long Seen, long[] By)>();
         foreach (FamilyDef f in _lib.Families.Where(f => !f.Tags.Contains("city") && !f.Space))
             for (int i = 0; i < (f.Tags.Contains("grand") ? 1 : 2); i++)
             {
@@ -98,33 +105,45 @@ public partial class PoiTest
                     }
                 }
                 t.Lights += inst.Lights.Count;
-                foreach (var (_, b) in inst.Blocks.Blocks())
-                {
-                    if (!BlockInfo.IsStructure(b.Role)) continue;
-                    t.Shaped++;
-                    if (BlockInfo.IsFullCube(b.Type)) t.Cubes++;
-                    else if (BlockInfo.IsSlope(b.Type)) t.Slopes++;
-                    else if (BlockInfo.IsCornerSlope(b.Type)) t.Corners++;
-                    else if (b.Type is BlockType.Pane or BlockType.Rail or BlockType.Pillar or BlockType.Rib or BlockType.Pipe or BlockType.Lattice) t.Thin++;
-                }
-            }
-        bool spansOk = true, shareOk = true;
+                string kind = ShapeKind(inst);
+                var (places, seen, by) = shapes.TryGetValue(kind, out var s) ? s : (0, 0L, new long[Enum.GetValues<ShapeClass>().Length]);
+                seen += CountShapes(inst, by);
+                shapes[kind] = (places + 1, seen, by);
+            }        bool spansOk = true, shareOk = true;
         foreach (var (tech, t) in tallies.OrderBy(k => k.Key))
         {
             t.Areas.Sort();
             float roomFloor = Math.Max(1, t.RoomFloor);
             float corridorShare = t.CorridorFloor / (float)Math.Max(1, t.CorridorFloor + t.RoomFloor);
-            float Share(long n) => n / (float)Math.Max(1, t.Shaped);
             int wide = t.Spans.Count(w => w >= 3);
             GD.Print($"    {tech} tech, {t.Places} places, {t.Areas.Count} rooms: area p10 {t.Areas[t.Areas.Count / 10]} median {t.Areas[t.Areas.Count / 2]} p90 {t.Areas[t.Areas.Count * 9 / 10]} m2 (G3), " +
                 $"narrowest span 3 m or more {wide * 100 / Math.Max(1, t.Spans.Count)}% (G4), corridors {corridorShare:P0} of the floor (G6), " +
-                $"cube {Share(t.Cubes):P0} slope {Share(t.Slopes):P0} corner {Share(t.Corners):P0} thin {Share(t.Thin):P0} (G9), " +
                 $"dressing {t.Dressing / roomFloor:0.00} and containers {t.Containers * 100f / roomFloor:0.0} per 100 m2, a light per {roomFloor / Math.Max(1, t.Lights):0} m2 (G10-G12)");
             spansOk &= wide * 10 >= t.Spans.Count * 9;
             shareOk &= corridorShare is >= 0.05f and <= 0.45f;
         }
         Check(spansOk, "rooms are at least 3 m across at their narrowest, 9 in 10 at every tech level (G4)");
         Check(shareOk, "corridors take 5 to 45% of the floor at every tech level (G6)");
+
+        foreach (var kv in Shaping.Why.OrderByDescending(k => k.Value).Take(45)) GD.Print($"      why {kv.Key} {kv.Value}");
+        // Shape shares (G9) by manner and kind, judged where enough places of a kind were drawn.
+        var refs = References.Load();
+        var off = new List<string>();
+        foreach (var (kind, (places, seen, by)) in shapes.OrderBy(k => k.Key))
+        {
+            float Pc(params ShapeClass[] cs) => cs.Sum(c => by[(int)c]) * 100f / Math.Max(1, seen);
+            var share = new Dictionary<string, float>
+            {
+                ["cube"] = Pc(ShapeClass.Cube), ["slope"] = Pc(ShapeClass.Slope), ["corner"] = Pc(ShapeClass.Corner),
+                ["part"] = Pc(ShapeClass.Part, ShapeClass.Plate), ["pole"] = Pc(ShapeClass.Pole), ["round"] = Pc(ShapeClass.Round), ["window"] = Pc(ShapeClass.Window),
+            };
+            var bands = refs.Shapes.GetValueOrDefault(kind) ?? new();
+            var wrong = bands.Where(b => share[b.Key] < b.Value.Min - 5 || share[b.Key] > b.Value.Max + 5).Select(b => $"{b.Key} {share[b.Key]:0} against {b.Value.Min:0}-{b.Value.Max:0}").ToList();
+            bool judged = places >= 3;
+            if (judged && wrong.Count > 0) off.Add($"{kind}: {string.Join(", ", wrong)}");
+            GD.Print($"    {(!judged ? "  (few) " : wrong.Count == 0 ? "  " : "! ")}shapes {kind,-14} {places,3} places, {seen} blocks: {string.Join(" ", share.Select(k => $"{k.Key} {k.Value:0}%"))}, stair {Pc(ShapeClass.Stair):0}% rail {Pc(ShapeClass.Rail):0}% other {Pc(ShapeClass.Other):0}%");
+        }
+        Check(off.Count == 0, $"every manner and kind of place builds with the shapes the references give, within 5 points (G9){(off.Count > 0 ? ": " + string.Join("; ", off) : "")}");
 
     }
 
