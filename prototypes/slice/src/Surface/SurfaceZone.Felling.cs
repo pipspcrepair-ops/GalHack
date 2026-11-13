@@ -1,10 +1,8 @@
 using GalHack.Physics;
 using GalHack.Physics.Engine;
 using Godot;
-using Planets.Gen;
 using PlanetSurface.Terrain;
 using Slice.Player;
-using Layers = GalHack.Physics.Layers;
 using N = System.Numerics;
 
 namespace Slice.Surface;
@@ -41,18 +39,24 @@ public partial class SurfaceZone : IFloraField
     /// <summary>
     /// <paramref name="spread"/>: its colliders go within the next ticks, a few a tick, not all at once: a heavy ship can break
     /// a dozen trees in one tick, and each one's colliders and far chunk cost the streamer most of a millisecond. Until then
-    /// it is felled to the rules all the same (<see cref="TreeAt"/>), so nothing is held up by it.
+    /// it is felled to the rules all the same (<see cref="TreeAt"/>), so nothing is held up by it; what rested on it wakes once it is gone.
     /// </summary>
     bool Fell(long id, Vector3 at, bool spread)
     {
         if (!Planet.Felled.Add(id)) return false;
-        if (spread) _breaking.Enqueue(id);
-        else Streamer.Fell(id);
-        Physics.NotifyChanged(Region.Around(at.ToNumerics(), TreeReach));
+        if (spread) _breaking.Enqueue((id, at));
+        else Gone(id, at);
         return true;
     }
 
-    readonly System.Collections.Generic.Queue<long> _breaking = new();
+    /// <summary>Its colliders and far chunk go, and whatever rested on it wakes.</summary>
+    void Gone(long id, Vector3 at)
+    {
+        Streamer.Fell(id);
+        Physics.NotifyChanged(Region.Around(at.ToNumerics(), TreeReach));
+    }
+
+    readonly System.Collections.Generic.Queue<(long Id, Vector3 At)> _breaking = new();
 
     /// <summary>How much of a tick goes on taking broken trees' colliders out, ms (always at least one tree's).</summary>
     const double BreakingBudgetMs = 2.0;
@@ -63,10 +67,10 @@ public partial class SurfaceZone : IFloraField
         long started = System.Diagnostics.Stopwatch.GetTimestamp();
         while (_breaking.Count > 0)
         {
-            Streamer.Fell(_breaking.Dequeue());
+            var (id, at) = _breaking.Dequeue();
+            Gone(id, at);
             if (System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds > BreakingBudgetMs) break;
         }
-        BreakingMs += System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
     }
 
     /// <summary>
@@ -114,37 +118,42 @@ public partial class SurfaceZone : IFloraField
             trunkRadius = solid.Extents.X;
             return true;
         }
-        if (solid.Plant < 0) return false; // rock: never gives way
-        // A limb: the tree is its trunk, looked up once per tree (feet and hulls meet limbs every tick).
-        if (!_trunks.TryGetValue(tree, out trunkRadius))
-        {
-            trunkRadius = float.NaN; // a crystal's shard: rock too
-            foreach (var (s, _) in Streamer.SolidsNear(Planet.NearestCopy(Planet.Canonical(solid.Center), Focus()), TreeReach))
-                if (s.Id == tree && s.Fellable) { trunkRadius = s.Extents.X; break; }
-            _trunks[tree] = trunkRadius;
-        }
-        return !float.IsNaN(trunkRadius);
+        if (FarBuilder.Solids?.Of(solid.Kind) is not { Wood: > 0 }) return false; // rock, a crystal's shard: never gives way
+        // A limb: the tree is its trunk, looked up once per tree (feet and hulls meet limbs every tick). Not found while its
+        // far chunk is being rebuilt (another tree felled there): it holds this tick, and is looked up again next.
+        if (_trunks.TryGetValue(tree, out trunkRadius)) return true;
+        foreach (var (s, _) in Streamer.SolidsNear(Planet.NearestCopy(Planet.Canonical(solid.Center), Focus()), TreeReach))
+            if (s.Id == tree && s.Fellable)
+            {
+                _trunks[tree] = trunkRadius = s.Extents.X;
+                return true;
+            }
+        return false;
     }
 
     readonly System.Collections.Generic.Dictionary<long, float> _trunks = new();
     readonly System.Collections.Generic.Dictionary<(ulong, int), long> _crowns = new();
 
-    /// <summary>Which plant a trunkless crown's shape is: the one whose crown stands where the shape does (planet coordinates, as the column holds them).</summary>
+    /// <summary>
+    /// Which plant a trunkless crown's shape is: the one whose crown stands where the shape does (planet coordinates, as the
+    /// column holds them). Not found while its far chunk is being rebuilt: it holds this tick, and is looked up again next.
+    /// </summary>
     bool CrownOnly(Rid body, int shape, out long tree)
     {
-        if (_crowns.TryGetValue((body.Id, shape), out tree)) return tree != 0;
-        if (_crowns.Count > 4096) _crowns.Clear(); // columns are rebuilt with new bodies: never grows without end
+        if (_crowns.TryGetValue((body.Id, shape), out tree)) return true;
         Vector3 at = PhysicsServer3D.BodyGetShapeTransform(body, shape).Origin;
         foreach (var (s, _) in Streamer.SolidsNear(Planet.NearestCopy(at, Focus()), 2f, canopies: true))
-            if (s.IsCanopy && s.ShapeTransform.Origin.IsEqualApprox(at)) { tree = s.Id; break; }
-        _crowns[(body.Id, shape)] = tree;
-        return tree != 0;
-    }    /// <summary>Main-thread time spent felling trees structures broke, ms, since the zone began (tests read the difference).</summary>
-    public double BreakingMs { get; private set; }
+            if (s.IsCanopy && s.ShapeTransform.Origin.IsEqualApprox(at))
+            {
+                if (_crowns.Count > 4096) _crowns.Clear(); // columns are rebuilt with new bodies: never grows without end
+                _crowns[(body.Id, shape)] = tree = s.Id;
+                return true;
+            }
+        return false;
+    }
 
     public void Fell(long tree, N.Vector3 point, N.Vector3 away)
     {
-        long started = System.Diagnostics.Stopwatch.GetTimestamp();
         Vector3 at = point.ToGodot();
         TerrainStreamer.PlantSighting? found = null;
         foreach (TerrainStreamer.PlantSighting s in Streamer.FloraNear(at, TreeReach))
@@ -155,6 +164,5 @@ public partial class SurfaceZone : IFloraField
         }
         if (found is { } plant) Fell(plant, away.ToGodot(), spread: true);
         else Fell(tree, at, spread: true);
-        BreakingMs += System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
     }
 }
