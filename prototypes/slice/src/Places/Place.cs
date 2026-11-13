@@ -255,7 +255,10 @@ public partial class Place : Node3D
                 continue;
             }
             List<ChunkMesh> built = g.Meshing.Result;
-            while (g.Next < built.Count && clock.Elapsed.TotalMilliseconds < Places.BudgetMs) SetChunkMesh(built[g.Next++]);
+            double budget = PlanetSurface.Fx.LoadBudget.Left(Places.BudgetMs);
+            double before = clock.Elapsed.TotalMilliseconds;
+            while (g.Next < built.Count && clock.Elapsed.TotalMilliseconds < budget) SetChunkMesh(built[g.Next++]);
+            PlanetSurface.Fx.LoadBudget.Spend(clock.Elapsed.TotalMilliseconds - before);
             if (g.Next < built.Count) break;
             g.Meshing = null;
             g.Next = 0;

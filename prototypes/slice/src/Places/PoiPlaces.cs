@@ -264,7 +264,9 @@ public partial class PoiPlaces : Node3D
     {
         var frame = Stopwatch.StartNew();
         Job j = _job;
-        while (frame.Elapsed.TotalMilliseconds < BudgetMs)
+        // The frame's loading allowance, shared with the places' own (their cubes and rooms): at least one step a frame, so a place always comes.
+        double budget = Math.Max(PlanetSurface.Fx.LoadBudget.Left(BudgetMs), 0.001);
+        while (frame.Elapsed.TotalMilliseconds < budget)
         {
             var step = Stopwatch.StartNew();
             int collections = GC.CollectionCount(0);
@@ -279,6 +281,7 @@ public partial class PoiPlaces : Node3D
             if (!more || _job != j) break;
         }
         WorstFrameMs = Math.Max(WorstFrameMs, frame.Elapsed.TotalMilliseconds);
+        PlanetSurface.Fx.LoadBudget.Spend(frame.Elapsed.TotalMilliseconds);
     }
 
     /// <summary>One piece of main-thread work; false once nothing more can be done this frame.</summary>
