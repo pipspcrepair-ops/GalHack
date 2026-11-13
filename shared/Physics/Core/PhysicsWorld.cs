@@ -530,7 +530,7 @@ public sealed class PhysicsWorld
             Contact c = contacts[i];
             if (c.Surface != Surface.Flora || !Flora.TreeAt(c.Part, out long tree, out float trunk)) continue;
             float load = weight * MathF.Max(0f, c.Normal.Y) + mass * MathF.Max(0f, -Vector3.Dot(before, c.Normal)) / Rules.Flora.BlowTime;
-            if (load > Rules.Flora.Takes(trunk)) Give(i, tree);
+            if (trunk <= 0f || load > Rules.Flora.Takes(trunk)) Give(i, tree);
             else
             {
                 _trees.Add((i, tree));

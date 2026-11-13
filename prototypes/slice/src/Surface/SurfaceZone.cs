@@ -485,6 +485,7 @@ public partial class SurfaceZone : Node3D
     {
         if (Planet != null) WrapFrame();
         if (Streamer != null) HoldLoose();
+        TakeBroken();
     }
 
     /// <summary>Loose bodies lying where the ground has no collision (past the collision radius): held still, off the weather.</summary>

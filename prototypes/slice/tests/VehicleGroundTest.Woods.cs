@@ -76,24 +76,33 @@ public partial class VehicleGroundTest
         float weight = _game.Zone.Physics.WeightOf(v.Body);
         PhysicsRules.FloraData rule = _game.Zone.Physics.Rules.Flora;
         var open = trunks.Where(t => !play.RuinAt(_game.Zone.GroundAt(t.At.X, t.At.Z), 24f) && !trunks.Any(o => o.At.DistanceTo(t.At) < 26f && rule.Takes(o.Radius) >= weight)).ToList();
-        return open.Count == 0 ? null : open.MaxBy(t => trunks.Count(o => o.At.DistanceTo(t.At) < 9f)).At;
+        int Stand(Vector3 at) => trunks.Count(o => o.At.DistanceTo(at) < 9f);
+        var wood = open.Count == 0 ? default : open.MaxBy(t => Stand(t.At));
+        return open.Count == 0 || Stand(wood.At) < 4 ? null : wood.At; // a stand of trees, not one
     }
 
     /// <summary>The standing trees whose colliders the hull's own shapes overlap.</summary>
-    int TreesInHull(Vessel v)
+    int TreesInHull(Vessel v) => Touching(v, 0f).Count(s => s.StartsWith("tree"));
+
+    /// <summary>What the hull's own shapes touch within a margin: each standing tree (its trunk), or anything else solid by its node.</summary>
+    HashSet<string> Touching(Vessel v, float margin)
     {
         var space = _game.Zone.GetWorld3D().DirectSpaceState;
-        var q = new PhysicsShapeQueryParameters3D { CollisionMask = Layers.Flora, Margin = 0f };
-        var inside = new HashSet<long>();
+        var q = new PhysicsShapeQueryParameters3D { CollisionMask = Layers.VesselMask, Margin = margin, Exclude = new Godot.Collections.Array<Rid> { v.Binding.Collider.GetRid() } };
+        var touching = new HashSet<string>();
         foreach (Node n in v.Binding.Collider.GetChildren())
         {
             if (n is not CollisionShape3D cs || cs.Shape == null || cs.Disabled) continue;
             q.Shape = cs.Shape;
             q.Transform = cs.GlobalTransform;
             foreach (Godot.Collections.Dictionary hit in space.IntersectShape(q, 16))
-                if (_game.Zone.TreeAt(((Rid)hit["rid"], (int)hit["shape"]), out long tree, out float r) && r > 0f) inside.Add(tree);
+            {
+                if (hit["collider"].AsGodotObject() is Node node) touching.Add(node.GetPath().ToString());
+                else if (_game.Zone.TreeAt(((Rid)hit["rid"], (int)hit["shape"]), out long tree, out float r)) { if (r > 0f) touching.Add($"tree {tree} ({r:F2} m)"); }
+                else touching.Add("rock");
+            }
         }
-        return inside.Count;
+        return touching;
     }
 
     IEnumerable<int> LetDownOnTrees(Vessel v, bool heavy)
@@ -122,7 +131,7 @@ public partial class VehicleGroundTest
         // The pilot lets it down: Ctrl to sink, gently near the ground, and hands off once it stands on something or stops sinking.
         var probe = new PlanetSurface.FrameProbe(this);
         var cpu = new List<double>();
-        double worstBreaking = 0;
+        double worstBreaking = 0, worstFelling = 0, felling = _game.Zone.BreakingMs;
         int felledAt = _game.Zone.Planet.Felled.Count, broke = 0, still = 0, t = 0;
         var c = _game.Controls;
         for (; t < 60 * 60; t++)
@@ -137,6 +146,8 @@ public partial class VehicleGroundTest
             int felled = _game.Zone.Planet.Felled.Count;
             if (broke > 0 || felled > felledAt) cpu.Add(probe.LastCpuMs);
             if (felled > felledAt) worstBreaking = Math.Max(worstBreaking, probe.LastCpuMs);
+            worstFelling = Math.Max(worstFelling, _game.Zone.BreakingMs - felling);
+            felling = _game.Zone.BreakingMs;
             broke += felled - felledAt;
             felledAt = felled;
         }
@@ -154,7 +165,7 @@ public partial class VehicleGroundTest
         Vector3 at = v.Body.Position.ToGodot();
         float over = at.Y - feet - _game.Zone.GroundAt(at.X, at.Z).Y;
         var onTree = Enumerable.Range(0, gear?.Count ?? 0).Where(i => gear.Touching(i) && gear.FootTree[i] != 0).ToList();
-        string how = $"frozen {ctl.Frozen} after {(t + left) / 60f:F1} s, gear attached {gear?.Attached}, {onTree.Count} feet on a tree, keel {over:F1} m over the ground, {broke} trees broken, {TreesInHull(v)} in its hull";
+        string how = $"frozen {ctl.Frozen} after {(t + left) / 60f:F1} s, gear attached {gear?.Attached}, {onTree.Count} feet on a tree, keel {over:F1} m over the ground, {broke} trees broken, {TreesInHull(v)} in its hull{(ctl.Frozen ? "" : "; touching " + string.Join(", ", Touching(v, 0.05f).Take(6)))}";
         if (heavy)
         {
             // The trees that stood under where it ended: every one felled.
@@ -166,14 +177,15 @@ public partial class VehicleGroundTest
                 Vector3 l = toLocal * b.At;
                 return l.X > (lo.X - 0.5f) * cell && l.X < (hi.X + 0.5f) * cell && l.Z > (lo.Z - 0.5f) * cell && l.Z < (hi.Z + 0.5f) * cell;
             }).ToList();
-            int standing = under.Count(b => !_game.Zone.Planet.Felled.Contains(b.Id));
-            Check(ctl.Frozen && gear is { Attached: true } && onTree.Count == 0 && under.Count > 0 && standing == 0 && TreesInHull(v) == 0,
-                $"{name}: let down on a wood, it ends on its gear on the ground, the {under.Count} trees under it felled ({standing} still standing; {how})");
+            // Every one it came down on is felled: none left touching it (one too short to reach its belly may stand).
+            int standing = under.Count(b => !_game.Zone.Planet.Felled.Contains(b.Id)), touching = Touching(v, 0.05f).Count(s => s.StartsWith("tree"));
+            Check(ctl.Frozen && gear is { Attached: true } && onTree.Count == 0 && under.Count > standing && touching == 0,
+                $"{name}: let down on a wood, it ends on its gear on the ground, {under.Count - standing} of the {under.Count} trees under it felled, none left touching it ({standing} short ones still standing beneath; {how})");
             Check(_game.Zone.Trees.Stumps > 0, $"{name}: the trees it broke leave what harvesting leaves: {_game.Zone.Trees.Stumps} stumps, their trunks and crowns fallen");
             cpu.Sort();
             double p95 = cpu.Count == 0 ? 0 : cpu[(int)(cpu.Count * 0.95)], worst = cpu.Count == 0 ? 0 : cpu[^1];
             Check(broke > 0 && p95 < 16.7 && worstBreaking < 16.7 && worst < 33.4,
-                $"{name}: the frames while the trees break keep the budget in CPU time: worst frame a tree broke in {worstBreaking:F1} ms, 95th percentile {p95:F1} ms, worst {worst:F1} ms over {cpu.Count} frames (budget 16.7; headless, machine shared)");
+                $"{name}: the frames while the trees break keep the budget in CPU time: worst frame a tree broke in {worstBreaking:F1} ms (the felling itself at most {worstFelling:F1} ms of a frame), 95th percentile {p95:F1} ms, worst {worst:F1} ms over {cpu.Count} frames (budget 16.7; headless, machine shared)");
         }
         else
             Check(ctl.Frozen && TreesInHull(v) == 0,

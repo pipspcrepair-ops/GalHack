@@ -100,20 +100,21 @@ public sealed class HullBinding : BodyBinding
         // if turning swung it into a rock.
         for (int i = 0; i < 4; i++)
         {
+            Vector3 from = Hull.GlobalPosition;
             KinematicCollision3D hit = Hull.MoveAndCollide(motion, false, Hull.SafeMargin);
-            if (hit == null) break;
-            Vector3 n = hit.GetNormal();
-            GodotObject collider = hit.GetCollider();
-            // No node: a body made on the physics server alone (the flora's), one contact per shape (each a tree's part).
-            // A node gone: what it hit was freed this very tick (a streamed chunk), nothing to push against.
-            if (collider == null && hit.GetColliderId() != 0) break;
-            if (_seen.Add(collider != null ? (collider.GetInstanceId(), -1) : (hit.GetColliderRid().Id, hit.GetColliderShapeIndex())))
+            if (hit == null)
             {
-                Body other = host.BodyOf(collider);
-                Surface surface = other != null ? Surface.Body : collider != null ? GodotQuery.SurfaceOf(collider) : GodotQuery.SurfaceOf(hit.GetColliderRid());
-                _contacts.Add(new Contact(hit.GetPosition().ToNumerics(), n.ToNumerics(), other, surface,
-                    collider == null ? GodotQuery.PartOf(surface, hit.GetColliderRid(), hit.GetColliderShapeIndex()) : null));
+                // Pushed back out of the safe margin and moved on, with nothing reported: pressing on something slower than
+                // the margin a tick. Trees it presses on are met all the same (the rules may break them), never hung on unseen.
+                if ((Hull.GlobalPosition - from - motion).LengthSquared() > 1e-8f && Hull.MoveAndCollide(Vector3.Zero, true, Hull.SafeMargin, true, 4) is { } rest)
+                    for (int k = 0; k < rest.GetCollisionCount(); k++)
+                        if (rest.GetCollider(k) == null && rest.GetColliderId(k) == 0) Add(host, rest, k);
+                break;
             }
+            Vector3 n = hit.GetNormal();
+            // A node gone: what it hit was freed this very tick (a streamed chunk), nothing to push against.
+            if (hit.GetCollider() == null && hit.GetColliderId() != 0) break;
+            Add(host, hit, 0);
             if (velocity.Dot(n) < 0f) velocity = velocity.Slide(n);
             motion = hit.GetRemainder().Slide(n);
             if (motion.LengthSquared() < 1e-10f) break;
@@ -125,6 +126,17 @@ public sealed class HullBinding : BodyBinding
 
         b.Position = Hull.GlobalPosition.ToNumerics();
         b.Velocity = host.World.ResolveContacts(b, _contacts, before.ToNumerics(), velocity.ToNumerics());
+    }
+
+    /// <summary>One contact per thing met: per node, or per shape of a body made on the physics server alone (the flora's: each a tree's part).</summary>
+    void Add(PhysicsHost host, KinematicCollision3D hit, int k)
+    {
+        GodotObject collider = hit.GetCollider(k);
+        if (!_seen.Add(collider != null ? (collider.GetInstanceId(), -1) : (hit.GetColliderRid(k).Id, hit.GetColliderShapeIndex(k)))) return;
+        Body other = host.BodyOf(collider);
+        Surface surface = other != null ? Surface.Body : collider != null ? GodotQuery.SurfaceOf(collider) : GodotQuery.SurfaceOf(hit.GetColliderRid(k));
+        _contacts.Add(new Contact(hit.GetPosition(k).ToNumerics(), hit.GetNormal(k).ToNumerics(), other, surface,
+            collider == null ? GodotQuery.PartOf(surface, hit.GetColliderRid(k), hit.GetColliderShapeIndex(k)) : null));
     }
 
     public override void Teleport()
