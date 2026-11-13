@@ -174,10 +174,14 @@ public partial class StartTest : Node
         var spots = new List<Vector3>();
         for (int i = 0; i <= 8; i++) spots.Add(b.StairTop.Lerp(b.Outside, i / 8f));
         foreach (Vector3 w in b.WayOut) if (w.Y > game.Zone.GroundAt(w.X, w.Z).Y - 0.5f) spots.Add(w);
-        foreach (Vector3 spot in spots)
-            foreach (float side in new[] { -0.6f, 0f, 0.6f })
+        int inWell = spots.Count;
+        // And the open ground beyond the way out, a few metres either side: whatever stands on it or over it.
+        for (int i = 9; i <= 20; i++) spots.Add(b.StairTop.Lerp(b.Outside, i / 8f));
+        for (int k = 0; k < spots.Count; k++)
+            foreach (float side in k < inWell ? new[] { -0.8f, 0f, 0.8f } : new[] { -2.5f, -1.2f, 0f, 1.2f, 2.5f })
             {
-                Vector3 p = spot + across * side;
+                Vector3 p = spots[k] + across * side;
+                if (k >= inWell) p.Y = MathF.Max(p.Y, game.Zone.GroundAt(p.X, p.Z).Y); // standing on the ground there
                 var hit = space.IntersectRay(PhysicsRayQueryParameters3D.Create(p + Vector3.Up * 0.4f, p + Vector3.Up * 40f));
                 if (hit.Count > 0 && hit["collider"].AsGodotObject() is Node n && n != b.Ruin.Node && !b.Ruin.Node.IsAncestorOf(n)) return $"{n.GetPath()} ({n.GetType().Name}) {((Vector3)hit["position"]).Y - p.Y:F1} m over {p}";
                 for (float up = 0.4f; up <= 40f; up += 0.5f)
@@ -259,7 +263,9 @@ public partial class StartTest : Node
         Check(sealedIn && chamber.Temperature == roomC && chamber.OxygenPercent == 21 && (world.Archetype != Planets.Gen.Archetype.Ice || outside.Temperature < roomC),
             $"{world.Name}, seed {world.Seed}: the world's {outside.Temperature:F0} °C and {outside.OxygenPercent:F0}% oxygen outside don't reach the chamber: {chamber.Temperature:F0} °C, {chamber.OxygenPercent:F0}%");
         // Nothing solid (ground, a place, a hulk, a wreck, a ruin, a rock, a tree) stands over the way out's open sky.
-        foreach (int x in drive.Wait(600)) yield return x;
+        // The ground streamed in round the way out (terrain, then the colliders of its flora and the dressing), then a while more.
+        for (int k = 0; k < 1200 && !game.Zone.Streamer.ReadyAround(game.Bunker.Outside, 1, true); k++) yield return 0;
+        foreach (int x in drive.Wait(300)) yield return x;
         string covered = Covered(game);
         Check(covered == null, $"{world.Name}, seed {world.Seed}: the way out is open to the sky{(covered == null ? "" : $": {covered}")}");
         Check(WellWidth(game.Bunker) == 2, $"{world.Name}, seed {world.Seed}: the stairwell is 2 m clear, two stairs blocks side by side on every step ({WellWidth(game.Bunker)})");

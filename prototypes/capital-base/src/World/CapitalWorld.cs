@@ -90,7 +90,7 @@ public partial class CapitalWorld : Node3D, ILiftGround
         PhysicsRules = PhysicsRules.FromJson(File.ReadAllText(Paths.Repo("shared", "Physics", "physics.json")));
         Handling = Tunables.FromJson(File.ReadAllText(Paths.Repo("prototypes", "ship-handling", "data", "handling.json")));
         Catalogue = StructureBridge.LoadCatalogue(Paths.Repo("prototypes", "building", "data"),
-            Paths.Repo("prototypes", "physics-sandbox", "data", "vessel-parts.json"));
+            Paths.Repo("prototypes", "physics-sandbox", "data", "vessel-parts.json"), Paths.Repo("shared", "Items", "data", "building-parts.json"));
         WeatherData weather = WeatherData.Parse(File.ReadAllText(Paths.Repo("prototypes", "weather", "data", "weather.json")));
 
         // The planet, built the way planet-surface builds it (no POIs here: nothing anchors the ground).

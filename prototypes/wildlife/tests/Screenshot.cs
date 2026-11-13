@@ -30,7 +30,8 @@ public partial class Screenshot : Node
     string _view = "herd", _out = "shot.png", _worlds = "temperate,alien,bloom";
     float _time = -1f;
     string _pick = "";
-    bool _hud, _captured;
+    bool _hud, _captured, _live;
+    int _at;
     Func<(Vector3 eye, Vector3 at)> _aim;
     Action _each;
 
@@ -41,6 +42,8 @@ public partial class Screenshot : Node
             if (arg.StartsWith("--view=")) _view = arg["--view=".Length..];
             else if (arg.StartsWith("--out=")) _out = arg["--out=".Length..];
             else if (arg == "--hud") _hud = true;
+            else if (arg == "--live") _live = true;
+            else if (arg.StartsWith("--at=")) _at = int.Parse(arg["--at=".Length..]);
             else if (arg.StartsWith("--worlds=")) _worlds = arg["--worlds=".Length..];
             else if (arg.StartsWith("--pick=")) _pick = arg["--pick=".Length..];
             else if (arg.StartsWith("--frames=")) _frames = int.Parse(arg["--frames=".Length..]);
@@ -462,7 +465,7 @@ public partial class Screenshot : Node
         m.Player.Teleport(Ground(new Vector3(200f, 0f, 200f)));
         m.Sim.Clear();
         m.View.Bind(m.Sim, null);
-        m.Sim.Frozen = true;
+        m.Sim.Frozen = !_live;
         m.Sim.Targets.Clear();
         Vector3 sun = SunFlat();
 
@@ -522,7 +525,7 @@ public partial class Screenshot : Node
                 cam.LookAt(look, Vector3.Up);
             }
         };
-        _captureTick = 120;
+        _captureTick = _at > 0 ? _at : 120;
     }
 
     /// <summary>
@@ -554,9 +557,21 @@ public partial class Screenshot : Node
             "temperate" => (gen.Generate(Style(WorldKind.Temperate).FaunaSeed, Style(WorldKind.Temperate).Alienness, false), "Temperate"),
             "alien" => (gen.Generate(Style(WorldKind.Alien).FaunaSeed, Style(WorldKind.Alien).Alienness, false), "Alien"),
             "bloom" => (gen.Generate(Style(WorldKind.Bloom).FaunaSeed, Style(WorldKind.Bloom).Alienness, true), "Bloom-infested"),
+            "heads" => (Doubled(), "Bodies with two pieces of one name"),
             _ when name.StartsWith("seed") => LineupSeed(name),
             _ => throw new ArgumentException($"unknown lineup row {name}"),
         };
+    }
+
+    /// <summary>Species from a run of seeds whose bodies have two pieces of one name (a second head), a few of each form.</summary>
+    PlanetFauna Doubled()
+    {
+        var fauna = new PlanetFauna();
+        for (ulong seed = 20000; seed < 20400 && fauna.Species.Count < 8; seed++)
+            foreach (Species s in _main.Generator.Generate(seed, 0.8f, false).Species)
+                if (s.Rig != RigKind.Swarm && fauna.Species.Count < 8 && fauna.Species.Count(x => x.Form == s.Form) < 2
+                    && Rig.Create(s, null).Layout.Pieces.GroupBy(q => q.Name).Any(q => q.Count() > 1)) fauna.Species.Add(s);
+        return fauna;
     }
 
     /// <summary>"seed123:0.6" or "seed123:0.6:bloom": any planet, for checking the generator by eye.</summary>
