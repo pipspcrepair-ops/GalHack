@@ -976,6 +976,7 @@ public partial class PhysicsTest : Node
         N.Vector3 v0 = p.Body.Velocity;
         float d0 = N.Vector3.Distance(p.Body.Position, ship.Body.Position);
         float drift = 0f;
+        int rescuesBefore = _rescues.Count;
         for (int i = 0; i < 60; i++)
         {
             yield return 0;
@@ -985,7 +986,7 @@ public partial class PhysicsTest : Node
         N.Vector3 away = v0 - ship.Body.Velocity;
         Check(knockedOff && drift < 1e-3f && d1 - d0 > 0.9f * away.Length() && away.Length() > 1f,
             $"knocked off hard, a rider lets go after {until * Dt:F2} s and drifts away with their inertia in space ({away.Length():F1} m/s, " +
-            $"{d1 - d0:F1} m in 1 s, velocity unchanged to {drift:F4} m/s)");
+            $"{d1 - d0:F1} m in 1 s, velocity unchanged to {drift:F4} m/s; {_rescues.Count - rescuesBefore} rescues{(_rescues.Count > rescuesBefore ? $", from {_rescues[^1].Inside}" : "")})");
 
         // A jump from the roof of a ship under way lets go at once and drifts away, with the
         // ship's velocity plus the jump, while the ship flies on.
