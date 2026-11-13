@@ -359,6 +359,11 @@ These came up while planning the grid. Where they conflict with anything above, 
 
 **Welding a loose piece back on.** Aim the tool at a coreless piece touching or resting on your structure and weld. The piece snaps onto your structure's grid at the nearest aligned spot, rounding its position and rotation, so there's no lining it up by hand. The piece moves, never your structure, so Base mode doesn't matter. If it can't snap cleanly (tilted too far, too far off the grid, or the spot is blocked), the tool says why, and you dismantle and re-place the blocks instead.
 
+**Which side moves (owner, 14 Nov).** The side that can move does the snapping:
+- **A loose coreless piece** (a wreck chunk, a cut-off section) snaps to your structure, as above.
+- **A coreless structure fixed in the ground** (a place's building, a buried wreck) can't move, so your structure must: it eases to the nearest aligned spot on the fixed structure's grid, and the two become one structure under your core. Your structure must be **able to move under its own power right now**, not merely set to Hover or Flight mode: enough working lift and thrust for its mass, with power and fuel. One that can't move itself can't ease to a weld point either, and the tool says so.
+- **Both fixed** (your base beside a place): no weld. Put a core on the coreless structure to claim it, and build onto it directly.
+
 **Tiered devices** (bigger, heavier and hungrier, but more efficient than lower tiers in the same space): thrusters, generators, storage containers, fuel tanks, landing and docking pads, warp drive, hyperdrive, fabricators, capacitors, shield generators, forcefield emitters, hover plates, gyros or RCS, solar panels, drill modules (T1 mechanical, T2 laser turret, T3 laser turret), and the comms array.
 
 **Fixed devices:** cloning bay, medical bay, command chairs, gravity generator, life support block, refrigeration, harvester module, scanners (specialist types such as deep-space scanners later), teleporter, spotlights, core, doors, grav lifts, ladders, lights.
