@@ -167,7 +167,7 @@ public sealed class SurvivalTool
             && (!HasTarget || p.Distance < ground + 0.05f))
         {
             _placePoint = p.Point;
-            if (Places.Resolve(p.Collider, p.Point, p.Normal, out PoiPlaces.Hit h)) _placeHit = h;
+            if (Places.Resolve(p.Collider, p.Point, p.Normal, out PoiPlaces.Hit h, p.Shape)) _placeHit = h;
             else _wreck = Places.SalvageOf(p.Collider);
             if (!OnPlace && p.Collider is Node solid && _zone.Infra.IsAncestorOf(solid)) _tell = TellAt(p.Point); // the rock itself: a trunk or the ground over a deposit is no tell
             if (OnPlace)
@@ -565,7 +565,7 @@ public sealed class SurvivalTool
         }
         PoiPlaces.Hit? onPlace = null;
         if (Places != null && kind != ImpactKind.Nothing && WorldRay.Cast(_zone, _survivor, reach + 0.01f, Layers.World, out LookHit wall)
-            && Places.Resolve(wall.Collider, wall.Point, wall.Normal, out PoiPlaces.Hit ph)) onPlace = ph;
+            && Places.Resolve(wall.Collider, wall.Point, wall.Normal, out PoiPlaces.Hit ph, wall.Shape)) onPlace = ph;
         _zone.Wildlife.Noise(eye, ShotHeard);
         Creature c = _zone.Wildlife.Raycast(eye, dir, reach, out float distance, out Vector3 point);
         bool struck = c != null && !c.Dead;
