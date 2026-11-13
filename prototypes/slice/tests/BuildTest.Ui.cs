@@ -321,6 +321,33 @@ public partial class BuildTest
                 $"it is found from the first moment, on the map too, and it is the only place found ({_game.Spaceflight.Charts.OfKind("place").Count()})");
     }
 
+    /// <summary>The compass strip's items fade out at its ends: swept across each letter's edge, forward and back with jitter, opacity never jumps and nothing flips more than once per crossing.</summary>
+    void CompassFadeSweep()
+    {
+        var rng = new Random();
+        float maxJump = 0; int worstFlips = 0;
+        foreach (int letter in new[] { 0, 90, 180, 270 })
+            foreach (int dir in new[] { 1, -1 })
+            {
+                // Heading swept so the letter crosses the strip's end (off = +-60) and back out of it.
+                float prev = -1; bool shown = false; int flips = 0;
+                for (int i = -600; i <= 600; i++)
+                {
+                    float heading = letter - 60f - dir * i * 0.01f + (float)(rng.NextDouble() - 0.5) * 0.004f;
+                    float off = Mathf.Wrap(letter - Mathf.PosMod(heading, 360f), -180f, 180f);
+                    float a = Visor.CompassFade(off);
+                    if (prev >= 0) maxJump = MathF.Max(maxJump, MathF.Abs(a - prev));
+                    bool now = a > 0f;
+                    if (prev >= 0 && now != shown) flips++;
+                    shown = now; prev = a;
+                }
+                worstFlips = Math.Max(worstFlips, flips);
+            }
+        Check(maxJump <= 0.1f && worstFlips <= 1, $"compass items fade smoothly at the strip's ends: biggest opacity step {maxJump:F3}, most flips in a crossing {worstFlips}");
+        Check(new[] { 0f, 90f, 180f, 270f, 359.9f }.Select(Visor.HeadingText).SequenceEqual(new[] { "000", "090", "180", "270", "359" }),
+            "the heading reads right at 0, 90, 180, 270 and 359.9");
+    }
+
     /// <summary>The handheld scanner: free in the suit fabricator; a click pings what is far off onto the compass for ten seconds, fading, and nothing stays.</summary>
     IEnumerable<int> ScannerChecks()
     {
