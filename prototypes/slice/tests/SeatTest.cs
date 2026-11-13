@@ -27,15 +27,20 @@ public partial class SeatTest : Node
         schema galhack.blueprint
         version 1
         name "Two Seats"
-        grid small
+        grid 1m
         mode capital
+        block -4..-1 0 -2..2 base-block
+        block 1..3 0 -2..2 base-block
+        block 0 0 -2..-1 base-block
+        block 0 0 1..2 base-block
+        block 0 0 3 gyro-t1
         block 0 0 0 core
-        block 1 0 0 steel
-        block -1 0 0 steel
-        block 1 1 0 cockpit
-        block -1 1 0 cockpit rot=+y+x
-        block 0 0 1 gyro
+        block 2 1 -1 command-chair
+        block -2 1 0 command-chair rot=+y+x
         """;
+
+    /// <summary>The two chairs' anchors: one facing the hull's forward, one turned to face +x.</summary>
+    static readonly Int3 One = new(2, 1, -1), Two = new(-2, 1, 0);
 
     public override void _Ready()
     {
@@ -62,7 +67,7 @@ public partial class SeatTest : Node
     void Chairs()
     {
         Structure s = Blocks();
-        Basis ahead = VesselRoles.BasisOf(s, new Int3(1, 1, 0)), side = VesselRoles.BasisOf(s, new Int3(-1, 1, 0));
+        Basis ahead = VesselRoles.BasisOf(s, One), side = VesselRoles.BasisOf(s, Two);
         Check((-ahead.Z).IsEqualApprox(Vector3.Forward), $"a chair set the default way faces the hull's forward ({-ahead.Z})");
         Check((-side.Z).IsEqualApprox(Vector3.Right), $"a chair turned to face +x faces the hull's right ({-side.Z})");
         Check(side.Y.IsEqualApprox(Vector3.Up) && Mathf.IsEqualApprox(side.Determinant(), 1f), "its up is still the hull's, and its frame is a true rotation");
@@ -100,7 +105,7 @@ public partial class SeatTest : Node
         Tunables t = GameData.Shared.Handling;
         var where = new FlightConditions(0f, false);
         Structure s = Blocks();
-        Basis ahead = VesselRoles.BasisOf(s, new Int3(1, 1, 0)), side = VesselRoles.BasisOf(s, new Int3(-1, 1, 0));
+        Basis ahead = VesselRoles.BasisOf(s, One), side = VesselRoles.BasisOf(s, Two);
 
         FlightState a = FlightState.At(Basis.Identity), b = FlightState.At(Basis.Identity);
         a.Seat = ahead;
@@ -117,7 +122,7 @@ public partial class SeatTest : Node
 
         // Yaw from the seat turns about the seat's up.
         FlightState turn = FlightState.At(Basis.Identity);
-        turn.Seat = VesselRoles.BasisOf(s, new Int3(-1, 1, 0));
+        turn.Seat = VesselRoles.BasisOf(s, Two);
         Vector3 before = -turn.Control.Z;
         for (int i = 0; i < 30; i++) FlightModel.Step(ref turn, PilotInput.Hands(Vector3.Zero, new Vector3(0, 1, 0)), stats, where, t, 1f / 60f);
         Vector3 after = -turn.Control.Z;
@@ -159,8 +164,8 @@ public partial class SeatTest : Node
         var roles = new VesselRoles();
         int changes = 0;
         roles.PilotChanged += () => changes++;
-        var one = new Int3(1, 1, 0);
-        var two = new Int3(-1, 1, 0);
+        var one = One;
+        var two = Two;
         roles.Sat("sleeper", one);
         Check(roles.Pilot == "sleeper" && roles.PilotSeat == one, "alone, you hold the pilot role when you sit");
         roles.Sat("friend", two);

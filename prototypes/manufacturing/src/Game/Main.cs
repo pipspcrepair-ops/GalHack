@@ -113,15 +113,11 @@ public partial class Main : Node3D
 
     IEnumerable<BlueprintEntry> LoadBlueprints()
     {
-        yield return new BlueprintEntry("Gadfly", "starter small vessel", DataPaths.LoadBlueprint("gadfly.gbp"));
-        // The physics sandbox's ships, read where they live, if they're there.
-        string dir = Path.Combine(DataPaths.Repo, "prototypes", "physics-sandbox", "data", "blueprints");
-        foreach (var (file, note) in new[] { ("sandflea.gbp", "hover rover"), ("corsair.gbp", "walk-in shuttle") })
+        // The slice's starter set, read where it lives.
+        foreach (var (file, note) in new[] { ("starter.gbp", "starter small vessel"), ("rover.gbp", "hover rover"), ("shuttle.gbp", "walk-in shuttle") })
         {
-            string path = Path.Combine(dir, file);
-            if (!File.Exists(path)) continue;
-            Structure s = Blueprint.Load(File.ReadAllText(path), DataPaths.BlockCatalogue, out List<string> errors);
-            if (s != null && errors.Count == 0) yield return new BlueprintEntry(s.Name, note, s);
+            Structure s = DataPaths.LoadBlueprint(DataPaths.Slice(file));
+            yield return new BlueprintEntry(s.Name, note, s);
         }
     }
 
