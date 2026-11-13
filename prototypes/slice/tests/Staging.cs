@@ -101,6 +101,8 @@ public sealed partial class Staging
             "flora-trees" => FloraTrees(),
             "florareach" => FloraReachView(),
             "shadows" => ShadowView(),
+            "plantshadows" => PlantShadows(),
+            "plantshadows-ab" => PlantShadowsAb(),
             "crouch" => CrouchView(),
             "seated" => SeatedView(),
             "castaway" => CastawayView(),

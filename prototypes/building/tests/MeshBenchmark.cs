@@ -32,6 +32,19 @@ public static class MeshBenchmark
         slope.Set(new Int3(0, 0, 1), Building.Make(slope, steel));
         check(Triangles(slope) == 16, "a slope's full back face hides the cube face behind it, and vice versa");
 
+        // A 1,000-block hull in paint: what a hull costs the renderer (one surface is one draw call).
+        var hull = BigStructure(cat, 1000);
+        int hullTris = 0, hullDraws = 0;
+        foreach (Int3 c in hull.Chunks.Keys.ToList())
+        {
+            ChunkMeshData data = ChunkMesher.Build(hull, c);
+            hullTris += (data.Opaque.Indices.Count + data.Glass.Indices.Count) / 3;
+            ArrayMesh mesh = ChunkMesher.ToMesh(data);
+            hullDraws += mesh?.GetSurfaceCount() ?? 0;
+            mesh?.Dispose();
+        }
+        GD.Print($"      1,000-block hull: {hull.Count} blocks, {hullTris} triangles, {hullDraws} draw calls in {hull.Chunks.Count} chunks");
+
         // The big one.
         var s = BigStructure(cat, 20_000);
         int chunks = s.Chunks.Count, blocks = s.Count;

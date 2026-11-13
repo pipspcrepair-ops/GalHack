@@ -118,11 +118,13 @@ public static class MeshBuild
         return new StandardMaterial3D { AlbedoColor = deep.Lerp(shallow, 0.5f), Roughness = 0.12f, Metallic = 0f, MetallicSpecular = 0.35f, CullMode = BaseMaterial3D.CullModeEnum.Disabled };
     }
 
-    public static ConcavePolygonShape3D ToShape(ChunkMesh chunk)
+    /// <summary>A chunk's collision as a shape: all of it, or <paramref name="count"/> floats of it from <paramref name="first"/> (whole triangles).</summary>
+    public static ConcavePolygonShape3D ToShape(ChunkMesh chunk, int first = 0, int count = int.MaxValue)
     {
         var l = chunk.Collision;
-        var faces = new Vector3[l.Count / 3];
-        for (int i = 0; i < faces.Length; i++) faces[i] = new Vector3(l[i * 3], l[i * 3 + 1], l[i * 3 + 2]);
+        count = System.Math.Min(count, l.Count - first);
+        var faces = new Vector3[count / 3];
+        for (int i = 0; i < faces.Length; i++) faces[i] = new Vector3(l[first + i * 3], l[first + i * 3 + 1], l[first + i * 3 + 2]);
         // Two-sided, so a body can't slip through a face whatever its winding.
         return new ConcavePolygonShape3D { Data = faces, BackfaceCollision = true };
     }

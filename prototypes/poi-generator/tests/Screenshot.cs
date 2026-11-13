@@ -300,8 +300,11 @@ public partial class Screenshot : Node
             string[] a = view.Split(':');
             FamilyDef f = m.Library.Families.First(x => x.Id == a[1]);
             var rng = new Rng(_seed);
-            float[] w = a.Length > 4 ? a[4].Split('/').Take(3).Select(x => float.Parse(x, System.Globalization.CultureInfo.InvariantCulture)).ToArray() : null;
-            var world = w == null ? null : new WorldProfile { Ruin = new RuinAge(w[0], a[4].EndsWith("/falling"), w[1], w[2]) };
+            // (Or the fifth part is a tech level, low, mid or high, its shapes as that world builds; --plain leaves them plain cubes.)
+            TechLevel? tech = a.Length > 4 && System.Enum.TryParse(a[4], true, out TechLevel t) ? t : null;
+            float[] w = a.Length > 4 && tech == null ? a[4].Split('/').Take(3).Select(x => float.Parse(x, System.Globalization.CultureInfo.InvariantCulture)).ToArray() : null;
+            var world = tech is TechLevel lv ? new WorldProfile { Before = lv, Now = lv } : w == null ? null : new WorldProfile { Ruin = new RuinAge(w[0], a[4].EndsWith("/falling"), w[1], w[2]) };
+            Shaping.Enabled = !OS.GetCmdlineUserArgs().Contains("--plain");
             m.Show(PoiFactory.Generate(m.Library, f, rng.Range(0, f.Variants.Count), f.Rarity, System.Enum.Parse<PoiState>(a[2], true), rng.NextU64(), world: world));
             m.HideHud(true);
             Frame(a[3]);
