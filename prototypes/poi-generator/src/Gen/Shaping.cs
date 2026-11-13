@@ -43,9 +43,9 @@ public static class Shaping
     /// <summary>The facing a corner piece takes for its raised (or, inner, its low) corner between two ways.</summary>
     public static Dir CornerFacing(Dir a, Dir b) => Dirs.Horizontal.First(f => f == a && f.RotateCw(3) == b || f == b && f.RotateCw(3) == a);
 
-    /// <summary>Open space: air, a floor's finish, or litter lying on it (not what hangs from something).</summary>
+    /// <summary>Open space: air, a floor's finish, or litter lying on it (not what hangs from or juts out of something).</summary>
     public static bool Clear(Block b) => b.IsAir || BlockInfo.IsFinish(b.Type)
-        || b.Role == Role.Debris && !BlockInfo.Collides(b.Type) && b.Type is not (BlockType.Cable or BlockType.Tendril or BlockType.Vine); // (what hangs needs its hold)
+        || b.Role == Role.Debris && !BlockInfo.Collides(b.Type) && b.Type is not (BlockType.Cable or BlockType.Tendril or BlockType.Vine or BlockType.Rebar); // (what hangs or juts needs its hold)
 
     /// <summary>A way through a wall: a window, a door, glass.</summary>
     public static bool Opening(Block b) => b.Role == Role.Window || b.Type is BlockType.Door or BlockType.SealedDoor || BlockInfo.IsTransparent(b.Material) && b.Type is BlockType.Cube or BlockType.Pane;
@@ -258,21 +258,19 @@ public static class Shaping
             foreach (List<Int3> wall in Parts(set, d.RotateCw(1).Vec(), Int3.Up).Select(p => Level(p, d, q => !set.Contains(q))))
                 if (wall.All(Panel)) foreach (Int3 c in wall) Put(c, BlockType.Partition, d);
 
-        // (No panel steps: a set-back cell stands no higher than the panel beside it, where plain wall heads that one.)
-        for (bool again = true; again;)
+        // (No panel steps: each set-back panel, as laid, is cut level at its lowest head under plain wall.)
+        foreach (Dir f in Dirs.Horizontal)
         {
-            again = false;
-            foreach (var (c, b) in shaped.Where(x => x.Value.Type == BlockType.Half && x.Value.Facing.IsHorizontal()).ToList())
+            Dir open = f.Opposite();
+            var set = shaped.Where(x => x.Value.Type == BlockType.Half && x.Value.Facing == f).Select(x => x.Key).ToHashSet();
+            bool Head(Int3 q) => !shaped.ContainsKey(q) && Wall(q) && !Frame(q, open) && Solid(q - open.Vec())
+                && Dirs.Horizontal.Where(h => h != open && h != f).All(h => !Air(q + h.Vec()) && !Stands(q + h.Vec()));
+            foreach (List<Int3> panel in Parts(set, open.RotateCw(1).Vec(), Int3.Up))
             {
-                Dir open = b.Facing.Opposite();
-                bool Set(Int3 q) => shaped.TryGetValue(q, out Block s) && s.Type == BlockType.Half && s.Facing == b.Facing;
-                bool Head(Int3 q) => !shaped.ContainsKey(q) && Wall(q) && !Frame(q, open) && Solid(q - open.Vec())
-                    && Dirs.Horizontal.Where(h => h != open && h != b.Facing).All(h => !Air(q + h.Vec()) && !Stands(q + h.Vec()));
-                if (Set(c + Int3.Down) && new[] { open.RotateCw(1).Vec(), open.RotateCw(3).Vec() }.Any(a => Head(c + a) && Set(c + a + Int3.Down)))
-                {
-                    for (Int3 q = c; Set(q); q += Int3.Up) shaped.Remove(q); // (and the panel above it)
-                    again = true;
-                }
+                var heads = panel.Where(q => !set.Contains(q + Int3.Up) && Head(q + Int3.Up)).ToList();
+                if (heads.Count == 0) continue;
+                int y = heads.Min(q => q.Y);
+                foreach (Int3 q in panel) if (q.Y > y) shaped.Remove(q);
             }
         }
 
@@ -319,7 +317,9 @@ public static class Shaping
             }
         }
 
-        // Posts (or round columns) on a 6 m grid in a big hall, floor to ceiling (or to a beam), each with 2 m of clear floor all round it.
+        // Posts (or round columns) on a 6 m grid in a big hall, floor to ceiling (or to a beam), each with 2 m of clear floor
+        // all round it, and never in a way (a lift's shaft): one that would cut a room off from the way in isn't raised.
+        var posts = new List<List<Int3>>();
         foreach (PlacedModule m in layout.Modules)
         {
             if (m.Kind is not (ModuleKind.Room or ModuleKind.Hall)) continue;
@@ -332,8 +332,25 @@ public static class Shaping
                 while (h < 12 && Air(f + Int3.Up * h) && !shaped.ContainsKey(f + Int3.Up * h) && Enumerable.Range(-2, 5).All(x => Enumerable.Range(-2, 5).All(z => floor.Contains(f with { X = f.X + x, Z = f.Z + z }) && Air(f + new Int3(x, h, z))))) h++;
                 Block over = shaped.TryGetValue(f + Int3.Up * h, out Block s) ? s : g.Get(f + Int3.Up * h);
                 if (h < 2 || !(Plain(over) || over.Type == BlockType.Beam) || rootColumns.Contains((f.X, f.Z))) continue;
-                for (int y = 0; y < h; y++) shaped[f + Int3.Up * y] = over with { Type = high ? BlockType.Column : BlockType.Pillar, Role = Role.Decor, Facing = Dir.Up };
+                var post = Enumerable.Range(0, h).Select(y => f + Int3.Up * y).ToList();
+                foreach (Int3 q in post) shaped[q] = over with { Type = high ? BlockType.Column : BlockType.Pillar, Role = Role.Decor, Facing = Dir.Up };
+                posts.Add(post);
             }
+        }
+        if (posts.Count > 0 && walked.Count > 0)
+        {
+            var rooms = layout.Modules.Where(m => Fixtures.RoomCell(m, walked) != null).ToList();
+            bool Cuts(IEnumerable<List<Int3>> raised)
+            {
+                var was = raised.SelectMany(p => p).ToDictionary(q => q, g.Get);
+                foreach (Int3 q in was.Keys) g.Set(q, shaped[q]);
+                var reach = inst.Nav().Reachable(layout.EntranceCell);
+                foreach (var (q, b) in was) g.Set(q, b);
+                return rooms.Any(m => Fixtures.RoomCell(m, reach) == null);
+            }
+            if (Cuts(posts))
+                foreach (var post in posts.Where(p => Cuts(new[] { p })).ToList())
+                    foreach (Int3 q in post) shaped.Remove(q);
         }
 
         // A mine is timbered in whole sets: every fourth metre along a drift wide enough, a post against each wall, floor to
