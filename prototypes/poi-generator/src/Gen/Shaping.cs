@@ -159,9 +159,11 @@ public static class Shaping
         var inner = Dirs.Horizontal.ToDictionary(d => d, _ => new HashSet<Int3>());
         var between = new[] { Dir.North, Dir.East }.ToDictionary(d => d, _ => new HashSet<Int3>());
         var ceilings = new HashSet<Int3>();
+        var tops = new List<Int3>();
         foreach (var (c, b) in g.Blocks())
         {
             if (!Wall(c)) continue;
+            if (Outside(c + Int3.Up)) tops.Add(c);
             bool roomUp = RoomTo(c, c + Int3.Up), roomDown = RoomTo(c, c + Int3.Down), outs = Dirs.Horizontal.Any(h => Out(c, c + h.Vec()));
             foreach (Dir d in Dirs.Horizontal)
                 if (Out(c, c + d.Vec())) { if (c.Y >= 0 || space) outer[d].Add(c); }
@@ -425,7 +427,12 @@ public static class Shaping
 
 
         foreach (var (c, b) in shaped) g.Set(c, b);
+        inst.Survey = new Survey(walked, outer, tops);
     }
+
+    /// <summary>What the shaping found of a place, for the ornament after it: where anyone walks from the way in, each outside
+    /// face's wall cells by the way the face looks, and every top open to the sky.</summary>
+    public sealed record Survey(HashSet<Int3> Walked, Dictionary<Dir, HashSet<Int3>> Outer, List<Int3> Tops);
 
     /// <summary>
     /// Whether <paramref name="c"/>, in a wall facing <paramref name="d"/>, frames something: beside a way through the

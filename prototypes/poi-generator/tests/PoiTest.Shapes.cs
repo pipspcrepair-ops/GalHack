@@ -63,6 +63,7 @@ public partial class PoiTest
         var rand = new Random();
         string[] names = { "places", "shaped", "runs", "orphans", "loose ends", "corners missing", "corners alone", "profile changes", "frames cut", "unsupported", "stepped panels" };
         var tally = new SortedDictionary<string, long[]>();
+        int rerolled = 0;
         foreach (FamilyDef f in _lib.Families.Where(f => !f.Tags.Contains("city") && !f.Space))
             foreach (TechLevel tech in f.Techs.Count > 0 ? f.Techs.Select(WorldProfile.Parse).Distinct() : Enum.GetValues<TechLevel>())
             {
@@ -72,17 +73,23 @@ public partial class PoiTest
                     Layout layout = PoiFactory.SpawnLayout(_lib, f, rand.Next(f.Variants.Count), f.Rarity, (ulong)rand.NextInt64(), new LayoutHints(Dirs.Horizontal[rand.Next(4)], tech), out _);
                     if (layout == null) continue;
                     ulong seed = (ulong)rand.NextInt64();
-                    Shaping.Enabled = false;
+                    Shaping.Enabled = Ornament.Enabled = false; // (the shapes alone are judged here; the ornament has its own check)
+                    int was = PoiFactory.Respawns;
                     plain = PoiFactory.Spawn(_lib, layout, PoiState.Abandoned, seed);
+                    int plainRolls = PoiFactory.Respawns - was;
                     Shaping.Enabled = true;
                     inst = PoiFactory.Spawn(_lib, layout, PoiState.Abandoned, seed);
+                    Ornament.Enabled = true;
+                    // (A spawn rolled again from another sub-seed isn't the plain one's twin: it can't be judged against it.)
+                    if (PoiFactory.Respawns - was != plainRolls * 2) { rerolled++; continue; }
                 }
-                catch (Exception) { Shaping.Enabled = true; continue; }
+                catch (Exception) { Shaping.Enabled = Ornament.Enabled = true; continue; }
                 string kind = ShapeKind(inst);
                 var t = tally.TryGetValue(kind, out var x) ? x : tally[kind] = new long[names.Length];
                 t[0]++;
                 AuditShapes(plain.Blocks, inst.Blocks, inst.Layout.Occupied, t, inst);
             }
+        GD.Print($"      coherent: {rerolled} places left out, rolled again after the shaping (not the plain one's twin)");
         foreach (var (kind, t) in tally)
             GD.Print($"      coherent {kind,-14} " + string.Join(", ", names.Select((n, i) => $"{t[i]} {n}")));
         Check(tally.Count > 0 && tally.Values.All(t => t.Skip(3).All(n => n == 0)),
