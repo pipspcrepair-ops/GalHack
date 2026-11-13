@@ -240,7 +240,7 @@ public partial class PlaceTest : Node
             if (game.Suit.Dead) break;
         }
         foreach (int x in Watched(drive.WalkTo(entrance, 0.8f, 30f, sprint: false, dig: false))) yield return x;
-        if (game.Suit.Dead) { Fail("the castaway died on the walk to the place"); game.QueueFree(); yield break; }
+        if (game.Suit.Dead) { Fail("the sleeper died on the walk to the place"); game.QueueFree(); yield break; }
         Vector3 f = game.Survivor.WorldFeet;
         GD.Print($"  (arrived: feet {f}, the way in {entrance}, ground {game.Zone.GroundAt(f.X, f.Z).Y:F1})");
         Place place = game.Places.PlaceOf(site);
@@ -738,7 +738,7 @@ public partial class PlaceTest : Node
         Check(chamber != null, $"a cave within 900 m of the start: {chamber}");
         if (chamber is Vector3 cave)
         {
-            GD.Print("  (SYSTEMS: the castaway set down in the cave)");
+            GD.Print("  (SYSTEMS: the sleeper set down in the cave)");
             game.Survivor.PlaceOutside((cave + Vector3.Up * 0.4f).ToNumerics());
             for (int i = 0; i < 600 && game.Caves.Found == 0; i++) yield return 0;
             // A chamber under a place or too shallow to count as underground: the next one out, as a player would try.
@@ -864,12 +864,12 @@ public partial class PlaceTest : Node
         Int3 facing = site.Instance.Layout.EntranceFacing.Vec();
         Vector3 startAt = gate + new Vector3(facing.X, 0f, facing.Z) * 55f;
         startAt.Y = game.Zone.GroundAt(startAt.X, startAt.Z).Y + 0.3f;
-        GD.Print($"  (TEST: the castaway is set down 55 m from its way in, not walked the 2 km)");
+        GD.Print($"  (TEST: the sleeper is set down 55 m from its way in, not walked the 2 km)");
         game.Survivor.PlaceOutside(startAt.ToNumerics());
         foreach (int x in drive.Wait(30)) yield return x;
         foreach (int x in drive.UntilSettled()) yield return x;
         double hurtBefore = game.Suit.HealthShare;
-        gate = game.Zone.Planet.NearestCopy(new Vector3(site.Entrance.X + 0.5f, site.Entrance.Y, site.Entrance.Z + 0.5f), game.Survivor.WorldFeet); // set down over the planet's seam, the castaway is on another copy of it
+        gate = game.Zone.Planet.NearestCopy(new Vector3(site.Entrance.X + 0.5f, site.Entrance.Y, site.Entrance.Z + 0.5f), game.Survivor.WorldFeet); // set down over the planet's seam, the sleeper is on another copy of it
         foreach (int x in drive.WalkTo(gate, 1f, 40f, sprint: false, dig: false, hop: false)) yield return x;
         // Those 55 m can be a gully or a river: the walk over land is proved above, and the town is what's under test.
         if (new Vector2(game.Survivor.WorldFeet.X - gate.X, game.Survivor.WorldFeet.Z - gate.Z).Length() > 8f)
@@ -977,7 +977,7 @@ public partial class PlaceTest : Node
                     // Out of the town: a wild creature that gets in is culled by its guards.
                     Vector3 home = game.Survivor.WorldFeet;
                     game.Survivor.PlaceOutside((home + new Vector3(0f, 0f, 160f) with { Y = game.Zone.GroundAt(home.X, home.Z + 160f).Y + 0.3f }).ToNumerics());
-                    GD.Print("  (TEST: the castaway set down 160 m out of the town, for a creature to walk into)");
+                    GD.Print("  (TEST: the sleeper set down 160 m out of the town, for a creature to walk into)");
                     foreach (int x in drive.Wait(10)) yield return x;
                     foreach (int x in drive.UntilSettled()) yield return x;
                     Vector3 here = game.Survivor.WorldFeet, dir = new(1f, 0f, 0f);
@@ -1057,7 +1057,7 @@ public partial class PlaceTest : Node
         }
         // The gesture wheel through the real keyboard: Z pressed and held as a key through the engine's
         // input, read by the game's own keyboard poll as in play; the mouse up for the top of the wheel
-        // (a wave); let go, the castaway's arm waves, and they answer.
+        // (a wave); let go, the sleeper's arm waves, and they answer.
         {
             // In sight of one of them: wherever the checkpoint left you may be past where anyone takes in a gesture.
             Town.Person seen = town.People.Where(q => !q.Dead && !q.Gone && !q.Indoors && !q.Away && q.Looks != null).OrderBy(q => q.Pos.DistanceTo(place.FromWorld(game.Survivor.WorldFeet))).FirstOrDefault();
@@ -1088,7 +1088,7 @@ public partial class PlaceTest : Node
             game.Keyboard = false;
             foreach (int x in drive.Wait(50)) yield return x;
             Check(open && game.LastGesture == Wildlife.PlayerGesture.Wave && town.Answered > heard, $"Z held on the keyboard, the wheel opens; up and let go, a wave, and they answer it ({town.LastHeard}, {town.Answered - heard} answered; {town.People.Count(q => !q.Dead && !q.Gone && !q.Indoors && !q.Away)} out, the nearest {town.People.Where(q => !q.Dead && !q.Gone && !q.Indoors && !q.Away).Select(q => q.Pos.DistanceTo(place.FromWorld(game.Survivor.WorldFeet))).DefaultIfEmpty(-1f).Min():F1} m off, barricaded {town.Barricaded}; {string.Join(", ", town.People.Where(q => q.Answer != Wildlife.BodyAct.None).GroupBy(q => q.Answer).Select(g => $"{g.Count()} {g.Key}"))})");
-            Check(hand > shoulder + 0.2f, $"and the castaway's own arm waves: the right hand {hand - shoulder:+0.00;-0.00} m over the shoulder");
+            Check(hand > shoulder + 0.2f, $"and the sleeper's own arm waves: the right hand {hand - shoulder:+0.00;-0.00} m over the shoulder");
             // A threat costs goodwill, and puts hands up.
             float stood = town.Standing;
             game.MakeGesture(Wildlife.PlayerGesture.Threaten);
@@ -1242,8 +1242,8 @@ public partial class PlaceTest : Node
                 if (high - low < rise) { rise = high - low; ahead = p; }
             }
         GD.Print($"  (the gate stands where the ground rises {rise:F2} m along the way through)");
-        ahead.Y = game.Zone.GroundAt(ahead.X, ahead.Z).Y + 1f;
-        string plan = "schema galhack.blueprint\nversion 1\nname \"Gate\"\ngrid large\nmode base\ngravity off\nblock -3..-1 0 0 steel\nblock 1..3 0 0 steel\nblock -3..3 1 0 steel\nblock 0 0 0 door\nblock 4 0 0 core\n";
+        ahead.Y = game.Zone.GroundAt(ahead.X, ahead.Z).Y + 0.5f; // its lowest cells' feet on the ground
+        string plan = "schema galhack.blueprint\nversion 1\nname \"Gate\"\ngrid 1m\nmode base\ngravity off\nblock -3..-1 0..1 0 iron-plated\nblock 1..3 0..1 0 iron-plated\nblock -3..3 2 0 iron-plated\nblock 0 0 0 door-1x2x1\nblock 4 0 0 core\n";
         var s = GalHack.Structures.Blueprint.Load(plan, game.Zone.Data.Catalogue, out List<string> errors);
         Check(s != null && errors.Count == 0, $"the gate's blueprint loads {string.Join("; ", errors)}");
         if (s == null) yield break;

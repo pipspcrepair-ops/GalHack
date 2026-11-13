@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -446,9 +446,9 @@ public partial class BuildTest : Node
         {
             Paint.Solid(0xe9dfc4).WithPattern(Pattern.Stripes, 0xe85d04),
             Paint.Solid(0x0a9396).WithPattern(Pattern.Chevrons, 0xf4a100) with { Grime = 2 },
-            Paint.Solid(0x2b2d42).WithPattern(Pattern.Checker, 0xe9dfc4) with { Texture = FaceTexture.Plates },
-            Paint.Solid(0xf4a100).WithPattern(Pattern.Hazard, 0x1b1b1b) with { Texture = FaceTexture.Ribbed },
-            Paint.Solid(0xe9dfc4).WithStencil('4', 0xc1121f) with { Grime = 1, Texture = FaceTexture.Smooth },
+            Paint.Solid(0x2b2d42).WithPattern(Pattern.Checker, 0xe9dfc4),
+            Paint.Solid(0xf4a100).WithPattern(Pattern.Hazard, 0x1b1b1b),
+            Paint.Solid(0xe9dfc4).WithStencil('4', 0xc1121f) with { Grime = 1 },
         };
         for (int x = 1; x <= 5; x++)
             foreach (Dir d in Dirs.All)
@@ -458,7 +458,47 @@ public partial class BuildTest : Node
         Structure loaded = Blueprint.Load(Blueprint.Save(s), _cat, out var errors);
         bool same = loaded != null && s.Blocks().All(x => Dirs.All.All(d =>
             Building.PaintOf(s, x.pos, d) == Building.PaintOf(loaded, x.pos, d)));
-        Check(errors.Count == 0 && same, "per-face colour, pattern, texture, stencil and grime survive a save and load");
+        Check(errors.Count == 0 && same, "per-face colour, pattern, stencil and grime survive a save and load");
+
+        // Old paint lines named a surface: still read, and dropped. The plating owns the surface.
+        string text = Blueprint.Save(s);
+        Check(!text.Contains("texture="), "a saved paint line has no texture");
+        string old = string.Join('\n', text.Split('\n').Select(l => l.StartsWith("paint ") ? l.TrimEnd('\r') + " texture=ribbed" : l));
+        Structure again = Blueprint.Load(old, _cat, out var oldErrors);
+        Check(again != null && oldErrors.Count == 0 && s.Blocks().All(x => Dirs.All.All(d => Building.PaintOf(s, x.pos, d) == Building.PaintOf(again, x.pos, d))),
+            "old paint lines that carry a texture still load, with the texture dropped");
+        TestPaintOverPlating();
+    }
+
+    /// <summary>
+    /// Paint is a coat: the same paint on two platings gives two different faces, each still carrying its
+    /// plating's surface (the bits the shader draws the plates from), and the paint never picks a surface.
+    /// </summary>
+    void TestPaintOverPlating()
+    {
+        Catalogue cat = PlatingKit.WithPrecursor();
+        var s = new Structure(cat);
+        var paints = new[] { Paint.Solid(0xe9dfc4), Paint.Solid(0x2b2d42), Paint.Solid(0x0a9396).WithPattern(Pattern.Stripes, 0xe9dfc4) };
+        int Surface(FaceLook l) => ((l.Flags >> BlockMaterials.MetalShift) & 3) | (((l.Flags >> BlockMaterials.WearShift) & 3) << 2) | (((l.Flags >> BlockMaterials.TextureShift) & 3) << 4);
+        var surfaces = new List<int>();
+        foreach (Paint paint in paints)
+        {
+            var looks = new List<FaceLook>();
+            for (int i = 0; i < PlatingKit.Platings.Length; i++)
+            {
+                var at = new Int3(i, 0, 0);
+                s.Set(at, Building.Make(s, cat.Type(PlatingKit.Platings[i])));
+                FaceLook bare = ChunkMesher.Look(s, s.Get(at), Dir.PosZ, PartStyle.Body, 0);
+                Building.PaintFace(s, at, Dir.PosZ, paint);
+                FaceLook coat = ChunkMesher.Look(s, s.Get(at), Dir.PosZ, PartStyle.Body, 0);
+                Check(Surface(coat) == Surface(bare) && ((coat.Flags >> BlockMaterials.TextureShift) & 3) == 0,
+                    $"{PlatingKit.Platings[i]} under paint {Paint.Hex(paint.Base)} keeps its own surface");
+                looks.Add(coat);
+                if (paint == paints[0]) surfaces.Add(Surface(bare));
+            }
+            Check(looks.Distinct().Count() == looks.Count, $"paint {Paint.Hex(paint.Base)} on six platings gives six different faces");
+        }
+        Check(surfaces.Distinct().Count() == surfaces.Count, "the six platings each have a surface of their own, bare polymer included");
     }
 
     // ---- Rooms ----------------------------------------------------------------------------
@@ -602,24 +642,24 @@ public partial class BuildTest : Node
     void TestValidator()
     {
         const string head = "schema galhack.blueprint\nversion 1\nname \"t\"\ngrid 1m\n";
-        Check(Blueprint.Validate(Blueprint.Parse(head + "block 0 0 0 core\nblock 1 0 0 steel slope rot=+y+x\n"), _cat).Count == 0,
+        Check(Blueprint.Validate(Blueprint.Parse(head + "block 0 0 0 core\nblock 1 0 0 iron-plated slope rot=+y+x\n"), _cat).Count == 0,
             "a good blueprint passes");
 
         var cases = new (string text, string expect, string what)[]
         {
-            (head + "block 0 0 0 steel\n", "no core", "no core"),
+            (head + "block 0 0 0 iron-plated\n", "no core", "no core"),
             (head + "block 0 0 0 core\nblock 1 0 0 core\n", "cores", "two cores"),
-            (head + "block 0 0 0 core\nblock 1..3 0 0 steel\nblock 2 0 0 hardened\n", "overlaps", "overlapping blocks"),
+            (head + "block 0 0 0 core\nblock 1..3 0 0 iron-plated\nblock 2 0 0 hardened-plated\n", "overlaps", "overlapping blocks"),
             (head + "block 0 0 0 core\nblock 1 0 0 unobtanium\n", "unknown block id", "an unknown block id"),
-            (head + "block 0 0 0 core\nblock 1 0 0 steel blob\n", "unknown shape", "an unknown shape"),
-            (head + "block 0 0 0 core\nblock 1 0 0 steel paint=nope\n", "unknown paint", "an unknown paint"),
-            (head + "block 0 0 0 core\nblock 1 0 0 steel rot=+y+y\n", "bad rot", "an impossible rotation"),
+            (head + "block 0 0 0 core\nblock 1 0 0 iron-plated blob\n", "unknown shape", "an unknown shape"),
+            (head + "block 0 0 0 core\nblock 1 0 0 iron-plated paint=nope\n", "unknown paint", "an unknown paint"),
+            (head + "block 0 0 0 core\nblock 1 0 0 iron-plated rot=+y+y\n", "bad rot", "an impossible rotation"),
             (head + "block 0 0 0 core\nblock 1 0 0 thruster-t1 slope\n", "takes no shape", "a shape on a component"),
-            (head + "block 0 0 0 core\nblock 1 0 0 steel\nblock 5 5 5 steel\n", "not attached", "a detached block marked as attached"),
-            (head + "block 0 0 0 core\nblock 1 0 0 steel half\nblock 1 1 0 steel\n", "not attached", "a block touching only a half block's open top"),
+            (head + "block 0 0 0 core\nblock 1 0 0 iron-plated\nblock 5 5 5 iron-plated\n", "not attached", "a detached block marked as attached"),
+            (head + "block 0 0 0 core\nblock 1 0 0 iron-plated half\nblock 1 1 0 iron-plated\n", "not attached", "a block touching only a half block's open top"),
             ("schema galhack.blueprint\nversion 9\ngrid 1m\nblock 0 0 0 core\n", "version", "an unknown version"),
             ("schema galhack.blueprint\nversion 1\ngrid 3m\nblock 0 0 0 core\n", "unknown grid", "an unknown grid"),
-            (head + "block 0 0 0 core\nblock 1 0 0 steel hp=99999\n", "outside", "hit points above the maximum"),
+            (head + "block 0 0 0 core\nblock 1 0 0 iron-plated hp=99999\n", "outside", "hit points above the maximum"),
             (head + "block 0 0 0 core\nwibble\n", "unknown statement", "a junk line"),
         };
         foreach (var (text, expect, what) in cases)

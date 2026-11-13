@@ -41,7 +41,7 @@
   // Day and night. Each species is out in its cycle's hours (0 is midnight, 0.5 noon) and
   // rests at its rest site the rest of the day: dens against rocks and slopes, burrows in soft
   // ground, roosts on high ground, bedding grounds and hives near cover. Each creature's hours
-  // shift by up to "stagger" of a day so a herd doesn't stand up at once, and a sleeper wakes
+  // shift by up to "stagger" of a day so a herd doesn't stand up at once, and a dormant creature wakes
   // when a player comes within wakeRadius (scaled by how alarming they are: crouch to creep
   // past). Glowing species lean nocturnal. Underground and inside places there is no day:
   // their creatures are Cathemeral.

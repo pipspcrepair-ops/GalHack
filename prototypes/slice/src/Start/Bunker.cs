@@ -18,7 +18,7 @@ using Verdict = TerrainDigging.Terrain.Verdict;
 namespace Slice.Start;
 
 /// <summary>
-/// Where every game starts: a small cryopod chamber buried at the start site, where the castaway
+/// Where every game starts: a small cryopod chamber buried at the start site, where the sleeper
 /// slept through the collapse, a century or two ago, sealed in ever since. Theirs is the only pod
 /// that worked; the other sleepers died in theirs.
 /// A stairwell, its top end fallen open to the sky, climbs from the chamber's door to the
@@ -67,7 +67,7 @@ public sealed class Bunker
     public float Heading { get; private set; }
     public N.Vector3 Origin { get; private set; }
 
-    /// <summary>Where the castaway stands in their cryopod (feet), facing out.</summary>
+    /// <summary>Where the sleeper stands in their cryopod (feet), facing out.</summary>
     public Vector3 CryoStand => At(new Vector3(PodX, Floor, 1.75f));
     /// <summary>Just outside the pod, in the room.</summary>
     public Vector3 CryoFront => At(new Vector3(PodX, Floor, 0.6f));
@@ -413,9 +413,26 @@ public sealed class Bunker
     /// <summary>What stands on or by a bunker of this many steps, given its frame (a point on its axis, by z): the planet lays it all out before the bunker has a site, so the search asks.</summary>
     static IEnumerable<string> Crowding(SurfaceZone zone, Func<float, Vector3> onAxis, int steps)
     {
-        float z0 = StepZ(steps) - 5f, z1 = RoomZ * Cell + 0.25f;
-        Vector3 mid = onAxis((z0 + z1) * 0.5f);
-        return zone.Planet.Occupants(mid.X, mid.Z, MathF.Sqrt(MathF.Pow(RoomX * Cell + 0.25f, 2) + MathF.Pow((z1 - z0) * 0.5f, 2)) + ClearBy);
+        var (mid, radius) = Circle(onAxis, steps);
+        return zone.Planet.Occupants(mid.X, mid.Z, radius);
+    }
+
+    /// <summary>The circle round the chamber, the stairwell and 5 m of the way out (and the sky over them), with the margin.</summary>
+    static (Vector3 Mid, float Radius) Circle(Func<float, Vector3> onAxis, int steps)
+    {
+        float z0 = StepZ(steps) - 5f, z1 = RoomZ * Cell + Floor;
+        return (onAxis((z0 + z1) * 0.5f), MathF.Sqrt(MathF.Pow(RoomX * Cell + Floor, 2) + MathF.Pow((z1 - z0) * 0.5f, 2)) + ClearBy);
+    }
+
+    /// <summary>
+    /// Keeps the site's circle clear of everything the streaming ground and the world's dressing set down, whatever its reach:
+    /// a trunk, a crown, a boulder or a stall whose reach comes into it is never placed (see <c>PlanetTerrainSource.Reserved</c>).
+    /// Before any ground streams in, and so for every chunk built or rebuilt after.
+    /// </summary>
+    public static void Reserve(SurfaceZone zone, Site site)
+    {
+        var (mid, radius) = Circle(z => (site.Origin + MathX.Rotate(MathX.Yaw(site.Heading), new N.Vector3(0f, 0f, z))).ToGodot(), site.Steps);
+        zone.Planet.Source.Reserves = new[] { ((double)mid.X, (double)mid.Z, radius) };
     }
 
     /// <summary>The room's floor height and the steps to the surface for a spot and a heading, if the ground there will do.</summary>
@@ -579,7 +596,6 @@ public sealed class Bunker
         if (field >= 0) zone.Physics.StuckFields[field] = new RampField(bunker.Ruin.Field);
         bunker.Ruin.IsRuin = true;
         WalkableWays(zone, site, out _, bunker.Ways);
-        bunker.ClearWayOut(zone);
         bunker.Furnish(zone);
         return bunker;
     }
@@ -642,23 +658,6 @@ public sealed class Bunker
         return cells;
     }
 
-    /// <summary>
-    /// Nothing stands in the doorway: every plant and rock within a few metres of the way out goes, for
-    /// good, by the felling rule, so a trunk can't block a castaway's first steps however thick the woods.
-    /// </summary>
-    void ClearWayOut(SurfaceZone zone)
-    {
-        var planet = zone.Planet;
-        foreach (Vector3 at in new[] { StairTop, Outside })
-            for (float dz = -10f; dz <= 10f; dz += 2f)
-            for (float dx = -10f; dx <= 10f; dx += 2f)
-            {
-                if (dx * dx + dz * dz > 100f) continue;
-                long id = PlanetSurface.Terrain.FarBuilder.ScatterIdAt(Planets.Gen.Mathx.WrapX(at.X + dx, planet.Width), Planets.Gen.Mathx.Wrap(at.Z + dz, planet.Height));
-                if (planet.Felled.Add(id)) zone.Streamer.Fell(id);
-            }
-    }
-
     /// <summary>The cells the dig could not take (bedrock, anchors): the bunker's rooms must be clear of all of them.</summary>
     public int Blocked(SurfaceZone zone)
     {
@@ -678,7 +677,7 @@ public sealed class Bunker
     void Furnish(SurfaceZone zone)
     {
         Node3D at = Ruin.Node;
-        // Four pods along the back wall, numbered 1 to 4 from port; the castaway's is the third.
+        // Four pods along the back wall, numbered 1 to 4 from port; the sleeper's is the third.
         float[] pods = { -2.25f, -0.75f, PodX, 2.25f }; // metres across the room, whatever its cells
         for (int slot = 0; slot < pods.Length; slot++)
         {
@@ -783,7 +782,7 @@ sealed class RampField : IStuckField
 
 /// <summary>
 /// A cryopod: an upright capsule against the bunker's back wall, its glass front a lid that
-/// swings outward and slides back along its side. The castaway's works (cold blue light, a lid that opens with F); the others are
+/// swings outward and slides back along its side. The sleeper's works (cold blue light, a lid that opens with F); the others are
 /// dark, frosted, with their sleepers slumped inside.
 /// </summary>
 public partial class CryoPod : Node3D
@@ -841,7 +840,7 @@ public partial class CryoPod : Node3D
         {
             // A failed pod: its status lamp dead red, its glass furred with dust and frost.
             AddChild(Box(new Vector3(0.5f, 0.05f, 0.016f), new Vector3(0f, 2.2f, -0.5f), new StandardMaterial3D { AlbedoColor = new Color("6a040f"), EmissionEnabled = true, Emission = new Color("9d0208"), EmissionEnergyMultiplier = 0.4f }));
-            // Its sleeper, slumped against the back (the castaway's own figure, in grey).
+            // Its sleeper, slumped against the back (the sleeper's own figure, in grey).
             Node3D sleeper = Slice.Player.CharacterModel.Build();
             sleeper.Name = "Sleeper";
             sleeper.Position = new Vector3(0f, 0.06f, 0.1f);
@@ -887,7 +886,7 @@ public partial class CryoPod : Node3D
     static MeshInstance3D Box(Vector3 size, Vector3 at, Material m) =>
         new() { Mesh = new BoxMesh { Size = size }, Position = at, MaterialOverride = m };
 
-    /// <summary>A dead sleeper: every part grey and on the main render layer (the castaway's own figure is hidden in first person).</summary>
+    /// <summary>A dead sleeper: every part grey and on the main render layer (the sleeper's own figure is hidden in first person).</summary>
     static void Grey(Node n)
     {
         if (n is GeometryInstance3D g)

@@ -86,10 +86,141 @@ public partial class PlacePerf
             }
         GD.Print($"PERF city street at {best.At.X:F0},{best.At.Z:F0}: {best.Score:F0} m of tower along 300 m of it, the tallest in the city {towers.Max(t => t.Tall):F0} m");
         foreach (int x in Scene("city street", best.At, best.At + best.Way * 200f + Vector3.Up * 30f, 1.7f, _args.ContainsKey("profile"))) yield return x;
+        // Through the city on foot along its street and then over its roofs: every piece that comes in must get its body.
+        foreach (int x in Cross(best.At, best.Way * 400f, 1f, 22f)) yield return x;
+        foreach (int x in Cross(best.At, -best.Way * 600f, 40f, 60f)) yield return x;
+        if (JoltWatch.Failed > 0)
+        {
+            GD.PrintErr($"FAIL audit: {JoltWatch.Failed} bodies failed to create (the engine's body limit): their pieces have no collision");
+            _failed = true;
+        }
+        else GD.Print("PERF bodies: none failed to create");
+        if (_args.TryGetValue("occlcheck", out string shots))
+        {
+            // Nothing wrongly hidden: the street four ways round (facades, windows), then inside a standing place looking out at its way in.
+            Vector3 eye = best.At + Vector3.Up * (Ground(best.At) - best.At.Y + 1.7f);
+            for (int k = 0; k < 4; k++)
+                foreach (int x in OcclusionCheck(shots, $"street{k}", new Transform3D(Basis.LookingAt(best.Way.Rotated(Vector3.Up, k * MathF.PI / 2f) + Vector3.Up * 0.1f, Vector3.Up), eye))) yield return x;
+            var inside = _game.Places.Standing.OrderBy(p => Flat(p.WorldOrigin, best.At)).Select(p =>
+            {
+                var reach = p.Nav().Reachable(p.Inst.Layout.EntranceCell);
+                var roofed = reach.Where(c => p.Roofed(p.WorldOf(c, 0.2f))).ToList();
+                return (Place: p, Cell: roofed.Count > 0 ? roofed[roofed.Count / 2] : (PoiGenerator.Gen.Int3?)null);
+            }).FirstOrDefault(t => t.Cell != null);
+            if (inside.Place != null)
+            {
+                Vector3 at = inside.Place.WorldOf(inside.Cell.Value, 1.6f), door = inside.Place.WorldOf(inside.Place.Inst.Layout.EntranceCell, 1.2f);
+                _game.Survivor.PlaceOutside(inside.Place.WorldOf(inside.Cell.Value, 0.1f).ToNumerics());
+                foreach (int x in OcclusionCheck(shots, "inside", new Transform3D(Basis.LookingAt(door - at, Vector3.Up), at))) yield return x;
+            }
+            // From outside: through a ground-floor window and through the way in, into the rooms behind.
+            var near = _game.Places.Standing.OrderBy(p => Flat(p.WorldOrigin, best.At)).ToList();
+            foreach (var p in near)
+            {
+                var g = p.Inst.Blocks;
+                var window = g.Blocks().Where(cb => cb.Item2.Role == PoiGenerator.Gen.Role.Window && cb.Item1.Y >= 0 && cb.Item1.Y <= 3)
+                    .SelectMany(cb => PoiGenerator.Gen.Dirs.Horizontal.Select(d => (Cell: cb.Item1, Out: PoiGenerator.Gen.Dirs.Vec(d))))
+                    .FirstOrDefault(w => g.Get(w.Cell + w.Out).IsAir && !p.Inst.Layout.Occupied[w.Cell + w.Out]);
+                if (window.Out == default) continue;
+                Vector3 pane = p.WorldOf(window.Cell), from = pane + new Vector3(window.Out.X, 0f, window.Out.Z) * 4f;
+                foreach (int x in OcclusionCheck(shots, "window", new Transform3D(Basis.LookingAt(pane - from, Vector3.Up), from))) yield return x;
+                break;
+            }
+            if (near.Count > 0)
+            {
+                var p = near[0];
+                var f = PoiGenerator.Gen.Dirs.Vec(p.Inst.Layout.EntranceFacing);
+                Vector3 gate = p.WorldOf(p.Inst.Layout.EntranceCell, 1.2f), from = gate + new Vector3(f.X, 0f, f.Z) * 5f;
+                foreach (int x in OcclusionCheck(shots, "doorway", new Transform3D(Basis.LookingAt(gate - from, Vector3.Up), from))) yield return x;
+            }
+            // A half-ruined building: its holes in the walls are the risk.
+            var ruin = world.Pois.Where(s => s.Instance?.State == PoiGenerator.Gen.PoiState.Ruined).OrderBy(s => Flat(Middle(s), best.At)).FirstOrDefault();
+            if (ruin != null)
+            {
+                Vector3 mid = Middle(ruin), way = (best.At - mid).Normalized();
+                float half = MathF.Max(ruin.Footprint.Max.X - ruin.Footprint.Min.X, ruin.Footprint.Max.Z - ruin.Footprint.Min.Z) * 0.5f;
+                Vector3 from = mid + way * (half + 20f);
+                from.Y = Ground(from) + 1.7f;
+                _game.Survivor.PlaceOutside((from - Vector3.Up * 1.6f).ToNumerics());
+                foreach (int x in _drive.Wait(300)) yield return x; // it stands up near
+                GD.Print($"PERF occlusion check ruin: {ruin.Name}, {Flat(mid, best.At):F0} m from the street");
+                foreach (int x in OcclusionCheck(shots, "ruin", new Transform3D(Basis.LookingAt(mid + Vector3.Up * 6f - from, Vector3.Up), from))) yield return x;
+            }
+        }
         // Over its edge, looking in across it.
         if (!only.Contains("air")) yield break;
         Vector3 edge = centre + (start - centre).Normalized() * (float)city.Radius;
         foreach (int x in Scene("city air", edge, centre + Vector3.Up * 20f, 120f)) yield return x;
+    }
+
+    /// <summary>Moves along a line at a speed, a height over the ground, the way a rider or flyer would stream things in.</summary>
+    IEnumerable<int> Cross(Vector3 from, Vector3 line, float height, float speed)
+    {
+        float length = line.Length(), along = 0f;
+        Vector3 dir = line / length;
+        while (along < length)
+        {
+            along += speed / Engine.PhysicsTicksPerSecond;
+            Vector3 p = from + dir * along;
+            p.Y = Ground(p) + height;
+            _game.Survivor.PlaceOutside(p.ToNumerics());
+            _drive.Face(p + dir * 20f);
+            yield return 0;
+        }
+        foreach (int x in _drive.Wait(120)) yield return x;
+        var (bodies, shapes) = JoltWatch.Census(GetTree().Root);
+        GD.Print($"PERF crossed {length:F0} m at {speed:F0} m/s: live bodies {bodies}, shapes {shapes}, failed to create {JoltWatch.Failed}");
+    }
+
+    /// <summary>
+    /// One view drawn with the occluders off, off again (what moves between frames anyway) and on: the share of
+    /// pixels that differ each way, and the frames and a map of the differences (red: off and on differ) beside --occlcheck.
+    /// </summary>
+    IEnumerable<int> OcclusionCheck(string dir, string tag, Transform3D view)
+    {
+        System.IO.Directory.CreateDirectory(dir);
+        _game.FixedCamera = view;
+        _game.Zone.Wildlife.Frozen = true;
+        _game.Visor.Visible = false;
+        // Noon where the eye is, in clear weather: a wall wrongly hidden must show, not be black on black.
+        var sky = _game.Zone.Sky;
+        double noon = 0.5;
+        float top = -2f;
+        for (int k = 0; k < 240; k++)
+            if (sky.SunAt(k / 240.0).Y is float y && y > top) (top, noon) = (y, k / 240.0);
+        _game.Zone.Weather.Bridge.Calm = true;
+        _game.Zone.Weather.Sim.Snap(Weather.Model.WeatherKind.Clear);
+        for (int i = 0; i < 60; i++)
+        {
+            sky.TimeOfDay = noon;
+            yield return 0;
+        }
+        Image Shot() { sky.TimeOfDay = noon; return GetViewport().GetTexture().GetImage(); }
+        GetViewport().UseOcclusionCulling = false;
+        foreach (int x in _drive.Wait(10)) yield return x;
+        Image off1 = Shot();
+        foreach (int x in _drive.Wait(10)) yield return x;
+        Image off2 = Shot();
+        GetViewport().UseOcclusionCulling = true;
+        foreach (int x in _drive.Wait(10)) yield return x;
+        Image on = Shot();
+        var map = Image.CreateEmpty(on.GetWidth(), on.GetHeight(), false, Image.Format.Rgb8);
+        int noise = 0, differ = 0, n = on.GetWidth() * on.GetHeight();
+        for (int y = 0; y < on.GetHeight(); y++)
+            for (int x = 0; x < on.GetWidth(); x++)
+            {
+                Color a = off1.GetPixel(x, y), b = off2.GetPixel(x, y), c = on.GetPixel(x, y);
+                bool moved = Differ(a, b), changed = Differ(b, c);
+                if (moved) noise++;
+                if (changed) differ++;
+                map.SetPixel(x, y, changed && !moved ? new Color(1f, 0f, 0f) : c.Darkened(0.6f));
+            }
+        off2.SavePng(System.IO.Path.Combine(dir, $"{tag}-off.png"));
+        on.SavePng(System.IO.Path.Combine(dir, $"{tag}-on.png"));
+        map.SavePng(System.IO.Path.Combine(dir, $"{tag}-diff.png"));
+        GD.Print($"PERF occlusion check {tag}: {differ * 100.0 / n:F3}% of pixels differ off against on, {noise * 100.0 / n:F3}% off against off; draws on {GetViewport().GetRenderInfo(Viewport.RenderInfoType.Visible, Viewport.RenderInfo.DrawCallsInFrame)}");
+        _game.Zone.Wildlife.Frozen = false;
+        static bool Differ(Color a, Color b) => MathF.Max(MathF.Abs(a.R - b.R), MathF.Max(MathF.Abs(a.G - b.G), MathF.Abs(a.B - b.B))) > 0.06f;
     }
 
     static float Flat(TerrainDigging.Terrain.Int3 a, TerrainDigging.Terrain.Int3 b) => MathF.Sqrt((float)(a.X - b.X) * (a.X - b.X) + (float)(a.Z - b.Z) * (a.Z - b.Z));
@@ -145,6 +276,15 @@ public partial class PlacePerf
         foreach (int x in Measure(name)) yield return x;
         Census(_game);
         Lights();
+        // --ticks=8,3,2: the same scene with each cap on physics ticks a frame (the engine's max_physics_steps_per_frame).
+        int cap = Engine.MaxPhysicsStepsPerFrame;
+        foreach (string n in _args.GetValueOrDefault("ticks", "").Split(',', StringSplitOptions.RemoveEmptyEntries))
+        {
+            Engine.MaxPhysicsStepsPerFrame = int.Parse(n);
+            foreach (int x in _drive.Wait(10)) yield return x;
+            foreach (int x in Measure($"{name} at most {n} ticks", 120)) yield return x;
+        }
+        Engine.MaxPhysicsStepsPerFrame = cap;
         // --toggle=occlusion,loadbudget: the same scene with a fix switched off, then on again (the order evens out what still loads).
         foreach (string ab in _args.GetValueOrDefault("toggle", "").Split(',', StringSplitOptions.RemoveEmptyEntries))
         {

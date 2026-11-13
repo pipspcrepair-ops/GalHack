@@ -101,6 +101,58 @@ public sealed partial class Staging
     }
 
     /// <summary>
+    /// The stock set (<see cref="BlueprintSet"/>), frame by frame into --dir: each blueprint set down whole by Creative's
+    /// PLACE and seen from outside (stock-NAME-out), then from its chair (stock-NAME-in), the seated figure in view.
+    /// --only=a,b picks files by name.
+    /// </summary>
+    IEnumerable<int> StockShots()
+    {
+        string dir = _args.TryGetValue("dir", out string d) ? d : "user://stock";
+        string[] only = _args.TryGetValue("only", out string o) ? o.Split(',') : null;
+        _game.Zone.Sky.TimeOfDay = Num("time", 0.4);
+        _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
+        _game.Mode = GameMode.Creative;
+        var catalogue = _game.Zone.Data.Catalogue;
+        int n = 0;
+        foreach (BlueprintSet.Design design in BlueprintSet.All)
+        {
+            string file = System.IO.Path.GetFileNameWithoutExtension(design.File);
+            if (only != null && !only.Contains(file)) continue;
+            var plan = GalHack.Structures.Blueprint.Load(design.Make(catalogue), catalogue, out _);
+            if (plan == null) continue;
+            Vessel v = null;
+            var (lo, hi) = plan.Bounds();
+            float radius = 0.5f * new Vector2(hi.X - lo.X + 1, hi.Z - lo.Z + 1).Length();
+            for (int attempt = 0; attempt < 4 && v == null; attempt++, n++)
+            {
+                Vector3 spot = Play.FlatSpot(_game.Start, 110f + 60f * (n % 5), n * 1.3f, 0.5f + attempt * 0.5f, span: MathF.Max(14f, radius));
+                Vector3 stand = spot - Vector3.Forward * (radius + 4f);
+                _game.Survivor.PlaceOutside((_game.Zone.GroundAt(stand.X, stand.Z) + Vector3.Up * 0.2f).ToNumerics());
+                foreach (int x in _drive.UntilSettled(20)) yield return x;
+                foreach (int x in _drive.Wait(30)) yield return x;
+                WholePlacement job = _game.Builder.PlaceWhole(plan);
+                for (int t = 0; t < 600 && !job.Done; t++) yield return 0;
+                v = job.Vessel;
+            }
+            if (v == null) { GD.Print($"({plan.Name} would not go down)"); continue; }
+            for (int t = 0; t < 300 && (v.PendingShapes > 0 || v.View.Waiting > 0); t++) yield return 0;
+            foreach (int x in _drive.Wait(40)) yield return x;
+            _game.Visor.Visible = false;
+            foreach (int x in Outside(v)) yield return x;
+            foreach (int x in Shot($"{dir}/stock-{file}-out.png")) yield return x;
+            _game.FixedCamera = null;
+            _game.ThirdPerson = false;
+            _game.Survivor.Sit(v);
+            _game.Survivor.Pitch = -0.35f;
+            foreach (int x in _drive.Wait(30)) yield return x;
+            foreach (int x in Shot($"{dir}/stock-{file}-in.png")) yield return x;
+            _game.Survivor.StandUp();
+            _game.Visor.Visible = true;
+            foreach (int x in _drive.Wait(5)) yield return x;
+        }
+    }
+
+    /// <summary>
     /// A three-quarter view of a structure from outside, a little above, the ground in the frame: of
     /// eight sides the one with the fewest plants in the way, and those few felled for the frame (a
     /// photographer's clearing; the structure itself stands as it was placed).

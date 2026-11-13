@@ -146,7 +146,7 @@ public partial class ShakeTest : Node
             }
             _cabinWas = inView;
         }
-        // The castaway's figure against what carries it: the vessel's seat, or the bike.
+        // The sleeper's figure against what carries it: the vessel's seat, or the bike.
         Transform3D? carrier = _watch == Watch.Vessel && _vessel != null ? _vessel.DrawTransform
             : _watch == Watch.Bike && S.OnBike != null ? S.OnBike.Node.GetGlobalTransformInterpolated() : null;
         if (carrier is Transform3D c && _game.Figure != null)
@@ -278,7 +278,7 @@ public partial class ShakeTest : Node
             $"and its offset from the eye wavers only by float rounding {_far / 1000f:F1} km from the origin: {Stats(_cabinMoved, 1000f, "mm")} against a float step of {ulp * 1000f:F2} mm");
         GD.Print($"   figure set vs interpolated: {_figGap:F3} m");
         Check(_body.Count > 100 && _figGap < 1e-4f && Pct(_body, 0.99f) < 4f * ulp,
-            $"and the castaway's body sits still in its seat, drawn where it is set ({_figGap * 1000f:F2} mm apart): against the vessel only float rounding ({Stats(_body, 1000f, "mm")})");
+            $"and the sleeper's body sits still in its seat, drawn where it is set ({_figGap * 1000f:F2} mm apart): against the vessel only float rounding ({Stats(_body, 1000f, "mm")})");
         _watch = Watch.None;
 
         // ---- On a hover bike, riding and turning -------------------------------------------------------
@@ -305,7 +305,7 @@ public partial class ShakeTest : Node
         _game.Controls.Look = Vector2.Zero;
         float ulpBike = MathF.Pow(2f, MathF.Floor(MathF.Log2(MathF.Max(1f, S.WorldFeet.Length()))) - 23f);
         Check(_body.Count > 100 && _figGap < 1e-4f && Pct(_body, 0.99f) < 4f * ulpBike,
-            $"riding and turning, the castaway's body sits still on the bike, drawn where it is set ({_figGap * 1000f:F2} mm apart): against it only float rounding ({Stats(_body, 1000f, "mm")})");
+            $"riding and turning, the sleeper's body sits still on the bike, drawn where it is set ({_figGap * 1000f:F2} mm apart): against it only float rounding ({Stats(_body, 1000f, "mm")})");
         _watch = Watch.None;
     }
 }

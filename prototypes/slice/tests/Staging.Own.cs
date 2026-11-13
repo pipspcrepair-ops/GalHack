@@ -64,9 +64,9 @@ public sealed partial class Staging
         // Clear what else is round here, so the frame is theirs.
         Vector3 feet = _game.Survivor.WorldFeet;
         foreach (Creature c in patch.Sim.Creatures) if (patch.WorldOf(c).DistanceTo(feet) < 60f) c.Removed = true;
-        // STAGING: the castaway out of their notice for the frame, so they go about it as unwatched (neither fleeing nor coming at the eye).
+        // STAGING: the sleeper out of their notice for the frame, so they go about it as unwatched (neither fleeing nor coming at the eye).
         patch.Sim.Targets.Remove(patch.Player);
-        GD.Print("(STAGING: the castaway unnoticed for the frame)");
+        GD.Print("(STAGING: the sleeper unnoticed for the frame)");
         int count = Math.Max(s.GroupMin, (s.GroupMin + s.GroupMax + 1) / 2);
         // Toward the place first; where that ground won't take them (a wall's footprint, water), round you till it does.
         // The wary are framed from further off, before they take fright.
@@ -87,7 +87,7 @@ public sealed partial class Staging
         Vector3 to = new Vector3(at.X - feet.X, 0f, at.Z - feet.Z).Normalized();
         Vector3 eye = feet + Vector3.Up * 2.3f + new Vector3(to.Z, 0f, -to.X) * 2f;
         _game.Visor.Visible = false;
-        HideCastaway(true);
+        HideSleeper(true);
         Look(eye, at + Vector3.Up * 0.9f);
         foreach (int x in _drive.Wait(20)) yield return x;
         GD.Print($"(the group {at.DistanceTo(eye):F0} m off; {string.Join("; ", group.Take(4).Select(c => $"{c.Species.CommonName}: {c.State}{(c.Species.Figure is { } fg ? $", {fg.Dress}, {string.Join(" ", fg.Wear)}{(fg.Prop != "" ? ", " + fg.Prop : "")}" : "")}"))})");

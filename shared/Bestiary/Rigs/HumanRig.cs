@@ -37,7 +37,7 @@ public struct Gesture
     public StrikeKind Blow;
     /// <summary>0..1: a drink at the lips (the held bottle tipped to the mouth); a low, hunched creep (a stalk, not a crouch).</summary>
     public float Sip, Stalk;
-    /// <summary>Dead: the body goes limp and falls as a ragdoll (Down alone lays a sleeper down whole).</summary>
+    /// <summary>Dead: the body goes limp and falls as a ragdoll (Down alone lays a dormant body down whole).</summary>
     public bool Dead;
 }
 

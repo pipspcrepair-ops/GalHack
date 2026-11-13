@@ -18,8 +18,12 @@ public enum Collide { Cell, Parts, None }
 /// <summary>How a component part is drawn. Body faces take the block's paint; the rest are fixed.</summary>
 public enum PartStyle { Body, Dark, Accent, Glow, Glass }
 
-/// <summary>How a block's material shows damage: metal dents and scorches, concrete chips, alien alloy bruises and bleeds light, glass cracks and shatters.</summary>
-public enum DamageLook { Metal, Concrete, Alien, Glass }
+/// <summary>
+/// How a material shows damage, and (the shader reads the same two bits) which surface it has bare
+/// or under paint: metal dents and scorches over plates, concrete chips, alien alloy bruises and
+/// bleeds light, bare polymer wears like metal, glass cracks and shatters.
+/// </summary>
+public enum DamageLook { Metal, Concrete, Alien, Polymer, Glass }
 
 /// <summary>Resistance to each damage type, 0 (none) to 1 (immune).</summary>
 public readonly record struct Resist(float Kinetic, float Explosive, float Energy)

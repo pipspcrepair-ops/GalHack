@@ -39,7 +39,7 @@ public partial class ClimateTest
             $"the bunker is sealed and heated at once: {e.Temperature:F0} Â°C, {e.OxygenPercent:F0}% (the world's {OutsideC:F0} Â°C)");
     }
 
-    /// <summary>STAGING: the castaway kept whole through the long cold waits (rooms' air is tested here, not the body's).</summary>
+    /// <summary>STAGING: the sleeper kept whole through the long cold waits (rooms' air is tested here, not the body's).</summary>
     void Keep()
     {
         _game.Suit.Vitals.Health = _game.Suit.Sim.Data.Vitals.Health.Max;
@@ -206,7 +206,7 @@ public partial class ClimateTest
             Check(false, "a place near with a shut room behind a door (6 nearest tried)");
             yield break;
         }
-        // Shut, the castaway inside, a blizzard on a cold world outside.
+        // Shut, the sleeper inside, a blizzard on a cold world outside.
         door.Target = 0f;
         for (int i = 0; i < 240 && !door.IsShut; i++) yield return 0;
         Me.PlaceOutside(place.WorldOf(stand, 0.05f).ToNumerics());

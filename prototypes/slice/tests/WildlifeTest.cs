@@ -11,7 +11,7 @@ namespace Slice.Tests;
 /// <summary>
 /// Animals round the start of a real game: fresh worlds (two temperate, one meadow and one other
 /// type, each a fresh seed), each started as a played game starts it, and in its first minute
-/// of play the creatures living within 300 m of the castaway are counted, alive and drawn. Nothing
+/// of play the creatures living within 300 m of the sleeper are counted, alive and drawn. Nothing
 /// is spawned by the test. Each world prints what it rolled (its kinds, by body plan) and the
 /// counts every 10 s.
 ///
@@ -223,7 +223,7 @@ public partial class WildlifeTest : Node
                     }
                     yield return x;
                 }
-                // At the end of each leg, through the castaway's own eyes: turn to the nearest animal and see it on screen.
+                // At the end of each leg, through the sleeper's own eyes: turn to the nearest animal and see it on screen.
                 if (DisplayServer.GetName() == "headless") continue;
                 drive.ReleaseAll();
                 Vector3 here = patch.PatchLocal(game.Survivor.WorldFeet);
@@ -263,7 +263,7 @@ public partial class WildlifeTest : Node
                 int fewestMet = (int)MathF.Ceiling(FewestOnTheWay * 2 * Math.Min(1f, patch.Livable));
                 Check(samples > 0 && sawAny >= samples * share && met.Count >= fewestMet,
                     $"{world}: walking the land, animals within 150 m at {sawAny} of {samples} looks (at least {samples * share:F0}), {met.Count} different ones met (at least {fewestMet}), {median} at the median; livable {patch.Livable:F2}");
-                if (looked > 0) Check(firstPerson > 0, $"{world}: animals on screen through the castaway's own eyes at {firstPerson} of {looked} stops");
+                if (looked > 0) Check(firstPerson > 0, $"{world}: animals on screen through the sleeper's own eyes at {firstPerson} of {looked} stops");
             }
         }
         game.QueueFree();
@@ -283,7 +283,7 @@ public partial class WildlifeTest : Node
         return n;
     }
 
-    /// <summary>Animals alive in the patch, those within 300 m of the castaway, those of them drawn; people; the dead; the removed.</summary>
+    /// <summary>Animals alive in the patch, those within 300 m of the sleeper, those of them drawn; people; the dead; the removed.</summary>
     static (int alive, int near, int drawn, int people, int dead, int removed) Count(Game.Game game, Surface.WildlifePatch patch)
     {
         int alive = 0, near = 0, drawn = 0, people = 0, dead = 0, removed = 0;

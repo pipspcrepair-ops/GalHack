@@ -60,7 +60,7 @@ public partial class Place : Node3D
     }
 
     readonly Dictionary<Int3, Group> _groups = new();
-    readonly Dictionary<Int3, (MeshInstance3D Mesh, CollisionShape3D Shape)> _chunks = new();
+    readonly Dictionary<Int3, (MeshInstance3D Mesh, List<CollisionShape3D> Shapes)> _chunks = new();
     BlockMaterials _materials;
     float _glow;
 
@@ -156,12 +156,21 @@ public partial class Place : Node3D
         foreach (ChunkMesh c in chunks)
         {
             if (c.Collision.Count == 0) continue;
-            var shape = new CollisionShape3D { Name = $"Chunk {c.Chunk}", Shape = MeshBuild.ToShape(c) };
-            g.Body.AddChild(shape);
-            _chunks[c.Chunk] = (_chunks.GetValueOrDefault(c.Chunk).Mesh, shape);
-            yield return 0;
+            var shapes = new List<CollisionShape3D>();
+            _chunks[c.Chunk] = (_chunks.GetValueOrDefault(c.Chunk).Mesh, shapes);
+            // A piece a step: a dense chunk's faces all in one shape were one step of tens of ms.
+            for (int first = 0; first < c.Collision.Count; first += ShapePiece)
+            {
+                var shape = new CollisionShape3D { Name = $"Chunk {c.Chunk}", Shape = MeshBuild.ToShape(c, first, ShapePiece) };
+                g.Body.AddChild(shape);
+                shapes.Add(shape);
+                yield return 0;
+            }
         }
     }
+
+    /// <summary>The most of a chunk's collision one shape holds, floats (a triangle is nine): the physics builds a shape's face tree as it joins its body, in one go.</summary>
+    const int ShapePiece = 1024 * 9;
 
     void SetChunkMesh(ChunkMesh chunk)
     {
@@ -176,14 +185,14 @@ public partial class Place : Node3D
             Group g = GroupAt(GroupOf(chunk.Chunk));
             if (!g.Near || g.Way != 0) PlanetSurface.Fx.Fade.Set(mesh, 0f, g.Way != 0 ? g.Blend : 0f);
         }
-        _chunks[chunk.Chunk] = (mesh, old.Shape);
+        _chunks[chunk.Chunk] = (mesh, old.Shapes);
     }
 
     void SetChunkShape(ChunkMesh chunk)
     {
         var old = _chunks.GetValueOrDefault(chunk.Chunk);
-        old.Shape?.QueueFree();
-        CollisionShape3D shape = null;
+        if (old.Shapes != null) foreach (CollisionShape3D s in old.Shapes) s.QueueFree();
+        List<CollisionShape3D> shapes = null;
         if (chunk.Collision.Count > 0)
         {
             Group g = GroupAt(GroupOf(chunk.Chunk));
@@ -192,10 +201,15 @@ public partial class Place : Node3D
                 g.Body = new StaticBody3D { Name = $"Blocks {g.Key}", CollisionLayer = Layers.World, CollisionMask = 0 };
                 AddChild(g.Body);
             }
-            shape = new CollisionShape3D { Name = $"Chunk {chunk.Chunk}", Shape = MeshBuild.ToShape(chunk) };
-            g.Body.AddChild(shape);
+            shapes = new List<CollisionShape3D>();
+            for (int first = 0; first < chunk.Collision.Count; first += ShapePiece)
+            {
+                var shape = new CollisionShape3D { Name = $"Chunk {chunk.Chunk}", Shape = MeshBuild.ToShape(chunk, first, ShapePiece) };
+                g.Body.AddChild(shape);
+                shapes.Add(shape);
+            }
         }
-        _chunks[chunk.Chunk] = (old.Mesh, shape);
+        _chunks[chunk.Chunk] = (old.Mesh, shapes);
     }
 
     public int ChunkCount => _chunks.Count;
@@ -382,7 +396,7 @@ public partial class Place : Node3D
             if (GroupOf(ch) != g.Key) continue;
             var c = _chunks[ch];
             c.Mesh?.QueueFree();
-            _chunks[ch] = (null, c.Shape);
+            _chunks[ch] = (null, c.Shapes);
         }
     }
 

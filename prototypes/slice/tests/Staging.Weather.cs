@@ -121,7 +121,7 @@ public partial class Staging
         Vector3 toward = new Vector3(-way.X, 0f, -way.Y).Rotated(Vector3.Up, Mathf.DegToRad((float)Num("bearing", 0)));
         float up = (float)Num("up", 24); // over the trees
         Vector3 eye = Lookout(_game.Survivor.WorldFeet, toward, up);
-        // The castaway stands there too: the weather happens around them, so the front's cells line up along their stretch of it.
+        // The sleeper stands there too: the weather happens around them, so the front's cells line up along their stretch of it.
         _game.Survivor.PlaceOutside((eye + Vector3.Up).ToNumerics());
         foreach (int x in _drive.UntilSettled()) yield return x;
         eye.Y = _game.Zone.GroundAt(eye.X, eye.Z).Y + up;
@@ -308,7 +308,7 @@ public partial class Staging
             var room = Slice.Vessels.Vessel.SpawnBase(_game.Zone, shelter, (site + Vector3.Up * 3f).ToNumerics(), 0f);
             Vector3 inside = room.ToWorld(new System.Numerics.Vector3(0f, 2.9f, -1.5f));
             Vector3 outside = room.ToWorld(new System.Numerics.Vector3(0f, 2.4f, 16f));
-            // The castaway stands in a back corner, out of the picture.
+            // The sleeper stands in a back corner, out of the picture.
             _game.Survivor.PlaceOutside(room.ToWorld(new System.Numerics.Vector3(3.5f, 2.9f, -3.5f)).ToNumerics());
             _game.Zone.Light.Touch();
             foreach (int x in _drive.UntilSettled()) yield return x;

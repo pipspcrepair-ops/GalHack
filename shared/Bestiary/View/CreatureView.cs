@@ -176,11 +176,13 @@ public partial class CreatureView : Node3D
             var skin = new Skin();
             for (int i = 0; i < pieces.Count; i++)
             {
-                _skeleton.AddBone(pieces[i].Name);
+                // (A second head, paired horns: pieces share names, a skeleton's bones can't.)
+                string bone = pieces[i].Name;
+                _skeleton.AddBone(_skeleton.FindBone(bone) >= 0 ? $"{bone}#{i}" : bone);
                 skin.AddBind(i, Transform3D.Identity);
             }
             AddChild(_skeleton);
-            foreach (var (mesh, shadow, blur) in Bodies.GetValue(c.Species, _ => BodyMeshes(pieces)))
+            foreach (var (mesh, shadow, blur) in Bodies.GetValue(c.Species, s => BodyMeshes(s, pieces)))
             {
                 var mi = new MeshInstance3D
                 {
@@ -228,15 +230,37 @@ public partial class CreatureView : Node3D
     }
 
     /// <summary>A body's meshes: its solid pieces that cast shadows, those that don't, and its blurs, each piece on its own bone; small parts drop out by size on screen as a person's do.</summary>
-    static List<(ArrayMesh, bool, bool)> BodyMeshes(IReadOnlyList<Piece> pieces)
+    static List<(ArrayMesh, bool, bool)> BodyMeshes(Species s, IReadOnlyList<Piece> pieces)
     {
         var meshes = new List<(ArrayMesh, bool, bool)>();
-        foreach (var (shadow, blur) in new[] { (true, false), (false, false), (false, true) })
+        foreach (var (body, shadow, blur) in Preparing.TryRemove(s, out var job) ? job.Result : Prepare(pieces))
         {
-            ArrayMesh m = MeshBuilder.Skinning(pieces, PersonView.Keep, PersonView.Edges, p => p.Blur == blur && (blur || p.Shadow == shadow)).Commit();
+            ArrayMesh m = body.Commit();
             if (m.GetSurfaceCount() > 0) meshes.Add((m, shadow, blur));
         }
         return meshes;
+    }
+
+    /// <summary>The vertex work of a species' body (no engine calls): on a worker, started the first time one of its kind is near enough to be drawn.</summary>
+    static List<(MeshBuilder.Prepared, bool, bool)> Prepare(IReadOnlyList<Piece> pieces)
+    {
+        var bodies = new List<(MeshBuilder.Prepared, bool, bool)>();
+        foreach (var (shadow, blur) in new[] { (true, false), (false, false), (false, true) })
+            bodies.Add((MeshBuilder.Skinning(pieces, PersonView.Keep, PersonView.Edges, p => p.Blur == blur && (blur || p.Shadow == shadow)), shadow, blur));
+        return bodies;
+    }
+
+    static readonly System.Collections.Concurrent.ConcurrentDictionary<Species, System.Threading.Tasks.Task<List<(MeshBuilder.Prepared, bool, bool)>>> Preparing = new();
+
+    /// <summary>
+    /// Whether a creature's body can be built now without its species' vertex work on the main thread (a few ms the first
+    /// time a kind is seen): false starts that work on a worker, and a view waits a frame or two for it.
+    /// </summary>
+    public static bool Ready(Creature c)
+    {
+        if (!Merged || c.Rig == null || c.Rig is SwarmRig || Bodies.TryGetValue(c.Species, out _)) return true;
+        IReadOnlyList<Piece> pieces = c.Rig.Layout.Pieces;
+        return Preparing.GetOrAdd(c.Species, _ => System.Threading.Tasks.Task.Run(() => Prepare(pieces))).IsCompleted;
     }
 
     /// <summary>A hoverer's hum runs while it is up and someone is near enough to hear; nothing plays for the rest.</summary>
@@ -444,7 +468,7 @@ public partial class WildlifeView : Node3D
             bool fresh = false;
             if (!_views.TryGetValue(c, out CreatureView view))
             {
-                if (built >= MostNew) continue;
+                if (built >= MostNew || !CreatureView.Ready(c)) continue;
                 built++;
                 fresh = true;
                 view = new CreatureView();

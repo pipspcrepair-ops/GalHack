@@ -13,7 +13,7 @@ using WeatherKind = Weather.Model.WeatherKind;
 namespace Slice.Tests;
 
 /// <summary>
-/// Feet on the ground (--view=feet): on a fresh world, the castaway set down by a few of its places (city lots
+/// Feet on the ground (--view=feet): on a fresh world, the sleeper set down by a few of its places (city lots
 /// first, then towns and other lived-in places), and every person there watched for a while: the townsfolk of the
 /// places standing and the world's own people out in the open (roamers, settlers by their homes). Each one's feet
 /// are measured against what the physics world has under them (terrain, floor, stair): more than 0.3 m above it

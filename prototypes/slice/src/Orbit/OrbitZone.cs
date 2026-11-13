@@ -22,7 +22,7 @@ namespace Slice.Orbit;
 /// the start system's wrecks near the world, built from the POI generator's data, to board, loot,
 /// take apart and claim.
 ///
-/// It is a zone like the surface (the same game layer plays in both: the castaway, vessels,
+/// It is a zone like the surface (the same game layer plays in both: the sleeper, vessels,
 /// containers, the menu and the visor), with none of the surface's ground: no terrain, sea, weather
 /// or wildlife. Its data is made on worker threads as soon as a climb looks likely; it then enters
 /// the scene parked (disabled and hidden) and is set up a piece a frame, so it is complete before

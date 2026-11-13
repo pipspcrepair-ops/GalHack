@@ -265,6 +265,22 @@ public static class Dressing
                     var d = rng.Pick(guards);
                     Spawn(d, EnemyKind.Guard, d.Name, true, (rng.Pick(vaultFloor), layout.VaultModule));
                 }
+                // The core's vault holds the place's heaviest guard (rule E5, owner 13 Nov), a gun covering its way in, and
+                // a guard in each room that leads to it.
+                if (inst.HasCore && layout.CoreModule >= 0 && layout.Modules[layout.CoreModule].Purpose == "core-vault")
+                {
+                    int cm = layout.CoreModule;
+                    var coreFloor = StateTransforms.FloorCells(inst, layout.Modules[cm], nav).Where(c => !used.Contains(c) && !inst.CoreCase.Contains(c) && c != inst.CoreCell && !nav.LadderAt(c)).ToList();
+                    rng.Shuffle(coreFloor);
+                    int heavy = 3 + Math.Min(2, (int)inst.Rarity);
+                    foreach (Int3 c in coreFloor.Take(heavy)) { var d = rng.Pick(guards); Spawn(d, EnemyKind.Guard, d.Name, true, (c, cm)); }
+                    if (turrets.Count > 0 && coreFloor.Skip(heavy).FirstOrDefault() is var gun && gun != default) { var d = rng.Pick(turrets); Spawn(d, EnemyKind.Turret, d.Name, true, (gun, cm)); }
+                    foreach (int n in layout.Links.Where(k => k.A == cm || k.B == cm).Select(k => k.A == cm ? k.B : k.A).Distinct())
+                    {
+                        var floor = StateTransforms.FloorCells(inst, layout.Modules[n], nav).Where(c => !used.Contains(c) && !nav.LadderAt(c) && !nav.LiftAt(c)).ToList();
+                        if (floor.Count > 0) { var d = rng.Pick(guards); Spawn(d, EnemyKind.Guard, d.Name, true, (rng.Pick(floor), n)); }
+                    }
+                }
                 Int3 side = layout.EntranceFacing.RotateCw(1).Vec();
                 foreach (int s in new[] { -2, 3 })
                 {
