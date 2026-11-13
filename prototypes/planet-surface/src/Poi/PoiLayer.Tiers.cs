@@ -217,6 +217,13 @@ public partial class PoiLayer
         foreach (Place p in _places)
         {
             if (p.Node != null || p.LowMesh is not { IsCompleted: true }) continue;
+            if (p.LowMesh.IsFaulted)
+            {
+                // Said once, and the place left without a far mesh: rethrown every frame it stopped the whole layer.
+                GD.PushError($"could not make {p.Site.Name}'s far mesh: {p.LowMesh.Exception?.GetBaseException().Message}");
+                p.LowMesh = null;
+                continue;
+            }
             p.Node = BuildLow(p);
             AddChild(p.Node);
             built = true;
@@ -226,6 +233,12 @@ public partial class PoiLayer
         {
             if (t.Node != null) { Vector3 at = _world.NearestCopy(new Vector3(t.First.Origin.X, t.First.Origin.Y, t.First.Origin.Z), camera); if (t.Node.Position != at) t.Node.Position = at; continue; }
             if (built || t.Mesh is not { IsCompleted: true }) continue;
+            if (t.Mesh.IsFaulted)
+            {
+                GD.PushError($"could not make a city tile's far mesh: {t.Mesh.Exception?.GetBaseException().Message}");
+                t.Mesh = null;
+                continue;
+            }
             BuildTile(t);
             built = true;
         }
