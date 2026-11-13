@@ -106,6 +106,7 @@ public sealed partial class Staging
             "crouch" => CrouchView(),
             "seated" => SeatedView(),
             "sleeper" => SleeperView(),
+            "sleeperface" => SleeperFaceView(),
             "folk" => FolkView(),
             "crowd" => CrowdView(),
             "peoples" => PeoplesView(),

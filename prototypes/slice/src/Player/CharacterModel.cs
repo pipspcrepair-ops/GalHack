@@ -60,6 +60,9 @@ public static class CharacterModel
         public Node3D[] Pieces;
         public int Torso, ArmU0, ArmU1, ArmL0, ArmL1, LegU0, LegU1, LegL0, LegL1, Foot0, Foot1;
         public float Walked, Crouch, Seat, Air, Flown, Clock;
+        /// <summary>The visor's hinge through the helmet's middle, and how far it is lifted (0 shut, 1 open).</summary>
+        public Node3D Hinge;
+        public float Lift;
     }
 
     static readonly ConditionalWeakTable<Node3D, Body> Bodies = new();
@@ -108,8 +111,15 @@ public static class CharacterModel
         Node3D head = Piece("head");
         float crown = f.Neck + f.HeadRadius * 0.7f;
         Part(head, new CylinderMesh { TopRadius = 0.09f, BottomRadius = 0.11f, Height = 0.08f }, dark, new Vector3(0f, 0.02f, 0f));
-        Part(head, new SphereMesh { Radius = 0.16f, Height = 0.32f }, plate, new Vector3(0f, crown, 0f));
-        Part(head, new SphereMesh { Radius = 0.125f, Height = 0.2f }, visor, new Vector3(0f, crown, -0.065f));
+        // The helmet's own sphere wears the face opening painted on its front; the visor, on a hinge
+        // through the helmet's middle, covers it when shut and lifts up and back over the crown.
+        Part(head, new SphereMesh { Radius = 0.16f, Height = 0.32f }, SleeperFace.Helmet, new Vector3(0f, crown, 0f));
+        if (head != null)
+        {
+            b.Hinge = new Node3D { Name = "Hinge", Position = new Vector3(0f, crown, 0f) };
+            head.AddChild(b.Hinge);
+            Part(b.Hinge, new SphereMesh { Radius = 0.125f, Height = 0.25f }, visor, new Vector3(0f, 0f, -0.065f));
+        }
         Part(head, new BoxMesh { Size = new Vector3(0.04f, 0.1f, 0.04f) }, dark, new Vector3(0.14f, crown + 0.12f, 0.05f));
 
         for (int side = 0; side < 2; side++)
@@ -137,6 +147,22 @@ public static class CharacterModel
         // Standing at rest until it is driven.
         Drive(root, new SleeperMotion { Grounded = true }, null, 99f, 0f);
         return root;
+    }
+
+    /// <summary>How far the visor swings up and back when open, radians (clear of the painted opening and of the antenna), and how long it takes, s.</summary>
+    const float LiftAngle = 105f * Mathf.Pi / 180f, LiftSeconds = 0.3f;
+
+    /// <summary>
+    /// Opens or shuts the figure's visor, easing it over <see cref="LiftSeconds"/>: call it each frame
+    /// with the frame's time (the default snaps). Once it has settled it does nothing.
+    /// </summary>
+    public static void SetHelmet(Node3D figure, bool open, float delta = LiftSeconds)
+    {
+        if (!Bodies.TryGetValue(figure, out Body b) || b.Hinge == null) return;
+        float to = open ? 1f : 0f;
+        if (b.Lift == to) return;
+        b.Lift = Mathf.MoveToward(b.Lift, to, delta / LiftSeconds);
+        b.Hinge.Rotation = new Vector3(LiftAngle * Mathf.SmoothStep(0f, 1f, b.Lift), 0f, 0f);
     }
 
     /// <summary>
