@@ -226,6 +226,11 @@ public sealed class Craft : ILiftHull
     {
         Pin = pin;
         Body.Controller = pin;
+        // Anchored (a base, or a hull keyed into the ground), nothing moves it: Fixed, so the host never
+        // sweeps it or pushes it out of the ground it is built into. Pushed up and put back by its pin
+        // every tick, it would carry whatever is parked on it up by the push each tick, into the sky.
+        // A docked vessel rides its host, so it stays kinematic.
+        Body.Motion = pin.Docked ? GalHack.Physics.Motion.Kinematic : GalHack.Physics.Motion.Fixed;
         pin.Hold(Body);
         _restingFor = 0f;
     }
@@ -240,6 +245,7 @@ public sealed class Craft : ILiftHull
         N.Vector3 velocity = Body.Velocity;
         Pin = null;
         Body.Controller = Vessel;
+        Body.Motion = GalHack.Physics.Motion.Kinematic;
         PlaceLanded(Body.Position, Body.Rotation);
         Body.Velocity = velocity;
     }
