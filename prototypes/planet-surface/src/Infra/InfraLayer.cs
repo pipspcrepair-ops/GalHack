@@ -133,6 +133,26 @@ public partial class InfraLayer : Node3D
 
     static long Key(int ix, int iz) => (long)ix << 32 | (uint)iz;
 
+    /// <summary>The tiles, nearest first, each frame (kept, so sorting them allocates nothing).</summary>
+    readonly List<(double Reach, long Key, Tile Tile)> _byReach = new();
+
+    /// <summary>A tile built on a worker. (Its own method: a lambda in the frame's loop over the tiles round the camera made a closure for each of them every frame.)</summary>
+    Tile StartTile(int ix, int iz, List<Piece> list)
+    {
+        var tile = new Tile { Ix = ix, Iz = iz };
+        double ox = ix * TileSize, oz = iz * TileSize;
+        PlanetWorld world = _world;
+        tile.Building = Task.Run(() =>
+        {
+            var b = new TileBuilder(world, ox, oz);
+            foreach (Piece p in list) p.Emit(b);
+            // What the tile lays on what (markings on roads, plates on pads) stands off it: no two faces fight.
+            GalHack.Deco.DecoStandoff.Apply(b.Mesh, new GalHack.Deco.DecoStandoff.Parts(b.Mesh), null, floor: false);
+            return b;
+        });
+        return tile;
+    }
+
     public override void _Process(double delta)
     {
         if (_world == null) return;
@@ -159,18 +179,7 @@ public partial class InfraLayer : Node3D
             long key = Key(ix, iz);
             if (_tiles.ContainsKey(key) || !_pieces.TryGetValue(key, out var list)) continue;
             if (Math.Min(TileDistance(ix, iz, cx, cz), TileDistance(ix, iz, ax, az)) > Radius) continue;
-            var tile = new Tile { Ix = ix, Iz = iz };
-            double ox = ix * TileSize, oz = iz * TileSize;
-            PlanetWorld world = _world;
-            tile.Building = Task.Run(() =>
-            {
-                var b = new TileBuilder(world, ox, oz);
-                foreach (Piece p in list) p.Emit(b);
-                // What the tile lays on what (markings on roads, plates on pads) stands off it: no two faces fight.
-                GalHack.Deco.DecoStandoff.Apply(b.Mesh, new GalHack.Deco.DecoStandoff.Parts(b.Mesh), null, floor: false);
-                return b;
-            });
-            _tiles[key] = tile;
+            _tiles[key] = StartTile(ix, iz, list);
         }
         // Finished tiles become nodes a step at a time (the mesh, the collision, each wreck site or
         // ruin), within a small budget a frame, nearest first; tiles far out are freed.
@@ -180,7 +189,10 @@ public partial class InfraLayer : Node3D
         double budget = Hurry ? HurryBudgetMs : FrameBudgetMs;
         TilesBehind = 0;
         NearestBehind = double.PositiveInfinity;
-        foreach (var (key, tile) in _tiles.OrderBy(t => Reach(t.Value)))
+        _byReach.Clear();
+        foreach (var (key, tile) in _tiles) _byReach.Add((Reach(tile), key, tile));
+        _byReach.Sort(static (a, b) => a.Reach.CompareTo(b.Reach));
+        foreach (var (_, key, tile) in _byReach)
         {
             bool waiting = !tile.Done;
             if (waiting)
