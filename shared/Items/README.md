@@ -130,7 +130,7 @@ All of them take inputs from, and deliver to, the structure's one shared storage
 
 ## The starter small vessel
 
-`prototypes/manufacturing/data/blueprints/gadfly.gbp`: a one-seat shuttle of 249 small blocks (4.4 t, thrust to weight 3.5 g) with a glazed cabin round a command chair, generator, fuel tank, gyro, container, 11 thrusters and three legs.
+`prototypes/slice/data/blueprints/starter.gbp`: the Skiff, the cheapest flyer: an open-cockpit hopper of painted base blocks with a command chair, generator, fuel tank, gyro, eight Thruster T1s and three pads (written by `slice/tests/BlueprintSet.cs`).
 
 | | Ore | Crafting |
 | --- | --- | --- |
