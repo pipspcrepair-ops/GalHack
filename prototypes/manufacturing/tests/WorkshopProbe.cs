@@ -154,7 +154,7 @@ public partial class WorkshopProbe : Node
         int spawned = _main.Spawned.Count;
         factoryPage.Handle(ScreenKey.Act);
         await Frames(3);
-        Check(_main.Spawned.Count == spawned + 1 && _main.Spawned.Last().Structure.Count == 249, "in creative the Gadfly appears on the pad at once");
+        Check(_main.Spawned.Count == spawned + 1 && _main.Spawned.Last().Structure.Count == w.Blueprints[0].Structure.Count, "in creative the Skiff appears on the pad at once");
         w.ToggleMode();
 
         // Salvage the wreck on the pad: click it on the deconstructor's list.

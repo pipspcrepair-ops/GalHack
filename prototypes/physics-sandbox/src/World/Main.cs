@@ -148,7 +148,7 @@ public partial class Main : Node3D
     {
         Ship ship = World.Corsair;
         if (ship == null || _podsShot >= 2) return;
-        var cells = Ship.PortPodMount.Select(c => _podsShot == 0 ? c : new GalHack.Structures.Int3(-c.X, c.Y, c.Z));
+        var cells = _podsShot == 0 ? Ship.PortPodMount : Ship.StarboardPodMount;
         ship.ShootThrough(cells, push: 5f);
         _podsShot++;
     }

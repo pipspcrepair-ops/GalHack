@@ -61,7 +61,7 @@ public partial class Screenshot : Node
     void Setup()
     {
         _spot = W.Spots[0];
-        W.SpawnBase("outpost", "outpost.gbp", W.Spots[3].Flat, 0.6f);
+        W.SpawnBase("outpost", "prototypes/slice/data/blueprints/outpost.gbp", W.Spots[3].Flat, 0.6f);
         float height = _view == "descent" ? 30f : 13f;
         W.SpawnFlying("bastion", "bastion.gbp", new N.Vector3(_spot.X, _spot.Ground + height, _spot.Z), 0f);
         W.Spawn("prospector", "prospector.gbp", N.Vector3.Zero, N.Quaternion.Identity);

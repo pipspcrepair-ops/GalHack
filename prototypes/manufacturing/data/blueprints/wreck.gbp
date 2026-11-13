@@ -1,24 +1,37 @@
-# A wrecked small-grid engine pod for the salvage pad. Written with a core so the blueprint loads;
-# the scene takes the core out, leaving an unowned wreck for the deconstructor to break down.
-
+# A wrecked engine pod for the salvage pad: a burnt iron shell with a generator, a gyro and two
+# thrusters. Written with a core so it loads; the scene takes the core out, leaving an unowned wreck
+# for the deconstructor to break down.
+# Written by slice/tests/BlueprintSet.cs (Designer); regenerate rather than edit.
+# GalHack blueprint. One statement per line; '#' starts a comment.
+# block <x> <y> <z> <type> [shape] [rot=<up><forward>] [paint=<name> | paint=<+x>,<-x>,<+y>,<-y>,<+z>,<-z>] [hp=<n>] [open] [off] [light=<rrggbb[+rrggbb]>:<mode>:<hz>:<seed>]
+# Cells: x right, y up, -z forward; a..b is an inclusive range. rot defaults to +y-z; '-' is bare metal.
 schema galhack.blueprint
 version 1
 name "Wrecked pod"
-grid small
+grid 1m
 mode capital
+gravity on
 
-paint burnt base=3a3f47 texture=plates grime=3
-paint scorch base=8b5a3c grime=3
+paint burnt base=3a3f47 grime=3
+paint rust base=8a4b2a grime=3
 
-block -2..2 0 -2..2 steel paint=burnt
-block 0 1 0 core
-block -2 1 -2..2 steel paint=scorch
-block 2 1 -2..2 steel paint=burnt
-block -1..1 1 -2 steel paint=burnt
-block -1..1 1 2 steel paint=scorch
-block -1 1 -1..1 steel slope paint=burnt
-block 1 1 1 generator
-block -2..2 2 -2 steel slope paint=burnt
-block 0 1 3 thruster
-block 1 1 3 thruster
-block 0 2 0 gyro
+block -1..1 0 -2 iron-plated paint=burnt
+block -1 0 -1 iron-plated paint=burnt
+block 0 0 -1 gyro-t1
+block 1 0 -1 iron-plated paint=burnt
+block -1 0 0 iron-plated paint=burnt
+block 0 0 0 core
+block 1 0 0 iron-plated paint=burnt
+block -1..1 0 1 iron-plated paint=burnt
+block -1..1 0 2 iron-plated paint=burnt
+block -1 0 3 thruster-t1
+block 1 0 3 thruster-t1
+block -1 1 -2 iron-plated slope paint=burnt
+block 0..1 1 -2 iron-plated paint=burnt,burnt,rust,burnt,burnt,burnt
+block -1 1 -1 iron-plated slope paint=burnt
+block 0..1 1 -1 iron-plated paint=burnt,burnt,rust,burnt,burnt,burnt
+block -1 1 0 iron-plated paint=burnt,burnt,rust,burnt,burnt,burnt
+block 0 1 0 generator-t1
+block 1 1 0 iron-plated paint=burnt,burnt,rust,burnt,burnt,burnt
+block -1..1 1 1 iron-plated paint=burnt,burnt,rust,burnt,burnt,burnt
+block -1..1 1 2 iron-plated paint=burnt,burnt,rust,burnt,burnt,burnt

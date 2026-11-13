@@ -24,6 +24,9 @@ public static class DataPaths
     public static string DiegeticUi => Path.Combine(Repo, "prototypes", "diegetic-ui");
     public static string Blueprints => Path.Combine(Project, "data", "blueprints");
 
+    /// <summary>A blueprint of the slice's starter set (the starter vessel is starter.gbp), for <see cref="LoadBlueprint"/>.</summary>
+    public static string Slice(string file) => Path.Combine(Repo, "prototypes", "slice", "data", "blueprints", file);
+
     static ItemCatalogue _items;
     static Catalogue _blocks;
     static DepositRules _deposits;
@@ -36,6 +39,7 @@ public static class DataPaths
         new List<string> { VesselParts, Path.Combine(Items, "building-parts.json") },
         new List<string> { Path.Combine(Items, "building-materials.json") });
 
+    /// <summary>A blueprint by its file name here, or by a full path (<see cref="Slice"/>).</summary>
     public static Structure LoadBlueprint(string fileName)
     {
         string path = Path.Combine(Blueprints, fileName);
