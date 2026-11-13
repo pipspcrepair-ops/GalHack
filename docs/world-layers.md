@@ -18,7 +18,7 @@ The owner's rule: "nothing should be bespoke, it should all be because a combina
 | Group | Layer | Values | What it decides | Replaces |
 | --- | --- | --- | --- | --- |
 | Body | `zone` | 4 | Rim to core; gates factions, Hollow growth and the Husks' warping | Galaxy region |
-| Body | `type` | 39 | The place to stand | The 40 types, ten of which moved |
+| Body | `type` | 40 | The place to stand | The 40 types, ten of which moved |
 | Body | `air` | 4 | What can live and be built; `air0` then, `air` now | "Toxic air" as a hazard only |
 | Body | `climate` | 19 | Temperature and water | A line in each theme |
 | Body | `land` | 32 | Landform bias, two per world | A line in each theme |
@@ -27,26 +27,26 @@ The owner's rule: "nothing should be bespoke, it should all be because a combina
 | People | `port` | 6 | The old main starport | Profile, unchanged |
 | People | `people` | 4 | How many are alive now | Profile, unchanged |
 | People | `trade` | 36 | What it lived on, and most of the region plan | Profile's six trades, widened |
-| People | `ran` | 14 | Who ran the world | New |
+| People | `ran` | 16 | Who ran the world | New |
 | People | `build` | 25 | Architecture and building culture | New |
 | People | `infra` | 20 | The networks, and the planner's style words | The `style` line of a theme |
 | Fall | `phase` | 6 | Spared, fallen, mending, recovered, falling, untouched | Part of the apocalypse rule |
 | Fall | `age` | 4 | Time since the fall, and so wear | Three fixed POI ages |
-| Fall | `fall` | 82 | The apocalypse, primary and scar | The 70, plus 12 |
+| Fall | `fall` | 85 | The apocalypse, primary and scar | The 70, plus 15 |
 | Fall | `moment` | 17 | The moment it fell | New |
-| Identity | `theme` | 44 | A small mood | The 112 |
+| Identity | `theme` | 45 | A small mood | The 112 |
 | Present | `running` | 20 | What's still running | New |
-| Present | `presence` | 35 | Factions, groups, what's working the place | Overhaul's presences, widened |
+| Present | `presence` | 39 | Factions, groups, what's working the place | Overhaul's presences, widened |
 | Present | `creed` | 19 | What survivors believe | New |
 | Present | `occ` | 17 | Per place: who's in it | 13 codes, plus 4 |
-| Surface | `feature` | 94 | Landmarks and big works | Overhaul's features, widened |
+| Surface | `feature` | 95 | Landmarks and big works | Overhaul's features, widened |
 | Surface | `hazard` | 54 | What hurts | A line in each theme |
-| Surface | `flora`, `fauna` | 27, 38 | What kind of living is winning | A line in each theme |
+| Surface | `flora`, `fauna` | 27, 41 | What kind of living is winning | A line in each theme |
 | Surface | `sky`, `weather` | 25, 27 | What's up there, and the mood of the air | A line in each theme |
 | Surface | `palette` | 24 | The world's colour mood | A line in each theme |
 | Surface | `sound` | 22 | Music temperament and signature sound | Nothing: new |
-| Surface | `marks` | 25 | Signs and marks | Nothing: new |
-| Support | `dress` | 189 | Room dressing sets, keyed by `tags` | The `Inside` lines |
+| Surface | `marks` | 26 | Signs and marks | Nothing: new |
+| Support | `dress` | 194 | Room dressing sets, keyed by `tags` | The `Inside` lines |
 
 All the owner's extra world variables are in: time since the fall (`age`), who ran the world (`ran`), architecture (`build`), the moment it fell (`moment`), what's still running (`running`), native life (`flora`, `fauna`, and `life` on the type), terraforming state (`mod`), who's reclaiming it (`presence`), and day length and seasons (`mod`).
 
@@ -120,6 +120,7 @@ type rogue | name a rogue world with no sun | was new | arch new | zones deep | 
 type dead_world | name a dead world | was new | arch new | zones any | weight 3 | air thin foul | temp cold mild | water dry | life none low | land plains basalt_plains badlands | settle 0.9 | bias barren 0.6 dead 0.6 desolate 0.5
 type city_covered | name a city-covered world | was new | arch new | zones Z4 | weight 2 | air open thin | temp mild hot cold | water some wet | life mid high | land plains river_valleys | settle 1 | only pre.hightech | bias sparse 0.5 barren 0.3
 type arc | name a Precursor Arc | was new | arch new | zones deep | weight 1 | is deep | air open thin | temp mild | water some | life mid low | land plains ringlands | settle 0.05 | like feature.precursor_plates*20
+type trash_world | name a world buried in other people's waste | was new | arch new | zones Z3 Z4 Z5 | weight 2 | air open thin foul | temp mild hot cold | water some dry | life low mid | land hills plains badlands | settle 0.85 | like feature.trash_mountains*10 hazard.toxic_runoff*3 | bias dirt 0.8 sparse 0.3 barren 0.2 ferals 0.2
 ```
 
 **Air.** The most useful filter in the game. `air0` is the air people built under, `air` is the air now. A fall can change the second and not the first, which is how a gabled town ends up on a world you can't breathe on. `settle` scales the type's chance of people.
@@ -219,9 +220,9 @@ mod drained_sea | name a sea that went away | weight 2 | req water=dry,none temp
 **Tech.** Bands only: low, mid, high. Beyond those is the incomprehensible, which is never a band; it's a rare `sky` value near the core. The two bands are independent, as the design says. Survivors usually live below the ruins round them, so `post` leans low, but a world can climb past its old self, rarely, and `docs/space-pois.md` relies on those rows. `drop` is how far it fell, with `up` meaning it rose.
 
 ```layers
-pre L | name low tech | weight 3 | is low | req air0=open,thin | needs water_works | plant coal_plant 2 wind_farm 1 | hub survivor_hamlet 1 | like post.M*0.12 post.H*0.02 port.E*3 trade.subsistence*4 trade.farming*2 trade.herding*2 trade.mining*2 ran.elders*3 ran.great_houses*2 build.gabled_timber*2
-pre M | name mid tech | weight 5 | needs sewage_works water_works substation | plant coal_plant 2 nuclear_plant 1 wind_farm 1 solar_farm 1 | hub meridian_apartments 1 | like post.H*0.08
-pre H | name high tech | weight 4 | is hightech | needs sewage_works water_works substation telecom_exchange | plant fusion_plant 2 solar_farm 1 nuclear_plant 1 | hub meridian_apartments 1 ominous_tower 1 | like trade.subsistence*0.2 trade.herding*0.3 infra.tracks*0.2
+pre L | name low tech | weight 3 | is low | req air0=open,thin | needs water_works | plant coal_plant 2 wind_farm 1 | hub survivor_hamlet 1 | poi toilet_block 1 | tags public_toilets | like post.M*0.12 post.H*0.02 port.E*3 trade.subsistence*4 trade.farming*2 trade.herding*2 trade.mining*2 ran.elders*3 ran.great_houses*2 build.gabled_timber*2
+pre M | name mid tech | weight 5 | needs sewage_works water_works substation | plant coal_plant 2 nuclear_plant 1 wind_farm 1 solar_farm 1 | hub meridian_apartments 1 | poi toilet_block 2 | tags public_toilets | like post.H*0.08
+pre H | name high tech | weight 4 | is hightech | needs sewage_works water_works substation telecom_exchange | plant fusion_plant 2 solar_farm 1 nuclear_plant 1 | hub meridian_apartments 1 ominous_tower 1 | poi toilet_block 2 | tags public_toilets | like trade.subsistence*0.2 trade.herding*0.3 infra.tracks*0.2
 post L | name low tech | weight 6 | req air=open,thin | bias working 0.4 stock 0.2
 post M | name mid tech | weight 3
 post H | name high tech | weight 1 | bias stock -0.1
@@ -242,9 +243,9 @@ port 0 | name no port at all | weight 2
 
 ```layers
 people none | name with nobody left | weight 2 | occ EMP 20 NST 6
-people survivors | name with a few survivors | weight 5 | hub survivor_hamlet 2 | occ EMP 16 SCV 10 SQT 6
+people survivors | name with a few survivors | weight 5 | hub survivor_hamlet 2 | poi cemetery 1 | occ EMP 16 SCV 10 SQT 6
 people outposts | name with scattered outposts | weight 2 | hub survivor_hamlet 1 | poi frontier_base 2 | occ SQT 8 SCV 8 EMP 10
-people settled | name with settled country | weight 4 | hub survivor_town 2 survivor_hamlet 1 | occ SQT 18 SCV 6
+people settled | name with settled country | weight 4 | hub survivor_town 2 survivor_hamlet 1 | poi cemetery 2 | occ SQT 18 SCV 6
 ```
 
 **Trade: what it lived on.** The biggest dissolver. The profile's six trades stay in `base`, so `WorldProfile.Weight` still works; a region plan's towns, farmland, industry, hubs and most new POI families now hang here instead of on a theme. Many old themes were just a trade with a name.
@@ -305,6 +306,8 @@ ran elected | name run by an elected council | weight 4 | tags council_rooms
 ran elders | name run by nobody much, village by village | weight 4 | is open | req pre=L,M | like build.gabled_timber*2 | tags village_stores
 ran absentees | name owned from off-world | weight 3 | is port | like running.long_life_lamps*2 | tags company_store
 ran alien_regime | name run by an alien regime | weight 1 | is rough faction | like trade.prison*6 build.vharn_grown*12 presence.vharn_garrison*3 | tags alien_orders
+ran occupier | name held by a foreign power | weight 2 | is settled | like presence.occupiers*6 marks.foreign_script*4 marks.two_flags*2 fall.invasion*3 | tags ransacked_offices
+ran caste_order | name run by a caste order, a high-tech few over low-tech workers | weight 2 | is hightech | req pre=H | like presence.caste_workers*8 presence.bonded_labour*2 build.glass_tower*2 build.arcology*2 trade.administration*2 | tags caste_quarters
 ```
 
 **Building culture.** The owner's architecture variable and the biggest single multiplier: the same hospital plan in a different skin. `kit` names the palette file, existing where one exists. `is open` means built under open sky, so it needs breathable original air; `is sealed` is the pressurised family.
@@ -386,20 +389,20 @@ age century | name about 110 years ago | wear 2 | req phase!=falling | weight 5 
 age long | name about 170 years ago | wear 3 | req phase!=falling | weight 5 | bias age 1 overgrown 0.45
 ```
 
-**The fall.** The apocalypse layer: all 70 keep their ids and their entries in `docs/world-themes.md`, which stay the reference for what each leaves behind. Three groups of changes were needed. Requirements moved from `needs pre` to the general tags. `poi`, `occ`, `like` and `tags` hold the data form of each entry. `now` marks falls that can still be happening, `mild` marks those a spared world can have, and `stamp` says what it writes into the terrain. Z71 to Z82 at the end are new, from the gaps in section 10.
+**The fall.** The apocalypse layer: all 70 keep their ids and their entries in `docs/world-themes.md`, which stay the reference for what each leaves behind. Three groups of changes were needed. Requirements moved from `needs pre` to the general tags. `poi`, `occ`, `like` and `tags` hold the data form of each entry. `now` marks falls that can still be happening, `mild` marks those a spared world can have, and `stamp` says what it writes into the terrain. Z71 to Z85 at the end are new, from the gaps in section 10.
 
 ```layers
 fall nuclear_war | name a nuclear exchange | group war | speed instant | weight 5 | is mid now | poi blast_crater 3 deep_bunker 3 command_bunker 2 missile_silo 2 nuclear_plant 1 fallout_shelter 3 shadow_wall 2 | occ SQT 10 GNG 10 MUT 10 | like hazard.radiation*10 weather.ash_fall*3 flora.dead_forest*4 fauna.mutants*3 | tags shadows sealed_doors tally_doors | stamp crater_ring | orbit debris | bias severity 0.35 strife 0.4 burnt 0.7 dead 0.4 barren 0.35 ash 1 mutagen 0.3 predators 0.2 fade 0.2
 fall orbital_bombardment | name bombardment from orbit | group war | speed quick | weight 4 | is now | poi crashed_freighter 2 abandoned_spaceport 2 blast_crater 2 debris_camp 2 orbital_wreck_site 1 | occ SCV 10 NST 5 | like hazard.unstable_wrecks*5 feature.debris_line*5 sky.broken_stations*5 | tags vacuum_crews | stamp crater_line | orbit wrecks debris patrol | bias severity 0.25 strife 0.4 burnt 0.6 barren 0.2
-fall invasion | name invasion and occupation | group war | speed quick | weight 4 | is now | poi military_base 2 vharn_outpost 2 vharn_sam_site 1 prison_block 2 scrap_fort 1 | occ FAC 10 GNG 6 | like hazard.mines*5 presence.resistance*5 marks.foreign_script*5 | tags ransacked_offices | orbit patrol | bias severity 0.25 strife 0.4 burnt 0.2
-fall civil_war | name civil war | group war | speed season | weight 5 | is now | poi military_base 2 command_bunker 2 hospital 2 evacuation_camp 2 trench_line 2 | occ GNG 8 SCV 6 | like hazard.mines*4 presence.militias*5 marks.two_flags*6 | tags barricades field_hospitals | bias severity 0.25 strife 0.4 burnt 0.2
+fall invasion | name invasion and occupation | group war | speed quick | weight 4 | is now | poi military_base 2 vharn_outpost 2 vharn_sam_site 1 prison_block 2 scrap_fort 1 mass_grave 2 | occ FAC 10 GNG 6 | like hazard.mines*5 presence.resistance*5 marks.foreign_script*5 | tags ransacked_offices | orbit patrol | bias severity 0.25 strife 0.4 burnt 0.2
+fall civil_war | name civil war | group war | speed season | weight 5 | is now | poi military_base 2 command_bunker 2 hospital 2 evacuation_camp 2 trench_line 2 mass_grave 2 | occ GNG 8 SCV 6 | like hazard.mines*4 presence.militias*5 marks.two_flags*6 | tags barricades field_hospitals | bias severity 0.25 strife 0.4 burnt 0.2
 fall machine_uprising | name a machine uprising | group war | speed quick | weight 3 | is mid now | poi kessari_works 3 kessari_spire 2 abandoned_factory 2 sentry_line 2 | occ MCH 18 BOT 8 | like hazard.armed_hardware*5 presence.kessari*4 running.sentries*4 | tags welded_doors spotless_zones | bias severity 0.25 strife 0.4 burnt 0.2
 fall chemical_war | name chemical war | group war | speed quick | weight 3 | is mid now rough | poi mask_depot 3 deep_bunker 2 refinery 1 hospital 2 | occ EMP 8 SCV 6 | sets air=foul | like hazard.bad_air*6 hazard.corrosion*3 | tags masks stained_streets | bias severity 0.35 strife 0.4 burnt 0.2 dead 0.5 barren 0.3 mutagen 0.2
 fall kinetic_strikes | name rocks dropped from space | group war | speed instant | weight 3 | is now | poi blast_crater 3 old_mine 1 precursor_vault 1 | occ SQT 6 NST 4 | like hazard.unstable_ground*6 | tags tilted_towers | stamp crater_deep | orbit debris | bias severity 0.35 strife 0.4 burnt 0.5
 fall blockade | name siege and blockade | group war | speed season | weight 3 | is port now | poi ration_depot 3 abandoned_spaceport 2 scrappy_port 2 command_bunker 1 | occ GNG 8 SCV 8 | like hazard.mines*3 presence.smugglers*5 | tags ration_shelves tally_doors | orbit fleet_parked patrol | bias severity 0.25 strife 0.4 burnt 0.2
 fall drone_wars | name autonomous weapons fighting themselves out | group war | speed quick | weight 3 | is mid now | poi drone_factory 3 sentry_line 2 military_base 2 motor_pool 1 | occ MCH 14 BOT 10 | like hazard.armed_hardware*6 feature.machine_drifts*8 | tags spare_airframes | orbit fleet_parked | bias severity 0.25 strife 0.6 burnt 0.2
 fall mercenary_seizure | name hired guns taking the cities | group war | speed quick | weight 3 | is now | poi scrap_fort 2 military_base 2 casino_resort 1 exchange_depot 2 | occ GNG 14 FAC 4 | like presence.warlords*5 infra.toll_roads*3 | tags gilded_forts | bias severity 0.25 strife 0.4 burnt 0.2
-fall plague | name plague | group disease | speed quick | weight 6 | is now | poi hospital 3 evacuation_camp 2 burial_pits 3 biolab 1 | occ EMP 10 SQT 6 HSK 6 | like marks.plague_marks*8 fauna.ferals*2 | tags sealed_houses cot_halls | bias severity 0.15 desolate 0.3 ferals 0.3
+fall plague | name plague | group disease | speed quick | weight 6 | is now | poi hospital 3 evacuation_camp 2 burial_pits 3 mass_grave 2 biolab 1 | occ EMP 10 SQT 6 HSK 6 | like marks.plague_marks*8 fauna.ferals*2 | tags sealed_houses cot_halls | bias severity 0.15 desolate 0.3 ferals 0.3
 fall biohazard | name a lab agent let loose | group disease | speed quick | weight 4 | is mid now | poi biolab 3 research_base 2 cryo_vault 1 hospital 2 bloom_garden 1 vat_hall 1 | occ MUT 12 NST 8 | like hazard.spores*5 hazard.mutagen*5 flora.swollen*5 fauna.mutants*5 | tags grown_through taped_corridors | bias severity 0.15 desolate 0.3 swollen 0.6 mutagen 0.6 predators 0.8
 fall sleep_sickness | name a sickness of sleep | group disease | speed season | weight 3 | is now | poi hospital 2 hospice_ward 3 cryo_vault 1 sleeper_ward 2 routine_loop_street 1 | occ SLP 18 EMP 8 KPR 6 | like presence.routine_walkers*6 | tags sleep_wards | bias severity 0.15 desolate 0.3
 fall frenzy | name a contagion of rage | group disease | speed quick | weight 3 | is rough now | poi hospital 2 prison_block 2 evacuation_camp 2 | occ GNG 6 MUT 8 | like presence.frenzied*6 | tags gouged_doors | bias severity 0.25 desolate 0.3 predators 0.3
@@ -407,7 +410,7 @@ fall husks_fall | name bodies that kept walking | group disease | speed quick | 
 fall fungal_takeover | name mould through the cities | group disease | speed season | weight 3 | is now | poi fruiting_hall 3 sewage_works 2 hospital 1 old_mine 1 | occ NST 12 MUT 6 | like hazard.spores*6 flora.fungal_giants*4 | tags mat_streets | bias severity 0.15 desolate 0.3 fungal 0.8 overgrown 0.2
 fall sterility | name the births stopping | group disease | speed slow | weight 3 | is mild | poi school_campus 2 hospice_ward 2 survivor_town 1 | occ EMP 16 SQT 6 | like sound.silence*2 | tags empty_nurseries | bias desolate 0.3
 fall parasite_swarm | name a swarm in the walls | group disease | speed season | weight 3 | is beasts | poi sewage_works 2 hospital 1 meridian_apartments 2 | occ NST 18 | like hazard.swarm_nests*6 | tags webbed_lifts | bias severity 0.15 desolate 0.3 predators 0.4 swollen 0.2
-fall famine | name famine | group env | speed season | weight 5 | is now mild | poi grain_elevator 3 ration_depot 3 old_farm 2 evacuation_camp 2 | occ GNG 8 SCV 8 | like presence.gangs*2 | tags ration_shelves soup_kitchens | bias sparse 0.3 dead 0.2 stock -0.3
+fall famine | name famine | group env | speed season | weight 5 | is now mild | poi grain_elevator 3 ration_depot 3 old_farm 2 evacuation_camp 2 mass_grave 1 | occ GNG 8 SCV 8 | like presence.gangs*2 | tags ration_shelves soup_kitchens | bias sparse 0.3 dead 0.2 stock -0.3
 fall drought | name the rivers failing | group env | speed slow | weight 4 | is flowing air_weather mild | sets water=dry | poi water_works 3 water_tower_keep 2 drowned_cistern 2 caravan_stop 2 | occ GNG 6 SQT 6 | like hazard.thirst*6 weather.dust_storms*3 presence.water_lords*5 | tags tally_rods stranded_boats | bias dry 0.8 dead 0.3 sparse 0.4 barren 0.2
 fall rising_seas | name the sea rising | group env | speed slow | weight 3 | is shore air_weather flood | sets water=sea | poi docks 2 sewage_works 2 barge_town 3 hospital 1 | occ SQT 8 NST 4 | like hazard.surges*6 feature.drowned_city*12 | tags waterlines | stamp flood | bias severity 0.15 storm 0.3
 fall long_winter | name a winter that stayed | group env | speed season | weight 4 | is air_weather | req temp=mild,cold | sets temp=cold | poi ice_outpost 2 coal_plant 2 old_mine 1 ski_lodge 1 | occ EMP 6 SQT 6 | like hazard.cold*6 weather.blizzards*5 presence.fur_folk*3 | tags stove_rooms buried_cars | bias severity 0.15 sparse 0.3 storm 0.2
@@ -471,6 +474,9 @@ fall overreach | name a megaproject that broke the economy | group social | spee
 fall last_ark | name the rich leaving in the only ship | group social | speed quick | weight 2 | is high port | new Z80 | poi abandoned_spaceport 2 estate_house 2 scrap_fort 1 | occ GNG 8 SQT 6 | like ran.great_houses*5 ran.company*3 | tags gilded_forts | bias severity 0.05 desolate 0.3
 fall first_contact | name something landing and then leaving | group cosmic | speed quick | weight 1 | is rough | new Z81 | poi alien_cathedral 1 blast_crater 1 research_lab 1 | occ EMP 8 CLT 6 | like feature.long_furrow*5 | tags cordon_tents | bias severity 0.3 alien 0.2
 fall tide_of_refugees | name more people arriving than it could feed | group social | speed season | weight 3 | is now port | new Z82 | poi evacuation_camp 3 aid_station 2 ration_depot 2 scrappy_port 1 | occ SQT 8 GNG 6 SCV 6 | like presence.refugees*8 | tags road_camps soup_kitchens | bias severity 0.05 strife 0.2 dead 0.1 sparse 0.2
+fall meteor_impact | name one great meteor, a crater a third of the world wide | group env | speed instant | weight 2 | is now | new Z83 | poi blast_crater 3 evacuation_camp 2 old_mine 1 observatory 1 mass_grave 1 | occ SQT 6 NST 6 EMP 8 | like hazard.unstable_ground*5 weather.ash_fall*4 flora.dead_forest*3 | tags tilted_towers | stamp crater_basin | orbit debris | bias severity 0.35 burnt 0.5 dead 0.4 barren 0.3 ash 0.4
+fall weather_event | name one extreme weather event that never ended | group env | speed season | weight 3 | is air_weather now | new Z84 | poi deep_bunker 2 evacuation_camp 2 water_works 1 wind_farm 1 | occ SQT 8 EMP 8 | like weather.perpetual_storm*3 weather.blizzards*2 weather.dust_storms*2 weather.fire_storms*2 hazard.lightning*3 hazard.surges*2 | tags shelter_halls | bias severity 0.25 storm 0.7 sparse 0.2
+fall slave_uprising | name the bonded rising against their owners | group social | speed quick | weight 2 | is now | new Z85 | poi company_town 2 prison_block 2 estate_house 1 old_mine 1 mass_grave 1 | occ GNG 8 SQT 8 | like presence.bonded_labour*6 marks.broken_shackles*4 marks.strike_banners*3 | tags meeting_halls cells | bias severity 0.05 strife 0.5
 ```
 
 **The moment it fell.** An owner's variable, and one of the best new layers. Parade Ground, School Holidays, Closed for the Season and half of the frozen-moment ideas turned out to be one value here. Slow falls have no moment, so they read `over decades`.
@@ -547,7 +553,7 @@ presence hermits | name lone hermits | weight 5 | is settled | occ SQT 3 SCV 3 |
 presence keepers | name keepers who never left | weight 4 | is living | occ KPR 12 | tags duty_rosters | bias living 0.2
 presence pilgrims | name pilgrims | weight 3 | is living outdoors | occ CLT 10 | poi pilgrim_hostel 1 | tags hostels
 presence cultists | name a sect | weight 2 | is living | occ CLT 14 | poi hollow_shrine 1 church_chapel 1 | tags altars
-presence refugees | name refugees | weight 2 | is living | occ SQT 10 SCV 6 | poi evacuation_camp 2 aid_station 1 | tags road_camps | bias strife 0.1 living 0.2
+presence refugees | name refugees | weight 2 | is living | occ SQT 10 SCV 6 | poi evacuation_camp 2 aid_station 1 toilet_block 1 | tags road_camps | bias strife 0.1 living 0.2
 presence debris_diggers | name debris diggers | weight 2 | is living | occ SCV 12 | poi debris_camp 2 | tags hermit_camps
 presence bandit_riders | name riders on the old roads | weight 2 | is living rough low outdoors | occ GNG 10 | tags trophy_walls | bias strife 0.3 working 0.3
 presence hunters | name hunters and guides | weight 2 | is living beasts | occ SCV 6 SQT 4 | tags trophy_halls | bias living 0.2
@@ -560,6 +566,11 @@ presence precursor_guardians | name silent guardians | weight 0.4 | is rough | o
 presence machine_lords | name a lone machine that thinks it owns the place | weight 1 | is mid rough | occ MCH 10 | tags spotless_zones
 presence hollow_shore | name shore towns at the edge of the Hollow growth | weight 1 | is hollow living rough | occ WRP 6 SQT 6 MUT 8 | poi bloom_scar 1 | orbit hollow | like flora.hollow_overrun*3 | bias fungal 0.3
 presence listening | name something listening | weight 2 | is warped | occ WRP 16 | poi hollow_shrine 1 | tags patterned_objects
+presence occupiers | name a foreign occupation force | weight 3 | is faction settled | occ FAC 14 GNG 4 | poi military_base 2 front_checkpoint 2 prison_block 1 | like marks.foreign_script*4 presence.resistance*3 | tags ransacked_offices | orbit patrol | bias strife 0.4
+presence bonded_labour | name a bonded work force, still working | weight 2 | is settled | occ SCV 10 SQT 6 | poi company_town 2 old_mine 1 prison_block 1 | like fall.slave_uprising*2 | tags cells | bias working 0.4 strife 0.1
+presence bonded_aliens | name another species held as slaves | weight 1 | is settled mid faction | occ SQT 8 FAC 6 | poi alien_cellblock 2 prison_block 1 | like trade.prison*3 marks.foreign_script*2 | tags cells | bias working 0.3 strife 0.2
+presence freed_bonded | name the freed, after the rising | weight 2 | is living | occ SQT 12 SCV 4 | poi company_town 1 | like fall.slave_uprising*8 marks.broken_shackles*5 marks.tally_marks*2 | tags cells | bias living 0.3 strife 0.1
+presence caste_workers | name a low-tech labouring caste beneath a high-tech few | weight 2 | is settled hightech | occ SQT 12 SCV 6 EMP 4 | poi company_town 1 | like ran.caste_order*8 | tags caste_quarters | bias working 0.4 strife 0.2
 ```
 
 **Creeds.** Survivors now have beliefs as well as places, which the variety scout found to be the biggest gap on the people side. A creed changes dressing, dress, stock and rules, and shows only in behaviour and objects, never in words.
@@ -579,7 +590,7 @@ creed coreward_leaners | name building everything to face one way | weight 2 | i
 creed sky_counters | name counting nights and lights in the sky | weight 2 | is living | poi observatory 1 | tags star_charts
 creed seed_keepers | name guarding seed they may never plant | weight 3 | is living crops | poi seed_vault 2 | tags seed_rooms
 creed road_menders | name keeping up one perfect stretch of road | weight 2 | is living outdoors | tags road_crews
-creed ancestor_tenders | name tending the old dead before the living | weight 3 | is living | poi cemetery_vault 1 tomb_mound 1 | tags altars
+creed ancestor_tenders | name tending the old dead before the living | weight 3 | is living | poi cemetery_vault 1 tomb_mound 1 cemetery 2 | tags altars grave_rows
 creed machine_kin | name treating old machines as cousins | weight 2 | is living mid | occ MCH 4 | tags hand_parts
 creed body_keepers | name marking children's heights on every door | weight 1 | is living | tags height_marks
 creed mender_faith | name holding that everything must be repaired, never replaced | weight 2 | is living | tags hand_parts
@@ -671,10 +682,11 @@ feature mast_forest | name a forest of radio masts | weight 3 | is settled mid |
 feature turbine_ranks | name wind turbines tuned to sing | weight 2 | is settled mid air_weather | poi wind_farm 2 sound_garden 2 | like sound.wind_chimes*10
 feature pylon_forest | name pylon lines thick as hedges | weight 3 | is settled mid open | poi substation 2 | tags switch_halls
 feature bell_towers | name a bell tower on every height | weight 2 | is settled air_weather open | poi monastery 1 | like sound.bells*10
-feature graveyard_hills | name a graveyard on every hill | weight 2 | is settled outdoors | poi cemetery_vault 2 | tags churchyards
+feature graveyard_hills | name a graveyard on every hill | weight 2 | is settled outdoors | poi cemetery_vault 2 cemetery 3 | tags churchyards grave_rows
 feature standing_stones | name downs of standing stones and mounds | weight 2 | is outdoors | poi tomb_mound 3 megalith_ring 1 | tags grave_goods
 feature pipe_racks | name pipes crossing everything | weight 2 | is settled mid | poi pump_station 2 | tags frozen_gauges
 feature burning_seams | name ground burning from below for fifty years | weight 2 | is settled air_weather | poi burn_town 2 | tags slumped_towns
+feature trash_mountains | name mountains of dumped waste | weight 2 | is settled mid | poi breaker_yard 1 scrap_fort 1 | tags tip_heaps | like fauna.bower_builders*3 fauna.wreck_hermits*3 presence.debris_diggers*3
 feature drowned_city | name a drowned city with rooftops for islands | weight 2 | is settled shore | poi barge_town 2 drowned_cistern 1 | stamp flood | tags waterlines
 feature sunk_town | name a town half sunk in sand | weight 2 | is settled dry air_weather | poi sunk_town 3 | tags sand_halls
 feature glass_plains | name plains fused to glass | weight 2 | is mid | poi shadow_wall 1 | like hazard.glare*5 hazard.radiation*3 | stamp glass | tags shadows
@@ -837,6 +849,9 @@ fauna web_liners | name something using web lines as roads | weight 2 | is beast
 fauna echo_birds | name birds repeating sounds of generations ago | weight 2 | is beasts settled
 fauna old_rounds | name harnessed beasts still walking a dead delivery route | weight 1 | is beasts settled low | bias working 0.8
 fauna lode_grazers | name grazers that lick at ore seams | weight 2 | is beasts
+fauna dinosaurs | name big-bodied reptile-like grazers and fast pack raiders | weight 2 | is beasts rich_life | bias predators 0.3 overgrown 0.2
+fauna arachnids | name eight-legged crawlers, from web-weavers to ambushers | weight 2 | is beasts | bias predators 0.2
+fauna mega_animals | name ordinary animal shapes at many times their size | weight 2 | is beasts rich_life | bias stock 0.1 predators 0.2
 fauna static_nesters | name static-charged nesters | weight 1 | is beasts air_weather
 fauna light_floaters | name slow floating fliers | weight 2 | is beasts
 fauna lost_migrants | name migrating flocks that no longer know the way | weight 1 | is beasts
@@ -988,6 +1003,7 @@ marks two_flags | name two sets of flags on the same ruins | weight 1 | is settl
 marks blanked_signs | name signs gone blank | weight 1 | is settled mid
 marks glyph_marks | name glyphs nobody can read | weight 2
 marks repossession_tags | name numbered tags on everything | weight 1 | is settled
+marks broken_shackles | name broken shackles hung up as trophies | weight 1 | is settled
 ```
 
 ### 4.6 Room dressing sets
@@ -1051,6 +1067,11 @@ dress sealed_houses | shows sealed houses, stuffed door gaps, painted marks
 dress field_hospitals | shows field hospitals, shattered bridges, boots in rows
 dress mess_halls | shows mess halls set for hundreds, weapon racks locked, a roll board with every peg moved
 dress cells | shows cells, chains, a warden's desk, tiers of gantries
+dress tip_heaps | shows slopes of dumped goods sorted by pickers, burrows in the heaps, a weighing shed, nests of wire
+dress caste_quarters | shows tall clean towers and low rows beneath them, a gate between with one guard chair, different shoes on each side
+dress public_toilets | shows rows of stalls, tiled floors, a cistern pipe, mirrors gone dark, an attendant's chair, a coin tray
+dress grave_rows | shows rows of markers worn to plain shapes, a keeper's hut, dried flowers gone to wire, tools propped on a wall
+dress mass_graves | shows long filled trenches with stakes at both ends, lime-streaked earth, a row of tally stones, a gate kept shut
 dress dugouts | shows dugouts, boots in rows, a gas shelter
 dress cockpits | shows stalled walkers with cracked cockpits, ammo dumps, a tent with a map and two flags
 dress last_gun | shows gutted tanks in rows, tool lockers, the last gun in a display case
@@ -1237,6 +1258,7 @@ theme second_wind | name The Second Wind | like phase.falling*2 fall.slide*2 pre
 theme wild_country | name Wild Country | weight 7 | like fauna.herds_hunters*4 fauna.pack_hunters*4 flora.deep_forest*3 flora.giant_flora*4 hazard.night_predators*4 | is wild beasts | req settled=no | occ NST 10 | identity Nobody has ever stood here, and everything alive is busy | bias barren -0.2
 theme grand_scenery | name The Grand Scenery | weight 7 | like feature.buttes*5 feature.rock_spires*5 feature.columnar_towers*5 feature.natural_arches*5 feature.great_falls*5 feature.rainbow_strata*5 feature.lone_rock*5 sound.wind_low*3 | is wild | req settled=no | identity The land has no audience and puts on the show anyway
 theme stillness | name The Stillness | weight 7 | like sound.silence*6 weather.dead_calm*6 fauna.sparse*4 sky.hard_stars*3 sky.black_sky*2 | is wild | req settled=no | occ EMP 16 | identity Nothing here moves, and a footprint would last a million years | bias desolate 0.5 barren 0.3
+theme the_tip | name The Tip | like type.trash_world*20 feature.trash_mountains*10 hazard.toxic_runoff*4 fauna.bower_builders*4 fauna.wreck_hermits*4 trade.breaking*3 presence.debris_diggers*4 | is settled | occ SCV 14 NST 6 | tags tip_heaps | identity The place everyone else's waste was sent, and now someone lives off it | bias dirt 0.7 sparse 0.2
 ```
 
 ## 6. Where the old entries ended up
@@ -1730,6 +1752,14 @@ With the parts laid out, these were missing. All of them are in the tables above
 - **Wild Country, The Grand Scenery and The Stillness.** Moods for worlds nobody ever settled, which had nothing at all to set them apart.
 
 **Ideas from the variety scout that now have a home.** Creeds, building cultures, afterhours timers, still-selling billboards, geoglyphs, the long furrow, warning country, dummy towns, the good kilometre, the timber fleet, the visitor centre, the simulated voyage, the launch ramp, the still wave, facing suits, the failed first base, long-year seasons, strange rains, and most of the behaviour ideas as `fauna` values. They're values, so they combine with everything.
+
+**Added 13 November (owner's list).** All parts, so they combine with everything:
+
+- **A world type:** `trash_world`, a world buried in other people's waste, with the landmark `feature.trash_mountains` and one small mood, The Tip (`theme.the_tip`).
+- **People and power:** `ran.occupier` and `presence.occupiers` (foreign occupation); `presence.bonded_aliens` (another species held as slaves); `presence.bonded_labour` (slavery ongoing), `fall.slave_uprising` (Z85, the uprising) and `presence.freed_bonded` (the aftermath); `ran.caste_order` with `presence.caste_workers` (low-tech workers on a high-tech world, so it needs `pre=H`). Slavery and caste are not themes of their own, on purpose: they are parts that any theme can sit on. New mark: `marks.broken_shackles`.
+- **Falls:** Z83 `meteor_impact` (a crater a third of the world wide, which needs a new terrain stamp `crater_basin`, bigger than the existing ring stamps and visible from orbit) and Z84 `weather_event` (one extreme weather event that never ended).
+- **POI families, all new:** `cemetery` (on settled worlds, graveyard hills and ancestor tenders), `mass_grave` (plague, civil war, invasion, famine, a meteor strike, an uprising) and `toilet_block` (on every tech band and at refugee camps). Dress sets: `grave_rows`, `mass_graves`, `public_toilets`, `caste_quarters`, `tip_heaps`.
+- **Fauna values:** `dinosaurs`, `arachnids`, `mega_animals`. The bestiary still has to build the bodies: see the playtest list.
 
 **Gaps left open.** Three, because they aren't layers: nothing threads between worlds (that belongs to the system story in `docs/space-pois.md`), nothing runs on a clock beyond `running` (it needs the saved world clock), and `sound` values need the positioned sound work before most can be heard.
 
