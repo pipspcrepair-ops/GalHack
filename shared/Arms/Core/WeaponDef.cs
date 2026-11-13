@@ -11,11 +11,14 @@ namespace GalHack.Arms;
 /// <summary>How a weapon fires (docs/weapon-ideas.md section 2, Trigger).</summary>
 public enum Trigger { Semi, Auto, Burst, Pump, Charge, Hold }
 
-/// <summary>How the effect travels (section 2, Delivery). Lob is a bolt under gravity; the parts say the rest.</summary>
-public enum Delivery { Bolt, Pellets, Lob, Cone, Arc, Swarm, Placed }
+/// <summary>How the effect travels (section 2, Delivery). Lob is a bolt under gravity; the parts say the rest. Strike: a hand weapon's blow, landing within <see cref="WeaponDef.Reach"/>.</summary>
+public enum Delivery { Bolt, Pellets, Lob, Cone, Arc, Swarm, Placed, Strike }
 
 /// <summary>The design's three damage classes, for armour and resistance (section 5.1).</summary>
 public enum DamageClass { Kinetic, Explosive, Energy }
+
+/// <summary>What a killing hit does to the body: it falls, it is blown apart (gibs), or it is burned away to ash.</summary>
+public enum KillEffect { Normal, Gib, Vaporise }
 
 /// <summary>What kind of harm on top of the class (section 2, Tags). Fire, gas and radiation go past a personal shield.</summary>
 [Flags]
@@ -90,6 +93,8 @@ public sealed class WeaponDef
     public Delivery Delivery { get; init; }
     public DamageClass Class { get; init; }
     public HarmTags Tags { get; init; }
+    /// <summary>What a kill with it does to the body ("kill": normal, gib or vaporise); left out, from the class: explosive gibs, energy vaporises.</summary>
+    public KillEffect Kill { get; init; }
 
     public float Damage { get; init; } = 10f;
     public float Rpm { get; init; } = 300f;
@@ -111,6 +116,8 @@ public sealed class WeaponDef
     public float Blocks { get; init; } = 1f;
     /// <summary>The share of the planet's gravity the shot falls under (0: none).</summary>
     public float Gravity { get; init; }
+    /// <summary>A strike's reach from the shoulder, m (0 for anything that flies).</summary>
+    public float Reach { get; init; }
 
     public string Ammo { get; init; } = "";
     /// <summary>Rounds one ammo item gives (0: the item's own round count, or 1).</summary>
@@ -255,6 +262,7 @@ public sealed class Armoury
                 string s => throw new InvalidDataException($"{where}: class is kin, exp or en, not '{s}'"),
             },
             Tags = ReadTags(e, where),
+            Kill = Enum<KillEffect>(e, "kill", Str(e, "class", "kin") switch { "exp" => KillEffect.Gib, "en" => KillEffect.Vaporise, _ => KillEffect.Normal }, where),
             Damage = Num(e, "damage", 10f),
             Rpm = Num(e, "rpm", 300f),
             Magazine = Math.Max(1, (int)Num(e, "magazine", 10)),
@@ -269,6 +277,7 @@ public sealed class Armoury
             Noise = Num(e, "noise", 40f),
             Blocks = Num(e, "blocks", 1f),
             Gravity = Num(e, "gravity", 0f),
+            Reach = Num(e, "reach", 0f),
             Ammo = e["ammo"] is JsonObject am ? Str(am, "item", "") : "",
             PerItem = e["ammo"] is JsonObject ap ? (int)Num(ap, "perItem", 0) : 0,
             Charge = e["charge"] is JsonObject c ? new ChargePart(Math.Max(1, (int)Num(c, "stages", 4)), Num(c, "seconds", 0.4f), Num(c, "speed", 0f), (int)Num(c, "pierce", 0), Num(c, "damage", 0f)) : null,

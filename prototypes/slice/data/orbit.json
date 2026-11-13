@@ -99,9 +99,9 @@
     // A wreck's hold, by its salvage grade: item, least, most (each container block holds one roll).
     "loot": {
       "scrap":    [ [ "iron-bar", 2, 8 ], [ "hull-plate", 1, 4 ], [ "copper-wire", 1, 5 ], [ "air-cell", 0, 2 ], [ "polymer", 0, 3 ] ],
-      "salvage":  [ [ "hull-plate", 2, 6 ], [ "circuit-board", 1, 3 ], [ "servo", 0, 2 ], [ "air-cell", 1, 3 ], [ "trail-ration", 0, 2 ], [ "patch-kit", 0, 2 ], [ "energy-cell", 0, 2 ] ],
+      "salvage":  [ [ "hull-plate", 2, 6 ], [ "circuit-board", 1, 3 ], [ "servo", 0, 2 ], [ "air-cell", 1, 3 ], [ "trail-ration", 0, 2 ], [ "patch-kit", 0, 2 ], [ "energy-cell", 0, 2 ], [ "warp-cell", 0, 2 ] ],
       "military": [ [ "hull-plate", 2, 6 ], [ "gun-barrel", 0, 2 ], [ "control-unit", 0, 1 ], [ "explosive-charge", 0, 2 ], [ "air-cell", 1, 2 ], [ "patch-kit", 1, 2 ] ],
-      "rare":     [ [ "circuit-board", 1, 4 ], [ "logic-module", 0, 2 ], [ "field-emitter", 0, 1 ], [ "fold-crystal", 0, 1 ], [ "air-cell", 1, 2 ] ]
+      "rare":     [ [ "circuit-board", 1, 4 ], [ "logic-module", 0, 2 ], [ "field-emitter", 0, 1 ], [ "fold-crystal", 0, 1 ], [ "warp-cell", 0, 3 ], [ "air-cell", 1, 2 ] ]
     }
   },
 

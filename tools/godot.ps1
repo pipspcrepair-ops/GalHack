@@ -1,10 +1,10 @@
 # Builds a Godot project and opens it in the editor, or plays it with -Play.
-#   .\tools\godot.ps1                       # open prototypes/walkable-ship in the editor
+#   .\tools\godot.ps1                       # open prototypes/slice in the editor
 #   .\tools\godot.ps1 -Play                 # play it
 #   .\tools\godot.ps1 -Project prototypes/other -Play
 
 param(
-    [string]$Project = "prototypes/walkable-ship",
+    [string]$Project = "prototypes/slice",
     [switch]$Play
 )
 

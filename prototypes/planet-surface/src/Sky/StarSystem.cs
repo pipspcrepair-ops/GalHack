@@ -20,12 +20,11 @@ public readonly record struct D3(double X, double Y, double Z)
     public D3 Normalized => this * (1.0 / Length);
 }
 
-/// <summary>What a start system's bodies are marked as holding. Landing and mining come later: this says where.</summary>
+/// <summary>What a start system's bodies are marked as holding (the drive and ship materials; never a jump fuel). Landing and mining come later: this says where.</summary>
 public static class Deposit
 {
-    public const string WarpFuel = "warp-fuel";
+    // No marker for warp fuel or hyperspace fuel, ever: they are found by going there (DepositField.FuelKinds).
     public const string WarpDrive = "warp-drive-materials";
-    public const string HyperdriveFuel = "hyperdrive-fuel";
     public const string HyperdriveMaterials = "hyperdrive-materials";
     public const string CapitalMaterials = "capital-ship-materials";
 }
@@ -43,6 +42,8 @@ public sealed record Orbiter
     public ulong Seed { get; internal set; }
     /// <summary>The world you would land on: its type read from its zone. Null for what has no ground (the star, giants, belts).</summary>
     public PlanetSpec Spec { get; internal set; }
+    /// <summary>What the star and the giants have instead of ground: bands, storms, spots. Null for everything else.</summary>
+    public Geography Geography { get; internal set; }
     /// <summary>The radius of its orbit round <see cref="Parent"/>, m.</summary>
     public double Orbit { get; init; }
     /// <summary>Days per orbit, in the home world's days.</summary>
@@ -130,6 +131,15 @@ public sealed class StarSystem
 
     /// <summary>The farthest the fuel moon may stand from a start world's centre, in its radii.</summary>
     public const double ThrusterReachRadii = ThrusterMoonTo;
+
+    /// <summary>The radius of the biggest world you can land on (the largest width, <see cref="PlanetSpec.Widths"/>), m.</summary>
+    public static readonly double LargestLandableRadius = PlanetSpec.Widths[^1] * 1000.0 / Math.Tau;
+
+    /// <summary>A giant's radius: eight to eleven of the home world's, and always bigger than the biggest world you could land on (so the star, bigger still, and every giant out-size every world).</summary>
+    static double GiantRadius(double homeRadius, float roll) => Math.Max(homeRadius * (8.0 + 3.0 * roll), LargestLandableRadius * 1.5);
+
+    /// <summary>Surface gravity of a world with ground, m/s², given the start world's: it follows the world's size alone.</summary>
+    public float GravityOf(Orbiter b, float homeGravity) => homeGravity * b.Spec.GravityScale / Home.Spec.GravityScale;
 
     /// <summary>The longitude whose solar time the game's clock tells, radians: the map's middle, where start sites stand.</summary>
     public const double NoonLongitude = Math.PI;
@@ -478,7 +488,7 @@ public sealed class StarSystem
         if (big != null)
         {
             // A warm giant, whose moon this world is.
-            double r = homeRadius * (8.0 + 3.0 * next());
+            double r = GiantRadius(homeRadius, next());
             host = new Orbiter
             {
                 Name = big.Name, Kind = OrbiterKind.GasGiant, Parent = star, Radius = r, Habitable = homeH, Orbit = chart(homeH), Period = year(homeH),
@@ -548,7 +558,7 @@ public sealed class StarSystem
             var w = new Orbiter
             {
                 Name = $"world {++number}", Kind = giant ? OrbiterKind.GasGiant : OrbiterKind.Planet, Parent = star, Habitable = h, Orbit = chart(h), Period = year(h),
-                Radius = homeRadius * (giant ? 8.0 + 3.0 * next() : 0.5 + 1.0 * next()), DayLength = giant ? 0.4 + 0.3 * next() : 0.7 + 2.0 * next(),
+                Radius = giant ? GiantRadius(homeRadius, next()) : homeRadius * (0.5 + 1.0 * next()), DayLength = giant ? 0.4 + 0.3 * next() : 0.7 + 2.0 * next(),
                 Phase0 = phase(), Inclination = tilted(), Node = node(), Temperature = t, Zone = ZoneAt(h), Color = color, Band = Rgb.Lerp(color, Rgb.Hex("5a4a3a"), 0.45f),
                 Rings = rings, RingColor = Rgb.Lerp(Rgb.Hex("e8d8b8"), color, 0.3f),
             };
@@ -655,14 +665,12 @@ public sealed class StarSystem
             s._bodies.Add(near);
         }
         s.FuelMoon = near;
-        near.Deposits.Add(Deposit.WarpFuel);
         near.Deposits.Add(Deposit.WarpDrive);
 
-        // The way on out of the system, a warp away: fuel in the first giant's moons or the giant itself,
-        // hyperdrive materials on the cold rocks, capital ship materials in the rock belt.
+        // The way on out of the system, a warp away: hyperdrive materials on the cold rocks, capital ship
+        // materials in the rock belt. The jump fuels are no marker: warp fuel lies on every airless world
+        // (the near moon always is one), hyperspace fuel on the dangerous high-gravity ones (Dress).
         Orbiter far(Func<Orbiter, bool> fits) => s._bodies.Find(b => b != home && b != host && b != near && b.Parent != home && fits(b));
-        Orbiter gas = far(b => b.Kind == OrbiterKind.GasGiant) ?? world(freeOrbit(outer[0]), true, false);
-        gas.Deposits.Add(Deposit.HyperdriveFuel);
         Orbiter cold = far(b => b.Kind == OrbiterKind.Planet && b.Zone >= 5) ?? world(freeOrbit(Math.Max(homeH * 1.5, 1.8)), false, false);
         cold.Deposits.Add(Deposit.HyperdriveMaterials);
         s._bodies.Find(b => b.Kind == OrbiterKind.Belt).Deposits.Add(Deposit.CapitalMaterials);
@@ -670,32 +678,53 @@ public sealed class StarSystem
         return s;
     }
 
-    /// <summary>Gives every body its seed, and every body with ground the world its zone makes it: one zone table, for what you see from afar and what you land on.</summary>
+    /// <summary>
+    /// Gives every body its seed, and every body with ground the world its zone makes it: one zone table, for
+    /// what you see from afar and what you land on. A world's size sets its gravity (<see cref="GravityOf"/>)
+    /// and its chance of having no air (<see cref="VacuumChance"/>); a system always holds one dangerous
+    /// high-gravity world, made so if the rolls gave none. The star and the giants get their geography instead.
+    /// </summary>
     void Dress(ulong seed, PlanetSpec home)
     {
+        var widths = new Dictionary<Orbiter, int>();
         for (int i = 0; i < _bodies.Count; i++)
         {
             Orbiter b = _bodies[i];
             b.Seed = Hash.Of(seed, 0x424F4459, i);
+            b.Geography = Geography.Of(b);
             if (b == Home)
             {
                 b.Spec = home;
                 continue;
             }
             if (b.Kind is not (OrbiterKind.Planet or OrbiterKind.Moon)) continue;
-            var (type, variant) = TypeOf(b);
-            int width = b.Kind == OrbiterKind.Planet ? PlanetSpec.RollWidthKm(b.Seed)
+            widths[b] = b.Kind == OrbiterKind.Planet ? PlanetSpec.RollWidthKm(b.Seed)
                 : b.Parent.Kind == OrbiterKind.GasGiant ? PlanetSpec.RollWidthKm(b.Seed, WorldKind.Moon)
                 : b.Parent.Radius * Math.Tau > 20000.0 ? 16 : 8;
-            PlanetSpec spec = PlanetSpec.Roll(b.Seed, type, variant, width);
-            // Vacuum or not: small bodies can't hold air. Only the kinds that keep craters can be airless.
-            if (PlanetSpec.Craters(type))
+            b.Radius = widths[b] * 1000.0 / Math.Tau;
+        }
+        if (!home.HighGravity && !widths.Values.Any(w => w >= PlanetSpec.StartWidthKm * PlanetSpec.DangerousGravity))
+        {
+            // A heavy world every system: one of the rocks round the star grows to 32 km, now and then 64.
+            var rocks = widths.Keys.Where(b => b.Kind == OrbiterKind.Planet).ToList();
+            var rng = new Rng(Hash.Of(seed, 0x4856));
+            if (rocks.Count > 0)
             {
-                bool vacuum = b == FuelMoon || new Rng(Hash.Of(b.Seed, 0x564143)).NextFloat() < VacuumChance(width);
-                spec = spec with { Modifiers = vacuum ? spec.Modifiers | Modifier.Cratered : spec.Modifiers & ~Modifier.Cratered };
+                Orbiter heavy = rocks[rng.Next(rocks.Count)];
+                widths[heavy] = rng.NextFloat() < 0.1f ? 64 : 32;
+                heavy.Radius = widths[heavy] * 1000.0 / Math.Tau;
             }
+        }
+        foreach (var (b, width) in widths)
+        {
+            var (type, variant) = TypeOf(b);
+            // Vacuum or not: small bodies can't hold air. Only the kinds that keep craters can be airless, so a
+            // living world that lost its air is bare rock (or ice, out in the cold) and not a living world.
+            bool vacuum = b == FuelMoon || new Rng(Hash.Of(b.Seed, 0x564143)).NextFloat() < VacuumChance(width);
+            if (vacuum && !PlanetSpec.Craters(type)) type = b.Zone >= 5 ? Archetype.Ice : Archetype.Arid;
+            PlanetSpec spec = PlanetSpec.Roll(b.Seed, type, variant, width);
+            if (PlanetSpec.Craters(type)) spec = spec with { Modifiers = vacuum ? spec.Modifiers | Modifier.Cratered : spec.Modifiers & ~Modifier.Cratered };
             b.Spec = spec;
-            b.Radius = width * 1000.0 / Math.Tau;
         }
     }
 
@@ -733,10 +762,10 @@ public sealed class StarSystem
     /// <summary>Why this can't be a start system, or null: what the design promises every start.</summary>
     public string StartFault()
     {
-        if (FuelMoon == null || !FuelMoon.Deposits.Contains(Deposit.WarpFuel) || !FuelMoon.Deposits.Contains(Deposit.WarpDrive)) return "no moon holds warp fuel and the drive's materials";
+        if (FuelMoon?.Spec is not { Airless: true } || !FuelMoon.Deposits.Contains(Deposit.WarpDrive)) return "no vacuum moon holds warp fuel and the drive's materials";
         double reach = (Position(FuelMoon, 0.0) - Position(Home, 0.0)).Length;
         if (reach > Home.Radius * (ThrusterReachRadii + 1.0)) return $"the fuel moon stands {reach / 1000.0:F0} km off, past thrusters";
-        foreach (string d in new[] { Deposit.HyperdriveFuel, Deposit.HyperdriveMaterials, Deposit.CapitalMaterials })
+        foreach (string d in new[] { Deposit.HyperdriveMaterials, Deposit.CapitalMaterials })
             if (!_bodies.Exists(b => b != Home && b != FuelMoon && b.Deposits.Contains(d))) return $"no {d} anywhere a warp away";
         return null;
     }

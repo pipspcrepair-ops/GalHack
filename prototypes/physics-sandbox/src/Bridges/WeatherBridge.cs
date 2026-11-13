@@ -131,11 +131,27 @@ public sealed class WeatherBridge : IForceProvider
         public void ApplyForce(GVector3 force)
         {
             if (InShelter || _bridge._world == null) return;
+            if (HeldByFriction(force)) return;
             // A vessel the weather (a tornado's grip, a hurricane's gust) pulls harder than its thrusters can hold is at its mercy until it has come down.
             if (_body.Kind == BodyKind.Vessel && !_bridge._world.IsSheltered(_body)
                 && force.Length() > TossShare * _body.Mass * _bridge._world.Zone.Strength)
                 _body.Tossed = TossSeconds;
             _bridge._world.AddForce(_body, IntoFrame(force), ForceKind.Weather);
+        }
+
+        /// <summary>
+        /// A free body lying still on the ground is moved by wind only if the push beats the friction holding it: μ·m·g
+        /// (its mass and the ground's grip against its drag area and the wind). Below that the gust does nothing at all, and
+        /// does not wake it. In water, in a tornado's grip or once moving it is pushed in full.
+        /// </summary>
+        bool HeldByFriction(GVector3 force)
+        {
+            if (_body.Motion != GalHack.Physics.Motion.Free || _body.Frame != null || _body.Water.InWater) return false;
+            if (_bridge.Forces.PhaseOf(this) == VortexPhase.Caught) return false;
+            bool still = _body.Asleep || (_body.Velocity.Length() < 0.1f && _body.AngularVelocity.Length() < 0.2f);
+            if (!still) return false;
+            float weight = _body.Mass * _bridge._world.GravityAt(_body).Length();
+            return force.Length() < FreeBinding.Friction * weight;
         }
 
         public void ApplyImpulse(GVector3 impulse)

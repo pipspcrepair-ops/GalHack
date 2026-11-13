@@ -69,6 +69,7 @@ public partial class RuinLoot : Node
             int k = 0;
             foreach (LootItem li in c.Items)
                 if (items.TryGet(li.Id, out ItemDef def)) bill.Add(def.Id, PoiPlaces.CountOf(def, c.Tier, Hash.Cell(c.Cell, (uint)(++k * 31))));
+            Slice.Arms.ArmsLoot.Add(bill, inst.Family.Tags, c.Tier, c.Secret, (int)inst.Tech, Hash.Cell(c.Cell, 0xA77u), Zone.Data.Arms, items); // weapons by place and rarity
             Vector3 at = Zone.Planet.NearestCopy(new Vector3(ruin.OriginX + c.Cell.X + 0.5f, ruin.OriginY + c.Cell.Y + 0.05f, ruin.OriginZ + c.Cell.Z + 0.5f), focus);
             Lootable loot = Zone.Loot.Create(LootKind.Cache, "Cache", at, Math.Max(4, size[0]), Math.Max(3, size[1]), bill);
             loot.Radius = 0.55f;

@@ -203,7 +203,7 @@ public partial class GlobeTest : Node
         Check(misplaced == 0, $"globe: a world's type agrees with its orbit round its star ({misplaced} did not{(misplaced > 0 ? ": " + misplacedWorld : "")})");
         Check(worstNoon < 0.002, $"globe: the clock's noon is the sun on the meridian at the map's middle ({worstNoon:F4} off)");
         Check(moved == moving, $"globe: everything moves along its orbit from one day to the next ({moved} of {moving})");
-        Check(unfit == 0, $"globe: every start has a moon in reach of thrusters with warp fuel and the drive's materials, and hyperdrive fuel, hyperdrive materials and capital ship materials a warp away ({unfit} did not{(unfit > 0 ? ": " + unfitWorld : "")})");
+        Check(unfit == 0, $"globe: every start has a vacuum moon in reach of thrusters with the drive's materials, and hyperdrive materials and capital ship materials a warp away ({unfit} did not{(unfit > 0 ? ": " + unfitWorld : "")})");
         Check(unresolved == 0, $"globe: any point on a world resolves up to its orbit, its place in the system and its star ({unresolved} did not)");
     }
 
@@ -230,7 +230,8 @@ public partial class GlobeTest : Node
                     if (b == s.Home || b.Kind is not (PlanetSurface.Skies.OrbiterKind.Planet or PlanetSurface.Skies.OrbiterKind.Moon)) continue;
                     worlds++;
                     if (b.Spec == null) { bare++; continue; }
-                    bool fits = b.Kind == PlanetSurface.Skies.OrbiterKind.Moon || b.Spec.Archetype switch
+                    // A body too small to keep its air is bare rock (or ice, out in the cold) wherever it stands (StarSystem.Dress).
+                    bool fits = b.Kind == PlanetSurface.Skies.OrbiterKind.Moon || b.Spec.Airless && b.Spec.Archetype is Planets.Gen.Archetype.Arid or Planets.Gen.Archetype.Ice || b.Spec.Archetype switch
                     {
                         Planets.Gen.Archetype.Lava => b.Zone == 1,
                         Planets.Gen.Archetype.Arid => b.Zone is 2 or 3,

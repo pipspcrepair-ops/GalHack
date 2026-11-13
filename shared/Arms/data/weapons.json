@@ -159,6 +159,72 @@
       "cone": { "range": 6, "angle": 16, "ticks": 12 },
       "dot": { "perSecond": 6, "seconds": 3, "flee": 6 },
       "feel": "flame", "tracer": { "colour": "ff8a2a", "width": 0.25, "length": 0.0, "body": "flame" },
-      "look": { "band": "low", "calibre": 0.5, "barrel": 0.32, "body": 0.22, "stock": "none", "mag": "tank", "sight": "none", "emitter": "pilot", "accent": "7a5a3a" } }
+      "look": { "band": "low", "calibre": 0.5, "barrel": 0.32, "body": 0.22, "stock": "none", "mag": "tank", "sight": "none", "emitter": "pilot", "accent": "7a5a3a" } },
+
+    // ---- What the world's people carry (Bestiary Weapons: the era tables). The same rows as the
+    // player's: a person's weapon is one of these items, fired from its muzzle with its own numbers,
+    // and dropped with its ammo where they fall. Found, never made. ----
+    { "id": "ball-musket", "code": "PM1", "name": "Ball Musket",
+      "trigger": "semi", "delivery": "bolt", "class": "kin",
+      "damage": 34, "rpm": 30, "magazine": 1, "reload": 3.2, "speed": 170, "life": 1.6, "gravity": 0.25,
+      "spread": 1.1, "spreadMoving": 3.0, "recoil": 2.0, "noise": 60, "blocks": 0.8,
+      "ammo": { "item": "musket-balls" },
+      "feel": "shotgun", "tracer": { "colour": "d8d0c0", "width": 0.016, "length": 0.5, "body": "ball" },
+      "look": { "band": "low", "calibre": 0.55, "barrel": 0.42, "body": 0.2, "stock": "solid", "mag": "none", "sight": "post", "accent": "6b4a2e" } },
+
+    { "id": "crank-crossbow", "code": "PX1", "name": "Crank Crossbow",
+      "trigger": "semi", "delivery": "bolt", "class": "kin",
+      "damage": 30, "rpm": 40, "magazine": 1, "reload": 2.2, "speed": 70, "life": 2.5, "gravity": 0.5,
+      "spread": 0.4, "spreadMoving": 1.6, "recoil": 0.4, "noise": 12, "blocks": 0.3,
+      "ammo": { "item": "crossbow-bolts" },
+      "feel": "throw", "tracer": { "colour": "8a6a44", "width": 0.012, "length": 0.45, "body": "slug" },
+      "look": { "band": "low", "calibre": 0.3, "barrel": 0.24, "body": 0.24, "stock": "solid", "mag": "none", "sight": "post", "fins": 2, "accent": "5a3e26" } },
+
+    { "id": "hunting-bow", "code": "PB1", "name": "Hunting Bow",
+      "trigger": "semi", "delivery": "bolt", "class": "kin",
+      "damage": 20, "rpm": 50, "magazine": 1, "reload": 0.9, "speed": 55, "life": 3, "gravity": 0.6,
+      "spread": 0.7, "spreadMoving": 2.2, "recoil": 0.2, "noise": 8, "blocks": 0.2,
+      "ammo": { "item": "arrows" },
+      "feel": "throw", "tracer": { "colour": "8a6a44", "width": 0.01, "length": 0.7, "body": "slug" },
+      "look": { "band": "low", "calibre": 0.2, "barrel": 0.1, "body": 0.12, "stock": "none", "mag": "none", "sight": "none", "accent": "5a3e26" } },
+
+    { "id": "beam-rifle", "code": "PL3", "name": "Beam Rifle",
+      "trigger": "semi", "delivery": "bolt", "class": "en",
+      "damage": 24, "rpm": 240, "magazine": 20, "reload": 1.8, "speed": 420, "life": 0.8,
+      "spread": 0.15, "spreadMoving": 0.9, "recoil": 0.3, "noise": 45, "blocks": 1.0,
+      "ammo": { "item": "energy-cell", "perItem": 20 },
+      "feel": "laser", "tracer": { "colour": "ff5040", "width": 0.014, "length": 3.0, "body": "tracer", "light": true },
+      "look": { "band": "high", "calibre": 0.38, "barrel": 0.28, "body": 0.3, "stock": "skeleton", "mag": "cell", "sight": "sensor", "emitter": "lens", "vents": 3, "accent": "ff5a40" } },
+
+    { "id": "beam-pistol", "code": "PL2", "name": "Beam Pistol",
+      "trigger": "semi", "delivery": "bolt", "class": "en",
+      "damage": 16, "rpm": 300, "magazine": 12, "reload": 1.3, "speed": 400, "life": 0.6,
+      "spread": 0.4, "spreadMoving": 1.2, "recoil": 0.3, "noise": 35, "blocks": 0.8,
+      "ammo": { "item": "energy-cell", "perItem": 12 },
+      "feel": "laser", "tracer": { "colour": "ff5040", "width": 0.012, "length": 2.2, "body": "tracer", "light": true },
+      "look": { "band": "high", "calibre": 0.28, "barrel": 0.1, "body": 0.16, "stock": "none", "mag": "cell", "sight": "post", "emitter": "lens", "accent": "ff5a40" } },
+
+    // Hand weapons: a blow within reach, as often as rpm allows; no ammo. The look's stock names the
+    // head (club, blade, spear, fist) and body is the haft's length, m.
+    { "id": "spiked-club", "code": "MC1", "name": "Spiked Club",
+      "trigger": "semi", "delivery": "strike", "class": "kin", "reach": 1.5,
+      "damage": 18, "rpm": 55, "noise": 6, "blocks": 0.2, "feel": "throw",
+      "look": { "band": "low", "calibre": 0.5, "body": 0.62, "stock": "club", "accent": "6b4a2e" } },
+
+    { "id": "machete", "code": "MB1", "name": "Machete",
+      "trigger": "semi", "delivery": "strike", "class": "kin", "reach": 1.4,
+      "damage": 15, "rpm": 75, "noise": 5, "blocks": 0.1, "feel": "throw",
+      "look": { "band": "low", "calibre": 0.3, "body": 0.5, "stock": "blade", "accent": "3a2a1e" } },
+
+    { "id": "spear", "code": "MS1", "name": "Spear",
+      "trigger": "semi", "delivery": "strike", "class": "kin", "reach": 2.3,
+      "damage": 16, "rpm": 60, "noise": 5, "blocks": 0.1, "feel": "throw",
+      "look": { "band": "low", "calibre": 0.3, "body": 1.6, "stock": "spear", "accent": "6b4a2e" } },
+
+    // Bare hands: no item. What anyone unarmed (or a gun out of rounds) hits with.
+    { "id": "fists", "code": "MH0", "name": "Fists",
+      "trigger": "semi", "delivery": "strike", "class": "kin", "reach": 1.1,
+      "damage": 6, "rpm": 70, "noise": 3, "blocks": 0, "feel": "throw",
+      "look": { "band": "low", "calibre": 0.2, "body": 0.1, "stock": "fist", "accent": "6b4a2e" } }
   ]
 }

@@ -17,6 +17,9 @@ public static class PlanetGenerator
 {
     public const float DefaultCellSize = 32f;
 
+    /// <summary>The lowest ground of a world with no air, m: nothing dips under the waterline, so no pool can fill.</summary>
+    public const float BareFloor = 5f;
+
     public static WorldMap Generate(PlanetSpec spec, float cellSize = DefaultCellSize)
     {
         var watch = Stopwatch.StartNew();
@@ -37,8 +40,10 @@ public static class PlanetGenerator
             }
         });
 
-        // Sea level: the quantile that leaves the target fraction of the planet above water.
-        map.LandTarget = RollLandTarget(spec, def);
+        // Sea level: the quantile that leaves the target fraction of the planet above water. A world with no air
+        // has no liquid water at all (no seas, lakes or rivers; its ice stays as ore), so all of it is land.
+        bool bare = spec.Airless;
+        map.LandTarget = bare ? 1f : RollLandTarget(spec, def);
         var sorted = (float[])raw.Clone();
         Array.Sort(sorted);
         model.SeaOffset = Quantile(sorted, 1f - map.LandTarget);
@@ -55,7 +60,7 @@ public static class PlanetGenerator
             if (model.Shape(raw[k], map.CellX(i), map.CellY(j), cellSize) >= 0f) isLand++;
         }
         float lost = sampled > 0 ? (wasLand - isLand) / (float)sampled : 0f;
-        if (Math.Abs(lost) > 0.002f) model.SeaOffset = Quantile(sorted, 1f - Math.Clamp(map.LandTarget + lost, 0.02f, 0.98f));
+        if (!bare && Math.Abs(lost) > 0.002f) model.SeaOffset = Quantile(sorted, 1f - Math.Clamp(map.LandTarget + lost, 0.02f, 0.98f));
 
         // Landform by landform, the final height; and what each cell's landform means for its
         // rivers (plains and wetlands gather many, deserts few), its rain and how dry its air is.
@@ -70,11 +75,12 @@ public static class PlanetGenerator
                 int k = j * w + i;
                 double x = map.CellX(i);
                 float e = model.ShapeCell(raw[k], x, y, cellSize, out Landform landform, out float area, out float wet, out dry[k]);
+                if (bare) e = Math.Max(e, 0f) + BareFloor; // craters and landform pools cut no basins to fill
                 map.Elevation[k] = e;
                 map.Landform[k] = (byte)landform;
                 riverArea[k] = def.RiverArea * Math.Clamp(area, 0.6f, 4f);
                 if (e < 0f) map.Flags[k] = CellFlags.Water;
-                else rain[k] = model.Rain(x, y) * def.Rain * wet;
+                else rain[k] = bare ? 0f : model.Rain(x, y) * def.Rain * wet;
             }
         });
 

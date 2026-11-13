@@ -309,8 +309,10 @@ public sealed partial class Vessel
     void Furnish(CollisionObject3D owner, bool drawLater = false)
     {
         List<ChunkColliders> colliders = StructureBridge.Colliders(Structure);
-        if (drawLater) foreach (ChunkColliders c in colliders) _pendingShapes.Enqueue((HullShapes, c));
-        else HullShapes.Apply(colliders);
+        // A loose body (a wreck, cut off and free) collides in every part, fittings too: a lamp cut off a wall must lie on the ground.
+        List<ChunkColliders> hull = Body.Motion == GalHack.Physics.Motion.Free ? StructureBridge.Colliders(Structure, null, fittings: true) : colliders;
+        if (drawLater) foreach (ChunkColliders c in hull) _pendingShapes.Enqueue((HullShapes, c));
+        else HullShapes.Apply(hull);
         View = new StructureMesh { Name = "View", BeforeDraw = Hits.Flush, PowerSource = () => Powered };
         owner.AddChild(View);
         View.Setup(Structure, drawLater);
@@ -363,7 +365,7 @@ public sealed partial class Vessel
         var dirty = Structure.DirtyChunks.ToList();
         Structure.DirtyChunks.Clear();
         List<ChunkColliders> colliders = StructureBridge.Colliders(Structure, dirty);
-        HullShapes.Apply(colliders);
+        HullShapes.Apply(Body.Motion == GalHack.Physics.Motion.Free ? StructureBridge.Colliders(Structure, dirty, fittings: true) : colliders);
         Cabin.Shapes.Apply(colliders);
         View.Rebuild(dirty);
 
@@ -515,6 +517,7 @@ public sealed partial class Vessel
         Zone.AddChild(rigid);
         rigid.GlobalTransform = hull.Hull.GlobalTransform;
         HullShapes.MoveTo(rigid);
+        HullShapes.Apply(StructureBridge.Colliders(Structure, null, fittings: true)); // free now: its fittings collide too
         foreach (Node child in hull.Hull.GetChildren())
             if (child is not CollisionShape3D) child.Reparent(rigid, false);
         var free = Zone.Host.Rebind(Body, new FreeBinding(rigid, Body));

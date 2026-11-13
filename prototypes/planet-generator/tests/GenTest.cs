@@ -340,7 +340,9 @@ public partial class GenTest : Node
             int outside = 0;
             for (int s = 0; s < 20; s++)
             {
-                var map = PlanetGenerator.Generate(PlanetSpec.Roll((ulong)(1000 + s * 7919), a, v, 8));
+                PlanetSpec spec = PlanetSpec.Roll((ulong)(1000 + s * 7919), a, v, 8);
+                if (spec.Airless) continue; // no air, no sea: an airless world is all land (PlanetGenerator.BareFloor)
+                var map = PlanetGenerator.Generate(spec);
                 min = Math.Min(min, map.LandFraction);
                 max = Math.Max(max, map.LandFraction);
                 if (map.LandFraction < def.LandMin - 0.01f || map.LandFraction > def.LandMax + 0.01f) outside++;

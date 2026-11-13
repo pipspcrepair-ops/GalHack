@@ -1358,6 +1358,18 @@ public partial class TerrainStreamer : Node3D
 
     public bool IsLoaded(Int3 key) => _chunks.ContainsKey(key);
 
+    /// <summary>
+    /// Whether the ground at a point has collision to land on: its column is built and every chunk in it that has a surface has a
+    /// live shape. Beyond the collision radius it hasn't, and a loose body there would fall through the world.
+    /// </summary>
+    public bool CollidesAt(Vector3 p)
+    {
+        if (!_columns.TryGetValue(((int)MathF.Floor(p.X / S), (int)MathF.Floor(p.Z / S)), out Column c) || !c.Built) return false;
+        foreach (VChunk chunk in c.Chunks)
+            if (chunk.HasTriangles && (chunk.Shape == null || chunk.Shape.Disabled)) return false;
+        return true;
+    }
+
     /// <summary>Whether a loaded chunk has live collision (tests).</summary>
     public bool Collides(Int3 key) => _chunks.TryGetValue(key, out VChunk c) && c.Shape != null && !c.Shape.Disabled;
 

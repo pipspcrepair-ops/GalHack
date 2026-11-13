@@ -47,6 +47,17 @@ public sealed class RegionRules
     /// <summary>How far round a point the land is looked at to call it broad and open, metres.</summary>
     public float BroadRadius { get; set; } = 350f;
 
+    /// <summary>A whirl (tornado, dust devil) stands only on ground this flat or less, rise over run.</summary>
+    public float StandSlope { get; set; } = 0.12f;
+
+    /// <summary>Nor on ground standing more than this many metres above the mean of the land PerchRadius round it (a hilltop, a mesa top, a ridge).</summary>
+    public float MaxPerch { get; set; } = 10f;
+    public float PerchRadius { get; set; } = 150f;
+
+    /// <summary>A moving whirl looks this far ahead; ground rising faster than AheadRise (rise over run) there turns it aside or breaks it up.</summary>
+    public float AheadRun { get; set; } = 50f;
+    public float AheadRise { get; set; } = 0.2f;
+
     public TornadoGround Tornado { get; set; } = new();
     public DustGround Dust { get; set; } = new();
     public ColdGround Blizzard { get; set; } = new();
@@ -217,6 +228,36 @@ public static class Regions
     /// <summary>Ground no tornado can stand on: high mountains, steep or rugged ground.</summary>
     public static bool Barred(RegionRules r, in Ground g) => g.Mountain > 0.5f || g.Height > r.MountainHeight || g.Slope > r.SteepSlope || g.Rugged > 0.8f;
 
+    /// <summary>Metres this point stands above the mean height of the land <see cref="RegionRules.PerchRadius"/> round it.</summary>
+    public static float Perch(RegionRules r, Func<float, float, Ground> land, Vector3 p)
+    {
+        float sum = 0f;
+        const int Ring = 12;
+        for (int k = 0; k < Ring; k++)
+        {
+            float a = k * MathF.Tau / Ring;
+            sum += land(p.X + MathF.Cos(a) * r.PerchRadius, p.Z + MathF.Sin(a) * r.PerchRadius).Height;
+        }
+        return land(p.X, p.Z).Height - sum / Ring;
+    }
+
+    /// <summary>Whether a whirl may stand here: open, fairly flat, low ground, never a hilltop, mesa top, ridge or steep slope.</summary>
+    public static bool Stands(RegionRules r, Func<float, float, Ground> land, Vector3 p) =>
+        land == null || (land(p.X, p.Z).Slope <= r.StandSlope && Perch(r, land, p) <= r.MaxPerch);
+
+    /// <summary>Metres of rise over run at the steepest of a few probes ahead along a heading (radians in XZ).</summary>
+    public static float RiseAhead(RegionRules r, Func<float, float, Ground> land, Vector3 p, float heading)
+    {
+        float here = land(p.X, p.Z).Height, worst = 0f;
+        for (int k = 1; k <= 3; k++)
+        {
+            float d = r.AheadRun * k / 3f;
+            float h = land(p.X + MathF.Cos(heading) * d, p.Z + MathF.Sin(heading) * d).Height;
+            worst = MathF.Max(worst, (h - here) / d);
+        }
+        return worst;
+    }
+
     /// <summary>How well a tornado can stand on this one point: 0 never (mountain, steep ground, water), up to 1.</summary>
     public static float TornadoPoint(RegionRules r, in Ground g)
     {
@@ -239,7 +280,7 @@ public static class Regions
         if (land == null) return 1f;
         Ground g = land(p.X, p.Z);
         float here = TornadoPoint(r, g);
-        if (here <= 0f) return 0f;
+        if (here <= 0f || !Stands(r, land, p)) return 0f;
         float lo = g.Height, hi = g.Height, worst = here;
         for (int k = 0; k < 8; k++)
         {
