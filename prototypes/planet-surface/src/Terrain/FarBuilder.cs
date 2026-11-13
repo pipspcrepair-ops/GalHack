@@ -798,6 +798,7 @@ public static class FarBuilder
             if (pal.Planted != null && pal.Planted.TryGetValue(id, out PlantedFlora tree))
             {
                 if (Dug(dug, (int)Math.Floor(tree.X), (int)Math.Floor(tree.Z))) continue; // the ground went from under it: gone, as any tree
+                if (source.Reserved(tree.X, tree.Z, Reach(tree.Kind, tree.Species, tree.Scale))) continue; // its crown would reach the bunker's ground
                 float tx = (float)(tree.X - x0), tz = (float)(tree.Z - z0), treeY = tree.Foot - FloraSolidRules.Sink;
                 var treeBasis = new Basis(Vector3.Up, tree.Angle).Scaled(new Vector3(tree.Scale, tree.Scale, tree.Scale));
                 if (job.Lod == 0) Add(tree.Kind, tree.Species, 0, tx, treeY, tz, treeBasis, tree.Tint, 0f, far: false);
@@ -864,6 +865,7 @@ public static class FarBuilder
             float scale = plant != null ? Mathx.Lerp(0.78f, 1.24f, size) : Mathx.Lerp(0.7f, 1.35f, size) * FloraMeshes.BaseScale(rule.Kind);
             // A tree takes its size from its kind's range on this world, by its age: the one scale draws it near and far and sizes its colliders.
             if (plant != null && book.TreeScale(plant, Hash.Unit(Hash.Of(pal.Map.Spec.Seed, id, 0xA6E), 0), size) is float grown) scale = grown;
+            if (source.Reserved(x, z, Reach(rule.Kind, plant, scale))) continue; // its crown or body would reach the bunker's ground or the sky over it
             float angle = turn * Mathf.Tau;
             Rgb tint = plant != null && !plant.Mineral ? book.Tint(plant, shade, x, z) : Tint(rule, shade, pal, x, z);
             // A wide crown keeps out of what's built, as its trunk does: a road's verge, a wall, a yard.
@@ -927,6 +929,7 @@ public static class FarBuilder
                 if (source.CellDensity(cx, (int)Math.Floor(h - 0.6f), cz) <= 0f) continue;
                 float big = Hash.Unit(roll, 3);
                 float scale = Mathx.Lerp(0.45f, 1.5f, big * big) * Mathx.Lerp(0.7f, 1.25f, Smooth(10f, 40f, under.X)) * FloraMeshes.BaseScale(fallen);
+                if (source.Reserved(x, z, Reach(fallen, null, scale))) continue;
                 float angle = Hash.Unit(roll, 4) * Mathf.Tau;
                 float foot = FootRadius(fallen) * scale;
                 float gx = (source.SurfaceHeight(x + foot, z) - h) / foot, gz = (source.SurfaceHeight(x, z + foot) - h) / foot;
@@ -995,6 +998,10 @@ public static class FarBuilder
                 return Tint(rule, shade);
         }
     }
+
+    /// <summary>How far a plant or rock reaches from its root at a scale: its crown, or its body (a kind's crown where the species is not known).</summary>
+    static float Reach(Flora kind, Plant plant, float scale) =>
+        scale * MathF.Max(FootRadius(kind), plant?.CrownRadius ?? (KindSize != null && KindSize.TryGetValue(kind, out var k) ? k.Radius : 0f));
 
     /// <summary>Whether anything built lies under a crown's reach of a point: four spots round its rim (a road, or a place's ground well in from its blend).</summary>
     static bool CrownOver(PlanetTerrainSource source, GroundPalette pal, double x, double z, float reach)

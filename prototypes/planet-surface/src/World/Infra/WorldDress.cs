@@ -98,7 +98,6 @@ public sealed class WorldDress
         readonly float _wear;
         readonly bool _falling;
         readonly List<(DressPart Part, float S)> _parts = new();
-        (double X, double Z)? _keepClear;
 
         public Planner(PlanetWorld w, DressBook book, WorldRoll roll, WorldDress d)
         {
@@ -136,8 +135,6 @@ public sealed class WorldDress
             if (_parts.Count == 0) return;
 
             Gather();
-            // The bunker's ground at a start town's edge stays clear.
-            if (_net.Town is StartTown t) _keepClear = (t.EdgeX, t.EdgeZ);
             Claim(_w.Landing.X, _w.Landing.Y, 20f, true);
             var ways = _net.Routes.Where(r => r.Kind is RouteKind.Highway or RouteKind.Road or RouteKind.Track && r.Count > 4).OrderBy(r => r.Id).ToList();
             // In town a way is a street; out of it, a road.
@@ -218,8 +215,7 @@ public sealed class WorldDress
                         foreach (var c in list)
                             // Flat things may lie under a span's line, never under one another or a solid.
                             if (Dist(x, z, c.X, c.Z) < (solid || c.Solid ? r + c.R : (r + c.R) * 0.6f)) return false;
-            if (_keepClear is { } k && Dist(x, z, k.X, k.Z) < 40 + r) return false;
-            return true;
+            return !_w.Source.Reserved(x, z, r); // the bunker's ground, and the sky over it, stays clear
         }
 
         void Claim(double x, double z, float r, bool solid)
