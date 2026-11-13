@@ -192,7 +192,8 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
     /// </summary>
     public void Wake(Body body, bool footingGone = false)
     {
-        _footingGone |= footingGone && (Frozen || Settling);
+        // Only what stood on something can lose it: one put down landed where nothing touches it yet is as it was.
+        _footingGone |= footingGone && (Frozen || Settling) && (Gear is { Contact: true } || _restAt != null);
         Frozen = false;
         body.Asleep = false;
         _settleLeft = 0f;
