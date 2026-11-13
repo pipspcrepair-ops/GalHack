@@ -45,7 +45,10 @@ public partial class PoiTest
                 var orn = new PoiInstance { Layout = inst.Layout, State = inst.State, SpawnSeed = inst.SpawnSeed, Blocks = inst.Blocks.Clone(), Protected = inst.Protected, World = inst.World, Lights = inst.Lights, Survey = inst.Survey };
                 orn.Fallen.AddRange(inst.Fallen);
                 GC.Collect(); GC.WaitForPendingFinalizers(); // (the spawns' garbage is theirs: the ornament is timed on its own)
-                if (places == 1) Ornament.Apply(new PoiInstance { Layout = inst.Layout, State = inst.State, Blocks = inst.Blocks.Clone(), Protected = inst.Protected, Lights = inst.Lights, Survey = inst.Survey }); // (once, so the first place doesn't pay for compiling the pass)
+                // (Once on a copy first, so no place pays for compiling the pass: generation compiles it once a run, not once a place.)
+                var warm = new PoiInstance { Layout = inst.Layout, State = inst.State, Blocks = inst.Blocks.Clone(), Protected = inst.Protected, Lights = inst.Lights, Survey = inst.Survey };
+                warm.Fallen.AddRange(inst.Fallen);
+                Ornament.Apply(warm);
                 sw.Restart();
                 Ornament.Apply(orn);
                 cost.Add(sw.Elapsed.TotalMilliseconds);

@@ -292,6 +292,51 @@ public partial class Screenshot : Node
             Frame(a[5]);
             return;
         }
+        // objects:<tech>[:cut]: a shed with a tank against its wall, two tanks in the open and a pile of containers, each shaped by
+        // itself alone (proof frames for Objects); cut takes the tank against the shed away after, to show the wall behind it.
+        if (view.StartsWith("objects:"))
+        {
+            string[] a = view.Split(':');
+            var tech = System.Enum.Parse<TechLevel>(a[1], true);
+            var lib = m.Library;
+            FamilyDef fam = lib.Families.First(f => f.Site != null && !f.Space && lib.Sites[f.Site].Parts.Any(p => p.Kind == "tanks"));
+            SitePart Part(string kind, int x, int z, params (string, string)[] args)
+            {
+                var p = new SitePart { Kind = kind, X = x, Z = z };
+                foreach (var (k, v) in args) p.Args[k] = v;
+                return p;
+            }
+            Layout Lay(ulong seed, params SitePart[] parts)
+            {
+                var canvas = new Canvas(lib.Kits[fam.Style ?? lib.Sites[fam.Site!].Style]) { Tech = tech };
+                Sites.Compose(lib, canvas, new SiteDef { Id = "objects", Style = lib.Sites[fam.Site!].Style, EntranceX = -30, EntranceZ = 0, Parts = parts.ToList() }, fam, Rarity.Common, new Rng(seed), new LayoutHints(Dir.West, tech));
+                var l = canvas.Finish(fam, fam.Variants[0], Rarity.Common, seed, "objects");
+                l.Tech = tech;
+                return l;
+            }
+            SitePart shed = Part("building", 0, 0, ("program", "shed"));
+            var alone = Lay(_seed, shed).Objects.Keys.ToList();
+            Int3 lo = alone.Aggregate(Int3.Min), hi = alone.Aggregate(Int3.Max);
+            int r = 3, mz = (lo.Z + hi.Z) / 2;
+            Layout layout = null;
+            for (ulong s = _seed; layout == null || !layout.Objects.Keys.Any(q => q.Y >= 4 && q.Z > hi.Z + 4); s++) // (until the containers pile up)
+                layout = Lay(s, shed, Part("tanks", hi.X + 1 + r, mz, ("count", "1"), ("r", "3"), ("h", "7")), Part("tanks", hi.X + 1 + r, mz - 2 * r - 6, ("count", "2"), ("r", "3"), ("h", "7"), ("gap", "5"), ("axis", "x")),
+                    Part("containers", lo.X, hi.Z + 6, ("rows", "1"), ("cols", "2")));
+            var inst = PoiFactory.Spawn(lib, layout, PoiState.Abandoned, _seed);
+            Int3 against = new(hi.X + 1 + r, 1, mz);
+            if (a.Length > 2 && a[2] == "cut")
+            {
+                int o = inst.ObjectOf(against);
+                foreach (Int3 q in layout.Objects.Where(x => x.Value == o).Select(x => x.Key)) inst.Blocks.Set(q, Block.Air);
+            }
+            m.Show(inst);
+            m.HideHud(true);
+            Vector3 at = m.Stage.ToGlobal(new Vector3(against.X - r, 3.5f, against.Z));
+            Vector3 eye = m.Stage.ToGlobal(new Vector3(against.X + 13f, 9f, against.Z + 16f));
+            m.Camera.GlobalTransform = new Transform3D(Basis.Identity, eye).LookingAt(at, Vector3.Up);
+            m.FreezeCamera = true;
+            return;
+        }
         // place:<family>:<state>:<out|near|in|inN|low>[:wear/violence/water[/falling]] spawns a family fresh and frames it as a lot
         // is framed; low stands in a corner of the biggest room on its lowest storey. The optional fifth part is the
         // world's fall as decay reads it, as the lot view's seventh.
@@ -305,6 +350,7 @@ public partial class Screenshot : Node
             float[] w = a.Length > 4 && tech == null ? a[4].Split('/').Take(3).Select(x => float.Parse(x, System.Globalization.CultureInfo.InvariantCulture)).ToArray() : null;
             var world = tech is TechLevel lv ? new WorldProfile { Before = lv, Now = lv } : w == null ? null : new WorldProfile { Ruin = new RuinAge(w[0], a[4].EndsWith("/falling"), w[1], w[2]) };
             Shaping.Enabled = !OS.GetCmdlineUserArgs().Contains("--plain");
+            Ornament.Enabled = !OS.GetCmdlineUserArgs().Contains("--plain") && !OS.GetCmdlineUserArgs().Contains("--no-ornament");
             m.Show(PoiFactory.Generate(m.Library, f, rng.Range(0, f.Variants.Count), f.Rarity, System.Enum.Parse<PoiState>(a[2], true), rng.NextU64(), world: world));
             m.HideHud(true);
             Frame(a[3]);

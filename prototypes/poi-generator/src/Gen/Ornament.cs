@@ -73,7 +73,23 @@ public static class Ornament
 
         // (It follows the shaping, whose survey of the place it reads: no shaping, no ornament.)
         if (inst.Survey is not { } survey) return;
-        var walked = survey.Walked;
+        // Where anyone walks now: as the shaping found it, and on from any slope it laid that a walker can step onto (a
+        // coping's slope can be walked where its cube couldn't be; nothing else it lays opens a way).
+        var walked = new HashSet<Int3>(survey.Walked);
+        NavGrid nav = inst.Nav();
+        var step = new List<Int3>();
+        var on = new Queue<Int3>();
+        foreach (Int3 s in survey.Slopes)
+        {
+            if (walked.Contains(s) || !nav.Standable(s)) continue;
+            nav.NeighboursInto(s, step);
+            if (step.Any(walked.Contains) && walked.Add(s)) on.Enqueue(s);
+        }
+        while (on.Count > 0)
+        {
+            nav.NeighboursInto(on.Dequeue(), step);
+            foreach (Int3 n in step) if (walked.Add(n)) on.Enqueue(n);
+        }
         var lamps = inst.Lights.Select(l => l.Cell).ToHashSet();
         var roofed = new Dictionary<Int3, bool>();
         bool Rock(Int3 q) => !space && q.Y <= Assembler.GroundY && !occ[q] && g.Get(q).IsAir;
@@ -125,35 +141,40 @@ public static class Ornament
         {
             Dir a = d.RotateCw(1);
             int U(Int3 c) => d is Dir.North or Dir.South ? c.X : c.Z;
-            Int3 At(int u, int y, Int3 like) => d is Dir.North or Dir.South ? new Int3(u, y, like.Z) : new Int3(like.X, y, u);
             // Fins: each a whole column on a pier or quoin, from its wall's head down to head height; whole sets at a regular spacing.
-            if (v.Fins)
+            if (v.Fins && set.Count >= 6)
             {
-                var columns = new Dictionary<int, List<(Int3, Block)>>();
-                foreach (var col in set.GroupBy(U))
+                var heads = new Dictionary<int, Int3>();
+                foreach (Int3 c in set) if (!heads.TryGetValue(U(c), out Int3 h) || c.Y > h.Y) heads[U(c)] = c;
+                // (Each column judged only when a set asks for it, once.)
+                var columns = new Dictionary<int, List<(Int3, Block)>?>();
+                List<(Int3, Block)>? Column(int u)
                 {
-                    Int3 top = col.MaxBy(c => c.Y);
-                    if (BlockInfo.IsFullCube(g.Get(top + Int3.Up).Type)) continue; // (under more wall: not this face's head)
+                    if (columns.TryGetValue(u, out var known)) return known;
+                    return columns[u] = Judge(u);
+                }
+                List<(Int3, Block)>? Judge(int u)
+                {
+                    if (!heads.TryGetValue(u, out Int3 top) || BlockInfo.IsFullCube(g.Get(top + Int3.Up).Type)) return null; // (under more wall: not this face's head)
                     var cells = new List<(Int3, Block)>();
                     Int3 c = top;
                     for (; set.Contains(c) && Open(c + d.Vec(), v.Fin); c += Int3.Down) cells.Add((c + d.Vec(), Made(c, v.Fin, v.Fin == BlockType.Partition ? a : Dir.Up)));
                     Int3 stop = c + d.Vec();
                     // (It stops at head height, the wall's foot or the ground: never short of a window, a door or a lamp.)
                     bool whole = !set.Contains(c) || walked.Contains(stop) || walked.Contains(stop + Int3.Down) || walked.Contains(stop + Int3.Down * 2);
-                    if (!whole || cells.Count < 3) continue;
+                    if (!whole || cells.Count < 3) return null;
                     if (v.Finial && Open(top + d.Vec() + Int3.Up, BlockType.Spike)) cells.Insert(0, (top + d.Vec() + Int3.Up, Made(top, BlockType.Spike, Dir.Up)));
-                    columns[col.Key] = cells;
+                    return cells;
                 }
-                if (columns.Count >= 2)
                 {
-                    int lo = set.Min(U), hi = set.Max(U);
+                    int lo = heads.Keys.Min(), hi = heads.Keys.Max();
                     foreach (int s in new[] { v.Bay, v.Bay * 2, v.Bay * 3 })
                     {
                         var offs = Enumerable.Range(0, s).OrderBy(o => System.Math.Abs(o - (hi - lo) % s / 2)).ToList();
                         var pick = offs.Select(o => Enumerable.Range(0, (hi - lo - o) / s + 1).Select(k => lo + o + k * s).ToList())
-                            .FirstOrDefault(us => us.Count >= 2 && us.All(columns.ContainsKey));
+                            .FirstOrDefault(us => us.Count >= 2 && us.All(u => Column(u) != null));
                         if (pick == null) continue;
-                        Lay("fins", pick.SelectMany(u => columns[u]).ToList(), pick);
+                        Lay("fins", pick.SelectMany(u => columns[u]!).ToList(), pick);
                         break;
                     }
                 }
@@ -248,7 +269,7 @@ public static class Ornament
             var spots = new Dictionary<Int3, Dir>();
             foreach (Int3 c in inst.Fallen)
             {
-                if (spots.ContainsKey(c) || !g.Get(c).IsAir || inst.Protected[c] || lamps.Contains(c)) continue;
+                if (spots.ContainsKey(c) || !g.Get(c).IsAir || mine.Contains(c) || inst.Protected[c] || lamps.Contains(c)) continue;
                 foreach (Dir d in Dirs.All)
                 {
                     Block b = g.Get(c + d.Vec());

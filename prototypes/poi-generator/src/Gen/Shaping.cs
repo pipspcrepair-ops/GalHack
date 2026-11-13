@@ -427,12 +427,12 @@ public static class Shaping
 
 
         foreach (var (c, b) in shaped) g.Set(c, b);
-        inst.Survey = new Survey(walked, outer, tops);
+        inst.Survey = new Survey(walked, shaped.Where(x => BlockInfo.IsSlope(x.Value.Type)).Select(x => x.Key).ToList(), outer, tops);
     }
 
-    /// <summary>What the shaping found of a place, for the ornament after it: where anyone walks from the way in, each outside
-    /// face's wall cells by the way the face looks, and every top open to the sky.</summary>
-    public sealed record Survey(HashSet<Int3> Walked, Dictionary<Dir, HashSet<Int3>> Outer, List<Int3> Tops);
+    /// <summary>What the shaping found of a place, for the ornament after it: where anyone walked before it, the slopes it laid,
+    /// each outside face's wall cells by the way the face looks, and every top open to the sky.</summary>
+    public sealed record Survey(HashSet<Int3> Walked, List<Int3> Slopes, Dictionary<Dir, HashSet<Int3>> Outer, List<Int3> Tops);
 
     /// <summary>
     /// Whether <paramref name="c"/>, in a wall facing <paramref name="d"/>, frames something: beside a way through the
