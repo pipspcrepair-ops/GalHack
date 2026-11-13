@@ -46,6 +46,7 @@ public partial class PhysicsTest
         public int Inside, Teleports;
         public float Jump;
         N.Vector3 _last;
+        int _settle;
 
         public StandRig(PhysicsTest t, Ship on, bool aboard, Creature who = null)
         {
@@ -85,6 +86,8 @@ public partial class PhysicsTest
             else if (Aboard) P.PlaceAboard(On, local);
             else P.PlaceOutside(On.Body.ToParent(local));
             _last = Local;
+            _settle = 5; // set down by hand: the engine may nudge a wide body clear of what it was set beside
+
         }
 
         /// <summary>One tick: never inside a block, never further than a stride (a step up included) in a tick.</summary>
@@ -93,7 +96,8 @@ public partial class PhysicsTest
             yield return 0;
             if (_t._w.Physics.Stuck.IsStuck(Body, out _)) Inside++;
             N.Vector3 now = Local;
-            if (N.Vector3.Distance(now, _last) > 0.75f)
+            if (_settle > 0) _settle--;
+            else if (N.Vector3.Distance(now, _last) > 0.75f)
             {
                 Teleports++;
                 Jump = MathF.Max(Jump, N.Vector3.Distance(now, _last));
@@ -244,18 +248,21 @@ public partial class PhysicsTest
     }
 
     /// <summary>
-    /// Walkable across, by the block's own shape along the lane's centre line: every rise is either a ramp no steeper than
-    /// the walker climbs or a single step no taller than a step.
+    /// Walkable across, by the block's own shape along every line the walker's width covers: every rise is either a ramp no
+    /// steeper than the walker climbs or a single step no taller than a step.
     /// </summary>
-    bool Walkable(Structure s, SInt3 o)
+    bool Walkable(Structure s, SInt3 o, float radius)
     {
         float step = _w.Rules.Walking.StepHeight, deck = o.Y + 0.5f, dz = 0.02f, ramp = dz * MathF.Tan(45.5f * MathF.PI / 180f);
-        float last = deck;
-        for (float z = o.Z + 0.6f; z >= o.Z - 0.6f; z -= dz)
+        for (int k = -2; k <= 2; k++)
         {
-            float h = TopAt(s, o.X, z, o.Y + 1.49f, deck);
-            if (h - last > ramp + 1e-3f && h - last > step) return false;
-            last = h;
+            float x = o.X + MathF.Min(radius, 0.49f) * k / 2f, last = deck;
+            for (float z = o.Z + 0.6f; z >= o.Z - 0.6f; z -= dz)
+            {
+                float h = TopAt(s, x, z, o.Y + 1.49f, deck);
+                if (h - last > ramp + 1e-3f && h - last > step) return false;
+                last = h;
+            }
         }
         return true;
     }
@@ -283,7 +290,7 @@ public partial class PhysicsTest
         }
         rig.Legs.Move = N.Vector2.Zero;
         if (crossed) log.Crossed++;
-        else if (!Walkable(s, o)) log.Walls++;
+        else if (!Walkable(s, o, rig.Body.Shape.Radius)) log.Walls++;
         else
         {
             log.Blocked++;

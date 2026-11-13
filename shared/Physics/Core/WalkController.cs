@@ -105,10 +105,14 @@ public sealed class WalkController : IBodyController, IForceReactor
     public bool Jumped { get; private set; }
 
     /// <summary>
-    /// <see cref="Jump"/> has been held since the last jump: a held key jumps once (and then fires the jetpack in the air), so
-    /// landing with it still held stands, not hops. It must be let go to jump again.
+    /// How long a fresh press of <see cref="Jump"/> waits for the feet, s: pressed just before touchdown it still jumps on
+    /// landing, so tapping chains jumps and jetpack bursts across touchdowns (jetpack surfing). A key held on through a
+    /// landing is no fresh press: it jumped once, fires the jetpack in the air, and stands when it lands.
     /// </summary>
-    bool _jumpHeld;
+    public float JumpBuffer = 0.12f;
+
+    float _jumpWaiting;
+    bool _jumpWas;
 
     /// <summary>
     /// In water deep enough to swim: more than the rules' swimDepth of the body is under (and it
@@ -127,7 +131,8 @@ public sealed class WalkController : IBodyController, IForceReactor
         bool fired = JetpackFiring;
         JetpackFiring = false;
         Slipping = false;
-        if (!Jump) _jumpHeld = false;
+        _jumpWaiting = Jump && !_jumpWas ? JumpBuffer : MathF.Max(0f, _jumpWaiting - dt);
+        _jumpWas = Jump;
         if (body.Asleep) return;
         Vector3 v = body.Velocity, up = Vector3.Normalize(body.Up);
         float m = body.Mass;
@@ -231,10 +236,11 @@ public sealed class WalkController : IBodyController, IForceReactor
             world.AddForce(body, m * (MathX.LimitLength(steered, cap) - h) / dt, ForceKind.Walk);
         }
 
-        if (Jump && onFloor && !_jumpHeld)
+        if (_jumpWaiting > 0f && onFloor)
         {
             world.AddImpulse(body, up * m * MathF.Max(0f, JumpSpeed * (Crouch ? CrouchJumpShare : 1f) - Vector3.Dot(v, up)), ForceKind.Walk);
-            Jumped = _jumpHeld = true;
+            Jumped = true;
+            _jumpWaiting = 0f;
         }
         else if (Jetpack && !onFloor && !JetpackSpent && JetpackFuel > 0f)
         {
