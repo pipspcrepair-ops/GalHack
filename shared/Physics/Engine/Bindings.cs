@@ -71,6 +71,10 @@ public sealed class HullBinding : BodyBinding
     N.Quaternion _turned;
     int _turns;
 
+    /// <summary>How far along gravity a still hull feels for what it rests on, m.</summary>
+    const float RestProbe = 0.03f;
+    KinematicCollision3D _rest;
+
     /// <summary>The transform last checked for overlap while asleep.</summary>
     Transform3D _cleared;
 
@@ -114,6 +118,22 @@ public sealed class HullBinding : BodyBinding
             if (velocity.Dot(n) < 0f) velocity = velocity.Slide(n);
             motion = hit.GetRemainder().Slide(n);
             if (motion.LengthSquared() < 1e-10f) break;
+        }
+        // At rest on something the sweep (of no motion) never meets it: feel a hair along gravity for what holds it, so a
+        // hull lying still after a crash knows it is down and comes to rest.
+        if (_contacts.Count == 0 && before.LengthSquared() * dt * dt < 1e-4f)
+        {
+            N.Vector3 g = host.World.GravityAt(b);
+            if (g.LengthSquared() > 1e-6f)
+            {
+                _rest ??= new KinematicCollision3D();
+                if (Hull.TestMove(Hull.GlobalTransform, N.Vector3.Normalize(g).ToGodot() * RestProbe, _rest, Hull.SafeMargin) && _rest.GetCollider() is GodotObject under)
+                {
+                    Body other = host.BodyOf(under);
+                    _contacts.Add(new Contact(_rest.GetPosition().ToNumerics(), _rest.GetNormal().ToNumerics(), other,
+                        other != null ? Surface.Body : GodotQuery.SurfaceOf(under)));
+                }
+            }
         }
         // The sweep stops it at what it meets, but turning (the flight model's, the hover's tilt to the ground, a
         // bump's kick) happened before it, unswept, and can swing a corner into the ground: nothing is left inside.
