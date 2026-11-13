@@ -33,6 +33,8 @@ public sealed partial class SystemSplit
 
     const int EndIndex = 0;
     readonly Node[] _parents;
+    /// <summary>Children split one level further too, by class (a place into its creatures, people, dressing and itself), however many come and go.</summary>
+    public System.Func<Node, bool> Deeper = _ => false;
     readonly HashSet<Node> _split, _marked = new();
     readonly List<string> _names = new() { "(end)" };
     readonly List<Mark> _marks = new();
@@ -61,7 +63,14 @@ public sealed partial class SystemSplit
             if (!GodotObject.IsInstanceValid(p) || !p.IsInsideTree()) continue;
             if (!_split.Contains(p.GetParent())) Before(p, true);
             foreach (Node kid in p.GetChildren())
-                if (kid is not Mark) Before(kid, _split.Contains(kid));
+            {
+                if (kid is Mark) continue;
+                bool deeper = Deeper(kid);
+                Before(kid, _split.Contains(kid) || deeper);
+                if (!deeper) continue;
+                foreach (Node grandchild in kid.GetChildren())
+                    if (grandchild is not Mark) Before(grandchild, false, NameOf(kid, false) + "/" + grandchild.GetType().Name);
+            }
         }
         int n = _names.Count;
         if (_sum.Length == n) return;
@@ -86,10 +95,10 @@ public sealed partial class SystemSplit
         return _names.Count - 1;
     }
 
-    void Before(Node n, bool itself)
+    void Before(Node n, bool itself, string name = null)
     {
         if (!_marked.Add(n)) return;
-        var m = new Mark { Split = this, Index = Add(NameOf(n, itself)), Name = "Split mark", ProcessPriority = n.ProcessPriority, ProcessPhysicsPriority = n.ProcessPhysicsPriority };
+        var m = new Mark { Split = this, Index = Add(name ?? NameOf(n, itself)), Name = "Split mark", ProcessPriority = n.ProcessPriority, ProcessPhysicsPriority = n.ProcessPhysicsPriority };
         n.AddSibling(m);
         n.GetParent().MoveChild(m, n.GetIndex());
         _marks.Add(m);

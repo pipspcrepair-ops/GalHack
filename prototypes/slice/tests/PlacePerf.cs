@@ -36,6 +36,7 @@ public partial class PlacePerf : Node
     readonly List<double> _cpu = new(), _gpu = new();
     long _prims, _draws, _objs, _shadowPrims, _shadowDraws, _mainAlloc, _allAlloc;
     int _gcAt0, _gcAt1, _gcAt2;
+    ulong _ticksAt;
     double _physics;
     PlanetSurface.FrameProbe _probe;
     SystemSplit _split;
@@ -88,6 +89,7 @@ public partial class PlacePerf : Node
         Engine.MaxFps = 0;
         if (_args.TryGetValue("family", out string family) && !_args.ContainsKey("asrolled")) PoiSiting.ForceFamily = family;
         if (_args.ContainsKey("audit")) PlanetSurface.Infra.CityPlan.Force = true;
+        if (_args.GetValueOrDefault("bodies") == "pieces") Wildlife.CreatureView.Merged = false;
         if (_args.TryGetValue("variant", out string v)) PoiSiting.ForceVariant = int.Parse(v);
         if (_args.TryGetValue("state", out string st)) PoiSiting.ForceState = Enum.Parse<PoiState>(st, true);
         ProcessPhysicsPriority = 100;
@@ -131,11 +133,11 @@ public partial class PlacePerf : Node
         _cpu.Add(RenderingServer.ViewportGetMeasuredRenderTimeCpu(vp));
         _gpu.Add(RenderingServer.ViewportGetMeasuredRenderTimeGpu(vp));
         Viewport v = GetViewport();
-        _prims = Math.Max(_prims, v.GetRenderInfo(Viewport.RenderInfoType.Visible, Viewport.RenderInfo.PrimitivesInFrame));
-        _draws = Math.Max(_draws, v.GetRenderInfo(Viewport.RenderInfoType.Visible, Viewport.RenderInfo.DrawCallsInFrame));
-        _objs = Math.Max(_objs, v.GetRenderInfo(Viewport.RenderInfoType.Visible, Viewport.RenderInfo.ObjectsInFrame));
-        _shadowPrims = Math.Max(_shadowPrims, v.GetRenderInfo(Viewport.RenderInfoType.Shadow, Viewport.RenderInfo.PrimitivesInFrame));
-        _shadowDraws = Math.Max(_shadowDraws, v.GetRenderInfo(Viewport.RenderInfoType.Shadow, Viewport.RenderInfo.DrawCallsInFrame));
+        _prims += v.GetRenderInfo(Viewport.RenderInfoType.Visible, Viewport.RenderInfo.PrimitivesInFrame);
+        _draws += v.GetRenderInfo(Viewport.RenderInfoType.Visible, Viewport.RenderInfo.DrawCallsInFrame);
+        _objs += v.GetRenderInfo(Viewport.RenderInfoType.Visible, Viewport.RenderInfo.ObjectsInFrame);
+        _shadowPrims += v.GetRenderInfo(Viewport.RenderInfoType.Shadow, Viewport.RenderInfo.PrimitivesInFrame);
+        _shadowDraws += v.GetRenderInfo(Viewport.RenderInfoType.Shadow, Viewport.RenderInfo.DrawCallsInFrame);
         _physics = Math.Max(_physics, Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess) * 1000.0);
     }
 
@@ -152,6 +154,7 @@ public partial class PlacePerf : Node
         _mainAlloc = GC.GetAllocatedBytesForCurrentThread();
         _allAlloc = GC.GetTotalAllocatedBytes();
         (_gcAt0, _gcAt1, _gcAt2) = (GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2));
+        _ticksAt = Engine.GetPhysicsFrames();
     }
 
     void End(string stage)
@@ -163,9 +166,9 @@ public partial class PlacePerf : Node
         double P(double q) => t[Math.Min(t.Count - 1, (int)(t.Count * q))];
         int hitches = t.Count(x => x > 33.4);
         string line = string.Create(CultureInfo.InvariantCulture,
-            $"PERF {stage,-16} frames {t.Count,4} avg {t.Average(),6:F1} p50 {P(0.5),6:F1} p95 {P(0.95),6:F1} p99 {P(0.99),6:F1} worst {t[^1],7:F1} over33 {hitches,3} | cpu {_cpu.DefaultIfEmpty(0).Average(),5:F1} gpu {_gpu.DefaultIfEmpty(0).Average(),5:F1} | prims {_prims / 1000,6}k draws {_draws,5} objs {_objs,5} shadow {_shadowPrims / 1000,6}k/{_shadowDraws,5} | script {_script.DefaultIfEmpty(0).Average(),5:F1} nodes {Performance.GetMonitor(Performance.Monitor.ObjectNodeCount),6} active {Performance.GetMonitor(Performance.Monitor.Physics3DActiveObjects),4} pairs {Performance.GetMonitor(Performance.Monitor.Physics3DCollisionPairs),5}");
+            $"PERF {stage,-16} frames {t.Count,4} avg {t.Average(),6:F1} p50 {P(0.5),6:F1} p95 {P(0.95),6:F1} p99 {P(0.99),6:F1} worst {t[^1],7:F1} over33 {hitches,3} | cpu {_cpu.DefaultIfEmpty(0).Average(),5:F1} gpu {_gpu.DefaultIfEmpty(0).Average(),5:F1} | prims {_prims / 1000 / t.Count,6}k draws {_draws / t.Count,5} objs {_objs / t.Count,5} shadow {_shadowPrims / 1000 / t.Count,6}k/{_shadowDraws / t.Count,5} | script {_script.DefaultIfEmpty(0).Average(),5:F1} nodes {Performance.GetMonitor(Performance.Monitor.ObjectNodeCount),6} active {Performance.GetMonitor(Performance.Monitor.Physics3DActiveObjects),4} pairs {Performance.GetMonitor(Performance.Monitor.Physics3DCollisionPairs),5}");
         GD.Print(line);
-        GD.Print(string.Create(CultureInfo.InvariantCulture, $"PERF {stage,-16} alloc a frame {(GC.GetAllocatedBytesForCurrentThread() - _mainAlloc) / 1024.0 / t.Count,7:F1} KB main thread, {(GC.GetTotalAllocatedBytes() - _allAlloc) / 1024.0 / t.Count,7:F1} KB all threads; collections gen0 {GC.CollectionCount(0) - _gcAt0} gen1 {GC.CollectionCount(1) - _gcAt1} gen2 {GC.CollectionCount(2) - _gcAt2}; physics callbacks worst {_physics:F1} ms; video memory {Performance.GetMonitor(Performance.Monitor.RenderVideoMemUsed) / 1048576.0:F0} MB"));
+        GD.Print(string.Create(CultureInfo.InvariantCulture, $"PERF {stage,-16} alloc a frame {(GC.GetAllocatedBytesForCurrentThread() - _mainAlloc) / 1024.0 / t.Count,7:F1} KB main thread, {(GC.GetTotalAllocatedBytes() - _allAlloc) / 1024.0 / t.Count,7:F1} KB all threads; collections gen0 {GC.CollectionCount(0) - _gcAt0} gen1 {GC.CollectionCount(1) - _gcAt1} gen2 {GC.CollectionCount(2) - _gcAt2}; physics ticks a frame {(Engine.GetPhysicsFrames() - _ticksAt) / (double)t.Count:F2}, their callbacks worst {_physics:F1} ms; video memory {Performance.GetMonitor(Performance.Monitor.RenderVideoMemUsed) / 1048576.0:F0} MB"));
         if (_split != null) GD.Print($"PERF {stage,-16} script by system, cpu ms: {_split.Report()}");
         if (_allocs != null) GD.Print($"PERF {stage,-16} allocated, by type: {_allocs.Take()}");
         foreach (string h in _hitches) GD.Print($"PERF hitch {h}");
@@ -191,7 +194,7 @@ public partial class PlacePerf : Node
     IEnumerable<int> Scenario()
     {
         foreach (int x in _drive.UntilPlaying(300)) yield return x;
-        _split = new SystemSplit(_game, _game.Zone, _game.Zone.Wildlife, _game.Places);
+        _split = new SystemSplit(_game, _game.Zone, _game.Zone.Wildlife, _game.Places) { Deeper = n => n is Slice.Places.Place };
         if (_args.ContainsKey("audit")) _allocs = new AllocCensus { On = true };
         var zone = _game.Zone;
         zone.Weather.Bridge.Calm = true;
