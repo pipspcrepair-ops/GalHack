@@ -411,17 +411,14 @@ public static class FolkBody
         }
     }
 
-    /// <summary>Claws at the fingertips; glowing dots on a bare forearm.</summary>
-    public static void Hand(Piece forearm, Figure f, float fore, Color hand, bool bare)
+    /// <summary>Whether the hands end in claws (not under gloves).</summary>
+    public static bool Clawed(Figure f) => Of(f).Claws && f.Dress is not ("suit" or "hazard" or "furs");
+
+    /// <summary>Glowing dots up a bare forearm.</summary>
+    public static void Glow(Piece forearm, Figure f, float fore, bool bare)
     {
         Folk k = Of(f);
         float u = f.Height / 1.72f;
-        if (k.Claws && f.Dress is not ("suit" or "hazard" or "furs"))
-            for (int i = 0; i < 4; i++)
-            {
-                Vector3 at = new(-0.03f * u + i * 0.02f * u, fore * 0.95f + 0.06f * u * f.HandK, -0.015f * u);
-                forearm.Add(Shape.Cone, new Vector3(0.012f, 0.035f, 0f) * u, at, new Color(0.18f, 0.15f, 0.12f), 0f, 0f, null, 5, Mat.Horn);
-            }
         if (k.Glow && bare && !f.Husk)
             for (int i = 0; i < 3; i++)
                 forearm.Add(Shape.Sphere, Vector3.One * 0.012f * u, new Vector3(0.028f * u, fore * (0.3f + 0.18f * i), -0.01f * u), k.EyeShine, 0f, 1f, null, 5);

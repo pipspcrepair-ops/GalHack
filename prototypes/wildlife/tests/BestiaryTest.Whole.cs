@@ -68,8 +68,8 @@ public partial class BestiaryTest
                     }
                     // A hand at the end of each forearm.
                     int fore = Find($"arm{side}l");
-                    float len = f.ForearmOf(side);
-                    bool hand = fore >= 0 && pieces[fore].Prims.Any(p => p.Shape == Shape.Sphere && p.Local.Origin.DistanceTo(Vector3.Up * len * 0.95f) < 0.03f && p.Size.Length() > 0.05f);
+                                        int palm = Find(HandMake.PieceName(rig.HandOf(side).shape, side));
+                    bool hand = fore >= 0 && palm >= 0 && pieces[palm].Prims.Count >= 3 && rig.Pose[palm].Basis.Y.LengthSquared() > 0.5f && Reach(pieces[fore], rig.Pose[fore]).DistanceTo(rig.Pose[palm].Origin) < 0.15f * f.ForearmOf(side);
                     if (!hand) { handless++; handWhat = who; }
                 }
                 // The head on the neck: the neck reaches down into the top of the body.

@@ -58,10 +58,13 @@ public partial class Screenshot
         };
         bool side = _view == "armed-side";
         // --pick=far: from 25 m at a plain field of view, as they'd be seen across a street.
-        float back = _pick.Contains("far") ? 25f : 7.5f;
-        Vector3 eye = side ? Ground(origin + right * 5.5f - fwd * 2.2f) + Vector3.Up * 1.4f : Ground(origin - fwd * back) + Vector3.Up * 1.5f;
-        m.Camera.Fov = _pick.Contains("far") ? 70f : side ? 62f : 52f;
-        _aim = () => (eye, origin + Vector3.Up * 1.0f - (side ? right * 1.2f : Vector3.Zero));
+        // --pick=near2 (a number 0 to 4): the upper body of that one of the five, from 2.4 m, to see what the hands do.
+        int near = _pick.IndexOf("near", StringComparison.Ordinal) is int at and >= 0 && at + 4 < _pick.Length && char.IsDigit(_pick[at + 4]) ? _pick[at + 4] - '0' : -1;
+        float back = _pick.Contains("far") ? 25f : near >= 0 ? 2.4f : 7.5f;
+        Vector3 who = origin + right * (near - 2) * 1.6f;
+        Vector3 eye = near >= 0 ? Ground(who - fwd * back) + Vector3.Up * 1.3f : side ? Ground(origin + right * 5.5f - fwd * 2.2f) + Vector3.Up * 1.4f : Ground(origin - fwd * back) + Vector3.Up * 1.5f;
+        m.Camera.Fov = _pick.Contains("far") ? 70f : near >= 0 ? 38f : side ? 62f : 52f;
+        _aim = () => near >= 0 ? (eye, who + Vector3.Up * 1.15f) : (eye, origin + Vector3.Up * 1.0f - (side ? right * 1.2f : Vector3.Zero));
         _captureTick = 200;
         return true;
     }
