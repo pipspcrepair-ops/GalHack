@@ -41,7 +41,7 @@ public static class DeviceDetail
             case "fuel": FuelTank(k); break;
             case "container": Container(k); break;
             case "gyro": Gyro(k); break;
-            case "thruster": Thruster(k); break;
+            case "thruster": Thruster(k, t); break;
             case "hover": Hover(k); break;
             case "chair": Chair(k, t); break;
             case "door": Door(k); break;
@@ -281,23 +281,42 @@ public static class DeviceDetail
         ScreenOn(k, Dir.PosY, -0.16f, -0.16f, 0.16f, 0.16f, DeviceSymbol.Gimbal);
     }
 
-    /// <summary>A thruster: a mounting flange, a bare metal nozzle bell flaring in three steps, its sooty mouth with the glow inside and heat glowing round its lip, vents and a hazard band on the body.</summary>
-    static void Thruster(Kit k)
+    /// <summary>
+    /// A thruster: a bare metal nozzle bell flaring in three steps from its mounting flange (a type
+    /// with a shorter body has the longer bell), its sooty mouth with the glow inside and heat
+    /// glowing round its lip, vents and a hazard band on the body, and raised intake scoops on the
+    /// flanks of a type that pushes harder per cell (on all four sides of the hardest).
+    /// </summary>
+    static void Thruster(Kit k, BlockType t)
     {
+        Part flange = t.Parts.FirstOrDefault(p => p.Style == PartStyle.Dark);
+        float zb = flange?.Min.Z ?? 0.2f, zf = flange?.Max.Z ?? 0.26f, step = (0.5f - zf) / 3f;
         // Bare metal throughout: tinted bands read as paint stripes once the bell is metres across (T4, T5).
-        (float r0, float r1, float z0, float z1)[] bell = { (0.3f, 0.35f, 0.26f, 0.34f), (0.35f, 0.405f, 0.34f, 0.42f), (0.405f, 0.46f, 0.42f, 0.5f) };
         // The bell and its mouth open on the nozzle's face (+Z): with that face against a block they are hidden with it.
-        foreach (var b in bell)
-            k.Tube(2, Vector3.Zero, b.r0, b.r1, b.z0, b.z1, PartStyle.Dark, Bare, segments: 16, caps: false).Mount = Dir.PosZ;
+        for (int i = 0; i < 3; i++)
+            k.Tube(2, Vector3.Zero, 0.3f + 0.0533f * i, 0.3533f + 0.0533f * i, zf + step * i, zf + step * (i + 1), PartStyle.Dark, Bare, segments: 16, caps: false).Mount = Dir.PosZ;
         k.Tube(2, Vector3.Zero, 0.455f, 0.455f, 0.48f, 0.49f, PartStyle.Dark, Coat(Soot, 0), segments: 16).Mount = Dir.PosZ;
         // The lip, just proud of the bell's last few centimetres, glows with heat in the type's colour.
         k.Tube(2, Vector3.Zero, 0.447f, 0.463f, 0.47f, 0.5f, PartStyle.Glow, null, segments: 16, caps: false).Mount = Dir.PosZ;
-        Band(k, 2, 0.05f, 0.16f, 0.014f, Hazard);
-        // Vents along the body from its nose to the band (on the flanks u runs along Z, on top and bottom v does).
-        k.Face(Dir.PosX, 0.0f, -0.34f, 0.4f, 0.34f, 0.01f, PartStyle.Dark, Vent);
-        k.Face(Dir.NegX, -0.4f, -0.34f, 0.0f, 0.34f, 0.01f, PartStyle.Dark, Vent);
-        k.Face(Dir.PosY, -0.34f, 0.0f, 0.34f, 0.4f, 0.01f, PartStyle.Dark, Vent);
-        k.Face(Dir.NegY, -0.34f, 0.0f, 0.34f, 0.4f, 0.01f, PartStyle.Dark, Vent);
+        Band(k, 2, zb - 0.15f, zb - 0.04f, 0.014f, Hazard);
+        // Vents along the body from its nose to the band (on the flanks u runs along -Z, on top and bottom v does).
+        float vent = 0.2f - zb;
+        k.Face(Dir.PosX, vent, -0.34f, 0.4f, 0.34f, 0.01f, PartStyle.Dark, Vent);
+        k.Face(Dir.NegX, -0.4f, -0.34f, -vent, 0.34f, 0.01f, PartStyle.Dark, Vent);
+        k.Face(Dir.PosY, -0.34f, vent, 0.34f, 0.4f, 0.01f, PartStyle.Dark, Vent);
+        k.Face(Dir.NegY, -0.34f, vent, 0.34f, 0.4f, 0.01f, PartStyle.Dark, Vent);
+        // Thrust per cell: T1 and T2 push 300-340 kN a cell, T3 about 520, T5 over 1,000.
+        float hard = Math.Clamp((t.Thrust / t.Cells - 400f) / 500f, 0f, 1f);
+        if (hard <= 0f) return;
+        foreach (Dir d in hard >= 0.5f ? new[] { Dir.PosX, Dir.NegX, Dir.PosY, Dir.NegY } : new[] { Dir.PosX, Dir.NegX })
+        {
+            // A scoop over the vents' nose end, its grille facing out.
+            float s = d == Dir.NegX ? -1f : 1f;
+            (float u0, float u1) = d.Axis() == 0 ? (s > 0 ? (0.24f, 0.46f) : (-0.46f, -0.24f)) : (-0.3f, 0.3f);
+            (float v0, float v1) = d.Axis() == 0 ? (-0.3f, 0.3f) : (0.24f, 0.46f);
+            k.Face(d, u0, v0, u1, v1, 0.035f, PartStyle.Dark, Armour(1));
+            k.Face(d, u0 + 0.03f, v0 + 0.03f, u1 - 0.03f, v1 - 0.03f, 0.006f, PartStyle.Dark, Vent, lift: 0.035f);
+        }
     }
 
     /// <summary>A hover plate: its emitter is a slotted grille with a faint glow, four small emitter pods at the corners, and a hazard band.</summary>
