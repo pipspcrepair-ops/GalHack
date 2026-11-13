@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using GalHack.Plants;
 using System.Collections.Generic;
@@ -243,26 +244,30 @@ public partial class TerrainStreamer
     // ---- Felling, hits and queries ----------------------------------------------------------
 
     /// <summary>
-    /// A tree was felled (its id is already in <see cref="PlanetWorld.Felled"/>): its collider goes
-    /// this frame, and its far chunk is rebuilt without it (the mesh, at every level of detail).
+    /// Trees were felled (their ids are already in <see cref="PlanetWorld.Felled"/>): their colliders go
+    /// this frame, and their far chunks are rebuilt without them (the mesh, at every level of detail).
+    /// Many at once in one call: the columns are walked and the felled set copied once, however many.
     /// </summary>
-    public void Fell(long id)
+    public void Fell(params ReadOnlySpan<long> ids)
     {
         foreach (SolidColumn c in _solidColumns.Values)
         {
             for (int i = 0; i < c.Solids.Count; i++)
             {
-                if (c.Solids[i].Id != id || !c.Body.IsValid) continue;
+                if (!ids.Contains(c.Solids[i].Id) || !c.Body.IsValid) continue;
                 PhysicsServer3D.BodySetShapeDisabled(c.Body, i, true);
             }
         }
         _felledSnapshot = new HashSet<long>(World.Felled);
-        var (fx, fz) = FarBuilder.ChunkOfScatter(id);
-        if (_far.TryGetValue((fx, fz), out FarChunk f))
+        foreach (long id in ids)
         {
-            f.Solids?.RemoveAll(s => s.Id == id);
-            f.Lod = -1;
-            f.Version++;
+            var (fx, fz) = FarBuilder.ChunkOfScatter(id);
+            if (_far.TryGetValue((fx, fz), out FarChunk f))
+            {
+                f.Solids?.RemoveAll(s => s.Id == id);
+                f.Lod = -1;
+                f.Version++;
+            }
         }
     }
 

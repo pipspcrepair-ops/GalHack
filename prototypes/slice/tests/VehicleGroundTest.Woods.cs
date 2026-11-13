@@ -134,9 +134,19 @@ public partial class VehicleGroundTest
         string inside = "";
         void Rescue(RescueInfo r) { if (r.Body == v.Body) { rescued++; inside = r.Inside; } }
         _game.Zone.Physics.Rescued += Rescue;
-        var cpu = new List<double>();
+        // Each frame trees break in, or one of their trunks falls in (one a frame), judged once it is over: here, in its
+        // physics tick, the probe holds the frame before's.
         double worstBreaking = 0;
-        int felledAt = _game.Zone.Planet.Felled.Count, broke = 0, still = 0, t = 0;
+        bool breaking = false;
+        int felledAt = _game.Zone.Planet.Felled.Count, broke = 0, breakingFrames = 0, still = 0, t = 0;
+        void Frame()
+        {
+            if (breaking) worstBreaking = Math.Max(worstBreaking, probe.LastCpuMs);
+            int felled = _game.Zone.Planet.Felled.Count;            breaking = felled > felledAt || _game.Zone.Toppling > 0;
+            if (breaking) breakingFrames++;
+            broke += felled - felledAt;
+            felledAt = felled;
+        }
         var c = _game.Controls;
         for (; t < 60 * 60; t++)
         {
@@ -147,18 +157,14 @@ public partial class VehicleGroundTest
             c.Hold(Key.Ctrl, vy > wanted + 0.5f);
             c.Hold(Key.Space, vy < 2f * wanted - 1f);
             yield return 0;
-            int felled = _game.Zone.Planet.Felled.Count;
-            if (broke > 0 || felled > felledAt) cpu.Add(probe.LastCpuMs);
-            if (felled > felledAt) worstBreaking = Math.Max(worstBreaking, probe.LastCpuMs);
-            broke += felled - felledAt;
-            felledAt = felled;
+            Frame();
         }
         c.ReleaseAll();
         int left = 0;
-        for (; left < 600 && !v.Controller.Frozen; left++)
+        for (; left < 600 && (!v.Controller.Frozen || breaking); left++)
         {
             yield return 0;
-            if (broke > 0) cpu.Add(probe.LastCpuMs);
+            Frame();
         }
         probe.Remove();
         _game.Zone.Physics.Rescued -= Rescue;
@@ -185,11 +191,8 @@ public partial class VehicleGroundTest
             Check(ctl.Frozen && gear is { Attached: true } && onTree.Count == 0 && under.Count > standing && touching == 0,
                 $"{name}: let down on a wood, it ends on its gear on the ground, {under.Count - standing} of the {under.Count} trees under it felled, none left touching it ({standing} short ones still standing beneath; {how})");
             Check(_game.Zone.Trees.Stumps > 0, $"{name}: the trees it broke leave what harvesting leaves: {_game.Zone.Trees.Stumps} stumps, their trunks and crowns fallen");
-            cpu.Sort();
-            double p95 = cpu.Count == 0 ? 0 : cpu[(int)(cpu.Count * 0.95)], worst = cpu.Count == 0 ? 0 : cpu[^1];
-            // Judged as every flight's frames are (MoonTest): the 95th percentile within the budget, no frame over two of it.
-            Check(broke > 0 && p95 < 16.7 && worst < 33.4,
-                $"{name}: the frames while the trees break keep the budget in CPU time: worst frame a tree broke in {worstBreaking:F1} ms, 95th percentile {p95:F1} ms, worst {worst:F1} ms over {cpu.Count} frames (budget 16.7; headless, machine shared)");
+            Check(broke > 0 && worstBreaking < 16.7,
+                $"{name}: no frame a tree breaks or falls in goes over the budget in CPU time: worst {worstBreaking:F1} ms over {breakingFrames} frames, {broke} trees (budget 16.7; headless)");
         }
         else
             Check(ctl.Frozen && TreesInHull(v) == 0,

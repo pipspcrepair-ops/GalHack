@@ -34,65 +34,76 @@ public partial class SurfaceZone : IFloraField
     /// frame and its far chunk rebuilt without it, and whatever rested on it woken (a craft landed on a crown comes
     /// down). Nothing falls: what PLACE and a test's clearing want. False if it was already gone.
     /// </summary>
-    public bool Fell(long id, Vector3 at) => Fell(id, at, spread: false);
+    public bool Fell(long id, Vector3 at) => Fell(id, at, broken: false);
 
     /// <summary>
-    /// <paramref name="spread"/>: its colliders go within the next ticks, a few a tick, not all at once: a heavy ship can break
-    /// a dozen trees in one tick, and each one's colliders and far chunk cost the streamer most of a millisecond. Until then
-    /// it is felled to the rules all the same (<see cref="TreeAt"/>), so nothing is held up by it; what rested on it wakes once it is gone.
+    /// <paramref name="broken"/>: broken by a vessel in this physics step. A heavy ship can break a dozen trees in one tick, and
+    /// each streamer call walks every column (most of a millisecond): they all go in one call at the end of the tick
+    /// (<see cref="TakeBroken"/>, after the physics host), before the next step. Until then each is felled to the rules all
+    /// the same (<see cref="TreeAt"/>), so nothing is held up by it.
     /// </summary>
-    bool Fell(long id, Vector3 at, bool spread)
+    bool Fell(long id, Vector3 at, bool broken)
     {
         if (!Planet.Felled.Add(id)) return false;
-        if (spread) _breaking.Enqueue((id, at));
-        else Gone(id, at);
+        _goneIds.Add(id);
+        _goneAt.Add(at);
+        if (!broken) TakeBroken();
         return true;
     }
 
-    /// <summary>Its colliders and far chunk go, and whatever rested on it wakes.</summary>
-    void Gone(long id, Vector3 at)
-    {
-        Streamer.Fell(id);
-        Physics.NotifyChanged(Region.Around(at.ToNumerics(), TreeReach));
-    }
+    readonly System.Collections.Generic.List<long> _goneIds = new();
+    readonly System.Collections.Generic.List<Vector3> _goneAt = new();
 
-    readonly System.Collections.Generic.Queue<(long Id, Vector3 At)> _breaking = new();
-
-    /// <summary>How much of a tick goes on taking broken trees' colliders out, ms (always at least one tree's).</summary>
-    const double BreakingBudgetMs = 2.0;
-
-    /// <summary>The broken trees' colliders, a tick's budget of them, right after the physics step that broke them.</summary>
+    /// <summary>The trees felled since the streamer last heard: their colliders and far chunks go in one call, and whatever rested on them wakes.</summary>
     void TakeBroken()
     {
-        long started = System.Diagnostics.Stopwatch.GetTimestamp();
-        while (_breaking.Count > 0)
-        {
-            var (id, at) = _breaking.Dequeue();
-            Gone(id, at);
-            if (System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds > BreakingBudgetMs) break;
-        }
+        if (_goneIds.Count == 0) return;
+        Streamer.Fell(System.Runtime.InteropServices.CollectionsMarshal.AsSpan(_goneIds));
+        foreach (Vector3 at in _goneAt) Physics.NotifyChanged(Region.Around(at.ToNumerics(), TreeReach));
+        _goneIds.Clear();
+        _goneAt.Clear();
+    }
+
+    /// <summary>Broken trees still to fall, one a frame (<see cref="Topple"/>): a dozen trunks and leaf bursts made at once overran the frame.</summary>
+    public int Toppling => _toppling.Count;
+
+    readonly System.Collections.Generic.Queue<System.Action> _toppling = new();
+
+    /// <summary>The next broken tree's trunk and crown fall, once a frame.</summary>
+    void Topple()
+    {
+        if (_toppling.Count > 0) _toppling.Dequeue()();
     }
 
     /// <summary>
     /// A plant felled where it stands (cut through by the tool, broken by a structure): it goes (<see cref="Fell(long, Vector3)"/>),
     /// and a tree's trunk and crown topple away along <paramref name="away"/> as itself, a stump left. False if already gone.
     /// </summary>
-    public bool Fell(in TerrainStreamer.PlantSighting s, Vector3 away) => Fell(s, away, spread: false);
+    public bool Fell(in TerrainStreamer.PlantSighting s, Vector3 away) => Fell(s, away, broken: false);
 
-    bool Fell(in TerrainStreamer.PlantSighting s, Vector3 away, bool spread)
+    bool Fell(in TerrainStreamer.PlantSighting s, Vector3 away, bool broken)
     {
         // Its own trunk's size, read while it still stands.
         float size = Mathf.Clamp(s.Scale, 0.5f, 3f), height = 3.2f * size, radius = 0.28f * size;
         long id = s.Id;
         foreach (var (solid, _) in Streamer.SolidsNear(s.Root, 2.5f))
             if (solid.Id == id && solid.Fellable) { height = Mathf.Max(2f, solid.Extents.Y * 2f); radius = solid.Extents.X; }
-        if (!Fell(id, s.Root, spread)) return false;
+        if (!Fell(id, s.Root, broken)) return false;
         if (!TreeFx.IsTree(s.Kind)) return true;
         GalHack.Plants.Plant species = SpeciesOf(s.Plant);
         Color leaf = TreeFx.LeafOf(s.Kind, species);
         Color bark = species == null ? new Color(0.36f, 0.25f, 0.16f) : new Color(species.Bark.R, species.Bark.G, species.Bark.B);
-        Trees.Fell(s.Root, away, height, radius, leaf, crown: true, bark, Streamer.MeshOf(s), s.Turn, custom: s.OwnTint);
-        Trees.Leaves(s.Root + Vector3.Up * height, leaf, 30, 1.8f);
+        Vector3 root = s.Root;
+        Basis turn = s.Turn;
+        Color tint = s.OwnTint;
+        Mesh mesh = Streamer.MeshOf(s);
+        void Fall()
+        {
+            Trees.Fell(root, away, height, radius, leaf, crown: true, bark, mesh, turn, custom: tint);
+            Trees.Leaves(root + Vector3.Up * height, leaf, 30, 1.8f);
+        }
+        if (broken) _toppling.Enqueue(Fall);
+        else Fall();
         return true;
     }
 
@@ -154,6 +165,7 @@ public partial class SurfaceZone : IFloraField
 
     public void Fell(long tree, N.Vector3 point, N.Vector3 away)
     {
+        if (Planet.Felled.Contains(tree)) return; // broken already this step (its trunk and crown both met), or gone
         Vector3 at = point.ToGodot();
         TerrainStreamer.PlantSighting? found = null;
         foreach (TerrainStreamer.PlantSighting s in Streamer.FloraNear(at, TreeReach))
@@ -162,7 +174,7 @@ public partial class SurfaceZone : IFloraField
             found = s;
             if (s.Variant >= 0) break; // its near self (its own variant and tint) over its far stand-in
         }
-        if (found is { } plant) Fell(plant, away.ToGodot(), spread: true);
-        else Fell(tree, at, spread: true);
+        if (found is { } plant) Fell(plant, away.ToGodot(), broken: true);
+        else Fell(tree, at, broken: true);
     }
 }

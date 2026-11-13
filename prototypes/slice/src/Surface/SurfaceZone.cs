@@ -229,6 +229,7 @@ public partial class SurfaceZone : Node3D
         Water = new PlanetWater(Planet);
         Physics.Water = Water;
         Physics.Flora = this;
+        _ = Trees; // made with the world, not in the frame the first tree falls (several ms)
         yield return "ground";
         Pois.Build(Planet);
         yield return "places";
@@ -459,6 +460,7 @@ public partial class SurfaceZone : Node3D
             Arrive();
         }
         if (!Arrived) return;
+        Topple();
         Vector3 focus = Focus();
         Streamer.SetFocus(focus);
         float latitude = (float)(Mathx.Wrap(focus.Z, Planet.Height) / Planet.Height * 2.0 - 1.0);
