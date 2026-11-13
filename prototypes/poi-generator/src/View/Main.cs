@@ -605,14 +605,13 @@ public partial class Main : Node3D
                 {
                     var lvl = Stage.LevelAt(Player.GlobalPosition);
                     where = lvl.Name + (Player.Climbing ? "  ·  climbing" : "") +
-                            (Stage.Held.Count > 0 ? $"  ·  keycards: {string.Join(", ", Stage.Held)}" : "") +
                             (_hazard != null ? $"\n!! {_hazard}" : "") + "\n";
                 }
                 _hud.Text = $"{(CurrentMode == Mode.Inspect ? "INSPECT" : "WALK")}  ·  {l.Family.Name}  //  {l.Name}\n" +
                             $"{poi.State}  ·  {poi.Rarity}  ·  {l.Kit.Name}  ·  {l.Extras.Levels.Count} storeys, {l.Modules.Count} spaces, {poi.Blocks.CountBlocks()} blocks" +
                             (poi.HasCore ? "  ·  core" : "") + "\n" +
                             $"Loot {poi.LootValue} cr in {poi.Caches.Count} caches  ·  {poi.Enemies.Count} enemies ({defenders} on duty)  ·  " +
-                            $"{l.Extras.Secrets.Count} hidden rooms  ·  {l.Extras.Breaches.Count} breaches  ·  {l.Extras.Locks.Count} locked doors\n" + where + fps;
+                            $"{l.Extras.Secrets.Count} hidden rooms  ·  {l.Extras.Breaches.Count} breaches\n" + where + fps;
                 _keys.Text = CurrentMode == Mode.Inspect
                     ? "F family  ·  V layout  ·  N new layout seed  ·  S state  ·  R rarity  ·  mouse / arrows orbit  ·  wheel zoom\n1 aerial  ·  3 walk in  ·  Tab layout map  ·  Esc free the mouse"
                     : "WASD walk (W/S climb on ladders)  ·  Shift sprint  ·  Space jump  ·  hold Ctrl crouch  ·  E use (and ride lifts)  ·  L lamp\n1 aerial  ·  2 inspect  ·  Tab layout map  ·  Esc free the mouse";

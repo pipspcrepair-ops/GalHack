@@ -15,11 +15,11 @@
 #     prefer      any, entrance (near the way in), end (far from the stair), core (by the stair)
 #     loot a b    caches; terminals a b; spawns a b
 #     light       warm, cold, dim, red, green, cryo, glyph, none
-#     lock        the keycard clearance its door needs: staff, science, security, command
+#     secure      a secure room: no extra doors to its neighbours
 #     blast       its door is a blast door
 #     deco        the decorations library's set for it (proto/deco), beside the generic props
-#     tags        keyspot (a keycard may be left here), core (a faction's core goes here),
-#                 hum, cluster (likes its own kind next door), and loot tags (medical, military...)
+#     tags        core (a faction's core goes here), hum,
+#                 cluster (likes its own kind next door), and loot tags (medical, military...)
 
 # ---- circulation and arrival ---------------------------------------------------------------------
 room lobby
@@ -33,7 +33,6 @@ room lobby
   near security office
   spawns 1 2
   light warm
-  tags keyspot
 
 room security
   deco guardpost
@@ -48,7 +47,7 @@ room security
   terminals 1 1
   spawns 1 2
   light cold
-  tags keyspot military
+  tags military
 
 room airlock
   deco airlock
@@ -87,7 +86,6 @@ room office
   terminals 0 1
   spawns 0 1
   light warm
-  tags keyspot
 
 room archive
   deco archive
@@ -115,7 +113,7 @@ room lab
   terminals 0 1
   spawns 1 2
   light cold
-  lock science
+  secure
   tags science
 
 room cold-store
@@ -142,7 +140,7 @@ room containment
   loot 0 1
   spawns 1 2
   light red
-  lock security
+  secure
   tags science
 
 room control
@@ -158,8 +156,8 @@ room control
   terminals 1 2
   spawns 1 1
   light cold
-  lock security
-  tags core keyspot tech
+  secure
+  tags core tech
 
 room command
   deco warroom
@@ -175,8 +173,8 @@ room command
   terminals 1 2
   spawns 1 2
   light cold
-  lock command
-  tags core keyspot military
+  secure
+  tags core military
 
 room workshop
   deco workshop
@@ -213,7 +211,7 @@ room armoury
   near security command
   loot 2 3
   light red
-  lock security
+  secure
   tags military
 
 # ---- living ----------------------------------------------------------------------------------------
@@ -229,7 +227,7 @@ room quarters
   loot 0 1
   spawns 0 1
   light warm
-  tags keyspot cluster
+  tags cluster
 
 room mess
   deco canteen
@@ -305,7 +303,7 @@ room nurses
   loot 0 1
   terminals 1 1
   light cold
-  tags medical keyspot
+  tags medical
 
 room theatre
   deco theatre
@@ -330,7 +328,7 @@ room pharmacy
   near ward nurses theatre
   loot 2 3
   light cold
-  lock staff
+  secure
   tags medical
 
 room quarantine
@@ -345,7 +343,7 @@ room quarantine
   avoid lobby mess quarters
   spawns 1 2
   light red
-  lock security
+  secure
   tags medical
 
 room mortuary
@@ -398,7 +396,7 @@ room monitor
   loot 1 1
   terminals 1 1
   light cold
-  tags keyspot tech
+  tags tech
 
 room hydroponics
   deco hydroponics
@@ -443,7 +441,7 @@ room reactor
   loot 1 2
   spawns 1 1
   light red
-  lock security
+  secure
   tags hum reactor
 
 room generator
@@ -496,7 +494,7 @@ room guardroom
   terminals 1 1
   spawns 1 2
   light cold
-  tags keyspot military
+  tags military
 
 room solitary
   deco cellblock
@@ -509,7 +507,7 @@ room solitary
   avoid mess
   spawns 1 1
   light red
-  lock security
+  secure
 
 room evidence
   deco evidence
@@ -521,7 +519,7 @@ room evidence
   near guardroom
   loot 2 3
   light dim
-  lock command
+  secure
   tags military vault
 
 # ---- mines and works ------------------------------------------------------------------------------
@@ -559,7 +557,7 @@ room magazine
   avoid quarters
   loot 1 2
   light red
-  lock staff
+  secure
   tags mine military
 
 room pump-hall
@@ -588,7 +586,7 @@ room vault
   loot 2 3
   spawns 0 1
   light red
-  lock command
+  secure
   blast
   tags vault
 
@@ -645,7 +643,7 @@ room parts-store
   near workshop control
   loot 1 2
   light dim
-  tags keyspot industry
+  tags industry
 
 room farm-kitchen
   deco farm
@@ -714,4 +712,4 @@ room shop
   near market-hall
   loot 1 1
   light warm
-  tags civilian keyspot
+  tags civilian

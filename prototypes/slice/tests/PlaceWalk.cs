@@ -269,7 +269,7 @@ public sealed class PlaceWalk
             }
             if (d.Open < 0.9f)
             {
-                Notes.Add($"door {d.Index} would not open ({(d.Clearance != null ? $"locked: {d.Clearance}" : "shut")}, lift {d.Lift}, stop {d.Stop}, target {d.Target:F1}, feet {p.FromWorld(_game.Survivor.WorldFeet)}, in shaft {p.ShaftAt(p.FromWorld(_game.Survivor.WorldFeet))}, aim '{_game.UsePrompt()}')");
+                Notes.Add($"door {d.Index} would not open (shut, lift {d.Lift}, stop {d.Stop}, target {d.Target:F1}, feet {p.FromWorld(_game.Survivor.WorldFeet)}, in shaft {p.ShaftAt(p.FromWorld(_game.Survivor.WorldFeet))}, aim '{_game.UsePrompt()}')");
                 done(false);
                 yield break;
             }

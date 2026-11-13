@@ -51,23 +51,6 @@ public sealed class SecretRoom
     public List<Int3> TellCells = new();
 }
 
-/// <summary>A doorway that needs a keycard of some clearance (or a hack or a breach, the boarding way).</summary>
-public sealed class DoorLock
-{
-    public int Doorway;
-    public string Clearance = "";
-    public bool Blast;
-}
-
-/// <summary>Where a keycard lies: on remains, in a cache or on a desk.</summary>
-public sealed class KeyCard
-{
-    public string Clearance = "";
-    public Int3 Cell;
-    public int Module;
-    public string On = "";
-}
-
 /// <summary>
 /// A warned hazard. Radiation pockets and unstable floors are always signposted (signs at their
 /// edges, sound hooks, a visible tell) and never sit on the way to the vault.
@@ -130,8 +113,8 @@ public sealed class LayoutExtras
     public List<LevelInfo> Levels = new();
     public List<LiftShaft> Lifts = new();
     public List<SecretRoom> Secrets = new();
-    public List<DoorLock> Locks = new();
-    public List<KeyCard> Keys = new();
+    /// <summary>Doorways that are blast doors: heavy to look at, opened by hand like any other.</summary>
+    public HashSet<int> BlastDoors = new();
     public List<Hazard> Hazards = new();
     public List<Breach> Breaches = new();
     public List<LightSpot> Lights = new();
