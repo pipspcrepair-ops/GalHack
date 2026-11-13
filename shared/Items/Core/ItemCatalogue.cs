@@ -135,6 +135,7 @@ public sealed class ItemCatalogue
                 Uses = DataJson.Str(e, "uses", ""),
                 DepositKind = DataJson.Str(e, "deposit", null),
                 FuelUnits = DataJson.Int(e, "fuel", 0),
+                Range = (float)DataJson.Num(e, "range", 0),
                 Rounds = DataJson.Int(e, "rounds", 0),
                 RestockDefault = DataJson.Int(e, "restock", 0),
                 StackSize = DataJson.Int(e, "stack", DefaultStack(category)),
