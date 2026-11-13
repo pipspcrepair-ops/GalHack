@@ -718,12 +718,26 @@ vec4 paint_ground(Patch g, vec2 p, vec3 land, float fw, float near, out float co
 		float u = grid.x - 1.0;
 		float bay = band(abs(fract(u / 2.5 + 0.5) - 0.5) * 2.5, 0.06, fw) * row * step(0.0, u) * step(u, g.half_.x * 2.0 - 2.0);
 		c = mix(c, vec3(0.6, 0.6, 0.57), bay * flake);
-	} else if (g.pattern > 2.5) {
+	} else if (g.pattern > 2.5 && g.pattern < 3.5) {
 		// Hazard stripes along the side the doors are, yellow and black on the diagonal.
 		float v = g.local.y - (g.half_.y - 1.1);
 		float stripe = step(0.5, fract((g.local.x + v) / 1.2));
 		float on = band(v, 0.45, fw);
 		c = mix(c, mix(vec3(0.55, 0.4, 0.04), vec3(0.03), stripe), on * flake);
+	} else if (g.pattern > 3.5 && g.pattern < 4.5) {
+		// A runway: white edge lines, a centre line dashed 30 m on and 20 off, a row of threshold bars across each end
+		// and the two broad aiming bars 300 m in; shapes only.
+		float u = g.local.x, v = g.local.y, hv = g.half_.y, in_ = g.half_.x - abs(u);
+		float edge = band(hv - 1.5 - abs(v), 0.45, fw);
+		float centre = band(v, 0.45, fw) * step(0.4, fract(u / 50.0)) * step(60.0, in_);
+		float keys = step(6.0, in_) * step(in_, 36.0) * step(abs(v), hv - 3.0) * band(abs(fract(v / 3.6 + 0.5) - 0.5) * 3.6, 0.9, fw);
+		float aim = step(300.0, in_) * step(in_, 345.0) * band(abs(v) - hv * 0.4, 4.5, fw);
+		c = mix(c, vec3(0.62, 0.62, 0.6), max(max(edge, centre), max(keys, aim)) * flake);
+	} else if (g.pattern > 4.5) {
+		// A taxiway: a yellow centre line and edge lines.
+		float v = g.local.y, hv = g.half_.y;
+		float line = max(band(v, 0.15, fw), band(hv - 1.0 - abs(v), 0.15, fw));
+		c = mix(c, vec3(0.55, 0.42, 0.06), line * flake);
 	}
 	// A kerb along a laid edge: a line of pale stones, a little chipped.
 	float kerb = 0.0;

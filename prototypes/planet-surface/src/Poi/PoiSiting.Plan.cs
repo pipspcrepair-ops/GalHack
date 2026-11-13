@@ -112,6 +112,8 @@ public static partial class PoiSiting
         Parallel.For(0, jobs.Count, i =>
         {
             var j = jobs[i];
+            // A place type is sited from its sketch alone: no layout at load.
+            if (j.Family.Types.Count > 0) return;
             PlannedPlace served = j.Place.Serves >= 0 ? plan.Places[j.Place.Serves] : null;
             Dir front = served == null ? Dir.North
                 : Toward(Mathx.WrapDelta(served.X - j.Place.X, map.WidthMeters), Mathx.WrapDelta(served.Z - j.Place.Z, map.HeightMeters));
@@ -132,15 +134,24 @@ public static partial class PoiSiting
         });
         LastLayoutMs = clock.Elapsed.TotalMilliseconds;
         LastPlanned = jobs.Count;
-        LastSkipped = made.Count(m => m == null);
+        LastSkipped = made.Where((m, i) => m == null && jobs[i].Family.Types.Count == 0).Count();
         LastUnseated = 0;
         var seatClock = System.Diagnostics.Stopwatch.StartNew();
         int mark = sites.Count;
         for (int i = 0; i < jobs.Count; i++)
         {
             var j = jobs[i];
-            if (made[i] == null) continue;
             double x = Mathx.WrapX(j.Place.X, map.WidthMeters), z = Mathx.Wrap(j.Place.Z, map.HeightMeters);
+            if (j.Family.Types.Count > 0)
+            {
+                TypedPlace typed = SeatTypeNear(lib, j.Family, j.Variant, j.State, j.Spawn, profile, bare, map, x, z, landing, sites, j.Place.Primary ? 8 : 4);
+                if (typed == null) { LastUnseated++; continue; }
+                foreach (PoiSite part in typed.Parts) { part.Planned = j.Place; part.Plan = plan; sites.Add(part); }
+                typed.Anchor.Primary = j.Place.Primary;
+                j.Place.Seated = typed.Anchor;
+                continue;
+            }
+            if (made[i] == null) continue;
             PoiSite site = Seat(made[i], j.State, j.Family, bare, map, x, z, landing, sites);
             int retries = j.Place.Primary ? 64 : j.Place.Role is "hub" or "port" or "need" or "industry" or "plant" ? 12 : 4;
             for (int k = 0; site == null && k < retries; k++)

@@ -36,6 +36,12 @@ public static class MadeGrounds
         TechLevel tech = profile?.Before ?? TechLevel.Mid;
         foreach (PoiSite site in pois)
         {
+            // A typed place's ground is its own (its runway, taxiways, apron, car park), laid from its sketch.
+            if (site.Whole is { } whole)
+            {
+                if (whole.Anchor == site) patches.AddRange(whole.Grounds(whole.Stamp.Wear));
+                continue;
+            }
             if (site.Siting == "city" || site.Layout == null) continue;
             PInt3 face = site.Layout.EntranceFacing.Vec();
             Place(patches, site.Layout, site.Origin.X, site.Origin.Y, site.Origin.Z, site.Stamp, site.Family, tech,

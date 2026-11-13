@@ -162,6 +162,8 @@ public sealed class Sketch
     public bool TooBig;
     public IEnumerable<SketchItem> Of(string part) => Items.Where(i => i.Part.Id == part);
     public float Hectares => Footprint.W * Footprint.D / 10000f;
+    /// <summary>What must stand on dry, even ground: everything but the approach lights and the fence round it all.</summary>
+    public SketchBox Core => Items.Where(i => i.Part.Kind is not ("lights" or "fence")).Select(i => i.Box).Aggregate((a, b) => a.Union(b));
 }
 
 /// <summary>

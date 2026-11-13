@@ -98,7 +98,7 @@ public sealed class FarShade
         // Places stand their buildings' height.
         foreach (PoiSite s in world.Pois)
         {
-            if (s.Layout == null) continue;
+            if (s.Pending || s.Layout == null) continue;
             var lo = s.Footprint.Min;
             var hi = s.Footprint.Max;
             float roof = hi.Y + 1;

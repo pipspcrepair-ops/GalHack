@@ -101,7 +101,8 @@ public partial class PoiLayer
         _standIn ??= new StandardMaterial3D { AlbedoColor = new Color(0.46f, 0.45f, 0.43f), Roughness = 1f };
         var lo = site.Footprint.Min;
         var hi = site.Footprint.Max;
-        float top = site.Layout.Blocks.Min.Y + site.Layout.Blocks.Size.Y - 8; // (the layout's grid keeps 8 cells of air over the place)
+        // (the layout's grid keeps 8 cells of air over the place; a part not laid out yet stands as high as its footprint says)
+        float top = site.Pending ? site.Footprint.Max.Y - 12 - site.Origin.Y : site.Layout.Blocks.Min.Y + site.Layout.Blocks.Size.Y - 8;
         var size = new Vector3(hi.X - lo.X + 1, Mathf.Max(2f, top), hi.Z - lo.Z + 1);
         return new MeshInstance3D
         {
