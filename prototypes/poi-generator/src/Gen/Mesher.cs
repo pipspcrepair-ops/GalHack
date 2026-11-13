@@ -654,10 +654,12 @@ public static class Mesher
             {
                 Int3 n = p + Dirs.All[f].Vec();
                 var nb = _g.Get(n);
-                if (glass ? (!nb.IsAir && nb.Type == BlockType.Cube && (nb.Material == b.Material || !BlockInfo.IsTransparent(nb.Material))) || IsRock(n) && Hides(n) : Hides(n))
-                    continue;
+                bool hidden = glass ? (!nb.IsAir && nb.Type == BlockType.Cube && (nb.Material == b.Material || !BlockInfo.IsTransparent(nb.Material))) || IsRock(n) && Hides(n) : Hides(n);
+                // (A shaped neighbour drawn far off as a cube hides the face, but still doesn't fill the cell: the face still collides.)
+                bool farShape = hidden && !CollidesFull(n) && !IsRock(n);
+                if (hidden && !farShape) continue;
                 bool solid = collide && _o.Collision && (!CollidesFull(n) || IsRock(n));
-                if (!_o.Drawn && !solid) continue;
+                if ((!_o.Drawn || hidden) && !solid) continue;
                 planes ??= _planes.TryGetValue(ch, out Planes got) ? got : _planes[ch] = new Planes();
                 int key = 0;
                 if (_o.Drawn)
@@ -672,7 +674,7 @@ public static class Mesher
                 }
                 var (u, v, k) = Face2(f, l);
                 int plane = f * side + k;
-                if (_o.Drawn) Plane(planes.Drawn, plane, side)[v * side + u] = key;
+                if (_o.Drawn && !hidden) Plane(planes.Drawn, plane, side)[v * side + u] = key;
                 if (solid) Plane(planes.Solid, plane, side)[v * side + u] = 1;
             }
         }
@@ -1171,11 +1173,13 @@ public static class Mesher
             void Face(V3[] pts, Int3? side, float shade)
             {
                 if (hung && side is { } sv && sv.X == 0 && sv.Z == 0) side = sv * -1;
-                if (side is { } s && Hides(p + s)) return;
+                // Left out where a neighbour covers it: drawn where it hides it, collided where it fills its cell.
+                bool shown = draw && !(side is { } s && Hides(p + s)), solid = _o.Collision && !(side is { } s2 && CollidesFull(p + s2));
+                if (!shown && !solid) return;
                 V3 n = V3.Cross(pts[1] - pts[0], pts[2] - pts[0]).Normalized();
                 // Wound to face away from the piece's middle, whatever the turn did.
                 if (V3.Dot(n, pts[0] - centre) < 0) { Array.Reverse(pts); n = V3.Cross(pts[1] - pts[0], pts[2] - pts[0]).Normalized(); }
-                if (draw)
+                if (shown)
                 {
                     // Every face but the underside is the roof's covering, as on a ramp.
                     float code = FaceCode(p, b, n.Y < -0.5f ? n : new V3(0, 1, 0), n.Y > -0.5f, cs);
@@ -1185,7 +1189,7 @@ public static class Mesher
                     for (int k = 1; k + 1 < pts.Length; k++) buf.Indices.AddRange(new[] { i0, i0 + k + 1, i0 + k });
                     chunk.Quads++;
                 }
-                if (_o.Collision)
+                if (solid)
                     for (int k = 1; k + 1 < pts.Length; k++) Tri(chunk, pts[0], pts[k], pts[k + 1]);
             }
             Int3 Side(float x, float z) => Shapes.Turn(new V3(x, 0.5f, z), b.Facing) is var v ? new Int3(v.X < 0.01f ? -1 : v.X > 0.99f ? 1 : 0, 0, v.Z < 0.01f ? -1 : v.Z > 0.99f ? 1 : 0) : default;

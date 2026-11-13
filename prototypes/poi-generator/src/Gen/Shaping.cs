@@ -68,8 +68,12 @@ public static class Shaping
         static int M(int v, int m) => ((v % m) + m) % m;
         static Dir CornerFacing(Dir a, Dir b) => Dirs.Horizontal.First(f => f == a && f.RotateCw(3) == b || f == b && f.RotateCw(3) == a);
 
-        var lamps = inst.Lights.Select(l => l.Cell).ToHashSet();
-        // Where anyone walks: a top on the way (a tank's rim to its ladder, a roof to its hatch) is never shaped.
+        var lamps = inst.Lights.Select(l => l.Cell).Concat(inst.Growth.Select(s => s.Cell)).ToHashSet(); // (and where trees may root)
+        var roots = inst.Growth.Select(s => s.Cell).ToHashSet();
+        // (Over a root the sky stays open: nothing is added in its column.)
+        var rootColumns = roots.Select(r => (r.X, r.Z)).ToHashSet();
+        // Where anyone walks: a top on the way (a tank's rim to its ladder, a roof to its hatch) is never shaped, nor any top
+        // at all where the way in can't be stood on to find them.
         NavGrid nav = inst.Nav();
         var walked = nav.Standable(layout.EntranceCell) ? nav.Reachable(layout.EntranceCell) : new HashSet<Int3>();
         bool NearDoor(Int3 q)
@@ -90,7 +94,7 @@ public static class Shaping
             bool roomUp = Room(c + Int3.Up), roomDown = Room(c + Int3.Down);
             bool square = outs.Count == 2 && outs[0] != outs[1].Opposite();
             // Only under building or rock, or a roof's or a wall's top edge: a top anything stands on, or can, stays whole.
-            if (!Solid(c + Int3.Up) && !(outs.Count > 0 && Outside(c + Int3.Up)) || walked.Contains(c + Int3.Up)) continue;
+            if (!Solid(c + Int3.Up) && !(outs.Count > 0 && Outside(c + Int3.Up) && walked.Count > 0) || walked.Contains(c + Int3.Up) || roots.Contains(c + Int3.Up)) continue;
             if (outs.Count > 0 && (c.Y >= 0 || space))
             {
                 if (ins.Any(d => outs.Contains(d.Opposite()) == false) || roomDown) continue;
@@ -123,6 +127,18 @@ public static class Shaping
                 continue;
             }
             if (outs.Count > 0) continue;
+            if ((roomDown || ins.Count == 0 && Outside(c + Int3.Down) && c.Y >= 0) && g.Get(c + Int3.Up).Role != Role.Wall)
+            {
+                // A ceiling or a soffit (not under a wall: a wall stands on a whole block): low tech lays joists across it,
+                // every fourth row; high tech folds it in V-bays between ribs, two hung slopes to a bay.
+                if (high && M(c.X, 4) != 0 && M(c.Z, 4) is 1 or 2) Put(c, b, BlockType.Chamfer, M(c.Z, 4) == 1 ? Dir.North : Dir.South); // a folded bay between ribs
+                else if (!high && M(c.X, 4) != 0) Put(c, b, BlockType.Half, Dir.Up);
+                // Under a low-tech room's joist a beam shows, over a room at least 3 m clear, clear of its lamps and of the head of any door near it.
+                else if (!high && roomDown && Enumerable.Range(1, 3).All(k => Air(c + Int3.Down * k)) && !lamps.Contains(c + Int3.Down) && !NearDoor(c + Int3.Down)
+                    && !walked.Contains(c + Int3.Down) && !walked.Contains(c + Int3.Down * 2) && !rootColumns.Contains((c.X, c.Z)))
+                    shaped[c + Int3.Down] = b with { Type = BlockType.Beam, Facing = Dir.North, Role = Role.Decor };
+                continue;
+            }
             if (ins.Count == 2 && ins[0] == ins[1].Opposite() && !roomUp && !roomDown && b.Role == Role.Wall)
             {
                 Put(c, b, BlockType.Partition, ins[0]); // a thin wall between two rooms
@@ -143,16 +159,6 @@ public static class Shaping
                 Put(c, b, top ? BlockType.Ramp : BlockType.Chamfer, d.Opposite());
                 coves[c] = (d, top);
                 continue;
-            }
-            if (ins.Count == 0 && (roomDown || Outside(c + Int3.Down) && c.Y >= 0) && g.Get(c + Int3.Up).Role != Role.Wall)
-            {
-                // A ceiling or a soffit (not under a wall: a wall stands on a whole block): low tech lays joists across it,
-                // every fourth row; high tech folds it in V-bays between ribs, two hung slopes to a bay.
-                if (high && M(c.X, 4) != 0 && M(c.Z, 4) is 1 or 2) Put(c, b, BlockType.Chamfer, M(c.Z, 4) == 1 ? Dir.North : Dir.South); // a folded bay between ribs
-                else if (!high && M(c.X, 4) != 0) Put(c, b, BlockType.Half, Dir.Up);
-                // Under a low-tech room's joist a beam shows, over a room at least 3 m clear, clear of its lamps and of the head of any door near it.
-                else if (!high && roomDown && Enumerable.Range(1, 3).All(k => Air(c + Int3.Down * k)) && !lamps.Contains(c + Int3.Down) && !NearDoor(c + Int3.Down))
-                    shaped[c + Int3.Down] = b with { Type = BlockType.Beam, Facing = Dir.North, Role = Role.Decor };
             }
         }
 
@@ -178,7 +184,7 @@ public static class Shaping
                 int h = 0;
                 while (h < 12 && Air(f + Int3.Up * h) && Enumerable.Range(-2, 5).All(x => Enumerable.Range(-2, 5).All(z => floor.Contains(f with { X = f.X + x, Z = f.Z + z }) && Air(f + new Int3(x, h, z))))) h++;
                 Block over = g.Get(f + Int3.Up * h);
-                if (h < 2 || !Plain(over)) continue;
+                if (h < 2 || !Plain(over) || rootColumns.Contains((f.X, f.Z))) continue;
                 for (int y = 0; y < h; y++) shaped[f + Int3.Up * y] = over with { Type = high ? BlockType.Column : BlockType.Pillar, Role = Role.Decor, Facing = Dir.Up };
             }
         }
@@ -197,10 +203,12 @@ public static class Shaping
                         if (w < 4 || w > 8 || !Solid(p + d.Vec() * w)) continue;
                         int h = 0;
                         while (h < 8 && Enumerable.Range(0, w).All(k => Air(p + d.Vec() * k + Int3.Up * h) && !shaped.ContainsKey(p + d.Vec() * k + Int3.Up * h))) h++;
-                        if (h < 3 || Enumerable.Range(0, w).Any(k => !Solid(p + d.Vec() * k + Int3.Up * h))) continue;
+                        if (h < 3 || Enumerable.Range(0, w).Any(k => !Solid(p + d.Vec() * k + Int3.Up * h) || rootColumns.Contains((p.X + d.Vec().X * k, p.Z + d.Vec().Z * k)))) continue;
                         var timber = new Block(BlockType.Pillar, Material.Timber, new Rgb(0x6a, 0x4c, 0x30), Role.Decor, Dir.Up);
                         for (int y = 0; y < h; y++) { shaped[p + Int3.Up * y] = timber; shaped[p + d.Vec() * (w - 1) + Int3.Up * y] = timber; }
-                        for (int k = 1; k < w - 1; k++) shaped[p + d.Vec() * k + Int3.Up * (h - 1)] = timber with { Type = BlockType.Beam, Facing = d };
+                        for (int k = 1; k < w - 1; k++)
+                            if (!walked.Contains(p + d.Vec() * k + Int3.Up * (h - 1)) && !walked.Contains(p + d.Vec() * k + Int3.Up * (h - 2)))
+                                shaped[p + d.Vec() * k + Int3.Up * (h - 1)] = timber with { Type = BlockType.Beam, Facing = d };
                     }
 
         foreach (var (c, b) in shaped) g.Set(c, b);
