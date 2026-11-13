@@ -26,10 +26,10 @@ public static class Ornament
     /// <summary>One element as laid: its kind, its cells, and where along its line each repeat stands (for spacing).</summary>
     public sealed record Piece(string Kind, List<Int3> Cells, List<int> At);
 
-    /// <summary>A builder's vocabulary: which elements, how far apart, how tall.</summary>
-    public sealed record Vocab(BlockType Pilaster, int Bay, bool Hoods, bool Frames, bool Pipes, int PipeAt)
+    /// <summary>A builder's vocabulary: which elements, how far apart, how long, how high, and the shade its trim takes of its walls.</summary>
+    public sealed record Vocab(BlockType Pilaster, int Bay, bool Hoods, int Reach, bool Frames, bool Pipes, int PipeAt, float Tone)
     {
-        public string Sig => $"{Pilaster} bay {Bay}{(Hoods ? " hoods" : "")}{(Frames ? " frames" : "")}{(Pipes ? $" pipes {PipeAt}" : "")}";
+        public string Sig => $"{Pilaster} bay {Bay} tone {Tone:0.00}{(Hoods ? $" hoods {Reach}" : "")}{(Frames ? " frames" : "")}{(Pipes ? $" pipes {PipeAt}" : "")}";
     }
 
     /// <summary>The builders of a place: its world, its tech level, its faction and its culture (alien or not).</summary>
@@ -56,7 +56,7 @@ public static class Ornament
         bool hoods = r.Chance(0.6f), frames = r.Chance(0.6f);
         if (!hoods && !frames) hoods = frames = true;
         BlockType pilaster = high || tech != TechLevel.Low && r.Chance(0.5f) ? BlockType.Rib : BlockType.Pillar;
-        return new Vocab(pilaster, high ? r.Between(4, 8) : r.Between(3, 6), hoods, frames, r.Chance(0.8f), r.Between(3, 5));
+        return new Vocab(pilaster, high ? r.Between(4, 8) : r.Between(3, 6), hoods, r.Between(1, 2), frames, r.Chance(0.8f), r.Between(3, 5), 0.8f + 0.04f * r.Between(0, 4));
     }
 
     public static void Apply(PoiInstance inst)
@@ -110,7 +110,7 @@ public static class Ornament
             && !walked.Contains(q) && !walked.Contains(q + Int3.Down) && (t == BlockType.Beam || !walked.Contains(q + Int3.Down * 2))
             && !Dirs.All.Any(d => Way(g.Get(q + d.Vec())))
             && !BlockInfo.IsSlope(g.Get(q + Int3.Down).Type) && !BlockInfo.IsSlope(g.Get(q + Int3.Down * 2).Type); // (nor over a slope one might walk up since)
-        Block Made(Int3 from, BlockType t, Dir f) { Block b = g.Get(from); return b with { Type = t, Facing = f, Role = Role.Decor, Color = b.Color.Scale(0.88f), Variant = 0 }; }
+        Block Made(Int3 from, BlockType t, Dir f) { Block b = g.Get(from); return b with { Type = t, Facing = f, Role = Role.Decor, Color = b.Color.Scale(v.Tone), Variant = 0 }; }
         var lay = new List<(Int3 Cell, Block B)>();
         void Lay(string kind, List<(Int3, Block)> cells, List<int> at)
         {
@@ -147,7 +147,7 @@ public static class Ornament
                 Lay("pipe", row.Select(c => (c + d.Vec(), new Block(BlockType.Pipe, Material.Steel, new Rgb(0x6a, 0x6e, 0x70), Role.Decor, a))).ToList(), new List<int>());
         }
 
-        // Hoods: over each way in from outside, a beam along the wall a cell out, a cell past the door either side.
+        // Hoods: over each way in from outside, a beam along the wall a cell out, the builder's reach past the door either side.
         if (v.Hoods)
         {
             var seen = new HashSet<Int3>();
@@ -164,7 +164,7 @@ public static class Ornament
                     var head = group.Where(c => c.Y == ty).ToList();
                     if (!head.All(c => Outside(c + d.Vec()) && !Outside(c - d.Vec()))) continue;
                     Dir a = d.RotateCw(1);
-                    var span = head.SelectMany(c => new[] { c - a.Vec(), c, c + a.Vec() }).Distinct().Select(c => c + Int3.Up).ToList();
+                    var span = head.SelectMany(c => Enumerable.Range(-v.Reach, 2 * v.Reach + 1).Select(k => c + a.Vec() * k)).Distinct().Select(c => c + Int3.Up).ToList();
                     if (span.All(c => BlockInfo.IsFullCube(g.Get(c).Type) && Open(c + d.Vec(), BlockType.Beam)))
                         Lay("hood", span.Select(c => (c + d.Vec(), Made(c, BlockType.Beam, a))).ToList(), new List<int>());
                     break;

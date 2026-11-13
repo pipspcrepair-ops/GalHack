@@ -545,11 +545,24 @@ public sealed class Plot
             c => BlockAt(c) is var (i, k) && In(ci, ck, r - 1.0, i, k), c => C.Clear(c));
     }
 
-    /// <summary>A disc a level thick, round.</summary>
+    /// <summary>A disc a level thick: standing free, round; filling a drum's hollow (its floor, its lid), block by block as the hollow was dug.</summary>
     public void Disc(double ci, double ck, double r, int j, Block b)
     {
         var (x, z) = At(2 * ci, 2 * ck);
-        Round.Lay(C, x, z, 2 * j, 2 * j + 1, _ => (Rim(r), 0), _ => b);
+        Int3 mid = new((int)Math.Floor(x), 2 * j, (int)Math.Floor(z));
+        if (!C.Occ.Contains(mid) || !C.Get(mid).IsAir)
+        {
+            Round.Lay(C, x, z, 2 * j, 2 * j + 1, _ => (Rim(r), 0), _ => b);
+            return;
+        }
+        int rr = (int)Math.Ceiling(r) + 1;
+        for (int k = (int)ck - rr; k <= (int)ck + rr; k++)
+            for (int i = (int)ci - rr; i <= (int)ci + rr; i++)
+                if (In(ci, ck, r, i, k))
+                    for (int v = 2 * k; v < 2 * k + 2; v++)
+                        for (int y = 2 * j; y < 2 * j + 2; y++)
+                            for (int u = 2 * i; u < 2 * i + 2; u++)
+                                if (Get(u, y, v).IsAir) Put(u, y, v, b);
     }
 
     /// <summary>

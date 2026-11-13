@@ -13,13 +13,14 @@ public static class RoofSlopes
 {
     static readonly (Dir D, Int3 V)[] Ways = { (Dir.East, new Int3(1, 0, 0)), (Dir.West, new Int3(-1, 0, 0)), (Dir.South, new Int3(0, 0, 1)), (Dir.North, new Int3(0, 0, -1)) };
 
-    public static int Smooth(BlockGrid g)
+    /// <param name="rims">Round things' rims (<see cref="Round.Rims"/>): cut to their round already, left as they are.</param>
+    public static int Smooth(BlockGrid g, HashSet<Int3> rims)
     {
         bool Roof(Int3 p) => g.Get(p) is { Type: BlockType.Cube, Role: Role.Roof };
         var turn = new List<(Int3 Cell, Dir Up)>();
         foreach (var (c, b) in g.Blocks())
         {
-            if (b.Type != BlockType.Cube || b.Role != Role.Roof || c.Y < 0 || !g.Get(c + Int3.Up).IsAir) continue;
+            if (b.Type != BlockType.Cube || b.Role != Role.Roof || c.Y < 0 || !g.Get(c + Int3.Up).IsAir || rims.Contains(c)) continue;
             foreach (var (d, v) in Ways)
                 // The course's edge, open on the outside, the next course up just inside it.
                 if (Roof(c + v + Int3.Up) && g.Get(c - v).IsAir && g.Get(c - v + Int3.Up).IsAir && !Roof(c - v + Int3.Down) || Roof(c + v + Int3.Up) && Roof(c - v + Int3.Down))

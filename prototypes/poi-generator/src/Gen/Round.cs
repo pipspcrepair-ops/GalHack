@@ -262,7 +262,7 @@ public static class Round
                     poly = Clip(poly, (a.X - x, a.Z - z), (b.X - x, b.Z - z), (ox, oz));
                 }
                 double area = Area(poly);
-                if (area < 0.01) continue;
+                if (area < 0.01) { if (inner > 0 && D(x + 0.5, z + 0.5) < inner) course.Inside.Add((x, z)); continue; }
                 if (area > 0.99) { course.Solid.Add(new Piece(x, z, BlockType.Cube, Dir.North)); continue; }
                 if (!Keys.TryGetValue(Key(poly), out var piece)) { if (area >= 0.5) course.Solid.Add(new Piece(x, z, BlockType.Cube, Dir.North)); continue; }
                 var (type, facing) = piece;
@@ -290,7 +290,7 @@ public static class Round
                     for (int x = (int)Math.Floor(b.X - ro) - 1; x <= (int)Math.Ceiling(b.X + ro) + 1; x++)
                     {
                         double d = Math.Sqrt((x + 0.5 - b.X) * (x + 0.5 - b.X) + (z + 0.5 - b.Z) * (z + 0.5 - b.Z));
-                        if (d > ro - 2 && d < ro + 1) rim.Add(new Int3(x, y, z));
+                        if (d > ro - 2 && d <= ro + 0.75) rim.Add(new Int3(x, y, z)); // (no further out than a cell the outline crosses: a neighbour's are its own)
                     }
             }
         return rim;
@@ -330,8 +330,12 @@ public static class Round
             foreach (Piece p in course.Solid)
             {
                 Int3 at = new(p.X, y, p.Z);
-                if (hollow != null && hollow(at)) inside?.Invoke(at);
-                else c.Set(at, b with { Type = p.Type, Facing = p.Type == BlockType.Cube ? b.Facing : p.Facing });
+                if (hollow != null && hollow(at)) { inside?.Invoke(at); continue; }
+                // (A cut never carves what stands already: over a whole block it leaves it, over another cut it fills the cell.)
+                Block was = c.Get(at);
+                if (p.Type != BlockType.Cube && BlockInfo.IsFullCube(was.Type)) continue;
+                bool both = p.Type != BlockType.Cube && BlockInfo.IsPlanCut(was.Type) && (was.Type != p.Type || was.Facing != p.Facing);
+                c.Set(at, b with { Type = both ? BlockType.Cube : p.Type, Facing = p.Type == BlockType.Cube || both ? b.Facing : p.Facing });
             }
             if (inside != null) foreach (var (x, z) in course.Inside) inside(new Int3(x, y, z));
         }

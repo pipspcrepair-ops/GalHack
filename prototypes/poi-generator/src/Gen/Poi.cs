@@ -171,7 +171,7 @@ public static class PoiFactory
                 ? Assembler.Build(lib, family, v, rarity, customSeed ?? v.Seed)
                 : Architect.Build(lib, family, v, rarity, customSeed ?? v.Seed, hints);
         if (customSeed != null) layout.Name = $"{v.Name} (seed {customSeed})";
-        RoofSlopes.Smooth(layout.Blocks);
+        RoofSlopes.Smooth(layout.Blocks, Round.Rims(layout.Extras.Rounds));
         Structure.HeadFloors(layout);
         Structure.LadderWalls(layout);
         Facade.Apply(layout, lib);
