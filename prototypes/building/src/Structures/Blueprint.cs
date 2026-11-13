@@ -25,7 +25,7 @@ public sealed class BlueprintData
     public int Version;
     public string Name = "Unnamed";
     public string Grid = "1m";
-    public CoreMode Mode = CoreMode.Capital;
+    public CoreMode Mode = CoreMode.Flight;
     public bool Gravity = true;
     public double Cargo;
     public readonly List<(string name, Paint paint, int line)> Paints = new();
@@ -41,7 +41,7 @@ public sealed class BlueprintData
 ///   version 1
 ///   name "Foss Lancer"
 ///   grid 1m                          # the one grid; old "large" and "small" files load on it as they are
-///   mode capital                     # base, capital or hover
+///   mode flight                      # base, hover or flight (old capital and vessel read as flight)
 ///   paint hull base=e9dfc4 grime=1   # base accent pattern texture stencil grime
 ///   block 0 1 0 core
 ///   block -3..3 0 -8..8 steel paint=hull
@@ -95,8 +95,8 @@ public static class Blueprint
                 case "name": data.Name = Arg(1) ?? ""; break;
                 case "grid": data.Grid = Arg(1); break;
                 case "mode":
-                    if (Enum.TryParse(Arg(1), true, out CoreMode mode) && !int.TryParse(Arg(1), out _)) data.Mode = mode;
-                    else Error($"mode must be base, capital, vessel or hover, not '{Arg(1)}'");
+                    if (CoreModes.TryParse(Arg(1), out CoreMode mode)) data.Mode = mode;
+                    else Error($"mode must be base, hover or flight, not '{Arg(1)}'");
                     break;
                 case "gravity":
                     if (Arg(1) is "on" or "off") data.Gravity = Arg(1) == "on";
@@ -330,7 +330,7 @@ public static class Blueprint
         }
         if (s.Core == null) s.Owner = null;
         // Old small-grid blueprints said "capital" with hover pads aboard, and those craft rode them.
-        if (data.Grid == "small" && data.Mode == CoreMode.Capital && s.Blocks().Any(x => s.TypeOf(x.block).Function == "hover"))
+        if (data.Grid == "small" && data.Mode == CoreMode.Flight && s.Blocks().Any(x => s.TypeOf(x.block).Function == "hover"))
             s.Mode = CoreMode.Hover;
         return s;
     }

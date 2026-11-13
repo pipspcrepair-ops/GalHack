@@ -13,7 +13,7 @@ public static partial class BlueprintSet
     /// <summary>Bastion: a capital ship that lands, becomes a base and lifts off again; its hall roof is a landing pad.</summary>
     static string Bastion(Catalogue cat)
     {
-        var d = new Designer(cat, "Bastion 7", CoreMode.Capital);
+        var d = new Designer(cat, "Bastion 7", CoreMode.Flight);
         ushort hull = d.Paint("hull", Coat(0xe9dfc4)), inner = d.Paint("inner", Coat(0xd8d2c2, 0)), deck = d.Paint("deck", Deck);
         ushort saffron = d.Paint("saffron", Coat(0xf4a100)), red = d.Paint("red", Coat(0xc1121f)), hazard = d.Paint("hazard", Hazard);
         ushort chev = d.Paint("chev", Coat(0x0a9396).WithPattern(Pattern.Chevrons, 0xe9dfc4)), pad = d.Paint("pad", Coat(0x5a5e66, 2));
@@ -69,7 +69,7 @@ pad 12 x 14 m for a small vessel. Nacelles on the flanks; Thruster T3s; six pads
     /// <summary>Prospector: a small harvester that lives on Bastion's pad (capital-base digs under its keel).</summary>
     static string Prospector(Catalogue cat)
     {
-        var d = new Designer(cat, "Prospector 3", CoreMode.Capital);
+        var d = new Designer(cat, "Prospector 3", CoreMode.Flight);
         ushort saffron = d.Paint("saffron", Coat(0xf4a100)), belly = d.Paint("belly", Coat(0x2b2d42, 2)), deck = d.Paint("deck", Deck);
         ushort teal = d.Paint("teal", Coat(0x0a9396).WithPattern(Pattern.Chevrons, 0xf4a100)), red = d.Paint("red", Coat(0xc1121f)), hazard = d.Paint("hazard", Hazard);
 
@@ -148,7 +148,7 @@ ammo to keep stocked.");
     /// <summary>A wrecked engine pod for the salvage pad: written with a core so it loads; the scene takes it out.</summary>
     static string Wreck(Catalogue cat)
     {
-        var d = new Designer(cat, "Wrecked pod", CoreMode.Capital);
+        var d = new Designer(cat, "Wrecked pod", CoreMode.Flight);
         ushort burnt = d.Paint("burnt", Coat(0x3a3f47, 3)), rust = d.Paint("rust", Coat(0x8a4b2a, 3));
         d.Fill(P(-1, 0, -2), P(1, 1, 2), "iron-plated", burnt).Face(P(-1, 1, -2), P(1, 1, 2), Dir.PosY, rust);
         d.Fill(P(-1, 1, -2), P(-1, 1, -1), "iron-plated", burnt, "slope");
@@ -165,7 +165,7 @@ for the deconstructor to break down.");
     /// <summary>Deck Barge: a flat work barge for walking on a hull: a wall, a square edge, a lip, a stair, a deckhouse.</summary>
     static string Barge(Catalogue cat)
     {
-        var d = new Designer(cat, "Deck Barge", CoreMode.Capital);
+        var d = new Designer(cat, "Deck Barge", CoreMode.Flight);
         ushort hull = d.Paint("hull", Coat(0xc9ccd1)), deck = d.Paint("deck", Deck), inner = d.Paint("inner", Coat(0xd8d2c2, 0));
         ushort hazard = d.Paint("hazard", Hazard), yellow = d.Paint("yellow", Coat(0xf4a100));
 
@@ -219,7 +219,7 @@ deck, thrusters all round it, four pads.");
     /// <summary>Deck Tender: a capital ship with a flat deck big enough for the Shuttle and the Rover to park on.</summary>
     static string Tender(Catalogue cat)
     {
-        var d = new Designer(cat, "Deck Tender", CoreMode.Capital);
+        var d = new Designer(cat, "Deck Tender", CoreMode.Flight);
         ushort hull = d.Paint("hull", Coat(0xc9ccd1)), keel = d.Paint("keel", Coat(0x2b2d42, 2)), deck = d.Paint("deck", Coat(0x5a5e66, 2)), hazard = d.Paint("hazard", Hazard);
 
         // The deck (y 0), 20 m wide and 32 m long, hazard fore and aft; the keel under it holds the machinery.
@@ -277,7 +277,7 @@ the wind.");
     /// <summary>Lancer: building's example ship, on building's own parts (no gyros, no pads): a sealed cabin, cargo, power, guns.</summary>
     static string Lancer(Catalogue cat)
     {
-        var d = new Designer(cat, "Lancer 07", CoreMode.Capital);
+        var d = new Designer(cat, "Lancer 07", CoreMode.Flight);
         ushort hull = d.Paint("hull", Coat(0xece3c8)), inner = d.Paint("inner", Coat(0xd8d2c2, 0)), deck = d.Paint("deck", Deck);
         ushort belly = d.Paint("belly", Coat(0x2b2d42, 2)), stripe = d.Paint("stripe", Coat(0xece3c8).WithPattern(Pattern.Stripes, 0xe85d04));
         ushort chev = d.Paint("chev", Coat(0x0a9396).WithPattern(Pattern.Chevrons, 0xf4a100)), hazard = d.Paint("hazard", Hazard);

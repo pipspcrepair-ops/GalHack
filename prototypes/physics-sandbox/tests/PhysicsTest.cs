@@ -123,7 +123,7 @@ public partial class PhysicsTest : Node
         foreach (int x in StepsEverywhere()) yield return x;
         foreach (int x in RoverTrench()) yield return x;
         foreach (int x in HoverHoles()) yield return x;
-        foreach (int x in GearOnDugGround()) yield return x;
+        foreach (int x in GearOnUnevenGround()) yield return x;
         foreach (int x in WindRules()) yield return x;
         foreach (int x in WaterVolume()) yield return x;
         foreach (int x in TornadoFling()) yield return x;
@@ -269,7 +269,7 @@ public partial class PhysicsTest : Node
                 $"thrust per direction is building's (fwd {h.Accel(Direction.Forward):F1} m/s², up {h.Accel(Direction.Up):F1}, turn {h.TurnRate:F0}°/s, lift {h.LiftMargin:+0;-0} kN)");
         }
         Ship c = _w.Corsair;
-        Check(c.HullShapes.ShapeCount > 0 && c.HullShapes.ShapeCount < c.Structure.Count / 3 && c.Interior.Count > 300,
+        Check(c.HullShapes.ShapeCount > 0 && c.HullShapes.ShapeCount < c.Structure.Count / 3 && c.Interior.Count > 100, // the Shuttle's cabin, 4 x 3 x 11 m less its chairs and lockers
             $"the Corsair is one body of {c.HullShapes.ShapeCount} collider shapes for {c.Structure.Count} blocks, with {c.Interior.Count} interior cells to walk in");
 
         // One block edited: only its chunk's colliders are rebuilt (hull and cabin), never the whole body.
@@ -944,12 +944,26 @@ public partial class PhysicsTest : Node
         p.Yaw = -MathF.PI / 2f; // facing starboard
         p.Pitch = 0f;
         for (int i = 0; i < 20; i++) yield return 0;
+        string before = $"on the roof {p.OnHull == ship}, the ship at {ship.Body.Velocity.Length():F1} m/s turning {Units.Degrees(ship.Body.AngularVelocity.Length()):F0}°/s, frozen {ship.Vessel.Frozen}, settling {ship.Vessel.Settling}, on floor {ship.Body.OnFloor}, underfoot {ship.Body.Underfoot?.Kind}";
         var off = new HullWalk();
-        foreach (int x in WalkOn(ship, off, q => q.Body.Frame == null, 240)) yield return x;
+        string rescued = "";
+        void Rescued(RescueInfo r) { if (r.Body == p.Body) rescued = $"; rescued out of {r.Inside} from {r.From} to {r.To}"; }
+        _w.Physics.Rescued += Rescued;
+        string stuckAt = "";
+        bool Off(Player q)
+        {
+            if (stuckAt == "" && q.Body.Frame != null && _w.Physics.Stuck.IsStuck(q.Body, out string what))
+                stuckAt = $"; first inside {what} at {q.Body.Position} on the ship, up {q.Body.Up}, on floor {q.Body.OnFloor}, hull {q.Body.OnOuterHull}";
+            return q.Body.Frame == null;
+        }
+        foreach (int x in WalkOn(ship, off, Off, 240)) yield return x;
+        _w.Physics.Rescued -= Rescued;
+        rescued += stuckAt;
         N.Vector3 fall = MathX.Unrotate(ship.Body.Rotation, p.Body.Velocity - ship.Body.PointVelocity(p.Body.Position));
         Check(p.Body.Frame == null && off.Edges == 0 && off.Walls == 0 && off.LowestUp > 0.999f && fall.Y < -1f,
             $"walked off the roof's edge, nothing carries them onto the hull's side: they fall off it ship-down ({-fall.Y:F1} m/s) " +
-            $"and let go of the ship after {off.LongestOff:F2} s out of contact, never turned off ship-up");
+            $"and let go of the ship after {off.LongestOff:F2} s out of contact, never turned off ship-up ({before} before the walk; {off.Ticks} ticks walked, " +
+            $"{MathX.Unrotate(ship.Body.Rotation, p.Body.WorldPosition - ship.Body.Position)} off the ship after{rescued})");
         for (int i = 0; i < 5; i++) yield return 0;
 
         // Knocked off the roof by a bump that throws them clear for less than the grace time: still aboard.
@@ -1363,39 +1377,73 @@ public partial class PhysicsTest : Node
         run.Contacts = _impacts.Count(i => i.Body == rover.Body && i.Other == null);
     }
 
-    IEnumerable<int> GearOnDugGround()
+    IEnumerable<int> GearOnUnevenGround()
     {
-        var site = new N.Vector2(-42f, -8f);
-        // Dig a pit where the port front leg will come down and a scrape under the starboard rear leg, on
-        // sloping ground, so no two feet agree.
-        _w.Terrain.Dig(TInt3.Floor(_w.Ground(site.X - 3f, site.Y - 4.5f) - N.Vector3.UnitY * 0.2f), 1.2f);
-        _w.Terrain.Dig(TInt3.Floor(_w.Ground(site.X + 2f, site.Y + 4.5f)), 0.6f);
-        Ship ship = _w.SpawnVessel(SandboxWorld.Shuttle, _w.Ground(site.X, site.Y) + N.Vector3.UnitY * 9f, 0f, landed: false);
-        int landed = _landed;
-        for (int t = 0; t < 600 && _landed == landed; t++)
-        {
-            bool down = !ship.Vessel.Gear.Contact; // ease down at 3.5 m/s until the feet touch, then let go
-            ship.Flight.Input = down ? PilotInput.Hands(new Vector3(0f, -0.05f, 0f)) : PilotInput.LetGo;
-            yield return 0;
-        }
+        // Uneven ground near the field where every one of the Shuttle's telescoping legs can reach
+        // its own: the hull comes to rest on its lowest point, so each pad's ground must lie within
+        // its leg's reach of its hip over that, and no two pads' ground agree.
+        Ship ship = _w.SpawnVessel(SandboxWorld.Shuttle, new N.Vector3(-42f, 200f, -8f), 0f, landed: false);
         LandingGear gear = ship.Vessel.Gear;
+        GearLeg[] legs = Enumerable.Range(0, gear.Count).Select(gear.Leg).ToArray();
+        float At(N.Vector2 c, GearLeg l) => _w.Ground(c.X + l.Hip.X, c.Y + l.Hip.Z).Y;
+        var site = new N.Vector2(-42f, -8f);
+        float best = float.MaxValue;
+        for (float dx = -40f; dx <= 40f; dx += 2f)
+            for (float dz = -40f; dz <= 40f; dz += 2f)
+            {
+                var c = new N.Vector2(-42f + dx, -8f + dz);
+                float low = legs.Min(l => At(c, l)), high = legs.Max(l => At(c, l));
+                float hip = high + ship.Body.Shape.FeetBelowOrigin + legs[0].Hip.Y; // the hull resting on the highest ground under it
+                bool reach = legs.All(l => hip - At(c, l) < l.Length - 0.1f) && high < hip - 0.1f;
+                float miss = MathF.Abs(high - low - 0.6f); // about 0.6 m between the pads' grounds
+                if (reach && miss < best) (best, site) = (miss, c);
+            }
+        ship.Vessel.Place(ship.Body, _w.Ground(site.X, site.Y) + N.Vector3.UnitY * 9f, 0f);
+        ship.Binding.Teleport();
+        int landed = _landed;
+        int want = gear.Count;
+        bool cameOut = false, letGo = false;
+        for (int t = 0; t < 900 && _landed == landed; t++)
+        {
+            // Ease down at 3.5 m/s until every foot is on its ground, or the hull rests (on sloping ground it can
+            // rest on an edge without standing on a floor: attached and no longer sinking), then let go for good.
+            letGo |= Enumerable.Range(0, gear.Count).Count(gear.Touching) == want || ship.Body.OnFloor
+                     || t > 30 && gear.Attached && MathF.Abs(ship.Body.Velocity.Y) < 0.05f;
+            ship.Flight.Input = letGo ? PilotInput.LetGo : PilotInput.Hands(new Vector3(0f, -0.05f, 0f));
+            yield return 0;
+            cameOut |= gear.Deployed;
+        }
         gear.Probe(_w.Physics, ship.Body);
-        float worstFoot = 0f;
-        float spread = 0f, minGround = float.MaxValue, maxGround = float.MinValue;
+        float worstFoot = 0f, shortest = float.MaxValue, longest = 0f;
+        float minGround = float.MaxValue, maxGround = float.MinValue;
+        int standing = 0;
         for (int i = 0; i < gear.Count; i++)
         {
-            if (!gear.FootFound[i]) continue;
-            float foot = ship.Body.ToParent(gear.Leg(i).Hip).Y - gear.Leg(i).Length - gear.FootGround[i].Y;
+            if (!gear.Touching(i)) continue;
+            standing++;
+            // Each telescoping leg reaches its own ground: its foot is on it, whatever the others stand on.
+            float foot = ship.Body.ToParent(gear.Leg(i).Hip).Y - gear.Reach(i) - gear.FootGround[i].Y;
             worstFoot = MathF.Max(worstFoot, MathF.Abs(foot));
+            shortest = MathF.Min(shortest, gear.Reach(i));
+            longest = MathF.Max(longest, gear.Reach(i));
             minGround = MathF.Min(minGround, gear.FootGround[i].Y);
             maxGround = MathF.Max(maxGround, gear.FootGround[i].Y);
         }
-        spread = maxGround - minGround;
-        float tilt = Units.Degrees(MathX.Angle(MathX.Up(ship.Body.Rotation), N.Vector3.UnitY));
-        Check(_landed > landed && ship.Vessel.Frozen && gear.Deployed && tilt > 2f && tilt <= _w.Rules.Gear.MaxSettleTilt + 0.5f
-              && worstFoot < 0.25f && spread > 0.3f && !_w.Physics.Stuck.IsStuck(ship.Body, out _),
-            $"landing gear on dug ground: the legs drop by themselves, it settles tilted {tilt:F1}° to ground {spread:F1} m uneven under its feet, " +
-            $"every foot within {worstFoot * 100f:F0} cm of the ground, raises Landed and stops simulating");
+        Check(_landed > landed && cameOut && ship.Vessel.Frozen && gear.Attached && standing >= 2 && worstFoot < 0.25f
+              && maxGround - minGround > 0.3f && longest - shortest > 0.3f && !_w.Physics.Stuck.IsStuck(ship.Body, out _),
+            $"landing gear on uneven ground: it comes out by itself, and {standing} of {gear.Count} telescoping legs reach their own ground, " +
+            $"{maxGround - minGround:F1} m uneven, out {shortest:F2} to {longest:F2} m, every foot within {worstFoot * 100f:F0} cm of it; attached, it raises Landed and stops simulating" +
+            (ship.Vessel.Frozen ? "" : $" (not landed: came out {cameOut}, attached {gear.Attached}, hull on a floor {ship.Body.OnFloor}, let go {letGo}, {ship.Body.Velocity.Length():F2} m/s)"));
+
+        // And it goes in again by itself as the craft climbs away: there is no button.
+        int climb = 0;
+        for (; climb < 900 && gear.Extension > 0f; climb++)
+        {
+            ship.Flight.Input = PilotInput.Hands(new Vector3(0f, 1f, -1f));
+            yield return 0;
+        }
+        Check(gear.Extension == 0f && !gear.Down && !gear.Contact,
+            $"climbing away, the gear goes in by itself: in after {climb * Dt:F1} s, {gear.FootAltitude:F0} m up at {ship.Body.Velocity.Length():F0} m/s");
         _w.Remove(ship);
         yield return 0;
     }
@@ -1439,7 +1487,7 @@ public partial class PhysicsTest : Node
         for (int i = 0; i < 5; i++) yield return 0;
 
         bool parked = onPad.Body.ParkedOn == pad.Body && onDeck.Body.ParkedOn == tender.Body && docked.Body.ParkedOn == tender.Body
-                      && onGround.Body.ParkedOn == null && tender.Body.Class == StructureClass.Capital;
+                      && onGround.Body.ParkedOn == null;
         N.Vector3 padAt = pad.Body.Position;
         N.Quaternion padRot = pad.Body.Rotation;
         N.Vector3 onPadAt = onPad.Body.Position;
@@ -1487,7 +1535,35 @@ public partial class PhysicsTest : Node
             $"the capital ship itself is pushed, at its mass: up to {tenderPush / 1000f:F0} kN of ½ρ·CdA·|w|·w on its {tender.Body.DragArea:F0} m² (formula off by at most {worstFormula:P1}) " +
             $"is {tenderPush / tender.Body.Mass:F2} m/s² on its {tender.Body.Mass / 1000f:F0} t; its course changed by {gained.Length():F2} m/s, exactly the push over its mass (off by {pushedError:P2})");
 
-        // The Corsair on the deck lifts off: the moment it leaves its host the wind has it again.
+        // A chain: a rover parked on the Shuttle that is itself parked on the deck. It rides the ship
+        // with the Shuttle, and the ship's thrust carries all three (one way only: nothing loops back).
+        Ship onShuttle = w.SpawnVessel(SandboxWorld.HoverRover, onDeck.Body.Position + N.Vector3.UnitY * 8f, 0f, landed: false);
+        float shuttleTop = onDeck.Body.Shape.Height - onDeck.Body.Shape.FeetBelowOrigin;
+        onShuttle.Vessel.Place(onShuttle.Body, onDeck.Body.ToParent(new N.Vector3(0f, shuttleTop + onShuttle.Body.Shape.FeetBelowOrigin + 0.05f, 0f)), MathX.Heading(onDeck.Body.Rotation));
+        onShuttle.Vessel.Dock(w.Physics, onShuttle.Body, onDeck.Body);
+        onShuttle.Binding.Teleport();
+        N.Vector3 chainLocal = onDeck.Body.ToLocal(onShuttle.Body.Position);
+        bool loops = w.Physics.Park(tender.Body, onShuttle.Body) || w.Physics.Park(onDeck.Body, onShuttle.Body) || tender.Body.ParkedOn != null;
+        float chainSlip = 0f;
+        N.Vector3 tenderStart = tender.Body.Position;
+        for (int t = 0; t < 60; t++)
+        {
+            yield return 0;
+            chainSlip = MathF.Max(chainSlip, N.Vector3.Distance(onDeck.Body.ToLocal(onShuttle.Body.Position), chainLocal));
+        }
+        float load = onDeck.Body.Mass + docked.Body.Mass + onShuttle.Body.Mass;
+        float statsMass = tender.Flight.Stats.Mass, own = HandlingModel.Mass(tender.Spec);
+        Check(onShuttle.Body.ParkedOn == onDeck.Body && onDeck.Body.ParkedOn == tender.Body && chainSlip < 1e-3f && !loops
+              && N.Vector3.Distance(tender.Body.Position, tenderStart) > 0.5f,
+            $"chains carry down: a rover parked on the Shuttle parked on the deck rides the ship with it ({chainSlip * 1000f:F2} mm off its spot as the ship goes " +
+            $"{N.Vector3.Distance(tender.Body.Position, tenderStart):F1} m), and parking is one way: the ship can't park on what it carries");
+        Check(MathF.Abs(tender.Body.Carried - load) < 1f && MathF.Abs(onDeck.Body.Carried - onShuttle.Body.Mass) < 1f
+              && MathF.Abs(statsMass - own - Units.Tonnes(load)) < 0.01f,
+            $"a parked craft's mass is its host's to move: the ship carries {Units.Tonnes(tender.Body.Carried):F1} t (the Shuttle, the rover on it and the docked rover), " +
+            $"and its handling model flies {statsMass:F1} t ({own:F1} t of its own)");
+
+        // The Shuttle on the deck lifts off: the moment it leaves its host the wind has it again, and
+        // it takes the rover parked on it along.
         float before = onDeck.Body.LastForce(ForceKind.Weather).Length();
         float liftedPush = 0f, rose = 0f;
         for (int t = 0; t < 60; t++)
@@ -1498,7 +1574,10 @@ public partial class PhysicsTest : Node
             rose = tender.Body.ToLocal(onDeck.Body.Position).Y - deckLocal.Y;
         }
         Check(before == 0f && lifted.Contains(onDeck.Body) && onDeck.Body.ParkedOn == null && liftedPush > 500f && rose > 1f,
-            $"once the Corsair lifts off the deck ({rose:F1} m up off it) it is no longer parked, and the wind pushes it again: {liftedPush / 1000f:F1} kN");
+            $"once the Shuttle lifts off the deck ({rose:F1} m up off it) it is no longer parked, and the wind pushes it again: {liftedPush / 1000f:F1} kN");
+        float carriedSlip = N.Vector3.Distance(onDeck.Body.ToLocal(onShuttle.Body.Position), chainLocal);
+        Check(onShuttle.Body.ParkedOn == onDeck.Body && carriedSlip < 1e-3f && MathF.Abs(tender.Body.Carried - docked.Body.Mass) < 1f,
+            $"moving under its own power unparked it from the ship, and it took the rover on it along ({carriedSlip * 1000f:F2} mm off its spot); the ship now carries {Units.Tonnes(tender.Body.Carried):F1} t");
 
         view.GetParent().RemoveChild(view);
         view.QueueFree();
@@ -1634,10 +1713,12 @@ public partial class PhysicsTest : Node
             lowestKeel = MathF.Min(lowestKeel, keel - source.SurfaceHeight(b.Position.X, b.Position.Z));
         }
         float restsAt = sinker.Body.Position.Y - source.SurfaceHeight(sinker.Body.Position.X, sinker.Body.Position.Z);
-        Check(!sinker.Stats.CanLiftOff && wentUnder && sinker.Vessel.Frozen && _landed > landedBefore && sinker.Body.Water.Underwater
+        // The Shuttle stands taller than the lake is deep: it goes under, then stands on the bed with its roof out.
+        Check(!sinker.Stats.CanLiftOff && wentUnder && sinker.Vessel.Frozen && _landed > landedBefore
               && lowestKeel > -0.3f && !_w.Physics.Stuck.IsStuck(sinker.Body, out _),
             $"a Corsair that loses its generator over the lake falls in and sinks ({sinkSpeed:F1} m/s at most under water, against buoyancy and heavy drag), " +
-            $"settles on the bed {level - sinker.Body.Position.Y:F1} m down on its legs and lands, never through it (its keel never below the bed: lowest {lowestKeel:+0.00;-0.00} m)");
+            $"settles on the bed {level - sinker.Body.Position.Y:F1} m down on its legs and lands, never through it (its keel never below the bed: lowest {lowestKeel:+0.00;-0.00} m)" +
+            $"{(sinker.Vessel.Frozen ? "" : $"; not landed: can lift off {sinker.Stats.CanLiftOff}, under water {sinker.Body.Water.Underwater}, {sinker.Body.Velocity.Length():F2} m/s, keel {sinker.Body.Position.Y - sinker.Body.Shape.FeetBelowOrigin - source.SurfaceHeight(sinker.Body.Position.X, sinker.Body.Position.Z):+0.00;-0.00} m over the bed, which is {level - source.SurfaceHeight(sinker.Body.Position.X, sinker.Body.Position.Z):F1} m down")}");
         _w.Remove(sinker);
         watched.Remove(sinker.Body);
 

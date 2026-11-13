@@ -488,7 +488,7 @@ public sealed partial class BuildTool
             }
             Transform3D frame = AnchorFrame(_groundPoint);
             ShowPlan(frame, all: true);
-            Verdict = $"{Plan.Name} · {Plan.Count} BLOCKS · {Items.Describe(TotalCost(Plan), 4)}   [LMB] SET DOWN";
+            Verdict = $"{Plan.Name} · {Plan.BlockCount} BLOCKS · {Items.Describe(TotalCost(Plan), 4)}   [LMB] SET DOWN";
             if (pressed) StartFromPlan(frame);
             return;
         }
@@ -500,7 +500,7 @@ public sealed partial class BuildTool
         }
         if (_planDirty) RefreshRemaining();
         ShowPlan(Underway.DrawTransform, all: false);
-        Verdict = $"{Plan.Name} · {Plan.Count - _remaining.Count}/{Plan.Count} BLOCKS   [LMB] HOLD";
+        Verdict = $"{Plan.Name} · {Plan.BlockCount - _remaining.Count}/{Plan.BlockCount} BLOCKS   [LMB] HOLD";
         if (!held)
         {
             _placeTimer = 0f;
@@ -611,7 +611,9 @@ public sealed partial class BuildTool
         {
             Int3 p = queue.Dequeue();
             Block pb = Plan.Get(p);
-            if (!s.Has(p)) order.Add((p, pb));
+            // The walk goes through every cell, but a block spanning several goes on whole from its anchor: placed alone,
+            // its fillers were orphans in the way of it (the Skiff's chair never went on).
+            if (!s.Has(p) && !pb.IsFiller) order.Add((p, pb));
             foreach (Dir d in Dirs.All)
             {
                 Int3 q = p + d.Vec();
@@ -675,10 +677,13 @@ public sealed partial class BuildTool
             _ => e.ToString(),
         };
         if (!Creative && BuildingBridge.ItemOf(Items, s, block) == null) return $"{s.TypeOf(block).Name} · NO ITEM";
+        // A blueprint's craft rests on its lowest blocks (Vessel.Settle): one going on level with them or under all of it (its
+        // gear, a lift jet under the deck) is in the ground only until the craft stands up onto it, as it does once it is on.
+        int lowest = v == Underway ? s.Bounds().min.Y : int.MinValue;
         foreach (Int3 c in s.CellsOf(cell, block))
         {
             if (InSurvivor(v, c)) return "YOU · IN THE WAY";
-            if (!v.IsBase && InGround(v, c)) return "GROUND · IN THE WAY";
+            if (!v.IsBase && c.Y > lowest && InGround(v, c)) return "GROUND · IN THE WAY";
         }
         return null;
     }

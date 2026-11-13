@@ -69,19 +69,18 @@
   },
 
   "gear": {
-    // Legs drop by themselves below deployAltitude (m above ground) when slower than deploySpeed
-    // (m/s), and come up again past them plus hysteresis. A ship on its gear, slower than
-    // landSpeed, with nobody touching the controls for idleBeforeLanding (s), settles over
-    // settleTime (s) and stops simulating. On uneven or dug ground it tilts to sit on its feet,
-    // never more than maxSettleTilt (°).
+    // Gear comes out by itself below deployAltitude (m above ground) when slower than deploySpeed
+    // (m/s), and goes in again past them plus hysteresis; there is no button. A craft attached by
+    // its gear or resting on its hull, slower than landSpeed, with nobody touching the controls for
+    // idleBeforeLanding (s), settles over settleTime (s) and stops simulating. Each telescoping leg
+    // reaches its own ground, so it lands as it is on uneven or dug ground.
     "deployAltitude": 15,
     "deploySpeed": 20,
     "hysteresis": 5,
     "extendTime": 0.8,
     "landSpeed": 3,
     "idleBeforeLanding": 0.3,
-    "settleTime": 0.5,
-    "maxSettleTilt": 12
+    "settleTime": 0.5
   },
 
   "riding": {

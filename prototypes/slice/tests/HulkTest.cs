@@ -22,7 +22,7 @@ namespace Slice.Tests;
 /// A crashed capital ship is a real vessel (design, "Wrecks can be restored"): on a fresh random world with a
 /// crashed freighter forced near the start, buried nose down or as a long hauler, it is set down as coreless
 /// wrecks of the player's own blocks whose devices count as devices; a Big Core set into its core room claims
-/// it; Creative fills in what the crash and the years took; in Capital Mode nothing is missing, its thrust beats
+/// it; Creative fills in what the crash and the years took; in Flight Mode nothing is missing, its thrust beats
 /// its weight, it has power and fuel; and it lifts off along capital-base's clean lift-off, the ground it lies
 /// in cut and crumbling away, straight up through the cut without a snag.
 /// </summary>
@@ -155,13 +155,13 @@ public partial class HulkTest : Node
         GD.Print("-- what's missing filled in (Creative) --");
         int put = Fill(v, piece, _game.Zone.Data.Catalogue);
         foreach (int x in _drive.Wait(30)) yield return x;
-        v.SwitchMode(GalHack.Structures.CoreMode.Capital);
+        v.SwitchMode(GalHack.Structures.CoreMode.Flight);
         foreach (int x in _drive.Wait(30)) yield return x;
-        var missingFor = v.MissingFor(GalHack.Structures.CoreMode.Capital);
+        var missingFor = v.MissingFor(GalHack.Structures.CoreMode.Flight);
         stats = StructureStats.Compute(v.Structure);
         double weight = stats.Mass * StructureStats.G * _game.Zone.Physics.Zone.Strength / 9.81;
         double up = stats.Thrust[(int)GalHack.Structures.Dir.PosY];
-        Check(put > 0 && missingFor.Count == 0, $"{put} blocks put back; Capital Mode lacks nothing{(missingFor.Count > 0 ? ": " + string.Join(", ", missingFor) : "")}");
+        Check(put > 0 && missingFor.Count == 0, $"{put} blocks put back; Flight Mode lacks nothing{(missingFor.Count > 0 ? ": " + string.Join(", ", missingFor) : "")}");
         Check(up > weight && stats.Powered && stats.PowerOut >= stats.PowerUse * 0.99 && stats.Fuel > 0,
             $"thrust {up / 1000:F0} MN up against {weight / 1000:F0} MN of weight, {stats.PowerOut:F0} MW for {stats.PowerUse:F0} MW drawn, {stats.Fuel:F0} fuel");
 

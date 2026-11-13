@@ -142,7 +142,6 @@ public partial class Main : Node3D
             case Key.Key2: Select(1); break;
             case Key.Key3: Select(2); break;
             case Key.C: Active.ToggleCruise(); break;
-            case Key.G: Active.ToggleGear(); break;
             case Key.V:
                 Camera.Cockpit = !Camera.Cockpit;
                 Camera.Snap();
@@ -153,7 +152,7 @@ public partial class Main : Node3D
                 break;
             case Key.Bracketright:
                 AddMainEngine(loadout);
-                Hud.Log($"Added a {VesselDesigns.MainEngineSize(loadout.Class)} main engine");
+                Hud.Log($"Added a {loadout.MainEngine} main engine");
                 break;
             case Key.Bracketleft:
                 Hud.Log(loadout.RemoveThruster(Vector3.Forward) ? "Removed a main engine" : "No main engines left");
@@ -179,7 +178,7 @@ public partial class Main : Node3D
     /// <summary>The ] key: one more main engine of the class's main size, bolted on beside the others.</summary>
     void AddMainEngine(VesselLoadout loadout)
     {
-        string size = VesselDesigns.MainEngineSize(loadout.Class);
+        string size = loadout.MainEngine;
         Tunables.ThrusterPart part = Tunables.Parts.Thrusters[size];
         var mains = loadout.ThrusterList.Where(t => t.Facing.Dot(Vector3.Forward) > 0.9f).ToList();
         Vector3 anchor = mains.Count > 0 ? mains[0].Position : new Vector3(0f, 0f, loadout.Blocks.Max(b => b.Center.Z + b.Size.Z / 2f));

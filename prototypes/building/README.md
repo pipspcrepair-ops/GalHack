@@ -9,7 +9,7 @@ The canonical structure model for GalHack (pillar: **build what you fly**). Ship
 
 ## What it proves
 
-- **One model for everything.** Large grid (2 m) for bases and capital ships, small grid (0.5 m) for small vessels. A large core switches between **base** and **capital** mode; every material, block and recipe works in both, and switching never touches a block (tested with every block type and shape).
+- **One model for everything.** Large grid (2 m) for bases and capital ships, small grid (0.5 m) for small vessels. A core switches between **base**, **hover** and **flight** mode; every material, block and recipe works in all three, and switching never touches a block (tested with every block type and shape).
 - **Building is intuitive.** Ghost preview, grid snapping, rotation on every axis, mirror symmetry on up to three axes, blocks attach through a shared face, and components that mount by one face (lights, ladders, seats, turrets) turn to the surface you click.
 - **Nothing a player builds disappears.** Removing or destroying a block that holds a section on splits that section off as an unowned wreck (a free rigid body) with its paint, damage and share of the cargo. Block counts are conserved, and the tool asks for a second click before it cuts anything loose.
 - **Data-driven.** Grids, materials, shapes and components are JSON in `data/`. A shape is just a list of points: volume, full faces (for attaching and sealing) and mirror symmetry are worked out from the geometry.
@@ -41,7 +41,7 @@ From the repo root, in PowerShell:
 | O | Air visor: sealed rooms in teal, leaking rooms in amber, leaking faces in red | |
 | K | Debug blaster: explosive damage, to test severing | |
 | G | Grid for new starter cores (large/small). Aiming at a structure always uses its grid. | |
-| B | Core mode: base / capital | |
+| B | Core mode: base / hover / flight | |
 | F5 / F9 | Save / load the structure you're looking at (`saves/quicksave.gbp`) | |
 | WASD, Shift, Space, Ctrl, N | Walk, sprint, jump, crouch (hold), fly toggle | |
 | F1, Esc | Hide the controls, free the mouse | |
@@ -59,7 +59,7 @@ schema galhack.blueprint
 version 1
 name "Lancer 07"
 grid large                       # large (2 m) or small (0.5 m)
-mode capital                     # base or capital
+mode flight                      # base, hover or flight (old capital and vessel read as flight)
 cargo 24000
 
 paint hull base=ece3c8 grime=1
@@ -89,7 +89,7 @@ See [data/blueprints/lancer.gbp](data/blueprints/lancer.gbp) for the whole ship.
 .\tools\test.ps1 -Project prototypes/building -Scene res://tests/PlayTest.tscn
 ```
 
-`tests/BuildTest.tscn` (119 checks) covers placement rules (no overlaps, attach through a shared face, start from a core), mirror symmetry on three axes, removal returning materials, severing (a wreck, block count and cargo conserved, the core side keeps its owner, claiming with a core), mass, CPU sums and tiers, soft overshoot efficiency and extender tiers, shape volume scaling, upgrading in place, paint surviving save and load, sealed rooms (closed box, one missing block reported at its face, a ladder inside, closed and open doors, glass), shared storage and its caps, byte-for-byte blueprint round trips, every validator rejection, core modes (including every block type surviving base ↔ capital), cheap small-grid recipes from common materials, the nav export, and a meshing benchmark:
+`tests/BuildTest.tscn` (119 checks) covers placement rules (no overlaps, attach through a shared face, start from a core), mirror symmetry on three axes, removal returning materials, severing (a wreck, block count and cargo conserved, the core side keeps its owner, claiming with a core), mass, CPU sums and tiers, soft overshoot efficiency and extender tiers, shape volume scaling, upgrading in place, paint surviving save and load, sealed rooms (closed box, one missing block reported at its face, a ladder inside, closed and open doors, glass), shared storage and its caps, byte-for-byte blueprint round trips, every validator rejection, core modes (including every block type surviving base, hover and flight), cheap small-grid recipes from common materials, the nav export, and a meshing benchmark:
 
 ```
 20000 blocks in 16 chunks of 16³, 69,632 triangles, 3352 collider boxes, 2455 convex hulls

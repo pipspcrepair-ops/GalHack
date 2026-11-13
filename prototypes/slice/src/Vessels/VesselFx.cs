@@ -121,7 +121,7 @@ public partial class VesselFx : Node3D
                 continue;
             }
             GearLeg leg = gear.Leg(i);
-            float reach = Mathf.Max(0.05f, leg.Length * gear.Extension);
+            float reach = Mathf.Max(0.05f, gear.Reach(i)); // the leg telescopes onto its own ground
             Vector3 hip = leg.Hip.ToGodot();
             strut.Position = hip + Vector3.Down * (reach * 0.5f);
             strut.Scale = new Vector3(1f, reach, 1f);

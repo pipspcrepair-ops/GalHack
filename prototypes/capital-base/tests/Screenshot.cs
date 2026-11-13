@@ -116,7 +116,7 @@ public partial class Screenshot : Node
                     _phase = 3;
                     break;
                 }
-                W.SwitchMode(b, CoreMode.Capital);
+                W.SwitchMode(b, CoreMode.Flight);
                 W.LiftOffFrom(b);
                 Caption("Lift-off. The stair and pylon the player built are part of Bastion 7 and lift off with it;\n" +
                         "the ground they reached into is cut free and crumbles.", panels: false);

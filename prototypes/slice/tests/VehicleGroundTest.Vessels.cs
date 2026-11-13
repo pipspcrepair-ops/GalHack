@@ -25,7 +25,7 @@ public partial class VehicleGroundTest
     List<LibraryEntry> Kinds()
     {
         var all = _game.Menu.Root.Blueprints.Library.Starters;
-        var flyers = all.Where(e => e.Plan.Mode == CoreMode.Capital).OrderBy(e => e.Plan.Count).ToList();
+        var flyers = all.Where(e => e.Plan.Mode == CoreMode.Flight).OrderBy(e => e.Plan.Count).ToList();
         _bigFlyer = flyers.Count > 1 ? flyers[^1] : null;
         return new[] { flyers.FirstOrDefault(), all.Where(e => e.Plan.Mode == CoreMode.Hover).OrderBy(e => e.Plan.Count).FirstOrDefault(), _bigFlyer }
             .Where(e => e != null).ToList();
@@ -81,6 +81,9 @@ public partial class VehicleGroundTest
     sealed class Hull
     {
         public float Sunk;
+        /// <summary>What the craft was doing when it was deepest in, for a failure to say.</summary>
+        public string Deepest = "";
+        public int Ticks;
     }
 
     IEnumerable<int> ObserveHull(Vessel v, Hull w, int ticks, Func<bool> done = null)
@@ -88,7 +91,14 @@ public partial class VehicleGroundTest
         for (int i = 0; i < ticks; i++)
         {
             yield return 0;
-            if (i % 2 == 0) w.Sunk = MathF.Max(w.Sunk, Sunk(v));
+            w.Ticks++;
+            if (i % 2 == 0 && Sunk(v) is float sunk && sunk > w.Sunk)
+            {
+                w.Sunk = sunk;
+                VesselController c = v.Controller;
+                w.Deepest = $"{w.Ticks} ticks into the case: frozen {c?.Frozen}, settling {c?.Settling}, gear attached {c?.Gear?.Attached}, tossed {v.Body.Tossed:F1}, "
+                    + $"{v.Body.Velocity.Length():F1} m/s, up {MathX.Up(v.Body.Rotation)}";
+            }
             if (done != null && i > 5 && done()) yield break;
         }
     }
@@ -100,6 +110,11 @@ public partial class VehicleGroundTest
     IEnumerable<int> Operable(Vessel v, string mode, string what, Hull w)
     {
         for (int t = 0; t < 600 && !Resting(v); t++) yield return 0;
+        if (v.Controller == null)
+        {
+            Check(false, $"{mode}, {v.Name}, {what}: broken to a wreck ({v.Body.Damage:F0} damage, {v.Structure.Count} blocks left): nothing left to fly");
+            yield break;
+        }
         bool seated = _game.Survivor.Seated == v;
         N.Vector3 from = v.Body.Position;
         float high = v.AboveGround;
@@ -132,9 +147,10 @@ public partial class VehicleGroundTest
         }
         if (!moved)
             GD.Print($"  (stuck: frozen {v.Controller?.Frozen}, settling {v.Controller?.Settling}, asleep {v.Body.Asleep}, tossed {v.Body.Tossed:F1}, kind {v.Body.Kind}, motion {v.Body.Motion}, flight {(v.Flight != null)}, "
-                + $"input {v.Flight?.Input.Move}, can lift {v.Stats?.CanLiftOff}, pilot {v.Roles.Pilot}, message '{v.Controller?.ConsoleMessage}', velocity {v.Body.Velocity}, up {MathX.Up(v.Body.Rotation)}, hover grounded {v.Controller?.Hover?.Grounded} clearance {v.Controller?.Hover?.Clearance:F2} slope refused {v.Controller?.Hover?.SlopeRefused} steepest {v.Controller?.Hover?.SteepestAhead:F0}, on floor {v.Body.OnFloor}, pushes {(v.Binding as HullBinding)?.Pushes} last {(v.Binding as HullBinding)?.LastPush}, seated {_game.Survivor.Seated == v}, sunk now {Sunk(v):F2})");
+                + $"input {v.Flight?.Input.Move}, can lift {v.Stats?.CanLiftOff}, pilot {v.Roles.Pilot}, message '{v.Controller?.ConsoleMessage}', velocity {v.Body.Velocity}, up {MathX.Up(v.Body.Rotation)}, hover grounded {v.Controller?.Hover?.Grounded} clearance {v.Controller?.Hover?.Clearance:F2} slope refused {v.Controller?.Hover?.SlopeRefused} steepest {v.Controller?.Hover?.SteepestAhead:F0}, on floor {v.Body.OnFloor}, pushes {(v.Binding as HullBinding)?.Pushes} last {(v.Binding as HullBinding)?.LastPush}, seated {_game.Survivor.Seated == v}, sunk now {Sunk(v):F2}, damage {v.Body.Damage:F2}, "
+                + $"{v.Spec?.Thrusters.Count} thrusters, {v.Structure.Count} blocks, parked on {v.Body.ParkedOn?.Kind.ToString() ?? "nothing"}, underfoot {v.Body.Underfoot?.Kind.ToString() ?? "nothing"})");
         Check(seated && _game.Survivor.Seated == v && moved && w.Sunk < VesselTolerance,
-            $"{mode}, {v.Name}, {what}: deepest {w.Sunk * 100f:F1} cm into anything solid (tolerance {VesselTolerance * 100f:F0} cm); the pilot still seated (pilot role: {v.Roles.Pilot}), under its own power it {(hover ? $"runs {ran:F1} m {way}" : $"climbs {rose:F1} m")} in two seconds, moving a metre {(took >= 0 ? $"{took / 60f:F2} s" : "never")} after the input");
+            $"{mode}, {v.Name}, {what}: deepest {w.Sunk * 100f:F1} cm into anything solid (tolerance {VesselTolerance * 100f:F0} cm{(w.Sunk >= VesselTolerance ? $"; {w.Deepest}" : "")}); the pilot still seated (pilot role: {v.Roles.Pilot}), under its own power it {(hover ? $"runs {ran:F1} m {way}" : $"climbs {rose:F1} m")} in two seconds, moving a metre {(took >= 0 ? $"{took / 60f:F2} s" : "never")} after the input");
         // Set down again for the next case, on the ground under it (flown down at full tilt over a place it once wrecked itself on a roof).
         if (!hover)
         {
@@ -199,9 +215,10 @@ public partial class VehicleGroundTest
 
             // The owner's case first: flown into the ground under its own thrust by a seated pilot's keys (a small flyer):
             // nose first at a steep angle, belly first, and skidding in shallow, pressing into the ground a second after.
-            if (e != _bigFlyer && v.Structure.Mode == CoreMode.Capital)
+            if (e != _bigFlyer && v.Structure.Mode == CoreMode.Flight)
                 foreach (var (what, pitch, up, keys) in new[] { ("flown nose first into the ground at 60°", -1.05f, 30f, new[] { Key.W, Key.Ctrl }), ("flown belly first into the ground", 0f, 25f, new[] { Key.Ctrl }), ("flown skidding into the ground at a shallow angle", -0.15f, 6f, new[] { Key.W, Key.Ctrl }) })
                 {
+                    if (v.Controller == null) goto wrecked;
                     var hit = Mend(v, e.Plan);
                     N.Vector3 p = v.Body.Position;
                     Put(v, new N.Vector3(p.X, _game.Zone.GroundAt(p.X, p.Z).Y + feet + up, p.Z), N.Quaternion.Normalize(level * MathX.AxisAngle(N.Vector3.UnitX, pitch)), N.Vector3.Zero);
@@ -220,18 +237,21 @@ public partial class VehicleGroundTest
                 }
 
             // Dropped from a height, engines idle.
+            if (v.Controller == null) goto wrecked;
             var w = Mend(v, e.Plan);
             Put(v, v.Body.Position + N.Vector3.UnitY * 20f, level, N.Vector3.Zero);
             foreach (int x in ObserveHull(v, w, 600, () => Resting(v))) yield return x;
             foreach (int x in Operable(v, mode, "dropped from 20 m", w)) yield return x;
 
             // Into the ground at speed.
+            if (v.Controller == null) goto wrecked;
             w = Mend(v, e.Plan);
             Put(v, v.Body.Position + N.Vector3.UnitY * 8f, level, f * 25f - N.Vector3.UnitY * 18f);
             foreach (int x in ObserveHull(v, w, 600, () => Resting(v))) yield return x;
             foreach (int x in Operable(v, mode, "a crash into the ground at 31 m/s", w)) yield return x;
 
             // A steep hit: nose down at 50°.
+            if (v.Controller == null) goto wrecked;
             w = Mend(v, e.Plan);
             N.Quaternion nose = N.Quaternion.Normalize(level * MathX.AxisAngle(N.Vector3.UnitX, -0.87f));
             Put(v, v.Body.Position + N.Vector3.UnitY * 10f, nose, f * 10f - N.Vector3.UnitY * 20f);
@@ -239,6 +259,7 @@ public partial class VehicleGroundTest
             foreach (int x in Operable(v, mode, "a steep hit, nose down at 50°", w)) yield return x;
 
             // Placed partly in the ground: set down landed with its keel a metre under.
+            if (v.Controller == null) goto wrecked;
             w = Mend(v, e.Plan);
             N.Vector3 at = v.Body.Position;
             float ground = _game.Zone.GroundAt(at.X, at.Z).Y;
@@ -248,7 +269,7 @@ public partial class VehicleGroundTest
             foreach (int x in Operable(v, mode, "placed with its keel 1 m in the ground", w)) yield return x;
 
             // Against a place's blocks (the small ones: a large hull is bigger than any roof): dropped onto them, and set down partly in them.
-            if (_placeTop is Vector3 top && e != _bigFlyer)
+            if (_placeTop is Vector3 top && e != _bigFlyer && v.Controller != null)
             {
                 w = Mend(v, e.Plan);
                 Put(v, top.ToNumerics() + N.Vector3.UnitY * (feet + 3f), level, N.Vector3.Zero);
@@ -260,6 +281,8 @@ public partial class VehicleGroundTest
                 foreach (int x in ObserveHull(v, w, 30)) yield return x;
                 foreach (int x in Operable(v, mode, "placed 0.4 m into a place's blocks", w)) yield return x;
             }
+            // A crash that broke it to a wreck (no power left to fly) ends its cases: Operable said so.
+            wrecked:
 
             _game.Survivor.StandUp();
             foreach (int x in _drive.Wait(5)) yield return x;

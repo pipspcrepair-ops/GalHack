@@ -160,24 +160,25 @@ public partial class BlueprintTest : Node
             $"{name}: pushes {h.Accel(Direction.Forward):F1}, brakes {h.Accel(Direction.Back):F1}, slides {side:F1} m/s², turns {h.TurnRate:F0}°/s");
         if (file.EndsWith("starter.gbp")) Check(ore <= StarterOre, $"{name}: the cheapest flyer costs {ore:0} ore (at most {StarterOre})");
 
-        // Every exhaust and plate face clear; the lift balanced round the centre of mass.
+        // Every exhaust, plate and pad face clear (a pad's foot reaches down to attach); the lift balanced round the centre of mass.
         var blocked = new List<string>();
         N.Vector3 liftAt = N.Vector3.Zero;
         float liftSum = 0f;
         foreach (var (p, b) in s.Blocks())
         {
             BlockType t = s.TypeOf(b);
-            if (!t.IsThruster && t.Function != "hover") continue;
+            if (!t.IsThruster && t.Function != "hover" && t.Function != "gear") continue;
             Dir away = Orientations.ToWorld(b.Rot, t.IsThruster ? Dir.PosZ : Dir.NegY);
-            Int3 far = s.CellsOf(p, b).OrderByDescending(c => Int3.Dot(c, away.Vec())).First();
-            if (s.Has(far + away.Vec())) blocked.Add($"{t.Id} at {p}");
+            var cells = s.CellsOf(p, b).ToList();
+            int face = cells.Max(c => Int3.Dot(c, away.Vec()));
+            if (cells.Any(c => Int3.Dot(c, away.Vec()) == face && s.Has(c + away.Vec()))) blocked.Add($"{t.Id} at {p}");
             bool lifts = hover ? t.Function == "hover" : t.IsThruster && away == Dir.NegY;
             if (!lifts) continue;
             float f = hover ? 1f : t.Thrust;
             liftAt += s.CentreOf(p, b) * f;
             liftSum += f;
         }
-        Check(blocked.Count == 0, $"{name}: every exhaust{(hover ? " and plate" : "")} faces open air{(blocked.Count > 0 ? ": blocked " + string.Join(", ", blocked.Take(4)) : "")}");
+        Check(blocked.Count == 0, $"{name}: every exhaust{(hover ? " and plate" : " and pad")} faces open air{(blocked.Count > 0 ? ": blocked " + string.Join(", ", blocked.Take(4)) : "")}");
         N.Vector3 com = StructureBridge.Mass(s).CenterOfMass / s.Grid.CellSize;
         liftAt /= MathF.Max(liftSum, 1e-3f);
         float off = new N.Vector2(com.X - liftAt.X, com.Z - liftAt.Z).Length() * s.Grid.CellSize;
@@ -194,6 +195,7 @@ public partial class BlueprintTest : Node
     {
         string name = plan.Name;
         Vessel v = null;
+        string why = null;
         var (lo, hi) = plan.Bounds();
         float radius = 0.5f * new Vector2(hi.X - lo.X + 1, hi.Z - lo.Z + 1).Length();
         var play = new Playthrough(_game);
@@ -209,9 +211,16 @@ public partial class BlueprintTest : Node
             WholePlacement job = _game.Builder.PlaceWhole(plan);
             for (int t = 0; t < 600 && !job.Done; t++) yield return 0;
             v = job.Vessel;
+            why = job.Why ?? (job.Done ? why : "still placing after 10 s");
             for (int t = 0; t < 300 && v != null && (v.PendingShapes > 0 || v.View.Waiting > 0); t++) yield return 0;
         }
-        if (!Check(v != null, $"{name}: set down whole by Creative's PLACE")) yield break;
+        if (!Check(v != null, $"{name}: set down whole by Creative's PLACE{(v == null ? $" (five spots refused, the last: {why})" : "")}")) yield break;
+        // PLACE fells what stands in its box and its head room; a crown higher over the footprint stops a climb and
+        // catches a hull coming down (vessels collide with flora), and the flight leg runs off to one side. Fly from and
+        // land on clear ground: the crowns left over it are counted first, to show what was there.
+        int crowns = CrownsOver(v);
+        int cleared = Playthrough.Clearing(_game.Zone, v.Body.Position.ToGodot(), radius + 20f);
+        GD.Print($"    ({name}: {crowns} crown(s) over it above PLACE's head room; {cleared} trees and rocks cleared round it)");
         foreach (int x in _drive.Wait(30)) yield return x;
 
         // Seated: drawn, the camera at the chair's eye.
@@ -223,7 +232,7 @@ public partial class BlueprintTest : Node
         Check(sat && _game.Figure.Visible && cam.GetCullMaskValue(CharacterModel.BodyLayer) && eyeOff < 0.03f,
             $"{name}: seated in its chair, the figure drawn, the camera at the chair's eye ({eyeOff * 100f:F1} cm off)");
 
-        if (plan.Mode == CoreMode.Capital) foreach (int x in Fly(v)) yield return x;
+        if (plan.Mode == CoreMode.Flight) foreach (int x in Fly(v)) yield return x;
         else if (plan.Mode == CoreMode.Hover) foreach (int x in Drive(v)) yield return x;
 
         _game.Survivor.StandUp();
@@ -236,10 +245,19 @@ public partial class BlueprintTest : Node
         foreach (int x in _drive.Wait(10)) yield return x;
     }
 
-    /// <summary>Take off, hover hands off, fly forward, let go and stop, land: the game's own keys.</summary>
     /// <summary>The hull's height over the terrain under it, trees and all else left out (the probe under a vessel meets a canopy).</summary>
     float Height(Vessel v) => v.Body.Position.Y - _game.Zone.GroundAt(v.Body.Position.X, v.Body.Position.Z).Y;
 
+    /// <summary>Tree crowns still standing over a structure's footprint, higher than its top.</summary>
+    int CrownsOver(Vessel v)
+    {
+        var (lo, hi) = v.Structure.Bounds();
+        float reach = 0.5f * v.Structure.Grid.CellSize * MathF.Max(hi.X - lo.X + 1, hi.Z - lo.Z + 1);
+        float top = v.Body.Position.Y + v.Body.Shape.Height - v.Body.Shape.FeetBelowOrigin;
+        return _game.Zone.Streamer.SolidsNear(v.Body.Position.ToGodot(), reach, canopies: true).Count(s => s.solid.IsCanopy && s.solid.Center.Y + s.offset.Y > top);
+    }
+
+    /// <summary>Take off, hover hands off, fly forward, let go and stop, land: the game's own keys.</summary>
     IEnumerable<int> Fly(Vessel v)
     {
         string name = v.Structure.Name;

@@ -11,7 +11,7 @@ namespace ShipHandling.Handling;
 public sealed class Tunables
 {
     public PlanetData Planet { get; set; } = new();
-    public Dictionary<string, ClassData> Classes { get; set; } = new();
+    public SpeedsData Speeds { get; set; } = new();
     public TurningData Turning { get; set; } = new();
     public AssistData Assist { get; set; } = new();
     public BoostData Boost { get; set; } = new();
@@ -31,12 +31,8 @@ public sealed class Tunables
     public static Tunables FromJson(string json) =>
         JsonSerializer.Deserialize<Tunables>(json, Options) ?? throw new InvalidOperationException("empty tunables file");
 
-    public ClassData Class(VesselClass vesselClass) => Classes[vesselClass switch
-    {
-        VesselClass.Hover => "hover",
-        VesselClass.Small => "small",
-        _ => "capital",
-    }];
+    /// <summary>The mass band a structure of this many tonnes is in: the first it is below, else the last.</summary>
+    public BandData Band(float tonnes) => Speeds.Bands.Find(b => b.Below > 0f && tonnes < b.Below) ?? Speeds.Bands[^1];
 
     public sealed class PlanetData
     {
@@ -45,11 +41,23 @@ public sealed class Tunables
         public float AtmosphereCeiling { get; set; } = 600f;
     }
 
-    public sealed class ClassData
+    public sealed class SpeedsData
     {
-        public string Label { get; set; } = "";
+        public SpeedData Hover { get; set; } = new();
+        public List<BandData> Bands { get; set; } = new();
+    }
+
+    public class SpeedData
+    {
         public float TopSpeedAir { get; set; }
         public float TopSpeedSpace { get; set; }
+    }
+
+    /// <summary>One mass band, tonnes: its top speeds and its turn cap (°/s).</summary>
+    public sealed class BandData : SpeedData
+    {
+        public float Below { get; set; }
+        public float MaxTurn { get; set; }
     }
 
     public sealed class TurningData
