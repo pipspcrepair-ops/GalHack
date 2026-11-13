@@ -239,7 +239,7 @@ public sealed class StructureSection : IMenuSection
     /// <summary>The switch, in its stripes: one button a mode, the one it is in lit, and what each mode still lacks. Returns the y below it.</summary>
     float ModeSwitch(Gui g, Vessel v, Vector2 at, float width)
     {
-        const float Band = 14, Rows = 140;
+        const float Band = 14, Rows = 122;
         Structure s = v.Structure;
         var panel = new Rect2(at, new Vector2(width, Rows));
         g.Stripes(panel, Band, C.Warn);
@@ -250,16 +250,16 @@ public sealed class StructureSection : IMenuSection
         for (int i = 0; i < modes.Length; i++)
         {
             CoreMode m = modes[i];
-            var r = new Rect2(inner.Position.X + 6 + i * (each + 6), inner.Position.Y + 6, each, 36);
+            var r = new Rect2(inner.Position.X + 6 + i * (each + 6), inner.Position.Y + 6, each, 32);
             if (g.Button($"core:mode:{m.ToString().ToLowerInvariant()}", r, ModeFit.Name(m), C.Warn, lit: s.Mode == m, size: 16) && s.Mode != m) Switch(v, m);
         }
-        float y = inner.Position.Y + 48;
+        float y = inner.Position.Y + 44;
         foreach (CoreMode m in modes)
         {
             string warning = ModeFit.Warning(m, v.MissingFor(m));
             string line = warning ?? $"{ModeFit.Name(m)}: READY";
             g.TextIn(HudLayout.Fit(UiTheme.Label, 12, line, inner.Size.X - 16), new Rect2(inner.Position.X + 8, y, inner.Size.X - 16, 16), warning == null ? C.Good : C.Warn, 12);
-            y += 18;
+            y += 16;
         }
         return panel.End.Y + 8;
     }

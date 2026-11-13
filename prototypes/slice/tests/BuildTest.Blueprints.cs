@@ -312,7 +312,7 @@ public partial class BuildTest
             _game.Controls.Hold(Key.S, false);
             foreach (int x in _drive.Wait(30)) yield return x;
             float run = new Vector2(to.X - from.X, to.Z - from.Z).Length();
-            Check(v.Controller.Hover != null && run > 4f && v.AboveGround < 8f, $"{e.Name}: Hover Mode runs along the ground on its plates ({run:F0} m, {v.AboveGround:F1} m up)");
+            Check(v.Controller.Hover != null && run > 4f && v.AboveGround < 8f, $"{e.Name}: Hover Mode runs along the ground on its plates ({run:F0} m, {v.AboveGround:F1} m up; carries {v.Body.Carried:F0} kg, parked on {v.Body.ParkedOn?.Label ?? "nothing"}, frozen {v.Controller.Frozen}, top {v.Stats?.TopSpeed:F0} m/s, {v.Stats?.Accel(ShipHandling.Handling.Direction.Forward):F1} m/s² ahead, grounded {v.Controller.Hover?.Grounded}, slope refused {v.Controller.Hover?.SlopeRefused})");
         }
         else
         {
