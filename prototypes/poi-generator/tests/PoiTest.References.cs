@@ -226,7 +226,8 @@ public partial class PoiTest
             if (!refs.Clear.ContainsKey(id)) { ordinary += list.Count; ordinaryIn += inside; }
             else GD.Print($"    clear height {id}: {string.Join(" ", list.GroupBy(h => h).OrderBy(g => g.Key).Select(g => $"{g.Key} m x{g.Count()}"))} against {lo:0}-{hi:0} m");
         }
-        Check(ordinaryIn * 10 >= ordinary * 9, $"ordinary rooms are 3 to 4 m clear: {ordinaryIn} of {ordinary}");
+        Check(ordinaryIn * 10 >= ordinary * 9, $"ordinary rooms are 3 to 4 m clear: {ordinaryIn} of {ordinary}" +
+            $" (outside: {string.Join(", ", clears.Where(k => !refs.Clear.ContainsKey(k.Key)).Select(k => (k.Key, Out: k.Value.Count(h => h < 3 || h > 4))).Where(k => k.Out > 0).OrderByDescending(k => k.Out).Take(8).Select(k => $"{k.Key} {k.Out} ({string.Join(" ", clears[k.Key].Where(h => h < 3 || h > 4).GroupBy(h => h).OrderBy(g => g.Key).Select(g => $"{g.Key} m x{g.Count()}"))})"))})");
 
         // Corridors.
         bool Wide((string Family, float Width) c)

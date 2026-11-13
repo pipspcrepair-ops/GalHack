@@ -635,7 +635,7 @@ internal sealed partial class Depths
         for (int m = 0; m + 1 < cross.Count; m++)
             for (int q = 0; q + 1 < nAlong; q++)
             {
-                var s = NewSpace("room", "room", ModuleKind.Room, lv.J, Math.Min(lv.H, RoomH + (R.Chance(0.25f) ? 1 : 0)), lv);
+                var s = NewSpace("room", "room", ModuleKind.Room, lv.J, Math.Min(lv.H, RoomH), lv);
                 for (int t = m * spacing + wid + 1; t <= (m + 1) * spacing - 2; t++)
                     for (int x = x0 + q * spacing + wid + 1; x <= x0 + (q + 1) * spacing - 2; x++) { var (ci, ck) = P(t, x); s.Column(ci, ck); }
                 if (s.Columns < 9 || !Take(s, lv)) continue;
