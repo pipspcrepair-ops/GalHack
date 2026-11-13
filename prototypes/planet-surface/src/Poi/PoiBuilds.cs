@@ -29,6 +29,9 @@ public sealed class PoiBuilds : IDisposable
     /// <summary>How far out from the focus places are built before anyone asks, m (the far view's reach).</summary>
     public float Range = 3000f;
 
+    /// <summary>While this says so, nothing is built unasked: a game standing a place up (a frame at a time) asks for quiet, as building's allocations would pause it.</summary>
+    public Func<bool> Hold;
+
     /// <summary>Places built here so far, and the time from the start until every place within range of the focus first stood built, ms (-1 until then).</summary>
     public int Built;
     public double AllInRangeMs = -1;
@@ -70,6 +73,11 @@ public sealed class PoiBuilds : IDisposable
         {
             PoiSite next = null;
             while (next == null && _asked.TryDequeue(out PoiSite a)) if (a.Built == null && !_failed.Contains(a)) next = a;
+            if (next == null && Hold?.Invoke() == true)
+            {
+                _wake.WaitOne(50);
+                continue;
+            }
             if (next == null)
             {
                 double fx, fz;

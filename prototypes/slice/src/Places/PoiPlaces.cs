@@ -202,6 +202,8 @@ public partial class PoiPlaces : Node3D
             if (p.Memory.Modified) { p.SetDormant(true); continue; }
             Drop(p);
         }
+        // While a place stands up a frame at a time, the place builder keeps quiet (its allocations would pause the frames).
+        if (Zone.Pois.Builds is { Hold: null } builds) builds.Hold = () => _job != null;
         if (_job != null)
         {
             // The worker gets on with the place after this one, so it starts with its slow half done.
