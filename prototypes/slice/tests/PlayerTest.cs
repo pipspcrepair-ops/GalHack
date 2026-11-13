@@ -711,7 +711,7 @@ public partial class PlayerTest : Node
         // Built, it flies: the CORE tab's switch puts it in Flight Mode, on its legs.
         foreach (int x in _play.OpenMenu(MenuTab.Core)) yield return x;
         foreach (int x in Pick(v)) yield return x;
-        foreach (int x in _drive.ClickWidget("core:mode:capital")) yield return x;
+        foreach (int x in _drive.ClickWidget("core:mode:flight")) yield return x;
         foreach (int x in _play.CloseMenu()) yield return x;
         foreach (int x in _drive.Wait(30)) yield return x;
         Check(v.Structure.Mode == GalHack.Structures.CoreMode.Flight && !v.IsBase && v.Flight != null, "the CORE tab's switch puts it in Flight Mode: it is a craft on the flight model");
