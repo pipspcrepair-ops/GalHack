@@ -1342,7 +1342,7 @@ public static class Sites
                 for (int dx = -r - 1; dx <= r + 1; dx++)
                 {
                     double d = Math.Sqrt(dx * dx + dz * dz);
-                    if (d > Across(r, y) - Shell - 1 && (Breached(dx, dz, y) || dx < 0 && Math.Abs(dz) <= 2 && y < 4)) x.C.Remove(new Int3(p.X + dx, y, p.Z + dz));
+                    if (d > Across(r - Shell, y) - 1 && (Breached(dx, dz, y) || dx < 0 && Math.Abs(dz) <= 2 && y < 4)) x.C.Remove(new Int3(p.X + dx, y, p.Z + dz));
                 }
         // A floor of rubble under each wedge that fell in.
         foreach (float w in wedges)

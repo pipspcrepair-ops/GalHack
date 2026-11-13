@@ -285,12 +285,13 @@ public static class Round
         foreach (RoundBody b in bodies)
             for (int y = b.Y0; y <= b.Y1; y++)
             {
-                double ro = b.Outer[y - b.Y0];
+                double ro = b.Outer[y - b.Y0], ri = b.Inner[y - b.Y0];
                 for (int z = (int)Math.Floor(b.Z - ro) - 1; z <= (int)Math.Ceiling(b.Z + ro) + 1; z++)
                     for (int x = (int)Math.Floor(b.X - ro) - 1; x <= (int)Math.Ceiling(b.X + ro) + 1; x++)
                     {
                         double d = Math.Sqrt((x + 0.5 - b.X) * (x + 0.5 - b.X) + (z + 0.5 - b.Z) * (z + 0.5 - b.Z));
-                        if (d > ro - 2 && d <= ro + 0.75) rim.Add(new Int3(x, y, z)); // (no further out than a cell the outline crosses: a neighbour's are its own)
+                        // (No further out than a cell the outline crosses, nor further in on a hollow one: a neighbour's are its own.)
+                        if (d > ro - 2 && d <= ro + 0.75 || ri > 0 && d >= ri - 0.75 && d < ri + 2) rim.Add(new Int3(x, y, z));
                     }
             }
         return rim;
