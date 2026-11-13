@@ -58,6 +58,7 @@ public sealed class ZoneLedger
     {
         var s = new RecordSchemas();
         foreach (string type in Types) s.Register(type, 1, Count);
+        s.Register("castaway", 1, Count); // the old name of "sleeper", still read from saves written before the rename
         return s;
     }
 
