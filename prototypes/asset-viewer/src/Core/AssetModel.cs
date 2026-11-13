@@ -92,6 +92,15 @@ public partial class AssetInstance : Node3D
     /// <summary>Starts an animation by name, from the beginning. Called when the user picks one in the list.</summary>
     public virtual void PlayAnimation(string name) => CurrentAnimation = name;
 
+    /// <summary>
+    /// Seconds of one cycle of the playing animation, when the stage knows it (a script with a fixed period or length).
+    /// 0: it runs on the rig's own rhythm (a gait, a wingbeat) and the filmstrip tool measures it from the pose.
+    /// </summary>
+    public virtual float CycleSeconds => 0f;
+
+    /// <summary>True (default): the animation repeats, so a filmstrip spans one period. False: a one-shot, spanned whole, first frame to last.</summary>
+    public virtual bool CycleLoops => true;
+
     /// <summary>Scales the speed of whatever is moving (the viewer's speed slider, 0 pauses). Default does nothing.</summary>
     public virtual void SetSpeed(float scale) { }
 

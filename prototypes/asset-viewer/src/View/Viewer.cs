@@ -108,7 +108,9 @@ public partial class Viewer : Node
         if (args.Contains("--free")) SetFreeCamera(true);
         if (args.Contains("--hide-panels")) SetPanelsVisible(false);
         string shot = args.FirstOrDefault(a => a.StartsWith("--shot=", StringComparison.Ordinal));
-        if (shot != null) { _shotPath = shot["--shot=".Length..]; _shotFrames = 0; }
+        SheetArgs sheet = SheetArgs.Parse(args);
+        if (sheet != null) StartSheetMode(sheet);
+        else if (shot != null) { _shotPath = shot["--shot=".Length..]; _shotFrames = 0; }
         if (Registry.Failures.Count > 0) Toast($"{Registry.Failures.Count} providers failed: {Registry.Failures[0].Provider}", 6f);
     }
 
@@ -221,13 +223,21 @@ public partial class Viewer : Node
         NoteContextChanged();
     }
 
+    /// <summary>A fresh seed and a value for each of the asset's rollable options.</summary>
+    public static (ulong Seed, Dictionary<string, string> Options) Roll(AssetEntry e)
+    {
+        var rolled = new Dictionary<string, string>();
+        foreach (AssetOption o in e.Options.Where(o => o.Rollable && o.Values.Length > 1)) rolled[o.Name] = o.Values[Random.Shared.Next(o.Values.Length)];
+        return ((ulong)Random.Shared.NextInt64(1, 1000000000), rolled);
+    }
+
     /// <summary>Rolls a new seed (and any rollable options) and rebuilds.</summary>
     public void Randomise()
     {
         if (Entry == null || !Entry.Randomisable) { Toast("Not randomisable", 1.5f); return; }
-        Seed = (ulong)Random.Shared.NextInt64(1, 1000000000);
-        foreach (AssetOption o in Entry.Options.Where(o => o.Rollable && o.Values.Length > 1))
-            Options[o.Name] = o.Values[Random.Shared.Next(o.Values.Length)];
+        var (seed, rolled) = Roll(Entry);
+        Seed = seed;
+        foreach (var kv in rolled) Options[kv.Key] = kv.Value;
         Rebuild(false);
         NoteContextChanged();
     }

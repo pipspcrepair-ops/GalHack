@@ -14,6 +14,7 @@ namespace AssetViewer.Providers;
 /// </summary>
 sealed partial class PersonStage : AssetInstance, IStageProbe
 {
+    readonly Node3D _folk = new() { Name = "People" };
     public const string Idle = "Idle", Walk = "Walk", Run = "Run", CrouchIdle = "Crouch", CrouchWalk = "Walk, crouched", Look = "Look about", Work = "Work, bent over a task",
         Sit = "Sit", Sleep = "Lie down to sleep", Downed = "Hurt and downed", Startled = "Hurt, startled", Aim = "Raise and aim", Reach = "Reach out", Retch = "Retch",
         Stagger = "Stagger";
@@ -52,11 +53,12 @@ sealed partial class PersonStage : AssetInstance, IStageProbe
         _rigs = people.Select(s => new HumanRig(s)).ToArray();
         _views = new PersonView[people.Length];
         _g = new Gesture[people.Length];
+        AddChild(_folk);
         float tallest = 0f;
         for (int i = 0; i < people.Length; i++)
         {
             _views[i] = new PersonView { Name = $"Person{i}" };
-            AddChild(_views[i]);
+            _folk.AddChild(_views[i]);
             _views[i].Build(_rigs[i]);
             tallest = MathF.Max(tallest, people[i].Figure.Top);
         }
@@ -107,6 +109,8 @@ sealed partial class PersonStage : AssetInstance, IStageProbe
     public override IReadOnlyList<string> Animations => _anims;
     public override Aabb? FrameBounds => _bounds;
     public override void SetSpeed(float scale) => _speed = scale;
+    public override float CycleSeconds => _cycle;
+    public override bool CycleLoops => _loops;
     public override void PlayAnimation(string name) { base.PlayAnimation(name); Begin(name); if (FastForward.Seconds > 0f) Advance(FastForward.Seconds); }
 
     public override IEnumerable<(string Label, string Value)> Facts()
@@ -152,7 +156,8 @@ sealed partial class PersonStage : AssetInstance, IStageProbe
         Present();
     }
 
-    float _loop;
+    float _loop, _cycle;
+    bool _loops = true;
 
     void Tick(float dt)
     {
@@ -230,6 +235,8 @@ sealed partial class PersonStage : AssetInstance, IStageProbe
         _act = BodyAct.None;
         _hurt = 0f;
         _style = 0;
+        _cycle = 0f;
+        _loops = true;
         _pose = (_, _) => { };
         float walk = 1.4f, run = 4.2f;
         switch (anim)
@@ -239,12 +246,13 @@ sealed partial class PersonStage : AssetInstance, IStageProbe
             case Run: _pose = (_, _) => { _speedNow = run; _speedV = run; }; break;
             case CrouchIdle: _crouch = 1f; break;
             case CrouchWalk: _pose = (_, _) => { _speedNow = 0.8f; _speedV = 0.8f; _crouch = 1f; }; break;
-            case Look: _pose = (_, _) => _look = MathF.Sin(_t * 0.9f) * 1.0f; break;
-            case Work: _pose = (_, _) => _work = Math.Clamp(_t / 0.6f, 0f, 1f); break;
-            case Sit: _pose = (_, _) => _sit = Math.Clamp(_t / 0.8f, 0f, 1f); break;
-            case Sleep: _loop = 8f; _pose = (_, _) => _down = Math.Clamp((_t - 0.3f) / 1.6f, 0f, 1f); break;
+            case Look: _cycle = MathF.Tau / 0.9f; _pose = (_, _) => _look = MathF.Sin(_t * 0.9f) * 1.0f; break;
+            case Work: _cycle = 3f; _loops = false; _pose = (_, _) => _work = Math.Clamp(_t / 0.6f, 0f, 1f); break;
+            case Sit: _cycle = 3f; _loops = false; _pose = (_, _) => _sit = Math.Clamp(_t / 0.8f, 0f, 1f); break;
+            case Sleep: _loop = _cycle = 8f; _loops = false; _pose = (_, _) => _down = Math.Clamp((_t - 0.3f) / 1.6f, 0f, 1f); break;
             case Downed:
-                _loop = 7f;
+                _loop = _cycle = 7f;
+                _loops = false;
                 _pose = (_, _) =>
                 {
                     _hurt = _t > 0.4f && _t < 1.2f ? 1f - (_t - 0.4f) / 0.8f : 0f;
@@ -254,6 +262,8 @@ sealed partial class PersonStage : AssetInstance, IStageProbe
                 };
                 break;
             case Startled:
+                _cycle = 4f;
+                _loops = false;
                 _pose = (_, _) =>
                 {
                     float k = Mathf.PosMod(_t, 4f);
@@ -262,9 +272,9 @@ sealed partial class PersonStage : AssetInstance, IStageProbe
                     _actAmount = k < 2.4f ? Math.Clamp(k / 0.2f, 0f, 1f) * Math.Clamp((2.8f - k) / 0.4f, 0f, 1f) : 0f;
                 };
                 break;
-            case Aim: _pose = (_, _) => { float k = Mathf.PosMod(_t, 8f); _aim = k < 0.8f ? k / 0.8f : k < 6f ? 1f : k < 6.8f ? (6.8f - k) / 0.8f : 0f; }; break;
-            case Reach: _pose = (_, _) => _reachV = MathF.Sin(_t * 1.1f) > -0.1f ? Math.Clamp(Mathf.PosMod(_t, 5f) / 0.6f, 0f, 1f) : 0f; break;
-            case Retch: _pose = (_, _) => _retch = MathF.Pow(MathF.Max(0f, MathF.Sin(_t * 1.6f)), 0.6f); break;
+            case Aim: _cycle = 8f; _loops = false; _pose = (_, _) => { float k = Mathf.PosMod(_t, 8f); _aim = k < 0.8f ? k / 0.8f : k < 6f ? 1f : k < 6.8f ? (6.8f - k) / 0.8f : 0f; }; break;
+            case Reach: _cycle = 10f; _pose = (_, _) => _reachV = MathF.Sin(_t * 1.1f) > -0.1f ? Math.Clamp(Mathf.PosMod(_t, 5f) / 0.6f, 0f, 1f) : 0f; break;
+            case Retch: _cycle = MathF.Tau / 1.6f; _pose = (_, _) => _retch = MathF.Pow(MathF.Max(0f, MathF.Sin(_t * 1.6f)), 0.6f); break;
             case Stagger: _pose = (_, _) => { _speedNow = 0.7f; _speedV = 0.7f; }; break;
             default:
                 foreach (BodyAct a in Enum.GetValues<BodyAct>())
@@ -282,6 +292,8 @@ sealed partial class PersonStage : AssetInstance, IStageProbe
                     BodyAct act = a;
                     int st = style;
                     _loop = 0f;
+                    _cycle = 4f;
+                    _loops = false;
                     _pose = (_, _) =>
                     {
                         float k = Mathf.PosMod(_t, 4f);
@@ -297,6 +309,15 @@ sealed partial class PersonStage : AssetInstance, IStageProbe
     }
 
     // ---- Probes -------------------------------------------------------------------------------------------
+
+    public Node3D Subject => _folk;
+    public Vector3 Anchor => Vector3.Zero;
+    public Vector3? GroundShift => new Vector3(0f, 0f, _walked);
+
+    public void Feet(List<FootMark> into)
+    {
+        foreach (HumanRig rig in _rigs) FootMarks.From(rig, Vector3.Zero, into);
+    }
 
     public void Advance(float seconds)
     {

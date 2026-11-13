@@ -48,6 +48,25 @@ sealed partial class CreatureStage : AssetInstance
     readonly string[] _extra;
 
     public override bool Spins => true;
+    public override float CycleSeconds => _cycleSeconds;
+    public override bool CycleLoops => _loops;
+    float _cycleSeconds;
+    bool _loops = true;
+
+    /// <summary>
+    /// The length of a scripted animation whose period is written in its script, and whether it repeats (true) or is
+    /// played once to a held end (false). 0: it runs on the rig's own rhythm (a gait, a wingbeat, an attack), measured from the pose.
+    /// </summary>
+    public static float ScriptedCycle(string anim, out bool loops)
+    {
+        loops = anim is not (Death or Thrown or Hurt);
+        return anim switch
+        {
+            Death => 9f, Thrown => 7f, Hurt => 2.2f, Warn => 5f, Tell => 6f, Hide => 9f, Root => 8f, Feed => 5f,
+            Turn => MathF.Tau / 0.6f, Alert => MathF.Tau / 0.5f, Stranger => 36f,
+            _ => 0f,
+        };
+    }
 
     public CreatureStage(Species species, bool room, string[] extraFacts = null)
     {
@@ -353,6 +372,7 @@ sealed partial class CreatureStage : AssetInstance
         _markerOn = false;
         _cycle = again ? _cycle + 1 : 0;
         _lastHurt = 0f;
+        _cycleSeconds = ScriptedCycle(anim, out _loops);
         Respawn();
         _script = _ => { };
         float walk = MathF.Max(0.3f, _s.Stats.WalkSpeed), run = MathF.Max(walk, _s.Stats.RunSpeed);
@@ -666,6 +686,11 @@ sealed partial class CreatureStage : IStageProbe
 {
     public Creature Creature => _c;
     public Species Species => _s;
+    public Node3D Subject => _view;
+    public Vector3 Anchor => _c.Position + _world.Position;
+    public Vector3? GroundShift => _world.Position;
+
+    public void Feet(List<FootMark> into) => FootMarks.From(_c.Rig, _world.Position, into);
 
     public void Advance(float seconds)
     {

@@ -43,6 +43,8 @@ sealed partial class CastawayStage : AssetInstance, IStageProbe
     public override IReadOnlyList<string> Animations => _anims;
     public override Aabb? FrameBounds => new Aabb(new Vector3(-1.1f, 0f, -1.2f), new Vector3(2.2f, 2.0f, 2.4f));
     public override void SetSpeed(float scale) => _speed = scale;
+    public override float CycleSeconds => _gesture != null ? CharacterModel.GestureSeconds + 1.2f : 0f;
+    public override bool CycleLoops => _gesture == null;
     public override void PlayAnimation(string name) { base.PlayAnimation(name); Begin(name); if (FastForward.Seconds > 0f) Advance(FastForward.Seconds); }
 
     public override IEnumerable<(string Label, string Value)> Facts()
@@ -116,6 +118,17 @@ sealed partial class CastawayStage : AssetInstance, IStageProbe
             if (MathF.Abs(s.X) < 0.8f && MathF.Abs(z) < 1f) k = 0.001f;
             mm.SetInstanceTransform(i, new Transform3D(Basis.Identity.Scaled(new Vector3(k * 0.5f, k * 0.2f, k * 0.6f)), new Vector3(s.X, 0.01f, z)));
         }
+    }
+
+    public Node3D Subject => _figure;
+    public Vector3 Anchor => Vector3.Zero;
+    public Vector3? GroundShift => new Vector3(0f, 0f, _walked);
+
+    /// <summary>The suit's feet are not tracked by the rig: one is on the ground when it is down at the ground.</summary>
+    public void Feet(List<FootMark> into)
+    {
+        (Vector3 l, Vector3 r) = CharacterModel.Feet(_figure);
+        foreach (Vector3 p in new[] { l, r }) into.Add(new FootMark(p, p, _m.Grounded && p.Y < 0.04f));
     }
 
     public void Advance(float seconds)

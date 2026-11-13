@@ -80,6 +80,8 @@ sealed partial class SpaceStage : AssetInstance, IStageProbe
     public override IReadOnlyList<string> Animations => _anims;
     public override Aabb? FrameBounds => _bounds;
     public override void SetSpeed(float scale) => _speed = scale;
+    public override float CycleSeconds => _anim == CreatureStage.Stranger ? 40f : CreatureStage.ScriptedCycle(_anim, out _);
+    public override bool CycleLoops { get { CreatureStage.ScriptedCycle(_anim, out bool loops); return loops; } }
     public override void PlayAnimation(string name) { base.PlayAnimation(name); Begin(name); if (FastForward.Seconds > 0f) Advance(FastForward.Seconds); }
 
     public override IEnumerable<(string Label, string Value)> Facts()
@@ -337,6 +339,11 @@ sealed partial class SpaceStage : AssetInstance, IStageProbe
     // ---- Probes ------------------------------------------------------------------------------------------
 
     public Creature Creature => _c;
+    public Node3D Subject => _view;
+    public Vector3 Anchor => _c.Position + _world.Position;
+    public Vector3? GroundShift => null;
+
+    public void Feet(List<FootMark> into) => FootMarks.From(_c.Rig, _world.Position, into);
 
     public void Advance(float seconds)
     {
