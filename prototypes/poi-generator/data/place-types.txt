@@ -64,8 +64,8 @@ type airstrip
 # Spaceports by starport class, from the same planner: the game's own ships land and lift off vertically, so a port
 # is a row of pads, each in its blast apron with a blast clearance to the next, a taxiway along them with a link out
 # from each, an apron, the halls the ships go into through doors they fit, a terminal, a control tower that sees the
-# pads, the fuel store landside and the oxidiser beyond the pads (as LC-39A keeps them, either side of the pad), both
-# well off the terminal, a car park, an access road and a perimeter.
+# pads, the fuel and oxidiser stores out beyond the pads, well apart along them (as LC-39A keeps its two at opposite
+# corners of the pad) and far off the terminal, a car park, an access road and a perimeter.
 # No strip: a type names one only where its craft need it. The world's class picks the biggest it may be, its size the
 # biggest that fits (5% of its area): the smallest worlds get a landing field, never a shrunken starport.
 # Figures: a launch complex is 1 to 3 km across (Kennedy LC-39A's pad perimeter about 1 km, the launch control centre
@@ -86,7 +86,7 @@ type starport
   part terminal building terminal len 160..240 depth 40..60 h 14..20 concourse 6 beside apron away taxiway faces apron
   part tower    building control_tower len 14..18 depth 14..18 h 40..60 cab 10..14 beside apron away taxiway near terminal 40..300 sees pads
   part hangar   building hangar count 3..5 len 140..200 depth 120..160 h 50..70 beside apron away taxiway faces apron gap 10..30
-  part fuel     tanks count 4..6 r 8..12 h 12..18 beside taxiway away pads far terminal 400..
+  part fuel     tanks count 4..6 r 8..12 h 12..18 beside pads away taxiway far terminal 400..
   part oxidiser tanks count 3..5 r 8..12 h 12..18 beside pads away taxiway far fuel 400.. far terminal 400..
   part carpark  surface tarmac   len 150..300 depth 80..150 beside terminal away apron gap 10..20
   part access   road tarmac      w 10..14 from carpark
@@ -104,7 +104,7 @@ type spaceport
   part terminal building terminal len 100..160 depth 30..50 h 12..18 concourse 6 beside apron away taxiway faces apron
   part tower    building control_tower len 10..14 depth 10..14 h 30..45 cab 8..12 beside apron away taxiway near terminal 20..250 sees pads
   part hangar   building hangar count 2..4 len 80..120 depth 70..110 h 36..50 beside apron away taxiway faces apron gap 6..20
-  part fuel     tanks count 3..5 r 6..10 h 10..16 beside taxiway away pads far terminal 300..
+  part fuel     tanks count 3..5 r 6..10 h 10..16 beside pads away taxiway far terminal 300..
   part oxidiser tanks count 2..4 r 6..10 h 10..16 beside pads away taxiway far fuel 400.. far terminal 400..
   part carpark  surface tarmac   len 100..200 depth 60..120 beside terminal away apron gap 8..20
   part access   road tarmac      w 8..12 from carpark
@@ -122,7 +122,7 @@ type landing_field
   part terminal building terminal len 30..60 depth 16..24 h 6..10 beside apron away taxiway faces apron
   part tower    building control_tower len 8..10 depth 8..10 h 15..25 cab 5..7 beside apron away taxiway near terminal 10..120 sees pads
   part hangar   building hangar count 1..2 len 40..60 depth 40..60 h 22..30 beside apron away taxiway faces apron gap 4..10
-  part fuel     tanks count 2..3 r 3..5 h 5..8 beside taxiway away pads far terminal 100..
+  part fuel     tanks count 2..3 r 3..5 h 5..8 beside pads away taxiway far terminal 100..
   part oxidiser tanks count 1..2 r 3..5 h 5..8 beside pads away taxiway far fuel 150.. far terminal 100..
   part carpark  surface gravel   len 30..60 depth 20..40 beside terminal away apron gap 4..10
   part access   road gravel      w 6..8 from carpark

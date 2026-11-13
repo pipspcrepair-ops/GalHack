@@ -255,7 +255,8 @@ public static class Airfield
         switch (what)
         {
             case "baggage":
-                p.Machine(i0, j, (k0 + k1) / 2, i1, (k0 + k1) / 2, 1, f.Steel);
+                // (The belt stops short of the side walls: the room is one floor round it.)
+                p.Machine(i0 + 1, j, (k0 + k1) / 2, i1 - 1, (k0 + k1) / 2, 1, f.Steel);
                 Row(BlockType.Crate, Material.Scrap, f.Rust.C, 3);
                 break;
             case "office" or "operations":
