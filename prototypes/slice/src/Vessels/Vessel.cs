@@ -149,6 +149,9 @@ public sealed partial class Vessel
     /// <summary>The seated eye in that chair (structure frame, metres), from the chair's data.</summary>
     public N.Vector3 Eye { get; private set; }
 
+    /// <summary>The chair's console top, middle of its edge on the sitter's side (structure frame, metres): the cockpit screen stands there.</summary>
+    public N.Vector3 ConsoleEdge { get; private set; }
+
     /// <summary>How far the chair reaches out from its seat across the floor, m: getting up puts you past it.</summary>
     public float ChairReach { get; private set; }
 
@@ -470,9 +473,24 @@ public sealed partial class Vessel
     {
         Seat = StructureBridge.SeatPoint(Structure, anchor, chair);
         Eye = StructureBridge.EyePoint(Structure, anchor, chair);
-        Int3 size = Footprint.WorldSize(Structure.TypeOf(chair), chair.Rot);
+        BlockType type = Structure.TypeOf(chair);
+        Part desk = DeskOf(type);
+        // No console of its own: the chair's front edge at the seat's height.
+        N.Vector3 edge = desk == null ? type.Seat with { Z = -0.5f } : new(0.5f * (desk.Min.X + desk.Max.X), desk.Max.Y, desk.Max.Z);
+        ConsoleEdge = Structure.PointOf(anchor, chair, edge) * Structure.Grid.CellSize;
+        Int3 size = Footprint.WorldSize(type, chair.Rot);
         ChairReach = MathF.Max(size.X, size.Z) * Structure.Grid.CellSize;
         SeatDrop = FloorUnder(Structure.TypeOf(chair), Structure.Grid.CellSize);
+    }
+
+    /// <summary>A chair's console: the dark housing its lit symbol screen sits on, or null.</summary>
+    static Part DeskOf(BlockType t)
+    {
+        Part screen = t.Parts.FirstOrDefault(p => p.Style == PartStyle.Glow && p.Finish is { Symbol: not DeviceSymbol.None });
+        if (screen == null) return null;
+        const float e = 0.01f;
+        return t.Parts.FirstOrDefault(p => p.Style == PartStyle.Dark && N.Vector3.Max(p.Min, screen.Min) is var lo
+            && N.Vector3.Min(p.Max, screen.Max) is var hi && lo.X <= hi.X + e && lo.Y <= hi.Y + e && lo.Z <= hi.Z + e);
     }
 
     /// <summary>Where a seated person's feet come down, m ahead of the seat point: past the seat's front edge, short of a console.</summary>

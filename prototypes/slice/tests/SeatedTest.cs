@@ -165,6 +165,22 @@ public partial class SeatedTest : Node
         Check(cam.GlobalPosition.DistanceTo(eye) < Near, $"the camera is at the chair's eye point ({cam.GlobalPosition.DistanceTo(eye) * 100f:F1} cm off)");
 
         bool Inside(Vector3 p, float margin) => Mathf.Abs(p.X - centre.X) <= half.X + margin && Mathf.Abs(p.Y - centre.Y) <= half.Y + margin && Mathf.Abs(p.Z - centre.Z) <= half.Z + margin;
+
+        // The cockpit screen stands on the chair's own console: its bezel's foot on the console's top, nothing of it
+        // under that, inside the chair's cells, ahead of the eye and turned to it.
+        var screen = _game.Console.Screen;
+        Transform3D onChair = toLocal * screen.GlobalTransform;
+        Vector2 rim = screen.SizeMeters / 2f + Vector2.One * screen.Bezel;
+        var bezel = new List<Vector3>();
+        foreach (float sx in new[] { -1f, 1f })
+            foreach (float sy in new[] { -1f, 1f })
+                foreach (float sz in new[] { -0.052f, -0.002f }) bezel.Add(onChair * new Vector3(sx * rim.X, sy * rim.Y, sz));
+        Vector3 edge = v.ConsoleEdge.ToGodot();
+        float under = bezel.Min(p => (p - edge).Dot(chair.Y)), foot = (onChair * new Vector3(0f, -rim.Y, -0.052f)).DistanceTo(edge);
+        float facing = onChair.Basis.Z.Normalized().Dot((v.Eye.ToGodot() - onChair.Origin).Normalized()), before = (onChair.Origin - v.Eye.ToGodot()).Dot(chair.Z);
+        Check(_game.Console.Visible && under > -0.005f && foot < 0.01f && bezel.All(p => Inside(p, 0.01f)) && before < 0f && facing > 0.95f,
+            $"the cockpit screen stands on the chair's console: its foot {foot * 100f:F1} cm off the console's edge, its lowest corner {under * 100f:F1} cm over the console's top, " +
+            $"{-before:F2} m ahead of the eye and turned to it ({facing:F3}), inside the chair's cells");
         var headCorners = headMeshes.SelectMany(Corners).ToList();
         float top = chair.Y.Dot(centre - seat) + MathF.Abs(chair.Y.Dot(half)) - headCorners.Max(Height);
         Check(headCorners.All(p => Inside(p, 0f)) && top > 0.05f, $"its head is inside the part, {top:F2} m under its top");

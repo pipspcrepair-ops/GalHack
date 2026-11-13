@@ -400,7 +400,9 @@ public partial class PlayerTest : Node
             var mBills = machines.Select((s, i) => Game.Game.BodyDrops(s, Wildlife.Rng.For(s.Seed, "drop", i))).ToList();
             var pBills = folk.Select((s, i) => Game.Game.BodyDrops(s, Wildlife.Rng.For(s.Seed, "drop", i))).ToList();
             bool known(Bill b) => b.Ids.All(_game.Zone.Data.Items.Has);
-            Check(machines.Count > 0 && mBills.All(b => !Flesh(b) && b["iron-bar"] > 0 && known(b)),
+            // Some worlds have no machine wildlife at all: then there is nothing to check.
+            if (machines.Count == 0) GD.Print("  (no machines or cyborgs on this world)");
+            else Check(mBills.All(b => !Flesh(b) && b["iron-bar"] > 0 && known(b)),
                 $"a machine's body holds salvage, no meat or hide ({machines.Count} kinds; {_game.Zone.Data.Items.Describe(mBills[0])})");
             Check(pBills.All(b => !Flesh(b) && known(b)), $"a person's body holds what they carried, no meat or hide ({folk.Count} people; {string.Join(" | ", pBills.Where(b => !b.IsEmpty).Take(3).Select(b => _game.Zone.Data.Items.Describe(b)))})");
         }

@@ -281,18 +281,17 @@ public static class DeviceDetail
         ScreenOn(k, Dir.PosY, -0.16f, -0.16f, 0.16f, 0.16f, DeviceSymbol.Gimbal);
     }
 
-    /// <summary>A thruster: a mounting flange, a nozzle bell in three heat-tinted bands, its sooty mouth with the glow inside, vents and a hazard band on the body.</summary>
+    /// <summary>A thruster: a mounting flange, a bare metal nozzle bell flaring in three steps, its sooty mouth with the glow inside and heat glowing round its lip, vents and a hazard band on the body.</summary>
     static void Thruster(Kit k)
     {
-        // Straw, violet, blue: metal that has been hot.
-        (float r0, float r1, float z0, float z1, uint c)[] bands =
-        {
-            (0.3f, 0.35f, 0.26f, 0.34f, 0xd9b25a), (0.35f, 0.405f, 0.34f, 0.42f, 0x8a64b8), (0.405f, 0.46f, 0.42f, 0.5f, 0x5577aa),
-        };
+        // Bare metal throughout: tinted bands read as paint stripes once the bell is metres across (T4, T5).
+        (float r0, float r1, float z0, float z1)[] bell = { (0.3f, 0.35f, 0.26f, 0.34f), (0.35f, 0.405f, 0.34f, 0.42f), (0.405f, 0.46f, 0.42f, 0.5f) };
         // The bell and its mouth open on the nozzle's face (+Z): with that face against a block they are hidden with it.
-        foreach (var b in bands)
-            k.Tube(2, Vector3.Zero, b.r0, b.r1, b.z0, b.z1, PartStyle.Dark, new PartFinish { Color = b.c, Metal = 1, Texture = FaceTexture.Smooth }, segments: 16, caps: false).Mount = Dir.PosZ;
+        foreach (var b in bell)
+            k.Tube(2, Vector3.Zero, b.r0, b.r1, b.z0, b.z1, PartStyle.Dark, Bare, segments: 16, caps: false).Mount = Dir.PosZ;
         k.Tube(2, Vector3.Zero, 0.455f, 0.455f, 0.48f, 0.49f, PartStyle.Dark, Coat(Soot, 0), segments: 16).Mount = Dir.PosZ;
+        // The lip, just proud of the bell's last few centimetres, glows with heat in the type's colour.
+        k.Tube(2, Vector3.Zero, 0.447f, 0.463f, 0.47f, 0.5f, PartStyle.Glow, null, segments: 16, caps: false).Mount = Dir.PosZ;
         Band(k, 2, 0.05f, 0.16f, 0.014f, Hazard);
         // Vents along the body from its nose to the band (on the flanks u runs along Z, on top and bottom v does).
         k.Face(Dir.PosX, 0.0f, -0.34f, 0.4f, 0.34f, 0.01f, PartStyle.Dark, Vent);
