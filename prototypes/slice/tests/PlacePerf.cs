@@ -19,7 +19,7 @@ namespace Slice.Tests;
 /// else measures what a frame really costs. Vsync is off and the cap lifted, so a frame takes what
 /// it takes.
 ///   godot --path prototypes/slice res://tests/PlacePerf.tscn -- --family=sewage_works [--seed=N] [--planet=temperate] [--variant=0]
-/// --fly: a typed place (an airfield) is held back from the builder until a craft at top speed flies in from where it
+/// --type=airport: the forced family planned as that type. --fly: a typed place (an airfield) is held back from the builder until a craft at top speed flies in from where it
 /// first comes into view; --compare-force: then the same world without it, over the same routes.
 /// One PERF line per stage: far off, riding in from a kilometre out, at the gate, inside. Prints each
 /// frame's visible time (average, 95th, 99th, worst), the renderer's own CPU and GPU time, and what
@@ -92,6 +92,7 @@ public partial class PlacePerf : Node
         DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Disabled);
         Engine.MaxFps = 0;
         if (_args.TryGetValue("family", out string family) && !_args.ContainsKey("asrolled")) PoiSiting.ForceFamily = family;
+        if (_args.TryGetValue("type", out string type)) PoiSiting.ForceType = type;
         if (_args.ContainsKey("fly")) PoiBuilds.Withhold = s => s.Whole != null;
         if (_args.ContainsKey("audit")) PlanetSurface.Infra.CityPlan.Force = true;
         if (_args.GetValueOrDefault("bodies") == "pieces") Wildlife.CreatureView.Merged = false;
@@ -126,7 +127,7 @@ public partial class PlacePerf : Node
             WorldChoice same = _game.World;
             _game.QueueFree();
             for (int i = 0; i < 10; i++) yield return 0;
-            (PoiSiting.ForceFamily, PoiBuilds.Withhold) = (null, null);
+            (PoiSiting.ForceFamily, PoiSiting.ForceType, PoiBuilds.Withhold) = (null, null, null);
             NewGame(same);
             GD.Print("PERF mode: the same world without the forced place, the same routes");
             foreach (int x in Stand()) yield return x;

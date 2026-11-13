@@ -83,6 +83,9 @@ public partial class Game
     const double MostWait = 30;
     System.Diagnostics.Stopwatch _waiting;
 
+    /// <summary>Tests: how long the loading screen waited, once the ground was in, on the places, the roads' tiles and orbit, seconds.</summary>
+    public double WaitedPlaces, WaitedInfra, WaitedOrbit;
+
     /// <summary>Whether everything that stands round the start is in: a place's blocks, the roads' ruins, wrecks and bridges.</summary>
     public bool WorldStanding => Zone.Pois.Built && Zone.Infra.Planned && Zone.Infra.Built;
 
@@ -93,6 +96,10 @@ public partial class Game
         _waiting ??= System.Diagnostics.Stopwatch.StartNew();
         Zone.Infra.Hurry = !WorldStanding;
         bool orbit = Spaceflight.LoadOrbit();
+        double tick = 1.0 / Engine.PhysicsTicksPerSecond;
+        if (!Zone.Pois.Built) WaitedPlaces += tick;
+        if (!(Zone.Infra.Planned && Zone.Infra.Built)) WaitedInfra += tick;
+        if (!orbit) WaitedOrbit += tick;
         if ((Zone.Infra.Hurry || !orbit) && _waiting.Elapsed.TotalSeconds < MostWait) return;
         Zone.Infra.Hurry = false;
         Spaceflight.ChartStartPlace(); // on the compass and the map with the bunker, from the first moment

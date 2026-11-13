@@ -18,7 +18,7 @@ namespace Slice.Tests;
 /// The planet's places as real, playable structures in the slice.
 ///
 /// Run: .\tools\test.ps1 -Project prototypes/slice -Scene res://tests/PlaceTest.tscn
-/// (-- --survey: list the places round the start of a world and what each holds, nothing else; -- --airfield: a body walks an airfield)
+/// (-- --survey: list the places round the start of a world and what each holds, nothing else; -- --typed=airport (or any place type): a body walks one)
 /// </summary>
 public partial class PlaceTest : Node
 {
@@ -127,9 +127,9 @@ public partial class PlaceTest : Node
             }
             yield break;
         }
-        if (Array.IndexOf(args, "--airfield") >= 0)
+        if (args.FirstOrDefault(a => a.StartsWith("--typed=")) is { } typed)
         {
-            foreach (int x in AirfieldWalk()) yield return x;
+            foreach (int x in TypedWalk(typed["--typed=".Length..])) yield return x;
             yield break;
         }
         if (Array.IndexOf(args, "--town-only") >= 0)

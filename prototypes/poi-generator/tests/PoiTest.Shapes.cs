@@ -89,7 +89,8 @@ public partial class PoiTest
                 t[0]++;
                 long faults = t.Skip(3).Sum();
                 AuditShapes(plain.Blocks, inst.Blocks, inst.Layout.Occupied, t, inst);
-                if (t.Skip(3).Sum() > faults) GD.Print($"      coherent: {f.Id} ({tech}) has {t.Skip(3).Sum() - faults} faults");
+                if (t.Skip(3).Sum() > faults) GD.Print($"      coherent: {f.Id} ({tech}) has {t.Skip(3).Sum() - faults} faults{(_fault != null ? $", first {_fault}" : "")}");
+                _fault = null;
             }
         GD.Print($"      coherent: {rerolled} places left out, rolled again after the shaping (not the plain one's twin)");
         foreach (var (kind, t) in tally)
@@ -99,6 +100,9 @@ public partial class PoiTest
     }
 
     /// <summary>Tallies into <paramref name="t"/> (from index 1) how what the shaping changed sits against its neighbours.</summary>
+    /// <summary>The first fault of a place the audit could name (for the line that names the place).</summary>
+    static string _fault;
+
     static void AuditShapes(BlockGrid before, BlockGrid g, CellMask occ, long[] t, PoiInstance inst)
     {
         var shaped = new HashSet<Int3>();
@@ -220,7 +224,13 @@ public partial class PoiTest
             Dir o = b.Facing.Opposite();
             bool Plain(Int3 q) => !Sh(q) && BlockInfo.IsFullCube(B(q).Type) && !InFrame(q, o) && Solid(q - o.Vec())
                 && Kind(q + a) == 0 && Kind(q - a) == 0;
-            if (bay.Any(q => Plain(q + Int3.Up) && (Same(q + a, b) && Same(q + a + Int3.Up, b) || Same(q - a, b) && Same(q - a + Int3.Up, b)))) t[10]++;
+            var steps = bay.Where(q => Plain(q + Int3.Up) && (Same(q + a, b) && Same(q + a + Int3.Up, b) || Same(q - a, b) && Same(q - a + Int3.Up, b))).Take(1).ToList();
+            if (steps.Count > 0)
+            {
+                Int3 step = steps[0];
+                t[10]++;
+                _fault ??= $"a stepped panel at {step} facing {b.Facing}, in {inst.Layout.Modules.FirstOrDefault(m => m.Cells.Contains(step - b.Facing.Vec()))?.Purpose ?? "no room"}, plain wall over it {B(step + Int3.Up).Type}";
+            }
         }
         // No panel or thin wall cuts into an opening's frame, in the opening's own wall.
         bool Way(Int3 q) => Open(q) || Shaping.Opening(G(q));

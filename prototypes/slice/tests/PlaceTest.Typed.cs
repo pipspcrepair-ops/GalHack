@@ -14,25 +14,25 @@ namespace Slice.Tests;
 public partial class PlaceTest
 {
     /// <summary>
-    /// -- --airfield: a body walks an airfield's world route on a fresh world with the game's own inputs (no pathfinding
+    /// -- --typed=airport (or airstrip, spaceport...): a body walks a typed place's world route on a fresh world with the game's own inputs (no pathfinding
     /// carries it; the place's own routes are walked a cell at a time): in at the landside gate, through the terminal to
     /// a stand on the apron, across to a hangar and onto its floor, to the tower and up it to the cab. Never below the
     /// field's level, never stuck, never rescued.
     /// </summary>
-    IEnumerable<int> AirfieldWalk()
+    IEnumerable<int> TypedWalk(string type)
     {
-        (PoiSiting.ForceFamily, PoiSiting.ForceType) = ("airfield", "airport");
+        (PoiSiting.ForceFamily, PoiSiting.ForceType) = (WorldChoice.Library.Families.First(f => f.Types.Contains(type)).Id, type);
         var game = new Game.Game { Interactive = false, World = WorldChoice.Fresh("temperate"), SkipIntro = true };
         AddChild(game);
         var drive = new Driver(game);
         foreach (int x in drive.UntilPlaying()) yield return x;
         (PoiSiting.ForceFamily, PoiSiting.ForceType) = (null, null);
         game.Zone.Weather.Bridge.Calm = true;
-        GD.Print($"-- the airfield walk, {game.World} --");
-        GD.Print("  (TEST: creatures held still on the airfield walk)");
+        GD.Print($"-- the {type} walk, {game.World} --");
+        GD.Print("  (TEST: creatures held still on the walk)");
         game.Zone.Wildlife.Frozen = true;
         TypedPlace field = game.Zone.Planet.Pois.Select(p => p.Whole).FirstOrDefault(t => t != null);
-        if (field == null) { Fail($"an airfield on {game.World}"); game.QueueFree(); yield break; }
+        if (field == null) { Fail($"a {type} on {game.World}"); game.QueueFree(); yield break; }
         GD.Print($"  ({field.Why})");
         var pieces = PlaceTypes.Pieces(field.Sketch, field.Turn);
         string Kind(PoiSite s) => pieces[field.Parts.IndexOf(s)].Plan.Parts[0].Arg("what");
