@@ -121,7 +121,7 @@ room lab
 room cold-store
   deco coldstore
   name Cold store
-  width 3 6
+  width 3 5
   area 10 50
   props shelf 3 tank 2
   fill 0.6
@@ -362,6 +362,17 @@ room mortuary
   tags medical
 
 # ---- sleep and life support ----------------------------------------------------------------------------
+room cryo-niche
+  deco cryo
+  name Pod niche
+  width 2 4
+  area 4 24
+  props pod 3
+  fill 0.8
+  spawns 0 1
+  light cryo
+  tags science ice
+
 room cryo-bay
   deco cryo
   name Cryo bay

@@ -853,9 +853,8 @@ internal sealed partial class Depths
         int wid = R.Between(3, 4), h = Math.Min(lv.H, Math.Max(3, MainH));
         var w = From(lv, a, d, R.Between(16, 30), wid, h, kind: "gallery", purpose: "gallery", minLen: 8);
         if (w == null) return false;
-        // A cryo gallery's alcoves are bays of pods, room-sized; the rest are niches.
-        int big = Def.Id == "cryo" ? 1 : 0, aw = R.Between(2 + big, 3 + big), ad = R.Between(2 + big, 3 + big);
-        string alcove = Def.Id switch { "library" => "archive", "prison" => "solitary", "cryo" => "cryo-bay", "fallout" => "quarters", _ => "storage" };
+        int aw = R.Between(2, 3), ad = R.Between(2, 3);
+        string alcove = Def.Id switch { "library" => "archive", "prison" => "solitary", "cryo" => "cryo-niche", "fallout" => "quarters", _ => "storage" };
         bool doors = Def.Id is "prison" || R.Chance(0.2f);
         foreach (bool pos in new[] { false, true })
             for (int p = 1; p + aw <= w.Len - 1; p += aw + 1)

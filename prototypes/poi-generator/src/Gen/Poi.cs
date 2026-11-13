@@ -60,7 +60,7 @@ public sealed class PoiInstance
     {
         if (Age != Age.OldWorld || module < 0 || module >= Layout.Modules.Count) return Age;
         var m = Layout.Modules[module];
-        bool sealedRoom = m.Kind == ModuleKind.Vault || m.Purpose is "cryo-bay" or "cold-store" or "vault" || Layout.Extras.Secrets.Any(s => s.Module == module)
+        bool sealedRoom = m.Kind == ModuleKind.Vault || m.Purpose is "cryo-bay" or "cryo-niche" or "cold-store" or "vault" || Layout.Extras.Secrets.Any(s => s.Module == module)
                           || Layout.Extras.Locks.Any(l => l.Blast && (Layout.Doorways[l.Doorway].ModuleA == module || Layout.Doorways[l.Doorway].ModuleB == module));
         return sealedRoom ? Age.Preserved : Age.OldWorld;
     }

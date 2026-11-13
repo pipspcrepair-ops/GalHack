@@ -40,6 +40,7 @@ room pharmacy 10 30
 room quarantine 14 80
 room mortuary 30 80
 room cryo-bay 40 160
+room cryo-niche 4 24
 room monitor 12 60
 room hydroponics 40 200
 room plant 10 120
