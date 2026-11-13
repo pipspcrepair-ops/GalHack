@@ -151,6 +151,8 @@ public partial class PlacePerf
             Action<bool> set = ab switch
             {
                 "occlusion" => on => GetViewport().UseOcclusionCulling = on,
+                "loadbudget" => on => PlanetSurface.Fx.LoadBudget.FrameMs = on ? 4.0 : double.MaxValue,
+                "towns" => on => Slice.Places.Town.Spaced = on,
                 _ => null,
             };
             if (set == null) continue;
