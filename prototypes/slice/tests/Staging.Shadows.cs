@@ -196,7 +196,7 @@ public sealed partial class Staging
         if (_args.ContainsKey("nbias")) sky.Sun.ShadowNormalBias = (float)Num("nbias", 2);
         if (_args.ContainsKey("blur")) sky.Sun.ShadowBlur = (float)Num("blur", 1);
         if (_args.ContainsKey("atlas")) RenderingServer.DirectionalShadowAtlasSetSize((int)Num("atlas", 4096), true);
-        if (_args.ContainsKey("splits")) { sky.Sun.DirectionalShadowSplit1 = (float)Num("splits", 0.02); sky.Sun.DirectionalShadowSplit2 = sky.Sun.DirectionalShadowSplit1 * 3f; sky.Sun.DirectionalShadowSplit3 = sky.Sun.DirectionalShadowSplit1 * 12f; }
+        if (_args.TryGetValue("splits", out string cuts)) { float[] m = cuts.Split(',').Select(float.Parse).ToArray(); float reach = sky.Sun.DirectionalShadowMaxDistance; sky.Sun.DirectionalShadowSplit1 = m[0] / reach; sky.Sun.DirectionalShadowSplit2 = m[1] / reach; sky.Sun.DirectionalShadowSplit3 = m[2] / reach; }
         GD.Print($"PLANTSHADOW-AB sun bias {sky.Sun.ShadowBias}, normal bias {sky.Sun.ShadowNormalBias}, blur {sky.Sun.ShadowBlur}, opacity {sky.Sun.ShadowOpacity:F2}, energy {sky.Sun.LightEnergy:F2}, max distance {sky.Sun.DirectionalShadowMaxDistance}, splits {sky.Sun.DirectionalShadowSplit1:F3}/{sky.Sun.DirectionalShadowSplit2:F3}/{sky.Sun.DirectionalShadowSplit3:F3}");
         ShaderMaterial mat = s.FloraMaterial;
         var tint = new Color(0.5f, 0.45f, 0.4f, 0f);
