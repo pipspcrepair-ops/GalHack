@@ -227,10 +227,10 @@ public sealed class HullBinding : BodyBinding
         }
         // Sunk in the ground below its surface: a shape wholly under the ground's faces touches none of them, so the
         // contacts above miss it. Up by the depth of the ground over its underside, measured on the ground's own faces.
-        // Only while it is really in something: a hull resting on uneven ground (the ground higher under its middle than
-        // under the edge it rests on) is not sunk, and lifting it would leave it never at rest.
-        float sunk = Overlaps(space) ? SunkBy(space) : 0f;
-        if (sunk > Slop)
+        // Only when it is well in: a hull resting on uneven ground (the ground a little higher under a shape's middle than
+        // under the edge it rests on) is not sunk, and lifting it every tick would leave it never at rest.
+        float sunk = SunkBy(space);
+        if (sunk > SunkDeep)
         {
             Hull.GlobalPosition += Vector3.Up * (sunk + Slop);
             moved = true;
@@ -291,6 +291,9 @@ public sealed class HullBinding : BodyBinding
     }
 
     const int SunkProbes = 16;
+
+    /// <summary>Ground deeper than this over a shape's underside, m, is a hull sunk in it (less is resting on rough ground).</summary>
+    const float SunkDeep = 0.1f;
     readonly List<CollisionShape3D> _lowest = new();
 
     /// <summary>Does any of its shapes overlap anything solid by more than <see cref="Slop"/>?</summary>
