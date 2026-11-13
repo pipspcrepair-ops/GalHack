@@ -72,7 +72,7 @@ public partial class PhysicsTest : Node
     IEnumerable<int> Scenarios()
     {
         bool standOnOnly = OS.GetCmdlineUserArgs().Contains("--stand-on"), surfOnly = OS.GetCmdlineUserArgs().Contains("--surf");
-        if (!standOnOnly && !surfOnly)
+        if (!standOnOnly && !surfOnly && !OS.GetCmdlineUserArgs().Contains("--hulls"))
         {
             GD.Print("-- determinism: two identical worlds, side by side --");
             foreach (int x in Determinism()) yield return x;
@@ -88,6 +88,12 @@ public partial class PhysicsTest : Node
         _w.Weather.Calm = true;
         for (int i = 0; i < 5; i++) yield return 0;
 
+        if (OS.GetCmdlineUserArgs().Contains("--hulls"))
+        {
+            GD.Print("-- hulls set into the ground --");
+            foreach (int x in HullsInGround()) yield return x;
+            yield break;
+        }
         if (surfOnly)
         {
             GD.Print("-- Space: jetpack surfing and a held landing --");
@@ -127,6 +133,8 @@ public partial class PhysicsTest : Node
         GD.Print("-- Space: jetpack surfing and a held landing --");
         foreach (int x in Surf()) yield return x;
         foreach (int x in Hilltops()) yield return x;
+        GD.Print("-- hulls set into the ground --");
+        foreach (int x in HullsInGround()) yield return x;
         foreach (int x in Performance()) yield return x;
     }
 
@@ -224,13 +232,13 @@ public partial class PhysicsTest : Node
         for (float t = 0f; t < riding.LetGoAfter - 0.05f; t += 1f / 60f) held &= !Riding.LetGo(riding, rider, false, false, 0.3f, 1f / 60f);
         bool touchedAgain = !Riding.LetGo(riding, rider, false, true, 0.1f, 1f / 60f) && Riding.OutOfContactFor(rider) == 0f;
         bool lost = false;
-        for (float t = 0f; t < riding.LetGoAfter + 0.05f; t += 1f / 60f) lost |= Riding.LetGo(riding, rider, false, false, 0.3f, 1f / 60f);
+        for (float t = 0f; t < riding.LetGoAfter + 0.05f; t += 1f / 60f) lost |= Riding.LetGo(riding, rider, false, false, riding.LetGoNear + 0.1f, 1f / 60f);
         bool far = Riding.LetGo(riding, rider, false, true, riding.LetGoDistance + 0.1f, 1f / 60f);
         bool jump = Riding.LetGo(riding, rider, true, true, 0f, 1f / 60f);
         rider.OnOuterHull = false;
         bool inside = !Riding.LetGo(riding, rider, true, false, 9f, 10f);
         Check(held && touchedAgain && lost && far && jump && inside,
-            $"letting go of a hull: a jump at once, {riding.LetGoAfter:0.0#} s out of contact or {riding.LetGoDistance:0.0#} m off it, never from inside");
+            $"letting go of a hull: a jump at once, {riding.LetGoAfter:0.0#} s out of contact more than {riding.LetGoNear:0.0#} m off it, or {riding.LetGoDistance:0.0#} m off it, never from inside");
 
         // Turning a walk frame onto a new up keeps the heading as near as it can.
         var walker = new Body { Rotation = MathX.Yaw(0.6f) };
@@ -984,6 +992,7 @@ public partial class PhysicsTest : Node
         N.Vector3 v0 = p.Body.Velocity;
         float d0 = N.Vector3.Distance(p.Body.Position, ship.Body.Position);
         float drift = 0f;
+        int rescuesBefore = _rescues.Count;
         for (int i = 0; i < 60; i++)
         {
             yield return 0;
@@ -993,7 +1002,7 @@ public partial class PhysicsTest : Node
         N.Vector3 away = v0 - ship.Body.Velocity;
         Check(knockedOff && drift < 1e-3f && d1 - d0 > 0.9f * away.Length() && away.Length() > 1f,
             $"knocked off hard, a rider lets go after {until * Dt:F2} s and drifts away with their inertia in space ({away.Length():F1} m/s, " +
-            $"{d1 - d0:F1} m in 1 s, velocity unchanged to {drift:F4} m/s)");
+            $"{d1 - d0:F1} m in 1 s, velocity unchanged to {drift:F4} m/s; {_rescues.Count - rescuesBefore} rescues{(_rescues.Count > rescuesBefore ? $", from {_rescues[^1].Inside}" : "")})");
 
         // A jump from the roof of a ship under way lets go at once and drifts away, with the
         // ship's velocity plus the jump, while the ship flies on.
@@ -1150,7 +1159,8 @@ public partial class PhysicsTest : Node
         for (int i = 0; i < 20; i++) yield return 0;
         bool indoors = p.Aboard == barge && !p.Body.OnOuterHull;
         var cabin = new HullWalk();
-        foreach (int x in WalkOn(barge, cabin, r => r.Body.Position.Z > 7.6f, 120)) yield return x;
+        // On until back down on the floor beyond the lip (a half block is stepped down off, as any step).
+        foreach (int x in WalkOn(barge, cabin, r => r.Body.Position.Z > 7.6f && r.Body.OnFloor && r.Body.Position.Y < 0.55f, 180)) yield return x;
         int settle = 0;
         while (!p.Body.OnFloor && settle++ < 60) yield return 0;
         for (int i = 0; i < 5; i++) yield return 0;
@@ -1159,7 +1169,8 @@ public partial class PhysicsTest : Node
         float drop = (cabin.OffFloor + settle) * Dt;
         Check(cabin.Stayed && inside && cabin.Steps >= 1 && drop < 0.35f,
             $"inside a cabin under core gravity, the same half-block lip is stepped up onto without a stop, and walked off the far side: " +
-            $"over it in {cabin.Ticks * Dt:F2} s, then a {drop:F2} s drop to the floor beyond, as off any step under gravity");
+            $"over it in {cabin.Ticks * Dt:F2} s, then a {drop:F2} s drop to the floor beyond, as off any step under gravity " +
+            $"(feet at {p.Body.Position.Y:F2} m, {cabin.Steps} steps up, stayed {cabin.Stayed}, indoors {indoors}, on floor {p.Body.OnFloor}, longest off {cabin.LongestOff:F2} s)");
         _w.Remove(barge);
         p.PlaceOutside(_w.Ground(1.5f, 8.5f) + N.Vector3.UnitY * 0.05f);
         for (int i = 0; i < 5; i++) yield return 0;
