@@ -17,7 +17,7 @@ using N = System.Numerics;
 namespace Slice.Tests;
 
 /// <summary>
-/// To the moon and down, headless, by the game's own controls: the castaway builds the Skiff, flies
+/// To the moon and down, headless, by the game's own controls: the sleeper builds the Skiff, flies
 /// it up out of the atmosphere, on out of high orbit to the start world's thruster moon (Empyrion's
 /// distances: a minute or two at a small vessel's top speed), the moon taking over as the frame it
 /// flies in on the way, descends through the moon's own crossing onto its generated surface, and

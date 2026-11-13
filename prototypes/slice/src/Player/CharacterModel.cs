@@ -5,8 +5,8 @@ using Wildlife;
 
 namespace Slice.Player;
 
-/// <summary>What the castaway's body is doing, for its figure: the walker's own state, read each frame.</summary>
-public struct CastawayMotion
+/// <summary>What the sleeper's body is doing, for its figure: the walker's own state, read each frame.</summary>
+public struct SleeperMotion
 {
     /// <summary>Over the ground, m/s, and up (positive) or down, m/s.</summary>
     public float Speed, Climb;
@@ -20,7 +20,7 @@ public struct CastawayMotion
 }
 
 /// <summary>
-/// The castaway's body as seen from outside: a suited figure 1.8 m tall in the slice's 1970s
+/// The sleeper's body as seen from outside: a suited figure 1.8 m tall in the slice's 1970s
 /// paperback livery (orange suit, cream plates, a dark visor, a backpack with its jetpack nozzles).
 /// It runs on the people's own rig (<see cref="HumanRig"/>), so it walks, runs, crouches and sits
 /// as the townsfolk do; only the suit's pieces are its own. It stands in the inventory's paperdoll,
@@ -28,8 +28,8 @@ public struct CastawayMotion
 /// </summary>
 public static class CharacterModel
 {
-    /// <summary>The castaway's proportions, as a person's: a grown man 1.8 m tall in a suit.</summary>
-    static readonly Lazy<Species> Castaway = new(() =>
+    /// <summary>The sleeper's proportions, as a person's: a grown man 1.8 m tall in a suit.</summary>
+    static readonly Lazy<Species> Sleeper = new(() =>
     {
         var f = new Figure
         {
@@ -39,7 +39,7 @@ public static class CharacterModel
             Leather = new Color("2b2d42"), Metal = new Color("ece3c8"),
         };
         f.Measure();
-        var s = new Species { Id = "castaway", Seed = 1, Plan = BodyPlan.Walker, Form = "person", Rig = RigKind.Humanoid, Figure = f, Name = "human", CommonName = "castaway" };
+        var s = new Species { Id = "sleeper", Seed = 1, Plan = BodyPlan.Walker, Form = "person", Rig = RigKind.Humanoid, Figure = f, Name = "human", CommonName = "sleeper" };
         foreach (string slot in FaunaTables.Slots) s.Parts[slot] = "none";
         s.Body.Size = f.Torso;
         s.Body.Width = f.ShoulderW * 2f;
@@ -66,8 +66,8 @@ public static class CharacterModel
 
     public static Node3D Build()
     {
-        var root = new Node3D { Name = "Castaway" };
-        Species sp = Castaway.Value;
+        var root = new Node3D { Name = "Sleeper" };
+        Species sp = Sleeper.Value;
         Figure f = sp.Figure;
         var rig = new HumanRig(sp);
         var b = new Body { Rig = rig, Pieces = new Node3D[rig.Layout.Pieces.Count] };
@@ -135,7 +135,7 @@ public static class CharacterModel
         OwnLayer(root, BodyLayer);
         OwnLayer(head, HeadLayer);
         // Standing at rest until it is driven.
-        Drive(root, new CastawayMotion { Grounded = true }, null, 99f, 0f);
+        Drive(root, new SleeperMotion { Grounded = true }, null, 99f, 0f);
         return root;
     }
 
@@ -161,7 +161,7 @@ public static class CharacterModel
     /// <summary>How long a gesture plays on the body, seconds.</summary>
     public const float GestureSeconds = 1.7f;
 
-    /// <summary>The castaway's gestures as the people's body language: the same rig makes both.</summary>
+    /// <summary>The sleeper's gestures as the people's body language: the same rig makes both.</summary>
     static BodyAct Act(PlayerGesture? g) => g switch
     {
         PlayerGesture.Wave => BodyAct.Greet,
@@ -175,7 +175,7 @@ public static class CharacterModel
     };
 
     /// <summary>A standing figure making a gesture <paramref name="t"/> seconds after it was made.</summary>
-    public static void Pose(Node3D figure, PlayerGesture? gesture, float t) => Drive(figure, new CastawayMotion { Grounded = true }, gesture, t, 0f);
+    public static void Pose(Node3D figure, PlayerGesture? gesture, float t) => Drive(figure, new SleeperMotion { Grounded = true }, gesture, t, 0f);
 
     /// <summary>
     /// Poses the figure for what the walker is doing: walking and running by its speed, crouched,
@@ -184,7 +184,7 @@ public static class CharacterModel
     /// gesture <paramref name="t"/> seconds old plays on its arms while it lasts. The figure's own
     /// frame is the one it stands in (feet at the origin, -Z the way it faces): the caller places it.
     /// </summary>
-    public static void Drive(Node3D figure, in CastawayMotion m, PlayerGesture? gesture, float t, float dt)
+    public static void Drive(Node3D figure, in SleeperMotion m, PlayerGesture? gesture, float t, float dt)
     {
         if (figure == null || !Bodies.TryGetValue(figure, out Body b)) return;
         Figure f = b.Rig.Species.Figure;

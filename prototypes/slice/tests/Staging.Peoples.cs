@@ -291,7 +291,7 @@ public sealed partial class Staging
     /// <summary>
     /// A gesture answered, through the real keyboard, seen from behind in third person: in a town,
     /// a few metres from one of its people, Z held and the mouse pushed up (a wave), let go, the
-    /// castaway's arm waves and they answer; then Z held again so the wheel is up in the same frame.
+    /// sleeper's arm waves and they answer; then Z held again so the wheel is up in the same frame.
     /// </summary>
     IEnumerable<int> AnswerView()
     {
@@ -305,7 +305,7 @@ public sealed partial class Staging
         Town.Person who = town.People.Where(q => !q.Dead && !q.Indoors && !q.Away && q.Looks != null && !q.Fleeing && q.Figure.Stage != LifeStage.Child)
             .OrderBy(q => q.Pos.DistanceTo(feet)).FirstOrDefault();
         if (who == null) { GD.Print("(nobody out)"); yield break; }
-        // They stop where they are; the castaway is set down in front of them, 4 m off.
+        // They stop where they are; the sleeper is set down in front of them, 4 m off.
         who.Path = null;
         who.Step = 0;
         who.Wait = MathF.Max(who.Wait, 30f);
@@ -319,7 +319,7 @@ public sealed partial class Staging
         at = p.ToWorld(who.Pos);
         toward = ((at - stand) with { Y = 0f }).Normalized();
         foreach (int x in _drive.LookAt(at + Vector3.Up * 1.4f, 12)) yield return x;
-        // From the side, both in frame: the castaway on one side of the wheel, the one answering on the other.
+        // From the side, both in frame: the sleeper on one side of the wheel, the one answering on the other.
         Vector3 mid = (stand + at) * 0.5f, side = new Vector3(-toward.Z, 0f, toward.X);
         Vector3 eye = mid + side * 4.6f;
         eye.Y = MathF.Max(_game.Zone.GroundAt(eye.X, eye.Z).Y, mid.Y) + 1.6f;

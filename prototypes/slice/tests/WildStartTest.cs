@@ -89,7 +89,7 @@ public partial class WildStartTest : Node
         }
         if (game.Bunker == null || game.Phase != Phase.Playing)
         {
-            Check(false, $"{world}: no start site found, or the castaway never woke");
+            Check(false, $"{world}: no start site found, or the sleeper never woke");
             game.QueueFree();
             yield return 0;
             yield break;

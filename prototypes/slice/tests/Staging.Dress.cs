@@ -84,7 +84,7 @@ public sealed partial class Staging
         {
             Vector3 eye = eye0;
             if (name == "street") eye.Y = _game.Zone.GroundAt(eye.X, eye.Z).Y + 1.7f;
-            // The castaway out of the shot, behind the eye: the ground and tiles round there come in.
+            // The sleeper out of the shot, behind the eye: the ground and tiles round there come in.
             Vector3 feet = stand - way * (name == "street" ? 7f : 26f);
             feet.Y = _game.Zone.GroundAt(feet.X, feet.Z).Y + 0.5f;
             _game.Survivor.PlaceOutside(feet.ToNumerics());

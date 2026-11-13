@@ -44,7 +44,7 @@ public partial class ZoneTest : Node
 
     static List<Holder> World(string shipZone) => new()
     {
-        new Holder(ZoneLedger.Castaway, "castaway", ZoneLedger.Cabin("skiff"), "skiff", "Castaway", Bill.Of(("air-cell", 2), ("hull-plate", 7)), 0),
+        new Holder(ZoneLedger.Sleeper, "sleeper", ZoneLedger.Cabin("skiff"), "skiff", "Sleeper", Bill.Of(("air-cell", 2), ("hull-plate", 7)), 0),
         new Holder("skiff", "structure", shipZone, null, "Skiff", Bill.Of(("iron-bar", 3)), 174),
         new Holder("bunker", "structure", ZoneLedger.Surface, null, "Cryo Bunker", Bill.Of(("trail-ration", 4)), 400),
         new Holder("wreck-one", "structure", ZoneLedger.Orbit, null, "Derelict", Bill.Of(("circuit-board", 5)), 377),
@@ -95,7 +95,7 @@ public partial class ZoneTest : Node
             var (items, blocks) = ZoneLedger.Totals(World(ZoneLedger.Surface));
             AuditCounts counts = AuditCounts.Of(load.Table.All);
             if (counts.Items == items && counts.Blocks == blocks) totals++;
-            if (load.Table.Get(ZoneLedger.Castaway).ZoneId == ZoneLedger.Cabin("skiff")) riders++;
+            if (load.Table.Get(ZoneLedger.Sleeper).ZoneId == ZoneLedger.Cabin("skiff")) riders++;
         }
         int n = trace.Count;
         Check(oneZone == n, $"crashed at each of {n} points, the crosser is in exactly one zone on disk ({oneZone} of {n})");

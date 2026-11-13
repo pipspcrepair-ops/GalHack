@@ -161,15 +161,15 @@ public partial class SeatTest : Node
         roles.PilotChanged += () => changes++;
         var one = new Int3(1, 1, 0);
         var two = new Int3(-1, 1, 0);
-        roles.Sat("castaway", one);
-        Check(roles.Pilot == "castaway" && roles.PilotSeat == one, "alone, you hold the pilot role when you sit");
+        roles.Sat("sleeper", one);
+        Check(roles.Pilot == "sleeper" && roles.PilotSeat == one, "alone, you hold the pilot role when you sit");
         roles.Sat("friend", two);
-        Check(roles.Pilot == "castaway", "someone else sitting down doesn't take it");
+        Check(roles.Pilot == "sleeper", "someone else sitting down doesn't take it");
         Check(!roles.Assign("stranger"), "the role can't go to someone who isn't in a seat");
         Check(roles.Assign("friend") && roles.Pilot == "friend" && roles.PilotSeat == two, "it can go to anyone who is, and the frame goes with it");
         roles.Stood("friend");
-        Check(roles.Pilot == "castaway" && roles.PilotSeat == one, "when its holder gets up it passes to someone still seated");
-        roles.Stood("castaway");
+        Check(roles.Pilot == "sleeper" && roles.PilotSeat == one, "when its holder gets up it passes to someone still seated");
+        roles.Stood("sleeper");
         Check(roles.Pilot == null && roles.PilotSeat == null && changes > 0, "with nobody seated it stands empty");
     }
 

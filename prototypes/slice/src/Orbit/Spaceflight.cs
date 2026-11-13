@@ -432,7 +432,7 @@ public partial class Spaceflight : Node
     /// <summary>Everything's record and the crosser's new zone start for the disk; the crossing happens once they've landed.</summary>
     void BeginCrossing(Vessel carrier, bool up)
     {
-        string id = carrier != null ? IdOf(carrier) : ZoneLedger.Castaway;
+        string id = carrier != null ? IdOf(carrier) : ZoneLedger.Sleeper;
         if (Ledger.Begin(Holders(), id, up ? ZoneLedger.Orbit : ZoneName(Below))) _pending = new Pending(carrier, up);
         else Refused();
     }
@@ -467,8 +467,8 @@ public partial class Spaceflight : Node
         GameNode g = Game;
         Survivor s = g.Survivor;
         Vessel aboard = s.Seated ?? (s.Body.Frame != null ? s.Aboard : null);
-        string castawayZone = aboard != null ? ZoneLedger.Cabin(IdOf(aboard)) : ZoneName(s.Zone);
-        yield return new Holder(ZoneLedger.Castaway, "castaway", castawayZone, aboard != null ? IdOf(aboard) : null, "Castaway", g.Pack.Storage.Contents, 0);
+        string sleeperZone = aboard != null ? ZoneLedger.Cabin(IdOf(aboard)) : ZoneName(s.Zone);
+        yield return new Holder(ZoneLedger.Sleeper, "sleeper", sleeperZone, aboard != null ? IdOf(aboard) : null, "Sleeper", g.Pack.Storage.Contents, 0);
         foreach (SurfaceZone zone in new SurfaceZone[] { g.Surface, Orbit, MoonSurface })
         {
             if (zone?.Physics == null) continue;

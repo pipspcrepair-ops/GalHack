@@ -114,7 +114,7 @@ public sealed partial class Staging
             Vector3 at = world.NearestCopy(new Vector3(spot.X, 0f, spot.Y), _game.Survivor.WorldFeet);
             foreach (float height in heights)
             {
-                // The castaway is held well off to one side, out of the frame: the eye is the camera's alone.
+                // The sleeper is held well off to one side, out of the frame: the eye is the camera's alone.
                 Vector3 eye = new(at.X, height, at.Z), feet = eye + new Vector3(-toSea.Y, 0f, toSea.X) * 40f;
                 var streamer = _game.Zone.Streamer;
                 var cost = new HorizonCost();

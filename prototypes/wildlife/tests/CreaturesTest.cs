@@ -58,7 +58,7 @@ public partial class CreaturesTest : Node
             }
             ActivityData();
             DayAndNight();
-            SleepersWake();
+            DormantWake();
             RestSitesAreSensible();
             DeepSpecies();
             CrawlerInDugTunnel();
@@ -185,7 +185,7 @@ public partial class CreaturesTest : Node
         Check(kinds.Count >= 2, $"they rest in their own kinds of site ({string.Join(", ", kinds.Select(k => k.ToString().ToLowerInvariant()))})");
     }
 
-    void SleepersWake()
+    void DormantWake()
     {
         var (sim, _, fauna) = Valley(4242, 0.4f);
         for (float t = 0f; t < 150f; t += Dt)
@@ -194,7 +194,7 @@ public partial class CreaturesTest : Node
             sim.Step(Dt);
         }
         Species herd = fauna.Species[0];
-        Creature sleeper = sim.Creatures.First(c => c.Species == herd && c.State == CState.Rest);
+        Creature dormant = sim.Creatures.First(c => c.Species == herd && c.State == CState.Rest);
         // Creep up crouched, then stand: crouching gets you closer before it wakes.
         float WakeDistance(float threat)
         {
@@ -204,7 +204,7 @@ public partial class CreaturesTest : Node
                 s2.Clock.Time01 = 0.0f;
                 s2.Step(Dt);
             }
-            Creature c = s2.Creatures.First(x => x.Id == sleeper.Id);
+            Creature c = s2.Creatures.First(x => x.Id == dormant.Id);
             Vector3 dir = new Vector3(1f, 0f, 0.3f).Normalized();
             var walker = new DummyTarget { Name = "Walker", ThreatScale = threat, Position = c.Position + dir * 30f };
             s2.Targets.Add(walker);
@@ -224,7 +224,7 @@ public partial class CreaturesTest : Node
             s3.Clock.Time01 = 0.0f;
             s3.Step(Dt);
         }
-        Creature one = s3.Creatures.First(x => x.Id == sleeper.Id);
+        Creature one = s3.Creatures.First(x => x.Id == dormant.Id);
         var walker2 = new DummyTarget { Position = one.Position + new Vector3(3f, 0f, 0f) };
         s3.Targets.Add(walker2);
         for (float t = 0f; t < 4f; t += Dt)

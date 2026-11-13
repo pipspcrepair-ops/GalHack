@@ -18,7 +18,7 @@ using Verdict = TerrainDigging.Terrain.Verdict;
 namespace Slice.Start;
 
 /// <summary>
-/// Where every game starts: a small cryopod chamber buried at the start site, where the castaway
+/// Where every game starts: a small cryopod chamber buried at the start site, where the sleeper
 /// slept through the collapse, a century or two ago, sealed in ever since. Theirs is the only pod
 /// that worked; the other sleepers died in theirs.
 /// A stairwell, its top end fallen open to the sky, climbs from the chamber's door to the
@@ -67,7 +67,7 @@ public sealed class Bunker
     public float Heading { get; private set; }
     public N.Vector3 Origin { get; private set; }
 
-    /// <summary>Where the castaway stands in their cryopod (feet), facing out.</summary>
+    /// <summary>Where the sleeper stands in their cryopod (feet), facing out.</summary>
     public Vector3 CryoStand => At(new Vector3(PodX, Floor, 1.75f));
     /// <summary>Just outside the pod, in the room.</summary>
     public Vector3 CryoFront => At(new Vector3(PodX, Floor, 0.6f));
@@ -641,7 +641,7 @@ public sealed class Bunker
 
     /// <summary>
     /// Nothing stands in the doorway: every plant and rock within a few metres of the way out goes, for
-    /// good, by the felling rule, so a trunk can't block a castaway's first steps however thick the woods.
+    /// good, by the felling rule, so a trunk can't block a sleeper's first steps however thick the woods.
     /// </summary>
     void ClearWayOut(SurfaceZone zone)
     {
@@ -675,7 +675,7 @@ public sealed class Bunker
     void Furnish(SurfaceZone zone)
     {
         Node3D at = Ruin.Node;
-        // Four pods along the back wall, numbered 1 to 4 from port; the castaway's is the third.
+        // Four pods along the back wall, numbered 1 to 4 from port; the sleeper's is the third.
         float[] pods = { -2.25f, -0.75f, PodX, 2.25f }; // metres across the room, whatever its cells
         for (int slot = 0; slot < pods.Length; slot++)
         {
@@ -730,7 +730,7 @@ public sealed class Bunker
 
 /// <summary>
 /// A cryopod: an upright capsule against the bunker's back wall, its glass front a lid that
-/// swings outward and slides back along its side. The castaway's works (cold blue light, a lid that opens with F); the others are
+/// swings outward and slides back along its side. The sleeper's works (cold blue light, a lid that opens with F); the others are
 /// dark, frosted, with their sleepers slumped inside.
 /// </summary>
 public partial class CryoPod : Node3D
@@ -788,7 +788,7 @@ public partial class CryoPod : Node3D
         {
             // A failed pod: its status lamp dead red, its glass furred with dust and frost.
             AddChild(Box(new Vector3(0.5f, 0.05f, 0.016f), new Vector3(0f, 2.2f, -0.5f), new StandardMaterial3D { AlbedoColor = new Color("6a040f"), EmissionEnabled = true, Emission = new Color("9d0208"), EmissionEnergyMultiplier = 0.4f }));
-            // Its sleeper, slumped against the back (the castaway's own figure, in grey).
+            // Its sleeper, slumped against the back (the sleeper's own figure, in grey).
             Node3D sleeper = Slice.Player.CharacterModel.Build();
             sleeper.Name = "Sleeper";
             sleeper.Position = new Vector3(0f, 0.06f, 0.1f);
@@ -834,7 +834,7 @@ public partial class CryoPod : Node3D
     static MeshInstance3D Box(Vector3 size, Vector3 at, Material m) =>
         new() { Mesh = new BoxMesh { Size = size }, Position = at, MaterialOverride = m };
 
-    /// <summary>A dead sleeper: every part grey and on the main render layer (the castaway's own figure is hidden in first person).</summary>
+    /// <summary>A dead sleeper: every part grey and on the main render layer (the sleeper's own figure is hidden in first person).</summary>
     static void Grey(Node n)
     {
         if (n is GeometryInstance3D g)

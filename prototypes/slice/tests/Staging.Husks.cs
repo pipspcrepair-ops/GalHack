@@ -22,7 +22,7 @@ namespace Slice.Tests;
 public sealed partial class Staging
 {
     /// <summary>
-    /// --view=husk-grab: a Husk seizes the castaway by the head, seen through their own eyes (the
+    /// --view=husk-grab: a Husk seizes the sleeper by the head, seen through their own eyes (the
     /// game's camera, its close-up and the struggle as they are in play); then one shot from the
     /// survival tool, which goes into it and breaks the hold. Frames: grab.png, then shot.png.
     /// </summary>
@@ -135,7 +135,7 @@ public sealed partial class Staging
             }
             // The compass among them: the game's own view, the visor up.
             _game.FixedCamera = null;
-            HideCastaway(false);
+            HideSleeper(false);
             _game.Visor.Visible = true;
             foreach (int x in _drive.LookAt(deep.World(big.Middle), 20)) yield return x;
             for (int i = 0; i < 60 * 30 && _game.WrongShown < 0.35f; i++) yield return 0;
@@ -157,7 +157,7 @@ public sealed partial class Staging
     }
 
     /// <summary>
-    /// --view=husk-worms: walking up to a worm mass in a severe den, through the castaway's eyes:
+    /// --view=husk-worms: walking up to a worm mass in a severe den, through the sleeper's eyes:
     /// calm.png from a few metres, eager.png a step out of its reach (the worms reaching for you),
     /// held.png once they have you (hauled in, stung: printed), then a shot into it, free.png.
     /// STAGING: the den is set up as husk-den's; the place's creatures stand still.
@@ -171,7 +171,7 @@ public sealed partial class Staging
         // The den, its frames to a side folder; then the walk up.
         foreach (int x in HuskDen()) yield return x;
         _game.FixedCamera = null;
-        HideCastaway(false);
+        HideSleeper(false);
         _game.Visor.Visible = false;
         DeepSite deep = _game.Zone.Wildlife.Sites.OrderBy(s => s.GlobalPosition.DistanceTo(_game.Survivor.WorldFeet)).First(s => s.Sim.Masses.Count > 0);
         HuskRules rules = _game.Zone.Wildlife.Life.Data.Husks;
@@ -219,7 +219,7 @@ public sealed partial class Staging
         }
         float nowAt = WildSim.Flat(_game.Survivor.WorldFeet - deep.World(m.Middle)).Length();
         GD.Print($"(held: {_game.InWorms}, hauled {startAt:F2} to {nowAt:F2} m in 2 s ({_game.WormHauled:F2} m all told), health {health * 100:F1}% to {_game.Suit.HealthShare * 100:F1}%)");
-        if (!_game.InWorms || nowAt >= startAt - 0.3f || _game.Suit.HealthShare >= health) throw new InvalidOperationException("the mass did not hold, haul and sting the castaway");
+        if (!_game.InWorms || nowAt >= startAt - 0.3f || _game.Suit.HealthShare >= health) throw new InvalidOperationException("the mass did not hold, haul and sting the sleeper");
         foreach (int x in Shot(Path.Combine(dir, "held.png"))) yield return x;
         foreach (int x in Play.Tool(Slice.Player.ToolMode.Shoot)) yield return x;
         _drive.Face(deep.World(m.Middle));
@@ -234,7 +234,7 @@ public sealed partial class Staging
         foreach (int x in Shot(Path.Combine(dir, "free.png"))) yield return x;
     }
 
-    /// <summary>Full day where the castaway stands (the clock is the world's, the sun the place's): the time of day with the sun highest, printed.</summary>
+    /// <summary>Full day where the sleeper stands (the clock is the world's, the sun the place's): the time of day with the sun highest, printed.</summary>
     IEnumerable<int> Daylight()
     {
         double best = _game.Zone.Sky.TimeOfDay;
@@ -251,8 +251,8 @@ public sealed partial class Staging
         foreach (int x in _drive.Wait(10)) yield return x;
     }
 
-    /// <summary>The castaway's own body, hidden for a staged eye that would have them in the shot.</summary>
-    void HideCastaway(bool hide)
+    /// <summary>The sleeper's own body, hidden for a staged eye that would have them in the shot.</summary>
+    void HideSleeper(bool hide)
     {
         if (_game.Figure is { } body) body.Visible = !hide;
     }
@@ -261,7 +261,7 @@ public sealed partial class Staging
     static float SpaceFloor(DeepSite deep, Vector3 p) =>
         deep.Sim.Creatures.FirstOrDefault(c => c.Space != null)?.Space is { } s && SpaceMath.FloorBelow(s, p.X, p.Y + 0.3f, p.Z, 3f) is float y ? y : p.Y;
 
-    /// <summary>A fixed eye inside a place on a point of its den's sim: the first spot round it, at a height, that is open and sees it; the castaway stands there too.</summary>
+    /// <summary>A fixed eye inside a place on a point of its den's sim: the first spot round it, at a height, that is open and sees it; the sleeper stands there too.</summary>
     IEnumerable<int> DenView(Place p, DeepSite deep, Vector3 target, float away, float height)
     {
         Vector3 at = deep.World(target);
@@ -278,7 +278,7 @@ public sealed partial class Staging
                 found = true;
             }
         GD.Print($"(eye {best.DistanceTo(at):F1} m off what it looks at{(found ? "" : ", no clear spot found")})");
-        // The castaway stands just behind the eye (else beside it), out of the shot, their torch on what it sees.
+        // The sleeper stands just behind the eye (else beside it), out of the shot, their torch on what it sees.
         Vector3 back = new Vector3(best.X - at.X, 0f, best.Z - at.Z).Normalized();
         Vector3 feet = best with { Y = at.Y - (target.Y - SpaceFloor(deep, target)) };
         foreach (Vector3 off in new[] { back * 1.1f, new Vector3(-back.Z, 0f, back.X) * 1.1f, new Vector3(back.Z, 0f, -back.X) * 1.1f, Vector3.Zero })
@@ -286,7 +286,7 @@ public sealed partial class Staging
         _game.Survivor.PlaceOutside((feet + Vector3.Up * 0.1f).ToNumerics());
         foreach (int x in _drive.Wait(20)) yield return x;
         _game.FixedCamera = new Transform3D(Basis.LookingAt(at - best, Vector3.Up), best);
-        HideCastaway(true);
+        HideSleeper(true);
         foreach (int x in _drive.Wait(40)) yield return x;
     }
 

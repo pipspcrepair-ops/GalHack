@@ -10,7 +10,7 @@ using N = System.Numerics;
 namespace Slice.Player;
 
 /// <summary>
-/// The castaway's body: a registered body like any other (100 kg with suit and pack), walked by
+/// The sleeper's body: a registered body like any other (100 kg with suit and pack), walked by
 /// the shared <see cref="WalkController"/> (legs, jump, the suit's jetpack) and moved by a
 /// character controller. It is the physics sandbox's player, on a planet: landing on (or, in
 /// the air, touching) a hull puts it in that structure's cabin world; it lets go by the shared
@@ -27,7 +27,7 @@ public sealed class Survivor
     /// <summary>Crouched, the capsule and the eye drop: low enough for a 1.2 m gap.</summary>
     public const float CrouchHeight = 1.1f, CrouchEyeHeight = 0.95f;
 
-    /// <summary>The zone the castaway is in (the planet's surface, or its orbit): it changes only at a zone handover.</summary>
+    /// <summary>The zone the sleeper is in (the planet's surface, or its orbit): it changes only at a zone handover.</summary>
     public SurfaceZone Zone { get; internal set; }
     public readonly Body Body;
     public readonly CharacterBinding Binding;

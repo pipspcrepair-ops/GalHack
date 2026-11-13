@@ -28,7 +28,7 @@ namespace Slice.Tests;
 
 /// <summary>
 /// The slice played through, headless, by its own controls (tests/Driver): the pod comes down,
-/// the castaway empties its locker, walks to the nearest deposits and digs them, cuts a plant,
+/// the sleeper empties its locker, walks to the nearest deposits and digs them, cuts a plant,
 /// builds the starter vessel from its blueprint block by block (paying for every one), builds it
 /// again in Creative (paying nothing), boards it, takes off, flies 2 km and lands on its gear.
 /// Survival runs the whole time and must warn before any harm. Run with:
@@ -106,7 +106,7 @@ public partial class SliceTest : Node
         zone.Physics.Impact += i =>
         {
             if (i.Body == _game.Survivor.Body && i.Damage > 0f)
-                GD.Print($"  (the castaway hit {(i.Other?.Label ?? i.Surface.ToString())} at {i.Speed:F1} m/s: {i.Damage:F4} damage)");
+                GD.Print($"  (the sleeper hit {(i.Other?.Label ?? i.Surface.ToString())} at {i.Speed:F1} m/s: {i.Damage:F4} damage)");
         };
         zone.Physics.Landed += _ => _landed++;
         zone.Physics.LiftedOff += _ => _liftedOff++;
@@ -199,7 +199,7 @@ public partial class SliceTest : Node
         foreach (int x in _drive.Wait(30)) yield return x;
         Survivor s = _game.Survivor;
         Check(s.Body.OnFloor && s.WorldFeet.DistanceTo(b.CryoStand) < 0.8f && !Inside(s.Body) && b.Mine.Open,
-            $"the castaway wakes standing in their cryopod (the systems test opens it), {b.Dead.Count} dead sleepers beside it");
+            $"the sleeper wakes standing in their cryopod (the systems test opens it), {b.Dead.Count} dead sleepers beside it");
         Check(_game.Suit.Vitals.Health == _game.Suit.Sim.Data.Vitals.Health.Max && _game.Suit.Last.Exposure.Temperature is > 2 and < 30
               && _game.Suit.Last.Exposure.OxygenPercent >= 16,
             $"the start site is survivable: {_game.Suit.Last.Exposure.Temperature:F1} °C, {_game.Suit.Last.Exposure.OxygenPercent:F0}% oxygen, {_game.Suit.Last.Exposure.Place}");
@@ -266,7 +266,7 @@ public partial class SliceTest : Node
                     Check(tellOre % Player.SurvivalTool.TellOrePerPulse == 0 && tellOre <= Player.SurvivalTool.TellPulses * Player.SurvivalTool.TellOrePerPulse,
                         $"an ore rock gives {Player.SurvivalTool.TellOrePerPulse} a pulse for {Player.SurvivalTool.TellPulses} pulses at most ({tellOre}), then the tool digs through");
                     Check(_game.Zone.Planet.Terrain.Store.RemovedCount > 0 && !Inside(_game.Survivor.Body),
-                        $"the dig is real terrain, removed and logged: {_game.Zone.Planet.Terrain.Store.RemovedCount} cells so far, the castaway still in the open");
+                        $"the dig is real terrain, removed and logged: {_game.Zone.Planet.Terrain.Store.RemovedCount} cells so far, the sleeper still in the open");
                 }
             }
         }
@@ -281,10 +281,10 @@ public partial class SliceTest : Node
     /// <summary>The hover bike: set down from the toolbar, F to ride, fast and hovering above the ground, over water as if it were ground, F to get off, E to pick it up.</summary>
     static Vector3 Flat(Vector3 v) => new Vector3(v.X, 0f, v.Z).Normalized();
 
-    /// <summary>The castaway's own figure, as third person shows it: it faces the way you look, and walks when you walk.</summary>
+    /// <summary>The sleeper's own figure, as third person shows it: it faces the way you look, and walks when you walk.</summary>
     IEnumerable<int> OwnFigure()
     {
-        GD.Print("-- the castaway's own figure --");
+        GD.Print("-- the sleeper's own figure --");
         Survivor s = _game.Survivor;
         _game.ThirdPerson = true;
         float worst = 0f;
@@ -370,7 +370,7 @@ public partial class SliceTest : Node
             $"the hover bike is fast: {top:F1} m/s, {ran:F0} m in under two seconds{(clear ? "" : " (no clear run round it)")} (a walker sprints at {_game.Survivor.Legs.SprintSpeed:F1})");
         Check(_game.Survivor.WorldEye().DistanceTo(bike.Position) < 2f, "the rider goes with the bike");
         float astride = Mathf.RadToDeg(Flat(-_game.Figure.GlobalTransform.Basis.Z).AngleTo(Flat(bike.Forward)));
-        Check(astride < 10f, $"third person, the castaway sits the bike facing its heading ({astride:F1}° off)");
+        Check(astride < 10f, $"third person, the sleeper sits the bike facing its heading ({astride:F1}° off)");
         // The weather's spin turns the bike itself: its model always faces the way it drives (it drifted round in any wind).
         // A steady crosswind, the kind that turned it before; judged while it stands upright (a gale that rolls it
         // tilts its nose out of the flat, which isn't the drift).
@@ -434,7 +434,7 @@ public partial class SliceTest : Node
                     deep = source.SurfaceHeight(wx, wz - d * 10f) < source.WaterLevel - 1f;
                 if (deep) lake = new Vector3(wx, source.WaterLevel, wz);
             }
-        if (lake is not Vector3 water) { GD.Print("  (no lake within 750 m of the castaway on this world: the water ride is not tried)"); yield break; }
+        if (lake is not Vector3 water) { GD.Print("  (no lake within 750 m of the sleeper on this world: the water ride is not tried)"); yield break; }
         Slice.Vehicles.HoverBike boat = _game.Bikes.Place(water, 0f);
         boat.Ridden = true;
         boat.Throttle = 1f;
@@ -653,7 +653,7 @@ public partial class SliceTest : Node
             tried.Add(plant);
             (p, id) = (root, plant);
             foreach (int x in _drive.WalkTo(p, 1.8f, 40f)) yield return x;
-            // In reach, and not up a bank over the castaway's head, where the tool can't be aimed at it.
+            // In reach, and not up a bank over the sleeper's head, where the tool can't be aimed at it.
             bool InReach() => _game.Survivor.WorldEye().DistanceTo(p + Vector3.Up * 0.9f) <= reach && p.Y < _game.Survivor.WorldEye().Y;
             if (!InReach())
                 foreach (int x in _drive.WalkTo(p, 0.9f, 15f)) yield return x;
@@ -661,7 +661,7 @@ public partial class SliceTest : Node
         }
         if (id == 0)
         {
-            Fail("no plant found near the castaway to cut");
+            Fail("no plant found near the sleeper to cut");
             yield break;
         }
         bool tree = _game.Zone.Streamer.SolidsNear(p, 3f).Any(s => s.solid.Id == id);
@@ -872,7 +872,7 @@ public partial class SliceTest : Node
             sky.Snap(WeatherKind.Clear);
         }
         // The Creative twin may stand between its pad and the Skiff, on legs low enough to wedge you under: this check is about flying.
-        GD.Print("  (TEST: the castaway is set down beside the Skiff, clear of the Creative twin)");
+        GD.Print("  (TEST: the sleeper is set down beside the Skiff, clear of the Creative twin)");
         Vector3 beside = v.Body.Position.ToGodot() + new Vector3(6f, 0f, 6f);
         _game.Survivor.PlaceOutside(_game.Zone.GroundAt(beside.X, beside.Z).ToNumerics() + N.Vector3.UnitY * 0.3f);
         foreach (int x in _drive.UntilSettled()) yield return x;
@@ -880,7 +880,7 @@ public partial class SliceTest : Node
         Check(_game.Survivor.Seated == v, $"F at the seat boards the {v.Name}");
         if (_game.Survivor.Seated != v) yield break;
         double harmBefore = BodyHarm();
-        float damageBefore = v.Body.Damage; // a castaway running into it on the ground isn't the flight's doing
+        float damageBefore = v.Body.Damage; // a sleeper running into it on the ground isn't the flight's doing
         Vector3 start = v.Body.Position.ToGodot();
         bool profiling = OS.GetCmdlineUserArgs().Contains("--profile"); // a longer flight, reading what each kind of node costs the frame
         Vector3 target = MildSpot(start, profiling ? 6000f : 2150f); // a planet has cold and hot country: this check is about flying
@@ -1092,7 +1092,7 @@ public partial class SliceTest : Node
 
     // ==== Creatures ===============================================================================
 
-    /// <summary>A hunter comes for the castaway: the visor warns before its first bite lands.</summary>
+    /// <summary>A hunter comes for the sleeper: the visor warns before its first bite lands.</summary>
     IEnumerable<int> Creatures()
     {
         GD.Print("-- a creature attack is warned before it lands --");
@@ -1109,15 +1109,15 @@ public partial class SliceTest : Node
         for (int k = 0; k < 96 && Wet(clear); k++)
             clear += new Vector3(MathF.Cos(k * 0.7f), 0f, MathF.Sin(k * 0.7f)) * (2f + k * 0.5f);
         _game.Survivor.PlaceOutside(_game.Zone.GroundAt(clear.X, clear.Z).ToNumerics() + N.Vector3.UnitY * 0.3f);
-        // The wildlife follows the castaway: a patch of the planet's own animals is baked around them.
+        // The wildlife follows the sleeper: a patch of the planet's own animals is baked around them.
         float Away() { Vector3 l = w.PatchLocal(_game.Survivor.WorldFeet); return new Vector2(l.X, l.Z).Length(); }
         for (int i = 0; i < 600 && Away() > w.Sim.Terrain.HalfSize * 0.5f; i++) yield return 0;
         w.FinishFollowing();
         foreach (int x in _drive.Wait(30)) yield return x;
         Check(w.Patches >= 2 && Away() < w.Sim.Terrain.HalfSize * 0.5f,
-            $"the wildlife followed the castaway 2 km: a new patch of {w.Sim.Creatures.Count} creatures around them");
+            $"the wildlife followed the sleeper 2 km: a new patch of {w.Sim.Creatures.Count} creatures around them");
         Vector3 feet = _game.Survivor.WorldFeet;
-        // On dry ground with a dry way to the castaway: creatures keep out of the sea and the rivers,
+        // On dry ground with a dry way to the sleeper: creatures keep out of the sea and the rivers,
         // and the flight can end on a low shore. The way whose lowest ground is highest, out past where it can land.
         Vector3 local = w.PatchLocal(feet), toward = Vector3.Right;
         float driest = float.MinValue;
@@ -1178,7 +1178,7 @@ public partial class SliceTest : Node
             ? $"vitals stayed sane: every loss of health came after its warning ({suit.TotalLost:F0} health lost in all, {suit.Vitals.Health:F0} left)"
             : $"health was lost without a warning first: {string.Join("; ", _harmUnwarned.Take(5))}");
         Check(suit.Vitals.Health + _biteLoss > suit.Sim.Data.Vitals.Health.Max * 0.5 && suit.Vitals.Food > 0,
-            $"the castaway ends the run healthy: {suit.Vitals.Health:F0} health, food {suit.FoodShare * 100:F0}%");
+            $"the sleeper ends the run healthy: {suit.Vitals.Health:F0} health, food {suit.FoodShare * 100:F0}%");
         var inside = _game.Zone.Physics.Bodies.Where(Inside).ToList();
         Check(inside.Count == 0, $"no stuck bodies: nothing of {_game.Zone.Physics.Bodies.Count} bodies is inside the ground ({_rescues.Count} rescues along the way: {string.Join(", ", _rescues.Select(r => r.Body.Label).Distinct())})");
         Check(!_rescues.Any(r => r.Body.Kind == BodyKind.Vessel), "no vessel ever needed rescuing from the ground");
