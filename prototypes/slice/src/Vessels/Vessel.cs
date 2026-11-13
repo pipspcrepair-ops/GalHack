@@ -423,6 +423,10 @@ public sealed partial class Vessel
             Vector3 p = Body.Position.ToGodot() + basis * corner;
             top = MathF.Max(top, Zone.GroundAt(p.X, p.Z).Y);
         }
+        // And under every one of its lowest blocks, which stand on the ground: none of them is left in a bump between those.
+        foreach (var (cellAt, _) in Structure.Cells())
+            if (cellAt.Y == min.Y && Body.ToParent(StructureBridge.CellCenter(Structure, cellAt)) is var under)
+                top = MathF.Max(top, Zone.GroundAt(under.X, under.Z).Y);
         float y = top + feet + 0.02f;
         if (MathF.Abs(y - Body.Position.Y) < 0.01f) return;
         c.PlaceLanded(Body, new N.Vector3(Body.Position.X, y, Body.Position.Z), MathX.Heading(Body.Rotation));

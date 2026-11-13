@@ -242,7 +242,8 @@ public partial class OrbitTest : Node
         Check(_game.InOrbit, $"the climb crossed into orbit after {ticks / 60f:F0} s ({_game.Spaceflight.Crossings.Count} crossing)"
             + (_game.InOrbit ? "" : $"; the Skiff {v.Body.Position.Y - start.Y:F1} m up at {v.Body.Velocity}, {v.Body.Mass / 1000f:F1} t, lift {v.Stats?.LiftMargin:F0} kN, "
                 + $"can lift {v.Stats?.CanLiftOff}, frozen {v.Controller?.Frozen}, gear attached {v.Controller?.Gear?.Attached}, parked on {v.Body.ParkedOn?.Kind.ToString() ?? "nothing"}, "
-                + $"up {MathX.Up(v.Body.Rotation)}, seated {_game.Survivor.Seated == v}, said '{_said}'"));
+                + $"up {MathX.Up(v.Body.Rotation)}, seated {_game.Survivor.Seated == v}, asleep {v.Body.Asleep}, motion {v.Body.Motion}, on floor {v.Body.OnFloor}, "
+                + $"pushes {(v.Binding as HullBinding)?.Pushes} last {(v.Binding as HullBinding)?.LastPush}, in the zone's world {_game.Zone.Physics.Bodies.Contains(v.Body)}, said '{_said}'"));
         if (!_game.InOrbit) yield break;
         Check(preloaded, "orbit started loading below the atmosphere's top, before the crossing (the seam is hidden)");
         Check(sheetFromTheGround, "the far land stood behind the land all the way up, the sea ending with the land's own mesh: no ring of water past the land, and the sea never met the sky");

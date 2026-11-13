@@ -85,7 +85,8 @@ public sealed class Pilot
         var (lo, hi) = _game.StarterPlan.Bounds();
         float clear = 0.5f * new Vector2(hi.X - lo.X + 1, hi.Z - lo.Z + 1).Length() * _game.StarterPlan.Grid.CellSize + 3f;
         Vector3 middle = skiff.Body.Position.ToGodot(), away = (_game.Survivor.WorldFeet - middle) with { Y = 0f };
-        foreach (int x in _drive.WalkTo((middle + away.Normalized() * clear) with { Y = 0f }, 1f)) yield return x;
+        foreach (int x in _drive.WalkTo((middle + away.Normalized() * clear) with { Y = 0f }, 1f, 20f, dig: false)) yield return x; // digging would put the projector away
+        if (_game.Pack.Selected != 3) foreach (int x in _drive.Tap(Key.Key4)) yield return x;
         int stalls = 0;
         while (_game.Builder.Underway == skiff && stalls < 240)
         {
