@@ -198,6 +198,17 @@ public sealed partial class Staging
         if (_args.ContainsKey("atlas")) RenderingServer.DirectionalShadowAtlasSetSize((int)Num("atlas", 4096), true);
         if (_args.TryGetValue("splits", out string cuts)) { float[] m = cuts.Split(',').Select(float.Parse).ToArray(); float reach = sky.Sun.DirectionalShadowMaxDistance; sky.Sun.DirectionalShadowSplit1 = m[0] / reach; sky.Sun.DirectionalShadowSplit2 = m[1] / reach; sky.Sun.DirectionalShadowSplit3 = m[2] / reach; }
         GD.Print($"PLANTSHADOW-AB sun bias {sky.Sun.ShadowBias}, normal bias {sky.Sun.ShadowNormalBias}, blur {sky.Sun.ShadowBlur}, opacity {sky.Sun.ShadowOpacity:F2}, energy {sky.Sun.LightEnergy:F2}, max distance {sky.Sun.DirectionalShadowMaxDistance}, splits {sky.Sun.DirectionalShadowSplit1:F3}/{sky.Sun.DirectionalShadowSplit2:F3}/{sky.Sun.DirectionalShadowSplit3:F3}");
+        {
+            // Each cascade's texel (its slice's bounding sphere over the map's pixels) and the lift the normal bias makes of it, at this view's field of view.
+            float reach = sky.Sun.DirectionalShadowMaxDistance, map = (_args.TryGetValue("atlas", out string atlas) ? float.Parse(atlas) : (int)ProjectSettings.GetSetting("rendering/lights_and_shadows/directional_shadow/size", 4096)) / 2f;
+            float[] edge = { 0f, sky.Sun.DirectionalShadowSplit1 * reach, sky.Sun.DirectionalShadowSplit2 * reach, sky.Sun.DirectionalShadowSplit3 * reach, reach };
+            float half = MathF.Tan(Mathf.DegToRad(_game.Camera.Fov) / 2f) * 1.8f; // the frustum's half diagonal per metre of depth, 16:9
+            for (int c = 0; c < 4; c++)
+            {
+                float far = edge[c + 1], near = edge[c], diameter = 2f * MathF.Sqrt(MathF.Pow(far * half, 2) + MathF.Pow((far - near) / 2f, 2));
+                GD.Print($"PLANTSHADOW-AB cascade {c + 1}: {near:F0} to {far:F0} m, texel about {diameter / map:F2} m, normal bias lift about {diameter / map * sky.Sun.ShadowNormalBias:F2} m");
+            }
+        }
         ShaderMaterial mat = s.FloraMaterial;
         var tint = new Color(0.5f, 0.45f, 0.4f, 0f);
         MultiMeshInstance3D Draw(Mesh mesh, int layer)
@@ -210,6 +221,7 @@ public sealed partial class Staging
             _game.AddChild(m);
             return m;
         }
+        bool measured = false;
         foreach (var (name, mesh, size) in drawn)
         foreach (float d in _args.GetValueOrDefault("dist", "30,80,112,150,250,300").Split(',').Select(float.Parse))
         {
@@ -230,6 +242,15 @@ public sealed partial class Staging
                 frames.Add(_game.GetViewport().GetTexture().GetImage());
                 m.QueueFree();
                 yield return 0;
+            }
+            if (!measured)
+            {
+                // The GPU's time for the frame (the cascades' draws and every shadowed pixel): once a run, with the first plant drawn.
+                measured = true;
+                MultiMeshInstance3D m = Draw(mesh, layer);
+                foreach (int x in MeasureGpu(90)) yield return x;
+                GD.Print($"PLANTSHADOW-AB GPU {_gpuTotal / Math.Max(1, _gpuFrames):F2} ms a frame at {d} m, sun {MathF.Asin(sun.Y) * 180f / MathF.PI:F1} degrees up");
+                m.QueueFree();
             }
             int differ = 0, total = 0;
             for (int y = 0; y < frames[0].GetHeight(); y += 2)
