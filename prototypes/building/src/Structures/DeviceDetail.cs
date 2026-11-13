@@ -43,7 +43,7 @@ public static class DeviceDetail
             case "gyro": Gyro(k); break;
             case "thruster": Thruster(k); break;
             case "hover": Hover(k); break;
-            case "chair": Chair(k); break;
+            case "chair": Chair(k, t); break;
             case "door": Door(k); break;
             case "light": Light(k); break;
             case "warp-drive":
@@ -314,19 +314,53 @@ public static class DeviceDetail
         k.Tube(1, Vector3.Zero, 0.4f, 0.4f, -0.415f, -0.4f, PartStyle.Dark, Bare, segments: 16);
     }
 
-    /// <summary>The command chair: a headrest, armrests with sticks, buttons on the console and a hazard ring at its foot.</summary>
-    static void Chair(Kit k)
+    /// <summary>
+    /// A chair or cockpit seat, read off the type's own parts so every piece stands on one: a
+    /// headrest on the backrest's top, an armrest each side of the seat pan on a post from its side
+    /// with a stick on it, a lamp each side on the console's top and a hazard ring round the
+    /// pedestal's foot. Sizes are metres, so a stretched cockpit's pieces stay a person's size.
+    /// </summary>
+    static void Chair(Kit k, BlockType t)
     {
-        k.Box(new Vector3(-0.17f, 0.3f, 0.15f), new Vector3(0.17f, 0.48f, 0.2f), PartStyle.Dark, Armour(1));
+        Vector3 m = Vector3.One / t.Size.ToVector3(); // a metre in part units, along each axis
+        const float e = 0.01f;
+        bool Under(Part p, Vector3 at) => p.Min.X <= at.X + e && at.X <= p.Max.X + e && p.Min.Z <= at.Z + e && at.Z <= p.Max.Z + e;
+        Part pan = t.Parts.FirstOrDefault(p => p.Style == PartStyle.Body && MathF.Abs(p.Max.Y - t.Seat.Y) < e && Under(p, t.Seat));
+        if (pan == null) return;
+        Part back = t.Parts.FirstOrDefault(p => p.Style == PartStyle.Body && MathF.Abs(p.Min.Y - pan.Max.Y) < e && MathF.Abs(p.Min.Z - pan.Max.Z) < e);
+        if (back != null)
+        {
+            float w = MathF.Min(back.Max.X, 0.17f * m.X);
+            k.Box(new Vector3(-w, back.Max.Y - 0.04f * m.Y, back.Min.Z - 0.03f * m.Z), new Vector3(w, back.Max.Y + 0.2f * m.Y, back.Max.Z), PartStyle.Dark, Armour(1));
+        }
         foreach (int s in new[] { -1, 1 })
         {
-            k.Box(new Vector3(s * 0.3f, -0.08f, -0.12f), new Vector3(s * 0.37f, -0.02f, 0.26f), PartStyle.Dark, Armour(1));
-            var stick = new Vector3(s * 0.335f, 0f, -0.06f);
-            k.Tube(1, stick, 0.018f, 0.022f, -0.02f, 0.09f, PartStyle.Dark, Bare, segments: 8);
-            k.Box(stick + new Vector3(-0.022f, 0.09f, -0.022f), stick + new Vector3(0.022f, 0.115f, 0.022f), PartStyle.Accent, Coat(ValveRed));
-            k.Box(new Vector3(s * 0.26f - 0.03f, -0.08f, -0.38f), new Vector3(s * 0.26f + 0.03f, -0.065f, -0.34f), PartStyle.Glow, Blink(s > 0 ? 0.6f : 0.4f));
+            float x0 = s > 0 ? pan.Max.X : pan.Min.X, x1 = x0 + s * 0.07f * m.X, pad = pan.Max.Y + 0.17f * m.Y, mid = 0.5f * (x0 + x1);
+            k.Box(new Vector3(x0, pan.Min.Y, pan.Max.Z - 0.08f * m.Z), new Vector3(x1, pad, pan.Max.Z), PartStyle.Dark, Armour(1));
+            k.Box(new Vector3(x0, pad, pan.Min.Z), new Vector3(x1, pad + 0.05f * m.Y, pan.Max.Z), PartStyle.Dark, Armour(1));
+            float z = pan.Min.Z + 0.12f * m.Z, top = pad + 0.05f * m.Y;
+            k.Box(new Vector3(mid - 0.017f * m.X, top, z - 0.017f * m.Z), new Vector3(mid + 0.017f * m.X, top + 0.09f * m.Y, z + 0.017f * m.Z), PartStyle.Dark, Bare);
+            k.Box(new Vector3(mid - 0.024f * m.X, top + 0.09f * m.Y, z - 0.024f * m.Z), new Vector3(mid + 0.024f * m.X, top + 0.115f * m.Y, z + 0.024f * m.Z), PartStyle.Accent, Coat(ValveRed));
         }
-        k.Box(new Vector3(-0.19f, -0.5f, -0.08f), new Vector3(0.19f, -0.45f, 0.25f), PartStyle.Accent, Hazard);
+        if (Desk(t) is Part desk)
+            foreach (int s in new[] { -1, 1 })
+            {
+                float x = s > 0 ? desk.Max.X - 0.06f * m.X : desk.Min.X + 0.06f * m.X;
+                k.Box(new Vector3(x - 0.03f * m.X, desk.Max.Y, desk.Max.Z - 0.1f * m.Z), new Vector3(x + 0.03f * m.X, desk.Max.Y + 0.015f * m.Y, desk.Max.Z - 0.04f * m.Z),
+                    PartStyle.Glow, Blink(s > 0 ? 0.6f : 0.4f));
+            }
+        if (t.Parts.FirstOrDefault(p => p.Style == PartStyle.Dark && MathF.Abs(p.Max.Y - pan.Min.Y) < e && Under(p, t.Seat)) is Part foot)
+            k.Box(foot.Min - new Vector3(0.06f * m.X, 0f, 0.06f * m.Z), new Vector3(foot.Max.X + 0.06f * m.X, foot.Min.Y + 0.04f * m.Y, foot.Max.Z + 0.06f * m.Z), PartStyle.Accent, Hazard);
+    }
+
+    /// <summary>A chair's console: the dark housing its lit symbol screen sits on, or null.</summary>
+    public static Part Desk(BlockType t)
+    {
+        Part screen = t.Parts.FirstOrDefault(p => p.Style == PartStyle.Glow && p.Finish is { Symbol: not DeviceSymbol.None });
+        if (screen == null) return null;
+        const float e = 0.01f;
+        return t.Parts.FirstOrDefault(p => p.Style == PartStyle.Dark && Vector3.Max(p.Min, screen.Min) is var lo
+            && Vector3.Min(p.Max, screen.Max) is var hi && lo.X <= hi.X + e && lo.Y <= hi.Y + e && lo.Z <= hi.Z + e);
     }
 
     /// <summary>A door: chunky plain jambs in the frame (hazard stripes belong on a dangerous opening, never round a person's door), a status lamp over it each side, and seams across the leaf.</summary>
