@@ -61,7 +61,9 @@ public static class BuildingBridge
     /// </summary>
     public static void NameBlockItems(ItemCatalogue items, Catalogue blocks)
     {
-        items.NameBlockItems(id => blocks.TryGetType(id, out BlockType t) ? (t.IsArmor ? $"{t.Name} block" : t.Name) : null);
+        // An armour item says it is a block, once: "Iron plated block", and "Base block" as it is.
+        items.NameBlockItems(id => blocks.TryGetType(id, out BlockType t)
+            ? (t.IsArmor && !t.Name.EndsWith(" block", StringComparison.OrdinalIgnoreCase) ? $"{t.Name} block" : t.Name) : null);
         foreach (BlockBill bill in items.Blocks.All)
             if (bill.Family != BlockFamily.Deco && blocks.TryGetType(bill.BlockId, out BlockType t)) bill.Cells = t.Cells;
     }

@@ -14,7 +14,7 @@ namespace Slice.Ui;
 /// one column right, so tiers read left to right; its other children start lower rows one column
 /// right of it, on the first row with room and an empty column either side, so a wire only runs
 /// down the gap beside its parent and no tile looks chained to a neighbour it isn't. A node whose
-/// parent is in another lane heads its own line; loose ones take the first free spots.
+/// parent is in another lane heads its own line; loose ones take the first free spots below the lane's first line.
 /// </summary>
 public sealed class TechLayout
 {
@@ -103,12 +103,14 @@ public sealed class TechLayout
             var taken = new HashSet<(int Row, int Col)>();
             var heads = cells.Where(c => c.Parent?.Lane != name).OrderBy(c => c.Node.Level).ThenBy(c => c.Node.Name, StringComparer.Ordinal).ToList();
             foreach (Cell h in heads.Where(h => Next(h).Any())) Place(h, 0, 0, taken);
-            // Loose heads pack into rows as wide as the lane's trees, or wide enough for all of them in one.
+            // Loose heads pack into rows as wide as the lane's trees, or wide enough for all of them in one,
+            // below the lane's first line of tiers, so none reads as that line's next tier.
             var loose = heads.Where(h => !Next(h).Any()).ToList();
             int width = Math.Max(taken.Count == 0 ? 0 : taken.Max(t => t.Col) + 1, 2 * loose.Count - 1);
+            int first = taken.Count == 0 ? 0 : width;
             foreach (Cell h in loose)
             {
-                int spot = 0;
+                int spot = first;
                 while (!Free(taken, spot / width, spot % width, 1)) spot++;
                 Take(h, spot / width, spot % width, taken);
             }

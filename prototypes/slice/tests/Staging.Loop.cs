@@ -67,7 +67,7 @@ public sealed partial class Staging
         if (target == MenuTab.Tech && _args.TryGetValue("scroll", out string sc) && sc == "end") _game.Menu.Root.Tech.ColOff = _game.Menu.Root.Tech.RowOff = 999;
         if (target == MenuTab.Tech && _args.TryGetValue("coloff", out string co) && int.TryParse(co, out int cols)) _game.Menu.Root.Tech.ColOff = cols;
         if (target == MenuTab.Tech && _args.TryGetValue("rowoff", out string ro) && int.TryParse(ro, out int rows)) _game.Menu.Root.Tech.RowOff = rows;
-        foreach (int x in _drive.Wait(30)) yield return x;
+        foreach (int x in _drive.Wait(target == MenuTab.Tech ? 120 : 30)) yield return x; // the tech tiles' icons render a few a frame
     }
 
     /// <summary>A creature brought down with the tool and its body opened beside the bag.</summary>
