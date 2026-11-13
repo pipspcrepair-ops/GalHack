@@ -5,7 +5,9 @@
 //                  where everyone starts, with 0). Tuned so an experienced player playing the
 //                  loop (gather, craft the foothold base, build it) reaches level 5, the first
 //                  vessel's gate, in about 30 to 40 minutes, when its base can make the vessel's parts
-//   points         unlock points granted on reaching each level, from level 2 up
+//   points         unlock points granted on reaching each level, from level 2 up: with startPoints
+//                  they pay for the whole tree (deco included) by the cap and not before, so each
+//                  level up is a choice (BuildTest checks both)
 //   startPoints    unlock points a new character starts with
 //   pastCap        past the cap, one more point for every this much experience
 //   xp             what each thing done is worth
@@ -14,7 +16,7 @@
   "version": 1,
   "levels": [ 80, 220, 420, 680, 980, 1340, 1760, 2240, 2780, 3380, 4040, 4760, 5540, 6380, 7280,
               8240, 9260, 10340, 11480, 12680, 13940, 15260, 16640, 18080 ],
-  "points": [ 2, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6 ],
+  "points": [ 3, 4, 4, 4, 5, 5, 5, 6, 6, 6, 6, 7, 7, 7, 7, 8, 8, 8, 8, 9, 9, 9, 9, 9 ],
   "startPoints": 3,
   "pastCap": 1500,
   "xp": {

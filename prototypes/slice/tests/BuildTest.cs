@@ -932,6 +932,12 @@ public partial class BuildTest : Node
         Check(fresh.Nodes.Select(n => n.Id).Distinct().Count() == fresh.Nodes.Count, "no node is listed twice");
         var orphans = fresh.Nodes.Where(n => n.Unlock.Parent != null && fresh.Node(n.Unlock.Parent) == null).Select(n => n.Id).ToList();
         Check(orphans.Count == 0, $"every parent is a node{(orphans.Count > 0 ? ": not " + string.Join(", ", orphans) : "")}");
+        var early = fresh.Nodes.Where(n => fresh.Node(n.Unlock.Parent) is TechNode up && up.Level > n.Level).Select(n => n.Id).ToList();
+        Check(early.Count == 0, $"no node opens before its parent{(early.Count > 0 ? ": " + string.Join(", ", early) : "")}");
+        // Levels alone pay for the whole tree by the cap, and not a level sooner: each level up is a choice.
+        var rules = data.Progress;
+        int cost = fresh.Nodes.Sum(n => n.Cost), byCap = rules.StartPoints + rules.Points.Sum();
+        Check(cost <= byCap && cost > byCap - rules.Points[^1], $"the tree's {fresh.Nodes.Count} nodes cost {cost} points; levels give {byCap} by level {rules.Cap}, {byCap - rules.Points[^1]} by level {rules.Cap - 1}");
         // Every structure block (not deco, not a weapon) is on Structures and grows from the core.
         string Root(TechNode n) { while (n?.Unlock.Parent != null) n = fresh.Node(n.Unlock.Parent); return n?.Id; }
         var offTree = data.Items.Blocks.All.Where(b => b.Family != BlockFamily.Deco && b.Ammo == null)

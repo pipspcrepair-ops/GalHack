@@ -14,13 +14,13 @@ Sources used are listed at the end.
 
 **Level curve (Measured).** The file defines levels 2 to 25, so the cap is 25. Points granted climb from 2 to 6 per level and add up to 104 by level 25. All vessel, tool, weapon and misc nodes together cost 133 points (deco sets cost more on top, not counted), so even today the whole tree is not open at the cap unless points keep flowing past it (1 point per 1,500 xp past the cap). The owner's "everything by max level" rule means the point total has to be re-tuned; section 3d does that.
 
-**Tabs today (Measured).** The code has eight tabs: base, capital, small, hover, tools, weapons, deco, misc. The owner first decided on two vessel tabs, Base & Capital and Small & Hover, and this audit merges base+capital and small+hover to match. With the move to one 1 m grid (`docs/one-metre-grid.md` section 5) the two became one **Structures** tab, one tree from the core; the proposal in section 3 is redone for it. Weapons, tools, misc and deco stay separate tabs.
+**Tabs before the grid (Measured).** The code had eight tabs: base, capital, small, hover, tools, weapons, deco, misc. The owner first decided on two vessel tabs, one per grid, and this audit was taken on those (base with capital, small with hover). With the move to one 1 m grid (`docs/one-metre-grid.md` section 5) the two became one **Structures** tab, one tree from the core; the proposal in section 3 is redone for it. Weapons, tools, misc and deco stay separate tabs.
 
 ### 1a. What unlocks at each level
 
 Nodes are counted once per grid. "Large" = Big Core grid (base and capital), "small" = Small Core grid (small and hover). Where a block appears on both grids at a level, it is listed once.
 
-**Base & Capital (large grid, tabs base and capital)**
+**Old large grid (base and capital)**
 
 | Level | New nodes |
 | --- | --- |
@@ -35,7 +35,7 @@ Nodes are counted once per grid. "Large" = Big Core grid (base and capital), "sm
 | 15 | Advanced fabricator, fold tank, hyperdrive 1 |
 | 20 | Precursor armour (found-only alloy), hyperdrive 2 |
 
-**Small & Hover (small grid, tabs small and hover)**
+**Old small grid (small and hover)**
 
 | Level | New nodes |
 | --- | --- |
@@ -63,7 +63,7 @@ Nodes are counted once per grid. "Large" = Big Core grid (base and capital), "sm
 
 A band is a run of levels where that tab offers nothing new. The last row of each table is the biggest: levels 21 to 25 are empty everywhere because the data ends at level 20.
 
-**Base & Capital**
+**Old large grid**
 
 | Empty levels | Length |
 | --- | --- |
@@ -75,7 +75,7 @@ A band is a run of levels where that tab offers nothing new. The last row of eac
 | 16 to 19 | 4 |
 | 21 to 25 | 5 |
 
-**Small & Hover**
+**Old small grid**
 
 | Empty levels | Length |
 | --- | --- |
@@ -249,11 +249,11 @@ Node totals by tab (Structures counts each block once: there is one grid):
 
 | Tab | Nodes today | New | Total nodes | Points today | Points new | Total points | Most on one level |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Structures | 53 | 30 | 83 | 79 | 102 | 181 | 23 (level 1) |
+| Structures | 53 | 30 | 83 | 78 | 102 | 180 | 23 (level 1) |
 | Tools | 8 | 10 | 18 | 6 | 28 | 34 | 4 (level 1) |
 | Misc | 9 | 20 | 29 | 10 | 54 | 64 | 3 (level 1) |
 | Weapons | 12 | 150 | 162 | 25 | 456 | 481 | 10 (level 9) |
-| All four | 82 | 210 | **292** | 120 | 640 | **760** | |
+| All four | 82 | 210 | **292** | 119 | 640 | **759** | |
 
 Deco stays a separate cosmetic tab: 13 paid sets costing 18 points, at levels 3 to 20, counted in the points total in section 3d but not in the spacing rules.
 
@@ -316,47 +316,49 @@ Each ladder has as many tiers as 25 levels can use, with no thin, numbered fille
 
 The curve is the two-tab curve scaled to the smaller tree (about 0.83 of each grant). `startPoints` is in the data now: the player would otherwise start with no points, and Hover plate T1 costs 1, which leaves the design's "hover at level 1" gate out of reach until level 2.
 
+**Until the new nodes land**, `progress.json` carries a curve for the tree that is in the data: 161 points (Structures 53 nodes and 78 points; each deco piece is a node, but a set is bought once, at its first piece), against 3 to start and grants of 3 rising to 9 a level, 162 by level 25 and 153 by 24. BuildTest checks that the tree is paid for at the cap and not before.
+
 **The sum.**
 
-- Cost of the tree: Structures 181 + Tools 34 + Misc 64 + Weapons 481 = 760, plus 18 for deco = **778**.
+- Cost of the tree: Structures 180 + Tools 34 + Misc 64 + Weapons 481 = 759, plus 18 for deco = **777**.
 - Points by level 25: 3 + 8 + 10 + 12 + 15 + 17 + 19 + 21 + 23 + 26 + 27 + 30 + 32 + 34 + 36 + 38 + 40 + 41 + 44 + 46 + 48 + 50 + 52 + 54 + 55 = **781**.
-- Levels alone leave 3 points spare. Past-cap points still come on top, at 1 per 1,500 xp.
+- Levels alone leave 4 points spare. Past-cap points still come on top, at 1 per 1,500 xp.
 
-Why the numbers rise so far: the tree goes from 82 nodes to 292, on the same 25 levels, and most new nodes cost more than today's many free starter nodes. 778 points over 24 level-ups is about 32 a level.
+Why the numbers rise so far: the tree goes from 82 nodes to 292, on the same 25 levels, and most new nodes cost more than today's many free starter nodes. 777 points over 24 level-ups is about 32 a level.
 
 Level by level. "Still unaffordable" is the cost so far minus the points so far: what a player who spends everything still can't buy.
 
 | Lv | New nodes: Structures, Tools, Misc, Weapons | Cost of new nodes (with deco) | Grant | Points so far | Cost so far | Still unaffordable |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1 | 23, 4, 3, 3 | 10 | 3 | 3 | 10 | 7 |
-| 2 | 3, 2, 2, 6 | 12 | 8 | 11 | 22 | 11 |
-| 3 | 3, 1, 1, 7 | 14 | 10 | 21 | 36 | 15 |
-| 4 | 1, 2, 2, 4 | 13 | 12 | 33 | 49 | 16 |
-| 5 | 5, 1, 1, 6 | 25 | 15 | 48 | 74 | 26 |
-| 6 | 2, 0, 2, 5 | 19 | 17 | 65 | 93 | 28 |
-| 7 | 6, 0, 2, 7 | 27 | 19 | 84 | 120 | 36 |
-| 8 | 1, 1, 2, 9 | 28 | 21 | 105 | 148 | 43 |
-| 9 | 3, 0, 2, 10 | 29 | 23 | 128 | 177 | 49 |
-| 10 | 4, 1, 1, 8 | 32 | 26 | 154 | 209 | 55 |
-| 11 | 1, 1, 2, 9 | 39 | 27 | 181 | 248 | 67 |
-| 12 | 3, 1, 1, 6 | 32 | 30 | 211 | 280 | 69 |
-| 13 | 1, 0, 1, 9 | 33 | 32 | 243 | 313 | 70 |
-| 14 | 1, 0, 2, 7 | 31 | 34 | 277 | 344 | 67 |
-| 15 | 7, 1, 0, 7 | 48 | 36 | 313 | 392 | 79 |
-| 16 | 2, 0, 1, 6 | 27 | 38 | 351 | 419 | 68 |
-| 17 | 1, 1, 0, 7 | 36 | 40 | 391 | 455 | 64 |
-| 18 | 1, 0, 1, 4 | 24 | 41 | 432 | 479 | 47 |
-| 19 | 2, 0, 1, 6 | 36 | 44 | 476 | 515 | 39 |
-| 20 | 5, 1, 0, 8 | 62 | 46 | 522 | 577 | 55 |
-| 21 | 1, 0, 0, 7 | 32 | 48 | 570 | 609 | 39 |
-| 22 | 1, 0, 1, 8 | 50 | 50 | 620 | 659 | 39 |
-| 23 | 3, 1, 0, 5 | 45 | 52 | 672 | 704 | 32 |
-| 24 | 1, 0, 1, 5 | 36 | 54 | 726 | 740 | 14 |
-| 25 | 2, 0, 0, 3 | 38 | 55 | 781 | 778 | -3 |
+| 1 | 23, 4, 3, 3 | 9 | 3 | 3 | 9 | 6 |
+| 2 | 3, 2, 2, 6 | 12 | 8 | 11 | 21 | 10 |
+| 3 | 3, 1, 1, 7 | 14 | 10 | 21 | 35 | 14 |
+| 4 | 1, 2, 2, 4 | 13 | 12 | 33 | 48 | 15 |
+| 5 | 5, 1, 1, 6 | 25 | 15 | 48 | 73 | 25 |
+| 6 | 2, 0, 2, 5 | 19 | 17 | 65 | 92 | 27 |
+| 7 | 6, 0, 2, 7 | 27 | 19 | 84 | 119 | 35 |
+| 8 | 1, 1, 2, 9 | 28 | 21 | 105 | 147 | 42 |
+| 9 | 3, 0, 2, 10 | 29 | 23 | 128 | 176 | 48 |
+| 10 | 4, 1, 1, 8 | 32 | 26 | 154 | 208 | 54 |
+| 11 | 1, 1, 2, 9 | 39 | 27 | 181 | 247 | 66 |
+| 12 | 3, 1, 1, 6 | 32 | 30 | 211 | 279 | 68 |
+| 13 | 1, 0, 1, 9 | 33 | 32 | 243 | 312 | 69 |
+| 14 | 1, 0, 2, 7 | 31 | 34 | 277 | 343 | 66 |
+| 15 | 7, 1, 0, 7 | 48 | 36 | 313 | 391 | 78 |
+| 16 | 2, 0, 1, 6 | 27 | 38 | 351 | 418 | 67 |
+| 17 | 1, 1, 0, 7 | 36 | 40 | 391 | 454 | 63 |
+| 18 | 1, 0, 1, 4 | 24 | 41 | 432 | 478 | 46 |
+| 19 | 2, 0, 1, 6 | 36 | 44 | 476 | 514 | 38 |
+| 20 | 5, 1, 0, 8 | 62 | 46 | 522 | 576 | 54 |
+| 21 | 1, 0, 0, 7 | 32 | 48 | 570 | 608 | 38 |
+| 22 | 1, 0, 1, 8 | 50 | 50 | 620 | 658 | 38 |
+| 23 | 3, 1, 0, 5 | 45 | 52 | 672 | 703 | 31 |
+| 24 | 1, 0, 1, 5 | 36 | 54 | 726 | 739 | 13 |
+| 25 | 2, 0, 0, 3 | 38 | 55 | 781 | 777 | -4 |
 
 What the table shows:
 
-- At every level from 2 to 24 something stays out of reach. The gap peaks at 79 points at level 15, about two levels' grant, and closes at 25. Level 1 already leaves 7 points of starter tiers to choose between.
+- At every level from 2 to 24 something stays out of reach. The gap peaks at 78 points at level 15, about two levels' grant, and closes at 25. Level 1 already leaves 6 points of starter tiers to choose between.
 - A level's own new nodes cost more than its grant at levels 2 to 13 and at 15 and 20. Later levels pay down the backlog, so the last levels feel like catching up on what you passed by.
 - Players who skip whole tabs will have points to spare near the top, which suits the design's "specialise, then fill in".
 

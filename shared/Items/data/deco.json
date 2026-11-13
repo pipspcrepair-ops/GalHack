@@ -22,8 +22,9 @@
 //                       (back, front, side, over); default all four sides
 //   states              the damaged states it has (default: knocked, broken, burnt, overgrown)
 //   bill                what placing it takes from shared storage (items.json ids)
-//   level, cost         its tech-tree node (default: its set's); the first piece of a set is the set's
-//                       root on the deco tab and the rest hang under it
+//   level, cost         its tech-tree node (default: its set's level); the first piece of a set is the
+//                       set's root on the deco tab, at the set's cost, and the rest hang under it free:
+//                       buying the root opens the set
 //   light               range (m) and energy while powered; anim: flicker, blink, pulse, or spark
 //                       (blinks while powered, sparks when broken)
 //   palette             a piece's own palette (the alien looks)
