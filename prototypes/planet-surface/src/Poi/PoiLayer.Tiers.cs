@@ -305,13 +305,14 @@ public partial class PoiLayer
         for (int i = 0; i < _midWanted.Count && _midJobs.Count < MidJobs; i++) StartMid(_midWanted[i].Place);
     }
 
-    /// <summary>A place's merged blocks built on a worker.</summary>
+    /// <summary>A place's merged blocks (and their occluders) built on a worker.</summary>
     void StartMid(Place p)
     {
         _midJobs.Add(p);
         BlockGrid g = p.Site.Instance.Blocks;
         CellMask occupied = p.Site.Instance.Layout.Occupied;
         p.MidMeshes = Task.Run(() => Mesher.Build(g, occupied, MidOptions(g)));
+        p.MidOccluders = Occlude ? p.MidMeshes.ContinueWith(t => t.Result.ConvertAll(c => OccluderOf(c, g)), TaskContinuationOptions.OnlyOnRanToCompletion) : null;
     }
 
     readonly List<Place> _blending = new();
@@ -323,6 +324,7 @@ public partial class PoiLayer
         p.Mid.QueueFree();
         p.Mid = null;
         p.Cells.Clear();
+        p.Occluders.Clear();
         p.Whole = false;
     }
 
@@ -416,7 +418,7 @@ public partial class PoiLayer
     /// <summary>Puts in what it can of one place's merged blocks; true once it is done with (all in, or failed).</summary>
     bool WorkMid(Place p, Stopwatch clock)
     {
-        if (!p.MidMeshes.IsCompleted) return false;
+        if (!p.MidMeshes.IsCompleted || p.MidOccluders is { IsCompleted: false }) return false;
         if (p.MidMeshes.IsFaulted)
         {
             GD.PushError($"could not draw {p.Site.Name}: {p.MidMeshes.Exception?.GetBaseException()}");
@@ -433,10 +435,12 @@ public partial class PoiLayer
             var cube = new MeshInstance3D { Name = $"Cube {c.Chunk}", Mesh = MeshBuild.ToMesh(c, materials), Visible = !p.Hidden.Contains(c.Chunk) };
             p.Mid.AddChild(cube);
             p.Cells[c.Chunk] = cube;
+            if (p.MidOccluders is { IsCompletedSuccessfully: true }) AddOccluder(p, c.Chunk, p.MidOccluders.Result[p.MidNext - 1]);
         }
         if (p.MidNext < meshes.Count) return false;
         p.Whole = true;
         p.MidMeshes = null;
+        p.MidOccluders = null;
         p.MidNext = 0;
         // A city's building waits for the rest of its tile, hidden; a lone place dissolves in now.
         if (_tileOf.ContainsKey(p)) return true;
