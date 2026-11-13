@@ -1,10 +1,10 @@
 # Builds a prototype and runs its headless test scene. Exits non-zero on failure.
 #   .\tools\test.ps1
-#   .\tools\test.ps1 -Project prototypes/walkable-ship -Scene res://tests/FrameTest.tscn
+#   .\tools\test.ps1 -Project prototypes/slice -Scene res://tests/StartTest.tscn
 
 param(
-    [string]$Project = "prototypes/walkable-ship",
-    [string]$Scene = "res://tests/FrameTest.tscn"
+    [string]$Project = "prototypes/slice",
+    [string]$Scene = "res://tests/StartTest.tscn"
 )
 
 . "$PSScriptRoot\env.ps1"

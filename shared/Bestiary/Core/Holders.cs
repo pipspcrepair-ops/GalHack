@@ -44,6 +44,20 @@ public sealed partial class WorldLife
             Aggressive(h, 8f);
             list.Add(h);
         }
+        // A world with nothing of its own that walks (a dead or airless one): the growth still has its
+        // beasts, a stalker of the world's make taken by it, so a place it took always holds them.
+        if (list.Count == 0)
+        {
+            ulong seed = Rng.Mix(Seed, 0x4012);
+            Species h = _generator.RollOne(seed, "stalker", Behaviour.Predator, Alienness);
+            h.Mate = null;
+            h.Young = null;
+            h.Index = 299;
+            h.Id = $"{Seed:x}-stalker-hollow";
+            _generator.CorruptSpecies(h, Rng.Mix(seed, 0x4011));
+            Aggressive(h, 8f);
+            list.Add(h);
+        }
         return list;
     }
 
@@ -80,7 +94,7 @@ public sealed partial class WorldLife
     List<Species> MakeMachines()
     {
         var list = Fauna.Species.FindAll(s => s.Mechanical && s.Figure?.Dress != "grafted");
-        if (list.Count == 0)
+        if (list.Count == 0 && Robots.Allowed(World))
         {
             list.Add(Robots.Roll(World, 2));
             list.Add(Robots.Roll(World, 0));
@@ -98,6 +112,8 @@ public sealed partial class WorldLife
     List<Species> MakeCyborgs()
     {
         var list = new List<Species>();
+        // Grafted machine is a machine too: none on a world that never had more than low tech.
+        if (!Robots.Allowed(World)) return list;
         for (int i = 0; i < 2; i++)
         {
             ulong seed = Rng.Mix(Seed, 0xC7B0 + (ulong)i);

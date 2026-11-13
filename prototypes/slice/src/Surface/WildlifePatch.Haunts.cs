@@ -63,20 +63,25 @@ public partial class WildlifePatch
             var plan = new PoiPlan();
             Places.PlaceFauna.HoldersOf(site.Instance, life, plan);
             int want = plan.Holder switch { PlaceHolder.Hollows => 5, PlaceHolder.Beasts => 3, PlaceHolder.Machines => 2, _ => 0 };
-            if (want == 0 || plan.Holders.Count == 0) continue;
             var lo = site.Footprint.Min;
             var hi = site.Footprint.Max;
             float hx = (hi.X - lo.X + 1) * 0.5f, hz = (hi.Z - lo.Z + 1) * 0.5f;
-            var h = new Haunt
+            Haunt Round(int n, string why, IEnumerable<Species> kinds)
             {
-                At = new Vector3((lo.X + hi.X + 1) * 0.5f, 0f, (lo.Z + hi.Z + 1) * 0.5f),
-                Radius = MathF.Sqrt(hx * hx + hz * hz) + 6f,
-                Want = want,
-                Why = $"{plan.Holder} of {site.Name}",
-            };
-            // Only what walks the open: anything that can't is kept indoors.
-            foreach (Species s in plan.Holders) if (!s.Flies) h.Kinds.Add(s);
-            if (h.Kinds.Count > 0) haunts.Add(h);
+                var h = new Haunt
+                {
+                    At = new Vector3((lo.X + hi.X + 1) * 0.5f, 0f, (lo.Z + hi.Z + 1) * 0.5f),
+                    Radius = MathF.Sqrt(hx * hx + hz * hz) + 6f,
+                    Want = n,
+                    Why = why,
+                };
+                // Only what walks the open: anything that can't is kept indoors.
+                foreach (Species s in kinds) if (!s.Flies) h.Kinds.Add(s);
+                return h;
+            }
+            if (want > 0 && plan.Holders.Count > 0 && Round(want, $"{plan.Holder} of {site.Name}", plan.Holders) is { Kinds.Count: > 0 } held) haunts.Add(held);
+            // The growth took it, whoever else holds it now: its Hollows keep the ground round it too, always.
+            if (plan.Holder != PlaceHolder.Hollows && plan.Hollows.Count > 0 && Round(4, $"Hollows of {site.Name}", plan.Hollows) is { Kinds.Count: > 0 } hollows) haunts.Add(hollows);
         }
         return haunts;
     }

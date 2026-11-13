@@ -7,6 +7,7 @@ shader_type spatial;
 render_mode cull_back, diffuse_burley, specular_schlick_ggx;
 
 #include "res://shaders/noise.gdshaderinc"
+#include "res://shaders/shade.gdshaderinc"
 
 global uniform vec2 planet_size;
 global uniform vec4 weather_ground;   // wetness, settled snow, dust, solar
@@ -786,6 +787,7 @@ void vertex() {
 }
 
 void fragment() {
+	far_sun = far_lit(wpos, CAMERA_POSITION_WORLD);
 	if (far_ring && inside_hole(wpos.xz) > hole_cut) discard;
 	if (far_ring && past_rim(wpos.xz, rim, FRAGCOORD.xy)) discard;
 

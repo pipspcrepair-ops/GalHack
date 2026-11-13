@@ -380,6 +380,7 @@ public partial class SliceTest : Node
         float drift = Mathf.RadToDeg(Flat(-bike.Node.GlobalTransform.Basis.Z).AngleTo(Flat(bike.Forward)));
         float tilt = Mathf.RadToDeg(bike.Tilt);
         Check(tilt > 20f || drift < 3f, $"after four seconds of crosswind the bike's model still faces the way it drives ({drift:F1}° off, tilted {tilt:F0}°)");
+        foreach (int x in BikeIntoTrees(bike)) yield return x;
         // The mouse steers: the bike comes round toward where the rider looks; Alt held looks around without steering.
         // Tried from a standstill, so the ride stays short and the bike is on its cushion for getting off after.
         _game.Controls.Hold(Key.S);

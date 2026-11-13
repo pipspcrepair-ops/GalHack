@@ -43,6 +43,17 @@ public static class GunModel
     /// <summary>The gun inside a held model's root, or null.</summary>
     public static Built Of(Node3D root) => root != null && _byRoot.TryGetValue(root, out Built b) ? b : null;
 
+    /// <summary>A weapon's model hung on someone else's hand or mount (a node named "Weapon" under it, placed there).</summary>
+    public static Built Hang(Node3D on, WeaponDef def, Transform3D at)
+    {
+        Built b = Build(def);
+        var hold = new Node3D { Name = "Weapon", Transform = at };
+        hold.AddChild(b.Root);
+        on.AddChild(hold);
+        _byRoot.AddOrUpdate(hold, b);
+        return b;
+    }
+
     /// <summary>A held gun's life in the hand: charge rings lit by stage, and a reload dips it out of line and back.</summary>
     public static void Animate(Node3D root, Gun gun, float dt)
     {
@@ -74,6 +85,7 @@ public static class GunModel
 
     public static Built Build(WeaponDef def)
     {
+        if (def.Delivery == Delivery.Strike) return Hand(def);
         GunModelSpec spec = GunLook.Build(def);
         var b = new Built { Root = new Node3D { Name = def.Id }, Spec = spec, Id = def.Id };
         foreach (LookPart p in spec.Parts)
@@ -97,6 +109,58 @@ public static class GunModel
             b.Root.AddChild(mi);
         }
         b.Muzzle = new Node3D { Name = "Muzzle", Position = new Vector3(spec.Muzzle.X, spec.Muzzle.Y, spec.Muzzle.Z) };
+        b.Root.AddChild(b.Muzzle);
+        return b;
+    }
+
+    /// <summary>
+    /// A hand weapon's model, in the gun's frame (the grip at the origin, the business end along -Z,
+    /// up +Y): its look's stock names the head (club, blade, spear; a fist has none), its body the
+    /// haft. The "muzzle" is the striking end.
+    /// </summary>
+    static Built Hand(WeaponDef def)
+    {
+        LookSpec l = def.Look;
+        var b = new Built { Root = new Node3D { Name = def.Id }, Id = def.Id };
+        Color wood = ColourOf(l.Accent), steel = new(0.55f, 0.56f, 0.58f), dark = new(0.2f, 0.2f, 0.21f);
+        float len = MathF.Max(0.05f, l.Body);
+        int n = 0;
+        void Part(Mesh mesh, Vector3 at, Vector3 turn, Color c, float metal)
+        {
+            var mi = new MeshInstance3D
+            {
+                Mesh = mesh, MaterialOverride = HeldFinish.Make(mesh, c, 0.5f, 0.7f, metal, n++ * 1.37f),
+                Position = at, RotationDegrees = turn, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+            };
+            b.Root.AddChild(mi);
+        }
+        Vector3 tip = Vector3.Zero;
+        switch (l.Stock)
+        {
+            case "club":
+                Part(new CylinderMesh { TopRadius = 0.022f, BottomRadius = 0.05f, Height = len + 0.14f, RadialSegments = 10, Rings = 1 }, new Vector3(0f, 0f, 0.07f - (len + 0.14f) * 0.5f), new Vector3(-90f, 0f, 0f), wood, 0f);
+                for (int i = 0; i < 4; i++)
+                {
+                    float a = i * MathF.PI * 0.5f + 0.4f;
+                    var dir = new Vector3(MathF.Cos(a), MathF.Sin(a), 0f);
+                    Part(new CylinderMesh { TopRadius = 0f, BottomRadius = 0.014f, Height = 0.07f, RadialSegments = 5, Rings = 1 }, new Vector3(0f, 0f, -len * (0.7f + i * 0.06f)) + dir * 0.06f, new Vector3(0f, 0f, Mathf.RadToDeg(a) - 90f), dark, 0.6f);
+                }
+                tip = new Vector3(0f, 0f, -len);
+                break;
+            case "blade":
+                Part(new CylinderMesh { TopRadius = 0.017f, BottomRadius = 0.017f, Height = 0.13f, RadialSegments = 8, Rings = 1 }, new Vector3(0f, 0f, 0.04f), new Vector3(-90f, 0f, 0f), wood, 0f);
+                Part(new BoxMesh { Size = new Vector3(0.008f, 0.05f, len * 0.8f) }, new Vector3(0f, 0.004f, -0.025f - len * 0.4f), Vector3.Zero, steel, 0.8f);
+                Part(new BoxMesh { Size = new Vector3(0.008f, 0.065f, len * 0.16f) }, new Vector3(0f, 0.008f, -0.025f - len * 0.88f), Vector3.Zero, steel, 0.8f);
+                tip = new Vector3(0f, 0f, -0.025f - len);
+                break;
+            case "spear":
+                Part(new CylinderMesh { TopRadius = 0.016f, BottomRadius = 0.017f, Height = len, RadialSegments = 8, Rings = 1 }, new Vector3(0f, 0f, 0.15f - len * 0.5f), new Vector3(-90f, 0f, 0f), wood, 0f);
+                Part(new CylinderMesh { TopRadius = 0.034f, BottomRadius = 0.034f, Height = 0.07f, RadialSegments = 8, Rings = 1 }, new Vector3(0f, 0f, 0.15f - len), new Vector3(-90f, 0f, 0f), dark, 0.2f);
+                Part(new BoxMesh { Size = new Vector3(0.012f, 0.05f, 0.22f) }, new Vector3(0f, 0f, 0.15f - len - 0.13f), Vector3.Zero, steel, 0.8f);
+                tip = new Vector3(0f, 0f, 0.15f - len - 0.24f);
+                break;
+        }
+        b.Muzzle = new Node3D { Name = "Muzzle", Position = tip };
         b.Root.AddChild(b.Muzzle);
         return b;
     }

@@ -26,14 +26,14 @@ public sealed class StructureSky
 
     /// <summary>Whether a block stops light: whole, opaque blocks and shut doors.</summary>
     public static bool Stops(Structure s, in Block b) =>
-        s.IsSolid(b) && (s.TypeOf(b).IsDoor || s.Catalogue.OccludeMask(b) == 0b111111);
+        s.IsSolid(b) && (s.TypeOf(b).IsDoor || s.Catalogue.OpaqueAllRound(b));
 
     /// <summary>The middles of a structure's light-stopping blocks, in its own metres.</summary>
     public static N.Vector3[] Stops(Structure s)
     {
         var list = new List<N.Vector3>(s.Count);
         float cell = s.Grid.CellSize;
-        foreach (var (p, b) in s.Blocks())
+        foreach (var (p, b) in s.Cells())
             if (Stops(s, b)) list.Add(new N.Vector3(p.X, p.Y, p.Z) * cell);
         return list.ToArray();
     }
@@ -53,7 +53,7 @@ public sealed class StructureSky
         _cell = s.Grid.CellSize;
         var open = new byte[size.X * size.Y * size.Z];
         var solid = new bool[open.Length];
-        foreach (var (p, b) in s.Blocks())
+        foreach (var (p, b) in s.Cells())
             if (Stops(s, b)) solid[Index(p.X - min.X, p.Y - min.Y, p.Z - min.Z)] = true;
         var queue = new Queue<int>();
         for (int y = 0; y < size.Y; y++)

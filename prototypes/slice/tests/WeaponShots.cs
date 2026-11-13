@@ -217,7 +217,7 @@ public partial class WeaponShots : Node
         Vector3 view = BestView();
 
         if (Wants("held"))
-            foreach (WeaponDef d in Arms.Table.All)
+            foreach (WeaponDef d in Arms.Table.All.Where(d => _game.Zone.Data.Items.Has(d.Item))) // (bare hands are no item)
             {
                 Arm(d.Id);
                 Vector3 look = _game.Zone.GroundAt(Feet.X + view.X * 14f, Feet.Z + view.Z * 14f) + Vector3.Up * 1.2f;
@@ -252,7 +252,7 @@ public partial class WeaponShots : Node
     {
         var icons = _game.Icons;
         var items = _game.Zone.Data.Items;
-        List<WeaponDef> all = Arms.Table.All.ToList();
+        List<WeaponDef> all = Arms.Table.All.Where(d => items.Has(d.Item)).ToList();
         foreach (WeaponDef d in all) icons.Get(items.Item(d.Item));
         for (int i = 0; i < 600 && all.Any(d => icons.Rendered(d.Item) == null); i++)
         {
