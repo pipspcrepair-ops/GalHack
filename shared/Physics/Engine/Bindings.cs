@@ -227,7 +227,9 @@ public sealed class HullBinding : BodyBinding
         }
         // Sunk in the ground below its surface: a shape wholly under the ground's faces touches none of them, so the
         // contacts above miss it. Up by the depth of the ground over its underside, measured on the ground's own faces.
-        float sunk = SunkBy(space);
+        // Only while it is really in something: a hull resting on uneven ground (the ground higher under its middle than
+        // under the edge it rests on) is not sunk, and lifting it would leave it never at rest.
+        float sunk = Overlaps(space) ? SunkBy(space) : 0f;
         if (sunk > Slop)
         {
             Hull.GlobalPosition += Vector3.Up * (sunk + Slop);
