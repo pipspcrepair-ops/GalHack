@@ -105,6 +105,16 @@ public sealed class WalkController : IBodyController, IForceReactor
     public bool Jumped { get; private set; }
 
     /// <summary>
+    /// How long a fresh press of <see cref="Jump"/> waits for the feet, s: pressed just before touchdown it still jumps on
+    /// landing, so tapping chains jumps and jetpack bursts across touchdowns (jetpack surfing). A key held on through a
+    /// landing is no fresh press: it jumped once, fires the jetpack in the air, and stands when it lands.
+    /// </summary>
+    public float JumpBuffer = 0.12f;
+
+    float _jumpWaiting;
+    bool _jumpWas;
+
+    /// <summary>
     /// In water deep enough to swim: more than the rules' swimDepth of the body is under (and it
     /// wades again below wadeDepth). Swimming, <see cref="Move"/> strokes along the heading and
     /// <see cref="Vertical"/> goes up or down (Space and Ctrl): no other controls. Left alone, a
@@ -118,8 +128,11 @@ public sealed class WalkController : IBodyController, IForceReactor
     public void React(PhysicsWorld world, Body body, float dt)
     {
         Jumped = false;
+        bool fired = JetpackFiring;
         JetpackFiring = false;
         Slipping = false;
+        _jumpWaiting = Jump && !_jumpWas ? JumpBuffer : MathF.Max(0f, _jumpWaiting - dt);
+        _jumpWas = Jump;
         if (body.Asleep) return;
         Vector3 v = body.Velocity, up = Vector3.Normalize(body.Up);
         float m = body.Mass;
@@ -187,9 +200,10 @@ public sealed class WalkController : IBodyController, IForceReactor
         }
 
         bool onFloor = body.OnFloor;
-        // Refilled on the ground, but not while the pack is held on: a body that touches down and lifts
-        // off every tick (wedged under a ceiling, on an edge) must not earn back the fuel it burns.
-        if (onFloor && !Jetpack)
+        // Refilled on the ground, Space held or not (a held Space neither jumps again nor fires on the ground), but not
+        // straight after the pack fired: a body that touches down and lifts off every tick (wedged under a ceiling, on an
+        // edge) must not earn back the fuel it burns.
+        if (onFloor && !fired)
         {
             JetpackFuel = MathX.MoveToward(JetpackFuel, JetpackFuelMax, dt);
             if (JetpackSpent && JetpackFuel >= MathF.Min(JetpackMinRefill, JetpackFuelMax)) JetpackSpent = false;
@@ -222,10 +236,11 @@ public sealed class WalkController : IBodyController, IForceReactor
             world.AddForce(body, m * (MathX.LimitLength(steered, cap) - h) / dt, ForceKind.Walk);
         }
 
-        if (Jump && onFloor)
+        if (_jumpWaiting > 0f && onFloor)
         {
             world.AddImpulse(body, up * m * MathF.Max(0f, JumpSpeed * (Crouch ? CrouchJumpShare : 1f) - Vector3.Dot(v, up)), ForceKind.Walk);
             Jumped = true;
+            _jumpWaiting = 0f;
         }
         else if (Jetpack && !onFloor && !JetpackSpent && JetpackFuel > 0f)
         {

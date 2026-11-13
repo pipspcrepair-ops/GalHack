@@ -86,7 +86,13 @@ public partial class ClimbTest : Node
         {
             int at = Array.IndexOf(args, name);
             if (at >= 0 && at + 1 < args.Length) return args[at + 1].Split(',');
-            return args.Any(a => a is "--stairs" or "--ladders" or "--built") ? Array.Empty<string>() : all;
+            return args.Any(a => a is "--stairs" or "--ladders" or "--built" or "--landing") ? Array.Empty<string>() : all;
+        }
+        if (Array.IndexOf(args, "--landing") >= 0)
+        {
+            foreach (string family in LandingFamilies)
+                foreach (int x in Place(family, Landing)) yield return x;
+            yield break;
         }
         foreach (string family in Arg("--stairs", StairFamilies))
             foreach (int x in Place(family, Stairs)) yield return x;

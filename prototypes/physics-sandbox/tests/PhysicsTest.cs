@@ -71,8 +71,12 @@ public partial class PhysicsTest : Node
 
     IEnumerable<int> Scenarios()
     {
-        GD.Print("-- determinism: two identical worlds, side by side --");
-        foreach (int x in Determinism()) yield return x;
+        bool standOnOnly = OS.GetCmdlineUserArgs().Contains("--stand-on"), surfOnly = OS.GetCmdlineUserArgs().Contains("--surf");
+        if (!standOnOnly && !surfOnly)
+        {
+            GD.Print("-- determinism: two identical worlds, side by side --");
+            foreach (int x in Determinism()) yield return x;
+        }
 
         GD.Print("-- the sandbox --");
         _w = new SandboxWorld { Visuals = false };
@@ -84,6 +88,20 @@ public partial class PhysicsTest : Node
         _w.Weather.Calm = true;
         for (int i = 0; i < 5; i++) yield return 0;
 
+        if (surfOnly)
+        {
+            GD.Print("-- Space: jetpack surfing and a held landing --");
+            foreach (int x in Surf()) yield return x;
+            foreach (int x in Hilltops()) yield return x;
+            yield break;
+        }
+        if (standOnOnly)
+        {
+            GD.Print("-- standing on built shapes --");
+            // -- --stand-on --small-base: only the small built base.
+            foreach (int x in OS.GetCmdlineUserArgs().Contains("--small-base") ? SmallBase(_w.Catalogue) : StandOnShapes()) yield return x;
+            yield break;
+        }
         StructureChecks();
         foreach (int x in MultiCellBlocks()) yield return x;
         foreach (int x in ForcePath()) yield return x;
@@ -104,6 +122,11 @@ public partial class PhysicsTest : Node
         foreach (int x in WaterVolume()) yield return x;
         foreach (int x in TornadoFling()) yield return x;
         foreach (int x in StuckSafety()) yield return x;
+        GD.Print("-- standing on built shapes --");
+        foreach (int x in StandOnShapes()) yield return x;
+        GD.Print("-- Space: jetpack surfing and a held landing --");
+        foreach (int x in Surf()) yield return x;
+        foreach (int x in Hilltops()) yield return x;
         foreach (int x in Performance()) yield return x;
     }
 

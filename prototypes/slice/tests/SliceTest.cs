@@ -335,12 +335,13 @@ public partial class SliceTest : Node
         foreach (int x in OwnFigure()) yield return x;
         // A clear run ahead, or the first trunk stops the speed check: as a rider picks a line.
         Vector3 chest = _game.Survivor.WorldFeet + Vector3.Up * 1.4f;
-        for (int k = 0; k < 16; k++)
+        bool clear = false;
+        for (int k = 0; k < 16 && !clear; k++)
         {
             Vector3 way = new Vector3(0f, 0f, -1f).Rotated(Vector3.Up, k * Mathf.Tau / 16f);
             if (_game.Bikes.Blocked(chest, way, 32f)) continue;
             foreach (int x in _drive.LookAt(chest + way * 10f, 3)) yield return x;
-            break;
+            clear = true;
         }
         _game.Pack.Storage.Add("hover-bike", 1);
         _game.Pack.Grid[1].Item = "hover-bike";
@@ -365,7 +366,8 @@ public partial class SliceTest : Node
         for (int i = 0; i < 100; i++) { yield return 0; top = MathF.Max(top, bike.Speed); }
         _game.Controls.Hold(Key.W, false);
         float ran = new Vector2(bike.Position.X - from.X, bike.Position.Z - from.Z).Length();
-        Check(top > 9f && ran > 8f, $"the hover bike is fast: {top:F1} m/s, {ran:F0} m in under two seconds (a walker sprints at {_game.Survivor.Legs.SprintSpeed:F1})");
+        Check(clear ? top > 0.9f * Slice.Vehicles.HoverBike.MaxSpeed && ran > 20f : top > 9f && ran > 8f,
+            $"the hover bike is fast: {top:F1} m/s, {ran:F0} m in under two seconds{(clear ? "" : " (no clear run round it)")} (a walker sprints at {_game.Survivor.Legs.SprintSpeed:F1})");
         Check(_game.Survivor.WorldEye().DistanceTo(bike.Position) < 2f, "the rider goes with the bike");
         float astride = Mathf.RadToDeg(Flat(-_game.Figure.GlobalTransform.Basis.Z).AngleTo(Flat(bike.Forward)));
         Check(astride < 10f, $"third person, the sleeper sits the bike facing its heading ({astride:F1}° off)");
@@ -723,7 +725,7 @@ public partial class SliceTest : Node
         foreach (Vector3 across in new[] { Vector3.Right, Vector3.Back })
         {
             // A felled tree's shape is disabled, so the ray passes; anything else it hits isn't this tree.
-            var hit = space.IntersectRay(PhysicsRayQueryParameters3D.Create(at - across * 1.5f, at + across * 1.5f, PlanetSurface.World.Layers.Flora));
+            var hit = space.IntersectRay(PhysicsRayQueryParameters3D.Create(at - across * 1.5f, at + across * 1.5f, GalHack.Physics.Layers.Flora));
             if (hit.Count > 0 && _game.Zone.Streamer.SolidHit((Rid)hit["rid"], (int)hit["shape"], out var solid) && solid.Id == id) return true;
         }
         return false;

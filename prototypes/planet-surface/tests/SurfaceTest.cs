@@ -20,6 +20,7 @@ using Deposit = Planets.Gen.Deposit;
 using TInt3 = TerrainDigging.Terrain.Int3;
 using PInt3 = PoiGenerator.Gen.Int3;
 using PoiSite = PlanetSurface.Poi.PoiSite;
+using Layers = GalHack.Physics.Layers;
 
 namespace PlanetSurface;
 
@@ -220,7 +221,7 @@ public partial class SurfaceTest : Node
             // The mesh players walk on: ray down onto the collision within reach of the player.
             if (Math.Abs(x - p.X) < 28 && Math.Abs(z - p.Z) < 28)
             {
-                var hit = space.IntersectRay(PhysicsRayQueryParameters3D.Create(new Vector3(cx + 0.5f, natural + 20f, cz + 0.5f), new Vector3(cx + 0.5f, natural - 20f, cz + 0.5f), Layers.Terrain));
+                var hit = space.IntersectRay(PhysicsRayQueryParameters3D.Create(new Vector3(cx + 0.5f, natural + 20f, cz + 0.5f), new Vector3(cx + 0.5f, natural - 20f, cz + 0.5f), Layers.World));
                 if (hit.Count > 0)
                 {
                     double m = Math.Abs(((Vector3)hit["position"]).Y - natural);
@@ -676,7 +677,7 @@ public partial class SurfaceTest : Node
             Fail("no level open ground within 300 m for the step check");
             return;
         }
-        var slab = new StaticBody3D { Name = "Slab", CollisionLayer = Layers.Solid, CollisionMask = 0 };
+        var slab = new StaticBody3D { Name = "Slab", CollisionLayer = Layers.World, CollisionMask = 0 };
         slab.AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = new Vector3(5f, 1.5f, 3f) } });
         _main.AddChild(slab);
 

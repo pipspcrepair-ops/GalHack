@@ -9,6 +9,7 @@ using Planets.Look;
 using PlanetSurface.Terrain;
 using PlanetSurface.World;
 using Rng = Planets.Gen.Rng;
+using Layers = GalHack.Physics.Layers;
 
 namespace PlanetSurface.Tests;
 

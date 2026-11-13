@@ -58,7 +58,6 @@
     <Compile Include="..\planet-surface\src\Terrain\FloraSolids.cs" />
     <Compile Include="..\planet-surface\src\Terrain\PlanetFlora.cs" />
     <Compile Include="..\planet-surface\src\Terrain\CoverBuilder.cs" />
-    <Compile Include="..\planet-surface\src\World\Layers.cs" />
     <Compile Include="..\planet-surface\src\Terrain\VoxelMeshing.cs" />
     <Compile Include="..\planet-surface\src\Terrain\FarBuilder.cs" />
     <Compile Include="..\planet-surface\src\Terrain\GroundPalette.cs" />

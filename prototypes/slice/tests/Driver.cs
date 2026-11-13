@@ -169,7 +169,8 @@ public sealed class Driver
             bool falling = !Game.Survivor.Body.OnFloor && Game.Survivor.Body.Velocity.Y < -5f;
             // Down in a hole, the way on well above: up on the jetpack, as a player would.
             bool climb = hop && target.Y - feet.Y > 2.5f && flat < 20f;
-            Controls.Hold(Key.Space, jet > 0f || falling || climb);
+            // A held Space jumps once: on the ground again, let go a tick to press it afresh, as a player would.
+            Controls.Hold(Key.Space, (jet > 0f || falling || climb) && !(Controls.IsHeld(Key.Space) && Game.Survivor.Body.OnFloor));
             jet -= 1f / 60f;
             yield return 0;
         }
@@ -197,7 +198,7 @@ public sealed class Driver
                 Vector3 eye = Game.Survivor.WorldEye();
                 Controls.Primary = false;
                 Controls.Hold(Key.W, new Vector2(aim.X - eye.X, aim.Z - eye.Z).Length() > 1.2f);
-                Controls.Hold(Key.Space, eye.Y < aim.Y + over);
+                Controls.Hold(Key.Space, eye.Y < aim.Y + over && !(Controls.IsHeld(Key.Space) && Game.Survivor.Body.OnFloor));
                 if (i % 4 == 3 && eye.DistanceTo(aim) < reach) press();
                 yield return 0;
             }

@@ -11,6 +11,7 @@ using Planets.Look;
 using Planets.Surface;
 using PlanetSurface.World;
 using TerrainDigging.Terrain;
+using Layers = GalHack.Physics.Layers;
 
 namespace PlanetSurface.Terrain;
 
@@ -693,7 +694,7 @@ public partial class TerrainStreamer : Node3D
             {
                 if (Stopwatch.GetElapsedTime(frameStart).TotalMilliseconds > UploadBudgetMs * 1.5) { bodies++; continue; }
                 c.Shape = new CollisionShape3D { Shape = new ConcavePolygonShape3D() };
-                c.Body = new StaticBody3D { Name = $"Ground {c.Key.X} {c.Key.Y} {c.Key.Z}", CollisionLayer = Layers.Terrain, CollisionMask = 0 };
+                c.Body = new StaticBody3D { Name = $"Ground {c.Key.X} {c.Key.Y} {c.Key.Z}", CollisionLayer = Layers.World, CollisionMask = 0 };
                 c.Body.AddChild(c.Shape);
                 AddChild(c.Body);
                 SetShape(c);
