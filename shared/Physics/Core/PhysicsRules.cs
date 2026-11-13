@@ -192,6 +192,9 @@ public sealed class PhysicsRules
         /// a ledge this deep steps down onto the floor below without leaving it. Taller is a wall. m.
         /// </summary>
         public float StepHeight { get; set; } = 0.6f;
+
+        /// <summary>The fastest a body slides down ground too steep to stand on, m/s (as on scree).</summary>
+        public float SlideSpeed { get; set; } = 6f;
     }
 
     /// <summary>Water as a volume: buoyancy, drag and swimming (see <see cref="WaterForces"/>).</summary>

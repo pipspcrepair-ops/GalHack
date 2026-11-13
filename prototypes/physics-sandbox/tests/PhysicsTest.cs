@@ -92,6 +92,7 @@ public partial class PhysicsTest : Node
         {
             GD.Print("-- Space: jetpack surfing and a held landing --");
             foreach (int x in Surf()) yield return x;
+            foreach (int x in Slide()) yield return x;
             yield break;
         }
         if (standOnOnly)
@@ -124,6 +125,7 @@ public partial class PhysicsTest : Node
         foreach (int x in StandOnShapes()) yield return x;
         GD.Print("-- Space: jetpack surfing and a held landing --");
         foreach (int x in Surf()) yield return x;
+        foreach (int x in Slide()) yield return x;
         foreach (int x in Performance()) yield return x;
     }
 

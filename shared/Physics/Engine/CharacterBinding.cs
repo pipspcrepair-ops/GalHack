@@ -110,6 +110,7 @@ public sealed class CharacterBinding : BodyBinding
         b.Position = Character.GlobalPosition.ToNumerics();
         b.Velocity = Character.Velocity.ToNumerics();
         b.OnFloor = Character.IsOnFloor();
+        if (!b.OnFloor && !Floating) Scree(host.World.Rules.Walking.SlideSpeed);
         N.Vector3 up = b.Up;
         bool stepped = (wasOnFloor || b.OnFloor) && !Floating && b.Controller is not WalkController { Jumped: true }
                        && StepUp(step, before.ToNumerics(), dt);
@@ -172,6 +173,26 @@ public sealed class CharacterBinding : BodyBinding
         b.OnFloor = true;
         StepsTaken++;
         return true;
+    }
+
+    /// <summary>
+    /// On ground too steep to stand on the body slides, as on scree: downhill along the slope it goes no faster than
+    /// <paramref name="most"/> m/s, so a long hillside is slid down, not fallen down. Walls and overhangs are not ground,
+    /// and nothing changes in the air or on a floor.
+    /// </summary>
+    void Scree(float most)
+    {
+        Body b = Body;
+        for (int i = 0; i < Character.GetSlideCollisionCount(); i++)
+        {
+            N.Vector3 n = Character.GetSlideCollision(i).GetNormal().ToNumerics();
+            if (N.Vector3.Dot(n, b.Up) < 0.2f) continue; // a wall or an overhang
+            N.Vector3 v = b.Velocity, across = n * N.Vector3.Dot(v, n), along = v - across;
+            if (N.Vector3.Dot(along, b.Up) >= 0f || along.LengthSquared() <= most * most) return;
+            b.Velocity = across + N.Vector3.Normalize(along) * most;
+            Character.Velocity = b.Velocity.ToGodot();
+            return;
+        }
     }
 
     /// <summary>Turns the capsule (and the controller's idea of up) to the body's up.</summary>
