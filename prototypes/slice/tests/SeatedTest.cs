@@ -15,7 +15,7 @@ namespace Slice.Tests;
 /// <summary>
 /// The seated body (owner, 12 Nov: the character vanished in a chair). On a fresh random world,
 /// every chair and cockpit in the catalogue goes on a small floor of its own, turned a random way,
-/// and the castaway sits in it. Then: the figure is drawn for the player's own first-person camera
+/// and the sleeper sits in it. Then: the figure is drawn for the player's own first-person camera
 /// with only its head left out, the lap in view and the eye clear of everything drawn; its hips
 /// are on the chair's seat and its feet on the chair's floor; the camera is at the chair's eye
 /// point; its head is inside the part and under its top, and nothing of it pokes out of the part's

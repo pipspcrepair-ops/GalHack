@@ -13,7 +13,7 @@ GalHack is an open-world space survival sandbox: the player wakes from cryosleep
 | World | Seeded procedural galaxy of star systems; every planet, orbit and space sector is its own instanced zone (a "playfield") |
 | Modes | Survival and Creative; single player and co-op over Steam for a group of friends; all players share one faction |
 | Session shape | Open-ended; an experienced player flies a small vessel within 1–2 hours and a capital ship within about 10, and exploring the galaxy never runs out |
-| Player fantasy | "From castaway to captain": find what's out there, survive it, and build the ship that takes you further |
+| Player fantasy | "From sleeper to captain": find what's out there, survive it, and build the ship that takes you further |
 | Primary platform | PC, mouse and keyboard |
 | Visual style | 1970s sci-fi paperback art inspired by Chris Foss: huge, chunky, boldly painted ships; alien designs get stranger the more alien their builders (section 5) |
 
@@ -50,7 +50,7 @@ GalHack is an open-world space survival sandbox: the player wakes from cryosleep
 
 ## 2. Design pillars
 
-Five pillars, led by discovery, carry one player fantasy, "from castaway to captain," and stand on a foundation of a persistent, shared universe. Every feature should serve at least one pillar and break none; when two pillars conflict, discovery wins. One rule sits above all of them: smooth play first (guiding rules below).
+Five pillars, led by discovery, carry one player fantasy, "from sleeper to captain," and stand on a foundation of a persistent, shared universe. Every feature should serve at least one pillar and break none; when two pillars conflict, discovery wins. One rule sits above all of them: smooth play first (guiding rules below).
 
 &#91;embedded content: design pillars · 1 fantasy, 5 pillars, 1 foundation\]
 

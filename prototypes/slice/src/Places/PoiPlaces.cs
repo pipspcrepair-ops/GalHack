@@ -362,7 +362,7 @@ public partial class PoiPlaces : Node3D
     }
 
     /// <summary>
-    /// Stands the nearest place once, all at once, while the game is still loading (the castaway
+    /// Stands the nearest place once, all at once, while the game is still loading (the sleeper
     /// asleep): the first time anything is built costs the most (the runtime compiles its code then),
     /// so that is paid here and never in play. A place out of reach is taken down again at once.
     /// </summary>

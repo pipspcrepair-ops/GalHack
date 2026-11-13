@@ -79,14 +79,14 @@ public partial class Game
         Gestured?.Invoke(g);
     }
 
-    /// <summary>The castaway's figure as seen from outside (third person, screenshots) and, seated, from its own eyes: its arms make your gestures.</summary>
+    /// <summary>The sleeper's figure as seen from outside (third person, screenshots) and, seated, from its own eyes: its arms make your gestures.</summary>
     public Node3D Figure { get; private set; }
 
     /// <summary>Seconds of play since the last gesture was made (the figure's clock: it stops with the world).</summary>
     public float SinceGesture { get; private set; } = 99f;
 
     /// <summary>
-    /// The figure where the castaway is and doing what it does: on foot it faces the view's heading
+    /// The figure where the sleeper is and doing what it does: on foot it faces the view's heading
     /// in the frame it stands in (the planet's up, or a vessel's aboard) and walks, runs, jumps,
     /// flies, swims and climbs by the walker's own state; on the hover bike it sits astride, facing
     /// and turning with the bike; in a chair it sits. The last gesture plays on its arms.
@@ -99,7 +99,7 @@ public partial class Game
         var legs = s.Legs;
         System.Numerics.Vector3 v = s.Body.Velocity, up = System.Numerics.Vector3.Normalize(s.Body.Up);
         float climb = System.Numerics.Vector3.Dot(v, up);
-        var m = new Slice.Player.CastawayMotion
+        var m = new Slice.Player.SleeperMotion
         {
             Speed = (v - up * climb).Length(),
             Climb = climb,

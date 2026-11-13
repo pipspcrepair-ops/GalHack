@@ -28,7 +28,7 @@ namespace Slice.Tests;
 
 /// <summary>
 /// The loop played the way a person plays it, headless: the pod comes down for real with the
-/// castaway strapped in, and from then on only the game's own inputs are used (look, walk, keys,
+/// sleeper strapped in, and from then on only the game's own inputs are used (look, walk, keys,
 /// the mouse on the Tab menu). No teleports, no grants, no skipped steps: every part is crafted,
 /// every block paid for, every unlock earned. The one help is the marked TEST TIME-SCALE on
 /// crafting, so an hour of fabricating fits in a run.
@@ -107,7 +107,7 @@ public partial class PlayerTest : Node
         {
             _rescues.Add(r);
             if (r.Body == _game.Survivor.Body)
-                GD.Print($"  (rescued the castaway at {_game.Stats.Seconds:F0} s: {r.From} -> {r.To}, inside {r.Inside}; aboard {_game.Survivor.Aboard?.Name}, seated {_game.Survivor.Seated?.Name})");
+                GD.Print($"  (rescued the sleeper at {_game.Stats.Seconds:F0} s: {r.From} -> {r.To}, inside {r.Inside}; aboard {_game.Survivor.Aboard?.Name}, seated {_game.Survivor.Seated?.Name})");
         };
         // Clear, still weather and calm creatures: the steps are what is tested, not the storms.
         _game.Zone.Weather.Bridge.Calm = true;
@@ -474,7 +474,7 @@ public partial class PlayerTest : Node
         Vector3 site = _play.FlatSpot(_game.Survivor.WorldFeet, 22f, within: 12f);
         foreach (int x in _drive.WalkTo(site, 5f, 60f)) yield return x;
         foreach (int x in _play.WaitFor(() => _game.Pack["survival-constructor"] > 0, 60)) yield return x;
-        Check(_game.Pack["survival-constructor"] == 1, $"the fabricator finished it while the castaway walked ({_game.Stats.Seconds - _gameTimeAt.GetValueOrDefault("looted"):F0} s of play)");
+        Check(_game.Pack["survival-constructor"] == 1, $"the fabricator finished it while the sleeper walked ({_game.Stats.Seconds - _gameTimeAt.GetValueOrDefault("looted"):F0} s of play)");
         foreach (int x in _play.ToToolbar("survival-constructor", 2)) yield return x;
         foreach (int x in _play.CloseMenu()) yield return x;
         Check(_game.Pack.Grid[2].Item == "survival-constructor", "dragged onto toolbar slot 3");
@@ -695,7 +695,7 @@ public partial class PlayerTest : Node
             foreach (int x in _play.BlockToToolbar(block, slot)) yield return x;
         foreach (int x in _play.CloseMenu()) yield return x;
         Vector3 pad = _play.FlatSpot(_base.Body.Position.ToGodot(), 26f, 2.4f, 0.3f);
-        GD.Print($"  (the vessel's pad {pad}; the base at {_base.Body.Position.ToGodot()}; the castaway at {_game.Survivor.WorldFeet})");
+        GD.Print($"  (the vessel's pad {pad}; the base at {_base.Body.Position.ToGodot()}; the sleeper at {_game.Survivor.WorldFeet})");
         foreach (int x in _play.StandOff(pad, _base.Body.Position.ToGodot(), 5f)) yield return x;
         _vessel = null;
         foreach (int x in PlaceCore(pad, v => _vessel = v)) yield return x;
@@ -847,7 +847,7 @@ public partial class PlayerTest : Node
         foreach (int x in _drive.Tap(Key.L)) yield return x;
     }
 
-    /// <summary>The jetpack up off the ground: rising fast is never a fall, so the suit's fall alert stays off until the castaway comes down (on foot it is the suit's own, never shown on the glass).</summary>
+    /// <summary>The jetpack up off the ground: rising fast is never a fall, so the suit's fall alert stays off until the sleeper comes down (on foot it is the suit's own, never shown on the glass).</summary>
     IEnumerable<int> JetpackLiftOff()
     {
         GD.Print("-- the jetpack: the fall alert only when falling --");
@@ -983,7 +983,7 @@ public partial class PlayerTest : Node
         if (!_game.Suit.Dead || _game.Backpack == null || !_game.Backpack.Storage.Contents.Equals(drops))
             GD.Print($"  (after the jump: health {_game.Suit.Vitals.Health:F0}, lost {string.Join(", ", _game.Suit.Lost.Select(kv => $"{kv.Value:F0} {kv.Key}"))}, top fall speed {_topFall:F1} m/s; dead {_game.Suit.Dead}, {_game.Survivor.WorldFeet.Y - _game.Zone.GroundAt(_game.Survivor.WorldFeet.X, _game.Survivor.WorldFeet.Z).Y:F0} m up, seated {_game.Survivor.Seated?.Name}, backpack {(_game.Backpack == null ? "none" : _game.Zone.Data.Items.Describe(_game.Backpack.Storage.Contents, 4))})");
         Check(_game.Suit.Dead && _game.Backpack != null && _game.Backpack.Storage.Contents.Equals(drops),
-            $"a fall from {high:F0} m onto flat ground{(falls > 1 ? $" and {falls - 1} more off the jetpack" : "")} kills the castaway: the bag is in a backpack where they fell ({_game.Zone.Data.Items.Describe(drops, 4)})");
+            $"a fall from {high:F0} m onto flat ground{(falls > 1 ? $" and {falls - 1} more off the jetpack" : "")} kills the sleeper: the bag is in a backpack where they fell ({_game.Zone.Data.Items.Describe(drops, 4)})");
         Check(carried[toolId] > 0 && _game.Pack[toolId] == carried[toolId] && _game.Backpack?.Storage.Count(toolId) == 0, "the survival tool is never dropped: it stays with the body");
         Check(_game.Pack.Storage.Contents.Equals(stays) && Enumerable.Range(0, _game.Pack.Grid.Toolbar).All(i => _game.Pack.Grid[i].ToString() == onBar[i]),
             $"everything on the toolbar stays, slot for slot ({_game.Zone.Data.Items.Describe(stays, 4)})");
@@ -1019,7 +1019,7 @@ public partial class PlayerTest : Node
               && _game.Zone.Data.Items.Item("o2-bottle").Name == "O2 bottle", "oxygen items give the design's +75 and +250, in suit oxygen");
         Check(WorldChoice.Types.All(t => t.Name.StartsWith(t.Archetype.ToString(), StringComparison.Ordinal) || t.Archetype == Archetype.Alien && t.Key == "swamp"),
             "the start screen's planet types carry their archetype's name");
-        Check(_rescues.All(r => r.Body != _game.Survivor.Body), $"the castaway never needed rescuing from the ground ({_rescues.Count} rescues of anything)");
+        Check(_rescues.All(r => r.Body != _game.Survivor.Body), $"the sleeper never needed rescuing from the ground ({_rescues.Count} rescues of anything)");
         GD.Print($"  game time at each step (min): {string.Join(", ", _gameTimeAt.Select(kv => $"{kv.Key} {kv.Value / 60:F1}"))}");
         GD.Print($"  level {_game.Progress.Level}, {_game.Progress.Xp} XP; {_game.Stats.Crafted} items crafted, {_game.Builder.Placed} blocks placed, {_game.Tool.OreCells} ore cells dug, {_game.Stats.Kills} kills");
     }

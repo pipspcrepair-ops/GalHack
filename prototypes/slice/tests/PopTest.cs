@@ -13,7 +13,7 @@ using Slice.Game;
 namespace Slice.Tests;
 
 /// <summary>
-/// Pop-in: on a fresh random world, the castaway walks, rides a hover bike and flies low toward
+/// Pop-in: on a fresh random world, the sleeper walks, rides a hover bike and flies low toward
 /// places, on the real clock, and everything the drawing changes on the way is logged (<see cref="PopLog"/>):
 /// flora, ground cover, places' far and merged blocks, city tiles, places' full detail, props and
 /// creatures, with how far off each was and how much of the screen changed in one frame. A route

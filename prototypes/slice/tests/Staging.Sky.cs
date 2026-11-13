@@ -39,7 +39,7 @@ public partial class Staging
         float antiSolar = MathF.Atan2(sun.X, sun.Z); // the heading that looks away from the sun
         foreach (var (name, eye) in places)
         {
-            // STAGING: the castaway is set down on the hilltop (the view, not the walk, is tested).
+            // STAGING: the sleeper is set down on the hilltop (the view, not the walk, is tested).
             if (name == "hilltop")
             {
                 _game.Survivor.PlaceOutside(hill.ToNumerics());

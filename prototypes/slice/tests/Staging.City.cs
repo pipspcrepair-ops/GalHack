@@ -9,7 +9,7 @@ using WeatherKind = Weather.Model.WeatherKind;
 namespace Slice.Tests;
 
 /// <summary>
-/// A city in the game itself (--view=city; Screenshot asks for one on any lived-in world): the castaway set down
+/// A city in the game itself (--view=city; Screenshot asks for one on any lived-in world): the sleeper set down
 /// at each of --at metres off its edge (2000,300 by default) on the line from the city's middle toward the start, looking
 /// at it from --up metres over the ground (90 at 2 km, 20 nearer), with the place layer's far tiles and merged
 /// blocks as they are at that distance, and what stands there printed. Frames go beside --out.
