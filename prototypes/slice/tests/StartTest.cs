@@ -88,6 +88,8 @@ public partial class StartTest : Node
         _exitOnly = args.Contains("--exit-only");
         // --no-site-roads: the places without their planned roads, to time a world's load against.
         PoiGenerator.Gen.SiteRoads.Enabled = !args.Contains("--no-site-roads");
+        // --places-at-load: every place built while the world loads, the old way, to time the load against.
+        PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad = args.Contains("--places-at-load");
         var seeds = new List<ulong>();
         if (args.Contains("--crowd"))
         {

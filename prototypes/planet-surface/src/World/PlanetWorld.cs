@@ -293,6 +293,8 @@ public sealed partial class PlanetWorld
         double tEnd = Lap();
         LastTimes = $"map {tMap / 1000:F1} s, places {(tPlaces - tMap) / 1000:F1} s (plan {PoiSiting.LastPlanMs / 1000:F1}, layouts {PoiSiting.LastLayoutMs / 1000:F1}, seats {PoiSiting.LastSeatMs / 1000:F1} s), around {(tAround - tPlaces) / 1000:F1} s [{LastAroundTimes}], finish {(tEnd - tAround) / 1000:F1} s";
         var world = new PlanetWorld(spec, profile, map, landing, pois, around, source, watch.Elapsed.TotalMilliseconds, PoiGenerator.Gen.WorldReading.Of(layers), blasts) { Depth = depth, Roll = roll, Layers = layers, Library = catalog?.Library };
+        // Tests: build every place while the world loads, as a world did before places were built when wanted (to time one against the other).
+        if (BuildPlacesAtLoad) System.Threading.Tasks.Parallel.ForEach(pois, p => p.Build());
         world.TakeChart(chart);
         world.ChartStars();
         return world;
@@ -317,6 +319,9 @@ public sealed partial class PlanetWorld
     /// worlds were always inhabited (their survivors live among the old world's ruins). The same
     /// spec always rolls the same profile.
     /// </summary>
+    /// <summary>Tests only: build every place while the world loads (the old way), to time a load against.</summary>
+    public static bool BuildPlacesAtLoad;
+
     /// <summary>Where the last world's build time went, phase by phase (tests print it).</summary>
     public static string LastTimes = "";
 
