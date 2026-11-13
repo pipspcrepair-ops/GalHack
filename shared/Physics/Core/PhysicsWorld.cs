@@ -566,18 +566,20 @@ public sealed class PhysicsWorld
 
     /// <summary>
     /// The first thing under a structure's foot it can stand on (<see cref="Layers.GearMask"/>): the ground, a deck, rock,
-    /// or a tree that takes its weight (<paramref name="tree"/>: which, or 0). A tree that can't is looked through: coming
-    /// down on it, the hull breaks it (<see cref="Trees"/>), so the gear never stands on what won't hold the craft.
+    /// or a tree that takes its weight and the blow it is coming down with (<paramref name="tree"/>: which, or 0), the most
+    /// its hull could put on that tree (<see cref="Trees"/>). A tree that can't is looked through: coming down on it, the
+    /// hull breaks it, so the gear never stands on what won't hold the craft.
     /// </summary>
     public bool Footing(Body body, Vector3 from, Vector3 to, out RayHit hit, out long tree)
     {
         Vector3 along = Vector3.Normalize(to - from);
+        float load = WeightOf(body) + (body.Mass + body.Carried) * MathF.Max(0f, -body.Velocity.Y) / Rules.Flora.BlowTime;
         tree = 0;
         for (int i = 0; i < 8; i++)
         {
             if (!Query.Ray(from, to, Layers.GearMask, body, out hit)) return false;
             if (hit.Surface != Surface.Flora || Flora == null || !Flora.TreeAt(hit.Part, out tree, out float trunk)) return true;
-            if (WeightOf(body) <= Rules.Flora.Takes(trunk)) return true;
+            if (load <= Rules.Flora.Takes(trunk)) return true;
             tree = 0;
             from = hit.Point + along * 0.05f; // (a ray from inside a crown passes out of it)
         }
