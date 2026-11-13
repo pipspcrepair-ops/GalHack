@@ -45,6 +45,8 @@ public partial class SliceTest : Node
     readonly List<RescueInfo> _rescues = new();
     readonly List<ImpactInfo> _impacts = new();
     readonly List<string> _harmUnwarned = new();
+    /// <summary>Health the provoked hunters took: a bite is the test's own doing and nothing heals it, so the end-of-run check leaves it out.</summary>
+    double _biteLoss;
     int _landed, _liftedOff;
     double _lastHealth;
     Vessel _skiff;
@@ -1140,6 +1142,7 @@ public partial class SliceTest : Node
             yield return 0;
         }
         w.Frozen = true;
+        _biteLoss += health - _game.Suit.Vitals.Health;
         Check(threatAt >= 0 && (hurtAt < 0 || threatAt < hurtAt),
             hurtAt < 0 ? $"a {hunter.CommonName} wound up to attack and the visor warned (THREAT) {(threatAt >= 0 ? "" : "NOT ")}â€” it never landed a bite"
                        : $"a {hunter.CommonName}'s attack: THREAT on the visor {(hurtAt - threatAt) / 60.0:F1} s before its bite cost {health - _game.Suit.Vitals.Health:F0} health");
@@ -1172,7 +1175,7 @@ public partial class SliceTest : Node
         Check(_harmUnwarned.Count == 0, _harmUnwarned.Count == 0
             ? $"vitals stayed sane: every loss of health came after its warning ({suit.TotalLost:F0} health lost in all, {suit.Vitals.Health:F0} left)"
             : $"health was lost without a warning first: {string.Join("; ", _harmUnwarned.Take(5))}");
-        Check(suit.Vitals.Health > suit.Sim.Data.Vitals.Health.Max * 0.5 && suit.Vitals.Food > 0,
+        Check(suit.Vitals.Health + _biteLoss > suit.Sim.Data.Vitals.Health.Max * 0.5 && suit.Vitals.Food > 0,
             $"the castaway ends the run healthy: {suit.Vitals.Health:F0} health, food {suit.FoodShare * 100:F0}%");
         var inside = _game.Zone.Physics.Bodies.Where(Inside).ToList();
         Check(inside.Count == 0, $"no stuck bodies: nothing of {_game.Zone.Physics.Bodies.Count} bodies is inside the ground ({_rescues.Count} rescues along the way: {string.Join(", ", _rescues.Select(r => r.Body.Label).Distinct())})");
