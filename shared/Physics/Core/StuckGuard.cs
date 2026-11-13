@@ -101,6 +101,8 @@ public sealed class StuckGuard
     {
         // A base is fixed where it was built, into a hillside if need be: nothing ever moves it.
         if (body.Mass <= 0f || body.Motion == Motion.Fixed) return null;
+        // A player held asleep (in a seat, on a bike) is set where it is every tick, inside a chair's cells if need be: never stuck.
+        if (body.Asleep && body.Kind == BodyKind.Player) return null;
         foreach (IStuckField field in _world.StuckFields)
         {
             if (!field.Applies(body)) continue;

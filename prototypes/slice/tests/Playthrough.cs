@@ -778,7 +778,8 @@ public sealed class Playthrough
             bool done = false;
             // Where to stand: tried nearer and further until the crosshair is on that very face,
             // as a player shuffles until the ghost sits where they want it.
-            float[] distances = face == Dir.NegY ? new[] { 0.1f, 0.75f, 1.1f } : face == Dir.PosY ? new[] { 1.6f, 1.2f, 2.2f } : new[] { 2.4f, 1.8f, 3.2f };
+            // Under the deck, further out last: a block spanning two cells (a landing pad) hangs where you'd stand.
+            float[] distances = face == Dir.NegY ? new[] { 0.1f, 0.75f, 1.1f, 1.7f, 2.3f } : face == Dir.PosY ? new[] { 1.6f, 1.2f, 2.2f } : new[] { 2.4f, 1.8f, 3.2f };
             foreach (float d in distances)
             {
                 if (done) break;

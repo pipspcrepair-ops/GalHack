@@ -39,7 +39,7 @@ namespace Slice.Tests;
 ///   4  loot the creature's body (drag, shift-click, split, take all), fill the toolbar by drag
 ///   5  craft the survival constructor in the suit fabricator, set it down
 ///   6  craft a core in it
-///   7  found a base, build onto it: a container, a generator, a small constructor, steel
+///   7  found a base, build onto it: two containers, a generator, a small constructor, steel
 ///   8  earn level 5, unlock the vessel's blocks, make a second core and the parts in the base's constructor
 ///   9  set the second core down, build a vessel on it, switch it to Capital Mode, fly 500 m and land
 ///   10 every Tab menu tab, the head torch, and dying: your backpack, recovered from its marker
@@ -161,7 +161,9 @@ public partial class PlayerTest : Node
 
     static readonly (string block, int n)[] BaseBlocks =
     {
-        ("container", 1), ("generator", 1), ("smallfab", 1), ("steel", 2),
+        // Two containers: one T1 holds 1000 SU, and the ore stored for the vessel's parts can fill it,
+        // leaving the constructor no room for what it makes.
+        ("container", 2), ("generator", 1), ("smallfab", 1), ("steel", 2),
     };
 
     static readonly (string block, int n)[] VesselBlocks =
@@ -573,7 +575,7 @@ public partial class PlayerTest : Node
         int placed = _game.Builder.Placed;
         var steps = new (int slot, Int3 on, Dir face)[]
         {
-            (4, Int3.Zero, Dir.PosX), (5, Int3.Zero, Dir.NegX), (6, Int3.Zero, Dir.PosZ), (8, Int3.Zero, Dir.NegZ), (8, new Int3(0, 0, -1), Dir.NegZ),
+            (4, Int3.Zero, Dir.PosX), (4, new Int3(1, 0, 0), Dir.PosX), (5, Int3.Zero, Dir.NegX), (6, Int3.Zero, Dir.PosZ), (8, Int3.Zero, Dir.NegZ), (8, new Int3(0, 0, -1), Dir.NegZ),
         };
         foreach (var (slot, on, face) in steps)
         {
