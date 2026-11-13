@@ -101,6 +101,7 @@ public static partial class PoiSiting
             // Last, the whole world at a coarse step, the nearest good ground winning.
             typed ??= SeatType(lib, family, variant, state, spawn, profile, bare, map, x, z, landing, others, sketch, Math.Max(map.WidthMeters, map.HeightMeters) / 2);
             if (typed != null) return typed;
+            Godot.GD.Print($"{family.Id}: no ground anywhere for its {sketch.Type.Id} ({sketch.Footprint.W:F0} x {sketch.Footprint.D:F0} m); the world-wide search: {LastTypedRejects}");
         }
         return null;
     }

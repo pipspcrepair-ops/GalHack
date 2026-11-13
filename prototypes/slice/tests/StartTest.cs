@@ -90,8 +90,8 @@ public partial class StartTest : Node
         PoiGenerator.Gen.SiteRoads.Enabled = !args.Contains("--no-site-roads");
         // --places-at-load: every place built while the world loads, the old way, to time the load against.
         PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad = args.Contains("--places-at-load");
-        // --force FAMILY: each world also has one of these near the landing site (an airfield, to time a world's load with one).
-        for (int i = 0; i < args.Length - 1; i++) if (args[i] == "--force") PlanetSurface.Poi.PoiSiting.ForceFamily = args[i + 1];
+        // --force=FAMILY: each world also has one of these near the landing site (an airfield, to time a world's load with one).
+        foreach (string a in args) if (a.StartsWith("--force=")) PlanetSurface.Poi.PoiSiting.ForceFamily = a["--force=".Length..];
         var seeds = new List<ulong>();
         if (args.Contains("--crowd"))
         {

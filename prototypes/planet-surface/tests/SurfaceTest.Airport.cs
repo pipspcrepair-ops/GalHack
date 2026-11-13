@@ -101,9 +101,9 @@ public partial class SurfaceTest
                     string goal = kind switch { "terminal" => "gate stand", "hangar" => "hangar floor", "tower" => "control cab", _ => null };
                     if (goal != null && inst.Layout.Modules.FirstOrDefault(md => md.Purpose == goal) is { } target)
                     {
-                        var reach = inst.Nav().Reachable(inst.Layout.EntranceCell);
+                        var reachable = inst.Nav().Reachable(inst.Layout.EntranceCell);
                         walks++;
-                        if (target.Cells.Any(reach.Contains)) walked++;
+                        if (target.Cells.Any(reachable.Contains)) walked++;
                         else bad.Add($"{kind}: no way from its way in to its {goal}");
                     }
                     if (place.Sketch.Type.Id == "airport")
