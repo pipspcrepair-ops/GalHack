@@ -39,8 +39,9 @@ instance uniform vec4 worm_reach = vec4(0.0);
 
 varying vec3 lp;
 
+// A skinned body (one mesh for all its pieces) carries each vertex's place in its own piece in CUSTOM0 (w = 1).
 void vertex() {
-	lp = VERTEX;
+	lp = CUSTOM0.w > 0.5 ? CUSTOM0.xyz : VERTEX;
 	if (UV.y > 4.5 && worm_scale > 0.0) {
 		float id = floor(UV.x);
 		float a = fract(UV.x);

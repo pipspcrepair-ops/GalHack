@@ -30,6 +30,10 @@ public partial class PoiLayer : Node3D
         public bool Whole;
         public readonly Dictionary<Int3, MeshInstance3D> Cells = new();
         public readonly HashSet<Int3> Hidden = new();
+        /// <summary>Its merged cubes' occluders (PoiLayer.Occluders.cs), and the cubes whose blocks changed, which have none.</summary>
+        public Task<List<(Vector3[], int[])?>> MidOccluders;
+        public readonly Dictionary<Int3, OccluderInstance3D> Occluders = new();
+        public readonly HashSet<Int3> Unoccluded = new();
         /// <summary>How far its far mesh has dissolved into its merged blocks (0..1), and which way it is going now (+1, -1, 0: still).</summary>
         public float Blend;
         public int Way;
@@ -360,7 +364,7 @@ public partial class PoiLayer : Node3D
         _building.Clear();
         _animated.Clear();
         _styled.Clear();
-        _midJob = null;
+        _midJobs.Clear();
         _blending.Clear();
         _tilesBlending.Clear();
         _world = null;

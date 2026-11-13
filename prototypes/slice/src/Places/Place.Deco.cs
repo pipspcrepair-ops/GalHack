@@ -666,8 +666,10 @@ public partial class Place
         if (_dressing != null)
         {
             var clock = System.Diagnostics.Stopwatch.StartNew();
-            while (clock.Elapsed.TotalMilliseconds < 1.5)
+            double budget = PlanetSurface.Fx.LoadBudget.Left(1.5);
+            while (clock.Elapsed.TotalMilliseconds < budget)
                 if (!_dressing.MoveNext()) { _dressing = null; break; }
+            PlanetSurface.Fx.LoadBudget.Spend(clock.Elapsed.TotalMilliseconds);
             return;
         }
         if (--_dressTimer > 0) return;

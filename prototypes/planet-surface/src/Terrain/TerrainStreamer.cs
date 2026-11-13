@@ -488,6 +488,14 @@ public partial class TerrainStreamer : Node3D
         if (LastGcPauseMs > WorstGcPauseMs) WorstGcPauseMs = LastGcPauseMs;
     }
 
+    /// <summary>A column's heights worked out on a worker. (Its own method: a lambda in the ring's loop made a closure for every column every frame.)</summary>
+    void RequestHeights(PlanetTerrainSource source, int cx, int cz) => Task.Run(() =>
+    {
+        try { source.ColumnAt(cx, cz); }
+        catch (Exception e) { GD.PushError($"column {cx},{cz} failed: {e}"); }
+        _heightsDone.Enqueue((cx, cz));
+    });
+
     void StreamVoxels()
     {
         var (fcx, fcz) = FocusColumn;
@@ -511,13 +519,7 @@ public partial class TerrainStreamer : Node3D
             if (column.HeightsRequested || _heightsInFlight >= _maxInFlight) continue;
             column.HeightsRequested = true;
             _heightsInFlight++;
-            int cx = column.Cx, cz = column.Cz;
-            Task.Run(() =>
-            {
-                try { source.ColumnAt(cx, cz); }
-                catch (Exception e) { GD.PushError($"column {cx},{cz} failed: {e}"); }
-                _heightsDone.Enqueue((cx, cz));
-            });
+            RequestHeights(source, column.Cx, column.Cz);
         }
         int sx = _shiftX, sz = _shiftZ;
         while (_heightsDone.TryDequeue(out var done))
@@ -777,6 +779,19 @@ public partial class TerrainStreamer : Node3D
 
     // ---- Far rings ------------------------------------------------------------------------
 
+    /// <summary>A far chunk built on a worker. (Its own method: a lambda in the wanted list's loop made a closure for every chunk every frame.)</summary>
+    void BuildFar(FarJob job)
+    {
+        PlanetTerrainSource source = World.Source;
+        GroundPalette palette = World.Palette;
+        HashSet<long> dug = _dugSnapshot, felled = _felledSnapshot;
+        Task.Run(() =>
+        {
+            FarBuilder.Build(job, source, palette, dug, felled);
+            _farDone.Enqueue(job);
+        });
+    }
+
     void StreamFar()
     {
         double w = World.Terrain.Width, h = World.Terrain.Height;
@@ -847,18 +862,10 @@ public partial class TerrainStreamer : Node3D
             if (f.Lod == lod || f.InFlight || _farInFlight >= 3) continue;
             f.InFlight = true;
             _farInFlight++;
-            var job = new FarJob
+            BuildFar(new FarJob
             {
                 Fx = fx, Fz = fz, Lod = lod, Version = f.Version,
                 SpanX = FarBuilder.Span(fx, World.Terrain.Width), SpanZ = FarBuilder.Span(fz, World.Terrain.Height),
-            };
-            PlanetTerrainSource source = World.Source;
-            GroundPalette palette = World.Palette;
-            HashSet<long> dug = _dugSnapshot, felled = _felledSnapshot;
-            Task.Run(() =>
-            {
-                FarBuilder.Build(job, source, palette, dug, felled);
-                _farDone.Enqueue(job);
             });
         }
 
