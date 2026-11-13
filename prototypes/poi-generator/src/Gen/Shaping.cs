@@ -43,8 +43,9 @@ public static class Shaping
     /// <summary>The facing a corner piece takes for its raised (or, inner, its low) corner between two ways.</summary>
     public static Dir CornerFacing(Dir a, Dir b) => Dirs.Horizontal.First(f => f == a && f.RotateCw(3) == b || f == b && f.RotateCw(3) == a);
 
-    /// <summary>Open space: air, a floor's finish, or litter lying on it.</summary>
-    public static bool Clear(Block b) => b.IsAir || BlockInfo.IsFinish(b.Type) || b.Role == Role.Debris && !BlockInfo.Collides(b.Type);
+    /// <summary>Open space: air, a floor's finish, or litter lying on it (not what hangs from something).</summary>
+    public static bool Clear(Block b) => b.IsAir || BlockInfo.IsFinish(b.Type)
+        || b.Role == Role.Debris && !BlockInfo.Collides(b.Type) && b.Type is not (BlockType.Cable or BlockType.Tendril or BlockType.Vine); // (what hangs needs its hold)
 
     /// <summary>A way through a wall: a window, a door, glass.</summary>
     public static bool Opening(Block b) => b.Role == Role.Window || b.Type is BlockType.Door or BlockType.SealedDoor || BlockInfo.IsTransparent(b.Material) && b.Type is BlockType.Cube or BlockType.Pane;
@@ -227,13 +228,13 @@ public static class Shaping
             Put(t.C, t.In ? Turns(runs[t.A].P)!.Value.Inner : Turns(runs[t.A].P)!.Value.Outer, t.F);
 
         // Panels: each storey of a facade set back whole between its storey lines, quoins and frames.
-        // Each panel is cut in equal bays by piers about every 7 m.
+        // Each panel is cut in equal bays by piers about every 9 m; a timber facade is boarded flush.
         foreach (var (d, set) in fields)
             foreach (List<Int3> panel in Parts(set, d.RotateCw(1).Vec(), Int3.Up))
             {
-                if (!panel.All(Panel)) continue;
+                if (!panel.All(Panel) || panel.Count(c => g.Get(c).Material == Material.Timber) * 2 > panel.Count) continue;
                 int U(Int3 c) => d is Dir.North or Dir.South ? c.X : c.Z;
-                int lo = panel.Min(U), wide = panel.Max(U) - lo + 1, bays = (wide + 6) / 7;
+                int lo = panel.Min(U), wide = panel.Max(U) - lo + 1, bays = (wide + 8) / 9;
                 var piers = Enumerable.Range(1, bays - 1).Select(k => lo + wide * k / bays).ToHashSet();
                 var cells = panel.ToHashSet();
                 Int3 a = d.RotateCw(1).Vec();
