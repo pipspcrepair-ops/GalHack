@@ -14,3 +14,11 @@ Re-measure after changing a pose (headless, through the Godot queue):
     godot-q.ps1 -Console -Headless --path prototypes/wildlife res://tests/BestiaryTest.tscn -After "--posedump=<out.json>"
 
 The hand orientations in the tool's `HANDS` table are first guesses; the game had none when it was made.
+
+## In the game
+
+The game reads hand poses from `HandTable` (`shared/Bestiary/Rigs/HumanRig.Hands.cs`): one row per bench keyframe id,
+`Open`, `Fist` or `Point` with the palm facing in the arm's own frame (out, up, ahead), left then right where they differ,
+and `.Toward(out, up, ahead)` where the wrist is bent so the fingers leave the forearm's line. Rows are blended where a pose
+moves between two keyframes. A hand on a grip is placed by the grip instead (knuckles along the weapon, the palm on the side
+the row prefers). Hands are drawn at 0.19 m times height over 1.72, hand size and `HandMake.Readable` (1.3).

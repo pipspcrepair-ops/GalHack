@@ -9,8 +9,9 @@ namespace Wildlife;
 /// <summary>
 /// People's acts and gestures, pose by pose, for side-by-side checks against the owner's shots
 /// (run windowed): --view=acts --out=DIR writes DIR/NN-name-front.png and -side.png for every
-/// act, four people of different folk doing it at once, fresh each run. --pick=a,b limits it to
-/// those scenes by name.
+/// act, four people of different folk doing it at once, fresh each run, and two close-ups of their
+/// hands (the first and the last of them); the close-ups of all the acts are tiled into
+/// DIR/hands-first-N.png and hands-last-N.png. --pick=a,b limits it to those scenes by name.
 /// </summary>
 public partial class Screenshot
 {
@@ -74,7 +75,9 @@ public partial class Screenshot
     List<Species> _actPeople, _actHusks, _actMixed;
     Gibs _gibs;
     Vector3 _actOrigin, _actFwd, _actRight;
-    bool _actSide, _actBusy;
+    int _actView; // 0 square on, 1 from the side, 2 and 3 close to the first person and the last
+    bool _actBusy;
+    readonly List<Image>[] _actTiles = { new(), new() };
 
     bool ActsSetup()
     {
@@ -109,8 +112,13 @@ public partial class Screenshot
         _each = ActsEach;
         _aim = () =>
         {
-            // From the front and a little to the side, as the owner looked; or square from the side.
-            Vector3 eye = _actSide ? Ground(_actOrigin + _actRight * 6f + _actFwd * 1.2f) + Vector3.Up * 1.2f : Ground(_actOrigin + _actFwd * 5f - _actRight * 2f) + Vector3.Up * 1.4f;
+            // From the front and a little to the side, as the owner looked; or square from the side; or close to one person's hands.
+            if (_actView >= 2)
+            {
+                Vector3 at = _actOrigin + _actRight * ((_actView == 2 ? 0 : _actors.Count - 1) - 1.5f) * 1.7f;
+                return (Ground(at + _actFwd * 1.9f + _actRight * 0.3f) + Vector3.Up * 1.35f, at + Vector3.Up * 1.2f);
+            }
+            Vector3 eye = _actView == 1 ? Ground(_actOrigin + _actRight * 6f + _actFwd * 1.2f) + Vector3.Up * 1.2f : Ground(_actOrigin + _actFwd * 5f - _actRight * 2f) + Vector3.Up * 1.4f;
             return (eye, _actOrigin + Vector3.Up * 0.9f);
         };
         m.Camera.Fov = 55f;
@@ -150,18 +158,19 @@ public partial class Screenshot
         if (_actIndex >= _actList.Count) return;
         Main m = _main;
         // (While a shot is taken they're still posed: the sim poses them too, without the act.)
-        if (!_actBusy && (_actIndex < 0 || _actTick >= _actList[_actIndex].Hold + 6))
+        if (!_actBusy && (_actIndex < 0 || _actTick >= _actList[_actIndex].Hold + 12))
         {
             _actIndex++;
             if (_actIndex >= _actList.Count)
             {
                 _actBusy = true;
+                ActsSheets();
                 GD.Print($"saved {_actShot} act shots to {_out}");
                 Shutdown.Quit(this, 0);
                 return;
             }
             _actTick = 0;
-            _actSide = false;
+            _actView = 0;
             ActsStart(_actList[_actIndex]);
         }
         ActScene scene = _actList[_actIndex];
@@ -183,20 +192,42 @@ public partial class Screenshot
         }
         m.View.Sync(m.Camera.GlobalPosition);
         if (_actBusy) return;
-        if (_actTick == scene.Hold) ActsCapture($"{_actIndex + 1:00}-{scene.Name}-front.png", false);
-        if (_actTick == scene.Hold + 3) ActsCapture($"{_actIndex + 1:00}-{scene.Name}-side.png", true);
+        string[] views = { "front", "side", "hands-first", "hands-last" };
+        if (_actTick >= scene.Hold && (_actTick - scene.Hold) % 3 == 0 && (_actTick - scene.Hold) / 3 is int v and < 4) ActsCapture($"{_actIndex + 1:00}-{scene.Name}-{views[v]}.png", v);
         _actTick++;
     }
 
-    async void ActsCapture(string name, bool sideNext)
+    async void ActsCapture(string name, int view)
     {
         _actBusy = true;
         await ToSignal(RenderingServer.Singleton, "frame_post_draw");
         await ToSignal(RenderingServer.Singleton, "frame_post_draw");
         Image image = GetViewport().GetTexture().GetImage();
         image.SavePng(Path.Combine(_out, name));
+        if (view >= 2)
+        {
+            image.Resize(image.GetWidth() / 3, image.GetHeight() / 3, Image.Interpolation.Lanczos);
+            _actTiles[view - 2].Add(image);
+        }
         _actShot++;
-        _actSide = !sideNext ? true : false;
+        _actView = view + 1;
         _actBusy = false;
+    }
+
+    /// <summary>The close-ups of the hands, twelve to a sheet in the order of the scenes, for looking at a lot of acts at once.</summary>
+    void ActsSheets()
+    {
+        for (int who = 0; who < 2; who++)
+        {
+            List<Image> tiles = _actTiles[who];
+            for (int sheet = 0; sheet * 12 < tiles.Count; sheet++)
+            {
+                var page = tiles.Skip(sheet * 12).Take(12).ToList();
+                var image = Image.CreateEmpty(page[0].GetWidth() * 4, page[0].GetHeight() * 3, false, page[0].GetFormat());
+                for (int k = 0; k < page.Count; k++) image.BlitRect(page[k], new Rect2I(0, 0, page[k].GetWidth(), page[k].GetHeight()), new Vector2I(k % 4 * page[0].GetWidth(), k / 4 * page[0].GetHeight()));
+                image.SavePng(Path.Combine(_out, $"hands-{(who == 0 ? "first" : "last")}-{sheet + 1}.png"));
+                GD.Print($"sheet hands-{(who == 0 ? "first" : "last")}-{sheet + 1}: {string.Join(", ", _actList.Skip(sheet * 12).Take(12).Select(s => s.Name))}");
+            }
+        }
     }
 }

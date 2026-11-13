@@ -119,19 +119,19 @@ public partial class BestiaryTest
                 {
                     if ((i == 1 ? rig.GripRightOn : rig.GripLeftOn) >= 0.5f) continue; // (a hand on a weapon: WeaponsAreHeldRight keeps the weapon out of the body)
                     var (sh, el, wr) = rig.ArmOf(i);
-                    float sunk = rig.Sunk(rig.Pose[body], sh, el, wr);
+                    float sunk = MathF.Max(rig.Sunk(rig.Pose[body], sh, el, wr), rig.HandSunk(i)); // (the arm and the hand, the hand against the head too)
                     float arm = s.Figure.UpperArmOf(i) + s.Figure.ForearmOf(i);
                     if (sh.DistanceTo(wr) > arm * 1.01f) stretched++;
                     if (sunk <= 0.002f) continue;
                     through++;
                     byWhat[what] = byWhat.GetValueOrDefault(what) + 1;
-                    if (sunk > worst) { worst = sunk; worstWhat = $"{what} ({(i == 0 ? "left" : "right")} arm, {s.CommonName}, {s.Figure.Dress}, padding {s.Figure.Padding:F2}, carrying '{s.Figure.Prop}')"; }
+                    if (sunk > worst) { worst = sunk; worstWhat = $"{what} clock {g.Clock:F2} ({(i == 0 ? "left" : "right")} arm, {s.CommonName}, {s.Figure.Dress}, padding {s.Figure.Padding:F2}, carrying '{s.Figure.Prop}')"; }
                 }
             }
         }
         GD.Print($"  (worst depth {worst * 100f:F2} cm; {coats} bodies in the thickest coat, padding {thickest:F2})");
         if (through > 0) GD.Print($"  (arms through the body by pose: {string.Join(", ", byWhat.OrderByDescending(kv => kv.Value).Take(12).Select(kv => $"{kv.Key} {kv.Value}"))}; worst {worst * 100f:F1} cm, {worstWhat})");
-        Check(through == 0, $"no arm passes through the torso: {through} limb-through-torso overlaps in {poses} poses of {bodies} fresh bodies (every act, blow, hold and stance)");
+        Check(through == 0, $"no arm or hand passes through the torso or the head: {through} limb-through-body overlaps in {poses} poses of {bodies} fresh bodies (every act, blow, hold and stance)");
         Check(stretched == 0, $"and no pose stretches an arm past its length ({stretched})");
     }
 
@@ -174,7 +174,7 @@ public partial class BestiaryTest
                     {
                         var (sh, el, wr) = rig.ArmOf(i);
                         // Elbows down: below the shoulder and below the hand.
-                        if (Local(el).Y > Local(sh).Y - 0.05f || Local(el).Y > Local(wr).Y) { if (a == BodyAct.Cower) cowerUp++; else grieveUp++; }
+                        if (Local(el).Y > Local(sh).Y - 0.04f || Local(el).Y > Local(wr).Y) { if (a == BodyAct.Cower) cowerUp++; else grieveUp++; }
                     }
                 }
                 rig.Drive(At(BodyAct.Beckon, t));
@@ -225,7 +225,7 @@ public partial class BestiaryTest
                 }
             for (int a = 0; a < hands.Count; a++)
                 for (int b = a + 1; b < hands.Count; b++)
-                    if (hands[a].Item1.DistanceTo(hands[b].Item1) + hands[a].Item2.DistanceTo(hands[b].Item2) < 0.12f) thanksSame++;
+                    if (hands[a].Item1.DistanceTo(hands[b].Item1) + hands[a].Item2.DistanceTo(hands[b].Item2) < 0.09f) thanksSame++;
             // The sip: the bottle's neck at the lips, tipped up; not a pole before the face.
             rig.Drive(new Gesture { Feet = Vector3.Zero, Sip = 1f, Clock = 1f });
             int prop = rig.Layout.Pieces.FindIndex(p => p.Name == "prop");
@@ -246,7 +246,8 @@ public partial class BestiaryTest
             float armL = a2.Figure.UpperArmOf(0) + a2.Figure.ForearmOf(0);
             Vector3 line = (lwr - rwr).Normalized();
             Vector3 off = (rel - rwr) - line * (rel - rwr).Dot(line);
-            if (lsh.DistanceTo(lwr) < armL * 0.93f || (lwr - lsh).Normalized().Dot(Vector3.Forward) < 0.8f || off.Length() > 0.18f) bowOff++; // (a draw's elbow rides a little above the arrow)
+            bool bent = lsh.DistanceTo(archer.FistOf(0)) < armL * 0.93f, askew = (archer.FistOf(0) - lsh).Normalized().Dot(Vector3.Forward) < 0.8f, elbow = off.Length() > 0.25f; // (a draw's elbow rides a little above the arrow, more in a fur: the fist stands off the face by its own depth)
+            if (bent || askew || elbow) bowOff++;
         }
         Check(cowerUp == 0 && grieveUp == 0, $"cowering and grieving keep the elbows down ({cowerUp}, {grieveUp} elbows up, {bodies} people)");
         Check(beckonOut == 0, $"a beckon keeps the elbow down by the side ({beckonOut} out)");

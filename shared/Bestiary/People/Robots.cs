@@ -190,7 +190,6 @@ public static class Robots
             au.Add(Shape.Sphere, Vector3.One * 0.15f, Vector3.Zero, hull, 0f, 0f, null, 8, Mat.Carapace);
             var al = new Piece($"arm{side}l");
             Hard(al, new Vector3(0.07f, f.Forearm, 0.08f), Vector3.Up * f.Forearm * 0.5f, hull);
-            Hard(al, new Vector3(0.1f, 0.1f, 0.05f), Vector3.Up * f.Forearm, dark);
             var lu = new Piece($"leg{side}u");
             Hard(lu, new Vector3(0.11f, f.UpperLeg, 0.13f), Vector3.Up * f.UpperLeg * 0.5f, dark);
             var ll = new Piece($"leg{side}l");
@@ -200,6 +199,7 @@ public static class Robots
             Hard(ft, new Vector3(0.12f, f.Ankle, 0.3f), new Vector3(0f, -f.Ankle * 0.5f, -0.06f), dark);
             layout.Add(au);
             layout.Add(al);
+            HandMake.Build(layout, f, side, dark, hull, Mat.Carapace, false);
             layout.Add(lu);
             layout.Add(ll);
             layout.Add(ft);
