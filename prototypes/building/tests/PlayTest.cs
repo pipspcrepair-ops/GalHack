@@ -109,6 +109,7 @@ public partial class PlayTest : Node
             Key(Godot.Key.B);
             Check(S.Mode == CoreMode.Base, "B switches the core to base mode");
             Key(Godot.Key.B);
+            Key(Godot.Key.B); // through Hover back to Flight
             Aim(Top(5, 1, 6) + new Vector3(0.6f, 12f, 0f), Top(5, 1, 6)); // straight down onto the starboard pylon
         }));
         _steps.Add(("blaster", () =>

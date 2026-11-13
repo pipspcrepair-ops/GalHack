@@ -170,6 +170,7 @@ public sealed partial class Staging
             "visor" => VisorView(),
             "feet" => FeetView(),
             "zfight" => ZFightView(),
+            "tiershots" => TierShots(),
             _ => DoorViews(view),
         };
         foreach (int x in script) yield return x;

@@ -21,7 +21,7 @@ public static class CoreCraft
         throw new InvalidOperationException("no rotation points a thruster up");
     }
 
-    /// <summary>The Skiff: thrusters, a chair, gyro and legs, no hover plates. Its blueprint is old, so it loads in Vessel Mode.</summary>
+    /// <summary>The Skiff: thrusters, a chair, gyro and legs, no hover plates. Its blueprint is old, so it loads in Flight Mode.</summary>
     public static Structure Skiff(GameData data) => data.Blueprint(data.Rules.Build.StarterBlueprint);
 
     /// <summary>Fits hover plates under the outermost cells of a craft's belly: four of them, spread out, one block each.</summary>
@@ -73,6 +73,59 @@ public static class CoreCraft
             Building.Place(s, p, Building.Make(s, blocks.Type("thruster"), rot: up));
         }
         return s;
+    }
+
+    /// <summary>
+    /// A large hover structure (a hover tank, a land carrier): a solid steel hull 7 by 11 cells,
+    /// deepened a layer at a time until it weighs <paramref name="tonnes"/>, with a chair, a
+    /// generator and a gyro on its deck, thrusters pushing forward and back, and hover plates spread
+    /// under its belly (its four corners at least) until they lift half again its weight here. Set in Hover Mode.
+    /// </summary>
+    public static Structure HoverTank(Catalogue blocks, float tonnes, float gravity)
+    {
+        var s = new Structure(blocks) { Name = "Hover tank", Mode = CoreMode.Hover, GravityOn = true };
+        Building.Place(s, Int3.Zero, Building.Make(s, blocks.CoreType));
+        BlockType steel = blocks.Type("steel");
+        for (int y = 0; y > -8 && (y == 0 || StructureStats.Compute(s).Mass < tonnes); y--)
+        {
+            // A block goes on only where it touches one already placed: sweep the layer until it is full.
+            for (bool grew = true; grew;)
+            {
+                grew = false;
+                for (int x = -3; x <= 3; x++)
+                    for (int z = -5; z <= 5; z++)
+                        grew |= !s.Has(new Int3(x, y, z)) && Building.Place(s, new Int3(x, y, z), Building.Make(s, steel)) == PlaceError.None;
+            }
+        }
+        var (low, _) = s.Bounds();
+        int belly = low.Y - 1;
+        Building.Place(s, new Int3(0, 1, 0), Building.Make(s, blocks.Type("chair")));
+        Building.Place(s, new Int3(1, 1, 0), Building.Make(s, blocks.Type("generator")));
+        Building.Place(s, new Int3(-1, 1, 0), Building.Make(s, blocks.Type("gyro")));
+        int back = Facing(Dir.PosZ);
+        foreach (int x in new[] { -2, 2 })
+        {
+            Building.Place(s, new Int3(x, 1, -4), Building.Make(s, blocks.Type("thruster")));
+            Building.Place(s, new Int3(x, 1, 4), Building.Make(s, blocks.Type("thruster"), rot: back));
+        }
+        BlockType plate = blocks.Type("hover");
+        // The corners first, then the middles of the sides, then down the middle.
+        var spots = new (int x, int z)[] { (-3, -5), (3, -5), (-3, 5), (3, 5), (-3, 0), (3, 0), (0, -5), (0, 5), (0, 0), (-3, -3), (3, -3), (-3, 3), (3, 3), (0, -3), (0, 3) };
+        for (int i = 0; i < spots.Length; i++)
+        {
+            float lift = s.Blocks().Where(b => s.TypeOf(b.block).Function == "hover").Sum(b => s.TypeOf(b.block).Lift);
+            if (i >= 4 && lift >= 1.5f * StructureStats.Compute(s).Mass * gravity) break;
+            Building.Place(s, new Int3(spots[i].x, belly, spots[i].z), Building.Make(s, plate));
+        }
+        return s;
+    }
+
+    /// <summary>A rotation that points a thruster's push along <paramref name="push"/>.</summary>
+    static int Facing(Dir push)
+    {
+        for (int r = 0; r < 24; r++)
+            if (Orientations.ToWorld(r, Dir.NegZ) == push && Orientations.ToWorld(r, Dir.PosY) == Dir.PosY) return r;
+        throw new InvalidOperationException($"no upright rotation pushes {push}");
     }
 
     /// <summary>The ground under a point, whatever has been built near it.</summary>

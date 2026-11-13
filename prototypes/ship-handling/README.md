@@ -27,7 +27,7 @@ Mass is in tonnes and thrust in kN, so thrust / mass reads straight as m/s².
 | --- | --- |
 | Thrust | Each thruster pushes along its facing. Acceleration in a direction is that direction's thrust / mass. Bigger thrusters give more per tonne (small 100 kN/t, large 150, capital 200). |
 | Turning | Turn rate (°/s) is total gyro torque / mass, never below a floor of 12°/s. Roll is 1.5× faster. Thrusters never add torque, so a lopsided build flies true. |
-| Top speed | Fixed per class: hover 50 m/s; small 70 in air, 130 in space; capital 60 in air, 100 in space. Mass never changes it. Thrust can never push total speed past it, even mid-turn. |
+| Top speed | By mass band: under 100 t 70 in air, 130 in space; 100 to 1,000 t 60 and 100; over 1,000 t 50 and 80. Hover Mode 50 m/s whatever its mass. The turn rate is capped by band too: 90, 60, 30 and 15 °/s at under 20, 20 to 100, 100 to 1,000 and over 1,000 t. Thrust can never push total speed past it, even mid-turn. |
 | Lift margin | Upward thrust (plus hover lift) minus weight on the planet. Negative means it can't take off, and the console says so before anyone tries. In air, climbing acceleration is lift margin / mass. |
 | Flight assist | Always on. Per ship axis the vessel chases stick × top speed. Let go and it brakes with whichever thrusters face the right way (never weaker than 8 m/s²), easing out the last few m/s: smooth, no overshoot. Cruise (C) holds a speed. With the pilot out of the seat (F) the autopilot holds course. Assist never turns the ship: a flying vessel keeps whatever attitude the pilot leaves it in, in air and in space (no horizon assist, no self-levelling). |
 | Boost | Shift: 1.5× thrust for 1.5 s, then a 4 s cooldown. Never raises top speed. |
@@ -38,7 +38,7 @@ Mass is in tonnes and thrust in kN, so thrust / mass reads straight as m/s².
 
 **Hover vessels** hold ride height (1.5 m small engines, 3 m large) with a velocity servo, not a spring. Each engine probes straight down for ground or water. The servo's target climb rate is the ground's own rise rate from the probe normals, plus a gain times the height error, within fixed acceleration limits. It tracks bumps tightly and can't oscillate. Look-ahead probes along the direction of travel lift the vessel early for any rise sharper than the slope it's already on (a rock step), and refuse slopes steeper than 30°. Over water the probes see the surface, so it rides at full height and never sinks. Tilt follows the ground normal and settles at 6/s, so a knock is gone within a second. Space hops.
 
-**Landing gear** drops by itself below 15 m when slower than 20 m/s and comes up again past them (with hysteresis). G overrides it until the automatic choice next changes its mind. Each foot is a stiff, probe-based suspension. A ship on its gear, slower than 3 m/s and with hands off for 0.3 s, settles level over 0.5 s, raises `Landed` and stops simulating (zero cost). Thrust wakes it (`LiftedOff`), unless it's too heavy: then the console says by how much.
+**Landing gear** drops by itself below 15 m when slower than 20 m/s and comes up again past them (with hysteresis). There is no button. Each foot is a stiff, probe-based suspension. A ship on its gear, slower than 3 m/s and with hands off for 0.3 s, settles level over 0.5 s, raises `Landed` and stops simulating (zero cost). Thrust wakes it (`LiftedOff`), unless it's too heavy: then the console says by how much.
 
 ### The vessels
 
@@ -69,7 +69,6 @@ From the repo root, in PowerShell:
 | Q / E | Roll |
 | Shift | Boost |
 | C | Cruise: hold the current speed, W/S trim it |
-| G | Landing gear up or down |
 | V | Cockpit or chase camera |
 | F | Leave the seat (the autopilot holds course) or take it again |
 | ] / [ | Add or remove a main engine: watch acceleration, mass and turn rate change |
@@ -82,7 +81,7 @@ Things to try: drive the rover over the rock steps east of the pad and up the tw
 
 ## Tunables
 
-Every number lives in [`data/handling.json`](data/handling.json), with a note per section saying what each one means: the planet (gravity, atmosphere ceiling), class top speeds, turning (floor, roll factor, spin-up), assist (brake floor, ease rate, cruise), boost, hover (servo gain and limits, look-ahead, step allowance, levelling, slope limit, jump), gear (deploy altitude and speed, landing speed, settle time), contacts (safe speed, damage scale, hull points, restitution, craters) and the parts catalogue (thrust and mass per thruster size, gyro torque, hover lift and ride height, gear length).
+Every number lives in [`data/handling.json`](data/handling.json), with a note per section saying what each one means: the planet (gravity, atmosphere ceiling), top speeds and turn caps by mass band, turning (floor, roll factor, spin-up), assist (brake floor, ease rate, cruise), boost, hover (servo gain and limits, look-ahead, step allowance, levelling, slope limit, jump), gear (deploy altitude and speed, landing speed, settle time), contacts (safe speed, damage scale, hull points, restitution, craters) and the parts catalogue (thrust and mass per thruster size, gyro torque, hover lift and ride height, gear length).
 
 ## Test it
 
@@ -94,7 +93,7 @@ Runs `tests/HandlingTest.tscn` headless in about 20 s and exits 0 or 1. The pure
 - acceleration is thrust / mass on all six axes; doubling the mass halves it and leaves top speed alone; in flight it really accelerates at its number
 - turn rate is torque / mass, with the floor for the capital ship, and it really turns at that rate
 - a lopsided build has the same numbers and full thrust adds zero spin
-- class top speeds are right, air is below space, and neither full boost nor hard turns at full boost ever pass them
+- mass band top speeds and turn caps are right, air is below space, and neither full boost nor hard turns at full boost ever pass them
 - let go at top speed and each vessel stops within the expected time, with no overshoot
 - boost is ×1.5, lasts its duration, is refused during its cooldown and fires again after
 - lift margin is correct at 0, 3.7, 9.8 and 24 m/s²; an overloaded ship gets the console warning and sinks at its deficit

@@ -10,7 +10,7 @@ schema galhack.blueprint
 version 1
 name "Prospector 3"
 grid 1m
-mode capital
+mode flight
 gravity on
 
 paint saffron base=f4a100 grime=1

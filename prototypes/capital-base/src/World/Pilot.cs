@@ -15,7 +15,7 @@ public static class Pilot
     /// <summary>Stick input for a world velocity (the flight model steers in the hull's own frame).</summary>
     public static PilotInput Velocity(Craft c, N.Vector3 world)
     {
-        float top = c.Flight.Stats?.TopSpeed ?? c.World.Handling.Class(c.Spec.Class).TopSpeedAir;
+        float top = c.Flight.Stats?.TopSpeed ?? c.World.Handling.Band(HandlingModel.Mass(c.Spec)).TopSpeedAir;
         return PilotInput.Hands(MathX.Unrotate(c.Body.Rotation, world / top).ToGodot());
     }
 

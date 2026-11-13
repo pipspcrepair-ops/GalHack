@@ -4,11 +4,26 @@ using System.Collections.Generic;
 namespace GalHack.Structures;
 
 /// <summary>
-/// What a core is set to run as. Every structure is anchored (Base Mode) or flies (Capital Mode);
-/// one with hover plates may ride them (Hover Mode). Vessel Mode is old data and reads as Capital.
-/// Every block works in every mode; only what the blocks do changes.
+/// What a core is set to run as: anchored (Base), riding its hover plates near the ground (Hover)
+/// or flying on its thrusters (Flight). Every structure has all three; what a mode lacks is only a
+/// warning. Every block works in every mode; only what the blocks do changes.
 /// </summary>
-public enum CoreMode { Base, Capital, Vessel, Hover }
+public enum CoreMode { Base, Hover, Flight }
+
+public static class CoreModes
+{
+    /// <summary>A mode by name, old data's included: "capital" and "vessel" were the two flying modes and read as Flight.</summary>
+    public static bool TryParse(string name, out CoreMode mode)
+    {
+        switch (name?.ToLowerInvariant())
+        {
+            case "base": mode = CoreMode.Base; return true;
+            case "hover": mode = CoreMode.Hover; return true;
+            case "flight" or "capital" or "vessel": mode = CoreMode.Flight; return true;
+            default: mode = CoreMode.Flight; return false;
+        }
+    }
+}
 
 [Flags]
 public enum BlockFlags : byte
@@ -81,13 +96,8 @@ public sealed class Structure
     /// <summary>Who owns it, set by placing the core. Null for an unowned wreck.</summary>
     public string Owner;
 
-    /// <summary>The core's mode: Base, Hover, or else Capital (old data's Vessel Mode flies as Capital).</summary>
-    public CoreMode Mode
-    {
-        get => _mode is CoreMode.Base or CoreMode.Hover ? _mode : CoreMode.Capital;
-        set => _mode = value;
-    }
-    CoreMode _mode = CoreMode.Capital;
+    /// <summary>The core's mode.</summary>
+    public CoreMode Mode = CoreMode.Flight;
 
     /// <summary>The core's artificial gravity switch. It also needs power to work (see <see cref="StructureStats"/>).</summary>
     public bool GravityOn = true;

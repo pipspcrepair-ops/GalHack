@@ -99,15 +99,12 @@
     "library": ["starter.gbp", "rover.gbp", "dart.gbp", "shuttle.gbp", "outpost.gbp", "tank.gbp", "hauler.gbp", "frigate.gbp"],
     // Blueprints the player saves, shown under Yours.
     "saved": "user://blueprints",
-    // A vessel turns no faster than this, °/s, however light it is (the handling model's turn
-    // rate is gyro torque over mass, so a light first vessel spins too fast to fly well).
-    "maxTurn": 110,
-    // A structure's area: its blocks' bounding box grown by a margin, per class, plus a share of
-    // its own size (so a big base reaches further). Inside it you are linked to its one shared
-    // storage (its toolbar, the CORE tab, its containers and constructors); outside, only your
-    // own bag counts. Empyrion links you while you stand on a structure, or within 100 m of a
-    // wireless block; GalHack's margin stands in for both.
-    "area": { "base": 30, "capital": 30, "small": 12, "hover": 12, "sizeShare": 0.5 }
+    // A structure's area: its blocks' bounding box grown by one margin plus a share of half its
+    // longest side (so a big base reaches further: 12 + 0.9 x 20 gives a 40 m base 30 m). Inside it you are
+    // linked to its one shared storage (its toolbar, the CORE tab, its containers and
+    // constructors); outside, only your own bag counts. Empyrion links you while you stand on a
+    // structure, or within 100 m of a wireless block; GalHack's margin stands in for both.
+    "area": { "margin": 12, "sizeShare": 0.9 }
   },
 
   // The climate node: burning, it holds the air within radius metres inside lowC to highC. Each

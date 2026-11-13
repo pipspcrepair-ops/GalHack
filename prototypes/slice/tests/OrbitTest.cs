@@ -81,14 +81,15 @@ public partial class OrbitTest : Node
         Wildlife.Shutdown.Quit(this, _failures == 0 ? 0 : 1);
     }
 
-    void Check(bool ok, string what)
+    bool Check(bool ok, string what)
     {
         if (ok) _passes++;
         else _failures++;
         GD.Print($"  {(ok ? "ok   " : "FAIL ")} {what}");
+        return ok;
     }
 
-    void Fail(string what) => Check(false, what);
+    void Fail(string what) => _ = Check(false, what);
 
     /// <summary>
     /// Every tick: the sleeper and the Skiff are each registered in exactly one zone's world, the
@@ -184,7 +185,14 @@ public partial class OrbitTest : Node
             Fail($"the blueprint projector set nothing down (the tool says: {_game.Builder.Verdict})");
             yield break;
         }
-        Check(skiff.Structure.Count == _game.StarterPlan.Count, $"the Skiff is built block by block: {skiff.Structure.Count} of {_game.StarterPlan.Count}");
+        var left = _game.Builder.Underway == skiff ? _game.Builder.Remaining
+            .Select(r => $"{skiff.Structure.TypeOf(r.block).Id} at {r.cell} ({Building.Check(skiff.Structure, r.cell, r.block)}"
+                + string.Concat(skiff.Structure.CellsOf(r.cell, r.block).Where(c => skiff.Structure.TryGetBlock(c, out _, out _))
+                    .Select(c => skiff.Structure.TryGetBlock(c, out Int3 a, out Block b) ? $"; {c} holds {skiff.Structure.TypeOf(b).Id} at {a}" : ""))
+                + ")").ToList() : new List<string>();
+        // Not whole, nothing after it can be flown: it stops here, saying what wouldn't go on and why.
+        if (!Check(skiff.Structure.Count == _game.StarterPlan.Count, $"the Skiff is built block by block: {skiff.Structure.Count} of {_game.StarterPlan.Count}"
+                + (left.Count > 0 ? $" (left: {string.Join(", ", left)}; the tool last said '{_said}')" : ""))) yield break;
         _skiff = skiff;
     }
 
@@ -231,7 +239,11 @@ public partial class OrbitTest : Node
         Check(airAtCrossing is > 0.05f and < 0.5f && airStep < 0.02f,
             $"the atmosphere fades with height alone, through the crossing with no step: {airAtCrossing:P0} gone at the crossing, at most {airStep:P1} a tick");
         _game.Controls.ReleaseAll();
-        Check(_game.InOrbit, $"the climb crossed into orbit after {ticks / 60f:F0} s ({_game.Spaceflight.Crossings.Count} crossing)");
+        Check(_game.InOrbit, $"the climb crossed into orbit after {ticks / 60f:F0} s ({_game.Spaceflight.Crossings.Count} crossing)"
+            + (_game.InOrbit ? "" : $"; the Skiff {v.Body.Position.Y - start.Y:F1} m up at {v.Body.Velocity}, {v.Body.Mass / 1000f:F1} t, lift {v.Stats?.LiftMargin:F0} kN, "
+                + $"can lift {v.Stats?.CanLiftOff}, frozen {v.Controller?.Frozen}, gear attached {v.Controller?.Gear?.Attached}, parked on {v.Body.ParkedOn?.Kind.ToString() ?? "nothing"}, "
+                + $"up {MathX.Up(v.Body.Rotation)}, seated {_game.Survivor.Seated == v}, asleep {v.Body.Asleep}, motion {v.Body.Motion}, on floor {v.Body.OnFloor}, "
+                + $"pushes {(v.Binding as HullBinding)?.Pushes} last {(v.Binding as HullBinding)?.LastPush}, in the zone's world {_game.Zone.Physics.Bodies.Contains(v.Body)}, said '{_said}'"));
         if (!_game.InOrbit) yield break;
         Check(preloaded, "orbit started loading below the atmosphere's top, before the crossing (the seam is hidden)");
         Check(sheetFromTheGround, "the far land stood behind the land all the way up, the sea ending with the land's own mesh: no ring of water past the land, and the sea never met the sky");

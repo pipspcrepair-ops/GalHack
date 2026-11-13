@@ -41,9 +41,9 @@ public static class DeviceDetail
             case "fuel": FuelTank(k); break;
             case "container": Container(k); break;
             case "gyro": Gyro(k); break;
-            case "thruster": Thruster(k); break;
+            case "thruster": Thruster(k, t); break;
             case "hover": Hover(k); break;
-            case "chair": Chair(k); break;
+            case "chair": Chair(k, t); break;
             case "door": Door(k); break;
             case "light": Light(k); break;
             case "warp-drive":
@@ -281,24 +281,45 @@ public static class DeviceDetail
         ScreenOn(k, Dir.PosY, -0.16f, -0.16f, 0.16f, 0.16f, DeviceSymbol.Gimbal);
     }
 
-    /// <summary>A thruster: a mounting flange, a nozzle bell in three heat-tinted bands, its sooty mouth with the glow inside, vents and a hazard band on the body.</summary>
-    static void Thruster(Kit k)
+    /// <summary>
+    /// A thruster: a bare metal nozzle bell flaring in three steps from its mounting flange (a type
+    /// with a shorter body has the longer bell, one that pushes harder per cell a fatter throat),
+    /// its sooty mouth with the glow inside and heat glowing round its lip, vents and a hazard band
+    /// on the body, and raised intake scoops on the flanks of a harder-pushing type (on all four
+    /// sides of the hardest).
+    /// </summary>
+    static void Thruster(Kit k, BlockType t)
     {
-        // Straw, violet, blue: metal that has been hot.
-        (float r0, float r1, float z0, float z1, uint c)[] bands =
-        {
-            (0.3f, 0.35f, 0.26f, 0.34f, 0xd9b25a), (0.35f, 0.405f, 0.34f, 0.42f, 0x8a64b8), (0.405f, 0.46f, 0.42f, 0.5f, 0x5577aa),
-        };
+        Part flange = t.Parts.FirstOrDefault(p => p.Style == PartStyle.Dark);
+        float zb = flange?.Min.Z ?? 0.2f, zf = flange?.Max.Z ?? 0.26f, step = (0.5f - zf) / 3f;
+        // Thrust per cell: T1 and T2 push 300-340 kN a cell, T3 about 520, T5 over 1,000.
+        float hard = Math.Clamp((t.Thrust / t.Cells - 400f) / 500f, 0f, 1f);
+        // A harder-pushing bell has a fatter throat, flaring to the same mouth.
+        float throat = 0.3f + 0.08f * MathF.Min(hard * 4f, 1f), flare = (0.46f - throat) / 3f;
+        // Bare metal throughout: tinted bands read as paint stripes once the bell is metres across (T4, T5).
         // The bell and its mouth open on the nozzle's face (+Z): with that face against a block they are hidden with it.
-        foreach (var b in bands)
-            k.Tube(2, Vector3.Zero, b.r0, b.r1, b.z0, b.z1, PartStyle.Dark, new PartFinish { Color = b.c, Metal = 1, Texture = FaceTexture.Smooth }, segments: 16, caps: false).Mount = Dir.PosZ;
+        for (int i = 0; i < 3; i++)
+            k.Tube(2, Vector3.Zero, throat + flare * i, throat + flare * (i + 1), zf + step * i, zf + step * (i + 1), PartStyle.Dark, Bare, segments: 16, caps: false).Mount = Dir.PosZ;
         k.Tube(2, Vector3.Zero, 0.455f, 0.455f, 0.48f, 0.49f, PartStyle.Dark, Coat(Soot, 0), segments: 16).Mount = Dir.PosZ;
-        Band(k, 2, 0.05f, 0.16f, 0.014f, Hazard);
-        // Vents along the body from its nose to the band (on the flanks u runs along Z, on top and bottom v does).
-        k.Face(Dir.PosX, 0.0f, -0.34f, 0.4f, 0.34f, 0.01f, PartStyle.Dark, Vent);
-        k.Face(Dir.NegX, -0.4f, -0.34f, 0.0f, 0.34f, 0.01f, PartStyle.Dark, Vent);
-        k.Face(Dir.PosY, -0.34f, 0.0f, 0.34f, 0.4f, 0.01f, PartStyle.Dark, Vent);
-        k.Face(Dir.NegY, -0.34f, 0.0f, 0.34f, 0.4f, 0.01f, PartStyle.Dark, Vent);
+        // The lip, just proud of the bell's last few centimetres, glows with heat in the type's colour.
+        k.Tube(2, Vector3.Zero, 0.447f, 0.463f, 0.47f, 0.5f, PartStyle.Glow, null, segments: 16, caps: false).Mount = Dir.PosZ;
+        Band(k, 2, zb - 0.15f, zb - 0.04f, 0.014f, Hazard);
+        // Vents along the body from its nose to the band (on the flanks u runs along -Z, on top and bottom v does).
+        float vent = 0.2f - zb;
+        k.Face(Dir.PosX, vent, -0.34f, 0.4f, 0.34f, 0.01f, PartStyle.Dark, Vent);
+        k.Face(Dir.NegX, -0.4f, -0.34f, -vent, 0.34f, 0.01f, PartStyle.Dark, Vent);
+        k.Face(Dir.PosY, -0.34f, vent, 0.34f, 0.4f, 0.01f, PartStyle.Dark, Vent);
+        k.Face(Dir.NegY, -0.34f, vent, 0.34f, 0.4f, 0.01f, PartStyle.Dark, Vent);
+        if (hard <= 0f) return;
+        foreach (Dir d in hard >= 0.5f ? new[] { Dir.PosX, Dir.NegX, Dir.PosY, Dir.NegY } : new[] { Dir.PosX, Dir.NegX })
+        {
+            // A scoop over the vents' nose end, its grille facing out.
+            float s = d == Dir.NegX ? -1f : 1f;
+            (float u0, float u1) = d.Axis() == 0 ? (s > 0 ? (0.24f, 0.46f) : (-0.46f, -0.24f)) : (-0.3f, 0.3f);
+            (float v0, float v1) = d.Axis() == 0 ? (-0.3f, 0.3f) : (0.24f, 0.46f);
+            k.Face(d, u0, v0, u1, v1, 0.035f, PartStyle.Dark, Armour(1));
+            k.Face(d, u0 + 0.03f, v0 + 0.03f, u1 - 0.03f, v1 - 0.03f, 0.006f, PartStyle.Dark, Vent, lift: 0.035f);
+        }
     }
 
     /// <summary>A hover plate: its emitter is a slotted grille with a faint glow, four small emitter pods at the corners, and a hazard band.</summary>
@@ -315,19 +336,53 @@ public static class DeviceDetail
         k.Tube(1, Vector3.Zero, 0.4f, 0.4f, -0.415f, -0.4f, PartStyle.Dark, Bare, segments: 16);
     }
 
-    /// <summary>The command chair: a headrest, armrests with sticks, buttons on the console and a hazard ring at its foot.</summary>
-    static void Chair(Kit k)
+    /// <summary>
+    /// A chair or cockpit seat, read off the type's own parts so every piece stands on one: a
+    /// headrest on the backrest's top, an armrest each side of the seat pan on a post from its side
+    /// with a stick on it, a lamp each side on the console's top and a hazard ring round the
+    /// pedestal's foot. Sizes are metres, so a stretched cockpit's pieces stay a person's size.
+    /// </summary>
+    static void Chair(Kit k, BlockType t)
     {
-        k.Box(new Vector3(-0.17f, 0.3f, 0.15f), new Vector3(0.17f, 0.48f, 0.2f), PartStyle.Dark, Armour(1));
+        Vector3 m = Vector3.One / t.Size.ToVector3(); // a metre in part units, along each axis
+        const float e = 0.01f;
+        bool Under(Part p, Vector3 at) => p.Min.X <= at.X + e && at.X <= p.Max.X + e && p.Min.Z <= at.Z + e && at.Z <= p.Max.Z + e;
+        Part pan = t.Parts.FirstOrDefault(p => p.Style == PartStyle.Body && MathF.Abs(p.Max.Y - t.Seat.Y) < e && Under(p, t.Seat));
+        if (pan == null) return;
+        Part back = t.Parts.FirstOrDefault(p => p.Style == PartStyle.Body && MathF.Abs(p.Min.Y - pan.Max.Y) < e && MathF.Abs(p.Min.Z - pan.Max.Z) < e);
+        if (back != null)
+        {
+            float w = MathF.Min(back.Max.X, 0.17f * m.X);
+            k.Box(new Vector3(-w, back.Max.Y - 0.04f * m.Y, back.Min.Z - 0.03f * m.Z), new Vector3(w, back.Max.Y + 0.2f * m.Y, back.Max.Z), PartStyle.Dark, Armour(1));
+        }
         foreach (int s in new[] { -1, 1 })
         {
-            k.Box(new Vector3(s * 0.3f, -0.08f, -0.12f), new Vector3(s * 0.37f, -0.02f, 0.26f), PartStyle.Dark, Armour(1));
-            var stick = new Vector3(s * 0.335f, 0f, -0.06f);
-            k.Tube(1, stick, 0.018f, 0.022f, -0.02f, 0.09f, PartStyle.Dark, Bare, segments: 8);
-            k.Box(stick + new Vector3(-0.022f, 0.09f, -0.022f), stick + new Vector3(0.022f, 0.115f, 0.022f), PartStyle.Accent, Coat(ValveRed));
-            k.Box(new Vector3(s * 0.26f - 0.03f, -0.08f, -0.38f), new Vector3(s * 0.26f + 0.03f, -0.065f, -0.34f), PartStyle.Glow, Blink(s > 0 ? 0.6f : 0.4f));
+            float x0 = s > 0 ? pan.Max.X : pan.Min.X, x1 = x0 + s * 0.07f * m.X, pad = pan.Max.Y + 0.17f * m.Y, mid = 0.5f * (x0 + x1);
+            k.Box(new Vector3(x0, pan.Min.Y, pan.Max.Z - 0.08f * m.Z), new Vector3(x1, pad, pan.Max.Z), PartStyle.Dark, Armour(1));
+            k.Box(new Vector3(x0, pad, pan.Min.Z), new Vector3(x1, pad + 0.05f * m.Y, pan.Max.Z), PartStyle.Dark, Armour(1));
+            float z = pan.Min.Z + 0.12f * m.Z, top = pad + 0.05f * m.Y;
+            k.Box(new Vector3(mid - 0.017f * m.X, top, z - 0.017f * m.Z), new Vector3(mid + 0.017f * m.X, top + 0.09f * m.Y, z + 0.017f * m.Z), PartStyle.Dark, Bare);
+            k.Box(new Vector3(mid - 0.024f * m.X, top + 0.09f * m.Y, z - 0.024f * m.Z), new Vector3(mid + 0.024f * m.X, top + 0.115f * m.Y, z + 0.024f * m.Z), PartStyle.Accent, Coat(ValveRed));
         }
-        k.Box(new Vector3(-0.19f, -0.5f, -0.08f), new Vector3(0.19f, -0.45f, 0.25f), PartStyle.Accent, Hazard);
+        if (Desk(t) is Part desk)
+            foreach (int s in new[] { -1, 1 })
+            {
+                float x = s > 0 ? desk.Max.X - 0.06f * m.X : desk.Min.X + 0.06f * m.X;
+                k.Box(new Vector3(x - 0.03f * m.X, desk.Max.Y, desk.Max.Z - 0.1f * m.Z), new Vector3(x + 0.03f * m.X, desk.Max.Y + 0.015f * m.Y, desk.Max.Z - 0.04f * m.Z),
+                    PartStyle.Glow, Blink(s > 0 ? 0.6f : 0.4f));
+            }
+        if (t.Parts.FirstOrDefault(p => p.Style == PartStyle.Dark && MathF.Abs(p.Max.Y - pan.Min.Y) < e && Under(p, t.Seat)) is Part foot)
+            k.Box(foot.Min - new Vector3(0.06f * m.X, 0f, 0.06f * m.Z), new Vector3(foot.Max.X + 0.06f * m.X, foot.Min.Y + 0.04f * m.Y, foot.Max.Z + 0.06f * m.Z), PartStyle.Accent, Hazard);
+    }
+
+    /// <summary>A chair's console: the dark housing its lit symbol screen sits on, or null.</summary>
+    public static Part Desk(BlockType t)
+    {
+        Part screen = t.Parts.FirstOrDefault(p => p.Style == PartStyle.Glow && p.Finish is { Symbol: not DeviceSymbol.None });
+        if (screen == null) return null;
+        const float e = 0.01f;
+        return t.Parts.FirstOrDefault(p => p.Style == PartStyle.Dark && Vector3.Max(p.Min, screen.Min) is var lo
+            && Vector3.Min(p.Max, screen.Max) is var hi && lo.X <= hi.X + e && lo.Y <= hi.Y + e && lo.Z <= hi.Z + e);
     }
 
     /// <summary>A door: chunky plain jambs in the frame (hazard stripes belong on a dangerous opening, never round a person's door), a status lamp over it each side, and seams across the leaf.</summary>

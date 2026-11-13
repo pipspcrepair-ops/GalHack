@@ -138,7 +138,7 @@ public sealed partial class Vessel
     /// for its materials (every block refunds its bill).
     /// </summary>
     public bool IsRuin { get; set; }
-    /// <summary>A structure anchored in Base Mode: it never moves (shared physics' fixed body). A Big Core switched to Base Mode in flight is anchored only once it has come to rest.</summary>
+    /// <summary>A structure anchored in Base Mode: it never moves (shared physics' fixed body). One switched to Base Mode in flight is anchored only once it has come to rest.</summary>
     public bool IsBase => Body.Kind == BodyKind.Base;
     public HandlingStats Stats => Flight?.Stats;
     public string Name => Structure.Name;
@@ -148,6 +148,9 @@ public sealed partial class Vessel
 
     /// <summary>The seated eye in that chair (structure frame, metres), from the chair's data.</summary>
     public N.Vector3 Eye { get; private set; }
+
+    /// <summary>The chair's console top, middle of its edge on the sitter's side (structure frame, metres): the cockpit screen stands there.</summary>
+    public N.Vector3 ConsoleEdge { get; private set; }
 
     /// <summary>How far the chair reaches out from its seat across the floor, m: getting up puts you past it.</summary>
     public float ChairReach { get; private set; }
@@ -246,7 +249,6 @@ public sealed partial class Vessel
         });
         body.Core = new CoreGravity { On = s.GravityOn, Strength = zone.Physics.Zone.Strength };
         var vessel = new Vessel(zone, s, body);
-        body.Class = StructureBridge.ClassOf(vessel.Spec);
         vessel._legsKey = vessel.LegsKey();
         body.Controller = vessel.NewController();
 
@@ -421,6 +423,10 @@ public sealed partial class Vessel
             Vector3 p = Body.Position.ToGodot() + basis * corner;
             top = MathF.Max(top, Zone.GroundAt(p.X, p.Z).Y);
         }
+        // And under every one of its lowest blocks, which stand on the ground: none of them is left in a bump between those.
+        foreach (var (cellAt, _) in Structure.Cells())
+            if (cellAt.Y == min.Y && Body.ToParent(StructureBridge.CellCenter(Structure, cellAt)) is var under)
+                top = MathF.Max(top, Zone.GroundAt(under.X, under.Z).Y);
         float y = top + feet + 0.02f;
         if (MathF.Abs(y - Body.Position.Y) < 0.01f) return;
         c.PlaceLanded(Body, new N.Vector3(Body.Position.X, y, Body.Position.Z), MathX.Heading(Body.Rotation));
@@ -444,6 +450,9 @@ public sealed partial class Vessel
             N.Quaternion rotation = Body.Rotation;
             Controller.PlaceLanded(Body, Body.Position, MathX.Heading(rotation));
             Body.Rotation = rotation;
+            // It stood on gear that's gone now (a pad shot off): no longer attached, it drops onto its hull.
+            Controller.Gear?.Probe(Zone.Physics, Body);
+            if (old?.Gear?.Attached == true && Controller.Gear?.Attached != true) Controller.Wake(Body);
         }
         else Controller.LocalSpin = old.LocalSpin; // in flight it carries on as it was: speed, attitude and spin
     }
@@ -468,7 +477,12 @@ public sealed partial class Vessel
     {
         Seat = StructureBridge.SeatPoint(Structure, anchor, chair);
         Eye = StructureBridge.EyePoint(Structure, anchor, chair);
-        Int3 size = Footprint.WorldSize(Structure.TypeOf(chair), chair.Rot);
+        BlockType type = Structure.TypeOf(chair);
+        Part desk = DeviceDetail.Desk(type);
+        // No console of its own: the chair's front edge at the seat's height.
+        N.Vector3 edge = desk == null ? type.Seat with { Z = -0.5f } : new(0.5f * (desk.Min.X + desk.Max.X), desk.Max.Y, desk.Max.Z);
+        ConsoleEdge = Structure.PointOf(anchor, chair, edge) * Structure.Grid.CellSize;
+        Int3 size = Footprint.WorldSize(type, chair.Rot);
         ChairReach = MathF.Max(size.X, size.Z) * Structure.Grid.CellSize;
         SeatDrop = FloorUnder(Structure.TypeOf(chair), Structure.Grid.CellSize);
     }
