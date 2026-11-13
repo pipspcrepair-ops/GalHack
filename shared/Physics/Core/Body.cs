@@ -9,12 +9,6 @@ namespace GalHack.Physics;
 /// </summary>
 public enum BodyKind { Vessel, Wreck, Crate, Player, Creature, Base }
 
-/// <summary>
-/// A structure's class, for the rules that care which: vessels parked on a base or a capital ship
-/// ride their host and feel no wind of their own. None for anything that isn't a vessel.
-/// </summary>
-public enum StructureClass { None, Hover, Small, Capital }
-
 /// <summary>Who integrates a body's motion.</summary>
 public enum Motion
 {
@@ -66,9 +60,6 @@ public sealed class BodySpec
 
     /// <summary>A loose body's shape as a box in its own frame, m (see <see cref="Body.WindArea"/>); zero: <see cref="DragArea"/> as given.</summary>
     public Vector3 DragBox;
-
-    /// <summary>Vessels: hover, small or capital. Capital ships carry the vessels parked on them.</summary>
-    public StructureClass Class;
 
     /// <summary>
     /// kg per cubic metre of the water it displaces: below water's density it floats, above it
@@ -160,8 +151,6 @@ public sealed class Body
     /// <summary>The drag coefficient a structure's area is taken at (a blunt box).</summary>
     public const float DragCoefficient = 0.8f;
 
-    public StructureClass Class { get; set; }
-
     /// <summary>kg/m³ of displaced water: buoyancy is water's density / this × weight × the share under water.</summary>
     public float Density { get; set; }
 
@@ -179,11 +168,17 @@ public sealed class Body
     public WaterState Water { get; internal set; } = WaterState.Dry;
 
     /// <summary>
-    /// The host this vessel is parked on: a base or a capital ship it has landed on, rests on with
-    /// gear or contact, or is docked to. A parked body feels no wind and, while landed, moves with its
-    /// host. Null when it isn't parked. See <see cref="PhysicsWorld.Park"/>.
+    /// The host this vessel is parked on: another structure its gear is attached to, it rests on, or
+    /// it is docked to. A parked body feels no wind and, while landed, moves with its host. Null when
+    /// it isn't parked. See <see cref="PhysicsWorld.Park"/>.
     /// </summary>
     public Body ParkedOn { get; internal set; }
+
+    /// <summary>
+    /// The mass parked on this body, chains included (A on B on C: C carries both), kg. Its thrust
+    /// has to move that too. Worked out at the start of each tick.
+    /// </summary>
+    public float Carried { get; internal set; }
 
     // The host's pose at the start of this tick, so a landed body can be carried by exactly the
     // host's motion over the tick (turning and moving alike), whatever order the two step in.

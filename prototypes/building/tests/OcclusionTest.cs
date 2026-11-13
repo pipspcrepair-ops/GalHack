@@ -180,8 +180,9 @@ public partial class OcclusionTest : Node
         GD.Print($"      plain steel shell {bestPlain:F2} ms; {data.Opaque.VertexCount} vertices with thrusters {best:F2} ms");
         // Vertices are the cost that doesn't depend on who else is using the machine. Before this
         // fix the chunk drew 52692; since devices carry detail (a thruster's flange, bell and vents, hidden with the
-        // face each sits on) it draws 95908. The time is printed for reference (12 to 18 ms under load, as before).
-        Check(data.Opaque.VertexCount <= 100000, $"honest culling costs little: a chunk one block in five a thruster draws {data.Opaque.VertexCount} vertices, 95908 with device detail");
+        // face each sits on) it draws 95908, and 101796 since the bell's lip glows (a ring on each nozzle that shows).
+        // The time is printed for reference (12 to 18 ms under load, as before).
+        Check(data.Opaque.VertexCount <= 102000, $"honest culling costs little: a chunk one block in five a thruster draws {data.Opaque.VertexCount} vertices, 101796 with device detail");
         Check(bestPlain < 2.0, $"and real cubes keep the whole optimisation: a plain steel shell meshes in {bestPlain:F2} ms (best of five)");
     }
 }

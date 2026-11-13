@@ -113,8 +113,8 @@
     {
       "id": "thruster-t3", "name": "Thruster T3", "function": "thruster", "hp": 295, "armor": 15, "resist": {"kinetic": 0.15, "explosive": 0.15, "energy": 0.15}, "mass": 0.551, "color": "3a3f47", "glow": "ff8a1c", "attach": ["+x", "-x", "+y", "-y", "-z"], "airtight": ["+x", "-x", "+y", "-y", "-z"], "covers": ["-z"], "size": [1, 1, 2], "power": -0.0498, "thrust": 1045.0,
       "parts": [
-        {"box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.2], "style": "body"},
-        {"cylinder": "z", "segments": 16, "box": [-0.47, -0.47, 0.2, 0.47, 0.47, 0.26], "style": "dark"},
+        {"box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.0], "style": "body"},
+        {"cylinder": "z", "segments": 16, "box": [-0.47, -0.47, 0.0, 0.47, 0.47, 0.06], "style": "dark"},
         {"cylinder": "z", "segments": 16, "box": [-0.27, -0.27, 0.44, 0.27, 0.27, 0.495], "style": "glow"}
       ]
     },

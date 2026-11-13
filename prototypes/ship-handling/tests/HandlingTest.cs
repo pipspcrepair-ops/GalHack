@@ -123,15 +123,24 @@ public partial class HandlingTest : Node
         Check(same && state.AngularVelocity == Vector3.Zero && state.Orientation.IsEqualApprox(Basis.Identity),
             "a lopsided build (every thruster on the left flank) has the same numbers and 3 s of full thrust adds zero spin");
 
-        // Class top speeds.
-        var classes = new (VesselClass cls, float airTop, float spaceTop)[]
+        // Top speeds and turn caps by mass band; Hover Mode by its own speeds whatever its mass.
+        var bands = new (float tonnes, float airTop, float spaceTop, float turnCap)[]
         {
-            (VesselClass.Hover, 50f, 50f), (VesselClass.Small, 70f, 130f), (VesselClass.Capital, 60f, 100f),
+            (5f, 70f, 130f, 90f), (50f, 70f, 130f, 60f), (500f, 60f, 100f, 30f), (5000f, 50f, 80f, 15f),
         };
-        bool tops = classes.All(x => _t.Class(x.cls).TopSpeedAir == x.airTop && _t.Class(x.cls).TopSpeedSpace == x.spaceTop);
-        bool lower = _t.Class(VesselClass.Small).TopSpeedAir < _t.Class(VesselClass.Small).TopSpeedSpace
-                     && _t.Class(VesselClass.Capital).TopSpeedAir < _t.Class(VesselClass.Capital).TopSpeedSpace;
-        Check(tops && lower, "class top speeds: hover 50, small 70 air / 130 space, capital 60 air / 100 space; air below space");
+        bool banded = bands.All(x =>
+        {
+            var heavy = new VesselLoadout { HullMass = x.tonnes };
+            heavy.GyroList.Add(new GyroSpec("test", Vector3.Zero, 1e7f, 0f)); // gyros far past any cap
+            HandlingStats a = HandlingModel.Compute(heavy, air, _t), sp = HandlingModel.Compute(heavy, space, _t);
+            return a.TopSpeed == x.airTop && sp.TopSpeed == x.spaceTop && a.TurnRate == x.turnCap && a.TurnCapped;
+        });
+        var hoverHeavy = new VesselLoadout { HullMass = 500f, HoverMode = true };
+        HandlingStats hh = HandlingModel.Compute(hoverHeavy, air, _t);
+        var limp = new VesselLoadout { HullMass = 5000f };
+        Check(banded && hh.TopSpeed == 50f && HandlingModel.Compute(hoverHeavy, space, _t).TopSpeed == 50f
+              && HandlingModel.Compute(limp, air, _t).TurnRate == _t.Turning.Floor,
+            "by mass band: under 20 t 70/130 m/s and 90°/s, to 100 t 70/130 and 60, to 1,000 t 60/100 and 30, over 50/80 and 15; Hover Mode 50/50; never below the turn floor");
         float airMax = SimulateTopSpeed(fighter, air, boost: true), spaceMax = SimulateTopSpeed(fighter, space, boost: true);
         Check(airMax <= 70f + 1e-3f && airMax > 69.9f && spaceMax <= 130f + 1e-3f && spaceMax > 129.9f,
             $"full throttle and boost reach but never pass top speed ({airMax:F2} m/s in air, {spaceMax:F2} in space)");
@@ -520,7 +529,7 @@ public partial class HandlingTest : Node
             yield return 0;
             if (float.IsNaN(deployedAt) && _fighter.Gear.Down) deployedAt = _fighter.Gear.FootAltitude;
         }
-        Check(startedUp && !float.IsNaN(deployedAt) && !_fighter.Gear.Manual,
+        Check(startedUp && !float.IsNaN(deployedAt),
             $"landing gear deploys by itself on the way down ({deployedAt:F1} m above the ground, below {_t.Gear.DeployAltitude} m and slower than {_t.Gear.DeploySpeed} m/s)");
 
         long ticks = _fighter.SimulatedTicks;

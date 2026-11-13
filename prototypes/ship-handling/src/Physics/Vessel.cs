@@ -121,12 +121,6 @@ public partial class Vessel : CharacterBody3D
 
     public void ResetDamage() => Damage = 0f;
 
-    public void ToggleGear()
-    {
-        if (Gear == null) Say("No landing gear on a hover vessel");
-        else Gear.Toggle();
-    }
-
     public void ToggleCruise() => FlightModel.ToggleCruise(ref State);
 
     /// <summary>Knocked loose by something else (a ram): simulate again, without a lift-off.</summary>

@@ -55,15 +55,6 @@ public static class BuildingBridge
     public static Bill ItemsOf(ItemCatalogue items, Structure s, in Block b) =>
         ItemOf(items, s, b) is ItemDef item ? Bill.Of((item.Id, s.TypeOf(b).Units)) : new Bill();
 
-    /// <summary>A structure's class: its core and that core's mode, nothing else.</summary>
-    public static StructureClass ClassOf(Structure s) => s.Mode switch
-    {
-        CoreMode.Base => StructureClass.Base,
-        CoreMode.Capital => StructureClass.Capital,
-        CoreMode.Hover => StructureClass.Hover,
-        _ => StructureClass.Small,
-    };
-
     /// <summary>
     /// Links the block items to building's blocks: named after them ("Iron plated block", "Thruster
     /// T1"), and each bill told how many cells its block fills (for its assembly time and XP).

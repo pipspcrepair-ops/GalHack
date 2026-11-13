@@ -145,9 +145,6 @@ public sealed class PhysicsRules
         public float LandSpeed { get; set; } = 3f;
         public float IdleBeforeLanding { get; set; } = 0.3f;
         public float SettleTime { get; set; } = 0.5f;
-
-        /// <summary>A landed ship tilts to its feet on uneven ground, but never more than this, degrees.</summary>
-        public float MaxSettleTilt { get; set; } = 12f;
     }
 
     /// <summary>Riding a structure's cabin world out on its hull: letting go, rejoining and mag boots (see <see cref="GalHack.Physics.Riding"/>).</summary>

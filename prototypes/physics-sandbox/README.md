@@ -57,7 +57,7 @@ You start beside the Corsair, landed on the field with its doorway open behind i
 | Shift / Ctrl | Sprint; boost / down when flying |
 | F | Sit in the pilot seat (front of the cabin) or leave it |
 | Q / E | Roll |
-| G / C | Landing gear / cruise |
+| C | Cruise |
 | 1 / 2 / 3 | Into the Corsair's cabin / the rover's seat / onto the Corsair's roof |
 | 4 | Spacewalk: the Corsair parked in orbit, you on its roof, held there by its core gravity |
 | 5 | A swim: onto the lake's southern beach. In deep water Space swims up and Ctrl down |
@@ -115,7 +115,7 @@ runs `tests/PhysicsTest.tscn` with `--fixed-fps 60` (from `tests/PhysicsTest.arg
 - **Colliders:** one body per structure, compound shape built per 16³ chunk, only changed chunks rebuilt; runs of sloped blocks share one convex hull.
 - **Free bodies are Jolt rigid bodies** fed by the shared force sums (gravity and damping off in the engine); vessels and characters are integrated by the module.
 - **Vessels feel the wind's push, not still-air drag:** their top speed already is their air resistance, so the four numbers stay true. Crates, wrecks and players feel full relative drag.
-- **Shelter is one rule in the force path** (`PhysicsWorld.IsSheltered`): bases, vessels parked on a base or a capital ship, and riders inside an interior get no weather push, whichever provider sends it; the weather bridge only asks the rule, it keeps no special cases of its own. A parked vessel rides its host only while landed or docked.
+- **Shelter is one rule in the force path** (`PhysicsWorld.IsSheltered`): bases, vessels parked on another structure, and riders inside an interior get no weather push, whichever provider sends it; the weather bridge only asks the rule, it keeps no special cases of its own. A parked vessel rides its host only while landed or docked.
 - **Riders on a hull feel weather relative to the hull,** bridged into its cabin world; a tornado still lifts them off a parked ship. Above the atmosphere nobody feels any.
 - **Toughness per tonne** makes one damage formula fit everything; a player is 0.6 hull points per tonne.
 - **Crater cap is terrain-digging's 6 m,** not ship-handling's 14 m decal: the hole and the look agree.
@@ -130,7 +130,6 @@ runs `tests/PhysicsTest.tscn` with `--fixed-fps 60` (from `tests/PhysicsTest.arg
 - Impact damage goes to a structure's hull points, not to individual blocks; weapons (`Damage.Blast`) do the blocks.
 - A destroyed vessel keeps its 20% glance bounce when it becomes a wreck, so a crash on a slope can skid the wreck out of its crater.
 - Hulls don't spin from hits; a ship flown into a player pushes them aside without hurting either.
-- The doorway is a step up from the ground on landing gear: use the jetpack (or 1).
 - A rider out on a hull collides only with that ship (its cabin world), not with terrain, other ships or crates; the stuck guard keeps them out of the terrain.
 - Above the atmosphere the sky turns to space, but there is no planet below: the terrain is a 256 m square far underneath.
 - The tornado funnel and flames are simple shaders; there's no audio and no particles.

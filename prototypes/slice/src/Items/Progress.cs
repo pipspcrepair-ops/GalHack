@@ -72,7 +72,7 @@ public sealed record TechNode(string Id, string Name, Unlock Unlock, string Item
 {
     /// <summary>A sub-group on its tab (a deco piece's theme set), or null.</summary>
     public string Group { get; init; }
-    public string Tab => Progress.TabOf(Unlock.Tab);
+    public string Tab => Unlock.Tab;
     public int Level => Unlock.Level;
     public int Cost => Unlock.Cost;
 }
@@ -111,11 +111,8 @@ public sealed class Progress
     /// <summary>A free node came with a new level: a recipe learnt.</summary>
     public event Action<TechNode> Learnt;
 
-    /// <summary>The tabs: every structure block (one grid, so one tab), tools, weapons, the deco sets, and misc.</summary>
+    /// <summary>The tabs: every structure block (one tree from the core), tools, weapons, the deco sets, and misc.</summary>
     public static readonly string[] Tabs = { "structures", "tools", "weapons", "deco", "misc" };
-
-    /// <summary>The tab a data name lands on: the old per-grid and per-class tabs are all Structures.</summary>
-    public static string TabOf(string tab) => tab switch { "base" or "capital" or "hover" or "large" or "small" => "structures", _ => tab };
 
     public static string TabName(string tab) => tab.ToUpperInvariant();
 
@@ -258,7 +255,7 @@ public sealed class Progress
         return UnlockState.Affordable;
     }
 
-    /// <summary>What a locked node still needs, for greyed-out rows: "LEVEL 5", "2 POINTS", "NEEDS SMALL CORE".</summary>
+    /// <summary>What a locked node still needs, for greyed-out rows: "LEVEL 5", "2 POINTS", "NEEDS HOVER PLATE T1".</summary>
     public string Needs(TechNode n) => StateOf(n) switch
     {
         UnlockState.Unlocked => "UNLOCKED",

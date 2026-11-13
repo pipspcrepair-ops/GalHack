@@ -64,9 +64,11 @@ public partial class CockpitConsole : Node3D
             if (seated != null)
             {
                 Reparent(seated.Node, false);
-                // Low in front of the seat, tilted back toward the pilot's eye.
-                Vector3 seat = seated.Seat.Value.ToGodot();
-                Transform = new Transform3D(new Basis(Vector3.Right, -0.55f), seat + new Vector3(0f, 0.62f, -0.62f));
+                // Standing on the chair's console, its bezel's back foot on the edge nearest the pilot,
+                // turned to face the pilot's eye.
+                Vector3 edge = seated.ConsoleEdge.ToGodot();
+                Basis face = Basis.LookingAt(seated.Eye.ToGodot() - edge, seated.ChairBasis.Y, useModelFront: true);
+                Transform = new Transform3D(face, edge + face.Y * (Screen.SizeMeters.Y / 2f + Screen.Bezel) + face.Z * 0.052f);
             }
             Visible = seated != null;
             Screen.MarkDirty();
@@ -108,7 +110,7 @@ public partial class CockpitConsole : Node3D
                 this.Text(UiTheme.Label, UiTheme.SizeLabel, new Vector2(30, 200), "LOCKER · [E] GREEN LAMP", C.Dim);
                 return;
             }
-            this.Header(w, Vessel.Name.ToUpperInvariant(), st.ClassLabel.ToUpperInvariant());
+            this.Header(w, Vessel.Name.ToUpperInvariant(), ModeFit.Name(Vessel.Structure.Mode));
             float y = 112;
             void Row(string label, string value, Color colour)
             {

@@ -27,6 +27,7 @@ public sealed class HandlingFlight : IFlightRules
 
     int _revision = -1;
     bool _inAir;
+    float _carried;
 
     public HandlingFlight(IVesselStructure structure, Tunables tunables)
     {
@@ -38,11 +39,14 @@ public sealed class HandlingFlight : IFlightRules
 
     VesselStats IFlightRules.Stats(Body body, PhysicsFlightZone zone)
     {
-        if (Stats == null || _revision != Structure.Revision || _inAir != zone.InAtmosphere)
+        // Craft parked on it count in its mass: its thrust has to cover the total.
+        float carried = Units.Tonnes(body.Carried);
+        if (Stats == null || _revision != Structure.Revision || _inAir != zone.InAtmosphere || _carried != carried)
         {
-            Stats = HandlingModel.Compute(Structure, Conditions(zone), Tunables);
+            Stats = HandlingModel.Compute(Structure, Conditions(zone), Tunables, carried);
             _revision = Structure.Revision;
             _inAir = zone.InAtmosphere;
+            _carried = carried;
         }
         return new VesselStats(Stats.IsHover, Stats.CanLiftOff, Stats.RideHeight, Stats.LiftWarning);
     }

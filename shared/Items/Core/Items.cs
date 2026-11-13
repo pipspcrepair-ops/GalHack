@@ -43,23 +43,6 @@ public enum ItemCategory { Raw, Unique, Refined, Part, Component, Consumable, Am
 /// </summary>
 public enum BlockFamily { None, Armour, Device, Deco }
 
-/// <summary>
-/// The classes of structure, as in Empyrion. A structure's class is its core's mode, nothing else:
-/// no block is limited to a class.
-/// </summary>
-public enum StructureClass { Base, Capital, Small, Hover }
-
-public static class StructureClasses
-{
-    public static string Name(StructureClass c) => c switch
-    {
-        StructureClass.Base => "base",
-        StructureClass.Capital => "capital vessel",
-        StructureClass.Small => "small vessel",
-        _ => "hover vessel",
-    };
-}
-
 /// <summary>Where a raw or unique item comes from. Crafted items are <see cref="Crafted"/>.</summary>
 public enum ItemSource
 {

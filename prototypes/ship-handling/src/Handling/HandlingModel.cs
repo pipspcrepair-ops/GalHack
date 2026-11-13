@@ -33,8 +33,8 @@ public readonly record struct FlightConditions(float PlanetGravity, bool InAtmos
 /// </summary>
 public sealed class HandlingStats
 {
-    public VesselClass Class { get; init; }
-    public string ClassLabel { get; init; } = "";
+    /// <summary>In Hover Mode: lifted by its hover plates, at hover's top speeds.</summary>
+    public bool IsHover { get; init; }
     public float Mass { get; init; }
 
     /// <summary>Total thrust per direction, kN.</summary>
@@ -42,15 +42,16 @@ public sealed class HandlingStats
 
     public float GyroTorque { get; init; }
 
-    /// <summary>Gyro torque / mass in °/s, before the floor.</summary>
+    /// <summary>Gyro torque / mass in °/s, before the floor and the mass band's cap.</summary>
     public float RawTurnRate { get; init; }
 
     /// <summary>Number two: turn rate in °/s (pitch and yaw; roll is faster by the roll factor).</summary>
     public float TurnRate { get; init; }
     public bool TurnAtFloor => RawTurnRate < TurnRate;
+    public bool TurnCapped => RawTurnRate > TurnRate;
     public float RollFactor { get; init; }
 
-    /// <summary>Number three: top speed here, m/s. Mass never changes it.</summary>
+    /// <summary>Number three: top speed here, m/s: the mass band's (or Hover Mode's), not the thrust's.</summary>
     public float TopSpeed { get; init; }
     public float TopSpeedAir { get; init; }
     public float TopSpeedSpace { get; init; }
@@ -76,8 +77,6 @@ public sealed class HandlingStats
     /// <summary>How much more cargo it could lift, tonnes.</summary>
     public float SpareLift => PlanetGravity > 0f ? LiftMargin / PlanetGravity : float.PositiveInfinity;
 
-    public bool IsHover => Class == VesselClass.Hover;
-
     /// <summary>The console's warning, shown before anyone tries to take off. Null when all is well.</summary>
     public string LiftWarning => CanLiftOff ? null : IsHover
         ? UpwardThrust <= 0f ? "NO HOVER LIFT · HOVER PLATES · 0" : $"TOO HEAVY TO HOVER · {LiftMargin:+0;-0} kN · -{-SpareLift:F1} t"
@@ -89,7 +88,7 @@ public sealed class HandlingStats
         yield return $"ACCEL  fwd {Accel(Direction.Forward):F1}  back {Accel(Direction.Back):F1}  " +
                      $"up {Accel(Direction.Up):F1}  down {Accel(Direction.Down):F1}  " +
                      $"left {Accel(Direction.Left):F1}  right {Accel(Direction.Right):F1} m/s²";
-        yield return $"TURN   {TurnRate:F0}°/s" + (TurnAtFloor ? $"  (floor; gyros alone give {RawTurnRate:F1})" : "");
+        yield return $"TURN   {TurnRate:F0}°/s" + (TurnAtFloor ? $"  (floor; gyros alone give {RawTurnRate:F1})" : TurnCapped ? $"  (capped; gyros give {RawTurnRate:F0})" : "");
         yield return IsHover
             ? $"TOP    {TopSpeed:F0} m/s"
             : $"TOP    {TopSpeed:F0} m/s {(InAtmosphere ? "in air" : "in space")}  ({TopSpeedAir:F0} air, {TopSpeedSpace:F0} space)";
@@ -121,9 +120,10 @@ public static class HandlingModel
         return mass;
     }
 
-    public static HandlingStats Compute(IVesselStructure s, FlightConditions where, Tunables t)
+    /// <param name="carried">Tonnes parked on it (other craft riding it): its thrust has to move them too.</param>
+    public static HandlingStats Compute(IVesselStructure s, FlightConditions where, Tunables t, float carried = 0f)
     {
-        float mass = Mass(s);
+        float mass = Mass(s) + carried;
 
         // Each thruster pushes along its facing, so it counts towards the direction it faces.
         // Its position is never read: placement adds no torque, and a lopsided build flies true.
@@ -144,23 +144,24 @@ public static class HandlingModel
         }
         if (s.HoverEngines.Count > 0) ride /= s.HoverEngines.Count;
 
-        Tunables.ClassData cls = t.Class(s.Class);
+        // Top speeds and the turn cap come from what the structure is: its mass band, or Hover Mode's speeds.
+        Tunables.BandData band = t.Band(mass);
+        Tunables.SpeedData speeds = s.HoverMode ? t.Speeds.Hover : band;
         return new HandlingStats
         {
-            Class = s.Class,
-            ClassLabel = cls.Label,
+            IsHover = s.HoverMode,
             Mass = mass,
             Thrust = thrust,
             GyroTorque = torque,
             RawTurnRate = rawTurn,
-            TurnRate = Mathf.Max(rawTurn, t.Turning.Floor),
+            TurnRate = Mathf.Max(Mathf.Min(rawTurn, band.MaxTurn), t.Turning.Floor),
             RollFactor = t.Turning.RollFactor,
-            TopSpeedAir = cls.TopSpeedAir,
-            TopSpeedSpace = cls.TopSpeedSpace,
-            TopSpeed = where.InAtmosphere ? cls.TopSpeedAir : cls.TopSpeedSpace,
+            TopSpeedAir = speeds.TopSpeedAir,
+            TopSpeedSpace = speeds.TopSpeedSpace,
+            TopSpeed = where.InAtmosphere ? speeds.TopSpeedAir : speeds.TopSpeedSpace,
             InAtmosphere = where.InAtmosphere,
             // One mode lifts on plates, the other on thrusters: in Hover Mode thrusters only push the craft along.
-            UpwardThrust = s.Class == VesselClass.Hover ? hoverLift : thrust[(int)Direction.Up],
+            UpwardThrust = s.HoverMode ? hoverLift : thrust[(int)Direction.Up],
             Weight = mass * where.PlanetGravity,
             PlanetGravity = where.PlanetGravity,
             RideHeight = ride,

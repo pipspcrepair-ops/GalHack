@@ -39,7 +39,7 @@ with the generator, gyro, fuel and a locker; two mains in the tail and a retro e
     /// <summary>The Dart: a light fighter, a cockpit pod on a slim fuselage with swept wings and four guns.</summary>
     static string Dart(Catalogue cat)
     {
-        var d = new Designer(cat, "Dart Fighter", CoreMode.Capital);
+        var d = new Designer(cat, "Dart Fighter", CoreMode.Flight);
         ushort hull = d.Paint("hull", Coat(0xece3c8)), belly = d.Paint("belly", Coat(0x2b2d42, 2)), deck = d.Paint("deck", Deck);
         ushort chev = d.Paint("chev", Coat(0xece3c8).WithPattern(Pattern.Chevrons, 0xe85d04)), red = d.Paint("red", Coat(0xc1121f));
 
@@ -80,7 +80,7 @@ three lift jets, a down jet, a side jet on each wingtip, three pads.");
     /// <summary>The Shuttle: a walk-in people-and-cargo runner with two seats and cargo racks.</summary>
     static string Shuttle(Catalogue cat)
     {
-        var d = new Designer(cat, "Shuttle", CoreMode.Capital);
+        var d = new Designer(cat, "Shuttle", CoreMode.Flight);
         ushort hull = d.Paint("hull", Coat(0xece3c8)), inner = d.Paint("inner", Coat(0xd8d2c2, 0)), deck = d.Paint("deck", Deck);
         ushort band = d.Paint("band", Coat(0x0a9396)), pod = d.Paint("pod", Coat(0xe85d04)), hazard = d.Paint("hazard", Hazard);
 
@@ -172,7 +172,7 @@ each sponson.");
     /// <summary>The Hauler: a cab, a spine of machinery and two long cargo pods of lockers.</summary>
     static string Hauler(Catalogue cat)
     {
-        var d = new Designer(cat, "Hauler", CoreMode.Capital);
+        var d = new Designer(cat, "Hauler", CoreMode.Flight);
         ushort cream = d.Paint("cream", Coat(0xece3c8)), inner = d.Paint("inner", Coat(0xd8d2c2, 0)), deck = d.Paint("deck", Deck);
         ushort spine = d.Paint("spine", Coat(0x2b2d42, 2)), pod = d.Paint("pod", Coat(0xe85d04).WithPattern(Pattern.Stripes, 0x2b2d42)), hazard = d.Paint("hazard", Hazard);
 
@@ -220,7 +220,7 @@ corners, two down jets, a side jet each way, four pads.");
     /// <summary>The Frigate: a small capital ship, two decks forward and a hangar aft that takes the Skiff.</summary>
     static string Frigate(Catalogue cat)
     {
-        var d = new Designer(cat, "Frigate", CoreMode.Capital);
+        var d = new Designer(cat, "Frigate", CoreMode.Flight);
         ushort hull = d.Paint("hull", Coat(0xc9ccd1)), inner = d.Paint("inner", Coat(0xd8d2c2, 0)), deck = d.Paint("deck", Deck);
         ushort keel = d.Paint("keel", Coat(0x2b2d42, 2)), red = d.Paint("red", Coat(0xc1121f)), hazard = d.Paint("hazard", Hazard);
 

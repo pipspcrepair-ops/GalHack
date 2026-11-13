@@ -10,7 +10,7 @@ schema galhack.blueprint
 version 1
 name "Dart Fighter"
 grid 1m
-mode capital
+mode flight
 gravity on
 
 paint hull base=ece3c8 grime=1

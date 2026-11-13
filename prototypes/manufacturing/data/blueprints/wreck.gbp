@@ -9,7 +9,7 @@ schema galhack.blueprint
 version 1
 name "Wrecked pod"
 grid 1m
-mode capital
+mode flight
 gravity on
 
 paint burnt base=3a3f47 grime=3

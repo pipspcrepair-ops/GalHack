@@ -83,7 +83,7 @@ public partial class SeatTest : Node
     sealed class TestHull : IVesselStructure
     {
         public string Name => "Test hull";
-        public VesselClass Class => VesselClass.Small;
+        public bool HoverMode => false;
         public float HullMass => 10f;
         public float CargoMass => 0f;
         public IReadOnlyList<ThrusterSpec> Thrusters { get; } = new[]

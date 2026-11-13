@@ -209,14 +209,13 @@ public partial class CapitalTest : Node
         Craft b = Bastion;
         LandingGear gear = b.Vessel.Gear;
         gear.Probe(_w.Physics, b.Body);
-        var clearances = Enumerable.Range(0, gear.Count).Where(i => gear.FootFound[i])
-            .Select(i => b.Body.ToParent(gear.Leg(i).Hip).Y - gear.Leg(i).Length - gear.FootGround[i].Y).ToList();
-        float lowest = clearances.Min(), highest = clearances.Max();
-        int standing = clearances.Count(c => c <= 0.25f);
-        bool onGear = lowest <= 0.25f && n == 1;
-        Check(b.State == CraftState.Landed && b.Tilt < 12.01f * Mathf.Pi / 180f && (n > 1 || onGear),
-            $"landed on uneven ground: settled at {b.Tilt * 180f / Mathf.Pi:F1}° (gear allows 12°), its feet {lowest:F2} to {highest:F2} m off the ground under them, " +
-            (n == 1 ? "standing on its gear" : $"{standing} of six feet on the ground, beside foundation pylons from earlier cycles that reach as low as its feet"));
+        // Each telescoping leg reaches its own ground: the feet that touch stand on it, however uneven.
+        var legs = Enumerable.Range(0, gear.Count).Where(i => gear.FootFound[i]).ToList();
+        int standing = legs.Count(gear.Touching);
+        float longest = legs.Count == 0 ? 0f : legs.Max(gear.Reach), shortest = legs.Count == 0 ? 0f : legs.Min(gear.Reach);
+        Check(b.State == CraftState.Landed && b.Tilt < 12.01f * Mathf.Pi / 180f && (n > 1 || gear.Attached),
+            $"landed on uneven ground at {b.Tilt * 180f / Mathf.Pi:F1}°, legs out {shortest:F2} to {longest:F2} m, " +
+            (n == 1 ? $"attached on its gear ({standing} of {gear.Count} feet on their own ground)" : $"{standing} of {gear.Count} feet on the ground, beside foundation pylons from earlier cycles that reach as low as its feet"));
         Check(Prospector.State == CraftState.Docked && Prospector.Pin.Host == b.Body && PadPoseKept(),
             "Prospector 3 rode the flight and the landing on the pad, its pose on the pad unchanged to the bit");
         Conserved("landed");
@@ -250,16 +249,16 @@ public partial class CapitalTest : Node
         foreach (int x in Farm(n)) yield return x;
         foreach (int x in Reload($"cycle {n}, farmed and parked")) yield return x;
 
-        // 6. Back to capital mode.
+        // 6. Back to flight mode.
         b = Bastion;
         was = HealthOf(b);
         before = Fingerprint(b);
-        reply = _w.SwitchMode(b, CoreMode.Capital);
+        reply = _w.SwitchMode(b, CoreMode.Flight);
         yield return 0;
         Check(!b.IsBase && Fingerprint(b) == before && HealthOf(b) == was,
-            $"capital mode again: every block unchanged, storage, power and life support carried on ({reply})");
-        Conserved("capital mode");
-        foreach (int x in Reload($"cycle {n}, capital mode")) yield return x;
+            $"flight mode again: every block unchanged, storage, power and life support carried on ({reply})");
+        Conserved("flight mode");
+        foreach (int x in Reload($"cycle {n}, flight mode")) yield return x;
 
         // 7. Lift off clean.
         if (n == 3)
@@ -299,7 +298,10 @@ public partial class CapitalTest : Node
             yield return 0;
         }
         for (int i = 0; i < 40; i++) yield return 0;
-        Check(t < limit, $"{c.Name} landed at ({spot.X:F0}, {spot.Y:F0}) after {t / 60f:F1} s of flight");
+        LandingGear gear = c.Vessel.Gear;
+        Check(t < limit, $"{c.Name} landed at ({spot.X:F0}, {spot.Y:F0}) after {t / 60f:F1} s of flight" + (t < limit ? "" :
+            $" (still {c.State}: {MathX.Flat(c.Body.Position - over).Length():F1} m off the spot, {c.Body.Position.Y - altitude:+0.0;-0.0} m from the altitude asked, " +
+            $"{c.Body.Velocity.Length():F2} m/s, gear out {gear?.Extension:F2}, attached {gear?.Attached}, {(gear == null ? 0 : Enumerable.Range(0, gear.Count).Count(gear.Touching))} feet touching, on a floor {c.Body.OnFloor})"));
     }
 
     bool PadPoseKept()

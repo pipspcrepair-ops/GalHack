@@ -86,7 +86,7 @@ public sealed partial class Staging
         CapitalHull.HullPiece piece = plan.Pieces[0];
         string why = piece.CoreSlot is PoiGenerator.Gen.Int3 slot ? v.ClaimWith(new GalHack.Structures.Int3(slot.X, slot.Y, slot.Z)) : "no seat";
         int put = HulkTest.Fill(v, piece, _game.Zone.Data.Catalogue);
-        v.SwitchMode(CoreMode.Capital);
+        v.SwitchMode(CoreMode.Flight);
         foreach (int x in _drive.Wait(30)) yield return x;
         // Watched from the ground off its flank, low, where its keel leaves the ground it lay in.
         float beam = (hi.X - lo.X) * 2f;

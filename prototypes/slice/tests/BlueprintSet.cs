@@ -53,7 +53,7 @@ public static partial class BlueprintSet
     /// <summary>The Skiff: the cheapest flyer, an open-cockpit hopper on base blocks.</summary>
     static string Skiff(Catalogue cat)
     {
-        var d = new Designer(cat, "Skiff", CoreMode.Capital);
+        var d = new Designer(cat, "Skiff", CoreMode.Flight);
         ushort hull = d.Paint("hull", Coat(0xece3c8)), belly = d.Paint("belly", Coat(0x2b2d42, 2)), deck = d.Paint("deck", Deck);
         ushort stripe = d.Paint("stripe", Coat(0xece3c8).WithPattern(Pattern.Stripes, 0xe85d04));
         ushort chev = d.Paint("chev", Coat(0x0a9396).WithPattern(Pattern.Chevrons, 0xf4a100)), hazard = d.Paint("hazard", Hazard);

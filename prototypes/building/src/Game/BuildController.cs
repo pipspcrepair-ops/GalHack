@@ -639,10 +639,9 @@ public partial class BuildController : Node
         Sfx.Play("upgrade", view.CellToGlobal(s.Core.Value), 0.7f);
         Hud.Toast(s.Mode switch
         {
-            CoreMode.Base => "Core set to BASE MODE: every block stays, it just won't fly",
-            CoreMode.Capital => "Core set to CAPITAL MODE: same blocks, thrusters live",
-            CoreMode.Hover => "Core set to HOVER MODE: hover plates lift, thrusters only push it along",
-            _ => "Core set to VESSEL MODE: thrusters fly it, hover plates idle",
+            CoreMode.Base => "BASE MODE",
+            CoreMode.Hover => "HOVER MODE",
+            _ => "FLIGHT MODE",
         }, Hud.Good);
     }
 

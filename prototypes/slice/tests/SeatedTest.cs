@@ -19,7 +19,8 @@ namespace Slice.Tests;
 /// with only its head left out, the lap in view and the eye clear of everything drawn; its hips
 /// are on the chair's seat and its feet on the chair's floor; the camera is at the chair's eye
 /// point; its head is inside the part and under its top, and nothing of it pokes out of the part's
-/// cells. From outside (third person) the head is drawn too. The hands stay down: the figure's
+/// cells. Nothing of the chair floats: its parts, detail and console screen all reach the floor
+/// through what they touch. From outside (third person) the head is drawn too. The hands stay down: the figure's
 /// own arms rest on its lap.
 ///
 /// Run: .\tools\test.ps1 -Project prototypes/slice -Scene res://tests/SeatedTest.tscn
@@ -165,6 +166,37 @@ public partial class SeatedTest : Node
         Check(cam.GlobalPosition.DistanceTo(eye) < Near, $"the camera is at the chair's eye point ({cam.GlobalPosition.DistanceTo(eye) * 100f:F1} cm off)");
 
         bool Inside(Vector3 p, float margin) => Mathf.Abs(p.X - centre.X) <= half.X + margin && Mathf.Abs(p.Y - centre.Y) <= half.Y + margin && Mathf.Abs(p.Z - centre.Z) <= half.Z + margin;
+
+        // The cockpit screen stands on the chair's own console: its bezel's foot on the console's top, nothing of it
+        // under that, inside the chair's cells, ahead of the eye and turned to it.
+        var screen = _game.Console.Screen;
+        Transform3D onChair = toLocal * screen.GlobalTransform;
+        Vector2 rim = screen.SizeMeters / 2f + Vector2.One * screen.Bezel;
+        var bezel = new List<Vector3>();
+        foreach (float sx in new[] { -1f, 1f })
+            foreach (float sy in new[] { -1f, 1f })
+                foreach (float sz in new[] { -0.052f, -0.002f }) bezel.Add(onChair * new Vector3(sx * rim.X, sy * rim.Y, sz));
+        Vector3 edge = v.ConsoleEdge.ToGodot();
+        float under = bezel.Min(p => (p - edge).Dot(chair.Y)), foot = (onChair * new Vector3(0f, -rim.Y, -0.052f)).DistanceTo(edge);
+        float facing = onChair.Basis.Z.Normalized().Dot((v.Eye.ToGodot() - onChair.Origin).Normalized()), before = (onChair.Origin - v.Eye.ToGodot()).Dot(chair.Z);
+        Check(_game.Console.Visible && under > -0.005f && foot < 0.01f && bezel.All(p => Inside(p, 0.01f)) && before < 0f && facing > 0.95f,
+            $"the cockpit screen stands on the chair's console: its foot {foot * 100f:F1} cm off the console's edge, its lowest corner {under * 100f:F1} cm over the console's top, " +
+            $"{-before:F2} m ahead of the eye and turned to it ({facing:F3}), inside the chair's cells");
+        // Nothing floats in a seat (owner, 13 Nov): every part and detail piece of the chair and the console screen
+        // reaches the floor through pieces it touches; the block's bottom stands on the test floor.
+        var pieces = type.Parts.Concat(type.Detail).Select((p, i) => (name: $"{(i < type.Parts.Count ? "part" : "detail")} {i} {p.Style}", box: BoxOf(Enumerable.Range(0, 8)
+            .Select(c => s.PointOf(anchor, block, new System.Numerics.Vector3((c & 1) == 0 ? p.Min.X : p.Max.X, (c & 2) == 0 ? p.Min.Y : p.Max.Y, (c & 4) == 0 ? p.Min.Z : p.Max.Z)).ToGodot() * cell))))
+            .Append((name: "console screen", box: BoxOf(bezel))).ToList();
+        float bottom = (centre - half).Y;
+        var grounded = pieces.Where(q => q.box.Position.Y < bottom + 0.005f).ToList();
+        for (bool grew = true; grew;)
+        {
+            var next = pieces.Except(grounded).Where(q => grounded.Any(g => g.box.Grow(0.005f).Intersects(q.box))).ToList();
+            grounded.AddRange(next);
+            grew = next.Count > 0;
+        }
+        var floating = pieces.Except(grounded).Select(q => q.name).ToList();
+        Check(floating.Count == 0, $"nothing floats in the seat: all {pieces.Count} pieces (parts, detail, console screen) stand on the floor through what they touch{(floating.Count > 0 ? "; floating: " + string.Join(", ", floating) : "")}");
         var headCorners = headMeshes.SelectMany(Corners).ToList();
         float top = chair.Y.Dot(centre - seat) + MathF.Abs(chair.Y.Dot(half)) - headCorners.Max(Height);
         Check(headCorners.All(p => Inside(p, 0f)) && top > 0.05f, $"its head is inside the part, {top:F2} m under its top");
@@ -186,6 +218,13 @@ public partial class SeatedTest : Node
         if (n is MeshInstance3D m) yield return m;
         foreach (Node c in n.GetChildren())
             foreach (MeshInstance3D d in Meshes(c)) yield return d;
+    }
+
+    static Aabb BoxOf(IEnumerable<Vector3> points)
+    {
+        var box = new Aabb(points.First(), Vector3.Zero);
+        foreach (Vector3 p in points) box = box.Expand(p);
+        return box;
     }
 
     /// <summary>How far a point is from a box (0 inside it).</summary>
