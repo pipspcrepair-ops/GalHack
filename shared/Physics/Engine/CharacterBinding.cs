@@ -196,13 +196,16 @@ public sealed class CharacterBinding : BodyBinding
         }
         if (_screeFor <= 0f) return;
         _screeFor -= dt;
+        // Bounced off it, but ground too steep to stand on is still just underfoot: still sliding on it, not falling.
+        if (_screeFor <= 0f && Ray(b.Position, b.Position - _scree * ScreeReach, out _, out N.Vector3 under)
+            && N.Vector3.Dot(under, b.Up) >= 0.2f && N.Vector3.Dot(under, b.Up) < floor) _screeFor = ScreeHold;
         N.Vector3 v = b.Velocity, across = _scree * N.Vector3.Dot(v, _scree), along = v - across;
         if (N.Vector3.Dot(along, b.Up) >= 0f || along.LengthSquared() <= most * most) return;
         b.Velocity = across + N.Vector3.Normalize(along) * most;
         Character.Velocity = b.Velocity.ToGodot();
     }
 
-    const float ScreeHold = 0.25f;
+    const float ScreeHold = 0.25f, ScreeReach = 1f;
     N.Vector3 _scree;
     float _screeFor;
 

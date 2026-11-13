@@ -434,13 +434,14 @@ public partial class PhysicsTest
         foreach (int x in Walk(North, l => l.Z < 9.3f, 120, jump: true, jet: 20)) yield return x;
         foreach (int x in rig.Stand(m => Bounce("on the container, jumped onto", m))) yield return x;
         bool onBox = rig.Local.Y > 1.4f;
+        N.Vector3 boxAt = rig.Local;
         rig.Place(new N.Vector3(11f, 1.52f, 9.35f), North);
         foreach (int x in rig.Stand(m => Bounce("on the container's edge", m))) yield return x;
 
         foreach (string what in bad) GD.Print($"    {what}");
         int rescued = _w.Physics.Stuck.Rescues - rescues;
         Check(boxIn && onPad && jumpedOn && onBox && bad.Count == 0,
-            $"the base's thin-plate pad (walked onto {onPad}, jumped onto {jumpedOn}), roof and two-cell container (jumped onto {onBox}, and its edge) are stood on without a bounce (worst {worst * 1000f:F1} mm)");
+            $"the base's thin-plate pad (walked onto {onPad}, jumped onto {jumpedOn}), roof and two-cell container (jumped onto {onBox}, ending at {boxAt:F2}, and its edge) are stood on without a bounce (worst {worst * 1000f:F1} mm)");
         Check(rescued == 0 && rig.Inside == 0 && rig.Teleports == 0,
             $"and on the small base the player is never inside a block ({rig.Inside} ticks), never rescued ({rescued}), never teleported ({rig.Teleports})");
         _w.Remove(b);

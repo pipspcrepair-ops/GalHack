@@ -102,7 +102,9 @@ public partial class PhysicsTest
         ((CollisionShape3D)hill.GetChild(0)).Basis = new Basis(Vector3.Right, rad);
         float drop = Length * 0.5f * MathF.Sin(rad), run = Length * 0.5f * MathF.Cos(rad);
         foot.Position = new Vector3(0f, -drop - 0.5f, run + 15f - 0.5f);
-        p.PlaceOutside(at + new N.Vector3(0f, drop + 0.6f, -run + 0.3f));
+        // On the hillside itself, 3 m down from its top: a slide, not a walk off its brow (that is a fall).
+        N.Vector3 downhill = new(0f, -MathF.Sin(rad), MathF.Cos(rad)), normal = new(0f, MathF.Cos(rad), MathF.Sin(rad));
+        p.PlaceOutside(at + new N.Vector3(0f, drop, -run) + downhill * 3f + normal * 0.55f);
         p.Yaw = MathF.PI; // facing down the hill (+z)
         float health = p.Health.Current, fastest = 0f;
         for (int t = 0; t < 360; t++)
