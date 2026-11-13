@@ -1159,7 +1159,8 @@ public partial class PhysicsTest : Node
         for (int i = 0; i < 20; i++) yield return 0;
         bool indoors = p.Aboard == barge && !p.Body.OnOuterHull;
         var cabin = new HullWalk();
-        foreach (int x in WalkOn(barge, cabin, r => r.Body.Position.Z > 7.6f, 120)) yield return x;
+        // On until back down on the floor beyond the lip (a half block is stepped down off, as any step).
+        foreach (int x in WalkOn(barge, cabin, r => r.Body.Position.Z > 7.6f && r.Body.OnFloor && r.Body.Position.Y < 0.55f, 180)) yield return x;
         int settle = 0;
         while (!p.Body.OnFloor && settle++ < 60) yield return 0;
         for (int i = 0; i < 5; i++) yield return 0;
