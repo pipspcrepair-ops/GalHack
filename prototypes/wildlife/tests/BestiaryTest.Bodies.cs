@@ -260,6 +260,51 @@ public partial class BestiaryTest
         Check(bowOff == 0, $"a drawn bow: the bow arm straight at the target, the string hand at the cheek, its elbow along the arrow ({bowOff} wrong)");
     }
 
+    /// <summary>
+    /// What straps on (a pack's straps, a satchel's, a bandoleer, hangings) lies on the body: every end of every thin rod in the torso's
+    /// piece is near the surface of the torso itself, the coat among it, not hovering before it, in any dress and build, with any pack.
+    /// </summary>
+    void StrapsLieOnTheBody()
+    {
+        string[] slung = { "backpack", "trader_pack", "satchel", "bandoleer", "medic_band" };
+        int people = 0, ends = 0, loose = 0;
+        float worst = 0f;
+        string worstWhat = "";
+        foreach (Species s0 in ManyBodies(60).Where(s => !s.Mechanical && !s.Husk))
+        {
+            Species s = s0.Copy();
+            s.Figure = s0.Figure.Clone();
+            Figure f = s.Figure;
+            foreach (string w in slung) f.Wear.Remove(w);
+            for (int k = _fresh.Int(1, 2); k > 0; k--) f.Wear.Add(_fresh.Pick(slung));
+            var rig = new HumanRig(s);
+            people++;
+            Piece body = rig.Layout.Pieces.Find(p => p.Name == "body");
+            var skin = HumanBody.Bare(body, f);
+            var surface = new List<Vector3>();
+            for (int i = 0; i <= 24; i++)
+            {
+                float y = skin.Bottom + (skin.Top - skin.Bottom) * i / 24f;
+                for (int j = -10; j <= 10; j++)
+                {
+                    float x = skin.HalfWidth(y) * j / 10f;
+                    surface.Add(skin.FrontAt(y, x));
+                    surface.Add(skin.BackAt(y, x));
+                }
+            }
+            foreach (Prim p in body.Prims.Where(p => p.Shape == Shape.Capsule && p.Size.X < 0.07f))
+                for (int end = -1; end <= 1; end += 2)
+                {
+                    Vector3 at = p.Local * new Vector3(0f, end * (p.Size.Y - p.Size.X) * 0.5f, 0f);
+                    float gap = surface.Min(v => v.DistanceTo(at)) - p.Size.X * 0.5f; // (how far the strap's own skin is off the body)
+                    ends++;
+                    if (gap > 0.03f && skin.Out(at) > 1f) loose++; // (inside the cloth is out of sight)
+                    if (gap > worst && skin.Out(at) > 1f) { worst = gap; worstWhat = $"{f.Folk?.Id ?? "human"} {f.Dress} {f.Height:F2} m, padding {f.Padding:F2} ({string.Join(" ", f.Wear)})"; }
+                }
+        }
+        Check(loose == 0, $"straps and hangings lie on the body: {ends} ends on {people} fresh people, none hovering over 3 cm off it ({loose} are; {worst * 100f:F1} cm at worst{(loose > 0 ? ": " + worstWhat : "")})");
+    }
+
     /// <summary>A blow is a punch or a swat (or a Husk's seize, its spew), with motion you can see: never a push with both arms.</summary>
     void BlowsAreBlows()
     {

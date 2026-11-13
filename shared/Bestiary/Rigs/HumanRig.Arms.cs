@@ -140,7 +140,7 @@ public sealed partial class HumanRig
         Vector3 axis0 = grips;
         Transform3D inv = _bodyInv;
         // The whole hand, not its wrist: the wrist goes where none of the hand is in the torso or the head.
-        Vector3 Free(Vector3 elbow, Vector3 wrist) => HandClear(new Transform3D(HandFrame(hs, frame, axis0, gripW, (wrist - elbow).Normalized(), gripFore), wrist), hs.Shape, arm, 0.006f);
+        Vector3 Free(Vector3 elbow, Vector3 wrist) => HandClear(new Transform3D(HandFrame(arm, hs, frame, axis0, gripW, (wrist - elbow).Normalized(), gripFore), wrist), hs.Shape, arm, 0.006f);
         // How far any of the arm is in the body (the arm first, the hand when the arm is clear).
         float Through(Vector3 sh, Vector3 elbow, Vector3 wrist, bool handToo)
         {

@@ -142,7 +142,7 @@ public partial class BestiaryTest
         }
         foreach (var (k, v) in tally.GroupBy(t => t.Key.Split(' ')[0]).SelectMany(gr => gr.OrderByDescending(t => t.Value).Take(8))) GD.Print($"        {v,4}  {k}");
         Check(people > 120 && folks.Count >= 2, $"{people} fresh people of {folks.Count} folk, each with a weapon, in {poses} poses");
-        Check(worstGrip < 0.045f, $"every hand on a weapon is within 3 cm of its grip (a drawn string hand, held off the head, 4) ({worstGrip * 100f:F1} cm at worst{(worstGrip >= 0.045f ? ": " + worstGripWhat : "")})");
+        Check(worstGrip < 0.03f, $"every hand on a weapon is within 3 cm of its grip ({worstGrip * 100f:F1} cm at worst{(worstGrip >= 0.03f ? ": " + worstGripWhat : "")})");
         Check(fores == 0, $"a long gun has the second hand on its fore-end ({fores} missed{(fores > 0 ? ": " + foreWhat : "")})");
         Check(kneels == 0, $"crouched, a free hand rests by its knee ({kneels} didn't{(kneels > 0 ? ": " + kneelWhat : "")})");
         Check(clips == 0, $"no weapon passes through a torso or a head ({clips} did{(clips > 0 ? ": " + clipWhat : "")})");

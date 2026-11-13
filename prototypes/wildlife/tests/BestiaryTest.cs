@@ -50,6 +50,7 @@ public partial class BestiaryTest : Node
                 NoArmThroughTheBody();
                 ActsReadAsThemselves();
                 HandsFaceTheWay();
+                StrapsLieOnTheBody();
                 BlowsAreBlows();
                 HitsShow();
                 TheDeadFallLimp();
@@ -108,6 +109,7 @@ public partial class BestiaryTest : Node
             NoArmThroughTheBody();
             ActsReadAsThemselves();
             HandsFaceTheWay();
+            StrapsLieOnTheBody();
             BlowsAreBlows();
             HitsShow();
             TheDeadFallLimp();

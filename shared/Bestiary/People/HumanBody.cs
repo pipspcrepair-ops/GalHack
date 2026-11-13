@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using Godot;
 
 namespace Wildlife;
@@ -204,7 +205,10 @@ public static class HumanBody
         }
         if (f.Has("coveralls")) p.Add(Shape.Box, new Vector3(0.012f, T * 0.62f, 0.01f) * new Vector3(Scale(f), 1f, Scale(f)), new Vector3(0f, T * 0.62f, -d * 1.01f), LayerColour(f, "coveralls").Darkened(0.35f));
         Patches(p, f, T * 0.15f, T * 0.85f, f.WaistW * pad * 1.02f, d * 1.0f, 3);
-        foreach (string w in f.Wear) Garment(p, f, w);
+        // What straps on goes on last, lying on whatever the rest measures.
+        foreach (string w in f.Wear) if (!Slung(w)) Garment(p, f, w);
+        TorsoShell skin = Bare(p, f);
+        foreach (string w in f.Wear) if (Slung(w)) Garment(p, f, w, skin);
         if (f.Torn) Rents(p, f);
         if (f.Wrongs.HasFlag(Wrong.Hunch)) Hump(p, f);
         FolkBody.Back(p, f);
@@ -239,7 +243,7 @@ public static class HumanBody
     }
 
     /// <summary>What goes on the body piece; hats and masks go on in <see cref="HeadWear"/>.</summary>
-    static void Garment(Piece p, Figure f, string id)
+    static void Garment(Piece p, Figure f, string id, TorsoShell skin = null)
     {
         float T = f.Torso, u = Scale(f), pad = f.Padding, d = f.ChestD * pad, W = f.ShoulderW * pad;
         var upright = new Basis(Vector3.Right, -MathF.PI * 0.5f);
@@ -270,8 +274,7 @@ public static class HumanBody
                 p.Add(Shape.Box, new Vector3(0.09f, 0.3f, 0.02f) * u, new Vector3(0.05f * u, T * 0.78f, -d * 1.03f), f.Accent.Darkened(0.1f));
                 break;
             case "satchel":
-                p.Rod(new Vector3(-W * 0.8f, T * 0.92f, -d * 0.9f), new Vector3(W * 0.95f, T * 0.28f, -d * 0.4f), 0.03f * u, f.Leather);
-                p.Rod(new Vector3(-W * 0.8f, T * 0.92f, d * 0.9f), new Vector3(W * 0.95f, T * 0.28f, d * 0.2f), 0.03f * u, f.Leather);
+                Sling(p, skin, -W * 0.8f, W * 0.95f, T * 0.28f, 0.03f * u, f.Leather);
                 p.Add(Shape.Box, new Vector3(0.09f, 0.22f, 0.26f) * u, new Vector3(W * 1.02f, T * 0.2f, -d * 0.1f), f.Leather.Lightened(0.12f));
                 break;
             case "tool_belt":
@@ -285,22 +288,25 @@ public static class HumanBody
                 p.Add(Shape.Box, new Vector3(0.32f, 0.44f, 0.18f) * u, new Vector3(0f, T * 0.66f, d + 0.09f * u), f.Trim.Darkened(0.2f));
                 p.Add(Shape.Cylinder, new Vector3(0.12f, 0.38f, 0.12f) * u, new Vector3(0f, T * 1.04f, d + 0.08f * u), f.Cloth.Darkened(0.25f), 0f, 0f, new Basis(Vector3.Back, MathF.PI * 0.5f), 8);
                 p.Add(Shape.Box, new Vector3(0.12f, 0.1f, 0.1f) * u, new Vector3(0.16f * u, T * 0.38f, d + 0.1f * u), f.Metal);
-                p.Rod(new Vector3(-W * 0.6f, T * 0.92f, -d * 0.7f), new Vector3(-W * 0.6f, T * 0.45f, -d), 0.03f * u, f.Leather);
-                p.Rod(new Vector3(W * 0.6f, T * 0.92f, -d * 0.7f), new Vector3(W * 0.6f, T * 0.45f, -d), 0.03f * u, f.Leather);
+                for (int s = -1; s <= 1; s += 2) Sling(p, skin, s * W * 0.6f, s * W * 0.6f, T * 0.45f, 0.03f * u, f.Leather);
                 break;
             case "air_tank":
                 for (int s = -1; s <= 1; s += 2)
                     p.Add(Shape.Capsule, new Vector3(0.13f, 0.46f, 0.13f) * u, new Vector3(s * 0.08f * u, T * 0.68f, d + 0.07f * u), f.Metal.Lightened(0.15f), 0f, 0f, null, 8, Mat.Carapace);
                 break;
             case "bandoleer":
-                Bandoleer(p, f, 1f);
-                if (f.Height > 1.7f) Bandoleer(p, f, -1f);
+                Bandoleer(p, f, 1f, skin);
+                if (f.Height > 1.7f) Bandoleer(p, f, -1f, skin);
                 break;
             case "trophies":
                 // Bones and a skull hung from the belt: a raider's, at a glance.
                 p.Add(Shape.Sphere, new Vector3(0.11f, 0.12f, 0.12f) * u, new Vector3(-f.WaistW * 1.05f * pad, T * 0.24f, -d * 0.4f), new Color(0.82f, 0.78f, 0.66f), 0f, 0f, null, 8, Mat.Horn);
                 p.Add(Shape.Sphere, new Vector3(0.03f, 0.03f, 0.02f) * u, new Vector3(-f.WaistW * 1.05f * pad - 0.02f * u, T * 0.25f, -d * 0.4f - 0.05f * u), new Color(0.1f, 0.08f, 0.07f));
-                for (int i = 0; i < 3; i++) p.Rod(new Vector3(f.WaistW * (0.2f + i * 0.3f) * pad, T * 0.38f, -d * 1.02f), new Vector3(f.WaistW * (0.22f + i * 0.3f) * pad, T * 0.14f, -d * 1.05f), 0.025f * u, new Color(0.8f, 0.76f, 0.64f), 0f, 0f, false, Mat.Horn);
+                for (int i = 0; i < 3; i++)
+                {
+                    float x = f.WaistW * (0.2f + i * 0.3f) * pad; // (on the cloth, where they hang)
+                    p.Rod(skin.FrontAt(T * 0.38f, x) + Vector3.Forward * 0.012f * u, skin.FrontAt(T * 0.14f, x) + Vector3.Forward * 0.012f * u, 0.025f * u, new Color(0.8f, 0.76f, 0.64f), 0f, 0f, false, Mat.Horn);
+                }
                 break;
             case "scrap_armour":
                 p.Add(Shape.Box, new Vector3(W * 0.9f, T * 0.24f, 0.03f), new Vector3(-W * 0.15f, T * 0.62f, -d * 1.07f), f.Metal.Darkened(0.15f), 0f, 0f, new Basis(Vector3.Back, 0.18f), 0, Mat.Carapace);
@@ -352,8 +358,7 @@ public static class HumanBody
                 p.Add(Shape.Cylinder, new Vector3(0.15f, 0.42f, 0.15f) * u, new Vector3(0f, T * 1.08f, d + 0.16f * u), f.Accent.Darkened(0.2f), 0f, 0f, new Basis(Vector3.Back, MathF.PI * 0.5f), 8);
                 p.Add(Shape.Box, new Vector3(0.28f, 0.2f, 0.2f) * u, new Vector3(0f, T * 0.46f, d + 0.16f * u), f.Cloth.Darkened(0.15f));
                 for (int s = -1; s <= 1; s += 2) p.Add(Shape.Sphere, new Vector3(0.1f, 0.14f, 0.1f) * u, new Vector3(s * 0.2f * u, T * 0.62f, d + 0.12f * u), f.Leather.Lightened(0.15f), 0f, 0f, null, 7);
-                p.Rod(new Vector3(-W * 0.6f, T * 0.92f, -d * 0.7f), new Vector3(-W * 0.6f, T * 0.45f, -d), 0.03f * u, f.Leather);
-                p.Rod(new Vector3(W * 0.6f, T * 0.92f, -d * 0.7f), new Vector3(W * 0.6f, T * 0.45f, -d), 0.03f * u, f.Leather);
+                for (int s = -1; s <= 1; s += 2) Sling(p, skin, s * W * 0.6f, s * W * 0.6f, T * 0.45f, 0.03f * u, f.Leather);
                 break;
             case "pouches":
                 for (int i = 0; i < 4; i++)
@@ -378,7 +383,7 @@ public static class HumanBody
                 break;
             case "medic_band":
                 // A white shoulder bag: the medic's sign is the kit, and the cross on the armband.
-                p.Rod(new Vector3(W * 0.8f, T * 0.92f, -d * 0.9f), new Vector3(-W * 0.95f, T * 0.28f, -d * 0.4f), 0.03f * u, new Color(0.8f, 0.8f, 0.76f));
+                Sling(p, skin, W * 0.8f, -W * 0.95f, T * 0.28f, 0.03f * u, new Color(0.8f, 0.8f, 0.76f));
                 p.Add(Shape.Box, new Vector3(0.09f, 0.2f, 0.24f) * u, new Vector3(-W * 1.02f, T * 0.2f, -d * 0.1f), new Color(0.82f, 0.82f, 0.78f));
                 p.Add(Shape.Box, new Vector3(0.1f, 0.13f, 0.04f) * u, new Vector3(-W * 1.05f, T * 0.2f, -d * 0.1f), new Color(0.65f, 0.08f, 0.07f));
                 p.Add(Shape.Box, new Vector3(0.1f, 0.04f, 0.13f) * u, new Vector3(-W * 1.05f, T * 0.2f, -d * 0.1f), new Color(0.65f, 0.08f, 0.07f));
@@ -386,17 +391,52 @@ public static class HumanBody
         }
     }
 
-    static void Bandoleer(Piece p, Figure f, float s)
+    static void Bandoleer(Piece p, Figure f, float s, TorsoShell skin)
     {
-        float T = f.Torso, u = Scale(f), d = f.ChestD * f.Padding, W = f.ShoulderW * f.Padding;
-        Vector3 a = new(-s * W * 0.72f, T * 0.92f, -d * 0.92f), b = new(s * W * 0.82f, T * 0.36f, -d * 0.96f);
-        p.Rod(a, b, 0.045f * u, f.Leather.Darkened(0.15f));
-        p.Rod(new Vector3(a.X, a.Y, d * 0.9f), new Vector3(b.X, b.Y, d * 0.9f), 0.045f * u, f.Leather.Darkened(0.15f));
+        float T = f.Torso, u = Scale(f), W = f.ShoulderW * f.Padding;
+        Vector3[] strap = Sling(p, skin, -s * W * 0.72f, s * W * 0.82f, T * 0.36f, 0.045f * u, f.Leather.Darkened(0.15f));
         for (int i = 1; i < 7; i++)
         {
-            Vector3 at = a.Lerp(b, i / 7f) + new Vector3(0f, 0f, -0.02f * u);
-            p.Add(Shape.Box, new Vector3(0.02f, 0.06f, 0.02f) * u, at, new Color(0.62f, 0.5f, 0.24f), 0f, 0f, null, 0, Mat.Horn);
+            float t = i / 7f * (strap.Length - 1);
+            int k = Math.Min((int)t, strap.Length - 2);
+            p.Add(Shape.Box, new Vector3(0.02f, 0.06f, 0.02f) * u, strap[k].Lerp(strap[k + 1], t - k) + new Vector3(0f, 0f, -0.02f * u), new Color(0.62f, 0.5f, 0.24f), 0f, 0f, null, 0, Mat.Horn);
         }
+    }
+
+    /// <summary>The cloth of the torso piece alone (its body, coat and vest lofts, not what is pinned or hung on them): what a strap lies on.</summary>
+    public static TorsoShell Bare(Piece body, Figure f)
+    {
+        var cloth = new Piece("cloth");
+        cloth.Prims.AddRange(body.Prims.Where(q => q.Shape == Shape.Loft));
+        return new TorsoShell(cloth, -0.12f * f.Torso, 1.04f * f.Torso);
+    }
+
+    /// <summary>What goes on over the rest of the outfit, along it.</summary>
+    static bool Slung(string id) => id is "backpack" or "trader_pack" or "satchel" or "bandoleer" or "medic_band" or "trophies";
+
+    /// <summary>
+    /// A strap over a shoulder: from the top of it (at sideways offset <paramref name="xTop"/>) down the front and down the back to
+    /// (<paramref name="xEnd"/>, <paramref name="yEnd"/>), lying on the outside of whatever the body measures there, coat and all.
+    /// Returns the points down the front.
+    /// </summary>
+    static Vector3[] Sling(Piece p, TorsoShell skin, float xTop, float xEnd, float yEnd, float r, Color colour)
+    {
+        float top = skin.TopAt(xTop) - 0.04f * skin.Top; // (the shell's slices round the shoulder up a little)
+        var front = new Vector3[4];
+        var back = new Vector3[4];
+        for (int i = 0; i < 4; i++)
+        {
+            float t = i / 3f, y = Mathf.Lerp(top, yEnd, t), x = Mathf.Lerp(xTop, xEnd, t), w = skin.HalfWidth(y) * 0.9f;
+            x = Math.Clamp(x, -w, w); // (a strap can't go on past the side of the body where it is narrower)
+            front[i] = i == 0 ? new Vector3(x, y, 0f) : skin.FrontAt(y, x) + Vector3.Forward * r * 0.5f;
+            back[i] = i == 0 ? front[0] : skin.BackAt(y, x) + Vector3.Back * r * 0.5f;
+            if (i > 0)
+            {
+                p.Rod(front[i - 1], front[i], r, colour);
+                p.Rod(back[i - 1], back[i], r, colour);
+            }
+        }
+        return front;
     }
 
     static void Band(Piece arm, Figure f)
