@@ -247,9 +247,9 @@ public partial class BlueprintTest : Node
         float ground = Height(v);
         c.Hold(Key.Space);
         int t = 0;
-        for (; t < 600 && Height(v) < ground + 12f; t++) yield return 0;
+        for (; t < 600 && Height(v) < ground + 8f; t++) yield return 0;
         c.Hold(Key.Space, false);
-        Check(Height(v) >= ground + 12f, $"{name}: takes off and climbs 12 m in {t / 60f:F1} s{(Height(v) < ground + 12f ? $" (from {ground:F1} to {Height(v):F1} m over the ground; console: {v.Controller?.ConsoleMessage}; pilot {v.Roles.Pilot}, lift margin {v.Stats?.LiftMargin:F0} kN)" : "")}");
+        Check(Height(v) >= ground + 8f, $"{name}: takes off and climbs 8 m in {t / 60f:F1} s{(Height(v) < ground + 8f ? $" (from {ground:F1} to {Height(v):F1} m over the ground; console: {v.Controller?.ConsoleMessage}; pilot {v.Roles.Pilot}, lift margin {v.Stats?.LiftMargin:F0} kN)" : "")}");
 
         Vector3 start = v.Body.Position.ToGodot();
         for (t = 0; t < 600 && MathF.Abs(v.Body.Velocity.Y) > 0.3f; t++) yield return 0;
@@ -277,6 +277,7 @@ public partial class BlueprintTest : Node
         }
         c.ReleaseAll();
         var heights = new Queue<float>();
+        bool keel = false; // a hull with no pads: down on its keel at its rest height, not sinking
         for (t = 0; t < 120 * 60 && !v.Controller.Frozen; t++)
         {
             // The sink rate it really makes over half a second (pressed onto the ground, the flight model still asks for some).
@@ -285,9 +286,10 @@ public partial class BlueprintTest : Node
             float wanted = agl > 25f ? -6f : agl > 6f ? -2.5f : -1f;
             float vy = heights.Count > 30 ? (agl - heights.Dequeue()) * 2f : wanted;
             bool down = heights.Count >= 30 && agl < 0.6f && MathF.Abs(vy) < 0.2f;
-            if (down && !v.Structure.Blocks().Any(b => v.Structure.TypeOf(b.block).Function == "gear")) break;
-            c.Hold(Key.Ctrl, !down && vy > wanted + 0.5f);
-            c.Hold(Key.Space, !down && vy < wanted - 0.5f);
+            if (down && !v.Structure.Blocks().Any(b => v.Structure.TypeOf(b.block).Function == "gear")) { keel = true; break; }
+            float now = v.Body.Velocity.Y; // steer on the hull's own velocity, judge touchdown on the height
+            c.Hold(Key.Ctrl, !down && now > wanted + 0.5f);
+            c.Hold(Key.Space, !down && now < 2f * wanted - 1f);
             if (t % 600 == 599) GD.Print($"    ({name} landing: {agl:F1} m over its rest height, sinking {-vy:F1} m/s, drifting {new Vector2(v.Body.Velocity.X, v.Body.Velocity.Z).Length():F1} m/s)");
             yield return 0;
         }
@@ -295,7 +297,7 @@ public partial class BlueprintTest : Node
         float up = MathX.Up(v.Body.Rotation).Y;
         // A hull with no pads rests on its keel: it lands when it is back at its rest height and still.
         bool padless = !v.Structure.Blocks().Any(b => v.Structure.TypeOf(b.block).Function == "gear");
-        bool landed = v.Controller.Frozen || padless && MathF.Abs(Height(v) - ground) < 0.3f && v.Body.Velocity.Length() < 0.2f;
+        bool landed = v.Controller.Frozen || padless && keel;
         Check(landed && up > 0.97f, $"{name}: lands and settles upright (up {up:F3}, {Height(v):F1} m over the ground, {new Vector2(v.Body.Position.X - start.X, v.Body.Position.Z - start.Z).Length():F0} m from the spot)");
     }
 

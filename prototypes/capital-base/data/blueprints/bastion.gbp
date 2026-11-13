@@ -24,9 +24,9 @@ paint chev base=0a9396 accent=e9dfc4 pattern=chevrons grime=1
 paint pad base=5a5e66 grime=2
 
 block -6..5 0 -13 iron-plated paint=hull,hull,hull,hull,hull,red
-block -6 0 -12 pad-t3
+block -6 0 -12 pad-t1
 block -5..4 0 -12 iron-plated paint=hull,hull,deck,hull,hull,hull
-block 5 0 -12 pad-t3
+block 5 0 -12 pad-t1
 block -5..4 0 -11 iron-plated paint=hull,hull,deck,hull,hull,hull
 block -5..4 0 -10 iron-plated paint=hull,hull,deck,hull,hull,hull
 block -6 0 -9 iron-plated paint=hull
@@ -60,9 +60,9 @@ block 5 0 0 iron-plated paint=hull
 block -6 0 1 iron-plated paint=hull
 block -5..4 0 1 iron-plated paint=hull,hull,deck,hull,hull,hull
 block 5 0 1 iron-plated paint=hull
-block -6 0 2 pad-t3
+block -6 0 2 pad-t1
 block -5..4 0 2 iron-plated paint=hull,hull,deck,hull,hull,hull
-block 5 0 2 pad-t3
+block 5 0 2 pad-t1
 block -5..4 0 3 iron-plated paint=hull,hull,deck,hull,hull,hull
 block -6 0 4 iron-plated paint=hull
 block -5..4 0 4 iron-plated paint=hull,hull,deck,hull,hull,hull
@@ -71,9 +71,9 @@ block -6 0 5 iron-plated paint=hull
 block -5..4 0 5 iron-plated paint=hull,hull,deck,hull,hull,hull
 block 5 0 5 iron-plated paint=hull
 block -5..4 0 6 iron-plated paint=hull,hull,deck,hull,hull,hull
-block -6 0 7 pad-t3
+block -6 0 7 pad-t1
 block -5..4 0 7 iron-plated paint=hull,hull,deck,hull,hull,hull
-block 5 0 7 pad-t3
+block 5 0 7 pad-t1
 block -5..4 0 8 iron-plated paint=hull,hull,deck,hull,hull,hull
 block -6..5 0 9 iron-plated paint=hull
 block -1..0 0 10 stairs rot=+y+z paint=hull

@@ -58,7 +58,7 @@ public static partial class BlueprintSet
         foreach (var (x, z) in new[] { (-6, -10), (5, -10), (-6, -1), (5, -1), (-6, 6), (5, 6) }) d.Thruster("thruster-t3", P(x, 0, z), Dir.PosY);
         d.Thruster("thruster-t3", P(-3, 6, -9), Dir.NegY);
         d.Thruster("thruster-t3", P(2, 6, -9), Dir.NegY);
-        foreach (var (x, z) in new[] { (-6, -12), (5, -12), (-6, 2), (5, 2), (-6, 7), (5, 7) }) d.Put("pad-t3", P(x, 0, z));
+        foreach (var (x, z) in new[] { (-6, -12), (5, -12), (-6, 2), (5, 2), (-6, 7), (5, 7) }) d.Put("pad-t1", P(x, 0, z));
         return d.Text(@"Bastion 7: a capital ship that lands on a planet, becomes a base and lifts off again. Two
 iron rooms 10 m wide and 4 m floor to ceiling: the bridge forward, two command chairs behind the
 glazed nose, and the engineering hall aft with seven Container T4s, two generators, their fuel and
@@ -246,7 +246,7 @@ deck, thrusters all round it, four pads.");
         foreach (int x in new[] { -9, 8 })
             foreach (int z in new[] { -8, 8 }) d.Thruster("thruster-t3", P(x, 1, z), Dir.NegY);
         foreach (int x in new[] { -3, 2 })
-            foreach (int z in new[] { -10, 10 }) d.Put("pad-t4", P(x, -2, z));
+            foreach (int z in new[] { -10, 10 }) d.Put("pad-t2", P(x, -2, z));
         // A stair up the stern from the ground to the deck, 3 m.
         d.Stairs(P(-1, -2, 18), Dir.NegZ, hull);
         d.Stairs(P(0, -2, 18), Dir.NegZ, hull);

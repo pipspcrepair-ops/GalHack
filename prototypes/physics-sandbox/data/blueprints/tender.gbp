@@ -19,10 +19,10 @@ paint keel base=2b2d42 grime=2
 paint deck base=5a5e66 grime=2
 paint hazard base=f4a100 pattern=hazard grime=2
 
-block -3 -2 -10 pad-t4
-block 2 -2 -10 pad-t4
-block -3 -2 10 pad-t4
-block 2 -2 10 pad-t4
+block -3 -2 -10 pad-t2
+block 2 -2 -10 pad-t2
+block -3 -2 10 pad-t2
+block 2 -2 10 pad-t2
 block -1..0 -2 16 iron-plated paint=keel
 block -1..0 -2 17 iron-plated paint=keel
 block -1..0 -2 18 stairs rot=+y+z paint=hull
