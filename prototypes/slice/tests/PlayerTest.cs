@@ -715,7 +715,7 @@ public partial class PlayerTest : Node
         Check(v.Structure.Mode == GalHack.Structures.CoreMode.Capital && !v.IsBase && v.Flight != null, "the CORE tab's switch puts it in Capital Mode: it is a craft on the flight model");
         if (v.Flight == null) yield break;
         HandlingStats st = v.Stats;
-        GD.Print($"  {v.Name}: {v.Structure.BlockCount} blocks, {st.Mass:F2} t, accel f/up {st.Accel(Direction.Forward):F1}/{st.Accel(Direction.Up):F1} m/s², turn {st.TurnRate:F0}°/s, lift margin {st.LiftMargin:F0} kN");
+        GD.Print($"  {v.Name}: {v.Structure.BlockCount} blocks, {st.Mass:F2} t, accel f/up {st.Accel(Direction.Forward):F1}/{st.Accel(Direction.Up):F1} m/s², turn {st.TurnRate:F0}°/s, lift margin {st.LiftMargin:F0} kN, damage {v.Body.Damage:F3}");
         int want = Playthrough.VesselLayout.Length;
         Check(ok == want && v.Seat != null && st.CanLiftOff && v.Controller.Gear?.Count == 3,
             $"the vessel built block by block from the toolbar: {ok} of {want} blocks, a seat, three legs, lift jets turned with R/T, and it can lift off ({st.LiftMargin:+0} kN)");
@@ -740,10 +740,12 @@ public partial class PlayerTest : Node
         foreach (int x in _play.CloseMenu()) yield return x;
         Vector3 start = v.Body.Position.ToGodot();
         _pad = start;
+        // What building and boarding left on it (a bump on the jetpack): the flight and landing add none.
+        float built = v.Body.Damage;
         Vector3 target = _play.FlatSpot(start, 560f, 0.5f, 0.3f);
         _game.Controls.Hold(Key.Space);
         for (int i = 0; i < 120; i++) yield return 0;
-        Check(!v.Controller.Frozen && v.Body.Position.Y > start.Y + 3f, $"Space lifts it off: {v.Body.Position.Y - start.Y:F1} m up after 2 s (damage {v.Body.Damage:F3})");
+        Check(!v.Controller.Frozen && v.Body.Position.Y > start.Y + 3f, $"Space lifts it off: {v.Body.Position.Y - start.Y:F1} m up after 2 s (damage {v.Body.Damage:F3}, {built:F3} before)");
         float top = 0f;
         for (int t = 0; t < 60 * 120; t++)
         {
@@ -778,7 +780,7 @@ public partial class PlayerTest : Node
         foreach (int x in _drive.Wait(60)) yield return x;
         float flown = new Vector2(v.Body.Position.X - start.X, v.Body.Position.Z - start.Z).Length();
         Check(flown >= 500f, $"it flew {flown:F0} m, top speed {top:F0} m/s");
-        Check(v.Controller.Frozen && v.Body.Damage == 0f, $"and landed on its gear, undamaged ({(v.Controller.Frozen ? "landed" : "still flying")}, {v.AboveGround:F1} m up, damage {v.Body.Damage:F2})");
+        Check(v.Controller.Frozen && v.Body.Damage == built, $"and landed on its gear, undamaged ({(v.Controller.Frozen ? "landed" : "still flying")}, {v.AboveGround:F1} m up, damage {v.Body.Damage:F3}, {built:F3} before take-off)");
         Mark("flown");
     }
 
