@@ -78,7 +78,10 @@ public partial class PopTest : Node
 
     double _delta;
     int _farBuilt;
-    readonly List<double> _gpu = new(), _cpu = new(), _draws = new();
+    readonly List<double> _gpu = new(), _cpu = new(), _draws = new(), _prims = new(), _objects = new(), _shadowDraws = new();
+    long _alloc;
+    int _gc0, _gc2;
+    SystemSplit _split;
 
     void Check(bool ok, string what)
     {
@@ -95,6 +98,7 @@ public partial class PopTest : Node
         AddChild(_game);
         var drive = new Driver(_game);
         foreach (int x in drive.UntilPlaying(240)) yield return x;
+        _split = new SystemSplit(_game, _game.Zone, _game.Zone.Wildlife, _game.Places);
         var zone = _game.Zone;
         zone.Weather.Bridge.Calm = true;
         zone.Weather.Sim.Snap(Weather.Model.WeatherKind.Clear);
@@ -183,6 +187,12 @@ public partial class PopTest : Node
         _gpu.Clear();
         _cpu.Clear();
         _draws.Clear();
+        _prims.Clear();
+        _objects.Clear();
+        _shadowDraws.Clear();
+        _split.Reset();
+        _alloc = GC.GetAllocatedBytesForCurrentThread();
+        (_gc0, _gc2) = (GC.CollectionCount(0), GC.CollectionCount(2));
         _farBuilt = _game.Zone.Streamer.FarBuilds.Sum();
         float length = from - to, gone = 0f;
         var run = Stopwatch.StartNew();
@@ -194,6 +204,10 @@ public partial class PopTest : Node
             _gpu.Add(RenderingServer.ViewportGetMeasuredRenderTimeGpu(vp));
             _cpu.Add(RenderingServer.ViewportGetMeasuredRenderTimeCpu(vp));
             _draws.Add(Performance.GetMonitor(Performance.Monitor.RenderTotalDrawCallsInFrame));
+            Viewport v = GetViewport();
+            _prims.Add(v.GetRenderInfo(Viewport.RenderInfoType.Visible, Viewport.RenderInfo.PrimitivesInFrame));
+            _objects.Add(v.GetRenderInfo(Viewport.RenderInfoType.Visible, Viewport.RenderInfo.ObjectsInFrame));
+            _shadowDraws.Add(v.GetRenderInfo(Viewport.RenderInfoType.Shadow, Viewport.RenderInfo.DrawCallsInFrame));
             yield return 0;
         }
         // A moment stood at the end, for what was still coming in.
@@ -273,11 +287,15 @@ public partial class PopTest : Node
         double p99 = frames.Count > 0 ? frames[(int)(frames.Count * 0.99)] : 0;
         GD.Print($"  {name}: {length:F0} m at {speed:F0} m/s toward {site?.Name ?? "open land"}{(site != null ? $" ({site.Siting})" : "")}; {pops.Count} changes logged, {bad.Count} seen as pops; frame 99th pct {p99:F1} ms, streaming worst {_game.Zone.Streamer.WorstFrameMs:F1} ms, places worst {_game.Places.WorstFrameMs:F1} ms; far chunks built on the way {_game.Zone.Streamer.FarBuilds.Sum() - _farBuilt}, nearest ring behind at the end {_game.Zone.Streamer.FarBehindNearest}; worst streaming frame: {_game.Zone.Streamer.WorstBreakdown}; worst far node put in {_game.Zone.Streamer.WorstFarNodeMs:F1} ms");
         if (_gpu.Count > 0)
-            GD.Print($"  {name}: frame mean {frames.Average():F1} ms; GPU mean {_gpu.Average():F2} ms (99th {_gpu.OrderBy(x => x).ElementAt((int)(_gpu.Count * 0.99)):F1}), render CPU mean {_cpu.Average():F2} ms (99th {_cpu.OrderBy(x => x).ElementAt((int)(_cpu.Count * 0.99)):F1}), draw calls mean {_draws.Average():F0}");
+        {
+            GD.Print($"  {name}: frame mean {frames.Average():F1} ms; GPU mean {_gpu.Average():F2} ms (99th {_gpu.OrderBy(x => x).ElementAt((int)(_gpu.Count * 0.99)):F1}), render CPU mean {_cpu.Average():F2} ms (99th {_cpu.OrderBy(x => x).ElementAt((int)(_cpu.Count * 0.99)):F1}), draw calls mean {_draws.Average():F0} ({_shadowDraws.Average():F0} in shadows), primitives {_prims.Average() / 1000:F0}k, objects {_objects.Average():F0}; nodes {Performance.GetMonitor(Performance.Monitor.ObjectNodeCount)}; {(GC.GetAllocatedBytesForCurrentThread() - _alloc) / 1024.0 / frames.Count:F0} KB allocated a frame on the main thread, collections gen0 {GC.CollectionCount(0) - _gc0} gen2 {GC.CollectionCount(2) - _gc2}");
+            GD.Print($"  {name}: script by system, cpu ms: {_split.Report()}");
+        }
         foreach (var g in pops.GroupBy(p => (p.Kind, p.What)).OrderBy(g => g.Key.Kind))
         {
             var seen = g.Where(p => Hard(p) || Seen(p)).ToList();
-            GD.Print($"      {g.Key.Kind,-8} {g.Key.What,-34} {g.Count(),6} logged, {seen.Count,5} pops" +
+            var far = g.Select(p => p.Distance).OrderBy(d => d).ToList();
+            GD.Print($"      {g.Key.Kind,-8} {g.Key.What,-34} {g.Count(),6} logged at {far[0],4:F0} / {far[far.Count / 2],4:F0} m (nearest / median), {seen.Count,5} pops" +
                 (seen.Count > 0 ? $", nearest {seen.Min(p => p.Distance),4:F0} m, worst {seen.Max(Pixels),5:F1} px" : ""));
         }
         Check(_report || bad.Count == 0, $"{name}: nothing pops (hard inside {Inside:F0} m, or {MostPixels:F0} px or more in a frame): {bad.Count} pops" +

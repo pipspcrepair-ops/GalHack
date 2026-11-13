@@ -108,6 +108,9 @@ public partial class PoiPlaces : Node3D
     /// <summary>The place being stood up just now, if any (measurements).</summary>
     public string Building => _job?.Place.Site.Name;
 
+    /// <summary>Nothing being stood up and nothing in reach waiting to be (measurements).</summary>
+    public bool Idle => _job == null && Next(Focus()) == null;
+
     /// <summary>Starts the worst-frame figures over (measurements).</summary>
     public void ResetWorst() => WorstStepMs = WorstFrameMs = 0;
 
@@ -138,8 +141,7 @@ public partial class PoiPlaces : Node3D
     /// </summary>
     void Keep(Place p, Vector3 focus)
     {
-        Vector3 at = Zone.Planet.NearestCopy(p.Origin, focus);
-        if (p.Position != at) p.Position = at;
+        p.MoveTo(Zone.Planet.NearestCopy(p.Origin, focus));
     }
 
     public override void _Process(double delta)
@@ -238,8 +240,8 @@ public partial class PoiPlaces : Node3D
     {
         PlaceMemory memory = MemoryOf(site);
         Place place = Place.Create(this, memory);
-        place.Position = Zone.Planet.NearestCopy(place.Origin, Focus());
         AddChild(place);
+        place.MoveTo(Zone.Planet.NearestCopy(place.Origin, Focus()));
         _placeOf[site] = place;
         _job = new Job { Place = place, Clock = Stopwatch.StartNew(), Meshing = _ahead == site ? _aheadMeshing : Meshing(memory) };
         _ahead = null;
@@ -262,7 +264,9 @@ public partial class PoiPlaces : Node3D
     {
         var frame = Stopwatch.StartNew();
         Job j = _job;
-        while (frame.Elapsed.TotalMilliseconds < BudgetMs)
+        // The frame's loading allowance, shared with the places' own (their cubes and rooms): at least one step a frame, so a place always comes.
+        double budget = Math.Max(PlanetSurface.Fx.LoadBudget.Left(BudgetMs), 0.001);
+        while (frame.Elapsed.TotalMilliseconds < budget)
         {
             var step = Stopwatch.StartNew();
             int collections = GC.CollectionCount(0);
@@ -277,6 +281,7 @@ public partial class PoiPlaces : Node3D
             if (!more || _job != j) break;
         }
         WorstFrameMs = Math.Max(WorstFrameMs, frame.Elapsed.TotalMilliseconds);
+        PlanetSurface.Fx.LoadBudget.Spend(frame.Elapsed.TotalMilliseconds);
     }
 
     /// <summary>One piece of main-thread work; false once nothing more can be done this frame.</summary>

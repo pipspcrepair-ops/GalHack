@@ -41,7 +41,7 @@ public sealed class FrameProbe
     static extern bool QueryThreadCycleTime(nint thread, out ulong cycles);
 
     /// <summary>Cycles the main thread counts in a millisecond (measured once against the wall clock), or 0 if not readable.</summary>
-    static readonly double CyclesPerMs = Calibrate();
+    public static readonly double CyclesPerMs = Calibrate();
 
     static double Calibrate()
     {
@@ -65,7 +65,8 @@ public sealed class FrameProbe
         catch { return 0; }
     }
 
-    static ulong Cycles() => CyclesPerMs > 0 && QueryThreadCycleTime(GetCurrentThread(), out ulong c) ? c : 0;
+    /// <summary>The main thread's own CPU cycles so far (0 where they can't be read).</summary>
+    public static ulong Cycles() => CyclesPerMs > 0 && QueryThreadCycleTime(GetCurrentThread(), out ulong c) ? c : 0;
 
     public FrameProbe(Node parent)
     {

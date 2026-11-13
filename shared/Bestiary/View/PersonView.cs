@@ -26,7 +26,7 @@ public partial class PersonView : Node3D
     /// band on an arm) next. Each goes once it would be under half a pixel.
     /// </summary>
     const float Fine = 0.04f, Small = 0.12f;
-    static readonly float[] Edges = { Fine * 2f, Small * 2f };
+    internal static readonly float[] Edges = { Fine * 2f, Small * 2f };
 
     /// <summary>Draw a body as one skinned mesh (one draw call) rather than a node per piece. The old way stays for measuring.</summary>
     public static bool Merged = true;
@@ -67,7 +67,7 @@ public partial class PersonView : Node3D
     /// the side of a square of their outline but no more than twice their thickness (a strap goes
     /// once it is too thin to see, however long it is).
     /// </summary>
-    static int Keep(Vector3 size, bool biggest)
+    internal static int Keep(Vector3 size, bool biggest)
     {
         if (biggest) return Edges.Length;
         float a = size.X, b = size.Y, c = size.Z;
