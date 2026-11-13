@@ -76,9 +76,23 @@ public partial class Place : Node3D
     /// <summary>The grid's origin in the world, canonical (x, z on the planet).</summary>
     public Vector3 Origin => new(Site.Origin.X, Site.Origin.Y, Site.Origin.Z);
 
+    /// <summary>Where its grid's origin stands in the world now (the copy nearest the focus), kept as it is moved: a person's or a creature's every look at a place is then no call into the engine.</summary>
+    public Vector3 WorldOrigin { get; private set; }
+
+    /// <summary>Puts the place at a point of the zone (the planet's copy nearest the focus).</summary>
+    internal void MoveTo(Vector3 at)
+    {
+        if (at == _at && IsInsideTree()) return;
+        _at = at;
+        Position = at;
+        WorldOrigin = GlobalPosition;
+    }
+
+    Vector3 _at;
+
     public Int3 CellAt(Vector3 world)
     {
-        Vector3 p = world - GlobalPosition;
+        Vector3 p = world - WorldOrigin;
         return new Int3(Mathf.FloorToInt(p.X), Mathf.FloorToInt(p.Y), Mathf.FloorToInt(p.Z));
     }
 
@@ -93,10 +107,10 @@ public partial class Place : Node3D
     }
 
     /// <summary>A cell's middle in the world.</summary>
-    public Vector3 WorldOf(Int3 c, float up = 0.5f) => GlobalPosition + new Vector3(c.X + 0.5f, c.Y + up, c.Z + 0.5f);
+    public Vector3 WorldOf(Int3 c, float up = 0.5f) => WorldOrigin + new Vector3(c.X + 0.5f, c.Y + up, c.Z + 0.5f);
 
-    public Vector3 ToWorld(Vector3 local) => GlobalPosition + local;
-    public Vector3 FromWorld(Vector3 world) => world - GlobalPosition;
+    public Vector3 ToWorld(Vector3 local) => WorldOrigin + local;
+    public Vector3 FromWorld(Vector3 world) => world - WorldOrigin;
 
     // ---- Blocks ---------------------------------------------------------------------------------
 

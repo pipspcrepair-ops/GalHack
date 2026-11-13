@@ -141,8 +141,7 @@ public partial class PoiPlaces : Node3D
     /// </summary>
     void Keep(Place p, Vector3 focus)
     {
-        Vector3 at = Zone.Planet.NearestCopy(p.Origin, focus);
-        if (p.Position != at) p.Position = at;
+        p.MoveTo(Zone.Planet.NearestCopy(p.Origin, focus));
     }
 
     public override void _Process(double delta)
@@ -241,8 +240,8 @@ public partial class PoiPlaces : Node3D
     {
         PlaceMemory memory = MemoryOf(site);
         Place place = Place.Create(this, memory);
-        place.Position = Zone.Planet.NearestCopy(place.Origin, Focus());
         AddChild(place);
+        place.MoveTo(Zone.Planet.NearestCopy(place.Origin, Focus()));
         _placeOf[site] = place;
         _job = new Job { Place = place, Clock = Stopwatch.StartNew(), Meshing = _ahead == site ? _aheadMeshing : Meshing(memory) };
         _ahead = null;
