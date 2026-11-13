@@ -98,7 +98,8 @@ public partial class PhysicsTest : Node
         if (standOnOnly)
         {
             GD.Print("-- standing on built shapes --");
-            foreach (int x in StandOnShapes()) yield return x;
+            // -- --stand-on --small-base: only the small built base.
+            foreach (int x in OS.GetCmdlineUserArgs().Contains("--small-base") ? SmallBase(_w.Catalogue) : StandOnShapes()) yield return x;
             yield break;
         }
         StructureChecks();

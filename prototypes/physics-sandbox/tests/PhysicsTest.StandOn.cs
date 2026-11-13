@@ -430,8 +430,8 @@ public partial class PhysicsTest
             $"the roof is stood on, and walked up its slope onto the ridge ({ridge:F2} m), down the far slope and off its edge to the deck");
 
         // The container's top: jumped onto, and stood on at its very edge, half the feet over it.
-        rig.Place(new N.Vector3(10.5f, Deck + 0.02f, 11.5f), North);
-        foreach (int x in Walk(North, l => l.Z < 9.3f, 90, jump: true, jet: 10)) yield return x;
+        rig.Place(new N.Vector3(10.5f, Deck + 0.02f, 12.5f), North);
+        foreach (int x in Walk(North, l => l.Z < 9.3f, 120, jump: true, jet: 20)) yield return x;
         foreach (int x in rig.Stand(m => Bounce("on the container, jumped onto", m))) yield return x;
         bool onBox = rig.Local.Y > 1.4f;
         rig.Place(new N.Vector3(11f, 1.52f, 9.35f), North);
