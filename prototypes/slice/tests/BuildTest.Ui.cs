@@ -112,8 +112,17 @@ public partial class BuildTest
                         $"tech {name}: all {want.Count} nodes on one 1080p screen, tiles {minW * Px:F0} x {minH * Px:F0} px or larger, none overlapping{(missing.Count + outside.Count + overlaps == 0 ? "" : $": missing {missing.Count}, outside {outside.Count}, overlaps {overlaps}")}");
             }
         }
-        Check(_game.Progress.Nodes.Where(n => n.Tab == "structures").Select(n => TechSection.LaneOf(new TechLayout(_game.Progress.Nodes.Where(m => m.Tab == "structures")).ById[n.Id])).Distinct().Count() == 3,
-            "the Structures tab has its core lane and hover and flight as parallel lanes");
+        var lay = new TechLayout(_game.Progress.Nodes.Where(n => n.Tab == "structures"), lanes: true);
+        var lanes = lay.Lanes.Select(l => l.Name).ToList();
+        int hover = lanes.IndexOf("HOVER");
+        Check(lanes.Count == TechLayout.StructureLanes.Length && hover >= 0 && hover + 1 < lanes.Count && lanes[hover + 1] == "FLIGHT"
+            && lay.ById["hover-t1"].Lane == "HOVER" && lay.ById["thruster-t1"].Lane == "FLIGHT",
+            $"the Structures tab has a lane per device family, hover and flight side by side: {string.Join(", ", lanes)}");
+        // A tier sits right of the one below on its row; any other child one column right of its parent.
+        static (string Family, int Tier) TierOf(string id) => System.Text.RegularExpressions.Regex.Match(id, @"^(.+)-t(\d+)$") is { Success: true } m ? (m.Groups[1].Value, int.Parse(m.Groups[2].Value)) : (id, 0);
+        var askew = lay.Cells.Where(c => c.Parent?.Lane == c.Lane && (c.Col != c.Parent.Col + 1
+            || TierOf(c.Node.Id) is var (f, t) && t > 1 && TierOf(c.Parent.Node.Id) == (f, t - 1) && c.Row != c.Parent.Row)).Select(c => c.Node.Id).ToList();
+        Check(askew.Count == 0, $"each family's tiers read left to right in its lane{(askew.Count > 0 ? ": not " + string.Join(", ", askew) : "")}");
         _game.Menu.Close();
     }
 

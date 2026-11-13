@@ -920,10 +920,10 @@ public partial class BuildTest : Node
         _game.CraftTimeScale = 40f;
     }
 
-    /// <summary>The tech tree's tabs (Base &amp; Capital, Small &amp; Hover, tools, weapons, deco, misc) and the hover gate, on a fresh character.</summary>
+    /// <summary>The tech tree's tabs (structures, tools, weapons, deco, misc), the one Structures tree from the core and its tier chains, on a fresh character.</summary>
     void TechTabs()
     {
-        GD.Print("-- the tech tree: one tab for Large (Big Core), one for Small (Small Core) --");
+        GD.Print("-- the tech tree: one Structures tree from the core, tiers in chains --");
         var data = _game.Zone.Data;
         var fresh = new Progress(data.Progress, data.Items, data.Catalogue);
         Check(Progress.Tabs.SequenceEqual(new[] { "structures", "tools", "weapons", "deco", "misc" }), $"five tabs: {string.Join(", ", Progress.Tabs)}");
@@ -932,15 +932,24 @@ public partial class BuildTest : Node
         Check(fresh.Nodes.Select(n => n.Id).Distinct().Count() == fresh.Nodes.Count, "no node is listed twice");
         var orphans = fresh.Nodes.Where(n => n.Unlock.Parent != null && fresh.Node(n.Unlock.Parent) == null).Select(n => n.Id).ToList();
         Check(orphans.Count == 0, $"every parent is a node{(orphans.Count > 0 ? ": not " + string.Join(", ", orphans) : "")}");
-        Check(fresh.Node("core").Tab == "structures" && fresh.Node("core").Unlock.Parent == null && fresh.Node("iron-plated").Tab == "structures",
-            "the core heads the Structures tab, every structure block on it");
-        Check(new[] { "thruster", "generator", "fuel-tank", "container", "gyro", "pad" }.All(f => fresh.Node($"{f}-t2").Unlock.Parent == $"{f}-t1"),
-            "each device's tiers chain: T1, then T2");
+        // Every structure block (not deco, not a weapon) is on Structures and grows from the core.
+        string Root(TechNode n) { while (n?.Unlock.Parent != null) n = fresh.Node(n.Unlock.Parent); return n?.Id; }
+        var offTree = data.Items.Blocks.All.Where(b => b.Family != BlockFamily.Deco && b.Ammo == null)
+            .Select(b => fresh.Node(b.Item.Id)).Where(n => n == null || n.Tab != "structures" || Root(n) != "core").Select(n => n?.Id ?? "?").ToList();
+        Check(fresh.Node("core").Tab == "structures" && fresh.Node("core").Unlock.Parent == null && offTree.Count == 0,
+            $"the core heads the Structures tab, every structure block on it and reached from the core{(offTree.Count > 0 ? ": not " + string.Join(", ", offTree) : "")}");
+        // A tier hangs under the tier below and opens no sooner.
+        var tiers = fresh.Nodes.Select(n => (n, m: System.Text.RegularExpressions.Regex.Match(n.Id, @"^(.+)-t(\d+)$"))).Where(x => x.m.Success && int.Parse(x.m.Groups[2].Value) > 1).ToList();
+        var unchained = tiers.Where(x => x.n.Unlock.Parent != $"{x.m.Groups[1].Value}-t{int.Parse(x.m.Groups[2].Value) - 1}" || fresh.Node(x.n.Unlock.Parent).Level > x.n.Level).Select(x => x.n.Id).ToList();
+        Check(tiers.Count > 20 && unchained.Count == 0, $"each of {tiers.Count} tiers hangs under the tier below and opens no sooner{(unchained.Count > 0 ? ": not " + string.Join(", ", unchained) : "")}");
+        Check(fresh.Node("thruster-t1").Unlock.Parent == "hover-t1" && fresh.Node("hover-t1").Unlock.Parent == "core", "hover runs beside flight: Thruster T1 hangs under Hover plate T1, on the core");
+        Check(fresh.Node("core-scanner") is { Tab: "tools" } cs && cs.Unlock.Parent == "scanner", "the core scanner is on Tools, under the scanner");
         Check(fresh.Level == 1 && fresh.Points == 3, $"a new character starts at level 1 with 3 unlock points ({fresh.Points})");
         Check(fresh.IsUnlocked("core") && fresh.IsUnlocked("iron-plated") && fresh.IsUnlocked("generator-t1"), "the core, plated blocks and the first generator are free at level 1");
         Check(fresh.StateOf(fresh.Node("thruster-t1")) == UnlockState.NeedsLevel, "and Thruster T1 waits for its level");
         fresh.Earn(fresh.Rules.XpFor(5), "test");
-        Check(fresh.StateOf(fresh.Node("thruster-t1")) == UnlockState.Affordable && fresh.Unlock("thruster-t1"), $"at level {fresh.Level} Thruster T1 unlocks");
+        Check(fresh.StateOf(fresh.Node("thruster-t1")) == UnlockState.NeedsParent && fresh.Unlock("hover-t1"), $"at level {fresh.Level} Thruster T1 waits for Hover plate T1, which unlocks");
+        Check(fresh.StateOf(fresh.Node("thruster-t1")) == UnlockState.Affordable && fresh.Unlock("thruster-t1"), "and then Thruster T1 unlocks");
     }
 
     /// <summary>In Survival: a device behind a tier can be unlocked, crafted in the base's own constructor and placed, and it adds what it does.</summary>
