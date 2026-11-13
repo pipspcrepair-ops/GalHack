@@ -216,8 +216,17 @@ public sealed partial class PlanetWorld
         }
         Palette.IndexBlasts();
         // The land comes back through the ruins as the planet's own flora, and their rubble is its rock.
-        Palette.Planted = RuinGrowth.Plan(pois, source, Palette, map.WidthMeters, map.HeightMeters);
-        foreach (PoiSite p in pois) PoiGenerator.Gen.Growth.Earthen(p.Instance, RubbleRock, Weed);
+        // As each place is built: its rubble the land's rock, its weeds the land's, and the trees through it (RuinGrowth).
+        Palette.Planted = new System.Collections.Concurrent.ConcurrentDictionary<long, PlantedFlora>();
+        foreach (PoiSite p in pois)
+        {
+            PoiSite site = p;
+            site.Fit.Add(inst =>
+            {
+                RuinGrowth.Plant(site, inst, source, Palette, map.WidthMeters, map.HeightMeters);
+                PoiGenerator.Gen.Growth.Earthen(inst, RubbleRock, Weed);
+            });
+        }
         Look = WorldLook.For(map, Sky);
         BuildMs = ms;
     }
@@ -226,6 +235,9 @@ public sealed partial class PlanetWorld
     public static PlanetWorld Build(PlanetSpec spec, PoiCatalog catalog)
     {
         var watch = Stopwatch.StartNew();
+        // From here until the game says its sleeper stands, a place built because something read it unasked is counted (PoiSite.Loading).
+        PoiSite.Loading = true;
+        PoiSite.UnaskedLoadBuilds = 0;
         PoiGenerator.Gen.WorldForce force = PoiGenerator.Gen.WorldForce.Current;
         WorldProfile profile = force.Apply(ProfileFor(spec, PoiSiting.StartWorld, force));
         // Its star first: where it lies in the galaxy is part of what the world rolls from.
@@ -274,7 +286,10 @@ public sealed partial class PlanetWorld
         FinishAround(spec, source, pois, around);
         // What stands off a place's footprint goes by the real ground, now that it's known.
         foreach (PoiSite p in pois)
-            PoiGenerator.Gen.StateTransforms.Settle(p.Instance, (x, z) => source.SurfaceHeight(Mathx.WrapX(p.Origin.X + x + 0.5, source.Width), Mathx.Wrap(p.Origin.Z + z + 0.5, source.Height)) - p.Origin.Y, 3);
+        {
+            PoiSite site = p;
+            site.Fit.Add(inst => PoiGenerator.Gen.StateTransforms.Settle(inst, (x, z) => source.SurfaceHeight(Mathx.WrapX(site.Origin.X + x + 0.5, source.Width), Mathx.Wrap(site.Origin.Z + z + 0.5, source.Height)) - site.Origin.Y, 3));
+        }
         double tEnd = Lap();
         LastTimes = $"map {tMap / 1000:F1} s, places {(tPlaces - tMap) / 1000:F1} s (plan {PoiSiting.LastPlanMs / 1000:F1}, layouts {PoiSiting.LastLayoutMs / 1000:F1}, seats {PoiSiting.LastSeatMs / 1000:F1} s), around {(tAround - tPlaces) / 1000:F1} s [{LastAroundTimes}], finish {(tEnd - tAround) / 1000:F1} s";
         var world = new PlanetWorld(spec, profile, map, landing, pois, around, source, watch.Elapsed.TotalMilliseconds, PoiGenerator.Gen.WorldReading.Of(layers), blasts) { Depth = depth, Roll = roll, Layers = layers, Library = catalog?.Library };

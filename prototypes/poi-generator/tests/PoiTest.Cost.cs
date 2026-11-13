@@ -30,6 +30,7 @@ public partial class PoiTest
         var mats = new BlockMaterials();
         var rand = new Random();
         var rows = new List<(string Id, double Area, List<double> Build, List<double> Mesh)>();
+        var layouts = new List<double>();
         bool warm = false;
         foreach (FamilyDef f in _lib.Families)
         {
@@ -46,6 +47,7 @@ public partial class PoiTest
                 {
                     Layout l = PoiFactory.SpawnLayout(_lib, f, rand.Next(f.Variants.Count), f.Rarity, seed, new LayoutHints(Dirs.Horizontal[rand.Next(4)], tech), out _);
                     if (l == null) continue;
+                    if (warm) layouts.Add(clock.Elapsed.TotalMilliseconds);
                     p = PoiFactory.Spawn(_lib, l, PoiState.Abandoned, seed);
                 }
                 catch (Exception) { continue; }
@@ -65,7 +67,7 @@ public partial class PoiTest
         foreach (var r in rows.OrderByDescending(r => r.Build.Max() + r.Mesh.Max()))
             GD.Print($"      {r.Id}: {r.Area:F0} | {Median(r.Build):F0}/{r.Build.Max():F0} | {Median(r.Mesh):F0}/{r.Mesh.Max():F0} | {(Median(r.Build) + Median(r.Mesh)) / Math.Max(0.01, r.Area / 10000):F0}");
         var all = rows.SelectMany(r => r.Build.Zip(r.Mesh, (b, m) => b + m)).ToList();
-        GD.Print($"    every type: build+mesh median {Median(all):F0} ms, worst {all.Max():F0} ms; build median {Median(rows.SelectMany(r => r.Build).ToList()):F0} ms, mesh median {Median(rows.SelectMany(r => r.Mesh).ToList()):F0} ms");
+        GD.Print($"    every type: build+mesh median {Median(all):F0} ms, worst {all.Max():F0} ms; build median {Median(rows.SelectMany(r => r.Build).ToList()):F0} ms (of it the layout {Median(layouts):F0} ms, worst {layouts.Max():F0} ms), mesh median {Median(rows.SelectMany(r => r.Mesh).ToList()):F0} ms");
         Check(rows.Count == _lib.Families.Count, $"every type of place measured: {rows.Count} of {_lib.Families.Count}");
     }
 }

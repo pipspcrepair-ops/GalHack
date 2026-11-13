@@ -99,7 +99,7 @@ public sealed class GroundPalette
     }
 
     /// <summary>Flora set down on purpose (trees through ruins), by the scatter id each takes; null where there is none.</summary>
-    public Dictionary<long, PlantedFlora> Planted;
+    public System.Collections.Concurrent.ConcurrentDictionary<long, PlantedFlora> Planted;
 
     /// <summary>The world's plants (shared/Flora, through its planet adapter). Null only for a palette made without a world's flora.</summary>
     public readonly PlanetFlora Flora;

@@ -181,8 +181,11 @@ public partial class PoiPlaces : Node3D
         float best = float.MaxValue;
         foreach (PoiSite site in Zone.Planet.Pois)
         {
-            if (site.Instance == null || site == besides || _placeOf.ContainsKey(site)) continue;
-            if (Urgency(site, focus) is float u && u < best) (best, next) = (u, site);
+            if (site.Layout == null || site == besides || _placeOf.ContainsKey(site)) continue;
+            if (Urgency(site, focus) is not float u || u >= best) continue;
+            // Not built yet: built next, ahead of everything else; started once it has been.
+            if (site.Built == null) { Zone.Pois.Builds?.Ask(site); continue; }
+            (best, next) = (u, site);
         }
         return next;
     }
@@ -372,7 +375,7 @@ public partial class PoiPlaces : Node3D
         // The dissolves' copies of the dressing's and the creatures' materials, made while loading.
         if (Decor.Shared?.Meshes?.Materials is { } deco) PlanetSurface.Fx.Fade.Warm(deco.BySurface);
         PlanetSurface.Fx.Fade.CopyOf(Wildlife.CreatureMaterials.Clothed);
-        PoiSite nearest = Zone.Planet.Pois.Where(s => s.Instance != null).OrderBy(s => DistanceTo(s, from)).FirstOrDefault();
+        PoiSite nearest = Zone.Planet.Pois.Where(s => s.Layout != null).OrderBy(s => DistanceTo(s, from)).FirstOrDefault();
         if (nearest == null) return;
         var clock = Stopwatch.StartNew();
         Begin(nearest);

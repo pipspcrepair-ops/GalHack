@@ -36,9 +36,9 @@ public static class MadeGrounds
         TechLevel tech = profile?.Before ?? TechLevel.Mid;
         foreach (PoiSite site in pois)
         {
-            if (site.Siting == "city" || site.Instance?.Layout == null) continue;
-            PInt3 face = site.Instance.Layout.EntranceFacing.Vec();
-            Place(patches, site.Instance.Layout, site.Origin.X, site.Origin.Y, site.Origin.Z, site.Stamp, site.Family, tech,
+            if (site.Siting == "city" || site.Layout == null) continue;
+            PInt3 face = site.Layout.EntranceFacing.Vec();
+            Place(patches, site.Layout, site.Origin.X, site.Origin.Y, site.Origin.Z, site.Stamp, site.Family, tech,
                 (site.Entrance.X + 0.5, site.Entrance.Z + 0.5), (face.X, face.Z));
         }
         if (net?.City is CityPlan city) City(patches, city, w, h);

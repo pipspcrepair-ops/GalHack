@@ -40,7 +40,58 @@ public sealed class PoiSite
     /// <summary>The world's main starport: the network's main node.</summary>
     public bool Primary;
     public FamilyDef Family;
-    public PoiInstance Instance;
+
+    // ---- the place itself, built when first wanted ------------------------------------------------
+    // A world sets its places down from their layouts (footprint, way in, gates); spawning one (its state, its
+    // dressing, who is in it) and fitting it to the world waits until it is wanted, on whatever thread wants it,
+    // and comes out the same from its seed whenever that is.
+
+    /// <summary>The place as laid out: what the world is set down by.</summary>
+    public Layout Layout;
+    public PoiState State;
+    /// <summary>Who the world put in it (null where nobody is).</summary>
+    public OccupancyRoll Occupancy;
+    /// <summary>Spawns the place from its layout.</summary>
+    public Func<PoiInstance> Make;
+    /// <summary>What fits the spawned place to its world, in order (blasted, settled on the real ground, grown over).</summary>
+    public readonly List<Action<PoiInstance>> Fit = new();
+    /// <summary>Fires once a place is built (on the thread that built it).</summary>
+    public static event Action<PoiSite> Made;
+    /// <summary>Counts builds nobody asked for while the world loads (a load path reading <see cref="Instance"/>): must stay 0.</summary>
+    public static int UnaskedLoadBuilds;
+    /// <summary>The world is loading: a read of <see cref="Instance"/> that builds is counted.</summary>
+    public static bool Loading;
+    readonly object _building = new();
+    volatile PoiInstance _inst;
+
+    /// <summary>The place, or null until it has been built.</summary>
+    public PoiInstance Built => _inst;
+
+    /// <summary>The place, built now if it isn't yet (blocking): for whatever really needs its blocks.</summary>
+    public PoiInstance Instance
+    {
+        get
+        {
+            if (_inst == null && Loading) System.Threading.Interlocked.Increment(ref UnaskedLoadBuilds);
+            return Build();
+        }
+        set => _inst = value;
+    }
+
+    /// <summary>Builds the place (once; later calls wait for it or return it).</summary>
+    public PoiInstance Build()
+    {
+        if (_inst != null) return _inst;
+        lock (_building)
+        {
+            if (_inst != null) return _inst;
+            PoiInstance inst = Make();
+            foreach (Action<PoiInstance> f in Fit) f(inst);
+            _inst = inst;
+        }
+        Made?.Invoke(this);
+        return _inst;
+    }
 
     /// <summary>World cell of the POI grid's origin: x and z canonical, y the pad surface.</summary>
     public TInt3 Origin;
@@ -83,10 +134,10 @@ public sealed class PoiSite
     public PoiTier Tier => Family.Tier;
 
     /// <summary>Held by a faction (its core is live, or its people are home): its own infrastructure works.</summary>
-    public bool FactionHeld => Instance.HasCore || (Family.Faction != PoiGenerator.Gen.Faction.None && Instance.State == PoiState.Active);
+    public bool FactionHeld => Family.HasCore(State) || (Family.Faction != PoiGenerator.Gen.Faction.None && State == PoiState.Active);
 
-    /// <summary>A blast site's ground zero in world metres (its radii are in <c>Instance.Layout.Extras.Blast</c>): for the dead-zone ground tint and the world work.</summary>
-    public (double X, double Z)? GroundZero => Instance.Layout.Extras.Blast is { } z ? (Origin.X + z.Center.X + 0.5, Origin.Z + z.Center.Z + 0.5) : null;
+    /// <summary>A blast site's ground zero in world metres (its radii are in <c>Layout.Extras.Blast</c>): for the dead-zone ground tint and the world work.</summary>
+    public (double X, double Z)? GroundZero => Layout.Extras.Blast is { } z ? (Origin.X + z.Center.X + 0.5, Origin.Z + z.Center.Z + 0.5) : null;
 
     /// <summary>A settlement's or civilian place's townsfolk data (spots, links, routes, people, animals, area), in local cells; null elsewhere.</summary>
     public Townsfolk Townsfolk => Instance.Townsfolk;
@@ -235,12 +286,14 @@ public static partial class PoiSiting
             TechLevel? forcedAge = profile == null || WorldProfile.Unbuilt(forced) ? null : profile.LevelFor(forced, state);
             Layout forcedLayout = PoiFactory.SpawnLayout(lib, forced, forcedVariant, forced.Rarity, GHash.Of(map.Spec.Seed, 0xF0CE), new LayoutHints(Dir.North, forcedAge, Ruin: profile?.Ruin), out string why);
             if (forcedLayout == null) Godot.GD.PushWarning($"forced place skipped: {why}");
-            PoiInstance inst = forcedLayout == null ? null : PoiFactory.Spawn(lib, forcedLayout, state, 7, profile, ForceOccupancy);
-            for (int k = 0; inst != null && k < 60 && sites.Count == 0; k++)
+            for (int k = 0; forcedLayout != null && k < 60 && sites.Count == 0; k++)
             {
                 double a = k * Math.PI / 6, r = 700 + k / 12 * 240;
-                PoiSite site = Seat(inst, forced, bare, map, Mathx.WrapX(landing.X + Math.Cos(a) * r, map.WidthMeters), Mathx.Wrap(landing.Y + Math.Sin(a) * r, map.HeightMeters), landing, sites);
-                if (site != null) sites.Add(site);
+                PoiSite site = Seat(forcedLayout, state, forced, bare, map, Mathx.WrapX(landing.X + Math.Cos(a) * r, map.WidthMeters), Mathx.Wrap(landing.Y + Math.Sin(a) * r, map.HeightMeters), landing, sites);
+                if (site == null) continue;
+                site.Occupancy = ForceOccupancy;
+                site.Make = () => PoiFactory.Spawn(lib, forcedLayout, state, 7, profile, ForceOccupancy);
+                sites.Add(site);
             }
         }
         if (plan is { Places.Count: >= 4 })
@@ -269,8 +322,8 @@ public static partial class PoiSiting
         order = ports.Concat(order.Where(p => !IsPort(p))).ToList();
         static bool IsPort(PlacedPoi p) => p.Primary || p.Port != null || p.Family.Tags.Contains("scrappy") || p.Family.Tags.Contains("exodus") || p.Family.Tags.Contains("evacuation");
         int budget = most + ports.Count;
-        // Each place's building made side by side, a batch at a time, then seated in order: the same places as one by one.
-        PoiInstance Make(PlacedPoi p)
+        // Each place laid out side by side, a batch at a time, then seated in order: the same places as one by one. Spawning waits.
+        (Layout Layout, ulong Seed, OccupancyRoll Occ)? Make(PlacedPoi p)
         {
             int variant = p.Family.Variants.IndexOf(p.Variant);
             ulong spawnSeed = p.SpawnSeed;
@@ -289,31 +342,31 @@ public static partial class PoiSiting
             TechLevel? age = profile == null || WorldProfile.Unbuilt(p.Family) ? null : profile.LevelFor(p.Family, p.State);
             Layout built = PoiFactory.SpawnLayout(lib, p.Family, variant, Deeper(p.Rarity, depth, spawnSeed), spawnSeed, new LayoutHints(Dir.North, age, Ruin: profile?.Ruin), out string whyNot);
             if (built == null) { Godot.GD.PushWarning($"place skipped: {whyNot}"); return null; }
-            PoiInstance inst = PoiFactory.Spawn(lib, built, p.State, spawnSeed, profile, occ);
-            return inst;
+            return (built, spawnSeed, occ);
         }
         int cap = budget + (ForceFamily != null ? 1 : 0);
         const int Batch = 16;
         for (int at = 0; at < order.Count && sites.Count < cap; at += Batch)
         {
             var chunk = order.Skip(at).Take(Batch).ToList();
-            var madeHere = new PoiInstance[chunk.Count];
+            var madeHere = new (Layout Layout, ulong Seed, OccupancyRoll Occ)?[chunk.Count];
             System.Threading.Tasks.Parallel.For(0, chunk.Count, i => madeHere[i] = Make(chunk[i]));
             for (int c = 0; c < chunk.Count && sites.Count < cap; c++)
             {
                 PlacedPoi p = chunk[c];
-                PoiInstance inst = madeHere[c];
-                if (inst == null) continue;
-                PoiSite site = Seat(inst, p.Family, bare, map, Mathx.WrapX(p.X, map.WidthMeters), Mathx.Wrap(p.Z, map.HeightMeters), landing, sites);
+                if (madeHere[c] is not { } made) continue;
+                PoiSite site = Seat(made.Layout, p.State, p.Family, bare, map, Mathx.WrapX(p.X, map.WidthMeters), Mathx.Wrap(p.Z, map.HeightMeters), landing, sites);
                 // The main port stands somewhere: if its spot won't take it, the next good ground round it. So do its crowd, nearer in.
                 int retries = p.Primary ? 64 : IsPort(p) ? 12 : 0;
                 for (int k = 0; site == null && k < retries; k++)
                 {
                     double a = k * 2.399963, r = 300 + (p.Primary ? 90 : 60) * k;
-                    site = Seat(inst, p.Family, bare, map, Mathx.WrapX(p.X + Math.Cos(a) * r, map.WidthMeters), Mathx.Wrap(p.Z + Math.Sin(a) * r, map.HeightMeters), landing, sites);
+                    site = Seat(made.Layout, p.State, p.Family, bare, map, Mathx.WrapX(p.X + Math.Cos(a) * r, map.WidthMeters), Mathx.Wrap(p.Z + Math.Sin(a) * r, map.HeightMeters), landing, sites);
                 }
                 if (site == null) continue;
                 site.Primary = p.Primary;
+                site.Occupancy = made.Occ;
+                site.Make = () => PoiFactory.Spawn(lib, made.Layout, p.State, made.Seed, profile, made.Occ);
                 sites.Add(site);
             }
         }
@@ -322,7 +375,7 @@ public static partial class PoiSiting
 
     /// <summary>Each blast site's own blast, at world scale: its crater is the place, its reach the land round it.</summary>
     public static List<Strike> SiteBlasts(IEnumerable<PoiSite> sites) =>
-        sites.Where(s => s.GroundZero != null).Select(s => Strike.FromSite(s.GroundZero!.Value.X, s.GroundZero.Value.Z, s.Instance.Layout.Extras.Blast!, s.Family.Id)).ToList();
+        sites.Where(s => s.GroundZero != null).Select(s => Strike.FromSite(s.GroundZero!.Value.X, s.GroundZero.Value.Z, s.Layout.Extras.Blast!, s.Family.Id)).ToList();
 
     /// <summary>
     /// Places inside a blast's reach take the blasted decay: roofs gone, the walls that faced ground
@@ -333,10 +386,10 @@ public static partial class PoiSiting
     public static void Blast(IReadOnlyList<PoiSite> sites, IReadOnlyList<Strike> blasts, double width, double height)
     {
         if (blasts.Count == 0) return;
-        // Each place takes its blast on its own blocks only: a nuclear war's city goes a building to a core.
-        System.Threading.Tasks.Parallel.ForEach(sites, o =>
+        // Each place takes its blast on its own blocks only, when it is built: a nuclear war's city goes a building to a core.
+        foreach (PoiSite o in sites)
         {
-            if (o.GroundZero != null) return; // a blast site is its own crater
+            if (o.GroundZero != null) continue; // a blast site is its own crater
             float best = 0f, bx = 0f, bz = 0f;
             Strike by = null;
             foreach (Strike b in blasts)
@@ -348,20 +401,20 @@ public static partial class PoiSiting
                 (best, bx, bz) = d < 1f ? (strength, 0f, 1f) : (strength, (float)(-dx / d), (float)(-dz / d));
                 by = b;
             }
-            if (best < 0.05f) return;
+            if (best < 0.05f) continue;
             // A big blast grades the place by each column's distance from ground zero: stumps on the near side, shells on the far.
-            if (by.Flatten)
+            double ox = o.Origin.X + 0.5, oz = o.Origin.Z + 0.5;
+            o.Fit.Add(inst =>
             {
-                double ox = o.Origin.X + 0.5, oz = o.Origin.Z + 0.5;
-                StateTransforms.Flattened(o.Instance, (x, z) =>
-                {
-                    double dx = Mathx.WrapDelta(ox + x - by.X, width), dz = Mathx.WrapDelta(oz + z - by.Z, height);
-                    return by.Strength((float)Math.Sqrt(dx * dx + dz * dz));
-                });
-            }
-            StateTransforms.Blast(o.Instance, bx, bz, best, new PRng(PoiGenerator.Gen.Hash.Combine(o.Instance.SpawnSeed, 0xB1A57UL)));
-            o.Recarve?.Invoke();
-        });
+                if (by.Flatten)
+                    StateTransforms.Flattened(inst, (x, z) =>
+                    {
+                        double dx = Mathx.WrapDelta(ox + x - by.X, width), dz = Mathx.WrapDelta(oz + z - by.Z, height);
+                        return by.Strength((float)Math.Sqrt(dx * dx + dz * dz));
+                    });
+                StateTransforms.Blast(inst, bx, bz, best, new PRng(PoiGenerator.Gen.Hash.Combine(inst.SpawnSeed, 0xB1A57UL)));
+            });
+        }
     }
 
     /// <summary>The placement engine's view of the country: biome, territory and rich ground per 40 m cell.</summary>
@@ -418,11 +471,11 @@ public static partial class PoiSiting
     /// <summary>What ground a family looks for, from its data (siting): shape follows purpose.</summary>
     static string Preference(FamilyDef family) => family.Siting is { Length: > 0 } s ? s : "any";
 
-    static PoiSite Seat(PoiInstance inst, FamilyDef family, PlanetTerrainSource bare, WorldMap map, double wantX, double wantZ,
+    static PoiSite Seat(Layout layout, PoiState state, FamilyDef family, PlanetTerrainSource bare, WorldMap map, double wantX, double wantZ,
         LandingSite landing, List<PoiSite> others)
     {
         // Local extents: the occupied box (rooms above and below ground) on x and z.
-        CellMask occupied = inst.Layout.Occupied;
+        CellMask occupied = layout.Occupied;
         int lx0 = occupied.Min.X, lz0 = occupied.Min.Z, lx1 = occupied.Min.X + occupied.Size.X, lz1 = occupied.Min.Z + occupied.Size.Z;
         double halfX = (lx1 - lx0) * 0.5, halfZ = (lz1 - lz0) * 0.5;
         string want = Preference(family);
@@ -505,18 +558,19 @@ public static partial class PoiSiting
         var origin = new TInt3(ox, bestPad, oz);
         var footprint = new CellBox(
             new TInt3(ox + lx0, bestPad + occupied.Min.Y, oz + lz0),
-            new TInt3(ox + lx1, bestPad + Math.Max(occupied.Min.Y + occupied.Size.Y, inst.Blocks.Min.Y + inst.Blocks.Size.Y), oz + lz1));
+            new TInt3(ox + lx1, bestPad + Math.Max(occupied.Min.Y + occupied.Size.Y, layout.Blocks.Min.Y + layout.Blocks.Size.Y), oz + lz1));
 
         // Half-buried ruins: the ground rises across the footprint away from the way in, so the
         // building sinks into it toward the back. Every room stays open (carved up to the tilt's top).
-        PInt3 outward = inst.Layout.EntranceFacing.Vec();
-        bool ruin = inst.State == PoiState.Ruined && family.Faction == PoiGenerator.Gen.Faction.None && family.Site == null;
+        PInt3 outward = layout.EntranceFacing.Vec();
+        bool ruin = state == PoiState.Ruined && family.Faction == PoiGenerator.Gen.Faction.None && family.Site == null;
         float tilt = ruin ? 0.08f + (PoiGenerator.Gen.Hash.Cell(new PInt3(origin.X, 0, origin.Z), 77) % 100) / 1000f : 0f;
         double depthAlong = Math.Abs(outward.X) * (lx1 - lx0) + Math.Abs(outward.Z) * (lz1 - lz0);
         int buryTop = ruin ? (int)Math.Ceiling(tilt * depthAlong) + 1 : 0;
         // Rooms below the pad (and the floor layer, which sits in the ground) stay open.
         int carveH = Math.Max(0, -occupied.Min.Y) + buryTop;
         bool[] carve = null, walls = null;
+        PoiSite seated = null;   // (the site, once made: carving reads it as built, where it has been)
         // Under the pad, from the place as it was built: where decay took a wall the ground it held back comes up to where the wall
         // stood and shows in the gap; carved by what stands now, that gap opened a pit in the ground outside, down into the rooms.
         // Over the pad (a half-buried ruin) from the place as it stands: its rooms stay open, a gap in the wall with them.
@@ -529,7 +583,7 @@ public static partial class PoiSiting
             {
                 var cell = new PInt3(occupied.Min.X + x, occupied.Min.Y + y, occupied.Min.Z + z);
                 int i = (y * occupied.Size.Z + z) * occupied.Size.X + x;
-                BlockGrid by = cell.Y < 0 ? inst.Layout.Blocks : inst.Blocks;
+                BlockGrid by = cell.Y < 0 || seated?.Built is not { } built ? layout.Blocks : built.Blocks;
                 carve[i] = PoiGenerator.Gen.Structure.Carved(by, occupied, cell);
                 walls[i] = PoiGenerator.Gen.Structure.OuterWall(by, occupied, cell);
             }
@@ -562,7 +616,7 @@ public static partial class PoiSiting
         var stamp = new TerrainStamp(family.Name, ox + lx0, oz + lz0, ox + lx1, oz + lz1, bestPad, Apron, blend, width, height,
             ox + occupied.Min.X, bestPad + occupied.Min.Y, oz + occupied.Min.Z, occupied.Size.X, carveH, occupied.Size.Z, carve)
         {
-            Walls = walls, Surface = GroundFor(family, map.Def.Archetype), Wear = inst.Age switch { PoiGenerator.Gen.Age.New => 0.1f, PoiGenerator.Gen.Age.Preserved => 0.35f, _ => 0.85f },
+            Walls = walls, Surface = GroundFor(family, map.Def.Archetype), Wear = PoiInstance.AgeFor(family, state, layout.Extras.InSpace) switch { PoiGenerator.Gen.Age.New => 0.1f, PoiGenerator.Gen.Age.Preserved => 0.35f, _ => 0.85f },
         };
 
         // Grounding: shapes that sit the place in its land rather than on a flat pad.
@@ -573,7 +627,7 @@ public static partial class PoiSiting
             // The tilt hinges on the way in, not on the footprint's front edge: a wing can stand
             // forward of the door, and by the door the ground would already have risen over its sill.
             // The rise then starts a little past the way in, so the way in stays open.
-            PInt3 door = inst.Layout.EntranceCell;
+            PInt3 door = layout.EntranceCell;
             int tx0 = outward.X < 0 ? Math.Max((int)fx0, ox + door.X + 1) : (int)fx0, tx1 = outward.X > 0 ? Math.Min((int)fx1, ox + door.X) : (int)fx1;
             int tz0 = outward.Z < 0 ? Math.Max((int)fz0, oz + door.Z + 1) : (int)fz0, tz1 = outward.Z > 0 ? Math.Min((int)fz1, oz + door.Z) : (int)fz1;
             double along = (ox + door.X + 0.5 - (tx0 + tx1) * 0.5) * -outward.X + (oz + door.Z + 0.5 - (tz0 + tz1) * 0.5) * -outward.Z;
@@ -582,7 +636,7 @@ public static partial class PoiSiting
                 { Shape = StampShape.Tilt, DirX = -outward.X, DirZ = -outward.Z, Grade = tilt, Shift = (float)Math.Max(0, along + halfAlong + 2.5) });
         }
         // A crater's bowl, so it shows in the far rings too (its rim is the place's own rubble).
-        if (inst.Layout.Extras.Blast is { } blast)
+        if (layout.Extras.Blast is { } blast)
         {
             int gx = ox + blast.Center.X, gz = oz + blast.Center.Z, rr = (int)Math.Ceiling(blast.Crater);
             extra.Add(new TerrainStamp(family.Name + " (crater)", gx - rr, gz - rr, gx + rr, gz + rr, bestPad, 0f, 16f, width, height)
@@ -612,7 +666,7 @@ public static partial class PoiSiting
         }
         // An approach cut: a road bed out from the way in, into the hill or up onto a bank.
         {
-            PInt3 ent = inst.Layout.EntranceCell;
+            PInt3 ent = layout.EntranceCell;
             double ex = ox + ent.X + 0.5, ez = oz + ent.Z + 0.5;
             float ahead = bare.NaturalHeight(ex + outward.X * 24, ez + outward.Z * 24);
             float diff = ahead - bestPad;
@@ -628,16 +682,16 @@ public static partial class PoiSiting
 
         var gates = new List<PoiGate>();
         TInt3 W(PInt3 c) => new(ox + c.X, bestPad + c.Y, oz + c.Z);
-        gates.Add(new PoiGate("entrance", W(inst.Layout.EntranceCell), outward.X, outward.Z));
-        foreach (Marker m in inst.Markers.Where(m => m.Kind == "gate"))
+        gates.Add(new PoiGate("entrance", W(layout.EntranceCell), outward.X, outward.Z));
+        foreach (Marker m in layout.Extras.Markers.Where(m => m.Kind == "gate"))
             gates.Add(new PoiGate("gate", W(m.Cell), m.Note == "x" ? 1 : 0, m.Note == "z" ? 1 : 0));
-        foreach (Breach b in inst.Layout.Extras.Breaches)
+        foreach (Breach b in layout.Extras.Breaches)
             gates.Add(new PoiGate("breach", W(b.SurfaceCell), 0, 0));
-        PInt3 e = inst.Layout.EntranceCell;
-        return new PoiSite
+        PInt3 e = layout.EntranceCell;
+        return seated = new PoiSite
         {
             Name = family.Name, // the kind of place only: the layout's own name repeats across worlds and the state shows when you get there
-            Family = family, Instance = inst, Origin = origin, Footprint = footprint, Stamp = stamp,
+            Family = family, Layout = layout, State = state, Origin = origin, Footprint = footprint, Stamp = stamp,
             Recarve = Recarve, Siting = bestKind, CutFill = bestCut, Entrance = new TInt3(ox + e.X, bestPad + e.Y, oz + e.Z), Gates = gates, Extra = extra, HalfBuried = ruin,
         };
     }

@@ -40,7 +40,9 @@ public partial class PoiLayer : Node3D
         public int Way;
 
         /// <summary>How big it stands, m: the wider way across its grid (the pop-in log's measure).</summary>
-        public float Size => System.Math.Max(Site.Instance.Blocks.Size.X, Site.Instance.Blocks.Size.Z);
+        public float Size => System.Math.Max(Site.Layout.Blocks.Size.X, Site.Layout.Blocks.Size.Z);
+        /// <summary>A plain block of its footprint and height, until it has been built (PoiLayer.Tiers.cs).</summary>
+        public MeshInstance3D StandIn;
     }
 
     readonly List<Place> _places = new();
@@ -58,13 +60,25 @@ public partial class PoiLayer : Node3D
 
     /// <summary>The node drawn for a place, once built (null before): a game that stands a near place up itself hides this one's blocks.</summary>
     public Node3D NodeOf(PoiSite site) => _places.FirstOrDefault(p => p.Site == site)?.Node;
-    public bool Built => _building.Count == 0 && _places.All(p => p.Node != null);
+
+    /// <summary>Builds the places nearest first, off the main thread (null before a world).</summary>
+    public PoiBuilds Builds { get; private set; }
+
+    /// <summary>Within this of the focus a place must stand before the world counts as standing, m: the rest are built after, nearest first.</summary>
+    public float NearRadius = 760f;
+    Vector3 _focus;
+
+    /// <summary>Every place near the focus stands (drawn whole, or by distance, its far mesh in).</summary>
+    public bool Built => Tiered ? _places.Where(p => Away(p, _focus) < NearRadius).All(p => p.Node != null)
+        : _building.Count == 0 && _places.All(p => p.Node != null);
 
     public void Build(PlanetWorld world)
     {
         Clear();
         PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off; // places stand still; they only move by whole planets at a seam
         _world = world;
+        Builds = new PoiBuilds(world.Pois, world.Map.WidthMeters, world.Map.HeightMeters, world.Landing.X, world.Landing.Y);
+        _focus = new Vector3((float)world.Landing.X, 0f, (float)world.Landing.Y);
         // Every place state's block materials, and their fade copies, made now rather than at a first fade.
         foreach (float glow in new[] { 2.4f, 2.0f, 1.6f })
         {
@@ -86,8 +100,8 @@ public partial class PoiLayer : Node3D
 
     public static List<ChunkMesh> Mesh(PoiSite site)
     {
-        BlockGrid g = site.Instance.Blocks;
-        return Mesher.Build(g, site.Instance.Layout.Occupied, WalkableMesh.On(g.Min));
+        PoiInstance inst = site.Build();
+        return Mesher.Build(inst.Blocks, inst.Layout.Occupied, WalkableMesh.On(inst.Blocks.Min));
     }
 
     public override void _Process(double delta)
@@ -106,6 +120,8 @@ public partial class PoiLayer : Node3D
         _time += delta;
         Animate(_time);
         Vector3 camera = GetViewport().GetCamera3D()?.GlobalPosition ?? Vector3.Zero;
+        _focus = camera;
+        Builds?.Focus(camera.X, camera.Z);
         if (Tiered) TickTiers(camera);
         foreach (Place p in _places)
         {
@@ -368,6 +384,8 @@ public partial class PoiLayer : Node3D
         _midJobs.Clear();
         _blending.Clear();
         _tilesBlending.Clear();
+        Builds?.Dispose();
+        Builds = null;
         _world = null;
     }
 }

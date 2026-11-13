@@ -912,7 +912,7 @@ public partial class SurfaceTest
             }
             // The trees through its ruins: each the biome's own kind, standing on what's under it, clear of
             // every wall, and a real scatter instance with its collider; none on ground that grows no trees.
-            foreach (var (id, p) in w.Palette.Planted ?? new Dictionary<long, PlantedFlora>())
+            foreach (var (id, p) in w.Palette.Planted ?? new System.Collections.Concurrent.ConcurrentDictionary<long, PlantedFlora>())
             {
                 planted++;
                 if (!w.Flora.RulesOf(w.Palette.BiomeAt(p.X, p.Z)).Any(r => r.Kind == p.Kind)) { strangers++; notes.Add($"a {p.Kind} in {w.Palette.BiomeAt(p.X, p.Z)}"); }

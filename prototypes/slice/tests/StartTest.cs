@@ -219,7 +219,23 @@ public partial class StartTest : Node
             yield return 0;
             yield break;
         }
-        GD.Print($"  load: {watch.Elapsed.TotalSeconds:F1} s to the sleeper standing; {PlanetSurface.Poi.PoiSiting.LastPlanned} places laid out and spawned in {PlanetSurface.Poi.PoiSiting.LastLayoutMs:F0} ms (side by side), set down in {PlanetSurface.Poi.PoiSiting.LastSetDownMs:F0} ms");
+        GD.Print($"  load: {watch.Elapsed.TotalSeconds:F1} s to the sleeper standing; {PlanetSurface.Poi.PoiSiting.LastPlanned} places laid out in {PlanetSurface.Poi.PoiSiting.LastLayoutMs:F0} ms (side by side), set down in {PlanetSurface.Poi.PoiSiting.LastSetDownMs:F0} ms (seated in {PlanetSurface.Poi.PoiSiting.LastSeatMs:F0}); {game.Zone.Planet.Pois.Count(p => p.Built != null)} of {game.Zone.Planet.Pois.Count} built by then");
+        Check(PlanetSurface.Poi.PoiSite.UnaskedLoadBuilds == 0, $"{world}: nothing in the load built a place by reading it unasked ({PlanetSurface.Poi.PoiSite.UnaskedLoadBuilds})");
+        // The rest of the places are built after, nearest first, off the main thread: how long until every place in range stands, and the worst frame meanwhile.
+        if (game.Zone.Pois.Builds is { } builds)
+        {
+            var since = Stopwatch.StartNew();
+            double worst = 0;
+            ulong last = Time.GetTicksUsec();
+            while (builds.AllInRangeMs < 0 && since.Elapsed.TotalSeconds < 120)
+            {
+                yield return 0;
+                ulong now = Time.GetTicksUsec();
+                worst = Math.Max(worst, (now - last) / 1000.0);
+                last = now;
+            }
+            GD.Print($"  every place within {builds.Range:F0} m built {since.Elapsed.TotalSeconds:F1} s after standing ({game.Zone.Planet.Pois.Count(p => p.Built != null)} of {game.Zone.Planet.Pois.Count} places), worst frame meanwhile {worst:F1} ms");
+        }
         Check(game.WorldStanding, $"{world}: at waking everything round the start stands: {game.Zone.Infra.TileCount} tiles of ruins, wrecks and bridges, {game.Zone.Planet.Pois.Count} places");
         // The wrecks round the start are the tool's to strip: worked through, one comes apart, and stays gone.
         if (game.Zone.Planet.Infra.Wrecks.Count > 0 && game.Places.SalvageSites.FirstOrDefault() is Slice.Places.SalvageSite wreck)
