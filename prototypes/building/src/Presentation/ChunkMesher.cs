@@ -630,7 +630,7 @@ public static class ChunkMesher
             return new FaceLook(Rgb(ls.Color), ls.PackAccent(), Flags((Pattern)(int)p.Shape, 0, FaceTexture.Smooth, damage, true, 0, 0, true, wear, holed) | ((int)ls.Anim << LightSettings.AnimShift));
         }
         int stencil = p.Stencil >= '0' && p.Stencil <= '9' ? p.Stencil - '0' + 1 : 0;
-        return new FaceLook(Rgb(p.Base), p.Accent, Flags(p.Pattern, stencil, p.Texture, damage, false, t.Metal, p.Grime, true, wear, holed));
+        return new FaceLook(Rgb(p.Base), p.Accent, Flags(p.Pattern, stencil, t.Texture, damage, false, t.Metal, p.Grime, true, wear, holed));
     }
 
     /// <summary>
