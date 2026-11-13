@@ -1,7 +1,7 @@
-# Site plans: hand-authored landmarks, the Empyrion way. Each plan places its parts (buildings
-# from data/programs.txt, and yard features) in site cells, metres from the site origin; the
-# buildings' rooms are planned with the family variant's seed, so a landmark is always the same
-# place. Buildings face west (their way in is on their west side) unless turned with rot.
+# Site plans: the old hand-placed layouts, being replaced type by type by data/place-types.txt (what a
+# kind of place has and how its parts relate, planned fresh for every spawn; never positions). Each plan
+# here places its parts (buildings from data/programs.txt, and yard features) in site cells, metres from
+# the site origin. Buildings face west (their way in is on their west side) unless turned with rot.
 #
 #   site <id>
 #     style      the kit the yard and buildings use unless a part names its own
