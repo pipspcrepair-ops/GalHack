@@ -96,13 +96,34 @@ public partial class PlacePerf : Node
         if (_args.TryGetValue("state", out string st)) PoiSiting.ForceState = Enum.Parse<PoiState>(st, true);
         ProcessPhysicsPriority = 100;
         ProcessPriority = 1_000_000;
-        _game = new Game.Game { Interactive = false, SkipIntro = true, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), WorldChoice.Tested) };
-        AddChild(_game);
-        _drive = new Driver(_game);
+        // --places-at-load=1: every place built while the world loads, the old way. --compare-load=1: the old way, then the same world again with the place builder.
+        PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad = _args.ContainsKey("places-at-load") || _args.ContainsKey("compare-load");
+        NewGame(WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), WorldChoice.Tested));
         RenderingServer.ViewportSetMeasureRenderTime(GetViewport().GetViewportRid(), true);
         _clock.Start();
         _probe = new PlanetSurface.FrameProbe(this);
-        _run = Scenario().GetEnumerator();
+        _run = Runs().GetEnumerator();
+    }
+
+    void NewGame(WorldChoice world)
+    {
+        _game = new Game.Game { Interactive = false, SkipIntro = true, World = world };
+        AddChild(_game);
+        _drive = new Driver(_game);
+    }
+
+    IEnumerable<int> Runs()
+    {
+        GD.Print($"PERF mode: places {(PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad ? "built at load (old)" : "built after standing")}");
+        foreach (int x in Scenario()) yield return x;
+        if (!_args.ContainsKey("compare-load")) yield break;
+        WorldChoice world = _game.World;
+        _game.QueueFree();
+        for (int i = 0; i < 10; i++) yield return 0;
+        PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad = false;
+        NewGame(world);
+        GD.Print("PERF mode: places built after standing, the same world");
+        foreach (int x in Scenario()) yield return x;
     }
 
     public override void _PhysicsProcess(double delta)
@@ -210,6 +231,15 @@ public partial class PlacePerf : Node
         foreach (var s in zone.Planet.Pois.OrderBy(s => _game.Places.DistanceTo(s, _game.Survivor.WorldFeet)))
             GD.Print($"PERF site {s.Family.Id} '{s.Name}' {s.State} {_game.Places.DistanceTo(s, _game.Survivor.WorldFeet):F0} m, footprint {s.Footprint.Max.X - s.Footprint.Min.X}x{s.Footprint.Max.Z - s.Footprint.Min.Z}, {(s.Built is { } b ? $"blocks {b.Blocks.CountBlocks()}" : "not built yet")}");
         foreach (int x in Measure("start", 120)) yield return x;
+        // While the place builder works (at least as long as a stage, so a world built the old way is timed over the same window).
+        if (zone.Pois.Builds is { } builds)
+        {
+            Begin();
+            var since = Stopwatch.StartNew();
+            while ((_times.Count < Frames || builds.AllInRangeMs < 0 || zone.Pois.Unshown(builds.Range) > 0) && since.Elapsed.TotalSeconds < 120) yield return 0;
+            GD.Print($"PERF building: all built and drawn {since.Elapsed.TotalSeconds:F1} s after the start stage ({builds.Built} by the builder, {zone.Pois.Unshown(builds.Range)} still plain)");
+            End(PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad ? "building (old)" : "building");
+        }
         if (_args.ContainsKey("audit"))
         {
             foreach (int x in Audit()) yield return x;

@@ -8,7 +8,7 @@ using Planets.Gen;
 namespace PlanetSurface.Poi;
 
 /// <summary>
-/// Builds a world's places off the main thread, one at a time on a thread of its own below normal priority:
+/// Builds a world's places off the main thread, one at a time on a thread of its own:
 /// whatever was asked for first (the place the sleeper is heading into), then the nearest unbuilt place to the
 /// focus, out to <see cref="Range"/>. A world loads with only its places' layouts; this is where they are spawned
 /// and fitted to the world (<see cref="PoiSite.Build"/>), and each comes out the same from its seed whenever it is.
@@ -26,8 +26,8 @@ public sealed class PoiBuilds : IDisposable
     readonly object _focusLock = new();
     readonly Stopwatch _clock = Stopwatch.StartNew();
 
-    /// <summary>How far out from the focus places are built before anyone asks, m (the far view's reach).</summary>
-    public float Range = 3000f;
+    /// <summary>How far out from the focus places are built before anyone asks, m: as far as places are drawn (the layer sets it to the camera's far plane).</summary>
+    public float Range = 12000f;
 
     /// <summary>While this says so, nothing is built unasked: a game standing a place up (a frame at a time) asks for quiet, as building's allocations would pause it.</summary>
     public Func<bool> Hold;
@@ -42,7 +42,9 @@ public sealed class PoiBuilds : IDisposable
         _width = width;
         _height = height;
         (_fx, _fz) = (focusX, focusZ);
-        _thread = new Thread(Run) { Name = "Place builds", IsBackground = true, Priority = ThreadPriority.BelowNormal };
+        // Normal priority, one thread: below normal, a busy machine starved it, and every garbage collection waited on it
+        // to reach a safe point (a 138 ms pause in one frame). One thread of sixteen costs the frame nothing.
+        _thread = new Thread(Run) { Name = "Place builds", IsBackground = true };
         _thread.Start();
     }
 

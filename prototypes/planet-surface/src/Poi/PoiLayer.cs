@@ -119,9 +119,15 @@ public partial class PoiLayer : Node3D
         if (_world == null) return;
         _time += delta;
         Animate(_time);
-        Vector3 camera = GetViewport().GetCamera3D()?.GlobalPosition ?? Vector3.Zero;
+        Camera3D eye = GetViewport().GetCamera3D();
+        Vector3 camera = eye?.GlobalPosition ?? Vector3.Zero;
         _focus = camera;
-        Builds?.Focus(camera.X, camera.Z);
+        if (Builds != null)
+        {
+            Builds.Focus(camera.X, camera.Z);
+            // A place is drawn as far as the camera sees (its far mesh, or its plain block till built): built out to there.
+            if (eye != null) Builds.Range = eye.Far;
+        }
         if (Tiered) TickTiers(camera);
         foreach (Place p in _places)
         {
