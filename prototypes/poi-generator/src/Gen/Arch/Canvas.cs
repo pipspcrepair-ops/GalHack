@@ -102,6 +102,8 @@ public sealed class Canvas
     public readonly List<Doorway> Doorways = new();
     public readonly List<Slot> Slots = new();
     public readonly LayoutExtras X = new();
+    /// <summary>The tech level it is built at, when the world says (high tech plans rooms three to four times larger: rule P2).</summary>
+    public TechLevel? Tech;
     public readonly List<(int A, int B)> Edges = new();
     public Int3 EntranceCell;
     public Dir EntranceFacing = Dir.West;

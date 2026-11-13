@@ -632,7 +632,9 @@ public sealed partial class Building
     void Partition(Plan plan, Rng rng, string pattern)
     {
         var K = plan.K;
-        int maxW = pattern == "hall" ? 22 : 11, maxD = pattern == "hall" ? 18 : 9, maxA = pattern == "hall" ? 300 : 84;
+        // High tech plans its rooms three to four times larger (rule P2: a median near 90 m2, 6 m across and more).
+        bool high = C.Tech == TechLevel.High;
+        int maxW = pattern == "hall" ? 22 : high ? 16 : 11, maxD = pattern == "hall" ? 18 : high ? 13 : 9, maxA = pattern == "hall" ? 300 : high ? 190 : 84;
         var pieces = new List<List<(int x, int z)>>();
         foreach (var comp in Components(K, Free))
             SplitInto(comp, pieces, K, rng, maxW, maxD, maxA);
