@@ -6,15 +6,16 @@ namespace GalHack.Structures;
 
 public enum Pattern : byte { None, Stripes, Chevrons, Checker, Hazard }
 
-/// <summary>The surface finish under the paint: panel seams, plain, riveted plates or ribs.</summary>
+/// <summary>A device part's own surface finish: panel seams, plain, riveted plates or ribs. Armour never takes one: its surface is its plating's.</summary>
 public enum FaceTexture : byte { Panel, Smooth, Plates, Ribbed }
 
 /// <summary>
-/// What one face looks like: a base colour, an accent colour for the pattern and stencil, a
-/// surface texture and a grime level (0 clean to 3 filthy). Colours are 0xRRGGBB. A stencil is
-/// a character ('0'..'9') or 0 for none. Paint is a value: identical paints share one palette slot.
+/// A coat over a face's plating: a base colour, an accent colour for the pattern and stencil
+/// and a grime level (0 clean to 3 filthy). The plating keeps the surface (its plates, seams and
+/// bevels shade the coat). Colours are 0xRRGGBB. A stencil is a character ('0'..'9') or 0 for
+/// none. Paint is a value: identical paints share one palette slot.
 /// </summary>
-public readonly record struct Paint(uint Base, uint Accent, Pattern Pattern, FaceTexture Texture, byte Stencil, byte Grime)
+public readonly record struct Paint(uint Base, uint Accent, Pattern Pattern, byte Stencil, byte Grime)
 {
     /// <summary>Set for glowing paint: the colour, second colour, mode, speed and offset it lights with (the paint's Base is ignored for the glow). A lit paint has no pattern or stencil.</summary>
     public LightSettings? Lamp { get; init; }
@@ -23,11 +24,11 @@ public readonly record struct Paint(uint Base, uint Accent, Pattern Pattern, Fac
 
     /// <summary>Glowing paint: a face, strip, panel or border lit with these settings.</summary>
     public static Paint Lit(LampShape shape, LightSettings settings) =>
-        new(settings.Color, DefaultAccent, Pattern.None, FaceTexture.Smooth, 0, 0) { Lamp = settings, Shape = shape };
+        new(settings.Color, DefaultAccent, Pattern.None, 0, 0) { Lamp = settings, Shape = shape };
 
     public const uint DefaultAccent = 0x2b2d42;
 
-    public static Paint Solid(uint color) => new(color, DefaultAccent, Pattern.None, FaceTexture.Panel, 0, 0);
+    public static Paint Solid(uint color) => new(color, DefaultAccent, Pattern.None, 0, 0);
 
     public Paint WithPattern(Pattern p, uint accent) => this with { Pattern = p, Accent = accent };
     public Paint WithStencil(char c, uint accent) => this with { Stencil = (byte)c, Accent = accent };
@@ -44,8 +45,8 @@ public readonly record struct Paint(uint Base, uint Accent, Pattern Pattern, Fac
 
 /// <summary>
 /// A structure's paints. Faces store a slot number, so a block costs 12 bytes of paint however
-/// fancy its livery. Slot 0 means unpainted: the face shows its material's own colour, which is
-/// why upgrading steel to hardened changes the look of bare faces but never of painted ones.
+/// fancy its livery. Slot 0 means unpainted: the face shows its plating's own colour. Painted or
+/// not, the plating's surface shows, so upgrading iron to hardened changes the plates of every face.
 /// </summary>
 public sealed class PaintPalette
 {

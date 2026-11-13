@@ -233,56 +233,80 @@ void rivet(vec2 p, vec2 c, float r, float k, inout float shade, inout vec2 slope
     slope += inside * rel / max(r, 1e-4) * 0.9 * k;
 }
 
-// The nearest of n rivets a side, on a frame inset half a pitch from the block's edge.
-vec2 rivet_frame(vec2 f, float n) {
-    float inset = 0.5 / n;
-    vec2 g = (floor(f * n) + 0.5) / n;
-    vec2 a = vec2(f.x < 0.5 ? inset : 1.0 - inset, g.y), b = vec2(g.x, f.y < 0.5 ? inset : 1.0 - inset);
-    return length(f - a) < length(f - b) ? a : b;
-}
+// ---- Platings -----------------------------------------------------------------------------
+// Each plating has its own surface, bare or under paint, told apart by the shape of its plates:
+// polymer is soft and moulded, iron small riveted plates, hardened large plates welded at the edge,
+// combat thick stepped slabs, concrete cast panels, precursor alloy has no seams at all. Machines'
+// own panels (metal 0) are the plain seam and screws.
 
-// Steel, and a machine's panels: a seam and soft bevel round each block, its own tone, a faint
-// brushed grain, and rivets round the edge (steel) or a screw in each corner (a machine).
-void steel_detail(vec2 uv, vec2 f, float seed, bool riveted, float fine, float coarse, inout float shade, inout vec2 slope) {
+// A machine's panel: a seam and soft bevel round each block, its own tone, a faint brushed grain, a screw in each corner.
+void machine_detail(vec2 uv, vec2 f, float seed, float fine, float coarse, inout float shade, inout vec2 slope) {
     float edge = min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y));
     shade *= mix(1.0, mix(0.55, 1.0, aastep(0.016, edge)), coarse);
     bevel(f, vec2(1.0), 0.05, 0.45 * coarse, slope);
     shade *= 1.0 + (seed - 0.5) * 0.07 * coarse;
     shade *= 1.0 + (noise3(vec3(uv.x * 3.0, uv.y * 110.0, seed * 17.0)) - 0.5) * 0.08 * fine;
-    if (riveted) rivet(f, rivet_frame(f, 8.0), 0.016, fine, shade, slope);
-    else rivet(f, vec2(f.x < 0.5 ? 0.055 : 0.945, f.y < 0.5 ? 0.055 : 0.945), 0.014, fine, shade, slope);
+    rivet(f, vec2(f.x < 0.5 ? 0.055 : 0.945, f.y < 0.5 ? 0.055 : 0.945), 0.014, fine, shade, slope);
 }
 
-// Hardened: two heavy plates a block, wide bevelled seams, an armour bolt in each plate's corners.
+// Polymer: one moulded piece, a soft rounded edge, a faint mould line, an ejector-pin dimple, fine stipple. No plates.
+void polymer_detail(vec2 uv, vec2 f, float seed, float fine, float coarse, inout float shade, inout vec2 slope) {
+    float edge = min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y));
+    shade *= mix(1.0, mix(0.82, 1.0, aastep(0.01, edge)), coarse);
+    bevel(f, vec2(1.0), 0.17, 0.4 * coarse, slope);
+    vec2 h = f - 0.5;
+    float pin = 1.0 - aastep(0.035, length(h));
+    shade *= mix(1.0, 0.8, pin * fine);
+    slope -= pin * h / 0.035 * 0.35 * fine;
+    shade *= 1.0 + (noise3(vec3(uv * 40.0, seed * 9.0)) - 0.5) * 0.07 * fine;
+}
+
+// Iron: small plates, a quarter block each, lapped in staggered rows, a rivet at each plate's corners.
+void iron_detail(vec2 uv, float seed, float fine, inout float shade, inout vec2 slope) {
+    float row = floor(uv.y * 4.0);
+    float across = uv.x * 4.0 + mod(row, 2.0) * 0.5;
+    vec2 q = vec2(fract(across), fract(uv.y * 4.0));
+    float e = min(min(q.x, 1.0 - q.x), min(q.y, 1.0 - q.y)) * 0.25;
+    shade *= mix(1.0, mix(0.5, 1.0, aastep(0.005, e)), fine);
+    bevel(q, vec2(1.0), 0.16, 0.5 * fine, slope);
+    shade *= 1.0 + (hash3(vec3(floor(across), row, seed * 9.0)) - 0.5) * 0.12 * fine;
+    rivet(q, vec2(q.x < 0.5 ? 0.17 : 0.83, q.y < 0.5 ? 0.17 : 0.83), 0.075, fine, shade, slope);
+}
+
+// Hardened: one big plate a block, its edge a rippled weld bead with a dark gap beside it, no fixings.
 void hardened_detail(vec2 uv, vec2 f, float seed, float fine, float coarse, inout float shade, inout vec2 slope) {
-    vec2 q = vec2(f.x, fract(f.y * 2.0) * 0.5);
-    vec2 size = vec2(1.0, 0.5);
-    float e = min(min(q.x, size.x - q.x), min(q.y, size.y - q.y));
-    shade *= mix(1.0, mix(0.42, 1.0, aastep(0.013, e)), coarse);
-    bevel(q, size, 0.085, 0.7 * coarse, slope);
-    shade *= 1.0 + (hash3(vec3(floor(uv.x), floor(uv.y * 2.0), seed * 9.0)) - 0.5) * 0.09 * coarse;
-    rivet(q, vec2(q.x < 0.5 ? 0.085 : 0.915, q.y < 0.25 ? 0.085 : 0.415), 0.026, fine, shade, slope);
-    shade *= 1.0 + (noise3(vec3(uv * 9.0, seed * 5.0)) - 0.5) * 0.08 * fine;
+    float ex = min(f.x, 1.0 - f.x), ey = min(f.y, 1.0 - f.y);
+    float e = min(ex, ey);
+    float along = ex < ey ? f.y : f.x;
+    shade *= mix(1.0, mix(0.35, 1.0, aastep(0.012, e)), coarse);
+    float bead = (1.0 - aastep(0.1, e)) * aastep(0.012, e);
+    float ripple = 0.5 + 0.5 * sin(along * 150.0 + seed * 6.0);
+    shade *= 1.0 + bead * (ripple - 0.4) * 0.8 * coarse;
+    bevel(f, vec2(1.0), 0.1, 1.3 * coarse, slope);
+    shade *= 1.0 + (hash3(vec3(floor(uv), seed * 9.0)) - 0.5) * 0.1 * coarse;
+    shade *= 1.0 + (noise3(vec3(uv * 11.0, seed * 5.0)) - 0.5) * 0.08 * fine;
 }
 
-// Combat: half-height plates laid like bricks, deep bevels, a big bolt at each plate's ends.
+// Combat: thick slabs, half a block tall, laid like bricks; each a bevelled rim, a raised stepped face and a big bolt at both ends.
 void combat_detail(vec2 uv, float seed, float fine, float coarse, inout float shade, inout vec2 slope) {
     float row = floor(uv.y * 2.0);
     float shift = mod(row, 2.0) * 0.5;
     vec2 q = vec2(fract(uv.x + shift), fract(uv.y * 2.0) * 0.5);
     vec2 size = vec2(1.0, 0.5);
     float e = min(min(q.x, size.x - q.x), min(q.y, size.y - q.y));
-    shade *= mix(1.0, mix(0.3, 1.0, aastep(0.016, e)), coarse);
-    bevel(q, size, 0.11, 0.9 * coarse, slope);
+    shade *= mix(1.0, mix(0.22, 1.0, aastep(0.018, e)), coarse);
+    bevel(q, size, 0.14, 1.1 * coarse, slope);
+    shade *= mix(1.0, mix(0.9, 1.08, aastep(0.15, e)), coarse);
     shade *= 1.0 + (hash3(vec3(floor(uv.x + shift), row, seed * 9.0)) - 0.5) * 0.1 * coarse;
-    rivet(q, vec2(q.x < 0.5 ? 0.1 : 0.9, 0.25), 0.034, fine, shade, slope);
+    rivet(q, vec2(q.x < 0.5 ? 0.2 : 0.8, 0.25), 0.05, fine, shade, slope);
     shade *= 1.0 + (noise3(vec3(uv * 7.0, seed * 3.0)) - 0.5) * 0.1 * fine;
 }
 
-// Concrete: a fine cast joint, pour lines along walls, form-tie holes and aggregate speckle over a soft mottle.
+// Concrete: cast panels a block square, a chamfered joint, pour lines along walls, form-tie holes, aggregate speckle over a soft mottle.
 void concrete_detail(vec2 uv, vec2 f, float wall, float fine, float coarse, inout float shade, inout vec2 slope) {
     float edge = min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y));
     shade *= mix(1.0, mix(0.7, 1.0, aastep(0.01, edge)), coarse);
+    bevel(f, vec2(1.0), 0.06, 0.9 * coarse, slope);
     shade *= 1.0 + (noise3(vec3(uv * 1.3, 4.1)) - 0.5) * 0.12;
     float lift = uv.y * 3.0 + (noise3(vec3(uv.x * 2.0, 0.0, 7.3)) - 0.5) * 0.14;
     float pour = 1.0 - aastep(0.035, 1.0 - abs(fract(lift) - 0.5) * 2.0);
@@ -293,6 +317,19 @@ void concrete_detail(vec2 uv, vec2 f, float wall, float fine, float coarse, inou
     slope -= hole * h / 0.026 * 0.6 * fine;
     float g = hash3(vec3(floor(uv * 72.0), 2.7));
     shade *= 1.0 + (g > 0.9 ? 0.09 : g < 0.08 ? -0.09 : 0.0) * fine;
+}
+
+// Precursor alloy: no seams, no fixings. Flowing contour ridges that never repeat, leaning the surface and tinting it cold.
+float flow_ridge(vec2 uv, float plane) {
+    vec3 q = vec3(uv * 0.8, plane * 0.37);
+    return 0.5 + 0.5 * sin((0.6 * noise3(q) + 0.4 * noise3(q * 2.03 + 3.1)) * 26.0);
+}
+void alien_detail(vec2 uv, float plane, float coarse, inout float shade, inout vec2 slope, inout vec3 tint) {
+    float h = flow_ridge(uv, plane);
+    float e = 0.03;
+    slope += vec2(flow_ridge(uv + vec2(e, 0.0), plane) - h, flow_ridge(uv + vec2(0.0, e), plane) - h) / e * 0.22 * coarse;
+    shade *= mix(1.0, 0.8 + 0.3 * h, coarse);
+    tint = mix(vec3(1.0), vec3(0.9, 1.05, 1.08), h * coarse);
 }
 
 // Metal dents and scorches: scratches through the paint, then bare metal and cracks, then soot and hot tears.
@@ -422,20 +459,20 @@ void fragment() {
     }
     col = to_linear(col);
 
-    // Surface texture: on plain panels, the material's own detail.
+    // Surface: the plating's own detail, bare or under paint (a part's finish may pick another).
     float edge = min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y));
     float shade = 1.0;
     vec2 slope = vec2(0.0);
     float seed0 = hash3(vec3(floor(uv), floor(v_plane * 3.0 + 0.5)));
+    vec3 tint = vec3(1.0);
     if (tex == 0) {
         if (wear == 1) concrete_detail(uv, f, v_wall, fine, coarse, shade, slope);
-        else if (wear == 2) {  // alien alloy: a seam round each block, no fixings
-            shade *= mix(0.5, 1.0, aastep(0.022, edge));
-            shade *= 0.93 + 0.07 * smoothstep(0.02, 0.14, edge);
-        }
+        else if (wear == 2) alien_detail(uv, v_plane, coarse, shade, slope, tint);
+        else if (wear == 3) polymer_detail(uv, f, seed0, fine, coarse, shade, slope);
         else if (metal == 2) hardened_detail(uv, f, seed0, fine, coarse, shade, slope);
         else if (metal == 3) combat_detail(uv, seed0, fine, coarse, shade, slope);
-        else steel_detail(uv, f, seed0, metal == 1, fine, coarse, shade, slope);
+        else if (metal == 1) iron_detail(uv, seed0, fine, shade, slope);
+        else machine_detail(uv, f, seed0, fine, coarse, shade, slope);
     } else if (tex == 2) {     // plates: half-block plates with rivets
         vec2 h = fract(uv * 2.0);
         float e2 = min(min(h.x, 1.0 - h.x), min(h.y, 1.0 - h.y));
@@ -447,7 +484,11 @@ void fragment() {
         slope.x += sin(uv.x * 25.1327) * 0.35 * coarse;
         shade *= mix(0.5, 1.0, aastep(0.022, edge));
     }
-    col *= shade;
+    // A coat over the plating: the plates' relief shades it. A dark coat lets a little of the plating's tone through (a lift
+    // that seams cut into), and the bevels catch the light, so the plates read at any colour.
+    float dark = 1.0 - smoothstep(0.02, 0.3, luma(col));
+    col *= shade * tint;
+    if (painted == 1 && glow == 0) col += dark * (0.012 * shade + 0.05 * clamp(length(slope), 0.0, 1.0));
     float gm = 1.0;
     if (lampPaint) {
         // Glowing paint: the whole face, a strip across it, an inset panel or a border; the rest is dark housing.
@@ -483,10 +524,10 @@ void fragment() {
     }
 
     ALBEDO = col;
-    ROUGHNESS = mix(painted == 1 ? 0.6 : mix(0.72, 0.38, float(metal) / 3.0), 0.95, grit);
+    ROUGHNESS = mix(painted == 1 ? mix(0.64, 0.5, float(metal) / 3.0) : mix(0.72, 0.38, float(metal) / 3.0), 0.95, grit);
     METALLIC = (painted == 1 || glow == 1 ? 0.04 : float(metal) * 0.17) * (1.0 - grit);
     if (glow == 0 && (slope.x != 0.0 || slope.y != 0.0))
-        NORMAL = normalize(NORMAL + (v_right * slope.x + v_up * slope.y) * 0.3);
+        NORMAL = normalize(NORMAL + (v_right * slope.x + v_up * slope.y) * (painted == 1 ? 0.42 : 0.3));
     if (glow == 1) {
         vec3 lit = base;
         float k = 1.0;
