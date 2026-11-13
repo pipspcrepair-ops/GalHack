@@ -413,9 +413,26 @@ public sealed class Bunker
     /// <summary>What stands on or by a bunker of this many steps, given its frame (a point on its axis, by z): the planet lays it all out before the bunker has a site, so the search asks.</summary>
     static IEnumerable<string> Crowding(SurfaceZone zone, Func<float, Vector3> onAxis, int steps)
     {
-        float z0 = StepZ(steps) - 5f, z1 = RoomZ * Cell + 0.25f;
-        Vector3 mid = onAxis((z0 + z1) * 0.5f);
-        return zone.Planet.Occupants(mid.X, mid.Z, MathF.Sqrt(MathF.Pow(RoomX * Cell + 0.25f, 2) + MathF.Pow((z1 - z0) * 0.5f, 2)) + ClearBy);
+        var (mid, radius) = Circle(onAxis, steps);
+        return zone.Planet.Occupants(mid.X, mid.Z, radius);
+    }
+
+    /// <summary>The circle round the chamber, the stairwell and 5 m of the way out (and the sky over them), with the margin.</summary>
+    static (Vector3 Mid, float Radius) Circle(Func<float, Vector3> onAxis, int steps)
+    {
+        float z0 = StepZ(steps) - 5f, z1 = RoomZ * Cell + Floor;
+        return (onAxis((z0 + z1) * 0.5f), MathF.Sqrt(MathF.Pow(RoomX * Cell + Floor, 2) + MathF.Pow((z1 - z0) * 0.5f, 2)) + ClearBy);
+    }
+
+    /// <summary>
+    /// Keeps the site's circle clear of everything the streaming ground and the world's dressing set down, whatever its reach:
+    /// a trunk, a crown, a boulder or a stall whose reach comes into it is never placed (see <c>PlanetTerrainSource.Reserved</c>).
+    /// Before any ground streams in, and so for every chunk built or rebuilt after.
+    /// </summary>
+    public static void Reserve(SurfaceZone zone, Site site)
+    {
+        var (mid, radius) = Circle(z => (site.Origin + MathX.Rotate(MathX.Yaw(site.Heading), new N.Vector3(0f, 0f, z))).ToGodot(), site.Steps);
+        zone.Planet.Source.Reserves = new[] { ((double)mid.X, (double)mid.Z, radius) };
     }
 
     /// <summary>The room's floor height and the steps to the surface for a spot and a heading, if the ground there will do.</summary>
@@ -576,7 +593,6 @@ public sealed class Bunker
         bunker.Ruin = Vessel.SpawnBase(zone, s, site.Origin, site.Heading);
         bunker.Ruin.IsRuin = true;
         WalkableWays(zone, site, out _, bunker.Ways);
-        bunker.ClearWayOut(zone);
         bunker.Furnish(zone);
         return bunker;
     }
@@ -637,23 +653,6 @@ public sealed class Bunker
         float tread = site.Steps * Cell + Floor;
         Box(new N.Vector3(lo, tread, StepZ(site.Steps) - 5f), new N.Vector3(hi, GroundOver(zone, site, site.Steps) - floorY + 3f, StepZ(site.Steps)));
         return cells;
-    }
-
-    /// <summary>
-    /// Nothing stands in the doorway: every plant and rock within a few metres of the way out goes, for
-    /// good, by the felling rule, so a trunk can't block a sleeper's first steps however thick the woods.
-    /// </summary>
-    void ClearWayOut(SurfaceZone zone)
-    {
-        var planet = zone.Planet;
-        foreach (Vector3 at in new[] { StairTop, Outside })
-            for (float dz = -10f; dz <= 10f; dz += 2f)
-            for (float dx = -10f; dx <= 10f; dx += 2f)
-            {
-                if (dx * dx + dz * dz > 100f) continue;
-                long id = PlanetSurface.Terrain.FarBuilder.ScatterIdAt(Planets.Gen.Mathx.WrapX(at.X + dx, planet.Width), Planets.Gen.Mathx.Wrap(at.Z + dz, planet.Height));
-                if (planet.Felled.Add(id)) zone.Streamer.Fell(id);
-            }
     }
 
     /// <summary>The cells the dig could not take (bedrock, anchors): the bunker's rooms must be clear of all of them.</summary>
