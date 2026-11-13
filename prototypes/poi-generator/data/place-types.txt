@@ -23,8 +23,8 @@
 #                 round a..b                 round everything, that far out
 #
 # Scaled to our worlds (owner, 14 Nov: "airports don't have to be realistic size, they can be scaled down to our
-# world. 250 m runways are fine"): the lengths between the parts keep a real airport's proportions (ICAO Annex 14 and
-# FAA AC 150/5300-13 for runway, taxiway offset, apron and approach lighting), scaled to a 200 to 350 m runway; what a
+# world. 250 m runways are fine", then "a 500m runway is fine"): the lengths between the parts keep a real airport's proportions (ICAO Annex 14 and
+# FAA AC 150/5300-13 for runway, taxiway offset, apron and approach lighting), scaled to a 400 to 600 m runway; what a
 # body or a craft uses stays true size. The biggest craft an airfield takes is a Small-class flight vessel, about 30 m
 # across: runways 30 m wide, taxiways 15, aprons twice its span deep, hangar doors over 30 m wide; rooms, doors, ceilings
 # and stairs at a person's size.
@@ -33,18 +33,18 @@ type airport
   name Airport
   tech mid high
   share 0.05
-  part runway   surface tarmac   len 200..350 w 30 shoulder 5
-  part taxiway  surface tarmac   w 15 along runway gap 45..60
-  part link     surface tarmac   w 15 count 2..3 between runway taxiway
-  part apron    surface concrete len 120..200 depth 60..90 beside taxiway away runway
-  part terminal building terminal len 40..70 depth 30..36 h 10..14 concourse 6 beside apron away taxiway faces apron
-  part tower    building control_tower len 8..10 depth 8..10 h 15..22 cab 5..7 beside apron away taxiway near terminal 10..60 sees runway
+  part runway   surface tarmac   len 400..600 w 30 shoulder 5
+  part taxiway  surface tarmac   w 15 along runway gap 60..80
+  part link     surface tarmac   w 15 count 2..4 between runway taxiway
+  part apron    surface concrete len 200..320 depth 70..100 beside taxiway away runway
+  part terminal building terminal len 60..100 depth 30..40 h 10..14 concourse 6 beside apron away taxiway faces apron
+  part tower    building control_tower len 8..10 depth 8..10 h 18..26 cab 5..7 beside apron away taxiway near terminal 10..100 sees runway
   part hangar   building hangar count 1..3 len 40..48 depth 30..40 h 16..20 beside apron away taxiway faces apron gap 0..6
-  part fuel     tanks count 1..3 r 3..5 h 5..8 beside taxiway away runway far terminal 60..
-  part carpark  surface tarmac   len 30..60 depth 20..40 beside terminal away apron gap 6..12
+  part fuel     tanks count 2..3 r 3..5 h 5..8 beside taxiway away runway far terminal 100..
+  part carpark  surface tarmac   len 50..90 depth 30..50 beside terminal away apron gap 6..12
   part access   road tarmac      w 7..8 from carpark
-  part lights   lights           len 60..120 ends runway
-  part fence    fence            h 2..3 round 15..30
+  part lights   lights           len 100..200 ends runway
+  part fence    fence            h 2..3 round 20..40
 
 # Low tech: an airstrip scaled down again in the same proportions: an earth strip, a short gravel taxiway to a small
 # hard standing, a hangar, a lookout, a fuel dump off to one side.
@@ -52,14 +52,14 @@ type airstrip
   name Airstrip
   tech low
   share 0.03
-  part runway   surface dirt     len 120..200 w 18 shoulder 3
-  part taxiway  surface gravel   w 10 along runway gap 30..40
+  part runway   surface dirt     len 240..360 w 18 shoulder 3
+  part taxiway  surface gravel   w 10 along runway gap 35..45
   part link     surface gravel   w 10 count 1..2 between runway taxiway
-  part apron    surface gravel   len 50..80 depth 30..50 beside taxiway away runway
+  part apron    surface gravel   len 70..110 depth 35..55 beside taxiway away runway
   part terminal building terminal len 16..24 depth 12..16 h 4..6 beside apron away taxiway faces apron
-  part tower    building control_tower len 6..8 depth 6..8 h 8..12 cab 4..5 beside apron away taxiway near terminal 6..40 sees runway
+  part tower    building control_tower len 6..10 depth 6..10 h 8..14 cab 4..5 beside apron away taxiway near terminal 6..40 sees runway
   part hangar   building hangar count 1 len 32..36 depth 24..30 h 10..12 beside apron away taxiway faces apron gap 0..4
-  part fuel     tanks count 1..2 r 2..3 h 3..5 beside taxiway away runway far terminal 30..
+  part fuel     tanks count 1..2 r 2..3 h 3..5 beside taxiway away runway far terminal 50..
   part carpark  surface dirt     len 15..30 depth 10..20 beside terminal away apron gap 4..8
   part access   road dirt        w 4..6 from carpark
   part fence    fence            h 1..2 round 10..20
@@ -77,7 +77,7 @@ type starport
   tech high
   class a
   share 0.05
-  part pads     pads concrete count 4..6 side 110..130 apron 20..25 gap 80..120
+  part pads     pads concrete count 3..5 side 110..130 apron 20..25 gap 80..120
   part taxiway  surface concrete w 40 along pads gap 100..120
   part link     surface concrete w 40 between pads taxiway
   part apron    surface concrete len 350..500 depth 140..180 beside taxiway away pads
