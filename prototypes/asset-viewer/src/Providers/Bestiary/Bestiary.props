@@ -8,7 +8,7 @@
     <Compile Include="$(ProtoRoot)terrain-digging\src\Terrain\**\*.cs" />
     <Compile Include="$(ProtoRoot)planet-generator\src\Gen\**\*.cs" />
     <Compile Include="$(ProtoRoot)planet-generator\src\Look\**\*.cs" />
-    <!-- The castaway's figure: the slice's own suited body on the people's rig. -->
+    <!-- The sleeper's figure: the slice's own suited body on the people's rig. -->
     <Compile Include="$(ProtoRoot)slice\src\Player\CharacterModel.cs" />
   </ItemGroup>
 </Project>

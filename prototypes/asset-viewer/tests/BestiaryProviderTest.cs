@@ -66,7 +66,7 @@ public partial class BestiaryProviderTest : Node
             Check(kind.Body == "person" ? Has($"People|kind/{id}") : Has($"Bestiary|kind/{id}"), $"signature kind {id}");
         foreach (PersonRole role in Enum.GetValues<PersonRole>()) { Check(Has($"People|role/{role.ToString().ToLowerInvariant()}"), $"person role {role}"); if (role != PersonRole.Child) Check(Has($"People|husk/{role.ToString().ToLowerInvariant()}"), $"husk of {role}"); }
         foreach (string prop in ZooPeople.Props(data)) Check(Has($"People|held/{prop}"), $"held {prop}");
-        Check(Has("People|castaway"), "the castaway");
+        Check(Has("People|sleeper"), "the sleeper");
         foreach (ClimateBand b in Enum.GetValues<ClimateBand>()) Check(Has($"People|outfits/{b.ToString().ToLowerInvariant()}"), $"outfits for {b}");
 
         GD.Print("== every entry builds, two seeds and rolled options");

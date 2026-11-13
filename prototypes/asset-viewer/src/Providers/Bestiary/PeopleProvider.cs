@@ -9,7 +9,7 @@ namespace AssetViewer.Providers;
 /// <summary>
 /// The people of the game, derived from its tables: every job, the climates and their outfits, what a
 /// world's story and era put on them, the alien folk by covering and the Vharn, the world's own kinds,
-/// what they carry and how it is held, the Husks, and the castaway. They stand on the people's own rig
+/// what they carry and how it is held, the Husks, and the sleeper. They stand on the people's own rig
 /// (see <see cref="PersonStage"/>), so the animations are the ones a town's people have.
 /// </summary>
 public sealed partial class PeopleProvider : IAssetProvider
@@ -184,8 +184,8 @@ public sealed partial class PeopleProvider : IAssetProvider
             };
         }
 
-        // ---- The castaway -------------------------------------------------------------------------------------------------------------
-        yield return new AssetEntry { Id = "castaway", Group = "Survivors", Name = "The castaway", Build = _ => new CastawayStage() };
+        // ---- The sleeper -------------------------------------------------------------------------------------------------------------
+        yield return new AssetEntry { Id = "sleeper", Group = "Survivors", Name = "The sleeper", Build = _ => new SleeperStage() };
     }
 
     static AssetOption Opt(string name, string[] values, bool rollable = false, int def = 0) => new() { Name = name, Values = values, Default = def, Rollable = rollable };

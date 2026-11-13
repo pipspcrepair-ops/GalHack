@@ -7,11 +7,11 @@ using Wildlife;
 namespace AssetViewer.Providers;
 
 /// <summary>
-/// The castaway as the slice draws and animates him: the suited figure on the people's own rig, driven
+/// The sleeper as the slice draws and animates him: the suited figure on the people's own rig, driven
 /// by the slice's <see cref="CharacterModel.Drive"/> with the walker's motion, so walking, running,
 /// crouching, the jetpack, a fall, a swim, a ladder, the bike's seat and the gesture wheel are all its real poses.
 /// </summary>
-sealed partial class CastawayStage : AssetInstance, IStageProbe
+sealed partial class SleeperStage : AssetInstance, IStageProbe
 {
     readonly Node3D _figure;
     readonly List<string> _anims = new()
@@ -23,11 +23,11 @@ sealed partial class CastawayStage : AssetInstance, IStageProbe
     readonly Vector3[] _at = new Vector3[70];
     string _anim = "";
     float _t, _acc, _speed = 1f, _walked;
-    CastawayMotion _m;
+    SleeperMotion _m;
     PlayerGesture? _gesture;
     float _since;
 
-    public CastawayStage()
+    public SleeperStage()
     {
         _figure = CharacterModel.Build();
         AddChild(_figure);
@@ -59,7 +59,7 @@ sealed partial class CastawayStage : AssetInstance, IStageProbe
         CurrentAnimation = anim;
         _t = 0f;
         _since = 0f;
-        _m = new CastawayMotion { Grounded = true };
+        _m = new SleeperMotion { Grounded = true };
         _gesture = null;
         switch (anim)
         {

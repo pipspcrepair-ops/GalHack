@@ -71,9 +71,9 @@ public partial class ViewerTest
     IEnumerable<(string Name, AssetInstance Stage, Func<AssetInstance> Rebuild)> StagesToCheck(AssetRegistry registry)
     {
         AssetEntry Find(string key) => registry.Find(key) ?? throw new InvalidOperationException("no asset " + key);
-        AssetEntry person = registry.Entries.First(e => e.Key.StartsWith("People|role/", StringComparison.Ordinal)), castaway = Find("People|castaway");
+        AssetEntry person = registry.Entries.First(e => e.Key.StartsWith("People|role/", StringComparison.Ordinal)), sleeper = Find("People|sleeper");
         yield return ("person", person.Build(new BuildRequest { Seed = 5 }), () => person.Build(new BuildRequest { Seed = 5 }));
-        yield return ("castaway", castaway.Build(new BuildRequest { Seed = 5 }), () => castaway.Build(new BuildRequest { Seed = 5 }));
+        yield return ("sleeper", sleeper.Build(new BuildRequest { Seed = 5 }), () => sleeper.Build(new BuildRequest { Seed = 5 }));
         var seen = new HashSet<string>();
         foreach (AssetEntry e in registry.Entries.Where(e => e.Category == "Bestiary" && e.Randomisable))
         {
@@ -123,14 +123,14 @@ public partial class ViewerTest
     async System.Threading.Tasks.Task SweepChecks(Viewer viewer, AssetRegistry registry, string scratch)
     {
         GD.Print("== sweep");
-        AssetEntry castaway = registry.Find("People|castaway");
-        viewer.Select(castaway, 3, new Dictionary<string, string>(), true);
+        AssetEntry sleeper = registry.Find("People|sleeper");
+        viewer.Select(sleeper, 3, new Dictionary<string, string>(), true);
         await Frames(3);
         string dir = Path.Combine(scratch, "sweep");
         int code = await viewer.Sweep(new Viewer.SheetArgs { Sweep = dir, Pinned = true, Phases = 3, Views = new[] { "front", "side" }, Seed = 3 });
         string[] sheets = Directory.GetFiles(dir, "*.json", SearchOption.AllDirectories).Where(f => Path.GetFileName(f) != "index.json").ToArray();
         Check(code == 0, "the sweep ends well");
-        Check(sheets.Length == castaway.Build(new BuildRequest()).Animations.Count, $"the sweep writes one sidecar per animation ({sheets.Length})");
+        Check(sheets.Length == sleeper.Build(new BuildRequest()).Animations.Count, $"the sweep writes one sidecar per animation ({sheets.Length})");
         using JsonDocument index = JsonDocument.Parse(File.ReadAllText(Path.Combine(dir, "index.json")));
         JsonElement asset = index.RootElement.GetProperty("assets")[0];
         Check(asset.GetProperty("seed").GetUInt64() == 3 && index.RootElement.GetProperty("seed_given").GetBoolean(), "index.json records the seed");
@@ -149,7 +149,7 @@ public partial class ViewerTest
         // Quits by itself: a second process runs a sweep and has to end with its files written.
         string childDir = Path.Combine(scratch, "child");
         var output = new Godot.Collections.Array();
-        string[] args = { "--headless", "--audio-driver", "Dummy", "--path", ProjectSettings.GlobalizePath("res://"), "--", "--select=People|castaway", "--sweep=" + childDir, "--anim=Walk", "--sheet=3", "--seed=3", "--fresh" };
+        string[] args = { "--headless", "--audio-driver", "Dummy", "--path", ProjectSettings.GlobalizePath("res://"), "--", "--select=People|sleeper", "--sweep=" + childDir, "--anim=Walk", "--sheet=3", "--seed=3", "--fresh" };
         int exit = OS.Execute(OS.GetExecutablePath(), args, output, true);
         Check(exit == 0 && File.Exists(Path.Combine(childDir, "index.json")), $"a sweep run quits by itself with its files written (exit {exit})");
     }
