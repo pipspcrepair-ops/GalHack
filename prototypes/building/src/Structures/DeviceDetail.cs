@@ -283,18 +283,23 @@ public static class DeviceDetail
 
     /// <summary>
     /// A thruster: a bare metal nozzle bell flaring in three steps from its mounting flange (a type
-    /// with a shorter body has the longer bell), its sooty mouth with the glow inside and heat
-    /// glowing round its lip, vents and a hazard band on the body, and raised intake scoops on the
-    /// flanks of a type that pushes harder per cell (on all four sides of the hardest).
+    /// with a shorter body has the longer bell, one that pushes harder per cell a fatter throat),
+    /// its sooty mouth with the glow inside and heat glowing round its lip, vents and a hazard band
+    /// on the body, and raised intake scoops on the flanks of a harder-pushing type (on all four
+    /// sides of the hardest).
     /// </summary>
     static void Thruster(Kit k, BlockType t)
     {
         Part flange = t.Parts.FirstOrDefault(p => p.Style == PartStyle.Dark);
         float zb = flange?.Min.Z ?? 0.2f, zf = flange?.Max.Z ?? 0.26f, step = (0.5f - zf) / 3f;
+        // Thrust per cell: T1 and T2 push 300-340 kN a cell, T3 about 520, T5 over 1,000.
+        float hard = Math.Clamp((t.Thrust / t.Cells - 400f) / 500f, 0f, 1f);
+        // A harder-pushing bell has a fatter throat, flaring to the same mouth.
+        float throat = 0.3f + 0.08f * MathF.Min(hard * 4f, 1f), flare = (0.46f - throat) / 3f;
         // Bare metal throughout: tinted bands read as paint stripes once the bell is metres across (T4, T5).
         // The bell and its mouth open on the nozzle's face (+Z): with that face against a block they are hidden with it.
         for (int i = 0; i < 3; i++)
-            k.Tube(2, Vector3.Zero, 0.3f + 0.0533f * i, 0.3533f + 0.0533f * i, zf + step * i, zf + step * (i + 1), PartStyle.Dark, Bare, segments: 16, caps: false).Mount = Dir.PosZ;
+            k.Tube(2, Vector3.Zero, throat + flare * i, throat + flare * (i + 1), zf + step * i, zf + step * (i + 1), PartStyle.Dark, Bare, segments: 16, caps: false).Mount = Dir.PosZ;
         k.Tube(2, Vector3.Zero, 0.455f, 0.455f, 0.48f, 0.49f, PartStyle.Dark, Coat(Soot, 0), segments: 16).Mount = Dir.PosZ;
         // The lip, just proud of the bell's last few centimetres, glows with heat in the type's colour.
         k.Tube(2, Vector3.Zero, 0.447f, 0.463f, 0.47f, 0.5f, PartStyle.Glow, null, segments: 16, caps: false).Mount = Dir.PosZ;
@@ -305,8 +310,6 @@ public static class DeviceDetail
         k.Face(Dir.NegX, -0.4f, -0.34f, -vent, 0.34f, 0.01f, PartStyle.Dark, Vent);
         k.Face(Dir.PosY, -0.34f, vent, 0.34f, 0.4f, 0.01f, PartStyle.Dark, Vent);
         k.Face(Dir.NegY, -0.34f, vent, 0.34f, 0.4f, 0.01f, PartStyle.Dark, Vent);
-        // Thrust per cell: T1 and T2 push 300-340 kN a cell, T3 about 520, T5 over 1,000.
-        float hard = Math.Clamp((t.Thrust / t.Cells - 400f) / 500f, 0f, 1f);
         if (hard <= 0f) return;
         foreach (Dir d in hard >= 0.5f ? new[] { Dir.PosX, Dir.NegX, Dir.PosY, Dir.NegY } : new[] { Dir.PosX, Dir.NegX })
         {
