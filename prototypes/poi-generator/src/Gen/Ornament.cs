@@ -70,12 +70,13 @@ public static class Ornament
         CellMask occ = layout.Occupied;
         bool space = layout.Extras.InSpace;
         Vocab v = For(inst);
+        bool high = Shaping.High(inst);
 
         // (It follows the shaping, whose survey of the place it reads: no shaping, no ornament.)
         if (inst.Survey is not { } survey) return;
         // Where anyone walks now: as the shaping found it, and on from any slope it laid that a walker can step onto (a
         // coping's slope can be walked where its cube couldn't be; nothing else it lays opens a way).
-        var walked = new HashSet<Int3>(survey.Walked);
+        var walked = new WalkSet(survey.Walked);
         NavGrid nav = inst.Nav();
         var step = new List<Int3>();
         var on = new Queue<Int3>();
@@ -124,6 +125,8 @@ public static class Ornament
         // What the shaping surveyed: the outside faces (those still plain wall) by the way they look, their plane and their
         // object; the tops open to the sky; and the doors.
         var planes = new Dictionary<(Dir D, int Plane, int Obj), HashSet<Int3>>();
+        bool industry = layout.Family.Tags.Any(t => t is "industry" or "utility" or "power" or "machine" or "factory");
+        if (v.Fins || v.Pipes && industry) // (only builders that dress their walls look at them)
         foreach (var (d, set) in survey.Outer)
             foreach (Int3 c in set)
                 if (g.Get(c) is { Type: BlockType.Cube, Role: Role.Wall } b && !BlockInfo.IsTransparent(b.Material) && g.Get(c + d.Vec()).IsAir)
@@ -135,7 +138,6 @@ public static class Ornament
         var doors = new HashSet<Int3>();
         foreach (Int3 c in layout.Doorways.SelectMany(w => w.Cells).Concat(layout.ExitCells))
             for (Int3 q = c; g.Get(q).Type == BlockType.Door && doors.Add(q); q += Int3.Up) { }
-        bool industry = layout.Family.Tags.Any(t => t is "industry" or "utility" or "power" or "machine" or "factory");
 
         foreach (var ((d, _, _), set) in planes)
         {
@@ -168,15 +170,24 @@ public static class Ornament
                 }
                 {
                     int lo = heads.Keys.Min(), hi = heads.Keys.Max();
-                    foreach (int s in new[] { v.Bay, v.Bay * 2, v.Bay * 3 })
+                    // The builders' own bay first, centred on the face; where the face is panelled, its piers and quoins as they
+                    // stand, every one at one spacing from end to end.
+                    List<int>? pick = null;
+                    foreach (int s in new[] { v.Bay, v.Bay * 2 })
                     {
-                        var offs = Enumerable.Range(0, s).OrderBy(o => System.Math.Abs(o - (hi - lo) % s / 2)).ToList();
-                        var pick = offs.Select(o => Enumerable.Range(0, (hi - lo - o) / s + 1).Select(k => lo + o + k * s).ToList())
+                        pick = Enumerable.Range(0, s).OrderBy(o => System.Math.Abs(o - (hi - lo) % s / 2))
+                            .Select(o => Enumerable.Range(0, (hi - lo - o) / s + 1).Select(k => lo + o + k * s).ToList())
                             .FirstOrDefault(us => us.Count >= 2 && us.All(u => Column(u) != null));
-                        if (pick == null) continue;
-                        Lay("fins", pick.SelectMany(u => columns[u]!).ToList(), pick);
-                        break;
+                        if (pick != null) break;
                     }
+                    if (pick == null && !high && heads.Count <= 40)
+                    {
+                        var stand = heads.Keys.Where(u => Column(u) != null).OrderBy(u => u).ToList();
+                        pick = Enumerable.Range(3, 10).SelectMany(s => stand.Select(u0 => stand.Where(u => u >= u0 && (u - u0) % s == 0).ToList())
+                                .Select(us => us.TakeWhile((u, i) => u == us[0] + i * s).ToList()))
+                            .Where(us => us.Count >= 3).MaxBy(us => us.Count);
+                    }
+                    if (pick != null) Lay("fins", pick.SelectMany(u => columns[u]!).ToList(), pick);
                 }
             }
             // Pipes: along the wall at one height, the face's whole length at that height, where the place has machines.
@@ -256,50 +267,66 @@ public static class Ornament
                             f.Add((q, Made(end + Int3.Up, v.Fin == BlockType.Partition ? BlockType.Rib : v.Fin, Dir.Up)));
                     return rib.All(c => Open(c, BlockType.Beam)) ? f : null;
                 }
-                int s = v.Bay, o = (hi - lo) % s / 2;
-                var at = Enumerable.Range(1, System.Math.Max(0, (hi - lo - o - 1) / s)).Select(k => lo + o + k * s).Where(p => p < hi).ToList();
-                var frames = at.Select(Frame).ToList();
-                if (at.Count >= 2 && frames.All(f => f != null)) Lay("frames", frames.SelectMany(f => f!).ToList(), at);
-            }
-
-        // Bars: out of every torn concrete edge the decay left, every other cell along it, the way the bars run (out of a
-        // slab's edge or from under it, out of a broken wall's side or its top), each torn edge whole.
-        if (inst.State != PoiState.Active && inst.Fallen.Count > 0)
-        {
-            var spots = new Dictionary<Int3, Dir>();
-            foreach (Int3 c in inst.Fallen)
-            {
-                if (spots.ContainsKey(c) || !g.Get(c).IsAir || mine.Contains(c) || inst.Protected[c] || lamps.Contains(c)) continue;
-                foreach (Dir d in Dirs.All)
+                // (Set out from the middle of the hall first, then shifted a metre at a time to clear its lamps and beams.)
+                int s = v.Bay;
+                foreach (int o in Enumerable.Range(0, s).OrderBy(o => System.Math.Abs(o - (hi - lo) % s / 2)))
                 {
-                    Block b = g.Get(c + d.Vec());
-                    if (d == Dir.Up || !BlockInfo.IsFullCube(b.Type) || b.Material is not (Material.Concrete or Material.Fused or Material.Armour)) continue;
-                    if (b.Role == Role.Wall || b.Role is Role.Floor or Role.Roof && d != Dir.Down) { spots[c] = d; break; }
+                    var at = Enumerable.Range(1, System.Math.Max(0, (hi - lo - o - 1) / s)).Select(k => lo + o + k * s).Where(p => p < hi).ToList();
+                    var frames = at.Select(Frame).ToList();
+                    if (at.Count < 2 || frames.Any(f => f == null)) continue;
+                    Lay("frames", frames.SelectMany(f => f!).ToList(), at);
+                    break;
                 }
             }
-            // (As many torn edges as the years would show, the longest first, each whole: about as many bars as a ruin has.)
-            int most = System.Math.Min(600, 120 + inst.Fallen.Count / 12), laid = 0;
-            var edges = new List<(Dir D, List<(Int3, Block)> Bars)>();
-            var done = new HashSet<Int3>();
-            foreach (var (c0, d) in spots)
+
+        // Bars: out of the torn concrete edges the decay left, every other cell along each edge, the way the bars run (out of
+        // a slab's edge or from under it, out of a broken wall's side or its top), each torn edge whole; edges in the order
+        // the decay tore them, until about as many bars as a ruin shows.
+        if (inst.State != PoiState.Active && inst.Fallen.Count > 0)
+        {
+            var fallen = new HashSet<Int3>(inst.Fallen);
+            var spots = new Dictionary<Int3, Dir?>();
+            Dir? Spot(Int3 c)
             {
-                if (!done.Add(c0)) continue;
+                if (spots.TryGetValue(c, out Dir? known)) return known;
+                Dir? found = null;
+                if (fallen.Contains(c) && g.Get(c).IsAir && !mine.Contains(c) && !inst.Protected[c] && !lamps.Contains(c))
+                    foreach (Dir d in Dirs.All)
+                    {
+                        Block b = g.Get(c + d.Vec());
+                        if (d == Dir.Up || !BlockInfo.IsFullCube(b.Type) || b.Material is not (Material.Concrete or Material.Fused or Material.Armour)) continue;
+                        if (b.Role == Role.Wall || b.Role is Role.Floor or Role.Roof && d != Dir.Down) { found = d; break; }
+                    }
+                return spots[c] = found;
+            }
+            int most = System.Math.Min(600, 120 + inst.Fallen.Count / 12), laid = 0;
+            var done = new HashSet<Int3>();
+            foreach (Int3 c0 in inst.Fallen)
+            {
+                if (laid >= most) break;
+                if (done.Contains(c0) || Spot(c0) is not Dir d) continue;
+                done.Add(c0);
                 var edge = new List<Int3> { c0 };
                 for (int i = 0; i < edge.Count; i++)
                     foreach (Dir h in Dirs.All)
-                        if (h != d && h != d.Opposite() && spots.TryGetValue(edge[i] + h.Vec(), out Dir e) && e == d && done.Add(edge[i] + h.Vec())) edge.Add(edge[i] + h.Vec());
-                int parity = edge.Min(q => q.X + q.Y + q.Z) & 1;
-                var bars = edge.Where(q => ((q.X + q.Y + q.Z) & 1) == parity).Select(q => (q, new Block(BlockType.Rebar, Material.Rust, Debris.Rust, Role.Debris, d))).ToList();
-                if (bars.Count > 0) edges.Add((d, bars));
-            }
-            foreach (var (_, bars) in edges.OrderByDescending(e => e.Bars.Count).ThenBy(e => e.Bars[0].Item1.X).ThenBy(e => e.Bars[0].Item1.Z).ThenBy(e => e.Bars[0].Item1.Y))
-            {
+                        if (h != d && h != d.Opposite() && !done.Contains(edge[i] + h.Vec()) && Spot(edge[i] + h.Vec()) == d && done.Add(edge[i] + h.Vec())) edge.Add(edge[i] + h.Vec());
+                int parity = (c0.X + c0.Y + c0.Z) & 1;
+                var bars = new List<(Int3, Block)>();
+                foreach (Int3 q in edge) if (((q.X + q.Y + q.Z) & 1) == parity) bars.Add((q, new Block(BlockType.Rebar, Material.Rust, Debris.Rust, Role.Debris, d)));
                 if (laid + bars.Count > most) continue;
                 Lay("bars", bars, new List<int>());
                 laid += bars.Count;
             }
         }
-
         foreach (var (c, b) in lay) g.Set(c, b);
+    }
+
+    /// <summary>Where anyone walks: the shaping's set and what is reached past its slopes, without copying the first.</summary>
+    sealed class WalkSet
+    {
+        readonly HashSet<Int3> _was, _more = new();
+        public WalkSet(HashSet<Int3> was) => _was = was;
+        public bool Contains(Int3 q) => _was.Contains(q) || _more.Contains(q);
+        public bool Add(Int3 q) => !_was.Contains(q) && _more.Add(q);
     }
 }

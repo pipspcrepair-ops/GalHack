@@ -154,6 +154,8 @@ Empyrion (`BlocksConfig.ecf` shape lists, read through each block's variant):
 
 **An object's shape comes from the object alone.** A building with all its wings, one tank, one container, one vehicle is each one object; shaping reads another object's blocks and rooms beside or above it as open air outside, and what it stands on as ground, so a tank against a shed keeps its cap all round and the shed's wall behind it is panelled as if the tank weren't there. Only what keeps things safe (what is stood on, what the place later sets against a wall) reads the grid as it is. Stacked containers each keep their own caps, as real ones show every box's edges.
 
+**Ornament.** After shaping, each builder (world, tech level, faction or culture) adds its own small vocabulary of whole elements set out from the building's lines: fins on the piers and quoins at the bay spacing, masts at the corners of the highest roof, hoods over the ways in, pipes along the walls of places with machines, frames across halls, and bars along every torn concrete edge. An element that can't be laid whole is left out, and nothing goes where a body walks.
+
 ### 1.6 Dressing density and where it sits, per room kind
 
 7 Days to Die, per m² of room floor (median for dressing, mean for containers and lights). Dressing = furniture and clutter cells standing on the floor. Wall share = the share of floor dressing touching a wall.
