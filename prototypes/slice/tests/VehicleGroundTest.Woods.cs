@@ -138,10 +138,10 @@ public partial class VehicleGroundTest
         // physics tick, the probe holds the frame before's.
         double worstBreaking = 0;
         bool breaking = false;
-        int felledAt = _game.Zone.Planet.Felled.Count, broke = 0, breakingFrames = 0, still = 0, t = 0;
+        int felledAt = _game.Zone.Planet.Felled.Count, broke = 0, breakingFrames = 0, worstAt = 0, still = 0, t = 0;
         void Frame()
         {
-            if (breaking) worstBreaking = Math.Max(worstBreaking, probe.LastCpuMs);
+            if (breaking && probe.LastCpuMs > worstBreaking) (worstBreaking, worstAt) = (probe.LastCpuMs, breakingFrames);
             int felled = _game.Zone.Planet.Felled.Count;            breaking = felled > felledAt || _game.Zone.Toppling > 0;
             if (breaking) breakingFrames++;
             broke += felled - felledAt;
@@ -192,7 +192,7 @@ public partial class VehicleGroundTest
                 $"{name}: let down on a wood, it ends on its gear on the ground, {under.Count - standing} of the {under.Count} trees under it felled, none left touching it ({standing} short ones still standing beneath; {how})");
             Check(_game.Zone.Trees.Stumps > 0, $"{name}: the trees it broke leave what harvesting leaves: {_game.Zone.Trees.Stumps} stumps, their trunks and crowns fallen");
             Check(broke > 0 && worstBreaking < 16.7,
-                $"{name}: no frame a tree breaks or falls in goes over the budget in CPU time: worst {worstBreaking:F1} ms over {breakingFrames} frames, {broke} trees (budget 16.7; headless)");
+                $"{name}: no frame a tree breaks or falls in goes over the budget in CPU time: worst {worstBreaking:F1} ms (frame {worstAt} of {breakingFrames}), {broke} trees (budget 16.7; headless)");
         }
         else
             Check(ctl.Frozen && TreesInHull(v) == 0,

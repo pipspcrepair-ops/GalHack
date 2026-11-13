@@ -67,12 +67,12 @@ public partial class SurfaceZone : IFloraField
     /// <summary>Broken trees still to fall, one a frame (<see cref="Topple"/>): a dozen trunks and leaf bursts made at once overran the frame.</summary>
     public int Toppling => _toppling.Count;
 
-    readonly System.Collections.Generic.Queue<System.Action> _toppling = new();
+    readonly System.Collections.Generic.Queue<(ulong Frame, System.Action Fall)> _toppling = new();
 
-    /// <summary>The next broken tree's trunk and crown fall, once a frame.</summary>
+    /// <summary>The next broken tree's trunk and crown fall, once a frame, from the frame after the one that broke it (which has the breaking to do).</summary>
     void Topple()
     {
-        if (_toppling.Count > 0) _toppling.Dequeue()();
+        if (_toppling.TryPeek(out var next) && next.Frame < Engine.GetProcessFrames()) _toppling.Dequeue().Fall();
     }
 
     /// <summary>
@@ -102,7 +102,7 @@ public partial class SurfaceZone : IFloraField
             Trees.Fell(root, away, height, radius, leaf, crown: true, bark, mesh, turn, custom: tint);
             Trees.Leaves(root + Vector3.Up * height, leaf, 30, 1.8f);
         }
-        if (broken) _toppling.Enqueue(Fall);
+        if (broken) _toppling.Enqueue((Engine.GetProcessFrames(), Fall));
         else Fall();
         return true;
     }
