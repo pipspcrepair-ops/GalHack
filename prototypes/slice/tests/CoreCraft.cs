@@ -87,9 +87,16 @@ public static class CoreCraft
         Building.Place(s, Int3.Zero, Building.Make(s, blocks.CoreType));
         BlockType steel = blocks.Type("steel");
         for (int y = 0; y > -8 && (y == 0 || StructureStats.Compute(s).Mass < tonnes); y--)
-            for (int x = -3; x <= 3; x++)
-                for (int z = -5; z <= 5; z++)
-                    if (!s.Has(new Int3(x, y, z))) Building.Place(s, new Int3(x, y, z), Building.Make(s, steel));
+        {
+            // A block goes on only where it touches one already placed: sweep the layer until it is full.
+            for (bool grew = true; grew;)
+            {
+                grew = false;
+                for (int x = -3; x <= 3; x++)
+                    for (int z = -5; z <= 5; z++)
+                        grew |= !s.Has(new Int3(x, y, z)) && Building.Place(s, new Int3(x, y, z), Building.Make(s, steel)) == PlaceError.None;
+            }
+        }
         var (low, _) = s.Bounds();
         int belly = low.Y - 1;
         Building.Place(s, new Int3(0, 1, 0), Building.Make(s, blocks.Type("chair")));

@@ -399,8 +399,9 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
         _idle = idle ? _idle + dt : 0f;
 
         bool tooHeavy = !Stats.CanLiftOff && Zone.Gravity > 0f;
-        // Attached by its gear, or resting on its hull: nothing floats.
-        bool onGround = Gear is { Attached: true } || body.OnFloor;
+        // Attached by its gear, or resting on its hull: nothing floats. A craft riding working hover
+        // plates never sets down on its hull: they hold it off whatever it touches.
+        bool onGround = Gear is { Attached: true } || body.OnFloor && (Hover == null || tooHeavy);
         // Slow against whatever it is standing on: a deck can be moving.
         Vector3 under = RestingOn(body) is Body deck ? deck.PointVelocity(body.Position) : Vector3.Zero;
         bool slow = (body.Velocity - under).Length() < t.LandSpeed;

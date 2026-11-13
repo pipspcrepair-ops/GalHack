@@ -437,11 +437,12 @@ public partial class BuildTest : Node
         // The one core makes every structure: each is in whichever mode its core is set to.
         foreach (var (core, mode, slot, offset) in new[]
                  {
-                     ("core", CoreMode.Flight, 5, new Vector3(20, 0, 0)), ("core", CoreMode.Hover, 6, new Vector3(-20, 0, 0)),
+                     ("core", CoreMode.Flight, 5, new Vector3(7, 0, 0)), ("core", CoreMode.Hover, 6, new Vector3(-20, 0, 0)),
                      ("core", CoreMode.Flight, 7, new Vector3(0, 0, 20)),
                  })
         {
-            Vector3 spot = _play.FlatSpot(_site + offset, 4f, 1.4f, 0.5f);
+            // The first craft right beside the base, inside its area (a flat spot keeps 14 m from every structure).
+            Vector3 spot = slot == 5 ? _game.Zone.GroundAt(_site.X + offset.X, _site.Z + offset.Z) : _play.FlatSpot(_site + offset, 4f, 1.4f, 0.5f);
             foreach (int x in StandAt(spot + new Vector3(5, 0, 0))) yield return x;
             var before = _game.Zone.Vessels.ToList();
             foreach (int x in Carry(core, 1, slot)) yield return x;
@@ -852,9 +853,12 @@ public partial class BuildTest : Node
         // A vessel parked on a base: the structure you build on wins.
         if (_base != null)
         {
-            // The small vessel's core started 30 m off: inside the base's area, and the base inside neither.
-            Vector3 point = _craft.Body.Position.ToGodot() + new Vector3(0, -1, 3);
-            Check(StructureArea.Contains(_base, point, rules) && StructureArea.Contains(_craft, point, rules), "beside a vessel parked by a base you are in both their areas");
+            // The craft's core started 7 m off: inside the base's area (a small base reaches 12 m and a bit).
+            // Beside the craft, on the base's side of it.
+            Vector3 craftAt = _craft.Body.Position.ToGodot(), toBase = (_base.Body.Position.ToGodot() - craftAt) with { Y = 0 };
+            Vector3 point = craftAt + toBase.Normalized() * 2f + Vector3.Down;
+            Check(StructureArea.Contains(_base, point, rules) && StructureArea.Contains(_craft, point, rules),
+                $"beside a vessel parked by a base you are in both their areas ({StructureArea.Distance(_base, point):F1} m from the base's blocks, its area {StructureArea.Margin(_base, rules):F1} m)");
             Check(StructureArea.Linked(_game.Zone, point, rules, _craft) == _craft && StructureArea.Linked(_game.Zone, point, rules, _base) == _base, "the one you are building on is the one you link to");
             foreach (int x in StandAt(point)) yield return x;
             foreach (int x in _play.OpenMenu(MenuTab.Core)) yield return x;

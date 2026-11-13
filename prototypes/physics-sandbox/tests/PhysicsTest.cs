@@ -99,7 +99,7 @@ public partial class PhysicsTest : Node
         foreach (int x in StepsEverywhere()) yield return x;
         foreach (int x in RoverTrench()) yield return x;
         foreach (int x in HoverHoles()) yield return x;
-        foreach (int x in GearOnDugGround()) yield return x;
+        foreach (int x in GearOnUnevenGround()) yield return x;
         foreach (int x in WindRules()) yield return x;
         foreach (int x in WaterVolume()) yield return x;
         foreach (int x in TornadoFling()) yield return x;
@@ -1335,21 +1335,34 @@ public partial class PhysicsTest : Node
         run.Contacts = _impacts.Count(i => i.Body == rover.Body && i.Other == null);
     }
 
-    IEnumerable<int> GearOnDugGround()
+    IEnumerable<int> GearOnUnevenGround()
     {
+        // Uneven ground near the field where every one of the Corsair's telescoping legs can reach
+        // its own: the hull comes to rest on the lift jets hanging a metre below its pads, so each
+        // pad's ground must lie within its 1.4 m reach of that, and no two pads' ground agree.
+        var pads = new N.Vector2[] { new(0f, -8f), new(-3f, 5f), new(3f, 5f) };
+        var jets = new N.Vector2[] { new(-3f, -6f), new(3f, -6f), new(-3f, 3f), new(3f, 3f) };
+        float At(N.Vector2 c, N.Vector2 u) => _w.Ground(c.X + u.X, c.Y + u.Y).Y;
         var site = new N.Vector2(-42f, -8f);
-        // Dig a pit where the nose leg will come down and a scrape under the port rear leg, on
-        // sloping ground, so no two feet agree.
-        _w.Terrain.Dig(TInt3.Floor(_w.Ground(site.X, site.Y - 7.5f) - N.Vector3.UnitY * 0.2f), 1.2f);
-        _w.Terrain.Dig(TInt3.Floor(_w.Ground(site.X - 3f, site.Y + 5.5f)), 0.6f);
+        float best = float.MaxValue;
+        for (float dx = -40f; dx <= 40f; dx += 2f)
+            for (float dz = -40f; dz <= 40f; dz += 2f)
+            {
+                var c = new N.Vector2(-42f + dx, -8f + dz);
+                float rest = jets.Max(u => At(c, u)), hip = rest + 1f;
+                float low = pads.Min(u => At(c, u)), high = pads.Max(u => At(c, u));
+                bool reach = hip - low < 1.3f && high < hip - 0.1f;
+                float miss = MathF.Abs(high - low - 0.6f); // about 0.6 m between the pads' grounds
+                if (reach && miss < best) (best, site) = (miss, c);
+            }
         Ship ship = _w.SpawnVessel("corsair.gbp", _w.Ground(site.X, site.Y) + N.Vector3.UnitY * 9f, 0f, landed: false);
         int landed = _landed;
         LandingGear gear = ship.Vessel.Gear;
-        int want = Math.Min(2, gear.Count);
+        int want = gear.Count;
         bool cameOut = false;
         for (int t = 0; t < 900 && _landed == landed; t++)
         {
-            // Ease down at 3.5 m/s until two feet are on their ground (or the hull rests), then let go.
+            // Ease down at 3.5 m/s until every foot is on its ground (or the hull rests), then let go.
             bool down = Enumerable.Range(0, gear.Count).Count(gear.Touching) < want && !ship.Body.OnFloor;
             ship.Flight.Input = down ? PilotInput.Hands(new Vector3(0f, -0.05f, 0f)) : PilotInput.LetGo;
             yield return 0;
@@ -1371,9 +1384,9 @@ public partial class PhysicsTest : Node
             minGround = MathF.Min(minGround, gear.FootGround[i].Y);
             maxGround = MathF.Max(maxGround, gear.FootGround[i].Y);
         }
-        Check(_landed > landed && cameOut && ship.Vessel.Frozen && gear.Attached && standing >= want && worstFoot < 0.25f
+        Check(_landed > landed && cameOut && ship.Vessel.Frozen && gear.Attached && standing >= 2 && worstFoot < 0.25f
               && maxGround - minGround > 0.3f && longest - shortest > 0.3f && !_w.Physics.Stuck.IsStuck(ship.Body, out _),
-            $"landing gear on dug ground: it comes out by itself, and {standing} of {gear.Count} telescoping legs reach their own ground, " +
+            $"landing gear on uneven ground: it comes out by itself, and {standing} of {gear.Count} telescoping legs reach their own ground, " +
             $"{maxGround - minGround:F1} m uneven, out {shortest:F2} to {longest:F2} m, every foot within {worstFoot * 100f:F0} cm of it; attached, it raises Landed and stops simulating");
 
         // And it goes in again by itself as the craft climbs away: there is no button.
