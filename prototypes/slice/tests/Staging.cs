@@ -56,6 +56,7 @@ public sealed partial class Staging
             "escmenu" => EscapeMenuShots(),
             "escnewgame" => EscapeNewGameShots(),
             "blueprints" => BlueprintShots(),
+            "stock" => StockShots(),
             "uiround" => UiRoundShots(),
             "notices" => NoticesShots(),
             "markers" => MarkersShot(),

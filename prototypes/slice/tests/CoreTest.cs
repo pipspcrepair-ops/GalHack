@@ -261,7 +261,7 @@ public partial class CoreTest : Node
         _game.Controls.Hold(Key.W, false);
         Check(s.Mode == CoreMode.Flight && v.Controller.Hover == null && v.Controller.Gear != null && !v.Controller.Frozen, "switched to Flight Mode on the move: its thrusters take over at once");
         Check(new Vector2(v.Body.Velocity.X, v.Body.Velocity.Z).Length() > new Vector2(before.X, before.Z).Length() * 0.4f, $"it keeps going, no reset ({before.Length():F0} m/s then {v.Body.Velocity.Length():F0})");
-        foreach (int x in Hold(Key.Space, 70)) yield return x;
+        foreach (int x in Hold(Key.Space, 150)) yield return x; // the Skiff lifts 1.5 times its weight, less with the plates fitted
         foreach (int x in _drive.Wait(30)) yield return x;
         Check(v.AboveGround > 8f, $"Flight Mode climbs ({v.AboveGround:F0} m up; {Near(v)})");
         float was = v.Body.Position.Y;

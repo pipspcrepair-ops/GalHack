@@ -21,9 +21,9 @@ public static class StructureBridge
 {
     /// <summary>
     /// Loads building's catalogue from where it lives, with the sandbox's vessel parts (gyros,
-    /// hover pads, landing legs) appended to its components. Nothing is copied.
+    /// hover pads, landing legs), and any other parts files given, appended to its components. Nothing is copied.
     /// </summary>
-    public static Catalogue LoadCatalogue(string buildingData, string vesselParts)
+    public static Catalogue LoadCatalogue(string buildingData, params string[] partFiles)
     {
         return Catalogue.Load(name =>
         {
@@ -35,10 +35,10 @@ public static class StructureBridge
                 AllowTrailingCommas = true,
             };
             JsonNode root = JsonNode.Parse(text, documentOptions: options);
-            JsonNode extra = JsonNode.Parse(File.ReadAllText(vesselParts), documentOptions: options);
             JsonArray list = root["components"].AsArray();
-            foreach (JsonNode c in extra["components"].AsArray().ToList())
-                list.Add(c.DeepClone());
+            foreach (string file in partFiles)
+                foreach (JsonNode c in JsonNode.Parse(File.ReadAllText(file), documentOptions: options)["components"].AsArray().ToList())
+                    list.Add(c.DeepClone());
             return root.ToJsonString();
         });
     }

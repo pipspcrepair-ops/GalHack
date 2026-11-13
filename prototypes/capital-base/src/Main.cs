@@ -68,7 +68,7 @@ public partial class Main : Node3D
     public void Populate()
     {
         Spot a = World.Spots[0];
-        World.SpawnBase("outpost", "outpost.gbp", World.Spots[3].Flat, 0.6f);
+        World.SpawnBase("outpost", "prototypes/slice/data/blueprints/outpost.gbp", World.Spots[3].Flat, 0.6f);
         World.SpawnFlying("bastion", "bastion.gbp", new N.Vector3(a.X - 60f, a.Ground + 55f, a.Z + 40f), 0f);
         World.Spawn("prospector", "prospector.gbp", N.Vector3.Zero, N.Quaternion.Identity);
         World.DockAt(World.CraftById("prospector"), World.CraftById("bastion"), new N.Vector3(0f, 7f, 6f), 0f);

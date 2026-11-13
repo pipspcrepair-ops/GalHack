@@ -812,6 +812,24 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
         return list;
     }
 
+    /// <summary>
+    /// Circles of ground nothing stands on or over (x, z, radius): the start bunker's footprint, its way out and the sky over
+    /// them. Whatever is set down as the ground streams in (trees, rocks, the world's dressing) asks <see cref="Reserved"/>
+    /// with its own reach, so a far chunk rebuilt later keeps clear as the first build did. Set before any ground streams in.
+    /// </summary>
+    public volatile (double X, double Z, float R)[] Reserves = Array.Empty<(double, double, float)>();
+
+    /// <summary>Whether something this far across (a crown, a boulder, a stall) at a point reaches into a reserved circle.</summary>
+    public bool Reserved(double x, double z, float reach)
+    {
+        foreach (var (rx, rz, r) in Reserves)
+        {
+            double dx = Wrap(x - rx, Width), dz = Wrap(z - rz, Height);
+            if (dx * dx + dz * dz < (double)(r + reach) * (r + reach)) return true;
+        }
+        return false;
+    }
+
     /// <summary>Radius in metres of a deposit's ore body.</summary>
     public static float OreRadius(Deposit d) => 1.4f + 1.3f * d.Amount;
 

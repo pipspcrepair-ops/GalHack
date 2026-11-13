@@ -454,7 +454,7 @@ public partial class ProductionTest : TestBase
         Check(storage.Contents.Equals(spare), "and the leftovers are back in storage");
 
         // The starter vessel, for the screen.
-        var gadfly = BuildingBridge.BlocksOf(DataPaths.LoadBlueprint("gadfly.gbp"));
+        var gadfly = BuildingBridge.BlocksOf(DataPaths.LoadBlueprint(DataPaths.Slice("starter.gbp")));
         FactoryQuote g = factory.Quote("Gadfly", gadfly);
         Note($"Gadfly from the factory: {_items.Describe(g.Materials)}; {g.Seconds / 60:0.0} min");
         Check(g.Problems.Count == 0 && g.BlockTotal == gadfly.Sum(b => b.Count), "the factory can price the whole starter vessel");
@@ -723,7 +723,7 @@ public partial class ProductionTest : TestBase
         var factory = new BlueprintFactory(_items, _items.Machines.Factory, storage, rules);
         FactoryQuote done = null;
         factory.Finished += f => done = f;
-        FactoryStart start = factory.Start("Gadfly", BuildingBridge.BlocksOf(DataPaths.LoadBlueprint("gadfly.gbp")));
+        FactoryStart start = factory.Start("Gadfly", BuildingBridge.BlocksOf(DataPaths.LoadBlueprint(DataPaths.Slice("starter.gbp"))));
         Check(start.Ok && done != null && factory.Current == null, "creative: the factory spawns a blueprint at once");
         Check(storage.Contents.Equals(Bill.Of(("circuit-board", 3))), "creative: and takes nothing for it");
 
