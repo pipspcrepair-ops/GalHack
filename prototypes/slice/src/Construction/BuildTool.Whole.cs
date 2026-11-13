@@ -135,7 +135,13 @@ public sealed partial class BuildTool
         }
     }
 
-    /// <summary>Fells every plant rooted under a structure's footprint (a metre round it too). Returns how many.</summary>
+    /// <summary>Head room kept clear over a structure set down whole, m: a crown hanging lower would stop a vessel lifting off.</summary>
+    const float HeadRoom = 4f;
+
+    /// <summary>
+    /// Fells every plant rooted under a structure's footprint (a metre round it too), and every tree whose trunk or crown
+    /// reaches into that box or the head room over it (vessels collide with flora). Returns how many.
+    /// </summary>
     int FellUnder(Vessel v)
     {
         if (_zone.Streamer == null || _zone.Planet == null) return 0;
@@ -153,6 +159,19 @@ public sealed partial class BuildTool
             if (at.X < lo.X || at.X > hi.X || at.Z < lo.Z || at.Z > hi.Z || _zone.Planet.Felled.Contains(plant.Id)) continue;
             _zone.Planet.Felled.Add(plant.Id);
             _zone.Streamer.Fell(plant.Id);
+            n++;
+        }
+        Vector3 top = hi + Vector3.Up * HeadRoom;
+        var query = new PhysicsShapeQueryParameters3D
+        {
+            Shape = new BoxShape3D { Size = top - lo },
+            Transform = v.Node.GlobalTransform * new Transform3D(Basis.Identity, (lo + top) * 0.5f),
+            CollisionMask = GalHack.Physics.Layers.Flora,
+        };
+        foreach (Godot.Collections.Dictionary hit in _zone.GetWorld3D().DirectSpaceState.IntersectShape(query, 64))
+        {
+            if (!_zone.Streamer.SolidHit((Rid)hit["rid"], (int)hit["shape"], out PlanetSurface.Terrain.FloraSolid tree) || !_zone.Planet.Felled.Add(tree.Id)) continue;
+            _zone.Streamer.Fell(tree.Id);
             n++;
         }
         return n;
