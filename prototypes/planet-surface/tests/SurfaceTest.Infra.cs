@@ -910,8 +910,9 @@ public partial class SurfaceTest
                 var y = FlavourRuin.Yields(inst);
                 if (y.GetValueOrDefault("rubble") > 0 && y.Values.Sum() > 5) ruinsYielding++;
             }
-            // The trees through its ruins: each the biome's own kind, standing on what's under it, clear of
-            // every wall, and a real scatter instance with its collider; none on ground that grows no trees.
+            // The trees through its ruins (planted as each place is built): each the biome's own kind, standing on what's
+            // under it, clear of every wall, and a real scatter instance with its collider; none on ground that grows no trees.
+            System.Threading.Tasks.Parallel.ForEach(w.Pois, p => p.Build());
             foreach (var (id, p) in w.Palette.Planted ?? new System.Collections.Concurrent.ConcurrentDictionary<long, PlantedFlora>())
             {
                 planted++;

@@ -75,7 +75,13 @@ public sealed class PoiSite
             if (_inst == null && Loading) System.Threading.Interlocked.Increment(ref UnaskedLoadBuilds);
             return Build();
         }
-        set => _inst = value;
+        set
+        {
+            // A place made whole already (a city's lots, a test's): its layout and state are its own.
+            _inst = value;
+            Layout = value?.Layout;
+            State = value?.State ?? State;
+        }
     }
 
     /// <summary>Builds the place (once; later calls wait for it or return it).</summary>

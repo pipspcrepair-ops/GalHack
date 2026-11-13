@@ -121,8 +121,16 @@ public partial class StartTest : Node
             for (int i = 0; i < random; i++) worlds.Add(WorldChoice.Fresh("random")); // a fresh seed and a random planet type
             worlds.Add(WorldChoice.Fresh("ice")); // and always a cold one, for the chamber's warmth
         }
+        // --compare-load: each world loaded twice, its places built at load the old way and then as they are wanted.
+        bool compare = args.Contains("--compare-load");
         foreach (WorldChoice pinned in worlds)
+        {
+            if (compare) PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad = true;
             foreach (int x in OneWorld(pinned, seeds)) yield return x;
+            if (!compare) continue;
+            PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad = false;
+            foreach (int x in OneWorld(_lastWorld, seeds)) yield return x;
+        }
         int failedWorlds = _failedWorlds.Count;
         GD.Print($"worlds: {seeds.Count - failedWorlds} of {seeds.Count} passed{(failedWorlds > 0 ? $" (failed: {string.Join(", ", _failedWorlds)})" : "")}");
     }
@@ -198,12 +206,15 @@ public partial class StartTest : Node
         return null;
     }
 
+    WorldChoice _lastWorld;
+
     IEnumerable<int> OneWorld(WorldChoice pinned, List<ulong> seeds)
     {
         var game = new Game.Game { Interactive = false, World = pinned };
         AddChild(game);
         yield return 0;
         WorldChoice world = game.World;
+        _lastWorld = world;
         int failuresBefore = _failures;
         seeds.Add(world.Seed);
         GD.Print($"-- {world} {(pinned == null ? "(a fresh game: rolled its own)" : "(pinned)")} --");
@@ -221,7 +232,7 @@ public partial class StartTest : Node
             yield return 0;
             yield break;
         }
-        GD.Print($"  load: {watch.Elapsed.TotalSeconds:F1} s to the sleeper standing; {PlanetSurface.Poi.PoiSiting.LastPlanned} places laid out in {PlanetSurface.Poi.PoiSiting.LastLayoutMs:F0} ms (side by side), set down in {PlanetSurface.Poi.PoiSiting.LastSetDownMs:F0} ms (seated in {PlanetSurface.Poi.PoiSiting.LastSeatMs:F0}); {game.Zone.Planet.Pois.Count(p => p.Built != null)} of {game.Zone.Planet.Pois.Count} built by then");
+        GD.Print($"  load{(PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad ? " (places built at load, the old way)" : "")}: {watch.Elapsed.TotalSeconds:F1} s to the sleeper standing; {PlanetSurface.Poi.PoiSiting.LastPlanned} places laid out in {PlanetSurface.Poi.PoiSiting.LastLayoutMs:F0} ms (side by side), set down in {PlanetSurface.Poi.PoiSiting.LastSetDownMs:F0} ms (seated in {PlanetSurface.Poi.PoiSiting.LastSeatMs:F0}); {game.Zone.Planet.Pois.Count(p => p.Built != null)} of {game.Zone.Planet.Pois.Count} built by then");
         Check(PlanetSurface.Poi.PoiSite.UnaskedLoadBuilds == 0, $"{world}: nothing in the load built a place by reading it unasked ({PlanetSurface.Poi.PoiSite.UnaskedLoadBuilds})");
         // The rest of the places are built after, nearest first, off the main thread: how long until every place in range stands, and the worst frame meanwhile.
         if (game.Zone.Pois.Builds is { } builds)
