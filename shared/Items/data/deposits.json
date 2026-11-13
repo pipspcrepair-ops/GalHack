@@ -39,6 +39,7 @@
     "neodymium-ore":    { "deep": 2, "vein": 1 },
     "gold-ore":         { "vein": 3, "deep": 1 },
     "gravium-ore":      { "deep": 1 },
+    "warp-fuel-ore":    { "pocket": 2, "bed": 1 },
     "fold-crystal-raw": { "deep": 2, "pocket": 1 },
     "emberite-ore":     { "vein": 2, "deep": 2 },
     "starsilver-ore":   { "deep": 1 },

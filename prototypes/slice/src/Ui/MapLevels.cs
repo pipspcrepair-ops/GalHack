@@ -692,9 +692,8 @@ public sealed class MapLevels
                     (last, had) = (p, ok);
                 }
                 if (!Place(Round(m, days), out Vector2 at, out bool behind) || behind) continue;
-                bool fuel = m == model.FuelMoon;
-                g.Canvas.DrawCircle(at, 5f, fuel ? C.Holo : C.Text);
-                labels.Add(at, 5f, Charts.Tidy(m.Name).ToUpperInvariant() + (fuel ? ": WARP FUEL" : ""), fuel ? C.Holo : C.Text, 1);
+                g.Canvas.DrawCircle(at, 5f, C.Text);
+                labels.Add(at, 5f, Charts.Tidy(m.Name).ToUpperInvariant(), C.Text, 1);
             }
             foreach (DerelictPlan w in _game.Orbit?.Plans ?? Array.Empty<DerelictPlan>())
                 if (_game.Spaceflight.Charts.Wrecks.Any(e => e.Key == w.Id) && Place(w.Position, out Vector2 at, out bool behind) && !behind)
@@ -718,7 +717,7 @@ public sealed class MapLevels
         for (int i = 0; i < lines.Length; i++) g.Text(lines[i], side.Position + new Vector2(0, 40 + i * 26), C.Dim, 15);
         int row = 0;
         foreach (PlanetSurface.Skies.Orbiter m in model.Under(model.Home).OrderBy(m => m.Orbit).Take(3))
-            g.Text($"{Charts.Tidy(m.Name)}: {Round(m, days).Length() / 1000f:F0} km", side.Position + new Vector2(0, 150 + row++ * 24), m == model.FuelMoon ? C.Holo : C.Text, 14);
+            g.Text($"{Charts.Tidy(m.Name)}: {Round(m, days).Length() / 1000f:F0} km", side.Position + new Vector2(0, 150 + row++ * 24), C.Text, 14);
         if (g.Button("map:orbit-home", new Rect2(side.Position + new Vector2(0, 250), new Vector2(150, 34)), "ON ME", C.Accent2)) (_orbitX, _orbitZ) = (ux, uz);
     }
 

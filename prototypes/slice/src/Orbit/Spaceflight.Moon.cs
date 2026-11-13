@@ -42,9 +42,6 @@ public partial class Spaceflight
     /// <summary>The highest ground of each body, m.</summary>
     readonly Dictionary<SurfaceZone, float> _highest = new();
 
-    /// <summary>A moon's gravity against the start world's: the same rock, so it scales with size (an 8 km moon pulls half as hard).</summary>
-    public static float MoonGravity(float homeGravity, double moonRadius, double homeRadius) => homeGravity * (float)(moonRadius / homeRadius);
-
     /// <summary>
     /// The thruster moon's surface, made from its own spec on worker threads from the first moment,
     /// parked (out of the physics and hidden) until you land on it. Its sky is the system's seen from
@@ -64,7 +61,7 @@ public partial class Spaceflight
         Game.AddChild(zone);
         Mute(zone);
         float ceiling = Rules.OrbitAltitude("default");
-        zone.Physics.Zone.Strength = MoonGravity(home.Physics.Zone.Strength, moon.Radius, model.Home.Radius);
+        zone.Physics.Zone.Strength = model.GravityOf(moon, home.Physics.Zone.Strength);
         zone.Physics.Zone.Ceiling = ceiling;
         zone.Built += () =>
         {
