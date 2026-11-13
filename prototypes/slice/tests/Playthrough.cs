@@ -889,6 +889,16 @@ public sealed class Playthrough
         return zone.GroundAt(near.X + distance, near.Z);
     }
 
+    /// <summary>Takes a test's vessel out of the world, as one whose last block is gone goes: nothing it leaves falls on what comes next.</summary>
+    public static void TakeAway(SurfaceZone zone, Vessel v)
+    {
+        zone.Weather.Bridge?.Untrack(v.Body);
+        zone.Physics.Unregister(v.Body);
+        zone.Physics.StuckFields.Remove(v.Field);
+        zone.Untrack(v);
+        v.Node.QueueFree();
+    }
+
     /// <summary>
     /// A clearing: every tree and boulder rooted within this reach of a point is felled for good. Vessels collide with trunks
     /// and crowns, so a craft tested among them is held by them. Returns how many went.

@@ -298,6 +298,9 @@ public partial class CoreTest : Node
         Check(v.Body.Position.Y < _game.Surface.Physics.Zone.Ceiling, $"it is held under the ceiling and falls from there ({v.Body.Position.Y:F0} m, ceiling {_game.Surface.Physics.Zone.Ceiling:F0})");
         _game.Survivor.StandUp();
         foreach (int x in _drive.Wait(5)) yield return x;
+        // A kilometre's fall would break it over whatever comes next: a craft set down there was crushed by its wreckage.
+        _game.Survivor.PlaceOutside((_site + Vector3.Up).ToNumerics());
+        Playthrough.TakeAway(_game.Zone, v);
     }
 
     IEnumerable<int> Base()

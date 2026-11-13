@@ -218,14 +218,19 @@ public partial class BlueprintTest : Node
         // PLACE fells what stands in its box and its head room; the rest stands. A crown met higher up or on the flight leg
         // breaks under a craft its trunk can't take, and holds or turns aside a light one (vessels collide with flora).
         GD.Print($"    ({name}: {CrownsOver(v)} crown(s) over it above PLACE's head room)");
+        // Woken where it stands, as anything near it changing wakes it: hanging over the ground, it would fall now.
+        float placedAt = v.Body.Position.Y;
+        v.Controller?.Wake(v.Body);
         foreach (int x in _drive.Wait(30)) yield return x;
-        // Set down on trees PLACE then fells, or with its feet hanging clear of the ground, a craft comes down onto what is
-        // under it first: the sleeper boards it at rest.
         for (int t = 0, still = 0; t < 300 && still < 10; t++)
         {
             still = v.Body.Velocity.Length() < 0.1f ? still + 1 : 0;
             yield return 0;
         }
+        // PLACE fells the plants under it before setting it down on the ground's collision: it drops nowhere, loses nothing.
+        float drop = placedAt - v.Body.Position.Y;
+        Check(drop < 0.3f && v.Structure.BlockCount == plan.BlockCount && plan.Blocks().All(b => v.Structure.Has(b.pos)) && v.Chairs.Any(),
+            $"{name}: stands where PLACE set it down ({drop:F2} m lower), every block and its chair kept ({v.Structure.BlockCount} of {plan.BlockCount})");
 
         // Seated: drawn, the camera at the chair's eye.
         _game.ThirdPerson = false;
@@ -242,10 +247,7 @@ public partial class BlueprintTest : Node
         _game.Survivor.StandUp();
         foreach (int x in _drive.Wait(5)) yield return x;
         _game.Survivor.PlaceOutside((v.Body.Position + N.Vector3.UnitY * 30f).ToGodot().ToNumerics());
-        _game.Zone.Physics.Unregister(v.Body);
-        _game.Zone.Physics.StuckFields.Remove(v.Field);
-        _game.Zone.Untrack(v);
-        v.Node.QueueFree();
+        Playthrough.TakeAway(_game.Zone, v);
         foreach (int x in _drive.Wait(10)) yield return x;
     }
 

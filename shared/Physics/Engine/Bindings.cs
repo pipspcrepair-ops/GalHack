@@ -88,8 +88,9 @@ public sealed class HullBinding : BodyBinding
         if (b.Asleep)
         {
             // At rest it isn't swept, but what set it where it stands (settling onto its legs, a placement, a toss
-            // lying as it landed) turned or put it there without a sweep: it is pushed clear, still asleep.
-            if (Hull.GlobalTransform != _cleared && Clear()) b.Position = Hull.GlobalPosition.ToNumerics();
+            // lying as it landed) turned or put it there without a sweep: it is pushed clear, still asleep, and the
+            // trees it was put into break (lifted onto them instead, it would hang there and drop when woken).
+            if (Hull.GlobalTransform != _cleared && Clear(host.World.Flora)) b.Position = Hull.GlobalPosition.ToNumerics();
             _cleared = Hull.GlobalTransform;
             return;
         }
@@ -169,9 +170,9 @@ public sealed class HullBinding : BodyBinding
     /// Pushes the hull out of anything solid it overlaps (the ground's collision, a place's blocks, another hull)
     /// along the deepest contact, a pass at a time, until nothing is deeper than <see cref="Slop"/>. A contact whose
     /// normal points down (a hull sunk past a face of the ground, which the engine would push deeper still) lifts it
-    /// instead. True if it moved.
+    /// instead. True if it moved. <paramref name="flora"/>: at rest, the trees it was put into break first.
     /// </summary>
-    public bool Clear()
+    bool Clear(IFloraField flora = null)
     {
         PhysicsDirectSpaceState3D space = Hull.GetWorld3D()?.DirectSpaceState;
         if (space == null) return false;
@@ -198,6 +199,9 @@ public sealed class HullBinding : BodyBinding
         _near.Transform = Hull.GlobalTransform * new Transform3D(Basis.Identity, bounds.GetCenter());
         _near.Exclude = _self ??= new Godot.Collections.Array<Rid> { Hull.GetRid() };
         if (space.IntersectShape(_near, 1).Count == 0) return false;
+        // Trees it was put into break (their colliders go at the end of the tick): pushed out of the rest, or of rock among them.
+        _shape ??= new PhysicsShapeQueryParameters3D { Margin = 0f };
+        _shape.CollisionMask = flora != null && !BreakTrees(space, flora) ? Hull.CollisionMask & ~Layers.Flora : Hull.CollisionMask;
 
         bool moved = false, clear = false;
         for (int pass = 0; pass < 32; pass++) // (floors first can take several short steps up)
@@ -213,7 +217,6 @@ public sealed class HullBinding : BodyBinding
                     continue;
                 }
                 if (cs.Disabled || cs.Shape == null) continue;
-                _shape ??= new PhysicsShapeQueryParameters3D { CollisionMask = Hull.CollisionMask, Margin = 0f };
                 _shape.Shape = cs.Shape;
                 _shape.Transform = cs.GlobalTransform;
                 _shape.Exclude = _self;
@@ -266,6 +269,38 @@ public sealed class HullBinding : BodyBinding
         return moved;
     }
 
+    /// <summary>
+    /// Breaks the trees a hull at rest was put into (set down landed, settled or turned without a sweep): a structure
+    /// coming down into a tree breaks it, as the shared rules break one it is swept onto, so it is never lifted onto a crown
+    /// it was never lowered onto, left there to drop when woken. True if rock (which never gives way) is among what it is in.
+    /// </summary>
+    bool BreakTrees(PhysicsDirectSpaceState3D space, IFloraField flora)
+    {
+        _flora ??= new PhysicsShapeQueryParameters3D { CollisionMask = Layers.Flora, Margin = 0f };
+        _flora.Exclude = _self;
+        bool rock = false;
+        Vector3 middle = Hull.GlobalTransform * _local.GetCenter();
+        foreach (CollisionShape3D cs in _shapes)
+        {
+            if (!GodotObject.IsInstanceValid(cs) || cs.GetParent() != Hull || cs.Disabled || cs.Shape == null) continue;
+            _flora.Shape = cs.Shape;
+            _flora.Transform = cs.GlobalTransform;
+            foreach (Godot.Collections.Dictionary hit in space.IntersectShape(_flora, 32))
+            {
+                Rid body = (Rid)hit["rid"];
+                int shape = (int)hit["shape"];
+                if (!flora.TreeAt(GodotQuery.PartOf(Surface.Flora, body, shape), out long tree, out _))
+                {
+                    rock = true;
+                    continue;
+                }
+                Vector3 at = PhysicsServer3D.BodyGetShapeTransform(body, shape).Origin;
+                flora.Fell(tree, at.ToNumerics(), (at - middle).ToNumerics());
+            }
+        }
+        return rock;
+    }
+
     PhysicsRayQueryParameters3D _down;
 
     /// <summary>
@@ -314,7 +349,6 @@ public sealed class HullBinding : BodyBinding
     /// <summary>Does any of its shapes overlap anything solid by more than <see cref="Slop"/>?</summary>
     bool Overlaps(PhysicsDirectSpaceState3D space)
     {
-        _shape ??= new PhysicsShapeQueryParameters3D { CollisionMask = Hull.CollisionMask, Margin = 0f };
         foreach (CollisionShape3D cs in _shapes)
         {
             if (!GodotObject.IsInstanceValid(cs) || cs.GetParent() != Hull || cs.Disabled || cs.Shape == null) continue;
@@ -335,7 +369,7 @@ public sealed class HullBinding : BodyBinding
     /// <summary>What it touched in its last move (for tests): a hull at rest still has what holds it.</summary>
     public int Contacts => _contacts.Count;
 
-    PhysicsShapeQueryParameters3D _near, _shape;
+    PhysicsShapeQueryParameters3D _near, _shape, _flora;
     readonly List<CollisionShape3D> _shapes = new();
     int _childCount = -1;
     Aabb _local;

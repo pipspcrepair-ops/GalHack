@@ -348,6 +348,27 @@ public partial class SurfaceZone : Node3D
     /// <summary>The natural ground (before digging) under a frame position.</summary>
     public virtual Vector3 GroundAt(float x, float z) => new(x, Planet.GroundHeight(Mathx.WrapX(x, Planet.Width), Mathx.Wrap(z, Planet.Height)), z);
 
+    /// <summary>How far above and below the natural ground its collision is looked for, m: dug ground, a road's bed, a face between its corners.</summary>
+    const float GroundReach = 3f;
+
+    PhysicsRayQueryParameters3D _groundRay;
+
+    /// <summary>
+    /// The height of the ground's own collision at a column, what a foot or a hull set down there meets (the natural
+    /// ground's height is off it between its faces' corners, and wherever it was dug); the natural ground where no
+    /// collision stands near it (not streamed in yet).
+    /// </summary>
+    public float GroundTop(float x, float z)
+    {
+        float natural = GroundAt(x, z).Y;
+        if (!float.IsFinite(natural)) return natural;
+        _groundRay ??= new PhysicsRayQueryParameters3D { CollisionMask = GalHack.Physics.Layers.World, HitFromInside = false };
+        _groundRay.From = new Vector3(x, natural + GroundReach, z);
+        _groundRay.To = new Vector3(x, natural - GroundReach, z);
+        var hit = GetWorld3D().DirectSpaceState.IntersectRay(_groundRay);
+        return hit.Count > 0 ? hit["position"].AsVector3().Y : natural;
+    }
+
     ShaderMaterial WaterMaterial(bool sea)
     {
         WorldLook look = Planet.Look;
