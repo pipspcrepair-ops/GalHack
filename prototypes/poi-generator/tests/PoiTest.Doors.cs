@@ -47,7 +47,7 @@ public partial class PoiTest
                 var rooms = new HashSet<Int3>(layout.Modules.SelectMany(m => m.Cells));
                 bool Hard(Int3 c) => g.Get(c) is var b && BlockInfo.Collides(b.Type) && b.Role != Role.Traverse && !BlockInfo.IsSlope(b.Type);
                 int Clear(Int3 c, int max) { int n = 0; while (n < max && !BlockInfo.Collides(g.Get(c + Int3.Up * n).Type)) n++; return n; }
-                var blast = layout.Extras.Locks.Where(l => l.Blast).Select(l => l.Doorway).ToHashSet();
+                var blast = layout.Extras.BlastDoors;
                 var ways = layout.Doorways.Select((d, i) => (d, i)).Where(x => x.d.Facing.IsHorizontal() && x.d.Cells.Count > 0)
                     .Select(x => (x.d.Cells, x.d.Facing, Exit: false, Danger: x.d.Hazard || blast.Contains(x.i))).ToList();
                 if (layout.ExitCells.Count > 0) ways.Add((layout.ExitCells, layout.EntranceFacing, Exit: true, Danger: false));
