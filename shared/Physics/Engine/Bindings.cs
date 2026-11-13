@@ -205,6 +205,15 @@ public sealed class HullBinding : BodyBinding
             Pushes++;
             moved = true;
         }
+        // Sunk in the ground below its surface: a shape wholly under the ground's faces touches none of them, so the
+        // contacts above miss it. Up by the depth of the ground over its underside, measured on the ground's own faces.
+        float sunk = SunkBy(space);
+        if (sunk > Slop)
+        {
+            Hull.GlobalPosition += Vector3.Up * (sunk + Slop);
+            moved = true;
+            clear = false;
+        }
         // Still in after every pass (sunk deep in the ground, where its faces offer only short ways out): straight up
         // to the first height it is clear at, a quarter metre at a time.
         if (!clear && Overlaps(space))
@@ -219,6 +228,48 @@ public sealed class HullBinding : BodyBinding
         }
         return moved;
     }
+
+    PhysicsRayQueryParameters3D _down;
+
+    /// <summary>
+    /// How far the ground's surface stands above the hull's underside, m: for each of its lowest shapes a ray from the
+    /// point on its top straight above its middle to the point on its underside straight below, against the world layer;
+    /// a surface met on the way is ground over that shape's underside. Only through the hull's own shapes, so a hull
+    /// resting on a slope, tilted or on its legs is never lifted. 0 when clear.
+    /// </summary>
+    float SunkBy(PhysicsDirectSpaceState3D space)
+    {
+        _down ??= new PhysicsRayQueryParameters3D { CollisionMask = Layers.World, HitBackFaces = false };
+        _down.Exclude = _self;
+        _lowest.Clear();
+        foreach (CollisionShape3D cs in _shapes)
+            if (GodotObject.IsInstanceValid(cs) && !cs.Disabled && cs.Shape != null) _lowest.Add(cs);
+        _lowest.Sort((p, q) => p.GlobalPosition.Y.CompareTo(q.GlobalPosition.Y));
+        float most = 0f;
+        for (int i = 0; i < _lowest.Count && i < SunkProbes; i++)
+        {
+            Transform3D t = _lowest[i].GlobalTransform;
+            Aabb box = BoundsOf(_lowest[i].Shape);
+            _down.From = t * Through(box, t.Basis.Inverse() * Vector3.Up);
+            _down.To = t * Through(box, t.Basis.Inverse() * Vector3.Down);
+            Godot.Collections.Dictionary hit = space.IntersectRay(_down);
+            if (hit.Count > 0) most = Mathf.Max(most, hit["position"].AsVector3().Y - _down.To.Y);
+        }
+        return most;
+    }
+
+    /// <summary>Where a line from a box's middle along a direction leaves it (the box's own frame).</summary>
+    static Vector3 Through(Aabb box, Vector3 dir)
+    {
+        Vector3 c = box.GetCenter(), h = box.Size * 0.5f;
+        float t = float.MaxValue;
+        for (int i = 0; i < 3; i++)
+            if (Mathf.Abs(dir[i]) > 1e-6f) t = Mathf.Min(t, h[i] / Mathf.Abs(dir[i]));
+        return c + dir * t;
+    }
+
+    const int SunkProbes = 16;
+    readonly List<CollisionShape3D> _lowest = new();
 
     /// <summary>Does any of its shapes overlap anything solid by more than <see cref="Slop"/>?</summary>
     bool Overlaps(PhysicsDirectSpaceState3D space)
