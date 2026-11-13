@@ -21,27 +21,28 @@ public partial class OcclusionTest : Node
     public override void _Ready()
     {
         _cat = GameData.Catalogue;
-        foreach (GridDef grid in _cat.Grids)
         {
-            OcclusionCheck.Result r = OcclusionCheck.Run(_cat, grid);
-            foreach (string w in r.Worst) GD.Print($"      {grid.Id}: {w}");
-            Check(r.Holes == 0, $"{grid.Id} grid: every block in every orientation against a cube on every side, {r.Cases} cases: {r.Culled} cube faces hidden, {r.Holes} of them left a hole");
+            OcclusionCheck.Result r = OcclusionCheck.Run(_cat);
+            foreach (string w in r.Worst) GD.Print($"      {w}");
+            Check(r.Holes == 0, $"every block in every orientation against a cube on every side, {r.Cases} cases: {r.Culled} cube faces hidden, {r.Holes} of them left a hole");
             GD.Print($"      hiders: {string.Join(", ", r.Hiders)}");
         }
 
-        Structure pair = Pair("steel", "steel");
+        Structure pair = Pair("iron-plated", "iron-plated");
         Check(Faces(pair) == 10, $"cube against cube still culls: two cubes draw 10 faces, not 12 ({Faces(pair)})");
-        Check(Faces(Pair("steel", "concrete")) == 10, "and across materials");
-        Check(Faces(Pair("steel", "generator")) > 0 && _cat.OccludeMask(Rotated("generator")) != 0, "a device that really is a full box still hides what's behind it");
-        int beside = Faces(Pair("glass", "steel"));
-        ChunkMeshData panes = ChunkMesher.Build(Pair("glass", "steel"), Int3.Zero, colliders: false);
+        Check(Faces(Pair("iron-plated", "concrete-plated")) == 10, "and across materials");
+        Check(Faces(Pair("iron-plated", "generator-t1")) > 0 && _cat.OccludeMask(Rotated("generator-t1")) != 0, "a device that really is a full box still hides what's behind it");
+        int beside = Faces(Pair("glass-plated", "iron-plated"));
+        ChunkMeshData panes = ChunkMesher.Build(Pair("glass-plated", "iron-plated"), Int3.Zero, colliders: false);
         Check(beside == 6 && panes.Glass.VertexCount > 0, $"glass hides nothing: the cube beside it keeps all 6 of its faces ({beside})");
         int overclaims = 0;
         foreach (BlockType t in _cat.Types.Skip(1).Where(t => !t.IsArmor))
             for (int open = 0; open < (t.IsDoor ? 2 : 1); open++)
             {
                 var probe = new Block { Type = (ushort)t.Index, Flags = open == 1 ? BlockFlags.Open : BlockFlags.None };
-                byte mask = _cat.OccludeMask(probe);
+                // A block spanning several cells covers a side across all its cells; each cell masks out its inner faces.
+                byte mask = 0;
+                foreach (Int3 cell in Footprint.Cells(Int3.Zero, t, 0)) mask |= _cat.OccludeMask(cell == Int3.Zero ? probe : Footprint.Filler(probe, Int3.Zero, cell));
                 int declared = open == 1 ? t.CoverFacesOpen : t.CoverFaces, kept = 0;
                 foreach (Dir d in Dirs.All) if ((mask & (1 << (int)d)) != 0) kept |= 1 << (int)d;
                 if (kept == declared) continue;
@@ -65,13 +66,13 @@ public partial class OcclusionTest : Node
 
     Block Rotated(string id)
     {
-        var s = new Structure(_cat, _cat.Grid(GridSize.Large));
+        var s = new Structure(_cat);
         return Building.Make(s, _cat.Type(id));
     }
 
     Structure Pair(string a, string b)
     {
-        var s = new Structure(_cat, _cat.Grid(GridSize.Large));
+        var s = new Structure(_cat);
         s.Set(Int3.Zero, Building.Make(s, _cat.Type(a)));
         s.Set(new Int3(1, 0, 0), Building.Make(s, _cat.Type(b)));
         return s;
@@ -98,13 +99,13 @@ public partial class OcclusionTest : Node
     void Seams()
     {
         var rand = new Random();
-        var s = new Structure(_cat, _cat.Grid(GridSize.Large));
+        var s = new Structure(_cat);
         const int Lo = -9, Hi = 11;
         for (int x = Lo; x <= Hi; x++)
             for (int y = Lo; y <= Hi; y++)
                 for (int z = Lo; z <= Hi; z++)
                     if (x == Lo || y == Lo || z == Lo || x == Hi || y == Hi || z == Hi || (x == 0 || y == 0 || z == 0) && rand.Next(3) == 0)
-                        s.Set(new Int3(x, y, z), Building.Make(s, _cat.Type("steel")));
+                        s.Set(new Int3(x, y, z), Building.Make(s, _cat.Type("iron-plated")));
         var meshes = new System.Collections.Generic.Dictionary<Int3, ChunkMeshData>();
         void Redraw()
         {
@@ -155,16 +156,16 @@ public partial class OcclusionTest : Node
     /// <summary>What honest culling costs: a hull with thrusters set into it, meshed.</summary>
     void Cost()
     {
-        var s = new Structure(_cat, _cat.Grid(GridSize.Small));
+        var s = new Structure(_cat);
         for (int x = 0; x < 16; x++)
             for (int y = 0; y < 16; y++)
                 for (int z = 0; z < 16; z++)
                     if (x == 0 || y == 0 || z == 0 || x == 15 || y == 15 || z == 15)
-                        s.Set(new Int3(x, y, z), Building.Make(s, _cat.Type((x + y + z) % 5 == 0 ? "thruster" : "steel")));
+                        s.Set(new Int3(x, y, z), Building.Make(s, _cat.Type((x + y + z) % 5 == 0 ? "thruster-t1" : "iron-plated")));
         // The same chunk with plain steel where the thrusters are, turn about in the same run: what a
         // thruster costs to mesh at all, whatever else the machine is doing.
-        var plain = new Structure(_cat, _cat.Grid(GridSize.Small));
-        foreach (var (p, _) in s.Blocks()) plain.Set(p, Building.Make(plain, _cat.Type("steel")));
+        var plain = new Structure(_cat);
+        foreach (var (p, _) in s.Blocks()) plain.Set(p, Building.Make(plain, _cat.Type("iron-plated")));
         var data = new ChunkMeshData();
         double best = double.MaxValue, bestPlain = double.MaxValue;
         for (int window = 0; window < 5; window++)

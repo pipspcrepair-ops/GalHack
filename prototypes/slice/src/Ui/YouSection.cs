@@ -363,8 +363,8 @@ public sealed class YouSection : IMenuSection
         ItemView view = FilterBar.Build(g, "palette", new Rect2(r.Position, new Vector2(r.Size.X, FilterBar.Height)));
         // Creative has every block, the cores too; Survival's cores are items you craft and carry.
         IEnumerable<ItemDef> families = creative
-            ? items.Items.Where(i => (i.IsBlock && !i.IsDecoPiece) || PlayerInventory.CoreItems.Contains(i.Id))
-            : items.BlockItems.Where(i => !i.IsDecoPiece && !PlayerInventory.CoreItems.Contains(i.Id));
+            ? items.Items.Where(i => (i.IsBlock && !i.IsDecoPiece) || i.Id == PlayerInventory.Core)
+            : items.BlockItems.Where(i => !i.IsDecoPiece && i.Id != PlayerInventory.Core);
         var entries = view.Apply(families, i => pack[i.Id])
             .OrderBy(i => view.Sort == ItemSort.Slot ? (p.ItemAllowed(i) ? 0 : 1) : 0).ToList();
         int perPage = 13;
@@ -381,7 +381,7 @@ public sealed class YouSection : IMenuSection
             bool allowed = p.ItemAllowed(item);
             var row = new Rect2(r.Position.X, top + i * 40, r.Size.X, RowH);
             g.Fill(row, new Color(allowed ? C.Glass : C.Panel, 0.85f));
-            g.Fill(new Rect2(row.Position, new Vector2(5, row.Size.Y)), allowed ? (item.SmallGrid ? C.Accent2 : C.Accent) : C.Dim);
+            g.Fill(new Rect2(row.Position, new Vector2(5, row.Size.Y)), allowed ? C.Accent : C.Dim);
             float side = Ingredients.Side(RowH);
             if (ItemIcons.Shared?.Get(item) is Texture2D icon)
                 g.Image(icon, new Rect2(row.Position + new Vector2(10, 2), new Vector2(side, side)), new Color(1, 1, 1, allowed || creative ? 1f : 0.45f));
@@ -398,7 +398,7 @@ public sealed class YouSection : IMenuSection
             if (!creative)
                 g.TextIn($"{pack[item.Id]}{(pack.Linked != null ? $" + {pack.Linked.Count(item.Id)}" : "")}", new Rect2(row.End.X - CountW, row.Position.Y + 6, CountW - 6, 22), C.Accent2, 14, HorizontalAlignment.Right, UiTheme.Mono);
             if (creative || pack.Linked != null)
-                g.Draggable($"palette:{item.Id}", row, new BlockRef(item.Id), item.ShortName, item.SmallGrid ? C.Accent2 : C.Accent);
+                g.Draggable($"palette:{item.Id}", row, new BlockRef(item.Id), item.ShortName, C.Accent);
         }
         float y = top + perPage * 40 + 4;
         if (g.Button("palette:up", new Rect2(r.Position.X, y, 80, 30), "UP", C.Accent2, _paletteScroll > 0)) _paletteScroll--;

@@ -12,10 +12,10 @@
   "version": 1,
   "constructors": [
     { "id": "survival", "name": "Survival constructor", "tag": "FAB-0", "tier": 0, "speed": 1.0,  "item": "survival-constructor", "portable": true },
-    { "id": "portable", "name": "Portable constructor", "tag": "FAB-P", "tier": 1, "speed": 1.5,  "block": "portfab" },
-    { "id": "small",    "name": "Small constructor",    "tag": "FAB-1", "tier": 1, "speed": 2.0,  "block": "smallfab" },
-    { "id": "large",    "name": "Large constructor",    "tag": "FAB-2", "tier": 2, "speed": 4.0,  "block": "largefab" },
-    { "id": "advanced", "name": "Advanced constructor", "tag": "FAB-3", "tier": 3, "speed": 6.0,  "block": "advfab" }
+    { "id": "portable", "name": "Portable constructor", "tag": "FAB-P", "tier": 1, "speed": 1.5,  "block": "portable-fabricator" },
+    { "id": "small",    "name": "Small constructor",    "tag": "FAB-1", "tier": 1, "speed": 2.0,  "block": "fabricator-t1" },
+    { "id": "large",    "name": "Large constructor",    "tag": "FAB-2", "tier": 2, "speed": 4.0,  "block": "fabricator-t2" },
+    { "id": "advanced", "name": "Advanced constructor", "tag": "FAB-3", "tier": 3, "speed": 6.0,  "block": "fabricator-t3" }
   ],
   "tierNames": [ "survival", "small", "large", "advanced" ],
 
@@ -39,15 +39,15 @@
     "oreUnitsPerCell": 12,
     // Survival placement with the multi-tool, including picking and lining blocks up.
     "placeSecondsPerBlock": 1.2,
-    // What a player builds between the crash and the first small vessel: a foothold base on the
-    // large grid (core, power, fuel, a small constructor, storage, a floor), then the vessel.
+    // What a player builds between the crash and the first vessel: a foothold base (core, power,
+    // fuel, a fabricator, storage, a floor), then the vessel.
     "foothold": [
-      { "block": "core", "grid": "large", "count": 1 },
-      { "block": "generator", "grid": "large", "count": 1 },
-      { "block": "fueltank", "grid": "large", "count": 1 },
-      { "block": "smallfab", "grid": "large", "count": 1 },
-      { "block": "container", "grid": "large", "count": 1 },
-      { "block": "steel", "grid": "large", "count": 12 }
+      { "block": "core", "count": 1 },
+      { "block": "generator-t1", "count": 1 },
+      { "block": "fuel-tank-t1", "count": 1 },
+      { "block": "fabricator-t1", "count": 1 },
+      { "block": "container-t1", "count": 1 },
+      { "block": "iron-plated", "count": 12 }
     ],
     // Fuel to fly the first vessel: energy cells (common materials only).
     "starterFuel": { "energy-cell": 20 }

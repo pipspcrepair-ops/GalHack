@@ -26,12 +26,6 @@ public sealed record DecoBlast(float Radius, float Damage);
 /// <summary>Which way a knocked-over piece falls, in its own frame (its front faces -Z).</summary>
 public enum DecoFall { None, Back, Front, Left, Right, Over }
 
-/// <summary>
-/// A deco piece's tech-tree node on one grid: the same shape as the slice's block unlocks
-/// (<c>level</c>, <c>cost</c>, <c>parent</c>, <c>tab</c>), so the two merge into one tree.
-/// </summary>
-public sealed record DecoUnlock(int Level, int Cost, string Parent, string Tab);
-
 /// <summary>A deco piece that gives off light: its reach in metres and its strength.</summary>
 public sealed record DecoLight(float Range, float Energy);
 
@@ -61,13 +55,14 @@ public sealed class DecoSet
 }
 
 /// <summary>
-/// One decoration: a deco block in the shared block catalogue. Its footprint is given in small-grid
-/// cells (0.5 m) so it can be planned finely in a room; on the large grid (2 m) it takes
-/// <see cref="LargeCells"/>, rounded up, as Empyrion's deco blocks take whole base blocks.
+/// One decoration: a deco block in the shared block catalogue. Its footprint is given in 0.5 m
+/// units so it can be planned finely in a room; on the 1 m block grid it takes <see cref="Cells"/>,
+/// rounded up, as Empyrion's deco blocks take whole blocks.
 /// </summary>
 public sealed class DecoPiece
 {
-    public const float SmallCell = 0.5f, LargeCell = 2f;
+    /// <summary>The footprint's unit, metres.</summary>
+    public const float Unit = 0.5f;
 
     public string Id { get; init; }
     public string Name { get; init; }
@@ -76,18 +71,15 @@ public sealed class DecoPiece
     public IReadOnlyList<string> Also { get; init; } = Array.Empty<string>();
     /// <summary>What it is in a room (desk, chair, bed, rack...): arrangement templates and POI props ask for roles.</summary>
     public IReadOnlyList<string> Roles { get; init; } = Array.Empty<string>();
-    /// <summary>Footprint in small-grid cells: x is width, y height, z depth (its front faces -Z).</summary>
+    /// <summary>Footprint in 0.5 m units: x is width, y height, z depth (its front faces -Z).</summary>
     public int SizeX { get; init; }
     public int SizeY { get; init; }
     public int SizeZ { get; init; }
-    public float Width => SizeX * SmallCell;
-    public float Height => SizeY * SmallCell;
-    public float Depth => SizeZ * SmallCell;
-    /// <summary>Cells it takes on the large grid: its small-grid size rounded up to whole 2 m cells.</summary>
-    public (int X, int Y, int Z) LargeCells => ((SizeX + 3) / 4, (SizeY + 3) / 4, (SizeZ + 3) / 4);
-    /// <summary>Which building grids it can be placed on. Most deco is large-grid (bases and capital ships), as in Empyrion.</summary>
-    public bool OnLarge { get; init; } = true;
-    public bool OnSmall { get; init; }
+    public float Width => SizeX * Unit;
+    public float Height => SizeY * Unit;
+    public float Depth => SizeZ * Unit;
+    /// <summary>Cells it takes on the 1 m grid: its footprint rounded up to whole metres.</summary>
+    public (int X, int Y, int Z) Cells => ((SizeX + 1) / 2, (SizeY + 1) / 2, (SizeZ + 1) / 2);
     public DecoMount Mount { get; init; }
     /// <summary>Wall pieces: height of the piece's bottom above the floor.</summary>
     public float MountY { get; init; }
@@ -102,8 +94,8 @@ public sealed class DecoPiece
     public Bill Bill { get; init; } = new();
     /// <summary>Needs a unique find (Precursor pieces): salvage only, no path from ore.</summary>
     public bool UniqueOnly { get; init; }
-    public DecoUnlock UnlockLarge { get; init; }
-    public DecoUnlock UnlockSmall { get; init; }
+    /// <summary>Its tech-tree node on the deco tab: under its set's first piece.</summary>
+    public Unlock Unlock { get; init; }
     /// <summary>Light it gives off while powered, or null.</summary>
     public DecoLight Light { get; init; }
     /// <summary>Animation: flicker (screens, lamps), blink (status lights), pulse (alien and Precursor glows), spark (when broken), or null.</summary>
@@ -125,10 +117,6 @@ public sealed class DecoPiece
     public bool Has(string role) => Roles.Contains(role);
     public bool InSet(string set) => Set == set || Also.Contains(set);
     public bool Fixed => Falls.Count == 0;
-    public DecoUnlock UnlockFor(bool smallGrid) => smallGrid ? UnlockSmall : UnlockLarge;
-
-    /// <summary>A piece's tech-tree node id on a grid, as the slice writes block nodes: <c>office-desk@large</c>.</summary>
-    public string NodeId(bool smallGrid) => $"{Id}@{(smallGrid ? "small" : "large")}";
 
     /// <summary>The block id of a damaged or knocked-over state (Creative and POIs only): <c>office-desk.broken</c>.</summary>
     public string BlockId(DecoState s) => s == DecoState.Intact ? Id : $"{Id}.{s.ToString().ToLowerInvariant()}";
@@ -268,7 +256,7 @@ public sealed class DecoCatalogue
             if (!_setById.TryGetValue(setId, out DecoSet set)) throw new InvalidDataException($"{where}: unknown set '{setId}'");
 
             int[] size = j.GetProperty("size").EnumerateArray().Select(v => v.GetInt32()).ToArray();
-            if (size.Length != 3 || size.Any(v => v < 1 || v > 96)) throw new InvalidDataException($"{where}: size must be three small-grid cell counts from 1 to 96");
+            if (size.Length != 3 || size.Any(v => v < 1 || v > 96)) throw new InvalidDataException($"{where}: size must be three counts of 0.5 m from 1 to 96");
 
             DecoMount mount = System.Enum.TryParse(DataJson.Str(j, "mount", "floor"), true, out DecoMount m) ? m : throw new InvalidDataException($"{where}: bad mount");
             bool isFixed = DataJson.Bool(j, "fixed", false) || mount == DecoMount.Ceiling;
@@ -300,9 +288,6 @@ public sealed class DecoCatalogue
                 }
             if (bill.IsEmpty) throw new InvalidDataException($"{where}: it needs a bill");
 
-            string[] grids = j.TryGetProperty("grids", out JsonElement g) ? g.EnumerateArray().Select(x => x.GetString()).ToArray() : new[] { "large" };
-            if (grids.Length == 0 || grids.Any(x => x != "large" && x != "small")) throw new InvalidDataException($"{where}: grids are 'large' and/or 'small'");
-
             DecoLight light = null;
             if (j.TryGetProperty("light", out JsonElement l))
                 light = new DecoLight((float)DataJson.Num(l, "range", 3), (float)DataJson.Num(l, "energy", 1));
@@ -310,9 +295,6 @@ public sealed class DecoCatalogue
             roots.TryGetValue(setId, out DecoPiece root);
             int level = DataJson.Int(j, "level", set.Level), cost = DataJson.Int(j, "cost", set.Cost);
             if (level < 1 || cost < 0) throw new InvalidDataException($"{where}: unlock level must be at least 1 and cost not negative");
-            bool onLarge = grids.Contains("large"), onSmall = grids.Contains("small");
-            DecoUnlock Node(bool small) =>
-                new(level, cost, root == null ? null : (small ? (root.OnSmall ? root.NodeId(true) : null) : (root.OnLarge ? root.NodeId(false) : null)), set.Tab);
 
             var piece = new DecoPiece
             {
@@ -322,7 +304,6 @@ public sealed class DecoCatalogue
                 Also = j.TryGetProperty("also", out JsonElement a) ? a.EnumerateArray().Select(x => x.GetString()).ToArray() : Array.Empty<string>(),
                 Roles = j.TryGetProperty("roles", out JsonElement r) ? r.EnumerateArray().Select(x => x.GetString()).ToArray() : Array.Empty<string>(),
                 SizeX = size[0], SizeY = size[1], SizeZ = size[2],
-                OnLarge = onLarge, OnSmall = onSmall,
                 Mount = mount,
                 MountY = (float)DataJson.Num(j, "mountY", mount == DecoMount.Wall ? 1.0 : 0),
                 Surface = (float)DataJson.Num(j, "surface", 0),
@@ -331,8 +312,7 @@ public sealed class DecoCatalogue
                 Falls = falls,
                 Bill = bill,
                 UniqueOnly = DataJson.Bool(j, "uniqueOnly", false),
-                UnlockLarge = onLarge ? Node(false) : null,
-                UnlockSmall = onSmall ? Node(true) : null,
+                Unlock = new Unlock(level, cost, root?.Id, set.Tab),
                 Light = light,
                 Anim = DataJson.Str(j, "anim", null),
                 Tech = ParseTech(DataJson.Str(j, "tech", set.Tech.ToString()), where),
@@ -367,7 +347,7 @@ public sealed class DecoCatalogue
     public List<string> Validate(ItemCatalogue items = null)
     {
         var problems = new List<string>();
-        var nodes = new HashSet<string>(_pieces.SelectMany(p => new[] { p.OnLarge ? p.NodeId(false) : null, p.OnSmall ? p.NodeId(true) : null }).Where(n => n != null));
+        var nodes = new HashSet<string>(_pieces.Select(p => p.Id));
         foreach (DecoPiece p in _pieces)
         {
             if (items != null)
@@ -375,9 +355,7 @@ public sealed class DecoCatalogue
                     if (!items.Has(id)) problems.Add($"{p.Id}: bill names unknown item '{id}'");
             if (items != null && items.Blocks.TryGet(p.Id, out _)) problems.Add($"{p.Id}: the id is already a block in blocks.json");
             if (p.Bill.Ids.Contains("precursor-alloy") != p.UniqueOnly) problems.Add($"{p.Id}: uniqueOnly must match needing precursor alloy");
-            foreach (DecoUnlock u in new[] { p.UnlockLarge, p.UnlockSmall })
-                if (u?.Parent != null && !nodes.Contains(u.Parent)) problems.Add($"{p.Id}: unlock parent '{u.Parent}' is not a node");
-            if (!p.OnLarge && !p.OnSmall) problems.Add($"{p.Id}: it can be placed on no grid");
+            if (p.Unlock.Parent != null && !nodes.Contains(p.Unlock.Parent)) problems.Add($"{p.Id}: unlock parent '{p.Unlock.Parent}' is not a node");
             if (!p.Outdoor && p.Height > 2.5f + 1e-4f && p.Mount != DecoMount.Ceiling) problems.Add($"{p.Id}: taller than a 3 m POI room allows (2.5 m)");
             if (p.Mount == DecoMount.Top && p.Height > 1f) problems.Add($"{p.Id}: a piece that sits on others must be small");
             if (p.Light == null && p.Anim is "flicker" or "pulse") problems.Add($"{p.Id}: it {p.Anim}s but gives no light");
@@ -393,8 +371,8 @@ public sealed class DecoCatalogue
     }
 
     /// <summary>
-    /// Integration: adds every intact deco piece to the shared catalogue as a block (its bill, on the
-    /// grids it goes on) and as craftable block items, one per grid, with the piece's tech-tree node
+    /// Integration: adds every intact deco piece to the shared catalogue as a block (its bill and the
+    /// cells it fills) and as a craftable block item, with the piece's tech-tree node
     /// on the deco tab (mapped to the shared <see cref="Unlock"/>) and its theme set as the item's
     /// group. Damaged and knocked-over states are Creative and POI blocks: they get no bill and no item.
     /// </summary>
@@ -405,16 +383,13 @@ public sealed class DecoCatalogue
             if (items.Blocks.TryGet(p.Id, out _)) throw new InvalidDataException($"deco piece '{p.Id}' clashes with a block id");
             var bill = new BlockBill
             {
-                BlockId = p.Id, Small = p.Bill.Clone(), Large = p.Bill.Clone(), UniqueOnly = p.UniqueOnly,
-                OnSmall = p.OnSmall, OnLarge = p.OnLarge, Family = BlockFamily.Deco,
-                UnlockSmall = ToUnlock(p.UnlockSmall), UnlockLarge = ToUnlock(p.UnlockLarge),
+                BlockId = p.Id, Bill = p.Bill.Clone(), UniqueOnly = p.UniqueOnly, Family = BlockFamily.Deco, Unlock = p.Unlock,
+                Cells = p.Cells.X * p.Cells.Y * p.Cells.Z,
             };
-            items.AddBlock(bill, small => new ItemCatalogue.BlockItemSpec(Name: $"{p.Name}{(p.OnSmall && p.OnLarge ? (small ? " (small)" : " (large)") : "")}", Group: p.Set));
+            items.AddBlock(bill, new ItemCatalogue.BlockItemSpec(Name: p.Name, Group: p.Set));
         }
         items.Rebuild();
     }
-
-    static Unlock ToUnlock(DecoUnlock u) => u == null ? null : ItemCatalogue.ToUnlock(u.Level, u.Cost, u.Parent, u.Tab);
 
     /// <summary>The block id of the universal deco block, and its item id.</summary>
     public const string UniversalBlock = "deco", UniversalItem = "deco-block";
@@ -430,10 +405,10 @@ public sealed class DecoCatalogue
     {
         if (items.Has(UniversalItem)) return;
         var bill = new Bill();
-        bill.Add("hull-plate", 1);
+        bill.Add("iron-plate", 1);
         bill.Add("glass", 1);
         bill.Add("polymer", 1);
-        items.AddUniversalDeco(UniversalItem, "Deco block", "DECO", bill, tier: 1, ToUnlock(new DecoUnlock(3, 1, null, "deco")));
+        items.AddUniversalDeco(UniversalItem, "Deco block", "DECO", bill, tier: 1, new Unlock(3, 1, null, "deco"));
         items.Rebuild();
     }
 }

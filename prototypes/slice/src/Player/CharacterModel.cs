@@ -13,6 +13,8 @@ public struct CastawayMotion
     public bool Grounded, Crouched, Jetting, Swimming, Floating, Ladder;
     /// <summary>On a hover bike's seat; in a vessel's chair.</summary>
     public bool Riding, Seated;
+    /// <summary>In a chair: how far its seat stands above the floor the feet rest on, m (the figure's origin is on that floor).</summary>
+    public float SeatDrop;
     /// <summary>The view's pitch, radians (pointing).</summary>
     public float Pitch;
 }
@@ -130,18 +132,31 @@ public static class CharacterModel
         b.LegU0 = Find("leg0u"); b.LegU1 = Find("leg1u"); b.LegL0 = Find("leg0l"); b.LegL1 = Find("leg1l");
         b.Foot0 = Find("leg0f"); b.Foot1 = Find("leg1f");
         Bodies.AddOrUpdate(root, b);
-        OwnLayer(root);
+        OwnLayer(root, BodyLayer);
+        OwnLayer(head, HeadLayer);
         // Standing at rest until it is driven.
         Drive(root, new CastawayMotion { Grounded = true }, null, 99f, 0f);
         return root;
     }
 
-    /// <summary>Every part on its own layer: hidden from the first-person camera.</summary>
-    static void OwnLayer(Node n)
+    /// <summary>
+    /// The render layers (1-based, as a camera's cull mask counts them) the figure is drawn on: a
+    /// first-person camera leaves out the body on foot, where the hands stand in for it, and only
+    /// the head when seated, where the eye is inside the helmet and the view down shows the lap.
+    /// </summary>
+    public const int BodyLayer = 2, HeadLayer = 3;
+
+    static void OwnLayer(Node n, int layer)
     {
-        if (n is MeshInstance3D m) m.Layers = 1u << 1;
-        foreach (Node c in n.GetChildren()) OwnLayer(c);
+        if (n is MeshInstance3D m) m.Layers = 1u << (layer - 1);
+        foreach (Node c in n.GetChildren()) OwnLayer(c, layer);
     }
+
+    /// <summary>
+    /// How far the hips sit above the seat, m: the suit's pelvis reaches 0.08 m under them and the
+    /// thighs' 0.08 m round sits under a hip joint a little lower, so the seat meets both about here.
+    /// </summary>
+    public const float SitBones = 0.09f;
 
     /// <summary>How long a gesture plays on the body, seconds.</summary>
     public const float GestureSeconds = 1.7f;
@@ -190,6 +205,8 @@ public static class CharacterModel
         BodyAct act = w > 0f ? Act(gesture) : BodyAct.None;
         // In the air the hips stay where they were and the feet come up to them.
         float lift = f.LegLength * 0.42f * b.Air;
+        // In a chair the hips go onto its seat (the rig sits them at the lower leg's height over the feet), the feet on its floor.
+        if (m.Seated) lift += (m.SeatDrop + SitBones - (f.LowerLeg + 0.05f)) * b.Seat;
         Vector3 aim = new Vector3(0f, 1.45f, 0f) + new Vector3(0f, MathF.Sin(m.Pitch), -MathF.Cos(m.Pitch)) * 5f;
         b.Rig.Drive(new Gesture
         {
@@ -210,6 +227,11 @@ public static class CharacterModel
         {
             Grip(b, f, new Vector3(-0.36f, 0.91f, -0.62f), new Vector3(0.36f, 0.91f, -0.62f));
             Stand(b, f, new Vector3(-0.34f, 0.27f, -0.4f), new Vector3(0.34f, 0.27f, -0.4f));
+        }
+        else if (m.Seated && b.Seat > 0.5f && b.Foot0 >= 0 && b.Foot1 >= 0)
+        {
+            Vector3 l = b.Rig.Pose[b.Foot0].Origin, r = b.Rig.Pose[b.Foot1].Origin;
+            Stand(b, f, l with { Y = 0f }, r with { Y = 0f });
         }
         else if (m.Ladder)
         {

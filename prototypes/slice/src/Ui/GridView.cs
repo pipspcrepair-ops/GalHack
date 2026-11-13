@@ -179,7 +179,6 @@ public static class Slots
         }
         g.TextIn(label, new Rect2(r.Position + new Vector2(2, 14), new Vector2(r.Size.X - 4, 22)), new Color(C.Text, alpha), 12, HorizontalAlignment.Center);
         g.TextIn(count, new Rect2(r.Position + new Vector2(2, r.Size.Y - 22), new Vector2(r.Size.X - 6, 20)), new Color(C.Accent2, alpha), 14, HorizontalAlignment.Right, UiTheme.Mono);
-        if (item?.IsBlock == true) g.TextIn(item.SmallGrid ? "S" : "L", new Rect2(r.Position + new Vector2(4, r.Size.Y - 22), new Vector2(20, 20)), C.Dim, 11);
     }
 
     // ---- Clicks -----------------------------------------------------------------------------------
@@ -412,8 +411,8 @@ public static class FilterBar
 /// <summary>
 /// An item's tooltip, the same everywhere (grids, storages, recipe lists, loot, in-world screens):
 /// its name in its rarity's colour and its category; mass and volume each and for the stack; how
-/// it is made (inputs, constructor, time) or where it is found; its stack size, and for a block the
-/// grid and classes of structure it goes on; whether the tech tree has it locked; what it is for.
+/// it is made (inputs, constructor, time) or where it is found; its stack size, and for a block its
+/// size in metres; whether the tech tree has it locked; what it is for.
 /// </summary>
 public static class Tooltips
 {
@@ -434,7 +433,8 @@ public static class Tooltips
             lines.Add(($"{Maker(items, item.Recipe.Tier)} · {item.Recipe.Seconds:0.#} s", C.Text));
         }
         else lines.Add((Found(item), C.Text));
-        string fits = item.IsBlock ? $" · {(item.SmallGrid ? "SMALL" : "LARGE")} GRID" : "";
+        GalHack.Structures.Catalogue blocks = game.Zone.Data.Catalogue;
+        string fits = item.IsBlock && blocks.TryGetType(item.BlockId, out GalHack.Structures.BlockType type) ? $" · {GalHack.Structures.Footprint.Label(type, blocks.Grid.CellSize)}" : "";
         lines.Add(($"STACK {item.StackSize}{fits}", C.Text));
         Progress p = game.Progress;
         if (item.Unlock != null)
@@ -453,11 +453,11 @@ public static class Tooltips
         {
             BlockFamily.Armour => "Block · any shape",
             BlockFamily.Deco => $"Deco piece{(item.Group != null ? $" · {item.Group}" : "")}",
-            _ => PlayerInventory.CoreItems.Contains(item.Id) ? "Core" : "Device block",
+            _ => item.Id == PlayerInventory.Core ? "Core" : "Device block",
         },
         ItemCategory.Raw => "Raw",
         ItemCategory.Unique => "Unique find",
-        ItemCategory.Component when PlayerInventory.CoreItems.Contains(item.Id) => "Core",
+        ItemCategory.Component when item.Id == PlayerInventory.Core => "Core",
         _ => item.Category.ToString(),
     };
 

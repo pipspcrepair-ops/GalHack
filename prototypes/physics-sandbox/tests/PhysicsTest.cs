@@ -510,7 +510,10 @@ public partial class PhysicsTest : Node
             $"(the formula says {uncappedRadius:F1}, capped at {ChunkStore.MaxCraterRadius:F0}), every cell in the store's export and the session's edit log");
 
         for (int i = 0; i < 90; i++) yield return 0;
-        float floor = _w.GroundTop(spot.X, spot.Z);
+        // Measured where it struck: the hull's lowest point, not its centre over the spot, makes the hole.
+        N.Vector3 struck = crater?.Center ?? spot;
+        before = _w.Ground(struck.X, struck.Z).Y;
+        float floor = _w.GroundTop(struck.X, struck.Z);
         Check(dive.IsWreck && dive.Body.Motion == GalHack.Physics.Motion.Free && floor < before - 2f && !_w.Physics.Stuck.IsStuck(dive.Body, out _),
             $"with no hull points left it lost power and became a free wreck, now lying in its own hole (ground {before - floor:F1} m lower than before)");
         _w.Remove(dive);
@@ -589,7 +592,7 @@ public partial class PhysicsTest : Node
         }
         foreach (var (pos, block) in destroyed)
         {
-            float bm = Units.Kilograms(ship.Structure.Catalogue.StatsFor(block, ship.Structure.Grid).Mass);
+            float bm = Units.Kilograms(ship.Structure.Catalogue.StatsFor(block).Mass);
             m1 += bm;
             p1 += bm * ship.Body.PointVelocity(ship.Body.ToParent(StructureBridge.CellCenter(ship.Structure, pos)));
         }
@@ -632,6 +635,12 @@ public partial class PhysicsTest : Node
 
     // ==== Riding: one mechanism, the cabin world, inside and out on the hull =====================
 
+    /// <summary>
+    /// A point on the Corsair in the metres it was written in: an old half-metre blueprint, it loads a cell for a cell
+    /// on 1 m cells, so its points scale with it (the blueprints are replaced, not converted).
+    /// </summary>
+    static N.Vector3 Corsair(float x, float y, float z) => new N.Vector3(x, y, z) * (1f / 0.5f);
+
     IEnumerable<int> HullRider()
     {
         Ship ship = _w.SpawnVessel("corsair.gbp", new N.Vector3(0f, 70f, -30f), 0f, landed: false);
@@ -639,7 +648,7 @@ public partial class PhysicsTest : Node
         Player p = _w.Player;
         p.Yaw = 0f;
         p.Pitch = 0f;
-        N.Vector3 standLocal = new(-1.0f, 2.85f, -1.5f); // just over the roof, clear of the down jets and the fin
+        N.Vector3 standLocal = Corsair(-1.0f, 2.85f, -1.5f); // just over the roof, clear of the down jets and the fin
         p.PlaceOutside(ship.Body.ToParent(standLocal));
         for (int i = 0; i < 30; i++) yield return 0;
         bool joined = p.OnHull == ship && p.Body.OnFloor && p.Node.GetParent() == ship.Cabin;
@@ -715,7 +724,7 @@ public partial class PhysicsTest : Node
         ship.Flight.Input = PilotInput.Autopilot; // holds its course and speed
         for (int i = 0; i < 10; i++) yield return 0;
         Player p = _w.Player;
-        N.Vector3 drop = ship.Body.ToParent(new N.Vector3(-1.0f, 3.6f, -1.5f));
+        N.Vector3 drop = ship.Body.ToParent(Corsair(-1.0f, 3.6f, -1.5f));
         p.PlaceOutside(drop, ship.Body.PointVelocity(drop) - N.Vector3.UnitY * 1.5f);
         N.Vector3 last = p.Body.WorldVelocity, lastPos = p.Body.WorldPosition;
         float jolt = float.NaN, jump = float.NaN, slipBefore = 0f, slipAfter = 0f, fall = 0f, settled = float.NaN;
@@ -875,7 +884,7 @@ public partial class PhysicsTest : Node
     {
         Ship ship = InOrbit("corsair.gbp", new N.Vector3(30f, 0f, -20f));
         Player p = _w.Player;
-        p.PlaceAboard(ship, new N.Vector3(-1.0f, 2.78f, -1.5f)); // on the roof
+        p.PlaceAboard(ship, Corsair(-1.0f, 2.78f, -1.5f)); // on the roof
         for (int i = 0; i < 20; i++) yield return 0;
         float grace = _w.Rules.Riding.LetGoAfter;
         bool held = p.OnHull == ship && !p.Binding.MagBoots && p.Body.OnFloor && _w.Physics.Zone.At(ship.Body.Position) == N.Vector3.Zero
@@ -903,7 +912,7 @@ public partial class PhysicsTest : Node
         // Walked off the roof to starboard, nothing turns them onto the side: they go down the
         // bevel, off the edge, fall ship-down and let go of the ship.
         Still(ship);
-        p.PlaceAboard(ship, new N.Vector3(0.9f, 2.78f, -1.5f));
+        p.PlaceAboard(ship, Corsair(0.9f, 2.78f, -1.5f));
         p.Yaw = -MathF.PI / 2f; // facing starboard
         p.Pitch = 0f;
         for (int i = 0; i < 20; i++) yield return 0;
@@ -917,7 +926,7 @@ public partial class PhysicsTest : Node
 
         // Knocked off the roof by a bump that throws them clear for less than the grace time: still aboard.
         Still(ship);
-        p.PlaceAboard(ship, new N.Vector3(-1.0f, 2.78f, -1.5f));
+        p.PlaceAboard(ship, Corsair(-1.0f, 2.78f, -1.5f));
         for (int i = 0; i < 10; i++) yield return 0;
         _w.Physics.AddImpulse(p.Body, N.Vector3.UnitY * p.Body.Mass * 1.6f, ForceKind.Other);
         float bumped = 0f;
@@ -954,7 +963,7 @@ public partial class PhysicsTest : Node
         // ship's velocity plus the jump, while the ship flies on.
         Still(ship);
         ship.Flight.Input = PilotInput.Hands(Vector3.Forward * 0.3f);
-        p.PlaceAboard(ship, new N.Vector3(-1.0f, 2.78f, -1.5f));
+        p.PlaceAboard(ship, Corsair(-1.0f, 2.78f, -1.5f));
         for (int i = 0; i < 40; i++) yield return 0;
         bool onRoof = p.OnHull == ship && p.Body.OnFloor;
         N.Vector3 up = Riding.DirectionToWorld(ship.Body, p.Body.Up);
@@ -984,14 +993,14 @@ public partial class PhysicsTest : Node
     {
         Ship ship = InOrbit("corsair.gbp", new N.Vector3(-30f, 0f, -40f));
         Player p = _w.Player;
-        p.PlaceAboard(ship, new N.Vector3(0f, 0.28f, 3.9f)); // on the porch behind the door
+        p.PlaceAboard(ship, Corsair(0f, 0.28f, 3.9f)); // on the porch behind the door
         p.Yaw = 0f; // facing the door
         p.Pitch = 0f;
         for (int i = 0; i < 10; i++) yield return 0;
         bool porch = p.OnHull == ship && !p.Binding.MagBoots && p.Body.OnFloor
                      && N.Vector3.Distance(_w.Physics.GravityAt(p.Body), ship.Body.Core.Local) < 1e-4f;
         var walk = new HullWalk();
-        foreach (int x in WalkOn(ship, walk, q => q.Body.Position.Z < 1.5f, 120)) yield return x;
+        foreach (int x in WalkOn(ship, walk, q => q.Body.Position.Z < Corsair(0f, 0f, 1.5f).Z, 120)) yield return x;
         for (int i = 0; i < 20; i++) yield return 0;
         bool inside = p.Aboard == ship && !p.Body.OnOuterHull && p.Body.OnFloor
                       && N.Vector3.Distance(_w.Physics.GravityAt(p.Body), ship.Body.Core.Local) < 1e-4f;

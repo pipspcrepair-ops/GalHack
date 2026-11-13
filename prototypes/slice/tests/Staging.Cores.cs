@@ -43,12 +43,9 @@ public sealed partial class Staging
         _game.Zone.Wildlife.Frozen = true;
 
         foreach (int x in Play.OpenMenu(MenuTab.Tech)) yield return x;
-        foreach (int x in _drive.ClickWidget("tech:tab:large")) yield return x;
+        foreach (int x in _drive.ClickWidget("tech:tab:structures")) yield return x;
         foreach (int x in _drive.Wait(4)) yield return x;
-        foreach (int x in Shot($"{dir}/tech-base-capital.png")) yield return x;
-        foreach (int x in _drive.ClickWidget("tech:tab:small")) yield return x;
-        foreach (int x in _drive.Wait(4)) yield return x;
-        foreach (int x in Shot($"{dir}/tech-small-hover.png")) yield return x;
+        foreach (int x in Shot($"{dir}/tech-structures.png")) yield return x;
         foreach (int x in Play.CloseMenu()) yield return x;
 
         Vector3 site = Play.FlatSpot(_game.Start, 40f, 0.6f, 0.4f, span: 14f);

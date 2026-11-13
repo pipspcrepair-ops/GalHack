@@ -202,8 +202,8 @@ public partial class Spaceflight
 
     /// <summary>
     /// A core item set into a wreck with no core claims it (design: any wreck with no core can be
-    /// claimed by placing a core in it; small-grid wrecks with a small-grid core). It becomes
-    /// yours, a station holding still, and its core's gravity holds you to its floor.
+    /// claimed by placing a core in it): any wreck takes the core. It becomes yours, a craft in
+    /// Flight Mode, and its core's gravity holds you to its floor.
     /// </summary>
     void Claim()
     {
@@ -220,12 +220,6 @@ public partial class Spaceflight
             Game.Say($"{v.Name} · HAS A CORE", Tones.Caution);
             return;
         }
-        bool large = s.Grid.Id == "large";
-        if (large != (item == PlayerInventory.BigCore))
-        {
-            Game.Say(large ? "BIG WRECK · BIG CORE ONLY" : "SMALL WRECK · SMALL CORE ONLY", Tones.Caution);
-            return;
-        }
         N.Vector3 n = MathX.Unrotate(v.Body.Rotation, look.Normal.ToNumerics());
         N.Vector3 a = N.Vector3.Abs(n);
         Int3 face = a.X >= a.Y && a.X >= a.Z ? new Int3(Math.Sign(n.X), 0, 0) : a.Y >= a.Z ? new Int3(0, Math.Sign(n.Y), 0) : new Int3(0, 0, Math.Sign(n.Z));
@@ -240,7 +234,7 @@ public partial class Spaceflight
         Game.Pack.Storage.Remove(item, 1);
         Game.Pack.Grid.Reconcile();
         v.ApplyEdits();
-        v.Claimed(Game.Surface.Physics.Zone.Strength);
+        v.Claimed(Game.Surface.Physics.Zone.Strength, inOrbit: true);
         Game.Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Place, look.Point, 0.7f, -2f);
         Game.Progress.Earn(40, "wreck claimed");
         Game.Notices.Post(Slice.Ui.NoticeKind.Claimed, "CLAIMED", v.Name);

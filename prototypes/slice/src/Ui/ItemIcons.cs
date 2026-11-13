@@ -270,7 +270,7 @@ public partial class ItemIcons : Node
 
     Node3D BlockModel(ItemDef item, BlockType type)
     {
-        var s = new Structure(_blocks, _blocks.Grid(item.SmallGrid ? GridSize.Small : GridSize.Large));
+        var s = new Structure(_blocks);
         ShapeDef shape = type.IsArmor ? (_blocks.Shapes.FirstOrDefault(x => x.Name.Contains("Wedge", StringComparison.OrdinalIgnoreCase) || x.Name.Contains("Slope", StringComparison.OrdinalIgnoreCase)) ?? _blocks.Shapes[0]) : null;
         Block b = Building.Make(s, type, shape, 0);
         s.Set(Int3.Zero, b);

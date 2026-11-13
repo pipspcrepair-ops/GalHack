@@ -20,9 +20,9 @@ public partial class BuildController : Node
     /// <summary>Hotbar slots 1-9. Pressing a slot's key again cycles its variants.</summary>
     public static readonly string[][] Slots =
     {
-        new[] { "steel" }, new[] { "hardened" }, new[] { "combat" }, new[] { "glass", "concrete" },
-        new[] { "thruster", "generator", "fueltank" }, new[] { "chair", "light", "turret" },
-        new[] { "container", "cpuext" }, new[] { "door", "ladder" }, new[] { "core" },
+        new[] { "iron-plated", "base-block" }, new[] { "hardened-plated" }, new[] { "combat-plated" }, new[] { "glass-plated", "window-block", "concrete-plated" },
+        new[] { "thruster-t1", "thruster-t2", "generator-t1", "fuel-tank-t1" }, new[] { "command-chair", "cockpit-t1", "light", "turret" },
+        new[] { "container-t1", "container-t4" }, new[] { "door-1x2x1", "door-2x2x1", "ladder" }, new[] { "core" },
     };
 
     /// <summary>The sprayer's colours: a 1970s paperback palette.</summary>
@@ -46,7 +46,6 @@ public partial class BuildController : Node
     public int Rot;
     public Symmetry Symmetry;
     public readonly int[] SymmetryState = new int[3]; // 0 off, 1 through the core's cell, 2 between cells
-    public GridSize NewCoreGrid = GridSize.Large;
     public bool OverlayOn;
 
     /// <summary>Ghost, outline, planes and hints. Off for clean screenshots.</summary>
@@ -184,11 +183,6 @@ public partial class BuildController : Node
             case Key.E: Interact(); break;
             case Key.O: ToggleOverlay(); break;
             case Key.K: Blast(); break;
-            case Key.G:
-                NewCoreGrid = NewCoreGrid == GridSize.Large ? GridSize.Small : GridSize.Large;
-                Hud.Toast($"New cores start a {(NewCoreGrid == GridSize.Large ? "large-grid (2 m) base or capital ship" : "small-grid (0.5 m) vessel")}", Hud.Info);
-                Sfx.PlayUi("toggle");
-                break;
             case Key.B: ToggleCoreMode(); break;
             case Key.P:
                 Mode = Mode == Tool.Build ? Tool.Paint : Tool.Build;
@@ -362,25 +356,13 @@ public partial class BuildController : Node
         bool blocked = InPlayer(aim.View, cell);
         PlaceError first = candidates[0].error;
 
-        double addCpu = candidates.Where(c => c.error == PlaceError.None).Sum(c => (double)s.StatsOf(c.block).Cpu);
-        StructureStats st = aim.View.Stats;
-        string warning = null;
-        if (st != null && st.CpuLimit > 0 && first == PlaceError.None && st.CpuUsed + addCpu > st.CpuLimit)
-        {
-            double after = StructureStats.EfficiencyFor(st.CpuUsed + addCpu, st.CpuLimit);
-            warning = st.CpuUsed <= st.CpuLimit
-                ? $"Crosses the T{st.Tier} CPU limit ({st.CpuLimit:N0}): components drop to {after:P0}"
-                : $"Over CPU: efficiency {st.Efficiency:P0} → {after:P0}. Add a CPU extender (7).";
-        }
-
-        Color tint = blocked || first != PlaceError.None ? GhostPreview.Invalid : warning != null ? GhostPreview.Warning : GhostPreview.Valid;
+        Color tint = blocked || first != PlaceError.None ? GhostPreview.Invalid : GhostPreview.Valid;
         var ghosts = candidates.Select(c => (c.cell, c.block, c.error == PlaceError.None && !blocked ? tint : GhostPreview.Invalid)).ToList();
         _ghost.ShowGhosts(aim.View.GlobalTransform, s, ghosts);
         if (SelectedType.Multi) _ghost.ShowBlocked(aim.View.GlobalTransform, s, candidates.SelectMany(c => Building.Blocked(s, c.cell, c.block)).ToList());
 
         if (blocked) SetHint("You're standing there", GhostPreview.Invalid);
         else if (first != PlaceError.None) SetHint(Explain(first, s), GhostPreview.Invalid);
-        else if (warning != null) SetHint(warning, GhostPreview.Warning);
         else if (Building.IsDamaged(s, aim.Cell)) SetHint("Damaged block: U to repair", GhostPreview.Warning);
     }
 
@@ -391,11 +373,10 @@ public partial class BuildController : Node
             SetHint("Blocks attach to a structure. Start one with a core (9).", new Color(1f, 0.85f, 0.6f));
             return;
         }
-        GridDef grid = Main.Catalogue.Grid(NewCoreGrid);
-        var scratch = new Structure(Main.Catalogue, grid);
-        _ghost.ShowGhosts(GroundFrame(aim.Point, grid), scratch,
+        var scratch = new Structure(Main.Catalogue);
+        _ghost.ShowGhosts(GroundFrame(aim.Point, Main.Catalogue.Grid), scratch,
             new[] { (Int3.Zero, Building.Make(scratch, SelectedType), GhostPreview.Valid) });
-        SetHint($"Place a {(grid.Size == GridSize.Large ? "large" : "small")}-grid starter core (G switches grid)", GhostPreview.Valid);
+        SetHint("Place a starter core", GhostPreview.Valid);
     }
 
     /// <summary>Where a starter core sits on the ground: snapped to the grid, resting on the surface.</summary>
@@ -464,15 +445,13 @@ public partial class BuildController : Node
         AimInfo aim = Aim;
         if (aim.OnGround && SelectedType.IsCore)
         {
-            GridDef grid = Main.Catalogue.Grid(NewCoreGrid);
-            var s = new Structure(Main.Catalogue, grid) { Name = NewCoreGrid == GridSize.Large ? "New base" : "New vessel", Mode = CoreMode.Base };
-            if (NewCoreGrid == GridSize.Small) s.Mode = CoreMode.Capital;
+            var s = new Structure(Main.Catalogue) { Name = "New base", Mode = CoreMode.Base };
             Building.Place(s, Int3.Zero, Building.Make(s, SelectedType));
-            Transform3D frame = GroundFrame(aim.Point, grid);
+            Transform3D frame = GroundFrame(aim.Point, s.Grid);
             StructureView view = Main.AddStructure(s, frame);
             SetActive(view);
             Feedback(view, Int3.Zero, "place");
-            Hud.Toast($"Started a {(grid.Size == GridSize.Large ? "large" : "small")}-grid structure. Build onto the core.", Hud.Good);
+            Hud.Toast("Started a structure. Build onto the core.", Hud.Good);
             return;
         }
         if (!aim.OnBlock)
@@ -813,8 +792,7 @@ public partial class BuildController : Node
     {
         Structure s = view.Structure;
         Vector3 local = view.GlobalTransform.AffineInverse() * point / view.CellSize;
-        float radius = view.CellSize < 1f ? 3.5f : 1.7f;
-        DamageReport report = Damage.Blast(s, new System.Numerics.Vector3(local.X, local.Y, local.Z), radius, DamageType.Explosive, 1800f * s.Grid.HpScale);
+        DamageReport report = Damage.Blast(s, new System.Numerics.Vector3(local.X, local.Y, local.Z), 2.5f, DamageType.Explosive, 570f);
         foreach (var (pos, block) in report.Destroyed)
             Effects.Debris(view.CellToGlobal(pos), view.CellSize, BlockColor(s, block), 8, 7f);
         view.Sync();

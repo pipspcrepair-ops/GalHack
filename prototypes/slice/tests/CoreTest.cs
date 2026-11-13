@@ -17,8 +17,8 @@ using Structure = GalHack.Structures.Structure;
 namespace Slice.Tests;
 
 /// <summary>
-/// The two cores (design section 12): a Big Core with Base Mode and Capital Mode, a Small Core with
-/// Vessel Mode and Hover Mode. Only two exist in the data, and old ids still load. One craft flips
+/// The one core (docs/one-metre-grid.md section 4): Base Mode and Capital Mode, and Hover Mode once
+/// hover plates are aboard. Only one exists in the data, and old ids still load. One craft flips
 /// both ways through the CORE tab's switch, on the ground and in flight, with no block rebuilt; it
 /// falls if it isn't fitted for the mode; hover stays near the ground and can't reach orbit; a base
 /// flies and comes down as a base again. The structures are made from blocks directly, on a fresh
@@ -72,8 +72,8 @@ public partial class CoreTest : Node
 
     IEnumerable<int> Scenarios()
     {
-        GD.Print("-- exactly two cores --");
-        OnlyTwoCores();
+        GD.Print("-- exactly one core --");
+        OneCore();
         GD.Print("-- old ids and old blueprints load --");
         OldData();
 
@@ -86,49 +86,48 @@ public partial class CoreTest : Node
         _game.Zone.Weather.Sim.Snap(Weather.Model.WeatherKind.Clear);
         _game.Zone.Wildlife.Frozen = true;
         _site = _play.FlatSpot(_game.Start, 70f, 0.6f, 0.4f, span: 14f);
+        GD.Print($"  (a clearing: {Playthrough.Clearing(_game.Zone, _site, 50f)} trees and boulders felled)"); // room to fly: vessels collide with trunks and crowns
         _game.Survivor.PlaceOutside((_site + new Vector3(0f, 1f, 8f)).ToNumerics());
         foreach (int x in _drive.Wait(90)) yield return x;
 
-        foreach (int x in SmallCore()) yield return x;
-        foreach (int x in BigCore()) yield return x;
+        foreach (int x in Craft()) yield return x;
+        foreach (int x in Base()) yield return x;
     }
 
-    void OnlyTwoCores()
+    void OneCore()
     {
         ItemCatalogue items = Data.Items;
-        var cores = items.Items.Where(i => i.BlockId == "core").Select(i => (i.Id, i.Name)).OrderBy(c => c.Id).ToList();
-        Check(cores.SequenceEqual(new[] { ("big-core", "Big Core"), ("small-core", "Small Core") }), $"the core block has two items: {string.Join(", ", cores)}");
-        string[] gone = { "base-core", "capital-core", "vessel-core", "hover-core" };
+        var cores = items.Items.Where(i => i.BlockId == "core").Select(i => (i.Id, i.Name)).ToList();
+        Check(cores.SequenceEqual(new[] { ("core", "Core") }) && PlayerInventory.Core == "core", $"the core block has one item: {string.Join(", ", cores)}");
+        string[] gone = { "big-core", "small-core", "base-core", "capital-core", "vessel-core", "hover-core" };
         Check(!items.Items.Any(i => gone.Contains(i.Id)), "no old core is an item of its own");
-        var named = items.Items.Where(i => i.Id != "big-core" && i.Id != "small-core" && i.Id != "fusion-core" && i.Id != "lattice-core" && i.Name.EndsWith(" core", StringComparison.OrdinalIgnoreCase)).Select(i => i.Name).ToList();
+        var named = items.Items.Where(i => i.Id != "core" && i.Id != "fusion-core" && i.Id != "lattice-core" && i.Name.EndsWith(" core", StringComparison.OrdinalIgnoreCase)).Select(i => i.Name).ToList();
         Check(named.Count == 0, $"nothing else calls itself a structure's core{(named.Count > 0 ? ": " + string.Join(", ", named) : "")}");
-        Check(PlayerInventory.CoreItems.OrderBy(c => c).SequenceEqual(new[] { "big-core", "small-core" }), "two core items found structures");
         var tree = new Progress(Data.Progress, items, Data.Catalogue);
-        var nodes = tree.Nodes.Where(n => n.BlockId == "core").Select(n => (n.Id, n.Tab)).OrderBy(n => n.Id).ToList();
-        Check(nodes.SequenceEqual(new[] { ("big-core", "large"), ("small-core", "small") }), $"one core node on each tab: {string.Join(", ", nodes)}");
+        var nodes = tree.Nodes.Where(n => n.BlockId == "core").Select(n => (n.Id, n.Tab)).ToList();
+        Check(nodes.SequenceEqual(new[] { ("core", "structures") }), $"one core node, on the Structures tab: {string.Join(", ", nodes)}");
         Check(!tree.Nodes.Any(n => gone.Contains(n.Id) || gone.Contains(n.Unlock.Parent)), "no node is or hangs from an old core");
-        Check(tree.Node("small-core").Level == 1 && tree.Node("big-core").Level == 1, "both cores open at level 1");
-        Check(items.Item("big-core").ShortName.Length <= 8 && items.Item("small-core").ShortName.Length <= 8, $"the short names fit a slot: {items.Item("big-core").ShortName}, {items.Item("small-core").ShortName}");
+        Check(tree.Node("core").Level == 1 && items.Item("core").ShortName.Length <= 8, $"it opens at level 1, and its short name fits a slot: {items.Item("core").ShortName}");
     }
 
     void OldData()
     {
         ItemCatalogue items = Data.Items;
-        foreach (var (old, now) in new[] { ("base-core", "big-core"), ("capital-core", "big-core"), ("vessel-core", "small-core"), ("hover-core", "small-core") })
-            Check(items.Item(old).Id == now, $"the old id {old} reads as {now}");
-        var saved = new ProgressState { PointsEarned = 9, PointsSpent = 3, Unlocked = new List<string> { "vessel-core", "hover-core", "capital-core" } };
+        foreach (string old in new[] { "big-core", "small-core", "base-core", "capital-core", "vessel-core", "hover-core" })
+            Check(items.Item(old).Id == "core", $"the old id {old} reads as the core");
+        var saved = new ProgressState { PointsEarned = 9, PointsSpent = 3, Unlocked = new List<string> { "small-core", "hover@small" } };
         var tree = new Progress(Data.Progress, items, Data.Catalogue, saved);
-        Check(tree.IsUnlocked("small-core") && tree.IsUnlocked("big-core"), "a saved tech tree keeps its cores unlocked under the new ids");
+        Check(tree.IsUnlocked("core") && tree.IsUnlocked("hover-t1"), "a saved tech tree keeps its core and per-grid blocks unlocked under the new ids");
 
         // A blueprint from before: "mode capital" on a small grid, a hover pad on the block list.
         const string oldPrint = "schema galhack.blueprint\nversion 1\nname \"Old rover\"\ngrid small\nmode capital\nblock 0 0 0 core\nblock 0 -1 0 hover\n";
         Structure rover = Blueprint.Load(oldPrint, Data.Catalogue, out List<string> errors);
         Check(rover?.Mode == CoreMode.Hover, $"an old blueprint with hover pads loads in Hover Mode {string.Join("; ", errors)}");
         Structure flyer = Blueprint.Load(oldPrint.Replace("block 0 -1 0 hover\n", ""), Data.Catalogue, out _);
-        Check(flyer?.Mode == CoreMode.Vessel, "an old small blueprint without them loads in Vessel Mode");
+        Check(flyer?.Mode == CoreMode.Capital, "an old small blueprint without them flies, in Capital Mode");
         Check(Blueprint.Load(Blueprint.Save(rover), Data.Catalogue, out _)?.Mode == CoreMode.Hover, "and a saved one keeps its mode");
         Structure skiff = CoreCraft.Skiff(Data);
-        Check(skiff.Mode == CoreMode.Vessel && skiff.Core != null, "the Skiff's blueprint still loads, in Vessel Mode");
+        Check(skiff.Mode == CoreMode.Capital && skiff.Core != null, "the Skiff's blueprint still loads, in Capital Mode");
     }
 
     /// <summary>Clicks a mode on the CORE tab, seated or not.</summary>
@@ -152,6 +151,16 @@ public partial class CoreTest : Node
         foreach (int x in _drive.Wait(5)) yield return x;
     }
 
+    /// <summary>What may hold a craft up or down: the trees standing within 12 m of it (vessels collide with their trunks and crowns), and what is under it.</summary>
+    string Near(Vessel v)
+    {
+        Vector3 at = v.Body.Position.ToGodot();
+        var q = PhysicsRayQueryParameters3D.Create(at, at + Vector3.Down * 40f, uint.MaxValue, new Godot.Collections.Array<Rid> { v.Binding.Collider.GetRid() });
+        var hit = _game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(q);
+        string under = hit.Count == 0 ? "nothing" : hit["collider"].AsGodotObject() is CollisionObject3D c ? $"{c.GetPath()} (layer {c.CollisionLayer}) {at.Y - hit["position"].AsVector3().Y:F1} m down" : "?";
+        return $"{_game.Zone.Streamer.FloraNear(at, 12f).Count()} trees within 12 m, under it {under}, at {at}, {v.Body.Velocity.Length():F1} m/s";
+    }
+
     IEnumerable<int> Hold(Key key, int ticks)
     {
         _game.Controls.Hold(key);
@@ -159,9 +168,9 @@ public partial class CoreTest : Node
         _game.Controls.Hold(key, false);
     }
 
-    IEnumerable<int> SmallCore()
+    IEnumerable<int> Craft()
     {
-        GD.Print("-- a Small Core flies, then falls when it isn't fitted for its mode --");
+        GD.Print("-- a craft flies, then falls when it isn't fitted for its mode --");
         Structure s = CoreCraft.Skiff(Data);
         Vector3 at = _site + Vector3.Up * 3f;
         Vessel v = Vessel.Spawn(_game.Zone, s, at.ToNumerics(), 0f, landed: true);
@@ -172,17 +181,18 @@ public partial class CoreTest : Node
         Check(_game.Survivor.Seated == v, "in its chair");
         if (_game.Survivor.Seated != v) yield break;
         foreach (int x in _play.OpenMenu(MenuTab.Core)) yield return x;
-        Check(_game.Menu.RectOf("core:mode:hover") != null && _game.Menu.RectOf("core:mode:vessel") != null && _game.Menu.RectOf("core:mode:capital") == null, "the CORE tab offers a Small Core its two modes");
+        Check(_game.Menu.RectOf("core:mode:base") != null && _game.Menu.RectOf("core:mode:capital") != null && _game.Menu.RectOf("core:mode:hover") == null, "with no hover plates, the CORE tab offers Base and Capital");
         foreach (int x in _play.CloseMenu()) yield return x;
-        Check(v.Stats.Class == ShipHandling.Handling.VesselClass.Small && v.Controller.Gear != null && v.Controller.Hover == null, "the Skiff is in Vessel Mode: a small vessel, on its legs");
+        Check(v.Stats.Class == ShipHandling.Handling.VesselClass.Capital && v.Controller.Gear != null && v.Controller.Hover == null, "the Skiff is in Capital Mode, on its legs");
 
         foreach (int x in Hold(Key.Space, 60)) yield return x;
         foreach (int x in _drive.Wait(30)) yield return x;
         float high = v.AboveGround;
-        Check(high > 5f, $"thrusters lift it in Vessel Mode ({high:F0} m up)");
+        Check(high > 5f, $"thrusters lift it in Capital Mode ({high:F0} m up)");
         blocks = CoreCraft.Blocks(s); // a branch on the way up is no part of this: the blocks as they are now
-        foreach (int x in Switch(v, CoreMode.Hover)) yield return x;
-        Check(s.Mode == CoreMode.Hover && CoreCraft.SameBlocks(s, blocks), "switched to Hover Mode in flight, with no hover plates: nothing refuses it, no block changed");
+        v.SwitchMode(CoreMode.Hover); // as old data may: the CORE tab only offers it with plates aboard
+        Check(s.Mode == CoreMode.Hover && CoreCraft.SameBlocks(s, blocks), "put in Hover Mode in flight, with no hover plates: nothing refuses it, no block changed");
+        foreach (int x in _drive.Wait(2)) yield return x; // the handling model reads the new mode on its next step
         Check(v.Stats.Class == ShipHandling.Handling.VesselClass.Hover && !v.Stats.CanLiftOff && v.ModeWarning?.Contains("HOVER PLATES") == true, $"the console says what's missing: \"{v.ModeWarning}\"");
         float falling = 0f;
         for (int t = 0; t < 60 * 12 && !v.Controller.Frozen; t++)
@@ -191,12 +201,12 @@ public partial class CoreTest : Node
             yield return 0;
         }
         Check(falling < -4f, $"it loses lift and falls ({falling:F1} m/s at worst)");
-        Check(v.AboveGround < 4f, $"and comes down ({v.AboveGround:F1} m up)");
+        Check(v.AboveGround < 4f, $"and comes down ({v.AboveGround:F1} m up; {Near(v)})");
 
         // The fall is real: what it broke is the player's doing, so the blocks are counted afresh from here.
         blocks = CoreCraft.Blocks(s);
-        foreach (int x in Switch(v, CoreMode.Vessel)) yield return x;
-        Check(s.Mode == CoreMode.Vessel && CoreCraft.SameBlocks(s, blocks), "the player can switch back");
+        foreach (int x in Switch(v, CoreMode.Capital)) yield return x;
+        Check(s.Mode == CoreMode.Capital && CoreCraft.SameBlocks(s, blocks), "the player can switch back");
         foreach (int x in Hold(Key.Space, 120)) yield return x;
         Check(v.AboveGround > 6f, $"and it flies again ({v.AboveGround:F0} m up)");
         foreach (int x in _drive.Wait(30)) yield return x;
@@ -205,6 +215,7 @@ public partial class CoreTest : Node
         GD.Print("-- fitted with hover plates and thrusters, one craft does both --");
         // A fresh craft: the fall above can break anything on the first, legs included.
         _site = _play.FlatSpot(_game.Start, 110f, 2.4f, 0.4f, span: 14f);
+        GD.Print($"  (a clearing: {Playthrough.Clearing(_game.Zone, _site, 50f)} trees and boulders felled)");
         _game.Survivor.PlaceOutside((_site + new Vector3(0f, 1f, 8f)).ToNumerics());
         foreach (int x in _drive.Wait(60)) yield return x;
         s = CoreCraft.Skiff(Data);
@@ -217,9 +228,9 @@ public partial class CoreTest : Node
         foreach (int x in Seat(v)) yield return x;
         Check(_game.Survivor.Seated == v, "in its chair");
         if (_game.Survivor.Seated != v) yield break;
-        Check(v.Controller.Hover == null && v.Controller.Gear != null, "hover plates do nothing in Vessel Mode: it stands on its legs");
+        Check(v.Controller.Hover == null && v.Controller.Gear != null, "hover plates do nothing in Capital Mode: it stands on its legs");
         var lift = new PlateRead(v);
-        Check(lift.Plates == 0, "the flight model sees no hover plates in Vessel Mode");
+        Check(lift.Plates == 0, "the flight model sees no hover plates in Capital Mode");
 
         foreach (int x in Switch(v, CoreMode.Hover)) yield return x;
         Check(v.Controller.Hover != null && v.Controller.Gear == null && v.Stats.IsHover && v.Stats.CanLiftOff, $"Hover Mode: the same craft on its plates, its legs folded (lift margin {v.Stats.LiftMargin:+0} kN)");
@@ -230,7 +241,7 @@ public partial class CoreTest : Node
         Vector3 to = v.Body.Position.ToGodot();
         float ride = v.Stats.RideHeight;
         Check(new Vector2(to.X - from.X, to.Z - from.Z).Length() > 4f, $"thrusters push it along ({new Vector2(to.X - from.X, to.Z - from.Z).Length():F0} m)");
-        Check(v.Controller.Hover.Grounded, $"riding on its plates ({v.Controller.Hover.Clearance:F2} m clear, rides at {ride:F1})");
+        Check(v.Controller.Hover.Grounded, $"riding on its plates ({v.Controller.Hover.Clearance:F2} m clear, rides at {ride:F1}; {Near(v)})");
         foreach (int x in Hold(Key.Space, 180)) yield return x;
         Check(v.AboveGround < 8f, $"Space lifts it no higher: thrusters don't climb in Hover Mode ({v.AboveGround:F1} m up)");
         foreach (int x in _drive.Wait(90)) yield return x;
@@ -238,13 +249,13 @@ public partial class CoreTest : Node
         _game.Controls.Hold(Key.W);
         foreach (int x in _drive.Wait(40)) yield return x;
         N.Vector3 before = v.Body.Velocity;
-        foreach (int x in Switch(v, CoreMode.Vessel)) yield return x;
+        foreach (int x in Switch(v, CoreMode.Capital)) yield return x;
         _game.Controls.Hold(Key.W, false);
-        Check(s.Mode == CoreMode.Vessel && v.Controller.Hover == null && v.Controller.Gear != null && !v.Controller.Frozen, "switched to Vessel Mode on the move: its thrusters take over at once");
+        Check(s.Mode == CoreMode.Capital && v.Controller.Hover == null && v.Controller.Gear != null && !v.Controller.Frozen, "switched to Capital Mode on the move: its thrusters take over at once");
         Check(new Vector2(v.Body.Velocity.X, v.Body.Velocity.Z).Length() > new Vector2(before.X, before.Z).Length() * 0.4f, $"it keeps going, no reset ({before.Length():F0} m/s then {v.Body.Velocity.Length():F0})");
         foreach (int x in Hold(Key.Space, 70)) yield return x;
         foreach (int x in _drive.Wait(30)) yield return x;
-        Check(v.AboveGround > 8f, $"Vessel Mode climbs ({v.AboveGround:F0} m up)");
+        Check(v.AboveGround > 8f, $"Capital Mode climbs ({v.AboveGround:F0} m up; {Near(v)})");
         float was = v.Body.Position.Y;
         blocks = CoreCraft.Blocks(s);
         foreach (int x in Switch(v, CoreMode.Hover)) yield return x;
@@ -281,9 +292,9 @@ public partial class CoreTest : Node
         foreach (int x in _drive.Wait(5)) yield return x;
     }
 
-    IEnumerable<int> BigCore()
+    IEnumerable<int> Base()
     {
-        GD.Print("-- a Big Core: a base flies, and comes down a base --");
+        GD.Print("-- a base flies, and comes down a base --");
         _site += new Vector3(30f, 0f, 0f);
         Vector3 ground = _game.Zone.GroundAt(_site.X, _site.Z);
         _game.Survivor.PlaceOutside((ground + new Vector3(0f, 1f, 10f)).ToNumerics());
@@ -302,7 +313,7 @@ public partial class CoreTest : Node
         Check(_game.Survivor.Seated == v, "in its chair");
         if (_game.Survivor.Seated != v) yield break;
         foreach (int x in _play.OpenMenu(MenuTab.Core)) yield return x;
-        Check(_game.Menu.RectOf("core:mode:base") != null && _game.Menu.RectOf("core:mode:capital") != null && _game.Menu.RectOf("core:mode:hover") == null, "the CORE tab offers a Big Core its two modes");
+        Check(_game.Menu.RectOf("core:mode:base") != null && _game.Menu.RectOf("core:mode:capital") != null && _game.Menu.RectOf("core:mode:hover") == null, "with no hover plates, the CORE tab offers a base Base and Capital");
         foreach (int x in _play.CloseMenu()) yield return x;
 
         foreach (int x in Switch(v, CoreMode.Capital)) yield return x;

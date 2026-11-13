@@ -236,7 +236,42 @@ public static class StructureBridge
     {
         var (min, max) = s.Bounds();
         float cell = s.Grid.CellSize;
-        return (max.X - min.X + 1) * (max.Y - min.Y + 1) * cell * cell * 0.8f;
+        return (max.X - min.X + 1) * (max.Y - min.Y + 1) * cell * cell * Body.DragCoefficient;
+    }
+
+    /// <summary>Every box that makes up a loose structure's shape, structure frame, metres: solid cells whole, fittings and parts as their parts.</summary>
+    public static IEnumerable<(N.Vector3 Min, N.Vector3 Max)> ShapeBoxes(Structure s)
+    {
+        float cell = s.Grid.CellSize;
+        foreach (var (p, b) in s.Blocks())
+        {
+            N.Vector3 centre = CellCenter(s, p);
+            BlockType t = s.TypeOf(b);
+            if (s.IsSolid(b) && t.Collide != Collide.Parts)
+            {
+                yield return (centre - new N.Vector3(cell * 0.5f), centre + new N.Vector3(cell * 0.5f));
+                continue;
+            }
+            Mat3 rot = Orientations.Matrix(b.Rot);
+            foreach (Part part in t.Parts)
+            {
+                if (part.ClosedOnly && b.Open) continue;
+                N.Vector3 lo = rot.Apply(part.Min), hi = rot.Apply(part.Max);
+                yield return (centre + N.Vector3.Min(lo, hi) * cell, centre + N.Vector3.Max(lo, hi) * cell);
+            }
+        }
+    }
+
+    /// <summary>The size of the box round a loose structure's real shape, m: what the wind meets (<see cref="Body.WindArea"/>).</summary>
+    public static N.Vector3 DragBox(Structure s)
+    {
+        N.Vector3 min = new(float.MaxValue), max = new(float.MinValue);
+        foreach (var (lo, hi) in ShapeBoxes(s))
+        {
+            min = N.Vector3.Min(min, lo);
+            max = N.Vector3.Max(max, hi);
+        }
+        return max.X >= min.X ? max - min : N.Vector3.Zero;
     }
 
     /// <summary>The shared module's class for a vessel: the handling model's own (hover, small, capital).</summary>
@@ -247,21 +282,24 @@ public static class StructureBridge
         _ => StructureClass.Small,
     };
 
-    /// <summary>Where the command chair is (structure frame, metres), or the origin if there is none.</summary>
+    /// <summary>Where the first command chair's seat is (structure frame, metres), or the origin if there is none.</summary>
     public static N.Vector3 SeatOf(Structure s)
     {
         foreach (var (p, b) in s.Blocks())
-            if (s.TypeOf(b).IsCommandChair) return BlockCenter(s, p, b);
+            if (s.TypeOf(b).IsCommandChair) return SeatPoint(s, p, b);
         return N.Vector3.Zero;
     }
+
+    /// <summary>Where a chair's sitter rests and where their eyes are (structure frame, metres), from the chair's data.</summary>
+    public static N.Vector3 SeatPoint(Structure s, Int3 anchor, in Block b) => s.PointOf(anchor, b, s.TypeOf(b).Seat) * s.Grid.CellSize;
+    public static N.Vector3 EyePoint(Structure s, Int3 anchor, in Block b) => s.PointOf(anchor, b, s.TypeOf(b).Eye) * s.Grid.CellSize;
 }
 
 /// <summary>
 /// The handling model's view of a structure: its mass, and its thrusters, gyros, hover pads and
-/// landing legs as component data. Thrust per thruster is the building catalogue's (after the
-/// grid's scale and the CPU efficiency); torque, hover lift, ride height and leg length come from
-/// the handling model's parts table by grid size. Mass is the structure's whole mass, so the
-/// handling model's thrust / mass is exactly the build's.
+/// landing legs as component data. Thrust, torque, hover lift, ride height and leg length are each
+/// block's own, from the building data. Mass is the structure's whole mass, so the handling
+/// model's thrust / mass is exactly the build's.
 /// </summary>
 public sealed class StructureVessel : IVesselStructure
 {
@@ -322,10 +360,9 @@ public sealed class StructureVessel : IVesselStructure
         StructureStats stats = StructureStats.Compute(_s);
         _mass = (float)stats.Mass;
         float cell = _s.Grid.CellSize;
-        string size = _s.Grid.Size == GridSize.Small ? "small" : "large";
         // Base Mode leaves its thrusters idle; hover plates lift in Hover Mode and do nothing in any other.
-        float efficiency = mode != CoreMode.Base && stats.HasCore && stats.Powered ? (float)stats.Efficiency : 0f;
-        bool hovering = mode == CoreMode.Hover && _s.Grid.Size == GridSize.Small;
+        bool running = mode != CoreMode.Base && stats.HasCore && stats.Powered;
+        bool hovering = mode == CoreMode.Hover;
         _cockpit = GVector3.Zero;
 
         foreach (var (p, b) in _s.Blocks())
@@ -338,21 +375,21 @@ public sealed class StructureVessel : IVesselStructure
             {
                 // A thruster's exhaust leaves through its back (+Z), pushing the structure toward its local -Z.
                 N.Vector3 push = Orientations.ToWorld(b.Rot, Dir.NegZ).Normal();
-                _thrusters.Add(new ThrusterSpec(size, at, new GVector3(push.X, push.Y, push.Z),
-                    t.Thrust * _s.Grid.FunctionScale * efficiency, 0f));
+                _thrusters.Add(new ThrusterSpec(t.Id, at, new GVector3(push.X, push.Y, push.Z),
+                    running ? t.Thrust : 0f, 0f));
             }
-            else if (t.Function == "gyro") _gyros.Add(new GyroSpec(size, at, _t.Parts.Gyros[size].Torque, 0f));
-            else if (t.Function == "hover" && hovering)
+            else if (t.Function == "gyro") _gyros.Add(new GyroSpec(t.Id, at, t.Torque, 0f));
+            else if (t.Function == "hover" && hovering) _hover.Add(new HoverEngineSpec(t.Id, underside, t.Lift, t.RideHeight, 0f));
+            else if (t.Function == "gear") _gear.Add(new GearSpec(t.Id, underside, t.LegLength, 0f));
+            else if (t.IsCommandChair)
             {
-                var part = _t.Parts.HoverEngines[size];
-                _hover.Add(new HoverEngineSpec(size, underside, part.Lift, part.RideHeight, 0f));
+                N.Vector3 eye = StructureBridge.EyePoint(_s, p, b);
+                _cockpit = new GVector3(eye.X, eye.Y, eye.Z);
             }
-            else if (t.Function == "gear") _gear.Add(new GearSpec(size, underside, _t.Parts.LandingGear[size].Length, 0f));
-            else if (t.IsCommandChair) _cockpit = at + GVector3.Up * 0.8f;
         }
 
-        // A structure's class is its core and that core's mode, never the blocks on it.
-        _class = hovering ? VesselClass.Hover : _s.Grid.Size == GridSize.Small ? VesselClass.Small : VesselClass.Capital;
+        // A structure's class is its core's mode, never the blocks on it.
+        _class = hovering ? VesselClass.Hover : VesselClass.Capital;
     }
 }
 

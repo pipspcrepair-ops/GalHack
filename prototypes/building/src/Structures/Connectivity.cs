@@ -78,7 +78,7 @@ public static class Connectivity
         {
             HashSet<Int3> attached = Reachable(s, core);
             if (attached.Count == s.Count) return wrecks;
-            var rest = new Structure(s.Catalogue, s.Grid);
+            var rest = new Structure(s.Catalogue);
             foreach (var (p, b) in s.Blocks())
                 if (!attached.Contains(p)) rest.Set(p, b);
             detached = Pieces(rest);
@@ -107,7 +107,7 @@ public static class Connectivity
     /// <summary>Moves blocks into a new unowned structure at the same grid coordinates, keeping damage, state and paint.</summary>
     public static Structure Extract(Structure s, IEnumerable<Int3> cells, string name)
     {
-        var wreck = new Structure(s.Catalogue, s.Grid) { Name = name, Owner = null, Mode = s.Mode, GravityOn = s.GravityOn };
+        var wreck = new Structure(s.Catalogue) { Name = name, Owner = null, Mode = s.Mode, GravityOn = s.GravityOn };
         foreach (Int3 p in cells)
         {
             // A block spanning several cells moves whole with its anchor: its fillers are written with it.
@@ -128,7 +128,7 @@ public static class Connectivity
         double total = 0;
         foreach (Int3 p in cells)
             if (s.TryGet(p, out Block b) && !b.IsFiller && s.TypeOf(b).IsContainer)
-                total += s.TypeOf(b).Storage * s.Grid.StorageScale;
+                total += s.TypeOf(b).Storage;
         return total;
     }
 }

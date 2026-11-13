@@ -23,7 +23,7 @@ public partial class LightShots : Node
             if (arg.StartsWith("--out=")) _out = arg[6..];
         System.IO.Directory.CreateDirectory(_out);
         Catalogue cat = Slice.Game.GameData.Shared.Catalogue;
-        var s = new Structure(cat, cat.Grid(GridSize.Large));
+        var s = new Structure(cat);
         BlockType steel = cat.Type("steel"), lamp = System.Linq.Enumerable.First(cat.Types, t => t != null && t.IsLight);
         Block Make(BlockType t) => Building.Make(s, t, null, 0);
         for (int x = -6; x <= 6; x++)

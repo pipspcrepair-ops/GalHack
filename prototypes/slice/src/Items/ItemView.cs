@@ -98,7 +98,7 @@ public sealed class ItemView
         _ => ItemGroup.Other,
     };
 
-    static bool IsCore(ItemDef item) => System.Array.IndexOf(PlayerInventory.CoreItems, item.Id) >= 0;
+    static bool IsCore(ItemDef item) => item.Id == PlayerInventory.Core;
 
     /// <summary>The category words the text filter also matches: "raw ore", "block armour", "deco office".</summary>
     public static string CategoryWords(ItemDef item) =>

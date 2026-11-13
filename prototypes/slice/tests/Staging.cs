@@ -101,6 +101,7 @@ public sealed partial class Staging
             "florareach" => FloraReachView(),
             "shadows" => ShadowView(),
             "crouch" => CrouchView(),
+            "seated" => SeatedView(),
             "castaway" => CastawayView(),
             "folk" => FolkView(),
             "crowd" => CrowdView(),

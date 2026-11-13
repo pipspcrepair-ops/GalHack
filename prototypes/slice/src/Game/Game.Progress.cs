@@ -21,7 +21,7 @@ public partial class Game
         ProgressRules.XpRules xp = Zone.Data.Progress.Xp;
         Tool.OreDug += cells => Progress.Earn(cells * xp.OreCell, "ore");
         Tool.PlantCut += () => Progress.Earn(xp.Plant, "plant cut");
-        Builder.BlockPlaced += (v, small) => { Stats.Placed++; Progress.Earn(small ? xp.BlockSmall : xp.BlockLarge, "building"); };
+        Builder.BlockPlaced += (v, earned) => { Stats.Placed++; Progress.Earn(earned, "building"); };
         // Experience counts quietly (the Tab menu shows it); a new level, an unlock and a recipe learnt are news, in the notices' slot.
         Progress.LevelledUp += (level, points) => Visor.LevelUp(level, points);
         Progress.Unlocked += n => Notices.Post(NoticeKind.Unlock, "UNLOCKED", n.Name);
