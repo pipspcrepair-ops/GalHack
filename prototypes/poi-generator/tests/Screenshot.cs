@@ -322,6 +322,7 @@ public partial class Screenshot : Node
             for (ulong s = _seed; layout == null || !layout.Objects.Keys.Any(q => q.Y >= 4 && q.Z > hi.Z + 4); s++) // (until the containers pile up)
                 layout = Lay(s, shed, Part("tanks", hi.X + 1 + r, mz, ("count", "1"), ("r", "3"), ("h", "7")), Part("tanks", hi.X + 1 + r, mz - 2 * r - 6, ("count", "2"), ("r", "3"), ("h", "7"), ("gap", "5"), ("axis", "x")),
                     Part("containers", lo.X, hi.Z + 6, ("rows", "1"), ("cols", "2")));
+            Ornament.Enabled = false; // (the shapes alone: the ornament has its own frames)
             var inst = PoiFactory.Spawn(lib, layout, PoiState.Abandoned, _seed);
             Int3 against = new(hi.X + 1 + r, 1, mz);
             if (a.Length > 2 && a[2] == "cut")
@@ -331,8 +332,14 @@ public partial class Screenshot : Node
             }
             m.Show(inst);
             m.HideHud(true);
-            Vector3 at = m.Stage.ToGlobal(new Vector3(against.X - r, 3.5f, against.Z));
-            Vector3 eye = m.Stage.ToGlobal(new Vector3(against.X + 13f, 9f, against.Z + 16f));
+            // (Along the shed's wall from beside the tank, low, so the tank's top edge shows against the sky at the joint.)
+            Vector3 at = m.Stage.ToGlobal(new Vector3(against.X - r + 1f, 6f, against.Z + 0.5f));
+            Vector3 eye = m.Stage.ToGlobal(new Vector3(against.X + 4f, 10f, against.Z + 15f));
+            if (a.Length > 2 && a[2] == "pile") // (or on the pile of containers: each box keeps its own caps)
+            {
+                at = m.Stage.ToGlobal(new Vector3(lo.X + 8f, 3.5f, hi.Z + 8f));
+                eye = m.Stage.ToGlobal(new Vector3(lo.X + 20f, 9f, hi.Z + 22f));
+            }
             m.Camera.GlobalTransform = new Transform3D(Basis.Identity, eye).LookingAt(at, Vector3.Up);
             m.FreezeCamera = true;
             return;
