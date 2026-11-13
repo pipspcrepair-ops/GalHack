@@ -152,6 +152,8 @@ Empyrion (`BlocksConfig.ecf` shape lists, read through each block's variant):
 
 **Rule P6 (shapes).** About half of every place is plain cube. Low tech: slopes 15 to 20% where roofs are pitched (houses, settlements, farms) and 4 to 8% where they are flat (shops, offices, civic, industry); part cubes and plates 20 to 30% (counters, shelves, thin partitions, kerbs); poles and beams 3 to 8%, up to 17% in mines (props and timbering); windows 2 to 6%. High tech: slopes 15 to 23% everywhere (chamfered edges, sloped armour, roofs), corners 4 to 7%, round 2 to 4% (7% in industry), almost no plates or poles. A check: a generated place's shape shares should fall within these bands for its tech, give or take 5 points.
 
+**An object's shape comes from the object alone.** A building with all its wings, one tank, one container, one vehicle is each one object; shaping reads another object's blocks and rooms beside or above it as open air outside, and what it stands on as ground, so a tank against a shed keeps its cap all round and the shed's wall behind it is panelled as if the tank weren't there. Only what keeps things safe (what is stood on, what the place later sets against a wall) reads the grid as it is. Stacked containers each keep their own caps, as real ones show every box's edges.
+
 ### 1.6 Dressing density and where it sits, per room kind
 
 7 Days to Die, per m² of room floor (median for dressing, mean for containers and lights). Dressing = furniture and clutter cells standing on the floor. Wall share = the share of floor dressing touching a wall.

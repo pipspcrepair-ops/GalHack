@@ -55,6 +55,12 @@ public sealed class BlockMap : Dictionary<Int3, Block>
     /// <summary>The floor finishes under what stands on them.</summary>
     public readonly Dictionary<Int3, Block> Under = new();
 
+    /// <summary>The object being built now (0: the place as a whole); every block set is recorded as its.</summary>
+    public int Object;
+
+    /// <summary>Which object each block was built as (<see cref="Layout.Objects"/>), where one was begun.</summary>
+    public readonly Dictionary<Int3, int> Objects = new();
+
     public new Block this[Int3 p]
     {
         get => base[p];
@@ -65,18 +71,23 @@ public sealed class BlockMap : Dictionary<Int3, Block>
             else if (BlockInfo.IsFinish(was.Type) && !value.IsAir) Under[p] = was;
             else if (value.IsAir && Under.Remove(p, out Block floor)) value = floor;
             base[p] = value;
+            // (A block stays the object's that built it: a neighbour painting it, a tank's band round the next tank, doesn't take it.)
+            if (value.IsAir) Objects.Remove(p);
+            else if (Object != 0 && (was.IsAir || !Objects.ContainsKey(p))) Objects[p] = Object;
         }
     }
 
     public new bool Remove(Int3 p)
     {
         Under.Remove(p);
+        Objects.Remove(p);
         return base.Remove(p);
     }
 
     public new void Clear()
     {
         Under.Clear();
+        Objects.Clear();
         base.Clear();
     }
 
@@ -125,6 +136,11 @@ public sealed class Canvas
         Occ.Add(p);
     }
 
+    int _objects;
+
+    /// <summary>Begins a new object (a building with all its wings, one tank, one container): every block set from here is its, until the next.</summary>
+    public void Begin() => Blocks.Object = ++_objects;
+
     /// <summary>Open air that belongs to the place (carved out of the ground below ground level).</summary>
     public void Clear(Int3 p)
     {
@@ -157,7 +173,7 @@ public sealed class Canvas
         var m = new PlacedModule
         {
             Index = Modules.Count, Template = t, Shape = shape, Offset = min, Storey = storey, Purpose = purpose,
-            SocketUsed = Array.Empty<bool>(), Step = -1,
+            SocketUsed = Array.Empty<bool>(), Step = -1, Object = Blocks.Object,
         };
         Modules.Add(m);
         foreach (Int3 c in cells) Occ.Add(c);
@@ -252,6 +268,7 @@ public sealed class Canvas
         };
         foreach (var (p, b) in Blocks) layout.Blocks.Set(p, b);
         foreach (var (p, f) in Blocks.Under) layout.Blocks.SetUnder(p, f);
+        foreach (var (p, o) in Blocks.Objects) layout.Objects[p] = o;
         // Water stands only where nothing solid was built over it after (a column, a bridge pier).
         X.Water.RemoveWhere(p => BlockInfo.IsFullCube(Get(p).Type));
         foreach (Int3 p in Occ) layout.Occupied[p] = true;

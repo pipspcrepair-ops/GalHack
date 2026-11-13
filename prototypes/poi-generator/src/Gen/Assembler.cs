@@ -20,6 +20,8 @@ public sealed class PlacedModule
     public bool OnPath;
     /// <summary>The storey it stands on: 0 ground, positive up, negative below ground.</summary>
     public int Storey;
+    /// <summary>The object it is a room of (<see cref="Layout.Objects"/>; 0: the place's as a whole).</summary>
+    public int Object;
     /// <summary>Its purpose (architect rooms: lab, quarters, reactor...), or the template id.</summary>
     public string Purpose = "";
 
@@ -76,6 +78,9 @@ public sealed class Layout
     public List<int> CriticalPath = new();
     public BlockGrid Blocks = null!;
     public CellMask Occupied = null!;
+    /// <summary>Which object each block was built as (a building with its wings, one tank, one container), where a site
+    /// builds more than one; a cell missing is the place's as a whole. An object's shape comes from the object alone.</summary>
+    public Dictionary<Int3, int> Objects = new();
     public Int3 EntranceCell;      // standing outside the way in
     public Dir EntranceFacing;     // pointing out of the building
     public List<Int3> ExitCells = new();

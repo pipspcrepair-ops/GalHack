@@ -53,8 +53,8 @@ public static partial class StateTransforms
     /// <summary>
     /// What the years leave inside a dead place, after its state and its dressing, by its world's age: ceilings
     /// come down in patches with their wires left hanging, mould and water climb the walls from the floor and the
-    /// paint lifts, moss takes the damp corners, dead leaves blow in at the openings, and bent bars show at every broken
-    /// concrete edge. No room is ever left standing in water.
+    /// paint lifts, moss takes the damp corners and dead leaves blow in at the openings (the bars at every broken concrete edge
+    /// come with the ornament, Ornament). No room is ever left standing in water.
     /// </summary>
     public static void Aftermath(PoiInstance inst, Rng rng)
     {
@@ -116,7 +116,6 @@ public static partial class StateTransforms
             }
             Walls(inst, m, wear, damp);
         }
-        if (!age.Falling || ruined) Bars(inst, rng, wear);
     }
 
     /// <summary>The ceiling over a floor cell: the y of the first solid block above, within a storey or two.</summary>
@@ -164,42 +163,4 @@ public static partial class StateTransforms
             }
     }
 
-    /// <summary>
-    /// Bent, rusted bars out of every broken concrete edge: beside each concrete slab or wall a ruin tore (a cell
-    /// the decay took from beside it), a few bars stand out of the torn face, for as long as the face holds them;
-    /// out of a slab's edge sideways, out of a broken wall's side or its top.
-    /// </summary>
-    static void Bars(PoiInstance inst, Rng rng, float wear)
-    {
-        var g = inst.Blocks;
-        int most = 120 + inst.Fallen.Count / 6, laid = 0;
-        var spots = new List<(Int3 Cell, Dir Toward)>();
-        foreach (Int3 c in inst.Fallen.Distinct())
-        {
-            if (!g.Get(c).IsAir || inst.Protected[c]) continue;
-            foreach (Dir d in Dirs.All)
-            {
-                if (d == Dir.Up) continue;
-                Block b = g.Get(c + d.Vec());
-                if (!BlockInfo.IsFullCube(b.Type) || !Reinforced(b.Material)) continue;
-                bool fits = b.Role switch
-                {
-                    Role.Floor or Role.Roof => d != Dir.Down,
-                    Role.Wall => true,
-                    _ => false,
-                };
-                if (fits) { spots.Add((c, d)); break; }
-            }
-        }
-        rng.Shuffle(spots);
-        foreach (var (c, toward) in spots)
-        {
-            if (laid >= most) break;
-            if (!rng.Chance(0.3f + 0.5f * wear)) continue;
-            g.Set(c, new Block(BlockType.Rebar, Material.Rust, Debris.Rust, Role.Debris, toward));
-            laid++;
-        }
-    }
-
-    static bool Reinforced(Material m) => m is Material.Concrete or Material.Fused or Material.Armour;
 }

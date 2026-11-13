@@ -54,6 +54,7 @@ public static class Sites
         {
             // Ranges in the plan ("count 3..6") rolled by this spawn's seed.
             var part = site.Parts[pi].Rolled(x.Rng.Fork("roll" + pi));
+            c.Begin(); // (each part its own object: a building with all its wings, a fence; yard items each their own below)
             switch (part.Kind)
             {
                 case "building": BuildingPart(x, part, vaultCandidates == 0); break;
@@ -94,6 +95,7 @@ public static class Sites
                 default: throw new ArgumentException($"site {site.Id}: unknown part '{part.Kind}'");
             }
         }
+        c.Blocks.Object = 0; // (the roads are the place's own)
         if (!site.Space && SiteRoads.Enabled)
             using (Prof.Time("site roads")) SiteRoads.Plan(c, fam, x.Tech ?? (fam.Techs.Count > 0 ? WorldProfile.Parse(fam.Techs[0]) : TechLevel.Mid), e, site.EntranceFacing, x.Runways, x.Wants, x.Doors);
         c.VaultModule = x.VaultModule >= 0 ? x.VaultModule : x.DeepestModule >= 0 ? x.DeepestModule : x.Yard;
@@ -203,6 +205,7 @@ public static class Sites
         var steel = new Rgb(0xa8, 0xaa, 0xa4);
         for (int i = 0; i < n; i++)
         {
+            x.C.Begin(); // (each one its own object: its shape is its own)
             int cx = p.X + (alongX ? i * (2 * r + gap) : 0), cz = p.Z + (alongX ? 0 : i * (2 * r + gap));
             var shell = new Block(BlockType.Cube, Material.Steel, i % 2 == 0 ? steel : steel.Lerp(new Rgb(0x8a, 0x5a, 0x3a), 0.4f), Role.Wall);
             Cylinder(x, cx, cz, r + 0.4f, 0, h, shell);
@@ -305,6 +308,7 @@ public static class Sites
                 int high = x.Rng.Chance(0.45f) ? 2 : 1;
                 for (int layer = 0; layer < high; layer++)
                 {
+                    x.C.Begin(); // (each one its own object: its shape is its own)
                     var col = colours[(int)(Hash.Cell(new Int3(ox, layer, oz), 5) % colours.Length)];
                     bool open = layer == 0 && x.Rng.Chance(0.3f);
                     var inside = new List<Int3>();
@@ -698,6 +702,7 @@ public static class Sites
         bool alongX = p.Arg("axis", "x") == "x";
         for (int i = 0; i < n; i++)
         {
+            x.C.Begin(); // (each one its own object: its shape is its own)
             Int3 b = alongX ? new Int3(p.X + i * gap, 0, p.Z) : new Int3(p.X, 0, p.Z + i * gap);
             for (int y = 0; y < h; y++) x.C.Blocks[b + Int3.Up * y] = new Block(BlockType.Pillar, Material.Steel, new Rgb(0x58, 0x5a, 0x5c), Role.Decor);
             bool lit = x.Rng.Chance(0.35f);
@@ -756,6 +761,7 @@ public static class Sites
         x.Wants.Add(new SiteRoads.Want("parking", Area(p.X - 4, p.Z - 4, x1 + 4, z1 + 4), Area(p.X - 3, p.Z - 3, x1 + 3, z1 + 3)));
         for (int i = 0; i < n; i++)
         {
+            x.C.Begin(); // (each one its own object: its shape is its own)
             int ox = p.X + (alongX ? i * gap : 0), oz = p.Z + (alongX ? 0 : i * gap);
             Int3 At(int a, int b, int y) => alongX ? new Int3(ox + b, y, oz + a) : new Int3(ox + a, y, oz + b);
             if (kind == "carts")
@@ -1064,6 +1070,7 @@ public static class Sites
         var olive = new Rgb(0x4a, 0x52, 0x3a);
         for (int k = 0; k < n; k++)
         {
+            x.C.Begin(); // (each one its own object: its shape is its own)
             Int3 c = new(p.X + k * gap, 0, p.Z);
             // The emplacement: a low wall round three sides, open at the back.
             for (int dz = -2; dz <= 2; dz++)
@@ -1121,6 +1128,7 @@ public static class Sites
         int at = 0;
         for (int k = 0; k < n; k++)
         {
+            x.C.Begin(); // (each one its own object: its shape is its own)
             int w = 5 + (int)(Hash.Cell(new Int3(p.X, k, p.Z), 161) % 2), d = 5;
             Int3 W(int i, int y, int j) => new(p.X + at + i, y, p.Z + j);
             var inside = new List<Int3>();
@@ -1159,6 +1167,7 @@ public static class Sites
         var cloth = new[] { new Rgb(0xa0, 0x4a, 0x3a), new Rgb(0x3a, 0x6a, 0x8a), new Rgb(0xb0, 0x90, 0x40) };
         for (int k = 0; k < n; k++)
         {
+            x.C.Begin(); // (each one its own object: its shape is its own)
             Int3 c = new(p.X + k * gap, 0, p.Z);
             x.C.Set(c, new Block(BlockType.Table, Material.Timber, new Rgb(0x6a, 0x50, 0x38), Role.Prop));
             x.C.Set(c + new Int3(1, 0, 0), new Block(BlockType.Crate, Material.Scrap, new Rgb(0x7a, 0x6a, 0x4a), Role.Prop));
@@ -1237,6 +1246,7 @@ public static class Sites
         var rim = new Rgb(0x8a, 0x88, 0x82);
         for (int i = 0; i < n; i++)
         {
+            x.C.Begin(); // (each one its own object: its shape is its own)
             int cx = p.X + (alongX ? i * (2 * r + gap) : 0), cz = p.Z + (alongX ? 0 : i * (2 * r + gap));
             for (int dz = -r; dz <= r; dz++)
                 for (int dx = -r; dx <= r; dx++)
@@ -1272,6 +1282,7 @@ public static class Sites
         var coal = p.Arg("type", "coal") == "coal" ? new Rgb(0x2a, 0x28, 0x2a) : new Rgb(0x6a, 0x5a, 0x4a);
         for (int i = 0; i < n; i++)
         {
+            x.C.Begin(); // (each one its own object: its shape is its own)
             int cx = p.X + (alongX ? i * (2 * r + gap) : 0), cz = p.Z + (alongX ? 0 : i * (2 * r + gap));
             for (int dz = -r; dz <= r; dz++)
                 for (int dx = -r; dx <= r; dx++)
@@ -1371,6 +1382,7 @@ public static class Sites
         var white = new Rgb(0xc8, 0xc8, 0xc2);
         for (int i = 0; i < n; i++)
         {
+            x.C.Begin(); // (each one its own object: its shape is its own)
             int cx = p.X + (alongX ? i * gap : 0), cz = p.Z + (alongX ? 0 : i * gap);
             bool down = x.Rng.Chance(0.25f);
             int standing = down ? 5 : h;
@@ -1417,6 +1429,7 @@ public static class Sites
         var steel = new Rgb(0x6a, 0x6c, 0x6e);
         for (int r = 0; r < rows; r++)
         {
+            x.C.Begin(); // (each one its own object: its shape is its own)
             int z = p.Z + r * (2 + gap);
             for (int t = 0; t < len; t++)
             {
@@ -1549,6 +1562,7 @@ public static class Sites
         var col = cooling ? new Rgb(0xb8, 0xb4, 0xa8) : new Rgb(0x6a, 0x64, 0x5e);
         for (int i = 0; i < n; i++)
         {
+            x.C.Begin(); // (each one its own object: its shape is its own)
             int cx = p.X + i * (2 * r + gap), cz = p.Z;
             for (int y = 0; y < h; y++)
             {
@@ -1569,6 +1583,7 @@ public static class Sites
         int n = p.Int("count", 5), h = p.Int("h", 14), spread = p.Int("spread", 30);
         for (int i = 0; i < n; i++)
         {
+            x.C.Begin(); // (each one its own object: its shape is its own)
             float t = i / (float)n * MathF.Tau + x.Rng.Float(0f, 0.6f);
             float d = spread * (0.4f + 0.6f * x.Rng.Float());
             int ox = p.X + (int)(MathF.Cos(t) * d), oz = p.Z + (int)(MathF.Sin(t) * d);
