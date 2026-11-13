@@ -347,11 +347,13 @@ public partial class WeaponTest : Node
         }
         var levels = new Dictionary<string, int>
         {
-            ["tack-pistol"] = 2, ["pump-scattergun"] = 6, ["line-rifle"] = 7, ["pressure-thrower"] = 7, ["break-launcher"] = 8, ["shoulder-tube"] = 9,
-            ["prox-mine"] = 10, ["hornet-hive"] = 11, ["stage-rifle"] = 14, ["wormspitter"] = 14, ["fork-gun"] = 16, ["bend-rounds"] = 16,
+            // Empyrion's nearest hand weapon where it has one (Shotgun and AssaultRifle 3, Explosives 5,
+            // RocketLauncher 10); the pistol waits for 2, as the survival tool is the only starting weapon.
+            ["tack-pistol"] = 2, ["pump-scattergun"] = 3, ["line-rifle"] = 3, ["pressure-thrower"] = 7, ["break-launcher"] = 8, ["shoulder-tube"] = 10,
+            ["prox-mine"] = 5, ["hornet-hive"] = 11, ["stage-rifle"] = 14, ["wormspitter"] = 14, ["fork-gun"] = 16, ["bend-rounds"] = 16,
         };
         Check(levels.All(kv => items.Item(kv.Key).Unlock.Level == kv.Value && items.Item(kv.Key).Unlock.Cost == (kv.Value <= 4 ? 1 : kv.Value <= 10 ? 2 : 3)),
-            "each sits at the pacing doc's level, at its level's cost (1 to level 4, 2 to 10, 3 to 16)");
+            "each sits at its level, at its level's cost (1 to level 4, 2 to 10, 3 to 16)");
         Check(items.Items.Where(i => i.IsAmmo && i.Unlock?.Parent != null && levels.ContainsKey(i.Unlock.Parent)).All(i => i.Unlock.Cost == 0),
             "a weapon's own new ammo costs nothing and opens with it");
         Check(Crafted.Where(w => w.Look.Band == Band.Living).All(w => w.Ammo == "biomass"), "living weapons eat plain biomass");
