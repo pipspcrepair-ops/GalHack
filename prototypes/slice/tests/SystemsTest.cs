@@ -302,7 +302,7 @@ public partial class SystemsTest : Node
         int ships = 0, withWarp = 0, withHyper = 0;
         var rng = new Random();
         foreach (var family in library.Families.Where(f => f.Tags.Contains("ship")))
-            for (int i = 0; i < 12; i++)
+            for (int i = 0; i < 40; i++)
             {
                 var inst = PoiGenerator.Gen.PoiFactory.Generate(library, family, i % Math.Max(1, family.Variants.Count), family.Rarity, PoiGenerator.Gen.PoiState.Abandoned, (ulong)rng.NextInt64());
                 ships++;
