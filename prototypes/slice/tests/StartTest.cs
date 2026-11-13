@@ -226,13 +226,13 @@ public partial class StartTest : Node
         {
             var since = Stopwatch.StartNew();
             double worst = 0;
-            ulong last = Time.GetTicksUsec();
+            ulong was = Time.GetTicksUsec();
             while (builds.AllInRangeMs < 0 && since.Elapsed.TotalSeconds < 120)
             {
                 yield return 0;
                 ulong now = Time.GetTicksUsec();
-                worst = Math.Max(worst, (now - last) / 1000.0);
-                last = now;
+                worst = Math.Max(worst, (now - was) / 1000.0);
+                was = now;
             }
             GD.Print($"  every place within {builds.Range:F0} m built {since.Elapsed.TotalSeconds:F1} s after standing ({game.Zone.Planet.Pois.Count(p => p.Built != null)} of {game.Zone.Planet.Pois.Count} places), worst frame meanwhile {worst:F1} ms");
         }
