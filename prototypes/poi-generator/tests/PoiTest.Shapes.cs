@@ -61,7 +61,7 @@ public partial class PoiTest
     void Coherent()
     {
         var rand = new Random();
-        string[] names = { "places", "shaped", "runs", "orphans", "loose ends", "corners missing", "corners alone", "profile changes", "frames cut", "unsupported" };
+        string[] names = { "places", "shaped", "runs", "orphans", "loose ends", "corners missing", "corners alone", "profile changes", "frames cut", "unsupported", "stepped panels" };
         var tally = new SortedDictionary<string, long[]>();
         foreach (FamilyDef f in _lib.Families.Where(f => !f.Tags.Contains("city") && !f.Space))
             foreach (TechLevel tech in f.Techs.Count > 0 ? f.Techs.Select(WorldProfile.Parse).Distinct() : Enum.GetValues<TechLevel>())
@@ -185,6 +185,23 @@ public partial class PoiTest
                 }
         }
         t[4] += bays.Count(h => !h.Value);
+        // A panel's head is level: the tops of a set-back bay, away from frames, lie on one row (a gable's rake would step it).
+        var inPanel = new HashSet<Int3>();
+        foreach (Int3 c in shaped)
+        {
+            Block b = g.Get(c);
+            if (b.Type != BlockType.Half || !b.Facing.IsHorizontal() || !inPanel.Add(c)) continue;
+            Int3 a = b.Facing.RotateCw(1).Vec();
+            var bay = new List<Int3> { c };
+            for (int i = 0; i < bay.Count; i++)
+                foreach (Int3 q in new[] { bay[i] + a, bay[i] - a, bay[i] + Int3.Up, bay[i] + Int3.Down })
+                    if (Same(q, b) && inPanel.Add(q)) bay.Add(q);
+            // A step: a head lower than the bay beside it, under plain wall that is neither frame, quoin, opening nor thin.
+            Dir o = b.Facing.Opposite();
+            bool Plain(Int3 q) => !shaped.Contains(q) && BlockInfo.IsFullCube(before.Get(q).Type) && !InFrame(q, o) && Solid(q - o.Vec())
+                && Kind(q + a) == 0 && Kind(q - a) == 0;
+            if (bay.Any(q => Plain(q + Int3.Up) && (Same(q + a, b) && Same(q + a + Int3.Up, b) || Same(q - a, b) && Same(q - a + Int3.Up, b)))) t[10]++;
+        }
         // No panel or thin wall cuts into an opening's frame, in the opening's own wall.
         bool Way(Int3 q) => Open(q) || Shaping.Opening(g.Get(q));
         foreach (var (c, b) in g.Blocks())

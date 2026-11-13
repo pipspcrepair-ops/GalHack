@@ -228,27 +228,34 @@ public static class Shaping
             Put(t.C, t.In ? Turns(runs[t.A].P)!.Value.Inner : Turns(runs[t.A].P)!.Value.Outer, t.F);
 
         // Panels: each storey of a facade set back whole between its storey lines, quoins and frames.
-        // Each panel is cut in equal bays by piers about every 9 m; a timber facade is boarded flush.
+        // Each panel is cut in equal bays by piers, about every 9 m in masonry and every 3 m in timber (its posts).
         foreach (var (d, set) in fields)
-            foreach (List<Int3> panel in Parts(set, d.RotateCw(1).Vec(), Int3.Up))
+            foreach (List<Int3> part in Parts(set, d.RotateCw(1).Vec(), Int3.Up))
             {
-                if (!panel.All(Panel) || panel.Count(c => g.Get(c).Material == Material.Timber) * 2 > panel.Count) continue;
+                List<Int3> panel = Level(part, d, q => Frame(q, d) || Outside(q + d.RotateCw(1).Vec()) || Outside(q + d.RotateCw(3).Vec()) || !OutOk(q, d));
+                if (panel.Count == 0 || !panel.All(Panel)) continue;
                 int U(Int3 c) => d is Dir.North or Dir.South ? c.X : c.Z;
-                int lo = panel.Min(U), wide = panel.Max(U) - lo + 1, bays = (wide + 8) / 9;
-                var piers = Enumerable.Range(1, bays - 1).Select(k => lo + wide * k / bays).ToHashSet();
+                int bay = panel.Count(c => g.Get(c).Material == Material.Timber) * 2 > panel.Count ? 3 : 9;
+                int lo = panel.Min(U), wide = panel.Max(U) - lo + 1, bays = (wide + bay - 1) / bay;
+                // (A pier stands whole, the panel's full height with panel either side, as near its place as one can.)
                 var cells = panel.ToHashSet();
                 Int3 a = d.RotateCw(1).Vec();
-                foreach (Int3 c in panel)
-                    if (!piers.Contains(U(c)) || !cells.Contains(c - a) || !cells.Contains(c + a)) Put(c, BlockType.Half, d.Opposite());
+                var rows = panel.Select(c => c.Y).Distinct().Count();
+                bool Whole(int u) { var col = panel.Where(c => U(c) == u).ToList(); return col.Count == rows && col.All(c => cells.Contains(c - a) && cells.Contains(c + a)); }
+                var piers = new HashSet<int>();
+                for (int k = 1; k < bays; k++)
+                    foreach (int u in new[] { 0, 1, -1, 2, -2 }.Select(o => lo + wide * k / bays + o))
+                        if (Whole(u) && !piers.Contains(u - 1) && !piers.Contains(u) && !piers.Contains(u + 1)) { piers.Add(u); break; }
+                foreach (Int3 c in panel) if (!piers.Contains(U(c))) Put(c, BlockType.Half, d.Opposite());
             }
         // A room's walls with more behind them are set back whole between the cove and the kick (or the floor), the
         // room's corners standing as piers and its doorways framed.
         foreach (var (d, set) in panels)
-            foreach (List<Int3> panel in Parts(set, d.RotateCw(1).Vec(), Int3.Up))
+            foreach (List<Int3> panel in Parts(set, d.RotateCw(1).Vec(), Int3.Up).Select(p => Level(p, d, q => Frame(q, d) || Inside(q + d.RotateCw(1).Vec()) || Inside(q + d.RotateCw(3).Vec()))))
                 if (panel.All(Panel)) foreach (Int3 c in panel) Put(c, BlockType.Half, d.Opposite());
         // A wall between two rooms is thin, the whole wall, its doorways framed.
         foreach (var (d, set) in between)
-            foreach (List<Int3> wall in Parts(set, d.RotateCw(1).Vec(), Int3.Up))
+            foreach (List<Int3> wall in Parts(set, d.RotateCw(1).Vec(), Int3.Up).Select(p => Level(p, d, q => !set.Contains(q))))
                 if (wall.All(Panel)) foreach (Int3 c in wall) Put(c, BlockType.Partition, d);
 
         // Ceilings under more floor, room by room across the whole span. Low tech: bays raised between joists that span the
@@ -355,6 +362,25 @@ public static class Shaping
             }
         }
         return false;
+    }
+
+    /// <summary>
+    /// A panel of a wall facing <paramref name="d"/> cut level: its rows from the bottom up while each spans the panel's
+    /// whole width and stands on the whole row under it (where the wall above isn't <paramref name="framed"/>), so its
+    /// head is one line, never a step (a gable's rake, a course of another element).
+    /// </summary>
+    static List<Int3> Level(List<Int3> panel, Dir d, System.Func<Int3, bool> framed)
+    {
+        int U(Int3 c) => d is Dir.North or Dir.South ? c.X : c.Z;
+        var cells = panel.ToHashSet();
+        int lo = panel.Min(U), hi = panel.Max(U), head = panel.Max(c => c.Y), top = int.MaxValue;
+        foreach (var row in panel.GroupBy(c => c.Y).OrderBy(r => r.Key))
+            if (row.Min(U) != lo || row.Max(U) != hi || row.Key < head && row.Any(c => !cells.Contains(c + Int3.Up) && !framed(c + Int3.Up)))
+            {
+                top = row.Min(U) != lo || row.Max(U) != hi ? row.Key : row.Key + 1;
+                break;
+            }
+        return panel.Where(c => c.Y < top).ToList();
     }
 
     /// <summary>A set's straight lines along a step, each whole from end to end.</summary>
