@@ -263,7 +263,7 @@ public partial class PlayerTest : Node
                     float a = k * MathF.Tau / 48f, flat = MathF.Sqrt(1f - drop * drop);
                     var look = new Vector3(MathF.Cos(a) * flat, -drop, MathF.Sin(a) * flat);
                     if (!_game.Zone.Planet.Terrain.Store.Raycast(from.ToNumerics(), look.ToNumerics(), 30f, out _, out _, out float cube)) continue;
-                    var drawn = space.IntersectRay(PhysicsRayQueryParameters3D.Create(from, from + look * 40f, Layers.World | Layers.Hull | Layers.Props | PlanetSurface.World.Layers.Flora));
+                    var drawn = space.IntersectRay(PhysicsRayQueryParameters3D.Create(from, from + look * 40f, Layers.World | Layers.Hull | Layers.Props | Layers.Flora));
                     if (drawn.Count == 0) continue;
                     Vector3 g = (Vector3)drawn["position"];
                     float gap = from.DistanceTo(g) - cube;

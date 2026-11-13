@@ -290,7 +290,7 @@ public partial class VehicleGroundTest
     bool Wall(Vector3 at, Vector3 way)
     {
         var hit = _game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(PhysicsRayQueryParameters3D.Create(at + Vector3.Up * 0.5f, at + Vector3.Up * 0.5f + way * 25f,
-            GalHack.Physics.Layers.World | GalHack.Physics.Layers.Hull | GalHack.Physics.Layers.Props | PlanetSurface.World.Layers.Flora));
+            GalHack.Physics.Layers.World | GalHack.Physics.Layers.Hull | GalHack.Physics.Layers.Props | GalHack.Physics.Layers.Flora));
         if (hit.Count == 0 || ((Vector3)hit["normal"]).Y > 0.3f) return false;
         float d = ((Vector3)hit["position"]).DistanceTo(at);
         if (d < 8f) return false;

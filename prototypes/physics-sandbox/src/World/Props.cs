@@ -85,7 +85,8 @@ public sealed class Creature
         Binding = binding;
     }
 
-    public static Creature Spawn(SandboxWorld world, N.Vector3 feet)
+    /// <param name="radius">its capsule: a beast of any size, a giant included</param>
+    public static Creature Spawn(SandboxWorld world, N.Vector3 feet, float radius = 0.45f, float height = 1.4f)
     {
         Body body = world.Physics.Register(new BodySpec
         {
@@ -93,16 +94,16 @@ public sealed class Creature
             Label = "Creature",
             Mass = 220f,
             DragArea = 1.2f,
-            Shape = new StuckShape(1.4f, 0.45f),
+            Shape = new StuckShape(height, radius),
             Position = feet,
         });
         var c = new CharacterBody3D { Name = $"Creature{body.Id}", CollisionLayer = Layers.Props, CollisionMask = Layers.PlayerMask };
-        c.AddChild(new CollisionShape3D { Shape = new CapsuleShape3D { Radius = 0.45f, Height = 1.4f }, Position = Vector3.Up * 0.7f });
+        c.AddChild(new CollisionShape3D { Shape = new CapsuleShape3D { Radius = radius, Height = height }, Position = Vector3.Up * (height / 2f) });
         if (world.Visuals)
             c.AddChild(new MeshInstance3D
             {
-                Mesh = new CapsuleMesh { Radius = 0.45f, Height = 1.4f },
-                Position = Vector3.Up * 0.7f,
+                Mesh = new CapsuleMesh { Radius = radius, Height = height },
+                Position = Vector3.Up * (height / 2f),
                 MaterialOverride = new StandardMaterial3D { AlbedoColor = Palette.DeepRock, Roughness = 0.9f },
             });
         world.AddChild(c);

@@ -454,10 +454,11 @@ public sealed class InteriorMap
 
 /// <summary>
 /// Keeps bodies out of a structure's blocks (stuck-safety after structure edits): a point is
-/// inside if it falls in a solid block's cell. It keeps out everything in the zone's world and
-/// its own riders (inside or on its hull: a block placed where someone stands); a rider rescued
-/// from its own ship's blocks stays aboard. A structure never rescues itself, and riders of other
-/// ships are their ships' business.
+/// inside if it is inside a block's real shape, exactly as it collides (<see cref="Structure.SolidAt"/>):
+/// the air over a half block, a slope or a stair's step is open, so standing on one is never being
+/// inside it. It keeps out everything in the zone's world and its own riders (inside or on its hull:
+/// a block placed where someone stands); a rider rescued from its own ship's blocks stays aboard. A
+/// structure never rescues itself, and riders of other ships are their ships' business.
 /// </summary>
 public sealed class StructureField : IStuckField
 {
@@ -477,13 +478,9 @@ public sealed class StructureField : IStuckField
     public bool Applies(Body body) =>
         body.Kind is not (BodyKind.Vessel or BodyKind.Wreck) && (body.Frame == null ? body != Body : body.Frame == Body);
 
-    public bool IsSolid(Body body, N.Vector3 point)
-    {
-        N.Vector3 local = Body.ToLocal(point);
-        return Structure.TryGet(StructureBridge.CellAt(Structure, local), out Block b) && Structure.IsSolid(b);
-    }
+    public bool IsSolid(Body body, N.Vector3 point) => Structure.SolidAt(Body.ToLocal(point) / Structure.Grid.CellSize);
 
-    /// <summary>Inside: any point on the body's core axis (a radius in from each end) is in a solid block.</summary>
+    /// <summary>Inside: any point on the body's core axis (a radius in from each end) is in a block.</summary>
     public bool IsInside(Body body, N.Vector3 feet, StuckShape shape)
     {
         float bottom = shape.Radius, top = MathF.Max(shape.Height - shape.Radius, shape.Radius);
@@ -506,17 +503,24 @@ public sealed class StructureField : IStuckField
         return true;
     }
 
-    public bool Supports(Body body, N.Vector3 feet) => IsSolid(body, feet - N.Vector3.UnitY * 0.3f);
+    /// <summary>Something to stand on within a step's reach below the feet (a thin plate counts).</summary>
+    public bool Supports(Body body, N.Vector3 feet)
+    {
+        for (float d = 0.05f; d <= 0.3f; d += 0.05f)
+            if (IsSolid(body, feet - N.Vector3.UnitY * d)) return true;
+        return false;
+    }
 
+    /// <summary>The top of the highest block's real shape in a column, to within 2 cm.</summary>
     public float TopAt(Body body, float x, float z)
     {
-        // Straight down through the structure from well above it.
+        // Straight down through the structure from well above it (only rescues ask, so a fine step is cheap enough).
         var (min, max) = Structure.Bounds();
-        float cell = Structure.Grid.CellSize;
+        float cell = Structure.Grid.CellSize, fine = 0.02f;
         float above = (max.Y + 2) * cell, below = (min.Y - 1) * cell;
         N.Vector3 top = Body.ToParent(new N.Vector3(0, above, 0)), bottom = Body.ToParent(new N.Vector3(0, below, 0));
-        for (float y = MathF.Max(top.Y, bottom.Y); y >= MathF.Min(top.Y, bottom.Y); y -= cell * 0.5f)
-            if (IsSolid(body, new N.Vector3(x, y, z))) return y + cell * 0.5f;
+        for (float y = MathF.Max(top.Y, bottom.Y); y >= MathF.Min(top.Y, bottom.Y); y -= fine)
+            if (IsSolid(body, new N.Vector3(x, y, z))) return y + fine;
         return float.NegativeInfinity;
     }
 

@@ -6,6 +6,7 @@ using Planets.Gen;
 using Planets.Look;
 using Godot;
 using PlanetSurface.World;
+using Layers = GalHack.Physics.Layers;
 
 namespace PlanetSurface.Terrain;
 

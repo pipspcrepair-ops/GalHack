@@ -71,8 +71,12 @@ public partial class PhysicsTest : Node
 
     IEnumerable<int> Scenarios()
     {
-        GD.Print("-- determinism: two identical worlds, side by side --");
-        foreach (int x in Determinism()) yield return x;
+        bool standOnOnly = OS.GetCmdlineUserArgs().Contains("--stand-on");
+        if (!standOnOnly)
+        {
+            GD.Print("-- determinism: two identical worlds, side by side --");
+            foreach (int x in Determinism()) yield return x;
+        }
 
         GD.Print("-- the sandbox --");
         _w = new SandboxWorld { Visuals = false };
@@ -84,6 +88,12 @@ public partial class PhysicsTest : Node
         _w.Weather.Calm = true;
         for (int i = 0; i < 5; i++) yield return 0;
 
+        if (standOnOnly)
+        {
+            GD.Print("-- standing on built shapes --");
+            foreach (int x in StandOnShapes()) yield return x;
+            yield break;
+        }
         StructureChecks();
         foreach (int x in MultiCellBlocks()) yield return x;
         foreach (int x in ForcePath()) yield return x;
@@ -104,6 +114,8 @@ public partial class PhysicsTest : Node
         foreach (int x in WaterVolume()) yield return x;
         foreach (int x in TornadoFling()) yield return x;
         foreach (int x in StuckSafety()) yield return x;
+        GD.Print("-- standing on built shapes --");
+        foreach (int x in StandOnShapes()) yield return x;
         foreach (int x in Performance()) yield return x;
     }
 

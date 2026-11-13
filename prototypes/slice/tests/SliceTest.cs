@@ -723,7 +723,7 @@ public partial class SliceTest : Node
         foreach (Vector3 across in new[] { Vector3.Right, Vector3.Back })
         {
             // A felled tree's shape is disabled, so the ray passes; anything else it hits isn't this tree.
-            var hit = space.IntersectRay(PhysicsRayQueryParameters3D.Create(at - across * 1.5f, at + across * 1.5f, PlanetSurface.World.Layers.Flora));
+            var hit = space.IntersectRay(PhysicsRayQueryParameters3D.Create(at - across * 1.5f, at + across * 1.5f, GalHack.Physics.Layers.Flora));
             if (hit.Count > 0 && _game.Zone.Streamer.SolidHit((Rid)hit["rid"], (int)hit["shape"], out var solid) && solid.Id == id) return true;
         }
         return false;
