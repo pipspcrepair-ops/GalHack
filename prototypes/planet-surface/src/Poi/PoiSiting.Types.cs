@@ -79,9 +79,75 @@ public static partial class PoiSiting
     /// <summary>Tests: why the last typed place's spots were turned down.</summary>
     public static string LastTypedRejects = "";
 
-    /// <summary>Sites a typed place where the plan wanted it, or failing that the next good ground out round it (rings a search wide apart, up to <paramref name="rings"/>).</summary>
+    /// <summary>
+    /// The world's ground at a coarse step, made once per world and shared by every typed place: running sums over 64 m
+    /// cells of the land's height and its square, of wet cells (sea or river) and of steep ones, so any box's mean, spread,
+    /// wetness and cliffs read in a few lookups.
+    /// </summary>
+    sealed class CoarseGround
+    {
+        public readonly int W, H;
+        public readonly double Cell;
+        readonly double[] sum, sq;
+        readonly int[] wet, steep;
+
+        public CoarseGround(WorldMap map)
+        {
+            int f = Math.Max(1, (int)Math.Round(64 / map.CellSize));
+            (W, H, Cell) = (map.Width / f, map.Height / f, map.CellSize * f);
+            var mean = new float[W * H];
+            var isWet = new bool[W * H];
+            System.Threading.Tasks.Parallel.For(0, H, j =>
+            {
+                for (int i = 0; i < W; i++)
+                {
+                    float t = 0f;
+                    for (int b = 0; b < f; b++)
+                        for (int a = 0; a < f; a++)
+                        {
+                            int c = (j * f + b) * map.Width + i * f + a;
+                            t += map.Elevation[c];
+                            if (map.Elevation[c] < 2.5f || map.RiverFlow[c] > 0f) isWet[j * W + i] = true;
+                        }
+                    mean[j * W + i] = t / (f * f);
+                }
+            });
+            int s = W + 1;
+            (sum, sq, wet, steep) = (new double[s * (H + 1)], new double[s * (H + 1)], new int[s * (H + 1)], new int[s * (H + 1)]);
+            float rise = TypedCliff * (float)Cell;
+            for (int j = 0; j < H; j++)
+                for (int i = 0; i < W; i++)
+                {
+                    int c = j * W + i, o = (j + 1) * s + i + 1;
+                    float m = mean[c];
+                    bool st = (i + 1 < W && MathF.Abs(mean[c + 1] - m) > rise) || (j + 1 < H && MathF.Abs(mean[c + W] - m) > rise);
+                    sum[o] = m + sum[o - 1] + sum[o - s] - sum[o - s - 1];
+                    sq[o] = (double)m * m + sq[o - 1] + sq[o - s] - sq[o - s - 1];
+                    wet[o] = (isWet[c] ? 1 : 0) + wet[o - 1] + wet[o - s] - wet[o - s - 1];
+                    steep[o] = (st ? 1 : 0) + steep[o - 1] + steep[o - s] - steep[o - s - 1];
+                }
+        }
+
+        /// <summary>The cells under a box in metres (never across a seam): wet and steep ones, and the land's spread about its mean.</summary>
+        public (int Wet, int Steep, double Rms) Box(double x0, double z0, double x1, double z1)
+        {
+            int i0 = Math.Clamp((int)(x0 / Cell), 0, W - 1), j0 = Math.Clamp((int)(z0 / Cell), 0, H - 1);
+            int i1 = Math.Clamp((int)Math.Ceiling(x1 / Cell), i0 + 1, W), j1 = Math.Clamp((int)Math.Ceiling(z1 / Cell), j0 + 1, H);
+            int s = W + 1, a = j0 * s + i0, b = j0 * s + i1, c = j1 * s + i0, d = j1 * s + i1;
+            double n = (i1 - i0) * (j1 - j0), m = (sum[d] - sum[b] - sum[c] + sum[a]) / n;
+            return (wet[d] - wet[b] - wet[c] + wet[a], steep[d] - steep[b] - steep[c] + steep[a], Math.Sqrt(Math.Max(0, (sq[d] - sq[b] - sq[c] + sq[a]) / n - m * m)));
+        }
+    }
+
+    static readonly System.Runtime.CompilerServices.ConditionalWeakTable<WorldMap, CoarseGround> coarse = new();
+
+    /// <summary>
+    /// Sites a typed place as near where the plan wanted it as good ground allows. One coarse pass over the whole world's
+    /// ground (<see cref="CoarseGround"/>) ranks every spot and quarter turn; the best few, apart, are then weighed on the
+    /// ground itself, a batch at a time, until one takes it. Another of its types follows where none of the first fits.
+    /// </summary>
     static TypedPlace SeatTypeNear(PoiLibrary lib, FamilyDef family, int variant, PoiState state, ulong spawn, WorldProfile profile, PlanetTerrainSource bare, WorldMap map,
-        double x, double z, LandingSite landing, List<PoiSite> others, int rings)
+        double x, double z, LandingSite landing, List<PoiSite> others)
     {
         // Its type as the world's age and size pick it, then any other of its types that fits the world (an airport with no
         // ground anywhere for it gives way to an airstrip).
@@ -92,98 +158,73 @@ public static partial class PoiSiting
         var sketches = family.Types.Where(t => t != first.Type.Id).Select(t => PlaceTypes.Plan(lib.Types.First(x => x.Id == t), spawn, map.WidthMeters, map.HeightMeters)).Where(s => !s.TooBig).Prepend(first);
         foreach (Sketch sketch in sketches)
         {
-            TypedPlace typed = SeatType(lib, family, variant, state, spawn, profile, bare, map, x, z, landing, others, sketch);
-            for (int k = 0; typed == null && k < rings * 3; k++)
-            {
-                double a = k * 2.399963, r = 1600 * (1 + k / 3);
-                typed = SeatType(lib, family, variant, state, spawn, profile, bare, map, Mathx.WrapX(x + Math.Cos(a) * r, map.WidthMeters), Mathx.Wrap(z + Math.Sin(a) * r, map.HeightMeters), landing, others, sketch);
-            }
-            // Last, the whole world at a coarse step, the nearest good ground winning.
-            typed ??= SeatType(lib, family, variant, state, spawn, profile, bare, map, x, z, landing, others, sketch, Math.Max(map.WidthMeters, map.HeightMeters) / 2);
-            if (typed != null) return typed;
-            Godot.GD.Print($"{family.Id}: no ground anywhere for its {sketch.Type.Id} ({sketch.Footprint.W:F0} x {sketch.Footprint.D:F0} m); the world-wide search: {LastTypedRejects}");
+            if (SeatType(lib, family, variant, state, spawn, profile, bare, map, x, z, landing, others, sketch) is { } typed) return typed;
+            Godot.GD.Print($"{family.Id}: no ground anywhere for its {sketch.Type.Id} ({sketch.Footprint.W:F0} x {sketch.Footprint.D:F0} m): {LastTypedRejects}");
         }
         return null;
     }
 
+    /// <summary>Why a spot was turned down, or <see cref="Reject.None"/>.</summary>
+    enum Reject { None, Seam, Crowd, Wet, Cliff, Deep }
+
     /// <summary>
-    /// A family planned as a type: its sketch rolled for this spawn and world, then sited by rule within reach of where the
-    /// plan wanted it. Every spot and quarter turn is weighed on the ground across its whole footprint: dry everywhere, no
-    /// cliff across it, the least cut and fill, the gate turned toward the landing country where the roads come from. The
-    /// place is graded to one level with an easing out to the land as long as the cut asks for; its parts are set down as
-    /// places of their own with their layouts left until wanted. Null when no spot within reach will take it.
+    /// A family planned as a type: its sketch rolled for this spawn and world, then sited by rule. Every spot and quarter
+    /// turn is weighed across its whole footprint: dry everywhere, no cliff across it, the least cut and fill, near where it
+    /// was wanted, the gate turned toward the landing country where the roads come from. The place is graded to one level
+    /// with an easing out to the land as long as the cut asks for; its parts are set down as places of their own with their
+    /// layouts left until wanted. Null when no spot on the world will take it.
     /// </summary>
     static TypedPlace SeatType(PoiLibrary lib, FamilyDef family, int variant, PoiState state, ulong spawn, WorldProfile profile, PlanetTerrainSource bare, WorldMap map,
-        double wantX, double wantZ, LandingSite landing, List<PoiSite> others, Sketch sketch, double wide = 0)
+        double wantX, double wantZ, LandingSite landing, List<PoiSite> others, Sketch sketch)
     {
         var clock = System.Diagnostics.Stopwatch.StartNew();
         double width = map.WidthMeters, height = map.HeightMeters;
         TechLevel? age = profile?.LevelFor(family, state);
-        float reach = Math.Max(600f, sketch.Footprint.Long * 0.5f), step = Math.Max(60f, sketch.Footprint.Short / 4f);
-        if (wide > 0) (reach, step) = ((float)wide, Math.Max(step, (float)wide / 20f));
-        int span = (int)(reach / step) * 2 + 1;
-        var close = others.Where(o => Dist(wantX, wantZ, o.Center.X, o.Center.Z, width, height) < reach + sketch.Footprint.Long + 800).ToList();
-        var found = new (double Score, double X, double Z, int Turn, int Pad, float Cut)[span * span * 4];
-        int seam = 0, crowd = 0, wet = 0, cliff = 0, deep = 0;
-        System.Threading.Tasks.Parallel.For(0, found.Length, idx =>
+        CoarseGround ground = coarse.GetValue(map, m => new CoarseGround(m));
+        // The coarse pass: every spot on the world at a step of a quarter of the place's short side, four turns each.
+        double step = ground.Cell * Math.Max(1, Math.Round(Math.Max(60f, sketch.Footprint.Short / 4f) / ground.Cell));
+        int nx = (int)(width / step), nz = (int)(height / step);
+        var rank = new (double Score, double X, double Z, int Turn)[nx * nz * 4];
+        var counts = new int[6];
+        System.Threading.Tasks.Parallel.For(0, rank.Length, idx =>
         {
-            found[idx].Score = double.MaxValue;
+            rank[idx].Score = double.MaxValue;
             int turn = idx % 4, cell = idx / 4;
-            double cx = Mathx.WrapX(wantX + (cell % span - span / 2) * step, width), cz = Mathx.Wrap(wantZ + (cell / span - span / 2) * step, height);
-            SketchBox b = PlaceTypes.Turn(sketch.Footprint, turn);
-            double bx0 = cx + b.X0, bz0 = cz + b.Z0, bx1 = cx + b.X1, bz1 = cz + b.Z1;
-            if (bx0 < SeamMargin || bx1 > width - SeamMargin || bz0 < SeamMargin || bz1 > height - SeamMargin
-                || Dist((bx0 + bx1) / 2, (bz0 + bz1) / 2, landing.X, landing.Y, width, height) < b.Long / 2 + 200) { System.Threading.Interlocked.Increment(ref seam); return; }
-            foreach (PoiSite o in close)
-            {
-                TerrainStamp t = o.Whole?.Stamp ?? o.Stamp;
-                if (Math.Abs(Mathx.WrapDelta(o.Center.X - (bx0 + bx1) / 2, width)) < t.ReachX + b.W / 2 + 60
-                    && Math.Abs(Mathx.WrapDelta(o.Center.Z - (bz0 + bz1) / 2, height)) < t.ReachZ + b.D / 2 + 60) { System.Threading.Interlocked.Increment(ref crowd); return; }
-            }
-            // The ground across what must stand dry and even (the lights and the fence may cross a stream), every 50 m
-            // or so: no water, no cliff, its spread; the rest of it at least off the sea.
-            SketchBox core = PlaceTypes.Turn(sketch.Core, turn);
-            double cx0 = cx + core.X0, cz0 = cz + core.Z0;
-            int nx = Math.Clamp((int)(core.W / 50) + 1, 3, 60), nz = Math.Clamp((int)(core.D / 50) + 1, 3, 30);
-            var h = new float[nx * nz];
-            for (int k = 0; k < nz; k++)
-                for (int i = 0; i < nx; i++)
-                {
-                    GroundSample g = bare.Sampler.Sample(Mathx.WrapX(cx0 + core.W * i / (nx - 1), width), cz0 + core.D * k / (nz - 1), 2);
-                    if (g.InRiver || g.Height < 2.5f) { System.Threading.Interlocked.Increment(ref wet); return; }
-                    h[k * nx + i] = g.Height;
-                }
-            for (int i = 0; i <= 8; i++)
-                if (bare.Sampler.Sample(Mathx.WrapX(bx0 + (bx1 - bx0) * (i % 3) / 2, width), bz0 + (bz1 - bz0) * (i / 3) / 2, 2).Height < 2.5f) { System.Threading.Interlocked.Increment(ref wet); return; }
-            float dx = (float)(core.W / (nx - 1)), dz = (float)(core.D / (nz - 1)), worst = 0f;
-            for (int k = 0; k < nz; k++)
-                for (int i = 0; i < nx; i++)
-                {
-                    if (i > 0) worst = MathF.Max(worst, MathF.Abs(h[k * nx + i] - h[k * nx + i - 1]) / dx);
-                    if (k > 0) worst = MathF.Max(worst, MathF.Abs(h[k * nx + i] - h[(k - 1) * nx + i]) / dz);
-                }
-            if (worst > TypedCliff) { System.Threading.Interlocked.Increment(ref cliff); return; }
-            var sorted = (float[])h.Clone();
-            Array.Sort(sorted);
-            int pad = (int)MathF.Round(sorted[sorted.Length / 2]);
-            float cut = MathF.Max(sorted[^1] - pad, pad - sorted[0]);
-            if (cut > TypedCutFill) { System.Threading.Interlocked.Increment(ref deep); return; }
-            // Room to grade it out before a seam's ghost band.
-            if (Math.Min(Math.Min(bx0, width - bx1), Math.Min(bz0, height - bz1)) - SeamMargin < Math.Min(cut * 12f + 20f, b.Long / 3f)) { System.Threading.Interlocked.Increment(ref seam); return; }
-            double rms = Math.Sqrt(h.Average(v => (v - pad) * (v - pad)));
-            // The gate turned toward the landing country, where the world's roads come from.
-            var (gx, gz) = PlaceTypes.Turn(sketch.GateX, sketch.GateZ, turn);
-            var (ox, oz) = PlaceTypes.Turn(sketch.OutX, sketch.OutZ, turn);
-            double lx = Mathx.WrapDelta(landing.X - (cx + gx), width), lz = Mathx.WrapDelta(landing.Y - (cz + gz), height), ll = Math.Max(1, Math.Sqrt(lx * lx + lz * lz));
-            double facing = 1 - (lx * ox + lz * oz) / ll;
-            found[idx] = (cut * 3 + rms * 4 + Dist(cx, cz, wantX, wantZ, width, height) * 0.01 + facing * 20, cx, cz, turn, pad, cut);
+            double cx = (cell % nx + 0.5) * step, cz = (cell / nx + 0.5) * step;
+            Reject why = Rough(sketch, turn, cx, cz, width, height, landing, ground, out double rms);
+            if (why != Reject.None) { System.Threading.Interlocked.Increment(ref counts[(int)why]); return; }
+            // The cut runs to about twice the spread.
+            rank[idx] = (rms * 10 + Dist(cx, cz, wantX, wantZ, width, height) * 0.01 + Facing(sketch, turn, cx, cz, landing, width, height) * 20, cx, cz, turn);
         });
-        var ok = found.Where(f => f.Score < double.MaxValue).ToList();
+        // The fine pass: the best-ranked spots, apart and clear of other places, weighed on the ground itself a batch at a time.
+        var order = rank.Where(r => r.Score < double.MaxValue).OrderBy(r => r.Score).ToList();
+        var tried = new List<(double X, double Z)>();
+        (double Score, double X, double Z, int Turn, int Pad, float Cut) best = (double.MaxValue, 0, 0, 0, 0, 0);
+        int next = 0;
+        for (int batch = 0; batch < 8 && best.Score == double.MaxValue && next < order.Count; batch++)
+        {
+            var pick = new List<(double Score, double X, double Z, int Turn)>();
+            for (; next < order.Count && pick.Count < 12; next++)
+            {
+                var r = order[next];
+                if (tried.Any(t => Dist(t.X, t.Z, r.X, r.Z, width, height) < step * 1.5)) continue;
+                if (Crowded(sketch, r.Turn, r.X, r.Z, others, width, height)) { counts[(int)Reject.Crowd]++; continue; }
+                tried.Add((r.X, r.Z));
+                pick.Add(r);
+            }
+            var weighed = new (double Score, int Pad, float Cut, Reject Why)[pick.Count];
+            System.Threading.Tasks.Parallel.For(0, pick.Count, k => weighed[k] = Weigh(sketch, pick[k].Turn, pick[k].X, pick[k].Z, width, height, bare));
+            for (int k = 0; k < pick.Count; k++)
+            {
+                if (weighed[k].Why != Reject.None) { counts[(int)weighed[k].Why]++; continue; }
+                double score = weighed[k].Score + Dist(pick[k].X, pick[k].Z, wantX, wantZ, width, height) * 0.01 + Facing(sketch, pick[k].Turn, pick[k].X, pick[k].Z, landing, width, height) * 20;
+                if (score < best.Score) best = (score, pick[k].X, pick[k].Z, pick[k].Turn, weighed[k].Pad, weighed[k].Cut);
+            }
+        }
         LastTypedMs += clock.Elapsed.TotalMilliseconds;
-        LastTypedRejects = $"{found.Length} spots: {seam} by a seam or the landing, {crowd} crowded, {wet} wet, {cliff} across a cliff, {deep} too much cut";
-        if (ok.Count == 0) return null;
+        LastTypedRejects = $"{rank.Length} spots, {tried.Count} weighed: {counts[1]} by a seam or the landing, {counts[2]} crowded, {counts[3]} wet, {counts[4]} across a cliff, {counts[5]} too much cut";
+        if (best.Score == double.MaxValue) return null;
         clock.Restart();
-        var best = ok.MinBy(f => f.Score);
         // On the 2 m lattice, so its laid ground and its parts' blocks line up.
         (best.X, best.Z) = (Mathx.WrapX(2 * Math.Round(best.X / 2), width), 2 * Math.Round(best.Z / 2));
         var place = new TypedPlace { Sketch = sketch, Turn = best.Turn, X = best.X, Z = best.Z, PadY = best.Pad };
@@ -253,5 +294,77 @@ public static partial class PoiSiting
         LastTyped++;
         LastTypedMs += clock.Elapsed.TotalMilliseconds;
         return place;
+    }
+
+    /// <summary>The coarse look at a spot: off the seams and the landing, its core dry, free of cliffs and not too uneven on the coarse ground.</summary>
+    static Reject Rough(Sketch sketch, int turn, double cx, double cz, double width, double height, LandingSite landing, CoarseGround ground, out double rms)
+    {
+        rms = 0;
+        SketchBox b = PlaceTypes.Turn(sketch.Footprint, turn), core = PlaceTypes.Turn(sketch.Core, turn);
+        double bx0 = cx + b.X0, bz0 = cz + b.Z0, bx1 = cx + b.X1, bz1 = cz + b.Z1;
+        if (bx0 < SeamMargin || bx1 > width - SeamMargin || bz0 < SeamMargin || bz1 > height - SeamMargin
+            || Dist((bx0 + bx1) / 2, (bz0 + bz1) / 2, landing.X, landing.Y, width, height) < b.Long / 2 + 200) return Reject.Seam;
+        (int wet, int steep, rms) = ground.Box(cx + core.X0, cz + core.Z0, cx + core.X1, cz + core.Z1);
+        return wet > 0 ? Reject.Wet : steep > 0 ? Reject.Cliff : rms * 2 > TypedCutFill ? Reject.Deep : Reject.None;
+    }
+
+    /// <summary>Whether a spot runs into another place's ground.</summary>
+    static bool Crowded(Sketch sketch, int turn, double cx, double cz, List<PoiSite> others, double width, double height)
+    {
+        SketchBox b = PlaceTypes.Turn(sketch.Footprint, turn);
+        double mx = cx + (b.X0 + b.X1) / 2, mz = cz + (b.Z0 + b.Z1) / 2;
+        foreach (PoiSite o in others)
+        {
+            TerrainStamp t = o.Whole?.Stamp ?? o.Stamp;
+            if (Math.Abs(Mathx.WrapDelta(o.Center.X - mx, width)) < t.ReachX + b.W / 2 + 60
+                && Math.Abs(Mathx.WrapDelta(o.Center.Z - mz, height)) < t.ReachZ + b.D / 2 + 60) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// A spot weighed on the ground itself: what must stand dry and even (the lights and the fence may cross a stream),
+    /// every 50 m or so, with no water and no cliff, and the rest of it at least off the sea; then its cut and spread.
+    /// </summary>
+    static (double Score, int Pad, float Cut, Reject Why) Weigh(Sketch sketch, int turn, double cx, double cz, double width, double height, PlanetTerrainSource bare)
+    {
+        SketchBox b = PlaceTypes.Turn(sketch.Footprint, turn), core = PlaceTypes.Turn(sketch.Core, turn);
+        double bx0 = cx + b.X0, bz0 = cz + b.Z0, bx1 = cx + b.X1, bz1 = cz + b.Z1, cx0 = cx + core.X0, cz0 = cz + core.Z0;
+        int nx = Math.Clamp((int)(core.W / 50) + 1, 3, 60), nz = Math.Clamp((int)(core.D / 50) + 1, 3, 30);
+        var h = new float[nx * nz];
+        for (int k = 0; k < nz; k++)
+            for (int i = 0; i < nx; i++)
+            {
+                GroundSample g = bare.Sampler.Sample(Mathx.WrapX(cx0 + core.W * i / (nx - 1), width), cz0 + core.D * k / (nz - 1), 2);
+                if (g.InRiver || g.Height < 2.5f) return (0, 0, 0, Reject.Wet);
+                h[k * nx + i] = g.Height;
+            }
+        for (int i = 0; i <= 8; i++)
+            if (bare.Sampler.Sample(Mathx.WrapX(bx0 + (bx1 - bx0) * (i % 3) / 2, width), bz0 + (bz1 - bz0) * (i / 3) / 2, 2).Height < 2.5f) return (0, 0, 0, Reject.Wet);
+        float dx = (float)(core.W / (nx - 1)), dz = (float)(core.D / (nz - 1)), worst = 0f;
+        for (int k = 0; k < nz; k++)
+            for (int i = 0; i < nx; i++)
+            {
+                if (i > 0) worst = MathF.Max(worst, MathF.Abs(h[k * nx + i] - h[k * nx + i - 1]) / dx);
+                if (k > 0) worst = MathF.Max(worst, MathF.Abs(h[k * nx + i] - h[(k - 1) * nx + i]) / dz);
+            }
+        if (worst > TypedCliff) return (0, 0, 0, Reject.Cliff);
+        var sorted = (float[])h.Clone();
+        Array.Sort(sorted);
+        int pad = (int)MathF.Round(sorted[sorted.Length / 2]);
+        float cut = MathF.Max(sorted[^1] - pad, pad - sorted[0]);
+        if (cut > TypedCutFill) return (0, 0, 0, Reject.Deep);
+        // Room to grade it out before a seam's ghost band.
+        if (Math.Min(Math.Min(bx0, width - bx1), Math.Min(bz0, height - bz1)) - SeamMargin < Math.Min(cut * 12f + 20f, b.Long / 3f)) return (0, 0, 0, Reject.Seam);
+        return (cut * 3 + Math.Sqrt(h.Average(v => (v - pad) * (v - pad))) * 4, pad, cut, Reject.None);
+    }
+
+    /// <summary>How far the gate turns from the landing country, where the world's roads come from: 0 straight at it, 2 away.</summary>
+    static double Facing(Sketch sketch, int turn, double cx, double cz, LandingSite landing, double width, double height)
+    {
+        var (gx, gz) = PlaceTypes.Turn(sketch.GateX, sketch.GateZ, turn);
+        var (ox, oz) = PlaceTypes.Turn(sketch.OutX, sketch.OutZ, turn);
+        double lx = Mathx.WrapDelta(landing.X - (cx + gx), width), lz = Mathx.WrapDelta(landing.Y - (cz + gz), height);
+        return 1 - (lx * ox + lz * oz) / Math.Max(1, Math.Sqrt(lx * lx + lz * lz));
     }
 }

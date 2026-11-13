@@ -124,13 +124,17 @@ public partial class StartTest : Node
             worlds.Add(WorldChoice.Fresh("ice")); // and always a cold one, for the chamber's warmth
         }
         // --compare-load: each world loaded twice, its places built at load the old way and then as they are wanted.
-        bool compare = args.Contains("--compare-load");
+        // --compare-force (with --force=FAMILY): each world loaded twice, without the forced family and then with it.
+        bool compare = args.Contains("--compare-load"), withAndWithout = args.Contains("--compare-force");
+        string force = PlanetSurface.Poi.PoiSiting.ForceFamily;
         foreach (WorldChoice pinned in worlds)
         {
             if (compare) PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad = true;
+            if (withAndWithout) PlanetSurface.Poi.PoiSiting.ForceFamily = null;
             foreach (int x in OneWorld(pinned, seeds)) yield return x;
-            if (!compare) continue;
+            if (!compare && !withAndWithout) continue;
             PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad = false;
+            PlanetSurface.Poi.PoiSiting.ForceFamily = force;
             foreach (int x in OneWorld(_lastWorld, seeds)) yield return x;
         }
         int failedWorlds = _failedWorlds.Count;

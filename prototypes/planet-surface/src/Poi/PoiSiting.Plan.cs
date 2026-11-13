@@ -144,7 +144,7 @@ public static partial class PoiSiting
             double x = Mathx.WrapX(j.Place.X, map.WidthMeters), z = Mathx.Wrap(j.Place.Z, map.HeightMeters);
             if (j.Family.Types.Count > 0)
             {
-                TypedPlace typed = SeatTypeNear(lib, j.Family, j.Variant, j.State, j.Spawn, profile, bare, map, x, z, landing, sites, j.Place.Primary ? 8 : 4);
+                TypedPlace typed = SeatTypeNear(lib, j.Family, j.Variant, j.State, j.Spawn, profile, bare, map, x, z, landing, sites);
                 if (typed == null) { LastUnseated++; continue; }
                 foreach (PoiSite part in typed.Parts) { part.Planned = j.Place; part.Plan = plan; sites.Add(part); }
                 typed.Anchor.Primary = j.Place.Primary;

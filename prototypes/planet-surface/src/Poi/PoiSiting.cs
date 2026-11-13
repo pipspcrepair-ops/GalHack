@@ -318,7 +318,7 @@ public static partial class PoiSiting
             for (int k = 0; k < 8 && sites.Count == 0; k++)
             {
                 double a = k * Math.PI / 4;
-                TypedPlace typed = SeatTypeNear(lib, forcedType, 0, state, GHash.Of(map.Spec.Seed, 0xF0CE), profile, bare, map, Mathx.WrapX(landing.X + Math.Cos(a) * 2000, map.WidthMeters), Mathx.Wrap(landing.Y + Math.Sin(a) * 2000, map.HeightMeters), landing, sites, 3);
+                TypedPlace typed = SeatTypeNear(lib, forcedType, 0, state, GHash.Of(map.Spec.Seed, 0xF0CE), profile, bare, map, Mathx.WrapX(landing.X + Math.Cos(a) * 2000, map.WidthMeters), Mathx.Wrap(landing.Y + Math.Sin(a) * 2000, map.HeightMeters), landing, sites);
                 if (typed != null) sites.AddRange(typed.Parts);
             }
         }
@@ -402,7 +402,7 @@ public static partial class PoiSiting
                 PlacedPoi p = chunk[c];
                 if (p.Family.Types.Count > 0)
                 {
-                    TypedPlace typed = SeatTypeNear(lib, p.Family, Math.Max(0, p.Family.Variants.IndexOf(p.Variant)), p.State, p.SpawnSeed, profile, bare, map, Mathx.WrapX(p.X, map.WidthMeters), Mathx.Wrap(p.Z, map.HeightMeters), landing, sites, 4);
+                    TypedPlace typed = SeatTypeNear(lib, p.Family, Math.Max(0, p.Family.Variants.IndexOf(p.Variant)), p.State, p.SpawnSeed, profile, bare, map, Mathx.WrapX(p.X, map.WidthMeters), Mathx.Wrap(p.Z, map.HeightMeters), landing, sites);
                     if (typed != null) sites.AddRange(typed.Parts);
                     continue;
                 }

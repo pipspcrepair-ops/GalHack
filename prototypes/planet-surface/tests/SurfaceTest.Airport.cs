@@ -44,7 +44,7 @@ public partial class SurfaceTest
                 TypedPlace place = w.Pois.Select(p => p.Whole).FirstOrDefault(t => t != null);
                 if (place == null) { notes.Add($"{spec}: no airfield sited (last search: {PoiSiting.LastTypedRejects})"); continue; }
                 sited++;
-                notes.Add($"{spec} ({w.Map.WidthMeters / 1000:F0} x {w.Map.HeightMeters / 1000:F0} km): {place.Why}; sited in {PoiSiting.LastTypedMs:F0} ms; {place.Parts.Count} parts, {place.Parts.Count(p => p.Pending)} not laid out at load");
+                notes.Add($"{spec} ({w.Map.WidthMeters / 1000:F0} x {w.Map.HeightMeters / 1000:F0} km): {place.Why}; {PoiSiting.LastTyped} typed places on the world sited in {PoiSiting.LastTypedMs:F0} ms; {place.Parts.Count} parts, {place.Parts.Count(p => p.Pending)} not laid out at load");
                 if (w.Infra.Routes.Any(r => r.From == place.Anchor || r.To == place.Anchor)) roads++;
                 else notes.Add($"{spec}: no road to the gate");
                 // Level across it; eased out past its edge, never steeper than a bank you could drive up.
@@ -59,6 +59,7 @@ public partial class SurfaceTest
                     }
                 // The grading alone (the world's road to the gate has banks of its own).
                 var graded = new PlanetTerrainSource(w.Map, place.Parts.SelectMany(p => p.Stamps).Distinct().ToList());
+                var land = new PlanetTerrainSource(w.Map);
                 float reach = place.Stamp.Blend + 20f;
                 for (int a = 0; a < 96; a++)
                 {
@@ -70,13 +71,13 @@ public partial class SurfaceTest
                         2 => (-1.0, 0.0, fb.X0 - 4.0, fb.Z0 + fb.D * t), _ => (1.0, 0.0, fb.X1 + 4.0, fb.Z0 + fb.D * t),
                     };
                     (ex, ez) = (place.X + ex, place.Z + ez);
-                    // (Measured against the land's own fall there: a canyon past it is the land's, not the grading's.)
-                    float last = graded.SurfaceHeight(Mathx.WrapX(ex, W), ez), lastNatural = g.NaturalHeight(Mathx.WrapX(ex, W), ez);
+                    // (Measured against the land's own fall there, banks and all: a canyon or a river past it is the land's, not the grading's.)
+                    float last = graded.SurfaceHeight(Mathx.WrapX(ex, W), ez), lastNatural = land.SurfaceHeight(Mathx.WrapX(ex, W), ez);
                     for (float d = 4f; d <= reach; d += 4f)
                     {
                         double px = Mathx.WrapX(ex + ux * d, W), pz = ez + uz * d;
                         if (pz < 320 || pz > w.Map.HeightMeters - 320 || px < 320 || px > W - 320) break; // (a seam's ghost band is the seam's)
-                        float h = graded.SurfaceHeight(px, pz), n = g.NaturalHeight(px, pz);
+                        float h = graded.SurfaceHeight(px, pz), n = land.SurfaceHeight(px, pz);
                         float over = MathF.Abs(h - last) / 4f - MathF.Abs(n - lastNatural) / 4f;
                         if (over > worstGrade) (worstGrade, worstAt) = (over, $"{px:F0},{pz:F0} {d:F0} m out");
                         (last, lastNatural) = (h, n);
