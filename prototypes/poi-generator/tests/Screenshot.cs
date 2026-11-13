@@ -355,12 +355,52 @@ public partial class Screenshot : Node
             // (Or the fifth part is a tech level, low, mid or high, its shapes as that world builds; --plain leaves them plain cubes.)
             TechLevel? tech = a.Length > 4 && System.Enum.TryParse(a[4], true, out TechLevel t) ? t : null;
             float[] w = a.Length > 4 && tech == null ? a[4].Split('/').Take(3).Select(x => float.Parse(x, System.Globalization.CultureInfo.InvariantCulture)).ToArray() : null;
-            var world = tech is TechLevel lv ? new WorldProfile { Before = lv, Now = lv } : w == null ? null : new WorldProfile { Ruin = new RuinAge(w[0], a[4].EndsWith("/falling"), w[1], w[2]) };
+            // (A sixth part names the world's trade, so a frame can show another world's builders.)
+            Trade trade = a.Length > 5 && System.Enum.TryParse(a[5], true, out Trade tr) ? tr : Trade.Industrial;
+            var world = tech is TechLevel lv ? new WorldProfile { Before = lv, Now = lv, Trade = trade } : w == null ? null : new WorldProfile { Ruin = new RuinAge(w[0], a[4].EndsWith("/falling"), w[1], w[2]) };
             Shaping.Enabled = !OS.GetCmdlineUserArgs().Contains("--plain");
-            Ornament.Enabled = !OS.GetCmdlineUserArgs().Contains("--plain") && !OS.GetCmdlineUserArgs().Contains("--no-ornament");
-            m.Show(PoiFactory.Generate(m.Library, f, rng.Range(0, f.Variants.Count), f.Rarity, System.Enum.Parse<PoiState>(a[2], true), rng.NextU64(), world: world));
+            int variant = rng.Range(0, f.Variants.Count);
+            ulong spawn = rng.NextU64();
+            PoiInstance Make() => PoiFactory.Generate(m.Library, f, variant, f.Rarity, System.Enum.Parse<PoiState>(a[2], true), spawn, world: world);
+            // (piece-<kind>: framed on its biggest ornament of that kind; --no-ornament shows the same place and frame without it.)
+            var made = Make();
+            GD.Print($"ornament: {Ornament.For(made).Sig}; " + string.Join(", ", made.Ornaments.GroupBy(p => p.Kind).Select(g => $"{g.Count()} {g.Key}")));
+            var piece = a[3].StartsWith("piece-") ? made.Ornaments.Where(p => p.Kind == a[3][6..]).MaxBy(p => p.Cells.Count) : null;
+            if (OS.GetCmdlineUserArgs().Contains("--plain") || OS.GetCmdlineUserArgs().Contains("--no-ornament"))
+            {
+                Ornament.Enabled = false;
+                made = Make();
+                Ornament.Enabled = true;
+            }
+            m.Show(made);
             m.HideHud(true);
-            Frame(a[3]);
+            if (piece == null) { Frame(a[3].StartsWith("piece-") ? "near" : a[3]); return; }
+            var cells = piece.Cells;
+            if (piece.Kind == "frames" && made.Layout.Modules.FirstOrDefault(x => x.Cells.Contains(cells[0])) is { } hall)
+            {
+                // (Inside the hall, from a corner a little above the floor, across its frames.)
+                Vector3 from = m.Stage.ToGlobal(new Vector3(hall.Min.X + 0.7f, hall.Min.Y + 1.6f, hall.Min.Z + 0.7f));
+                Vector3 to = m.Stage.ToGlobal(new Vector3(hall.Max.X + 0.5f, hall.Max.Y - 0.5f, hall.Max.Z + 0.5f));
+                m.Camera.GlobalTransform = new Transform3D(Basis.Identity, from).LookingAt(to, Vector3.Up);
+                m.Camera.Fov = 80f;
+                m.FreezeCamera = true;
+                m.Player.Lamp.Visible = false;
+                m.Camera.AddChild(new OmniLight3D { LightColor = new Color("fff0dc"), LightEnergy = 0.9f, OmniRange = 40f, OmniAttenuation = 0.8f, ShadowEnabled = false });
+                return;
+            }
+            Int3 lo = cells.Aggregate(Int3.Min), hi = cells.Aggregate(Int3.Max);
+            Vector3 mid = new((lo.X + hi.X + 1) * 0.5f, (lo.Y + hi.Y + 1) * 0.5f, (lo.Z + hi.Z + 1) * 0.5f);
+            // (From the side with the most open air, far enough to take the whole element in.)
+            Int3 c0 = new((int)mid.X, (int)mid.Y, (int)mid.Z);
+            Dir away = Dirs.Horizontal.MaxBy(d => Enumerable.Range(1, 10).TakeWhile(k => made.Blocks.Get(c0 + d.Vec() * k).IsAir).Count());
+            float span = Mathf.Max(6f, Mathf.Max(hi.X - lo.X, Mathf.Max(hi.Y - lo.Y, hi.Z - lo.Z)) * 1.1f);
+            Int3 o = away.Vec(), side = away.RotateCw(1).Vec();
+            Vector3 eye = mid + new Vector3(o.X, 0, o.Z) * Mathf.Min(span, 9f) + new Vector3(side.X, 0, side.Z) * span * 0.35f + Vector3.Up * 1.5f;
+            m.Camera.GlobalTransform = new Transform3D(Basis.Identity, m.Stage.ToGlobal(eye)).LookingAt(m.Stage.ToGlobal(mid), Vector3.Up);
+            m.Camera.Fov = 75f;
+            m.FreezeCamera = true;
+            m.Player.Lamp.Visible = false;
+            m.Camera.AddChild(new OmniLight3D { LightColor = new Color("fff0dc"), LightEnergy = 0.7f, OmniRange = 26f, OmniAttenuation = 1.0f, ShadowEnabled = false });
             return;
         }
         // door:<family>:<state>: a fresh layout's way in, a 1.8 m figure beside it, from 7.5 m out at eye height, by day.
