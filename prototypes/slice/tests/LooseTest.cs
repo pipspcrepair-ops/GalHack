@@ -18,7 +18,7 @@ namespace Slice.Tests;
 /// <summary>
 /// Loose props on the ground in wind. Fittings (lights) cut off a base or a hull become free bodies; this tracks every one near
 /// the player, in the weather's normal wind then a gale: how deep any corner of it sinks into the ground (limit 2 cm), how much
-/// it jitters vertically while resting (limit 1 cm), how many move in a normal wind (none, for lamp-sized props), and that in a
+/// it jitters vertically while resting (limit 1 cm), how many move in a normal wind (none whose friction holds it against the gusts), and that in a
 /// gale they may slide and tumble but never sink. Fresh random world every run.
 /// Run: --headless --fixed-fps 60 --path prototypes/slice res://tests/LooseTest.tscn
 /// </summary>
@@ -68,7 +68,7 @@ public partial class LooseTest : Node
     sealed class Track
     {
         public Vessel V;
-        public float Deepest, Jitter;
+        public float Deepest, Jitter, HeldBelow;
         public Vector3 Rested;
         public readonly List<float> Heights = new();
     }
@@ -179,8 +179,14 @@ public partial class LooseTest : Node
         sim.Snap(WeatherKind.Clouds);
         float windNormal = sim.Current.WindSpeed;
         float grav = Zone.Physics.GravityAt(tracks[0].V.Body).Length();
-        GD.Print($"  at rest, g {grav:F2} m/s2: wind areas {string.Join(", ", tracks.Select(t => $"{t.V.Body.WindArea():F3}"))} m2, so held below {string.Join(", ", tracks.Select(t => $"{MathF.Sqrt(GalHack.Physics.Engine.FreeBinding.Friction * t.V.Body.Mass * grav / (0.5f * 1.225f * MathF.Max(t.V.Body.WindArea(), 1e-4f))):F1}"))} m/s");
-        foreach (Track t in tracks) { t.Rested = t.V.ToWorld(N.Vector3.Zero); t.Deepest = float.MinValue; t.Heights.Clear(); }
+        // A prop is held by friction against a wind up to sqrt(mu m g / (rho/2 CdA)): a 0.4 kg lamp lying flat is, one standing on its edge may not be.
+        float gusts = windNormal * (1f + sim.Current.Gustiness);
+        foreach (Track t in tracks)
+        {
+            t.Rested = t.V.ToWorld(N.Vector3.Zero); t.Deepest = float.MinValue; t.Heights.Clear();
+            t.HeldBelow = MathF.Sqrt(GalHack.Physics.Engine.FreeBinding.Friction * t.V.Body.Mass * grav / (0.5f * 1.225f * MathF.Max(t.V.Body.WindArea(), 1e-4f)));
+        }
+        GD.Print($"  at rest, g {grav:F2} m/s2: wind areas {string.Join(", ", tracks.Select(t => $"{t.V.Body.WindArea():F3}"))} m2, so held below {string.Join(", ", tracks.Select(t => $"{t.HeldBelow:F1}"))} m/s; gusts to {gusts:F1}");
         int asleep = 0, ticks = 0;
         for (int i = 0; i < 60 * NormalSeconds; i++)
         {
@@ -193,11 +199,13 @@ public partial class LooseTest : Node
             }
             ticks += tracks.Count;
         }
-        int moved = 0;
+        int moved = 0, heldMoved = 0;
         foreach (Track t in tracks)
         {
             Vector3 now = t.V.ToWorld(N.Vector3.Zero);
-            if (new Vector2(now.X - t.Rested.X, now.Z - t.Rested.Z).Length() > 0.5f) moved++;
+            bool went = new Vector2(now.X - t.Rested.X, now.Z - t.Rested.Z).Length() > 0.5f;
+            if (went) moved++;
+            if (went && t.HeldBelow > gusts) heldMoved++;
             List<float> late = t.Heights.Skip(t.Heights.Count / 2).ToList();
             t.Jitter = late.Max() - late.Min();
         }
@@ -206,7 +214,7 @@ public partial class LooseTest : Node
         GD.Print($"NORMAL WIND {windNormal:F1} m/s for {NormalSeconds} s: deepest overlap {sink1 * 100f:F2} cm, worst resting jitter {jit1 * 100f:F1} cm, {moved}/{tracks.Count} moved over 0.5 m, asleep {100f * asleep / ticks:F0}% of the time");
         Check(sink1 <= 0.02f, "in a normal wind no loose prop sinks more than 2 cm into the ground");
         Check(jit1 <= 0.01f, "and none jitters more than 1 cm at rest");
-        Check(moved == 0, "and none of them moves");
+        Check(heldMoved == 0, $"and none that its friction holds against the gusts moves ({tracks.Count(t => t.HeldBelow > gusts)} held, {heldMoved} of them moved)");
         Check(tracks.All(t => t.V.Structure.Count > 0), $"and none is blown into anything and broken ({tracks.Count(t => t.V.Structure.Count == 0)} gone)");
 
         // A gale.
