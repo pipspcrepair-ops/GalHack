@@ -11,7 +11,8 @@ namespace Slice.Tests;
 /// <summary>
 /// --view=seated: the sleeper in every chair and cockpit (<see cref="SeatedTest.Floor"/>), from its
 /// own eyes looking ahead and looking down at its lap, and from outside, in front of the chair.
-/// --out=DIR is the folder (three PNGs a chair).
+/// --dir=DIR is the folder (three PNGs a chair), --only=ID one chair, --fx/--fy/--fz the outside
+/// camera's offset from the seat, m (right, up, ahead). The sky stands still and trees round each site are felled.
 /// </summary>
 public sealed partial class Staging
 {
@@ -19,13 +20,15 @@ public sealed partial class Staging
     {
         _game.Zone.Sky.TimeOfDay = Num("time", 0.36);
         _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
-        string dir = _args.GetValueOrDefault("out", "seated");
+        _game.Zone.Sky.Paused = true;
+        string dir = _args.GetValueOrDefault("dir", "seated");
         Directory.CreateDirectory(dir);
         Vector3 site = Play.FlatSpot(_game.Survivor.WorldFeet, 30f, span: 14f);
         int turns = 0;
-        foreach (var type in _game.Zone.Data.Catalogue.Types.Where(t => t != null && Vessel.IsChair(t)).ToList())
+        foreach (var type in _game.Zone.Data.Catalogue.Types.Where(t => t != null && Vessel.IsChair(t) && (!_args.TryGetValue("only", out string only) || t.Id == only)).ToList())
         {
             site += new Vector3(18f, 0f, 0f);
+            Fell(site, 12f);
             _game.Survivor.PlaceOutside((site + new Vector3(0f, 3f, -10f)).ToNumerics());
             foreach (int x in _drive.Wait(20)) yield return x;
             Vessel v = SeatedTest.Floor(_game, type, site, turns++);
@@ -42,7 +45,7 @@ public sealed partial class Staging
             // From outside: in front of the chair and off to its right, looking back at its sitter.
             Basis chair = v.DrawTransform.Basis * v.ChairBasis;
             Vector3 seat = v.DrawTransform * v.Seat.Value.ToGodot();
-            Vector3 eye = seat - chair.Z * 3.2f + chair.X * 1.6f + chair.Y * 0.9f;
+            Vector3 eye = seat - chair.Z * (float)Num("fz", 3.2) + chair.X * (float)Num("fx", 1.6) + chair.Y * (float)Num("fy", 0.9);
             _game.FixedCamera = new Transform3D(Basis.LookingAt(seat + chair.Y * 0.3f - eye, chair.Y), eye);
             foreach (int x in _drive.Wait(5)) yield return x;
             foreach (int x in Shot(Path.Combine(dir, $"{type.Id}-3-outside.png"))) yield return x;
