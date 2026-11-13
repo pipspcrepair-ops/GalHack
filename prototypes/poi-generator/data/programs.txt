@@ -292,21 +292,20 @@ program garrison_hq
   plans spine 2 plaza 1 jog 1 enfilade 1
   basement bar 1 same 1
   style meridian
-  width 24 30
-  depth 16 20
-  floors 2 3
+  width 40 60
+  depth 24 34
+  floors 3 3
   levels 1 2
   lift 0.6
   roof pad
   windows 0.45
   secrets 0 1
-  rooms ground lobby! security armoury? workshop? galley?
-  rooms upper quarters*1-3 office? mess? washroom? archive? armoury?
-  rooms top control! office? command?
-  rooms basement storage*1-2 armoury? generator? workshop? magazine?
-  rooms deepest vault! plant?
+  rooms ground lobby! vehicle-bay! armoury! security? galley?
+  rooms upper quarters*1-3! ward! mess? washroom?
+  rooms top command! vault! office?
+  rooms basement generator! workshop! plant! storage?
+  rooms deepest core-vault! storage?
   fill storage quarters office workshop
-
 program prison
   name Prison Block
   shapes cross 2 H 2 rect 2

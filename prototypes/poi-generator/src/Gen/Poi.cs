@@ -342,6 +342,10 @@ public static class PoiFactory
         StateTransforms.Weather(inst, rng.Fork("weather")); // a century or two after the fall
         using (Prof.Time("decay")) Decay.Apply(inst, rng.Fork("decay"));
         using (Prof.Time("dressing")) Dressing.Apply(lib, inst, rng.Fork("dressing"));
+        // The core is not where the loot is (rule E5): no cache within 10 m of it, but the vault keeps one.
+        if (inst.HasCore)
+            foreach (var k in inst.Caches.Where(k => (k.Cell - inst.CoreCell) is var o && o.X * o.X + o.Y * o.Y + o.Z * o.Z < 100).ToList())
+                if (!k.InVault || inst.Caches.Count(v => v.InVault) > 1) { inst.Blocks.Set(k.Cell, Block.Air); inst.Caches.Remove(k); }
         using (Prof.Time("aftermath")) StateTransforms.Aftermath(inst, rng.Fork("aftermath"));
         Structure.DropUntethered(inst.Blocks); // cables and tendrils always hang from something
         // Repair after decay: anything the passes above left hanging in the air (a canopy cut off by a
