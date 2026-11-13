@@ -185,8 +185,11 @@ public partial class OrbitTest : Node
             Fail($"the blueprint projector set nothing down (the tool says: {_game.Builder.Verdict})");
             yield break;
         }
-        var left = _game.Builder.Underway == skiff ? _game.Builder.Remaining.Where(r => !r.block.IsFiller)
-            .Select(r => $"{skiff.Structure.TypeOf(r.block).Id} at {r.cell} ({Building.Check(skiff.Structure, r.cell, r.block)})").ToList() : new List<string>();
+        var left = _game.Builder.Underway == skiff ? _game.Builder.Remaining
+            .Select(r => $"{skiff.Structure.TypeOf(r.block).Id} at {r.cell} ({Building.Check(skiff.Structure, r.cell, r.block)}"
+                + string.Concat(skiff.Structure.CellsOf(r.cell, r.block).Where(c => skiff.Structure.TryGetBlock(c, out _, out _))
+                    .Select(c => skiff.Structure.TryGetBlock(c, out Int3 a, out Block b) ? $"; {c} holds {skiff.Structure.TypeOf(b).Id} at {a}" : ""))
+                + ")").ToList() : new List<string>();
         // Not whole, nothing after it can be flown: it stops here, saying what wouldn't go on and why.
         if (!Check(skiff.Structure.Count == _game.StarterPlan.Count, $"the Skiff is built block by block: {skiff.Structure.Count} of {_game.StarterPlan.Count}"
                 + (left.Count > 0 ? $" (left: {string.Join(", ", left)}; the tool last said '{_said}')" : ""))) yield break;

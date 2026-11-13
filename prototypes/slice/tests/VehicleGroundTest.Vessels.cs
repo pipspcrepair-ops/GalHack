@@ -110,6 +110,11 @@ public partial class VehicleGroundTest
     IEnumerable<int> Operable(Vessel v, string mode, string what, Hull w)
     {
         for (int t = 0; t < 600 && !Resting(v); t++) yield return 0;
+        if (v.Controller == null)
+        {
+            Check(false, $"{mode}, {v.Name}, {what}: broken to a wreck ({v.Body.Damage:F0} damage, {v.Structure.Count} blocks left): nothing left to fly");
+            yield break;
+        }
         bool seated = _game.Survivor.Seated == v;
         N.Vector3 from = v.Body.Position;
         float high = v.AboveGround;
@@ -213,6 +218,7 @@ public partial class VehicleGroundTest
             if (e != _bigFlyer && v.Structure.Mode == CoreMode.Flight)
                 foreach (var (what, pitch, up, keys) in new[] { ("flown nose first into the ground at 60°", -1.05f, 30f, new[] { Key.W, Key.Ctrl }), ("flown belly first into the ground", 0f, 25f, new[] { Key.Ctrl }), ("flown skidding into the ground at a shallow angle", -0.15f, 6f, new[] { Key.W, Key.Ctrl }) })
                 {
+                    if (v.Controller == null) goto wrecked;
                     var hit = Mend(v, e.Plan);
                     N.Vector3 p = v.Body.Position;
                     Put(v, new N.Vector3(p.X, _game.Zone.GroundAt(p.X, p.Z).Y + feet + up, p.Z), N.Quaternion.Normalize(level * MathX.AxisAngle(N.Vector3.UnitX, pitch)), N.Vector3.Zero);
@@ -231,18 +237,21 @@ public partial class VehicleGroundTest
                 }
 
             // Dropped from a height, engines idle.
+            if (v.Controller == null) goto wrecked;
             var w = Mend(v, e.Plan);
             Put(v, v.Body.Position + N.Vector3.UnitY * 20f, level, N.Vector3.Zero);
             foreach (int x in ObserveHull(v, w, 600, () => Resting(v))) yield return x;
             foreach (int x in Operable(v, mode, "dropped from 20 m", w)) yield return x;
 
             // Into the ground at speed.
+            if (v.Controller == null) goto wrecked;
             w = Mend(v, e.Plan);
             Put(v, v.Body.Position + N.Vector3.UnitY * 8f, level, f * 25f - N.Vector3.UnitY * 18f);
             foreach (int x in ObserveHull(v, w, 600, () => Resting(v))) yield return x;
             foreach (int x in Operable(v, mode, "a crash into the ground at 31 m/s", w)) yield return x;
 
             // A steep hit: nose down at 50°.
+            if (v.Controller == null) goto wrecked;
             w = Mend(v, e.Plan);
             N.Quaternion nose = N.Quaternion.Normalize(level * MathX.AxisAngle(N.Vector3.UnitX, -0.87f));
             Put(v, v.Body.Position + N.Vector3.UnitY * 10f, nose, f * 10f - N.Vector3.UnitY * 20f);
@@ -250,6 +259,7 @@ public partial class VehicleGroundTest
             foreach (int x in Operable(v, mode, "a steep hit, nose down at 50°", w)) yield return x;
 
             // Placed partly in the ground: set down landed with its keel a metre under.
+            if (v.Controller == null) goto wrecked;
             w = Mend(v, e.Plan);
             N.Vector3 at = v.Body.Position;
             float ground = _game.Zone.GroundAt(at.X, at.Z).Y;
@@ -259,7 +269,7 @@ public partial class VehicleGroundTest
             foreach (int x in Operable(v, mode, "placed with its keel 1 m in the ground", w)) yield return x;
 
             // Against a place's blocks (the small ones: a large hull is bigger than any roof): dropped onto them, and set down partly in them.
-            if (_placeTop is Vector3 top && e != _bigFlyer)
+            if (_placeTop is Vector3 top && e != _bigFlyer && v.Controller != null)
             {
                 w = Mend(v, e.Plan);
                 Put(v, top.ToNumerics() + N.Vector3.UnitY * (feet + 3f), level, N.Vector3.Zero);
@@ -271,6 +281,8 @@ public partial class VehicleGroundTest
                 foreach (int x in ObserveHull(v, w, 30)) yield return x;
                 foreach (int x in Operable(v, mode, "placed 0.4 m into a place's blocks", w)) yield return x;
             }
+            // A crash that broke it to a wreck (no power left to fly) ends its cases: Operable said so.
+            wrecked:
 
             _game.Survivor.StandUp();
             foreach (int x in _drive.Wait(5)) yield return x;

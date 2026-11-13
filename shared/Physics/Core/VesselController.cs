@@ -413,17 +413,19 @@ public sealed class VesselController : IBodyController, IContactListener, IForce
     }
 
     /// <summary>
-    /// Comes to rest where it is, then stops simulating. Set down on its gear it rights itself
-    /// level (a craft that came down nose first stands on its feet again): each telescoping leg
-    /// reaches its own ground, so it needs no tilt to stand on uneven ground.
+    /// Comes to rest where it is, then stops simulating. It rights itself level as it settles, on its
+    /// gear or its hull: a craft that came down nose first stands on its feet again, so its lift
+    /// thrust points up when its pilot next takes off, not into the ground ahead (it never gets
+    /// stuck there). Each telescoping leg reaches its own ground, so it needs no tilt to stand on
+    /// uneven ground. Turned unswept, it is pushed clear of the ground as it lies (the binding's
+    /// clear-out). A craft the weather threw lies as it landed instead (<see cref="Tossed"/>).
     /// </summary>
     void Settle(PhysicsWorld world, Body body, float dt)
     {
         body.Velocity = Vector3.Zero;
         body.AngularVelocity = Vector3.Zero;
         LocalSpin = Vector3.Zero;
-        if (Gear is { Attached: true })
-            body.Rotation = Quaternion.Normalize(Quaternion.Slerp(body.Rotation, MathX.Level(body.Rotation), 1f - MathF.Exp(-10f * dt)));
+        body.Rotation = Quaternion.Normalize(Quaternion.Slerp(body.Rotation, MathX.Level(body.Rotation), 1f - MathF.Exp(-10f * dt)));
         _settleLeft -= dt;
         if (_settleLeft > 0f) return;
         _settleLeft = 0f;

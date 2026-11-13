@@ -916,14 +916,26 @@ public partial class PhysicsTest : Node
         p.Yaw = -MathF.PI / 2f; // facing starboard
         p.Pitch = 0f;
         for (int i = 0; i < 20; i++) yield return 0;
-        string before = $"on the roof {p.OnHull == ship}, the ship at {ship.Body.Velocity.Length():F1} m/s turning {Units.Degrees(ship.Body.AngularVelocity.Length()):F0}°/s";
+        string before = $"on the roof {p.OnHull == ship}, the ship at {ship.Body.Velocity.Length():F1} m/s turning {Units.Degrees(ship.Body.AngularVelocity.Length()):F0}°/s, frozen {ship.Vessel.Frozen}, settling {ship.Vessel.Settling}, on floor {ship.Body.OnFloor}, underfoot {ship.Body.Underfoot?.Kind}";
         var off = new HullWalk();
-        foreach (int x in WalkOn(ship, off, q => q.Body.Frame == null, 240)) yield return x;
+        string rescued = "";
+        void Rescued(RescueInfo r) { if (r.Body == p.Body) rescued = $"; rescued out of {r.Inside} from {r.From} to {r.To}"; }
+        _w.Physics.Rescued += Rescued;
+        string stuckAt = "";
+        bool Off(Player q)
+        {
+            if (stuckAt == "" && q.Body.Frame != null && _w.Physics.Stuck.IsStuck(q.Body, out string what))
+                stuckAt = $"; first inside {what} at {q.Body.Position} on the ship, up {q.Body.Up}, on floor {q.Body.OnFloor}, hull {q.Body.OnOuterHull}";
+            return q.Body.Frame == null;
+        }
+        foreach (int x in WalkOn(ship, off, Off, 240)) yield return x;
+        _w.Physics.Rescued -= Rescued;
+        rescued += stuckAt;
         N.Vector3 fall = MathX.Unrotate(ship.Body.Rotation, p.Body.Velocity - ship.Body.PointVelocity(p.Body.Position));
         Check(p.Body.Frame == null && off.Edges == 0 && off.Walls == 0 && off.LowestUp > 0.999f && fall.Y < -1f,
             $"walked off the roof's edge, nothing carries them onto the hull's side: they fall off it ship-down ({-fall.Y:F1} m/s) " +
             $"and let go of the ship after {off.LongestOff:F2} s out of contact, never turned off ship-up ({before} before the walk; {off.Ticks} ticks walked, " +
-            $"{MathX.Unrotate(ship.Body.Rotation, p.Body.WorldPosition - ship.Body.Position)} off the ship after)");
+            $"{MathX.Unrotate(ship.Body.Rotation, p.Body.WorldPosition - ship.Body.Position)} off the ship after{rescued})");
         for (int i = 0; i < 5; i++) yield return 0;
 
         // Knocked off the roof by a bump that throws them clear for less than the grace time: still aboard.

@@ -59,11 +59,14 @@ public sealed class Pilot
         _game.Pack.Grid.SetBlock(3, Slice.Items.PlayerInventory.BlueprintBlock);
         Vector3 pad = default;
         Vessel skiff = null;
+        // The projector sets it down facing the way you look, its tail toward you: you stand 2 m clear of the tail (in the
+        // way of a block, it won't build it), and within the tool's reach of the point it stands on.
+        float clear = (_game.StarterPlan.Bounds().max.Z + 0.5f) * _game.StarterPlan.Grid.CellSize + 2f;
         // A walk the ground blocks (a wall, a gully) leaves you too far off, so a few pads farther out are tried.
         for (int attempt = 0; attempt < 3 && skiff == null; attempt++)
         {
             pad = new Playthrough(_game).FlatSpot(_game.Start, 18f + attempt * 14f, span: 10f); // room for you to stand off it and see it
-            Vector3 stand = pad + (pad - _game.Start).Normalized() * 7f;
+            Vector3 stand = pad + (pad - _game.Start).Normalized() * clear;
             foreach (int x in _drive.WalkTo(new Vector3(stand.X, 0, stand.Z), 1.5f)) yield return x;
             if (_game.Pack.Selected != 3) foreach (int x in _drive.Tap(Key.Key4)) yield return x;
             foreach (int x in _drive.LookAt(pad, 6)) yield return x;
