@@ -671,6 +671,7 @@ Design clarified: small vessels never auto-hover; only Hover Mode holds a craft 
 
 ## Performance
 
+- [ ] SWEEPING OPTIMISATION PASS (owner, 13 Nov): sweeping optimisations, especially city scenes, where performance takes the biggest hit; and less pop-in and faster detail loading (ground, flora, places and people arriving late or appearing suddenly). An audit first (`docs/perf-audit.md`: where the frame and the load time go in a city, on the walk, bike and fly routes and at a crossing, ranked by measured cost), then the fixes in that order, each with before and after numbers. Takes in the FRAME BUDGET PASS, the CITIES entry and the pop-in entry below. [running: proto/perf] [high]
 - [ ] Approaching the moon: one frame of 18-24 ms when the moon's terrain streamer is set up (`TerrainStreamer.SetWorld` can't be split further today); spread it over frames (spaceflight agent, 13 Nov) [with the FRAME BUDGET PASS] [normal]
 - [ ] FRAME BUDGET PASS: walk, bike and fly under 16.7 ms mean, enforced by a PopTest check; spawn distance's cost measured and its default fitted (owner took the far-plant swap now, 9 Nov) [queued: after the weekly reset] [high]
 - [ ] Far plants cost: drawing every far plant with its own near mesh (identical look, no swap) made bike and fly routes 7-10 ms a frame slower (near meshes average 2.6x the old low meshes). Fix: a low mesh made by simplifying each plant's OWN near mesh (outline overlap 95%+, same colours), used only far out [queued: after the weekly reset] [normal]
