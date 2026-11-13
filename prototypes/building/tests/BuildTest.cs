@@ -637,13 +637,13 @@ public partial class BuildTest : Node
         Place(s, 0, 0, 1, _thruster);
         Place(s, 0, 1, 0, _generator);
         Check(s.Mode == CoreMode.Flight && StructureStats.Compute(s).Flies, "a core in Flight Mode flies");
-        Check(Building.ToggleCoreMode(s) && s.Mode == CoreMode.Hover, "B steps the core to Hover Mode, hover plates or none");
-        Check(Building.ToggleCoreMode(s) && s.Mode == CoreMode.Flight, "then to Flight Mode");
-        Check(Building.ToggleCoreMode(s) && s.Mode == CoreMode.Base, "then to base");
+        Check(Building.ToggleCoreMode(s) && s.Mode == CoreMode.Base, "B switches the core to base");
         StructureStats st = StructureStats.Compute(s);
         Check(!st.Flies && st.Thrust.Sum() == 0 && st.Blocks == 3, "a base keeps every block but does not fly");
         Structure loaded = Blueprint.Load(Blueprint.Save(s), _cat, out _);
         Check(loaded?.Mode == CoreMode.Base, "the mode is saved in the blueprint");
+        Check(Building.ToggleCoreMode(s) && s.Mode == CoreMode.Hover, "B steps it on to Hover Mode, hover plates or none");
+        Check(Building.ToggleCoreMode(s) && s.Mode == CoreMode.Flight, "and back to Flight Mode");
 
         s.Mode = CoreMode.Flight;
         string saved = Blueprint.Save(s);

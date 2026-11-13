@@ -1340,16 +1340,16 @@ public partial class PhysicsTest : Node
         var site = new N.Vector2(-42f, -8f);
         // Dig a pit where the nose leg will come down and a scrape under the port rear leg, on
         // sloping ground, so no two feet agree.
-        _w.Terrain.Dig(TInt3.Floor(_w.Ground(site.X, site.Y - 4f) - N.Vector3.UnitY * 0.2f), 1.2f);
-        _w.Terrain.Dig(TInt3.Floor(_w.Ground(site.X - 1.5f, site.Y + 2.5f)), 0.6f);
+        _w.Terrain.Dig(TInt3.Floor(_w.Ground(site.X, site.Y - 7.5f) - N.Vector3.UnitY * 0.2f), 1.2f);
+        _w.Terrain.Dig(TInt3.Floor(_w.Ground(site.X - 3f, site.Y + 5.5f)), 0.6f);
         Ship ship = _w.SpawnVessel("corsair.gbp", _w.Ground(site.X, site.Y) + N.Vector3.UnitY * 9f, 0f, landed: false);
         int landed = _landed;
         LandingGear gear = ship.Vessel.Gear;
-        int want = Math.Min(3, gear.Count);
+        int want = Math.Min(2, gear.Count);
         bool cameOut = false;
         for (int t = 0; t < 900 && _landed == landed; t++)
         {
-            // Ease down at 3.5 m/s until most feet are on their ground (or the hull rests), then let go.
+            // Ease down at 3.5 m/s until two feet are on their ground (or the hull rests), then let go.
             bool down = Enumerable.Range(0, gear.Count).Count(gear.Touching) < want && !ship.Body.OnFloor;
             ship.Flight.Input = down ? PilotInput.Hands(new Vector3(0f, -0.05f, 0f)) : PilotInput.LetGo;
             yield return 0;
