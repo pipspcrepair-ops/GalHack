@@ -78,6 +78,10 @@ public sealed class PoiInstance
     public RuinAge Ruin = RuinAge.Default;
     /// <summary>The cells decay took out of the structure: torn edges show their bars beside them.</summary>
     public readonly List<Int3> Fallen = new();
+    /// <summary>The ornament laid on it, element by element (<see cref="Ornament"/>).</summary>
+    public readonly List<Ornament.Piece> Ornaments = new();
+    /// <summary>What the shaping found of it, for the ornament (null until shaped).</summary>
+    public Shaping.Survey? Survey;
     /// <summary>How hard a nearby blast hit this place (0 untouched); set by the planet's siting.</summary>
     public float Blasted;
     /// <summary>Where something could have rooted, best first, and how many trees it wants at most (see <see cref="GrowthSpot"/>).</summary>
@@ -149,6 +153,8 @@ public sealed class PoiInstance
     public LayoutExtras Extras => Layout.Extras;
     public int LootValue => Caches.Sum(c => c.Value);
     public NavGrid Nav() => new(Blocks, Layout.Occupied, Layout.Extras.Lifts, Layout.Extras.InSpace);
+    /// <summary>The object a cell's block was built as (0: the place as a whole).</summary>
+    public int ObjectOf(Int3 q) => Layout.Objects.TryGetValue(q, out int o) ? o : 0;
     public float RemovedFraction => StructureBefore == 0 ? 0f : 1f - StructureAfter / (float)StructureBefore;
 }
 
@@ -373,6 +379,8 @@ public static class PoiFactory
         }
         // Then its plain cubes take the shapes its builders used (rule P6), round what is set down, not under it.
         using (Prof.Time("shaping")) Shaping.Apply(inst);
+        // And the ornament its builders add, whole elements set out from its own lines (fins, masts, hoods, frames, bars).
+        using (Prof.Time("ornament")) Ornament.Apply(inst);
         // How its faces are finished and how far the years took them, the walls' and roofs' fixed while their colours are their own.
         PlaceLook.Stamp(inst);
         // Made things in the world's own paint, as worn as the world: places, houses and city lots alike.
