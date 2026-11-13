@@ -104,6 +104,39 @@ public partial class PlacePerf
                 _game.Survivor.PlaceOutside(inside.Place.WorldOf(inside.Cell.Value, 0.1f).ToNumerics());
                 foreach (int x in OcclusionCheck(shots, "inside", new Transform3D(Basis.LookingAt(door - at, Vector3.Up), at))) yield return x;
             }
+            // From outside: through a ground-floor window and through the way in, into the rooms behind.
+            var near = _game.Places.Standing.OrderBy(p => Flat(p.WorldOrigin, best.At)).ToList();
+            foreach (var p in near)
+            {
+                var g = p.Inst.Blocks;
+                var window = g.Blocks().Where(cb => cb.Item2.Role == PoiGenerator.Gen.Role.Window && cb.Item1.Y >= 0 && cb.Item1.Y <= 3)
+                    .SelectMany(cb => PoiGenerator.Gen.Dirs.Horizontal.Select(d => (Cell: cb.Item1, Out: PoiGenerator.Gen.Dirs.Vec(d))))
+                    .FirstOrDefault(w => g.Get(w.Cell + w.Out).IsAir && !p.Inst.Layout.Occupied[w.Cell + w.Out]);
+                if (window.Out == default) continue;
+                Vector3 pane = p.WorldOf(window.Cell), from = pane + new Vector3(window.Out.X, 0f, window.Out.Z) * 4f;
+                foreach (int x in OcclusionCheck(shots, "window", new Transform3D(Basis.LookingAt(pane - from, Vector3.Up), from))) yield return x;
+                break;
+            }
+            if (near.Count > 0)
+            {
+                var p = near[0];
+                var f = PoiGenerator.Gen.Dirs.Vec(p.Inst.Layout.EntranceFacing);
+                Vector3 gate = p.WorldOf(p.Inst.Layout.EntranceCell, 1.2f), from = gate + new Vector3(f.X, 0f, f.Z) * 5f;
+                foreach (int x in OcclusionCheck(shots, "doorway", new Transform3D(Basis.LookingAt(gate - from, Vector3.Up), from))) yield return x;
+            }
+            // A half-ruined building: its holes in the walls are the risk.
+            var ruin = world.Pois.Where(s => s.Instance?.State == PoiGenerator.Gen.PoiState.Ruined).OrderBy(s => Flat(Middle(s), best.At)).FirstOrDefault();
+            if (ruin != null)
+            {
+                Vector3 mid = Middle(ruin), way = (best.At - mid).Normalized();
+                float half = MathF.Max(ruin.Footprint.Max.X - ruin.Footprint.Min.X, ruin.Footprint.Max.Z - ruin.Footprint.Min.Z) * 0.5f;
+                Vector3 from = mid + way * (half + 20f);
+                from.Y = Ground(from) + 1.7f;
+                _game.Survivor.PlaceOutside((from - Vector3.Up * 1.6f).ToNumerics());
+                foreach (int x in _drive.Wait(300)) yield return x; // it stands up near
+                GD.Print($"PERF occlusion check ruin: {ruin.Name}, {Flat(mid, best.At):F0} m from the street");
+                foreach (int x in OcclusionCheck(shots, "ruin", new Transform3D(Basis.LookingAt(mid + Vector3.Up * 6f - from, Vector3.Up), from))) yield return x;
+            }
         }
         // Over its edge, looking in across it.
         if (!only.Contains("air")) yield break;
@@ -120,8 +153,21 @@ public partial class PlacePerf
         System.IO.Directory.CreateDirectory(dir);
         _game.FixedCamera = view;
         _game.Zone.Wildlife.Frozen = true;
-        foreach (int x in _drive.Wait(60)) yield return x;
-        Image Shot() => GetViewport().GetTexture().GetImage();
+        _game.Visor.Visible = false;
+        // Noon where the eye is, in clear weather: a wall wrongly hidden must show, not be black on black.
+        var sky = _game.Zone.Sky;
+        double noon = 0.5;
+        float top = -2f;
+        for (int k = 0; k < 240; k++)
+            if (sky.SunAt(k / 240.0).Y is float y && y > top) (top, noon) = (y, k / 240.0);
+        _game.Zone.Weather.Bridge.Calm = true;
+        _game.Zone.Weather.Sim.Snap(Weather.Model.WeatherKind.Clear);
+        for (int i = 0; i < 60; i++)
+        {
+            sky.TimeOfDay = noon;
+            yield return 0;
+        }
+        Image Shot() { sky.TimeOfDay = noon; return GetViewport().GetTexture().GetImage(); }
         GetViewport().UseOcclusionCulling = false;
         foreach (int x in _drive.Wait(10)) yield return x;
         Image off1 = Shot();

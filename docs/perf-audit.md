@@ -110,5 +110,26 @@ What is queued behind what:
 | 9 | A cap on physics ticks a frame (8 now) | stops the spiral at any load (the game slows instead) | owner's call | project.godot |
 | 10 | Far plants' low mesh simplified from each plant's own mesh (mesh LODs) | 7-10 ms on bike and fly (q) | medium (look) | TerrainStreamer, shared/Flora |
 | 11 | City lights: 1356 omni lights kept in the scene at every distance | render CPU (q) | low | PoiLayer.Tiers.cs |
+| 12 | Mobile renderer: at most 8 omni lights an object; with 1356 POI lights a lamp can drop off a facade, and occlusion changes which (seen in --occlcheck): check a walk past lamps for popping | look and render CPU | low | PoiLayer.Tiers.cs |
+| 13 | Town people posed less often past 100 m, or their rig posed on a worker | most of the 6 ms a tick left | medium (motion far off: owner's call if visible) | slice Places/Town.cs, shared Bestiary rigs |
 
-Trades waiting on the owner: 9 (slow motion under extreme load rather than a frozen frame).
+Trades waiting on the owner: none (9 was approved, 13 Nov).
+
+## Done so far (stage 2)
+
+| fix | commit | measured |
+|---|---|---|
+| 1 world origin kept | 8065b61 | wildlife 50-67 -> 31 ms a frame in the city street; SolidAt 9.4 -> 3.5 us a call |
+| 3 far towns step less | 5e4f0a2 | towns 62 -> 53 ms (in-run A/B): the people's own posing is most of what is left |
+| 2 one loading allowance | 9de208a | bounds the places' loading at 4 ms a frame; the static city scene could not separate it |
+| 4 three merged-block workers | 7b20729 | city from the air 39-77 s -> 1-7 s to come in |
+| 5 occluders | 714f801 | draws 3562 -> 1119, primitives 6.8 -> 3.7 M, render CPU 9.1 -> 6.3 ms; --occlcheck: no geometry wrongly hidden (one facade's lamp light differs, see 11) |
+| 7 garbage | 18a755b, 0645d11, 5dfa0a8 | streamer 85-93 -> 54-63 KB a frame, infra 22-26 -> 2 KB, Constructor.Current's LINQ gone |
+| 6 skinned creatures | b005f8b | ~31 meshes -> 1-3 a creature; looks the same (fauna shots) |
+| far mesh fault | da7c08f | a failed far mesh rethrew every frame (364 k errors in one PlaceTest) |
+| 9 tick cap 3 | (next) | city street: 8 ticks 131 ms, 4 ticks 81, 3 ticks 66, 2 ticks 54 (same scene, one run) |
+
+Tried and dropped: places' creature sims stepping every 8 ticks while all of them sleep (in-run A/B: no gain).
+Still per tick in the city street: about 13-15 ms (town people's posing about 6, wildlife about 4), so a dense
+city still runs at the cap: 66 ms a frame. Next: people's posing (13 below) and city lights (11).
+
