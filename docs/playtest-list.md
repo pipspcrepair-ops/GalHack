@@ -466,6 +466,7 @@ Design clarified: small vessels never auto-hover; only Hover Mode holds a craft 
 
 ## World bugs
 
+- [ ] Bunker way out covered (owner, 13 Nov; shot kept locally in reference-photos/bunker/exit-covered-13nov.webp): a slice test couldn't leave the bunker because a structure sat on top of the stairwell's top (brown underside overhead, a grey structure beside it). The way out must never be covered, by places, hulks, wrecks, ruins, rocks, flora or ground, on any world; StartTest's walk-out passed 4 of 4 today, so it's intermittent. [running: proto/bunkerexit] [high]
 - [ ] Worlds are not deterministic: city planning gives different city, lots and grounds for the same seed on two runs (found by the world fingerprint test, `SurfaceTest --only=Dump`, 13 Nov: 2 of 12 16 km worlds and 1 of 4 at 64 km). The same seed must always build the same world (saves and co-op depend on it); find the order-dependent or time-dependent step and fix it, proving it with the fingerprint test [queued: with the infrastructure and water fix agent] [high]
 - [ ] TOP PRIORITY: seeing through blocks must never happen; ground curving in around structures [batch] [high]
 - [ ] Missing wall faces: see-through walls, hollow from outside, no undersides, pillar tops, on ruins and full POIs; NOT fully fixed: the owner spotted it again in the derelict lab shot taken from the world fix build [partly: fixes in batch; lab-shot recurrence unchecked] [normal]
