@@ -34,7 +34,7 @@ public sealed class DerelictPlan
 /// The start system's wrecks near the world, from the POI generator's data: its start-system
 /// placement (<see cref="OrbitPlacement"/>: kinds, salvage grade, the "near" and "orbit" bands, a
 /// bearing and a distance) brought in close, and each kind built as real blocks (building's
-/// structure model, large grid) so it can be boarded, looted, salvaged block by block and claimed
+/// structure model; its plan is still the 2 m grid's, laid on 1 m cells) so it can be boarded, looted, salvaged block by block and claimed
 /// with a core:
 /// <list type="bullet">
 /// <item>a capital ship (any site orbit.txt gives a "hull": derelict freighters, warships, drifting and generation hulks): the planet's crash-site hull builder's vessel, adrift</item>

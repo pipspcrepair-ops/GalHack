@@ -66,6 +66,17 @@ public partial class StartTest : Node
 
     void Fail(string what) => Check(false, what);
 
+    /// <summary>The fewest stairs blocks side by side on any step of the bunker's stairwell (its steps rise a cell per cell from z -4).</summary>
+    static int WellWidth(Bunker b)
+    {
+        GalHack.Structures.Structure s = b.Ruin.Structure;
+        int narrowest = int.MaxValue;
+        for (int k = 1; k <= b.Steps; k++)
+            narrowest = Math.Min(narrowest, Enumerable.Range(-8, 17).Count(x =>
+                s.TryGet(new GalHack.Structures.Int3(x, k, -(4 + k)), out GalHack.Structures.Block c) && s.TypeOf(c).Id == "stairs"));
+        return narrowest;
+    }
+
     /// <summary>Worlds in a plain run: each a fresh seed and a random planet type, so every run tries new ones.</summary>
     const int WorldsPerRun = 3;
 
@@ -251,6 +262,7 @@ public partial class StartTest : Node
         foreach (int x in drive.Wait(600)) yield return x;
         string covered = Covered(game);
         Check(covered == null, $"{world.Name}, seed {world.Seed}: the way out is open to the sky{(covered == null ? "" : $": {covered}")}");
+        Check(WellWidth(game.Bunker) == 2, $"{world.Name}, seed {world.Seed}: the stairwell is 2 m clear, two stairs blocks side by side on every step ({WellWidth(game.Bunker)})");
         if (_exitOnly)
         {
             game.QueueFree();

@@ -54,7 +54,7 @@ public sealed partial class Staging
         if (fab != null)
         {
             fab.Storage.AddAll(new Bill().Add("iron-ore", 60).Add("carbon-ore", 40).Add("copper-ore", 30));
-            fab.Constructor.Order("big-core", 1);
+            fab.Constructor.Order("core", 1);
             fab.Tick(3);
         }
 

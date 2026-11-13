@@ -158,38 +158,57 @@ public partial class MachineScreens : Node3D
     public static (Dir Face, float StandOff)? BlockScreenFace(Structure s, Int3 cell)
     {
         Block b = s.Get(cell);
+        var (lo, hi) = Footprint.Box(s.TypeOf(b), b.Rot);
+        // A side is free when nothing stands against any cell of it (a block spanning several cells: its whole side).
+        bool Free(Dir d)
+        {
+            int axis = d.Axis();
+            Int3 from = cell + lo, to = cell + hi;
+            int at = d.Sign() > 0 ? to[axis] + 1 : from[axis] - 1;
+            from = from.With(axis, at);
+            to = to.With(axis, at);
+            for (int z = from.Z; z <= to.Z; z++)
+                for (int y = from.Y; y <= to.Y; y++)
+                    for (int x = from.X; x <= to.X; x++)
+                        if (s.Has(new Int3(x, y, z))) return false;
+            return true;
+        }
         Dir front = Orientations.ToWorld(b.Rot, Dir.NegZ);
         Dir? pick = null;
         var order = new[] { Dir.NegZ, Dir.PosX, Dir.NegX, Dir.PosZ };
         foreach (Dir d in order)
-            if (d != front && !s.Has(cell + d.Vec())) { pick = d; break; }
-        if (pick == null && !s.Has(cell + front.Vec()) && System.Array.IndexOf(order, front) >= 0) pick = front;
+            if (d != front && Free(d)) { pick = d; break; }
+        if (pick == null && System.Array.IndexOf(order, front) >= 0 && Free(front)) pick = front;
         if (pick is not Dir face) return null;
         return (face, Protrusion(s, b, face) + 0.03f);
     }
 
-    /// <summary>How far, in metres, the block's model stands out from the cell's face on this world side (its gantry, nozzle, status screen, vents).</summary>
+    /// <summary>How far, in metres, the block's model stands out from the block's face on this world side (its gantry, nozzle, status screen, vents).</summary>
     public static float Protrusion(Structure s, in Block b, Dir worldFace)
     {
-        Int3 c = Orientations.ToLocal(b.Rot, worldFace).Vec();
+        BlockType t = s.TypeOf(b);
+        Dir local = Orientations.ToLocal(b.Rot, worldFace);
+        Int3 c = local.Vec();
         float most = 0f;
-        foreach (Part p in s.TypeOf(b).Detail)
+        foreach (Part p in t.Detail)
         {
             float e = c.X > 0 ? p.Max.X : c.X < 0 ? -p.Min.X : c.Y > 0 ? p.Max.Y : c.Y < 0 ? -p.Min.Y : c.Z > 0 ? p.Max.Z : -p.Min.Z;
             most = System.MathF.Max(most, e - 0.5f);
         }
-        return most * s.Grid.CellSize;
+        // Parts are in the -0.5..0.5 box that stands for the whole block: scaled by its size along that side.
+        return most * t.Size[local.Axis()] * s.Grid.CellSize;
     }
 
     /// <summary>A block's screen in its structure's frame: centre at eye height over the block's floor, straight out of the face, <paramref name="standOff"/> off it.</summary>
     public static Transform3D BlockScreenLocal(Structure s, Int3 cell, Dir face, float standOff)
     {
         float size = s.Grid.CellSize;
-        N.Vector3 centre = StructureBridge.CellCenter(s, cell);
+        Block b = s.Get(cell);
+        N.Vector3 centre = StructureBridge.BlockCenter(s, cell, b);
+        N.Vector3 half = Footprint.WorldSize(s.TypeOf(b), b.Rot).ToVector3() * size * 0.5f;
         N.Vector3 n = face.Vec().ToVector3();
-        // The block's floor is half a cell under its centre.
-        var facePoint = new Vector3(centre.X + n.X * size * 0.5f, 0f, centre.Z + n.Z * size * 0.5f);
-        return ScreenMount.OnFace(facePoint, new Vector3(n.X, 0f, n.Z), centre.Y - size * 0.5f, rise: -0.1f, standOff: standOff);
+        var facePoint = new Vector3(centre.X + n.X * half.X, 0f, centre.Z + n.Z * half.Z);
+        return ScreenMount.OnFace(facePoint, new Vector3(n.X, 0f, n.Z), centre.Y - half.Y, rise: -0.1f, standOff: standOff);
     }
 
     /// <summary>A screen on a free side of a base's block, at eye height over the ground beside it.</summary>

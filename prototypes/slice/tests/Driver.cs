@@ -463,7 +463,6 @@ public sealed class Driver
     /// <summary>On the open ground (not down in the bunker).</summary>
     public bool OnSurface => Game.Survivor.WorldFeet.Y > Game.Zone.GroundAt(Game.Survivor.WorldFeet.X, Game.Survivor.WorldFeet.Z).Y - 1.0f;
 
-    /// <summary>Walks up to a vessel's seat and takes it.</summary>
     /// <summary>What stands in the way of the feet, ankle and chest high, along the look.</summary>
     IEnumerable<string> Blockers()
     {
@@ -471,10 +470,11 @@ public sealed class Driver
         foreach (float up in new[] { 0.3f, 1.2f })
         {
             var r = Game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(PhysicsRayQueryParameters3D.Create(feet + Vector3.Up * up, feet + Vector3.Up * up + look.Normalized() * 2f));
-            yield return r.Count == 0 ? "clear" : $"{((Node)r["collider"].AsGodotObject()).GetPath()} at {((Vector3)r["position"]).DistanceTo(feet + Vector3.Up * up):F1} m";
+            yield return r.Count == 0 ? "clear" : $"{(r["collider"].AsGodotObject() as Node)?.GetPath().ToString() ?? "a body with no node"} at {((Vector3)r["position"]).DistanceTo(feet + Vector3.Up * up):F1} m";
         }
     }
 
+    /// <summary>Walks up to a vessel's seat and takes it.</summary>
     public IEnumerable<int> Board(Vessel v)
     {
         Vector3 seat = v.Body.ToParent(v.Seat.Value).ToGodot();
@@ -482,16 +482,20 @@ public sealed class Driver
         foreach (int x in WalkTo(seat, 1.6f, 30f, dig: false)) yield return x;
         // The hull or a slope can keep the seat out of reach from the ground: up on the jetpack, as a player would.
         float Reach() => v.NearestChair(Game.Survivor.WorldEye(), out _);
-        for (int i = 0; i < 240 && Reach() > 2.8f; i++)
+        IEnumerable<int> Up()
         {
-            Face(seat);
-            Controls.Hold(Key.W);
-            Controls.Hold(Key.Space, Game.Survivor.WorldEye().Y < seat.Y + 0.8f);
-            yield return 0;
+            for (int i = 0; i < 240 && Reach() > 2.8f; i++)
+            {
+                Face(seat);
+                Controls.Hold(Key.W);
+                Controls.Hold(Key.Space, Game.Survivor.WorldEye().Y < seat.Y + 0.8f);
+                yield return 0;
+            }
+            Controls.Hold(Key.W, false);
+            Controls.Hold(Key.Space, false);
+            foreach (int x in LookAt(seat, 4)) yield return x;
         }
-        Controls.Hold(Key.W, false);
-        Controls.Hold(Key.Space, false);
-        foreach (int x in LookAt(seat, 4)) yield return x;
+        foreach (int x in Up()) yield return x;
         if (Reach() > 3.2f) GD.Print($"  (boarding the {v.Name}: the eye at {Game.Survivor.WorldEye()} is {Reach():F1} m from its chair at {seat}; feet {Game.Survivor.WorldFeet}, ground {Game.Zone.GroundAt(Game.Survivor.WorldFeet.X, Game.Survivor.WorldFeet.Z).Y:F2}, on the floor {Game.Survivor.Body.OnFloor}, bike {Game.Survivor.OnBike != null}, seated {Game.Survivor.Seated?.Name}, menu {Game.Menu.IsOpen}, dead {Game.Suit.Dead}, hit {string.Join(" / ", Blockers())})");
         foreach (int x in Tap(Key.F)) yield return x;
         for (int i = 0; i < 5; i++) yield return 0;
@@ -504,7 +508,7 @@ public sealed class Driver
             Vector3 beside = seat + side * 2.2f;
             beside.Y = Game.Zone.GroundAt(beside.X, beside.Z).Y;
             foreach (int x in WalkTo(beside, 0.5f, 20f, sprint: false, dig: false)) yield return x;
-            foreach (int x in LookAt(seat, 4)) yield return x;
+            foreach (int x in Up()) yield return x;
             foreach (int x in Tap(Key.F)) yield return x;
             for (int i = 0; i < 5; i++) yield return 0;
         }

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Numerics;
 
 namespace GalHack.Structures;
@@ -38,6 +39,10 @@ public static class Footprint
         Int3 far = Orientations.Matrix(rot).Apply(t.Size - One);
         return (Int3.Min(Int3.Zero, far), Int3.Max(Int3.Zero, far));
     }
+
+    /// <summary>A block's size in metres, for labels and tooltips: "2 × 2 × 1 m".</summary>
+    public static string Label(BlockType t, float cell) =>
+        string.Create(CultureInfo.InvariantCulture, $"{t.Size.X * cell:0.#} × {t.Size.Y * cell:0.#} × {t.Size.Z * cell:0.#} m");
 
     /// <summary>The turned size along structure axes, in cells.</summary>
     public static Int3 WorldSize(BlockType t, int rot)

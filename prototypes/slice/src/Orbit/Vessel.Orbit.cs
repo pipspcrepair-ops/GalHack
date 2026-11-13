@@ -52,15 +52,19 @@ public sealed partial class Vessel
 
     /// <summary>
     /// A core placed in a wreck claims it (design: any wreck with no core can be claimed): it is
-    /// yours, and its core's gravity holds whoever is aboard to its floor. A Big Core makes it a
-    /// station in Base Mode, holding still in space; a Small Core a craft in Vessel Mode, ready to fly.
+    /// yours, and its core's gravity holds whoever is aboard to its floor. A wreck claimed in orbit
+    /// is a craft in Flight Mode, ready to fly; a grounded one a base where it lies.
     /// </summary>
-    public void Claimed(float gravity)
+    public void Claimed(float gravity, bool inOrbit)
     {
         Structure.GravityOn = true;
         Body.Core = new CoreGravity { On = true, Strength = gravity };
         Cabin.SetGravity(Body.Core);
-        if (BuildingBridge.IsSmall(Structure)) TakeFlight();
+        if (inOrbit)
+        {
+            Structure.Mode = CoreMode.Capital;
+            TakeFlight();
+        }
         else
         {
             Structure.Mode = CoreMode.Base;

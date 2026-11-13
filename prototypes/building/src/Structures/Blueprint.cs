@@ -24,7 +24,7 @@ public sealed class BlueprintData
     public string Schema;
     public int Version;
     public string Name = "Unnamed";
-    public string Grid = "large";
+    public string Grid = "1m";
     public CoreMode Mode = CoreMode.Capital;
     public bool Gravity = true;
     public double Cargo;
@@ -40,8 +40,8 @@ public sealed class BlueprintData
 ///   schema galhack.blueprint
 ///   version 1
 ///   name "Foss Lancer"
-///   grid large                       # large (2 m) or small (0.5 m)
-///   mode capital                     # base or capital
+///   grid 1m                          # the one grid; old "large" and "small" files load on it as they are
+///   mode capital                     # base, capital or hover
 ///   paint hull base=e9dfc4 grime=1   # base accent pattern texture stencil grime
 ///   block 0 1 0 core
 ///   block -3..3 0 -8..8 steel paint=hull
@@ -230,17 +230,19 @@ public static class Blueprint
     /// <summary>
     /// Rejects bad data: syntax errors, a missing or second core, overlapping blocks, unknown
     /// ids, and blocks that claim to belong to the structure but are not attached to its core.
+    /// An old grid's data is first made to fit the 1 m grid, in place: see <see cref="OldGrids"/>.
     /// </summary>
     public static List<string> Validate(BlueprintData data, Catalogue catalogue)
     {
         var errors = new List<string>(data.Errors);
         if (data.Schema != SchemaName) errors.Add($"schema must be '{SchemaName}' (found '{data.Schema ?? "nothing"}')");
         if (data.Version != CurrentVersion) errors.Add($"unsupported version {data.Version} (expected {CurrentVersion})");
-        GridDef grid = catalogue.GridById(data.Grid ?? "");
-        if (grid == null) { errors.Add($"unknown grid '{data.Grid}'"); return errors; }
+        bool old = OldGrids.Contains(data.Grid);
+        if (data.Grid != catalogue.Grid.Id && !old) { errors.Add($"unknown grid '{data.Grid}'"); return errors; }
+        if (old) OldCellsMakeRoom(data, catalogue);
 
         var paintNames = new HashSet<string>(data.Paints.Select(p => p.name));
-        var scratch = new Structure(catalogue, grid);
+        var scratch = new Structure(catalogue);
         var lineOf = new Dictionary<Int3, int>();
         var cellLine = new Dictionary<Int3, int>();
         int cores = 0;
@@ -288,6 +290,13 @@ public static class Blueprint
         {
             HashSet<Int3> attached = Connectivity.Reachable(scratch, core);
             var detached = lineOf.Keys.Where(p => !attached.Contains(p)).OrderBy(p => lineOf[p]).ToList();
+            // An old grid's block may have hung on one that gave way to a bigger block (OldCellsMakeRoom): it goes with it.
+            if (old)
+            {
+                var gone = detached.ToHashSet();
+                data.Blocks.RemoveAll(b => gone.Contains(b.Pos));
+                detached.Clear();
+            }
             foreach (Int3 p in detached.Take(8))
                 errors.Add($"line {lineOf[p]}: block at {p} is not attached to the core");
             if (detached.Count > 8) errors.Add($"... and {detached.Count - 8} more detached blocks");
@@ -298,7 +307,7 @@ public static class Blueprint
     /// <summary>Builds a structure from validated data.</summary>
     public static Structure Build(BlueprintData data, Catalogue catalogue, string owner = Building.DefaultOwner)
     {
-        var s = new Structure(catalogue, catalogue.GridById(data.Grid))
+        var s = new Structure(catalogue)
         {
             Name = data.Name,
             Mode = data.Mode,
@@ -322,13 +331,48 @@ public static class Blueprint
             s.Set(b.Pos, block);
             if (b.Light is LightSettings light) s.SetLight(b.Pos, light);
         }
-        if (data.Blocks.Any(b => b.Type == "door")) WallOverDoors(s);
         if (s.Core == null) s.Owner = null;
-        // Old blueprints said "capital" on every small grid, and a hover pad made the craft a hover
-        // vessel: they load in Hover Mode. A blueprint saved since says "vessel" or "hover" itself.
-        if (data.Mode == CoreMode.Capital && s.Grid.Size == GridSize.Small && s.Blocks().Any(x => s.TypeOf(x.block).Function == "hover"))
+        // Old small-grid blueprints said "capital" with hover pads aboard, and those craft rode them.
+        if (data.Grid == "small" && data.Mode == CoreMode.Capital && s.Blocks().Any(x => s.TypeOf(x.block).Function == "hover"))
             s.Mode = CoreMode.Hover;
         return s;
+    }
+
+    // ---- Old grids ----------------------------------------------------------------------------
+    // Blueprints from the 2 m and 0.5 m grids load on the 1 m grid as they are, a cell for a cell.
+    // Some of their one-cell blocks are bigger now (a door is 1x2x1), so they may run into their
+    // neighbours: a device keeps its cells and the armour in its way gives way; a block running
+    // into a device, or armour into armour, is left out, and so is whatever hung only on what was
+    // left out. These files are replaced, not converted.
+
+    /// <summary>The grids blueprints were saved on before the one 1 m grid.</summary>
+    public static readonly string[] OldGrids = { "large", "small" };
+
+    static void OldCellsMakeRoom(BlueprintData data, Catalogue catalogue)
+    {
+        var scratch = new Structure(catalogue);
+        var owner = new Dictionary<Int3, BlueprintBlock>();
+        var cellsOf = new Dictionary<BlueprintBlock, List<Int3>>();
+        var dropped = new HashSet<BlueprintBlock>();
+        foreach (BlueprintBlock b in data.Blocks)
+        {
+            if (!catalogue.TryGetType(b.Type, out BlockType type) || !Orientations.TryParse(b.Rot ?? "+y-z", out int rot)) continue;
+            List<Int3> cells = scratch.CellsOf(b.Pos, Building.Make(scratch, type, null, rot)).ToList();
+            var inWay = cells.Where(owner.ContainsKey).Select(c => owner[c]).Distinct().ToList();
+            if (inWay.Count > 0 && (type.IsArmor || inWay.Any(o => !catalogue.Type(o.Type).IsArmor)))
+            {
+                dropped.Add(b);
+                continue;
+            }
+            foreach (BlueprintBlock o in inWay)
+            {
+                dropped.Add(o);
+                foreach (Int3 c in cellsOf[o]) owner.Remove(c);
+            }
+            cellsOf[b] = cells;
+            foreach (Int3 c in cells) owner[c] = b;
+        }
+        data.Blocks.RemoveAll(dropped.Contains);
     }
 
     // ---- Doors two cells tall, for a while -----------------------------------------------------
@@ -345,25 +389,6 @@ public static class Blueprint
             b.Type = "steel";
             b.Hp = null;
             b.Flags &= ~BlockFlags.Open;
-        }
-    }
-
-    /// <summary>
-    /// A top saved unnamed (it wore its door's paint) left a gap over the door, between the wall's blocks either
-    /// side of it: the wall closes over it again, a block like its neighbour's.
-    /// </summary>
-    static void WallOverDoors(Structure s)
-    {
-        if (s.Grid.Size != GridSize.Large) return;
-        foreach (var (p, b) in s.Blocks().Where(x => s.TypeOf(x.block).IsDoor && !s.TypeOf(x.block).Multi).ToList())
-        {
-            Int3 over = p + Orientations.ToWorld(b.Rot, Dir.PosY).Vec(), side = Orientations.ToWorld(b.Rot, Dir.PosX).Vec();
-            if (s.Has(over) || !s.TryGet(over + side, out Block left) || !s.TryGet(over - side, out Block right)) continue;
-            if (!s.TypeOf(left).IsArmor || !s.TypeOf(right).IsArmor) continue;
-            Block wall = left;
-            wall.Hp = s.StatsOf(wall).MaxHp;
-            wall.Flags = BlockFlags.None;
-            s.Set(over, wall);
         }
     }
 

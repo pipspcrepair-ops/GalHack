@@ -1,50 +1,65 @@
-// Armour materials. Any material combines with any shape: the shape keeps the material's armour
-// and resistances, while hit points and mass scale with the shape's volume. Every material works
-// on bases and capital ships alike (the core's mode never restricts a block).
-// Armour costs no CPU: only devices do (design 874), so size alone never uses up the budget.
-//   hp         hit points of a large-grid cube
+// Structural blocks. Every block starts as the cheap base block (or the clear window block), and
+// its material comes from plating: a plated block is its own type, its base plus that material's
+// plates, so nothing extra is stored per block. Any type combines with any shape: the shape keeps
+// its armour and resistances, while hit points, mass and plates scale with the shape's volume
+// (a half block takes half the plates, never fewer than one).
+// Figures per 1 m cube are from docs/grid-figures.md section 3 (Empyrion's proportions).
+//   hp         hit points of a full cube
 //   armor      flat damage taken off every hit
 //   resist     fraction of each damage type ignored after armour
-//   mass       tonnes per large-grid cube
-//   color      bare-metal colour (unpainted faces)
+//   mass       tonnes per full cube
+//   color      bare colour (unplated or unpainted faces)
 //   metal      0..3, how polished the bare metal looks
 //   damageLook metal (the default), concrete, alien or glass: how the block shows damage
-//   cost       recipe for a large-grid cube
-//   smallCost  recipe for a small-grid cube: cheap, common materials only
-// Each material leans to a damage type: hardened shrugs off kinetic, combat explosive.
+//   cost       what an unplated block is made of
+//   base       a plated block: the block under its plating (only transparent plates go on windows)
+//   plate      a plated block: the plate item sprayed on, and plates per full cube
+//   upgradesTo the next plating up, sprayed over this one
+//   was        old ids this block replaces, so old blueprints still load
 {
   "schema": "galhack.materials",
   "version": 1,
   "materials": [
     {
-      "id": "steel", "name": "Steel",
-      "hp": 500, "armor": 10, "resist": { "kinetic": 0.10, "explosive": 0.10, "energy": 0.10 },
-      "mass": 1.0, "color": "c9c1ae", "metal": 1,
-      "upgradesTo": "hardened", "cost": { "iron": 10 }, "smallCost": { "iron": 2 }
+      "id": "base-block", "name": "Base block",
+      "hp": 63, "armor": 2, "resist": { "kinetic": 0.05, "explosive": 0.05, "energy": 0.05 },
+      "mass": 0.009, "color": "d6d1c4", "metal": 0,
+      "upgradesTo": "iron-plated", "cost": { "polymer": 1 }
     },
     {
-      "id": "hardened", "name": "Hardened steel",
-      "hp": 1000, "armor": 25, "resist": { "kinetic": 0.45, "explosive": 0.20, "energy": 0.15 },
-      "mass": 2.0, "color": "8b97a3", "metal": 2,
-      "upgradesTo": "combat", "cost": { "iron": 14, "tungsten": 4 }, "smallCost": { "iron": 3, "carbon": 1 }
+      "id": "window-block", "name": "Window block",
+      "hp": 5, "armor": 0, "mass": 0.009, "color": "d4eef2", "transparent": true, "damageLook": "glass",
+      "upgradesTo": "glass-plated", "cost": { "polymer": 1 }
     },
     {
-      "id": "combat", "name": "Combat steel",
-      "hp": 2000, "armor": 50, "resist": { "kinetic": 0.30, "explosive": 0.55, "energy": 0.25 },
-      "mass": 4.0, "color": "4d5563", "metal": 3,
-      "cost": { "iron": 18, "tungsten": 8, "ceramic": 4 }, "smallCost": { "iron": 4, "carbon": 2 }
+      "id": "iron-plated", "name": "Iron plated", "was": ["steel", "cpuext", "cpuext3", "cpuext4"],
+      "hp": 158, "armor": 10, "resist": { "kinetic": 0.10, "explosive": 0.10, "energy": 0.10 },
+      "mass": 0.089, "color": "c9c1ae", "metal": 1,
+      "base": "base-block", "plate": "iron-plate", "plates": 4, "upgradesTo": "hardened-plated"
     },
     {
-      "id": "glass", "name": "Glass",
-      "hp": 250, "armor": 2, "resist": { "kinetic": 0.05, "explosive": 0.05, "energy": 0.30 },
-      "mass": 0.6, "color": "a8e0ee", "transparent": true, "damageLook": "glass",
-      "cost": { "silicon": 8 }, "smallCost": { "silicon": 2 }
+      "id": "hardened-plated", "name": "Hardened plated", "was": ["hardened"],
+      "hp": 316, "armor": 25, "resist": { "kinetic": 0.45, "explosive": 0.20, "energy": 0.15 },
+      "mass": 0.178, "color": "8b97a3", "metal": 2,
+      "base": "base-block", "plate": "hardened-plate", "plates": 4, "upgradesTo": "combat-plated"
     },
     {
-      "id": "concrete", "name": "Concrete",
-      "hp": 400, "armor": 8, "resist": { "kinetic": 0.15, "explosive": 0.20, "energy": 0.20 },
-      "mass": 2.4, "color": "b9b2a4", "metal": 0, "damageLook": "concrete",
-      "cost": { "silicon": 8, "iron": 2 }, "smallCost": { "silicon": 2 }
+      "id": "combat-plated", "name": "Combat plated", "was": ["combat"],
+      "hp": 632, "armor": 50, "resist": { "kinetic": 0.30, "explosive": 0.55, "energy": 0.25 },
+      "mass": 0.356, "color": "4d5563", "metal": 3,
+      "base": "base-block", "plate": "combat-plate", "plates": 4
+    },
+    {
+      "id": "concrete-plated", "name": "Concrete plated", "was": ["concrete"],
+      "hp": 253, "armor": 8, "resist": { "kinetic": 0.15, "explosive": 0.20, "energy": 0.20 },
+      "mass": 0.098, "color": "b9b2a4", "metal": 0, "damageLook": "concrete",
+      "base": "base-block", "plate": "concrete-plate", "plates": 4
+    },
+    {
+      "id": "glass-plated", "name": "Glass plated", "was": ["glass"],
+      "hp": 79, "armor": 2, "resist": { "kinetic": 0.05, "explosive": 0.05, "energy": 0.30 },
+      "mass": 0.029, "color": "a8e0ee", "transparent": true, "damageLook": "glass",
+      "base": "window-block", "plate": "glass-plate", "plates": 4
     }
   ]
 }

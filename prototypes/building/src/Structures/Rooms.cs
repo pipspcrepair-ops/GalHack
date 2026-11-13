@@ -256,7 +256,8 @@ public static class Rooms
         /// <summary>Air can be in this cell unless its block seals all six faces (a solid block).</summary>
         public bool IsAir(int i) => _seal[i] != 0x3f;
 
-        public bool IsOccupied(int i) => _occupied[i];
+        /// <summary>A block's shape takes this cell's air: it seals some face. A chair or ladder seals none and leaves room for a person.</summary>
+        public bool IsOccupied(int i) => _occupied[i] && _seal[i] != 0;
 
         public int Neighbour(int i, int d)
         {

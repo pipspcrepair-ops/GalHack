@@ -357,14 +357,14 @@ public sealed class Survivor
         Binding.Teleport();
     }
 
-    /// <summary>Where getting up from a seat puts you: behind it, or beside it if that's blocked.</summary>
+    /// <summary>Where getting up from a seat puts you: past the chair behind it, or beside it if that's blocked.</summary>
     static N.Vector3 StandOffset(Vessel vessel)
     {
         N.Vector3 seat = vessel.Seat.Value;
-        float cell = vessel.Structure.Grid.CellSize;
-        foreach (N.Vector3 o in new[] { new N.Vector3(0, 0.05f, 2 * cell), new N.Vector3(2 * cell, 0.05f, 0), new N.Vector3(-2 * cell, 0.05f, 0), new N.Vector3(0, 0.05f, -2 * cell) })
+        float r = vessel.ChairReach;
+        foreach (N.Vector3 o in new[] { new N.Vector3(0, 0.05f, r), new N.Vector3(r, 0.05f, 0), new N.Vector3(-r, 0.05f, 0), new N.Vector3(0, 0.05f, -r) })
             if (vessel.DistanceFromHull(seat + o + N.Vector3.UnitY * 0.9f, 0.5f) >= 0.5f) return o;
-        return new N.Vector3(0f, 0.05f, 2 * cell);
+        return new N.Vector3(0f, 0.05f, r);
     }
 
     /// <summary>Puts the survivor in a structure's cabin world at a structure-local spot, at rest relative to it.</summary>
@@ -412,7 +412,7 @@ public sealed class Survivor
     {
         var look = new Basis(Vector3.Up, Yaw) * new Basis(Vector3.Right, Pitch);
         if (Seated is Vessel seat)
-            return seat.DrawTransform * new Transform3D(seat.ChairBasis * look, (seat.Seat.Value + N.Vector3.UnitY * 0.95f).ToGodot());
+            return seat.DrawTransform * new Transform3D(seat.ChairBasis * look, seat.Eye.ToGodot());
         Vector3 feet = Node.GetGlobalTransformInterpolated().Origin;
         if (OnBike != null)
             return new Transform3D(look, OnBike.Node.GetGlobalTransformInterpolated() * HoverBike.EyeAt);
@@ -443,7 +443,7 @@ public sealed class Survivor
     /// <summary>The eye in the world (not interpolated: for aiming).</summary>
     public Vector3 WorldEye()
     {
-        if (Seated is Vessel seat) return seat.Body.ToParent(seat.Seat.Value + N.Vector3.UnitY * 0.95f).ToGodot();
+        if (Seated is Vessel seat) return seat.Body.ToParent(seat.Eye).ToGodot();
         N.Vector3 up = Body.Frame == null ? Body.Up : MathX.Rotate(Body.Frame.Rotation, Body.Up);
         return (Body.WorldPosition + up * _eye).ToGodot();
     }

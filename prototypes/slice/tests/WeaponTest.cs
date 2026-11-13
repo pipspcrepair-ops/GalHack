@@ -166,7 +166,7 @@ public partial class WeaponTest : Node
     Vessel Wall(Vector3 at, int width = 5, int height = 5)
     {
         var cat = Zone.Data.Catalogue;
-        var s = new Structure(cat, cat.Grid(GridSize.Small)) { Name = $"TestWall{_walls++}" };
+        var s = new Structure(cat) { Name = $"TestWall{_walls++}" };
         for (int x = 0; x < width; x++)
             for (int y = 0; y < height; y++)
                 s.Set(new Int3(x, y, 0), Building.Make(s, cat.Type("steel")));
