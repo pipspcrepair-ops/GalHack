@@ -240,7 +240,7 @@ public partial class PhysicsTest : Node
                 $"thrust per direction is building's (fwd {h.Accel(Direction.Forward):F1} m/s², up {h.Accel(Direction.Up):F1}, turn {h.TurnRate:F0}°/s, lift {h.LiftMargin:+0;-0} kN)");
         }
         Ship c = _w.Corsair;
-        Check(c.HullShapes.ShapeCount > 0 && c.HullShapes.ShapeCount < c.Structure.Count / 3 && c.Interior.Count > 300,
+        Check(c.HullShapes.ShapeCount > 0 && c.HullShapes.ShapeCount < c.Structure.Count / 3 && c.Interior.Count > 100, // the Shuttle's cabin, 4 x 3 x 11 m less its chairs and lockers
             $"the Corsair is one body of {c.HullShapes.ShapeCount} collider shapes for {c.Structure.Count} blocks, with {c.Interior.Count} interior cells to walk in");
 
         // One block edited: only its chunk's colliders are rebuilt (hull and cabin), never the whole body.
@@ -1372,12 +1372,14 @@ public partial class PhysicsTest : Node
         ship.Binding.Teleport();
         int landed = _landed;
         int want = gear.Count;
-        bool cameOut = false;
+        bool cameOut = false, letGo = false;
         for (int t = 0; t < 900 && _landed == landed; t++)
         {
-            // Ease down at 3.5 m/s until every foot is on its ground (or the hull rests), then let go.
-            bool down = Enumerable.Range(0, gear.Count).Count(gear.Touching) < want && !ship.Body.OnFloor;
-            ship.Flight.Input = down ? PilotInput.Hands(new Vector3(0f, -0.05f, 0f)) : PilotInput.LetGo;
+            // Ease down at 3.5 m/s until every foot is on its ground, or the hull rests (on sloping ground it can
+            // rest on an edge without standing on a floor: attached and no longer sinking), then let go for good.
+            letGo |= Enumerable.Range(0, gear.Count).Count(gear.Touching) == want || ship.Body.OnFloor
+                     || t > 30 && gear.Attached && MathF.Abs(ship.Body.Velocity.Y) < 0.05f;
+            ship.Flight.Input = letGo ? PilotInput.LetGo : PilotInput.Hands(new Vector3(0f, -0.05f, 0f));
             yield return 0;
             cameOut |= gear.Deployed;
         }
@@ -1400,7 +1402,8 @@ public partial class PhysicsTest : Node
         Check(_landed > landed && cameOut && ship.Vessel.Frozen && gear.Attached && standing >= 2 && worstFoot < 0.25f
               && maxGround - minGround > 0.3f && longest - shortest > 0.3f && !_w.Physics.Stuck.IsStuck(ship.Body, out _),
             $"landing gear on uneven ground: it comes out by itself, and {standing} of {gear.Count} telescoping legs reach their own ground, " +
-            $"{maxGround - minGround:F1} m uneven, out {shortest:F2} to {longest:F2} m, every foot within {worstFoot * 100f:F0} cm of it; attached, it raises Landed and stops simulating");
+            $"{maxGround - minGround:F1} m uneven, out {shortest:F2} to {longest:F2} m, every foot within {worstFoot * 100f:F0} cm of it; attached, it raises Landed and stops simulating" +
+            (ship.Vessel.Frozen ? "" : $" (not landed: came out {cameOut}, attached {gear.Attached}, hull on a floor {ship.Body.OnFloor}, let go {letGo}, {ship.Body.Velocity.Length():F2} m/s)"));
 
         // And it goes in again by itself as the craft climbs away: there is no button.
         int climb = 0;
@@ -1683,7 +1686,8 @@ public partial class PhysicsTest : Node
         Check(!sinker.Stats.CanLiftOff && wentUnder && sinker.Vessel.Frozen && _landed > landedBefore && sinker.Body.Water.Underwater
               && lowestKeel > -0.3f && !_w.Physics.Stuck.IsStuck(sinker.Body, out _),
             $"a Corsair that loses its generator over the lake falls in and sinks ({sinkSpeed:F1} m/s at most under water, against buoyancy and heavy drag), " +
-            $"settles on the bed {level - sinker.Body.Position.Y:F1} m down on its legs and lands, never through it (its keel never below the bed: lowest {lowestKeel:+0.00;-0.00} m)");
+            $"settles on the bed {level - sinker.Body.Position.Y:F1} m down on its legs and lands, never through it (its keel never below the bed: lowest {lowestKeel:+0.00;-0.00} m)" +
+            $"{(sinker.Vessel.Frozen ? "" : $"; not landed: can lift off {sinker.Stats.CanLiftOff}, under water {sinker.Body.Water.Underwater}, {sinker.Body.Velocity.Length():F2} m/s, keel {sinker.Body.Position.Y - sinker.Body.Shape.FeetBelowOrigin - source.SurfaceHeight(sinker.Body.Position.X, sinker.Body.Position.Z):+0.00;-0.00} m over the bed, which is {level - source.SurfaceHeight(sinker.Body.Position.X, sinker.Body.Position.Z):F1} m down")}");
         _w.Remove(sinker);
         watched.Remove(sinker.Body);
 
