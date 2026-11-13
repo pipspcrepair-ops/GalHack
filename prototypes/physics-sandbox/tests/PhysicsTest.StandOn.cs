@@ -44,6 +44,7 @@ public partial class PhysicsTest
         public readonly bool Aboard;
         public readonly Creature Who;
         public int Inside, Teleports;
+        public float Jump;
         N.Vector3 _last;
 
         public StandRig(PhysicsTest t, Ship on, bool aboard, Creature who = null)
@@ -92,7 +93,11 @@ public partial class PhysicsTest
             yield return 0;
             if (_t._w.Physics.Stuck.IsStuck(Body, out _)) Inside++;
             N.Vector3 now = Local;
-            if (N.Vector3.Distance(now, _last) > 0.75f) Teleports++;
+            if (N.Vector3.Distance(now, _last) > 0.75f)
+            {
+                Teleports++;
+                Jump = MathF.Max(Jump, N.Vector3.Distance(now, _last));
+            }
             _last = now;
         }
 
@@ -159,16 +164,15 @@ public partial class PhysicsTest
         Report("on a base", onBase);
 
         _w.Player.PlaceOutside(_w.Ground(1.5f, 8.5f) + N.Vector3.UnitY * 0.05f); // out of the beasts' way
-        // An animal (a 0.45 m by 1.4 m walker) and a giant (1.2 m by 4 m, never capped to a person's size) on the same base.
+        // An animal (a 0.45 m by 1.4 m walker) and a giant (1.2 m by 4 m, never capped to a person's size) on the same base:
+        // one of each kind on every lane at once.
         foreach (var (label, radius, height) in new[] { ("an animal", 0.45f, 1.4f), ("a giant", 1.2f, 4f) })
         {
-            Creature beast = Creature.Spawn(_w, pad.Body.ToParent(new N.Vector3(-8f, 0.6f, 0f)), radius, height);
             var log = new StandLog();
-            rig = new StandRig(this, pad, aboard: false, beast);
-            foreach (Lane lane in lanes)
-                foreach (int x in TryLane(rig, yard, lane, log)) yield return x;
+            var beasts = lanes.Select(l => Creature.Spawn(_w, pad.Body.ToParent(new N.Vector3(l.Origin.X, 0.6f, l.Origin.Z + 3f)), radius, height)).ToList();
+            foreach (int x in Together(lanes.Select((l, i) => TryLane(new StandRig(this, pad, aboard: false, beasts[i]), yard, l, log)))) yield return x;
             Report($"{label} on a base", log, standOnly: radius > 1f);
-            _w.Remove(beast);
+            foreach (Creature beast in beasts) _w.Remove(beast);
         }
         _w.Remove(pad);
 
@@ -190,6 +194,17 @@ public partial class PhysicsTest
         _w.Player.PlaceOutside(_w.Ground(1.5f, 8.5f) + N.Vector3.UnitY * 0.05f);
         for (int i = 0; i < 5; i++) yield return 0;
         GD.Print($"  (the stuck guard fired {_w.Physics.Stuck.Rescues - rescuesBefore} times in all of the above)");
+    }
+
+    /// <summary>Runs walks side by side, a tick of each per tick.</summary>
+    static IEnumerable<int> Together(IEnumerable<IEnumerable<int>> walks)
+    {
+        List<IEnumerator<int>> running = walks.Select(w => w.GetEnumerator()).ToList();
+        while (running.Count > 0)
+        {
+            running.RemoveAll(r => !r.MoveNext());
+            yield return 0;
+        }
     }
 
     /// <summary><paramref name="standOnly"/>: a walker too wide for a lane's 3 m deck is judged on standing, not on crossing.</summary>
@@ -250,8 +265,9 @@ public partial class PhysicsTest
         float cell = s.Grid.CellSize;
         SInt3 o = lane.Origin;
         log.Cases++;
-        int rescues = _w.Physics.Stuck.Rescues;
+        int rescues = _rescues.Count(r => r.Body == rig.Body);
         rig.Inside = rig.Teleports = 0;
+        rig.Jump = 0f;
 
         // Across: from the deck before it, walking forward (-z) over it and off the far side.
         rig.Place(new N.Vector3(o.X, o.Y + 0.5f, o.Z + 3f) * cell + N.Vector3.UnitY * 0.02f, 0f);
@@ -293,11 +309,11 @@ public partial class PhysicsTest
             log.Note($"{lane.Name}: standing still, {b * 1000f:F0} mm up and down");
         })) yield return x;
 
-        int rescued = _w.Physics.Stuck.Rescues - rescues;
+        int rescued = _rescues.Count(r => r.Body == rig.Body) - rescues;
         log.Rescues += rescued;
         log.InsideTicks += rig.Inside;
         log.Teleports += rig.Teleports;
-        if (rescued > 0 || rig.Inside > 0 || rig.Teleports > 0) log.Note($"{lane.Name}: {rig.Inside} ticks inside a block, {rescued} rescues, {rig.Teleports} teleports");
+        if (rescued > 0 || rig.Inside > 0 || rig.Teleports > 0) log.Note($"{lane.Name}: {rig.Inside} ticks inside a block, {rescued} rescues, {rig.Teleports} teleports (up to {rig.Jump:F1} m)");
     }
 
     /// <summary>
