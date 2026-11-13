@@ -38,10 +38,15 @@ public sealed class GodotQuery : IWorldQuery
         }
         GodotObject collider = result["collider"].AsGodotObject();
         Body body = _host.BodyOf(collider);
+        Rid rid = result["rid"].AsRid();
+        Surface surface = body != null ? Surface.Body : collider != null ? SurfaceOf(collider) : SurfaceOf(rid);
         hit = new RayHit(result["position"].AsVector3().ToNumerics(), result["normal"].AsVector3().ToNumerics(),
-            body, body != null ? Surface.Body : collider != null ? SurfaceOf(collider) : SurfaceOf(result["rid"].AsRid()));
+            body, surface, PartOf(surface, rid, result["shape"].AsInt32()));
         return true;
     }
+
+    /// <summary>The handle a flora hit carries for the game's flora field: its body and shape. Nothing for the rest.</summary>
+    public static object PartOf(Surface surface, Rid body, int shape) => surface == Surface.Flora ? (body, shape) : null;
 
     /// <summary>What a body made on the physics server alone is (no node: the flora's), by its layer.</summary>
     public static Surface SurfaceOf(Rid body) => SurfaceOfLayer(PhysicsServer3D.BodyGetCollisionLayer(body));

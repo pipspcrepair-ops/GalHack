@@ -233,7 +233,7 @@ public sealed class PhysicsRules
     }
 
     /// <summary>
-    /// What a tree takes from a structure before it breaks, by its trunk (<see cref="PhysicsWorld.Breaks"/>): the weight on it
+    /// What a tree takes from a structure before it breaks, by its trunk (<see cref="PhysicsWorld.ResolveContacts"/>): the weight on it
     /// or the blow into it. One rule for every craft and tree, so a heavy ship breaks an ordinary tree and a giant may hold a light one.
     /// </summary>
     public sealed class FloraData

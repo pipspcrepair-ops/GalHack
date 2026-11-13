@@ -2,8 +2,8 @@ using System.Numerics;
 
 namespace GalHack.Physics;
 
-/// <summary>A ray hit, as the world query found it.</summary>
-public readonly record struct RayHit(Vector3 Point, Vector3 Normal, Body Body, Surface Surface);
+/// <summary>A ray hit, as the world query found it (<see cref="Contact.Part"/>: the engine's handle on what it hit, for flora).</summary>
+public readonly record struct RayHit(Vector3 Point, Vector3 Normal, Body Body, Surface Surface, object Part = null);
 
 /// <summary>
 /// The few spatial questions the rules ask (hover engines and landing gear probe the ground).
@@ -47,11 +47,11 @@ public interface ITerrainEditor
 public interface IFloraField
 {
     /// <summary>
-    /// The tree whose collider is at this point (a structure's contact on the flora layer, or its gear's ray hit),
+    /// The tree a flora collider belongs to (a structure's contact's or its gear's ray hit's <see cref="Contact.Part"/>),
     /// and its trunk's radius, m: 0 for one already felled whose collider has yet to go. False for rock (boulders,
     /// crystals), which never gives way.
     /// </summary>
-    bool TreeAt(Vector3 point, out long tree, out float trunkRadius);
+    bool TreeAt(object part, out long tree, out float trunkRadius);
 
     /// <summary>Fells it for good, as harvesting does: its colliders gone at once, a stump left, its trunk and crown falling away along <paramref name="away"/>.</summary>
     void Fell(long tree, Vector3 point, Vector3 away);

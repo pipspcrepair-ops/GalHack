@@ -12,7 +12,7 @@ namespace Slice.Surface;
 /// <summary>
 /// The one way a plant goes for good, whatever takes it (the survival tool, a structure coming down on it, PLACE
 /// clearing a site), and the planet's trees as the shared physics sees them: a vessel breaks one whose trunk can't
-/// take it (<see cref="PhysicsWorld.Breaks"/>), and it goes as a harvested tree goes.
+/// take it (<see cref="PhysicsWorld.ResolveContacts"/>), and it goes as a harvested tree goes.
 /// </summary>
 public partial class SurfaceZone : IFloraField
 {
@@ -30,7 +30,6 @@ public partial class SurfaceZone : IFloraField
     }
 
     TreeFx _trees;
-    PhysicsShapeQueryParameters3D _floraProbe;
 
     /// <summary>
     /// A plant gone for good: on the planet's felled list (kept through streaming and saves), its colliders gone this
@@ -73,29 +72,22 @@ public partial class SurfaceZone : IFloraField
         return index >= 0 && index < plants.Count ? plants[index] : null;
     }
 
-    public bool TreeAt(N.Vector3 point, out long tree, out float trunkRadius)
+    public bool TreeAt(object part, out long tree, out float trunkRadius)
     {
         tree = 0;
         trunkRadius = 0f;
-        if (Planet == null) return false;
-        _floraProbe ??= new PhysicsShapeQueryParameters3D { Shape = new SphereShape3D { Radius = 0.1f }, CollisionMask = Layers.Flora };
-        _floraProbe.Transform = new Transform3D(Basis.Identity, point.ToGodot());
-        foreach (Godot.Collections.Dictionary hit in GetWorld3D().DirectSpaceState.IntersectShape(_floraProbe, 4))
-        {
-            bool standing = Streamer.SolidHit((Rid)hit["rid"], (int)hit["shape"], out FloraSolid solid);
-            if (solid.Extents == Vector3.Zero) continue; // not one of the solids
-            tree = solid.Id;
-            if (!standing) return true; // felled, its collider not yet gone: nothing left to hold
-            if (!solid.Fellable && solid.Plant >= 0)
-                foreach (var (part, _) in Streamer.SolidsNear(point.ToGodot(), TreeReach))
-                    if (part.Id == tree && part.Fellable) { solid = part; break; } // a limb: the tree is its trunk
-            if (!solid.Fellable) return false; // rock: never gives way
-            trunkRadius = solid.Extents.X;
-            return true;
-        }
-        return false;
+        if (Planet == null || part is not (Rid body, int shape)) return false;
+        bool standing = Streamer.SolidHit(body, shape, out FloraSolid solid);
+        if (solid.Extents == Vector3.Zero) return false; // not one of the solids
+        tree = solid.Id;
+        if (!standing) return true; // felled, its collider not yet gone: nothing left to hold
+        if (!solid.Fellable && solid.Plant >= 0)
+            foreach (var (s, _) in Streamer.SolidsNear(Planet.NearestCopy(Planet.Canonical(solid.Center), Focus()), TreeReach))
+                if (s.Id == tree && s.Fellable) { solid = s; break; } // a limb: the tree is its trunk
+        if (!solid.Fellable) return false; // rock: never gives way
+        trunkRadius = solid.Extents.X;
+        return true;
     }
-
     public void Fell(long tree, N.Vector3 point, N.Vector3 away)
     {
         Vector3 at = point.ToGodot();
