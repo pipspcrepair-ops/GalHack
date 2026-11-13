@@ -1,4 +1,4 @@
-# Hover Tank: a low iron hull on four Hover plate T2s, a hardened glacis and armoured
+# Hover Tank: a low iron hull on eight Hover plate T1s, a hardened glacis and armoured
 # sponsons. Up the stair at the stern onto the deck: the driver's Cockpit T1 forward, the turret
 # behind it. Generator, gyro, fuel and a locker in the hull; two mains at the stern and a retro on
 # each sponson.
@@ -22,12 +22,12 @@ paint hazard base=f4a100 pattern=hazard grime=2
 block -4..4 -1 -8 hardened-plated paint=sand
 block -4..4 -1 -7 iron-plated paint=sand,sand,sand,belly,sand,sand
 block -5 -1 -6 hardened-plated paint=flash
-block -4 -1 -6 hover-t2
-block -2..2 -1 -6 iron-plated paint=sand,sand,sand,belly,sand,sand
-block 3 -1 -6 hover-t2
+block -4 -1 -6 hover-t1
+block -3..3 -1 -6 iron-plated paint=sand,sand,sand,belly,sand,sand
+block 4 -1 -6 hover-t1
 block 5 -1 -6 hardened-plated paint=flash
 block -5 -1 -5 hardened-plated paint=flash
-block -2..2 -1 -5 iron-plated paint=sand,sand,sand,belly,sand,sand
+block -4..4 -1 -5 iron-plated paint=sand,sand,sand,belly,sand,sand
 block 5 -1 -5 hardened-plated paint=flash
 block -5 -1 -4 hardened-plated paint=flash
 block -4..4 -1 -4 iron-plated paint=sand,sand,sand,belly,sand,sand
@@ -36,7 +36,9 @@ block -5 -1 -3 hardened-plated paint=flash
 block -4..4 -1 -3 iron-plated paint=sand,sand,sand,belly,sand,sand
 block 5 -1 -3 hardened-plated paint=flash
 block -5 -1 -2 hardened-plated paint=flash
-block -4..4 -1 -2 iron-plated paint=sand,sand,sand,belly,sand,sand
+block -4 -1 -2 hover-t1
+block -3..3 -1 -2 iron-plated paint=sand,sand,sand,belly,sand,sand
+block 4 -1 -2 hover-t1
 block 5 -1 -2 hardened-plated paint=flash
 block -5 -1 -1 hardened-plated paint=flash
 block -4..4 -1 -1 iron-plated paint=sand,sand,sand,belly,sand,sand
@@ -50,12 +52,14 @@ block -5 -1 1 hardened-plated paint=flash
 block -4..4 -1 1 iron-plated paint=sand,sand,sand,belly,sand,sand
 block 5 -1 1 hardened-plated paint=flash
 block -5 -1 2 hardened-plated paint=flash
-block -4..-2 -1 2 iron-plated paint=sand,sand,sand,belly,sand,sand
+block -4 -1 2 hover-t1
+block -3..-2 -1 2 iron-plated paint=sand,sand,sand,belly,sand,sand
 block -1 -1 2 generator-t2
 block 0 -1 2 gyro-t2
 block 1 -1 2 fuel-tank-t2
 block 2 -1 2 container-t1
-block 3..4 -1 2 iron-plated paint=sand,sand,sand,belly,sand,sand
+block 3 -1 2 iron-plated paint=sand,sand,sand,belly,sand,sand
+block 4 -1 2 hover-t1
 block 5 -1 2 hardened-plated paint=flash
 block -5 -1 3 hardened-plated paint=flash
 block -4..0 -1 3 iron-plated paint=sand,sand,sand,belly,sand,sand
@@ -65,12 +69,12 @@ block -5 -1 4 hardened-plated paint=flash
 block -4..4 -1 4 iron-plated paint=sand,sand,sand,belly,sand,sand
 block 5 -1 4 hardened-plated paint=flash
 block -5 -1 5 hardened-plated paint=flash
-block -4 -1 5 hover-t2
-block -2..2 -1 5 iron-plated paint=sand,sand,sand,belly,sand,sand
-block 3 -1 5 hover-t2
+block -4..4 -1 5 iron-plated paint=sand,sand,sand,belly,sand,sand
 block 5 -1 5 hardened-plated paint=flash
 block -5 -1 6 hardened-plated paint=flash
-block -2..2 -1 6 iron-plated paint=sand,sand,sand,belly,sand,sand
+block -4 -1 6 hover-t1
+block -3..3 -1 6 iron-plated paint=sand,sand,sand,belly,sand,sand
+block 4 -1 6 hover-t1
 block 5 -1 6 hardened-plated paint=flash
 block -4..4 -1 7 iron-plated paint=sand,sand,sand,belly,hazard,sand
 block -1..0 -1 8 iron-plated paint=sand

@@ -28,7 +28,7 @@ namespace Slice.Tests;
 /// structure's walk grid: half-metre steps and stairs, 1.8 m of headroom); power covers full load with fuel for an hour;
 /// a craft lifts 1.3 times its weight on its thrusters or plates, pushes and brakes, turns, every exhaust is clear and
 /// its lift is balanced round its centre of mass. Then on a fresh random world, each one set down whole by Creative's
-/// PLACE: the castaway sits in its chair (drawn, the camera at the chair's eye), and a craft takes off, hovers, flies,
+/// PLACE: the sleeper sits in its chair (drawn, the camera at the chair's eye), and a craft takes off, hovers, flies,
 /// brakes and lands under the game's own keys (a hover craft runs and stops).
 ///
 /// Run: G:\GalHack\.tools\queue\test-q.ps1 -Project prototypes/slice -Scene res://tests/BlueprintTest.tscn [-Extra --write]
@@ -237,23 +237,26 @@ public partial class BlueprintTest : Node
     }
 
     /// <summary>Take off, hover hands off, fly forward, let go and stop, land: the game's own keys.</summary>
+    /// <summary>The hull's height over the terrain under it, trees and all else left out (the probe under a vessel meets a canopy).</summary>
+    float Height(Vessel v) => v.Body.Position.Y - _game.Zone.GroundAt(v.Body.Position.X, v.Body.Position.Z).Y;
+
     IEnumerable<int> Fly(Vessel v)
     {
         string name = v.Structure.Name;
         Controls c = _game.Controls;
-        float ground = v.AboveGround;
+        float ground = Height(v);
         c.Hold(Key.Space);
         int t = 0;
-        for (; t < 600 && v.AboveGround < ground + 12f; t++) yield return 0;
+        for (; t < 600 && Height(v) < ground + 12f; t++) yield return 0;
         c.Hold(Key.Space, false);
-        Check(v.AboveGround >= ground + 12f, $"{name}: takes off and climbs 12 m in {t / 60f:F1} s{(v.AboveGround < ground + 12f ? $" (from {ground:F1} to {v.AboveGround:F1} m over the ground; console: {v.Controller?.ConsoleMessage}; pilot {v.Roles.Pilot}, lift margin {v.Stats?.LiftMargin:F0} kN)" : "")}");
+        Check(Height(v) >= ground + 12f, $"{name}: takes off and climbs 12 m in {t / 60f:F1} s{(Height(v) < ground + 12f ? $" (from {ground:F1} to {Height(v):F1} m over the ground; console: {v.Controller?.ConsoleMessage}; pilot {v.Roles.Pilot}, lift margin {v.Stats?.LiftMargin:F0} kN)" : "")}");
 
         Vector3 start = v.Body.Position.ToGodot();
         for (t = 0; t < 600 && MathF.Abs(v.Body.Velocity.Y) > 0.3f; t++) yield return 0;
-        float held = v.AboveGround;
+        float held = Height(v);
         foreach (int x in _drive.Wait(120)) yield return x;
-        Check(MathF.Abs(v.AboveGround - held) < 1f && MathF.Abs(v.Body.Velocity.Y) < 0.5f,
-            $"{name}: hands off, the climb stops in {t / 60f:F1} s and it hovers ({v.AboveGround - held:+0.0;-0.0} m in 2 s)");
+        Check(MathF.Abs(Height(v) - held) < 1f && MathF.Abs(v.Body.Velocity.Y) < 0.5f,
+            $"{name}: hands off, the climb stops in {t / 60f:F1} s and it hovers ({Height(v) - held:+0.0;-0.0} m in 2 s)");
 
         c.Hold(Key.W);
         foreach (int x in _drive.Wait(60)) yield return x;
@@ -277,7 +280,7 @@ public partial class BlueprintTest : Node
         for (t = 0; t < 120 * 60 && !v.Controller.Frozen; t++)
         {
             // The sink rate it really makes over half a second (pressed onto the ground, the flight model still asks for some).
-            float agl = v.AboveGround - ground;
+            float agl = Height(v) - ground;
             heights.Enqueue(agl);
             float wanted = agl > 25f ? -6f : agl > 6f ? -2.5f : -1f;
             float vy = heights.Count > 30 ? (agl - heights.Dequeue()) * 2f : wanted;
@@ -292,8 +295,8 @@ public partial class BlueprintTest : Node
         float up = MathX.Up(v.Body.Rotation).Y;
         // A hull with no pads rests on its keel: it lands when it is back at its rest height and still.
         bool padless = !v.Structure.Blocks().Any(b => v.Structure.TypeOf(b.block).Function == "gear");
-        bool landed = v.Controller.Frozen || padless && MathF.Abs(v.AboveGround - ground) < 0.3f && v.Body.Velocity.Length() < 0.2f;
-        Check(landed && up > 0.97f, $"{name}: lands and settles upright (up {up:F3}, {v.AboveGround:F1} m over the ground, {new Vector2(v.Body.Position.X - start.X, v.Body.Position.Z - start.Z).Length():F0} m from the spot)");
+        bool landed = v.Controller.Frozen || padless && MathF.Abs(Height(v) - ground) < 0.3f && v.Body.Velocity.Length() < 0.2f;
+        Check(landed && up > 0.97f, $"{name}: lands and settles upright (up {up:F3}, {Height(v):F1} m over the ground, {new Vector2(v.Body.Position.X - start.X, v.Body.Position.Z - start.Z).Length():F0} m from the spot)");
     }
 
     /// <summary>A hover craft runs forward on its plates and stops when let go.</summary>

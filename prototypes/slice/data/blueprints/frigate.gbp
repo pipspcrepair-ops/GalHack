@@ -25,9 +25,9 @@ block -8..7 0 -20 iron-plated paint=hull,hull,hull,keel,hull,hull
 block -8 0 -19 iron-plated paint=hull,hull,hull,keel,hull,hull
 block -7..6 0 -19 iron-plated paint=hull,hull,deck,keel,hull,hull
 block 7 0 -19 iron-plated paint=hull,hull,hull,keel,hull,hull
-block -8 0 -18 pad-t3
+block -8 0 -18 pad-t1
 block -7..6 0 -18 iron-plated paint=hull,hull,deck,keel,hull,hull
-block 7 0 -18 pad-t3
+block 7 0 -18 pad-t1
 block -7..6 0 -17 iron-plated paint=hull,hull,deck,keel,hull,hull
 block -8 0 -16 iron-plated paint=hull,hull,hull,keel,hull,hull
 block -7..6 0 -16 iron-plated paint=hull,hull,deck,keel,hull,hull
@@ -99,9 +99,9 @@ block 5 0 8 iron-plated paint=hull,hull,hull,keel,hull,hull
 block -6 0 9 iron-plated paint=hull,hull,hull,keel,hull,hull
 block -5..4 0 9 iron-plated paint=hull,hull,deck,keel,hull,hull
 block 5 0 9 iron-plated paint=hull,hull,hull,keel,hull,hull
-block -6 0 10 pad-t3
+block -6 0 10 pad-t1
 block -5..4 0 10 iron-plated paint=hull,hull,deck,keel,hull,hull
-block 5 0 10 pad-t3
+block 5 0 10 pad-t1
 block -5..4 0 11 iron-plated paint=hull,hull,deck,keel,hull,hull
 block -6 0 12 iron-plated paint=hull,hull,hull,keel,hull,hull
 block -5..4 0 12 iron-plated paint=hull,hull,deck,keel,hull,hull
