@@ -393,38 +393,18 @@ public sealed class Bunker
     /// <summary>How far a site keeps from anything the planet stood on the ground, round the bunker and its way out, m.</summary>
     const float ClearBy = 12f;
 
-    /// <summary>Whether this bunker (chamber, stairwell and a few metres of the way out) has anything of the planet's on or by it.</summary>
-    public bool Crowded(SurfaceZone zone) => Crowded(zone, z => At(new Vector3(0f, 0f, z)), Steps);
+    /// <summary>Tests: false searches without keeping clear of the planet's own things (to count what they would have crowded).</summary>
+    public static bool KeepsClear = true;
 
-    /// <summary>Whether anything stands on or by a bunker of this many steps, given its frame (a point on its axis, by z).</summary>
-    static bool Crowded(SurfaceZone zone, Func<float, Vector3> onAxis, int steps)
+    /// <summary>What of the planet's (places, ruins, wrecks, roads, rail, power, town, city) stands on or by this bunker: its chamber, stairwell and a few metres of the way out.</summary>
+    public IEnumerable<string> Crowding(SurfaceZone zone) => Crowding(zone, z => At(new Vector3(0f, 0f, z)), Steps);
+
+    /// <summary>What stands on or by a bunker of this many steps, given its frame (a point on its axis, by z): the planet lays it all out before the bunker has a site, so the search asks.</summary>
+    static IEnumerable<string> Crowding(SurfaceZone zone, Func<float, Vector3> onAxis, int steps)
     {
         float z0 = StepZ(steps) - 5f, z1 = RoomZ * Cell + 0.25f;
-        return Occupied(zone, onAxis((z0 + z1) * 0.5f), MathF.Sqrt(MathF.Pow(RoomX * Cell + 0.25f, 2) + MathF.Pow((z1 - z0) * 0.5f, 2)) + ClearBy);
-    }
-
-    /// <summary>
-    /// Whether any place (and its yard), ruin, house or wreck's site reaches within a circle on the ground:
-    /// what the planet stands there is laid out before the bunker has a site, so the search asks.
-    /// </summary>
-    static bool Occupied(SurfaceZone zone, Vector3 at, float radius)
-    {
-        PlanetSurface.World.PlanetWorld planet = zone.Planet;
-        bool Reaches(double cx, double cz, double halfX, double halfZ)
-        {
-            Vector3 q = planet.NearestCopy(new Vector3((float)cx, at.Y, (float)cz), at);
-            float dx = MathF.Max(MathF.Abs(q.X - at.X) - (float)halfX, 0f), dz = MathF.Max(MathF.Abs(q.Z - at.Z) - (float)halfZ, 0f);
-            return dx * dx + dz * dz < radius * radius;
-        }
-        bool Stamped(GalHack.Terrain.TerrainStamp s) => Reaches((s.MinX + s.MaxX) * 0.5, (s.MinZ + s.MaxZ) * 0.5, s.ReachX, s.ReachZ);
-        if (planet.Pois.Any(p => p.Stamps.Any(Stamped))) return true;
-        if (planet.Infra.Ruins.Any(r => Stamped(r.Stamp))) return true;
-        return planet.Infra.Wrecks.Any(w =>
-        {
-            var (x, z) = w.World(w.Width * 0.5f, w.Length * 0.5f);
-            float half = MathF.Sqrt(w.Width * w.Width + w.Length * w.Length) * 0.5f;
-            return Reaches(x, z, half, half);
-        });
+        Vector3 mid = onAxis((z0 + z1) * 0.5f);
+        return zone.Planet.Occupants(mid.X, mid.Z, MathF.Sqrt(MathF.Pow(RoomX * Cell + 0.25f, 2) + MathF.Pow((z1 - z0) * 0.5f, 2)) + ClearBy);
     }
 
     /// <summary>The room's floor height and the steps to the surface for a spot and a heading, if the ground there will do.</summary>
@@ -473,7 +453,7 @@ public sealed class Bunker
                 if (!level) continue;
                 // Nothing stands on the bunker or over its way out: no place, hulk, ruin or wreck
                 // (the planet laid them out knowing only the landing site, not where the bunker goes).
-                if (Crowded(zone, z => At(0f, z), k)) continue;
+                if (KeepsClear && Crowding(zone, z => At(0f, z), k).Any()) continue;
                 Vector3 c = At(0f, 0f);
                 return (new N.Vector3(c.X, shifted, c.Z), k);
             }

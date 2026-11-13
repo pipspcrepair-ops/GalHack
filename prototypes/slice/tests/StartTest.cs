@@ -76,6 +76,11 @@ public partial class StartTest : Node
         for (int i = 0; i < args.Length - 1; i++) if (args[i] == "--seeds") int.TryParse(args[i + 1], out random);
         _exitOnly = args.Contains("--exit-only");
         var seeds = new List<ulong>();
+        if (args.Contains("--crowd"))
+        {
+            foreach (int x in Crowd(random)) yield return x;
+            yield break;
+        }
 
         // Two fresh games, nothing pinned: each rolls its own world.
         if (WorldChoice.FromArgs(args) == null)
@@ -109,6 +114,37 @@ public partial class StartTest : Node
 
     readonly List<string> _failedWorlds = new();
 
+    /// <summary>
+    /// -- --crowd --seeds N: no walk, no physics. On N fresh worlds the start site is found without keeping clear of the
+    /// planet's things, and what each kind of them would have crowded is counted (what the guard is for).
+    /// </summary>
+    IEnumerable<int> Crowd(int worlds)
+    {
+        var counts = new SortedDictionary<string, int>();
+        int crowded = 0, found = 0;
+        Bunker.KeepsClear = false;
+        for (int i = 0; i < worlds; i++)
+        {
+            var game = new Game.Game { Interactive = false, World = WorldChoice.Fresh("random") };
+            AddChild(game);
+            var watch = Stopwatch.StartNew();
+            while (game.Bunker == null && watch.Elapsed.TotalSeconds < 120) yield return 0;
+            if (game.Bunker != null)
+            {
+                found++;
+                List<string> kinds = game.Bunker.Crowding(game.Zone).Distinct().ToList();
+                if (kinds.Count > 0) crowded++;
+                foreach (string k in kinds) counts[k] = counts.GetValueOrDefault(k) + 1;
+                GD.Print($"  {game.World}: {(kinds.Count == 0 ? "clear" : string.Join(", ", kinds))}");
+            }
+            game.QueueFree();
+            for (int k = 0; k < 5; k++) yield return 0;
+        }
+        Bunker.KeepsClear = true;
+        GD.Print($"crowded: {crowded} of {found} sites; by kind: {string.Join(", ", counts.Select(c => $"{c.Key} {c.Value}"))}");
+        _passes++;
+    }
+
     /// <summary>-- --exit-only: just the way-out check on each world (cheap, for many worlds).</summary>
     bool _exitOnly;
 
@@ -120,7 +156,8 @@ public partial class StartTest : Node
     static string Covered(Game.Game game)
     {
         Bunker b = game.Bunker;
-        if (b.Crowded(game.Zone)) return "a place, ruin or wreck stands on it or by it";
+        var crowding = b.Crowding(game.Zone).Distinct().ToList();
+        if (crowding.Count > 0) return $"the planet's {string.Join(", ", crowding)} stand on it or by it";
         Vector3 across = (b.At(new Vector3(1f, 0f, 0f)) - b.At(Vector3.Zero)).Normalized();
         var space = game.Zone.GetWorld3D().DirectSpaceState;
         var spots = new List<Vector3>();
