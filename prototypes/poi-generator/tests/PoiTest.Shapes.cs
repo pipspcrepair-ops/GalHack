@@ -81,7 +81,7 @@ public partial class PoiTest
                 string kind = ShapeKind(inst);
                 var t = tally.TryGetValue(kind, out var x) ? x : tally[kind] = new long[names.Length];
                 t[0]++;
-                AuditShapes(plain.Blocks, inst.Blocks, t);
+                AuditShapes(plain.Blocks, inst.Blocks, inst.Layout.Occupied, t);
             }
         foreach (var (kind, t) in tally)
             GD.Print($"      coherent {kind,-14} " + string.Join(", ", names.Select((n, i) => $"{t[i]} {n}")));
@@ -90,36 +90,44 @@ public partial class PoiTest
     }
 
     /// <summary>Tallies into <paramref name="t"/> (from index 1) how what the shaping changed sits against its neighbours.</summary>
-    static void AuditShapes(BlockGrid before, BlockGrid g, long[] t)
+    static readonly int[] _dbg = new int[10];
+    static void AuditShapes(BlockGrid before, BlockGrid g, CellMask occ, long[] t)
     {
         var shaped = new HashSet<Int3>();
         foreach (var (c, b) in g.Blocks())
             if (b.Type != before.Get(c).Type && (BlockInfo.IsShaped(b.Type) || b.Type is BlockType.Ramp or BlockType.Corner or BlockType.InvCorner or BlockType.Pillar)) shaped.Add(c);
         t[1] += shaped.Count;
-        bool Open(Int3 q) { Block b = g.Get(q); return !BlockInfo.Collides(b.Type) || BlockInfo.IsFinish(b.Type); }
+        bool Open(Int3 q) => Shaping.Clear(g.Get(q)) && (q.Y > Assembler.GroundY || occ[q]); // (rock is solid)
         IEnumerable<Int3> Ring(Int3 c, Int3 a) =>
             from i in Enumerable.Range(-1, 3) from y in Enumerable.Range(-1, 3) where (i, y) != (0, 0) select c + a * i + Int3.Up * y;
-        // A frame's cell: beside a way through the wall in its plane.
-        bool InFrame(Int3 c, Dir d) => Ring(c, d.RotateCw(1).Vec()).Any(q => Shaping.Opening(g.Get(q)) || Open(q) && Open(q + d.Vec()) && Open(q - d.Vec()));
+        bool Roofed(Int3 q) => q.Y <= Assembler.GroundY || Enumerable.Range(1, 16).Any(k => BlockInfo.Collides(g.Get(q + Int3.Up * k).Type));
+        bool InFrame(Int3 c, Dir d) => Shaping.Framed(c, d, g.Get, Open);
         static bool Run(BlockType ty) => ty is BlockType.Ramp or BlockType.Chamfer or BlockType.Half or BlockType.Partition;
         bool Same(Int3 q, Block b) => shaped.Contains(q) && g.Get(q).Type == b.Type && g.Get(q).Facing == b.Facing;
         // How a run along a, open to o, ends at n: 0 fine, 1 loose (the plain face goes on), 2 a corner left unturned, 3 a profile change.
         int End(Int3 n, Block b, Dir o, Dir a)
         {
             Block nb = g.Get(n);
-            if (shaped.Contains(n))
-            {
-                if (Shaping.Turns(b.Type) is var (outer, inner) && (nb.Type == outer || nb.Type == inner)) return 0;
-                return Run(nb.Type) && b.Type != BlockType.Partition && Open(n + o.Vec()) ? 3 : 0;
-            }
+            if (shaped.Contains(n) && Shaping.Turns(b.Type) is var (outer, inner) && (nb.Type == outer || nb.Type == inner)) return 0;
+            // Where the face stops being this face: closed in front, out of doors where the run is under a roof or the
+            // other way, the edge of a ceiling's slab, a thin wall going on from a thick one.
+            Dir front = b.Type == BlockType.Partition ? b.Facing : o;
+            if (!Open(n + front.Vec()) || Roofed(n + front.Vec()) != Roofed(n - a.Vec() + front.Vec())) return 0;
+            if (!o.IsHorizontal() && Dirs.Horizontal.Any(h => Open(n + h.Vec()))) return 0;
+            bool thin = o.IsHorizontal() && !BlockInfo.IsFullCube(g.Get(n - o.Vec()).Type) && !Shaping.Opening(g.Get(n - o.Vec()));
+            // The face turns a corner at n: left unturned if the other face's run of this profile comes off it.
+            if (o.IsHorizontal() && !Open(n) && Open(n + a.Vec()))
+                return Shaping.Turns(b.Type) != null && Same(n - o.Vec(), b with { Facing = a.Opposite() }) ? 2 : 0;
+            if (shaped.Contains(n)) return Run(nb.Type) && nb.Facing.IsHorizontal() && (b.Type == BlockType.Partition) == (nb.Type == BlockType.Partition) && !(thin && b.Type != BlockType.Partition) ? 3 : 0;
             if (!BlockInfo.IsFullCube(nb.Type) || Shaping.Opening(nb)) return 0;
-            if (b.Type == BlockType.Partition) return Open(n + b.Facing.Vec()) && Open(n - b.Facing.Vec()) && !InFrame(n, b.Facing) ? 1 : 0;
-            if (!Open(n + o.Vec())) return 0;
-            bool corner = o.IsHorizontal() && Open(n + a.Vec());
-            if (b.Type == BlockType.Half) return corner || o.IsHorizontal() && InFrame(n, o) ? 0 : 1;
-            return corner ? 2 : 1;
+            if (b.Type == BlockType.Partition) return Open(n - b.Facing.Vec()) && !Open(n + Int3.Up) && !Open(n + Int3.Down) && !InFrame(n, b.Facing) ? 1 : 0;
+            if (thin) return 0;
+            return b.Type == BlockType.Half && o.IsHorizontal() && InFrame(n, o) ? 0 : 1;
         }
         var bays = new Dictionary<Int3, bool>();
+        string B(Int3 q) { Block x = g.Get(q); return $"{x.Type}/{x.Role}/{x.Facing}{(shaped.Contains(q) ? "*" : "")}"; }
+        string Around(Int3 q) => string.Join(" ", Dirs.All.Select(d => $"{d.ToString()[0]}:{B(q + d.Vec())}"));
+        void Dbg(int cat, Int3 c, Int3 n) { if (_dbg[cat]++ % 300 == 0 && _dbg[cat] < 3000) GD.Print($"DBG {cat} at {c} {B(c)} | n {n} {B(n)} | n-around {Around(n)} | c-around {Around(c)}"); }
         foreach (Int3 c in shaped)
         {
             Block b = g.Get(c);
@@ -129,7 +137,7 @@ public partial class PoiTest
                 Int3 s = b.Type == BlockType.Beam ? b.Facing.Vec() : Int3.Up, end = c;
                 if (Same(c - s, b)) continue;
                 while (Same(end + s, b)) end += s;
-                if (Open(c - s) || Open(end + s)) t[9]++;
+                if (Open(c - s) || Open(end + s)) { t[9]++; Dbg(9, c, end); }
                 continue;
             }
             BlockType straight = b.Type is BlockType.Corner or BlockType.InvCorner ? BlockType.Ramp : BlockType.Chamfer;
@@ -138,7 +146,7 @@ public partial class PoiTest
                 // Its two runs: an outer corner's along the faces from it, an inner one's from the cell behind both.
                 Dir f = b.Facing, f3 = f.RotateCw(3);
                 int k = b.Type == po ? 1 : -1;
-                if (new[] { (c + f.Vec() * k, f3), (c + f3.Vec() * k, f) }.Any(arm => !Same(arm.Item1, b with { Type = straight, Facing = arm.Item2 }))) t[6]++;
+                if (new[] { (c + f.Vec() * k, f3), (c + f3.Vec() * k, f) }.Any(arm => !Same(arm.Item1, b with { Type = straight, Facing = arm.Item2 }) && !(shaped.Contains(arm.Item1) && g.Get(arm.Item1).Type == po))) { t[6]++; Dbg(6, c, c + f.Vec() * k); }
                 continue;
             }
             if (!Run(b.Type)) continue;
@@ -163,20 +171,21 @@ public partial class PoiTest
             while (Same(last + along.Vec(), b)) { last += along.Vec(); n++; }
             t[2]++;
             var ends = new[] { End(c - along.Vec(), b, side, along.Opposite()), End(last + along.Vec(), b, side, along) };
-            foreach (int e in ends) if (e > 0) t[e == 1 ? 4 : e == 2 ? 5 : 7]++;
+            for (int q = 0; q < 2; q++) if (ends[q] > 0) { t[ends[q] == 1 ? 4 : ends[q] == 2 ? 5 : 7]++; Dbg(ends[q] == 1 ? 4 : ends[q] == 2 ? 5 : 7, q == 0 ? c : last, q == 0 ? c - along.Vec() : last + along.Vec()); }
             if (n == 1 && ends.Any(e => e > 0)) t[3]++;
             // An inner corner left unturned: the run it meets comes off the cell beyond its end.
             if (side.IsHorizontal() && Shaping.Turns(b.Type) != null)
                 foreach (Dir s in new[] { along, along.Opposite() })
                 {
                     Int3 j = (s == along ? last : c) + s.Vec();
-                    if (BlockInfo.IsFullCube(g.Get(j).Type) && Same(j + side.Vec(), b with { Facing = s })) t[5]++;
+                    if (BlockInfo.IsFullCube(g.Get(j).Type) && Same(j + side.Vec(), b with { Facing = s })) { t[5]++; Dbg(5, c, j); }
                 }
         }
         t[4] += bays.Count(h => !h.Value);
-        // No panel or thin wall cuts into an opening's frame.
+        // No panel or thin wall cuts into an opening's frame, in the opening's own wall.
+        bool Way(Int3 q) => Open(q) || Shaping.Opening(g.Get(q));
         foreach (var (c, b) in g.Blocks())
-            if (Shaping.Opening(b) && new[] { Dir.East.Vec(), Dir.South.Vec() }.Any(a => Ring(c, a).Any(q =>
+            if (Shaping.Opening(b) && new[] { Dir.East, Dir.South }.Any(a => Way(c + a.RotateCw(1).Vec()) && Way(c - a.RotateCw(1).Vec()) && Ring(c, a.Vec()).Any(q =>
                     shaped.Contains(q) && g.Get(q).Type is BlockType.Half or BlockType.Partition && g.Get(q).Facing.IsHorizontal())))
                 t[8]++;
     }
