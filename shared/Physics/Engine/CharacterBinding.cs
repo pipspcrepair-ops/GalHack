@@ -203,9 +203,11 @@ public sealed class CharacterBinding : BodyBinding
             if (!Ray(b.Position + b.Up * 0.1f, b.Position - b.Up * ScreeReach, out _, out N.Vector3 under) || !Steep(under)) return;
             _scree = under;
         }
-        N.Vector3 v = b.Velocity, across = _scree * N.Vector3.Dot(v, _scree), along = v - across;
-        if (N.Vector3.Dot(along, b.Up) >= 0f || along.LengthSquared() <= most * most) return;
-        b.Velocity = across + N.Vector3.Normalize(along) * most;
+        // Held to the slope (nothing carries it off into the air while it slides: a walk off a steep hillside is a fall
+        // only where the ground falls away), and no faster than a slide down it.
+        N.Vector3 v = b.Velocity, across = _scree * System.MathF.Min(0f, N.Vector3.Dot(v, _scree)), along = v - _scree * N.Vector3.Dot(v, _scree);
+        if (N.Vector3.Dot(along, b.Up) >= 0f) return;
+        b.Velocity = across + (along.LengthSquared() > most * most ? N.Vector3.Normalize(along) * most : along);
         Character.Velocity = b.Velocity.ToGodot();
     }
 
