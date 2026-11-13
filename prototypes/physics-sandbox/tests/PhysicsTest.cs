@@ -232,13 +232,13 @@ public partial class PhysicsTest : Node
         for (float t = 0f; t < riding.LetGoAfter - 0.05f; t += 1f / 60f) held &= !Riding.LetGo(riding, rider, false, false, 0.3f, 1f / 60f);
         bool touchedAgain = !Riding.LetGo(riding, rider, false, true, 0.1f, 1f / 60f) && Riding.OutOfContactFor(rider) == 0f;
         bool lost = false;
-        for (float t = 0f; t < riding.LetGoAfter + 0.05f; t += 1f / 60f) lost |= Riding.LetGo(riding, rider, false, false, 0.3f, 1f / 60f);
+        for (float t = 0f; t < riding.LetGoAfter + 0.05f; t += 1f / 60f) lost |= Riding.LetGo(riding, rider, false, false, riding.LetGoNear + 0.1f, 1f / 60f);
         bool far = Riding.LetGo(riding, rider, false, true, riding.LetGoDistance + 0.1f, 1f / 60f);
         bool jump = Riding.LetGo(riding, rider, true, true, 0f, 1f / 60f);
         rider.OnOuterHull = false;
         bool inside = !Riding.LetGo(riding, rider, true, false, 9f, 10f);
         Check(held && touchedAgain && lost && far && jump && inside,
-            $"letting go of a hull: a jump at once, {riding.LetGoAfter:0.0#} s out of contact or {riding.LetGoDistance:0.0#} m off it, never from inside");
+            $"letting go of a hull: a jump at once, {riding.LetGoAfter:0.0#} s out of contact more than {riding.LetGoNear:0.0#} m off it, or {riding.LetGoDistance:0.0#} m off it, never from inside");
 
         // Turning a walk frame onto a new up keeps the heading as near as it can.
         var walker = new Body { Rotation = MathX.Yaw(0.6f) };
@@ -1168,7 +1168,8 @@ public partial class PhysicsTest : Node
         float drop = (cabin.OffFloor + settle) * Dt;
         Check(cabin.Stayed && inside && cabin.Steps >= 1 && drop < 0.35f,
             $"inside a cabin under core gravity, the same half-block lip is stepped up onto without a stop, and walked off the far side: " +
-            $"over it in {cabin.Ticks * Dt:F2} s, then a {drop:F2} s drop to the floor beyond, as off any step under gravity");
+            $"over it in {cabin.Ticks * Dt:F2} s, then a {drop:F2} s drop to the floor beyond, as off any step under gravity " +
+            $"(feet at {p.Body.Position.Y:F2} m, {cabin.Steps} steps up, stayed {cabin.Stayed}, indoors {indoors}, on floor {p.Body.OnFloor}, longest off {cabin.LongestOff:F2} s)");
         _w.Remove(barge);
         p.PlaceOutside(_w.Ground(1.5f, 8.5f) + N.Vector3.UnitY * 0.05f);
         for (int i = 0; i < 5; i++) yield return 0;
