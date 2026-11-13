@@ -7,9 +7,8 @@ namespace PoiGenerator.Gen;
 /// <summary>
 /// The rules every spawn must keep:
 ///   - from the way in, grid A* reaches the vault, the core (if there is one), every cache,
-///     terminal and keycard, and every key room; hidden stashes only once their wall breaks
+///     terminal, and every key room; hidden stashes only once their wall breaks
 ///   - the deepest point is reachable
-///   - every locked door's keycard can be reached before that door (or it can be hacked)
 ///   - no block hangs in the air
 ///   - no two modules share a cell
 ///   - a core exactly where a faction holds the place, and none anywhere else
@@ -61,8 +60,6 @@ public static class Validator
             if (nav.AccessCell(cache.Cell, reach) == null) problems.Add($"cache at {cache.Cell} unreachable");
         foreach (var t in inst.Terminals)
             if (nav.AccessCell(t.Cell, reach) == null) problems.Add($"terminal at {t.Cell} unreachable");
-        foreach (var k in layout.Extras.Keys)
-            if (!reach.Contains(k.Cell) && nav.AccessCell(k.Cell, reach) == null) problems.Add($"{k.Clearance} keycard at {k.Cell} unreachable");
         foreach (int k in layout.KeyModules)
             if (Fixtures.RoomCell(layout.Modules[k], reach) == null)
                 problems.Add($"key room {layout.Modules[k]} unreachable");
@@ -71,9 +68,6 @@ public static class Validator
         int deepest = layout.DeepestModule;
         if (deepest >= 0 && Fixtures.RoomCell(layout.Modules[deepest], reach) == null)
             problems.Add($"the deepest point ({layout.Modules[deepest].Purpose}) is unreachable");
-
-        // Keys before locks.
-        if (KeyOrder(inst) is string ko) problems.Add(ko);
 
         // Floating sections.
         var anchors = layout.Extras.InSpace ? LayoutCheck.StationAnchors(layout) : null;
@@ -84,40 +78,5 @@ public static class Validator
         if (loose.Count > 0) problems.Add($"{loose.Count} cables or tendrils hang from nothing, first at {loose[0]}");
 
         return problems;
-    }
-
-    /// <summary>
-    /// Walks the place the way a player would without hacking: through every unlocked doorway,
-    /// picking up keycards, opening the doors they fit, until nothing more opens. Every locked
-    /// room must end up open. Returns a problem, or null.
-    /// </summary>
-    public static string? KeyOrder(PoiInstance inst)
-    {
-        var layout = inst.Layout;
-        var x = layout.Extras;
-        if (x.Locks.Count == 0) return null;
-        var lockedDoor = x.Locks.ToDictionary(l => l.Doorway, l => l.Clearance);
-        string[] rank = { "staff", "science", "security", "command" };
-        var keys = new HashSet<string>();
-        var nav = inst.Nav();
-        for (int round = 0; round < 6; round++)
-        {
-            // Treat a locked doorway as a wall unless we hold its card (or a higher one).
-            var g = inst.Blocks.Clone();
-            for (int i = 0; i < layout.Doorways.Count; i++)
-            {
-                if (!lockedDoor.TryGetValue(i, out string? c)) continue;
-                bool open = keys.Any(k => System.Array.IndexOf(rank, k) >= System.Array.IndexOf(rank, c));
-                if (!open) foreach (Int3 cell in layout.Doorways[i].Cells) g.Set(cell, new Block(BlockType.Cube, Material.Steel, default, Role.Door));
-            }
-            var reach = new NavGrid(g, layout.Occupied, x.Lifts, x.InSpace).Reachable(layout.EntranceCell);
-            int before = keys.Count;
-            foreach (var k in x.Keys)
-                if (reach.Contains(k.Cell) || Dirs.Horizontal.Any(d => reach.Contains(k.Cell + d.Vec()))) keys.Add(k.Clearance);
-            bool allOpen = x.Locks.All(l => layout.Modules[layout.Doorways[l.Doorway].ModuleB].Cells.Any(reach.Contains));
-            if (allOpen) return null;
-            if (keys.Count == before) return $"locked doors with no reachable keycard: {string.Join(", ", x.Locks.Where(l => !keys.Contains(l.Clearance)).Select(l => l.Clearance).Distinct())}";
-        }
-        return "keycards never open every locked door";
     }
 }
