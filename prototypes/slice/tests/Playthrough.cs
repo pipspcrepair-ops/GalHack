@@ -889,6 +889,18 @@ public sealed class Playthrough
         return zone.GroundAt(near.X + distance, near.Z);
     }
 
+    /// <summary>
+    /// A clearing: every tree and boulder rooted within this reach of a point is felled for good. Vessels collide with trunks
+    /// and crowns, so a craft tested among them is held by them. Returns how many went.
+    /// </summary>
+    public static int Clearing(SurfaceZone zone, Vector3 at, float reach)
+    {
+        int n = 0;
+        foreach (var (solid, _) in zone.Streamer.SolidsNear(at, reach, canopies: true).ToList())
+            if (zone.Planet.Felled.Add(solid.Id)) { zone.Streamer.Fell(solid.Id); n++; }
+        return n;
+    }
+
     /// <summary>A ruin, a road's works or a building within a span of this point: they stand on the flat ground, and the ground's height doesn't show them.</summary>
     bool RuinAt(Vector3 ground, float span)
     {

@@ -192,7 +192,9 @@ public partial class DamageTest : Node
     {
         Structure s = Zone.Data.Blueprint("starter.gbp");
         s.Name = "Crasher";
-        Vessel v = Vessel.Spawn(Zone, s, Spot(30f, 14f), 0f, landed: false);
+        Playthrough.Clearing(Zone, Spot(30f, 0f).ToGodot(), 12f); // vessels collide with trunks and crowns: a crown would catch it
+        // Low over the ground: the Skiff's flight assist brakes at over 100 m/s² on its 1 m grid thrusters, and from higher it sets down gently.
+        Vessel v = Vessel.Spawn(Zone, s, Spot(30f, 5f), 0f, landed: false);
         var (min, max) = s.Bounds();
         int total = s.Count;
         float hp0 = s.Blocks().Sum(b => b.block.Hp);

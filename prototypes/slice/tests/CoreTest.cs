@@ -86,6 +86,7 @@ public partial class CoreTest : Node
         _game.Zone.Weather.Sim.Snap(Weather.Model.WeatherKind.Clear);
         _game.Zone.Wildlife.Frozen = true;
         _site = _play.FlatSpot(_game.Start, 70f, 0.6f, 0.4f, span: 14f);
+        Playthrough.Clearing(_game.Zone, _site, 50f); // room to fly: vessels collide with trunks and crowns
         _game.Survivor.PlaceOutside((_site + new Vector3(0f, 1f, 8f)).ToNumerics());
         foreach (int x in _drive.Wait(90)) yield return x;
 
@@ -150,6 +151,9 @@ public partial class CoreTest : Node
         foreach (int x in _drive.Wait(5)) yield return x;
     }
 
+    /// <summary>What may hold a craft up or down: the trees standing within 12 m of it (vessels collide with their trunks and crowns).</summary>
+    string Near(Vessel v) => $"{_game.Zone.Streamer.FloraNear(v.Body.Position.ToGodot(), 12f).Count()} trees within 12 m, at {v.Body.Position.ToGodot()}, {v.Body.Velocity.Length():F1} m/s";
+
     IEnumerable<int> Hold(Key key, int ticks)
     {
         _game.Controls.Hold(key);
@@ -190,7 +194,7 @@ public partial class CoreTest : Node
             yield return 0;
         }
         Check(falling < -4f, $"it loses lift and falls ({falling:F1} m/s at worst)");
-        Check(v.AboveGround < 4f, $"and comes down ({v.AboveGround:F1} m up)");
+        Check(v.AboveGround < 4f, $"and comes down ({v.AboveGround:F1} m up; {Near(v)})");
 
         // The fall is real: what it broke is the player's doing, so the blocks are counted afresh from here.
         blocks = CoreCraft.Blocks(s);
@@ -204,6 +208,7 @@ public partial class CoreTest : Node
         GD.Print("-- fitted with hover plates and thrusters, one craft does both --");
         // A fresh craft: the fall above can break anything on the first, legs included.
         _site = _play.FlatSpot(_game.Start, 110f, 2.4f, 0.4f, span: 14f);
+        Playthrough.Clearing(_game.Zone, _site, 50f);
         _game.Survivor.PlaceOutside((_site + new Vector3(0f, 1f, 8f)).ToNumerics());
         foreach (int x in _drive.Wait(60)) yield return x;
         s = CoreCraft.Skiff(Data);
@@ -243,7 +248,7 @@ public partial class CoreTest : Node
         Check(new Vector2(v.Body.Velocity.X, v.Body.Velocity.Z).Length() > new Vector2(before.X, before.Z).Length() * 0.4f, $"it keeps going, no reset ({before.Length():F0} m/s then {v.Body.Velocity.Length():F0})");
         foreach (int x in Hold(Key.Space, 70)) yield return x;
         foreach (int x in _drive.Wait(30)) yield return x;
-        Check(v.AboveGround > 8f, $"Capital Mode climbs ({v.AboveGround:F0} m up)");
+        Check(v.AboveGround > 8f, $"Capital Mode climbs ({v.AboveGround:F0} m up; {Near(v)})");
         float was = v.Body.Position.Y;
         blocks = CoreCraft.Blocks(s);
         foreach (int x in Switch(v, CoreMode.Hover)) yield return x;
