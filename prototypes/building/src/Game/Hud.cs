@@ -132,7 +132,7 @@ public partial class Hud : CanvasLayer
             _tool.Text = $"PAINT SPRAYER   {BuildController.PaintColorNames[Build.PaintBase].ToUpperInvariant()}" +
                          $"   ·   {p.Pattern.ToString().ToLowerInvariant()} in {BuildController.PaintColorNames[Build.PaintAccent].ToLowerInvariant()}" +
                          (p.IsLamp ? $"   ·   GLOWING {p.Shape.ToString().ToUpperInvariant()} {p.Lamp.Value.Anim.ToString().ToUpperInvariant()}  (L shape, Shift+L mode)" : "") +
-                         $"   ·   stencil {stencil}   ·   {p.Texture.ToString().ToLowerInvariant()}   ·   grime {p.Grime}{sym}";
+                         $"   ·   stencil {stencil}   ·   grime {p.Grime}{sym}";
         }
     }
 
@@ -321,7 +321,7 @@ public partial class Hud : CanvasLayer
     const string PaintHelp =
         "LMB spray face (hold to sweep, Shift whole block)   ·   RMB strip to bare metal   ·   MMB pick paint\n" +
         "1-9 colour   ·   Shift 1-9 accent   ·   wheel / Tab pattern   ·   [ ] stencil digit   ·   - = grime\n" +
-        "R texture   ·   X V Z mirror   ·   O air visor   ·   P back to the multi-tool   ·   F1 hide help";
+        "X V Z mirror   ·   O air visor   ·   P back to the multi-tool   ·   F1 hide help";
 
     const string VisorCode = @"
 shader_type canvas_item;

@@ -14,9 +14,9 @@ namespace Slice.Tests;
 /// <summary>
 /// The start, on many worlds: fresh games roll fresh seeds, and on every one (three random worlds,
 /// or -- --seeds N of them, the soak; each seed printed) the start site is
-/// found and the castaway, with the game's own inputs only, wakes in the cryopod, opens it, takes
+/// found and the sleeper, with the game's own inputs only, wakes in the cryopod, opens it, takes
 /// the locker's kit, climbs the stairwell to the surface, walks 50 m away, comes back down into
-/// the bunker and out again. No teleports: the castaway never moves more than a stride in a tick,
+/// the bunker and out again. No teleports: the sleeper never moves more than a stride in a tick,
 /// and is never rescued from inside anything.
 ///
 /// Run: .\tools\test.ps1 -Project prototypes/slice -Scene res://tests/StartTest.tscn
@@ -207,7 +207,7 @@ public partial class StartTest : Node
         }
         if (game.Bunker == null || game.Phase != Phase.Playing)
         {
-            Fail($"{world}: no start site found, or the castaway never woke");
+            Fail($"{world}: no start site found, or the sleeper never woke");
             _failedWorlds.Add($"{world.Key} {world.Seed}");
             game.QueueFree();
             yield return 0;
@@ -232,9 +232,9 @@ public partial class StartTest : Node
         {
             if (r.Body != game.Survivor.Body) return;
             rescues++;
-            GD.Print($"  (rescued the castaway from {r.Inside}: {r.From} -> {r.To})");
+            GD.Print($"  (rescued the sleeper from {r.Inside}: {r.From} -> {r.To})");
         };
-        // A teleport watch: the castaway's feet never jump further than a stride in one tick.
+        // A teleport watch: the sleeper's feet never jump further than a stride in one tick.
         float worstStep = 0f;
         Vector3 last = game.Survivor.WorldFeet;
         IEnumerable<int> Watched(IEnumerable<int> steps)

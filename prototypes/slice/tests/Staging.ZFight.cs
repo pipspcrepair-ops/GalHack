@@ -13,7 +13,7 @@ using WeatherKind = Weather.Model.WeatherKind;
 namespace Slice.Tests;
 
 /// <summary>
-/// Z-fighting in the drawn game (--view=zfight; Screenshot forces a city and a capital hulk): the castaway stands
+/// Z-fighting in the drawn game (--view=zfight; Screenshot forces a city and a capital hulk): the sleeper stands
 /// at the start's place, a city lot, a flavour ruin, the hulk, places of other families and beside the hover bike,
 /// and at each every drawn opaque face within --radius metres (30) goes through <see cref="Coplanar"/>. The pairs
 /// are printed by source, worst first ("ZFIGHT" lines), and the worst --shots (3) pairs over all stops are framed
@@ -105,7 +105,7 @@ public sealed partial class Staging
             Measure($"ruin {ruin.Layout.Name} {ruin.State}");
         }
 
-        // The hover bike, set down beside the castaway.
+        // The hover bike, set down beside the sleeper.
         GiveBike();
         foreach (int x in Play.Select(1)) yield return x;
         foreach (int x in _drive.LookAt(_game.Survivor.WorldFeet + new Vector3(0f, -1f, 0f) + Flat(_game.Survivor.WorldLook()) * 2.5f, 6)) yield return x;

@@ -53,7 +53,7 @@ public static class Validator
         else if (nav.AccessCell(vaultCache.Cell, reach) is not Int3)
             problems.Add("the way in doesn't reach the vault");
 
-        if (inst.HasCore && nav.AccessCell(inst.CoreCell, reach) is not Int3)
+        if (inst.HasCore && !inst.CoreReached(nav, reach))
             problems.Add("the way in doesn't reach the core");
 
         foreach (var cache in inst.Caches.Where(c => !c.Secret))

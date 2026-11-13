@@ -22,7 +22,7 @@ public sealed partial class Staging
         foreach (int x in _drive.Wait(30)) yield return x;
     }
 
-    /// <summary>A flat spot on the ground near the castaway, the trees felled all round it so the view is clear.</summary>
+    /// <summary>A flat spot on the ground near the sleeper, the trees felled all round it so the view is clear.</summary>
     N.Vector3 DamageSite()
     {
         Vector3 g = Play.FlatSpot(_game.Start, 24f, 1.0f, 0.6f);

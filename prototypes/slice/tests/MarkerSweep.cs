@@ -10,7 +10,7 @@ namespace Slice.Tests;
 
 /// <summary>
 /// The markers through a slow turn, in a window (it measures drawn frames; see MarkerSweep.manual). On a fresh random
-/// world the castaway climbs out, map marks go down round them at several distances, and the view turns through
+/// world the sleeper climbs out, map marks go down round them at several distances, and the view turns through
 /// 360 degrees level, then through 360 more while it pans up and down. After every drawn frame, each marker the visor
 /// drew is held against the real camera's projection of its target (<c>Camera3D.UnprojectPosition</c>):
 /// an unpinned, unnudged marker sits within <see cref="Tolerance"/> px of it; no marker moves more than its target's

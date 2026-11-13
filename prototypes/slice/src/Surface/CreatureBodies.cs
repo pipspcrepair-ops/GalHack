@@ -12,7 +12,7 @@ using N = System.Numerics;
 namespace Slice.Surface;
 
 /// <summary>
-/// Creatures are as solid as they look. Each creature near the castaway gets collision taken
+/// Creatures are as solid as they look. Each creature near the sleeper gets collision taken
 /// from its own generated body (the rig's hit spheres, the same ones shots land on): its torso
 /// and head as capsules, the neck joining them where it is long, and on a big creature its legs
 /// down to the feet, so a giant is solid at head height and a small critter is a small thing to
@@ -73,7 +73,7 @@ public partial class CreatureBodies : Node3D
         _free.Push(p);
     }
 
-    /// <summary>Every tick: shapes onto the creatures in range, creatures eased out of the castaway, vessels meeting creatures.</summary>
+    /// <summary>Every tick: shapes onto the creatures in range, creatures eased out of the sleeper, vessels meeting creatures.</summary>
     public void KeepOff()
     {
         var clock = System.Diagnostics.Stopwatch.StartNew();
@@ -115,7 +115,7 @@ public partial class CreatureBodies : Node3D
             float d = flat.Length(), range = deep ? DeepRange : RangeOf(c);
             if (d > range || MathF.Abs(at.Y - feet.Y) > range) continue;
             _seen.Add(c);
-            // A creature that ended up inside the castaway is nudged out (the wildlife sim moves on
+            // A creature that ended up inside the sleeper is nudged out (the wildlife sim moves on
             // its own and knows nothing of the player's body).
             float radius = Mathf.Clamp(c.Species.Stats.Radius, 0.2f, 2.5f);
             float clear = radius + Slice.Player.Survivor.Radius;
@@ -169,13 +169,13 @@ public partial class CreatureBodies : Node3D
         for (int i = 0; i < _caps.Count; i++)
         {
             Pose(parts[i], _caps[i].A + origin, _caps[i].B + origin, _caps[i].R);
-            // Never shoved by a body: a shape that has come down round the castaway lets go until they part
+            // Never shoved by a body: a shape that has come down round the sleeper lets go until they part
             // (a character controller pushed out of it could go through a wall).
             parts[i].Body.CollisionLayer = Round(_caps[i].A + origin, _caps[i].B + origin, _caps[i].R, feet) ? 0u : Layers.Props;
         }
     }
 
-    /// <summary>Whether a capsule overlaps the castaway's, feet at a point.</summary>
+    /// <summary>Whether a capsule overlaps the sleeper's, feet at a point.</summary>
     static bool Round(Vector3 a, Vector3 b, float r, Vector3 feet)
     {
         const float R = Slice.Player.Survivor.Radius, H = Slice.Player.Survivor.Height;

@@ -44,6 +44,7 @@ public partial class PlacePerf : Node
     readonly List<double> _script = new();
     readonly List<string> _hitches = new();
     int _gc0, _gc2;
+    bool _failed;
 
     public override void _Ready()
     {
@@ -85,6 +86,7 @@ public partial class PlacePerf : Node
             Wildlife.Shutdown.Quit(this, 0);
             return;
         }
+        JoltWatch.Install();
         DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Disabled);
         Engine.MaxFps = 0;
         if (_args.TryGetValue("family", out string family) && !_args.ContainsKey("asrolled")) PoiSiting.ForceFamily = family;
@@ -110,11 +112,12 @@ public partial class PlacePerf : Node
         catch (Exception e)
         {
             GD.PrintErr($"FAIL perf: {e}");
+            _failed = true;
             more = false;
         }
         if (more) return;
         SetPhysicsProcess(false);
-        Wildlife.Shutdown.Quit(this, 0);
+        Wildlife.Shutdown.Quit(this, _failed ? 1 : 0);
     }
 
     public override void _Process(double delta)
@@ -168,6 +171,8 @@ public partial class PlacePerf : Node
         string line = string.Create(CultureInfo.InvariantCulture,
             $"PERF {stage,-16} frames {t.Count,4} avg {t.Average(),6:F1} p50 {P(0.5),6:F1} p95 {P(0.95),6:F1} p99 {P(0.99),6:F1} worst {t[^1],7:F1} over33 {hitches,3} | cpu {_cpu.DefaultIfEmpty(0).Average(),5:F1} gpu {_gpu.DefaultIfEmpty(0).Average(),5:F1} | prims {_prims / 1000 / t.Count,6}k draws {_draws / t.Count,5} objs {_objs / t.Count,5} shadow {_shadowPrims / 1000 / t.Count,6}k/{_shadowDraws / t.Count,5} | script {_script.DefaultIfEmpty(0).Average(),5:F1} nodes {Performance.GetMonitor(Performance.Monitor.ObjectNodeCount),6} active {Performance.GetMonitor(Performance.Monitor.Physics3DActiveObjects),4} pairs {Performance.GetMonitor(Performance.Monitor.Physics3DCollisionPairs),5}");
         GD.Print(line);
+        var (bodies, shapes) = JoltWatch.Census(GetTree().Root);
+        GD.Print($"PERF {stage,-16} live bodies {bodies}, shapes {shapes}, failed to create {JoltWatch.Failed}; physics process {Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess) * 1000.0:F2} ms");
         GD.Print(string.Create(CultureInfo.InvariantCulture, $"PERF {stage,-16} alloc a frame {(GC.GetAllocatedBytesForCurrentThread() - _mainAlloc) / 1024.0 / t.Count,7:F1} KB main thread, {(GC.GetTotalAllocatedBytes() - _allAlloc) / 1024.0 / t.Count,7:F1} KB all threads; collections gen0 {GC.CollectionCount(0) - _gcAt0} gen1 {GC.CollectionCount(1) - _gcAt1} gen2 {GC.CollectionCount(2) - _gcAt2}; physics ticks a frame {(Engine.GetPhysicsFrames() - _ticksAt) / (double)t.Count:F2}, their callbacks worst {_physics:F1} ms; video memory {Performance.GetMonitor(Performance.Monitor.RenderVideoMemUsed) / 1048576.0:F0} MB"));
         if (_split != null) GD.Print($"PERF {stage,-16} script by system, cpu ms: {_split.Report()}");
         if (_allocs != null) GD.Print($"PERF {stage,-16} allocated, by type: {_allocs.Take()}");

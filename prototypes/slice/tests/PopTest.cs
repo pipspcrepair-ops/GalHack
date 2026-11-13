@@ -13,7 +13,7 @@ using Slice.Game;
 namespace Slice.Tests;
 
 /// <summary>
-/// Pop-in: on a fresh random world, the castaway walks, rides a hover bike and flies low toward
+/// Pop-in: on a fresh random world, the sleeper walks, rides a hover bike and flies low toward
 /// places, on the real clock, and everything the drawing changes on the way is logged (<see cref="PopLog"/>):
 /// flora, ground cover, places' far and merged blocks, city tiles, places' full detail, props and
 /// creatures, with how far off each was and how much of the screen changed in one frame. A route
@@ -37,6 +37,10 @@ public partial class PopTest : Node
 
     /// <summary>A change of less than this share of a thing in one frame is a fade (it takes ten frames or more), not a pop, however big the thing.</summary>
     const float Sudden = 0.1f;
+
+    /// <summary>The frame budget, ms (60 fps), and the routes that hold it on every world: each of these fails over it, the others are measured only. None yet: a walk or a flight into a city is 45 ms (13 Nov); add a route once it holds.</summary>
+    const double Budget = 1000.0 / 60.0;
+    static readonly string[] Held = { };
 
     Game.Game _game;
     IEnumerator<int> _run;
@@ -291,6 +295,8 @@ public partial class PopTest : Node
             GD.Print($"  {name}: frame mean {frames.Average():F1} ms; GPU mean {_gpu.Average():F2} ms (99th {_gpu.OrderBy(x => x).ElementAt((int)(_gpu.Count * 0.99)):F1}), render CPU mean {_cpu.Average():F2} ms (99th {_cpu.OrderBy(x => x).ElementAt((int)(_cpu.Count * 0.99)):F1}), draw calls mean {_draws.Average():F0} ({_shadowDraws.Average():F0} in shadows), primitives {_prims.Average() / 1000:F0}k, objects {_objects.Average():F0}; nodes {Performance.GetMonitor(Performance.Monitor.ObjectNodeCount)}; {(GC.GetAllocatedBytesForCurrentThread() - _alloc) / 1024.0 / frames.Count:F0} KB allocated a frame on the main thread, collections gen0 {GC.CollectionCount(0) - _gc0} gen2 {GC.CollectionCount(2) - _gc2}");
             GD.Print($"  {name}: script by system, cpu ms: {_split.Report()}");
         }
+        if (Held.Contains(name) && frames.Count > 0)
+            Check(_report || frames.Average() <= Budget, $"{name}: the frame holds the budget: {frames.Average():F1} ms on average (at most {Budget:F1})");
         foreach (var g in pops.GroupBy(p => (p.Kind, p.What)).OrderBy(g => g.Key.Kind))
         {
             var seen = g.Where(p => Hard(p) || Seen(p)).ToList();

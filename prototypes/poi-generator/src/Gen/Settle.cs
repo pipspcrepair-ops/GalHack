@@ -127,6 +127,7 @@ public static class Settle
         Block b = g.Get(below);
         return b.IsAir ? nav.IsRock(below) : BlockInfo.Supports(b.Type) || BlockInfo.IsSlope(b.Type) || BlockInfo.IsCornerSlope(b.Type)
             || b.Type is BlockType.Table or BlockType.Meal or BlockType.Bench or BlockType.Machine or BlockType.Tank or BlockType.Shelf or BlockType.Rubble
-                or BlockType.Growth or BlockType.Bunk or BlockType.Cache;
+                or BlockType.Growth or BlockType.Bunk or BlockType.Cache
+            || Shapes.FlatToward(b, Dir.Up) || BlockInfo.IsShaped(b.Type) && b.Type != BlockType.Partition && b.Type != BlockType.Beam;
     }
 }

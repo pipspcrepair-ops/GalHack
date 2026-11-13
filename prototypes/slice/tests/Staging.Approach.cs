@@ -7,7 +7,7 @@ using PlanetSurface.Poi;
 namespace Slice.Tests;
 
 /// <summary>
-/// A place coming into view at hover-bike speed: the castaway is carried toward the nearest place
+/// A place coming into view at hover-bike speed: the sleeper is carried toward the nearest place
 /// past 900 m at --speed m/s (38 by default) a metre and a half over the ground, looking at it, and
 /// a frame is kept at each of --at metres off (700,500,350,250,150), with what stands there printed.
 /// Run windowed without --fixed-fps, so the loading runs on its real clock.

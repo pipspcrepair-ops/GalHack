@@ -21,12 +21,12 @@ using Structure = GalHack.Structures.Structure;
 namespace Slice.Tests;
 
 /// <summary>
-/// Phase 2 played through, headless, by the game's own controls: the castaway builds the Skiff,
+/// Phase 2 played through, headless, by the game's own controls: the sleeper builds the Skiff,
 /// flies it straight up out of the atmosphere into orbit, flies to a derelict, steps out and
 /// floats across, forces its dead hull door, goes in (dark, no gravity), takes what is in its hold,
 /// salvages a block, claims it with a core on the way out, floats back to the Skiff, flies over
 /// a chosen point on the globe, turns to a chosen heading, descends, and lands there. Every tick
-/// it checks that the castaway and the Skiff are in exactly one zone; it checks the crossings'
+/// it checks that the sleeper and the Skiff are in exactly one zone; it checks the crossings'
 /// mapping (the map point under you and your heading), the ledger, that everything on the surface
 /// waited exactly as it was left, and the frame cost in orbit.
 ///
@@ -92,8 +92,8 @@ public partial class OrbitTest : Node
     void Fail(string what) => _ = Check(false, what);
 
     /// <summary>
-    /// Every tick: the castaway and the Skiff are each registered in exactly one zone's world, the
-    /// zone the game says they are in, and the castaway's body node is under that zone (or in a
+    /// Every tick: the sleeper and the Skiff are each registered in exactly one zone's world, the
+    /// zone the game says they are in, and the sleeper's body node is under that zone (or in a
     /// cabin inside it). Never in both, never in neither.
     /// </summary>
     void WatchZones()
@@ -109,14 +109,14 @@ public partial class OrbitTest : Node
             _zoneViolations++;
             _firstViolation ??= $"{what}: in {n} worlds at {_clock.Elapsed.TotalSeconds:F1} s";
         }
-        Look(_game.Survivor.Body, _game.Survivor.Zone, "the castaway");
+        Look(_game.Survivor.Body, _game.Survivor.Zone, "the sleeper");
         if (_skiff != null && (_game.Survivor.Seated == _skiff || _skiff.Zone == _game.Zone)) Look(_skiff.Body, _skiff.Zone, "the Skiff");
         Node n = _game.Survivor.Node;
         while (n != null && n is not SurfaceZone) n = n.GetParent();
         if (n != _game.Zone)
         {
             _zoneViolations++;
-            _firstViolation ??= $"the castaway's node is under {n?.Name ?? "nothing"}, not the zone they are in, at {_clock.Elapsed.TotalSeconds:F1} s";
+            _firstViolation ??= $"the sleeper's node is under {n?.Name ?? "nothing"}, not the zone they are in, at {_clock.Elapsed.TotalSeconds:F1} s";
         }
     }
 
@@ -169,7 +169,7 @@ public partial class OrbitTest : Node
         foreach (int x in Descent()) yield return x;
         foreach (int x in Persistence()) yield return x;
         foreach (int x in Handovers()) yield return x;
-        Check(_zoneViolations == 0, $"every tick the castaway and the Skiff were in exactly one zone, the one the game says ({_zoneViolations} ticks wrong{(_firstViolation != null ? ": " + _firstViolation : "")})");
+        Check(_zoneViolations == 0, $"every tick the sleeper and the Skiff were in exactly one zone, the one the game says ({_zoneViolations} ticks wrong{(_firstViolation != null ? ": " + _firstViolation : "")})");
     }
 
     // ---- Setting up ----------------------------------------------------------------------------
@@ -260,14 +260,14 @@ public partial class OrbitTest : Node
         dx = Math.Min(dx, orbit.Map.Width - dx);
         double off = Math.Sqrt(dx * dx + (mz - up.MapZ) * (mz - up.MapZ));
         Check(off < 2.0 && v.Zone == orbit && _game.Survivor.Seated == v,
-            $"the globe has the Skiff over the map point it left from ({off:F2} m off), with the castaway still in its seat");
+            $"the globe has the Skiff over the map point it left from ({off:F2} m off), with the sleeper still in its seat");
         N.Quaternion inGlobe = N.Quaternion.Normalize(N.Quaternion.Conjugate(orbit.Turn) * up.RotationAfter);
         var (_, local) = orbit.Map.ToSurface(orbit.ToGlobe(up.PositionAfter), inGlobe);
         double after = GlobeMap.HeadingDegrees(local);
         Check(HeadingError(after, heading) < 1.0, $"its heading over the globe is the heading it climbed with: {after:F1}° (was {heading:F1}°; north stays north)");
         Check(up.Audit.Count == 0, $"the crossing lost and doubled nothing: the ledger's totals and zones match the game's ({string.Join("; ", up.Audit)})");
-        Check(_game.Spaceflight.Ledger.ZoneOf("castaway")?.StartsWith("cabin/") == true && _game.Spaceflight.Ledger.ZoneOf(IdOf(v)) == ZoneLedger.Orbit,
-            $"on disk the Skiff is in orbit and the castaway in its cabin (crossing committed before anything moved: {_game.Spaceflight.Ledger.LastCommit?.Written} record written)");
+        Check(_game.Spaceflight.Ledger.ZoneOf("sleeper")?.StartsWith("cabin/") == true && _game.Spaceflight.Ledger.ZoneOf(IdOf(v)) == ZoneLedger.Orbit,
+            $"on disk the Skiff is in orbit and the sleeper in its cabin (crossing committed before anything moved: {_game.Spaceflight.Ledger.LastCommit?.Written} record written)");
         Check(_game.Surface.ProcessMode == ProcessModeEnum.Disabled && _game.Surface.Vessels.Contains(_game.Bunker.Ruin),
             "the surface waits, frozen, everything on it as it was left (the bunker among it)");
     }
@@ -596,7 +596,7 @@ public partial class OrbitTest : Node
         if (_left == null) yield break;
         var now = _game.Spaceflight.Holders().ToList();
         var missing = new List<string>();
-        foreach (Holder h in _left.Where(h => h.Zone == ZoneLedger.Surface && h.Id != "castaway"))
+        foreach (Holder h in _left.Where(h => h.Zone == ZoneLedger.Surface && h.Id != "sleeper"))
         {
             Holder back = now.FirstOrDefault(n => n.Id == h.Id);
             if (back.Id == null || back.Blocks != h.Blocks || back.Zone != h.Zone || !back.Items.Equals(h.Items)) missing.Add(h.Name);

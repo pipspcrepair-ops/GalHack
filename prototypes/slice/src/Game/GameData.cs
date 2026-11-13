@@ -171,7 +171,7 @@ public sealed class SliceRules
         /// <summary>What the escape pod's locker holds, by item id.</summary>
         /// <summary>The starting kit, in the bunker's locker.</summary>
         public Dictionary<string, int> StartKit { get; set; } = new();
-        /// <summary>What the castaway starts with on the toolbar, by item id, in slot order.</summary>
+        /// <summary>What the sleeper starts with on the toolbar, by item id, in slot order.</summary>
         public List<string> Toolbar { get; set; } = new();
     }
 

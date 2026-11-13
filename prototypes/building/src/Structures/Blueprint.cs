@@ -136,10 +136,7 @@ public static class Blueprint
                     if (Enum.TryParse(v, true, out Pattern pat) && !int.TryParse(v, out _)) p = p with { Pattern = pat };
                     else error($"unknown pattern '{v}'");
                     break;
-                case "texture":
-                    if (Enum.TryParse(v, true, out FaceTexture tex) && !int.TryParse(v, out _)) p = p with { Texture = tex };
-                    else error($"unknown texture '{v}'");
-                    break;
+                case "texture": break; // old paint lines named a surface; the plating owns that now
                 case "stencil":
                     if (v.Length == 1 && char.IsAsciiDigit(v[0])) p = p with { Stencil = (byte)v[0] };
                     else error($"stencil must be one digit, not '{v}'");
@@ -441,7 +438,6 @@ public static class Blueprint
         var sb = new StringBuilder($"paint {name} base={Paint.Hex(p.Base)}");
         if (p.Accent != Paint.DefaultAccent) sb.Append($" accent={Paint.Hex(p.Accent)}");
         if (p.Pattern != Pattern.None) sb.Append($" pattern={p.Pattern.ToString().ToLowerInvariant()}");
-        if (p.Texture != FaceTexture.Panel) sb.Append($" texture={p.Texture.ToString().ToLowerInvariant()}");
         if (p.Stencil != 0) sb.Append($" stencil={(char)p.Stencil}");
         if (p.Grime != 0) sb.Append($" grime={p.Grime}");
         if (p.IsLamp) sb.Append($" lamp={p.Shape.ToString().ToLowerInvariant()} light={p.Lamp.Value.ToText()}");

@@ -13,7 +13,7 @@ using N = System.Numerics;
 namespace Slice.Game;
 
 /// <summary>
-/// The start of a game, kept apart from the rest so it can be swapped: the castaway wakes in the
+/// The start of a game, kept apart from the rest so it can be swapped: the sleeper wakes in the
 /// one working cryopod of a bunker buried at the start site, gets up (F opens the pod), takes the
 /// starting kit from the locker and climbs the stairwell out to the surface.
 /// </summary>
@@ -48,7 +48,7 @@ public partial class Game
         }
     }
 
-    /// <summary>The castaway in their cryopod, the kit in the locker, the bunker their respawn point.</summary>
+    /// <summary>The sleeper in their cryopod, the kit in the locker, the bunker their respawn point.</summary>
     void WakeInBunker()
     {
         if (_site is not Bunker.Site site) throw new InvalidOperationException($"no start site for a bunker on {World} ({Zone.Planet.Pois.Count} places on the planet: {string.Join(", ", System.Linq.Enumerable.Select(Zone.Planet.Pois, q => $"{q.Name} {q.Instance?.State} {new Vector2(q.Origin.X - Zone.LandingSite.X, q.Origin.Z - Zone.LandingSite.Z).Length():F0} m off, {q.Siting}"))})");
@@ -85,7 +85,7 @@ public partial class Game
     /// <summary>Whether everything that stands round the start is in: a place's blocks, the roads' ruins, wrecks and bridges.</summary>
     public bool WorldStanding => Zone.Pois.Built && Zone.Infra.Planned && Zone.Infra.Built;
 
-    /// <summary>Playing once the ground round the castaway is in, and what stands on it: nothing appears after you've come up the stairs.</summary>
+    /// <summary>Playing once the ground round the sleeper is in, and what stands on it: nothing appears after you've come up the stairs.</summary>
     void Waking()
     {
         if (Survivor == null || !Zone.Streamer.ReadyAround(Survivor.WorldFeet, 1, needCollision: true)) return;
@@ -117,6 +117,6 @@ public partial class Game
         Survivor.Yaw = MathF.Atan2(-outward.X, -outward.Z);
     }
 
-    /// <summary>The castaway is awake and can move (fires once).</summary>
+    /// <summary>The sleeper is awake and can move (fires once).</summary>
     public event Action Woke;
 }

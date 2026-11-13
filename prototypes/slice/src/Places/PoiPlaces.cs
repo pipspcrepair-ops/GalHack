@@ -362,7 +362,7 @@ public partial class PoiPlaces : Node3D
     }
 
     /// <summary>
-    /// Stands the nearest place once, all at once, while the game is still loading (the castaway
+    /// Stands the nearest place once, all at once, while the game is still loading (the sleeper
     /// asleep): the first time anything is built costs the most (the runtime compiles its code then),
     /// so that is paid here and never in play. A place out of reach is taken down again at once.
     /// </summary>
@@ -454,13 +454,13 @@ public partial class PoiPlaces : Node3D
     /// <summary>What a look ray's hit is, in a place: the place, the cell just inside the face, and a door or deco piece if it was one.</summary>
     public readonly record struct Hit(Place Place, Int3 Cell, Place.Door Door, DecoHit Piece);
 
-    public bool Resolve(GodotObject collider, Vector3 point, Vector3 normal, out Hit hit)
+    public bool Resolve(GodotObject collider, Vector3 point, Vector3 normal, out Hit hit, int shape = -1)
     {
         hit = default;
         Place p = PlaceOf(collider);
         if (p == null) return false;
         Place.Door door = p.DoorOf(collider);
-        DecoHit piece = p.PieceOf(collider);
+        DecoHit piece = p.PieceOf(collider, shape);
         Int3 cell = p.CellAt(point - normal * 0.05f);
         hit = new Hit(p, cell, door, piece);
         return true;

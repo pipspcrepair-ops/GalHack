@@ -96,7 +96,7 @@ public sealed partial class Staging
         if (body == null)
         {
             // STAGING: the hunt didn't land (the creature out of reach): a body set down in front
-            // of the castaway with what that creature drops, to show the loot view.
+            // of the sleeper with what that creature drops, to show the loot view.
             Vector3 at = _game.Zone.GroundAt(_game.Survivor.WorldFeet.X, _game.Survivor.WorldFeet.Z) + _game.Survivor.WorldLook() * 2.5f;
             at = _game.Zone.GroundAt(at.X, at.Z);
             int[] size = _game.Zone.Data.Rules.Containers.Corpse;

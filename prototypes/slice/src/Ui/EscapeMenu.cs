@@ -20,7 +20,7 @@ public enum EscapeQuestion { None, Quit, NewGame }
 /// <see cref="OptionsSection"/>) and QUIT TO DESKTOP, which asks first. The game never pauses (it is built for co-op): the world
 /// runs on behind the menu, which is see-through like every menu, so you keep an eye on what is
 /// coming. Each tick's key presses and clicks are the menu's (it reads them before the game does),
-/// while held movement keys still reach the castaway, as with the Tab menu. The mouse is freed
+/// while held movement keys still reach the sleeper, as with the Tab menu. The mouse is freed
 /// while it is open and taken back on resume. A second Esc closes it, after backing out of a key
 /// prompt or the quit question.
 ///
