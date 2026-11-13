@@ -45,7 +45,7 @@ public partial class PlacePerf
         if (only.Contains("country")) foreach (int x in Scene("country", country, country + new Vector3(500f, 0f, 120f), 1.7f)) yield return x;
 
         // A town: a place with two others within 400 m, from 30 m off its edge, looking at its middle.
-        var places = world.Pois.Where(s => s.Instance != null && s.Siting != "city").ToList();
+        var places = world.Pois.Where(s => s.Layout != null && s.Siting != "city").ToList();
         PoiSite town = places.Where(s => places.Count(o => o != s && Flat(o.Origin, s.Origin) < 400f) >= 2).OrderBy(_ => rng.Next()).FirstOrDefault() ?? places.OrderBy(_ => rng.Next()).FirstOrDefault();
         if (town != null && only.Contains("town"))
         {
@@ -60,7 +60,7 @@ public partial class PlacePerf
         if (city == null || !only.Contains("city")) yield break;
         // The city's middle: the street point within half its radius with the most tower along it, looking along it.
         Vector3 centre = world.NearestCopy(new Vector3((float)city.CenterX, 0f, (float)city.CenterZ), start);
-        var towers = city.Sites.Select(s => (At: Middle(s), Tall: (float)s.Instance.Blocks.Size.Y)).ToList();
+        var towers = city.Sites.Select(s => (At: Middle(s), Tall: (float)s.Layout.Blocks.Size.Y)).ToList();
         (Vector3 At, Vector3 Way, float Score) best = (centre, Vector3.Forward, -1f);
         foreach (var street in city.Streets)
             for (int i = 0; i + 1 < street.Count; i++)
@@ -134,7 +134,7 @@ public partial class PlacePerf
                 foreach (int x in OcclusionCheck(shots, "doorway", new Transform3D(Basis.LookingAt(gate - from, Vector3.Up), from))) yield return x;
             }
             // A half-ruined building: its holes in the walls are the risk.
-            var ruin = world.Pois.Where(s => s.Instance?.State == PoiGenerator.Gen.PoiState.Ruined).OrderBy(s => Flat(Middle(s), best.At)).FirstOrDefault();
+            var ruin = world.Pois.Where(s => s.State == PoiGenerator.Gen.PoiState.Ruined).OrderBy(s => Flat(Middle(s), best.At)).FirstOrDefault();
             if (ruin != null)
             {
                 Vector3 mid = Middle(ruin), way = (best.At - mid).Normalized();

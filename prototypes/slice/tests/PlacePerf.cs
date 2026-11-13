@@ -71,7 +71,7 @@ public partial class PlacePerf : Node
                 var grand = world.Pois.Where(s => s.Family.Tags.Contains("grand")).Select(s =>
                 {
                     double dx = Planets.Gen.Mathx.WrapDelta(s.Center.X - world.Landing.X, world.Width), dz = Planets.Gen.Mathx.WrapDelta(s.Center.Z - world.Landing.Y, world.Height);
-                    return (s.Family.Id, Off: Math.Sqrt(dx * dx + dz * dz), s.Instance.State, s.Instance.Occupancy);
+                    return (s.Family.Id, Off: Math.Sqrt(dx * dx + dz * dz), s.State, s.Occupancy);
                 }).OrderBy(g => g.Off).ToList();
                 GD.Print($"PERF survey seed {w.Seed}: {string.Join("; ", grand.Take(4).Select(g => $"{g.Id} {g.Off:F0} m {g.State} {g.Occupancy}"))}");
                 if (_args.TryGetValue("routes", out string path))
@@ -96,13 +96,35 @@ public partial class PlacePerf : Node
         if (_args.TryGetValue("state", out string st)) PoiSiting.ForceState = Enum.Parse<PoiState>(st, true);
         ProcessPhysicsPriority = 100;
         ProcessPriority = 1_000_000;
-        _game = new Game.Game { Interactive = false, SkipIntro = true, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), WorldChoice.Tested) };
-        AddChild(_game);
-        _drive = new Driver(_game);
+        // --places-at-load=1: every place built while the world loads, the old way. --compare-load=1: the old way, then the same world again with the place builder.
+        // --compare-load=new: the builder's run first (the second game in a process runs on a bigger heap, so either order is worth a look).
+        PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad = _args.ContainsKey("places-at-load") || _args.ContainsKey("compare-load") && _args["compare-load"] != "new";
+        NewGame(WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), WorldChoice.Tested));
         RenderingServer.ViewportSetMeasureRenderTime(GetViewport().GetViewportRid(), true);
         _clock.Start();
         _probe = new PlanetSurface.FrameProbe(this);
-        _run = Scenario().GetEnumerator();
+        _run = Runs().GetEnumerator();
+    }
+
+    void NewGame(WorldChoice world)
+    {
+        _game = new Game.Game { Interactive = false, SkipIntro = true, World = world };
+        AddChild(_game);
+        _drive = new Driver(_game);
+    }
+
+    IEnumerable<int> Runs()
+    {
+        GD.Print($"PERF mode: places {(PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad ? "built at load (old)" : "built after standing")}");
+        foreach (int x in Scenario()) yield return x;
+        if (!_args.ContainsKey("compare-load")) yield break;
+        WorldChoice world = _game.World;
+        _game.QueueFree();
+        for (int i = 0; i < 10; i++) yield return 0;
+        PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad = !PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad;
+        NewGame(world);
+        GD.Print($"PERF mode: places {(PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad ? "built at load (old)" : "built after standing")}, the same world");
+        foreach (int x in Scenario()) yield return x;
     }
 
     public override void _PhysicsProcess(double delta)
@@ -205,10 +227,18 @@ public partial class PlacePerf : Node
         zone.Weather.Bridge.Calm = true;
         zone.Sky.TimeOfDay = 0.4;
         zone.Weather.Sim.Snap(Weather.Model.WeatherKind.Clear);
+        // From the sleeper standing, climbing out, while the place builder works (at least as long as a stage, so a world
+        // built the old way is timed over the same window).
+        Begin();
+        var since = Stopwatch.StartNew();
+        PlanetSurface.Poi.PoiBuilds builds = zone.Pois.Builds;
         foreach (int x in _drive.ClimbOut(_game.Bunker)) yield return x;
+        while ((_times.Count < Frames || builds.AllInRangeMs < 0 || zone.Pois.Unshown(builds.Range) > 0) && since.Elapsed.TotalSeconds < 120) yield return 0;
+        GD.Print($"PERF building: all built and drawn {since.Elapsed.TotalSeconds:F1} s after standing ({builds.Built} by the builder, {zone.Pois.Unshown(builds.Range)} still plain)");
+        End(PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad ? "building (old)" : "building");
         GD.Print($"PERF world {_game.World}; places {zone.Planet.Pois.Count}, grand {zone.Planet.Pois.Count(s => s.Family.Tags.Contains("grand"))}");
         foreach (var s in zone.Planet.Pois.OrderBy(s => _game.Places.DistanceTo(s, _game.Survivor.WorldFeet)))
-            GD.Print($"PERF site {s.Family.Id} '{s.Name}' {s.Instance.State} {_game.Places.DistanceTo(s, _game.Survivor.WorldFeet):F0} m, footprint {s.Footprint.Max.X - s.Footprint.Min.X}x{s.Footprint.Max.Z - s.Footprint.Min.Z}, blocks {s.Instance.Blocks.CountBlocks()}");
+            GD.Print($"PERF site {s.Family.Id} '{s.Name}' {s.State} {_game.Places.DistanceTo(s, _game.Survivor.WorldFeet):F0} m, footprint {s.Footprint.Max.X - s.Footprint.Min.X}x{s.Footprint.Max.Z - s.Footprint.Min.Z}, {(s.Built is { } b ? $"blocks {b.Blocks.CountBlocks()}" : "not built yet")}");
         foreach (int x in Measure("start", 120)) yield return x;
         if (_args.ContainsKey("audit"))
         {
@@ -253,10 +283,10 @@ public partial class PlacePerf : Node
     {
         var zone = _game.Zone;
         var places = _game.Places;
-        GD.Print($"PERF place {site.Family.Id} '{site.Name}' {site.Instance.State}");
+        GD.Print($"PERF place {site.Family.Id} '{site.Name}' {site.State}");
         Vector3 Centre() => zone.Planet.NearestCopy(new Vector3((site.Footprint.Min.X + site.Footprint.Max.X) * 0.5f, site.Origin.Y + 8f, (site.Footprint.Min.Z + site.Footprint.Max.Z) * 0.5f), _game.Survivor.WorldFeet);
         Vector3 Gate() => zone.Planet.NearestCopy(new Vector3(site.Entrance.X + 0.5f, site.Entrance.Y, site.Entrance.Z + 0.5f), _game.Survivor.WorldFeet);
-        Int3 f = site.Instance.Layout.EntranceFacing.Vec();
+        Int3 f = site.Layout.EntranceFacing.Vec();
         Vector3 outward = new Vector3(f.X, 0f, f.Z);
         if (outward.LengthSquared() < 0.1f) outward = Vector3.Right;
 

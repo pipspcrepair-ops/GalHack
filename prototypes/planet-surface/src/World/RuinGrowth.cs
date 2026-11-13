@@ -27,13 +27,11 @@ public static class RuinGrowth
     /// <summary>The smallest a ruin's tree may be, against the biome's own smallest (0.7): stunted, but itself.</summary>
     const float SmallestScale = 0.5f;
 
-    /// <summary>The trees that fit the planet's ruins, by the scatter id each one takes.</summary>
-    public static Dictionary<long, PlantedFlora> Plan(IReadOnlyList<PoiSite> sites, PlanetTerrainSource source, GroundPalette pal, double width, double height)
+    /// <summary>The trees that fit one ruin, as it is built, into the palette's planted set by the scatter id each one takes.</summary>
+    public static void Plant(PoiSite site, PoiInstance inst, PlanetTerrainSource source, GroundPalette pal, double width, double height)
     {
-        var planted = new Dictionary<long, PlantedFlora>();
-        foreach (PoiSite site in sites)
+        var planted = pal.Planted;
         {
-            PoiInstance inst = site.Instance;
             int stood = 0;
             foreach (GrowthSpot spot in inst.Growth)
             {
@@ -71,12 +69,10 @@ public static class RuinGrowth
                 if (scale < SmallestScale) continue;
 
                 long id = FarBuilder.ScatterIdAt(x, z);
-                if (planted.ContainsKey(id)) continue;
-                planted[id] = new PlantedFlora(rule.Kind, x, z, foot, scale, Hash.Unit(h, 4) * MathF.Tau, pal.Flora.Tint(plant, Hash.Unit(h, 5), x, z), plant);
+                if (!planted.TryAdd(id, new PlantedFlora(rule.Kind, x, z, foot, scale, Hash.Unit(h, 4) * MathF.Tau, pal.Flora.Tint(plant, Hash.Unit(h, 5), x, z), plant))) continue;
                 stood++;
             }
         }
-        return planted;
     }
 
     /// <summary>Whether a tree of a kind and scale stands clear of every wall, roof and floor round its root.</summary>

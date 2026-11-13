@@ -62,7 +62,8 @@ public partial class PoiTest
                 cost.Add(Math.Min(first, sw.Elapsed.TotalMilliseconds));
                 double share = cost[^1] / Math.Max(1, build[^1]);
                 if (cost[^1] > 15) GD.Print($"      ornament on {f.Id}: {cost[^1]:0.0} ms of a {build[^1]:0} ms build ({100 * share:0.0}%)");
-                if (share > worstShare) { worstShare = share; worstPlace = $"{f.Id} {cost[^1]:0.0} of {build[^1]:0} ms"; }
+                // (A pass of under 1 ms is inside the timer's noise on a 2 ms shed: its share says nothing.)
+                if (cost[^1] >= 1 && share > worstShare) { worstShare = share; worstPlace = $"{f.Id} {cost[^1]:0.0} of {build[^1]:0} ms"; }
                 added.Add(orn.Ornaments.Sum(p => p.Cells.Count));
                 string sig = Ornament.For(orn).Sig;
                 ulong who = Ornament.Builder(orn);

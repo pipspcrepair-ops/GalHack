@@ -1,0 +1,62 @@
+# Place types: what a kind of place has, each thing's real size range in metres, and how the things relate.
+# No positions and no layouts: the planner (src/Gen/Arch/PlaceTypes.cs) rolls every spawn's own sketch from
+# these, from its seed and its world's size, so no two spawns of a type are the same place.
+#
+#   type <id>
+#     name     what it is called
+#     tech     the tech levels it is built at
+#     share    the most of its world's area it may take (the planner shortens the long parts toward
+#              their lower ends to fit, and says so when even those don't)
+#     part <id> <kind> [what] [sizes] [relation]...
+#       kinds     surface <cover>      levelled made ground, laid like the world's roads (tarmac, concrete, gravel, dirt)
+#                 building <program>   a building of data/programs.txt, sized here, with its rooms planned at build
+#                 tanks | lights | fence | road <cover>
+#       sizes     len w depth h r count cab shoulder concourse: a..b is rolled by each spawn
+#       relations along <part> gap a..b      parallel to it, its centre line gap metres off, either side
+#                 between <a> <b>            across the ground from one to the other (links)
+#                 beside <part> [away <q>]   off a long side of it (the side away from q), touching or gap a..b off
+#                 ends <part>                in line off each end of it
+#                 faces <part>               its front (doors, cab) turned to it
+#                 near <part> a..b, far <part> a..           how far from it (edge to edge)
+#                 sees <part>                nothing taller stands between it and that part
+#                 from <part>                a road from it out to the place's gate
+#                 round a..b                 round everything, that far out
+#
+# Figures are real ones: ICAO Annex 14 (runway code 4: 45 m wide, shoulders to 60 m; taxiway code E 23 m;
+# runway to parallel taxiway centre lines 168 to 190 m), FAA AC 150/5300-13 (aprons, hangar clearances),
+# approach lighting 420 m (simple) to 900 m (full); regional towers 30 to 50 m, hangar spans 45 to 60 m.
+
+type airport
+  name Airport
+  tech mid high
+  share 0.05
+  part runway   surface tarmac   len 1500..2500 w 45 shoulder 7.5
+  part taxiway  surface tarmac   w 23 along runway gap 168..190
+  part link     surface tarmac   w 23 count 3..5 between runway taxiway
+  part apron    surface concrete len 300..600 depth 150..250 beside taxiway away runway
+  part terminal building terminal len 120..200 depth 30..60 h 12..20 concourse 6 beside apron away taxiway faces apron
+  part tower    building control_tower len 10..14 depth 10..14 h 30..50 cab 8..12 beside apron away taxiway near terminal 20..250 sees runway
+  part hangar   building hangar count 2..5 len 45..60 depth 45..70 h 15..22 beside apron away taxiway faces apron gap 0..8
+  part fuel     tanks count 3..6 r 6..12 h 8..14 beside taxiway away runway far terminal 300..
+  part carpark  surface tarmac   len 80..200 depth 60..120 beside terminal away apron gap 8..20
+  part access   road tarmac      w 7..10 from carpark
+  part lights   lights           len 420..900 ends runway
+  part fence    fence            h 2..3 round 40..80
+
+# Low tech: an airstrip in the same proportions, from the same planner: an earth or gravel strip, a short
+# taxiway to a small hard standing, a hangar or two, a lookout, a fuel dump off to one side.
+type airstrip
+  name Airstrip
+  tech low
+  share 0.03
+  part runway   surface dirt     len 600..1200 w 18..30 shoulder 3
+  part taxiway  surface gravel   w 10..15 along runway gap 60..90
+  part link     surface gravel   w 10..15 count 2..3 between runway taxiway
+  part apron    surface gravel   len 80..160 depth 50..90 beside taxiway away runway
+  part terminal building terminal len 20..40 depth 12..20 h 4..8 beside apron away taxiway faces apron
+  part tower    building control_tower len 5..8 depth 5..8 h 8..15 cab 4..6 beside apron away taxiway near terminal 10..80 sees runway
+  part hangar   building hangar count 1..2 len 20..30 depth 20..30 h 6..9 beside apron away taxiway faces apron gap 0..4
+  part fuel     tanks count 1..3 r 2..4 h 3..5 beside taxiway away runway far terminal 80..
+  part carpark  surface dirt     len 20..50 depth 15..30 beside terminal away apron gap 4..10
+  part access   road dirt        w 4..6 from carpark
+  part fence    fence            h 1..2 round 15..30

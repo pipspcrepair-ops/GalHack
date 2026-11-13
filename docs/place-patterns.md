@@ -480,4 +480,18 @@ Ranges for the places agent to turn into generator settings and `LayoutCheck`-st
 | G14 | Spacing on the map | town places 30 to 60 m apart; wilderness 130 to 150 m median | satellites 100 to 500 m from their main | real destinations within 2 to 3 km of each other in a busy orbit |
 | G15 | Hidden features | excluded from G3 and G4; at most 5% of spawns hidden; 1 place in 10 with a secret cache | same | same |
 
+## 7. The standard a redone place must pass
+
+A place type is redone from `data/place-types.txt` (what it has, real size ranges, relations; never positions) and passes all of these before its old plan is deleted:
+
+| # | Standard | Proved by |
+|---|---|---|
+| R1 | Real proportions: every part inside its type's real range, rooms as tall and big as the real thing (P1, P2) | PoiTest Scale |
+| R2 | The study's rooms and flows, a guarded core vault and hidden rooms (section 2), no locks or key cards | PoiTest Standard, Hidden, NoLocks |
+| R3 | Everything agrees with its neighbours: nothing in or against a wall, no yard object on a building or laid ground, every door and bay reachable | PoiTest Yards, Roads, Coherent |
+| R4 | Furnished interiors, no bare shells | PoiTest Patterns |
+| R5 | Nothing bespoke: every spawn its own arrangement, counts, sizes and room plans; no fixed coordinates, no text | PoiTest Fresh |
+| R6 | Takes plating and welds on the 1 m grid | BuildTest on the place |
+| R7 | Holds the frame budget (16.7 ms) and doesn't pop in: its layout's share of new-world load is zero (a sketch only), its buildings stand up off the main thread | PoiTest TypeSizes (sketch cost), StartTest load line, PlacePerf |
+
 **Sources (all read-only, nothing copied):** 7 Days to Die `Data/Prefabs/POIs/*.xml`, `*.tts`, `*.blocks.nim`, `Data/Prefabs/RWGTiles/*.xml`, `Data/Config/rwgmixer.xml`, `Data/Config/biomes.xml`, `Data/Worlds/*/prefabs.xml`, `map_info.xml`, `biomes.png`. Empyrion `Content/Prefabs/*.epb`, `Content/Configuration/BlocksConfig.ecf`, `Content/Playfields/*/playfield_static.yaml`, `space_dynamic.yaml`, and the `+ExamplePlanet` and `+ExampleSpace` templates. The readers and scripts behind these figures live in the floor-plan reference folder (`docs/floorplan-refs/tools-09`, outside git) and a scratch folder.

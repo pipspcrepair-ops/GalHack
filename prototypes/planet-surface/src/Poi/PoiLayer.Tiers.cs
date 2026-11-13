@@ -78,11 +78,11 @@ public partial class PoiLayer
         {
             var place = new Place { Site = site };
             _places.Add(place);
-            BlockGrid g = site.Instance.Blocks;
-            CellMask occupied = site.Instance.Layout.Occupied;
+            // Its far mesh is made once it has been built (PoiBuilds); until then a plain block of its size stands for it.
             if (site.Siting != "city")
             {
-                place.LowMesh = Task.Run(() => Mesher.Coarse(g, occupied));
+                place.StandIn = StandIn(site);
+                AddChild(place.StandIn);
                 continue;
             }
             var key = ((int)Mathf.Floor(site.Origin.X / TileSize), (int)Mathf.Floor(site.Origin.Z / TileSize));
@@ -90,11 +90,32 @@ public partial class PoiLayer
             tile.Members.Add(place);
             _tileOf[place] = tile;
         }
-        double w = world.Map.WidthMeters, h = world.Map.HeightMeters;
-        foreach (Tile tile in tiles.Values)
+        _tiles.AddRange(tiles.Values);
+    }
+
+    static StandardMaterial3D _standIn;
+
+    /// <summary>A plain block over a place's footprint, as high as it stands: what shows of it until it has been built.</summary>
+    MeshInstance3D StandIn(PoiSite site)
+    {
+        _standIn ??= new StandardMaterial3D { AlbedoColor = new Color(0.46f, 0.45f, 0.43f), Roughness = 1f };
+        var lo = site.Footprint.Min;
+        var hi = site.Footprint.Max;
+        float top = site.Layout.Blocks.Min.Y + site.Layout.Blocks.Size.Y - 8; // (the layout's grid keeps 8 cells of air over the place)
+        var size = new Vector3(hi.X - lo.X + 1, Mathf.Max(2f, top), hi.Z - lo.Z + 1);
+        return new MeshInstance3D
         {
-            _tiles.Add(tile);
-            var members = tile.Members.Select(p => p.Site).ToList();
+            Name = "Stand-in " + site.Family.Id, Mesh = new BoxMesh { Size = size, Material = _standIn }, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+            Position = _world.NearestCopy(new Vector3((lo.X + hi.X + 1) * 0.5f, site.Origin.Y + size.Y * 0.5f, (lo.Z + hi.Z + 1) * 0.5f), _focus),
+        };
+    }
+
+    /// <summary>A city tile's far mesh, once every building in it has been built.</summary>
+    void StartTile(Tile tile)
+    {
+        double w = _world.Map.WidthMeters, h = _world.Map.HeightMeters;
+        var members = tile.Members.Select(p => p.Site).ToList();
+        {
             var anchor = tile.First.Origin;
             tile.Mesh = Task.Run(() =>
             {
@@ -102,7 +123,7 @@ public partial class PoiLayer
                 var all = new ChunkMesh();
                 foreach (PoiSite s in members)
                 {
-                    ChunkMesh one = Mesher.Coarse(s.Instance.Blocks, s.Instance.Layout.Occupied);
+                    ChunkMesh one = Mesher.Coarse(s.Built.Blocks, s.Layout.Occupied);
                     float ox = (float)Planets.Gen.Mathx.WrapDelta(s.Origin.X - anchor.X, w), oy = s.Origin.Y - anchor.Y, oz = (float)Planets.Gen.Mathx.WrapDelta(s.Origin.Z - anchor.Z, h);
                     all.Quads += one.Quads;
                     // Their finish codes with them, so the far tile is drawn in the same surfaces as each building near.
@@ -214,6 +235,12 @@ public partial class PoiLayer
         float dt = _lastTick < 0 ? 0f : (float)Mathf.Min(now - _lastTick, 0.1);
         _lastTick = now;
         bool built = false;
+        // A place's far mesh as soon as it has been built (PoiBuilds builds them nearest first); a city tile's once all of it has.
+        foreach (Place p in _places)
+            if (p.Node == null && p.LowMesh == null && !_tileOf.ContainsKey(p) && p.Site.Built is { } made)
+                p.LowMesh = Task.Run(() => Mesher.Coarse(made.Blocks, made.Layout.Occupied));
+        foreach (Tile t in _tiles)
+            if (t.Node == null && t.Mesh == null && t.Members.All(p => p.Site.Built != null)) StartTile(t);
         foreach (Place p in _places)
         {
             if (p.Node != null || p.LowMesh is not { IsCompleted: true }) continue;
@@ -226,6 +253,8 @@ public partial class PoiLayer
             }
             p.Node = BuildLow(p);
             AddChild(p.Node);
+            p.StandIn?.QueueFree();
+            p.StandIn = null;
             built = true;
             break;
         }
@@ -489,6 +518,10 @@ public partial class PoiLayer
         else p.Hidden.Remove(group);
         if (p.Cells.TryGetValue(group, out MeshInstance3D cube)) cube.Visible = !hide;
     }
+
+    /// <summary>Places within <paramref name="range"/> of the camera not drawn as themselves yet: a plain block, or a city tile still waiting for its buildings (tests).</summary>
+    public int Unshown(float range) =>
+        _places.Count(p => p.StandIn != null && Away(p, _focus) < range) + _tiles.Count(t => t.Node == null && t.Members.Min(p => Away(p, _focus)) < range);
 
     /// <summary>Whether a place in reach still waits for its merged blocks (tests and proof frames wait for none).</summary>
     public bool MidPending { get; private set; } = true;

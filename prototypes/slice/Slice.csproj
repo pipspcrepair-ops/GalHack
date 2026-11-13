@@ -72,6 +72,7 @@
     <Compile Include="..\planet-surface\src\Poi\PoiLayer.cs" />
     <Compile Include="..\planet-surface\src\Poi\PoiLayerDeco.cs" />
     <Compile Include="..\planet-surface\src\Poi\PoiLayer.Tiers.cs" />
+    <Compile Include="..\planet-surface\src\Poi\PoiBuilds.cs" />
     <Compile Include="..\planet-surface\src\Poi\PoiLayer.StandIn.cs" />
     <Compile Include="..\planet-surface\src\Poi\PoiLayer.Occluders.cs" />
     <Compile Include="..\planet-surface\src\Poi\PoiLitFaces.cs" />

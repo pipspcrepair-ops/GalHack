@@ -1604,8 +1604,8 @@ public sealed class InfraNetwork
             for (int i = Math.Max(0, spans.Length - 6); i < spans.Length; i++) spans[i] = RoadSpan.Ground;
         }
 
-        bool kept = (a != null && (a.FactionHeld || a.Family.Tags.Contains("settlement") && a.Instance.State == PoiState.Active))
-                    || (b != null && (b.FactionHeld || b.Family.Tags.Contains("settlement") && b.Instance.State == PoiState.Active));
+        bool kept = (a != null && (a.FactionHeld || a.Family.Tags.Contains("settlement") && a.State == PoiState.Active))
+                    || (b != null && (b.FactionHeld || b.Family.Tags.Contains("settlement") && b.State == PoiState.Active));
         // Never paved: every road on a world that paved none, and a haul road out to what only it served.
         bool graded = kind == RouteKind.Road && (Profile.Before == TechLevel.Low || Rural(a) && (b == null || Rural(b)));
         var route = new InfraRoute

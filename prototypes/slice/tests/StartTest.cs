@@ -86,6 +86,10 @@ public partial class StartTest : Node
         int random = WorldsPerRun;
         for (int i = 0; i < args.Length - 1; i++) if (args[i] == "--seeds") int.TryParse(args[i + 1], out random);
         _exitOnly = args.Contains("--exit-only");
+        // --no-site-roads: the places without their planned roads, to time a world's load against.
+        PoiGenerator.Gen.SiteRoads.Enabled = !args.Contains("--no-site-roads");
+        // --places-at-load: every place built while the world loads, the old way, to time the load against.
+        PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad = args.Contains("--places-at-load");
         var seeds = new List<ulong>();
         if (args.Contains("--crowd"))
         {
@@ -117,8 +121,16 @@ public partial class StartTest : Node
             for (int i = 0; i < random; i++) worlds.Add(WorldChoice.Fresh("random")); // a fresh seed and a random planet type
             worlds.Add(WorldChoice.Fresh("ice")); // and always a cold one, for the chamber's warmth
         }
+        // --compare-load: each world loaded twice, its places built at load the old way and then as they are wanted.
+        bool compare = args.Contains("--compare-load");
         foreach (WorldChoice pinned in worlds)
+        {
+            if (compare) PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad = true;
             foreach (int x in OneWorld(pinned, seeds)) yield return x;
+            if (!compare) continue;
+            PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad = false;
+            foreach (int x in OneWorld(_lastWorld, seeds)) yield return x;
+        }
         int failedWorlds = _failedWorlds.Count;
         GD.Print($"worlds: {seeds.Count - failedWorlds} of {seeds.Count} passed{(failedWorlds > 0 ? $" (failed: {string.Join(", ", _failedWorlds)})" : "")}");
     }
@@ -194,12 +206,54 @@ public partial class StartTest : Node
         return null;
     }
 
+    WorldChoice _lastWorld;
+
+    /// <summary>How long after standing the frames are watched at least, s (the builder's window, either way of loading).</summary>
+    const double BuildWatchSeconds = 20;
+
+    /// <summary>Frame times after standing, and for the worst of them what else happened that frame: garbage collections, their pause, the frame's own process and physics time, a place finished.</summary>
+    sealed class FrameWatch
+    {
+        ulong _was = Time.GetTicksUsec();
+        int _g0 = GC.CollectionCount(0), _g1 = GC.CollectionCount(1), _g2 = GC.CollectionCount(2), _built = -1;
+        TimeSpan _pause = GC.GetTotalPauseDuration();
+        int _frames, _over, _gcs;
+        double _worstPause;
+        readonly List<(double Ms, string Why)> _worst = new();
+
+        public void Tick(int built)
+        {
+            ulong now = Time.GetTicksUsec();
+            double ms = (now - _was) / 1000.0;
+            _was = now;
+            int g0 = GC.CollectionCount(0), g1 = GC.CollectionCount(1), g2 = GC.CollectionCount(2);
+            TimeSpan pause = GC.GetTotalPauseDuration();
+            string why = $"gc {g0 - _g0}/{g1 - _g1}/{g2 - _g2} paused {(pause - _pause).TotalMilliseconds:F1} ms, process {Performance.GetMonitor(Performance.Monitor.TimeProcess) * 1000:F1}, physics {Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess) * 1000:F1}{(_built >= 0 && built > _built ? $", {built - _built} built" : "")}";
+            if (g0 > _g0)
+            {
+                _gcs += g0 - _g0;
+                _worstPause = Math.Max(_worstPause, (pause - _pause).TotalMilliseconds);
+            }
+            (_g0, _g1, _g2, _pause, _built) = (g0, g1, g2, pause, built);
+            _frames++;
+            if (ms > 16.7) _over++;
+            _worst.Add((ms, why));
+            _worst.Sort((a, b) => b.Ms.CompareTo(a.Ms));
+            if (_worst.Count > 4) _worst.RemoveAt(4);
+        }
+
+        public double Worst => _worst.Count > 0 ? _worst[0].Ms : 0;
+
+        public override string ToString() => $"{_frames}, {_over} over 16.7 ms, {_gcs} collections (longest pause {_worstPause:F1} ms), worst {string.Join("; ", _worst.Select(w => $"{w.Ms:F1} ms ({w.Why})"))}";
+    }
+
     IEnumerable<int> OneWorld(WorldChoice pinned, List<ulong> seeds)
     {
         var game = new Game.Game { Interactive = false, World = pinned };
         AddChild(game);
         yield return 0;
         WorldChoice world = game.World;
+        _lastWorld = world;
         int failuresBefore = _failures;
         seeds.Add(world.Seed);
         GD.Print($"-- {world} {(pinned == null ? "(a fresh game: rolled its own)" : "(pinned)")} --");
@@ -216,6 +270,25 @@ public partial class StartTest : Node
             game.QueueFree();
             yield return 0;
             yield break;
+        }
+        GD.Print($"  load{(PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad ? " (places built at load, the old way)" : "")}: {watch.Elapsed.TotalSeconds:F1} s to the sleeper standing; {PlanetSurface.Poi.PoiSiting.LastPlanned} places laid out in {PlanetSurface.Poi.PoiSiting.LastLayoutMs:F0} ms (side by side), set down in {PlanetSurface.Poi.PoiSiting.LastSetDownMs:F0} ms (seated in {PlanetSurface.Poi.PoiSiting.LastSeatMs:F0}); {game.Zone.Planet.Pois.Count(p => p.Built != null)} of {game.Zone.Planet.Pois.Count} built by then");
+        Check(PlanetSurface.Poi.PoiSite.UnaskedLoadBuilds == 0, $"{world}: nothing in the load built a place by reading it unasked ({PlanetSurface.Poi.PoiSite.UnaskedLoadBuilds})");
+        // The rest of the places are built after, nearest first, off the main thread: how long until every place in range stands, and the worst frame meanwhile.
+        // Watched for at least BuildWatchSeconds either way, so a world loaded the old way (--places-at-load) is timed over the same window.
+        if (game.Zone.Pois.Builds is { } builds)
+        {
+            var since = Stopwatch.StartNew();
+            var frames = new FrameWatch();
+            double allIn = -1, shown = -1;
+            int plainAtStanding = game.Zone.Pois.Unshown(builds.Range);
+            while ((allIn < 0 || shown < 0 || since.Elapsed.TotalSeconds < BuildWatchSeconds) && since.Elapsed.TotalSeconds < 120)
+            {
+                yield return 0;
+                frames.Tick(builds.Built);
+                if (allIn < 0 && builds.AllInRangeMs >= 0) allIn = since.Elapsed.TotalSeconds;
+                if (shown < 0 && game.Zone.Pois.Unshown(builds.Range) == 0) shown = since.Elapsed.TotalSeconds;
+            }
+            GD.Print($"  every place within {builds.Range:F0} m built {(allIn < 0 ? "never" : $"{allIn:F1} s")} and drawn as itself {(shown < 0 ? "never" : $"{shown:F1} s")} after standing ({plainAtStanding} plain blocks or unbuilt city tiles in view at standing; {game.Zone.Planet.Pois.Count(p => p.Built != null)} of {game.Zone.Planet.Pois.Count} places built, {builds.Built} by the builder); frames over {since.Elapsed.TotalSeconds:F0} s: {frames}");
         }
         Check(game.WorldStanding, $"{world}: at waking everything round the start stands: {game.Zone.Infra.TileCount} tiles of ruins, wrecks and bridges, {game.Zone.Planet.Pois.Count} places");
         // The wrecks round the start are the tool's to strip: worked through, one comes apart, and stays gone.

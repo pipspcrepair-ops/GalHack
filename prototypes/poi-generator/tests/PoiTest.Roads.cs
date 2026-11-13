@@ -111,11 +111,8 @@ public partial class PoiTest
             var sw = System.Diagnostics.Stopwatch.StartNew();
             var p = PoiFactory.Generate(_lib, f, v, f.Rarity, PoiState.Abandoned, seed, customSeed: seed);
             Validator.Check(p);
-            foreach (var c in Mesher.Build(p.Blocks, p.Layout.Occupied, new MeshOptions { RockMin = p.Blocks.Min, RockMax = p.Blocks.Max, RockBottom = p.Blocks.Min.Y }))
-            {
-                MeshBuild.ToMesh(c, mats.BySurface);
-                if (c.Collision.Count > 0) MeshBuild.ToShape(c);
-            }
+            MeshAll(p, mats);
+
             name = $"{f.Id} ({p.Blocks.CountBlocks()} blocks, {p.Blocks.Size.X}x{p.Blocks.Size.Z} m)";
             double mine = Prof.Ticks.TryGetValue("site roads", out long t) ? Prof.Ms(t) : 0;
             if (roads && !warm) { if (own.Count == 0 || mine > own.Max()) worstOwn = name; own.Add(mine); }

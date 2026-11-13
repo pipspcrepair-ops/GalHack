@@ -45,6 +45,8 @@ public sealed class PoiLibrary
     public Dictionary<string, RoomDef> Rooms = new();
     public Dictionary<string, ProgramDef> Programs = new();
     public Dictionary<string, SiteDef> Sites = new();
+    /// <summary>Kinds of place as data, planned fresh for every spawn (data/place-types.txt).</summary>
+    public List<PlaceType> Types = new();
     public List<ThemeDef> Themes = new();
     /// <summary>World types, themes, features and presences (data/world-layers.txt): a world rolls one of each kind it can and they combine.</summary>
     public List<WorldLayer> Layers = new();
@@ -105,6 +107,7 @@ public sealed class PoiLibrary
             else if (name.EndsWith("rooms.txt", StringComparison.Ordinal)) lib.Rooms = ArchParser.Rooms(text, name);
             else if (name.EndsWith("programs.txt", StringComparison.Ordinal)) lib.Programs = ArchParser.Programs(text, name);
             else if (name.EndsWith("sites.txt", StringComparison.Ordinal)) lib.Sites = ArchParser.Sites(text, name);
+            else if (name.EndsWith("place-types.txt", StringComparison.Ordinal)) lib.Types = PlaceType.Parse(text, name);
             else if (name.EndsWith("themes.txt", StringComparison.Ordinal)) lib.Themes = ThemeParser.Parse(text, name);
             else if (name.EndsWith("world-layers.txt", StringComparison.Ordinal)) lib.Layers = LayerParser.Parse(text, name);
             else if (name.EndsWith("sigils.txt", StringComparison.Ordinal)) lib.Sigils = SigilDef.Parse(text, name);

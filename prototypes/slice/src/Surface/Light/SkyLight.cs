@@ -167,12 +167,12 @@ public partial class SkyLight : Node
         var near = new Vector3(x + SkyField.SizeX / 2, 0f, z + SkyField.SizeZ / 2);
         foreach (PlanetSurface.Poi.PoiSite s in Zone.Planet.Pois)
         {
-            BlockGrid g = s.Instance?.Blocks;
+            BlockGrid g = s.Built?.Blocks;
             if (g == null) continue;
             Vector3 at = Zone.Planet.NearestCopy(new Vector3(s.Origin.X, s.Origin.Y, s.Origin.Z), near);
             int ox = Mathf.RoundToInt(at.X), oy = s.Origin.Y, oz = Mathf.RoundToInt(at.Z);
             if (ox + g.Max.X < x || ox + g.Min.X >= x + SkyField.SizeX || oz + g.Max.Z < z || oz + g.Min.Z >= z + SkyField.SizeZ) continue;
-            snap.Sites.Add((g, s.Instance.Layout.Occupied, ox, oy, oz));
+            snap.Sites.Add((g, s.Layout.Occupied, ox, oy, oz));
         }
         foreach (Place p in Standing())
         {

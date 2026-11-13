@@ -338,10 +338,11 @@ public partial class SkyRig : Node3D
         _glowEye = new Vector2(float.MaxValue, float.MaxValue);
         foreach (Poi.PoiSite site in world.Pois)
         {
-            if (site.Instance == null) continue;
+            if (site.Layout == null) continue;
             float lamps = 0f;
             Vector3 colour = Vector3.Zero;
-            foreach (PoiGenerator.Gen.LightSpot l in site.Instance.Lights)
+            // As spawned, or as laid out until it is (a state's dead lamps only show once it is built).
+            foreach (PoiGenerator.Gen.LightSpot l in site.Built?.Lights ?? site.Layout.Extras.Lights)
             {
                 if (l.Mode is PoiGenerator.Gen.LightMode.Dead or PoiGenerator.Gen.LightMode.Bloom || l.Cell.Y < 0) continue;
                 lamps += l.Energy;

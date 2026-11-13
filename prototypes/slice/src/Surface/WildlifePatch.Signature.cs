@@ -113,13 +113,13 @@ public partial class WildlifePatch
         if (_planet == null) return a;
         foreach (PoiSite site in _planet.Pois)
         {
-            if (site.Instance == null) continue;
+            if (site.Layout == null) continue;
             var lo = site.Footprint.Min;
             var hi = site.Footprint.Max;
             float hx = (hi.X - lo.X + 1) * 0.5f, hz = (hi.Z - lo.Z + 1) * 0.5f;
             var at = new Vector3((lo.X + hi.X + 1) * 0.5f, 0f, (lo.Z + hi.Z + 1) * 0.5f);
             float r = MathF.Sqrt(hx * hx + hz * hz);
-            bool living = site.Instance.State == PoiState.Active || site.Family.Tags.Contains("settlement");
+            bool living = site.State == PoiState.Active || site.Family.Tags.Contains("settlement");
             (living ? a.Town : a.Ruins).Add((at, r));
         }
         if (_planet.Infra is { } net)

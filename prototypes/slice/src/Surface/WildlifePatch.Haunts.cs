@@ -27,7 +27,8 @@ public partial class WildlifePatch
     }
 
     readonly List<Haunt> _haunts = new();
-    bool _hauntsMade;
+    /// <summary>The places whose haunts are in: each as soon as it has been built (PoiBuilds).</summary>
+    readonly HashSet<PoiSite> _haunted = new();
     float _hauntClock;
 
     /// <summary>How far from a haunt its kinds are brought in at most, beyond its own radius, m.</summary>
@@ -48,9 +49,9 @@ public partial class WildlifePatch
 
     void MakeHaunts()
     {
-        if (_hauntsMade || _planet == null || Life == null) return;
-        _hauntsMade = true;
-        _haunts.AddRange(HauntsOf(_planet.Pois, Life));
+        if (_planet == null || Life == null) return;
+        foreach (PoiSite site in _planet.Pois)
+            if (site.Built != null && _haunted.Add(site)) _haunts.AddRange(HauntsOf(new[] { site }, Life));
     }
 
     /// <summary>The haunts of a world's places: round each place the growth took, each beasts' den and each place machines keep, its holders (pure; tests).</summary>
@@ -59,9 +60,9 @@ public partial class WildlifePatch
         var haunts = new List<Haunt>();
         foreach (PoiSite site in sites)
         {
-            if (site.Instance == null) continue;
+            if (site.Built is not { } inst) continue;
             var plan = new PoiPlan();
-            Places.PlaceFauna.HoldersOf(site.Instance, life, plan);
+            Places.PlaceFauna.HoldersOf(inst, life, plan);
             int want = plan.Holder switch { PlaceHolder.Hollows => 5, PlaceHolder.Beasts => 3, PlaceHolder.Machines => 2, _ => 0 };
             var lo = site.Footprint.Min;
             var hi = site.Footprint.Max;

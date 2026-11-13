@@ -307,7 +307,7 @@ public sealed class Bunker
         var found = new List<(PlanetSurface.Poi.PoiSite, Vector3, float)>();
         foreach (PlanetSurface.Poi.PoiSite site in zone.Planet.Pois)
         {
-            if (site.Instance?.State == PoiGenerator.Gen.PoiState.Active) continue; // nobody holds anything on a start world
+            if (site.State == PoiGenerator.Gen.PoiState.Active) continue; // nobody holds anything on a start world
             var lo = site.Footprint.Min;
             var hi = site.Footprint.Max;
             float tall = MathF.Max(4f, hi.Y - site.Origin.Y);
