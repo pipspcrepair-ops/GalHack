@@ -59,7 +59,7 @@ public partial class PhysicsTest
         Check(answered == taps, $"tapping Space while running skims the lane: every tap answered by a jump or a burst ({answered} of {taps}), {ran / (Ticks * Dt):F1} m/s over the ground");
 
         // Held on through a landing: one jump, then the pack, then it stands and the pack fills again.
-        for (int i = 0; i < 60; i++) yield return 0;
+        for (int i = 0; i < 240 && !(p.Body.OnFloor && i > 30); i++) yield return 0; // down from the last hop first
         int jumped = 0, held = 0;
         float fuelLanded = -1f;
         bool airborne = false;
