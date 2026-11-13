@@ -133,6 +133,8 @@ public partial class PhysicsTest : Node
         GD.Print("-- Space: jetpack surfing and a held landing --");
         foreach (int x in Surf()) yield return x;
         foreach (int x in Hilltops()) yield return x;
+        GD.Print("-- hulls set into the ground --");
+        foreach (int x in HullsInGround()) yield return x;
         foreach (int x in Performance()) yield return x;
     }
 
