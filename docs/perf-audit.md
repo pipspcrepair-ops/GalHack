@@ -13,7 +13,8 @@ time per system are not. Numbers to re-measure on a quiet machine are marked (q)
   city's edge from 120 m up. Per scene: how long each kind took to come in after the jump, then 240 frames.
   `--scenes=`, `--toggle=occlusion,loadbudget` (a fix off, then on, in the same scene), `--bodies=pieces`.
 - `SystemSplit` (tests/SystemSplit.cs): the main thread's CPU time and allocations by system with nothing
-  switched off (marker nodes between the zone's, the game's, the wildlife patch's and each place's children).
+  switched off (marker nodes between the zone's, the game's and the wildlife patch's children; `--deeper=1` each
+  place's too, at a microsecond or two a marker a pass, which the place rows below carry some of).
 - `AllocCensus`: what is allocated, by type, on every thread (the runtime's allocation sample).
 - `PopTest --report=1`: the walk, bike and fly routes (now also primitives, objects, shadow draws,
   allocations, the split, and the nearest and median distance each kind of change arrived at).

@@ -194,7 +194,7 @@ public partial class PlacePerf : Node
     IEnumerable<int> Scenario()
     {
         foreach (int x in _drive.UntilPlaying(300)) yield return x;
-        _split = new SystemSplit(_game, _game.Zone, _game.Zone.Wildlife, _game.Places) { Deeper = n => n is Slice.Places.Place };
+        _split = new SystemSplit(_game, _game.Zone, _game.Zone.Wildlife, _game.Places) { Deeper = n => _args.ContainsKey("deeper") && n is Slice.Places.Place };
         if (_args.ContainsKey("audit")) _allocs = new AllocCensus { On = true };
         var zone = _game.Zone;
         zone.Weather.Bridge.Calm = true;

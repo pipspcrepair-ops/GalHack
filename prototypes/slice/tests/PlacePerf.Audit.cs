@@ -40,13 +40,14 @@ public partial class PlacePerf
             float near = world.Pois.Select(s => _game.Places.DistanceTo(s, p)).DefaultIfEmpty(9999f).Min();
             if (near > far) (far, country) = (near, p);
         }
+        string only = _args.GetValueOrDefault("scenes", "country,town,city,air");
         GD.Print($"PERF country spot {far:F0} m from the nearest place");
-        foreach (int x in Scene("country", country, country + new Vector3(500f, 0f, 120f), 1.7f)) yield return x;
+        if (only.Contains("country")) foreach (int x in Scene("country", country, country + new Vector3(500f, 0f, 120f), 1.7f)) yield return x;
 
         // A town: a place with two others within 400 m, from 30 m off its edge, looking at its middle.
         var places = world.Pois.Where(s => s.Instance != null && s.Siting != "city").ToList();
         PoiSite town = places.Where(s => places.Count(o => o != s && Flat(o.Origin, s.Origin) < 400f) >= 2).OrderBy(_ => rng.Next()).FirstOrDefault() ?? places.OrderBy(_ => rng.Next()).FirstOrDefault();
-        if (town != null)
+        if (town != null && only.Contains("town"))
         {
             Vector3 mid = Middle(town);
             Vector3 way = new Vector3(MathF.Cos(rng.NextSingle() * MathF.Tau), 0f, MathF.Sin(rng.NextSingle() * MathF.Tau));
@@ -56,7 +57,7 @@ public partial class PlacePerf
         }
         else GD.Print("PERF town: none on this world");
 
-        if (city == null) yield break;
+        if (city == null || !only.Contains("city")) yield break;
         // The city's middle: the street point within half its radius with the most tower along it, looking along it.
         Vector3 centre = world.NearestCopy(new Vector3((float)city.CenterX, 0f, (float)city.CenterZ), start);
         var towers = city.Sites.Select(s => (At: Middle(s), Tall: (float)s.Instance.Blocks.Size.Y)).ToList();
@@ -86,6 +87,7 @@ public partial class PlacePerf
         GD.Print($"PERF city street at {best.At.X:F0},{best.At.Z:F0}: {best.Score:F0} m of tower along 300 m of it, the tallest in the city {towers.Max(t => t.Tall):F0} m");
         foreach (int x in Scene("city street", best.At, best.At + best.Way * 200f + Vector3.Up * 30f, 1.7f, _args.ContainsKey("profile"))) yield return x;
         // Over its edge, looking in across it.
+        if (!only.Contains("air")) yield break;
         Vector3 edge = centre + (start - centre).Normalized() * (float)city.Radius;
         foreach (int x in Scene("city air", edge, centre + Vector3.Up * 20f, 120f)) yield return x;
     }
@@ -143,6 +145,22 @@ public partial class PlacePerf
         foreach (int x in Measure(name)) yield return x;
         Census(_game);
         Lights();
+        // --toggle=occlusion,loadbudget: the same scene with a fix switched off, then on again (the order evens out what still loads).
+        foreach (string ab in _args.GetValueOrDefault("toggle", "").Split(',', StringSplitOptions.RemoveEmptyEntries))
+        {
+            Action<bool> set = ab switch
+            {
+                "occlusion" => on => GetViewport().UseOcclusionCulling = on,
+                _ => null,
+            };
+            if (set == null) continue;
+            foreach (bool on in new[] { false, true })
+            {
+                set(on);
+                foreach (int x in _drive.Wait(10)) yield return x;
+                foreach (int x in Measure($"{name} {ab} {(on ? "on" : "off")}", 120)) yield return x;
+            }
+        }
         if (!profile) yield break;
         var profiler = new ProcessProfiler(_probe, GetTree().Root, 40, this);
         while (!profiler.Done)
