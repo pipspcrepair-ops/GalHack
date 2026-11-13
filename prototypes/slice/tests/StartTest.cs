@@ -86,6 +86,8 @@ public partial class StartTest : Node
         int random = WorldsPerRun;
         for (int i = 0; i < args.Length - 1; i++) if (args[i] == "--seeds") int.TryParse(args[i + 1], out random);
         _exitOnly = args.Contains("--exit-only");
+        // --no-site-roads: the places without their planned roads, to time a world's load against.
+        PoiGenerator.Gen.SiteRoads.Enabled = !args.Contains("--no-site-roads");
         var seeds = new List<ulong>();
         if (args.Contains("--crowd"))
         {
@@ -217,6 +219,7 @@ public partial class StartTest : Node
             yield return 0;
             yield break;
         }
+        GD.Print($"  load: {watch.Elapsed.TotalSeconds:F1} s to the sleeper standing; {PlanetSurface.Poi.PoiSiting.LastPlanned} places laid out and spawned in {PlanetSurface.Poi.PoiSiting.LastLayoutMs:F0} ms (side by side), set down in {PlanetSurface.Poi.PoiSiting.LastSetDownMs:F0} ms");
         Check(game.WorldStanding, $"{world}: at waking everything round the start stands: {game.Zone.Infra.TileCount} tiles of ruins, wrecks and bridges, {game.Zone.Planet.Pois.Count} places");
         // The wrecks round the start are the tool's to strip: worked through, one comes apart, and stays gone.
         if (game.Zone.Planet.Infra.Wrecks.Count > 0 && game.Places.SalvageSites.FirstOrDefault() is Slice.Places.SalvageSite wreck)
