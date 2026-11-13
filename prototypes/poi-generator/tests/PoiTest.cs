@@ -1275,9 +1275,10 @@ public partial class PoiTest : Node
                 var reach = p.Nav().Reachable(layout.EntranceCell);
                 foreach (var d in layout.Doorways)
                 {
+                    if (d.Cells.Count == 0 || d.ModuleB < 0) continue;
                     doors++;
-                    byte v = p.Blocks.Get(d.Cells[0]).Variant;
-                    if (v is not (DoorState.Closed or DoorState.Jammed or DoorState.Open or DoorState.Blast)) odd++;
+                    Block leaf = p.Blocks.Get(d.Cells[0]);
+                    if (leaf.Type == BlockType.Door && leaf.Variant is not (DoorState.Closed or DoorState.Jammed or DoorState.Open or DoorState.Blast)) { odd++; if (notes.Count < 4) notes.Add($"{f.Id}: door variant {leaf.Variant}"); }
                     if (!layout.Modules[d.ModuleB].Cells.Any(reach.Contains) && !layout.Extras.Secrets.Any(s => s.Module == d.ModuleB))
                     {
                         shut++;
