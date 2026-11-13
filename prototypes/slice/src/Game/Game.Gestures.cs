@@ -133,5 +133,6 @@ public partial class Game
         float squat = Mathf.Clamp((s.EyeAbove - Slice.Player.Survivor.CrouchEyeHeight) / (Slice.Player.Survivor.EyeHeight - Slice.Player.Survivor.CrouchEyeHeight), 0f, 1f);
         Figure.Scale = new Vector3(1f, Mathf.Lerp(Slice.Player.Survivor.CrouchHeight / Slice.Player.Survivor.Height, 1f, squat), 1f);
         Slice.Player.CharacterModel.Drive(Figure, m, LastGesture, SinceGesture, (float)delta);
+        Slice.Player.CharacterModel.SetHelmet(Figure, !Suit.Sim.Player.Gear.HelmetOn, (float)delta);
     }
 }
