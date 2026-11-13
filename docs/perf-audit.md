@@ -95,20 +95,32 @@ What is queued behind what:
   about 10 ms): not separated out here; the shadow pass is the shadows agent's.
 - Monsoon rain: not run.
 
-## Ranked fixes
+## Ranked fixes: done and left (paused 13 Nov for the week's budget)
 
-| # | fix | expected gain | risk | files |
+City street before (runs A-D): 150-290 ms a frame at 8 physics ticks. After (runs H, I, same seed, 3-tick cap):
+84-90 ms; at 8 ticks the same scene is now 131-164 ms. Script 165-236 -> 50-55 ms a frame; draws 2.5-4.2 k ->
+0.9-1.1 k; wildlife 50-67 -> 11-14 ms; places 83-131 -> 28-34 ms. Open country and towns were and stay at 4-9 ms.
+
+| # | fix | state | measured / expected | files |
 |---|---|---|---|---|
-| 1 | Places' world origin kept as they are moved: a person's or creature's look at a place (`Person.Position`, `SolidAt`, `ClimbAt`) no longer calls the engine; 200 people x 160 creatures a tick | wildlife 6-7 ms a tick to about 1-2 | low | slice Places/Place.cs, PoiPlaces.cs |
-| 2 | One loading budget a frame shared by every place's stand-up, cubes, dressing and creature bodies | 20-100 ms a frame in a city while it loads | low | planet-surface Fx/LoadBudget.cs, slice Places, Surface/DeepSite.cs |
-| 3 | Far towns tick less often (as far people already pose less often) | people 5.7 ms a tick to about 1-2 | medium (people's timing) | slice Places/Town.cs |
-| 4 | Several places' merged blocks built at once (3 workers) | city merged blocks 39-77 s to under 10 s | low | planet-surface Poi/PoiLayer.Tiers.cs |
-| 5 | Occluders from places' merged blocks (whole opaque faces only) | draws behind buildings (q) | medium (anything wrongly hidden) | planet-surface Poi/PoiLayer.Occluders.cs |
-| 6 | Creatures drawn as one skinned body (as people are), not a node a piece | 27 meshes to 1-3 a creature; 4-6 k fewer nodes in a city | medium (look: the pattern rides on CUSTOM0) | shared/Bestiary View |
-| 7 | No per-frame closures in the streamer and infra loops; no LINQ in Constructor.Current | 110 KB a frame less garbage, fewer gen0 | low | TerrainStreamer.cs, InfraLayer.cs, Constructor.cs |
-| 8 | City buildings stand up in two stages (drawn and dressed far, colliders, creatures and people near) | the 60-place stand-up queue | high | slice Places (design) |
-| 9 | A cap on physics ticks a frame (8 now) | stops the spiral at any load (the game slows instead) | owner's call | project.godot |
-| 10 | Far plants' low mesh simplified from each plant's own mesh (mesh LODs) | 7-10 ms on bike and fly (q) | medium (look) | TerrainStreamer, shared/Flora |
-| 11 | City lights: 1356 omni lights kept in the scene at every distance | render CPU (q) | low | PoiLayer.Tiers.cs |
+| 1 | places keep their world origin | done 8065b61 | wildlife 50-67 -> 31 ms a frame; SolidAt 9.4 -> 3.5 us a call | slice Places/Place.cs, PoiPlaces.cs |
+| 2 | one loading allowance (4 ms) shared by every place's loading | done 9de208a | bounds loading; not separable in a static scene | planet-surface Fx/LoadBudget.cs |
+| 3 | far towns step as seldom as their people pose | done 5e4f0a2 | towns 62 -> 53 ms (in-run A/B) | slice Places/Town.cs |
+| 4 | three merged-block workers | done 7b20729 | city from the air 39-77 s -> 1-7 s | PoiLayer.Tiers.cs |
+| 5 | occluders from merged blocks | done 714f801 | draws 3562 -> 1119, render CPU 9.1 -> 6.3 ms; --occlcheck at noon: nothing hidden | PoiLayer.Occluders.cs |
+| 6 | creatures as one skinned body; species body prepared on a worker | done b005f8b, 923cea3 | ~31 meshes -> 1-3 a creature | shared/Bestiary View |
+| 7 | per-frame garbage (streamer, infra, Constructor.Current) | done 18a755b, 0645d11, 5dfa0a8 | 85-93 -> 54-63 KB, 22-26 -> 2 KB | |
+| 9 | at most 3 physics ticks a frame | done f685bb5 | 164 -> 90 ms in the city street; triggers only under 20 fps | slice project.godot |
+| - | a failed far mesh no longer rethrows every frame | done da7c08f | 364 k errors in one PlaceTest | PoiLayer.Tiers.cs |
+| - | a chunk's collision in pieces of 1024 triangles a step | done 70e8e5e | a 45.8 ms blocks step seen on batch2; not reproduced here | slice Places/Place.cs |
+| 13 | town people's posing: HumanRig.Drive is 78 us a person, about 12 ms a frame for 150 poses in the city (Sync is 0.5) | left | the largest per-tick cost left. Posing on the workers (Parallel.For) showed no gain on this busy machine (dropped); next: a cheaper Drive far off, or fewer poses past 100 m (owner's call: far motion) | shared Bestiary Rigs/HumanRig.cs, slice Town.cs |
+| 14 | PlaceTest's single big steps: a dressing step of 54.5 ms and a blocks step of 45.8 ms (coordinator's runs on batch2) | left | each is one piece of work (one DecoNode.Create, one chunk shape), not the allowance; suspects: a first-use material or fade copy compiled in the step, or a stalled machine; blocks now split (70e8e5e), dressing not | slice Places/Place.Deco.cs, shared Deco Engine |
+| 8 | city buildings stand up in two stages (drawn and dressed far; colliders, creatures, people near) | left | the 60-place stand-up queue (never idle in 90 s) | slice Places (design) |
+| 10 | far plants' low mesh simplified from each plant's own mesh | left | 7-10 ms on bike and fly (q) | TerrainStreamer, shared/Flora |
+| 11/12 | city lights: 1356 omni lights; the mobile renderer's 8 a object means occlusion changes which lamp lights a facade (seen in --occlcheck): check a walk past lamps for popping | left | look and render CPU | PoiLayer.Tiers.cs |
+| - | first measure after a jump shows 30-38 M shadow primitives and 10-14 k shadow draws in the city (later halves ~7 M / 622) | left | the sun's shadow splits (shadows agent) | Game.Settings.cs |
 
-Trades waiting on the owner: 9 (slow motion under extreme load rather than a frozen frame).
+| - | Jolt's body limit: a walk into a city logged `Failed to create underlying Jolt Physics body` at the 10240-body limit (6-9 k dressing pieces each with a StaticBody3D, plus blocks, people, debris): pieces past it don't collide | left, high | merge a room's dressing boxes into one body, or raise jolt_physics_3d/limits/max_bodies | slice Places/Place.Deco.cs, shared Deco DecoNode |
+
+Tried and dropped: places' creature sims stepping every 8 ticks while asleep (no gain); posing on workers (no gain here).
+Routes after (PopTest on the merged tip e8e72f9, a fresh world): walk into a city 45.2 ms mean, bike 11.0, fly into a city 12.4 (p99 46); before: walk 12.7 (open land), bike 20.3, fly into a city 27.8 (p99 109). Not measured, monsoon rain, the crossing hitch (OrbitTest still 53.9-230 ms).
