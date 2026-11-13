@@ -51,6 +51,13 @@ public partial class BestiaryTest : Node
                 Shutdown.Quit(this, _failures == 0 ? 0 : 1);
                 return;
             }
+            if (OS.GetCmdlineUserArgs().Contains("--skins"))
+            {
+                SkinnedBodiesAreSound();
+                GD.Print(_failures == 0 ? $"ALL PASSED ({_checks} checks)" : $"{_failures} OF {_checks} CHECK(S) FAILED");
+                Shutdown.Quit(this, _failures == 0 ? 0 : 1);
+                return;
+            }
             if (OS.GetCmdlineUserArgs().Contains("--outward"))
             {
                 NothingIsInsideOut();
@@ -69,6 +76,7 @@ public partial class BestiaryTest : Node
                 Shutdown.Quit(this, _failures == 0 ? 0 : 1);
                 return;
             }
+            SkinnedBodiesAreSound();
             SameWorldSameLife();
             BodiesFitTheClimate();
             VacuumHasNothingThatBreathes();

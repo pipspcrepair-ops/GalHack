@@ -176,7 +176,9 @@ public partial class CreatureView : Node3D
             var skin = new Skin();
             for (int i = 0; i < pieces.Count; i++)
             {
-                _skeleton.AddBone(pieces[i].Name);
+                // (A second head, paired horns: pieces share names, a skeleton's bones can't.)
+                string bone = pieces[i].Name;
+                _skeleton.AddBone(_skeleton.FindBone(bone) >= 0 ? $"{bone}#{i}" : bone);
                 skin.AddBind(i, Transform3D.Identity);
             }
             AddChild(_skeleton);
