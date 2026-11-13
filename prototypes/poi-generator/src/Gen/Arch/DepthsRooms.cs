@@ -141,7 +141,7 @@ internal sealed partial class Depths
     // ---- dead ends ---------------------------------------------------------------------------
 
     /// <summary>
-    /// A short way off a corridor that goes nowhere: at its end a vault behind a locked door, a hidden room behind
+    /// A short way off a corridor that goes nowhere: at its end a vault, a hidden room behind
     /// a wall that sounds hollow, or nothing but a wall (and what someone left there).
     /// </summary>
     DSpace? DeadEnd(Level lv, bool vault)
@@ -155,7 +155,7 @@ internal sealed partial class Depths
                 if (stub == null) continue;
                 if (vault || R.Chance(0.5f))
                 {
-                    var room = EndRoom(lv, stub, R.Between(4, 6), R.Between(4, 6), purpose: vault ? "vault" : null, mk: vault ? ModuleKind.Vault : ModuleKind.Room, door: vault ? "locked" : "door");
+                    var room = EndRoom(lv, stub, R.Between(4, 6), R.Between(4, 6), purpose: vault ? "vault" : null, mk: vault ? ModuleKind.Vault : ModuleKind.Room);
                     if (room == null) { Drop(stub.S, lv); continue; }
                     room.Raw = false;
                     if (vault)

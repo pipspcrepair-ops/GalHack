@@ -15,7 +15,7 @@ namespace Slice.Game;
 
 /// <summary>
 /// The planet's places as part of the game: they stand up as real structures as you come near
-/// (<see cref="PoiPlaces"/>), E opens their doors, takes their keycards and opens their caches,
+/// (<see cref="PoiPlaces"/>), E opens their doors and their caches,
 /// the survival tool salvages them and breaks their hidden walls, ladders and lift shafts carry
 /// you, their creatures and caves live and hunt, and their towns go about their day.
 /// </summary>
@@ -30,9 +30,6 @@ public partial class Game
     /// <summary>Door blocks on bases and vessels: the same doors, E and sliding leaves, opening for you on your own.</summary>
     public BlockDoors Doors { get; private set; }
 
-    /// <summary>The keycards, lowest clearance first: a card opens its own doors and every lower one's.</summary>
-    public static readonly string[] Clearances = { "staff", "science", "security", "command" };
-
     readonly HashSet<Town> _towns = new();
 
     void SetUpPlaces()
@@ -40,7 +37,7 @@ public partial class Game
         PlaceRules rules = PlaceRules.Shared;
         Places = new PoiPlaces
         {
-            Name = "Places", Zone = Zone, Focus = Focus, Holds = HoldsClearance,
+            Name = "Places", Zone = Zone, Focus = Focus,
             BuildRadius = rules.BuildRadius, DropRadius = rules.DropRadius, BudgetMs = rules.BudgetMs, AheadSeconds = rules.AheadSeconds,
             Fauna = new PlaceFauna.Deep(Zone.Wildlife.Life, Zone.Planet, Zone.Wildlife.Livable),
         };
@@ -149,15 +146,6 @@ public partial class Game
     /// <summary>Townsfolk bodies left to search (tests).</summary>
     public int PeopleBodies { get; private set; }
 
-    /// <summary>Whether the bag holds a keycard of this clearance or a higher one.</summary>
-    bool HoldsClearance(string clearance)
-    {
-        int need = Array.IndexOf(Clearances, clearance);
-        for (int i = Math.Max(0, need); i < Clearances.Length; i++)
-            if (Pack.Storage.Count($"keycard-{Clearances[i]}") > 0) return true;
-        return false;
-    }
-
     /// <summary>
     /// Out of reach of whatever walks the surface: down in the ground (a cave, a hole, a basement)
     /// or under a place's roof. The wildlife patch reads the planet's surface, not rooms.
@@ -251,25 +239,11 @@ public partial class Game
 
     // ---- E ------------------------------------------------------------------------------------------
 
-    /// <summary>E on a keycard lying in reach: it goes in the bag. On a built door: it opens or shuts.</summary>
-    bool UseKeycard(Vector3 eye, Vector3 dir)
-    {
-        if (Places == null) return false;
-        if (Doors.Along(eye, dir, UseReach) is var (vessel, cell, _) && Doors.Use(vessel, cell)) return true;
-        foreach (Place p in Places.Standing)
-        {
-            KeyCard k = p.KeyAlong(eye, dir, UseReach);
-            if (k == null) continue;
-            Bill left = Pack.Add($"keycard-{k.Clearance}", 1);
-            if (!left.IsEmpty) { Say("BAG FULL", Tones.Caution); return true; }
-            p.TakeKey(k);
-            Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Ping, eye + dir, 1.8f, -12f);
-            return true;
-        }
-        return false;
-    }
+    /// <summary>E on a built door (a base's or a vessel's): it opens or shuts.</summary>
+    bool UseBuiltDoor(Vector3 eye, Vector3 dir) =>
+        Places != null && Doors.Along(eye, dir, UseReach) is var (vessel, cell, _) && Doors.Use(vessel, cell);
 
-    /// <summary>E on a place: a door opens or shuts (or says what it needs), a shaft door calls its car.</summary>
+    /// <summary>E on a place: a door opens or shuts, a shaft door calls its car.</summary>
     bool UsePlace(LookHit look)
     {
         if (Places == null || !Places.Resolve(look.Collider, look.Point, look.Normal, out PoiPlaces.Hit h)) return false;
@@ -311,14 +285,11 @@ public partial class Game
     {
         if (Places == null) return "";
         if (Doors.Along(eye, dir, UseReach) is var (_, _, open)) return open ? "E  Shut the door" : "E  Open the door";
-        foreach (Place p in Places.Standing)
-            if (p.KeyAlong(eye, dir, UseReach) is KeyCard k) return $"E  Take {k.Clearance} keycard";
         if (!hit || !Places.Resolve(look.Collider, look.Point, look.Normal, out PoiPlaces.Hit h)) return "";
         if (CacheAt(h) is Slice.Items.Lootable cache) return $"E  Open {cache.Name.ToLowerInvariant()}";
         if (h.Door == null) return "";
         Place.Door d = h.Door;
         if (d.Jammed) return "JAMMED";
-        if (d.Clearance != null && !Places.HasClearance(d.Clearance)) return $"LOCKED · {d.Clearance.ToUpperInvariant()} KEYCARD";
         if (d.Lift >= 0) return "E  Lift door";
         return d.Target > 0.5f ? "E  Shut the door" : "E  Open the door";
     }

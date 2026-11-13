@@ -9,31 +9,15 @@ namespace Slice.Places;
 /// <summary>
 /// The town's people open the place's doors on their way (<see cref="DoorWay"/>): coming up to a shut one,
 /// they open it, are held off its leaves till it stands open enough for them, and go through; it shuts itself
-/// behind them a while after the doorway is clear (<see cref="DoorWays.AutoClose"/>). A locked door opens only
-/// for those who would carry its card; a town that has barred itself keeps its way in shut to everyone.
+/// behind them a while after the doorway is clear (<see cref="DoorWays.AutoClose"/>). A town that has barred itself
+/// keeps its way in shut to everyone.
 /// </summary>
 public sealed partial class Town
 {
     List<DoorWay> _ways;
 
-    /// <summary>The keycard a job carries (0 staff, 1 science, 2 security, 3 command), or -1 for none.</summary>
-    static int Card(PersonRole job) => job switch
-    {
-        PersonRole.Elder => 3,
-        PersonRole.Guard or PersonRole.Lawman => 2,
-        PersonRole.Medic => 1,
-        PersonRole.Worker or PersonRole.Mechanic or PersonRole.Trader or PersonRole.Farmer or PersonRole.Scavenger => 0,
-        _ => -1,
-    };
-
-    /// <summary>Whether a person may open a door: not a lift's (the car does that), not the way in of a barred town, a locked one only with its card.</summary>
-    public bool MayOpen(Person p, DoorWay d)
-    {
-        if (d.Lift || d.Jammed) return false;
-        if (GatesShut && d.Index == -1) return false;
-        if (d.Clearance == null) return true;
-        return Card(p.Job) >= Array.IndexOf(Slice.Game.Game.Clearances, d.Clearance);
-    }
+    /// <summary>Whether a person may open a door: not a lift's (the car does that), not the way in of a barred town.</summary>
+    public bool MayOpen(DoorWay d) => !d.Lift && !d.Jammed && !(GatesShut && d.Index == -1);
 
     /// <summary>
     /// The doors on a person's way just ahead opened for them. A door they may not open drops the way: they
@@ -56,7 +40,7 @@ public sealed partial class Town
                 foreach (DoorWay d in _ways)
                 {
                     if (!d.Holds(c) || d.Jammed || d.Target > 0.5f && !d.Shut) continue;
-                    if (!MayOpen(p, d))
+                    if (!MayOpen(d))
                     {
                         p.Path = new List<Vector3>();
                         p.Step = 0;

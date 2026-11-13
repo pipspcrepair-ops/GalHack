@@ -76,7 +76,7 @@ internal sealed class DSpace
     public override string ToString() => $"{Kind}:{Purpose}#{Id} [{I0}..{I1}]x[{K0}..{K1}] j{J}+{H}";
 }
 
-/// <summary>How two spaces meet: open (no wall), a door, a blast door, a locked door, a hidden wall, a breach, a hatch.</summary>
+/// <summary>How two spaces meet: open (no wall), a door, a blast door, a hidden wall, a breach, a hatch.</summary>
 internal sealed class DJoint
 {
     public DSpace A = null!, B = null!;
@@ -84,7 +84,6 @@ internal sealed class DJoint
     /// <summary>For a door: its block in the wall between them, and whether that wall runs along i.</summary>
     public int I, J, K;
     public bool AlongI;
-    public string? Clearance;
     public override string ToString() => $"{Kind} {A.Id}-{B.Id} at {I},{J},{K}";
 }
 

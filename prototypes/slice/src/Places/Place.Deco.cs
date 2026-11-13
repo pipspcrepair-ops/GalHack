@@ -58,7 +58,7 @@ public sealed class Decor
     /// Works out how each room of a place is dressed (worker-safe): the room's interior, its doors,
     /// state, age (new, old-world or preserved), exposure and tech go to the library, which arranges
     /// its pieces as the room was used and then left. Pieces that would stand on a cache, a
-    /// terminal, a keycard, a ladder, a stair or in a doorway are left out, and the generator's
+    /// terminal, a ladder, a stair or in a doorway are left out, and the generator's
     /// generic props are cleared from a dressed room so nothing overlaps.
     /// </summary>
     public Dictionary<int, PlaceRoom> Plan(PlaceMemory memory)
@@ -290,7 +290,7 @@ public sealed class Decor
         || b.Role == Role.Debris && b.Type is BlockType.Ash or BlockType.Scatter or BlockType.Rubble or BlockType.Plant or BlockType.Puddle or BlockType.Crate or BlockType.Scorch;
 
     /// <summary>
-    /// The dressing never closes a way the architect checked: every doorway, stair, cache, keycard
+    /// The dressing never closes a way the architect checked: every doorway, stair, cache
     /// and hidden wall reachable on the bare blocks stays reachable round the solid pieces. A piece
     /// standing on the bare route to one that was cut off goes (and what stood on it).
     /// </summary>
@@ -315,7 +315,6 @@ public sealed class Decor
             if (b.Type is BlockType.Stair or BlockType.Ladder) Need(p);
         foreach (LootCache c in inst.Caches)
             if (bare.AccessCell(c.Cell, open) is Int3 a) Need(a);
-        foreach (KeyCard k in inst.Extras.Keys) Need(k.Cell);
         foreach (SecretRoom s in inst.Extras.Secrets)
             foreach (Int3 c in s.WallCells)
             {
@@ -413,7 +412,6 @@ public sealed class Decor
         var r = new HashSet<Int3>();
         foreach (LootCache c in inst.Caches) r.Add(c.Cell);
         foreach (TerminalLog t in inst.Terminals) r.Add(t.Cell);
-        foreach (KeyCard k in inst.Extras.Keys) r.Add(k.Cell);
         if (inst.HasCore) r.Add(inst.CoreCell);
         foreach (var (p, b) in inst.Blocks.Blocks())
         {
@@ -668,8 +666,10 @@ public partial class Place
         if (_dressing != null)
         {
             var clock = System.Diagnostics.Stopwatch.StartNew();
-            while (clock.Elapsed.TotalMilliseconds < 1.5)
+            double budget = PlanetSurface.Fx.LoadBudget.Left(1.5);
+            while (clock.Elapsed.TotalMilliseconds < budget)
                 if (!_dressing.MoveNext()) { _dressing = null; break; }
+            PlanetSurface.Fx.LoadBudget.Spend(clock.Elapsed.TotalMilliseconds);
             return;
         }
         if (--_dressTimer > 0) return;
