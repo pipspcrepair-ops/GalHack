@@ -27,9 +27,9 @@ public enum GroundPattern : byte
     Bays = 2,
     /// <summary>A loading apron: hazard stripes along its far long edge (+V), where the doors are.</summary>
     Loading = 3,
-    /// <summary>A runway: edge lines, a dashed centre line, threshold bars and aiming bars at both ends (shapes only).</summary>
+    /// <summary>A runway: laid, edge lines, a dashed centre line, threshold bars and aiming bars at both ends (shapes only); of earth, graded straight with wheel ruts, edge berms and edge markers.</summary>
     Runway = 4,
-    /// <summary>A taxiway: a yellow centre line and edge lines.</summary>
+    /// <summary>A taxiway: laid, a yellow centre line and edge lines; of earth or gravel, graded straight.</summary>
     Taxiway = 5,
 }
 

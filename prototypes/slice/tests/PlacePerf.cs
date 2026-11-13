@@ -19,6 +19,8 @@ namespace Slice.Tests;
 /// else measures what a frame really costs. Vsync is off and the cap lifted, so a frame takes what
 /// it takes.
 ///   godot --path prototypes/slice res://tests/PlacePerf.tscn -- --family=sewage_works [--seed=N] [--planet=temperate] [--variant=0]
+/// --fly: a typed place (an airfield) is held back from the builder until a craft at top speed flies in from where it
+/// first comes into view; --compare-force: then the same world without it, over the same routes.
 /// One PERF line per stage: far off, riding in from a kilometre out, at the gate, inside. Prints each
 /// frame's visible time (average, 95th, 99th, worst), the renderer's own CPU and GPU time, and what
 /// was drawn.
@@ -90,6 +92,7 @@ public partial class PlacePerf : Node
         DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Disabled);
         Engine.MaxFps = 0;
         if (_args.TryGetValue("family", out string family) && !_args.ContainsKey("asrolled")) PoiSiting.ForceFamily = family;
+        if (_args.ContainsKey("fly")) PoiBuilds.Withhold = s => s.Whole != null;
         if (_args.ContainsKey("audit")) PlanetSurface.Infra.CityPlan.Force = true;
         if (_args.GetValueOrDefault("bodies") == "pieces") Wildlife.CreatureView.Merged = false;
         if (_args.TryGetValue("variant", out string v)) PoiSiting.ForceVariant = int.Parse(v);
@@ -117,6 +120,20 @@ public partial class PlacePerf : Node
     {
         GD.Print($"PERF mode: places {(PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad ? "built at load (old)" : "built after standing")}");
         foreach (int x in Scenario()) yield return x;
+        if (_args.ContainsKey("compare-force") && _flyTo != Vector3.Zero)
+        {
+            // The same world without the forced place, over the same routes.
+            WorldChoice same = _game.World;
+            _game.QueueFree();
+            for (int i = 0; i < 10; i++) yield return 0;
+            (PoiSiting.ForceFamily, PoiBuilds.Withhold) = (null, null);
+            NewGame(same);
+            GD.Print("PERF mode: the same world without the forced place, the same routes");
+            foreach (int x in Stand()) yield return x;
+            foreach (int x in FlyIn(null)) yield return x;
+            foreach (int x in Ride("ride in (none)", _rideFrom, _rideTo, _rideTo)) yield return x;
+            yield break;
+        }
         if (!_args.ContainsKey("compare-load")) yield break;
         WorldChoice world = _game.World;
         _game.QueueFree();
@@ -218,7 +235,8 @@ public partial class PlacePerf : Node
         foreach (int x in _drive.Wait(10)) yield return x;
     }
 
-    IEnumerable<int> Scenario()
+    /// <summary>The game up and the sleeper out, with the builder done with everything in its range.</summary>
+    IEnumerable<int> Stand()
     {
         foreach (int x in _drive.UntilPlaying(300)) yield return x;
         _split = new SystemSplit(_game, _game.Zone, _game.Zone.Wildlife, _game.Places) { Deeper = n => _args.ContainsKey("deeper") && n is Slice.Places.Place };
@@ -236,6 +254,12 @@ public partial class PlacePerf : Node
         while ((_times.Count < Frames || builds.AllInRangeMs < 0 || zone.Pois.Unshown(builds.Range) > 0) && since.Elapsed.TotalSeconds < 120) yield return 0;
         GD.Print($"PERF building: all built and drawn {since.Elapsed.TotalSeconds:F1} s after standing ({builds.Built} by the builder, {zone.Pois.Unshown(builds.Range)} still plain)");
         End(PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad ? "building (old)" : "building");
+    }
+
+    IEnumerable<int> Scenario()
+    {
+        foreach (int x in Stand()) yield return x;
+        var zone = _game.Zone;
         GD.Print($"PERF world {_game.World}; places {zone.Planet.Pois.Count}, grand {zone.Planet.Pois.Count(s => s.Family.Tags.Contains("grand"))}");
         foreach (var s in zone.Planet.Pois.OrderBy(s => _game.Places.DistanceTo(s, _game.Survivor.WorldFeet)))
             GD.Print($"PERF site {s.Family.Id} '{s.Name}' {s.State} {_game.Places.DistanceTo(s, _game.Survivor.WorldFeet):F0} m, footprint {s.Footprint.Max.X - s.Footprint.Min.X}x{s.Footprint.Max.Z - s.Footprint.Min.Z}, {(s.Built is { } b ? $"blocks {b.Blocks.CountBlocks()}" : "not built yet")}");
@@ -249,7 +273,78 @@ public partial class PlacePerf : Node
         string family = _args.GetValueOrDefault("family");
         var sites = zone.Planet.Pois.Where(s => (family != null ? s.Family.Id == family : s.Family.Tags.Contains("grand")) && (s.Whole == null || s.Whole.Anchor == s)).OrderBy(s => _game.Places.DistanceTo(s, _game.Survivor.WorldFeet)).Take(int.Parse(_args.GetValueOrDefault("sites", "1")));
         foreach (PoiSite site in sites.ToList())
+        {
+            if (_args.ContainsKey("fly")) foreach (int x in FlyIn(site)) yield return x;
             foreach (int x in OnePlace(site)) yield return x;
+        }
+    }
+
+    /// <summary>The fastest craft's top speed in air, m/s (ship-handling's handling.json), and the height it flies at.</summary>
+    const float FlySpeed = 70f, FlyUp = 150f;
+    Vector3 _flyFrom, _flyTo, _rideFrom, _rideTo;
+
+    /// <summary>
+    /// A craft at top speed flying in to a typed place from where it first comes into view (the builder's range, the far
+    /// plane, or as far off as the world allows), the place held back from the builder until then: the frames on the way,
+    /// and when every part of it stood built, no plain block left, against when the craft is over its edge. Wall-clock:
+    /// a slow frame doesn't slow the craft. With no place, the same route again (the last one flown).
+    /// </summary>
+    IEnumerable<int> FlyIn(PoiSite site)
+    {
+        var zone = _game.Zone;
+        TypedPlace whole = site?.Whole;
+        double reach = 0;
+        if (whole != null)
+        {
+            SketchBox fb = PlaceTypes.Turn(whole.Sketch.Footprint, whole.Turn);
+            reach = Math.Min(zone.Pois.Builds.Range, zone.Planet.Width / 2 - fb.W - 100);
+            Vector3 edge = zone.Planet.NearestCopy(new Vector3((float)(whole.X + fb.X0), whole.PadY, (float)(whole.Z + fb.Cz)), _game.Survivor.WorldFeet);
+            (_flyFrom, _flyTo) = (edge - new Vector3((float)reach, 0, 0), edge);
+        }
+        _game.Survivor.PlaceOutside((_flyFrom + Vector3.Up * FlyUp).ToNumerics());
+        foreach (int x in _drive.Wait(60)) yield return x;
+        PoiBuilds.Withhold = null;
+        Begin();
+        var clock = Stopwatch.StartNew();
+        double standAt = -1;
+        float length = _flyFrom.DistanceTo(_flyTo);
+        for (float along = 0f; along < length; along = FlySpeed * (float)clock.Elapsed.TotalSeconds)
+        {
+            Vector3 p = _flyFrom.Lerp(_flyTo, along / length);
+            p.Y = zone.GroundAt(p.X, p.Z).Y + FlyUp;
+            _game.Survivor.PlaceOutside(p.ToNumerics());
+            _drive.Face(_flyTo);
+            if (whole != null && standAt < 0 && whole.Parts.All(zone.Pois.Standing)) standAt = clock.Elapsed.TotalSeconds;
+            yield return 0;
+        }
+        End(whole != null ? "fly in" : "fly in (none)");
+        if (whole == null) yield break;
+        int standing = whole.Parts.Count(zone.Pois.Standing);
+        bool ok = standAt >= 0;
+        GD.Print($"PERF {(ok ? "ok" : "FAIL")} fly in: {standing} of {whole.Parts.Count} parts of the {whole.Sketch.Type.Id} standing{(ok ? $" {standAt:F1} s" : "")} after it came into view {reach:F0} m out; a craft at {FlySpeed:F0} m/s is over its edge at {length / FlySpeed:F1} s");
+        if (!ok) _failed = true;
+    }
+
+    /// <summary>Along the ground from one point to another at a hover bike's speed, facing a point: what the streaming costs.</summary>
+    IEnumerable<int> Ride(string stage, Vector3 from, Vector3 to, Vector3 face)
+    {
+        const float Speed = 22f;
+        var zone = _game.Zone;
+        _game.Survivor.PlaceOutside(from.ToNumerics());
+        foreach (int x in _drive.Wait(60)) yield return x;
+        foreach (int x in _drive.UntilSettled(30)) yield return x;
+        Begin();
+        float length = from.DistanceTo(to), along = 0f;
+        while (along < length)
+        {
+            along += Speed / Engine.PhysicsTicksPerSecond;
+            Vector3 p = from.Lerp(to, along / length);
+            p.Y = zone.GroundAt(p.X, p.Z).Y + 1f;
+            _game.Survivor.PlaceOutside(p.ToNumerics());
+            _drive.Face(face);
+            yield return 0;
+        }
+        End(stage);
     }
 
     /// <summary>What's in the tree, by the first levels it hangs from: where the nodes and meshes are.</summary>
@@ -308,23 +403,8 @@ public partial class PlacePerf : Node
         }
 
         // Riding in from a kilometre out at a hover bike's speed: what the streaming costs.
-        const float Speed = 22f;
-        Vector3 from = Out(1000f), to = Out(8f);
-        _game.Survivor.PlaceOutside(from.ToNumerics());
-        foreach (int x in _drive.Wait(60)) yield return x;
-        foreach (int x in _drive.UntilSettled(30)) yield return x;
-        Begin();
-        float length = from.DistanceTo(to), along = 0f;
-        while (along < length)
-        {
-            along += Speed / Engine.PhysicsTicksPerSecond;
-            Vector3 p = from.Lerp(to, along / length);
-            p.Y = zone.GroundAt(p.X, p.Z).Y + 1f;
-            _game.Survivor.PlaceOutside(p.ToNumerics());
-            _drive.Face(Centre());
-            yield return 0;
-        }
-        End("ride in");
+        (_rideFrom, _rideTo) = (Out(1000f), Out(8f));
+        foreach (int x in Ride("ride in", _rideFrom, _rideTo, Centre())) yield return x;
         for (int i = 0; i < 1800 && places.PlaceOf(site) is not { Ready: true }; i++) yield return 0;
 
         _game.Survivor.PlaceOutside(Out(26f).ToNumerics());

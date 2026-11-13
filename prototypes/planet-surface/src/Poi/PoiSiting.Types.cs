@@ -42,15 +42,16 @@ public sealed class TypedPlace
             var (x0, z0, x1, z1) = World(box);
             MadeCover cover = item.Part.What switch { "tarmac" => MadeCover.Tarmac, "concrete" => MadeCover.Concrete, "gravel" => MadeCover.Gravel, _ => MadeCover.Dirt };
             float shoulder = item.Rolled.GetValueOrDefault("shoulder");
+            // (A strip or taxiway of earth or gravel keeps its pattern: graded straight, the earth one rutted and marked.)
             GroundPattern pattern = item.Part.Id switch
             {
-                "runway" => cover is MadeCover.Tarmac or MadeCover.Concrete ? GroundPattern.Runway : GroundPattern.Plain,
-                "taxiway" or "link" => cover is MadeCover.Tarmac or MadeCover.Concrete ? GroundPattern.Taxiway : GroundPattern.Plain,
+                "runway" => GroundPattern.Runway,
+                "taxiway" or "link" => GroundPattern.Taxiway,
                 "carpark" => cover is MadeCover.Tarmac or MadeCover.Concrete ? GroundPattern.Bays : GroundPattern.Plain,
                 _ => cover == MadeCover.Concrete ? GroundPattern.Slabs : GroundPattern.Plain,
             };
             int layer = item.Part.Id switch { "runway" => 4, "taxiway" => 3, "link" => 2, _ => 1 };
-            if (shoulder > 0f)
+            if (shoulder > 0f && cover != MadeCover.Dirt)
             {
                 // The shoulders: the full width, older-looking and plain, under the runway proper.
                 yield return GroundPatch.Box(x0, z0, x1, z1, PadY, cover == MadeCover.Dirt ? MadeCover.Dirt : MadeCover.Gravel, GroundPattern.Plain, Math.Min(1f, wear + 0.15f), layer - 1, round: 0.5f);

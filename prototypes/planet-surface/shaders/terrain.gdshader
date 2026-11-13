@@ -603,7 +603,8 @@ Patch top_patch(vec2 at, float y, float tolerance, float wob, float sway) {
 		// A laid edge barely wanders; one laid straight on the land crumbles more the older it is.
 		d += wob * (t3.x > 0.5 ? 0.04 : 0.2 + 0.8 * t2.z) * min(1.0, t1.y * 0.5);
 		// A yard of gravel or trodden earth has no laid edge at all: it wanders metres in and out round the place.
-		if (t2.x > 2.5 && t2.x < 4.5) d += sway * min(1.0, t1.y * 0.08);
+		// (A runway or taxiway of either is graded straight.)
+		if (t2.x > 2.5 && t2.x < 4.5 && t2.y < 3.5) d += sway * min(1.0, t1.y * 0.08);
 		bool inside = d < 0.0, was = t.d < 0.0;
 		bool take = t.found < 0.5 || (inside != was ? inside : inside ? t2.w > t.layer || t2.w == t.layer && d < t.d : d < t.d);
 		if (!take) continue;
@@ -667,8 +668,9 @@ vec4 paint_ground(Patch g, vec2 p, vec3 land, float fw, float near, out float co
 		vec2 cell = floor(grid / s);
 		float tone = hash3(vec3(cell, g.seed)) - 0.5;
 		bool flags = g.cover > 4.5;
-		c = (flags ? vec3(0.33, 0.31, 0.285) : vec3(0.31, 0.302, 0.285));
-		c = mix(c, c * vec3(0.78, 0.8, 0.76), wear) * (1.0 + tone * (0.1 + 0.14 * wear)) * (0.9 + 0.2 * pn2(p, 0.13));
+		// Pale: concrete reads light beside the dark of tarmac, and weathers only a little greyer.
+		c = (flags ? vec3(0.4, 0.38, 0.35) : vec3(0.46, 0.45, 0.425));
+		c = mix(c, c * vec3(0.84, 0.85, 0.82), wear) * (1.0 + tone * (0.08 + 0.12 * wear)) * (0.9 + 0.2 * pn2(p, 0.13));
 		vec2 j = abs(fract(grid / s + 0.5) - 0.5) * s;
 		float jw = (flags ? 0.008 : 0.015) + (flags ? 0.012 : 0.025) * wear;
 		seam = max(band(j.x, jw, fw), band(j.y, jw, fw)) * (g.pattern > 0.5 || flags ? 1.0 : 0.0);
@@ -678,7 +680,6 @@ vec4 paint_ground(Patch g, vec2 p, vec3 land, float fw, float near, out float co
 		float ang = h * 6.2832;
 		float across = abs(dot(f - 0.5 - vec2(0.2 * (fract(h * 7.0) - 0.5)), vec2(cos(ang), sin(ang)))) * s;
 		seam = max(seam, band(across, jw * 0.6, fw) * step(h, 0.08 + 0.45 * wear * wear) * detail);
-		broken = step(fract(h * 53.0), 0.015 + 0.12 * wear * wear * wear) * (flags ? 1.0 : 0.7);
 	} else if (g.cover < 2.5) {
 		// Tarmac: black when laid, greying with age.
 		c = mix(vec3(0.032, 0.032, 0.034), vec3(0.085, 0.082, 0.077), wear);
@@ -686,7 +687,6 @@ vec4 paint_ground(Patch g, vec2 p, vec3 land, float fw, float near, out float co
 		// Where it has broken up it crazes into blocks; the worst of that lifts out in pieces.
 		float crazed = smoothstep(0.66, 0.74, pn2(p, 0.09) + 0.25 * wear);
 		if (crazed > 0.0 && fw < 0.5) seam = band(crazing(p, 0.5), 0.012 + 0.015 * wear, fw) * crazed * detail;
-		broken = smoothstep(0.82, 0.86, pn2(p, 0.21) + 0.2 * wear * wear) * step(0.45, wear) * 0.8;
 	} else if (g.cover < 3.5) {
 		// Gravel: loose stone, grey-brown, darker where it lies thick.
 		c = mix(vec3(0.2, 0.188, 0.165), land * 0.8, 0.2) * (0.82 + 0.25 * pn2(p, 0.25));
@@ -697,17 +697,41 @@ vec4 paint_ground(Patch g, vec2 p, vec3 land, float fw, float near, out float co
 		c = mix(land * vec3(0.72, 0.66, 0.6), vec3(lum * 0.7) + vec3(0.05, 0.03, 0.012), 0.45) * (0.88 + 0.24 * pn2(p, 0.3));
 		c *= 1.0 + (pn2(p, 5.0) - 0.5) * 0.2 * near;
 	}
-	// Cracks running on across it from slab to slab, straight and branching where the ground under it moved, more
-	// of them the older it is: the edges of cells a few metres across, only some of them cracked.
-	if (hard && fw < 0.5 && wear > 0.15) {
-		vec2 warp = vec2(pn2(p, 1.9), pn2(p + 17.0, 1.9)) - 0.5;
-		float edge = crazing(p + warp * 0.35, 3.2);
-		float some = smoothstep(0.62 - 0.3 * wear, 0.7 - 0.3 * wear, pn2(p, 0.21));
-		seam = max(seam, band(edge, 0.006 + 0.012 * wear, fw) * some * detail);
+	bool strip = !hard && g.pattern > 3.5 && g.pattern < 4.5;
+	if (strip && g.cover > 3.5) {
+		// A graded earth strip: bare, lighter and browner than the land beside it (the topsoil scraped off, the subsoil
+		// rolled), two wheel ruts worn down it either side of the middle, a low berm of grader spoil along each edge,
+		// and white edge markers every 60 m.
+		float u = g.local.x, v = g.local.y, hv = g.half_.y;
+		c = mix(vec3(lum * 0.75) + vec3(0.075, 0.05, 0.02), land * vec3(0.8, 0.7, 0.58), 0.25) * (0.9 + 0.2 * pn2(p, 0.21));
+		float track = hv * 0.22 + (pn2(vec2(u, 3.0), 0.02) - 0.5) * hv * 0.12;
+		float rut = band(abs(v) - track, 0.9 + 0.5 * pn2(p, 0.6), fw) * (0.6 + 0.4 * pn2(p, 0.35));
+		c *= 1.0 - 0.28 * rut;
+		c *= 1.0 - 0.22 * band(hv - 0.6 - abs(v), 0.5, fw);
+		float marker = band(abs(fract(u / 60.0 + 0.5) - 0.5) * 60.0, 0.7, fw) * band(hv - 1.6 - abs(v), 0.4, fw);
+		c = mix(c, vec3(0.62, 0.61, 0.58), marker);
 	}
-	// The seams: dark, with the land in them (grass on a green world, sand on a desert), more of it with age.
-	vec3 in_seam = mix(c * 0.4, land * 0.7, 0.1 + 0.5 * wear * wear);
+	// Cracks running on across slab after slab, wandering, where the ground under it moved: the edges of cells 9 to 14 m
+	// across, only some of them open, more the older it is; finer ones between.
+	if (hard && fw < 0.5 && wear > 0.15) {
+		vec2 warp = vec2(pn2(p, 0.37), pn2(p + 17.0, 0.37)) - 0.5;
+		float longc = band(crazing(p + warp * 3.0, 11.0), 0.008 + 0.016 * wear, fw) * smoothstep(0.55 - 0.25 * wear, 0.62 - 0.25 * wear, pn2(p, 0.06));
+		vec2 fine_warp = vec2(pn2(p, 1.9), pn2(p + 17.0, 1.9)) - 0.5;
+		float edge = band(crazing(p + fine_warp * 0.35, 3.2), 0.006 + 0.012 * wear, fw) * smoothstep(0.62 - 0.3 * wear, 0.7 - 0.3 * wear, pn2(p, 0.21));
+		seam = max(seam, max(longc, edge) * detail);
+	}
+	// The seams: dark, and with age weeds in them (grass on a green world, sand on a desert).
+	vec3 in_seam = mix(c * 0.4, land * 0.85, 0.15 + 0.75 * wear * wear);
 	c = mix(c, in_seam, seam * seen);
+	vec3 own = c;
+	// Breaks: ragged, soft-edged patches where it has broken up, crumbling in from an unkerbed edge (the verge eats it
+	// first) and, older, opening out of the cracks; never squares. Pieces of it lie in them.
+	if (hard && wear > 0.3) {
+		vec2 warp = vec2(pn2(p, 0.23), pn2(p + 41.0, 0.23)) - 0.5;
+		float rag = pn2(p + warp * 6.0, 0.09) * 0.7 + pn2(p, 0.55) * 0.3;
+		float verge = g.kerb > 0.5 ? 0.0 : 1.0 - smoothstep(0.0, 2.0 + 9.0 * wear * wear, -g.d);
+		broken = smoothstep(0.0, 0.05, rag - (0.86 - 0.22 * wear * wear) + 0.45 * verge * wear);
+	}
 	// Painted lines: a car park's bays, a loading apron's hazard stripes, flaking as it ages.
 	float flake = smoothstep(0.25, 0.7, pn2(p, 0.9) + 0.5 - 0.45 * wear) * (1.0 - 0.6 * wear);
 	if (g.pattern > 1.5 && g.pattern < 2.5) {
@@ -724,7 +748,7 @@ vec4 paint_ground(Patch g, vec2 p, vec3 land, float fw, float near, out float co
 		float stripe = step(0.5, fract((g.local.x + v) / 1.2));
 		float on = band(v, 0.45, fw);
 		c = mix(c, mix(vec3(0.55, 0.4, 0.04), vec3(0.03), stripe), on * flake);
-	} else if (g.pattern > 3.5 && g.pattern < 4.5) {
+	} else if (g.pattern > 3.5 && g.pattern < 4.5 && hard) {
 		// A runway: white edge lines, a centre line dashed 30 m on and 20 off, a row of threshold bars across each end
 		// and the two broad aiming bars 300 m in; shapes only.
 		float u = g.local.x, v = g.local.y, hv = g.half_.y, in_ = g.half_.x - abs(u);
@@ -733,7 +757,7 @@ vec4 paint_ground(Patch g, vec2 p, vec3 land, float fw, float near, out float co
 		float keys = step(6.0, in_) * step(in_, 36.0) * step(abs(v), hv - 3.0) * band(abs(fract(v / 3.6 + 0.5) - 0.5) * 3.6, 0.9, fw);
 		float aim = step(300.0, in_) * step(in_, 345.0) * band(abs(v) - hv * 0.4, 4.5, fw);
 		c = mix(c, vec3(0.62, 0.62, 0.6), max(max(edge, centre), max(keys, aim)) * flake);
-	} else if (g.pattern > 4.5) {
+	} else if (g.pattern > 4.5 && hard) {
 		// A taxiway: a yellow centre line and edge lines.
 		float v = g.local.y, hv = g.half_.y;
 		float line = max(band(v, 0.15, fw), band(hv - 1.0 - abs(v), 0.15, fw));
@@ -745,18 +769,19 @@ vec4 paint_ground(Patch g, vec2 p, vec3 land, float fw, float near, out float co
 		kerb = band(g.d + 0.12, 0.1, fw) * (1.0 - 0.6 * step(0.86 - 0.25 * wear, pn2(p, 2.3)));
 		c = mix(c, vec3(0.36, 0.35, 0.33) * (0.9 + 0.2 * pn2(p, 1.7)), kerb);
 	}
-	// Slabs gone: the land showing through, broken concrete lying in it.
+	// Broken up: the land showing through (seen from the air too), pieces of it lying there up close.
 	if (broken > 0.0) {
-		float bits = fragments(p, 0.6, 0.35, 13.0 + g.seed, fw);
-		vec3 rubble = mix(land * 0.85, c * 1.08, bits);
-		c = mix(c, rubble, broken * seen);
+		float bits = fragments(p, 0.6, 0.25, 13.0 + g.seed, fw) * seen;
+		c = mix(c, mix(land * 0.85, own * 1.05, bits), broken * (1.0 - smoothstep(3.0, 8.0, fw)));
 	}
 	// The land takes it back: grass and soil creep in from the edge, more of it and further in the older it is,
 	// and lie in drifts here and there; never over the whole of it.
 	float inward = -g.d;
-	float creep = (g.kerb > 0.5 ? 0.03 + 0.35 * wear * wear : 0.25 + 2.6 * wear * wear) * (0.4 + 0.9 * pn2(p, 0.17)) + (pn2(p, 1.3) - 0.5) * 0.25 * near;
+	// (A strip is kept graded: the land gets little hold on it.)
+	float keep = strip ? 0.3 : 1.0;
+	float creep = (g.kerb > 0.5 ? 0.03 + 0.35 * wear * wear : 0.25 + 2.6 * wear * wear) * keep * (0.4 + 0.9 * pn2(p, 0.17)) + (pn2(p, 1.3) - 0.5) * 0.25 * near;
 	float over = 1.0 - smoothstep(creep - 0.3 - fw, creep + fw, inward);
-	float drift = smoothstep(0.7 - 0.12 * wear, 0.85, pn2(p, 0.045)) * (0.15 + 0.5 * wear) * smoothstep(0.1, 0.4, wear);
+	float drift = smoothstep(0.7 - 0.12 * wear, 0.85, pn2(p, 0.045)) * (0.15 + 0.5 * wear) * smoothstep(0.1, 0.4, wear) * keep;
 	over = max(over * (0.55 + 0.4 * wear), drift);
 	over = min(over, 0.9);
 	c = mix(c, land, over);
@@ -767,7 +792,7 @@ vec4 paint_ground(Patch g, vec2 p, vec3 land, float fw, float near, out float co
 		float dens = (1.0 - smoothstep(0.0, 2.5, g.d)) * 0.5 * wear;
 		spill = fragments(p, 0.7, dens, 29.0 + g.seed, fw) * seen * step(0.0, g.d);
 	}
-	if (hard && g.d >= 0.0) c = vec3(0.3, 0.29, 0.275) * (0.8 + 0.3 * pn2(p, 3.3));
+	if (hard && g.d >= 0.0) c = own * (0.8 + 0.3 * pn2(p, 3.3));
 	// Gravel and dirt spill a little way past their edge.
 	float spread = hard ? 0.0 : (1.0 - smoothstep(0.0, 1.2, g.d)) * (0.3 + 0.3 * pn2(p, 0.7)) * (1.0 - body);
 	cover = body * (1.0 - over);

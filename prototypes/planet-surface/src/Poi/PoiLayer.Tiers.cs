@@ -522,10 +522,13 @@ public partial class PoiLayer
 
     /// <summary>Places within <paramref name="range"/> of the camera not drawn as themselves yet: a plain block, or a city tile still waiting for its buildings (tests).</summary>
     public int Unshown(float range) =>
-        _places.Count(p => p.StandIn != null && Away(p, _focus) < range) + _tiles.Count(t => t.Node == null && t.Members.Min(p => Away(p, _focus)) < range);
+        _places.Count(p => p.StandIn != null && Away(p, _focus) < range && PoiBuilds.Withhold?.Invoke(p.Site) != true) + _tiles.Count(t => t.Node == null && t.Members.Min(p => Away(p, _focus)) < range);
 
     /// <summary>Whether a place in reach still waits for its merged blocks (tests and proof frames wait for none).</summary>
     public bool MidPending { get; private set; } = true;
+
+    /// <summary>Whether a place stands built, no plain block left in its stead (tests).</summary>
+    public bool Standing(PoiSite site) => site.Built != null && _places.Find(x => x.Site == site) is { StandIn: null };
 
     /// <summary>Whether a place's mid blocks are in (tests).</summary>
     public bool MidReady(PoiSite site) => _places.Find(x => x.Site == site)?.Whole == true;

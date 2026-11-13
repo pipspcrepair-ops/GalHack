@@ -88,9 +88,19 @@ public static class Airfield
         var doors = new HashSet<int>();
         if (bays.Count > 8) passages.Add(r.Range(0, bays.Count));
         string[] kinds = { "baggage", "office", "shop", "cafe", "staff", "toilets", "shop", "office" };
+        // One bay walled off behind its neighbour, its only way in a breakable panel in the wall between (found by
+        // exploring, never by a lock).
+        var walled = Enumerable.Range(1, bays.Count - 1).Where(b => !passages.Contains(b) && !passages.Contains(b - 1)).ToList();
+        int hidden = walled.Count > 0 ? walled[r.Range(0, walled.Count)] : -1, beside = -1;
         for (int b = 0; b < bays.Count; b++)
         {
             var (a0, a1) = bays[b];
+            if (b == hidden)
+            {
+                int store = p.Room(ModuleKind.Room, "hidden store", 0, a0, 0, band0, a1, H - 1, band1);
+                p.Secret(a0 - 1, 0, band1 - 1, false, -1, beside, store, 0, 2 * a1, 2 * band0);
+                continue;
+            }
             if (passages.Contains(b))
             {
                 int pass = p.Room(ModuleKind.Corridor, "security", 0, a0, 0, band0, a1, H - 1, band1);
@@ -104,7 +114,7 @@ public static class Airfield
             }
             string what = kinds[r.Range(0, kinds.Length)];
             bool toHall = what is "baggage" or "office" or "staff" ? true : r.Chance(0.4f);
-            int room = p.Room(ModuleKind.Room, what, 0, a0, 0, band0, a1, H - 1, band1);
+            int room = beside = p.Room(ModuleKind.Room, what, 0, a0, 0, band0, a1, H - 1, band1);
             p.Door((a0 + a1) / 2, 0, toHall ? band1 + 1 : band0 - 1, true, room, toHall ? hall : concourse);
             doors.Add((a0 + a1) / 2);
             Furnish(p, what, a0, band0, a1, band1, 0, room, toHall);
@@ -132,13 +142,19 @@ public static class Airfield
         p.Glazed(2, 1, K1, mid - 6, K1);
         p.Glazed(mid + 6, 1, K1, I1 - 2, K1);
 
-        // Seats down the concourse against the band's wall, check-in desks across the hall, lamps.
+        // Seats down the concourse against the band's wall; across the hall check-in desks in runs, a bag belt behind
+        // them along the band's wall, the staff aisle between, seats further back; lamps.
         for (int u = 4; u < 2 * I1 - 2; u += 2)
         {
             int i = u / 2;
             if (bays.Where((_, b) => passages.Contains(b)).Any(bay => i >= bay.I0 - 1 && i <= bay.I1 + 1) || doors.Any(d => Math.Abs(d - i) <= 1)) continue;
             if (u % 12 < 8) p.Prop(u, 0, 2 * Kc + 1, BlockType.Bench, Material.Steel, f.Steel.C, Dir.North);
-            if (u % 16 < 10 && hall0 + 2 < K1) p.Prop(u, 0, 2 * hall0 + 3, BlockType.Bench, Material.Steel, f.Panel.C, Dir.South);
+            if (u % 12 < 8 && hall0 + 2 < K1)
+            {
+                p.Prop(u, 0, 2 * hall0 + 1, BlockType.Machine, Material.Steel, f.Steel.C);
+                p.Prop(u, 0, 2 * hall0 + 3, BlockType.Table, Material.Steel, f.Panel.C, Dir.South);
+            }
+            if (u % 16 < 10 && hall0 + 4 < K1) p.Prop(u, 0, 2 * hall0 + 7, BlockType.Bench, Material.Steel, f.Panel.C, Dir.South);
         }
         for (int i = 4; i < I1 - 2; i += 8)
         {
@@ -239,23 +255,42 @@ public static class Airfield
                 p.Machine(i0, j, (k0 + k1) / 2, i1, (k0 + k1) / 2, 1, f.Steel);
                 Row(BlockType.Crate, Material.Scrap, f.Rust.C, 3);
                 break;
-            case "office" or "operations" or "staff":
-                Row(what == "staff" ? BlockType.Locker : BlockType.Bench, Material.Steel, f.Steel.C, 3);
+            case "office" or "operations":
+                // Desks with their screens along the wall, a shelf by the door; operations has its consoles too.
+                Row(BlockType.Table, Material.Steel, f.Panel.C, 3);
                 p.Prop(u0 + 1, y, front, BlockType.Shelf, Material.Steel, f.Panel.C);
                 p.Terminal(u1 - 1, y, along, room);
+                if (what == "operations") p.Prop(u0 + 1, y, along + (front > along ? 1 : -1), BlockType.Machine, Material.Steel, f.Steel.C);
                 break;
-            case "archive" or "shop":
+            case "staff":
+                // Lockers along the wall, a table and bench in the middle.
+                Row(BlockType.Locker, Material.Steel, f.Steel.C);
+                p.Prop((u0 + u1) / 2, y, (along + front) / 2, BlockType.Table, Material.Steel, f.Panel.C);
+                p.Prop((u0 + u1) / 2 - 1, y, (along + front) / 2, BlockType.Bench, Material.Steel, f.Steel.C);
+                break;
+            case "shop":
+                // Shelves along the wall, a counter by the way in.
                 Row(BlockType.Shelf, Material.Steel, f.Panel.C);
+                p.Prop(u0 + 1, y, (along + front) / 2, BlockType.Table, Material.Steel, f.Steel.C);
+                break;
+            case "archive":
+                // Stacks: along the wall and a free-standing run down the middle.
+                Row(BlockType.Shelf, Material.Steel, f.Panel.C);
+                for (int u = u0 + 2; u < u1 - 3; u += 2) p.Prop(u, y, (along + front) / 2, BlockType.Shelf, Material.Steel, f.Panel.C);
                 break;
             case "cafe" or "lounge":
-                for (int u = u0 + 1; u < u1; u += 3) p.Prop(u, y, (along + front) / 2, BlockType.Table, Material.Steel, f.Panel.C);
+                // (A cafe's tables still laid.)
+                for (int u = u0 + 1; u < u1 - 2; u += 3) p.Prop(u, y, (along + front) / 2, what == "cafe" ? BlockType.Meal : BlockType.Table, Material.Steel, f.Panel.C);
                 Row(BlockType.Bench, Material.Steel, f.Steel.C, 3);
                 break;
             case "toilets":
-                Row(BlockType.Locker, Material.Steel, f.Panel.C);
+                // Stalls along the wall, the floor wet in front of them.
+                Row(BlockType.Partition, Material.Steel, f.Panel.C);
+                p.Wet((u0 + u1) / 2, y, (along + front) / 2);
                 break;
             case "strongroom":
                 Row(BlockType.Shelf, Material.Steel, f.Steel.C, 3);
+                p.Prop(u0 + 1, y, front, BlockType.Crate, Material.Steel, f.Steel.C);
                 break;
         }
         p.Cache(u1 - 2, y, (along + front) / 2, room);
