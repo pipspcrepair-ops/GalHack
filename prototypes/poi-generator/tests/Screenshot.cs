@@ -344,6 +344,53 @@ public partial class Screenshot : Node
             m.FreezeCamera = true;
             return;
         }
+        // round:<tanks|stacks|dome>:<stand|back|above|owner>: round things on a yard by day (two tanks beside a shed, a stack and a
+        // cooling tower, a containment dome), from standing height 10 m off, 30 m back, from above, or as the owner looked at the
+        // tanks (a few metres up, onto their tops); --flat lays every round as whole cubes, as they were (proof frames for Round).
+        if (view.StartsWith("round:"))
+        {
+            string[] a = view.Split(':');
+            Round.Cut = !OS.GetCmdlineUserArgs().Contains("--flat");
+            var lib = m.Library;
+            FamilyDef fam = lib.Families.First(f => f.Site != null && !f.Space && lib.Sites[f.Site].Parts.Any(p => p.Kind == "tanks"));
+            SitePart Part(string kind, int x, int z, params (string, string)[] args)
+            {
+                var p = new SitePart { Kind = kind, X = x, Z = z };
+                foreach (var (k, v) in args) p.Args[k] = v;
+                return p;
+            }
+            SitePart[] parts = a[1] switch
+            {
+                "stacks" => new[] { Part("stacks", 0, 0, ("count", "1"), ("r", "3"), ("h", "30")), Part("stacks", 16, 6, ("count", "1"), ("r", "7"), ("h", "26"), ("type", "cooling")) },
+                "dome" => new[] { Part("dome", 0, 0, ("r", "12"), ("wall", "5")) },
+                _ => new[] { Part("building", -24, -4, ("program", "shed")), Part("tanks", 0, 0, ("count", "2"), ("r", "4"), ("h", "10"), ("gap", "6"), ("axis", "x")) },
+            };
+            var canvas = new Canvas(lib.Kits[fam.Style ?? lib.Sites[fam.Site!].Style]) { Tech = TechLevel.Mid };
+            Sites.Compose(lib, canvas, new SiteDef { Id = "round", Style = lib.Sites[fam.Site!].Style, EntranceX = -30, EntranceZ = 20, Parts = parts.ToList() }, fam, Rarity.Common, new Rng(_seed), new LayoutHints(Dir.West, TechLevel.Mid));
+            Layout layout = canvas.Finish(fam, fam.Variants[0], Rarity.Common, _seed, "round");
+            layout.Tech = TechLevel.Mid;
+            var inst = PoiFactory.Spawn(lib, layout, PoiState.Active, _seed);
+            Round.Cut = true;
+            m.Show(inst);
+            m.HideHud(true);
+            m.Player.Lamp.Visible = false;
+            var bodies = layout.Extras.Rounds;
+            double x0 = bodies.Min(b => b.X - b.Outer.Max()), x1 = bodies.Max(b => b.X + b.Outer.Max()), z0 = bodies.Min(b => b.Z - b.Outer.Max()), z1 = bodies.Max(b => b.Z + b.Outer.Max());
+            float top = bodies.Max(b => b.Y1 + 1), reach = (float)System.Math.Max(x1 - x0, z1 - z0) / 2;
+            Vector3 mid = new((float)(x0 + x1) / 2, 0, (float)(z0 + z1) / 2), toward = new Vector3(0.55f, 0, 1f).Normalized();
+            (Vector3 eye, Vector3 at) = a[2] switch
+            {
+                "back" => (mid + toward * (reach + 30) + Vector3.Up * 1.7f, mid + Vector3.Up * top * 0.45f),
+                "above" => (mid + toward * 6f + Vector3.Up * (top + reach * 2.2f + 8), mid + Vector3.Up * top),
+                "owner" => (mid + toward * (reach + 9) + Vector3.Up * (top + 3), mid + Vector3.Up * (top - 2)),
+                _ => (mid + toward * (reach + 10) + Vector3.Up * 1.7f, mid + Vector3.Up * Mathf.Min(top * 0.5f, 8f)),
+            };
+            m.Camera.GlobalTransform = new Transform3D(Basis.Identity, m.Stage.ToGlobal(eye)).LookingAt(m.Stage.ToGlobal(at), Vector3.Up);
+            m.Camera.Fov = 70f;
+            m.FreezeCamera = true;
+            m.Sky.Apply(Look.Day, 260f);
+            return;
+        }
         // place:<family>:<state>:<out|near|in|inN|low>[:wear/violence/water[/falling]] spawns a family fresh and frames it as a lot
         // is framed; low stands in a corner of the biggest room on its lowest storey. The optional fifth part is the
         // world's fall as decay reads it, as the lot view's seventh.

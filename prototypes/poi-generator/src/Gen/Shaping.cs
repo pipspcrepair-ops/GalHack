@@ -20,6 +20,7 @@ namespace PoiGenerator.Gen;
 /// beam under each joist wall to wall; high tech folded in V-bays the long way. Posts (round columns, high tech) on a
 /// grid in big halls; mines timbered in whole sets.</item>
 /// </list>
+/// A round thing's rim is never shaped: <see cref="Round"/> cut it to its round already.
 /// A cell is shaped only if it is a plain cube with nothing set against it and no top anyone stands on; an element
 /// with any such cell stays plain. A shape keeps whole the face a room or the next cell sees, so nothing shows through.
 /// </summary>

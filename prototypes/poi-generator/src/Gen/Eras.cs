@@ -277,9 +277,12 @@ public static class EraPass
         }
 
         // ---- its roofs: pitched in a low age, rounded off at the edge in a stellar one
+        // (Not a round thing's top: its rim is cut to its round already.)
+        var rims = Round.Rims(layout.Extras.Rounds);
+        var roofs = top.Where(t => !rims.Contains(new Int3(t.Key.Item1, t.Value, t.Key.Item2))).ToDictionary(t => t.Key, t => t.Value);
         if (house) { }
-        else if (era.Gable > 0) Gables(layout, g, top, era, roofing, lattice);
-        else if (era.RoundEdge) RoundEdges(g, top, Clear, Sky);
+        else if (era.Gable > 0) Gables(layout, g, roofs, era, roofing, lattice);
+        else if (era.RoundEdge) RoundEdges(g, roofs, Clear, Sky);
 
         // ---- light strips along each floor line and the wall tops
         if (era.Strips is Rgb strip && !house)

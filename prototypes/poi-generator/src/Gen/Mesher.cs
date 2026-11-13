@@ -1256,23 +1256,22 @@ public static class Mesher
                 if (top) Array.Reverse(pts, 1, pts.Length - 1); // (the first corner kept first: the fan's, which sees every edge)
                 Face(pts, new V3(0, top ? 1 : -1, 0), shown, solid, top ? 1f : 0.66f);
             }
-            // The sides: each edge of the plan, a wall from the bottom to the top.
+            // The sides: each edge of the plan, a wall from the bottom to the top. Its collision is one wall the height of the
+            // run of this piece stacked over it (a tank's rim is the same piece course on course), from the run's foot.
+            bool Same(Int3 q) { Block o = _g.Get(q); return o.Type == b.Type && o.Facing == b.Facing; }
             for (int i = 0; i < plan.Length; i++)
             {
                 V3 a = plan[i], c = plan[(i + 1) % plan.Length];
                 V3 n = new V3(c.Z - a.Z, 0, a.X - c.X).Normalized();
                 Dir? side = Shapes.OnSide(a, c);
-                bool shown = draw, solid = true;
-                if (side is Dir d)
-                {
-                    Int3 q = p + d.Vec();
-                    bool covered = Shapes.Covers(_g.Get(q), d.Opposite(), Shapes.Span(a, c, d));
-                    shown &= !Hides(q) && !covered;
-                    solid = !CollidesFull(q) && !covered;
-                }
-                if (!shown && !solid) continue;
+                bool Open(Int3 q, bool solid) => side is not Dir d
+                    || !(solid ? CollidesFull(q + d.Vec()) : Hides(q + d.Vec())) && !Shapes.Covers(_g.Get(q + d.Vec()), d.Opposite(), Shapes.Span(a, c, d));
+                bool shown = draw && Open(p, false), solid = _o.Collision && Open(p, true) && !(Same(p + Int3.Down) && Open(p + Int3.Down, true));
+                int run = 1;
+                while (solid && Same(p + Int3.Up * run) && Open(p + Int3.Up * run, true)) run++;
                 float shade = 0.8f + 0.14f * MathF.Max(0f, n.Z) + 0.1f * MathF.Max(0f, -n.Z) + 0.04f * MathF.Max(0f, n.X);
-                Face(new[] { a, a with { Y = 1 }, c with { Y = 1 }, c }, n, shown, solid, shade);
+                if (shown) Face(new[] { a, a with { Y = 1 }, c with { Y = 1 }, c }, n, true, false, shade);
+                if (solid) Face(new[] { a, a with { Y = run }, c with { Y = run }, c }, n, false, true, shade);
             }
         }
 
@@ -1587,19 +1586,8 @@ public static class Shapes
     /// </summary>
     public static bool Covers(Block b, Dir side, (float Lo, float Hi) need)
     {
-        if (b.IsAir || BlockInfo.IsTransparent(b.Material)) return false;
-        if (BlockInfo.IsFullCube(b.Type)) return true;
+        if (b.IsAir || BlockInfo.IsTransparent(b.Material) || PlanOf(b) is not { } plan) return false;
         const float e = 0.001f;
-        if (b.Type == BlockType.Half && b.Facing.IsHorizontal())
-        {
-            if (b.Facing == side) return true;
-            if (b.Facing == side.Opposite()) return false;
-            ShapeBox box = Box(0, 0, 0, 1, 1, 0.5f, default, Surface.Matte, b.Facing);
-            var (lo, hi) = side is Dir.North or Dir.South ? (box.Lo.X, box.Hi.X) : (box.Lo.Z, box.Hi.Z);
-            return lo <= need.Lo + e && hi >= need.Hi - e;
-        }
-        if (!BlockInfo.IsPlanCut(b.Type)) return false;
-        V3[] plan = Plan(b);
         for (int i = 0; i < plan.Length; i++)
         {
             V3 a = plan[i], c = plan[(i + 1) % plan.Length];
@@ -1608,6 +1596,18 @@ public static class Shapes
             if (lo <= need.Lo + e && hi >= need.Hi - e) return true;
         }
         return false;
+    }
+
+    static readonly V3[] Square = { new(0, 0, 0), new(1, 0, 0), new(1, 0, 1), new(0, 0, 1) };
+
+    /// <summary>A block standing the full height of its cell, in plan as <see cref="Plan"/> gives it: a whole block's square, a half standing against a face, a rim piece; null for anything else.</summary>
+    public static V3[]? PlanOf(Block b)
+    {
+        if (BlockInfo.IsFullCube(b.Type)) return Square;
+        if (BlockInfo.IsPlanCut(b.Type)) return Plan(b);
+        if (b.Type != BlockType.Half || !b.Facing.IsHorizontal()) return null;
+        ShapeBox box = Box(0, 0, 0, 1, 1, 0.5f, default, Surface.Matte, b.Facing);
+        return new[] { new V3(box.Lo.X, 0, box.Lo.Z), new V3(box.Hi.X, 0, box.Lo.Z), new V3(box.Hi.X, 0, box.Hi.Z), new V3(box.Lo.X, 0, box.Hi.Z) };
     }
 
     /// <summary>Whether a block's face on one side is the whole face of its cell (something can be hung on it, or stand against it).</summary>
