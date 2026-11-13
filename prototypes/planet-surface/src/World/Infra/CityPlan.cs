@@ -473,8 +473,8 @@ public sealed class CityPlan
             }
         }
 
-        // ---- the buildings, laid out side by side, then set on their lots.
-        var made = new PoiInstance[city.Lots.Count];
+        // ---- the buildings, laid out side by side, then set on their lots; each is spawned when it is first wanted.
+        var made = new (Layout Layout, PoiState State, ulong Seed, OccupancyRoll Occ)?[city.Lots.Count];
         var fams = new FamilyDef[city.Lots.Count];
         ulong lightSeed = PoiGenerator.Gen.Hash.Combine(seed, 0x117UL);
         // A world still lived in, or one only half fallen, keeps the lights on in a district or two.
@@ -500,22 +500,24 @@ public sealed class CityPlan
                 _ => null,
             };
             OccupancyRoll occ = !OccupancyLayer.Applies(f, state) ? null : OccupancyLayer.Roll(roll.Occupancy, f, s + 1, lean, OccupancyLayer.Peopled(roll, profile) && OccupancyLayer.Livable(f, state)) with { Tags = roll.Tags };
-            made[i] = PoiFactory.Spawn(lib, layout, state, s + 1, profile, occ);
+            made[i] = (layout, state, s + 1, occ);
             fams[i] = f;
         });
         // Houses on their pads lowest first, so where two lots meet the higher one's edge wins.
         foreach (int i in Enumerable.Range(0, city.Lots.Count).OrderBy(i => city.Lots[i].Pad))
         {
-            if (made[i] == null) continue;
+            if (made[i] is not { } m) continue;
             CityLotPlan lot = city.Lots[i];
-            lot.Site = Set(made[i], fams[i], lot, w, h);
+            lot.Site = Set(m.Layout, m.State, fams[i], lot, w, h);
+            lot.Site.Occupancy = m.Occ;
+            lot.Site.Make = () => PoiFactory.Spawn(lib, m.Layout, m.State, m.Seed, profile, m.Occ);
             city.Sites.Add(lot.Site);
             // The frontage: the lot line along the street, the gate in it, the crossover square across on the street's centre line.
             bool alongX = lot.Front is Dir.North or Dir.South;
             double line = lot.Front switch { Dir.North => lot.Z0, Dir.South => lot.Z1, Dir.West => lot.X0, _ => lot.X1 };
             lot.Frontage = alongX ? (Mathx.WrapX(lot.X0, w), Mathx.Wrap(line, h), Mathx.WrapX(lot.X1, w), Mathx.Wrap(line, h))
                 : (Mathx.WrapX(line, w), Mathx.Wrap(lot.Z0, h), Mathx.WrapX(line, w), Mathx.Wrap(lot.Z1, h));
-            TInt3 g = lot.Site.World(made[i].Layout.Extras.Gate);
+            TInt3 g = lot.Site.World(m.Layout.Extras.Gate);
             (double X, double Z) gate = alongX ? (g.X + 0.5, line) : (line, g.Z + 0.5);
             lot.Gate = (Mathx.WrapX(gate.X, w), Mathx.Wrap(gate.Z, h));
             int out1 = lot.Front is Dir.North or Dir.West ? -1 : 1;
@@ -563,7 +565,7 @@ public sealed class CityPlan
     }
 
     /// <summary>A building set square on its lot, its front to the street, on the 2 m lattice: a place of its own, drawn by distance like any. Its pad is the whole lot.</summary>
-    static PoiSite Set(PoiInstance inst, FamilyDef family, CityLotPlan lot, double w, double h)
+    static PoiSite Set(Layout layout, PoiState state, FamilyDef family, CityLotPlan lot, double w, double h)
     {
         // The place's cell (0, 0, 0) is the corner of the lot at its front's left (Plot.Cell): turned, that cell lies just inside the corner.
         var (ox, oz) = lot.Front switch
@@ -575,14 +577,14 @@ public sealed class CityPlan
         };
         int px = (int)Math.Round(ox / 2) * 2, pz = (int)Math.Round(oz / 2) * 2, pad = lot.Pad;
         int x0 = (int)Math.Round(lot.X0), z0 = (int)Math.Round(lot.Z0), x1 = (int)Math.Round(lot.X1), z1 = (int)Math.Round(lot.Z1);
-        BlockGrid g = inst.Blocks;
-        int top = pad + Math.Max(inst.Layout.Occupied.Min.Y + inst.Layout.Occupied.Size.Y, g.Min.Y + g.Size.Y);
-        var footprint = new CellBox(new TInt3((int)Mathx.WrapX(x0, w), pad + Math.Min(0, inst.Layout.Occupied.Min.Y), (int)Mathx.Wrap(z0, h)),
+        BlockGrid g = layout.Blocks;
+        int top = pad + Math.Max(layout.Occupied.Min.Y + layout.Occupied.Size.Y, g.Min.Y + g.Size.Y);
+        var footprint = new CellBox(new TInt3((int)Mathx.WrapX(x0, w), pad + Math.Min(0, layout.Occupied.Min.Y), (int)Mathx.Wrap(z0, h)),
             new TInt3((int)Mathx.WrapX(x0, w) + (x1 - x0), top, (int)Mathx.Wrap(z0, h) + (z1 - z0)));
         bool green = lot.Kind is "house" or "terrace" or "civic";
         // Its floor layer and anything below the pad are carved out of the ground, as every place's are: left in, the ground's
         // top lay in the plane of the building's floor, and the two fought (places agent, z-fighting).
-        CellMask occ = inst.Layout.Occupied;
+        CellMask occ = layout.Occupied;
         int carveH = Math.Max(0, -occ.Min.Y);
         bool[] carve = null, walls = null;
         if (carveH > 0)
@@ -594,8 +596,8 @@ public sealed class CityPlan
             for (int x = 0; x < occ.Size.X; x++)
             {
                 var cell = new PoiGenerator.Gen.Int3(occ.Min.X + x, occ.Min.Y + y, occ.Min.Z + z);
-                carve[(y * occ.Size.Z + z) * occ.Size.X + x] = Structure.Carved(inst.Layout.Blocks, occ, cell);
-                walls[(y * occ.Size.Z + z) * occ.Size.X + x] = Structure.OuterWall(inst.Layout.Blocks, occ, cell);
+                carve[(y * occ.Size.Z + z) * occ.Size.X + x] = Structure.Carved(layout.Blocks, occ, cell);
+                walls[(y * occ.Size.Z + z) * occ.Size.X + x] = Structure.OuterWall(layout.Blocks, occ, cell);
             }
             if (!carve.Contains(true)) (carve, walls, carveH) = (null, null, 0);
         }
@@ -608,8 +610,8 @@ public sealed class CityPlan
             Wear = 0.4f + lot.Lot.Fall * 0.5f,
         };
         var origin = new TInt3((int)Mathx.WrapX(px, w), pad, (int)Mathx.Wrap(pz, h));
-        PoiGenerator.Gen.Int3 e = inst.Layout.EntranceCell;
-        PoiGenerator.Gen.Int3 outward = inst.Layout.EntranceFacing.Vec();
+        PoiGenerator.Gen.Int3 e = layout.EntranceCell;
+        PoiGenerator.Gen.Int3 outward = layout.EntranceFacing.Vec();
         var entrance = new TInt3(origin.X + e.X, pad + e.Y, origin.Z + e.Z);
         // A house's front garden and pavement: its lot's level out to a metre short of the street's edge (the street is at
         // that level there), so the land between never stands up against its front wall: cut into a hill, the 1.5 m the
@@ -620,8 +622,8 @@ public sealed class CityPlan
         return new PoiSite
         {
             Extra = extra,
-            Name = $"{family.Name}: {lot.District} ({inst.State.ToString().ToLowerInvariant()})",
-            Family = family, Instance = inst, Origin = origin, Footprint = footprint, Stamp = stamp, Recarve = () => { },
+            Name = $"{family.Name}: {lot.District} ({state.ToString().ToLowerInvariant()})",
+            Family = family, Layout = layout, State = state, Origin = origin, Footprint = footprint, Stamp = stamp, Recarve = () => { },
             Siting = "city", Entrance = entrance, Gates = new List<PoiGate> { new("entrance", entrance, outward.X, outward.Z) },
         };
     }
