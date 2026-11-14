@@ -453,7 +453,7 @@ public partial class Visor : CanvasLayer
         if (Game.Backpack != null) marks.Add(new("BACKPACK", Game.Backpack.Position, C.Danger, 1f, "backpack"));
         foreach (Game.Game.Ping p in Game.Pings)
             marks.Add(new(p.Place ? "?" : p.Label.ToUpperInvariant(), p.Place ? Ground(p.At, PlaceLift) : p.At, p.Place ? C.Accent : C.Holo, Game.PingAlpha(p), "ping"));
-        // The core scanner's cores, through the walls: the visor draws over everything, so a marker on a core shows wherever it lies.
+        // The handheld scanner's cores, through the walls: the visor draws over everything, so a marker on a core shows wherever it lies.
         foreach (var c in Game.CoresInRange(survivor.WorldEye())) marks.Add(new("", c.At, C.Accent2, c.Alpha, "core"));
         return marks;
     }

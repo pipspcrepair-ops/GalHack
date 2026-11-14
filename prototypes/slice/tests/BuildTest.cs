@@ -944,7 +944,6 @@ public partial class BuildTest : Node
         var unchained = tiers.Where(x => x.n.Unlock.Parent != $"{x.m.Groups[1].Value}-t{int.Parse(x.m.Groups[2].Value) - 1}" || fresh.Node(x.n.Unlock.Parent).Level > x.n.Level).Select(x => x.n.Id).ToList();
         Check(tiers.Count > 20 && unchained.Count == 0, $"each of {tiers.Count} tiers hangs under the tier below and opens no sooner{(unchained.Count > 0 ? ": not " + string.Join(", ", unchained) : "")}");
         Check(fresh.Node("thruster-t1").Unlock.Parent == "hover-t1" && fresh.Node("hover-t1").Unlock.Parent == "core", "hover runs beside flight: Thruster T1 hangs under Hover plate T1, on the core");
-        Check(fresh.Node("core-scanner") is { Tab: "tools" } cs && cs.Unlock.Parent == "scanner", "the core scanner is on Tools, under the scanner");
         Check(fresh.Level == 1 && fresh.Points == 3, $"a new character starts at level 1 with 3 unlock points ({fresh.Points})");
         Check(fresh.IsUnlocked("core") && fresh.IsUnlocked("iron-plated") && fresh.IsUnlocked("generator-t1"), "the core, plated blocks and the first generator are free at level 1");
         Check(fresh.StateOf(fresh.Node("thruster-t1")) == UnlockState.NeedsLevel, "and Thruster T1 waits for its level");

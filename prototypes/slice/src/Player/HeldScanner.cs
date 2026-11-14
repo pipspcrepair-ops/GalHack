@@ -13,10 +13,7 @@ namespace Slice.Player;
 /// </summary>
 public static class HeldScanner
 {
-    public static ItemModel Build(ItemDef item) => Build(item, false);
-
-    /// <summary>Forked: two prongs and a ring of lit beads round the coil, for the core scanner.</summary>
-    public static ItemModel Build(ItemDef item, bool forked)
+    public static ItemModel Build(ItemDef item)
     {
         Color hull = new("b9c6c4"), plate = new("9aaaa8"), grip = new("2a3550");
         var root = new Node3D { Name = "Scanner" };
@@ -57,13 +54,6 @@ public static class HeldScanner
         Worn(new CylinderMesh { TopRadius = 0.005f, BottomRadius = 0.006f, Height = 0.075f, RadialSegments = 6 }, grip, new Vector3(0.145f, -0.093f, -0.312f), new Vector3(0, 0, 8), 0.5f, 0.4f, 27f);
         var bead = new BoxMesh { Size = new Vector3(0.014f, 0.014f, 0.014f) };
         Add(bead, Lens(bead), new Vector3(0.1385f, -0.0545f, -0.312f), new Vector3(0, 0, 8));
-        if (forked)
-            foreach (float side in new[] { -1f, 1f })
-            {
-                Worn(new BoxMesh { Size = new Vector3(0.012f, 0.012f, 0.16f) }, grip, new Vector3(0.17f + side * 0.06f, -0.15f, -0.56f), new Vector3(0, side * 8f, 0), 0.5f, 0.3f, 40f + side);
-                var tipBead = new BoxMesh { Size = new Vector3(0.016f, 0.016f, 0.016f) };
-                Add(tipBead, Lens(tipBead), new Vector3(0.17f + side * 0.0675f, -0.15f, -0.64f), Vector3.Zero);
-            }
         // Where its ping would leave: the middle of the coil.
         var tip = new Node3D { Name = "SensorTip", Position = new Vector3(0.17f, -0.15f, -0.64f) };
         root.AddChild(tip);

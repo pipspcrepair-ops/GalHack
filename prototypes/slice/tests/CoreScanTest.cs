@@ -13,7 +13,7 @@ using Structure = GalHack.Structures.Structure;
 namespace Slice.Tests;
 
 /// <summary>
-/// The core scanner, on a fresh world: it can't be made before it is researched; held near a place with a core behind
+/// The hand scanner's core sight, on a fresh world: it is free from the start, and held near a place with a core behind
 /// walls, a marker sits on the core's projected place though the view of it is blocked, at the right distance; it fades
 /// at the range's edge and shows nothing past it, with another tool held; a structure's core shows too.
 ///
@@ -68,20 +68,19 @@ public partial class CoreScanTest : Node
         PlanetSurface.Poi.PoiSiting.ForceState = null;
         game.Zone.Weather.Bridge.Calm = true;
         game.Zone.Wildlife.Frozen = true;
-        GD.Print($"-- the core scanner, a {family} near the start, {game.World} --");
-        ItemDef item = game.Zone.Data.Items.Item("core-scanner");
+        GD.Print($"-- the hand scanner, a {family} near the start, {game.World} --");
+        ItemDef item = game.Zone.Data.Items.Item("scanner");
         Visor visor = game.Visor;
         Camera3D cam = game.Camera;
 
-        // Research: not made until its node is unlocked.
-        Check(item.Recipe != null && item.Unlock != null && item.Range > 0f, $"data: a recipe (tier {item.Recipe?.Tier}), a tech node (level {item.Unlock?.Level}, {item.Unlock?.Cost} points, after {item.Unlock?.Parent}), a range of {item.Range} m");
-        Check(!game.Progress.ItemAllowed(item), "before research the core scanner can't be made");
-        Check(CoreScanStage.Research(game), "after the node is unlocked it can");
+        // The one scanner: free from the start, with a range for the core sight, and no core scanner item left.
+        Check(item.Recipe != null && item.Unlock is { Cost: 0 } && item.Range > 0f, $"data: the hand scanner is free (tier {item.Recipe?.Tier}), with a range of {item.Range} m");
+        Check(!game.Zone.Data.Items.TryGet("core-scanner", out _), "there is no separate core scanner");
 
         // Held, outside a place whose core is behind walls.
-        game.Pack.Add("core-scanner", 1);
+        game.Pack.Add("scanner", 1);
         int scanSlot = -1;
-        foreach (int x in CoreScanStage.Hold(play, "core-scanner", s => scanSlot = s)) yield return x;
+        foreach (int x in CoreScanStage.Hold(play, "scanner", s => scanSlot = s)) yield return x;
         var stage = new CoreScanStage();
         foreach (int x in stage.Go(game, drive)) yield return x;
         if (stage.Place == null) { Check(false, "a place with a core whose view is blocked from outside, among the nearest eight"); yield break; }
@@ -89,7 +88,7 @@ public partial class CoreScanTest : Node
         foreach (int x in drive.LookAt(stage.Core, 12)) yield return x;
         Vector3 eye = game.Survivor.WorldEye();
         var ray = game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(PhysicsRayQueryParameters3D.Create(eye, stage.Core, GalHack.Physics.Layers.World));
-        Check(scanSlot >= 0 && game.Pack.Hand == HandKind.CoreScanner, "the core scanner is on the toolbar and in hand");
+        Check(scanSlot >= 0 && game.Pack.Hand == HandKind.Scanner, "the hand scanner is on the toolbar and in hand");
         Check(ray.Count > 0, $"the view of the core of {stage.Place.Site.Name} ({stage.Core.DistanceTo(eye):F0} m) is blocked");
         MarkOn(visor, cam, stage.Core, "a place's core");
 
@@ -130,7 +129,7 @@ public partial class CoreScanTest : Node
         foreach (int x in drive.Wait(30)) yield return x;
         Vector3 coreAt = v.ToWorld(PhysicsSandbox.Bridges.StructureBridge.CellCenter(v.Structure, v.Structure.Core.Value));
         foreach (int x in drive.LookAt(coreAt, 12)) yield return x;
-        Check(game.Pack.Hand == HandKind.CoreScanner, "the scanner in hand again");
+        Check(game.Pack.Hand == HandKind.Scanner, "the scanner in hand again");
         MarkOn(visor, cam, coreAt, "a vessel's core");
     }
 
