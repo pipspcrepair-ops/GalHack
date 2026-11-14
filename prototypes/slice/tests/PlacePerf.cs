@@ -90,7 +90,7 @@ public partial class PlacePerf : Node
         DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Disabled);
         Engine.MaxFps = 0;
         if (_args.TryGetValue("family", out string family) && !_args.ContainsKey("asrolled")) PoiSiting.ForceFamily = family;
-        if (_args.ContainsKey("audit")) PlanetSurface.Infra.CityPlan.Force = true;
+        if (_args.ContainsKey("audit") || _args.ContainsKey("city")) PlanetSurface.Infra.CityPlan.Force = true;
         if (_args.GetValueOrDefault("bodies") == "pieces") Wildlife.CreatureView.Merged = false;
         if (_args.TryGetValue("variant", out string v)) PoiSiting.ForceVariant = int.Parse(v);
         if (_args.TryGetValue("state", out string st)) PoiSiting.ForceState = Enum.Parse<PoiState>(st, true);
@@ -109,6 +109,7 @@ public partial class PlacePerf : Node
     void NewGame(WorldChoice world)
     {
         _game = new Game.Game { Interactive = false, SkipIntro = true, World = world };
+        _loading = Stopwatch.StartNew();
         AddChild(_game);
         _drive = new Driver(_game);
     }
@@ -116,7 +117,7 @@ public partial class PlacePerf : Node
     IEnumerable<int> Runs()
     {
         GD.Print($"PERF mode: places {(PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad ? "built at load (old)" : "built after standing")}");
-        foreach (int x in Scenario()) yield return x;
+        foreach (int x in _args.ContainsKey("standing") ? Standing() : Scenario()) yield return x;
         if (!_args.ContainsKey("compare-load")) yield break;
         WorldChoice world = _game.World;
         _game.QueueFree();
@@ -124,7 +125,7 @@ public partial class PlacePerf : Node
         PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad = !PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad;
         NewGame(world);
         GD.Print($"PERF mode: places {(PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad ? "built at load (old)" : "built after standing")}, the same world");
-        foreach (int x in Scenario()) yield return x;
+        foreach (int x in _args.ContainsKey("standing") ? Standing() : Scenario()) yield return x;
     }
 
     public override void _PhysicsProcess(double delta)
