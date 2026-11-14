@@ -95,6 +95,7 @@ public partial class PilotCamTest : Node
             if (img != null && _stripWas != null) Diff(_stripWas, img, $"{_stripName}-diff-{_stripAt - 1}");
             _stripWas = _strip > 0 ? img : null;
         }
+        if (_hPivot != null) WatchHold();
         if (!_watching || _vessel == null || _ticksSeen < 2) return;
         Transform3D cam = _game.Camera.GlobalTransform, drawn = _vessel.DrawTransform;
         // What this frame draws the vessel with: the last two ticks at this frame's fraction.
@@ -126,6 +127,40 @@ public partial class PilotCamTest : Node
     }
 
     float _shipTipped, _viewTipped;
+
+    // ---- The right button held still, then let go: sampled every drawn frame ----
+    Func<Vector3> _hPivot;
+    Func<Basis> _hRest;
+    float _hWant, _hDrift, _hStep, _hFrom, _hOff;
+    Basis? _hAt;
+    int _hFrames, _hKept;
+    bool _hReturning;
+
+    static float Deg(Basis b)
+    {
+        float a = Mathf.RadToDeg(b.Orthonormalized().GetRotationQuaternion().GetAngle());
+        return a > 180f ? 360f - a : a;
+    }
+
+    void WatchHold()
+    {
+        Transform3D cam = _game.Camera.GlobalTransform;
+        Basis b = cam.Basis.Orthonormalized();
+        if (!_hReturning)
+        {
+            // Held: its turn in the world stays put, its distance from the middle holds.
+            _hAt ??= b;
+            _hDrift = MathF.Max(_hDrift, Deg(_hAt.Value.Inverse() * b));
+            _hFrames++;
+            if (MathF.Abs(cam.Origin.DistanceTo(_hPivot()) - _hWant) < 0.05f) _hKept++;
+            return;
+        }
+        // Let go: back into the frame it follows, a little each frame.
+        float off = Deg(_hRest().Inverse() * b);
+        if (float.IsNaN(_hFrom)) _hFrom = off;
+        else _hStep = MathF.Max(_hStep, MathF.Abs(off - _hOff));
+        _hOff = off;
+    }
 
     int _pulledIn;
 
@@ -386,13 +421,39 @@ public partial class PilotCamTest : Node
             most = MathF.Max(most, Mathf.RadToDeg(start.AngleTo(Behind())));
             drift = MathF.Max(drift, vessel != null ? held() : MathF.Abs(Mathf.Wrap(held() - heldWas, -MathF.PI, MathF.PI)));
         }
-        c.Secondary = false;
         c.Look = Vector2.Zero;
         Check(most > 60f && drift < (vessel != null ? 1e-4f : 0.01f),
             $"{what}: the right button held swings the camera {most:F0} degrees round, {heldName} unmoved ({drift:F4})");
+
+        // Still held, the mouse still: what it follows turns under it (the ship loops and rolls, the sleeper turns, the bike steers round).
+        foreach (int x in _drive.Wait(3)) yield return x; // the last swing drawn out
+        float want = _game.Zoom(mode) * (vessel != null ? unit : MathF.Sqrt(1f + 0.13f * 0.13f));
+        Basis Rest() => vessel != null ? vessel.DrawTransform.Basis.Orthonormalized() * new Basis(Vector3.Right, -Game.Game.VesselRise) : S.Eye().Basis.Orthonormalized();
+        (_hPivot, _hRest, _hWant, _hAt, _hDrift, _hFrames, _hKept, _hReturning, _hStep, _hFrom) = (pivot, Rest, want, null, 0f, 0, 0, false, 0f, float.NaN);
+        Basis subjectWas = Rest();
+        float subjectTurned = 0f;
+        for (int i = 0; i < 240; i++)
+        {
+            // The ship rolls on its own keys (the mouse is the camera's) and is pitched round a loop by hand.
+            if (vessel != null) { c.Hold(Key.Q); vessel.Body.Rotation = GalHack.Physics.MathX.ThenLocal(vessel.Body.Rotation, GalHack.Physics.MathX.AxisAngle(N.Vector3.UnitX, 0.025f)); }
+            else if (mode == Game.Game.OrbitMode.Bike) c.Hold(Key.D);
+            else S.Yaw += 0.03f;
+            if (i == 120) Shot($"{what}-held".Replace(' ', '-'));
+            yield return 0;
+            subjectTurned = MathF.Max(subjectTurned, Deg(subjectWas.Inverse() * Rest()));
+        }
+        c.Hold(Key.D, false);
+        c.Hold(Key.Q, false);
+        GD.Print($"   {what}: held still {_hFrames} frames while it turned up to {subjectTurned:F0} degrees: the camera turned {_hDrift:F3} degrees in the world, {_hKept} frames at its distance");
+        Check(_hFrames > 100 && subjectTurned > (vessel != null ? 150f : 60f) && _hDrift < 0.1f && _hKept >= _hFrames * (vessel != null ? 1f : 0.9f),
+            $"{what}: held, the camera keeps its turn in the world ({_hDrift:F3} degrees) and its distance ({_hKept} of {_hFrames} frames) while what it follows turns {subjectTurned:F0} degrees under it");
+        // Let go: it eases back behind, into the frame it follows, without a jump.
+        _hReturning = true;
+        c.Secondary = false;
         for (int i = 0; i < 120; i++) yield return 0;
-        float back = Mathf.RadToDeg(start.AngleTo(Behind()));
-        Check(back < 3f, $"{what}: let go, it eases back behind ({back:F1} degrees off after 2 s)");
+        _hPivot = null;
+        GD.Print($"   {what}: let go {_hFrom:F0} degrees off the frame it follows, {_hOff:F2} after 2 s; the most it moved in a frame {_hStep:F1} degrees");
+        Check(_hOff < 1f && _hStep < _hFrom * 0.15f + 1f, $"{what}: let go, it eases back into the frame it follows smoothly ({_hFrom:F0} to {_hOff:F2} degrees over 2 s, at most {_hStep:F1} in a frame)");
 
         float dist0 = Away().Length();
         c.Wheel = -40; // as far in as it goes

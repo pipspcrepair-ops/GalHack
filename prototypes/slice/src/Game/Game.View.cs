@@ -11,18 +11,20 @@ namespace Slice.Game;
 /// <summary>
 /// The one camera rig. First person it is the eye. Third person it orbits what you are in or on:
 /// the sleeper on foot (in the vessel's frame when aboard one), the sleeper on the bike, or the
-/// vessel you sit in, in that vessel's own frame. The right mouse button held turns it round
-/// without turning you or steering; let go and it eases back behind. The wheel zooms it between
-/// just outside the body or hull and several of its lengths, remembered per mode for the session.
-/// It never ends up inside the ground, a wall or the hull.
+/// vessel you sit in, in that vessel's own frame. The right mouse button held lets go of that frame:
+/// the camera's turn stays fixed in the world (the ship rolls and loops under it) while it keeps
+/// its distance round the middle, and the mouse swings it round without turning you or steering;
+/// let go and it eases back behind, into the frame again. The wheel zooms it between just outside
+/// the body or hull and several of its lengths, remembered per mode for the session. It never ends
+/// up inside the ground, a wall or the hull.
 /// </summary>
 public partial class Game
 {
     public enum OrbitMode { Foot, Bike, Vessel }
 
-    /// <summary>The free look's turn round the target (yaw, pitch), radians: 0 is behind.</summary>
-    public Vector2 Swing;
-    Vector2 _swingWas;
+    /// <summary>The camera's turn in the world while the right button holds it, and how much of the view is held (1 held, easing to 0 after).</summary>
+    Quaternion _hold = Quaternion.Identity, _holdWas = Quaternion.Identity;
+    float _held, _heldWas;
 
     /// <summary>The right button is holding the camera this tick.</summary>
     public bool FreeLook { get; private set; }
@@ -33,7 +35,7 @@ public partial class Game
     OrbitMode _zoomShownFor;
 
     /// <summary>A vessel's chase view stands this far above behind, radians.</summary>
-    const float VesselRise = 0.3f;
+    public const float VesselRise = 0.3f;
 
     public OrbitMode Following => Survivor?.Seated is Vessel ? OrbitMode.Vessel : Survivor?.OnBike != null ? OrbitMode.Bike : OrbitMode.Foot;
 
@@ -50,30 +52,34 @@ public partial class Game
     /// <summary>Each tick, before the controls take the mouse: in third person the right button and the wheel are the camera's.</summary>
     void StepOrbit(Controls c, float dt)
     {
-        _swingWas = Swing;
+        _holdWas = _hold;
+        _heldWas = _held;
+        bool was = FreeLook;
         FreeLook = ThirdPerson && !Menu.IsOpen && c.Secondary;
-        if (ThirdPerson && !Menu.IsOpen)
+        if (FreeLook)
         {
-            if (FreeLook)
-            {
-                Vector2 turn = LookTurn(c);
-                Swing = new Vector2(Mathf.Wrap(Swing.X - turn.X, -MathF.PI, MathF.PI), Mathf.Clamp(Swing.Y - turn.Y, -1.4f, 1.4f));
-                c.Look = Vector2.Zero; // turns the camera, not you, the bike or the ship
-            }
-            c.SecondaryPressed = false; // the button is the camera's, never a block taken off
-            if (c.Wheel != 0)
-            {
-                OrbitMode m = Following;
-                var (near, far) = ZoomLimits(m);
-                _zoom[(int)m] = Mathf.Clamp(_zoom[(int)m] * MathF.Pow(1.15f, c.Wheel), near, far);
-                c.Wheel = 0; // zoom, not the toolbar
-            }
+            // Taken as it stands on screen, then swung by the mouse: round the body's up on foot and on the bike,
+            // round its own up in a vessel (no world's up out there).
+            if (!was) _holdWas = _hold = Camera.GlobalTransform.Basis.GetRotationQuaternion();
+            _held = _heldWas = 1f;
+            Vector2 turn = LookTurn(c);
+            Vector3 up = Following == OrbitMode.Vessel ? new Basis(_hold).Y : Survivor.WorldUp();
+            _hold = (new Quaternion(up.Normalized(), -turn.X) * _hold * new Quaternion(Vector3.Right, -turn.Y)).Normalized();
+            c.Look = Vector2.Zero; // turns the camera, not you, the bike or the ship
         }
-        if (!FreeLook)
+        else
         {
-            float back = MathF.Exp(-6f * dt);
-            Swing = new Vector2(Mathf.Wrap(Swing.X, -MathF.PI, MathF.PI) * back, Swing.Y * back);
-            if (Swing.LengthSquared() < 1e-8f) Swing = Vector2.Zero;
+            _held *= MathF.Exp(-6f * dt);
+            if (_held < 1e-3f) _held = 0f;
+        }
+        if (!ThirdPerson || Menu.IsOpen) return;
+        c.SecondaryPressed = false; // the button is the camera's, never a block taken off
+        if (c.Wheel != 0)
+        {
+            OrbitMode m = Following;
+            var (near, far) = ZoomLimits(m);
+            _zoom[(int)m] = Mathf.Clamp(_zoom[(int)m] * MathF.Pow(1.15f, c.Wheel), near, far);
+            c.Wheel = 0; // zoom, not the toolbar
         }
     }
 
@@ -87,31 +93,32 @@ public partial class Game
         _zoomShown = Mathf.Lerp(_zoomShown, zoom, 1f - MathF.Exp(-12f * dt));
         _zoomShownFor = mode;
         float f = (float)Engine.GetPhysicsInterpolationFraction();
-        var orbit = new Vector2(Mathf.LerpAngle(_swingWas.X, Swing.X, f), Mathf.Lerp(_swingWas.Y, Swing.Y, f));
+        float held = Mathf.Lerp(_heldWas, _held, f);
+        Basis Turn(Basis frame) => held <= 0f ? frame : new Basis(frame.GetRotationQuaternion().Slerp(_holdWas.Slerp(_hold, f), held));
         Camera.Fov = Settings.Fov;
-        if (Survivor.Seated is Vessel v) return Chase(Zone, v, orbit, _zoomShown);
-        // On foot or on the bike: round the eye, about the body's own up (the vessel's, aboard one).
+        if (Survivor.Seated is Vessel v) return Chase(Zone, v, _zoomShown, Turn);
+        // On foot or on the bike: round the eye, behind it along its look (in the vessel's frame aboard one).
         Transform3D eye = Survivor.Eye();
-        Basis heading = eye.Basis * new Basis(Vector3.Right, -Survivor.Pitch);
-        Basis b = heading * new Basis(Vector3.Up, orbit.X) * new Basis(Vector3.Right, Mathf.Clamp(Survivor.Pitch + orbit.Y, -1.45f, 1.45f));
+        Basis b = Turn(eye.Basis.Orthonormalized());
         Vector3 back = b * new Vector3(0f, 0.13f, 1f);
         float d = Clear(Zone, Survivor.Aboard, null, eye.Origin, back, _zoomShown * back.Length(), 0.3f) / back.Length();
         return new Transform3D(b, eye.Origin + back * d);
     }
 
     /// <summary>
-    /// A chase view round a vessel in its own frame (never the world's up): behind and a little above
-    /// its middle, turned by <paramref name="orbit"/>, <paramref name="sizes"/> hull sizes out, kept out
-    /// of the ground and other structures but never inside its own bounds.
+    /// A chase view round a vessel's middle in its own frame (never the world's up): behind and a little
+    /// above, <paramref name="sizes"/> hull sizes out, its turn given by <paramref name="turn"/> (the free
+    /// look's), kept out of the ground and other structures but never inside its own bounds.
     /// </summary>
-    public static Transform3D Chase(SurfaceZone zone, Vessel vessel, Vector2 orbit, float sizes)
+    public static Transform3D Chase(SurfaceZone zone, Vessel vessel, float sizes, Func<Basis, Basis> turn = null)
     {
         Transform3D t = vessel.DrawTransform;
         var (min, max) = vessel.Structure.Bounds();
         float cell = vessel.Structure.Grid.CellSize;
         float size = MathF.Max(3f, ((max - min).ToVector3() + System.Numerics.Vector3.One).Length() * cell);
         Vector3 middle = t * ((StructureBridge.CellCenter(vessel.Structure, min) + StructureBridge.CellCenter(vessel.Structure, max)).ToGodot() * 0.5f);
-        Basis b = t.Basis.Orthonormalized() * new Basis(Vector3.Up, orbit.X) * new Basis(Vector3.Right, Mathf.Clamp(orbit.Y - VesselRise, -1.5f, 1.5f));
+        Basis b = t.Basis.Orthonormalized() * new Basis(Vector3.Right, -VesselRise);
+        if (turn != null) b = turn(b);
         var (near, _) = ZoomLimits(OrbitMode.Vessel);
         CollisionObject3D own = vessel.Binding?.Collider;
         float clear = Clear(zone, null, own, middle, b.Z, sizes * size, 0.5f);
