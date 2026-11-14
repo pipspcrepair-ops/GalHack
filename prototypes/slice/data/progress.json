@@ -2,24 +2,25 @@
 // built from the unlock fields on items and blocks (shared/Items data, and data/items.json here).
 //
 //   levels         experience needed to reach each level, from level 2 up to the cap (level 1 is
-//                  where everyone starts, with 0). Tuned so an experienced player playing the
-//                  loop (gather, craft the foothold base, build it) reaches level 5, the first
-//                  vessel's gate, in about 30 to 40 minutes, when its base can make the vessel's parts
+//                  where everyone starts, with 0). A curve: each level costs 1.2 times the one
+//                  before (80 for level 2), so the early levels come quickly and the last slowly
 //   points         unlock points granted on reaching each level, from level 2 up: with startPoints
 //                  they pay for the whole tree (deco included) by the cap and not before, so each
 //                  level up is a choice (BuildTest checks both)
 //   startPoints    unlock points a new character starts with
 //   pastCap        past the cap, one more point for every this much experience
-//   xp             what each thing done is worth
+//   xp             what each thing done is worth; "gain" scales all of it (0.05: a twentieth of the
+//                  values below, one dial for the whole pace of levelling)
 {
   "schema": "galhack.progress",
   "version": 1,
-  "levels": [ 80, 220, 420, 680, 980, 1340, 1760, 2240, 2780, 3380, 4040, 4760, 5540, 6380, 7280,
-              8240, 9260, 10340, 11480, 12680, 13940, 15260, 16640, 18080 ],
+  "levels": [ 80, 175, 290, 430, 595, 795, 1035, 1320, 1665, 2075, 2570, 3165, 3880, 4735, 5765, 6995,
+              8475, 10250, 12380, 14935, 18000, 21680, 26100, 31400 ],
   "points": [ 2, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 6, 7, 7, 7, 7, 8, 8, 8, 8, 9, 9, 9, 9 ],
   "startPoints": 3,
   "pastCap": 1500,
   "xp": {
+    "gain": 0.05,
     // Gathering: per 1 m cell of ore dug, per plant cut.
     "oreCell": 3,
     "plant": 2,

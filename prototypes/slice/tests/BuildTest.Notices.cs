@@ -72,7 +72,7 @@ public partial class BuildTest
         for (int i = 0; i < 4; i++)
         {
             var (into, span) = p.ToNext;
-            p.Earn(Math.Max(1, (int)(span - into) + 1), "notices test");
+            p.Earn(Math.Max(1, (int)(span - into) + 1), "notices test", false);
             notices.Post(NoticeKind.Made, "MADE", $"{i + 1} Hull plate");
         }
         p.LevelledUp -= Levelled;

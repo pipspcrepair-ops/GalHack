@@ -113,6 +113,8 @@ public partial class PlayerTest : Node
         _game.Zone.Weather.Bridge.Calm = true;
         _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
         _game.Zone.Wildlife.Frozen = true;
+        // The steps are tested at full experience; the pace of levelling (the gain) is BuildTest's.
+        _game.Zone.Data.Progress.Xp.Gain = 1;
         foreach (int x in _drive.UntilPlaying()) yield return x;
 
         foreach (int x in WakeUp()) yield return x;
@@ -306,7 +308,7 @@ public partial class PlayerTest : Node
         w.Swapped += carried;
         GD.Print($"  hunting a {_prey.Species.CommonName} {w.FromPatch(_prey.Position).DistanceTo(feet):F0} m away ({_prey.Species.Stats.MaxHealth:F0} health, worth {_prey.Species.Stats.Xp} XP)");
         float health = _prey.Health;
-        int xp = _game.Progress.Xp;
+        double xp = _game.Progress.State.Xp;
         int shots = 0, stalls = 0;
         bool hit = false;
         float close = 25f;
@@ -379,7 +381,7 @@ public partial class PlayerTest : Node
         }
         w.Swapped -= carried;
         Check(hit && (_prey.Dead || _prey.Health < health), $"shots hurt it ({health:F0} to {_prey.Health:F0}), each with a bolt, a spray where it lands and the visor's hit marker");
-        Check(_prey.Dead && _game.Progress.Xp >= xp + _prey.Species.Stats.Xp, $"the {_prey.Species.CommonName} is brought down: +{_game.Progress.Xp - xp} XP");
+        Check(_prey.Dead && _game.Progress.State.Xp >= xp + _prey.Species.Stats.Xp * _game.Progress.Rules.Xp.Gain - 1e-6, $"the {_prey.Species.CommonName} is brought down: +{_game.Progress.State.Xp - xp:F2} XP");
         Mark("hunted");
     }
 
