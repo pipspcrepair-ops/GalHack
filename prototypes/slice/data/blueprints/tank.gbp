@@ -127,9 +127,9 @@ block 5 0 5 hardened-plated slope rot=+y+x paint=flash
 block -5 0 6 hardened-plated paint=flash
 block -4..4 0 6 iron-plated paint=sand,sand,deck,sand,sand,sand
 block 5 0 6 hardened-plated paint=flash
-block -4 0 7 iron-plated slope rot=-x+z paint=sand
+block -4 0 7 iron-plated corner rot=+y+z paint=sand
 block -3..3 0 7 iron-plated paint=sand,sand,deck,sand,hazard,sand
-block 4 0 7 iron-plated slope rot=+x+z paint=sand
+block 4 0 7 iron-plated corner rot=+y+x paint=sand
 block -3 0 8 thruster-t2
 block -1..0 0 8 stairs rot=+y+z paint=sand
 block 3 0 8 thruster-t2

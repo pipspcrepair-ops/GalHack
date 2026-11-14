@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 
 namespace GalHack.Structures;
@@ -163,9 +164,84 @@ public sealed class Designer
         return r;
     }
 
+    /// <summary>When set, <see cref="Text"/> first caps every open ramp side (see <see cref="Cap"/>).</summary>
+    public bool Seal;
+
+    /// <summary>
+    /// Fills each open triangular ramp side that looks onto outside air with the corner, inverted corner, slope or wedge, in
+    /// whatever turn, whose own face matches it exactly and that leaves the fewest open sides, until none are left or no piece
+    /// helps. Cells near doors, stairs and ladders and in line with an exhaust are left clear.
+    /// </summary>
+    public Designer Cap()
+    {
+        var keep = new HashSet<Int3>();
+        foreach (var (p, b) in S.Blocks())
+        {
+            BlockType t = S.TypeOf(b);
+            if (t.IsDoor || t.Function == "stairs" || t.IsLadder || t.IsCommandChair)
+                foreach (Int3 c in S.CellsOf(p, b))
+                    foreach (Int3 o in Cells(c - new Int3(2, 2, 2), c + new Int3(2, 2, 2))) keep.Add(o);
+            bool jet = t.IsThruster || t.Function == "hover";
+            if (!jet) continue;
+            Dir away = Orientations.ToWorld(b.Rot, t.IsThruster ? Dir.PosZ : Dir.NegY);
+            foreach (Int3 c in S.CellsOf(p, b))
+                for (int k = 1; k <= 5; k++) keep.Add(c + away.Vec() * k);
+        }
+        // A vertical chamfer open at the top becomes a corner there: the same three-cornered base, tapering up to the hull behind it.
+        foreach (var (pos, block) in S.Blocks().ToList())
+        {
+            if (!S.TypeOf(block).IsArmor || S.ShapeOf(block).Id != "slope" || S.Has(pos + Int3.UnitY)) continue;
+            Dir up = Orientations.ToWorld(block.Rot, Dir.PosY), fwd = Orientations.ToWorld(block.Rot, Dir.NegZ);
+            if (up.Axis() == 1 || fwd.Axis() == 1) continue;
+            Dir ox = up.Axis() == 0 ? up : fwd, oz = up.Axis() == 2 ? up : fwd;
+            Dir turn = ox == Dir.PosX ? (oz == Dir.NegZ ? Dir.NegZ : Dir.PosX) : (oz == Dir.NegZ ? Dir.NegX : Dir.PosZ);
+            Block corner = Building.Make(S, S.TypeOf(block), _cat.Shape("corner"), Turn(Rot(Dir.PosY, turn)));
+            corner.Paint = block.Paint;
+            int before = Notches.Open(S).Count;
+            S.Set(pos, corner);
+            if (Notches.Open(S).Count >= before) S.Set(pos, block);
+        }
+        string[] shapes = { "corner", "invcorner", "slope", "wedge" };
+        // Each other open side takes the piece whose face matches it, chained up to five deep, when that leaves fewer open sides.
+        bool Close(Int3 pos, Dir face, int depth, int baseline)
+        {
+            Int3 cell = pos + face.Vec();
+            if (keep.Contains(cell) || S.Has(cell) || !S.TryGet(pos, out Block src)) return false;
+            var outline = Notches.Outline(S, src, face);
+            foreach (string name in shapes)
+                for (int r = 0; r < Orientations.Count; r++)
+                {
+                    Block cand = Building.Make(S, S.TypeOf(src), _cat.Shape(name), r);
+                    if (!Notches.Outline(S, cand, face.Opposite()).SequenceEqual(outline)) continue;
+                    cand.Paint = src.Paint;
+                    S.Set(cell, cand);
+                    var now = Notches.Open(S);
+                    if (now.Count < baseline) return true;
+                    if (depth > 0 && now.Where(n => n.pos == cell).ToList().Any(n => Close(n.pos, n.face, depth - 1, baseline))) return true;
+                    S.Clear(cell);
+                }
+            return false;
+        }
+        var failed = new HashSet<(Int3, Dir)>();
+        for (int guard = 0; guard < 600; guard++)
+        {
+            var open = Notches.Open(S);
+            bool progress = false;
+            foreach (var n in open)
+            {
+                if (failed.Contains(n)) continue;
+                if (Close(n.pos, n.face, 4, open.Count)) { progress = true; break; }
+                failed.Add(n);
+            }
+            if (!progress) break;
+        }
+        return this;
+    }
+
     /// <summary>The blueprint's text: the description as comments, then the canonical blocks.</summary>
     public string Text(string description)
     {
+        if (Seal) Cap();
         var sb = new StringBuilder();
         foreach (string line in description.Trim().Split('\n')) sb.Append("# ").Append(line.Trim()).Append('\n');
         sb.Append("# Written by slice/tests/BlueprintSet.cs (Designer); regenerate rather than edit.\n");

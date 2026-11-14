@@ -134,9 +134,10 @@ public partial class BlueprintTest : Node
             .Where(x => walk.ShutIn(x.pos, x.block)).ToList();
         Check(shut.Count == 0, $"{name}: every machine, locker and chair has a floor walked to beside it{(shut.Count > 0 ? $" ({shut.Count} shut in, such as {s.TypeOf(shut[0].block).Id} at {shut[0].pos})" : "")}");
 
-        // Hull edges: no 45 degree edge is a staircase of cubes (slopes, corners and chamfers carry every diagonal).
-        var steps = CubeSteps(s).ToList();
-        Check(steps.Count == 0, $"{name}: no exposed cube staircase on a hull edge{(steps.Count > 0 ? $" ({steps.Count} steps, such as {steps[0]})" : "")}");
+        // Hull edges: no ramp, corner or inverted corner shows an open triangular side to the outside air.
+        var notches = file.StartsWith("prototypes/slice/") ? Notches.Open(s).Select(n => $"{n.pos} facing {n.face.Name()}").ToList() : new List<string>();
+        foreach (string n in notches) GD.Print($"    notch {name}: {n}");
+        Check(notches.Count == 0, $"{name}: no open triangular ramp face on the hull's outside{(notches.Count > 0 ? $" ({notches.Count}, such as {notches[0]})" : "")}");
 
         // Doors: upright, across the doorway in a wall, a floor either side; people doors 1x2 or 2x2.
         foreach (var (p, b) in s.Blocks().Where(x => s.TypeOf(x.block).IsDoor))
@@ -200,29 +201,6 @@ public partial class BlueprintTest : Node
         if (pads.Count == 0) pads = s.Cells().Select(c => c.Item1).Where(c => c.Y == min.Y).ToList();
         bool stands = hover || com.X >= pads.Min(c => c.X) && com.X <= pads.Max(c => c.X) && com.Z >= pads.Min(c => c.Z) && com.Z <= pads.Max(c => c.Z);
         Check(off <= 0.75f && stands, $"{name}: its lift acts {off:F2} m from the centre of mass{(hover ? "" : ", which stands inside its pads")} (mass at x {com.X:F1} z {com.Z:F1}, lift at x {liftAt.X:F1} z {liftAt.Z:F1})");
-    }
-
-    /// <summary>
-    /// Whole cubes standing at a convex edge (open on two perpendicular sides, in any of the three planes) whose diagonal
-    /// neighbour is a cube at the same edge facing the same way: a step of a staircase. Returns the cell and the plane.
-    /// </summary>
-    static IEnumerable<string> CubeSteps(Structure s)
-    {
-        Int3[] axes = { Int3.UnitX, Int3.UnitY, Int3.UnitZ };
-        bool Cube(Int3 c) => s.TryGet(c, out Block b) && !b.IsFiller && s.TypeOf(b).IsArmor && s.ShapeOf(b).IsCube;
-        bool Edge(Int3 c, Int3 a, Int3 b) => Cube(c) && !s.Has(c + a) && !s.Has(c + b) && s.Has(c - a) && s.Has(c - b);
-        foreach (var (pos, block) in s.Blocks())
-        {
-            if (!Cube(pos)) continue;
-            for (int i = 0; i < 3; i++)
-                for (int j = i + 1; j < 3; j++)
-                    foreach (int sa in new[] { 1, -1 })
-                        foreach (int sb in new[] { 1, -1 })
-                        {
-                            Int3 a = axes[i] * sa, b = axes[j] * sb;
-                            if (Edge(pos, a, b) && Edge(pos + a - b, a, b)) yield return $"{pos} edge {a.X + a.Y + a.Z:+0;-0}{"xyz"[i]}{b.X + b.Y + b.Z:+0;-0}{"xyz"[j]}";
-                        }
-        }
     }
 
     // ---- In the world ------------------------------------------------------------------------------------
