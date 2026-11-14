@@ -404,23 +404,23 @@ public static partial class Homes
             foreach (Room r in Rooms)
                 switch (r.Purpose)
                 {
-                    case "quarters":
+                    case "quarters" or "bedroom":
                         Piece(r, r.U0, r.V1, BlockType.Bed, Material.Cloth, new Rgb(0x6e, 0x66, 0x5a));
                         Piece(r, r.U0 + 1, r.V1, BlockType.Bed, Material.Cloth, new Rgb(0x6e, 0x66, 0x5a));
                         Piece(r, r.U1, r.V1, BlockType.Locker, Material.Timber, wood);
                         break;
-                    case "farm-kitchen":
+                    case "farm-kitchen" or "kitchen":
                         for (int u = r.U0; u <= Math.Min(r.U1, r.U0 + 2); u++) Piece(r, u, r.V1, BlockType.Bench, Material.Steel, metal);
                         Piece(r, (r.U0 + r.U1) / 2, (r.V0 + r.V1) / 2, BlockType.Table, Material.Timber, wood);
                         break;
-                    case "storage":
+                    case "storage" or "store":
                         for (int v = r.V0 + 1; v <= r.V1; v += 2) Piece(r, r.U1, v, BlockType.Shelf, Material.Steel, metal);
                         break;
-                    case "workshop":
+                    case "workshop" or "garage":
                         for (int v = r.V0 + 1; v <= Math.Min(r.V1, r.V0 + 3); v++) Piece(r, r.U1, v, BlockType.Bench, Material.Steel, metal);
                         Piece(r, r.U0, r.V1, BlockType.Machine, Material.Rust, new Rgb(0x6a, 0x44, 0x34));
                         break;
-                    case "mess":
+                    case "mess" or "living-room":
                         for (int u = r.U0 + 2; u < r.U1 - 1; u += 3)
                             for (int v = r.V0 + 2; v < r.V1 - 1; v += 3) Piece(r, u, v, BlockType.Table, Material.Timber, wood);
                         break;
@@ -428,7 +428,7 @@ public static partial class Homes
                         for (int u = r.U0 + 2; u < r.U1 - 1; u += 3)
                             for (int v = r.V0 + 2; v < r.V1; v++) Piece(r, u, v, BlockType.Shelf, Material.Steel, metal);
                         break;
-                    case "washroom":
+                    case "washroom" or "bathroom":
                         Piece(r, r.U1, r.V1, BlockType.Tank, Material.Steel, metal);
                         break;
                 }

@@ -18,7 +18,7 @@ public static partial class DecoModels
         {
             if (_all != null) return _all;
             var r = new Dictionary<string, Action<DecoBuilder>>(StringComparer.Ordinal);
-            Office(r); Canteen(r); Medical(r); Military(r); Industrial(r); Lab(r); Residential(r); Resort(r);
+            Office(r); Canteen(r); Medical(r); Military(r); Industrial(r); Lab(r); Residential(r); Home(r); Resort(r);
             ThemePark(r); Cryo(r); Spaceport(r); Prison(r); Ship(r); Mine(r); Reaver(r); Civic(r); Alien(r); Precursor(r);
             Farm(r); Factory(r); Vehicles(r); Rail(r); Aviation(r);
             return _all = r;

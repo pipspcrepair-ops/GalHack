@@ -42,8 +42,8 @@ public static class RoomDecor
         if (Interior(inst, m) is not { } room0) return null;
         var (y, x0, x1, z0, z1, height, open, floor) = room0;
         int w = x1 - x0 + 1, d = z1 - z0 + 1;
-        // Not a rectangle, or no more than a cupboard: the generator's props stay.
-        if (open < MinCells || open < w * d * 0.85f || height < 2) return null;
+        // Far from a rectangle (what isn't its floor is kept clear below), or no more than a cupboard: the generator's props stay.
+        if (open < MinCells || open < w * d * 0.6f || height < 2) return null;
         bool alien = (inst.Family.Style ?? "").StartsWith("alien_", StringComparison.Ordinal);
         var room = new DecoRoom
         {
@@ -56,9 +56,9 @@ public static class RoomDecor
             // Its pieces' trim in the world's own paint, as worn as the place.
             KitTrim = inst.Paint is { } paint && !alien ? DecoRgb.Hex(paint.Weather(paint.Accent).ToString()) : null,
         };
-        foreach (var cells in layout.Doorways.Where(dw => dw.ModuleA == m.Index || dw.ModuleB == m.Index).Select(dw => dw.Cells)
-                     .Concat(m.Index == layout.EntranceModule ? new[] { layout.ExitCells } : Array.Empty<List<Int3>>()))
-            if (Door(cells.Where(c => c.Y == y).ToList(), x0, x1, z0, z1) is { } door) room.Doors.Add(door);
+        // Every way in is a door to keep clear, recorded or not (a house's inner doors are gaps in its walls).
+        foreach (var (cells, _) in Ways(inst, m, y))
+            if (Door(cells, x0, x1, z0, z1) is { } door) room.Doors.Add(door);
         // What the room's floor can't take, the library keeps clear from the start (the game's checks after are the last word):
         // another room's floor inside its box among it.
         var own = new HashSet<Int3>(m.Cells.Where(c => c.Y == y));
@@ -177,7 +177,8 @@ public static class RoomDecor
     }
 
     /// <summary>A cell a room's interior may have: air, or something the generator set down in it.</summary>
-    static bool Open(Block b) => b.IsAir || b.Role is Role.Prop or Role.Loot or Role.Terminal or Role.Story or Role.Debris or Role.Growth or Role.Core or Role.Traverse or Role.Hazard;
+    static bool Open(Block b) => b.IsAir || b.Role is Role.Prop or Role.Loot or Role.Terminal or Role.Story or Role.Debris or Role.Growth or Role.Core or Role.Traverse or Role.Hazard
+        || b.Role == Role.Decor && b.Type is BlockType.Beam or BlockType.Pipe; // (joists and a pipe run under a ceiling leave the room its height)
 
     /// <summary>
     /// The floor in a walk-level cell, as a height above the cell's bottom, or null where there's nothing a

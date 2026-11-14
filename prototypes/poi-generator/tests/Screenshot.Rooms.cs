@@ -9,8 +9,8 @@ namespace PoiGenerator;
 
 /// <summary>
 /// rooms:&lt;family&gt;:&lt;state&gt; spawns one fresh place of a family as a world lays it out (its own layout from the
-/// spawn's seed; a house in a street's culture) and shows every room from its doorway at a standing eye height
-/// (1.65 m), looking in, at the game's field of view, with a soft fill at the eye for the head torch: one tile a
+/// spawn's seed; a house in a street's culture) and shows every room from just inside its doorway at a standing eye
+/// height (1.65 m), looking in, at the game's field of view, with a soft fill at the eye for the head torch: one tile a
 /// room on a sheet (--out), and each tile on its own beside it. Dressed by the decorations library as the game
 /// dresses it; --undressed shows the generator's own props. --seed=N replays a spawn (the before and after of a
 /// change); the room's purpose and size label each tile.
@@ -60,7 +60,8 @@ public partial class Screenshot
             if (DoorwayInto(poi, m, depth) is not var (centre, inward)) continue;
             var floor = m.Cells.Where(c => c.Y == m.Min.Y).ToList();
             Vector3 mid = new((float)floor.Average(c => c.X) + 0.5f, m.Min.Y + 1.1f, (float)floor.Average(c => c.Z) + 0.5f);
-            Vector3 eye = centre - inward * 0.3f + Vector3.Up * EyeHeight;
+            // Just over the threshold, clear of the door's leaf, as a person stands coming in.
+            Vector3 eye = centre + inward * 0.75f + Vector3.Up * EyeHeight;
             _main.Camera.GlobalTransform = new Transform3D(Basis.Identity, _main.Stage.ToGlobal(eye)).LookingAt(_main.Stage.ToGlobal(mid), Vector3.Up);
             _main.Camera.Fov = 75f;
             _main.FreezeCamera = true;

@@ -13,7 +13,7 @@ public sealed class DecoTemplate
     public string Id, Kind, Where;
     public string[] Anchor = Array.Empty<string>(), Members = Array.Empty<string>(), Front = Array.Empty<string>(), Top = Array.Empty<string>(),
         Beside = Array.Empty<string>(), Screen = Array.Empty<string>(), Ends = Array.Empty<string>(), Focus = Array.Empty<string>(),
-        Side = Array.Empty<string>(), Other = Array.Empty<string>();
+        Side = Array.Empty<string>(), Other = Array.Empty<string>(), Middle = Array.Empty<string>();
     public int CountMin = 1, CountMax = 1;
     /// <summary>The most uses of a template in one room (0: as many as fit).</summary>
     public int Max;
@@ -30,6 +30,8 @@ public sealed class DecoSetPlan
     public string Set;
     public List<(string Template, float Weight)> Wall = new(), Island = new();
     public string[] Fill = Array.Empty<string>();
+    /// <summary>The roles of the fitting hung in the middle of the ceiling (a room of a home: its age's lamp), if any.</summary>
+    public string[] Light = Array.Empty<string>();
 }
 
 public sealed class DecoSiteDef
@@ -81,7 +83,7 @@ public sealed class DecoArrangements
                 Id = p.Name, Kind = DataJson.Str(e, "kind"), Where = DataJson.Str(e, "where", "wall"),
                 Anchor = Roles(e, "anchor"), Members = Roles(e, "members"), Front = Roles(e, "front"), Top = Roles(e, "top"),
                 Beside = Roles(e, "beside"), Screen = Roles(e, "screen"), Ends = Roles(e, "ends"), Focus = Roles(e, "focus"),
-                Side = Roles(e, "side"), Other = Roles(e, "other"),
+                Side = Roles(e, "side"), Other = Roles(e, "other"), Middle = Roles(e, "middle"),
                 Gap = (float)DataJson.Num(e, "gap", 0.05), Spacing = (float)DataJson.Num(e, "spacing", 0.3), TopChance = (float)DataJson.Num(e, "topChance", 0.5),
                 Max = DataJson.Int(e, "max", 0), Aisle = (float)DataJson.Num(e, "aisle", 1.3),
             };
@@ -92,7 +94,7 @@ public sealed class DecoArrangements
         }
         DecoSetPlan ReadPlan(string set, JsonElement e)
         {
-            var sp = new DecoSetPlan { Set = set, Fill = Roles(e, "fill") };
+            var sp = new DecoSetPlan { Set = set, Fill = Roles(e, "fill"), Light = Roles(e, "light") };
             foreach (var (key, list) in new[] { ("wall", sp.Wall), ("island", sp.Island) })
                 if (e.TryGetProperty(key, out JsonElement w))
                     foreach (JsonProperty q in w.EnumerateObject())

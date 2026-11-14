@@ -20,19 +20,19 @@ public sealed partial class Town
     public static readonly IReadOnlyDictionary<PersonRole, string[]> RoomsFor = new Dictionary<PersonRole, string[]>
     {
         [PersonRole.Medic] = new[] { "ward", "nurses", "theatre", "pharmacy", "quarantine", "decon" },
-        [PersonRole.Worker] = new[] { "galley", "farm-kitchen", "mess", "storage", "warehouse", "loading-dock", "parts-store", "workshop", "office", "archive", "lab", "cold-store" },
-        [PersonRole.Mechanic] = new[] { "workshop", "plant", "generator", "reactor", "boiler-house", "pump-hall", "parts-store", "control" },
-        [PersonRole.Farmer] = new[] { "hydroponics", "grow-room", "farm-kitchen", "cellar" },
+        [PersonRole.Worker] = new[] { "galley", "farm-kitchen", "kitchen", "mess", "storage", "store", "warehouse", "loading-dock", "parts-store", "workshop", "office", "archive", "lab", "cold-store" },
+        [PersonRole.Mechanic] = new[] { "workshop", "garage", "plant", "generator", "reactor", "boiler-house", "pump-hall", "parts-store", "control" },
+        [PersonRole.Farmer] = new[] { "hydroponics", "grow-room", "farm-kitchen", "kitchen", "cellar" },
         [PersonRole.Trader] = new[] { "shop", "market-hall" },
         [PersonRole.Guard] = new[] { "security", "guardroom", "armoury", "monitor", "airlock", "lobby" },
         [PersonRole.Lawman] = new[] { "security", "guardroom", "cellblock", "evidence", "lobby" },
-        [PersonRole.Elder] = new[] { "chapel", "mess", "lobby" },
+        [PersonRole.Elder] = new[] { "chapel", "mess", "living-room", "lobby" },
         [PersonRole.Drunk] = new[] { "mess", "galley", "lobby" },
         [PersonRole.Scavenger] = new[] { "storage", "warehouse", "loading-dock" },
     };
 
     /// <summary>Rooms people gather in of an evening.</summary>
-    static readonly string[] Common = { "mess", "chapel", "lobby", "market-hall", "farm-kitchen", "galley" };
+    static readonly string[] Common = { "mess", "chapel", "lobby", "market-hall", "farm-kitchen", "kitchen", "living-room", "galley" };
 
     /// <summary>Each person's own place of work (a spot in a room their job is done in), or -1.</summary>
     readonly Dictionary<Person, int> _station = new();

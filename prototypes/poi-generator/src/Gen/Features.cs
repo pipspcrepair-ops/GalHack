@@ -155,6 +155,10 @@ public sealed class LayoutExtras
     public List<ServicePoint> Service = new();
     /// <summary>What each generated house turned out as (family, silhouette, garage door), for the tests.</summary>
     public List<HomeNote> Homes = new();
+    /// <summary>Each room's own wall paint inside, by module (a house's rooms each in their own); the rest go by their finish's block colour.</summary>
+    public Dictionary<int, Rgb> Paints = new();
+    /// <summary>The colour every ceiling inside is painted, where the place says (a house's).</summary>
+    public Rgb? Ceiling;
     /// <summary>A blast site: ground zero and the radii of its crater, blown-down ring, dead zone and fade.</summary>
     public BlastZone? Blast;
     /// <summary>A composed site's roads and paths as planned (<see cref="SiteRoads"/>); null on every other place.</summary>
