@@ -12,7 +12,7 @@ namespace PlanetSurface.Tests;
 
 /// <summary>
 /// Tree heights: each kind of tree on each world rolls its own range; every tree stands inside it, young
-/// and old mixed; near, far and distant drawings and the colliders all carry the one scale per tree.
+/// and old mixed; every level of detail draws a tree alike, and its colliders carry its one scale.
 /// </summary>
 public partial class FloraTest
 {
@@ -41,30 +41,30 @@ public partial class FloraTest
             {
                 int fx = (int)(rng.NextFloat() * FarBuilder.Count(w.Terrain.Width)), fz = (int)(rng.NextFloat() * FarBuilder.Count(w.Terrain.Height));
                 var job = new FarJob { Fx = fx, Fz = fz, Lod = 0, SpanX = FarBuilder.Span(fx, w.Terrain.Width), SpanZ = FarBuilder.Span(fz, w.Terrain.Height) };
+                // The same chunk at the coarsest level too: it draws every tree as the finest does.
+                var coarse = new FarJob { Fx = fx, Fz = fz, Lod = 2, SpanX = job.SpanX, SpanZ = job.SpanZ };
                 FarBuilder.Build(job, w.Source, w.Palette, new HashSet<long>());
-                if (job.Error != null) throw job.Error;
-                // Every drawing of a tree by its spot: the transform's scale (column Y) and its width.
-                var near = new Dictionary<long, (float S, float Sx, float Y, int Variant, Plant P, float X, float Z)>();
-                var far = new Dictionary<long, List<(float S, float Sx)>>();
-                foreach (FloraBatch b in job.Flora)
+                FarBuilder.Build(coarse, w.Source, w.Palette, new HashSet<long>());
+                if ((job.Error ?? coarse.Error) is Exception error) throw error;
+                // Each tree by its spot, at a level: the transform's scale (column Y), its width, foot and variant.
+                Dictionary<long, (float S, float Sx, float Y, int Variant, Plant P, float X, float Z)> Trees(FarJob j)
                 {
-                    if (b.Plant < 0) continue;
-                    Plant p = w.Flora.Book.Plants[b.Plant];
-                    if (!p.Tree) continue;
-                    for (int k = 0; k < b.Count; k++)
+                    var found = new Dictionary<long, (float, float, float, int, Plant, float, float)>();
+                    foreach (FloraBatch b in j.Flora)
                     {
-                        int o = k * 16;
-                        float lx = b.Buffer[o + 3], lz = b.Buffer[o + 11];
-                        long id = FarBuilder.ScatterId(fx, fz, (int)(lx / FarBuilder.ScatterCell), (int)(lz / FarBuilder.ScatterCell));
-                        float sy = b.Buffer[o + 5], sx = new Vector3(b.Buffer[o], b.Buffer[o + 4], b.Buffer[o + 8]).Length();
-                        if (!b.Far) near[id] = (sy, sx, b.Buffer[o + 7], b.Variant, p, lx, lz);
-                        else
+                        if (b.Plant < 0 || !w.Flora.Book.Plants[b.Plant].Tree) continue;
+                        for (int k = 0; k < b.Count; k++)
                         {
-                            if (!far.TryGetValue(id, out var list)) far[id] = list = new();
-                            list.Add((sy, sx));
+                            int o = k * 16;
+                            float lx = b.Buffer[o + 3], lz = b.Buffer[o + 11];
+                            long id = FarBuilder.ScatterId(fx, fz, (int)(lx / FarBuilder.ScatterCell), (int)(lz / FarBuilder.ScatterCell));
+                            found[id] = (b.Buffer[o + 5], new Vector3(b.Buffer[o], b.Buffer[o + 4], b.Buffer[o + 8]).Length(), b.Buffer[o + 7], b.Variant, w.Flora.Book.Plants[b.Plant], lx, lz);
                         }
                     }
+                    return found;
                 }
+                var near = Trees(job);
+                var far = Trees(coarse);
                 foreach (var (id, n) in near)
                 {
                     double x = fx * (double)FarBuilder.Size + n.X, z = fz * (double)FarBuilder.Size + n.Z;
@@ -80,8 +80,8 @@ public partial class FloraTest
                     tallest = MathF.Max(tallest, height);
                     // Uniform: trunk and crown scale together.
                     if (MathF.Abs(n.Sx - n.S) > 0.001f * n.S) mismatch++;
-                    if (!far.TryGetValue(id, out var drawings)) noFar++;
-                    else if (drawings.Any(d => MathF.Abs(d.S - n.S) > 1e-4f || MathF.Abs(d.Sx - n.Sx) > 1e-4f)) mismatch++;
+                    if (!far.TryGetValue(id, out var d)) noFar++;
+                    else if (MathF.Abs(d.S - n.S) > 1e-4f || MathF.Abs(d.Sx - n.Sx) > 1e-4f || d.Variant != n.Variant || d.Y != n.Y) mismatch++;
                     // Roots meet the ground.
                     if (n.Y > w.Source.SurfaceHeight(x, z) - FloraSolidRules.Sink + 0.01f) proud++;
                     // Colliders: the first solid part of this tree scales with it.
@@ -97,7 +97,7 @@ public partial class FloraTest
             int colliderOff = ratio.Count(kv => kv.Value.Hi - kv.Value.Lo > 0.02f * kv.Value.Hi + 1e-4f);
             Check(trees > 100 && outside == 0, $"{a}/{v}: every tree's height is inside its kind's range: {trees} trees, {outside} outside; {smallest:F1} to {tallest:F1} m");
             Check(young > trees / 8 && old > trees / 12, $"{a}/{v}: young and old are mixed: {young} young, {old} old of {trees}");
-            Check(noFar == 0 && mismatch == 0, $"{a}/{v}: near and far drawings of a tree share its scale: {mismatch} differ, {noFar} without a far drawing");
+            Check(noFar == 0 && mismatch == 0, $"{a}/{v}: the coarsest level draws every tree as the finest does (scale, variant, foot): {mismatch} differ, {noFar} of {trees} missing");
             Check(colliderOff == 0, $"{a}/{v}: colliders scale with their tree ({ratio.Count} species-variants, {colliderOff} off)");
             Check(proud == 0, $"{a}/{v}: no tree floats or sinks ({proud} proud of the ground)");
         }
