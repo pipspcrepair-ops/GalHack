@@ -6,6 +6,7 @@ using Slice.Items;
 using Slice.Ui;
 using Slice.Vessels;
 using GalHack.Items;
+using GalHack.Physics.Engine;
 using WeatherKind = Weather.Model.WeatherKind;
 
 namespace Slice.Tests;
@@ -71,6 +72,10 @@ public sealed partial class Staging
         foreach (int x in Frame("scanner")) yield return x;
 
         // A tornado forming off to one side, lightning building far off on the other, and a beast's bite.
+        Vector3 site = Play.FlatSpot(_game.Survivor.WorldFeet, 30f, 0.6f, 0.4f, span: 14f);
+        CoreCraft.ForecastBase(_game.Zone, site); // warnings come only through a forecast block: stand in its area
+        _game.Survivor.PlaceOutside((site + new Vector3(0f, 0.5f, 6f)).ToNumerics());
+        foreach (int x in _drive.Wait(30)) yield return x;
         Vector3 feet = _game.Survivor.WorldFeet;
         Vector3 side = new Vector3(look.Z, 0f, -look.X).Normalized(), ahead = new Vector3(look.X, 0, look.Z).Normalized();
         var sim = _game.Zone.Weather.Sim;
