@@ -60,7 +60,7 @@ uniform bool clip_ground = false;
 uniform highp sampler2DArray clip_data : filter_nearest;
 uniform highp sampler2DArray clip_shape : filter_nearest;
 uniform highp sampler2DArray clip_color : filter_nearest;
-uniform int clip_texels = 576;
+uniform int clip_texels = 512;
 uniform int clip_top = 3;
 uniform vec2 clip_eye;          // where the rings are measured from, frame x, z (the same in every pass, shadows too)
 uniform vec2 clip_shift;        // the frame to the textures' coordinates: whole planets
