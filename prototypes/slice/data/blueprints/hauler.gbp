@@ -435,9 +435,7 @@ block 3..5 2 7 iron-plated paint=pod
 block 6 2 7 iron-plated slope rot=+y+x paint=pod
 block -7..-4 2 8 iron-plated slope rot=+y+z paint=pod
 block 3..6 2 8 iron-plated slope rot=+y+z paint=pod
-block -3 3 -14 iron-plated slope rot=-x-z paint=cream
-block -2..1 3 -14 iron-plated slope paint=spine
-block 2 3 -14 iron-plated slope rot=+x-z paint=cream
+block -3..2 3 -14 iron-plated slope paint=spine
 block -3 3 -13 iron-plated slope rot=+y-x paint=spine
 block -2..1 3 -13 iron-plated paint=cream,cream,cream,inner,cream,cream
 block 2 3 -13 iron-plated slope rot=+y+x paint=spine

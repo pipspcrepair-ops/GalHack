@@ -113,9 +113,9 @@ three lift jets, a down jet, a side jet on each wingtip, three pads.");
         d.Face(P(-3, 0, -6), P(2, 0, 6), Dir.PosX, band).Face(P(-3, 0, -6), P(2, 0, 6), Dir.NegX, band);
         d.Fill(P(-2, 1, -6), P(1, 2, -6), "glass-plated").Fill(P(-3, 1, -4), P(-3, 1, -1), "glass-plated").Fill(P(2, 1, -4), P(2, 1, -1), "glass-plated");
         // A blunt nose: its corners chamfered, the roof and belly raked to it and the roof's edges raked to the sides, a tail fin aft.
-        for (int y = -1; y <= 3; y++)
+        for (int y = -1; y <= 2; y++)
             d.Chamfer(P(2, y, -6), P(2, y, -6), "iron-plated", hull, Dir.PosX, Dir.NegZ).Chamfer(P(-3, y, -6), P(-3, y, -6), "iron-plated", hull, Dir.NegX, Dir.NegZ);
-        d.Slope(P(-2, 3, -6), P(1, 3, -6), "iron-plated", pod, Dir.NegZ).Slope(P(-2, -1, -6), P(1, -1, -6), "iron-plated", hull, Dir.NegZ, under: true);
+        d.Slope(P(-3, 3, -6), P(2, 3, -6), "iron-plated", pod, Dir.NegZ).Slope(P(-2, -1, -6), P(1, -1, -6), "iron-plated", hull, Dir.NegZ, under: true);
         d.Slope(P(-3, 3, -5), P(-3, 3, 5), "iron-plated", pod, Dir.NegX).Slope(P(2, 3, -5), P(2, 3, 5), "iron-plated", pod, Dir.PosX);
         d.Fill(P(-1, 4, 3), P(0, 4, 5), "iron-plated", pod).Fill(P(-1, 5, 4), P(0, 5, 5), "iron-plated", pod).Slope(P(-1, 5, 3), P(0, 5, 3), "iron-plated", pod, Dir.NegZ);
         d.Put("core", P(2, -1, -1));
@@ -218,9 +218,9 @@ each sponson.");
         d.Put("command-chair", P(-2, 0, -13));
         d.Put("command-chair", P(1, 0, -13));
         // The cab's nose cut at its corners, the roof and belly raked to the glass, the roof's edges raked to the sides.
-        for (int y = -1; y <= 3; y++)
+        for (int y = -1; y <= 2; y++)
             d.Chamfer(P(2, y, -14), P(2, y, -14), "iron-plated", cream, Dir.PosX, Dir.NegZ).Chamfer(P(-3, y, -14), P(-3, y, -14), "iron-plated", cream, Dir.NegX, Dir.NegZ);
-        d.Slope(P(-2, 3, -14), P(1, 3, -14), "iron-plated", spine, Dir.NegZ).Slope(P(-2, -1, -14), P(1, -1, -14), "iron-plated", spine, Dir.NegZ, under: true);
+        d.Slope(P(-3, 3, -14), P(2, 3, -14), "iron-plated", spine, Dir.NegZ).Slope(P(-2, -1, -14), P(1, -1, -14), "iron-plated", spine, Dir.NegZ, under: true);
         d.Slope(P(-3, 3, -13), P(-3, 3, -9), "iron-plated", spine, Dir.NegX).Slope(P(2, 3, -13), P(2, 3, -9), "iron-plated", spine, Dir.PosX);
         d.Mount("light", P(-1, 2, -10), Dir.PosY);
         d.Door("door-1x2x1", P(-3, 0, -10), Dir.NegX);
