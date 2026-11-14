@@ -300,11 +300,13 @@ The bands are low (pre-industrial and industrial: timber, stone, carts and anima
 
 **Decorations.** POIs are dressed with decorations that match their theme: tables and chairs, vending machines, desks and monitors, filing cabinets, beds and gurneys, weapon racks, bars and loungers, departure boards, ride cars, alien altars and much more, each set fitting its room (a canteen, a ward, an armoury, a resort bar, a terminal concourse). They're arranged as they were used (chairs round tables, desks facing screens, beds in rows), then left as the collapse left them: knocked over, broken, burnt, scattered or overgrown, by the POI's state. The collapse was a century or two ago, and time shows: forests have grown up through the ruins, timber buildings have fallen in unless sheltered while concrete, stone and steel stand as shells, vehicles are rusted hulks, and a few old machines still run on long-life power, eerily. Within that, things that rot fast (hay, food, crops, anything left out in the weather) are long gone or reduced to remnants, while sturdier things survive faded, dusty and worn (furniture, fabrics and paper kept indoors, treated wood). Metal left outside has rusted and plastics have turned brittle. Only sealed rooms, frozen worlds and airless places preserve things, and that's where the frozen moments are sharpest. As in Empyrion, decorations are deco blocks in the shared block catalogue, so players unlock and build with them too. Tables, toilets, bunks and the like are all built under one universal deco block rather than as separate build items: the player picks what it is from a gallery before placing it. Survival fabricators don't make it. The broken and knocked-over versions appear in POIs and in Creative.
 
-**POI themes.** POIs are a call to adventure: from a distance they make you want to go there, and up close they pull you deeper. They are usually themed by planet and place (archetype, biome, territory), with the occasional unusual outlier that doesn't belong there. The set includes both hand-authored landmarks and procedurally generated places, with lots of verticality above and below ground. Examples: old airfields, abandoned spaceports with derelict ships on their pads, abandoned research bases with sublevels, ominous multi-floor towers, city ruins, and deep basements that get stranger and more dangerous the deeper you go. Only places a faction owns have a core.
+**Decoration is structure.** Decoration on a place is the building's own structure made visible (cornices, piers, buttresses, ribs, parapets), joined to the walls it grows from, never an object stuck on a face. Round things are built round: tanks, silos, stacks, cooling towers, domes and pad rings use diagonal and quarter-round blocks facing out, with real collision, so no outline is a stepped circle of cubes.
+
+**POI themes.** POIs are a call to adventure: from a distance they make you want to go there, and up close they pull you deeper. They are usually themed by planet and place (archetype, biome, territory), with the occasional unusual outlier that doesn't belong there. The set is made of generated places, with the odd one-of-a-kind set piece, with lots of verticality above and below ground. Examples: old airfields, abandoned spaceports with derelict ships on their pads, abandoned research bases with sublevels, ominous multi-floor towers, city ruins, and deep basements that get stranger and more dangerous the deeper you go. Only places a faction owns have a core.
 
 - **Wind is a simple force** (direction and strength) applied to players and vehicles: light craft drift, heavy ones barely notice.
 - **Tornadoes are moving vortex volumes.** They wander at random and eventually wear out, and never seek the player: weather is an act of god, not an antagonist. Wind and tornadoes can't touch anything in shelter, and trees and wildlife are as vulnerable to them as players and vehicles are, so a tornado leaves a trail of destruction behind it. Inside, a lift force pulls players and vehicles up and around, then lets them go. Getting caught is dramatic, never fatal: a fling always leaves the player alive, if badly hurt.
-- **Forecasts:** weather shows on the visor before it arrives, and severe weather comes with a warning.
+- **Forecasts:** weather warnings need a Weather Forecast block, a researchable device placed on a core structure. They show on the visor only within the broadcast range of such a structure, or while seated in the command chair of one; attacks flash everywhere.
 - Weather changes temperature, visibility, solar output and creature behaviour. There's no fluid or cloud simulation: only visual effects and simple forces. Rain, lightning and tornadoes always come from visible clouds above them. Skies mix cloud types: happy puffy cumulus, streaky cirrus, flat grey stratus layers, and big angry dark storm towers.
 
 **Sky and sense of place**
@@ -346,7 +348,7 @@ One flora module is the source of every plant: each world rolls its own species,
 
 ## 5. Points of interest, ships and visual style
 
-Points of interest (POIs) are hand-built structures placed by procedural rules. Variety comes from three multipliers: a large library of families built from shared faction kits, several states per layout, and a rarity ladder from common sites to one-of-a-kind set pieces. Rarity matches the resource ladder, so a rare POI is where rare materials come from.
+Points of interest (POIs) are generated, never fixed templates: each type has rules that build a new layout for every spawn. Variety comes from three multipliers: rules over parts drawn from shared faction kits, several states per place, and a rarity ladder from common sites to one-of-a-kind set pieces. Rarity matches the resource ladder, so a rare POI is where rare materials come from.
 
 **Tone of places**
 
@@ -397,9 +399,9 @@ Structures are ominous and mysterious. For now there are no written logs and no 
 
 **How POIs are authored and placed**
 
-- **Faction kits:** each faction has a shared block palette and module set, so designers build families of POIs quickly and every family reads as that faction at a glance.
-- **Families, not one-offs:** each POI is a family of 3–6 layouts under one name; the generator picks one.
-- **States:** one layout can spawn active, abandoned, infested by Husks, or ruined, with different loot, enemies and damage. One build becomes four sites.
+- **Faction kits:** each faction has a shared block palette and module set, so every generated place reads as that faction at a glance.
+- **Rules, not templates:** each place type is a set of rules over parts, so no two spawns share a plan. Old fixed site plans are redone from real proportions, scaled to our worlds: places keep the proportions between their parts, while what a body or a craft uses (rooms, doors, ceilings, hangar doors, pads) stays true size. An airport has a runway of about 500 m (400 to 600 m by world size) and the rest in proportion. High-tech worlds get spaceports, from small to large; medium-tech worlds, in their past or present age, get rocket launch fields and airports instead.
+- **States:** one place can spawn active, abandoned, infested by Husks, or ruined, with different loot, enemies and damage.
 - **Dressing pass:** loot tables, damage, enemy rosters and logic puzzles vary per spawn.
 - **Placement rules:** POIs spawn by biome and by faction territory, with near and avoid rules (Vharn outposts near rich deposits; Freeholder farms away from Dominion garrisons) and counts scaled to planet size.
 - **Faction POIs are mostly working sites, not forts.** A faction holds a variety of places: mines and refineries, research stations, comms relays and listening posts, supply depots, farms, shipyards and spaceports, and defensible sites that matter, such as SAM sites and air-defence batteries, or massive railguns aimed at the sky, and plain civilian places: a mall or market, apartment blocks, offices, a town square, with citizens going about their day and guards keeping order. Civilian places aren't hostile by default; shooting there turns the guards and the faction against you, and citizens flee rather than fight. Fortifications (garrisons, fortresses) exist but are uncommon. Every faction-held place has defenders and a core.
@@ -496,7 +498,7 @@ Procedural breadcrumbs point players at content: distress beacons, buried-cache 
 
 ## 7. Progression structure
 
-Progression runs on three tracks. **Character level** buys recipes through the tech tree. **Structure class** opens new spaces. **Exploration finds** supply the parts and materials that no recipe can make. A player can't climb the ladder on any one track alone. Early stages are short: a player who knows what they're doing has a small spacefaring vessel within one to two hours.
+Progression runs on three tracks. **Character level** buys recipes through the tech tree. **Structure class** opens new spaces. **Exploration finds** supply the parts and materials that no recipe can make. A player can't climb the ladder on any one track alone. Early stages are short in play, though levels come slowly: a player who knows what they're doing has a small spacefaring vessel within one to two hours.
 
 &#91;embedded content: escalation ladder · 6 stages, crash to frontier\]
 
@@ -512,7 +514,7 @@ Progression runs on three tracks. **Character level** buys recipes through the t
 **Character level**
 
 - **XP sources:** exploring, discovering (first visits to planets, systems and POI types pay a bonus), looting, crafting, building, fighting, mining and harvesting. Automated turret kills give no XP, so the player must be present to grow.
-- **Level cap:** 25 (reference). Unlock points keep accruing past the cap, so veterans can eventually open the whole tree, but a player at the cap has had to specialise.
+- **Level cap and pace:** 25, with about 25 hours of play to reach it. Each level takes about 1.1 times as long as the one before (about 17 minutes to level 2, 79 minutes to 5, 3.8 hours to 10), following Empyrion's level ladder. Unlock levels follow Empyrion's ladder too. Unlock points keep accruing past the cap, so veterans can eventually open the whole tree, but a player at the cap has had to specialise.
 - **Tech tree:** tabs for Structures, Tools, Weapons, Deco and Misc. Structures is one tree from the core (level 1, free): the base block and its shapes come with the core, each plate material is its own node, and each device is a chain of tiers, each tier under the one below, with bigger parts at higher tiers. Hover and flight are parallel branches, with hover plates a prerequisite for thrusters. Each node has an unlock level, a point cost and a parent node. Everything is unlocked this way, guns included: skill points come from levelling up, and nodes sit behind their parent nodes and level bands. A player can unlock the whole tree by max level (this can be tuned down later if needed). Player levels run to 25, matching Empyrion and Reforged Eden 2, with something new to unlock at every level and more on offer than the player can afford at once, so each level is a choice. The player starts with 3 points, and levels alone cover the whole tree by 25. Unique alien equipment sits outside the tree: discovering and consuming a cyber module unlocks it for building, for the whole crew. Modules are hard to get, not tied to the late game: they sit in dangerous places, so a bold or skilled player can reach one early.
 - **Reference gates:** hover vessel at level 1, portable constructor at 3, small vessel at 5, capital vessel at 7. Higher-tier devices sit deeper in each tab.
 
@@ -585,6 +587,7 @@ The player's kit is small and role-based: a few tools that change the world, wea
 | Chainsaw | Fells trees for wood | Biofuel | Early building material |
 | Multi-tool T1/T2 | Removes, repairs, upgrades and rotates blocks; salvages wrecks and pulls intact components out whole from structures whose core is destroyed | Small energy cells (T1), multi-charges (T2) | Salvage return about 33% (T1), about 65% (T2); vessel-mounted salvagers up to 80% |
 | Detector | Shows ore deposits, POIs and buried caches | Battery | Handheld range about 1,250 m; vehicle detector about 10 km |
+| Hand scanner | Shows, through walls, where the cores nearby are (100 m to start), with distances; the core scanner is part of it | Battery | Researched in the Tools tab; finds a core hidden in a base |
 | Hijack Tool T1–T3 | Takes over enemy cores | Charges | Section 16 |
 | Survival kit items | Survival tent, survival replicator, portable heater and cooler, emergency O2 and water generator, work light | Fuel or battery | Early-game lifelines |
 | Hoverbike | Fast personal ground transport, a small vehicle made in the suit fabricator, so getting around is quick from early on | Fuel | Treats water as ground |
@@ -703,7 +706,7 @@ Players can dig into the ground to reach ore, but voxel terrain is the most bug-
 6. **Water finds its level.** Lakes, ponds, rivers and seas are bodies with one even, flat surface level, not a full fluid simulation, but water always settles at the lowest point it can reach. Digging a path below a body's surface lets water spill into the new space over a few seconds: a pond drops by the volume it lost, while rivers and seas are effectively endless and fill what's dug to their level. Water never hangs in the air or stands above the ground around it.
 7. **Stuck-safe.** Any player, creature or vehicle found inside terrain is moved to the nearest open space.
 8. **Edits stored as differences.** The server keeps terrain changes as small per-chunk edit lists on top of the seed and sends those to clients, so every player sees the same holes and saves stay small.
-9. **Caves come from the generator.** Cave networks and underground POIs are generated or hand-built, never carved by players.
+9. **Caves come from the generator.** Cave networks and underground POIs are generated, never carved by players.
 
 Vehicle drills follow the same rules, and auto-miners extract ore without changing the terrain at all.
 
@@ -1175,8 +1178,8 @@ Any enemy structure with a core (an outpost, a fortress, a small vessel or a cap
 
 **Interior defenses**
 
-- **Guards** patrol, respond to noise and converge on the core when the alarm rises. Officers carry keycards.
-- **Security doors** lock to the owning faction. Players open them three ways: a short hack (quiet), a breaching charge (fast and loud, raises the alarm), or an officer's keycard (silent). This is pillar 5 in miniature: stealth, force or cunning.
+- **Guards** patrol, respond to noise and converge on the core when the alarm rises.
+- **No locks.** Every door opens by hand, key cards don't exist, and blast doors only look heavy. A core sits deep in a vault room, protected by depth, guards and turrets, and sometimes behind transparent blocks the squad can break through. Stealth, force or cunning is the choice of route, never of key (pillar 5).
 - **Internal turrets** wake at alarm level 2 and fire on anyone not of the owning faction.
 - **Decompression.** Cutting the hull vents connected rooms to vacuum. Suited players survive; unsuited guards suffocate; robotic defenders are immune.
 
@@ -1282,12 +1285,13 @@ The galaxy feels alive through incidental encounters around the players, not a s
 
 ## 18. Economy, trading and logistics
 
-The economy is a shortcut, not a second game: credits turn surplus into what a world lacks, and themed trade routes give explorers a reason to remember where things sell. Trading itself has no friction: one shared balance, one trade screen, no haggling. Logistics is kept simple: one shared storage per structure, plus simple toggles and triggers.
+The economy is a shortcut, not a second game: a rare trade token turns surplus into what a world lacks, and themed trade routes give explorers a reason to remember where things sell. Trading itself has no friction: one trade screen, no haggling. Logistics is kept simple: one shared storage per structure, plus simple toggles and triggers.
 
-**Credits**
+**The trade token**
 
-- **One shared balance.** Credits are a single number shared by the player faction and always shown on the HUD. There's no money item to carry or lose, and no bank to visit.
-- Gold coins and other currency found as loot turn into credits the moment they're picked up.
+- **A physical item.** Currency is a rare token, precursor fragments that nobody alive can make or replicate. It is carried and stored like any item and can be lost or stolen. Much of the galaxy is still recovering, so there is no money number.
+- Fragments turn up in ruins, vaults and wrecks, and leaders and traders carry them. A trader's purse is limited and tops up over time like its stock.
+- **Who trades:** each group has a leader the player can trade with, and traders stand at POIs.
 
 **Traders**
 
@@ -1299,7 +1303,7 @@ The economy is a shortcut, not a second game: credits turn surplus into what a w
 - **Standing:** friendly and honored factions give discounts; hostile ones won't trade.
 - **Trade lines:** themed traders along fixed routes buy what other traders sell. Finding a profitable line is a discovery reward, and the map shows it once found.
 - **Services:** repairs, shield and fold crystal refills, healing and respawn points, bought from the same screen and priced by standing.
-- **Shared stock:** every player sells from and buys into the faction's shared storage and balance, so there's no trading between players.
+- **Shared stock:** every player sells from and buys into the faction's shared storage and tokens, so there's no trading between players.
 
 **Storage and logistics**
 
@@ -1423,7 +1427,7 @@ The biggest risk is the primary pillar itself: if worlds and POIs blur together,
 | Risk | Why it matters | Mitigation |
 | --- | --- | --- |
 | Procedural sameness | Discovery fails if planets look alike and POIs repeat | Distinctness test, modifiers, terrain stamps, seen-weighting of POIs (sections 4–5) |
-| POI authoring cost | Each hand-built POI takes dozens of hours, and library size drives variety | Faction kits, POI families, four states per layout, a procedural dressing pass |
+| POI authoring cost | Hand-built places take dozens of hours each and a fixed library repeats | Places generated per type from rules, faction kits, four states, a procedural dressing pass |
 | Walkable moving ships | Reference-frame physics and networking are hard; jitter breaks the fantasy | Ship-relative positions on the network; prototype in multiplayer from day one |
 | Guards inside ships | NPC pathfinding on destructible block interiors is fragile | Every ship and base is a block grid, so guards path with plain A\* on the structure's own grid (section 22) |
 | Punishing early game | Players quit before discovery pays off | Ten-minute rule, start-system guarantee, PDA tutorials, relaxed survival mode |
@@ -1475,7 +1479,9 @@ GalHack is built in Godot 4 with C#, by a team of AI agents directed by a human 
 **Keeping it fast**
 
 - Ship and base blocks merge into one mesh per chunk (reference: 16 × 16 × 16 blocks) with compound box colliders; greebles are instanced; distant ships use simplified meshes.
-- Terrain is a heightfield in the distance and chunked voxels only near players; edits are stored as small change lists (section 10).
+- Terrain is a heightfield in the distance and chunked voxels only near players; edits are stored as small change lists (section 10). The far ground is drawn by the GPU, real ground out to about 3 km with no level swaps.
+- Trees are drawn out to the detail distance, and a tree distance slider sets it from 300 m up to that limit.
+- Creatures are simulated by importance: people in full, threats next, and harmless ambient fauna on a small fixed budget near the player only, with no physics queries, and culled when unseen.
 - Debris and effects are pooled and capped.
 - The host owns the world state; each player's own movement and shots are trusted, so play feels instant.
 
@@ -1571,6 +1577,10 @@ The world save is the most important system in the game. Structures, items and p
 | [Terrain3D](https://github.com/TokisanGames/Terrain3D) | Planet-surface terrain in Godot 4 | MIT | None found |
 | [godot\_voxel](https://github.com/Zylann/godot_voxel) | Voxel terrain with LOD | MIT | C# support and install route still unclear |
 
+**Everything is generated.** This table is the early research list and is superseded: every model, texture, sound and piece of music is made in code, and only the engine, a few libraries and three open-licence fonts come from outside. Nothing here is copied.
+
+**Influence is not copying.** Designs, layouts, numbers and mechanics found elsewhere may be followed closely; files, art, text and code are never copied, and CC sources are credited. Credit: starport plans by Pearce Design Studio (CC BY-NC 4.0), used as reference for spaceports.
+
 **No Kenney assets of any kind:** no graphics, models, sounds or fonts from Kenney, anywhere in GalHack.
 
 - Credit everything: every asset, CC0 included, gets a line in the in-game credits (author, source, licence), kept in a credits data file that also logs the URL.
@@ -1617,7 +1627,7 @@ The world save is the most important system in the game. Structures, items and p
 | Organics | Plant matter, creature meat and other biomass, kept in storage to feed replicators |
 | PDA | The tutorial and hint system |
 | Playfield | One instanced zone: a planet surface, an orbit or a region of space |
-| POI | Point of interest: a hand-built structure placed by the generator |
+| POI | Point of interest: a place the generator builds from rules for each spawn |
 | POI family and state | A set of layouts under one name, each spawning active, abandoned, infested or ruined |
 | Precursor alloy | Unique armor salvaged from alien ruins; can't be crafted |
 | Replicator | Device that turns organics and energy into food; feeds the player to full on demand, and its tier (T1–T3) sets food quality and shelf life |
