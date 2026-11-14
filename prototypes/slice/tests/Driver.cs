@@ -146,13 +146,14 @@ public sealed class Driver
             if (flat < best - 0.5f) { best = flat; noProgress = 0f; }
             else noProgress += 1f / 60f;
             bool canDig = dig && Game.Pack.Hand == Slice.Items.HandKind.Tool && Game.Tool.Mode == Slice.Player.ToolMode.Gather;
-            // Under the ground with the way on above it or far off (a cave walked or fallen into, a pit dug): up out of it
-            // first, at once; on through the dark the walk only finds deeper caves, and ore nobody can reach.
-            if (canDig && !surfaced && !_following && Below() > 2.5f && (target.Y - feet.Y > 2.5f || flat > 20f)
+            // Under the ground with the way on far off (a cave walked or fallen into, a pit dug): up out of it first, at once;
+            // on through the dark the walk only finds deeper caves, and ore nobody can reach.
+            if (canDig && !surfaced && !_following && Below() > 2.5f && flat > 20f
                 && !(Game.Bunker is Slice.Start.Bunker inside && inside.Inside(feet, Game.Zone)))
             {
                 surfaced = true;
                 foreach (int x in Surface(target)) yield return x;
+                GD.Print($"  (up out of the ground at {feet}: to {Game.Survivor.WorldFeet}, {Below():F1} m under, dead {Game.Suit.Dead})");
                 best = float.MaxValue;
                 continue;
             }
@@ -202,19 +203,36 @@ public sealed class Driver
 
     /// <summary>
     /// Under the ground (a cave walked or fallen into, a pit dug): up out of it onto the open ground, a shaft dug up at a
-    /// slant toward where it is going and climbed on the jetpack, as a player would. Returns on the surface, or after the time limit.
+    /// slant the way the ground over it is lowest (out of a hillside, never into it), toward where it is going on level ground,
+    /// and climbed on the jetpack, as a player would. Returns on the surface, or after the time limit.
     /// </summary>
     public IEnumerable<int> Surface(Vector3 toward, float seconds = 60f)
     {
+        Vector3 start = Game.Survivor.WorldFeet;
+        var to = new Vector2(toward.X - start.X, toward.Z - start.Z);
+        to = to.LengthSquared() > 0.01f ? to.Normalized() : Vector2.Zero;
+        Vector3 ahead = Vector3.Forward;
+        float lowest = float.MaxValue;
+        for (int k = 0; k < 8; k++)
+        {
+            var d = Vector2.FromAngle(k * MathF.PI / 4f);
+            float h = Game.Zone.GroundAt(start.X + d.X * 6f, start.Z + d.Y * 6f).Y - 0.5f * d.Dot(to);
+            if (h < lowest) { lowest = h; ahead = new Vector3(d.X, 0f, d.Y); }
+        }
         for (int i = 0; i < seconds * Engine.PhysicsTicksPerSecond && Below() > 1.5f && !Game.Suit.Dead; i++)
         {
+            // The face just ahead, a body's height of it and the roof over it in turn, never the end of a bore the beam
+            // has run on into: a passage to climb, not a pinhole.
             Vector3 feet = Game.Survivor.WorldFeet;
-            var ahead = new Vector3(toward.X - feet.X, 0f, toward.Z - feet.Z);
-            ahead = ahead.LengthSquared() > 0.01f ? ahead.Normalized() : Vector3.Forward;
-            Face(feet + ahead * 1.6f + Vector3.Up * 3.2f);
-            Controls.Primary = true;
+            Face(feet + ahead * 1.2f + Vector3.Up * (1f + i / 20 % 3));
+            var cell = Game.Tool.Target;
+            Controls.Primary = Game.Tool.HasTarget && Game.Survivor.WorldEye().DistanceTo(new Vector3(cell.X + 0.5f, cell.Y + 0.5f, cell.Z + 0.5f)) < 3f;
             Controls.Hold(Key.W);
-            Controls.Hold(Key.Space, !(Controls.IsHeld(Key.Space) && Game.Survivor.Body.OnFloor));
+            // Up on the jetpack while the tanks hold more than a third, the rest kept to brake a drop back down the shaft.
+            var legs = Game.Survivor.Legs;
+            bool falling = !Game.Survivor.Body.OnFloor && Game.Survivor.Body.Velocity.Y < -4f;
+            bool lift = legs.JetpackFuel > legs.JetpackFuelMax * 0.35f;
+            Controls.Hold(Key.Space, (lift || falling) && !(Controls.IsHeld(Key.Space) && Game.Survivor.Body.OnFloor));
             yield return 0;
         }
         Controls.Primary = false;

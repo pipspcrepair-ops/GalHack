@@ -564,7 +564,7 @@ public sealed class Playthrough
             Vector3 reached = Game.Survivor.WorldFeet;
             float under = Drive.Below();
             var store = Game.Zone.Planet.Terrain.Store;
-            for (int pulse = 0; pulse < 240 && idle < 12 && Pack[ore.Id] < enough; pulse++)
+            for (int pulse = 0; pulse < 240 && idle < 12 && Pack[ore.Id] < enough && !Game.Suit.Dead; pulse++)
             {
                 Vector3 eye = Game.Survivor.WorldEye();
                 Vector3? target = NearestOre(at, eye, kind);
@@ -573,7 +573,7 @@ public sealed class Playthrough
                 int before = Pack[ore.Id] + store.RemovedCount;
                 // Ore overhead out of reach from under the ground (come at from a cave under it): up onto the surface over it,
                 // to dig down to it from there, once; still under it after that, on to the next deposit.
-                if (t.Y - eye.Y > 2f && eye.DistanceTo(t) > Game.Zone.Data.Rules.Tool.Reach - 1f && Drive.Below() > 2.5f)
+                if (t.Y - eye.Y > 2f && eye.DistanceTo(t) > Game.Zone.Data.Rules.Tool.Reach - 1f && new Vector2(t.X - eye.X, t.Z - eye.Z).Length() <= 4f && Drive.Below() > 2.5f)
                 {
                     if (surfaced) break;
                     surfaced = true;
