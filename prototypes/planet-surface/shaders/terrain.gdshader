@@ -396,8 +396,10 @@ vec4 paint_road(Road r, vec2 p, vec3 land, float fw, float near, out float cover
 	if (soil) {
 		grit = bared(land) * (1.02 + 0.12 * pn2(p, 2.6));
 		if (r.style > 4.5 && r.style < 5.5) {
-			float berm = 1.0 - smoothstep(1.2, 1.6 + fw, abs(edge - 0.8));
-			float inner = 1.0 - smoothstep(0.0, 0.5, abs(edge - 0.3));
+			// (The berm gives way where another road meets this one, so it never ends in a cut along the line the two trade places as the nearest.)
+			float meets = smoothstep(0.0, 2.0, r.other - r.edge);
+			float berm = (1.0 - smoothstep(1.2, 1.6 + fw, abs(edge - 0.8))) * meets;
+			float inner = (1.0 - smoothstep(0.0, 0.5, abs(edge - 0.3))) * meets;
 			grit *= 1.0 + 0.12 * berm - 0.25 * inner;
 			shoulder = max(shoulder, berm * 0.9 * (1.0 - deck));
 		}
@@ -766,7 +768,7 @@ vec4 paint_ground(Patch g, vec2 p, vec3 land, float fw, float near, out float co
 	float drift = smoothstep(0.7 - 0.12 * wear, 0.85, pn2(p, 0.045)) * (0.15 + 0.5 * wear) * smoothstep(0.1, 0.4, wear);
 	over = max(over * (0.55 + 0.4 * wear), drift);
 	over = min(over, 0.9);
-	c = mix(c, land, over) + ink;
+	c = mix(c, land, over);
 	// Past the outline: an unkerbed edge breaks up into chunks lying in the grass; a kerbed one stops at its kerb.
 	float body = 1.0 - smoothstep(-fw * 0.5, fw * 0.5, g.d);
 	float spill = 0.0;
