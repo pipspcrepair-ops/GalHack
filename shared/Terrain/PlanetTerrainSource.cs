@@ -299,9 +299,15 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
     {
         float h = Stamped(s.Height, x, z);
         if (h < s.Bank && !TerrainStamp.OnPad(Stamps, StampsAt(x, z), x, z)) h = s.Bank;
-        // Land under sea level that the sea doesn't cover would leave the sea's edge hanging over it:
-        // past where the sea is drawn the land stands clear of the water.
-        if (h < WaterLevel + ShoreRise && !s.InRiver && !Map.IsSea(x, z)) h = WaterLevel + ShoreRise;
+        // Land under sea level that the sea doesn't cover would leave the sea's edge hanging over it: past where
+        // the sea is drawn the land stands clear of the water. Inside, it eases back to its own height by the
+        // map's own coast, so where the land dips at the sea's drawn edge it makes the shore by its own shape
+        // (lifted most where the edge is), not along the mask's.
+        if (h < WaterLevel + ShoreRise && !s.InRiver)
+        {
+            float clear = Math.Clamp(1f - (Map.Sample(Map.SeaDepth, x, z) - WorldMap.SeaFrom) / -WorldMap.SeaFrom, 0f, 1f);
+            h += (WaterLevel + ShoreRise - h) * clear;
+        }
         return h;
     }
 
