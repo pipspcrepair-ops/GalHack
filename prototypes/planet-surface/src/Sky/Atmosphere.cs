@@ -16,6 +16,9 @@ public readonly record struct AtmosphereState(
     /// </summary>
     public float GroundFog { get; init; }
 
+    /// <summary>The part of <see cref="FogDensity"/> that fills the whole air at any height; the rest lies in the fog layer on the low ground.</summary>
+    public float AirFog { get; init; }
+
     /// <summary>Layered grey cloud instead of heaped cumulus, 0 to 1: steady damp weather, not storms.</summary>
     public float Stratus { get; init; }
 
@@ -52,6 +55,9 @@ public static class Atmosphere
 
         float haze = 0.00006f * sky.Density;
         float fog = Math.Max(haze, 2.3f / visibility * 0.85f);
+        // What the weather's ground fog makes of the murk lies in the low ground (the layer); the rest, from
+        // rain, snow, dust and ash, is in the whole air. The haze is always the air's.
+        float airFog = Math.Max(haze, fog * (1f - Math.Clamp(c.GroundFog, 0f, 1f)));
         float skyAffect = Math.Clamp(1.25f - MathF.Log10(visibility) / 3.4f, 0.1f, 0.95f);
 
         // Morning fog: strongest just after sunrise, gone by mid-morning; damp air holds it.
@@ -84,6 +90,7 @@ public static class Atmosphere
             Visibility: visibility)
         {
             GroundFog = Math.Clamp(c.GroundFog, 0f, 1f),
+            AirFog = airFog,
             Stratus = MathF.Max(Smooth(0.5f, 0.85f, cover), cold * Smooth(0.2f, 0.6f, cover) * 0.85f) * (1f - cellular),
             Cirrus = (1f - humid) * (1f - humid) * (0.15f + 0.85f * wind) * (1f - Smooth(0.3f, 0.7f, cover)), // mostly none: only dry, windy, fair skies comb it out
         };
