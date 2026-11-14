@@ -564,7 +564,7 @@ public sealed partial class BuildTool
         {
             var corner = new Vector3(i % 3 == 0 ? min.X : i % 3 == 1 ? 0 : max.X, 0, i / 3 == 0 ? min.Z : i / 3 == 1 ? 0 : max.Z) * cell;
             Vector3 p = ground + basis * corner;
-            top = MathF.Max(top, _zone.GroundAt(p.X, p.Z).Y);
+            top = MathF.Max(top, _zone.GroundTop(p.X, p.Z));
         }
         return new Transform3D(basis, new Vector3(ground.X, MathF.Max(top, ground.Y) + feet + 0.02f, ground.Z));
     }

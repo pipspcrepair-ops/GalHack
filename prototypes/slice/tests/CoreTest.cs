@@ -298,6 +298,9 @@ public partial class CoreTest : Node
         Check(v.Body.Position.Y < _game.Surface.Physics.Zone.Ceiling, $"it is held under the ceiling and falls from there ({v.Body.Position.Y:F0} m, ceiling {_game.Surface.Physics.Zone.Ceiling:F0})");
         _game.Survivor.StandUp();
         foreach (int x in _drive.Wait(5)) yield return x;
+        // A kilometre's fall would break it over whatever comes next: a craft set down there was crushed by its wreckage.
+        _game.Survivor.PlaceOutside((_site + Vector3.Up).ToNumerics());
+        Playthrough.TakeAway(_game.Zone, v);
     }
 
     IEnumerable<int> Base()
@@ -325,7 +328,8 @@ public partial class CoreTest : Node
         foreach (int x in _play.CloseMenu()) yield return x;
 
         foreach (int x in Switch(v, CoreMode.Flight)) yield return x;
-        Check(s.Mode == CoreMode.Flight && !v.IsBase && v.Flight != null && v.Body.Motion == GalHack.Physics.Motion.Kinematic && CoreCraft.SameBlocks(s, blocks), "switched to Flight Mode: the same structure on the flight model, no block changed");
+        Check(s.Mode == CoreMode.Flight && !v.IsBase && v.Flight != null && v.Body.Motion == GalHack.Physics.Motion.Kinematic && CoreCraft.SameBlocks(s, blocks),
+            $"switched to Flight Mode: the same structure on the flight model, no block changed ({s.Mode}, {v.Body.Motion}, {CoreCraft.Changed(s, blocks)} blocks changed, {v.Hits.HitsTaken} hits)");
         Check(_game.Survivor.Seated == v, "the pilot stays in their chair");
         float rest = v.Body.Position.Y;
         foreach (int x in Hold(Key.Space, 30)) yield return x;

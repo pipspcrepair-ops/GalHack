@@ -20,7 +20,7 @@ namespace Slice.Tests;
 /// deepest overlap with anything solid stays under a stated tolerance, and with the rider kept in the seat it
 /// takes input and moves away under its own control. The hover bike also hops, standing and at full boost, and
 /// stays level in the air and lands rideable; thrown onto its roof it rights itself and drives on without a
-/// remount. Run with:
+/// remount. Heavy ships break trees, light ones land on or clear a crown (VehicleGroundTest.Woods; --woods-only for those alone). Run with:
 ///   .\tools\test.ps1 -Project prototypes/slice -Scene res://tests/VehicleGroundTest.tscn
 /// </summary>
 public partial class VehicleGroundTest : Node
@@ -85,7 +85,7 @@ public partial class VehicleGroundTest : Node
         // The weather stays live (a bike's own drag through the air is part of what tipped it); the creatures keep still.
         _game.Zone.Wildlife.Frozen = true;
         GD.Print($"-- world {_game.World} --");
-        foreach (GameMode mode in new[] { GameMode.Survival, GameMode.Creative })
+        foreach (GameMode mode in args.Contains("--woods-only") ? Array.Empty<GameMode>() : new[] { GameMode.Survival, GameMode.Creative })
         {
             _game.Mode = mode;
             GD.Print($"== {mode} ==");
@@ -93,6 +93,8 @@ public partial class VehicleGroundTest : Node
             if (!args.Contains("--vessels-only")) foreach (int x in Bike(mode.ToString())) yield return x;
             if (!args.Contains("--bike-only")) foreach (int x in Vessels(mode.ToString())) yield return x;
         }
+        _game.Mode = GameMode.Creative;
+        if (!args.Contains("--bike-only")) foreach (int x in Woods()) yield return x;
     }
 
     // ---- Where ----------------------------------------------------------------------------------

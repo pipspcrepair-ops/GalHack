@@ -134,6 +134,8 @@ public static class CoreCraft
     /// <summary>Every block of a structure, for checking that a switch rebuilt nothing.</summary>
     public static Dictionary<Int3, Block> Blocks(Structure s) => s.Blocks().ToDictionary(b => b.pos, b => b.block);
 
-    public static bool SameBlocks(Structure s, Dictionary<Int3, Block> before) =>
-        s.BlockCount == before.Count && before.All(kv => s.TryGet(kv.Key, out Block b) && b.SameAs(kv.Value));
+    public static bool SameBlocks(Structure s, Dictionary<Int3, Block> before) => s.BlockCount == before.Count && Changed(s, before) == 0;
+
+    /// <summary>How many of the blocks before are gone or not as they were (worn, turned).</summary>
+    public static int Changed(Structure s, Dictionary<Int3, Block> before) => before.Count(kv => !s.TryGet(kv.Key, out Block b) || !b.SameAs(kv.Value));
 }

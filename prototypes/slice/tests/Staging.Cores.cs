@@ -30,7 +30,7 @@ public sealed partial class Staging
     }
 
     /// <summary>
-    /// The two cores, shot by shot into --dir: both tech tabs, a craft in Hover Mode and in Vessel
+    /// The one core, shot by shot into --dir: the Structures tech tab, a craft in Hover Mode and in Vessel
     /// Mode (the one craft, switched on the CORE tab), the striped switch, and the seated indicator
     /// in all four modes. The structures are set down whole (STAGING); the switch is clicked.
     /// </summary>

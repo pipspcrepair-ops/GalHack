@@ -23,6 +23,7 @@ public sealed class PhysicsRules
     public RidingData Riding { get; set; } = new();
     public WalkingData Walking { get; set; } = new();
     public WaterData Water { get; set; } = new();
+    public FloraData Flora { get; set; } = new();
 
     static readonly JsonSerializerOptions Options = new()
     {
@@ -232,6 +233,22 @@ public sealed class PhysicsRules
 
         public float DensityOf(BodyKind kind) =>
             Bodies != null && Bodies.TryGetValue(kind.ToString().ToLowerInvariant(), out float d) && d > 0f ? d : Density;
+    }
+
+    /// <summary>
+    /// What a tree takes from a structure before it breaks, by its trunk (<see cref="PhysicsWorld.ResolveContacts"/>): the weight on it
+    /// or the blow into it. One rule for every craft and tree, so a heavy ship breaks an ordinary tree and a giant may hold a light one.
+    /// </summary>
+    public sealed class FloraData
+    {
+        /// <summary>The load a trunk takes per square metre of its cross-section, Pa.</summary>
+        public float Strength { get; set; } = 200_000f;
+
+        /// <summary>A blow is the momentum it brings, stopped over this long, s.</summary>
+        public float BlowTime { get; set; } = 0.1f;
+
+        /// <summary>The most a trunk of this radius takes, N.</summary>
+        public float Takes(float trunkRadius) => Strength * MathF.PI * trunkRadius * trunkRadius;
     }
 
     public sealed class StuckData

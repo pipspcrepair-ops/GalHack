@@ -229,6 +229,8 @@ public partial class SurfaceZone : Node3D
         Physics.StuckFields.Add(Ground);
         Water = new PlanetWater(Planet);
         Physics.Water = Water;
+        Physics.Flora = this;
+        _ = Trees; // made with the world, not in the frame the first tree falls (several ms)
         yield return "ground";
         Pois.Build(Planet);
         yield return "places";
@@ -348,6 +350,27 @@ public partial class SurfaceZone : Node3D
     public virtual Vector3 GroundAt(float x, float z) => new(x, Planet.GroundHeight(Mathx.WrapX(x, Planet.Width), Mathx.Wrap(z, Planet.Height)), z);
 
     ImageTexture _seaMap;
+
+    /// <summary>How far above and below the natural ground its collision is looked for, m: dug ground, a road's bed, a face between its corners.</summary>
+    const float GroundReach = 3f;
+
+    PhysicsRayQueryParameters3D _groundRay;
+
+    /// <summary>
+    /// The height of the ground's own collision at a column, what a foot or a hull set down there meets (the natural
+    /// ground's height is off it between its faces' corners, and wherever it was dug); the natural ground where no
+    /// collision stands near it (not streamed in yet).
+    /// </summary>
+    public float GroundTop(float x, float z)
+    {
+        float natural = GroundAt(x, z).Y;
+        if (!float.IsFinite(natural)) return natural;
+        _groundRay ??= new PhysicsRayQueryParameters3D { CollisionMask = GalHack.Physics.Layers.World, HitFromInside = false };
+        _groundRay.From = new Vector3(x, natural + GroundReach, z);
+        _groundRay.To = new Vector3(x, natural - GroundReach, z);
+        var hit = GetWorld3D().DirectSpaceState.IntersectRay(_groundRay);
+        return hit.Count > 0 ? hit["position"].AsVector3().Y : natural;
+    }
 
     ShaderMaterial WaterMaterial(bool sea)
     {
@@ -483,6 +506,7 @@ public partial class SurfaceZone : Node3D
             Arrive();
         }
         if (!Arrived) return;
+        Topple();
         Vector3 focus = Focus();
         Streamer.SetFocus(focus);
         float latitude = (float)(Mathx.Wrap(focus.Z, Planet.Height) / Planet.Height * 2.0 - 1.0);
@@ -509,6 +533,7 @@ public partial class SurfaceZone : Node3D
     {
         if (Planet != null) WrapFrame();
         if (Streamer != null) HoldLoose();
+        TakeBroken();
     }
 
     /// <summary>Loose bodies lying where the ground has no collision (past the collision radius): held still, off the weather.</summary>

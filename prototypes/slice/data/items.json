@@ -22,9 +22,9 @@
     { "id": "hover-bike", "name": "Hover bike", "short": "HV-BIKE", "category": "component", "rarity": "common", "mass": 40, "volume": 12, "stack": 2,
       "uses": "F ride · hovers · over water", "unlock": { "level": 1, "cost": 0, "parent": "survival-tool", "tab": "tools" } },
     { "id": "mining-drill", "name": "Mining drill", "short": "DRILL", "category": "tool", "rarity": "uncommon", "mass": 4, "volume": 4, "stack": 1,
-      "uses": "Gathering ×2.5", "unlock": { "level": 4, "cost": 2, "parent": "survival-tool", "tab": "tools" } },
+      "uses": "Gathering ×2.5", "unlock": { "level": 7, "cost": 2, "parent": "survival-tool", "tab": "tools" } },
     { "id": "plasma-drill", "name": "Plasma drill", "short": "PLASMA", "category": "tool", "rarity": "rare", "mass": 5, "volume": 4, "stack": 1,
-      "uses": "Gathering ×5 · wide beam", "unlock": { "level": 8, "cost": 3, "parent": "mining-drill", "tab": "tools" } },
+      "uses": "Gathering ×5 · wide beam", "unlock": { "level": 12, "cost": 3, "parent": "mining-drill", "tab": "tools" } },
     { "id": "trail-ration", "name": "Trail ration", "short": "RATION", "category": "consumable", "rarity": "common", "mass": 0.4, "volume": 0.5,
       "uses": "Food", "unlock": { "level": 1, "cost": 0, "parent": "survival-tool", "tab": "tools" } },
     { "id": "patch-kit", "name": "Patch kit", "short": "PATCH", "category": "consumable", "rarity": "common", "mass": 0.3, "volume": 0.5,
@@ -39,23 +39,23 @@
       "where": "Some creatures", "uses": "Research (later); grown weapons" },
 
     // ---- Weapons: the first twelve (docs/weapon-ideas.md section 8). Each is a row in
-    // shared/Arms/data/weapons.json; here are its item, its tech-tree node (level, tab and cost from
-    // docs/tech-tree-pacing.md section 3b) and below its recipe. A weapon's own new ammo costs
+    // shared/Arms/data/weapons.json; here are its item, its tech-tree node (level from Empyrion's nearest hand weapon where it has one,
+    // else docs/tech-tree-pacing.md section 3b; cost by level) and below its recipe. A weapon's own new ammo costs
     // nothing and opens with it: unlocking a weapon unlocks its ammo. Living weapons eat plain biomass.
     { "id": "tack-pistol", "name": "Tack Pistol", "short": "TACK", "category": "weapon", "rarity": "common", "mass": 1.1, "volume": 1.5,
       "uses": "Sidearm", "unlock": { "level": 2, "cost": 1, "tab": "weapons" } },
     { "id": "pump-scattergun", "name": "Pump Scattergun", "short": "PUMP", "category": "weapon", "rarity": "common", "mass": 3.4, "volume": 4,
-      "uses": "Close range · buck / slug", "unlock": { "level": 6, "cost": 2, "tab": "weapons" } },
+      "uses": "Close range · buck / slug", "unlock": { "level": 3, "cost": 1, "tab": "weapons" } },
     { "id": "line-rifle", "name": "Line Rifle", "short": "LINE", "category": "weapon", "rarity": "common", "mass": 3.6, "volume": 4,
-      "uses": "Auto · burst · single", "unlock": { "level": 7, "cost": 2, "tab": "weapons" } },
+      "uses": "Auto · burst · single", "unlock": { "level": 3, "cost": 1, "tab": "weapons" } },
     { "id": "pressure-thrower", "name": "Pressure Thrower", "short": "FLAME", "category": "weapon", "rarity": "common", "mass": 7, "volume": 6,
       "uses": "Burning cone · burnstone", "unlock": { "level": 7, "cost": 2, "tab": "weapons" } },
     { "id": "break-launcher", "name": "Break Launcher", "short": "BREAK", "category": "weapon", "rarity": "uncommon", "mass": 4.2, "volume": 5,
       "uses": "Grenades · impact / bounce", "unlock": { "level": 8, "cost": 2, "tab": "weapons" } },
     { "id": "shoulder-tube", "name": "Shoulder Tube", "short": "TUBE", "category": "weapon", "rarity": "uncommon", "mass": 6.5, "volume": 7,
-      "uses": "Rockets · backblast", "unlock": { "level": 9, "cost": 2, "tab": "weapons" } },
+      "uses": "Rockets · backblast", "unlock": { "level": 10, "cost": 2, "tab": "weapons" } },
     { "id": "prox-mine", "name": "Prox Mine", "short": "MINE", "category": "weapon", "rarity": "uncommon", "mass": 0.9, "volume": 0.6, "stack": 10,
-      "uses": "Sticks · 2 m trigger", "unlock": { "level": 10, "cost": 2, "tab": "weapons" } },
+      "uses": "Sticks · 2 m trigger", "unlock": { "level": 5, "cost": 2, "tab": "weapons" } },
     { "id": "hornet-hive", "name": "Hornet Hive", "short": "HIVE", "category": "weapon", "rarity": "uncommon", "mass": 2.2, "volume": 3,
       "uses": "Seeking swarm · biomass", "unlock": { "level": 11, "cost": 3, "tab": "weapons" } },
     { "id": "stage-rifle", "name": "Stage Rifle", "short": "STAGE", "category": "weapon", "rarity": "uncommon", "mass": 4.8, "volume": 5,
@@ -90,11 +90,11 @@
 
     // ---- Their ammo (pistol rounds, rockets, energy cells and burnstone packs are the catalogue's own) ----
     { "id": "rifle-rounds", "name": "Rifle rounds", "short": "RIFLE", "category": "ammo", "rarity": "common", "mass": 0.9, "volume": 0.5, "rounds": 30, "restock": 4,
-      "unlock": { "level": 7, "cost": 0, "parent": "line-rifle", "tab": "weapons" } },
+      "unlock": { "level": 3, "cost": 0, "parent": "line-rifle", "tab": "weapons" } },
     { "id": "buck-shells", "name": "Buckshot shells", "short": "BUCK", "category": "ammo", "rarity": "common", "mass": 0.8, "volume": 0.5, "rounds": 12, "restock": 4,
-      "unlock": { "level": 6, "cost": 0, "parent": "pump-scattergun", "tab": "weapons" } },
+      "unlock": { "level": 3, "cost": 0, "parent": "pump-scattergun", "tab": "weapons" } },
     { "id": "slug-shells", "name": "Slug shells", "short": "SLUG", "category": "ammo", "rarity": "common", "mass": 0.9, "volume": 0.5, "rounds": 8, "restock": 4,
-      "unlock": { "level": 6, "cost": 0, "parent": "pump-scattergun", "tab": "weapons" } },
+      "unlock": { "level": 3, "cost": 0, "parent": "pump-scattergun", "tab": "weapons" } },
     { "id": "launcher-grenades", "name": "Launcher grenades", "short": "GRENADE", "category": "ammo", "rarity": "uncommon", "mass": 2.0, "volume": 1, "rounds": 4, "restock": 4,
       "unlock": { "level": 8, "cost": 0, "parent": "break-launcher", "tab": "weapons" } },
     { "id": "rail-slugs", "name": "Rail slugs", "short": "SLUGS", "category": "ammo", "rarity": "common", "mass": 1.6, "volume": 0.5, "rounds": 16, "restock": 4,

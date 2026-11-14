@@ -150,13 +150,13 @@
     { "id": "fuel-pack", "name": "Burnstone pack", "short": "FUEL", "category": "consumable", "rarity": "common", "mass": 2.0, "volume": 1, "fuel": 30, "unlock": { "level": 3, "cost": 1, "parent": "energy-cell", "tab": "misc" } },
     { "id": "large-fuel-pack", "name": "Large burnstone pack", "short": "FUEL L", "category": "consumable", "rarity": "common", "mass": 9.0, "volume": 4, "fuel": 150, "unlock": { "level": 8, "cost": 2, "parent": "fuel-pack", "tab": "misc" } },
     { "id": "fusion-cell", "name": "Fusion cell", "short": "FUSCELL", "category": "consumable", "rarity": "rare", "mass": 6.0, "volume": 2, "fuel": 300, "unlock": { "level": 14, "cost": 4, "parent": "large-fuel-pack", "tab": "misc" } },
-    { "id": "paint-cartridge", "name": "Paint cartridge", "short": "PAINT", "category": "consumable", "rarity": "common", "mass": 0.3, "volume": 0.3, "unlock": { "level": 4, "cost": 1, "tab": "tools" } },
+    { "id": "paint-cartridge", "name": "Paint cartridge", "short": "PAINT", "category": "consumable", "rarity": "common", "mass": 0.3, "volume": 0.3, "unlock": { "level": 1, "cost": 0, "tab": "tools" } },
 
     // ---- Ammo: counted in boxes, belts and racks ------------------------------------------
     { "id": "pistol-rounds", "name": "Pistol rounds", "short": "PISTOL", "category": "ammo", "rarity": "common", "mass": 0.6, "volume": 0.4, "rounds": 30, "restock": 4, "unlock": { "level": 2, "cost": 1, "tab": "weapons" } },
-    { "id": "belt-12mm", "name": "12 mm belt", "short": "12MM", "category": "ammo", "rarity": "common", "mass": 8.0, "volume": 4, "rounds": 200, "restock": 6, "unlock": { "level": 6, "cost": 1, "parent": "gatling", "tab": "weapons" } },
-    { "id": "shells-40mm", "name": "40 mm shells", "short": "40MM", "category": "ammo", "rarity": "common", "mass": 20.0, "volume": 8, "rounds": 25, "restock": 10, "unlock": { "level": 8, "cost": 1, "parent": "turret", "tab": "weapons" } },
-    { "id": "rocket", "name": "Rocket", "short": "ROCKET", "category": "ammo", "rarity": "uncommon", "mass": 12.0, "volume": 6, "rounds": 1, "restock": 8, "unlock": { "level": 9, "cost": 2, "parent": "rocketpod", "tab": "weapons" } },
+    { "id": "belt-12mm", "name": "12 mm belt", "short": "12MM", "category": "ammo", "rarity": "common", "mass": 8.0, "volume": 4, "rounds": 200, "restock": 6, "unlock": { "level": 3, "cost": 1, "parent": "gatling", "tab": "weapons" } },
+    { "id": "shells-40mm", "name": "40 mm shells", "short": "40MM", "category": "ammo", "rarity": "common", "mass": 20.0, "volume": 8, "rounds": 25, "restock": 10, "unlock": { "level": 5, "cost": 1, "parent": "turret", "tab": "weapons" } },
+    { "id": "rocket", "name": "Rocket", "short": "ROCKET", "category": "ammo", "rarity": "uncommon", "mass": 12.0, "volume": 6, "rounds": 1, "restock": 8, "unlock": { "level": 7, "cost": 2, "parent": "rocketpod", "tab": "weapons" } },
     { "id": "artillery-shell", "name": "Artillery shell", "short": "ARTY", "category": "ammo", "rarity": "uncommon", "mass": 30.0, "volume": 10, "rounds": 1, "restock": 6, "unlock": { "level": 15, "cost": 3, "parent": "shells-40mm", "tab": "weapons" } },
     { "id": "plasma-charge", "name": "Plasma charge", "short": "PLASMA", "category": "ammo", "rarity": "rare", "mass": 2.0, "volume": 1, "rounds": 10, "restock": 12, "unlock": { "level": 20, "cost": 4, "parent": "artillery-shell", "tab": "weapons" } },
 
