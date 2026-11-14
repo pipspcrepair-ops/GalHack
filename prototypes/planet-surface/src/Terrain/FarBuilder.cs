@@ -34,7 +34,7 @@ public readonly record struct FloraBatch(Flora Kind, int Plant, int Variant, flo
     }
 }
 
-/// <summary>One far-ring heightfield chunk: plain arrays built off the main thread.</summary>
+/// <summary>One far chunk's flora and river water: plain arrays built off the main thread.</summary>
 public sealed class FarJob
 {
     public int Fx, Fz, Lod;     // canonical far-chunk coordinates
@@ -43,15 +43,6 @@ public sealed class FarJob
     /// <summary>The chunk's extent each way, m: <see cref="FarBuilder.Size"/>, or less for the last one before a seam (<see cref="FarBuilder.Span"/>).</summary>
     public int SpanX = FarBuilder.Size, SpanZ = FarBuilder.Size;
 
-    /// <summary>Whether it builds a ground mesh too (the far rings drawn on the CPU), or only its flora and water.</summary>
-    public bool Ground = true;
-    public Vector3[] Vertices, Normals;
-    public Color[] Colors;
-    public Vector2[] Flags;
-
-    /// <summary>How far the ground rises above each vertex and falls below it nearby (UV2: a cliff's top and foot, for its rock).</summary>
-    public Vector2[] Relief;
-    public int[] Indices;
     public Vector3[] WaterVertices;
     public int[] WaterIndices;
     public readonly List<FloraBatch> Flora = new();
@@ -63,13 +54,13 @@ public sealed class FarJob
 }
 
 /// <summary>
-/// The ground beyond the voxel chunks: heightfield chunks sampled from the same terrain source
-/// (planet generator heights plus stamps) at 2, 4 or 8 m, coloured with the same palette, with
-/// curtains that close the join between levels of detail, river water, and flora scatter. Flora is
-/// laid out here for the voxel area too, and skips spots that have been dug, covered by a pad or
-/// opened by a cave mouth, so nothing ever floats. At the finest level it also lists the solid
-/// flora (trunks and boulders, <see cref="FloraSolidRules"/>) for the colliders near the player,
-/// and leaves out trees that have been felled.
+/// What lies on the ground beyond the voxel chunks, and its shape. The far chunks: the land sampled from the same
+/// terrain source (planet generator heights plus stamps) at 2, 4 or 8 m, for its flora scatter and river water. Flora is
+/// laid out here for the voxel area too, and skips spots that have been dug, covered by a pad or opened by a cave
+/// mouth, so nothing ever floats. At the finest level it also lists the solid flora (trunks and boulders,
+/// <see cref="FloraSolidRules"/>) for the colliders near the player, and leaves out trees that have been felled.
+/// The far ground itself is drawn by the GPU rings (<see cref="ClipGround"/>), each tile of them shaped here
+/// (<see cref="Shape"/>): slid onto its cliffs, lit and coloured with the same palette as the voxels.
 /// </summary>
 public static class FarBuilder
 {
@@ -81,16 +72,6 @@ public static class FarBuilder
     public static FloraSolidRules Solids;
 
     public static float Step(int lod) => lod switch { 0 => 2f, 1 => 4f, _ => 8f };
-
-    // MEASURE (temporary): workers' time by phase, in stopwatch ticks.
-    public static readonly long[] PhaseTicks = new long[8];
-    public static readonly string[] PhaseNames = { "heights", "slides", "relief", "colours", "normals+curtains", "water", "scatter", "total" };
-    static void Lap(ref long t, int phase)
-    {
-        long now = Stopwatch.GetTimestamp();
-        System.Threading.Interlocked.Add(ref PhaseTicks[phase], now - t);
-        t = now;
-    }
 
     /// <summary>
     /// How many far chunks cross a planet this many metres across. A planet whose size isn't a
@@ -125,7 +106,6 @@ public static class FarBuilder
         try
         {
             var watch = Stopwatch.StartNew();
-            long lap = Stopwatch.GetTimestamp(), lap0 = lap;
             float step = Step(job.Lod);
             // Grid points each way (nx along x, nz along z), and the sampled grid with a ring round it.
             var grid = new Grid((int)(job.SpanX / step) + 1, (int)(job.SpanZ / step) + 1);
@@ -144,47 +124,19 @@ public static class FarBuilder
                 level[k] = s.RiverLevel;
                 river[k] = s.InRiver;
             }
-            Lap(ref lap, 0);
-
-            if (!job.Ground)
+            // How far each grid point faces up, from the slope across it.
+            var up = new float[grid.Nx * grid.Nz];
+            for (int j = 0; j < grid.Nz; j++)
+            for (int i = 0; i < grid.Nx; i++)
             {
-                // The ground is the GPU rings' (ClipGround): only what grows here and the river's water.
-                var facing = new float[grid.Nx * grid.Nz];
-                for (int j = 0; j < grid.Nz; j++)
-                for (int i = 0; i < grid.Nx; i++)
-                {
-                    int s = grid.Sample(i, j);
-                    float gx = (height[s + 1] - height[s - 1]) / (2f * step), gz = (height[s + g] - height[s - g]) / (2f * step);
-                    facing[j * grid.Nx + i] = 1f / MathF.Sqrt(1f + gx * gx + gz * gz);
-                }
-                ReliefField lattice = Relief(job.SpanX, job.SpanZ, grid, step, x0, z0, height, source);
-                Lap(ref lap, 2);
-                BuildRiverWater(job, grid, step, level, river, height, source, x0, z0);
-                Lap(ref lap, 5);
-                Scatter(job, source, palette, dug, felled, grid, step, height, river, facing, lattice);
-                Lap(ref lap, 6);
-                Lap(ref lap0, 7);
-                job.Milliseconds = watch.Elapsed.TotalMilliseconds;
-                return;
+                int s = grid.Sample(i, j);
+                float gx = (height[s + 1] - height[s - 1]) / (2f * step), gz = (height[s + g] - height[s - g]) / (2f * step);
+                up[j * grid.Nx + i] = 1f / MathF.Sqrt(1f + gx * gx + gz * gz);
             }
-
-            // A curtain has two rows of vertices along each edge: it is painted apart from the ground.
-            int skirt = 2 * (grid.Nx + grid.Nz);
-            Surface surface = Shape(grid, job.SpanX, job.SpanZ, step, x0, z0, height, river, source, palette, fixedSplit: false, extra: skirt * 2);
-            (job.Vertices, job.Normals, job.Colors, job.Flags, job.Relief) = (surface.Vertices, surface.Normals, surface.Colors, surface.Flags, surface.Relief);
-            List<int> indices = surface.Indices;
-            float[] up = surface.Up;
-            ReliefField relief = surface.Field;
-            Lap(ref lap, 1);
-            AddCurtains(job, grid, step, indices, source, palette, x0, z0);
-            job.Indices = indices.ToArray();
-            Lap(ref lap, 4);
-
+            // (Only the finest level lays talus at the foot of cliffs, by the relief.)
+            ReliefField relief = job.Lod == 0 ? Relief(job.SpanX, job.SpanZ, grid, step, x0, z0, height, source) : null;
             BuildRiverWater(job, grid, step, level, river, height, source, x0, z0);
-            Lap(ref lap, 5);
             Scatter(job, source, palette, dug, felled, grid, step, height, river, up, relief);
-            Lap(ref lap, 6);
-            Lap(ref lap0, 7);
             job.Milliseconds = watch.Elapsed.TotalMilliseconds;
         }
         catch (Exception e)
@@ -193,31 +145,18 @@ public static class FarBuilder
         }
     }
 
-    /// <summary>The ground over a grid as it is drawn: each point slid onto the cliffs beside it, its normal, colour, glow and relief; the triangles, and the relief lattice and how far each point faces up (flora reads them).</summary>
-    internal sealed class Surface
-    {
-        public Vector3[] Vertices, Normals;
-        public Color[] Colors;
-        public Vector2[] Flags, Relief;
-        public float[] Up;
-        public List<int> Indices;
-        public ReliefField Field;
-    }
+    /// <summary>The ground over a grid as it is drawn: each point slid onto the cliffs beside it (its position in the grid's frame, m), its normal, colour, glow (x of the flags) and relief.</summary>
+    internal sealed record Surface(Vector3[] Vertices, Vector3[] Normals, Color[] Colors, Vector2[] Flags, Vector2[] Relief);
 
     /// <summary>
-    /// Shapes the ground over a grid of points <paramref name="step"/> apart from (x0, z0), its heights sampled with a ring
-    /// round it. Each square is split along whichever diagonal follows the ground, or with <paramref name="fixedSplit"/>
-    /// always along the grid's own (b-c), its points easing off their cliffs where that one can't be drawn.
-    /// <paramref name="extra"/> vertices are left free at the end (curtains).
+    /// Shapes the ground over a grid of points <paramref name="step"/> apart from (x0, z0) (<paramref name="spanX"/> by
+    /// <paramref name="spanZ"/> m), its heights sampled with a ring round it. Every square is split along the grid's own
+    /// diagonal (b-c), as the GPU rings' blocks are; where a point's slide would turn a triangle over, it eases off.
     /// </summary>
-    internal static Surface Shape(Grid grid, int spanX, int spanZ, float step, double x0, double z0, float[] height, bool[] river, PlanetTerrainSource source, GroundPalette palette, bool fixedSplit, int extra)
+    internal static Surface Shape(Grid grid, int spanX, int spanZ, float step, double x0, double z0, float[] height, bool[] river, PlanetTerrainSource source, GroundPalette palette)
     {
         int points = grid.Nx * grid.Nz, g = grid.G;
-        var surface = new Surface
-        {
-            Vertices = new Vector3[points + extra], Normals = new Vector3[points + extra], Colors = new Color[points + extra],
-            Flags = new Vector2[points + extra], Relief = new Vector2[points + extra], Up = new float[points],
-        };
+        var surface = new Surface(new Vector3[points], new Vector3[points], new Color[points], new Vector2[points], new Vector2[points]);
         Vector3[] vertices = surface.Vertices;
 
         // Beside a cliff the grid's points slide onto it (Slides), each still a true sample of the ground.
@@ -247,47 +186,22 @@ public static class FarBuilder
                 Place(k);
             }
         }
-        int[] split = Triangulate(vertices, grid, step, slideX, slideZ, Place, fixedSplit);
-        surface.Field = Relief(spanX, spanZ, grid, step, x0, z0, height, source);
-        for (int k = 0; k < points; k++)
-        {
-            Vector3 v = vertices[k];
-            surface.Relief[k] = surface.Field.At(v.X, v.Z, v.Y);
-        }
-
+        Unfold(vertices, grid, step, slideX, slideZ, Place);
+        ReliefField field = Relief(spanX, spanZ, grid, step, x0, z0, height, source);
         double w = palette.Map.WidthMeters, h = palette.Map.HeightMeters;
         for (int j = 0; j < grid.Nz; j++)
         for (int i = 0; i < grid.Nx; i++)
         {
             int k = j * grid.Nx + i, s = grid.Sample(i, j);
             float gx = (height[s + 1] - height[s - 1]) / (2f * step), gz = (height[s + g] - height[s - g]) / (2f * step);
-            var normal = new Vector3(-gx, 1f, -gz).Normalized();
             double x = Mathx.WrapX(Slid(x0 + i * step, slideX[k], step), w), z = Mathx.Wrap(Slid(z0 + j * step, slideZ[k], step), h);
-            surface.Normals[k] = normal;
+            surface.Normals[k] = new Vector3(-gx, 1f, -gz).Normalized();
             surface.Colors[k] = GroundColor(source, palette, x, z, drawn[k], CliffSlope2(height, s, g, step, gx * gx + gz * gz), river[s], out surface.Flags[k], step);
-            surface.Up[k] = normal.Y;
+            surface.Relief[k] = field.At(vertices[k].X, vertices[k].Z, vertices[k].Y);
         }
-
-        var indices = surface.Indices = new List<int>((grid.Nx - 1) * (grid.Nz - 1) * 6 + extra * 6);
-        for (int j = 0; j < grid.Nz - 1; j++)
-        for (int i = 0; i < grid.Nx - 1; i++)
-        {
-            int a = j * grid.Nx + i, b = a + 1, c = a + grid.Nx, d = c + 1;
-            if (split[j * (grid.Nx - 1) + i] == 0)
-            {
-                indices.Add(a); indices.Add(b); indices.Add(c);
-                indices.Add(b); indices.Add(d); indices.Add(c);
-            }
-            else
-            {
-                indices.Add(a); indices.Add(b); indices.Add(d);
-                indices.Add(a); indices.Add(d); indices.Add(c);
-            }
-        }
-        CliffNormals(vertices, surface.Normals, grid, step, height, indices);
+        CliffNormals(vertices, surface.Normals, grid, step, height);
         return surface;
     }
-
     /// <summary>
     /// The squared slope that picks a grid point's colour. A point on a spur or in a gully on a jagged
     /// cliff has neighbours far below (or above) it on both sides, so the difference across it says it
@@ -351,16 +265,15 @@ public static class FarBuilder
     // each square it crosses at a corner becomes a fin. Down a long wall those fins alternate into tall
     // teeth. So the points beside a cliff slide onto it: along each grid edge that falls steeply, the place
     // where the ground passes halfway down is found, and the point at each end moves toward it, stopping
-    // just short on its own side. Each point is then sampled again where it stands, so the mesh still lies
+    // just short on its own side. Each point is then sampled again where it stands, so the ground still lies
     // on the ground at every vertex: the top row of a face runs along the cliff's top, the bottom row along
-    // its foot, and each square is split along whichever diagonal follows the ground.
+    // its foot.
     //
-    // What must not change: a far chunk meets its neighbours, the voxels' square (which moves 16 m at a
-    // time) and the horizon along lines every 16 m, and those meetings are closed by curtains and walls that
-    // hang from the points on those lines. So a point on such a line only ever slides along it, by the
-    // ground along that line alone, the same in every chunk and level that draws it.
+    // What must not change: the GPU rings meet the voxels' square (which moves 16 m at a time) along lines
+    // every 16 m, closed by the wall that dives under the voxels from the points on those lines; and a tile's
+    // points are shaped as the tile beside it shapes them. So a point on such a line only ever slides along it.
 
-    /// <summary>The spacing of the lines a point may only slide along, m: chunk borders and every place the voxels' square can end.</summary>
+    /// <summary>The spacing of the lines a point may only slide along, m: tile borders and every place the voxels' square can end.</summary>
     const int Line = 16;
 
     /// <summary>The fall per metre over a grid edge from which it crosses a cliff, and the least fall that counts.</summary>
@@ -419,10 +332,10 @@ public static class FarBuilder
     /// On a cliff, a grid point's normal from the ground's slope across it (the samples a step either
     /// side, where it stood before it slid) says little about the triangles drawn round it: points down
     /// a face lit as if they faced every way, light and dark triangles in a row of teeth. So inside the
-    /// chunk, a point beside a steep edge takes the normal of the triangles it is a corner of, weighted by
-    /// their area. On the chunk's border the slope's normal stays, as the chunk next door has it.
+    /// grid, a point beside a steep edge takes the normal of the triangles it is a corner of (each square
+    /// split along its b-c diagonal), weighted by their area. On the grid's border the slope's normal stays.
     /// </summary>
-    static void CliffNormals(Vector3[] vertices, Vector3[] normals, Grid grid, float step, float[] height, List<int> indices)
+    static void CliffNormals(Vector3[] vertices, Vector3[] normals, Grid grid, float step, float[] height)
     {
         int nx = grid.Nx, nz = grid.Nz, g = grid.G;
         var cliff = new bool[nx * nz];
@@ -438,21 +351,25 @@ public static class FarBuilder
         }
         if (!any) return;
         var sum = new Vector3[nx * nz];
-        for (int t = 0; t + 2 < indices.Count; t += 3)
+        void Face(int a, int b, int c)
         {
-            int a = indices[t], b = indices[t + 1], c = indices[t + 2];
-            if (!cliff[a] && !cliff[b] && !cliff[c]) continue;
-            Vector3 pa = vertices[a], pb = vertices[b], pc = vertices[c];
+            if (!cliff[a] && !cliff[b] && !cliff[c]) return;
             // Wound so the ground's top faces up: (c - a) x (b - a) is outward.
-            Vector3 n = (pc - pa).Cross(pb - pa);
+            Vector3 n = (vertices[c] - vertices[a]).Cross(vertices[b] - vertices[a]);
             sum[a] += n;
             sum[b] += n;
             sum[c] += n;
         }
+        for (int j = 0; j < nz - 1; j++)
+        for (int i = 0; i < nx - 1; i++)
+        {
+            int a = j * nx + i, b = a + 1, c = a + nx, d = c + 1;
+            Face(a, b, c);
+            Face(b, d, c);
+        }
         for (int k = 0; k < sum.Length; k++)
             if (cliff[k] && sum[k].LengthSquared() > 1e-12f) normals[k] = sum[k].Normalized();
     }
-
     /// <summary>The highest and lowest ground round each point of a chunk's 8 m relief lattice.</summary>
     internal sealed record ReliefField(float[] Hi, float[] Lo, int La, int Lb, int L)
     {
@@ -559,64 +476,14 @@ public static class FarBuilder
     const int Eases = 4;
 
     /// <summary>
-    /// One chunk border's points as a level draws them, its own or another's: where each stands along
-    /// the line (m from its start) and how high. The same rule as <see cref="Slides"/> for points on a
-    /// line, from the samples along the line alone, so it is what that level's chunks draw there.
+    /// Keeps every square's two triangles (split along b-c, the GPU blocks' diagonal) the right way up in plan: where slides
+    /// would turn one over (a back face, a hole), the square's inner points ease off their cliffs until it can be drawn. A
+    /// grid's border points keep their slides (the tile beside it shapes them too): along a 16 m line they only slide along
+    /// it, and with only those the split is always sound.
     /// </summary>
-    static (float[] at, float[] y) EdgeLine(PlanetTerrainSource source, double ex, double ez, bool alongX, float span, float step)
-    {
-        int count = (int)MathF.Round(span / step) + 1;
-        int per = Math.Max(1, (int)MathF.Round(Line / step));
-        var at = new float[count];
-        var y = new float[count];
-        var wet = new bool[count];
-        var slide = new float[count];
-        var drop = new float[count];
-        for (int t = 0; t < count; t++)
-        {
-            float d = t * step;
-            GroundSample s = alongX ? source.Ground(ex + d, ez, step) : source.Ground(ex, ez + d, step);
-            y[t] = s.Height;
-            wet[t] = s.InRiver;
-        }
-        for (int t = 0; t + 1 < count; t++)
-        {
-            bool fromA = t % per != 0, fromB = (t + 1) % per != 0;
-            if (!fromA && !fromB || !Steep(y[t], y[t + 1], step)) continue;
-            double a = (alongX ? ex : ez) + t * step;
-            var (start, end) = alongX ? EdgeSlides(source, a, ez, a + step, ez, y[t], y[t + 1], step) : EdgeSlides(source, ex, a, ex, a + step, y[t], y[t + 1], step);
-            float fall = MathF.Abs(y[t] - y[t + 1]);
-            if (fromA && !wet[t]) { slide[t] += start; drop[t] = MathF.Max(drop[t], fall); }
-            if (fromB && !wet[t + 1]) { slide[t + 1] += end; drop[t + 1] = MathF.Max(drop[t + 1], fall); }
-        }
-        for (int t = 0; t < count; t++)
-        {
-            float sl = Math.Clamp(slide[t], -MaxSlide, MaxSlide);
-            float was = y[t];
-            for (int n = 0; sl != 0f; n++)
-            {
-                double a = Slid((alongX ? ex : ez) + t * step, sl, step);
-                y[t] = (alongX ? source.Ground(a, ez, step) : source.Ground(ex, a, step)).Height;
-                if (MathF.Abs(y[t] - was) <= Drift(drop[t])) break;
-                sl = n + 1 < Eases ? sl * 0.5f : 0f;
-                y[t] = was;
-            }
-            at[t] = (t + sl) * step;
-        }
-        return (at, y);
-    }
-
-    /// <summary>
-    /// How each grid square is split: 0 along b-c (the grid's own diagonal), 1 along a-d. The shorter
-    /// diagonal in 3D, so a cliff crossing a square at a corner is a chamfer, not a fin; but never one that
-    /// would turn a triangle over in plan (a back face, a hole), and where neither split can be drawn the
-    /// slides of the square's points ease off until one can. A chunk border's points keep their slides
-    /// (the chunk next door draws them too): with only those, both splits are always sound.
-    /// </summary>
-    static int[] Triangulate(Vector3[] vertices, Grid grid, float step, float[] sx, float[] sz, Action<int> place, bool fixedSplit)
+    static void Unfold(Vector3[] vertices, Grid grid, float step, float[] sx, float[] sz, Action<int> place)
     {
         int nx = grid.Nx, nz = grid.Nz;
-        var split = new int[(nx - 1) * (nz - 1)];
         float least = 0.002f * step * step;
         float Area(int p, int q, int r)
         {
@@ -624,28 +491,21 @@ public static class FarBuilder
             return (b.X - a.X) * (c.Z - a.Z) - (b.Z - a.Z) * (c.X - a.X);
         }
         var ease = new HashSet<int>();
-        for (int pass = 0; ; pass++)
+        for (int pass = 0; pass <= 8; pass++)
         {
             ease.Clear();
             for (int j = 0; j < nz - 1; j++)
             for (int i = 0; i < nx - 1; i++)
             {
                 int a = j * nx + i, b = a + 1, c = a + nx, d = c + 1;
-                bool bc = Area(a, b, c) > least && Area(b, d, c) > least;
-                bool ad = !fixedSplit && Area(a, b, d) > least && Area(a, d, c) > least;
-                if (bc && ad)
-                    split[j * (nx - 1) + i] = (vertices[b] - vertices[c]).LengthSquared() <= (vertices[a] - vertices[d]).LengthSquared() ? 0 : 1;
-                else if (bc || ad) split[j * (nx - 1) + i] = bc ? 0 : 1;
-                else
+                if (Area(a, b, c) > least && Area(b, d, c) > least) continue;
+                foreach (int k in new[] { a, b, c, d })
                 {
-                    foreach (int k in new[] { a, b, c, d })
-                    {
-                        int ki = k % nx, kj = k / nx;
-                        if (ki > 0 && kj > 0 && ki < nx - 1 && kj < nz - 1) ease.Add(k);
-                    }
+                    int ki = k % nx, kj = k / nx;
+                    if (ki > 0 && kj > 0 && ki < nx - 1 && kj < nz - 1) ease.Add(k);
                 }
             }
-            if (ease.Count == 0 || pass > 8) break;
+            if (ease.Count == 0) break;
             foreach (int k in ease)
             {
                 float keep = pass < 2 ? 0.5f : 0f;
@@ -654,133 +514,7 @@ public static class FarBuilder
                 place(k);
             }
         }
-        return split;
     }
-
-    /// <summary>
-    /// A curtain under each edge, so no level of detail shows a crack at its neighbour. Each level is
-    /// its own surface (a coarser one has fewer points and fewer octaves of noise), so where a cliff
-    /// crosses an edge one side can stand tens of metres above the other. Looking outward past the
-    /// lower side's edge, the eye would go in under the higher side's ground, whose back faces aren't
-    /// drawn, and out to whatever lies beyond. A level's neighbours change as the player moves, and
-    /// stitching the two meshes would mean rebuilding them each time and bending the finer one to the
-    /// coarser, so instead each chunk hangs a curtain from its edge to below where any level's edge runs
-    /// there: short on ordinary ground, and on a cliff the height of the difference and painted as rock.
-    /// The heights of the levels along the edge are sampled to know: no fixed depth is deep enough.
-    /// </summary>
-    static void AddCurtains(FarJob job, Grid grid, float step, List<int> indices, PlanetTerrainSource source, GroundPalette palette, double x0, double z0)
-    {
-        int nx = grid.Nx, nz = grid.Nz;
-        int Edge(int edge, int t) => edge switch { 0 => t, 1 => (nz - 1) * nx + t, 2 => t * nx, _ => t * nx + nx - 1 };
-        float least = step * 2f + 2f;
-        float endX = (nx - 1) * step, endZ = (nz - 1) * step;
-        int dst = nx * nz;
-        for (int edge = 0; edge < 4; edge++)
-        {
-            int count = edge < 2 ? nx : nz;
-            double ex = x0 + (edge == 3 ? endX : 0f), ez = z0 + (edge == 1 ? endZ : 0f);
-            bool alongX = edge < 2;
-            var ownAt = new float[count];
-            var ownY = new float[count];
-            for (int t = 0; t < count; t++)
-            {
-                Vector3 v = job.Vertices[Edge(edge, t)];
-                ownAt[t] = alongX ? v.X : v.Z;
-                ownY[t] = v.Y;
-            }
-            float[] extra = EdgeDepths(step, ownAt, ownY, ex, ez, alongX, (count - 1) * step, source);
-            var outward = edge switch { 0 => Vector3.Forward, 1 => Vector3.Back, 2 => Vector3.Left, _ => Vector3.Right };
-            for (int t = 0; t < count; t++, dst += 2)
-            {
-                int src = Edge(edge, t);
-                Vector3 at = job.Vertices[src];
-                float depth = extra[t];
-                Color color = job.Colors[src];
-                Vector3 normal = job.Normals[src];
-                Vector2 flags = job.Flags[src];
-                // A long curtain is a piece of cliff: bare rock facing out. A short one stays the ground it hangs from.
-                float wall = Smooth(0f, 4f, depth);
-                if (wall > 0f)
-                {
-                    double x = x0 + at.X, z = z0 + at.Z;
-                    Color rock = palette.Natural(x, z, at.Y, 0f, out Vector2 rockFlags);
-                    color = color.Lerp(rock, wall);
-                    flags = flags.Lerp(rockFlags, wall);
-                    normal = normal.Lerp(outward, wall).Normalized();
-                }
-                job.Vertices[dst] = at;
-                job.Vertices[dst + 1] = at + Vector3.Down * (least + depth);
-                Vector2 relief = job.Relief[src];
-                job.Relief[dst] = relief;
-                job.Relief[dst + 1] = new Vector2(relief.X + least + depth, MathF.Max(0f, relief.Y - least - depth));
-                job.Normals[dst] = job.Normals[dst + 1] = normal;
-                job.Colors[dst] = job.Colors[dst + 1] = color;
-                job.Flags[dst] = job.Flags[dst + 1] = flags;
-                if (t == 0) continue;
-                int a = dst - 2, b = dst, c = dst - 1, d = dst + 1;
-                indices.Add(a); indices.Add(b); indices.Add(c);
-                indices.Add(b); indices.Add(d); indices.Add(c);
-                indices.Add(a); indices.Add(c); indices.Add(b);
-                indices.Add(b); indices.Add(c); indices.Add(d);
-            }
-        }
-    }
-
-    /// <summary>
-    /// How far beyond its usual depth a curtain must reach at each point of an edge: enough that all
-    /// along the edge it is below where every level draws that edge, its own and the others. Each
-    /// level's edge is a line through its points (<see cref="EdgeLine"/>, slid along it beside cliffs),
-    /// so the gap between two of them is widest at one of their points: each stretch of this edge is
-    /// measured at its own ends and at every other level's point inside it.
-    /// </summary>
-    static float[] EdgeDepths(float step, float[] at, float[] y, double ex, double ez, bool alongX, float span, PlanetTerrainSource source)
-    {
-        int count = at.Length;
-        var lines = new List<(float[] At, float[] Y)>(2);
-        for (int level = 0; level <= 2; level++)
-        {
-            float levelStep = Step(level);
-            if (levelStep != step) lines.Add(EdgeLine(source, ex, ez, alongX, span, levelStep));
-        }
-        float Low(float u)
-        {
-            float low = float.MaxValue;
-            foreach (var (la, ly) in lines) low = MathF.Min(low, Along(la, ly, u));
-            return low;
-        }
-        // A curtain's foot is straight between its points, so both ends of a stretch cover the whole of it.
-        var depths = new float[count];
-        for (int t = 0; t + 1 < count; t++)
-        {
-            float u0 = at[t], u1 = at[t + 1], need = 0f;
-            void Try(float u) => need = MathF.Max(need, y[t] + (y[t + 1] - y[t]) * ((u - u0) / MathF.Max(u1 - u0, 1e-6f)) - Low(u));
-            Try(u0);
-            Try(u1);
-            foreach (var (la, _) in lines)
-                foreach (float u in la)
-                    if (u > u0 && u < u1) Try(u);
-            if (need <= 0f) continue;
-            depths[t] = MathF.Max(depths[t], need);
-            depths[t + 1] = MathF.Max(depths[t + 1], need);
-        }
-        return depths;
-    }
-
-    /// <summary>The height of a line through points (<paramref name="at"/> rising) at <paramref name="u"/>.</summary>
-    static float Along(float[] at, float[] y, float u)
-    {
-        int lo = 0, hi = at.Length - 1;
-        if (u <= at[lo]) return y[lo];
-        if (u >= at[hi]) return y[hi];
-        while (hi - lo > 1)
-        {
-            int mid = (lo + hi) >> 1;
-            if (at[mid] <= u) lo = mid;
-            else hi = mid;
-        }
-        return y[lo] + (y[hi] - y[lo]) * ((u - at[lo]) / MathF.Max(at[hi] - at[lo], 1e-6f));
-    }
-
     /// <summary>
     /// Flat water at the river's surface over every grid square near the channel. It runs a square past the
     /// channel, in under the banks, so wherever it meets the land the ground's own surface makes its edge, never

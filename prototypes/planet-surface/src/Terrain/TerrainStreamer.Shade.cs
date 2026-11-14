@@ -56,11 +56,11 @@ public partial class TerrainStreamer
         // A material parameter set costs the render thread, so the materials take new values only when something changed:
         // the sun a tenth of a degree on (its shade is built to a degree), a blend, a new square, a material made since.
         var now = new Vector4(sun.X, sun.Y, sun.Z, rise);
-        int live = (VoxelMaterial != null ? 1 : 0) + (FarMaterial != null ? 1 : 0) + (_horizonMaterial != null ? 1 : 0) + (_floraMaterial != null ? 1 : 0) + (ClipMaterial != null ? 1 : 0);
+        int live = (VoxelMaterial != null ? 1 : 0) + (FarMaterial != null ? 1 : 0) + (_horizonMaterial != null ? 1 : 0) + (_floraMaterial != null ? 1 : 0);
         bool squares = live != _pushedMaterials || _pushedShade != Shade || _pushedWas != _shadeWas;
         if (!squares && now.DistanceSquaredTo(_pushedSun) < 4e-6f && _pushedReach == ShadowReach && _pushedBlend == _shadeBlend) return;
         (_pushedSun, _pushedReach, _pushedBlend, _pushedShade, _pushedWas, _pushedMaterials) = (now, ShadowReach, _shadeBlend, Shade, _shadeWas, live);
-        foreach (ShaderMaterial m in new[] { VoxelMaterial, FarMaterial, _horizonMaterial, _floraMaterial, ClipMaterial == FarMaterial ? null : ClipMaterial })
+        foreach (ShaderMaterial m in new[] { VoxelMaterial, FarMaterial, _horizonMaterial, _floraMaterial })
         {
             if (m == null) continue;
             m.SetShaderParameter("shade_sun", now);

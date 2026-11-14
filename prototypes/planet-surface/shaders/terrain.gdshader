@@ -858,7 +858,7 @@ void fragment() {
 	// camera, and at that grazing angle it catches the sky as a pale streak, like a tear in the rock.
 	// So on a steep far triangle a normal that says flat takes the triangle's true facing, and the
 	// sheen goes where the normal turns from the eye. A wall keeps the normals that light it smoothly.
-	// (Not curtains, which are upright and painted as they should be, nor the wall a far ring dives
+	// (Not the wall a far ring dives
 	// under the voxels by: those stay the ground whose small step they close.)
 	float sheen = 1.0;
 	if (far_ring && inside_hole(wpos.xz) <= 0.0) {
@@ -928,7 +928,6 @@ void fragment() {
 	float road_rough = 0.93;
 	// Not on a far ring inside the voxels' square: there it is only the wall it dives under them by, which
 	// sticks up as a sliver where the coarse ground stands higher, and painted it would show as a floating sheet.
-	// (Nor on a far ring's curtains, upright walls under each chunk's edge: painted, they show as pale sheets.)
 	if (road_grid.w > 0.5 && up > (far_ring ? 0.3 : 0.7) && !(far_ring && inside_hole(wpos.xz) > 0.0)) {
 		Road r = nearest_road(wpos.xz, wpos.y);
 		if (r.edge < 8.0) {

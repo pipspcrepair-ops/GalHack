@@ -8,14 +8,13 @@ using PlanetSurface.Terrain;
 namespace Slice.Tests;
 
 /// <summary>
-/// The far ground, CPU meshes against the GPU rings, in the same views of one world (run with --ground=ab): a
-/// mountain range from 3 and 5 km, the ground under a fly-over, the near and far ground's meeting line, a road and a
-/// river far off, a night view; then a ridge approached from 2 km at 70 m/s, once with each, frames at the same points.
-/// Frames go beside --out as NAME-TAG-mesh.png and NAME-TAG-gpu.png.
+/// The far ground (the GPU rings) in the views that show it: a mountain range from 3 and 5 km, the ground under a
+/// fly-over, the near and far ground's meeting line, a road and a river far off, a night view; then a ridge approached
+/// from 2 km at 70 m/s, frames at 1.5, 1 and 0.5 km. Frames go beside --out as NAME-TAG.png.
 /// </summary>
 public sealed partial class Staging
 {
-    IEnumerable<int> GroundAb()
+    IEnumerable<int> FarGroundShots()
     {
         var zone = _game.Zone;
         TerrainStreamer s = zone.Streamer;
@@ -76,40 +75,26 @@ public sealed partial class Staging
                 Hold(eye, at);
                 yield return 0;
             }
-            foreach (bool gpu in new[] { false, true })
-            {
-                s.ShowGpu = gpu;
-                for (int i = 0; i < 8; i++)
-                {
-                    Hold(eye, at);
-                    yield return 0;
-                }
-                Snap($"{tag}-{(gpu ? "gpu" : "mesh")}");
-            }
+            Snap(tag);
         }
 
-        // A ridge approached from 2 km at 70 m/s, 60 m up: frames at 1.5, 1 and 0.5 km from it, once with each.
+        // A ridge approached from 2 km at 70 m/s, 60 m up: frames at 1.5, 1 and 0.5 km from it.
         zone.Sky.TimeOfDay = day;
-        foreach (bool gpu in new[] { false, true })
+        Vector3 from = peak - way * 2000f;
+        for (int i = 0; i < 400 && (i < 90 || !s.Settled); i++)
         {
-            s.ShowGpu = gpu;
-            Vector3 from = peak - way * 2000f;
-            for (int i = 0; i < 400 && (i < 90 || !s.Settled); i++)
-            {
-                Hold(Lift(from, 60f), peak);
-                yield return 0;
-            }
-            float along = 0f;
-            var marks = new Queue<float>(new[] { 500f, 1000f, 1500f });
-            while (marks.Count > 0)
-            {
-                along += 70f / Engine.PhysicsTicksPerSecond;
-                Vector3 eye = Lift(from + way * along, 60f);
-                Hold(eye, peak);
-                yield return 0;
-                if (along < marks.Peek()) continue;
-                Snap($"approach{marks.Dequeue():0}-{(gpu ? "gpu" : "mesh")}");
-            }
+            Hold(Lift(from, 60f), peak);
+            yield return 0;
+        }
+        float along = 0f;
+        var marks = new Queue<float>(new[] { 500f, 1000f, 1500f });
+        while (marks.Count > 0)
+        {
+            along += 70f / Engine.PhysicsTicksPerSecond;
+            Hold(Lift(from + way * along, 60f), peak);
+            yield return 0;
+            if (along < marks.Peek()) continue;
+            Snap($"approach{marks.Dequeue():0}");
         }
         _game.FixedCamera = null;
         zone.Sky.TimeScale = 1f;

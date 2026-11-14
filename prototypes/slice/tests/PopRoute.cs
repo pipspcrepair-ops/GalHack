@@ -243,20 +243,17 @@ public partial class PopRoute : Node
         foreach (Node n in s.GetChildren()) seenNodes.Add(n.GetInstanceId());
         var farSwaps = new List<(int Lod, float Away)>();
         var groundSwaps = new List<double>();
-        int ring = -1, levelSwaps = 0;
+        int ring = -1;
         var farIn = new HashSet<(int, int)>();
         int size = FarBuilder.Size;
         PopLog.Take();
         _frames.Clear();
         _gpu.Clear();
         double solids0 = s.SolidsTotalMs, physics = 0, physicsWorst = 0;
-        // MEASURE (temporary): where terrain's CPU time goes on this route.
-        long[] phases0 = (long[])FarBuilder.PhaseTicks.Clone();
-        double[] sections0 = (double[])s.SectionMs.Clone();
-        double node0 = s.FarNodeTotalMs, groundMesh0 = s.FarGroundMeshMs;
-        int[] builds0 = (int[])s.FarBuilds.Clone();
-        long clipTicks0 = ClipGround.FillTicks;
-        int clipTiles0 = ClipGround.Filled;
+        // The workers' time on the far ground: far chunks (flora and water) and the GPU rings' tiles.
+        double farMs0 = s.FarBuildMs.Sum();
+        long tileTicks0 = ClipGround.FillTicks;
+        int tiles0 = ClipGround.Filled;
         float along = 0f;
         int tick = 0;
         while (along < length)
@@ -298,23 +295,16 @@ public partial class PopRoute : Node
                 var key = (int.Parse(parts[1]), int.Parse(parts[2]));
                 int lod = parts[3][^1] - '0';
                 if (lod == 0 && farIn.Add(key) && farWanted.TryGetValue(key, out double t)) farWait.Add(clock.Elapsed.TotalMilliseconds - t);
-                // A far chunk's new drawing (its ground and its trees, and what they cast): in view if any of its square is.
+                // A far chunk's new drawing (its trees and what they cast; the ground is the GPU rings', never redrawn): in view if any of its square is.
                 Vector3 c0 = n3.GlobalPosition, mid = c0 + new Vector3(size * 0.5f, 0f, size * 0.5f);
                 mid.Y = _game.Zone.GroundAt(mid.X, mid.Z).Y;
                 bool inView = cam != null && Enumerable.Range(0, 9).Any(k => cam.IsPositionInFrustum(c0 + new Vector3(size * (k % 3) * 0.5f, mid.Y - c0.Y, size * (k / 3) * 0.5f)));
                 if (inView && tick > 30) farSwaps.Add((lod, new Vector2(mid.X - p.X, mid.Z - p.Z).Length()));
-                // Its ground swapped for another level's at once (the far rings' meshes; the GPU rings never swap a mesh).
-                if (inView && tick > 30 && n3.GetChildCount() > 0 && n3.GetChild(0) is MeshInstance3D { Visible: true } gm && gm.MaterialOverride == s.FarMaterial) levelSwaps++;
             }
         }
         s.ChunkApplied -= onChunk;
-        {
-            double secs = clock.Elapsed.TotalSeconds;
-            string Ph(int i) => $"{FarBuilder.PhaseNames[i]} {(FarBuilder.PhaseTicks[i] - phases0[i]) * 1000.0 / Stopwatch.Frequency / secs:F0}";
-            GD.Print(string.Create(CultureInfo.InvariantCulture, $"MEASURE {name}: far chunk workers, ms per second of route: {string.Join(", ", Enumerable.Range(0, 8).Select(Ph))}; " +
-                $"far builds {string.Join("/", Enumerable.Range(0, 3).Select(l => s.FarBuilds[l] - builds0[l]))} by level; GPU ground tiles {(ClipGround.Filled - clipTiles0) / secs:F1}/s at {(ClipGround.FillTicks - clipTicks0) * 1000.0 / Stopwatch.Frequency / secs:F0} ms per second; ground level swaps in view {levelSwaps / (secs / 60):F0}/min; main thread ms per second: far nodes {(s.FarNodeTotalMs - node0) / secs:F1} (ground meshes {(s.FarGroundMeshMs - groundMesh0) / secs:F1}), " +
-                $"streamer sections {string.Join(", ", Enumerable.Range(0, 5).Select(i => $"{TerrainStreamer.SectionLabels[i]} {(s.SectionMs[i] - sections0[i]) / secs:F1}"))}"));
-        }
+        double seconds = clock.Elapsed.TotalSeconds;
+        string workers = string.Create(CultureInfo.InvariantCulture, $"far chunks {(s.FarBuildMs.Sum() - farMs0) / seconds:F0} ms a second, ground tiles {(ClipGround.FillTicks - tileTicks0) * 1000.0 / Stopwatch.Frequency / seconds:F0} ms a second ({(ClipGround.Filled - tiles0) / seconds:F0} a second)");
         var pops = PopLog.Take();
         var trees = pops.Where(q => q.Kind == "flora" && q.What == "appears" && q.Size > 3f).Select(q => q.Distance).ToList();
         string byKind = string.Join(", ", pops.GroupBy(q => q.Kind + " " + q.What).OrderBy(g => g.Key).Select(g => string.Create(CultureInfo.InvariantCulture, $"{g.Key} {g.Count()} ({g.Sum(q => q.Jump * q.Size / MathF.Max(q.Distance, 10f)):F1})")));
@@ -335,7 +325,7 @@ public partial class PopRoute : Node
                  $"nearest far chunk short of its level (chunks) {Q(farShort.Where(f => f < int.MaxValue).Select(f => (double)f).ToList(), true)}, at 0 in {farShort.Count(f => f == 0) * 100 / Math.Max(1, farShort.Count)}% of samples; " +
                  $"queue {Q(pending.Select(c => (double)c).ToList())}; far chunks short of their level {Q(farBehind.Select(c => (double)c).ToList())}; column wait ms {Q(columnWait)}; level-0 far chunk wait ms {Q(farWait)}; " +
                  $"trees appearing at m {Q(trees.Select(t => (double)t).ToList(), true)}, within 150 m {trees.Count(t => t < 150f)}; flora or cover jumps over 5% within 120 m {nearJumps}; " +
-                 $"main thread: solid flora {(s.SolidsTotalMs - solids0) / Math.Max(1, tick):F2} ms a tick, physics {physics / Math.Max(1, tick):F2} ms a tick (worst {physicsWorst:F1}), {s.SolidColliders} solid colliders; in view: far chunks redrawn {swaps}; redrawn inside the sun's shadow reach (casters changing) {farSwaps.Count(q => q.Away < _game.Zone.Sky.Sun.DirectionalShadowMaxDistance) / minutes:F0}/min; near ground rings {groundSwaps.Count / minutes:F0}/min at m {Q(groundSwaps, true)}; pops (count, and their sum of jump times size over distance) {byKind}; frames {_frames.Count}, p50 {(_frames.Count > 0 ? _frames[_frames.Count / 2] : 0):F1}, p99 {(_frames.Count > 0 ? _frames[(int)(_frames.Count * 0.99)] : 0):F1}, worst {(_frames.Count > 0 ? _frames[^1] : 0):F1} ms, {over} over 16.7 ms; gpu p50 {(_gpu.Count > 0 ? _gpu[_gpu.Count / 2] : 0):F1}, p99 {(_gpu.Count > 0 ? _gpu[(int)(_gpu.Count * 0.99)] : 0):F1} ms");
+                 $"main thread: solid flora {(s.SolidsTotalMs - solids0) / Math.Max(1, tick):F2} ms a tick, physics {physics / Math.Max(1, tick):F2} ms a tick (worst {physicsWorst:F1}), {s.SolidColliders} solid colliders; workers on the far ground: {workers}; in view: far chunks' flora redrawn {swaps}; redrawn inside the sun's shadow reach (casters changing) {farSwaps.Count(q => q.Away < _game.Zone.Sky.Sun.DirectionalShadowMaxDistance) / minutes:F0}/min; near ground rings {groundSwaps.Count / minutes:F0}/min at m {Q(groundSwaps, true)}; pops (count, and their sum of jump times size over distance) {byKind}; frames {_frames.Count}, p50 {(_frames.Count > 0 ? _frames[_frames.Count / 2] : 0):F1}, p99 {(_frames.Count > 0 ? _frames[(int)(_frames.Count * 0.99)] : 0):F1}, worst {(_frames.Count > 0 ? _frames[^1] : 0):F1} ms, {over} over 16.7 ms; gpu p50 {(_gpu.Count > 0 ? _gpu[_gpu.Count / 2] : 0):F1}, p99 {(_gpu.Count > 0 ? _gpu[(int)(_gpu.Count * 0.99)] : 0):F1} ms");
         // The gate (--check=1): limits from the best build measured (ee8a3ace^ with the owner's settings; fad41bce, his last
         // good test build, about the same), with room for a machine other runs share.
         static double P(List<double> v, double q) => v.Count == 0 ? double.NaN : v[Math.Min(v.Count - 1, (int)(v.Count * q))];

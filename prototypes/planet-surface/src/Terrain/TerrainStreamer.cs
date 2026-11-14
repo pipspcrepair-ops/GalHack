@@ -21,8 +21,9 @@ namespace PlanetSurface.Terrain;
 ///   columns around the focus. Column heights are computed on a worker, then each chunk is
 ///   meshed on a worker from an immutable snapshot of the store. Collision exists only close to
 ///   the player, where something can touch it.
-/// - <b>Far:</b> heightfield chunks from the same source at 2, 4 and 8 m out to about a kilometre,
-///   then a horizon mesh straight from the planet generator's world map.
+/// - <b>Far:</b> the GPU rings (<see cref="ClipGround"/>): the same source's ground at 2, 4, 8 and 16 m out to a few
+///   kilometres, shaped on the graphics card from textures the workers fill as the focus moves; then a horizon mesh
+///   straight from the planet generator's world map. Far chunks (128 m) carry the flora and river water.
 /// Each level cuts a hole where the finer one is complete, so they never overlap; first it dives
 /// under the finer one's edge, so no gap between them can show the sky or what lies past them.
 ///
@@ -91,7 +92,7 @@ public partial class TerrainStreamer : Node3D
         return d * d / (2f * RoundRadius);
     }
 
-    /// <summary>How far inside the voxel square the far rings still draw: a grid square of the coarsest level, the last that can be there.</summary>
+    /// <summary>How far inside the voxel square the far rings still draw: past the wall they dive under it by.</summary>
     const float FarHoleCut = 8f;
 
     public PlanetWorld World { get; private set; }
@@ -100,32 +101,8 @@ public partial class TerrainStreamer : Node3D
     public ShaderMaterial VoxelMaterial { get; private set; }
     public ShaderMaterial FarMaterial { get; private set; }
 
-    /// <summary>How the far ground is drawn while the GPU rings come in (--ground=mesh|gpu|ab): its CPU meshes, the GPU rings, or both built for A/B shots (<see cref="ShowGpu"/> picks).</summary>
-    public enum FarGround { Meshes, Gpu, Both }
-    public static FarGround Ground = Array.Find(OS.GetCmdlineUserArgs(), a => a.StartsWith("--ground=")) switch
-    {
-        "--ground=gpu" => FarGround.Gpu,
-        "--ground=ab" => FarGround.Both,
-        _ => FarGround.Meshes,
-    };
-
-    /// <summary>The GPU rings (<see cref="ClipGround"/>) and their material.</summary>
+    /// <summary>The far ground: the GPU rings (<see cref="ClipGround"/>), drawn with <see cref="FarMaterial"/>.</summary>
     public ClipGround Clip { get; private set; }
-    public ShaderMaterial ClipMaterial { get; private set; }
-    bool _showGpu = Ground != FarGround.Meshes;
-
-    /// <summary>Which far ground shows when both are built (A/B shots).</summary>
-    public bool ShowGpu
-    {
-        get => _showGpu;
-        set
-        {
-            _showGpu = value && Ground != FarGround.Meshes;
-            if (Clip != null) Clip.Visible = _showGpu;
-            foreach (FarChunk f in _far.Values)
-                if (f.Node != null && f.Node.GetChildCount() > 0 && f.Node.GetChild(0) is MeshInstance3D m && m.MaterialOverride == FarMaterial) m.Visible = !_showGpu;
-        }
-    }
     ShaderMaterial _horizonMaterial, _floraMaterial;
     Material _waterMaterial;
     Dictionary<Flora, Mesh> _floraMeshes;
@@ -192,11 +169,6 @@ public partial class TerrainStreamer : Node3D
         public Node3D Node;
         public List<FloraBatch> Flora;
 
-        /// <summary>Its ground mesh as drawn (chunk-local), and its triangles by 16 m cell, made the first time something asks (<see cref="DrawnGround"/>).</summary>
-        public Vector3[] Vertices;
-        public int[] Indices;
-        public List<int>[] Cells;
-
         /// <summary>Level 0: its solid flora (trunks, boulders), in planet coordinates. Null otherwise.</summary>
         public List<FloraSolid> Solids;
     }
@@ -227,8 +199,6 @@ public partial class TerrainStreamer : Node3D
     /// <summary>Where the worst frame's time went, section by section.</summary>
     public string WorstBreakdown { get; private set; } = "";
     readonly double[] _sections = new double[5];
-    public readonly double[] SectionMs = new double[5]; // MEASURE (temporary)
-    public static string[] SectionLabels => SectionNames;
     long _frameStart;
     static readonly string[] SectionNames = { "voxels", "far", "horizon", "evict", "collision" };
     public int MeshedChunks => _chunks.Count;
@@ -239,7 +209,7 @@ public partial class TerrainStreamer : Node3D
 
     /// <summary>How many eviction passes (unloading far-off generated chunks) have run: tests wait on it.</summary>
     public int EvictPasses { get; private set; }
-    public int Pending => _queue.Count + _voxelInFlight + _heightsInFlight + _farInFlight + (Clip?.Pending ?? 0);
+    public int Pending => _queue.Count + _voxelInFlight + _heightsInFlight + _farInFlight + Clip.Pending;
 
     /// <summary>A voxel chunk's new mesh was swapped in (frame key).</summary>
     public event Action<Int3> ChunkApplied;
@@ -261,19 +231,12 @@ public partial class TerrainStreamer : Node3D
         FarBuilder.KindSize = sizes;
         _horizon = new MeshInstance3D { Name = "Horizon", CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
         AddChild(_horizon);
-        Clip = new ClipGround { Name = "Clip", Visible = _showGpu };
+        Clip = new ClipGround { Name = "Clip" };
         AddChild(Clip);
     }
 
-    void SetClip()
-    {
-        if (Ground == FarGround.Meshes) return;
-        ClipMaterial = Ground == FarGround.Gpu ? FarMaterial : TerrainMaterial(far: true);
-        ClipMaterial.SetShaderParameter("hole_sink", HorizonSink);
-        ClipMaterial.SetShaderParameter("hole_sink_from", 0.25f);
-        ClipMaterial.SetShaderParameter("hole_cut", FarHoleCut);
-        Clip.SetWorld(World.Source, World.Palette, World.Terrain.Width, World.Terrain.Height, ClipMaterial, ClipGround.LevelsFor(DetailReach.Distance));
-    }
+    /// <summary>The GPU rings for this world, as many as the detail distance wants.</summary>
+    void SetClip() => Clip.SetWorld(World.Source, World.Palette, World.Terrain.Width, World.Terrain.Height, FarMaterial, ClipGround.LevelsFor(DetailReach.Distance));
 
     /// <summary>Starts streaming a planet (dropping everything of the previous one).</summary>
     public void SetWorld(PlanetWorld world, Vector3 focus, Material water)
@@ -519,7 +482,6 @@ public partial class TerrainStreamer : Node3D
         }
         _sections[3] = Stopwatch.GetElapsedTime(t).TotalMilliseconds;
 
-        for (int i = 0; i < _sections.Length; i++) SectionMs[i] += _sections[i]; // MEASURE (temporary)
         LastGcPauseMs = (GC.GetTotalPauseDuration() - pausedBefore).TotalMilliseconds;
         LastFrameMs = Stopwatch.GetElapsedTime(start).TotalMilliseconds - LastGcPauseMs - PopMs;
         if (LastFrameMs > WorstFrameMs)
@@ -820,7 +782,6 @@ public partial class TerrainStreamer : Node3D
             hole = new Vector4(x0 + 0.5f, z0 + 0.5f, x0 + span - 0.5f, z0 + span - 0.5f);
         }
         FarMaterial.SetShaderParameter("hole", hole);
-        if (ClipMaterial != null && ClipMaterial != FarMaterial) ClipMaterial.SetShaderParameter("hole", hole);
     }
 
     // ---- Far rings ------------------------------------------------------------------------
@@ -911,7 +872,7 @@ public partial class TerrainStreamer : Node3D
             _farInFlight++;
             BuildFar(new FarJob
             {
-                Fx = fx, Fz = fz, Lod = lod, Version = f.Version, Ground = Ground != FarGround.Gpu,
+                Fx = fx, Fz = fz, Lod = lod, Version = f.Version,
                 SpanX = FarBuilder.Span(fx, World.Terrain.Width), SpanZ = FarBuilder.Span(fz, World.Terrain.Height),
             });
         }
@@ -943,17 +904,13 @@ public partial class TerrainStreamer : Node3D
             long nodeStart = Stopwatch.GetTimestamp();
             f.Node = BuildFarNode(job);
             f.Flora = job.Flora;
-            f.Vertices = job.Vertices;
-            f.Indices = job.Indices;
-            f.Cells = null;
             double nodeMs = Stopwatch.GetElapsedTime(nodeStart).TotalMilliseconds;
-            FarNodeTotalMs += nodeMs; // MEASURE (temporary)
             if (nodeMs > WorstFarNodeMs)
             {
                 WorstFarNodeMs = nodeMs;
                 int flora = 0;
                 foreach (var (_, _, count) in job.Flora) flora += count;
-                WorstFarNode = $"lod {job.Lod}, {job.Vertices?.Length ?? 0} vertices, {job.Flora.Count} flora kinds with {flora} instances, water {job.WaterVertices?.Length ?? 0}";
+                WorstFarNode = $"lod {job.Lod}, {job.Flora.Count} flora kinds with {flora} instances, water {job.WaterVertices?.Length ?? 0}";
             }
             f.Lod = job.Lod;
             f.Solids = job.Solids;
@@ -981,7 +938,7 @@ public partial class TerrainStreamer : Node3D
         }
         if (gone != null) foreach (var key in gone) _far.Remove(key);
 
-        // The horizon cuts out the square the far rings cover completely.
+        // The far chunks' flora is all in once every chunk of the square round the focus stands.
         int full = -1;
         for (int r = 0; r <= FarRadius; r++)
         {
@@ -995,91 +952,22 @@ public partial class TerrainStreamer : Node3D
             if (!complete) break;
             full = r;
         }
-        Vector4 hole = Vector4.Zero;
-        if (full >= 0)
-        {
-            // From the near edge of the first chunk of the square to the far edge of its last, in
-            // the frame: a chunk cut short at a seam makes the square that much smaller. The horizon
-            // sinks inside it and is cut well inside it (see SetWorld): it comes from the
-            // coarse world map and often sits tens of metres above the far rings' outer edge, and a
-            // cut right at that edge left a gap there that the sky showed through.
-            var (x0, x1) = FarEdges(ffx - full, ffx + full, nx, World.Terrain.Width, Focus.X);
-            var (z0, z1) = FarEdges(ffz - full, ffz + full, nz, World.Terrain.Height, Focus.Z);
-            hole = new Vector4(x0, z0, x1, z1);
-        }
-        if (_showGpu) hole = Clip.Outer;
-        _horizonMaterial.SetShaderParameter("hole", hole);
-        FarComplete = full >= FarRadius && (Ground == FarGround.Meshes || Clip.Complete);
+        // The horizon cuts out the square the GPU rings draw, sinking inside it and cut well inside it (see SetWorld):
+        // it comes from the coarse world map and often sits tens of metres above the rings' outer edge.
+        _horizonMaterial.SetShaderParameter("hole", Clip.Outer);
+        FarComplete = full >= FarRadius && Clip.Complete;
         UpdateHorizon(cx, cz, w, h);
     }
 
     /// <summary>
-    /// The frame coordinates of the near edge of far chunk <paramref name="first"/> and the far edge
-    /// of far chunk <paramref name="last"/> (unwrapped indices, a few chunks either side of the focus),
-    /// along one axis of a planet <paramref name="planet"/> metres and <paramref name="count"/> chunks across.
+    /// The height of the far ground as drawn under a point (frame coordinates), m: the GPU rings' triangles as the shader
+    /// lays them, not the generator's ground, which the coarser rings only meet at their points. Null where no ring is
+    /// drawn. What stands out on the far land stands on this (far creatures).
     /// </summary>
-    static (float from, float to) FarEdges(int first, int last, int count, int planet, double focus)
-    {
-        int a = Mod(first, count), b = Mod(last, count);
-        double from = NearestCopy(a * FarBuilder.Size, FarBuilder.Span(a, planet), focus, planet);
-        double to = NearestCopy(b * FarBuilder.Size, FarBuilder.Span(b, planet), focus, planet) + FarBuilder.Span(b, planet);
-        return ((float)from, (float)to);
-    }
+    public float? DrawnGround(Vector3 p) => World == null ? null : Clip.Height(p.X, p.Z);
 
-    const int GroundCells = FarBuilder.Size / 16;
-
-    /// <summary>
-    /// The height of the far ground as drawn under a point (frame coordinates), m: the far chunk's own
-    /// mesh, not the generator's ground, which the coarser levels only meet at their grid points. Null
-    /// where no far chunk is drawn. What stands out on the far land stands on this (far creatures).
-    /// </summary>
-    public float? DrawnGround(Vector3 p)
-    {
-        if (World == null) return null;
-        if (_showGpu) return Clip.Height(p.X, p.Z);
-        double w = World.Terrain.Width, h = World.Terrain.Height;
-        int fx = (int)(Mod(p.X, w) / FarBuilder.Size), fz = (int)(Mod(p.Z, h) / FarBuilder.Size);
-        if (!_far.TryGetValue((fx, fz), out FarChunk f) || f.Node == null || f.Vertices == null) return null;
-        float lx = (float)Mod(p.X - fx * (double)FarBuilder.Size, w), lz = (float)Mod(p.Z - fz * (double)FarBuilder.Size, h);
-        if (f.Cells == null)
-        {
-            f.Cells = new List<int>[GroundCells * GroundCells];
-            for (int t = 0; t + 2 < f.Indices.Length; t += 3)
-            {
-                Vector3 a = f.Vertices[f.Indices[t]], b = f.Vertices[f.Indices[t + 1]], c = f.Vertices[f.Indices[t + 2]];
-                // Walls (curtains, cliff faces seen edge-on from above) are not ground.
-                float area = (b.X - a.X) * (c.Z - a.Z) - (c.X - a.X) * (b.Z - a.Z);
-                if (MathF.Abs(area) < 1e-3f) continue;
-                int i0 = Math.Clamp((int)(MathF.Min(a.X, MathF.Min(b.X, c.X)) / 16f), 0, GroundCells - 1), i1 = Math.Clamp((int)(MathF.Max(a.X, MathF.Max(b.X, c.X)) / 16f), 0, GroundCells - 1);
-                int j0 = Math.Clamp((int)(MathF.Min(a.Z, MathF.Min(b.Z, c.Z)) / 16f), 0, GroundCells - 1), j1 = Math.Clamp((int)(MathF.Max(a.Z, MathF.Max(b.Z, c.Z)) / 16f), 0, GroundCells - 1);
-                for (int j = j0; j <= j1; j++)
-                for (int i = i0; i <= i1; i++)
-                    (f.Cells[j * GroundCells + i] ??= new List<int>()).Add(t);
-            }
-        }
-        List<int> tris = f.Cells[Math.Clamp((int)(lz / 16f), 0, GroundCells - 1) * GroundCells + Math.Clamp((int)(lx / 16f), 0, GroundCells - 1)];
-        if (tris == null) return null;
-        float? best = null;
-        foreach (int t in tris)
-        {
-            Vector3 a = f.Vertices[f.Indices[t]], b = f.Vertices[f.Indices[t + 1]], c = f.Vertices[f.Indices[t + 2]];
-            float d = (b.X - a.X) * (c.Z - a.Z) - (c.X - a.X) * (b.Z - a.Z);
-            float u = ((b.X - lx) * (c.Z - lz) - (c.X - lx) * (b.Z - lz)) / d, v = ((c.X - lx) * (a.Z - lz) - (a.X - lx) * (c.Z - lz)) / d, wgt = 1f - u - v;
-            if (u < -1e-4f || v < -1e-4f || wgt < -1e-4f) continue;
-            float y = u * a.Y + v * b.Y + wgt * c.Y;
-            if (best == null || y > best) best = y;
-        }
-        return best;
-    }
-
-    /// <summary>Whether a far chunk's ground is in under a point (frame coordinates). Tests ask it at the seams.</summary>
-    public bool FarGroundAt(Vector3 p)
-    {
-        if (_showGpu) return Clip.Covers(p);
-        int fx = (int)(Mod(p.X, World.Terrain.Width) / FarBuilder.Size), fz = (int)(Mod(p.Z, World.Terrain.Height) / FarBuilder.Size);
-        return _far.TryGetValue((fx, fz), out FarChunk f) && f.Node != null;
-    }
-
+    /// <summary>Whether the far ground is drawn under a point (frame coordinates). Tests ask it at the seams.</summary>
+    public bool FarGroundAt(Vector3 p) => Clip.Covers(p);
     public bool FarComplete { get; private set; }
 
     /// <summary>Far chunks not yet at the detail wanted of them, and the nearest ring holding one (int.MaxValue: none). Tests and measurements read these.</summary>
@@ -1142,7 +1030,6 @@ public partial class TerrainStreamer : Node3D
     }
 
     public double WorstFarNodeMs { get; private set; }
-    public double FarNodeTotalMs, FarGroundMeshMs; // MEASURE (temporary): main thread's time making far chunks' nodes, and their ground meshes alone
 
     /// <summary>Workers' time building far chunks so far, by level of detail, and how many: tests report it.</summary>
     public readonly double[] FarBuildMs = new double[3];
@@ -1156,26 +1043,6 @@ public partial class TerrainStreamer : Node3D
     Node3D BuildFarNode(FarJob job)
     {
         var node = new Node3D { Name = $"Far {job.Fx} {job.Fz} lod{job.Lod}", PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off };
-        long groundStart = Stopwatch.GetTimestamp(); // MEASURE (temporary)
-        if (job.Vertices != null)
-        {
-            var arrays = new Godot.Collections.Array();
-            arrays.Resize((int)Mesh.ArrayType.Max);
-            arrays[(int)Mesh.ArrayType.Vertex] = job.Vertices;
-            arrays[(int)Mesh.ArrayType.Normal] = job.Normals;
-            arrays[(int)Mesh.ArrayType.Color] = job.Colors;
-            arrays[(int)Mesh.ArrayType.TexUV] = job.Flags;
-            arrays[(int)Mesh.ArrayType.TexUV2] = job.Relief;
-            arrays[(int)Mesh.ArrayType.Index] = job.Indices;
-            var mesh = new ArrayMesh();
-            mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
-            node.AddChild(new MeshInstance3D
-            {
-                Mesh = mesh, MaterialOverride = FarMaterial, Visible = !_showGpu,
-                CastShadow = job.Lod <= 1 ? GeometryInstance3D.ShadowCastingSetting.On : GeometryInstance3D.ShadowCastingSetting.Off,
-            });
-        }
-        FarGroundMeshMs += Stopwatch.GetElapsedTime(groundStart).TotalMilliseconds; // MEASURE (temporary)
         if (job.WaterVertices != null)
         {
             var water = new Godot.Collections.Array();
@@ -1223,7 +1090,7 @@ public partial class TerrainStreamer : Node3D
     void ApplyReach()
     {
         _reachVersion = DetailReach.Version;
-        if (Ground != FarGround.Meshes && Clip.Levels != ClipGround.LevelsFor(DetailReach.Distance)) SetClip();
+        if (Clip.Levels != ClipGround.LevelsFor(DetailReach.Distance)) SetClip();
         _floraMaterial.SetShaderParameter("flora_reach", new Vector4(DetailReach.Near, DetailReach.Small, DetailReach.Far, DetailReach.Distant));
         _floraMaterial.SetShaderParameter("flora_bands", new Vector4(DetailReach.NearBand, DetailReach.SmallBand, DetailReach.FarBand, DetailReach.DistantBand));
         _floraMaterial.SetShaderParameter("flora_thin", new Vector2(DetailReach.Thin, DetailReach.ThinBand));
@@ -1459,13 +1326,6 @@ public partial class TerrainStreamer : Node3D
     {
         foreach (VChunk c in _chunks.Values)
             if (c.Mesh != null && c.Mesh.Visible && c.Mesh.Mesh is ArrayMesh mesh) yield return (mesh, c.Mesh.Position);
-    }
-
-    /// <summary>The far chunks' ground meshes on show right now, with their positions in the frame and their levels.</summary>
-    public IEnumerable<(ArrayMesh Mesh, Vector3 At, int Lod)> DrawnFar()
-    {
-        foreach (FarChunk f in _far.Values)
-            if (f.Node != null && f.Node.GetChildCount() > 0 && f.Node.GetChild(0) is MeshInstance3D { Mesh: ArrayMesh mesh } m && m.MaterialOverride == FarMaterial) yield return (mesh, f.Node.Position, f.Lod);
     }
 
     /// <summary>The horizon's mesh and where it stands in the frame. Null until it is built.</summary>

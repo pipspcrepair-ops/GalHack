@@ -14,8 +14,9 @@ namespace PlanetSurface.Terrain;
 
 /// <summary>
 /// The far ground, shaped by the graphics card. Square rings at doubling spacing (2, 4, 8, 16 m...) nest round the
-/// eye, each drawn by fixed grid blocks that terrain.gdshader lifts from textures holding the ground round the eye at
-/// that spacing: its height, the relief round each point (a cliff's top and foot), its glow and its colour. Toward a
+/// eye, each drawn by fixed grid blocks that terrain.gdshader shapes from textures holding the ground round the eye at
+/// that spacing: each point's height, how far it slides onto the cliff beside it, its normal, the relief round it (a
+/// cliff's top and foot), its glow and its colour (<see cref="FarBuilder.Shape"/>, as the far rings always had them). Toward a
 /// ring's outer edge its vertices slide onto the next ring's grid and take that ring's ground, so the two meet exactly:
 /// no change of detail is ever seen, and no seam needs a curtain. As the eye moves, workers fill only the tiles of
 /// texture newly in range, from the terrain source the voxels and collision come from; no mesh is ever rebuilt.
@@ -65,7 +66,7 @@ public sealed partial class ClipGround : Node3D
 
     sealed class TileJob
     {
-        public int Level, Slot, Version, Tx, Tz;
+        public int Level, Slot, Version, Tx, Tz, Generation;
         public float[] Data;
         public Half[] Shape, Color;
         public Exception Error;
@@ -85,7 +86,7 @@ public sealed partial class ClipGround : Node3D
     readonly ConcurrentQueue<TileJob> _done = new();
     readonly List<TileJob> _ready = new();
     readonly List<(int Level, int Slot, float Rank)> _wanted = new();
-    int _inFlight;
+    int _inFlight, _generation;
     static readonly ArrayMesh BlockMesh = MakeBlock();
     RenderingDevice _rd;
 
@@ -97,8 +98,10 @@ public sealed partial class ClipGround : Node3D
     public bool Complete => _levels != null && _floor == 0;
     public bool Shown => _levels != null && _floor < _levels.Length;
 
-    /// <summary>Tile fills waiting or running, and the workers' time on them so far, ms, and how many.</summary>
+    /// <summary>Tile fills waiting or running.</summary>
     public int Pending => _inFlight + _wanted.Count;
+
+    /// <summary>The workers' time on tiles so far (stopwatch ticks), and how many: measurements read them.</summary>
     public static long FillTicks;
     public static int Filled;
 
@@ -175,8 +178,10 @@ public sealed partial class ClipGround : Node3D
         _levels = null;
         _ready.Clear();
         _wanted.Clear();
-        while (_done.TryDequeue(out _)) _inFlight--;
+        // Fills still running belong to the world before: they are dropped as they land.
+        _done.Clear();
         _inFlight = 0;
+        _generation++;
         _floor = int.MaxValue;
         _shiftX = _shiftZ = 0;
         _qx = _qz = double.NaN;
@@ -203,6 +208,7 @@ public sealed partial class ClipGround : Node3D
     {
         while (_done.TryDequeue(out TileJob job))
         {
+            if (job.Generation != _generation) continue;
             _inFlight--;
             Level lv = _levels[job.Level];
             if (lv.Version[job.Slot] != job.Version) continue; // the slot went to another tile meanwhile
@@ -304,7 +310,7 @@ public sealed partial class ClipGround : Node3D
             Level lv = _levels[l];
             lv.State[slot] = Filling;
             _inFlight++;
-            var job = new TileJob { Level = l, Slot = slot, Version = lv.Version[slot], Tx = lv.Held[slot].X, Tz = lv.Held[slot].Z };
+            var job = new TileJob { Level = l, Slot = slot, Version = lv.Version[slot], Tx = lv.Held[slot].X, Tz = lv.Held[slot].Z, Generation = _generation };
             PlanetTerrainSource source = _source;
             GroundPalette palette = _palette;
             int w = _width, h = _height;
@@ -393,7 +399,7 @@ public sealed partial class ClipGround : Node3D
                 wet[j * g + i] = sample.InRiver;
             }
             int span = (N - 1) * (int)s;
-            FarBuilder.Surface surface = FarBuilder.Shape(grid, span, span, s, x0, z0, h, wet, source, palette, fixedSplit: true, extra: 0);
+            FarBuilder.Surface surface = FarBuilder.Shape(grid, span, span, s, x0, z0, h, wet, source, palette);
             job.Data = new float[Tile * Tile * 4];
             job.Shape = new Half[Tile * Tile * 4];
             job.Color = new Half[Tile * Tile * 4];
@@ -494,16 +500,50 @@ public sealed partial class ClipGround : Node3D
         int l = LevelAt(x, z);
         if (l < 0) return null;
         float s = _levels[l].S;
-        int ix = (int)Math.Floor((x + _shiftX) / s), iz = (int)Math.Floor((z + _shiftZ) / s);
+        return Over((gx, gz) => Vertex(l, gx, gz).Pos, (int)Math.Floor((x + _shiftX) / s), (int)Math.Floor((z + _shiftZ) / s), x, z);
+    }
+
+    /// <summary>
+    /// The height of a grid's triangles (each square split b-c) over a point, searched in the squares round grid square (ix, iz):
+    /// a slid point may have taken its triangle into the square beside. Null where none is over it.
+    /// </summary>
+    static float? Over(Func<int, int, Vector3> vertex, int ix, int iz, float x, float z)
+    {
         for (int dj = -1; dj <= 1; dj++)
         for (int di = -1; di <= 1; di++)
         {
             int gx = ix + di, gz = iz + dj;
-            Vector3 a = Vertex(l, gx, gz).Pos, b = Vertex(l, gx + 1, gz).Pos, c = Vertex(l, gx, gz + 1).Pos, d = Vertex(l, gx + 1, gz + 1).Pos;
+            Vector3 a = vertex(gx, gz), b = vertex(gx + 1, gz), c = vertex(gx, gz + 1), d = vertex(gx + 1, gz + 1);
             if (Inside(a, b, c, x, z) is float y1) return y1;
             if (Inside(b, d, c, x, z) is float y2) return y2;
         }
         return null;
+    }
+
+    /// <summary>
+    /// One level's ground anywhere on the planet (canonical metres), as its own grid draws it (unmorphed), shaped tile by
+    /// tile as the workers shape it: tests hold the water and the near ground to it.
+    /// </summary>
+    public sealed class Reader(int level, PlanetTerrainSource source, GroundPalette palette, int width, int height)
+    {
+        readonly float _s = Spacing(level);
+        readonly Dictionary<(int, int), TileJob> _tiles = new();
+
+        Vector3 Point(int gx, int gz)
+        {
+            int tx = FloorDiv(gx, Tile), tz = FloorDiv(gz, Tile);
+            if (!_tiles.TryGetValue((tx, tz), out TileJob t))
+            {
+                t = new TileJob { Level = level, Tx = tx, Tz = tz };
+                Fill(t, _s, source, palette, width, height);
+                if (t.Error != null) throw t.Error;
+                _tiles[(tx, tz)] = t;
+            }
+            int o = ((gz - tz * Tile) * Tile + gx - tx * Tile) * 4;
+            return new Vector3((gx + (float)t.Shape[o + 2]) * _s, t.Data[o], (gz + (float)t.Shape[o + 3]) * _s);
+        }
+
+        public float Height(double x, double z) => Over(Point, (int)Math.Floor(x / _s), (int)Math.Floor(z / _s), (float)x, (float)z) ?? float.NaN;
     }
 
     static float? Inside(Vector3 a, Vector3 b, Vector3 c, float x, float z)
