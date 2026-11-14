@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -148,6 +148,7 @@ public sealed partial class Staging
             "shadecheck" => FarShadeCheck(),
             "cliffshots" => CliffShots(),
             "city" => CityView(),
+            "incidental" => IncidentalView(),
             "strike" => StrikeView(),
             "craters" => CraterViews(),
             "horizon" => HorizonView(),

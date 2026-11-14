@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Godot;
 using PlanetSurface.Poi;
@@ -128,6 +128,12 @@ public partial class WildlifePatch
             {
                 var (cx, cz) = ruin.Center;
                 a.Ruins.Add((new Vector3((float)cx, 0f, (float)cz), 10f));
+            }
+            // A wreck is picked over like a ruin: the smallest circle round its footprint.
+            foreach (var w in net.Wrecks)
+            {
+                var (wx, wz) = w.World(w.Width * 0.5f, w.Length * 0.5f);
+                a.Ruins.Add((new Vector3((float)wx, 0f, (float)wz), MathF.Sqrt(w.Width * w.Width + w.Length * w.Length) * 0.5f));
             }
             foreach (var lot in net.Lots)
                 a.Ruins.Add((new Vector3((float)((lot.X0 + lot.X1) * 0.5), 0f, (float)((lot.Z0 + lot.Z1) * 0.5)), 14f));

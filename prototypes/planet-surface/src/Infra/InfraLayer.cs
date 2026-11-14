@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -414,7 +414,15 @@ public partial class InfraLayer : Node3D
                         b.Box(edge + up * 0.95f, dir * (len * 0.5f), up * 0.06f, side * 0.06f, dark, DecoSurface.Matte, collide: false);
                         b.Box(edge + up * 0.5f, dir * 0.07f, up * 0.5f, side * 0.07f, dark, DecoSurface.Matte, collide: false);
                     }
-                    else b.Box(edge + up * 0.45f, dir * (len * 0.5f + 0.02f), up * 0.45f, side * 0.15f, Structure.Build == "steel" ? ConcreteDark : Composite, DecoSurface.Matte, collide: true);
+                    else
+                    {
+                        // A kerb along the deck, a post at each stretch's start and two rails: a guard rail you can see through.
+                        DecoRgb rail = Structure.Build == "steel" ? Steel : ConcreteDark;
+                        b.Box(edge + up * 0.12f, dir * (len * 0.5f + 0.02f), up * 0.12f, side * 0.16f, Composite, DecoSurface.Matte, collide: true);
+                        b.Box(edge - dir * (len * 0.5f) + up * 0.55f, dir * 0.07f, up * 0.55f, side * 0.07f, rail, DecoSurface.Metal, collide: true);
+                        b.Box(edge + up * 1.04f, dir * (len * 0.5f + 0.02f), up * 0.05f, side * 0.06f, rail, DecoSurface.Metal, collide: true);
+                        b.Box(edge + up * 0.58f, dir * (len * 0.5f + 0.02f), up * 0.04f, side * 0.04f, rail, DecoSurface.Metal, collide: true);
+                    }
                 }
             }
             else
@@ -440,7 +448,19 @@ public partial class InfraLayer : Node3D
                         b.Beam(x0 + side * (half * 0.7f), x1 - side * (half * 0.7f), 0.12f, dark);
                         b.Beam(x0 - side * (half * 0.7f), x1 + side * (half * 0.7f), 0.12f, dark);
                     }
-                    else b.Box(foot, dir * 1.0f, NV.UnitY * (h * 0.5f), side * (half * 0.55f), Structure.Build == "steel" ? Concrete : Composite, DecoSurface.Matte, collide: true);
+                    else
+                    {
+                        // A hammerhead pier: two round columns on plinths under a cap beam that takes the deck.
+                        DecoRgb col = Structure.Build == "steel" ? Concrete : Composite;
+                        float cap = 0.6f;
+                        for (int s = -1; s <= 1; s += 2)
+                        {
+                            NV at = new NV(a.X, ground, a.Z) + side * (s * half * 0.5f);
+                            b.Box(at - NV.UnitY * 0.6f, dir * 1.1f, NV.UnitY * 0.8f, side * 1.1f, ConcreteDark, DecoSurface.Matte, collide: true);
+                            b.Column(at, 0.6f, top - cap - ground, col, DecoSurface.Matte, collide: true);
+                        }
+                        b.Box(new NV(a.X, top - cap * 0.5f, a.Z), dir * 0.8f, NV.UnitY * (cap * 0.5f), side * (half * 0.95f), col, DecoSurface.Matte, collide: true);
+                    }
                 }
             }
         }
@@ -934,6 +954,20 @@ public sealed partial class TileBuilder
     {
         foreach (DecoPart part in DecoCables.Tubes(pts, radius, DecoSlot.Dark))
             DecoEmit.Part(Mesh, part, (_, _, _) => color, _ => DecoSurface.Matte);
+    }
+
+    /// <summary>A round column standing on a point: a prism of <paramref name="sides"/> flats (each a quad, drawn and collided as built), capped on top.</summary>
+    public void Column(NV foot, float radius, float height, DecoRgb color, DecoSurface surface, bool collide, int sides = 16)
+    {
+        if (height <= 0.05f) return;
+        NV top = foot + NV.UnitY * height;
+        NV P(int i, float y) { float t = MathF.Tau * i / sides; return new NV(foot.X + MathF.Cos(t) * radius, y, foot.Z + MathF.Sin(t) * radius); }
+        for (int i = 0; i < sides; i++)
+        {
+            NV a0 = P(i, foot.Y), a1 = P(i + 1, foot.Y), b1 = P(i + 1, top.Y), b0 = P(i, top.Y);
+            Quad(a0, a1, b1, b0, color, surface, 1f, new NV(foot.X, (foot.Y + top.Y) * 0.5f, foot.Z), collide);
+            Mesh.AddTriangle(surface, top, b1, b0, color, 1f);
+        }
     }
 
     /// <summary>A box of collision only (its faces into the tile's collision, nothing drawn).</summary>
