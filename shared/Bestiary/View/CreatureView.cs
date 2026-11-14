@@ -116,8 +116,18 @@ public partial class CreatureView : Node3D
     /// <summary>Each species' body meshes, made once: its shadowed, unshadowed and blur pieces.</summary>
     static readonly ConditionalWeakTable<Species, List<(ArrayMesh Mesh, bool Shadow, bool Blur)>> Bodies = new();
 
-    /// <summary>The meshes drawn: the skinned body's few, or (not merged) one a piece.</summary>
-    readonly List<MeshInstance3D> _parts = new();
+    /// <summary>The meshes drawn: the skinned body's few, or (not merged) one a piece; and those of them that cast shadows.</summary>
+    readonly List<MeshInstance3D> _parts = new(), _casters = new();
+    bool _casting = true;
+
+    /// <summary>Casts its shadow only out to where the shadow is worth drawing: 60 m, and 40 m more for each metre of it (a critter's near, a giant's far).</summary>
+    public void ShadowsAt(float distance)
+    {
+        bool cast = distance < 60f + 40f * Creature.Species.Body.Size;
+        if (cast == _casting) return;
+        _casting = cast;
+        foreach (MeshInstance3D m in _casters) m.CastShadow = cast ? GeometryInstance3D.ShadowCastingSetting.On : GeometryInstance3D.ShadowCastingSetting.Off;
+    }
     Skeleton3D _skeleton;
     Dictionary<string, BoneAttachment3D> _attached;
     MultiMeshInstance3D _swarm;
@@ -192,6 +202,7 @@ public partial class CreatureView : Node3D
                 _skeleton.AddChild(mi);
                 mi.Skeleton = new NodePath("..");
                 _parts.Add(mi);
+                if (shadow) _casters.Add(mi);
             }
         }
         else
@@ -209,6 +220,7 @@ public partial class CreatureView : Node3D
                 };
                 AddChild(mi);
                 _parts.Add(mi);
+                if (piece.Shadow) _casters.Add(mi);
             }
             if (c.Species.Flight == FlightKind.Hover)
             {
@@ -542,6 +554,7 @@ public partial class WildlifeView : Node3D
                 if (MathF.Abs(view.Position.Y - lift) > 0.01f) view.Position = new Vector3(0f, lift, 0f);
             }
             view.Listen(d);
+            view.ShadowsAt(d);
             if (Audio != null && d < StepHeard && c.Rig.Steps != c.StepsHeard)
             {
                 c.StepsHeard = c.Rig.Steps;

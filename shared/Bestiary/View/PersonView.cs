@@ -166,6 +166,10 @@ public partial class PersonView : Node3D
         else if (_arrived < 1f) _arrived = MathF.Min(1f, _arrived + dt / ArriveSeconds);
         float shows = Fader == null ? (distance < FarRange ? 1f : 0f) : MathF.Min(Math.Clamp((FarRange - distance) / FadeBand, 0f, 1f), _arrived);
         shows = MathF.Round(shows * 32f) / 32f;
+        // Their shadow out to where it is worth drawing, as a creature's of their size (CreatureView.ShadowsAt).
+        bool cast = distance < 60f + 40f * (_rig?.Species.Figure?.Height ?? 1.8f);
+        if (_body != null && cast != (_body.CastShadow != GeometryInstance3D.ShadowCastingSetting.Off))
+            _body.CastShadow = cast ? GeometryInstance3D.ShadowCastingSetting.On : GeometryInstance3D.ShadowCastingSetting.Off;
         if (shows > 0f && shows != _shows) Fader?.Invoke(this, shows);
         _shows = shows;
         return shows > 0f;
