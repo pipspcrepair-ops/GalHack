@@ -24,7 +24,7 @@ public sealed record RoundBody(double X, double Z, int Y0, double[] Outer, doubl
 /// steps), within a quarter metre of the circle; a radius is eased a little where that holds it nearer. Where the outline
 /// crosses a cell the cell is the piece cut that way (<see cref="BlockType.Wedge"/> and the rest, a half where it runs
 /// straight through, a quarter round where a small circle bows past the diagonal), so the rim is round from above at every
-/// height, the top's edge too. Below ground nothing is cut: a disc laid in the ground meets the soil whole.
+/// height, the top's edge too. Below ground nothing is cut but what stands in open air: a disc laid in the ground meets the soil whole.
 /// </summary>
 public static class Round
 {
@@ -364,17 +364,29 @@ public static class Round
     /// by its profile instead, every half metre up (<see cref="Slope"/>). Each cell is set on the map, but those inside the
     /// inner round, or that <paramref name="hollow"/> keeps open (a drum's rooms, planned by the block), which go to
     /// <paramref name="inside"/>; the body is noted for the checks and the mesher. Courses at or below the ground are laid
-    /// whole, as the ground they meet.
+    /// whole, as the ground they meet, but for one that stands in the place's own open air all round (a missile in its silo).
     /// </summary>
     public static RoundBody Lay(Canvas c, double cx, double cz, int y0, int y1, Func<double, (double Outer, double Inner)> radius, Func<int, Block> block,
         Func<Int3, bool>? hollow = null, Action<Int3>? inside = null)
     {
         int n = y1 - y0 + 1;
         (double, double) At(double y) { var (o, i) = radius(y); return (Math.Max(0, o), Math.Max(0, i)); }
-        bool Ground(int y) => y <= Assembler.GroundY && !c.X.InSpace;
         var outer = new double[n];
         var inner = new double[n];
         for (int k = 0; k < n; k++) (outer[k], inner[k]) = At(y0 + k);
+        // (Open: every cell just outside the course's round is the place's own air.)
+        bool Open(int y, double r)
+        {
+            for (int z = (int)Math.Floor(cz - r) - 2; z <= (int)Math.Ceiling(cz + r) + 1; z++)
+                for (int x = (int)Math.Floor(cx - r) - 2; x <= (int)Math.Ceiling(cx + r) + 1; x++)
+                {
+                    double d = Math.Sqrt((x + 0.5 - cx) * (x + 0.5 - cx) + (z + 0.5 - cz) * (z + 0.5 - cz));
+                    if (d > r + 0.25 && d <= r + 1.25 && !(c.Occ.Contains(new Int3(x, y, z)) && c.Get(new Int3(x, y, z)).IsAir)) return false;
+                }
+            return true;
+        }
+        var under = Enumerable.Range(0, n).Select(k => y0 + k <= Assembler.GroundY && !c.X.InSpace && !Open(y0 + k, outer[k])).ToArray();
+        bool Ground(int y) => under[y - y0];
         double[]? po = null, pi = null;
         if (Cut && Enumerable.Range(0, n).Any(k => !Ground(y0 + k) && Math.Abs(At(y0 + k + 1).Item1 - outer[k]) > 0.01))
         {
