@@ -225,8 +225,8 @@ public static class Debris
 
     /// <summary>
     /// A rebar block: the bars of a torn slab or wall standing out of the face toward its facing, two rows of them
-    /// a hand apart as they were cast, each run out a little way and bent down where it snapped; out of a wall's
-    /// broken top, a tangle standing up.
+    /// a hand apart as they were cast, each run out along the slab's or wall's line a little way and bent down under its
+    /// own weight where it snapped; out of a wall's broken top, standing up and bowed over.
     /// </summary>
     public static void Bars(List<ShapeBox> l, Block b, Int3 p)
     {
@@ -256,8 +256,7 @@ public static class Debris
         Rgb rust = Rust.Lerp(new Rgb(0x8a, 0x52, 0x30), r.F());
         V3 mid = Rod(l, from, dir, first, T, rust);
         var bent = (dir + new V3(r.S(0.6f), -0.5f - r.F() * 0.6f, r.S(0.6f))).Normalized();
-        // A bent end never goes through the floor: it turns along it instead.
-        if (mid.Y + bent.Y * (length - first) < 0.03f) bent = new V3(bent.X, 0, bent.Z).Normalized();
+        // (A bent end that would reach the floor stops short of it: a bar hangs, it never lies along a face.)
         float rest = Fit(mid, bent, length - first);
         if (rest > 0.03f) Rod(l, mid, bent, rest, T, rust.Scale(0.85f));
     }

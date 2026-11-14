@@ -139,9 +139,15 @@ public sealed class Plot
     /// <summary>Takes whole blocks out, corners inclusive.</summary>
     public void Dig(int i0, int j0, int k0, int i1, int j1, int k1)
     {
+        foreach (Int3 c in Box(i0, j0, k0, i1, j1, k1)) C.Clear(c);
+    }
+
+    /// <summary>The cells of whole blocks, corners inclusive.</summary>
+    IEnumerable<Int3> Box(int i0, int j0, int k0, int i1, int j1, int k1)
+    {
         for (int k = 2 * k0; k <= 2 * k1 + 1; k++)
             for (int y = 2 * j0; y <= 2 * j1 + 1; y++)
-                for (int i = 2 * i0; i <= 2 * i1 + 1; i++) Air(i, y, k);
+                for (int i = 2 * i0; i <= 2 * i1 + 1; i++) yield return Cell(i, y, k);
     }
 
     /// <summary>Paves ground with thin plates, under anything already standing.</summary>
@@ -273,10 +279,11 @@ public sealed class Plot
                 if (i == i0 || i == i1 || k == k0 || k == k1) yield return (i, k);
     }
 
-    /// <summary>A way through a wall, in blocks, with no door: a vehicle's mouth, a gap.</summary>
+    /// <summary>A way through a wall, in blocks, with no door: a vehicle's mouth, a gap (through a drum's wall, its rim's sliver past the blocks too).</summary>
     public void Mouth(int i0, int j0, int k0, int i1, int j1, int k1, int a = -1, int b = -1)
     {
         Dig(i0, j0, k0, i1, j1, k1);
+        Round.Through(C, Box(i0, j0, k0, i1, j1, k1), Turn(k1 - k0 <= i1 - i0 ? Dir.South : Dir.East));
         for (int k = 2 * k0; k <= 2 * k1 + 1; k++)
             for (int i = 2 * i0; i <= 2 * i1 + 1; i++)
             {
