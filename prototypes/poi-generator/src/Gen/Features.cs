@@ -143,6 +143,8 @@ public sealed class LayoutExtras
     public List<PlainBox> Plain = new();
     /// <summary>Masonry that outlasts the rest of a plain building: its chimneys.</summary>
     public HashSet<Int3> Lasting = new();
+    /// <summary>The round things as laid (<see cref="Round"/>): their rims are cut to the round, and nothing reshapes them.</summary>
+    public List<RoundBody> Rounds = new();
     /// <summary>The colour of a plain building's doors (a plain timber leaf, not a steel door).</summary>
     public Rgb? PlainDoor;
     /// <summary>Plain doors are steel leaves, as a works has, not timber.</summary>

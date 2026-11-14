@@ -91,16 +91,16 @@ public sealed partial class HumanRig
         {
             case StrikeKind.Punch:
             {
-                if (!lead) return Bones(shoulder, F.V(0.2f, -0.85f, 0.3f), F.V(-0.45f, 0.85f, 0.3f), upper, fore); // a guard up at the chin
-                ArmGoal cocked = Bones(shoulder, F.V(0.3f, -0.72f, -0.38f), F.V(-0.12f, 0.85f, 0.5f), upper, fore);
-                ArmGoal thrown = Bones(shoulder, F.V(-0.08f, 0.04f, 1f), F.V(-0.06f, 0.06f, 1f), upper, fore);
+                if (!lead) return Bones(shoulder, F.V(0.2f, -0.85f, 0.3f), F.V(-0.45f, 0.85f, 0.3f), upper, fore).With(HandTable.At("punch-cocked", i)); // a guard up at the chin
+                ArmGoal cocked = Bones(shoulder, F.V(0.3f, -0.72f, -0.38f), F.V(-0.12f, 0.85f, 0.5f), upper, fore).With(HandTable.At("punch-cocked", i));
+                ArmGoal thrown = Bones(shoulder, F.V(-0.08f, 0.04f, 1f), F.V(-0.06f, 0.06f, 1f), upper, fore).With(HandTable.At("punch-thrown", i));
                 return Blend(cocked, thrown, k);
             }
             case StrikeKind.Swat:
             {
-                if (!lead) return Bones(shoulder, F.V(0.55f, -0.65f, 0.25f), F.V(0.3f, -0.4f, 0.55f), upper, fore); // out for balance
-                ArmGoal raised = Bones(shoulder, F.V(0.3f, 0.88f, -0.22f), F.V(0.1f, 0.55f, -0.6f), upper, fore);
-                ArmGoal through = Bones(shoulder, F.V(-0.1f, -0.4f, 0.95f), F.V(-0.45f, -0.6f, 0.65f), upper, fore);
+                if (!lead) return Bones(shoulder, F.V(0.55f, -0.65f, 0.25f), F.V(0.3f, -0.4f, 0.55f), upper, fore).With(HandTable.At("swat-raised", i)); // out for balance
+                ArmGoal raised = Bones(shoulder, F.V(0.3f, 0.88f, -0.22f), F.V(0.1f, 0.55f, -0.6f), upper, fore).With(HandTable.At("swat-raised", i));
+                ArmGoal through = Bones(shoulder, F.V(-0.1f, -0.4f, 0.95f), F.V(-0.45f, -0.6f, 0.65f), upper, fore).With(HandTable.At("swat-through", i));
                 ArmGoal a = Blend(raised, through, k);
                 a.Hand += F.Up * 0.22f * MathF.Sin(MathF.PI * k) + F.Ahead * 0.18f * MathF.Sin(MathF.PI * k); // over the top, not through the chest
                 return a;
@@ -108,23 +108,24 @@ public sealed partial class HumanRig
             case StrikeKind.Seize:
             {
                 // Arms up and open, fingers spread; then both hands closing on a head in front.
-                ArmGoal open = Bones(shoulder, F.V(0.5f, 0.3f, 0.6f), F.V(0.3f, 0.6f, 0.72f), upper, fore);
-                ArmGoal grab = Bones(shoulder, F.V(0.02f, 0.18f, 1f), F.V(-0.32f, 0.18f, 1f), upper, fore);
+                ArmGoal open = Bones(shoulder, F.V(0.5f, 0.3f, 0.6f), F.V(0.3f, 0.6f, 0.72f), upper, fore).With(HandTable.At("seize-open", i));
+                ArmGoal grab = Bones(shoulder, F.V(0.02f, 0.18f, 1f), F.V(-0.32f, 0.18f, 1f), upper, fore).With(HandTable.At("seize-grab", i));
                 return Blend(open, grab, k);
             }
             case StrikeKind.Spew:
             {
                 ArmGoal clutch = Shell != null
-                    ? new ArmGoal(Pose[_body] * Shell.FrontAt(_f.Torso * 0.42f, (i == 0 ? -1f : 1f) * Shell.HalfWidth(_f.Torso * 0.42f) * 0.35f) + F.Ahead * (HandRadius + 0.04f), F.V(0.55f, -0.6f, 0.55f))
+                    ? new ArmGoal(Pose[_body] * Shell.FrontAt(_f.Torso * 0.42f, (i == 0 ? -1f : 1f) * Shell.HalfWidth(_f.Torso * 0.42f) * 0.35f) + F.Ahead * (HandHalf(i) + 0.04f), F.V(0.55f, -0.6f, 0.55f))
                     : Bones(shoulder, F.V(0.2f, -0.9f, 0.3f), F.V(-0.6f, 0f, 0.8f), upper, fore);
-                ArmGoal flung = Bones(shoulder, F.V(0.45f, -0.82f, -0.28f), F.V(0.25f, -0.9f, -0.2f), upper, fore);
+                clutch = clutch.With(HandTable.At("spew-clutch", i));
+                ArmGoal flung = Bones(shoulder, F.V(0.45f, -0.82f, -0.28f), F.V(0.25f, -0.9f, -0.2f), upper, fore).With(HandTable.At("spew-flung", i));
                 return Blend(clutch, flung, k);
             }
         }
         return default;
     }
 
-    static ArmGoal Blend(ArmGoal a, ArmGoal b, float k) => new(a.Hand.Lerp(b.Hand, k), a.Pole.Lerp(b.Pole, k).Normalized());
+    static ArmGoal Blend(ArmGoal a, ArmGoal b, float k) => new ArmGoal(a.Hand.Lerp(b.Hand, k), a.Pole.Lerp(b.Pole, k).Normalized()).With(HandSpec.Lerp(a.Spec, b.Spec, k));
 
     /// <summary>The blow a body throws, by what it is: a machine swats or punches by its make, a person punches bare-handed and swats with a blade or a club.</summary>
     public static StrikeKind BlowOf(Species s)

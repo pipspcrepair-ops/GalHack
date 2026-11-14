@@ -18,9 +18,20 @@ public sealed partial class TreeFx : Node3D
 
     public TreeFx() { Name = "TreeFx"; }
 
-    public override void _Ready() => AddChild(_stumps);
+    public override void _Ready()
+    {
+        AddChild(_stumps);
+        _ = FallingTree.Shader; // loaded now, not in the frame the first tree falls (most of 5 ms)
+    }
 
     public int Stumps => _stumps.GetChildCount() - Holes;
+
+    /// <summary>The kinds that fall over when felled, leaving a stump.</summary>
+    public static bool IsTree(Flora kind) => kind is Flora.Conifer or Flora.Broadleaf or Flora.JungleTree or Flora.Palm or Flora.GiantMushroom;
+
+    /// <summary>What flies off a plant: its species' own colour, or its kind's.</summary>
+    public static Color LeafOf(Flora kind, GalHack.Plants.Plant species) =>
+        species != null ? new Color(species.Leaf.R, species.Leaf.G, species.Leaf.B) : LeafColour(kind);
 
     /// <summary>The colour of a plant's leaves (or what stands in for them).</summary>
     public static Color LeafColour(Flora kind) => kind switch
@@ -136,12 +147,17 @@ public sealed partial class FallingTree : Node3D
     /// </summary>
     public static ShaderMaterial FallMaterial(Color leaf, Color custom)
     {
-        var m = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/flora_fall.gdshader") };
+        var m = new ShaderMaterial { Shader = Shader };
         bool known = custom.R + custom.G + custom.B > 0f;
         m.SetShaderParameter("tint", known ? new Vector3(custom.R, custom.G, custom.B) : new Vector3(leaf.R, leaf.G, leaf.B));
         m.SetShaderParameter("glow", known ? custom.A : 0f);
         return m;
     }
+
+    /// <summary>What a fallen plant is drawn with (<see cref="FallMaterial"/>).</summary>
+    public static Shader Shader => _shader ??= GD.Load<Shader>("res://shaders/flora_fall.gdshader");
+
+    static Shader _shader;
 
     const float FallTime = 1.5f, LieTime = 90f, FadeTime = 4f;
     readonly Vector3 _axis;

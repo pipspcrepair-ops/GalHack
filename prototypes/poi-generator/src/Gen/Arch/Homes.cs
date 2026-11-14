@@ -577,16 +577,8 @@ public static partial class Homes
     {
         const float R = 3.4f;
         var shell = new Rgb(0x8c, 0x88, 0x7c);
-        for (int y = 0; y < h + 3; y++)
-        {
-            float r = y < h ? R : R - (y - h + 1) * 1.05f;
-            for (int dz = -4; dz <= 4; dz++)
-                for (int dx = -4; dx <= 4; dx++)
-                {
-                    if (MathF.Sqrt(dx * dx + dz * dz) > r) continue;
-                    l.C.Set(at + new Int3(dx, y, dz), new Block(BlockType.Cube, Material.Concrete, y % 4 == 3 ? shell.Scale(0.85f) : shell, Role.Wall));
-                }
-        }
+        Round.Lay(l.C, at.X + 0.5, at.Z + 0.5, at.Y, at.Y + h + 2, y => (y - at.Y < h ? R : R - (y - at.Y - h + 1) * 1.05, 0),
+            y => new Block(BlockType.Cube, Material.Concrete, (y - at.Y) % 4 == 3 ? shell.Scale(0.85f) : shell, Role.Wall));
     }
 
     // ---- sheds -------------------------------------------------------------------------------

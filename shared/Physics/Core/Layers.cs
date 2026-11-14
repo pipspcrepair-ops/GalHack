@@ -57,9 +57,10 @@ public static class Layers
 
     /// <summary>
     /// Landing legs stand on solid things only. Water is a volume, not a floor: a vessel let down
-    /// onto a lake goes under, and its feet find the bed.
+    /// onto a lake goes under, and its feet find the bed. Flora too: a craft rests on a tree that takes
+    /// its weight, so its feet do (<see cref="PhysicsWorld.Footing"/> looks through the rest).
     /// </summary>
-    public const uint GearMask = World | Hull;
+    public const uint GearMask = World | Hull | Flora;
 
     /// <summary>Everything solid in the main world.</summary>
     public const uint Solid = World | Hull;

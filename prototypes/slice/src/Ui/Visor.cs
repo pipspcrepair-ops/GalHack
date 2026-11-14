@@ -348,6 +348,12 @@ public partial class Visor : CanvasLayer
 
     // ---- Compass ---------------------------------------------------------------------------------
 
+    /// <summary>How much of a compass item shows at this offset (degrees) from the heading: full inside, fading over the outer 8% of the strip, gone at its end (a letter is under 4 degrees wide, so it fades before it is cut).</summary>
+    public static float CompassFade(float off) => Mathf.Clamp((60f - MathF.Abs(off)) / (60f * 0.08f), 0f, 1f);
+
+    /// <summary>The heading as the strip reads it: whole degrees, rounded down, so 359.9 is 359, never 360.</summary>
+    public static string HeadingText(float heading) => ((int)heading % 360).ToString("000");
+
     void DrawCompass(Survivor survivor)
     {
         float s = S;
@@ -360,14 +366,15 @@ public partial class Visor : CanvasLayer
         for (int d = 0; d < 360; d += 15)
         {
             float off = Mathf.Wrap(d - heading, -180f, 180f);
-            if (MathF.Abs(off) > 60f) continue;
+            float fade = CompassFade(off);
+            if (fade <= 0f) continue;
             float x = cx + off / 60f * width / 2;
             bool major = d % 90 == 0;
-            _hud.Block(new Rect2(x - s, y + (major ? 8 : 14) * s, 2 * s, (major ? 14 : 8) * s), new Color(C.Text, 0.7f));
+            _hud.Block(new Rect2(x - s, y + (major ? 8 : 14) * s, 2 * s, (major ? 14 : 8) * s), new Color(C.Text, 0.7f * fade));
             if (major)
-                _hud.TextIn(UiTheme.Display, (int)(16 * s), new Rect2(x - 20 * s, y - 14 * s, 40 * s, 20 * s), d switch { 0 => "N", 90 => "E", 180 => "S", _ => "W" }, C.Text, HorizontalAlignment.Center);
+                _hud.TextIn(UiTheme.Display, (int)(16 * s), new Rect2(x - 20 * s, y - 14 * s, 40 * s, 20 * s), d switch { 0 => "N", 90 => "E", 180 => "S", _ => "W" }, new Color(C.Text, fade), HorizontalAlignment.Center);
         }
-        _hud.Text(UiTheme.Mono, (int)(16 * s), new Vector2(cx - 18 * s, y + 28 * s), Garbled($"{heading:000}", Game.WrongShown), C.Text);
+        _hud.Text(UiTheme.Mono, (int)(16 * s), new Vector2(cx - 18 * s, y + 28 * s), Garbled(HeadingText(heading), Game.WrongShown), C.Text);
         // WORLD markers: what is out there is marked where it is (DrawMarkers). COMPASS: marked on the strip, as it was.
         if (MarkersInWorld) return;
         Vector3 feet = survivor.WorldFeet;

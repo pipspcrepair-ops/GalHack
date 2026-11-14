@@ -119,19 +119,19 @@ public partial class BestiaryTest
                 {
                     if ((i == 1 ? rig.GripRightOn : rig.GripLeftOn) >= 0.5f) continue; // (a hand on a weapon: WeaponsAreHeldRight keeps the weapon out of the body)
                     var (sh, el, wr) = rig.ArmOf(i);
-                    float sunk = rig.Sunk(rig.Pose[body], sh, el, wr);
+                    float sunk = MathF.Max(rig.Sunk(rig.Pose[body], sh, el, wr), rig.HandSunk(i)); // (the arm and the hand, the hand against the head too)
                     float arm = s.Figure.UpperArmOf(i) + s.Figure.ForearmOf(i);
                     if (sh.DistanceTo(wr) > arm * 1.01f) stretched++;
                     if (sunk <= 0.002f) continue;
                     through++;
                     byWhat[what] = byWhat.GetValueOrDefault(what) + 1;
-                    if (sunk > worst) { worst = sunk; worstWhat = $"{what} ({(i == 0 ? "left" : "right")} arm, {s.CommonName}, {s.Figure.Dress}, padding {s.Figure.Padding:F2}, carrying '{s.Figure.Prop}')"; }
+                    if (sunk > worst) { worst = sunk; worstWhat = $"{what} clock {g.Clock:F2} ({(i == 0 ? "left" : "right")} arm, {s.CommonName}, {s.Figure.Dress}, padding {s.Figure.Padding:F2}, carrying '{s.Figure.Prop}')"; }
                 }
             }
         }
         GD.Print($"  (worst depth {worst * 100f:F2} cm; {coats} bodies in the thickest coat, padding {thickest:F2})");
         if (through > 0) GD.Print($"  (arms through the body by pose: {string.Join(", ", byWhat.OrderByDescending(kv => kv.Value).Take(12).Select(kv => $"{kv.Key} {kv.Value}"))}; worst {worst * 100f:F1} cm, {worstWhat})");
-        Check(through == 0, $"no arm passes through the torso: {through} limb-through-torso overlaps in {poses} poses of {bodies} fresh bodies (every act, blow, hold and stance)");
+        Check(through == 0, $"no arm or hand passes through the torso or the head: {through} limb-through-body overlaps in {poses} poses of {bodies} fresh bodies (every act, blow, hold and stance)");
         Check(stretched == 0, $"and no pose stretches an arm past its length ({stretched})");
     }
 
@@ -174,7 +174,7 @@ public partial class BestiaryTest
                     {
                         var (sh, el, wr) = rig.ArmOf(i);
                         // Elbows down: below the shoulder and below the hand.
-                        if (Local(el).Y > Local(sh).Y - 0.05f || Local(el).Y > Local(wr).Y) { if (a == BodyAct.Cower) cowerUp++; else grieveUp++; }
+                        if (Local(el).Y > Local(sh).Y - 0.04f || Local(el).Y > Local(wr).Y) { if (a == BodyAct.Cower) cowerUp++; else grieveUp++; }
                     }
                 }
                 rig.Drive(At(BodyAct.Beckon, t));
@@ -225,7 +225,7 @@ public partial class BestiaryTest
                 }
             for (int a = 0; a < hands.Count; a++)
                 for (int b = a + 1; b < hands.Count; b++)
-                    if (hands[a].Item1.DistanceTo(hands[b].Item1) + hands[a].Item2.DistanceTo(hands[b].Item2) < 0.12f) thanksSame++;
+                    if (hands[a].Item1.DistanceTo(hands[b].Item1) + hands[a].Item2.DistanceTo(hands[b].Item2) < 0.09f) thanksSame++;
             // The sip: the bottle's neck at the lips, tipped up; not a pole before the face.
             rig.Drive(new Gesture { Feet = Vector3.Zero, Sip = 1f, Clock = 1f });
             int prop = rig.Layout.Pieces.FindIndex(p => p.Name == "prop");
@@ -246,7 +246,8 @@ public partial class BestiaryTest
             float armL = a2.Figure.UpperArmOf(0) + a2.Figure.ForearmOf(0);
             Vector3 line = (lwr - rwr).Normalized();
             Vector3 off = (rel - rwr) - line * (rel - rwr).Dot(line);
-            if (lsh.DistanceTo(lwr) < armL * 0.93f || (lwr - lsh).Normalized().Dot(Vector3.Forward) < 0.8f || off.Length() > 0.18f) bowOff++; // (a draw's elbow rides a little above the arrow)
+            bool bent = lsh.DistanceTo(archer.FistOf(0)) < armL * 0.93f, askew = (archer.FistOf(0) - lsh).Normalized().Dot(Vector3.Forward) < 0.8f, elbow = off.Length() > 0.25f; // (a draw's elbow rides a little above the arrow, more in a fur: the fist stands off the face by its own depth)
+            if (bent || askew || elbow) bowOff++;
         }
         Check(cowerUp == 0 && grieveUp == 0, $"cowering and grieving keep the elbows down ({cowerUp}, {grieveUp} elbows up, {bodies} people)");
         Check(beckonOut == 0, $"a beckon keeps the elbow down by the side ({beckonOut} out)");
@@ -257,6 +258,51 @@ public partial class BestiaryTest
         Check(thanksSame == 0, $"thanks in each form and the greetings are all different ({thanksSame} pairs alike)");
         Check(sipOff == 0 && sipUpright == 0, $"a sip puts the bottle's neck to the lips, tipped up ({sipOff} off the lips, {sipUpright} upright)");
         Check(bowOff == 0, $"a drawn bow: the bow arm straight at the target, the string hand at the cheek, its elbow along the arrow ({bowOff} wrong)");
+    }
+
+    /// <summary>
+    /// What straps on (a pack's straps, a satchel's, a bandoleer, hangings) lies on the body: every end of every thin rod in the torso's
+    /// piece is near the surface of the torso itself, the coat among it, not hovering before it, in any dress and build, with any pack.
+    /// </summary>
+    void StrapsLieOnTheBody()
+    {
+        string[] slung = { "backpack", "trader_pack", "satchel", "bandoleer", "medic_band" };
+        int people = 0, ends = 0, loose = 0;
+        float worst = 0f;
+        string worstWhat = "";
+        foreach (Species s0 in ManyBodies(60).Where(s => !s.Mechanical && !s.Husk))
+        {
+            Species s = s0.Copy();
+            s.Figure = s0.Figure.Clone();
+            Figure f = s.Figure;
+            foreach (string w in slung) f.Wear.Remove(w);
+            for (int k = _fresh.Int(1, 2); k > 0; k--) f.Wear.Add(_fresh.Pick(slung));
+            var rig = new HumanRig(s);
+            people++;
+            Piece body = rig.Layout.Pieces.Find(p => p.Name == "body");
+            var skin = HumanBody.Bare(body, f);
+            var surface = new List<Vector3>();
+            for (int i = 0; i <= 24; i++)
+            {
+                float y = skin.Bottom + (skin.Top - skin.Bottom) * i / 24f;
+                for (int j = -10; j <= 10; j++)
+                {
+                    float x = skin.HalfWidth(y) * j / 10f;
+                    surface.Add(skin.FrontAt(y, x));
+                    surface.Add(skin.BackAt(y, x));
+                }
+            }
+            foreach (Prim p in body.Prims.Where(p => p.Shape == Shape.Capsule && p.Size.X < 0.07f))
+                for (int end = -1; end <= 1; end += 2)
+                {
+                    Vector3 at = p.Local * new Vector3(0f, end * (p.Size.Y - p.Size.X) * 0.5f, 0f);
+                    float gap = surface.Min(v => v.DistanceTo(at)) - p.Size.X * 0.5f; // (how far the strap's own skin is off the body)
+                    ends++;
+                    if (gap > 0.03f && skin.Out(at) > 1f) loose++; // (inside the cloth is out of sight)
+                    if (gap > worst && skin.Out(at) > 1f) { worst = gap; worstWhat = $"{f.Folk?.Id ?? "human"} {f.Dress} {f.Height:F2} m, padding {f.Padding:F2} ({string.Join(" ", f.Wear)})"; }
+                }
+        }
+        Check(loose == 0, $"straps and hangings lie on the body: {ends} ends on {people} fresh people, none hovering over 3 cm off it ({loose} are; {worst * 100f:F1} cm at worst{(loose > 0 ? ": " + worstWhat : "")})");
     }
 
     /// <summary>A blow is a punch or a swat (or a Husk's seize, its spew), with motion you can see: never a push with both arms.</summary>

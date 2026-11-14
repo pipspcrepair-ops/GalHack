@@ -24,10 +24,11 @@
 //                file): the character level it unlocks from, its cost in unlock points, the
 //                parent node it hangs under (an item id) and its tab (structures, tools,
 //                weapons, deco, misc). Every structure block is on the structures tab, which
-//                grows from the core; each device's tiers chain T1 to T2 and on. A T1 opens at
-//                the lower of the old small and large parts' levels, the tier holding the old
-//                large part's stats at that part's level, the other tiers at
-//                docs/grid-figures.md's levels, never before the tier below.
+//                grows from the core; each device's tiers chain T1 to T2 and on. Levels follow
+//                Empyrion's nearest block on its 1-25 ladder (docs/grid-figures.md cites each);
+//                a plate opens with the constructor Empyrion needs to make it. Nothing above
+//                tier 1 opens at level 1, each tier strictly after the one below, and the design
+//                doc's gates win (hover plates at 1, the portable fabricator at 3).
 //
 // No block is limited to a mode: a core's mode changes what its blocks do, never which blocks it takes.
 {
@@ -38,58 +39,58 @@
     "base-block": {"bill": {"polymer": 1}, "unlock": {"level": 1, "cost": 0, "parent": "core", "tab": "structures"}, "family": "armour"},
     "window-block": {"bill": {"polymer": 1}, "unlock": {"level": 1, "cost": 0, "parent": "base-block", "tab": "structures"}, "family": "armour"},
     "iron-plated": {"bill": {"polymer": 1, "iron-plate": 4}, "unlock": {"level": 1, "cost": 0, "parent": "base-block", "tab": "structures"}, "family": "armour", "was": ["steel@large", "steel@small", "cpuext@large", "cpuext@small", "cpuext3@large", "cpuext3@small", "cpuext4@large", "cpuext4@small"]},
-    "hardened-plated": {"bill": {"polymer": 1, "hardened-plate": 4}, "unlock": {"level": 6, "cost": 2, "parent": "iron-plated", "tab": "structures"}, "family": "armour", "was": ["hardened@large", "hardened@small"]},
-    "combat-plated": {"bill": {"polymer": 1, "combat-plate": 4}, "unlock": {"level": 12, "cost": 3, "parent": "hardened-plated", "tab": "structures"}, "family": "armour", "was": ["combat@large", "combat@small"]},
+    "hardened-plated": {"bill": {"polymer": 1, "hardened-plate": 4}, "unlock": {"level": 5, "cost": 2, "parent": "iron-plated", "tab": "structures"}, "family": "armour", "was": ["hardened@large", "hardened@small"]},
+    "combat-plated": {"bill": {"polymer": 1, "combat-plate": 4}, "unlock": {"level": 10, "cost": 3, "parent": "hardened-plated", "tab": "structures"}, "family": "armour", "was": ["combat@large", "combat@small"]},
     "concrete-plated": {"bill": {"polymer": 1, "concrete-plate": 4}, "unlock": {"level": 1, "cost": 0, "parent": "base-block", "tab": "structures"}, "family": "armour", "was": ["concrete@large", "concrete@small"]},
     "glass-plated": {"bill": {"polymer": 1, "glass-plate": 4}, "unlock": {"level": 1, "cost": 0, "parent": "window-block", "tab": "structures"}, "family": "armour", "was": ["glass@large", "glass@small"]},
     "precursor-plated": {"bill": {"polymer": 1, "precursor-plate": 4}, "unlock": {"level": 20, "cost": 5, "parent": "combat-plated", "tab": "structures"}, "family": "armour", "uniqueOnly": true, "was": ["precursor@large", "precursor@small"]},
-    "core": {"bill": {"iron-plate": 16, "winding": 4, "copper-wire": 12}, "unlock": {"level": 1, "cost": 0, "tab": "structures"}, "seconds": 12, "was": ["small-core", "big-core", "vessel-core", "hover-core", "base-core", "capital-core", "core@large", "core@small"], "item": {"name": "Core", "short": "CORE", "stack": 4, "uses": "Founds a structure · Base · Capital · Hover"}},
+    "core": {"bill": {"iron-plate": 16, "winding": 4, "copper-wire": 12}, "unlock": {"level": 1, "cost": 0, "tab": "structures"}, "seconds": 12, "was": ["small-core", "big-core", "vessel-core", "hover-core", "base-core", "capital-core", "core@large", "core@small"], "item": {"name": "Core", "short": "CORE", "stack": 4, "uses": "Founds a structure · Base · Hover · Flight"}},
     "command-chair": {"bill": {"iron-plate": 8, "circuit-board": 2, "polymer": 2}, "unlock": {"level": 1, "cost": 0, "parent": "core", "tab": "structures"}, "was": ["chair@large", "chair@small", "cockpit@large", "cockpit@small"]},
     "cockpit-t1": {"bill": {"iron-plate": 16, "circuit-board": 4, "polymer": 4, "glass": 8}, "unlock": {"level": 1, "cost": 1, "parent": "command-chair", "tab": "structures"}},
-    "cockpit-t2": {"bill": {"iron-plate": 24, "control-unit": 2, "polymer": 6, "glass": 12}, "unlock": {"level": 1, "cost": 1, "parent": "cockpit-t1", "tab": "structures"}},
+    "cockpit-t2": {"bill": {"iron-plate": 24, "control-unit": 2, "polymer": 6, "glass": 12}, "unlock": {"level": 7, "cost": 1, "parent": "cockpit-t1", "tab": "structures"}},
     "generator-t1": {"bill": {"iron-plate": 10, "winding": 8, "copper-wire": 8}, "unlock": {"level": 1, "cost": 0, "parent": "core", "tab": "structures"}, "was": ["generator@small"]},
-    "generator-t2": {"bill": {"iron-plate": 16, "winding": 12, "copper-wire": 12, "circuit-board": 2}, "unlock": {"level": 1, "cost": 1, "parent": "generator-t1", "tab": "structures"}},
-    "generator-t3": {"bill": {"iron-plate": 24, "power-unit": 2, "winding": 12}, "unlock": {"level": 1, "cost": 1, "parent": "generator-t2", "tab": "structures"}, "was": ["generator@large"]},
+    "generator-t2": {"bill": {"iron-plate": 16, "winding": 12, "copper-wire": 12, "circuit-board": 2}, "unlock": {"level": 3, "cost": 1, "parent": "generator-t1", "tab": "structures"}},
+    "generator-t3": {"bill": {"iron-plate": 24, "power-unit": 2, "winding": 12}, "unlock": {"level": 10, "cost": 1, "parent": "generator-t2", "tab": "structures"}, "was": ["generator@large"]},
     "generator-t4": {"bill": {"iron-plate": 60, "power-unit": 8, "magnet": 8, "control-unit": 2}, "unlock": {"level": 15, "cost": 3, "parent": "generator-t3", "tab": "structures"}},
     "fuel-tank-t1": {"bill": {"iron-plate": 8, "polymer": 2}, "unlock": {"level": 1, "cost": 0, "parent": "generator-t1", "tab": "structures"}, "was": ["fueltank@small"]},
-    "fuel-tank-t2": {"bill": {"iron-plate": 12, "polymer": 3}, "unlock": {"level": 1, "cost": 1, "parent": "fuel-tank-t1", "tab": "structures"}},
-    "fuel-tank-t3": {"bill": {"iron-plate": 14, "polymer": 4, "circuit-board": 1}, "unlock": {"level": 1, "cost": 1, "parent": "fuel-tank-t2", "tab": "structures"}, "was": ["fueltank@large"]},
+    "fuel-tank-t2": {"bill": {"iron-plate": 12, "polymer": 3}, "unlock": {"level": 3, "cost": 1, "parent": "fuel-tank-t1", "tab": "structures"}},
+    "fuel-tank-t3": {"bill": {"iron-plate": 14, "polymer": 4, "circuit-board": 1}, "unlock": {"level": 10, "cost": 1, "parent": "fuel-tank-t2", "tab": "structures"}, "was": ["fueltank@large"]},
     "fuel-tank-t4": {"bill": {"iron-plate": 24, "polymer": 6, "circuit-board": 2}, "unlock": {"level": 15, "cost": 3, "parent": "fuel-tank-t3", "tab": "structures"}},
     "container-t1": {"bill": {"iron-plate": 8}, "unlock": {"level": 1, "cost": 0, "parent": "core", "tab": "structures"}, "was": ["container@small"]},
-    "container-t2": {"bill": {"iron-plate": 8, "polymer": 2}, "unlock": {"level": 1, "cost": 0, "parent": "container-t1", "tab": "structures"}},
-    "container-t3": {"bill": {"iron-plate": 10, "polymer": 2, "iron-bar": 2}, "unlock": {"level": 1, "cost": 1, "parent": "container-t2", "tab": "structures"}},
-    "container-t4": {"bill": {"iron-plate": 20, "polymer": 4, "iron-bar": 4}, "unlock": {"level": 1, "cost": 1, "parent": "container-t3", "tab": "structures"}, "was": ["container@large"]},
+    "container-t2": {"bill": {"iron-plate": 8, "polymer": 2}, "unlock": {"level": 3, "cost": 0, "parent": "container-t1", "tab": "structures"}},
+    "container-t3": {"bill": {"iron-plate": 10, "polymer": 2, "iron-bar": 2}, "unlock": {"level": 5, "cost": 1, "parent": "container-t2", "tab": "structures"}},
+    "container-t4": {"bill": {"iron-plate": 20, "polymer": 4, "iron-bar": 4}, "unlock": {"level": 7, "cost": 1, "parent": "container-t3", "tab": "structures"}, "was": ["container@large"]},
     "thruster-t1": {"bill": {"iron-plate": 8, "nozzle": 2, "winding": 2}, "unlock": {"level": 5, "cost": 1, "parent": "hover-t1", "tab": "structures"}, "was": ["thruster@small"]},
     "thruster-t2": {"bill": {"iron-plate": 12, "nozzle": 4, "winding": 4}, "unlock": {"level": 7, "cost": 2, "parent": "thruster-t1", "tab": "structures"}},
-    "thruster-t3": {"bill": {"iron-plate": 10, "thrust-assembly": 2}, "unlock": {"level": 7, "cost": 3, "parent": "thruster-t2", "tab": "structures"}, "was": ["thruster@large"]},
+    "thruster-t3": {"bill": {"iron-plate": 10, "thrust-assembly": 2}, "unlock": {"level": 10, "cost": 3, "parent": "thruster-t2", "tab": "structures"}, "was": ["thruster@large"]},
     "thruster-t4": {"bill": {"iron-plate": 30, "thrust-assembly": 6, "control-unit": 1}, "unlock": {"level": 15, "cost": 3, "parent": "thruster-t3", "tab": "structures"}},
     "thruster-t5": {"bill": {"iron-plate": 80, "thrust-assembly": 16, "control-unit": 2, "power-unit": 2}, "unlock": {"level": 20, "cost": 4, "parent": "thruster-t4", "tab": "structures"}},
     "hover-t1": {"bill": {"iron-plate": 6, "winding": 4, "circuit-board": 2}, "unlock": {"level": 1, "cost": 1, "parent": "core", "tab": "structures"}, "was": ["hover@small"]},
-    "hover-t2": {"bill": {"iron-plate": 16, "power-unit": 1, "nozzle": 4}, "unlock": {"level": 10, "cost": 2, "parent": "hover-t1", "tab": "structures"}, "was": ["hover@large"]},
+    "hover-t2": {"bill": {"iron-plate": 16, "power-unit": 1, "nozzle": 4}, "unlock": {"level": 8, "cost": 2, "parent": "hover-t1", "tab": "structures"}, "was": ["hover@large"]},
     "gyro-t1": {"bill": {"iron-plate": 8, "servo": 2, "circuit-board": 2}, "unlock": {"level": 5, "cost": 1, "parent": "thruster-t1", "tab": "structures"}, "was": ["gyro@small"]},
     "gyro-t2": {"bill": {"iron-plate": 8, "servo": 2, "magnet": 4, "control-unit": 1}, "unlock": {"level": 7, "cost": 1, "parent": "gyro-t1", "tab": "structures"}, "was": ["gyro@large"]},
     "gyro-t3": {"bill": {"iron-plate": 16, "servo": 4, "magnet": 8, "control-unit": 2, "logic-module": 2}, "unlock": {"level": 10, "cost": 2, "parent": "gyro-t2", "tab": "structures"}},
     "pad-t1": {"bill": {"iron-plate": 4, "servo": 2}, "unlock": {"level": 5, "cost": 0, "parent": "thruster-t1", "tab": "structures"}, "was": ["gear@small"]},
     "pad-t2": {"bill": {"iron-plate": 6, "servo": 3}, "unlock": {"level": 7, "cost": 1, "parent": "pad-t1", "tab": "structures"}},
-    "pad-t3": {"bill": {"iron-plate": 6, "servo": 2}, "unlock": {"level": 7, "cost": 0, "parent": "pad-t2", "tab": "structures"}, "was": ["gear@large"]},
-    "pad-t4": {"bill": {"iron-plate": 8, "servo": 3}, "unlock": {"level": 7, "cost": 1, "parent": "pad-t3", "tab": "structures"}},
-    "door-1x2x1": {"bill": {"iron-plate": 4, "servo": 1}, "unlock": {"level": 2, "cost": 1, "parent": "iron-plated", "tab": "structures"}, "was": ["door@large", "door@small"], "item": {"name": "Door", "short": "DOOR", "uses": "Any door size · 1×2 up to 5×5"}},
+    "pad-t3": {"bill": {"iron-plate": 6, "servo": 2}, "unlock": {"level": 10, "cost": 0, "parent": "pad-t2", "tab": "structures"}, "was": ["gear@large"]},
+    "pad-t4": {"bill": {"iron-plate": 8, "servo": 3}, "unlock": {"level": 12, "cost": 1, "parent": "pad-t3", "tab": "structures"}},
+    "door-1x2x1": {"bill": {"iron-plate": 4, "servo": 1}, "unlock": {"level": 1, "cost": 0, "parent": "iron-plated", "tab": "structures"}, "was": ["door@large", "door@small"], "item": {"name": "Door", "short": "DOOR", "uses": "Any door size · 1×2 up to 5×5"}},
     "light": {"bill": {"glass": 1, "copper-wire": 2}, "unlock": {"level": 1, "cost": 0, "parent": "generator-t1", "tab": "structures"}, "was": ["light@large", "light@small"]},
     "ladder": {"bill": {"iron-bar": 1}, "unlock": {"level": 1, "cost": 0, "parent": "iron-plated", "tab": "structures"}, "stack": 50, "was": ["ladder@large", "ladder@small"]},
     "stairs": {"bill": {"polymer": 1, "iron-plate": 3}, "unlock": {"level": 1, "cost": 0, "parent": "base-block", "tab": "structures"}, "stack": 50},
     "portable-fabricator": {"bill": {"iron-plate": 6, "winding": 2, "copper-wire": 4}, "unlock": {"level": 3, "cost": 2, "parent": "core", "tab": "structures"}, "was": ["portfab@large", "portfab@small"]},
-    "fabricator-t1": {"bill": {"iron-plate": 12, "winding": 4, "copper-wire": 8, "glass": 2}, "unlock": {"level": 2, "cost": 1, "parent": "core", "tab": "structures"}, "was": ["smallfab@large", "smallfab@small"]},
-    "fabricator-t2": {"bill": {"iron-plate": 24, "servo": 6, "circuit-board": 10, "machine-frame": 4, "power-unit": 2}, "unlock": {"level": 8, "cost": 3, "parent": "fabricator-t1", "tab": "structures"}, "was": ["largefab@large", "largefab@small"]},
-    "fabricator-t3": {"bill": {"iron-plate": 30, "servo": 8, "logic-module": 8, "machine-frame": 6, "starsilver-bar": 4}, "unlock": {"level": 15, "cost": 5, "parent": "fabricator-t2", "tab": "structures"}, "was": ["advfab@large", "advfab@small"]},
-    "decon": {"bill": {"iron-plate": 16, "servo": 4, "circuit-board": 4, "nozzle": 2}, "unlock": {"level": 4, "cost": 2, "parent": "fabricator-t1", "tab": "structures"}, "was": ["decon@large", "decon@small"]},
+    "fabricator-t1": {"bill": {"iron-plate": 12, "winding": 4, "copper-wire": 8, "glass": 2}, "unlock": {"level": 3, "cost": 1, "parent": "core", "tab": "structures"}, "was": ["smallfab@large", "smallfab@small"]},
+    "fabricator-t2": {"bill": {"iron-plate": 24, "servo": 6, "circuit-board": 10, "machine-frame": 4, "power-unit": 2}, "unlock": {"level": 5, "cost": 3, "parent": "fabricator-t1", "tab": "structures"}, "was": ["largefab@large", "largefab@small"]},
+    "fabricator-t3": {"bill": {"iron-plate": 30, "servo": 8, "logic-module": 8, "machine-frame": 6, "starsilver-bar": 4}, "unlock": {"level": 10, "cost": 5, "parent": "fabricator-t2", "tab": "structures"}, "was": ["advfab@large", "advfab@small"]},
+    "decon": {"bill": {"iron-plate": 16, "servo": 4, "circuit-board": 4, "nozzle": 2}, "unlock": {"level": 12, "cost": 2, "parent": "fabricator-t3", "tab": "structures"}, "was": ["decon@large", "decon@small"]},
     "factory": {"bill": {"iron-plate": 40, "servo": 10, "control-unit": 4, "machine-frame": 8, "logic-module": 4}, "unlock": {"level": 10, "cost": 4, "parent": "fabricator-t2", "tab": "structures"}, "was": ["factory@large"]},
-    "turret": {"bill": {"iron-plate": 8, "servo": 3, "circuit-board": 1, "gun-barrel": 1}, "unlock": {"level": 8, "cost": 2, "tab": "weapons"}, "ammo": "shells-40mm", "was": ["turret@large", "turret@small"]},
-    "gatling": {"bill": {"iron-plate": 4, "gun-barrel": 2, "servo": 1}, "unlock": {"level": 6, "cost": 2, "tab": "weapons"}, "ammo": "belt-12mm", "was": ["gatling@large", "gatling@small"]},
-    "rocketpod": {"bill": {"iron-plate": 5, "circuit-board": 1, "servo": 2}, "unlock": {"level": 9, "cost": 2, "parent": "gatling", "tab": "weapons"}, "ammo": "rocket", "was": ["rocketpod@large", "rocketpod@small"]},
-    "warp-drive": {"bill": {"iron-plate": 30, "warp-coil": 2, "control-unit": 2, "power-unit": 2}, "unlock": {"level": 12, "cost": 3, "parent": "thruster-t3", "tab": "structures"}, "was": ["warpdrive@large", "warpdrive@small"]},
-    "warp-tank": {"bill": {"iron-plate": 10, "polymer": 2}, "unlock": {"level": 12, "cost": 0, "parent": "warp-drive", "tab": "structures"}, "was": ["warptank@large", "warptank@small"]},
-    "hyperdrive-t1": {"bill": {"iron-plate": 40, "warp-coil": 4, "field-emitter": 2, "fusion-core": 1}, "unlock": {"level": 15, "cost": 5, "parent": "warp-drive", "tab": "structures"}, "was": ["hyperdrive1@large"]},
+    "turret": {"bill": {"iron-plate": 8, "servo": 3, "circuit-board": 1, "gun-barrel": 1}, "unlock": {"level": 5, "cost": 2, "tab": "weapons"}, "ammo": "shells-40mm", "was": ["turret@large", "turret@small"]},
+    "gatling": {"bill": {"iron-plate": 4, "gun-barrel": 2, "servo": 1}, "unlock": {"level": 3, "cost": 2, "tab": "weapons"}, "ammo": "belt-12mm", "was": ["gatling@large", "gatling@small"]},
+    "rocketpod": {"bill": {"iron-plate": 5, "circuit-board": 1, "servo": 2}, "unlock": {"level": 7, "cost": 2, "parent": "gatling", "tab": "weapons"}, "ammo": "rocket", "was": ["rocketpod@large", "rocketpod@small"]},
+    "warp-drive": {"bill": {"iron-plate": 30, "warp-coil": 2, "control-unit": 2, "power-unit": 2}, "unlock": {"level": 10, "cost": 3, "parent": "thruster-t3", "tab": "structures"}, "was": ["warpdrive@large", "warpdrive@small"]},
+    "warp-tank": {"bill": {"iron-plate": 10, "polymer": 2}, "unlock": {"level": 7, "cost": 0, "parent": "fuel-tank-t2", "tab": "structures"}, "was": ["warptank@large", "warptank@small"]},
+    "hyperdrive-t1": {"bill": {"iron-plate": 40, "warp-coil": 4, "field-emitter": 2, "fusion-core": 1}, "unlock": {"level": 10, "cost": 5, "parent": "warp-drive", "tab": "structures"}, "was": ["hyperdrive1@large"]},
     "hyperdrive-t2": {"bill": {"iron-plate": 60, "warp-coil": 8, "field-emitter": 4, "fusion-core": 2}, "unlock": {"level": 20, "cost": 6, "parent": "hyperdrive-t1", "tab": "structures"}, "was": ["hyperdrive2@large"]},
-    "fold-tank": {"bill": {"iron-plate": 12, "polymer": 3}, "unlock": {"level": 15, "cost": 0, "parent": "hyperdrive-t1", "tab": "structures"}, "was": ["foldtank@large"]}
+    "fold-tank": {"bill": {"iron-plate": 12, "polymer": 3}, "unlock": {"level": 10, "cost": 0, "parent": "hyperdrive-t1", "tab": "structures"}, "was": ["foldtank@large"]}
   }
 }

@@ -87,7 +87,7 @@ Grouped by area, most noticeable first.
 ## 3. Partly built
 
 1. **Core modes**: Base/Capital toggle exists (`CoreSection.cs:254`); Vessel/Hover mode, indicator and stripes do not (see 1.1 and 1.3).
-2. **Tech tree**: Base & Capital and Small & Hover are one tab each, with hover plate before thruster, as designed. There is an extra DECO tab, and the large hover plate sits on the SMALL & HOVER tab (`items/blocks.json:112-113`). No node exists for most of section 2.
+2. **Tech tree**: the two vessel tabs this audit found are now one STRUCTURES tab on `proto/grid`, one tree from the core with each device a tier chain and Thruster T1 under Hover plate T1 (`docs/one-metre-grid.md` section 5). No node exists for most of section 2.
 3. **Shape picker**: 8 shapes (`prototypes/building/data/shapes.json`) against 100+ in DESIGN 695.
 4. **Symmetry**: one mirror axis (`slice/src/Construction/BuildTool.cs:65`) against three in DESIGN 694.
 5. **Blueprints**: only the starter Skiff projector, from the CORE tab (correctly not on the toolbar). No library, sharing, repair template or save-as-blueprint.
@@ -147,5 +147,5 @@ Compared with `proto/batch2`. Work in a worktree that is not committed is not on
 9. **Pacing stages**: DESIGN 466 lists the hover vessel for stage 3, but the hover bike (DESIGN 545) comes from the suit fabricator at the start and appears in no stage.
 10. **Out of date**: the header says revision 561; the playtest list cites revisions 564 (Hollow mystery) and 580 (one bestiary module), so later edits are not in this copy. DESIGN 1398 still lists the slice as "in progress" and the 5 Nov status.
 11. **Decisions on the playtest list that DESIGN does not hold**: personal shields as a bar parallel to health, no weapon wear and no companions, level cap 25 with a slower early curve, the Hollow as unexplained wrongness only (rev 564), debug options on the start screen, music as drones plus CC0 tracks (DESIGN names Kevin MacLeod and other sources), and the 349-weapon and 40-world-type lists.
-12. **Tech tabs**: DESIGN 475 lists Base & Capital, Small & Hover, Tools, Weapons and Misc; the game also has a DECO tab, which DESIGN 268 only implies.
+12. **Tech tabs**: settled on `proto/grid`: the design and the game both have Structures, Tools, Weapons, Deco and Misc.
 13. **Blueprint wording**: DESIGN 740 says "no blueprint tool on the toolbar"; the code keeps a dead toolbar shortcut for it (`slice/src/Items/PlayerInventory.cs:48`) alongside the CORE tab button.

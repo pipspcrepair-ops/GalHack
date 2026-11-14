@@ -211,7 +211,7 @@ public static class Mesher
         var sum = new long[count.Length * 3];
         foreach (var (c, b) in g.Blocks())
         {
-            int weight = BlockInfo.IsFullCube(b.Type) ? 2 : b.Type is BlockType.Ramp or BlockType.Corner or BlockType.InvCorner or BlockType.Stair or BlockType.Rib or BlockType.Pillar or BlockType.Pipe or BlockType.Tank or BlockType.Lattice ? 1 : 0;
+            int weight = BlockInfo.IsFullCube(b.Type) ? 2 : BlockInfo.IsPlanCut(b.Type) || b.Type is BlockType.Ramp or BlockType.Corner or BlockType.InvCorner or BlockType.Stair or BlockType.Rib or BlockType.Pillar or BlockType.Pipe or BlockType.Tank or BlockType.Lattice ? 1 : 0;
             if (weight == 0 || BlockInfo.IsTransparent(b.Material)) continue;
             Int3 l = c - g.Min;
             int i = ((l.Y / step) * size.Z + l.Z / step) * size.X + l.X / step;
@@ -585,8 +585,9 @@ public static class Mesher
             else if (b.Type == BlockType.Stair) Ramp(chunk, p, b, draw: false); // drawn as steps, walked as a slope
             else if (b.Type == BlockType.Spike && !_o.Merged) Spike(chunk, p, b);
             else if (BlockInfo.IsCornerSlope(b.Type) || BlockInfo.IsHung(b.Type)) CornerSlope(chunk, p, b, drawn);
+            else if (BlockInfo.IsPlanCut(b.Type)) Prism(chunk, p, b, _o.Drawn);
 
-            if (_o.Collision && BlockInfo.Collides(b.Type) && !BlockInfo.IsSlope(b.Type) && !BlockInfo.IsCornerSlope(b.Type) && !BlockInfo.IsHung(b.Type))
+            if (_o.Collision && BlockInfo.Collides(b.Type) && !BlockInfo.IsSlope(b.Type) && !BlockInfo.IsCornerSlope(b.Type) && !BlockInfo.IsHung(b.Type) && !BlockInfo.IsPlanCut(b.Type))
             {
                 // Props collide as their real shape: a table as its top and legs, a locker as its body against the wall.
                 bool shaped = BlockInfo.IsShaped(b.Type);
@@ -654,7 +655,8 @@ public static class Mesher
             {
                 Int3 n = p + Dirs.All[f].Vec();
                 var nb = _g.Get(n);
-                bool hidden = glass ? (!nb.IsAir && nb.Type == BlockType.Cube && (nb.Material == b.Material || !BlockInfo.IsTransparent(nb.Material))) || IsRock(n) && Hides(n) : Hides(n);
+                bool hidden = glass ? (!nb.IsAir && nb.Type == BlockType.Cube && (nb.Material == b.Material || !BlockInfo.IsTransparent(nb.Material))) || IsRock(n) && Hides(n)
+                    : Hides(n) || f < 4 && BlockInfo.IsPlanCut(nb.Type) && Shapes.Covers(nb, Dirs.All[f].Opposite(), (0f, 1f));
                 // (A shaped neighbour drawn far off as a cube hides the face, but still doesn't fill the cell: the face still collides.)
                 bool farShape = hidden && !CollidesFull(n) && !IsRock(n);
                 if (hidden && !farShape) continue;
@@ -810,7 +812,9 @@ public static class Mesher
             {
                 Int3 n = p + Dirs.All[f].Vec();
                 var nb = _g.Get(n);
-                if (glass ? (!nb.IsAir && nb.Type == BlockType.Cube && (nb.Material == b.Material || !BlockInfo.IsTransparent(nb.Material))) || IsRock(n) && Hides(n) : Hides(n))
+                // (A round thing's rim piece whose flat side is this whole face covers it as a block would.)
+                bool rim = f < 4 && BlockInfo.IsPlanCut(nb.Type) && Shapes.Covers(nb, Dirs.All[f].Opposite(), (0f, 1f));
+                if (glass ? (!nb.IsAir && nb.Type == BlockType.Cube && (nb.Material == b.Material || !BlockInfo.IsTransparent(nb.Material))) || IsRock(n) && Hides(n) : Hides(n) || rim)
                     continue;
                 // The top of a floor laid with a finish wears the finish, painted on (tiles, boards, carpet).
                 if (f == 4 && Painted(p) is Block paint)
@@ -1214,9 +1218,69 @@ public static class Mesher
             }
         }
 
+        /// <summary>
+        /// A round thing's rim piece: its plan (<see cref="Shapes.Plan"/>) stood up the full height of its cell. Its top
+        /// and bottom are left out under or over the same piece or a full block; a side on its cell's face where the
+        /// neighbour covers it (a full block, or a piece whose face there takes in this one's); the cut always shows.
+        /// It collides as drawn, less the sides a full neighbour fills.
+        /// </summary>
+        void Prism(ChunkMesh chunk, Int3 p, Block b, bool draw)
+        {
+            V3[] plan = Shapes.Plan(b);
+            V3 o = V3.Of(p);
+            Surface s = Shapes.SurfaceOf(b.Material);
+            var buf = chunk.Surfaces[(int)s];
+            float j = 1f + ((Hash.Cell(p, 5) % 100) / 1000f - 0.05f) * _o.Mottle;
+            void Face(V3[] pts, V3 n, bool shown, bool solid, float shade)
+            {
+                if (shown)
+                {
+                    float code = FaceCode(p, b, n, false, s), k = shade * (code != 0f ? 1f : j);
+                    int i0 = buf.VertexCount;
+                    foreach (V3 v in pts) buf.Vertex(o + v, n, b.Color.R / 255f * k, b.Color.G / 255f * k, b.Color.B / 255f * k, 1f, code, _seed);
+                    for (int i = 1; i + 1 < pts.Length; i++) buf.Indices.AddRange(new[] { i0, i0 + i + 1, i0 + i });
+                    chunk.Quads++;
+                }
+                if (solid && _o.Collision)
+                    for (int i = 1; i + 1 < pts.Length; i++) Tri(chunk, o + pts[0], o + pts[i], o + pts[i + 1]);
+            }
+            // The ends: the plan as wound (anticlockwise seen from below), at the bottom and, turned over, at the top.
+            foreach (bool top in new[] { true, false })
+            {
+                Int3 n = p + (top ? Int3.Up : Int3.Down);
+                Block nb = _g.Get(n);
+                bool same = nb.Type == b.Type && nb.Facing == b.Facing && !BlockInfo.IsTransparent(nb.Material);
+                bool shown = draw && !Hides(n) && !same, solid = !CollidesFull(n) && !same;
+                if (!shown && !solid) continue;
+                var pts = plan.Select(v => v with { Y = top ? 1f : 0f }).ToArray();
+                if (top) Array.Reverse(pts, 1, pts.Length - 1); // (the first corner kept first: the fan's, which sees every edge)
+                Face(pts, new V3(0, top ? 1 : -1, 0), shown, solid, top ? 1f : 0.66f);
+            }
+            // The sides: each edge of the plan, a wall from the bottom to the top. Its collision is one wall the height of the
+            // run of this piece stacked over it (a tank's rim is the same piece course on course), from the run's foot.
+            bool Same(Int3 q) { Block o = _g.Get(q); return o.Type == b.Type && o.Facing == b.Facing; }
+            for (int i = 0; i < plan.Length; i++)
+            {
+                V3 a = plan[i], c = plan[(i + 1) % plan.Length];
+                V3 n = new V3(c.Z - a.Z, 0, a.X - c.X).Normalized();
+                Dir? side = Shapes.OnSide(a, c);
+                bool Open(Int3 q, bool solid) => side is not Dir d
+                    || !(solid ? CollidesFull(q + d.Vec()) : Hides(q + d.Vec())) && !Shapes.Covers(_g.Get(q + d.Vec()), d.Opposite(), Shapes.Span(a, c, d));
+                bool shown = draw && Open(p, false), solid = _o.Collision && Open(p, true) && !(Same(p + Int3.Down) && Open(p + Int3.Down, true));
+                int run = 1;
+                while (solid && Same(p + Int3.Up * run) && Open(p + Int3.Up * run, true)) run++;
+                float shade = 0.8f + 0.14f * MathF.Max(0f, n.Z) + 0.1f * MathF.Max(0f, -n.Z) + 0.04f * MathF.Max(0f, n.X);
+                if (shown) Face(new[] { a, a with { Y = 1 }, c with { Y = 1 }, c }, n, true, false, shade);
+                if (solid) Face(new[] { a, a with { Y = run }, c with { Y = run }, c }, n, false, true, shade);
+            }
+        }
+
         void Spike(ChunkMesh chunk, Int3 p, Block b)
         {
-            var buf = chunk.Surfaces[(int)Surface.Matte];
+            // (Finished as what it is made of, as any box of its material is: never a flat colour.)
+            Surface surf = Shapes.SurfaceOf(b.Material);
+            var buf = chunk.Surfaces[(int)surf];
+            float code = BoxCode(p, b, surf, FaceSide.Out);
             V3 o = V3.Of(p);
             V3 apex = o + new V3(0.5f, 1.25f, 0.5f);
             V3[] bs = { o + new V3(0.18f, 0, 0.18f), o + new V3(0.82f, 0, 0.18f), o + new V3(0.82f, 0, 0.82f), o + new V3(0.18f, 0, 0.82f) };
@@ -1226,9 +1290,9 @@ public static class Mesher
                 V3 n = V3.Cross(apex - a, c - a).Normalized();
                 float k = 0.75f + 0.25f * Math.Max(0f, n.Y + 0.3f) + (i % 2) * 0.08f;
                 int i0 = buf.VertexCount;
-                buf.Vertex(a, n, b.Color.R / 255f * k, b.Color.G / 255f * k, b.Color.B / 255f * k, 1f);
-                buf.Vertex(c, n, b.Color.R / 255f * k, b.Color.G / 255f * k, b.Color.B / 255f * k, 1f);
-                buf.Vertex(apex, n, b.Color.R / 255f * k * 1.1f, b.Color.G / 255f * k * 1.1f, b.Color.B / 255f * k * 1.1f, 1f);
+                buf.Vertex(a, n, b.Color.R / 255f * k, b.Color.G / 255f * k, b.Color.B / 255f * k, 1f, code, _seed);
+                buf.Vertex(c, n, b.Color.R / 255f * k, b.Color.G / 255f * k, b.Color.B / 255f * k, 1f, code, _seed);
+                buf.Vertex(apex, n, b.Color.R / 255f * k * 1.1f, b.Color.G / 255f * k * 1.1f, b.Color.B / 255f * k * 1.1f, 1f, code, _seed);
                 buf.Indices.AddRange(new[] { i0, i0 + 1, i0 + 2 });
             }
         }
@@ -1464,8 +1528,90 @@ public static class Shapes
     }
 
     /// <summary>A shaped wall, floor or ceiling (and a slope cut from one), drawn from further off as the cube it was cut from.</summary>
-    public static bool FarAsCube(Block b) => (BlockInfo.IsShaped(b.Type) && b.Type is not (BlockType.Beam or BlockType.Column or BlockType.Quarter)
+    public static bool FarAsCube(Block b) => (BlockInfo.IsShaped(b.Type) && b.Type is not (BlockType.Beam or BlockType.Column or BlockType.Quarter) && !BlockInfo.IsPlanCut(b.Type)
         || b.Type is BlockType.Ramp or BlockType.Corner or BlockType.InvCorner && b.Role is Role.Wall or Role.Floor or Role.Decor) && !BlockInfo.IsTransparent(b.Material);
+
+    static readonly V3[][] Plans = MakePlans();
+
+    /// <summary>
+    /// A rim piece's plan (<see cref="BlockInfo.IsPlanCut"/>): its corners in its cell (x east, z south, 0 to 1), turned to
+    /// its facing and wound anticlockwise seen from below, the first corner one that sees every edge (a quarter round's centre).
+    /// </summary>
+    public static V3[] Plan(Block b) => Plans[(b.Type - BlockType.Wedge) * 4 + b.Facing switch { Dir.East => 1, Dir.South => 2, Dir.West => 3, _ => 0 }];
+
+    static V3[][] MakePlans()
+    {
+        static V3 P(float x, float z) => new(x, 0, z);
+        const int Steps = 6; // (a quarter round's arc in six flats)
+        static IEnumerable<V3> Arc(Func<float, V3> at) => Enumerable.Range(0, Steps + 1).Select(i => at(i * MathF.PI / 2 / Steps));
+        var canon = new[]
+        {
+            new[] { P(0, 1), P(0, 0), P(1, 1) },                                // Wedge
+            new[] { P(0, 1), P(0, 0.5f), P(0.5f, 1) },                          // WedgeTip
+            new[] { P(0, 1), P(0, 0), P(0.5f, 0), P(1, 0.5f), P(1, 1) },        // WedgeClip
+            new[] { P(1, 1), P(0, 1), P(1, 0.5f) },                             // Slant
+            new[] { P(0, 1), P(0, 0.5f), P(1, 1) },                             // SlantM
+            new[] { P(0, 1), P(0, 0.5f), P(1, 0), P(1, 1) },                    // SlantFill
+            new[] { P(0, 1), P(0, 0), P(1, 0.5f), P(1, 1) },                    // SlantFillM
+            Arc(t => P(MathF.Sin(t), 1 - MathF.Cos(t))).Prepend(P(0, 1)).ToArray(),     // RoundOut: about the south-west corner
+            Arc(t => P(1 - MathF.Cos(t), MathF.Sin(t))).Prepend(P(0, 1)).ToArray(),     // RoundIn: less a round about the north-east
+        };
+        var all = new V3[canon.Length * 4][];
+        for (int t = 0; t < canon.Length; t++)
+            for (int q = 0; q < 4; q++)
+            {
+                var pts = canon[t].Select(v => Turn(v, Dirs.Horizontal[q])).ToArray();
+                float area = 0;
+                for (int i = 0; i < pts.Length; i++) area += pts[i].X * pts[(i + 1) % pts.Length].Z - pts[(i + 1) % pts.Length].X * pts[i].Z;
+                if (area < 0) Array.Reverse(pts, 1, pts.Length - 1);
+                all[t * 4 + q] = pts;
+            }
+        return all;
+    }
+
+    /// <summary>The face of its cell a plan's edge lies on, if it lies on one.</summary>
+    public static Dir? OnSide(V3 a, V3 c)
+    {
+        const float e = 0.001f;
+        if (a.Z < e && c.Z < e) return Dir.North;
+        if (a.Z > 1 - e && c.Z > 1 - e) return Dir.South;
+        if (a.X < e && c.X < e) return Dir.West;
+        if (a.X > 1 - e && c.X > 1 - e) return Dir.East;
+        return null;
+    }
+
+    /// <summary>The stretch of a cell's face an edge on it takes, along the face (x on a north or south face, z on an east or west one).</summary>
+    public static (float Lo, float Hi) Span(V3 a, V3 c, Dir side) => side is Dir.North or Dir.South ? (MathF.Min(a.X, c.X), MathF.Max(a.X, c.X)) : (MathF.Min(a.Z, c.Z), MathF.Max(a.Z, c.Z));
+
+    /// <summary>
+    /// Whether a block's face on one side of its cell takes in all of a stretch of that face, the whole height of the cell: a
+    /// full opaque block, a half standing against that face or across it, a rim piece whose plan runs along it there.
+    /// </summary>
+    public static bool Covers(Block b, Dir side, (float Lo, float Hi) need)
+    {
+        if (b.IsAir || BlockInfo.IsTransparent(b.Material) || PlanOf(b) is not { } plan) return false;
+        const float e = 0.001f;
+        for (int i = 0; i < plan.Length; i++)
+        {
+            V3 a = plan[i], c = plan[(i + 1) % plan.Length];
+            if (OnSide(a, c) != side) continue;
+            var (lo, hi) = Span(a, c, side);
+            if (lo <= need.Lo + e && hi >= need.Hi - e) return true;
+        }
+        return false;
+    }
+
+    static readonly V3[] Square = { new(0, 0, 0), new(1, 0, 0), new(1, 0, 1), new(0, 0, 1) };
+
+    /// <summary>A block standing the full height of its cell, in plan as <see cref="Plan"/> gives it: a whole block's square, a half standing against a face, a rim piece; null for anything else.</summary>
+    public static V3[]? PlanOf(Block b)
+    {
+        if (BlockInfo.IsFullCube(b.Type)) return Square;
+        if (BlockInfo.IsPlanCut(b.Type)) return Plan(b);
+        if (b.Type != BlockType.Half || !b.Facing.IsHorizontal()) return null;
+        ShapeBox box = Box(0, 0, 0, 1, 1, 0.5f, default, Surface.Matte, b.Facing);
+        return new[] { new V3(box.Lo.X, 0, box.Lo.Z), new V3(box.Hi.X, 0, box.Lo.Z), new V3(box.Hi.X, 0, box.Hi.Z), new V3(box.Lo.X, 0, box.Hi.Z) };
+    }
 
     /// <summary>Whether a block's face on one side is the whole face of its cell (something can be hung on it, or stand against it).</summary>
     public static bool FlatToward(Block b, Dir side) => b.Type switch
@@ -1474,6 +1620,7 @@ public static class Shapes
         BlockType.Half => b.Facing == side,
         BlockType.Ramp => b.Facing == side || side == Dir.Down,
         BlockType.Chamfer => b.Facing == side || side == Dir.Up,
+        _ when BlockInfo.IsPlanCut(b.Type) => side.IsHorizontal() && Covers(b, side, (0f, 1f)),
         _ => false,
     };
 
@@ -1541,6 +1688,55 @@ public static class Shapes
         return (e, w, n, so, false);
     }
 
+    /// <summary>A rail's Variant when it follows a round's outline (<see cref="RimRail"/>).</summary>
+    public const byte RimRailVariant = 1;
+
+    /// <summary>
+    /// A rail round a round thing's top, along its outline: over a rim piece or a half, along its cut; over a whole block, along its
+    /// face toward Facing; a hand in from the edge, so the runs of the cells round it meet end to end.
+    /// </summary>
+    static void RimRail(List<ShapeBox> l, Block b, Int3 p, IBlockStructure g, Rgb c, Surface s)
+    {
+        Block under = g.Get(p + Int3.Down);
+        var line = new List<V3>();
+        V3 inward;
+        if (!BlockInfo.IsFullCube(under.Type) && PlanOf(under) is { } plan)
+        {
+            int n = plan.Length;
+            int start = Enumerable.Range(0, n).First(i => OnSide(plan[(i - 1 + n) % n], plan[i]) != null && OnSide(plan[i], plan[(i + 1) % n]) == null);
+            for (int i = start; ; i = (i + 1) % n) { line.Add(plan[i]); if (OnSide(plan[i], plan[(i + 1) % n]) != null) break; }
+            V3 a0 = line[0], a1 = line[^1];
+            inward = new V3(a1.Z - a0.Z, 0, a0.X - a1.X).Normalized() * -1f;
+        }
+        else
+        {
+            V3 v = new(b.Facing.Vec().X, 0, b.Facing.Vec().Z);
+            V3 mid = new(0.5f + v.X * 0.5f, 0, 0.5f + v.Z * 0.5f), along = new(MathF.Abs(v.Z) * 0.5f, 0, MathF.Abs(v.X) * 0.5f);
+            line.Add(mid - along); line.Add(mid + along);
+            inward = v * -1f;
+        }
+        V3 inset = inward * 0.08f;
+        for (int i = 0; i + 1 < line.Count; i++)
+        {
+            V3 a = line[i] + inset, e = line[i + 1] + inset, m = (a + e) * 0.5f, d = e - a;
+            float len = MathF.Sqrt(d.X * d.X + d.Z * d.Z) * 0.5f + 0.02f, yaw = MathF.Atan2(-d.Z, d.X);
+            l.Add(new ShapeBox(new V3(m.X - len, 0.95f, m.Z - 0.05f), new V3(m.X + len, 1.05f, m.Z + 0.05f), c, s, Tilt: new V3(0, yaw, 0)));
+            l.Add(new ShapeBox(new V3(m.X - len, 0.48f, m.Z - 0.03f), new V3(m.X + len, 0.54f, m.Z + 0.03f), c.Scale(0.8f), s, Tilt: new V3(0, yaw, 0)));
+        }
+        // A post at the middle of each cell's run (never on a neighbour's), and at both ends where the rail stops (an opening for a ladder).
+        int beside = 0;
+        for (int dz = -1; dz <= 1; dz++)
+            for (int dx = -1; dx <= 1; dx++)
+                if ((dx != 0 || dz != 0) && g.Get(p + new Int3(dx, 0, dz)) is { Type: BlockType.Rail, Variant: RimRailVariant }) beside++;
+        var posts = new List<V3> { (line[0] + line[^1]) * 0.5f };
+        if (beside < 2) { posts.Add(line[0]); posts.Add(line[^1]); }
+        foreach (V3 at in posts)
+        {
+            V3 post = at + inset;
+            l.Add(Box(post.X - 0.06f, 0, post.Z - 0.06f, post.X + 0.06f, 1.07f, post.Z + 0.06f, c, s));
+        }
+    }
+
     /// <summary>
     /// A railing or fence (bars, in the Wall role) drawn along the line it is part of (<see cref="RailRun"/>):
     /// a top rail and a middle rail toward each way the line runs, a post at its ends, corners and junctions and
@@ -1548,6 +1744,7 @@ public static class Shapes
     /// </summary>
     static void Rail(List<ShapeBox> l, Block b, Int3 p, IBlockStructure g, Rgb c, Surface s)
     {
+        if (b.Variant == RimRailVariant) { RimRail(l, b, p, g, c, s); return; }
         var (e, w, n, so, _) = RailRun(b, p, g);
         bool straight = e && w && !n && !so || n && so && !e && !w;
         bool post = !straight || ((p.X + p.Z) & 1) == 0;
@@ -1890,6 +2087,7 @@ public static class Shapes
             case BlockType.Corner:
             case BlockType.InvCorner:
             case BlockType.Chamfer or BlockType.ChamferCorner or BlockType.ChamferInvCorner:
+            case >= BlockType.Wedge and <= BlockType.RoundIn: // (drawn as their plans: Mesher.Ctx.Prism)
                 break;
             default:
                 l.Add(Box(0.1f, 0, 0.1f, 0.9f, 0.9f, 0.9f, c, s));

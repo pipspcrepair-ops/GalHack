@@ -16,8 +16,10 @@ public readonly record struct GearLeg(Vector3 Hip, float Length);
 /// under it, so on uneven ground or a host's deck every foot stands on its own ground. A foot on a
 /// surface attaches the craft there: to the ground, or to another structure (it is then parked on
 /// it). It carries no load and nothing counts legs or mass: what holds a craft up is its hull's
-/// collision and, once attached and landed, its being landed. Gear is a weak point: a pad shot off or
-/// broken on a hard landing is simply gone from the structure, and its attachment with it.
+/// collision and, once attached and landed, its being landed. A foot never stands on a tree too thin
+/// for the craft's weight (<see cref="PhysicsWorld.Footing"/>): the hull breaks that tree. Gear is a
+/// weak point: a pad shot off or broken on a hard landing is simply gone from the structure, and its
+/// attachment with it.
 /// </summary>
 public sealed class LandingGear
 {
@@ -34,6 +36,7 @@ public sealed class LandingGear
         FootGround = new Vector3[legs.Length];
         FootFound = new bool[legs.Length];
         FootBody = new Body[legs.Length];
+        FootTree = new long[legs.Length];
     }
 
     public int Count => _legs.Length;
@@ -62,6 +65,17 @@ public sealed class LandingGear
 
     /// <summary>The registered body under each foot (a structure's deck), or null for the ground.</summary>
     public Body[] FootBody { get; }
+
+    /// <summary>The tree under each foot (<see cref="IFloraField"/>), or 0 for anything else.</summary>
+    public long[] FootTree { get; }
+
+    /// <summary>A foot of it stands on this tree.</summary>
+    public bool Stands(long tree)
+    {
+        for (int i = 0; i < _legs.Length; i++)
+            if (FootTree[i] == tree && Touching(i)) return true;
+        return false;
+    }
 
     /// <summary>How far leg <paramref name="i"/> is out now, m: down to its own surface when that is within its reach.</summary>
     public float Reach(int i)
@@ -115,7 +129,7 @@ public sealed class LandingGear
             GearLeg leg = _legs[i];
             Vector3 hip = body.ToParent(leg.Hip);
             float reach = leg.Length + t.DeployAltitude + t.Hysteresis + 5f;
-            FootFound[i] = world.Query.Ray(hip + Vector3.UnitY * 0.5f, hip - Vector3.UnitY * reach, Layers.GearMask, body, out RayHit ground);
+            FootFound[i] = world.Footing(body, hip + Vector3.UnitY * 0.5f, hip - Vector3.UnitY * reach, out RayHit ground, out FootTree[i]);
             FootBody[i] = FootFound[i] ? ground.Body : null;
             if (!FootFound[i]) continue;
             FootGround[i] = ground.Point;

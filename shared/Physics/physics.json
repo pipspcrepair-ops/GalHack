@@ -138,6 +138,17 @@
     "swimGrip": 30
   },
 
+  "flora": {
+    // A tree gives way to a structure when the load on it is more than its trunk takes: strength (Pa) ×
+    // its cross-section (π × trunk radius²). The load is the weight resting on it (mass, and all it
+    // carries, × gravity × the share of the contact that is under it) plus the blow into it (its
+    // momentum stopped over blowTime, s). A 0.3 m trunk takes 57 kN, about 6 t resting on it; a giant's
+    // 1.2 m one 905 kN, 92 t. A 227 t frigate breaks anything thinner than 1.9 m by its weight alone;
+    // a 20 t skiff rests on a 0.6 m trunk. Creatures and sleepers never break trees; rock never gives way.
+    "strength": 200000,
+    "blowTime": 0.1
+  },
+
   "stuck": {
     // A body inside terrain or a structure's blocks for this many ticks in a row is moved to the
     // nearest open space, searching a 1 m grid up to searchRadius metres away.

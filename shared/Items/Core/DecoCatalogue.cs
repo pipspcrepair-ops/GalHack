@@ -293,7 +293,8 @@ public sealed class DecoCatalogue
                 light = new DecoLight((float)DataJson.Num(l, "range", 3), (float)DataJson.Num(l, "energy", 1));
 
             roots.TryGetValue(setId, out DecoPiece root);
-            int level = DataJson.Int(j, "level", set.Level), cost = DataJson.Int(j, "cost", set.Cost);
+            // The set is bought once, at its root: the rest of its pieces come with it, free.
+            int level = DataJson.Int(j, "level", set.Level), cost = DataJson.Int(j, "cost", root == null ? set.Cost : 0);
             if (level < 1 || cost < 0) throw new InvalidDataException($"{where}: unlock level must be at least 1 and cost not negative");
 
             var piece = new DecoPiece

@@ -545,6 +545,11 @@ public sealed class Playthrough
         foreach (int x in Tool(Slice.Player.ToolMode.Gather)) yield return x;
         for (int deposit = 0; deposit < 8 && Pack[ore.Id] < enough; deposit++)
         {
+            if (Game.Suit.Dead)
+            {
+                Log($"(dead while gathering {kind}: {Game.Suit.Sim.Player.DeathCause} at {Game.Survivor.WorldFeet})");
+                yield break;
+            }
             if (NextDeposit(kind, within, retry) is not Vector3 at)
             {
                 Log($"no more {kind} deposits within {within:F0} m");
@@ -573,7 +578,7 @@ public sealed class Playthrough
                 }
                 idle = Pack[ore.Id] + store.RemovedCount > before ? 0 : idle + 1;
                 if (idle == 3)
-                    Log($"(digging at {t}: eye {eye} {eye.DistanceTo(t):F1} m off; the tool's target {(Game.Tool.HasTarget ? Game.Tool.Target.ToString() : "none")}, {Game.Tool.TargetVerdict}, on a block {Game.Tool.OnBlock}, hand {Game.Pack.Hand}, mode {Game.Tool.Mode}, dead {Game.Suit.Dead}, menu {Game.Menu.IsOpen}, screen {Game.MachineScreens.Pointer.Target?.Name})");
+                    Log($"(digging at {t}: eye {eye} {eye.DistanceTo(t):F1} m off; the tool's target {(Game.Tool.HasTarget ? Game.Tool.Target.ToString() : "none")}, {Game.Tool.TargetVerdict}, on a block {Game.Tool.OnBlock}, hand {Game.Pack.Hand}, mode {Game.Tool.Mode}, dead {Game.Suit.Dead} ({Game.Suit.Sim.Player.DeathCause}), menu {Game.Menu.IsOpen}, screen {Game.MachineScreens.Pointer.Target?.Name})");
             }
             Log($"({kind} deposit {deposit + 1}: +{Pack[ore.Id] - got0}, {Pack[ore.Id]}/{enough})");
         }
@@ -889,6 +894,16 @@ public sealed class Playthrough
         return zone.GroundAt(near.X + distance, near.Z);
     }
 
+    /// <summary>Takes a test's vessel out of the world, as one whose last block is gone goes: nothing it leaves falls on what comes next.</summary>
+    public static void TakeAway(SurfaceZone zone, Vessel v)
+    {
+        zone.Weather.Bridge?.Untrack(v.Body);
+        zone.Physics.Unregister(v.Body);
+        zone.Physics.StuckFields.Remove(v.Field);
+        zone.Untrack(v);
+        v.Node.QueueFree();
+    }
+
     /// <summary>
     /// A clearing: every tree and boulder rooted within this reach of a point is felled for good. Vessels collide with trunks
     /// and crowns, so a craft tested among them is held by them. Returns how many went.
@@ -896,13 +911,13 @@ public sealed class Playthrough
     public static int Clearing(SurfaceZone zone, Vector3 at, float reach)
     {
         int n = 0;
-        foreach (var (solid, _) in zone.Streamer.SolidsNear(at, reach, canopies: true).ToList())
-            if (zone.Planet.Felled.Add(solid.Id)) { zone.Streamer.Fell(solid.Id); n++; }
+        foreach (var (solid, offset) in zone.Streamer.SolidsNear(at, reach, canopies: true).ToList())
+            if (zone.Fell(solid.Id, solid.Center + offset)) n++;
         return n;
     }
 
     /// <summary>A ruin, a road's works or a building within a span of this point: they stand on the flat ground, and the ground's height doesn't show them.</summary>
-    bool RuinAt(Vector3 ground, float span)
+    public bool RuinAt(Vector3 ground, float span)
     {
         var query = new PhysicsShapeQueryParameters3D
         {

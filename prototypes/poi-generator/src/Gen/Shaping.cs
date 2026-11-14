@@ -20,6 +20,7 @@ namespace PoiGenerator.Gen;
 /// beam under each joist wall to wall; high tech folded in V-bays the long way. Posts (round columns, high tech) on a
 /// grid in big halls; mines timbered in whole sets.</item>
 /// </list>
+/// A round thing's rim is never shaped: <see cref="Round"/> cut it to its round already.
 /// A cell is shaped only if it is a plain cube with nothing set against it and no top anyone stands on; an element
 /// with any such cell stays plain. A shape keeps whole the face a room or the next cell sees, so nothing shows through.
 /// </summary>
@@ -138,10 +139,12 @@ public static class Shaping
         // A cell may take a shape: a plain cube, nothing against it, under building or rock (or a roof's or a wall's top
         // edge), and no top anyone stands on.
         var free = new Dictionary<Int3, bool>();
+        // (A round thing's rim is cut to its round already: nothing reshapes it, nor the cells just in from it.)
+        var rim = Round.Rims(layout.Extras.Rounds);
         bool Top(Int3 c) => (Solid(c + Int3.Up) || Outside(c + Int3.Up) && walked.Count > 0) && !walked.Contains(c + Int3.Up) && !roots.Contains(c + Int3.Up);
-        bool Free(Int3 c) => free.TryGetValue(c, out bool f) ? f : free[c] = Plain(g.Get(c)) && Quiet(c) && Top(c);
+        bool Free(Int3 c) => free.TryGetValue(c, out bool f) ? f : free[c] = Plain(g.Get(c)) && !rim.Contains(c) && Quiet(c) && Top(c);
         // (A panel's top is whole at its back: only what is stood on over it rules it out.)
-        bool Panel(Int3 c, Dir? back = null) => Plain(g.Get(c)) && Behind(c, back) && !walked.Contains(c + Int3.Up) && !roots.Contains(c + Int3.Up);
+        bool Panel(Int3 c, Dir? back = null) => Plain(g.Get(c)) && !rim.Contains(c) && Behind(c, back) && !walked.Contains(c + Int3.Up) && !roots.Contains(c + Int3.Up);
         // An outside face's cell that can be cut back: no room under it or beside it, and not open behind (a thin wall).
         bool OutOk(Int3 c, Dir d) => !RoomTo(c, c + Int3.Down) && !Out(c, c - d.Vec()) && Dirs.Horizontal.All(h => h == d.Opposite() || !RoomTo(c, c + h.Vec()));
         bool Frame(Int3 c, Dir d, bool thin = false) => Framed(c, d, q => Away(c, q) ? Block.Air : g.Get(q), q => Air(q) && !Rock(q) || Away(c, q), thin);
