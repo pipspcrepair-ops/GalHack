@@ -15,7 +15,7 @@ namespace PlanetSurface;
 /// Cliffs read as cleanly far off as the old far meshes drew them: on fresh worlds of mesas and buttes, round the steepest
 /// cliffs, the drawn ground is looked at every quarter metre along each cliff's top and foot, for the GPU rings (2, 4 and
 /// 8 m) and for the far meshes they replaced (the same shaping in 128 m chunks, as they were built). A tooth is a notch in
-/// the rim or a fin at the foot: a vertical step in the drawn edge (counted by its sides). The rings may not have more of them than the old meshes.
+/// the rim or a fin at the foot: a stretch of the drawn edge standing off the land's. The rings may not have more of them than the old meshes.
 /// </summary>
 public partial class SurfaceTest
 {
@@ -46,10 +46,9 @@ public partial class SurfaceTest
                 var sorted = truth.OrderBy(h => h).ToArray();
                 float lo = sorted[sorted.Length / 20], hi = sorted[sorted.Length * 19 / 20];
                 // Along each cliff's top and foot (where the land stands at 85% and 15% of the way up the cliff), a quarter metre at
-                // a time: the land is level along that line, so the drawn ground along it may drift but never jump. A tooth is a
-                // jump of more than a tenth of the cliff's fall (a metre at the least) between neighbouring points, a notch in the
-                // rim or a fin at the foot; each has two sides.
-                float step = MathF.Max(1f, (hi - lo) * 0.1f);
+                // a time: a tooth is a run of points where the drawn ground stands off the land by more than a twentieth of the
+                // cliff's fall (half a metre at the least), a notch in the rim or a fin at the foot.
+                float limit = MathF.Max(0.5f, (hi - lo) * 0.05f);
                 foreach (float share in new[] { 0.85f, 0.15f })
                 {
                     float at = lo + (hi - lo) * share;
@@ -60,14 +59,14 @@ public partial class SurfaceTest
                         for (int l = 0; l < 3; l++)
                         for (int which = 0; which < 3; which++)
                         {
-                            float last = float.NaN;
-                            Vector2 was = default;
+                            bool inTooth = false;
                             foreach (Vector2 p in edge)
                             {
                                 double x = Mathx.WrapX(p.X, w.Width), z = Mathx.Wrap(p.Y, w.Height);
                                 float drawn = which == 0 ? olds[l].Height(x, z) : which == 1 ? rings[l].Height(x, z) : one[l].Height(x, z);
-                                if (!float.IsNaN(last) && p.DistanceTo(was) < Cell * 1.5f && MathF.Abs(drawn - last) > step) teeth[l, which]++;
-                                (last, was) = (drawn, p);
+                                bool off = MathF.Abs(drawn - at) > limit;
+                                if (off && !inTooth) teeth[l, which]++;
+                                inTooth = off;
                             }
                         }
                     }

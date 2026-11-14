@@ -255,11 +255,11 @@ public sealed partial class Staging
         zone.Sky.TimeOfDay = Num("time", 0.36);
         Vector3 start = _game.Survivor.WorldFeet;
         float Ground(float x, float z) => zone.GroundAt(x, z).Y;
-        var rng = new Random();
+        // (A fixed scan, every 24 m: the same world gives the same cliff, whatever the build.)
         (Vector3 At, Vector3 Away, float Rise) best = (start, Vector3.Forward, 0f);
-        for (int k = 0; k < 3000; k++)
+        for (int k = 0; k < 125 * 125; k++)
         {
-            var at = start + new Vector3((float)(rng.NextDouble() - 0.5) * 3000f, 0f, (float)(rng.NextDouble() - 0.5) * 3000f);
+            var at = start + new Vector3((k % 125 - 62) * 24f, 0f, (k / 125 - 62) * 24f);
             float h = Ground(at.X, at.Z);
             foreach (var d in new[] { Vector3.Right, Vector3.Left, Vector3.Forward, Vector3.Back })
             {
