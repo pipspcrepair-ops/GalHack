@@ -34,7 +34,9 @@ public partial class SurfaceTest
         float cx = (float)(world.Width * 0.5), cz = (float)(world.Height * 0.5), half = 3200f;
         var toward = new Vector2(1f, 0.3f).Normalized();
         var clock = System.Diagnostics.Stopwatch.StartNew();
-        FarShade shade = await Task.Run(() => FarShade.Build(world, cx, cz, half, toward));
+        // The square as the graphics card marches it: over the far shade's level of the GPU rings (ground and tops), here worked out on the CPU.
+        var ground = new ClipGround.Reader(ClipGround.LevelsFor(DetailReach.Default), world.Source, world.Palette, (int)world.Width, (int)world.Height, world.Pois);
+        FarShade.Square shade = await Task.Run(() => FarShade.Rises((x, z) => ground.Tops(x, z), cx - half, cz - half, 2f * half, toward));
         double builtIn = clock.Elapsed.TotalSeconds;
         float cell = shade.Cell;
 
