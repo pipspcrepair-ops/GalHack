@@ -67,10 +67,4 @@ public partial class Spaceflight
         N.Quaternion toGlobe = N.Quaternion.Conjugate(Here.Turn);
         return MathX.Unrotate(Here.Map.Frame(x, z), N.Vector3.Transform(direction.ToNumerics(), toGlobe)).ToGodot();
     }
-
-    /// <summary>
-    /// How far the camera stands in the frame of the craft you fly rather than the world's up, 0 to 1:
-    /// none on a world, all of it over the top of the band, eased up the band (no snap at its top).
-    /// </summary>
-    public float ShipFrame => Game.InOrbit ? Smooth(Band) : 0f;
 }

@@ -439,6 +439,7 @@ public partial class Game : Node3D
         if (Menu.IsOpen && c.KeyWasPressed(Key.A) && c.ModifierHeld(Key.Ctrl) && Slice.Items.ItemViews.Focused == null) Slice.Ui.Slots.SelectAll();
         if (Menu.IsOpen) Menu.Input(c);
         if (c.WasPressed(Key.V) && !Menu.IsOpen) ThirdPerson = !ThirdPerson;
+        StepOrbit(c, (float)delta);
         if (c.WasPressed(Key.L)) ToggleTorch();
         if (!Menu.IsOpen) StepGestures(c);
         Survivor.WantCrouch = false; // only the walk below asks for it
@@ -900,9 +901,7 @@ public partial class Game : Node3D
         bool outside = ThirdPerson || FixedCamera != null;
         Camera.SetCullMaskValue(Slice.Player.CharacterModel.BodyLayer, outside || Survivor.Seated != null);
         Camera.SetCullMaskValue(Slice.Player.CharacterModel.HeadLayer, outside);
-        Camera.GlobalTransform = FixedCamera ?? (Survivor.Seated is Vessel v && ThirdPerson
-            ? Chase(v, 1.6f, 0.5f, Spaceflight?.ShipFrame ?? 0f)
-            : ThirdPerson ? Survivor.Eye().TranslatedLocal(new Vector3(0f, 0.6f, 4.5f)) : CloseUpView(Survivor.Eye()));
+        Camera.GlobalTransform = FixedCamera ?? View((float)delta);
     }
 
     Vector3 _focusWas;
@@ -949,25 +948,6 @@ public partial class Game : Node3D
             _replicators[id].QueueFree();
             _replicators.Remove(id);
         }
-    }
-
-    /// <summary>A chase camera behind and above a vessel, sized to it.</summary>
-    /// <param name="shipFrame">0: behind it on the world's up (a world under you); 1: in the vessel's own frame (open space, where no world's up means anything).</param>
-    public static Transform3D Chase(Vessel vessel, float distance, float height, float shipFrame = 0f)
-    {
-        Transform3D t = vessel.DrawTransform;
-        var (min, max) = vessel.Structure.Bounds();
-        float size = MathF.Max(3f, (max - min).ToVector3().Length() * vessel.Structure.Grid.CellSize);
-        Vector3 shipUp = t.Basis.Y.Normalized();
-        Vector3 up = shipFrame <= 0f ? Vector3.Up : Vector3.Up.Lerp(shipUp, shipFrame);
-        up = up.LengthSquared() < 1e-4f ? shipUp : up.Normalized();
-        Vector3 target = t.Origin + up * size * 0.15f;
-        Vector3 back = t.Basis.Z;
-        back -= up * back.Dot(up);
-        if (back.LengthSquared() < 1e-4f) back = MathF.Abs(up.Dot(Vector3.Back)) < 0.99f ? Vector3.Back - up * up.Dot(Vector3.Back) : Vector3.Right;
-        back = back.Normalized();
-        Vector3 eye = target + back * size * distance + up * size * height;
-        return new Transform3D(Basis.LookingAt(target - eye, up), eye);
     }
 
     /// <summary>Runs <see cref="Game.AfterPhysics"/> once the physics host (-10) and the world's logic (0) have stepped.</summary>
