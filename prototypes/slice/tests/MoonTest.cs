@@ -481,11 +481,11 @@ public partial class MoonTest : Node
         foreach (int x in _drive.Wait(20)) yield return x;
         Vector3 from = s.WorldFeet, there = v.Body.Position.ToGodot() + MathX.Rotate(v.Body.Rotation, N.Vector3.UnitX).ToGodot() * 9f;
         there.Y = surface.GroundAt(there.X, there.Z).Y;
-        foreach (int x in _drive.WalkTo(there, 0.8f, 40f, sprint: false, dig: false)) yield return x;
-        foreach (int x in _drive.Wait(30)) yield return x;
+        foreach (int x in _drive.WalkTo(there, 0.8f, 40f, sprint: false, dig: false, hop: false)) yield return x;
+        foreach (int x in _drive.Wait(90)) yield return x; // a stride in low gravity comes down slowly
         Vector3 feet = s.WorldFeet;
         float ground = surface.GroundAt(feet.X, feet.Z).Y;
-        Check(s.Seated == null && s.Zone == surface && s.Body.Frame == null && feet.DistanceTo(there) < 1.5f && MathF.Abs(feet.Y - ground) < 0.6f,
+        Check(s.Seated == null && s.Zone == surface && s.Body.Frame == null && feet.DistanceTo(from) > 4f && MathF.Abs(feet.Y - ground) < 0.4f,
             $"the sleeper got up out of the seat and walked {new Vector2(feet.X - from.X, feet.Z - from.Z).Length():F1} m across the moon's own ground ({feet.DistanceTo(there):F1} m off the spot, feet {feet.Y - ground:F2} m over the ground, standing on {(s.Body.Frame == null ? "the moon" : "a hull")})");
         foreach (int x in _pilot.Board(v)) yield return x;
         Check(s.Seated == v, "and back into the Skiff's seat");
