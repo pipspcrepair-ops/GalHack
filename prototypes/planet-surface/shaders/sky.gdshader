@@ -267,7 +267,7 @@ vec4 bodies(vec3 dir, vec3 sun) {
 		// Lit as its own globe is lit up close (space's far look the same): the star's light on its day side, the
 		// dark of space on its night side, another body's shadow over both.
 		float hidden = shadowed(n, moon_light[i], moon_caster[i], moon_sun[i]);
-		m.rgb = (ground * ((1.0 - hidden) * (body_ambient + star_color * body_energy * burley(n, moon_light[i], -moon_dir[i])) + glows * 0.8) + vec3(0.32, 0.06, 0.025) * moon_red[i] * hidden) * m.a;
+		m.rgb = (ground * ((1.0 - hidden) * (body_ambient + star_color * body_energy * burley(n, moon_light[i], -moon_dir[i])) + glows * 0.8) + vec3(0.16, 0.03, 0.012) * moon_red[i] * hidden) * m.a;
 		result = over(m, result);
 	}
 	if (giant_at >= moon_count) result = over(layer, result);

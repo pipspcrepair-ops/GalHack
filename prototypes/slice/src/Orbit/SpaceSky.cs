@@ -138,7 +138,7 @@ public partial class SpaceSky : Node3D
             // A giant's own bands; a world or moon lit as its globe is (Globe's ground, the sky's bodies()).
             vec3 shaded = banded ? surface * (0.07 + 0.93 * lit + 0.22 * limb)
                 : surface * (sun * (ambient + light_color * light_energy * burley(n, to_light, -normalize(view_w))) + glows * 0.8);
-            ALBEDO = shaded + vec3(0.32, 0.06, 0.025) * red * (1.0 - sun);
+            ALBEDO = shaded + vec3(0.16, 0.03, 0.012) * red * (1.0 - sun);
             ALPHA = fade; // in the transparent queue, for its order against the rings, which write no depth
         }
         """;
