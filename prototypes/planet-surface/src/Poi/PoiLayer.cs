@@ -191,7 +191,13 @@ public partial class PoiLayer : Node3D
         if (inst.Crops.Count == 0 || _world?.Flora?.Book is not { } book) return;
         var crops = book.Plants.Where(p => p.Family == GalHack.Plants.PlantFamily.Crop).ToArray();
         if (crops.Length == 0) return;
-        _cropMaterial ??= new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/flora.gdshader") };
+        if (_cropMaterial == null)
+        {
+            // Crops are small growth with a reach of their own: they shrink into the ground over its last 30%.
+            _cropMaterial = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/flora.gdshader") };
+            _cropMaterial.SetShaderParameter("flora_reach", new Vector2(Terrain.DetailReach.Large, CropReach));
+            _cropMaterial.SetShaderParameter("flora_bands", new Vector2(Terrain.DetailReach.LargeBand, CropReach * 0.3f));
+        }
         foreach (var group in inst.Crops.GroupBy(c => c.Kind % crops.Length))
         {
             GalHack.Plants.Plant plant = crops[group.Key];
@@ -213,9 +219,19 @@ public partial class PoiLayer : Node3D
                 buffer[o + 12] = tint.R; buffer[o + 13] = tint.G; buffer[o + 14] = tint.B; buffer[o + 15] = 0f;
             }
             var mm = new MultiMesh { TransformFormat = MultiMesh.TransformFormatEnum.Transform3D, UseCustomData = true, Mesh = mesh, InstanceCount = spots.Count, Buffer = buffer };
-            node.AddChild(new MultiMeshInstance3D { Name = "Crops", Multimesh = mm, MaterialOverride = _cropMaterial, VisibilityRangeEnd = 420f, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
+            // Drawn while any of it can show (the shader's reach from the eye, to the box's centre and half its diagonal past it).
+            var field = new MultiMeshInstance3D
+            {
+                Name = "Crops", Multimesh = mm, MaterialOverride = _cropMaterial, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+                VisibilityRangeEnd = CropReach + mm.GetAabb().Size.Length() * 0.5f,
+            };
+            field.SetInstanceShaderParameter("flora_layer", (float)Terrain.TerrainStreamer.SmallLayer);
+            node.AddChild(field);
         }
     }
+
+    /// <summary>How far crops reach from the eye, m.</summary>
+    const float CropReach = 420f;
 
     /// <summary>
     /// A glow you can see from far off: beacons, lit windows and lamps out in the open get a soft

@@ -56,8 +56,15 @@ public partial class PopRoute : Node
         _run = Routes().GetEnumerator();
     }
 
+    /// <summary>Where the survivor is held between moves (each tick, so a wait never ends in a fall), or null.</summary>
+    Vector3? _hold;
+
+    /// <summary>The time of day the routes run at.</summary>
+    double _day;
+
     public override void _PhysicsProcess(double delta)
     {
+        if (_hold is Vector3 hold) _game.Survivor.PlaceOutside(hold.ToNumerics());
         bool more;
         try { more = _run.MoveNext(); }
         catch (Exception e)
@@ -91,9 +98,24 @@ public partial class PopRoute : Node
                  $"ground detail {zone.Streamer.VoxelRadius}, detail distance {DetailReach.Distance}, level-0 radius {TerrainStreamer.FarLod0Radius}, far radius {TerrainStreamer.FarRadius}, " +
                  $"sun shadows {sun.DirectionalShadowMaxDistance} m, splits {sun.DirectionalShadowSplit1 * sun.DirectionalShadowMaxDistance:F0}/{sun.DirectionalShadowSplit2 * sun.DirectionalShadowMaxDistance:F0}/{sun.DirectionalShadowSplit3 * sun.DirectionalShadowMaxDistance:F0}, normal bias {sun.ShadowNormalBias}, bias {sun.ShadowBias}, blend splits {sun.DirectionalShadowBlendSplits}, mode {sun.DirectionalShadowMode}");
         GD.Print($"ROUTE world {_game.World}; load {load.Elapsed.TotalSeconds:F1} s; places at load: {_args.ContainsKey("places-at-load")}");
+        {
+            // The plants' meshes and their coarser versions, as the renderer holds them: triangles in each, all species together.
+            var levels = new List<long>();
+            foreach (GalHack.Plants.Plant plant in zone.Streamer.World.Flora.Book.Plants)
+                for (int v = 0; v < plant.Near.Length; v++)
+                {
+                    var surface = RenderingServer.MeshGetSurface(zone.Streamer.PlantMesh(plant.Index, v).GetRid(), 0);
+                    var counts = new List<long> { surface["index_count"].AsInt64() / 3 };
+                    if (surface.ContainsKey("lods"))
+                        foreach (Variant l in surface["lods"].AsGodotArray()) counts.Add(l.AsGodotDictionary()["index_data"].AsByteArray().Length / (surface["vertex_count"].AsInt64() > 65535 ? 4 : 2) / 3);
+                    for (int k = 0; k < counts.Count; k++) { if (levels.Count <= k) levels.Add(0); levels[k] += counts[k]; }
+                }
+            GD.Print($"ROUTE plant meshes, triangles: whole {(levels.Count > 0 ? levels[0] : 0)}, coarser versions {string.Join(", ", levels.Skip(1))}");
+        }
         zone.Weather.Bridge.Calm = true;
         zone.Weather.Sim.Snap(Weather.Model.WeatherKind.Clear);
         zone.Wildlife.Frozen = true;
+        _day = zone.Sky.TimeOfDay;
         Vector3 start = _game.Survivor.WorldFeet;
         // The way to the highest ground within 4 km.
         Vector3 way = Vector3.Forward;
@@ -124,7 +146,7 @@ public partial class PopRoute : Node
         foreach (bool pops in new[] { false, true })
         foreach (var (name, speed, length, up) in routes)
         {
-            _game.Survivor.PlaceOutside(Lift(start, up).ToNumerics());
+            _hold = Lift(start, up);
             for (int i = 0; i < 60; i++) yield return 0;
             foreach (int x in _drive.UntilSettled(40)) yield return x;
             for (int i = 0; i < 120; i++) yield return 0;
@@ -134,6 +156,7 @@ public partial class PopRoute : Node
         foreach (int x in Flicker(start)) yield return x;
         foreach (int x in Pinholes(start, way)) yield return x;
         foreach (int x in Turn(Densest(start))) yield return x;
+        foreach (int x in TreeCost(Densest(start))) yield return x;
         GD.Print($"ROUTE ruin trees planted: {_planted0} when the world showed, {(zone.Planet.Palette.Planted as System.Collections.ICollection)?.Count} at the end");
     }
 
@@ -148,7 +171,7 @@ public partial class PopRoute : Node
         var zone = _game.Zone;
         TerrainStreamer s = zone.Streamer;
         DirectionalLight3D sun = zone.Sky.Sun;
-        _game.Survivor.PlaceOutside(Lift(start, 115f).ToNumerics());
+        _hold = Lift(start, 115f);
         foreach (int x in _drive.Wait(60)) yield return x;
         foreach (int x in _drive.UntilSettled(40)) yield return x;
         foreach (int x in _drive.Wait(120)) yield return x;
@@ -234,6 +257,7 @@ public partial class PopRoute : Node
     /// <param name="pops">the pops pass: plants popping in view sampled every tenth of a second, and nothing else measured (--shots=dir: ringed frames of them)</param>
     IEnumerable<int> Route(string name, Vector3 start, Vector3 way, float speed, float length, float up, bool pops = false)
     {
+        _hold = null; // placed along the way each tick
         TerrainStreamer s = _game.Zone.Streamer;
         const int S = 16;
         var complete = new List<float>();
@@ -265,6 +289,8 @@ public partial class PopRoute : Node
         _frames.Clear();
         _gpu.Clear();
         double solids0 = s.SolidsTotalMs, physics = 0, physicsWorst = 0;
+        double[] buildMs0 = (double[])s.FarBuildMs.Clone();
+        int[] builds0 = (int[])s.FarBuilds.Clone();
         float along = 0f;
         int tick = 0;
         var floraPops = new List<FloraPop>();
@@ -369,6 +395,8 @@ public partial class PopRoute : Node
         _frames.Sort();
         _gpu.Sort();
         string swaps = string.Join(", ", Enumerable.Range(0, 3).Select(l => { var d = farSwaps.Where(q => q.Lod == l).Select(q => (double)q.Away).ToList(); return $"level {l} {d.Count / minutes:F0}/min at m {Q(d, true)}"; }));
+        string builds = string.Join(", ", Enumerable.Range(0, 3).Select(l => string.Create(CultureInfo.InvariantCulture, $"level {l} {(s.FarBuildMs[l] - buildMs0[l]) / Math.Max(1, s.FarBuilds[l] - builds0[l]):F1} ms (n {s.FarBuilds[l] - builds0[l]})")));
+        GD.Print($"ROUTE {name} far chunks built on workers, each: {builds}");
         GD.Print($"ROUTE {name} {speed:F0} m/s {length:F0} m: near ground complete to m {Q(complete.Select(c => (double)c).ToList(), true)}; " +
                  $"nearest far chunk short of its level (chunks) {Q(farShort.Where(f => f < int.MaxValue).Select(f => (double)f).ToList(), true)}, at 0 in {farShort.Count(f => f == 0) * 100 / Math.Max(1, farShort.Count)}% of samples; " +
                  $"queue {Q(pending.Select(c => (double)c).ToList())}; far chunks short of their level {Q(farBehind.Select(c => (double)c).ToList())}; column wait ms {Q(columnWait)}; level-0 far chunk wait ms {Q(farWait)}; " +
