@@ -16,7 +16,7 @@ namespace PoiGenerator.Gen;
 /// <item>A chimney up the middle of a wall that is whole from the ground to the roof, on through the roof and the
 /// builder's rise past it, capped in trim.</item>
 /// <item>A spire from the middle of a tower's top: a stepped base wider than its shaft, a point at its head.</item>
-/// <item>Decay: bars out of every torn concrete edge, every other cell along it, the way the slab or wall ran.</item>
+/// <item>Decay: bars up out of every broken concrete wall top, every other cell along it, the way the wall ran.</item>
 /// </list>
 /// Each builder (its world, tech level and faction or culture) rolls its own small set, spacing and proportions, so one
 /// world's places look related and two worlds' differ. An element that can't be laid whole is left out; nothing goes
@@ -384,9 +384,8 @@ public static class Ornament
                 }
             }
 
-        // Bars: out of the torn concrete edges the decay left, every other cell along each edge, the way the bars ran (level
-        // out of a slab's torn edge, up out of a broken wall's top), each torn edge whole; edges in the order
-        // the decay tore them, until about as many bars as a ruin shows.
+        // Bars: up out of the broken concrete wall tops the decay left, every other cell along each top, the way the bars ran,
+        // each top whole; tops in the order the decay tore them, until about as many bars as a ruin shows.
         if (inst.State != PoiState.Active && inst.Fallen.Count > 0)
         {
             var fallen = new HashSet<Int3>(inst.Fallen);
@@ -396,18 +395,12 @@ public static class Ornament
                 if (spots.TryGetValue(c, out Dir? known)) return known;
                 Dir? found = null;
                 if (fallen.Contains(c) && g.Get(c).IsAir && !mine.Contains(c) && !inst.Protected[c] && !lamps.Contains(c))
-                    foreach (Dir d in Dirs.All)
-                    {
-                        Block b = g.Get(c + d.Vec());
-                        // (Only out of an edge the slab or wall runs on behind: its bars ran that way. Out of a wall's face they never did.)
-                        if (d == Dir.Up || !BlockInfo.IsFullCube(b.Type) || b.Material is not (Material.Concrete or Material.Fused or Material.Armour) || !BlockInfo.IsFullCube(g.Get(c + d.Vec() * 2).Type)) continue;
-                        // (Up out of a wall's broken top, or level out of a slab's torn edge: never out of a wall's face.)
-                        // (A slab's edge only where it stands out of the face round it: an edge flush in a wall reads as a face.)
-                        bool proud = !BlockInfo.IsFullCube(g.Get(c + d.Vec() + Int3.Up).Type) || !BlockInfo.IsFullCube(g.Get(c + d.Vec() + Int3.Down).Type);
-                        // (Out of an edge, never a face: nothing solid beside the bar but what it comes out of.)
-                        if (Dirs.All.Any(h => h != d && (BlockInfo.Collides(g.Get(c + h.Vec()).Type) || mine.Contains(c + h.Vec())))) continue;
-                        if (b.Role == Role.Wall && d == Dir.Down || b.Role is Role.Floor or Role.Roof && d.IsHorizontal() && proud && !BlockInfo.Collides(g.Get(c + Int3.Down).Type)) { found = d; break; } // (a level bar has nothing under it to lie across)
-                    }
+                {
+                    // (Up out of a broken wall's top, concrete running on below it, nothing solid beside it: never out of a face.)
+                    Block b = g.Get(c + Int3.Down);
+                    if (b.Role == Role.Wall && BlockInfo.IsFullCube(b.Type) && b.Material is Material.Concrete or Material.Fused or Material.Armour && BlockInfo.IsFullCube(g.Get(c + Int3.Down * 2).Type)
+                        && !Dirs.All.Any(h => h != Dir.Down && (BlockInfo.Collides(g.Get(c + h.Vec()).Type) || mine.Contains(c + h.Vec())))) found = Dir.Down;
+                }
                 return spots[c] = found;
             }
             int most = System.Math.Min(600, 120 + inst.Fallen.Count / 12), laid = 0;
