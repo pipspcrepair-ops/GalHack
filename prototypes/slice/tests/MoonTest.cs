@@ -305,7 +305,7 @@ public partial class MoonTest : Node
                 Vector3 at = shell.GlobalPosition;
                 var hit = _game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(PhysicsRayQueryParameters3D.Create(from, at, GalHack.Physics.Layers.World));
                 if (hit.Count > 0 && hit["collider"].AsGodotObject() != shell) hidden++;
-                else if (hit.Count > 0 && MathF.Abs(from.DistanceTo((Vector3)hit["position"]) - (from.DistanceTo(at) - (float)body.Radius)) < 2f) met++;
+                else if (hit.Count > 0 && MathF.Abs(from.DistanceTo((Vector3)hit["position"]) - (from.DistanceTo(at) - (float)body.Radius)) < 6f) met++; // it moves on between ticks
             }
             Check(met + hidden == orbit.OtherSolids.Count, $"{when}: the {orbit.OtherSolids.Count} other bodies near with no ground here are solid at their true radius ({met} met by a ray, {hidden} behind another)");
         }

@@ -310,11 +310,16 @@ public partial class SpaceSky : Node3D
             material.SetShaderParameter("axis", axis);
             material.SetShaderParameter("zero", W(o.ToGlobe(bodyZero)).Normalized());
             material.SetShaderParameter("layer", _surfaces?.LayerOf(body) ?? -1);
+            // Another body's shadow on it (none, nearly always: nothing is set then, after the last one has gone).
             int casters = Umbrae(model, body, days, turn, _umbra, out float sun);
-            material.SetShaderParameter("umbra", _umbra);
-            material.SetShaderParameter("umbra_count", casters);
-            material.SetShaderParameter("umbra_sun", sun);
-            material.SetShaderParameter("red", casters > 0 && StarSystem.HasAir(_casters[0]) ? 1f : 0f);
+            if (casters > 0 || _shadowed.Remove(body))
+            {
+                if (casters > 0) _shadowed.Add(body);
+                material.SetShaderParameter("umbra", _umbra);
+                material.SetShaderParameter("umbra_count", casters);
+                material.SetShaderParameter("umbra_sun", sun);
+                material.SetShaderParameter("red", casters > 0 && StarSystem.HasAir(_casters[0]) ? 1f : 0f);
+            }
             if (body.Kind != OrbiterKind.GasGiant) continue;
             if (body.Rings && node.GetChild(0) is MeshInstance3D ring)
             {
@@ -331,6 +336,7 @@ public partial class SpaceSky : Node3D
 
     readonly Vector4[] _umbra = new Vector4[4];
     readonly List<Orbiter> _casters = new();
+    readonly HashSet<Orbiter> _shadowed = new();
 
     /// <summary>
     /// What can shadow a body now (<see cref="StarSystem.Casters"/>), as its globe and far look take them: each
