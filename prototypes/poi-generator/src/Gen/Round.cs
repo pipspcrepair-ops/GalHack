@@ -5,10 +5,16 @@ using System.Linq;
 
 namespace PoiGenerator.Gen;
 
-/// <summary>A round thing as built (<see cref="Round"/>): its centre on the map, and each course's outer and inner radius as laid (inner 0: solid through).</summary>
-public sealed record RoundBody(double X, double Z, int Y0, double[] Outer, double[] Inner)
+/// <summary>
+/// A round thing as built (<see cref="Round"/>): its centre on the map, and each course's outer and inner radius as laid at
+/// its foot (inner 0: solid through). One that runs in or out as it rises is laid true to its profile: <see cref="Profile"/>
+/// is its outer radius every half metre from the foot of its first course to the top of its last, <see cref="InnerProfile"/>
+/// the same inside, and each course's rim is cut by them (<see cref="BlockType.RoundSlope"/>).
+/// </summary>
+public sealed record RoundBody(double X, double Z, int Y0, double[] Outer, double[] Inner, double[]? Profile = null, double[]? InnerProfile = null)
 {
     public int Y1 => Y0 + Outer.Length - 1;
+    public bool Sloped => Profile != null;
 }
 
 /// <summary>
@@ -285,46 +291,71 @@ public static class Round
         foreach (RoundBody b in bodies)
             for (int y = b.Y0; y <= b.Y1; y++)
             {
-                double ro = b.Outer[y - b.Y0], ri = b.Inner[y - b.Y0];
-                for (int z = (int)Math.Floor(b.Z - ro) - 1; z <= (int)Math.Ceiling(b.Z + ro) + 1; z++)
-                    for (int x = (int)Math.Floor(b.X - ro) - 1; x <= (int)Math.Ceiling(b.X + ro) + 1; x++)
+                var (oLo, oHi, iLo, iHi) = Span(b, y - b.Y0);
+                for (int z = (int)Math.Floor(b.Z - oHi) - 1; z <= (int)Math.Ceiling(b.Z + oHi) + 1; z++)
+                    for (int x = (int)Math.Floor(b.X - oHi) - 1; x <= (int)Math.Ceiling(b.X + oHi) + 1; x++)
                     {
                         double d = Math.Sqrt((x + 0.5 - b.X) * (x + 0.5 - b.X) + (z + 0.5 - b.Z) * (z + 0.5 - b.Z));
                         // (No further out than a cell the outline crosses, nor further in on a hollow one: a neighbour's are its own.)
-                        if (d > ro - 2 && d <= ro + 0.75 || ri > 0 && d >= ri - 0.75 && d < ri + 2) rim.Add(new Int3(x, y, z));
+                        if (d > oLo - 2 && d <= oHi + 0.75 || iHi > 0 && d >= iLo - 0.75 && d < iHi + 2) rim.Add(new Int3(x, y, z));
                     }
             }
         return rim;
     }
 
+    /// <summary>The least and most a course's outside and inside radius come to over its height (a sloped round's run in or out within it).</summary>
+    public static (double OuterLo, double OuterHi, double InnerLo, double InnerHi) Span(RoundBody b, int k)
+    {
+        if (b.Profile is not { } po || b.InnerProfile is not { } pi) return (b.Outer[k], b.Outer[k], b.Inner[k], b.Inner[k]);
+        static double Lo(double[] a, int i) => Math.Min(a[i], Math.Min(a[i + 1], a[i + 2]));
+        static double Hi(double[] a, int i) => Math.Max(a[i], Math.Max(a[i + 1], a[i + 2]));
+        return (Lo(po, 2 * k), Hi(po, 2 * k), Lo(pi, 2 * k), Hi(pi, 2 * k));
+    }
+
     // ---- laying ---------------------------------------------------------------------------------------
 
     /// <summary>
-    /// Lays a round from course y0 to y1: each course's outer and inner radius (inner 0: solid), each eased to its fit, and
-    /// the block for it; each cell is set on the map, but those inside the inner round, or that <paramref name="hollow"/>
-    /// keeps open (a drum's rooms, planned by the block), which go to <paramref name="inside"/>; the body is noted for the
-    /// checks. Courses at or below the ground are laid whole, as the ground they meet.
+    /// Lays a round from course y0 to y1: its outer and inner radius at any height (inner 0: solid), and each course's block.
+    /// Each course is cut at the radii at its foot, each eased to its fit; but a round that runs in or out as it rises is cut
+    /// by its profile instead, every half metre up (<see cref="Slope"/>). Each cell is set on the map, but those inside the
+    /// inner round, or that <paramref name="hollow"/> keeps open (a drum's rooms, planned by the block), which go to
+    /// <paramref name="inside"/>; the body is noted for the checks and the mesher. Courses at or below the ground are laid
+    /// whole, as the ground they meet.
     /// </summary>
-    public static RoundBody Lay(Canvas c, double cx, double cz, int y0, int y1, Func<int, (double Outer, double Inner)> radius, Func<int, Block> block,
+    public static RoundBody Lay(Canvas c, double cx, double cz, int y0, int y1, Func<double, (double Outer, double Inner)> radius, Func<int, Block> block,
         Func<Int3, bool>? hollow = null, Action<Int3>? inside = null)
     {
-        var outer = new double[y1 - y0 + 1];
-        var inner = new double[outer.Length];
-        var made = new Dictionary<(double, double), Course>();
-        var fits = new Dictionary<double, double>();
-        double Fitted(double r) => r <= 0 ? r : fits.TryGetValue(r, out double f) ? f : fits[r] = Fit(cx, cz, r);
+        int n = y1 - y0 + 1;
+        (double, double) At(double y) { var (o, i) = radius(y); return (Math.Max(0, o), Math.Max(0, i)); }
+        bool Ground(int y) => y <= Assembler.GroundY && !c.X.InSpace;
+        var outer = new double[n];
+        var inner = new double[n];
+        for (int k = 0; k < n; k++) (outer[k], inner[k]) = At(y0 + k);
+        double[]? po = null, pi = null;
+        if (Cut && Enumerable.Range(0, n).Any(k => !Ground(y0 + k) && Math.Abs(At(y0 + k + 1).Item1 - outer[k]) > 0.01))
+        {
+            (po, pi) = (new double[2 * n + 1], new double[2 * n + 1]);
+            for (int h = 0; h <= 2 * n; h++) (po[h], pi[h]) = At(y0 + h / 2.0);
+        }
+        else
+        {
+            var fits = new Dictionary<double, double>();
+            double Fitted(double r) => r <= 0 ? r : fits.TryGetValue(r, out double f) ? f : fits[r] = Fit(cx, cz, r);
+            for (int k = 0; k < n; k++) if (!Ground(y0 + k)) (outer[k], inner[k]) = (Fitted(outer[k]), Fitted(inner[k]));
+        }
+        var body = new RoundBody(cx, cz, y0, outer, inner, po, pi);
+        var made = new Dictionary<(double, double, bool), Course>();
         for (int y = y0; y <= y1; y++)
         {
-            var (ro, ri) = radius(y);
-            bool ground = y <= Assembler.GroundY && !c.X.InSpace;
-            if (!ground) (ro, ri) = (Fitted(ro), Fitted(ri));
-            outer[y - y0] = ro;
-            inner[y - y0] = ri;
-            if (!made.TryGetValue((ro, ri), out Course? course))
+            double ro = outer[y - y0], ri = inner[y - y0];
+            bool ground = Ground(y);
+            Course? course;
+            if (body.Sloped && !ground) course = Slope(body, y);
+            else if (!made.TryGetValue((ro, ri, ground), out course))
             {
                 bool was = Cut;
                 if (ground) Cut = false;
-                try { made[(ro, ri)] = course = Ring(cx, cz, ro, ri); }
+                try { made[(ro, ri, ground)] = course = Ring(cx, cz, ro, ri); }
                 finally { Cut = was; }
             }
             Block b = block(y);
@@ -335,13 +366,211 @@ public static class Round
                 // (A cut never carves what stands already: over a whole block it leaves it, over another cut it fills the cell.)
                 Block was = c.Get(at);
                 if (p.Type != BlockType.Cube && BlockInfo.IsFullCube(was.Type)) continue;
-                bool both = p.Type != BlockType.Cube && BlockInfo.IsPlanCut(was.Type) && (was.Type != p.Type || was.Facing != p.Facing);
+                bool both = p.Type != BlockType.Cube && BlockInfo.IsRoundCut(was.Type) && (was.Type != p.Type || was.Facing != p.Facing);
                 c.Set(at, b with { Type = both ? BlockType.Cube : p.Type, Facing = p.Type == BlockType.Cube || both ? b.Facing : p.Facing });
             }
             if (inside != null) foreach (var (x, z) in course.Inside) inside(new Int3(x, y, z));
         }
-        var body = new RoundBody(cx, cz, y0, outer, inner);
         c.X.Rounds.Add(body);
         return body;
+    }
+
+    // ---- a sloped round's courses -----------------------------------------------------------------------
+
+    /// <summary>
+    /// A face of a sloped round's piece (<see cref="Pieces"/>), cell-local, wound anticlockwise seen from outside: on a side of
+    /// its cell (its index in <see cref="Dirs.All"/>), on the round's outside (<see cref="OuterFace"/>) or inside
+    /// (<see cref="InnerFace"/>), or a seam between two parts of one piece (<see cref="Seam"/>: within it, never seen).
+    /// </summary>
+    public readonly record struct SlopeFace(V3[] Pts, int Side);
+
+    public const int OuterFace = 6, InnerFace = 7, Seam = 8;
+
+    /// <summary>How many flats a sloped round has round its axis: about half a metre each at its widest, a multiple of four.</summary>
+    public static int Sides(RoundBody b) => 4 * Math.Max(6, (int)Math.Ceiling(2 * Math.PI * b.Profile!.Max() / 0.5 / 4));
+
+    /// <summary>
+    /// A course of a sloped round: each cell its profile cuts is a <see cref="BlockType.RoundSlope"/> (a corner of a cube
+    /// standing proud of a curve shows from far off, so only a cut of under a tenth of a litre counts as none), the cells of its
+    /// wall whole, those of its inside inside.
+    /// </summary>
+    static Course Slope(RoundBody b, int y)
+    {
+        var course = new Course();
+        var (oLo, oHi, iLo, iHi) = Span(b, y - b.Y0);
+        double shrink = Math.Cos(Math.PI / Sides(b));
+        for (int z = (int)Math.Floor(b.Z - oHi) - 1; z <= (int)Math.Ceiling(b.Z + oHi); z++)
+            for (int x = (int)Math.Floor(b.X - oHi) - 1; x <= (int)Math.Ceiling(b.X + oHi); x++)
+            {
+                double dx = Math.Max(0, Math.Max(x - b.X, b.X - x - 1)), dz = Math.Max(0, Math.Max(z - b.Z, b.Z - z - 1));
+                double near = Math.Sqrt(dx * dx + dz * dz), far = Math.Sqrt(Math.Pow(Math.Max(Math.Abs(x - b.X), Math.Abs(x + 1 - b.X)), 2) + Math.Pow(Math.Max(Math.Abs(z - b.Z), Math.Abs(z + 1 - b.Z)), 2));
+                if (near >= oHi) continue;
+                if (iLo > 0 && far <= iLo * shrink) { course.Inside.Add((x, z)); continue; }
+                if (far <= oLo * shrink && near >= iHi) { course.Solid.Add(new Piece(x, z, BlockType.Cube, Dir.North)); continue; }
+                double v = Volume(Pieces(b, new Int3(x, y, z)));
+                if (v > 0.99995) course.Solid.Add(new Piece(x, z, BlockType.Cube, Dir.North));
+                else if (v >= 0.00005) course.Solid.Add(new Piece(x, z, BlockType.RoundSlope, Dir.North));
+                else if (iHi > 0 && Math.Sqrt((x + 0.5 - b.X) * (x + 0.5 - b.X) + (z + 0.5 - b.Z) * (z + 0.5 - b.Z)) < iHi) course.Inside.Add((x, z));
+            }
+        return course;
+    }
+
+    /// <summary>
+    /// What a sloped round keeps of a cell: for each of its flats the cell crosses, each half of the cell's height cut by the
+    /// flat's outside (and inside) as it runs from the radius at the half's foot to the one at its head, straight between.
+    /// The flats are chords of the round, so each part is the cell cut by a few planes; the parts meet on seams.
+    /// </summary>
+    public static List<SlopeFace> Pieces(RoundBody b, Int3 cell)
+    {
+        var all = new List<SlopeFace>();
+        int k = cell.Y - b.Y0;
+        if (b.Profile is not { } po || b.InnerProfile is not { } pi || k < 0 || k >= b.Outer.Length) return all;
+        int n = Sides(b);
+        double step = 2 * Math.PI / n, chord = Math.Cos(step / 2);
+        float ax = (float)(b.X - cell.X), az = (float)(b.Z - cell.Z);
+        V3 axis = new(ax, 0, az);
+        // The flats the cell's square spans, seen from the axis (all of them if the axis is in it).
+        IEnumerable<int> flats;
+        if (ax > -0.01f && ax < 1.01f && az > -0.01f && az < 1.01f) flats = Enumerable.Range(0, n);
+        else
+        {
+            double mid = Math.Atan2(0.5 - az, 0.5 - ax), lo = 0, hi = 0;
+            foreach (var (x, z) in new[] { (0, 0), (1, 0), (0, 1), (1, 1) })
+            {
+                double d = Math.IEEERemainder(Math.Atan2(z - az, x - ax) - mid, 2 * Math.PI);
+                (lo, hi) = (Math.Min(lo, d), Math.Max(hi, d));
+            }
+            int first = (int)Math.Floor((mid + lo) / step) - 1, last = (int)Math.Floor((mid + hi) / step) + 1;
+            flats = Enumerable.Range(first, last - first + 1).Select(i => ((i % n) + n) % n);
+        }
+        foreach (int s in flats)
+        {
+            double a0 = s * step, a1 = a0 + step, am = a0 + step / 2;
+            V3 m = new((float)Math.Cos(am), 0, (float)Math.Sin(am));
+            for (int half = 0; half < 2; half++)
+            {
+                float y0 = half * 0.5f;
+                double ro0 = po[2 * k + half], ro1 = po[2 * k + half + 1], ri0 = pi[2 * k + half], ri1 = pi[2 * k + half + 1];
+                if (ro0 <= 0 && ro1 <= 0) continue;
+                var part = Cell(y0, y0 + 0.5f, half == 0 ? Dir.Up : Dir.Down);
+                // Between the flat's two edges (planes through the axis), inside its outside, outside its inside.
+                V3 e0 = new(-(float)Math.Sin(a0), 0, (float)Math.Cos(a0)), e1 = new(-(float)Math.Sin(a1), 0, (float)Math.Cos(a1));
+                part = Plane(part, e0 * -1f, V3.Dot(e0 * -1f, axis), Seam);
+                part = Plane(part, e1, V3.Dot(e1, axis), Seam);
+                float h0 = (float)(ro0 * chord), slope = (float)((ro1 - ro0) * chord / 0.5);
+                part = Plane(part, new V3(m.X, -slope, m.Z), h0 - slope * y0 + V3.Dot(m, axis), OuterFace);
+                if (ri0 > 0 || ri1 > 0)
+                {
+                    float g0 = (float)(ri0 * chord), gs = (float)((ri1 - ri0) * chord / 0.5);
+                    part = Plane(part, new V3(-m.X, gs, -m.Z), -g0 + gs * y0 - V3.Dot(m, axis), InnerFace);
+                }
+                if (part.Count >= 4) all.AddRange(part.Where(f => Area(f.Pts) > 1e-6f));
+            }
+        }
+        return all;
+    }
+
+    /// <summary>A cell's box from one height to another, its faces tagged by side; the face at <paramref name="seam"/> is a seam (the cell's other half is over or under it).</summary>
+    static List<SlopeFace> Cell(float y0, float y1, Dir seam)
+    {
+        V3 P(float x, float y, float z) => new(x, y, z);
+        var faces = new List<SlopeFace>
+        {
+            new(new[] { P(0, y0, 0), P(0, y1, 0), P(1, y1, 0), P(1, y0, 0) }, (int)Dir.North),
+            new(new[] { P(1, y0, 0), P(1, y1, 0), P(1, y1, 1), P(1, y0, 1) }, (int)Dir.East),
+            new(new[] { P(0, y0, 1), P(1, y0, 1), P(1, y1, 1), P(0, y1, 1) }, (int)Dir.South),
+            new(new[] { P(0, y0, 0), P(0, y0, 1), P(0, y1, 1), P(0, y1, 0) }, (int)Dir.West),
+            new(new[] { P(0, y1, 0), P(0, y1, 1), P(1, y1, 1), P(1, y1, 0) }, seam == Dir.Up ? Seam : (int)Dir.Up),
+            new(new[] { P(0, y0, 0), P(1, y0, 0), P(1, y0, 1), P(0, y0, 1) }, seam == Dir.Down ? Seam : (int)Dir.Down),
+        };
+        return faces;
+    }
+
+    /// <summary>A convex solid (its faces) cut by a plane, keeping where nÂ·q â‰¤ d; the cut's own face is tagged <paramref name="side"/>.</summary>
+    static List<SlopeFace> Plane(List<SlopeFace> faces, V3 n, float d, int side)
+    {
+        const float e = 1e-5f;
+        if (faces.All(f => f.Pts.All(q => V3.Dot(n, q) - d <= e))) return faces;
+        var kept = new List<SlopeFace>(faces.Count + 1);
+        var cap = new List<V3>();
+        foreach (SlopeFace f in faces)
+        {
+            var pts = new List<V3>(f.Pts.Length + 2);
+            for (int i = 0; i < f.Pts.Length; i++)
+            {
+                V3 a = f.Pts[i], c = f.Pts[(i + 1) % f.Pts.Length];
+                float sa = V3.Dot(n, a) - d, sc = V3.Dot(n, c) - d;
+                if (sa <= e) pts.Add(a);
+                if (MathF.Abs(sa) <= e) cap.Add(a);
+                if (sa < -e && sc > e || sa > e && sc < -e)
+                {
+                    V3 x = a + (c - a) * (sa / (sa - sc));
+                    pts.Add(x);
+                    cap.Add(x);
+                }
+            }
+            if (pts.Count >= 3) kept.Add(new SlopeFace(pts.ToArray(), f.Side));
+        }
+        // The cut face: the points on the plane, in order round their middle, wound to look along n.
+        var ring = new List<V3>();
+        foreach (V3 q in cap) if (!ring.Any(r => MathF.Abs(r.X - q.X) + MathF.Abs(r.Y - q.Y) + MathF.Abs(r.Z - q.Z) < 1e-4f)) ring.Add(q);
+        if (ring.Count >= 3)
+        {
+            V3 mid = ring.Aggregate(new V3(0, 0, 0), (s, q) => s + q) * (1f / ring.Count), u = (ring[0] - mid).Normalized(), w = V3.Cross(n, u);
+            var face = ring.OrderBy(q => MathF.Atan2(V3.Dot(q - mid, w), V3.Dot(q - mid, u))).ToArray();
+            if (V3.Dot(V3.Cross(face[1] - face[0], face[2] - face[0]), n) < 0) Array.Reverse(face);
+            kept.Add(new SlopeFace(face, side));
+        }
+        return kept;
+    }
+
+    static float Area(V3[] pts)
+    {
+        V3 s = new(0, 0, 0);
+        for (int i = 1; i + 1 < pts.Length; i++) s += V3.Cross(pts[i] - pts[0], pts[i + 1] - pts[0]);
+        return MathF.Sqrt(V3.Dot(s, s)) / 2;
+    }
+
+    /// <summary>The volume a closed set of faces wound outward holds.</summary>
+    public static double Volume(List<SlopeFace> faces)
+    {
+        double v = 0;
+        foreach (SlopeFace f in faces)
+            for (int i = 1; i + 1 < f.Pts.Length; i++) v += V3.Dot(f.Pts[0], V3.Cross(f.Pts[i], f.Pts[i + 1])) / 6.0;
+        return v;
+    }
+
+    /// <summary>The sloped round a cell of a sloped course belongs to, among a place's rounds (null if none).</summary>
+    public static RoundBody? BodyAt(IReadOnlyList<RoundBody>? rounds, Int3 cell)
+    {
+        if (rounds == null) return null;
+        foreach (RoundBody b in rounds)
+        {
+            if (!b.Sloped || cell.Y < b.Y0 || cell.Y > b.Y1) continue;
+            var (_, oHi, iLo, _) = Span(b, cell.Y - b.Y0);
+            double dx = Math.Max(0, Math.Max(cell.X - b.X, b.X - cell.X - 1)), dz = Math.Max(0, Math.Max(cell.Z - b.Z, b.Z - cell.Z - 1));
+            if (dx * dx + dz * dz < oHi * oHi) return b;
+        }
+        return null;
+    }
+
+    /// <summary>Whether a sloped round's piece in a cell takes in the whole face of its cell toward a side (a block beside it shows nothing there).</summary>
+    public static bool Fills(RoundBody b, Int3 cell, Dir side) => Pieces(b, cell).Where(f => f.Side == (int)side).Sum(f => Area(f.Pts)) > 0.999f;
+
+    /// <summary>
+    /// The way a sloped round's outside (or inside) looks at a point on it, cell-local: out from its axis, and up or down as
+    /// the profile runs there, eased from one half metre's slope to the next, so the round shades as one smooth surface (a
+    /// flat-by-flat frame read as fluting: each flat took its finish from its own start).
+    /// </summary>
+    public static V3 Normal(RoundBody b, Int3 cell, V3 q, bool outside)
+    {
+        double[] p = outside ? b.Profile! : b.InnerProfile!;
+        double h = Math.Clamp((cell.Y - b.Y0 + q.Y) * 2, 0, p.Length - 1);
+        double Run(int i) => (p[Math.Min(i + 1, p.Length - 1)] - p[Math.Max(i - 1, 0)]) / ((Math.Min(i + 1, p.Length - 1) - Math.Max(i - 1, 0)) / 2.0);
+        int i0 = Math.Min((int)h, p.Length - 2);
+        double run = Run(i0) + (Run(i0 + 1) - Run(i0)) * (h - i0);
+        V3 r = new V3(q.X - (float)(b.X - cell.X), 0, q.Z - (float)(b.Z - cell.Z)).Normalized();
+        V3 n = new V3(r.X, -(float)run, r.Z).Normalized();
+        return outside ? n : n * -1f;
     }
 }

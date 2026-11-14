@@ -527,14 +527,14 @@ public static class BrutalComplex
     {
         Fab f = p.F;
         const int H = 30;
-        double RadiusAt(int j)
+        double RadiusAt(double j)
         {
-            double t = j / (double)H, waist = 0.7;
+            double t = j / H, waist = 0.7;
             return 11 + 7 * Math.Pow(Math.Abs(t - waist) / waist, 2) + (t > waist ? 8 * (t - waist) : 0);
         }
-        // The shell round outside, course by course as it waists and flares; inside, the blocks open as planned.
+        // The shell round outside, true to its waist and flare; inside, the blocks open as planned.
         var (x, z) = p.At(2 * ci, 2 * ck);
-        Round.Lay(p.C, x, z, 0, 2 * H - 1, y => (2 * RadiusAt(y >> 1) + 0.5, 0), y => Plot.Cube((y >> 1) % 6 == 5 ? f.Wall.Scale(0.9f) : f.Wall, Role.Wall),
+        Round.Lay(p.C, x, z, 0, 2 * H - 1, y => (2 * RadiusAt(y / 2) + 0.5, 0), y => Plot.Cube((y >> 1) % 6 == 5 ? f.Wall.Scale(0.9f) : f.Wall, Role.Wall),
             c => p.BlockAt(c) is var (i, k) && Plot.In(ci, ck, RadiusAt(c.Y >> 1) - 1.4, i, k));
         var cells = new List<(int, int, int)>();
         int r0 = (int)RadiusAt(0) + 2;
