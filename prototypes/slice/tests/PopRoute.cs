@@ -426,13 +426,14 @@ public partial class PopRoute : Node
     /// Per route: near ground at least, trees appearing at least, column wait at most, shadow casters redrawn in view at most, frames
     /// over 16.7 ms a minute at most, frame p99 at most, plants popping in view a minute at most. Trees and pops from the one-drawing
     /// trees (cb249a21 on): no pops on any route (412, 1940 and 6102 trees a minute before), and the only trees still appearing
-    /// are far chunks coming in, 470 m off at the nearest.
+    /// are far chunks coming in, 470 m off at the nearest. Shadow casters redrawn from the GPU far ground (99ddbe89 on): the ground
+    /// is never redrawn, only far chunks' flora (8, 242 and 229 a minute at the most measured on walk, bike and fly).
     /// </summary>
     static readonly Dictionary<string, Limit> Limits = new()
     {
-        ["walk"] = new(88, double.NaN, double.NaN, 60, 60, 20, 10), // (a walk sees too few trees and columns to judge them appearing)
-        ["bike"] = new(88, 350, 220, 400, 100, 20, 10),
-        ["fly"] = new(72, 350, 360, 700, 180, 25, 10),
+        ["walk"] = new(88, double.NaN, double.NaN, 30, 60, 20, 10), // (a walk sees too few trees and columns to judge them appearing)
+        ["bike"] = new(88, 350, 220, 300, 100, 20, 10),
+        ["fly"] = new(72, 350, 360, 350, 180, 25, 10),
     };
 
     int _gateFails;
