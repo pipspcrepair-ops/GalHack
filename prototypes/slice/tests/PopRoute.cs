@@ -334,7 +334,7 @@ public partial class PopRoute : Node
     /// <summary>Per route: near ground at least, trees appearing at least, column wait at most, shadow casters redrawn in view at most, frames over 16.7 ms a minute at most, frame p99 at most.</summary>
     static readonly Dictionary<string, Limit> Limits = new()
     {
-        ["walk"] = new(88, 0, double.MaxValue, 60, 60, 20),
+        ["walk"] = new(88, double.NaN, double.NaN, 60, 60, 20), // (a walk sees too few trees and columns to judge)
         ["bike"] = new(88, 150, 220, 400, 100, 20),
         ["fly"] = new(72, 180, 360, 700, 180, 25),
     };
@@ -343,7 +343,7 @@ public partial class PopRoute : Node
 
     void Gate(string what, double value, double limit, bool atLeast, string unit)
     {
-        if (!_args.ContainsKey("check") || double.IsNaN(value)) return;
+        if (!_args.ContainsKey("check") || double.IsNaN(value) || double.IsNaN(limit)) return;
         bool ok = atLeast ? value >= limit : value <= limit;
         if (!ok) _gateFails++;
         GD.Print(string.Create(CultureInfo.InvariantCulture, $"  {(ok ? "ok   " : "FAIL ")} {what} {value:F1} {unit} ({(atLeast ? "at least" : "at most")} {limit:F0})"));
