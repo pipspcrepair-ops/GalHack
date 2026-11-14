@@ -62,6 +62,7 @@ public partial class PopRoute
                 {
                     Image marked = null;
                     double share = Unlike(last.Img, last.B, now._drawn, now._drawnBasis, ref marked);
+                    if (share < 0) continue; // the light changed (lightning): no frame to compare
                     shares.Add(share);
                     if (share > worst) (worst, worstNow, worstBefore) = (share, marked, last.Img);
                 }
@@ -87,12 +88,14 @@ public partial class PopRoute
 
     /// <summary>
     /// The share of a frame's pixels (%) unlike every pixel round where they were the frame before, the view having only
-    /// turned: luminance more than 0.1 apart from all nine. Marks them red on a copy of the frame.
+    /// turned: luminance more than 0.1 apart from all nine. Marks them red on a copy of the frame. -1 where the whole
+    /// frame's light changed (a flash of lightning).
     /// </summary>
     double Unlike(Image before, Basis was, Image now, Basis basis, ref Image marked)
     {
         int w = before.GetWidth(), h = before.GetHeight();
         byte[] a = before.GetData(), b = now.GetData();
+        if (Math.Abs(a.Average(v => (double)v) - b.Average(v => (double)v)) > 2.5) return -1;
         float f = h * 0.5f / MathF.Tan(Mathf.DegToRad(_game.Camera.Fov) * 0.5f);
         Basis back = was.Transposed() * basis;
         static float Lum(byte[] d, int i) => (0.2126f * d[i] + 0.7152f * d[i + 1] + 0.0722f * d[i + 2]) / 255f;

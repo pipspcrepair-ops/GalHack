@@ -282,24 +282,8 @@ public partial class TerrainStreamer : Node3D
         IReadOnlyList<Plant> plants = World.Flora.Book.Plants;
         _plantMeshes = new Mesh[plants.Count][];
         // A plant is drawn with its own mesh at every distance (the herbarium's far meshes were other, simpler shapes: a swap showed).
-        foreach (Plant p in plants) _plantMeshes[p.Index] = Array.ConvertAll(p.Near, m => WithLods(PlantMeshes.ToGodot(m)));
+        foreach (Plant p in plants) _plantMeshes[p.Index] = Array.ConvertAll(p.Near, PlantMeshes.ToGodot);
         StartCover();
-    }
-
-    /// <summary>
-    /// A mesh with coarser versions of itself, which the renderer draws instead once their difference from the whole is
-    /// under a pixel on screen (its own choice, by the batch's distance): a far tree is the same tree, in fewer triangles.
-    /// </summary>
-    static ArrayMesh WithLods(ArrayMesh mesh)
-    {
-        var tool = new SurfaceTool();
-        tool.CreateFrom(mesh, 0);
-        tool.Index();
-        var lods = new ImporterMesh();
-        lods.AddSurface(Mesh.PrimitiveType.Triangles, tool.CommitToArrays());
-        // Faces of a plant are flat-shaded: every corner is merged with those at its place, whatever their normals, so the coarser versions can cross them.
-        lods.GenerateLods(180f, 180f, new Godot.Collections.Array());
-        return lods.GetMesh();
     }
 
     /// <summary>Flora's material (tests draw plants with it), and a kind's own mesh (rocks and what the herbarium has no species for).</summary>

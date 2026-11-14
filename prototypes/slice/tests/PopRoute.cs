@@ -97,20 +97,6 @@ public partial class PopRoute : Node
                  $"ground detail {zone.Streamer.VoxelRadius}, detail distance {DetailReach.Distance}, level-0 radius {TerrainStreamer.FarLod0Radius}, far radius {TerrainStreamer.FarRadius}, " +
                  $"sun shadows {sun.DirectionalShadowMaxDistance} m, splits {sun.DirectionalShadowSplit1 * sun.DirectionalShadowMaxDistance:F0}/{sun.DirectionalShadowSplit2 * sun.DirectionalShadowMaxDistance:F0}/{sun.DirectionalShadowSplit3 * sun.DirectionalShadowMaxDistance:F0}, normal bias {sun.ShadowNormalBias}, bias {sun.ShadowBias}, blend splits {sun.DirectionalShadowBlendSplits}, mode {sun.DirectionalShadowMode}");
         GD.Print($"ROUTE world {_game.World}; load {load.Elapsed.TotalSeconds:F1} s; places at load: {_args.ContainsKey("places-at-load")}");
-        {
-            // The plants' meshes and their coarser versions, as the renderer holds them: triangles in each, all species together.
-            var levels = new List<long>();
-            foreach (GalHack.Plants.Plant plant in zone.Streamer.World.Flora.Book.Plants)
-                for (int v = 0; v < plant.Near.Length; v++)
-                {
-                    var surface = RenderingServer.MeshGetSurface(zone.Streamer.PlantMesh(plant.Index, v).GetRid(), 0);
-                    var counts = new List<long> { (surface.ContainsKey("index_count") ? surface["index_count"] : surface["vertex_count"]).AsInt64() / 3 };
-                    if (surface.ContainsKey("lods"))
-                        foreach (Variant l in surface["lods"].AsGodotArray()) counts.Add(l.AsGodotDictionary()["index_data"].AsByteArray().Length / (surface["vertex_count"].AsInt64() > 65535 ? 4 : 2) / 3);
-                    for (int k = 0; k < counts.Count; k++) { if (levels.Count <= k) levels.Add(0); levels[k] += counts[k]; }
-                }
-            GD.Print($"ROUTE plant meshes, triangles: whole {(levels.Count > 0 ? levels[0] : 0)}, coarser versions {string.Join(", ", levels.Skip(1))}");
-        }
         zone.Weather.Bridge.Calm = true;
         zone.Weather.Sim.Snap(Weather.Model.WeatherKind.Clear);
         zone.Wildlife.Frozen = true;
@@ -411,12 +397,17 @@ public partial class PopRoute : Node
 
     sealed record Limit(double Ground, double Trees, double ColumnWait, double ShadowPops, double Over, double P99, double PlantPops);
 
-    /// <summary>Per route: near ground at least, trees appearing at least, column wait at most, shadow casters redrawn in view at most, frames over 16.7 ms a minute at most, frame p99 at most, plants popping in view a minute at most.</summary>
+    /// <summary>
+    /// Per route: near ground at least, trees appearing at least, column wait at most, shadow casters redrawn in view at most, frames
+    /// over 16.7 ms a minute at most, frame p99 at most, plants popping in view a minute at most. Trees and pops from the one-drawing
+    /// trees (cb249a21 on): no pops on any route (412, 1940 and 6102 trees a minute before), and the only trees still appearing
+    /// are far chunks coming in, 470 m off at the nearest.
+    /// </summary>
     static readonly Dictionary<string, Limit> Limits = new()
     {
-        ["walk"] = new(88, double.NaN, double.NaN, 60, 60, 20, double.NaN), // (a walk sees too few trees and columns to judge)
-        ["bike"] = new(88, 150, 220, 400, 100, 20, double.NaN),
-        ["fly"] = new(72, 180, 360, 700, 180, 25, double.NaN),
+        ["walk"] = new(88, double.NaN, double.NaN, 60, 60, 20, 10), // (a walk sees too few trees and columns to judge them appearing)
+        ["bike"] = new(88, 350, 220, 400, 100, 20, 10),
+        ["fly"] = new(72, 350, 360, 700, 180, 25, 10),
     };
 
     int _gateFails;
