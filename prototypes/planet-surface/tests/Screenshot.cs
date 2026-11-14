@@ -119,7 +119,40 @@ public partial class Screenshot : Node
             return (new Vector3((float)x, ground + (float)Num("up", 20), (float)z), (float)Num("heading", 0), (float)Num("pitch", -8));
         }, Num("time", 0.42), weather, Force: force, BeforeCapture: AddFigure,
             Series: _args.TryGetValue("ground", out string groundView) ? m => GroundShots(m, groundView)
+                : _args.TryGetValue("shores", out string shoreView) ? m => ShoreShots(m, shoreView)
                 : cityView == null ? null : m => m.World.Infra.City is { Sites.Count: > 0 } city ? CityShots(m, city, cityView) : null);
+    }
+
+    /// <summary>
+    /// Where a river meets the sea (--shores=all, or mouth, reach or bank): the first river of the world's own order
+    /// with a mouth, at the mouth, where it widens 120 m upstream and at a bank 400 m up, each from the bank at a
+    /// person's height looking downstream and from 40 m up.
+    /// </summary>
+    List<Shot> ShoreShots(Main m, string which)
+    {
+        var w = m.World;
+        float Ground(Vector3 p) => w.GroundHeight(Mathx.WrapX(p.X, w.Width), Mathx.Wrap(p.Z, w.Height));
+        Shot Toward(string name, Vector3 from, Vector3 to)
+        {
+            Vector3 d = to - from;
+            return new Shot(name, from, Mathf.RadToDeg(Mathf.Atan2(d.X, -d.Z)), Mathf.RadToDeg(Mathf.Atan2(d.Y, new Vector2(d.X, d.Z).Length())));
+        }
+        var shots = new List<Shot>();
+        foreach (SurfaceTest.ShoreSite s in SurfaceTest.ShoreSites(w, new Random(0), 1).Where(s => s.Kind != "coast" && (which == "all" || which == s.Kind)))
+        {
+            var at = new Vector3((float)s.X, 0f, (float)s.Z);
+            var flow = new Vector3(s.DirX, 0f, s.DirZ);
+            var side = new Vector3(-flow.Z, 0f, flow.X);
+            at.Y = Mathf.Max(Ground(at), 0f);
+            Vector3 stand = at - flow * 25f + side * (s.Width * 0.5f + 5f);
+            stand.Y = Mathf.Max(Ground(stand), 0f) + 1.7f;
+            Vector3 air = at - flow * 45f + side * 25f;
+            air.Y = at.Y + 40f;
+            GD.Print($"shore {s.Kind} at {s.X:F0},{s.Z:F0}: river {s.Width:F0} m wide running {s.DirX:F2},{s.DirZ:F2}, its level there {s.Along:F2} m");
+            shots.Add(Toward($"{s.Kind}-ground", stand, at + flow * 15f));
+            shots.Add(Toward($"{s.Kind}-air", air, at + flow * 10f));
+        }
+        return shots;
     }
 
     /// <summary>

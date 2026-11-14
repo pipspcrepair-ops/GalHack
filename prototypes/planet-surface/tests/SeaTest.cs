@@ -55,17 +55,16 @@ public partial class SeaTest : Node
             // Points along every coast: a fine walk across map cells where the sea's margin runs.
             for (int k = 0; k < w.Map.Count && coast < 20000; k += 7)
             {
-                if (MathF.Abs(w.Map.Elevation[k] + PlanetTerrainSource.SeaMaskDepth) > 6f) continue;
+                if (MathF.Abs(w.Map.SeaDepth[k] - WorldMap.SeaFrom) > 6f) continue;
                 int i = k % w.Map.Width, j = k / w.Map.Width;
                 for (int s = 0; s < 6; s++)
                 {
                     double x = (i + rand.NextDouble()) * w.Map.CellSize, z = (j + rand.NextDouble()) * w.Map.CellSize;
                     coast++;
-                    bool drawn = PlanetWorld.SeaMaskAt(mask, x, z, w.Width, w.Height) >= PlanetTerrainSource.SeaMaskDepth;
-                    float e = w.Map.Sample(w.Map.Elevation, x, z);
-                    bool sea = e < -PlanetTerrainSource.SeaMaskDepth;
+                    bool drawn = PlanetWorld.SeaMaskAt(mask, x, z, w.Width, w.Height) > WorldMap.SeaFrom;
+                    float depth = w.Map.Sample(w.Map.SeaDepth, x, z);
                     // Half floats round a little: only a hair either side of the margin may read either way.
-                    if (drawn != sea && MathF.Abs(e + PlanetTerrainSource.SeaMaskDepth) > 0.01f) disagree++;
+                    if (drawn != w.Map.IsSea(x, z) && MathF.Abs(depth - WorldMap.SeaFrom) > 0.01f) disagree++;
                     if (drawn || source.Sampler.Sample(x, z, 4).InRiver) continue;
                     // Where the sea isn't drawn, the ground stands at least at its surface: nothing it would hang over.
                     float g = source.SurfaceHeight(x, z);

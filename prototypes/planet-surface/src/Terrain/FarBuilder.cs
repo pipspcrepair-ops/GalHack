@@ -50,7 +50,6 @@ public sealed class FarJob
     public Vector2[] Relief;
     public int[] Indices;
     public Vector3[] WaterVertices;
-    public Color[] WaterColors;     // alpha 1 on the channel, 0 on the ring past it: the shader frays the edge there
     public int[] WaterIndices;
     public readonly List<FloraBatch> Flora = new();
 
@@ -204,7 +203,7 @@ public static class FarBuilder
             AddCurtains(job, grid, step, indices, source, palette, x0, z0);
             job.Indices = indices.ToArray();
 
-            BuildRiverWater(job, grid, step, level, river, height, (i, j) => job.Lod == 0 && Opened(source, x0 + i * step, z0 + j * step, height[grid.Sample(i, j)]));
+            BuildRiverWater(job, grid, step, level, river, height, source, x0, z0);
             Scatter(job, source, palette, dug, felled, grid, step, height, river, up, relief);
             job.Milliseconds = watch.Elapsed.TotalMilliseconds;
         }
@@ -710,18 +709,24 @@ public static class FarBuilder
         return y[lo] + (y[hi] - y[lo]) * ((u - at[lo]) / MathF.Max(at[hi] - at[lo], 1e-6f));
     }
 
-    /// <summary>Flat water at the river's surface over every grid square that touches the channel.</summary>
-    static void BuildRiverWater(FarJob job, Grid grid, float step, float[] level, bool[] river, float[] height, Func<int, int, bool> opened)
+    /// <summary>
+    /// Flat water at the river's surface over every grid square near the channel. It runs a square past the
+    /// channel, in under the banks, so wherever it meets the land the ground's own surface makes its edge, never
+    /// the squares': off the channel a vertex keeps the nearest channel sample's level unless the ground there is
+    /// lower, and then sinks under it (at the finest level under the voxels' own ground too, which this level's
+    /// samples don't follow to the centimetre). Where a river has come down to the sea the shader leaves its
+    /// water to the sea, at the same level.
+    /// </summary>
+    static void BuildRiverWater(FarJob job, Grid grid, float step, float[] level, bool[] river, float[] height, PlanetTerrainSource source, double x0, double z0)
     {
         int g = grid.G;
         var verts = new List<Vector3>();
-        var colors = new List<Color>();
         var indices = new List<int>();
-        var map = new Dictionary<int, int>();
+        var vertexOf = new Dictionary<int, int>();
         int Vertex(int i, int j)
         {
             int s = grid.Sample(i, j);
-            if (map.TryGetValue(s, out int v)) return v;
+            if (vertexOf.TryGetValue(s, out int v)) return v;
             v = verts.Count;
             float l = level[s];
             if (!river[s])
@@ -733,17 +738,24 @@ public static class FarBuilder
                     if (t >= 0 && t < river.Length && river[t]) { l = level[t]; break; }
                 }
             }
-            float y = l - PlanetTerrainSource.RiverDrop;
-            // The sheet's rim goes under this same ground, stamps and all, so it can't stand proud of it.
-            if (!river[s]) y = Math.Min(y, height[s] - 0.3f);
+            float y = l - SurfaceSampler.RiverDrop;
+            // (Not a river come down to the sea: at the sea's level, ground beside it lower still is the sea's own water.)
+            if (!river[s] && y > source.WaterLevel)
+            {
+                float ground = job.Lod == 0 ? MathF.Min(height[s], source.SurfaceHeight(x0 + i * step, z0 + j * step)) : height[s];
+                y = MathF.Min(y, ground - 0.3f);
+            }
             verts.Add(new Vector3(i * step, y, j * step));
-            colors.Add(new Color(1, 1, 1, river[s] ? 1f : 0f));
-            map[s] = v;
+            vertexOf[s] = v;
             return v;
         }
-        // Water reaches one grid square past the channel, under the banks, so the ground hides its
-        // edge instead of a staircase of quads. Its level comes from the nearest channel sample.
-        // Where the banks are too low to hide it, the shader frays the edge across that square.
+        // Never over a place's opening dug down from the bank: the sheet would hang over it. (Only round a place
+        // that digs: the voxels' ground under a far sample isn't open anywhere else, steep channel sides and all.)
+        bool Opened(int i, int j)
+        {
+            double x = x0 + i * step, z = z0 + j * step;
+            return job.Lod == 0 && NearDug(source, x, z, 0f) && FarBuilder.Opened(source, x, z, height[grid.Sample(i, j)]);
+        }
         bool Wet(int i, int j) => i >= 0 && j >= 0 && i < grid.Nx && j < grid.Nz && river[grid.Sample(i, j)];
         for (int j = 0; j < grid.Nz - 1; j++)
         for (int i = 0; i < grid.Nx - 1; i++)
@@ -752,16 +764,13 @@ public static class FarBuilder
             for (int dj = -1; dj <= 2 && !wet; dj++)
             for (int di = -1; di <= 2 && !wet; di++)
                 wet = Wet(i + di, j + dj);
-            if (!wet) continue;
-            // Never over a place's opening dug down from the bank: the sheet would hang over it.
-            if (opened(i, j) || opened(i + 1, j) || opened(i, j + 1) || opened(i + 1, j + 1)) continue;
+            if (!wet || Opened(i, j) || Opened(i + 1, j) || Opened(i, j + 1) || Opened(i + 1, j + 1)) continue;
             int a = Vertex(i, j), b = Vertex(i + 1, j), c = Vertex(i, j + 1), d = Vertex(i + 1, j + 1);
             indices.Add(a); indices.Add(b); indices.Add(c);
             indices.Add(b); indices.Add(d); indices.Add(c);
         }
         if (indices.Count == 0) return;
         job.WaterVertices = verts.ToArray();
-        job.WaterColors = colors.ToArray();
         job.WaterIndices = indices.ToArray();
     }
 

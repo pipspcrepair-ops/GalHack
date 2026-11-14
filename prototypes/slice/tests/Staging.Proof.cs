@@ -118,9 +118,7 @@ public partial class Staging
             {
                 float ang = a * MathF.Tau / 64f;
                 Vector3 at = start + new Vector3(MathF.Cos(ang), 0, MathF.Sin(ang)) * r, on = at + new Vector3(MathF.Cos(ang), 0, MathF.Sin(ang)) * 4f;
-                float e0 = planet.Map.Sample(planet.Map.Elevation, Planets.Gen.Mathx.WrapX(at.X, planet.Width), Planets.Gen.Mathx.Wrap(at.Z, planet.Height));
-                float e1 = planet.Map.Sample(planet.Map.Elevation, Planets.Gen.Mathx.WrapX(on.X, planet.Width), Planets.Gen.Mathx.Wrap(on.Z, planet.Height));
-                if (e0 >= -GalHack.Terrain.PlanetTerrainSource.SeaMaskDepth && e1 < -GalHack.Terrain.PlanetTerrainSource.SeaMaskDepth && planet.GroundHeight(at.X, at.Z) < 2f)
+                if (!planet.Map.IsSea(at.X, at.Z) && planet.Map.IsSea(on.X, on.Z) && planet.GroundHeight(at.X, at.Z) < 2f)
                 {
                     shore = at;
                     seaward = (on - at).Normalized();

@@ -11,7 +11,9 @@ global uniform vec4 weather_wind;
 global uniform vec4 weather_ground;
 
 uniform sampler2D sea_map : filter_linear, repeat_enable;  // r: metres below sea level by world-map cell (negative on land)
-uniform float sea_mask = 0.48;  // the sea is where it's deeper than this, as the terrain and physics have it (PlanetTerrainSource.SeaMaskDepth)
+// The sea is where the map is deeper than this, as the terrain and physics have it (WorldMap.SeaFrom): out in under
+// the shore, so the ground makes the water's edge. Rivers read it too: where one reaches the sea it is the sea.
+uniform float sea_mask = -1.5;
 uniform bool sea = false;
 // Ground the map calls sea but that holds none (a place's pad, its rooms dug below sea level): the sea
 // draws nothing there, or it shows through their openings. r 1 dry, over dry_area (x, z of its corner, size m; w 1 on).
@@ -26,6 +28,7 @@ uniform float rain = 0.0;       // what's falling where the camera is
 uniform vec3 rim = vec3(0.0, 0.0, -1.0);  // the sea ends with the land's own mesh: see past_rim
 
 varying vec3 wpos;
+varying float level;   // the surface's own height, before it sinks over the horizon
 
 // Rain rings: a drop lands in each small cell of a grid at its own moment. Its ripple starts tight
 // at the point of impact, runs out quickly while fading, and is a short packet of two or three thin
@@ -64,6 +67,7 @@ vec3 rain_rings(vec2 p, float t, float amount) {
 }
 void vertex() {
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	level = wpos.y;
 	// The sea sinks over the horizon with the land (round_sink): the plane is subdivided for it.
 	float sink = round_sink(wpos.xz - CAMERA_POSITION_WORLD.xz);
 	VERTEX.y -= sink;
@@ -72,9 +76,9 @@ void vertex() {
 
 void fragment() {
 	if (past_rim(wpos.xz, rim, FRAGCOORD.xy)) discard;
-	float depth = 0.25; // rivers: shallow
+	float below = texture(sea_map, wpos.xz / planet_size).r;
+	float depth;
 	if (sea) {
-		float below = texture(sea_map, wpos.xz / planet_size).r;
 		if (below < sea_mask) discard;
 		if (dry_area.w > 0.5) {
 			vec2 uv = (wpos.xz - dry_area.xy) / dry_area.z;
@@ -82,11 +86,11 @@ void fragment() {
 		}
 		depth = clamp(below / 120.0, 0.0, 1.0);
 	} else {
-		// River quads run one grid square past the channel (vertex alpha 0 there). Where the banks
-		// are too low to hide that edge it would show as a staircase of squares: fray it with noise
-		// partway across instead, so the shore wanders like a real one. Still opaque: no sorting.
-		float shore = COLOR.a + (pnoise(wpos * 0.35, planet_size * 0.35) - 0.5) * 0.7;
-		if (shore < 0.45) discard;
+		// A river that has come down to the sea where the sea is drawn is the sea: one surface, drawn once.
+		if (below >= sea_mask && level < 0.05) discard;
+		// Shallow, and over its last ten metres of fall to the sea (on the map) the colour of the sea at its shore,
+		// so the two meet without a line.
+		depth = 0.25 * (1.0 - smoothstep(sea_mask - 10.0, sea_mask, below));
 	}
 	vec2 p = wpos.xz;
 	float t = TIME;

@@ -222,6 +222,7 @@ public partial class SurfaceZone : Node3D
 
         Edits = new PlanetEdits(Planet.Terrain, Streamer, Physics);
         Edits.Edited += edit => Infra.GroundDug(edit.Removed); // an ore rock doesn't hang on over a hole
+        Edits.Edited += edit => DugDry(edit.Removed);
         Edits.Edited += _ => Light.Touch();
         Physics.Terrain = Edits;
         Ground = new PlanetGround(Planet, Streamer) { Ceiling = Physics.Zone.Ceiling };
@@ -369,6 +370,8 @@ public partial class SurfaceZone : Node3D
         return hit.Count > 0 ? hit["position"].AsVector3().Y : natural;
     }
 
+    ImageTexture _seaMap;
+
     ShaderMaterial WaterMaterial(bool sea)
     {
         WorldLook look = Planet.Look;
@@ -377,12 +380,10 @@ public partial class SurfaceZone : Node3D
         water.SetShaderParameter("deep", look.Deep);
         water.SetShaderParameter("lava", look.Lava);
         water.SetShaderParameter("glow", look.LiquidGlow);
-        if (sea)
-        {
-            water.SetShaderParameter("sea", true);
-            water.SetShaderParameter("sea_map", Planet.SeaTexture());
-            water.SetShaderParameter("sea_mask", GalHack.Terrain.PlanetTerrainSource.SeaMaskDepth);
-        }
+        // Rivers read the sea's mask too: where one reaches the sea, the sea draws it.
+        water.SetShaderParameter("sea_map", _seaMap ??= Planet.SeaTexture());
+        water.SetShaderParameter("sea_mask", Planets.Gen.WorldMap.SeaFrom);
+        water.SetShaderParameter("sea", sea);
         return water;
     }
 
@@ -393,12 +394,28 @@ public partial class SurfaceZone : Node3D
     ImageTexture _dryTexture;
     Vector3 _dryAt = new(float.NaN, 0f, 0f);
 
+    /// <summary>Columns dug under sea level (canonical) where the sea is drawn, in under the shore, but the ground held none.</summary>
+    readonly HashSet<(int X, int Z)> _dugDry = new();
+
+    /// <summary>A pit dug in the shore under the sea's level stays as dry as the ground it was dug from: the sea stops drawing over it.</summary>
+    void DugDry(IReadOnlyList<TerrainDigging.Terrain.RemovedCell> cells)
+    {
+        foreach (var c in cells)
+        {
+            if (c.Cell.Y >= 1) continue; // its floor is still over the water
+            int x = (int)Mathx.WrapX(c.Cell.X, Planet.Width), z = (int)Mathx.Wrap(c.Cell.Z, Planet.Height);
+            if (_dugDry.Contains((x, z)) || !Planet.Map.IsSea(x + 0.5, z + 0.5) || Planet.Source.WaterSurfaceAt(x + 0.5, z + 0.5, out _)) continue;
+            _dugDry.Add((x, z));
+            _dryAt = new Vector3(float.NaN, 0f, 0f); // marked on the next frame
+        }
+    }
+
     /// <summary>
     /// The sea plane is drawn by the world map's cells. A place whose pad stands dry over a sea cell, with
     /// rooms dug below sea level, showed the plane through its openings: a sheet of water hanging at
     /// ground level over a stairwell. Round the eye, each such place's footprint where the ground holds no
     /// sea (as the water is decided, <see cref="PlanetTerrainSource.WaterSurfaceAt"/>) is marked dry, and
-    /// the sea draws nothing there.
+    /// the sea draws nothing there; so is every column dug under the sea's level where it held none (<see cref="DugDry"/>).
     /// </summary>
     void KeepDry(Vector3 eye)
     {
@@ -424,6 +441,14 @@ public partial class SurfaceZone : Node3D
                 _dry.SetPixel(i, k, Colors.White);
                 marked++;
             }
+        }
+        foreach (var (cx, cz) in _dugDry)
+        {
+            Vector3 at = Planet.NearestCopy(new Vector3(cx, 0f, cz), eye);
+            int i = (int)(at.X - ox), k = (int)(at.Z - oz);
+            if (i < 0 || k < 0 || i >= DryTexels || k >= DryTexels) continue;
+            _dry.SetPixel(i, k, Colors.White);
+            marked++;
         }
         DryMarked = marked;
         if (_dryTexture == null) _dryTexture = ImageTexture.CreateFromImage(_dry);

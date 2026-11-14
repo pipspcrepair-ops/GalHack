@@ -242,7 +242,6 @@ public partial class TerrainPatch : Node3D
             var water = new Godot.Collections.Array();
             water.Resize((int)Mesh.ArrayType.Max);
             water[(int)Mesh.ArrayType.Vertex] = job.WaterVertices;
-            water[(int)Mesh.ArrayType.Color] = job.WaterColors;
             water[(int)Mesh.ArrayType.Index] = wet;
             var waterMesh = new ArrayMesh();
             waterMesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, water);

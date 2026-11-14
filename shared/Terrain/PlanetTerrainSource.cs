@@ -299,9 +299,15 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
     {
         float h = Stamped(s.Height, x, z);
         if (h < s.Bank && !TerrainStamp.OnPad(Stamps, StampsAt(x, z), x, z)) h = s.Bank;
-        // Land under sea level that the sea doesn't cover would leave the sea's edge hanging over it:
-        // past the sea's own shore the land stands clear of the water.
-        if (h < WaterLevel + ShoreRise && !s.InRiver && Map.Sample(Map.Elevation, Mathx.WrapX(x, Width), Mathx.Wrap(z, Height)) >= -SeaMaskDepth) h = WaterLevel + ShoreRise;
+        // Land under sea level that the sea doesn't cover would leave the sea's edge hanging over it: past where
+        // the sea is drawn the land stands clear of the water. Inside, it eases back to its own height by the
+        // map's own coast, so where the land dips at the sea's drawn edge it makes the shore by its own shape
+        // (lifted most where the edge is), not along the mask's.
+        if (h < WaterLevel + ShoreRise && !s.InRiver)
+        {
+            float clear = Math.Clamp(1f - (Map.Sample(Map.SeaDepth, x, z) - WorldMap.SeaFrom) / -WorldMap.SeaFrom, 0f, 1f);
+            h += (WaterLevel + ShoreRise - h) * clear;
+        }
         return h;
     }
 
@@ -421,35 +427,25 @@ public sealed partial class PlanetTerrainSource : ITerrainSource
 
     // ---- Water ------------------------------------------------------------------------------
 
-    /// <summary>
-    /// The sea shows where the world map lies more than this far below sea level: the water
-    /// shader discards its plane where the map's depth (elevation / -120 m) is under 0.004.
-    /// </summary>
-    public const float SeaMaskDepth = 0.48f;
-
-    /// <summary>How far dry land beside the sea stands over it, at the least.</summary>
+    /// <summary>How far dry land past where the sea is drawn stands over it, at the least.</summary>
     public const float ShoreRise = 0.1f;
-
-    /// <summary>River water is drawn this far below a river's level (FarBuilder's river sheets).</summary>
-    public const float RiverDrop = 0.15f;
 
     /// <summary>
     /// The water over a column, if it holds any: a river's surface in its channel, or the sea at
-    /// sea level where the world map lies below it, wherever the ground there is lower; exactly where
-    /// that water is drawn. Water is a volume: everything under the surface and over the ground.
-    /// Decided by the generator (and stamps) alone, never by digging, as terrain-digging's static
-    /// water is: a pit dug below sea level inland stays dry. x and z wrap.
+    /// sea level where the sea is drawn (<see cref="WorldMap.IsSea"/>), wherever the ground there is
+    /// lower; exactly where that water is drawn. Water is a volume: everything under the surface and
+    /// over the ground. Decided by the generator (and stamps) alone, never by digging, as
+    /// terrain-digging's static water is: a pit dug below sea level inland stays dry. x and z wrap.
     /// </summary>
-    public bool WaterSurfaceAt(double x, double z, out float surface)
+    public bool WaterSurfaceAt(double x, double z, out float surface) => WaterOver(Ground(x, z, 1), x, z, out surface);
+
+    /// <summary>The same water over a ground sample taken at any spacing (a coarser one is cheaper).</summary>
+    public bool WaterOver(GroundSample g, double x, double z, out float surface)
     {
-        GroundSample g = Ground(x, z, 1);
-        if (g.InRiver && g.RiverLevel - RiverDrop > g.Height)
-        {
-            surface = g.RiverLevel - RiverDrop;
-            return true;
-        }
+        surface = g.RiverLevel - SurfaceSampler.RiverDrop;
+        if (g.InRiver && surface > g.Height) return true;
         surface = WaterLevel;
-        return g.Height < WaterLevel && Map.Sample(Map.Elevation, Mathx.WrapX(x, Width), Mathx.Wrap(z, Height)) < -SeaMaskDepth;
+        return g.Height < WaterLevel && Map.IsSea(x, z);
     }
 
     /// <summary>The stamp whose footprint or apron covers a point, if any.</summary>
