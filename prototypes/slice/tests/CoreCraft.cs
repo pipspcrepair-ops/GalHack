@@ -1,9 +1,11 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using GalHack.Physics.Engine;
 using GalHack.Structures;
 using Godot;
 using Slice.Game;
+using Slice.Surface;
 using Slice.Vessels;
 using N = System.Numerics;
 using Structure = GalHack.Structures.Structure;
@@ -45,6 +47,17 @@ public static class CoreCraft
             }
         }
         return done;
+    }
+
+    /// <summary>A landed base at <paramref name="at"/> with a working weather forecast block (the weather warnings show only in reach of one), and the block's cell. The caller stands in its area.</summary>
+    public static (Vessel vessel, Int3 forecast) ForecastBase(SurfaceZone zone, Vector3 at)
+    {
+        Structure s = Ship(zone.Data.Catalogue, false, _ => true);
+        var cell = new Int3(2, 1, 2);
+        Building.Place(s, cell, Building.Make(s, zone.Data.Catalogue.Type("weather-forecast")));
+        Vessel v = Vessel.Spawn(zone, s, (at + Vector3.Up * 3f).ToNumerics(), 0f, landed: true);
+        v.Settle();
+        return (v, cell);
     }
 
     /// <summary>
