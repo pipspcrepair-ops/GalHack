@@ -45,11 +45,15 @@ void vertex() {
 void fragment() {
 	// Both faces of a blade are lit as its top: the backs mustn't read as dark spikes.
 	NORMAL = FRONT_FACING ? NORMAL : -NORMAL;
-	vec3 own = srgb_to_linear(COLOR.rgb);
-	vec3 c = mix(own, srgb_to_linear(min(tint * COLOR.rgb * 1.25, vec3(1.0))), COLOR.a);
+	// A multisampled pixel is shaded at its centre. Where a shrinking tuft's sliver covers one of its
+	// samples but not the centre, the vertex colour is carried on from the sliver's far side, far past
+	// its range: a single pale spark in the grass, by moonlight the brightest thing there (the pinholes).
+	vec4 col = clamp(COLOR, 0.0, 1.0);
+	vec3 own = srgb_to_linear(col.rgb);
+	vec3 c = mix(own, srgb_to_linear(min(tint * col.rgb * 1.25, vec3(1.0))), col.a);
 	float snow = weather_ground.y * smoothstep(0.3, 0.8, NORMAL.y);
 	c = mix(c * (1.0 - weather_ground.x * 0.2), vec3(0.85, 0.88, 0.9), snow * 0.7);
 	ALBEDO = c;
-	EMISSION = c * COLOR.a * 0.1 * weather_ground.w; // what comes down through the leaves: low growth in shade isn't black
+	EMISSION = c * col.a * 0.1 * weather_ground.w; // what comes down through the leaves: low growth in shade isn't black
 	ROUGHNESS = 0.9;
 }
