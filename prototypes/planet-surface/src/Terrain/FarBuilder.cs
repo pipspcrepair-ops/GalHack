@@ -43,6 +43,13 @@ public sealed class FarJob
     /// <summary>The chunk's extent each way, m: <see cref="FarBuilder.Size"/>, or less for the last one before a seam (<see cref="FarBuilder.Span"/>).</summary>
     public int SpanX = FarBuilder.Size, SpanZ = FarBuilder.Size;
 
+    /// <summary>
+    /// Its grid's samples (heights, river levels, in the river), a ring round it, when the GPU rings already hold them
+    /// (<see cref="ClipGround.Samples"/>): the same ground at the same spacing, so they are not worked out twice. Null: sampled here.
+    /// </summary>
+    public float[] Height, RiverLevel;
+    public bool[] River;
+
     public Vector3[] WaterVertices;
     public int[] WaterIndices;
     public readonly List<FloraBatch> Flora = new();
@@ -112,17 +119,22 @@ public static class FarBuilder
             int g = grid.G;
             double x0 = job.Fx * (double)Size, z0 = job.Fz * (double)Size;
 
-            var height = new float[g * (grid.Nz + 2)];
-            var level = new float[height.Length];
-            var river = new bool[height.Length];
-            for (int j = 0; j < grid.Nz + 2; j++)
-            for (int i = 0; i < g; i++)
+            float[] height = job.Height, level = job.RiverLevel;
+            bool[] river = job.River;
+            if (height == null)
             {
-                GroundSample s = source.Ground(x0 + (i - 1) * step, z0 + (j - 1) * step, step);
-                int k = j * g + i;
-                height[k] = s.Height;
-                level[k] = s.RiverLevel;
-                river[k] = s.InRiver;
+                height = new float[g * (grid.Nz + 2)];
+                level = new float[height.Length];
+                river = new bool[height.Length];
+                for (int j = 0; j < grid.Nz + 2; j++)
+                for (int i = 0; i < g; i++)
+                {
+                    GroundSample s = source.Ground(x0 + (i - 1) * step, z0 + (j - 1) * step, step);
+                    int k = j * g + i;
+                    height[k] = s.Height;
+                    level[k] = s.RiverLevel;
+                    river[k] = s.InRiver;
+                }
             }
             // How far each grid point faces up, from the slope across it.
             var up = new float[grid.Nx * grid.Nz];
@@ -151,9 +163,10 @@ public static class FarBuilder
     /// <summary>
     /// Shapes the ground over a grid of points <paramref name="step"/> apart from (x0, z0) (<paramref name="spanX"/> by
     /// <paramref name="spanZ"/> m), its heights sampled with a ring round it. Every square is split along the grid's own
-    /// diagonal (b-c), as the GPU rings' blocks are; where a point's slide would turn a triangle over, it eases off.
+    /// diagonal (b-c), as the GPU rings' blocks are; where a point's slide would turn a triangle over, it eases off. The
+    /// outer <paramref name="inset"/> rows each side are worked out only so far as the ones inside need them (their slides).
     /// </summary>
-    internal static Surface Shape(Grid grid, int spanX, int spanZ, float step, double x0, double z0, float[] height, bool[] river, PlanetTerrainSource source, GroundPalette palette)
+    internal static Surface Shape(Grid grid, int spanX, int spanZ, float step, double x0, double z0, float[] height, bool[] river, PlanetTerrainSource source, GroundPalette palette, int inset)
     {
         int points = grid.Nx * grid.Nz, g = grid.G;
         var surface = new Surface(new Vector3[points], new Vector3[points], new Color[points], new Vector2[points], new Vector2[points]);
@@ -163,7 +176,9 @@ public static class FarBuilder
         var slideX = new float[points];
         var slideZ = new float[points];
         var drop = new float[points];
+        long t0 = Stopwatch.GetTimestamp(); // PROFILE (temporary)
         Slides(grid, step, x0, z0, height, river, source, slideX, slideZ, drop);
+        Prof(ref t0, 0);
         var drawn = new float[points];
         void Place(int k)
         {
@@ -186,11 +201,14 @@ public static class FarBuilder
                 Place(k);
             }
         }
+        Prof(ref t0, 1);
         Unfold(vertices, grid, step, slideX, slideZ, Place);
+        Prof(ref t0, 2);
         ReliefField field = Relief(spanX, spanZ, grid, step, x0, z0, height, source);
+        Prof(ref t0, 3);
         double w = palette.Map.WidthMeters, h = palette.Map.HeightMeters;
-        for (int j = 0; j < grid.Nz; j++)
-        for (int i = 0; i < grid.Nx; i++)
+        for (int j = inset; j < grid.Nz - inset; j++)
+        for (int i = inset; i < grid.Nx - inset; i++)
         {
             int k = j * grid.Nx + i, s = grid.Sample(i, j);
             float gx = (height[s + 1] - height[s - 1]) / (2f * step), gz = (height[s + g] - height[s - g]) / (2f * step);
@@ -199,8 +217,18 @@ public static class FarBuilder
             surface.Colors[k] = GroundColor(source, palette, x, z, drawn[k], CliffSlope2(height, s, g, step, gx * gx + gz * gz), river[s], out surface.Flags[k], step);
             surface.Relief[k] = field.At(vertices[k].X, vertices[k].Z, vertices[k].Y);
         }
+        Prof(ref t0, 4);
         CliffNormals(vertices, surface.Normals, grid, step, height);
+        Prof(ref t0, 5);
         return surface;
+    }
+
+    public static readonly long[] ProfTicks = new long[8]; // PROFILE (temporary): slides, place, unfold, relief, colours, normals, heights, all
+    internal static void Prof(ref long t, int k)
+    {
+        long now = Stopwatch.GetTimestamp();
+        System.Threading.Interlocked.Add(ref ProfTicks[k], now - t);
+        t = now;
     }
     /// <summary>
     /// The squared slope that picks a grid point's colour. A point on a spur or in a gully on a jagged
@@ -423,17 +451,19 @@ public static class FarBuilder
     const float Lip = 0.06f;
 
     /// <summary>
-    /// How far each grid point slides toward the cliffs beside it, in grid steps along x and z. A point on
-    /// a line every 16 m never leaves it; nor does a point in a river, whose water is drawn over the grid.
+    /// How far each grid point slides toward the cliffs beside it, in grid steps along x and z, by every edge
+    /// it is an end of (the ones out to the sampled ring too, so a grid's edge points slide as the grid beside
+    /// it slides them). A point on a line every 16 m never leaves it; nor does a point in a river, whose water
+    /// is drawn over the grid.
     /// </summary>
     static void Slides(Grid grid, float step, double x0, double z0, float[] height, bool[] river, PlanetTerrainSource source, float[] sx, float[] sz, float[] drop)
     {
         int nx = grid.Nx, nz = grid.Nz, g = grid.G;
         int per = Math.Max(1, (int)MathF.Round(Line / step));
         for (int j = 0; j < nz; j++)
-        for (int i = 0; i + 1 < nx; i++)
+        for (int i = -1; i < nx; i++)
         {
-            bool fromA = grid.OffLine(i, per), fromB = grid.OffLine(i + 1, per);
+            bool fromA = i >= 0 && grid.OffLine(i, per), fromB = i + 1 < nx && grid.OffLine(i + 1, per);
             if (!fromA && !fromB) continue;
             int sa = grid.Sample(i, j), sb = sa + 1;
             if (!Steep(height[sa], height[sb], step)) continue;
@@ -444,10 +474,10 @@ public static class FarBuilder
             if (fromA && !river[sa]) { sx[k] += start; drop[k] = MathF.Max(drop[k], fall); }
             if (fromB && !river[sb]) { sx[k + 1] += end; drop[k + 1] = MathF.Max(drop[k + 1], fall); }
         }
-        for (int j = 0; j + 1 < nz; j++)
+        for (int j = -1; j < nz; j++)
         for (int i = 0; i < nx; i++)
         {
-            bool fromA = grid.OffLine(j, per), fromB = grid.OffLine(j + 1, per);
+            bool fromA = j >= 0 && grid.OffLine(j, per), fromB = j + 1 < nz && grid.OffLine(j + 1, per);
             if (!fromA && !fromB) continue;
             int sa = grid.Sample(i, j), sb = sa + g;
             if (!Steep(height[sa], height[sb], step)) continue;

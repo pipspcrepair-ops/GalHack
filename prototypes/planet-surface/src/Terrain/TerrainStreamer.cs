@@ -870,11 +870,17 @@ public partial class TerrainStreamer : Node3D
             if (f.Lod == lod || f.InFlight || _farInFlight >= 3) continue;
             f.InFlight = true;
             _farInFlight++;
-            BuildFar(new FarJob
+            var job = new FarJob
             {
                 Fx = fx, Fz = fz, Lod = lod, Version = f.Version,
                 SpanX = FarBuilder.Span(fx, World.Terrain.Width), SpanZ = FarBuilder.Span(fz, World.Terrain.Height),
-            });
+            };
+            // The GPU ring at its spacing holds its ground already, most often: the chunk takes it from there.
+            float step = FarBuilder.Step(lod);
+            var origin = new Vector2((float)NearestCopy(fx * FarBuilder.Size, FarBuilder.Size, Focus.X, w), (float)NearestCopy(fz * FarBuilder.Size, FarBuilder.Size, Focus.Z, h));
+            if (Clip.Samples(lod, origin, (int)(job.SpanX / step) + 1, (int)(job.SpanZ / step) + 1, out float[] heights, out float[] levels, out bool[] river))
+                (job.Height, job.RiverLevel, job.River) = (heights, levels, river);
+            BuildFar(job);
         }
 
         // Far chunks share the frame's upload budget with the voxels: one at most, and only if the

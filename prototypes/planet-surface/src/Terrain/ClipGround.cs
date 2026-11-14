@@ -29,7 +29,7 @@ public sealed partial class ClipGround : Node3D
     public const int Block = 96, Half = Block * 2;
 
     /// <summary>Texels along a tile's side (the unit filled and sent), tiles along a level's texture, and texels along it.</summary>
-    public const int Tile = 32, Tiles = 18, Texels = Tile * Tiles;
+    public const int Tile = 32, Tiles = 16, Texels = Tile * Tiles;
 
     /// <summary>How far the rings move at a time, m.</summary>
     public const float Snap = 64f;
@@ -55,6 +55,9 @@ public sealed partial class ClipGround : Node3D
         /// <summary>Per texel: the normal's x and z, and how far the point slides onto the cliff beside it, in grid steps along x and z.</summary>
         public readonly Half[] Shape = new Half[Texels * Texels * 4];
         public readonly Half[] Color = new Half[Texels * Texels * 4];
+        /// <summary>Per texel, kept here only: the ground as sampled (before any slide), the river's level and whether it is in the river (far chunks' flora and water read them).</summary>
+        public readonly float[] Raw = new float[Texels * Texels], Water = new float[Texels * Texels];
+        public readonly bool[] Wet = new bool[Texels * Texels];
         /// <summary>Per slot: the tile it holds (canonical-free clip coordinates, in tiles), whether it is in, and its fill's version.</summary>
         public readonly (int X, int Z)[] Held = new (int, int)[Tiles * Tiles];
         public readonly byte[] State = new byte[Tiles * Tiles];
@@ -69,8 +72,9 @@ public sealed partial class ClipGround : Node3D
     sealed class TileJob
     {
         public int Level, Slot, Version, Tx, Tz, Generation;
-        public float[] Data;
+        public float[] Data, Raw, Water;
         public Half[] Shape, Color;
+        public bool[] Wet;
         public Exception Error;
     }
 
@@ -224,6 +228,9 @@ public sealed partial class ClipGround : Node3D
                 Array.Copy(job.Data, j * Tile * 4, lv.Data, ((sz + j) * Texels + sx) * 4, Tile * 4);
                 Array.Copy(job.Shape, j * Tile * 4, lv.Shape, ((sz + j) * Texels + sx) * 4, Tile * 4);
                 Array.Copy(job.Color, j * Tile * 4, lv.Color, ((sz + j) * Texels + sx) * 4, Tile * 4);
+                Array.Copy(job.Raw, j * Tile, lv.Raw, (sz + j) * Texels + sx, Tile);
+                Array.Copy(job.Water, j * Tile, lv.Water, (sz + j) * Texels + sx, Tile);
+                Array.Copy(job.Wet, j * Tile, lv.Wet, (sz + j) * Texels + sx, Tile);
             }
             float low = float.MaxValue, high = float.MinValue;
             for (int k = 0; k < Tile * Tile; k++)
@@ -371,6 +378,34 @@ public sealed partial class ClipGround : Node3D
         }
     }
 
+    /// <summary>
+    /// A far chunk's grid samples (<see cref="FarJob.Height"/>) from the ground a level holds, if all of it is in: (nx + 2) by
+    /// (nz + 2) points the level's spacing apart, the first a step before a point of the frame. False when any of it isn't.
+    /// </summary>
+    public bool Samples(int level, Vector2 at, int nx, int nz, out float[] height, out float[] riverLevel, out bool[] river)
+    {
+        height = riverLevel = null;
+        river = null;
+        if (_levels == null || level >= _levels.Length) return false;
+        Level lv = _levels[level];
+        int gx0 = (int)Math.Round((at.X + _shiftX) / lv.S) - 1, gz0 = (int)Math.Round((at.Y + _shiftZ) / lv.S) - 1, g = nx + 2, rows = nz + 2;
+        for (int tz = FloorDiv(gz0, Tile); tz <= FloorDiv(gz0 + rows - 1, Tile); tz++)
+        for (int tx = FloorDiv(gx0, Tile); tx <= FloorDiv(gx0 + g - 1, Tile); tx++)
+        {
+            int slot = Mod(tz, Tiles) * Tiles + Mod(tx, Tiles);
+            if (lv.Held[slot] != (tx, tz) || lv.State[slot] != In) return false;
+        }
+        height = new float[g * rows];
+        riverLevel = new float[g * rows];
+        river = new bool[g * rows];
+        for (int j = 0; j < rows; j++)
+        for (int i = 0; i < g; i++)
+        {
+            int t = Texel(gx0 + i, gz0 + j), k = j * g + i;
+            (height[k], riverLevel[k], river[k]) = (lv.Raw[t], lv.Water[t], lv.Wet[t]);
+        }
+        return true;
+    }
     /// <summary>Whether a level's texture holds all of its ring round a centre (clip coordinates), and the texel round it the normals read.</summary>
     bool Holds(int l, double qx, double qz)
     {
@@ -404,8 +439,8 @@ public sealed partial class ClipGround : Node3D
     }
     // ---- Filling a tile (on a worker) --------------------------------------------------------
 
-    /// <summary>Grid points worked out round a tile beyond its own, so its edge points are shaped as the tile beside it shapes them.</summary>
-    const int Margin = 2;
+    /// <summary>Grid points worked out round a tile beyond its own (with the sampled ring past them), so its edge points are shaped as the tile beside it shapes them.</summary>
+    const int Margin = 1;
 
     /// <summary>
     /// One tile of a level from the terrain source, shaped as the far rings always were (<see cref="FarBuilder.Shape"/>): the
@@ -422,6 +457,7 @@ public sealed partial class ClipGround : Node3D
             var grid = new FarBuilder.Grid(N, N, -Margin);
             int g = grid.G;
             var h = new float[g * g];
+            var water = new float[g * g];
             var wet = new bool[g * g];
             double x0 = Mathx.WrapX(((double)job.Tx * Tile - Margin) * s, width), z0 = Mathx.Wrap(((double)job.Tz * Tile - Margin) * s, height);
             for (int j = 0; j < g; j++)
@@ -429,13 +465,18 @@ public sealed partial class ClipGround : Node3D
             {
                 GroundSample sample = source.Ground(x0 + (i - 1) * s, z0 + (j - 1) * s, s);
                 h[j * g + i] = sample.Height;
+                water[j * g + i] = sample.RiverLevel;
                 wet[j * g + i] = sample.InRiver;
             }
+            long t0 = start; FarBuilder.Prof(ref t0, 6); // PROFILE (temporary)
             int span = (N - 1) * (int)s;
-            FarBuilder.Surface surface = FarBuilder.Shape(grid, span, span, s, x0, z0, h, wet, source, palette);
+            FarBuilder.Surface surface = FarBuilder.Shape(grid, span, span, s, x0, z0, h, wet, source, palette, Margin);
             job.Data = new float[Tile * Tile * 4];
             job.Shape = new Half[Tile * Tile * 4];
             job.Color = new Half[Tile * Tile * 4];
+            job.Raw = new float[Tile * Tile];
+            job.Water = new float[Tile * Tile];
+            job.Wet = new bool[Tile * Tile];
             for (int j = 0; j < Tile; j++)
             for (int i = 0; i < Tile; i++)
             {
@@ -455,12 +496,15 @@ public sealed partial class ClipGround : Node3D
                 job.Color[o + 1] = (Half)c.G;
                 job.Color[o + 2] = (Half)c.B;
                 job.Color[o + 3] = (Half)c.A;
+                int r = (j + Margin + 1) * g + i + Margin + 1;
+                (job.Raw[o / 4], job.Water[o / 4], job.Wet[o / 4]) = (h[r], water[r], wet[r]);
             }
         }
         catch (Exception e)
         {
             job.Error = e;
         }
+        long t1 = start; FarBuilder.Prof(ref t1, 7); // PROFILE (temporary)
         Interlocked.Add(ref FillTicks, Stopwatch.GetTimestamp() - start);
         Interlocked.Increment(ref Filled);
     }
