@@ -369,18 +369,17 @@ public sealed partial class PlanetWorld
         !Look.Lava && Source.WaterSurfaceAt(Mathx.WrapX(p.X, Width), Mathx.Wrap(p.Z, Height), out float surface) ? surface : null;
 
     /// <summary>
-    /// The sea mask for the water shader: metres below sea level per world-map cell (negative on land),
-    /// one texel a cell, so the shader's filtered read is the very bilinear blend the terrain and the
-    /// physics take of the same cells. The sea is drawn exactly where it is, deeper than
-    /// <see cref="PlanetTerrainSource.SeaMaskDepth"/>: the ground is raised just clear of it everywhere
-    /// else, and no edge of it hangs over a dip the mask left out. Half floats, never bytes: a byte's
-    /// step was half a metre of depth, the size of the sea's own margin.
+    /// The sea mask for the water shader: the map's sea depth per cell (<see cref="WorldMap.SeaDepth"/>,
+    /// negative on land), one texel a cell, so the shader's filtered read is the very bilinear blend the
+    /// terrain and the physics take of the same cells. The sea is drawn where it is over
+    /// <see cref="WorldMap.SeaFrom"/>, out in under the shore so the ground makes its edge; past that the
+    /// ground is raised just clear of it, so no edge of it hangs over a dip. Half floats, never bytes.
     /// </summary>
     public ImageTexture SeaTexture()
     {
         var bytes = new byte[Map.Count * 2];
         for (int k = 0; k < Map.Count; k++)
-            BitConverter.TryWriteBytes(new Span<byte>(bytes, k * 2, 2), (Half)Math.Clamp(-Map.Elevation[k], -60000f, 60000f));
+            BitConverter.TryWriteBytes(new Span<byte>(bytes, k * 2, 2), (Half)Math.Clamp(Map.SeaDepth[k], -60000f, 60000f));
         return ImageTexture.CreateFromImage(Image.CreateFromData(Map.Width, Map.Height, false, Image.Format.Rh, bytes));
     }
 
