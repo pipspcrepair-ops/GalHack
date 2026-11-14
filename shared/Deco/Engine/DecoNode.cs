@@ -31,7 +31,7 @@ public partial class DecoNode : Node3D
     public static DecoNode Create(DecoMeshCache cache, DecoLook look, Transform3D at, bool collide = true, bool lights = true)
     {
         DecoPiece piece = cache.Forge.Catalogue.Piece(look.Piece);
-        DecoMeshData data = cache.Forge.Mesh(look);
+        DecoMeshData data = cache.Data(look);
         var node = new DecoNode { Look = look, Transform = at, Name = piece.BlockId(look.State) };
         node._seed = DecoHash.Fnv(look.Piece) ^ (ulong)at.Origin.X.GetHashCode() ^ ((ulong)at.Origin.Z.GetHashCode() << 1);
         // Drawn out to where it is a pixel or two (its longest side over 600: a cup to 40 m, a chair to 600): a street of

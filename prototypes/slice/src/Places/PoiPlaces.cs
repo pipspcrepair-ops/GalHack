@@ -253,6 +253,10 @@ public partial class PoiPlaces : Node3D
     {
         if (memory.Prepared) return;
         memory.Rooms = decor?.Plan(memory) ?? new Dictionary<int, PlaceRoom>();
+        // Every look its rooms are dressed with, as far as a worker can take it: on the main thread a piece is only handed over.
+        if (decor?.Meshes is { } meshes)
+            foreach (PlaceRoom room in memory.Rooms.Values)
+                foreach (GalHack.Deco.DecoPlacement pl in room.Plan.Placements) meshes.Prepare(pl.Look);
         if (deep != null) memory.Fauna = PlaceFauna.Plan(memory, deep);
         memory.Fauna?.Populate(memory, deep);
         memory.Town = Town.For(memory, deep?.Planet);

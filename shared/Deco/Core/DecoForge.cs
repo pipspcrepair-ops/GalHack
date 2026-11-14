@@ -549,10 +549,14 @@ public sealed class DecoForge
     /// <summary>The finished mesh for a look (cached).</summary>
     public DecoMeshData Mesh(DecoLook look)
     {
-        if (_meshes.TryGetValue(look, out DecoMeshData m)) return m;
-        m = Build(look);
-        _meshes[look] = m;
-        return m;
+        // Workers forge a place's looks ahead while the main thread dresses another's: one at a time, the forge's caches whole.
+        lock (_meshes)
+        {
+            if (_meshes.TryGetValue(look, out DecoMeshData m)) return m;
+            m = Build(look);
+            _meshes[look] = m;
+            return m;
+        }
     }
 
     public DecoMeshData Mesh(string piece, DecoState state = DecoState.Intact, DecoFall fall = DecoFall.None, bool powered = true, DecoCover cover = DecoCover.Vines, string palette = null, bool doors = false) =>
