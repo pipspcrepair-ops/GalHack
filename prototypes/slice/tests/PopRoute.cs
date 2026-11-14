@@ -153,6 +153,7 @@ public partial class PopRoute : Node
         if (only == null || only.Contains("trees"))
         {
             foreach (int x in Turn(Densest(start))) yield return x;
+            foreach (int x in TurnStorm(Densest(start))) yield return x;
             foreach (int x in TreeCost(Densest(start))) yield return x;
         }
         GD.Print($"ROUTE ruin trees planted: {_planted0} when the world showed, {(zone.Planet.Palette.Planted as System.Collections.ICollection)?.Count} at the end");
