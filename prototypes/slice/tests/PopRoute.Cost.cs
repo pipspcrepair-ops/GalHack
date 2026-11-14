@@ -25,7 +25,7 @@ public partial class PopRoute
         {
             ("as drawn", () => { }, () => { }),
             ("without coarser versions", () => view.MeshLodThreshold = 0f, () => view.MeshLodThreshold = lod),
-            ("trees to 370 m", () => Reach(370f), () => Reach(DetailReach.Large)),
+            ("trees to 370 m", () => Reach(370f), () => Reach(DetailReach.Distance)),
         };
         foreach (float up in new[] { 2f, 60f })
         {

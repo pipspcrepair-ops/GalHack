@@ -105,7 +105,7 @@ public partial class PopRoute : Node
                 for (int v = 0; v < plant.Near.Length; v++)
                 {
                     var surface = RenderingServer.MeshGetSurface(zone.Streamer.PlantMesh(plant.Index, v).GetRid(), 0);
-                    var counts = new List<long> { surface["index_count"].AsInt64() / 3 };
+                    var counts = new List<long> { (surface.ContainsKey("index_count") ? surface["index_count"] : surface["vertex_count"]).AsInt64() / 3 };
                     if (surface.ContainsKey("lods"))
                         foreach (Variant l in surface["lods"].AsGodotArray()) counts.Add(l.AsGodotDictionary()["index_data"].AsByteArray().Length / (surface["vertex_count"].AsInt64() > 65535 ? 4 : 2) / 3);
                     for (int k = 0; k < counts.Count; k++) { if (levels.Count <= k) levels.Add(0); levels[k] += counts[k]; }
