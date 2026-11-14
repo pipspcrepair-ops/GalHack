@@ -329,9 +329,14 @@ block -1..2 4 6 concrete-plated paint=roof
 block 6 4 6 concrete-plated paint=frame
 block -1..2 4 7 concrete-plated paint=roof
 block -1..2 4 8 concrete-plated slope rot=+y+z paint=roof
-block -5 5 -5 concrete-plated paint=wall
+block -5 5 -6 concrete-plated slope paint=frame
+block -1 5 -6 concrete-plated slope paint=frame
+block 3 5 -6 concrete-plated slope paint=frame
+block 6 5 -6 concrete-plated slope paint=frame
+block -5 5 -5 concrete-plated corner rot=+y-x paint=roof
 block -4..5 5 -5 concrete-plated slope paint=roof
-block 6 5 -5 concrete-plated paint=wall
+block 6 5 -5 concrete-plated corner paint=roof
+block 7 5 -5 concrete-plated slope rot=+y+x paint=frame
 block -5 5 -4 concrete-plated slope rot=+y-x paint=roof
 block -4..5 5 -4 concrete-plated paint=wall,wall,wall,inner,wall,wall
 block 6 5 -4 concrete-plated slope rot=+y+x paint=roof
@@ -382,9 +387,12 @@ block 6 5 3 concrete-plated slope rot=+y+x paint=roof
 block -5 5 4 concrete-plated slope rot=+y-x paint=roof
 block -4..5 5 4 concrete-plated paint=wall,wall,wall,inner,wall,wall
 block 6 5 4 concrete-plated slope rot=+y+x paint=roof
-block -5 5 5 concrete-plated paint=wall
+block -5 5 5 concrete-plated corner rot=+y+z paint=roof
 block -4..5 5 5 concrete-plated slope rot=+y+z paint=roof
-block 6 5 5 concrete-plated paint=wall
+block 6 5 5 concrete-plated corner rot=+y+x paint=roof
+block 7 5 5 concrete-plated slope rot=+y+x paint=frame
+block -5 5 6 concrete-plated slope rot=+y+z paint=frame
+block 6 5 6 concrete-plated slope rot=+y+z paint=frame
 block -3 6 -3 concrete-plated paint=wall
 block -2..3 6 -3 glass-plated paint=-,-,-,-,inner,-
 block 4 6 -3 concrete-plated paint=wall

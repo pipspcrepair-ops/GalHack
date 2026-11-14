@@ -195,7 +195,9 @@ block 2 2 5 iron-plated paint=hull,inner,hull,hull,hull,hull
 block -3 2 6 iron-plated paint=hull,hull,hull,hull,hazard,hull
 block -2..1 2 6 iron-plated paint=hull,hull,hull,hull,hazard,inner
 block 2 2 6 iron-plated paint=hull,hull,hull,hull,hazard,hull
-block -3..2 3 -6 iron-plated slope paint=pod
+block -3 3 -6 iron-plated corner rot=+y-x paint=pod
+block -2..1 3 -6 iron-plated slope paint=pod
+block 2 3 -6 iron-plated corner paint=pod
 block -3 3 -5 iron-plated slope rot=+y-x paint=pod
 block -2..1 3 -5 iron-plated paint=hull,hull,hull,inner,hull,hull
 block 2 3 -5 iron-plated slope rot=+y+x paint=pod

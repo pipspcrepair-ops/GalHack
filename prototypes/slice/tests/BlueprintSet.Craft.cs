@@ -328,6 +328,8 @@ corners, two down jets, a side jet each way, four pads.");
             for (int x = -2; x <= 0; x++) d.Stairs(P(x, 1 + i, -7 - i), Dir.NegZ, inner);
         }
         d.Carve(P(-2, 5, -10), P(0, 5, -8));
+        // The flight's flanks are plain walls to the deck, so no stepped stringer shows.
+        d.Fill(P(-3, 1, -11), P(-3, 4, -7), Iron, inner).Fill(P(1, 1, -11), P(1, 4, -7), Iron, inner);
         d.Door("door-2x2x1", P(-1, 1, -4), Dir.NegZ);
 
         d.Put("core", P(3, 0, -12));
@@ -340,7 +342,7 @@ corners, two down jets, a side jet each way, four pads.");
         d.Put("fuel-tank-t2", P(-7, 2, -6));
         d.Put("gyro-t2", P(6, 1, -8));
         d.Put("gyro-t2", P(6, 1, -7));
-        for (int z = -17; z <= -14; z++)
+        for (int z = -16; z <= -14; z++)
         {
             d.Put("container-t4", P(-4, 1, z));
             d.Put("container-t4", P(2, 1, z));
@@ -372,7 +374,7 @@ corners, two down jets, a side jet each way, four pads.");
         d.Thruster("thruster-t3", P(2, 11, -12), Dir.NegY);
         d.Thruster("thruster-t3", P(-3, 8, 6), Dir.NegY);
         d.Thruster("thruster-t3", P(2, 8, 6), Dir.NegY);
-        foreach (var (x, z) in new[] { (-4, -18), (3, -18), (-6, 10), (5, 10) }) d.Put("pad-t1", P(x, 0, z));
+        foreach (var (x, z) in new[] { (-8, -16), (7, -16), (-6, 10), (5, 10) }) d.Put("pad-t1", P(x, 0, z));
         d.Stairs(P(-1, 0, 14), Dir.NegZ, hull);
         d.Stairs(P(0, 0, 14), Dir.NegZ, hull);
         d.Lining(inner, deck);

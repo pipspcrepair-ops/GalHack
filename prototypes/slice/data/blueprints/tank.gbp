@@ -78,7 +78,9 @@ block -4 -1 6 hover-t1
 block -3..3 -1 6 iron-plated paint=sand,sand,sand,belly,sand,sand
 block 4 -1 6 hover-t1
 block 5 -1 6 hardened-plated paint=flash
-block -4..4 -1 7 iron-plated paint=sand,sand,sand,belly,hazard,sand
+block -4 -1 7 iron-plated slope rot=-x+z paint=sand
+block -3..3 -1 7 iron-plated paint=sand,sand,sand,belly,hazard,sand
+block 4 -1 7 iron-plated slope rot=+x+z paint=sand
 block -1..0 -1 8 iron-plated paint=sand
 block -1..0 -1 9 stairs rot=+y+z paint=sand
 block -4..4 0 -8 hardened-plated slope paint=sand
@@ -125,7 +127,9 @@ block 5 0 5 hardened-plated slope rot=+y+x paint=flash
 block -5 0 6 hardened-plated paint=flash
 block -4..4 0 6 iron-plated paint=sand,sand,deck,sand,sand,sand
 block 5 0 6 hardened-plated paint=flash
-block -4..4 0 7 iron-plated paint=sand,sand,deck,sand,hazard,sand
+block -4 0 7 iron-plated slope rot=-x+z paint=sand
+block -3..3 0 7 iron-plated paint=sand,sand,deck,sand,hazard,sand
+block 4 0 7 iron-plated slope rot=+x+z paint=sand
 block -3 0 8 thruster-t2
 block -1..0 0 8 stairs rot=+y+z paint=sand
 block 3 0 8 thruster-t2
