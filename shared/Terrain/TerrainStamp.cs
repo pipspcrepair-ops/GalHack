@@ -19,7 +19,7 @@ namespace GalHack.Terrain;
 public enum StampSurface : byte { Natural, Concrete, Tarmac, Gravel, Dirt, Lawn }
 
 /// <summary>What a stamp does to the ground: see <see cref="TerrainStamp.Shape"/>.</summary>
-public enum StampShape : byte { Pad, Bowl, Terraces, Cut, Tilt, Furrow, Road, Buried }
+public enum StampShape : byte { Pad, Bowl, Terraces, Cut, Tilt, Furrow, Road, Buried, Pit }
 
 /// <summary>What a stretch of a road stamp does: lies on the ground (cut and filled to its deck), crosses on a bridge (the ground is left alone), or runs in a tunnel (the ground is left alone and a bore is kept open).</summary>
 public enum RoadSpan : byte { Ground, Bridge, Tunnel }
@@ -165,7 +165,7 @@ public sealed class TerrainStamp
 
     /// <summary>Lowest world y any carved cell reaches, or <see cref="PadY"/> when nothing is carved.</summary>
     public int CarveBottom => Shape == StampShape.Road ? (_boreBottom == float.MaxValue ? PadY : (int)MathF.Floor(_boreBottom) - 1)
-        : _carve != null ? _carveY : PadY - (Shape is StampShape.Bowl or StampShape.Furrow ? (int)Math.Ceiling(Depth) + 1 : 0);
+        : _carve != null ? _carveY : PadY - (Shape is StampShape.Bowl or StampShape.Furrow or StampShape.Pit ? (int)Math.Ceiling(Depth) + 1 : 0);
 
 
     // ---- shapes beyond the flat pad ----------------------------------------------------------
@@ -226,6 +226,7 @@ public sealed class TerrainStamp
         StampShape.Terraces => Math.Max(_halfX, _halfZ) + Length * 2 + Width + 40,
         StampShape.Cut => Math.Max(_halfX, _halfZ) + Length * 2 + Width + 40,
         StampShape.Furrow => Math.Max(_halfX, _halfZ) + Length + Width + StripBlend,
+        StampShape.Pit => Radius + Length + Width + Depth * 2,
         StampShape.Road => Math.Max(_halfX, _halfZ) + HalfWidth + BankMax + StripBlend,
         _ => 0,
     };
@@ -328,6 +329,20 @@ public sealed class TerrainStamp
                 // so a pad above or below the road meets it in a slope, not a step along the pad's edge.
                 float w = (1f - Smooth((s - bed) / ease)) * (1f - padWeight * Smooth((s - bed) / MathF.Min(ease, 12f)));
                 return height + (target - height) * w;
+            }
+            case StampShape.Pit:
+            {
+                // A recessed pad: a level floor Depth under the pad within Radius (its wall stands round the edge), and a
+                // ramp down to it Width wide along Dir from the rim over Length, its sides easing back to the land.
+                Offset(x, z, out double dx, out double dz);
+                double r = Math.Sqrt(dx * dx + dz * dz);
+                if (r <= Radius) return PadY - Depth;
+                double t = dx * DirX + dz * DirZ - Math.Sqrt(Math.Max(0, Radius * Radius - Width * Width / 4)), s = Math.Abs(-dx * DirZ + dz * DirX);
+                float ease = Depth * 1.5f;
+                if (t < -Width || t > Length || s > Width / 2 + ease) return height;
+                float target = PadY - Depth * (1f - Math.Clamp((float)t / Length, 0f, 1f));
+                if (target >= height) return height;
+                return height + (target - height) * (1f - Smooth(((float)s - Width / 2) / ease));
             }
             case StampShape.Furrow:
             {

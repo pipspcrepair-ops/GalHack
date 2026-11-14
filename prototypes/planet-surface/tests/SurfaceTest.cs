@@ -94,7 +94,7 @@ public partial class SurfaceTest : Node
             await Run("Tracks", TrackChecks);
             await Run("Lazy", LazyChecks);
             await Run("Airport", () => TypedChecks("airfield", "airport", "airstrip"));
-            await Run("Spaceport", () => TypedChecks("abandoned_spaceport", "starport", "spaceport", "landing_field"));
+            await Run("Spaceport", () => TypedChecks("abandoned_spaceport", "port_large", "port_medium", "port_small"));
             if (_only.Contains("InfraScan")) await Run("InfraScan", InfraScan);
             _main = new Main { Interactive = false };
             AddChild(_main);

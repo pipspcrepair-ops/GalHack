@@ -51,10 +51,13 @@ public partial class SurfaceTest
                 SketchBox fb = PlaceTypes.Turn(place.Sketch.Footprint, place.Turn);
                 PlanetTerrainSource g = w.Source;
                 double W = w.Map.WidthMeters;
+                // (But in a recessed pad's pit and down its ramp.)
+                var pits = place.Parts.Select(p => p.Stamp).Where(t => t.Shape == StampShape.Pit).ToList();
                 for (int i = 0; i <= 40; i++)
                     for (int j = 0; j <= 10; j++)
                     {
                         double x = Mathx.WrapX(place.X + fb.X0 + fb.W * i / 40.0, W), z = place.Z + fb.Z0 + fb.D * j / 10.0;
+                        if (pits.Any(t => Math.Abs(Mathx.WrapDelta(x - t.CenterX, W)) < t.Radius + t.Length + t.Width && Math.Abs(z - t.CenterZ) < t.Radius + t.Length + t.Width)) continue;
                         worstOff = MathF.Max(worstOff, MathF.Abs(g.SurfaceHeight(x, z) - place.PadY));
                     }
                 // The grading alone (the world's road to the gate has banks of its own).
@@ -89,6 +92,7 @@ public partial class SurfaceTest
                 builder.Add(clock.Elapsed.TotalMilliseconds);
                 var ground = place.Grounds(0f).ToList();
                 var owner = new Dictionary<(int, int, int), PoiSite>();
+                var pieces = PlaceTypes.Pieces(place.Sketch, place.Turn);
                 foreach (PoiSite p in place.Parts)
                 {
                     PoiInstance inst = p.Built;
@@ -97,9 +101,10 @@ public partial class SurfaceTest
                     if (cells.Count == 0) continue;
                     int top = cells.Max(c => c.Y) + 1;
                     int sx = cells.Max(c => c.X) - cells.Min(c => c.X) + 1, sz = cells.Max(c => c.Z) - cells.Min(c => c.Z) + 1;
-                    string kind = PlaceTypes.Pieces(place.Sketch, place.Turn)[place.Parts.IndexOf(p)].Plan.Parts[0].Arg("what");
+                    TypePiece piece = pieces[place.Parts.IndexOf(p)];
+                    string kind = piece.Plan.Parts[0].Arg("what");
                     // Walked as a body walks it: from the way in to the apron through the terminal, onto a hangar's floor, up the tower to its cab.
-                    string goal = kind switch { "terminal" => "gate stand", "hangar" => "hangar floor", "tower" => "control cab", _ => null };
+                    string goal = kind switch { "terminal" => "gate stand", "hangar" => "hangar floor", "tower" or "hub" => "control cab", "authority" => "flight operations", _ => null };
                     if (goal != null && inst.Layout.Modules.FirstOrDefault(md => md.Purpose == goal || kind == "terminal" && md.Purpose == "stand") is { } target)
                     {
                         var reachable = inst.Nav().Reachable(inst.Layout.EntranceCell);
@@ -107,10 +112,11 @@ public partial class SurfaceTest
                         if (target.Cells.Any(reachable.Contains)) walked++;
                         else bad.Add($"{kind}: no way from its way in to its {goal}");
                     }
-                    // A ship's hall: wide enough for the craft its pads are for (two fifths of a pad) and 12 m high at least.
-                    if (kind == "hangar" && place.Sketch.Of("pads").FirstOrDefault() is { } pad)
+                    // A ship's hall: wider than its craft (a hub's freight hall a Small-class one) and 12 m high at least.
+                    if (kind == "hangar" && place.Sketch.Type.Plan != null && piece.Item.Part.Id != "airhangar")
                     {
-                        if (Math.Min(sx, sz) < pad.Rolled["side"] * 0.4f || top < 12) bad.Add($"{place.Sketch.Type.Id} hangar {sx} x {sz} m, {top} m high, for {pad.Rolled["side"]:F0} m pads");
+                        float craft = place.Sketch.Type.Plan == "hub" ? 30f : place.Sketch.Type.Craft;
+                        if (Math.Max(sx, sz) < craft || top < 12) bad.Add($"{place.Sketch.Type.Id} {piece.Item.Part.Id} {sx} x {sz} m, {top} m high, for {craft:F0} m craft");
                     }
                     if (place.Sketch.Type.Id == "airport")
                     {
@@ -123,7 +129,7 @@ public partial class SurfaceTest
                     {
                         if (owner.TryGetValue(c, out PoiSite o) && o != p) shared++;
                         owner[c] = p;
-                        if (kind is "fence" or "lights" || c.Y > 2) continue;
+                        if (kind is "fence" or "lights" or "pad" or "siding" || c.Y > 2) continue;
                         if (ground.FirstOrDefault(q => Math.Abs(Mathx.WrapDelta(c.X + 0.5 - q.X, W) * q.UX + (c.Z + 0.5 - q.Z) * q.UZ) < q.HalfU - 1
                                          && Math.Abs(-Mathx.WrapDelta(c.X + 0.5 - q.X, W) * q.UZ + (c.Z + 0.5 - q.Z) * q.UX) < q.HalfV - 1) is { } on)
                         {

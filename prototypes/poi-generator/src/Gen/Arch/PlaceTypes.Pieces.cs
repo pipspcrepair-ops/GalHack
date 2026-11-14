@@ -60,16 +60,26 @@ public static partial class PlaceTypes
 
     static Dir Way(float x, float z) => MathF.Abs(x) >= MathF.Abs(z) ? (x > 0 ? Dir.East : Dir.West) : (z > 0 ? Dir.South : Dir.North);
 
-    /// <summary>The ground laid flat and surfaced (the runway or the pads, taxiways, apron, car park, the access road), turned.</summary>
-    public static IEnumerable<(SketchItem Item, SketchBox Box)> Grounds(Sketch s, int turn) =>
-        s.Items.Where(i => i.Part.Kind is "surface" or "road" or "pads").Select(i => (i, Turn(i.Box, turn)));
+    /// <summary>Laid ground: the runway or the pads, taxiways, apron, car park, the access road, a siding's ballast.</summary>
+    public static bool Laid(SketchItem i) => i.Part.Kind is "surface" or "road" or "pads" or "rail";
 
-    /// <summary>Everything that stands, each a place of its own: the buildings, the fuel farm, the approach lights, the fence in runs.</summary>
+    /// <summary>The ground laid flat and surfaced, turned: a box on the 2 m lattice as its things stand, or its own shape.</summary>
+    public static IEnumerable<(SketchItem Item, Shape Lay)> Grounds(Sketch s, int turn) =>
+        s.Items.Where(Laid).Select(i => (i, i.Lay is { } lay ? lay.Turn(turn) : Shape.Of(Turn(i.Box, turn))));
+
+    /// <summary>How far a recessed pad lies under its place's level, m (0 for anything else).</summary>
+    public static float Sink(SketchItem i) => i.Part.Kind == "pads" ? i.Rolled.GetValueOrDefault("sink") : 0f;
+
+    /// <summary>
+    /// Everything that stands, each a place of its own, the main building first (it holds the place's grading, which the
+    /// recessed pads' pits are cut after): the buildings, the fuel farm, the approach lights, a recessed pad's blast wall, a
+    /// siding's rails, the fence in runs.
+    /// </summary>
     public static List<TypePiece> Pieces(Sketch s, int turn)
     {
         var pieces = new List<TypePiece>();
         SketchBox runway = s.Box(s.Items[0].Part.Id), apron = s.Of("apron").FirstOrDefault()?.Box ?? runway;
-        foreach (SketchItem i in s.Items)
+        foreach (SketchItem i in s.Items.OrderBy(i => i.Part.Id == "terminal" ? 0 : 1))
         {
             if (i.Part.Kind == "fence") { pieces.AddRange(FenceRuns(s, i, turn)); continue; }
             string? what = i.Part.Kind switch
@@ -77,6 +87,8 @@ public static partial class PlaceTypes
                 "building" => i.Part.What == "control_tower" ? "tower" : i.Part.What,
                 "tanks" => "fuel",
                 "lights" => "lights",
+                "pads" when Sink(i) > 0 => "pad",
+                "rail" => "siding",
                 _ => null,
             };
             if (what == null) continue;
@@ -85,7 +97,17 @@ public static partial class PlaceTypes
             if (what == "lights") (fx, fz) = (-i.FaceX, -i.FaceZ);
             else if (fx == 0 && fz == 0) fz = (what == "tower" ? apron : runway).Cz < i.Box.Cz ? -1f : 1f;
             var (tx, tz) = Turn(fx, fz, turn);
-            pieces.Add(Piece(i, Turn(i.Box, turn), Way(tx, tz), what, i.Rolled));
+            Dir front = Way(tx, tz);
+            var rolled = new Dictionary<string, float>(i.Rolled);
+            if (what == "pad")
+            {
+                // Its ramp's way in its own frame (a hundredth of a step), and as wide as its link.
+                var (gx, gz) = Turn(i.Rolled["gx"], i.Rolled["gz"], turn);
+                var (gu, gv) = front switch { Dir.East => (gz, -gx), Dir.South => (-gx, -gz), Dir.West => (-gz, gx), _ => (gx, gz) };
+                (rolled["gu"], rolled["gv"]) = (gu * 100f, gv * 100f);
+                rolled["ramp"] = s.Of("link").FirstOrDefault()?.Rolled.GetValueOrDefault("w", 12f) ?? 12f;
+            }
+            pieces.Add(Piece(i, Turn(i.Box, turn), front, what, rolled));
         }
         return pieces;
     }
@@ -116,6 +138,7 @@ public static partial class PlaceTypes
         SketchBox b = Turn(fence.Box, turn);
         var r = new Rng(Hash.Combine(s.Seed, 0xFE9CEUL));
         var (gx, gz) = Turn(s.GateX, s.GateZ, turn);
+        var crossing = Grounds(s, turn).Where(g => g.Item.Part.Kind is "road" or "surface" or "rail" && g.Lay.HalfU > g.Lay.HalfV).Select(g => g.Lay).ToList();
         // The long sides run corner to corner, the short ones between them.
         var sides = new (float X0, float Z0, float X1, float Z1, Dir Out)[]
         {
@@ -129,6 +152,16 @@ public static partial class PlaceTypes
             var at = new List<float>();
             float line = way switch { Dir.North => z0, Dir.South => z1, Dir.West => x0, _ => x1 };
             if (MathF.Abs((alongX ? gz : gx) - line) < 3f) at.Add((alongX ? gx : gz) - (alongX ? x0 : z0));
+            // (And wherever a strip of laid ground runs through its line: a taxiway, a road in, a siding.)
+            foreach (Shape g in crossing)
+            {
+                float across = alongX ? g.UZ : g.UX;
+                if (MathF.Abs(across) < 0.2f) continue;
+                float t = (line - (alongX ? g.Z : g.X)) / across;
+                if (MathF.Abs(t) > g.HalfU + 1f) continue;
+                float a = (alongX ? g.X + g.UX * t : g.Z + g.UZ * t) - (alongX ? x0 : z0);
+                if (a > 0 && a < len && at.All(o => MathF.Abs(o - a) > 10f)) at.Add(a);
+            }
             if (len > 600f && r.Chance(0.7f)) at.Add(r.Float(0.2f, 0.8f) * len);
             int runs = (int)MathF.Ceiling(len / FenceRun);
             for (int k = 0; k < runs; k++)

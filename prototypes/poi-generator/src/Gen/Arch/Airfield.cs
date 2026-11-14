@@ -221,7 +221,7 @@ public static class Airfield
         p.Plinth(0, 0, I1, K1, 0);
         p.Weathers(-1, 0, -1, I1 + 1, H + 1, K1 + 1, H);
         p.Approach(mid, K1 + 2, Dir.South);
-        int ow = Math.Max(2, I1 / 4);
+        int ow = Math.Clamp(I1 / 4 + p.R.Range(-1, 2), 2, Math.Max(2, I1 - 6));
         int office = p.Room(ModuleKind.Vault, "office", 0, 1, 0, 1, ow, H - 1, K1 - 1);
         p.Fill(ow + 1, 0, 1, ow + 1, H - 1, K1 - 1, Solid(f.Panel, Role.Wall));
         int hall = p.Room(ModuleKind.Hall, "hall", 0, ow + 2, 0, 1, I1 - 1, H - 1, K1 - 1);
@@ -246,7 +246,7 @@ public static class Airfield
     }
 
     /// <summary>What a room of the airfield has in it, by what it is for: along its back wall, clear of its door.</summary>
-    static void Furnish(Plot p, string what, int i0, int k0, int i1, int k1, int j, int room, bool doorBack)
+    internal static void Furnish(Plot p, string what, int i0, int k0, int i1, int k1, int j, int room, bool doorBack)
     {
         Fab f = p.F;
         int y = 2 * j, along = doorBack ? 2 * k0 : 2 * k1 + 1, front = doorBack ? 2 * k1 + 1 : 2 * k0;
@@ -449,7 +449,7 @@ public static class Airfield
         foreach (int g in gates) p.C.X.Markers.Add(new Marker("gate", p.Cell(g, 0, 0), "fence"));
         for (int u = 0; u < len; u++)
         {
-            if (gates.Any(g => Math.Abs(u - g) <= 4)) continue;
+            if (gates.Any(g => Math.Abs(u - g) <= 6)) continue;
             if (Hash.Cell(p.Cell(u, 0, 0), 61) % 1000 < 30) continue; // a panel down here and there
             for (int y = 0; y < h; y++)
                 p.Lay(u, y, 0, u % 4 == 0 ? new Block(BlockType.Pillar, Material.Steel, f.Steel.C, Role.Wall) : new Block(BlockType.Lattice, Material.Steel, f.Steel.C.Scale(1.1f), Role.Wall));

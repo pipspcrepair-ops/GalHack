@@ -27,6 +27,7 @@ public static class Grand
             case "lab" or "hull" or "hive" or "relay" or "homestead" or "minehead": FactionPlaces.Compose(c, lib, rng, hints, tech, part.Arg("what")); break;
             case "city": CityBlocks.Compose(c, rng, hints, tech, part); break;
             case "terminal" or "tower" or "hangar" or "fuel" or "fence" or "lights": Airfield.Compose(c, rng, hints, tech, part); break;
+            case "hub" or "authority" or "dome" or "pad" or "siding": Ports.Compose(c, rng, hints, tech, part); break;
             case "capital": CapitalHull.Compose(c, rng, hints, hints?.Tech ?? tech, part); break;
             default: throw new ArgumentException($"site {site.Id}: no large plan '{part.Arg("what")}'");
         }

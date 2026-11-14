@@ -62,14 +62,15 @@ public partial class PoiTest
     /// The airport in a real one's proportions, scaled to our worlds, on fresh seeds: a 400 to 600 m runway 30 m wide (the
     /// biggest craft it takes, a Small-class vessel, about 30 m across) with shoulders; a 15 m taxiway; an apron at least
     /// 200 x 70 m; a terminal 60 to 100 m long; a tower 18 to 26 m tall that sees the runway; hangars 40 to 48 m across and
-    /// 16 m or more high. A port is 150 to 1,500 m long, sized by its craft, its fuel
-    /// and oxidiser stores as far apart and off the terminal as its type says, its halls as wide as two fifths of its pads. And every type's parts hold their own ranges.
+    /// 16 m or more high; a crosswind runway teed off the main one in some. A spaceport by its plan (the references' rules):
+    /// its size by class, its recessed pads near twice a Small-class craft across and its big pads one and a half times its
+    /// own craft, its halls wider than its craft, the parts each plan has. And every type's parts hold their own ranges.
     /// </summary>
     void Scale()
     {
         var rand = new Random();
         var bad = new List<string>();
-        int n = 0;
+        int n = 0, tees = 0, airports = 0;
         foreach (PlaceType t in _lib.Types)
             for (int k = 0; k < 8; k++)
             {
@@ -78,27 +79,21 @@ public partial class PoiTest
                 foreach (SketchItem i in s.Items)
                     foreach (var (key, span) in i.Part.Size)
                         if (key != "len" && !span.Holds(i.Rolled[key]) || key == "len" && i.Rolled[key] < span.Lo - 0.5f) bad.Add($"{t.Id}.{i.Part.Id} {key} {i.Rolled[key]:F0} outside {span}");
-                foreach (SketchItem i in s.Items.Where(i => i.Part.Kind == "building"))
-                    if (Math.Abs(i.Box.W - i.Rolled["len"]) > 1 || Math.Abs(i.Box.D - i.Rolled["depth"]) > 1) bad.Add($"{t.Id}.{i.Part.Id} drawn {i.Box.W:F0} x {i.Box.D:F0}, rolled {i.Rolled["len"]:F0} x {i.Rolled["depth"]:F0}");
-                // The tower sees the runway (or the pads): nothing as tall stands between its cab and their nearest edge.
-                foreach (SketchItem tower in s.Of("tower"))
+                foreach (SketchItem i in s.Items.Where(i => i.Part.Kind == "building" && i.Part.Size.ContainsKey("len") && i.Part.Size.ContainsKey("depth")))
+                    if (Math.Abs(i.Box.Long - Math.Max(i.Rolled["len"], i.Rolled["depth"])) > 2 || Math.Abs(i.Box.Short - Math.Min(i.Rolled["len"], i.Rolled["depth"])) > 2)
+                        bad.Add($"{t.Id}.{i.Part.Id} drawn {i.Box.W:F0} x {i.Box.D:F0}, rolled {i.Rolled["len"]:F0} x {i.Rolled["depth"]:F0}");
+                // A tower that sees something: nothing as tall stands between its cab and that thing's nearest edge.
+                foreach (SketchItem tower in s.Of("tower").Where(x => x.Part.Find("sees") != null))
                 {
-                    SketchBox rw = s.Box(t.Parts[0].Id);
+                    SketchBox rw = s.Box(tower.Part.Find("sees")!.Value.To[0]);
                     float tz = tower.Box.Cz < rw.Cz ? rw.Z0 : rw.Z1;
                     foreach (SketchItem o in s.Items.Where(o => o.Part.Kind == "building" && o != tower && o.H >= tower.H))
                         if (o.Box.Crosses(tower.Box.Cx, tower.Box.Cz, Math.Clamp(tower.Box.Cx, rw.X0, rw.X1), tz)) bad.Add($"{t.Id}: {o.Part.Id} ({o.H:F0} m) blocks the tower's ({tower.H:F0} m) view of the runway");
                 }
-                if (s.Of("pads").FirstOrDefault() is { } pad)
-                {
-                    void Port(bool ok, string what) { if (!ok) bad.Add($"{t.Id}: {what}"); }
-                    // (Each store as far from what it keeps away from as its type says.)
-                    Port(s.Footprint.Long is >= 150 and <= 1500, $"{s.Footprint.Long:F0} m long");
-                    foreach (SketchItem store in s.Of("fuel").Concat(s.Of("oxidiser")))
-                        foreach (var (rel, to, gap) in store.Part.Rel.Where(x => x.Rel == "far"))
-                            Port(s.Of(to[0]).All(o => o.Box.Gap(store.Box) >= gap!.Value.Lo), $"{store.Part.Id} {s.Of(to[0]).Min(o => o.Box.Gap(store.Box)):F0} m from the {to[0]}, at least {gap!.Value.Lo:F0}");
-                    Port(s.Of("hangar").All(h => h.Box.Short >= pad.Rolled["side"] * 0.4f), $"halls {string.Join(", ", s.Of("hangar").Select(h => $"{h.Box.Short:F0}"))} m for {pad.Rolled["side"]:F0} m pads");
-                }
+                if (t.Plan != null) Port(t, s, bad);
                 if (t.Id != "airport") continue;
+                airports++;
+                if (s.Of("crosswind").Any()) tees++;
                 SketchItem runway = s.Of("runway").First(), apron = s.Of("apron").First(), terminal = s.Of("terminal").First();
                 void Real(bool ok, string what) { if (!ok) bad.Add($"airport: {what}"); }
                 Real(runway.Rolled["len"] is >= 400 and <= 600 && runway.Rolled["w"] == 30 && runway.Box.D >= 40, $"runway {runway.Rolled["len"]:F0} x {runway.Rolled["w"]:F0} m ({runway.Box.D:F0} with shoulders)");
@@ -109,9 +104,36 @@ public partial class PoiTest
                 Real(s.Of("hangar").Any() && s.Of("hangar").All(x => x.Box.W is >= 40 and <= 48 && x.H >= 16), $"hangars {string.Join(", ", s.Of("hangar").Select(x => $"{x.Box.W:F0} m span {x.H:F0} m high"))}");
                 Real(s.Of("fuel").All(f => f.Box.Gap(terminal.Box) >= 100), $"fuel farm {s.Of("fuel").Min(f => f.Box.Gap(terminal.Box)):F0} m from the terminal ({Boxes(s)})");
                 Real(s.Of("lights").Count() == 2, "approach lights off each end");
+                // The T: square to the runway, its end on the runway's laid width, its lights off its free end only.
+                foreach (SketchItem x in s.Of("crosswind"))
+                    Real(x.Box.D > x.Box.W && x.Box.X0 > runway.Box.X0 && x.Box.X1 < runway.Box.X1 && (Math.Abs(x.Box.Z1 - runway.Box.Cz) <= 16 || Math.Abs(x.Box.Z0 - runway.Box.Cz) <= 16)
+                        && s.Of("xlights").Count() == 1, $"crosswind {x.Box.X0:F0},{x.Box.Z0:F0}..{x.Box.X1:F0},{x.Box.Z1:F0} off the runway {runway.Box.X0:F0},{runway.Box.Z0:F0}..{runway.Box.X1:F0},{runway.Box.Z1:F0}");
             }
-        foreach (string b in bad.Distinct().Take(6)) GD.Print($"      {b}");
-        Check(bad.Count == 0, $"every type's parts in their real ranges on {n} fresh sketches ({bad.Count} out)");
+        foreach (string b in bad.Distinct().Take(8)) GD.Print($"      {b}");
+        Check(bad.Count == 0 && tees > 0 && tees < airports, $"every type's parts in their real ranges on {n} fresh sketches ({bad.Count} out); {tees} of {airports} airports with a crosswind runway teed off the main one");
+    }
+
+    /// <summary>A spaceport's proportions and parts by its plan, on one fresh sketch (see <see cref="Scale"/>).</summary>
+    static void Port(PlaceType t, Sketch s, List<string> bad)
+    {
+        void Real(bool ok, string what) { if (!ok) bad.Add($"{t.Id}: {what}"); }
+        var recessed = s.Of("pad").ToList();
+        var (lo, hi, pads) = t.Plan switch { "hub" => (350f, 950f, 6), "rosettes" => (700f, 1500f, 21), _ => (850f, 1900f, 24) };
+        Real(s.Footprint.Long >= lo && s.Footprint.Long <= hi, $"{s.Footprint.W:F0} x {s.Footprint.D:F0} m, wants {lo:F0} to {hi:F0} across");
+        Real(recessed.Count >= pads && recessed.All(p => PlaceTypes.Sink(p) >= 4 && 2 * p.Rolled["r"] >= 1.6f * 30f), $"{recessed.Count} recessed pads (wants {pads}), {string.Join(", ", recessed.Select(p => $"{2 * p.Rolled["r"]:F0} m {PlaceTypes.Sink(p):F0} deep").Distinct())}");
+        foreach (SketchItem big in s.Of("bigpad"))
+            Real(2 * big.Outline.HalfV >= 1.5f * (t.Plan == "hub" ? 30f : t.Craft), $"big pad {2 * big.Outline.HalfU:F0} x {2 * big.Outline.HalfV:F0} m for {t.Craft:F0} m craft");
+        foreach (SketchItem hall in s.Items.Where(i => i.Part.What == "hangar" && i.Part.Id != "airhangar"))
+            Real(hall.Rolled["len"] >= (t.Plan == "hub" ? 30f : t.Craft) + 8f, $"{hall.Part.Id} {hall.Rolled["len"]:F0} m across for {t.Craft:F0} m craft");
+        Real(s.Of("fuel").All(f => s.Of("terminal").All(m => m.Box.Gap(f.Box) >= 40)), $"fuel {s.Of("fuel").Select(f => s.Of("terminal").Min(m => m.Box.Gap(f.Box))).DefaultIfEmpty(-1).Min():F0} m from the main building");
+        string[] wants = t.Plan switch
+        {
+            "hub" => new[] { "terminal", "ring", "spoke", "bigpad", "freight", "fuel", "access", "fence" },
+            "rosettes" => new[] { "terminal", "spoke", "naval", "navalfence", "runway", "airhangar", "fuel", "town", "access", "fence" },
+            _ => new[] { "terminal", "spine", "bigpad", "hangar", "plaza", "tower", "fuel", "town", "access", "fence" },
+        };
+        foreach (string w in wants) Real(s.Of(w).Any(), $"no {w}");
+        if (t.Plan == "rosettes") Real(s.Of("bigpad").Count() == 3, $"{s.Of("bigpad").Count()} rosettes");
     }
 
     /// <summary>
@@ -122,30 +144,79 @@ public partial class PoiTest
     {
         var rand = new Random();
         int shared = 0, cut = 0, n = 0;
-        string first = "";
+        var seen = new HashSet<string>();
         foreach (PlaceType t in _lib.Types)
             for (int k = 0; k < 8; k++)
             {
                 Sketch s = PlaceTypes.Plan(t, FreshSeed(rand), 16000, 8000);
                 n++;
                 var standing = s.Items.Where(i => i.Part.Kind is "building" or "tanks").ToList();
-                var ground = s.Items.Where(i => i.Part.Kind is "surface" or "road" or "pads").ToList();
+                var ground = s.Items.Where(PlaceTypes.Laid).ToList();
                 foreach (SketchItem a in standing)
                 {
                     foreach (SketchItem b in standing.Concat(ground))
-                        if (a != b && a.Box.Overlaps(b.Box))
+                        if (a != b && a.Outline.Hits(b.Outline))
                         {
                             shared++;
-                            if (first == "") first = $"{t.Id}: {a.Part.Id} on {b.Part.Id}";
+                            seen.Add($"{t.Id}: {a.Part.Id} on {b.Part.Id}");
                         }
-                    if (a.Part.Kind == "building" && ground.Where(g => g.Part.Kind == "surface").Min(g => g.Box.Gap(a.Box)) > 40)
+                    if (a.Part.Kind == "building" && ground.Min(g => g.Box.Gap(a.Box)) > 40)
                     {
                         cut++;
-                        if (first == "") first = $"{t.Id}: {a.Part.Id} {ground.Min(g => g.Box.Gap(a.Box)):F0} m from any laid ground ({Boxes(s)})";
+                        seen.Add($"{t.Id}: {a.Part.Id} {ground.Min(g => g.Box.Gap(a.Box)):F0} m from any laid ground");
                     }
                 }
             }
-        Check(shared == 0 && cut == 0, $"yards on {n} fresh sketches: {shared} things on each other or on laid ground, {cut} buildings cut off{(first != "" ? $" (first: {first})" : "")}");
+        foreach (string x in seen.Take(8)) GD.Print($"      {x}");
+        Check(shared == 0 && cut == 0, $"yards on {n} fresh sketches: {shared} things on each other or on laid ground, {cut} buildings cut off");
+    }
+
+    /// <summary>
+    /// The port a world gets by the age that built it, over fresh profiles: a spaceport of its class where that age was high
+    /// (large for class A, medium for B and C, small for D and E, smaller only where the world is too small), a makeshift
+    /// launch site where it was medium, its airstrip where low; never a port of a later age than the one that built it; and
+    /// on placed worlds, the main port that family, a medium world's lesser ports airfields.
+    /// </summary>
+    void PortTypes()
+    {
+        var rand = new Random();
+        var seen = new Dictionary<string, int>();
+        int wrong = 0, placedWrong = 0, lesserAirfields = 0, worlds = 0;
+        string first = "";
+        string[] kinds = { "temperate", "arid", "ice", "lava", "alien" };
+        var theme = _lib.Themes.First(t => t.Id == "temperate");
+        for (int k = 0; k < 1500; k++)
+        {
+            WorldProfile w = WorldProfile.Roll(FreshSeed(rand), kinds[k % 5], false);
+            if (w.PortFamily(_lib) is not { } fam) continue;
+            // The ages it can stand at here, and what each ought to have been.
+            var ages = Enum.GetValues<PoiState>().Where(st => w.StateWeights(fam)[(int)st] > 0f).Select(st => w.LevelFor(fam, st)).Distinct().ToList();
+            string want = ages.Contains(TechLevel.High) ? "abandoned_spaceport" : ages.Contains(TechLevel.Mid) ? "launch_site" : "airfield";
+            string got = fam.Id;
+            if (fam.Types.Count > 0)
+            {
+                TechLevel age = ages.Max();
+                Sketch s = PlaceTypes.PlanFor(_lib, fam, age, FreshSeed(rand), 64000, 32000, w.Starport);
+                got += "/" + s.Type.Id;
+                if (fam.Id == "abandoned_spaceport") want += "/" + (w.Starport == Starport.A ? "port_large" : w.Starport >= Starport.C ? "port_medium" : "port_small");
+                else want += "/" + s.Type.Id;
+            }
+            seen[got] = seen.GetValueOrDefault(got) + 1;
+            if (got != want) { wrong++; if (first == "") first = $" (first: {w.Starport}, {w.Before} then {w.Now}: got {got}, wants {want})"; }
+            // Placed, a few of them.
+            if (k % 25 != 0) continue;
+            worlds++;
+            var map = PlanetMap.GenerateWorld(FreshSeed(rand), 120, 60, 80f, "ports");
+            var r = WorldPlacement.Place(_lib, map, theme, FreshSeed(rand), profile: w);
+            foreach (var p in r.Pois.Where(p => p.Port != null))
+            {
+                if (p.Primary && p.Family != fam) placedWrong++;
+                if (!p.Primary && fam.Lesser is { } l && w.LesserPort(_lib, fam).Id == l) { if (p.Family.Id == l) lesserAirfields++; else placedWrong++; }
+            }
+        }
+        GD.Print("      " + string.Join(", ", seen.OrderBy(x => x.Key).Select(x => $"{x.Key} {x.Value}")));
+        Check(wrong == 0 && placedWrong == 0 && new[] { "port_large", "port_medium", "port_small", "launch_site", "airfield" }.All(id => seen.Keys.Any(x => x.Contains(id))) && lesserAirfields > 0,
+            $"ports by the age that built them: spaceports by class on high-tech worlds, makeshift launch sites and their airports on medium ones, airstrips on low ({wrong} wrong{first}); on {worlds} placed worlds the main port that family ({placedWrong} not), {lesserAirfields} lesser ports airfields");
     }
 
     /// <summary>What each world size gets of each type (for the owner to approve), and what a sketch costs: it is all a type adds to a world's load.</summary>
@@ -211,7 +282,7 @@ public partial class PoiTest
                 Sketch s = PlaceTypes.Plan(t, seed, 32000, 16000);
                 int turn = rand.Next(4);
                 TechLevel tech = WorldProfile.Parse(t.Techs[rand.Next(t.Techs.Count)]);
-                var ground = PlaceTypes.Grounds(s, turn).Select(g => g.Box).ToList();
+                var ground = PlaceTypes.Grounds(s, turn).Select(g => g.Lay).ToList();
                 var owner = new Dictionary<(int, int, int), string>();
                 foreach (TypePiece p in PlaceTypes.Pieces(s, turn))
                 {
@@ -230,8 +301,8 @@ public partial class PoiTest
                     if (x0 < p.Box.X0 - slack || x1 > p.Box.X1 + slack || z0 < p.Box.Z0 - slack || z1 > p.Box.Z1 + slack || what is "terminal" or "hangar" && (x1 - x0 < p.Box.W - 2 || z1 - z0 < p.Box.D - 2))
                         bad.Add($"{t.Id}.{what} ({p.Front}) built {x0}..{x1} x {z0}..{z1}, its box {p.Box.X0:F0}..{p.Box.X1:F0} x {p.Box.Z0:F0}..{p.Box.Z1:F0}");
                     float L = p.Front is Dir.North or Dir.South ? x1 - x0 : z1 - z0;
-                    var pad = s.Of("pads").FirstOrDefault();
-                    if (t.Id == "airport" || pad != null && what == "hangar")
+                    bool hall = t.Plan != null && what == "hangar" && p.Item.Part.Id != "airhangar";
+                    if (t.Id == "airport" || hall)
                     {
                         void Real(bool ok, string why) { if (!ok) bad.Add($"{t.Id}.{what}: {why}"); }
                         if (what == "terminal") Real(L is >= 60 and <= 100 && top is >= 10 and <= 16, $"{L} m long, {top} m high");
@@ -249,30 +320,36 @@ public partial class PoiTest
                                 door = Math.Max(door, run);
                                 if (open && a == (int)L / 2) while (!set.Contains((cx, high, cz)) && high < 80) high++;
                             }
-                            // (A port's hall takes the craft its pads are for: its door two fifths of a pad wide, a quarter high.)
-                            if (pad != null) Real(door >= pad.Rolled["side"] * 0.4f && high >= pad.Rolled["side"] * 0.25f, $"door {door} m wide and {high} m high for {pad.Rolled["side"]:F0} m pads");
-                            else Real(L is >= 40 and <= 48 && top >= 16 && door >= 30 && high >= 8, $"{L} m span, {top} m high, door {door} m wide and {high} m high");
+                            // (A port's hall takes its craft (a hub's freight hall a Small-class one): its door as wide, an eighth as high.)
+                            float craft = t.Plan == "hub" ? 30f : t.Craft;
+                            if (hall) Real(door >= craft && high >= craft / 8f, $"door {door} m wide and {high} m high for {craft:F0} m craft");
+                            else if (t.Id == "airport") Real(L is >= 40 and <= 48 && top >= 16 && door >= 30 && high >= 8, $"{L} m span, {top} m high, door {door} m wide and {high} m high");
                         }
                     }
-                    if (what is "terminal" or "tower")
+                    if (p.Item.Part.Id is "terminal" or "tower")
                     {
                         if (!plans.TryGetValue($"{t.Id}.{what}", out var sigs)) plans[$"{t.Id}.{what}"] = sigs = new List<string>();
                         sigs.Add(string.Join(" ", l.Modules.Select(m => $"{m.Purpose}{m.Shape.Occupied.Count}")));
                     }
                     foreach (var c in cells)
                     {
-                        if (owner.TryGetValue(c, out string? o) && o != p.Plan.Id + p.OffsetX + "," + p.OffsetZ) shared++;
+                        if (owner.TryGetValue(c, out string? o) && o != p.Plan.Id + p.OffsetX + "," + p.OffsetZ && shared++ == 0) bad.Add($"{t.Id}: {what} and {o} share {c}");
                         owner[c] = p.Plan.Id + p.OffsetX + "," + p.OffsetZ;
                     }
-                    if (what is not ("fence" or "lights"))
-                        onGround += cells.Count(c => c.Y <= 2 && ground.Any(g => c.X >= g.X0 && c.X < g.X1 && c.Z >= g.Z0 && c.Z < g.Z1));
+                    // (A recessed pad's wall rings its own pad, a siding's rails lie on their ballast.)
+                    if (what is not ("fence" or "lights" or "pad" or "siding"))
+                        onGround += cells.Count(c => c.Y <= 2 && ground.Any(g => g.Holds(c.X + 0.5f, c.Z + 0.5f, 1f)));
+                    // Every room on foot from its way in (a hidden one is found through its wall).
+                    var reach = new NavGrid(l.Blocks, l.Occupied, l.Extras.Lifts, l.Extras.InSpace).Reachable(l.EntranceCell);
+                    foreach (var m in l.Modules.Where(m => m.Cells.Any() && !m.Purpose.Contains("hidden") && !m.Cells.Any(reach.Contains)))
+                        bad.Add($"{t.Id}.{what}: its {m.Purpose} is not on foot from its way in");
                 }
             }
         foreach (var (k, sigs) in plans)
             if (sigs.Distinct().Count() < sigs.Count) bad.Add($"{k}: {sigs.Count - sigs.Distinct().Count()} of {sigs.Count} spawns share a plan");
         foreach (string b in bad.Distinct().Take(8)) GD.Print($"      {b}");
         GD.Print("      builder time per piece: " + string.Join(", ", cost.Select(kv => $"{kv.Key} {kv.Value.Average():F0} ms (worst {kv.Value.Max():F0})")));
-        Check(bad.Count == 0 && shared == 0 && onGround == 0, $"{pieces} pieces of fresh airfields and ports built at their sketches' sizes ({bad.Count} out), {shared} cells shared between pieces, {onGround} built on laid ground");
+        Check(bad.Count == 0 && shared == 0 && onGround == 0, $"{pieces} pieces of fresh airfields and ports built at their sketches' sizes, every room on foot ({bad.Count} out), {shared} cells shared between pieces, {onGround} built on laid ground");
     }
 
     /// <summary>A cell along a piece's front edge, a metres along it, one cell inside.</summary>

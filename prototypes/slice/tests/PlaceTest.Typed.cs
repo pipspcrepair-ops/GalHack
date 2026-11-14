@@ -59,9 +59,12 @@ public partial class PlaceTest
 
         // Each a place of its own: up to its way in over the made ground (the terminal from its landside, the rest from the
         // apron, 30 m out first so the way round never cuts across a neighbour), then its own routes to the room.
-        foreach (var (kind, goals) in new[] { ("terminal", new[] { "gate stand", "stand" }), ("hangar", new[] { "hangar floor" }), ("tower", new[] { "control cab" }) })
+        // (A spaceport's main building is its hub's tower or its authority building: up to its cab or its operations room.)
+        string main = Kind(field.Anchor);
+        foreach (var (kind, goals) in new[] { ("terminal", new[] { "gate stand", "stand", "control cab", "flight operations" }), ("hangar", new[] { "hangar floor" }), ("tower", new[] { "control cab" }) })
         {
             PoiSite site = kind == "terminal" ? field.Anchor : field.Parts.FirstOrDefault(p => Kind(p) == kind);
+            if (site == null && kind == "tower" && main is "hub" or "authority") continue;
             if (site == null) { Fail($"the {field.Sketch.Type.Id} has a {kind}"); continue; }
             float cx = (site.Footprint.Min.X + site.Footprint.Max.X) * 0.5f, cz = (site.Footprint.Min.Z + site.Footprint.Max.Z) * 0.5f;
             Vector3 front = new Vector3(site.Entrance.X + 0.5f - cx, 0f, site.Entrance.Z + 0.5f - cz);
@@ -78,7 +81,7 @@ public partial class PlaceTest
             Place place = game.Places.PlaceOf(site);
             if (place == null) { Fail($"the {kind} stood up as a place"); continue; }
             var nav = place.Nav();
-            var room = place.Inst.Layout.Modules.FirstOrDefault(m => goals.Contains(m.Purpose));
+            var room = goals.Select(g => place.Inst.Layout.Modules.FirstOrDefault(m => m.Purpose == g)).FirstOrDefault(m => m != null);
             var reachable = nav.Reachable(walk.Here(place, nav));
             List<PInt3> cells = room?.Cells.Where(reachable.Contains).ToList() ?? new();
             if (cells.Count == 0) { Fail($"the {kind}'s {goals[0]} is on foot from where the body stands ({walk.Here(place, nav)})"); continue; }

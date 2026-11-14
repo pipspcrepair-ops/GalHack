@@ -33,15 +33,16 @@ public sealed class TypedPlace
 
     /// <summary>
     /// Its laid ground as the terrain shader paints it: the runway over its shoulders with its markings, each pad in its
-    /// blast apron, the taxiways and links with theirs, the apron in slabs, the car park in bays, the access road; worn
-    /// by the place's age.
+    /// blast apron (a recessed one on its pit's floor), the taxiways and links with theirs (a link painted on down its
+    /// pad's ramp), the apron in slabs, the car park in bays, a plaza in flags, the access road; worn by the place's age.
     /// </summary>
     public IEnumerable<GroundPatch> Grounds(float wear)
     {
-        foreach (var (item, box) in PlaceTypes.Grounds(Sketch, Turn))
+        float deepest = Sketch.Items.Max(PlaceTypes.Sink);
+        foreach (var (item, sh) in PlaceTypes.Grounds(Sketch, Turn))
         {
-            var (x0, z0, x1, z1) = World(box);
-            MadeCover cover = item.Part.What switch { "tarmac" => MadeCover.Tarmac, "concrete" => MadeCover.Concrete, "gravel" => MadeCover.Gravel, _ => MadeCover.Dirt };
+            MadeCover cover = item.Part.Kind == "rail" ? MadeCover.Gravel
+                : item.Part.What switch { "tarmac" => MadeCover.Tarmac, "concrete" => MadeCover.Concrete, "gravel" => MadeCover.Gravel, "flags" => MadeCover.Flags, _ => MadeCover.Dirt };
             bool pad = item.Part.Kind == "pads";
             float shoulder = item.Rolled.GetValueOrDefault(pad ? "apron" : "shoulder");
             // (A strip or taxiway of earth or gravel keeps its pattern: graded straight, the earth one rutted and marked.)
@@ -49,27 +50,28 @@ public sealed class TypedPlace
             {
                 _ when pad => GroundPattern.Pad,
                 "runway" or "crosswind" => GroundPattern.Runway,
-                "taxiway" or "link" => GroundPattern.Taxiway,
+                "taxiway" or "link" or "spoke" or "spine" or "lane" or "ring" => GroundPattern.Taxiway,
                 "carpark" => cover is MadeCover.Tarmac or MadeCover.Concrete ? GroundPattern.Bays : GroundPattern.Plain,
                 _ => cover == MadeCover.Concrete ? GroundPattern.Slabs : GroundPattern.Plain,
             };
             // The higher wins where they overlap: the runway's markings run on across the crosswind's end, the crosswind's
-            // laid width on across the runway's shoulders.
-            int layer = pad ? 4 : item.Part.Id switch { "runway" => 7, "crosswind" => 6, "taxiway" => 3, "link" => 2, _ => 1 };
+            // laid width on across the runway's shoulders; a pad over the links and taxiways that run into it.
+            int layer = pad ? 4 : item.Part.Id switch { "runway" => 7, "crosswind" => 6, "taxiway" or "spoke" or "spine" or "lane" or "ring" => 3, "link" => 2, _ => 1 };
+            GroundPatch Patch(Shape at, MadeCover c, GroundPattern pat, float w, int l) => new()
+            {
+                X = X + at.X, Z = Z + at.Z, UX = at.UX, UZ = at.UZ, HalfU = at.HalfU, HalfV = at.HalfV, Round = MathF.Max(0.5f, at.Round),
+                Y = PadY - PlaceTypes.Sink(item), Cover = c, Pattern = pat, Wear = w, Layer = l, Slab = c == MadeCover.Concrete ? 7.5f : 5f,
+                Give = item.Part.Id == "link" && deepest > 0f ? deepest + 1f : 0f,
+            };
+            Shape inner = sh;
             if (shoulder > 0f && cover != MadeCover.Dirt)
             {
                 // The shoulders: the full width, older-looking and plain, under the runway proper; a pad's blast apron all
                 // round it, in slabs.
-                var under = GroundPatch.Box(x0, z0, x1, z1, PadY, pad ? MadeCover.Concrete : MadeCover.Gravel, pad ? GroundPattern.Slabs : GroundPattern.Plain, Math.Min(1f, wear + 0.15f), layer - 2, round: 0.5f);
-                if (pad) under.Slab = 7.5f;
-                yield return under;
-                bool alongX = x1 - x0 >= z1 - z0;
-                if (alongX || pad) (z0, z1) = (z0 + shoulder, z1 - shoulder);
-                if (!alongX || pad) (x0, x1) = (x0 + shoulder, x1 - shoulder);
+                yield return Patch(sh, pad ? MadeCover.Concrete : MadeCover.Gravel, pad ? GroundPattern.Slabs : GroundPattern.Plain, Math.Min(1f, wear + 0.15f), layer - 2);
+                inner = sh with { HalfV = sh.HalfV - shoulder, HalfU = pad ? sh.HalfU - shoulder : sh.HalfU };
             }
-            var patch = GroundPatch.Box(x0, z0, x1, z1, PadY, cover, pattern, wear, layer, round: 0.5f);
-            if (cover == MadeCover.Concrete) patch.Slab = 7.5f;
-            yield return patch;
+            yield return Patch(inner, cover, pattern, wear, layer);
         }
     }
 }
@@ -283,11 +285,23 @@ public static partial class PoiSiting
         foreach (TypePiece piece in PlaceTypes.Pieces(sketch, best.Turn))
         {
             ulong seed = PoiGenerator.Gen.Hash.Combine(spawn, PoiGenerator.Gen.Hash.Of(piece.Plan.Id), (ulong)(piece.OffsetX * 7919 + piece.OffsetZ));
-            var origin = new TInt3((int)Math.Floor(Mathx.WrapX(best.X + piece.OffsetX, width)), best.Pad, (int)Math.Floor(best.Z + piece.OffsetZ));
+            // (A recessed pad's wall stands on its pit's floor; its pit is cut after the place's grading, which the main
+            // building, first of the parts, holds.)
+            int sink = (int)PlaceTypes.Sink(piece.Item);
+            var origin = new TInt3((int)Math.Floor(Mathx.WrapX(best.X + piece.OffsetX, width)), best.Pad - sink, (int)Math.Floor(best.Z + piece.OffsetZ));
             var (bx0, bz0, bx1, bz1) = place.World(piece.Box);
             int px0 = (int)Math.Floor(Mathx.WrapX(bx0, width)), pz0 = (int)Math.Floor(bz0), pw = (int)piece.Box.W, pd = (int)piece.Box.D;
             int top = best.Pad + (int)Math.Ceiling(Math.Max(piece.Item.H, 4f)) + 12;
             var stamp = new TerrainStamp($"{family.Name} {piece.Item.Part.Id}", px0, pz0, px0 + pw, pz0 + pd, best.Pad, 0f, 0f, width, height) { Surface = StampSurface.Natural, Wear = wear, Painted = true };
+            if (sink > 0)
+            {
+                var (gx, gz) = PlaceTypes.Turn(piece.Item.Rolled["gx"], piece.Item.Rolled["gz"], best.Turn);
+                stamp = new TerrainStamp($"{family.Name} {piece.Item.Part.Id}", px0, pz0, px0 + pw, pz0 + pd, best.Pad, 0f, 0f, width, height)
+                {
+                    Shape = StampShape.Pit, Radius = piece.Item.Rolled["r"], Depth = sink, DirX = gx, DirZ = gz, Length = sink * PlaceTypes.RampRun,
+                    Width = float.Parse(piece.Plan.Parts[0].Arg("ramp"), System.Globalization.CultureInfo.InvariantCulture), Surface = StampSurface.Natural, Wear = wear, Painted = true,
+                };
+            }
             PoiGenerator.Gen.Int3 v = piece.Front.Vec();
             var entrance = new TInt3((int)Math.Floor(Mathx.WrapX((bx0 + bx1) / 2 + v.X * ((bx1 - bx0) / 2 + 3), width)), best.Pad, (int)Math.Floor((bz0 + bz1) / 2 + v.Z * ((bz1 - bz0) / 2 + 3)));
             SiteDef plan = piece.Plan;
@@ -295,7 +309,7 @@ public static partial class PoiSiting
             var site = new PoiSite
             {
                 Name = family.Name, Family = family, State = state, Origin = origin, Stamp = stamp, Whole = place, Siting = "part", Entrance = entrance,
-                Footprint = new CellBox(new TInt3(px0 - 4, best.Pad - 2, pz0 - 4), new TInt3(px0 + pw + 4, top, pz0 + pd + 4)),
+                Footprint = new CellBox(new TInt3(px0 - 4, best.Pad - sink - 2, pz0 - 4), new TInt3(px0 + pw + 4, top, pz0 + pd + 4)),
                 Gates = new List<PoiGate> { new("entrance", entrance, v.X, v.Z) }, Recarve = () => { },
                 Lay = () => PoiFactory.BuildLayout(lib, family, variant, family.Rarity, seed, new LayoutHints(front, age, Ruin: profile?.Ruin, Site: plan)),
             };

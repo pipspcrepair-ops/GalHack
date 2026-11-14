@@ -69,64 +69,88 @@ type airstrip
   part access   road dirt        w 4..6 from carpark
   part fence    fence            h 1..2 round 10..20
 
-# Spaceports by starport class, from the same planner, scaled to our worlds and our ships the same way: the game's own
-# ships land and lift off vertically, so a port is a row of pads (two to three times the craft across), each in its
-# blast apron with a clearance to the next, a taxiway along them with a link out from each, an apron, halls the ships go
-# into through doors they fit, a terminal, a control tower that sees the pads, the fuel and oxidiser stores out beyond
-# the pads and apart along them (as Kennedy LC-39A keeps its two at opposite corners of its pad; NFPA 55 separates bulk
-# oxidiser from fuel), a car park, an access road and a perimeter. No strip: a type names one only where its craft need
-# it. The world's class picks the biggest it may be, its size the biggest that fits. Craft: a landing field takes Small-
-# class vessels (about 30 m), a spaceport mid Large-class ones (about 60 m), a starport the biggest (about 100 m).
-type starport
-  name Starport
+# Spaceports for high tech (owner, 14 Nov: "high tech level space ports of varying sizes"), from the owner's references
+# (reference-photos/spaceports: Pearce Design Studio, CC BY-NC 4.0, followed closely as rules, never as a template, and
+# credited). The class of port the world had picks the biggest it may be (a: large, b c: medium, d e: small), its size
+# the biggest that fits. Scaled to our worlds like the airport: the distances between the parts keep their proportions,
+# what a craft or a body uses stays true size (a recessed pad near twice its craft across, a ramp down into it at 1 in 5,
+# its blast wall a block over the field; a hall's door wider than its craft; rooms, doors and ladders for people).
+#   plan hub       a domed control tower on its roundabout at the middle, taxiways out from it like spokes at rolled
+#                  angles, recessed pads off them either side, long pads for bigger craft across the end of the longest,
+#                  a freight hall beside them with a rail siding out the back, a fuel farm off another, the gate road
+#                  out on its own way (class D: the reference's walled port in farmland)
+#   plan rosettes  an authority building, three wings round a round core, at the middle, its front to the gate; three
+#                  rosettes a third of a turn apart, each a large pad ringed by recessed ones, a taxiway in from the
+#                  building; in the gaps a naval yard behind its own fence and a small airfield; fuel and leased sheds by
+#                  the building; the gate road out through the fence to the startown huddled outside (class C)
+#   plan grid      taxi spines side by side, recessed pads either side of each, a column of big pads down one side, rows
+#                  of hangars along both long edges facing in, the terminal on its plaza at one end with offices round
+#                  it and the tower beside, a tank farm out in a far corner, the startown past the gate (class A)
+#   craft          the biggest craft it takes, m (a Small-class flight vessel about 30 m, a Large-class one about 60)
+#   counts         pad: a hub's in all, a rosette's ring, a spine's both sides; bigpad: the long pads, the rosettes'
+#                  middles (one each), the big column; sink: how deep a recessed pad lies (whole blocks)
+type port_large
+  name Spaceport
   tech high
   class a
+  plan grid
+  craft 60
   share 0.05
-  part pads     pads concrete count 3..5 side 110..130 apron 20..25 gap 80..120
-  part taxiway  surface concrete w 40 along pads gap 100..120
-  part link     surface concrete w 40 between pads taxiway
-  part apron    surface concrete len 350..500 depth 140..180 beside taxiway away pads
-  part terminal building terminal len 70..110 depth 34..44 h 12..16 concourse 6 beside apron away taxiway faces apron
-  part tower    building control_tower len 12..14 depth 12..14 h 28..36 cab 8..10 beside apron away taxiway near terminal 20..120 sees pads
-  part hangar   building hangar count 2..3 len 110..130 depth 100..120 h 44..52 beside apron away taxiway faces apron gap 6..16
-  part fuel     tanks count 3..4 r 6..9 h 10..14 beside pads away taxiway far terminal 200..
-  part oxidiser tanks count 2..3 r 6..9 h 10..14 beside pads away taxiway far fuel 150.. far terminal 200..
-  part carpark  surface tarmac   len 60..100 depth 40..60 beside terminal away apron gap 8..16
-  part access   road tarmac      w 10 from carpark
-  part fence    fence            h 3..4 round 30..50
+  part terminal building terminal len 90..120 depth 36..44 h 14..18 concourse 6
+  part spine    surface concrete w 20 count 3..5 len 420..560
+  part lane     surface concrete w 30
+  part pad      pads concrete    count 8..12 r 26 sink 4..6
+  part link     surface concrete w 12
+  part bigpad   pads concrete    count 3..5 r 54..62
+  part hangar   building hangar  count 6..10 len 70..80 depth 60..70 h 30..36
+  part plaza    surface flags    len 120..160 depth 50..70
+  part tower    building control_tower len 12..14 depth 12..14 h 30..38 cab 8..10
+  part office   building terminal count 2..3 len 30..44 depth 20..26 h 8..12
+  part fuel     tanks count 4..6 r 6..8 h 10..14
+  part access   road tarmac w 10
+  part fence    fence h 3..4 round 30..50
+  part town     building dome count 8..14 r 6..10 h 4..8
 
-type spaceport
+type port_medium
   name Spaceport
   tech high
   class b c
+  plan rosettes
+  craft 60
   share 0.05
-  part pads     pads concrete count 3..4 side 70..90 apron 15..20 gap 60..100
-  part taxiway  surface concrete w 30 along pads gap 70..90
-  part link     surface concrete w 30 between pads taxiway
-  part apron    surface concrete len 200..320 depth 90..130 beside taxiway away pads
-  part terminal building terminal len 50..80 depth 30..40 h 10..14 concourse 6 beside apron away taxiway faces apron
-  part tower    building control_tower len 10..12 depth 10..12 h 20..28 cab 6..8 beside apron away taxiway near terminal 10..80 sees pads
-  part hangar   building hangar count 1..3 len 70..80 depth 60..70 h 30..36 beside apron away taxiway faces apron gap 4..12
-  part fuel     tanks count 2..3 r 5..7 h 8..12 beside pads away taxiway far terminal 120..
-  part oxidiser tanks count 2 r 5..7 h 8..12 beside pads away taxiway far fuel 100.. far terminal 120..
-  part carpark  surface tarmac   len 40..80 depth 30..50 beside terminal away apron gap 6..12
-  part access   road tarmac      w 8 from carpark
-  part fence    fence            h 2..3 round 25..40
+  part terminal building authority r 22..28 wing 36..48 span 24..30 h 34..44
+  part bigpad   pads concrete    count 3 r 46..56
+  part pad      pads concrete    count 8..10 r 26 sink 4..6
+  part link     surface concrete w 12
+  part spoke    surface concrete w 20
+  part naval    building hangar  len 70..80 depth 60..70 h 30..36
+  part navalpad pads concrete    r 40..48
+  part barracks building terminal len 40..56 depth 18..24 h 8..12
+  part navalfence fence h 3..4
+  part runway   surface tarmac   len 220..320 w 30 shoulder 5
+  part airhangar building hangar count 1..2 len 40..48 depth 30..40 h 16..20
+  part airtower building control_tower len 8..10 depth 8..10 h 18..24 cab 5..7
+  part fuel     tanks count 3..4 r 5..7 h 8..12
+  part lease    building terminal count 2..4 len 20..30 depth 14..20 h 6..9
+  part access   road tarmac w 10
+  part fence    fence h 3..4 round 25..40
+  part town     building dome count 8..14 r 6..10 h 4..8
 
-type landing_field
-  name Landing Field
-  tech high mid
+type port_small
+  name Spaceport
+  tech high
   class d e
+  plan hub
+  craft 30
   share 0.03
-  part pads     pads concrete count 2..3 side 40..50 apron 8..12 gap 40..60
-  part taxiway  surface concrete w 15 along pads gap 45..60
-  part link     surface concrete w 15 between pads taxiway
-  part apron    surface concrete len 80..140 depth 50..70 beside taxiway away pads
-  part terminal building terminal len 30..50 depth 16..24 h 6..10 beside apron away taxiway faces apron
-  part tower    building control_tower len 8..10 depth 8..10 h 12..18 cab 5..7 beside apron away taxiway near terminal 6..60 sees pads
-  part hangar   building hangar count 1..2 len 40..48 depth 30..40 h 20..24 beside apron away taxiway faces apron gap 4..8
-  part fuel     tanks count 1..2 r 3..4 h 5..8 beside pads away taxiway far terminal 60..
-  part oxidiser tanks count 1 r 3..4 h 5..8 beside pads away taxiway far fuel 40.. far terminal 60..
-  part carpark  surface gravel   len 20..40 depth 15..30 beside terminal away apron gap 4..8
-  part access   road gravel      w 6 from carpark
-  part fence    fence            h 2..3 round 15..25
+  part terminal building hub     r 20..26 h 30..38 cab 16..20
+  part ring     surface tarmac   w 12 r 40..48
+  part spoke    surface concrete w 15 count 3..4 len 170..250
+  part pad      pads concrete    count 8..12 r 26 sink 4..6
+  part link     surface concrete w 12
+  part bigpad   pads concrete    count 2 len 100..120 w 50..56
+  part freight  building hangar  len 50..70 depth 30..40 h 12..16
+  part siding   rail             len 80..140
+  part fuel     tanks count 2..3 r 4..6 h 8..12
+  part access   road tarmac      w 8
+  part fence    fence            h 3..4 round 20..30

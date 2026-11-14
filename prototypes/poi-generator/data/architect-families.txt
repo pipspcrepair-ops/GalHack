@@ -355,7 +355,7 @@ family abandoned_spaceport
   pitch Rings of recessed pads on their taxiways, the halls the ships went into, a tower or an authority building over it all, fuel stored apart.
   faction none
   roster oldworld
-  types starport spaceport landing_field
+  types port_large port_medium port_small
   core none
   owner none
   landmark
