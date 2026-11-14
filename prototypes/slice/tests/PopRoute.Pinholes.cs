@@ -28,8 +28,8 @@ public partial class PopRoute
         ("near ground", 12), ("far ground", 13), ("flora", 14), ("cover", 15), ("horizon", 16), ("water", 17),
     };
 
-    /// <summary>At most, a frame, at night: the sparks ground cover adds, and ground pixels showing the sky.</summary>
-    const double CoverSparks = 0.1, SkyThrough = 2;
+    /// <summary>At most, at night: the sparks ground cover adds in 100 frames (the old shaders: 8 to 80), and ground pixels showing the sky a frame.</summary>
+    const double CoverSparks = 10, SkyThrough = 2;
 
     void Tag()
     {
@@ -59,6 +59,7 @@ public partial class PopRoute
         string dir = _args.GetValueOrDefault("out-dir", ProjectSettings.GlobalizePath("user://pinholes"));
         DirAccess.MakeDirRecursiveAbsolute(dir);
         zone.Sky.TimeScale = 0f;
+        env.BackgroundColor = new Color(1f, 0f, 1f); // the flat sky's, shown only while it stands in for the sky
         var cases = bisect ? PinLayers.Select(l => "-" + l.Name).Prepend("all").Append("-shadows").Append("flat sky").Append("no msaa").ToList() : new List<string> { "all", "-cover", "flat sky" };
         foreach (var (hour, label) in bisect ? new[] { (Staging.HighSun(_game, false), "night"), (Staging.HighSun(_game), "day") } : new[] { (Staging.HighSun(_game, false), "night") })
         {
@@ -90,7 +91,6 @@ public partial class PopRoute
                         foreach (var (name, layer) in PinLayers) cam.SetCullMaskValue(layer, c != "-" + name);
                         zone.Sky.Sun.ShadowCasterMask = zone.Sky.NightLight.ShadowCasterMask = c == "-shadows" ? 0u : uint.MaxValue;
                         env.BackgroundMode = c == "flat sky" ? Godot.Environment.BGMode.Color : Godot.Environment.BGMode.Sky;
-                        env.BackgroundColor = new Color(1f, 0f, 1f);
                         GetViewport().Msaa3D = c == "no msaa" ? Viewport.Msaa.Disabled : msaa;
                         Stand(i);
                         _game.FixedCamera = At(i);
@@ -102,7 +102,7 @@ public partial class PopRoute
                         var (now, bright) = Dots(img, Row(At(i), 200f, up));
                         found += now.Count;
                         sparks += bright;
-                        through += Holes(img, Row(At(i), 400f, 40f) + 4);
+                        through += Holes(img, Row(At(i), 400f, 40f));
                         if (last != null) flicker += now.Count(p => !last.Contains(p));
                         last = now;
                         if (i < 6 && _args.ContainsKey("frames")) img.SavePng($"{dir}/{label}-{view}-{c.Replace(' ', '-')}-{i - 4}.png");
@@ -117,7 +117,7 @@ public partial class PopRoute
                 env.BackgroundMode = Godot.Environment.BGMode.Sky;
                 if (label != "night" || view is "flying") continue;
                 // (Both passes that draw cover count: sparks are few, and a second sample steadies the number.)
-                Gate($"pinholes, night, {view}: sparks ground cover adds", (sparked["all"] + sparked["flat sky"]) / 2 - sparked["-cover"], CoverSparks, false, "a frame");
+                Gate($"pinholes, night, {view}: sparks ground cover adds", ((sparked["all"] + sparked["flat sky"]) / 2 - sparked["-cover"]) * 100, CoverSparks, false, "in 100 frames");
                 Gate($"pinholes, night, {view}: ground showing the sky", holes["flat sky"], SkyThrough, false, "px a frame");
             }
         }
