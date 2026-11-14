@@ -28,6 +28,7 @@ public partial class PoiTest
         var kinds = new SortedDictionary<string, int>();
         var vocab = new Dictionary<ulong, string>();
         int unlike = 0;
+        var perTech = new SortedDictionary<TechLevel, (int Places, int Pieces, int Carry3)>();
         foreach (FamilyDef f in _lib.Families.Where(f => !f.Tags.Contains("city") && !f.Space))
             foreach (TechLevel tech in f.Techs.Count > 0 ? f.Techs.Select(WorldProfile.Parse).Distinct() : Enum.GetValues<TechLevel>())
             {
@@ -66,6 +67,9 @@ public partial class PoiTest
                 // (A pass of under 1 ms is inside the timer's noise on a 2 ms shed: its share says nothing.)
                 if (cost[^1] >= 1 && share > worstShare) { worstShare = share; worstPlace = $"{f.Id} {cost[^1]:0.0} of {build[^1]:0} ms"; }
                 added.Add(orn.Ornaments.Sum(p => p.Cells.Count));
+                int elements = orn.Ornaments.Count(p => p.Kind != "bars");
+                var tt = perTech.GetValueOrDefault(tech);
+                perTech[tech] = (tt.Places + 1, tt.Pieces + elements, tt.Carry3 + (elements >= 3 ? 1 : 0));
                 string sig = Ornament.For(orn).Sig;
                 ulong who = Ornament.Builder(orn);
                 if (vocab.TryGetValue(who, out string had) && had != sig) unlike++;
@@ -76,7 +80,7 @@ public partial class PoiTest
                     if (p.Cells.Any(c => orn.Blocks.Get(c).IsAir)) broken++;
                     if (p.At.Count >= 2 && p.At.Zip(p.At.Skip(1), (a, b) => b - a).Distinct().Count() > 1) irregular++;
                     if (p.Kind is "beams" or "corbels" && p.At.Count < 2) orphans++;
-                    var (free, thin, off) = Joined(orn.Blocks, p);
+                    var (free, thin, off) = Joined(orn.Blocks, orn.Layout, p);
                     (freeEnds, thinParts, standOff) = (freeEnds + free, thinParts + thin, standOff + off);
                     if (free + thin + off > 0 && unjoined.Length == 0) unjoined = $"{p.Kind} at {p.Cells[0]} in {f.Id}";
                 }
@@ -99,7 +103,7 @@ public partial class PoiTest
                 {
                     var before = a.Reachable(inst.Layout.EntranceCell);
                     var after = b.Standable(inst.Layout.EntranceCell) ? b.Reachable(inst.Layout.EntranceCell) : new HashSet<Int3>();
-                    blocked += before.Count(c => !after.Contains(c));
+                    blocked += before.Count(c => !after.Contains(c) && !mine.Contains(c)); // (its own cells aside: a rib on a wall's foot stands where feet could be, in the open, and cuts off nothing)
                 }
             }
         double Median(List<double> l) => l.Count == 0 ? 0 : l.OrderBy(x => x).ElementAt(l.Count / 2);
@@ -107,6 +111,7 @@ public partial class PoiTest
         var sigs = vocab.Values.ToList();
         int clashes = sigs.Count - sigs.Distinct().Count();
         GD.Print($"      ornament: {places} places, {string.Join(", ", kinds.Select(k => $"{k.Value} {k.Key}"))}; blocks added per place median {added.OrderBy(x => x).ElementAtOrDefault(added.Count / 2)}, most {added.DefaultIfEmpty(0).Max()}");
+        GD.Print("      ornament elements per tech (not counting bars): " + string.Join("; ", perTech.Select(t => $"{t.Key} {t.Value.Pieces} on {t.Value.Places} places ({t.Value.Carry3} carry 3 or more)")));
         GD.Print($"      ornament cost: median {medCost:0.00} ms against a median build of {medBuild:0} ms ({100 * medCost / Math.Max(1, medBuild):0.0}%); slowest {worst:0.0} ms; highest share {100 * worstShare:0.0}% ({worstPlace})");
         GD.Print($"      ornament vocabularies: {vocab.Count} builders, {sigs.Distinct().Count()} vocabularies; e.g. " + string.Join(" | ", sigs.Distinct().Take(3)));
         Check(places > 0 && broken == 0 && floating == 0 && blocked == 0 && irregular == 0 && orphans == 0,
@@ -122,10 +127,12 @@ public partial class PoiTest
     /// flush (a beam's two ends, a corbel's back and head, the foot of what rises: a chimney, a spire), its parts thinner than
     /// a beam (0.3 m), and its faces beside the building's own that its shape doesn't reach (standing off them).
     /// </summary>
-    static (int Free, int Thin, int Off) Joined(BlockGrid g, Ornament.Piece p)
+    static (int Free, int Thin, int Off) Joined(BlockGrid g, Layout layout, Ornament.Piece p)
     {
         if (p.Kind == "bars") return (0, 0, 0);
         var cells = p.Cells.ToHashSet();
+        // (The ground is held too: a rib or a pylon stands on the rock below the place.)
+        bool Grounds(Block n, Int3 at) => Holds(n) || n.IsAir && !layout.Extras.InSpace && at.Y <= Assembler.GroundY && !layout.Occupied[at];
         static bool Holds(Block n) => !n.IsAir && n.Role != Role.Decor && (BlockInfo.IsFullCube(n.Type) || BlockInfo.IsShaped(n.Type) || BlockInfo.IsSlope(n.Type) || BlockInfo.IsCornerSlope(n.Type));
         bool Reaches(Block b, Int3 c, Dir d) => Shapes.FlatToward(b, d) || b.Type == BlockType.Spike && d == Dir.Down
             || Shapes.For(b, c, g).Any(x => d switch { Dir.North => x.Lo.Z < 0.001f, Dir.South => x.Hi.Z > 0.999f, Dir.West => x.Lo.X < 0.001f, Dir.East => x.Hi.X > 0.999f, Dir.Up => x.Hi.Y > 0.999f, _ => x.Lo.Y < 0.001f });
@@ -137,6 +144,8 @@ public partial class PoiTest
             if (Shapes.For(b, c, g).Any(x => new[] { x.Hi.X - x.Lo.X, x.Hi.Y - x.Lo.Y, x.Hi.Z - x.Lo.Z }.OrderBy(s => s).ElementAt(1) < 0.29f)) thin++;
             foreach (Dir d in Dirs.Horizontal)
                 if (!cells.Contains(c + d.Vec()) && Holds(g.Get(c + d.Vec())) && !Reaches(b, c, d)) off++;
+            // (A cornice is held by the wall it stands against: some side of it meets one.)
+            if (p.Kind == "cornice") { if (!Dirs.Horizontal.Any(d => Holds(g.Get(c + d.Vec())))) free++; continue; }
             IEnumerable<Dir> ends = p.Kind switch
             {
                 "beams" => new[] { b.Facing, b.Facing.Opposite() },
@@ -147,6 +156,7 @@ public partial class PoiTest
             {
                 Int3 n = c + d.Vec();
                 if (cells.Contains(n)) continue;
+                if (g.Get(n).IsAir && d == Dir.Down && Grounds(g.Get(n), n)) continue;
                 if (!Reaches(b, c, d) || !Holds(g.Get(n)) || !Shapes.FlatToward(g.Get(n), d.Opposite()) && !BlockInfo.IsFullCube(g.Get(n).Type)) free++;
             }
         }
