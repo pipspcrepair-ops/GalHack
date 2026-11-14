@@ -183,15 +183,6 @@ public static class Sites
     static RoundBody Cylinder(Ctx x, int cx, int cz, int y0, int y1, Func<double, double> r, Block b) =>
         Round.Lay(x.C, cx + 0.5, cz + 0.5, y0, y1, y => (r(y), 0), y => b with { Color = b.Color.Scale(0.94f + 0.1f * ((y >> 2) & 1)) });
 
-    /// <summary>Whether a round's outline runs straight along a grid line across the cell column through its middle on each side (a ladder's or a fin's flat).</summary>
-    static bool Flat(List<(double X, double Z)> pts, int cx, int cz)
-    {
-        double Pole(Func<(double X, double Z), bool> on, Func<(double X, double Z), double> by, bool max) => max ? pts.Where(on).Select(by).DefaultIfEmpty(double.NaN).Max() : pts.Where(on).Select(by).DefaultIfEmpty(double.NaN).Min();
-        bool Whole(double a, double b) => a == b && a == Math.Floor(a);
-        return Whole(Pole(q => q.X == cx, q => q.Z, true), Pole(q => q.X == cx + 1, q => q.Z, true)) && Whole(Pole(q => q.X == cx, q => q.Z, false), Pole(q => q.X == cx + 1, q => q.Z, false))
-            && Whole(Pole(q => q.Z == cz, q => q.X, true), Pole(q => q.Z == cz + 1, q => q.X, true)) && Whole(Pole(q => q.Z == cz, q => q.X, false), Pole(q => q.Z == cz + 1, q => q.X, false));
-    }
-
     /// <summary>A rail that follows a round's outline (<see cref="Shapes.RimRail"/>), over the cell its solid side is in.</summary>
     static Block RimRail(Round.Run run, Rgb c)
     {
@@ -213,7 +204,7 @@ public static class Sites
             int cx = p.X + (alongX ? i * (2 * r + gap) : 0), cz = p.Z + (alongX ? 0 : i * (2 * r + gap));
             var shell = new Block(BlockType.Cube, Material.Steel, i % 2 == 0 ? steel : steel.Lerp(new Rgb(0x8a, 0x5a, 0x3a), 0.4f), Role.Wall);
             // (Its radius eased till the outline runs flat across the ladder's side.)
-            double flat = Round.Fit(cx + 0.5, cz + 0.5, r + 0.4, pts => Flat(pts, cx, cz));
+            double flat = Round.Fit(cx + 0.5, cz + 0.5, r + 0.4, pts => Round.Flat(pts, cx, cz));
             double R = Cylinder(x, cx, cz, 0, h - 1, _ => flat, shell).Outer[0];
             var course = Round.Ring(cx + 0.5, cz + 0.5, R);
             // A hazard band, round the outside course.
@@ -224,7 +215,7 @@ public static class Sites
                     x.C.Set(c, x.C.Get(c) with { Color = Hazard.Scale(0.85f), Role = Role.Decor });
             }
             // Ladder up the south side, from the ground to the top, against the flat there.
-            int lz = (int)Round.Outline(cx + 0.5, cz + 0.5, R).Where(q => q.X == cx).Max(q => q.Z);
+            int lz = Round.Past(cx, cz, R, Dir.South).Z;
             for (int y = 0; y < h; y++)
                 x.C.Blocks[new Int3(cx, y, lz)] = new Block(BlockType.Ladder, Material.Steel, new Rgb(0x70, 0x70, 0x70), Role.Traverse, Dir.South);
             // Rails round the rim, along its outline, open where the ladder arrives.
@@ -581,30 +572,21 @@ public static class Sites
     }
 
     /// <summary>
-    /// A derelict rocket still standing on its launch pad: a hull of decks joined by a ladder
-    /// through every hatch, a hatch at the foot, fins and engine bells, and the service gantry
-    /// beside it with a ladder and a walkway to an upper hatch.
+    /// A derelict rocket still standing on its launch pad (<see cref="Rockets"/>): a hull of decks joined by a ladder through
+    /// every hatch, a hatch at the foot cut through its wall, three fins it stands on and engine bells under it, and the
+    /// service gantry beside it, its top level with the flight deck.
     /// </summary>
     static void Rocket(Ctx x, SitePart p)
     {
         int decks = p.Int("decks", 6), r = p.Int("r", 4);
-        int h = decks * 4 + 1;
         var hull = new Rgb(0xd8, 0xd6, 0xcc);
         var band = new Rgb(0x2a, 0x4a, 0x6a);
         var bell = new Rgb(0x3a, 0x34, 0x30);
-        int baseY = 2; // the hull stands on its engine skirt
-        // Engine skirt and bells: a ring of legs, open beneath so you can walk under the engines.
-        for (int y = 0; y < baseY; y++)
-            for (int a = 0; a < 8; a++)
-            {
-                float t = a / 8f * MathF.Tau;
-                Int3 c = new(p.X + (int)MathF.Round(MathF.Cos(t) * (r - 0.5f)), y, p.Z + (int)MathF.Round(MathF.Sin(t) * (r - 0.5f)));
-                x.C.Set(c, new Block(BlockType.Cube, Material.Steel, bell, Role.Wall));
-            }
+        int baseY = 2; // the hull stands on its fins, the engine bells under it
         // Hull: decks every four metres, a ladder through the middle; round outside, a metre thick, flat across each fin and the hatch.
         var deckCells = Enumerable.Range(0, decks).Select(_ => new List<Int3>()).ToList();
         int top = baseY + decks * 4;
-        double R = Round.Fit(p.X + 0.5, p.Z + 0.5, r + 0.3, pts => Flat(pts, p.X, p.Z));
+        double R = Rockets.Fit(p.X, p.Z, r + 0.3);
         Round.Lay(x.C, p.X + 0.5, p.Z + 0.5, baseY, top, y => ((y - baseY) % 4 == 0 ? (R, 0) : (R, R - 1)), y =>
         {
             int d = Math.Min(decks - 1, (y - baseY) / 4);
@@ -622,36 +604,37 @@ public static class Sites
                     if (w.Type == BlockType.Cube) x.C.Set(c, new Block(BlockType.Cube, Material.Alloy, new Rgb(0x30, 0x40, 0x48), Role.Window));
                     break;
                 }
-        // The nose cone.
-        Cylinder(x, p.X, p.Z, top + 1, top + r + 2, y => r * (1.0 - (y - top - 1) / (double)(r + 2)), new Block(BlockType.Cube, Material.Alloy, hull, Role.Roof));
-        // Fins at the foot.
+        Rockets.Nose(x.C, p.X, p.Z, R, top + 1, new Block(BlockType.Cube, Material.Alloy, hull, Role.Roof));
+        Rockets.Bells(x.C, p.X, p.Z, R, 0, baseY, new Block(BlockType.Cube, Material.Steel, bell, Role.Wall));
         // Three fins; the fourth was torn off when the access stair went up on the hatch side.
-        foreach (var (fx, fz) in new[] { (1, 0), (0, 1), (0, -1) })
-            for (int y = 0; y < 7; y++)
-                for (int k = 1; k <= 3 - y / 3; k++)
-                    x.C.Set(new Int3(p.X + fx * (r + k), y, p.Z + fz * (r + k)), new Block(BlockType.Cube, Material.Alloy, band, Role.Wall));
+        var fin = new Block(BlockType.Cube, Material.Alloy, band, Role.Wall);
+        Int3 tip = Rockets.Fin(x.C, p.X, p.Z, R, Dir.East, 0, fin);
+        Rockets.Fin(x.C, p.X, p.Z, R, Dir.South, 0, fin);
+        Rockets.Fin(x.C, p.X, p.Z, R, Dir.North, 0, fin);
         // The ladder up the middle, through every deck's hatch.
         for (int y = baseY + 1; y < baseY + (decks - 1) * 4 + 1; y++)
         {
             Int3 c = new(p.X, y, p.Z);
             x.C.Set(c, new Block(BlockType.Ladder, Material.Steel, new Rgb(0x60, 0x60, 0x60), Role.Traverse, Dir.North));
         }
-        // The way in: a hatch at the foot of the lowest deck, reached up a short stair of the pad.
-        int doorY = baseY + 1;
-        Int3 door = new(p.X - r, doorY, p.Z);
+        // The way in: a hatch at the foot of the lowest deck in the hull's outermost column on the west, cut cleanly through its
+        // wall (the rim's cut pieces behind it go too, into the deck), reached up a short stair off the pad.
+        int doorY = baseY + 1, hx = Round.Past(p.X, p.Z, R, Dir.West).X + 1;
+        Int3 door = new(hx, doorY, p.Z);
         var doorCells = new List<Int3>();
         for (int k = 0; k < DoorSize.Tall; k++)
-            for (int dz = 0; dz <= 1; dz++) doorCells.Add(new Int3(p.X - r, doorY + k, p.Z + dz));
+            for (int dz = 0; dz <= 1; dz++) doorCells.Add(new Int3(hx, doorY + k, p.Z + dz));
         foreach (Int3 dc in doorCells) x.C.Clear(dc);
+        foreach (Int3 q in Round.Through(x.C, doorCells, Dir.East)) if (q.X > hx) deckCells[(q.Y - baseY) / 4].Add(q);
         // Steps up to the hatch from the pad: two stair blocks and their fill.
         for (int dz = 0; dz <= 1; dz++)
         {
             // Three steps up from the pad to a landing at the hatch sill (walk level 3), solid under each.
-            for (int k = 0; k < 3; k++) x.C.Set(new Int3(p.X - r - 1, k, p.Z + dz), new Block(BlockType.Cube, Material.Steel, bell, Role.Floor));
-            for (int k = 3; k <= 5; k++) x.C.Remove(new Int3(p.X - r - 1, k, p.Z + dz));
+            for (int k = 0; k < 3; k++) x.C.Set(new Int3(hx - 1, k, p.Z + dz), new Block(BlockType.Cube, Material.Steel, bell, Role.Floor));
+            for (int k = 3; k <= 5; k++) x.C.Remove(new Int3(hx - 1, k, p.Z + dz));
             for (int i = 0; i < 3; i++)
             {
-                int sx = p.X - r - 4 + i;
+                int sx = hx - 4 + i;
                 for (int k = 0; k < i; k++) x.C.Set(new Int3(sx, k, p.Z + dz), new Block(BlockType.Cube, Material.Steel, bell, Role.Floor));
                 x.C.Set(new Int3(sx, i, p.Z + dz), new Block(BlockType.Stair, Material.Steel, bell.Scale(1.2f), Role.Traverse, Dir.East));
                 for (int k = 1; k <= 3; k++) x.C.Remove(new Int3(sx, i + k, p.Z + dz));
@@ -680,8 +663,8 @@ public static class Sites
             x.C.X.Lights.Add(new LightSpot { Cell = new Int3(p.X + 1, baseY + d * 4 + 3, p.Z + 1), Color = new Rgb(0xe6, 0xf2, 0xff), Mode = LightMode.Steady, Energy = 1f, Range = 7f, Module = m });
             if (d == decks - 1 && x.VaultModule < 0) x.VaultModule = m;
         }
-        // The gantry: a lattice tower beside the hull, its top level with the flight deck's hatch.
-        int gx = p.X + r + 4, gz = p.Z - 2;
+        // The gantry: a lattice tower beside the hull past its east fin, its top level with the flight deck's hatch.
+        int gx = tip.X + 1, gz = p.Z - 2;
         int gh = baseY + (decks - 1) * 4 + 1;
         var gantry = new SitePart { Kind = "tower", X = gx, Z = gz, Args = { ["h"] = (gh).ToString(), ["size"] = "5", ["every"] = "4", ["crown"] = "lamp" } };
         LatticeTower(x, gantry);
@@ -1339,15 +1322,16 @@ public static class Sites
         // The shell is measured from the sphere's centre, so it stays one thickness (two metres) all the way over; each course round.
         const double Shell = 2;
         double Across(double rad, double y) => y < wall ? rad : rad * rad > (y - wall) * (y - wall) ? Math.Sqrt(rad * rad - (y - wall) * (y - wall)) : 0;
-        Round.Lay(x.C, p.X + 0.5, p.Z + 0.5, 0, wall + r - 1, y => (Across(r, y), Across(r - Shell, y)),
+        RoundBody shell = Round.Lay(x.C, p.X + 0.5, p.Z + 0.5, 0, wall + r - 1, y => (Across(r, y), Across(r - Shell, y)),
             y => new Block(BlockType.Cube, Material.Concrete, col.Scale(y % 5 == 4 ? 0.8f : 0.95f), Role.Wall));
-        // The wedges fallen in, and the door: an opening through the ring wall on the west side.
+        // The wedges fallen in, and the door: an opening through the ring wall on the west side; every cell of the shell there,
+        // down to the least its inside comes to over the course (a sloped course's sliver of a piece reaches in that far).
         for (int y = 0; y < wall + r; y++)
             for (int dz = -r - 1; dz <= r + 1; dz++)
                 for (int dx = -r - 1; dx <= r + 1; dx++)
                 {
                     double d = Math.Sqrt(dx * dx + dz * dz);
-                    if (d > Across(r - Shell, y) - 1 && (Breached(dx, dz, y) || dx < 0 && Math.Abs(dz) <= 2 && y < 4)) x.C.Remove(new Int3(p.X + dx, y, p.Z + dz));
+                    if (d > Round.Span(shell, y).InnerLo - 0.75 && (Breached(dx, dz, y) || dx < 0 && Math.Abs(dz) <= 2 && y < 4)) x.C.Remove(new Int3(p.X + dx, y, p.Z + dz));
                 }
         // A floor of rubble under each wedge that fell in.
         foreach (float w in wedges)

@@ -146,6 +146,50 @@ public static class Round
         return best;
     }
 
+    /// <summary>Whether a round about the middle of cell (cx, cz) runs straight along a grid line across the cell column through its middle on each side (a ladder's, a fin's or a hatch's flat).</summary>
+    public static bool Flat(List<(double X, double Z)> pts, int cx, int cz)
+    {
+        double Pole(Func<(double X, double Z), bool> on, Func<(double X, double Z), double> by, bool max) => max ? pts.Where(on).Select(by).DefaultIfEmpty(double.NaN).Max() : pts.Where(on).Select(by).DefaultIfEmpty(double.NaN).Min();
+        bool Whole(double a, double b) => a == b && a == Math.Floor(a);
+        return Whole(Pole(q => q.X == cx, q => q.Z, true), Pole(q => q.X == cx + 1, q => q.Z, true)) && Whole(Pole(q => q.X == cx, q => q.Z, false), Pole(q => q.X == cx + 1, q => q.Z, false))
+            && Whole(Pole(q => q.Z == cz, q => q.X, true), Pole(q => q.Z == cz + 1, q => q.X, true)) && Whole(Pole(q => q.Z == cz, q => q.X, false), Pole(q => q.Z == cz + 1, q => q.X, false));
+    }
+
+    /// <summary>The first cell wholly outside a round of radius r about the middle of cell (cx, cz), out along its axis toward <paramref name="d"/> (against its flat, where it has one).</summary>
+    public static (int X, int Z) Past(int cx, int cz, double r, Dir d)
+    {
+        var pts = Outline(cx + 0.5, cz + 0.5, r);
+        IEnumerable<double> Across(bool alongX) => pts.Where(q => alongX ? q.Z == cz || q.Z == cz + 1 : q.X == cx || q.X == cx + 1).Select(q => alongX ? q.X : q.Z);
+        return d switch
+        {
+            Dir.East => ((int)Math.Ceiling(Across(true).Max()), cz),
+            Dir.West => ((int)Math.Floor(Across(true).Min()) - 1, cz),
+            Dir.South => (cx, (int)Math.Ceiling(Across(false).Max())),
+            _ => (cx, (int)Math.Floor(Across(false).Min()) - 1),
+        };
+    }
+
+    /// <summary>
+    /// A way cut through a round thing's wall by whole cells or blocks (a hatch, a mouth): past the cells cut, either way across
+    /// the wall, what its rim still has in the way (the cut pieces and halves its outline makes, a cell or two deep) is cleared
+    /// too, so the way opens onto the air each side and not onto a sliver of rim. Returns the cells cleared.
+    /// </summary>
+    public static List<Int3> Through(Canvas c, IEnumerable<Int3> cut, Dir across)
+    {
+        var set = cut.ToHashSet();
+        var cleared = new List<Int3>();
+        foreach (Int3 q in set)
+            foreach (Int3 step in new[] { across.Vec(), across.Opposite().Vec() })
+                for (int k = 1; k <= 2; k++)
+                {
+                    Int3 n = q + step * k;
+                    if (set.Contains(n) || c.Get(n).Type is var t && t != BlockType.Half && !BlockInfo.IsRoundCut(t)) break;
+                    c.Clear(n);
+                    cleared.Add(n);
+                }
+        return cleared;
+    }
+
     // ---- a course -------------------------------------------------------------------------------------
 
     /// <summary>What each piece's plan is, by its corners to the half metre: the key to the piece cut that way.</summary>

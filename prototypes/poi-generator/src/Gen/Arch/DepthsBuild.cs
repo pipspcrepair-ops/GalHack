@@ -498,15 +498,16 @@ internal sealed partial class Depths
                 }
             }
         }
-        // The missile: a tall body on the floor, its nose under the lid. Structure, not a prop: a room's dressing
-        // clears the generator's props off its floor, and would leave the rest of it hanging.
-        var body = new Stuff2(Material.Alloy, new Rgb(0xd8, 0xd6, 0xd0));
-        int topJ = _span.Top - 2;
-        for (int j = _span.J; j <= topJ; j++)
-            for (int k = ck - 1; k <= ck; k++)
-                for (int i = ci - 1; i <= ci; i++)
-                    P.Fill(i, j, k, i, j, k, new Block(BlockType.Cube, body.M, (j - _span.J) % 6 == 5 ? new Rgb(0x2a, 0x2a, 0x2c) : body.C, Role.Decor));
-        P.Cap(ci, ck, 1.0, topJ + 1, body);
+        // The missile (Rockets): engine bells on the floor, a round body banded every twelve metres, its nose under the lid.
+        // Structure, not a prop: a room's dressing clears the generator's props off its floor, and would leave the rest of it hanging.
+        var body = new Block(BlockType.Cube, Material.Alloy, new Rgb(0xd8, 0xd6, 0xd0), Role.Decor);
+        var dark = body with { Color = new Rgb(0x2a, 0x2a, 0x2c) };
+        Int3 mid = P.Cell(2 * ci, 0, 2 * ck);
+        double R = Rockets.Fit(mid.X, mid.Z, 2.3);
+        int floor = 2 * _span.J, shoulder = Math.Max(floor + 3, 2 * _span.Top - 1 - (int)Math.Ceiling(2 * R));
+        Rockets.Bells(P.C, mid.X, mid.Z, R, floor, floor + 2, dark);
+        Round.Lay(P.C, mid.X + 0.5, mid.Z + 0.5, floor + 2, shoulder, _ => (R, 0), y => (y - floor) / 2 % 6 == 5 ? dark : body);
+        Rockets.Nose(P.C, mid.X, mid.Z, R, shoulder + 1, body);
         // The lid, flush with the ground: two halves with a hazard ring.
         for (int k = ck - r - 1; k <= ck + r + 1; k++)
             for (int i = ci - r - 1; i <= ci + r + 1; i++)
