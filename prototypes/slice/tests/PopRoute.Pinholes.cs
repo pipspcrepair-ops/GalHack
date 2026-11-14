@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -58,7 +58,7 @@ public partial class PopRoute
         string dir = _args.GetValueOrDefault("out-dir", ProjectSettings.GlobalizePath("user://pinholes"));
         DirAccess.MakeDirRecursiveAbsolute(dir);
         zone.Sky.TimeScale = 0f;
-        var cases = bisect ? PinLayers.Select(l => "-" + l.Name).Prepend("all").Append("-shadows").Append("flat sky").ToList() : new List<string> { "all", "-cover", "flat sky" };
+        var cases = bisect ? PinLayers.Select(l => "-" + l.Name).Prepend("all").Append("-shadows").Append("flat sky").Append("no msaa").ToList() : new List<string> { "all", "-cover", "flat sky" };
         foreach (var (hour, label) in bisect ? new[] { (Staging.HighSun(_game, false), "night"), (Staging.HighSun(_game), "day") } : new[] { (Staging.HighSun(_game, false), "night") })
         {
             zone.Sky.TimeOfDay = hour;
@@ -76,11 +76,12 @@ public partial class PopRoute
                     Stand(0);
                     yield return 0;
                 }
+                Viewport.Msaa msaa = GetViewport().Msaa3D;
                 var dots = new Dictionary<string, double>();
                 var holes = new Dictionary<string, double>();
                 foreach (string c in cases)
                 {
-                    int found = 0, flicker = 0, through = 0;
+                    int found = 0, flicker = 0, through = 0, sparks = 0;
                     HashSet<int> last = null;
                     for (int i = 0; i < PinFrames + 4; i++)
                     {
@@ -89,6 +90,7 @@ public partial class PopRoute
                         zone.Sky.Sun.ShadowCasterMask = zone.Sky.NightLight.ShadowCasterMask = c == "-shadows" ? 0u : uint.MaxValue;
                         env.BackgroundMode = c == "flat sky" ? Godot.Environment.BGMode.Color : Godot.Environment.BGMode.Sky;
                         env.BackgroundColor = new Color(1f, 0f, 1f);
+                        GetViewport().Msaa3D = c == "no msaa" ? Viewport.Msaa.Disabled : msaa;
                         Stand(i);
                         _game.FixedCamera = At(i);
                         yield return 0;
@@ -104,9 +106,10 @@ public partial class PopRoute
                     }
                     dots[c] = (double)found / PinFrames;
                     holes[c] = (double)through / PinFrames;
-                    GD.Print(string.Create(CultureInfo.InvariantCulture, $"PINHOLES {label} {view} {c}: dots a frame {dots[c]:F1}, new a frame {(double)flicker / (PinFrames - 1):F1}, ground pixels showing the background a frame {holes[c]:F1}"));
+                    GD.Print(string.Create(CultureInfo.InvariantCulture, $"PINHOLES {label} {view} {c}: dots a frame {dots[c]:F1} (sparks {(double)sparks / PinFrames:F2}), new a frame {(double)flicker / (PinFrames - 1):F1}, ground pixels showing the background a frame {holes[c]:F1}"));
                 }
                 foreach (var (_, layer) in PinLayers) cam.SetCullMaskValue(layer, true);
+                GetViewport().Msaa3D = msaa;
                 zone.Sky.Sun.ShadowCasterMask = zone.Sky.NightLight.ShadowCasterMask = uint.MaxValue;
                 env.BackgroundMode = Godot.Environment.BGMode.Sky;
                 if (label != "night" || view is not ("standing" or "back")) continue;
