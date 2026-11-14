@@ -4,6 +4,7 @@ using System.Linq;
 using GalHack.Physics.Engine;
 using GalHack.Structures;
 using Godot;
+using PlanetSurface.Skies;
 using Slice.Orbit;
 using Slice.Vessels;
 using N = System.Numerics;
@@ -51,7 +52,7 @@ public sealed partial class Staging
         double days = sky.Days;
         var turned = model.Orient(days);
         Basis turn = o.Turn.ToBasis();
-        var planet = model.Bodies.Where(b => b.Kind == Weather.Model.OrbiterKind.Planet && b.Parent == model.Star && b != model.Home)
+        var planet = model.Bodies.Where(b => b.Kind == OrbiterKind.Planet && b.Parent == model.Star && b != model.Home)
             .OrderBy(b => (model.Position(b, days) - model.Position(model.Home, days)).Length).First();
         var toStar = (model.Position(model.Star, days) - model.Position(planet, days)).Normalized;
         var side = toStar.Cross(new D3(0, 1, 0)).Normalized;
@@ -64,7 +65,8 @@ public sealed partial class Staging
         Vector3 cell = SmokingDevice(v);
         Vector3 up = Mathf.Abs(look.Y) > 0.95f ? Vector3.Forward : Vector3.Up;
         // Eye behind the smoke, planet beyond it.
-        _game.FixedCamera = new Transform3D(Basis.LookingAt(look, up), cell - look * 3.5f + up * 0.8f);
+        Vector3 outward = (cell - v.Body.Position.ToGodot()).Normalized();
+        _game.FixedCamera = new Transform3D(Basis.LookingAt(look, up), cell - look * (float)Num("back", 8) + outward * 1.5f);
         for (int i = 0; i < 120; i++) yield return 0;
         GD.Print($"(smoke: {SmokeLooks(v).Count()} puff materials, priority {SmokeLooks(v).FirstOrDefault()?.RenderPriority}, planet {planet.Name} {Mathf.RadToDeg(s.Angular):F1} degrees radius)");
         if (_args.GetValueOrDefault("old") == "1") foreach (BaseMaterial3D m in SmokeLooks(v)) m.RenderPriority = 0;
@@ -76,16 +78,17 @@ public sealed partial class Staging
         Image bare = _game.GetViewport().GetTexture().GetImage();
         bare.SavePng(System.IO.Path.ChangeExtension(_args.GetValueOrDefault("out", "smoke.png"), null) + "-bare.png");
 
-        // The middle fifth of the frame, where the smoke is.
-        int w = with.GetWidth(), h = with.GetHeight(), changed = 0, total = 0;
-        for (int y = h * 2 / 5; y < h * 3 / 5; y += 2)
-            for (int x = w * 2 / 5; x < w * 3 / 5; x += 2, total++)
+        // A tenth of the frame round the smoking device.
+        Vector2 at = _game.Camera.UnprojectPosition(cell);
+        int w = with.GetWidth(), h = with.GetHeight(), changed = 0, total = 0, rx = w / 10, ry = h / 10;
+        for (int y = Math.Max(0, (int)at.Y - ry); y < Math.Min(h, (int)at.Y + ry); y += 2)
+            for (int x = Math.Max(0, (int)at.X - rx); x < Math.Min(w, (int)at.X + rx); x += 2, total++)
             {
                 Color a = with.GetPixel(x, y), b = bare.GetPixel(x, y);
                 if (Mathf.Abs(a.R - b.R) + Mathf.Abs(a.G - b.G) + Mathf.Abs(a.B - b.B) > 0.06f) changed++;
             }
         bool ok = changed > total / 50;
-        GD.Print($"CHECK {(ok ? "ok" : "FAIL")}: smoke shows in front of the planet ({changed} of {total} centre pixels differ from the frame without it)");
+        GD.Print($"CHECK {(ok ? "ok" : "FAIL")}: smoke shows in front of the planet ({changed} of {total} pixels round it differ from the frame without it)");
         Wildlife.Shutdown.Quit(_game, ok ? 0 : 1);
     }
 
