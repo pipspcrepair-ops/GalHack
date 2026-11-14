@@ -64,12 +64,4 @@ block 1 0 4 thruster-t1
 block -2 1 -3 window-block corner rot=+y-x
 block -1..1 1 -3 window-block slope
 block 2 1 -3 window-block corner
-block -2 1 -2 window-block
-block 2 1 -2 window-block
-block -3 1 2 base-block corner rot=+y-x paint=stripe
-block -2 1 2 base-block corner paint=stripe
-block 2 1 2 base-block corner rot=+y-x paint=stripe
-block 3 1 2 base-block corner paint=stripe
-block -3 1 3 base-block corner rot=+y+z paint=stripe
 block -2..2 1 3 base-block slope rot=+y+z paint=stripe
-block 3 1 3 base-block corner rot=+y+x paint=stripe

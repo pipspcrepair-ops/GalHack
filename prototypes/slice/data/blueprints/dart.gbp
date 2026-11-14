@@ -105,21 +105,13 @@ block 1 1 0 iron-plated paint=hull
 block -1..1 1 1 iron-plated paint=hull
 block -1..1 1 2 iron-plated paint=hull
 block -1..1 1 3 iron-plated paint=hull
-block -7 1 4 iron-plated paint=red
 block -1..1 1 4 iron-plated paint=hull
-block 7 1 4 iron-plated paint=red
 block 0 2 2 thruster-t1 rot=+z-y
 block -1 2 3 iron-plated paint=red
 block 1 2 3 iron-plated paint=red
 block -1 2 4 iron-plated paint=red
 block 1 2 4 iron-plated paint=red
-block -2 3 3 iron-plated corner rot=+y-x paint=red
 block -1 3 3 iron-plated paint=red
-block 0 3 3 iron-plated corner paint=red
 block 1 3 3 iron-plated paint=red
-block 2 3 3 iron-plated corner paint=red
-block -2 3 4 iron-plated corner rot=+y+z paint=red
 block -1 3 4 iron-plated slope rot=+y+z paint=red
-block 0 3 4 iron-plated corner rot=+y+x paint=red
 block 1 3 4 iron-plated slope rot=+y+z paint=red
-block 2 3 4 iron-plated corner rot=+y+x paint=red

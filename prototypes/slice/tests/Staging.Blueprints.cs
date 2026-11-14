@@ -147,12 +147,15 @@ public sealed partial class Staging
                 foreach (int x in StairShot(v, $"{dir}/stock-{file}-stair.png")) yield return x;
                 foreach (int x in Closeup(v, new N.Vector3(-8, 10, -9), new N.Vector3(-14, 15, -14), $"{dir}/stock-{file}-roofedge.png")) yield return x;
                 foreach (int x in Closeup(v, new N.Vector3(-4, 10, -20), new N.Vector3(-9, 14, -27), $"{dir}/stock-{file}-cockpitcorner.png")) yield return x;
+                foreach (int x in Closeup(v, new N.Vector3(0, 2, -21), new N.Vector3(-7, 0.6f, -31), $"{dir}/stock-{file}-underside.png")) yield return x;
+                foreach (int x in Closeup(v, new N.Vector3(-8, 3, 10), new N.Vector3(-14, 7, 16), $"{dir}/stock-{file}-nacelletail.png")) yield return x;
                 foreach (int x in Closeup(v, new N.Vector3(-6, 8, -2), new N.Vector3(-12, 13, -8), $"{dir}/stock-{file}-towerramp.png")) yield return x;
             }
             if (file == "outpost")
             {
                 foreach (int x in Closeup(v, new N.Vector3(19, 0, -7), new N.Vector3(25, 5, -13), $"{dir}/stock-{file}-padcorner-n.png")) yield return x;
                 foreach (int x in Closeup(v, new N.Vector3(19, 0, 6), new N.Vector3(25, 5, 12), $"{dir}/stock-{file}-padcorner-s.png")) yield return x;
+                foreach (int x in Closeup(v, new N.Vector3(7, 0, 6), new N.Vector3(13, 4, 12), $"{dir}/stock-{file}-padbase.png")) yield return x;
                 foreach (int x in Closeup(v, new N.Vector3(-5, 5, -6), new N.Vector3(-10, 9, -12), $"{dir}/stock-{file}-roofpillar.png")) yield return x;
             }
             _game.Survivor.Sit(v);
