@@ -727,6 +727,8 @@ void f_tar(vec2 uv, vec3 wp, float px, float seed, inout vec3 col, inout vec4 S,
     float lap = mod(uv.y, 1.0);
     col *= 1.0 - (1.0 - aastep(0.004, abs(lap - 0.5))) * 0.3 * vis(4.0, px);
     float pond = smoothstep(0.55, 0.7, fbm3(wp * 0.6 + seed));
+    // Each 1 m roll its own tone, sun-bleached and soot-streaked in broad patches, so a flat roof isn't one grey from far off.
+    col *= (0.5 + 0.25 * hash3(vec3(floor(uv), seed))) * (1.0 + (fbm3(wp * 1.3 + seed * 2.0) - 0.5) * 0.4 + (fbm3(wp * 5.0 + 7.0) - 0.5) * 0.2 * vis(5.0, px));
     col *= 1.0 - pond * 0.25;
     S.y = mix(0.92, 0.5, pond);
     J.x = 1.0 - stone;
@@ -1093,6 +1095,43 @@ void fragment() {
         bool mineral = kind <= 10 && kind != 4 && kind != 5 || kind == 16 || kind == 20 || kind == 24 || kind == 27 || kind == 32 || kind == 34 || kind == 19;
         bool metallic = kind == 11 || kind == 12 || kind == 13 || kind == 25 || kind == 26 || kind == 37 || kind == 38 || kind == 33;
         bool woody = kind == 4 || kind == 5 || kind == 14 || kind == 15 || kind == 21 || kind == 22;
+        // Concrete and render at block scale: form boards and tie holes (poured) or panel joints (precast), worn arrises,
+        // water running from each block's top, mid-scale mottling and a tone to every block.
+        if (kind == 8 || kind == 9 || kind == 2) {
+            vec3 bp = wp - floor(wp - n * 0.5);
+            float e = 1.0;
+            if (abs(n.x) < 0.5) e = min(e, min(bp.x, 1.0 - bp.x));
+            if (abs(n.y) < 0.5) e = min(e, min(bp.y, 1.0 - bp.y));
+            if (abs(n.z) < 0.5) e = min(e, min(bp.z, 1.0 - bp.z));
+            float ch = hash3(cell + 3.7);
+            col *= 0.9 + 0.2 * ch;
+            col *= 1.0 + (fbm3(wp * 1.7 + pseed * 1.9) - 0.5) * 0.3 + (fbm3(wp * 6.0 + 5.0) - 0.5) * 0.14 * vis(6.0, px);
+            float vb = vis(4.0, px);
+            if (kind == 8) {
+                float bd = fract(uv.y / 0.25);
+                col *= 1.0 - (1.0 - aastep(0.004, min(bd, 1.0 - bd) * 0.25)) * 0.2 * vb;
+                col *= 1.0 + (hash3(vec3(floor(uv.y / 0.25), cell.x + cell.z, pseed)) - 0.5) * 0.16 * vb;
+                vec2 th = mod(uv + vec2(0.25), vec2(0.5)) - vec2(0.25);
+                float tie = 1.0 - aastep(0.022, length(th));
+                col *= 1.0 - tie * 0.55 * vis(20.0, px);
+                col *= 1.0 + (noise3(vec3(uv.x * 5.0, uv.y * 90.0, pseed)) - 0.5) * 0.14 * vis(90.0, px);
+            } else if (kind == 9) {
+                float pj = abs(fract(uv.x * 2.0 + 0.5) - 0.5) / 2.0;
+                col *= 1.0 - (1.0 - aastep(0.006, pj)) * 0.3 * vb;
+                col *= 1.0 + (noise3(vec3(uv * 40.0, pseed)) - 0.5) * 0.12 * vis(40.0, px);
+            }
+            float ar = (1.0 - smoothstep(0.0, 0.07, e + (noise3(wp * 25.0) - 0.5) * 0.04 * W)) * vis(14.0, px);
+            col *= 1.0 - ar * (0.2 + 0.2 * W);
+            S.y = mix(S.y, 0.97, ar * 0.5);
+            if (wall) {
+                float dt = 1.0 - fract(wp.y - n.y * 0.5);
+                float sk = smoothstep(0.45, 0.9, noise3(vec3(uv.x * 13.0, uv.y * 0.5, pseed)) * 0.6 + noise3(vec3(uv.x * 4.0, uv.y * 0.3, pseed + 4.0)) * 0.4);
+                float st = sk * (1.0 - smoothstep(0.0, 0.85, dt)) * (0.3 + 0.7 * W);
+                col = mix(col, col * vec3(0.55, 0.53, 0.47), st);
+            } else if (up > 0.7) {
+                col = mix(col, col * vec3(0.7, 0.68, 0.6), smoothstep(0.5, 0.8, fbm3(wp * 2.3 + pseed)) * (0.25 + 0.6 * W));
+            }
+        }
         float lum = luma(col);
 
         // A coat coming away: paint flakes off first, then whole patches fall and show what is under.
