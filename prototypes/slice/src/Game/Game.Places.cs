@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using GalHack.Items;
@@ -26,6 +26,8 @@ public partial class Game
     /// <summary>The crashed capital ships, set down as real vessels as the survivor nears them.</summary>
     public Hulks Hulks { get; private set; }
     public Caves Caves { get; private set; }
+    /// <summary>What lives in the sewers and drains under the start town.</summary>
+    public Underworld Underworld { get; private set; }
 
     /// <summary>Door blocks on bases and vessels: the same doors, E and sliding leaves, opening for you on your own.</summary>
     public BlockDoors Doors { get; private set; }
@@ -55,6 +57,8 @@ public partial class Game
             Keep = p => Bunker != null && Bunker.Over(p, Slice.Start.Bunker.KeepClear),
         };
         Zone.AddChild(Caves);
+        Underworld = new Underworld { Name = "Underworld", Zone = Zone, Feet = () => Survivor.WorldFeet, Look = () => Survivor.WorldLook(), Deep = Places.Fauna };
+        Zone.AddChild(Underworld);
         Doors = new BlockDoors { Name = "BlockDoors", Zone = Zone, Feet = () => Survivor.WorldFeet };
         Zone.AddChild(Doors);
         Tool.Places = Places;
