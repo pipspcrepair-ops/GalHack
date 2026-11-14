@@ -32,7 +32,8 @@ public enum SwimStyle { None, Pulse, Flap, Undulate }
 /// <summary>The design's five-step resource ladder; space creatures drop only rare and up.</summary>
 public enum Rarity { Common, Uncommon, Rare, Exotic, Unique }
 
-public enum Behaviour { Grazer, Herd, Predator, PackHunter, Ambusher, Scavenger, Swarm, TerritorialGiant, HarmlessOddity }
+/// <summary>What it does all day. Folk: people out in the world, a band round a leader that takes to you by its stance (see <see cref="Band"/>), never by an animal's flight or hunt.</summary>
+public enum Behaviour { Grazer, Herd, Predator, PackHunter, Ambusher, Scavenger, Swarm, TerritorialGiant, HarmlessOddity, Folk }
 
 /// <summary>How a creature reacts to you, independent of what it does all day. Odd pairs make surprises.</summary>
 public enum Temperament { Skittish, Calm, Bold, Aggressive }
@@ -142,6 +143,7 @@ public sealed class WildlifeData
         problems.AddRange(Deep.Validate(Fauna));
         foreach (Behaviour b in Enum.GetValues<Behaviour>())
         {
+            if (b == Behaviour.Folk) continue; // people: their stance, not an animal's table
             if (!Fauna.Behaviours.TryGetValue(b.ToString(), out BehaviourDef def)) problems.Add($"no behaviour entry for {b}");
             else if (def.Attack == null || def.Attack.Name == "") problems.Add($"behaviour {b}: no signature attack");
             // A telegraph shorter than this is not a warning anyone can react to.

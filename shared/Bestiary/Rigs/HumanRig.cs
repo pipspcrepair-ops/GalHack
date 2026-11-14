@@ -159,7 +159,15 @@ public sealed partial class HumanRig : Rig
         _world = w;
         _creature = c;
         float speed = c.Dead ? 0f : WildSim.Flat(c.Velocity).Length();
-        _walked += speed * dt;
+        // Stepping back, eyes front: the stride runs backwards.
+        _walked += (WildSim.Flat(c.Velocity).Dot(c.Forward) < -0.05f ? -speed : speed) * dt;
+        // A body act eases out before the next eases in: a wave never snaps to a warning.
+        if (c.Act != _act)
+        {
+            _actAmount = Mathf.MoveToward(_actAmount, 0f, dt * 3f);
+            if (_actAmount <= 0f) _act = c.Act;
+        }
+        else _actAmount = Mathf.MoveToward(_actAmount, _act == BodyAct.None ? 0f : 1f, dt * 2.5f);
         // A new hit: the struck part snaps away from it.
         if (c.HitSerial != _hitSeen)
         {
@@ -204,10 +212,18 @@ public sealed partial class HumanRig : Rig
             Down = Dead,
             Dead = c.Dead,
             Clock = c.Age,
+            Aim = Aiming,
+            Act = _act,
+            ActAmount = _actAmount,
+            ActAt = c.LookAt ?? c.Position + c.Forward * 6f + Vector3.Up * 1.4f,
+            Style = w?.GreetStyle ?? 0,
         });
         UpdateHits();
         BodyClearance = Pose[_body].Origin.Y - c.Position.Y;
     }
+
+    BodyAct _act;
+    float _actAmount;
 
     /// <summary>The spheres shots (and a search) meet, from the body as it is posed now, standing or lying: chest, head, each leg.</summary>
     public void UpdateHits()

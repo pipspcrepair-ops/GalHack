@@ -289,8 +289,14 @@ public partial class Game
         {
             Stats.Kills++;
             Progress.Earn(s.Stats.Xp, $"{s.CommonName} brought down");
+            // One of a band out on a town's ground that never came for you: its people hear of it.
+            if (s.Behaviour == Behaviour.Folk && c.Herd?.Band?.Temper.Stance is { } rolled && rolled != Stance.Hostile)
+                Places?.TownHolding(Zone.Wildlife.WorldOf(c), BandReach)?.Did(Slice.Places.Deed.Kill);
         }
     }
+
+    /// <summary>How far out from a town its people go about on its ground (bands on its roads), m: your standing with the town is your standing with them.</summary>
+    public const float BandReach = 400f;
 
     /// <summary>
     /// What a body holds follows what it was. A machine (robot, drone, cyborg) leaves salvage by

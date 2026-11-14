@@ -30,7 +30,7 @@ public abstract class Rig
     public int Steps;
 
     // Intentions from the brain, smoothed so poses never snap.
-    protected float Crouch, Hidden, Graze, Rearing, Lunging, Bracing, Dead;
+    protected float Crouch, Hidden, Graze, Rearing, Lunging, Bracing, Aiming, Dead;
     protected float LookYaw;
     float _prevYaw;
     protected float YawRate;
@@ -92,6 +92,7 @@ public abstract class Rig
         Rearing = Geo.Smooth(Rearing, c.Rear, 10f, dt);
         Lunging = Geo.Smooth(Lunging, c.Lunge, 14f, dt);
         Bracing = Geo.Smooth(Bracing, c.Brace, 6f, dt);
+        Aiming = Geo.Smooth(Aiming, c.WantAim, 4f, dt);
         Dead = Mathf.MoveToward(Dead, c.Dead ? 1f : 0f, dt * 1.4f);
 
         float yawDelta = Geo.WrapAngle(c.Yaw - _prevYaw);

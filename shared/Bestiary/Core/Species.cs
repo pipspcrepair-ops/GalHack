@@ -79,6 +79,9 @@ public sealed class Species
     public DomesticKind Domestic;
     /// <summary>A person: their body and clothes. Null for everything else.</summary>
     public Figure Figure;
+    /// <summary>A person's world as their temper reads it (<see cref="Temper.Roll"/>): its tech ("low", "mid", "high") and how far it has come apart, 0 to 1.</summary>
+    public string Tech = "mid";
+    public float Collapse;
     /// <summary>Mutation has gone past growths: the body itself has changed shape.</summary>
     public bool Monstrous;
     /// <summary>A person taken by the worms (see <see cref="Husks"/>).</summary>

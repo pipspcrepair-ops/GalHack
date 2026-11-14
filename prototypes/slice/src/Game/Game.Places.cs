@@ -59,6 +59,7 @@ public partial class Game
         Zone.AddChild(Doors);
         Tool.Places = Places;
         Zone.Wildlife.SolidAt = Places.SolidAt;
+        Zone.Wildlife.StandingAt = p => Places.TownHolding(p, BandReach)?.Standing ?? 0f;
         Zone.Light.Places = () => Places.Standing;
         Tool.Salvaged += () => Progress.Earn(2, "salvage");
         Places.WallBroken += (p, s) => Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Clank, p.WorldOf(s.WallCells[0], 1f), 0.5f, -2f);

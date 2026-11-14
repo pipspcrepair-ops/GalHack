@@ -76,6 +76,7 @@ public partial class Game
         SinceGesture = 0f;
         Vector3 eye = Survivor.WorldEye(), look = Survivor.WorldLook();
         foreach (Town t in _towns) t.Heard(g, eye, look);
+        Zone.Wildlife?.Heard(g, eye, look);
         Gestured?.Invoke(g);
     }
 

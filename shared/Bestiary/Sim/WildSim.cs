@@ -229,8 +229,14 @@ public sealed class WildSim
     public event Action<Creature> Clicked;
     internal void RaiseClick(Creature c) => Clicked?.Invoke(c);
 
-    /// <summary>A loud sound: everything within the radius turns to look.</summary>
-    public void Noise(Vector3 at, float radius) => Noises.Add(new WorldNoise { Position = at, Radius = radius, Time = Time });
+    /// <summary>A loud sound: everything within the radius turns to look. A shot says who fired it and along which way (people read a shot past them as being shot at).</summary>
+    public void Noise(Vector3 at, float radius, Vector3 dir = default, ITarget by = null) => Noises.Add(new WorldNoise { Position = at, Radius = radius, Time = Time, Dir = dir, By = by });
+
+    /// <summary>Your standing with whoever holds the ground at a point (their people out in the world), the game's -100 to 100; left out, nobody holds it.</summary>
+    public Func<Vector3, float> StandingAt;
+
+    /// <summary>This world's form of the friendly gestures (<see cref="Gestures.FriendlyStyle"/>).</summary>
+    public int GreetStyle;
 
     readonly Dictionary<ITarget, (Vector3 at, float speed)> _moved = new();
 
@@ -422,9 +428,11 @@ public sealed class WildSim
     {
         var list = new List<Creature>();
         Herd herd = null;
-        if (species.Behaviour == Behaviour.Herd)
+        if (species.Behaviour is Behaviour.Herd or Behaviour.Folk)
         {
             herd = new Herd { Home = center, Goal = center, Center = center, Spread = HerdSpread(species, count) };
+            // People go about as a band: its stance rolled now, from who they are and their world.
+            if (species.Behaviour == Behaviour.Folk) herd.Band = Band.Roll(species, Rng.Mix(species.Seed, (ulong)_nextId));
             Herds.Add(herd);
         }
         Pack pack = null;
@@ -452,7 +460,7 @@ public sealed class WildSim
     public static float HerdSpread(Species s, int count) => Math.Max(3f, s.Stats.Radius * 2.2f * MathF.Sqrt(count));
 
     /// <summary>How far from its centre a natural group of this species may spread when it spawns.</summary>
-    public float GroupRadius(Species s, int count) => s.Behaviour == Behaviour.Herd ? HerdSpread(s, count)
+    public float GroupRadius(Species s, int count) => s.Behaviour is Behaviour.Herd or Behaviour.Folk ? HerdSpread(s, count)
         : s.Behaviour == Behaviour.PackHunter ? Data.Fauna.Pack.Spacing * MathF.Sqrt(count) : s.Body.Size * 3f;
 
     /// <summary>Far enough from every player, and not in front of anyone who could see it (see <see cref="SpawnRules"/>).</summary>
