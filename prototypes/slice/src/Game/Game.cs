@@ -908,16 +908,24 @@ public partial class Game : Node3D
     }
 
     Vector3 _focusWas;
+    double _focusFor;
 
     /// <summary>What streams round you is told how you're moving, however you are: on foot, by bike, in a vessel, or carried. It loads ahead of you.</summary>
     void LoadAhead(double delta)
     {
         if (!Surface.IsBuilt) return;
         Vector3 focus = Focus();
-        Vector3 moved = (focus - _focusWas) / (float)Math.Max(delta, 0.001);
+        // Over the time since the focus last moved: it moves a physics tick at a time, so on a fast screen a frame
+        // that saw no move and the next that saw a whole tick's made the heading (and the rings it leads) jitter
+        // with the frame rate. The same easing a second, whatever the frame rate.
+        _focusFor += delta;
+        if (focus == _focusWas && _focusFor < 0.1) return;
+        Vector3 moved = (focus - _focusWas) / (float)Math.Max(_focusFor, 0.001);
+        float ease = 1f - MathF.Exp(-(float)_focusFor / 0.15f);
         _focusWas = focus;
+        _focusFor = 0;
         if (moved.Length() > 400f || InOrbit) moved = Vector3.Zero; // a seam or a crossing moved the frame, not you
-        Vector3 heading = Surface.Streamer.Heading.Lerp(moved, 0.1f);
+        Vector3 heading = Surface.Streamer.Heading.Lerp(moved, ease);
         Surface.Streamer.Heading = heading;
         Surface.Infra.Heading = heading;
         if (Zone.Pois != null) Zone.Pois.Heading = heading;
