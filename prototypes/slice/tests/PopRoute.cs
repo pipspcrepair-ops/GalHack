@@ -111,10 +111,14 @@ public partial class PopRoute : Node
             yield break;
         }
         PopLog.On = true;
+        // --only=a,b runs just those routes: once (flying straight off), walk, bike, fly, flicker.
+        string[] only = _args.TryGetValue("only", out string o) ? o.Split(',') : null;
         // First straight off, as a player does the moment the world shows (whatever still loads then loads under it); then each from a settled start.
-        foreach (int x in Route("fly at once", start, -way, 70f, 4000f, 60f)) yield return x;
+        if (only == null || only.Contains("once"))
+            foreach (int x in Route("fly at once", start, -way, 70f, 4000f, 60f)) yield return x;
         foreach (var (name, speed, length, up) in new[] { ("walk", 6f, 300f, 0.3f), ("bike", 26f, 1500f, 1f), ("fly", 70f, 4000f, 60f) })
         {
+            if (only != null && !only.Contains(name)) continue;
             _game.Survivor.PlaceOutside(Lift(start, up).ToNumerics());
             for (int i = 0; i < 60; i++) yield return 0;
             foreach (int x in _drive.UntilSettled(40)) yield return x;
@@ -122,7 +126,8 @@ public partial class PopRoute : Node
             foreach (int x in Route(name, start, way, speed, length, up)) yield return x;
         }
         PopLog.On = false;
-        foreach (int x in Flicker(start)) yield return x;
+        if (only == null || only.Contains("flicker"))
+            foreach (int x in Flicker(start)) yield return x;
         GD.Print($"ROUTE ruin trees planted: {_planted0} when the world showed, {(zone.Planet.Palette.Planted as System.Collections.ICollection)?.Count} at the end");
     }
 
@@ -238,13 +243,20 @@ public partial class PopRoute : Node
         foreach (Node n in s.GetChildren()) seenNodes.Add(n.GetInstanceId());
         var farSwaps = new List<(int Lod, float Away)>();
         var groundSwaps = new List<double>();
-        int ring = -1;
+        int ring = -1, levelSwaps = 0;
         var farIn = new HashSet<(int, int)>();
         int size = FarBuilder.Size;
         PopLog.Take();
         _frames.Clear();
         _gpu.Clear();
         double solids0 = s.SolidsTotalMs, physics = 0, physicsWorst = 0;
+        // MEASURE (temporary): where terrain's CPU time goes on this route.
+        long[] phases0 = (long[])FarBuilder.PhaseTicks.Clone();
+        double[] sections0 = (double[])s.SectionMs.Clone();
+        double node0 = s.FarNodeTotalMs, groundMesh0 = s.FarGroundMeshMs;
+        int[] builds0 = (int[])s.FarBuilds.Clone();
+        long clipTicks0 = ClipGround.FillTicks;
+        int clipTiles0 = ClipGround.Filled;
         float along = 0f;
         int tick = 0;
         while (along < length)
@@ -291,9 +303,18 @@ public partial class PopRoute : Node
                 mid.Y = _game.Zone.GroundAt(mid.X, mid.Z).Y;
                 bool inView = cam != null && Enumerable.Range(0, 9).Any(k => cam.IsPositionInFrustum(c0 + new Vector3(size * (k % 3) * 0.5f, mid.Y - c0.Y, size * (k / 3) * 0.5f)));
                 if (inView && tick > 30) farSwaps.Add((lod, new Vector2(mid.X - p.X, mid.Z - p.Z).Length()));
+                // Its ground swapped for another level's at once (the far rings' meshes; the GPU rings never swap a mesh).
+                if (inView && tick > 30 && n3.GetChildCount() > 0 && n3.GetChild(0) is MeshInstance3D { Visible: true } gm && gm.MaterialOverride == s.FarMaterial) levelSwaps++;
             }
         }
         s.ChunkApplied -= onChunk;
+        {
+            double secs = clock.Elapsed.TotalSeconds;
+            string Ph(int i) => $"{FarBuilder.PhaseNames[i]} {(FarBuilder.PhaseTicks[i] - phases0[i]) * 1000.0 / Stopwatch.Frequency / secs:F0}";
+            GD.Print(string.Create(CultureInfo.InvariantCulture, $"MEASURE {name}: far chunk workers, ms per second of route: {string.Join(", ", Enumerable.Range(0, 8).Select(Ph))}; " +
+                $"far builds {string.Join("/", Enumerable.Range(0, 3).Select(l => s.FarBuilds[l] - builds0[l]))} by level; GPU ground tiles {(ClipGround.Filled - clipTiles0) / secs:F1}/s at {(ClipGround.FillTicks - clipTicks0) * 1000.0 / Stopwatch.Frequency / secs:F0} ms per second; ground level swaps in view {levelSwaps / (secs / 60):F0}/min; main thread ms per second: far nodes {(s.FarNodeTotalMs - node0) / secs:F1} (ground meshes {(s.FarGroundMeshMs - groundMesh0) / secs:F1}), " +
+                $"streamer sections {string.Join(", ", Enumerable.Range(0, 5).Select(i => $"{TerrainStreamer.SectionLabels[i]} {(s.SectionMs[i] - sections0[i]) / secs:F1}"))}"));
+        }
         var pops = PopLog.Take();
         var trees = pops.Where(q => q.Kind == "flora" && q.What == "appears" && q.Size > 3f).Select(q => q.Distance).ToList();
         string byKind = string.Join(", ", pops.GroupBy(q => q.Kind + " " + q.What).OrderBy(g => g.Key).Select(g => string.Create(CultureInfo.InvariantCulture, $"{g.Key} {g.Count()} ({g.Sum(q => q.Jump * q.Size / MathF.Max(q.Distance, 10f)):F1})")));

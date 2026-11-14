@@ -143,6 +143,7 @@ public sealed partial class Staging
             "stormcell" => StormCellShot(),
             "clouds" => CloudTypes(),
             "farland" => FarLandView(),
+            "groundab" => GroundAb(),
             "city" => CityView(),
             "strike" => StrikeView(),
             "craters" => CraterViews(),

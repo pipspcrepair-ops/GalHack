@@ -99,6 +99,33 @@ public partial class TerrainStreamer : Node3D
 
     public ShaderMaterial VoxelMaterial { get; private set; }
     public ShaderMaterial FarMaterial { get; private set; }
+
+    /// <summary>How the far ground is drawn while the GPU rings come in (--ground=mesh|gpu|ab): its CPU meshes, the GPU rings, or both built for A/B shots (<see cref="ShowGpu"/> picks).</summary>
+    public enum FarGround { Meshes, Gpu, Both }
+    public static FarGround Ground = Array.Find(OS.GetCmdlineUserArgs(), a => a.StartsWith("--ground=")) switch
+    {
+        "--ground=gpu" => FarGround.Gpu,
+        "--ground=ab" => FarGround.Both,
+        _ => FarGround.Meshes,
+    };
+
+    /// <summary>The GPU rings (<see cref="ClipGround"/>) and their material.</summary>
+    public ClipGround Clip { get; private set; }
+    public ShaderMaterial ClipMaterial { get; private set; }
+    bool _showGpu = Ground == FarGround.Gpu;
+
+    /// <summary>Which far ground shows when both are built (A/B shots).</summary>
+    public bool ShowGpu
+    {
+        get => _showGpu;
+        set
+        {
+            _showGpu = value && Ground != FarGround.Meshes;
+            if (Clip != null) Clip.Visible = _showGpu;
+            foreach (FarChunk f in _far.Values)
+                if (f.Node != null && f.Node.GetChildCount() > 0 && f.Node.GetChild(0) is MeshInstance3D m && m.MaterialOverride == FarMaterial) m.Visible = !_showGpu;
+        }
+    }
     ShaderMaterial _horizonMaterial, _floraMaterial;
     Material _waterMaterial;
     Dictionary<Flora, Mesh> _floraMeshes;
@@ -200,6 +227,8 @@ public partial class TerrainStreamer : Node3D
     /// <summary>Where the worst frame's time went, section by section.</summary>
     public string WorstBreakdown { get; private set; } = "";
     readonly double[] _sections = new double[5];
+    public readonly double[] SectionMs = new double[5]; // MEASURE (temporary)
+    public static string[] SectionLabels => SectionNames;
     long _frameStart;
     static readonly string[] SectionNames = { "voxels", "far", "horizon", "evict", "collision" };
     public int MeshedChunks => _chunks.Count;
@@ -210,7 +239,7 @@ public partial class TerrainStreamer : Node3D
 
     /// <summary>How many eviction passes (unloading far-off generated chunks) have run: tests wait on it.</summary>
     public int EvictPasses { get; private set; }
-    public int Pending => _queue.Count + _voxelInFlight + _heightsInFlight + _farInFlight;
+    public int Pending => _queue.Count + _voxelInFlight + _heightsInFlight + _farInFlight + (Clip?.Pending ?? 0);
 
     /// <summary>A voxel chunk's new mesh was swapped in (frame key).</summary>
     public event Action<Int3> ChunkApplied;
@@ -232,6 +261,18 @@ public partial class TerrainStreamer : Node3D
         FarBuilder.KindSize = sizes;
         _horizon = new MeshInstance3D { Name = "Horizon", CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
         AddChild(_horizon);
+        Clip = new ClipGround { Name = "Clip", Visible = _showGpu };
+        AddChild(Clip);
+    }
+
+    void SetClip()
+    {
+        if (Ground == FarGround.Meshes) return;
+        ClipMaterial = Ground == FarGround.Gpu ? FarMaterial : TerrainMaterial(far: true);
+        ClipMaterial.SetShaderParameter("hole_sink", HorizonSink);
+        ClipMaterial.SetShaderParameter("hole_sink_from", 0.25f);
+        ClipMaterial.SetShaderParameter("hole_cut", FarHoleCut);
+        Clip.SetWorld(World.Source, World.Palette, World.Terrain.Width, World.Terrain.Height, ClipMaterial, ClipGround.LevelsFor(DetailReach.Distance));
     }
 
     /// <summary>Starts streaming a planet (dropping everything of the previous one).</summary>
@@ -267,6 +308,7 @@ public partial class TerrainStreamer : Node3D
         FarMaterial.SetShaderParameter("hole_sink", HorizonSink);
         FarMaterial.SetShaderParameter("hole_sink_from", 0.25f);
         FarMaterial.SetShaderParameter("hole_cut", FarHoleCut);
+        SetClip();
         _floraMaterial = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/flora.gdshader") };
         BuildPlantMeshes();
     }
@@ -367,6 +409,7 @@ public partial class TerrainStreamer : Node3D
         while (_queue.TryDequeue(out Int3 key, out int priority)) queued.Add((new Int3(key.X + dcx, key.Y, key.Z + dcz), priority));
         foreach (var (key, priority) in queued) _queue.Enqueue(key, priority);
         ShiftSolids(dcx, dcz);
+        Clip.Shift(dcx * S, dcz * S);
     }
 
     void PlaceChunkNodes(VChunk c)
@@ -476,6 +519,7 @@ public partial class TerrainStreamer : Node3D
         }
         _sections[3] = Stopwatch.GetElapsedTime(t).TotalMilliseconds;
 
+        for (int i = 0; i < _sections.Length; i++) SectionMs[i] += _sections[i]; // MEASURE (temporary)
         LastGcPauseMs = (GC.GetTotalPauseDuration() - pausedBefore).TotalMilliseconds;
         LastFrameMs = Stopwatch.GetElapsedTime(start).TotalMilliseconds - LastGcPauseMs - PopMs;
         if (LastFrameMs > WorstFrameMs)
@@ -776,6 +820,7 @@ public partial class TerrainStreamer : Node3D
             hole = new Vector4(x0 + 0.5f, z0 + 0.5f, x0 + span - 0.5f, z0 + span - 0.5f);
         }
         FarMaterial.SetShaderParameter("hole", hole);
+        if (ClipMaterial != null && ClipMaterial != FarMaterial) ClipMaterial.SetShaderParameter("hole", hole);
     }
 
     // ---- Far rings ------------------------------------------------------------------------
@@ -806,6 +851,7 @@ public partial class TerrainStreamer : Node3D
         int ffx = (int)Math.Floor(leadX / FarBuilder.Size), ffz = (int)Math.Floor(leadZ / FarBuilder.Size);
         if (_reachVersion != DetailReach.Version) ApplyReach();
         UpdateShade();
+        Clip.Step(Eye());
 
         if (_floraDirty.Count > 0)
         {
@@ -865,7 +911,7 @@ public partial class TerrainStreamer : Node3D
             _farInFlight++;
             BuildFar(new FarJob
             {
-                Fx = fx, Fz = fz, Lod = lod, Version = f.Version,
+                Fx = fx, Fz = fz, Lod = lod, Version = f.Version, Ground = Ground != FarGround.Gpu,
                 SpanX = FarBuilder.Span(fx, World.Terrain.Width), SpanZ = FarBuilder.Span(fz, World.Terrain.Height),
             });
         }
@@ -901,6 +947,7 @@ public partial class TerrainStreamer : Node3D
             f.Indices = job.Indices;
             f.Cells = null;
             double nodeMs = Stopwatch.GetElapsedTime(nodeStart).TotalMilliseconds;
+            FarNodeTotalMs += nodeMs; // MEASURE (temporary)
             if (nodeMs > WorstFarNodeMs)
             {
                 WorstFarNodeMs = nodeMs;
@@ -960,8 +1007,9 @@ public partial class TerrainStreamer : Node3D
             var (z0, z1) = FarEdges(ffz - full, ffz + full, nz, World.Terrain.Height, Focus.Z);
             hole = new Vector4(x0, z0, x1, z1);
         }
+        if (_showGpu) hole = Clip.Outer;
         _horizonMaterial.SetShaderParameter("hole", hole);
-        FarComplete = full >= FarRadius;
+        FarComplete = full >= FarRadius && (Ground == FarGround.Meshes || Clip.Complete);
         UpdateHorizon(cx, cz, w, h);
     }
 
@@ -988,6 +1036,7 @@ public partial class TerrainStreamer : Node3D
     public float? DrawnGround(Vector3 p)
     {
         if (World == null) return null;
+        if (_showGpu) return Clip.Height(p.X, p.Z);
         double w = World.Terrain.Width, h = World.Terrain.Height;
         int fx = (int)(Mod(p.X, w) / FarBuilder.Size), fz = (int)(Mod(p.Z, h) / FarBuilder.Size);
         if (!_far.TryGetValue((fx, fz), out FarChunk f) || f.Node == null || f.Vertices == null) return null;
@@ -1026,6 +1075,7 @@ public partial class TerrainStreamer : Node3D
     /// <summary>Whether a far chunk's ground is in under a point (frame coordinates). Tests ask it at the seams.</summary>
     public bool FarGroundAt(Vector3 p)
     {
+        if (_showGpu) return Clip.Covers(p);
         int fx = (int)(Mod(p.X, World.Terrain.Width) / FarBuilder.Size), fz = (int)(Mod(p.Z, World.Terrain.Height) / FarBuilder.Size);
         return _far.TryGetValue((fx, fz), out FarChunk f) && f.Node != null;
     }
@@ -1092,6 +1142,7 @@ public partial class TerrainStreamer : Node3D
     }
 
     public double WorstFarNodeMs { get; private set; }
+    public double FarNodeTotalMs, FarGroundMeshMs; // MEASURE (temporary): main thread's time making far chunks' nodes, and their ground meshes alone
 
     /// <summary>Workers' time building far chunks so far, by level of detail, and how many: tests report it.</summary>
     public readonly double[] FarBuildMs = new double[3];
@@ -1105,21 +1156,26 @@ public partial class TerrainStreamer : Node3D
     Node3D BuildFarNode(FarJob job)
     {
         var node = new Node3D { Name = $"Far {job.Fx} {job.Fz} lod{job.Lod}", PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off };
-        var arrays = new Godot.Collections.Array();
-        arrays.Resize((int)Mesh.ArrayType.Max);
-        arrays[(int)Mesh.ArrayType.Vertex] = job.Vertices;
-        arrays[(int)Mesh.ArrayType.Normal] = job.Normals;
-        arrays[(int)Mesh.ArrayType.Color] = job.Colors;
-        arrays[(int)Mesh.ArrayType.TexUV] = job.Flags;
-        arrays[(int)Mesh.ArrayType.TexUV2] = job.Relief;
-        arrays[(int)Mesh.ArrayType.Index] = job.Indices;
-        var mesh = new ArrayMesh();
-        mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
-        node.AddChild(new MeshInstance3D
+        long groundStart = Stopwatch.GetTimestamp(); // MEASURE (temporary)
+        if (job.Vertices != null)
         {
-            Mesh = mesh, MaterialOverride = FarMaterial,
-            CastShadow = job.Lod <= 1 ? GeometryInstance3D.ShadowCastingSetting.On : GeometryInstance3D.ShadowCastingSetting.Off,
-        });
+            var arrays = new Godot.Collections.Array();
+            arrays.Resize((int)Mesh.ArrayType.Max);
+            arrays[(int)Mesh.ArrayType.Vertex] = job.Vertices;
+            arrays[(int)Mesh.ArrayType.Normal] = job.Normals;
+            arrays[(int)Mesh.ArrayType.Color] = job.Colors;
+            arrays[(int)Mesh.ArrayType.TexUV] = job.Flags;
+            arrays[(int)Mesh.ArrayType.TexUV2] = job.Relief;
+            arrays[(int)Mesh.ArrayType.Index] = job.Indices;
+            var mesh = new ArrayMesh();
+            mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
+            node.AddChild(new MeshInstance3D
+            {
+                Mesh = mesh, MaterialOverride = FarMaterial, Visible = !_showGpu,
+                CastShadow = job.Lod <= 1 ? GeometryInstance3D.ShadowCastingSetting.On : GeometryInstance3D.ShadowCastingSetting.Off,
+            });
+        }
+        FarGroundMeshMs += Stopwatch.GetElapsedTime(groundStart).TotalMilliseconds; // MEASURE (temporary)
         if (job.WaterVertices != null)
         {
             var water = new Godot.Collections.Array();
@@ -1167,6 +1223,7 @@ public partial class TerrainStreamer : Node3D
     void ApplyReach()
     {
         _reachVersion = DetailReach.Version;
+        if (Ground != FarGround.Meshes && Clip.Levels != ClipGround.LevelsFor(DetailReach.Distance)) SetClip();
         _floraMaterial.SetShaderParameter("flora_reach", new Vector4(DetailReach.Near, DetailReach.Small, DetailReach.Far, DetailReach.Distant));
         _floraMaterial.SetShaderParameter("flora_bands", new Vector4(DetailReach.NearBand, DetailReach.SmallBand, DetailReach.FarBand, DetailReach.DistantBand));
         _floraMaterial.SetShaderParameter("flora_thin", new Vector2(DetailReach.Thin, DetailReach.ThinBand));
@@ -1310,6 +1367,7 @@ public partial class TerrainStreamer : Node3D
             c.Body?.QueueFree();
         }
         foreach (FarChunk f in _far.Values) f.Node?.QueueFree();
+        Clip?.Clear();
         ClearSwaps();
         if (World != null) ClearSolids();
         ClearCover();

@@ -42,6 +42,9 @@ public sealed class FarJob
 
     /// <summary>The chunk's extent each way, m: <see cref="FarBuilder.Size"/>, or less for the last one before a seam (<see cref="FarBuilder.Span"/>).</summary>
     public int SpanX = FarBuilder.Size, SpanZ = FarBuilder.Size;
+
+    /// <summary>Whether it builds a ground mesh too (the far rings drawn on the CPU), or only its flora and water.</summary>
+    public bool Ground = true;
     public Vector3[] Vertices, Normals;
     public Color[] Colors;
     public Vector2[] Flags;
@@ -79,6 +82,16 @@ public static class FarBuilder
 
     public static float Step(int lod) => lod switch { 0 => 2f, 1 => 4f, _ => 8f };
 
+    // MEASURE (temporary): workers' time by phase, in stopwatch ticks.
+    public static readonly long[] PhaseTicks = new long[8];
+    public static readonly string[] PhaseNames = { "heights", "slides", "relief", "colours", "normals+curtains", "water", "scatter", "total" };
+    static void Lap(ref long t, int phase)
+    {
+        long now = Stopwatch.GetTimestamp();
+        System.Threading.Interlocked.Add(ref PhaseTicks[phase], now - t);
+        t = now;
+    }
+
     /// <summary>
     /// How many far chunks cross a planet this many metres across. A planet whose size isn't a
     /// multiple of <see cref="Size"/> (8 km is 62.5 chunks) has a shorter last chunk before the seam,
@@ -112,6 +125,7 @@ public static class FarBuilder
         try
         {
             var watch = Stopwatch.StartNew();
+            long lap = Stopwatch.GetTimestamp(), lap0 = lap;
             float step = Step(job.Lod);
             // Grid points each way (nx along x, nz along z), and the sampled grid with a ring round it.
             var grid = new Grid((int)(job.SpanX / step) + 1, (int)(job.SpanZ / step) + 1);
@@ -129,6 +143,29 @@ public static class FarBuilder
                 height[k] = s.Height;
                 level[k] = s.RiverLevel;
                 river[k] = s.InRiver;
+            }
+            Lap(ref lap, 0);
+
+            if (!job.Ground)
+            {
+                // The ground is the GPU rings' (ClipGround): only what grows here and the river's water.
+                var facing = new float[grid.Nx * grid.Nz];
+                for (int j = 0; j < grid.Nz; j++)
+                for (int i = 0; i < grid.Nx; i++)
+                {
+                    int s = grid.Sample(i, j);
+                    float gx = (height[s + 1] - height[s - 1]) / (2f * step), gz = (height[s + g] - height[s - g]) / (2f * step);
+                    facing[j * grid.Nx + i] = 1f / MathF.Sqrt(1f + gx * gx + gz * gz);
+                }
+                ReliefField lattice = Relief(job, grid, step, x0, z0, height, source);
+                Lap(ref lap, 2);
+                BuildRiverWater(job, grid, step, level, river, height, source, x0, z0);
+                Lap(ref lap, 5);
+                Scatter(job, source, palette, dug, felled, grid, step, height, river, facing, lattice);
+                Lap(ref lap, 6);
+                Lap(ref lap0, 7);
+                job.Milliseconds = watch.Elapsed.TotalMilliseconds;
+                return;
             }
 
             // A curtain has two rows of vertices along each edge: it is painted apart from the ground.
@@ -167,8 +204,15 @@ public static class FarBuilder
                 }
             }
             int[] split = Triangulate(job, grid, step, slideX, slideZ, Place);
+            Lap(ref lap, 1);
             job.Relief = new Vector2[points + skirt * 2];
-            ReliefField relief = Relief(job, grid, step, x0, z0, height, source, points);
+            ReliefField relief = Relief(job, grid, step, x0, z0, height, source);
+            for (int k = 0; k < points; k++)
+            {
+                Vector3 v = job.Vertices[k];
+                job.Relief[k] = relief.At(v.X, v.Z, v.Y);
+            }
+            Lap(ref lap, 2);
 
             for (int j = 0; j < grid.Nz; j++)
             for (int i = 0; i < grid.Nx; i++)
@@ -182,6 +226,7 @@ public static class FarBuilder
                 job.Colors[k] = GroundColor(source, palette, x, z, h, CliffSlope2(height, s, g, step, gx * gx + gz * gz), river[s], out job.Flags[k], step);
                 up[k] = normal.Y;
             }
+            Lap(ref lap, 3);
 
             var indices = new List<int>((grid.Nx - 1) * (grid.Nz - 1) * 6 + skirt * 12);
             for (int j = 0; j < grid.Nz - 1; j++)
@@ -202,9 +247,13 @@ public static class FarBuilder
             CliffNormals(job, grid, step, height, indices);
             AddCurtains(job, grid, step, indices, source, palette, x0, z0);
             job.Indices = indices.ToArray();
+            Lap(ref lap, 4);
 
             BuildRiverWater(job, grid, step, level, river, height, source, x0, z0);
+            Lap(ref lap, 5);
             Scatter(job, source, palette, dug, felled, grid, step, height, river, up, relief);
+            Lap(ref lap, 6);
+            Lap(ref lap0, 7);
             job.Milliseconds = watch.Elapsed.TotalMilliseconds;
         }
         catch (Exception e)
@@ -222,7 +271,7 @@ public static class FarBuilder
     /// at a point (either diagonal: a square is split by the ground) counts too, where it is a cliff and the
     /// plain gradient misses it. Ordinary slopes and crests, whose gradient tells the truth, keep their colours.
     /// </summary>
-    static float CliffSlope2(float[] height, int s, int g, float step, float plain2)
+    internal static float CliffSlope2(float[] height, int s, int g, float step, float plain2)
     {
         float h = height[s], steepest = 0f;
         void Edge(int n, float length) => steepest = MathF.Max(steepest, MathF.Abs(height[n] - h) / (length * step));
@@ -242,7 +291,7 @@ public static class FarBuilder
     const float CliffFrom = 0.75f;
 
     /// <summary>The same soil-to-rock rule as the voxel source: soil thins out and slides off as slopes steepen.</summary>
-    static Color GroundColor(PlanetTerrainSource source, GroundPalette pal, double x, double z, float h, float slope2, bool inRiver, out Vector2 flags, float spacing = 1f)
+    internal static Color GroundColor(PlanetTerrainSource source, GroundPalette pal, double x, double z, float h, float slope2, bool inRiver, out Vector2 flags, float spacing = 1f)
     {
         Color c = pal.Natural(x, z, h, source.SoilCover(x, z, slope2), out flags);
         StampSurface made = source.MadeGround(x, z, out float madeWeight, out float wear, roads: false);
@@ -303,7 +352,7 @@ public static class FarBuilder
     /// (<see cref="PlanetTerrainSource.Relief"/>), taken between the lattice points under each vertex.
     /// The lattice reuses the chunk's own samples where it falls on them.
     /// </summary>
-    static ReliefField Relief(FarJob job, Grid grid, float step, double x0, double z0, float[] height, PlanetTerrainSource source, int points)
+    static ReliefField Relief(FarJob job, Grid grid, float step, double x0, double z0, float[] height, PlanetTerrainSource source)
     {
         const int L = PlanetTerrainSource.ReliefStep, R = PlanetTerrainSource.ReliefReach;
         int la = job.SpanX / L + 1, lb = job.SpanZ / L + 1, wa = la + 2 * R, wb = lb + 2 * R;
@@ -333,13 +382,7 @@ public static class FarBuilder
             hi[b * la + a] = top;
             lo[b * la + a] = bottom;
         }
-        var field = new ReliefField(hi, lo, la, lb);
-        for (int k = 0; k < points; k++)
-        {
-            Vector3 v = job.Vertices[k];
-            job.Relief[k] = field.At(v.X, v.Z, v.Y);
-        }
-        return field;
+        return new ReliefField(hi, lo, la, lb);
     }
 
     /// <summary>

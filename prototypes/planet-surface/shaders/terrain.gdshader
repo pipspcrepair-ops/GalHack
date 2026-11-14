@@ -4,7 +4,7 @@
 // rock faces, snow settling on flat ground, rain darkening and glossing everything, dust.
 // The far rings cut a hole where voxel chunks are loaded, so the two never overlap (see hole_sink).
 shader_type spatial;
-render_mode cull_back, diffuse_burley, specular_schlick_ggx;
+render_mode cull_back, diffuse_burley, specular_schlick_ggx, world_vertex_coords;
 
 #include "res://shaders/noise.gdshaderinc"
 #include "res://shaders/shade.gdshaderinc"
@@ -51,6 +51,18 @@ uniform sampler2D ground_patches : filter_nearest;
 uniform sampler2D ground_cells : filter_nearest;
 uniform sampler2D ground_index : filter_nearest;
 uniform vec4 ground_grid = vec4(16.0, 0.0, 0.0, 0.0); // cell size, cells across, cells down, patches
+
+// The far ground drawn from textures round the eye (ClipGround.cs): flat grid blocks, a level's spacing their scale,
+// lifted here from that level's texels (height, the highest and lowest ground within 16 m, glow; colour), and toward
+// the ring's outer edge slid onto the next level's grid and given its ground, so the two meet exactly.
+uniform bool clip_ground = false;
+uniform highp sampler2DArray clip_data : filter_nearest;
+uniform highp sampler2DArray clip_color : filter_nearest;
+uniform int clip_texels = 576;
+uniform int clip_top = 3;
+uniform vec2 clip_eye;          // where the rings are measured from, frame x, z (the same in every pass, shadows too)
+uniform vec2 clip_shift;        // the frame to the textures' coordinates: whole planets
+uniform vec4 clip_band[8];      // per level: where its vertices start and finish sliding onto the next level's grid (m from the eye), its spacing
 
 varying vec3 wpos;
 varying vec3 wnormal;
@@ -766,16 +778,71 @@ float inside_hole(vec2 p) {
 	return min(min(p.x - hole.x, hole.z - p.x), min(p.y - hole.y, hole.w - p.y));
 }
 
+vec4 clip_at(int level, ivec2 g) {
+	// (A float modulo: the integer one is undefined for negative numbers.)
+	return texelFetch(clip_data, ivec3(ivec2(mod(vec2(g), float(clip_texels))), level), 0);
+}
+
+// One grid point of a level, as its own texels have it: position, normal, colour, glow, and the highest and lowest
+// ground round it (the two finest levels read level 2's, between its texels).
+struct ClipPoint { vec3 pos; vec3 normal; vec4 color; float glow; vec2 relief; };
+
+ClipPoint clip_point(int level, ivec2 g) {
+	float s = clip_band[level].z;
+	vec4 d = clip_at(level, g);
+	ClipPoint p;
+	vec2 at = vec2(g) * s - clip_shift;
+	p.pos = vec3(at.x, d.x, at.y);
+	p.normal = normalize(vec3(clip_at(level, g - ivec2(1, 0)).x - clip_at(level, g + ivec2(1, 0)).x, 2.0 * s,
+		clip_at(level, g - ivec2(0, 1)).x - clip_at(level, g + ivec2(0, 1)).x));
+	p.color = texelFetch(clip_color, ivec3(ivec2(mod(vec2(g), float(clip_texels))), level), 0);
+	p.glow = d.w;
+	if (level >= 2) p.relief = d.yz;
+	else {
+		vec2 q = vec2(g) * s / clip_band[2].z;
+		ivec2 b = ivec2(floor(q));
+		vec2 f = q - vec2(b);
+		p.relief = mix(mix(clip_at(2, b).yz, clip_at(2, b + ivec2(1, 0)).yz, f.x), mix(clip_at(2, b + ivec2(0, 1)).yz, clip_at(2, b + ivec2(1, 1)).yz, f.x), f.y);
+	}
+	return p;
+}
+
 void vertex() {
-	if (hole_sink > 0.0 && inside_hole((MODEL_MATRIX * vec4(VERTEX, 1.0)).xz) >= hole_sink_from) VERTEX.y -= hole_sink;
-	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	// (World coordinates: VERTEX and NORMAL come in, and go out, in the world.)
+	if (clip_ground) {
+		float s = MODEL_MATRIX[0][0];
+		int level = int(round(log2(s))) - 1;
+		ivec2 g = ivec2(round((VERTEX.xz + clip_shift) / s));
+		vec2 off = abs(VERTEX.xz - clip_eye);
+		float k = level < clip_top ? smoothstep(clip_band[level].x, clip_band[level].y, max(off.x, off.y)) : 0.0;
+		ClipPoint p = clip_point(level, g);
+		if (k > 0.0) {
+			// An odd point slides onto its even neighbour below it (the next level's point), taking that level's ground:
+			// done, the ring's edge is the next ring's exactly.
+			ClipPoint q = clip_point(level + 1, (g - (g & ivec2(1))) / 2);
+			if (k >= 1.0) p = q;
+			else {
+				p.pos = mix(p.pos, q.pos, k);
+				p.normal = normalize(mix(p.normal, q.normal, k));
+				p.color = mix(p.color, q.color, k);
+				p.glow = mix(p.glow, q.glow, k);
+				p.relief = mix(p.relief, q.relief, k);
+			}
+		}
+		VERTEX = p.pos;
+		NORMAL = p.normal;
+		COLOR = p.color;
+		UV = vec2(p.glow, 0.0);
+		UV2 = max(vec2(p.relief.x - p.pos.y, p.pos.y - p.relief.y), vec2(0.0));
+	}
+	if (hole_sink > 0.0 && inside_hole(VERTEX.xz) >= hole_sink_from) VERTEX.y -= hole_sink;
+	wpos = VERTEX;
 	// The horizon mesh eases onto the far field's smoother ground (UV2.x) over the last of its reach,
 	// so where it thins away past its rim the sheet behind stands where it did.
 	if (far_ring && rim.z > 0.0) {
-		vec2 w = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xz;
-		float out_by = max(abs(w.x - rim.x), abs(w.y - rim.y));
-		VERTEX.y = mix(VERTEX.y, UV2.x, smoothstep(rim.z - 2400.0, rim.z - 600.0, out_by));
-		wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+		float out_by = max(abs(VERTEX.x - rim.x), abs(VERTEX.z - rim.y));
+		VERTEX.y = mix(VERTEX.y, UV2.x + MODEL_MATRIX[3].y, smoothstep(rim.z - 2400.0, rim.z - 600.0, out_by));
+		wpos = VERTEX;
 	}
 	// The far land sinks over the round world's horizon (round_sink); the voxels are all well inside it.
 	if (far_ring) {
@@ -783,7 +850,7 @@ void vertex() {
 		VERTEX.y -= sink;
 		wpos.y -= sink;
 	}
-	wnormal = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
+	wnormal = normalize(NORMAL);
 }
 
 void fragment() {
