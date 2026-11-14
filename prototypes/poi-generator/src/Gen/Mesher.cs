@@ -1277,7 +1277,10 @@ public static class Mesher
 
         void Spike(ChunkMesh chunk, Int3 p, Block b)
         {
-            var buf = chunk.Surfaces[(int)Surface.Matte];
+            // (Finished as what it is made of, as any box of its material is: never a flat colour.)
+            Surface surf = Shapes.SurfaceOf(b.Material);
+            var buf = chunk.Surfaces[(int)surf];
+            float code = BoxCode(p, b, surf, FaceSide.Out);
             V3 o = V3.Of(p);
             V3 apex = o + new V3(0.5f, 1.25f, 0.5f);
             V3[] bs = { o + new V3(0.18f, 0, 0.18f), o + new V3(0.82f, 0, 0.18f), o + new V3(0.82f, 0, 0.82f), o + new V3(0.18f, 0, 0.82f) };
@@ -1287,9 +1290,9 @@ public static class Mesher
                 V3 n = V3.Cross(apex - a, c - a).Normalized();
                 float k = 0.75f + 0.25f * Math.Max(0f, n.Y + 0.3f) + (i % 2) * 0.08f;
                 int i0 = buf.VertexCount;
-                buf.Vertex(a, n, b.Color.R / 255f * k, b.Color.G / 255f * k, b.Color.B / 255f * k, 1f);
-                buf.Vertex(c, n, b.Color.R / 255f * k, b.Color.G / 255f * k, b.Color.B / 255f * k, 1f);
-                buf.Vertex(apex, n, b.Color.R / 255f * k * 1.1f, b.Color.G / 255f * k * 1.1f, b.Color.B / 255f * k * 1.1f, 1f);
+                buf.Vertex(a, n, b.Color.R / 255f * k, b.Color.G / 255f * k, b.Color.B / 255f * k, 1f, code, _seed);
+                buf.Vertex(c, n, b.Color.R / 255f * k, b.Color.G / 255f * k, b.Color.B / 255f * k, 1f, code, _seed);
+                buf.Vertex(apex, n, b.Color.R / 255f * k * 1.1f, b.Color.G / 255f * k * 1.1f, b.Color.B / 255f * k * 1.1f, 1f, code, _seed);
                 buf.Indices.AddRange(new[] { i0, i0 + 1, i0 + 2 });
             }
         }
@@ -1690,7 +1693,7 @@ public static class Shapes
 
     /// <summary>
     /// A rail round a round thing's top, along its outline: over a rim piece or a half, along its cut; over a whole block, along its
-    /// face toward Facing; a hand in from the edge, a post at its start, so the runs of the cells round it meet end to end.
+    /// face toward Facing; a hand in from the edge, so the runs of the cells round it meet end to end.
     /// </summary>
     static void RimRail(List<ShapeBox> l, Block b, Int3 p, IBlockStructure g, Rgb c, Surface s)
     {
@@ -1720,8 +1723,18 @@ public static class Shapes
             l.Add(new ShapeBox(new V3(m.X - len, 0.95f, m.Z - 0.05f), new V3(m.X + len, 1.05f, m.Z + 0.05f), c, s, Tilt: new V3(0, yaw, 0)));
             l.Add(new ShapeBox(new V3(m.X - len, 0.48f, m.Z - 0.03f), new V3(m.X + len, 0.54f, m.Z + 0.03f), c.Scale(0.8f), s, Tilt: new V3(0, yaw, 0)));
         }
-        V3 post = line[0] + inset;
-        l.Add(Box(post.X - 0.06f, 0, post.Z - 0.06f, post.X + 0.06f, 1.07f, post.Z + 0.06f, c, s));
+        // A post at the middle of each cell's run (never on a neighbour's), and at both ends where the rail stops (an opening for a ladder).
+        int beside = 0;
+        for (int dz = -1; dz <= 1; dz++)
+            for (int dx = -1; dx <= 1; dx++)
+                if ((dx != 0 || dz != 0) && g.Get(p + new Int3(dx, 0, dz)) is { Type: BlockType.Rail, Variant: RimRailVariant }) beside++;
+        var posts = new List<V3> { (line[0] + line[^1]) * 0.5f };
+        if (beside < 2) { posts.Add(line[0]); posts.Add(line[^1]); }
+        foreach (V3 at in posts)
+        {
+            V3 post = at + inset;
+            l.Add(Box(post.X - 0.06f, 0, post.Z - 0.06f, post.X + 0.06f, 1.07f, post.Z + 0.06f, c, s));
+        }
     }
 
     /// <summary>
