@@ -232,7 +232,7 @@ public partial class Game
             if (Survivor.Seated != null) Survivor.StandUp();
             Bill all = Pack.TakeBagForDeath();
             int[] size = Zone.Data.Rules.Containers.Backpack;
-            Vector3 feet = Survivor.WorldFeet;
+            Vector3 feet = Zone.FloorUnder(Survivor.WorldFeet); // set down on what is under the body, never left in the air
             if (!all.IsEmpty) Backpack = Zone.Loot.Create(LootKind.Backpack, "Your backpack", feet, size[0], size[1], all);
             Stats.Deaths++;
             CloseContainer();

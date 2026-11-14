@@ -874,7 +874,7 @@ public partial class PlayerTest : Node
         var legs = _game.Survivor.Legs;
         foreach (int x in _play.WaitFor(() => _game.Survivor.Body.OnFloor, 10)) yield return x;
         legs.JetpackFuel = 0.02f;
-        float lowest = legs.JetpackFuel;
+        float lowest = legs.JetpackFuel, prev = legs.JetpackFuel, atFire = -1f;
         int bursts = 0, firingTicks = 0, airTicks = 0, jumps = 0;
         bool wasFiring = false, readsZero = true;
         _game.Controls.Hold(Key.Space);
@@ -882,7 +882,9 @@ public partial class PlayerTest : Node
         {
             yield return 0;
             lowest = MathF.Min(lowest, legs.JetpackFuel);
-            if (legs.JetpackFiring) { firingTicks++; if (!wasFiring) bursts++; }
+            // Underfoot it fills on the ground until the jump lifts it off: the burst is whatever it held when it first fired.
+            if (legs.JetpackFiring) { firingTicks++; if (!wasFiring) bursts++; if (atFire < 0f) atFire = prev; }
+            prev = legs.JetpackFuel;
             wasFiring = legs.JetpackFiring;
             if (legs.Jumped) jumps++;
             if (legs.JetpackSpent && legs.JetpackFuel < 0.005f) readsZero &= string.Format("{0:0.00}", MathF.Max(0f, legs.JetpackFuel)) == "0.00";
@@ -890,8 +892,10 @@ public partial class PlayerTest : Node
         }
         float refilled = legs.JetpackFuel;
         _game.Controls.Hold(Key.Space, false);
-        Check(lowest >= 0f && firingTicks <= 2 && bursts <= 1 && readsZero,
-            $"an empty pack with Space held 5 s: fuel never below zero ({lowest:0.000}), it fired {firingTicks} ticks in {bursts} burst, then stayed off, the spent pack reading 0.00, never -0.00");
+        float tick = 1f / Engine.PhysicsTicksPerSecond;
+        int held = atFire < 0f ? 0 : (int)MathF.Ceiling(atFire / tick - 0.01f);
+        Check(lowest >= 0f && atFire < 3f * tick && firingTicks <= held && bursts <= 1 && readsZero,
+            $"an empty pack with Space held 5 s: fuel never below zero ({lowest:0.000}), it fired {firingTicks} ticks in {bursts} burst on the {atFire:0.000} s it held, then stayed off, the spent pack reading 0.00, never -0.00");
         Check(jumps == 1 && refilled > legs.JetpackFuelMax - 0.5f,
             $"and the held Space jumped once ({jumps} jumps, {airTicks} airborne ticks): landed, the sleeper stands, the pack filling again underfoot with Space still held ({refilled:0.00} s)");
         // Spent again: it stays off until it has taken a little back on the ground.

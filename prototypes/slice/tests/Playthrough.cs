@@ -679,10 +679,15 @@ public sealed class Playthrough
         N.Vector3 centre = StructureBridge.CellCenter(v.Structure, on) + face.Vec().ToVector3() * (cell * 0.49f);
         int before = v.Structure.Count;
         // Standing where the block would go: step back out of it, as a player would.
-        if (face.Vec().Y == 0 && InCell(v, target))
+        if (InCell(v, target))
         {
-            Log($"(stepping out of {target} on {v.Name}: feet {v.Body.ToLocal(Game.Survivor.Body.WorldPosition)} in its frame)");
-            foreach (int x in Drive.WalkTo(v.ToWorld(centre + face.Vec().ToVector3() * (cell * 1.5f + 2f)), 0.6f, 8f)) yield return x;
+            // Out along the face for a side, aside across the ground for one above or under the block (a leg).
+            N.Vector3 feetHere = v.Body.ToLocal(Game.Survivor.Body.WorldPosition);
+            N.Vector3 aside = new(feetHere.X - centre.X, 0f, feetHere.Z - centre.Z);
+            aside = aside.LengthSquared() > 1e-4f ? N.Vector3.Normalize(aside) : N.Vector3.UnitX;
+            N.Vector3 outward = face.Vec().Y == 0 ? face.Vec().ToVector3() : aside;
+            Log($"(stepping out of {target} on {v.Name}: feet {feetHere} in its frame)");
+            foreach (int x in Drive.WalkTo(v.ToWorld(centre + outward * (cell * 1.5f + 2f)), 0.6f, 8f)) yield return x;
         }
         // Where the ground stands against the face, aim at what shows of it, as a player would.
         var aims = new List<N.Vector3> { centre };
