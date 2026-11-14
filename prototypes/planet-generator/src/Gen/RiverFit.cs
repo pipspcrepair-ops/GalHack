@@ -198,12 +198,17 @@ public static class RiverFit
     /// </summary>
     static bool InSea(WorldMap map, River river, int k, TerrainModel model, double w, double h, float side)
     {
+        // Round where the channel is found (a few metres more for how roughly the meander is stepped back), every
+        // way: the coast may run in aslant, or alongside.
         Channel(river, k, model, w, h, out double cx, out double cy);
-        int a = Math.Max(0, k - 1), b = Math.Min(river.Count - 1, k + 1);
-        float tx = river.X[b] - river.X[a], ty = river.Y[b] - river.Y[a], len = MathF.Max(MathF.Sqrt(tx * tx + ty * ty), 1e-3f);
-        for (float s = -side; s <= side; s += Math.Max(side * 0.5f, 1f))
-            if (map.IsSea(cx - ty / len * s, cy + tx / len * s)) return true;
-        return false;
+        side += 4f;
+        for (int a = 0; a < 16; a++)
+        {
+            double ux = Math.Cos(a * Math.PI / 8), uy = Math.Sin(a * Math.PI / 8);
+            for (float s = side * 0.25f; s <= side; s += side * 0.25f)
+                if (map.IsSea(cx + ux * s, cy + uy * s)) return true;
+        }
+        return map.IsSea(cx, cy);
     }
 
     /// <summary>The lowest land at a river point: on its line and either side of its channel, where the meander puts it.</summary>

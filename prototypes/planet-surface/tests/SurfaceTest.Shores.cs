@@ -244,7 +244,7 @@ public partial class SurfaceTest
             string name = level < 0 ? "near ground" : $"far level {level}";
             string shape = $"{t.Length:F0} m of shoreline, {t.Sharp} turns over {SharpTurn} degrees between samples {ChordOf(level):F0} m apart that the land's own line at the water's level doesn't make there, " +
                            $"{t.Straight} straight runs of {StraightRun} m across sloping land, {t.Off} of {t.Looked} points over {OffLine} m off the land's line";
-            string stands = $"{t.Floating} points with water drawn more than {ShoreTol * 100:F0} cm over the land and its level (half a grid square's fall allowed on rapids), {t.Through} where the ground shows through it";
+            string stands = $"{t.Floating} points with water drawn more than {ShoreTol * 100:F0} cm over the land and its level (the fall across half a grid square's diagonal allowed on rapids), {t.Through} where the ground shows through it";
             // Every level: the water's own outline never stands over the land beside it.
             Check(t.Cut == 0, $"{name}: water runs in under its banks: {t.Cut} of {t.Wet} wet points stand more than {ShoreTol * 100:F0} cm over the land at the water's own outline{t.Notes("cut")}");
             if (level <= 0)
@@ -387,12 +387,12 @@ public partial class SurfaceTest
             drawn[k] = float.IsNaN(top) ? -1f : top - g;
             ideal[k] = float.IsNaN(lv) ? -1f : lv - g;
             if (placed[k]) continue;
-            // A sheet on a grid follows a river's level only at its corners: on a rapid it may stand off it by half a square's fall.
+            // A sheet on a grid follows a river's level only at its corners: on a rapid it may stand off it by the fall across half a square's diagonal.
             float fall = 0f;
             if (i > 0 && i < n - 1 && j > 0 && j < n - 1)
             {
                 float gx = (levels[k + 1] - levels[k - 1]) / (2 * ShoreCell), gz = (levels[k + n] - levels[k - n]) / (2 * ShoreCell);
-                if (float.IsFinite(gx) && float.IsFinite(gz)) fall = MathF.Sqrt(gx * gx + gz * gz) * step * 0.5f;
+                if (float.IsFinite(gx) && float.IsFinite(gz)) fall = MathF.Sqrt(gx * gx + gz * gz) * step * 0.75f;
             }
             float tol = ShoreTol + fall;
             // Water shown where the volume has none, or higher than its level: standing proud of the land.
