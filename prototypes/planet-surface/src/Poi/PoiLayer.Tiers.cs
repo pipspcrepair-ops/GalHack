@@ -101,7 +101,8 @@ public partial class PoiLayer
         _standIn ??= new StandardMaterial3D { AlbedoColor = new Color(0.46f, 0.45f, 0.43f), Roughness = 1f };
         var lo = site.Footprint.Min;
         var hi = site.Footprint.Max;
-        float top = site.Layout.Blocks.Min.Y + site.Layout.Blocks.Size.Y - 8; // (the layout's grid keeps 8 cells of air over the place)
+        // (the layout's grid keeps 8 cells of air over the place; a part not laid out yet stands as high as its footprint says)
+        float top = site.Pending ? site.Footprint.Max.Y - 12 - site.Origin.Y : site.Layout.Blocks.Min.Y + site.Layout.Blocks.Size.Y - 8;
         var size = new Vector3(hi.X - lo.X + 1, Mathf.Max(2f, top), hi.Z - lo.Z + 1);
         return new MeshInstance3D
         {
@@ -521,7 +522,7 @@ public partial class PoiLayer
 
     /// <summary>Places within <paramref name="range"/> of the camera not drawn as themselves yet: a plain block, or a city tile still waiting for its buildings (tests).</summary>
     public int Unshown(float range) =>
-        _places.Count(p => p.StandIn != null && Away(p, _focus) < range) + _tiles.Count(t => t.Node == null && t.Members.Min(p => Away(p, _focus)) < range);
+        _places.Count(p => p.StandIn != null && Away(p, _focus) < range && PoiBuilds.Withhold?.Invoke(p.Site) != true) + _tiles.Count(t => t.Node == null && t.Members.Min(p => Away(p, _focus)) < range);
 
     /// <summary>Whether a place in reach still waits for its merged blocks (tests and proof frames wait for none).</summary>
     public bool MidPending { get; private set; } = true;
@@ -534,6 +535,9 @@ public partial class PoiLayer
         if (!p.Whole || p.Mid is not { Visible: true } || p.Way != 0 || p.Low is { Visible: true }) return 1;
         return _tileOf.TryGetValue(p, out Tile t) && (t.Low is { Visible: true } || t.Way != 0) ? 1 : 2;
     }
+
+    /// <summary>Whether a place stands built, no plain block left in its stead (tests).</summary>
+    public bool Standing(PoiSite site) => site.Built != null && _places.Find(x => x.Site == site) is { StandIn: null };
 
     /// <summary>Whether a place's mid blocks are in (tests).</summary>
     public bool MidReady(PoiSite site) => _places.Find(x => x.Site == site)?.Whole == true;

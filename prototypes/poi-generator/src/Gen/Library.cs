@@ -134,7 +134,7 @@ public sealed class PoiLibrary
     {
         if (family.Generator == Generator.Kit)
             return Kits[(family.Kits.TryGetValue(alias, out KitRef r) ? r : family.Kits["main"]).KitId];
-        string style = family.Site != null ? Sites[family.Site].Style : Programs[family.Program!].Style;
+        string style = family.Site != null ? Sites[family.Site].Style : family.Types.Count > 0 ? PlaceTypes.Style : Programs[family.Program!].Style;
         return Kits[style];
     }
 
@@ -159,6 +159,8 @@ public sealed class PoiLibrary
                 }
                 continue;
             }
+            foreach (string t in f.Types)
+                if (Types.All(x => x.Id != t)) throw new FormatException($"family {f.Id}: no place type '{t}'");
             foreach (var v in f.Variants)
             {
                 string? site = v.Site ?? f.Site, program = v.Program ?? f.Program;

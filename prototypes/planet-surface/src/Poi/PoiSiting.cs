@@ -46,8 +46,35 @@ public sealed class PoiSite
     // dressing, who is in it) and fitting it to the world waits until it is wanted, on whatever thread wants it,
     // and comes out the same from its seed whenever that is.
 
-    /// <summary>The place as laid out: what the world is set down by.</summary>
-    public Layout Layout;
+    /// <summary>The place as laid out: what the world is set down by. A part of a typed place (<see cref="Whole"/>) is laid out when first read, off the load.</summary>
+    public Layout Layout
+    {
+        get
+        {
+            if (_layout == null && Lay != null)
+                lock (_building)
+                {
+                    if (_layout == null && Lay != null)
+                    {
+                        if (Loading) System.Threading.Interlocked.Increment(ref LoadLayouts);
+                        try { _layout = Lay(); }
+                        catch (Exception e) { Godot.GD.PushWarning($"{Name}: no layout ({e.GetBaseException().Message})"); }
+                        Lay = null;
+                    }
+                }
+            return _layout;
+        }
+        set => _layout = value;
+    }
+    Layout _layout;
+    /// <summary>Lays the place out, for one whose layout waits until it is wanted (null once laid).</summary>
+    public Func<Layout> Lay;
+    /// <summary>Its layout hasn't been made yet: a load path reading it would make it, so it leaves it be.</summary>
+    public bool Pending => _layout == null && Lay != null;
+    /// <summary>Layouts made while the world loads, by anything (a typed place's parts must make none).</summary>
+    public static int LoadLayouts;
+    /// <summary>The typed place it is a part of (an airfield's terminal, a hangar, a fence run), or null.</summary>
+    public TypedPlace Whole;
     public PoiState State;
     /// <summary>Who the world put in it (null where nobody is).</summary>
     public OccupancyRoll Occupancy;
@@ -143,7 +170,7 @@ public sealed class PoiSite
     public bool FactionHeld => Family.HasCore(State) || (Family.Faction != PoiGenerator.Gen.Faction.None && State == PoiState.Active);
 
     /// <summary>A blast site's ground zero in world metres (its radii are in <c>Layout.Extras.Blast</c>): for the dead-zone ground tint and the world work.</summary>
-    public (double X, double Z)? GroundZero => Layout.Extras.Blast is { } z ? (Origin.X + z.Center.X + 0.5, Origin.Z + z.Center.Z + 0.5) : null;
+    public (double X, double Z)? GroundZero => !Pending && Layout.Extras.Blast is { } z ? (Origin.X + z.Center.X + 0.5, Origin.Z + z.Center.Z + 0.5) : null;
 
     /// <summary>A settlement's or civilian place's townsfolk data (spots, links, routes, people, animals, area), in local cells; null elsewhere.</summary>
     public Townsfolk Townsfolk => Instance.Townsfolk;
@@ -266,7 +293,8 @@ public static partial class PoiSiting
     public static List<PoiSite> Place(PoiCatalog catalog, WorldMap map, PlanetTerrainSource bare, LandingSite landing, bool? startWorld = null, WorldProfile profile = null, float depth = -1f)
     {
         bool start = startWorld ?? StartWorld;
-        LastPlanned = LastSkipped = LastUnseated = 0;
+        LastPlanned = LastSkipped = LastUnseated = LastTyped = 0;
+        LastTypedMs = 0;
         LastLayoutMs = LastSeatMs = 0;
         PoiLibrary lib = catalog.Library;
         PlanetSpec spec = map.Spec;
@@ -283,7 +311,18 @@ public static partial class PoiSiting
         LastPlanMs = planClock.Elapsed.TotalMilliseconds;
         LastSetDownMs = 0;
         var sites = new List<PoiSite>();
-        if (ForceFamily != null && lib.Families.FirstOrDefault(f => f.Id == ForceFamily) is { } forced)
+        if (ForceFamily != null && lib.Families.FirstOrDefault(f => f.Id == ForceFamily) is { Types.Count: > 0 } forcedType)
+        {
+            // A typed screenshot's subject: sited by its own rule, from a kilometre or two out round the landing site.
+            PoiState state = ForceState ?? (start ? PoiState.Ruined : PoiState.Abandoned);
+            for (int k = 0; k < 8 && sites.Count == 0; k++)
+            {
+                double a = k * Math.PI / 4;
+                TypedPlace typed = SeatTypeNear(lib, forcedType, 0, state, GHash.Of(map.Spec.Seed, 0xF0CE), profile, bare, map, Mathx.WrapX(landing.X + Math.Cos(a) * 2000, map.WidthMeters), Mathx.Wrap(landing.Y + Math.Sin(a) * 2000, map.HeightMeters), landing, sites);
+                if (typed != null) sites.AddRange(typed.Parts);
+            }
+        }
+        else if (ForceFamily != null && lib.Families.FirstOrDefault(f => f.Id == ForceFamily) is { } forced)
         {
             // A screenshot's subject: the first spot round the landing site, from 700 m out, where it can be seated.
             PoiState state = start && ThemeDef.FactionOwned(forced) ? PoiState.Ruined : forced.Core == CoreRule.Owned || forced.Tags.Contains("settlement") ? PoiState.Active : PoiState.Abandoned;
@@ -331,6 +370,7 @@ public static partial class PoiSiting
         // Each place laid out side by side, a batch at a time, then seated in order: the same places as one by one. Spawning waits.
         (Layout Layout, ulong Seed, OccupancyRoll Occ)? Make(PlacedPoi p)
         {
+            if (p.Family.Types.Count > 0) return null; // (sited from its sketch, below)
             int variant = p.Family.Variants.IndexOf(p.Variant);
             ulong spawnSeed = p.SpawnSeed;
             if (start)
@@ -360,6 +400,12 @@ public static partial class PoiSiting
             for (int c = 0; c < chunk.Count && sites.Count < cap; c++)
             {
                 PlacedPoi p = chunk[c];
+                if (p.Family.Types.Count > 0)
+                {
+                    TypedPlace typed = SeatTypeNear(lib, p.Family, Math.Max(0, p.Family.Variants.IndexOf(p.Variant)), p.State, p.SpawnSeed, profile, bare, map, Mathx.WrapX(p.X, map.WidthMeters), Mathx.Wrap(p.Z, map.HeightMeters), landing, sites);
+                    if (typed != null) sites.AddRange(typed.Parts);
+                    continue;
+                }
                 if (madeHere[c] is not { } made) continue;
                 PoiSite site = Seat(made.Layout, p.State, p.Family, bare, map, Mathx.WrapX(p.X, map.WidthMeters), Mathx.Wrap(p.Z, map.HeightMeters), landing, sites);
                 // The main port stands somewhere: if its spot won't take it, the next good ground round it. So do its crowd, nearer in.
@@ -493,8 +539,9 @@ public static partial class PoiSiting
         bool wide = Math.Max(halfX, halfZ) > 100;
         double search = wide ? SearchRadius * 2 : SearchRadius, step = wide ? 20 : 10;
         // Only the places that could crowd this one are looked at, and every spot is weighed side by side.
-        var close = others.Where(o => Dist(wantX, wantZ, (o.Stamp.MinX + o.Stamp.MaxX) * 0.5, (o.Stamp.MinZ + o.Stamp.MaxZ) * 0.5, width, height)
-                                      < search * 1.5 + Math.Max(140, Math.Max(o.Stamp.ReachX, o.Stamp.ReachZ) + Math.Max(halfX, halfZ) + Apron + 50)).ToList();
+        // (A typed place crowds by its whole graded ground, once.)
+        var close = others.Select(o => o.Whole?.Stamp ?? o.Stamp).Distinct().Where(t => Dist(wantX, wantZ, (t.MinX + t.MaxX) * 0.5, (t.MinZ + t.MaxZ) * 0.5, width, height)
+                                      < search * 1.5 + Math.Max(140, Math.Max(t.ReachX, t.ReachZ) + Math.Max(halfX, halfZ) + Apron + 50)).ToList();
         int span = (int)Math.Floor(search / step + 1e-9) * 2 + 1;
         var found = new (double Score, double X, double Z, int Pad, float Cut, string Kind)[span * span];
         System.Threading.Tasks.Parallel.For(0, span * span, idx =>
@@ -506,9 +553,9 @@ public static partial class PoiSiting
             // Keep the landing spot open, and keep places from crowding each other.
             if (Dist(cx, cz, landing.X, landing.Y, width, height) < Math.Max(160, Math.Max(halfX, halfZ) + 80)) return;
             bool crowded = false;
-            foreach (PoiSite o in close)
-                crowded |= Dist(cx, cz, (o.Stamp.MinX + o.Stamp.MaxX) * 0.5, (o.Stamp.MinZ + o.Stamp.MaxZ) * 0.5, width, height)
-                           < Math.Max(140, Math.Max(o.Stamp.ReachX, o.Stamp.ReachZ) + Math.Max(halfX, halfZ) + Apron + 50); // stamps never pile up
+            foreach (TerrainStamp o in close)
+                crowded |= Dist(cx, cz, (o.MinX + o.MaxX) * 0.5, (o.MinZ + o.MaxZ) * 0.5, width, height)
+                           < Math.Max(140, Math.Max(o.ReachX, o.ReachZ) + Math.Max(halfX, halfZ) + Apron + 50); // stamps never pile up
             if (crowded) return;
             // Sand only where no firm ground lies within the search at all (the middle of a dune sea).
             bool sandy = heavy && PlanetSurface.World.Footing.SandShare(map, cx, cz, halfX + Apron, halfZ + Apron) > 0.12f;

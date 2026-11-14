@@ -431,10 +431,7 @@ internal sealed partial class Depths
             _doorCells.Add((u, 2 * j.J, v, j.A, j.B));
             if (s == 0) P.Put(u, 2 * j.J, v, new Block(BlockType.Scorch, Material.Ash, new Rgb(0x3a, 0x30, 0x28), Role.Story, Dir.North, 2));
         }
-        secret.Tells.Add("cracked wall panel, a shade off the rest");
-        secret.Tells.Add("a draft through the cracks");
-        secret.Tells.Add("scuff marks on the floor in front");
-        secret.Tells.Add("the plan has a gap here no door explains");
+        secret.Tells.AddRange(SecretRoom.Usual);
         P.C.X.Sounds.Add(new SoundHook("draft", secret.TellCells[^1] + Int3.Up, 0.6f, j.A.Storey));
         P.C.X.Secrets.Add(secret);
         P.C.Link(j.A.Mod, j.B.Mod);

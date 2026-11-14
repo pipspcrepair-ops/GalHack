@@ -44,7 +44,7 @@ public partial class PoiTest : Node
             ("LootByRarity", LootByRarity), ("LootByDepth", LootByDepth), ("Carved", Carved), ("Hidden", Hidden),
             ("Breaches", Breaches), ("NoLocks", NoLocks), ("PlacementRules", PlacementRules), ("NoRepeatsInSystem", NoRepeatsInSystem),
             ("SeenWeighting", SeenWeighting), ("RegrowthPolicy", RegrowthPolicy), ("RevealDistances", RevealDistances),
-            ("WorldPlacement", WorldPlacementCheck), ("WorldProfiles", WorldProfiles), ("Ports", PortsAndPeople), ("StartWorlds", StartWorlds), ("Tethers", Tethers), ("Stamps", Stamps), ("Geometry", Geometry), ("RequiredRooms", RequiredRooms), ("Ages", Ages), ("FactionMix", FactionMix), ("Townsfolk", TownsfolkCheck), ("Blasts", Blasts), ("StartSystems", StartSystems), ("PlainRuins", PlainRuins), ("Houses", Houses), ("Doors", Doors), ("DoorwaySolids", DoorwaySolids), ("Surfaces", Surfaces), ("Rails", Rails), ("Decay", DecayPass), ("Coplanar", CoplanarFaces), ("Panes", Panes), ("Landmarks", Landmarks), ("ShooterTags", ShooterTags), ("Hulks", Hulks), ("Eras", Eras), ("LaysOut", LaysOut), ("Standard", Standard), ("References", ReferenceRanges), ("Patterns", PatternChecklist), ("Coherent", Coherent), ("Objects", Objects), ("Ornament", OrnamentCheck), ("Round", RoundCheck), ("Roads", Roads), ("RoadCost", RoadCost), ("PlaceCost", PlaceCost), ("Fresh", Fresh), ("Scale", Scale), ("Yards", Yards), ("TypeSizes", TypeSizes), ("HeldPlaces", HeldPlaces), ("Performance", Performance),
+            ("WorldPlacement", WorldPlacementCheck), ("WorldProfiles", WorldProfiles), ("Ports", PortsAndPeople), ("StartWorlds", StartWorlds), ("Tethers", Tethers), ("Stamps", Stamps), ("Geometry", Geometry), ("RequiredRooms", RequiredRooms), ("Ages", Ages), ("FactionMix", FactionMix), ("Townsfolk", TownsfolkCheck), ("Blasts", Blasts), ("StartSystems", StartSystems), ("PlainRuins", PlainRuins), ("Houses", Houses), ("Doors", Doors), ("DoorwaySolids", DoorwaySolids), ("Surfaces", Surfaces), ("Rails", Rails), ("Decay", DecayPass), ("Coplanar", CoplanarFaces), ("Panes", Panes), ("Landmarks", Landmarks), ("ShooterTags", ShooterTags), ("Hulks", Hulks), ("Eras", Eras), ("LaysOut", LaysOut), ("Standard", Standard), ("References", ReferenceRanges), ("Patterns", PatternChecklist), ("Coherent", Coherent), ("Objects", Objects), ("Ornament", OrnamentCheck), ("Round", RoundCheck), ("Roads", Roads), ("RoadCost", RoadCost), ("PlaceCost", PlaceCost), ("Fresh", Fresh), ("Scale", Scale), ("Yards", Yards), ("TypeSizes", TypeSizes), ("TypesBuilt", TypesBuilt), ("HeldPlaces", HeldPlaces), ("Performance", Performance),
         };
         try
         {
@@ -2063,7 +2063,7 @@ public partial class PoiTest : Node
     // riding lifts and climbing ladders. Proves the meshes, collision, doors, lifts and grid agree.
     readonly (string Family, int Variant, Rarity Rarity, PoiState State, bool Lifts, string Goal)[] _walks =
     {
-        ("old_airfield", 0, Rarity.Rare, PoiState.Abandoned, true, "deep"),
+        ("airfield", 0, Rarity.Rare, PoiState.Abandoned, true, "vault"),
         ("research_base", 0, Rarity.Uncommon, PoiState.Abandoned, true, "deep"),
         ("ominous_tower", 0, Rarity.Uncommon, PoiState.Ruined, false, "top+deep"),
         ("deep_bunker", 0, Rarity.Rare, PoiState.Infested, false, "deep"),

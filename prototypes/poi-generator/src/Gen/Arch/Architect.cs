@@ -37,14 +37,16 @@ public static class Architect
         {
             var rng = new Rng(Hash.Combine(seed, (ulong)rarity + 1, 0xA2C417EUL + (ulong)attempt * 0x9E37UL));
             // The family's own style kit re-skins its program or site (a flavour, such as alien).
-            string kitId = family.Style ?? (family.Site != null || variant.Site != null
-                ? lib.Sites[variant.Site ?? family.Site!].Style
-                : lib.Programs[variant.Program ?? family.Program!].Style);
+            // A part of a typed place brings its own plan (PlaceTypes.Piece); otherwise the variant's or the family's.
+            SiteDef? site = hints?.Site ?? ((variant.Site ?? family.Site) is { } id ? lib.Sites[id] : null);
+            // A place type is sited from its sketch and each of its parts laid out on its own; off a world, its first building stands for it.
+            if (site == null && family.Types.Count > 0) site = PlaceTypes.Sample(lib, family, seed, hints?.Tech);
+            string kitId = family.Style ?? site?.Style ?? lib.Programs[variant.Program ?? family.Program!].Style;
             var canvas = new Canvas(lib.Kits[kitId]) { Tech = hints?.Tech };
             canvas.X.Wrong = rng.Chance(family.Wrong);
             try
             {
-                if (variant.Site != null || family.Site != null) Sites.Compose(lib, canvas, lib.Sites[variant.Site ?? family.Site!], family, rarity, rng.Fork("site"), hints);
+                if (site != null) Sites.Compose(lib, canvas, site, family, rarity, rng.Fork("site"), hints);
                 else
                 {
                     var built = Building.Build(canvas, lib, family, rarity, new BuildingSpec { Program = lib.Programs[variant.Program ?? family.Program!] }, rng.Fork("building"));
@@ -58,7 +60,7 @@ public static class Architect
                 var layout = canvas.Finish(family, variant, rarity, seed, variant.Name);
                 var problems = LayoutCheck.Check(layout);
                 // A program guarantees its must-have rooms: a plan that left one out is planned again.
-                if (problems.Count == 0 && family.Site == null && variant.Site == null)
+                if (problems.Count == 0 && site == null)
                     foreach (string must in lib.Programs[variant.Program ?? family.Program!].Bands.Values.SelectMany(b => b).Where(d => d.Must).Select(d => d.Room).Distinct())
                         if (must != "vault" && !layout.Extras.Rooms.Any(r => r.Purpose == must)) { problems.Add($"the plan has no {must}, which the program requires"); break; }
                 lock (typeof(Stats)) Stats.Generated++;

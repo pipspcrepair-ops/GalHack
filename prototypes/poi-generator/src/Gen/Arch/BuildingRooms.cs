@@ -335,10 +335,7 @@ public sealed partial class Building
         Int3 front = L(spot.a.x + dx, y, spot.a.z + dz), front2 = L(spot.b.x + dx, y, spot.b.z + dz);
         secret.TellCells.Add(front);
         secret.TellCells.Add(front2);
-        secret.Tells.Add("cracked wall panel, a shade off the rest");
-        secret.Tells.Add("a draft through the cracks");
-        secret.Tells.Add("scuff marks on the floor in front");
-        secret.Tells.Add("the plan has a gap here no door explains");
+        secret.Tells.AddRange(SecretRoom.Usual);
         C.Set(front, new Block(BlockType.Scorch, Material.Ash, new Rgb(0x3a, 0x30, 0x28), Role.Story, Dir.North, 2));
         C.X.Sounds.Add(new SoundHook("draft", front2 + Int3.Up, 0.6f, r.Storey));
         C.X.Secrets.Add(secret);

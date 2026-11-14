@@ -90,6 +90,8 @@ public partial class StartTest : Node
         PoiGenerator.Gen.SiteRoads.Enabled = !args.Contains("--no-site-roads");
         // --places-at-load: every place built while the world loads, the old way, to time the load against.
         PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad = args.Contains("--places-at-load");
+        // --force=FAMILY: each world also has one of these near the landing site (an airfield, to time a world's load with one).
+        foreach (string a in args) if (a.StartsWith("--force=")) PlanetSurface.Poi.PoiSiting.ForceFamily = a["--force=".Length..];
         var seeds = new List<ulong>();
         if (args.Contains("--crowd"))
         {
@@ -123,13 +125,17 @@ public partial class StartTest : Node
             worlds.Add(WorldChoice.Fresh("ice")); // and always a cold one, for the chamber's warmth
         }
         // --compare-load: each world loaded twice, its places built at load the old way and then as they are wanted.
-        bool compare = args.Contains("--compare-load");
+        // --compare-force (with --force=FAMILY): each world loaded twice, without the forced family and then with it.
+        bool compare = args.Contains("--compare-load"), withAndWithout = args.Contains("--compare-force");
+        string force = PlanetSurface.Poi.PoiSiting.ForceFamily;
         foreach (WorldChoice pinned in worlds)
         {
             if (compare) PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad = true;
+            if (withAndWithout) PlanetSurface.Poi.PoiSiting.ForceFamily = null;
             foreach (int x in OneWorld(pinned, seeds)) yield return x;
-            if (!compare) continue;
+            if (!compare && !withAndWithout) continue;
             PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad = false;
+            PlanetSurface.Poi.PoiSiting.ForceFamily = force;
             foreach (int x in OneWorld(_lastWorld, seeds)) yield return x;
         }
         int failedWorlds = _failedWorlds.Count;
@@ -272,7 +278,8 @@ public partial class StartTest : Node
             yield return 0;
             yield break;
         }
-        GD.Print($"  load{(PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad ? " (places built at load, the old way)" : "")}: {watch.Elapsed.TotalSeconds:F1} s to the sleeper standing; {PlanetSurface.Poi.PoiSiting.LastPlanned} places laid out in {PlanetSurface.Poi.PoiSiting.LastLayoutMs:F0} ms (side by side), set down in {PlanetSurface.Poi.PoiSiting.LastSetDownMs:F0} ms (seated in {PlanetSurface.Poi.PoiSiting.LastSeatMs:F0}); {game.Zone.Planet.Pois.Count(p => p.Built != null)} of {game.Zone.Planet.Pois.Count} built by then");
+        GD.Print($"  load{(PlanetSurface.World.PlanetWorld.BuildPlacesAtLoad ? " (places built at load, the old way)" : "")}: {watch.Elapsed.TotalSeconds:F1} s to the sleeper standing; {PlanetSurface.Poi.PoiSiting.LastPlanned} places laid out in {PlanetSurface.Poi.PoiSiting.LastLayoutMs:F0} ms (side by side), set down in {PlanetSurface.Poi.PoiSiting.LastSetDownMs:F0} ms (seated in {PlanetSurface.Poi.PoiSiting.LastSeatMs:F0}); {game.Zone.Planet.Pois.Count(p => p.Built != null)} of {game.Zone.Planet.Pois.Count} built by then; {PlanetSurface.Poi.PoiSiting.LastTyped} typed places sited from their sketches in {PlanetSurface.Poi.PoiSiting.LastTypedMs:F0} ms ({game.Zone.Planet.Pois.Count(p => p.Whole != null)} parts), {PlanetSurface.Poi.PoiSite.LoadLayouts} of their layouts made while loading; waited on places {game.WaitedPlaces:F1} s, roads {game.WaitedInfra:F1} s, orbit {game.WaitedOrbit:F1} s");
+        Check(PlanetSurface.Poi.PoiSite.LoadLayouts == 0, $"{world}: no typed place's part laid out while the world loaded ({PlanetSurface.Poi.PoiSite.LoadLayouts})");
         Check(PlanetSurface.Poi.PoiSite.UnaskedLoadBuilds == 0, $"{world}: nothing in the load built a place by reading it unasked ({PlanetSurface.Poi.PoiSite.UnaskedLoadBuilds})");
         // The rest of the places are built after, nearest first, off the main thread: how long until every place in range stands, and the worst frame meanwhile.
         // Watched for at least BuildWatchSeconds either way, so a world loaded the old way (--places-at-load) is timed over the same window.

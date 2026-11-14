@@ -484,11 +484,11 @@ Ranges for the places agent to turn into generator settings and `LayoutCheck`-st
 
 ## 7. The standard a redone place must pass
 
-A place type is redone from `data/place-types.txt` (what it has, real size ranges, relations; never positions) and passes all of these before its old plan is deleted:
+A place type is redone from `data/place-types.txt` (what it has, its size ranges, relations; never positions) and passes all of these before its old plan is deleted:
 
 | # | Standard | Proved by |
 |---|---|---|
-| R1 | Real proportions: every part inside its type's real range, rooms as tall and big as the real thing (P1, P2) | PoiTest Scale |
+| R1 | Real proportions between the parts, scaled to our worlds; what a body or a craft uses stays true size (rooms, doors, ceilings and stairs for people; runway and taxiway widths, aprons, pads and hall doors for the biggest craft that uses the place); every part inside its type's range (P1, P2) | PoiTest Scale |
 | R2 | The study's rooms and flows, a guarded core vault and hidden rooms (section 2), no locks or key cards | PoiTest Standard, Hidden, NoLocks |
 | R3 | Everything agrees with its neighbours: nothing in or against a wall, no yard object on a building or laid ground, every door and bay reachable | PoiTest Yards, Roads, Coherent |
 | R4 | Furnished interiors, no bare shells | PoiTest Patterns |

@@ -311,6 +311,39 @@ public sealed class Plot
         return d;
     }
 
+    /// <summary>
+    /// A hidden room's way in, found by exploring and never by a lock: a door's worth of the wall between rooms a and b
+    /// (block i, j, k of a wall along i or k, a on its <paramref name="aSide"/>, +1 or -1) left as breakable panels a
+    /// shade off the rest, the tells on a's side (scuffs, a draft), a stash and a bedroll in b at cell (u, v).
+    /// </summary>
+    public void Secret(int i, int j, int k, bool alongI, int aSide, int a, int b, int storey, int u, int v)
+    {
+        var secret = new SecretRoom { Module = b, FromModule = a, Facing = Turn(alongI ? (aSide > 0 ? Dir.South : Dir.North) : (aSide > 0 ? Dir.East : Dir.West)) };
+        Rgb paint = Get(2 * i, 2 * j, 2 * k).Color.Scale(0.9f).Lerp(new Rgb(0x8a, 0x7a, 0x60), 0.12f);
+        int n = 0;
+        for (int s = 0; s < 2; s++)
+            for (int t = 0; t < 2; t++)
+                for (int y = 2 * j; y < 2 * j + DoorSize.Tall; y++)
+                {
+                    int cu = alongI ? 2 * i + s : 2 * i + t, cv = alongI ? 2 * k + t : 2 * k + s;
+                    Put(cu, y, cv, new Block(BlockType.Breakable, Material.Concrete, paint, Role.Secret) { Variant = (byte)(1 + n++) });
+                    secret.WallCells.Add(Cell(cu, y, cv));
+                }
+        int near = aSide > 0 ? 2 : -1;
+        for (int s = 0; s < 2; s++)
+        {
+            int tu = alongI ? 2 * i + s : 2 * i + near, tv = alongI ? 2 * k + near : 2 * k + s;
+            secret.TellCells.Add(Cell(tu, 2 * j, tv));
+            if (s == 0) Put(tu, 2 * j, tv, new Block(BlockType.Scorch, Material.Ash, new Rgb(0x3a, 0x30, 0x28), Role.Story, Dir.North, 2));
+        }
+        secret.Tells.AddRange(SecretRoom.Usual);
+        C.X.Sounds.Add(new SoundHook("draft", secret.TellCells[^1] + Int3.Up, 0.6f, storey));
+        C.X.Secrets.Add(secret);
+        C.Link(a, b);
+        C.Slots.Add(new Slot { Kind = SlotKind.Loot, Cell = Cell(u, 2 * j, v), Module = b, Sure = true, Secret = true });
+        Lay(u + (alongI ? 1 : 0), 2 * j, v + (alongI ? 0 : 1), new Block(BlockType.Scatter, Material.Cloth, new Rgb(0x6a, 0x5a, 0x40), Role.Story));
+    }
+
     /// <summary>A strip of windows through a wall, a block tall, on the 2 m lattice.</summary>
     public void Glazed(int i0, int j, int k0, int i1, int k1)
     {

@@ -32,6 +32,9 @@ public sealed class PoiBuilds : IDisposable
     /// <summary>While this says so, nothing is built unasked: a game standing a place up (a frame at a time) asks for quiet, as building's allocations would pause it.</summary>
     public Func<bool> Hold;
 
+    /// <summary>Tests: places the builder leaves until this lets them go (a frame-time run holds an airfield back until its flight in starts).</summary>
+    public static Func<PoiSite, bool> Withhold;
+
     /// <summary>Places built here so far, and the time from the start until every place within range of the focus first stood built, ms (-1 until then).</summary>
     public int Built;
     public double AllInRangeMs = -1;
@@ -92,7 +95,7 @@ public sealed class PoiBuilds : IDisposable
                 double best = Range;
                 foreach (PoiSite s in _sites)
                 {
-                    if (s.Built != null || _failed.Contains(s)) continue;
+                    if (s.Built != null || _failed.Contains(s) || Withhold?.Invoke(s) == true) continue;
                     double d = Away(s, fx, fz);
                     if (d < best) (best, next) = (d, s);
                 }
