@@ -76,6 +76,8 @@ public sealed partial class Town
         public Vector3 Pos;                // local feet
         public float Yaw;
         public int Spot, Home;
+        /// <summary>The spot they are bound for while its way is worked out on a worker (-1: none).</summary>
+        public int Asked = -1;
         public List<Vector3> Path;
         public int Step;
         public float Wait, Speed = 1.3f, Hurt, Aim = -1f, Cooldown;
@@ -208,8 +210,12 @@ public sealed partial class Town
         return path;
     }
 
-    List<Vector3> PathBetween(int a, int b)
+    List<Vector3> PathBetween(int a, int b) => PathBetween(a, b, out _);
+
+    /// <summary>The route between two spots: worked out once and kept; in play, a new one comes from a worker (<paramref name="pending"/> until then).</summary>
+    List<Vector3> PathBetween(int a, int b, out bool pending)
     {
+        pending = false;
         if (_paths.TryGetValue((a, b), out var p)) return p;
         if (_paths.TryGetValue((b, a), out var q))
         {
@@ -220,14 +226,49 @@ public sealed partial class Town
             if (back.Count == 0 || (At(b) - back[^1]).LengthSquared() > 0.01f) back.Add(At(b));
             return _paths[(a, b)] = back;
         }
-        PInt3 from = Spots[a].Cell, to = Spots[b].Cell;
-        // By the walking grid only (the dressing standing in, through the doors): where there is no way, nobody goes,
-        // never straight across through a wall, a floor or the furniture.
+        if (!Searched(Spots[a].Cell, b, out List<Vector3> path)) { pending = true; return null; }
+        return _paths[(a, b)] = path;
+    }
+
+    /// <summary>
+    /// A route from a cell to a spot by the walking grid only (the dressing standing in, through the doors): where there is
+    /// no way, nobody goes, never straight across through a wall, a floor or the furniture. Worker-safe.
+    /// </summary>
+    List<Vector3> Route(PInt3 from, int spot)
+    {
+        PInt3 to = Spots[spot].Cell;
         List<PInt3> cells = _nav.Standable(from) && _nav.Standable(to) ? _nav.FindPath(from, to, 30000) : null;
         List<Vector3> path = Points(cells);
-        if (path != null && (At(b) - path[^1]).LengthSquared() > 0.01f) path.Add(At(b));
-        _paths[(a, b)] = path;
+        if (path != null && (At(spot) - path[^1]).LengthSquared() > 0.01f) path.Add(At(spot));
         return path;
+    }
+
+    /// <summary>
+    /// In play (<see cref="Stand"/>), routes not worked out yet are searched for on a worker: over a large place's walking
+    /// grid, round its furniture, one search held a frame for 1.7 s. Whoever asked stands where they are until it comes.
+    /// </summary>
+    bool _searchAside;
+    readonly Dictionary<(PInt3 From, int To), System.Threading.Tasks.Task<List<Vector3>>> _searches = new();
+
+    /// <summary>The route from a cell to a spot if it is to hand (null: there is none), at once off play; false while a worker still looks.</summary>
+    bool Searched(PInt3 from, int spot, out List<Vector3> path)
+    {
+        path = null;
+        if (!_searchAside)
+        {
+            path = Route(from, spot);
+            return true;
+        }
+        if (!_searches.TryGetValue((from, spot), out var search))
+        {
+            _searches[(from, spot)] = System.Threading.Tasks.Task.Run(() => Route(from, spot));
+            return false;
+        }
+        if (!search.IsCompleted) return false;
+        _searches.Remove((from, spot));
+        if (search.IsFaulted) GD.PushError($"route in {Memory.Site?.Name} failed: {search.Exception?.GetBaseException()}");
+        else path = search.Result;
+        return true;
     }
 
     /// <summary>Everyone, at their spots (once): each with a bed of their own for the night where the rooms have beds.</summary>
@@ -398,8 +439,23 @@ public sealed partial class Town
         return t < 0.24f || t > 0.8f;
     }
 
-    /// <summary>Bodies built a tick at most.</summary>
-    const int BodiesPerTick = 3;
+    /// <summary>
+    /// A body (some 30 ms of mesh) or a weapon's model in hand (15 ms) is made at most once a frame across every town, and only
+    /// while the frame's loading allowance lasts: three bodies a tick, as a town came into view, held frames for 150 ms.
+    /// </summary>
+    static ulong _builtIn;
+
+    /// <summary>The next of what draws them, if this frame has room for it: their body, then the weapon in their hand.</summary>
+    void BuildNext(Person p)
+    {
+        ulong frame = Engine.GetProcessFrames();
+        if (frame == _builtIn || PlanetSurface.Fx.LoadBudget.Left() <= 0) return;
+        _builtIn = frame;
+        long start = System.Diagnostics.Stopwatch.GetTimestamp();
+        if (p.View == null) MakeBody(p);
+        else HoldWeapon(p);
+        PlanetSurface.Fx.LoadBudget.Spend(System.Diagnostics.Stopwatch.GetElapsedTime(start).TotalMilliseconds);
+    }
     /// <summary>Close enough that someone sees you and answers with their body (greets, waves you off, startles), m.</summary>
     const float ActRange = 48f;
     /// <summary>Physics ticks so far, and how many this town step covers (a far town steps every few ticks with the time between).</summary>
@@ -424,6 +480,7 @@ public sealed partial class Town
     void Tick(float tickDt)
     {
         if (_place == null || !_place.Ready || _place.Dormant || !Rolled) return;
+        _searchAside = true; // from here on the main thread asks: new routes come from a worker
         Vector3 player = _place.FromWorld(_places.Zone.Wildlife.PlayerWorld());
         // A town whose nearest cell is far off steps as seldom as its nearest person would be posed, with the time it missed.
         _owed += tickDt;
@@ -451,7 +508,6 @@ public sealed partial class Town
         if (_places.Zone.Wildlife.Sim is { } wild)
             foreach (Creature c in wild.Creatures)
                 if (c.Phase == AttackPhase.Hold && c.Holding is Person h && h.Town == this) _held.Add(h);
-        int built = 0;
         for (int who = 0; who < People.Count; who++)
         {
             Person p = People[who];
@@ -465,7 +521,7 @@ public sealed partial class Town
             if (p.Dead)
             {
                 // Going down, then lying where they fell; the hurt flash fades whatever happens.
-                if (p.View == null) MakeBody(p);
+                if (p.View == null) { BuildNext(p); if (p.View == null) continue; }
                 p.Hurt = MathF.Max(0f, p.Hurt - tickDt);
                 float lying = (player - p.Pos).Length();
                 if (p.Down >= 1f && p.Laid)
@@ -484,7 +540,7 @@ public sealed partial class Town
                 Pose(p, who, lying, tickDt);
                 continue;
             }
-            if (p.View == null && built < BodiesPerTick) { MakeBody(p); built++; }
+            if (p.View == null || p.Holder == null && p.Model == null && Wields(p)) BuildNext(p);
             // Far from you a town needn't move every tick: each in their turn, with the time they missed,
             // the further off the fewer times a second (and so their bodies are posed).
             p.Saved += tickDt;
@@ -595,6 +651,14 @@ public sealed partial class Town
         }
         if (p.Path == null || p.Step >= p.Path.Count)
         {
+            // Their way there being worked out (on a worker): once it is in, off they go.
+            if (p.Asked >= 0)
+            {
+                int asked = p.Asked;
+                p.Asked = -1;
+                GoTo(p, asked);
+                if (p.Path is { Count: > 0 }) return false;
+            }
             p.Now = 0f;
             // Standing about: still off the furniture (a tall one under a hanging lamp steps out from under it).
             OffParts(p, p.Pos);
@@ -655,11 +719,21 @@ public sealed partial class Town
         if (spot == p.Spot && p.Path != null && p.Step >= p.Path.Count)
         {
             // Moved off it (pushed, or after something): back to it by the walking grid.
-            p.Path = PathFromHere(p, spot) ?? new List<Vector3>();
+            p.Path = PathFromHere(p, spot, out bool coming) ?? new List<Vector3>();
             p.Step = 0;
+            if (coming) p.Asked = spot;
             return;
         }
-        List<Vector3> path = PathFrom(p, spot);
+        List<Vector3> path = PathFrom(p, spot, out bool pending);
+        if (pending)
+        {
+            // The way there is being worked out: they stand a moment where they are, and go once it comes (Move).
+            p.Path = new List<Vector3>();
+            p.Step = 0;
+            p.Asked = spot;
+            return;
+        }
+        p.Asked = -1;
         if (path == null)
         {
             // No way there from here: they stay where they are a while rather than walk through anything.
@@ -681,13 +755,11 @@ public sealed partial class Town
         p.Path = path;
     }
 
-    List<Vector3> PathFrom(Person p, int spot)
+    List<Vector3> PathFrom(Person p, int spot, out bool pending)
     {
         // From the spot they are at (or near) along the worked-out route; called away partway, from where they are.
-        if ((p.Pos - At(p.Spot)).Length() > 1.2f && !InSeat(p, p.Spot)) return PathFromHere(p, spot);
-        if (_paths.TryGetValue((p.Spot, spot), out var known)) return known;
-        List<Vector3> path = PathBetween(p.Spot, spot);
-        return path;
+        if ((p.Pos - At(p.Spot)).Length() > 1.2f && !InSeat(p, p.Spot)) return PathFromHere(p, spot, out pending);
+        return PathBetween(p.Spot, spot, out pending);
     }
 
     /// <summary>A spot of one of these tags, near this one where there is one (null if the place has none).</summary>
@@ -1226,7 +1298,7 @@ public sealed partial class Town
         p.View.Build(p.Rig, p.Ready);
         p.Ready = null;
         GroundBody(p);
-        HoldWeapon(p);
+        Arm(p); // the weapon's model goes into their hand a frame later (BuildNext)
     }
 
     /// <summary>This world's form of the friendly gestures.</summary>

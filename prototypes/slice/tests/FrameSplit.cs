@@ -27,7 +27,7 @@ public sealed partial class FrameSplit
     }
 
     public readonly record struct Frame(double Total, double PhysicsScripts, double PhysicsEngine, double ProcessScripts, double Flush, double Draw, double Render,
-        double Pause, long Bytes, int Ticks, int DrawCalls, int Objects)
+        double Pause, long Bytes, int Ticks, int DrawCalls, int Objects, int ShadowDraws)
     {
         public double Rest => Math.Max(0, Total - PhysicsScripts - PhysicsEngine - ProcessScripts - Flush - Draw);
         public double DrawOther => Math.Max(0, Draw - Render);
@@ -105,11 +105,12 @@ public sealed partial class FrameSplit
         {
             double render = RenderingServer.ViewportGetMeasuredRenderTimeCpu(_viewport) + RenderingServer.GetFrameSetupTimeCpu();
             var f = new Frame(Ms(_frameStart, now), _physicsScripts, _physicsEngine, _processScripts, _flush, _draw, render, (paused - _paused).TotalMilliseconds, alloc - _alloc, _ticks,
-                (int)RenderingServer.GetRenderingInfo(RenderingServer.RenderingInfo.TotalDrawCallsInFrame), (int)RenderingServer.GetRenderingInfo(RenderingServer.RenderingInfo.TotalObjectsInFrame));
+                (int)RenderingServer.GetRenderingInfo(RenderingServer.RenderingInfo.TotalDrawCallsInFrame), (int)RenderingServer.GetRenderingInfo(RenderingServer.RenderingInfo.TotalObjectsInFrame),
+                RenderingServer.ViewportGetRenderInfo(_viewport, RenderingServer.ViewportRenderInfoType.Shadow, RenderingServer.ViewportRenderInfo.DrawCallsInFrame));
             Frames.Add(f);
             string pipes = string.Join("/", Pipes.Select((m, i) => Performance.GetMonitor(m) - _pipes[i]));
             if (f.Total > HitchMs)
-                Hitches.Add(string.Create(CultureInfo.InvariantCulture, $"{f.Total:F0} ms ({Parts(f)}; pipelines compiled (draw/specialization/surface/mesh) {pipes}; {Doing()}; systems: {Systems?.LastFrame() ?? "?"})"));
+                Hitches.Add(string.Create(CultureInfo.InvariantCulture, $"{f.Total:F0} ms at frame {Frames.Count} ({Parts(f)}; pipelines compiled (draw/specialization/surface/mesh) {pipes}; {Doing()}; systems: {Systems?.LastFrame() ?? "?"})"));
         }
         for (int i = 0; i < Pipes.Length; i++) _pipes[i] = Performance.GetMonitor(Pipes[i]);
         _frameStart = now;
@@ -142,7 +143,7 @@ public sealed partial class FrameSplit
         string Blame(Frame f) => PartsOf.Take(7).OrderByDescending(p => p.Of(f)).First().Name;
         return string.Create(CultureInfo.InvariantCulture,
             $"{string.Join(", ", PartsOf.Select(p => string.Create(CultureInfo.InvariantCulture, $"{p.Name} mean {Frames.Average(p.Of):F2} p99 {P(Frames.Select(p.Of), 0.99):F1}")))}; " +
-            $"ticks a frame {Frames.Average(f => f.Ticks):F2}, {Frames.Average(f => f.Bytes) / 1024.0:F0} KB allocated a frame, draw calls mean {Frames.Average(f => f.DrawCalls):F0} (p99 {P(Frames.Select(f => (double)f.DrawCalls), 0.99):F0}), objects mean {Frames.Average(f => f.Objects):F0}; " +
+            $"ticks a frame {Frames.Average(f => f.Ticks):F2}, {Frames.Average(f => f.Bytes) / 1024.0:F0} KB allocated a frame, draw calls mean {Frames.Average(f => f.DrawCalls):F0} (p99 {P(Frames.Select(f => (double)f.DrawCalls), 0.99):F0}), objects mean {Frames.Average(f => f.Objects):F0}, shadow draw calls mean {Frames.Average(f => f.ShadowDraws):F0}; " +
             $"{over.Count} frames over {budget} ms, largest part in them: {(over.Count == 0 ? "none" : string.Join(", ", over.GroupBy(Blame).OrderByDescending(g => g.Count()).Select(g => $"{g.Key} {g.Count()}")))}" +
             $"{(over.Count == 0 ? "" : $" (their means: {string.Join(", ", PartsOf.Select(p => string.Create(CultureInfo.InvariantCulture, $"{p.Name} {over.Average(p.Of):F1}")))})")}; " +
             $"hitches over {HitchMs} ms: {Hitches.Count}");

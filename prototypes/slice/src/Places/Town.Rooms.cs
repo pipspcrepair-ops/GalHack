@@ -160,17 +160,16 @@ public sealed partial class Town
 
     /// <summary>
     /// The way to a spot from wherever they are now, when that isn't the spot they were last at (called
-    /// away halfway along a route): by the walking grid from their own cell, or null where there is none.
+    /// away halfway along a route): by the walking grid from their own cell, or null where there is none
+    /// (<paramref name="pending"/> while a worker looks for it).
     /// </summary>
-    List<Vector3> PathFromHere(Person p, int spot)
+    List<Vector3> PathFromHere(Person p, int spot, out bool pending)
     {
+        pending = false;
         // Getting up out of a seat: out the way they came in, by its own spot.
         PInt3? here = InSeat(p, p.Spot) ? Spots[p.Spot].Cell : InSeat(p, p.Seat) ? Spots[p.Seat].Cell : Stand(Cell(p.Pos));
         if (here is not { } h || !_nav.Standable(Spots[spot].Cell)) return null;
-        List<PInt3> cells = _nav.FindPath(h, Spots[spot].Cell, 30000);
-        if (cells == null) return null;
-        List<Vector3> path = Points(cells);
-        if ((At(spot) - path[^1]).LengthSquared() > 0.01f) path.Add(At(spot));
+        pending = !Searched(h, spot, out List<Vector3> path);
         return path;
     }
 

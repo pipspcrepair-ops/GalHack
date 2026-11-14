@@ -111,20 +111,32 @@ bool fade_out(vec2 at, vec2 band) {
 }
 ";
 
+    /// <summary>
+    /// Each shader's pattern copy and its uniforms' names, by the shader itself: every place has materials of its own on the
+    /// same few shaders, and reading a shader's code and uniforms back from the engine for each (to look its copy up by
+    /// its text) took 30 ms a material as a place came near.
+    /// </summary>
+    static readonly Dictionary<Shader, (Shader Copy, StringName[] Uniforms)> _byShader = new();
+
     static ShaderMaterial CopyShader(ShaderMaterial m)
     {
         if (m.Shader == null) return null;
-        string source = m.Shader.Code;
-        if (!_shaders.TryGetValue(source, out Shader shader))
+        if (!_byShader.TryGetValue(m.Shader, out var made))
         {
-            string code = Inject(source);
-            _shaders[source] = shader = code == null ? null : new Shader { Code = code };
+            string source = m.Shader.Code;
+            if (!_shaders.TryGetValue(source, out Shader shader))
+            {
+                string code = Inject(source);
+                _shaders[source] = shader = code == null ? null : new Shader { Code = code };
+            }
+            var names = new List<StringName>();
+            foreach (Godot.Collections.Dictionary u in m.Shader.GetShaderUniformList()) names.Add((string)u["name"]);
+            _byShader[m.Shader] = made = (shader, names.ToArray());
         }
-        if (shader == null) return null;
-        var copy = new ShaderMaterial { Shader = shader, RenderPriority = m.RenderPriority };
-        foreach (Godot.Collections.Dictionary u in m.Shader.GetShaderUniformList())
+        if (made.Copy == null) return null;
+        var copy = new ShaderMaterial { Shader = made.Copy, RenderPriority = m.RenderPriority };
+        foreach (StringName name in made.Uniforms)
         {
-            StringName name = (string)u["name"];
             Variant v = m.GetShaderParameter(name);
             if (v.VariantType != Variant.Type.Nil) copy.SetShaderParameter(name, v);
         }

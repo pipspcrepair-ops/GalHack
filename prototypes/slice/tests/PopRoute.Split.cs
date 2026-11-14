@@ -30,7 +30,7 @@ public partial class PopRoute
         _frameSplit.Systems = _systemSplit;
         _frameSplit.Doing = Doing;
         _frameSplit.Reset();
-        if (_args.ContainsKey("allocs")) (_allocTypes ??= new AllocCensus { On = true }).Take();
+        if (_args.ContainsKey("allocs")) (_allocTypes ??= new AllocCensus { On = true, MainOnly = true }).Take();
         _systemSplit.Reset();
         var zone = _game.Zone;
         _sections0 = (double[])zone.Streamer.SectionTotals.Clone();
@@ -103,7 +103,8 @@ public partial class PopRoute
                 float d = (box.GetCenter() - eye).Length();
                 if (g.VisibilityRangeEnd <= 0f || d <= g.VisibilityRangeEnd + g.VisibilityRangeEndMargin)
                 {
-                    string key = group + " " + g.GetClass();
+                    // Under the roads and the places, by what holds it too (its name without numbers): a ruin's chunk, a room's piece, a tile's mesh.
+                    string key = group + " " + g.GetClass() + (group is "Infra" or "Places" ? " in " + System.Text.RegularExpressions.Regex.Replace(g.GetParent().Name.ToString(), "[-0-9@ ,()]+", "") : "");
                     var e = groups.GetValueOrDefault(key);
                     e.Nodes++;
                     if (cam.IsPositionInFrustum(box.GetCenter()) || box.HasPoint(eye) || d < box.Size.Length()) e.InView++;
@@ -117,7 +118,7 @@ public partial class PopRoute
                 Walk(child, group ?? (child == _game.Zone || child == _game.Zone.Wildlife ? null : child.Name.ToString()));
         }
         Walk(_game, null);
-        return string.Join(", ", groups.OrderByDescending(kv => kv.Value.Nodes).Take(16).Select(kv => $"{kv.Key} {kv.Value.Nodes} ({kv.Value.InView} in view, {kv.Value.Casting} casting{(kv.Value.Multi > 0 ? $", {kv.Value.Multi} in multimeshes" : "")})"));
+        return string.Join(", ", groups.OrderByDescending(kv => kv.Value.Nodes).Take(24).Select(kv => $"{kv.Key} {kv.Value.Nodes} ({kv.Value.InView} in view, {kv.Value.Casting} casting{(kv.Value.Multi > 0 ? $", {kv.Value.Multi} in multimeshes" : "")})"));
     }
 
     void SplitReport(string name, int ticks)
@@ -136,7 +137,7 @@ public partial class PopRoute
         GD.Print(string.Create(CultureInfo.InvariantCulture, $"SPLIT {name} the patch's creatures, ms a frame: sim {(w.StepMs - _stepMs0) / frames:F2} (brains {(w.Sim.ThinkMs - _think0) / frames:F2}, moving {(w.Sim.MoveMs - _move0) / frames:F2}, rigs {(w.Sim.RigMs - _rig0) / frames:F2}), bodies {(w.ViewMs - _viewMs0) / frames:F2}"));
         GD.Print($"SPLIT {name} by system (cpu ms a frame): {_systemSplit.Report(18)}");
         GD.Print($"SPLIT {name} drawn at the end: {DrawnCensus()}");
-        if (_allocTypes != null) GD.Print($"SPLIT {name} allocated, by type (main: the main thread's): {_allocTypes.Take(16)}");
+        if (_allocTypes != null) GD.Print($"SPLIT {name} the main thread allocated, by type: {_allocTypes.Take(16)}");
         GD.Print(string.Create(CultureInfo.InvariantCulture,
             $"SPLIT {name} live (means): creatures in the patch {_creatures / n:F0}, stepped {_stepped / n:F0}, drawn {_creaturesDrawn / n:F0}; in {w.Sites.Count} places and caves {_siteCreatures / n:F0}, stepped {_siteStepped / n:F0}, drawn {_siteDrawn / n:F0}; " +
             $"people {_people / n:F0}, drawn {_peopleDrawn / n:F0}, their towns' ticks {_townMs / n:F2} ms; sight rays {(w.SightRays - _rays0) / t:F1} a tick, path searches {paths / t:F2} a tick; " +

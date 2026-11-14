@@ -450,11 +450,14 @@ public sealed partial class Town
 
     static int PropIndex(Person p) => p.Rig.Layout.Pieces.FindIndex(x => x.Name == "prop");
 
-    /// <summary>The weapon's model in their hand: the player's own, hung where the rig puts their carried thing (built with their body).</summary>
+    /// <summary>Whether their weapon is drawn in their hand (a body built, armed with something the game draws).</summary>
+    bool Wields(Person p) => p.View != null && p.Kit != null && p.Kit.Def.Id != Weapons.Fists && Weapons.DrawnByGame(p.Figure.Prop);
+
+    /// <summary>The weapon's model in their hand: the player's own, hung where the rig puts their carried thing (the frame after their body).</summary>
     void HoldWeapon(Person p)
     {
         Arm(p);
-        if (p.View == null || p.Kit == null || p.Holder != null || p.Kit.Def.Id == Weapons.Fists || !Weapons.DrawnByGame(p.Figure.Prop)) return;
+        if (p.Holder != null || !Wields(p)) return;
         p.Model = GunModel.Hang(p.View, p.Kit.Def, Transform3D.Identity);
         p.Holder = p.View.GetNode<Node3D>("Weapon");
     }
