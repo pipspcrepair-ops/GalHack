@@ -89,10 +89,10 @@ public partial class PoiTest
                     {
                         Block b = g.Get(new Int3(x, y, z));
                         if (b.Type == p.Type && (p.Type == BlockType.Cube || b.Facing == p.Facing)) continue;
-                        // (Reshaped after: a tooth. Something else built there, a block or another round, or nothing full-height: an opening.)
+                        // (Cut back after, a slope or a half for a cube: a tooth. Anything else, a block, another round, a beam across a way cut through, nothing: an opening.)
                         double cd = Math.Sqrt((x + 0.5 - body.X) * (x + 0.5 - body.X) + (z + 0.5 - body.Z) * (z + 0.5 - body.Z));
                         bool rim = Math.Abs(cd - ro) <= 1.2 || ri > 0 && ri <= ro - 2 && Math.Abs(cd - ri) <= 1.2;
-                        if (rim && (BlockInfo.IsShaped(b.Type) && !BlockInfo.IsPlanCut(b.Type) || BlockInfo.IsSlope(b.Type) || BlockInfo.IsCornerSlope(b.Type))) { teeth++; if (teeth < 6) GD.Print($"DBG reshaped {inst.Layout.Family.Id} r {ro:0.00}/{ri:0.00} y {y} cell {x},{z} want {p.Type} got {b.Type}"); }
+                        if (rim && b.Type is BlockType.Half or BlockType.Quarter or BlockType.Chamfer or BlockType.ChamferCorner or BlockType.ChamferInvCorner or BlockType.Ramp or BlockType.Corner or BlockType.InvCorner) teeth++;
                         else { open.Add((x, z)); opened++; }
                     }
                     bool Near((int X, int Z) c) { for (int dz = -2; dz <= 2; dz++) for (int dx = -2; dx <= 2; dx++) if (open.Contains((c.X + dx, c.Z + dz))) return true; return false; } // (an opening's edges are its own, not the round's)
@@ -113,7 +113,7 @@ public partial class PoiTest
                             if (!outerSide && ri > ro - 2) continue; // (a wall under two cells: its inner face is the outer cut's back)
                             // (A cell's face left open running out from the middle: a step.)
                             double along = Math.Abs(((e.X - a.X) * mx + (e.Z - a.Z) * mz) / Math.Max(1e-9, Math.Sqrt((e.X - a.X) * (e.X - a.X) + (e.Z - a.Z) * (e.Z - a.Z)) * ml));
-                            if (side != null && along > 0.7071) { teeth++; if (teeth < 6) GD.Print($"DBG step {inst.Layout.Family.Id} r {ro:0.00}/{ri:0.00} y {y} cell {x},{z} {b.Type}/{b.Facing} side {side} nb {g.Get(new Int3(x, y, z) + side.Value.Vec()).Type}/{g.Get(new Int3(x, y, z) + side.Value.Vec()).Facing}"); continue; }
+                            if (side != null && along > 0.7071) { teeth++; continue; }
                             for (int s = 0; s <= 4; s++)
                             {
                                 double px = x + a.X + (e.X - a.X) * s / 4.0 - body.X, pz = z + a.Z + (e.Z - a.Z) * s / 4.0 - body.Z;
@@ -130,7 +130,7 @@ public partial class PoiTest
                 rails++;
                 Block under = g.Get(c + Int3.Down);
                 bool ok = BlockInfo.IsFullCube(under.Type) ? b.Facing.IsHorizontal() && !BlockInfo.Collides(g.Get(c + Int3.Down + b.Facing.Vec()).Type) : Shapes.PlanOf(under) != null;
-                if (!ok && offEdge++ < 4) GD.Print($"      DBG rail off the outline at {c} over {under.Type}/{under.Facing}, facing {b.Facing}, beside {g.Get(c + Int3.Down + b.Facing.Vec()).Type}");
+                if (!ok) offEdge++;
             }
             // Each ladder up a round thing's side lands on a deck a body stands on.
             foreach (var (c, b) in g.Blocks().Where(q => q.Block.Type == BlockType.Ladder && g.Get(q.Cell + Int3.Up).Type != BlockType.Ladder).ToList())
