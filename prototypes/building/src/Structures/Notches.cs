@@ -42,8 +42,10 @@ public static class Notches
         foreach (var (pos, block) in s.Blocks())
         {
             if (!s.TypeOf(block).IsArmor || !Ramps.Contains(s.ShapeOf(block).Id)) continue;
+            // A vertical chamfer's top is a flat facet level with the roof beside it, not a notch.
+            bool chamfer = s.ShapeOf(block).Id == "slope" && Orientations.ToWorld(block.Rot, Dir.PosY).Axis() != 1;
             foreach (Dir d in Dirs.All)
-                if (d != Dir.NegY && s.AttachCoverage(block, d) == Coverage.Partial && outside.Contains(pos + d.Vec())) found.Add((pos, d));
+                if (d != Dir.NegY && !(chamfer && d == Dir.PosY) && s.AttachCoverage(block, d) == Coverage.Partial && outside.Contains(pos + d.Vec())) found.Add((pos, d));
         }
         return found;
     }

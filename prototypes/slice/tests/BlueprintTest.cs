@@ -49,6 +49,7 @@ public partial class BlueprintTest : Node
 
     public override void _Ready()
     {
+        Designer.OnFrames = m => GD.Print("    frame blocks " + m);
         _watchdog = new System.Threading.Timer(_ => System.Environment.Exit(3), null, TimeSpan.FromMinutes(20), System.Threading.Timeout.InfiniteTimeSpan);
         ProcessPhysicsPriority = 100;
         _run = Scenario().GetEnumerator();

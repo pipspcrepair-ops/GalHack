@@ -284,9 +284,9 @@ corners, two down jets, a side jet each way, four pads.");
             d.Fill(P(-hw, 0, z), P(hw - 1, 10, z), Iron, hull);
             if (z > -20 && z < -4)
                 d.Hollow(P(1 - hw, 1, z), P(hw - 2, 4, z)).Hollow(P(1 - hw, 6, z), P(hw - 2, 9, z));
-            d.Slope(P(hw - 1, 10, z), P(hw - 1, 10, z), Iron, roof, Dir.PosX).Slope(P(-hw, 10, z), P(-hw, 10, z), Iron, roof, Dir.NegX);
+            if (hw == 8) d.Slope(P(hw - 1, 10, z), P(hw - 1, 10, z), Iron, roof, Dir.PosX).Slope(P(-hw, 10, z), P(-hw, 10, z), Iron, roof, Dir.NegX);
             if (hw < 8)
-                foreach (int y in Enumerable.Range(0, 10))
+                foreach (int y in Enumerable.Range(0, 11))
                 {
                     ushort c = y == 5 ? red : hull;
                     d.Chamfer(P(hw - 1, y, z), P(hw - 1, y, z), Iron, c, Dir.PosX, Dir.NegZ).Chamfer(P(-hw, y, z), P(-hw, y, z), Iron, c, Dir.NegX, Dir.NegZ);
@@ -306,7 +306,7 @@ corners, two down jets, a side jet each way, four pads.");
             int z = -20 - k, w = 4 - k;
             d.Fill(P(-w, k, z), P(w - 1, 6, z), Iron, hull);
             d.Slope(P(1 - w, k, z), P(w - 2, k, z), Iron, keel, Dir.NegZ, under: true);
-            d.Chamfer(P(w - 1, k, z), P(w - 1, 6, z), Iron, hull, Dir.PosX, Dir.NegZ).Chamfer(P(-w, k, z), P(-w, 6, z), Iron, hull, Dir.NegX, Dir.NegZ);
+            d.Chamfer(P(w - 1, k + 1, z), P(w - 1, 6, z), Iron, hull, Dir.PosX, Dir.NegZ).Chamfer(P(-w, k + 1, z), P(-w, 6, z), Iron, hull, Dir.NegX, Dir.NegZ);
             d.Face(P(-w, 6, z), P(w - 1, 6, z), Dir.PosY, roof);
         }
         d.Slope(P(-1, 6, -23), P(0, 6, -23), Iron, roof, Dir.NegZ);

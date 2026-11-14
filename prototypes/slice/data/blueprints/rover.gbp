@@ -38,9 +38,9 @@ block -2 -1 2 hover-t1
 block -1..1 -1 2 base-block paint=belly
 block 2 -1 2 hover-t1
 block -2..2 -1 3 base-block paint=belly
-block -2 0 -4 base-block corner rot=+y-x paint=body
+block -2 0 -4 base-block slope rot=-x-z paint=body
 block -1..1 0 -4 base-block slope paint=body
-block 2 0 -4 base-block corner paint=body
+block 2 0 -4 base-block slope rot=+x-z paint=body
 block -3 0 -3 thruster-t1 rot=+y+z
 block -2..2 0 -3 base-block paint=hazard
 block 3 0 -3 thruster-t1 rot=+y+z
