@@ -31,7 +31,7 @@ namespace Slice.Tests;
 /// PLACE: the sleeper sits in its chair (drawn, the camera at the chair's eye), and a craft takes off, hovers, flies,
 /// brakes and lands under the game's own keys (a hover craft runs and stops).
 ///
-/// Run: G:\GalHack\.tools\queue\test-q.ps1 -Project prototypes/slice -Scene res://tests/BlueprintTest.tscn [-Extra --write]
+/// Run: G:\GalHack\.tools\queue\test-q.ps1 -Project prototypes/slice -Scene res://tests/BlueprintTest.tscn [-Extra --write | --pure]
 /// </summary>
 public partial class BlueprintTest : Node
 {
@@ -91,6 +91,7 @@ public partial class BlueprintTest : Node
             if (!d.Fixture) plans.Add((d.File, s));
         }
         foreach (var (file, plan) in plans) Standards(data, file, plan);
+        if (OS.GetCmdlineUserArgs().Contains("--pure")) yield break; // the files and standards alone, quickly
 
         _game = new Game.Game { Interactive = false, SkipIntro = true, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), WorldChoice.Tested) };
         AddChild(_game);
@@ -124,6 +125,14 @@ public partial class BlueprintTest : Node
         int heads = inside.Where(n => !walk.OnStairsOrDoor(n)).Select(walk.Clear).DefaultIfEmpty(0).Min();
         Check(low.Count == 0, $"{name}: every room and corridor walked is at least 3 m clear (lowest {heads * 0.5f:F1} m{(low.Count > 0 ? $", too low over {low.Count} cells such as {low[0]}" : "")})");
         Check(narrow.Count == 0, $"{name}: every corridor walked is at least 2 m wide{(narrow.Count > 0 ? $" ({narrow.Count} cells narrower, such as {narrow[0]})" : "")}");
+
+        // Head room: a standing body (1.9 m and a margin) never has to duck, on a stair under the deck edge either.
+        var ducks = walk.Ducks().ToList();
+        Check(ducks.Count == 0, $"{name}: {WalkGrid.HeadRoom} m of head room at every cell walked, doorways and stairs too (lowest {walk.LeastHeadRoom() * 0.5f:F1} m{(ducks.Count > 0 ? $"; would duck at {ducks.Count} cells such as {ducks[0]}" : "")})");
+        // Every room is walked to: a machine or locker in a room can be stood beside from outside (the core sits under the floor).
+        var shut = s.Blocks().Where(x => { BlockType t = s.TypeOf(x.block); return !t.IsArmor && !t.IsThruster && !t.IsDoor && !t.IsLight && t.Collide == Collide.Cell && t.Function != "gear" && t.Function != "stairs" && t.Id != "core"; })
+            .Where(x => walk.ShutIn(x.pos, x.block)).ToList();
+        Check(shut.Count == 0, $"{name}: every machine, locker and chair has a floor walked to beside it{(shut.Count > 0 ? $" ({shut.Count} shut in, such as {s.TypeOf(shut[0].block).Id} at {shut[0].pos})" : "")}");
 
         // Doors: upright, across the doorway in a wall, a floor either side; people doors 1x2 or 2x2.
         foreach (var (p, b) in s.Blocks().Where(x => s.TypeOf(x.block).IsDoor))
@@ -445,6 +454,30 @@ public sealed class WalkGrid
         return int.MaxValue;
     }
 
+    /// <summary>The head room a body needs over every place it walks, metres: 1.9 m of body and a 10 cm margin.</summary>
+    public const float HeadRoom = 2f;
+
+    /// <summary>
+    /// Free height over a place for a body that is not only above its own cell: its head reaches into the next cell on
+    /// the way up (a stair's step ahead stands higher), so it is the ceiling over the place less the highest place walked
+    /// to from it in plan, half metres.
+    /// </summary>
+    int HeadAt((int X, int Z, int H) n)
+    {
+        int top = n.H;
+        foreach (var (dx, dz) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1), (0, 0) })
+            for (int dh = 0; dh <= 1; dh++)
+                if (Reached.Contains((n.X + dx, n.Z + dz, n.H + dh))) top = Math.Max(top, n.H + dh);
+        int c = Clear(n);
+        return c == int.MaxValue ? c : c - (top - n.H);
+    }
+
+    /// <summary>Places walked where a body would have to duck.</summary>
+    public IEnumerable<(int X, int Z, int H)> Ducks() => Reached.Where(n => !OnGround(n) && HeadAt(n) < HeadRoom * 2);
+
+    /// <summary>The least head room anywhere walked on the structure, half metres.</summary>
+    public int LeastHeadRoom() => Reached.Where(n => !OnGround(n)).Select(HeadAt).DefaultIfEmpty(int.MaxValue).Min();
+
     /// <summary>In a doorway or on a stair, where the room rules are let off.</summary>
     public bool OnStairsOrDoor((int X, int Z, int H) n)
     {
@@ -486,6 +519,21 @@ public sealed class WalkGrid
         bool people = t.Size.X <= 2 && t.Size.Y == 2;
         if (!people && t.Size.Y <= 2) return $"a {t.Size.X}x{t.Size.Y} door is neither a people door (1x2, 2x2) nor a vehicle opening";
         return null;
+    }
+
+    /// <summary>A device in a room (a 3 m clear standing place beside it) that no walk from outside reaches.</summary>
+    public bool ShutIn(Int3 anchor, Block b)
+    {
+        bool room = false;
+        foreach (Int3 c in _s.CellsOf(anchor, b))
+            foreach (var (dx, dz) in new[] { (1, 0), (-1, 0), (0, 1), (0, -1) })
+                for (int h = 2 * c.Y - 1; h <= 2 * c.Y + 1; h++)
+                {
+                    var n = (c.X + dx, c.Z + dz, h);
+                    if (Reached.Contains(n)) return false;
+                    room |= Nodes.Contains(n) && Roofed(n) && Clear(n) >= 6;
+                }
+        return room;
     }
 
     /// <summary>A chair is reached when someone can stand beside one of its cells, on its floor.</summary>

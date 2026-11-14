@@ -19,7 +19,9 @@ paint deck base=4a4e57 grime=1
 paint flash base=c8b48a accent=0a9396 pattern=stripes grime=2
 paint hazard base=f4a100 pattern=hazard grime=2
 
-block -4..4 -1 -8 hardened-plated paint=sand
+block -4 -1 -8 hardened-plated slope rot=-x-z paint=sand
+block -3..3 -1 -8 hardened-plated paint=sand
+block 4 -1 -8 hardened-plated slope rot=+x-z paint=sand
 block -4..4 -1 -7 iron-plated paint=sand,sand,sand,belly,sand,sand
 block -5 -1 -6 hardened-plated paint=flash
 block -4 -1 -6 hover-t1
@@ -86,40 +88,40 @@ block 5 0 -7 thruster-t2 rot=+y+z
 block -5 0 -6 hardened-plated paint=flash
 block -4..4 0 -6 iron-plated paint=sand,sand,deck,sand,sand,sand
 block 5 0 -6 hardened-plated paint=flash
-block -5 0 -5 hardened-plated paint=flash
+block -5 0 -5 hardened-plated slope rot=+y-x paint=flash
 block -4..4 0 -5 iron-plated paint=sand,sand,deck,sand,sand,sand
-block 5 0 -5 hardened-plated paint=flash
-block -5 0 -4 hardened-plated paint=flash
+block 5 0 -5 hardened-plated slope rot=+y+x paint=flash
+block -5 0 -4 hardened-plated slope rot=+y-x paint=flash
 block -4..4 0 -4 iron-plated paint=sand,sand,deck,sand,sand,sand
-block 5 0 -4 hardened-plated paint=flash
-block -5 0 -3 hardened-plated paint=flash
+block 5 0 -4 hardened-plated slope rot=+y+x paint=flash
+block -5 0 -3 hardened-plated slope rot=+y-x paint=flash
 block -4..4 0 -3 iron-plated paint=sand,sand,deck,sand,sand,sand
-block 5 0 -3 hardened-plated paint=flash
-block -5 0 -2 hardened-plated paint=flash
+block 5 0 -3 hardened-plated slope rot=+y+x paint=flash
+block -5 0 -2 hardened-plated slope rot=+y-x paint=flash
 block -4..4 0 -2 iron-plated paint=sand,sand,deck,sand,sand,sand
-block 5 0 -2 hardened-plated paint=flash
-block -5 0 -1 hardened-plated paint=flash
+block 5 0 -2 hardened-plated slope rot=+y+x paint=flash
+block -5 0 -1 hardened-plated slope rot=+y-x paint=flash
 block -4..4 0 -1 iron-plated paint=sand,sand,deck,sand,sand,sand
-block 5 0 -1 hardened-plated paint=flash
-block -5 0 0 hardened-plated paint=flash
+block 5 0 -1 hardened-plated slope rot=+y+x paint=flash
+block -5 0 0 hardened-plated slope rot=+y-x paint=flash
 block -4..4 0 0 iron-plated paint=sand,sand,deck,sand,sand,sand
-block 5 0 0 hardened-plated paint=flash
-block -5 0 1 hardened-plated paint=flash
+block 5 0 0 hardened-plated slope rot=+y+x paint=flash
+block -5 0 1 hardened-plated slope rot=+y-x paint=flash
 block -4..4 0 1 iron-plated paint=sand,sand,deck,sand,sand,sand
-block 5 0 1 hardened-plated paint=flash
-block -5 0 2 hardened-plated paint=flash
+block 5 0 1 hardened-plated slope rot=+y+x paint=flash
+block -5 0 2 hardened-plated slope rot=+y-x paint=flash
 block -4..-2 0 2 iron-plated paint=sand,sand,deck,sand,sand,sand
 block 0..4 0 2 iron-plated paint=sand,sand,deck,sand,sand,sand
-block 5 0 2 hardened-plated paint=flash
-block -5 0 3 hardened-plated paint=flash
+block 5 0 2 hardened-plated slope rot=+y+x paint=flash
+block -5 0 3 hardened-plated slope rot=+y-x paint=flash
 block -4..4 0 3 iron-plated paint=sand,sand,deck,sand,sand,sand
-block 5 0 3 hardened-plated paint=flash
-block -5 0 4 hardened-plated paint=flash
+block 5 0 3 hardened-plated slope rot=+y+x paint=flash
+block -5 0 4 hardened-plated slope rot=+y-x paint=flash
 block -4..4 0 4 iron-plated paint=sand,sand,deck,sand,sand,sand
-block 5 0 4 hardened-plated paint=flash
-block -5 0 5 hardened-plated paint=flash
+block 5 0 4 hardened-plated slope rot=+y+x paint=flash
+block -5 0 5 hardened-plated slope rot=+y-x paint=flash
 block -4..4 0 5 iron-plated paint=sand,sand,deck,sand,sand,sand
-block 5 0 5 hardened-plated paint=flash
+block 5 0 5 hardened-plated slope rot=+y+x paint=flash
 block -5 0 6 hardened-plated paint=flash
 block -4..4 0 6 iron-plated paint=sand,sand,deck,sand,sand,sand
 block 5 0 6 hardened-plated paint=flash
@@ -129,3 +131,7 @@ block -1..0 0 8 stairs rot=+y+z paint=sand
 block 3 0 8 thruster-t2
 block -1 1 -6 cockpit-t1
 block 0 1 1 turret
+block -2 1 4 iron-plated cylinder paint=belly
+block 2 1 4 iron-plated cylinder paint=belly
+block -2 2 4 iron-plated cylinder paint=belly
+block 2 2 4 iron-plated cylinder paint=belly
