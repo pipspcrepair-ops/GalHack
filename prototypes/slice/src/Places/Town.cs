@@ -854,7 +854,7 @@ public sealed partial class Town
 
     /// <summary>The place's standing with you (<see cref="PlaceMemory.Standing"/>); below this they treat you as a wary place would.</summary>
     public float Standing => Memory.Standing;
-    public const float StandingWary = -20f;
+    public const float StandingWary = Temper.StandingWary;
 
     /// <summary>Checkpoint warnings and gun holds, outside a hostile place (tests).</summary>
     public int Halts { get; private set; }
@@ -920,11 +920,14 @@ public sealed partial class Town
     Stance? _setTone;
 
     /// <summary>Whether a world point is in the town's area.</summary>
-    public bool Covers(Vector3 world)
+    public bool Covers(Vector3 world) => Beyond(world) < 0f;
+
+    /// <summary>How far a world point is outside the town's area, m (below 0 inside; far off when the town isn't standing).</summary>
+    public float Beyond(Vector3 world)
     {
-        if (_place == null) return false;
+        if (_place == null) return float.MaxValue;
         Vector3 l = _place.FromWorld(world);
-        return new Vector2(l.X - Data.AreaCenter.X, l.Z - Data.AreaCenter.Z).Length() < Data.AreaRadius;
+        return new Vector2(l.X - Data.AreaCenter.X, l.Z - Data.AreaCenter.Z).Length() - Data.AreaRadius;
     }
 
     /// <summary>The person nearest along a ray (world), within reach.</summary>
@@ -1143,8 +1146,7 @@ public sealed partial class Town
             var own = Wildlife.Rng.For(Memory.Inst.SpawnSeed, "stance", People.IndexOf(p));
             Stance stance = _setTone ?? _temper?.PersonStance(own) ?? Stance.Welcoming;
             // How you stand with them colours it: cold to one they've cause to fear, warm to a friend; one you robbed never warms.
-            if (Standing < StandingWary || p.Robbed) stance = p.Figure.Role is PersonRole.Guard or PersonRole.Lawman ? Stance.Guarded : Stance.Wary;
-            else if (Standing > 40f && stance is Stance.Wary or Stance.Guarded or Stance.Indifferent) stance = Stance.Welcoming;
+            stance = Temper.ByStanding(stance, p.Robbed ? MathF.Min(Standing, StandingWary - 1f) : Standing, p.Figure.Role is PersonRole.Guard or PersonRole.Lawman);
             if (_setTone != null && own.Chance(0.2f)) stance = _temper.PersonStance(own);
             _setTone ??= stance;
             want = Temper.ActFor(stance, f.Approach);

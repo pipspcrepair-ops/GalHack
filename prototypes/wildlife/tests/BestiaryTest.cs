@@ -60,6 +60,14 @@ public partial class BestiaryTest : Node
                 Shutdown.Quit(this, _failures == 0 ? 0 : 1);
                 return;
             }
+            if (OS.GetCmdlineUserArgs().Contains("--wanderers"))
+            {
+                // Only the bands of people out in the world (a quick run while working on how they take to you).
+                BandsOfPeople();
+                GD.Print(_failures == 0 ? $"ALL PASSED ({_checks} checks)" : $"{_failures} OF {_checks} CHECK(S) FAILED");
+                Shutdown.Quit(this, _failures == 0 ? 0 : 1);
+                return;
+            }
             if (OS.GetCmdlineUserArgs().Contains("--skins"))
             {
                 SkinnedBodiesAreSound();
@@ -137,6 +145,7 @@ public partial class BestiaryTest : Node
             TwentyAliensAreCheap();
             JobsKeepTheirOwnDay();
             PeopleAndAnimalsReadEachOther();
+            BandsOfPeople();
             RegionsDressTheirOwn();
             NobodyWalksThroughAnybody();
             HusksSpreadFromTheCore();

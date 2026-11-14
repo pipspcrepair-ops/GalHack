@@ -55,6 +55,9 @@ public partial class WildlifePatch : Node3D
     /// <summary>Whether a zone point is inside something built on the surface (the places standing; set by the game).</summary>
     public Func<Vector3, bool> SolidAt;
 
+    /// <summary>Your standing with whoever holds the ground at a zone point (set by the game; nobody: 0).</summary>
+    public Func<Vector3, float> StandingAt;
+
     /// <summary>The player as a target for creatures (set by the game).</summary>
     public ITarget Player { get; private set; }
 
@@ -201,6 +204,9 @@ public partial class WildlifePatch : Node3D
         // Day and night: creatures go to rest sites in their off hours (wildlife's activity cycles).
         var sim = new WildSim(Zone.Data.Wildlife, terrain, nav) { Frozen = _frozen, ActivityCycles = true };
         sim.SightLine = (a, b) => SightClear(ToGlobal(a), ToGlobal(b));
+        // A band out here is of whoever holds the ground (the nearest living place's people): your standing with them moves its stance.
+        sim.StandingAt = p => StandingAt?.Invoke(FromPatch(p)) ?? 0f;
+        sim.GreetStyle = Gestures.FriendlyStyle(Life?.World.Seed ?? 0);
         // Places standing on the surface are solid to everything walking out there.
         // And so are the houses and farmsteads along the roads: nothing walks through their walls.
         // So is the start bunker, chamber and stairwell: its walls, floor and roof are not the ground's.
@@ -245,7 +251,7 @@ public partial class WildlifePatch : Node3D
                 Herd herd = null;
                 if (c.Herd != null && !herds.TryGetValue(c.Herd, out herd))
                 {
-                    herd = new Herd { Home = c.Herd.Home + shift, Goal = c.Herd.Goal + shift, Center = c.Herd.Center + shift, Spread = c.Herd.Spread, GoalTimer = c.Herd.GoalTimer };
+                    herd = new Herd { Home = c.Herd.Home + shift, Goal = c.Herd.Goal + shift, Center = c.Herd.Center + shift, Spread = c.Herd.Spread, GoalTimer = c.Herd.GoalTimer, Party = c.Herd.Party };
                     herds[c.Herd] = herd;
                     sim.Herds.Add(herd);
                 }
@@ -531,11 +537,17 @@ public partial class WildlifePatch : Node3D
         return GetWorld3D().DirectSpaceState.IntersectRay(ray).Count == 0;
     }
 
-    /// <summary>A loud sound (zone frame): whatever is in earshot, in any sim, turns to it.</summary>
-    public void Noise(Vector3 at, float radius)
+    /// <summary>A loud sound (zone frame): whatever is in earshot, in any sim, turns to it. Your shot says which way it went: people it passes read it as being shot at.</summary>
+    public void Noise(Vector3 at, float radius, Vector3 shotDir = default)
     {
-        Sim?.Noise(PatchLocal(at), radius);
+        Sim?.Noise(PatchLocal(at), radius, shotDir, shotDir == default ? null : Player);
         foreach (DeepSite s in Sites) s.Sim.Noise(s.Local(at), radius);
+    }
+
+    /// <summary>A gesture of yours (zone frame), read by every band of people out here near enough to see it.</summary>
+    public void Heard(PlayerGesture g, Vector3 eye, Vector3 look)
+    {
+        if (Sim != null) Brain.Gestured(Sim, g, PatchLocal(eye), look);
     }
 
     /// <summary>Zone frame to patch frame and back.</summary>

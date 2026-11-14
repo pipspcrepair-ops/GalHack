@@ -30,6 +30,8 @@ public interface ITarget
     float Lamp => 0f;
     /// <summary>Low to the ground (a player holding crouch): quieter to the ear, and a smaller target to the eye.</summary>
     bool Crouched => false;
+    /// <summary>A weapon in their hands: aimed (<see cref="Forward"/> on someone) it is a threat people read.</summary>
+    bool Drawn => false;
 }
 
 /// <summary>A target the tests (and the screenshot staging) can place by hand.</summary>
@@ -42,6 +44,7 @@ public sealed class DummyTarget : ITarget
     public bool Attackable { get; set; } = true;
     public float ThreatScale { get; set; } = 1f;
     public bool Crouched { get; set; }
+    public bool Drawn { get; set; }
 }
 
 /// <summary>
@@ -139,6 +142,18 @@ public sealed class Creature
     // pawing the ground.
     public float WantCrouch, WantHidden, WantGraze, Rear, Lunge, Alert, Brace;
     public Vector3? LookAt;
+    /// <summary>
+    /// A person's body language: the act it shows (a wave, a warning, hands up) and until when; how far
+    /// its weapon is up (0..1: at the ready, aimed); stepping back with its eyes on something rather
+    /// than turning to go.
+    /// </summary>
+    public BodyAct Act;
+    public float ActUntil, WantAim;
+    public bool Backing;
+    /// <summary>A person in a fight: when it next looks for cover (its <see cref="Goal"/> while it has some).</summary>
+    public float CoverIn;
+    /// <summary>The band's last event this one has taken in (someone seen, a fright), and the last gesture of yours it answered.</summary>
+    public int PartySeen, Answered;
 
     /// <summary>Scared off by something it can't fight (a flame): until this sim time it runs from <see cref="ScaredFrom"/>, whatever its temper.</summary>
     public float ScaredUntil = -999f;
@@ -320,6 +335,8 @@ public sealed class Herd
     public int UpdatedFrame = -1; // space shoals
     public float UpdatedAt = -999f;
     public float Spread;
+    /// <summary>People: the band they are, round a leader, and how they take to an outsider (null for animals).</summary>
+    public Party Party;
 
     public int AliveCount
     {

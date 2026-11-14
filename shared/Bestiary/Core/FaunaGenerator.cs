@@ -685,6 +685,7 @@ public sealed class FaunaGenerator
             // Off script: a herd of drifters, a territorial hopper, a scavenging giant.
             var any = new List<Behaviour>(Enum.GetValues<Behaviour>());
             any.Remove(Behaviour.Swarm);
+            any.Remove(Behaviour.Folk); // (people's, never an animal's)
             // A pack of giants is a wipe, not a surprise, and packs hunt on the ground.
             if (form.Plan == BodyPlan.Giant || form.Rig is not (RigKind.Legged or RigKind.Chain or RigKind.Hopper)) any.Remove(Behaviour.PackHunter);
             s.Behaviour = rng.Pick(any);

@@ -54,6 +54,7 @@ public static partial class Brain
         c.WantGraze = 0f;
         c.WantCrouch = 0f;
         c.WantHidden = 0f;
+        c.Backing = false;
         if (c.Attacking)
         {
             // Mid-attack the attack owns the body; just keep looking at the target.
@@ -116,6 +117,7 @@ public static partial class Brain
             case Behaviour.Scavenger: Scavenger(w, c, near, dist, dt); break;
             case Behaviour.Swarm: SwarmMind(w, c, near, dist, dt); break;
             case Behaviour.TerritorialGiant: Territorial(w, c, near, dist, dt); break;
+            case Behaviour.Folk: Folk(w, c, dt); break;
             default: Oddity(w, c, near, dist, dt); break;
         }
 
@@ -171,9 +173,16 @@ public static partial class Brain
             c.LookAt = h.ThreatPos + Vector3.Up; // the head comes up and round first
             if (c.Nerve < 0.35f) { c.Desired = Vector3.Zero; c.SetState(CState.Freeze); return; }
         }
+        WithHerd(w, c, h, alarmed);
+    }
 
-        // Everyone heads for their own slot around the herd's shared goal, keeping apart from
-        // neighbours and never straying far from the middle: boids with a destination.
+    /// <summary>
+    /// Everyone heads for their own slot around the herd's shared goal, keeping apart from
+    /// neighbours and never straying far from the middle: boids with a destination. Alarmed, they
+    /// run with it.
+    /// </summary>
+    static void WithHerd(WildSim w, Creature c, Herd h, bool alarmed)
+    {
         float n = Math.Max(1, h.Members.Count);
         float angle = c.HerdSlot * 2.39996f;
         float r = h.Spread * MathF.Sqrt((c.HerdSlot + 0.5f) / n);

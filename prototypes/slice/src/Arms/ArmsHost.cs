@@ -234,7 +234,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
             for (int k = 0; k < shots; k++) ConeTick(d, muzzle, dir);
             Sounds.Hold(d, muzzle);
             if (Fired % 6 < shots) Game.Shots.Muzzle(d.Feel, muzzle, dir, default, 1f, Game.Tool.HeldMuzzle);
-            Zone.Wildlife.Noise(muzzle, d.Noise);
+            Zone.Wildlife.Noise(muzzle, d.Noise, dir);
             return;
         }
         float speed = d.Speed + stage * (d.Charge?.Speed ?? 0f);
@@ -254,7 +254,7 @@ public partial class ArmsHost : Node3D, IShotWorld, IAfflicted
         Game.Shots.Muzzle(d.Feel, muzzle, dir, tint, 1f + stage * 0.3f, Game.Tool.HeldMuzzle);
         Game.Hands?.Recoil(GunFeel.Get(d.Feel), d.Recoil * (1f + stage * 0.35f));
         Sounds.Play(d, VoiceKind.Report, muzzle, (0.96f + 0.08f * (float)_rng.NextDouble()) * (1f - stage * 0.06f));
-        Zone.Wildlife.Noise(muzzle, d.Noise * (1f + stage * 0.25f));
+        Zone.Wildlife.Noise(muzzle, d.Noise * (1f + stage * 0.25f), dir);
         PoiPlaces places = Game.Places;
         if (places != null && d.Noise > 30f) (places.TownAt(muzzle) ?? places.TownAt(muzzle + dir * 30f))?.Provoked();
     }
