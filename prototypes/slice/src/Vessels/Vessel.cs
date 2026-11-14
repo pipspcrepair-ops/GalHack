@@ -204,8 +204,11 @@ public sealed partial class Vessel
     /// <summary>Power to its machines: a generator on it, and its power switched on (a structure with no generator has none).</summary>
     public bool Powered => PowerOn && HasGenerator;
 
-    bool _hasGenerator;
+    bool _hasGenerator, _hasForecast;
     int _generatorVersion = -1;
+
+    /// <summary>Whether a working weather forecast block is on it: one aboard and its power on with a generator.</summary>
+    public bool Forecasting => Powered && _hasForecast;
 
     /// <summary>A generator aboard, looked for again only when the structure has changed (its view asks a few times a second).</summary>
     bool HasGenerator
@@ -216,6 +219,7 @@ public sealed partial class Vessel
             {
                 _generatorVersion = Structure.Version;
                 _hasGenerator = Structure.Blocks().Any(b => Structure.TypeOf(b.block).IsGenerator);
+                _hasForecast = Structure.Blocks().Any(b => Structure.TypeOf(b.block).IsForecast);
             }
             return _hasGenerator;
         }

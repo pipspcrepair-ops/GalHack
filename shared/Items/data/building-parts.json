@@ -46,6 +46,17 @@
       ]
     },
     {
+      "id": "weather-forecast", "name": "Weather Forecast", "function": "forecast", "hp": 120, "armor": 10, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 0.06, "color": "4d5563", "glow": "7fd4ff", "attach": ["-y"], "airtight": "none", "covers": "none", "collide": "parts", "power": -0.004,
+      "parts": [
+        {"box": [-0.32, -0.5, -0.32, 0.32, -0.3, 0.32], "style": "body"},
+        {"box": [-0.05, -0.3, -0.05, 0.05, 0.1, 0.05], "style": "dark"},
+        {"cylinder": "y", "segments": 16, "box": [-0.36, 0.1, -0.36, 0.36, 0.18, 0.36], "style": "body"},
+        {"box": [-0.12, 0.18, -0.12, 0.12, 0.4, 0.12], "style": "dark"},
+        {"box": [-0.04, 0.4, -0.04, 0.04, 0.5, 0.04], "style": "glow"},
+        {"box": [-0.2, -0.3, -0.34, 0.2, -0.1, -0.3], "style": "glow"}
+      ]
+    },
+    {
       "id": "portable-fabricator", "name": "Portable fabricator", "function": "constructor", "hp": 150, "armor": 10, "resist": {"kinetic": 0.1, "explosive": 0.1, "energy": 0.1}, "mass": 0.04, "color": "3a3f47", "glow": "ffb400", "attach": "all", "airtight": "all", "covers": "all", "was": ["portfab"], "power": -0.005,
       "parts": [
         {"box": [-0.5, -0.5, -0.5, 0.5, 0.5, 0.5], "style": "body"},

@@ -29,7 +29,6 @@ public partial class Alerts : CanvasLayer
 
     readonly List<Shown> _hazards = new();
     readonly List<(string sign, Vector3 from, double until)> _attacks = new();
-    readonly List<WarningEntry> _warnings = new();
     Control _view;
     double _time;
 
@@ -82,9 +81,7 @@ public partial class Alerts : CanvasLayer
         _hazards.Clear();
         if (Game?.Survivor == null || Game.Zone?.Weather == null || Game.Phase != Slice.Game.Phase.Playing) { _view.QueueRedraw(); return; }
         var seen = new HashSet<string>();
-        _warnings.Clear();
-        Game.Zone.Weather.Sim?.GetWarnings(_warnings, Game.Survivor.WorldFeet);
-        foreach (WarningEntry w in _warnings)
+        foreach (WarningEntry w in Game.WeatherWarnings())
         {
             // A warning with no sign of its own is skipped, never shown as a generic "!".
             if (w.Level == WarningLevel.Advisory || !Specific(w.Sign)) continue;
