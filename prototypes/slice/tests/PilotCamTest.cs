@@ -91,7 +91,9 @@ public partial class PilotCamTest : Node
         if (_strip > 0)
         {
             _strip--;
-            Shot($"{_stripName}-{_stripAt++}");
+            Image img = Shot($"{_stripName}-{_stripAt++}");
+            if (img != null && _stripWas != null) Diff(_stripWas, img, $"{_stripName}-diff-{_stripAt - 1}");
+            _stripWas = _strip > 0 ? img : null;
         }
         if (!_watching || _vessel == null || _ticksSeen < 2) return;
         Transform3D cam = _game.Camera.GlobalTransform, drawn = _vessel.DrawTransform;
@@ -99,27 +101,31 @@ public partial class PilotCamTest : Node
         Transform3D due = _tickWas.InterpolateWith(_tickNow, (float)Engine.GetPhysicsInterpolationFraction());
         _stale.Add((float)Gap(drawn.Origin, due.Origin));
         // The camera in the vessel's drawn frame, worked out in double precision (the world runs to kilometres).
+        // The camera as drawn (after everything that sets it: the view, the hands' kick, any tilt) in the vessel's drawn frame,
+        // worked out in double precision (the world runs to kilometres).
         var rel = (pos: Local(drawn, cam.Origin), basis: drawn.Basis.Orthonormalized().Inverse() * cam.Basis.Orthonormalized());
+        _first ??= rel;
+        // How far the vessel and the view have tipped from the world's up: a view kept level would not tip with the ship.
+        _shipTipped = MathF.Max(_shipTipped, Mathf.RadToDeg(drawn.Basis.Y.Normalized().AngleTo(Vector3.Up)));
+        _viewTipped = MathF.Max(_viewTipped, Mathf.RadToDeg(cam.Basis.Y.Normalized().AngleTo(Vector3.Up)));
+        _turned.Add(Mathf.RadToDeg((_first.Value.basis.Inverse() * rel.basis).GetRotationQuaternion().GetAngle()));
         if (_game.ThirdPerson)
         {
             var (middle, radius) = Middle(_vessel, drawn);
             float out_ = cam.Origin.DistanceTo(middle);
             _inside.Add(radius - out_);
             _underground.Add(_game.Zone.GroundAt(cam.Origin.X, cam.Origin.Z).Y - cam.Origin.Y);
-            // Brought in short of the ground or something in the way: rightly not where it would stand in the clear.
+            // Brought in short of the ground or something in the way: rightly not where it would stand in the clear (the turn still counts).
             if (MathF.Abs(out_ - _game.Zoom(Game.Game.OrbitMode.Vessel) * radius * 2f) > 0.05f)
             {
                 _pulledIn++;
                 return;
             }
         }
-        if (_first is { } f)
-        {
-            _moved.Add((rel.pos - f.pos).Length());
-            _turned.Add(Mathf.RadToDeg((f.basis.Inverse() * rel.basis).GetRotationQuaternion().GetAngle()));
-        }
-        else _first = rel;
+        _moved.Add((rel.pos - _first.Value.pos).Length());
     }
+
+    float _shipTipped, _viewTipped;
 
     int _pulledIn;
 
@@ -128,10 +134,40 @@ public partial class PilotCamTest : Node
     int _strip, _stripAt;
     string _stripName;
 
-    void Shot(string name)
+    Image _stripWas;
+
+    Image Shot(string name)
     {
-        if (_shots == null) return;
-        GetViewport().GetTexture().GetImage().SavePng(System.IO.Path.Combine(_shots, name + ".png"));
+        if (_shots == null) return null;
+        Image img = GetViewport().GetTexture().GetImage();
+        img.SavePng(System.IO.Path.Combine(_shots, name + ".png"));
+        return img;
+    }
+
+    /// <summary>What changed between two frames, brightened (still pixels black), and how much of the frame changed.</summary>
+    void Diff(Image a, Image b, string name)
+    {
+        a.Convert(Image.Format.Rgb8);
+        b.Convert(Image.Format.Rgb8);
+        byte[] p = a.GetData(), q = b.GetData(), d = new byte[p.Length];
+        int w = a.GetWidth(), h = a.GetHeight(), moved = 0, movedLow = 0, low = 0;
+        for (int i = 0; i + 2 < p.Length; i += 3)
+        {
+            int sum = 0;
+            for (int k = 0; k < 3; k++)
+            {
+                int x = Math.Abs(p[i + k] - q[i + k]);
+                sum += x;
+                d[i + k] = (byte)Math.Min(255, x * 4);
+            }
+            bool lower = i / 3 / w > h * 2 / 3;
+            if (lower) low++;
+            if (sum <= 24) continue;
+            moved++;
+            if (lower) movedLow++;
+        }
+        Image.CreateFromData(w, h, false, Image.Format.Rgb8, d).SavePng(System.IO.Path.Combine(_shots, name + ".png"));
+        GD.Print($"   {name}: {100f * moved / (w * h):F1}% of the frame changed, {100f * movedLow / Math.Max(1, low):F1}% of its lower third");
     }
 
     void Strip(string name, int frames)
@@ -184,6 +220,7 @@ public partial class PilotCamTest : Node
         if (!on) return;
         _first = null;
         _pulledIn = 0;
+        _shipTipped = _viewTipped = 0f;
         foreach (var l in new[] { _moved, _turned, _stale, _inside, _underground }) l.Clear();
     }
 
@@ -253,6 +290,11 @@ public partial class PilotCamTest : Node
             foreach (bool third in new[] { false, true })
             {
                 _game.ThirdPerson = third;
+                // Each pass from the same height, level and still: the loops climb, and the crossing to orbit is no place for this.
+                v.Body.Position = (site + Vector3.Up * 220f).ToNumerics();
+                v.Body.Rotation = N.Quaternion.Identity;
+                v.Body.Velocity = v.Body.AngularVelocity = N.Vector3.Zero;
+                v.Binding.Teleport();
                 foreach (int x in _drive.Wait(30)) yield return x; // the zoom settles
                 Watch(true);
                 int ticks0 = (int)Engine.GetPhysicsFrames();
@@ -261,7 +303,8 @@ public partial class PilotCamTest : Node
                 int frames = _stale.Count, ticks = (int)Engine.GetPhysicsFrames() - ticks0;
                 string view = third ? "third person" : "first person";
                 GD.Print($"-- {view}, {rate}: {frames} frames over {ticks} ticks; {v.Body.Velocity.Length():F0} m/s, {v.AboveGround:F0} m up, {_game.Camera.GlobalPosition.Length() / 1000f:F1} km from the origin --");
-                GD.Print($"   drawn vs this frame's interpolation {Stats(_stale, 1000f, "mm")}");
+                GD.Print($"   drawn vs this frame's interpolation {Stats(_stale, 1000f, "mm")}; the ship tipped up to {_shipTipped:F0} degrees from the world's up, the view {_viewTipped:F0}");
+                Check(_shipTipped > 150f && _viewTipped > 150f, $"{(third ? "third person" : "first person")}, {rate}: through the bank, the rolls and the loop the view tips with the ship, never kept level to the world (ship {_shipTipped:F0}, view {_viewTipped:F0} degrees from the world's up at most)");
                 GD.Print($"   camera in the vessel's frame: moved {Stats(_moved, 1000f, "mm")}; turned {Stats(_turned, 1f, "deg")}; {_pulledIn} frames brought in short of the ground");
                 Check(_stale.Count > 200 && _stale.Max() < 1e-3f, $"{view}, {rate}: the vessel is drawn on this frame's interpolation of its ticks, never the last frame's ({Stats(_stale, 1000f, "mm")})");
                 float within = third ? 5e-3f : 1e-3f; // third person: metres out, a few millimetres of float rounding are nothing
@@ -287,15 +330,16 @@ public partial class PilotCamTest : Node
     {
         Controls c = _game.Controls;
         c.Hold(Key.W);
-        for (int i = 0; i < 360; i++)
+        for (int i = 0; i < 780; i++)
         {
-            c.Look = new Vector2(i % 120 < 60 ? 25f : -25f, i % 90 < 45 ? 8f : -8f);
+            // Turns and banks, both rolls, a boost, a brake and a knock; then a loop (the stick held back).
+            c.Look = i < 360 ? new Vector2(i % 120 < 60 ? 25f : -25f, i % 90 < 45 ? 8f : -8f) : new Vector2(0f, -40f);
             c.Hold(Key.Q, i is >= 60 and < 120);
             c.Hold(Key.E, i is >= 120 and < 180);
             c.Hold(Key.Shift, i is >= 180 and < 240);
             c.Hold(Key.S, i is >= 270 and < 330);
             c.Hold(Key.W, i is < 270 or >= 330);
-            c.Hold(Key.Space, v.AboveGround < 40f); // well clear of the ground
+            c.Hold(Key.Space, i < 360 && v.AboveGround < 160f); // well clear of the ground
             if (i == 80 && strip != null) Strip(strip, 6); // turning and rolling
             if (i == 200)
             {
