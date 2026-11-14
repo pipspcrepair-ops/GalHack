@@ -155,10 +155,12 @@ two mains, a retro, a side jet each way, a lift jet, a down jet and three pads."
         d.Mount("light", P(-1, 6, 0), Dir.PosY);
         d.Mount("light", P(2, 6, 0), Dir.PosY);
         // The pad: 12 m square off the east door, level with the floor, a hazard rim and a ramp down to the ground on three sides.
-        d.Fill(P(7, 0, -6), P(18, 0, 5), "base-block", pad).Face(P(7, 0, -6), P(18, 0, 5), Dir.PosY, hazard);
-        d.Face(P(8, 0, -5), P(17, 0, 4), Dir.PosY, pad).Face(P(11, 0, -1), P(14, 0, 0), Dir.PosY, hazard);
+        d.Fill(P(7, 0, -6), P(18, 0, 5), "base-block", pad);
+        d.Face(P(8, 0, -5), P(17, 0, 4), Dir.PosY, hazard).Face(P(9, 0, -4), P(16, 0, 3), Dir.PosY, pad).Face(P(11, 0, -1), P(14, 0, 0), Dir.PosY, hazard);
+        // Ramps down to the ground on three sides carry the pad's plain finish, and corners run them into each other.
         d.Slope(P(19, 0, -6), P(19, 0, 5), "base-block", pad, Dir.PosX).Slope(P(8, 0, -7), P(18, 0, -7), "base-block", pad, Dir.NegZ).Slope(P(8, 0, 6), P(18, 0, 6), "base-block", pad, Dir.PosZ);
-        d.Chamfer(P(19, 0, -7), P(19, 0, -7), "base-block", pad, Dir.PosX, Dir.NegZ).Chamfer(P(19, 0, 6), P(19, 0, 6), "base-block", pad, Dir.PosX, Dir.PosZ);
+        d.Fill(P(19, 0, -7), P(19, 0, -7), "base-block", pad, "corner").Fill(P(19, 0, 6), P(19, 0, 6), "base-block", pad, "corner", Designer.Rot(Dir.PosY, Dir.PosX));
+        d.Fill(P(7, 0, -7), P(7, 0, -7), "base-block", pad, "corner", Designer.Rot(Dir.PosY, Dir.NegX)).Fill(P(7, 0, 6), P(7, 0, 6), "base-block", pad, "corner", Designer.Rot(Dir.PosY, Dir.PosZ));
         d.Lining(inner, deck);
         return d.Text(@"Outpost: a first base on the ground. A concrete hall 10 x 9 m and 4 m floor to ceiling under a raked
 roof, a glazed clerestory rising out of its middle; power, fuel, a fabricator and four lockers along

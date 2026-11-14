@@ -206,7 +206,8 @@ public sealed class Designer
         {
             if (Spent()) return false;
             Int3 cell = pos + face.Vec();
-            if (keep.Contains(cell) || S.Has(cell) || !S.TryGet(pos, out Block src)) return false;
+            // A filler is flush with the hull: it sits against at least two blocks, never alone on the end of a ramp.
+            if (keep.Contains(cell) || S.Has(cell) || Dirs.All.Count(d => S.Has(cell + d.Vec())) < 2 || !S.TryGet(pos, out Block src)) return false;
             var outline = Notches.Outline(S, src, face);
             foreach (string name in shapes)
                 for (int r = 0; r < Orientations.Count; r++)
