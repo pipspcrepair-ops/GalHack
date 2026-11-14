@@ -9,13 +9,14 @@ using PlanetSurface.Terrain;
 namespace Slice.Tests;
 
 /// <summary>
-/// Pinholes: bright single-pixel dots in the grass by night (the owner's, 14 Nov). They were ground cover's
-/// flowers, a pixel or two across a few metres off (flora_cover.gdshader); no ground let the sky through.
-/// Standing in the grass at night, looking the route's way and back, two numbers a frame: the dots ground
-/// cover adds (every layer drawn, less every layer but cover), and the ground's pixels showing what is behind
-/// it (the sky swapped for flat magenta). --check gates both. --pinholes-only runs just this; --bisect leaves
-/// each layer out in turn, by day too and from 12 m and 60 m up; --frames saves each pass's first two pictures
-/// (--out-dir, user://pinholes by default).
+/// Pinholes: bright single pixels flickering in the grass, seen most by night (the owner's, 14 Nov). No ground
+/// let the sky through: they were sparks, plants' vertex colours carried far past their range where a sliver of
+/// a far or shrinking plant is shaded at a multisampled pixel's centre, outside itself (flora_cover.gdshader).
+/// At night, standing in the grass looking the route's way and back, and from 12 m up, two numbers a frame: the
+/// sparks ground cover adds (dots at least 0.4 bright, every layer drawn less every layer but cover), and the
+/// ground's pixels showing what is behind it (the sky swapped for flat magenta). --check gates both.
+/// --pinholes-only runs just this; --bisect leaves each layer out in turn and MSAA off, by day too and from 60 m
+/// up; --frames saves each pass's first two pictures (--out-dir, user://pinholes by default).
 /// </summary>
 public partial class PopRoute
 {
@@ -27,8 +28,8 @@ public partial class PopRoute
         ("near ground", 12), ("far ground", 13), ("flora", 14), ("cover", 15), ("horizon", 16), ("water", 17),
     };
 
-    /// <summary>At most, a frame, at night: the dots ground cover adds, and ground pixels showing the sky (a 1440p window).</summary>
-    const double CoverDots = 6, SkyThrough = 2;
+    /// <summary>At most, a frame, at night: the sparks ground cover adds, and ground pixels showing the sky.</summary>
+    const double CoverSparks = 0.1, SkyThrough = 2;
 
     void Tag()
     {
@@ -63,7 +64,7 @@ public partial class PopRoute
         {
             zone.Sky.TimeOfDay = hour;
             var views = new[] { ("standing", 1.7f, -4f, 0.02f, false), ("back", 1.7f, -4f, 0.02f, true), ("low", 12f, -8f, 0.4f, false), ("flying", 60f, -14f, 1.2f, false) };
-            foreach (var (view, up, pitch, move, back) in bisect ? views : views[..2])
+            foreach (var (view, up, pitch, move, back) in bisect ? views : views[..3])
             {
                 Vector3 look = back ? -way : way;
                 Vector3 side = look.Cross(Vector3.Up).Normalized();
@@ -77,7 +78,7 @@ public partial class PopRoute
                     yield return 0;
                 }
                 Viewport.Msaa msaa = GetViewport().Msaa3D;
-                var dots = new Dictionary<string, double>();
+                var sparked = new Dictionary<string, double>();
                 var holes = new Dictionary<string, double>();
                 foreach (string c in cases)
                 {
@@ -96,26 +97,26 @@ public partial class PopRoute
                         yield return 0;
                         if (i < 4) continue;
                         Image img = GetViewport().GetTexture().GetImage();
-                        // Dots from 200 m in (cover's reach, where tufts shrink away, is within 112 m); the sky's
-                        // way through only well under the land's skyline (40 m under the ground 400 m ahead).
-                        var (now, bright) = Dots(img, Row(At(i), 200f, 0f));
+                        // Dots from level ground 200 m ahead in (cover's reach, where tufts shrink away, is within 112 m);
+                        // the sky's way through only well under the land's skyline (40 m under the eye 400 m ahead).
+                        var (now, bright) = Dots(img, Row(At(i), 200f, up));
                         found += now.Count;
                         sparks += bright;
-                        through += Holes(img, Row(At(i), 400f, 40f));
+                        through += Holes(img, Row(At(i), 400f, 40f) + 4);
                         if (last != null) flicker += now.Count(p => !last.Contains(p));
                         last = now;
                         if (i < 6 && _args.ContainsKey("frames")) img.SavePng($"{dir}/{label}-{view}-{c.Replace(' ', '-')}-{i - 4}.png");
                     }
-                    dots[c] = (double)found / PinFrames;
+                    sparked[c] = (double)sparks / PinFrames;
                     holes[c] = (double)through / PinFrames;
-                    GD.Print(string.Create(CultureInfo.InvariantCulture, $"PINHOLES {label} {view} {c}: dots a frame {dots[c]:F1} (sparks {(double)sparks / PinFrames:F2}), new a frame {(double)flicker / (PinFrames - 1):F1}, ground pixels showing the background a frame {holes[c]:F1}"));
+                    GD.Print(string.Create(CultureInfo.InvariantCulture, $"PINHOLES {label} {view} {c}: dots a frame {(double)found / PinFrames:F1} (sparks {sparked[c]:F2}), new a frame {(double)flicker / (PinFrames - 1):F1}, ground pixels showing the background a frame {holes[c]:F1}"));
                 }
                 foreach (var (_, layer) in PinLayers) cam.SetCullMaskValue(layer, true);
                 GetViewport().Msaa3D = msaa;
                 zone.Sky.Sun.ShadowCasterMask = zone.Sky.NightLight.ShadowCasterMask = uint.MaxValue;
                 env.BackgroundMode = Godot.Environment.BGMode.Sky;
-                if (label != "night" || view is not ("standing" or "back")) continue;
-                Gate($"pinholes, night, {view}: dots ground cover adds", dots["all"] - dots["-cover"], CoverDots, false, "a frame");
+                if (label != "night" || view is "flying") continue;
+                Gate($"pinholes, night, {view}: sparks ground cover adds", sparked["all"] - sparked["-cover"], CoverSparks, false, "a frame");
                 Gate($"pinholes, night, {view}: ground showing the sky", holes["flat sky"], SkyThrough, false, "px a frame");
             }
         }
@@ -124,11 +125,11 @@ public partial class PopRoute
         foreach (CanvasLayer l in layers) l.Visible = true;
     }
 
-    /// <summary>The picture row a little under where the ground some way ahead (less a drop, m) meets the view.</summary>
+    /// <summary>The picture row a little under a point some way ahead and a drop under the eye, m.</summary>
     int Row(Transform3D eye, float ahead, float drop)
     {
         Vector3 way = (-eye.Basis.Z with { Y = 0f }).Normalized();
-        Vector2 p = _game.Camera.UnprojectPosition(Lift(eye.Origin + way * ahead, -drop));
+        Vector2 p = _game.Camera.UnprojectPosition(eye.Origin + way * ahead + Vector3.Down * drop);
         return Math.Clamp((int)p.Y + 4, 0, (int)GetViewport().GetVisibleRect().Size.Y - 1);
     }
 
