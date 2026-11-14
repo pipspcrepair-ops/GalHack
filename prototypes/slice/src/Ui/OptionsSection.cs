@@ -110,8 +110,8 @@ public sealed class OptionsSection : IMenuSection
     {
         GameSettings s = S;
         int i = 0;
-        // Twelve rows and the button under them: shorter rows where the page is short.
-        float rh = MathF.Min(RowH, (body.Size.Y - 52f) / 12f);
+        // Thirteen rows and the button under them: shorter rows where the page is short.
+        float rh = MathF.Min(RowH, (body.Size.Y - 52f) / 13f);
         Rect2 r = Row(g, body, i++, "WINDOW", null, rh);
         int w = Choice(g, "opt:window", r, new[] { "WINDOWED", "BORDERLESS", "FULL SCREEN" }, (int)s.Window, 210);
         if (w >= 0 && w != (int)s.Window)
@@ -178,6 +178,14 @@ public sealed class OptionsSection : IMenuSection
 
         r = Row(g, body, i++, "DETAIL DISTANCE", null, rh);
         if (Range(g, "opt:detail", r, ref s.DetailDistance, DetailStepsFrom, DetailStepsTo, 20f, x => $"{x / 1000f:F1} KM")) Changed();
+
+        r = Row(g, body, i++, "TREE DISTANCE", null, rh);
+        float trees = Math.Min(s.TreeDistance, s.DetailDistance);
+        if (Range(g, "opt:trees", r, ref trees, PlanetSurface.Terrain.DetailReach.LeastTrees, s.DetailDistance, 20f, x => $"{x:F0} M"))
+        {
+            s.TreeDistance = trees;
+            Changed();
+        }
 
         r = Row(g, body, i++, "SPAWN DISTANCE", null, rh);
         if (Range(g, "opt:spawn", r, ref s.SpawnDistance, SpawnStepsFrom, SpawnStepsTo, 20f, x => $"{x:F0} M")) Changed();

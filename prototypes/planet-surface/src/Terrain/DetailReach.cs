@@ -20,6 +20,12 @@ public static class DetailReach
 
     public static float Distance { get; private set; }
 
+    /// <summary>The least trees' distance can be set to, m.</summary>
+    public const float LeastTrees = 300f;
+
+    /// <summary>The distance trees and large plants were asked to draw to, m (kept between <see cref="LeastTrees"/> and the detail distance).</summary>
+    public static float Trees { get; private set; } = Default;
+
     /// <summary>How far the roadside tiles are built (<see cref="PlanetSurface.Infra.InfraLayer.Radius"/>), m.</summary>
     public static float InfraRadius { get; private set; }
     public static int Version { get; private set; }
@@ -48,20 +54,22 @@ public static class DetailReach
     /// <summary>Places' full structures reach this multiple of their own radii: at most twice, as they carry colliders, people and creatures.</summary>
     public static float StandScale => MathF.Min(Scale, 2f);
 
-    static DetailReach() => Set(Default);
+    static DetailReach() => Set(Default, Default);
 
-    /// <summary>Sets the detail distance, m (kept between the default and the horizon).</summary>
-    public static void Set(float metres)
+    /// <summary>Sets the detail distance, m (kept between the default and the horizon), and how far trees draw within it (never past it).</summary>
+    public static void Set(float metres, float trees = float.MaxValue)
     {
         float d = Math.Clamp(float.IsFinite(metres) ? metres : Default, Default, Most);
-        if (d == Distance) return;
+        float t = Math.Clamp(float.IsNaN(trees) ? d : trees, LeastTrees, d);
+        if (d == Distance && t == Trees) return;
         Distance = d;
+        Trees = t;
         float k = Scale;
         FarRadius = (int)MathF.Ceiling(d / FarBuilder.Size);
         Lod0Radius = k >= 2f ? 2 : 1;
         Lod1Radius = Math.Clamp((int)MathF.Round(3f * k), 3, 12);
-        Large = d;
-        LargeBand = d * 0.15f;
+        Large = t;
+        LargeBand = t * 0.15f;
         Small = 200f * MathF.Min(k, 2f);
         SmallBand = Small * 0.3f;
         // What stands on the land is built as far out as the far rings show its pads, corners included.

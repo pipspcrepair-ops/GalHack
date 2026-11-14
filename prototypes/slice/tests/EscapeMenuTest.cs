@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Linq;
 using DiegeticUi.Theme;
 using Godot;
+using PlanetSurface.Terrain;
 using Slice.Game;
 using Slice.Ui;
 
@@ -430,6 +431,16 @@ public partial class EscapeMenuTest : Node
         foreach (int x in Tap(Key.Escape)) yield return x;
         foreach (int x in Click("esc:options")) yield return x;
         foreach (int x in Click("opt:graphics")) yield return x;
+        foreach (int x in Click("opt:trees", 0.3f)) yield return x;
+        Check(DetailReach.Large == _game.Settings.TreeDistance && DetailReach.Large < DetailReach.Distance, $"the TREE DISTANCE slider sets trees' reach live ({DetailReach.Large:F0} m of {DetailReach.Distance:F0})");
+        foreach (string arg in OS.GetCmdlineUserArgs())
+            if (arg.StartsWith("--shot="))
+            {
+                foreach (int x in Wait(10)) yield return x;
+                GetViewport().GetTexture().GetImage().SavePng(arg[7..]);
+            }
+        _game.Settings.TreeDistance = DetailReach.Most;
+        _game.Settings.Changed();
         foreach (int x in Click("opt:fov", Along(90f, GameSettings.MinFov, GameSettings.MaxFov))) yield return x;
         foreach (int x in Click("opt:render-scale", 0.5f)) yield return x;
         foreach (int x in Click("opt:fps-60")) yield return x;

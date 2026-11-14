@@ -107,6 +107,7 @@ public partial class StartTest : Node
                 AddChild(game);
                 yield return 0;
                 rolled.Add(game.World.Seed);
+                if (i == 0) foreach (int x in TreeDistance(game)) yield return x;
                 game.QueueFree();
                 yield return 0;
             }
