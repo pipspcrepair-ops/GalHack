@@ -28,7 +28,26 @@ public partial class PopRoute
         _drawnFrame = (long)Engine.GetFramesDrawn();
     }
 
-    IEnumerable<int> Turn(Vector3 over)
+    /// <summary>
+    /// The same turn under a thunderstorm: a cell 1.8 km off (its cloud mass, rain shaft and base) comes round the view and
+    /// goes again. Reported, not gated: the rain's own streaks make most of its unlike pixels.
+    /// </summary>
+    IEnumerable<int> TurnStorm(Vector3 over)
+    {
+        var sim = _game.Zone.Weather.Sim;
+        sim.FrontsOff = true;
+        sim.ClearFront();
+        sim.ClearCells();
+        sim.Snap(Weather.Model.WeatherKind.Thunderstorm);
+        sim.ClearCells();
+        sim.AddCell(over + new Vector3(0f, 0f, -1800f), 1f);
+        foreach (int x in Turn(over, true)) yield return x;
+        sim.ClearCells();
+        sim.Snap(Weather.Model.WeatherKind.Clear);
+        sim.FrontsOff = false;
+    }
+
+    IEnumerable<int> Turn(Vector3 over, bool storm = false)
     {
         var zone = _game.Zone;
         zone.Sky.TimeScale = 0f;
@@ -36,8 +55,9 @@ public partial class PopRoute
         // The HUD turns with the view (compass, markers): only the world is compared.
         var huds = GetTree().Root.FindChildren("*", nameof(CanvasLayer), true, false).OfType<CanvasLayer>().Where(c => c.Visible).ToList();
         foreach (CanvasLayer c in huds) c.Visible = false;
-        foreach (var (name, up) in new[] { ("standing", 0f), ("60 m up", 60f), ("400 m up", 400f) })
+        foreach (var (label, up) in storm ? new[] { ("standing", 0f), ("400 m up", 400f) } : new[] { ("standing", 0f), ("60 m up", 60f), ("400 m up", 400f) })
         {
+            string name = storm ? "storm " + label : label;
             Vector3 eye = Lift(over, up);
             _hold = eye;
             foreach (int x in _drive.Wait(30)) yield return x;
@@ -73,7 +93,7 @@ public partial class PopRoute
             shares.Sort();
             double P(double q) => shares.Count == 0 ? double.NaN : shares[Math.Min(shares.Count - 1, (int)(shares.Count * q))];
             GD.Print(string.Create(CultureInfo.InvariantCulture, $"ROUTE turn {name}: pixels unlike where they turned from, median {P(0.5):F3}%, 99th pct {P(0.99):F3}%, worst {worst:F3}% (n {shares.Count}); plants showing in batches culled by distance {rangeCulled}"));
-            Gate($"turn {name}: plants showing in batches culled by distance", rangeCulled, 0, false, "");
+            if (!storm) Gate($"turn {name}: plants showing in batches culled by distance", rangeCulled, 0, false, "");
             if (_args.TryGetValue("shots", out string dir) && worstNow != null)
             {
                 DirAccess.MakeDirRecursiveAbsolute(dir);
