@@ -124,7 +124,7 @@ public partial class Game
             light.DirectionalShadowMode = s.Splits;
         }
         if (Surface?.Streamer != null) Surface.Streamer.VoxelRadius = Settings.GroundDetail;
-        PlanetSurface.Terrain.DetailReach.Set(Settings.DetailDistance);
+        PlanetSurface.Terrain.DetailReach.Set(Settings.DetailDistance, Settings.TreeDistance);
         Slice.Surface.SpawnReach.Set(Settings.SpawnDistance);
         if (Surface?.Streamer != null) Surface.Streamer.ShadowReach = reach;
     }

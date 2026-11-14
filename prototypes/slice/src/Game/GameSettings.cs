@@ -36,6 +36,8 @@ public sealed class GameSettings
     public int GroundDetail = 5;
     /// <summary>How far land, flora, places and ruins draw in detail, m: from the default out to the horizon (DetailReach).</summary>
     public float DetailDistance = DetailReach.Default;
+    /// <summary>How far trees and large plants draw, m: from <see cref="DetailReach.LeastTrees"/> up to the detail distance, which it follows down (the default is the most, so it follows the detail distance).</summary>
+    public float TreeDistance = DetailReach.Most;
     /// <summary>How far round you life is kept and drawn, m: from the default out toward the detail distance (SpawnReach).</summary>
     public float SpawnDistance = Slice.Surface.SpawnReach.Default;
     /// <summary>How far the sun's real-time shadows reach, m; past it the far land shades itself (TerrainStreamer.FarShade).</summary>
@@ -73,7 +75,7 @@ public sealed class GameSettings
     public void ResetGraphics()
     {
         var d = new GameSettings();
-        (Window, Resolution, Vsync, FpsCap, RenderScale, Fov, Shadows, GroundDetail, DetailDistance, SpawnDistance, ShadowDistance, Gamma, MarkersInWorld) = (d.Window, d.Resolution, d.Vsync, d.FpsCap, d.RenderScale, d.Fov, d.Shadows, d.GroundDetail, d.DetailDistance, d.SpawnDistance, d.ShadowDistance, d.Gamma, d.MarkersInWorld);
+        (Window, Resolution, Vsync, FpsCap, RenderScale, Fov, Shadows, GroundDetail, DetailDistance, TreeDistance, SpawnDistance, ShadowDistance, Gamma, MarkersInWorld) = (d.Window, d.Resolution, d.Vsync, d.FpsCap, d.RenderScale, d.Fov, d.Shadows, d.GroundDetail, d.DetailDistance, d.TreeDistance, d.SpawnDistance, d.ShadowDistance, d.Gamma, d.MarkersInWorld);
         Changed();
     }
 
@@ -100,6 +102,7 @@ public sealed class GameSettings
         s.Shadows = Enum.TryParse(Str(file, "graphics", "shadows"), true, out ShadowLevel sh) ? sh : s.Shadows;
         s.GroundDetail = Math.Clamp(Int(file, "graphics", "ground_detail", s.GroundDetail), MinGround, MaxGround);
         s.DetailDistance = Math.Clamp(Float(file, "graphics", "detail_distance", s.DetailDistance), DetailReach.Default, DetailReach.Most);
+        s.TreeDistance = Math.Clamp(Float(file, "graphics", "tree_distance", s.TreeDistance), DetailReach.LeastTrees, DetailReach.Most);
         s.ShadowDistance = Math.Clamp(Float(file, "graphics", "shadow_distance", s.ShadowDistance), DefaultShadow, MostShadow);
         s.SpawnDistance = Math.Clamp(Float(file, "graphics", "spawn_distance", s.SpawnDistance), Slice.Surface.SpawnReach.Default, Slice.Surface.SpawnReach.Most);
         s.Gamma = Math.Clamp(Float(file, "graphics", "gamma", s.Gamma), MinGamma, MaxGamma);
@@ -126,6 +129,7 @@ public sealed class GameSettings
         file.SetValue("graphics", "shadows", Shadows.ToString().ToLowerInvariant());
         file.SetValue("graphics", "ground_detail", GroundDetail);
         file.SetValue("graphics", "detail_distance", DetailDistance);
+        file.SetValue("graphics", "tree_distance", TreeDistance);
         file.SetValue("graphics", "spawn_distance", SpawnDistance);
         file.SetValue("graphics", "shadow_distance", ShadowDistance);
         file.SetValue("graphics", "gamma", Gamma);
