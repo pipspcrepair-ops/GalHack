@@ -432,7 +432,7 @@ public sealed class WildSim
         {
             herd = new Herd { Home = center, Goal = center, Center = center, Spread = HerdSpread(species, count) };
             // People go about as a band: its stance rolled now, from who they are and their world.
-            if (species.Behaviour == Behaviour.Folk) herd.Band = Band.Roll(species, Rng.Mix(species.Seed, (ulong)_nextId));
+            if (species.Behaviour == Behaviour.Folk) herd.Party = Party.Roll(species, Rng.Mix(species.Seed, (ulong)_nextId));
             Herds.Add(herd);
         }
         Pack pack = null;

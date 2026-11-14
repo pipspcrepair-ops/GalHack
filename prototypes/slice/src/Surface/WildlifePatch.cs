@@ -251,7 +251,7 @@ public partial class WildlifePatch : Node3D
                 Herd herd = null;
                 if (c.Herd != null && !herds.TryGetValue(c.Herd, out herd))
                 {
-                    herd = new Herd { Home = c.Herd.Home + shift, Goal = c.Herd.Goal + shift, Center = c.Herd.Center + shift, Spread = c.Herd.Spread, GoalTimer = c.Herd.GoalTimer, Band = c.Herd.Band };
+                    herd = new Herd { Home = c.Herd.Home + shift, Goal = c.Herd.Goal + shift, Center = c.Herd.Center + shift, Spread = c.Herd.Spread, GoalTimer = c.Herd.GoalTimer, Party = c.Herd.Party };
                     herds[c.Herd] = herd;
                     sim.Herds.Add(herd);
                 }

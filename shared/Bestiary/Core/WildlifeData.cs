@@ -32,7 +32,7 @@ public enum SwimStyle { None, Pulse, Flap, Undulate }
 /// <summary>The design's five-step resource ladder; space creatures drop only rare and up.</summary>
 public enum Rarity { Common, Uncommon, Rare, Exotic, Unique }
 
-/// <summary>What it does all day. Folk: people out in the world, a band round a leader that takes to you by its stance (see <see cref="Band"/>), never by an animal's flight or hunt.</summary>
+/// <summary>What it does all day. Folk: people out in the world, a band round a leader that takes to you by its stance (see <see cref="Party"/>), never by an animal's flight or hunt.</summary>
 public enum Behaviour { Grazer, Herd, Predator, PackHunter, Ambusher, Scavenger, Swarm, TerritorialGiant, HarmlessOddity, Folk }
 
 /// <summary>How a creature reacts to you, independent of what it does all day. Odd pairs make surprises.</summary>

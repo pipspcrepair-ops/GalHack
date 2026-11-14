@@ -40,8 +40,8 @@ public sealed class Temper
         // The odds by tech and world, then the group's own roll among them.
         (Stance s, float w)[] odds =
         {
-            (Stance.Welcoming, (0.5f + temper.Openness) * (1f - 0.9f * fight)),
-            (Stance.Bargaining, (0.3f + 1.2f * (1f - MathF.Abs(t - 0.5f) * 2f)) * (1f - 0.9f * fight)),
+            (Stance.Welcoming, (0.5f + temper.Openness) * (1f - 0.9f * fight) * (1f - 0.5f * collapse)),
+            (Stance.Bargaining, (0.3f + 1.2f * (1f - MathF.Abs(t - 0.5f) * 2f)) * (1f - 0.9f * fight) * (1f - 0.5f * collapse)),
             (Stance.Guarded, 0.4f + 0.6f * (1f - MathF.Abs(t - 0.5f) * 2f) + 0.3f * temper.Territorial),
             (Stance.Wary, 0.3f + temper.Wariness),
             (Stance.Superstitious, 1.4f * (1f - t) * (0.4f + temper.Wariness)),

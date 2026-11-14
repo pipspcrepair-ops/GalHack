@@ -290,7 +290,7 @@ public partial class Game
             Stats.Kills++;
             Progress.Earn(s.Stats.Xp, $"{s.CommonName} brought down");
             // One of a band out on a town's ground that never came for you: its people hear of it.
-            if (s.Behaviour == Behaviour.Folk && c.Herd?.Band?.Temper.Stance is { } rolled && rolled != Stance.Hostile)
+            if (s.Behaviour == Behaviour.Folk && c.Herd?.Party?.Temper.Stance is { } rolled && rolled != Stance.Hostile)
                 Places?.TownHolding(Zone.Wildlife.WorldOf(c), BandReach)?.Did(Slice.Places.Deed.Kill);
         }
     }

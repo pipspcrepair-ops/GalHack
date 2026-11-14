@@ -153,7 +153,7 @@ public sealed class Creature
     /// <summary>A person in a fight: when it next looks for cover (its <see cref="Goal"/> while it has some).</summary>
     public float CoverIn;
     /// <summary>The band's last event this one has taken in (someone seen, a fright), and the last gesture of yours it answered.</summary>
-    public int BandSeen, Answered;
+    public int PartySeen, Answered;
 
     /// <summary>Scared off by something it can't fight (a flame): until this sim time it runs from <see cref="ScaredFrom"/>, whatever its temper.</summary>
     public float ScaredUntil = -999f;
@@ -336,7 +336,7 @@ public sealed class Herd
     public float UpdatedAt = -999f;
     public float Spread;
     /// <summary>People: the band they are, round a leader, and how they take to an outsider (null for animals).</summary>
-    public Band Band;
+    public Party Party;
 
     public int AliveCount
     {

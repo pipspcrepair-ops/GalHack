@@ -4,10 +4,10 @@ using Godot;
 namespace Wildlife;
 
 /// <summary>Where a band stands with an outsider now: going about their business, watching them, warning them off, in a fight, or running from something real.</summary>
-public enum BandMood { Easy, Watching, Warning, Fighting, Fleeing }
+public enum PartyMood { Easy, Watching, Warning, Fighting, Fleeing }
 
 /// <summary>What a band's members each take in, in their own time, the leader first.</summary>
-public enum BandEvent { None, Seen, Greet, Warn, Fight, Flee, Calm }
+public enum PartyEvent { None, Seen, Greet, Warn, Fight, Flee, Calm }
 
 /// <summary>
 /// A band of people out in the world (a hunting party, pilgrims, a patrol, raiders): they go about
@@ -18,12 +18,12 @@ public enum BandEvent { None, Seen, Greet, Warn, Fight, Flee, Calm }
 /// real threat. The leader reacts first, and the rest take it from them. Plain state: the brain
 /// (<see cref="Brain"/>) runs it.
 /// </summary>
-public sealed class Band
+public sealed class Party
 {
     /// <summary>The temper the band rolled; the stance it takes with you now (the roll moved by standing, hostile once turned).</summary>
     public Temper Temper;
     public Stance Stance;
-    public BandMood Mood;
+    public PartyMood Mood;
     public float MoodSince;
     /// <summary>Who they are dealing with, and whom they are fighting.</summary>
     public ITarget Outsider, Foe;
@@ -31,8 +31,9 @@ public sealed class Band
     public bool Turned;
     /// <summary>When they last knew where their foe or the outsider was.</summary>
     public float FoeSeen, OutsiderSeen;
-    /// <summary>The leader's warning: when, and how many given.</summary>
+    /// <summary>The leader's warning: when, where you stood, and how many given.</summary>
     public float WarnedAt = -999f;
+    public Vector3 WarnedFrom;
     public int Warnings;
     /// <summary>The leader came over to meet you, until when; you came within greeting this time.</summary>
     public float MeetUntil = -999f;
@@ -44,7 +45,7 @@ public sealed class Band
     public float BrokenUntil = -999f;
     /// <summary>The band's events: how many so far, the last, when the leader takes it in.</summary>
     public int Events;
-    public BandEvent Event;
+    public PartyEvent Event;
     public float LeaderReactsAt;
     /// <summary>A gesture of yours seen: which, how many so far, when, and what it pointed at; what it asks of them, until when.</summary>
     public PlayerGesture Heard;
@@ -60,11 +61,11 @@ public sealed class Band
     public Leaning Leaning => Temper.LeaningOf(Stance);
 
     /// <summary>A band's temper, from who they are (their world's tech and collapse, and their own makeup) and its own seed.</summary>
-    public static Band Roll(Species s, ulong seed)
+    public static Party Roll(Species s, ulong seed)
     {
         float lean = Lean(s, out float caution);
         Temper t = Temper.Roll(s.Tech, s.Collapse, seed, lean, caution);
-        return new Band { Temper = t, Stance = t.Stance };
+        return new Party { Temper = t, Stance = t.Stance };
     }
 
     /// <summary>

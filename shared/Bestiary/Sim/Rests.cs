@@ -116,7 +116,7 @@ public static partial class Brain
             Wake(w, c);
             return false;
         }
-        if ((c.Herd != null && (c.Herd.Alarmed || c.Herd.Band is { Mood: not BandMood.Easy })) || (c.Pack != null && c.Pack.Phase != PackPhase.Roam)) return false;
+        if ((c.Herd != null && (c.Herd.Alarmed || c.Herd.Party is { Mood: not PartyMood.Easy })) || (c.Pack != null && c.Pack.Phase != PackPhase.Roam)) return false;
         if (near != null && dist < r.WakeRadius * near.ThreatScale)
         {
             Wake(w, c);

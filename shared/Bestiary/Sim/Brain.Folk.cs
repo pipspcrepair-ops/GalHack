@@ -16,44 +16,44 @@ public static partial class Brain
     static readonly float AimCone = MathF.Cos(Mathf.DegToRad(7f));
 
     /// <summary>
-    /// One of a band of people (<see cref="Band"/>): the band decides, once a step, what it makes of
+    /// One of a band of people (<see cref="Party"/>): the band decides, once a step, what it makes of
     /// whoever is about; each member takes that in its own time (the leader first, the rest from it)
     /// and does its part: carries on, steps aside, watches and backs off, warns, fights, or runs.
     /// </summary>
     static void Folk(WildSim w, Creature c, float dt)
     {
         Herd h = c.Herd ?? Alone(w, c);
-        Band b = h.Band ??= Band.Roll(c.Species, Rng.Mix(c.Species.Seed, (ulong)c.Id));
+        Party b = h.Party ??= Party.Roll(c.Species, Rng.Mix(c.Species.Seed, (ulong)c.Id));
         UpdateHerd(w, h, dt);
         Creature lead = Leader(h) ?? c;
         UpdateBand(w, h, b, lead);
         c.WantAim = 0f;
         if (w.Time > c.ActUntil) c.Act = BodyAct.None;
         // Each takes in what the band does in its own time: the leader first, the rest once it has.
-        if (c.BandSeen != b.Events)
+        if (c.PartySeen != b.Events)
         {
-            c.BandSeen = b.Events;
+            c.PartySeen = b.Events;
             c.ReactAt = c == lead ? b.LeaderReactsAt : float.MaxValue;
         }
-        if (c != lead && c.ReactAt == float.MaxValue && lead.BandSeen == b.Events && lead.ReactedAt >= lead.ReactAt)
+        if (c != lead && c.ReactAt == float.MaxValue && lead.PartySeen == b.Events && lead.ReactedAt >= lead.ReactAt)
             c.ReactAt = lead.ReactedAt + Reaction.Delay(c, WildSim.Flat(lead.Position - c.Position).Length(), saw: c.Noticed != null);
         bool reacted = w.Time >= c.ReactAt;
         if (reacted && c.ReactedAt < c.ReactAt)
         {
             c.ReactedAt = w.Time;
-            if (c != lead) { if (lead.ReactedAt <= c.ReactedAt && lead.BandSeen == b.Events) b.AfterLeader++; else b.BeforeLeader++; }
+            if (c != lead) { if (lead.ReactedAt <= c.ReactedAt && lead.PartySeen == b.Events) b.AfterLeader++; else b.BeforeLeader++; }
             Took(w, c, b, c == lead);
         }
         Answer(w, c, b, lead);
-        if (b.Mood == BandMood.Fleeing)
+        if (b.Mood == PartyMood.Fleeing)
         {
             // Until it takes the fright in, the head comes round to it; then it runs with the band.
             if (reacted) WithHerd(w, c, h, h.Alarmed);
             else { c.SetState(CState.Idle); c.Desired = Vector3.Zero; c.LookAt = b.ThreatAt + Vector3.Up; }
             return;
         }
-        if (reacted && b.Mood == BandMood.Fighting && b.Foe != null) { Fight(w, c, b.Foe); return; }
-        if (reacted && b.Mood is BandMood.Watching or BandMood.Warning && b.Outsider != null)
+        if (reacted && b.Mood == PartyMood.Fighting && b.Foe != null) { Fight(w, c, b); return; }
+        if (reacted && b.Mood is PartyMood.Watching or PartyMood.Warning && b.Outsider != null)
         {
             if (b.Leaning == Leaning.Friendly) Easy(w, c, h, b, lead);
             else Watch(w, c, b, lead);
@@ -104,7 +104,7 @@ public static partial class Brain
 
     // ---- The band's mind, once a step --------------------------------------------------------
 
-    static void UpdateBand(WildSim w, Herd h, Band b, Creature lead)
+    static void UpdateBand(WildSim w, Herd h, Party b, Creature lead)
     {
         if (w.Time - b.UpdatedAt < 0.15f) return;
         b.UpdatedAt = w.Time;
@@ -130,17 +130,20 @@ public static partial class Brain
         ITarget t = b.Outsider;
         float d = t != null ? Nearest(h, t.Position) : float.MaxValue;
 
-        // Hurt: they turn on whoever did it (a band with no weapons runs from it), and never warm to them again.
+        // Hurt: they turn on whoever did it (a band with no weapons runs from it), and never warm to them again (an animal is only fought off).
         if (harm != null)
         {
-            b.Turned = true;
-            b.Stance = Stance.Hostile;
-            if (Temper.LeaningOf(b.Temper.Stance) == Leaning.Friendly) b.Temper.Stance = Stance.Wary;
+            if (harm is not CreatureTarget)
+            {
+                b.Turned = true;
+                b.Stance = Stance.Hostile;
+                if (Temper.LeaningOf(b.Temper.Stance) == Leaning.Friendly) b.Temper.Stance = Stance.Wary;
+            }
             if (armed) ToFight(w, h, b, lead, harm);
             else ToFlight(w, h, b, lead, harm.Position);
         }
         // Losing the fight: enough of them down or badly hurt, and the rest break and run.
-        if (b.Mood == BandMood.Fighting && lost >= Math.Max(1, (int)MathF.Ceiling(n * 0.5f)))
+        if (b.Mood == PartyMood.Fighting && lost >= Math.Max(1, (int)MathF.Ceiling(n * 0.5f)))
         {
             b.BrokenUntil = w.Time + 45f;
             ToFlight(w, h, b, lead, b.Foe?.Position ?? h.Center);
@@ -159,11 +162,11 @@ public static partial class Brain
 
         switch (b.Mood)
         {
-            case BandMood.Fleeing:
+            case PartyMood.Fleeing:
                 // Until the fright has passed (nothing new for a while), then they settle where they are.
-                if (!h.Alarmed) Settle(w, h, b, lead, t != null && w.Time - b.OutsiderSeen < 2f ? BandMood.Watching : BandMood.Easy);
+                if (!h.Alarmed) Settle(w, h, b, lead, t != null && w.Time - b.OutsiderSeen < 2f ? PartyMood.Watching : PartyMood.Easy);
                 return;
-            case BandMood.Fighting:
+            case PartyMood.Fighting:
             {
                 ITarget foe = b.Foe;
                 bool known = false;
@@ -173,7 +176,13 @@ public static partial class Brain
                 if (foe == null || !foe.Attackable || (foe.Health?.Downed ?? false) || w.Time - b.FoeSeen > 8f || WildSim.Flat(foe.Position - h.Center).Length() > 70f)
                 {
                     b.Foe = null;
-                    Settle(w, h, b, lead, BandMood.Easy);
+                    Settle(w, h, b, lead, PartyMood.Easy);
+                }
+                // A band that was only defending itself lets it go once you back off with your gun off them.
+                else if (b.Leaning != Leaning.Hostile && foe == t && d > WarnIn && !AimedAtAny(h, foe, AimReach))
+                {
+                    b.Foe = null;
+                    ToMood(w, h, b, lead, PartyMood.Watching, PartyEvent.Calm);
                 }
                 return;
             }
@@ -182,7 +191,7 @@ public static partial class Brain
         if (b.Turned && w.Time - b.FoeSeen > 60f) b.Turned = false;
         if (t == null || w.Time - b.OutsiderSeen > 4f || d > CalmOut)
         {
-            if (b.Mood != BandMood.Easy) Settle(w, h, b, lead, BandMood.Easy);
+            if (b.Mood != PartyMood.Easy) Settle(w, h, b, lead, PartyMood.Easy);
             b.Outsider = null;
             return;
         }
@@ -193,25 +202,26 @@ public static partial class Brain
                 break;
             case Leaning.Wary:
             {
-                // A gun drawn near them or on them, your threats, or coming on once warned: each is answered by the warning first, then by a fight.
-                bool provoked = t.Drawn && d < 15f || AimedAtAny(h, t, AimReach) || w.Time - b.Threatened < 3f || b.Warnings > 0 && d < PushIn;
-                if (b.Mood != BandMood.Warning && (d < WarnIn || provoked)) ToMood(w, h, b, lead, BandMood.Warning, BandEvent.Warn);
-                else if (b.Mood == BandMood.Warning && provoked && b.WarnedAt >= b.MoodSince && w.Time - b.WarnedAt > WarnHold)
+                // A gun drawn near them or on them, your threats, or coming on once warned (you, not one of them wandering your way): each is answered by the warning first, then by a fight.
+                bool coming = b.Warnings > 0 && d < PushIn && WildSim.Flat(b.WarnedFrom - h.Center).Length() - WildSim.Flat(t.Position - h.Center).Length() > 2f;
+                bool provoked = t.Drawn && d < 15f || AimedAtAny(h, t, AimReach) || w.Time - b.Threatened < 3f || coming;
+                if (b.Mood != PartyMood.Warning && (d < WarnIn || provoked)) ToMood(w, h, b, lead, PartyMood.Warning, PartyEvent.Warn);
+                else if (b.Mood == PartyMood.Warning && provoked && b.WarnedAt >= b.MoodSince && w.Time - b.WarnedAt > WarnHold)
                 {
                     b.Fights++;
                     ToFight(w, h, b, lead, t);
                 }
-                else if (b.Mood == BandMood.Warning && d > WarnIn + 6f && !provoked) ToMood(w, h, b, lead, BandMood.Watching, BandEvent.Calm);
-                else if (b.Mood == BandMood.Easy) ToMood(w, h, b, lead, BandMood.Watching, BandEvent.Seen);
+                else if (b.Mood == PartyMood.Warning && d > WarnIn + 6f && !provoked) ToMood(w, h, b, lead, PartyMood.Watching, PartyEvent.Calm);
+                else if (b.Mood == PartyMood.Easy) ToMood(w, h, b, lead, PartyMood.Watching, PartyEvent.Seen);
                 break;
             }
             default:
-                if (b.Mood == BandMood.Easy) ToMood(w, h, b, lead, BandMood.Watching, BandEvent.Seen);
+                if (b.Mood == PartyMood.Easy) ToMood(w, h, b, lead, PartyMood.Watching, PartyEvent.Seen);
                 // Close enough to greet: they do, and a warm leader comes over to meet you.
                 if (!b.Greeted && d < GreetIn)
                 {
                     b.Greeted = true;
-                    Event(w, b, lead, BandEvent.Greet);
+                    Event(w, b, lead, PartyEvent.Greet);
                     if (b.Stance is Stance.Welcoming or Stance.Bargaining && lead.Nerve > 0.45f) b.MeetUntil = w.Time + 12f;
                 }
                 if (d > 20f) b.MeetUntil = -999f; // (they don't follow you off)
@@ -231,7 +241,7 @@ public static partial class Brain
     /// to them); a gun held on them up close (a friendly band, held a moment or come close); a Husk, or
     /// an animal that could kill them, near. Where it is, and who or what.
     /// </summary>
-    static bool Danger(WildSim w, Herd h, Band b, ITarget t, float d, out Vector3 from, out ITarget shooter, out Creature beast)
+    static bool Danger(WildSim w, Herd h, Party b, ITarget t, float d, out Vector3 from, out ITarget shooter, out Creature beast)
     {
         from = default;
         shooter = null;
@@ -253,7 +263,7 @@ public static partial class Brain
                 }
             }
         }
-        if (t != null && b.Leaning == Leaning.Friendly && b.Mood != BandMood.Fleeing && AimedAtAny(h, t, AimClose))
+        if (t != null && b.Leaning == Leaning.Friendly && b.Mood != PartyMood.Fleeing && AimedAtAny(h, t, AimClose))
         {
             if (b.AimedSince < 0f) b.AimedSince = w.Time;
             if (w.Time - b.AimedSince > 2.5f || d < 6f) { from = t.Position; return true; }
@@ -271,7 +281,7 @@ public static partial class Brain
         return CrossReactions.Respond(beast.Species, Leader(h).Species.Figure, b.Temper, Leader(h).Nerve, best) is Response.Fight or Response.Flee or Response.Barricade;
     }
 
-    static void Event(WildSim w, Band b, Creature lead, BandEvent e)
+    static void Event(WildSim w, Party b, Creature lead, PartyEvent e)
     {
         b.Events++;
         b.Event = e;
@@ -280,81 +290,82 @@ public static partial class Brain
         lead.ThinkEvery = 0f;
     }
 
-    static void ToMood(WildSim w, Herd h, Band b, Creature lead, BandMood mood, BandEvent e)
+    static void ToMood(WildSim w, Herd h, Party b, Creature lead, PartyMood mood, PartyEvent e)
     {
         b.Mood = mood;
         b.MoodSince = w.Time;
         Event(w, b, lead, e);
     }
 
-    static void ToFight(WildSim w, Herd h, Band b, Creature lead, ITarget foe)
+    static void ToFight(WildSim w, Herd h, Party b, Creature lead, ITarget foe)
     {
         b.Foe = foe;
         b.FoeSeen = w.Time;
         h.Alarmed = false;
-        if (b.Mood != BandMood.Fighting) ToMood(w, h, b, lead, BandMood.Fighting, BandEvent.Fight);
+        if (b.Mood != PartyMood.Fighting) ToMood(w, h, b, lead, PartyMood.Fighting, PartyEvent.Fight);
     }
 
-    static void ToFlight(WildSim w, Herd h, Band b, Creature lead, Vector3 from)
+    static void ToFlight(WildSim w, Herd h, Party b, Creature lead, Vector3 from)
     {
         b.ThreatAt = from;
         h.Alarm(from, w.Time);
-        if (b.Mood != BandMood.Fleeing) ToMood(w, h, b, lead, BandMood.Fleeing, BandEvent.Flee);
+        if (b.Mood != PartyMood.Fleeing) ToMood(w, h, b, lead, PartyMood.Fleeing, PartyEvent.Flee);
     }
 
-    static void Settle(WildSim w, Herd h, Band b, Creature lead, BandMood mood)
+    static void Settle(WildSim w, Herd h, Party b, Creature lead, PartyMood mood)
     {
         b.Greeted = false;
         b.MeetUntil = -999f;
         b.AimedSince = -1f;
-        ToMood(w, h, b, lead, mood, BandEvent.Calm);
+        ToMood(w, h, b, lead, mood, PartyEvent.Calm);
     }
 
     // ---- Each member's part ------------------------------------------------------------------
 
     /// <summary>What a body does as it takes the band's news in: the leader points out who is there to the rest, greets, warns or calls the fight; the frightened panic.</summary>
-    static void Took(WildSim w, Creature c, Band b, bool leader)
+    static void Took(WildSim w, Creature c, Party b, bool leader)
     {
         Figure f = c.Species.Figure;
         if (f == null) return;
         switch (b.Event)
         {
-            case BandEvent.Seen:
+            case PartyEvent.Seen:
                 if (leader && b.Leaning != Leaning.Friendly) Hold(w, c, BodyAct.Point, 1.2f);
                 break;
-            case BandEvent.Greet:
+            case PartyEvent.Greet:
                 if (leader || c.Nerve > 0.4f) Hold(w, c, Temper.ActFor(leader ? b.Stance : b.Temper.PersonStance(c.Rng), f.Approach), 2.6f);
                 break;
-            case BandEvent.Warn:
+            case PartyEvent.Warn:
                 if (leader)
                 {
                     // The warning, with a shout: it comes before anything else.
                     Hold(w, c, BodyAct.Warn, 2.4f);
                     b.WarnedAt = w.Time;
+                    b.WarnedFrom = b.Outsider?.Position ?? c.Position;
                     b.Warnings++;
                     w.RaiseWarned(c);
                 }
                 else if (c.Nerve > 0.5f) Hold(w, c, BodyAct.WaveOff, 1.8f);
                 break;
-            case BandEvent.Fight:
+            case PartyEvent.Fight:
                 if (leader)
                 {
                     Hold(w, c, f.Approach == BodyAct.Taunt ? BodyAct.Taunt : BodyAct.Point, 1f);
                     w.RaiseWarned(c);
                 }
                 break;
-            case BandEvent.Flee:
+            case PartyEvent.Flee:
                 if (c.Nerve < 0.4f || f.Stage == LifeStage.Child) Hold(w, c, BodyAct.Panic, 2f);
                 else c.Act = BodyAct.None;
                 break;
-            case BandEvent.Calm:
+            case PartyEvent.Calm:
                 c.Act = BodyAct.None;
                 break;
         }
     }
 
     /// <summary>Going about what they were: with the band to its goal, standing about between; stopped when you asked them to; looking where you pointed.</summary>
-    static void CarryOn(WildSim w, Creature c, Herd h, Band b)
+    static void CarryOn(WildSim w, Creature c, Herd h, Party b)
     {
         if (w.Time < b.HoldUntil)
         {
@@ -374,7 +385,7 @@ public static partial class Brain
     /// one with a gun held on them puts its hands up and keeps still; you come too close and they step
     /// aside, out of your way; their leader may come over to meet you.
     /// </summary>
-    static void Easy(WildSim w, Creature c, Herd h, Band b, Creature lead)
+    static void Easy(WildSim w, Creature c, Herd h, Party b, Creature lead)
     {
         ITarget t = b.Outsider;
         Vector3 to = WildSim.Flat(t.Position - c.Position);
@@ -429,12 +440,12 @@ public static partial class Brain
     }
 
     /// <summary>A wary band with you about: stopped, facing you, hands to their weapons (up, once warned); too close and they back off with their eyes on you; the leader holds its warning up.</summary>
-    static void Watch(WildSim w, Creature c, Band b, Creature lead)
+    static void Watch(WildSim w, Creature c, Party b, Creature lead)
     {
         ITarget t = b.Outsider;
         Vector3 to = WildSim.Flat(t.Position - c.Position);
         float d = to.Length();
-        bool warning = b.Mood == BandMood.Warning;
+        bool warning = b.Mood == PartyMood.Warning;
         c.SetState(warning && c == lead ? CState.Warn : CState.Guard);
         c.FacePoint = t.Position;
         c.LookAt = t.Position + Vector3.Up * 1.5f;
@@ -452,11 +463,13 @@ public static partial class Brain
     /// <summary>
     /// In a fight: the young and the faint-hearted with nothing to fight with keep out of it; a gun
     /// is raised and fired from cover where there is some close by (beside a rock or a trunk, round
-    /// from straight behind it so the shot clears its edge); the rest close in. Every attack still
-    /// opens with its telegraph.
+    /// from straight behind it so the shot clears its edge); the rest close in. A band that isn't
+    /// hostile (a wary one you pushed) only defends itself: it holds its ground and fights you where
+    /// you stand, and never comes after you. Every attack still opens with its telegraph.
     /// </summary>
-    static void Fight(WildSim w, Creature c, ITarget foe)
+    static void Fight(WildSim w, Creature c, Party b)
     {
+        ITarget foe = b.Foe;
         Figure f = c.Species.Figure;
         float d = WildSim.Flat(foe.Position - c.Position).Length();
         if (f != null && !Weapons.Armed(f.Prop) && (f.Stage == LifeStage.Child || c.Nerve < 0.4f))
@@ -466,11 +479,20 @@ public static partial class Brain
             return;
         }
         c.LookAt = foe.Position + Vector3.Up * 1.4f;
-        if (f != null && Weapons.Ranged(f.Prop) && Arming.ShootReach(c, foe) is var reach && reach > 0f)
+        float reach = f != null && Weapons.Ranged(f.Prop) ? Arming.ShootReach(c, foe) : 0f;
+        if (reach > 0f)
         {
             c.WantAim = 1f;
             if (Cover(w, c, foe, reach)) return;
             if (!c.Attacking && c.Phase == AttackPhase.None && c.HasGoal) c.WantCrouch = 0.5f; // low at its cover between shots
+        }
+        else if (b.Leaning != Leaning.Hostile && foe == b.Outsider && d > PushIn + 1f)
+        {
+            c.SetState(CState.Guard);
+            c.Desired = Vector3.Zero;
+            c.FacePoint = foe.Position;
+            if (f != null && Weapons.Armed(f.Prop)) c.WantAim = 0.8f;
+            return;
         }
         Hunt(w, c, foe, d);
     }
@@ -521,22 +543,22 @@ public static partial class Brain
     }
 
     /// <summary>Answering a gesture of yours in its own time, with its body; the leader's answer is what the band does about it.</summary>
-    static void Answer(WildSim w, Creature c, Band b, Creature lead)
+    static void Answer(WildSim w, Creature c, Party b, Creature lead)
     {
         if (c.Answered == b.Gestures) return;
         float d = WildSim.Flat(b.HeardFrom - c.Position).Length();
         if (w.Time < b.HeardAt + 0.25f + (1f - c.Nerve) * 0.5f + d * 0.02f) return;
         c.Answered = b.Gestures;
         if (d > SeeGesture || c.Species.Figure is not { } f) return;
-        var (reply, effect) = Gestures.Answer(b.Heard, b.Stance, f.Role, w.StandingAt?.Invoke(c.Position) ?? 0f, b.Mood == BandMood.Fighting || b.Leaning == Leaning.Hostile, c.Nerve);
+        var (reply, effect) = Gestures.Answer(b.Heard, b.Stance, f.Role, w.StandingAt?.Invoke(c.Position) ?? 0f, b.Mood == PartyMood.Fighting || b.Leaning == Leaning.Hostile, c.Nerve);
         if (reply != BodyAct.None) Hold(w, c, reply, 2.6f);
         if (c != lead) return;
         switch (effect)
         {
             case GestureEffect.Calm:
                 // Hands up: guns come down; a band you only crossed lets it go (one you hurt stays wary of you).
-                if (b.Mood == BandMood.Fighting && b.Temper.Stance != Stance.Hostile && b.Foe == b.Outsider) { b.Turned = false; b.Foe = null; ToMood(w, c.Herd, b, lead, BandMood.Watching, BandEvent.Calm); }
-                else if (b.Mood == BandMood.Warning) b.Mood = BandMood.Watching;
+                if (b.Mood == PartyMood.Fighting && b.Temper.Stance != Stance.Hostile && b.Foe == b.Outsider) { b.Turned = false; b.Foe = null; ToMood(w, c.Herd, b, lead, PartyMood.Watching, PartyEvent.Calm); }
+                else if (b.Mood == PartyMood.Warning) b.Mood = PartyMood.Watching;
                 b.Threatened = -999f;
                 break;
             case GestureEffect.Keep: b.HoldUntil = w.Time + 4f; break;
@@ -552,7 +574,7 @@ public static partial class Brain
     {
         foreach (Herd h in w.Herds)
         {
-            if (h.Band is not { } b) continue;
+            if (h.Party is not { } b) continue;
             foreach (Creature m in h.Members)
             {
                 if (m.Dead || m.Removed) continue;
