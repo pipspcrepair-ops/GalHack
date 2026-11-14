@@ -112,7 +112,7 @@ public partial class TerrainStreamer : Node3D
     /// <summary>The GPU rings (<see cref="ClipGround"/>) and their material.</summary>
     public ClipGround Clip { get; private set; }
     public ShaderMaterial ClipMaterial { get; private set; }
-    bool _showGpu = Ground == FarGround.Gpu;
+    bool _showGpu = Ground != FarGround.Meshes;
 
     /// <summary>Which far ground shows when both are built (A/B shots).</summary>
     public bool ShowGpu
@@ -953,7 +953,7 @@ public partial class TerrainStreamer : Node3D
                 WorstFarNodeMs = nodeMs;
                 int flora = 0;
                 foreach (var (_, _, count) in job.Flora) flora += count;
-                WorstFarNode = $"lod {job.Lod}, {job.Vertices.Length} vertices, {job.Flora.Count} flora kinds with {flora} instances, water {job.WaterVertices?.Length ?? 0}";
+                WorstFarNode = $"lod {job.Lod}, {job.Vertices?.Length ?? 0} vertices, {job.Flora.Count} flora kinds with {flora} instances, water {job.WaterVertices?.Length ?? 0}";
             }
             f.Lod = job.Lod;
             f.Solids = job.Solids;
@@ -1465,7 +1465,7 @@ public partial class TerrainStreamer : Node3D
     public IEnumerable<(ArrayMesh Mesh, Vector3 At, int Lod)> DrawnFar()
     {
         foreach (FarChunk f in _far.Values)
-            if (f.Node != null && f.Node.GetChild(0) is MeshInstance3D { Mesh: ArrayMesh mesh }) yield return (mesh, f.Node.Position, f.Lod);
+            if (f.Node != null && f.Node.GetChildCount() > 0 && f.Node.GetChild(0) is MeshInstance3D { Mesh: ArrayMesh mesh } m && m.MaterialOverride == FarMaterial) yield return (mesh, f.Node.Position, f.Lod);
     }
 
     /// <summary>The horizon's mesh and where it stands in the frame. Null until it is built.</summary>

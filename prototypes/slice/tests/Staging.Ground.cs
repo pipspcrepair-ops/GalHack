@@ -60,7 +60,8 @@ public sealed partial class Staging
             ("range3k", Lift(peak - way * 3000f, 80f), peak, day),
             ("range5k", Lift(peak - way * 5000f, 150f), peak, day),
             ("flyover", Lift(start, 60f), Lift(start + way * 300f, 0f), day),
-            ("meeting", Lift(start, 1.8f), Lift(start + way * 110f, 0f), day),
+            ("meeting", Lift(start + way * 300f, 1.8f), Lift(start + way * 410f, 0f), day),
+            ("meeting-up", Lift(start + way * 300f, 25f), Lift(start + way * 400f, 0f), day),
             ("night", Lift(start, 40f), peak, Num("night", 0.97)),
         };
         if (road is { } rd) views.Add(("road", Lift(start + (rd - start).Normalized() * 100f, 120f), Lift(rd, 0f), day));

@@ -157,7 +157,7 @@ public static class FarBuilder
                     float gx = (height[s + 1] - height[s - 1]) / (2f * step), gz = (height[s + g] - height[s - g]) / (2f * step);
                     facing[j * grid.Nx + i] = 1f / MathF.Sqrt(1f + gx * gx + gz * gz);
                 }
-                ReliefField lattice = Relief(job, grid, step, x0, z0, height, source);
+                ReliefField lattice = Relief(job.SpanX, job.SpanZ, grid, step, x0, z0, height, source);
                 Lap(ref lap, 2);
                 BuildRiverWater(job, grid, step, level, river, height, source, x0, z0);
                 Lap(ref lap, 5);
@@ -169,82 +169,13 @@ public static class FarBuilder
             }
 
             // A curtain has two rows of vertices along each edge: it is painted apart from the ground.
-            int points = grid.Nx * grid.Nz, skirt = 2 * (grid.Nx + grid.Nz);
-            job.Vertices = new Vector3[points + skirt * 2];
-            job.Normals = new Vector3[points + skirt * 2];
-            job.Colors = new Color[points + skirt * 2];
-            job.Flags = new Vector2[points + skirt * 2];
-            var up = new float[points];
-
-            // Beside a cliff the grid's points slide onto it (Slides), each still a true sample of the ground.
-            var slideX = new float[points];
-            var slideZ = new float[points];
-            var drop = new float[points];
-            Slides(grid, step, x0, z0, height, river, source, slideX, slideZ, drop);
-            var drawn = new float[points];
-            void Place(int k)
-            {
-                int i = k % grid.Nx, j = k / grid.Nx;
-                double x = x0 + i * step, z = z0 + j * step;
-                drawn[k] = slideX[k] == 0f && slideZ[k] == 0f ? height[grid.Sample(i, j)]
-                    : source.Ground(Slid(x, slideX[k], step), Slid(z, slideZ[k], step), step).Height;
-                job.Vertices[k] = new Vector3((i + slideX[k]) * step, drawn[k], (j + slideZ[k]) * step);
-            }
-            for (int k = 0; k < points; k++)
-            {
-                Place(k);
-                // A point that slid off its own top or foot onto the face eases back (Drift).
-                float was = height[grid.Sample(k % grid.Nx, k / grid.Nx)];
-                for (int n = 0; (slideX[k] != 0f || slideZ[k] != 0f) && MathF.Abs(drawn[k] - was) > Drift(drop[k]); n++)
-                {
-                    float keep = n + 1 < Eases ? 0.5f : 0f;
-                    slideX[k] *= keep;
-                    slideZ[k] *= keep;
-                    Place(k);
-                }
-            }
-            int[] split = Triangulate(job, grid, step, slideX, slideZ, Place);
+            int skirt = 2 * (grid.Nx + grid.Nz);
+            Surface surface = Shape(grid, job.SpanX, job.SpanZ, step, x0, z0, height, river, source, palette, fixedSplit: false, extra: skirt * 2);
+            (job.Vertices, job.Normals, job.Colors, job.Flags, job.Relief) = (surface.Vertices, surface.Normals, surface.Colors, surface.Flags, surface.Relief);
+            List<int> indices = surface.Indices;
+            float[] up = surface.Up;
+            ReliefField relief = surface.Field;
             Lap(ref lap, 1);
-            job.Relief = new Vector2[points + skirt * 2];
-            ReliefField relief = Relief(job, grid, step, x0, z0, height, source);
-            for (int k = 0; k < points; k++)
-            {
-                Vector3 v = job.Vertices[k];
-                job.Relief[k] = relief.At(v.X, v.Z, v.Y);
-            }
-            Lap(ref lap, 2);
-
-            for (int j = 0; j < grid.Nz; j++)
-            for (int i = 0; i < grid.Nx; i++)
-            {
-                int k = j * grid.Nx + i, s = grid.Sample(i, j);
-                float h = drawn[k];
-                float gx = (height[s + 1] - height[s - 1]) / (2f * step), gz = (height[s + g] - height[s - g]) / (2f * step);
-                var normal = new Vector3(-gx, 1f, -gz).Normalized();
-                double x = Slid(x0 + i * step, slideX[k], step), z = Slid(z0 + j * step, slideZ[k], step);
-                job.Normals[k] = normal;
-                job.Colors[k] = GroundColor(source, palette, x, z, h, CliffSlope2(height, s, g, step, gx * gx + gz * gz), river[s], out job.Flags[k], step);
-                up[k] = normal.Y;
-            }
-            Lap(ref lap, 3);
-
-            var indices = new List<int>((grid.Nx - 1) * (grid.Nz - 1) * 6 + skirt * 12);
-            for (int j = 0; j < grid.Nz - 1; j++)
-            for (int i = 0; i < grid.Nx - 1; i++)
-            {
-                int a = j * grid.Nx + i, b = a + 1, c = a + grid.Nx, d = c + 1;
-                if (split[j * (grid.Nx - 1) + i] == 0)
-                {
-                    indices.Add(a); indices.Add(b); indices.Add(c);
-                    indices.Add(b); indices.Add(d); indices.Add(c);
-                }
-                else
-                {
-                    indices.Add(a); indices.Add(b); indices.Add(d);
-                    indices.Add(a); indices.Add(d); indices.Add(c);
-                }
-            }
-            CliffNormals(job, grid, step, height, indices);
             AddCurtains(job, grid, step, indices, source, palette, x0, z0);
             job.Indices = indices.ToArray();
             Lap(ref lap, 4);
@@ -260,6 +191,101 @@ public static class FarBuilder
         {
             job.Error = e;
         }
+    }
+
+    /// <summary>The ground over a grid as it is drawn: each point slid onto the cliffs beside it, its normal, colour, glow and relief; the triangles, and the relief lattice and how far each point faces up (flora reads them).</summary>
+    internal sealed class Surface
+    {
+        public Vector3[] Vertices, Normals;
+        public Color[] Colors;
+        public Vector2[] Flags, Relief;
+        public float[] Up;
+        public List<int> Indices;
+        public ReliefField Field;
+    }
+
+    /// <summary>
+    /// Shapes the ground over a grid of points <paramref name="step"/> apart from (x0, z0), its heights sampled with a ring
+    /// round it. Each square is split along whichever diagonal follows the ground, or with <paramref name="fixedSplit"/>
+    /// always along the grid's own (b-c), its points easing off their cliffs where that one can't be drawn.
+    /// <paramref name="extra"/> vertices are left free at the end (curtains).
+    /// </summary>
+    internal static Surface Shape(Grid grid, int spanX, int spanZ, float step, double x0, double z0, float[] height, bool[] river, PlanetTerrainSource source, GroundPalette palette, bool fixedSplit, int extra)
+    {
+        int points = grid.Nx * grid.Nz, g = grid.G;
+        var surface = new Surface
+        {
+            Vertices = new Vector3[points + extra], Normals = new Vector3[points + extra], Colors = new Color[points + extra],
+            Flags = new Vector2[points + extra], Relief = new Vector2[points + extra], Up = new float[points],
+        };
+        Vector3[] vertices = surface.Vertices;
+
+        // Beside a cliff the grid's points slide onto it (Slides), each still a true sample of the ground.
+        var slideX = new float[points];
+        var slideZ = new float[points];
+        var drop = new float[points];
+        Slides(grid, step, x0, z0, height, river, source, slideX, slideZ, drop);
+        var drawn = new float[points];
+        void Place(int k)
+        {
+            int i = k % grid.Nx, j = k / grid.Nx;
+            double x = x0 + i * step, z = z0 + j * step;
+            drawn[k] = slideX[k] == 0f && slideZ[k] == 0f ? height[grid.Sample(i, j)]
+                : source.Ground(Slid(x, slideX[k], step), Slid(z, slideZ[k], step), step).Height;
+            vertices[k] = new Vector3((i + slideX[k]) * step, drawn[k], (j + slideZ[k]) * step);
+        }
+        for (int k = 0; k < points; k++)
+        {
+            Place(k);
+            // A point that slid off its own top or foot onto the face eases back (Drift).
+            float was = height[grid.Sample(k % grid.Nx, k / grid.Nx)];
+            for (int n = 0; (slideX[k] != 0f || slideZ[k] != 0f) && MathF.Abs(drawn[k] - was) > Drift(drop[k]); n++)
+            {
+                float keep = n + 1 < Eases ? 0.5f : 0f;
+                slideX[k] *= keep;
+                slideZ[k] *= keep;
+                Place(k);
+            }
+        }
+        int[] split = Triangulate(vertices, grid, step, slideX, slideZ, Place, fixedSplit);
+        surface.Field = Relief(spanX, spanZ, grid, step, x0, z0, height, source);
+        for (int k = 0; k < points; k++)
+        {
+            Vector3 v = vertices[k];
+            surface.Relief[k] = surface.Field.At(v.X, v.Z, v.Y);
+        }
+
+        double w = palette.Map.WidthMeters, h = palette.Map.HeightMeters;
+        for (int j = 0; j < grid.Nz; j++)
+        for (int i = 0; i < grid.Nx; i++)
+        {
+            int k = j * grid.Nx + i, s = grid.Sample(i, j);
+            float gx = (height[s + 1] - height[s - 1]) / (2f * step), gz = (height[s + g] - height[s - g]) / (2f * step);
+            var normal = new Vector3(-gx, 1f, -gz).Normalized();
+            double x = Mathx.WrapX(Slid(x0 + i * step, slideX[k], step), w), z = Mathx.Wrap(Slid(z0 + j * step, slideZ[k], step), h);
+            surface.Normals[k] = normal;
+            surface.Colors[k] = GroundColor(source, palette, x, z, drawn[k], CliffSlope2(height, s, g, step, gx * gx + gz * gz), river[s], out surface.Flags[k], step);
+            surface.Up[k] = normal.Y;
+        }
+
+        var indices = surface.Indices = new List<int>((grid.Nx - 1) * (grid.Nz - 1) * 6 + extra * 6);
+        for (int j = 0; j < grid.Nz - 1; j++)
+        for (int i = 0; i < grid.Nx - 1; i++)
+        {
+            int a = j * grid.Nx + i, b = a + 1, c = a + grid.Nx, d = c + 1;
+            if (split[j * (grid.Nx - 1) + i] == 0)
+            {
+                indices.Add(a); indices.Add(b); indices.Add(c);
+                indices.Add(b); indices.Add(d); indices.Add(c);
+            }
+            else
+            {
+                indices.Add(a); indices.Add(b); indices.Add(d);
+                indices.Add(a); indices.Add(d); indices.Add(c);
+            }
+        }
+        CliffNormals(vertices, surface.Normals, grid, step, height, indices);
+        return surface;
     }
 
     /// <summary>
@@ -305,8 +331,11 @@ public static class FarBuilder
     }
 
     /// <summary>A chunk's grid points each way, and its sampled grid: one more sample beyond each edge, for normals.</summary>
-    readonly record struct Grid(int Nx, int Nz)
+    internal readonly record struct Grid(int Nx, int Nz, int At = 0)
     {
+        /// <summary>Whether a grid index is off the lines a point may only slide along: <see cref="At"/> is where the first point stands among them.</summary>
+        public bool OffLine(int i, int per) => ((i + At) % per + per) % per != 0;
+
         /// <summary>The sampled grid's row length.</summary>
         public int G => Nx + 2;
 
@@ -352,10 +381,11 @@ public static class FarBuilder
     /// (<see cref="PlanetTerrainSource.Relief"/>), taken between the lattice points under each vertex.
     /// The lattice reuses the chunk's own samples where it falls on them.
     /// </summary>
-    static ReliefField Relief(FarJob job, Grid grid, float step, double x0, double z0, float[] height, PlanetTerrainSource source)
+    static ReliefField Relief(int spanX, int spanZ, Grid grid, float step, double x0, double z0, float[] height, PlanetTerrainSource source)
     {
-        const int L = PlanetTerrainSource.ReliefStep, R = PlanetTerrainSource.ReliefReach;
-        int la = job.SpanX / L + 1, lb = job.SpanZ / L + 1, wa = la + 2 * R, wb = lb + 2 * R;
+        // (A grid coarser than the lattice is its own lattice, a step each way.)
+        int L = Math.Max(PlanetTerrainSource.ReliefStep, (int)step), R = Math.Max(1, PlanetTerrainSource.ReliefStep * PlanetTerrainSource.ReliefReach / L);
+        int la = spanX / L + 1, lb = spanZ / L + 1, wa = la + 2 * R, wb = lb + 2 * R;
         int per = Math.Max(1, (int)MathF.Round(L / step));
         var wide = new float[wa * wb];
         for (int b = 0; b < wb; b++)
@@ -382,7 +412,7 @@ public static class FarBuilder
             hi[b * la + a] = top;
             lo[b * la + a] = bottom;
         }
-        return new ReliefField(hi, lo, la, lb);
+        return new ReliefField(hi, lo, la, lb, L);
     }
 
     /// <summary>
@@ -392,7 +422,7 @@ public static class FarBuilder
     /// chunk, a point beside a steep edge takes the normal of the triangles it is a corner of, weighted by
     /// their area. On the chunk's border the slope's normal stays, as the chunk next door has it.
     /// </summary>
-    static void CliffNormals(FarJob job, Grid grid, float step, float[] height, List<int> indices)
+    static void CliffNormals(Vector3[] vertices, Vector3[] normals, Grid grid, float step, float[] height, List<int> indices)
     {
         int nx = grid.Nx, nz = grid.Nz, g = grid.G;
         var cliff = new bool[nx * nz];
@@ -412,7 +442,7 @@ public static class FarBuilder
         {
             int a = indices[t], b = indices[t + 1], c = indices[t + 2];
             if (!cliff[a] && !cliff[b] && !cliff[c]) continue;
-            Vector3 pa = job.Vertices[a], pb = job.Vertices[b], pc = job.Vertices[c];
+            Vector3 pa = vertices[a], pb = vertices[b], pc = vertices[c];
             // Wound so the ground's top faces up: (c - a) x (b - a) is outward.
             Vector3 n = (pc - pa).Cross(pb - pa);
             sum[a] += n;
@@ -420,16 +450,15 @@ public static class FarBuilder
             sum[c] += n;
         }
         for (int k = 0; k < sum.Length; k++)
-            if (cliff[k] && sum[k].LengthSquared() > 1e-12f) job.Normals[k] = sum[k].Normalized();
+            if (cliff[k] && sum[k].LengthSquared() > 1e-12f) normals[k] = sum[k].Normalized();
     }
 
     /// <summary>The highest and lowest ground round each point of a chunk's 8 m relief lattice.</summary>
-    sealed record ReliefField(float[] Hi, float[] Lo, int La, int Lb)
+    internal sealed record ReliefField(float[] Hi, float[] Lo, int La, int Lb, int L)
     {
         /// <summary>How far the ground rises above a height and falls below it at a point of the chunk (m from its corner).</summary>
         public Vector2 At(float u, float v, float y)
         {
-            const int L = PlanetTerrainSource.ReliefStep;
             float gx = Math.Clamp(u / L, 0f, La - 1.001f), gz = Math.Clamp(v / L, 0f, Lb - 1.001f);
             int i = (int)gx, j = (int)gz;
             float tx = gx - i, tz = gz - j;
@@ -487,7 +516,7 @@ public static class FarBuilder
         for (int j = 0; j < nz; j++)
         for (int i = 0; i + 1 < nx; i++)
         {
-            bool fromA = i % per != 0, fromB = (i + 1) % per != 0;
+            bool fromA = grid.OffLine(i, per), fromB = grid.OffLine(i + 1, per);
             if (!fromA && !fromB) continue;
             int sa = grid.Sample(i, j), sb = sa + 1;
             if (!Steep(height[sa], height[sb], step)) continue;
@@ -501,7 +530,7 @@ public static class FarBuilder
         for (int j = 0; j + 1 < nz; j++)
         for (int i = 0; i < nx; i++)
         {
-            bool fromA = j % per != 0, fromB = (j + 1) % per != 0;
+            bool fromA = grid.OffLine(j, per), fromB = grid.OffLine(j + 1, per);
             if (!fromA && !fromB) continue;
             int sa = grid.Sample(i, j), sb = sa + g;
             if (!Steep(height[sa], height[sb], step)) continue;
@@ -584,14 +613,14 @@ public static class FarBuilder
     /// slides of the square's points ease off until one can. A chunk border's points keep their slides
     /// (the chunk next door draws them too): with only those, both splits are always sound.
     /// </summary>
-    static int[] Triangulate(FarJob job, Grid grid, float step, float[] sx, float[] sz, Action<int> place)
+    static int[] Triangulate(Vector3[] vertices, Grid grid, float step, float[] sx, float[] sz, Action<int> place, bool fixedSplit)
     {
         int nx = grid.Nx, nz = grid.Nz;
         var split = new int[(nx - 1) * (nz - 1)];
         float least = 0.002f * step * step;
         float Area(int p, int q, int r)
         {
-            Vector3 a = job.Vertices[p], b = job.Vertices[q], c = job.Vertices[r];
+            Vector3 a = vertices[p], b = vertices[q], c = vertices[r];
             return (b.X - a.X) * (c.Z - a.Z) - (b.Z - a.Z) * (c.X - a.X);
         }
         var ease = new HashSet<int>();
@@ -603,9 +632,9 @@ public static class FarBuilder
             {
                 int a = j * nx + i, b = a + 1, c = a + nx, d = c + 1;
                 bool bc = Area(a, b, c) > least && Area(b, d, c) > least;
-                bool ad = Area(a, b, d) > least && Area(a, d, c) > least;
+                bool ad = !fixedSplit && Area(a, b, d) > least && Area(a, d, c) > least;
                 if (bc && ad)
-                    split[j * (nx - 1) + i] = (job.Vertices[b] - job.Vertices[c]).LengthSquared() <= (job.Vertices[a] - job.Vertices[d]).LengthSquared() ? 0 : 1;
+                    split[j * (nx - 1) + i] = (vertices[b] - vertices[c]).LengthSquared() <= (vertices[a] - vertices[d]).LengthSquared() ? 0 : 1;
                 else if (bc || ad) split[j * (nx - 1) + i] = bc ? 0 : 1;
                 else
                 {

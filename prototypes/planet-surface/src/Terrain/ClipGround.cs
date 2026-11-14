@@ -49,8 +49,10 @@ public sealed partial class ClipGround : Node3D
     sealed class Level
     {
         public float S;
-        /// <summary>Per texel: height, the highest and lowest ground round it (levels from 2 on), glow.</summary>
+        /// <summary>Per texel: the drawn height, how far the ground rises above it and falls below it within 16 m (the rock's cliff top and foot), glow.</summary>
         public readonly float[] Data = new float[Texels * Texels * 4];
+        /// <summary>Per texel: the normal's x and z, and how far the point slides onto the cliff beside it, in grid steps along x and z.</summary>
+        public readonly Half[] Shape = new Half[Texels * Texels * 4];
         public readonly Half[] Color = new Half[Texels * Texels * 4];
         /// <summary>Per slot: the tile it holds (canonical-free clip coordinates, in tiles), whether it is in, and its fill's version.</summary>
         public readonly (int X, int Z)[] Held = new (int, int)[Tiles * Tiles];
@@ -65,7 +67,7 @@ public sealed partial class ClipGround : Node3D
     {
         public int Level, Slot, Version, Tx, Tz;
         public float[] Data;
-        public Half[] Color;
+        public Half[] Shape, Color;
         public Exception Error;
     }
 
@@ -86,8 +88,6 @@ public sealed partial class ClipGround : Node3D
     int _inFlight;
     static readonly ArrayMesh BlockMesh = MakeBlock();
     RenderingDevice _rd;
-    Rid _dataTex, _colorTex, _dataStage, _colorStage;
-    Texture2DArrayRD _dataArray, _colorArray;
 
     /// <summary>The levels of this world: how many rings.</summary>
     public int Levels => _levels?.Length ?? 0;
@@ -216,6 +216,7 @@ public sealed partial class ClipGround : Node3D
             for (int j = 0; j < Tile; j++)
             {
                 Array.Copy(job.Data, j * Tile * 4, lv.Data, ((sz + j) * Texels + sx) * 4, Tile * 4);
+                Array.Copy(job.Shape, j * Tile * 4, lv.Shape, ((sz + j) * Texels + sx) * 4, Tile * 4);
                 Array.Copy(job.Color, j * Tile * 4, lv.Color, ((sz + j) * Texels + sx) * 4, Tile * 4);
             }
             if (_rd == null) lv.State[job.Slot] = In; // no graphics card to send it to (headless): the copy here is all there is
@@ -229,6 +230,7 @@ public sealed partial class ClipGround : Node3D
         if (_ready.Count == 0) return;
         int n = Math.Min(_ready.Count, Uploads), row = Tile * Uploads;
         var data = new float[row * Tile * 4];
+        var shape = new Half[row * Tile * 4];
         var color = new Half[row * Tile * 4];
         var copies = new (uint Level, Vector3 To)[n];
         int sent = 0;
@@ -240,6 +242,7 @@ public sealed partial class ClipGround : Node3D
             for (int j = 0; j < Tile; j++)
             {
                 Array.Copy(job.Data, j * Tile * 4, data, (j * row + sent * Tile) * 4, Tile * 4);
+                Array.Copy(job.Shape, j * Tile * 4, shape, (j * row + sent * Tile) * 4, Tile * 4);
                 Array.Copy(job.Color, j * Tile * 4, color, (j * row + sent * Tile) * 4, Tile * 4);
             }
             copies[sent++] = ((uint)job.Level, new Vector3(job.Slot % Tiles * Tile, job.Slot / Tiles * Tile, 0f));
@@ -248,18 +251,16 @@ public sealed partial class ClipGround : Node3D
         _ready.RemoveRange(0, n);
         if (sent == 0) return;
         RenderingDevice rd = _rd;
-        Rid dataTex = _dataTex, colorTex = _colorTex, dataStage = _dataStage, colorStage = _colorStage;
+        (Rid Tex, Rid Stage)[] targets = _textures;
         RenderingServer.CallOnRenderThread(Callable.From(() =>
         {
-            rd.TextureUpdate(dataStage, 0, MemoryMarshal.AsBytes(data.AsSpan()));
-            rd.TextureUpdate(colorStage, 0, MemoryMarshal.AsBytes(color.AsSpan()));
+            rd.TextureUpdate(targets[0].Stage, 0, MemoryMarshal.AsBytes(data.AsSpan()));
+            rd.TextureUpdate(targets[1].Stage, 0, MemoryMarshal.AsBytes(shape.AsSpan()));
+            rd.TextureUpdate(targets[2].Stage, 0, MemoryMarshal.AsBytes(color.AsSpan()));
             var size = new Vector3(Tile, Tile, 1f);
             for (int t = 0; t < sent; t++)
-            {
-                var from = new Vector3(t * Tile, 0f, 0f);
-                rd.TextureCopy(dataStage, dataTex, from, copies[t].To, size, 0, 0, 0, copies[t].Level);
-                rd.TextureCopy(colorStage, colorTex, from, copies[t].To, size, 0, 0, 0, copies[t].Level);
-            }
+                foreach (var (tex, stage) in targets)
+                    rd.TextureCopy(stage, tex, new Vector3(t * Tile, 0f, 0f), copies[t].To, size, 0, 0, 0, copies[t].Level);
         }));
     }
 
@@ -364,74 +365,53 @@ public sealed partial class ClipGround : Node3D
 
     // ---- Filling a tile (on a worker) --------------------------------------------------------
 
+    /// <summary>Grid points worked out round a tile beyond its own, so its edge points are shaped as the tile beside it shapes them.</summary>
+    const int Margin = 2;
+
     /// <summary>
-    /// One tile of a level from the terrain source: the ground's height at the level's spacing (its finer octaves left out,
-    /// as the far rings always had them), its colour by the palette's soil-to-rock rule, and from level 2 on the highest
-    /// and lowest ground within 16 m (the rock's cliff top and foot; the two finest levels read level 2's).
+    /// One tile of a level from the terrain source, shaped as the far rings always were (<see cref="FarBuilder.Shape"/>): the
+    /// ground at the level's spacing (its finer octaves left out), each point slid onto the cliff beside it and sampled again
+    /// there, a cliff's points lit by the faces round them, coloured by the palette's soil-to-rock rule, with how far the ground
+    /// rises and falls within 16 m. Its squares are split along the blocks' one diagonal.
     /// </summary>
     static void Fill(TileJob job, float s, PlanetTerrainSource source, GroundPalette palette, int width, int height)
     {
         long start = Stopwatch.GetTimestamp();
         try
         {
-            int reach = job.Level >= 2 ? Math.Max(1, (int)(16f / s)) : 0, m = Math.Max(1, reach), n = Tile + 2 * m;
-            var h = new float[n * n];
-            var wet = new bool[n * n];
-            double x0 = (double)job.Tx * Tile * s, z0 = (double)job.Tz * Tile * s;
-            for (int j = 0; j < n; j++)
-            for (int i = 0; i < n; i++)
+            const int N = Tile + 2 * Margin;
+            var grid = new FarBuilder.Grid(N, N, -Margin);
+            int g = grid.G;
+            var h = new float[g * g];
+            var wet = new bool[g * g];
+            double x0 = Mathx.WrapX(((double)job.Tx * Tile - Margin) * s, width), z0 = Mathx.Wrap(((double)job.Tz * Tile - Margin) * s, height);
+            for (int j = 0; j < g; j++)
+            for (int i = 0; i < g; i++)
             {
-                GroundSample g = source.Ground(Mathx.WrapX(x0 + (i - m) * s, width), Mathx.Wrap(z0 + (j - m) * s, height), s);
-                h[j * n + i] = g.Height;
-                wet[j * n + i] = g.InRiver;
+                GroundSample sample = source.Ground(x0 + (i - 1) * s, z0 + (j - 1) * s, s);
+                h[j * g + i] = sample.Height;
+                wet[j * g + i] = sample.InRiver;
             }
-            float[] hi = null, lo = null;
-            if (reach > 0)
-            {
-                // The highest and lowest round each point: along the rows, then down the columns.
-                var rowHi = new float[n * n];
-                var rowLo = new float[n * n];
-                for (int j = 0; j < n; j++)
-                for (int i = reach; i < n - reach; i++)
-                {
-                    float top = float.MinValue, bottom = float.MaxValue;
-                    for (int d = -reach; d <= reach; d++)
-                    {
-                        float v = h[j * n + i + d];
-                        top = MathF.Max(top, v);
-                        bottom = MathF.Min(bottom, v);
-                    }
-                    rowHi[j * n + i] = top;
-                    rowLo[j * n + i] = bottom;
-                }
-                hi = new float[n * n];
-                lo = new float[n * n];
-                for (int j = reach; j < n - reach; j++)
-                for (int i = reach; i < n - reach; i++)
-                {
-                    float top = float.MinValue, bottom = float.MaxValue;
-                    for (int d = -reach; d <= reach; d++)
-                    {
-                        top = MathF.Max(top, rowHi[(j + d) * n + i]);
-                        bottom = MathF.Min(bottom, rowLo[(j + d) * n + i]);
-                    }
-                    hi[j * n + i] = top;
-                    lo[j * n + i] = bottom;
-                }
-            }
+            int span = (N - 1) * (int)s;
+            FarBuilder.Surface surface = FarBuilder.Shape(grid, span, span, s, x0, z0, h, wet, source, palette, fixedSplit: true, extra: 0);
             job.Data = new float[Tile * Tile * 4];
+            job.Shape = new Half[Tile * Tile * 4];
             job.Color = new Half[Tile * Tile * 4];
             for (int j = 0; j < Tile; j++)
             for (int i = 0; i < Tile; i++)
             {
-                int k = (j + m) * n + i + m, o = (j * Tile + i) * 4;
-                float gx = (h[k + 1] - h[k - 1]) / (2f * s), gz = (h[k + n] - h[k - n]) / (2f * s);
-                double x = Mathx.WrapX(x0 + i * s, width), z = Mathx.Wrap(z0 + j * s, height);
-                Color c = FarBuilder.GroundColor(source, palette, x, z, h[k], FarBuilder.CliffSlope2(h, k, n, s, gx * gx + gz * gz), wet[k], out Vector2 flags, s);
-                job.Data[o] = h[k];
-                job.Data[o + 1] = hi?[k] ?? 0f;
-                job.Data[o + 2] = lo?[k] ?? 0f;
-                job.Data[o + 3] = flags.X;
+                int k = (j + Margin) * N + i + Margin, o = (j * Tile + i) * 4;
+                Vector3 v = surface.Vertices[k], n = surface.Normals[k];
+                Vector2 relief = surface.Relief[k];
+                Color c = surface.Colors[k];
+                job.Data[o] = v.Y;
+                job.Data[o + 1] = relief.X;
+                job.Data[o + 2] = relief.Y;
+                job.Data[o + 3] = surface.Flags[k].X;
+                job.Shape[o] = (Half)n.X;
+                job.Shape[o + 1] = (Half)n.Z;
+                job.Shape[o + 2] = (Half)(v.X / s - (i + Margin));
+                job.Shape[o + 3] = (Half)(v.Z / s - (j + Margin));
                 job.Color[o] = (Half)c.R;
                 job.Color[o + 1] = (Half)c.G;
                 job.Color[o + 2] = (Half)c.B;
@@ -448,21 +428,23 @@ public sealed partial class ClipGround : Node3D
 
     // ---- The ground as drawn (the shader's vertex stage, on the CPU) ------------------------
 
-    /// <summary>A level's point as its own grid has it, in the frame: position, normal and how bare it is.</summary>
+    /// <summary>A level's point as its own grid has it, in the frame: position (slid), normal and how bare it is.</summary>
     (Vector3 Pos, Vector3 Normal, float Bare) Own(int l, int gx, int gz)
     {
         Level lv = _levels[l];
         float s = lv.S;
-        float H(int x, int z) => lv.Data[Texel(x, z) * 4];
-        var normal = new Vector3(H(gx - 1, gz) - H(gx + 1, gz), 2f * s, H(gx, gz - 1) - H(gx, gz + 1)).Normalized();
-        return (new Vector3((float)(gx * (double)s - _shiftX), H(gx, gz), (float)(gz * (double)s - _shiftZ)), normal, (float)lv.Color[Texel(gx, gz) * 4 + 3]);
+        int t = Texel(gx, gz) * 4;
+        float nx = (float)lv.Shape[t], nz = (float)lv.Shape[t + 1];
+        Vector2 at = new Vector2(gx + (float)lv.Shape[t + 2], gz + (float)lv.Shape[t + 3]) * s - new Vector2((float)_shiftX, (float)_shiftZ);
+        return (new Vector3(at.X, lv.Data[t], at.Y), new Vector3(nx, MathF.Sqrt(MathF.Max(0f, 1f - nx * nx - nz * nz)), nz), (float)lv.Color[t + 3]);
     }
 
-    /// <summary>A drawn vertex, morphed toward the next level's grid as terrain.gdshader does it.</summary>
+    /// <summary>A drawn vertex, morphed toward the next level's grid as terrain.gdshader does it (by where its grid point stands).</summary>
     (Vector3 Pos, Vector3 Normal, float Bare) Vertex(int l, int gx, int gz)
     {
         var p = Own(l, gx, gz);
-        float k = Morph(l, p.Pos.X, p.Pos.Z);
+        float s = _levels[l].S;
+        float k = Morph(l, (float)(gx * (double)s - _shiftX), (float)(gz * (double)s - _shiftZ));
         if (k <= 0f) return p;
         var q = Own(l + 1, (gx - (gx & 1)) / 2, (gz - (gz & 1)) / 2);
         if (k >= 1f) return q;
@@ -610,37 +592,52 @@ public sealed partial class ClipGround : Node3D
         return mesh;
     }
 
+    /// <summary>The shader's three textures (data, shape, colour) as they are named there, and each one's texel format.</summary>
+    static readonly (string Name, RenderingDevice.DataFormat Format)[] Channels =
+    {
+        ("clip_data", RenderingDevice.DataFormat.R32G32B32A32Sfloat),
+        ("clip_shape", RenderingDevice.DataFormat.R16G16B16A16Sfloat),
+        ("clip_color", RenderingDevice.DataFormat.R16G16B16A16Sfloat),
+    };
+
+    /// <summary>Each channel's texture array on the graphics card, and the staging texture tiles are sent through.</summary>
+    (Rid Tex, Rid Stage)[] _textures;
+
     void MakeTextures(int levels)
     {
         _rd = RenderingServer.GetRenderingDevice();
         if (_rd == null) return;
-        var usage = RenderingDevice.TextureUsageBits.SamplingBit | RenderingDevice.TextureUsageBits.CanUpdateBit | RenderingDevice.TextureUsageBits.CanCopyToBit;
-        var stage = RenderingDevice.TextureUsageBits.CanUpdateBit | RenderingDevice.TextureUsageBits.CanCopyFromBit;
-        RDTextureFormat Format(RenderingDevice.DataFormat format, RenderingDevice.TextureType type, uint w, uint h, uint layers, RenderingDevice.TextureUsageBits bits) =>
-            new() { Format = format, TextureType = type, Width = w, Height = h, Depth = 1, ArrayLayers = layers, Mipmaps = 1, UsageBits = bits };
-        const RenderingDevice.DataFormat Rgba32 = RenderingDevice.DataFormat.R32G32B32A32Sfloat, Rgba16 = RenderingDevice.DataFormat.R16G16B16A16Sfloat;
-        _dataTex = _rd.TextureCreate(Format(Rgba32, RenderingDevice.TextureType.Type2DArray, Texels, Texels, (uint)levels, usage), new RDTextureView());
-        _colorTex = _rd.TextureCreate(Format(Rgba16, RenderingDevice.TextureType.Type2DArray, Texels, Texels, (uint)levels, usage), new RDTextureView());
-        _dataStage = _rd.TextureCreate(Format(Rgba32, RenderingDevice.TextureType.Type2D, Tile * Uploads, Tile, 1, stage), new RDTextureView());
-        _colorStage = _rd.TextureCreate(Format(Rgba16, RenderingDevice.TextureType.Type2D, Tile * Uploads, Tile, 1, stage), new RDTextureView());
-        _dataArray = new Texture2DArrayRD { TextureRdRid = _dataTex };
-        _colorArray = new Texture2DArrayRD { TextureRdRid = _colorTex };
-        _material.SetShaderParameter("clip_data", _dataArray);
-        _material.SetShaderParameter("clip_color", _colorArray);
+        const RenderingDevice.TextureUsageBits Usage = RenderingDevice.TextureUsageBits.SamplingBit | RenderingDevice.TextureUsageBits.CanUpdateBit | RenderingDevice.TextureUsageBits.CanCopyToBit;
+        const RenderingDevice.TextureUsageBits Staging = RenderingDevice.TextureUsageBits.CanUpdateBit | RenderingDevice.TextureUsageBits.CanCopyFromBit;
+        _textures = new (Rid, Rid)[Channels.Length];
+        for (int c = 0; c < Channels.Length; c++)
+        {
+            var format = Channels[c].Format;
+            Rid tex = _rd.TextureCreate(new RDTextureFormat
+            {
+                Format = format, TextureType = RenderingDevice.TextureType.Type2DArray, Width = Texels, Height = Texels, Depth = 1, ArrayLayers = (uint)levels, Mipmaps = 1, UsageBits = Usage,
+            }, new RDTextureView());
+            Rid stage = _rd.TextureCreate(new RDTextureFormat
+            {
+                Format = format, TextureType = RenderingDevice.TextureType.Type2D, Width = Tile * Uploads, Height = Tile, Depth = 1, ArrayLayers = 1, Mipmaps = 1, UsageBits = Staging,
+            }, new RDTextureView());
+            _textures[c] = (tex, stage);
+            _material.SetShaderParameter(Channels[c].Name, new Texture2DArrayRD { TextureRdRid = tex });
+        }
     }
 
     void FreeTextures()
     {
         if (_rd == null) return;
-        _material?.SetShaderParameter("clip_data", default(Variant));
-        _material?.SetShaderParameter("clip_color", default(Variant));
-        _dataArray = _colorArray = null;
-        foreach (Rid r in new[] { _dataTex, _colorTex, _dataStage, _colorStage })
-            if (r.IsValid) _rd.FreeRid(r);
-        _dataTex = _colorTex = _dataStage = _colorStage = default;
+        foreach (var (name, _) in Channels) _material?.SetShaderParameter(name, default(Variant));
+        foreach (var (tex, stage) in _textures)
+        {
+            _rd.FreeRid(stage);
+            _rd.FreeRid(tex);
+        }
+        _textures = null;
         _rd = null;
     }
-
     public override void _ExitTree() => Clear();
 
     static int Mod(int v, int m) => (v % m + m) % m;

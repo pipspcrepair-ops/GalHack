@@ -53,10 +53,12 @@ uniform sampler2D ground_index : filter_nearest;
 uniform vec4 ground_grid = vec4(16.0, 0.0, 0.0, 0.0); // cell size, cells across, cells down, patches
 
 // The far ground drawn from textures round the eye (ClipGround.cs): flat grid blocks, a level's spacing their scale,
-// lifted here from that level's texels (height, the highest and lowest ground within 16 m, glow; colour), and toward
-// the ring's outer edge slid onto the next level's grid and given its ground, so the two meet exactly.
+// shaped here from that level's texels (data: height, how far the ground rises and falls within 16 m, glow; shape: the
+// normal's x and z, how far the point slides onto a cliff in grid steps; colour), and toward the ring's outer edge slid
+// onto the next level's points and given their ground, so the two rings meet exactly.
 uniform bool clip_ground = false;
 uniform highp sampler2DArray clip_data : filter_nearest;
+uniform highp sampler2DArray clip_shape : filter_nearest;
 uniform highp sampler2DArray clip_color : filter_nearest;
 uniform int clip_texels = 576;
 uniform int clip_top = 3;
@@ -778,32 +780,22 @@ float inside_hole(vec2 p) {
 	return min(min(p.x - hole.x, hole.z - p.x), min(p.y - hole.y, hole.w - p.y));
 }
 
-vec4 clip_at(int level, ivec2 g) {
-	// (A float modulo: the integer one is undefined for negative numbers.)
-	return texelFetch(clip_data, ivec3(ivec2(mod(vec2(g), float(clip_texels))), level), 0);
-}
-
-// One grid point of a level, as its own texels have it: position, normal, colour, glow, and the highest and lowest
-// ground round it (the two finest levels read level 2's, between its texels).
+// One grid point of a level, as its own texels have it: where it stands (slid), its normal, colour, glow, and how far
+// the ground rises above it and falls below it.
 struct ClipPoint { vec3 pos; vec3 normal; vec4 color; float glow; vec2 relief; };
 
 ClipPoint clip_point(int level, ivec2 g) {
 	float s = clip_band[level].z;
-	vec4 d = clip_at(level, g);
+	// (A float modulo: the integer one is undefined for negative numbers.)
+	ivec3 t = ivec3(ivec2(mod(vec2(g), float(clip_texels))), level);
+	vec4 d = texelFetch(clip_data, t, 0), shape = texelFetch(clip_shape, t, 0);
 	ClipPoint p;
-	vec2 at = vec2(g) * s - clip_shift;
+	vec2 at = (vec2(g) + shape.zw) * s - clip_shift;
 	p.pos = vec3(at.x, d.x, at.y);
-	p.normal = normalize(vec3(clip_at(level, g - ivec2(1, 0)).x - clip_at(level, g + ivec2(1, 0)).x, 2.0 * s,
-		clip_at(level, g - ivec2(0, 1)).x - clip_at(level, g + ivec2(0, 1)).x));
-	p.color = texelFetch(clip_color, ivec3(ivec2(mod(vec2(g), float(clip_texels))), level), 0);
+	p.normal = vec3(shape.x, sqrt(max(1.0 - dot(shape.xy, shape.xy), 0.0)), shape.y);
+	p.color = texelFetch(clip_color, t, 0);
 	p.glow = d.w;
-	if (level >= 2) p.relief = d.yz;
-	else {
-		vec2 q = vec2(g) * s / clip_band[2].z;
-		ivec2 b = ivec2(floor(q));
-		vec2 f = q - vec2(b);
-		p.relief = mix(mix(clip_at(2, b).yz, clip_at(2, b + ivec2(1, 0)).yz, f.x), mix(clip_at(2, b + ivec2(0, 1)).yz, clip_at(2, b + ivec2(1, 1)).yz, f.x), f.y);
-	}
+	p.relief = d.yz;
 	return p;
 }
 
@@ -833,7 +825,7 @@ void vertex() {
 		NORMAL = p.normal;
 		COLOR = p.color;
 		UV = vec2(p.glow, 0.0);
-		UV2 = max(vec2(p.relief.x - p.pos.y, p.pos.y - p.relief.y), vec2(0.0));
+		UV2 = p.relief;
 	}
 	if (hole_sink > 0.0 && inside_hole(VERTEX.xz) >= hole_sink_from) VERTEX.y -= hole_sink;
 	wpos = VERTEX;
