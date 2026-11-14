@@ -111,7 +111,7 @@ public sealed class PlaceFauna
                 });
                 continue;
             }
-            if (Decor.Interior(inst, m) is not { } inside || inside.Height < 2) continue;
+            if (RoomDecor.Interior(inst, m) is not { } inside || inside.Height < 2) continue;
             // A working light keeps the room lit (steady and strong enough), whatever the place's state.
             bool lit = inst.Lights.Any(l => l.Module == m.Index && l.Mode is LightMode.Steady or LightMode.Beacon && l.Energy >= 0.9f);
             var caches = inst.Caches.Where(c => c.Module == m.Index && !c.PickedOver).ToList();

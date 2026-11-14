@@ -128,7 +128,7 @@ public partial class TownWalkTest : Node
                         (partsOf.TryGetValue(c, out var s) ? s : partsOf[c] = new HashSet<int>()).Add(m.Index);
                     }
                 var doors = new HashSet<PInt3>(inst.Layout.Doorways.SelectMany(d => d.Cells).Concat(inst.Layout.ExitCells));
-                foreach (var (a, b) in Decor.Openings(inst)) { doors.Add(a); doors.Add(b); }
+                foreach (var (a, b) in RoomDecor.Openings(inst)) { doors.Add(a); doors.Add(b); }
                 var rooms = new HashSet<int>(inst.Layout.Modules.Where(m => m.Kind == ModuleKind.Room).Select(m => m.Index));
                 var last = new Dictionary<Town.Person, (int Module, float Since, Vector3 At, float Still, bool InRoom, bool WasIn)>();
                 var used = new HashSet<Town.Person>();

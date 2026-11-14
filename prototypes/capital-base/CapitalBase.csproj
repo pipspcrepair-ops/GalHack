@@ -27,6 +27,9 @@
     <Compile Include="..\planet-generator\src\Surface\FloraMeshes.cs" />
     <Compile Include="..\..\shared\Flora\**\*.cs" />
     <Compile Include="..\poi-generator\src\Gen\**\*.cs" />
+    <!-- The places' rooms say what the decorations library dresses them with (poi-generator Gen/RoomDecor). -->
+    <Compile Include="..\..\shared\Items\Core\**\*.cs" />
+    <Compile Include="..\..\shared\Deco\**\*.cs" />
     <Compile Include="..\saves\src\Persistence\**\*.cs" />
     <!-- The bridges that tie building and the handling model to shared physics (physics-sandbox's). -->
     <Compile Include="..\physics-sandbox\src\Bridges\StructureBridge.cs" />
