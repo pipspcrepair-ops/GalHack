@@ -48,7 +48,7 @@ public sealed partial class Staging
         foreach (int x in _pilot.Land(v)) yield return x;
         Hurry(1);
         Where("landed");
-        _game.FixedCamera = Game.Game.Chase(v, 2.2f, 0.6f);
+        _game.FixedCamera = Game.Game.Chase(_game.Zone, v, 2.3f);
         for (int i = 0; i < 30; i++) yield return 0;
     }
 
