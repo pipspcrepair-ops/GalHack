@@ -232,30 +232,31 @@ public static class Debris
     {
         var r = new Pick(Hash.Cell(p, 157));
         Int3 f = b.Facing.Vec();
-        var into = new V3(-f.X, -f.Y, -f.Z); // away from the face, into this cell
+        var into = new V3(-f.X, -f.Y, -f.Z); // away from the face, into this cell: the way the bar ran inside the slab or wall
+        bool up = f.Y != 0;
         // Two axes across the face.
-        V3 u = f.Y != 0 ? new V3(1, 0, 0) : new V3(f.Z, 0, -f.X), v = f.Y != 0 ? new V3(0, 0, 1) : new V3(0, 1, 0);
+        V3 u = up ? new V3(1, 0, 0) : new V3(f.Z, 0, -f.X), v = up ? new V3(0, 0, 1) : new V3(0, 1, 0);
         V3 face = new V3(0.5f, 0.5f, 0.5f) + new V3(f.X, f.Y, f.Z) * 0.5f;
+        // A cluster at the tear: a few bars a hand apart in a loose row (rows of two where it stands up), each its own length.
         int n = 0;
-        foreach (float a in new[] { 0.22f, 0.5f, 0.78f })
-            foreach (float c in f.Y != 0 ? new[] { 0.3f, 0.7f } : new[] { 0.28f, 0.72f })
+        foreach (float a in new[] { 0.2f, 0.4f, 0.6f, 0.8f })
+            foreach (float c in up ? new[] { 0.35f, 0.65f } : new[] { 0.5f })
             {
-                if (r.F() < 0.3f) continue;
-                V3 from = face + u * (a - 0.5f) + v * (c - 0.5f) + into * 0.004f;
-                V3 dir = (into + u * r.S(0.25f) + v * r.S(0.25f)).Normalized();
-                Bar(l, r, from, dir, 0.18f + r.F() * 0.42f);
+                if (r.F() < 0.25f) continue;
+                V3 from = face + u * (a - 0.5f + r.S(0.04f)) + v * (c - 0.5f + r.S(0.04f)) + into * 0.004f;
+                V3 dir = (into + u * r.S(0.06f) + v * r.S(0.06f)).Normalized();
+                Bar(l, r, from, dir, 0.4f + r.F() * 0.6f, up, 0.04f);
                 if (++n >= 5) return;
             }
     }
 
-    /// <summary>A bar of reinforcing out of a broken edge: a straight run, then bent where it snapped.</summary>
-    public static void Bar(List<ShapeBox> l, Pick r, V3 from, V3 dir, float length)
+    /// <summary>A bar of reinforcing out of a broken edge: a straight run the way it was cast, then bent where it gave (down under its weight when it ran level, over to one side when it stood up).</summary>
+    public static void Bar(List<ShapeBox> l, Pick r, V3 from, V3 dir, float length, bool upright = false, float T = 0.022f)
     {
-        const float T = 0.022f;
-        float first = Fit(from, dir, length * (0.45f + r.F() * 0.3f));
+        float first = Fit(from, dir, length * (0.5f + r.F() * 0.25f));
         Rgb rust = Rust.Lerp(new Rgb(0x8a, 0x52, 0x30), r.F());
         V3 mid = Rod(l, from, dir, first, T, rust);
-        var bent = (dir + new V3(r.S(0.6f), -0.5f - r.F() * 0.6f, r.S(0.6f))).Normalized();
+        var bent = upright ? (dir * 0.8f + new V3(r.S(1f), 0, r.S(1f)).Normalized() * 0.7f).Normalized() : (dir + new V3(r.S(0.2f), -0.7f - r.F() * 0.5f, r.S(0.2f))).Normalized();
         // (A bent end that would reach the floor stops short of it: a bar hangs, it never lies along a face.)
         float rest = Fit(mid, bent, length - first);
         if (rest > 0.03f) Rod(l, mid, bent, rest, T, rust.Scale(0.85f));
