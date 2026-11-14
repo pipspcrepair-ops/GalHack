@@ -129,9 +129,12 @@ two mains, a retro, a side jet each way, a lift jet, a down jet and three pads."
         d.Put("command-chair", P(-10, 1, 0), Designer.Rot(Dir.PosY, Dir.NegX));
         d.Mount("light", P(-8, 3, 0), Dir.PosY);
         // Framing: a pilaster at each corner of the hall and along its north wall, dark against the cream.
-        foreach (int x in new[] { -5, -1, 3, 6 }) d.Fill(P(x, 0, -6), P(x, 4, -6), Concrete, frame);
-        foreach (int x in new[] { -5, 6 }) d.Fill(P(x, 0, 6), P(x, 4, 6), Concrete, frame);
-        d.Fill(P(7, 0, -5), P(7, 4, -5), Concrete, frame).Fill(P(7, 0, 5), P(7, 4, 5), Concrete, frame);
+        foreach (int x in new[] { -5, -1, 3, 6 }) d.Fill(P(x, 0, -6), P(x, 4, -6), Concrete, frame).Slope(P(x, 5, -6), P(x, 5, -6), Concrete, frame, Dir.NegZ);
+        foreach (int x in new[] { -5, 6 }) d.Fill(P(x, 0, 6), P(x, 4, 6), Concrete, frame).Slope(P(x, 5, 6), P(x, 5, 6), Concrete, frame, Dir.PosZ);
+        foreach (int z in new[] { -5, 5 }) d.Fill(P(7, 0, z), P(7, 4, z), Concrete, frame).Slope(P(7, 5, z), P(7, 5, z), Concrete, frame, Dir.PosX);
+        // The roof's four hips.
+        d.Fill(P(6, 5, -5), P(6, 5, -5), Concrete, roof, "corner").Fill(P(-5, 5, -5), P(-5, 5, -5), Concrete, roof, "corner", Designer.Rot(Dir.PosY, Dir.NegX));
+        d.Fill(P(-5, 5, 5), P(-5, 5, 5), Concrete, roof, "corner", Designer.Rot(Dir.PosY, Dir.PosZ)).Fill(P(6, 5, 5), P(6, 5, 5), Concrete, roof, "corner", Designer.Rot(Dir.PosY, Dir.PosX));
         d.Fill(P(-4, 2, 5), P(-2, 3, 5), "glass-plated").Fill(P(3, 2, 5), P(5, 3, 5), "glass-plated");
         // Doors: a double one south under a porch, a single one east onto the pad.
         d.Door("door-2x2x1", P(0, 1, 5), Dir.PosZ);
