@@ -1283,8 +1283,9 @@ public static class Mesher
 
         /// <summary>
         /// A course of a round thing that runs in or out as it rises (<see cref="Round.Pieces"/>): its outside and inside shaded
-        /// as one smooth surface, its sides on its cell's faces left out where the next block or the next piece of the same
-        /// round covers them; it collides as drawn. With no round to cut it by, a cube.
+        /// as one smooth surface (<see cref="Round.Normal"/>), its sides on its cell's faces left out
+        /// where the next block or the next piece of the same round covers them; it collides as drawn. With no round to cut it
+        /// by, a cube.
         /// </summary>
         void Sloped(ChunkMesh chunk, Int3 p, Block b, bool draw)
         {

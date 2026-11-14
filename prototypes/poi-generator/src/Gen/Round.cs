@@ -390,8 +390,9 @@ public static class Round
     public static int Sides(RoundBody b) => 4 * Math.Max(6, (int)Math.Ceiling(2 * Math.PI * b.Profile!.Max() / 0.5 / 4));
 
     /// <summary>
-    /// A course of a sloped round: each cell its profile cuts is a <see cref="BlockType.RoundSlope"/> (whole where the cut
-    /// leaves all but a few litres, left out where it leaves only those), the cells of its wall whole, those of its inside inside.
+    /// A course of a sloped round: each cell its profile cuts is a <see cref="BlockType.RoundSlope"/> (a corner of a cube
+    /// standing proud of a curve shows from far off, so only a cut of under a tenth of a litre counts as none), the cells of its
+    /// wall whole, those of its inside inside.
     /// </summary>
     static Course Slope(RoundBody b, int y)
     {
@@ -407,8 +408,8 @@ public static class Round
                 if (iLo > 0 && far <= iLo * shrink) { course.Inside.Add((x, z)); continue; }
                 if (far <= oLo * shrink && near >= iHi) { course.Solid.Add(new Piece(x, z, BlockType.Cube, Dir.North)); continue; }
                 double v = Volume(Pieces(b, new Int3(x, y, z)));
-                if (v > 0.998) course.Solid.Add(new Piece(x, z, BlockType.Cube, Dir.North));
-                else if (v >= 0.002) course.Solid.Add(new Piece(x, z, BlockType.RoundSlope, Dir.North));
+                if (v > 0.99995) course.Solid.Add(new Piece(x, z, BlockType.Cube, Dir.North));
+                else if (v >= 0.00005) course.Solid.Add(new Piece(x, z, BlockType.RoundSlope, Dir.North));
                 else if (iHi > 0 && Math.Sqrt((x + 0.5 - b.X) * (x + 0.5 - b.X) + (z + 0.5 - b.Z) * (z + 0.5 - b.Z)) < iHi) course.Inside.Add((x, z));
             }
         return course;
@@ -557,8 +558,9 @@ public static class Round
     public static bool Fills(RoundBody b, Int3 cell, Dir side) => Pieces(b, cell).Where(f => f.Side == (int)side).Sum(f => Area(f.Pts)) > 0.999f;
 
     /// <summary>
-    /// The way a sloped round's outside (or inside) looks at a point on it, cell-local: square to its slope there, eased
-    /// from one half metre's slope to the next, so the round shades as one smooth surface.
+    /// The way a sloped round's outside (or inside) looks at a point on it, cell-local: out from its axis, and up or down as
+    /// the profile runs there, eased from one half metre's slope to the next, so the round shades as one smooth surface (a
+    /// flat-by-flat frame read as fluting: each flat took its finish from its own start).
     /// </summary>
     public static V3 Normal(RoundBody b, Int3 cell, V3 q, bool outside)
     {
@@ -567,8 +569,7 @@ public static class Round
         double Run(int i) => (p[Math.Min(i + 1, p.Length - 1)] - p[Math.Max(i - 1, 0)]) / ((Math.Min(i + 1, p.Length - 1) - Math.Max(i - 1, 0)) / 2.0);
         int i0 = Math.Min((int)h, p.Length - 2);
         double run = Run(i0) + (Run(i0 + 1) - Run(i0)) * (h - i0);
-        V3 r = new(q.X - (float)(b.X - cell.X), 0, q.Z - (float)(b.Z - cell.Z));
-        r = r.Normalized();
+        V3 r = new V3(q.X - (float)(b.X - cell.X), 0, q.Z - (float)(b.Z - cell.Z)).Normalized();
         V3 n = new V3(r.X, -(float)run, r.Z).Normalized();
         return outside ? n : n * -1f;
     }
