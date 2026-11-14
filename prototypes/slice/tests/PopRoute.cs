@@ -110,6 +110,11 @@ public partial class PopRoute : Node
             foreach (int x in Flicker(start)) yield return x;
             yield break;
         }
+        if (_args.ContainsKey("pinholes-only"))
+        {
+            foreach (int x in Pinholes(start, way)) yield return x;
+            yield break;
+        }
         PopLog.On = true;
         // First straight off, as a player does the moment the world shows (whatever still loads then loads under it); then each from a settled start.
         foreach (int x in Route("fly at once", start, -way, 70f, 4000f, 60f)) yield return x;
