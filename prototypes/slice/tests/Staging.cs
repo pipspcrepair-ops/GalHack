@@ -144,6 +144,7 @@ public sealed partial class Staging
             "clouds" => CloudTypes(),
             "farland" => FarLandView(),
             "farground" => FarGroundShots(),
+            "groundcost" => FarGroundCost(),
             "city" => CityView(),
             "strike" => StrikeView(),
             "craters" => CraterViews(),

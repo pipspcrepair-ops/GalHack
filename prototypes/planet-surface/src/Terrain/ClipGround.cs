@@ -45,7 +45,7 @@ public sealed partial class ClipGround : Node3D
     /// none at the start, all at the end. Its outer edge is never nearer than the end, nor the finer ring's edge (its
     /// inner one) further than the start, wherever the eye is between two snaps.
     /// </summary>
-    public static (float From, float To) Band(int level) => (144f * Spacing(level) - Snap / 2f, Half * Spacing(level) - Snap / 2f);
+    public static (float From, float To) Band(int level) => (0.75f * Half * Spacing(level) - Snap / 2f, Half * Spacing(level) - Snap / 2f);
 
     sealed class Level
     {
@@ -59,6 +59,8 @@ public sealed partial class ClipGround : Node3D
         public readonly (int X, int Z)[] Held = new (int, int)[Tiles * Tiles];
         public readonly byte[] State = new byte[Tiles * Tiles];
         public readonly int[] Version = new int[Tiles * Tiles];
+        /// <summary>Per slot: its lowest and highest ground, for the blocks' bounds (a block culled by them, in view and in each shadow split).</summary>
+        public readonly float[] Low = new float[Tiles * Tiles], High = new float[Tiles * Tiles];
         public readonly MeshInstance3D[] Blocks = new MeshInstance3D[16];
     }
 
@@ -140,8 +142,6 @@ public sealed partial class ClipGround : Node3D
                     PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off,
                     // The sun's real-time shadows reach a few hundred metres: the two finest rings cast them.
                     CastShadow = l <= 1 ? GeometryInstance3D.ShadowCastingSetting.On : GeometryInstance3D.ShadowCastingSetting.Off,
-                    // The block is flat: its ground stands anywhere from the sea floor to the highest peaks.
-                    CustomAabb = new Aabb(new Vector3(0f, -400f / lv.S, 0f), new Vector3(Block, 1900f / lv.S, Block)),
                 };
                 lv.Blocks[b] = m;
                 AddChild(m);
@@ -225,6 +225,13 @@ public sealed partial class ClipGround : Node3D
                 Array.Copy(job.Shape, j * Tile * 4, lv.Shape, ((sz + j) * Texels + sx) * 4, Tile * 4);
                 Array.Copy(job.Color, j * Tile * 4, lv.Color, ((sz + j) * Texels + sx) * 4, Tile * 4);
             }
+            float low = float.MaxValue, high = float.MinValue;
+            for (int k = 0; k < Tile * Tile; k++)
+            {
+                low = MathF.Min(low, job.Data[k * 4]);
+                high = MathF.Max(high, job.Data[k * 4]);
+            }
+            (lv.Low[job.Slot], lv.High[job.Slot]) = (low, high);
             if (_rd == null) lv.State[job.Slot] = In; // no graphics card to send it to (headless): the copy here is all there is
             else _ready.Add(job);
         }
@@ -349,6 +356,17 @@ public sealed partial class ClipGround : Node3D
                 m.Visible = l >= floor && (!inner || l == floor);
                 if (!m.Visible) continue;
                 m.Transform = new Transform3D(Basis.FromScale(new Vector3(s, s, s)), new Vector3((float)(x0 + bi * Block * s), 0f, (float)(z0 + bj * Block * s)));
+                // The block is flat: its bounds are its ground's, and the next ring's it takes toward its edge, with room for the
+                // round world's sinking far off.
+                int gx = (int)Math.Round(qx / s) - Half + bi * Block, gz = (int)Math.Round(qz / s) - Half + bj * Block;
+                var (low, high) = Range(l, gx, gz, Block);
+                if (l + 1 < _levels.Length)
+                {
+                    var (low2, high2) = Range(l + 1, FloorDiv(gx, 2), FloorDiv(gz, 2), Block / 2);
+                    (low, high) = (MathF.Min(low, low2), MathF.Max(high, high2));
+                }
+                float room = 4f + TerrainStreamer.RoundSink(Half * s * 1.5f);
+                m.CustomAabb = new Aabb(new Vector3(0f, (low - room) / s, 0f), new Vector3(Block, (high - low + 2f * room) / s, Block));
             }
         }
     }
@@ -369,6 +387,21 @@ public sealed partial class ClipGround : Node3D
         return true;
     }
 
+    /// <summary>The lowest and highest ground a level holds over grid points (gx..gx+n, gz..gz+n) and their neighbours, from its tiles.</summary>
+    (float Low, float High) Range(int l, int gx, int gz, int n)
+    {
+        Level lv = _levels[l];
+        float low = float.MaxValue, high = float.MinValue;
+        for (int tz = FloorDiv(gz - 1, Tile); tz <= FloorDiv(gz + n + 1, Tile); tz++)
+        for (int tx = FloorDiv(gx - 1, Tile); tx <= FloorDiv(gx + n + 1, Tile); tx++)
+        {
+            int slot = Mod(tz, Tiles) * Tiles + Mod(tx, Tiles);
+            if (lv.Held[slot] != (tx, tz) || lv.State[slot] != In) continue;
+            low = MathF.Min(low, lv.Low[slot]);
+            high = MathF.Max(high, lv.High[slot]);
+        }
+        return low <= high ? (low, high) : (-400f, 1500f);
+    }
     // ---- Filling a tile (on a worker) --------------------------------------------------------
 
     /// <summary>Grid points worked out round a tile beyond its own, so its edge points are shaped as the tile beside it shapes them.</summary>

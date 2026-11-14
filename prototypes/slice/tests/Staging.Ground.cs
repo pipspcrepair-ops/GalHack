@@ -98,13 +98,68 @@ public sealed partial class Staging
         }
         _game.FixedCamera = null;
         zone.Sky.TimeScale = 1f;
+        void Hold(Vector3 eye, Vector3 at) => HoldEye(eye, at);
+    }
 
-        void Hold(Vector3 eye, Vector3 at)
+    /// <summary>
+    /// What the far ground costs the graphics card, the same frames one after another: low over the ground looking along it
+    /// (as on a bike) and 60 m up looking ahead and down (as flying), with the rings casting shadows as built, the finest
+    /// alone casting, none casting, and the rings hidden. The GPU's frame time over two seconds of each.
+    /// </summary>
+    IEnumerable<int> FarGroundCost()
+    {
+        var zone = _game.Zone;
+        TerrainStreamer s = zone.Streamer;
+        _game.Visor.Visible = false;
+        zone.Weather.Bridge.Calm = true;
+        zone.Weather.Sim.Snap(Weather.Model.WeatherKind.Clear);
+        zone.Wildlife.Frozen = true;
+        zone.Sky.TimeScale = 0f;
+        zone.Sky.TimeOfDay = Num("time", 0.36);
+        Rid viewport = _game.GetViewport().GetViewportRid();
+        RenderingServer.ViewportSetMeasureRenderTime(viewport, true);
+        Vector3 start = _game.Survivor.WorldFeet, way = Vector3.Forward;
+        Vector3 Lift(Vector3 p, float up) => p with { Y = zone.GroundAt(p.X, p.Z).Y + up };
+        var blocks = s.Clip.GetChildren().OfType<MeshInstance3D>().ToList();
+        int Level(MeshInstance3D m) => m.Name.ToString().Split(' ')[1][0] - '0';
+        var built = blocks.ToDictionary(m => m, m => m.CastShadow);
+        var configs = new (string Name, Action Apply)[]
         {
-            // The sleeper stands in for the eye (the streaming follows it), the camera at the eye.
-            _game.Survivor.PlaceOutside(eye.ToNumerics());
-            Vector3 look = at - eye;
-            _game.FixedCamera = new Transform3D(Basis.LookingAt(look.Normalized(), Vector3.Up), eye);
+            ("as built", () => { foreach (var m in blocks) m.CastShadow = built[m]; s.Clip.Visible = true; }),
+            ("finest casts", () => { foreach (var m in blocks) m.CastShadow = Level(m) == 0 ? GeometryInstance3D.ShadowCastingSetting.On : GeometryInstance3D.ShadowCastingSetting.Off; }),
+            ("none cast", () => { foreach (var m in blocks) m.CastShadow = GeometryInstance3D.ShadowCastingSetting.Off; }),
+            ("rings hidden", () => s.Clip.Visible = false),
+        };
+        foreach (var (tag, eye, at) in new[] { ("low", Lift(start, 1.6f), Lift(start + way * 400f, 0f)), ("high", Lift(start, 60f), Lift(start + way * 300f, 0f)) })
+        {
+            for (int i = 0; i < 600 && (i < 120 || !s.Settled); i++)
+            {
+                HoldEye(eye, at);
+                yield return 0;
+            }
+            foreach (var (name, apply) in configs)
+            {
+                apply();
+                var gpu = new List<double>();
+                for (int i = 0; i < 150; i++)
+                {
+                    HoldEye(eye, at);
+                    yield return 0;
+                    if (i >= 30) gpu.Add(RenderingServer.ViewportGetMeasuredRenderTimeGpu(viewport));
+                }
+                gpu.Sort();
+                GD.Print($"(ground cost {tag}, {name}: GPU {gpu.Average():F2} ms mean, {gpu[gpu.Count / 2]:F2} median, {gpu[^1]:F2} worst; draw calls {Performance.GetMonitor(Performance.Monitor.RenderTotalDrawCallsInFrame)}, primitives {Performance.GetMonitor(Performance.Monitor.RenderTotalPrimitivesInFrame) / 1000:F0}k)");
+            }
+            configs[0].Apply();
         }
+        _game.FixedCamera = null;
+        zone.Sky.TimeScale = 1f;
+    }
+
+    /// <summary>The sleeper stands in for the eye (the streaming follows it), the camera at the eye looking at a point.</summary>
+    void HoldEye(Vector3 eye, Vector3 at)
+    {
+        _game.Survivor.PlaceOutside(eye.ToNumerics());
+        _game.FixedCamera = new Transform3D(Basis.LookingAt((at - eye).Normalized(), Vector3.Up), eye);
     }
 }
