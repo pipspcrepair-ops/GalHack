@@ -385,6 +385,21 @@ public partial class WildlifeView : Node3D
     public float NearDistance = 60f, MidDistance = 120f, FarDistance = 220f;
 
     /// <summary>
+    /// The harmless (<see cref="Importance.Ambient"/>) are drawn to here, m, and of those near and in sight only the nearest
+    /// <see cref="AmbientBudget"/> are stepped: a land's grazers and scavengers cost the frame what a few do. A threat past the
+    /// far distance sleeps where it is (<see cref="ThreatsSleep"/>). Left as they are, every creature is about and drawn as before.
+    /// </summary>
+    public float AmbientDistance = float.PositiveInfinity;
+    public int AmbientBudget = int.MaxValue;
+    public bool ThreatsSleep;
+    /// <summary>Within this of the eye one is about whichever way you look (you hear it), m.</summary>
+    const float AmbientAround = 20f;
+    /// <summary>Whether a point (the sim's frame) is in the eye's view; left out, everything is.</summary>
+    public System.Func<Vector3, bool> InView;
+    readonly List<(Creature C, float D)> _ambient = new();
+    readonly HashSet<Creature> _awake = new();
+
+    /// <summary>
     /// Far off, how far up a creature's body is drawn from where the sim has it, m: the game's far land
     /// is a coarser mesh than the sim's ground, and a body stands on what is drawn under it, never over
     /// or in it. Left out, or nearer than <see cref="LiftFrom"/>, nothing moves.
@@ -469,10 +484,28 @@ public partial class WildlifeView : Node3D
         foreach (Creature c in _sim.Creatures)
         {
             if (c.Removed) continue;
+            float d = WildSim.Flat(c.Position - camera).Length();
+            Importance rank = c.Species.Importance;
+            float far = c.Species.Plan == BodyPlan.Giant ? FarDistance * 2.5f : FarDistance;
+            if (rank == Importance.Ambient)
+            {
+                // The harmless, near and in sight: the nearest of them (last frame's pick) are stepped and drawn, the rest in
+                // sight dissolve away; out of sight they hold still as they are. Past their distance none is drawn.
+                bool candidate = d < AmbientDistance && (d < AmbientAround || InView?.Invoke(c.Position + Vector3.Up) != false);
+                if (candidate) _ambient.Add((c, d));
+                bool awake = Stirred(c) || candidate && _awake.Contains(c);
+                c.Dormant = !awake;
+                far = awake || !candidate ? MathF.Min(far, AmbientDistance) : 0f;
+            }
+            // A threat sleeps past where it is drawn, unless something has it up; people are always about.
+            else c.Dormant = ThreatsSleep && rank == Importance.Threat && d > far && !Stirred(c);
+            // Past the near ring nothing casts a line through the world's collision for it; the harmless never do.
+            c.NoRays = rank == Importance.Ambient || d > NearDistance;
             bool fresh = false;
             if (!_views.TryGetValue(c, out CreatureView view))
             {
-                if (built >= MostNew || !CreatureView.Ready(c)) continue;
+                c.Shown = false;
+                if (d >= far || built >= MostNew || !CreatureView.Ready(c)) continue;
                 built++;
                 fresh = true;
                 view = new CreatureView();
@@ -481,8 +514,6 @@ public partial class WildlifeView : Node3D
                 _views[c] = view;
             }
 
-            float d = WildSim.Flat(c.Position - camera).Length();
-            float far = c.Species.Plan == BodyPlan.Giant ? FarDistance * 2.5f : FarDistance;
             c.RigInterval = d < NearDistance ? 1 : d < MidDistance ? 2 : d < far ? 4 : 12;
             c.ThinkScale = d < MidDistance ? 1f : d < far ? 2f : 3f;
             bool visible = d < far;
@@ -502,6 +533,7 @@ public partial class WildlifeView : Node3D
             }
             if (fresh ? visible : view.Visible != visible) Shown?.Invoke(c, d, visible, visible ? shows : Fader != null ? was : 1f);
             if (view.Visible != visible) view.Visible = visible;
+            c.Shown = visible;
             if (visible) DrawnCount++;
             if (visible && (c.RigInterval == 1 || c.RigPending == 0f))
             {
@@ -517,6 +549,12 @@ public partial class WildlifeView : Node3D
             }
         }
 
+        // Next frame's harmless at large: the nearest few of those near and in sight.
+        _awake.Clear();
+        _ambient.Sort(static (a, b) => a.D.CompareTo(b.D));
+        for (int i = 0; i < _ambient.Count && i < AmbientBudget; i++) _awake.Add(_ambient[i].C);
+        _ambient.Clear();
+
         _gone.Clear();
         foreach (var (c, v) in _views)
             if (c.Removed)
@@ -526,4 +564,7 @@ public partial class WildlifeView : Node3D
             }
         foreach (Creature c in _gone) _views.Remove(c);
     }
+
+    /// <summary>Stirred up (fighting, wary, hurt lately, held, thrown): awake and drawn wherever it is.</summary>
+    bool Stirred(Creature c) => c.Attacking || c.Alert > 0f || c.HeldBy != null || c.Holding != null || c.Thrown || c.ProvokedBy != null && _sim.Time - c.ProvokedAt < 10f;
 }

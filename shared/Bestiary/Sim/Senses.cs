@@ -187,7 +187,7 @@ public static class Senses
         if (c.Space != null ? !SpaceMath.Clear(c.Space, eye, head, 0.05f) : !OverGround(w, eye, head)) return false;
         // A vessel's own hull isn't cover from what is looking at the vessel.
         if (t.ThreatScale > 1.01f) return true;
-        return w.SightLine != null ? w.SightLine(eye, head) : c.Space != null || w.Nav.LineClear(eye, head);
+        return w.SightLine != null && !c.NoRays ? w.SightLine(eye, head) : c.Space != null || w.Nav.LineClear(eye, head);
     }
 
     static bool OverGround(WildSim w, Vector3 a, Vector3 b)

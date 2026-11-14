@@ -366,7 +366,7 @@ public static class Flight
     /// <summary>Whether the air between two points is free: by the world's own collision, or low down by the nav grid's rocks and trunks where a sim has no collision.</summary>
     public static bool Clear(WildSim w, Creature c, Vector3 a, Vector3 b)
     {
-        if (w.SightLine != null) return w.SightLine(a, b);
+        if (w.SightLine != null && !c.NoRays) return w.SightLine(a, b);
         return a.Y - w.Terrain.Height(a.X, a.Z) > 5f || w.Nav.LineClear(a, b);
     }
 }
@@ -525,6 +525,6 @@ public static class Swoop
         }
         Vector3 past = pass + along * (Heft.TurnRadius(c.Species) + 4f) + Vector3.Up * 2f;
         if (past.Y < w.Terrain.Height(past.X, past.Z) + stand + 0.4f) return false;
-        return w.SightLine == null || (w.SightLine(from, pass) && w.SightLine(pass, past));
+        return w.SightLine == null || c.NoRays || (w.SightLine(from, pass) && w.SightLine(pass, past));
     }
 }

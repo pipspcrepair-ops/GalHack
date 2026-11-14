@@ -135,7 +135,8 @@ public partial class WildlifePatch : Node3D
             Fish = new Schools { Name = "Fish", Planet = planet, Seed = Life.Seed, Eye = () => Zone.Camera?.GlobalPosition ?? (Player != null ? FromPatch(Player.Position) : Origin) };
             AddChild(Fish);
         }
-        View = new WildlifeView { Name = "Creatures", MostNew = 2 };
+        // People first, then threats, the harmless only near you and in sight, a few at a time (WildlifeView's tiers).
+        View = new WildlifeView { Name = "Creatures", MostNew = 2, AmbientBudget = 24, ThreatsSleep = true, InView = p => Zone.Camera is not { } eye || eye.IsPositionInFrustum(FromPatch(p)) };
         View.Shown = (c, d, shown, jump) =>
         {
             PlanetSurface.Fx.PopLog.Note("creature", shown ? "comes into view" : "goes from view", d, c.Species.BodyLength, jump);
@@ -728,7 +729,7 @@ public partial class WildlifePatch : Node3D
             // How far bodies are drawn and nothing new is put in sight: the spawn distance's.
             _reachVersion = SpawnReach.Version;
             View.FarDistance = SpawnReach.Distance;
-            View.MidDistance = MathF.Max(120f, SpawnReach.Distance * 0.45f);
+            View.MidDistance = View.AmbientDistance = MathF.Max(120f, SpawnReach.Distance * 0.45f);
             Sim.Data.Spawning.ViewDistance = SpawnReach.ViewDistance;
         }
         long start = System.Diagnostics.Stopwatch.GetTimestamp();

@@ -209,6 +209,14 @@ public sealed class Species
     /// <summary>Pack hunters, lone predators and ambushers: the ones built to kill.</summary>
     public bool IsHunter => Behaviour is Behaviour.Predator or Behaviour.PackHunter or Behaviour.Ambusher;
 
+    /// <summary>
+    /// What it is to a player, for how much of a frame it gets: people (and machines) first, then whatever can hurt you
+    /// unprovoked, then the harmless that fill the land and a place's walls (grazers, scavengers, a room's insects).
+    /// </summary>
+    public Importance Importance => Figure != null || Mechanical || Behaviour == Behaviour.Folk ? Importance.Person
+        : IsHunter || Stats.Hunts || HuntsPrey || Plan == BodyPlan.Giant || Behaviour == Behaviour.TerritorialGiant || Temperament == Temperament.Aggressive || IsDeep && !Passive
+            ? Importance.Threat : Importance.Ambient;
+
     /// <summary>Its body form in words, for the discovery card and the scan: "walker", "giant", "voidborne".</summary>
     public string FormLabel => Plan switch
     {
@@ -284,6 +292,9 @@ public sealed class Palette
     /// <summary>0 = no glow at all; 1 = eyes, spots and glowing parts blaze at night.</summary>
     public float GlowStrength;
 }
+
+/// <summary>A creature's call on the frame (<see cref="Species.Importance"/>).</summary>
+public enum Importance { Person, Threat, Ambient }
 
 public sealed class Stats
 {
