@@ -96,14 +96,17 @@ void fragment() {
 		float m = fract(sin(dot(floor(FRAGCOORD.xy), vec2(12.9898, 78.233))) * 43758.5453);
 		if (m < flora_swap.x || m >= flora_swap.y) discard;
 	}
-	vec3 own = srgb_to_linear(COLOR.rgb);
-	vec3 c = mix(own, srgb_to_linear(min(tint * COLOR.rgb * 1.25, vec3(1.0))), COLOR.a);
+	// Held to its range: a far plant's sliver can be shaded at a pixel's centre outside itself, where
+	// its vertex colour carried on past its own would be a spark (flora_cover.gdshader).
+	vec4 col = clamp(COLOR, 0.0, 1.0);
+	vec3 own = srgb_to_linear(col.rgb);
+	vec3 c = mix(own, srgb_to_linear(min(tint * col.rgb * 1.25, vec3(1.0))), col.a);
 	// A dusting of snow on top faces; wet bark goes dark.
 	float snow = smoothstep(0.4, 0.8, NORMAL.y) * weather_ground.y;
 	c = mix(c * (1.0 - weather_ground.x * 0.25), vec3(0.85, 0.88, 0.9), snow * 0.8);
 	ALBEDO = c;
 	ROUGHNESS = 0.85;
 	// Light through the leaves: a canopy's underside glows a little by day, so a wood is shade, not black.
-	vec3 through = c * COLOR.a * 0.16 * weather_ground.w;
+	vec3 through = c * col.a * 0.16 * weather_ground.w;
 	EMISSION = through + (glow > 0.0 ? srgb_to_linear(tint) * glow * 1.5 : vec3(0.0));
 }
