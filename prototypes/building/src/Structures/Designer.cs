@@ -203,8 +203,13 @@ public sealed class Designer
         }
         string[] shapes = { "corner", "invcorner", "slope", "wedge" };
         // Each other open side takes the piece whose face matches it, chained up to five deep, when that leaves fewer open sides.
+        var whole = System.Diagnostics.Stopwatch.StartNew();
+        var faceClock = System.Diagnostics.Stopwatch.StartNew();
+        // Bounded: a face gets a quarter of a second and the whole blueprint two; what is not filled by then stays open and is counted.
+        bool Spent() => faceClock.ElapsedMilliseconds > 250 || whole.ElapsedMilliseconds > 2000;
         bool Close(Int3 pos, Dir face, int depth, int baseline)
         {
+            if (Spent()) return false;
             Int3 cell = pos + face.Vec();
             if (keep.Contains(cell) || S.Has(cell) || !S.TryGet(pos, out Block src)) return false;
             var outline = Notches.Outline(S, src, face);
@@ -217,7 +222,7 @@ public sealed class Designer
                     S.Set(cell, cand);
                     var now = Notches.Open(S);
                     if (now.Count < baseline) return true;
-                    if (depth > 0 && now.Where(n => n.pos == cell).ToList().Any(n => Close(n.pos, n.face, depth - 1, baseline))) return true;
+                    if (depth > 0 && !Spent() && now.Where(n => n.pos == cell).ToList().Any(n => Close(n.pos, n.face, depth - 1, baseline))) return true;
                     S.Clear(cell);
                 }
             return false;
@@ -230,6 +235,8 @@ public sealed class Designer
             foreach (var n in open)
             {
                 if (failed.Contains(n)) continue;
+                if (whole.ElapsedMilliseconds > 2000) break;
+                faceClock.Restart();
                 if (Close(n.pos, n.face, 4, open.Count)) { progress = true; break; }
                 failed.Add(n);
             }

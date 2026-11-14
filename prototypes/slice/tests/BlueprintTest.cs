@@ -44,8 +44,12 @@ public partial class BlueprintTest : Node
     /// <summary>The cheapest flyer's ceiling, ore (owner: every world is guaranteed the ores for it).</summary>
     const int StarterOre = 600;
 
+    /// <summary>Whatever happens the run ends: a watchdog that exits the process after twenty minutes.</summary>
+    static System.Threading.Timer _watchdog;
+
     public override void _Ready()
     {
+        _watchdog = new System.Threading.Timer(_ => Environment.Exit(3), null, TimeSpan.FromMinutes(20), System.Threading.Timeout.InfiniteTimeSpan);
         ProcessPhysicsPriority = 100;
         _run = Scenario().GetEnumerator();
     }
