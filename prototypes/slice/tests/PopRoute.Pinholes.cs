@@ -96,10 +96,12 @@ public partial class PopRoute
                         yield return 0;
                         if (i < 4) continue;
                         Image img = GetViewport().GetTexture().GetImage();
-                        int top = GroundTop(cam, At(i), img.GetHeight());
-                        HashSet<int> now = Dots(img, top);
+                        // Dots from 200 m in (cover's reach, where tufts shrink away, is within 112 m); the sky's
+                        // way through only well under the land's skyline (40 m under the ground 400 m ahead).
+                        var (now, bright) = Dots(img, Row(At(i), 200f, 0f));
                         found += now.Count;
-                        through += Holes(img, top);
+                        sparks += bright;
+                        through += Holes(img, Row(At(i), 400f, 40f));
                         if (last != null) flicker += now.Count(p => !last.Contains(p));
                         last = now;
                         if (i < 6 && _args.ContainsKey("frames")) img.SavePng($"{dir}/{label}-{view}-{c.Replace(' ', '-')}-{i - 4}.png");
@@ -122,12 +124,12 @@ public partial class PopRoute
         foreach (CanvasLayer l in layers) l.Visible = true;
     }
 
-    /// <summary>The first picture row of ground for sure: under where the ground 400 m ahead meets the view, and a margin.</summary>
-    static int GroundTop(Camera3D cam, Transform3D eye, int height)
+    /// <summary>The picture row a little under where the ground some way ahead (less a drop, m) meets the view.</summary>
+    int Row(Transform3D eye, float ahead, float drop)
     {
-        Vector3 ahead = -eye.Basis.Z with { Y = 0f };
-        Vector2 p = cam.UnprojectPosition(eye.Origin + ahead.Normalized() * 400f + Vector3.Down * 40f);
-        return Math.Clamp((int)p.Y + 8, 0, height - 1);
+        Vector3 way = (-eye.Basis.Z with { Y = 0f }).Normalized();
+        Vector2 p = _game.Camera.UnprojectPosition(Lift(eye.Origin + way * ahead, -drop));
+        return Math.Clamp((int)p.Y + 4, 0, (int)GetViewport().GetVisibleRect().Size.Y - 1);
     }
 
     /// <summary>A picture's bytes, and how many to a pixel.</summary>
@@ -135,15 +137,17 @@ public partial class PopRoute
 
     /// <summary>
     /// Pixel indices of dots under a row: a pixel at least 0.2 brighter than, and three times, the mean of the ring
-    /// of 16 two pixels out, with at most two of its eight neighbours anywhere near as bright (a dot, not an edge).
+    /// of 16 two pixels out, with at most two of its eight neighbours anywhere near as bright (a dot, not an edge);
+    /// and how many of them are sparks, at least 0.4 bright (the owner's were, brighter than anything lit by night).
     /// </summary>
-    static HashSet<int> Dots(Image img, int top)
+    static (HashSet<int> Dots, int Sparks) Dots(Image img, int top)
     {
         int w = img.GetWidth(), h = img.GetHeight();
         var (data, stride) = Bytes(img);
         var l = new float[w * h];
         for (int i = 0; i < w * h; i++) l[i] = (0.299f * data[i * stride] + 0.587f * data[i * stride + 1] + 0.114f * data[i * stride + 2]) / 255f;
         var found = new HashSet<int>();
+        int sparks = 0;
         for (int y = Math.Max(top, 2); y < h - 2; y++)
             for (int x = 2; x < w - 2; x++)
             {
@@ -159,9 +163,11 @@ public partial class PopRoute
                 for (int dy = -1; dy <= 1; dy++)
                     for (int dx = -1; dx <= 1; dx++)
                         if ((dx != 0 || dy != 0) && l[(y + dy) * w + x + dx] > half) bright++;
-                if (bright <= 2) found.Add(y * w + x);
+                if (bright > 2) continue;
+                found.Add(y * w + x);
+                if (v >= 0.4f) sparks++;
             }
-        return found;
+        return (found, sparks);
     }
 
     /// <summary>Pixels under a row showing the flat magenta background, wholly or in part: the ground let it through.</summary>
@@ -172,7 +178,7 @@ public partial class PopRoute
         for (int i = top * w; i < w * h; i++)
         {
             int r = data[i * stride], g = data[i * stride + 1], b = data[i * stride + 2];
-            if (r > 70 && b > 70 && g * 2 < Math.Min(r, b) && Math.Abs(r - b) * 5 < Math.Max(r, b)) n++;
+            if (r > 70 && b > 70 && g * 4 < Math.Min(r, b) && Math.Abs(r - b) * 5 < Math.Max(r, b)) n++;
         }
         return n;
     }
