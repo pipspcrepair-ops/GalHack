@@ -722,11 +722,11 @@ public static class FarBuilder
         int g = grid.G;
         var verts = new List<Vector3>();
         var indices = new List<int>();
-        var map = new Dictionary<int, int>();
+        var vertexOf = new Dictionary<int, int>();
         int Vertex(int i, int j)
         {
             int s = grid.Sample(i, j);
-            if (map.TryGetValue(s, out int v)) return v;
+            if (vertexOf.TryGetValue(s, out int v)) return v;
             v = verts.Count;
             float l = level[s];
             if (!river[s])
@@ -739,13 +739,14 @@ public static class FarBuilder
                 }
             }
             float y = l - SurfaceSampler.RiverDrop;
-            if (!river[s])
+            // (Not a river come down to the sea: at the sea's level, ground beside it lower still is the sea's own water.)
+            if (!river[s] && y > source.WaterLevel)
             {
                 float ground = job.Lod == 0 ? MathF.Min(height[s], source.SurfaceHeight(x0 + i * step, z0 + j * step)) : height[s];
                 y = MathF.Min(y, ground - 0.3f);
             }
             verts.Add(new Vector3(i * step, y, j * step));
-            map[s] = v;
+            vertexOf[s] = v;
             return v;
         }
         // Never over a place's opening dug down from the bank: the sheet would hang over it. (Only round a place

@@ -87,7 +87,7 @@ void fragment() {
 		depth = clamp(below / 120.0, 0.0, 1.0);
 	} else {
 		// A river that has come down to the sea where the sea is drawn is the sea: one surface, drawn once.
-		if (below >= sea_mask && level < 0.02) discard;
+		if (below >= sea_mask && level < 0.05) discard;
 		// Shallow, and toward the sea the colour of the sea at its shore, so the two meet without a line.
 		depth = 0.25 * (1.0 - smoothstep(sea_mask - 2.0, sea_mask, below));
 	}
