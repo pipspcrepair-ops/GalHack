@@ -56,7 +56,8 @@ public partial class PoiTest
         }
 
         var rand = new Random();
-        int places = 0, bodies = 0, courses = 0, teeth = 0, opened = 0, ladders = 0, unlanded = 0, rails = 0, offEdge = 0;
+        int places = 0, bodies = 0, courses = 0, teeth = 0, opened = 0, ladders = 0, unlanded = 0, rails = 0, offEdge = 0, railPosts = 0, postsOff = 0, bareEnds = 0, emptyRails = 0;
+        var postGaps = new List<double>();
         double worst = 0;
         string worstAt = "";
         var shares = new List<double>();
@@ -132,6 +133,9 @@ public partial class PoiTest
                 bool ok = BlockInfo.IsFullCube(under.Type) ? b.Facing.IsHorizontal() && !BlockInfo.Collides(g.Get(c + Int3.Down + b.Facing.Vec()).Type) : Shapes.PlanOf(under) != null;
                 if (!ok) offEdge++;
             }
+            var (posts, offLine, bare, empty, gaps) = RimPosts(g);
+            (railPosts, postsOff, bareEnds, emptyRails) = (railPosts + posts, postsOff + offLine, bareEnds + bare, emptyRails + empty);
+            postGaps.AddRange(gaps);
             // Each ladder up a round thing's side lands on a deck a body stands on.
             foreach (var (c, b) in g.Blocks().Where(q => q.Block.Type == BlockType.Ladder && g.Get(q.Cell + Int3.Up).Type != BlockType.Ladder).ToList())
             {
@@ -150,6 +154,75 @@ public partial class PoiTest
             $"every round thing is round: no saw-teeth ({teeth}), its outline within {Round.Tolerance} m of its circle at every course ({worst:0.000} m) (Round)");
         Check(unlanded == 0, $"every ladder up a round thing lands on a deck a body stands on ({unlanded} of {ladders} don't) (Round)");
         Check(offEdge == 0, $"every rail round a round thing's top runs along its outline ({offEdge} of {rails} don't) (Round)");
+        double gapLo = postGaps.DefaultIfEmpty(0).Min(), gapHi = postGaps.DefaultIfEmpty(0).Max();
+        Check(railPosts > 0 && postsOff == 0 && bareEnds == 0 && emptyRails == 0,
+            $"every post of a rim rail stands under its rail ({postsOff} of {railPosts} more than 3 cm off its line), every end of one has a post ({bareEnds} don't), every cell of one draws its run ({emptyRails} don't) (Round)");
+        Check(postGaps.Count > 0 && gapLo >= 0.4 && gapHi <= Shapes.RimSpacing + 0.02,
+            $"posts along a rim rail are 0.4 to {Shapes.RimSpacing + 0.02:0.00} m apart ({postGaps.Count} gaps, {gapLo:0.00} to {gapHi:0.00} m) (Round)");
+    }
+
+    /// <summary>
+    /// A place's rim rails as drawn: their posts, those more than 3 cm off the line of the top rail, the ends of a rail with
+    /// no post within 5 cm, the rail cells that draw no run, and each gap between two posts in a row along a rail.
+    /// </summary>
+    static (int Posts, int OffLine, int BareEnds, int Empty, List<double> Gaps) RimPosts(BlockGrid g)
+    {
+        var runs = new List<(V3 A, V3 B)>();
+        var posts = new List<V3>();
+        int empty = 0;
+        foreach (var (c, b) in g.Blocks().Where(q => q.Block.Type == BlockType.Rail && q.Block.Variant == Shapes.RimRailVariant).ToList())
+        {
+            int had = runs.Count;
+            foreach (ShapeBox box in Shapes.For(b, c, g))
+            {
+                V3 m = (box.Lo + box.Hi) * 0.5f;
+                m = new V3(c.X + m.X, 0, c.Z + m.Z);
+                if (box.Lo.Y < 0.01f) posts.Add(m);
+                else if (box.Lo.Y > 0.9f)
+                {
+                    V3 d = Shapes.Rotate(new V3((box.Hi.X - box.Lo.X) / 2, 0, 0), box.Tilt);
+                    runs.Add((m - d, m + d));
+                }
+            }
+            if (runs.Count == had) empty++;
+        }
+        static float Flat(V3 a, V3 b) => MathF.Sqrt((a.X - b.X) * (a.X - b.X) + (a.Z - b.Z) * (a.Z - b.Z));
+        // How far a point is from a run's line, and how far along it.
+        static (float Off, float Along) To((V3 A, V3 B) r, V3 q)
+        {
+            V3 d = r.B - r.A;
+            float len = Flat(r.A, r.B), t = Math.Clamp(((q.X - r.A.X) * d.X + (q.Z - r.A.Z) * d.Z) / Math.Max(1e-6f, len * len), 0, 1);
+            return (Flat(q, r.A + d * t), t * len);
+        }
+        int off = posts.Count(q => runs.Count == 0 || runs.Min(r => To(r, q).Off) > 0.03f);
+        // The runs joined end to start into rails; along each, its posts in order, and a post at each end of an open one.
+        int Next(int i) => runs.FindIndex(r => Flat(r.A, runs[i].B) < 0.08f);
+        bool[] seen = new bool[runs.Count];
+        var heads = Enumerable.Range(0, runs.Count).Where(i => !runs.Any(r => Flat(r.B, runs[i].A) < 0.08f)).Concat(Enumerable.Range(0, runs.Count)).ToList();
+        int bare = 0;
+        var gaps = new List<double>();
+        foreach (int head in heads)
+        {
+            if (seen[head]) continue;
+            var rail = new List<int>();
+            for (int i = head; i >= 0 && !seen[i]; i = Next(i)) { seen[i] = true; rail.Add(i); }
+            bool closed = Next(rail[^1]) == head;
+            if (!closed)
+                foreach (V3 end in new[] { runs[rail[0]].A, runs[rail[^1]].B })
+                    if (!posts.Any(q => Flat(q, end) < 0.05f)) bare++;
+            var along = new List<(float At, V3 Post)>();
+            float from = 0;
+            foreach (int i in rail)
+            {
+                foreach (V3 q in posts)
+                    if (To(runs[i], q) is { Off: <= 0.03f } hit && !along.Any(a => Flat(a.Post, q) < 1e-3f)) along.Add((from + hit.Along, q));
+                from += Flat(runs[i].A, runs[i].B);
+            }
+            along.Sort((a, b) => a.At.CompareTo(b.At));
+            for (int i = 0; i + 1 < along.Count; i++) gaps.Add(Flat(along[i].Post, along[i + 1].Post));
+            if (closed && along.Count > 1) gaps.Add(Flat(along[^1].Post, along[0].Post));
+        }
+        return (posts.Count, off, bare, empty, gaps);
     }
 
     static bool InPlan(V3[] plan, float x, float z)

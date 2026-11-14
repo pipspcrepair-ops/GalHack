@@ -1691,49 +1691,142 @@ public static class Shapes
     /// <summary>A rail's Variant when it follows a round's outline (<see cref="RimRail"/>).</summary>
     public const byte RimRailVariant = 1;
 
+    /// <summary>A rim rail's set-out: how far in from the edge it runs, m; posts at most <c>RimSpacing</c> apart along it, m; and one at every turn sharper than <c>RimTurn</c>, radians.</summary>
+    public const float RimInset = 0.08f, RimSpacing = 1.25f, RimTurn = 30 * MathF.PI / 180;
+
     /// <summary>
-    /// A rail round a round thing's top, along its outline: over a rim piece or a half, along its cut; over a whole block, along its
-    /// face toward Facing; a hand in from the edge, so the runs of the cells round it meet end to end.
+    /// The outline a rim rail runs along through its cell, in the place's metres (y 0): the edges of the plan under it that
+    /// are the round's outline (its cuts, and its faces no neighbour covers), in the plan's winding, so each cell's line
+    /// begins where the one before it ends and the round's inside is on its left.
     /// </summary>
-    static void RimRail(List<ShapeBox> l, Block b, Int3 p, IBlockStructure g, Rgb c, Surface s)
+    static List<V3> RimLine(IBlockStructure g, Int3 p)
     {
-        Block under = g.Get(p + Int3.Down);
+        Int3 at = p + Int3.Down;
         var line = new List<V3>();
-        V3 inward;
-        if (!BlockInfo.IsFullCube(under.Type) && PlanOf(under) is { } plan)
+        if (PlanOf(g.Get(at)) is not { } plan) return line;
+        int n = plan.Length;
+        bool Open(int i)
         {
-            int n = plan.Length;
-            int start = Enumerable.Range(0, n).First(i => OnSide(plan[(i - 1 + n) % n], plan[i]) != null && OnSide(plan[i], plan[(i + 1) % n]) == null);
-            for (int i = start; ; i = (i + 1) % n) { line.Add(plan[i]); if (OnSide(plan[i], plan[(i + 1) % n]) != null) break; }
-            V3 a0 = line[0], a1 = line[^1];
-            inward = new V3(a1.Z - a0.Z, 0, a0.X - a1.X).Normalized() * -1f;
+            V3 a = plan[i], e = plan[(i + 1) % n];
+            return OnSide(a, e) is not Dir d || !Covers(g.Get(at + d.Vec()), d.Opposite(), Span(a, e, d));
         }
-        else
+        int start = Enumerable.Range(0, n).FirstOrDefault(i => Open(i) && !Open((i + n - 1) % n));
+        for (int i = start, k = 0; k < n && Open(i); i = (i + 1) % n, k++)
         {
-            V3 v = new(b.Facing.Vec().X, 0, b.Facing.Vec().Z);
-            V3 mid = new(0.5f + v.X * 0.5f, 0, 0.5f + v.Z * 0.5f), along = new(MathF.Abs(v.Z) * 0.5f, 0, MathF.Abs(v.X) * 0.5f);
-            line.Add(mid - along); line.Add(mid + along);
-            inward = v * -1f;
+            if (line.Count == 0) line.Add(new V3(p.X + plan[i].X, 0, p.Z + plan[i].Z));
+            line.Add(new V3(p.X + plan[(i + 1) % n].X, 0, p.Z + plan[(i + 1) % n].Z));
         }
-        V3 inset = inward * 0.08f;
-        for (int i = 0; i + 1 < line.Count; i++)
+        return line;
+    }
+
+    /// <summary>
+    /// The rim rail a cell is part of, traced cell to cell along its outline (<see cref="RimLine"/>): each cell's line in
+    /// order from the rail's start (its open end, or on a closed round its north-west-most cell), and whether it closes.
+    /// </summary>
+    static (List<(Int3 Cell, List<V3> Line)> Cells, bool Closed) RimChain(IBlockStructure g, Int3 p)
+    {
+        var lines = new Dictionary<Int3, List<V3>>();
+        List<V3> LineOf(Int3 q) => lines.TryGetValue(q, out var l) ? l : lines[q] = g.Get(q) is { Type: BlockType.Rail, Variant: RimRailVariant } ? RimLine(g, q) : new();
+        Int3? Step(Int3 q, bool on)
         {
-            V3 a = line[i] + inset, e = line[i + 1] + inset, m = (a + e) * 0.5f, d = e - a;
-            float len = MathF.Sqrt(d.X * d.X + d.Z * d.Z) * 0.5f + 0.02f, yaw = MathF.Atan2(-d.Z, d.X);
-            l.Add(new ShapeBox(new V3(m.X - len, 0.95f, m.Z - 0.05f), new V3(m.X + len, 1.05f, m.Z + 0.05f), c, s, Tilt: new V3(0, yaw, 0)));
-            l.Add(new ShapeBox(new V3(m.X - len, 0.48f, m.Z - 0.03f), new V3(m.X + len, 0.54f, m.Z + 0.03f), c.Scale(0.8f), s, Tilt: new V3(0, yaw, 0)));
+            V3 end = on ? LineOf(q)[^1] : LineOf(q)[0];
+            for (int dz = -1; dz <= 1; dz++)
+                for (int dx = -1; dx <= 1; dx++)
+                {
+                    Int3 r = q + new Int3(dx, 0, dz);
+                    if (r == q || LineOf(r) is not { Count: > 1 } m) continue;
+                    V3 join = on ? m[0] : m[^1];
+                    if (MathF.Abs(join.X - end.X) < 1e-3f && MathF.Abs(join.Z - end.Z) < 1e-3f) return r;
+                }
+            return null;
         }
-        // A post at the middle of each cell's run (never on a neighbour's), and at both ends where the rail stops (an opening for a ladder).
-        int beside = 0;
-        for (int dz = -1; dz <= 1; dz++)
-            for (int dx = -1; dx <= 1; dx++)
-                if ((dx != 0 || dz != 0) && g.Get(p + new Int3(dx, 0, dz)) is { Type: BlockType.Rail, Variant: RimRailVariant }) beside++;
-        var posts = new List<V3> { (line[0] + line[^1]) * 0.5f };
-        if (beside < 2) { posts.Add(line[0]); posts.Add(line[^1]); }
-        foreach (V3 at in posts)
+        if (LineOf(p).Count < 2) return (new() { (p, LineOf(p)) }, false);
+        Int3 start = p;
+        bool closed = false;
+        for (int i = 0; i < 4096 && Step(start, false) is Int3 back; i++)
         {
-            V3 post = at + inset;
-            l.Add(Box(post.X - 0.06f, 0, post.Z - 0.06f, post.X + 0.06f, 1.07f, post.Z + 0.06f, c, s));
+            if (back == p) { closed = true; break; }
+            start = back;
+        }
+        var cells = new List<Int3> { start };
+        for (Int3 q = start; cells.Count < 4096 && Step(q, true) is Int3 next && next != start; q = next) cells.Add(next);
+        if (!cells.Contains(p)) (cells, closed) = (new() { p }, false);
+        if (closed)
+        {
+            int k = cells.IndexOf(cells.MinBy(q => (q.Z, q.X)));
+            cells = cells.Skip(k).Concat(cells.Take(k)).ToList();
+        }
+        return (cells.Select(q => (q, LineOf(q))).ToList(), closed);
+    }
+
+    /// <summary>
+    /// A rail round a round thing's top, a hand in from its outline (<see cref="RimChain"/>), traced whole so every cell draws
+    /// its share of one rail: runs mitred where it turns, cell to cell; posts on its line, at each end, at each turn sharper
+    /// than <see cref="RimTurn"/>, and evenly between those no more than <see cref="RimSpacing"/> apart along it.
+    /// </summary>
+    static void RimRail(List<ShapeBox> l, Int3 p, IBlockStructure g, Rgb c, Surface s)
+    {
+        var (chain, closed) = RimChain(g, p);
+        // The rail as one line (a closed one ends where it began), and the point each cell's share begins at.
+        var pts = new List<V3>();
+        var from = new List<int>();
+        foreach (var (_, line) in chain)
+        {
+            from.Add(Math.Max(0, pts.Count - 1));
+            pts.AddRange(pts.Count == 0 ? line : line.Skip(1));
+        }
+        int n = pts.Count, me = chain.FindIndex(q => q.Cell == p);
+        if (n < 2) return;
+        from.Add(n - 1);
+        V3 Way(int k) => (pts[k + 1] - pts[k]).Normalized();
+        // Each corner's way in and out (at an open end, the one it has), its turn, and the rail's point there, mitred in from the edge.
+        var inset = new V3[n];
+        var turn = new float[n];
+        for (int k = 0; k < n; k++)
+        {
+            V3 da = k > 0 ? Way(k - 1) : closed ? Way(n - 2) : Way(0), de = k < n - 1 ? Way(k) : closed ? Way(0) : Way(n - 2);
+            V3 na = new(-da.Z, 0, da.X), ne = new(-de.Z, 0, de.X);
+            turn[k] = Math.Min(MathF.Acos(Math.Clamp(V3.Dot(da, de), -1f, 1f)), 2f);
+            inset[k] = pts[k] + (na + ne) * (RimInset / Math.Max(0.2f, 1 + V3.Dot(na, ne)));
+        }
+        var at = new float[n];
+        for (int k = 1; k < n; k++) { V3 d = inset[k] - inset[k - 1]; at[k] = at[k - 1] + MathF.Sqrt(d.X * d.X + d.Z * d.Z); }
+        float length = at[n - 1];
+        // The posts it must have (its ends, its sharp turns), and evenly between each two.
+        var must = new List<float>();
+        if (!closed) must.Add(0);
+        for (int k = closed ? 0 : 1; k < n - 1; k++) if (turn[k] > RimTurn) must.Add(at[k]);
+        if (must.Count == 0) must.Add(0);
+        if (!closed) must.Add(length);
+        var posts = new List<float>();
+        for (int i = 0; i + (closed ? 0 : 1) < must.Count; i++)
+        {
+            float a = must[i], e = i + 1 < must.Count ? must[i + 1] : must[0] + length;
+            int parts = Math.Max(1, (int)MathF.Ceiling((e - a) / RimSpacing - 1e-4f));
+            for (int k = 0; k < parts; k++) posts.Add((a + (e - a) * k / parts) % length);
+        }
+        if (!closed) posts.Add(length);
+        // This cell's runs, each lengthened at a turn so the outer edges meet, and the posts along its share.
+        float lo = at[from[me]], hi = at[from[me + 1]];
+        bool last = me == chain.Count - 1 && !closed;
+        V3 o = new(p.X, 0, p.Z);
+        for (int k = from[me]; k < from[me + 1]; k++)
+        {
+            V3 d = Way(k), a = inset[k] - o, e = inset[k + 1] - o;
+            float yaw = MathF.Atan2(-d.Z, d.X);
+            foreach (var (y0, y1, w, col) in new[] { (0.95f, 1.05f, 0.05f, c), (0.48f, 0.54f, 0.03f, c.Scale(0.8f)) })
+            {
+                V3 a1 = a - d * (w * MathF.Tan(turn[k] / 2)), e1 = e + d * (w * MathF.Tan(turn[k + 1] / 2)), m = (a1 + e1) * 0.5f;
+                float half = V3.Dot(e1 - a1, d) / 2;
+                l.Add(new ShapeBox(new V3(m.X - half, y0, m.Z - w), new V3(m.X + half, y1, m.Z + w), col, s, Tilt: new V3(0, yaw, 0)));
+            }
+        }
+        foreach (float t in posts)
+        {
+            if (t < lo - 1e-4f || t >= hi - 1e-4f && !(last && t >= length - 1e-4f)) continue;
+            int k = Math.Clamp(Array.FindLastIndex(at, v => v <= t + 1e-6f), 0, n - 2);
+            V3 d = Way(k), q = inset[k] + d * (t - at[k]) - o;
+            l.Add(new ShapeBox(new V3(q.X - 0.06f, 0, q.Z - 0.06f), new V3(q.X + 0.06f, 1.07f, q.Z + 0.06f), c, s, Tilt: new V3(0, MathF.Atan2(-d.Z, d.X), 0)));
         }
     }
 
@@ -1744,7 +1837,7 @@ public static class Shapes
     /// </summary>
     static void Rail(List<ShapeBox> l, Block b, Int3 p, IBlockStructure g, Rgb c, Surface s)
     {
-        if (b.Variant == RimRailVariant) { RimRail(l, b, p, g, c, s); return; }
+        if (b.Variant == RimRailVariant) { RimRail(l, p, g, c, s); return; }
         var (e, w, n, so, _) = RailRun(b, p, g);
         bool straight = e && w && !n && !so || n && so && !e && !w;
         bool post = !straight || ((p.X + p.Z) & 1) == 0;
