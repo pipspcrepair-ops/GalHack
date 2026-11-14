@@ -102,7 +102,7 @@ public sealed class Driver
         int ticks = (int)(seconds * Engine.PhysicsTicksPerSecond);
         float stuck = 0f, jet = 0f, best = float.MaxValue, noProgress = 0f, side = 0f, sideFor = 0f;
         bool sideLeft = false;
-        bool digging = false;
+        bool digging = false, surfaced = false;
         int climbs = 0;
         Vector3 last = Game.Survivor.WorldFeet;
         for (int i = 0; i < ticks; i++)
@@ -145,11 +145,18 @@ public sealed class Driver
             // survival tool, as a player in a hole would.
             if (flat < best - 0.5f) { best = flat; noProgress = 0f; }
             else noProgress += 1f / 60f;
-            // Under the ground with the way on above it (a cave fallen into, a shaft dug): a ramp up out of
-            // it, at once; on through the dark the walk only finds deeper caves, and ore nobody can reach.
-            bool buried = target.Y - feet.Y > 2.5f && Game.Zone.GroundAt(feet.X, feet.Z).Y - feet.Y > 2.5f;
             bool canDig = dig && Game.Pack.Hand == Slice.Items.HandKind.Tool && Game.Tool.Mode == Slice.Player.ToolMode.Gather;
-            digging = canDig && (noProgress > 2f || buried);
+            // Under the ground with the way on above it or far off (a cave walked or fallen into, a pit dug): up out of it
+            // first, at once; on through the dark the walk only finds deeper caves, and ore nobody can reach.
+            if (canDig && !surfaced && !_following && Below() > 2.5f && (target.Y - feet.Y > 2.5f || flat > 20f)
+                && !(Game.Bunker is Slice.Start.Bunker inside && inside.Inside(feet, Game.Zone)))
+            {
+                surfaced = true;
+                foreach (int x in Surface(target)) yield return x;
+                best = float.MaxValue;
+                continue;
+            }
+            digging = canDig && noProgress > 2f;
             // Nose to a tree or wedged under a parked hull, with nothing to dig with, or hopped up into a tree's limbs (digging
             // can't help up there): back off and sidestep, further each time, as a player would.
             bool upATree = feet.Y - Game.Zone.GroundAt(feet.X, feet.Z).Y > 1.5f && !Game.Survivor.Body.OnFloor;
@@ -165,11 +172,7 @@ public sealed class Driver
             Controls.Hold(Key.A, side > 0f && sideLeft);
             Controls.Hold(Key.D, side > 0f && !sideLeft);
             side -= 1f / 60f;
-            if (digging)
-            {
-                var ahead = new Vector3(to.X, 0f, to.Z).Normalized();
-                Face(feet + ahead * 1.6f + Vector3.Up * (buried ? 3.2f : 0.7f));
-            }
+            if (digging) Face(feet + new Vector3(to.X, 0f, to.Z).Normalized() * 1.6f + Vector3.Up * 0.7f);
             Controls.Primary = digging;
             // Over an edge: the jetpack brakes the fall, as a careful player would.
             bool falling = !Game.Survivor.Body.OnFloor && Game.Survivor.Body.Velocity.Y < -5f;
@@ -188,6 +191,36 @@ public sealed class Driver
         Controls.Hold(Key.Shift, false);
         Controls.Hold(Key.Space, false);
         for (int i = 0; i < 20; i++) yield return 0;
+    }
+
+    /// <summary>How far the feet are under the ground's own surface (in a cave, a pit dug, a shell hole), m.</summary>
+    public float Below()
+    {
+        Vector3 feet = Game.Survivor.WorldFeet;
+        return Game.Zone.GroundAt(feet.X, feet.Z).Y - feet.Y;
+    }
+
+    /// <summary>
+    /// Under the ground (a cave walked or fallen into, a pit dug): up out of it onto the open ground, a shaft dug up at a
+    /// slant toward where it is going and climbed on the jetpack, as a player would. Returns on the surface, or after the time limit.
+    /// </summary>
+    public IEnumerable<int> Surface(Vector3 toward, float seconds = 60f)
+    {
+        for (int i = 0; i < seconds * Engine.PhysicsTicksPerSecond && Below() > 1.5f && !Game.Suit.Dead; i++)
+        {
+            Vector3 feet = Game.Survivor.WorldFeet;
+            var ahead = new Vector3(toward.X - feet.X, 0f, toward.Z - feet.Z);
+            ahead = ahead.LengthSquared() > 0.01f ? ahead.Normalized() : Vector3.Forward;
+            Face(feet + ahead * 1.6f + Vector3.Up * 3.2f);
+            Controls.Primary = true;
+            Controls.Hold(Key.W);
+            Controls.Hold(Key.Space, !(Controls.IsHeld(Key.Space) && Game.Survivor.Body.OnFloor));
+            yield return 0;
+        }
+        Controls.Primary = false;
+        Controls.Hold(Key.W, false);
+        Controls.Hold(Key.Space, false);
+        yield return 0;
     }
 
     /// <summary>

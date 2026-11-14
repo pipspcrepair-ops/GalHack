@@ -560,6 +560,9 @@ public sealed class Playthrough
             float far = new Vector2(at.X - Game.Survivor.WorldFeet.X, at.Z - Game.Survivor.WorldFeet.Z).Length();
             foreach (int x in Drive.WalkTo(at, 3.5f, MathF.Max(90f, 30f + far / 3f))) yield return x;
             int idle = 0, got0 = Pack[ore.Id];
+            bool surfaced = false;
+            Vector3 reached = Game.Survivor.WorldFeet;
+            float under = Drive.Below();
             var store = Game.Zone.Planet.Terrain.Store;
             for (int pulse = 0; pulse < 240 && idle < 12 && Pack[ore.Id] < enough; pulse++)
             {
@@ -568,6 +571,16 @@ public sealed class Playthrough
                 if (target is not Vector3 t) break;
                 // Digging down through soil and rock to a buried bed is progress too.
                 int before = Pack[ore.Id] + store.RemovedCount;
+                // Ore overhead out of reach from under the ground (come at from a cave under it): up onto the surface over it,
+                // to dig down to it from there, once; still under it after that, on to the next deposit.
+                if (t.Y - eye.Y > 2f && eye.DistanceTo(t) > Game.Zone.Data.Rules.Tool.Reach - 1f && Drive.Below() > 2.5f)
+                {
+                    if (surfaced) break;
+                    surfaced = true;
+                    foreach (int x in Drive.Surface(t)) yield return x;
+                    Log($"(ore {t.Y - eye.Y:F0} m over the eye from under the ground: up to {Game.Survivor.WorldFeet}, {Drive.Below():F1} m under)");
+                    continue;
+                }
                 // Walk over a deposit; one buried under the feet is dug down to, a ball at a time.
                 if (new Vector2(t.X - eye.X, t.Z - eye.Z).Length() > 4f && eye.DistanceTo(t) > 6.5f)
                     foreach (int x in Drive.WalkTo(t, 1.2f, 5f)) yield return x;
@@ -580,7 +593,7 @@ public sealed class Playthrough
                 if (idle == 3)
                     Log($"(digging at {t}: eye {eye} {eye.DistanceTo(t):F1} m off; the tool's target {(Game.Tool.HasTarget ? Game.Tool.Target.ToString() : "none")}, {Game.Tool.TargetVerdict}, on a block {Game.Tool.OnBlock}, hand {Game.Pack.Hand}, mode {Game.Tool.Mode}, dead {Game.Suit.Dead} ({Game.Suit.Sim.Player.DeathCause}), menu {Game.Menu.IsOpen}, screen {Game.MachineScreens.Pointer.Target?.Name})");
             }
-            Log($"({kind} deposit {deposit + 1}: +{Pack[ore.Id] - got0}, {Pack[ore.Id]}/{enough})");
+            Log($"({kind} deposit {deposit + 1} at {at}, ground {Game.Zone.GroundAt(at.X, at.Z).Y:F1}; walked to {reached}, {under:F1} m under: +{Pack[ore.Id] - got0}, {Pack[ore.Id]}/{enough})");
         }
     }
     /// <summary>The nearest cell of a kind of ore still in the ground round a deposit's centre.</summary>
