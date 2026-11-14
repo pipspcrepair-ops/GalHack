@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using GalHack.Physics.Engine;
 using Godot;
 
@@ -32,6 +33,9 @@ public partial class PopRoute
         var zone = _game.Zone;
         zone.Sky.TimeScale = 0f;
         zone.Sky.TimeOfDay = _day;
+        // The HUD turns with the view (compass, markers): only the world is compared.
+        var huds = GetTree().Root.FindChildren("*", nameof(CanvasLayer), true, false).OfType<CanvasLayer>().Where(c => c.Visible).ToList();
+        foreach (CanvasLayer c in huds) c.Visible = false;
         foreach (var (name, up) in new[] { ("standing", 0f), ("60 m up", 60f), ("400 m up", 400f) })
         {
             Vector3 eye = Lift(over, up);
@@ -77,6 +81,7 @@ public partial class PopRoute
                 worstNow.SavePng($"{dir}/turn-{tag}-after-marked.png");
             }
         }
+        foreach (CanvasLayer c in huds) c.Visible = true;
         zone.Sky.TimeScale = 1f;
     }
 
