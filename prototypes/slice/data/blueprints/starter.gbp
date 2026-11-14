@@ -21,7 +21,9 @@ paint chev base=0a9396 accent=f4a100 pattern=chevrons grime=1
 paint hazard base=f4a100 pattern=hazard grime=2
 
 block 0 -1 -6 thruster-t1 rot=+y+z
-block -2..2 -1 -5 base-block paint=belly
+block -2 -1 -5 base-block slope rot=-x-z paint=belly
+block -1..1 -1 -5 base-block paint=belly
+block 2 -1 -5 base-block slope rot=+x-z paint=belly
 block -2..-1 -1 -4 base-block paint=belly
 block 0 -1 -4 pad-t1
 block 1..2 -1 -4 base-block paint=belly
@@ -46,7 +48,9 @@ block -2 -1 2 pad-t1
 block -1..1 -1 2 base-block paint=belly
 block 2 -1 2 pad-t1
 block -1..1 -1 3 base-block paint=belly
-block -2..2 0 -5 base-block slope paint=hull
+block -2 0 -5 base-block slope rot=-x-z paint=hull
+block -1..1 0 -5 base-block slope paint=hull
+block 2 0 -5 base-block slope rot=+x-z paint=hull
 block -2..2 0 -4 base-block paint=hull
 block -2 0 -3 base-block paint=stripe
 block 0 0 -3 command-chair

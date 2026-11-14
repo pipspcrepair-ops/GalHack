@@ -138,10 +138,11 @@ public sealed partial class Staging
             for (int t = 0; t < 300 && (v.PendingShapes > 0 || v.View.Waiting > 0); t++) yield return 0;
             foreach (int x in _drive.Wait(40)) yield return x;
             _game.Visor.Visible = false;
-            foreach (int x in Outside(v)) yield return x;
+            foreach (int x in Outside(v, front: true)) yield return x;
             foreach (int x in Shot($"{dir}/stock-{file}-out.png")) yield return x;
             _game.FixedCamera = null;
             _game.ThirdPerson = false;
+            if (file == "frigate") foreach (int x in StairShot(v, $"{dir}/stock-{file}-stair.png")) yield return x;
             _game.Survivor.Sit(v);
             _game.Survivor.Pitch = -0.35f;
             foreach (int x in _drive.Wait(30)) yield return x;
@@ -152,12 +153,32 @@ public sealed partial class Staging
         }
     }
 
+    /// <summary>The highest flight of stairs seen on foot from two metres up it, standing, looking up it (the way to the bridge).</summary>
+    IEnumerable<int> StairShot(Vessel v, string file)
+    {
+        var s = v.Structure;
+        var (pos, block) = s.Blocks().Where(b => s.TypeOf(b.block).Function == "stairs").OrderByDescending(b => b.pos.Y).First();
+        GalHack.Structures.Int3 rise = GalHack.Structures.Dirs.Vec(GalHack.Structures.Orientations.ToWorld(block.Rot, GalHack.Structures.Dir.PosZ));
+        float cell = s.Grid.CellSize;
+        // Down the middle of its width.
+        float mid = (float)s.Blocks().Where(b => s.TypeOf(b.block).Function == "stairs" && b.pos.Y == pos.Y && b.pos.Z == pos.Z).Average(b => b.pos.X);
+        N.Vector3 at = new N.Vector3(rise.X == 0 ? mid : pos.X - 2 * rise.X, pos.Y - 2 + 0.1f, rise.Z == 0 ? pos.Z : pos.Z - 2 * rise.Z) * cell;
+        _game.Survivor.PlaceAboard(v, at);
+        _game.Survivor.Yaw = MathF.Atan2(-rise.X, -rise.Z);
+        _game.Survivor.Pitch = 0.1f;
+        foreach (int x in _drive.Tap(Key.L)) yield return x;
+        foreach (int x in _drive.Wait(40)) yield return x;
+        foreach (int x in Shot(file)) yield return x;
+        foreach (int x in _drive.Tap(Key.L)) yield return x;
+        _game.Survivor.PlaceOutside((v.Body.Position + N.Vector3.UnitY * 30f).ToGodot().ToNumerics());
+    }
+
     /// <summary>
     /// A three-quarter view of a structure from outside, a little above, the ground in the frame: of
     /// eight sides the one with the fewest plants in the way, and those few felled for the frame (a
     /// photographer's clearing; the structure itself stands as it was placed).
     /// </summary>
-    IEnumerable<int> Outside(Vessel v)
+    IEnumerable<int> Outside(Vessel v, bool front = false)
     {
         var (min, max) = v.Structure.Bounds();
         float cell = v.Structure.Grid.CellSize;
@@ -183,8 +204,9 @@ public sealed partial class Staging
         List<long> blocking = null;
         for (int k = 0; k < 8; k++)
         {
+            if (front && k is > 0 and < 6) continue; // the bow's three-quarter views only
             float a = Mathf.Pi * 0.25f * k + 0.6f;
-            var local = mid + new N.Vector3(MathF.Sin(a) * size * 1.15f, size * 0.3f, -MathF.Cos(a) * size * 1.15f);
+            var local = mid + new N.Vector3(MathF.Sin(a) * size * (front ? 0.9f : 1.15f), size * 0.3f, -MathF.Cos(a) * size * (front ? 0.9f : 1.15f));
             Vector3 eye = v.Body.ToParent(local).ToGodot();
             eye.Y = MathF.Max(eye.Y, _game.Zone.GroundAt(eye.X, eye.Z).Y + 1.8f);
             List<long> ids = InTheWay(eye);

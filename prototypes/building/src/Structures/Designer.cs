@@ -81,6 +81,40 @@ public sealed class Designer
         return Face(new Int3(lo.X, lo.Y, hi.Z + 1), new Int3(hi.X, hi.Y, hi.Z + 1), Dir.NegZ, inner);
     }
 
+    /// <summary>A run of slopes whose sloped face looks up (or down, <paramref name="under"/>) and out toward the horizontal <paramref name="face"/>.</summary>
+    public Designer Slope(Int3 a, Int3 b, string type, ushort paint, Dir face, bool under = false) =>
+        Fill(a, b, type, paint, "slope", Rot(under ? Dir.NegY : Dir.PosY, face));
+
+    /// <summary>A column of vertical chamfers cutting off the corner that faces <paramref name="sx"/> and <paramref name="sz"/> (a 45 degree edge in plan).</summary>
+    public Designer Chamfer(Int3 a, Int3 b, string type, ushort paint, Dir sx, Dir sz) =>
+        Fill(a, b, type, paint, "slope", Rot(sx, sz));
+
+    readonly List<(Int3 lo, Int3 hi)> _voids = new();
+
+    /// <summary>Clears a box that is a room's air, to be lined by <see cref="Lining"/> (a floor and wall finish on whatever bounds it).</summary>
+    public Designer Hollow(Int3 a, Int3 b)
+    {
+        _voids.Add(Order(a, b));
+        return Carve(a, b);
+    }
+
+    /// <summary>Paints the faces of armour that look into every hollow: <paramref name="floor"/> on what lies under it, <paramref name="inner"/> on the rest.</summary>
+    public Designer Lining(ushort inner, ushort floor)
+    {
+        foreach (var (lo, hi) in _voids)
+            foreach (Int3 c in Cells(lo, hi))
+            {
+                if (S.TryGet(c, out _)) continue;
+                foreach (Dir f in Dirs.All)
+                    if (S.TryGet(c + f.Vec(), out Block nb) && !nb.IsFiller && S.TypeOf(nb).IsArmor)
+                    {
+                        nb.Paint[f.Opposite()] = f == Dir.NegY ? floor : inner;
+                        S.Set(c + f.Vec(), nb);
+                    }
+            }
+        return this;
+    }
+
     /// <summary>Paints one face of every armour block in a box (a floor's finish, a stripe).</summary>
     public Designer Face(Int3 a, Int3 b, Dir face, ushort paint)
     {
