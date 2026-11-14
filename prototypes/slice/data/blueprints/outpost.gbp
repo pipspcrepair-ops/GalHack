@@ -1,7 +1,8 @@
-# Outpost: a first base on the ground. A concrete hall 10 x 9 m and 4 m floor to ceiling,
-# with power, fuel, a fabricator and four lockers along the north wall and the command chair by the
-# west window; a double door south up two steps, a door east onto a landing pad 12 m square level
-# with the floor.
+# Outpost: a first base on the ground. A concrete hall 10 x 9 m and 4 m floor to ceiling under a raked
+# roof, a glazed clerestory rising out of its middle; power, fuel, a fabricator and four lockers along
+# the north wall. A door west into a 3 m ops wing with the command chair at its window; a double door
+# south under a porch, up two steps; a door east onto a landing pad 12 m square level with the floor,
+# its rim hazard-marked and ramped down to the ground.
 # Written by slice/tests/BlueprintSet.cs (Designer); regenerate rather than edit.
 # GalHack blueprint. One statement per line; '#' starts a comment.
 # block <x> <y> <z> <type> [shape] [rot=<up><forward>] [paint=<name> | paint=<+x>,<-x>,<+y>,<-y>,<+z>,<-z>] [hp=<n>] [open] [off] [light=<rrggbb[+rrggbb]>:<mode>:<hz>:<seed>]
@@ -20,24 +21,37 @@ paint band base=0a9396 grime=1
 paint roof base=3a3f47 grime=2
 paint hazard base=f4a100 pattern=hazard grime=2
 paint pad base=5a5e66 grime=2
+paint frame base=2b2d42 grime=1
 
+block 8..18 0 -7 base-block slope paint=pad
+block 19 0 -7 base-block slope rot=+x-z paint=pad
+block -5 0 -6 concrete-plated paint=frame
+block -1 0 -6 concrete-plated paint=frame
+block 3 0 -6 concrete-plated paint=frame
+block 6 0 -6 concrete-plated paint=frame
 block 7..18 0 -6 base-block paint=pad,pad,hazard,pad,pad,pad
+block 19 0 -6 base-block slope rot=+y+x paint=pad
 block -5..6 0 -5 concrete-plated paint=wall
 block 7 0 -5 base-block paint=pad,pad,hazard,pad,pad,pad
 block 8..17 0 -5 base-block paint=pad
 block 18 0 -5 base-block paint=pad,pad,hazard,pad,pad,pad
-block -5 0 -4 concrete-plated paint=wall
-block -4..5 0 -4 concrete-plated paint=wall,wall,deck,wall,wall,wall
-block 6 0 -4 concrete-plated paint=wall
+block 19 0 -5 base-block slope rot=+y+x paint=pad
+block -5..-2 0 -4 concrete-plated paint=wall
+block -1..1 0 -4 concrete-plated paint=wall,wall,deck,wall,wall,wall
+block 2..6 0 -4 concrete-plated paint=wall
 block 7 0 -4 base-block paint=pad,pad,hazard,pad,pad,pad
 block 8..17 0 -4 base-block paint=pad
 block 18 0 -4 base-block paint=pad,pad,hazard,pad,pad,pad
-block -5 0 -3 concrete-plated paint=wall
+block 19 0 -4 base-block slope rot=+y+x paint=pad
+block -11..-5 0 -3 concrete-plated paint=wall
 block -4..5 0 -3 concrete-plated paint=wall,wall,deck,wall,wall,wall
 block 6 0 -3 concrete-plated paint=wall
 block 7 0 -3 base-block paint=pad,pad,hazard,pad,pad,pad
 block 8..17 0 -3 base-block paint=pad
 block 18 0 -3 base-block paint=pad,pad,hazard,pad,pad,pad
+block 19 0 -3 base-block slope rot=+y+x paint=pad
+block -11 0 -2 concrete-plated paint=wall
+block -10..-6 0 -2 concrete-plated paint=wall,wall,deck,wall,wall,wall
 block -5 0 -2 concrete-plated paint=wall
 block -4..-1 0 -2 concrete-plated paint=wall,wall,deck,wall,wall,wall
 block 0 0 -2 core
@@ -46,67 +60,108 @@ block 6 0 -2 concrete-plated paint=wall
 block 7 0 -2 base-block paint=pad,pad,hazard,pad,pad,pad
 block 8..17 0 -2 base-block paint=pad
 block 18 0 -2 base-block paint=pad,pad,hazard,pad,pad,pad
+block 19 0 -2 base-block slope rot=+y+x paint=pad
+block -11 0 -1 concrete-plated paint=wall
+block -10..-6 0 -1 concrete-plated paint=wall,wall,deck,wall,wall,wall
 block -5 0 -1 concrete-plated paint=wall
 block -4..5 0 -1 concrete-plated paint=wall,wall,deck,wall,wall,wall
 block 6 0 -1 concrete-plated paint=wall
 block 7 0 -1 base-block paint=pad,pad,hazard,pad,pad,pad
-block 8..17 0 -1 base-block paint=pad
+block 8..10 0 -1 base-block paint=pad
+block 11..14 0 -1 base-block paint=pad,pad,hazard,pad,pad,pad
+block 15..17 0 -1 base-block paint=pad
 block 18 0 -1 base-block paint=pad,pad,hazard,pad,pad,pad
+block 19 0 -1 base-block slope rot=+y+x paint=pad
+block -11..-8 0 0 concrete-plated paint=wall
+block -7..-6 0 0 concrete-plated paint=wall,wall,deck,wall,wall,wall
 block -5 0 0 concrete-plated paint=wall
 block -4..5 0 0 concrete-plated paint=wall,wall,deck,wall,wall,wall
 block 6 0 0 concrete-plated paint=wall
 block 7 0 0 base-block paint=pad,pad,hazard,pad,pad,pad
-block 8..17 0 0 base-block paint=pad
+block 8..10 0 0 base-block paint=pad
+block 11..14 0 0 base-block paint=pad,pad,hazard,pad,pad,pad
+block 15..17 0 0 base-block paint=pad
 block 18 0 0 base-block paint=pad,pad,hazard,pad,pad,pad
+block 19 0 0 base-block slope rot=+y+x paint=pad
+block -11 0 1 concrete-plated paint=wall
+block -10..-6 0 1 concrete-plated paint=wall,wall,deck,wall,wall,wall
 block -5 0 1 concrete-plated paint=wall
 block -4..5 0 1 concrete-plated paint=wall,wall,deck,wall,wall,wall
 block 6 0 1 concrete-plated paint=wall
 block 7 0 1 base-block paint=pad,pad,hazard,pad,pad,pad
 block 8..17 0 1 base-block paint=pad
 block 18 0 1 base-block paint=pad,pad,hazard,pad,pad,pad
+block 19 0 1 base-block slope rot=+y+x paint=pad
+block -11 0 2 concrete-plated paint=wall
+block -10..-6 0 2 concrete-plated paint=wall,wall,deck,wall,wall,wall
 block -5 0 2 concrete-plated paint=wall
 block -4..5 0 2 concrete-plated paint=wall,wall,deck,wall,wall,wall
 block 6 0 2 concrete-plated paint=wall
 block 7 0 2 base-block paint=pad,pad,hazard,pad,pad,pad
 block 8..17 0 2 base-block paint=pad
 block 18 0 2 base-block paint=pad,pad,hazard,pad,pad,pad
-block -5 0 3 concrete-plated paint=wall
+block 19 0 2 base-block slope rot=+y+x paint=pad
+block -11..-5 0 3 concrete-plated paint=wall
 block -4..5 0 3 concrete-plated paint=wall,wall,deck,wall,wall,wall
 block 6 0 3 concrete-plated paint=wall
 block 7 0 3 base-block paint=pad,pad,hazard,pad,pad,pad
 block 8..17 0 3 base-block paint=pad
 block 18 0 3 base-block paint=pad,pad,hazard,pad,pad,pad
+block 19 0 3 base-block slope rot=+y+x paint=pad
 block -5 0 4 concrete-plated paint=wall
 block -4..5 0 4 concrete-plated paint=wall,wall,deck,wall,wall,wall
 block 6 0 4 concrete-plated paint=wall
 block 7 0 4 base-block paint=pad,pad,hazard,pad,pad,pad
 block 8..17 0 4 base-block paint=pad
 block 18 0 4 base-block paint=pad,pad,hazard,pad,pad,pad
+block 19 0 4 base-block slope rot=+y+x paint=pad
 block -5..6 0 5 concrete-plated paint=wall
 block 7..18 0 5 base-block paint=pad,pad,hazard,pad,pad,pad
-block 0..1 0 6 stairs rot=+y+z paint=wall
-block -5 1 -5 concrete-plated paint=wall
-block -4..5 1 -5 concrete-plated paint=wall,wall,wall,wall,inner,wall
-block 6 1 -5 concrete-plated paint=wall
-block -5 1 -4 concrete-plated paint=inner,wall,wall,wall,wall,wall
+block 19 0 5 base-block slope rot=+y+x paint=pad
+block -5 0 6 concrete-plated paint=frame
+block -1..2 0 6 concrete-plated paint=wall,wall,deck,wall,wall,wall
+block 6 0 6 concrete-plated paint=frame
+block 8..18 0 6 base-block slope rot=+y+z paint=pad
+block 19 0 6 base-block slope rot=+x+z paint=pad
+block -1..2 0 7 concrete-plated paint=wall,wall,deck,wall,wall,wall
+block -1..2 0 8 concrete-plated paint=wall,wall,deck,wall,wall,wall
+block 0..1 0 9 stairs rot=+y+z paint=wall
+block -5 1 -6 concrete-plated paint=frame
+block -1 1 -6 concrete-plated paint=frame
+block 3 1 -6 concrete-plated paint=frame
+block 6 1 -6 concrete-plated paint=frame
+block -5..-2 1 -5 concrete-plated paint=wall
+block -1..1 1 -5 concrete-plated paint=wall,wall,wall,wall,inner,wall
+block 2..6 1 -5 concrete-plated paint=wall
+block 7 1 -5 concrete-plated paint=frame
+block -5 1 -4 concrete-plated paint=wall
 block -4 1 -4 generator-t1
 block -3 1 -4 fuel-tank-t1
 block -2 1 -4 fabricator-t1
 block 2..5 1 -4 container-t1
-block 6 1 -4 concrete-plated paint=wall,inner,wall,wall,wall,wall
+block 6 1 -4 concrete-plated paint=wall
+block -11 1 -3 concrete-plated paint=wall
+block -10..-6 1 -3 concrete-plated paint=wall,wall,wall,wall,inner,wall
 block -5 1 -3 concrete-plated paint=inner,wall,wall,wall,wall,wall
 block 6 1 -3 concrete-plated paint=wall,inner,wall,wall,wall,wall
-block -5 1 -2 concrete-plated paint=inner,wall,wall,wall,wall,wall
+block -11 1 -2 concrete-plated paint=inner,wall,wall,wall,wall,wall
+block -5 1 -2 concrete-plated paint=inner,inner,wall,wall,wall,wall
 block 6 1 -2 concrete-plated paint=wall,inner,wall,wall,wall,wall
-block -5 1 -1 concrete-plated paint=inner,wall,wall,wall,wall,wall
-block -4 1 -1 command-chair
+block -11 1 -1 concrete-plated paint=inner,wall,wall,wall,wall,wall
+block -5 1 -1 concrete-plated paint=inner,inner,wall,wall,wall,wall
 block 6 1 -1 concrete-plated paint=wall,inner,wall,wall,wall,wall
-block -5 1 0 concrete-plated paint=inner,wall,wall,wall,wall,wall
+block -11 1 0 concrete-plated paint=wall
+block -10 1 0 command-chair rot=+y-x
+block -5 1 0 door-1x2x1 rot=+y-x
 block 6 1 0 door-1x2x1 rot=+y+x
-block -5 1 1 concrete-plated paint=inner,wall,wall,wall,wall,wall
+block -11 1 1 concrete-plated paint=inner,wall,wall,wall,wall,wall
+block -5 1 1 concrete-plated paint=inner,inner,wall,wall,wall,wall
 block 6 1 1 concrete-plated paint=wall,inner,wall,wall,wall,wall
-block -5 1 2 concrete-plated paint=inner,wall,wall,wall,wall,wall
+block -11 1 2 concrete-plated paint=inner,wall,wall,wall,wall,wall
+block -5 1 2 concrete-plated paint=inner,inner,wall,wall,wall,wall
 block 6 1 2 concrete-plated paint=wall,inner,wall,wall,wall,wall
+block -11 1 3 concrete-plated paint=wall
+block -10..-6 1 3 concrete-plated paint=wall,wall,wall,wall,wall,inner
 block -5 1 3 concrete-plated paint=inner,wall,wall,wall,wall,wall
 block 6 1 3 concrete-plated paint=wall,inner,wall,wall,wall,wall
 block -5 1 4 concrete-plated paint=inner,wall,wall,wall,wall,wall
@@ -116,104 +171,260 @@ block -4..-1 1 5 concrete-plated paint=wall,wall,wall,wall,wall,inner
 block 1 1 5 door-2x2x1 rot=+y+z
 block 2..5 1 5 concrete-plated paint=wall,wall,wall,wall,wall,inner
 block 6 1 5 concrete-plated paint=wall
+block 7 1 5 concrete-plated paint=frame
+block -5 1 6 concrete-plated paint=frame
+block 6 1 6 concrete-plated paint=frame
+block -1 1 8 concrete-plated cylinder paint=frame
+block 2 1 8 concrete-plated cylinder paint=frame
+block -5 2 -6 concrete-plated paint=frame
+block -1 2 -6 concrete-plated paint=frame
+block 3 2 -6 concrete-plated paint=frame
+block 6 2 -6 concrete-plated paint=frame
 block -5 2 -5 concrete-plated paint=wall
 block -4..5 2 -5 concrete-plated paint=wall,wall,wall,wall,inner,wall
 block 6 2 -5 concrete-plated paint=wall
+block 7 2 -5 concrete-plated paint=frame
 block -5 2 -4 concrete-plated paint=inner,wall,wall,wall,wall,wall
 block 6 2 -4 concrete-plated paint=wall,inner,wall,wall,wall,wall
+block -11 2 -3 concrete-plated paint=wall,band,wall,wall,band,band
+block -10 2 -3 concrete-plated paint=wall,band,wall,wall,inner,band
+block -9..-7 2 -3 glass-plated paint=-,-,-,-,inner,-
+block -6 2 -3 concrete-plated paint=wall,band,wall,wall,inner,band
 block -5 2 -3 concrete-plated paint=inner,wall,wall,wall,wall,wall
 block 6 2 -3 concrete-plated paint=wall,inner,wall,wall,wall,wall
-block -5 2 -2 glass-plated
+block -11 2 -2 concrete-plated paint=inner,band,wall,wall,band,band
+block -5 2 -2 concrete-plated paint=inner,inner,wall,wall,wall,wall
 block 6 2 -2 concrete-plated paint=wall,inner,wall,wall,wall,wall
-block -5 2 -1 glass-plated
+block -11 2 -1 glass-plated paint=inner,-,-,-,-,-
+block -5 2 -1 concrete-plated paint=inner,inner,wall,wall,wall,wall
 block 6 2 -1 concrete-plated paint=wall,inner,wall,wall,wall,wall
-block -5 2 0 glass-plated
-block -5 2 1 glass-plated
+block -11 2 0 glass-plated
+block -11 2 1 glass-plated paint=inner,-,-,-,-,-
+block -5 2 1 concrete-plated paint=inner,inner,wall,wall,wall,wall
 block 6 2 1 concrete-plated paint=wall,inner,wall,wall,wall,wall
-block -5 2 2 glass-plated
+block -11 2 2 concrete-plated paint=inner,band,wall,wall,band,band
+block -5 2 2 concrete-plated paint=inner,inner,wall,wall,wall,wall
 block 6 2 2 concrete-plated paint=wall,inner,wall,wall,wall,wall
+block -11 2 3 concrete-plated paint=wall,band,wall,wall,band,band
+block -10 2 3 concrete-plated paint=wall,band,wall,wall,band,inner
+block -9..-7 2 3 glass-plated paint=-,-,-,-,-,inner
+block -6 2 3 concrete-plated paint=wall,band,wall,wall,band,inner
 block -5 2 3 concrete-plated paint=inner,wall,wall,wall,wall,wall
 block 6 2 3 concrete-plated paint=wall,inner,wall,wall,wall,wall
 block -5 2 4 concrete-plated paint=inner,wall,wall,wall,wall,wall
 block 6 2 4 concrete-plated paint=wall,inner,wall,wall,wall,wall
 block -5 2 5 concrete-plated paint=wall
-block -4..-1 2 5 concrete-plated paint=wall,wall,wall,wall,wall,inner
-block 2..5 2 5 concrete-plated paint=wall,wall,wall,wall,wall,inner
+block -4..-2 2 5 glass-plated paint=-,-,-,-,-,inner
+block -1 2 5 concrete-plated paint=wall,wall,wall,wall,wall,inner
+block 2 2 5 concrete-plated paint=wall,wall,wall,wall,wall,inner
+block 3..5 2 5 glass-plated paint=-,-,-,-,-,inner
 block 6 2 5 concrete-plated paint=wall
-block -5..6 3 -5 concrete-plated paint=band,band,wall,wall,band,band
-block -5 3 -4 concrete-plated paint=band,band,wall,wall,band,band
-block 6 3 -4 concrete-plated paint=band,band,wall,wall,band,band
-block -5 3 -3 concrete-plated paint=band,band,wall,wall,band,band
-block 6 3 -3 concrete-plated paint=band,band,wall,wall,band,band
-block -5 3 -2 glass-plated
-block 6 3 -2 concrete-plated paint=band,band,wall,wall,band,band
-block -5 3 -1 glass-plated
-block 6 3 -1 concrete-plated paint=band,band,wall,wall,band,band
-block -5 3 0 glass-plated
-block 6 3 0 concrete-plated paint=band,band,wall,wall,band,band
-block -5 3 1 glass-plated
-block 6 3 1 concrete-plated paint=band,band,wall,wall,band,band
-block -5 3 2 glass-plated
-block 6 3 2 concrete-plated paint=band,band,wall,wall,band,band
-block -5 3 3 concrete-plated paint=band,band,wall,wall,band,band
-block 6 3 3 concrete-plated paint=band,band,wall,wall,band,band
-block -5 3 4 concrete-plated paint=band,band,wall,wall,band,band
-block 6 3 4 concrete-plated paint=band,band,wall,wall,band,band
-block -5..6 3 5 concrete-plated paint=band,band,wall,wall,band,band
+block 7 2 5 concrete-plated paint=frame
+block -5 2 6 concrete-plated paint=frame
+block 6 2 6 concrete-plated paint=frame
+block -1 2 8 concrete-plated cylinder paint=frame
+block 2 2 8 concrete-plated cylinder paint=frame
+block -5 3 -6 concrete-plated paint=frame
+block -1 3 -6 concrete-plated paint=frame
+block 3 3 -6 concrete-plated paint=frame
+block 6 3 -6 concrete-plated paint=frame
+block -5 3 -5 concrete-plated paint=band,band,wall,wall,band,band
+block -4..5 3 -5 concrete-plated paint=band,band,wall,wall,inner,band
+block 6 3 -5 concrete-plated paint=band,band,wall,wall,band,band
+block 7 3 -5 concrete-plated paint=frame
+block -5 3 -4 concrete-plated paint=inner,band,wall,wall,band,band
+block 6 3 -4 concrete-plated paint=band,inner,wall,wall,band,band
+block -11 3 -3 concrete-plated paint=wall
+block -10 3 -3 concrete-plated paint=wall,wall,wall,wall,inner,wall
+block -9..-7 3 -3 glass-plated paint=-,-,-,-,inner,-
+block -6 3 -3 concrete-plated paint=wall,wall,wall,wall,inner,wall
+block -5 3 -3 concrete-plated paint=inner,band,wall,wall,band,band
+block 6 3 -3 concrete-plated paint=band,inner,wall,wall,band,band
+block -11 3 -2 concrete-plated paint=inner,wall,wall,wall,wall,wall
+block -5 3 -2 concrete-plated paint=inner,inner,wall,wall,band,band
+block 6 3 -2 concrete-plated paint=band,inner,wall,wall,band,band
+block -11 3 -1 glass-plated paint=inner,-,-,-,-,-
+block -5 3 -1 concrete-plated paint=inner,inner,wall,wall,band,band
+block 6 3 -1 concrete-plated paint=band,inner,wall,wall,band,band
+block -11 3 0 glass-plated paint=inner,-,-,-,-,-
+block -8 3 0 light rot=+z-y
+block -5 3 0 concrete-plated paint=inner,inner,wall,wall,band,band
+block 6 3 0 concrete-plated paint=band,inner,wall,wall,band,band
+block -11 3 1 glass-plated paint=inner,-,-,-,-,-
+block -5 3 1 concrete-plated paint=inner,inner,wall,wall,band,band
+block 6 3 1 concrete-plated paint=band,inner,wall,wall,band,band
+block -11 3 2 concrete-plated paint=inner,wall,wall,wall,wall,wall
+block -5 3 2 concrete-plated paint=inner,inner,wall,wall,band,band
+block 6 3 2 concrete-plated paint=band,inner,wall,wall,band,band
+block -11 3 3 concrete-plated paint=wall
+block -10 3 3 concrete-plated paint=wall,wall,wall,wall,wall,inner
+block -9..-7 3 3 glass-plated paint=-,-,-,-,-,inner
+block -6 3 3 concrete-plated paint=wall,wall,wall,wall,wall,inner
+block -5 3 3 concrete-plated paint=inner,band,wall,wall,band,band
+block 6 3 3 concrete-plated paint=band,inner,wall,wall,band,band
+block -5 3 4 concrete-plated paint=inner,band,wall,wall,band,band
+block 6 3 4 concrete-plated paint=band,inner,wall,wall,band,band
+block -5 3 5 concrete-plated paint=band,band,wall,wall,band,band
+block -4..-2 3 5 glass-plated paint=-,-,-,-,-,inner
+block -1..2 3 5 concrete-plated paint=band,band,wall,wall,band,inner
+block 3..5 3 5 glass-plated paint=-,-,-,-,-,inner
+block 6 3 5 concrete-plated paint=band,band,wall,wall,band,band
+block 7 3 5 concrete-plated paint=frame
+block -5 3 6 concrete-plated paint=frame
+block 6 3 6 concrete-plated paint=frame
+block -1 3 8 concrete-plated cylinder paint=frame
+block 2 3 8 concrete-plated cylinder paint=frame
+block -5 4 -6 concrete-plated paint=frame
+block -1 4 -6 concrete-plated paint=frame
+block 3 4 -6 concrete-plated paint=frame
+block 6 4 -6 concrete-plated paint=frame
 block -5 4 -5 concrete-plated paint=wall
 block -4..5 4 -5 concrete-plated paint=wall,wall,wall,wall,inner,wall
 block 6 4 -5 concrete-plated paint=wall
+block 7 4 -5 concrete-plated paint=frame
 block -5 4 -4 concrete-plated paint=inner,wall,wall,wall,wall,wall
 block 6 4 -4 concrete-plated paint=wall,inner,wall,wall,wall,wall
+block -11 4 -3 concrete-plated paint=wall
+block -10..-6 4 -3 concrete-plated slope paint=roof
 block -5 4 -3 concrete-plated paint=inner,wall,wall,wall,wall,wall
+block -3 4 -3 light rot=+z-y
+block 4 4 -3 light rot=+z-y
 block 6 4 -3 concrete-plated paint=wall,inner,wall,wall,wall,wall
+block -11 4 -2 concrete-plated slope rot=+y-x paint=roof
+block -10..-6 4 -2 concrete-plated paint=wall,wall,roof,inner,wall,wall
 block -5 4 -2 concrete-plated paint=inner,wall,wall,wall,wall,wall
-block -2 4 -2 light rot=+z-y
-block 3 4 -2 light rot=+z-y
 block 6 4 -2 concrete-plated paint=wall,inner,wall,wall,wall,wall
+block -11 4 -1 concrete-plated slope rot=+y-x paint=roof
+block -10..-6 4 -1 concrete-plated paint=wall,wall,roof,inner,wall,wall
 block -5 4 -1 concrete-plated paint=inner,wall,wall,wall,wall,wall
 block 6 4 -1 concrete-plated paint=wall,inner,wall,wall,wall,wall
+block -11 4 0 concrete-plated slope rot=+y-x paint=roof
+block -10..-9 4 0 concrete-plated paint=wall,wall,roof,inner,wall,wall
+block -8 4 0 concrete-plated paint=wall,wall,roof,wall,wall,wall
+block -7..-6 4 0 concrete-plated paint=wall,wall,roof,inner,wall,wall
 block -5 4 0 concrete-plated paint=inner,wall,wall,wall,wall,wall
 block 6 4 0 concrete-plated paint=wall,inner,wall,wall,wall,wall
+block -11 4 1 concrete-plated slope rot=+y-x paint=roof
+block -10..-6 4 1 concrete-plated paint=wall,wall,roof,inner,wall,wall
 block -5 4 1 concrete-plated paint=inner,wall,wall,wall,wall,wall
 block 6 4 1 concrete-plated paint=wall,inner,wall,wall,wall,wall
+block -11 4 2 concrete-plated slope rot=+y-x paint=roof
+block -10..-6 4 2 concrete-plated paint=wall,wall,roof,inner,wall,wall
 block -5 4 2 concrete-plated paint=inner,wall,wall,wall,wall,wall
-block -2 4 2 light rot=+z-y
-block 3 4 2 light rot=+z-y
 block 6 4 2 concrete-plated paint=wall,inner,wall,wall,wall,wall
+block -11 4 3 concrete-plated paint=wall
+block -10..-6 4 3 concrete-plated slope rot=+y+z paint=roof
 block -5 4 3 concrete-plated paint=inner,wall,wall,wall,wall,wall
+block -3 4 3 light rot=+z-y
+block 4 4 3 light rot=+z-y
 block 6 4 3 concrete-plated paint=wall,inner,wall,wall,wall,wall
 block -5 4 4 concrete-plated paint=inner,wall,wall,wall,wall,wall
 block 6 4 4 concrete-plated paint=wall,inner,wall,wall,wall,wall
 block -5 4 5 concrete-plated paint=wall
 block -4..5 4 5 concrete-plated paint=wall,wall,wall,wall,wall,inner
 block 6 4 5 concrete-plated paint=wall
-block -5..6 5 -5 concrete-plated paint=wall,wall,roof,wall,wall,wall
-block -5 5 -4 concrete-plated paint=wall,wall,roof,wall,wall,wall
-block -4..5 5 -4 concrete-plated paint=wall,wall,roof,inner,wall,wall
-block 6 5 -4 concrete-plated paint=wall,wall,roof,wall,wall,wall
-block -5 5 -3 concrete-plated paint=wall,wall,roof,wall,wall,wall
-block -4..5 5 -3 concrete-plated paint=wall,wall,roof,inner,wall,wall
-block 6 5 -3 concrete-plated paint=wall,wall,roof,wall,wall,wall
-block -5 5 -2 concrete-plated paint=wall,wall,roof,wall,wall,wall
-block -4..5 5 -2 concrete-plated paint=wall,wall,roof,inner,wall,wall
-block 6 5 -2 concrete-plated paint=wall,wall,roof,wall,wall,wall
-block -5 5 -1 concrete-plated paint=wall,wall,roof,wall,wall,wall
-block -4..5 5 -1 concrete-plated paint=wall,wall,roof,inner,wall,wall
-block 6 5 -1 concrete-plated paint=wall,wall,roof,wall,wall,wall
-block -5 5 0 concrete-plated paint=wall,wall,roof,wall,wall,wall
-block -4..5 5 0 concrete-plated paint=wall,wall,roof,inner,wall,wall
-block 6 5 0 concrete-plated paint=wall,wall,roof,wall,wall,wall
-block -5 5 1 concrete-plated paint=wall,wall,roof,wall,wall,wall
-block -4..5 5 1 concrete-plated paint=wall,wall,roof,inner,wall,wall
-block 6 5 1 concrete-plated paint=wall,wall,roof,wall,wall,wall
-block -5 5 2 concrete-plated paint=wall,wall,roof,wall,wall,wall
-block -4..5 5 2 concrete-plated paint=wall,wall,roof,inner,wall,wall
-block 6 5 2 concrete-plated paint=wall,wall,roof,wall,wall,wall
-block -5 5 3 concrete-plated paint=wall,wall,roof,wall,wall,wall
-block -4..5 5 3 concrete-plated paint=wall,wall,roof,inner,wall,wall
-block 6 5 3 concrete-plated paint=wall,wall,roof,wall,wall,wall
-block -5 5 4 concrete-plated paint=wall,wall,roof,wall,wall,wall
-block -4..5 5 4 concrete-plated paint=wall,wall,roof,inner,wall,wall
-block 6 5 4 concrete-plated paint=wall,wall,roof,wall,wall,wall
-block -5..6 5 5 concrete-plated paint=wall,wall,roof,wall,wall,wall
+block 7 4 5 concrete-plated paint=frame
+block -5 4 6 concrete-plated paint=frame
+block -1..2 4 6 concrete-plated paint=roof
+block 6 4 6 concrete-plated paint=frame
+block -1..2 4 7 concrete-plated paint=roof
+block -1..2 4 8 concrete-plated slope rot=+y+z paint=roof
+block -5 5 -5 concrete-plated paint=wall
+block -4..5 5 -5 concrete-plated slope paint=roof
+block 6 5 -5 concrete-plated paint=wall
+block -5 5 -4 concrete-plated slope rot=+y-x paint=roof
+block -4..5 5 -4 concrete-plated paint=wall,wall,wall,inner,wall,wall
+block 6 5 -4 concrete-plated slope rot=+y+x paint=roof
+block -5 5 -3 concrete-plated slope rot=+y-x paint=roof
+block -4 5 -3 concrete-plated paint=wall,wall,wall,inner,wall,wall
+block -3 5 -3 concrete-plated paint=wall
+block -2..3 5 -3 concrete-plated paint=wall,wall,wall,inner,inner,wall
+block 4 5 -3 concrete-plated paint=wall
+block 5 5 -3 concrete-plated paint=wall,wall,wall,inner,wall,wall
+block 6 5 -3 concrete-plated slope rot=+y+x paint=roof
+block -5 5 -2 concrete-plated slope rot=+y-x paint=roof
+block -4 5 -2 concrete-plated paint=wall,wall,wall,inner,wall,wall
+block -3 5 -2 concrete-plated paint=inner,wall,wall,inner,wall,wall
+block 4 5 -2 concrete-plated paint=wall,inner,wall,inner,wall,wall
+block 5 5 -2 concrete-plated paint=wall,wall,wall,inner,wall,wall
+block 6 5 -2 concrete-plated slope rot=+y+x paint=roof
+block -5 5 -1 concrete-plated slope rot=+y-x paint=roof
+block -4 5 -1 concrete-plated paint=wall,wall,wall,inner,wall,wall
+block -3 5 -1 concrete-plated paint=inner,wall,wall,inner,wall,wall
+block 4 5 -1 concrete-plated paint=wall,inner,wall,inner,wall,wall
+block 5 5 -1 concrete-plated paint=wall,wall,wall,inner,wall,wall
+block 6 5 -1 concrete-plated slope rot=+y+x paint=roof
+block -5 5 0 concrete-plated slope rot=+y-x paint=roof
+block -4 5 0 concrete-plated paint=wall,wall,wall,inner,wall,wall
+block -3 5 0 concrete-plated paint=inner,wall,wall,inner,wall,wall
+block 4 5 0 concrete-plated paint=wall,inner,wall,inner,wall,wall
+block 5 5 0 concrete-plated paint=wall,wall,wall,inner,wall,wall
+block 6 5 0 concrete-plated slope rot=+y+x paint=roof
+block -5 5 1 concrete-plated slope rot=+y-x paint=roof
+block -4 5 1 concrete-plated paint=wall,wall,wall,inner,wall,wall
+block -3 5 1 concrete-plated paint=inner,wall,wall,inner,wall,wall
+block 4 5 1 concrete-plated paint=wall,inner,wall,inner,wall,wall
+block 5 5 1 concrete-plated paint=wall,wall,wall,inner,wall,wall
+block 6 5 1 concrete-plated slope rot=+y+x paint=roof
+block -5 5 2 concrete-plated slope rot=+y-x paint=roof
+block -4 5 2 concrete-plated paint=wall,wall,wall,inner,wall,wall
+block -3 5 2 concrete-plated paint=inner,wall,wall,inner,wall,wall
+block 4 5 2 concrete-plated paint=wall,inner,wall,inner,wall,wall
+block 5 5 2 concrete-plated paint=wall,wall,wall,inner,wall,wall
+block 6 5 2 concrete-plated slope rot=+y+x paint=roof
+block -5 5 3 concrete-plated slope rot=+y-x paint=roof
+block -4 5 3 concrete-plated paint=wall,wall,wall,inner,wall,wall
+block -3 5 3 concrete-plated paint=wall
+block -2..3 5 3 concrete-plated paint=wall,wall,wall,inner,wall,inner
+block 4 5 3 concrete-plated paint=wall
+block 5 5 3 concrete-plated paint=wall,wall,wall,inner,wall,wall
+block 6 5 3 concrete-plated slope rot=+y+x paint=roof
+block -5 5 4 concrete-plated slope rot=+y-x paint=roof
+block -4..5 5 4 concrete-plated paint=wall,wall,wall,inner,wall,wall
+block 6 5 4 concrete-plated slope rot=+y+x paint=roof
+block -5 5 5 concrete-plated paint=wall
+block -4..5 5 5 concrete-plated slope rot=+y+z paint=roof
+block 6 5 5 concrete-plated paint=wall
+block -3 6 -3 concrete-plated paint=wall
+block -2..3 6 -3 glass-plated paint=-,-,-,-,inner,-
+block 4 6 -3 concrete-plated paint=wall
+block -3 6 -2 glass-plated paint=inner,-,-,-,-,-
+block 4 6 -2 glass-plated paint=-,inner,-,-,-,-
+block -3 6 -1 glass-plated paint=inner,-,-,-,-,-
+block 4 6 -1 glass-plated paint=-,inner,-,-,-,-
+block -3 6 0 glass-plated paint=inner,-,-,-,-,-
+block -1 6 0 light rot=+z-y
+block 2 6 0 light rot=+z-y
+block 4 6 0 glass-plated paint=-,inner,-,-,-,-
+block -3 6 1 glass-plated paint=inner,-,-,-,-,-
+block 4 6 1 glass-plated paint=-,inner,-,-,-,-
+block -3 6 2 glass-plated paint=inner,-,-,-,-,-
+block 4 6 2 glass-plated paint=-,inner,-,-,-,-
+block -3 6 3 concrete-plated paint=wall
+block -2..3 6 3 glass-plated paint=-,-,-,-,-,inner
+block 4 6 3 concrete-plated paint=wall
+block -3..4 7 -3 concrete-plated paint=wall,wall,roof,wall,wall,wall
+block -3 7 -2 concrete-plated paint=wall,wall,roof,wall,wall,wall
+block -2..3 7 -2 concrete-plated paint=wall,wall,roof,inner,wall,wall
+block 4 7 -2 concrete-plated paint=wall,wall,roof,wall,wall,wall
+block -3 7 -1 concrete-plated paint=wall,wall,roof,wall,wall,wall
+block -2..3 7 -1 concrete-plated paint=wall,wall,roof,inner,wall,wall
+block 4 7 -1 concrete-plated paint=wall,wall,roof,wall,wall,wall
+block -3 7 0 concrete-plated paint=wall,wall,roof,wall,wall,wall
+block -2 7 0 concrete-plated paint=wall,wall,roof,inner,wall,wall
+block -1 7 0 concrete-plated paint=wall,wall,roof,wall,wall,wall
+block 0..1 7 0 concrete-plated paint=wall,wall,roof,inner,wall,wall
+block 2 7 0 concrete-plated paint=wall,wall,roof,wall,wall,wall
+block 3 7 0 concrete-plated paint=wall,wall,roof,inner,wall,wall
+block 4 7 0 concrete-plated paint=wall,wall,roof,wall,wall,wall
+block -3 7 1 concrete-plated paint=wall,wall,roof,wall,wall,wall
+block -2..3 7 1 concrete-plated paint=wall,wall,roof,inner,wall,wall
+block 4 7 1 concrete-plated paint=wall,wall,roof,wall,wall,wall
+block -3 7 2 concrete-plated paint=wall,wall,roof,wall,wall,wall
+block -2..3 7 2 concrete-plated paint=wall,wall,roof,inner,wall,wall
+block 4 7 2 concrete-plated paint=wall,wall,roof,wall,wall,wall
+block -3..4 7 3 concrete-plated paint=wall,wall,roof,wall,wall,wall
+block 0 8 0 concrete-plated cylinder paint=frame
+block 0 9 0 concrete-plated cylinder paint=frame
+block 0 10 0 concrete-plated cylinder paint=frame
+block 0 11 0 concrete-plated cylinder paint=frame

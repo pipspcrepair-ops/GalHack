@@ -206,7 +206,7 @@ public sealed partial class Staging
         {
             if (front && k is > 0 and < 6) continue; // the bow's three-quarter views only
             float a = Mathf.Pi * 0.25f * k + 0.6f;
-            var local = mid + new N.Vector3(MathF.Sin(a) * size * 1.15f, size * 0.3f, -MathF.Cos(a) * size * 1.15f);
+            var local = mid + new N.Vector3(MathF.Sin(a) * size * (front ? 0.9f : 1.15f), size * 0.3f, -MathF.Cos(a) * size * (front ? 0.9f : 1.15f));
             Vector3 eye = v.Body.ToParent(local).ToGodot();
             eye.Y = MathF.Max(eye.Y, _game.Zone.GroundAt(eye.X, eye.Z).Y + 1.8f);
             List<long> ids = InTheWay(eye);
