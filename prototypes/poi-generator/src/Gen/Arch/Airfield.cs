@@ -445,7 +445,8 @@ public static class Airfield
         int len = part.Int("fl"), h = Math.Max(1, part.Int("h", 2));
         var gates = part.Arg("gates").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(int.Parse).ToList();
         int at = gates.Count > 0 ? gates[0] : len / 2;
-        p.Approach(Math.Clamp(at / 2, 1, len / 2 - 2), -2, Dir.North);
+        // (Its way in on the inside, on the place's own graded ground: the land outside may fall away.)
+        p.Approach(Math.Clamp(at / 2, 3, Math.Max(3, len / 2 - 4)), 2, Dir.South);
         foreach (int g in gates) p.C.X.Markers.Add(new Marker("gate", p.Cell(g, 0, 0), "fence"));
         for (int u = 0; u < len; u++)
         {

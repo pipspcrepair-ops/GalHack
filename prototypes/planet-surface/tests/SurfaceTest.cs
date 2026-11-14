@@ -331,15 +331,16 @@ public partial class SurfaceTest : Node
                 // Nothing floats: everywhere the POI generator builds on rock (below floor level and
                 // outside the place's own rooms), there is solid ground, all the way down its deepest level.
                 int floatingBefore = floating;
+                string firstFloat = "";
                 for (int y = occ.Min.Y; y < 0; y++)
                 for (int z = 0; z < occ.Size.Z; z++)
                 for (int x = 0; x < occ.Size.X; x++)
                 {
                     var local = new PInt3(occ.Min.X + x, y, occ.Min.Z + z);
                     if (occ[local]) continue;
-                    if (!store.IsSolid(site.World(local))) floating++;
+                    if (!store.IsSolid(site.World(local)) && floating++ == floatingBefore) firstFloat = $"{local} under {inst.Blocks.Get(local + PInt3.Up * (-y)).Type}";
                 }
-                if (floating > floatingBefore && floatNotes.Count < 6) floatNotes.Add($"{site.Family.Id} {site.Siting} {site.Name} at {site.Origin}: {floating - floatingBefore} cells, rooms {occ.Min}..{occ.Min + occ.Size}");
+                if (floating > floatingBefore && floatNotes.Count < 6) floatNotes.Add($"{site.Family.Id} {site.Siting} {site.Name} at {site.Origin}: {floating - floatingBefore} cells (first {firstFloat}), rooms {occ.Min}..{occ.Min + occ.Size}");
                 // A half-buried ruin keeps every room open however deep the ground rises round it.
                 if (site.HalfBuried)
                     for (int y = 0; y < occ.Min.Y + occ.Size.Y; y++)
@@ -352,7 +353,8 @@ public partial class SurfaceTest : Node
                 foreach (TerrainStamp extraStamp in site.Extra) shapes[extraStamp.Shape] = shapes.TryGetValue(extraStamp.Shape, out int sc) ? sc + 1 : 1;
                 // Made ground: the surface its purpose calls for; never grass on a desert world; eased in, never a hard edge.
                 madeChecked++;
-                if (t.Surface != PoiSiting.GroundFor(site.Family, (Archetype)a)) wrongGround++;
+                // (A typed place's made ground is laid in patches over its one grading; its parts' stamps are the land's own.)
+                if (site.Whole == null && t.Surface != PoiSiting.GroundFor(site.Family, (Archetype)a)) wrongGround++;
                 var (mcx, mcz) = site.Center;
                 Color centre = w.Palette.Made(w.Palette.Natural(mcx, mcz, pad, 1f, out _), t.Surface, 1f, t.Wear, mcx, mcz);
                 if (a == (int)Archetype.Arid && centre.G > centre.R * 1.08f && centre.G > centre.B * 1.08f) grassInDesert++;

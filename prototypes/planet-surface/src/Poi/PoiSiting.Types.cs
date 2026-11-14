@@ -279,7 +279,8 @@ public static partial class PoiSiting
         }
         int x0 = (int)Math.Floor(Mathx.WrapX(best.X + fb.X0, width)), z0 = (int)Math.Floor(best.Z + fb.Z0);
         float wear = PoiInstance.AgeFor(family, state, false) switch { PoiGenerator.Gen.Age.New => 0.1f, PoiGenerator.Gen.Age.Preserved => 0.35f, _ => 0.85f };
-        place.Stamp = new TerrainStamp(family.Name, x0, z0, x0 + (int)fb.W, z0 + (int)fb.D, best.Pad, Apron, blend, width, height) { Surface = StampSurface.Natural, Wear = wear, Painted = true };
+        // (Two metres past its footprint either way, so the fence's posts at its corners stand on the level too.)
+        place.Stamp = new TerrainStamp(family.Name, x0 - 2, z0 - 2, x0 + (int)fb.W + 2, z0 + (int)fb.D + 2, best.Pad, Apron, blend, width, height) { Surface = StampSurface.Natural, Wear = wear, Painted = true };
         place.Why = $"{sketch.Type.Id} {fb.W:F0} x {fb.D:F0} m, turned {best.Turn}, cut {best.Cut:F1} m, graded out over {blend:F0} m";
         // Its parts: each a place of its own at its box, laid out when first wanted, from its own seed.
         foreach (TypePiece piece in PlaceTypes.Pieces(sketch, best.Turn))
@@ -396,16 +397,14 @@ public static partial class PoiSiting
         int pad = (int)MathF.Round(sorted[sorted.Length / 2]);
         float cut = MathF.Max(sorted[^1] - pad, pad - sorted[0]);
         if (cut > TypedCutFill) return (0, 0, 0, Reject.Deep);
-        // Room to grade it out before a seam's ghost band.
         float ease = Ease(b);
-        if (Math.Min(Math.Min(bx0, width - bx1), Math.Min(bz0, height - bz1)) - SeamMargin < Math.Min(cut * 12f + 20f, ease)) return (0, 0, 0, Reject.Seam);
-        // The land it is graded out to, half and all the way across the easing: a bank no steeper than one you could drive
-        // up (the easing's steepest is half again its mean).
+        // The land it is graded out to, a third, two thirds and all the way across the easing: a bank no steeper than one
+        // you could drive up (the easing's steepest is half again its mean).
         float bank = 0f;
-        for (int k = 0; k < 24; k++)
+        for (int k = 0; k < 96; k++)
         {
-            double t = k % 3 / 2.0, o = ease * (k < 12 ? 0.5 : 1.0);
-            var (px, pz) = (k / 3 % 4) switch
+            double t = k % 8 / 7.0, o = ease * (k / 32 + 1) / 3.0;
+            var (px, pz) = (k / 8 % 4) switch
             {
                 0 => (bx0 + (bx1 - bx0) * t, bz0 - o), 1 => (bx0 + (bx1 - bx0) * t, bz1 + o),
                 2 => (bx0 - o, bz0 + (bz1 - bz0) * t), _ => (bx1 + o, bz0 + (bz1 - bz0) * t),
@@ -413,6 +412,8 @@ public static partial class PoiSiting
             bank = MathF.Max(bank, MathF.Abs(bare.Sampler.Sample(Mathx.WrapX(px, width), Math.Clamp(pz, 0, height), 2).Height - pad));
         }
         if (bank * 1.5f / ease > TypedBank) return (0, 0, 0, Reject.Deep);
+        // Room to grade it out, cut and bank alike, before a seam's ghost band.
+        if (Math.Min(Math.Min(bx0, width - bx1), Math.Min(bz0, height - bz1)) - SeamMargin < Math.Min(MathF.Max(cut, bank) * 12f + 20f, ease)) return (0, 0, 0, Reject.Seam);
         return (cut * 3 + bank + Math.Sqrt(h.Average(v => (v - pad) * (v - pad))) * 4, pad, cut, Reject.None);
     }
 

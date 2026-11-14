@@ -591,8 +591,10 @@ public static class FlavourRuins
         // Clear of every place's reach, every road's bed and banks, and other ruins.
         foreach (PoiSite p in pois)
         {
-            double dx = Math.Abs(Mathx.WrapDelta(p.Center.X - cx, w)), dz = Math.Abs(Mathx.WrapDelta(p.Center.Z - cz, h));
-            double reach = Math.Max(p.Stamp.ReachX, p.Stamp.ReachZ) + Math.Max(halfX, halfZ) + 12;
+            // (A typed place's part by the whole place's grading.)
+            TerrainStamp ps = p.Whole?.Stamp ?? p.Stamp;
+            double dx = Math.Abs(Mathx.WrapDelta(ps.CenterX - cx, w)), dz = Math.Abs(Mathx.WrapDelta(ps.CenterZ - cz, h));
+            double reach = Math.Max(ps.ReachX, ps.ReachZ) + Math.Max(halfX, halfZ) + 12;
             if (dx < reach && dz < reach) return null;
         }
         // Nor in a crater: nothing stood where a strike punched one.

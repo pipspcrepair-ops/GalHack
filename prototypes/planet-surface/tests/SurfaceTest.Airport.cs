@@ -100,7 +100,8 @@ public partial class SurfaceTest
                 {
                     PoiInstance inst = p.Built;
                     if (inst == null) { bad.Add($"{p.Name}: not built"); continue; }
-                    var cells = inst.Blocks.Blocks().Where(b => b.Cell.Y >= 0 && BlockInfo.Collides(b.Block.Type) && b.Block.Role is not (Role.Debris or Role.Prop or Role.Growth)).Select(b => (X: p.Origin.X + b.Cell.X, Y: b.Cell.Y, Z: p.Origin.Z + b.Cell.Z)).ToList();
+                    // (Measured and walked as planned: a ruin's state may have brought its roof and its ladders down since.)
+                    var cells = inst.Layout.Blocks.Blocks().Where(b => b.Cell.Y >= 0 && BlockInfo.Collides(b.Block.Type) && b.Block.Role is not (Role.Debris or Role.Prop or Role.Growth)).Select(b => (X: p.Origin.X + b.Cell.X, Y: b.Cell.Y, Z: p.Origin.Z + b.Cell.Z)).ToList();
                     if (cells.Count == 0) continue;
                     int top = cells.Max(c => c.Y) + 1;
                     int sx = cells.Max(c => c.X) - cells.Min(c => c.X) + 1, sz = cells.Max(c => c.Z) - cells.Min(c => c.Z) + 1;
@@ -110,7 +111,7 @@ public partial class SurfaceTest
                     string goal = kind switch { "terminal" => "gate stand", "hangar" => "hangar floor", "tower" or "hub" => "control cab", "authority" => "flight operations", _ => null };
                     if (goal != null && inst.Layout.Modules.FirstOrDefault(md => md.Purpose == goal || kind == "terminal" && md.Purpose == "stand") is { } target)
                     {
-                        var reachable = inst.Nav().Reachable(inst.Layout.EntranceCell);
+                        var reachable = new NavGrid(inst.Layout.Blocks, inst.Layout.Occupied, inst.Layout.Extras.Lifts, inst.Layout.Extras.InSpace).Reachable(inst.Layout.EntranceCell);
                         walks++;
                         if (target.Cells.Any(reachable.Contains)) walked++;
                         else bad.Add($"{kind}: no way from its way in to its {goal}");
