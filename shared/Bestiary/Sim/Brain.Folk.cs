@@ -73,11 +73,17 @@ public static partial class Brain
         return h;
     }
 
-    /// <summary>Whoever leads a band: the first of it still standing.</summary>
+    /// <summary>Whoever leads a band: the first grown one of it still standing (a child only when no one else is).</summary>
     public static Creature Leader(Herd h)
     {
-        foreach (Creature m in h.Members) if (m.Alive && !m.Removed) return m;
-        return null;
+        Creature child = null;
+        foreach (Creature m in h.Members)
+        {
+            if (!m.Alive || m.Removed) continue;
+            if (m.Species.Figure?.Stage != LifeStage.Child) return m;
+            child ??= m;
+        }
+        return child;
     }
 
     static void Hold(WildSim w, Creature c, BodyAct act, float seconds)
@@ -206,11 +212,7 @@ public static partial class Brain
                 bool coming = b.Warnings > 0 && d < PushIn && WildSim.Flat(b.WarnedFrom - h.Center).Length() - WildSim.Flat(t.Position - h.Center).Length() > 2f;
                 bool provoked = t.Drawn && d < 15f || AimedAtAny(h, t, AimReach) || w.Time - b.Threatened < 3f || coming;
                 if (b.Mood != PartyMood.Warning && (d < WarnIn || provoked)) ToMood(w, h, b, lead, PartyMood.Warning, PartyEvent.Warn);
-                else if (b.Mood == PartyMood.Warning && provoked && b.WarnedAt >= b.MoodSince && w.Time - b.WarnedAt > WarnHold)
-                {
-                    b.Fights++;
-                    ToFight(w, h, b, lead, t);
-                }
+                else if (b.Mood == PartyMood.Warning && provoked && b.WarnedAt >= b.MoodSince && w.Time - b.WarnedAt > WarnHold) ToFight(w, h, b, lead, t);
                 else if (b.Mood == PartyMood.Warning && d > WarnIn + 6f && !provoked) ToMood(w, h, b, lead, PartyMood.Watching, PartyEvent.Calm);
                 else if (b.Mood == PartyMood.Easy) ToMood(w, h, b, lead, PartyMood.Watching, PartyEvent.Seen);
                 break;

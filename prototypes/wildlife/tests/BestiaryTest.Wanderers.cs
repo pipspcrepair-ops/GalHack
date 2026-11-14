@@ -189,6 +189,15 @@ public partial class BestiaryTest
                     }
                 }
                 void Wait(float seconds, Func<Vector3> face) { for (float t = 0f; t < seconds; t += BandDt) Step(face()); }
+                // Gone: kept beyond their sight, walking on whenever their wandering brings them nearer.
+                void Gone(float seconds, Vector3 away)
+                {
+                    for (float t = 0f; t < seconds; t += BandDt)
+                    {
+                        if (Near() < 55f) you.Position += WildSim.Flat(you.Position - Mid()).Normalized() * 1.8f * BandDt;
+                        Step(away);
+                    }
+                }
 
                 phase = "approach";
                 WalkTo(() => NearestOne().Position, 10f, 1.6f, 45f, true);
@@ -202,7 +211,7 @@ public partial class BestiaryTest
                 Vector3 away = WildSim.Flat(you.Position - Mid()).Normalized();
                 WalkTo(() => Mid() + away * 55f, 1f, 1.8f, 50f, false);
                 phase = "gone";
-                Wait(12f, () => away);
+                Gone(12f, away);
                 if (b.Mood == PartyMood.Easy) calmLeft[l]++;
                 phase = "return";
                 warningsAtReturn = b.Warnings;
@@ -221,7 +230,7 @@ public partial class BestiaryTest
                 you.Drawn = false;
                 away = WildSim.Flat(you.Position - Mid()).Normalized();
                 WalkTo(() => Mid() + away * 60f, 1f, 1.8f, 60f, false);
-                Wait(20f, () => away);
+                Gone(20f, away);
                 if (b.Mood == PartyMood.Easy) calmEnd[l]++;
                 string[] calm = { "approach", "stand", "leave", "gone", "return" };
                 if (calm.Any(fled.Contains)) fledNoThreat[l]++;

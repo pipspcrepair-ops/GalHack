@@ -55,8 +55,6 @@ public sealed class Party
     public float UpdatedAt = -999f;
     /// <summary>Tests: members who took in an event after their leader had, and before.</summary>
     public int AfterLeader, BeforeLeader;
-    /// <summary>Tests: a wary band's turns to a fight over what you did (not harm, not a shot).</summary>
-    public int Fights;
 
     public Leaning Leaning => Temper.LeaningOf(Stance);
 

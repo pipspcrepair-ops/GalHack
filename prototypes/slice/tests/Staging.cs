@@ -156,6 +156,7 @@ public sealed partial class Staging
             "husk-den" => HuskDen(),
             "own" => OwnView(),
             "own-inside" => OwnInside(),
+            "wanderers" => WanderersView(),
             "husk-worms" => HuskWorms(),
             "husk-carrier" => HuskCarrier(),
             "layers-land" => LayersLand(),
