@@ -131,7 +131,7 @@ public partial class PopRoute
     static (byte[] Data, int Stride) Bytes(Image img) => (img.GetData(), img.GetFormat() == Image.Format.Rgba8 ? 4 : 3);
 
     /// <summary>
-    /// Pixel indices of dots under a row: a pixel at least 0.15 brighter than, and twice, the mean of the ring
+    /// Pixel indices of dots under a row: a pixel at least 0.2 brighter than, and three times, the mean of the ring
     /// of 16 two pixels out, with at most two of its eight neighbours anywhere near as bright (a dot, not an edge).
     /// </summary>
     static HashSet<int> Dots(Image img, int top)
@@ -145,12 +145,12 @@ public partial class PopRoute
             for (int x = 2; x < w - 2; x++)
             {
                 float v = l[y * w + x];
-                if (v < 0.12f) continue;
+                if (v < 0.2f) continue;
                 float ring = 0f;
                 for (int k = -2; k <= 2; k++)
                     ring += l[(y - 2) * w + x + k] + l[(y + 2) * w + x + k] + (k is > -2 and < 2 ? l[(y + k) * w + x - 2] + l[(y + k) * w + x + 2] : 0f);
                 ring /= 16f;
-                if (v - ring < 0.15f || v < 2f * ring) continue;
+                if (v - ring < 0.2f || v < 3f * ring) continue;
                 float half = ring + 0.5f * (v - ring);
                 int bright = 0;
                 for (int dy = -1; dy <= 1; dy++)
