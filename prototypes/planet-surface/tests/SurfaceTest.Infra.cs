@@ -1465,6 +1465,8 @@ public partial class SurfaceTest
                         // Six triangle corners round a full interior vertex; the rim of the chunk carries on next door.
                         if (uses.GetValueOrDefault(v) >= 6 || p.X <= 0 || p.Z <= 0 || p.X >= job.SpanX || p.Z >= job.SpanZ) continue;
                         double px = Mathx.WrapX(cx * (double)FarBuilder.Size + p.X, w.Width), pz = Mathx.Wrap(cz * (double)FarBuilder.Size + p.Z, w.Height);
+                        // A river come down to the sea, where the sea is drawn: the shader leaves it to the sea, at the same level.
+                        if (p.Y <= source.WaterLevel && w.Map.IsSea(px, pz)) continue;
                         sheetEdges++;
                         float over = p.Y - source.Ground(px, pz, FarBuilder.Step(lod)).Height;
                         if (over <= Margin) continue;
