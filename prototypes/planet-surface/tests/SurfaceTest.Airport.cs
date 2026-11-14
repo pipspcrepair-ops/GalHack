@@ -44,7 +44,7 @@ public partial class SurfaceTest
                 TypedPlace place = w.Pois.Select(p => p.Whole).FirstOrDefault(t => t != null);
                 if (place == null) { notes.Add($"{spec}: no {family} sited (last search: {PoiSiting.LastTypedRejects})"); continue; }
                 sited++;
-                notes.Add($"{spec} ({w.Map.WidthMeters / 1000:F0} x {w.Map.HeightMeters / 1000:F0} km): {place.Why}; {PoiSiting.LastTyped} typed places on the world sited in {PoiSiting.LastTypedMs:F0} ms; {place.Parts.Count} parts, {place.Parts.Count(p => p.Pending)} not laid out at load");
+                notes.Add($"{spec} ({w.Map.WidthMeters / 1000:F0} x {w.Map.HeightMeters / 1000:F0} km): {place.Why}; {PoiSiting.LastTyped} typed places on the world sited in {PoiSiting.LastTypedMs:F0} ms (the last: {PoiSiting.LastTypedRejects}); {place.Parts.Count} parts, {place.Parts.Count(p => p.Pending)} not laid out at load");
                 if (w.Infra.Routes.Any(r => r.From == place.Anchor || r.To == place.Anchor)) roads++;
                 else notes.Add($"{spec}: no road to the gate");
                 // Level across it; eased out past its edge, never steeper than a bank you could drive up.

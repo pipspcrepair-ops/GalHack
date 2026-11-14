@@ -138,6 +138,8 @@ public sealed class FamilyDef
     public List<string> Techs = new();
     /// <summary>What stands in its place on a world whose age it does not fit (data: instead), first that fits: the era's own equivalent, so a fall or a theme that brings it still has its place.</summary>
     public List<string> Instead = new();
+    /// <summary>A port's lesser ports, where they are another kind of place (data: lesser): a launch site's airports.</summary>
+    public string? Lesser;
 
     public Generator Generator => Site != null || Types.Count > 0 ? Generator.Site : Program != null ? Generator.Building : Generator.Kit;
 
@@ -259,6 +261,7 @@ public static class FamilyParser
                 }
                 case "grow": V().Grow = p.Skip(1).Select(k => ParseKind(k, Error)).ToList(); break;
                 case "instead": F().Instead = p.Skip(1).ToList(); break;
+                case "lesser": F().Lesser = p[1]; break;
                 default: throw Error($"unknown keyword '{p[0]}'");
             }
         }

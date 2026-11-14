@@ -41,9 +41,9 @@ public static partial class PlaceTypes
         return types.Except(fitting).Select(t => Plan(t, seed, worldWidth, worldHeight)).FirstOrDefault(s => !s.TooBig) ?? last!;
     }
 
-    /// <summary>A typed family's layout off a world (a test, the viewer): its first building, as a fresh sketch of it rolls it.</summary>
+    /// <summary>A typed family's layout off a world (a test, the viewer, its landmark): its tallest building, as a fresh sketch of it rolls it.</summary>
     public static SiteDef Sample(PoiLibrary lib, FamilyDef family, ulong seed, TechLevel? tech) =>
-        Pieces(PlanFor(lib, family, tech, seed, 16000, 8000), 0).First(p => p.Item.Part.Kind == "building").Plan;
+        Pieces(PlanFor(lib, family, tech, seed, 16000, 8000), 0).Where(p => p.Item.Part.Kind == "building").MaxBy(p => p.Item.H)!.Plan;
 
     /// <summary>A point of the sketch turned by quarter turns about its middle.</summary>
     public static (float X, float Z) Turn(float x, float z, int turn) => (turn & 3) switch { 0 => (x, z), 1 => (-z, x), 2 => (-x, -z), _ => (z, -x) };
@@ -82,7 +82,7 @@ public static partial class PlaceTypes
             if (what == null) continue;
             // Its front: the way the type turns it, else toward the apron (the tower) or the runway (the fuel farm); the lights look back up the runway.
             float fx = i.FaceX, fz = i.FaceZ;
-            if (what == "lights") (fx, fz) = (-i.FaceX, 0f);
+            if (what == "lights") (fx, fz) = (-i.FaceX, -i.FaceZ);
             else if (fx == 0 && fz == 0) fz = (what == "tower" ? apron : runway).Cz < i.Box.Cz ? -1f : 1f;
             var (tx, tz) = Turn(fx, fz, turn);
             pieces.Add(Piece(i, Turn(i.Box, turn), Way(tx, tz), what, i.Rolled));

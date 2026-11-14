@@ -11,11 +11,14 @@
 #       kinds     surface <cover>      levelled made ground, laid like the world's roads (tarmac, concrete, gravel, dirt)
 #                 building <program>   a building of data/programs.txt, sized here, with its rooms planned at build
 #                 tanks | lights | fence | road <cover>
-#       sizes     len w depth h r count cab shoulder concourse: a..b is rolled by each spawn
+#       sizes     len w depth h r count cab shoulder concourse: a..b is rolled by each spawn; chance p: only that
+#                 share of spawns have the part (and what is off it)
 #       relations along <part> gap a..b      parallel to it, its centre line gap metres off, either side
+#                 tee <part>                 square off its middle stretch on the far side from the landside, its end
+#                                            on the other's laid width: a T (a crosswind runway)
 #                 between <a> <b>            across the ground from one to the other (links)
 #                 beside <part> [away <q>]   off a long side of it (the side away from q), touching or gap a..b off
-#                 ends <part>                in line off each end of it
+#                 ends <part>                in line off each end of it (off a tee's free end only)
 #                 faces <part>               its front (doors, cab) turned to it
 #                 near <part> a..b, far <part> a..           how far from it (edge to edge)
 #                 sees <part>                nothing taller stands between it and that part
@@ -31,9 +34,10 @@
 
 type airport
   name Airport
-  tech mid high
+  tech mid
   share 0.05
   part runway   surface tarmac   len 400..600 w 30 shoulder 5
+  part crosswind surface tarmac  len 300..450 w 30 shoulder 5 tee runway chance 0.5
   part taxiway  surface tarmac   w 15 along runway gap 60..80
   part link     surface tarmac   w 15 count 2..4 between runway taxiway
   part apron    surface concrete len 200..320 depth 70..100 beside taxiway away runway
@@ -44,6 +48,7 @@ type airport
   part carpark  surface tarmac   len 50..90 depth 30..50 beside terminal away apron gap 6..12
   part access   road tarmac      w 7..8 from carpark
   part lights   lights           len 100..200 ends runway
+  part xlights  lights           len 80..150 ends crosswind
   part fence    fence            h 2..3 round 20..40
 
 # Low tech: an airstrip scaled down again in the same proportions: an earth strip, a short gravel taxiway to a small

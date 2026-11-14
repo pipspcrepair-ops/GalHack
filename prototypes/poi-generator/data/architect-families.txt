@@ -321,7 +321,7 @@ family missile_silo
 family airfield
   types airport airstrip
   tier base
-  tech low mid high
+  tech low mid
   siting open
   rise 18
   name Airfield
@@ -350,8 +350,9 @@ family abandoned_spaceport
   tier spaceport
   siting flat
   rise 30
+  tech high
   name Abandoned Spaceport
-  pitch Pads in their blast aprons, the halls the ships went into, a terminal and a tower over it all, fuel and oxidiser stored well apart.
+  pitch Rings of recessed pads on their taxiways, the halls the ships went into, a tower or an authority building over it all, fuel stored apart.
   faction none
   roster oldworld
   types starport spaceport landing_field
@@ -371,16 +372,62 @@ family abandoned_spaceport
     port b
   variant Launch Complex Four
     seed 9202
-    port b
+    port c
   variant Ascension Yard
     seed 9203
     port a
-  variant Landing Field Nine
-    seed 9204
-    port c
   variant Depot Field
     seed 9205
     port d
+  variant Marker Field
+    seed 9206
+    port e
+
+# The old starport's style (owner, 15 Nov: "the current style can be reused for makeshift launch sites"): a rocket
+# still standing on its pad and what served it, sized by the port class it served; medium tech, past or present. The
+# high-tech world's port is the spaceport above.
+family launch_site
+  tier spaceport
+  siting flat
+  rise 30
+  tech mid
+  name Makeshift Launch Site
+  pitch A rocket still standing on its pad, fuelled and crewed and never cleared to go.
+  faction none
+  roster oldworld
+  site launch_site
+  lesser airfield
+  instead airfield
+  core none
+  owner none
+  landmark
+  rarity exotic
+  biomes desert steppe rock ash ice
+  territory any
+  spacing 40
+  reveal landmark
+  ominous 0.6
+  tags fallen space aviation
+  states active 0 abandoned 6 infested 2 ruined 2
+  variant Launch Complex Four
+    seed 9211
+    port b
+  variant Ascension Yard
+    seed 9212
+    site launch_site_grand
+    port a
+  variant Landing Field Nine
+    seed 9213
+    site launch_site_field
+    port c
+  variant Depot Field
+    seed 9214
+    site launch_site_depot
+    port d
+  variant Marker Field
+    seed 9215
+    site launch_site_marker
+    port e
 
 family military_base
   tier base

@@ -44,7 +44,7 @@ public sealed class PlaceType
     public readonly List<TypePart> Parts = new();
     public TypePart Part(string id) => Parts.First(p => p.Id == id);
 
-    static readonly HashSet<string> Relations = new() { "along", "between", "beside", "ends", "faces", "near", "far", "sees", "from", "round", "away", "gap" };
+    static readonly HashSet<string> Relations = new() { "along", "between", "beside", "ends", "tee", "faces", "near", "far", "sees", "from", "round", "away", "gap" };
 
     public static List<PlaceType> Parse(string text, string file)
     {
@@ -88,7 +88,7 @@ public sealed class PlaceType
                             case "gap": p.Rel.Add(("gap", Array.Empty<string>(), Span.Parse(w[i++]))); break;
                             case "between": p.Rel.Add((k, new[] { w[i], w[i + 1] }, null)); i += 2; break;
                             case "near" or "far": p.Rel.Add((k, new[] { w[i] }, Span.Parse(w[i + 1]))); i += 2; break;
-                            case "ends" or "faces" or "sees" or "from": p.Rel.Add((k, new[] { w[i++] }, null)); break;
+                            case "ends" or "tee" or "faces" or "sees" or "from": p.Rel.Add((k, new[] { w[i++] }, null)); break;
                             case "round": p.Rel.Add((k, Array.Empty<string>(), Span.Parse(w[i++]))); break;
                             default:
                                 if (i >= w.Length) throw Bad($"'{k}' wants a value");
@@ -206,7 +206,8 @@ public static partial class PlaceTypes
         foreach (TypePart p in type.Parts)
         {
             var r = rng.Fork(p.Id);
-            float Roll(string k, float fb) => p.Get(k, fb).Roll(r);
+            // A part only some spawns have (chance), and a part off one this spawn hasn't got, are left out.
+            if (p.Size.TryGetValue("chance", out Span chance) && !r.Chance(chance.Lo) || p.Rel.Any(x => x.To.Any(t => !s.Of(t).Any()))) continue;
             float RollLong(string k, float fb) { Span sp = p.Get(k, fb); return sp.Lo + (MathF.Min(sp.Hi, sp.Lo * 4f) - sp.Lo) * fit * r.Float(); }
             var rolled = new Dictionary<string, float>();
             foreach (var (k, sp) in p.Size) rolled[k] = k == "len" ? RollLong(k, 0) : sp.Roll(r);
@@ -281,12 +282,28 @@ public static partial class PlaceTypes
                     }
                 continue;
             }
+            if (p.Find("tee") is { } tee)
+            {
+                // Square off the other strip's middle stretch on the far side from the landside, its end butting onto the
+                // other's laid width (shoulders crossed): a T. It runs away from the junction (its front says which way).
+                SketchItem bar = s.Of(tee.To[0]).First();
+                float len = rolled.GetValueOrDefault("len", 300f), w = rolled.GetValueOrDefault("w", 30f) + 2f * rolled.GetValueOrDefault("shoulder");
+                float x = bar.Box.X0 + bar.Box.W * r.Float(0.3f, 0.7f), z = bar.Box.Cz - side * bar.Rolled.GetValueOrDefault("w", bar.Box.D) / 2f;
+                s.Items.Add(Item(side > 0 ? new SketchBox(x - w / 2, z - len, x + w / 2, z) : new SketchBox(x - w / 2, z, x + w / 2, z + len), 0, -side));
+                continue;
+            }
             if (p.Find("ends") is { } ends)
             {
-                SketchBox a = s.Box(ends.To[0]);
-                float len = rolled.GetValueOrDefault("len", 420f), w = MathF.Min(a.D, 30f);
-                s.Items.Add(Item(new SketchBox(a.X0 - len, a.Cz - w / 2, a.X0, a.Cz + w / 2), -1, 0));
-                s.Items.Add(Item(new SketchBox(a.X1, a.Cz - w / 2, a.X1 + len, a.Cz + w / 2), 1, 0));
+                // In line off each end of it; off only the free end of a strip that tees off another.
+                SketchItem to = s.Of(ends.To[0]).First();
+                SketchBox a = to.Box;
+                bool alongX = a.W >= a.D;
+                float len = rolled.GetValueOrDefault("len", 420f), w = MathF.Min(a.Short, 30f);
+                foreach (int end in new[] { -1, 1 })
+                    if (to.Part.Find("tee") == null || end == (alongX ? to.FaceX : to.FaceZ))
+                        s.Items.Add(alongX
+                            ? Item(new SketchBox(end < 0 ? a.X0 - len : a.X1, a.Cz - w / 2, end < 0 ? a.X0 : a.X1 + len, a.Cz + w / 2), end, 0)
+                            : Item(new SketchBox(a.Cx - w / 2, end < 0 ? a.Z0 - len : a.Z1, a.Cx + w / 2, end < 0 ? a.Z0 : a.Z1 + len), 0, end));
                 continue;
             }
             if (p.Find("beside") is { } beside)

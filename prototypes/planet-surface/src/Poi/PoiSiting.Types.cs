@@ -48,17 +48,19 @@ public sealed class TypedPlace
             GroundPattern pattern = item.Part.Id switch
             {
                 _ when pad => GroundPattern.Pad,
-                "runway" => GroundPattern.Runway,
+                "runway" or "crosswind" => GroundPattern.Runway,
                 "taxiway" or "link" => GroundPattern.Taxiway,
                 "carpark" => cover is MadeCover.Tarmac or MadeCover.Concrete ? GroundPattern.Bays : GroundPattern.Plain,
                 _ => cover == MadeCover.Concrete ? GroundPattern.Slabs : GroundPattern.Plain,
             };
-            int layer = pad ? 4 : item.Part.Id switch { "runway" => 4, "taxiway" => 3, "link" => 2, _ => 1 };
+            // The higher wins where they overlap: the runway's markings run on across the crosswind's end, the crosswind's
+            // laid width on across the runway's shoulders.
+            int layer = pad ? 4 : item.Part.Id switch { "runway" => 7, "crosswind" => 6, "taxiway" => 3, "link" => 2, _ => 1 };
             if (shoulder > 0f && cover != MadeCover.Dirt)
             {
                 // The shoulders: the full width, older-looking and plain, under the runway proper; a pad's blast apron all
                 // round it, in slabs.
-                var under = GroundPatch.Box(x0, z0, x1, z1, PadY, pad ? MadeCover.Concrete : MadeCover.Gravel, pad ? GroundPattern.Slabs : GroundPattern.Plain, Math.Min(1f, wear + 0.15f), layer - 1, round: 0.5f);
+                var under = GroundPatch.Box(x0, z0, x1, z1, PadY, pad ? MadeCover.Concrete : MadeCover.Gravel, pad ? GroundPattern.Slabs : GroundPattern.Plain, Math.Min(1f, wear + 0.15f), layer - 2, round: 0.5f);
                 if (pad) under.Slab = 7.5f;
                 yield return under;
                 bool alongX = x1 - x0 >= z1 - z0;
@@ -78,6 +80,8 @@ public static partial class PoiSiting
     const float TypedCliff = 0.3f;
     /// <summary>The most a typed place may cut or fill, m.</summary>
     const float TypedCutFill = 30f;
+    /// <summary>The steepest its grading's bank may run, rise over run.</summary>
+    const float TypedBank = 0.2f;
 
     /// <summary>Tests: what the last world's typed places cost to site, ms, and how many there were.</summary>
     public static double LastTypedMs;
@@ -195,8 +199,10 @@ public static partial class PoiSiting
         double width = map.WidthMeters, height = map.HeightMeters;
         TechLevel? age = profile?.LevelFor(family, state);
         CoarseGround ground = coarse.GetValue(map, m => new CoarseGround(m));
-        // The coarse pass: every spot on the world at a step of a quarter of the place's short side, four turns each.
-        double step = ground.Cell * Math.Max(1, Math.Round(Math.Max(60f, sketch.Footprint.Short / 4f) / ground.Cell));
+        double coarseMs = clock.Elapsed.TotalMilliseconds;
+        // The coarse pass: every spot on the world at a step of a third of the place's short side (120 m at least), four
+        // turns each.
+        double step = ground.Cell * Math.Max(1, Math.Round(Math.Max(120f, sketch.Footprint.Short / 3f) / ground.Cell));
         int nx = (int)(width / step), nz = (int)(height / step);
         var rank = new (double Score, double X, double Z, int Turn)[nx * nz * 4];
         var counts = new int[6];
@@ -210,17 +216,18 @@ public static partial class PoiSiting
             // The cut runs to about twice the spread.
             rank[idx] = (rms * 10 + Dist(cx, cz, wantX, wantZ, width, height) * 0.01 + Facing(sketch, turn, cx, cz, landing, width, height) * 20, cx, cz, turn);
         });
-        // The fine pass: the best-ranked spots, apart and clear of other places, weighed on the ground itself a batch at a time.
-        var order = rank.Where(r => r.Score < double.MaxValue).OrderBy(r => r.Score).ToList();
+        // The fine pass: the best-ranked spots, apart and clear of other places, weighed on the ground itself a batch at a
+        // time (taken best first from a heap: only the few weighed are ever put in order).
+        var order = new PriorityQueue<(double Score, double X, double Z, int Turn), double>(rank.Length / 2);
+        foreach (var r in rank) if (r.Score < double.MaxValue) order.Enqueue(r, r.Score);
+        double rankMs = clock.Elapsed.TotalMilliseconds - coarseMs;
         var tried = new List<(double X, double Z)>();
         (double Score, double X, double Z, int Turn, int Pad, float Cut) best = (double.MaxValue, 0, 0, 0, 0, 0);
-        int next = 0;
-        for (int batch = 0; batch < 10 && best.Score == double.MaxValue && next < order.Count; batch++)
+        for (int batch = 0; batch < 10 && best.Score == double.MaxValue && order.Count > 0; batch++)
         {
             var pick = new List<(double Score, double X, double Z, int Turn)>();
-            for (; next < order.Count && pick.Count < 8; next++)
+            while (pick.Count < 8 && order.TryDequeue(out var r, out _))
             {
-                var r = order[next];
                 if (tried.Any(t => Dist(t.X, t.Z, r.X, r.Z, width, height) < step * 1.5)) continue;
                 if (Crowded(sketch, r.Turn, r.X, r.Z, others, width, height)) { counts[(int)Reject.Crowd]++; continue; }
                 tried.Add((r.X, r.Z));
@@ -236,7 +243,8 @@ public static partial class PoiSiting
             }
         }
         LastTypedMs += clock.Elapsed.TotalMilliseconds;
-        LastTypedRejects = $"{rank.Length} spots, {tried.Count} weighed: {counts[1]} by a seam or the landing, {counts[2]} crowded, {counts[3]} wet, {counts[4]} across a cliff, {counts[5]} too much cut";
+        LastTypedRejects = $"{rank.Length} spots, {tried.Count} weighed: {counts[1]} by a seam or the landing, {counts[2]} crowded, {counts[3]} wet, {counts[4]} across a cliff, {counts[5]} too much cut or bank" +
+            $" (coarse ground {coarseMs:F0} ms, ranking {rankMs:F0}, weighing {clock.Elapsed.TotalMilliseconds - coarseMs - rankMs:F0})";
         if (best.Score == double.MaxValue) return null;
         clock.Restart();
         // On the 2 m lattice, so its laid ground and its parts' blocks line up.
@@ -375,8 +383,23 @@ public static partial class PoiSiting
         float cut = MathF.Max(sorted[^1] - pad, pad - sorted[0]);
         if (cut > TypedCutFill) return (0, 0, 0, Reject.Deep);
         // Room to grade it out before a seam's ghost band.
-        if (Math.Min(Math.Min(bx0, width - bx1), Math.Min(bz0, height - bz1)) - SeamMargin < Math.Min(cut * 12f + 20f, Ease(b))) return (0, 0, 0, Reject.Seam);
-        return (cut * 3 + Math.Sqrt(h.Average(v => (v - pad) * (v - pad))) * 4, pad, cut, Reject.None);
+        float ease = Ease(b);
+        if (Math.Min(Math.Min(bx0, width - bx1), Math.Min(bz0, height - bz1)) - SeamMargin < Math.Min(cut * 12f + 20f, ease)) return (0, 0, 0, Reject.Seam);
+        // The land it is graded out to, half and all the way across the easing: a bank no steeper than one you could drive
+        // up (the easing's steepest is half again its mean).
+        float bank = 0f;
+        for (int k = 0; k < 24; k++)
+        {
+            double t = k % 3 / 2.0, o = ease * (k < 12 ? 0.5 : 1.0);
+            var (px, pz) = (k / 3 % 4) switch
+            {
+                0 => (bx0 + (bx1 - bx0) * t, bz0 - o), 1 => (bx0 + (bx1 - bx0) * t, bz1 + o),
+                2 => (bx0 - o, bz0 + (bz1 - bz0) * t), _ => (bx1 + o, bz0 + (bz1 - bz0) * t),
+            };
+            bank = MathF.Max(bank, MathF.Abs(bare.Sampler.Sample(Mathx.WrapX(px, width), Math.Clamp(pz, 0, height), 2).Height - pad));
+        }
+        if (bank * 1.5f / ease > TypedBank) return (0, 0, 0, Reject.Deep);
+        return (cut * 3 + bank + Math.Sqrt(h.Average(v => (v - pad) * (v - pad))) * 4, pad, cut, Reject.None);
     }
 
     /// <summary>Whether a river at a point is too wide to be laid over in a culvert (the widest round its map cell).</summary>
