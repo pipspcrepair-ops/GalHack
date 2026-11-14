@@ -139,6 +139,7 @@ public partial class PoiPlaces
             BlockType.SlantFill or BlockType.SlantFillM => 0.75f,
             BlockType.RoundOut => MathF.PI / 4f,
             BlockType.RoundIn => 1f - MathF.PI / 4f,
+            BlockType.RoundSlope => 0.5f, // (cut by its round's profile, about half the cube on the whole)
             BlockType.Partition or BlockType.Beam => 0.2f,
             BlockType.Column => 0.5f,
             BlockType.Rib => 0.4f,

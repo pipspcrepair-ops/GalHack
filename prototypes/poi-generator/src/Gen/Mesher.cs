@@ -211,7 +211,7 @@ public static class Mesher
         var sum = new long[count.Length * 3];
         foreach (var (c, b) in g.Blocks())
         {
-            int weight = BlockInfo.IsFullCube(b.Type) ? 2 : BlockInfo.IsPlanCut(b.Type) || b.Type is BlockType.Ramp or BlockType.Corner or BlockType.InvCorner or BlockType.Stair or BlockType.Rib or BlockType.Pillar or BlockType.Pipe or BlockType.Tank or BlockType.Lattice ? 1 : 0;
+            int weight = BlockInfo.IsFullCube(b.Type) ? 2 : BlockInfo.IsRoundCut(b.Type) || b.Type is BlockType.Ramp or BlockType.Corner or BlockType.InvCorner or BlockType.Stair or BlockType.Rib or BlockType.Pillar or BlockType.Pipe or BlockType.Tank or BlockType.Lattice ? 1 : 0;
             if (weight == 0 || BlockInfo.IsTransparent(b.Material)) continue;
             Int3 l = c - g.Min;
             int i = ((l.Y / step) * size.Z + l.Z / step) * size.X + l.X / step;
@@ -285,6 +285,7 @@ public static class Mesher
         readonly Int3 _fMin, _fSize;
 
         readonly PlaceLook _look;
+        readonly IReadOnlyList<RoundBody>? _rounds;
         readonly float _seed;
         readonly Dictionary<long, FinishPick> _picks = new();
 
@@ -295,6 +296,7 @@ public static class Mesher
             _o = o;
             _chunks = chunks;
             _look = (g is BlockGrid bg ? bg.Look : g is ChunkWindow w ? w.Look : null) ?? new PlaceLook();
+            _rounds = g is BlockGrid rg ? rg.Rounds : g is ChunkWindow rw ? rw.Rounds : null;
             _seed = _look.Seed;
 
             Int3 min = g.Min, max = g.Min + g.Size - new Int3(1, 1, 1);
@@ -586,8 +588,9 @@ public static class Mesher
             else if (b.Type == BlockType.Spike && !_o.Merged) Spike(chunk, p, b);
             else if (BlockInfo.IsCornerSlope(b.Type) || BlockInfo.IsHung(b.Type)) CornerSlope(chunk, p, b, drawn);
             else if (BlockInfo.IsPlanCut(b.Type)) Prism(chunk, p, b, _o.Drawn);
+            else if (b.Type == BlockType.RoundSlope) Sloped(chunk, p, b, _o.Drawn);
 
-            if (_o.Collision && BlockInfo.Collides(b.Type) && !BlockInfo.IsSlope(b.Type) && !BlockInfo.IsCornerSlope(b.Type) && !BlockInfo.IsHung(b.Type) && !BlockInfo.IsPlanCut(b.Type))
+            if (_o.Collision && BlockInfo.Collides(b.Type) && !BlockInfo.IsSlope(b.Type) && !BlockInfo.IsCornerSlope(b.Type) && !BlockInfo.IsHung(b.Type) && !BlockInfo.IsRoundCut(b.Type))
             {
                 // Props collide as their real shape: a table as its top and legs, a locker as its body against the wall.
                 bool shaped = BlockInfo.IsShaped(b.Type);
@@ -656,7 +659,7 @@ public static class Mesher
                 Int3 n = p + Dirs.All[f].Vec();
                 var nb = _g.Get(n);
                 bool hidden = glass ? (!nb.IsAir && nb.Type == BlockType.Cube && (nb.Material == b.Material || !BlockInfo.IsTransparent(nb.Material))) || IsRock(n) && Hides(n)
-                    : Hides(n) || f < 4 && BlockInfo.IsPlanCut(nb.Type) && Shapes.Covers(nb, Dirs.All[f].Opposite(), (0f, 1f));
+                    : Hides(n) || RimCovers(nb, n, f);
                 // (A shaped neighbour drawn far off as a cube hides the face, but still doesn't fill the cell: the face still collides.)
                 bool farShape = hidden && !CollidesFull(n) && !IsRock(n);
                 if (hidden && !farShape) continue;
@@ -812,9 +815,7 @@ public static class Mesher
             {
                 Int3 n = p + Dirs.All[f].Vec();
                 var nb = _g.Get(n);
-                // (A round thing's rim piece whose flat side is this whole face covers it as a block would.)
-                bool rim = f < 4 && BlockInfo.IsPlanCut(nb.Type) && Shapes.Covers(nb, Dirs.All[f].Opposite(), (0f, 1f));
-                if (glass ? (!nb.IsAir && nb.Type == BlockType.Cube && (nb.Material == b.Material || !BlockInfo.IsTransparent(nb.Material))) || IsRock(n) && Hides(n) : Hides(n) || rim)
+                if (glass ? (!nb.IsAir && nb.Type == BlockType.Cube && (nb.Material == b.Material || !BlockInfo.IsTransparent(nb.Material))) || IsRock(n) && Hides(n) : Hides(n) || RimCovers(nb, n, f))
                     continue;
                 // The top of a floor laid with a finish wears the finish, painted on (tiles, boards, carpet).
                 if (f == 4 && Painted(p) is Block paint)
@@ -1275,6 +1276,58 @@ public static class Mesher
             }
         }
 
+        /// <summary>A round thing's rim piece beside a block whose face toward it (face <paramref name="f"/>) the piece takes in whole, as a block would: a cut whose flat side is that face, a sloped piece that fills it.</summary>
+        bool RimCovers(Block nb, Int3 n, int f) =>
+            f < 4 && BlockInfo.IsPlanCut(nb.Type) && Shapes.Covers(nb, Dirs.All[f].Opposite(), (0f, 1f))
+            || nb.Type == BlockType.RoundSlope && Round.BodyAt(_rounds, n) is { } body && Round.Fills(body, n, Dirs.All[f].Opposite());
+
+        /// <summary>
+        /// A course of a round thing that runs in or out as it rises (<see cref="Round.Pieces"/>): its outside and inside shaded
+        /// as one smooth surface, its sides on its cell's faces left out where the next block or the next piece of the same
+        /// round covers them; it collides as drawn. With no round to cut it by, a cube.
+        /// </summary>
+        void Sloped(ChunkMesh chunk, Int3 p, Block b, bool draw)
+        {
+            if (Round.BodyAt(_rounds, p) is not { } body)
+            {
+                if (_o.Merged) Mark(p, b); else Cube(p, b);
+                return;
+            }
+            V3 o = V3.Of(p);
+            Surface s = Shapes.SurfaceOf(b.Material);
+            var buf = chunk.Surfaces[(int)s];
+            float j = 1f + ((Hash.Cell(p, 5) % 100) / 1000f - 0.05f) * _o.Mottle;
+            foreach (Round.SlopeFace f in Round.Pieces(body, p))
+            {
+                if (f.Side == Round.Seam) continue;
+                bool shown = draw, solid = _o.Collision;
+                if (f.Side < 6)
+                {
+                    Int3 n = p + Dirs.All[f.Side].Vec();
+                    bool same = _g.Get(n).Type == BlockType.RoundSlope && ReferenceEquals(Round.BodyAt(_rounds, n), body);
+                    shown &= !Hides(n) && !same;
+                    solid &= !CollidesFull(n) && !same;
+                }
+                if (shown)
+                {
+                    V3 flat = V3.Cross(f.Pts[1] - f.Pts[0], f.Pts[2] - f.Pts[0]).Normalized();
+                    float code = FaceCode(p, b, flat, false, s), k = code != 0f ? 1f : j;
+                    int i0 = buf.VertexCount;
+                    foreach (V3 v in f.Pts)
+                    {
+                        V3 n = f.Side is Round.OuterFace or Round.InnerFace ? Round.Normal(body, p, v, f.Side == Round.OuterFace) : flat;
+                        // (Lit as the other faces are: full from above, darker to the sides and below.)
+                        float shade = (n.Y >= 0 ? 0.8f + 0.2f * n.Y : 0.8f + 0.14f * n.Y) + 0.06f * MathF.Max(0f, n.Z) * (1 - MathF.Abs(n.Y));
+                        buf.Vertex(o + v, n, b.Color.R / 255f * shade * k, b.Color.G / 255f * shade * k, b.Color.B / 255f * shade * k, 1f, code, _seed);
+                    }
+                    for (int i = 1; i + 1 < f.Pts.Length; i++) buf.Indices.AddRange(new[] { i0, i0 + i + 1, i0 + i });
+                    chunk.Quads++;
+                }
+                if (solid)
+                    for (int i = 1; i + 1 < f.Pts.Length; i++) Tri(chunk, o + f.Pts[0], o + f.Pts[i], o + f.Pts[i + 1]);
+            }
+        }
+
         void Spike(ChunkMesh chunk, Int3 p, Block b)
         {
             // (Finished as what it is made of, as any box of its material is: never a flat colour.)
@@ -1329,6 +1382,9 @@ public sealed class ChunkWindow : IBlockStructure
 
     /// <summary>The look of the grid it reads through.</summary>
     public PlaceLook? Look => _grid is BlockGrid g ? g.Look : _grid is ChunkWindow w ? w.Look : null;
+
+    /// <summary>The round things of the grid it reads through.</summary>
+    public IReadOnlyList<RoundBody>? Rounds => _grid is BlockGrid g ? g.Rounds : _grid is ChunkWindow w ? w.Rounds : null;
 }
 
 /// <summary>A box of a shape in cell units; <paramref name="Tilt"/> (pitch, yaw, roll, radians) turns it about its own middle (a piece of rubble lying as it landed).</summary>
@@ -1528,7 +1584,7 @@ public static class Shapes
     }
 
     /// <summary>A shaped wall, floor or ceiling (and a slope cut from one), drawn from further off as the cube it was cut from.</summary>
-    public static bool FarAsCube(Block b) => (BlockInfo.IsShaped(b.Type) && b.Type is not (BlockType.Beam or BlockType.Column or BlockType.Quarter) && !BlockInfo.IsPlanCut(b.Type)
+    public static bool FarAsCube(Block b) => (BlockInfo.IsShaped(b.Type) && b.Type is not (BlockType.Beam or BlockType.Column or BlockType.Quarter) && !BlockInfo.IsRoundCut(b.Type)
         || b.Type is BlockType.Ramp or BlockType.Corner or BlockType.InvCorner && b.Role is Role.Wall or Role.Floor or Role.Decor) && !BlockInfo.IsTransparent(b.Material);
 
     static readonly V3[][] Plans = MakePlans();
@@ -2180,7 +2236,7 @@ public static class Shapes
             case BlockType.Corner:
             case BlockType.InvCorner:
             case BlockType.Chamfer or BlockType.ChamferCorner or BlockType.ChamferInvCorner:
-            case >= BlockType.Wedge and <= BlockType.RoundIn: // (drawn as their plans: Mesher.Ctx.Prism)
+            case >= BlockType.Wedge and <= BlockType.RoundSlope: // (drawn as their plans, or their round's profile: Mesher.Ctx.Prism, Sloped)
                 break;
             default:
                 l.Add(Box(0.1f, 0, 0.1f, 0.9f, 0.9f, 0.9f, c, s));

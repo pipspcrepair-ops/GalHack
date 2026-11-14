@@ -180,7 +180,7 @@ public static class Sites
     // ---- structures in the yard ---------------------------------------------------------------
 
     /// <summary>A round standing on the ground, its middle at a cell's middle, solid (tanks, stacks): courses shaded alternately every four metres.</summary>
-    static RoundBody Cylinder(Ctx x, int cx, int cz, int y0, int y1, Func<int, double> r, Block b) =>
+    static RoundBody Cylinder(Ctx x, int cx, int cz, int y0, int y1, Func<double, double> r, Block b) =>
         Round.Lay(x.C, cx + 0.5, cz + 0.5, y0, y1, y => (r(y), 0), y => b with { Color = b.Color.Scale(0.94f + 0.1f * ((y >> 2) & 1)) });
 
     /// <summary>Whether a round's outline runs straight along a grid line across the cell column through its middle on each side (a ladder's or a fin's flat).</summary>
@@ -1338,7 +1338,7 @@ public static class Sites
         }
         // The shell is measured from the sphere's centre, so it stays one thickness (two metres) all the way over; each course round.
         const double Shell = 2;
-        double Across(double rad, int y) => y < wall ? rad : rad * rad > (y - wall) * (y - wall) ? Math.Sqrt(rad * rad - (y - wall) * (y - wall)) : 0;
+        double Across(double rad, double y) => y < wall ? rad : rad * rad > (y - wall) * (y - wall) ? Math.Sqrt(rad * rad - (y - wall) * (y - wall)) : 0;
         Round.Lay(x.C, p.X + 0.5, p.Z + 0.5, 0, wall + r - 1, y => (Across(r, y), Across(r - Shell, y)),
             y => new Block(BlockType.Cube, Material.Concrete, col.Scale(y % 5 == 4 ? 0.8f : 0.95f), Role.Wall));
         // The wedges fallen in, and the door: an opening through the ring wall on the west side.
