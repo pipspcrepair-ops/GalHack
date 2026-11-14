@@ -28,7 +28,7 @@ public sealed partial class Staging
         _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
         _game.Zone.Wildlife.Frozen = true;
         Hand(("iron-ore", 160), ("copper-ore", 80), ("carbon-ore", 70), ("silicon-ore", 30), ("biomass", 14), ("stone", 22), ("ice", 12), ("meat", 6), ("hide", 2));
-        _game.Progress.Earn(900, "staging");
+        _game.Progress.Earn(900, "staging", false);
         IEnumerable<int> Frame(string name)
         {
             _game.Controls.Mouse = new Vector2(-100, -100);
@@ -151,7 +151,7 @@ public sealed partial class Staging
         _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
         _game.Zone.Wildlife.Frozen = true;
         Hand(("iron-ore", 60), ("copper-ore", 30), ("carbon-ore", 20), ("silicon-ore", 6), ("stone", 8), ("ice", 2));
-        _game.Progress.Earn(900, "staging");
+        _game.Progress.Earn(900, "staging", false);
         IEnumerable<int> Frame(string name, Vector2? mouse = null)
         {
             _game.Controls.Mouse = mouse ?? new Vector2(-100, -100);

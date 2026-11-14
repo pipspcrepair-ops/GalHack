@@ -29,7 +29,7 @@ public sealed partial class Staging
         void Burst()
         {
             var (into, span) = p.ToNext;
-            p.Earn((int)(span - into) + 1, "staging");
+            p.Earn((int)(span - into) + 1, "staging", false);
             TechNode n = p.Nodes.FirstOrDefault(n => p.StateOf(n) == UnlockState.Affordable);
             if (n != null) p.Unlock(n.Id);
         }
