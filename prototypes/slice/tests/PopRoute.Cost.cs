@@ -47,6 +47,12 @@ public partial class PopRoute
                         _drive.Face(look);
                         yield return 0;
                         if (i < 10) continue;
+                        // --shots=dir: the first view in each state, side by side in this world.
+                        if (round == 0 && way == 0 && i == 39 && _args.TryGetValue("shots", out string dir))
+                        {
+                            DirAccess.MakeDirRecursiveAbsolute(dir);
+                            Frame(1280).SavePng(string.Create(CultureInfo.InvariantCulture, $"{dir}/trees-{up:F0}m-{states[k].Name.Replace(' ', '-')}.png"));
+                        }
                         gpu[k].Add(RenderingServer.ViewportGetMeasuredRenderTimeGpu(view.GetViewportRid()));
                         cpu[k].Add(RenderingServer.ViewportGetMeasuredRenderTimeCpu(view.GetViewportRid()));
                     }
