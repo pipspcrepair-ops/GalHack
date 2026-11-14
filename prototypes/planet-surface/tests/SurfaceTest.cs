@@ -93,6 +93,8 @@ public partial class SurfaceTest : Node
             await Run("RoadLines", RoadLineChecks);
             await Run("Tracks", TrackChecks);
             await Run("Lazy", LazyChecks);
+            await Run("Airport", () => TypedChecks("airfield", "airport", "airstrip"));
+            await Run("Spaceport", () => TypedChecks("abandoned_spaceport", "port_large", "port_medium", "port_small"));
             if (_only.Contains("InfraScan")) await Run("InfraScan", InfraScan);
             _main = new Main { Interactive = false };
             AddChild(_main);
@@ -289,6 +291,7 @@ public partial class SurfaceTest : Node
         var byKind = new Dictionary<string, int>();
         var families = new HashSet<string>();
         var notes = new List<string>();
+        var floatNotes = new List<string>();
         var blockedWays = new List<string>();
         for (int a = 0; a < 5; a++)
         {
@@ -327,14 +330,17 @@ public partial class SurfaceTest : Node
                 }
                 // Nothing floats: everywhere the POI generator builds on rock (below floor level and
                 // outside the place's own rooms), there is solid ground, all the way down its deepest level.
+                int floatingBefore = floating;
+                string firstFloat = "";
                 for (int y = occ.Min.Y; y < 0; y++)
                 for (int z = 0; z < occ.Size.Z; z++)
                 for (int x = 0; x < occ.Size.X; x++)
                 {
                     var local = new PInt3(occ.Min.X + x, y, occ.Min.Z + z);
                     if (occ[local]) continue;
-                    if (!store.IsSolid(site.World(local))) floating++;
+                    if (!store.IsSolid(site.World(local)) && floating++ == floatingBefore) firstFloat = $"{local} under {inst.Blocks.Get(local + PInt3.Up * (-y)).Type}";
                 }
+                if (floating > floatingBefore && floatNotes.Count < 6) floatNotes.Add($"{site.Family.Id} {site.Siting} {site.Name} at {site.Origin}: {floating - floatingBefore} cells (first {firstFloat}), rooms {occ.Min}..{occ.Min + occ.Size}");
                 // A half-buried ruin keeps every room open however deep the ground rises round it.
                 if (site.HalfBuried)
                     for (int y = 0; y < occ.Min.Y + occ.Size.Y; y++)
@@ -347,17 +353,19 @@ public partial class SurfaceTest : Node
                 foreach (TerrainStamp extraStamp in site.Extra) shapes[extraStamp.Shape] = shapes.TryGetValue(extraStamp.Shape, out int sc) ? sc + 1 : 1;
                 // Made ground: the surface its purpose calls for; never grass on a desert world; eased in, never a hard edge.
                 madeChecked++;
-                if (t.Surface != PoiSiting.GroundFor(site.Family, (Archetype)a)) wrongGround++;
+                // (A typed place's made ground is laid in patches over its one grading; its parts' stamps are the land's own.)
+                if (site.Whole == null && t.Surface != PoiSiting.GroundFor(site.Family, (Archetype)a)) wrongGround++;
                 var (mcx, mcz) = site.Center;
                 Color centre = w.Palette.Made(w.Palette.Natural(mcx, mcz, pad, 1f, out _), t.Surface, 1f, t.Wear, mcx, mcz);
                 if (a == (int)Archetype.Arid && centre.G > centre.R * 1.08f && centre.G > centre.B * 1.08f) grassInDesert++;
-                for (int ray = 0; ray < 8; ray++)
+                for (int ray = 0; ray < 8 && !(site.Whole != null && site.Whole.Anchor != site); ray++)
                 {
                     double ra = ray * Math.PI / 4, first = -1, last = -1;
                     for (double d = 0; d < Math.Max(t.ReachX, t.ReachZ); d += 0.5)
                     {
                         // The place's own pad (a road leaving its gate has edges of its own).
-                        float mw = t.Weight(mcx + Math.Cos(ra) * d, mcz + Math.Sin(ra) * d);
+                        // (A typed place's parts stand on its one grading, which its main part holds and which eases out.)
+                        float mw = (site.Whole?.Stamp ?? t).Weight(mcx + Math.Cos(ra) * d, mcz + Math.Sin(ra) * d);
                         if (mw < 0.97f && first < 0) first = d;
                         if (mw <= 0.5f) { last = d; break; }
                     }
@@ -435,6 +443,7 @@ public partial class SurfaceTest : Node
             await Frames(1);
         }
         GD.Print("      " + string.Join("; ", notes));
+        foreach (string f in floatNotes) GD.Print($"      no ground under: {f}");
         Check(wrongGround == 0 && grassInDesert == 0 && hardEdges == 0,
             $"made ground: {madeChecked} pads laid in the surface their purpose calls for (tarmac and concrete aprons, gravel and dirt yards, the land's own ground for ruins); no grass on a desert world ({grassInDesert}); every edge eased over metres, never a hard line ({hardEdges})");
         Check(roomsFilled == 0 && shapes.Count >= 2, $"places sit in their land, not on flat pads: {string.Join(", ", shapes.Select(s => $"{s.Value} {s.Key.ToString().ToLowerInvariant()}"))} stamps beyond the pads; half-buried ruins keep their rooms open ({roomsFilled} room cells filled)");

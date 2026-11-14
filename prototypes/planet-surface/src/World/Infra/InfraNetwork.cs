@@ -215,7 +215,7 @@ public sealed class InfraNetwork
     };
 
     /// <summary>Places people built and reached by road: not wrecks that fell from the sky, nor alien or Precursor sites.</summary>
-    public static bool Served(PoiSite p) => !WorldProfile.Unbuilt(p.Family);
+    public static bool Served(PoiSite p) => !WorldProfile.Unbuilt(p.Family) && (p.Whole == null || p.Whole.Anchor == p);
 
     // ---- planning ---------------------------------------------------------------------------
 

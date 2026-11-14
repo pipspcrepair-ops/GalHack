@@ -453,8 +453,8 @@ public sealed class RegionPlan
         /// <summary>The port, and on a world that ran for it the camps and pads round it. Highways to it from every town, and the railway, if the world had one.</summary>
         void Ports()
         {
-            FamilyDef? port = _lib.Families.FirstOrDefault(f => f.Tier == PoiTier.Spaceport && !f.Tags.Contains("scrappy"));
-            bool any = _profile.Starport != Starport.None && port != null;
+            FamilyDef? port = _profile.PortFamily(_lib);
+            bool any = port != null;
             var towns = _p.Places.Where(p => p.Role == "hub").ToList();
             PlannedPlace? main = null;
             if (any)
@@ -473,7 +473,8 @@ public sealed class RegionPlan
                 for (int k = 0; k < _profile.SecondaryPorts; k++)
                 {
                     Starport lesser = (Starport)Math.Max((int)Starport.E, (int)_profile.Starport - _r.Range(1, 3));
-                    if (Spot(at.X, at.Z, 2400, 7000, port.Id) is { } s && Add(port.Id, s.X, s.Z, null, "port", "a lesser port") is { } p)
+                    FamilyDef lesserFam = _profile.LesserPort(_lib, port);
+                    if (Spot(at.X, at.Z, 2400, 7000, lesserFam.Id) is { } s && Add(lesserFam.Id, s.X, s.Z, null, "port", "a lesser port") is { } p)
                     {
                         p.Port = lesser;
                         if (main != null) _p.Links.Add(new PlannedLink(p.Index, main.Index, "road", "a road between ports"));

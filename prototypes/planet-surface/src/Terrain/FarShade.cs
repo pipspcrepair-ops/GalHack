@@ -80,7 +80,7 @@ public static class FarShade
         if (pois == null) return near;
         foreach (PoiSite s in pois)
         {
-            if (s.Layout == null) continue;
+            if (s.Pending || s.Layout == null) continue;
             var lo = s.Footprint.Min;
             var hi = s.Footprint.Max;
             double mx = (lo.X + hi.X + 1) * 0.5, mz = (lo.Z + hi.Z + 1) * 0.5, rx = (hi.X - lo.X + 1) * 0.5, rz = (hi.Z - lo.Z + 1) * 0.5;

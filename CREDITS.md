@@ -17,6 +17,14 @@ GalHack credits every asset it uses, including CC0 ones. Add a row for each asse
 
 All of the game's music is generated. It uses no recordings or samples.
 
+## Design references
+
+Followed as rules by the generators, never copied in: no images, models or text from them are in the game.
+
+| Work | Author | Source | Licence | Used by |
+| --- | --- | --- | --- | --- |
+| Starport plans and views (classes A, C and D) | Pearce Design Studio, LLC | Starports & Bases (the owner's reference images, reference-photos/spaceports) | CC BY-NC 4.0 | `prototypes/poi-generator`: the spaceports' plans (data/place-types.txt, PlaceTypes.Ports) |
+
 ## Libraries
 
 | Library | Author | Source | Licence | Used by |

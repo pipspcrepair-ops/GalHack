@@ -49,6 +49,9 @@ public sealed class SecretRoom
     /// <summary>What gives it away: cracks, a draft, scorch, drag marks, a mismatch in the plan.</summary>
     public List<string> Tells = new();
     public List<Int3> TellCells = new();
+
+    /// <summary>The tells every breakable wall gives: what a player exploring notices.</summary>
+    public static readonly string[] Usual = { "cracked wall panel, a shade off the rest", "a draft through the cracks", "scuff marks on the floor in front", "the plan has a gap here no door explains" };
 }
 
 /// <summary>

@@ -77,6 +77,9 @@ public partial class Screenshot : Node
         var planet = PlanetSpec.Roll(seed, (Archetype)a, variant);
         WeatherKind? weather = _args.TryGetValue("weather", out string w) ? Enum.Parse<WeatherKind>(w) : null;
         _args.TryGetValue("force", out string force);
+        if (_args.TryGetValue("type", out string type)) (PlanetSurface.Poi.PoiSiting.ForceType, force) = (type, Main.Catalog.Library.Families.First(f => f.Types.Contains(type)).Id);
+        if (_args.ContainsKey("airfield")) force ??= "airfield";
+        if (_args.ContainsKey("tee")) PoiGenerator.Gen.PlaceTypes.Always.Add("crosswind");
         if (_args.TryGetValue("state", out string state)) PlanetSurface.Poi.PoiSiting.ForceState = Enum.Parse<PoiGenerator.Gen.PoiState>(state, true);
         if (_args.ContainsKey("forcevariant")) PlanetSurface.Poi.PoiSiting.ForceVariant = Int("forcevariant", 0);
         if (_args.ContainsKey("tiered")) PlanetSurface.Poi.PoiLayer.Tiered = true;
@@ -118,7 +121,9 @@ public partial class Screenshot : Node
             float ground = m.World.GroundHeight(x, z);
             return (new Vector3((float)x, ground + (float)Num("up", 20), (float)z), (float)Num("heading", 0), (float)Num("pitch", -8));
         }, Num("time", 0.42), weather, Force: force, BeforeCapture: AddFigure,
-            Series: _args.TryGetValue("ground", out string groundView) ? m => GroundShots(m, groundView)
+            Prepare: _args.ContainsKey("airfield") ? m => { foreach (var p in m.World.Pois.Where(p => p.Whole != null)) p.Build(); } : null,
+            Series: _args.TryGetValue("airfield", out string airfieldView) ? m => AirfieldShots(m, airfieldView)
+                : _args.TryGetValue("ground", out string groundView) ? m => GroundShots(m, groundView)
                 : _args.TryGetValue("shores", out string shoreView) ? m => ShoreShots(m, shoreView)
                 : cityView == null ? null : m => m.World.Infra.City is { Sites.Count: > 0 } city ? CityShots(m, city, cityView) : null);
     }
@@ -323,6 +328,74 @@ public partial class Screenshot : Node
                 shots.Add(Level("inside", eye, far));
             }
         }
+        return which == "all" ? shots : shots.Where(s => s.Name == which).ToList();
+    }
+
+    /// <summary>
+    /// A typed place's frames (--airfield=all, or one by name; --type=airport, airstrip, starport...): the whole of it from the air, the
+    /// terminal's landside and airside, a hangar with its door open to the apron, the tower, the runway from standing height.
+    /// </summary>
+    List<Shot> AirfieldShots(Main m, string which)
+    {
+        var place = m.World.Pois.Select(p => p.Whole).First(t => t != null);
+        var pieces = PoiGenerator.Gen.PlaceTypes.Pieces(place.Sketch, place.Turn);
+        var fb = PoiGenerator.Gen.PlaceTypes.Turn(place.Sketch.Footprint, place.Turn);
+        float y = place.PadY;
+        Vector3 At(PoiGenerator.Gen.SketchBox b, float up) => new((float)(place.X + b.Cx), y + up, (float)(place.Z + b.Cz));
+        Vector3 Out(PoiGenerator.Gen.TypePiece p, float by, float up, int way = 1)
+        {
+            var v = PoiGenerator.Gen.Dirs.Vec(p.Front);
+            float reach = (p.Front is PoiGenerator.Gen.Dir.North or PoiGenerator.Gen.Dir.South ? p.Box.D : p.Box.W) / 2 + by;
+            return At(p.Box, up) + new Vector3(v.X, 0, v.Z) * reach * way;
+        }
+        Shot Aim(string name, Vector3 from, Vector3 at)
+        {
+            from.Y = Mathf.Max(from.Y, m.World.GroundHeight(from.X, from.Z) + 1.7f);
+            Vector3 d = at - from;
+            return new Shot(name, from, Mathf.RadToDeg(Mathf.Atan2(d.X, -d.Z)), Mathf.RadToDeg(Mathf.Atan2(d.Y, new Vector2(d.X, d.Z).Length())));
+        }
+        GD.Print($"airfield: {place.Why} at {place.X:F0},{place.Z:F0} level {place.PadY}; {place.Parts.Count} parts");
+        var shots = new List<Shot>();
+        // From the air: off the landside, high enough to take in the whole length.
+        var terminal = pieces.FirstOrDefault(p => p.Item.Part.Id == "terminal");
+        Vector3 centre = At(fb, 0);
+        var land = terminal != null ? -(Out(terminal, 0, 0) - At(terminal.Box, 0)).Normalized() : new Vector3(0, 0, 1);
+        shots.Add(Aim("air", centre + land * fb.Long * 0.55f + Vector3.Up * fb.Long * 0.3f, centre));
+        if (terminal != null)
+        {
+            shots.Add(Aim("landside", Out(terminal, 70, 1.7f, -1), At(terminal.Box, 6)));
+            shots.Add(Aim("airside", Out(terminal, 90, 1.7f) + new Vector3(15, 0, 15), At(terminal.Box, 6)));
+        }
+        if (pieces.FirstOrDefault(p => p.Plan.Parts[0].Arg("what") == "hangar") is { } hangar)
+            shots.Add(Aim("hangar", Out(hangar, 35, 1.7f) + new Vector3(4, 0, 4), At(hangar.Box, 4)));
+        if (pieces.FirstOrDefault(p => p.Plan.Parts[0].Arg("what") == "tower") is { } tower)
+            shots.Add(Aim("tower", Out(tower, 70, 1.7f) + new Vector3(10, 0, 10), At(tower.Box, tower.Item.H * 0.6f)));
+        var grounds = PoiGenerator.Gen.PlaceTypes.Grounds(place.Sketch, place.Turn).ToList();
+        Vector3 On(PoiGenerator.Gen.Shape g, float along, float up) => new((float)(place.X + g.X + g.UX * along), y + up, (float)(place.Z + g.Z + g.UZ * along));
+        if (grounds.FirstOrDefault(g => g.Item.Part.Id == "runway") is { Item: not null } rw)
+            shots.Add(Aim("runway", On(rw.Lay, -rw.Lay.HalfU + 40, 1.7f) + new Vector3(rw.Lay.UZ, 0, -rw.Lay.UX) * rw.Lay.HalfV * 0.3f, On(rw.Lay, 0, 1.2f)));
+        // The T: from the crosswind's free end, looking down it to where it meets the runway.
+        if (grounds.FirstOrDefault(g => g.Item.Part.Id == "crosswind") is { Item: not null } x)
+        {
+            var (fx, fz) = PoiGenerator.Gen.PlaceTypes.Turn(x.Item.FaceX, x.Item.FaceZ, place.Turn);
+            float sign = x.Lay.UX * fx + x.Lay.UZ * fz >= 0 ? 1 : -1;
+            shots.Add(Aim("crosswind", On(x.Lay, sign * (x.Lay.HalfU - 30), 1.7f), On(x.Lay, -sign * x.Lay.HalfU, 1.2f)));
+            shots.Add(Aim("tee", On(x.Lay, sign * x.Lay.HalfU, 0) + Vector3.Up * 260, On(x.Lay, -sign * x.Lay.HalfU * 0.6f, 0)));
+        }
+        // A recessed pad: from beside its ramp's head at standing height, looking down into it.
+        if (grounds.FirstOrDefault(g => PoiGenerator.Gen.PlaceTypes.Sink(g.Item) > 0) is { Item: not null } pad)
+        {
+            var (gx, gz) = PoiGenerator.Gen.PlaceTypes.Turn(pad.Item.Rolled["gx"], pad.Item.Rolled["gz"], place.Turn);
+            float r = pad.Lay.HalfU, sink = PoiGenerator.Gen.PlaceTypes.Sink(pad.Item);
+            var mid = new Vector3((float)(place.X + pad.Lay.X), y - sink, (float)(place.Z + pad.Lay.Z));
+            shots.Add(Aim("pad", mid + new Vector3(gx, 0, gz) * (r + sink * PoiGenerator.Gen.PlaceTypes.RampRun + 6) + new Vector3(-gz, 0, gx) * 9 + Vector3.Up * (sink + 1.7f), mid + Vector3.Up * 2));
+            shots.Add(Aim("pads", mid + new Vector3(gx, 0, gz) * (r + 60) + Vector3.Up * (sink + 70), mid));
+        }
+        // The middle of a spaceport (its hub, its authority building) from the ground, and its startown.
+        if (terminal != null && terminal.Plan.Parts[0].Arg("what") is "hub" or "authority")
+            shots.Add(Aim("main", Out(terminal, 60, 1.7f) + new Vector3(12, 0, 0), At(terminal.Box, terminal.Item.H * 0.4f)));
+        if (pieces.FirstOrDefault(p => p.Item.Part.Id == "town") is { } hut)
+            shots.Add(Aim("town", Out(hut, 24, 1.7f) + new Vector3(6, 0, 6), At(hut.Box, 3)));
         return which == "all" ? shots : shots.Where(s => s.Name == which).ToList();
     }
 

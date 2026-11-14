@@ -67,5 +67,6 @@
     <Compile Include="..\planet-surface\src\Poi\PoiSiting.cs" />
     <Compile Include="..\planet-surface\src\World\Footing.cs" />
     <Compile Include="..\planet-surface\src\Poi\PoiSiting.Plan.cs" />
+    <Compile Include="..\planet-surface\src\Poi\PoiSiting.Types.cs" />
   </ItemGroup>
 </Project>

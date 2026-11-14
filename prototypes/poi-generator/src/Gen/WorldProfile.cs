@@ -89,6 +89,23 @@ public sealed record WorldProfile
         Unbuilt(f) || f.Techs.Count == 0 || Enumerable.Range(0, f.StateWeights.Length).Any(s => f.StateWeights[s] > 0f && f.Techs.Contains(Tag(LevelFor(f, (PoiState)s))));
 
     /// <summary>
+    /// The world's port as its age built it, past or present: the first port family that can stand here in some state (a
+    /// spaceport where the age was high, a makeshift launch site where it was medium), else the age's own in its stead (a
+    /// low-tech world's airstrip); none on a world without one.
+    /// </summary>
+    public FamilyDef? PortFamily(PoiLibrary lib)
+    {
+        if (Starport == Starport.None) return null;
+        bool Stands(FamilyDef? f) => f != null && StateWeights(f).Any(w => w > 0f);
+        var ports = lib.Families.Where(f => f.Tier == PoiTier.Spaceport && !f.Tags.Contains("scrappy")).ToList();
+        return ports.FirstOrDefault(Stands) ?? ports.Select(f => ForAge(lib, f)).FirstOrDefault(Stands);
+    }
+
+    /// <summary>Its lesser ports: the port's own kind, or the kind its family names (a launch site's airports) where that can stand here.</summary>
+    public FamilyDef LesserPort(PoiLibrary lib, FamilyDef port) =>
+        port.Lesser != null && lib.Families.FirstOrDefault(f => f.Id == port.Lesser) is { } l && StateWeights(l).Any(w => w > 0f) ? l : port;
+
+    /// <summary>
     /// What stands for a family on this world: the family itself where its tech fits, else the first of its
     /// <c>instead</c> line that does (its age's equivalent: a caravan camp where a low-tech world has no launch
     /// field), else null. By rule, so any fall, theme or plan that asks for it gets the right thing.

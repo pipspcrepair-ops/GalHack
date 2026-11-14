@@ -170,18 +170,20 @@ public static class WorldPlacement
         // The ports: one primary of the world's class, its lesser ports, and on an exodus world the scrappy
         // ports and evacuation camps crowding round the primary.
         var ports = new Dictionary<int, (FamilyDef Fam, Starport? Class, bool Primary)>();
-        FamilyDef? spaceport = lib.Families.FirstOrDefault(f => f.Tier == PoiTier.Spaceport && !f.Tags.Contains("scrappy"));
-        if (profile != null && profile.Starport != Starport.None && spaceport != null && sites.Count > 0)
+        // (By the age that built it: a spaceport on a high-tech world, a launch site and airports on a medium one.)
+        FamilyDef? spaceport = profile?.PortFamily(lib);
+        if (profile != null && spaceport != null && sites.Count > 0)
         {
             var portRng = rng.Fork("ports");
             int main = portRng.Range(0, sites.Count);
             ports[main] = (spaceport, profile.Starport, true);
             var others = Enumerable.Range(0, sites.Count).Where(k => k != main).ToList();
             portRng.Shuffle(others);
+            FamilyDef lesserFam = profile.LesserPort(lib, spaceport);
             for (int k = 0; k < profile.SecondaryPorts && k < others.Count / 3; k++)
             {
                 Starport lesser = (Starport)Math.Max((int)Starport.E, (int)profile.Starport - portRng.Range(1, 3));
-                ports[others[k]] = (spaceport, lesser, false);
+                ports[others[k]] = (lesserFam, lesser, false);
             }
             var round = Enumerable.Range(0, sites.Count).Where(k => !ports.ContainsKey(k))
                 .OrderBy(k => TorusDist(map, sites[k].x, sites[k].y, sites[main].x, sites[main].y)).ToList();

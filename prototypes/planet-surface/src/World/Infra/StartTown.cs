@@ -71,7 +71,7 @@ public sealed class StartTown
             if (rails.Any(rt => Enumerable.Range(0, rt.Count).Any(i => Dist(rt.X[i], rt.Z[i], cx, cz) < reach * 1.5 + 40))) continue;
             // A deep place for choice: the first place a start walks to is one worth going down into.
             PoiSite mark = pois.Where(p => p.State != PoiState.Active && !p.Family.Tags.Contains("settlement"))
-                .Select(p => (p, d: Dist(p.Center.X, p.Center.Z, cx, cz))).Where(t => t.d > 420 && t.d < 1150).OrderBy(t => Deep(t.p.Layout) ? 0 : 1).ThenBy(t => t.d).Select(t => t.p).FirstOrDefault();
+                .Select(p => (p, d: Dist(p.Center.X, p.Center.Z, cx, cz))).Where(t => t.d > 420 && t.d < 1150).OrderBy(t => !t.p.Pending && Deep(t.p.Layout) ? 0 : 1).ThenBy(t => t.d).Select(t => t.p).FirstOrDefault();
             if (mark == null) continue;
             float lo = float.MaxValue, hi = float.MinValue;
             bool wet = false;
@@ -86,7 +86,7 @@ public sealed class StartTown
             if (wet) continue;
             double score = (hi - lo) + r * 0.004;
             // Rougher ground is worth it for a deep place in view: a start should have somewhere to go down into.
-            double rank = score + (Deep(mark.Layout) ? 0 : 25);
+            double rank = score + (!mark.Pending && Deep(mark.Layout) ? 0 : 25);
             if (rank < bestRank) { bestRank = rank; bestScore = score; bx = cx; bz = cz; bestMark = mark; (mainHalf, block, arm) = size; }
         }
         }
@@ -197,10 +197,10 @@ public sealed class StartTown
     {
         double Dist(PoiSite p) => Math.Sqrt(Math.Pow(Mathx.WrapDelta(p.Center.X - x, w), 2) + Math.Pow(Mathx.WrapDelta(p.Center.Z - z, h), 2));
         // Below ground first, then up a tower; failing both, the biggest place in reach that you can go into.
-        var deep = pois.Where(p => Deep(p.Layout) && Dist(p) <= DungeonReach).OrderBy(p => Below(p.Layout) >= 2 ? 0 : 1).ThenBy(Dist).ToList();
+        var deep = pois.Where(p => !p.Pending && Deep(p.Layout) && Dist(p) <= DungeonReach).OrderBy(p => Below(p.Layout) >= 2 ? 0 : 1).ThenBy(Dist).ToList();
         if (deep.FirstOrDefault(Lived) is { } lived) return lived;
         PoiSite empty = deep.FirstOrDefault(p => OccupancyLayer.Applies(p.Family, p.State))
-            ?? pois.Where(p => Dist(p) <= DungeonReach && Rooms(p.Layout) >= 6 && OccupancyLayer.Applies(p.Family, p.State)).OrderByDescending(p => Rooms(p.Layout)).FirstOrDefault();
+            ?? pois.Where(p => !p.Pending && Dist(p) <= DungeonReach && Rooms(p.Layout) >= 6 && OccupancyLayer.Applies(p.Family, p.State)).OrderByDescending(p => Rooms(p.Layout)).FirstOrDefault();
         if (empty == null) return null;
         var mix = (net.RegionPlan?.Roll.Occupancy ?? new Dictionary<string, float>()).Where(kv => kv.Key != "EMP" && kv.Value > 0f).ToDictionary(kv => kv.Key, kv => kv.Value);
         OccupancyRoll occ = OccupancyLayer.Roll(mix, empty.Family, seed);

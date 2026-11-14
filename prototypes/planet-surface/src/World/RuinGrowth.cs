@@ -36,6 +36,9 @@ public static class RuinGrowth
             foreach (GrowthSpot spot in inst.Growth)
             {
                 Int3 c = spot.Cell;
+                // A typed place's open ground is its made ground, graded and laid (a yard, a pad, the way in): nothing roots
+                // there (no tree in a fuel farm's bund or a pad's pit).
+                if (site.Whole != null && Open(inst.Blocks, c)) continue;
                 double x = Mathx.WrapX(site.Origin.X + c.X + 0.5, width), z = Mathx.Wrap(site.Origin.Z + c.Z + 0.5, height);
                 Biome biome = pal.BiomeAt(x, z);
                 FloraRule[] trees = pal.Flora.RulesOf(biome).Where(r => FloraMeshes.IsTree(r.Kind)).ToArray();
@@ -73,6 +76,14 @@ public static class RuinGrowth
                 stood++;
             }
         }
+    }
+
+    /// <summary>Whether a cell is under open sky: nothing over it as high as a place stands.</summary>
+    static bool Open(BlockGrid blocks, Int3 c)
+    {
+        for (int y = 1; y < 80; y++)
+            if (!blocks.Get(c + Int3.Up * y).IsAir) return false;
+        return true;
     }
 
     /// <summary>Whether a tree of a kind and scale stands clear of every wall, roof and floor round its root.</summary>
