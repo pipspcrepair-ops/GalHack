@@ -45,7 +45,6 @@ public sealed class OrbitRules
         public float ShroudThins { get; set; } = 620f;
         public float ShroudThickness { get; set; } = 0.9f;
         public float FlatCurve { get; set; } = 300000f;
-        public float TrueGlobeAt { get; set; } = 7000f;
         public float MapWrapsBy { get; set; } = 2400f;
         public float StreamAhead { get; set; } = 1.5f;
     }

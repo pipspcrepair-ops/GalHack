@@ -140,7 +140,8 @@ public partial class SkyRig : Node3D
     readonly List<Sighting> _seen = new(), _inSlots = new();
     readonly List<(Orbiter Body, Vector3 Direction, float Angular)> _drawn = new();
     readonly Vector3[] _bodyDirs = new Vector3[BodySlots], _bodyLights = new Vector3[BodySlots], _bodyColors = new Vector3[BodySlots];
-    readonly float[] _bodyRadii = new float[BodySlots], _bodyShade = new float[BodySlots], _bodyRed = new float[BodySlots];
+    readonly float[] _bodyRadii = new float[BodySlots], _bodySun = new float[BodySlots], _bodyRed = new float[BodySlots];
+    readonly Vector4[] _bodyCasters = new Vector4[BodySlots];
     readonly int[] _bodyLayers = new int[BodySlots];
     readonly Vector3[] _bodyAxes = new Vector3[BodySlots], _bodyZeros = new Vector3[BodySlots];
     Vector3 _brightest = Vector3.Up;
@@ -562,10 +563,9 @@ public partial class SkyRig : Node3D
             _bodyRadii[slot] = s.Angular;
             (_bodyAxes[slot], _bodyZeros[slot]) = Turned(s.Body);
             _bodyLayers[slot] = Surfaces?.LayerOf(s.Body) ?? -1;
-            // In another body's shadow it darkens, and behind a world with air it glows dull red.
-            var (hidden, by) = m.EclipseAt(days, m.Position(s.Body, days), s.Body);
-            _bodyShade[slot] = (float)(1.0 - hidden);
-            _bodyRed[slot] = StarSystem.HasAir(by) ? (float)hidden : 0f;
+            // Another body's shadow on it, drawn point by point (an umbra in a soft penumbra), dull red behind a world with air.
+            if (Umbrae(s.Body, _bodyCasters, slot, 1, out _bodySun[slot]) == 0) _bodyCasters[slot] = Vector4.Zero;
+            _bodyRed[slot] = _casters.Count > 0 && StarSystem.HasAir(_casters[0]) ? 1f : 0f;
             _bodyColors[slot++] = new Vector3(s.Body.Color.R, s.Body.Color.G, s.Body.Color.B);
             float phase = Math.Clamp(-dir.Dot(light) * 0.5f + 0.5f, 0f, 1f); // full when opposite the sun
             float e = 0.22f * phase * Smooth(-0.02f, 0.2f, dir.Y) * (s.Angular / 0.03f);
@@ -581,7 +581,8 @@ public partial class SkyRig : Node3D
         _sky.SetShaderParameter("moon_layer", _bodyLayers);
         _sky.SetShaderParameter("moon_axis", _bodyAxes);
         _sky.SetShaderParameter("moon_zero", _bodyZeros);
-        _sky.SetShaderParameter("moon_shade", _bodyShade);
+        _sky.SetShaderParameter("moon_caster", _bodyCasters);
+        _sky.SetShaderParameter("moon_sun", _bodySun);
         _sky.SetShaderParameter("moon_red", _bodyRed);
     }
 
@@ -738,31 +739,36 @@ public partial class SkyRig : Node3D
     {
         sun = 0f;
         StarSystem m = Model;
-        if (m == null) return 0;
-        double days = Days, R = m.Home.Radius;
+        return m == null ? 0 : Umbrae(m.Home, into, 0, into.Length, out sun);
+    }
+
+    readonly List<Orbiter> _casters = new();
+
+    /// <summary>The star's light on other bodies and the dark of space round them: the light their globes get up close, so a body in this sky is lit as it is there.</summary>
+    public void LightBodies(float energy, Color ambient)
+    {
+        _sky.SetShaderParameter("body_energy", energy);
+        _sky.SetShaderParameter("body_ambient", ambient);
+    }
+
+    /// <summary>
+    /// What could shadow a body (<see cref="StarSystem.Casters"/>), at most <paramref name="most"/> from <paramref name="at"/> in <paramref name="into"/>:
+    /// each where it stands from the body's centre in this sky's directions, in the body's radii (xyz), and its
+    /// radius in them (w). How many; <paramref name="sun"/> is the sun's angular radius from the body.
+    /// </summary>
+    int Umbrae(Orbiter body, Vector4[] into, int at, int most, out float sun)
+    {
+        StarSystem m = Model;
+        double days = Days, R = body.Radius;
+        sun = (float)m.Casters(body, days, _casters);
         StarSystem.Orientation o = m.Orient(days);
-        D3 home = m.Position(m.Home, days), toStar = m.Position(m.Star, days) - home;
-        double starDistance = toStar.Length;
-        D3 sunDir = toStar * (1.0 / starDistance);
-        sun = (float)Math.Asin(Math.Min(m.Star.Radius / starDistance, 1.0));
-        var near = new List<(double Gap, Orbiter Body)>();
-        foreach (Orbiter b in m.Bodies)
-        {
-            if (b.Kind is OrbiterKind.Star or OrbiterKind.Belt || b == m.Home || b.Radius <= 0.0) continue;
-            D3 to = m.Position(b, days) - home;
-            double distance = to.Length;
-            if (distance >= starDistance || distance <= R) continue;
-            // Its shadow can reach somewhere on the globe: within the sun's radius plus the body's and the globe's own size from there.
-            double gap = Math.Acos(Math.Clamp(to.Dot(sunDir) / distance, -1.0, 1.0)) - Math.Asin(Math.Min((b.Radius + R) / distance, 1.0));
-            if (gap < sun) near.Add((gap, b));
-        }
-        near.Sort((a, b) => a.Gap.CompareTo(b.Gap));
-        int n = Math.Min(near.Count, into.Length);
+        D3 from = m.Position(body, days);
+        int n = Math.Min(_casters.Count, most);
         for (int i = 0; i < n; i++)
         {
-            Orbiter b = near[i].Body;
-            Vector3 at = _skyToGlobe.Inverse() * V(o.ToGlobe(m.Position(b, days) - home) * (1.0 / R));
-            into[i] = new Vector4(at.X, at.Y, at.Z, (float)(b.Radius / R));
+            Orbiter b = _casters[i];
+            Vector3 p = _skyToGlobe.Inverse() * V(o.ToGlobe(m.Position(b, days) - from) * (1.0 / R));
+            into[at + i] = new Vector4(p.X, p.Y, p.Z, (float)(b.Radius / R));
         }
         return n;
     }

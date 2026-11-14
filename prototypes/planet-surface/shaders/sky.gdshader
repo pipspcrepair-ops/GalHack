@@ -37,8 +37,11 @@ uniform float moon_radius[10];
 uniform vec3 moon_color[10] : source_color;
 uniform vec3 moon_light[10];
 uniform int moon_layer[10];
-uniform float moon_shade[10];          // the share of the sun each moon sees (another body's shadow hides the rest)
-uniform float moon_red[10];            // how deep it stands in a shadow reddened by a world's air
+uniform vec4 moon_caster[10];          // what can shadow each: where it stands from its centre, in its radii (xyz), and its radius in them (w; 0 none)
+uniform float moon_sun[10];            // the sun's angular radius from each
+uniform float moon_red[10];            // 1: that shadow is a world's with air, reddened
+uniform float body_energy = 1.6;       // the star's light on another body, and the dark round it: what lights its globe up close (SkyRig.LightBodies)
+uniform vec3 body_ambient : source_color = vec3(0.035, 0.038, 0.055);
 uniform float sun_lit = 1.0;           // the share of the sun's disc in sight from here: an eclipse darkens the day            // which layer of surfaces shows it; -1 while it is plain
 uniform vec3 moon_axis[10];
 uniform vec3 moon_zero[10];            // where its map's zero longitude faces this moment
@@ -149,6 +152,33 @@ vec4 surface_at(int layer, vec3 n, vec3 axis, vec3 zero, float radius) {
 	return textureLod(surfaces, vec3(u, v, float(layer)), log2(max(40.7 / (radius * 700.0), 1.0)));
 }
 
+// The share of a sun disc of angular radius a that a disc of radius b, c away, hides (small angles):
+// StarSystem.Covered, and the globes' and space's far looks' own (slice's Globe.UmbraCode).
+float sun_hidden(float a, float b, float c) {
+	if (a <= 0.0 || b <= 0.0 || c >= a + b) return 0.0;
+	if (c <= abs(b - a)) return b >= a ? 1.0 : b * b / (a * a);
+	float a2 = a * a, b2 = b * b, c2 = c * c;
+	float lens = a2 * acos(clamp((c2 + a2 - b2) / (2.0 * c * a), -1.0, 1.0)) + b2 * acos(clamp((c2 + b2 - a2) / (2.0 * c * b), -1.0, 1.0))
+	           - 0.5 * sqrt(max(0.0, (-c + a + b) * (c + a - b) * (c - a + b) * (c + a + b)));
+	return clamp(lens / (3.14159265 * a2), 0.0, 1.0);
+}
+
+// How much of the sun a point g on a body (in its radii from its centre) has hidden by a caster
+// (where it stands from that centre and its radius, in those radii): umbra, then a soft penumbra.
+float shadowed(vec3 g, vec3 to_sun, vec4 caster, float sun) {
+	vec3 v = caster.xyz - g;
+	if (caster.w <= 0.0 || dot(v, to_sun) <= 0.0) return 0.0;
+	return sun_hidden(sun, asin(min(caster.w / length(v), 1.0)), atan(length(cross(v, to_sun)), dot(v, to_sun)));
+}
+
+// Godot's own Burley diffuse (its light colour carries the π) at a globe's dry ground's roughness: a body
+// here is lit as its globe and its land are lit up close (slice's SpaceSky has the same).
+float burley(vec3 n, vec3 l, vec3 v) {
+	float nl = clamp(dot(n, l), 0.0, 1.0), nv = clamp(dot(n, v), 0.0, 1.0), lh = clamp(dot(l, normalize(l + v)), 0.0, 1.0);
+	float f90 = 2.0 * lh * lh * 0.9 - 0.5;
+	return nl * (1.0 + f90 * pow(1.0 - nv, 5.0)) * (1.0 + f90 * pow(1.0 - nl, 5.0));
+}
+
 vec4 lit_disc(vec3 dir, vec3 centre, float radius, vec3 sun, out vec3 normal) {
 	float c = dot(dir, centre);
 	normal = -centre;
@@ -234,7 +264,10 @@ vec4 bodies(vec3 dir, vec3 sun) {
 			ground = own.rgb;
 			glows = own.a;
 		}
-		m.rgb = (ground * (0.05 + 1.1 * m.r * moon_shade[i] + glows * 0.8) + vec3(0.32, 0.06, 0.025) * moon_red[i]) * m.a;
+		// Lit as its own globe is lit up close (space's far look the same): the star's light on its day side, the
+		// dark of space on its night side, another body's shadow over both.
+		float hidden = shadowed(n, moon_light[i], moon_caster[i], moon_sun[i]);
+		m.rgb = (ground * ((1.0 - hidden) * (body_ambient + star_color * body_energy * burley(n, moon_light[i], -moon_dir[i])) + glows * 0.8) + vec3(0.16, 0.03, 0.012) * moon_red[i] * hidden) * m.a;
 		result = over(m, result);
 	}
 	if (giant_at >= moon_count) result = over(layer, result);

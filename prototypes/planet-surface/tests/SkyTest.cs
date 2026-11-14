@@ -690,9 +690,16 @@ public partial class SkyTest : Node
             GD.Print($"(eclipse: {world.Spec}: the deepest in 240 days hides {covered:P0} of the sun, day {when:F3})");
             if (covered < 0.2) continue;
             found = true;
-            // At its deepest, and on its way in with about half the disc hidden.
-            double half = when;
-            while (half > when - 0.5 && world.StarSystem.Eclipse(half, rig.Eye).Covered > covered * 0.5) half -= 0.0002;
+            // At its deepest, and with about half the disc hidden on its way in or out, whichever has the sun higher
+            // (a near moon all but holds still in the sky: the sun crosses behind it, and may rise or set meanwhile).
+            double Half(double way)
+            {
+                double t = when;
+                while (Math.Abs(t - when) < 0.5 && world.StarSystem.Eclipse(t, rig.Eye).Covered > covered * 0.5) t += way * 0.0002;
+                return t;
+            }
+            double SunUp(double t) => world.StarSystem.See(world.StarSystem.Star, t, rig.Eye).Direction.Dot(rig.Eye.Normalized);
+            double half = SunUp(Half(-1)) >= SunUp(Half(1)) ? Half(-1) : Half(1);
             foreach (double at in new[] { when, half })
             {
                 double hidden = world.StarSystem.Eclipse(at, rig.Eye).Covered;

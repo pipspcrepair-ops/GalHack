@@ -70,11 +70,10 @@
     "shroudThickness": 0.9,
     // The swap, m: the sheet comes over the land from here up to the cap, behind the shroud.
     "swapFrom": 960,
-    // The sheet's curve: its radius (m) up to the cap, nearly flat, tightening with height to the
-    // true globe at this height, m. The map wraps from the flat map onto the sphere over this many
-    // metres above the cap.
+    // The sheet's curve: its radius (m) up to the cap, nearly flat, tightening up the band to the
+    // true globe at the band's top, so in space every body is drawn at its true size. The map wraps
+    // from the flat map onto the sphere over this many metres above the cap.
     "flatCurve": 300000,
-    "trueGlobeAt": 7000,
     "mapWrapsBy": 2400,
     // A descent starts streaming the ground under it this many bands over the cap.
     "streamAhead": 1.5
