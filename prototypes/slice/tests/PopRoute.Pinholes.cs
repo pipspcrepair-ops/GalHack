@@ -13,7 +13,7 @@ namespace Slice.Tests;
 /// let the sky through: they were sparks, plants' vertex colours carried far past their range where a sliver of
 /// a far or shrinking plant is shaded at a multisampled pixel's centre, outside itself (flora_cover.gdshader).
 /// At night, standing in the grass looking the route's way and back, and from 12 m up, two numbers a frame: the
-/// sparks ground cover adds (dots at least 0.4 bright, every layer drawn less every layer but cover), and the
+/// sparks ground cover adds (dots at least 0.4 bright, with cover drawn less without it), and the
 /// ground's pixels showing what is behind it (the sky swapped for flat magenta). --check gates both.
 /// --pinholes-only runs just this; --bisect leaves each layer out in turn and MSAA off, by day too and from 60 m
 /// up; --frames saves each pass's first two pictures (--out-dir, user://pinholes by default).
@@ -116,7 +116,8 @@ public partial class PopRoute
                 zone.Sky.Sun.ShadowCasterMask = zone.Sky.NightLight.ShadowCasterMask = uint.MaxValue;
                 env.BackgroundMode = Godot.Environment.BGMode.Sky;
                 if (label != "night" || view is "flying") continue;
-                Gate($"pinholes, night, {view}: sparks ground cover adds", sparked["all"] - sparked["-cover"], CoverSparks, false, "a frame");
+                // (Both passes that draw cover count: sparks are few, and a second sample steadies the number.)
+                Gate($"pinholes, night, {view}: sparks ground cover adds", (sparked["all"] + sparked["flat sky"]) / 2 - sparked["-cover"], CoverSparks, false, "a frame");
                 Gate($"pinholes, night, {view}: ground showing the sky", holes["flat sky"], SkyThrough, false, "px a frame");
             }
         }
