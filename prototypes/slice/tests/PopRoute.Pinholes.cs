@@ -9,20 +9,26 @@ using PlanetSurface.Terrain;
 namespace Slice.Tests;
 
 /// <summary>
-/// Pinholes: bright single-pixel dots on the ground (the owner's night fly-overs). --pinholes-only runs just this.
-/// Each view is drawn with every layer, then with one layer at a time left out (near ground, far ground,
-/// flora, cover, horizon, water, the sun's shadows) and with the sky swapped for a flat colour, and the dots
-/// are counted in the ground below the horizon: a pixel much brighter than the ring round it, alone.
+/// Pinholes: bright single-pixel dots in the grass by night (the owner's, 14 Nov). They were ground cover's
+/// flowers, a pixel or two across a few metres off (flora_cover.gdshader); no ground let the sky through.
+/// Standing in the grass at night, looking the route's way and back, two numbers a frame: the dots ground
+/// cover adds (every layer drawn, less every layer but cover), and the ground's pixels showing what is behind
+/// it (the sky swapped for flat magenta). --check gates both. --pinholes-only runs just this; --bisect leaves
+/// each layer out in turn, by day too and from 12 m and 60 m up; --frames saves each pass's first two pictures
+/// (--out-dir, user://pinholes by default).
 /// </summary>
 public partial class PopRoute
 {
     const int PinFrames = 24;
 
-    /// <summary>Render layers the probe sorts the streamer's drawings onto, so a camera can leave one out.</summary>
+    /// <summary>Render layers the probe sorts the streamer's drawings onto, so the camera can leave one out.</summary>
     static readonly (string Name, int Layer)[] PinLayers =
     {
         ("near ground", 12), ("far ground", 13), ("flora", 14), ("cover", 15), ("horizon", 16), ("water", 17),
     };
+
+    /// <summary>At most, a frame, at night: the dots ground cover adds, and ground pixels showing the sky (a 1440p window).</summary>
+    const double CoverDots = 6, SkyThrough = 2;
 
     void Tag()
     {
@@ -30,12 +36,7 @@ public partial class PopRoute
         static void Set(VisualInstance3D v, int layer) => v.Layers = 1u << (layer - 1);
         foreach (Node n in s.GetChildren())
         {
-            if (n is MeshInstance3D m)
-            {
-                if (m.MaterialOverride == s.VoxelMaterial) Set(m, 12);
-                else if (m.Name == "Horizon") Set(m, 16);
-                else Set(m, 17);
-            }
+            if (n is MeshInstance3D m) Set(m, m.MaterialOverride == s.VoxelMaterial ? 12 : m.Name == "Horizon" ? 16 : 17);
             else if (n.Name == "Cover")
                 foreach (Node c in n.GetChildren())
                     if (c is VisualInstance3D v) Set(v, 15);
@@ -49,23 +50,24 @@ public partial class PopRoute
     IEnumerable<int> Pinholes(Vector3 start, Vector3 way)
     {
         var zone = _game.Zone;
-        foreach (Node n in GetTree().Root.FindChildren("*", nameof(CanvasLayer), true, false)) ((CanvasLayer)n).Visible = false;
+        Camera3D cam = _game.Camera;
+        var env = zone.Sky.Environment;
+        bool bisect = _args.ContainsKey("bisect");
+        var layers = GetTree().Root.FindChildren("*", nameof(CanvasLayer), true, false).Cast<CanvasLayer>().Where(l => l.Visible).ToList();
+        foreach (CanvasLayer l in layers) l.Visible = false;
         string dir = _args.GetValueOrDefault("out-dir", ProjectSettings.GlobalizePath("user://pinholes"));
         DirAccess.MakeDirRecursiveAbsolute(dir);
         zone.Sky.TimeScale = 0f;
-        foreach (var (hour, label) in new[] { (Staging.HighSun(_game, false), "night"), (Staging.HighSun(_game), "day") })
+        var cases = bisect ? PinLayers.Select(l => "-" + l.Name).Prepend("all").Append("-shadows").Append("flat sky").ToList() : new List<string> { "all", "-cover", "flat sky" };
+        foreach (var (hour, label) in bisect ? new[] { (Staging.HighSun(_game, false), "night"), (Staging.HighSun(_game), "day") } : new[] { (Staging.HighSun(_game, false), "night") })
         {
             zone.Sky.TimeOfDay = hour;
-            foreach (var (view, up, pitch, move, back) in new[] { ("standing", 1.7f, -4f, 0.02f, false), ("back", 1.7f, -4f, 0.02f, true), ("low", 12f, -8f, 0.4f, false), ("flying", 60f, -14f, 1.2f, false) })
+            var views = new[] { ("standing", 1.7f, -4f, 0.02f, false), ("back", 1.7f, -4f, 0.02f, true), ("low", 12f, -8f, 0.4f, false), ("flying", 60f, -14f, 1.2f, false) };
+            foreach (var (view, up, pitch, move, back) in bisect ? views : views[..2])
             {
                 Vector3 look = back ? -way : way;
                 Vector3 side = look.Cross(Vector3.Up).Normalized();
-                Transform3D At(int i)
-                {
-                    Vector3 eye = Lift(start + side * (move * i), up);
-                    Basis b = Basis.LookingAt(look, Vector3.Up).Rotated(side, Mathf.DegToRad(pitch));
-                    return new Transform3D(b, eye);
-                }
+                Transform3D At(int i) => new(Basis.LookingAt(look, Vector3.Up).Rotated(side, Mathf.DegToRad(pitch)), Lift(start + side * (move * i), up));
                 // The sleeper out of sight behind the camera (the streamer follows it).
                 void Stand(int i) => _game.Survivor.PlaceOutside((At(i).Origin - look * 6f + Vector3.Down * 1.6f).ToNumerics());
                 _game.FixedCamera = At(0);
@@ -74,15 +76,11 @@ public partial class PopRoute
                     Stand(0);
                     yield return 0;
                 }
-                var cases = new List<string> { "all" };
-                cases.AddRange(PinLayers.Select(l => "-" + l.Name));
-                cases.Add("-shadows");
-                cases.Add("flat sky");
+                var dots = new Dictionary<string, double>();
+                var holes = new Dictionary<string, double>();
                 foreach (string c in cases)
                 {
-                    Camera3D cam = _game.Camera;
-                    var env = zone.Sky.Environment;
-                    int dots = 0, frames = 0, flicker = 0, holes = 0;
+                    int found = 0, flicker = 0, through = 0;
                     HashSet<int> last = null;
                     for (int i = 0; i < PinFrames + 4; i++)
                     {
@@ -97,23 +95,28 @@ public partial class PopRoute
                         if (i < 4) continue;
                         Image img = GetViewport().GetTexture().GetImage();
                         int top = GroundTop(cam, At(i), img.GetHeight());
-                        var found = Dots(img, top);
-                        dots += found.Count;
-                        holes += Holes(img, top);
-                        frames++;
-                        if (last != null) flicker += found.Count(p => !last.Contains(p));
-                        last = found;
+                        HashSet<int> now = Dots(img, top);
+                        found += now.Count;
+                        through += Holes(img, top);
+                        if (last != null) flicker += now.Count(p => !last.Contains(p));
+                        last = now;
                         if (i < 6 && _args.ContainsKey("frames")) img.SavePng($"{dir}/{label}-{view}-{c.Replace(' ', '-')}-{i - 4}.png");
                     }
-                    foreach (var (_, layer) in PinLayers) cam.SetCullMaskValue(layer, true);
-                    zone.Sky.Sun.ShadowCasterMask = zone.Sky.NightLight.ShadowCasterMask = uint.MaxValue;
-                    env.BackgroundMode = Godot.Environment.BGMode.Sky;
-                    GD.Print(string.Create(CultureInfo.InvariantCulture, $"PINHOLES {label} {view} {c}: dots a frame {(double)dots / Math.Max(1, frames):F1}, new a frame {(double)flicker / Math.Max(1, frames - 1):F1}, background pixels in the ground a frame {(double)holes / Math.Max(1, frames):F1} (ground from row {GroundTop(cam, At(0), GetViewport().GetVisibleRect().Size.Y is var hh ? (int)hh : 0)})"));
+                    dots[c] = (double)found / PinFrames;
+                    holes[c] = (double)through / PinFrames;
+                    GD.Print(string.Create(CultureInfo.InvariantCulture, $"PINHOLES {label} {view} {c}: dots a frame {dots[c]:F1}, new a frame {(double)flicker / (PinFrames - 1):F1}, ground pixels showing the background a frame {holes[c]:F1}"));
                 }
+                foreach (var (_, layer) in PinLayers) cam.SetCullMaskValue(layer, true);
+                zone.Sky.Sun.ShadowCasterMask = zone.Sky.NightLight.ShadowCasterMask = uint.MaxValue;
+                env.BackgroundMode = Godot.Environment.BGMode.Sky;
+                if (label != "night" || view is not ("standing" or "back")) continue;
+                Gate($"pinholes, night, {view}: dots ground cover adds", dots["all"] - dots["-cover"], CoverDots, false, "a frame");
+                Gate($"pinholes, night, {view}: ground showing the sky", holes["flat sky"], SkyThrough, false, "px a frame");
             }
-        }        _game.FixedCamera = null;
+        }
+        _game.FixedCamera = null;
         zone.Sky.TimeScale = 1f;
-        foreach (Node n in GetTree().Root.FindChildren("*", nameof(CanvasLayer), true, false)) ((CanvasLayer)n).Visible = true;
+        foreach (CanvasLayer l in layers) l.Visible = true;
     }
 
     /// <summary>The first picture row of ground for sure: under where the ground 400 m ahead meets the view, and a margin.</summary>
@@ -124,6 +127,9 @@ public partial class PopRoute
         return Math.Clamp((int)p.Y + 8, 0, height - 1);
     }
 
+    /// <summary>A picture's bytes, and how many to a pixel.</summary>
+    static (byte[] Data, int Stride) Bytes(Image img) => (img.GetData(), img.GetFormat() == Image.Format.Rgba8 ? 4 : 3);
+
     /// <summary>
     /// Pixel indices of dots under a row: a pixel at least 0.15 brighter than, and twice, the mean of the ring
     /// of 16 two pixels out, with at most two of its eight neighbours anywhere near as bright (a dot, not an edge).
@@ -131,11 +137,9 @@ public partial class PopRoute
     static HashSet<int> Dots(Image img, int top)
     {
         int w = img.GetWidth(), h = img.GetHeight();
-        byte[] data = img.GetData();
-        int stride = img.GetFormat() == Image.Format.Rgba8 ? 4 : 3;
+        var (data, stride) = Bytes(img);
         var l = new float[w * h];
-        for (int i = 0; i < w * h; i++)
-            l[i] = (0.299f * data[i * stride] + 0.587f * data[i * stride + 1] + 0.114f * data[i * stride + 2]) / 255f;
+        for (int i = 0; i < w * h; i++) l[i] = (0.299f * data[i * stride] + 0.587f * data[i * stride + 1] + 0.114f * data[i * stride + 2]) / 255f;
         var found = new HashSet<int>();
         for (int y = Math.Max(top, 2); y < h - 2; y++)
             for (int x = 2; x < w - 2; x++)
@@ -161,15 +165,12 @@ public partial class PopRoute
     static int Holes(Image img, int top)
     {
         int w = img.GetWidth(), h = img.GetHeight(), n = 0;
-        byte[] data = img.GetData();
-        int stride = img.GetFormat() == Image.Format.Rgba8 ? 4 : 3;
-        for (int y = top; y < h; y++)
-            for (int x = 0; x < w; x++)
-            {
-                int o = (y * w + x) * stride;
-                int r = data[o], g = data[o + 1], b = data[o + 2];
-                if (r > 70 && b > 70 && g * 2 < Math.Min(r, b) && Math.Abs(r - b) * 5 < Math.Max(r, b)) n++;
-            }
+        var (data, stride) = Bytes(img);
+        for (int i = top * w; i < w * h; i++)
+        {
+            int r = data[i * stride], g = data[i * stride + 1], b = data[i * stride + 2];
+            if (r > 70 && b > 70 && g * 2 < Math.Min(r, b) && Math.Abs(r - b) * 5 < Math.Max(r, b)) n++;
+        }
         return n;
     }
 }
