@@ -466,15 +466,11 @@ public static class Mesher
         /// <summary>The place shader's code for one face of a block, looking along a normal (see <see cref="Surfaces.Code"/>); 0 draws it plain.</summary>
         float FaceCode(Int3 p, Block b, V3 normal, bool slope, Surface surf) => FaceCode(p, b, normal, slope, surf, out _, out _);
 
-        /// <summary>
-        /// A face's colour: a wall's inside or a ceiling coated (plaster, render, tiles) in the paint its room was done in
-        /// (<see cref="PlaceLook.PaintOf"/>, the place's ceiling colour), else its block's own.
-        /// </summary>
+        /// <summary>A face's colour and code: a coated face inside in its room's paint (<see cref="PlaceLook.Colour"/>), else the body's.</summary>
         Rgb Painted(Int3 p, Block b, V3 normal, Surface surf, Rgb body, out float code)
         {
             code = FaceCode(p, b, normal, false, surf, out int room, out FaceSide side);
-            if (code == 0f || Surfaces.FinishOf(code) is not (Finish.Plaster or Finish.Render or Finish.WallTile or Finish.CeilingTile or Finish.Precast)) return body;
-            return (side == FaceSide.In ? _look.PaintOf(room) : side == FaceSide.Ceiling && room > 0 ? _look.Ceiling : null) ?? body;
+            return code == 0f ? body : _look.Colour(b with { Color = body }, side, Surfaces.FinishOf(code), room);
         }
 
         float FaceCode(Int3 p, Block b, V3 normal, bool slope, Surface surf, out int room, out FaceSide side)

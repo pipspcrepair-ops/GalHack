@@ -128,7 +128,7 @@ public partial class PoiTest
             int w0 = floor.Max(c => c.X) - floor.Min(c => c.X) + 1, d0 = floor.Max(c => c.Z) - floor.Min(c => c.Z) + 1;
             var floorLook = floor.Select(c => FloorLook(look, g, c)).GroupBy(x => x).OrderByDescending(x => x.Count()).First().Key;
             var walls = floor.SelectMany(c => Dirs.Horizontal.Select(h => c + h.Vec() + Int3.Up).Where(w => g.Get(w) is { Role: Role.Wall } b && BlockInfo.IsFullCube(b.Type) || g.Get(w).Type is BlockType.Half or BlockType.Partition && g.Get(w).Role == Role.Wall)
-                .Select(w => (look.Pick(g.Get(w), Side.In, false, look.RoomAt(c)).Finish, g.Get(w).Color))).ToList();
+                .Select(w => look.Pick(g.Get(w), Side.In, false, look.RoomAt(c)).Finish is var f ? (f, look.Colour(g.Get(w), Side.In, f, look.RoomAt(c))) : default)).ToList();
             var wallLook = walls.Count == 0 ? (Gen.Finish.Plain, new Rgb(0, 0, 0)) : walls.GroupBy(x => x).OrderByDescending(x => x.Count()).First().Key;
             // Lit: a lamp burning in it, a window in its walls, or the sky over it.
             bool lamp = inst.Lights.Any(l => l.Mode != LightMode.Dead && l.Cell.Y >= y && l.Cell.Y <= m.Max.Y + 1 && floor.Any(c => c.X == l.Cell.X && c.Z == l.Cell.Z));

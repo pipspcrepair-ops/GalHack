@@ -245,6 +245,14 @@ public sealed class PlaceLook
     /// <summary>A room slot's own wall paint (null: its blocks' colour).</summary>
     public Rgb? PaintOf(int room) => room > 0 && room < Paints.Count ? Paints[room] : null;
 
+    /// <summary>
+    /// The colour a face is drawn: a wall's inside or a ceiling coated (plaster, render, tiles) in the paint its room was
+    /// done in and the place's ceiling colour, else its block's own.
+    /// </summary>
+    public Rgb Colour(Block b, Side side, Finish f, int room) =>
+        f is Finish.Plaster or Finish.Render or Finish.WallTile or Finish.CeilingTile or Finish.Precast
+        && (side == Side.In ? PaintOf(room) : side == Side.Ceiling && room > 0 ? Ceiling : null) is Rgb paint ? paint : b.Color;
+
     /// <summary>A copy for a far lump of the place: its age and rules, none of its rooms.</summary>
     public PlaceLook Far(byte[] roofs, Int3 size) => new()
     {
