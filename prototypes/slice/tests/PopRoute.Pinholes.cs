@@ -28,7 +28,7 @@ public partial class PopRoute
         ("near ground", 12), ("far ground", 13), ("flora", 14), ("cover", 15), ("horizon", 16), ("water", 17),
     };
 
-    /// <summary>At most, at night: the sparks ground cover adds in 100 frames (the old shaders: 8 to 80), and ground pixels showing the sky a frame.</summary>
+    /// <summary>At most, at night: the sparks ground cover adds in 100 frames (the old shaders: 13 to 63 where seen), and ground pixels showing the sky a frame.</summary>
     const double CoverSparks = 10, SkyThrough = 2;
 
     void Tag()
