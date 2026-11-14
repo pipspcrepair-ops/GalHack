@@ -9,7 +9,7 @@ using Slice.Places;
 namespace Slice.Tests;
 
 /// <summary>
-/// Where the core scanner is proved and shot, shared by CoreScanTest and the "corescan" view: the survivor stands outside a
+/// Where the hand scanner's core sight is proved and shot, shared by CoreScanTest and the "corescan" view: the survivor stands outside a
 /// place that keeps a core, with the terrain or walls between her and it (the ray to the core is blocked), within the
 /// scanner's full strength, looking at the core.
 /// </summary>
@@ -72,15 +72,6 @@ public sealed class CoreScanStage
         PlanetSurface.Poi.PoiSiting.ForceFamily = families[Random.Shared.Next(families.Count)].Id;
         PlanetSurface.Poi.PoiSiting.ForceState = PoiGenerator.Gen.PoiState.Active;
         return PlanetSurface.Poi.PoiSiting.ForceFamily;
-    }
-
-    /// <summary>Levels the survivor up and spends the points down the tree to the core scanner (its parent first); whether it can be made now.</summary>
-    public static bool Research(Game.Game game)
-    {
-        game.Progress.Earn(100000, "test");
-        game.Progress.Unlock("scanner");
-        game.Progress.Unlock("core-scanner");
-        return game.Progress.ItemAllowed(game.Zone.Data.Items.Item("core-scanner"));
     }
 
     /// <summary>The item in the bag put on a toolbar slot, and that slot in hand (the slot, or -1 if it would not go).</summary>

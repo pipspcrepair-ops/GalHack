@@ -7,7 +7,7 @@ using Slice.Vessels;
 namespace Slice.Game;
 
 /// <summary>
-/// The core scanner: while it is in hand, every core within its range (the item's data) shows through the walls
+/// The handheld scanner's core sight: while it is in hand, every core within its range (the item's data) shows through the walls
 /// as a marker on the core itself. It asks only what places and structures already know of their cores (a place's
 /// core cell, a structure's core), never the blocks.
 /// </summary>
@@ -21,7 +21,7 @@ public partial class Game
 
     /// <summary>The scanner's range, m, while it is held (0: not held).</summary>
     public float CoreScanRange =>
-        Pack.Hand == HandKind.CoreScanner && Pack.HandUsable && Zone?.Data?.Items.TryGet(Pack.HandItem, out var item) == true ? item.Range : 0f;
+        Pack.Hand == HandKind.Scanner && Pack.HandUsable && Zone?.Data?.Items.TryGet(Pack.HandItem, out var item) == true ? item.Range : 0f;
 
     /// <summary>The cores within the held scanner's range of <paramref name="from"/>, the live ones only (a shot-out core, a ruin's, a wreck's seat show nothing).</summary>
     public List<CoreSighting> CoresInRange(Vector3 from)
