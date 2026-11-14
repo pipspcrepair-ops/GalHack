@@ -62,10 +62,11 @@ with the generator, gyro, fuel and a locker; two mains in the tail and a retro e
         d.Face(P(-7, -1, -6), P(7, -1, 5), Dir.PosY, chev).Face(P(-2, -1, -4), P(2, -1, 4), Dir.PosY, deck);
         // Winglets at the tips and a raked fin on each side of the tail.
         foreach (int x in new[] { -7, 7 }) d.Fill(P(x, 0, 4), P(x, 1, 4), Iron, red);
-        d.Fill(P(-1, 0, -6), P(1, 0, -6), Iron, red, "slope").Fill(P(-1, 0, -5), P(1, 0, -5), Iron, hull);
+        d.Fill(P(0, 0, -6), P(0, 0, -6), Iron, red, "slope").Fill(P(-1, 0, -5), P(1, 0, -5), Iron, hull);
+        d.Chamfer(P(1, 0, -6), P(1, 0, -6), Iron, red, Dir.PosX, Dir.NegZ).Chamfer(P(-1, 0, -6), P(-1, 0, -6), Iron, red, Dir.NegX, Dir.NegZ);
         d.Put("cockpit-t1", P(-1, 0, -4));
         // The bay behind the cockpit: generators, gyro and fuel, three mains in its tail.
-        d.Fill(P(-1, 0, 0), P(1, 1, 4), "iron-plated", hull).Fill(P(-1, 1, 0), P(1, 1, 0), "iron-plated", hull, "slope");
+        d.Fill(P(-1, 0, 0), P(1, 1, 4), "iron-plated", hull).Fill(P(0, 1, 0), P(0, 1, 0), "iron-plated", hull, "slope").Fill(P(-1, 1, 0), P(-1, 1, 0), "iron-plated", hull).Fill(P(1, 1, 0), P(1, 1, 0), "iron-plated", hull);
         d.Put("core", P(0, -1, 0));
         d.Put("generator-t1", P(-1, 0, 1));
         d.Put("generator-t1", P(1, 0, 1));

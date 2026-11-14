@@ -69,10 +69,11 @@ public static partial class BlueprintSet
         d.Fill(P(-2, 0, -4), P(2, 0, -4), "base-block", hull);
         d.Fill(P(-1, 1, -4), P(1, 1, -4), "window-block", 0, "slope");
         // Rails round the cockpit tub, a gap to port to step in by.
-        d.Fill(P(-2, 0, -3), P(-2, 0, -1), "base-block", stripe).Fill(P(2, 0, -3), P(2, 0, 0), "base-block", stripe);
+        d.Fill(P(-2, 0, -3), P(-2, 0, -3), "base-block", stripe).Fill(P(2, 0, -3), P(2, 0, -3), "base-block", stripe);
         d.Put("command-chair", P(0, 0, -3));
         // Engine hump behind the seat: generator, gyro and fuel in it, the mains in its tail.
         d.Fill(P(-2, 0, 1), P(2, 0, 3), "base-block", chev).Fill(P(-2, 1, 1), P(2, 1, 1), "base-block", chev, "slope");
+        d.Fill(P(-2, 0, 2), P(-2, 0, 2), "base-block", chev, "half").Fill(P(2, 0, 2), P(2, 0, 2), "base-block", chev, "half");
         d.Chamfer(P(2, 0, 3), P(2, 0, 3), "base-block", chev, Dir.PosX, Dir.PosZ).Chamfer(P(-2, 0, 3), P(-2, 0, 3), "base-block", chev, Dir.NegX, Dir.PosZ);
         d.Put("generator-t1", P(-1, 0, 2));
         d.Put("gyro-t1", P(0, 0, 2));

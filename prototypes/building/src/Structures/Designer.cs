@@ -179,8 +179,11 @@ public sealed class Designer
         {
             BlockType t = S.TypeOf(b);
             if (t.IsDoor || t.Function == "stairs" || t.IsLadder || t.IsCommandChair)
+            {
+                int r = t.Function == "stairs" || t.IsCommandChair ? 1 : 2;
                 foreach (Int3 c in S.CellsOf(p, b))
-                    foreach (Int3 o in Cells(c - new Int3(2, 2, 2), c + new Int3(2, 2, 2))) keep.Add(o);
+                    foreach (Int3 o in Cells(c - new Int3(r, r, r), c + new Int3(r, r, r))) keep.Add(o);
+            }
             bool jet = t.IsThruster || t.Function == "hover";
             if (!jet) continue;
             Dir away = Orientations.ToWorld(b.Rot, t.IsThruster ? Dir.PosZ : Dir.NegY);
@@ -225,6 +228,12 @@ public sealed class Designer
                     if (depth > 0 && !Spent() && now.Where(n => n.pos == cell).ToList().Any(n => Close(n.pos, n.face, depth - 1, baseline))) return true;
                     S.Clear(cell);
                 }
+            // Failing a piece that carries the line on, a plain block beside it closes the side (a frame).
+            Block cube = Building.Make(S, S.TypeOf(src), _cat.Cube, Orientations.Identity);
+            cube.Paint = src.Paint;
+            S.Set(cell, cube);
+            if (Notches.Open(S).Count < baseline) return true;
+            S.Clear(cell);
             return false;
         }
         var failed = new HashSet<(Int3, Dir)>();

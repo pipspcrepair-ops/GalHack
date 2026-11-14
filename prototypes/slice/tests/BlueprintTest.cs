@@ -49,7 +49,7 @@ public partial class BlueprintTest : Node
 
     public override void _Ready()
     {
-        _watchdog = new System.Threading.Timer(_ => Environment.Exit(3), null, TimeSpan.FromMinutes(20), System.Threading.Timeout.InfiniteTimeSpan);
+        _watchdog = new System.Threading.Timer(_ => System.Environment.Exit(3), null, TimeSpan.FromMinutes(20), System.Threading.Timeout.InfiniteTimeSpan);
         ProcessPhysicsPriority = 100;
         _run = Scenario().GetEnumerator();
     }

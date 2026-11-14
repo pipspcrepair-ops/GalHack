@@ -271,20 +271,18 @@ block -6 1 8 iron-plated paint=inner,hull,hull,hull,hull,hull
 block 5 1 8 iron-plated paint=hull,inner,hull,hull,hull,hull
 block 6 1 8 iron-plated paint=hull
 block 7 1 8 iron-plated slope rot=-y+x paint=keel
-block -9 1 9 iron-plated corner rot=-y-z paint=keel
 block -8 1 9 iron-plated slope rot=-y-x paint=keel
 block -7 1 9 iron-plated paint=hull
 block -6 1 9 iron-plated paint=inner,hull,hull,hull,hull,hull
 block 5 1 9 iron-plated paint=hull,inner,hull,hull,hull,hull
 block 6 1 9 iron-plated paint=hull
 block 7 1 9 iron-plated slope rot=-y+x paint=keel
-block 8 1 9 iron-plated corner rot=-y+x paint=keel
-block -9 1 10 iron-plated corner rot=-y-x paint=keel
+block -9 1 10 iron-plated paint=keel
 block -8..-7 1 10 iron-plated slope rot=-y+z paint=keel
 block -6 1 10 iron-plated paint=inner,hull,hull,hull,hull,hull
 block 5 1 10 iron-plated paint=hull,inner,hull,hull,hull,hull
 block 6..7 1 10 iron-plated slope rot=-y+z paint=keel
-block 8 1 10 iron-plated corner rot=-y+z paint=keel
+block 8 1 10 iron-plated paint=keel
 block -6 1 11 iron-plated paint=inner,hull,hull,hull,hull,hull
 block 5 1 11 iron-plated paint=hull,inner,hull,hull,hull,hull
 block -6 1 12 iron-plated paint=inner,hull,hull,hull,hull,hull
@@ -393,18 +391,14 @@ block -8..-7 2 8 iron-plated paint=hull
 block -6 2 8 iron-plated paint=inner,hull,hull,hull,hull,hull
 block 5 2 8 iron-plated paint=hull,inner,hull,hull,hull,hull
 block 6..7 2 8 iron-plated paint=hull
-block -9 2 9 iron-plated corner rot=+y-x paint=keel
 block -8..-7 2 9 iron-plated paint=hull
 block -6 2 9 iron-plated paint=inner,hull,hull,hull,hull,hull
 block 5 2 9 iron-plated paint=hull,inner,hull,hull,hull,hull
 block 6..7 2 9 iron-plated paint=hull
-block 8 2 9 iron-plated corner paint=keel
-block -9 2 10 iron-plated corner rot=+y+z paint=keel
 block -8..-7 2 10 iron-plated paint=hull
 block -6 2 10 iron-plated paint=inner,hull,hull,hull,hull,hull
 block 5 2 10 iron-plated paint=hull,inner,hull,hull,hull,hull
 block 6..7 2 10 iron-plated paint=hull
-block 8 2 10 iron-plated corner rot=+y+x paint=keel
 block -6 2 11 iron-plated paint=inner,hull,hull,hull,hull,hull
 block 5 2 11 iron-plated paint=hull,inner,hull,hull,hull,hull
 block -6 2 12 iron-plated paint=inner,hull,hull,hull,hull,hull

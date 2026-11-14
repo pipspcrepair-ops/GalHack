@@ -72,7 +72,9 @@ block 2 -1 4 iron-plated paint=belly,belly,deck,belly,belly,belly
 block 3..7 -1 4 iron-plated paint=belly,belly,chev,belly,belly,belly
 block 8 -1 4 thruster-t1 rot=+y-x
 block -2..2 -1 5 iron-plated paint=belly,belly,chev,belly,belly,belly
-block -1..1 0 -6 iron-plated slope paint=red
+block -1 0 -6 iron-plated corner rot=+y-x paint=red
+block 0 0 -6 iron-plated slope paint=red
+block 1 0 -6 iron-plated corner paint=red
 block -2 0 -5 thruster-t1 rot=+y+z
 block -1..1 0 -5 iron-plated paint=hull
 block 2 0 -5 thruster-t1 rot=+y+z
@@ -97,12 +99,10 @@ block -1..1 0 4 iron-plated paint=hull
 block 6 0 4 iron-plated paint=hull
 block 7 0 4 iron-plated paint=red
 block -1..1 0 5 thruster-t1
-block -2 1 0 iron-plated corner rot=+y-x paint=hull
-block -1..1 1 0 iron-plated slope paint=hull
-block 2 1 0 iron-plated corner paint=hull
-block -2 1 1 iron-plated corner rot=+y+z paint=hull
+block -1 1 0 iron-plated paint=hull
+block 0 1 0 iron-plated slope paint=hull
+block 1 1 0 iron-plated paint=hull
 block -1..1 1 1 iron-plated paint=hull
-block 2 1 1 iron-plated corner rot=+y+x paint=hull
 block -1..1 1 2 iron-plated paint=hull
 block -1..1 1 3 iron-plated paint=hull
 block -7 1 4 iron-plated paint=red
