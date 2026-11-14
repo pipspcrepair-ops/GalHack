@@ -71,6 +71,7 @@ public partial class SkyTest : Node
             if (only is null or "seams") await Seams();
             if (only is null or "nightclouds") await NightClouds();
             if (only is null or "lowsun") await LowSun();
+            if (only is null or "fog") await FogLayer();
         }
         catch (Exception e)
         {
