@@ -10,7 +10,7 @@ public static partial class BlueprintSet
     /// <summary>The Hover Rover: a low open runner on four hover plates.</summary>
     static string Rover(Catalogue cat)
     {
-        var d = new Designer(cat, "Hover Rover", CoreMode.Hover);
+        var d = new Designer(cat, "Hover Rover", CoreMode.Hover) { Seal = true };
         ushort body = d.Paint("body", Coat(0xf4a100)), belly = d.Paint("belly", Coat(0x2b2d42, 2)), deck = d.Paint("deck", Deck);
         ushort stripe = d.Paint("stripe", Coat(0xf4a100).WithPattern(Pattern.Stripes, 0x2b2d42)), hazard = d.Paint("hazard", Hazard);
 
@@ -44,7 +44,7 @@ with the generator, gyro, fuel and a locker; two mains in the tail and a retro e
     /// <summary>The Dart: a light fighter, a cockpit pod on a slim fuselage with swept wings and four guns.</summary>
     static string Dart(Catalogue cat)
     {
-        var d = new Designer(cat, "Dart Fighter", CoreMode.Flight);
+        var d = new Designer(cat, "Dart Fighter", CoreMode.Flight) { Seal = true };
         ushort hull = d.Paint("hull", Coat(0xece3c8)), belly = d.Paint("belly", Coat(0x2b2d42, 2)), deck = d.Paint("deck", Deck);
         ushort chev = d.Paint("chev", Coat(0xece3c8).WithPattern(Pattern.Chevrons, 0xe85d04)), red = d.Paint("red", Coat(0xc1121f));
 
@@ -62,10 +62,11 @@ with the generator, gyro, fuel and a locker; two mains in the tail and a retro e
         d.Face(P(-7, -1, -6), P(7, -1, 5), Dir.PosY, chev).Face(P(-2, -1, -4), P(2, -1, 4), Dir.PosY, deck);
         // Winglets at the tips and a raked fin on each side of the tail.
         foreach (int x in new[] { -7, 7 }) d.Fill(P(x, 0, 4), P(x, 1, 4), Iron, red);
-        d.Fill(P(-1, 0, -6), P(1, 0, -6), Iron, red, "slope").Fill(P(-1, 0, -5), P(1, 0, -5), Iron, hull);
+        d.Fill(P(0, 0, -6), P(0, 0, -6), Iron, red, "slope").Fill(P(-1, 0, -5), P(1, 0, -5), Iron, hull);
+        d.Chamfer(P(1, 0, -6), P(1, 0, -6), Iron, red, Dir.PosX, Dir.NegZ).Chamfer(P(-1, 0, -6), P(-1, 0, -6), Iron, red, Dir.NegX, Dir.NegZ);
         d.Put("cockpit-t1", P(-1, 0, -4));
         // The bay behind the cockpit: generators, gyro and fuel, three mains in its tail.
-        d.Fill(P(-1, 0, 0), P(1, 1, 4), "iron-plated", hull).Fill(P(-1, 1, 0), P(1, 1, 0), "iron-plated", hull, "slope");
+        d.Fill(P(-1, 0, 0), P(1, 1, 4), "iron-plated", hull).Fill(P(0, 1, 0), P(0, 1, 0), "iron-plated", hull, "slope").Fill(P(-1, 1, 0), P(-1, 1, 0), "iron-plated", hull).Fill(P(1, 1, 0), P(1, 1, 0), "iron-plated", hull);
         d.Put("core", P(0, -1, 0));
         d.Put("generator-t1", P(-1, 0, 1));
         d.Put("generator-t1", P(1, 0, 1));
@@ -104,7 +105,7 @@ three lift jets, a down jet, a side jet on each wingtip, three pads.");
     /// <summary>The Shuttle: a walk-in people-and-cargo runner with two seats and cargo racks.</summary>
     static string Shuttle(Catalogue cat)
     {
-        var d = new Designer(cat, "Shuttle", CoreMode.Flight);
+        var d = new Designer(cat, "Shuttle", CoreMode.Flight) { Seal = true };
         ushort hull = d.Paint("hull", Coat(0xece3c8)), inner = d.Paint("inner", Coat(0xd8d2c2, 0)), deck = d.Paint("deck", Deck);
         ushort band = d.Paint("band", Coat(0x0a9396)), pod = d.Paint("pod", Coat(0xe85d04)), hazard = d.Paint("hazard", Hazard);
 
@@ -115,7 +116,7 @@ three lift jets, a down jet, a side jet on each wingtip, three pads.");
         // A blunt nose: its corners chamfered, the roof and belly raked to it and the roof's edges raked to the sides, a tail fin aft.
         for (int y = -1; y <= 2; y++)
             d.Chamfer(P(2, y, -6), P(2, y, -6), "iron-plated", hull, Dir.PosX, Dir.NegZ).Chamfer(P(-3, y, -6), P(-3, y, -6), "iron-plated", hull, Dir.NegX, Dir.NegZ);
-        d.Slope(P(-3, 3, -6), P(2, 3, -6), "iron-plated", pod, Dir.NegZ).Slope(P(-2, -1, -6), P(1, -1, -6), "iron-plated", hull, Dir.NegZ, under: true);
+        d.Slope(P(-2, 3, -6), P(1, 3, -6), "iron-plated", pod, Dir.NegZ).Fill(P(2, 3, -6), P(2, 3, -6), "iron-plated", pod, "corner").Fill(P(-3, 3, -6), P(-3, 3, -6), "iron-plated", pod, "corner", Designer.Rot(Dir.PosY, Dir.NegX)).Slope(P(-2, -1, -6), P(1, -1, -6), "iron-plated", hull, Dir.NegZ, under: true);
         d.Slope(P(-3, 3, -5), P(-3, 3, 5), "iron-plated", pod, Dir.NegX).Slope(P(2, 3, -5), P(2, 3, 5), "iron-plated", pod, Dir.PosX);
         d.Fill(P(-1, 4, 3), P(0, 4, 5), "iron-plated", pod).Fill(P(-1, 5, 4), P(0, 5, 5), "iron-plated", pod).Slope(P(-1, 5, 3), P(0, 5, 3), "iron-plated", pod, Dir.NegZ);
         d.Put("core", P(2, -1, -1));
@@ -166,7 +167,7 @@ side jets, four lift jets, a down jet.");
     /// <summary>The Hover Tank: a low iron hull on eight hover plates, a cockpit and a turret on its deck.</summary>
     static string Tank(Catalogue cat)
     {
-        var d = new Designer(cat, "Hover Tank", CoreMode.Hover);
+        var d = new Designer(cat, "Hover Tank", CoreMode.Hover) { Seal = true };
         ushort sand = d.Paint("sand", Coat(0xc8b48a, 2)), belly = d.Paint("belly", Coat(0x2b2d42, 2)), deck = d.Paint("deck", Deck);
         ushort flash = d.Paint("flash", Coat(0xc8b48a, 2).WithPattern(Pattern.Stripes, 0x0a9396)), hazard = d.Paint("hazard", Hazard);
 
@@ -178,6 +179,7 @@ side jets, four lift jets, a down jet.");
         // Sponson tops raked outward, the glacis corners cut, intake stacks on the engine deck.
         d.Slope(P(-5, 0, -5), P(-5, 0, 5), "hardened-plated", flash, Dir.NegX).Slope(P(5, 0, -5), P(5, 0, 5), "hardened-plated", flash, Dir.PosX);
         d.Chamfer(P(4, -1, -8), P(4, -1, -8), "hardened-plated", sand, Dir.PosX, Dir.NegZ).Chamfer(P(-4, -1, -8), P(-4, -1, -8), "hardened-plated", sand, Dir.NegX, Dir.NegZ);
+        d.Chamfer(P(4, -1, 7), P(4, 0, 7), "iron-plated", sand, Dir.PosX, Dir.PosZ).Chamfer(P(-4, -1, 7), P(-4, 0, 7), "iron-plated", sand, Dir.NegX, Dir.PosZ);
         foreach (int x in new[] { -2, 2 }) d.Fill(P(x, 1, 4), P(x, 2, 4), "iron-plated", belly, "cylinder");
         d.Put("core", P(0, -1, 0));
         d.Put("generator-t2", P(-1, -1, 2));
@@ -208,7 +210,7 @@ each sponson.");
     /// <summary>The Hauler: a cab, a spine of machinery and two long cargo pods of lockers.</summary>
     static string Hauler(Catalogue cat)
     {
-        var d = new Designer(cat, "Hauler", CoreMode.Flight);
+        var d = new Designer(cat, "Hauler", CoreMode.Flight) { Seal = true };
         ushort cream = d.Paint("cream", Coat(0xece3c8)), inner = d.Paint("inner", Coat(0xd8d2c2, 0)), deck = d.Paint("deck", Deck);
         ushort spine = d.Paint("spine", Coat(0x2b2d42, 2)), pod = d.Paint("pod", Coat(0xe85d04).WithPattern(Pattern.Stripes, 0x2b2d42)), hazard = d.Paint("hazard", Hazard);
 
@@ -220,7 +222,7 @@ each sponson.");
         // The cab's nose cut at its corners, the roof and belly raked to the glass, the roof's edges raked to the sides.
         for (int y = -1; y <= 2; y++)
             d.Chamfer(P(2, y, -14), P(2, y, -14), "iron-plated", cream, Dir.PosX, Dir.NegZ).Chamfer(P(-3, y, -14), P(-3, y, -14), "iron-plated", cream, Dir.NegX, Dir.NegZ);
-        d.Slope(P(-3, 3, -14), P(2, 3, -14), "iron-plated", spine, Dir.NegZ).Slope(P(-2, -1, -14), P(1, -1, -14), "iron-plated", spine, Dir.NegZ, under: true);
+        d.Slope(P(-2, 3, -14), P(1, 3, -14), "iron-plated", spine, Dir.NegZ).Fill(P(2, 3, -14), P(2, 3, -14), "iron-plated", spine, "corner").Fill(P(-3, 3, -14), P(-3, 3, -14), "iron-plated", spine, "corner", Designer.Rot(Dir.PosY, Dir.NegX)).Slope(P(-2, -1, -14), P(1, -1, -14), "iron-plated", spine, Dir.NegZ, under: true);
         d.Slope(P(-3, 3, -13), P(-3, 3, -9), "iron-plated", spine, Dir.NegX).Slope(P(2, 3, -13), P(2, 3, -9), "iron-plated", spine, Dir.PosX);
         d.Mount("light", P(-1, 2, -10), Dir.PosY);
         d.Door("door-1x2x1", P(-3, 0, -10), Dir.NegX);
@@ -267,33 +269,32 @@ corners, two down jets, a side jet each way, four pads.");
     /// <summary>The Frigate: a small capital ship, two decks forward under a tapering bow and a hangar aft that takes the Skiff.</summary>
     static string Frigate(Catalogue cat)
     {
-        var d = new Designer(cat, "Frigate", CoreMode.Flight);
+        var d = new Designer(cat, "Frigate", CoreMode.Flight) { Seal = true };
         ushort hull = d.Paint("hull", Coat(0xc9ccd1)), inner = d.Paint("inner", Coat(0xd8d2c2, 0)), deck = d.Paint("deck", Deck);
         ushort keel = d.Paint("keel", Coat(0x2b2d42, 2)), red = d.Paint("red", Coat(0xc1121f)), hazard = d.Paint("hazard", Hazard);
         ushort roof = d.Paint("roof", Coat(0x6b7280, 2));
         const string Iron = "iron-plated";
 
         // The forward hull, z -20 to -4, 11 m tall: the machine room (y 1..4) under the deck (y 5) and the bridge (y 6..9).
-        // Its sides step out a metre every three metres from the nose; a vertical chamfer on the first row of each step
-        // makes the bow's edge one clean line, and the roof's edges are raked.
-        var steps = new[] { (-20, -18, 4), (-17, -15, 5), (-14, -12, 6), (-11, -9, 7), (-8, -4, 8) };
-        foreach (var (z0, z1, hw) in steps)
-            for (int z = z0; z <= z1; z++)
-            {
-                d.Fill(P(-hw, 0, z), P(hw - 1, 10, z), Iron, hull);
-                if (z > -20 && z < -4)
-                    d.Hollow(P(1 - hw, 1, z), P(hw - 2, 4, z)).Hollow(P(1 - hw, 6, z), P(hw - 2, 9, z));
-                d.Slope(P(hw - 1, 10, z), P(hw - 1, 10, z), Iron, roof, Dir.PosX).Slope(P(-hw, 10, z), P(-hw, 10, z), Iron, roof, Dir.NegX);
-                if (z == z0)
-                    foreach (int y in Enumerable.Range(0, 10))
-                    {
-                        ushort c = y == 5 ? red : hull;
-                        d.Chamfer(P(hw - 1, y, z), P(hw - 1, y, z), Iron, c, Dir.PosX, Dir.NegZ).Chamfer(P(-hw, y, z), P(-hw, y, z), Iron, c, Dir.NegX, Dir.NegZ);
-                    }
-                d.Face(P(hw - 1, 5, z), P(hw - 1, 5, z), Dir.PosX, red).Face(P(-hw, 5, z), P(-hw, 5, z), Dir.NegX, red);
-                // A window band down the flanks of the bridge.
-                if (z > z0 && z < -5) d.Fill(P(hw - 1, 7, z), P(hw - 1, 8, z), "glass-plated").Fill(P(-hw, 7, z), P(-hw, 8, z), "glass-plated");
-            }
+        // Its sides run out from the nose at one clean 45 degree line to full width at z -16 (a vertical chamfer on each row's
+        // outer column, no steps), and the roof's edges are raked.
+        for (int z = -20; z <= -4; z++)
+        {
+            int hw = Math.Min(8, 4 + z + 20);
+            d.Fill(P(-hw, 0, z), P(hw - 1, 10, z), Iron, hull);
+            if (z > -20 && z < -4)
+                d.Hollow(P(1 - hw, 1, z), P(hw - 2, 4, z)).Hollow(P(1 - hw, 6, z), P(hw - 2, 9, z));
+            d.Slope(P(hw - 1, 10, z), P(hw - 1, 10, z), Iron, roof, Dir.PosX).Slope(P(-hw, 10, z), P(-hw, 10, z), Iron, roof, Dir.NegX);
+            if (hw < 8)
+                foreach (int y in Enumerable.Range(0, 10))
+                {
+                    ushort c = y == 5 ? red : hull;
+                    d.Chamfer(P(hw - 1, y, z), P(hw - 1, y, z), Iron, c, Dir.PosX, Dir.NegZ).Chamfer(P(-hw, y, z), P(-hw, y, z), Iron, c, Dir.NegX, Dir.NegZ);
+                }
+            d.Face(P(hw - 1, 5, z), P(hw - 1, 5, z), Dir.PosX, red).Face(P(-hw, 5, z), P(-hw, 5, z), Dir.NegX, red);
+            // A window band down the flanks of the bridge.
+            if (hw == 8 && z < -5) d.Fill(P(7, 7, z), P(7, 8, z), "glass-plated").Fill(P(-8, 7, z), P(-8, 8, z), "glass-plated");
+        }
         // The prow: a glazed brow raked back over the bridge, the belly raked up under the machine room.
         d.Fill(P(-3, 7, -20), P(2, 8, -20), "glass-plated").Slope(P(-3, 9, -20), P(2, 9, -20), "glass-plated", 0, Dir.NegZ);
         d.Slope(P(-3, 10, -20), P(2, 10, -20), Iron, roof, Dir.NegZ).Slope(P(-3, 0, -20), P(2, 0, -20), Iron, keel, Dir.NegZ, under: true);
@@ -315,6 +316,7 @@ corners, two down jets, a side jet each way, four pads.");
         d.Carve(P(-5, 1, 13), P(4, 6, 13));
         d.Slope(P(-6, 7, -3), P(-6, 7, 12), Iron, roof, Dir.NegX).Slope(P(5, 7, -3), P(5, 7, 12), Iron, roof, Dir.PosX);
         d.Slope(P(-5, 7, 13), P(4, 7, 13), Iron, roof, Dir.PosZ).Chamfer(P(-6, 0, 13), P(-6, 6, 13), Iron, hull, Dir.NegX, Dir.PosZ).Chamfer(P(5, 0, 13), P(5, 6, 13), Iron, hull, Dir.PosX, Dir.PosZ);
+        d.Fill(P(-6, 7, 13), P(-6, 7, 13), Iron, roof, "corner", Designer.Rot(Dir.PosY, Dir.PosZ)).Fill(P(5, 7, 13), P(5, 7, 13), Iron, roof, "corner", Designer.Rot(Dir.PosY, Dir.PosX));
         d.Face(P(-6, 0, 13), P(5, 7, 13), Dir.PosZ, hazard);
         // The bridge tower runs down to the hangar roof in a ramp.
         d.Fill(P(-6, 8, -3), P(5, 8, -3), Iron, hull).Slope(P(-6, 9, -3), P(5, 9, -3), Iron, roof, Dir.PosZ).Slope(P(-6, 8, -2), P(5, 8, -2), Iron, roof, Dir.PosZ);
@@ -327,6 +329,8 @@ corners, two down jets, a side jet each way, four pads.");
             for (int x = -2; x <= 0; x++) d.Stairs(P(x, 1 + i, -7 - i), Dir.NegZ, inner);
         }
         d.Carve(P(-2, 5, -10), P(0, 5, -8));
+        // The flight's flanks are plain walls to the deck, so no stepped stringer shows.
+        d.Fill(P(-3, 1, -11), P(-3, 4, -7), Iron, inner).Fill(P(1, 1, -11), P(1, 4, -7), Iron, inner);
         d.Door("door-2x2x1", P(-1, 1, -4), Dir.NegZ);
 
         d.Put("core", P(3, 0, -12));
@@ -339,10 +343,10 @@ corners, two down jets, a side jet each way, four pads.");
         d.Put("fuel-tank-t2", P(-7, 2, -6));
         d.Put("gyro-t2", P(6, 1, -8));
         d.Put("gyro-t2", P(6, 1, -7));
-        for (int z = -17; z <= -14; z++)
+        for (int z = -16; z <= -14; z++)
         {
-            d.Put("container-t4", P(z == -14 ? -5 : -4, 1, z));
-            d.Put("container-t4", P(z == -14 ? 3 : 2, 1, z));
+            d.Put("container-t4", P(-4, 1, z));
+            d.Put("container-t4", P(2, 1, z));
         }
         foreach (int x in new[] { -4, 3 })
         {
@@ -362,16 +366,16 @@ corners, two down jets, a side jet each way, four pads.");
         foreach (int x in new[] { -8, -7, 6, 7 }) d.Thruster("thruster-t3", P(x, 3, 11), Dir.NegZ);
         // Retros on the prow, jets down the flanks.
         foreach (int x in new[] { -2, 1 }) d.Thruster("thruster-t3", P(x, 7, -22), Dir.PosZ);
-        d.Thruster("thruster-t3", P(-8, 3, -12), Dir.PosX);
-        d.Thruster("thruster-t3", P(6, 3, -12), Dir.NegX);
+        d.Thruster("thruster-t3", P(-10, 3, -12), Dir.PosX);
+        d.Thruster("thruster-t3", P(8, 3, -12), Dir.NegX);
         foreach (int x in new[] { -10, 8 }) d.Thruster("thruster-t3", P(x, 3, 4), x < 0 ? Dir.PosX : Dir.NegX);
-        foreach (var (x, z) in new[] { (-6, -12), (5, -12), (-8, -6), (7, -6), (-6, -2), (5, -2), (-6, 3), (5, 3) })
+        foreach (var (x, z) in new[] { (-8, -12), (7, -12), (-8, -6), (7, -6), (-6, -2), (5, -2), (-6, 3), (5, 3) })
             d.Thruster("thruster-t3", P(x, 0, z), Dir.PosY);
         d.Thruster("thruster-t3", P(-3, 11, -12), Dir.NegY);
         d.Thruster("thruster-t3", P(2, 11, -12), Dir.NegY);
         d.Thruster("thruster-t3", P(-3, 8, 6), Dir.NegY);
         d.Thruster("thruster-t3", P(2, 8, 6), Dir.NegY);
-        foreach (var (x, z) in new[] { (-4, -18), (3, -18), (-6, 10), (5, 10) }) d.Put("pad-t1", P(x, 0, z));
+        foreach (var (x, z) in new[] { (-8, -16), (7, -16), (-6, 10), (5, 10) }) d.Put("pad-t1", P(x, 0, z));
         d.Stairs(P(-1, 0, 14), Dir.NegZ, hull);
         d.Stairs(P(0, 0, 14), Dir.NegZ, hull);
         d.Lining(inner, deck);
