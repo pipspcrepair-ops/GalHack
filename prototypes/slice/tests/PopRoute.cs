@@ -434,12 +434,16 @@ public partial class PopRoute : Node
     /// trees (cb249a21 on): no pops on any route (412, 1940 and 6102 trees a minute before), and the only trees still appearing
     /// are far chunks coming in, 470 m off at the nearest. Shadow casters redrawn from the GPU far ground (99ddbe89 on): the ground
     /// is never redrawn, only far chunks' flora (10, 289 and 388 a minute at the most measured on walk, bike and fly).
+    /// Tightened with the performance pass (proto/perf), by what it measured against the build before it on one seed back to
+    /// back (550338, the owner's settings, a shared machine): frames over 16.7 ms a minute walking 179 to 76, biking 268 to 113-218,
+    /// flying 623 to 472-585, at once 94 to 40-60; p99 walking 19.9 to 16.6, biking 22.6 to 17.8-24.5; shadow casters redrawn
+    /// biking 141 to 62, flying 88 to 112, at once 427 to 119 (the rings no longer jitter with the frame rate).
     /// </summary>
     static readonly Dictionary<string, Limit> Limits = new()
     {
-        ["walk"] = new(88, double.NaN, double.NaN, 30, 60, 20, 10), // (a walk sees too few trees and columns to judge them appearing)
-        ["bike"] = new(88, 350, 220, 300, 100, 20, 10),
-        ["fly"] = new(72, 350, 360, 450, 180, 25, 10),
+        ["walk"] = new(88, double.NaN, double.NaN, 30, 35, 18, 10), // (a walk sees too few trees and columns to judge them appearing)
+        ["bike"] = new(88, 350, 220, 150, 60, 20, 10),
+        ["fly"] = new(72, 350, 360, 250, 150, 25, 10),
     };
 
     int _gateFails;
