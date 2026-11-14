@@ -112,7 +112,8 @@ public partial class Game
             // first (so a texel grows with distance, a plant's shadow is as sharp at 300 m as at 80) and the last 15% fades as the far land's own shade comes in.
             light.DirectionalShadowMaxDistance = reach;
             light.ShadowNormalBias = NormalBias;
-            if (reach > GameSettings.DefaultShadow)
+            light.DirectionalShadowBlendSplits = true; // one split hands over to the next across a band, not at a line
+            if (reach >= GameSettings.DefaultShadow)
             {
                 float ratio = MathF.Pow(reach / FirstSplit, 1f / 3f);
                 light.DirectionalShadowSplit1 = FirstSplit / reach;
@@ -136,13 +137,18 @@ public partial class Game
     /// <param name="SunAtlas">The sun's shadow map, pixels a side; <paramref name="LampAtlas"/> the torch's and lamps'.</param>
     public readonly record struct ShadowSetup(float Reach, DirectionalLight3D.ShadowMode Splits, int SunAtlas, int LampAtlas, RenderingServer.ShadowQuality Filter);
 
-    /// <summary>High and Ultra reach the most (the far land's own shade takes over past 320 m's worth of sharp splits); High keeps the engine's default maps and filter (read from the project, so it stays so).</summary>
+    /// <summary>
+    /// Ultra reaches the most on its bigger map; High reaches 320 m, as the game always did, on the engine's default maps and filter
+    /// (read from the project, so it stays so), and the far land's own shade takes over past it. (High at 1500 m spread one
+    /// map over five times the ground: past 400 m a texel was 2 m, so every far tree's shadow crawled at a low sun, sharpened
+    /// in steps as you came in, and changed with every far chunk redrawn in view.)
+    /// </summary>
     public static ShadowSetup Shadows(ShadowLevel level) => level switch
     {
         ShadowLevel.Low => new(120f, DirectionalLight3D.ShadowMode.Parallel2Splits, 2048, 1024, RenderingServer.ShadowQuality.Hard),
         ShadowLevel.Medium => new(220f, DirectionalLight3D.ShadowMode.Parallel4Splits, 2048, 2048, RenderingServer.ShadowQuality.SoftVeryLow),
         ShadowLevel.Ultra => new(GameSettings.MostShadow, DirectionalLight3D.ShadowMode.Parallel4Splits, 8192, 4096, RenderingServer.ShadowQuality.SoftMedium),
-        _ => new(GameSettings.MostShadow, DirectionalLight3D.ShadowMode.Parallel4Splits,
+        _ => new(GameSettings.DefaultShadow, DirectionalLight3D.ShadowMode.Parallel4Splits,
             (int)ProjectSettings.GetSetting("rendering/lights_and_shadows/directional_shadow/size", 4096),
             (int)ProjectSettings.GetSetting("rendering/lights_and_shadows/positional_shadow/atlas_size", 4096),
             (RenderingServer.ShadowQuality)(int)ProjectSettings.GetSetting("rendering/lights_and_shadows/directional_shadow/soft_shadow_filter_quality", 2)),
