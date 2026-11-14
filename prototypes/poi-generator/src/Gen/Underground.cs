@@ -205,6 +205,9 @@ public sealed class UnderSite
 /// </summary>
 public static class Underground
 {
+    /// <summary>Off for a measurement against the old look (tests, shots): square-cornered bores, clean lining.</summary>
+    public static bool Rounded = true;
+
     /// <summary>Cover over a sewer's walk level under the deck, metres.</summary>
     public const int Cover = 7;
     const int SewerHalf = 2, SewerHeight = 4, DrainHalf = 2, DrainHeight = 3, JunctionHalf = 5, JunctionHeight = 5, SumpHalf = 6, SumpHeight = 6;
@@ -306,7 +309,7 @@ public static class Underground
             for (int i = drain.Length - 1 - Flat; i >= Flat; i--) drain[i] = Math.Min(drain[i], drain[i + 1] + 1);
         }
         var dStart = s.At(-s.Block, back);
-        plan.Runs.Add(new UnderRun { Kind = UnderKind.Drain, X = dStart.X, Z = dStart.Z, DirX = s.AlongX, DirZ = s.AlongZ, Floors = drain, HalfWidth = DrainHalf, Height = DrainHeight });
+        plan.Runs.Add(new UnderRun { Kind = UnderKind.Drain, X = dStart.X, Z = dStart.Z, DirX = s.AlongX, DirZ = s.AlongZ, Floors = drain, HalfWidth = DrainHalf, Height = DrainHeight, Arched = true });
         foreach (int c in new[] { -1, 0, 1 })
             AddJunction(plan, s, c * s.Block, back, tips[(c, s.BackSide)], UnderSpaceKind.Junction, UnderKind.Drain, 3, 4, false);
 
@@ -405,14 +408,14 @@ public static class Underground
             int dx = s.AlongX * sump.DirA - s.AlongZ * sump.DirU, dz = s.AlongZ * sump.DirA + s.AlongX * sump.DirU;
             var stub = new int[SumpHalf + 24];
             Array.Fill(stub, sump.Y);
-            plan.Runs.Add(new UnderRun { Kind = UnderKind.Drain, X = sx, Z = sz, DirX = dx, DirZ = dz, Floors = stub, HalfWidth = 1, Height = 3 });
+            plan.Runs.Add(new UnderRun { Kind = UnderKind.Drain, X = sx, Z = sz, DirX = dx, DirZ = dz, Floors = stub, HalfWidth = 1, Height = 3, Arched = true });
             plan.Collapses.Add(new UnderCollapse(sx + dx * (stub.Length - 1), sump.Y, sz + dz * (stub.Length - 1), dx, dz, 1, 3));
             return;
         }
         var b = best.Value;
         var floors = new int[b.Len + 1];
         for (int i = 0; i <= b.Len; i++) floors[i] = sump.Y - (i <= SumpHalf ? 0 : 1 + i / OutfallFall);
-        plan.Runs.Add(new UnderRun { Kind = UnderKind.Drain, X = sx, Z = sz, DirX = b.DirX, DirZ = b.DirZ, Floors = floors, HalfWidth = UnderOutfall.Mouth, Height = UnderOutfall.Height });
+        plan.Runs.Add(new UnderRun { Kind = UnderKind.Drain, X = sx, Z = sz, DirX = b.DirX, DirZ = b.DirZ, Floors = floors, HalfWidth = UnderOutfall.Mouth, Height = UnderOutfall.Height, Arched = true });
         plan.Outfalls.Add(new UnderOutfall { X = b.X, Z = b.Z, DirX = b.DirX, DirZ = b.DirZ, Y = floors[^1] });
     }
 
@@ -472,7 +475,7 @@ public static class Underground
         var start = s.At(0, Passage);
         var stub = new int[Along + 1];
         Array.Fill(stub, passageY);
-        plan.Runs.Add(new UnderRun { Kind = UnderKind.Service, X = start.X, Z = start.Z, DirX = s.AlongX, DirZ = s.AlongZ, Floors = stub, HalfWidth = 1, Height = 3 });
+        plan.Runs.Add(new UnderRun { Kind = UnderKind.Service, X = start.X, Z = start.Z, DirX = s.AlongX, DirZ = s.AlongZ, Floors = stub, HalfWidth = 1, Height = 3, Arched = true });
         var shaftFoot = s.At(Along, Passage);
         var into = new int[Passage - UnderStation.HalfSpan + 1];
         Array.Fill(into, y);
@@ -521,6 +524,7 @@ public static class Underground
         foreach (UnderShaft s in plan.Shafts) CarveShaft(b, s);
         foreach (UnderOutfall o in plan.Outfalls) CarveOutfall(b, o);
         Line(b);
+        if (Rounded) foreach (UnderRun r in plan.Runs) if (r.Arched) Arch(b, r);
         foreach (UnderRun r in plan.Runs) DressRun(b, r);
         foreach (UnderRoom r in plan.Rooms) DressRoom(b, r);
         foreach (UnderStation s in plan.Stations) DressStation(b, s);
@@ -528,6 +532,7 @@ public static class Underground
         foreach (UnderShaft s in plan.Shafts) DressShaft(b, s);
         foreach (UnderOutfall o in plan.Outfalls) DressOutfall(b, o);
         foreach (UnderCollapse c in plan.Collapses) DressCollapse(b, c);
+        if (Rounded) Stain(u);
         if (ground != null) Exposed(u, ground);
         Spaces(u);
         Bounds(u);
@@ -578,7 +583,7 @@ public static class Underground
             for (int w = -r.HalfWidth; w <= r.HalfWidth; w++)
                 for (int v = 0; v < r.Height; v++)
                 {
-                    if (r.Arched && v == r.Height - 1 && Math.Abs(w) == r.HalfWidth) continue;
+                    if (r.Arched && (Rounded || r.Kind != UnderKind.Drain) && v == r.Height - 1 && Math.Abs(w) == r.HalfWidth) continue;
                     b.Open(new Int3(x + lx * w, y + v, z + lz * w), r.Kind);
                 }
         }
@@ -679,6 +684,58 @@ public static class Underground
         }
     }
 
+    /// <summary>
+    /// An arched bore's top corners as slopes, not square steps: each corner of the lining turned into a hung chamfer (its full
+    /// height at the wall), so the section reads as the round pipe or the vault it is, in planes the mesher draws and collides as built.
+    /// </summary>
+    static void Arch(B b, UnderRun r)
+    {
+        var (lx, lz) = Across(r);
+        for (int i = 0; i < r.Length; i++)
+        {
+            var (x, z) = r.Column(i);
+            foreach (int side in new[] { -1, 1 })
+            {
+                Int3 c = new(x + lx * side * r.HalfWidth, r.Floors[i] + r.Height - 1, z + lz * side * r.HalfWidth);
+                if (b.U.Open.Contains(c) || !b.U.Blocks.TryGetValue(c, out Block old) || old.Type != BlockType.Cube) continue;
+                Dir out_ = FacingOf(lx * side, lz * side);
+                // Only against solid wall: where another bore crosses, the corner stays a square one.
+                if (b.U.Open.Contains(c + out_.Vec()) || !b.U.Blocks.TryGetValue(c + out_.Vec(), out Block back) || back.Type != BlockType.Cube) continue;
+                old.Type = BlockType.Chamfer;
+                old.Facing = out_;
+                b.U.Blocks[c] = old;
+            }
+        }
+    }
+
+    /// <summary>
+    /// A century of damp on the lining of a sewer or a drain: the course at the water's edge gone dark and green, streaks down the
+    /// walls from the joints above, and a pale bloom of salts here and there. Colour only, and a pure function of the cell.
+    /// </summary>
+    static void Stain(UnderBuilt u)
+    {
+        foreach (Int3 p in u.Water)
+            for (int dz = -1; dz <= 1; dz++)
+                for (int dx = -1; dx <= 1; dx++)
+                    for (int dy = -1; dy <= 1; dy++)
+                    {
+                        Int3 c = new(p.X + dx, p.Y + dy, p.Z + dz);
+                        if (!u.Blocks.TryGetValue(c, out Block b) || b.Type is not (BlockType.Cube or BlockType.Chamfer) || b.Role == Role.Floor && dy >= 0) continue;
+                        b.Color = new Rgb((byte)(b.Color.R * 0.62f), (byte)(b.Color.G * 0.74f), (byte)(b.Color.B * 0.56f));
+                        u.Blocks[c] = b;
+                    }
+        foreach (var (c, b0) in u.Blocks.ToList())
+        {
+            if (b0.Type is not (BlockType.Cube or BlockType.Chamfer) || b0.Role is not (Role.Wall or Role.Roof) || b0.Material is Material.Alloy) continue;
+            uint h = Hash.Cell(c, 87);
+            Block b = b0;
+            // A streak runs down a few metres of wall from a joint; salts bloom pale.
+            if (h % 11 == 0 || Hash.Cell(new Int3(c.X, 0, c.Z), 89) % 9 == 0 && c.Y % 5 != 0) b.Color = b.Color.Scale(0.8f);
+            else if (h % 29 == 1) b.Color = b.Color.Lerp(new Rgb(0xc4, 0xc0, 0xb0), 0.35f);
+            else continue;
+            u.Blocks[c] = b;
+        }
+    }
     /// <summary>Water standing in a channel's floor: a surface over the cell (<see cref="UnderBuilt.Water"/>), never a block.</summary>
     static void Water(UnderBuilt u, Int3 p, UnderKind k)
     {

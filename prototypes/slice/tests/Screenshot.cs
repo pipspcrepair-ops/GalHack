@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using Godot;
@@ -58,6 +58,7 @@ public partial class Screenshot : Node
             if (arg.StartsWith("--") && eq > 2) _args[arg[2..eq]] = arg[(eq + 1)..];
         }
         if (_args.TryGetValue("out", out string o)) _out = o;
+        if (_args.GetValueOrDefault("rounded", "1") == "0") PoiGenerator.Gen.Underground.Rounded = false; // the old look, for a shot against it
         if (_args.TryGetValue("view", out string v)) _view = v;
         // A shot waits for drawn frames, and a headless run draws none: it would sit there until the watchdog.
         if (DisplayServer.GetName() == "headless")
