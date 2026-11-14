@@ -17,7 +17,7 @@ public partial class PoiTest
     /// generator's rooms dressed by the decorations library through Gen/RoomDecor), on fresh spawns, ruined and abandoned.
     /// Each room is checked for what makes an interior read as generated: an empty room; furniture in the walking line (a
     /// detour of more than a metre between two of its ways in); a room with no light (no lamp burning and no daylight); two
-    /// rooms of a house alike (purpose, size, pieces and floor); a room with nothing it is arranged round (its focal point:
+    /// rooms of a house alike (purpose, size, pieces, floor and walls); a room with nothing it is arranged round (its focal point:
     /// the roles the arrangements give its purpose, or its biggest piece); and per house, one material wall to wall (every
     /// room the same floor colour and the same wall colour, or more than half the ways between rooms changing nothing).
     /// </summary>
@@ -50,7 +50,7 @@ public partial class PoiTest
                 if (!float.IsNaN(r.Detour))
                 {
                     lined++;
-                    if (r.Detour > 1f) { inLine++; Weak("in the way"); Note("line", $"{at}: {(float.IsPositiveInfinity(r.Detour) ? "no way through" : $"{r.Detour:0.0} m round")}"); }
+                    if (r.Detour > 1f) { inLine++; Weak("in the way"); Note("line", $"{at}: {(float.IsPositiveInfinity(r.Detour) ? "no way through" : $"{r.Detour:0.0} m round")} ({r.Signature})"); }
                 }
                 if (!r.Lit) { unlit++; Weak("unlit"); Note("unlit", at); }
                 if (r.Lamp) lamps++;
@@ -134,7 +134,7 @@ public partial class PoiTest
             bool lamp = inst.Lights.Any(l => l.Mode != LightMode.Dead && l.Cell.Y >= y && l.Cell.Y <= m.Max.Y + 1 && floor.Any(c => c.X == l.Cell.X && c.Z == l.Cell.Z));
             bool window = floor.Any(c => Dirs.Horizontal.Any(h => Enumerable.Range(1, 2).Any(k => g.Get(c + h.Vec() + Int3.Up * k) is { Type: BlockType.Pane, Role: Role.Window } or { IsAir: true } && !of.ContainsKey(c + h.Vec() + Int3.Up * k) && !of.ContainsKey(c + h.Vec() * 2 + Int3.Up * k))));
             bool sky = floor.Any(c => !Enumerable.Range(1, 12).Any(k => g.Get(c + Int3.Up * k) is { IsAir: false } b && BlockInfo.IsFullCube(b.Type)));
-            string signature = $"{m.Purpose} {Math.Min(w0, d0)}x{Math.Max(w0, d0)} {floorLook.Item1}/{floorLook.Item2}: {string.Join(" ", kinds.OrderBy(k => k))}";
+            string signature = $"{m.Purpose} {Math.Min(w0, d0)}x{Math.Max(w0, d0)} {floorLook.Item1}/{floorLook.Item2} {wallLook.Item1}/{wallLook.Item2}: {string.Join(" ", kinds.OrderBy(k => k))}";
             looks.Add(new RoomLook(m, pieces, detour, lamp || window || sky, lamp, focal, signature, floorLook, wallLook, how));
         }
         return looks;

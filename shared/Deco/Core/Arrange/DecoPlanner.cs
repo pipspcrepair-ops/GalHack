@@ -125,7 +125,8 @@ public sealed class DecoPlanner
 
     // ---- templates in their own frame ------------------------------------------------------------
 
-    List<Member> Instance(DecoTemplate t)
+    /// <param name="length">A row's or line's count of anchors, or -1 for a roll of its count.</param>
+    List<Member> Instance(DecoTemplate t, int length = -1)
     {
         var m = new List<Member>();
         DecoPiece a = Pick(t.Anchor, t.Id + ":anchor");
@@ -197,7 +198,7 @@ public sealed class DecoPlanner
             case "row":
             case "line":
             {
-                int count = _rng.Between(t.CountMin, t.CountMax);
+                int count = length >= 0 ? length : _rng.Between(t.CountMin, t.CountMax);
                 float step = a.Width + (t.Kind == "line" ? 0 : t.Spacing);
                 m.Clear();
                 for (int i = 0; i < count; i++)
@@ -295,6 +296,8 @@ public sealed class DecoPlanner
             DecoRect r = DecoLayout.Footprint(_forge, pl);
             if (!DecoLayout.Inside(_room, r)) return false;
             if (pl.Support < 0 && _reserved.Any(res => res.Overlaps(r.Shrink(0.01f))) && DecoLayout.Blocks(_forge, pl)) return false;
+            // Nothing lies in a doorway either, not even a rug a person walks over.
+            if (pl.Support < 0 && _room.Doors.Any(d => _room.Apron(d, 0.9f, 0).Overlaps(r.Shrink(0.02f)))) return false;
             if (_plan.Placements.Any(o => DecoLayout.Clash(_forge, o, pl))) return false;
             if (added.Any(o => o != pl && added.IndexOf(o) < added.IndexOf(pl) && DecoLayout.Clash(_forge, o, pl))) return false;
         }
@@ -350,23 +353,28 @@ public sealed class DecoPlanner
         {
             DecoTemplate t = _arr.Templates[id];
             if (!t.Anchor.Concat(t.Ends).Concat(t.Middle).Concat(t.Members).Any(focus.Contains)) continue;
-            List<Member> inst = Instance(t);
-            if (inst == null || !inst.Any(m => m.Piece.Roles.Any(focus.Contains))) continue;
-            var (lo, hi) = Extent(inst);
             DecoWall entry = _room.Doors.Count > 0 ? _room.Doors[0].Wall : DecoWall.South;
             DecoWall facing = entry switch { DecoWall.North => DecoWall.South, DecoWall.South => DecoWall.North, DecoWall.West => DecoWall.East, _ => DecoWall.West };
             var walls = new List<DecoWall> { facing };
             walls.AddRange(new[] { DecoWall.North, DecoWall.South, DecoWall.West, DecoWall.East }.Where(w => w != facing && w != entry).OrderByDescending(WallLength));
             walls.Add(entry);
-            foreach (DecoWall w in walls)
+            // A row or line as long as it goes, then shorter till it fits the room (a worktop run of three units, else two, else one).
+            bool lengthens = t.Kind is "row" or "line";
+            for (int count = lengthens ? t.CountMax : -1; count >= (lengthens ? t.CountMin : -1); count--)
             {
-                float len = WallLength(w), half = (hi.X - lo.X) / 2;
-                var along = new List<float>();
-                for (float s = half + 0.05f; s <= len - half - 0.05f; s += Cell) along.Add(s);
-                foreach (float s in along.OrderBy(s => MathF.Abs(s - len / 2)))
+                List<Member> inst = Instance(t, count);
+                if (inst == null || !inst.Any(m => m.Piece.Roles.Any(focus.Contains))) break;
+                var (lo, hi) = Extent(inst);
+                foreach (DecoWall w in walls)
                 {
-                    var (x, z) = WallOrigin(w, s - (lo.X + hi.X) / 2, hi.Y);
-                    if (TryPlace(inst, x, z, WallYaw(w), t.Id)) return t.Id;
+                    float len = WallLength(w), half = (hi.X - lo.X) / 2;
+                    var along = new List<float>();
+                    for (float s = half + 0.05f; s <= len - half - 0.05f; s += Cell) along.Add(s);
+                    foreach (float s in along.OrderBy(s => MathF.Abs(s - len / 2)))
+                    {
+                        var (x, z) = WallOrigin(w, s - (lo.X + hi.X) / 2, hi.Y);
+                        if (TryPlace(inst, x, z, WallYaw(w), t.Id)) return t.Id;
+                    }
                 }
             }
         }
