@@ -119,9 +119,9 @@ public partial class GlobeTest : Node
         OrbitRules rules = OrbitRules.Shared;
         var c = rules.Crossing;
         float radius = 16000f / MathF.Tau, worst = 0f;
-        for (float y = 1060f; y <= (float)c.TrueGlobeAt; y += 40f)
+        for (float y = 1060f; y <= 1060f + c.Band; y += 40f)
         {
-            float climb = (y - 1060f) / ((float)c.TrueGlobeAt - 1060f);
+            float climb = (y - 1060f) / c.Band;
             float rho = 1f / Mathf.Lerp(1f / (float)c.FlatCurve, 1f / radius, climb);
             worst = MathF.Max(worst, Globe.RimOf(rho, y) / Globe.ArcAt(MathF.PI * 0.99f, rho, radius));
         }
@@ -282,10 +282,10 @@ public partial class GlobeTest : Node
         float worst = float.MaxValue, trueOff = 0f, under = 0f;
         for (float y = cap + Globe.RingFitsBy; y <= 12000f; y += 20f)
         {
-            float climb = Mathf.Clamp((y - cap) / (c.TrueGlobeAt - cap), 0f, 1f);
+            float climb = Mathf.Clamp((y - cap) / c.Band, 0f, 1f);
             float sheet = 1f / Mathf.Lerp(1f / c.FlatCurve, 1f / radius, climb), ring = Globe.RingSphere(sheet, radius, y - cap);
             worst = MathF.Min(worst, Globe.RingInner * ring / sheet);
-            if (y >= c.TrueGlobeAt) trueOff = MathF.Max(trueOff, MathF.Abs(ring - radius));
+            if (y >= cap + c.Band) trueOff = MathF.Max(trueOff, MathF.Abs(ring - radius));
         }
         for (float y = 0f; y <= cap; y += 20f) under = MathF.Max(under, MathF.Abs(Globe.RingSphere(300000f, radius, y - cap) - radius));
         Check(worst > 1.4f, $"globe: from {cap + Globe.RingFitsBy:F0} m up a world's ring stands round the sheet you can see: its inner edge at {worst:F2} radii at the least, never inside the disc");

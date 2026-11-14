@@ -207,7 +207,9 @@ public sealed class StarSystem
         D3 p = new(0, 0, 0);
         for (; b?.Parent != null; b = b.Parent)
         {
-            double a = (days / b.Period + b.Phase0) * Math.Tau;
+            // Moons go round the way every body turns (prograde, as Turned and Orient spin them): a near moon,
+            // its month close to its world's day, keeps nearly still over it, a short flight off as Empyrion's are.
+            double a = (days / b.Period + b.Phase0) * Math.Tau * (b.Parent.Kind == OrbiterKind.Star ? 1.0 : -1.0);
             double x = Math.Cos(a) * b.Orbit, z = Math.Sin(a) * b.Orbit;
             double y = z * Math.Sin(b.Inclination);
             z *= Math.Cos(b.Inclination);
@@ -334,6 +336,37 @@ public sealed class StarSystem
         }
         return (1.0 - open, by);
     }
+
+    /// <summary>
+    /// What can shadow a body now, for drawing its eclipses point by point (an umbra with a soft
+    /// penumbra): the bodies between it and the star whose shadow can fall somewhere on it, nearest
+    /// the sun's line first, into <paramref name="into"/>. Returns the star's angular radius from the
+    /// body. The one answer every view shades a body by: the sky's moons, space's far looks, the globes.
+    /// </summary>
+    public double Casters(Orbiter body, double days, List<Orbiter> into)
+    {
+        into.Clear();
+        _gaps.Clear();
+        D3 at = Position(body, days), toStar = Position(Star, days) - at;
+        double starDistance = toStar.Length, R = body.Radius;
+        D3 sunDir = toStar * (1.0 / starDistance);
+        double sun = Math.Asin(Math.Min(Star.Radius / starDistance, 1.0));
+        foreach (Orbiter b in _bodies)
+        {
+            if (b.Kind is OrbiterKind.Star or OrbiterKind.Belt || b == body || b.Radius <= 0.0) continue;
+            D3 to = Position(b, days) - at;
+            double distance = to.Length;
+            if (distance >= starDistance || distance <= R) continue;
+            // Its shadow can reach somewhere on the body: within the sun's radius plus their two sizes from there.
+            double gap = Math.Acos(Math.Clamp(to.Dot(sunDir) / distance, -1.0, 1.0)) - Math.Asin(Math.Min((b.Radius + R) / distance, 1.0));
+            if (gap < sun) _gaps.Add((gap, b));
+        }
+        _gaps.Sort((a, b) => a.Gap.CompareTo(b.Gap));
+        foreach (var (_, b) in _gaps) into.Add(b);
+        return sun;
+    }
+
+    readonly List<(double Gap, Orbiter Body)> _gaps = new();
 
     /// <summary>The eclipse seen from an eye in the home globe's frame (m from its centre).</summary>
     public (double Covered, Orbiter By) Eclipse(double days, D3 eye) => EclipseAt(days, Position(Home, days) + Orient(days).ToSystem(eye), Home);

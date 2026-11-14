@@ -252,8 +252,12 @@ public partial class Spaceflight : Node
         Ledger = new ZoneLedger(LedgerFolder ?? System.IO.Path.Combine(OS.GetUserDataDir(), "zones", $"{Game.Surface.Spec.Seed}"));
         Orbit.Home.Surface = s;
         Orbit.Days = () => Below.Sky.Days;
+        LightBodies(s);
         MakeMoon();
     }
+
+    /// <summary>A surface's sky lights the other bodies in it as space lights their globes up close: no pop as one hands over to the other.</summary>
+    void LightBodies(SurfaceZone s) => s.Sky.LightBodies(Rules.Space.SunEnergy, new Color(Rules.Space.Ambient[0], Rules.Space.Ambient[1], Rules.Space.Ambient[2]));
 
     /// <summary>The start system's seed: the world's own, so the same world always has the same wrecks round it.</summary>
     public static ulong SystemSeed(PlanetSpec spec) => PoiGenerator.Gen.Hash.Combine(spec.Seed, 0x0B17UL);

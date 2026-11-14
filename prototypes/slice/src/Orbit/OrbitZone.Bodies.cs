@@ -53,9 +53,45 @@ public partial class OrbitZone
         if (c.Sphere != null) return;
         c.Sphere = new Node3D { Name = c.Name.Replace(" ", "") + "Sphere" };
         AddChild(c.Sphere);
+        Shell(c);
         c.Globe = new Globe { Name = c.Name.Replace(" ", "") + "Globe" };
         _apart.AddChild(c.Globe);
         Placed(c);
+    }
+
+    /// <summary>
+    /// The body is solid from the first moment, wherever you meet it: a sphere at its true radius, its
+    /// sea level, moving with it. Nothing flies through a body whose ground hasn't streamed in (and the
+    /// crossing onto it, high over this, is the way down).
+    /// </summary>
+    static void Shell(Celestial c) => c.Sphere.AddChild(Shell(c.GlobeRadius));
+
+    static StaticBody3D Shell(float radius)
+    {
+        var shell = new StaticBody3D { Name = "Shell", CollisionLayer = Layers.World, CollisionMask = 0 };
+        shell.AddChild(new CollisionShape3D { Shape = new SphereShape3D { Radius = radius } });
+        return shell;
+    }
+
+    /// <summary>
+    /// The bodies whose orbits come within sight of the start world (<see cref="OrbitRules.SpaceRules.CameraFar"/>) with no
+    /// ground here: its other moons, the giant it circles and that giant's other moons. Solid at their true radius all the same.
+    /// </summary>
+    readonly List<(Orbiter Body, Node3D Shell)> _solids = new();
+    public IReadOnlyList<(Orbiter Body, Node3D Shell)> OtherSolids => _solids;
+
+    void Solids()
+    {
+        StarSystem model = Home.Seen;
+        Orbiter home = model.Home, host = model.Neighbour;
+        foreach (Orbiter b in model.Bodies)
+        {
+            double closest = b.Parent == home ? b.Orbit : host == null ? double.MaxValue : b == host ? home.Orbit : b.Parent == host ? Math.Abs(b.Orbit - home.Orbit) : double.MaxValue;
+            if (closest - b.Radius > Rules.Space.CameraFar || b == home || b == model.FuelMoon || b.Radius <= 0.0) continue;
+            StaticBody3D shell = Shell((float)b.Radius);
+            AddChild(shell);
+            _solids.Add((b, shell));
+        }
     }
 
     Task<GlobePaint> _moonPaint;
@@ -134,6 +170,7 @@ public partial class OrbitZone
             }
             Placed(c);
         }
+        foreach (var (b, shell) in _solids) shell.Position = (a.Shift + N.Vector3.Transform(G(oa.ToGlobe(model.Position(b, days) - pa)), a.Turn)).ToGodot();
         if (Physics == null) return;
         foreach (Body b in Physics.Bodies)
         {
