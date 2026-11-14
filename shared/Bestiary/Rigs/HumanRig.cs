@@ -535,7 +535,7 @@ public sealed partial class HumanRig : Rig
             // The free hand of a raised club: out ahead and to the side, open, braced.
             if (kind == HoldKind.Blade && i == 0 && aimW > 0f)
             {
-                float free = Mathf.SmoothStep(0f, 0.4f, aimW) * (1f - act);
+                float free = Mathf.SmoothStep(0f, 0.4f, aimW) * (1f - act) * (1f - MathF.Max(g.Crouch, g.Sit));
                 hand = hand.Lerp(shoulder + ahead * arm * 0.5f - torso.X * arm * 0.4f + Vector3.Up * 0.04f, free);
                 pole = pole.Lerp(F.V(0.8f, -0.4f, 0.1f), free).Normalized();
             }
@@ -756,7 +756,7 @@ public sealed partial class HumanRig : Rig
                 float wide = MathF.Sin(MathF.PI * aim);
                 h.R = hangs.Lerp(raised, aim) + (torso.X * 0.1f + ahead * 0.12f) * u * wide;
                 h.RW = 1f;
-                Vector3 blade = (Vector3.Down * 0.7f + fwd * 0.7f - right * 0.08f).Normalized().Lerp((Vector3.Up * 0.85f - fwd * 0.4f + right * 0.15f).Normalized(), aim).Normalized();
+                Vector3 blade = (Vector3.Down * 0.7f + fwd * 0.7f - right * 0.08f).Normalized().Lerp((Vector3.Up * 0.9f - fwd * 0.15f + right * 0.15f).Normalized(), aim).Normalized();
                 h.Prop = new Transform3D(Geo.AlongY(blade, right), h.R);
                 h.RAxis = blade;
                 h.RHand = HandTable.Mix("blade-hang", "blade-raised", aim, 1);
