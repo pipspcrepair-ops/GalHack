@@ -180,7 +180,7 @@ public static class Ornament
                 {
                     var at = Bays(run.Count);
                     // (Each clear either side along the wall: one beside a pier or a quoin would stand a hand off it.)
-                    bool Clear(Int3 q) => Open(q, BlockType.Chamfer) && !BlockInfo.Collides(g.Get(q + d.RotateCw(1).Vec()).Type) && !BlockInfo.Collides(g.Get(q + d.RotateCw(3).Vec()).Type);
+                    bool Clear(Int3 q) => Open(q, BlockType.Chamfer) && !BlockInfo.Collides(g.Get(q + d.Vec()).Type) && !BlockInfo.Collides(g.Get(q + d.RotateCw(1).Vec()).Type) && !BlockInfo.Collides(g.Get(q + d.RotateCw(3).Vec()).Type);
                     if (at.Count < 2 || !at.All(k => Clear(run[k]))) continue;
                     Lay("corbels", at.Select(k => (run[k], Made(run[k] - d.Vec(), BlockType.Chamfer, d.Opposite()))).ToList(), at);
                 }
@@ -275,8 +275,8 @@ public static class Ornament
                 }
             }
         }
-        // Bars: out of the torn concrete edges the decay left, every other cell along each edge, the way the bars run (out of
-        // a slab's edge or from under it, out of a broken wall's side or its top), each torn edge whole; edges in the order
+        // Bars: out of the torn concrete edges the decay left, every other cell along each edge, the way the bars ran (level
+        // out of a slab's torn edge, up out of a broken wall's top), each torn edge whole; edges in the order
         // the decay tore them, until about as many bars as a ruin shows.
         if (inst.State != PoiState.Active && inst.Fallen.Count > 0)
         {
@@ -292,7 +292,10 @@ public static class Ornament
                         Block b = g.Get(c + d.Vec());
                         // (Only out of an edge the slab or wall runs on behind: its bars ran that way. Out of a wall's face they never did.)
                         if (d == Dir.Up || !BlockInfo.IsFullCube(b.Type) || b.Material is not (Material.Concrete or Material.Fused or Material.Armour) || !BlockInfo.IsFullCube(g.Get(c + d.Vec() * 2).Type)) continue;
-                        if (b.Role == Role.Wall || b.Role is Role.Floor or Role.Roof && d != Dir.Down) { found = d; break; }
+                        // (Up out of a wall's broken top, or level out of a slab's torn edge: never out of a wall's face.)
+                        // (A slab's edge only where it stands out of the face round it: an edge flush in a wall reads as a face.)
+                        bool proud = !BlockInfo.IsFullCube(g.Get(c + d.Vec() + Int3.Up).Type) || !BlockInfo.IsFullCube(g.Get(c + d.Vec() + Int3.Down).Type);
+                        if (b.Role == Role.Wall && d == Dir.Down || b.Role is Role.Floor or Role.Roof && d.IsHorizontal() && proud) { found = d; break; }
                     }
                 return spots[c] = found;
             }
