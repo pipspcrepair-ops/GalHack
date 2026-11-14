@@ -970,6 +970,8 @@ public sealed class PlayerTarget : ITarget
     public Vector3 Forward => _game.Survivor.WorldLook();
     public bool Crouched => _game.Survivor.Crouched && OnFoot;
     public float Lamp => _game.Torch is { Visible: true } ? 1f : 0f;
+    /// <summary>A weapon in your hands (not bare fists): people read it, aimed at them, as a threat.</summary>
+    public bool Drawn => OnFoot && _game.Arms?.InHand is { } g && g.Def.Id != Weapons.Fists;
     public Health Health { get; } = new(100f);
 
     /// <summary>On foot and alive; aboard a vessel nothing can bite you, and nothing on the surface can reach you underground or under a place's roof.</summary>

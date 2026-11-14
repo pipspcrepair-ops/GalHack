@@ -3,11 +3,13 @@ using Godot;
 
 namespace Wildlife;
 
-/// <summary>A loud sound in the world (a shot): whatever is in earshot turns toward it.</summary>
+/// <summary>A loud sound in the world (a shot): whatever is in earshot turns toward it. A shot also says who fired it and which way.</summary>
 public struct WorldNoise
 {
     public Vector3 Position;
     public float Radius, Time;
+    public Vector3 Dir;
+    public ITarget By;
 }
 
 /// <summary>

@@ -106,6 +106,12 @@ public static class Locomotion
         Vector3 v = WildSim.Flat(c.Velocity);
         Vector3 want = WildSim.Flat(c.Desired);
         if (c.Attacking) v = v.MoveToward(want, Heft.Brake(c) * 3f * dt); // an attack places the body itself
+        else if (c.Backing)
+        {
+            // Stepping back or aside with its eyes on something: it keeps facing it and doesn't turn to go.
+            Turn(c, Vector3.Zero, dt);
+            v = v.MoveToward(want, Heft.Accel(c) * dt);
+        }
         else
         {
             // It goes where it faces: it swings toward what it wants, easing off while it does, and

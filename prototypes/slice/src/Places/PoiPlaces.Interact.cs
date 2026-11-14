@@ -373,6 +373,9 @@ public partial class PoiPlaces
     /// <summary>The town whose area a world point is in, if any place standing has people.</summary>
     public Town TownAt(Vector3 world) => Standing.Select(p => p.Memory.Town).FirstOrDefault(t => t != null && t.Covers(world));
 
+    /// <summary>The town whose ground a world point is on, out to a reach beyond its edge (the people met on its roads are its own), if any place standing has people.</summary>
+    public Town TownHolding(Vector3 world, float reach) => Standing.Select(p => p.Memory.Town).Where(t => t != null && t.Beyond(world) < reach).OrderBy(t => t.Beyond(world)).FirstOrDefault();
+
     /// <summary>The townsperson nearest along a ray, in any standing place.</summary>
     public Town.Person PersonAlong(Vector3 eye, Vector3 dir, float reach, out float distance)
     {

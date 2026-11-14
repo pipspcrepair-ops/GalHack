@@ -37,7 +37,8 @@ public sealed class SignatureKind
     /// <summary>Garment slots (or garments) taken off first.</summary>
     public string[] Strip { get; set; } = Array.Empty<string>();
     public string Dress { get; set; } = "";
-    public string Behaviour { get; set; } = "Herd";
+    /// <summary>What they do all day; "" keeps the body's own (people go about as a band, <see cref="Wildlife.Behaviour.Folk"/>).</summary>
+    public string Behaviour { get; set; } = "";
     public string Temper { get; set; } = "Aggressive";
     public bool Hunts { get; set; } = true;
     public bool Flees { get; set; }
@@ -291,7 +292,8 @@ public sealed partial class WorldLife
         st.RunSpeed *= k.Run;
         st.MaxHealth = MathF.Round(st.MaxHealth * k.Health);
         if (k.Damage > 0f) st.Damage = k.Damage;
-        if (!k.Hunts && s.Figure != null && s.Figure.Occupancy == Occupancy.Friendly) st.Damage = 0f;
+        // (A band of people can always fight back; something harmless that only looks like people can't.)
+        if (!k.Hunts && s.Figure != null && s.Figure.Occupancy == Occupancy.Friendly && s.Behaviour != Behaviour.Folk) st.Damage = 0f;
         s.GroupMin = Math.Max(1, k.Group[0]);
         s.GroupMax = Math.Max(s.GroupMin, k.Group.Length > 1 ? k.Group[1] : k.Group[0]);
         s.Scarcity = 1f;

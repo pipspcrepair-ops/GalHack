@@ -58,14 +58,14 @@ public partial class OccupantTest
         WorldLife nuke = Life("nuclear_war");
         Species ghoul = nuke.Signature.Kinds.FirstOrDefault(k => k.Species.CommonName == "ghouls").Species;
         Species mraider = nuke.Signature.Kinds.FirstOrDefault(k => k.Species.CommonName == "mutant raiders").Species;
-        Check(ghoul != null && ghoul.Figure.HairStyle == "bald" && ghoul.Mutation > 0.5f && mraider != null && mraider.Behaviour == Behaviour.PackHunter && mraider.Figure.Has("scrap_armour") | mraider.Figure.Has("spike_pads"),
-            $"a nuclear world: bald burnt ghouls (mutation {ghoul?.Mutation:F2}) and mutant raiders in packs ({string.Join(" ", mraider?.Figure.Wear ?? new HashSet<string>())}, {mraider?.Figure.Prop})");
+        Check(ghoul != null && ghoul.Figure.HairStyle == "bald" && ghoul.Mutation > 0.5f && mraider != null && mraider.Behaviour == Behaviour.Folk && mraider.Figure.Has("scrap_armour") | mraider.Figure.Has("spike_pads"),
+            $"a nuclear world: bald burnt ghouls (mutation {ghoul?.Mutation:F2}) and mutant raiders in bands ({string.Join(" ", mraider?.Figure.Wear ?? new HashSet<string>())}, {mraider?.Figure.Prop})");
 
         // Soldiers wear one uniform.
         WorldLife war = Life("invasion");
         Species soldier = war.Signature.Kinds.FirstOrDefault(k => k.Species.CommonName == "soldiers").Species;
         var squad = soldier?.Hosts ?? new List<Species>();
-        Check(squad.Count >= 3 && squad.All(q => q.Figure.Cloth.IsEqualApprox(squad[0].Figure.Cloth)) && squad.Select(q => q.Figure.Skin.ToHtml(false) + q.Figure.Height.ToString("F2")).Distinct().Count() >= 3 && soldier.Behaviour == Behaviour.Herd,
+        Check(squad.Count >= 3 && squad.All(q => q.Figure.Cloth.IsEqualApprox(squad[0].Figure.Cloth)) && squad.Select(q => q.Figure.Skin.ToHtml(false) + q.Figure.Height.ToString("F2")).Distinct().Count() >= 3 && soldier.Behaviour == Behaviour.Folk,
             $"soldiers: {squad.Count} different people in one uniform ({soldier?.Figure.Cloth.ToHtml(false)}), patrolling together");
 
         // The era: the same fall at low tech and high tech gives different gear, weapons and machines.

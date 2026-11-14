@@ -439,8 +439,11 @@ public sealed partial class PeopleGenerator
             Figure = f,
             Name = folk.Id,
             CommonName = occupancy == Occupancy.Feral ? "wild figure" : occupancy == Occupancy.Raider ? "raider" : role.ToString().ToLowerInvariant(),
-            Behaviour = occupancy == Occupancy.Friendly ? Behaviour.Grazer : Behaviour.Predator,
+            // People go about as people (a band round a leader, by its stance); only the feral are animals.
+            Behaviour = occupancy == Occupancy.Feral ? Behaviour.Predator : Behaviour.Folk,
             Temperament = occupancy == Occupancy.Friendly ? Temperament.Calm : Temperament.Aggressive,
+            Tech = _w.Now <= 0 ? "low" : _w.Now == 1 ? "mid" : "high",
+            Collapse = Math.Clamp(_w.Mutagen + _w.Radiation * 0.15f, 0f, 1f),
             Activity = Activity.Cathemeral,
             RestKind = RestKind.Den,
             GroupMin = 1,
@@ -470,10 +473,11 @@ public sealed partial class PeopleGenerator
         st.MaxHealth = MathF.Round(60f * Math.Clamp(mass, 0.5f, 1.4f));
         st.WalkSpeed = f.Stage == LifeStage.Elder ? 1.0f : 1.3f;
         st.RunSpeed = f.Stage == LifeStage.Elder ? 2.2f : 3.6f;
-        st.Damage = occupancy == Occupancy.Friendly ? 0f : 12f + 8f * mass;
+        // Anyone can fight back: who starts a fight is their stance's to say. And a person runs from a real threat, never from you being there.
+        st.Damage = 12f + 8f * mass;
         st.AttackRange = 1.3f;
         st.Perception = 40f;
-        st.FleeRadius = 10f;
+        st.FleeRadius = occupancy == Occupancy.Feral ? 10f : 0f;
         // Wide shoulders, a shell or a thick tail need more room to pass: at most half a metre, well inside a doorway.
         st.Radius = Math.Clamp(0.35f * MathF.Max(1f, f.ShoulderW / (0.235f * f.Height / 1.72f)) + (folk.Tail is "thick" or "bushy" ? 0.06f : 0f) + (folk.Back == "plates" ? 0.04f : 0f), 0.35f, 0.5f);
         st.Retaliates = occupancy != Occupancy.Friendly;
