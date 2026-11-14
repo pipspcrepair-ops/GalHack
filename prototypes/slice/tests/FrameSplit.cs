@@ -108,9 +108,11 @@ public sealed partial class FrameSplit
                 (int)RenderingServer.GetRenderingInfo(RenderingServer.RenderingInfo.TotalDrawCallsInFrame), (int)RenderingServer.GetRenderingInfo(RenderingServer.RenderingInfo.TotalObjectsInFrame),
                 RenderingServer.ViewportGetRenderInfo(_viewport, RenderingServer.ViewportRenderInfoType.Shadow, RenderingServer.ViewportRenderInfo.DrawCallsInFrame));
             Frames.Add(f);
-            string pipes = string.Join("/", Pipes.Select((m, i) => Performance.GetMonitor(m) - _pipes[i]));
             if (f.Total > HitchMs)
+            {
+                string pipes = string.Join("/", Pipes.Select((m, i) => Performance.GetMonitor(m) - _pipes[i]));
                 Hitches.Add(string.Create(CultureInfo.InvariantCulture, $"{f.Total:F0} ms at frame {Frames.Count} ({Parts(f)}; pipelines compiled (draw/specialization/surface/mesh) {pipes}; {Doing()}; systems: {Systems?.LastFrame() ?? "?"})"));
+            }
         }
         for (int i = 0; i < Pipes.Length; i++) _pipes[i] = Performance.GetMonitor(Pipes[i]);
         _frameStart = now;

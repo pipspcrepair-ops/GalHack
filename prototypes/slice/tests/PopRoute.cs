@@ -366,7 +366,8 @@ public partial class PopRoute : Node
                 // A far chunk's new drawing (its trees and what they cast; the ground is the GPU rings', never redrawn): in view if any of its square is.
                 Vector3 c0 = n3.GlobalPosition, mid = c0 + new Vector3(size * 0.5f, 0f, size * 0.5f);
                 mid.Y = _game.Zone.GroundAt(mid.X, mid.Z).Y;
-                bool inView = cam != null && Enumerable.Range(0, 9).Any(k => cam.IsPositionInFrustum(c0 + new Vector3(size * (k % 3) * 0.5f, mid.Y - c0.Y, size * (k / 3) * 0.5f)));
+                bool inView = false;
+                for (int k = 0; k < 9 && cam != null && !inView; k++) inView = cam.IsPositionInFrustum(c0 + new Vector3(size * (k % 3) * 0.5f, mid.Y - c0.Y, size * (k / 3) * 0.5f));
                 if (inView && tick > 30) farSwaps.Add((lod, new Vector2(mid.X - p.X, mid.Z - p.Z).Length()));
             }
             farNew.Clear();

@@ -26,7 +26,8 @@ public partial class PopRoute
     {
         if (!_args.ContainsKey("split")) return;
         _frameSplit ??= new FrameSplit(GetTree().Root, GetViewport().GetViewportRid());
-        _systemSplit ??= new SystemSplit(_game, _game.Zone, _game.Zone.Wildlife, _game.Places);
+        // --deeper=1: each place split into its children by class too (heavy: a marker a child).
+        _systemSplit ??= new SystemSplit(_game, _game.Zone, _game.Zone.Wildlife, _game.Places) { Deeper = n => _args.ContainsKey("deeper") && n is Slice.Places.Place };
         _frameSplit.Systems = _systemSplit;
         _frameSplit.Doing = Doing;
         _frameSplit.Reset();
@@ -53,6 +54,7 @@ public partial class PopRoute
         if (_frameSplit == null) return;
         var w = _game.Zone.Wildlife;
         _samplesTaken++;
+        if (_args.ContainsKey("deeper") && _samplesTaken % 40 == 0) _systemSplit.MarkNew(); // places stood up since
         _physicsObjects += Performance.GetMonitor(Performance.Monitor.Physics3DActiveObjects);
         _pairs += Performance.GetMonitor(Performance.Monitor.Physics3DCollisionPairs);
         _creatures += w.Sim.Creatures.Count(c => !c.Removed);

@@ -133,6 +133,9 @@ public sealed partial class SystemSplit
         _frames++;
     }
 
+    /// <summary>Marks any children added since, keeping the sums.</summary>
+    public void MarkNew() => Refresh();
+
     /// <summary>Starts the sums over, marking any children added since.</summary>
     public void Reset()
     {
