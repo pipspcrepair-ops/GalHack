@@ -27,7 +27,7 @@ public partial class PoiTest
                     int i0 = b.Indices[t], i1 = b.Indices[t + 1], i2 = b.Indices[t + 2];
                     V3 cross = V3.Cross(P(i1) - P(i0), P(i2) - P(i0));
                     float area = MathF.Sqrt(V3.Dot(cross, cross)) * 0.5f;
-                    if (area < 1e-4f) continue;
+                    if (area < 0.03f) continue; // (the decay strokes laid over faces, cracks and chips, are slivers a few centimetres wide)
                     tris++;
                     V3 c = (P(i0) + P(i1) + P(i2)) * (1f / 3f), n = N(i0);
                     string why = null;
@@ -74,8 +74,8 @@ public partial class PoiTest
             near.Collision = false;
             Untextured(Mesher.Build(g, inst.Layout.Occupied, near), (c, n) =>
             {
-                Block at = g.Get(new Int3((int)MathF.Floor(c.X - n.X * 0.1f), (int)MathF.Floor(c.Y - n.Y * 0.1f), (int)MathF.Floor(c.Z - n.Z * 0.1f)));
-                return at.IsAir || at.Material is Material.Plant or Material.Bloom or Material.Flesh or Material.DeadLumen or Material.Lumen or Material.Water or Material.Glass
+                Block at = g.Get(new Int3((int)MathF.Floor(c.X - n.X * 0.01f), (int)MathF.Floor(c.Y - n.Y * 0.01f), (int)MathF.Floor(c.Z - n.Z * 0.01f)));
+                return at.IsAir || at.Role == Role.Debris || at.Type is BlockType.Scorch or BlockType.Scatter or BlockType.Ash or BlockType.Rubble || at.Material is Material.Plant or Material.Bloom or Material.Flesh or Material.DeadLumen or Material.Lumen or Material.Water or Material.Glass or Material.Ash or Material.Cloth
                     ? "growth" : $"{at.Type}/{at.Role}/{at.Material}";
             }, inPlaces, ref placeTris);
         }

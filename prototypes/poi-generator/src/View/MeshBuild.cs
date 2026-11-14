@@ -446,7 +446,18 @@ void f_rubble(vec2 uv, float px, float seed, inout vec3 col, inout vec4 S, inout
     J.x = mortar;
 }
 
+// What every concrete face shows from a few metres off, small faces too (a wall cap, a gable's edge): cloudy mottling in blotches
+// a hand wide, and pits where the air stayed in the pour.
+void concrete_wash(vec3 wp, float px, float seed, inout vec3 col) {
+    col *= 1.0 + (fbm3(wp * 4.5 + seed * 3.0) - 0.5) * 0.34 * vis(4.5, px);
+    col *= 1.0 + (fbm3(wp * 16.0 + seed) - 0.5) * 0.22 * vis(16.0, px);
+    vec3 cell = floor(wp * 22.0);
+    float pit = hash3(cell + seed);
+    col *= 1.0 - (pit > 0.93 ? 0.28 : 0.0) * vis(22.0, px);
+}
+
 void f_poured(vec2 uv, vec3 wp, int kind, float px, float seed, inout vec3 col, inout vec4 S, inout vec2 slope) {
+    concrete_wash(wp, px, seed, col);
     col *= 1.0 + (fbm3(wp * 1.2 + seed) - 0.5) * 0.18;
     float agg = hash3(vec3(floor(wp * 70.0)));
     col *= 1.0 + (agg > 0.9 ? 0.09 : agg < 0.08 ? -0.09 : 0.0) * vis(70.0, px);
@@ -472,7 +483,8 @@ void f_poured(vec2 uv, vec3 wp, int kind, float px, float seed, inout vec3 col, 
     S.y = 0.9;
 }
 
-void f_precast(vec2 uv, float px, float seed, inout vec3 col, inout vec4 S, inout vec2 slope, inout vec2 J) {
+void f_precast(vec2 uv, vec3 wp, float px, float seed, inout vec3 col, inout vec4 S, inout vec2 slope, inout vec2 J) {
+    concrete_wash(wp, px, seed, col);
     vec2 P = vec2(3.0, 1.5); vec2 q = mod(uv, P);
     float v = vis(1.0 / 1.5, px);
     float e = edge_of(q, P);
@@ -1055,7 +1067,7 @@ void fragment() {
         else if (kind == 6) f_stone(uv, param, px, pseed, col, S, slope, J);
         else if (kind == 7) f_rubble(uv, px, pseed, col, S, slope, J);
         else if (kind == 8) f_poured(uv, wp, param, px, pseed, col, S, slope);
-        else if (kind == 9) f_precast(uv, px, pseed, col, S, slope, J);
+        else if (kind == 9) f_precast(uv, wp, px, pseed, col, S, slope, J);
         else if (kind == 10) f_block(uv, px, pseed, painted, col, S, slope, J);
         else if (kind == 11) f_corrugated(uv, param, px, pseed, col, S, slope, J);
         else if (kind == 12) f_seam(uv, px, pseed, col, S, slope, J);
