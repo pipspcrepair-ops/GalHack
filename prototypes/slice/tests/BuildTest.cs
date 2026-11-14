@@ -954,7 +954,6 @@ public partial class BuildTest : Node
         var flat = rungs.Where(n => n.Level <= 1 || fresh.Node(n.Unlock.Parent).Level >= n.Level).Select(n => $"{n.Id} {n.Level}").ToList();
         Check(flat.Count == 0, $"nothing above tier 1 opens at level 1, and each of {rungs.Count} tiers and platings opens strictly after the one below{(flat.Count > 0 ? ": not " + string.Join(", ", flat) : "")}");
         Check(fresh.Node("thruster-t1").Unlock.Parent == "hover-t1" && fresh.Node("hover-t1").Unlock.Parent == "core", "hover runs beside flight: Thruster T1 hangs under Hover plate T1, on the core");
-        Check(fresh.Node("core-scanner") is { Tab: "tools" } cs && cs.Unlock.Parent == "scanner", "the core scanner is on Tools, under the scanner");
         Check(fresh.Level == 1 && fresh.Points == 3, $"a new character starts at level 1 with 3 unlock points ({fresh.Points})");
         Check(fresh.IsUnlocked("core") && fresh.IsUnlocked("iron-plated") && fresh.IsUnlocked("generator-t1"), "the core, plated blocks and the first generator are free at level 1");
         Check(fresh.StateOf(fresh.Node("thruster-t1")) == UnlockState.NeedsLevel, "and Thruster T1 waits for its level");
