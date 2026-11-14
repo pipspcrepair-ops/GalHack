@@ -545,6 +545,11 @@ public sealed class Playthrough
         foreach (int x in Tool(Slice.Player.ToolMode.Gather)) yield return x;
         for (int deposit = 0; deposit < 8 && Pack[ore.Id] < enough; deposit++)
         {
+            if (Game.Suit.Dead)
+            {
+                Log($"(dead while gathering {kind}: {Game.Suit.Sim.Player.DeathCause} at {Game.Survivor.WorldFeet})");
+                yield break;
+            }
             if (NextDeposit(kind, within, retry) is not Vector3 at)
             {
                 Log($"no more {kind} deposits within {within:F0} m");
@@ -573,7 +578,7 @@ public sealed class Playthrough
                 }
                 idle = Pack[ore.Id] + store.RemovedCount > before ? 0 : idle + 1;
                 if (idle == 3)
-                    Log($"(digging at {t}: eye {eye} {eye.DistanceTo(t):F1} m off; the tool's target {(Game.Tool.HasTarget ? Game.Tool.Target.ToString() : "none")}, {Game.Tool.TargetVerdict}, on a block {Game.Tool.OnBlock}, hand {Game.Pack.Hand}, mode {Game.Tool.Mode}, dead {Game.Suit.Dead}, menu {Game.Menu.IsOpen}, screen {Game.MachineScreens.Pointer.Target?.Name})");
+                    Log($"(digging at {t}: eye {eye} {eye.DistanceTo(t):F1} m off; the tool's target {(Game.Tool.HasTarget ? Game.Tool.Target.ToString() : "none")}, {Game.Tool.TargetVerdict}, on a block {Game.Tool.OnBlock}, hand {Game.Pack.Hand}, mode {Game.Tool.Mode}, dead {Game.Suit.Dead} ({Game.Suit.Sim.Player.DeathCause}), menu {Game.Menu.IsOpen}, screen {Game.MachineScreens.Pointer.Target?.Name})");
             }
             Log($"({kind} deposit {deposit + 1}: +{Pack[ore.Id] - got0}, {Pack[ore.Id]}/{enough})");
         }
