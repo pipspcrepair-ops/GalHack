@@ -103,7 +103,7 @@ public partial class PopRoute : Node
         GD.Print($"ROUTE world {_game.World}; load {load.Elapsed.TotalSeconds:F1} s; places at load: {_args.ContainsKey("places-at-load")}");
         zone.Weather.Bridge.Calm = true;
         zone.Weather.Sim.Snap(Weather.Model.WeatherKind.Clear);
-        zone.Wildlife.Frozen = true;
+        zone.Wildlife.Frozen = !_args.ContainsKey("live");
         _day = zone.Sky.TimeOfDay;
         Vector3 start = _game.Survivor.WorldFeet;
         // The way to the highest ground within 4 km.
@@ -287,6 +287,7 @@ public partial class PopRoute : Node
         _frames.Clear();
         _gpu.Clear();
         _streaming = 0;
+        if (!pops) SplitStart();
         double solids0 = s.SolidsTotalMs, physics = 0, physicsWorst = 0;
         // The workers' time on the far ground: far chunks (flora and water) and the GPU rings' tiles.
         double[] buildMs0 = (double[])s.FarBuildMs.Clone();
@@ -333,6 +334,7 @@ public partial class PopRoute : Node
                 continue;
             }
             if (tick % 3 != 0) continue;
+            SplitSample();
             complete.Add((s.CompleteRadius + 0.5f) * S);
             farShort.Add(s.FarBehindNearest);
             pending.Add(s.Pending);
@@ -396,6 +398,7 @@ public partial class PopRoute : Node
             if (lim != null) Gate($"{name}: plants popping in view", floraPops.Count / routeMinutes, lim.PlantPops, false, "/min");
             yield break;
         }
+        SplitReport(name, tick);
         int over = _frames.Count(t => t > 16.7);
         _frames.Sort();
         _gpu.Sort();

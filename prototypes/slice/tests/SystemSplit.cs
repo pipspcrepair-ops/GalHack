@@ -38,7 +38,7 @@ public sealed partial class SystemSplit
     readonly HashSet<Node> _split, _marked = new();
     readonly List<string> _names = new() { "(end)" };
     readonly List<Mark> _marks = new();
-    double[] _frame = new double[1], _sum = new double[1], _worst = new double[1];
+    double[] _frame = new double[1], _sum = new double[1], _worst = new double[1], _last = new double[1];
     long[] _bytes = new long[1];
     int _open = -1, _frames;
     ulong _at;
@@ -77,6 +77,7 @@ public sealed partial class SystemSplit
         System.Array.Resize(ref _frame, n);
         System.Array.Resize(ref _sum, n);
         System.Array.Resize(ref _worst, n);
+        System.Array.Resize(ref _last, n);
         System.Array.Resize(ref _bytes, n);
     }
 
@@ -126,6 +127,7 @@ public sealed partial class SystemSplit
         {
             _sum[i] += _frame[i];
             if (_frame[i] > _worst[i]) _worst[i] = _frame[i];
+            _last[i] = _frame[i];
             _frame[i] = 0;
         }
         _frames++;
@@ -140,6 +142,9 @@ public sealed partial class SystemSplit
         System.Array.Clear(_bytes);
         _frames = 0;
     }
+
+    /// <summary>The systems that took the most of the last whole frame, CPU ms.</summary>
+    public string LastFrame(int most = 5) => string.Join(", ", Enumerable.Range(1, _names.Count - 1).Where(i => _last[i] > 0.5).OrderByDescending(i => _last[i]).Take(most).Select(i => $"{_names[i]} {_last[i]:F1}"));
 
     /// <summary>Each system's mean and worst CPU ms a frame and what it allocates a frame, the costliest first, those over 0.05 ms.</summary>
     public string Report(int most = 14) => _frames == 0 ? "(no frames)" : string.Join(", ",

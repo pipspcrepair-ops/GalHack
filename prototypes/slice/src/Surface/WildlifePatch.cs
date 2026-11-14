@@ -242,6 +242,8 @@ public partial class WildlifePatch : Node3D
         if (old != null)
         {
             sim.Time = old.Time;
+            // What measurements read goes on adding up across patches.
+            (sim.Profile, sim.ThinkMs, sim.MoveMs, sim.RigMs, sim.Paths) = (old.Profile, old.ThinkMs, old.MoveMs, old.RigMs, old.Paths);
             foreach (Creature c in old.Creatures)
             {
                 // A town's own animals are its to bring across (Swapped), with their pens.
@@ -530,9 +532,13 @@ public partial class WildlifePatch : Node3D
         Follow(Vector3.Zero, false);
     }
 
+    /// <summary>Lines of sight cast through the world's collision so far, by every sim (measurements).</summary>
+    public int SightRays { get; private set; }
+
     /// <summary>A line through what stands in the world: ground, walls, closed doors, hulls. For creatures' eyes; only from a physics step.</summary>
     public bool SightClear(Vector3 from, Vector3 to)
     {
+        SightRays++;
         var ray = PhysicsRayQueryParameters3D.Create(from, to, GalHack.Physics.Layers.World | GalHack.Physics.Layers.Hull);
         return GetWorld3D().DirectSpaceState.IntersectRay(ray).Count == 0;
     }
@@ -704,8 +710,13 @@ public partial class WildlifePatch : Node3D
         Refill((float)delta);
         Haunting((float)delta);
         Own((float)delta);
+        long start = System.Diagnostics.Stopwatch.GetTimestamp();
         Sim.Step((float)delta);
+        StepMs += System.Diagnostics.Stopwatch.GetElapsedTime(start).TotalMilliseconds;
     }
+
+    /// <summary>Main-thread time the patch's sim has taken so far, ms (measurements).</summary>
+    public double StepMs { get; private set; }
 
     int _reachVersion = -1;
 
@@ -720,7 +731,12 @@ public partial class WildlifePatch : Node3D
             View.MidDistance = MathF.Max(120f, SpawnReach.Distance * 0.45f);
             Sim.Data.Spawning.ViewDistance = SpawnReach.ViewDistance;
         }
+        long start = System.Diagnostics.Stopwatch.GetTimestamp();
         View.Sync(PatchLocal(Zone.Camera.GlobalPosition));
+        ViewMs += System.Diagnostics.Stopwatch.GetElapsedTime(start).TotalMilliseconds;
         Spit.Sync(Sim);
     }
+
+    /// <summary>Main-thread time the creatures' bodies have taken to keep up with the sim so far, ms (measurements).</summary>
+    public double ViewMs { get; private set; }
 }

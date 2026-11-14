@@ -150,11 +150,16 @@ public partial class DeepSite : Node3D
 
     public CreatureView ViewOf(Creature c) => _views.GetValueOrDefault(c);
 
+    /// <summary>Bodies drawn at the last sync (measurements).</summary>
+    public int DrawnCount { get; private set; }
+
     public override void _PhysicsProcess(double delta)
     {
         Sim.Clock.Time01 = (float)Patch.Zone.Sky.TimeOfDay;
         Sim.Frozen = Patch.Frozen;
+        long start = Stopwatch.GetTimestamp();
         Sim.Step((float)delta);
+        LastStepMs = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
         // What lives here keeps quiet; what it's doing out of sight gives it away.
         _quiet.Clear();
         Quiet.Step(Sim, Player, (float)delta, _quiet);
@@ -163,6 +168,9 @@ public partial class DeepSite : Node3D
     }
 
     readonly List<QuietSound> _quiet = new();
+
+    /// <summary>The last tick's step of this site's sim, ms (measurements).</summary>
+    public double LastStepMs { get; private set; }
 
     /// <summary>Small sounds made so far (tests).</summary>
     public int QuietSounds { get; private set; }
@@ -237,6 +245,7 @@ public partial class DeepSite : Node3D
     void SyncViews(Vector3 camera, Stopwatch clock)
     {
         _sightFrame++;
+        DrawnCount = 0;
         _gone.Clear();
         foreach (Creature c in Sim.Creatures)
         {
@@ -270,6 +279,7 @@ public partial class DeepSite : Node3D
             // Behind a wall from the eye it isn't drawn at all (it is looked at again every few frames).
             bool visible = d < FarDistance && (MustDraw(c, d) || !_unseen.Contains(c));
             if (view.Visible != visible) view.Visible = visible;
+            if (visible) DrawnCount++;
             if (visible && (c.RigInterval == 1 || c.RigPending == 0f)) view.Sync();
             else if (d > FarDistance * 1.5f) _gone.Add(c);
         }

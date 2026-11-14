@@ -408,6 +408,9 @@ public partial class WildlifeView : Node3D
 
     public int ViewCount => _views.Count;
 
+    /// <summary>Bodies drawn at the last sync (measurements).</summary>
+    public int DrawnCount { get; private set; }
+
     /// <summary>Whether a creature's body is drawn now (tests).</summary>
     public bool Drawn(Creature c) => _views.TryGetValue(c, out CreatureView v) && v.Visible;
 
@@ -462,6 +465,7 @@ public partial class WildlifeView : Node3D
         double now = Time.GetTicksMsec() / 1000.0;
         float dt = _lastSync < 0 ? 0f : (float)Math.Min(now - _lastSync, 0.1);
         _lastSync = now;
+        DrawnCount = 0;
         foreach (Creature c in _sim.Creatures)
         {
             if (c.Removed) continue;
@@ -498,6 +502,7 @@ public partial class WildlifeView : Node3D
             }
             if (fresh ? visible : view.Visible != visible) Shown?.Invoke(c, d, visible, visible ? shows : Fader != null ? was : 1f);
             if (view.Visible != visible) view.Visible = visible;
+            if (visible) DrawnCount++;
             if (visible && (c.RigInterval == 1 || c.RigPending == 0f))
             {
                 view.Sync();

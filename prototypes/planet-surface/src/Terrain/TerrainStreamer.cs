@@ -199,7 +199,10 @@ public partial class TerrainStreamer : Node3D
     public string WorstBreakdown { get; private set; } = "";
     readonly double[] _sections = new double[5];
     long _frameStart;
-    static readonly string[] SectionNames = { "voxels", "far", "horizon", "evict", "collision" };
+    public static readonly string[] SectionNames = { "voxels", "far", "horizon", "evict", "collision" };
+
+    /// <summary>Each section's main-thread time since the game began, ms (measurements read the difference over a stretch).</summary>
+    public readonly double[] SectionTotals = new double[5];
     public int MeshedChunks => _chunks.Count;
     public int Triangles { get; private set; }
     public int CollisionBodies { get; private set; }
@@ -472,6 +475,7 @@ public partial class TerrainStreamer : Node3D
         }
         _sections[3] = Stopwatch.GetElapsedTime(t).TotalMilliseconds;
 
+        for (int i = 0; i < _sections.Length; i++) SectionTotals[i] += _sections[i];
         LastGcPauseMs = (GC.GetTotalPauseDuration() - pausedBefore).TotalMilliseconds;
         LastFrameMs = Stopwatch.GetElapsedTime(start).TotalMilliseconds - LastGcPauseMs - PopMs;
         if (LastFrameMs > WorstFrameMs)
