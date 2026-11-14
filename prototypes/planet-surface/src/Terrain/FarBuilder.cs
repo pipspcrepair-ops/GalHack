@@ -831,9 +831,6 @@ public static class FarBuilder
             if (book != null && plant == null && book.Rolled(rule.Kind)) continue;
             int variant = plant == null ? 0 : (int)(kin * 977f) % plant.Near.Length;
 
-            int i = Math.Clamp((int)MathF.Round(lx / step), 0, grid.Nx - 1), j = Math.Clamp((int)MathF.Round(lz / step), 0, grid.Nz - 1);
-            int s = grid.Sample(i, j);
-            if (river[s] || up[j * grid.Nx + i] < FloraMeshes.MinUp(rule.Kind) || height[s] < 0.6f) continue;
             // Nothing grows back in a blast's dead zone, and little where it fades.
             if (pal.DeadZones.Count > 0 && turn < pal.Deadness(x, z)) continue;
             // Pads and their aprons stay clear, and roads, except that grass and shrubs push back
@@ -847,10 +844,13 @@ public static class FarBuilder
                 && !(source.OnWild(x, z, out float wild) && (!large || wild > 0.7f))
                 && !(!onRoad && built < 1f && Feather(turn) >= Smooth(large ? 0.1f : 0.4f, large ? 0.55f : 0.95f, built))) continue;
 
-            // Exact ground under the trunk (the voxel surface), not the coarse grid's.
+            // Exact ground under the trunk (the voxel surface), never a grid's, so every level of detail grows the same
+            // plants: none in a river or the sea, nor on ground steeper than its kind takes (over 2 m, as the finest grid has it).
             int cx = (int)Math.Floor(x), cz = (int)Math.Floor(z);
             if (Dug(dug, cx, cz)) continue;
-            float h = source.SurfaceHeight(x, z);
+            GroundSample under = source.Ground(x, z, 1);
+            float h = under.Height, ux = (source.SurfaceHeight(x + 2.0, z) - h) / 2f, uz = (source.SurfaceHeight(x, z + 2.0) - h) / 2f;
+            if (under.InRiver || h < 0.6f || 1f / MathF.Sqrt(1f + ux * ux + uz * uz) < FloraMeshes.MinUp(rule.Kind)) continue;
             if (source.CellDensity(cx, (int)Math.Floor(h - 0.6f), cz) <= 0f) continue; // a cave mouth or overhang: nothing to root in
 
             float scale = plant != null ? Mathx.Lerp(0.78f, 1.24f, size) : Mathx.Lerp(0.7f, 1.35f, size) * FloraMeshes.BaseScale(rule.Kind);

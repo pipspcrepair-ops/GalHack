@@ -31,10 +31,11 @@ public partial class PopRoute
     {
         var zone = _game.Zone;
         zone.Sky.TimeScale = 0f;
+        zone.Sky.TimeOfDay = _day;
         foreach (var (name, up) in new[] { ("standing", 0f), ("60 m up", 60f), ("400 m up", 400f) })
         {
             Vector3 eye = Lift(over, up);
-            _game.Survivor.PlaceOutside(eye.ToNumerics());
+            _hold = eye;
             foreach (int x in _drive.Wait(30)) yield return x;
             foreach (int x in _drive.UntilSettled(40)) yield return x;
             foreach (int x in _drive.Wait(60)) yield return x;
@@ -47,7 +48,6 @@ public partial class PopRoute
             long seen = -1;
             for (int i = 0; i < 420; i++)
             {
-                _game.Survivor.PlaceOutside(eye.ToNumerics());
                 float a = i * MathF.PI / 180f;
                 _drive.Face(_game.Survivor.WorldEye() + new Vector3(MathF.Sin(a), -0.18f, -MathF.Cos(a)) * 100f);
                 yield return 0;
