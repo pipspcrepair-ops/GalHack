@@ -1,0 +1,12 @@
+<Project>
+  <!-- Vessels and wrecks are built of the player's own blocks: building's structure model and the part of its presentation that
+       meshes and lights a structure, plus the bridge that merges shared/Items' parts and materials into the catalogue, as the slice does. -->
+  <ItemGroup>
+    <Compile Include="$(ProtoRoot)building\src\Structures\**\*.cs" />
+    <Compile Include="$(ProtoRoot)building\src\Presentation\BlockMaterials.cs" />
+    <Compile Include="$(ProtoRoot)building\src\Presentation\ChunkMesher.cs" />
+    <Compile Include="$(ProtoRoot)building\src\Presentation\DamageFx.cs" />
+    <Compile Include="$(ProtoRoot)building\src\Presentation\StructureView.cs" />
+    <Compile Include="$(SharedRoot)Items\Bridge\**\*.cs" />
+  </ItemGroup>
+</Project>

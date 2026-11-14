@@ -1,0 +1,14 @@
+<Project>
+  <!-- What the Bestiary and People providers compile in place: the same sources the wildlife showroom builds from. -->
+  <ItemGroup>
+    <Compile Include="$(SharedRoot)Geometry\**\*.cs" />
+    <Compile Include="$(SharedRoot)Bestiary\**\*.cs" />
+    <Compile Include="$(SharedRoot)Testing\**\*.cs" />
+    <Compile Include="$(SharedRoot)Sky\**\*.cs" />
+    <Compile Include="$(ProtoRoot)terrain-digging\src\Terrain\**\*.cs" />
+    <Compile Include="$(ProtoRoot)planet-generator\src\Gen\**\*.cs" />
+    <Compile Include="$(ProtoRoot)planet-generator\src\Look\**\*.cs" />
+    <!-- The castaway's figure: the slice's own suited body on the people's rig. -->
+    <Compile Include="$(ProtoRoot)slice\src\Player\CharacterModel.cs" />
+  </ItemGroup>
+</Project>

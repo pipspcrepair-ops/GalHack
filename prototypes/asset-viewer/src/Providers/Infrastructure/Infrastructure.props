@@ -1,0 +1,29 @@
+<Project>
+  <!-- The planet surface's own world, ground and infrastructure code (roads, rail, bridges, power lines), used in place:
+       the list the planet-surface project compiles, without its player, HUD and main scene. -->
+  <ItemGroup>
+    <Compile Include="$(SharedRoot)Terrain\**\*.cs" />
+    <Compile Include="$(SharedRoot)Galaxy\**\*.cs" />
+    <Compile Include="$(SharedRoot)Physics\Core\**\*.cs" />
+    <Compile Include="$(SharedRoot)Physics\Engine\Steps.cs" />
+    <Compile Include="$(SharedRoot)Sky\**\*.cs" />
+    <Compile Include="$(SharedRoot)Flora\**\*.cs" />
+    <Compile Include="$(ProtoRoot)terrain-digging\src\Terrain\**\*.cs" />
+    <Compile Include="$(ProtoRoot)planet-generator\src\Gen\**\*.cs" />
+    <Compile Include="$(ProtoRoot)planet-generator\src\Look\**\*.cs" />
+    <Compile Include="$(ProtoRoot)planet-generator\src\Surface\FloraMeshes.cs" />
+    <Compile Include="$(ProtoRoot)planet-generator\src\Shaders.cs" />
+    <Compile Include="$(ProtoRoot)weather\src\Model\**\*.cs" />
+    <Compile Include="$(ProtoRoot)weather\src\Forces\**\*.cs" />
+    <Compile Include="$(ProtoRoot)weather\src\Glue.cs" />
+    <Compile Include="$(ProtoRoot)planet-surface\src\Terrain\**\*.cs" />
+    <Compile Include="$(ProtoRoot)planet-surface\src\Sky\**\*.cs" />
+    <Compile Include="$(ProtoRoot)planet-surface\src\World\**\*.cs" />
+    <Compile Include="$(ProtoRoot)planet-surface\src\Poi\**\*.cs" />
+    <Compile Include="$(ProtoRoot)planet-surface\src\Infra\**\*.cs" />
+    <Compile Include="$(ProtoRoot)planet-surface\src\Fx\**\*.cs" />
+    <Compile Include="$(ProtoRoot)planet-surface\src\WeatherView\IWeatherScene.cs" />
+    <Compile Include="$(ProtoRoot)planet-surface\src\WeatherView\LightningFx.cs" />
+    <Compile Include="$(ProtoRoot)planet-surface\src\WeatherView\TornadoFx.cs" />
+  </ItemGroup>
+</Project>

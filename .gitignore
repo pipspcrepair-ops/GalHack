@@ -30,3 +30,6 @@ Desktop.ini
 # Prototype save folders and test scratch, kept out of git and away from C:
 .saves/
 /.tools-local/
+
+# Notes written by the asset viewer (your comments and ticks), kept in the main checkout
+/asset-notes/

@@ -1,0 +1,18 @@
+<Project>
+  <!-- Everything the Places, Settlements, Infrastructure and Space providers compile, in place: the POI generator's pure
+       generators and the Godot side that turns a place into meshes, doors, lights and figures. -->
+  <ItemGroup>
+    <Compile Include="$(SharedRoot)Geometry\**\*.cs" />
+    <Compile Include="$(SharedRoot)Testing\**\*.cs" />
+    <Compile Include="$(SharedRoot)Terrain\TerrainStamp.cs" />
+    <Compile Include="$(ProtoRoot)building\src\Structures\LightSettings.cs" />
+    <Compile Include="$(SharedRoot)Items\Core\**\*.cs" />
+    <Compile Include="$(SharedRoot)Deco\**\*.cs" />
+    <Compile Include="$(ProtoRoot)poi-generator\src\Gen\**\*.cs" />
+    <Compile Include="$(ProtoRoot)poi-generator\src\View\Figures.cs" />
+    <Compile Include="$(ProtoRoot)poi-generator\src\View\Look.cs" />
+    <Compile Include="$(ProtoRoot)poi-generator\src\View\MeshBuild.cs" />
+    <Compile Include="$(ProtoRoot)poi-generator\src\View\PoiView*.cs" />
+    <Compile Include="$(ProtoRoot)poi-generator\src\View\Terrain.cs" />
+  </ItemGroup>
+</Project>
