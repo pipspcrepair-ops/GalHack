@@ -47,7 +47,9 @@ public static class RiverFit
                 if (k % Every == 0) low = LowestBeside(river, k, model, w, h);
                 run = Math.Min(run, Math.Min(river.Level[k], low - Below));
                 fit[k] = Math.Max(run, SurfaceSampler.RiverDrop);
-                if (mouth < 0 && InSea(map, river, k, model, w, h, river.Width[k] * 0.5f + Math.Min(SurfaceSampler.BankReach(fit[k]), EstuaryReach))) mouth = k;
+                if (mouth >= 0) continue;
+                float side = river.Width[k] * 0.5f + Math.Min(SurfaceSampler.BankReach(fit[k]), EstuaryReach);
+                if (SeaNear(map, river.X[k], river.Y[k], side + 74f) && InSea(map, river, k, model, w, h, side)) mouth = k;
             }
             // Where it reaches the sea a river comes down to the sea's level: from a little above the first point whose
             // channel, or levee, the sea is drawn over, its water is the sea's (an estuary), and above that it falls to it
@@ -190,6 +192,20 @@ public static class RiverFit
             qx = x - mx;
             qy = y - my;
         }
+    }
+
+    /// <summary>
+    /// Whether any map cell within reach of a point could put the sea there (cheap, before <see cref="InSea"/>: the
+    /// blend between cells is never deeper than the deepest of them). The reach takes in how far the meander moves a channel.
+    /// </summary>
+    static bool SeaNear(WorldMap map, double x, double y, double reach)
+    {
+        int i0 = (int)Math.Floor((x - reach) / map.CellSize - 0.5), i1 = (int)Math.Floor((x + reach) / map.CellSize - 0.5) + 1;
+        int j0 = (int)Math.Floor((y - reach) / map.CellSize - 0.5), j1 = (int)Math.Floor((y + reach) / map.CellSize - 0.5) + 1;
+        for (int j = j0; j <= j1; j++)
+        for (int i = i0; i <= i1; i++)
+            if (map.SeaDepth[map.Index(i, j)] > WorldMap.SeaFrom) return true;
+        return false;
     }
 
     /// <summary>

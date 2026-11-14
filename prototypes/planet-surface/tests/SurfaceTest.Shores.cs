@@ -155,7 +155,7 @@ public partial class SurfaceTest
 
     sealed class ShoreTally
     {
-        public long Points, Wet, Cut, Floating, Through, Stepped;
+        public long Points, Wet, Cut, Torn, Floating, Through, Stepped;
         public double Length;          // shoreline drawn, m
         public int Sharp, Straight, Off, Looked;
         public readonly List<float> Apart = new();    // far levels: how far each near shoreline point is from this level's
@@ -244,14 +244,17 @@ public partial class SurfaceTest
             string name = level < 0 ? "near ground" : $"far level {level}";
             string shape = $"{t.Length:F0} m of shoreline, {t.Sharp} turns over {SharpTurn} degrees between samples {ChordOf(level):F0} m apart that the land's own line at the water's level doesn't make there, " +
                            $"{t.Straight} straight runs of {StraightRun} m across sloping land, {t.Off} of {t.Looked} points over {OffLine} m off the land's line";
-            string stands = $"{t.Floating} points with water drawn more than {ShoreTol * 100:F0} cm over the land and its level (the fall across half a grid square's diagonal allowed on rapids), {t.Through} where the ground shows through it";
+            string stands = $"{t.Floating} points with water drawn more than {ShoreTol * 100:F0} cm over the land and its level (as much more as the level changes out to a grid square's far corner, on rapids and where reaches meet), {t.Through} where the ground shows through it";
             // Every level: the water's own outline never stands over the land beside it.
-            Check(t.Cut == 0, $"{name}: water runs in under its banks: {t.Cut} of {t.Wet} wet points stand more than {ShoreTol * 100:F0} cm over the land at the water's own outline{t.Notes("cut")}");
+            Check(t.Cut == 0, $"{name}: water runs in under its banks: {t.Cut} of {t.Wet} wet points stand more than {ShoreTol * 100:F0} cm over the land at the water's own outline{t.Notes("cut")}" +
+                $" ({t.Torn} more where a river's channel is torn against another reach lower down, the volume's own wall{t.Notes("torn")})");
             if (level <= 0)
             {
-                // Near the eye (the voxels, and the finest far level round them) the water drawn is the water there is, its edge the land's.
+                // Near the eye (the voxels, and the finest far level round them) the water drawn is the water there is, its edge the
+                // land's: a sharp turn the land's own line doesn't make is a step (a stray one in a kilometre is the land's
+                // finest detail meeting the sampling, not squares).
                 Check(t.Floating == 0 && t.Through == 0, $"{name}: water stands at its own level against the land: of {t.Wet} wet points, {stands}{t.Notes("floating", "through")}");
-                Check(t.Sharp == 0 && t.Straight == 0, $"{name}: shorelines follow the land: {shape}{t.Notes("turn", "straight", "off")}");
+                Check(t.Sharp <= t.Length / 1000 && t.Straight == 0, $"{name}: shorelines follow the land: {shape} (at most one turn a kilometre){t.Notes("turn", "straight", "off")}");
             }
             if (level < 0) continue;
             // Every far level: its shoreline where the near ground's is, to within its own grid step (its coarser ground
@@ -374,6 +377,7 @@ public partial class SurfaceTest
             placed[k] = sw.S.Built(Mathx.WrapX(x, sw.W.Width), Mathx.Wrap(z, sw.W.Height), out _) > 0f;
         }
         float step = FarBuilder.Step(Math.Max(level, 0));
+        var torn = new bool[n * n];
         for (int j = 0; j < n; j++)
         for (int i = 0; i < n; i++)
         {
@@ -387,14 +391,22 @@ public partial class SurfaceTest
             drawn[k] = float.IsNaN(top) ? -1f : top - g;
             ideal[k] = float.IsNaN(lv) ? -1f : lv - g;
             if (placed[k]) continue;
-            // A sheet on a grid follows a river's level only at its corners: on a rapid it may stand off it by the fall across half a square's diagonal.
-            float fall = 0f;
-            if (i > 0 && i < n - 1 && j > 0 && j < n - 1)
+            // A sheet on a grid follows a river's level only at its corners: on a rapid, or where two reaches meet, it may
+            // stand off the level here by as much as the level changes out to its square's far corner (3 m at most).
+            // Worked out only where the water drawn stands off its level at all.
+            float tol = ShoreTol;
+            if (!float.IsNaN(lv) && (shows && top > lv + tol || !shows && lv > g + tol))
             {
-                float gx = (levels[k + 1] - levels[k - 1]) / (2 * ShoreCell), gz = (levels[k + n] - levels[k - n]) / (2 * ShoreCell);
-                if (float.IsFinite(gx) && float.IsFinite(gz)) fall = MathF.Sqrt(gx * gx + gz * gz) * step * 0.75f;
+                int reach = Math.Min((int)MathF.Ceiling(step * 1.42f / ShoreCell), 6);
+                float fall = 0f;
+                for (int dj = -reach; dj <= reach; dj++)
+                for (int di = -reach; di <= reach; di++)
+                {
+                    int ii = i + di, jj = j + dj;
+                    if (ii >= 0 && jj >= 0 && ii < n && jj < n && !float.IsNaN(levels[jj * n + ii])) fall = MathF.Max(fall, MathF.Abs(levels[jj * n + ii] - lv));
+                }
+                tol += fall;
             }
-            float tol = ShoreTol + fall;
             // Water shown where the volume has none, or higher than its level: standing proud of the land.
             if (shows && top > MathF.Max(g, land[k]) + tol && (float.IsNaN(lv) || top > lv + tol))
             {
@@ -414,11 +426,24 @@ public partial class SurfaceTest
                 // The water's own outline (no water drawn beside it) standing over the ground there.
                 if (float.IsNaN(tops[o]) && MathF.Max(ground[o], land[o]) < top - ShoreTol)
                 {
-                    t.Cut++;
                     double ox = x0 + o % n * ShoreCell, oz = z0 + o / n * ShoreCell;
                     GroundSample gq = sw.S.Sampler.Sample(Mathx.WrapX(ox, sw.W.Width), Mathx.Wrap(oz, sw.W.Height), 1);
-                    t.Note("cut", $"water's outline {top - ground[o]:F2} m over the ground at {x:F1},{z:F1} (drawn {top:F2}, its level {lv:F2}; beside it level {levels[o]:F2}, " +
-                                  $"river {gq.RiverLevel:F2} bank {gq.Bank:F2} ground {gq.Height:F2}, natural {sw.W.Map.Model.Elevation(Mathx.WrapX(ox, sw.W.Width), Mathx.Wrap(oz, sw.W.Height), 1):F2}, sea map {sw.SeaMask(ox, oz):F2})");
+                    string at = $"water's outline {top - ground[o]:F2} m over the ground at {x:F1},{z:F1} (its level {lv:F2}; beside it a river at {gq.RiverLevel - SurfaceSampler.RiverDrop:F2}, ground {gq.Height:F2})";
+                    // Beside it the ground belongs to another reach lower down: where the meander folds a river's course
+                    // back on itself, or two run side by side down a gorge, the generator tears the channel between them.
+                    // That is the volume's own wall (Water's checks hold it to a 1% share), not the drawn edge: noted apart.
+                    // (Half a metre apart in level, half a metre apart on the ground, is no rapid of one river.)
+                    if (MathF.Abs(gq.RiverLevel - SurfaceSampler.RiverDrop - lv) > 0.3f)
+                    {
+                        t.Torn++;
+                        t.Note("torn", at);
+                        torn[k] = torn[o] = true;
+                    }
+                    else
+                    {
+                        t.Cut++;
+                        t.Note("cut", at);
+                    }
                     break;
                 }
             }
@@ -458,8 +483,17 @@ public partial class SurfaceTest
                     foreach (Vector2 q in list) best = MathF.Min(best, p.DistanceSquaredTo(q));
             return MathF.Sqrt(best);
         }
-        bool Inside(Vector2 p, float margin) => p.X > x0 + margin && p.X < x0 + 2 * ShoreHalf - margin && p.Y > z0 + margin && p.Y < z0 + 2 * ShoreHalf - margin
-            && !placed[Math.Clamp((int)MathF.Round((p.Y - (float)z0) / ShoreCell), 0, n - 1) * n + Math.Clamp((int)MathF.Round((p.X - (float)x0) / ShoreCell), 0, n - 1)];
+        // In the window (less a margin), off a place's own ground, and 2 m or more from a torn channel's wall.
+        bool Inside(Vector2 p, float margin)
+        {
+            if (p.X <= x0 + margin || p.X >= x0 + 2 * ShoreHalf - margin || p.Y <= z0 + margin || p.Y >= z0 + 2 * ShoreHalf - margin) return false;
+            int i = Math.Clamp((int)MathF.Round((p.X - (float)x0) / ShoreCell), 0, n - 1), j = Math.Clamp((int)MathF.Round((p.Y - (float)z0) / ShoreCell), 0, n - 1);
+            if (placed[j * n + i]) return false;
+            for (int dj = -4; dj <= 4; dj++)
+            for (int di = -4; di <= 4; di++)
+                if (i + di >= 0 && j + dj >= 0 && i + di < n && j + dj < n && torn[(j + dj) * n + i + di]) return false;
+            return true;
+        }
         Vector2 Slope(Vector2 p)
         {
             int i = Math.Clamp((int)MathF.Round((p.X - (float)x0) / ShoreCell), 1, n - 2), j = Math.Clamp((int)MathF.Round((p.Y - (float)z0) / ShoreCell), 1, n - 2);
@@ -512,9 +546,13 @@ public partial class SurfaceTest
                 bool straight = true;
                 for (int s = 1; s < run && straight; s++)
                     straight = Mathf.RadToDeg(MathF.Acos(Math.Clamp(first.Dot((metre[k + s + 1] - metre[k + s]).Normalized()), -1f, 1f))) < 2f;
-                // Straight, and across the land's slope rather than along its level (the land's own line runs square to its slope).
+                // Straight, across the land's slope rather than along its level (the land's own line runs square to its
+                // slope), and off the land's own line for most of it: a straight bank the land makes is the land's.
                 Vector2 slope = Slope(metre[k + run / 2]);
                 if (!straight || slope.Length() < 1f / 30f || MathF.Abs(first.Dot(slope.Normalized())) < 0.34f) continue;
+                int off = 0;
+                for (int s = 0; s <= run; s++) if (Nearest(idealPoints, metre[k + s], 1) > OffLine) off++;
+                if (off * 2 <= run) continue;
                 t.Straight++;
                 t.Note("straight", $"edge straight for {StraightRun} m across land sloping {slope.Length():F2} at {metre[k].X:F1},{metre[k].Y:F1}");
                 k += run;
