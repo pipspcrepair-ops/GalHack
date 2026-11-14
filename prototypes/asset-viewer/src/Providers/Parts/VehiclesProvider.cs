@@ -121,12 +121,9 @@ public sealed partial class VehiclesProvider : IAssetProvider
         StructureStats st = StructureStats.Compute(s);
         float c = s.Grid.CellSize;
         var (min, max) = s.Count > 0 ? s.Bounds() : (Int3.Zero, Int3.Zero);
-        yield return ("Class", StructureClasses.Name(GalHack.Items.Bridge.BuildingBridge.ClassOf(s)));
-        yield return ("Grid", s.Grid.Size == GridSize.Small ? "Small, 0.5 m" : "Large, 2 m");
         yield return ("Size", $"{(max.X - min.X + 1) * c:0.#} x {(max.Y - min.Y + 1) * c:0.#} x {(max.Z - min.Z + 1) * c:0.#} m");
         yield return ("Blocks", $"{st.Blocks} ({st.Components} devices)");
         yield return ("Mass", $"{st.Mass:0.#} t");
-        yield return ("CPU", $"{st.CpuUsed:0} of {st.CpuLimit:0} (tier {st.Tier})");
         yield return ("Power", $"{st.PowerOut:0.##} MW out, {st.PowerUse:0.##} MW use");
         yield return ("Thrusters", st.Thrusters.ToString());
         if (st.Thrusters > 0) yield return ("Thrust to weight", $"{st.ThrustToWeightForward:0.00} g forward, {st.ThrustToWeightMax:0.00} g best axis");

@@ -23,6 +23,14 @@ Command line, after `--`:
 | `--notes=<folder>` | Where the JSON files go |
 | `--free`, `--hide-panels`, `--fresh`, `--demo` | Free camera; hide panels; ignore the saved position; fill in sample notes |
 
+## Components
+
+Open on the core components with `Components Viewer.cmd` in the repo root, or pick the **Components** category. It lists every block in the game's catalogue that is not armour (read from the catalogue, so new ones appear by themselves), grouped by what it does: Control (core, command chair, cockpits), Power, Propulsion (thrusters, gyros, hover plates, landing pads), Travel, Production (fabricators, deconstructor, blueprint factory), Storage, Defence, Access (doors, ladder, stairs) and Utility. Under **All sizes** each family with several tiers is drawn in one row, smallest to largest, so sizes can be compared by eye.
+
+Each is the game's block drawn by the game's own mesher, with the game's sleeper figure beside it for scale. The viewer opens on what the component does: the figure walks up to the chair, turns and sits (and gets up again); thrusters burn (the flame starts at the end of the body, as wide as its nozzle; the **Flame** option shows it as the game flies it now); a door opens for the figure walking through; the figure climbs a ladder and walks a flight of stairs; landing legs fold and unfold. Every component also has power cut and restored, damage, lamp modes, 24 orientations and paint, like the Blocks tab. Armour and the sample rooms stay in **Blocks**.
+
+Step through them with `[` and `]`; `,` and `.` change the animation; drag to orbit.
+
 ## Controls
 
 **Orbit camera** (default): left drag turns, right or middle drag pans, wheel zooms. W and S zoom, A and D pan sideways, Q and E pan down and up, arrows turn, Shift is faster.

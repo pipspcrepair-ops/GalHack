@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using GalHack.Structures;
 using Godot;
+using PhysicsSandbox.Bridges;
 using Structure = GalHack.Structures.Structure;
 
 namespace AssetViewer.Providers.Parts;
@@ -18,7 +19,12 @@ public partial class ThrusterFx : Node3D
     readonly List<(MeshInstance3D flame, Vector3 nozzle, Vector3 exhaust)> _flames = new();
     public float Effort;
 
-    public void Setup(Structure s)
+    /// <summary>
+    /// One flame per thruster. <paramref name="atNozzle"/>: the cone starts at the exhaust end of the block's
+    /// whole body and is as wide as its nozzle; false: as VesselFx draws it in flight, from half a cell
+    /// out of the block's middle at one cell's width.
+    /// </summary>
+    public void Setup(Structure s, bool atNozzle)
     {
         _material ??= new StandardMaterial3D
         {
@@ -29,18 +35,23 @@ public partial class ThrusterFx : Node3D
         float cell = s.Grid.CellSize;
         foreach (var (pos, b) in s.Blocks())
         {
-            if (!s.TypeOf(b).IsThruster) continue;
+            BlockType t = s.TypeOf(b);
+            if (!t.IsThruster) continue;
             System.Numerics.Vector3 n = Orientations.ToWorld(b.Rot, Dir.NegZ).Normal();
             Vector3 push = new(n.X, n.Y, n.Z), exhaust = -push;
+            Int3 size = Footprint.WorldSize(t, b.Rot);
+            float reach = atNozzle ? 0.5f * cell * (Mathf.Abs(exhaust.X) * size.X + Mathf.Abs(exhaust.Y) * size.Y + Mathf.Abs(exhaust.Z) * size.Z) : cell * 0.5f;
+            float width = atNozzle ? Mathf.Min(t.Size.X, t.Size.Y) : 1f;
             var flame = new MeshInstance3D
             {
-                Mesh = new CylinderMesh { TopRadius = cell * 0.32f, BottomRadius = 0.02f, Height = 1f, RadialSegments = 10, Rings = 1 },
+                Mesh = new CylinderMesh { TopRadius = cell * 0.32f * width, BottomRadius = 0.02f, Height = 1f, RadialSegments = 10, Rings = 1 },
                 MaterialOverride = _material, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
                 Basis = push.Dot(Vector3.Up) < -0.999f ? new Basis(Vector3.Right, Mathf.Pi) : new Basis(new Quaternion(Vector3.Up, push)),
                 Visible = false,
             };
             AddChild(flame);
-            _flames.Add((flame, new Vector3(pos.X, pos.Y, pos.Z) * cell + exhaust * (cell * 0.5f), exhaust));
+            System.Numerics.Vector3 centre = StructureBridge.BlockCenter(s, pos, b);
+            _flames.Add((flame, new Vector3(centre.X, centre.Y, centre.Z) + exhaust * reach, exhaust));
         }
     }
 
@@ -58,10 +69,10 @@ public partial class ThrusterFx : Node3D
     }
 
     /// <summary>Adds the flames to a structure's asset and the thrust animations that drive them.</summary>
-    public static ThrusterFx Add(StructureAsset a)
+    public static ThrusterFx Add(StructureAsset a, bool atNozzle = true)
     {
         var fx = new ThrusterFx { Name = "Thrusters" };
-        fx.Setup(a.Structure);
+        fx.Setup(a.Structure, atNozzle);
         a.Holder.AddChild(fx);
         if (fx.Count == 0) return fx;
         float t = 0f;

@@ -14,7 +14,7 @@ namespace AssetViewer.Providers.Parts;
 /// </summary>
 public static class Working
 {
-    public static void Add(StructureAsset a)
+    public static void Add(StructureAsset a, bool nozzle = true)
     {
         Structure s = a.Structure;
         var doors = s.Blocks().Where(x => s.TypeOf(x.block).IsDoor).Select(x => x.pos).ToList();
@@ -65,10 +65,10 @@ public static class Working
                 a.Powered = (int)(clock / 2f) % 2 == 0;
             }, () => a.Powered = true);
         }
-        ThrusterFx.Add(a);
+        ThrusterFx.Add(a, nozzle);
     }
 
-    static void SetFlag(Structure s, Int3 cell, BlockFlags flag, bool on)
+    public static void SetFlag(Structure s, Int3 cell, BlockFlags flag, bool on)
     {
         if (!s.TryGet(cell, out Block b) || ((b.Flags & flag) != 0) == on) return;
         b.Flags = on ? b.Flags | flag : b.Flags & ~flag;

@@ -20,7 +20,7 @@ public sealed class AssetRegistry
     /// <summary>Category order in the browser: the viewer's own reference pieces last.</summary>
     public static readonly string[] CategoryOrder =
     {
-        "Bestiary", "People", "Places", "Settlements", "Infrastructure", "Space", "Vehicles", "Blocks", "Items", "Deco", "Signs",
+        "Bestiary", "People", "Places", "Settlements", "Infrastructure", "Space", "Vehicles", "Components", "Blocks", "Items", "Deco", "Signs",
         "Weather", "Flora", "Terrain", "Sky", "Worlds",
     };
 

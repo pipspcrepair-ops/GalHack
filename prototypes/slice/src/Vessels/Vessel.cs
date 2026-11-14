@@ -499,7 +499,7 @@ public sealed partial class Vessel
     /// parts under the feet and below the seat (a cockpit's floor), or the bottom of its box (an open
     /// chair stands on the block under it). The chair faces -z in its own frame.
     /// </summary>
-    static float FloorUnder(BlockType t, float cell)
+    internal static float FloorUnder(BlockType t, float cell)
     {
         N.Vector3 size = t.Size.ToVector3() * cell, seat = t.Seat;
         float z = seat.Z - FeetAhead / size.Z, floor = -0.5f;

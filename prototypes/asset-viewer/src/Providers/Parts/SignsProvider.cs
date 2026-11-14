@@ -33,7 +33,6 @@ public sealed partial class SignsProvider : IAssetProvider
                 Id = "sigil." + faction, Group = "In the game/Faction sigils on walls", Name = PartsData.Nice(faction),
                 Options = new[]
                 {
-                    new AssetOption("Grid", "Large", "Small") { Rollable = true },
                     new AssetOption("Scale", "Full", "Half") { Rollable = true },
                     new AssetOption("Glow", "Where the faction glows", "Painted only", "All lit") { Rollable = true },
                     new AssetOption("Wall", "Concrete", "Steel", "Combat steel") { Rollable = true },
@@ -115,12 +114,11 @@ public sealed partial class SignsProvider : IAssetProvider
     {
         SigilDef sigil = _sigils[faction];
         Catalogue cat = PartsData.Blocks;
-        bool small = r.Get("Grid", "Large") == "Small";
         int scale = r.Get("Scale", "Full") == "Half" ? 2 : 1;
         string glow = r.Get("Glow", "Where the faction glows");
         string wallName = r.Get("Wall", "Concrete");
         BlockType wall = cat.Types.Skip(1).FirstOrDefault(t => t.IsArmor && t.Name.StartsWith(wallName, StringComparison.OrdinalIgnoreCase)) ?? cat.Types.Skip(1).First(t => t.IsArmor);
-        var s = new Structure(cat, cat.Grid(small ? GridSize.Small : GridSize.Large)) { Name = faction };
+        var s = new Structure(cat) { Name = faction };
         int size = sigil.Size / scale, border = 1;
         var slots = new Dictionary<(uint, bool), ushort>();
         ushort Slot(char ch)
@@ -152,7 +150,7 @@ public sealed partial class SignsProvider : IAssetProvider
             ("Source", "poi-generator data/sigils.txt, painted onto block faces as the architect does"),
             ("Painted cells", $"{sigil.Rows.Sum(rw => rw.Count(sigil.Colours.ContainsKey))} of {sigil.Size * sigil.Size}"),
             ("Colours", string.Join(", ", sigil.Colours.Select(kv => $"{kv.Key}={kv.Value.R:x2}{kv.Value.G:x2}{kv.Value.B:x2}"))),
-            ("Wall", wall.Name + (small ? ", small grid" : ", large grid")),
+            ("Wall", wall.Name),
         };
         return asset;
     }

@@ -118,13 +118,13 @@ public sealed partial class DecoProvider : IAssetProvider
         ItemCatalogue items = PartsData.Items;
         yield return ("Set", $"{set.Name} ({set.Tech.ToString().ToLowerInvariant()} tech)");
         yield return ("Roles", string.Join(", ", p.Roles));
-        yield return ("Size", $"{p.Width:0.#} x {p.Height:0.#} x {p.Depth:0.#} m, {p.LargeCells.X}x{p.LargeCells.Y}x{p.LargeCells.Z} large cells");
+        yield return ("Size", $"{p.Width:0.#} x {p.Height:0.#} x {p.Depth:0.#} m, {p.Cells.X}x{p.Cells.Y}x{p.Cells.Z} cells");
         yield return ("Mount", p.Mount + (p.Mount == DecoMount.Wall ? $" at {p.MountY:0.#} m" : "") + (p.Surface > 0 ? $", top at {p.Surface:0.##} m" : ""));
         yield return ("States", string.Join(", ", p.States));
         if (p.Falls.Count > 0) yield return ("Falls", string.Join(", ", p.Falls));
         yield return ("Mass", $"{p.MassKg:0.#} kg, {p.Hp} hit points");
         yield return ("Recipe", items.Describe(p.Bill, 6));
-        DecoUnlock u = p.UnlockLarge;
+        Unlock u = p.Unlock;
         if (u != null) yield return ("Tech tier", $"level {u.Level}, {u.Cost} points");
         if (p.Light != null) yield return ("Light", $"{p.Light.Range:0.#} m, energy {p.Light.Energy:0.##}");
         if (p.Anim != null) yield return ("Animation", p.Anim + " (plays by itself while lit)");

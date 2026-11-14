@@ -5,7 +5,8 @@
 
 param(
     [string]$Project = "prototypes/slice",
-    [switch]$Play
+    [switch]$Play,
+    [string[]]$GameArgs = @()   # arguments for the game itself, passed after "--" (with -Play)
 )
 
 . "$PSScriptRoot\env.ps1"
@@ -16,5 +17,5 @@ if ($csproj) {
     if ($LASTEXITCODE) { exit $LASTEXITCODE }
 }
 
-if ($Play) { & $GodotEditor --path $path }
+if ($Play) { & $GodotEditor --path $path -- @GameArgs }
 else { & $GodotEditor --editor --path $path }

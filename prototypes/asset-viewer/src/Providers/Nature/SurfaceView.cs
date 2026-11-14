@@ -210,7 +210,7 @@ public partial class SurfaceView : AssetInstance
         _seaMaterial = (ShaderMaterial)_water.Duplicate();
         _seaMaterial.SetShaderParameter("sea", true);
         _seaMaterial.SetShaderParameter("sea_map", World.SeaTexture());
-        _seaMaterial.SetShaderParameter("sea_mask", PlanetTerrainSource.SeaMaskDepth);
+        _seaMaterial.SetShaderParameter("sea_mask", Planets.Gen.WorldMap.SeaFrom);
         Sea.MaterialOverride = _seaMaterial;
         RenderingServer.GlobalShaderParameterSet("planet_size", new Vector2((float)World.Width, (float)World.Height));
         Streamer.SetWorld(World, Spot, _water);

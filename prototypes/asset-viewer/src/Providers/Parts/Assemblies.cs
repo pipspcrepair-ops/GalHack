@@ -27,7 +27,6 @@ public static class Assemblies
                 Id = "assembly." + PartsData.Slug(name), Group = "Assemblies", Name = name, Randomisable = true,
                 Options = new[]
                 {
-                    new AssetOption("Grid", "Large", "Small") { Rollable = true },
                     new AssetOption("Armour", cat.Types.Skip(1).Where(t => t.IsArmor).Select(t => t.Name).ToArray()) { Rollable = true },
                     new AssetOption("Damage", "Intact", "Worn", "Wrecked") { Rollable = true },
                     new AssetOption("Paint", BlocksProvider.Colours) { Rollable = true },
@@ -72,8 +71,7 @@ public static class Assemblies
 
     static AssetInstance Build(Catalogue cat, string name, BuildRequest r)
     {
-        bool small = r.Get("Grid", "Large") == "Small";
-        var s = new Structure(cat, cat.Grid(small ? GridSize.Small : GridSize.Large)) { Name = name };
+        var s = new Structure(cat) { Name = name };
         var kit = new Kit
         {
             S = s, Rng = new Random((int)(r.Seed & 0x7fffffff)), Open = r.Get("Roof", "Cut away") == "Cut away",
@@ -108,12 +106,10 @@ public static class Assemblies
     {
         StructureStats st = StructureStats.Compute(s);
         yield return ("Blocks", $"{st.Blocks} ({st.Components} devices)");
-        yield return ("Grid", s.Grid.Size == GridSize.Small ? "Small, 0.5 m" : "Large, 2 m");
         yield return ("Mass", $"{st.BlockMass:0.##} t");
         var (min, max) = s.Bounds();
         float c = s.Grid.CellSize;
         yield return ("Size", $"{(max.X - min.X + 1) * c:0.#} x {(max.Y - min.Y + 1) * c:0.#} x {(max.Z - min.Z + 1) * c:0.#} m");
-        yield return ("Class", StructureClasses.Name(s.Grid.Size == GridSize.Small ? StructureClass.Small : StructureClass.Base));
     }
 
     /// <summary>Wear: scuffs on some blocks, holes and missing panels on a wreck.</summary>

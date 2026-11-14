@@ -86,6 +86,20 @@ public partial class StructureAsset : ModelAsset
         _bounds = new Aabb(low + shift, high - low);
     }
 
+    /// <summary>Makes room in the frame for a point of the structure's frame (a person's path beside it).</summary>
+    public void Include(Vector3 point, float margin = 0.5f)
+    {
+        Vector3 at = point + _holder.Position;
+        _bounds = _bounds.Merge(new Aabb(at - Vector3.One * margin, Vector3.One * (2f * margin)));
+    }
+
+    /// <summary>Raises the whole structure, bounds with it (a vessel standing on its landing legs).</summary>
+    public void Lift(float height)
+    {
+        _holder.Position += Vector3.Up * height;
+        _bounds.Position += Vector3.Up * height;
+    }
+
     public override Aabb? FrameBounds => _bounds.Size == Vector3.Zero ? null : _bounds;
 
     /// <summary>Where a cell's middle is, in this asset's frame.</summary>

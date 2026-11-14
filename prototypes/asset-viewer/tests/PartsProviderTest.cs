@@ -10,14 +10,14 @@ using Godot;
 namespace AssetViewer.Tests;
 
 /// <summary>
-/// The Blocks, Items, Deco, Signs and Vehicles providers: every entry builds with its defaults and again in a
+/// The Blocks, Components, Items, Deco, Signs and Vehicles providers: every entry builds with its defaults and again in a
 /// second state or orientation, every block, item, deco piece, vehicle design and sign file in the game's data has
 /// an entry, and a sample of the animations plays in the tree for a few frames.
 /// </summary>
 public partial class PartsProviderTest : Node
 {
     int _passes, _failures;
-    static readonly string[] Mine = { "Blocks", "Items", "Deco", "Signs", "Vehicles" };
+    static readonly string[] Mine = { "Blocks", "Components", "Items", "Deco", "Signs", "Vehicles" };
 
     bool Check(bool ok, string what)
     {
@@ -90,7 +90,7 @@ public partial class PartsProviderTest : Node
         GD.Print($"  {second} second builds");
 
         GD.Print("== every shape, orientation and damage of one armour block and one device builds");
-        var steel = entries.First(e => e.Id == "block.steel");
+        var steel = entries.First(e => e.Category == "Blocks" && e.Group == "Armour");
         foreach (string shape in steel.Options.First(o => o.Name == "Shape").Values)
             foreach (string orient in new[] { "+y-z", "+x+y", "-y+z", "+z-x" })
             {
@@ -112,10 +112,12 @@ public partial class PartsProviderTest : Node
 
         GD.Print("== coverage of the game's data");
         Catalogue cat = PartsData.Blocks;
-        var blockIds = new HashSet<string>(entries.Where(e => e.Category == "Blocks").Select(e => e.Id));
-        foreach (BlockType t in cat.Types.Skip(1)) Check(blockIds.Contains("block." + t.Id), $"block {t.Id} has an entry");
+        // Armour is in Blocks, everything else in Components.
+        var blockIds = new HashSet<string>(entries.Where(e => e.Category is "Blocks" or "Components").Select(e => e.Id));
+        string IdOf(BlockType t) => (t.IsArmor ? "block." : "component.") + t.Id;
+        foreach (BlockType t in cat.Types.Skip(1)) Check(blockIds.Contains(IdOf(t)), $"block {t.Id} has an entry");
         foreach (BlockBill b in PartsData.Items.Blocks.All.Where(b => b.Family != BlockFamily.Deco))
-            Check(cat.TryGetType(b.BlockId, out _) && blockIds.Contains("block." + b.BlockId), $"blocks.json id {b.BlockId} has an entry");
+            Check(cat.TryGetType(b.BlockId, out BlockType bt) && blockIds.Contains(IdOf(bt)), $"blocks.json id {b.BlockId} has an entry");
         var itemIds = new HashSet<string>(entries.Where(e => e.Category == "Items").Select(e => e.Id));
         foreach (ItemDef i in PartsData.Items.Items) Check(itemIds.Contains("item." + i.Id), $"item {i.Id} has an entry");
         var decoIds = new HashSet<string>(entries.Where(e => e.Category == "Deco").Select(e => e.Id));
@@ -148,7 +150,7 @@ public partial class PartsProviderTest : Node
         var sample = new List<AssetEntry>();
         foreach (var family in entries.GroupBy(e => e.Category + "|" + e.Group))
             sample.Add(family.First());
-        sample.AddRange(entries.Where(e => e.Id is "block.door" or "block.light" or "block.thruster" or "block.largefab" or "item.stage-rifle" or "item.tack-pistol" or "item.hornet-hive" or "vessel.slice.starter" or "vessel.slice.shuttle" or "hover-bike" or "assembly.room" or "piece.office-lamp"));
+        sample.AddRange(entries.Where(e => e.Id is "component.door-1x2x1" or "component.light" or "component.thruster-t1" or "component.fabricator-t1" or "component.command-chair" or "item.stage-rifle" or "item.tack-pistol" or "item.hornet-hive" or "vessel.slice.starter" or "vessel.slice.shuttle" or "hover-bike" or "assembly.room" or "piece.office-lamp"));
         int played = 0;
         foreach (AssetEntry e in sample.Distinct())
         {

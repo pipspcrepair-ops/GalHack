@@ -25,6 +25,16 @@ public partial class ModelAsset : AssetInstance
     public void AddAnimation(string name, Action start, Action<float> tick, Action stop = null) =>
         _anims.Add(new StructureAsset.Anim { Name = name, Start = start, Tick = tick, Stop = stop });
 
+    /// <summary>Makes the named animation the first, the one the viewer starts on.</summary>
+    public void Lead(string name)
+    {
+        int i = _anims.FindIndex(a => a.Name == name);
+        if (i <= 0) return;
+        StructureAsset.Anim lead = _anims[i];
+        _anims.RemoveAt(i);
+        _anims.Insert(0, lead);
+    }
+
     public override IReadOnlyList<string> Animations => _anims.Select(a => a.Name).ToArray();
 
     public override void PlayAnimation(string name)

@@ -23,7 +23,7 @@ sealed partial class CastawayStage : AssetInstance, IStageProbe
     readonly Vector3[] _at = new Vector3[70];
     string _anim = "";
     float _t, _acc, _speed = 1f, _walked;
-    CastawayMotion _m;
+    SleeperMotion _m;
     PlayerGesture? _gesture;
     float _since;
 
@@ -57,7 +57,7 @@ sealed partial class CastawayStage : AssetInstance, IStageProbe
         CurrentAnimation = anim;
         _t = 0f;
         _since = 0f;
-        _m = new CastawayMotion { Grounded = true };
+        _m = new SleeperMotion { Grounded = true };
         _gesture = null;
         switch (anim)
         {

@@ -22,26 +22,26 @@ public static class VesselStates
         switch (state)
         {
             case "Worn":
-                Repaint(s, null, 0f, 2, FaceTexture.Panel);
+                Repaint(s, null, 0f, 2);
                 Scuff(s, rng, 0.3f, 0.45f, 0.8f);
                 break;
             case "Rusted":
-                Repaint(s, Rust, 0.65f, 3, FaceTexture.Plates);
+                Repaint(s, Rust, 0.65f, 3);
                 Scuff(s, rng, 0.5f, 0.3f, 0.75f);
                 break;
             case "Burnt":
-                Repaint(s, Soot, 0.8f, 3, FaceTexture.Panel);
+                Repaint(s, Soot, 0.8f, 3);
                 Scuff(s, rng, 0.8f, 0.15f, 0.5f);
                 foreach (var (pos, b) in s.Blocks().ToList())
                     if (!s.TypeOf(b).IsArmor && rng.NextDouble() < 0.7) s.SetHp(pos, s.MaxHp(b) * (0.15f + 0.1f * (float)rng.NextDouble()));
                 Remove(s, rng, 0.06);
                 break;
             case "Damaged":
-                Repaint(s, null, 0f, 1, FaceTexture.Panel);
+                Repaint(s, null, 0f, 1);
                 Shoot(s, rng, Math.Max(10, s.Count / 7));
                 break;
             case "Wrecked":
-                Repaint(s, Soot, 0.4f, 2, FaceTexture.Panel);
+                Repaint(s, Soot, 0.4f, 2);
                 Crash(s, rng);
                 break;
         }
@@ -50,17 +50,17 @@ public static class VesselStates
     }
 
     /// <summary>Every face's paint becomes the same paint grimed and tinted: bare faces take their material's colour first.</summary>
-    static void Repaint(Structure s, uint? tint, float amount, int grime, FaceTexture texture)
+    static void Repaint(Structure s, uint? tint, float amount, int grime)
     {
         var map = new Dictionary<ushort, ushort>();
         ushort Remap(ushort slot, BlockType t)
         {
             ushort key = slot == 0 ? (ushort)(0xf000 | t.Index) : slot;
             if (map.TryGetValue(key, out ushort done)) return done;
-            Paint p = slot == 0 ? new Paint(t.Color, t.Accent, Pattern.None, t.Texture, 0, 0) : s.Palette[slot];
+            Paint p = slot == 0 ? new Paint(t.Color, t.Accent, Pattern.None, 0, 0) : s.Palette[slot];
             if (p.IsLamp) return map[key] = slot;
             uint baseColour = tint is uint c ? Mix(p.Base, c, amount) : p.Base;
-            Paint q = p with { Base = baseColour, Grime = (byte)Math.Max(p.Grime, grime), Texture = tint != null && p.Texture == FaceTexture.Panel ? texture : p.Texture };
+            Paint q = p with { Base = baseColour, Grime = (byte)Math.Max(p.Grime, grime) };
             return map[key] = s.Palette.Intern(q, "state");
         }
         foreach (var (pos, b0) in s.Blocks().ToList())

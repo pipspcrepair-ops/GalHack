@@ -221,7 +221,7 @@ public partial class ItemAsset : ModelAsset
 
     static IEnumerable<(string, string)> Facts(ItemCatalogue items, ItemDef i, WeaponDef w)
     {
-        yield return ("Category", i.Category + (i.IsBlock ? $" ({i.Family}, {(i.SmallGrid ? "small" : "large")} grid)" : ""));
+        yield return ("Category", i.Category + (i.IsBlock ? $" ({i.Family})" : ""));
         yield return ("Rarity", Rarities.Name(i.Rarity));
         yield return ("Mass", i.MassKg >= 1 ? $"{i.MassKg:0.##} kg" : $"{i.MassKg * 1000:0.#} g");
         yield return ("Volume", $"{i.VolumeSu:0.###} SU");
