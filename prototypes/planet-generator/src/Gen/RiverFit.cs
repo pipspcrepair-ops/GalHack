@@ -49,9 +49,9 @@ public static class RiverFit
                 fit[k] = Math.Max(run, SurfaceSampler.RiverDrop);
                 if (mouth < 0 && InSea(map, river, k, model, w, h, river.Width[k] * 0.5f + Math.Min(SurfaceSampler.BankReach(fit[k]), EstuaryReach))) mouth = k;
             }
-            // Where it reaches the sea a river comes down to the sea's level: from a little above the first of its
-            // channel the sea is drawn over, its water is the sea's (an estuary), and above that it falls to it as a
-            // tributary falls to its main river. Left at the land's level it stood metres over the sea at its mouth.
+            // Where it reaches the sea a river comes down to the sea's level: from a little above the first point whose
+            // channel, or levee, the sea is drawn over, its water is the sea's (an estuary), and above that it falls to it
+            // as a tributary falls to its main river. Left at the land's level it stood metres over the sea at its mouth.
             if (mouth >= 0)
             {
                 int from = mouth;
@@ -205,8 +205,8 @@ public static class RiverFit
         for (int a = 0; a < 16; a++)
         {
             double ux = Math.Cos(a * Math.PI / 8), uy = Math.Sin(a * Math.PI / 8);
-            for (float s = side * 0.25f; s <= side; s += side * 0.25f)
-                if (map.IsSea(cx + ux * s, cy + uy * s)) return true;
+            for (int q = 1; q <= 4; q++)
+                if (map.IsSea(cx + ux * side * q * 0.25, cy + uy * side * q * 0.25)) return true;
         }
         return map.IsSea(cx, cy);
     }

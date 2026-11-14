@@ -415,7 +415,10 @@ public partial class SurfaceTest
                 if (float.IsNaN(tops[o]) && MathF.Max(ground[o], land[o]) < top - ShoreTol)
                 {
                     t.Cut++;
-                    t.Note("cut", $"water's outline {top - ground[o]:F2} m over the ground at {x:F1},{z:F1} (drawn {top:F2}, its level {lv:F2} and beside it {levels[o]:F2})");
+                    double ox = x0 + o % n * ShoreCell, oz = z0 + o / n * ShoreCell;
+                    GroundSample gq = sw.S.Sampler.Sample(Mathx.WrapX(ox, sw.W.Width), Mathx.Wrap(oz, sw.W.Height), 1);
+                    t.Note("cut", $"water's outline {top - ground[o]:F2} m over the ground at {x:F1},{z:F1} (drawn {top:F2}, its level {lv:F2}; beside it level {levels[o]:F2}, " +
+                                  $"river {gq.RiverLevel:F2} bank {gq.Bank:F2} ground {gq.Height:F2}, natural {sw.W.Map.Model.Elevation(Mathx.WrapX(ox, sw.W.Width), Mathx.Wrap(oz, sw.W.Height), 1):F2}, sea map {sw.SeaMask(ox, oz):F2})");
                     break;
                 }
             }
