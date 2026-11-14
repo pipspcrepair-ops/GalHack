@@ -74,8 +74,7 @@ public partial class PopRoute : Node
     public override void _Process(double delta)
     {
         long now = Stopwatch.GetTimestamp();
-        if (_last != 0) _frames.Add((now - _last) * 1000.0 / Stopwatch.Frequency - _sampleMs);
-        _sampleMs = 0;
+        if (_last != 0) _frames.Add((now - _last) * 1000.0 / Stopwatch.Frequency);
         _gpu.Add(RenderingServer.ViewportGetMeasuredRenderTimeGpu(GetViewport().GetViewportRid()));
         _last = now;
     }
@@ -114,13 +113,16 @@ public partial class PopRoute : Node
         PopLog.On = true;
         // First straight off, as a player does the moment the world shows (whatever still loads then loads under it); then each from a settled start.
         foreach (int x in Route("fly at once", start, -way, 70f, 4000f, 60f)) yield return x;
-        foreach (var (name, speed, length, up) in new[] { ("walk", 6f, 300f, 0.3f), ("bike", 26f, 1500f, 1f), ("fly", 70f, 4000f, 60f) })
+        var routes = new[] { ("walk", 6f, 300f, 0.3f), ("bike", 26f, 1500f, 1f), ("fly", 70f, 4000f, 60f) };
+        // Each from a settled start; then the first 20 s of each again, counting the plants that pop.
+        foreach (bool pops in new[] { false, true })
+        foreach (var (name, speed, length, up) in routes)
         {
             _game.Survivor.PlaceOutside(Lift(start, up).ToNumerics());
             for (int i = 0; i < 60; i++) yield return 0;
             foreach (int x in _drive.UntilSettled(40)) yield return x;
             for (int i = 0; i < 120; i++) yield return 0;
-            foreach (int x in Route(name, start, way, speed, length, up)) yield return x;
+            foreach (int x in Route(name, start, way, speed, pops ? speed * 20f : length, up, pops)) yield return x;
         }
         PopLog.On = false;
         foreach (int x in Flicker(start)) yield return x;
@@ -222,7 +224,8 @@ public partial class PopRoute : Node
 
     Vector3 Lift(Vector3 p, float up) => p with { Y = _game.Zone.GroundAt(p.X, p.Z).Y + up };
 
-    IEnumerable<int> Route(string name, Vector3 start, Vector3 way, float speed, float length, float up)
+    /// <param name="pops">the pops pass: plants popping in view sampled every tenth of a second, and nothing else measured (--shots=dir: ringed frames of them)</param>
+    IEnumerable<int> Route(string name, Vector3 start, Vector3 way, float speed, float length, float up, bool pops = false)
     {
         TerrainStreamer s = _game.Zone.Streamer;
         const int S = 16;
@@ -258,7 +261,7 @@ public partial class PopRoute : Node
         float along = 0f;
         int tick = 0;
         var floraPops = new List<FloraPop>();
-        _seen.Clear();
+        _eyeBefore = _game.Camera.GlobalPosition;
         int shots = 0;
         Image lastShot = null;
         _args.TryGetValue("shots", out string shotDir);
@@ -272,25 +275,26 @@ public partial class PopRoute : Node
             double ph = Performance.GetMonitor(Performance.Monitor.TimePhysicsProcess) * 1000.0;
             physics += ph;
             physicsWorst = Math.Max(physicsWorst, ph);
-            if (++tick % 6 == 0)
+            tick++;
+            if (pops)
             {
+                if (tick % 6 != 0) continue;
                 List<FloraPop> popped = FloraPops();
-                floraPops.AddRange(popped);
-                // --shots=dir: the frame before and after a sample in which plants popped in view, ringed.
-                if (shotDir != null && shots < 4)
+                if (tick > 30) floraPops.AddRange(popped);
+                // The frame before and after a sample in which trees popped in view, the trees ringed.
+                if (shotDir == null || shots >= 3) continue;
+                Image shot = Frame(1280);
+                if (lastShot != null && tick > 60 && popped.Count(q => q.Kind == "tree") >= 2)
                 {
-                    Image shot = Frame(960);
-                    if (lastShot != null && tick > 60 && popped.Count(q => q.Kind != "small growth") >= 2)
-                    {
-                        DirAccess.MakeDirRecursiveAbsolute(shotDir);
-                        string tag = $"{shotDir}/{name.Replace(" ", "-")}-{++shots}";
-                        lastShot.SavePng($"{tag}-before.png");
-                        Mark(shot, popped.Select(q => q.Mid), new Color(1f, 0.1f, 0.1f));
-                        shot.SavePng($"{tag}-after-ringed.png");
-                        GD.Print($"ROUTE shot {tag}: {string.Join(", ", popped.Select(q => $"{q.Kind} {(q.Appears ? "appears" : "goes")} at {q.Away:F0} m"))}");
-                    }
-                    lastShot = shot;
+                    DirAccess.MakeDirRecursiveAbsolute(shotDir);
+                    string tag = $"{shotDir}/{name.Replace(" ", "-")}-{++shots}";
+                    lastShot.SavePng($"{tag}-before.png");
+                    shot.SavePng($"{tag}-after.png");
+                    Ringed(shot, popped.Select(q => q.Mid), new Color(1f, 0.1f, 0.1f)).SavePng($"{tag}-after-ringed.png");
+                    GD.Print($"ROUTE shot {tag}: {string.Join(", ", popped.Select(q => $"{q.Kind} {(q.Appears ? "appears" : "goes")} at {q.Away:F0} m"))}");
                 }
+                lastShot = shot;
+                continue;
             }
             if (tick % 3 != 0) continue;
             complete.Add((s.CompleteRadius + 0.5f) * S);
@@ -329,10 +333,10 @@ public partial class PopRoute : Node
             }
         }
         s.ChunkApplied -= onChunk;
-        var pops = PopLog.Take();
-        var trees = pops.Where(q => q.Kind == "flora" && q.What == "appears" && q.Size > 3f).Select(q => q.Distance).ToList();
-        string byKind = string.Join(", ", pops.GroupBy(q => q.Kind + " " + q.What).OrderBy(g => g.Key).Select(g => string.Create(CultureInfo.InvariantCulture, $"{g.Key} {g.Count()} ({g.Sum(q => q.Jump * q.Size / MathF.Max(q.Distance, 10f)):F1})")));
-        int nearJumps = pops.Count(q => q.Kind is "flora" or "cover" && q.Distance < 120f && q.Jump > 0.05f);
+        var logged = PopLog.Take();
+        var trees = logged.Where(q => q.Kind == "flora" && q.What == "appears" && q.Size > 3f).Select(q => q.Distance).ToList();
+        string byKind = string.Join(", ", logged.GroupBy(q => q.Kind + " " + q.What).OrderBy(g => g.Key).Select(g => string.Create(CultureInfo.InvariantCulture, $"{g.Key} {g.Count()} ({g.Sum(q => q.Jump * q.Size / MathF.Max(q.Distance, 10f)):F1})")));
+        int nearJumps = logged.Count(q => q.Kind is "flora" or "cover" && q.Distance < 120f && q.Jump > 0.05f);
         static string Q(List<double> v, bool low = false)
         {
             if (v.Count == 0) return "none";
@@ -341,10 +345,19 @@ public partial class PopRoute : Node
             return string.Create(CultureInfo.InvariantCulture, $"median {v[v.Count / 2]:F0}, {(low ? "5th pct" : "95th pct")} {worst:F0}, {(low ? "least" : "most")} {(low ? v[0] : v[^1]):F0} (n {v.Count})");
         }
         double minutes = clock.Elapsed.TotalMinutes;
-        string popKinds = string.Join(", ", floraPops.GroupBy(q => q.Kind).OrderBy(g => g.Key).Select(g =>
-            $"{g.Key} {g.Count() / minutes:F0}/min ({g.Count(q => q.Appears)} appearing, {g.Count(q => !q.Appears)} going) at m {Q(g.Select(q => (double)q.Away).ToList(), true)}"));
-        GD.Print(string.Create(CultureInfo.InvariantCulture, $"ROUTE {name} plants popping in view (a reach crossed or a drawing swapped within a tenth of a second): {(popKinds.Length == 0 ? "none" : popKinds)}; a sample took {_sampledMs / Math.Max(1, _samples):F1} ms"));
-        _sampledMs = _samples = 0;
+        static double P(List<double> v, double q) => v.Count == 0 ? double.NaN : v[Math.Min(v.Count - 1, (int)(v.Count * q))];
+        var lim = Limits.GetValueOrDefault(name.Replace(" at once", ""));
+        if (pops)
+        {
+            // Per minute of the route's own time (sampling slows the clock).
+            double routeMinutes = (tick - 30) / (double)Engine.PhysicsTicksPerSecond / 60.0;
+            string popKinds = string.Join(", ", floraPops.GroupBy(q => q.Kind).OrderBy(g => g.Key).Select(g =>
+                string.Create(CultureInfo.InvariantCulture, $"{g.Key} {g.Count() / routeMinutes:F0}/min ({g.Count(q => q.Appears)} appearing, {g.Count(q => !q.Appears)} going) at m {Q(g.Select(q => (double)q.Away).ToList(), true)}")));
+            GD.Print(string.Create(CultureInfo.InvariantCulture, $"ROUTE {name} {speed:F0} m/s {length:F0} m, plants popping in view (a reach crossed or a drawing swapped within a tenth of a second): {(popKinds.Length == 0 ? "none" : popKinds)}; a sample took {_sampledMs / Math.Max(1, _samples):F1} ms"));
+            _sampledMs = _samples = 0;
+            if (lim != null) Gate($"{name}: plants popping in view", floraPops.Count / routeMinutes, lim.PlantPops, false, "/min");
+            yield break;
+        }
         int over = _frames.Count(t => t > 16.7);
         _frames.Sort();
         _gpu.Sort();
@@ -356,12 +369,10 @@ public partial class PopRoute : Node
                  $"main thread: solid flora {(s.SolidsTotalMs - solids0) / Math.Max(1, tick):F2} ms a tick, physics {physics / Math.Max(1, tick):F2} ms a tick (worst {physicsWorst:F1}), {s.SolidColliders} solid colliders; in view: far chunks redrawn {swaps}; redrawn inside the sun's shadow reach (casters changing) {farSwaps.Count(q => q.Away < _game.Zone.Sky.Sun.DirectionalShadowMaxDistance) / minutes:F0}/min; near ground rings {groundSwaps.Count / minutes:F0}/min at m {Q(groundSwaps, true)}; pops (count, and their sum of jump times size over distance) {byKind}; frames {_frames.Count}, p50 {(_frames.Count > 0 ? _frames[_frames.Count / 2] : 0):F1}, p99 {(_frames.Count > 0 ? _frames[(int)(_frames.Count * 0.99)] : 0):F1}, worst {(_frames.Count > 0 ? _frames[^1] : 0):F1} ms, {over} over 16.7 ms; gpu p50 {(_gpu.Count > 0 ? _gpu[_gpu.Count / 2] : 0):F1}, p99 {(_gpu.Count > 0 ? _gpu[(int)(_gpu.Count * 0.99)] : 0):F1} ms");
         // The gate (--check=1): limits from the best build measured (ee8a3ace^ with the owner's settings; fad41bce, his last
         // good test build, about the same), with room for a machine other runs share.
-        static double P(List<double> v, double q) => v.Count == 0 ? double.NaN : v[Math.Min(v.Count - 1, (int)(v.Count * q))];
-        if (Limits.GetValueOrDefault(name.Replace(" at once", "")) is { } lim)
+        if (lim != null)
         {
             Gate($"{name}: near ground complete, median", P(complete.Select(x => (double)x).OrderBy(x => x).ToList(), 0.5), lim.Ground, true, "m");
             Gate($"{name}: trees appear, 5th percentile", P(trees.Select(t => (double)t).OrderBy(x => x).ToList(), 0.05), lim.Trees, true, "m");
-            Gate($"{name}: plants popping in view", floraPops.Count / minutes, lim.PlantPops, false, "/min");
             Gate($"{name}: column wait, 95th percentile", P(columnWait, 0.95), lim.ColumnWait, false, "ms");
             Gate($"{name}: shadow casters redrawn in view", farSwaps.Count(q => q.Away < _game.Zone.Sky.Sun.DirectionalShadowMaxDistance) / minutes, lim.ShadowPops, false, "/min");
             Gate($"{name}: frames over 16.7 ms", over / minutes, lim.Over, false, "/min");

@@ -262,7 +262,7 @@ public sealed partial class Staging
         foreach (var (name, mesh, size) in drawn)
         foreach (float d in _args.GetValueOrDefault("dist", "30,80,112,150,250,300").Split(',').Select(float.Parse))
         {
-            int layer = d < DetailReach.Near * 0.95f ? 0 : d < DetailReach.Far * 0.95f ? 1 : 3;
+            int layer = TerrainStreamer.LargeLayer;
             Vector3 eye = Feet(at + across * d), look = at + Vector3.Up * size * 0.5f;
             if (eye.Y < 3f) { GD.Print($"PLANTSHADOW-AB {name} at {d} m: the camera would stand in the sea, skipped"); continue; }
             eye.Y = MathF.Max(eye.Y, at.Y) + 2.5f + d * 0.02f; // over the land between
