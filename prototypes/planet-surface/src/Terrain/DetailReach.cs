@@ -18,9 +18,6 @@ public static class DetailReach
     /// <summary>The most it can be: the horizon, where the far field takes over (<see cref="TerrainStreamer.HorizonDistance"/>).</summary>
     public const float Most = TerrainStreamer.HorizonDistance;
 
-    /// <summary>A share of the large growth (those of its first near mesh, half) also has a distant drawing, the same far drawing, out to the detail distance; the rest go at the far reach.</summary>
-    public const float DistantShare = 0.5f, DistantGrow = 1f;
-
     public static float Distance { get; private set; }
 
     /// <summary>How far the roadside tiles are built (<see cref="PlanetSurface.Infra.InfraLayer.Radius"/>), m.</summary>
@@ -36,10 +33,11 @@ public static class DetailReach
     public static int Lod1Radius { get; private set; }
 
     /// <summary>
-    /// Flora's reaches and the bands they dissolve over, m: the near drawings of large growth, small
-    /// growth, large growth's far drawings, its thinning share, and the distant drawings.
+    /// Flora's reaches from the eye and the bands they fade over, m. Every large plant (tree, bush, boulder) has one
+    /// drawing, its own mesh, out to the detail distance, and dissolves over the last <see cref="LargeBand"/> of it; small
+    /// growth shrinks into the ground over the last <see cref="SmallBand"/> of its reach. Nothing swaps or appears whole.
     /// </summary>
-    public static float Near, NearBand, Small, SmallBand, Far, FarBand, Thin, ThinBand, Distant, DistantBand;
+    public static float Large, LargeBand, Small, SmallBand;
 
     /// <summary>How far along from the default to the horizon the distance is set, 0..1.</summary>
     public static float Along => (Distance - Default) / (Most - Default);
@@ -49,14 +47,6 @@ public static class DetailReach
 
     /// <summary>Places' full structures reach this multiple of their own radii: at most twice, as they carry colliders, people and creatures.</summary>
     public static float StandScale => MathF.Min(Scale, 2f);
-
-    /// <summary>
-    /// How far a plant's drawings take to hand over or go, m, short of the detail distance: next to
-    /// nothing, so a plant is always whole, one drawing or the other, never half shown (it swaps in a frame). A wood still
-    /// thins gradually, as each plant has its own reach (<see cref="TerrainStreamer.FloraShows"/>).
-    /// Only the distant drawings fade out at the end, over <see cref="DistantBand"/>.
-    /// </summary>
-    public const float Swap = 0.02f;
 
     static DetailReach() => Set(Default);
 
@@ -70,16 +60,10 @@ public static class DetailReach
         FarRadius = (int)MathF.Ceiling(d / FarBuilder.Size);
         Lod0Radius = k >= 2f ? 2 : 1;
         Lod1Radius = Math.Clamp((int)MathF.Round(3f * k), 3, 12);
-        Near = 120f * Lod0Radius;
-        NearBand = Swap;
+        Large = d;
+        LargeBand = d * 0.15f;
         Small = 200f * MathF.Min(k, 2f);
-        SmallBand = Swap;
-        Far = 370f * Lod1Radius / 3f;
-        FarBand = Swap;
-        Thin = Far * 200f / 370f;
-        ThinBand = Swap;
-        Distant = d;
-        DistantBand = d * 0.15f;
+        SmallBand = Small * 0.3f;
         // What stands on the land is built as far out as the far rings show its pads, corners included.
         InfraRadius = (FarRadius + 0.3f) * FarBuilder.Size * MathF.Sqrt(2f);
         Version++;

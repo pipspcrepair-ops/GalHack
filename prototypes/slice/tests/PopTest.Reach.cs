@@ -41,7 +41,7 @@ public partial class PopTest
         yield return 0; // the game applies it
         yield return 0;
         float rings = TerrainStreamer.FarRadius * FarBuilder.Size;
-        float flora = TerrainStreamer.FloraLayerReach(TerrainStreamer.DistantLayer).To;
+        float flora = TerrainStreamer.FloraLayerReach(TerrainStreamer.LargeLayer);
         float places = DetailReach.Toward(_game.Zone.Pois.MidRadius), cities = DetailReach.Toward(_game.Zone.Pois.CityMidRadius);
         Check(DetailReach.Distance == top && rings >= top && flora >= top && InfraLayer.Radius >= top && places >= top && cities >= top,
             $"at the top the far rings reach {rings:F0} m, trees {flora:F0} m, places' and cities' merged blocks {places:F0} and {cities:F0} m, roadside tiles {InfraLayer.Radius:F0} m (detail {DetailReach.Distance:F0} m)");
@@ -62,10 +62,10 @@ public partial class PopTest
         foreach (int x in TreesFar()) yield return x;
     }
 
-    /// <summary>All of flora's drawings together, at every distance, from many plants' own reaches: they fade in bands, never a step.</summary>
+    /// <summary>Flora at every distance, from many plants' own reaches: it fades in bands, never a step.</summary>
     void Bands(string setting)
     {
-        // The mean over many plants of each (their own reaches differ), four in ten of them of the thinning share.
+        // The mean over many plants of each (their own reaches differ), four in ten of them of small growth's thinning share.
         var rng = new Random();
         var spots = Enumerable.Range(0, 300).Select(_ => (X: rng.NextSingle() * 10000f, Z: rng.NextSingle() * 10000f)).ToList();
         float Mean(Func<bool, float, float, float> of) => spots.Average(p => 0.6f * of(false, p.X, p.Z) + 0.4f * of(true, p.X, p.Z));
@@ -73,7 +73,7 @@ public partial class PopTest
         float last = 1f, lastSmall = 1f;
         for (float d = 5f; d <= DetailReach.Distance + 10f; d += 5f)
         {
-            float c = Mean((thin, x, z) => TerrainStreamer.LargeCover(thin, d, x, z));
+            float c = Mean((thin, x, z) => TerrainStreamer.FloraShows(TerrainStreamer.LargeLayer, thin, d, x, z));
             float sm = Mean((thin, x, z) => TerrainStreamer.FloraShows(TerrainStreamer.SmallLayer, thin, d, x, z));
             if (last - c > worstLarge) { worstLarge = last - c; atLarge = d; }
             if (lastSmall - sm > worstSmall) { worstSmall = lastSmall - sm; atSmall = d; }
@@ -126,7 +126,7 @@ public partial class PopTest
         }
         Vector3 eye = new(best.X, g + 1.7f, best.Z);
         var shown = s.FloraShown(eye).Where(p => p.Shows > 0.05f).ToList();
-        float trees = shown.Where(p => p.Layer is TerrainStreamer.FarLayer or TerrainStreamer.DistantLayer).Select(p => p.Away).DefaultIfEmpty(0f).Max();
+        float trees = shown.Where(p => p.Layer == TerrainStreamer.LargeLayer).Select(p => p.Away).DefaultIfEmpty(0f).Max();
         float small = shown.Where(p => p.Layer == TerrainStreamer.SmallLayer).Select(p => p.Away).DefaultIfEmpty(0f).Max();
         int past = shown.Count(p => p.Away > 1000f);
         Check(trees > 1000f && past > 20, $"in the woods ({most:F0} cover): trees show to {trees:F0} m, {past} of them past a kilometre; small growth to {small:F0} m");
