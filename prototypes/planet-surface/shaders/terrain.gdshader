@@ -375,7 +375,9 @@ vec4 paint_road(Road r, vec2 p, vec3 land, float fw, float near, out float cover
 	// A lane into a place's lot leaves the street by a crossover, its kerb dropped and barely rounded: flared
 	// like a street corner, its short stub up to the lot line read as a tooth cut in the street's edge.
 	float drive_r = abs(r.style - 4.0) < 0.5 || max(r.lot, r.other_lot) > 0.5 ? 1.8 : turn_r;
-	float kerb = r.other_hw > 0.0 ? max(drive_r * 1.7 * smoothstep(0.1, 0.4, crossing) * (1.0 - onto), 0.5) : 3.0;
+	// Only laid roads round their corners: a track or a dirt road joins the road's edge square, its deck a plain union of the two.
+	float flare = hard && min(r.half_width, r.other_hw) >= 3.5 ? 1.0 : 0.0;
+	float kerb = r.other_hw > 0.0 ? max(drive_r * 1.7 * smoothstep(0.1, 0.4, crossing) * (1.0 - onto) * flare, 0.5) : 3.0;
 	float h_k = max(kerb - abs(r.edge - r.other), 0.0) / kerb;
 	float joined = min(r.edge, r.other) - h_k * h_k * kerb * 0.25;
 	float edge = joined + wander;
@@ -510,6 +512,7 @@ vec4 paint_road(Road r, vec2 p, vec3 land, float fw, float near, out float cover
 			pit_wet = pit * water * seen;
 		}
 	}
+	vec3 unpainted = c;
 	// Markings: painted lines on laid roads, worn away in flakes, generated from the classes that meet.
 	// The way with priority (the wider road, or the older of two alike) runs through a junction, its lines
 	// dotted across the other's mouth; the other stops at a bar set back from the edge, behind a crosswalk
@@ -550,6 +553,8 @@ vec4 paint_road(Road r, vec2 p, vec3 land, float fw, float near, out float cover
 			c = mix(c, vec3(0.62, 0.62, 0.6), max(bar, walk) * flake);
 		}
 	}
+	vec3 ink_added = c - unpainted;
+	c = unpainted;
 	// The land takes it back from the edges in: grass and soil creep in along both, sand blows in from the
 	// side the wind comes from in long tapering tongues, and the middle goes last. It lies over the markings.
 	vec2 n = vec2(-r.dir.y, r.dir.x);
@@ -563,8 +568,10 @@ vec4 paint_road(Road r, vec2 p, vec3 land, float fw, float near, out float cover
 	float reach = creep + 1.3 * r.half_width * wear * streak * streak * windward;
 	float ruffle = (pn2(p, 2.7) - 0.5) * 0.12 * near;
 	float over = 1.0 - smoothstep(reach - 0.25 - fw, reach + fw, inward + ruffle);
+	// Paint goes where the land has taken the road back, and never reaches the edge: it exists only on the surface.
+	vec3 ink = ink_added * (1.0 - over) * smoothstep(0.15, 0.6, inward);
 	over *= 0.92;
-	c = mix(c, land, over);
+	c = mix(c, land, over) + ink;
 	cover = deck * (1.0 - smoothstep(0.5, 1.0, r.core));
 	rough = mix(mix(r.surface < 2.5 ? 0.82 : 0.95, 0.93, over), 0.08, pit_wet);
 	return vec4(mix(grit, c, deck), max(deck, shoulder) * (1.0 - smoothstep(0.5, 1.0, r.core)));
@@ -759,7 +766,7 @@ vec4 paint_ground(Patch g, vec2 p, vec3 land, float fw, float near, out float co
 	float drift = smoothstep(0.7 - 0.12 * wear, 0.85, pn2(p, 0.045)) * (0.15 + 0.5 * wear) * smoothstep(0.1, 0.4, wear);
 	over = max(over * (0.55 + 0.4 * wear), drift);
 	over = min(over, 0.9);
-	c = mix(c, land, over);
+	c = mix(c, land, over) + ink;
 	// Past the outline: an unkerbed edge breaks up into chunks lying in the grass; a kerbed one stops at its kerb.
 	float body = 1.0 - smoothstep(-fw * 0.5, fw * 0.5, g.d);
 	float spill = 0.0;
