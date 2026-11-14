@@ -854,17 +854,24 @@ public static class FarBuilder
                 && !(!onRoad && built < 1f && Feather(turn) >= Smooth(large ? 0.1f : 0.4f, large ? 0.55f : 0.95f, built))) continue;
 
             // Exact ground under the trunk (the voxel surface), never a grid's, so every level of detail grows the same
-            // plants: none in a river or the sea, nor on ground steeper than its kind takes (over 2 m, as the finest grid has it).
+            // plants: none in a river or the sea, nor on ground steeper under its foot than its kind takes.
             int cx = (int)Math.Floor(x), cz = (int)Math.Floor(z);
             if (Dug(dug, cx, cz)) continue;
             GroundSample under = source.Ground(x, z, 1);
-            float h = under.Height, ux = (source.SurfaceHeight(x + 2.0, z) - h) / 2f, uz = (source.SurfaceHeight(x, z + 2.0) - h) / 2f;
-            if (under.InRiver || h < 0.6f || 1f / MathF.Sqrt(1f + ux * ux + uz * uz) < FloraMeshes.MinUp(rule.Kind)) continue;
+            float h = under.Height;
+            if (under.InRiver || h < 0.6f) continue;
             if (source.CellDensity(cx, (int)Math.Floor(h - 0.6f), cz) <= 0f) continue; // a cave mouth or overhang: nothing to root in
 
             float scale = plant != null ? Mathx.Lerp(0.78f, 1.24f, size) : Mathx.Lerp(0.7f, 1.35f, size) * FloraMeshes.BaseScale(rule.Kind);
             // A tree takes its size from its kind's range on this world, by its age: the one scale draws it near and far and sizes its colliders.
             if (plant != null && book.TreeScale(plant, Hash.Unit(Hash.Of(pal.Map.Spec.Seed, id, 0xA6E), 0), size) is float grown) scale = grown;
+            // On a slope nothing hangs over the low side: a stem is sunk by the drop across its foot, and a
+            // rock lies along the ground (it would slide if it stood level), sunk by what's left of the slope.
+            bool rock = rule.Kind is Flora.Rock or Flora.LavaRock;
+            float foot = MathF.Max(plant?.FootRadius ?? 0f, FootRadius(rule.Kind)) * scale;
+            float gx = (source.SurfaceHeight(x + foot, z) - h) / foot, gz = (source.SurfaceHeight(x, z + foot) - h) / foot;
+            float slope = MathF.Sqrt(gx * gx + gz * gz), lean = rock ? MathF.Min(slope, MaxRockLean) : 0f;
+            if (1f / MathF.Sqrt(1f + slope * slope) < FloraMeshes.MinUp(rule.Kind)) continue;
             if (source.Reserved(x, z, Reach(rule.Kind, plant, scale))) continue; // its crown or body would reach the bunker's ground or the sky over it
             float angle = turn * Mathf.Tau;
             Rgb tint = plant != null && !plant.Mineral ? book.Tint(plant, shade, x, z) : Tint(rule, shade, pal, x, z);
@@ -872,13 +879,6 @@ public static class FarBuilder
             if (plant is { Large: true } && CrownOver(source, pal, x, z, plant.CrownRadius * scale * 0.75f)) continue;
             float glow = rule.Kind == Flora.Crystal && biome is Biome.CrystalPlain or Biome.CrystalSpires or Biome.GlowMoss ? 0.12f
                 : rule.Kind == Flora.Mushroom && biome is Biome.GlowMoss or Biome.SporeMarsh ? 0.3f : 0f;
-
-            // On a slope nothing hangs over the low side: a stem is sunk by the drop across its foot, and a
-            // rock lies along the ground (it would slide if it stood level), sunk by what's left of the slope.
-            bool rock = rule.Kind is Flora.Rock or Flora.LavaRock;
-            float foot = MathF.Max(plant?.FootRadius ?? 0f, FootRadius(rule.Kind)) * scale;
-            float gx = (source.SurfaceHeight(x + foot, z) - h) / foot, gz = (source.SurfaceHeight(x, z + foot) - h) / foot;
-            float slope = MathF.Sqrt(gx * gx + gz * gz), lean = rock ? MathF.Min(slope, MaxRockLean) : 0f;
             float rootY = h - FloraSolidRules.Sink - (slope - lean) * foot;
             // A stem's foot goes down to the lowest ground round it, the far sides too: the slope above is
             // read uphill, and ground falling away behind (a cut, a rim, a bank) would leave it standing proud.

@@ -10,8 +10,8 @@ namespace Slice.Tests;
 /// <summary>
 /// What drawing every tree out to the detail distance costs, in this run's own world: from 2 m and from 60 m over the densest
 /// growth near the start, looking out four ways a little down, the GPU's and the render thread's time a frame (medians) with
-/// the trees as drawn, with their coarser versions off (each tree whole at every distance), and with trees cut at 370 m (as
-/// far as every tree reached before). The three take turns, four times round, so what else the machine does falls on each alike.
+/// the trees as drawn and with trees cut at 370 m (as far as every tree reached before). The two take turns, four times
+/// round, so what else the machine does falls on each alike.
 /// </summary>
 public partial class PopRoute
 {
@@ -19,13 +19,11 @@ public partial class PopRoute
     {
         TerrainStreamer s = _game.Zone.Streamer;
         Viewport view = GetViewport();
-        float lod = view.MeshLodThreshold;
         void Reach(float large) => s.FloraMaterial.SetShaderParameter("flora_reach", new Vector2(large, DetailReach.Small));
         var states = new (string Name, Action On, Action Off)[]
         {
             ("as drawn", () => { }, () => { }),
-            ("without coarser versions", () => view.MeshLodThreshold = 0f, () => view.MeshLodThreshold = lod),
-            ("trees to 370 m", () => Reach(370f), () => Reach(DetailReach.Distance)),
+            ("trees to 370 m", () => Reach(370f), () => Reach(DetailReach.Large)),
         };
         foreach (float up in new[] { 2f, 60f })
         {
