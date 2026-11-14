@@ -352,16 +352,7 @@ public partial class Place
     }
 
     /// <summary>The way out of a hidden room's wall onto the side it is found from (the side that isn't the hidden room).</summary>
-    public Int3 FoundFrom(SecretRoom s) => FoundFrom(Inst, s);
-
-    public static Int3 FoundFrom(PoiInstance inst, SecretRoom s)
-    {
-        Int3 f = s.Facing.Vec(), wall = s.WallCells[0];
-        PlacedModule hidden = inst.Layout.Modules[s.Module];
-        Int3 a = wall + f;
-        bool intoHidden = a.X >= hidden.Min.X && a.X <= hidden.Max.X && a.Z >= hidden.Min.Z && a.Z <= hidden.Max.Z;
-        return intoHidden ? f * -1 : f;
-    }
+    public Int3 FoundFrom(SecretRoom s) => RoomDecor.FoundFrom(Inst, s);
 
     /// <summary>The hidden room whose breakable wall holds this cell, if any.</summary>
     public SecretRoom SecretAt(Int3 cell)

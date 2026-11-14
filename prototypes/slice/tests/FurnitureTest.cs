@@ -149,7 +149,7 @@ public partial class FurnitureTest : Node
                 foreach (PlacedModule m in inst.Layout.Modules)
                 {
                     if (m.Kind is not (ModuleKind.Room or ModuleKind.Hall or ModuleKind.Vault)) continue;
-                    if (Decor.Interior(inst, m) is not { } i) continue;
+                    if (RoomDecor.Interior(inst, m) is not { } i) continue;
                     var cells = m.Cells.Where(c => c.Y == i.Y).ToList();
                     if (cells.Count < 9) continue;
                     var set = cells.ToHashSet();

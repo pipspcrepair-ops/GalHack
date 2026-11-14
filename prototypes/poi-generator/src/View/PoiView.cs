@@ -83,6 +83,8 @@ public partial class PoiView : Node3D
     public static PoiView Build(PoiInstance poi, Biome biome, Options opt, Func<float, float, Color> groundAt = null, Vector2I offset = default)
     {
         var view = new PoiView { Poi = poi, Walkable = opt.Collision, Name = poi.Family.Id, _opt = opt, _biome = biome, _groundAt = groundAt, _offset = offset };
+        // Dressed first, as the game does: the generator's own props go from a room the library furnishes.
+        view.DressFromDecoLibrary();
         view.BuildBlocks();
         if (MeshBuild.Water(poi) is { } water) view._blocks.AddChild(water);
         view.BuildDoors();
@@ -92,7 +94,6 @@ public partial class PoiView : Node3D
         if (opt.Lights) view.BuildLitFaces();
         if (opt.Figures) view.BuildFigures();
         view.BuildInteractables();
-        view.DressFromDecoLibrary();
         return view;
     }
 

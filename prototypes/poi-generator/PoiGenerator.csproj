@@ -15,7 +15,7 @@
     <Compile Include="..\..\shared\Testing\**\*.cs" />
     <Compile Include="..\..\shared\Terrain\TerrainStamp.cs" />
     <Compile Include="..\building\src\Structures\LightSettings.cs" />
-    <!-- The decorations library (alien rooms are dressed from it) and the item catalogue it reads its pieces from. -->
+    <!-- The decorations library (every room is dressed from it, as in the game: Gen/RoomDecor) and the item catalogue it reads its pieces from. -->
     <Compile Include="..\..\shared\Items\Core\**\*.cs" />
     <Compile Include="..\..\shared\Deco\**\*.cs" />
   </ItemGroup>
