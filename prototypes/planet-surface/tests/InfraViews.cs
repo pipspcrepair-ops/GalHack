@@ -51,6 +51,12 @@ public static class InfraViews
             PlanetSurface.Poi.PoiSiting.StartWorld = true;
             return new(PlanetSpec.Roll(seed, arch, 0), m => default, 0.4, WeatherKind.Clear, Ground: what == "ways-wet" ? new GroundCover { Wetness = 0.75f } : null, Series: WaySeries);
         }
+        // Where a track leaves a road (and a road with its markings): from standing height and from 30 m up.
+        if (what == "junction")
+        {
+            PlanetSurface.Poi.PoiSiting.StartWorld = true;
+            return new(PlanetSpec.Roll(seed, arch, 0), m => default, 0.4, WeatherKind.Clear, Series: JunctionSeries);
+        }
         // The grid: a substation and its lines, a house's drop close, and a street of drops from above.
         if (what == "power")
         {
@@ -482,6 +488,26 @@ public static class InfraViews
             Add($"{name}-close", best.X[at] - dx * 3 + dz * 1.5, best.Z[at] - dz * 3 - dx * 1.5, best.Y[at] + 3.2f, best.X[at] + dx * 3, best.Z[at] + dz * 3, best.Y[at]);
             if (name != "steep") Add($"{name}-high", best.X[at] - dx * 120 + dz * 90, best.Z[at] - dz * 120 - dx * 90, best.Y[at] + 160f, best.X[at], best.Z[at], best.Y[at]);
         }
+        return shots;
+    }
+
+    /// <summary>The nearest track end that leaves a road on open ground, from standing height and 30 m up, and the road beside it with its markings.</summary>
+    static System.Collections.Generic.List<Screenshot.Shot> JunctionSeries(Main m)
+    {
+        var w = m.World;
+        var shots = new System.Collections.Generic.List<Screenshot.Shot>();
+        var j = Junctions.Find(w).OrderBy(q => Math.Pow(Mathx.WrapDelta(q.X - w.Landing.X, w.Width), 2) + Math.Pow(Mathx.WrapDelta(q.Z - w.Landing.Y, w.Height), 2)).FirstOrDefault();
+        if (j == null) { GD.Print("JUNCTION: none found"); return shots; }
+        GD.Print($"JUNCTION: track meets {j.Road.Kind} at {j.X:F0}, {j.Z:F0}");
+        float G(double x, double z) => w.GroundHeight(Mathx.WrapX(x, w.Width), Mathx.Wrap(z, w.Height));
+        void Add(string name, double x, double z, float y, double tx, double tz)
+        {
+            var (p, h, pitch) = Look(w, x, z, Math.Max(y, G(x, z) + 1.7f), tx, tz, G(tx, tz));
+            shots.Add(new Screenshot.Shot(name, p, h, pitch));
+        }
+        Add("junction-ground", j.X + j.DirX * 14, j.Z + j.DirZ * 14, 0f, j.X, j.Z);
+        Add("junction-high", j.X + j.DirX * 20, j.Z + j.DirZ * 20, G(j.X, j.Z) + 30f, j.X, j.Z);
+        Add("road-ground", j.X + j.RoadX * 6 + j.RoadZ * 8, j.Z + j.RoadZ * 6 - j.RoadX * 8, 0f, j.X + j.RoadX * 25, j.Z + j.RoadZ * 25);
         return shots;
     }
 

@@ -294,6 +294,22 @@ public sealed class RoadField
         return best;
     }
 
+    /// <summary>
+    /// The shader's junction rule, worked the same way (tests): two roads' decks join in one surface. Only laid roads
+    /// (both at least 3.5 m half width) round their corners, by a kerb of 12 m radius (15 where a highway meets); a track or a dirt road joins square.
+    /// </summary>
+    public static float Kerb(bool hard, float halfWidth, float otherHalfWidth, float crossing)
+        => hard && Math.Min(halfWidth, otherHalfWidth) >= 3.5f ? Math.Max((Math.Max(halfWidth, otherHalfWidth) > 5f ? 15f : 12f) * 1.7f * Smooth(0.1f, 0.4f, crossing), 0.5f) : 0.5f;
+
+    /// <summary>Metres past the joined deck's edge (negative inside) where a road's own edge is <paramref name="edge"/> and the other's is <paramref name="other"/>.</summary>
+    public static float JoinedEdge(float edge, float other, float kerb)
+    {
+        float h = Math.Max(kerb - MathF.Abs(edge - other), 0f) / kerb;
+        return MathF.Min(edge, other) - h * h * kerb * 0.25f;
+    }
+
+    public static float Smooth(float a, float b, float x) { float t = Math.Clamp((x - a) / (b - a), 0f, 1f); return t * t * (3f - 2f * t); }
+
     static ImageTexture Texture(float[] values, int w, int h, Image.Format format, int bytesPerTexel)
     {
         var bytes = new byte[w * h * bytesPerTexel];
