@@ -314,19 +314,20 @@ public partial class PopRoute : Node
                 if (tick % 6 != 0) continue;
                 List<FloraPop> popped = FloraPops();
                 if (tick > 30) floraPops.AddRange(popped);
-                // The frame before and after a sample in which trees popped in view, the trees ringed.
-                if (shotDir == null || shots >= 3) continue;
-                Image shot = Frame(1280);
-                if (lastShot != null && tick > 60 && popped.Count(q => q.Kind == "tree") >= 2)
+                // --shots=dir: two frames a tenth of a second apart at a third and two thirds of the way (the same places on
+                // the same world, --seed), the plants that popped between them ringed on the second.
+                if (shotDir == null) continue;
+                int third = (int)(length / speed * Engine.PhysicsTicksPerSecond / 3f) / 6 * 6;
+                if (tick == third || tick == 2 * third)
                 {
+                    Image shot = Frame(1280);
                     DirAccess.MakeDirRecursiveAbsolute(shotDir);
                     string tag = $"{shotDir}/{name.Replace(" ", "-")}-{++shots}";
-                    lastShot.SavePng($"{tag}-before.png");
-                    shot.SavePng($"{tag}-after.png");
-                    Ringed(shot, popped.Select(q => q.Mid), new Color(1f, 0.1f, 0.1f)).SavePng($"{tag}-after-ringed.png");
-                    GD.Print($"ROUTE shot {tag}: {string.Join(", ", popped.Select(q => $"{q.Kind} {(q.Appears ? "appears" : "goes")} at {q.Away:F0} m"))}");
+                    lastShot?.SavePng($"{tag}-a.png");
+                    Ringed(shot, popped.Select(q => q.Mid), new Color(1f, 0.1f, 0.1f)).SavePng($"{tag}-b-ringed.png");
+                    GD.Print($"ROUTE shot {tag}: {(popped.Count == 0 ? "nothing popped" : string.Join(", ", popped.Select(q => $"{q.Kind} {(q.Appears ? "appears" : "goes")} at {q.Away:F0} m")))}");
                 }
-                lastShot = shot;
+                else if (tick == third - 6 || tick == 2 * third - 6) lastShot = Frame(1280);
                 continue;
             }
             if (tick % 3 != 0) continue;
