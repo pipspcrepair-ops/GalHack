@@ -63,15 +63,17 @@
     "engine-bay":    { "kind": "single", "where": "island", "max": 2, "anchor": ["engine-stand"] },
     "tug-bay":       { "kind": "single", "where": "island", "max": 1, "anchor": ["tug"] },
     "rock-heap":     { "kind": "cluster", "where": "wall", "anchor": ["rock"], "count": [1, 3] },
-    "kitchen-run":   { "kind": "line", "where": "wall", "anchor": ["counter"], "middle": ["sink"], "ends": ["stove"], "count": [1, 4], "max": 1 },
+    "kitchen-run":   { "kind": "line", "where": "wall", "anchor": ["counter"], "middle": ["sink"], "ends": ["stove"], "count": [0, 4], "max": 1 },
     "kitchen-table": { "kind": "around", "where": "island", "anchor": ["dining-table"], "members": ["dining-chair"], "count": [2, 4], "gap": 0.06, "max": 1 },
     "hearth-wall":   { "kind": "single", "where": "wall", "anchor": ["hearth", "screen"], "max": 1 },
     "bed-bay":       { "kind": "bay", "where": "wall", "anchor": ["double-bed"], "beside": ["nightstand"], "max": 1 },
+    "single-bay":    { "kind": "bay", "where": "wall", "anchor": ["single-bed"], "beside": ["nightstand"], "max": 1 },
     "wardrobe-row":  { "kind": "row", "where": "wall", "anchor": ["wardrobe"], "count": [1, 2], "spacing": 0.02, "max": 1 },
     "bath-bay":      { "kind": "single", "where": "wall", "anchor": ["bath"], "max": 1 },
     "basin-wall":    { "kind": "single", "where": "wall", "anchor": ["basin"], "max": 1 },
     "wc-wall":       { "kind": "single", "where": "wall", "anchor": ["toilet"], "max": 1 },
     "console-wall":  { "kind": "single", "where": "wall", "anchor": ["console"], "max": 1 },
+    "coat-wall":     { "kind": "single", "where": "wall", "anchor": ["coat-stand"], "max": 1 },
     "big-piece":     { "kind": "single", "where": "island", "max": 2, "anchor": ["ridecar", "mascot", "crane", "cart", "drill", "optable", "tank", "instrument", "forklift", "trough", "well", "coop", "statue", "lounger"] }
   },
 
@@ -111,11 +113,11 @@
     // A home's rooms, each arranged round what it is for (see "focus"): the worktop run with its sink and cooker and a
     // table to eat at; a hearth or screen with the seats round a low table; the bed's head to a wall, a wardrobe; a bath,
     // a basin and a WC; a console and a coat stand by the door; a desk and books; shelves and boxes; a workbench.
-    "kitchen":     { "set": "residential", "wall": { "kitchen-run": 6, "shelf-row": 0.6 }, "island": { "kitchen-table": 3 }, "fill": ["sideboard", "bin", "plant"], "light": ["ceiling-light"] },
+    "kitchen":     { "set": "residential", "wall": { "kitchen-run": 6 }, "island": { "kitchen-table": 3 }, "fill": ["sideboard", "bin", "plant"], "light": ["ceiling-light"] },
     "living-room": { "set": "residential", "wall": { "hearth-wall": 5, "shelf-row": 2 }, "island": { "lounge": 4 }, "fill": ["lamp", "plant", "rug", "sideboard"], "light": ["ceiling-light"] },
-    "bedroom":     { "set": "residential", "wall": { "bed-bay": 6, "wardrobe-row": 3 }, "island": {}, "fill": ["nightstand", "lamp", "rug", "chest", "plant"], "light": ["ceiling-light"] },
+    "bedroom":     { "set": "residential", "wall": { "bed-bay": 6, "single-bay": 2, "wardrobe-row": 3 }, "island": {}, "fill": ["nightstand", "lamp", "rug", "chest", "plant"], "light": ["ceiling-light"] },
     "bathroom":    { "set": "residential", "wall": { "bath-bay": 4, "basin-wall": 4, "wc-wall": 4 }, "island": {}, "fill": ["bin", "plant"], "light": ["ceiling-light"] },
-    "hall":        { "set": "residential", "wall": { "console-wall": 4 }, "island": {}, "fill": ["coat-stand", "plant", "rug"], "light": ["ceiling-light"] },
+    "hall":        { "set": "residential", "wall": { "console-wall": 4, "coat-wall": 2 }, "island": {}, "fill": ["coat-stand", "plant", "rug"], "light": ["ceiling-light"] },
     "study":       { "set": "residential", "wall": { "desk-station": 5, "shelf-row": 3 }, "island": {}, "fill": ["plant", "lamp", "rug"], "light": ["ceiling-light"] },
     "store":       { "set": "residential", "wall": { "shelf-row": 3, "crate-stack": 3 }, "island": {}, "fill": ["chest", "luggage", "cabinet"], "light": ["ceiling-light"] },
     "garage":      { "set": "industrial", "wall": { "workbench-station": 4, "rack-row": 2, "tank-row": 1 }, "island": {}, "fill": ["barrel", "crate", "cylinders", "toolrack"] },

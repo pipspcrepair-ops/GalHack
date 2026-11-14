@@ -200,6 +200,7 @@
     { "id": "kitchen-unit", "name": "Kitchen unit", "set": "residential", "roles": ["counter", "bench"], "size": [2, 2, 2], "surface": 0.91, "fixed": true, "tech": "low", "bill": { "biomass": 2, "iron-bar": 1 } },
     { "id": "kitchen-sink", "name": "Kitchen sink", "set": "residential", "roles": ["sink"], "size": [2, 3, 2], "fixed": true, "tech": "low", "bill": { "biomass": 2, "iron-plate": 1 } },
     { "id": "cooker", "name": "Cooker", "set": "residential", "roles": ["stove"], "size": [2, 2, 2], "fixed": true, "tech": "low", "bill": { "iron-plate": 3, "copper-wire": 1 } },
+    { "id": "single-bed", "name": "Single bed", "set": "residential", "roles": ["single-bed", "bed"], "size": [2, 2, 4], "fixed": true, "tech": "low", "bill": { "biomass": 2, "polymer": 1 } },
     { "id": "dining-table", "name": "Dining table", "set": "residential", "roles": ["dining-table", "table"], "size": [4, 2, 2], "surface": 0.76, "fall": ["over", "side"], "tech": "low", "bill": { "biomass": 3 } },
     { "id": "dining-chair", "name": "Dining chair", "set": "residential", "roles": ["dining-chair", "chair"], "size": [1, 2, 1], "tech": "low", "bill": { "biomass": 1 } },
     { "id": "bathtub", "name": "Bath", "set": "residential", "roles": ["bath"], "size": [4, 2, 2], "fixed": true, "tech": "low", "bill": { "ceramic": 3, "iron-bar": 1 } },

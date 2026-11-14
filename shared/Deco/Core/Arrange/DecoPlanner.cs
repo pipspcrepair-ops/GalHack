@@ -84,8 +84,9 @@ public sealed class DecoPlanner
         if (!corridor && mix.Island.Any(t => _arr.Templates[t.Template].Kind == "rows"))
             Rows(_arr.Templates[mix.Island.First(t => _arr.Templates[t.Template].Kind == "rows").Template]);
 
-        if (!corridor && focus != null && Focal(mix.Wall, focus) is string first && _arr.Templates[first].Max == 1)
-            mix = new DecoSetPlan { Set = mix.Set, Wall = mix.Wall.Select(t => t.Template == first ? (t.Template, 0f) : t).ToList(), Island = mix.Island, Fill = mix.Fill, Light = mix.Light };
+        // One focal point a room: once it stands, the other ways of making one (a single bed where a double went) are off the walls.
+        if (!corridor && focus != null && Focal(mix.Wall, focus) != null)
+            mix = new DecoSetPlan { Set = mix.Set, Wall = mix.Wall.Select(t => Focuses(_arr.Templates[t.Template], focus) ? (t.Template, 0f) : t).ToList(), Island = mix.Island, Fill = mix.Fill, Light = mix.Light };
         if (!corridor) Walls(mix.Wall);
         if (!corridor) Islands(mix.Island.Where(t => _arr.Templates[t.Template].Kind != "rows").ToList());
         Fill(mix.Fill, corridor ? 0.25f : 0.45f);
@@ -228,6 +229,7 @@ public sealed class DecoPlanner
                     float back = a.Depth / 2;
                     m.Add(new Member { Piece = end, At = new Vector2((count - 1) * step + a.Width / 2 + 0.1f + end.Width / 2, back - end.Depth / 2), Role = "end" });
                 }
+                if (m.Count == 0) return null; // (a line of none and no end: nothing)
                 // Centre the row on its middle.
                 float mid = (m.Min(x => x.At.X - x.Piece.Width / 2) + m.Max(x => x.At.X + x.Piece.Width / 2)) / 2;
                 foreach (Member x in m) x.At.X -= mid;
@@ -342,6 +344,9 @@ public sealed class DecoPlanner
         _ => (_room.Width - back, _room.Depth - s),
     };
 
+    /// <summary>Whether a template makes a room's focal point: some piece of it plays one of the focus roles.</summary>
+    static bool Focuses(DecoTemplate t, string[] focus) => t.Anchor.Concat(t.Ends).Concat(t.Middle).Concat(t.Members).Any(focus.Contains);
+
     /// <summary>
     /// What the room is arranged round goes first (planning practice: the hearth, the cooker's worktop run, the bed's
     /// head), on the wall a person faces coming in by the first doorway, else the side walls, longest first; centred on
@@ -352,7 +357,7 @@ public sealed class DecoPlanner
         foreach (var (id, _) in mix.OrderByDescending(t => t.Weight))
         {
             DecoTemplate t = _arr.Templates[id];
-            if (!t.Anchor.Concat(t.Ends).Concat(t.Middle).Concat(t.Members).Any(focus.Contains)) continue;
+            if (!Focuses(t, focus)) continue;
             DecoWall entry = _room.Doors.Count > 0 ? _room.Doors[0].Wall : DecoWall.South;
             DecoWall facing = entry switch { DecoWall.North => DecoWall.South, DecoWall.South => DecoWall.North, DecoWall.West => DecoWall.East, _ => DecoWall.West };
             var walls = new List<DecoWall> { facing };
@@ -607,18 +612,18 @@ public sealed class DecoPlanner
         foreach (DecoDoor d in _room.Doors) _reserved.Add(_room.Apron(d, 1.2f, 0.2f));
         _reserved.AddRange(_room.Blocked);
         if (_room.Doors.Count == 0) return;
-        var (p0, i0) = _room.DoorPoint(_room.Doors[0]);
-        Vector2 a = p0 + i0 * 0.6f;
-        var targets = _room.Doors.Skip(1).Select(d => { var (p, i) = _room.DoorPoint(d); return p + i * 0.6f; }).ToList();
+        // A walking line between every two doorways, an L along the first one's axis, then across.
+        var points = _room.Doors.Select(d => { var (p, i) = _room.DoorPoint(d); return (At: p + i * 0.6f, In: i); }).ToList();
         // One way in: the walkway runs as far in as the doorway check asks (a metre and a half, less in a small room), so the far walls are free.
-        if (targets.Count == 0) targets.Add(a + i0 * MathF.Max(0f, MathF.Min(1.5f, MathF.Max(_room.Width, _room.Depth) * 0.4f) - 0.6f));
-        foreach (Vector2 b in targets)
-        {
-            // An L: along the first door's axis, then across.
-            Vector2 corner = MathF.Abs(i0.X) > 0.5f ? new Vector2(b.X, a.Y) : new Vector2(a.X, b.Y);
-            _reserved.Add(Segment(a, corner, w));
-            _reserved.Add(Segment(corner, b, w));
-        }
+        if (points.Count == 1) points.Add((points[0].At + points[0].In * MathF.Max(0f, MathF.Min(1.5f, MathF.Max(_room.Width, _room.Depth) * 0.4f) - 0.6f), points[0].In));
+        for (int i = 0; i < points.Count; i++)
+            for (int j = i + 1; j < points.Count; j++)
+            {
+                var (a, i0) = points[i];
+                Vector2 b = points[j].At, corner = MathF.Abs(i0.X) > 0.5f ? new Vector2(b.X, a.Y) : new Vector2(a.X, b.Y);
+                _reserved.Add(Segment(a, corner, w));
+                _reserved.Add(Segment(corner, b, w));
+            }
     }
 
     static DecoRect Segment(Vector2 a, Vector2 b, float width)

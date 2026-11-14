@@ -32,10 +32,19 @@ public static class PlaceLights
         bool high = (inst.Tech ?? inst.Layout.Family.Techs.Select(WorldProfile.Parse).DefaultIfEmpty(TechLevel.Mid).Max()) == TechLevel.High;
         var rng = new Rng(Hash.Combine(inst.SpawnSeed, 0x11647UL));
         int strips = 0;
-        // A plain building's lamps hang from its ceilings: where a ceiling came down, its lamp went with it.
+        // A plain building's lamps hang from its ceilings: where the ceiling over one came down, the lamp hangs from what
+        // is left of its room's ceiling, nearest first, or is gone with it.
         if (inst.Layout.Extras.Plain.Count > 0)
-            foreach (LightSpot l in inst.Lights.Where(l => !BlockInfo.IsFullCube(inst.Blocks.Get(l.Cell + Int3.Up).Type)))
-                l.Mode = LightMode.Dead;
+            foreach (LightSpot l in inst.Lights.Where(l => inst.Blocks.Get(l.Cell + Int3.Up).IsAir))
+            {
+                Int3 at = l.Cell;
+                var hung = l.Module >= 0 && l.Module < inst.Layout.Modules.Count
+                    ? inst.Layout.Modules[l.Module].Cells.Where(c => c.Y == at.Y && inst.Blocks.Get(c).IsAir && !inst.Blocks.Get(c + Int3.Up).IsAir)
+                        .OrderBy(c => (c.X - at.X) * (c.X - at.X) + (c.Z - at.Z) * (c.Z - at.Z)).Select(c => (Int3?)c).FirstOrDefault()
+                    : null;
+                if (hung is Int3 c) l.Cell = c;
+                else l.Mode = LightMode.Dead;
+            }
         foreach (LightSpot l in inst.Lights.Where(l => l.Mode is not (LightMode.Bloom or LightMode.Beacon or LightMode.Dead)).ToList())
         {
             LightMood mood = named ? PoiLights.MoodFor(inst) : feel switch

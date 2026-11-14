@@ -27,6 +27,17 @@ public static partial class DecoModels
             if (worktop) b.Box(-0.5f, 0.86f, -0.32f, 0.5f, 0.91f, 0.32f, Wood);
         }
 
+        r["single-bed"] = b =>
+        {
+            // A narrow bed, its head to the wall: frame, mattress, blanket turned down, a pillow.
+            b.Box(-0.46f, 0.1f, -0.98f, 0.46f, 0.3f, 0.92f, Wood);
+            foreach (float x in new[] { -0.42f, 0.42f }) b.Box(x - 0.04f, 0, -0.95f, x + 0.04f, 0.1f, -0.87f, Wood).Ghost();
+            b.Box(-0.43f, 0.3f, -0.94f, 0.43f, 0.48f, 0.9f, Linen).Soft();
+            b.Box(-0.45f, 0.46f, -0.96f, 0.45f, 0.56f, 0.2f, Fabric).Soft();
+            b.Box(-0.3f, 0.48f, 0.5f, 0.3f, 0.62f, 0.86f, Linen).Soft();
+            b.Box(-0.47f, 0.1f, 0.92f, 0.47f, 0.9f, 1.0f, Wood);
+        };
+
         r["kitchen-unit"] = b =>
         {
             Unit(b);

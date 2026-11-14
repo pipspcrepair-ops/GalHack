@@ -10,7 +10,7 @@ namespace PoiGenerator;
 public partial class PoiTest
 {
     /// <summary>What one room of a place shows a person walking in, as the game furnishes it.</summary>
-    sealed record RoomLook(PlacedModule Module, int Pieces, float Detour, bool Lit, bool Lamp, bool Focal, string Signature, (Gen.Finish, Rgb) Floor, (Gen.Finish, Rgb) Wall, string How);
+    sealed record RoomLook(PlacedModule Module, int Pieces, float Detour, bool Lit, bool Lamp, bool Focal, string Signature, (Gen.Finish, Rgb) Floor, (Gen.Finish, Rgb) Wall, string How, int Ways);
 
     /// <summary>
     /// The interiors of the place a sleeper walks into most early, the start town's houses, as the game shows them (the
@@ -54,7 +54,7 @@ public partial class PoiTest
                 }
                 if (!r.Lit) { unlit++; Weak("unlit"); Note("unlit", at); }
                 if (r.Lamp) lamps++;
-                if (!r.Focal) { unfocused++; Weak("no focal point"); Note("focal", $"{at} ({r.Signature})"); }
+                if (!r.Focal) { unfocused++; Weak("no focal point"); Note("focal", $"{at} ({r.Signature})"); if (unfocused <= 6) System.Console.WriteLine($"  no focal: {at}, {r.Ways} ways in ({r.Signature})"); }
             }
             int pairs = looks.SelectMany((a, k) => looks.Skip(k + 1).Where(b => a.Signature == b.Signature)).Count();
             alike += pairs;
@@ -135,7 +135,7 @@ public partial class PoiTest
             bool window = floor.Any(c => Dirs.Horizontal.Any(h => Enumerable.Range(1, 2).Any(k => g.Get(c + h.Vec() + Int3.Up * k) is { Type: BlockType.Pane, Role: Role.Window } or { IsAir: true } && !of.ContainsKey(c + h.Vec() + Int3.Up * k) && !of.ContainsKey(c + h.Vec() * 2 + Int3.Up * k))));
             bool sky = floor.Any(c => !Enumerable.Range(1, 12).Any(k => g.Get(c + Int3.Up * k) is { IsAir: false } b && BlockInfo.IsFullCube(b.Type)));
             string signature = $"{m.Purpose} {Math.Min(w0, d0)}x{Math.Max(w0, d0)} {floorLook.Item1}/{floorLook.Item2} {wallLook.Item1}/{wallLook.Item2}: {string.Join(" ", kinds.OrderBy(k => k))}";
-            looks.Add(new RoomLook(m, pieces, detour, lamp || window || sky, lamp, focal, signature, floorLook, wallLook, how));
+            looks.Add(new RoomLook(m, pieces, detour, lamp || window || sky, lamp, focal, signature, floorLook, wallLook, how, ways.Count));
         }
         return looks;
     }
