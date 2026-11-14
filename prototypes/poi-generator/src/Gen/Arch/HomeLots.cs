@@ -271,7 +271,7 @@ public static partial class Homes
         shaft.Skin = (u, y, v) => new Block(BlockType.Cube, Material.Concrete, concrete.Scale(y % 4 == 3 ? 0.9f : 1f), Role.Wall, Dir.North, precast);
         shaft.Wings.Add(new Wing(0, 0, tw - 1, tw - 1));
         var halls = new List<Room>();
-        for (int st = 0; st < storeys; st++) halls.Add(shaft.Add(st == 0 ? "hall" : "storage", st, 1, 1, tw - 2, tw - 2, ModuleKind.Hall));
+        for (int st = 0; st < storeys; st++) halls.Add(shaft.Add(st == 0 ? "hall" : "store", st, 1, 1, tw - 2, tw - 2, ModuleKind.Hall));
         shaft.Raise();
         var flights = new List<int>();
         for (int st = 0; st + 1 < storeys; st++) flights.Add(shaft.Stair(st % 2 == 0 ? tw - 2 : 1, 2, st));
@@ -282,8 +282,8 @@ public static partial class Homes
         int last = storeys - 1, col = last % 2 == 0 ? tw - 2 : 1;
         // Two rooms side by side, the wall between them clear of where the stair comes up.
         int split = col == 1 ? 4 : 3;
-        Room mess = col == 1 ? house.Add("mess", 0, -off + 1, -off + 1, split - 1, tw - 2 + off, ModuleKind.Hall) : house.Add("mess", 0, split + 1, -off + 1, tw - 2 + off, tw - 2 + off, ModuleKind.Hall);
-        Room kitchen = col == 1 ? house.Add("farm-kitchen", 0, split + 1, -off + 1, tw - 2 + off, tw - 2 + off) : house.Add("farm-kitchen", 0, -off + 1, -off + 1, split - 1, tw - 2 + off);
+        Room mess = col == 1 ? house.Add("living-room", 0, -off + 1, -off + 1, split - 1, tw - 2 + off, ModuleKind.Hall) : house.Add("living-room", 0, split + 1, -off + 1, tw - 2 + off, tw - 2 + off, ModuleKind.Hall);
+        Room kitchen = col == 1 ? house.Add("kitchen", 0, split + 1, -off + 1, tw - 2 + off, tw - 2 + off) : house.Add("kitchen", 0, -off + 1, -off + 1, split - 1, tw - 2 + off);
         house.Raise();
         // The last flight comes up through the house's floor, the room keeping clear of it.
         flights.Add(shaft.Stair(col, 2, last));
@@ -324,6 +324,10 @@ public static partial class Homes
         house.Service(tw / 2 - 1, 0, null);
         for (int v = -(front + margin); v < 0; v++)
             for (int k = 0; k < 2; k++) l.Plate(f, tw / 2 - 1 + k, v, l.S.Base.Scale(1.15f), Role.Floor);
+        // Its rooms finished by purpose, as every house's.
+        var colours = new Dictionary<string, int>();
+        shaft.Interior(r.Fork("interior 0"), l.Tech, colours);
+        house.Interior(r.Fork("interior 1"), l.Tech, colours);
         l.C.X.Homes.Add(new HomeNote(s.Family.Id, $"tower/{storeys}/{top}/{s.Roof}/{s.Wall}", storeys + 1, s.Roof, "none", "", 0, 0, default, Dir.North, false) { Exits = shaft.ExitCells().ToList() });
         return new Built { U0 = side, U1 = side + 2 * margin + tw - 1, V0 = front, V1 = front + 2 * margin + tw - 1, DoorU = side + margin + tw / 2 - 1, DoorV = front + margin, PathU = side + margin + tw / 2 - 1 };
     }

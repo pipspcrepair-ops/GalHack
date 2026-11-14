@@ -18,7 +18,7 @@ public static partial class Homes
 
     sealed class PlanRoom
     {
-        public string Purpose = "quarters";
+        public string Purpose = "bedroom";
         public ModuleKind Kind = ModuleKind.Room;
         public int U0, V0, U1, V1;
         public bool Garage, Court;
@@ -89,7 +89,7 @@ public static partial class Homes
         {
             int hl = Math.Clamp(3 + r.Range(0, 3), 3, len - 4);
             hv1 = v0 + hl - 1;
-            behind = new PlanRoom("farm-kitchen", hu0, hv1 + 2, hu1, v1);
+            behind = new PlanRoom("kitchen", hu0, hv1 + 2, hu1, v1);
         }
         p.Hall = new PlanRoom("hall", hu0, v0, hu1, hv1, ModuleKind.Hall);
         p.Rooms.Add(p.Hall);
@@ -103,20 +103,20 @@ public static partial class Homes
             if (garage)
             {
                 int gl = Math.Min(len, Math.Max(6, len - 4));
-                var g = new PlanRoom("workshop", su0, v0, su1, v0 + gl - 1) { Garage = true };
+                var g = new PlanRoom("garage", su0, v0, su1, v0 + gl - 1) { Garage = true };
                 p.Rooms.Add(g);
                 p.Integral = g;
                 p.GarageWide = su1 - su0 + 1;
-                if (len - gl - 1 >= 3) p.Rooms.Add(new PlanRoom("quarters", su0, v0 + gl + 1, su1, v1));
+                if (len - gl - 1 >= 3) p.Rooms.Add(new PlanRoom("bedroom", su0, v0 + gl + 1, su1, v1));
                 return;
             }
             if (len >= 8 && r.Chance(0.85f))
             {
                 int fl = Math.Clamp(len / 2 + r.Range(-1, 2), 3, len - 4);
-                p.Rooms.Add(new PlanRoom("quarters", su0, v0, su1, v0 + fl - 1));
-                p.Rooms.Add(new PlanRoom("quarters", su0, v0 + fl + 1, su1, v1));
+                p.Rooms.Add(new PlanRoom("bedroom", su0, v0, su1, v0 + fl - 1));
+                p.Rooms.Add(new PlanRoom("bedroom", su0, v0 + fl + 1, su1, v1));
             }
-            else p.Rooms.Add(new PlanRoom("quarters", su0, v0, su1, v1));
+            else p.Rooms.Add(new PlanRoom("bedroom", su0, v0, su1, v1));
         }
         Strip(u0, u0 + a - 1, garageWide > 0 && garageLeft);
         Strip(hu1 + 2, hu1 + 1 + b, garageWide > 0 && !garageLeft);
@@ -130,10 +130,10 @@ public static partial class Homes
         if (len >= 9 && r.Chance(0.7f))
         {
             int cut = Math.Clamp(len / 2 + r.Range(-1, 2), 3, len - 4);
-            if (alongU) { p.Rooms.Add(new PlanRoom("quarters", u0, v0, u0 + cut - 1, v1)); p.Rooms.Add(new PlanRoom("quarters", u0 + cut + 1, v0, u1, v1)); }
-            else { p.Rooms.Add(new PlanRoom("quarters", u0, v0, u1, v0 + cut - 1)); p.Rooms.Add(new PlanRoom("quarters", u0, v0 + cut + 1, u1, v1)); }
+            if (alongU) { p.Rooms.Add(new PlanRoom("bedroom", u0, v0, u0 + cut - 1, v1)); p.Rooms.Add(new PlanRoom("bedroom", u0 + cut + 1, v0, u1, v1)); }
+            else { p.Rooms.Add(new PlanRoom("bedroom", u0, v0, u1, v0 + cut - 1)); p.Rooms.Add(new PlanRoom("bedroom", u0, v0 + cut + 1, u1, v1)); }
         }
-        else p.Rooms.Add(new PlanRoom("quarters", u0, v0, u1, v1));
+        else p.Rooms.Add(new PlanRoom("bedroom", u0, v0, u1, v1));
     }
 
     static HousePlan MakePlan(HouseStyle s, Rng r, int garageWide)
@@ -160,13 +160,13 @@ public static partial class Homes
                 p.DoorV = 0;
                 if (garageWide > 0 && c - 2 >= garageWide)
                 {
-                    p.Integral = new PlanRoom("workshop", c - 1 - garageWide, 1, c - 2, fd - 2) { Garage = true };
+                    p.Integral = new PlanRoom("garage", c - 1 - garageWide, 1, c - 2, fd - 2) { Garage = true };
                     p.GarageWide = garageWide;
                     p.Rooms.Add(p.Integral);
-                    if (c - 2 - garageWide >= 3) p.Rooms.Add(new PlanRoom("storage", 1, 1, c - 3 - garageWide, fd - 2));
+                    if (c - 2 - garageWide >= 3) p.Rooms.Add(new PlanRoom("store", 1, 1, c - 3 - garageWide, fd - 2));
                 }
-                else p.Rooms.Add(new PlanRoom("quarters", 1, 1, c - 2, fd - 2));
-                p.Rooms.Add(new PlanRoom("quarters", c + 4, 1, W - 2, fd - 2));
+                else p.Rooms.Add(new PlanRoom("bedroom", 1, 1, c - 2, fd - 2));
+                p.Rooms.Add(new PlanRoom("bedroom", c + 4, 1, W - 2, fd - 2));
                 int back = bd > 0 ? D - bd - 1 : D - 2;
                 WingRooms(p, r, 1, fd, sw - 2, D - 2);
                 WingRooms(p, r, W - sw + 1, fd, W - 2, D - 2);
@@ -187,7 +187,7 @@ public static partial class Homes
                     }
                 var inner = new HashSet<(int, int)>(p.Round.Where(c => p.Round.Contains((c.Item1 - 1, c.Item2)) && p.Round.Contains((c.Item1 + 1, c.Item2)) && p.Round.Contains((c.Item1, c.Item2 - 1)) && p.Round.Contains((c.Item1, c.Item2 + 1))));
                 int iu = (int)(rx * 0.6f), iv = (int)(rz * 0.6f);
-                var room = new PlanRoom("mess", rx - iu, rz - iv, rx + iu - 1, rz + iv - 1, ModuleKind.Hall) { Shape = inner };
+                var room = new PlanRoom("living-room", rx - iu, rz - iv, rx + iu - 1, rz + iv - 1, ModuleKind.Hall) { Shape = inner };
                 p.Rooms.Add(room);
                 p.Hall = room;
                 p.DoorU = rx - 1;
@@ -211,8 +211,8 @@ public static partial class Homes
                     if (r1 - r0 + 1 >= 2)
                     {
                         int fl = Math.Clamp((D - 2) / 2, 3, D - 6);
-                        rooms.Add(new PlanRoom("quarters", r0, 1, r1, fl));
-                        rooms.Add(new PlanRoom("farm-kitchen", r0, fl + 2, r1, D - 2));
+                        rooms.Add(new PlanRoom("bedroom", r0, 1, r1, fl));
+                        rooms.Add(new PlanRoom("kitchen", r0, fl + 2, r1, D - 2));
                     }
                     p.Rooms.AddRange(rooms);
                     p.Units.Add((hall, mirror ? h0 + 1 : h0, rooms));
@@ -270,17 +270,18 @@ public static partial class Homes
                 break;
             }
         }
-        // Purposes: a kitchen (where the loot is kept), a living room, bedrooms, a washroom.
+        // Purposes: a kitchen at the back (where the loot is kept), the biggest of the rest the living room, the smallest a
+        // bathroom, now and then a store; the rest bedrooms.
         var plain = p.Rooms.Where(x => x != p.Hall && !x.Garage && x.Purpose != "hall").ToList();
         if (p.Units.Count == 0 && p.Round == null)
         {
             if (plain.Count == 0) throw new PlanFailed("no rooms but the hall");
-            if (!plain.Any(x => x.Purpose == "farm-kitchen"))
-                plain.OrderByDescending(x => x.V0).ThenBy(x => x.Area).First().Purpose = "farm-kitchen";
-            var rest = plain.Where(x => x.Purpose != "farm-kitchen").OrderByDescending(x => x.Area).ToList();
-            if (rest.Count > 0) rest[0].Purpose = "mess";
-            if (rest.Count > 2) rest[^1].Purpose = "washroom";
-            if (rest.Count > 3 && r.Chance(0.5f)) rest[^2].Purpose = "storage";
+            if (!plain.Any(x => x.Purpose == "kitchen"))
+                plain.OrderByDescending(x => x.V0).ThenBy(x => x.Area).First().Purpose = "kitchen";
+            var rest = plain.Where(x => x.Purpose != "kitchen").OrderByDescending(x => x.Area).ToList();
+            if (rest.Count > 0) rest[0].Purpose = "living-room";
+            if (rest.Count > 2) rest[^1].Purpose = "bathroom";
+            if (rest.Count > 3 && r.Chance(0.5f)) rest[^2].Purpose = "store";
         }
         if (p.Round == null && p.Rooms.Any(x => x.Shape == null && (x.U1 - x.U0 < 1 || x.V1 - x.V0 < 1))) throw new PlanFailed("a room too small");
         return p;
@@ -545,11 +546,14 @@ public static partial class Homes
             var list = new List<(PlanRoom, Room)>();
             foreach (PlanRoom pr in plan.Rooms)
             {
-                string purpose = st == 0 ? pr.Purpose : pr == plan.Hall || pr.Kind == ModuleKind.Hall ? "hall" : pr.Purpose == "washroom" ? "washroom" : list.Count % 4 == 3 ? "storage" : "quarters";
+                string purpose = st == 0 ? pr.Purpose : pr == plan.Hall || pr.Kind == ModuleKind.Hall ? "hall" : pr.Purpose == "bathroom" ? "bathroom" : list.Count % 4 == 3 ? "store" : "bedroom";
                 Room rm = h.Add(purpose, st, pr.U0, pr.V0, pr.U1, pr.V1, st == 0 ? pr.Kind : pr.Kind == ModuleKind.Hall ? ModuleKind.Hall : ModuleKind.Room);
                 rm.Shape = pr.Shape;
                 list.Add((pr, rm));
             }
+            // A storey's third bedroom is a study (a box room with a desk): no two bedrooms of a house the same three times over.
+            foreach (Room third in list.Select(x => x.Item2).Where(x => x.Purpose == "bedroom").OrderByDescending(x => (x.U1 - x.U0 + 1) * (x.V1 - x.V0 + 1)).Skip(2).Take(1))
+                third.Purpose = "study";
             storeyRooms.Add(list);
         }
         h.Raise();
@@ -671,7 +675,7 @@ public static partial class Homes
             g = new Hut(l, f) { Storeys = 1, RoofFinish = Surfaces.HouseVariant(s.Cover) };
             g.Skin = Cladding(s, g, l.S, tech);
             g.Wings.Add(new Wing(gu0, gv0, gu0 + gOuter - 1, gv0 + gd - 1, s.Roof is "hip" or "pagoda" || !s.GableFront));
-            Room gr = g.Add("workshop", 0, gu0 + 1, gv0 + 1, gu0 + gOuter - 2, gv0 + gd - 2, ModuleKind.Hall);
+            Room gr = g.Add("garage", 0, gu0 + 1, gv0 + 1, gu0 + gOuter - 2, gv0 + gd - 2, ModuleKind.Hall);
             g.Raise();
             gDoorU = gu0 + 1;
             gDoorV = gv0;
@@ -681,7 +685,7 @@ public static partial class Homes
             bool inner = false;
             if (s.Garage == "attached")
             {
-                var gp = new PlanRoom("workshop", gr.U0, gr.V0, gr.U1, gr.V1) { Garage = true };
+                var gp = new PlanRoom("garage", gr.U0, gr.V0, gr.U1, gr.V1) { Garage = true };
                 foreach (var (pr, rm) in storeyRooms[0].Where(x => !x.P.Garage).OrderBy(x => x.P.Kind == ModuleKind.Hall ? 0 : 1))
                 {
                     if (Meet(pr, gp) is not var (wall, alongU, lo, hi) || alongU) continue;
@@ -763,9 +767,12 @@ public static partial class Homes
         if (gWide > 0 && s.Garage != "carport") (g ?? h).Headroom(gDoorU, gDoorV, Dir.North, 0, gWide, exit: false);
         // Furniture by purpose, the loot in the kitchen.
         h.Furnish();
-        Room kitchen = storeyRooms[0].Select(x => x.R).FirstOrDefault(x => x.Purpose == "farm-kitchen") ?? storeyRooms[0].Select(x => x.R).Where(x => x.Kind != ModuleKind.Hall || storeyRooms[0].Count == 1).OrderByDescending(x => (x.U1 - x.U0) * (x.V1 - x.V0)).First();
+        Room kitchen = storeyRooms[0].Select(x => x.R).FirstOrDefault(x => x.Purpose == "kitchen") ?? storeyRooms[0].Select(x => x.R).Where(x => x.Kind != ModuleKind.Hall || storeyRooms[0].Count == 1).OrderByDescending(x => (x.U1 - x.U0) * (x.V1 - x.V0)).First();
         h.Loot(kitchen);
         foreach (Hut x in huts) x.Box();
+        // Its rooms finished by purpose: floors, paint, a lamp in every ceiling, the structure by role.
+        var colours = new Dictionary<string, int>();
+        foreach (Hut x in huts) x.Interior(r.Fork($"interior {huts.IndexOf(x)}"), tech, colours);
         // The way in, and the front doors.
         int stepV = plan.DoorV - (lifted ? 4 + h.Lift : Math.Max(3, s.Over + 2));
         int frontU = fronts[0].DoorU;

@@ -174,6 +174,10 @@ public sealed class PlaceLook
     /// <summary>The purpose of the room standing on each floor cell (its walk-level cells), by index into <see cref="Purposes"/>.</summary>
     readonly Dictionary<Int3, byte> _rooms = new();
     public readonly List<string> Purposes = new() { "" };
+    /// <summary>Each room slot's own wall paint inside (null: its blocks' colour): a slot of its own for every room its builder painted.</summary>
+    public readonly List<Rgb?> Paints = new() { null };
+    /// <summary>The colour the place's ceilings are painted inside, where its builder said (a house's).</summary>
+    public Rgb? Ceiling;
     /// <summary>A far lump's roofs: the finish of the roofs in each of its cells (Mesher.Coarse), by cell index.</summary>
     public byte[]? CoarseRoofs;
     public Int3 CoarseSize;
@@ -197,13 +201,15 @@ public sealed class PlaceLook
         look.Wear = Math.Clamp(wear + (inst.State == PoiState.Infested ? 0.15f : 0f), 0f, 1f);
         look.Fire = ruined || inst.Blasted > 0f ? Math.Clamp(Math.Max(age.Violence, inst.Blasted), 0f, 1f) : inst.State == PoiState.Abandoned ? age.Violence * 0.3f : 0f;
         look.Water = Math.Clamp(age.Water, 0f, 1f);
+        look.Ceiling = inst.Layout.Extras.Ceiling;
         foreach (PlacedModule m in inst.Layout.Modules)
         {
             string purpose = m.Purpose;
             if (purpose.Length == 0 && m.Kind == ModuleKind.Corridor) purpose = "corridor";
-            if (purpose.Length == 0 || !look.Book.Rooms.ContainsKey(purpose)) continue;
-            int i = look.Purposes.IndexOf(purpose);
-            if (i < 0) { i = look.Purposes.Count; look.Purposes.Add(purpose); }
+            bool painted = inst.Layout.Extras.Paints.TryGetValue(m.Index, out Rgb paint);
+            if (purpose.Length == 0 || !painted && !look.Book.Rooms.ContainsKey(purpose)) continue;
+            int i = painted ? -1 : look.Purposes.IndexOf(purpose);
+            if (i < 0) { i = look.Purposes.Count; look.Purposes.Add(purpose); look.Paints.Add(painted ? paint : null); }
             if (i > 255) continue;
             foreach (Int3 c in m.Cells)
                 if (c.Y == m.Min.Y) look._rooms[c] = (byte)i;
@@ -235,6 +241,17 @@ public sealed class PlaceLook
 
     /// <summary>The room whose floor is this cell, as an index into <see cref="Purposes"/> (0: none).</summary>
     public int RoomAt(Int3 floorCell) => _rooms.TryGetValue(floorCell, out byte i) ? i : 0;
+
+    /// <summary>A room slot's own wall paint (null: its blocks' colour).</summary>
+    public Rgb? PaintOf(int room) => room > 0 && room < Paints.Count ? Paints[room] : null;
+
+    /// <summary>
+    /// The colour a face is drawn: a wall's inside or a ceiling coated (plaster, render, tiles) in the paint its room was
+    /// done in and the place's ceiling colour, else its block's own.
+    /// </summary>
+    public Rgb Colour(Block b, Side side, Finish f, int room) =>
+        f is Finish.Plaster or Finish.Render or Finish.WallTile or Finish.CeilingTile or Finish.Precast
+        && (side == Side.In ? PaintOf(room) : side == Side.Ceiling && room > 0 ? Ceiling : null) is Rgb paint ? paint : b.Color;
 
     /// <summary>A copy for a far lump of the place: its age and rules, none of its rooms.</summary>
     public PlaceLook Far(byte[] roofs, Int3 size) => new()

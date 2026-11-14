@@ -464,16 +464,26 @@ public static class Mesher
         int CoarseIndex(Int3 p) => (p.Y * _look.CoarseSize.Z + p.Z) * _look.CoarseSize.X + p.X;
 
         /// <summary>The place shader's code for one face of a block, looking along a normal (see <see cref="Surfaces.Code"/>); 0 draws it plain.</summary>
-        float FaceCode(Int3 p, Block b, V3 normal, bool slope, Surface surf)
+        float FaceCode(Int3 p, Block b, V3 normal, bool slope, Surface surf) => FaceCode(p, b, normal, slope, surf, out _, out _);
+
+        /// <summary>A face's colour and code: a coated face inside in its room's paint (<see cref="PlaceLook.Colour"/>), else the body's.</summary>
+        Rgb Painted(Int3 p, Block b, V3 normal, Surface surf, Rgb body, out float code)
         {
+            code = FaceCode(p, b, normal, false, surf, out int room, out FaceSide side);
+            return code == 0f ? body : _look.Colour(b with { Color = body }, side, Surfaces.FinishOf(code), room);
+        }
+
+        float FaceCode(Int3 p, Block b, V3 normal, bool slope, Surface surf, out int room, out FaceSide side)
+        {
+            room = 0;
+            side = FaceSide.Out;
             if (!Finishes || surf is Surface.Glow or Surface.Flesh) return 0f;
             int f = FaceOf(normal);
             Int3 n = p + Dirs.All[f].Vec();
             bool up = f == 4, down = f == 5;
             bool wallish = b.Role is Role.Wall or Role.Secret or Role.Window or Role.Door;
-            FaceSide side;
             bool indoors = false;
-            int h = 3, room = 0;
+            int h = 3;
             if (_o.Merged)
                 side = up && !wallish ? FaceSide.Roof : down && !wallish ? FaceSide.Soffit : FaceSide.Out;
             else if (down)
@@ -489,7 +499,8 @@ public static class Mesher
                 {
                     h = 0;
                     side = wallish ? (indoors ? FaceSide.In : FaceSide.Out) : indoors ? FaceSide.Floor : FaceSide.Roof;
-                    if (indoors) room = _look.RoomAt(n);
+                    // (A floor's finish laid in a cell is that cell's room's floor, as the floor under one is the room's over it.)
+                    if (indoors) room = _look.RoomAt(BlockInfo.IsFinish(b.Type) ? p : n);
                 }
                 else
                 {
@@ -675,7 +686,11 @@ public static class Mesher
                         Surface ps = Shapes.SurfaceOf(paint.Material);
                         key = Key(paint.Color, ps, (int)FaceCode(PaintedLike(p, paint), paint, Normals[f], false, ps) & 0xFF);
                     }
-                    else key = Key(body, bodySurf, (int)FaceCode(p, b, Normals[f], false, bodySurf) & 0xFF);
+                    else
+                    {
+                        Rgb col = Painted(p, b, Normals[f], bodySurf, body, out float code);
+                        key = Key(col, bodySurf, (int)code & 0xFF);
+                    }
                 }
                 var (u, v, k) = Face2(f, l);
                 int plane = f * side + k;
@@ -826,9 +841,9 @@ public static class Mesher
                 }
                 else
                 {
-                    float code = FaceCode(p, b, Normals[f], false, surf);
+                    Rgb col = Painted(p, b, Normals[f], surf, body, out float code);
                     // A finished face keeps its colour even: the shader's own variation does the work the mottle did.
-                    Face(chunk, surf, p, f, body, glass ? 0.35f : 1f, code != 0f ? 1f : jitter, ao: surf != Surface.Glow, code);
+                    Face(chunk, surf, p, f, col, glass ? 0.35f : 1f, code != 0f ? 1f : jitter, ao: surf != Surface.Glow, code);
                 }
                 if (glyph) Glyph(chunk, p, f, b.Color);
                 if (b.Type == BlockType.Breakable && f < 4) Glyph(chunk, p, f, b.Color.Scale(0.35f), Surface.Matte, crack: true);

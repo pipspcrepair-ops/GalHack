@@ -89,15 +89,16 @@ room office archive security monitor control command        floor:carpet.tiles  
 room lobby                                                   floor:tile.large       wall:plaster  ceiling:ceilingtile
 room corridor hallway passage connector                     floor:lino             wall:plaster  ceiling:ceilingtile
 room ward nurses pharmacy quarantine decon mortuary theatre  floor:lino             wall:walltile ceiling:ceilingtile
-room washroom                                                floor:tile.mosaic      wall:walltile ceiling:plaster
+room washroom bathroom                                       floor:tile.mosaic      wall:walltile ceiling:plaster
 room kitchen galley farm-kitchen mess                        floor:tile.checker     wall:walltile ceiling:plaster
-room living-room day-room                                    floor:planks           wall:plaster  ceiling:plaster
-room quarters crew-quarters                                  floor:carpet           wall:plaster  ceiling:plaster
+room hall                                                    floor:tile.square      wall:plaster  ceiling:plaster
+room living-room day-room study                              floor:planks           wall:plaster  ceiling:plaster
+room quarters crew-quarters bedroom                          floor:carpet           wall:plaster  ceiling:plaster
 room shop market-hall                                        floor:tile             wall:plaster  ceiling:ceilingtile
 room lab server-room                                         floor:lino             wall:plaster  ceiling:ceilingtile
 room chapel                                                  floor:parquet          wall:plaster  ceiling:plaster
 room cellblock cells solitary guardroom evidence             floor:poured           wall:block    ceiling:poured
 room storage store stores warehouse parts-store ore-store loading-dock hold   floor:poured   wall:block   ceiling:poured
-room workshop generator boiler-house plant pump-hall reactor engine-room       floor:poured   wall:block   ceiling:poured
+room workshop garage generator boiler-house plant pump-hall reactor engine-room       floor:poured   wall:block   ceiling:poured
 room armoury magazine                                        floor:poured           wall:poured   ceiling:poured
 room cellar                                                  floor:poured           wall:painted=plaster/block ceiling:planks

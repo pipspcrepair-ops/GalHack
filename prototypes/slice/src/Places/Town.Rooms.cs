@@ -80,7 +80,7 @@ public sealed partial class Town
                 float yaw = Mathf.DegToRad(pl.Yaw);
                 var front = new Vector3(-MathF.Sin(yaw), 0f, -MathF.Cos(yaw));
                 var mid = new Vector3(room.Corner.X + pl.X, room.Corner.Y + room.Floor, room.Corner.Z + pl.Z);
-                HashSet<PInt3> own = room.Blocking.TryGetValue(i, out var b) ? b : new HashSet<PInt3>(Decor.CellsOf(DecoLayout.Footprint(decor.Forge, pl), room.Corner, 0.05f));
+                HashSet<PInt3> own = room.Blocking.TryGetValue(i, out var b) ? b : new HashSet<PInt3>(RoomDecor.CellsOf(DecoLayout.Footprint(decor.Forge, pl), room.Corner, 0.05f));
                 // Stood at from the front (a bench, a desk, a counter), sat on (a seat), climbed into from its foot (a bed).
                 Vector3 want = use == "sit" ? mid + front * MathF.Min(0.25f, piece.Depth * 0.25f) : mid + front * (piece.Depth * 0.5f + 0.45f);
                 PInt3? cell = Beside(want, own, reach);

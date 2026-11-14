@@ -39,9 +39,9 @@ public static class Dressing
     static string? SpotTag(string purpose) => purpose switch
     {
         "market-hall" or "shop" or "market" or "stall" => "stall",
-        "office" or "workshop" or "control" or "galley" or "storage" or "warehouse" or "parts-store" or "loading-dock" or "plant" or "generator" => "work",
-        "mess" or "canteen" or "lobby" or "farm-kitchen" => "sit",
-        "quarters" or "apartment" or "shack" or "washroom" => "home",
+        "office" or "workshop" or "control" or "galley" or "storage" or "warehouse" or "parts-store" or "loading-dock" or "plant" or "generator" or "garage" or "store" => "work",
+        "mess" or "canteen" or "lobby" or "farm-kitchen" or "kitchen" or "living-room" => "sit",
+        "quarters" or "apartment" or "shack" or "washroom" or "bedroom" or "bathroom" or "study" => "home",
         "greenhouse" or "hydroponic shed" or "grow-room" or "hydroponics" or "garden" => "garden",
         "yard" or "corridor" or "square" or "plaza" => "chat",
         _ => null,
