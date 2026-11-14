@@ -371,16 +371,28 @@ block 2 2 -9 iron-plated paint=cream,inner,cream,cream,cream,cream
 block -3 2 -8 iron-plated paint=cream
 block -2..1 2 -8 iron-plated paint=cream,cream,cream,cream,cream,inner
 block 2 2 -8 iron-plated paint=cream
+block -8 2 -6 iron-plated corner rot=+y-x paint=pod
 block -7..-4 2 -6 iron-plated slope paint=pod
+block -3 2 -6 iron-plated corner paint=pod
+block 2 2 -6 iron-plated corner rot=+y-x paint=pod
 block 3..6 2 -6 iron-plated slope paint=pod
+block 7 2 -6 iron-plated corner paint=pod
+block -8 2 -5 iron-plated corner rot=+y+z paint=pod
 block -7 2 -5 iron-plated slope rot=+y-x paint=pod
 block -6..-4 2 -5 iron-plated paint=pod
+block -3 2 -5 iron-plated corner rot=+y+x paint=pod
+block -2 2 -5 iron-plated corner rot=+y-x paint=spine
 block -1..0 2 -5 iron-plated slope paint=spine
+block 1 2 -5 iron-plated corner paint=spine
+block 2 2 -5 iron-plated corner rot=+y+z paint=pod
 block 3..5 2 -5 iron-plated paint=pod
 block 6 2 -5 iron-plated slope rot=+y+x paint=pod
+block 7 2 -5 iron-plated corner rot=+y+x paint=pod
 block -7 2 -4 iron-plated slope rot=+y-x paint=pod
 block -6..-4 2 -4 iron-plated paint=pod
+block -2 2 -4 iron-plated corner rot=+y+z paint=spine
 block -1..0 2 -4 iron-plated paint=spine
+block 1 2 -4 iron-plated corner rot=+y+x paint=spine
 block 3..5 2 -4 iron-plated paint=pod
 block 6 2 -4 iron-plated slope rot=+y+x paint=pod
 block -7 2 -3 iron-plated slope rot=+y-x paint=pod
@@ -429,13 +441,23 @@ block -7 2 6 iron-plated slope rot=+y-x paint=pod
 block -6..-4 2 6 iron-plated paint=pod
 block 3..5 2 6 iron-plated paint=pod
 block 6 2 6 iron-plated slope rot=+y+x paint=pod
+block -8 2 7 iron-plated corner rot=+y-x paint=pod
 block -7 2 7 iron-plated slope rot=+y-x paint=pod
 block -6..-4 2 7 iron-plated paint=pod
+block -3 2 7 iron-plated corner paint=pod
+block 2 2 7 iron-plated corner rot=+y-x paint=pod
 block 3..5 2 7 iron-plated paint=pod
 block 6 2 7 iron-plated slope rot=+y+x paint=pod
+block 7 2 7 iron-plated corner paint=pod
+block -8 2 8 iron-plated corner rot=+y+z paint=pod
 block -7..-4 2 8 iron-plated slope rot=+y+z paint=pod
+block -3 2 8 iron-plated corner rot=+y+x paint=pod
+block 2 2 8 iron-plated corner rot=+y+z paint=pod
 block 3..6 2 8 iron-plated slope rot=+y+z paint=pod
-block -3..2 3 -14 iron-plated slope paint=spine
+block 7 2 8 iron-plated corner rot=+y+x paint=pod
+block -3 3 -14 iron-plated corner rot=+y-x paint=spine
+block -2..1 3 -14 iron-plated slope paint=spine
+block 2 3 -14 iron-plated corner paint=spine
 block -3 3 -13 iron-plated slope rot=+y-x paint=spine
 block -2..1 3 -13 iron-plated paint=cream,cream,cream,inner,cream,cream
 block 2 3 -13 iron-plated slope rot=+y+x paint=spine

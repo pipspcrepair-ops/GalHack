@@ -53,7 +53,7 @@ public static partial class BlueprintSet
     /// <summary>The Skiff: the cheapest flyer, an open-cockpit hopper on base blocks.</summary>
     static string Skiff(Catalogue cat)
     {
-        var d = new Designer(cat, "Skiff", CoreMode.Flight);
+        var d = new Designer(cat, "Skiff", CoreMode.Flight) { Seal = true };
         ushort hull = d.Paint("hull", Coat(0xece3c8)), belly = d.Paint("belly", Coat(0x2b2d42, 2)), deck = d.Paint("deck", Deck);
         ushort stripe = d.Paint("stripe", Coat(0xece3c8).WithPattern(Pattern.Stripes, 0xe85d04));
         ushort chev = d.Paint("chev", Coat(0x0a9396).WithPattern(Pattern.Chevrons, 0xf4a100)), hazard = d.Paint("hazard", Hazard);
@@ -69,10 +69,12 @@ public static partial class BlueprintSet
         d.Fill(P(-2, 0, -4), P(2, 0, -4), "base-block", hull);
         d.Fill(P(-1, 1, -4), P(1, 1, -4), "window-block", 0, "slope");
         // Rails round the cockpit tub, a gap to port to step in by.
-        d.Fill(P(-2, 0, -3), P(-2, 0, -1), "base-block", stripe).Fill(P(2, 0, -3), P(2, 0, 0), "base-block", stripe);
+        d.Fill(P(-2, 0, -3), P(-2, 0, -3), "base-block", stripe).Fill(P(2, 0, -3), P(2, 0, -3), "base-block", stripe);
         d.Put("command-chair", P(0, 0, -3));
         // Engine hump behind the seat: generator, gyro and fuel in it, the mains in its tail.
         d.Fill(P(-2, 0, 1), P(2, 0, 3), "base-block", chev).Fill(P(-2, 1, 1), P(2, 1, 1), "base-block", chev, "slope");
+        d.Fill(P(-2, 0, 2), P(-2, 0, 2), "base-block", chev, "half").Fill(P(2, 0, 2), P(2, 0, 2), "base-block", chev, "half");
+        d.Chamfer(P(2, 0, 3), P(2, 0, 3), "base-block", chev, Dir.PosX, Dir.PosZ).Chamfer(P(-2, 0, 3), P(-2, 0, 3), "base-block", chev, Dir.NegX, Dir.PosZ);
         d.Put("generator-t1", P(-1, 0, 2));
         d.Put("gyro-t1", P(0, 0, 2));
         d.Put("fuel-tank-t1", P(1, 0, 2));
@@ -101,7 +103,7 @@ two mains, a retro, a side jet each way, a lift jet, a down jet and three pads."
     /// <summary>The Outpost: a first base, a hall with a raised clerestory, an ops wing to the west, a porch to the south and a landing pad off its east door.</summary>
     static string Outpost(Catalogue cat)
     {
-        var d = new Designer(cat, "Outpost", CoreMode.Base);
+        var d = new Designer(cat, "Outpost", CoreMode.Base) { Seal = true };
         ushort wall = d.Paint("wall", Coat(0xe9dfc4)), inner = d.Paint("inner", Coat(0xd8d2c2, 0)), deck = d.Paint("deck", Deck);
         ushort band = d.Paint("band", Coat(0x0a9396)), roof = d.Paint("roof", Coat(0x3a3f47, 2)), hazard = d.Paint("hazard", Hazard);
         ushort pad = d.Paint("pad", Coat(0x5a5e66, 2)), frame = d.Paint("frame", Coat(0x2b2d42, 1));
@@ -129,9 +131,11 @@ two mains, a retro, a side jet each way, a lift jet, a down jet and three pads."
         d.Put("command-chair", P(-10, 1, 0), Designer.Rot(Dir.PosY, Dir.NegX));
         d.Mount("light", P(-8, 3, 0), Dir.PosY);
         // Framing: a pilaster at each corner of the hall and along its north wall, dark against the cream.
-        foreach (int x in new[] { -5, -1, 3, 6 }) d.Fill(P(x, 0, -6), P(x, 4, -6), Concrete, frame);
-        foreach (int x in new[] { -5, 6 }) d.Fill(P(x, 0, 6), P(x, 4, 6), Concrete, frame);
-        d.Fill(P(7, 0, -5), P(7, 4, -5), Concrete, frame).Fill(P(7, 0, 5), P(7, 4, 5), Concrete, frame);
+        foreach (int x in new[] { -5, -1, 3, 6 }) d.Fill(P(x, 0, -6), P(x, 4, -6), Concrete, frame).Slope(P(x, 5, -6), P(x, 5, -6), Concrete, frame, Dir.NegZ);
+        foreach (int x in new[] { -5, 6 }) d.Fill(P(x, 0, 6), P(x, 4, 6), Concrete, frame).Slope(P(x, 5, 6), P(x, 5, 6), Concrete, frame, Dir.PosZ);
+        // The roof's four hips.
+        d.Fill(P(6, 5, -5), P(6, 5, -5), Concrete, roof, "corner").Fill(P(-5, 5, -5), P(-5, 5, -5), Concrete, roof, "corner", Designer.Rot(Dir.PosY, Dir.NegX));
+        d.Fill(P(-5, 5, 5), P(-5, 5, 5), Concrete, roof, "corner", Designer.Rot(Dir.PosY, Dir.PosZ)).Fill(P(6, 5, 5), P(6, 5, 5), Concrete, roof, "corner", Designer.Rot(Dir.PosY, Dir.PosX));
         d.Fill(P(-4, 2, 5), P(-2, 3, 5), "glass-plated").Fill(P(3, 2, 5), P(5, 3, 5), "glass-plated");
         // Doors: a double one south under a porch, a single one east onto the pad.
         d.Door("door-2x2x1", P(0, 1, 5), Dir.PosZ);
@@ -166,7 +170,7 @@ its rim hazard-marked and ramped down to the ground.");
     /// <summary>The escape pod: a shelter with a seat, a locker and its own power.</summary>
     static string Pod(Catalogue cat)
     {
-        var d = new Designer(cat, "Escape Pod", CoreMode.Base);
+        var d = new Designer(cat, "Escape Pod", CoreMode.Base) { Seal = true };
         ushort hull = d.Paint("hull", Coat(0xe85d04, 2)), inner = d.Paint("inner", Coat(0xd8d2c2, 0)), deck = d.Paint("deck", Deck);
         ushort shield = d.Paint("shield", Coat(0x2b2d42, 3));
 

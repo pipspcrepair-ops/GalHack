@@ -44,8 +44,12 @@ public partial class BlueprintTest : Node
     /// <summary>The cheapest flyer's ceiling, ore (owner: every world is guaranteed the ores for it).</summary>
     const int StarterOre = 600;
 
+    /// <summary>Whatever happens the run ends: a watchdog that exits the process after twenty minutes.</summary>
+    static System.Threading.Timer _watchdog;
+
     public override void _Ready()
     {
+        _watchdog = new System.Threading.Timer(_ => System.Environment.Exit(3), null, TimeSpan.FromMinutes(20), System.Threading.Timeout.InfiniteTimeSpan);
         ProcessPhysicsPriority = 100;
         _run = Scenario().GetEnumerator();
     }
@@ -133,6 +137,11 @@ public partial class BlueprintTest : Node
         var shut = s.Blocks().Where(x => { BlockType t = s.TypeOf(x.block); return !t.IsArmor && !t.IsThruster && !t.IsDoor && !t.IsLight && t.Collide == Collide.Cell && t.Function != "gear" && t.Function != "stairs" && t.Id != "core"; })
             .Where(x => walk.ShutIn(x.pos, x.block)).ToList();
         Check(shut.Count == 0, $"{name}: every machine, locker and chair has a floor walked to beside it{(shut.Count > 0 ? $" ({shut.Count} shut in, such as {s.TypeOf(shut[0].block).Id} at {shut[0].pos})" : "")}");
+
+        // Hull edges: no ramp, corner or inverted corner shows an open triangular side to the outside air.
+        var notches = file.StartsWith("prototypes/slice/") ? Notches.Open(s).Select(n => $"{n.pos} facing {n.face.Name()}").ToList() : new List<string>();
+        foreach (string n in notches) GD.Print($"    notch {name}: {n}");
+        Check(notches.Count == 0, $"{name}: no open triangular ramp face on the hull's outside{(notches.Count > 0 ? $" ({notches.Count}, such as {notches[0]})" : "")}");
 
         // Doors: upright, across the doorway in a wall, a floor either side; people doors 1x2 or 2x2.
         foreach (var (p, b) in s.Blocks().Where(x => s.TypeOf(x.block).IsDoor))
