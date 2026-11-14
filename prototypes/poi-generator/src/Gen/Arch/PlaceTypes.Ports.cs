@@ -250,7 +250,12 @@ public static partial class PlaceTypes
         {
             Rng r = _r.Fork("hub");
             TypePart hub = Part("terminal")!, spoke = Part("spoke")!, pad = Part("pad")!;
-            SketchItem tower = Building(hub, 0f, 0f, 0, 1, r.Fork("tower"), 0f)!;
+            // The ways out: the road first, then the taxiways, spread round evenly and jittered; the tower faces the road.
+            int n = Math.Max(2, Count(spoke, r.Fork("spokes")));
+            double a = r.Float(0f, MathF.Tau), gap = Math.Tau / (n + 1);
+            var ways = Enumerable.Range(0, n + 1).Select(k => a + k * gap + r.Float(-0.2f, 0.2f) * gap).ToList();
+            var (tfx, tfz) = Facing((float)Math.Cos(ways[0]), (float)Math.Sin(ways[0]));
+            SketchItem tower = Building(hub, 0f, 0f, tfx, tfz, r.Fork("tower"), 0f)!;
             // (Clear of the tower's box at its corners, wherever it sits on the lattice.)
             float reach = new[] { tower.Box.X0, tower.Box.Z0, tower.Box.X1, tower.Box.Z1 }.Max(MathF.Abs) * MathF.Sqrt(2f);
             // The roundabout: a ring of short strips round the tower.
@@ -265,10 +270,6 @@ public static partial class PlaceTypes
                     Strip(ring, ringR * (float)Math.Cos(a0), ringR * (float)Math.Sin(a0), ringR * (float)Math.Cos(a1), ringR * (float)Math.Sin(a1));
                 }
             }
-            // The ways out: the road first, then the taxiways, spread round evenly and jittered.
-            int n = Math.Max(2, Count(spoke, r.Fork("spokes")));
-            double a = r.Float(0f, MathF.Tau), gap = Math.Tau / (n + 1);
-            var ways = Enumerable.Range(0, n + 1).Select(k => a + k * gap + r.Float(-0.2f, 0.2f) * gap).ToList();
             Road((float)Math.Cos(ways[0]) * (ringR + 1f), (float)Math.Sin(ways[0]) * (ringR + 1f), (float)Math.Cos(ways[0]), (float)Math.Sin(ways[0]));
             int pads = Count(pad, r.Fork("pads"));
             var spokes = new List<(float X0, float Z0, float X1, float Z1, float DX, float DZ, float Half)>();

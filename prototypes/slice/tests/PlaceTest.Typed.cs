@@ -70,12 +70,20 @@ public partial class PlaceTest
             Vector3 front = new Vector3(site.Entrance.X + 0.5f - cx, 0f, site.Entrance.Z + 0.5f - cz);
             float reach = front.Length();
             front /= reach;
-            // (The terminal's front is its airside: its landside way in is the other way.)
-            Vector3 way = kind == "terminal" ? World(cx, field.PadY, cz) - front * reach : World(site.Entrance.X + 0.5f, field.PadY, site.Entrance.Z + 0.5f);
-            // (Out of the last one by its own way in first, as a player leaves a hall.)
+            // (An airfield's terminal's front is its airside: its landside way in is the other way. A port's hub or
+            // authority building is come to from its front, as everything else.)
+            bool landside = kind == "terminal" && main == "terminal";
+            Vector3 way = landside ? World(cx, field.PadY, cz) - front * reach : World(site.Entrance.X + 0.5f, field.PadY, site.Entrance.Z + 0.5f);
+            // (Out of the last one by its own way in first, as a player leaves a hall. Across a spaceport's field, whose
+            // recessed pads are pits a body walking straight would fall into, set down 30 m out from the next.)
             if (leave is { } back) foreach (int x in Watched(drive.WalkTo(back, 2f, 120f, dig: false, hop: false))) yield return x;
-            if (kind != "terminal") foreach (int x in Watched(drive.WalkTo(way + front * 30f, 2f, 120f, dig: false, hop: false))) yield return x;
-            leave = kind == "terminal" ? null : way + front * 30f;
+            if (!landside && field.Sketch.Type.Plan != null)
+            {
+                game.Survivor.PlaceOutside((way + front * 30f + Vector3.Up * 0.3f).ToNumerics());
+                foreach (int x in drive.UntilSettled(30)) yield return x;
+            }
+            if (!landside) foreach (int x in Watched(drive.WalkTo(way + front * 30f, 2f, 120f, dig: false, hop: false))) yield return x;
+            leave = landside ? null : way + front * 30f;
             foreach (int x in Watched(drive.WalkTo(way, 1.2f, 120f, sprint: false, dig: false, hop: false))) yield return x;
             for (int i = 0; i < 1800 && game.Places.PlaceOf(site) is not { Ready: true }; i++) yield return 0;
             Place place = game.Places.PlaceOf(site);

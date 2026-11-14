@@ -58,6 +58,8 @@ public partial class SurfaceTest
                     {
                         double x = Mathx.WrapX(place.X + fb.X0 + fb.W * i / 40.0, W), z = place.Z + fb.Z0 + fb.D * j / 10.0;
                         if (pits.Any(t => Math.Abs(Mathx.WrapDelta(x - t.CenterX, W)) < t.Radius + t.Length + t.Width && Math.Abs(z - t.CenterZ) < t.Radius + t.Length + t.Width)) continue;
+                        // (Nor where a war's strike cratered it after.)
+                        if (g.StampsAt(x, z).Any(k => g.Stamps[k].Shape == StampShape.Bowl && g.Stamps[k].Weight(x, z) > 0f)) continue;
                         float off = MathF.Abs(g.SurfaceHeight(x, z) - place.PadY);
                         if (off > worstOff) (worstOff, offAt) = (off, $"{x:F0},{z:F0} ({string.Join(", ", g.StampsAt(x, z).Select(k => g.Stamps[k]).Where(t => t.Weight(x, z) > 0).Select(t => $"{t.Name} {t.Shape}"))})");
                     }

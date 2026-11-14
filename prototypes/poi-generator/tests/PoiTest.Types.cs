@@ -92,8 +92,6 @@ public partial class PoiTest
                 }
                 if (t.Plan != null) Port(t, s, bad);
                 if (t.Id != "airport") continue;
-                airports++;
-                if (s.Of("crosswind").Any()) tees++;
                 SketchItem runway = s.Of("runway").First(), apron = s.Of("apron").First(), terminal = s.Of("terminal").First();
                 void Real(bool ok, string what) { if (!ok) bad.Add($"airport: {what}"); }
                 Real(runway.Rolled["len"] is >= 400 and <= 600 && runway.Rolled["w"] == 30 && runway.Box.D >= 40, $"runway {runway.Rolled["len"]:F0} x {runway.Rolled["w"]:F0} m ({runway.Box.D:F0} with shoulders)");
@@ -109,6 +107,9 @@ public partial class PoiTest
                     Real(x.Box.D > x.Box.W && x.Box.X0 > runway.Box.X0 && x.Box.X1 < runway.Box.X1 && (Math.Abs(x.Box.Z1 - runway.Box.Cz) <= 16 || Math.Abs(x.Box.Z0 - runway.Box.Cz) <= 16)
                         && s.Of("xlights").Count() == 1, $"crosswind {x.Box.X0:F0},{x.Box.Z0:F0}..{x.Box.X1:F0},{x.Box.Z1:F0} off the runway {runway.Box.X0:F0},{runway.Box.Z0:F0}..{runway.Box.X1:F0},{runway.Box.Z1:F0}");
             }
+        // (How many airports are a T, over many more of them: only the plan is rolled.)
+        if (_lib.Types.FirstOrDefault(t => t.Id == "airport") is { } airport)
+            for (; airports < 64; airports++) if (PlaceTypes.Plan(airport, FreshSeed(rand), 16000, 8000).Of("crosswind").Any()) tees++;
         foreach (string b in bad.Distinct().Take(8)) GD.Print($"      {b}");
         Check(bad.Count == 0 && tees > 0 && tees < airports, $"every type's parts in their real ranges on {n} fresh sketches ({bad.Count} out); {tees} of {airports} airports with a crosswind runway teed off the main one");
     }
