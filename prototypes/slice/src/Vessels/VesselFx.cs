@@ -34,6 +34,7 @@ public partial class VesselFx : Node3D
             AlbedoColor = new Color(Flame, 0.85f), EmissionEnabled = true, Emission = Flame, EmissionEnergyMultiplier = 3f,
             ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded, Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
             BlendMode = BaseMaterial3D.BlendModeEnum.Add, CullMode = BaseMaterial3D.CullModeEnum.Disabled,
+            RenderPriority = GalHack.Structures.Presentation.DamageFx.NearPriority,
         };
         _strut ??= new StandardMaterial3D { AlbedoColor = Strut, Roughness = 0.5f, Metallic = 0.4f };
         _foot ??= new StandardMaterial3D { AlbedoColor = Foot, Roughness = 0.7f };
