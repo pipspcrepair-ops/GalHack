@@ -26,7 +26,7 @@ public partial class SurfaceTest
         string forced = PoiSiting.ForceFamily;
         int worlds = 0, sited = 0, loadLayouts = 0, roads = 0, shared = 0, onGround = 0, walks = 0, walked = 0;
         float worstOff = 0f, worstGrade = 0f;
-        string worstAt = "", firstOn = "";
+        string worstAt = "", firstOn = "", offAt = "";
         var bad = new List<string>();
         var builder = new List<double>();
         var notes = new List<string>();
@@ -58,7 +58,8 @@ public partial class SurfaceTest
                     {
                         double x = Mathx.WrapX(place.X + fb.X0 + fb.W * i / 40.0, W), z = place.Z + fb.Z0 + fb.D * j / 10.0;
                         if (pits.Any(t => Math.Abs(Mathx.WrapDelta(x - t.CenterX, W)) < t.Radius + t.Length + t.Width && Math.Abs(z - t.CenterZ) < t.Radius + t.Length + t.Width)) continue;
-                        worstOff = MathF.Max(worstOff, MathF.Abs(g.SurfaceHeight(x, z) - place.PadY));
+                        float off = MathF.Abs(g.SurfaceHeight(x, z) - place.PadY);
+                        if (off > worstOff) (worstOff, offAt) = (off, $"{x:F0},{z:F0} ({string.Join(", ", g.StampsAt(x, z).Select(k => g.Stamps[k]).Where(t => t.Weight(x, z) > 0).Select(t => $"{t.Name} {t.Shape}"))})");
                     }
                 // The grading alone (the world's road to the gate has banks of its own).
                 var graded = new PlanetTerrainSource(w.Map, place.Parts.SelectMany(p => p.Stamps).Distinct().ToList());
@@ -154,7 +155,7 @@ public partial class SurfaceTest
         Check(sited == worlds, $"a {family} sited on {sited} of {worlds} fresh worlds");
         Check(loadLayouts == 0, $"its share of a new world's load is no layouts: {loadLayouts} made while the worlds loaded");
         Check(roads == sited, $"the world's road comes to its gate on {roads} of {sited}");
-        Check(worstOff < 1.01f && worstGrade < 0.35f, $"graded: the ground across it within {worstOff:F2} m of its level, the run out to the land at most {worstGrade:P0} steeper than the land's own ({worstAt})");
+        Check(worstOff < 1.01f && worstGrade < 0.35f, $"graded: the ground across it within {worstOff:F2} m of its level{(worstOff >= 1.01f ? $" (at {offAt})" : "")}, the run out to the land at most {worstGrade:P0} steeper than the land's own ({worstAt})");
         Check(walks > 0 && walked == walks, $"walked: from the landside way in through the terminal to the apron, onto each hangar's floor, up each tower to its cab: {walked} of {walks}");
         Check(bad.Count == 0 && shared == 0 && onGround == 0, $"built on its world at real sizes ({bad.Count} out), {shared} cells of one part in another, {onGround} built on its laid ground{firstOn}; the builder spent {(builder.Count > 0 ? builder.Average() : 0):F0} ms on all of an airfield's parts (worst {(builder.Count > 0 ? builder.Max() : 0):F0})");
     }
