@@ -51,6 +51,7 @@ public partial class Screenshot
         Act("startle", BodyAct.Startle),
         new("sip", (int who, ref Gesture g, HumanRig rig, int tick) => g.Sip = 1f, Prop: "bottle"),
         new("bow-draw", (int who, ref Gesture g, HumanRig rig, int tick) => g.Aim = 1f, Prop: "bow"),
+        new("wary-club", (int who, ref Gesture g, HumanRig rig, int tick) => g.Aim = 0.55f, Prop: "club"),
         new("crouch", (int who, ref Gesture g, HumanRig rig, int tick) => g.Crouch = 1f),
         new("stalk", (int who, ref Gesture g, HumanRig rig, int tick) => { g.Stalk = 1f; g.Speed = 0.6f; g.Walked = tick / 60f * 0.6f; }, Husk: true),
         new("punch", (int who, ref Gesture g, HumanRig rig, int tick) => { g.Blow = StrikeKind.Punch; g.Strike = MathF.Min(1f, tick / 30f); }),
