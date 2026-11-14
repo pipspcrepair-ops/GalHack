@@ -381,6 +381,10 @@ public partial class BuildTest
         string said = "";
         void Hear(string t, Color c) => said += t + "|";
         _game.Said += Hear;
+        Vector3 site = _play.FlatSpot(_game.Survivor.WorldFeet, 30f, 0.6f, 0.4f, span: 14f);
+        CoreCraft.ForecastBase(_game.Zone, site); // warnings come only through a forecast block: stand in its area
+        _game.Survivor.PlaceOutside((site + new Vector3(0f, 0.5f, 6f)).ToNumerics());
+        foreach (int x in _drive.Wait(30)) yield return x;
         Vector3 feet = _game.Survivor.WorldFeet;
         float angle = (float)new Random().NextDouble() * Mathf.Tau;
         sim.SpawnTornado(feet + new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * 220f, feet);

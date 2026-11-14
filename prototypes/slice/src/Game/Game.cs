@@ -796,11 +796,14 @@ public partial class Game : Node3D
         }
     }
 
-    /// <summary>The weather's warnings for the visor, nearest first.</summary>
+    /// <summary>Whether a working forecast block reaches you: on a core structure whose broadcast holds you, or on the structure whose chair you are seated in.</summary>
+    public bool ForecastReaches => Survivor?.Seated?.Forecasting == true || CoresInReach.Any(v => v.Forecasting);
+
+    /// <summary>The weather's warnings for the visor, nearest first; none at all without a forecast reaching you.</summary>
     public IReadOnlyList<WarningEntry> WeatherWarnings()
     {
         _warnings.Clear();
-        Zone.Weather.Sim?.GetWarnings(_warnings, Survivor?.WorldFeet ?? Vector3.Zero);
+        if (ForecastReaches) Zone.Weather.Sim?.GetWarnings(_warnings, Survivor?.WorldFeet ?? Vector3.Zero);
         return _warnings;
     }
 
