@@ -18,7 +18,7 @@ namespace Slice.Tests;
 /// Per route: the near ground's complete radius (median, worst), the far rings' nearest chunk still short of its level,
 /// the streamer's queue, how long a column waited from coming into the ring to its first near chunk, how long a
 /// level-0 far chunk (the trees' near drawing) waited from being wanted to standing, and how far off trees appeared.
-/// Then shadow flicker (<see cref="Flicker"/>) and dots in the grass by night (<see cref="Pinholes"/>).
+/// Then shadow flicker (<see cref="Flicker"/>) and sparks in the grass by night (<see cref="Pinholes"/>).
 /// </summary>
 public partial class PopRoute : Node
 {
