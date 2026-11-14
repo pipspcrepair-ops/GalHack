@@ -63,8 +63,11 @@ public partial class TerrainStreamer
         }
     }
 
-    /// <summary>Every plant drawn and how much of it shows from an eye (frame coordinates), as the shader has it, by layer: tests measure flora's reach with it.</summary>
-    public IEnumerable<(float Away, int Layer, float Shows)> FloraShown(Vector3 eye)
+    /// <summary>
+    /// Every plant drawn and how much of it shows from an eye (frame coordinates), as the shader has it, by layer, with
+    /// where it roots, its height and its scatter cell (one plant's drawings share it): tests measure flora's reach and its pops with it.
+    /// </summary>
+    public IEnumerable<(float Away, int Layer, float Shows, Vector3 At, float Size, long Id)> FloraShown(Vector3 eye)
     {
         double w = World.Terrain.Width, h = World.Terrain.Height;
         foreach (FarChunk f in _far.Values)
@@ -74,15 +77,47 @@ public partial class TerrainStreamer
             foreach (FloraBatch b in f.Flora)
             {
                 int layer = b.Layer;
+                float height = MeshHeight(b);
+                for (int i = 0; i < b.Count; i++)
+                {
+                    int o = i * 16;
+                    float lx = b.Buffer[o + 3], lz = b.Buffer[o + 11], x = x0 + lx, z = z0 + lz;
+                    float away = new Vector2(x - eye.X, z - eye.Z).Length();
+                    long id = FarBuilder.ScatterId(f.Fx, f.Fz, (int)(lx / FarBuilder.ScatterCell), (int)(lz / FarBuilder.ScatterCell));
+                    yield return (away, layer, FloraShows(layer, b.Buffer[o + 15] >= 1.5f, away, x, z), new Vector3(x, b.Buffer[o + 7], z), height * b.Buffer[o + 5], id);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Plants that show by their own reach (as the shader has it) in batches the renderer leaves out by distance (its
+    /// visibility range, measured from the eye to the batch's box centre): what vanishes a whole chunk's batch at a time. Tests count it.
+    /// </summary>
+    public int FloraCulledByRange(Vector3 eye)
+    {
+        int culled = 0;
+        double w = World.Terrain.Width, h = World.Terrain.Height;
+        foreach (FarChunk f in _far.Values)
+        {
+            if (f.Node == null || f.Flora == null) continue;
+            float x0 = (float)NearestCopy(f.Fx * FarBuilder.Size, FarBuilder.Size, eye.X, w), z0 = (float)NearestCopy(f.Fz * FarBuilder.Size, FarBuilder.Size, eye.Z, h);
+            int k = 0;
+            foreach (Node n in f.Node.GetChildren())
+            {
+                if (n is not MultiMeshInstance3D m) continue;
+                FloraBatch b = f.Flora[k++];
+                float d = (m.GlobalTransform * m.Multimesh.GetAabb().GetCenter()).DistanceTo(eye);
+                if (d >= m.VisibilityRangeBegin && (m.VisibilityRangeEnd <= 0f || d <= m.VisibilityRangeEnd)) continue;
                 for (int i = 0; i < b.Count; i++)
                 {
                     int o = i * 16;
                     float x = x0 + b.Buffer[o + 3], z = z0 + b.Buffer[o + 11];
-                    float away = new Vector2(x - eye.X, z - eye.Z).Length();
-                    yield return (away, layer, FloraShows(layer, b.Buffer[o + 15] >= 1.5f, away, x, z));
+                    if (FloraShows(b.Layer, b.Buffer[o + 15] >= 1.5f, new Vector2(x - eye.X, z - eye.Z).Length(), x, z) > 0.05f) culled++;
                 }
             }
         }
+        return culled;
     }
 
     /// <summary>A far chunk's drawing is about to be replaced: what the eye sees change in it.</summary>
