@@ -156,6 +156,89 @@ public sealed partial class Staging
         zone.Sky.TimeScale = 1f;
     }
 
+    /// <summary>
+    /// The far shade as the graphics card marches it, read back: against the same march on the CPU at random cells, held
+    /// still at a low sun; then flying level at 70 m/s, the same ground's cells marched again as the square moves on must
+    /// hold their rise (no crawling or popping as the square moves).
+    /// </summary>
+    IEnumerable<int> FarShadeCheck()
+    {
+        var zone = _game.Zone;
+        TerrainStreamer s = zone.Streamer;
+        _game.Visor.Visible = false;
+        zone.Weather.Bridge.Calm = true;
+        zone.Weather.Sim.Snap(Weather.Model.WeatherKind.Clear);
+        zone.Wildlife.Frozen = true;
+        zone.Sky.TimeScale = 0f;
+        zone.Sky.TimeOfDay = Num("time", 0.27);
+        Vector3 start = _game.Survivor.WorldFeet, way = Vector3.Forward;
+        Vector3 Lift(Vector3 p, float up) => p with { Y = zone.GroundAt(p.X, p.Z).Y + up };
+        RenderingDevice rd = RenderingServer.GetRenderingDevice();
+        float[] gpu = null;
+        IEnumerable<int> Read()
+        {
+            gpu = null;
+            Rid rid = s.Clip.ShadeMap.TextureRdRid;
+            RenderingServer.CallOnRenderThread(Callable.From(() => gpu = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, float>(rd.TextureGetData(rid, 0)).ToArray()));
+            for (int i = 0; i < 10 && gpu == null; i++) yield return 0;
+        }
+        for (int i = 0; i < 900 && (i < 120 || !s.Settled); i++)
+        {
+            HoldEye(Lift(start, 60f), Lift(start + way * 500f, 0f));
+            yield return 0;
+        }
+        foreach (int x in Read()) yield return x;
+        var (corner, cell, toward) = s.ShadeSquare;
+        var rng = new Random();
+        double worst = 0, sum = 0;
+        int n = 0, shaded = 0;
+        for (int k = 0; k < 400; k++)
+        {
+            int i = rng.Next(FarShade.N), j = rng.Next(FarShade.N);
+            float cpu = FarShade.Rise(s.Clip.Tops, corner.X, corner.Y, cell, toward, i, j), g = gpu[j * FarShade.N + i];
+            worst = Math.Max(worst, Math.Abs(cpu - g));
+            sum += Math.Abs(cpu - g);
+            n++;
+            if (g > 0.05f) shaded++;
+        }
+        GD.Print($"(far shade: graphics card against CPU over {n} cells: mean {sum / n:F4}, worst {worst:F4} in rise; {shaded} cells rising over 3 degrees; square {cell * FarShade.N:F0} m, cells {cell:F1} m)");
+        // Flying: two marches a second apart, compared where their squares overlap, cell for cell.
+        float along = 0f;
+        float[] before = null;
+        Vector2 cornerBefore = default;
+        double crawl = 0;
+        int compared = 0, moved = 0;
+        for (int t = 0; t < 4; t++)
+        {
+            for (int i = 0; i < 60; i++)
+            {
+                along += 70f / Engine.PhysicsTicksPerSecond;
+                HoldEye(Lift(start + way * along, 60f), Lift(start + way * (along + 500f), 0f));
+                yield return 0;
+            }
+            foreach (int x in Read()) yield return x;
+            var (c2, cell2, _) = s.ShadeSquare;
+            if (before != null)
+            {
+                int di = (int)MathF.Round((c2.X - cornerBefore.X) / cell2), dj = (int)MathF.Round((c2.Y - cornerBefore.Y) / cell2);
+                if (di != 0 || dj != 0) moved++;
+                // Away from the square's edges (whose marches are cut short by them), the same cells must hold their rise.
+                for (int j = 40; j < FarShade.N - 40; j++)
+                for (int i = 40; i < FarShade.N - 40; i++)
+                {
+                    int bi = i + di, bj = j + dj;
+                    if (bi < 40 || bj < 40 || bi >= FarShade.N - 40 || bj >= FarShade.N - 40) continue;
+                    crawl = Math.Max(crawl, Math.Abs(gpu[j * FarShade.N + i] - before[bj * FarShade.N + bi]));
+                    compared++;
+                }
+            }
+            before = gpu;
+            cornerBefore = c2;
+        }
+        GD.Print($"(far shade in flight: {moved} moves of the square compared, {compared} cells, the most a cell's rise changed {crawl:F4})");
+        _game.FixedCamera = null;
+        zone.Sky.TimeScale = 1f;
+    }
     /// <summary>The sleeper stands in for the eye (the streaming follows it), the camera at the eye looking at a point.</summary>
     void HoldEye(Vector3 eye, Vector3 at)
     {

@@ -145,6 +145,7 @@ public sealed partial class Staging
             "farland" => FarLandView(),
             "farground" => FarGroundShots(),
             "groundcost" => FarGroundCost(),
+            "shadecheck" => FarShadeCheck(),
             "city" => CityView(),
             "strike" => StrikeView(),
             "craters" => CraterViews(),

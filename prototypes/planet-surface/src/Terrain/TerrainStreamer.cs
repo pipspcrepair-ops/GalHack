@@ -235,7 +235,7 @@ public partial class TerrainStreamer : Node3D
     }
 
     /// <summary>The GPU rings for this world, as many as the detail distance wants.</summary>
-    void SetClip() => Clip.SetWorld(World.Source, World.Palette, World.Terrain.Width, World.Terrain.Height, FarMaterial, ClipGround.LevelsFor(DetailReach.Distance));
+    void SetClip() => Clip.SetWorld(World.Source, World.Palette, World.Pois, World.Terrain.Width, World.Terrain.Height, FarMaterial, ClipGround.LevelsFor(DetailReach.Distance));
 
     /// <summary>Starts streaming a planet (dropping everything of the previous one).</summary>
     public void SetWorld(PlanetWorld world, Vector3 focus, Material water)

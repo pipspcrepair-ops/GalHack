@@ -289,7 +289,6 @@ public partial class PopRoute : Node
         _streaming = 0;
         double solids0 = s.SolidsTotalMs, physics = 0, physicsWorst = 0;
         // The workers' time on the far ground: far chunks (flora and water) and the GPU rings' tiles.
-        Array.Clear(FarBuilder.ProfTicks); // PROFILE (temporary)
         double[] buildMs0 = (double[])s.FarBuildMs.Clone();
         int[] builds0 = (int[])s.FarBuilds.Clone();
         long tileTicks0 = ClipGround.FillTicks;
@@ -372,7 +371,6 @@ public partial class PopRoute : Node
         s.ChunkApplied -= onChunk;
         double seconds = clock.Elapsed.TotalSeconds;
         string workers = string.Create(CultureInfo.InvariantCulture, $"main thread {_streaming / seconds:F0} ms a second; workers: far chunks {(s.FarBuildMs.Sum() - buildMs0.Sum()) / seconds:F0} ms a second, ground tiles {(ClipGround.FillTicks - tileTicks0) * 1000.0 / Stopwatch.Frequency / seconds:F0} ms a second ({(ClipGround.Filled - tiles0) / seconds:F0} a second)");
-        GD.Print("PROFILE " + name + ": " + string.Join(", ", new[] { "slides", "place", "unfold", "relief", "colours", "normals", "heights", "all" }.Select((n, k) => $"{n} {FarBuilder.ProfTicks[k] * 1000.0 / Stopwatch.Frequency / seconds:F0}"))); // PROFILE (temporary)
         var logged = PopLog.Take();
         var trees = logged.Where(q => q.Kind == "flora" && q.What == "appears" && q.Size > 3f).Select(q => q.Distance).ToList();
         string byKind = string.Join(", ", logged.GroupBy(q => q.Kind + " " + q.What).OrderBy(g => g.Key).Select(g => string.Create(CultureInfo.InvariantCulture, $"{g.Key} {g.Count()} ({g.Sum(q => q.Jump * q.Size / MathF.Max(q.Distance, 10f)):F1})")));

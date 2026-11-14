@@ -9,6 +9,7 @@ using GalHack.Terrain;
 using Godot;
 using Planets.Gen;
 using Planets.Surface;
+using PlanetSurface.Poi;
 
 namespace PlanetSurface.Terrain;
 
@@ -58,6 +59,8 @@ public sealed partial class ClipGround : Node3D
         /// <summary>Per texel, kept here only: the ground as sampled (before any slide), the river's level and whether it is in the river (far chunks' flora and water read them).</summary>
         public readonly float[] Raw = new float[Texels * Texels], Water = new float[Texels * Texels];
         public readonly bool[] Wet = new bool[Texels * Texels];
+        /// <summary>Per texel of the coarsest level: its ground and its top as the far shade has them (<see cref="FarShade.Point"/>).</summary>
+        public float[] Top;
         /// <summary>Per slot: the tile it holds (canonical-free clip coordinates, in tiles), whether it is in, and its fill's version.</summary>
         public readonly (int X, int Z)[] Held = new (int, int)[Tiles * Tiles];
         public readonly byte[] State = new byte[Tiles * Tiles];
@@ -72,7 +75,7 @@ public sealed partial class ClipGround : Node3D
     sealed class TileJob
     {
         public int Level, Slot, Version, Tx, Tz, Generation;
-        public float[] Data, Raw, Water;
+        public float[] Data, Raw, Water, Top;
         public Half[] Shape, Color;
         public bool[] Wet;
         public Exception Error;
@@ -80,6 +83,7 @@ public sealed partial class ClipGround : Node3D
 
     Level[] _levels;
     PlanetTerrainSource _source;
+    IReadOnlyList<PoiSite> _pois;
     GroundPalette _palette;
     ShaderMaterial _material;
     int _width, _height;
@@ -93,16 +97,19 @@ public sealed partial class ClipGround : Node3D
     readonly List<TileJob> _ready = new();
     readonly List<(int Level, int Slot, float Rank)> _wanted = new();
     int _inFlight, _generation;
+
+    /// <summary>The levels drawn; one more past them, twice as coarse, is only filled: the far shade marches over it.</summary>
+    int _drawn;
     static readonly ArrayMesh BlockMesh = MakeBlock();
     RenderingDevice _rd;
 
     /// <summary>The levels of this world: how many rings.</summary>
-    public int Levels => _levels?.Length ?? 0;
+    public int Levels => _levels == null ? 0 : _drawn;
 
     /// <summary>The finest ring drawn (<see cref="Levels"/>: none yet). Every ring is drawn once it is 0.</summary>
     public int Floor => _floor;
     public bool Complete => _levels != null && _floor == 0;
-    public bool Shown => _levels != null && _floor < _levels.Length;
+    public bool Shown => _levels != null && _floor < _drawn;
 
     /// <summary>Tile fills waiting or running.</summary>
     public int Pending => _inFlight + _wanted.Count;
@@ -125,20 +132,23 @@ public sealed partial class ClipGround : Node3D
         return n;
     }
 
-    public void SetWorld(PlanetTerrainSource source, GroundPalette palette, int width, int height, ShaderMaterial material, int levels)
+    public void SetWorld(PlanetTerrainSource source, GroundPalette palette, IReadOnlyList<PoiSite> pois, int width, int height, ShaderMaterial material, int levels)
     {
         Clear();
         _source = source;
+        _pois = pois;
         _palette = palette;
         _width = width;
         _height = height;
         _material = material;
-        _levels = new Level[levels];
-        for (int l = 0; l < levels; l++)
+        _drawn = levels;
+        _levels = new Level[levels + 1];
+        for (int l = 0; l <= levels; l++)
         {
             var lv = _levels[l] = new Level { S = Spacing(l) };
             Array.Fill(lv.Held, (int.MinValue, int.MinValue));
-            for (int b = 0; b < 16; b++)
+            if (l == levels) lv.Top = new float[Texels * Texels * 2];
+            for (int b = 0; b < 16 && l < levels; b++)
             {
                 var m = new MeshInstance3D
                 {
@@ -162,7 +172,8 @@ public sealed partial class ClipGround : Node3D
         material.SetShaderParameter("clip_top", levels - 1);
         material.SetShaderParameter("clip_texels", Texels);
         material.SetShaderParameter("clip_shift", Vector2.Zero);
-        MakeTextures(levels);
+        MakeTextures(levels + 1);
+        MakeMarch();
     }
 
     /// <summary>The frame moved by whole planets (the eye crossed a seam), by this much: the ground keeps its place.</summary>
@@ -231,7 +242,9 @@ public sealed partial class ClipGround : Node3D
                 Array.Copy(job.Raw, j * Tile, lv.Raw, (sz + j) * Texels + sx, Tile);
                 Array.Copy(job.Water, j * Tile, lv.Water, (sz + j) * Texels + sx, Tile);
                 Array.Copy(job.Wet, j * Tile, lv.Wet, (sz + j) * Texels + sx, Tile);
+                if (lv.Top != null) Array.Copy(job.Top, j * Tile * 2, lv.Top, ((sz + j) * Texels + sx) * 2, Tile * 2);
             }
+            if (lv.Top != null) TopVersion++;
             float low = float.MaxValue, high = float.MinValue;
             for (int k = 0; k < Tile * Tile; k++)
             {
@@ -252,6 +265,7 @@ public sealed partial class ClipGround : Node3D
         var data = new float[row * Tile * 4];
         var shape = new Half[row * Tile * 4];
         var color = new Half[row * Tile * 4];
+        var top = new float[row * Tile * 2];
         var copies = new (uint Level, Vector3 To)[n];
         int sent = 0;
         for (int t = 0; t < n; t++)
@@ -264,6 +278,7 @@ public sealed partial class ClipGround : Node3D
                 Array.Copy(job.Data, j * Tile * 4, data, (j * row + sent * Tile) * 4, Tile * 4);
                 Array.Copy(job.Shape, j * Tile * 4, shape, (j * row + sent * Tile) * 4, Tile * 4);
                 Array.Copy(job.Color, j * Tile * 4, color, (j * row + sent * Tile) * 4, Tile * 4);
+                if (job.Top != null) Array.Copy(job.Top, j * Tile * 2, top, (j * row + sent * Tile) * 2, Tile * 2);
             }
             copies[sent++] = ((uint)job.Level, new Vector3(job.Slot % Tiles * Tile, job.Slot / Tiles * Tile, 0f));
             lv.State[job.Slot] = In;
@@ -277,6 +292,7 @@ public sealed partial class ClipGround : Node3D
             rd.TextureUpdate(targets[0].Stage, 0, MemoryMarshal.AsBytes(data.AsSpan()));
             rd.TextureUpdate(targets[1].Stage, 0, MemoryMarshal.AsBytes(shape.AsSpan()));
             rd.TextureUpdate(targets[2].Stage, 0, MemoryMarshal.AsBytes(color.AsSpan()));
+            rd.TextureUpdate(targets[3].Stage, 0, MemoryMarshal.AsBytes(top.AsSpan()));
             var size = new Vector3(Tile, Tile, 1f);
             for (int t = 0; t < sent; t++)
                 foreach (var (tex, stage) in targets)
@@ -309,7 +325,8 @@ public sealed partial class ClipGround : Node3D
                 double mx = (tx + 0.5) * size - ex, mz = (tz + 0.5) * size - ez;
                 float away = (float)(Math.Max(Math.Abs(mx), Math.Abs(mz)) / size);
                 bool now = away < (Half + Snap / lv.S) / Tile + 1f;
-                _wanted.Add((l, slot, now ? (_levels.Length - l) * 100f + away : 1000f + away));
+                // (The far shade's level after the rings' own tiles: it only shades them.)
+                _wanted.Add((l, slot, l == _drawn ? 500f + away : now ? (_drawn - l) * 100f + away : 1000f + away));
             }
         }
     }
@@ -329,9 +346,10 @@ public sealed partial class ClipGround : Node3D
             GroundPalette palette = _palette;
             int w = _width, h = _height;
             float s = lv.S;
+            IReadOnlyList<PoiSite> pois = lv.Top != null ? _pois : null;
             Task.Run(() =>
             {
-                Fill(job, s, source, palette, w, h);
+                Fill(job, s, source, palette, w, h, pois);
                 _done.Enqueue(job);
             });
         }
@@ -344,13 +362,13 @@ public sealed partial class ClipGround : Node3D
     void Lay(double ex, double ez)
     {
         double qx = Snap * Math.Round(ex / Snap), qz = Snap * Math.Round(ez / Snap);
-        int floor = _levels.Length;
-        for (int l = _levels.Length - 1; l >= 0 && Holds(l, qx, qz); l--) floor = l;
+        int floor = _drawn;
+        for (int l = _drawn - 1; l >= 0 && Holds(l, qx, qz); l--) floor = l;
         if (floor == _floor && qx == _qx && qz == _qz) return;
         _floor = floor;
         _qx = qx;
         _qz = qz;
-        for (int l = 0; l < _levels.Length; l++)
+        for (int l = 0; l < _drawn; l++)
         {
             Level lv = _levels[l];
             float s = lv.S;
@@ -367,7 +385,7 @@ public sealed partial class ClipGround : Node3D
                 // round world's sinking far off.
                 int gx = (int)Math.Round(qx / s) - Half + bi * Block, gz = (int)Math.Round(qz / s) - Half + bj * Block;
                 var (low, high) = Range(l, gx, gz, Block);
-                if (l + 1 < _levels.Length)
+                if (l + 1 < _drawn)
                 {
                     var (low2, high2) = Range(l + 1, FloorDiv(gx, 2), FloorDiv(gz, 2), Block / 2);
                     (low, high) = (MathF.Min(low, low2), MathF.Max(high, high2));
@@ -448,11 +466,29 @@ public sealed partial class ClipGround : Node3D
     /// there, a cliff's points lit by the faces round them, coloured by the palette's soil-to-rock rule, with how far the ground
     /// rises and falls within 16 m. Its squares are split along the blocks' one diagonal.
     /// </summary>
-    static void Fill(TileJob job, float s, PlanetTerrainSource source, GroundPalette palette, int width, int height)
+    /// <param name="pois">the places (the coarsest level's tiles take the far shade's tops, roofs and all); null: none taken</param>
+    static void Fill(TileJob job, float s, PlanetTerrainSource source, GroundPalette palette, int width, int height, IReadOnlyList<PoiSite> pois)
     {
         long start = Stopwatch.GetTimestamp();
         try
         {
+            if (pois != null)
+            {
+                // The far shade's level: only each point's ground and top as the march reads them.
+                job.Top = new float[Tile * Tile * 2];
+                (job.Data, job.Shape, job.Color) = (new float[Tile * Tile * 4], new Half[Tile * Tile * 4], new Half[Tile * Tile * 4]);
+                (job.Raw, job.Water, job.Wet) = (new float[Tile * Tile], new float[Tile * Tile], new bool[Tile * Tile]);
+                double cx = (job.Tx + 0.5) * Tile * s, cz = (job.Tz + 0.5) * Tile * s;
+                var roofs = FarShade.Roofs(pois, Mathx.WrapX(cx, width), Mathx.Wrap(cz, height), Tile * s * 0.5 + s, width, height);
+                for (int j = 0; j < Tile; j++)
+                for (int i = 0; i < Tile; i++)
+                {
+                    int o = j * Tile + i;
+                    (job.Top[o * 2], job.Top[o * 2 + 1]) = FarShade.Point(source, palette, roofs, ((double)job.Tx * Tile + i) * s, ((double)job.Tz * Tile + j) * s, s);
+                    job.Data[o * 4] = job.Top[o * 2];
+                }
+                return;
+            }
             const int N = Tile + 2 * Margin;
             var grid = new FarBuilder.Grid(N, N, -Margin);
             int g = grid.G;
@@ -468,7 +504,6 @@ public sealed partial class ClipGround : Node3D
                 water[j * g + i] = sample.RiverLevel;
                 wet[j * g + i] = sample.InRiver;
             }
-            long t0 = start; FarBuilder.Prof(ref t0, 6); // PROFILE (temporary)
             int span = (N - 1) * (int)s;
             FarBuilder.Surface surface = FarBuilder.Shape(grid, span, span, s, x0, z0, h, wet, source, palette, Margin);
             job.Data = new float[Tile * Tile * 4];
@@ -504,9 +539,11 @@ public sealed partial class ClipGround : Node3D
         {
             job.Error = e;
         }
-        long t1 = start; FarBuilder.Prof(ref t1, 7); // PROFILE (temporary)
-        Interlocked.Add(ref FillTicks, Stopwatch.GetTimestamp() - start);
-        Interlocked.Increment(ref Filled);
+        finally
+        {
+            Interlocked.Add(ref FillTicks, Stopwatch.GetTimestamp() - start);
+            Interlocked.Increment(ref Filled);
+        }
     }
 
     // ---- The ground as drawn (the shader's vertex stage, on the CPU) ------------------------
@@ -536,7 +573,7 @@ public sealed partial class ClipGround : Node3D
 
     float Morph(int l, float x, float z)
     {
-        if (l >= _levels.Length - 1) return 0f;
+        if (l >= _drawn - 1) return 0f;
         var (from, to) = Band(l);
         float t = Math.Clamp((MathF.Max(MathF.Abs(x - _eye.X), MathF.Abs(z - _eye.Y)) - from) / (to - from), 0f, 1f);
         return t * t * (3f - 2f * t);
@@ -547,20 +584,20 @@ public sealed partial class ClipGround : Node3D
     /// <summary>A level's ring as drawn, in the frame: x0, z0, x1, z1. Zero while it isn't.</summary>
     public Vector4 Ring(int l)
     {
-        if (_levels == null || l < _floor || l >= _levels.Length) return Vector4.Zero;
+        if (_levels == null || l < _floor || l >= _drawn) return Vector4.Zero;
         float r = Half * _levels[l].S;
         float x = (float)(_qx - _shiftX), z = (float)(_qz - _shiftZ);
         return new Vector4(x - r, z - r, x + r, z + r);
     }
 
     /// <summary>The outer edge of the drawn rings (where the horizon takes over), in the frame. Zero while none is drawn.</summary>
-    public Vector4 Outer => Shown ? Ring(_levels.Length - 1) : Vector4.Zero;
+    public Vector4 Outer => Shown ? Ring(_drawn - 1) : Vector4.Zero;
 
     /// <summary>The level drawn at a point of the frame, or -1.</summary>
     int LevelAt(float x, float z)
     {
         if (!Shown) return -1;
-        for (int l = _floor; l < _levels.Length; l++)
+        for (int l = _floor; l < _drawn; l++)
         {
             Vector4 r = Ring(l);
             if (x >= r.X && x <= r.Z && z >= r.Y && z <= r.W) return l;
@@ -601,25 +638,44 @@ public sealed partial class ClipGround : Node3D
     /// One level's ground anywhere on the planet (canonical metres), as its own grid draws it (unmorphed), shaped tile by
     /// tile as the workers shape it: tests hold the water and the near ground to it.
     /// </summary>
-    public sealed class Reader(int level, PlanetTerrainSource source, GroundPalette palette, int width, int height)
+    public sealed class Reader(int level, PlanetTerrainSource source, GroundPalette palette, int width, int height, IReadOnlyList<PoiSite> pois = null)
     {
         readonly float _s = Spacing(level);
         readonly Dictionary<(int, int), TileJob> _tiles = new();
 
-        Vector3 Point(int gx, int gz)
+        /// <summary>The tile holding grid point (gx, gz), shaped the first time, and the point's place in it.</summary>
+        TileJob TileOf(int gx, int gz, out int at)
         {
             int tx = FloorDiv(gx, Tile), tz = FloorDiv(gz, Tile);
             if (!_tiles.TryGetValue((tx, tz), out TileJob t))
             {
                 t = new TileJob { Level = level, Tx = tx, Tz = tz };
-                Fill(t, _s, source, palette, width, height);
+                Fill(t, _s, source, palette, width, height, pois);
                 if (t.Error != null) throw t.Error;
                 _tiles[(tx, tz)] = t;
             }
-            int o = ((gz - tz * Tile) * Tile + gx - tx * Tile) * 4;
-            return new Vector3((gx + (float)t.Shape[o + 2]) * _s, t.Data[o], (gz + (float)t.Shape[o + 3]) * _s);
+            at = (gz - tz * Tile) * Tile + gx - tx * Tile;
+            return t;
         }
 
+        Vector3 Point(int gx, int gz)
+        {
+            TileJob t = TileOf(gx, gz, out int at);
+            return new Vector3((gx + (float)t.Shape[at * 4 + 2]) * _s, t.Data[at * 4], (gz + (float)t.Shape[at * 4 + 3]) * _s);
+        }
+
+        /// <summary>A point's ground and top as the far shade's march reads them (made with the places given), bilinear.</summary>
+        public (float Ground, float Top) Tops(double x, double z)
+        {
+            double qx = x / _s, qz = z / _s;
+            int i = (int)Math.Floor(qx), j = (int)Math.Floor(qz);
+            (float, float) At(int gx, int gz)
+            {
+                TileJob t = TileOf(gx, gz, out int at);
+                return (t.Top[at * 2], t.Top[at * 2 + 1]);
+            }
+            return Bilinear(At(i, j), At(i + 1, j), At(i, j + 1), At(i + 1, j + 1), (float)(qx - i), (float)(qz - j));
+        }
         public float Height(double x, double z) => Over(Point, (int)Math.Floor(x / _s), (int)Math.Floor(z / _s), (float)x, (float)z) ?? float.NaN;
     }
 
@@ -636,7 +692,7 @@ public sealed partial class ClipGround : Node3D
     public IEnumerable<(Vector3[] Vertices, int[] Indices, Vector3[] Normals, float[] Bare)> Drawn(Vector3 near, float radius)
     {
         if (!Shown) yield break;
-        for (int l = _floor; l < _levels.Length; l++)
+        for (int l = _floor; l < _drawn; l++)
         {
             float s = _levels[l].S;
             int g0x = (int)Math.Round(_qx / s) - Half, g0z = (int)Math.Round(_qz / s) - Half;
@@ -715,10 +771,14 @@ public sealed partial class ClipGround : Node3D
         ("clip_data", RenderingDevice.DataFormat.R32G32B32A32Sfloat),
         ("clip_shape", RenderingDevice.DataFormat.R16G16B16A16Sfloat),
         ("clip_color", RenderingDevice.DataFormat.R16G16B16A16Sfloat),
+        ("shade_tops", RenderingDevice.DataFormat.R32G32Sfloat), // the far shade's march reads it (FarShade.Glsl), not the terrain
     };
 
     /// <summary>Each channel's texture array on the graphics card, and the staging texture tiles are sent through.</summary>
     (Rid Tex, Rid Stage)[] _textures;
+
+    /// <summary>The materials' handles on the textures: let go of before the textures are freed, so nothing draws with a freed one.</summary>
+    readonly List<Texture> _wrappers = new();
 
     void MakeTextures(int levels)
     {
@@ -739,7 +799,9 @@ public sealed partial class ClipGround : Node3D
                 Format = format, TextureType = RenderingDevice.TextureType.Type2D, Width = Tile * Uploads, Height = Tile, Depth = 1, ArrayLayers = 1, Mipmaps = 1, UsageBits = Staging,
             }, new RDTextureView());
             _textures[c] = (tex, stage);
-            _material.SetShaderParameter(Channels[c].Name, new Texture2DArrayRD { TextureRdRid = tex });
+            var wrapper = new Texture2DArrayRD { TextureRdRid = tex };
+            _wrappers.Add(wrapper);
+            if (Channels[c].Name.StartsWith("clip_")) _material.SetShaderParameter(Channels[c].Name, wrapper);
         }
     }
 
@@ -747,6 +809,14 @@ public sealed partial class ClipGround : Node3D
     {
         if (_rd == null) return;
         foreach (var (name, _) in Channels) _material?.SetShaderParameter(name, default(Variant));
+        foreach (Texture t in _wrappers)
+            if (t is Texture2DArrayRD a) a.TextureRdRid = default;
+            else if (t is Texture2Drd d) d.TextureRdRid = default;
+        _wrappers.Clear();
+        foreach (Rid r in new[] { _marchSet, _marchPipeline, _marchShader, _marchSampler, _rise })
+            if (r.IsValid) _rd.FreeRid(r);
+        _marchSet = _marchPipeline = _marchShader = _marchSampler = _rise = default;
+        ShadeMap = null;
         foreach (var (tex, stage) in _textures)
         {
             _rd.FreeRid(stage);
@@ -755,6 +825,99 @@ public sealed partial class ClipGround : Node3D
         _textures = null;
         _rd = null;
     }
+    // ---- The far shade's march (FarShade) -----------------------------------------------------
+
+    Rid _marchShader, _marchPipeline, _marchSampler, _marchSet, _rise;
+
+    /// <summary>The far shade's rises (<see cref="FarShade.N"/> a side) as the graphics card works them out; null with no graphics card.</summary>
+    public Texture2Drd ShadeMap { get; private set; }
+
+    /// <summary>Goes up whenever a tile of the coarsest level lands: the far shade's ground may have changed.</summary>
+    public int TopVersion { get; private set; }
+
+    void MakeMarch()
+    {
+        if (_rd == null) return;
+        RDShaderSpirV spirv = _rd.ShaderCompileSpirVFromSource(new RDShaderSource { Language = RenderingDevice.ShaderLanguage.Glsl, SourceCompute = FarShade.Glsl });
+        if (!string.IsNullOrEmpty(spirv.CompileErrorCompute))
+        {
+            GD.PushError($"far shade march: {spirv.CompileErrorCompute}");
+            return;
+        }
+        _marchShader = _rd.ShaderCreateFromSpirV(spirv);
+        _marchPipeline = _rd.ComputePipelineCreate(_marchShader);
+        _marchSampler = _rd.SamplerCreate(new RDSamplerState
+        {
+            MagFilter = RenderingDevice.SamplerFilter.Linear, MinFilter = RenderingDevice.SamplerFilter.Linear,
+            RepeatU = RenderingDevice.SamplerRepeatMode.Repeat, RepeatV = RenderingDevice.SamplerRepeatMode.Repeat,
+        });
+        _rise = _rd.TextureCreate(new RDTextureFormat
+        {
+            Format = RenderingDevice.DataFormat.R32Sfloat, TextureType = RenderingDevice.TextureType.Type2D, Width = FarShade.N, Height = FarShade.N, Depth = 1, ArrayLayers = 1, Mipmaps = 1,
+            // (Copied from by tests, which read it back.)
+            UsageBits = RenderingDevice.TextureUsageBits.StorageBit | RenderingDevice.TextureUsageBits.SamplingBit | RenderingDevice.TextureUsageBits.CanCopyFromBit,
+        }, new RDTextureView());
+        var tops = new RDUniform { UniformType = RenderingDevice.UniformType.SamplerWithTexture, Binding = 0 };
+        tops.AddId(_marchSampler);
+        tops.AddId(_textures[3].Tex);
+        var rise = new RDUniform { UniformType = RenderingDevice.UniformType.Image, Binding = 1 };
+        rise.AddId(_rise);
+        _marchSet = _rd.UniformSetCreate(new Godot.Collections.Array<RDUniform> { tops, rise }, _marchShader, 0);
+        ShadeMap = new Texture2Drd { TextureRdRid = _rise };
+        _wrappers.Add(ShadeMap);
+    }
+
+    /// <summary>Works the far shade out on the graphics card: the square from a corner (frame), cells this wide, for the sun's flat way.</summary>
+    public void March(Vector2 corner, float cell, Vector2 toward)
+    {
+        if (_rd == null || !_marchPipeline.IsValid) return;
+        int top = _drawn;
+        float[] p = { (float)(corner.X + _shiftX), (float)(corner.Y + _shiftZ), toward.X, toward.Y, cell, _levels[top].S, Texels, top, MathF.Min(FarShade.Look / cell, FarShade.N * 1.5f), FarShade.N, 0f, 0f };
+        byte[] bytes = MemoryMarshal.AsBytes(p.AsSpan()).ToArray();
+        RenderingDevice rd = _rd;
+        Rid pipeline = _marchPipeline, set = _marchSet;
+        RenderingServer.CallOnRenderThread(Callable.From(() =>
+        {
+            long list = rd.ComputeListBegin();
+            rd.ComputeListBindComputePipeline(list, pipeline);
+            rd.ComputeListBindUniformSet(list, set, 0);
+            rd.ComputeListSetPushConstant(list, bytes, (uint)bytes.Length);
+            rd.ComputeListDispatch(list, FarShade.N / 8, FarShade.N / 8, 1);
+            rd.ComputeListEnd();
+        }));
+    }
+
+    /// <summary>How far round the eye the coarsest level holds the far shade's square, m (its half side at the most).</summary>
+    public float ShadeReach => _levels == null ? 0f : (Texels / 2 - Tile) * _levels[_drawn].S - FarShade.Look;
+
+    /// <summary>Whether the far shade's level holds all the ground its march reads round a point of the frame, out to a reach (m, the larger way in plan).</summary>
+    public bool ShadeHolds(Vector3 eye, float reach)
+    {
+        if (_levels == null) return false;
+        Level lv = _levels[_drawn];
+        int r = (int)MathF.Ceiling(reach / lv.S) + 1, gx = (int)Math.Round((eye.X + _shiftX) / lv.S), gz = (int)Math.Round((eye.Z + _shiftZ) / lv.S);
+        for (int tz = FloorDiv(gz - r, Tile); tz <= FloorDiv(gz + r, Tile); tz++)
+        for (int tx = FloorDiv(gx - r, Tile); tx <= FloorDiv(gx + r, Tile); tx++)
+        {
+            int slot = Mod(tz, Tiles) * Tiles + Mod(tx, Tiles);
+            if (lv.Held[slot] != (tx, tz) || lv.State[slot] != In) return false;
+        }
+        return true;
+    }
+
+    /// <summary>A point's ground and top as the far shade's march reads them (frame): bilinear between the coarsest level's points.</summary>
+    public (float Ground, float Top) Tops(float x, float z)
+    {
+        Level lv = _levels[_drawn];
+        float qx = (float)((x + _shiftX) / lv.S), qz = (float)((z + _shiftZ) / lv.S);
+        int i = (int)MathF.Floor(qx), j = (int)MathF.Floor(qz);
+        float fx = qx - i, fz = qz - j;
+        (float, float) At(int a, int b) => (lv.Top[Texel(a, b) * 2], lv.Top[Texel(a, b) * 2 + 1]);
+        return Bilinear(At(i, j), At(i + 1, j), At(i, j + 1), At(i + 1, j + 1), fx, fz);
+    }
+
+    static (float, float) Bilinear((float A, float B) p00, (float A, float B) p10, (float A, float B) p01, (float A, float B) p11, float fx, float fz) =>
+        (Mathf.Lerp(Mathf.Lerp(p00.A, p10.A, fx), Mathf.Lerp(p01.A, p11.A, fx), fz), Mathf.Lerp(Mathf.Lerp(p00.B, p10.B, fx), Mathf.Lerp(p01.B, p11.B, fx), fz));
     public override void _ExitTree() => Clear();
 
     static int Mod(int v, int m) => (v % m + m) % m;

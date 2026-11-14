@@ -174,9 +174,7 @@ public static class FarBuilder
         var slideX = new float[points];
         var slideZ = new float[points];
         var drop = new float[points];
-        long t0 = Stopwatch.GetTimestamp(); // PROFILE (temporary)
         Slides(grid, step, x0, z0, height, river, source, slideX, slideZ, drop);
-        Prof(ref t0, 0);
         var drawn = new float[points];
         void Place(int k)
         {
@@ -199,11 +197,8 @@ public static class FarBuilder
                 Place(k);
             }
         }
-        Prof(ref t0, 1);
         Unfold(vertices, grid, step, slideX, slideZ, Place);
-        Prof(ref t0, 2);
         ReliefField field = Relief(spanX, spanZ, grid, step, x0, z0, height, source);
-        Prof(ref t0, 3);
         double w = palette.Map.WidthMeters, h = palette.Map.HeightMeters;
         for (int j = inset; j < grid.Nz - inset; j++)
         for (int i = inset; i < grid.Nx - inset; i++)
@@ -215,18 +210,8 @@ public static class FarBuilder
             surface.Colors[k] = GroundColor(source, palette, x, z, drawn[k], CliffSlope2(height, s, g, step, gx * gx + gz * gz), river[s], out surface.Flags[k], step);
             surface.Relief[k] = field.At(vertices[k].X, vertices[k].Z, vertices[k].Y);
         }
-        Prof(ref t0, 4);
         CliffNormals(vertices, surface.Normals, grid, step, height);
-        Prof(ref t0, 5);
         return surface;
-    }
-
-    public static readonly long[] ProfTicks = new long[8]; // PROFILE (temporary): slides, place, unfold, relief, colours, normals, heights, all
-    internal static void Prof(ref long t, int k)
-    {
-        long now = Stopwatch.GetTimestamp();
-        System.Threading.Interlocked.Add(ref ProfTicks[k], now - t);
-        t = now;
     }
     /// <summary>
     /// The squared slope that picks a grid point's colour. A point on a spur or in a gully on a jagged
