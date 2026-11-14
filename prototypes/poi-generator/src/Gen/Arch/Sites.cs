@@ -206,6 +206,7 @@ public static class Sites
         int n = p.Int("count", 3), r = p.Int("r", 4), h = p.Int("h", 8), gap = p.Int("gap", 4);
         bool alongX = p.Arg("axis", "x") == "x";
         var steel = new Rgb(0xa8, 0xaa, 0xa4);
+        var rails = new List<Int3>();
         for (int i = 0; i < n; i++)
         {
             x.C.Begin(); // (each one its own object: its shape is its own)
@@ -230,12 +231,16 @@ public static class Sites
             foreach (Round.Run run in course.Rim)
             {
                 if (Math.Abs(run.CellX - cx) <= 1 && run.CellZ > cz) continue;
+                rails.Add(new Int3(run.CellX, h, run.CellZ));
                 x.C.Blocks[new Int3(run.CellX, h, run.CellZ)] = RimRail(run, new Rgb(0xd0, 0xa0, 0x20));
             }
             var top = new List<Int3> { new(cx, h, cz), new(cx, h + 1, cz) };
             int m = x.C.AddModule(ModuleKind.Outdoor, "tank top", 0, top);
             x.C.Link(x.Yard, m);
         }
+        // (Where two tanks stand flank to flank, no rail along the face one shares with the other: it is no edge.)
+        foreach (Int3 c in rails)
+            if (x.C.Get(c) is { Type: BlockType.Rail } rail && BlockInfo.IsFullCube(x.C.Get(c + Int3.Down).Type) && x.C.Solid(c + Int3.Down + rail.Facing.Vec())) x.C.Remove(c);
         x.C.X.Hazards.Add(new Hazard { Kind = "drop", Center = new Int3(p.X, h, p.Z), Radius = r, Strength = h, Warning = "No rails on the ladder side: a long drop." });
     }
 
