@@ -2,8 +2,9 @@
 // built from the unlock fields on items and blocks (shared/Items data, and data/items.json here).
 //
 //   levels         experience needed to reach each level, from level 2 up to the cap (level 1 is
-//                  where everyone starts, with 0). A curve: each level costs 1.2 times the one
-//                  before (80 for level 2), so the early levels come quickly and the last slowly
+//                  where everyone starts, with 0). A curve: each level takes 1.1 times as long as
+//                  the one before, about 17 minutes for level 2 and 25 hours of play to the cap
+//                  (owner, 14 Nov), at about 0.95 experience a minute once "gain" is applied
 //   points         unlock points granted on reaching each level, from level 2 up: with startPoints
 //                  they pay for the whole tree (deco included) by the cap and not before, so each
 //                  level up is a choice (BuildTest checks both)
@@ -14,11 +15,11 @@
 {
   "schema": "galhack.progress",
   "version": 1,
-  "levels": [ 80, 175, 290, 430, 595, 795, 1035, 1320, 1665, 2075, 2570, 3165, 3880, 4735, 5765, 6995,
-              8475, 10250, 12380, 14935, 18000, 21680, 26100, 31400 ],
+  "levels": [ 15, 35, 55, 75, 100, 125, 155, 185, 220, 255, 300, 345, 395, 450, 510, 580,
+              655, 735, 825, 920, 1030, 1150, 1280, 1425 ],
   "points": [ 2, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 6, 7, 7, 7, 7, 8, 8, 8, 8, 9, 9, 9, 9 ],
   "startPoints": 3,
-  "pastCap": 1500,
+  "pastCap": 75,
   "xp": {
     "gain": 0.05,
     // Gathering: per 1 m cell of ore dug, per plant cut.
