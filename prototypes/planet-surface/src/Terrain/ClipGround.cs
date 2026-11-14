@@ -700,11 +700,14 @@ public sealed partial class ClipGround : Node3D
             }
             return Bilinear(At(i, j), At(i + 1, j), At(i, j + 1), At(i + 1, j + 1), (float)(qx - i), (float)(qz - j));
         }
+        /// <summary>Tests: every square split along b-c, as the blocks drew it before they took each square's split (what the split saves).</summary>
+        public bool OneDiagonal;
+
         /// <summary>A square's middle point: the middle of the diagonal it is split along.</summary>
         Vector3 Center(int gx, int gz)
         {
             TileJob t = TileOf(gx, gz, out int at);
-            return t.Data[at * 4 + 3] >= 1.5f ? (Point(gx, gz) + Point(gx + 1, gz + 1)) * 0.5f : (Point(gx + 1, gz) + Point(gx, gz + 1)) * 0.5f;
+            return !OneDiagonal && t.Data[at * 4 + 3] >= 1.5f ? (Point(gx, gz) + Point(gx + 1, gz + 1)) * 0.5f : (Point(gx + 1, gz) + Point(gx, gz + 1)) * 0.5f;
         }
 
         public float Height(double x, double z) => Over(Point, Center, (int)Math.Floor(x / _s), (int)Math.Floor(z / _s), (float)x, (float)z) ?? float.NaN;

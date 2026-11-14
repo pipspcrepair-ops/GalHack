@@ -13,10 +13,9 @@ namespace PlanetSurface;
 
 /// <summary>
 /// Cliffs read as cleanly far off as the old far meshes drew them: on fresh worlds of mesas and buttes, round the steepest
-/// cliffs, the drawn edge along each cliff's top, its middle and its foot (where the drawn ground crosses those heights) is
-/// traced on a quarter-metre grid for the GPU rings (2, 4 and 8 m) and for the far meshes the GPU rings replaced (the same
-/// shaping in 128 m chunks, as they were built). A tooth is a sharp turn of that edge (a fin or a notch a grid square
-/// wide) where the land's own line makes none. The rings may not have more of them than the old meshes.
+/// cliffs, the drawn ground is looked at every quarter metre along each cliff's top and foot, for the GPU rings (2, 4 and
+/// 8 m) and for the far meshes they replaced (the same shaping in 128 m chunks, as they were built). A tooth is a notch in
+/// the rim or a fin at the foot: a vertical step in the drawn edge (counted by its sides). The rings may not have more of them than the old meshes.
 /// </summary>
 public partial class SurfaceTest
 {
@@ -26,7 +25,7 @@ public partial class SurfaceTest
         const int Half = 32;
         const float Cell = 0.25f;
         int n = (int)(2 * Half / Cell) + 1;
-        var teeth = new int[3, 2];      // by level: the old meshes', the rings'
+        var teeth = new int[3, 3];      // by level: the old meshes', the rings', the rings with one diagonal (as they were before they took each square's split)
         float length = 0f;
         int sites = 0;
         foreach (int variant in new[] { 1, 0 })
@@ -34,6 +33,7 @@ public partial class SurfaceTest
             var spec = PlanetSpec.Roll((ulong)rand.NextInt64(), Archetype.Arid, variant);
             PlanetWorld w = await Task.Run(() => PlanetWorld.Build(spec, Main.Catalog));
             var rings = Enumerable.Range(0, 3).Select(l => new ClipGround.Reader(l, w.Source, w.Palette, (int)w.Width, (int)w.Height)).ToArray();
+            var one = Enumerable.Range(0, 3).Select(l => new ClipGround.Reader(l, w.Source, w.Palette, (int)w.Width, (int)w.Height) { OneDiagonal = true }).ToArray();
             var olds = Enumerable.Range(0, 3).Select(l => new OldFar(w, l)).ToArray();
             foreach (var (cx, cz) in Cliffs(w, rand, 3))
             {
@@ -45,40 +45,41 @@ public partial class SurfaceTest
                     truth[j * n + i] = w.Source.SurfaceHeight(Mathx.WrapX(origin.X + i * Cell, w.Width), Mathx.Wrap(origin.Y + j * Cell, w.Height));
                 var sorted = truth.OrderBy(h => h).ToArray();
                 float lo = sorted[sorted.Length / 20], hi = sorted[sorted.Length * 19 / 20];
-                foreach (float share in new[] { 0.15f, 0.5f, 0.85f })
+                // Along each cliff's top and foot (where the land stands at 85% and 15% of the way up the cliff), a quarter metre at
+                // a time: the land is level along that line, so the drawn ground along it may drift but never jump. A tooth is a
+                // jump of more than a tenth of the cliff's fall (a metre at the least) between neighbouring points, a notch in the
+                // rim or a fin at the foot; each has two sides.
+                float step = MathF.Max(1f, (hi - lo) * 0.1f);
+                foreach (float share in new[] { 0.85f, 0.15f })
                 {
                     float at = lo + (hi - lo) * share;
-                    var land = Contours(truth.Select(h => h - at).ToArray(), n, Cell, origin);
-                    var corners = land.SelectMany(line => SharpTurns(line, 1f)).ToList();
-                    length += land.Sum(line => Resample(line, 1f).Count);
-                    for (int l = 0; l < 3; l++)
+                    foreach (var line in Contours(truth.Select(h => h - at).ToArray(), n, Cell, origin))
                     {
-                        float step = ClipGround.Spacing(l);
-                        for (int which = 0; which < 2; which++)
+                        var edge = Resample(line, Cell).Where(p => p.X > origin.X + 8 && p.Y > origin.Y + 8 && p.X < origin.X + 2 * Half - 8 && p.Y < origin.Y + 2 * Half - 8).ToList();
+                        length += edge.Count * Cell;
+                        for (int l = 0; l < 3; l++)
+                        for (int which = 0; which < 3; which++)
                         {
-                            var drawn = new float[n * n];
-                            for (int j = 0; j < n; j++)
-                            for (int i = 0; i < n; i++)
+                            float last = float.NaN;
+                            Vector2 was = default;
+                            foreach (Vector2 p in edge)
                             {
-                                double x = Mathx.WrapX(origin.X + i * Cell, w.Width), z = Mathx.Wrap(origin.Y + j * Cell, w.Height);
-                                drawn[j * n + i] = (which == 0 ? olds[l].Height(x, z) : rings[l].Height(x, z)) - at;
+                                double x = Mathx.WrapX(p.X, w.Width), z = Mathx.Wrap(p.Y, w.Height);
+                                float drawn = which == 0 ? olds[l].Height(x, z) : which == 1 ? rings[l].Height(x, z) : one[l].Height(x, z);
+                                if (!float.IsNaN(last) && p.DistanceTo(was) < Cell * 1.5f && MathF.Abs(drawn - last) > step) teeth[l, which]++;
+                                (last, was) = (drawn, p);
                             }
-                            // A turn where the land's own line turns too is the land's.
-                            foreach (var line in Contours(drawn, n, Cell, origin))
-                                teeth[l, which] += SharpTurns(line, step).Count(t => t.X > origin.X + 2 && t.Y > origin.Y + 2 && t.X < origin.X + 2 * Half - 2 && t.Y < origin.Y + 2 * Half - 2
-                                    && !corners.Any(c => c.DistanceTo(t) <= step * 1.5f));
                         }
                     }
-                }
-                await Frames(1);
+                }                await Frames(1);
             }
         }
         float per = 100f / Math.Max(length, 1f);
         for (int l = 0; l < 3; l++)
         {
-            float old = teeth[l, 0] * per, ring = teeth[l, 1] * per;
+            float old = teeth[l, 0] * per, ring = teeth[l, 1] * per, single = teeth[l, 2] * per;
             Check(sites > 0 && ring <= old * 1.15f + 0.5f,
-                $"cliff teeth, ring {l} ({ClipGround.Spacing(l):F0} m): {ring:F2} a hundred metres of cliff edge against the old far meshes' {old:F2} ({teeth[l, 1]} and {teeth[l, 0]} over {length:F0} m of edge at the top, middle and foot of {sites} cliffs)");
+                $"cliff teeth, ring {l} ({ClipGround.Spacing(l):F0} m): {ring:F2} a hundred metres of cliff edge against the old far meshes' {old:F2}, and {single:F2} with every square split one way ({teeth[l, 1]}, {teeth[l, 0]} and {teeth[l, 2]} over {length:F0} m of top and foot of {sites} cliffs)");
         }
     }
 
