@@ -126,8 +126,10 @@ public static class Ornament
         // Where along a run of n cells the bay's repeats stand: at the bay spacing, set out evenly about its middle.
         List<int> Bays(int n) { int o = (n - 1) % v.Bay / 2; return Enumerable.Range(0, (n - 1 - o) / v.Bay + 1).Select(k => o + k * v.Bay).ToList(); }
         var rims = Round.Rims(layout.Extras.Rounds); // (a round thing is dressed by its own builder)
-        // A wall's face toward a side, flat and whole, and no way through it there or in the two cells under it.
-        bool Wall(Int3 w, Dir d) => Shapes.FlatToward(g.Get(w), d) && !rims.Contains(w) && !Way(g.Get(w)) && !Way(g.Get(w + Int3.Down)) && !Way(g.Get(w + Int3.Down * 2));
+        // The building's own face toward a side, flat and whole: structure, never dressing (a gantry's grating, a conveyor's casing) that holds nothing.
+        bool Bears(Int3 q, Dir d) => Shapes.FlatToward(g.Get(q), d) && g.Get(q).Role != Role.Decor;
+        // A wall's face toward a side, and no way through it there or in the two cells under it.
+        bool Wall(Int3 w, Dir d) => Bears(w, d) && !rims.Contains(w) && !Way(g.Get(w)) && !Way(g.Get(w + Int3.Down)) && !Way(g.Get(w + Int3.Down * 2));
 
         // Beams: across a hall at the bay spacing, under the ceiling from wall to wall; every bay of the hall or none.
         if (v.Beams)
@@ -145,7 +147,7 @@ public static class Ornament
                     if (!rows.TryGetValue(p, out var rib)) return null;
                     if (rib.Count < 3 || (alongX ? rib[^1].Z - rib[0].Z : rib[^1].X - rib[0].X) != rib.Count - 1) return null;
                     Int3 w0 = rib[0] - across.Vec(), w1 = rib[^1] + across.Vec();
-                    if (!Shapes.FlatToward(g.Get(w0), across) || !Shapes.FlatToward(g.Get(w1), across.Opposite()) || !rib.All(c => Shapes.FlatToward(g.Get(c + Int3.Up), Dir.Down))) return null;
+                    if (!Bears(w0, across) || !Bears(w1, across.Opposite()) || !rib.All(c => Bears(c + Int3.Up, Dir.Down))) return null;
                     // (Clear of anything beside it, a post or a pier it would pass a hand off.)
                     bool Clear(Int3 c) => Open(c, BlockType.Beam) && !BlockInfo.Collides(g.Get(c + across.RotateCw(1).Vec()).Type) && !BlockInfo.Collides(g.Get(c + across.RotateCw(3).Vec()).Type);
                     return rib.All(Clear) ? rib.Select(c => (c, Made(c + Int3.Up, BlockType.Beam, across))).ToList() : null;
@@ -171,7 +173,7 @@ public static class Ornament
                 foreach (Int3 w in set)
                 {
                     Int3 q = w + d.Vec();
-                    if (!Outside(q) || !Wall(w, d) || !Shapes.FlatToward(g.Get(q + Int3.Up), Dir.Down) || inst.ObjectOf(q + Int3.Up) != inst.ObjectOf(w)) continue;
+                    if (!Outside(q) || !Wall(w, d) || !Bears(q + Int3.Up, Dir.Down) || inst.ObjectOf(q + Int3.Up) != inst.ObjectOf(w)) continue;
                     var k = (d, d is Dir.North or Dir.South ? w.Z : w.X, q.Y);
                     (under.TryGetValue(k, out var s) ? s : under[k] = new HashSet<Int3>()).Add(q);
                 }
