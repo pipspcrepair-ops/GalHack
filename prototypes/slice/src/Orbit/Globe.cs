@@ -773,37 +773,37 @@ public partial class Globe : Node3D
         ArchetypeLook look = paint.Look;
         ArrayMesh grid = PolarGrid(rules.Rings, rules.Segments);
         _ground = new ShaderMaterial { Shader = new Shader { Code = GroundSource } };
-        _ground.SetShaderParameter("albedo_map", ImageTexture.CreateFromImage(paint.Albedo));
+        _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("albedo_map"), ImageTexture.CreateFromImage(paint.Albedo));
         yield return 0;
-        _ground.SetShaderParameter("glow_map", ImageTexture.CreateFromImage(paint.Glow));
-        _ground.SetShaderParameter("relief_map", ImageTexture.CreateFromImage(paint.Relief));
-        _ground.SetShaderParameter("day_glow", look.LiquidGlow > 0 ? 0.9f : 0.5f);
-        _ground.SetShaderParameter("night_glow", look.GlowingNights ? 2.5f : 1.4f);
-        _ground.SetShaderParameter("radius", radius);
-        _ground.SetShaderParameter("map_size", mapSize);
+        _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("glow_map"), ImageTexture.CreateFromImage(paint.Glow));
+        _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("relief_map"), ImageTexture.CreateFromImage(paint.Relief));
+        _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("day_glow"), look.LiquidGlow > 0 ? 0.9f : 0.5f);
+        _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("night_glow"), look.GlowingNights ? 2.5f : 1.4f);
+        _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("radius"), radius);
+        _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("map_size"), mapSize);
         AddChild(Instance("Ground", grid, _ground));
         yield return 0;
         _clouds = new ShaderMaterial { Shader = new Shader { Code = CloudSource } };
-        _clouds.SetShaderParameter("cloud_map", ImageTexture.CreateFromImage(paint.Clouds));
-        _clouds.SetShaderParameter("radius", radius);
-        _clouds.SetShaderParameter("map_size", mapSize);
+        _clouds.SetShaderParameter(PlanetSurface.Fx.Names.Of("cloud_map"), ImageTexture.CreateFromImage(paint.Clouds));
+        _clouds.SetShaderParameter(PlanetSurface.Fx.Names.Of("radius"), radius);
+        _clouds.SetShaderParameter(PlanetSurface.Fx.Names.Of("map_size"), mapSize);
         Weather = new GlobeWeather(mapSize);
         Weather.Bind(_clouds, C(look.CloudColor));
         AddChild(Instance("Clouds", grid, _clouds));
         yield return 0;
         var shell = new SphereMesh { Radius = 1f, Height = 2f, RadialSegments = 48, Rings = 24, CustomAabb = Everywhere };
         _air = new ShaderMaterial { Shader = new Shader { Code = AirSource } };
-        _air.SetShaderParameter("color", C(look.Atmosphere));
-        _air.SetShaderParameter("shell", AirShell);
+        _air.SetShaderParameter(PlanetSurface.Fx.Names.Of("color"), C(look.Atmosphere));
+        _air.SetShaderParameter(PlanetSurface.Fx.Names.Of("shell"), AirShell);
         _airMesh = Instance("Atmosphere", shell, _air);
         AddChild(_airMesh);
         _shroud = new ShaderMaterial { Shader = new Shader { Code = ShroudSource }, RenderPriority = 100 };
-        _shroud.SetShaderParameter("shell", ShroudShell);
+        _shroud.SetShaderParameter(PlanetSurface.Fx.Names.Of("shell"), ShroudShell);
         _shroudMesh = Instance("Shroud", shell, _shroud);
         _shroudMesh.Visible = false;
         AddChild(_shroudMesh);
         _ringMaterial = new ShaderMaterial { Shader = new Shader { Code = RingSource }, RenderPriority = 5 }; // nearer than anything else up there
-        _ringMaterial.SetShaderParameter("color", C(look.RingColor));
+        _ringMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("color"), C(look.RingColor));
         _hasRing = look.Ring;
         // The mesh only covers the ring: a shade wider than it, so its straight sides never cut the round edge.
         _ring = new MeshInstance3D { Name = "Ring", Mesh = RingMesh(radius * (RingInner - 0.02f), radius * (RingOuter + 0.03f), 160), MaterialOverride = _ringMaterial, Visible = false, CustomAabb = Everywhere };
@@ -837,71 +837,71 @@ public partial class Globe : Node3D
         float sphereOut = ArcAt(_sphereReach, rho, Radius);
         foreach (ShaderMaterial m in new[] { _ground, _clouds })
         {
-            m.SetShaderParameter("eye_up", v.Up);
-            m.SetShaderParameter("eye_east", v.East);
-            m.SetShaderParameter("eye_south", v.South);
-            m.SetShaderParameter("map_up", v.MapUp);
-            m.SetShaderParameter("map_east", v.MapEast);
-            m.SetShaderParameter("map_south", v.MapSouth);
-            m.SetShaderParameter("nadir", v.Nadir);
-            m.SetShaderParameter("height", v.Height);
-            m.SetShaderParameter("bend", v.Bend);
-            m.SetShaderParameter("flat_from", v.FlatFrom);
-            m.SetShaderParameter("flat_map", v.Flat);
-            m.SetShaderParameter("taper", v.Taper);
-            m.SetShaderParameter("local", v.Local);
-            m.SetShaderParameter("reach", Reach);
-            m.SetShaderParameter("sphere_out", sphereOut);
-            m.SetShaderParameter("near_at", v.Near);
-            m.SetShaderParameter("far_at", v.Far);
-            m.SetShaderParameter("fog_density", v.FogDensity);
-            m.SetShaderParameter("fog_color", v.FogColor);
-            m.SetShaderParameter("over_land", v.OverLand);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("eye_up"), v.Up);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("eye_east"), v.East);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("eye_south"), v.South);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("map_up"), v.MapUp);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("map_east"), v.MapEast);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("map_south"), v.MapSouth);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("nadir"), v.Nadir);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("height"), v.Height);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("bend"), v.Bend);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("flat_from"), v.FlatFrom);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("flat_map"), v.Flat);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("taper"), v.Taper);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("local"), v.Local);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("reach"), Reach);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("sphere_out"), sphereOut);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("near_at"), v.Near);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("far_at"), v.Far);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("fog_density"), v.FogDensity);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("fog_color"), v.FogColor);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("over_land"), v.OverLand);
         }
         // Over the cloud deck for the swap, under it as the far field.
         _ground.RenderPriority = v.OverLand > 0f && v.OverLand < 1f ? 1 : -2;
         _clouds.RenderPriority = _ground.RenderPriority + 1;
-        _ground.SetShaderParameter("relief", v.Relief);
-        _ground.SetShaderParameter("sun_dir", v.ToSun);
-        _clouds.SetShaderParameter("sun_dir", v.ToSun);
+        _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("relief"), v.Relief);
+        _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_dir"), v.ToSun);
+        _clouds.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_dir"), v.ToSun);
         foreach (ShaderMaterial m in new[] { _ground, _clouds })
         {
-            m.SetShaderParameter("umbra_count", v.Umbra == null ? 0 : v.UmbraCount);
-            if (v.Umbra != null) m.SetShaderParameter("umbra", v.Umbra);
-            m.SetShaderParameter("umbra_sun", v.UmbraSun);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("umbra_count"), v.Umbra == null ? 0 : v.UmbraCount);
+            if (v.Umbra != null) m.SetShaderParameter(PlanetSurface.Fx.Names.Of("umbra"), v.Umbra);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("umbra_sun"), v.UmbraSun);
         }
-        _clouds.SetShaderParameter("cloud_lift", v.CloudLift);
-        _clouds.SetShaderParameter("sun_dir", v.ToSun);
-        _air.SetShaderParameter("sun_dir", v.ToSun);
+        _clouds.SetShaderParameter(PlanetSurface.Fx.Names.Of("cloud_lift"), v.CloudLift);
+        _clouds.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_dir"), v.ToSun);
+        _air.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_dir"), v.ToSun);
         _ring.Visible = _hasRing && v.RingShown > 0.002f;
         if (_ring.Visible)
         {
             // One centre and one scale for the ring, its shader and the sheet: nothing of it is placed apart.
             Vector3 centre = v.Eye - v.Up * (v.Height + v.RingRadius);
             _ring.GlobalTransform = new Transform3D(_ringBasis.Scaled(Vector3.One * (v.RingRadius / Radius)), centre);
-            _ringMaterial.SetShaderParameter("to_sun", v.ToSun);
-            _ringMaterial.SetShaderParameter("axis", _ringBasis.Y.Normalized());
-            _ringMaterial.SetShaderParameter("centre", centre);
-            _ringMaterial.SetShaderParameter("ring_radius", v.RingRadius);
-            _ringMaterial.SetShaderParameter("eye_up", v.Up);
-            _ringMaterial.SetShaderParameter("height", v.Height);
-            _ringMaterial.SetShaderParameter("sheet_radius", rho);
-            _ringMaterial.SetShaderParameter("stand_at", v.Near * 0.9f);
-            _ringMaterial.SetShaderParameter("fade", v.RingShown);
+            _ringMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("to_sun"), v.ToSun);
+            _ringMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("axis"), _ringBasis.Y.Normalized());
+            _ringMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("centre"), centre);
+            _ringMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("ring_radius"), v.RingRadius);
+            _ringMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("eye_up"), v.Up);
+            _ringMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("height"), v.Height);
+            _ringMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("sheet_radius"), rho);
+            _ringMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("stand_at"), v.Near * 0.9f);
+            _ringMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("fade"), v.RingShown);
             Vector3 sheetCentre = v.Eye - v.Up * (v.Height + rho);
             RingFit = (_ring.GlobalPosition.DistanceTo(sheetCentre), RingInner * v.RingRadius / rho);
         }
         foreach (ShaderMaterial m in new[] { _ground, _clouds, _air, _ringMaterial })
         {
-            m.SetShaderParameter("true_depth", v.TrueDepth ? 1f : 0f);
-            m.SetShaderParameter("globe_centre", v.TrueCentre);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("true_depth"), v.TrueDepth ? 1f : 0f);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("globe_centre"), v.TrueCentre);
         }
-        _air.SetShaderParameter("air_radius", Radius + _airThickness);
-        _air.SetShaderParameter("eye_up", v.Up);
-        _air.SetShaderParameter("ground", rho);
-        _air.SetShaderParameter("thickness", _airThickness);
-        _air.SetShaderParameter("eye_height", v.Height);
-        _air.SetShaderParameter("strength", AirStrength * v.Rim);
+        _air.SetShaderParameter(PlanetSurface.Fx.Names.Of("air_radius"), Radius + _airThickness);
+        _air.SetShaderParameter(PlanetSurface.Fx.Names.Of("eye_up"), v.Up);
+        _air.SetShaderParameter(PlanetSurface.Fx.Names.Of("ground"), rho);
+        _air.SetShaderParameter(PlanetSurface.Fx.Names.Of("thickness"), _airThickness);
+        _air.SetShaderParameter(PlanetSurface.Fx.Names.Of("eye_height"), v.Height);
+        _air.SetShaderParameter(PlanetSurface.Fx.Names.Of("strength"), AirStrength * v.Rim);
         _airMesh.Visible = v.Rim > 0.002f;
     }
 
@@ -911,11 +911,11 @@ public partial class Globe : Node3D
         if (_shroud == null) return;
         _shroudMesh.Visible = amount > 0.002f;
         if (!_shroudMesh.Visible) return;
-        _shroud.SetShaderParameter("amount", amount);
-        _shroud.SetShaderParameter("low", low);
-        _shroud.SetShaderParameter("high", high);
-        _shroud.SetShaderParameter("glow", glow);
-        _shroud.SetShaderParameter("sun_dir", toSun);
+        _shroud.SetShaderParameter(PlanetSurface.Fx.Names.Of("amount"), amount);
+        _shroud.SetShaderParameter(PlanetSurface.Fx.Names.Of("low"), low);
+        _shroud.SetShaderParameter(PlanetSurface.Fx.Names.Of("high"), high);
+        _shroud.SetShaderParameter(PlanetSurface.Fx.Names.Of("glow"), glow);
+        _shroud.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_dir"), toSun);
     }
 
     static MeshInstance3D Instance(string name, Mesh mesh, Material material) => new()

@@ -167,11 +167,11 @@ public sealed partial class ClipGround : Node3D
             var (from, to) = Band(l);
             bands[l] = new Vector4(from, to, Spacing(l), 0f);
         }
-        material.SetShaderParameter("clip_ground", true);
-        material.SetShaderParameter("clip_band", bands);
-        material.SetShaderParameter("clip_top", levels - 1);
-        material.SetShaderParameter("clip_texels", Texels);
-        material.SetShaderParameter("clip_shift", Vector2.Zero);
+        material.SetShaderParameter(PlanetSurface.Fx.Names.Of("clip_ground"), true);
+        material.SetShaderParameter(PlanetSurface.Fx.Names.Of("clip_band"), bands);
+        material.SetShaderParameter(PlanetSurface.Fx.Names.Of("clip_top"), levels - 1);
+        material.SetShaderParameter(PlanetSurface.Fx.Names.Of("clip_texels"), Texels);
+        material.SetShaderParameter(PlanetSurface.Fx.Names.Of("clip_shift"), Vector2.Zero);
         MakeTextures(levels + 1);
         MakeMarch();
     }
@@ -181,7 +181,7 @@ public sealed partial class ClipGround : Node3D
     {
         _shiftX -= dx;
         _shiftZ -= dz;
-        _material?.SetShaderParameter("clip_shift", new Vector2((float)_shiftX, (float)_shiftZ));
+        _material?.SetShaderParameter(PlanetSurface.Fx.Names.Of("clip_shift"), new Vector2((float)_shiftX, (float)_shiftZ));
         _qx = double.NaN; // the blocks are placed again
     }
 
@@ -216,7 +216,7 @@ public sealed partial class ClipGround : Node3D
         Want(ex, ez);
         Start();
         Lay(ex, ez);
-        _material.SetShaderParameter("clip_eye", _eye);
+        _material.SetShaderParameter(PlanetSurface.Fx.Names.Of("clip_eye"), _eye);
     }
 
     void Land()
@@ -262,10 +262,10 @@ public sealed partial class ClipGround : Node3D
     {
         if (_ready.Count == 0) return;
         int n = Math.Min(_ready.Count, Uploads), row = Tile * Uploads;
-        var data = new float[row * Tile * 4];
-        var shape = new Half[row * Tile * 4];
-        var color = new Half[row * Tile * 4];
-        var top = new float[row * Tile * 2];
+        // The staging copies come from a pool and go back once the card has them (640 KB a send, allocated each time,
+        // was most of what the main thread allocated while flying). Only the tiles sent are read from them.
+        float[] data = System.Buffers.ArrayPool<float>.Shared.Rent(row * Tile * 4), top = System.Buffers.ArrayPool<float>.Shared.Rent(row * Tile * 2);
+        Half[] shape = System.Buffers.ArrayPool<Half>.Shared.Rent(row * Tile * 4), color = System.Buffers.ArrayPool<Half>.Shared.Rent(row * Tile * 4);
         var copies = new (uint Level, Vector3 To)[n];
         int sent = 0;
         for (int t = 0; t < n; t++)
@@ -284,20 +284,34 @@ public sealed partial class ClipGround : Node3D
             lv.State[job.Slot] = In;
         }
         _ready.RemoveRange(0, n);
-        if (sent == 0) return;
+        if (sent == 0)
+        {
+            Return(data, top, shape, color);
+            return;
+        }
         RenderingDevice rd = _rd;
         (Rid Tex, Rid Stage)[] targets = _textures;
+        int texels = row * Tile;
         RenderingServer.CallOnRenderThread(Callable.From(() =>
         {
-            rd.TextureUpdate(targets[0].Stage, 0, MemoryMarshal.AsBytes(data.AsSpan()));
-            rd.TextureUpdate(targets[1].Stage, 0, MemoryMarshal.AsBytes(shape.AsSpan()));
-            rd.TextureUpdate(targets[2].Stage, 0, MemoryMarshal.AsBytes(color.AsSpan()));
-            rd.TextureUpdate(targets[3].Stage, 0, MemoryMarshal.AsBytes(top.AsSpan()));
+            rd.TextureUpdate(targets[0].Stage, 0, MemoryMarshal.AsBytes(data.AsSpan(0, texels * 4)));
+            rd.TextureUpdate(targets[1].Stage, 0, MemoryMarshal.AsBytes(shape.AsSpan(0, texels * 4)));
+            rd.TextureUpdate(targets[2].Stage, 0, MemoryMarshal.AsBytes(color.AsSpan(0, texels * 4)));
+            rd.TextureUpdate(targets[3].Stage, 0, MemoryMarshal.AsBytes(top.AsSpan(0, texels * 2)));
+            Return(data, top, shape, color);
             var size = new Vector3(Tile, Tile, 1f);
             for (int t = 0; t < sent; t++)
                 foreach (var (tex, stage) in targets)
                     rd.TextureCopy(stage, tex, new Vector3(t * Tile, 0f, 0f), copies[t].To, size, 0, 0, 0, copies[t].Level);
         }));
+    }
+
+    static void Return(float[] data, float[] top, Half[] shape, Half[] color)
+    {
+        System.Buffers.ArrayPool<float>.Shared.Return(data);
+        System.Buffers.ArrayPool<float>.Shared.Return(top);
+        System.Buffers.ArrayPool<Half>.Shared.Return(shape);
+        System.Buffers.ArrayPool<Half>.Shared.Return(color);
     }
 
     /// <summary>Each level's tiles round the eye (clip coordinates): a slot whose tile has gone takes the one come into range.</summary>

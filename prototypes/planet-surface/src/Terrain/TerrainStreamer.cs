@@ -199,7 +199,10 @@ public partial class TerrainStreamer : Node3D
     public string WorstBreakdown { get; private set; } = "";
     readonly double[] _sections = new double[5];
     long _frameStart;
-    static readonly string[] SectionNames = { "voxels", "far", "horizon", "evict", "collision" };
+    public static readonly string[] SectionNames = { "voxels", "far", "horizon", "evict", "collision" };
+
+    /// <summary>Each section's main-thread time since the game began, ms (measurements read the difference over a stretch).</summary>
+    public readonly double[] SectionTotals = new double[5];
     public int MeshedChunks => _chunks.Count;
     public int Triangles { get; private set; }
     public int CollisionBodies { get; private set; }
@@ -212,6 +215,9 @@ public partial class TerrainStreamer : Node3D
 
     /// <summary>A voxel chunk's new mesh was swapped in (frame key).</summary>
     public event Action<Int3> ChunkApplied;
+
+    /// <summary>A far chunk's new drawing went in: its far key, its level and its node (measurements).</summary>
+    public event Action<int, int, int, Node3D> FarApplied;
 
     /// <summary>The longest GC pause that landed inside streaming's own time since the last reset.</summary>
     public double WorstGcPauseMs { get; private set; }
@@ -257,19 +263,19 @@ public partial class TerrainStreamer : Node3D
         // step (no sky through it); where it is lower, the wall is hidden under them. It is cut only
         // where every triangle is sunk. Its triangles never reach outside the square, so it is
         // untouched there.
-        _horizonMaterial.SetShaderParameter("hole_sink", HorizonSink);
-        _horizonMaterial.SetShaderParameter("hole_sink_from", HorizonSpacing - 0.5f);
-        _horizonMaterial.SetShaderParameter("hole_cut", 2f * HorizonSpacing);
-        _horizonMaterial.SetShaderParameter("road_tolerance", 30f);
-        _horizonMaterial.SetShaderParameter("rock_uv2", 0f); // its UV2 is its own smoothed ground, not a cliff's reach
+        _horizonMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("hole_sink"), HorizonSink);
+        _horizonMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("hole_sink_from"), HorizonSpacing - 0.5f);
+        _horizonMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("hole_cut"), 2f * HorizonSpacing);
+        _horizonMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("road_tolerance"), 30f);
+        _horizonMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("rock_uv2"), 0f); // its UV2 is its own smoothed ground, not a cliff's reach
         _horizon.MaterialOverride = _horizonMaterial;
         // The far rings meet the voxels the same way. The square moves 16 m at a time, so the meshes
         // can't be stitched, and on a cliff the two can differ by metres along it. Far grid lines fall on
         // the square's edge, and the next vertices in go under, so the last grid square is a wall
         // down from that edge: it fills any step up from the voxels, and is hidden under them otherwise.
-        FarMaterial.SetShaderParameter("hole_sink", HorizonSink);
-        FarMaterial.SetShaderParameter("hole_sink_from", 0.25f);
-        FarMaterial.SetShaderParameter("hole_cut", FarHoleCut);
+        FarMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("hole_sink"), HorizonSink);
+        FarMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("hole_sink_from"), 0.25f);
+        FarMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("hole_cut"), FarHoleCut);
         SetClip();
         _floraMaterial = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/flora.gdshader") };
         BuildPlantMeshes();
@@ -301,33 +307,33 @@ public partial class TerrainStreamer : Node3D
     ShaderMaterial TerrainMaterial(bool far)
     {
         var m = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/terrain.gdshader") };
-        m.SetShaderParameter("far_ring", far);
-        m.SetShaderParameter("strata", World.Palette.Strata);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("far_ring"), far);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("strata"), World.Palette.Strata);
         WorldLook look = World.Look;
-        m.SetShaderParameter("snow_altitude", look.SnowAltitude);
-        m.SetShaderParameter("base_snow", look.BaseSnow);
-        m.SetShaderParameter("dust_color", look.Dust);
-        m.SetShaderParameter("glow_color", look.Glow);
-        m.SetShaderParameter("road_segments", _roads.Segments);
-        m.SetShaderParameter("road_cells", _roads.Cells);
-        m.SetShaderParameter("road_index", _roads.Index);
-        m.SetShaderParameter("road_grid", _roads.Grid);
-        m.SetShaderParameter("road_tolerance", far ? 12f : 1.2f);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("snow_altitude"), look.SnowAltitude);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("base_snow"), look.BaseSnow);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("dust_color"), look.Dust);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("glow_color"), look.Glow);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("road_segments"), _roads.Segments);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("road_cells"), _roads.Cells);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("road_index"), _roads.Index);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("road_grid"), _roads.Grid);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("road_tolerance"), far ? 12f : 1.2f);
         // The world's own ground bared, for its tracks and dirt roads: its rock weathered into clay, grit or sand.
         Planets.Look.Rgb bare = World.Palette.BareSoil;
-        m.SetShaderParameter("bare_soil", new Color(bare.R, bare.G, bare.B));
-        m.SetShaderParameter("ground_patches", _grounds.Patches);
-        m.SetShaderParameter("ground_cells", _grounds.Cells);
-        m.SetShaderParameter("ground_index", _grounds.Index);
-        m.SetShaderParameter("ground_grid", _grounds.Grid);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("bare_soil"), new Color(bare.R, bare.G, bare.B));
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("ground_patches"), _grounds.Patches);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("ground_cells"), _grounds.Cells);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("ground_index"), _grounds.Index);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("ground_grid"), _grounds.Grid);
         // The prevailing wind that drifts sand over the roads: one of the map's four ways, by the world.
         int wind = (int)(World.Spec.Seed % 4);
         // The world's road paint: yellow or white centre lines, dashed or solid, by its culture; none where
         // the old world never painted its roads.
         ulong paint = World.Spec.Seed / 4;
         bool painted = World.Profile?.Before is not PoiGenerator.Gen.TechLevel.Low;
-        m.SetShaderParameter("road_paint", new Vector4(paint % 2, (paint / 2) % 3 == 0 ? 0 : 1, painted ? 1 : 0, 0));
-        m.SetShaderParameter("road_wind", wind switch { 0 => new Vector2(1, 0), 1 => new Vector2(-1, 0), 2 => new Vector2(0, 1), _ => new Vector2(0, -1) });
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("road_paint"), new Vector4(paint % 2, (paint / 2) % 3 == 0 ? 0 : 1, painted ? 1 : 0, 0));
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("road_wind"), wind switch { 0 => new Vector2(1, 0), 1 => new Vector2(-1, 0), 2 => new Vector2(0, 1), _ => new Vector2(0, -1) });
         RockLook.Apply(m, World, cliffInfo: true);
         return m;
     }
@@ -472,6 +478,7 @@ public partial class TerrainStreamer : Node3D
         }
         _sections[3] = Stopwatch.GetElapsedTime(t).TotalMilliseconds;
 
+        for (int i = 0; i < _sections.Length; i++) SectionTotals[i] += _sections[i];
         LastGcPauseMs = (GC.GetTotalPauseDuration() - pausedBefore).TotalMilliseconds;
         LastFrameMs = Stopwatch.GetElapsedTime(start).TotalMilliseconds - LastGcPauseMs - PopMs;
         if (LastFrameMs > WorstFrameMs)
@@ -771,7 +778,7 @@ public partial class TerrainStreamer : Node3D
             float x0 = (fcx - full) * S, z0 = (fcz - full) * S, span = (2 * full + 1) * S;
             hole = new Vector4(x0 + 0.5f, z0 + 0.5f, x0 + span - 0.5f, z0 + span - 0.5f);
         }
-        FarMaterial.SetShaderParameter("hole", hole);
+        FarMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("hole"), hole);
     }
 
     // ---- Far rings ------------------------------------------------------------------------
@@ -913,6 +920,7 @@ public partial class TerrainStreamer : Node3D
             if (job.Lod == 0) SolidsChanged(job.Fx, job.Fz);
             AddChild(f.Node);
             BeginSwap(job.Fx, job.Fz, old, f.Node);
+            FarApplied?.Invoke(job.Fx, job.Fz, job.Lod, f.Node);
         }
 
         // Drop far chunks out of range; place the rest at their copy nearest the focus.
@@ -950,7 +958,7 @@ public partial class TerrainStreamer : Node3D
         }
         // The horizon cuts out the square the GPU rings draw, sinking inside it and cut well inside it (see SetWorld):
         // it comes from the coarse world map and often sits tens of metres above the rings' outer edge.
-        _horizonMaterial.SetShaderParameter("hole", Clip.Outer);
+        _horizonMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("hole"), Clip.Outer);
         FarComplete = full >= FarRadius && Clip.Complete;
         UpdateHorizon(cx, cz, w, h);
     }
@@ -1060,7 +1068,7 @@ public partial class TerrainStreamer : Node3D
                 ExtraCullMargin = 1.5f,
             };
             SetRange(flora, layer);
-            flora.SetInstanceShaderParameter("flora_layer", (float)layer);
+            flora.SetInstanceShaderParameter(PlanetSurface.Fx.Names.Of("flora_layer"), (float)layer);
             node.AddChild(flora);
         }
         return node;
@@ -1080,8 +1088,8 @@ public partial class TerrainStreamer : Node3D
     {
         _reachVersion = DetailReach.Version;
         if (Clip.Levels != ClipGround.LevelsFor(DetailReach.Distance)) SetClip();
-        _floraMaterial.SetShaderParameter("flora_reach", new Vector2(DetailReach.Large, DetailReach.Small));
-        _floraMaterial.SetShaderParameter("flora_bands", new Vector2(DetailReach.LargeBand, DetailReach.SmallBand));
+        _floraMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("flora_reach"), new Vector2(DetailReach.Large, DetailReach.Small));
+        _floraMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("flora_bands"), new Vector2(DetailReach.LargeBand, DetailReach.SmallBand));
         foreach (FarChunk f in _far.Values)
         {
             if (f.Node == null) continue;
@@ -1113,7 +1121,7 @@ public partial class TerrainStreamer : Node3D
         {
             _horizon.Position = new Vector3((float)NearestCopy(_horizonX, 0, Focus.X, w), 0, (float)NearestCopy(_horizonZ, 0, Focus.Z, h));
             HorizonRim = new Vector3(_horizon.Position.X, _horizon.Position.Z, HorizonReach);
-            _horizonMaterial.SetShaderParameter("rim", FarFieldBehind ? HorizonRim : NoRim);
+            _horizonMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("rim"), FarFieldBehind ? HorizonRim : NoRim);
         }
         _sections[2] = Stopwatch.GetElapsedTime(horizonStart).TotalMilliseconds;
     }

@@ -205,6 +205,10 @@ public sealed class Creature
     public float ThinkScale = 1f;
     /// <summary>Asleep where it is: too far from anyone to matter, so it isn't stepped at all (a large place's far rooms).</summary>
     public bool Dormant;
+    /// <summary>Its body is drawn (whatever draws it says so; with nothing drawing, always): nothing attacks from a body that isn't.</summary>
+    public bool Shown = true;
+    /// <summary>Past the near ring it sees and steers by the ground and its sim's own grid: no line is cast through the world's collision for it.</summary>
+    public bool NoRays;
     public float RigPending;
 
     // Day and night: where it rests outside its hours, and when it was last woken.

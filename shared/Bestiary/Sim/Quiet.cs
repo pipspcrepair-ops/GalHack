@@ -53,7 +53,7 @@ public static class Quiet
             float d = (c.Position - listener.Position).Length();
             if (d > Reach) continue;
             Vector3 at = c.Position + Vector3.Up * MathF.Min(1.2f, c.Species.BodyHeight * 0.5f);
-            bool clear = w.SightLine != null ? w.SightLine(at, ear) : SpaceMath.Clear(c.Space, at, ear, 0.05f);
+            bool clear = w.SightLine != null && !c.NoRays ? w.SightLine(at, ear) : SpaceMath.Clear(c.Space, at, ear, 0.05f);
             // In plain sight it gives nothing away it hasn't already.
             if (clear && d < Reach * 0.6f) continue;
             if (!clear && d > ThroughWall) continue;

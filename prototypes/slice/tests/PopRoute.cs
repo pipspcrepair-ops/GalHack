@@ -103,7 +103,7 @@ public partial class PopRoute : Node
         GD.Print($"ROUTE world {_game.World}; load {load.Elapsed.TotalSeconds:F1} s; places at load: {_args.ContainsKey("places-at-load")}");
         zone.Weather.Bridge.Calm = true;
         zone.Weather.Sim.Snap(Weather.Model.WeatherKind.Clear);
-        zone.Wildlife.Frozen = true;
+        zone.Wildlife.Frozen = !_args.ContainsKey("live");
         _day = zone.Sky.TimeOfDay;
         Vector3 start = _game.Survivor.WorldFeet;
         // The way to the highest ground within 4 km.
@@ -277,8 +277,10 @@ public partial class PopRoute : Node
         s.ChunkApplied += onChunk;
         // A level-0 far chunk's wait: from first within the level-0 radius of the focus's far chunk to its node standing at level 0.
         var farWanted = new Dictionary<(int, int), double>();
-        var seenNodes = new HashSet<ulong>();
-        foreach (Node n in s.GetChildren()) seenNodes.Add(n.GetInstanceId());
+        // Far chunks' new drawings as the streamer puts them in (looking through its children every few ticks for new ones allocated more than the game does).
+        var farNew = new List<(int Fx, int Fz, int Lod, Node3D Node)>();
+        Action<int, int, int, Node3D> onFar = (fx, fz, lod, n) => farNew.Add((fx, fz, lod, n));
+        s.FarApplied += onFar;
         var farSwaps = new List<(int Lod, float Away)>();
         var groundSwaps = new List<double>();
         int ring = -1;
@@ -288,6 +290,7 @@ public partial class PopRoute : Node
         _frames.Clear();
         _gpu.Clear();
         _streaming = 0;
+        if (!pops) SplitStart();
         double solids0 = s.SolidsTotalMs, physics = 0, physicsWorst = 0;
         // The workers' time on the far ground: far chunks (flora and water) and the GPU rings' tiles.
         double[] buildMs0 = (double[])s.FarBuildMs.Clone();
@@ -334,6 +337,7 @@ public partial class PopRoute : Node
                 continue;
             }
             if (tick % 3 != 0) continue;
+            SplitSample();
             complete.Add((s.CompleteRadius + 0.5f) * S);
             farShort.Add(s.FarBehindNearest);
             pending.Add(s.Pending);
@@ -355,21 +359,22 @@ public partial class PopRoute : Node
                 if (ring >= 0) groundSwaps.Add(((s.CompleteRadius > ring ? s.CompleteRadius : ring) + 0.5f) * S);
                 ring = s.CompleteRadius;
             }
-            foreach (Node n in s.GetChildren())
+            foreach (var (fx, fz, lod, n3) in farNew)
             {
-                if (n is not Node3D n3 || !n3.Name.ToString().StartsWith("Far ") || !seenNodes.Add(n3.GetInstanceId())) continue;
-                string[] parts = n3.Name.ToString().Split(' ');
-                var key = (int.Parse(parts[1]), int.Parse(parts[2]));
-                int lod = parts[3][^1] - '0';
+                if (!GodotObject.IsInstanceValid(n3)) continue;
+                var key = (fx, fz);
                 if (lod == 0 && farIn.Add(key) && farWanted.TryGetValue(key, out double t)) farWait.Add(clock.Elapsed.TotalMilliseconds - t);
                 // A far chunk's new drawing (its trees and what they cast; the ground is the GPU rings', never redrawn): in view if any of its square is.
                 Vector3 c0 = n3.GlobalPosition, mid = c0 + new Vector3(size * 0.5f, 0f, size * 0.5f);
                 mid.Y = _game.Zone.GroundAt(mid.X, mid.Z).Y;
-                bool inView = cam != null && Enumerable.Range(0, 9).Any(k => cam.IsPositionInFrustum(c0 + new Vector3(size * (k % 3) * 0.5f, mid.Y - c0.Y, size * (k / 3) * 0.5f)));
+                bool inView = false;
+                for (int k = 0; k < 9 && cam != null && !inView; k++) inView = cam.IsPositionInFrustum(c0 + new Vector3(size * (k % 3) * 0.5f, mid.Y - c0.Y, size * (k / 3) * 0.5f));
                 if (inView && tick > 30) farSwaps.Add((lod, new Vector2(mid.X - p.X, mid.Z - p.Z).Length()));
             }
+            farNew.Clear();
         }
         s.ChunkApplied -= onChunk;
+        s.FarApplied -= onFar;
         double seconds = clock.Elapsed.TotalSeconds;
         string workers = string.Create(CultureInfo.InvariantCulture, $"main thread {_streaming / seconds:F0} ms a second; workers: far chunks {(s.FarBuildMs.Sum() - buildMs0.Sum()) / seconds:F0} ms a second, ground tiles {(ClipGround.FillTicks - tileTicks0) * 1000.0 / Stopwatch.Frequency / seconds:F0} ms a second ({(ClipGround.Filled - tiles0) / seconds:F0} a second)");
         var logged = PopLog.Take();
@@ -397,6 +402,7 @@ public partial class PopRoute : Node
             if (lim != null) Gate($"{name}: plants popping in view", floraPops.Count / routeMinutes, lim.PlantPops, false, "/min");
             yield break;
         }
+        SplitReport(name, tick);
         int over = _frames.Count(t => t > 16.7);
         _frames.Sort();
         _gpu.Sort();
@@ -429,12 +435,16 @@ public partial class PopRoute : Node
     /// trees (cb249a21 on): no pops on any route (412, 1940 and 6102 trees a minute before), and the only trees still appearing
     /// are far chunks coming in, 470 m off at the nearest. Shadow casters redrawn from the GPU far ground (99ddbe89 on): the ground
     /// is never redrawn, only far chunks' flora (10, 289 and 388 a minute at the most measured on walk, bike and fly).
+    /// Tightened with the performance pass (proto/perf), by what it measured against the build before it on one seed back to
+    /// back (550338, the owner's settings, a shared machine): frames over 16.7 ms a minute walking 179 to 76, biking 268 to 113-218,
+    /// flying 623 to 472-585, at once 94 to 40-60; p99 walking 19.9 to 16.6, biking 22.6 to 17.8-24.5; shadow casters redrawn
+    /// biking 141 to 62, flying 88 to 112, at once 427 to 119 (the rings no longer jitter with the frame rate).
     /// </summary>
     static readonly Dictionary<string, Limit> Limits = new()
     {
-        ["walk"] = new(88, double.NaN, double.NaN, 30, 60, 20, 10), // (a walk sees too few trees and columns to judge them appearing)
-        ["bike"] = new(88, 350, 220, 300, 100, 20, 10),
-        ["fly"] = new(72, 350, 360, 450, 180, 25, 10),
+        ["walk"] = new(88, double.NaN, double.NaN, 30, 35, 18, 10), // (a walk sees too few trees and columns to judge them appearing)
+        ["bike"] = new(88, 350, 220, 150, 60, 20, 10),
+        ["fly"] = new(72, 350, 360, 250, 150, 25, 10),
     };
 
     int _gateFails;

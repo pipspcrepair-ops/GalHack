@@ -87,7 +87,8 @@ public static class Attacks
     /// <summary>Begins an attack on a target in reach. Returns false if it can't attack now.</summary>
     public static bool Start(WildSim w, Creature c, ITarget target)
     {
-        if (c.Dead || c.Attacking || target == null || !target.Attackable || c.Stats.Damage <= 0f) return false;
+        // (Nor from a body not drawn: whatever hurts you is seen to.)
+        if (c.Dead || c.Attacking || !c.Shown || target == null || !target.Attackable || c.Stats.Damage <= 0f) return false;
         CombatRules r = w.Combat;
         bool first = c.MustTelegraph(target, w.Time, r);
         float windup = first ? c.Species.TelegraphWindup(r) : r.NormalWindup;

@@ -47,6 +47,12 @@ public partial class DeepSite : Node3D
 
     /// <summary>Past this from the eye a creature isn't stepped (unless something just stirred it up).</summary>
     public float SleepDistance = 100f;
+
+    /// <summary>The harmless (<see cref="Importance.Ambient"/>: a room's insects) are drawn within this of the eye, m, and of them in sight only the nearest few step.</summary>
+    public float AmbientReach = 25f;
+    const int AmbientBudget = 8;
+    readonly List<(Creature C, float D)> _ambient = new();
+    readonly HashSet<Creature> _awake = new();
     const double BudgetMs = 1.2;
     double _allow;
 
@@ -150,11 +156,16 @@ public partial class DeepSite : Node3D
 
     public CreatureView ViewOf(Creature c) => _views.GetValueOrDefault(c);
 
+    /// <summary>Bodies drawn at the last sync (measurements).</summary>
+    public int DrawnCount { get; private set; }
+
     public override void _PhysicsProcess(double delta)
     {
         Sim.Clock.Time01 = (float)Patch.Zone.Sky.TimeOfDay;
         Sim.Frozen = Patch.Frozen;
+        long start = Stopwatch.GetTimestamp();
         Sim.Step((float)delta);
+        LastStepMs = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
         // What lives here keeps quiet; what it's doing out of sight gives it away.
         _quiet.Clear();
         Quiet.Step(Sim, Player, (float)delta, _quiet);
@@ -163,6 +174,9 @@ public partial class DeepSite : Node3D
     }
 
     readonly List<QuietSound> _quiet = new();
+
+    /// <summary>The last tick's step of this site's sim, ms (measurements).</summary>
+    public double LastStepMs { get; private set; }
 
     /// <summary>Small sounds made so far (tests).</summary>
     public int QuietSounds { get; private set; }
@@ -237,6 +251,7 @@ public partial class DeepSite : Node3D
     void SyncViews(Vector3 camera, Stopwatch clock)
     {
         _sightFrame++;
+        DrawnCount = 0;
         _gone.Clear();
         foreach (Creature c in Sim.Creatures)
         {
@@ -245,20 +260,29 @@ public partial class DeepSite : Node3D
             // Set for every creature, drawn or not: a place holds hundreds, and one left at the default
             // re-posed its body every tick though nobody could see it (the patch's own views go to 12 too).
             c.RigInterval = d < NearDistance ? 1 : d < FarDistance * 0.6f ? 2 : d < FarDistance ? 4 : 12;
-            // Out of sight and out of reach, it sleeps where it is: a large place's far rooms cost nothing.
-            c.Dormant = d > SleepDistance && Sim.Time - c.ProvokedAt > 10f;
+            // The harmless (a room's insects) are drawn and about only near you, the nearest few of them in sight.
+            bool ambient = c.Species.Importance == Importance.Ambient, stirred = Sim.Time - c.ProvokedAt <= 10f;
+            float far = ambient ? AmbientReach : FarDistance;
             // Behind a wall from the eye it needs no more than the far rate: a full place is hundreds of
             // bodies within a few rooms. (Looked at again every few frames, so turning a corner shows it moving.)
-            if ((_sightFrame + c.Id) % SightEvery == 0 && d < FarDistance)
+            if ((_sightFrame + c.Id) % SightEvery == 0 && d < far)
             {
                 if (Sees(c, camera)) _unseen.Remove(c);
                 else _unseen.Add(c);
             }
-            if (c.RigInterval < 4 && _unseen.Contains(c)) c.RigInterval = 4;
+            bool seen = !_unseen.Contains(c);
+            if (ambient && d < far && seen) _ambient.Add((c, d));
+            bool about = !ambient || stirred || MustDraw(c, d) || d < far && seen && _awake.Contains(c);
+            // Out of sight and out of reach, it sleeps where it is: a large place's far rooms cost nothing.
+            c.Dormant = ambient ? !about : d > SleepDistance && !stirred;
+            // Past the near ring nothing casts a line through the world's collision for it.
+            c.NoRays = ambient || d > NearDistance;
+            if (c.RigInterval < 4 && !seen) c.RigInterval = 4;
             if (!_views.TryGetValue(c, out CreatureView view))
             {
+                c.Shown = false;
                 // One that can reach you is built at once, whatever the frame's budget (no unseen attacker).
-                if (d > FarDistance || !MustDraw(c, d) && (clock.Elapsed.TotalMilliseconds > _allow || !CreatureView.Ready(c))) continue;
+                if (d > far || !about || !MustDraw(c, d) && (clock.Elapsed.TotalMilliseconds > _allow || !CreatureView.Ready(c))) continue;
                 double before = clock.Elapsed.TotalMilliseconds;
                 view = new CreatureView();
                 _creatures.AddChild(view);
@@ -268,11 +292,18 @@ public partial class DeepSite : Node3D
                 _buildMs += clock.Elapsed.TotalMilliseconds - before;
             }
             // Behind a wall from the eye it isn't drawn at all (it is looked at again every few frames).
-            bool visible = d < FarDistance && (MustDraw(c, d) || !_unseen.Contains(c));
+            bool visible = MustDraw(c, d) || d < far && seen && about;
             if (view.Visible != visible) view.Visible = visible;
+            c.Shown = visible;
+            if (visible) DrawnCount++;
             if (visible && (c.RigInterval == 1 || c.RigPending == 0f)) view.Sync();
             else if (d > FarDistance * 1.5f) _gone.Add(c);
         }
+        // The harmless about next frame: the nearest few in sight.
+        _awake.Clear();
+        _ambient.Sort(static (a, b) => a.D.CompareTo(b.D));
+        for (int i = 0; i < _ambient.Count && i < AmbientBudget; i++) _awake.Add(_ambient[i].C);
+        _ambient.Clear();
         // Well out of sight, its body goes too (it is made again when you come back).
         foreach (Creature c in _gone)
         {

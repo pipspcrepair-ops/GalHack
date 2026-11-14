@@ -248,6 +248,10 @@ public partial class PoiPlaces : Node3D
     {
         if (memory.Prepared) return;
         memory.Rooms = decor?.Plan(memory) ?? new Dictionary<int, PlaceRoom>();
+        // Every look its rooms are dressed with, as far as a worker can take it: on the main thread a piece is only handed over.
+        if (decor?.Meshes is { } meshes)
+            foreach (PlaceRoom room in memory.Rooms.Values)
+                foreach (GalHack.Deco.DecoPlacement pl in room.Plan.Placements) meshes.Prepare(pl.Look);
         if (deep != null) memory.Fauna = PlaceFauna.Plan(memory, deep);
         memory.Fauna?.Populate(memory, deep);
         memory.Town = Town.For(memory, deep?.Planet);
@@ -369,8 +373,11 @@ public partial class PoiPlaces : Node3D
     public void WarmUp()
     {
         Vector3 from = Focus();
-        // The dissolves' copies of the dressing's and the creatures' materials, made while loading.
-        if (Decor.Shared?.Meshes?.Materials is { } deco) PlanetSurface.Fx.Fade.Warm(deco.BySurface);
+        // The dissolves' copies of the dressing's, the blocks' and the creatures' materials, made while loading, and each put on a speck
+        // in its vertex format so its pipelines are compiled now (the first cube of a kind to dissolve in took 250 ms in play).
+        if (Decor.Shared?.Meshes?.Materials is { } deco) PlanetSurface.Fx.Fade.Warm(deco.BySurface, Zone, Speck(true));
+        // (A surface's faces carry their finish codes, or none: two formats.)
+        foreach (bool coded in new[] { true, false }) PlanetSurface.Fx.Fade.Warm(new PoiGenerator.BlockMaterials().BySurface, Zone, Speck(false, coded));
         PlanetSurface.Fx.Fade.CopyOf(Wildlife.CreatureMaterials.Clothed);
         PoiSite nearest = Zone.Planet.Pois.Where(s => s.Instance != null).OrderBy(s => DistanceTo(s, from)).FirstOrDefault();
         if (nearest == null) return;
@@ -389,6 +396,20 @@ public partial class PoiPlaces : Node3D
         StageWorst.Clear();
         SlowSteps.Clear();
         BuildLog.Clear();
+    }
+
+    /// <summary>A triangle's arrays in the format a place's blocks are drawn in (with each face's code, or none), or the dressing's (with each face's extent too).</summary>
+    static Godot.Collections.Array Speck(bool deco, bool coded = true)
+    {
+        var a = new Godot.Collections.Array();
+        a.Resize((int)Mesh.ArrayType.Max);
+        a[(int)Mesh.ArrayType.Vertex] = new Vector3[3];
+        a[(int)Mesh.ArrayType.Normal] = new[] { Vector3.Up, Vector3.Up, Vector3.Up };
+        a[(int)Mesh.ArrayType.Color] = new[] { Colors.White, Colors.White, Colors.White };
+        if (coded) a[(int)Mesh.ArrayType.TexUV] = new Vector2[3];
+        if (deco) a[(int)Mesh.ArrayType.TexUV2] = new Vector2[3];
+        else a[(int)Mesh.ArrayType.Index] = new[] { 0, 1, 2 };
+        return a;
     }
 
     /// <summary>What the warm-up took, ms (tests).</summary>

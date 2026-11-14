@@ -25,6 +25,9 @@ instance uniform float flora_layer = 2.0;
 // second screen pattern, independent of the first, each draws, the new [0, t) and the old [t, 1).
 // What both draw alike looks the same throughout; what is new or gone fades.
 instance uniform vec2 flora_swap = vec2(0.0, 1.0);
+// The game's dissolve (PlanetSurface.Fx.Fade: a place's far drawing, crops and all, giving way to its cubes), here in
+// the shader itself: a copy of this shader made for a fade compiled for seconds the first time a farm came near.
+instance uniform vec2 fade_band = vec2(0.0, 1.0);
 
 // Reaches, m, and the bands they fade over: large growth, small growth.
 uniform vec2 flora_reach = vec2(1280.0, 200.0);
@@ -79,6 +82,10 @@ void fragment() {
 	if (band.x > 0.0 || band.y < 1.0) {
 		float n = fract(52.9829189 * fract(dot(FRAGCOORD.xy, vec2(0.06711056, 0.00583715))));
 		if (n < band.x || n >= band.y) discard;
+	}
+	if (fade_band.x > 0.0 || fade_band.y < 1.0) {
+		float f = fract(52.9829189 * fract(dot(FRAGCOORD.xy, vec2(0.06711056, 0.00583715))));
+		if (f < fade_band.x || f >= fade_band.y) discard;
 	}
 	if (flora_swap.x > 0.0 || flora_swap.y < 1.0) {
 		float m = fract(sin(dot(floor(FRAGCOORD.xy), vec2(12.9898, 78.233))) * 43758.5453);
