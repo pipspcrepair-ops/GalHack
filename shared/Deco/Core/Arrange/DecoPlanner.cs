@@ -84,9 +84,13 @@ public sealed class DecoPlanner
         if (!corridor && mix.Island.Any(t => _arr.Templates[t.Template].Kind == "rows"))
             Rows(_arr.Templates[mix.Island.First(t => _arr.Templates[t.Template].Kind == "rows").Template]);
 
-        // One focal point a room: once it stands, the other ways of making one (a single bed where a double went) are off the walls.
-        if (!corridor && focus != null && Focal(mix.Wall, focus) != null)
-            mix = new DecoSetPlan { Set = mix.Set, Wall = mix.Wall.Select(t => Focuses(_arr.Templates[t.Template], focus) ? (t.Template, 0f) : t).ToList(), Island = mix.Island, Fill = mix.Fill, Light = mix.Light };
+        // One focal point a room: once it stands, the other ways of making the same one (a single bed where a double went) are
+        // off the walls; the rest of what the room is arranged round (a bathroom's basin and WC beside its bath) still come.
+        if (!corridor && focus != null && Focal(mix.Wall, focus) is string first)
+        {
+            var made = FocusOf(_arr.Templates[first], focus);
+            mix = new DecoSetPlan { Set = mix.Set, Wall = mix.Wall.Select(t => FocusOf(_arr.Templates[t.Template], focus).Overlaps(made) ? (t.Template, 0f) : t).ToList(), Island = mix.Island, Fill = mix.Fill, Light = mix.Light };
+        }
         if (!corridor) Walls(mix.Wall);
         if (!corridor) Islands(mix.Island.Where(t => _arr.Templates[t.Template].Kind != "rows").ToList());
         Fill(mix.Fill, corridor ? 0.25f : 0.45f);
@@ -344,8 +348,12 @@ public sealed class DecoPlanner
         _ => (_room.Width - back, _room.Depth - s),
     };
 
-    /// <summary>Whether a template makes a room's focal point: some piece of it plays one of the focus roles.</summary>
-    static bool Focuses(DecoTemplate t, string[] focus) => t.Anchor.Concat(t.Ends).Concat(t.Middle).Concat(t.Members).Any(focus.Contains);
+    /// <summary>The focus roles a template's pieces in this room's set play (a double bed's bay: bed): empty if it makes no focal point.</summary>
+    HashSet<string> FocusOf(DecoTemplate t, string[] focus)
+    {
+        var roles = t.Anchor.Concat(t.Ends).Concat(t.Middle).Concat(t.Members).ToHashSet();
+        return _cat.InSet(_room.Set).Where(p => p.Roles.Any(roles.Contains)).SelectMany(p => p.Roles).Where(focus.Contains).ToHashSet();
+    }
 
     /// <summary>
     /// What the room is arranged round goes first (planning practice: the hearth, the cooker's worktop run, the bed's
@@ -357,7 +365,7 @@ public sealed class DecoPlanner
         foreach (var (id, _) in mix.OrderByDescending(t => t.Weight))
         {
             DecoTemplate t = _arr.Templates[id];
-            if (!Focuses(t, focus)) continue;
+            if (FocusOf(t, focus).Count == 0) continue;
             DecoWall entry = _room.Doors.Count > 0 ? _room.Doors[0].Wall : DecoWall.South;
             DecoWall facing = entry switch { DecoWall.North => DecoWall.South, DecoWall.South => DecoWall.North, DecoWall.West => DecoWall.East, _ => DecoWall.West };
             var walls = new List<DecoWall> { facing };

@@ -54,7 +54,7 @@ public partial class PoiTest
                 }
                 if (!r.Lit) { unlit++; Weak("unlit"); Note("unlit", at); }
                 if (r.Lamp) lamps++;
-                if (!r.Focal) { unfocused++; Weak("no focal point"); Note("focal", $"{at} ({r.Signature})"); if (unfocused <= 6) System.Console.WriteLine($"  no focal: {at}, {r.Ways} ways in ({r.Signature})"); }
+                if (!r.Focal) { unfocused++; Weak("no focal point"); Note("focal", $"{at}, {r.Ways} ways in ({r.Signature})"); }
             }
             int pairs = looks.SelectMany((a, k) => looks.Skip(k + 1).Where(b => a.Signature == b.Signature)).Count();
             alike += pairs;

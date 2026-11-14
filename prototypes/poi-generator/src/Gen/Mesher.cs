@@ -503,7 +503,8 @@ public static class Mesher
                 {
                     h = 0;
                     side = wallish ? (indoors ? FaceSide.In : FaceSide.Out) : indoors ? FaceSide.Floor : FaceSide.Roof;
-                    if (indoors) room = _look.RoomAt(n);
+                    // (A floor's finish laid in a cell is that cell's room's floor, as the floor under one is the room's over it.)
+                    if (indoors) room = _look.RoomAt(BlockInfo.IsFinish(b.Type) ? p : n);
                 }
                 else
                 {
