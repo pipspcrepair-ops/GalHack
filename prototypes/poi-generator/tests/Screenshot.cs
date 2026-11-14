@@ -423,7 +423,7 @@ public partial class Screenshot : Node
             m.HideHud(true);
             if (piece == null) { Frame(a[3].StartsWith("piece-") ? "near" : a[3]); return; }
             var cells = piece.Cells;
-            if (piece.Kind == "frames" && made.Layout.Modules.FirstOrDefault(x => x.Cells.Contains(cells[0])) is { } hall)
+            if (piece.Kind == "beams" && made.Layout.Modules.FirstOrDefault(x => x.Cells.Contains(cells[0])) is { } hall)
             {
                 // (Inside the hall, from a corner a little above the floor, across its frames.)
                 Vector3 from = m.Stage.ToGlobal(new Vector3(hall.Min.X + 0.7f, hall.Min.Y + 1.6f, hall.Min.Z + 0.7f));
@@ -568,6 +568,17 @@ public partial class Screenshot : Node
             return;
         }
         var b = m.Stage.SurfaceBounds();
+        if (shot is "stand" or "back")
+        {
+            // (On the ground at eye height, 12 m off the place's edge or 30 m back from it, from the way-in side.)
+            float y0 = Mathf.DegToRad(m.EntranceYaw() + 32f), off = Mathf.Max(b.Size.X, b.Size.Z) * 0.5f + (shot == "stand" ? 12f : 30f);
+            Vector3 c0 = b.GetCenter() with { Y = 0f };
+            Vector3 eye = m.Stage.ToGlobal(c0 + new Vector3(Mathf.Sin(y0), 0, Mathf.Cos(y0)) * off + Vector3.Up * 1.7f);
+            m.Camera.GlobalTransform = new Transform3D(Basis.Identity, eye).LookingAt(m.Stage.ToGlobal(c0 + Vector3.Up * Mathf.Min(b.Size.Y * 0.35f, 8f)), Vector3.Up);
+            m.Camera.Fov = 70f;
+            m.FreezeCamera = true;
+            return;
+        }
         float r = 0.5f * b.Size.Length();
         // (near: the same view, closer in; above: steeply down over the whole site, its ground plan)
         float dist = shot == "near" ? Mathf.Clamp(r * 0.8f, 16f, 120f) : shot == "above" ? Mathf.Clamp(r * 1.5f, 28f, 300f) : Mathf.Clamp(r * 2f, 28f, 260f);
