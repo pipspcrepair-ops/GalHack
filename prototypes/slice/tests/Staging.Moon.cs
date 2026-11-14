@@ -21,6 +21,7 @@ public sealed partial class Staging
 {
     IEnumerable<int> MoonView()
     {
+        AirCells.Give(_game);
         foreach (int x in ToOrbit()) yield return x;
         Vessel v = Skiff;
         OrbitZone o = _game.Orbit;

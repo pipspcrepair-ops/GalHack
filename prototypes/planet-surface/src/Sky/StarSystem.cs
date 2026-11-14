@@ -207,7 +207,9 @@ public sealed class StarSystem
         D3 p = new(0, 0, 0);
         for (; b?.Parent != null; b = b.Parent)
         {
-            double a = (days / b.Period + b.Phase0) * Math.Tau;
+            // Moons go round the way every body turns (prograde, as Turned and Orient spin them): a near moon,
+            // its month close to its world's day, keeps nearly still over it, a short flight off as Empyrion's are.
+            double a = (days / b.Period + b.Phase0) * Math.Tau * (b.Parent.Kind == OrbiterKind.Star ? 1.0 : -1.0);
             double x = Math.Cos(a) * b.Orbit, z = Math.Sin(a) * b.Orbit;
             double y = z * Math.Sin(b.Inclination);
             z *= Math.Cos(b.Inclination);

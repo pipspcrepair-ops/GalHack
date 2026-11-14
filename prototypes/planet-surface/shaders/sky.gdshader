@@ -171,6 +171,14 @@ float shadowed(vec3 g, vec3 to_sun, vec4 caster, float sun) {
 	return sun_hidden(sun, asin(min(caster.w / length(v), 1.0)), atan(length(cross(v, to_sun)), dot(v, to_sun)));
 }
 
+// Godot's own Burley diffuse (its light colour carries the π) at a globe's dry ground's roughness: a body
+// here is lit as its globe and its land are lit up close (slice's SpaceSky has the same).
+float burley(vec3 n, vec3 l, vec3 v) {
+	float nl = clamp(dot(n, l), 0.0, 1.0), nv = clamp(dot(n, v), 0.0, 1.0), lh = clamp(dot(l, normalize(l + v)), 0.0, 1.0);
+	float f90 = 2.0 * lh * lh * 0.9 - 0.5;
+	return nl * (1.0 + f90 * pow(1.0 - nv, 5.0)) * (1.0 + f90 * pow(1.0 - nl, 5.0));
+}
+
 vec4 lit_disc(vec3 dir, vec3 centre, float radius, vec3 sun, out vec3 normal) {
 	float c = dot(dir, centre);
 	normal = -centre;
@@ -259,7 +267,7 @@ vec4 bodies(vec3 dir, vec3 sun) {
 		// Lit as its own globe is lit up close (space's far look the same): the star's light on its day side, the
 		// dark of space on its night side, another body's shadow over both.
 		float hidden = shadowed(n, moon_light[i], moon_caster[i], moon_sun[i]);
-		m.rgb = (ground * ((1.0 - hidden) * (body_ambient + star_color * body_energy * m.r) + glows * 0.8) + vec3(0.32, 0.06, 0.025) * moon_red[i] * hidden) * m.a;
+		m.rgb = (ground * ((1.0 - hidden) * (body_ambient + star_color * body_energy * burley(n, moon_light[i], -moon_dir[i])) + glows * 0.8) + vec3(0.32, 0.06, 0.025) * moon_red[i] * hidden) * m.a;
 		result = over(m, result);
 	}
 	if (giant_at >= moon_count) result = over(layer, result);

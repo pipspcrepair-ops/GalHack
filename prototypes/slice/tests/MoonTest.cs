@@ -83,6 +83,8 @@ public partial class MoonTest : Node
 
     void Fail(string what) => Check(false, what);
 
+
+
     IEnumerable<int> Scenario()
     {
         _game = new Game.Game { Interactive = false, SkipIntro = true, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), WorldChoice.Fresh()) };
@@ -127,6 +129,11 @@ public partial class MoonTest : Node
         Check(centre <= home * PlanetSurface.Skies.StarSystem.ThrusterMoonTo * 1.01 && gap is > 6000 and < 14000,
             $"the thruster moon is {moon.Name}, {centre / 1000:F1} km from the world's centre ({centre / home:F1} radii): {gap / 1000:F1} km of open space from the top of the climb to its ground, Empyrion's 8.3 to 12.3 km");
         Check(moon.Spec != null && moon.Spec.Airless, $"it is a vacuum world you can land on: {moon.Spec}");
+        // Over its turning world it nearly holds still (it goes round the way the world turns), so a small vessel catches it.
+        double day = _game.Surface.Planet.Sky.DayMinutes * 60.0, worstSpeed = 0;
+        PlanetSurface.Skies.D3 Over(double t) => model.Orient(t).ToGlobe(model.Position(moon, t) - model.Position(model.Home, t));
+        for (double t = 0; t < 2; t += 0.05) worstSpeed = Math.Max(worstSpeed, (Over(t + 0.001) - Over(t)).Length / (0.001 * day));
+        Check(worstSpeed < 65, $"over the turning world it moves at {worstSpeed:F0} m/s at most, under half a small vessel's 130, so it is caught in a short flight (a {day / 60:F0} minute day)");
     }
 
     // ---- Its light -----------------------------------------------------------------------------
@@ -147,15 +154,19 @@ public partial class MoonTest : Node
         sky.Track();
         int count = (int)mat.GetShaderParameter("moon_count"), near = 0;
         Vector3[] dirs = mat.GetShaderParameter("moon_dir").AsVector3Array(), lights = mat.GetShaderParameter("moon_light").AsVector3Array();
-        float worst = 0f;
+        float worst = 0f, most = 0f;
         for (int i = 0; i < count; i++)
         {
             Orbiter b = sky.Drawn.First(d => d.Direction.AngleTo(dirs[i]) < 1e-4f).Body;
-            if ((m.Position(b, now) - m.Position(m.Home, now)).Length > 1e6) continue; // a world round the star sees it from elsewhere
+            double apart = (m.Position(b, now) - m.Position(m.Home, now)).Length;
+            if (apart > 1e6) continue; // a world round the star sees it from elsewhere
             near++;
-            worst = MathF.Max(worst, Mathf.RadToDeg(lights[i].AngleTo(sky.ToSun)));
+            // Off ours by no more than the star's parallax between here and there (it is a few thousand km off).
+            float parallax = Mathf.RadToDeg((float)Math.Asin((apart + m.Home.Radius) / (m.Position(m.Star, now) - m.Position(m.Home, now)).Length));
+            float off = Mathf.RadToDeg(lights[i].AngleTo(sky.ToSun));
+            if (off - parallax > worst - most || near == 1) (worst, most) = (off, parallax);
         }
-        Check(near > 0 && worst < 0.5f, $"the moons in the sky are lit from the sun's true direction, the one the scene lights their globes by: {near} of {count} bodies near, at most {worst:F2} degrees off it");
+        Check(near > 0 && worst <= most + 0.05f, $"the moons in the sky are lit from the sun's true direction, the one the scene lights their globes by: {near} of {count} bodies near, the worst {worst:F2} degrees off ours, within the star's parallax from there ({most:F2})");
 
         // An eclipse on the clock: the moon's, or the first body's any shadow covers.
         var bodies = new List<Orbiter> { m.FuelMoon };
@@ -164,9 +175,12 @@ public partial class MoonTest : Node
         double full = -1, partial = -1;
         foreach (Orbiter b in bodies)
         {
-            for (double t = now; t < now + 40.0 && full < 0; t += 0.001)
+            double Covered(double t) => m.EclipseAt(t, m.Position(b, t), b).Covered;
+            double t = now;
+            while (t < now + 40.0 && Covered(t) > 0.01) t += 0.001; // out of any shadow it is in now, first
+            for (; t < now + 40.0 && full < 0; t += 0.001)
             {
-                double covered = m.EclipseAt(t, m.Position(b, t), b).Covered;
+                double covered = Covered(t);
                 if (covered > 0.4 && partial < 0) partial = t;
                 if (covered > 0.98) full = t;
             }
@@ -223,6 +237,7 @@ public partial class MoonTest : Node
     {
         GD.Print("-- the Skiff --");
         foreach (int x in _pilot.BuildSkiff(s => _skiff = s)) yield return x;
+        AirCells.Give(_game);
         Check(_skiff?.Structure.Count == _game.StarterPlan.Count, $"the Skiff is built: {_skiff?.Structure.Count} of {_game.StarterPlan.Count} blocks");
         if (_skiff?.Structure.Count != _game.StarterPlan.Count) _skiff = null;
     }
@@ -235,6 +250,7 @@ public partial class MoonTest : Node
         Vessel v = _skiff;
         foreach (int x in _pilot.Board(v)) yield return x;
         Check(_game.Survivor.Seated == v, "at the Skiff's controls");
+        if (_game.Survivor.Seated != v) yield break;
         _game.Controls.Hold(Key.Space);
         for (int i = 0; i < 60 * 150 && !_game.InOrbit; i++) yield return 0;
         Check(_game.InOrbit, "it crossed into orbit");
@@ -282,6 +298,16 @@ public partial class MoonTest : Node
                 bool its = hit.Count > 0 && hit["collider"].AsGodotObject() is Node n && n.GetParent() == c.Sphere;
                 Check(its && MathF.Abs(got - want) < 2f, $"{when}: {c.Name} is solid at its true radius, its ground {(c.Surface?.Arrived == true ? "there" : "not there yet")} (a ray from the Skiff meets it {got:F0} m out, {want:F0} m expected)");
             }
+            // The bodies near with no ground here (other moons, a giant and its moons): solid too, unless another stands in front.
+            int met = 0, hidden = 0;
+            foreach (var (body, shell) in orbit.OtherSolids)
+            {
+                Vector3 at = shell.GlobalPosition;
+                var hit = _game.Zone.GetWorld3D().DirectSpaceState.IntersectRay(PhysicsRayQueryParameters3D.Create(from, at, GalHack.Physics.Layers.World));
+                if (hit.Count > 0 && hit["collider"].AsGodotObject() != shell) hidden++;
+                else if (hit.Count > 0 && MathF.Abs(from.DistanceTo((Vector3)hit["position"]) - (from.DistanceTo(at) - (float)body.Radius)) < 2f) met++;
+            }
+            Check(met + hidden == orbit.OtherSolids.Count, $"{when}: the {orbit.OtherSolids.Count} other bodies near with no ground here are solid at their true radius ({met} met by a ray, {hidden} behind another)");
         }
         Solid("from high orbit");
         var probe = new FrameProbe(this);
@@ -398,12 +424,15 @@ public partial class MoonTest : Node
         foreach (int x in Upright(_pilot, moon, v)) yield return x;
         int crossings = _game.Spaceflight.Crossings.Count;
         // Down at a pilot's pace: a sink rate it can still stop from over the moon's ground.
+        string alt = null;
         for (int i = 0; i < 60 * 120 && _game.Spaceflight.Crossings.Count == crossings; i++)
         {
             _game.Controls.Hold(Key.Ctrl, -v.Body.Velocity.ToGodot().Dot((v.Body.Position.ToGodot() - moon.Centre).Normalized()) < 40f);
+            if (alt == null && _game.InOrbit && _game.Spaceflight.Band < 0.5f) alt = $"'{_game.Spaceflight.FlightLine(v)}' at {moon.Height(v.Body.Position.ToGodot()):F0} m over the moon";
             yield return 0;
         }
         _game.Controls.ReleaseAll();
+        Check(alt != null && alt.Contains("ALT"), $"down in the moon's band the readout gives the moon's altitude: {alt}");
         SurfaceZone surface = _game.Spaceflight.MoonSurface;
         Check(_game.Zone == surface && v.Zone == surface && _game.Survivor.Seated == v, "down through its band it crossed onto the moon's own surface, in the seat, no loading screen");
         if (_game.Zone != surface) yield break;
@@ -426,11 +455,11 @@ public partial class MoonTest : Node
         foreach (int x in _pilot.Land(v, pad))
         {
             if (++t % 600 == 0 && v.Controller is { } c)
-                GD.Print($"  ({t / 60} s: {v.AboveGround:F1} m up, {v.Body.Velocity.Y:F1} m/s up, settling {c.Settling}, gear {c.Gear?.Attached}, ground {c.GroundDistance:F1} m under, {v.Body.Position.ToGodot().DistanceTo(pad):F0} m from the pad, asleep {v.Body.Asleep})");
+                GD.Print($"  ({t / 60} s: {v.AboveGround:F1} m up, moving {v.Body.Velocity}, settling {c.Settling}, gear {c.Gear?.Attached}, ground {c.GroundDistance:F1} m under, {v.Body.Position.ToGodot().DistanceTo(pad):F0} m from the pad, asleep {v.Body.Asleep}, input {v.Flight.Input.Move} seated {v.Flight.Input.Seated} thrust {v.Flight.Input.AnyThrust}, tossed {v.Body.Tossed:F2}, in air {c.Zone.InAtmosphere} gravity {c.Zone.Gravity:F1}, held {string.Join(",", new[] { Key.W, Key.A, Key.S, Key.D, Key.Space, Key.Ctrl, Key.Shift }.Where(k => _game.Controls.IsHeld(k)))})");
             yield return x;
         }
         foreach (int x in _drive.Wait(30)) yield return x;
-        Check(v.Controller?.Frozen == true && v.Body.Damage == hurtBefore, $"landed on the moon on its gear, undamaged (settled {v.Controller?.Frozen}, {v.AboveGround:F1} m up, damage {v.Body.Damage - hurtBefore:F2})");
+        Check(v.Controller?.Frozen == true && v.Body.Damage == hurtBefore && !_game.Suit.Dead, $"landed on the moon on its gear, undamaged, the sleeper alive at the controls (settled {v.Controller?.Frozen}, {v.AboveGround:F1} m up, damage {v.Body.Damage - hurtBefore:F2}, the suit's air at {_game.Suit.OxygenShare:P0})");
         float g = surface.Physics.Zone.Strength, home = _game.Surface.Physics.Zone.Strength;
         float sized = home * _game.Orbit.Moon.GlobeRadius / _game.Orbit.Home.GlobeRadius;
         Check(MathF.Abs(g - sized) < 0.01f, $"its gravity comes from its size: {g:F1} m/s² on a {surface.Planet.Width / 1000:F0} km moon, the world's {home:F1} on {_game.Surface.Planet.Width / 1000:F0} km");
@@ -483,11 +512,34 @@ public partial class MoonTest : Node
         foreach (int x in _pilot.Stop()) yield return x;
         OrbitZone orbit = _game.Orbit;
         Celestial home = orbit.Home, moon = orbit.Moon;
-        Vector3 Back() => home.Centre + (moon.Centre - home.Centre).Normalized() * (home.ShellRadius + 2500f);
+        Vector3 Back() => home.Centre + (moon.Centre - home.Centre).Normalized() * (home.ShellRadius + 4500f); // well over the world's band
         foreach (Vector3 way in OrbitTest.RoundTheGlobe(moon, v.Body.Position.ToGodot(), Back()))
             foreach (int x in _pilot.FlyTo(v, () => way, 300f, 120f, through: true)) yield return x;
         foreach (int x in _pilot.FlyTo(v, Back, 300f, 300f)) yield return x;
         string line = _game.Spaceflight.FlightLine(v);
         Check(orbit.Anchor == home && line.Contains("YOUR WORLD"), $"flown back out of the moon's reach, the world took the frame back and the readout names it: '{line}'");
+    }
+}
+
+/// <summary>
+/// As a sleeper out in vacuum does on a long trip (the Skiff's cockpit is open to space): air cells in the pack (a
+/// printed setup shortcut), and one used from it whenever the suit runs low. MoonTest and the moon shots.
+/// </summary>
+public partial class AirCells : Node
+{
+    Game.Game _game;
+
+    public static void Give(Game.Game game, int cells = 6)
+    {
+        game.Pack.Storage.Add("air-cell", cells);
+        game.AddChild(new AirCells { _game = game });
+        GD.Print($"  (setup: {cells} air cells for the trip, the Skiff's cockpit being open to space)");
+    }
+
+    public override void _PhysicsProcess(double delta)
+    {
+        if (_game.Phase != Phase.Playing || _game.Suit.Dead || _game.Suit.OxygenShare > 0.35) return;
+        int slot = _game.Pack.Grid.IndexOf("air-cell");
+        if (slot >= 0 && _game.Consume(slot)) GD.Print($"  (an air cell from the pack: the suit back to {_game.Suit.OxygenShare:P0})");
     }
 }

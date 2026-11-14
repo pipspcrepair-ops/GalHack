@@ -322,7 +322,7 @@ public partial class Globe : Node3D
 
     const string GroundSource = $$"""
         shader_type spatial;
-        render_mode world_vertex_coords, blend_mix, depth_draw_always, cull_back, diffuse_lambert, specular_schlick_ggx, shadows_disabled; // lambert: as the far looks and the sky light it
+        render_mode world_vertex_coords, blend_mix, depth_draw_always, cull_back, diffuse_burley, specular_schlick_ggx, shadows_disabled;
         uniform sampler2D albedo_map : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
         uniform sampler2D glow_map : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
         uniform sampler2D relief_map : filter_linear_mipmap, repeat_enable;

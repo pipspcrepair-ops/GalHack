@@ -181,7 +181,7 @@ public sealed class Pilot
         {
             float agl = v.AboveGround, vy = v.Body.Velocity.Y;
             float wanted = agl > 260f ? -50f : agl > 70f ? -16f : agl > 25f ? -6f : agl > 6f ? -2.5f : -1f;
-            bool onGear = agl < 3f && MathF.Abs(vy) < 0.4f; // hands off, and it settles
+            bool onGear = agl < 3f && (MathF.Abs(vy) < 0.4f || v.Controller.Gear?.Attached == true); // hands off, and it settles
             C.Hold(Key.Ctrl, !onGear && vy > wanted + 0.5f);
             C.Hold(Key.Space, !onGear && vy < wanted - 0.5f);
             if (over is Vector3 p) Creep(v, p, agl > 3f);

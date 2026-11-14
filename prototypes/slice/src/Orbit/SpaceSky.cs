@@ -69,6 +69,19 @@ public partial class SpaceSky : Node3D
     /// <summary>Where the bodies were last drawn from.</summary>
     public Vector3 Eye => _eye;
 
+    /// <summary>
+    /// Godot's own Burley diffuse (its LIGHT_COLOR carries the π) at the globe's dry ground's roughness: a far
+    /// look and a body in the sky are lit as the body's globe, and the land, are lit up close (sky.gdshader has
+    /// the same).
+    /// </summary>
+    const string BurleyCode = """
+        float burley(vec3 n, vec3 l, vec3 v) {
+            float nl = clamp(dot(n, l), 0.0, 1.0), nv = clamp(dot(n, v), 0.0, 1.0), lh = clamp(dot(l, normalize(l + v)), 0.0, 1.0);
+            float f90 = 2.0 * lh * lh * 0.9 - 0.5;
+            return nl * (1.0 + f90 * pow(1.0 - nv, 5.0)) * (1.0 + f90 * pow(1.0 - nl, 5.0));
+        }
+        """;
+
     /// <summary>A world or moon: bands on a giant, a plain rock otherwise, lit exactly as the sky's shader lights them.</summary>
     const string BodySource = $$"""
         shader_type spatial;
@@ -88,6 +101,7 @@ public partial class SpaceSky : Node3D
         uniform vec3 ambient : source_color = vec3(0.035, 0.038, 0.055);
         uniform float fade = 1.0;    // how much of it this far look draws: its own globe takes over near it
         {{Globe.UmbraCode}}
+        {{BurleyCode}}
         varying vec3 normal_w;
         varying vec3 view_w;
         void vertex() {
@@ -123,7 +137,7 @@ public partial class SpaceSky : Node3D
             }
             // A giant's own bands; a world or moon lit as its globe is (Globe's ground, the sky's bodies()).
             vec3 shaded = banded ? surface * (0.07 + 0.93 * lit + 0.22 * limb)
-                : surface * (sun * (ambient + light_color * light_energy * clamp(dot(n, to_light), 0.0, 1.0)) + glows * 0.8);
+                : surface * (sun * (ambient + light_color * light_energy * burley(n, to_light, -normalize(view_w))) + glows * 0.8);
             ALBEDO = shaded + vec3(0.32, 0.06, 0.025) * red * (1.0 - sun);
             ALPHA = fade; // in the transparent queue, for its order against the rings, which write no depth
         }
