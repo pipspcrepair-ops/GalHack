@@ -334,8 +334,8 @@ public static class Ornament
                             ok = Open(q, BlockType.Cube, false, false) && Passed(q) && !BlockInfo.Collides(g.Get(q + a.Vec()).Type) && !BlockInfo.Collides(g.Get(q - a.Vec()).Type) && !BlockInfo.Collides(g.Get(q + d.Vec()).Type);
                             ribs.Add((q, Made(col[System.Math.Min(y - foot.Y, col.Count - 1)], pylon ? BlockType.Cube : BlockType.Half, d.Opposite())));
                         }
-                        Int3 tip = top + Int3.Up * ((pylon ? v.Rise : 0) + 1);
-                        if (pylon && ok && Open(tip, BlockType.Spike, false, false) && !Dirs.Horizontal.Any(h => BlockInfo.Collides(g.Get(tip + h.Vec()).Type))) ribs.Add((tip, Made(col[^1], BlockType.Spike, Dir.North, 0.85f)));
+                        // (A pylon ends in a cap of the building's own trim: a darker course, never a point.)
+                        if (pylon && ribs.Count > 0 && ok) ribs[^1] = (ribs[^1].Item1, Made(col[^1], BlockType.Cube, Dir.North, 0.8f));
                     }
                     if (ok) Lay("ribs", ribs, at);
                 }
@@ -404,6 +404,8 @@ public static class Ornament
                         // (Up out of a wall's broken top, or level out of a slab's torn edge: never out of a wall's face.)
                         // (A slab's edge only where it stands out of the face round it: an edge flush in a wall reads as a face.)
                         bool proud = !BlockInfo.IsFullCube(g.Get(c + d.Vec() + Int3.Up).Type) || !BlockInfo.IsFullCube(g.Get(c + d.Vec() + Int3.Down).Type);
+                        // (Out of an edge, never a face: nothing solid beside the bar but what it comes out of.)
+                        if (Dirs.All.Any(h => h != d && (BlockInfo.Collides(g.Get(c + h.Vec()).Type) || mine.Contains(c + h.Vec())))) continue;
                         if (b.Role == Role.Wall && d == Dir.Down || b.Role is Role.Floor or Role.Roof && d.IsHorizontal() && proud && !BlockInfo.Collides(g.Get(c + Int3.Down).Type)) { found = d; break; } // (a level bar has nothing under it to lie across)
                     }
                 return spots[c] = found;

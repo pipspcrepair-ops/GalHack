@@ -18,7 +18,7 @@ public partial class PoiTest
     void OrnamentCheck()
     {
         var rand = new Random();
-        int places = 0, broken = 0, floating = 0, blocked = 0, irregular = 0, orphans = 0, freeEnds = 0, thinParts = 0, standOff = 0, flat = 0;
+        int places = 0, broken = 0, floating = 0, blocked = 0, irregular = 0, orphans = 0, freeEnds = 0, thinParts = 0, standOff = 0, flat = 0, faceBars = 0;
         string unjoined = "";
         var build = new List<double>();
         double worstShare = 0;
@@ -80,6 +80,8 @@ public partial class PoiTest
                     if (p.Cells.Any(c => orn.Blocks.Get(c).IsAir)) broken++;
                     if (p.At.Count >= 2 && p.At.Zip(p.At.Skip(1), (a, b) => b - a).Distinct().Count() > 1) irregular++;
                     if (p.Kind is "beams" or "corbels" && p.At.Count < 2) orphans++;
+                    // (A bar comes out of an edge: nothing solid beside its root but the concrete behind it.)
+                    if (p.Kind == "bars") faceBars += p.Cells.Count(c => Dirs.All.Any(h => h != orn.Blocks.Get(c).Facing && BlockInfo.Collides(orn.Blocks.Get(c + h.Vec()).Type)));
                     var (free, thin, off) = Joined(orn.Blocks, orn.Layout, p);
                     (freeEnds, thinParts, standOff) = (freeEnds + free, thinParts + thin, standOff + off);
                     if (free + thin + off > 0 && unjoined.Length == 0) unjoined = $"{p.Kind} at {p.Cells[0]} in {f.Id}";
@@ -116,8 +118,8 @@ public partial class PoiTest
         GD.Print($"      ornament vocabularies: {vocab.Count} builders, {sigs.Distinct().Count()} vocabularies; e.g. " + string.Join(" | ", sigs.Distinct().Take(3)));
         Check(places > 0 && broken == 0 && floating == 0 && blocked == 0 && irregular == 0 && orphans == 0,
             $"every ornament is whole ({broken} broken), held ({floating} cells floating), clear of every way and walk ({blocked} cells lost), regular ({irregular} irregular), never alone ({orphans} orphans) (Ornament)");
-        Check(places > 0 && freeEnds == 0 && thinParts == 0 && standOff == 0 && flat == 0,
-            $"every ornament is joined to the building it grows from: no free ends ({freeEnds}), none thinner than a beam ({thinParts}), none standing off a face ({standOff}), no face drawn in flat colour where its material has a finish ({flat} face corners){(unjoined.Length > 0 ? $"; first: {unjoined}" : "")} (Ornament)");
+        Check(places > 0 && freeEnds == 0 && thinParts == 0 && standOff == 0 && faceBars == 0 && flat == 0,
+            $"every ornament is joined to the building it grows from: no free ends ({freeEnds}), none thinner than a beam ({thinParts}), none standing off a face ({standOff}), no bar rooted in a face ({faceBars}), no face drawn in flat colour where its material has a finish ({flat} face corners){(unjoined.Length > 0 ? $"; first: {unjoined}" : "")} (Ornament)");
         Check(medCost < 0.05 * medBuild && worstShare <= 0.05, $"the ornament costs under 5% of the median place's build ({medCost:0.00} of {medBuild:0} ms) and no more than 5% of any place's own build ({100 * worstShare:0.0}%: {worstPlace}) (Ornament)");
         Check(unlike == 0 && clashes == 0, $"each builder's vocabulary is the same on all its places ({unlike} unlike) and its own ({clashes} shared) (Ornament)");
     }
