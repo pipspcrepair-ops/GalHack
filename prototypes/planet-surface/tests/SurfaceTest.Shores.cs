@@ -14,8 +14,8 @@ namespace PlanetSurface;
 /// <summary>
 /// Where water meets the land, as it is drawn: river mouths, rivers widening toward them and plain coasts on
 /// fresh worlds, each looked at on a half-metre grid as the near ground (the voxels' surface) and every far
-/// level of detail draws it, with the water each of them draws (the river sheets of the far chunks, the sea
-/// plane by its mask, by the water shader's rules).
+/// level of detail draws it (the GPU rings at 2, 4 and 8 m), with the water each of them draws (the river sheets of
+/// the far chunks at the same spacing, the sea plane by its mask, by the water shader's rules).
 /// </summary>
 public partial class SurfaceTest
 {
@@ -37,6 +37,7 @@ public partial class SurfaceTest
         public readonly Image Mask;
         readonly Dictionary<(int, int, int), FarJob> _jobs = new();
         readonly Dictionary<(int, int, int), Dictionary<(int, int), int>> _sheets = new();
+        readonly ClipGround.Reader[] _rings;
         public readonly double[] BuildMs = new double[3];
         public readonly int[] Builds = new int[3];
 
@@ -45,6 +46,8 @@ public partial class SurfaceTest
             W = w;
             S = w.Source;
             Mask = w.SeaTexture().GetImage();
+            _rings = new ClipGround.Reader[3];
+            for (int l = 0; l < 3; l++) _rings[l] = new ClipGround.Reader(l, S, w.Palette, (int)w.Width, (int)w.Height);
         }
 
         FarJob Job(int fx, int fz, int lod)
@@ -79,30 +82,10 @@ public partial class SurfaceTest
             return Job(fx, fz, lod);
         }
 
-        /// <summary>The ground drawn at a point: the voxels' surface (level -1) or a far level's mesh.</summary>
-        public float Ground(int level, double x, double z)
-        {
-            if (level < 0) return S.SurfaceHeight(Mathx.WrapX(x, W.Width), Mathx.Wrap(z, W.Height));
-            FarJob job = At(level, x, z, out float u, out float v);
-            float step = FarBuilder.Step(level);
-            int nx = (int)(job.SpanX / step) + 1, nz = (int)(job.SpanZ / step) + 1;
-            int i = Math.Clamp((int)(u / step), 0, nx - 2), j = Math.Clamp((int)(v / step), 0, nz - 2);
-            int b = (j * (nx - 1) + i) * 6;
-            float best = float.MinValue, y = 0f;
-            for (int t = 0; t < 2; t++)
-            {
-                Vector3 p = job.Vertices[job.Indices[b + 3 * t]], q = job.Vertices[job.Indices[b + 3 * t + 1]], r = job.Vertices[job.Indices[b + 3 * t + 2]];
-                float det = (q.X - p.X) * (r.Z - p.Z) - (r.X - p.X) * (q.Z - p.Z);
-                if (MathF.Abs(det) < 1e-9f) continue;
-                float l1 = ((u - p.X) * (r.Z - p.Z) - (r.X - p.X) * (v - p.Z)) / det;
-                float l2 = ((q.X - p.X) * (v - p.Z) - (u - p.X) * (q.Z - p.Z)) / det;
-                float l0 = 1f - l1 - l2, least = MathF.Min(l0, MathF.Min(l1, l2));
-                if (least <= best) continue;
-                best = least;
-                y = p.Y * l0 + q.Y * l1 + r.Y * l2;
-            }
-            return y;
-        }
+        /// <summary>The ground drawn at a point: the voxels' surface (level -1) or a far ring's.</summary>
+        public float Ground(int level, double x, double z) => level < 0
+            ? S.SurfaceHeight(Mathx.WrapX(x, W.Width), Mathx.Wrap(z, W.Height))
+            : _rings[level].Height(Mathx.WrapX(x, W.Width), Mathx.Wrap(z, W.Height));
 
         /// <summary>A far level's river sheet at a point, if it has a square there: its height.</summary>
         public bool Sheet(int lod, double x, double z, out float y)

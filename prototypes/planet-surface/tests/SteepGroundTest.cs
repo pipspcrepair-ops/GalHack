@@ -127,6 +127,7 @@ public partial class SteepGroundTest : Node
         public readonly List<string> First = new();
         public readonly Dictionary<string, float> WorstStep = new();
         public readonly List<string> FirstPaint = new(), FirstSolid = new();
+        public readonly List<(int Level, float Error)> HeightError = new();
 
         public void Saw(string seam, string detail)
         {
@@ -145,6 +146,23 @@ public partial class SteepGroundTest : Node
             t.Check(Painted * 500 <= Cliffs && Cliffs > 300 * Worlds,
                 $"a cliff reads as a cliff: {Cliffs} rays hit faces steeper than 70 degrees, {Painted} of them on soil paint or a normal turned from the eye, the pale streak that looks like a hole (one in 500 allowed){(FirstPaint.Count > 0 ? $"; first: {string.Join("; ", FirstPaint)}" : "")}");
             GD.Print($"worst step up at a boundary, outward: {string.Join(", ", WorstStep.Select(s => $"{s.Key} {s.Value:F1} m"))}");
+            static string Spread(List<(int Level, float Error)> e) => string.Join("; ", e.GroupBy(x => x.Level).OrderBy(g => g.Key).Select(g =>
+            {
+                var v = g.Select(x => x.Error).OrderBy(x => x).ToList();
+                return $"ring {g.Key} ({Terrain.ClipGround.Spacing(g.Key):F0} m): median {v[v.Count / 2]:F2}, 95th pct {v[(int)(v.Count * 0.95)]:F2}, most {v[^1]:F1} m (n {v.Count})";
+            }));
+            if (HeightError.Count > 0)
+            {
+                GD.Print($"drawn far ground off the true ground, GPU rings: {Spread(HeightError)}");
+                // The stated error: by ring, the 95th percentile within half the ring's spacing plus half a metre (its ground
+                // leaves out the octaves finer than its spacing, and toward its edge takes the next ring's, twice as coarse).
+                foreach (var g in HeightError.GroupBy(x => x.Level))
+                {
+                    var v = g.Select(x => x.Error).OrderBy(x => x).ToList();
+                    float p95 = v[(int)(v.Count * 0.95)], bound = Terrain.ClipGround.Spacing(g.Key) / 2f + 0.5f;
+                    t.Check(p95 <= bound, $"ring {g.Key}'s drawn ground within {bound:F1} m of the true ground at the 95th percentile: {p95:F2} m");
+                }
+            }
             GD.Print($"workers' mean time on a far chunk, levels 0, 1, 2: {string.Join(", ", Enumerable.Range(0, 3).Select(l => $"{t._main.Streamer.FarBuildMs[l] / Math.Max(1, t._main.Streamer.FarBuilds[l]):F1} ms of {t._main.Streamer.FarBuilds[l]}"))}");
             if (Samples > 0)
                 GD.Print($"triangles drawn, mean of {Samples} views: {Voxel / Samples} voxel, {Far / Samples} far, {Horizon / Samples} horizon");
@@ -315,10 +333,12 @@ public partial class SteepGroundTest : Node
     static void Gather(Soup soup, ArrayMesh mesh, Vector3 at, Vector4 hole, float sink, float sinkFrom)
     {
         Godot.Collections.Array arrays = mesh.SurfaceGetArrays(0);
-        var vertices = (Vector3[])arrays[(int)Mesh.ArrayType.Vertex];
-        var indices = (int[])arrays[(int)Mesh.ArrayType.Index];
-        var normals = (Vector3[])arrays[(int)Mesh.ArrayType.Normal];
         var colors = (Color[])arrays[(int)Mesh.ArrayType.Color];
+        Gather(soup, (Vector3[])arrays[(int)Mesh.ArrayType.Vertex], (int[])arrays[(int)Mesh.ArrayType.Index], (Vector3[])arrays[(int)Mesh.ArrayType.Normal], colors.Select(c => c.A).ToArray(), at, hole, sink, sinkFrom);
+    }
+
+    static void Gather(Soup soup, Vector3[] vertices, int[] indices, Vector3[] normals, float[] bare, Vector3 at, Vector4 hole, float sink, float sinkFrom)
+    {
         var world = new NV[vertices.Length];
         for (int i = 0; i < vertices.Length; i++)
         {
@@ -330,11 +350,11 @@ public partial class SteepGroundTest : Node
         for (int i = 0; i + 2 < indices.Length; i += 3)
         {
             int a = indices[i], b = indices[i + 1], c = indices[i + 2];
-            soup.Add(world[a], world[b], world[c], normals[a], normals[b], normals[c], new Vector3(colors[a].A, colors[b].A, colors[c].A));
+            soup.Add(world[a], world[b], world[c], normals[a], normals[b], normals[c], new Vector3(bare[a], bare[b], bare[c]));
         }
     }
 
-    Drawn Snapshot()
+    Drawn Snapshot(Vector3 eye)
     {
         var s = _main.Streamer;
         float Num(ShaderMaterial m, string name) => m.GetShaderParameter(name).VariantType == Variant.Type.Nil ? 0f : (float)m.GetShaderParameter(name);
@@ -344,7 +364,7 @@ public partial class SteepGroundTest : Node
         drawn.Far = new Soup(8f, farHole, farCut) { Cuts = farHole != Vector4.Zero, Flattens = FlatFaces };
         drawn.Horizon = new Soup(64f, horizonHole, horizonCut) { Cuts = horizonHole != Vector4.Zero, Flattens = FlatFaces };
         foreach (var (mesh, offset) in s.DrawnVoxels()) Gather(drawn.Voxel, mesh, offset, default, 0f, 0f);
-        foreach (var (mesh, at, _) in s.DrawnFar()) Gather(drawn.Far, mesh, at, farHole, Num(s.FarMaterial, "hole_sink"), Num(s.FarMaterial, "hole_sink_from"));
+        foreach (var (v, indices, normals, bare) in s.Clip.Drawn(eye, float.MaxValue)) Gather(drawn.Far, v, indices, normals, bare, Vector3.Zero, farHole, Num(s.FarMaterial, "hole_sink"), Num(s.FarMaterial, "hole_sink_from"));
         var (horizon, horizonAt) = s.DrawnHorizon();
         if (horizon != null) Gather(drawn.Horizon, horizon, horizonAt, horizonHole, Num(s.HorizonMaterial, "hole_sink"), Num(s.HorizonMaterial, "hole_sink_from"));
         return drawn;
@@ -404,8 +424,8 @@ public partial class SteepGroundTest : Node
         _main.Player.ProcessMode = ProcessModeEnum.Disabled;
         GD.Print($"steepest ground: {string.Join(", ", places.Select(p => $"{p.Rise:F0} m over 16 m at {p.X:F0}, {p.Z:F0}"))}");
 
-        // The distances put the boundaries over the cliff: voxels to far rings about 88 m, the far rings' levels about 190 and 450 m, the far rings' edge about 960 m.
-        float[] distances = { 40f, 88f, 190f, 330f, 450f, 960f };
+        // The distances put the boundaries over the cliff: voxels to far rings about 88 to 104 m, the far rings' levels about 384, 768 and 1,536 m.
+        float[] distances = { 40f, 96f, 300f, 384f, 768f, 1536f };
         float[] heights = { 1.7f, 1.7f, 30f, 150f };
         int view = 0;
         foreach (var place in places)
@@ -426,6 +446,8 @@ public partial class SteepGroundTest : Node
                 Look(w, eye, $"{spec.Archetype} seed {seed}");
                 if (k == 0 && view % 2 == 0 && up < 5f) await Solid(w, eye);
             }
+
+        Heights(w);
 
         // Flown past at speed: the ground in mid-stream, levels and holes as they stand at that moment.
         var place0 = places[0];
@@ -449,12 +471,34 @@ public partial class SteepGroundTest : Node
 
     const float FlightSpeed = 100f; // FreeFly's fast speed
 
+    /// <summary>
+    /// How far the drawn far ground stands off the true ground (the voxels' surface), ring by ring, at random points of each
+    /// ring as it is drawn now.
+    /// </summary>
+    void Heights(PlanetWorld w)
+    {
+        var s = _main.Streamer;
+        Terrain.ClipGround clip = s.Clip;
+        for (int l = clip.Floor; l < clip.Levels; l++)
+        {
+            Vector4 outer = clip.Ring(l), inner = l > clip.Floor ? clip.Ring(l - 1) : Vector4.Zero;
+            for (int n = 0; n < 500; n++)
+            {
+                float x = Mathf.Lerp(outer.X, outer.Z, (float)_rand.NextDouble()), z = Mathf.Lerp(outer.Y, outer.W, (float)_rand.NextDouble());
+                if (inner != Vector4.Zero && x > inner.X && x < inner.Z && z > inner.Y && z < inner.W) continue;
+                if (clip.Height(x, z) is not float drawn) continue;
+                float truth = w.GroundHeight(x, z);
+                _tally.HeightError.Add((l, MathF.Abs(drawn - truth)));
+            }
+        }
+    }
+
     // ---- The rays -----------------------------------------------------------------------------------
 
     /// <summary>Everything aimed from one camera position.</summary>
     void Look(PlanetWorld w, Vector3 eye3, string where)
     {
-        Drawn drawn = Snapshot();
+        Drawn drawn = Snapshot(eye3);
         _tally.Views++;
         _tally.Voxel += drawn.Voxel.Count;
         _tally.Far += drawn.Far.Count;
@@ -465,16 +509,9 @@ public partial class SteepGroundTest : Node
         NV[] eyes = { eye, eye + new NV(0f, 8f, 0f), eye + new NV(0f, 30f, 0f), eye + new NV(0f, 100f, 0f) };
 
         // The boundaries, in plan: voxels to far rings, the far rings' levels, the far rings to the horizon.
-        const float C = Terrain.FarBuilder.Size;
-        float fx = MathF.Floor(eye.X / C) * C, fz = MathF.Floor(eye.Z / C) * C;
-        Vector4 Ring(int d) => new(fx - d * C, fz - d * C, fx + (d + 1) * C, fz + (d + 1) * C);
-        var seams = new List<(string Name, Vector4 Rect)>
-        {
-            ("voxels to far", drawn.VoxelHole),
-            ("far level 0 to 1", Ring(Terrain.TerrainStreamer.FarLod0Radius)),
-            ("far level 1 to 2", Ring(Terrain.TerrainStreamer.FarLod1Radius)),
-            ("far to horizon", drawn.FarHole),
-        };
+        var seams = new List<(string Name, Vector4 Rect)> { ("voxels to far", drawn.VoxelHole), ("far to horizon", drawn.FarHole) };
+        var clip = _main.Streamer.Clip;
+        for (int l = clip.Floor; l + 1 < clip.Levels; l++) seams.Add(($"far level {l} to {l + 1}", clip.Ring(l)));
         foreach (var (name, r) in seams)
         {
             if (r == Vector4.Zero) continue;
@@ -568,7 +605,8 @@ public partial class SteepGroundTest : Node
         NV q = eye + d * end;
         if (w.Source.CellDensity((int)MathF.Floor(q.X), (int)MathF.Floor(q.Y), (int)MathF.Floor(q.Z)) <= 0f) return; // a cave or a room: open to the eye
         float heading = Mathf.RadToDeg(MathF.Atan2(d.X, -d.Z)), pitch = Mathf.RadToDeg(MathF.Asin(d.Y));
-        string chunks = string.Join(" ", _main.Streamer.DrawnFar().Where(f => through.X >= f.At.X - 1f && through.X <= f.At.X + 129f && through.Z >= f.At.Z - 1f && through.Z <= f.At.Z + 129f).Select(f => $"[{f.At.X},{f.At.Z} level {f.Lod}]"));
+        var clip = _main.Streamer.Clip;
+        string chunks = $"[far ring {Enumerable.Range(clip.Floor, Math.Max(0, clip.Levels - clip.Floor)).FirstOrDefault(l => clip.Ring(l) is var r && through.X >= r.X && through.X <= r.Z && through.Z >= r.Y && through.Z <= r.W, -1)}]";
         _tally.Saw(seam, $"{chunks} tops {Top(drawn, new Vector2(through.X + d.X * 0.1f, through.Z + d.Z * 0.1f)):F1} past, {Top(drawn, new Vector2(through.X - d.X * 0.1f, through.Z - d.Z * 0.1f)):F1} before, hit nothing to {end:F0} m (seam at {toSeam:F0}); far complete {_main.Streamer.FarComplete}, voxels {_main.Streamer.CompleteRadius}; {where}, eye {eye.X:F1}, {eye.Y:F1}, {eye.Z:F1} up {eye.Y - w.GroundHeight(eye.X, eye.Z):F1} through {through.X:F1}, {through.Y:F1}, {through.Z:F1} heading {heading:F1} pitch {pitch:F1}");
     }
 
@@ -585,7 +623,7 @@ public partial class SteepGroundTest : Node
         if (ready)
         {
             await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
-            Drawn drawn = Snapshot();
+            Drawn drawn = Snapshot(eye);
             PhysicsDirectSpaceState3D space = _main.GetWorld3D().DirectSpaceState;
             var from = new NV(eye.X, eye.Y, eye.Z);
             for (int i = 0; i < 400; i++)

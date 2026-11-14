@@ -86,6 +86,7 @@ public partial class SurfaceTest : Node
             await Run("Under", UnderChecks);
             await Run("Water", WaterChecks);
             await Run("Shores", ShoreChecks);
+            await Run("Teeth", TeethChecks);
             await Run("Ports", PortChecks);
             await Run("Stitches", StitchChecks);
             await Run("Blast", BlastChecks);

@@ -1,7 +1,6 @@
-// The far land's shade, past the sun's real-time shadows (TerrainStreamer.FarShade): a square of the
-// land, each cell holding how steeply the land, woods and places rise toward the sun from its own
-// ground. A cell whose rise is above the sun is in shade, softly either side. Two squares, the last
-// and the new, blend over a moment when the sun has turned. The shade only stands in where the real
+// The far land's shade, past the sun's real-time shadows (FarShade, marched on the graphics card): a
+// square of the land, each cell holding how steeply the land, woods and places rise toward the sun from
+// its own ground. A cell whose rise is above the sun is in shade, softly either side. The shade only stands in where the real
 // shadows have faded (shade_reach: the sun's shadow distance), and joins them before they fade, so
 // the two never show a line: a point is as lit as the darker of the two says.
 //
@@ -10,10 +9,7 @@
 //     far_sun = far_lit(world position, CAMERA_POSITION_WORLD);
 
 uniform sampler2D shade_map : filter_linear, repeat_disable;
-uniform sampler2D shade_was : filter_linear, repeat_disable;
 uniform vec4 shade_rect = vec4(0.0, 0.0, 0.0, 0.0);     // x0, z0, side (0: none)
-uniform vec4 shade_was_rect = vec4(0.0, 0.0, 0.0, 0.0);
-uniform float shade_blend = 1.0;                        // 0: the last square, 1: the new
 uniform vec4 shade_sun = vec4(0.0, 1.0, 0.0, 1.0);     // toward the sun (unit), and its rise (a tangent)
 uniform float shade_reach = 320.0;                       // the sun's real-time shadow distance, m
 uniform vec2 shade_join = vec2(0.7, 0.85);               // where the far shade comes in, and is full, as a share of that distance (FarShade.JoinFrom, JoinFull)
@@ -22,11 +18,11 @@ varying float far_sun;
 
 const float SHADE_SOFT = 0.025;
 
-float shade_lit(sampler2D map, vec4 rect, vec2 p) {
-	if (rect.z <= 0.0) return 1.0;
-	vec2 uv = (p - rect.xy) / rect.z;
+float shade_lit(vec2 p) {
+	if (shade_rect.z <= 0.0) return 1.0;
+	vec2 uv = (p - shade_rect.xy) / shade_rect.z;
 	if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return 1.0;
-	float rise = texture(map, uv).r;
+	float rise = texture(shade_map, uv).r;
 	return 1.0 - smoothstep(-SHADE_SOFT, SHADE_SOFT, rise - shade_sun.w);
 }
 
@@ -36,8 +32,7 @@ float far_lit(vec3 p, vec3 eye) {
 	float away = length(p.xz - eye.xz);
 	float w = smoothstep(shade_reach * shade_join.x, shade_reach * shade_join.y, away);
 	if (w <= 0.0) return 1.0;
-	float lit = mix(shade_lit(shade_was, shade_was_rect, p.xz), shade_lit(shade_map, shade_rect, p.xz), shade_blend);
-	return mix(1.0, lit, w);
+	return mix(1.0, shade_lit(p.xz), w);
 }
 
 void light() {
