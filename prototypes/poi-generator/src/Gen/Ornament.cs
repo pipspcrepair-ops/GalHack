@@ -16,7 +16,7 @@ namespace PoiGenerator.Gen;
 /// <item>A chimney up the middle of a wall that is whole from the ground to the roof, on through the roof and the
 /// builder's rise past it, capped in trim.</item>
 /// <item>A spire from the middle of a tower's top: a stepped base wider than its shaft, a point at its head.</item>
-/// <item>Decay: bars out of every torn concrete edge, every other cell along it, the way the slab or wall ran.</item>
+/// <item>Decay: bars up out of every broken concrete wall top, every other cell along it, the way the wall ran.</item>
 /// </list>
 /// Each builder (its world, tech level and faction or culture) rolls its own small set, spacing and proportions, so one
 /// world's places look related and two worlds' differ. An element that can't be laid whole is left out; nothing goes
@@ -31,9 +31,9 @@ public static class Ornament
     public sealed record Piece(string Kind, List<Int3> Cells, List<int> At);
 
     /// <summary>A builder's vocabulary: which elements, how far apart, how far a chimney or spire rises, and the shade its trim takes of its walls.</summary>
-    public sealed record Vocab(int Bay, bool Beams, bool Corbels, bool Chimneys, bool Spires, int Rise, float Tone)
+    public sealed record Vocab(int Bay, bool Beams, bool Corbels, bool Chimneys, bool Spires, int Rise, float Tone, bool Ribs = false, bool Cornice = false, bool Plant = false)
     {
-        public string Sig => $"bay {Bay} rise {Rise} tone {Tone:0.00}{(Beams ? " beams" : "")}{(Corbels ? " corbels" : "")}{(Chimneys ? " chimneys" : "")}{(Spires ? " spires" : "")}";
+        public string Sig => $"bay {Bay} rise {Rise} tone {Tone:0.00}{(Beams ? " beams" : "")}{(Corbels ? " corbels" : "")}{(Chimneys ? " chimneys" : "")}{(Spires ? " spires" : "")}{(Ribs ? " ribs" : "")}{(Cornice ? " cornice" : "")}{(Plant ? " plant" : "")}";
     }
 
     /// <summary>The builders of a place: its world, its tech level, its faction and its culture (alien or not).</summary>
@@ -60,7 +60,11 @@ public static class Ornament
         // (Low tech leans to chimneys and bracketed eaves, high tech to framed halls and spires; each world picks among them.)
         bool beams = r.Chance(high ? 0.8f : 0.6f), corbels = r.Chance(high ? 0.35f : 0.75f), chimneys = r.Chance(tech == TechLevel.Low ? 0.85f : high ? 0.15f : 0.5f), spires = r.Chance(high ? 0.75f : 0.3f);
         if (!beams && !corbels && !chimneys && !spires) beams = corbels = true;
-        return new Vocab(high ? r.Between(4, 8) : r.Between(3, 6), beams, corbels, chimneys, spires, r.Between(2, 4), 0.8f + 0.04f * r.Between(0, 4));
+        var v = new Vocab(high ? r.Between(4, 8) : r.Between(3, 6), beams, corbels, chimneys, spires, r.Between(2, 4), 0.8f + 0.04f * r.Between(0, 4));
+        // (Mid and high tech frame their walls: full-height ribs (pylons on high tech) at the bay spacing, a cornice at the eave, plant on the roof.)
+        if (tech == TechLevel.Low) return v;
+        bool ribs = r.Chance(high ? 0.85f : 0.7f), cornice = r.Chance(high ? 0.6f : 0.8f), plant = r.Chance(0.75f);
+        return v with { Ribs = ribs, Cornice = cornice, Plant = plant || !ribs && !cornice };
     }
 
     public static void Apply(PoiInstance inst)
@@ -107,12 +111,13 @@ public static class Ornament
         bool Outside(Int3 q) => (space || q.Y > Assembler.GroundY) && g.Get(q).IsAir && !(occ[q] && Roofed(q));
         static bool Way(Block b) => b.Type is BlockType.Door or BlockType.SealedDoor or BlockType.Ladder or BlockType.Stair or BlockType.Pane
             || b.Role is Role.Window or Role.Door or Role.Traverse || BlockInfo.IsTransparent(b.Material);
+        static bool Door(Block b) => b.Type is BlockType.Door or BlockType.SealedDoor or BlockType.Ladder or BlockType.Stair || b.Role is Role.Door or Role.Traverse;
         // A cell an ornament may take: open air, no one's feet, body or (but for a beam under its cell's top) head in it,
         // no lamp, and nothing anyone goes through or climbs beside it.
         var mine = new HashSet<Int3>();
-        bool Open(Int3 q, BlockType t) => g.Get(q).IsAir && !Rock(q) && !mine.Contains(q) && !lamps.Contains(q)
-            && !walked.Contains(q) && !walked.Contains(q + Int3.Down) && (t == BlockType.Beam || !walked.Contains(q + Int3.Down * 2))
-            && !Dirs.All.Any(d => Way(g.Get(q + d.Vec())))
+        bool Open(Int3 q, BlockType t, bool ways = true, bool walk = true) => g.Get(q).IsAir && !Rock(q) && !mine.Contains(q) && !lamps.Contains(q)
+            && (!walk || !walked.Contains(q) && !walked.Contains(q + Int3.Down) && (t == BlockType.Beam || !walked.Contains(q + Int3.Down * 2)))
+            && !Dirs.All.Any(d => ways ? Way(g.Get(q + d.Vec())) : Door(g.Get(q + d.Vec())))
             && !BlockInfo.IsSlope(g.Get(q + Int3.Down).Type) && !BlockInfo.IsSlope(g.Get(q + Int3.Down * 2).Type); // (nor over a slope one might walk up since)
         // (Cut from what it grows from: its material and its finish, its colour a shade of the builder's trim.)
         Block Made(Int3 from, BlockType t, Dir f, float tone = 1f) { Block b = g.Get(from); return b with { Type = t, Facing = f, Role = Role.Decor, Color = b.Color.Scale(v.Tone * tone) }; }
@@ -277,9 +282,110 @@ public static class Ornament
                 }
             }
         }
-        // Bars: out of the torn concrete edges the decay left, every other cell along each edge, the way the bars ran (level
-        // out of a slab's torn edge, up out of a broken wall's top), each torn edge whole; edges in the order
-        // the decay tore them, until about as many bars as a ruin shows.
+        // Ribs: full-height structural ribs up a wall from its foot to its top at the bay spacing, half a metre proud (a
+        // pylon on high tech: a metre proud, on past the top and pointed); each whole run of whole wall columns or none.
+        if (v.Ribs)
+        {
+            bool pylon = Shaping.High(inst);
+            var faces = new Dictionary<(Dir, int, int), List<Int3>>();
+            foreach (var (d, set) in survey.Outer)
+                foreach (Int3 w in set)
+                {
+                    var k = (d, d is Dir.North or Dir.South ? w.Z : w.X, inst.ObjectOf(w));
+                    (faces.TryGetValue(k, out var l) ? l : faces[k] = new List<Int3>()).Add(w);
+                }
+            foreach (var ((d, _, _), face) in faces.Where(f => f.Value.Count >= 9))
+            {
+                Dir a = d.RotateCw(1);
+                int U(Int3 c) => a is Dir.East or Dir.West ? c.X : c.Z;
+                // (Where feet fall it stands only with room to go round it: the cells in front of it are walked too.)
+                bool Passed(Int3 q) => !walked.Contains(q) || walked.Contains(q + d.Vec()) && walked.Contains(q + d.Vec() + a.Vec()) && walked.Contains(q + d.Vec() - a.Vec());
+                var cols = new SortedDictionary<int, List<Int3>>();
+                foreach (var grp in face.GroupBy(U))
+                {
+                    // (The wall's own courses from its foot: its eave, a roof's slope or a coping above it end it.)
+                    var col = grp.OrderBy(c => c.Y).ToList();
+                    int y0 = col[0].Y;
+                    col = col.TakeWhile((c, k) => c.Y == y0 + k && !Door(g.Get(c)) && !rims.Contains(c) && (Bears(c, d) || g.Get(c).Role == Role.Window || g.Get(c).Type == BlockType.Pane)).ToList();
+                    if (col.Count >= 3) cols[grp.Key] = col;
+                }
+                var us = cols.Keys.ToList();
+                for (int i = 0; i < us.Count;)
+                {
+                    int j = i;
+                    while (j + 1 < us.Count && us[j + 1] == us[j] + 1 && cols[us[j + 1]][0].Y == cols[us[i]][0].Y && cols[us[j + 1]][^1].Y == cols[us[i]][^1].Y) j++;
+                    int n = j - i + 1, i0 = i;
+                    i = j + 1;
+                    if (n < 3) continue;
+                    // (From the run's one end to the other, at the bay spacing or the nearest that divides it evenly: a panel framed.)
+                    int m = System.Math.Max(1, (n - 1 + v.Bay / 2) / v.Bay);
+                    while ((n - 1) % m != 0) m--;
+                    var at = Enumerable.Range(0, m + 1).Select(q => q * (n - 1) / m).ToList();
+                    var ribs = new List<(Int3, Block)>();
+                    bool ok = at.Count >= 2;
+                    foreach (int k in at)
+                    {
+                        var col = cols[us[i0 + k]];
+                        Int3 foot = col[0] + d.Vec(), top = col[^1] + d.Vec();
+                        ok = ok && (Rock(foot + Int3.Down) || BlockInfo.IsFullCube(g.Get(foot + Int3.Down).Type) && g.Get(foot + Int3.Down).Role != Role.Decor);
+                        for (int y = foot.Y; y <= top.Y + (pylon ? v.Rise : 0) && ok; y++)
+                        {
+                            Int3 q = new(foot.X, y, foot.Z);
+                            ok = Open(q, BlockType.Cube, false, false) && Passed(q) && !BlockInfo.Collides(g.Get(q + a.Vec()).Type) && !BlockInfo.Collides(g.Get(q - a.Vec()).Type) && !BlockInfo.Collides(g.Get(q + d.Vec()).Type);
+                            ribs.Add((q, Made(col[System.Math.Min(y - foot.Y, col.Count - 1)], pylon ? BlockType.Cube : BlockType.Half, d.Opposite())));
+                        }
+                        // (A pylon ends in a cap of the building's own trim: a darker course, never a point.)
+                        if (pylon && ribs.Count > 0 && ok) ribs[^1] = (ribs[^1].Item1, Made(col[^1], BlockType.Cube, Dir.North, 0.8f));
+                    }
+                    if (ok) Lay("ribs", ribs, at);
+                }
+            }
+        }
+
+        // Cornice: a ledge at the eave, the upper half of the top course's cell outside a straight run of wall tops that
+        // bear it, a metre out, the whole run (three or more) or none.
+        if (v.Cornice)
+            foreach (var (d, set) in survey.Outer)
+            {
+                var tops = new HashSet<Int3>(set.Where(w => g.Get(w + Int3.Up).IsAir && Wall(w, d) && Open(w + d.Vec(), BlockType.Half) && Outside(w + d.Vec())).Select(w => w + d.Vec()));
+                foreach (List<Int3> run in Shaping.Lines(tops, d.RotateCw(1).Vec()))
+                {
+                    if (run.Count < 3 || run.Any(q => q.Y != run[0].Y || BlockInfo.Collides(g.Get(q + Int3.Up).Type))) continue;
+                    Lay("cornice", run.Select(q => (q, Made(q - d.Vec(), BlockType.Half, Dir.Up))).ToList(), new List<int>());
+                }
+            }
+
+        // Plant: a roof enclosure two metres square on a flat roof no one walks, well in from its edge, with a mast on from its structure.
+        if (v.Plant)
+            foreach (var obj in survey.Tops.Where(c => c.Y > Assembler.GroundY).GroupBy(c => inst.ObjectOf(c)))
+            {
+                var flat = obj.Where(c => Shapes.FlatToward(g.Get(c), Dir.Up) && g.Get(c + Int3.Up).IsAir).ToList();
+                if (flat.Count == 0) continue;
+                int level = flat.GroupBy(c => c.Y).OrderByDescending(x => x.Count()).First().Key;
+                var field = flat.Where(c => c.Y == level).ToHashSet();
+                int cx = (int)field.Average(c => c.X), cz = (int)field.Average(c => c.Z);
+                foreach (Int3 c in field.OrderBy(c => System.Math.Abs(c.X - cx) + System.Math.Abs(c.Z - cz)))
+                {
+                    bool ring = true;
+                    for (int dz = -2; dz <= 2 && ring; dz++) for (int dx = -2; dx <= 2 && ring; dx++) ring = field.Contains(c + new Int3(dx, 0, dz));
+                    if (!ring) continue;
+                    var cells = new List<(Int3, Block)>();
+                    bool ok = true;
+                    for (int dz = 0; dz < 2 && ok; dz++)
+                        for (int dx = 0; dx < 2 && ok; dx++)
+                        {
+                            Int3 q = c + new Int3(dx, 1, dz);
+                            ok = Open(q, BlockType.Cube);
+                            cells.Add((q, Made(c, BlockType.Cube, Dir.North, 0.9f)));
+                        }
+                    for (int k = 2; k <= v.Rise && ok; k++) { Int3 q = c + Int3.Up * k; ok = Open(q, BlockType.Cube); cells.Add((q, Made(c, BlockType.Cube, Dir.North, 0.85f))); }
+                    if (ok) Lay("plant", cells, new List<int>());
+                    break;
+                }
+            }
+
+        // Bars: up out of the broken concrete wall tops the decay left, every other cell along each top, the way the bars ran,
+        // each top whole; tops in the order the decay tore them, until about as many bars as a ruin shows.
         if (inst.State != PoiState.Active && inst.Fallen.Count > 0)
         {
             var fallen = new HashSet<Int3>(inst.Fallen);
@@ -289,16 +395,12 @@ public static class Ornament
                 if (spots.TryGetValue(c, out Dir? known)) return known;
                 Dir? found = null;
                 if (fallen.Contains(c) && g.Get(c).IsAir && !mine.Contains(c) && !inst.Protected[c] && !lamps.Contains(c))
-                    foreach (Dir d in Dirs.All)
-                    {
-                        Block b = g.Get(c + d.Vec());
-                        // (Only out of an edge the slab or wall runs on behind: its bars ran that way. Out of a wall's face they never did.)
-                        if (d == Dir.Up || !BlockInfo.IsFullCube(b.Type) || b.Material is not (Material.Concrete or Material.Fused or Material.Armour) || !BlockInfo.IsFullCube(g.Get(c + d.Vec() * 2).Type)) continue;
-                        // (Up out of a wall's broken top, or level out of a slab's torn edge: never out of a wall's face.)
-                        // (A slab's edge only where it stands out of the face round it: an edge flush in a wall reads as a face.)
-                        bool proud = !BlockInfo.IsFullCube(g.Get(c + d.Vec() + Int3.Up).Type) || !BlockInfo.IsFullCube(g.Get(c + d.Vec() + Int3.Down).Type);
-                        if (b.Role == Role.Wall && d == Dir.Down || b.Role is Role.Floor or Role.Roof && d.IsHorizontal() && proud) { found = d; break; }
-                    }
+                {
+                    // (Up out of a broken wall's top, concrete running on below it, nothing solid beside it: never out of a face.)
+                    Block b = g.Get(c + Int3.Down);
+                    if (b.Role == Role.Wall && BlockInfo.IsFullCube(b.Type) && b.Material is Material.Concrete or Material.Fused or Material.Armour && BlockInfo.IsFullCube(g.Get(c + Int3.Down * 2).Type)
+                        && !Dirs.All.Any(h => h != Dir.Down && (BlockInfo.Collides(g.Get(c + h.Vec()).Type) || mine.Contains(c + h.Vec())))) found = Dir.Down;
+                }
                 return spots[c] = found;
             }
             int most = System.Math.Min(600, 120 + inst.Fallen.Count / 12), laid = 0;
