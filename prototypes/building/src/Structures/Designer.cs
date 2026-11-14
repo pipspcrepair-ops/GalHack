@@ -167,6 +167,12 @@ public sealed class Designer
     /// <summary>When set, <see cref="Text"/> first caps every open ramp side (see <see cref="Cap"/>).</summary>
     public bool Seal;
 
+    /// <summary>Told which cells took a frame block (the blueprint test prints them).</summary>
+    public static System.Action<string> OnFrames;
+
+    /// <summary>The cells where <see cref="Cap"/> closed a ramp end with a plain block for want of a piece that carries the line on.</summary>
+    public readonly List<Int3> Frames = new();
+
     /// <summary>
     /// Fills each open triangular ramp side that looks onto outside air with the corner, inverted corner, slope or wedge, in
     /// whatever turn, whose own face matches it exactly and that leaves the fewest open sides, until none are left or no piece
@@ -189,20 +195,6 @@ public sealed class Designer
             Dir away = Orientations.ToWorld(b.Rot, t.IsThruster ? Dir.PosZ : Dir.NegY);
             foreach (Int3 c in S.CellsOf(p, b))
                 for (int k = 1; k <= 5; k++) keep.Add(c + away.Vec() * k);
-        }
-        // A vertical chamfer open at the top becomes a corner there: the same three-cornered base, tapering up to the hull behind it.
-        foreach (var (pos, block) in S.Blocks().ToList())
-        {
-            if (!S.TypeOf(block).IsArmor || S.ShapeOf(block).Id != "slope" || S.Has(pos + Int3.UnitY)) continue;
-            Dir up = Orientations.ToWorld(block.Rot, Dir.PosY), fwd = Orientations.ToWorld(block.Rot, Dir.NegZ);
-            if (up.Axis() == 1 || fwd.Axis() == 1) continue;
-            Dir ox = up.Axis() == 0 ? up : fwd, oz = up.Axis() == 2 ? up : fwd;
-            Dir turn = ox == Dir.PosX ? (oz == Dir.NegZ ? Dir.NegZ : Dir.PosX) : (oz == Dir.NegZ ? Dir.NegX : Dir.PosZ);
-            Block corner = Building.Make(S, S.TypeOf(block), _cat.Shape("corner"), Turn(Rot(Dir.PosY, turn)));
-            corner.Paint = block.Paint;
-            int before = Notches.Open(S).Count;
-            S.Set(pos, corner);
-            if (Notches.Open(S).Count >= before) S.Set(pos, block);
         }
         string[] shapes = { "corner", "invcorner", "slope", "wedge" };
         // Each other open side takes the piece whose face matches it, chained up to five deep, when that leaves fewer open sides.
@@ -232,7 +224,11 @@ public sealed class Designer
             Block cube = Building.Make(S, S.TypeOf(src), _cat.Cube, Orientations.Identity);
             cube.Paint = src.Paint;
             S.Set(cell, cube);
-            if (Notches.Open(S).Count < baseline) return true;
+            if (Notches.Open(S).Count < baseline)
+            {
+                Frames.Add(cell);
+                return true;
+            }
             S.Clear(cell);
             return false;
         }
@@ -257,7 +253,11 @@ public sealed class Designer
     /// <summary>The blueprint's text: the description as comments, then the canonical blocks.</summary>
     public string Text(string description)
     {
-        if (Seal) Cap();
+        if (Seal)
+        {
+            Cap();
+            if (Frames.Count > 0) OnFrames?.Invoke($"{S.Name}: {string.Join("; ", Frames)}");
+        }
         var sb = new StringBuilder();
         foreach (string line in description.Trim().Split('\n')) sb.Append("# ").Append(line.Trim()).Append('\n');
         sb.Append("# Written by slice/tests/BlueprintSet.cs (Designer); regenerate rather than edit.\n");

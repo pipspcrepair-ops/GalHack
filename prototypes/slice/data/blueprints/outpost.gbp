@@ -25,7 +25,7 @@ paint frame base=2b2d42 grime=1
 
 block 7 0 -7 base-block corner rot=+y-x paint=pad
 block 8..18 0 -7 base-block slope paint=pad
-block 19 0 -7 base-block corner paint=pad
+block 19 0 -7 base-block slope rot=+x-z paint=pad
 block -5 0 -6 concrete-plated paint=frame
 block -1 0 -6 concrete-plated paint=frame
 block 3 0 -6 concrete-plated paint=frame
@@ -124,7 +124,7 @@ block -1..2 0 6 concrete-plated paint=wall,wall,deck,wall,wall,wall
 block 6 0 6 concrete-plated paint=frame
 block 7 0 6 base-block corner rot=+y+z paint=pad
 block 8..18 0 6 base-block slope rot=+y+z paint=pad
-block 19 0 6 base-block corner rot=+y+x paint=pad
+block 19 0 6 base-block slope rot=+x+z paint=pad
 block -1..2 0 7 concrete-plated paint=wall,wall,deck,wall,wall,wall
 block -1..2 0 8 concrete-plated paint=wall,wall,deck,wall,wall,wall
 block 0..1 0 9 stairs rot=+y+z paint=wall
