@@ -217,68 +217,118 @@ cargo pods holding 52 Container T4s. Four Thruster T3 mains, two retros, four li
 corners, two down jets, a side jet each way, four pads.");
     }
 
-    /// <summary>The Frigate: a small capital ship, two decks forward and a hangar aft that takes the Skiff.</summary>
+    /// <summary>The Frigate: a small capital ship, two decks forward under a tapering bow and a hangar aft that takes the Skiff.</summary>
     static string Frigate(Catalogue cat)
     {
         var d = new Designer(cat, "Frigate", CoreMode.Flight);
         ushort hull = d.Paint("hull", Coat(0xc9ccd1)), inner = d.Paint("inner", Coat(0xd8d2c2, 0)), deck = d.Paint("deck", Deck);
         ushort keel = d.Paint("keel", Coat(0x2b2d42, 2)), red = d.Paint("red", Coat(0xc1121f)), hazard = d.Paint("hazard", Hazard);
+        ushort roof = d.Paint("roof", Coat(0x6b7280, 2));
+        const string Iron = "iron-plated";
 
-        // The hangar aft: 10 m wide, 6 m clear and 16 m deep, open at the stern.
-        d.Room(P(-5, 1, -3), P(4, 6, 12), "iron-plated", hull, inner, deck);
-        d.Carve(P(-5, 1, 13), P(4, 6, 13)).Face(P(-6, 0, 13), P(5, 7, 13), Dir.PosZ, hazard);
-        // Forward: the machine room below (4 m clear) and the bridge above (4 m clear), joined by a stair.
-        d.Room(P(-7, 1, -19), P(6, 9, -5), "iron-plated", hull, inner, deck);
-        d.Fill(P(-7, 5, -19), P(6, 5, -5), "iron-plated", inner).Face(P(-7, 5, -19), P(6, 5, -5), Dir.PosY, deck);
-        d.Face(P(-8, 0, -20), P(7, 0, 13), Dir.NegY, keel);
-        d.Fill(P(-6, 7, -20), P(5, 8, -20), "glass-plated");
+        // The forward hull, z -20 to -4, 11 m tall: the machine room (y 1..4) under the deck (y 5) and the bridge (y 6..9).
+        // Its sides step out a metre every three metres from the nose; a vertical chamfer on the first row of each step
+        // makes the bow's edge one clean line, and the roof's edges are raked.
+        var steps = new[] { (-20, -18, 4), (-17, -15, 5), (-14, -12, 6), (-11, -9, 7), (-8, -4, 8) };
+        foreach (var (z0, z1, hw) in steps)
+            for (int z = z0; z <= z1; z++)
+            {
+                d.Fill(P(-hw, 0, z), P(hw - 1, 10, z), Iron, hull);
+                if (z > -20 && z < -4)
+                    d.Hollow(P(1 - hw, 1, z), P(hw - 2, 4, z)).Hollow(P(1 - hw, 6, z), P(hw - 2, 9, z));
+                if (z == z0)
+                    d.Chamfer(P(hw - 1, 0, z), P(hw - 1, 10, z), Iron, hull, Dir.PosX, Dir.NegZ).Chamfer(P(-hw, 0, z), P(-hw, 10, z), Iron, hull, Dir.NegX, Dir.NegZ);
+                else
+                    d.Slope(P(hw - 1, 10, z), P(hw - 1, 10, z), Iron, roof, Dir.PosX).Slope(P(-hw, 10, z), P(-hw, 10, z), Iron, roof, Dir.NegX);
+                d.Face(P(hw - 1, 5, z), P(hw - 1, 5, z), Dir.PosX, red).Face(P(-hw, 5, z), P(-hw, 5, z), Dir.NegX, red);
+                // A window band down the flanks of the bridge.
+                if (z > z0 && z < -5) d.Fill(P(hw - 1, 7, z), P(hw - 1, 8, z), "glass-plated").Fill(P(-hw, 7, z), P(-hw, 8, z), "glass-plated");
+            }
+        // The prow: a glazed brow raked back over the bridge, the belly raked up under the machine room.
+        d.Fill(P(-3, 7, -20), P(2, 8, -20), "glass-plated").Slope(P(-3, 9, -20), P(2, 9, -20), "glass-plated", 0, Dir.NegZ);
+        d.Slope(P(-3, 10, -20), P(2, 10, -20), Iron, roof, Dir.NegZ).Slope(P(-3, 0, -20), P(2, 0, -20), Iron, keel, Dir.NegZ, under: true);
+        d.Face(P(-8, 10, -20), P(7, 10, -4), Dir.PosY, roof).Face(P(-8, 0, -20), P(7, 0, 13), Dir.NegY, keel);
+
+        // A spear of a prow ahead of the glass: three rows narrowing and rising at 45 degrees, its foredeck level with the sill.
+        for (int k = 1; k <= 3; k++)
+        {
+            int z = -20 - k, w = 4 - k;
+            d.Fill(P(-w, k, z), P(w - 1, 6, z), Iron, hull);
+            d.Slope(P(1 - w, k, z), P(w - 2, k, z), Iron, keel, Dir.NegZ, under: true);
+            d.Chamfer(P(w - 1, k, z), P(w - 1, 6, z), Iron, hull, Dir.PosX, Dir.NegZ).Chamfer(P(-w, k, z), P(-w, 6, z), Iron, hull, Dir.NegX, Dir.NegZ);
+            d.Face(P(-w, 6, z), P(w - 1, 6, z), Dir.PosY, roof);
+        }
+        d.Slope(P(-1, 6, -23), P(0, 6, -23), Iron, roof, Dir.NegZ);
+
+        // The hangar aft: 10 m wide, 6 m clear and 16 m deep, open at the stern, its roof edges raked down to the sides.
+        d.Room(P(-5, 1, -3), P(4, 6, 12), Iron, hull, inner, deck);
+        d.Carve(P(-5, 1, 13), P(4, 6, 13));
+        d.Slope(P(-6, 7, -3), P(-6, 7, 12), Iron, roof, Dir.NegX).Slope(P(5, 7, -3), P(5, 7, 12), Iron, roof, Dir.PosX);
+        d.Slope(P(-5, 7, 13), P(4, 7, 13), Iron, roof, Dir.PosZ).Chamfer(P(-6, 0, 13), P(-6, 6, 13), Iron, hull, Dir.NegX, Dir.PosZ).Chamfer(P(5, 0, 13), P(5, 6, 13), Iron, hull, Dir.PosX, Dir.PosZ);
+        d.Face(P(-6, 0, 13), P(5, 7, 13), Dir.PosZ, hazard);
+        // The bridge tower runs down to the hangar roof in a ramp.
+        d.Fill(P(-6, 8, -3), P(5, 8, -3), Iron, hull).Slope(P(-6, 9, -3), P(5, 9, -3), Iron, roof, Dir.PosZ).Slope(P(-6, 8, -2), P(5, 8, -2), Iron, roof, Dir.PosZ);
+
+        // The stair, 3 m wide and 5 m long, rises through the deck at its far end: the deck is open over all but its first
+        // metre (and a 2 m apron before it), so a body is under no edge of it until it has risen to the opening's end.
         for (int i = 0; i <= 4; i++)
         {
-            if (i > 0) d.Fill(P(-1, 1, -6 - i), P(0, i, -6 - i), "iron-plated", inner);
-            d.Stairs(P(-1, 1 + i, -6 - i), Dir.NegZ, inner);
-            d.Stairs(P(0, 1 + i, -6 - i), Dir.NegZ, inner);
+            if (i > 0) d.Fill(P(-2, 1, -7 - i), P(0, i, -7 - i), Iron, inner);
+            for (int x = -2; x <= 0; x++) d.Stairs(P(x, 1 + i, -7 - i), Dir.NegZ, inner);
         }
-        d.Carve(P(-1, 5, -9), P(0, 5, -8));
+        d.Carve(P(-2, 5, -10), P(0, 5, -8));
         d.Door("door-2x2x1", P(-1, 1, -4), Dir.NegZ);
+
         d.Put("core", P(3, 0, -12));
-        d.Put("command-chair", P(-2, 6, -19));
-        d.Put("command-chair", P(1, 6, -19));
-        d.Put("generator-t2", P(-7, 1, -19));
-        d.Put("generator-t2", P(-7, 1, -18));
-        d.Put("fuel-tank-t2", P(-7, 1, -17));
-        d.Put("fuel-tank-t2", P(-7, 1, -15));
-        d.Put("gyro-t2", P(6, 1, -19));
-        d.Put("gyro-t2", P(6, 1, -18));
-        for (int z = -17; z <= -14; z++) d.Put("container-t4", P(5, 1, z));
+        d.Put("command-chair", P(-1, 6, -19));
+        d.Put("command-chair", P(0, 6, -19));
+        // The machine room: power and fuel at the stern end, gyros opposite, lockers down the bow.
+        d.Put("generator-t2", P(-7, 1, -8));
+        d.Put("generator-t2", P(-7, 1, -7));
+        d.Put("fuel-tank-t2", P(-7, 1, -6));
+        d.Put("fuel-tank-t2", P(-7, 2, -6));
+        d.Put("gyro-t2", P(6, 1, -8));
+        d.Put("gyro-t2", P(6, 1, -7));
+        for (int z = -17; z <= -14; z++)
+        {
+            d.Put("container-t4", P(z == -14 ? -5 : -4, 1, z));
+            d.Put("container-t4", P(z == -14 ? 3 : 2, 1, z));
+        }
         foreach (int x in new[] { -4, 3 })
         {
             d.Mount("light", P(x, 4, -14), Dir.PosY);
             d.Mount("light", P(x, 9, -14), Dir.PosY);
         }
-        // Engine nacelles down the hangar's flanks, the mains in their tails.
-        d.Fill(P(-8, 1, -3), P(-7, 5, 10), "iron-plated", hull).Fill(P(6, 1, -3), P(7, 5, 10), "iron-plated", hull);
+        // Sensor drums on the bridge roof.
+        d.Fill(P(-5, 11, -7), P(-5, 11, -7), Iron, roof, "cylinder").Fill(P(4, 11, -7), P(4, 11, -7), Iron, roof, "cylinder");
+
+        // Engine nacelles down the hangar's flanks, rounded top and bottom and raked at the tail, the mains in them.
+        d.Fill(P(-8, 1, -3), P(-7, 5, 10), Iron, hull).Fill(P(6, 1, -3), P(7, 5, 10), Iron, hull);
+        d.Slope(P(-8, 5, -3), P(-8, 5, 9), Iron, roof, Dir.NegX).Slope(P(7, 5, -3), P(7, 5, 9), Iron, roof, Dir.PosX);
+        d.Slope(P(-8, 1, -3), P(-8, 1, 9), Iron, keel, Dir.NegX, under: true).Slope(P(7, 1, -3), P(7, 1, 9), Iron, keel, Dir.PosX, under: true);
+        d.Slope(P(-8, 5, 10), P(-7, 5, 10), Iron, roof, Dir.PosZ).Slope(P(6, 5, 10), P(7, 5, 10), Iron, roof, Dir.PosZ);
+        d.Slope(P(-8, 1, 10), P(-7, 1, 10), Iron, keel, Dir.PosZ, under: true).Slope(P(6, 1, 10), P(7, 1, 10), Iron, keel, Dir.PosZ, under: true);
         d.Face(P(-8, 3, -3), P(-8, 3, 10), Dir.NegX, red).Face(P(7, 3, -3), P(7, 3, 10), Dir.PosX, red);
         foreach (int x in new[] { -8, -7, 6, 7 }) d.Thruster("thruster-t3", P(x, 3, 11), Dir.NegZ);
-        foreach (int x in new[] { -8, 7 })
-            foreach (int y in new[] { 1, 3 }) d.Thruster("thruster-t3", P(x, y, -22), Dir.PosZ);
-        foreach (int z in new[] { -12, 4 })
-        {
-            d.Thruster("thruster-t3", P(-10, 3, z), Dir.PosX);
-            d.Thruster("thruster-t3", P(8, 3, z), Dir.NegX);
-        }
-        foreach (var (x, z) in new[] { (-6, -2), (5, -2), (-6, 3), (5, 3), (-8, -15), (7, -15), (-8, -9), (7, -9) })
+        // Retros on the prow, jets down the flanks.
+        foreach (int x in new[] { -2, 1 }) d.Thruster("thruster-t3", P(x, 7, -22), Dir.PosZ);
+        d.Thruster("thruster-t3", P(-8, 3, -12), Dir.PosX);
+        d.Thruster("thruster-t3", P(6, 3, -12), Dir.NegX);
+        foreach (int x in new[] { -10, 8 }) d.Thruster("thruster-t3", P(x, 3, 4), x < 0 ? Dir.PosX : Dir.NegX);
+        foreach (var (x, z) in new[] { (-6, -12), (5, -12), (-8, -6), (7, -6), (-6, -2), (5, -2), (-6, 3), (5, 3) })
             d.Thruster("thruster-t3", P(x, 0, z), Dir.PosY);
         d.Thruster("thruster-t3", P(-3, 11, -12), Dir.NegY);
         d.Thruster("thruster-t3", P(2, 11, -12), Dir.NegY);
         d.Thruster("thruster-t3", P(-3, 8, 6), Dir.NegY);
         d.Thruster("thruster-t3", P(2, 8, 6), Dir.NegY);
-        foreach (var (x, z) in new[] { (-8, -18), (7, -18), (-6, 10), (5, 10) }) d.Put("pad-t1", P(x, 0, z));
+        foreach (var (x, z) in new[] { (-4, -18), (3, -18), (-6, 10), (5, 10) }) d.Put("pad-t1", P(x, 0, z));
         d.Stairs(P(-1, 0, 14), Dir.NegZ, hull);
         d.Stairs(P(0, 0, 14), Dir.NegZ, hull);
-        return d.Text(@"Frigate: a small capital ship in iron. Forward, two decks 4 m floor to ceiling joined by a
-2 m stair: the machine room below (generators, fuel, gyros, lockers) and the bridge above, two
-command chairs behind a glazed brow. Aft, a hangar 10 m wide, 6 m clear and 16 m deep, open at the
-stern, that takes the Skiff; a double door from it into the machine room, a step up at its mouth.
-Engine nacelles down both flanks; Thruster T3s throughout.");
+        d.Lining(inner, deck);
+        return d.Text(@"Frigate: a small capital ship in iron. Forward, a bow that tapers to a glazed prow over two decks
+4 m floor to ceiling joined by a 3 m stair: the machine room below (generators, fuel, gyros,
+lockers) and the bridge above, two command chairs behind the brow. Aft, a hangar 10 m wide, 6 m
+clear and 16 m deep, open at the stern, that takes the Skiff; a double door from it into the
+machine room, a step up at its mouth. Rounded engine nacelles down both flanks; Thruster T3s throughout.");
     }
 }
