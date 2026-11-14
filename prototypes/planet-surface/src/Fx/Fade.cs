@@ -19,6 +19,7 @@ namespace PlanetSurface.Fx;
 public static class Fade
 {
     const string Band = "fade_band";
+    static readonly StringName BandName = Band; // set on every fading geometry every frame: made once
 
     static readonly Dictionary<Material, Material> _copies = new();
     static readonly Dictionary<string, Shader> _shaders = new(); // by code: places make their own shaders of the same code
@@ -63,7 +64,7 @@ public static class Fade
             }
             _own[id] = (over, surfaces);
         }
-        g.SetInstanceShaderParameter(Band, new Vector2(from, to));
+        g.SetInstanceShaderParameter(BandName, new Vector2(from, to));
     }
 
     static void ClearOne(GeometryInstance3D g)
@@ -72,7 +73,7 @@ public static class Fade
         if (own.Override != null) g.MaterialOverride = own.Override;
         if (own.Surfaces != null && g is MeshInstance3D mi)
             for (int i = 0; i < own.Surfaces.Length && i < mi.GetSurfaceOverrideMaterialCount(); i++) mi.SetSurfaceOverrideMaterial(i, own.Surfaces[i]);
-        g.SetInstanceShaderParameter(Band, new Vector2(0f, 1f));
+        g.SetInstanceShaderParameter(BandName, new Vector2(0f, 1f));
     }
 
     /// <summary>A node is going away: forgets what it had (its materials go with it).</summary>

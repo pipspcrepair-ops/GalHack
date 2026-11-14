@@ -194,10 +194,10 @@ public partial class SpaceSky : Node3D
         {
             if (b.Kind is OrbiterKind.Star or OrbiterKind.Belt || b == model.Home) continue;
             var material = new ShaderMaterial { Shader = bodyShader };
-            material.SetShaderParameter("color", C(b.Color));
-            material.SetShaderParameter("band", C(b.Band));
-            material.SetShaderParameter("banded", b.Kind == OrbiterKind.GasGiant);
-            material.SetShaderParameter("surfaces", surfaces?.Texture);
+            material.SetShaderParameter(PlanetSurface.Fx.Names.Of("color"), C(b.Color));
+            material.SetShaderParameter(PlanetSurface.Fx.Names.Of("band"), C(b.Band));
+            material.SetShaderParameter(PlanetSurface.Fx.Names.Of("banded"), b.Kind == OrbiterKind.GasGiant);
+            material.SetShaderParameter(PlanetSurface.Fx.Names.Of("surfaces"), surfaces?.Texture);
             var node = new MeshInstance3D
             {
                 Name = b.Name.Replace(" ", ""), MaterialOverride = material, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
@@ -208,7 +208,7 @@ public partial class SpaceSky : Node3D
             _bodies.Add((node, b, material));
             if (!b.Rings) continue;
             var ring = new ShaderMaterial { Shader = new Shader { Code = GiantRingSource }, RenderPriority = 3 };
-            ring.SetShaderParameter("color", C(b.RingColor));
+            ring.SetShaderParameter(PlanetSurface.Fx.Names.Of("color"), C(b.RingColor));
             node.AddChild(new MeshInstance3D
             {
                 Name = "Rings", Mesh = Globe.RingMesh(RingInner, RingOuter, 160), MaterialOverride = ring,
@@ -245,7 +245,7 @@ public partial class SpaceSky : Node3D
         Sun.Basis = Facing((turn * ToSun).Normalized());
         // The star field stands in the system's frame: the world turns under it with the day.
         Environment.SkyRotation = (turn * new Basis(V(o.X), V(o.Y), V(o.Z)).Transposed()).GetEuler();
-        _sky.SetShaderParameter("sun_time", SkyRig.SunTime);
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_time"), SkyRig.SunTime);
         Vector3 field = V(model.Position(model.Star, days) - model.Position(model.Home, days)).Normalized();
         if (field.Dot(_fieldSun) < 0.99995f) // the sky's shader is worked again whenever its light moves
         {
@@ -266,7 +266,7 @@ public partial class SpaceSky : Node3D
             float fade = _fade.TryGetValue(body, out float f) ? f : 1f;
             node.Visible = fade > 0.002f;
             if (!node.Visible) continue;
-            material.SetShaderParameter("fade", fade);
+            material.SetShaderParameter(PlanetSurface.Fx.Names.Of("fade"), fade);
             Sighting s = model.See(body, days, eyeGlobe, o);
             int order = s.Distance < ringsFrom ? 4 : 2;
             if (material.RenderPriority != order) material.RenderPriority = order;
@@ -276,26 +276,26 @@ public partial class SpaceSky : Node3D
             Vector3 dir = W(s.Direction).Normalized(), light = W(s.ToItsLight).Normalized();
             node.GlobalPosition = eye + dir * d;
             node.Scale = Vector3.One * d * sine;
-            material.SetShaderParameter("to_light", light);
-            material.SetShaderParameter("behind", behind);
+            material.SetShaderParameter(PlanetSurface.Fx.Names.Of("to_light"), light);
+            material.SetShaderParameter(PlanetSurface.Fx.Names.Of("behind"), behind);
             var (bodyAxis, bodyZero) = model.Turned(body, days);
             Vector3 axis = W(o.ToGlobe(bodyAxis)).Normalized();
-            material.SetShaderParameter("axis", axis);
-            material.SetShaderParameter("zero", W(o.ToGlobe(bodyZero)).Normalized());
-            material.SetShaderParameter("layer", _surfaces?.LayerOf(body) ?? -1);
+            material.SetShaderParameter(PlanetSurface.Fx.Names.Of("axis"), axis);
+            material.SetShaderParameter(PlanetSurface.Fx.Names.Of("zero"), W(o.ToGlobe(bodyZero)).Normalized());
+            material.SetShaderParameter(PlanetSurface.Fx.Names.Of("layer"), _surfaces?.LayerOf(body) ?? -1);
             var (hidden, by) = model.EclipseAt(days, model.Position(body, days), body);
-            material.SetShaderParameter("shade", (float)(1.0 - hidden));
-            material.SetShaderParameter("red", StarSystem.HasAir(by) ? (float)hidden : 0f);
+            material.SetShaderParameter(PlanetSurface.Fx.Names.Of("shade"), (float)(1.0 - hidden));
+            material.SetShaderParameter(PlanetSurface.Fx.Names.Of("red"), StarSystem.HasAir(by) ? (float)hidden : 0f);
             if (body.Kind != OrbiterKind.GasGiant) continue;
             if (body.Rings && node.GetChild(0) is MeshInstance3D ring)
             {
                 ring.Basis = new Basis(new Quaternion(Vector3.Up, axis));
                 var m = (ShaderMaterial)ring.MaterialOverride;
-                m.SetShaderParameter("to_light", light);
-                m.SetShaderParameter("axis", axis);
-                m.SetShaderParameter("behind", behind);
-                m.SetShaderParameter("centre", node.GlobalPosition);
-                m.SetShaderParameter("radius", node.Scale.X);
+                m.SetShaderParameter(PlanetSurface.Fx.Names.Of("to_light"), light);
+                m.SetShaderParameter(PlanetSurface.Fx.Names.Of("axis"), axis);
+                m.SetShaderParameter(PlanetSurface.Fx.Names.Of("behind"), behind);
+                m.SetShaderParameter(PlanetSurface.Fx.Names.Of("centre"), node.GlobalPosition);
+                m.SetShaderParameter(PlanetSurface.Fx.Names.Of("radius"), node.Scale.X);
             }
         }
     }
@@ -320,7 +320,7 @@ public partial class SpaceSky : Node3D
     {
         if (!_galaxyBound) stars.Bind(_sky);
         _galaxyBound = true;
-        _sky.SetShaderParameter("star_turn", stars.Field); // this sky's eye directions are the star field's already
+        _sky.SetShaderParameter(PlanetSurface.Fx.Names.Of("star_turn"), stars.Field); // this sky's eye directions are the star field's already
         GalaxySky.SetPixel(_sky, GetViewport());
     }
 

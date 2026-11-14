@@ -83,7 +83,7 @@ public partial class SurfaceZone : Node3D
         set
         {
             _seaRim = value;
-            (Sea.MaterialOverride as ShaderMaterial)?.SetShaderParameter("rim", value);
+            (Sea.MaterialOverride as ShaderMaterial)?.SetShaderParameter(PlanetSurface.Fx.Names.Of("rim"), value);
         }
     }
 
@@ -376,14 +376,14 @@ public partial class SurfaceZone : Node3D
     {
         WorldLook look = Planet.Look;
         var water = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/water.gdshader") };
-        water.SetShaderParameter("shallow", look.Shallow);
-        water.SetShaderParameter("deep", look.Deep);
-        water.SetShaderParameter("lava", look.Lava);
-        water.SetShaderParameter("glow", look.LiquidGlow);
+        water.SetShaderParameter(PlanetSurface.Fx.Names.Of("shallow"), look.Shallow);
+        water.SetShaderParameter(PlanetSurface.Fx.Names.Of("deep"), look.Deep);
+        water.SetShaderParameter(PlanetSurface.Fx.Names.Of("lava"), look.Lava);
+        water.SetShaderParameter(PlanetSurface.Fx.Names.Of("glow"), look.LiquidGlow);
         // Rivers read the sea's mask too: where one reaches the sea, the sea draws it.
-        water.SetShaderParameter("sea_map", _seaMap ??= Planet.SeaTexture());
-        water.SetShaderParameter("sea_mask", Planets.Gen.WorldMap.SeaFrom);
-        water.SetShaderParameter("sea", sea);
+        water.SetShaderParameter(PlanetSurface.Fx.Names.Of("sea_map"), _seaMap ??= Planet.SeaTexture());
+        water.SetShaderParameter(PlanetSurface.Fx.Names.Of("sea_mask"), Planets.Gen.WorldMap.SeaFrom);
+        water.SetShaderParameter(PlanetSurface.Fx.Names.Of("sea"), sea);
         return water;
     }
 
@@ -453,8 +453,8 @@ public partial class SurfaceZone : Node3D
         DryMarked = marked;
         if (_dryTexture == null) _dryTexture = ImageTexture.CreateFromImage(_dry);
         else _dryTexture.Update(_dry);
-        _seaMaterial.SetShaderParameter("dry_map", _dryTexture);
-        _seaMaterial.SetShaderParameter("dry_area", new Vector4(ox, oz, DryTexels, marked > 0 ? 1f : 0f));
+        _seaMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("dry_map"), _dryTexture);
+        _seaMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("dry_area"), new Vector4(ox, oz, DryTexels, marked > 0 ? 1f : 0f));
     }
 
     /// <summary>Metres of ground round the eye the sea is kept off (for tests).</summary>
@@ -523,10 +523,10 @@ public partial class SurfaceZone : Node3D
         Underwater.Follow(eye, Camera);
         // The water's underside is lit by the day above it.
         float day = 0.15f + 0.85f * Sky.Daylight;
-        _seaMaterial.SetShaderParameter("daylight", day);
-        _riverMaterial.SetShaderParameter("daylight", day);
-        _seaMaterial.SetShaderParameter("rain", Weather.RainHere);
-        _riverMaterial.SetShaderParameter("rain", Weather.RainHere);
+        _seaMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("daylight"), day);
+        _riverMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("daylight"), day);
+        _seaMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("rain"), Weather.RainHere);
+        _riverMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("rain"), Weather.RainHere);
     }
 
     public override void _PhysicsProcess(double delta)

@@ -48,11 +48,11 @@ public partial class TerrainStreamer
         foreach (ShaderMaterial m in new[] { VoxelMaterial, FarMaterial, _horizonMaterial, _floraMaterial })
         {
             if (m == null) continue;
-            m.SetShaderParameter("shade_sun", now);
-            m.SetShaderParameter("shade_reach", ShadowReach);
-            m.SetShaderParameter("shade_join", new Vector2(FarShade.JoinFrom, FarShade.JoinFull));
-            m.SetShaderParameter("shade_rect", Clip.ShadeMap == null ? Vector4.Zero : rect);
-            m.SetShaderParameter("shade_map", Clip.ShadeMap);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("shade_sun"), now);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("shade_reach"), ShadowReach);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("shade_join"), new Vector2(FarShade.JoinFrom, FarShade.JoinFull));
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("shade_rect"), Clip.ShadeMap == null ? Vector4.Zero : rect);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("shade_map"), Clip.ShadeMap);
         }
     }
 

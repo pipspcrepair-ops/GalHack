@@ -149,8 +149,8 @@ public sealed partial class FallingTree : Node3D
     {
         var m = new ShaderMaterial { Shader = Shader };
         bool known = custom.R + custom.G + custom.B > 0f;
-        m.SetShaderParameter("tint", known ? new Vector3(custom.R, custom.G, custom.B) : new Vector3(leaf.R, leaf.G, leaf.B));
-        m.SetShaderParameter("glow", known ? custom.A : 0f);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("tint"), known ? new Vector3(custom.R, custom.G, custom.B) : new Vector3(leaf.R, leaf.G, leaf.B));
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("glow"), known ? custom.A : 0f);
         return m;
     }
 
@@ -209,7 +209,7 @@ public sealed partial class FallingTree : Node3D
         if (_t > FallTime + LieTime)
         {
             float a = 1f - (_t - FallTime - LieTime) / FadeTime;
-            _body?.SetShaderParameter("fade", MathF.Max(0f, a));
+            _body?.SetShaderParameter(PlanetSurface.Fx.Names.Of("fade"), MathF.Max(0f, a));
             if (_bark != null) _bark.AlbedoColor = new Color(_bark.AlbedoColor, MathF.Max(0f, a));
             if (_leaf != null) _leaf.AlbedoColor = new Color(_leaf.AlbedoColor, MathF.Max(0f, a));
             if (a <= 0f) QueueFree();
@@ -301,7 +301,7 @@ public sealed partial class FlungTree : Node3D
         float a = 1f - (_lying - LieTime) / FadeTime;
         _bark.AlbedoColor = new Color(_bark.AlbedoColor, MathF.Max(0f, a));
         _leaf.AlbedoColor = new Color(_leaf.AlbedoColor, MathF.Max(0f, a));
-        _body?.SetShaderParameter("fade", MathF.Max(0f, a));
+        _body?.SetShaderParameter(PlanetSurface.Fx.Names.Of("fade"), MathF.Max(0f, a));
         if (a <= 0f) QueueFree();
     }
 }

@@ -276,8 +276,10 @@ public partial class PopRoute : Node
         s.ChunkApplied += onChunk;
         // A level-0 far chunk's wait: from first within the level-0 radius of the focus's far chunk to its node standing at level 0.
         var farWanted = new Dictionary<(int, int), double>();
-        var seenNodes = new HashSet<ulong>();
-        foreach (Node n in s.GetChildren()) seenNodes.Add(n.GetInstanceId());
+        // Far chunks' new drawings as the streamer puts them in (looking through its children every few ticks for new ones allocated more than the game does).
+        var farNew = new List<(int Fx, int Fz, int Lod, Node3D Node)>();
+        Action<int, int, int, Node3D> onFar = (fx, fz, lod, n) => farNew.Add((fx, fz, lod, n));
+        s.FarApplied += onFar;
         var farSwaps = new List<(int Lod, float Away)>();
         var groundSwaps = new List<double>();
         int ring = -1;
@@ -356,12 +358,10 @@ public partial class PopRoute : Node
                 if (ring >= 0) groundSwaps.Add(((s.CompleteRadius > ring ? s.CompleteRadius : ring) + 0.5f) * S);
                 ring = s.CompleteRadius;
             }
-            foreach (Node n in s.GetChildren())
+            foreach (var (fx, fz, lod, n3) in farNew)
             {
-                if (n is not Node3D n3 || !n3.Name.ToString().StartsWith("Far ") || !seenNodes.Add(n3.GetInstanceId())) continue;
-                string[] parts = n3.Name.ToString().Split(' ');
-                var key = (int.Parse(parts[1]), int.Parse(parts[2]));
-                int lod = parts[3][^1] - '0';
+                if (!GodotObject.IsInstanceValid(n3)) continue;
+                var key = (fx, fz);
                 if (lod == 0 && farIn.Add(key) && farWanted.TryGetValue(key, out double t)) farWait.Add(clock.Elapsed.TotalMilliseconds - t);
                 // A far chunk's new drawing (its trees and what they cast; the ground is the GPU rings', never redrawn): in view if any of its square is.
                 Vector3 c0 = n3.GlobalPosition, mid = c0 + new Vector3(size * 0.5f, 0f, size * 0.5f);
@@ -369,8 +369,10 @@ public partial class PopRoute : Node
                 bool inView = cam != null && Enumerable.Range(0, 9).Any(k => cam.IsPositionInFrustum(c0 + new Vector3(size * (k % 3) * 0.5f, mid.Y - c0.Y, size * (k / 3) * 0.5f)));
                 if (inView && tick > 30) farSwaps.Add((lod, new Vector2(mid.X - p.X, mid.Z - p.Z).Length()));
             }
+            farNew.Clear();
         }
         s.ChunkApplied -= onChunk;
+        s.FarApplied -= onFar;
         double seconds = clock.Elapsed.TotalSeconds;
         string workers = string.Create(CultureInfo.InvariantCulture, $"main thread {_streaming / seconds:F0} ms a second; workers: far chunks {(s.FarBuildMs.Sum() - buildMs0.Sum()) / seconds:F0} ms a second, ground tiles {(ClipGround.FillTicks - tileTicks0) * 1000.0 / Stopwatch.Frequency / seconds:F0} ms a second ({(ClipGround.Filled - tiles0) / seconds:F0} a second)");
         var logged = PopLog.Take();

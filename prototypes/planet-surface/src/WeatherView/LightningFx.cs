@@ -72,9 +72,9 @@ public partial class LightningFx : Node3D
     {
         ProcessPriority = -10; // compute the flash before WeatherFx lights the scene with it
         _boltMaterial = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/glow.gdshader") };
-        _boltMaterial.SetShaderParameter("tint", new Color("e6dcff"));
-        _boltMaterial.SetShaderParameter("energy", 6f);
-        _boltMaterial.SetShaderParameter("softness", 0.5f);
+        _boltMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("tint"), new Color("e6dcff"));
+        _boltMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("energy"), 6f);
+        _boltMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("softness"), 0.5f);
         // The charge glow: a soft, over-bright sprite that blooms, readable from far away.
         _glowMaterial = new StandardMaterial3D
         {
@@ -155,7 +155,7 @@ public partial class LightningFx : Node3D
         if (_bolt.Visible)
         {
             // Far off, a thin dim channel with no halo to bloom into a flash.
-            _boltMaterial.SetShaderParameter("energy", (2f + 7f * stroke) * (0.35f + 0.65f * near));
+            _boltMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("energy"), (2f + 7f * stroke) * (0.35f + 0.65f * near));
             DrawRibbons(_boltMesh, _segments, camera, 0.4f + 0.6f * stroke, 0.35f + 0.65f * near, near);
         }
     }
