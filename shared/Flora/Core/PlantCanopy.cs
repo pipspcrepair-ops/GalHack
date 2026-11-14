@@ -21,7 +21,7 @@ public static class PlantCanopy
     const float LongestPiece = 2.5f;
 
     /// <summary>The most hulls one near mesh gets: the nearest small ones merge past it (each is a physics shape).</summary>
-    public const int MaxHulls = 8;
+    public const int MaxHulls = 12;
 
     /// <summary>A hull with more points than this is cut to its extremes in this many directions.</summary>
     const int MaxPoints = 48;

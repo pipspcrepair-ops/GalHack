@@ -67,7 +67,8 @@ public partial class PopRoute : Node
         }
         if (more) return;
         SetPhysicsProcess(false);
-        Wildlife.Shutdown.Quit(this, _failed ? 1 : 0);
+        if (_args.ContainsKey("check")) GD.Print(_gateFails == 0 && !_failed ? "ALL PASSED (the moving picture is within its limits)" : $"{_gateFails} CHECK(S) FAILED");
+        Wildlife.Shutdown.Quit(this, _failed || _gateFails > 0 ? 1 : 0);
     }
 
     public override void _Process(double delta)
@@ -201,6 +202,7 @@ public partial class PopRoute : Node
                 }
                 _drive.Controls.Look = Vector2.Zero;
                 sun.ShadowEnabled = true;
+                Gate($"flicker, sun {want:F0} degrees, {(flying ? "flying" : "hovering")}: the shadows' own pixels changing a frame", share[0] - share[1], 0.1, false, "%");
                 GD.Print(string.Create(CultureInfo.InvariantCulture, $"ROUTE flicker sun {want:F0} deg, {(flying ? "flying level 70 m/s" : "hovering")} 115 m over {most} plants, normal bias {sun.ShadowNormalBias}: pixels changing a frame {share[0]:F2}% with shadows, {share[1]:F2}% without, the shadows' own {share[0] - share[1]:F2}%"));
             }
         }
@@ -313,6 +315,38 @@ public partial class PopRoute : Node
                  $"queue {Q(pending.Select(c => (double)c).ToList())}; far chunks short of their level {Q(farBehind.Select(c => (double)c).ToList())}; column wait ms {Q(columnWait)}; level-0 far chunk wait ms {Q(farWait)}; " +
                  $"trees appearing at m {Q(trees.Select(t => (double)t).ToList(), true)}, within 150 m {trees.Count(t => t < 150f)}; flora or cover jumps over 5% within 120 m {nearJumps}; " +
                  $"main thread: solid flora {(s.SolidsTotalMs - solids0) / Math.Max(1, tick):F2} ms a tick, physics {physics / Math.Max(1, tick):F2} ms a tick (worst {physicsWorst:F1}), {s.SolidColliders} solid colliders; in view: far chunks redrawn {swaps}; redrawn inside the sun's shadow reach (casters changing) {farSwaps.Count(q => q.Away < _game.Zone.Sky.Sun.DirectionalShadowMaxDistance) / minutes:F0}/min; near ground rings {groundSwaps.Count / minutes:F0}/min at m {Q(groundSwaps, true)}; pops (count, and their sum of jump times size over distance) {byKind}; frames {_frames.Count}, p50 {(_frames.Count > 0 ? _frames[_frames.Count / 2] : 0):F1}, p99 {(_frames.Count > 0 ? _frames[(int)(_frames.Count * 0.99)] : 0):F1}, worst {(_frames.Count > 0 ? _frames[^1] : 0):F1} ms, {over} over 16.7 ms; gpu p50 {(_gpu.Count > 0 ? _gpu[_gpu.Count / 2] : 0):F1}, p99 {(_gpu.Count > 0 ? _gpu[(int)(_gpu.Count * 0.99)] : 0):F1} ms");
+        // The gate (--check=1): limits from the best build measured (ee8a3ace^ with the owner's settings; fad41bce, his last
+        // good test build, about the same), with room for a machine other runs share.
+        static double P(List<double> v, double q) => v.Count == 0 ? double.NaN : v[Math.Min(v.Count - 1, (int)(v.Count * q))];
+        if (Limits.GetValueOrDefault(name.Replace(" at once", "")) is { } lim)
+        {
+            Gate($"{name}: near ground complete, median", P(complete.Select(x => (double)x).OrderBy(x => x).ToList(), 0.5), lim.Ground, true, "m");
+            Gate($"{name}: trees appear, 5th percentile", P(trees.Select(t => (double)t).OrderBy(x => x).ToList(), 0.05), lim.Trees, true, "m");
+            Gate($"{name}: column wait, 95th percentile", P(columnWait, 0.95), lim.ColumnWait, false, "ms");
+            Gate($"{name}: shadow casters redrawn in view", farSwaps.Count(q => q.Away < _game.Zone.Sky.Sun.DirectionalShadowMaxDistance) / minutes, lim.ShadowPops, false, "/min");
+            Gate($"{name}: frames over 16.7 ms", over / minutes, lim.Over, false, "/min");
+            Gate($"{name}: frame p99", P(_frames, 0.99), lim.P99, false, "ms");
+        }
+    }
+
+    sealed record Limit(double Ground, double Trees, double ColumnWait, double ShadowPops, double Over, double P99);
+
+    /// <summary>Per route: near ground at least, trees appearing at least, column wait at most, shadow casters redrawn in view at most, frames over 16.7 ms a minute at most, frame p99 at most.</summary>
+    static readonly Dictionary<string, Limit> Limits = new()
+    {
+        ["walk"] = new(88, 0, double.MaxValue, 60, 60, 20),
+        ["bike"] = new(88, 150, 220, 400, 100, 20),
+        ["fly"] = new(72, 180, 360, 700, 180, 25),
+    };
+
+    int _gateFails;
+
+    void Gate(string what, double value, double limit, bool atLeast, string unit)
+    {
+        if (!_args.ContainsKey("check") || double.IsNaN(value)) return;
+        bool ok = atLeast ? value >= limit : value <= limit;
+        if (!ok) _gateFails++;
+        GD.Print(string.Create(CultureInfo.InvariantCulture, $"  {(ok ? "ok   " : "FAIL ")} {what} {value:F1} {unit} ({(atLeast ? "at least" : "at most")} {limit:F0})"));
     }
 
     static double Mod(double a, double m) => a - Math.Floor(a / m) * m;
