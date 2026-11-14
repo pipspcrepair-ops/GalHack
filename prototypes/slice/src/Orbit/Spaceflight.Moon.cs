@@ -66,6 +66,7 @@ public partial class Spaceflight
         zone.Built += () =>
         {
             zone.Ground.Ceiling = ceiling;
+            LightBodies(zone);
             Mute(zone);
             GD.Print($"the moon is made: {moon.Spec}, gravity {zone.Physics.Zone.Strength:F1} m/s²");
         };
@@ -192,8 +193,10 @@ public partial class Spaceflight
         N.Quaternion map = c.Map.Frame(gx, gz);
         float R = c.GlobeRadius;
         bool air = c.World != null && c.World.Sky.Density >= SurfaceWeather.NoAir;
+        int umbrae = Orbit.Space.Umbrae(Game.Surface.Planet.StarSystem, c.Body, Below.Sky.Days, Orbit.Home.Turn.ToBasis(), _umbra, out float umbraSun);
         c.Globe.Draw(new WorldView
         {
+            Umbra = _umbra, UmbraCount = umbrae, UmbraSun = umbraSun,
             Up = up, East = east, South = south,
             MapUp = MathX.Rotate(map, N.Vector3.UnitY).ToGodot(),
             MapEast = MathX.Rotate(map, N.Vector3.UnitX).ToGodot(),

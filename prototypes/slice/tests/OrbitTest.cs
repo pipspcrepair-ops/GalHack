@@ -362,7 +362,7 @@ public partial class OrbitTest : Node
         _door = _wreck.Derelict.Door.Value;
         GD.Print($"  flying to {_wreck.Name} ({_wreck.Derelict.Id}, {_wreck.Structure.Count} blocks, {from.DistanceTo(_wreck.Body.Position.ToGodot()):F0} m off)");
         double oxygen = _game.Suit.Vitals.Oxygen;
-        foreach (Vector3 way in RoundTheGlobe(orbit, v.Body.Position.ToGodot(), Door + Outward * 11f))
+        foreach (Vector3 way in RoundTheGlobe(orbit.Home, v.Body.Position.ToGodot(), Door + Outward * 11f))
             foreach (int x in _pilot.FlyTo(v, () => way, 200f, 120f)) yield return x;
         foreach (int x in _pilot.FlyTo(v, () => Door + Outward * 11f, 4f, 150f)) yield return x;
         float off = v.Body.Position.ToGodot().DistanceTo(Door + Outward * 11f);
@@ -372,8 +372,8 @@ public partial class OrbitTest : Node
         Check(_game.Suit.Vitals.Oxygen < oxygen, $"an open hull is vacuum: the suit's oxygen runs down ({oxygen:F0} to {_game.Suit.Vitals.Oxygen:F0})");
     }
 
-    /// <summary>Points to fly by when a straight line to a wreck would go through the globe (the far side of it): an arc over the limb at the height of the higher end. None if the line is clear.</summary>
-    internal static List<Vector3> RoundTheGlobe(OrbitZone orbit, Vector3 from, Vector3 to)
+    /// <summary>Points to fly by when a straight line would go through a body's globe (the far side of it): an arc over the limb at the height of the higher end. None if the line is clear.</summary>
+    internal static List<Vector3> RoundTheGlobe(Celestial orbit, Vector3 from, Vector3 to)
     {
         N.Vector3 a = orbit.ToGlobe(from.ToNumerics()), b = orbit.ToGlobe(to.ToNumerics());
         float along = Math.Clamp(N.Vector3.Dot(-a, b - a) / (b - a).LengthSquared(), 0f, 1f);
@@ -522,7 +522,7 @@ public partial class OrbitTest : Node
         const double heading = 45;
         float over = surface.Physics.Zone.Ceiling + orbit.Rules.Crossing.Band + 500f;
         Vector3 Above() => orbit.ToWorld(orbit.Map.Direction(tx, tz) * orbit.RadiusFor(over)).ToGodot();
-        foreach (Vector3 way in RoundTheGlobe(orbit, v.Body.Position.ToGodot(), Above()))
+        foreach (Vector3 way in RoundTheGlobe(orbit.Home, v.Body.Position.ToGodot(), Above()))
             foreach (int x in _pilot.FlyTo(v, () => way, 200f, 120f)) yield return x;
         foreach (int x in _pilot.FlyTo(v, Above, 6f, 150f)) yield return x;
         Check(v.Body.Position.ToGodot().DistanceTo(Above()) < 12f, $"the Skiff flew to a point over the map's ({tx:F0}, {tz:F0}), {orbit.Under(v.Body.Position.ToGodot()).x:F0} by the globe");

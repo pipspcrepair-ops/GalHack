@@ -164,7 +164,7 @@ public partial class Spaceflight
             s.Sky.Stand(c.Turn.ToBasis().Transposed(), inHere);
             s.Sky.Track();
         }
-        o.Space.Track(Game.Surface.Planet.StarSystem, s.Sky.Days, o.Home.Turn.ToBasis(), inHome, eye, Height(eye) < Rules.Crossing.TrueGlobeAt ? 38000f : 0f);
+        o.Space.Track(Game.Surface.Planet.StarSystem, s.Sky.Days, o.Home.Turn.ToBasis(), inHome, eye, Height(eye) < BandTop ? 38000f : 0f);
     }
 
     /// <summary>Lays the orbit out over the surface at the point under a world position.</summary>
@@ -403,7 +403,7 @@ public partial class Spaceflight
 
         // What stands in front of what. It looks the same wherever it stands on its eye rays.
         float over = OverLand(y), near, far;
-        if (y >= r.TrueGlobeAt) near = far = 0f;
+        if (y >= BandTop) near = far = 0f;
         else if (orbit && y >= cap && _groundTurns.Count == 0) (near, far) = (16000f, 38000f);
         else if (over > 0f)
         {
@@ -412,7 +412,7 @@ public partial class Spaceflight
         }
         else (near, far) = (Game.Camera.Far * 0.9f, Game.Camera.Far * 0.99f);
 
-        float climb = Mathf.Clamp((y - cap) / (r.TrueGlobeAt - cap), 0f, 1f);
+        float climb = Mathf.Clamp((y - cap) / r.Band, 0f, 1f); // the true globe from the band's top: its true size in space
         float bend = Mathf.Lerp(1f / r.FlatCurve, 1f / R, climb);
         float cloudBend = Mathf.Lerp(0f, 1f / R, climb); // what the climb adds to the ground's curve: the clouds take that and not the flat land's own
         s.Sky.CloudBend = cloudBend;

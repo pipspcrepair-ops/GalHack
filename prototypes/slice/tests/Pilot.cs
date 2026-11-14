@@ -177,7 +177,7 @@ public sealed class Pilot
     /// <summary>Down on the gear, as a pilot would: the height under it sets the sink rate, sideslipping toward a point if given. Returns once it has settled or after the time limit.</summary>
     public IEnumerable<int> Land(Vessel v, Vector3? over = null, float seconds = 150f)
     {
-        for (int i = 0; i < seconds * 60 && !v.Controller.Frozen; i++)
+        for (int i = 0; i < seconds * 60 && v.Controller is { Frozen: false }; i++) // no controller: wrecked
         {
             float agl = v.AboveGround, vy = v.Body.Velocity.Y;
             float wanted = agl > 260f ? -50f : agl > 70f ? -16f : agl > 25f ? -6f : agl > 6f ? -2.5f : -1f;

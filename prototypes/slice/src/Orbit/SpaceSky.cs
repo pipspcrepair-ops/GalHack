@@ -66,8 +66,11 @@ public partial class SpaceSky : Node3D
 
     Vector3 _eye;
 
+    /// <summary>Where the bodies were last drawn from.</summary>
+    public Vector3 Eye => _eye;
+
     /// <summary>A world or moon: bands on a giant, a plain rock otherwise, lit exactly as the sky's shader lights them.</summary>
-    const string BodySource = """
+    const string BodySource = $$"""
         shader_type spatial;
         render_mode world_vertex_coords, unshaded, blend_mix, depth_draw_always, shadows_disabled, fog_disabled;
         uniform vec3 color : source_color;
@@ -79,9 +82,12 @@ public partial class SpaceSky : Node3D
         uniform sampler2DArray surfaces : source_color, filter_linear_mipmap, repeat_enable;
         uniform int layer = -1;
         uniform vec3 zero = vec3(1.0, 0.0, 0.0);
-        uniform float shade = 1.0;   // the share of the sun it sees: another body's shadow hides the rest
-        uniform float red = 0.0;     // how deep it stands in a shadow reddened by a world's air
+        uniform float red = 0.0;     // 1: what shadows it is a world with air, its shadow dull red
+        uniform vec3 light_color : source_color = vec3(1.0); // the star's light and the dark round it, as they light its own globe up close
+        uniform float light_energy = 1.6;
+        uniform vec3 ambient : source_color = vec3(0.035, 0.038, 0.055);
         uniform float fade = 1.0;    // how much of it this far look draws: its own globe takes over near it
+        {{Globe.UmbraCode}}
         varying vec3 normal_w;
         varying vec3 view_w;
         void vertex() {
@@ -95,7 +101,8 @@ public partial class SpaceSky : Node3D
         }
         void fragment() {
             vec3 n = normalize(normal_w);
-            float lit = clamp(dot(n, to_light), 0.0, 1.0) * shade;
+            float sun = sunlight_at(n, to_light); // other bodies' shadows on it, point by point, as on its own globe
+            float lit = clamp(dot(n, to_light), 0.0, 1.0) * sun;
             // The night side is never quite black (the ring's and the stars' light), and a giant's air
             // lights its limb faintly all round: a whole sphere, even dark against dark space. The sky's
             // own shader draws them with the same numbers (sky.gdshader's bodies()).
@@ -114,7 +121,10 @@ public partial class SpaceSky : Node3D
                 surface = own.rgb;
                 glows = own.a;
             }
-            ALBEDO = surface * (banded ? 0.07 + 0.93 * lit + 0.22 * limb : 0.05 + 1.1 * lit + glows * 0.8) + vec3(0.32, 0.06, 0.025) * red;
+            // A giant's own bands; a world or moon lit as its globe is (Globe's ground, the sky's bodies()).
+            vec3 shaded = banded ? surface * (0.07 + 0.93 * lit + 0.22 * limb)
+                : surface * (sun * (ambient + light_color * light_energy * clamp(dot(n, to_light), 0.0, 1.0)) + glows * 0.8);
+            ALBEDO = shaded + vec3(0.32, 0.06, 0.025) * red * (1.0 - sun);
             ALPHA = fade; // in the transparent queue, for its order against the rings, which write no depth
         }
         """;
@@ -198,6 +208,9 @@ public partial class SpaceSky : Node3D
             material.SetShaderParameter("band", C(b.Band));
             material.SetShaderParameter("banded", b.Kind == OrbiterKind.GasGiant);
             material.SetShaderParameter("surfaces", surfaces?.Texture);
+            material.SetShaderParameter("light_color", colour);
+            material.SetShaderParameter("light_energy", rules.SunEnergy);
+            material.SetShaderParameter("ambient", Environment.AmbientLightColor);
             var node = new MeshInstance3D
             {
                 Name = b.Name.Replace(" ", ""), MaterialOverride = material, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
@@ -283,9 +296,11 @@ public partial class SpaceSky : Node3D
             material.SetShaderParameter("axis", axis);
             material.SetShaderParameter("zero", W(o.ToGlobe(bodyZero)).Normalized());
             material.SetShaderParameter("layer", _surfaces?.LayerOf(body) ?? -1);
-            var (hidden, by) = model.EclipseAt(days, model.Position(body, days), body);
-            material.SetShaderParameter("shade", (float)(1.0 - hidden));
-            material.SetShaderParameter("red", StarSystem.HasAir(by) ? (float)hidden : 0f);
+            int casters = Umbrae(model, body, days, turn, _umbra, out float sun);
+            material.SetShaderParameter("umbra", _umbra);
+            material.SetShaderParameter("umbra_count", casters);
+            material.SetShaderParameter("umbra_sun", sun);
+            material.SetShaderParameter("red", casters > 0 && StarSystem.HasAir(_casters[0]) ? 1f : 0f);
             if (body.Kind != OrbiterKind.GasGiant) continue;
             if (body.Rings && node.GetChild(0) is MeshInstance3D ring)
             {
@@ -298,6 +313,28 @@ public partial class SpaceSky : Node3D
                 m.SetShaderParameter("radius", node.Scale.X);
             }
         }
+    }
+
+    readonly Vector4[] _umbra = new Vector4[4];
+    readonly List<Orbiter> _casters = new();
+
+    /// <summary>
+    /// What can shadow a body now (<see cref="StarSystem.Casters"/>), as its globe and far look take them: each
+    /// where it stands from the body's centre in the world's directions, in the body's radii, and its radius in
+    /// them. How many; <paramref name="sun"/> is the sun's angular radius from the body.
+    /// </summary>
+    public int Umbrae(StarSystem model, Orbiter body, double days, Basis turn, Vector4[] into, out float sun)
+    {
+        sun = (float)model.Casters(body, days, _casters);
+        StarSystem.Orientation o = model.Orient(days);
+        D3 at = model.Position(body, days);
+        int n = Math.Min(_casters.Count, into.Length);
+        for (int i = 0; i < into.Length; i++)
+        {
+            Vector3 p = i < n ? turn * V(o.ToGlobe(model.Position(_casters[i], days) - at) * (1.0 / body.Radius)) : Vector3.Zero;
+            into[i] = new Vector4(p.X, p.Y, p.Z, i < n ? (float)(_casters[i].Radius / body.Radius) : 0f);
+        }
+        return n;
     }
 
     /// <summary>How much of a body this far look draws, 0 to 1 (its own globe drawn under it takes over as you near it).</summary>

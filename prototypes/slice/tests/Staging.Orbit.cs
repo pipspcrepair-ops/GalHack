@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using GalHack.Physics;
@@ -40,6 +40,7 @@ public sealed partial class Staging
         "rings" => RingsView(),
         "bodies" => BodiesView(),
         "moon" => MoonView(),
+        "moonlight" => MoonLightView(),
         "orbitweather" => OrbitWeatherView(),
         "map-world" => MapView(Slice.Ui.MapLevel.World),
         "map-system" => MapView(Slice.Ui.MapLevel.System),

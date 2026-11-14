@@ -293,7 +293,7 @@ public partial class Globe : Node3D
     /// hide there (two discs' overlap, StarSystem.Covered's sum), so a dark umbra with a soft
     /// penumbra round it, moving as they move.
     /// </summary>
-    const string UmbraCode = """
+    internal const string UmbraCode = """
         uniform vec4 umbra[4];
         uniform int umbra_count = 0;
         uniform float umbra_sun = 0.0;
@@ -322,7 +322,7 @@ public partial class Globe : Node3D
 
     const string GroundSource = $$"""
         shader_type spatial;
-        render_mode world_vertex_coords, blend_mix, depth_draw_always, cull_back, diffuse_burley, specular_schlick_ggx, shadows_disabled;
+        render_mode world_vertex_coords, blend_mix, depth_draw_always, cull_back, diffuse_lambert, specular_schlick_ggx, shadows_disabled; // lambert: as the far looks and the sky light it
         uniform sampler2D albedo_map : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
         uniform sampler2D glow_map : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
         uniform sampler2D relief_map : filter_linear_mipmap, repeat_enable;
@@ -760,6 +760,10 @@ public partial class Globe : Node3D
     /// <summary>How far along the map the sheet reaches this frame, m.</summary>
     public float Reach { get; private set; }
 
+    /// <summary>The angular radius of the sphere the sheet was last drawn on, and the eye it was drawn for (tests: its true size).</summary>
+    public float Angular { get; private set; }
+    public Vector3 DrawnFrom { get; private set; }
+
     /// <summary>Sets the sheet up a piece at a time, each upload on its own frame, so none of them shows as a hitch.</summary>
     public IEnumerable<int> Setup(GlobePaint paint, float radius, float atmosphereRadius, OrbitRules.GlobeRules rules, Vector2 mapSize)
     {
@@ -829,6 +833,7 @@ public partial class Globe : Node3D
         if (!Visible) return;
         float rho = v.Bend > 1e-7f ? 1f / v.Bend : 1e7f;
         Reach = v.FlatFrom + RimOf(rho, v.Height);
+        (Angular, DrawnFrom) = (MathF.Asin(rho / (rho + v.Height)), v.Eye);
         float sphereOut = ArcAt(_sphereReach, rho, Radius);
         foreach (ShaderMaterial m in new[] { _ground, _clouds })
         {

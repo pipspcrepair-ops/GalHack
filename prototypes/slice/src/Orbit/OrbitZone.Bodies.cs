@@ -53,9 +53,22 @@ public partial class OrbitZone
         if (c.Sphere != null) return;
         c.Sphere = new Node3D { Name = c.Name.Replace(" ", "") + "Sphere" };
         AddChild(c.Sphere);
+        Shell(c);
         c.Globe = new Globe { Name = c.Name.Replace(" ", "") + "Globe" };
         _apart.AddChild(c.Globe);
         Placed(c);
+    }
+
+    /// <summary>
+    /// The body is solid from the first moment, wherever you meet it: a sphere at its true radius, its
+    /// sea level, moving with it. Nothing flies through a body whose ground hasn't streamed in (and the
+    /// crossing onto it, high over this, is the way down).
+    /// </summary>
+    static void Shell(Celestial c)
+    {
+        var shell = new StaticBody3D { Name = "Shell", CollisionLayer = Layers.World, CollisionMask = 0 };
+        shell.AddChild(new CollisionShape3D { Shape = new SphereShape3D { Radius = c.GlobeRadius } });
+        c.Sphere.AddChild(shell);
     }
 
     Task<GlobePaint> _moonPaint;

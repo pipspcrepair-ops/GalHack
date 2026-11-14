@@ -171,6 +171,7 @@ public partial class OrbitZone : SurfaceZone
         // The globe and the moons stand in the globe's frame; the sky turns with it.
         Home.Sphere = new Node3D { Name = "Sphere" };
         AddChild(Home.Sphere);
+        Shell(Home);
         Space = new SpaceSky { Name = "Sky" };
         AddChild(Space);
         // Under a plain node, so a parked orbit's hidden zone doesn't hide it: it is the far land from the surface too.
