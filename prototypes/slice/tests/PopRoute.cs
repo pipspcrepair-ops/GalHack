@@ -18,6 +18,7 @@ namespace Slice.Tests;
 /// Per route: the near ground's complete radius (median, worst), the far rings' nearest chunk still short of its level,
 /// the streamer's queue, how long a column waited from coming into the ring to its first near chunk, how long a
 /// level-0 far chunk (the trees' near drawing) waited from being wanted to standing, and how far off trees appeared.
+/// Then shadow flicker (<see cref="Flicker"/>) and dots in the grass by night (<see cref="Pinholes"/>).
 /// </summary>
 public partial class PopRoute : Node
 {
@@ -128,6 +129,7 @@ public partial class PopRoute : Node
         }
         PopLog.On = false;
         foreach (int x in Flicker(start)) yield return x;
+        foreach (int x in Pinholes(start, way)) yield return x;
         GD.Print($"ROUTE ruin trees planted: {_planted0} when the world showed, {(zone.Planet.Palette.Planted as System.Collections.ICollection)?.Count} at the end");
     }
 
