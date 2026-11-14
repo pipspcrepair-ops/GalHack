@@ -183,10 +183,10 @@ public partial class Main : Node3D
         _water.SetShaderParameter("deep", look.Deep);
         _water.SetShaderParameter("lava", look.Lava);
         _water.SetShaderParameter("glow", look.LiquidGlow);
+        _water.SetShaderParameter("sea_map", world.SeaTexture());
+        _water.SetShaderParameter("sea_mask", WorldMap.SeaFrom);
         _seaMaterial = (ShaderMaterial)_water.Duplicate();
         _seaMaterial.SetShaderParameter("sea", true);
-        _seaMaterial.SetShaderParameter("sea_map", world.SeaTexture());
-        _seaMaterial.SetShaderParameter("sea_mask", GalHack.Terrain.PlanetTerrainSource.SeaMaskDepth);
         Sea.MaterialOverride = _seaMaterial;
         _underwater = new Godot.Environment
         {

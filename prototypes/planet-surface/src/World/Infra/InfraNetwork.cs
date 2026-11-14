@@ -2068,14 +2068,7 @@ public sealed class InfraNetwork
         public float Ground(double x, double z, double spacing, out bool wet, out float surface)
         {
             GroundSample g = Bare.Sampler.Sample(x, z, spacing);
-            surface = 0f;
-            wet = false;
-            if (g.InRiver && g.RiverLevel - PlanetTerrainSource.RiverDrop > g.Height)
-            {
-                surface = g.RiverLevel - PlanetTerrainSource.RiverDrop;
-                wet = true;
-            }
-            else if (g.Height < 0f && Bare.Map.Sample(Bare.Map.Elevation, x, z) < -PlanetTerrainSource.SeaMaskDepth) wet = true;
+            wet = Bare.WaterOver(g, x, z, out surface);
             return g.Height;
         }
 

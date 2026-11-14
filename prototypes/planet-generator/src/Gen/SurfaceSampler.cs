@@ -25,6 +25,12 @@ public sealed class SurfaceSampler
     const double Bucket = 128;      // bucket size; adjusted to divide the map exactly both ways
     const float Reach = 70f;  // metres beyond a channel edge that a river still shapes the land
     const float BankRise = 0.3f, BankFlat = 3f, BankFall = 0.25f;   // a bank's lip over the water, how far it runs flat, and its fall beyond (1 in 4)
+
+    /// <summary>
+    /// A river's water stands this far below its level, on the channel's sloping side under the bank's lip.
+    /// The lowest a river's level goes, so where it reaches the sea its water is at the sea's level.
+    /// </summary>
+    public const float RiverDrop = 0.15f;
     readonly int _bx, _by;
     readonly double _bucketW, _bucketH, _height;
     readonly List<int>[] _buckets;
@@ -81,11 +87,14 @@ public sealed class SurfaceSampler
         float keep = Mathx.Smooth(half + Reach, half + Reach * 0.75f, d);
         float h = Mathx.Lerp(e, Math.Min(e, target), keep);
         // Water stays in its bed: past the channel the ground never stands lower than the water beside
-        // it, a low levee where the land dips, running down to meet the land at a walkable slope.
+        // it, a low levee where the land dips, running down to meet the land at a walkable slope. Not
+        // where the river has come down to the sea's level: the water either side of it is the sea's,
+        // and a levee there stood out in the sea as a ring round the mouth.
         float bank = float.NegativeInfinity;
-        if (d >= half)
+        if (d >= half && level > RiverDrop)
         {
-            bank = level + BankRise - Math.Max(0f, d - half - BankFlat) * BankFall;
+            float tidal = Mathx.Smooth(RiverDrop + 0.5f, RiverDrop, level);
+            bank = level + BankRise - Math.Max(0f, d - half - BankFlat) * BankFall - tidal * Reach;
             h = Math.Max(h, bank);
         }
         return new GroundSample(h, level, d < half + 1.5f, bank);

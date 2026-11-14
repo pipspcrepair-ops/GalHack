@@ -27,6 +27,23 @@ public sealed class WorldMap
     public readonly float CellSize;
 
     public readonly float[] Elevation;    // metres above sea level, river channels carved in
+
+    /// <summary>
+    /// Metres below sea level by cell as the land lies before the rivers cut their channels into it (negative on
+    /// land): where the sea is. A river's channel carved below sea level near the coast is still land, not a
+    /// tongue of sea running up it.
+    /// </summary>
+    public readonly float[] SeaDepth;
+
+    /// <summary>
+    /// The sea is drawn, and is water wherever the ground lies under sea level, where <see cref="SeaDepth"/>
+    /// blended between cells is over this: past the map's own coast, onto land up to 1.5 m above the water (the
+    /// fine ground strays a metre or so either way of the map's), so the sea runs in under the shore and the
+    /// ground makes the water's edge, never the map's coarse cells. Rivers come down to the sea's level where
+    /// they reach it (<see cref="RiverFit"/>).
+    /// </summary>
+    public const float SeaFrom = -1.5f;
+
     public readonly float[] Temperature;  // 0 frozen .. 1 scorching
     public readonly float[] Humidity;     // 0 bone dry .. 1 saturated
     public readonly float[] Special;      // the archetype's special field: heat, hotspots, spores...
@@ -55,6 +72,7 @@ public sealed class WorldMap
         Height = (int)Math.Round(spec.HeightMeters / cellSize);
         int n = Width * Height;
         Elevation = new float[n];
+        SeaDepth = new float[n];
         Temperature = new float[n];
         Humidity = new float[n];
         Special = new float[n];
@@ -102,6 +120,9 @@ public sealed class WorldMap
         float c = field[Index(i0, j1)], d = field[Index(i0 + 1, j1)];
         return Mathx.Lerp(Mathx.Lerp(a, b, tx), Mathx.Lerp(c, d, tx), ty);
     }
+
+    /// <summary>Whether the sea is drawn over a point in metres (<see cref="SeaFrom"/>; both axes wrap).</summary>
+    public bool IsSea(double x, double y) => Sample(SeaDepth, x, y) > SeaFrom;
 
     /// <summary>The cell containing a point in metres.</summary>
     public int CellAt(double x, double y)
