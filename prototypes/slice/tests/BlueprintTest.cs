@@ -215,13 +215,22 @@ public partial class BlueprintTest : Node
             for (int t = 0; t < 300 && v != null && (v.PendingShapes > 0 || v.View.Waiting > 0); t++) yield return 0;
         }
         if (!Check(v != null, $"{name}: set down whole by Creative's PLACE{(v == null ? $" (five spots refused, the last: {why})" : "")}")) yield break;
-        // PLACE fells what stands in its box and its head room; a crown higher over the footprint stops a climb and
-        // catches a hull coming down (vessels collide with flora), and the flight leg runs off to one side. Fly from and
-        // land on clear ground: the crowns left over it are counted first, to show what was there.
-        int crowns = CrownsOver(v);
-        int cleared = Playthrough.Clearing(_game.Zone, v.Body.Position.ToGodot(), radius + 20f);
-        GD.Print($"    ({name}: {crowns} crown(s) over it above PLACE's head room; {cleared} trees and rocks cleared round it)");
+        // PLACE fells what stands in its box and its head room; the rest stands. A crown met higher up or on the flight leg
+        // breaks under a craft its trunk can't take, and holds or turns aside a light one (vessels collide with flora).
+        GD.Print($"    ({name}: {CrownsOver(v)} crown(s) over it above PLACE's head room)");
+        // Woken where it stands, as anything near it changing wakes it: hanging over the ground, it would fall now.
+        float placedAt = v.Body.Position.Y;
+        v.Controller?.Wake(v.Body);
         foreach (int x in _drive.Wait(30)) yield return x;
+        for (int t = 0, still = 0; t < 300 && still < 10; t++)
+        {
+            still = v.Body.Velocity.Length() < 0.1f ? still + 1 : 0;
+            yield return 0;
+        }
+        // PLACE fells the plants under it before setting it down on the ground's collision: it drops nowhere, loses nothing.
+        float drop = placedAt - v.Body.Position.Y;
+        Check(drop < 0.3f && v.Structure.BlockCount == plan.BlockCount && plan.Blocks().All(b => v.Structure.Has(b.pos)) && v.Chairs.Any(),
+            $"{name}: stands where PLACE set it down ({drop:F2} m lower), every block and its chair kept ({v.Structure.BlockCount} of {plan.BlockCount})");
 
         // Seated: drawn, the camera at the chair's eye.
         _game.ThirdPerson = false;
@@ -238,10 +247,7 @@ public partial class BlueprintTest : Node
         _game.Survivor.StandUp();
         foreach (int x in _drive.Wait(5)) yield return x;
         _game.Survivor.PlaceOutside((v.Body.Position + N.Vector3.UnitY * 30f).ToGodot().ToNumerics());
-        _game.Zone.Physics.Unregister(v.Body);
-        _game.Zone.Physics.StuckFields.Remove(v.Field);
-        _game.Zone.Untrack(v);
-        v.Node.QueueFree();
+        Playthrough.TakeAway(_game.Zone, v);
         foreach (int x in _drive.Wait(10)) yield return x;
     }
 
@@ -284,7 +290,7 @@ public partial class BlueprintTest : Node
         Check(fast > 5f && t < 60 * (fast / 6f + 3f), $"{name}: flies forward to {fast:F0} m/s in 1 s and stops within {t / 60f:F1} s of letting go");
 
         // Back over the ground it rose from (cleared when it was set down: elsewhere it may meet trees), then down:
-        // Ctrl to sink, slower near the ground, hands off once it stands on its gear.
+        // Ctrl to sink, slower near the ground, hands off once it stops sinking.
         var pilot = new Pilot(_game, _drive);
         for (t = 0; t < 60 * 60; t++)
         {
@@ -303,8 +309,9 @@ public partial class BlueprintTest : Node
             heights.Enqueue(agl);
             float wanted = agl > 25f ? -6f : agl > 6f ? -2.5f : -1f;
             float vy = heights.Count > 30 ? (agl - heights.Dequeue()) * 2f : wanted;
-            bool down = heights.Count >= 30 && agl < 0.6f && MathF.Abs(vy) < 0.2f;
-            if (down && !v.Structure.Blocks().Any(b => v.Structure.TypeOf(b.block).Function == "gear")) { keel = true; break; }
+            // Down on whatever it came to (the ground, or a tree that takes it): hands off, and it lands there.
+            bool down = heights.Count >= 30 && MathF.Abs(vy) < 0.2f;
+            if (down && agl < 0.6f && !v.Structure.Blocks().Any(b => v.Structure.TypeOf(b.block).Function == "gear")) { keel = true; break; }
             float now = v.Body.Velocity.Y; // steer on the hull's own velocity, judge touchdown on the height
             c.Hold(Key.Ctrl, !down && now > wanted + 0.5f);
             c.Hold(Key.Space, !down && now < 2f * wanted - 1f);

@@ -932,6 +932,12 @@ public partial class BuildTest : Node
         Check(fresh.Nodes.Select(n => n.Id).Distinct().Count() == fresh.Nodes.Count, "no node is listed twice");
         var orphans = fresh.Nodes.Where(n => n.Unlock.Parent != null && fresh.Node(n.Unlock.Parent) == null).Select(n => n.Id).ToList();
         Check(orphans.Count == 0, $"every parent is a node{(orphans.Count > 0 ? ": not " + string.Join(", ", orphans) : "")}");
+        var early = fresh.Nodes.Where(n => fresh.Node(n.Unlock.Parent) is TechNode up && up.Level > n.Level).Select(n => n.Id).ToList();
+        Check(early.Count == 0, $"no node opens before its parent{(early.Count > 0 ? ": " + string.Join(", ", early) : "")}");
+        // Levels alone pay for the whole tree by the cap, and not a level sooner: each level up is a choice.
+        var rules = data.Progress;
+        int cost = fresh.Nodes.Sum(n => n.Cost), byCap = rules.StartPoints + rules.Points.Sum();
+        Check(cost <= byCap && cost > byCap - rules.Points[^1], $"the tree's {fresh.Nodes.Count} nodes cost {cost} points; levels give {byCap} by level {rules.Cap}, {byCap - rules.Points[^1]} by level {rules.Cap - 1}");
         // Every structure block (not deco, not a weapon) is on Structures and grows from the core.
         string Root(TechNode n) { while (n?.Unlock.Parent != null) n = fresh.Node(n.Unlock.Parent); return n?.Id; }
         var offTree = data.Items.Blocks.All.Where(b => b.Family != BlockFamily.Deco && b.Ammo == null)
@@ -942,12 +948,16 @@ public partial class BuildTest : Node
         var tiers = fresh.Nodes.Select(n => (n, m: System.Text.RegularExpressions.Regex.Match(n.Id, @"^(.+)-t(\d+)$"))).Where(x => x.m.Success && int.Parse(x.m.Groups[2].Value) > 1).ToList();
         var unchained = tiers.Where(x => x.n.Unlock.Parent != $"{x.m.Groups[1].Value}-t{int.Parse(x.m.Groups[2].Value) - 1}" || fresh.Node(x.n.Unlock.Parent).Level > x.n.Level).Select(x => x.n.Id).ToList();
         Check(tiers.Count > 20 && unchained.Count == 0, $"each of {tiers.Count} tiers hangs under the tier below and opens no sooner{(unchained.Count > 0 ? ": not " + string.Join(", ", unchained) : "")}");
+        // Empyrion's ladder: a higher tier (or a plating over another plating) is a later level, never a level-1 starter.
+        var rungs = tiers.Select(x => x.n).Concat(fresh.Nodes.Where(n => n.Id.EndsWith("-plated") && n.Unlock.Parent?.EndsWith("-plated") == true)).ToList();
+        var flat = rungs.Where(n => n.Level <= 1 || fresh.Node(n.Unlock.Parent).Level >= n.Level).Select(n => $"{n.Id} {n.Level}").ToList();
+        Check(flat.Count == 0, $"nothing above tier 1 opens at level 1, and each of {rungs.Count} tiers and platings opens strictly after the one below{(flat.Count > 0 ? ": not " + string.Join(", ", flat) : "")}");
         Check(fresh.Node("thruster-t1").Unlock.Parent == "hover-t1" && fresh.Node("hover-t1").Unlock.Parent == "core", "hover runs beside flight: Thruster T1 hangs under Hover plate T1, on the core");
         Check(fresh.Node("core-scanner") is { Tab: "tools" } cs && cs.Unlock.Parent == "scanner", "the core scanner is on Tools, under the scanner");
         Check(fresh.Level == 1 && fresh.Points == 3, $"a new character starts at level 1 with 3 unlock points ({fresh.Points})");
         Check(fresh.IsUnlocked("core") && fresh.IsUnlocked("iron-plated") && fresh.IsUnlocked("generator-t1"), "the core, plated blocks and the first generator are free at level 1");
         Check(fresh.StateOf(fresh.Node("thruster-t1")) == UnlockState.NeedsLevel, "and Thruster T1 waits for its level");
-        fresh.Earn(fresh.Rules.XpFor(5), "test");
+        fresh.Earn(fresh.Rules.XpFor(fresh.Node("thruster-t1").Level), "test");
         Check(fresh.StateOf(fresh.Node("thruster-t1")) == UnlockState.NeedsParent && fresh.Unlock("hover-t1"), $"at level {fresh.Level} Thruster T1 waits for Hover plate T1, which unlocks");
         Check(fresh.StateOf(fresh.Node("thruster-t1")) == UnlockState.Affordable && fresh.Unlock("thruster-t1"), "and then Thruster T1 unlocks");
     }
@@ -1053,7 +1063,7 @@ public partial class BuildTest : Node
         Check(part.Contains("Iron plate") && part.Contains("RECIPE") && part.Contains("constructor") && part.Contains(" s"), "a crafted part's tooltip: its inputs, its constructor and its time");
         ItemDef locked = Items.BlockItem("combat-plated");
         var lines = Tooltips.For(_game, locked, 0);
-        Check(lines.Any(l => l.Text.Contains("LOCKED · LV 12")), "a locked item's tooltip says at which level");
+        Check(lines.Any(l => l.Text.Contains($"LOCKED · LV {_game.Progress.Node("combat-plated").Level}")), "a locked item's tooltip says at which level");
         Rect2 box = Gui.TipBox(new Rect2(0, 0, 1600, 900), new Rect2(1560, 860, 40, 40), lines);
         Check(new Rect2(0, 0, 1600, 900).Encloses(box), "a tooltip at the corner of the screen stays on it");
         _game.Controls.Mouse = Vector2.Zero;

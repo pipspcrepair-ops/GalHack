@@ -43,8 +43,9 @@ public sealed class WholePlacement
 /// ground (it may sink a little into the high side, and the ground there is cleared flush, as a
 /// base's blocks always clear it).
 ///
-/// It keeps to the frame's budget: the search runs a few milliseconds a tick, the body is built in
-/// one, its look is drawn over the next frames, and a base's ground is cleared a column a tick after.
+/// It keeps to the frame's budget: the search runs a few milliseconds a tick, the plants are felled in
+/// the next, the body is built in one, its look is drawn over the next frames, and a base's ground is
+/// cleared a column a tick after.
 /// </summary>
 public sealed partial class BuildTool
 {
@@ -105,6 +106,12 @@ public sealed partial class BuildTool
             Said?.Invoke($"{plan.Name} · {why}", Tones.Caution);
             yield break;
         }
+        // The plants it will stand on go first, as a cut plant goes (felled for good, collider and all): set down into a
+        // tree, a hull is pushed up onto it, and comes down when woken.
+        clock.Restart();
+        job.Felled = FellUnder(plan, at);
+        job.GroundMs = clock.Elapsed.TotalMilliseconds;
+        yield return true;
         // The body and its colliders now; its look over the next frames.
         clock.Restart();
         Structure s = Copy(plan);
@@ -119,11 +126,6 @@ public sealed partial class BuildTool
         _zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Place, at.Origin, 0.6f, 0f);
         Said?.Invoke($"{s.Name} placed", Tones.Good);
         Started?.Invoke(v);
-        // The plants it stands on go, as a cut plant goes (felled for good, collider and all).
-        yield return true;
-        clock.Restart();
-        job.Felled = FellUnder(v);
-        job.GroundMs = clock.Elapsed.TotalMilliseconds;
         if (!v.IsBase) yield break;
         // A base meets the ground flush: the blocks at and under it clear it, a 16 m column of ground a tick.
         foreach (var column in v.GroundParts())
@@ -139,41 +141,34 @@ public sealed partial class BuildTool
     const float HeadRoom = 4f;
 
     /// <summary>
-    /// Fells every plant rooted under a structure's footprint (a metre round it too), and every tree whose trunk or crown
-    /// reaches into that box or the head room over it (vessels collide with flora). Returns how many.
+    /// Fells every plant rooted under a structure's footprint where it will stand (a metre round it too), and every tree
+    /// whose trunk or crown reaches into that box or the head room over it (vessels collide with flora). Returns how many.
     /// </summary>
-    int FellUnder(Vessel v)
+    int FellUnder(Structure plan, Transform3D frame)
     {
         if (_zone.Streamer == null || _zone.Planet == null) return 0;
-        var (min, max) = v.Structure.Bounds();
-        float cell = v.Structure.Grid.CellSize, margin = 1f;
+        var (min, max) = plan.Bounds();
+        float cell = plan.Grid.CellSize, margin = 1f;
         Vector3 lo = new Vector3(min.X, min.Y, min.Z) * cell - Vector3.One * (cell * 0.5f + margin);
         Vector3 hi = new Vector3(max.X, max.Y, max.Z) * cell + Vector3.One * (cell * 0.5f + margin);
-        Vector3 mid = v.ToWorld(((lo + hi) * 0.5f).ToNumerics());
+        Vector3 mid = frame * ((lo + hi) * 0.5f);
         float reach = new Vector2(hi.X - lo.X, hi.Z - lo.Z).Length() * 0.5f;
-        Transform3D toLocal = v.DrawTransform.AffineInverse();
+        Transform3D toLocal = frame.AffineInverse();
         int n = 0;
         foreach (var plant in new List<PlanetSurface.Terrain.TerrainStreamer.PlantSighting>(_zone.Streamer.FloraNear(mid, reach)))
         {
             Vector3 at = toLocal * plant.Root;
-            if (at.X < lo.X || at.X > hi.X || at.Z < lo.Z || at.Z > hi.Z || _zone.Planet.Felled.Contains(plant.Id)) continue;
-            _zone.Planet.Felled.Add(plant.Id);
-            _zone.Streamer.Fell(plant.Id);
-            n++;
+            if (at.X >= lo.X && at.X <= hi.X && at.Z >= lo.Z && at.Z <= hi.Z && _zone.Fell(plant.Id, plant.Root)) n++;
         }
         Vector3 top = hi + Vector3.Up * HeadRoom;
         var query = new PhysicsShapeQueryParameters3D
         {
             Shape = new BoxShape3D { Size = top - lo },
-            Transform = v.Node.GlobalTransform * new Transform3D(Basis.Identity, (lo + top) * 0.5f),
+            Transform = frame * new Transform3D(Basis.Identity, (lo + top) * 0.5f),
             CollisionMask = GalHack.Physics.Layers.Flora,
         };
         foreach (Godot.Collections.Dictionary hit in _zone.GetWorld3D().DirectSpaceState.IntersectShape(query, 64))
-        {
-            if (!_zone.Streamer.SolidHit((Rid)hit["rid"], (int)hit["shape"], out PlanetSurface.Terrain.FloraSolid tree) || !_zone.Planet.Felled.Add(tree.Id)) continue;
-            _zone.Streamer.Fell(tree.Id);
-            n++;
-        }
+            if (_zone.Streamer.SolidHit((Rid)hit["rid"], (int)hit["shape"], out PlanetSurface.Terrain.FloraSolid tree) && _zone.Fell(tree.Id, mid)) n++;
         return n;
     }
 
@@ -234,7 +229,7 @@ public sealed partial class BuildTool
                 Vector3 origin = at - basis * new Vector3(centre.X, 0f, centre.Z);
                 origin.X = MathF.Round(origin.X / cell) * cell;
                 origin.Z = MathF.Round(origin.Z / cell) * cell;
-                if (!Ground(origin, basis, lo, hi, step, tolerance, out float top, out float low, out bool wet))
+                if (!Ground(origin, basis, lo, hi, step, tolerance, !isBase, out float top, out float low, out bool wet))
                 {
                     if (wet) water++;
                     else steep++;
@@ -264,12 +259,17 @@ public sealed partial class BuildTool
         return feet;
     }
 
-    /// <summary>The ground under a footprint: its highest and lowest, and false if it is too uneven or under water.</summary>
-    bool Ground(Vector3 origin, Basis basis, Vector3 lo, Vector3 hi, float step, float tolerance, out float top, out float low, out bool wet)
+    /// <summary>
+    /// The ground under a footprint: its highest and lowest, and false if it is too uneven or under water. A vessel
+    /// (<paramref name="feet"/>) stands on the highest of the ground's collision, which its feet meet, not the natural
+    /// height between its faces; a base meets the natural ground, which its blocks clear.
+    /// </summary>
+    bool Ground(Vector3 origin, Basis basis, Vector3 lo, Vector3 hi, float step, float tolerance, bool feet, out float top, out float low, out bool wet)
     {
         top = float.MinValue;
         low = float.MaxValue;
         wet = false;
+        float stand = float.MinValue;
         int nx = Math.Max(1, (int)MathF.Ceiling((hi.X - lo.X) / step)), nz = Math.Max(1, (int)MathF.Ceiling((hi.Z - lo.Z) / step));
         for (int i = 0; i <= nx; i++)
             for (int j = 0; j <= nz; j++)
@@ -284,7 +284,9 @@ public sealed partial class BuildTool
                 top = MathF.Max(top, h);
                 low = MathF.Min(low, h);
                 if (top - low > tolerance) return false;
+                if (feet) stand = MathF.Max(stand, _zone.GroundTop(p.X, p.Z));
             }
+        if (feet) top = stand;
         return true;
     }
 

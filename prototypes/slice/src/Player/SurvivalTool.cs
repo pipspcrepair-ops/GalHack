@@ -394,33 +394,22 @@ public sealed class SurvivalTool
         if (!left.IsEmpty) Overflowed?.Invoke(left);
     }
 
-    public TreeFx Trees { get; private set; }
+    /// <summary>What felled trees leave (the zone's).</summary>
+    public TreeFx Trees => _zone.Trees;
 
     readonly Dictionary<long, float> _plantHurt = new();
 
     /// <summary>Trees that have fallen to the tool (tests).</summary>
     public int TreesFelled { get; private set; }
 
-    static bool IsTree(Flora kind) => kind is Flora.Conifer or Flora.Broadleaf or Flora.JungleTree or Flora.Palm or Flora.GiantMushroom;
     static bool IsBoulder(Flora kind) => kind is Flora.Rock or Flora.LavaRock or Flora.Crystal or Flora.IceShard;
-
-    /// <summary>The species a plant is, in the world's herbarium, or null for a rock.</summary>
-    GalHack.Plants.Plant SpeciesOf(int index)
-    {
-        var plants = _zone.Planet.Flora.Book.Plants;
-        return index >= 0 && index < plants.Count ? plants[index] : null;
-    }
-
-    /// <summary>What flies off a plant: its own colour.</summary>
-    static Color LeafOf(Flora kind, GalHack.Plants.Plant species) =>
-        species != null ? new Color(species.Leaf.R, species.Leaf.G, species.Leaf.B) : TreeFx.LeafColour(kind);
 
     /// <summary>
     /// Chips the plant nearest the crosshair within reach: each pulse wears it down and gives a share
     /// of its biomass and organics (a boulder's stone), and when it is worked through it is gone from
-    /// the ground for good: planet-surface's felling rule (<see cref="PlanetSurface.World.PlanetWorld.Felled"/>
-    /// and <see cref="TerrainStreamer.Fell"/>), so a tree's collider goes in the same frame and the
-    /// cut is kept through streaming and saves. A tree falls over, leaving a stump.
+    /// the ground for good (<see cref="SurfaceZone.Fell(in TerrainStreamer.PlantSighting, Vector3)"/>), so a
+    /// tree's collider goes in the same frame and the cut is kept through streaming and saves. A tree
+    /// falls over, leaving a stump.
     /// </summary>
     public bool CutPlant()
     {
@@ -430,9 +419,9 @@ public sealed class SurvivalTool
         float scale = sighting.Scale;
         long id = sighting.Id;
         Flora kind = sighting.Kind;
-        GalHack.Plants.Plant species = SpeciesOf(sighting.Plant);
+        GalHack.Plants.Plant species = _zone.SpeciesOf(sighting.Plant);
         if (_zone.Planet.Felled.Contains(id)) return false;
-        bool tree = IsTree(kind), boulder = IsBoulder(kind);
+        bool tree = TreeFx.IsTree(kind), boulder = IsBoulder(kind);
         float size = Math.Clamp(scale, 0.5f, 3f);
         float durability = (boulder ? _rules.Durability.Boulder : tree ? _rules.Durability.Tree : _rules.Durability.Plant) * size;
         float done = _plantHurt.GetValueOrDefault(id);
@@ -448,9 +437,8 @@ public sealed class SurvivalTool
             _suit.Kit.Organics += _yields.OrganicsPerPlant * size * scaleUp * share;
             Earn("biomass", Math.Max(1.0, Math.Round(_yields.BiomassPerPlant * size)) * scaleUp * share, got);
         }
-        Trees ??= AddTrees();
         Vector3 crown = plant + Vector3.Up * (tree ? Math.Min(6f, species == null ? 2.2f * size + 1f : species.Height * scale * 0.5f) : 0.6f * size);
-        Color leaf = LeafOf(kind, species);
+        Color leaf = TreeFx.LeafOf(kind, species);
         if (boulder) Debris?.Puff(plant + Vector3.Up * 0.4f, _zone.Planet.Grit(plant), 0.7f);
         else Trees.Leaves(crown, leaf, tree ? 14 : 8, tree ? 1.2f : 0.4f);
         Sfx?.Play(Sfx.Sound.Dig, plant, tree ? 0.8f : 1.4f, -9f);
@@ -461,30 +449,16 @@ public sealed class SurvivalTool
             return true;
         }
         _plantHurt.Remove(id);
-        _zone.Planet.Felled.Add(id);
-        _zone.Streamer.Fell(id);
+        _zone.Fell(sighting, plant - _survivor.WorldEye());
         PlantsCut++;
         PlantCut?.Invoke();
         if (tree)
         {
             TreesFelled++;
-            float height = 3.2f * size, radius = 0.28f * size;
-            foreach (var (solid, _) in _zone.Streamer.SolidsNear(plant, 2.5f))
-                if (solid.Id == id && solid.IsTrunk) { height = MathF.Max(2f, solid.Extents.Y * 2f); radius = solid.Extents.X; }
-            Color bark = species == null ? new Color(0.36f, 0.25f, 0.16f) : new Color(species.Bark.R, species.Bark.G, species.Bark.B);
-            Trees.Fell(plant, plant - _survivor.WorldEye(), height, radius, leaf, crown: true, bark, _zone.Streamer.MeshOf(sighting), sighting.Turn, custom: sighting.OwnTint);
-            Trees.Leaves(plant + Vector3.Up * height, leaf, 30, 1.8f);
             Sfx?.Play(Sfx.Sound.Dig, plant, 0.6f, -2f);
         }
         Announce(got, quietStone: false);
         return true;
-    }
-
-    TreeFx AddTrees()
-    {
-        var fx = new TreeFx();
-        _zone.AddChild(fx);
-        return fx;
     }
 
     /// <summary>The blue working beam from the barrel tip to where the tool is digging, cutting or taking down (call each frame it works).</summary>

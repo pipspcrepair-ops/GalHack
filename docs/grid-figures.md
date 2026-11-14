@@ -93,16 +93,16 @@ Dropped rungs: `FuelTankMSSmall` (1x1x1, 1200 raw, level 3): same footprint as t
 
 | Tier | Empyrion source (grid) | Cells WxHxD | Mass kg | HP | Power working | idle | Capacity SU | per cell | per tonne | per power | Unlock lvl | Recipe shape |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| container-t1 | `ContainerControllerSmall` (SS) | 1x1x1 | 440 | 316 | 24 | - | 1,000 | 1,000 | 2,270 | 41.7 | 3 | 3 items: plates 67%, electronics 33% |
-| container-t2 | `CargoContainerSV` (SS) | 1x1x1 | 360 | 126 | 8 | - | 1,000 -> **1,100** | 1,100 | 3,060 | 138 | 1 | 2 items: plates 100% |
-| container-t3 | `CargoContainerSmall` (MS) | 1x1x1 | 75 | 31.6 | 0.12 | - | 1,000 -> **1,210** | 1,210 | 16,100 | 9,680 | 1 | 12 items: plates 100% |
-| container-t4 | `CargoContainerMedium` (MS) | 2x1x1 | 125 | 158 | 0.12 | - | 2,000 -> **2,660** | 1,330 | 21,300 | 21,300 | 1 | 12 items: plates 100% |
+| container-t1 | `ContainerControllerSmall` (SS) | 1x1x1 | 440 | 316 | 24 | - | 1,000 | 1,000 | 2,270 | 41.7 | 1 | 3 items: plates 67%, electronics 33% |
+| container-t2 | `CargoContainerSV` (SS) | 1x1x1 | 360 | 126 | 8 | - | 1,000 -> **1,100** | 1,100 | 3,060 | 138 | 3 | 2 items: plates 100% |
+| container-t3 | `CargoContainerSmall` (MS) | 1x1x1 | 75 | 31.6 | 0.12 | - | 1,000 -> **1,210** | 1,210 | 16,100 | 9,680 | 5 | 12 items: plates 100% |
+| container-t4 | `CargoContainerMedium` (MS) | 2x1x1 | 125 | 158 | 0.12 | - | 2,000 -> **2,660** | 1,330 | 21,300 | 21,300 | 7 | 12 items: plates 100% |
 
 Empyrion never makes a higher tier worse on output per cell, per tonne or per power here. It is level with, or within 10 percent of, the tier below at: container-t2 on output per cell (1,000 vs 1,000); container-t3 on output per cell (1,000 vs 1,000); container-t4 on output per cell (1,000 vs 1,000).
 
 Empyrion has no storage tiers: one controller holds 125 SU (small) or 8000 SU (large), extensions add the same, and the caps are 32,000 (small) and 320,000 (large). Converted, both give 1000 SU per cell, which matches the plan's `1000 SU at 1x1x1, 8000 SU at 2x2x2` and today's 320,000 cap. t1 is the crafted small container (the controller block, 125 SU, level 3); t2 to t4 are the single-block cargo containers (`CargoContainerSV` 125, `CargoContainerSmall` 8000, `CargoContainerMedium` 16000 in 2x1x1), because the plan drops the controller and extension pair. Power draw is nominal (1 kW).
 
-Unlock levels shown are those of the crafting group (1). The controllers are level 3 (small) and 5 (large) and the extensions 5 and 7.
+Unlock levels follow Empyrion's container ladder, not each source's group: cargo boxes 1 (`ContainerSmallBlocks`), the small controller 3 (`ContainerControllerSmall`), the large controller 5 (`ContainerControllerLarge`), the large extension 7 (`ContainerExtensionLarge`).
 
 #### Hover plates
 
@@ -197,9 +197,11 @@ Footprints are Empyrion's, counted in 1 m cells. The plan's gear is an attachmen
 | Tier | Source | Cells | Mass kg | HP | Unlock | Recipe shape |
 |---|---|---|---|---|---|---|
 | pad-t1 | `LandinggearSV` (SS) | 1x1x2 | 1,370 | 158 | 5 | 6 items: machinery 67%, electronics 33% |
-| pad-t2 | `LandinggearHeavySV` (SS) | 2x1x2 | 1,860 | 253 | 10 | 13 items: machinery 62%, electronics 38% |
-| pad-t3 | `LandinggearMSLight` (MS) | 1x1x2 | 212 | 111 | 7 | 14 items: machinery 86%, electronics 14% |
-| pad-t4 | `LandinggearMSHeavy` (MS) | 2x1x2 | 229 | 205 | 7 | 14 items: machinery 86%, electronics 14% |
+| pad-t2 | `LandinggearHeavySV` (SS) | 2x1x2 | 1,860 | 253 | 7 | 13 items: machinery 62%, electronics 38% |
+| pad-t3 | `LandinggearMSLight` (MS) | 1x1x2 | 212 | 111 | 10 | 14 items: machinery 86%, electronics 14% |
+| pad-t4 | `LandinggearMSHeavy` (MS) | 2x1x2 | 229 | 205 | 12 | 14 items: machinery 86%, electronics 14% |
+
+Unlocks take Empyrion's gear ladder in order, each tier after the one below: small ship 5 (`LandinggearBlocksSV`), capital 7 (`LandinggearBlocksCV`), heavy small ship 10 (`LandinggearBlocksHeavySV`); Empyrion has no fourth step, so t4 takes its next band, 12 (estimate).
 
 Empyrion's gear is among the weakest parts of its ships (50 hp on a small ship, 350 to 945 on a capital, against a steel cube at 50 and 500), which agrees with the plan's weak-point rule: converted, a pad cell has 51 to 79 hp against a plated steel cell's 158, so gear breaks first. Mass per cell of pad falls with every tier (684, 464, 106 and 57 kg for t1 to t4), so the efficiency rule holds without a fix. Pad tiers go by area: t1 and t3 are 1x1x2, t2 and t4 are 2x1x2.
 
@@ -301,12 +303,12 @@ Seated envelope used for the check (estimate): 0.6 m wide, 1.35 m high, 1.1 m de
 | command-chair | `CockpitOpen2SV` (SS) | 1x2x3 | yes, 1 wide, 2 high, 3 deep | 1,920 | 695 | 80 | 1 | 16 items: machinery 38%, electronics 38%, glass 25% |
 | passenger-seat | `PassengerSeat2SV` (SS) | 1x3x2 | yes, 1x3x2 | 576 | 474 | 0 | 3 | 10 items: plates 70%, electronics 30% |
 | cockpit-t1 | `CockpitSV05` (SS) | 3x2x4 | yes, 3x2x4 enclosed, head height 2 m | 5,760 | 2,210 | 80 | 1 | 16 items: machinery 38%, electronics 38%, glass 25% |
-| cockpit-t2 | `CockpitSV01` (SS) | 3x3x5 | yes, 3x3x5 | 6,760 | 2,840 | 80 | 1 | 16 items: machinery 38%, electronics 38%, glass 25% |
+| cockpit-t2 | `CockpitSV01` (SS) | 3x3x5 | yes, 3x3x5 | 6,760 | 2,840 | 80 | 7 | 16 items: machinery 38%, electronics 38%, glass 25% |
 | cockpit-t3 | `CockpitSV01T2` (SS) | 3x3x5 | yes, 3x3x5, doubled hp | 11,100 | 5,690 | 80 | 10 | 45 items: plates 44%, machinery 16%, electronics 22%, glass 18% |
 | (capital seat, too small) | `CockpitMS01` (MS) | 1x1x1 | no, 1x1x1 is a 1 m cube against 1.8 m | 12.5 | 47.4 | 2.5 | 7 | 64 items: machinery 78%, electronics 14%, glass 8% |
 | (capital console, too small) | `CockpitMS02` (MS) | 2x1x1 | no, 2x1x1 is 1 m high | 35.5 | 94.8 | 2.5 | 7 | 64 items: machinery 78%, electronics 14%, glass 8% |
 
-Findings. Empyrion's small-ship cockpits (3x3x3 to 3x3x5 blocks of 0.5 m) are only 1.5 m wide in the game, cramped for a person; counted as 1 m cells they become 3 m wide and 3 m tall, which seats a 1.8 m person with room to see out. Empyrion's capital seat, `CockpitMS01`, is one large block (2 m) and shrinks to a 1 m cube under the count rule, too small: the plan's concern is right. Use the small-ship counts for every vessel. The chair rung (`CockpitOpen2SV`, 1x2x3) is the minimum that seats the person; `PassengerSeatSV` is the wider 2x3x2. The cockpit ladder is bigger parts at later unlocks, with t3 doubling hit points (1800 against 900 before conversion) for 1.6 times the mass. Other small-ship variants (`CockpitSV` 3x3x3, `CockpitSV_fighter` 4x3x5, `CockpitSV07` 2x2x9) are shapes of the same part. Estimate: the camera sits about 1.2 m above the seat floor, so every chair needs 2 m of open height over the seat.
+Findings. Empyrion's small-ship cockpits (3x3x3 to 3x3x5 blocks of 0.5 m) are only 1.5 m wide in the game, cramped for a person; counted as 1 m cells they become 3 m wide and 3 m tall, which seats a 1.8 m person with room to see out. Empyrion's capital seat, `CockpitMS01`, is one large block (2 m) and shrinks to a 1 m cube under the count rule, too small: the plan's concern is right. Use the small-ship counts for every vessel. The chair rung (`CockpitOpen2SV`, 1x2x3) is the minimum that seats the person; `PassengerSeatSV` is the wider 2x3x2. The cockpit ladder is bigger parts at later unlocks: the chair and t1 at 1 (`CockpitBlocksSV`), t2 at 7 with Empyrion's next cockpit (`CockpitBlocksCV`), t3 at 10 (`CockpitBlocksSVT2`), with t3 doubling hit points (1800 against 900 before conversion) for 1.6 times the mass. Other small-ship variants (`CockpitSV` 3x3x3, `CockpitSV_fighter` 4x3x5, `CockpitSV07` 2x2x9) are shapes of the same part. Estimate: the camera sits about 1.2 m above the seat floor, so every chair needs 2 m of open height over the seat.
 
 ### 2.2 Doors
 
@@ -374,7 +376,7 @@ Notes.
 - GalHack's current `materials.json` already uses Empyrion's large-cube numbers for steel, hardened and combat (500 hp and 1.0 t, 1000 and 2.0, 2000 and 4.0) and a glass of 250 hp and 0.6 t (Empyrion's window: 250 hp and 0.33 t). Scaling them by 0.316 in hit points and 0.089 in mass gives the 1 m column. Concrete is the one in disagreement (GalHack 400 hp and 2.4 t, Empyrion 800 hp and 1.1 t): take Empyrion's.
 - Armour and resistances: Empyrion has none, so there is no source. The flat armour of 10, 25 and 50 for steel, hardened and combat is about 1/50 of the large cube hit points (2 percent), and that proportion is what to keep if the data pass re-derives armour; it does not depend on the cube size because it is a per-hit reduction.
 - Estimates: base-block and wood armour and resistances (Empyrion has no figures). The base block (polymer from rock, plan section 3) is Empyrion's plastic cube: **63 hp and 9 kg per 1 m cell**, 0.4 of steel's hit points at 0.1 of its mass, for 2 polymer units, which is the cheapest and lightest cube Empyrion has.
-- Craftable from the start: every plate cube is level 1 in the config. What actually gates them is the ingredient chain (titan rods, sathium ingots), which is where the plan's per-material unlock sits.
+- Every plate cube is level 1 in the config; the constructor gates them (`Templates.ecf` targets): hardened needs the large constructor (`ConstructorT1V2`, level 5) and combat the advanced one (`ConstructorT2`, level 10), so those are their unlock levels here.
 
 ### 3.1 Cost and hit points by shape
 
