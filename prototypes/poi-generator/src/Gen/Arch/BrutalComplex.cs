@@ -532,22 +532,19 @@ public static class BrutalComplex
             double t = j / (double)H, waist = 0.7;
             return 11 + 7 * Math.Pow(Math.Abs(t - waist) / waist, 2) + (t > waist ? 8 * (t - waist) : 0);
         }
+        // The shell round outside, course by course as it waists and flares; inside, the blocks open as planned.
+        var (x, z) = p.At(2 * ci, 2 * ck);
+        Round.Lay(p.C, x, z, 0, 2 * H - 1, y => (2 * RadiusAt(y >> 1) + 0.5, 0), y => Plot.Cube((y >> 1) % 6 == 5 ? f.Wall.Scale(0.9f) : f.Wall, Role.Wall),
+            c => p.BlockAt(c) is var (i, k) && Plot.In(ci, ck, RadiusAt(c.Y >> 1) - 1.4, i, k));
         var cells = new List<(int, int, int)>();
-        for (int j = 0; j < H; j++)
-        {
-            double r = RadiusAt(j);
-            int rr = (int)r + 2;
-            for (int k = ck - rr; k <= ck + rr; k++)
-                for (int i = ci - rr; i <= ci + rr; i++)
-                {
-                    if (!Plot.In(ci, ck, r, i, k)) continue;
-                    if (!Plot.In(ci, ck, r - 1.4, i, k)) p.Fill(i, j, k, i, j, k, Plot.Cube(j % 6 == 5 ? f.Wall.Scale(0.9f) : f.Wall, Role.Wall));
-                    else if (j < 3)
+        int r0 = (int)RadiusAt(0) + 2;
+        for (int j = 0; j < 3; j++)
+            for (int k = ck - r0; k <= ck + r0; k++)
+                for (int i = ci - r0; i <= ci + r0; i++)
+                    if (Plot.In(ci, ck, RadiusAt(j) - 1.4, i, k))
                         for (int v = 2 * k; v < 2 * k + 2; v++)
                             for (int u = 2 * i; u < 2 * i + 2; u++)
                                 for (int y = 2 * j; y < 2 * j + 2; y++) cells.Add((u, y, v));
-                }
-        }
         int room = p.RoomOf(ModuleKind.Hall, "cooling-tower", 0, cells);
         // Support legs round the foot, the way in between them.
         int gapK = ck - (int)RadiusAt(0) - 1;
