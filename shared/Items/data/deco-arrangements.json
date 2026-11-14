@@ -160,6 +160,19 @@
   },
   "fallback": "storeroom",
 
+  // What each kind of room is arranged round, its focal point, by the roles of the pieces that make it (planning
+  // practice: a kitchen round its cooker and worktop, a living room round its hearth or screen and the seats facing
+  // it, a bedroom its bed, a bathroom its bath and basin, a hall its stair or a console by the door). A room id with
+  // none listed is arranged round its biggest piece.
+  "focus": {
+    "kitchen": ["stove", "counter"], "farm-kitchen": ["stove", "counter"], "galley": ["counter", "stove"],
+    "living-room": ["hearth", "screen", "sofa"], "mess": ["table", "counter"], "canteen": ["table", "counter"],
+    "bedroom": ["bed"], "quarters": ["bed", "bunk"], "study": ["desk"],
+    "bathroom": ["bath", "basin", "toilet"], "washroom": ["bath", "basin", "toilet"],
+    "hall": ["console", "coat-stand"], "store": ["shelf", "rack", "racking"], "storage": ["shelf", "rack", "racking"],
+    "garage": ["bench", "station"], "workshop": ["bench", "station"]
+  },
+
   "props": {
     "bench":     { "roles": ["bench", "counter", "station"], "fallback": "workbench" },
     "machine":   { "roles": ["machine", "console", "panel", "vending"], "fallback": "control-panel" },

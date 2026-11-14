@@ -58,16 +58,7 @@ public static class RoomDecor
         };
         foreach (var cells in layout.Doorways.Where(dw => dw.ModuleA == m.Index || dw.ModuleB == m.Index).Select(dw => dw.Cells)
                      .Concat(m.Index == layout.EntranceModule ? new[] { layout.ExitCells } : Array.Empty<List<Int3>>()))
-        {
-            var at = cells.Where(c => c.Y == y).ToList();
-            if (at.Count == 0) continue;
-            Int3 c = at.Aggregate(Int3.Min);
-            float width = at.Count;
-            if (c.Z < z0) room.Doors.Add(new DecoDoor(DecoWall.North, c.X - x0 + width / 2, width));
-            else if (c.Z > z1) room.Doors.Add(new DecoDoor(DecoWall.South, c.X - x0 + width / 2, width));
-            else if (c.X < x0) room.Doors.Add(new DecoDoor(DecoWall.West, c.Z - z0 + width / 2, width));
-            else if (c.X > x1) room.Doors.Add(new DecoDoor(DecoWall.East, c.Z - z0 + width / 2, width));
-        }
+            if (Door(cells.Where(c => c.Y == y).ToList(), x0, x1, z0, z1) is { } door) room.Doors.Add(door);
         // What the room's floor can't take, the library keeps clear from the start (the game's checks after are the last word):
         // another room's floor inside its box among it.
         var own = new HashSet<Int3>(m.Cells.Where(c => c.Y == y));
@@ -80,6 +71,67 @@ public static class RoomDecor
                 if (!free) room.Blocked.Add(new DecoRect(new NV2(x - x0 + 0.5f, z - z0 + 0.5f), new NV2(0.5f, 0), new NV2(0, 0.5f)));
             }
         return new Dressable(m, room, new Int3(x0, y, z0), floor, own);
+    }
+
+    /// <summary>An opening's cells at a room's floor as the library's door on the wall of the room's box (x0..x1, z0..z1) it stands in (null if none).</summary>
+    public static DecoDoor? Door(List<Int3> at, int x0, int x1, int z0, int z1)
+    {
+        if (at.Count == 0) return null;
+        Int3 c = at.Aggregate(Int3.Min);
+        float width = at.Count;
+        if (c.Z < z0) return new DecoDoor(DecoWall.North, c.X - x0 + width / 2, width);
+        if (c.Z > z1) return new DecoDoor(DecoWall.South, c.X - x0 + width / 2, width);
+        if (c.X < x0) return new DecoDoor(DecoWall.West, c.Z - z0 + width / 2, width);
+        if (c.X > x1) return new DecoDoor(DecoWall.East, c.Z - z0 + width / 2, width);
+        return null;
+    }
+
+    /// <summary>
+    /// Every way into a room at its floor (level <paramref name="y"/>): the doorways the plan recorded and the way in,
+    /// and any opening in a wall between its floor and another room's (a house's inner doors are gaps in its walls).
+    /// Each is its cells in the wall, side by side, and the module beyond (-1: outside).
+    /// </summary>
+    public static List<(List<Int3> Cells, int From)> Ways(PoiInstance inst, PlacedModule m, int y, Dictionary<Int3, int>? of = null)
+    {
+        Layout layout = inst.Layout;
+        var ways = new List<(List<Int3> Cells, int From)>();
+        foreach (Doorway dw in layout.Doorways.Where(dw => dw.ModuleA == m.Index || dw.ModuleB == m.Index))
+            if (dw.Cells.Where(c => c.Y == y).ToList() is { Count: > 0 } at) ways.Add((at, dw.ModuleA == m.Index ? dw.ModuleB : dw.ModuleA));
+        if (m.Index == layout.EntranceModule && layout.ExitCells.Where(c => c.Y == y).ToList() is { Count: > 0 } exit) ways.Add((exit, -1));
+        of ??= ModuleOf(layout);
+        var taken = new HashSet<Int3>(ways.SelectMany(w => w.Cells));
+        var gaps = new Dictionary<Int3, int>();
+        foreach (Int3 c in m.Cells.Where(c => c.Y == y))
+            foreach (Dir h in Dirs.Horizontal)
+            {
+                Int3 gap = c + h.Vec();
+                if (taken.Contains(gap) || of.ContainsKey(gap) || !Passable(inst.Blocks.Get(gap)) || !Passable(inst.Blocks.Get(gap + Int3.Up))) continue;
+                if (of.TryGetValue(gap + h.Vec(), out int from) && from != m.Index) gaps.TryAdd(gap, from);
+            }
+        // An opening is its cells side by side along the wall.
+        while (gaps.Count > 0)
+        {
+            var (seed, from) = gaps.First();
+            var cells = new List<Int3> { seed };
+            gaps.Remove(seed);
+            for (int k = 0; k < cells.Count; k++)
+                foreach (Dir h in Dirs.Horizontal)
+                    if (gaps.TryGetValue(cells[k] + h.Vec(), out int f) && f == from) { cells.Add(cells[k] + h.Vec()); gaps.Remove(cells[k] + h.Vec()); }
+            ways.Add((cells, from));
+        }
+        return ways;
+    }
+
+    /// <summary>An opening's cell: open, a door in it, or the floor's finish run through it.</summary>
+    static bool Passable(Block b) => b.IsAir || b.Type == BlockType.Door || b.Type == BlockType.Plate && b.Role == Role.Floor;
+
+    /// <summary>Which module each cell belongs to (the first that claims it).</summary>
+    public static Dictionary<Int3, int> ModuleOf(Layout layout)
+    {
+        var of = new Dictionary<Int3, int>();
+        foreach (PlacedModule m in layout.Modules)
+            foreach (Int3 c in m.Cells) of.TryAdd(c, m.Index);
+        return of;
     }
 
     /// <summary>The generator's generic props in a dressed room go (and a barricade it stacked): the library's pieces stand there instead, so nothing is drawn one inside another.</summary>
@@ -228,9 +280,7 @@ public static class RoomDecor
     public static IEnumerable<(Int3 A, Int3 B)> Openings(PoiInstance inst)
     {
         var nav = inst.Nav();
-        var of = new Dictionary<Int3, int>();
-        foreach (PlacedModule m in inst.Layout.Modules)
-            foreach (Int3 c in m.Cells) of.TryAdd(c, m.Index);
+        var of = ModuleOf(inst.Layout);
         // Walkable as the place will stand: the generator's props and litter go from a dressed room.
         bool Walk(Int3 c) => nav.Standable(c) || FloorAt(inst, nav, c) != null && Clearable(inst.Blocks.Get(c + Int3.Up));
         foreach (var (c, mi) in of)

@@ -65,7 +65,8 @@ public partial class Screenshot : Node
         // gallery:<sheet>:<sheets> and interiors render many tiles in one run and save a sheet of them.
         bool sheet = _view.StartsWith("gallery:") || _view == "interiors";
         if (_tick == SetupTick && _view == "houses") { HouseShots(_out); return; }
-        if (_view == "houses") return;
+        if (_tick == SetupTick && _view.StartsWith("rooms:")) { RoomShots(_view, _out); return; }
+        if (_view == "houses" || _view.StartsWith("rooms:")) return;
         if (_tick == SetupTick)
         {
             if (sheet) Gallery(_view);

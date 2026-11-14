@@ -62,6 +62,8 @@ public sealed class DecoArrangements
     public string Fallback = "storeroom";
     public readonly Dictionary<string, (string[] Roles, string Fallback)> Props = new(StringComparer.Ordinal);
     public readonly Dictionary<string, DecoDisorderRules> Disorder = new(StringComparer.Ordinal);
+    /// <summary>What a room of an id is arranged round (its focal point), by the roles of the pieces that make it: a kitchen its stove, a bedroom its bed.</summary>
+    public readonly Dictionary<string, string[]> Focus = new(StringComparer.Ordinal);
     public static readonly string[] Kinds = { "around", "station", "bay", "row", "line", "rows", "cluster", "conveyor", "single" };
 
     public static DecoArrangements LoadDirectory(string dir, DecoCatalogue cat) => Load(File.ReadAllText(Path.Combine(dir, FileName)), cat);
@@ -142,6 +144,8 @@ public sealed class DecoArrangements
                 Growth = DataJson.Str(e, "growth", "vines") == "bloom" ? DecoCover.Bloom : DecoCover.Vines,
             };
         }
+        if (root.TryGetProperty("focus", out JsonElement focus))
+            foreach (JsonProperty p in focus.EnumerateObject()) a.Focus[p.Name] = p.Value.EnumerateArray().Select(x => x.GetString()).ToArray();
         foreach (string s in new[] { "active", "abandoned", "infested", "ruined" })
             if (!a.Disorder.ContainsKey(s)) throw new InvalidDataException($"arrangements: no disorder rules for '{s}'");
         return a;
