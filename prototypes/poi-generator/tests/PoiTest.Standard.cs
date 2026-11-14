@@ -9,28 +9,37 @@ namespace PoiGenerator;
 public partial class PoiTest
 {
     /// <summary>
-    /// Every spawn its own layout: a world's place is laid out from its spawn's seed, and only when three of those
-    /// fail does it fall back to the variant's authored layout (which repeats from spawn to spawn). On fresh seeds,
-    /// as a world asks (its own tech, any front), each family is laid out a few times; the fallbacks are counted
-    /// per family with the first reason each gave. The rate must stay near zero.
+    /// Every family lays out from its own seeds (the owner's launch field never did: its rocket's rim stood behind the
+    /// hatch, and a world skipped it). On fresh seeds, as a world asks (any variant, its own tech, any front), every
+    /// family is laid out again and again, cities and the large places fewer times; each try that throws counts against
+    /// its family, with the first reason it gave. A family fails if more than <see cref="MostFailing"/> of its tries do.
     /// </summary>
-    void Fallbacks()
+    void LaysOut()
     {
         var rand = new Random();
-        int spawns = 0, fallbacks = 0, skipped = PoiFactory.Skipped;
-        var fell = new List<string>();
-        foreach (FamilyDef f in _lib.Families.Where(f => !f.Tags.Contains("city")))
-            for (int i = 0; i < (f.Tags.Contains("grand") ? 2 : 6); i++)
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var rows = new List<(string Id, int Tries, int Failed, string Why)>();
+        foreach (FamilyDef f in _lib.Families)
+        {
+            int tries = f.Tags.Contains("grand") || f.Tags.Contains("city") ? 4 : 20, failed = 0;
+            string why = null;
+            for (int i = 0; i < tries; i++)
             {
                 TechLevel tech = f.Techs.Count > 0 ? WorldProfile.Parse(f.Techs[rand.Next(f.Techs.Count)]) : (TechLevel)rand.Next(3);
-                int before = PoiFactory.Skipped;
-                PoiFactory.SpawnLayout(_lib, f, rand.Next(f.Variants.Count), f.Rarity, (ulong)rand.NextInt64(), new LayoutHints(Dirs.Horizontal[rand.Next(4)], tech, Ruin: RuinAge.Fallback), out string why);
-                spawns++;
-                // Three failed tries from the spawn's seed come before the authored layout.
-                if (PoiFactory.Skipped - before >= 3) { fallbacks++; fell.Add($"{f.Id} ({why})"); }
+                try { PoiFactory.BuildLayout(_lib, f, rand.Next(f.Variants.Count), f.Rarity, (ulong)rand.NextInt64(), new LayoutHints(Dirs.Horizontal[rand.Next(4)], tech, Ruin: RuinAge.Fallback)); }
+                catch (Exception e) { failed++; why ??= e.Message.Split("last: ").Last(); }
             }
-        Check(fallbacks * 100 <= spawns, $"spawns lay out from their own seed: {fallbacks} of {spawns} fell back to the authored layout, {PoiFactory.Skipped - skipped} tries failed{(fell.Count > 0 ? ": " + string.Join("; ", fell.Take(6)) : "")}");
+            rows.Add((f.Id, tries, failed, why));
+        }
+        foreach (var (id, tries, failed, why) in rows.Where(r => r.Failed > 0).OrderByDescending(r => r.Failed / (double)r.Tries))
+            GD.Print($"      {id}: {failed} of {tries} failed ({100.0 * failed / tries:0}%): {why}");
+        var bad = rows.Where(r => r.Failed > MostFailing * r.Tries).ToList();
+        Check(bad.Count == 0, $"every family lays out from its own seeds: {rows.Sum(r => r.Tries) - rows.Sum(r => r.Failed)} of {rows.Sum(r => r.Tries)} tries over {rows.Count} families, " +
+            $"{rows.Count(r => r.Failed > 0)} families with a failure, {bad.Count} failing more than {MostFailing:P0} ({string.Join(", ", bad.Select(r => r.Id))}) in {clock.ElapsedMilliseconds / 1000} s");
     }
+
+    /// <summary>The most of a family's tries that may fail to lay out: a world tries a spawn's seed three times before it falls back.</summary>
+    const double MostFailing = 0.05;
 
     /// <summary>
     /// The 1 m standard (<see cref="PlaceAudit"/>) over fresh places of every family, each turned a random way, in a
