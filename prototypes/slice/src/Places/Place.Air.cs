@@ -17,7 +17,7 @@ public partial class Place
     /// <summary>What stops air: a full block, glass, a sealed door, the slopes a roof is made of, the shapes a wall is (a half, a thin wall, a chamfer) and a round thing's cut rim.</summary>
     static bool StopsAir(BlockType t) => t is BlockType.Cube or BlockType.Breakable or BlockType.Pane or BlockType.SealedDoor
         or BlockType.Ramp or BlockType.Corner or BlockType.InvCorner or BlockType.Half or BlockType.Partition
-        or BlockType.Chamfer or BlockType.ChamferCorner or BlockType.ChamferInvCorner || BlockInfo.IsPlanCut(t);
+        or BlockType.Chamfer or BlockType.ChamferCorner or BlockType.ChamferInvCorner || BlockInfo.IsRoundCut(t);
 
     Int3 _airCell;
     long _airDoors = -1;

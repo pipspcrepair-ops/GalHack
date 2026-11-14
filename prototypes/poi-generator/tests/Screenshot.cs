@@ -345,7 +345,7 @@ public partial class Screenshot : Node
             return;
         }
         // round:<tanks|stacks|dome>:<stand|back|above|owner>: round things on a yard by day (two tanks beside a shed, a stack and a
-        // cooling tower, a containment dome), from standing height 10 m off, 30 m back, from above, or as the owner looked at the
+        // cooling tower, a containment dome), from standing height 10 m off, 40 m back, from above, or as the owner looked at the
         // tanks (a few metres up, onto their tops); --flat lays every round as whole cubes, as they were (proof frames for Round).
         if (view.StartsWith("round:"))
         {
@@ -380,7 +380,7 @@ public partial class Screenshot : Node
             Vector3 mid = new((float)(x0 + x1) / 2, 0, (float)(z0 + z1) / 2), toward = new Vector3(0.55f, 0, 1f).Normalized();
             (Vector3 eye, Vector3 at) = a[2] switch
             {
-                "back" => (mid + toward * (reach + 30) + Vector3.Up * 1.7f, mid + Vector3.Up * top * 0.45f),
+                "back" => (mid + toward * (reach + 40) + Vector3.Up * 1.7f, mid + Vector3.Up * top * 0.45f),
                 "above" => (mid + toward * 4f + Vector3.Up * (top + reach * 1.3f + 4), mid + Vector3.Up * top),
                 "owner" => (mid + toward * (reach + 9) + Vector3.Up * (top + 3), mid + Vector3.Up * (top - 2)),
                 _ => (mid + toward * (reach + 10) + Vector3.Up * 1.7f, mid + Vector3.Up * Mathf.Min(top * 0.5f, 8f)),

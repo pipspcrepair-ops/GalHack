@@ -262,7 +262,7 @@ public sealed class Canvas
         {
             Family = family, Variant = variant, Name = name, Rarity = rarity, Seed = seed,
             Modules = Modules, Kit = Kit, Extras = X,
-            Blocks = new BlockGrid(min, size), Occupied = new CellMask(min, size),
+            Blocks = new BlockGrid(min, size) { Rounds = X.Rounds }, Occupied = new CellMask(min, size),
             EntranceCell = EntranceCell, EntranceFacing = EntranceFacing, ExitCells = ExitCells,
             Doorways = Doorways, Slots = Slots, EntranceModule = EntranceModule, VaultModule = VaultModule,
         };

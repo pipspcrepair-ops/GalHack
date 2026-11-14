@@ -173,7 +173,7 @@ public static class EraPass
         var sum = new Dictionary<(Material, bool), (float L, int N)>();
         foreach (var (p, b) in g.Blocks())
         {
-            if (house || !Fabric.Contains(b.Type) && !BlockInfo.IsPlanCut(b.Type) || era.Keep.Contains(b.Type) || !Rebuilt(b.Role)) continue;
+            if (house || !Fabric.Contains(b.Type) && !BlockInfo.IsRoundCut(b.Type) || era.Keep.Contains(b.Type) || !Rebuilt(b.Role)) continue;
             if (b.Type == BlockType.Pane && b.Material == Material.Glass) continue;
             bool roof = b.Role == Role.Roof && roofing != null;
             if (!roof && !era.Swaps.ContainsKey(b.Material)) continue;

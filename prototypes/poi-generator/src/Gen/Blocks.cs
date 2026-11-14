@@ -87,6 +87,10 @@ public enum BlockType : byte
     SlantFillM, // SlantFill mirrored
     RoundOut,   // a quarter round (radius 1) about a corner: Wedge's ends, bowed out
     RoundIn,    // a cube less a quarter round about the opposite corner: Wedge's ends, bowed in
+    // A course of a round thing that runs in or out as it rises (a dome, a cone, a cooling tower's waist): the cell as cut by
+    // the round's own profile (Round.Pieces, from the round's centre and its radius every half metre up), so it reads round
+    // in section as well as in plan. Drawn and collided as that shape; its shape comes from the place's rounds, not the block.
+    RoundSlope,
 }
 
 /// <summary>What a block counts as in the place-patterns shape shares (docs/place-patterns.md section 1.5, rule P6).</summary>
@@ -166,10 +170,13 @@ public static class BlockInfo
     /// The places' own shaped structure (half and quarter cubes, thin walls, beams, hung slopes, round columns): part of
     /// the building, so the walking grids take its whole cell as solid, while bodies collide with its real shape.
     /// </summary>
-    public static bool IsShaped(BlockType t) => t is >= BlockType.Half and <= BlockType.RoundIn;
+    public static bool IsShaped(BlockType t) => t is >= BlockType.Half and <= BlockType.RoundSlope;
 
     /// <summary>A round thing's rim piece: a full-height prism cut in plan (<see cref="Shapes.Plan"/>).</summary>
     public static bool IsPlanCut(BlockType t) => t is >= BlockType.Wedge and <= BlockType.RoundIn;
+
+    /// <summary>A round thing's rim piece of either kind: cut in plan, or cut by its profile as well (<see cref="BlockType.RoundSlope"/>).</summary>
+    public static bool IsRoundCut(BlockType t) => t is >= BlockType.Wedge and <= BlockType.RoundSlope;
 
     /// <summary>A slope hung upside down from the top of its cell: a chamfer or one of its corners.</summary>
     public static bool IsHung(BlockType t) => t is BlockType.Chamfer or BlockType.ChamferCorner or BlockType.ChamferInvCorner;
@@ -183,7 +190,7 @@ public static class BlockInfo
         BlockType.Partition => ShapeClass.Plate,
         BlockType.Ramp or BlockType.Chamfer => ShapeClass.Slope,
         BlockType.Corner or BlockType.InvCorner or BlockType.ChamferCorner or BlockType.ChamferInvCorner => ShapeClass.Corner,
-        BlockType.Column or BlockType.Pipe or >= BlockType.Wedge and <= BlockType.RoundIn => ShapeClass.Round,
+        BlockType.Column or BlockType.Pipe or >= BlockType.Wedge and <= BlockType.RoundSlope => ShapeClass.Round,
         BlockType.Pillar or BlockType.Rib or BlockType.Beam or BlockType.Lattice => ShapeClass.Pole,
         BlockType.Stair => ShapeClass.Stair,
         BlockType.Pane => ShapeClass.Window,
@@ -277,6 +284,9 @@ public sealed class BlockGrid : IBlockStructure
     /// <summary>How the place's faces are finished and how far the years have taken them (set when it spawns; null: by material alone).</summary>
     public PlaceLook? Look;
 
+    /// <summary>The place's round things as laid (<see cref="Round"/>): what a sloped course's pieces are cut by (none: drawn as cubes).</summary>
+    public IReadOnlyList<RoundBody>? Rounds;
+
     public BlockGrid(Int3 min, Int3 size)
     {
         Min = min;
@@ -289,7 +299,7 @@ public sealed class BlockGrid : IBlockStructure
 
     public BlockGrid Clone()
     {
-        var copy = new BlockGrid(Min, Size) { Look = Look };
+        var copy = new BlockGrid(Min, Size) { Look = Look, Rounds = Rounds };
         for (int i = 0; i < _chunks.Length; i++)
             if (_chunks[i] is { } c) copy._chunks[i] = (Block[])c.Clone();
         if (_under != null) copy._under = new Dictionary<Int3, Block>(_under);
