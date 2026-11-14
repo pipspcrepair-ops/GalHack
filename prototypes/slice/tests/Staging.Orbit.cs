@@ -34,6 +34,8 @@ public sealed partial class Staging
         "derelict" => DerelictView(),
         "landing" => LandingView(),
         "seam" => SeamView(),
+        "smoke-orbit" => SmokeOrbit(),
+        "smoke-ground" => SmokeGround(),
         "ascent" => ClimbView(),
         "rings" => RingsView(),
         "bodies" => BodiesView(),

@@ -327,6 +327,7 @@ public sealed partial class Vessel
         View = new StructureMesh { Name = "View", BeforeDraw = Hits.Flush, PowerSource = () => Powered };
         owner.AddChild(View);
         View.Setup(Structure, drawLater);
+        View.Fx.Airless = () => Zone is Slice.Orbit.OrbitZone;
         Fx = new VesselFx { Name = "Fx" };
         owner.AddChild(Fx);
         Fx.Setup(this);
