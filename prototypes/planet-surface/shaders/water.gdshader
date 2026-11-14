@@ -88,8 +88,9 @@ void fragment() {
 	} else {
 		// A river that has come down to the sea where the sea is drawn is the sea: one surface, drawn once.
 		if (below >= sea_mask && level < 0.05) discard;
-		// Shallow, and toward the sea the colour of the sea at its shore, so the two meet without a line.
-		depth = 0.25 * (1.0 - smoothstep(sea_mask - 2.0, sea_mask, below));
+		// Shallow, and over its last ten metres of fall to the sea (on the map) the colour of the sea at its shore,
+		// so the two meet without a line.
+		depth = 0.25 * (1.0 - smoothstep(sea_mask - 10.0, sea_mask, below));
 	}
 	vec2 p = wpos.xz;
 	float t = TIME;
