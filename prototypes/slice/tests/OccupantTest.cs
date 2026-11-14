@@ -48,6 +48,7 @@ public partial class OccupantTest : Node
             // -- --own: only the world's own kinds (the quick part).
             // -- --spawns: only placement by purpose (OccupantTest.Spawns).
             if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--spawns") >= 0) { PlacementChecks(); Finish(); return; }
+            if (Array.IndexOf(OS.GetCmdlineUserArgs(), "--unseen") >= 0) { Unseen(); Finish(); return; }
             bool own = Array.IndexOf(OS.GetCmdlineUserArgs(), "--own") >= 0, dark = Array.IndexOf(OS.GetCmdlineUserArgs(), "--dark") >= 0;
             if (!own && !dark && Array.IndexOf(OS.GetCmdlineUserArgs(), "--queued") < 0)
             {

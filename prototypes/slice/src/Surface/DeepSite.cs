@@ -257,7 +257,8 @@ public partial class DeepSite : Node3D
             if (c.RigInterval < 4 && _unseen.Contains(c)) c.RigInterval = 4;
             if (!_views.TryGetValue(c, out CreatureView view))
             {
-                if (d > FarDistance || clock.Elapsed.TotalMilliseconds > _allow || !CreatureView.Ready(c)) continue;
+                // One that can reach you is built at once, whatever the frame's budget (no unseen attacker).
+                if (d > FarDistance || !MustDraw(c, d) && (clock.Elapsed.TotalMilliseconds > _allow || !CreatureView.Ready(c))) continue;
                 double before = clock.Elapsed.TotalMilliseconds;
                 view = new CreatureView();
                 _creatures.AddChild(view);
@@ -267,7 +268,7 @@ public partial class DeepSite : Node3D
                 _buildMs += clock.Elapsed.TotalMilliseconds - before;
             }
             // Behind a wall from the eye it isn't drawn at all (it is looked at again every few frames).
-            bool visible = d < FarDistance && (d < 8f || !_unseen.Contains(c));
+            bool visible = d < FarDistance && (MustDraw(c, d) || !_unseen.Contains(c));
             if (view.Visible != visible) view.Visible = visible;
             if (visible && (c.RigInterval == 1 || c.RigPending == 0f)) view.Sync();
             else if (d > FarDistance * 1.5f) _gone.Add(c);
@@ -335,6 +336,11 @@ public partial class DeepSite : Node3D
 
     /// <summary>Worm masses drawn so far (tests).</summary>
     public int MassesDrawn => _massViews.Count;
+
+    /// <summary>Near you or mid-attack: its body is always built and drawn, never held back by a frame's budget or a wall's say-so (what hurts you is seen to).</summary>
+    public static bool MustDraw(Creature c, float distance) => distance < DrawNear || c.Attacking;
+
+    const float DrawNear = 14f;
 
     /// <summary>Whether a line from the eye reaches a creature living in solid space: cell by cell, half a metre at a time, up to a metre short of it (it lies against a wall).</summary>
     static bool Sees(Creature c, Vector3 eye)
