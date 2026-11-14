@@ -54,10 +54,14 @@ public static class DecoGodot
     public static Color C(DecoRgb c) => new(c.R, c.G, c.B);
 
     /// <summary>An ArrayMesh with one surface per deco surface that has triangles.</summary>
-    public static ArrayMesh ToMesh(DecoMeshData data, DecoMaterials materials = null)
+    public static ArrayMesh ToMesh(DecoMeshData data, DecoMaterials materials = null) => ToMesh(Arrays(data), materials);
+
+    /// <summary>A deco surface as the engine takes it (worker-safe: plain arrays); null where it has no triangles.</summary>
+    public sealed record Surface(Vector3[] Vertices, Vector3[] Normals, Color[] Colors, Vector2[] Uvs, Vector2[] Extents);
+
+    public static Surface[] Arrays(DecoMeshData data)
     {
-        materials ??= DecoMaterials.Shared;
-        var mesh = new ArrayMesh();
+        var surfaces = new Surface[data.Surfaces.Length];
         for (int s = 0; s < data.Surfaces.Length; s++)
         {
             DecoSurfaceData buf = data.Surfaces[s];
@@ -84,13 +88,25 @@ public static class DecoGodot
                     extents[i + k] = new Vector2(f.Z, f.W);
                 }
             }
+            surfaces[s] = new Surface(verts, normals, colors, uvs, extents);
+        }
+        return surfaces;
+    }
+
+    public static ArrayMesh ToMesh(Surface[] surfaces, DecoMaterials materials)
+    {
+        materials ??= DecoMaterials.Shared;
+        var mesh = new ArrayMesh();
+        for (int s = 0; s < surfaces.Length; s++)
+        {
+            if (surfaces[s] is not { } sf) continue;
             var arrays = new Godot.Collections.Array();
             arrays.Resize((int)Mesh.ArrayType.Max);
-            arrays[(int)Mesh.ArrayType.Vertex] = verts;
-            arrays[(int)Mesh.ArrayType.Normal] = normals;
-            arrays[(int)Mesh.ArrayType.Color] = colors;
-            arrays[(int)Mesh.ArrayType.TexUV] = uvs;
-            arrays[(int)Mesh.ArrayType.TexUV2] = extents;
+            arrays[(int)Mesh.ArrayType.Vertex] = sf.Vertices;
+            arrays[(int)Mesh.ArrayType.Normal] = sf.Normals;
+            arrays[(int)Mesh.ArrayType.Color] = sf.Colors;
+            arrays[(int)Mesh.ArrayType.TexUV] = sf.Uvs;
+            arrays[(int)Mesh.ArrayType.TexUV2] = sf.Extents;
             mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
             mesh.SurfaceSetMaterial(mesh.GetSurfaceCount() - 1, materials.BySurface[s]);
         }
@@ -128,15 +144,35 @@ public sealed class DecoMeshCache
 
     public int Count => _meshes.Count;
 
+    /// <summary>Looks a worker has worked out ahead (<see cref="Prepare"/>): their data, and their arrays until the mesh is made.</summary>
+    readonly System.Collections.Concurrent.ConcurrentDictionary<DecoLook, (DecoMeshData Data, DecoGodot.Surface[] Arrays)> _ready = new();
+
+    /// <summary>
+    /// A look's mesh and its arrays worked out now (worker-safe), so its first use on the main thread only hands them to the
+    /// engine: a big piece's arrays made there held a place's dressing step for 38 ms.
+    /// </summary>
+    public void Prepare(DecoLook look)
+    {
+        if (_ready.ContainsKey(look)) return;
+        DecoMeshData data = Forge.Mesh(look);
+        _ready.TryAdd(look, (data, DecoGodot.Arrays(data)));
+    }
+
+    /// <summary>A look's mesh data: as prepared, or from the forge.</summary>
+    public DecoMeshData Data(DecoLook look) => _ready.TryGetValue(look, out var ready) ? ready.Data : Forge.Mesh(look);
+
     public ArrayMesh Mesh(DecoLook look)
     {
-        if (!_meshes.TryGetValue(look, out ArrayMesh m)) _meshes[look] = m = DecoGodot.ToMesh(Forge.Mesh(look), Materials);
+        if (_meshes.TryGetValue(look, out ArrayMesh m)) return m;
+        DecoGodot.Surface[] arrays = _ready.TryGetValue(look, out var ready) && ready.Arrays != null ? ready.Arrays : DecoGodot.Arrays(Data(look));
+        if (ready.Data != null) _ready[look] = (ready.Data, null); // handed over: only the data is kept
+        _meshes[look] = m = DecoGodot.ToMesh(arrays, Materials);
         return m;
     }
 
     public List<(BoxShape3D Shape, Transform3D At)> Shapes(DecoLook look)
     {
-        if (!_shapes.TryGetValue(look, out var s)) _shapes[look] = s = DecoGodot.ToShapes(Forge.Mesh(look));
+        if (!_shapes.TryGetValue(look, out var s)) _shapes[look] = s = DecoGodot.ToShapes(Data(look));
         return s;
     }
 
@@ -144,5 +180,6 @@ public sealed class DecoMeshCache
     {
         _meshes.Clear();
         _shapes.Clear();
+        _ready.Clear();
     }
 }

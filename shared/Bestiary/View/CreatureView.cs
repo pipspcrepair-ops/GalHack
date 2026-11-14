@@ -116,8 +116,18 @@ public partial class CreatureView : Node3D
     /// <summary>Each species' body meshes, made once: its shadowed, unshadowed and blur pieces.</summary>
     static readonly ConditionalWeakTable<Species, List<(ArrayMesh Mesh, bool Shadow, bool Blur)>> Bodies = new();
 
-    /// <summary>The meshes drawn: the skinned body's few, or (not merged) one a piece.</summary>
-    readonly List<MeshInstance3D> _parts = new();
+    /// <summary>The meshes drawn: the skinned body's few, or (not merged) one a piece; and those of them that cast shadows.</summary>
+    readonly List<MeshInstance3D> _parts = new(), _casters = new();
+    bool _casting = true;
+
+    /// <summary>Casts its shadow only out to where the shadow is worth drawing: 60 m, and 40 m more for each metre of it (a critter's near, a giant's far).</summary>
+    public void ShadowsAt(float distance)
+    {
+        bool cast = distance < 60f + 40f * Creature.Species.Body.Size;
+        if (cast == _casting) return;
+        _casting = cast;
+        foreach (MeshInstance3D m in _casters) m.CastShadow = cast ? GeometryInstance3D.ShadowCastingSetting.On : GeometryInstance3D.ShadowCastingSetting.Off;
+    }
     Skeleton3D _skeleton;
     Dictionary<string, BoneAttachment3D> _attached;
     MultiMeshInstance3D _swarm;
@@ -192,6 +202,7 @@ public partial class CreatureView : Node3D
                 _skeleton.AddChild(mi);
                 mi.Skeleton = new NodePath("..");
                 _parts.Add(mi);
+                if (shadow) _casters.Add(mi);
             }
         }
         else
@@ -209,6 +220,7 @@ public partial class CreatureView : Node3D
                 };
                 AddChild(mi);
                 _parts.Add(mi);
+                if (piece.Shadow) _casters.Add(mi);
             }
             if (c.Species.Flight == FlightKind.Hover)
             {
@@ -385,6 +397,21 @@ public partial class WildlifeView : Node3D
     public float NearDistance = 60f, MidDistance = 120f, FarDistance = 220f;
 
     /// <summary>
+    /// The harmless (<see cref="Importance.Ambient"/>) are drawn to here, m, and of those near and in sight only the nearest
+    /// <see cref="AmbientBudget"/> are stepped: a land's grazers and scavengers cost the frame what a few do. A threat past the
+    /// far distance sleeps where it is (<see cref="ThreatsSleep"/>). Left as they are, every creature is about and drawn as before.
+    /// </summary>
+    public float AmbientDistance = float.PositiveInfinity;
+    public int AmbientBudget = int.MaxValue;
+    public bool ThreatsSleep;
+    /// <summary>Within this of the eye one is about whichever way you look (you hear it), m.</summary>
+    const float AmbientAround = 20f;
+    /// <summary>Whether a point (the sim's frame) is in the eye's view; left out, everything is.</summary>
+    public System.Func<Vector3, bool> InView;
+    readonly List<(Creature C, float D)> _ambient = new();
+    readonly HashSet<Creature> _awake = new();
+
+    /// <summary>
     /// Far off, how far up a creature's body is drawn from where the sim has it, m: the game's far land
     /// is a coarser mesh than the sim's ground, and a body stands on what is drawn under it, never over
     /// or in it. Left out, or nearer than <see cref="LiftFrom"/>, nothing moves.
@@ -407,6 +434,9 @@ public partial class WildlifeView : Node3D
     }
 
     public int ViewCount => _views.Count;
+
+    /// <summary>Bodies drawn at the last sync (measurements).</summary>
+    public int DrawnCount { get; private set; }
 
     /// <summary>Whether a creature's body is drawn now (tests).</summary>
     public bool Drawn(Creature c) => _views.TryGetValue(c, out CreatureView v) && v.Visible;
@@ -462,13 +492,32 @@ public partial class WildlifeView : Node3D
         double now = Time.GetTicksMsec() / 1000.0;
         float dt = _lastSync < 0 ? 0f : (float)Math.Min(now - _lastSync, 0.1);
         _lastSync = now;
+        DrawnCount = 0;
         foreach (Creature c in _sim.Creatures)
         {
             if (c.Removed) continue;
+            float d = WildSim.Flat(c.Position - camera).Length();
+            Importance rank = c.Species.Importance;
+            float far = c.Species.Plan == BodyPlan.Giant ? FarDistance * 2.5f : FarDistance;
+            if (rank == Importance.Ambient)
+            {
+                // The harmless, near and in sight: the nearest of them (last frame's pick) are stepped and drawn, the rest in
+                // sight dissolve away; out of sight they hold still as they are. Past their distance none is drawn.
+                bool candidate = d < AmbientDistance && (d < AmbientAround || InView?.Invoke(c.Position + Vector3.Up) != false);
+                if (candidate) _ambient.Add((c, d));
+                bool awake = Stirred(c) || candidate && _awake.Contains(c);
+                c.Dormant = !awake;
+                far = awake || !candidate ? MathF.Min(far, AmbientDistance) : 0f;
+            }
+            // A threat sleeps past where it is drawn, unless something has it up; people are always about.
+            else c.Dormant = ThreatsSleep && rank == Importance.Threat && d > far && !Stirred(c);
+            // Past the near ring nothing casts a line through the world's collision for it; the harmless never do.
+            c.NoRays = rank == Importance.Ambient || d > NearDistance;
             bool fresh = false;
             if (!_views.TryGetValue(c, out CreatureView view))
             {
-                if (built >= MostNew || !CreatureView.Ready(c)) continue;
+                c.Shown = false;
+                if (d >= far || built >= MostNew || !CreatureView.Ready(c)) continue;
                 built++;
                 fresh = true;
                 view = new CreatureView();
@@ -477,8 +526,6 @@ public partial class WildlifeView : Node3D
                 _views[c] = view;
             }
 
-            float d = WildSim.Flat(c.Position - camera).Length();
-            float far = c.Species.Plan == BodyPlan.Giant ? FarDistance * 2.5f : FarDistance;
             c.RigInterval = d < NearDistance ? 1 : d < MidDistance ? 2 : d < far ? 4 : 12;
             c.ThinkScale = d < MidDistance ? 1f : d < far ? 2f : 3f;
             bool visible = d < far;
@@ -498,6 +545,8 @@ public partial class WildlifeView : Node3D
             }
             if (fresh ? visible : view.Visible != visible) Shown?.Invoke(c, d, visible, visible ? shows : Fader != null ? was : 1f);
             if (view.Visible != visible) view.Visible = visible;
+            c.Shown = visible;
+            if (visible) DrawnCount++;
             if (visible && (c.RigInterval == 1 || c.RigPending == 0f))
             {
                 view.Sync();
@@ -505,12 +554,19 @@ public partial class WildlifeView : Node3D
                 if (MathF.Abs(view.Position.Y - lift) > 0.01f) view.Position = new Vector3(0f, lift, 0f);
             }
             view.Listen(d);
+            view.ShadowsAt(d);
             if (Audio != null && d < StepHeard && c.Rig.Steps != c.StepsHeard)
             {
                 c.StepsHeard = c.Rig.Steps;
                 if (Heft.Mass(c.Species) >= HeavyStep) Audio.Footfall(c);
             }
         }
+
+        // Next frame's harmless at large: the nearest few of those near and in sight.
+        _awake.Clear();
+        _ambient.Sort(static (a, b) => a.D.CompareTo(b.D));
+        for (int i = 0; i < _ambient.Count && i < AmbientBudget; i++) _awake.Add(_ambient[i].C);
+        _ambient.Clear();
 
         _gone.Clear();
         foreach (var (c, v) in _views)
@@ -521,4 +577,7 @@ public partial class WildlifeView : Node3D
             }
         foreach (Creature c in _gone) _views.Remove(c);
     }
+
+    /// <summary>Stirred up (fighting, wary, hurt lately, held, thrown): awake and drawn wherever it is.</summary>
+    bool Stirred(Creature c) => c.Attacking || c.Alert > 0f || c.HeldBy != null || c.Holding != null || c.Thrown || c.ProvokedBy != null && _sim.Time - c.ProvokedAt < 10f;
 }

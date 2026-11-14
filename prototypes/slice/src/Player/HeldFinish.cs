@@ -141,9 +141,9 @@ void fragment() {
             case SphereMesh s: shape = 1; half = new Vector3(s.Radius, s.Height * 0.5f, s.Radius); break;
         }
         var m = new ShaderMaterial { Shader = _emitterShader };
-        m.SetShaderParameter("tint", tint);
-        m.SetShaderParameter("half_size", half);
-        m.SetShaderParameter("shape", shape);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("tint"), tint);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("half_size"), half);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("shape"), shape);
         return m;
     }
 
@@ -167,13 +167,13 @@ void fragment() {
             case TorusMesh t: shape = 1; half = new Vector3(t.OuterRadius, (t.OuterRadius - t.InnerRadius) * 0.5f, t.OuterRadius); break;
         }
         var m = new ShaderMaterial { Shader = _shader };
-        m.SetShaderParameter("base_color", baseColor);
-        m.SetShaderParameter("wear", wear);
-        m.SetShaderParameter("base_rough", roughness);
-        m.SetShaderParameter("base_metal", metallic);
-        m.SetShaderParameter("half_size", half);
-        m.SetShaderParameter("shape", shape);
-        m.SetShaderParameter("seed", seed);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("base_color"), baseColor);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("wear"), wear);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("base_rough"), roughness);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("base_metal"), metallic);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("half_size"), half);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("shape"), shape);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("seed"), seed);
         return m;
     }
 }

@@ -146,25 +146,25 @@ public partial class SurfaceWeather : Node3D, IWeatherScene
             node.Visible = !ShaftsHidden;
             node.GlobalTransform = new Transform3D(Basis.Identity.Scaled(new Vector3(bound * 1.2f, height * 1.3f, bound * 1.2f)), new Vector3(at.X + lean.X * 0.5f, baseY + height * 0.6f, at.Z + lean.Y * 0.5f));
             // The mesh stands taller than the volume, so a view ray can never skirt its rim and still cross the veil.
-            draw.SetShaderParameter("axis_base", new Vector3(at.X, baseY, at.Z));
-            draw.SetShaderParameter("shaft_height", height);
-            draw.SetShaderParameter("reach", reach);
-            draw.SetShaderParameter("bound", bound);
-            draw.SetShaderParameter("lean", lean);
-            draw.SetShaderParameter("drift", wind2 * 0.04f);
+            draw.SetShaderParameter(PlanetSurface.Fx.Names.Of("axis_base"), new Vector3(at.X, baseY, at.Z));
+            draw.SetShaderParameter(PlanetSurface.Fx.Names.Of("shaft_height"), height);
+            draw.SetShaderParameter(PlanetSurface.Fx.Names.Of("reach"), reach);
+            draw.SetShaderParameter(PlanetSurface.Fx.Names.Of("bound"), bound);
+            draw.SetShaderParameter(PlanetSurface.Fx.Names.Of("lean"), lean);
+            draw.SetShaderParameter(PlanetSurface.Fx.Names.Of("drift"), wind2 * 0.04f);
             Zone.Sky.ShareCloudBase(draw);
-            draw.SetShaderParameter("towers", _towers);
-            draw.SetShaderParameter("tower_n", Mathf.Min(MostTowers, 4));
-            draw.SetShaderParameter("tower_wall", _funnels);
-            draw.SetShaderParameter("skirt_amount", Mathf.Clamp((c.Rain - 0.5f) * 2f, 0f, 1f) * strength);
-            draw.SetShaderParameter("seed", (cell.Id * 0.6180339f) % 1f);
+            draw.SetShaderParameter(PlanetSurface.Fx.Names.Of("towers"), _towers);
+            draw.SetShaderParameter(PlanetSurface.Fx.Names.Of("tower_n"), Mathf.Min(MostTowers, 4));
+            draw.SetShaderParameter(PlanetSurface.Fx.Names.Of("tower_wall"), _funnels);
+            draw.SetShaderParameter(PlanetSurface.Fx.Names.Of("skirt_amount"), Mathf.Clamp((c.Rain - 0.5f) * 2f, 0f, 1f) * strength);
+            draw.SetShaderParameter(PlanetSurface.Fx.Names.Of("seed"), (cell.Id * 0.6180339f) % 1f);
             // Standing in it there's nothing to see of it: the falling rain has taken over.
             float away = new Vector2(camera.X - at.X, camera.Z - at.Z).Length();
-            draw.SetShaderParameter("amount", 0.9f * strength * Mathf.Clamp((c.Rain + 0.25f) * 1.2f, 0f, 1f) * Mathf.Clamp((away - reach * 0.9f) / (reach * 0.4f), 0f, 1f));
-            draw.SetShaderParameter("to_sun", ToSun);
-            draw.SetShaderParameter("sun_glow", new Color(1f, 0.82f, 0.55f).Lerp(new Color(1f, 1f, 1f), Mathf.Clamp(ToSun.Y * 3f, 0f, 1f)));
-            draw.SetShaderParameter("sun_amount", Mathf.Clamp(ToSun.Y * 6f + 0.4f, 0f, 1f) * (0.3f + 0.7f * Zone.Sky.Daylight));
-            draw.SetShaderParameter("tint", new Color(0.3f, 0.33f, 0.38f) * (0.12f + 0.88f * Zone.Sky.Daylight));
+            draw.SetShaderParameter(PlanetSurface.Fx.Names.Of("amount"), 0.9f * strength * Mathf.Clamp((c.Rain + 0.25f) * 1.2f, 0f, 1f) * Mathf.Clamp((away - reach * 0.9f) / (reach * 0.4f), 0f, 1f));
+            draw.SetShaderParameter(PlanetSurface.Fx.Names.Of("to_sun"), ToSun);
+            draw.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_glow"), new Color(1f, 0.82f, 0.55f).Lerp(new Color(1f, 1f, 1f), Mathf.Clamp(ToSun.Y * 3f, 0f, 1f)));
+            draw.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_amount"), Mathf.Clamp(ToSun.Y * 6f + 0.4f, 0f, 1f) * (0.3f + 0.7f * Zone.Sky.Daylight));
+            draw.SetShaderParameter(PlanetSurface.Fx.Names.Of("tint"), new Color(0.3f, 0.33f, 0.38f) * (0.12f + 0.88f * Zone.Sky.Daylight));
             count++;
         }
         Zone.Sky.SetCells(_towers, count, _funnels);

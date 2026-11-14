@@ -83,6 +83,9 @@ public sealed class WildSim
     /// <summary>Path searches allowed per step, so a stampede can't stall a frame.</summary>
     public int PathBudgetPerStep = 6;
     int _pathBudget;
+
+    /// <summary>Creatures the last step moved (the dormant and removed left out), and path searches taken so far (measurements).</summary>
+    public int Stepped, Paths;
     int _nextId;
 
     /// <summary>
@@ -562,10 +565,12 @@ public sealed class WildSim
         if (Gobs.Count > 0) Spitting.Step(this, dt);
 
         long t0 = Profile ? Stopwatch.GetTimestamp() : 0, thinkTicks = 0, moveTicks = 0, rigTicks = 0;
+        Stepped = 0;
         for (int i = 0; i < Creatures.Count; i++)
         {
             Creature c = Creatures[i];
             if (c.Removed || c.Dormant && !c.Dead) continue;
+            Stepped++;
             c.Age += dt;
             c.HurtFlash = MathF.Max(0f, c.HurtFlash - dt * 4f);
             if (c.HeldBy != null && (c.HeldBy.Removed || c.HeldBy.Dead || c.HeldBy.Holding != c.AsTarget)) c.HeldBy = null;
@@ -681,6 +686,7 @@ public sealed class WildSim
     {
         if (_pathBudget <= 0) return false;
         _pathBudget--;
+        Paths++;
         return true;
     }
 

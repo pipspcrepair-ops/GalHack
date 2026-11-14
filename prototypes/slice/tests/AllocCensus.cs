@@ -15,6 +15,9 @@ public sealed class AllocCensus : EventListener
     int _samples;
     public bool On;
 
+    /// <summary>Only the main thread's allocations counted.</summary>
+    public bool MainOnly;
+
     /// <summary>The OS id of the thread that made this (the main thread), to tell its allocations from the workers'.</summary>
     public readonly long Main = GetCurrentThreadId();
 
@@ -30,6 +33,7 @@ public sealed class AllocCensus : EventListener
     protected override void OnEventWritten(EventWrittenEventArgs e)
     {
         if (!On || e.EventName == null || !e.EventName.StartsWith("GCAllocationTick")) return;
+        if (MainOnly && e.OSThreadId != Main) return;
         int i = e.PayloadNames?.IndexOf("TypeName") ?? -1;
         string type = (e.OSThreadId == Main ? "main " : "") + (i >= 0 ? e.Payload?[i] as string ?? "?" : "?");
         lock (_types)

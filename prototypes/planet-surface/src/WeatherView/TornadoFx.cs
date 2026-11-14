@@ -41,7 +41,7 @@ public partial class TornadoFx : Node3D
         AddChild(_innerMesh = new MeshInstance3D { Mesh = Lathe(height, 0.62f), MaterialOverride = _inner, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
 
         _wallMaterial = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/wallcloud.gdshader") };
-        _wallMaterial.SetShaderParameter("noise_tex", Fx.CloudNoise);
+        _wallMaterial.SetShaderParameter(PlanetSurface.Fx.Names.Of("noise_tex"), Fx.CloudNoise);
         AddChild(_wall = new MeshInstance3D
         {
             Name = "WallCloud", Mesh = new SphereMesh { Radius = 1f, Height = 2f, RadialSegments = 32, Rings = 16 }, MaterialOverride = _wallMaterial,
@@ -52,14 +52,14 @@ public partial class TornadoFx : Node3D
         _debrisProcess = new ShaderMaterial { Shader = orbit };
         Set(_debrisProcess, ("radius_min", 3f), ("radius_max", 14f), ("height_max", 45f), ("spin", 2.6f), ("rise", 0.09f),
             ("size_min", 0.25f), ("size_max", 1.1f), ("flare", 0.9f));
-        _debrisProcess.SetShaderParameter("tint", new Color(0.24f, 0.2f, 0.16f, 1f));
+        _debrisProcess.SetShaderParameter(PlanetSurface.Fx.Names.Of("tint"), new Color(0.24f, 0.2f, 0.16f, 1f));
         _debris = Particles(DebrisCount, _debrisProcess, new BoxMesh { Size = new Vector3(1f, 0.25f, 0.6f) },
             new StandardMaterial3D { VertexColorUseAsAlbedo = true, Roughness = 0.9f, Transparency = BaseMaterial3D.TransparencyEnum.Alpha });
 
         _dustProcess = new ShaderMaterial { Shader = orbit };
         Set(_dustProcess, ("radius_min", 5f), ("radius_max", 26f), ("height_max", 16f), ("spin", 1.6f), ("rise", 0.12f),
             ("size_min", 5f), ("size_max", 11f), ("flare", 0.5f));
-        _dustProcess.SetShaderParameter("tint", new Color(0.36f, 0.3f, 0.24f, 0.6f));
+        _dustProcess.SetShaderParameter(PlanetSurface.Fx.Names.Of("tint"), new Color(0.36f, 0.3f, 0.24f, 0.6f));
         _dust = Particles(DustCount, _dustProcess, new QuadMesh { Size = Vector2.One },
             new StandardMaterial3D
             {
@@ -72,13 +72,13 @@ public partial class TornadoFx : Node3D
     ShaderMaterial FunnelMaterial(Shader shader, float spin, float opacity, Color low, Color high)
     {
         var m = new ShaderMaterial { Shader = shader };
-        m.SetShaderParameter("noise_tex", Fx.CloudNoise);
-        m.SetShaderParameter("spin", spin);
-        m.SetShaderParameter("opacity", opacity);
-        m.SetShaderParameter("color_low", low);
-        m.SetShaderParameter("color_high", high);
-        m.SetShaderParameter("to_sun", Fx.ToSun);
-        m.SetShaderParameter("height", Rules.VisualHeight);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("noise_tex"), Fx.CloudNoise);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("spin"), spin);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("opacity"), opacity);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("color_low"), low);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("color_high"), high);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("to_sun"), Fx.ToSun);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("height"), Rules.VisualHeight);
         return m;
     }
 
@@ -164,30 +164,30 @@ public partial class TornadoFx : Node3D
             TornadoKind.DustDevil => (soil * 0.95f, soil.Lerp(Colors.White, 0.15f), soil * 0.8f, soil),
             _ => (new Color("4a3e32"), new Color("6a6e66"), new Color("261c14"), new Color("3c3e3a")),
         };
-        _outer.SetShaderParameter("color_low", looks.Item1);
-        _outer.SetShaderParameter("color_high", looks.Item2);
-        _inner.SetShaderParameter("color_low", looks.Item3);
-        _inner.SetShaderParameter("color_high", looks.Item4);
+        _outer.SetShaderParameter(PlanetSurface.Fx.Names.Of("color_low"), looks.Item1);
+        _outer.SetShaderParameter(PlanetSurface.Fx.Names.Of("color_high"), looks.Item2);
+        _inner.SetShaderParameter(PlanetSurface.Fx.Names.Of("color_low"), looks.Item3);
+        _inner.SetShaderParameter(PlanetSurface.Fx.Names.Of("color_high"), looks.Item4);
         foreach (ShaderMaterial m in new[] { _outer, _inner })
         {
-            m.SetShaderParameter("s_bend", _sBend = kind == TornadoKind.Tornado ? 0.4f : kind == TornadoKind.Waterspout ? 1.1f : 0.7f);
-            m.SetShaderParameter("top_fade", kind == TornadoKind.DustDevil ? 1f : 0f);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("s_bend"), _sBend = kind == TornadoKind.Tornado ? 0.4f : kind == TornadoKind.Waterspout ? 1.1f : 0.7f);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("top_fade"), kind == TornadoKind.DustDevil ? 1f : 0f);
         }
         switch (kind)
         {
             case TornadoKind.Waterspout:
                 // The spray ring on the water at its foot.
                 Set(_dustProcess, ("radius_min", 5f), ("radius_max", 24f), ("height_max", 7f), ("spin", 1.9f), ("rise", 0.2f), ("size_min", 3f), ("size_max", 7f), ("flare", 0.25f));
-                _dustProcess.SetShaderParameter("tint", new Color(0.92f, 0.95f, 0.97f, 0.55f));
+                _dustProcess.SetShaderParameter(PlanetSurface.Fx.Names.Of("tint"), new Color(0.92f, 0.95f, 0.97f, 0.55f));
                 break;
             case TornadoKind.DustDevil:
                 // The whirling skirt of lifted soil at its foot, dense and low.
                 Set(_dustProcess, ("radius_min", 1.2f), ("radius_max", 9f), ("height_max", 9f), ("spin", 2.6f), ("rise", 0.18f), ("size_min", 1.6f), ("size_max", 4.5f), ("flare", 0.8f));
-                _dustProcess.SetShaderParameter("tint", new Color(soil.R, soil.G, soil.B, 0.7f));
+                _dustProcess.SetShaderParameter(PlanetSurface.Fx.Names.Of("tint"), new Color(soil.R, soil.G, soil.B, 0.7f));
                 break;
             default:
                 Set(_dustProcess, ("radius_min", 5f), ("radius_max", 26f), ("height_max", 16f), ("spin", 1.6f), ("rise", 0.12f), ("size_min", 5f), ("size_max", 11f), ("flare", 0.5f));
-                _dustProcess.SetShaderParameter("tint", new Color(0.36f, 0.3f, 0.24f, 0.6f));
+                _dustProcess.SetShaderParameter(PlanetSurface.Fx.Names.Of("tint"), new Color(0.36f, 0.3f, 0.24f, 0.6f));
                 break;
         }
     }
@@ -228,21 +228,21 @@ public partial class TornadoFx : Node3D
         });
         foreach (ShaderMaterial m in new[] { _outer, _inner })
         {
-            m.SetShaderParameter("shape", shape);
-            m.SetShaderParameter("clean", clean * (1f - decay));
-            m.SetShaderParameter("seed", seed);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("shape"), shape);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("clean"), clean * (1f - decay));
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("seed"), seed);
             (_seed, _bow, _decay) = (seed, bow, decay);
-            m.SetShaderParameter("decay", decay);
-            m.SetShaderParameter("bow", bow);
-            m.SetShaderParameter("formation", Mathf.Lerp(0.15f, 1f, formation));
-            m.SetShaderParameter("lean", _lean);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("decay"), decay);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("bow"), bow);
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("formation"), Mathf.Lerp(0.15f, 1f, formation));
+            m.SetShaderParameter(PlanetSurface.Fx.Names.Of("lean"), _lean);
         }
-        _outer.SetShaderParameter("opacity", 0.85f * (t.Touchdown ? strength : 0.6f));
-        _inner.SetShaderParameter("opacity", 0.95f * (t.Touchdown ? strength : 0.5f * formation));
+        _outer.SetShaderParameter(PlanetSurface.Fx.Names.Of("opacity"), 0.85f * (t.Touchdown ? strength : 0.6f));
+        _inner.SetShaderParameter(PlanetSurface.Fx.Names.Of("opacity"), 0.95f * (t.Touchdown ? strength : 0.5f * formation));
         _debris.AmountRatio = t.Touchdown && _kind == TornadoKind.Tornado ? strength : 0f;
         _dust.AmountRatio = t.Touchdown ? strength : 0f;
-        _debrisProcess.SetShaderParameter("strength", strength);
-        _dustProcess.SetShaderParameter("strength", strength);
+        _debrisProcess.SetShaderParameter(PlanetSurface.Fx.Names.Of("strength"), strength);
+        _dustProcess.SetShaderParameter(PlanetSurface.Fx.Names.Of("strength"), strength);
     }
 
     /// <summary>

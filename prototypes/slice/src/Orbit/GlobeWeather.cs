@@ -96,18 +96,18 @@ public sealed class GlobeWeather
     public void Bind(ShaderMaterial sheet, Color cloudColor)
     {
         _sheet = sheet;
-        sheet.SetShaderParameter("cloud_color", cloudColor);
+        sheet.SetShaderParameter(PlanetSurface.Fx.Names.Of("cloud_color"), cloudColor);
         Swap();
-        sheet.SetShaderParameter("weather_blend", 1f);
-        sheet.SetShaderParameter("live", 1f);
+        sheet.SetShaderParameter(PlanetSurface.Fx.Names.Of("weather_blend"), 1f);
+        sheet.SetShaderParameter(PlanetSurface.Fx.Names.Of("live"), 1f);
     }
 
     void Swap()
     {
-        _sheet?.SetShaderParameter("weather_was", _cloudTexture[1 - _newest]);
-        _sheet?.SetShaderParameter("weather_now", _cloudTexture[_newest]);
-        _sheet?.SetShaderParameter("haze_was", _hazeTexture[1 - _newest]);
-        _sheet?.SetShaderParameter("haze_now", _hazeTexture[_newest]);
+        _sheet?.SetShaderParameter(PlanetSurface.Fx.Names.Of("weather_was"), _cloudTexture[1 - _newest]);
+        _sheet?.SetShaderParameter(PlanetSurface.Fx.Names.Of("weather_now"), _cloudTexture[_newest]);
+        _sheet?.SetShaderParameter(PlanetSurface.Fx.Names.Of("haze_was"), _hazeTexture[1 - _newest]);
+        _sheet?.SetShaderParameter(PlanetSurface.Fx.Names.Of("haze_now"), _hazeTexture[_newest]);
     }
 
     /// <summary>
@@ -123,8 +123,8 @@ public sealed class GlobeWeather
         if (_sheet != null)
         {
             sky.ShareCloudBase(_sheet);
-            _sheet.SetShaderParameter("dust_color", dust);
-            _sheet.SetShaderParameter("clock", (float)_clock);
+            _sheet.SetShaderParameter(PlanetSurface.Fx.Names.Of("dust_color"), dust);
+            _sheet.SetShaderParameter(PlanetSurface.Fx.Names.Of("clock"), (float)_clock);
         }
         if (sim != null)
         {
@@ -135,7 +135,7 @@ public sealed class GlobeWeather
         if (_sheet != null)
         {
             float blend = (float)Math.Clamp((_clock - _lastDone) / Math.Max(Period, 0.1), 0.0, 1.0);
-            _sheet.SetShaderParameter("weather_blend", Passes < 2 ? 1f : blend);
+            _sheet.SetShaderParameter(PlanetSurface.Fx.Names.Of("weather_blend"), Passes < 2 ? 1f : blend);
         }
         WorstFrameMs = Math.Max(WorstFrameMs, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
     }
@@ -236,7 +236,7 @@ public sealed class GlobeWeather
             _strikes[_strikeAt] = new Vector4(Wrap(e.Position.X, MapSize.X), Wrap(e.Position.Z, MapSize.Y), (float)_clock, 1f);
             _strikeAt = (_strikeAt + 1) % _strikes.Length;
         }
-        _sheet?.SetShaderParameter("strikes", _strikes);
+        _sheet?.SetShaderParameter(PlanetSurface.Fx.Names.Of("strikes"), _strikes);
     }
 
     // ---- What the sky over a place shows -------------------------------------------------------

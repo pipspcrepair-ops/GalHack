@@ -58,7 +58,7 @@ public partial class Visor : CanvasLayer
         Layer = 1;
         _glass = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/visor_glass.gdshader") };
         // No straight reflection streaks: across the sky a straight line reads as a seam.
-        _glass.SetShaderParameter("streaks", 0f);
+        _glass.SetShaderParameter(PlanetSurface.Fx.Names.Of("streaks"), 0f);
         var glass = new ColorRect { Name = "Glass", MouseFilter = Control.MouseFilterEnum.Ignore, Material = _glass };
         glass.SetAnchorsPreset(Control.LayoutPreset.FullRect);
         AddChild(glass);
@@ -128,9 +128,9 @@ public partial class Visor : CanvasLayer
             _frost = Mathf.MoveToward(_frost, (suit.Last.Warnings & Alert.Cold) != 0 ? 0.7f : 0f, dt * 0.2f);
         }
         if (PinnedGlass is var (pf, ph)) { _frost = pf; _harm = ph; }
-        _glass.SetShaderParameter("harm", _harm);
-        _glass.SetShaderParameter("frost", _frost);
-        _glass.SetShaderParameter("aspect", _hud.Size.X / Mathf.Max(1, _hud.Size.Y));
+        _glass.SetShaderParameter(PlanetSurface.Fx.Names.Of("harm"), _harm);
+        _glass.SetShaderParameter(PlanetSurface.Fx.Names.Of("frost"), _frost);
+        _glass.SetShaderParameter(PlanetSurface.Fx.Names.Of("aspect"), _hud.Size.X / Mathf.Max(1, _hud.Size.Y));
         _lines.RemoveAll(l => l.until < _time);
         _tracers.RemoveAll(t => t.until < _time);
         _xp.RemoveAll(x => x.until < _time);

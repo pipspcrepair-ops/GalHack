@@ -19,6 +19,7 @@ namespace PlanetSurface.Fx;
 public static class Fade
 {
     const string Band = "fade_band";
+    static readonly StringName BandName = Band; // set on every fading geometry every frame: made once
 
     static readonly Dictionary<Material, Material> _copies = new();
     static readonly Dictionary<string, Shader> _shaders = new(); // by code: places make their own shaders of the same code
@@ -63,7 +64,7 @@ public static class Fade
             }
             _own[id] = (over, surfaces);
         }
-        g.SetInstanceShaderParameter(Band, new Vector2(from, to));
+        g.SetInstanceShaderParameter(BandName, new Vector2(from, to));
     }
 
     static void ClearOne(GeometryInstance3D g)
@@ -72,7 +73,7 @@ public static class Fade
         if (own.Override != null) g.MaterialOverride = own.Override;
         if (own.Surfaces != null && g is MeshInstance3D mi)
             for (int i = 0; i < own.Surfaces.Length && i < mi.GetSurfaceOverrideMaterialCount(); i++) mi.SetSurfaceOverrideMaterial(i, own.Surfaces[i]);
-        g.SetInstanceShaderParameter(Band, new Vector2(0f, 1f));
+        g.SetInstanceShaderParameter(BandName, new Vector2(0f, 1f));
     }
 
     /// <summary>A node is going away: forgets what it had (its materials go with it).</summary>
@@ -82,11 +83,32 @@ public static class Fade
         foreach (Node child in node.GetChildren()) Forget(child);
     }
 
-    /// <summary>Makes the copies of these materials now (while loading), so no first fade makes a shader in play.</summary>
-    public static void Warm(IEnumerable<Material> materials)
+    /// <summary>
+    /// Makes the copies of these materials now (while loading), so no first fade makes a shader in play. Given a node and a
+    /// speck of geometry in the vertex format they are drawn on (a triangle's arrays), each copy is put on the speck there for
+    /// a second too: the engine compiles a material's pipelines for a format the first time a geometry takes it, and the
+    /// first cube of a kind to dissolve in did that in play (250 ms). On the speck the material is first in the world, so
+    /// whatever adapts materials coming in (the slice's sky light) has done so: the copy is of the material as it is drawn.
+    /// </summary>
+    public static void Warm(IEnumerable<Material> materials, Node on = null, Godot.Collections.Array speck = null)
     {
         foreach (Material m in materials)
-            if (m != null) CopyOf(m);
+        {
+            if (m == null) continue;
+            if (on == null || speck == null)
+            {
+                CopyOf(m);
+                continue;
+            }
+            var mesh = new ArrayMesh();
+            mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, speck);
+            mesh.SurfaceSetMaterial(0, m);
+            var shown = new MeshInstance3D { Mesh = mesh }; // casting too: the shadows' passes have pipelines of their own
+            on.AddChild(shown);
+            SetOne(shown, 0f, 1f);
+            _own.Remove(shown.GetInstanceId());
+            on.GetTree().CreateTimer(1.0).Timeout += shown.QueueFree;
+        }
     }
 
     /// <summary>The pattern copy of a material, made once; null where it can't be made.</summary>
@@ -111,20 +133,32 @@ bool fade_out(vec2 at, vec2 band) {
 }
 ";
 
+    /// <summary>
+    /// Each shader's pattern copy and its uniforms' names, by the shader itself: every place has materials of its own on the
+    /// same few shaders, and reading a shader's code and uniforms back from the engine for each (to look its copy up by
+    /// its text) took 30 ms a material as a place came near.
+    /// </summary>
+    static readonly Dictionary<Shader, (Shader Copy, StringName[] Uniforms)> _byShader = new();
+
     static ShaderMaterial CopyShader(ShaderMaterial m)
     {
         if (m.Shader == null) return null;
-        string source = m.Shader.Code;
-        if (!_shaders.TryGetValue(source, out Shader shader))
+        if (!_byShader.TryGetValue(m.Shader, out var made))
         {
-            string code = Inject(source);
-            _shaders[source] = shader = code == null ? null : new Shader { Code = code };
+            string source = m.Shader.Code;
+            if (!_shaders.TryGetValue(source, out Shader shader))
+            {
+                string code = Inject(source);
+                _shaders[source] = shader = code == null ? null : new Shader { Code = code };
+            }
+            var names = new List<StringName>();
+            foreach (Godot.Collections.Dictionary u in m.Shader.GetShaderUniformList()) names.Add((string)u["name"]);
+            _byShader[m.Shader] = made = (shader, names.ToArray());
         }
-        if (shader == null) return null;
-        var copy = new ShaderMaterial { Shader = shader, RenderPriority = m.RenderPriority };
-        foreach (Godot.Collections.Dictionary u in m.Shader.GetShaderUniformList())
+        if (made.Copy == null) return null;
+        var copy = new ShaderMaterial { Shader = made.Copy, RenderPriority = m.RenderPriority };
+        foreach (StringName name in made.Uniforms)
         {
-            StringName name = (string)u["name"];
             Variant v = m.GetShaderParameter(name);
             if (v.VariantType != Variant.Type.Nil) copy.SetShaderParameter(name, v);
         }

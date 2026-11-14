@@ -53,7 +53,7 @@ public partial class TerrainStreamer
     {
         if (node == null) return;
         foreach (Node n in node.GetChildren())
-            if (n is MultiMeshInstance3D m) m.SetInstanceShaderParameter("flora_swap", new Vector2(from, to));
+            if (n is MultiMeshInstance3D m) m.SetInstanceShaderParameter(PlanetSurface.Fx.Names.Of("flora_swap"), new Vector2(from, to));
     }
 
     static void Bands(Swap s)
