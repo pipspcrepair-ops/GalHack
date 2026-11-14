@@ -34,7 +34,10 @@ public partial class DecoNode : Node3D
         DecoMeshData data = cache.Forge.Mesh(look);
         var node = new DecoNode { Look = look, Transform = at, Name = piece.BlockId(look.State) };
         node._seed = DecoHash.Fnv(look.Piece) ^ (ulong)at.Origin.X.GetHashCode() ^ ((ulong)at.Origin.Z.GetHashCode() << 1);
-        node.MeshInstance = new MeshInstance3D { Mesh = cache.Mesh(look), Name = "Mesh" };
+        // Drawn out to where it is a pixel or two (its longest side over 600: a cup to 40 m, a chair to 600): a street of
+        // dressed rooms and a roadside wreck's hundred pieces cost the renderer nothing from far off.
+        Mesh mesh = cache.Mesh(look);
+        node.MeshInstance = new MeshInstance3D { Mesh = mesh, Name = "Mesh", VisibilityRangeEnd = MathF.Max(40f, mesh.GetAabb().GetLongestAxisSize() * 600f) };
         node.AddChild(node.MeshInstance);
         if (collide)
         {

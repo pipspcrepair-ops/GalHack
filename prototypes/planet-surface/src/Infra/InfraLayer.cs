@@ -977,29 +977,36 @@ public sealed partial class TileBuilder
     }
 
     /// <summary>
-    /// Block meshes as a node of their own, a chunk to a step, so a big ruin never stops a frame:
-    /// made one at a time on the main thread, their colliders with <see cref="Solid"/>.
+    /// Block meshes as a node of their own: one mesh for the whole structure, a draw a material (a mesh a chunk was a
+    /// draw a chunk and material, and the roads' ruins were most of what the renderer had to draw), its arrays merged
+    /// here off the main thread and handed over a material to a step there; their colliders a chunk to a step with <see cref="Solid"/>.
     /// </summary>
     public void Blocks(string name, Vector3 at, List<PoiGenerator.Gen.ChunkMesh> meshes, Func<Godot.Material[]> materials)
     {
         Node3D node = null;
         StaticBody3D body = null;
+        ArrayMesh mesh = null;
+        PoiGenerator.MeshBuild.Surface[] surfaces = PoiGenerator.MeshBuild.Merge(meshes);
         Extra.Add(() =>
         {
             node = new Node3D { Name = name, Position = at };
             body = new StaticBody3D { Name = "Collision", CollisionLayer = PlanetSurface.Poi.PoiLayer.PlaceLayer, CollisionMask = 0 };
             node.AddChild(body);
+            node.AddChild(new MeshInstance3D { Name = "Blocks", Mesh = mesh = new ArrayMesh() });
             return node;
         });
-        foreach (PoiGenerator.Gen.ChunkMesh chunk in meshes)
+        for (int s = 0; s < surfaces.Length; s++)
         {
+            if (surfaces[s] == null) continue;
+            int k = s;
             Extra.Add(() =>
             {
-                node.AddChild(new MeshInstance3D { Mesh = PoiGenerator.MeshBuild.ToMesh(chunk, materials()) });
+                PoiGenerator.MeshBuild.AddSurface(mesh, surfaces[k], materials()[k]);
                 return null;
             });
-            if (chunk.Collision.Count > 0) Solid.Add(() => body.AddChild(new CollisionShape3D { Shape = PoiGenerator.MeshBuild.ToShape(chunk) }));
         }
+        foreach (PoiGenerator.Gen.ChunkMesh chunk in meshes)
+            if (chunk.Collision.Count > 0) Solid.Add(() => body.AddChild(new CollisionShape3D { Shape = PoiGenerator.MeshBuild.ToShape(chunk) }));
     }
 
     /// <summary>The tile's nodes as steps for the main thread: its mesh, its collision's body, then each extra. A step may return nothing (it added to a node of its own).</summary>

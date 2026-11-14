@@ -12,37 +12,75 @@ public static class MeshBuild
     public static ArrayMesh ToMesh(ChunkMesh chunk, Material[] materials)
     {
         var mesh = new ArrayMesh();
-        for (int s = 0; s < chunk.Surfaces.Length; s++)
+        Surface[] surfaces = Merge(new[] { chunk });
+        for (int s = 0; s < surfaces.Length; s++) AddSurface(mesh, surfaces[s], materials[s]);
+        return mesh;
+    }
+
+    /// <summary>One material's share of a mesh as plain arrays (worker-safe: no engine calls), ready to hand over.</summary>
+    public sealed record Surface(Vector3[] Vertices, Vector3[] Normals, Color[] Colors, Vector2[] Codes, int[] Indices);
+
+    /// <summary>
+    /// Chunks' meshes (of one structure, in one frame) as one surface a material, null where a material has none: one mesh,
+    /// a draw a material, where a building stood as a mesh a chunk.
+    /// </summary>
+    public static Surface[] Merge(IReadOnlyList<ChunkMesh> chunks)
+    {
+        int count = chunks.Count == 0 ? 0 : chunks[0].Surfaces.Length;
+        var merged = new Surface[count];
+        for (int s = 0; s < count; s++)
         {
-            var buf = chunk.Surfaces[s];
-            if (buf.Indices.Count == 0) continue;
-            int n = buf.VertexCount;
+            int n = 0, m = 0;
+            // Each face's finish code and the place's seed (Surfaces.Code), for the place shader; a buffer put
+            // together by other code without them draws plain.
+            bool coded = true;
+            foreach (ChunkMesh c in chunks)
+            {
+                MeshBuffer b = c.Surfaces[s];
+                if (b.Indices.Count == 0) continue;
+                n += b.VertexCount;
+                m += b.Indices.Count;
+                coded &= b.Codes.Count == b.VertexCount * 2;
+            }
+            if (m == 0) continue;
             var verts = new Vector3[n];
             var normals = new Vector3[n];
             var colors = new Color[n];
-            // Each face's finish code and the place's seed (Surfaces.Code), for the place shader; a buffer put
-            // together by other code without them draws plain.
-            bool coded = buf.Codes.Count == n * 2;
             var codes = coded ? new Vector2[n] : null;
-            for (int i = 0; i < n; i++)
+            var indices = new int[m];
+            int v = 0, k = 0;
+            foreach (ChunkMesh c in chunks)
             {
-                verts[i] = new Vector3(buf.Positions[i * 3], buf.Positions[i * 3 + 1], buf.Positions[i * 3 + 2]);
-                normals[i] = new Vector3(buf.Normals[i * 3], buf.Normals[i * 3 + 1], buf.Normals[i * 3 + 2]);
-                colors[i] = new Color(buf.Colors[i * 4], buf.Colors[i * 4 + 1], buf.Colors[i * 4 + 2], buf.Colors[i * 4 + 3]);
-                if (coded) codes[i] = new Vector2(buf.Codes[i * 2], buf.Codes[i * 2 + 1]);
+                MeshBuffer buf = c.Surfaces[s];
+                if (buf.Indices.Count == 0) continue;
+                for (int i = 0; i < buf.Indices.Count; i++) indices[k++] = buf.Indices[i] + v;
+                for (int i = 0; i < buf.VertexCount; i++, v++)
+                {
+                    verts[v] = new Vector3(buf.Positions[i * 3], buf.Positions[i * 3 + 1], buf.Positions[i * 3 + 2]);
+                    normals[v] = new Vector3(buf.Normals[i * 3], buf.Normals[i * 3 + 1], buf.Normals[i * 3 + 2]);
+                    colors[v] = new Color(buf.Colors[i * 4], buf.Colors[i * 4 + 1], buf.Colors[i * 4 + 2], buf.Colors[i * 4 + 3]);
+                    if (coded) codes[v] = new Vector2(buf.Codes[i * 2], buf.Codes[i * 2 + 1]);
+                }
             }
-            var arrays = new Godot.Collections.Array();
-            arrays.Resize((int)Mesh.ArrayType.Max);
-            arrays[(int)Mesh.ArrayType.Vertex] = verts;
-            arrays[(int)Mesh.ArrayType.Normal] = normals;
-            arrays[(int)Mesh.ArrayType.Color] = colors;
-            if (coded) arrays[(int)Mesh.ArrayType.TexUV] = codes;
-            arrays[(int)Mesh.ArrayType.Index] = buf.Indices.ToArray();
-            // Uncompressed: the codes are integers up to 2^24 that must arrive exact.
-            mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
-            mesh.SurfaceSetMaterial(mesh.GetSurfaceCount() - 1, materials[s]);
+            merged[s] = new Surface(verts, normals, colors, codes, indices);
         }
-        return mesh;
+        return merged;
+    }
+
+    /// <summary>A surface onto a mesh with its material (none: nothing).</summary>
+    public static void AddSurface(ArrayMesh mesh, Surface s, Material material)
+    {
+        if (s == null) return;
+        var arrays = new Godot.Collections.Array();
+        arrays.Resize((int)Mesh.ArrayType.Max);
+        arrays[(int)Mesh.ArrayType.Vertex] = s.Vertices;
+        arrays[(int)Mesh.ArrayType.Normal] = s.Normals;
+        arrays[(int)Mesh.ArrayType.Color] = s.Colors;
+        if (s.Codes != null) arrays[(int)Mesh.ArrayType.TexUV] = s.Codes;
+        arrays[(int)Mesh.ArrayType.Index] = s.Indices;
+        // Uncompressed: the codes are integers up to 2^24 that must arrive exact.
+        mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
+        mesh.SurfaceSetMaterial(mesh.GetSurfaceCount() - 1, material);
     }
 
     /// <summary>How far over a wet cell's floor its water stands: just over a floor's finish.</summary>
