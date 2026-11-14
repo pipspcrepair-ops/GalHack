@@ -61,7 +61,7 @@ with the generator, gyro, fuel and a locker; two mains in the tail and a retro e
             }
         d.Face(P(-7, -1, -6), P(7, -1, 5), Dir.PosY, chev).Face(P(-2, -1, -4), P(2, -1, 4), Dir.PosY, deck);
         // Winglets at the tips and a raked fin on each side of the tail.
-        foreach (int x in new[] { -7, 7 }) d.Fill(P(x, 0, 4), P(x, 1, 4), Iron, red);
+        foreach (int x in new[] { -7, 7 }) d.Fill(P(x, 0, 4), P(x, 0, 4), Iron, red).Fill(P(x - Math.Sign(x), 0, 4), P(x - Math.Sign(x), 0, 4), Iron, red);
         d.Fill(P(0, 0, -6), P(0, 0, -6), Iron, red, "slope").Fill(P(-1, 0, -5), P(1, 0, -5), Iron, hull);
         d.Chamfer(P(1, 0, -6), P(1, 0, -6), Iron, red, Dir.PosX, Dir.NegZ).Chamfer(P(-1, 0, -6), P(-1, 0, -6), Iron, red, Dir.NegX, Dir.NegZ);
         d.Put("cockpit-t1", P(-1, 0, -4));
@@ -244,6 +244,7 @@ each sponson.");
             // Each pod's nose and tail raked, its top edge rounded off outboard.
             int outer = x0 < 0 ? x0 : x0 + 3;
             d.Slope(P(x0, 2, -6), P(x0 + 3, 2, -6), "iron-plated", pod, Dir.NegZ).Slope(P(x0, 2, 8), P(x0 + 3, 2, 8), "iron-plated", pod, Dir.PosZ);
+            d.Fill(P(outer, 2, -6), P(outer, 2, -6), "iron-plated", pod, "corner", x0 < 0 ? Designer.Rot(Dir.PosY, Dir.NegX) : null);
             d.Slope(P(outer, 2, -5), P(outer, 2, 7), "iron-plated", pod, x0 < 0 ? Dir.NegX : Dir.PosX);
             d.Chamfer(P(outer, -1, -6), P(outer, 1, -6), "iron-plated", pod, x0 < 0 ? Dir.NegX : Dir.PosX, Dir.NegZ);
             d.Put("pad-t2", P(x0 + 1, -1, -3));

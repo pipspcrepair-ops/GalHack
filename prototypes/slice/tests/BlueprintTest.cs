@@ -144,6 +144,10 @@ public partial class BlueprintTest : Node
         foreach (string n in notches) GD.Print($"    notch {name}: {n}");
         Check(notches.Count == 0, $"{name}: no open triangular ramp face on the hull's outside{(notches.Count > 0 ? $" ({notches.Count}, such as {notches[0]})" : "")}");
 
+        var strays = file.StartsWith("prototypes/slice/") ? Notches.Strays(s) : new List<Int3>();
+        foreach (Int3 c in strays) GD.Print($"    stray {name}: {c}");
+        Check(strays.Count == 0, $"{name}: no hull piece stands proud on a single neighbour{(strays.Count > 0 ? $" ({strays.Count}, such as {strays[0]})" : "")}");
+
         // Doors: upright, across the doorway in a wall, a floor either side; people doors 1x2 or 2x2.
         foreach (var (p, b) in s.Blocks().Where(x => s.TypeOf(x.block).IsDoor))
         {

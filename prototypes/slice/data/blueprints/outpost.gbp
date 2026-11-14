@@ -25,31 +25,35 @@ paint frame base=2b2d42 grime=1
 
 block 7 0 -7 base-block corner rot=+y-x paint=pad
 block 8..18 0 -7 base-block slope paint=pad
-block 19 0 -7 base-block slope rot=+x-z paint=pad
+block 19 0 -7 base-block corner paint=pad
 block -5 0 -6 concrete-plated paint=frame
 block -1 0 -6 concrete-plated paint=frame
 block 3 0 -6 concrete-plated paint=frame
 block 6 0 -6 concrete-plated paint=frame
-block 7..18 0 -6 base-block paint=pad,pad,hazard,pad,pad,pad
+block 7..18 0 -6 base-block paint=pad
 block 19 0 -6 base-block slope rot=+y+x paint=pad
 block -5..6 0 -5 concrete-plated paint=wall
-block 7 0 -5 base-block paint=pad,pad,hazard,pad,pad,pad
-block 8..17 0 -5 base-block paint=pad
-block 18 0 -5 base-block paint=pad,pad,hazard,pad,pad,pad
+block 7 0 -5 base-block paint=pad
+block 8..17 0 -5 base-block paint=pad,pad,hazard,pad,pad,pad
+block 18 0 -5 base-block paint=pad
 block 19 0 -5 base-block slope rot=+y+x paint=pad
 block -5..-2 0 -4 concrete-plated paint=wall
 block -1..1 0 -4 concrete-plated paint=wall,wall,deck,wall,wall,wall
 block 2..6 0 -4 concrete-plated paint=wall
-block 7 0 -4 base-block paint=pad,pad,hazard,pad,pad,pad
-block 8..17 0 -4 base-block paint=pad
-block 18 0 -4 base-block paint=pad,pad,hazard,pad,pad,pad
+block 7 0 -4 base-block paint=pad
+block 8 0 -4 base-block paint=pad,pad,hazard,pad,pad,pad
+block 9..16 0 -4 base-block paint=pad
+block 17 0 -4 base-block paint=pad,pad,hazard,pad,pad,pad
+block 18 0 -4 base-block paint=pad
 block 19 0 -4 base-block slope rot=+y+x paint=pad
 block -11..-5 0 -3 concrete-plated paint=wall
 block -4..5 0 -3 concrete-plated paint=wall,wall,deck,wall,wall,wall
 block 6 0 -3 concrete-plated paint=wall
-block 7 0 -3 base-block paint=pad,pad,hazard,pad,pad,pad
-block 8..17 0 -3 base-block paint=pad
-block 18 0 -3 base-block paint=pad,pad,hazard,pad,pad,pad
+block 7 0 -3 base-block paint=pad
+block 8 0 -3 base-block paint=pad,pad,hazard,pad,pad,pad
+block 9..16 0 -3 base-block paint=pad
+block 17 0 -3 base-block paint=pad,pad,hazard,pad,pad,pad
+block 18 0 -3 base-block paint=pad
 block 19 0 -3 base-block slope rot=+y+x paint=pad
 block -11 0 -2 concrete-plated paint=wall
 block -10..-6 0 -2 concrete-plated paint=wall,wall,deck,wall,wall,wall
@@ -58,73 +62,85 @@ block -4..-1 0 -2 concrete-plated paint=wall,wall,deck,wall,wall,wall
 block 0 0 -2 core
 block 1..5 0 -2 concrete-plated paint=wall,wall,deck,wall,wall,wall
 block 6 0 -2 concrete-plated paint=wall
-block 7 0 -2 base-block paint=pad,pad,hazard,pad,pad,pad
-block 8..17 0 -2 base-block paint=pad
-block 18 0 -2 base-block paint=pad,pad,hazard,pad,pad,pad
+block 7 0 -2 base-block paint=pad
+block 8 0 -2 base-block paint=pad,pad,hazard,pad,pad,pad
+block 9..16 0 -2 base-block paint=pad
+block 17 0 -2 base-block paint=pad,pad,hazard,pad,pad,pad
+block 18 0 -2 base-block paint=pad
 block 19 0 -2 base-block slope rot=+y+x paint=pad
 block -11 0 -1 concrete-plated paint=wall
 block -10..-6 0 -1 concrete-plated paint=wall,wall,deck,wall,wall,wall
 block -5 0 -1 concrete-plated paint=wall
 block -4..5 0 -1 concrete-plated paint=wall,wall,deck,wall,wall,wall
 block 6 0 -1 concrete-plated paint=wall
-block 7 0 -1 base-block paint=pad,pad,hazard,pad,pad,pad
-block 8..10 0 -1 base-block paint=pad
+block 7 0 -1 base-block paint=pad
+block 8 0 -1 base-block paint=pad,pad,hazard,pad,pad,pad
+block 9..10 0 -1 base-block paint=pad
 block 11..14 0 -1 base-block paint=pad,pad,hazard,pad,pad,pad
-block 15..17 0 -1 base-block paint=pad
-block 18 0 -1 base-block paint=pad,pad,hazard,pad,pad,pad
+block 15..16 0 -1 base-block paint=pad
+block 17 0 -1 base-block paint=pad,pad,hazard,pad,pad,pad
+block 18 0 -1 base-block paint=pad
 block 19 0 -1 base-block slope rot=+y+x paint=pad
 block -11..-8 0 0 concrete-plated paint=wall
 block -7..-6 0 0 concrete-plated paint=wall,wall,deck,wall,wall,wall
 block -5 0 0 concrete-plated paint=wall
 block -4..5 0 0 concrete-plated paint=wall,wall,deck,wall,wall,wall
 block 6 0 0 concrete-plated paint=wall
-block 7 0 0 base-block paint=pad,pad,hazard,pad,pad,pad
-block 8..10 0 0 base-block paint=pad
+block 7 0 0 base-block paint=pad
+block 8 0 0 base-block paint=pad,pad,hazard,pad,pad,pad
+block 9..10 0 0 base-block paint=pad
 block 11..14 0 0 base-block paint=pad,pad,hazard,pad,pad,pad
-block 15..17 0 0 base-block paint=pad
-block 18 0 0 base-block paint=pad,pad,hazard,pad,pad,pad
+block 15..16 0 0 base-block paint=pad
+block 17 0 0 base-block paint=pad,pad,hazard,pad,pad,pad
+block 18 0 0 base-block paint=pad
 block 19 0 0 base-block slope rot=+y+x paint=pad
 block -11 0 1 concrete-plated paint=wall
 block -10..-6 0 1 concrete-plated paint=wall,wall,deck,wall,wall,wall
 block -5 0 1 concrete-plated paint=wall
 block -4..5 0 1 concrete-plated paint=wall,wall,deck,wall,wall,wall
 block 6 0 1 concrete-plated paint=wall
-block 7 0 1 base-block paint=pad,pad,hazard,pad,pad,pad
-block 8..17 0 1 base-block paint=pad
-block 18 0 1 base-block paint=pad,pad,hazard,pad,pad,pad
+block 7 0 1 base-block paint=pad
+block 8 0 1 base-block paint=pad,pad,hazard,pad,pad,pad
+block 9..16 0 1 base-block paint=pad
+block 17 0 1 base-block paint=pad,pad,hazard,pad,pad,pad
+block 18 0 1 base-block paint=pad
 block 19 0 1 base-block slope rot=+y+x paint=pad
 block -11 0 2 concrete-plated paint=wall
 block -10..-6 0 2 concrete-plated paint=wall,wall,deck,wall,wall,wall
 block -5 0 2 concrete-plated paint=wall
 block -4..5 0 2 concrete-plated paint=wall,wall,deck,wall,wall,wall
 block 6 0 2 concrete-plated paint=wall
-block 7 0 2 base-block paint=pad,pad,hazard,pad,pad,pad
-block 8..17 0 2 base-block paint=pad
-block 18 0 2 base-block paint=pad,pad,hazard,pad,pad,pad
+block 7 0 2 base-block paint=pad
+block 8 0 2 base-block paint=pad,pad,hazard,pad,pad,pad
+block 9..16 0 2 base-block paint=pad
+block 17 0 2 base-block paint=pad,pad,hazard,pad,pad,pad
+block 18 0 2 base-block paint=pad
 block 19 0 2 base-block slope rot=+y+x paint=pad
 block -11..-5 0 3 concrete-plated paint=wall
 block -4..5 0 3 concrete-plated paint=wall,wall,deck,wall,wall,wall
 block 6 0 3 concrete-plated paint=wall
-block 7 0 3 base-block paint=pad,pad,hazard,pad,pad,pad
-block 8..17 0 3 base-block paint=pad
-block 18 0 3 base-block paint=pad,pad,hazard,pad,pad,pad
+block 7 0 3 base-block paint=pad
+block 8 0 3 base-block paint=pad,pad,hazard,pad,pad,pad
+block 9..16 0 3 base-block paint=pad
+block 17 0 3 base-block paint=pad,pad,hazard,pad,pad,pad
+block 18 0 3 base-block paint=pad
 block 19 0 3 base-block slope rot=+y+x paint=pad
 block -5 0 4 concrete-plated paint=wall
 block -4..5 0 4 concrete-plated paint=wall,wall,deck,wall,wall,wall
 block 6 0 4 concrete-plated paint=wall
-block 7 0 4 base-block paint=pad,pad,hazard,pad,pad,pad
-block 8..17 0 4 base-block paint=pad
-block 18 0 4 base-block paint=pad,pad,hazard,pad,pad,pad
+block 7 0 4 base-block paint=pad
+block 8..17 0 4 base-block paint=pad,pad,hazard,pad,pad,pad
+block 18 0 4 base-block paint=pad
 block 19 0 4 base-block slope rot=+y+x paint=pad
 block -5..6 0 5 concrete-plated paint=wall
-block 7..18 0 5 base-block paint=pad,pad,hazard,pad,pad,pad
+block 7..18 0 5 base-block paint=pad
 block 19 0 5 base-block slope rot=+y+x paint=pad
 block -5 0 6 concrete-plated paint=frame
 block -1..2 0 6 concrete-plated paint=wall,wall,deck,wall,wall,wall
 block 6 0 6 concrete-plated paint=frame
 block 7 0 6 base-block corner rot=+y+z paint=pad
 block 8..18 0 6 base-block slope rot=+y+z paint=pad
-block 19 0 6 base-block slope rot=+x+z paint=pad
+block 19 0 6 base-block corner rot=+y+x paint=pad
 block -1..2 0 7 concrete-plated paint=wall,wall,deck,wall,wall,wall
 block -1..2 0 8 concrete-plated paint=wall,wall,deck,wall,wall,wall
 block 0..1 0 9 stairs rot=+y+z paint=wall
@@ -322,26 +338,14 @@ block -5 4 6 concrete-plated paint=frame
 block -1..2 4 6 concrete-plated paint=roof
 block 6 4 6 concrete-plated paint=frame
 block -1..2 4 7 concrete-plated paint=roof
-block -2 4 8 concrete-plated paint=roof
 block -1..2 4 8 concrete-plated slope rot=+y+z paint=roof
-block 3 4 8 concrete-plated paint=roof
-block -6 5 -6 concrete-plated corner rot=+y-x paint=frame
 block -5 5 -6 concrete-plated slope paint=frame
-block -4 5 -6 concrete-plated corner paint=frame
-block -2 5 -6 concrete-plated corner rot=+y-x paint=frame
 block -1 5 -6 concrete-plated slope paint=frame
-block 0 5 -6 concrete-plated corner paint=frame
-block 2 5 -6 concrete-plated corner rot=+y-x paint=frame
 block 3 5 -6 concrete-plated slope paint=frame
-block 4 5 -6 concrete-plated corner paint=frame
-block 5 5 -6 concrete-plated corner rot=+y-x paint=frame
 block 6 5 -6 concrete-plated slope paint=frame
-block 7 5 -6 concrete-plated corner paint=frame
-block -6 5 -5 concrete-plated corner rot=+y+z paint=frame
 block -5 5 -5 concrete-plated corner rot=+y-x paint=roof
 block -4..5 5 -5 concrete-plated slope paint=roof
 block 6 5 -5 concrete-plated corner paint=roof
-block 7 5 -5 concrete-plated corner rot=+y+x paint=frame
 block -5 5 -4 concrete-plated slope rot=+y-x paint=roof
 block -4..5 5 -4 concrete-plated paint=wall,wall,wall,inner,wall,wall
 block 6 5 -4 concrete-plated slope rot=+y+x paint=roof
@@ -392,17 +396,11 @@ block 6 5 3 concrete-plated slope rot=+y+x paint=roof
 block -5 5 4 concrete-plated slope rot=+y-x paint=roof
 block -4..5 5 4 concrete-plated paint=wall,wall,wall,inner,wall,wall
 block 6 5 4 concrete-plated slope rot=+y+x paint=roof
-block -6 5 5 concrete-plated corner rot=+y-x paint=frame
 block -5 5 5 concrete-plated corner rot=+y+z paint=roof
 block -4..5 5 5 concrete-plated slope rot=+y+z paint=roof
 block 6 5 5 concrete-plated corner rot=+y+x paint=roof
-block 7 5 5 concrete-plated corner paint=frame
-block -6 5 6 concrete-plated corner rot=+y+z paint=frame
 block -5 5 6 concrete-plated slope rot=+y+z paint=frame
-block -4 5 6 concrete-plated corner rot=+y+x paint=frame
-block 5 5 6 concrete-plated corner rot=+y+z paint=frame
 block 6 5 6 concrete-plated slope rot=+y+z paint=frame
-block 7 5 6 concrete-plated corner rot=+y+x paint=frame
 block -3 6 -3 concrete-plated paint=wall
 block -2..3 6 -3 glass-plated paint=-,-,-,-,inner,-
 block 4 6 -3 concrete-plated paint=wall

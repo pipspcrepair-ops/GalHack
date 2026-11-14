@@ -45,8 +45,31 @@ public static class Notches
             // A vertical chamfer's top is a flat facet level with the roof beside it, not a notch.
             bool chamfer = s.ShapeOf(block).Id == "slope" && Orientations.ToWorld(block.Rot, Dir.PosY).Axis() != 1;
             foreach (Dir d in Dirs.All)
-                if (d != Dir.NegY && !(chamfer && d == Dir.PosY) && s.AttachCoverage(block, d) == Coverage.Partial && outside.Contains(pos + d.Vec())) found.Add((pos, d));
+                if (d != Dir.NegY && !(chamfer && d == Dir.PosY) && s.AttachCoverage(block, d) == Coverage.Partial && outside.Contains(pos + d.Vec())
+                    && !Flush(s, outside, pos, d)) found.Add((pos, d));
         }
+        return found;
+    }
+
+    /// <summary>A triangular side that is level with a wall continuing it (a gable end on the wall below or beside it) is flush, not a notch.</summary>
+    static bool Flush(Structure s, HashSet<Int3> outside, Int3 pos, Dir d)
+    {
+        foreach (Dir e in Dirs.All)
+        {
+            if (e.Axis() == d.Axis()) continue;
+            Int3 n = pos + e.Vec();
+            if (s.TryGet(n, out Block nb) && s.TypeOf(nb).IsArmor && s.AttachCoverage(nb, d) == Coverage.Full && outside.Contains(n + d.Vec())) return true;
+        }
+        return false;
+    }
+
+    /// <summary>Hull pieces hanging on a single neighbour: a sheet, slope or block standing proud of the hull with nothing behind it.</summary>
+    public static List<Int3> Strays(Structure s)
+    {
+        var found = new List<Int3>();
+        foreach (var (pos, block) in s.Blocks())
+            if (s.TypeOf(block).IsArmor && s.ShapeOf(block).Id is "cube" or "slope" or "corner" or "invcorner" or "wedge"
+                && Dirs.All.Count(d => s.Has(pos + d.Vec())) <= 1) found.Add(pos);
         return found;
     }
 
