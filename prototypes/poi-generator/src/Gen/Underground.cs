@@ -205,6 +205,9 @@ public sealed class UnderSite
 /// </summary>
 public static class Underground
 {
+    /// <summary>Off for a measurement against the old look (tests, shots): square-cornered bores, clean lining.</summary>
+    public static bool Rounded = true;
+
     /// <summary>Cover over a sewer's walk level under the deck, metres.</summary>
     public const int Cover = 7;
     const int SewerHalf = 2, SewerHeight = 4, DrainHalf = 2, DrainHeight = 3, JunctionHalf = 5, JunctionHeight = 5, SumpHalf = 6, SumpHeight = 6;
@@ -521,7 +524,7 @@ public static class Underground
         foreach (UnderShaft s in plan.Shafts) CarveShaft(b, s);
         foreach (UnderOutfall o in plan.Outfalls) CarveOutfall(b, o);
         Line(b);
-        foreach (UnderRun r in plan.Runs) if (r.Arched) Arch(b, r);
+        if (Rounded) foreach (UnderRun r in plan.Runs) if (r.Arched) Arch(b, r);
         foreach (UnderRun r in plan.Runs) DressRun(b, r);
         foreach (UnderRoom r in plan.Rooms) DressRoom(b, r);
         foreach (UnderStation s in plan.Stations) DressStation(b, s);
@@ -529,7 +532,7 @@ public static class Underground
         foreach (UnderShaft s in plan.Shafts) DressShaft(b, s);
         foreach (UnderOutfall o in plan.Outfalls) DressOutfall(b, o);
         foreach (UnderCollapse c in plan.Collapses) DressCollapse(b, c);
-        Stain(u);
+        if (Rounded) Stain(u);
         if (ground != null) Exposed(u, ground);
         Spaces(u);
         Bounds(u);
@@ -580,7 +583,7 @@ public static class Underground
             for (int w = -r.HalfWidth; w <= r.HalfWidth; w++)
                 for (int v = 0; v < r.Height; v++)
                 {
-                    if (r.Arched && v == r.Height - 1 && Math.Abs(w) == r.HalfWidth) continue;
+                    if (r.Arched && (Rounded || r.Kind != UnderKind.Drain) && v == r.Height - 1 && Math.Abs(w) == r.HalfWidth) continue;
                     b.Open(new Int3(x + lx * w, y + v, z + lz * w), r.Kind);
                 }
         }
@@ -695,8 +698,11 @@ public static class Underground
             {
                 Int3 c = new(x + lx * side * r.HalfWidth, r.Floors[i] + r.Height - 1, z + lz * side * r.HalfWidth);
                 if (b.U.Open.Contains(c) || !b.U.Blocks.TryGetValue(c, out Block old) || old.Type != BlockType.Cube) continue;
+                Dir out_ = FacingOf(lx * side, lz * side);
+                // Only against solid wall: where another bore crosses, the corner stays a square one.
+                if (b.U.Open.Contains(c + out_.Vec()) || !b.U.Blocks.TryGetValue(c + out_.Vec(), out Block back) || back.Type != BlockType.Cube) continue;
                 old.Type = BlockType.Chamfer;
-                old.Facing = FacingOf(lx * side, lz * side);
+                old.Facing = out_;
                 b.U.Blocks[c] = old;
             }
         }

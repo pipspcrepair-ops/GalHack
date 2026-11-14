@@ -71,9 +71,9 @@ public static class IncidentalFauna
         var floors = new List<(PInt3 C, UnderSpace Room)>();
         var ceilings = new List<PInt3>();
         UnderSpace RoomOf(PInt3 p) => b.Spaces.FirstOrDefault(s => s.Kind is UnderSpaceKind.Junction or UnderSpaceKind.Sump or UnderSpaceKind.Hall && p.X >= s.Min.X && p.X <= s.Max.X && p.Y >= s.Min.Y && p.Y <= s.Max.Y && p.Z >= s.Min.Z && p.Z <= s.Max.Z);
-        foreach (PInt3 p in air.OrderBy(c => c.Y).ThenBy(c => c.Z).ThenBy(c => c.X))
+        foreach (PInt3 p in air.Where(c => Floor(c.X) == cell.X && Floor(c.Z) == cell.Z).OrderBy(c => c.Y).ThenBy(c => c.Z).ThenBy(c => c.X))
         {
-            if (Floor(p.X) != cell.X || Floor(p.Z) != cell.Z || !b.Open.Contains(p) || b.Daylight.Contains(p) || b.Water.Contains(p)) continue;
+            if (!b.Open.Contains(p) || b.Daylight.Contains(p) || b.Water.Contains(p)) continue;
             bool below = b.Solid(p + PInt3.Down), above = b.Solid(p + PInt3.Up), clear = !b.Solid(p + PInt3.Up + PInt3.Up);
             Vector3 at = ToSim(p, anchor);
             if (below && !above && clear && allow(at)) floors.Add((p, RoomOf(p)));

@@ -37,7 +37,8 @@ public partial class Underworld : Node3D
     readonly Dictionary<(int, int), Spot> _spots = new();
     UnderBuilt _built;
     HashSet<PInt3> _air;
-    Task<HashSet<PInt3>> _airTask;
+    List<(int X, int Z)> _cells;
+    Task<(HashSet<PInt3> Air, List<(int X, int Z)> Cells)> _airTask;
     double _timer;
 
     const float Stand = 90f, Free = 150f;
@@ -48,18 +49,28 @@ public partial class Underworld : Node3D
 
     public int Standing => _spots.Values.Count(s => s.Site != null);
 
+    /// <summary>The longest one look over the network took on the main thread, ms (tests).</summary>
+    public double WorstMs { get; private set; }
+
     public override void _PhysicsProcess(double delta)
     {
         if (Zone?.Planet == null || Deep == null) return;
         _timer -= delta;
         if (_timer > 0) return;
         _timer = 1.0;
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        Survey();
+        WorstMs = Math.Max(WorstMs, clock.Elapsed.TotalMilliseconds);
+    }
+
+    void Survey()
+    {
         _built ??= Zone.Planet.StartTown?.Under?.Built;
         if (_built == null) return;
-        if (_airTask == null) { UnderBuilt b = _built; _airTask = Task.Run(() => IncidentalFauna.OpenAir(b)); }
+        if (_airTask == null) { UnderBuilt b = _built; _airTask = Task.Run(() => { var air = IncidentalFauna.OpenAir(b); return (air, IncidentalFauna.Cells(b, air).ToList()); }); }
         if (!_airTask.IsCompleted) return;
         if (_airTask.IsFaulted) { _built = null; return; }
-        _air ??= _airTask.Result;
+        (_air, _cells) = _airTask.Result;
         Vector3 feet = Feet();
         var planet = Zone.Planet;
         foreach (var ((cx, cz), spot) in _spots)
@@ -74,7 +85,7 @@ public partial class Underworld : Node3D
         // The cell nearest you that is within reach and not yet filled.
         (int, int)? next = null;
         float best = Stand;
-        foreach (var key in IncidentalFauna.Cells(_built, _air))
+        foreach (var key in _cells)
         {
             if (_spots.ContainsKey(key)) continue;
             var anchor = AnchorOf(key);
@@ -98,9 +109,8 @@ public partial class Underworld : Node3D
         Vector3I anchor = AnchorOf(key);
         var spot = new Spot { Anchor = anchor, Space = IncidentalFauna.Space(_built, anchor) };
         float Height(float x, float z) => planet.GroundHeight(Planets.Gen.Mathx.WrapX(anchor.X + x, planet.Width), Planets.Gen.Mathx.Wrap(anchor.Z + z, planet.Height)) - anchor.Y;
-        var terrain = new WTerrain(Height, 40f);
-        spot.Sim = new WildSim(Deep.Data, terrain, new WNav(terrain.HalfSize, 3f)) { Time = Zone.Wildlife.Sim?.Time ?? 0f };
         _spots[key] = spot;
+        float time = Zone.Wildlife.Sim?.Time ?? 0f;
         SpawnRules rules = Deep.Data.Spawning;
         Vector3 look = Look();
         look.Y = 0f;
@@ -114,6 +124,9 @@ public partial class Underworld : Node3D
         ulong seed = Zone.Planet.Spec.Seed ^ 0x5E3E;
         spot.Filling = Task.Run(() =>
         {
+            // The sim and its ground are made here too: its terrain reads the planet at hundreds of points.
+            var terrain = new WTerrain(Height, 40f);
+            spot.Sim = new WildSim(Deep.Data, terrain, new WNav(terrain.HalfSize, 3f)) { Time = time };
             List<IncidentalFauna.Made> made;
             lock (Deep.Lock) made = IncidentalFauna.Fill(spot.Sim, b, air, spot.Space, anchor, key, Deep, seed, Unseen);
             spot.Made = made;
