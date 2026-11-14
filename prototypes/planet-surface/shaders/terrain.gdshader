@@ -784,19 +784,78 @@ float inside_hole(vec2 p) {
 // the ground rises above it and falls below it.
 struct ClipPoint { vec3 pos; vec3 normal; vec4 color; float glow; vec2 relief; };
 
+ivec3 clip_texel(int level, ivec2 g) {
+	// (A float modulo: the integer one is undefined for negative numbers.)
+	return ivec3(ivec2(mod(vec2(g), float(clip_texels))), level);
+}
+
 ClipPoint clip_point(int level, ivec2 g) {
 	float s = clip_band[level].z;
-	// (A float modulo: the integer one is undefined for negative numbers.)
-	ivec3 t = ivec3(ivec2(mod(vec2(g), float(clip_texels))), level);
+	ivec3 t = clip_texel(level, g);
 	vec4 d = texelFetch(clip_data, t, 0), shape = texelFetch(clip_shape, t, 0);
 	ClipPoint p;
 	vec2 at = (vec2(g) + shape.zw) * s - clip_shift;
 	p.pos = vec3(at.x, d.x, at.y);
 	p.normal = vec3(shape.x, sqrt(max(1.0 - dot(shape.xy, shape.xy), 0.0)), shape.y);
 	p.color = texelFetch(clip_color, t, 0);
-	p.glow = d.w;
+	p.glow = d.w >= 1.5 ? d.w - 2.0 : d.w;
 	p.relief = d.yz;
 	return p;
+}
+
+ClipPoint clip_mix(ClipPoint p, ClipPoint q, float k) {
+	p.pos = mix(p.pos, q.pos, k);
+	p.normal = normalize(mix(p.normal, q.normal, k));
+	p.color = mix(p.color, q.color, k);
+	p.glow = mix(p.glow, q.glow, k);
+	p.relief = mix(p.relief, q.relief, k);
+	return p;
+}
+
+// How far a point of a level's grid (frame) has slid onto the next level's: none inside its band, all past it.
+float clip_morph(int level, vec2 at) {
+	vec2 off = abs(at - clip_eye);
+	return level < clip_top ? smoothstep(clip_band[level].x, clip_band[level].y, max(off.x, off.y)) : 0.0;
+}
+
+// A grid point as drawn. Toward the ring's edge an odd point slides onto its even neighbour below it (the next level's
+// point), taking that level's ground: done, the ring's edge is the next ring's exactly.
+ClipPoint clip_vertex(int level, ivec2 g) {
+	float k = clip_morph(level, vec2(g) * clip_band[level].z - clip_shift);
+	ClipPoint p = clip_point(level, g);
+	if (k > 0.0) {
+		ClipPoint q = clip_point(level + 1, (g - (g & ivec2(1))) / 2);
+		if (k >= 1.0) p = q;
+		else p = clip_mix(p, q, k);
+	}
+	return p;
+}
+
+// Whether a level's square from grid point g is split along a-d (to g + (1, 1)) rather than b-c.
+bool clip_split(int level, ivec2 g) {
+	return texelFetch(clip_data, clip_texel(level, g), 0).w >= 1.5;
+}
+
+// The middle of a square's diagonal, its two ends as drawn.
+ClipPoint clip_middle(int level, ivec2 g, bool ad) {
+	return clip_mix(clip_vertex(level, ad ? g : g + ivec2(1, 0)), clip_vertex(level, ad ? g + ivec2(1) : g + ivec2(0, 1)), 0.5);
+}
+
+// A square's middle point: on the diagonal its ground is split along, so its four triangles are the square's two. Toward
+// the ring's edge it moves to the next level's square's diagonal, as its corners move onto that square's.
+ClipPoint clip_center(int level, ivec2 g) {
+	bool own = clip_split(level, g);
+	ClipPoint m = clip_middle(level, g, own);
+	float k = clip_morph(level, (vec2(g) + 0.5) * clip_band[level].z - clip_shift);
+	if (k > 0.0) {
+		bool next = clip_split(level + 1, (g - (g & ivec2(1))) / 2);
+		if (next != own) {
+			ClipPoint n = clip_middle(level, g, next);
+			if (k >= 1.0) m = n;
+			else m = clip_mix(m, n, k);
+		}
+	}
+	return m;
 }
 
 void vertex() {
@@ -804,23 +863,11 @@ void vertex() {
 	if (clip_ground) {
 		float s = MODEL_MATRIX[0][0];
 		int level = int(round(log2(s))) - 1;
-		ivec2 g = ivec2(round((VERTEX.xz + clip_shift) / s));
-		vec2 off = abs(VERTEX.xz - clip_eye);
-		float k = level < clip_top ? smoothstep(clip_band[level].x, clip_band[level].y, max(off.x, off.y)) : 0.0;
-		ClipPoint p = clip_point(level, g);
-		if (k > 0.0) {
-			// An odd point slides onto its even neighbour below it (the next level's point), taking that level's ground:
-			// done, the ring's edge is the next ring's exactly.
-			ClipPoint q = clip_point(level + 1, (g - (g & ivec2(1))) / 2);
-			if (k >= 1.0) p = q;
-			else {
-				p.pos = mix(p.pos, q.pos, k);
-				p.normal = normalize(mix(p.normal, q.normal, k));
-				p.color = mix(p.color, q.color, k);
-				p.glow = mix(p.glow, q.glow, k);
-				p.relief = mix(p.relief, q.relief, k);
-			}
-		}
+		// A block's points: its level's grid points, and one in each square's middle (half a step in).
+		vec2 q = (VERTEX.xz + clip_shift) / s;
+		ClipPoint p;
+		if (fract(q.x) > 0.25) p = clip_center(level, ivec2(floor(q)));
+		else p = clip_vertex(level, ivec2(round(q)));
 		VERTEX = p.pos;
 		NORMAL = p.normal;
 		COLOR = p.color;

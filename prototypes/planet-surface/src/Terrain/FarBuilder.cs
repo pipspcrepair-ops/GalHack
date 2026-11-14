@@ -155,19 +155,22 @@ public static class FarBuilder
         }
     }
 
-    /// <summary>The ground over a grid as it is drawn: each point slid onto the cliffs beside it (its position in the grid's frame, m), its normal, colour, glow (x of the flags) and relief.</summary>
-    internal sealed record Surface(Vector3[] Vertices, Vector3[] Normals, Color[] Colors, Vector2[] Flags, Vector2[] Relief);
+    /// <summary>
+    /// The ground over a grid as it is drawn: each point slid onto the cliffs beside it (its position in the grid's frame, m), its
+    /// normal, colour, glow (x of the flags) and relief, and how each square is split (<see cref="Triangulate"/>: 0 along b-c, 1 a-d).
+    /// </summary>
+    internal sealed record Surface(Vector3[] Vertices, Vector3[] Normals, Color[] Colors, Vector2[] Flags, Vector2[] Relief, int[] Split);
 
     /// <summary>
     /// Shapes the ground over a grid of points <paramref name="step"/> apart from (x0, z0) (<paramref name="spanX"/> by
-    /// <paramref name="spanZ"/> m), its heights sampled with a ring round it. Every square is split along the grid's own
-    /// diagonal (b-c), as the GPU rings' blocks are; where a point's slide would turn a triangle over, it eases off. The
-    /// outer <paramref name="inset"/> rows each side are worked out only so far as the ones inside need them (their slides).
+    /// <paramref name="spanZ"/> m), its heights sampled with a ring round it. Each square is split along whichever diagonal
+    /// follows the ground (<see cref="Triangulate"/>; the GPU rings' blocks draw either by the point in each square's middle).
+    /// The outer <paramref name="inset"/> rows each side are worked out only so far as the ones inside need them (their slides).
     /// </summary>
     internal static Surface Shape(Grid grid, int spanX, int spanZ, float step, double x0, double z0, float[] height, bool[] river, PlanetTerrainSource source, GroundPalette palette, int inset)
     {
         int points = grid.Nx * grid.Nz, g = grid.G;
-        var surface = new Surface(new Vector3[points], new Vector3[points], new Color[points], new Vector2[points], new Vector2[points]);
+        var surface = new Surface(new Vector3[points], new Vector3[points], new Color[points], new Vector2[points], new Vector2[points], null);
         Vector3[] vertices = surface.Vertices;
 
         // Beside a cliff the grid's points slide onto it (Slides), each still a true sample of the ground.
@@ -197,7 +200,7 @@ public static class FarBuilder
                 Place(k);
             }
         }
-        Unfold(vertices, grid, step, slideX, slideZ, Place);
+        int[] split = Triangulate(vertices, grid, step, slideX, slideZ, Place);
         ReliefField field = Relief(spanX, spanZ, grid, step, x0, z0, height, source);
         double w = palette.Map.WidthMeters, h = palette.Map.HeightMeters;
         for (int j = inset; j < grid.Nz - inset; j++)
@@ -210,8 +213,8 @@ public static class FarBuilder
             surface.Colors[k] = GroundColor(source, palette, x, z, drawn[k], CliffSlope2(height, s, g, step, gx * gx + gz * gz), river[s], out surface.Flags[k], step);
             surface.Relief[k] = field.At(vertices[k].X, vertices[k].Z, vertices[k].Y);
         }
-        CliffNormals(vertices, surface.Normals, grid, step, height);
-        return surface;
+        CliffNormals(vertices, surface.Normals, grid, step, height, split);
+        return surface with { Split = split };
     }
     /// <summary>
     /// The squared slope that picks a grid point's colour. A point on a spur or in a gully on a jagged
@@ -344,9 +347,9 @@ public static class FarBuilder
     /// side, where it stood before it slid) says little about the triangles drawn round it: points down
     /// a face lit as if they faced every way, light and dark triangles in a row of teeth. So inside the
     /// grid, a point beside a steep edge takes the normal of the triangles it is a corner of (each square
-    /// split along its b-c diagonal), weighted by their area. On the grid's border the slope's normal stays.
+    /// split as it is drawn), weighted by their area. On the grid's border the slope's normal stays.
     /// </summary>
-    static void CliffNormals(Vector3[] vertices, Vector3[] normals, Grid grid, float step, float[] height)
+    static void CliffNormals(Vector3[] vertices, Vector3[] normals, Grid grid, float step, float[] height, int[] split)
     {
         int nx = grid.Nx, nz = grid.Nz, g = grid.G;
         var cliff = new bool[nx * nz];
@@ -375,8 +378,16 @@ public static class FarBuilder
         for (int i = 0; i < nx - 1; i++)
         {
             int a = j * nx + i, b = a + 1, c = a + nx, d = c + 1;
-            Face(a, b, c);
-            Face(b, d, c);
+            if (split[j * (nx - 1) + i] == 0)
+            {
+                Face(a, b, c);
+                Face(b, d, c);
+            }
+            else
+            {
+                Face(a, b, d);
+                Face(a, d, c);
+            }
         }
         for (int k = 0; k < sum.Length; k++)
             if (cliff[k] && sum[k].LengthSquared() > 1e-12f) normals[k] = sum[k].Normalized();
@@ -489,14 +500,16 @@ public static class FarBuilder
     const int Eases = 4;
 
     /// <summary>
-    /// Keeps every square's two triangles (split along b-c, the GPU blocks' diagonal) the right way up in plan: where slides
-    /// would turn one over (a back face, a hole), the square's inner points ease off their cliffs until it can be drawn. A
-    /// grid's border points keep their slides (the tile beside it shapes them too): along a 16 m line they only slide along
-    /// it, and with only those the split is always sound.
+    /// How each grid square is split: 0 along b-c (the grid's own diagonal), 1 along a-d. The shorter diagonal in 3D, so a
+    /// cliff crossing a square at a corner is a chamfer, not a fin (a fin a square wide, down a long wall, is a row of teeth);
+    /// but never one that would turn a triangle over in plan (a back face, a hole), and where neither split can be drawn the
+    /// slides of the square's points ease off until one can. A grid's border points keep their slides (the grid beside it
+    /// shapes them too): along a 16 m line they only slide along it, and with only those both splits are always sound.
     /// </summary>
-    static void Unfold(Vector3[] vertices, Grid grid, float step, float[] sx, float[] sz, Action<int> place)
+    static int[] Triangulate(Vector3[] vertices, Grid grid, float step, float[] sx, float[] sz, Action<int> place)
     {
         int nx = grid.Nx, nz = grid.Nz;
+        var split = new int[(nx - 1) * (nz - 1)];
         float least = 0.002f * step * step;
         float Area(int p, int q, int r)
         {
@@ -504,21 +517,25 @@ public static class FarBuilder
             return (b.X - a.X) * (c.Z - a.Z) - (b.Z - a.Z) * (c.X - a.X);
         }
         var ease = new HashSet<int>();
-        for (int pass = 0; pass <= 8; pass++)
+        for (int pass = 0; ; pass++)
         {
             ease.Clear();
             for (int j = 0; j < nz - 1; j++)
             for (int i = 0; i < nx - 1; i++)
             {
                 int a = j * nx + i, b = a + 1, c = a + nx, d = c + 1;
-                if (Area(a, b, c) > least && Area(b, d, c) > least) continue;
-                foreach (int k in new[] { a, b, c, d })
-                {
-                    int ki = k % nx, kj = k / nx;
-                    if (ki > 0 && kj > 0 && ki < nx - 1 && kj < nz - 1) ease.Add(k);
-                }
+                bool bc = Area(a, b, c) > least && Area(b, d, c) > least;
+                bool ad = Area(a, b, d) > least && Area(a, d, c) > least;
+                if (bc && ad) split[j * (nx - 1) + i] = (vertices[b] - vertices[c]).LengthSquared() <= (vertices[a] - vertices[d]).LengthSquared() ? 0 : 1;
+                else if (bc || ad) split[j * (nx - 1) + i] = bc ? 0 : 1;
+                else
+                    foreach (int k in new[] { a, b, c, d })
+                    {
+                        int ki = k % nx, kj = k / nx;
+                        if (ki > 0 && kj > 0 && ki < nx - 1 && kj < nz - 1) ease.Add(k);
+                    }
             }
-            if (ease.Count == 0) break;
+            if (ease.Count == 0 || pass > 8) break;
             foreach (int k in ease)
             {
                 float keep = pass < 2 ? 0.5f : 0f;
@@ -527,6 +544,7 @@ public static class FarBuilder
                 place(k);
             }
         }
+        return split;
     }
     /// <summary>
     /// Flat water at the river's surface over every grid square near the channel. It runs a square past the

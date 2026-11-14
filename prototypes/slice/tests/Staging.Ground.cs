@@ -239,6 +239,50 @@ public sealed partial class Staging
         _game.FixedCamera = null;
         zone.Sky.TimeScale = 1f;
     }
+    /// <summary>
+    /// A near cliff from 100, 200 and 300 m (the 2 and 4 m rings): the steepest within 1.5 km of the start, the eye 10 m up on
+    /// its low side looking at its face. Frames go beside --out as NAME-cliff100.png and on.
+    /// </summary>
+    IEnumerable<int> CliffShots()
+    {
+        var zone = _game.Zone;
+        TerrainStreamer s = zone.Streamer;
+        _game.Visor.Visible = false;
+        zone.Weather.Bridge.Calm = true;
+        zone.Weather.Sim.Snap(Weather.Model.WeatherKind.Clear);
+        zone.Wildlife.Frozen = true;
+        zone.Sky.TimeScale = 0f;
+        zone.Sky.TimeOfDay = Num("time", 0.36);
+        Vector3 start = _game.Survivor.WorldFeet;
+        float Ground(float x, float z) => zone.GroundAt(x, z).Y;
+        var rng = new Random();
+        (Vector3 At, Vector3 Away, float Rise) best = (start, Vector3.Forward, 0f);
+        for (int k = 0; k < 3000; k++)
+        {
+            var at = start + new Vector3((float)(rng.NextDouble() - 0.5) * 3000f, 0f, (float)(rng.NextDouble() - 0.5) * 3000f);
+            float h = Ground(at.X, at.Z);
+            foreach (var d in new[] { Vector3.Right, Vector3.Left, Vector3.Forward, Vector3.Back })
+            {
+                float rise = Ground(at.X + d.X * 16f, at.Z + d.Z * 16f) - h;
+                if (rise > best.Rise) best = (at with { Y = h }, -d, rise);
+            }
+        }
+        GD.Print($"(cliff: {best.Rise:F0} m over 16 m, {new Vector2(best.At.X - start.X, best.At.Z - start.Z).Length():F0} m from the start)");
+        Vector3 face = best.At - best.Away * 8f;
+        face.Y = Ground(face.X, face.Z) - best.Rise * 0.4f;
+        foreach (float d in Floats("distances", "100,200,300"))
+        {
+            Vector3 foot = best.At + best.Away * d, eye = foot with { Y = Ground(foot.X, foot.Z) + 10f };
+            for (int i = 0; i < 600 && (i < 90 || !s.Settled); i++)
+            {
+                HoldEye(eye, face);
+                yield return 0;
+            }
+            Snap($"cliff{d:0}");
+        }
+        _game.FixedCamera = null;
+        zone.Sky.TimeScale = 1f;
+    }
     /// <summary>The sleeper stands in for the eye (the streaming follows it), the camera at the eye looking at a point.</summary>
     void HoldEye(Vector3 eye, Vector3 at)
     {

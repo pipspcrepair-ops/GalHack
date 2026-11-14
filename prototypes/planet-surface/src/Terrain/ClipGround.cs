@@ -522,7 +522,8 @@ public sealed partial class ClipGround : Node3D
                 job.Data[o] = v.Y;
                 job.Data[o + 1] = relief.X;
                 job.Data[o + 2] = relief.Y;
-                job.Data[o + 3] = surface.Flags[k].X;
+                // Glow, and 2 more where the square from this point is split along a-d (the block draws it by its middle point).
+                job.Data[o + 3] = surface.Flags[k].X + 2f * surface.Split[(j + Margin) * (N - 1) + i + Margin];
                 job.Shape[o] = (Half)n.X;
                 job.Shape[o + 1] = (Half)n.Z;
                 job.Shape[o + 2] = (Half)(v.X / s - (i + Margin));
@@ -567,9 +568,33 @@ public sealed partial class ClipGround : Node3D
         float k = Morph(l, (float)(gx * (double)s - _shiftX), (float)(gz * (double)s - _shiftZ));
         if (k <= 0f) return p;
         var q = Own(l + 1, (gx - (gx & 1)) / 2, (gz - (gz & 1)) / 2);
-        if (k >= 1f) return q;
-        return (p.Pos.Lerp(q.Pos, k), p.Normal.Lerp(q.Normal, k).Normalized(), Mathf.Lerp(p.Bare, q.Bare, k));
+        return k >= 1f ? q : Mix(p, q, k);
     }
+
+    /// <summary>Whether a level's square from grid point (gx, gz) is split along a-d.</summary>
+    bool Split(int l, int gx, int gz) => _levels[l].Data[Texel(gx, gz) * 4 + 3] >= 1.5f;
+
+    /// <summary>A square's middle point as drawn (terrain.gdshader's clip_center): on its split's diagonal, moving to the next level's.</summary>
+    (Vector3 Pos, Vector3 Normal, float Bare) Center(int l, int gx, int gz)
+    {
+        (Vector3 Pos, Vector3 Normal, float Bare) Middle(bool ad)
+        {
+            var p = ad ? Vertex(l, gx, gz) : Vertex(l, gx + 1, gz);
+            var q = ad ? Vertex(l, gx + 1, gz + 1) : Vertex(l, gx, gz + 1);
+            return Mix(p, q, 0.5f);
+        }
+        bool own = Split(l, gx, gz);
+        var m = Middle(own);
+        float s = _levels[l].S;
+        float k = Morph(l, (float)((gx + 0.5) * s - _shiftX), (float)((gz + 0.5) * s - _shiftZ));
+        if (k <= 0f) return m;
+        bool next = Split(l + 1, (gx - (gx & 1)) / 2, (gz - (gz & 1)) / 2);
+        if (next == own) return m;
+        return k >= 1f ? Middle(next) : Mix(m, Middle(next), k);
+    }
+
+    static (Vector3 Pos, Vector3 Normal, float Bare) Mix((Vector3 Pos, Vector3 Normal, float Bare) p, (Vector3 Pos, Vector3 Normal, float Bare) q, float k) =>
+        (p.Pos.Lerp(q.Pos, k), p.Normal.Lerp(q.Normal, k).Normalized(), Mathf.Lerp(p.Bare, q.Bare, k));
 
     float Morph(int l, float x, float z)
     {
@@ -614,22 +639,21 @@ public sealed partial class ClipGround : Node3D
         int l = LevelAt(x, z);
         if (l < 0) return null;
         float s = _levels[l].S;
-        return Over((gx, gz) => Vertex(l, gx, gz).Pos, (int)Math.Floor((x + _shiftX) / s), (int)Math.Floor((z + _shiftZ) / s), x, z);
+        return Over((gx, gz) => Vertex(l, gx, gz).Pos, (gx, gz) => Center(l, gx, gz).Pos, (int)Math.Floor((x + _shiftX) / s), (int)Math.Floor((z + _shiftZ) / s), x, z);
     }
 
     /// <summary>
-    /// The height of a grid's triangles (each square split b-c) over a point, searched in the squares round grid square (ix, iz):
-    /// a slid point may have taken its triangle into the square beside. Null where none is over it.
+    /// The height of a grid's triangles over a point (each square four round its middle point, as the blocks draw it), searched in
+    /// the squares round grid square (ix, iz): a slid point may have taken its triangle into the square beside. Null where none is.
     /// </summary>
-    static float? Over(Func<int, int, Vector3> vertex, int ix, int iz, float x, float z)
+    static float? Over(Func<int, int, Vector3> vertex, Func<int, int, Vector3> center, int ix, int iz, float x, float z)
     {
         for (int dj = -1; dj <= 1; dj++)
         for (int di = -1; di <= 1; di++)
         {
             int gx = ix + di, gz = iz + dj;
-            Vector3 a = vertex(gx, gz), b = vertex(gx + 1, gz), c = vertex(gx, gz + 1), d = vertex(gx + 1, gz + 1);
-            if (Inside(a, b, c, x, z) is float y1) return y1;
-            if (Inside(b, d, c, x, z) is float y2) return y2;
+            Vector3 a = vertex(gx, gz), b = vertex(gx + 1, gz), c = vertex(gx, gz + 1), d = vertex(gx + 1, gz + 1), m = center(gx, gz);
+            if ((Inside(a, b, m, x, z) ?? Inside(b, d, m, x, z) ?? Inside(d, c, m, x, z) ?? Inside(c, a, m, x, z)) is float y) return y;
         }
         return null;
     }
@@ -676,7 +700,14 @@ public sealed partial class ClipGround : Node3D
             }
             return Bilinear(At(i, j), At(i + 1, j), At(i, j + 1), At(i + 1, j + 1), (float)(qx - i), (float)(qz - j));
         }
-        public float Height(double x, double z) => Over(Point, (int)Math.Floor(x / _s), (int)Math.Floor(z / _s), (float)x, (float)z) ?? float.NaN;
+        /// <summary>A square's middle point: the middle of the diagonal it is split along.</summary>
+        Vector3 Center(int gx, int gz)
+        {
+            TileJob t = TileOf(gx, gz, out int at);
+            return t.Data[at * 4 + 3] >= 1.5f ? (Point(gx, gz) + Point(gx + 1, gz + 1)) * 0.5f : (Point(gx + 1, gz) + Point(gx, gz + 1)) * 0.5f;
+        }
+
+        public float Height(double x, double z) => Over(Point, Center, (int)Math.Floor(x / _s), (int)Math.Floor(z / _s), (float)x, (float)z) ?? float.NaN;
     }
 
     static float? Inside(Vector3 a, Vector3 b, Vector3 c, float x, float z)
@@ -703,14 +734,17 @@ public sealed partial class ClipGround : Node3D
                 int bx = g0x + bi * Block, bz = g0z + bj * Block;
                 float cx = (float)((bx + Block / 2) * (double)s - _shiftX), cz = (float)((bz + Block / 2) * (double)s - _shiftZ);
                 if (MathF.Max(MathF.Abs(cx - near.X), MathF.Abs(cz - near.Z)) > radius + Block * s * 0.5f) continue;
-                const int N = Block + 1;
-                var v = new Vector3[N * N];
-                var normals = new Vector3[N * N];
-                var bare = new float[N * N];
+                const int N = Block + 1, M = N * N;
+                var v = new Vector3[M + Block * Block];
+                var normals = new Vector3[v.Length];
+                var bare = new float[v.Length];
                 for (int j = 0; j < N; j++)
                 for (int i = 0; i < N; i++)
                     (v[j * N + i], normals[j * N + i], bare[j * N + i]) = Vertex(l, bx + i, bz + j);
-                var indices = new List<int>(Block * Block * 6);
+                for (int j = 0; j < Block; j++)
+                for (int i = 0; i < Block; i++)
+                    (v[M + j * Block + i], normals[M + j * Block + i], bare[M + j * Block + i]) = Center(l, bx + i, bz + j);
+                var indices = new List<int>(Block * Block * 12);
                 void Tri(int p, int q, int r)
                 {
                     Vector3 e1 = v[q] - v[p], e2 = v[r] - v[p];
@@ -720,9 +754,11 @@ public sealed partial class ClipGround : Node3D
                 for (int j = 0; j < Block; j++)
                 for (int i = 0; i < Block; i++)
                 {
-                    int a = j * N + i, bb = a + 1, c = a + N, d = c + 1;
-                    Tri(a, bb, c);
-                    Tri(bb, d, c);
+                    int a = j * N + i, bb = a + 1, c = a + N, d = c + 1, m = M + j * Block + i;
+                    Tri(a, bb, m);
+                    Tri(bb, d, m);
+                    Tri(d, c, m);
+                    Tri(c, a, m);
                 }
                 yield return (v, indices.ToArray(), normals, bare);
             }
@@ -731,34 +767,41 @@ public sealed partial class ClipGround : Node3D
 
     // ---- The graphics card's side ------------------------------------------------------------
 
-    /// <summary>One block: a flat grid of quads a unit apart, split along the same diagonal everywhere (the next level's coarse quads keep it).</summary>
+    /// <summary>
+    /// One block: a flat grid of squares a unit apart, each four triangles round a point in its middle. The shader puts that
+    /// point on whichever diagonal the square's ground is split along, so the four are that split's two: a cliff crossing a
+    /// square at a corner is a chamfer, as the far rings always drew it, not a fin.
+    /// </summary>
     static ArrayMesh MakeBlock()
     {
-        const int N = Block + 1;
-        var v = new Vector3[N * N];
-        var n = new Vector3[N * N];
+        const int N = Block + 1, M = N * N;
+        var v = new Vector3[M + Block * Block];
+        var n = new Vector3[v.Length];
+        Array.Fill(n, Vector3.Up);
         for (int j = 0; j < N; j++)
         for (int i = 0; i < N; i++)
-        {
             v[j * N + i] = new Vector3(i, 0f, j);
-            n[j * N + i] = Vector3.Up;
-        }
-        var indices = new int[Block * Block * 6];
+        for (int j = 0; j < Block; j++)
+        for (int i = 0; i < Block; i++)
+            v[M + j * Block + i] = new Vector3(i + 0.5f, 0f, j + 0.5f);
+        var indices = new int[Block * Block * 12];
         int t = 0;
         for (int j = 0; j < Block; j++)
         for (int i = 0; i < Block; i++)
         {
-            int a = j * N + i, b = a + 1, c = a + N, d = c + 1;
-            indices[t++] = a; indices[t++] = b; indices[t++] = c;
-            indices[t++] = b; indices[t++] = d; indices[t++] = c;
+            int a = j * N + i, b = a + 1, c = a + N, d = c + 1, m = M + j * Block + i;
+            foreach (var (p, q) in new[] { (a, b), (b, d), (d, c), (c, a) })
+            {
+                indices[t++] = p; indices[t++] = q; indices[t++] = m;
+            }
         }
         var arrays = new Godot.Collections.Array();
         arrays.Resize((int)Mesh.ArrayType.Max);
         arrays[(int)Mesh.ArrayType.Vertex] = v;
         arrays[(int)Mesh.ArrayType.Normal] = n;
-        arrays[(int)Mesh.ArrayType.Color] = new Color[N * N];
-        arrays[(int)Mesh.ArrayType.TexUV] = new Vector2[N * N];
-        arrays[(int)Mesh.ArrayType.TexUV2] = new Vector2[N * N];
+        arrays[(int)Mesh.ArrayType.Color] = new Color[v.Length];
+        arrays[(int)Mesh.ArrayType.TexUV] = new Vector2[v.Length];
+        arrays[(int)Mesh.ArrayType.TexUV2] = new Vector2[v.Length];
         arrays[(int)Mesh.ArrayType.Index] = indices;
         var mesh = new ArrayMesh();
         mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
