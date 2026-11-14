@@ -147,6 +147,7 @@ public sealed partial class Staging
                 foreach (int x in StairShot(v, $"{dir}/stock-{file}-stair.png")) yield return x;
                 foreach (int x in Closeup(v, new N.Vector3(-8, 10, -9), new N.Vector3(-14, 15, -14), $"{dir}/stock-{file}-roofedge.png")) yield return x;
                 foreach (int x in Closeup(v, new N.Vector3(-4, 10, -20), new N.Vector3(-9, 14, -27), $"{dir}/stock-{file}-cockpitcorner.png")) yield return x;
+                foreach (int x in Closeup(v, new N.Vector3(0, 2, -21), new N.Vector3(-7, 0.6f, -31), $"{dir}/stock-{file}-underside.png")) yield return x;
                 foreach (int x in Closeup(v, new N.Vector3(-8, 3, 10), new N.Vector3(-14, 7, 16), $"{dir}/stock-{file}-nacelletail.png")) yield return x;
                 foreach (int x in Closeup(v, new N.Vector3(-6, 8, -2), new N.Vector3(-12, 13, -8), $"{dir}/stock-{file}-towerramp.png")) yield return x;
             }

@@ -296,21 +296,17 @@ corners, two down jets, a side jet each way, four pads.");
             // A window band down the flanks of the bridge.
             if (hw == 8 && z < -5) d.Fill(P(7, 7, z), P(7, 8, z), "glass-plated").Fill(P(-8, 7, z), P(-8, 8, z), "glass-plated");
         }
-        // The prow: a glazed brow raked back over the bridge, the belly raked up under the machine room.
-        d.Fill(P(-3, 7, -20), P(2, 8, -20), "glass-plated").Slope(P(-3, 9, -20), P(2, 9, -20), "glass-plated", 0, Dir.NegZ);
-        d.Slope(P(-3, 10, -20), P(2, 10, -20), Iron, roof, Dir.NegZ).Slope(P(-3, 0, -20), P(2, 0, -20), Iron, keel, Dir.NegZ, under: true);
+        // The prow: a glazed front, flat roof and flat belly; ahead of it a spear of three rows narrowing at 45 degrees, flat underneath
+        // (level with the second metre) and flat on top (level with the sill), its sides chamfered the whole way.
+        d.Fill(P(-3, 7, -20), P(2, 8, -20), "glass-plated");
         d.Face(P(-8, 10, -20), P(7, 10, -4), Dir.PosY, roof).Face(P(-8, 0, -20), P(7, 0, 13), Dir.NegY, keel);
-
-        // A spear of a prow ahead of the glass: three rows narrowing and rising at 45 degrees, its foredeck level with the sill.
         for (int k = 1; k <= 3; k++)
         {
             int z = -20 - k, w = 4 - k;
-            d.Fill(P(-w, k, z), P(w - 1, 6, z), Iron, hull);
-            d.Slope(P(1 - w, k, z), P(w - 2, k, z), Iron, keel, Dir.NegZ, under: true);
-            d.Chamfer(P(w - 1, k + 1, z), P(w - 1, 6, z), Iron, hull, Dir.PosX, Dir.NegZ).Chamfer(P(-w, k + 1, z), P(-w, 6, z), Iron, hull, Dir.NegX, Dir.NegZ);
-            d.Face(P(-w, 6, z), P(w - 1, 6, z), Dir.PosY, roof);
+            d.Fill(P(-w, 1, z), P(w - 1, 6, z), Iron, hull);
+            d.Chamfer(P(w - 1, 1, z), P(w - 1, 6, z), Iron, hull, Dir.PosX, Dir.NegZ).Chamfer(P(-w, 1, z), P(-w, 6, z), Iron, hull, Dir.NegX, Dir.NegZ);
+            d.Face(P(-w, 1, z), P(w - 1, 1, z), Dir.NegY, keel).Face(P(-w, 6, z), P(w - 1, 6, z), Dir.PosY, roof);
         }
-        d.Slope(P(-1, 6, -23), P(0, 6, -23), Iron, roof, Dir.NegZ);
 
         // The hangar aft: 10 m wide, 6 m clear and 16 m deep, open at the stern, its roof edges raked down to the sides.
         d.Room(P(-5, 1, -3), P(4, 6, 12), Iron, hull, inner, deck);
@@ -370,7 +366,7 @@ corners, two down jets, a side jet each way, four pads.");
         d.Thruster("thruster-t3", P(-10, 3, -12), Dir.PosX);
         d.Thruster("thruster-t3", P(8, 3, -12), Dir.NegX);
         foreach (int x in new[] { -10, 8 }) d.Thruster("thruster-t3", P(x, 3, 4), x < 0 ? Dir.PosX : Dir.NegX);
-        foreach (var (x, z) in new[] { (-8, -12), (7, -12), (-8, -6), (7, -6), (-6, -2), (5, -2), (-6, 3), (5, 3) })
+        foreach (var (x, z) in new[] { (-8, -12), (7, -12), (-8, -10), (7, -10), (-6, -2), (5, -2), (-6, 3), (5, 3) })
             d.Thruster("thruster-t3", P(x, 0, z), Dir.PosY);
         d.Thruster("thruster-t3", P(-3, 11, -12), Dir.NegY);
         d.Thruster("thruster-t3", P(2, 11, -12), Dir.NegY);
