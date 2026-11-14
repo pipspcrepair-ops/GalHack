@@ -491,7 +491,8 @@ public static class Swoop
         CombatRules r = w.Combat;
         Vector3 at = t.Position;
         float above = c.Position.Y - (at.Y + Attacks.BodyHeight);
-        bool hit = t.Attackable && WildSim.Flat(at - c.Position).Length() <= r.ContactRadius + c.Radius * 0.4f && above < 1.6f + c.Species.Body.Size * 0.3f;
+        bool hit = t.Attackable && WildSim.Flat(at - c.Position).Length() <= r.ContactRadius + c.Radius * 0.4f && above < 1.6f + c.Species.Body.Size * 0.3f
+            && (c.Space == null || SpaceMath.Clear(c.Space, c.Position, at + Vector3.Up * (Attacks.BodyHeight * 0.5f))); // never through a wall, floor or ceiling
         c.StrikePoint = c.Position;
         Attacks.Deliver(w, c, t, hit);
         Away(w, c);

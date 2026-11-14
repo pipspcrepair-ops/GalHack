@@ -315,6 +315,58 @@ public sealed class PlaceFauna
         return PlaceParts.Legacy ? Built(b) : Built(b) && !BlockInfo.IsPart(b.Type);
     }
 
+    /// <summary>
+    /// Whether a creature stands where an open cell reaches it, as a test; set down anywhere else it is taken out (<see cref="CullUnreached"/>): a pocket under a plate laid on the ground, a sealed tank, a void between
+    /// a floor and the earth, a solid cell (open air flooded from the sky, the way in and every room, six ways). Whoever
+    /// lives in a place can come out of it where you can see them.
+    /// </summary>
+    public static Func<Creature, bool> Reach(PoiInstance inst, PoiPlan plan)
+    {
+        BlockGrid g = inst.Blocks;
+        PInt3 min = g.Min, size = g.Size;
+        int Index(int x, int y, int z) => ((z - min.Z) * size.Y + y - min.Y) * size.X + x - min.X;
+        bool In(int x, int y, int z) => x >= min.X && y >= min.Y && z >= min.Z && x < min.X + size.X && y < min.Y + size.Y && z < min.Z + size.Z;
+        var reached = new bool[size.X * size.Y * size.Z];
+        var stack = new Stack<(int, int, int)>();
+        void Seed(int x, int y, int z)
+        {
+            if (In(x, y, z)) stack.Push((x, y, z));
+        }
+        PInt3 gate = inst.Layout.EntranceCell;
+        Seed(gate.X, gate.Y, gate.Z);
+        foreach (PoiRoom r in plan.Rooms.Concat(plan.Yards)) Seed((int)r.Center.X, (int)MathF.Floor(r.Min.Y), (int)r.Center.Z);
+        int top = min.Y + size.Y - 1;
+        for (int x = min.X; x < min.X + size.X; x++)
+            for (int z = min.Z; z < min.Z + size.Z; z++) Seed(x, top, z);
+        while (stack.Count > 0)
+        {
+            var (x, y, z) = stack.Pop();
+            if (!In(x, y, z) || reached[Index(x, y, z)] || Solid(inst, x, y, z)) continue;
+            reached[Index(x, y, z)] = true;
+            stack.Push((x + 1, y, z)); stack.Push((x - 1, y, z)); stack.Push((x, y + 1, z));
+            stack.Push((x, y - 1, z)); stack.Push((x, y, z + 1)); stack.Push((x, y, z - 1));
+        }
+        return c =>
+        {
+            Vector3 mid = c.Species.Climbs ? Crawl.Center(c) : c.Position + Vector3.Up * 0.5f;
+            int x = (int)MathF.Floor(mid.X), y = (int)MathF.Floor(mid.Y), z = (int)MathF.Floor(mid.Z);
+            return !In(x, y, z) || reached[Index(x, y, z)]; // out beyond the place's blocks is the open ground
+        };
+    }
+
+    /// <summary>Takes out of a sim the creatures <paramref name="reaches"/> says are where nothing reaches. The number taken out.</summary>
+    public static int CullUnreached(WildSim sim, Func<Creature, bool> reaches)
+    {
+        int gone = 0;
+        foreach (Creature c in sim.Creatures.ToArray())
+        {
+            if (c.Removed || c.InWalls || reaches(c)) continue;
+            sim.Remove(c);
+            gone++;
+        }
+        return gone;
+    }
+
     /// <summary>A place's space as its creatures live in it: its cells, its stairs as slopes and its parts (tests make their own this way).</summary>
     public static BlockSpace SpaceOf(PlaceMemory m)
     {
@@ -362,6 +414,8 @@ public sealed class PlaceFauna
         var space = new BlockSpace(_cells.Get,
             new Vector3I(g.Min.X, g.Min.Y, g.Min.Z), new Vector3I(g.Min.X + g.Size.X, g.Min.Y + g.Size.Y, g.Min.Z + g.Size.Z)) { Slope = _cells.Slope, Parts = PlaceParts.Of(memory) };
         lock (deep.Lock) PoiFauna.Spawn(sim, Population, space, Fair(deep, planet, o, space));
+        _reaches = Reach(inst, Rooms);
+        CullUnreached(sim, _reaches);
         Sim = sim;
         // Those that would have appeared in your sight wait, and are put down once they can be unseen.
         _space = space;
@@ -401,6 +455,7 @@ public sealed class PlaceFauna
 
     ISolidSpace _space;
     Vector3 _origin;
+    Func<Creature, bool> _reaches;
     /// <summary>Places with spawns still waiting to be put down out of sight.</summary>
     static readonly List<PlaceFauna> Pending = new();
 
@@ -413,6 +468,7 @@ public sealed class PlaceFauna
         {
             if (f.Sim == null) continue;
             lock (deep.Lock) PoiFauna.PutDeferred(f.Sim, f.Population, f._space, Fair(deep, deep.Planet, f._origin, f._space), 2);
+            CullUnreached(f.Sim, f._reaches);
             if (f.Population.Deferred.Count == 0) lock (Pending) Pending.Remove(f);
         }
     }

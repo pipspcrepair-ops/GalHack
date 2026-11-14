@@ -285,7 +285,8 @@ public static class Attacks
             float rise = end.Y - t.Position.Y;
             hit = t.Attackable
                   && WildSim.Flat(t.Position - end).Length() <= r.ContactRadius + c.Radius * 0.4f
-                  && rise > -0.8f && rise < 2.3f;
+                  && rise > -0.8f && rise < 2.3f
+                  && SpaceMath.Clear(c.Space, end, t.Position + Vector3.Up * (BodyHeight * 0.5f)); // never through a wall, floor or ceiling
         }
         else
         {
