@@ -57,6 +57,7 @@ public static class Ornament
         bool high = Shaping.High(inst);
         bool fins = r.Chance(0.75f), masts = r.Chance(high ? 0.7f : 0.5f), hoods = r.Chance(0.6f), frames = r.Chance(0.6f);
         if (new[] { fins, masts, hoods, frames }.Count(x => x) < 2) fins = masts = true;
+        fins = masts = false; // (test folder only: fins, masts and their spikes are deleted on proto/look, owner 14 Nov)
         BlockType fin = high ? (r.Chance(0.5f) ? BlockType.Partition : BlockType.Rib) : tech == TechLevel.Low ? BlockType.Pillar : r.Chance(0.5f) ? BlockType.Rib : BlockType.Pillar;
         return new Vocab(fins, fin, high ? r.Between(4, 8) : r.Between(3, 6), masts, r.Between(1, high ? 4 : 2), r.Chance(0.7f), hoods, frames, r.Chance(0.8f), r.Between(3, 5));
     }
