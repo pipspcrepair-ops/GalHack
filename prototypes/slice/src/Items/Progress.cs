@@ -22,6 +22,8 @@ public sealed class ProgressRules
 
     public sealed class XpRules
     {
+        /// <summary>Scales every experience gain (0.05: a twentieth of the values listed here).</summary>
+        public double Gain { get; set; } = 1;
         public int OreCell { get; set; } = 3;
         public int Plant { get; set; } = 2;
         public double CraftSecondsPerXp { get; set; } = 2;
@@ -59,7 +61,7 @@ public sealed class ProgressRules
 /// </summary>
 public sealed class ProgressState
 {
-    public int Xp { get; set; }
+    public double Xp { get; set; }
     public int PointsEarned { get; set; }
     public int PointsSpent { get; set; }
     public List<string> Unlocked { get; set; } = new();
@@ -100,7 +102,7 @@ public sealed class Progress
     public bool Creative;
 
     /// <summary>Experience earned: amount and why ("+3 XP ore").</summary>
-    public event Action<int, string> Earned;
+    public event Action<double, string> Earned;
 
     /// <summary>A new level was reached, with the points it granted.</summary>
     public event Action<int, int> LevelledUp;
@@ -165,7 +167,7 @@ public sealed class Progress
 
     // ---- Levels --------------------------------------------------------------------------------
 
-    public int Xp => State.Xp;
+    public int Xp => (int)State.Xp;
 
     public int Level
     {
@@ -187,17 +189,18 @@ public sealed class Progress
             int level = Level;
             if (level >= Rules.Cap)
             {
-                int past = State.Xp - Rules.XpFor(Rules.Cap);
+                int past = Xp - Rules.XpFor(Rules.Cap);
                 return (past % Rules.PastCap, Rules.PastCap);
             }
             int from = Rules.XpFor(level), to = Rules.XpFor(level + 1);
-            return (State.Xp - from, to - from);
+            return (Xp - from, to - from);
         }
     }
 
-    /// <summary>Earns experience; levels and points follow (and keep accruing past the cap).</summary>
-    public void Earn(int xp, string why)
+    /// <summary>Earns experience, scaled by the gain (<paramref name="scaled"/> false: exactly this much); levels and points follow (and keep accruing past the cap).</summary>
+    public void Earn(double xp, string why, bool scaled = true)
     {
+        if (scaled) xp *= Rules.Xp.Gain;
         if (xp <= 0) return;
         int before = Level, pastBefore = PastCapPoints();
         State.Xp += xp;
@@ -218,7 +221,7 @@ public sealed class Progress
         }
     }
 
-    int PastCapPoints() => State.Xp <= Rules.XpFor(Rules.Cap) || Level < Rules.Cap ? 0 : (State.Xp - Rules.XpFor(Rules.Cap)) / Rules.PastCap;
+    int PastCapPoints() => State.Xp <= Rules.XpFor(Rules.Cap) || Level < Rules.Cap ? 0 : (int)(State.Xp - Rules.XpFor(Rules.Cap)) / Rules.PastCap;
 
     /// <summary>Exploring experience, paid once per thing found (a deposit, a species).</summary>
     public bool Discover(string key, int xp, string why)

@@ -937,6 +937,11 @@ public partial class BuildTest : Node
         Check(early.Count == 0, $"no node opens before its parent{(early.Count > 0 ? ": " + string.Join(", ", early) : "")}");
         // Levels alone pay for the whole tree by the cap, and not a level sooner: each level up is a choice.
         var rules = data.Progress;
+        var steps = Enumerable.Range(2, rules.Cap - 1).Select(l => rules.XpFor(l) - rules.XpFor(l - 1)).ToList();
+        Check(rules.Cap == 25 && steps.Zip(steps.Skip(1), (x, y) => y > x).All(b => b) && rules.XpFor(rules.Cap + 5) == rules.XpFor(rules.Cap), $"each level costs more than the one before, to a cap of {rules.Cap}: {rules.XpFor(2)}, {rules.XpFor(5)}, {rules.XpFor(10)}, {rules.XpFor(15)}, {rules.XpFor(20)}, {rules.XpFor(rules.Cap)} XP");
+        var paced = new Progress(data.Progress, data.Items, data.Catalogue);
+        paced.Earn(100, "gain test");
+        Check(rules.Xp.Gain == 0.05 && Math.Abs(paced.State.Xp - 5) < 1e-9, $"every gain is {rules.Xp.Gain:P0} of its listed value (100 earns {paced.State.Xp})");
         int cost = fresh.Nodes.Sum(n => n.Cost), byCap = rules.StartPoints + rules.Points.Sum();
         Check(cost <= byCap && cost > byCap - rules.Points[^1], $"the tree's {fresh.Nodes.Count} nodes cost {cost} points; levels give {byCap} by level {rules.Cap}, {byCap - rules.Points[^1]} by level {rules.Cap - 1}");
         // Every structure block (not deco, not a weapon) is on Structures and grows from the core.
@@ -957,7 +962,7 @@ public partial class BuildTest : Node
         Check(fresh.Level == 1 && fresh.Points == 3, $"a new character starts at level 1 with 3 unlock points ({fresh.Points})");
         Check(fresh.IsUnlocked("core") && fresh.IsUnlocked("iron-plated") && fresh.IsUnlocked("generator-t1"), "the core, plated blocks and the first generator are free at level 1");
         Check(fresh.StateOf(fresh.Node("thruster-t1")) == UnlockState.NeedsLevel, "and Thruster T1 waits for its level");
-        fresh.Earn(fresh.Rules.XpFor(fresh.Node("thruster-t1").Level), "test");
+        fresh.Earn(fresh.Rules.XpFor(fresh.Node("thruster-t1").Level), "test", false);
         Check(fresh.StateOf(fresh.Node("thruster-t1")) == UnlockState.NeedsParent && fresh.Unlock("hover-t1"), $"at level {fresh.Level} Thruster T1 waits for Hover plate T1, which unlocks");
         Check(fresh.StateOf(fresh.Node("thruster-t1")) == UnlockState.Affordable && fresh.Unlock("thruster-t1"), "and then Thruster T1 unlocks");
     }
@@ -971,7 +976,7 @@ public partial class BuildTest : Node
         Check(node != null, "Container T3 is a node on the tech tree");
         if (node == null) yield break;
         // Level it up by playing (XP), then buy it and its parents with the points that brings.
-        _game.Progress.Earn(1_000_000, "test");
+        _game.Progress.Earn(1_000_000, "test", false);
         var chain = new List<TechNode>();
         for (TechNode n = node; n != null; n = _game.Progress.Node(n.Unlock.Parent)) chain.Insert(0, n);
         foreach (TechNode n in chain)

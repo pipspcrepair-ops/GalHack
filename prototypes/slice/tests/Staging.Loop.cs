@@ -37,7 +37,7 @@ public sealed partial class Staging
         _game.Zone.Sky.TimeOfDay = Num("time", 0.33);
         _game.Zone.Weather.Sim.Snap(WeatherKind.Clear);
         Hand(("iron-ore", 160), ("copper-ore", 80), ("carbon-ore", 70), ("silicon-ore", 30), ("biomass", 14), ("stone", 22), ("ice", 12), ("meat", 6), ("hide", 2));
-        _game.Progress.Earn(420, "staging");
+        _game.Progress.Earn(420, "staging", false);
         foreach (int x in Play.OpenMenu(MenuTab.You)) yield return x;
         foreach (int x in Play.Order("fab", "survival-constructor", 1)) yield return x;
         foreach (int x in Play.CloseMenu()) yield return x;
