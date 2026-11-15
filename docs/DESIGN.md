@@ -1416,7 +1416,7 @@ GalHack's interface **looks like part of the world** without being built into it
 
 - **Bottom left: the sleeper's gauges.** Bars with values for Health, Stamina, Food, Air (the suit's oxygen, labelled Air, not O2) and Rads, in place of bars along the bottom of the screen.
 - **Above the gauges: a row of icons.** Helmet open or closed, in vacuum, and near one of the player's core structures.
-- **Upper left: the surroundings.** The current radiation level and temperature.
+- **Upper left: the surroundings.** The current temperature. Radiation shows only in the sleeper's Rads gauge (owner, 15 Nov: "We can remove rads from the top left corner").
 - **Bottom middle: the toolbar.** The personal toolbar is called **Bag** (it was "Yours").
 - **Bottom right, in a command chair: the structure's gauges,** mirroring the sleeper's.
   - The share of capacitor supply in use; over 100% means it draws more each tick than the capacitors can supply.
