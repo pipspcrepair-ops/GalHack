@@ -1412,6 +1412,21 @@ GalHack's interface **looks like part of the world** without being built into it
 | Trade | Tab menu: Trade, when at a trader | Buy and sell lists beside your and nearby ship storage; sell-all buttons |
 | Invasion and storm warnings | Visor HUD and sirens | Countdowns at 10, 5 and 1 minutes |
 
+**Visor HUD layout** (owner, 15 Nov)
+
+- **Bottom left: the sleeper's gauges.** Bars with values for Health, Stamina, Food, Air (the suit's oxygen, labelled Air, not O2) and Rads, in place of bars along the bottom of the screen.
+- **Above the gauges: a row of icons.** Helmet open or closed, in vacuum, and near one of the player's core structures.
+- **Upper left: the surroundings.** The current radiation level and temperature.
+- **Bottom middle: the toolbar.** The personal toolbar is called **Bag** (it was "Yours").
+- **Bottom right, in a command chair: the structure's gauges,** mirroring the sleeper's.
+  - The share of capacitor supply in use; over 100% means it draws more each tick than the capacitors can supply.
+  - Operating time left on generator fuel, in minutes.
+  - AU left in warp fuel.
+  - Light years left in fold fuel.
+- **Above the structure's gauges: its icon row.** Power on or off, gravity on or off, active atmosphere, and passive thrusters (flight assist on: they hold the ship fixed) or active thrusters (assist off: they fire only when told).
+
+**Scanner markers** (owner, 15 Nov). Scanning marks the POIs within the scanner's range. Each marker lasts 30 seconds and then times out, so a scan is a snapshot, not a standing map.
+
 The Tab menu is the primary way to do everything. Machines and consoles in the world also keep their own screens, as flavour you can use: walk up to one and it works directly, with an on-screen cursor while you look at it, mounted at eye height, showing the same panel as the Tab menu.
 
 **Style rules**
