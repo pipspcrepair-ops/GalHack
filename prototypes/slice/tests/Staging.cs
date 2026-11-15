@@ -30,6 +30,8 @@ public sealed partial class Staging
         _game = game;
         _drive = new Driver(game);
         _args = args;
+        // The start world's sky ship is rolled as the world arrives, before any view runs.
+        if (args.TryGetValue("role", out string r) && Enum.TryParse(r, true, out GalHack.Structures.CraftRole role)) Slice.Places.SkyTraffic.ForceRole = role;
     }
 
     public IEnumerable<int> Run(string view)

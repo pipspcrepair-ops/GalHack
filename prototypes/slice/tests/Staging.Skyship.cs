@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using GalHack.Physics;
 using GalHack.Physics.Engine;
 using Godot;
@@ -22,7 +23,6 @@ public sealed partial class Staging
         System.IO.Directory.CreateDirectory(dir);
         _game.Zone.Wildlife.Frozen = true;
         _game.Visor.Visible = false;
-        if (_args.TryGetValue("role", out string r) && Enum.TryParse(r, true, out GalHack.Structures.CraftRole role)) SkyTraffic.ForceRole = role;
         for (int i = 0; i < 600 && _game.Sky.Ship == null && _game.Sky.Missing == null; i++) yield return 0;
         Skyship ship = _game.Sky.Ship;
         if (ship == null) { GD.PrintErr($"skyship: none ({_game.Sky.Missing})"); yield break; }
@@ -55,6 +55,7 @@ public sealed partial class Staging
             N.Vector3 p = v.Body.Position, vel = MathX.Flat(v.Body.Velocity);
             Vector3 under = SkyGround((p + vel * 9f).ToGodot() + side * 25f, 1.7f);
             foreach (int x in SkyHold(under, () => v.Body.Position.ToGodot(), 60)) yield return x;
+            under = Open(under);
             for (int i = 0; i < 60 * 20 && MathX.Flat(v.Body.Position - under.ToNumerics()).Length() > 90f; i++)
             {
                 _game.FixedCamera = SkyLook(under, v.Body.Position.ToGodot());
@@ -65,6 +66,18 @@ public sealed partial class Staging
             foreach (int x in Shot($"{dir}/skyship-{name}.png")) yield return x;
         }
         _game.FixedCamera = null;
+    }
+
+    /// <summary>The nearest point to this one with no tree or crown within a few metres, for a camera to stand on.</summary>
+    Vector3 Open(Vector3 p)
+    {
+        for (float r = 0f; r < 60f; r += 6f)
+            for (int k = 0; k < (r == 0f ? 1 : 12); k++)
+            {
+                Vector3 q = SkyGround(p + new Vector3(MathF.Cos(k * 0.52f), 0f, MathF.Sin(k * 0.52f)) * r, 1.7f);
+                if (!_game.Zone.Streamer.SolidsNear(q, 8f, canopies: true).Any()) return q;
+            }
+        return p;
     }
 
     Vector3 SkyGround(Vector3 p, float up) => p with { Y = _game.Zone.GroundAt(p.X, p.Z).Y + up };
