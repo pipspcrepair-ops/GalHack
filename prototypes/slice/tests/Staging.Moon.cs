@@ -16,10 +16,12 @@ namespace Slice.Tests;
 /// (a frame on each side, on one line from it, measured), its ground close up, and the sleeper
 /// standing on it by the landed Skiff (the last frame). And the moon's light from the ground: a
 /// crescent, a full moon and an eclipsed moon at moments found on the system's own clock.
+/// "moon2" goes to the nearest other moon instead, the cruise out to it skipped (printed): the
+/// Skiff set off it for the hand-over, then just inside its reach.
 /// </summary>
 public sealed partial class Staging
 {
-    IEnumerable<int> MoonView()
+    IEnumerable<int> MoonView(bool second = false)
     {
         AirCells.Give(_game);
         foreach (int x in ToOrbit()) yield return x;
@@ -33,8 +35,25 @@ public sealed partial class Staging
         for (int i = 0; i < 60 * 300 && (o.Moon?.Ready != true || _game.Spaceflight.MoonSurface?.Made == null); i++) yield return 0;
         Celestial moon = o.Moon;
         if (moon == null || !_game.InOrbit) yield break;
-        foreach (int x in MoonTest.TowardTheMoon(_pilot, o, v)) yield return x; // over the limb, the moon ahead
-        foreach (int x in _pilot.Stop()) yield return x;
+        if (second)
+        {
+            Vector3 from = v.Body.Position.ToGodot();
+            moon = o.Moons.Where(c => c != o.Moon).OrderBy(c => from.DistanceTo(c.Centre)).FirstOrDefault();
+            if (moon == null)
+            {
+                GD.Print("(screenshot: no second moon to fly to in this system)");
+                yield break;
+            }
+            SetBy(v, moon, moon.Reach + 1500f);
+            for (int i = 0; i < 60 * 300 && !moon.Ready; i++) yield return 0;
+            SetBy(v, moon, moon.Reach + 1500f); // it went on round the world meanwhile
+            foreach (int x in _pilot.Stop()) yield return x;
+        }
+        else
+        {
+            foreach (int x in MoonTest.TowardTheMoon(_pilot, o, v)) yield return x; // over the limb, the moon ahead
+            foreach (int x in _pilot.Stop()) yield return x;
+        }
         Where("high orbit");
         Hurry(1);
         _game.Visor.Visible = true;
@@ -58,6 +77,11 @@ public sealed partial class Staging
         }
         GD.Print($"(moon light at the hand-over: lit share {seen[0].Lit:P1} far, {seen[1].Lit:P1} up close; brightness {seen[1].Bright / Math.Max(seen[0].Bright, 1e-4f):P0} of the far look's)");
         _game.FixedCamera = null;
+        if (second)
+        {
+            SetBy(v, moon, moon.Reach - 400f);
+            for (int i = 0; i < 60 * 300 && !(o.Anchor == moon && moon.Surface.Arrived); i++) yield return 0;
+        }
 
         Hurry(4);
         var (tx, tz) = moon.Map.MapPoint(moon.ToGlobe(v.Body.Position));
@@ -194,6 +218,17 @@ public sealed partial class Staging
     }
 
     void Where(string what) => GD.Print($"(screenshot: {what}: in {_game.Zone.Name}, frame {_game.Orbit?.Anchor?.Name}, band {_game.Spaceflight.Band:F2}, landed {Skiff.Controller?.Frozen})");
+
+    /// <summary>The cruise out to a moon skipped (printed): the Skiff set this far from its centre, on the side it is on, stopped.</summary>
+    void SetBy(Vessel v, Celestial moon, float off)
+    {
+        Vector3 at = moon.Centre + (v.Body.Position.ToGodot() - moon.Centre).Normalized() * off;
+        GD.Print($"(screenshot: the cruise to {moon.Name} skipped: the Skiff set {moon.Height(at):F0} m over it, {(off > moon.Reach ? "outside" : "inside")} its reach)");
+        v.Body.Position = at.ToNumerics();
+        v.Body.Velocity = N.Vector3.Zero;
+        v.Body.AngularVelocity = N.Vector3.Zero;
+        v.Binding.Teleport();
+    }
 
     /// <summary>A camera a little behind and over the Skiff, looking past it at a point.</summary>
     void LookFromBehind(Vessel v, Vector3 at)

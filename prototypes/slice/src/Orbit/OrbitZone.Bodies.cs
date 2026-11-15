@@ -100,7 +100,6 @@ public partial class OrbitZone
         foreach (Celestial c in Moons)
         {
             if (c.Ready) continue;
-            Hang(c);
             if (c.Painting == null)
             {
                 if (c.Surface?.Made is not PlanetWorld w) continue;

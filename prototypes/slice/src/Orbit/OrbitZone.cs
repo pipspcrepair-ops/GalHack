@@ -184,6 +184,7 @@ public partial class OrbitZone : SurfaceZone
         AddChild(_apart);
         Home.Globe = new Globe { Name = "Globe" };
         _apart.AddChild(Home.Globe);
+        foreach (Celestial c in Moons) Hang(c); // solid from the first moment, their globes set up once painted
         _building = Build().GetEnumerator();
     }
 

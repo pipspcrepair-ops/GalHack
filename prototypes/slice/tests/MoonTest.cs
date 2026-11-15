@@ -263,6 +263,8 @@ public partial class MoonTest : Node
     {
         GD.Print("-- up out of the atmosphere --");
         Vessel v = _skiff;
+        foreach (int x in Stride((slid, speed) => _worldStride = slid)) yield return x;
+        GD.Print($"  (on the world a stride let go at a walk carries on {_worldStride:F2} m)");
         foreach (int x in _pilot.Board(v)) yield return x;
         Check(_game.Survivor.Seated == v, "at the Skiff's controls");
         if (_game.Survivor.Seated != v) yield break;
@@ -550,15 +552,48 @@ public partial class MoonTest : Node
         foreach (int x in _drive.WalkTo(there, 0.8f, 40f, sprint: false, dig: false, hop: false)) yield return x;
         foreach (int x in _drive.Wait(90)) yield return x;
         Vector3 feet = s.WorldFeet;
-        float ground = surface.GroundAt(feet.X, feet.Z).Y, off = new Vector2(feet.X - there.X, feet.Z - there.Z).Length();
+        float ground = surface.GroundAt(feet.X, feet.Z).Y;
         Check(s.Seated == null && s.Zone == surface && s.Body.Frame == null && feet.DistanceTo(from) > 4f && MathF.Abs(feet.Y - ground) < 0.4f,
-            $"the sleeper got up out of the seat and walked {new Vector2(feet.X - from.X, feet.Z - from.Z).Length():F1} m across the moon's own ground (feet {feet.Y - ground:F2} m over the ground, standing on {(s.Body.Frame == null ? "the moon" : "a hull")})");
-        // Let go within 0.8 m of the spot, a stride stops as it does on a planet (its speed and the feet's push scaled to the gravity).
-        float g = surface.Physics.Zone.Strength, share = MathF.Min(g / s.Legs.TunedGravity, 1f);
-        Check(off < 1.5f, $"a stride let go stops as on a planet in {g:F1} m/s²: {off:F1} m from the spot it let go within 0.8 m of (walking at {s.Legs.WalkSpeed * MathF.Sqrt(share):F1} m/s, {s.Legs.WalkSpeed:F1} in the world's gravity)");
+            $"the sleeper got up out of the seat and walked {new Vector2(feet.X - from.X, feet.Z - from.Z).Length():F1} m across the moon's own ground ({feet.DistanceTo(there):F1} m off the spot, feet {feet.Y - ground:F2} m over the ground, standing on {(s.Body.Frame == null ? "the moon" : "a hull")})");
+        float slid = 0f, speed = 0f, g = surface.Physics.Zone.Strength;
+        foreach (int x in Stride((d, at) => (slid, speed) = (d, at))) yield return x;
+        Check(slid < MathF.Max(1f, 2f * _worldStride),
+            $"a stride let go stops as on a planet in {g:F1} m/s²: let go at {speed:F1} m/s it carries on {slid:F2} m ({_worldStride:F2} m on the world at {s.Legs.WalkSpeed:F1} m/s)");
         MarkedHere(moon);
         foreach (int x in _pilot.Board(v)) yield return x;
         Check(s.Seated == v, "and back into the Skiff's seat");
+    }
+
+    float _worldStride;
+
+    /// <summary>
+    /// A stride let go: a second and a half's walk away from the Skiff, the key let go with the feet on the ground, and
+    /// how far it carries on (m), with the speed it was let go at (m/s).
+    /// </summary>
+    IEnumerable<int> Stride(Action<float, float> done)
+    {
+        var s = _game.Survivor;
+        Vector3 feet = s.WorldFeet, away = feet - _skiff.Body.Position.ToGodot();
+        away.Y = 0f;
+        Vector3 to = feet + away.Normalized() * 30f;
+        _game.Controls.Hold(Key.W);
+        for (int i = 0; i < 150 && (i < 90 || !s.Body.OnFloor); i++)
+        {
+            _drive.Face(new Vector3(to.X, s.WorldEye().Y, to.Z));
+            yield return 0;
+        }
+        _game.Controls.Hold(Key.W, false);
+        Vector3 letGo = s.WorldFeet;
+        float speed = new Vector2(s.Body.Velocity.X, s.Body.Velocity.Z).Length();
+        var trace = new System.Text.StringBuilder();
+        for (int i = 0; i < 120; i++)
+        {
+            yield return 0;
+            if (i % 6 == 0) trace.Append($"{(s.Body.OnFloor ? "" : "^")}{new Vector2(s.Body.Velocity.X, s.Body.Velocity.Z).Length():F1} ");
+        }
+        float slid = new Vector2(s.WorldFeet.X - letGo.X, s.WorldFeet.Z - letGo.Z).Length();
+        GD.Print($"  (a stride let go at {speed:F1} m/s carried on {slid:F2} m; its speed every tenth of a second, ^ off the ground: {trace})");
+        done(slid, speed);
     }
 
     /// <summary>On a moon the visor marks what is the moon's own (its places and deposits found there, the Skiff): none of the start world's.</summary>
