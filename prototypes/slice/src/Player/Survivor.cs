@@ -38,6 +38,15 @@ public sealed class Survivor
     /// <summary>View heading and pitch, radians, within the body's walk frame.</summary>
     public float Yaw, Pitch;
 
+    /// <summary>
+    /// How far the view is drawn ahead of <see cref="Yaw"/> and <see cref="Pitch"/> this frame, radians (set by the game each
+    /// frame): the mouse moved since the last tick, which the next tick applies, and the bike's last turn drawn between ticks.
+    /// The look turns every drawn frame, not only on the frames a tick falls in.
+    /// </summary>
+    public Vector2 ViewLead;
+    public float ViewYaw => Yaw + ViewLead.X;
+    public float ViewPitch => Mathf.Clamp(Pitch + ViewLead.Y, -1.5f, 1.5f);
+
     /// <summary>The walk frame the camera uses: it eases after the body's, so hull edges roll the view smoothly.</summary>
     public N.Quaternion ViewFrame = N.Quaternion.Identity;
 
@@ -389,8 +398,8 @@ public sealed class Survivor
         Binding.Teleport();
     }
 
-    /// <summary>Puts the survivor in the zone's world, upright (respawns, tests, screenshots).</summary>
-    public void PlaceOutside(N.Vector3 feet, N.Vector3 velocity = default)
+    /// <summary>Puts the survivor in the zone's world, upright (respawns, tests, screenshots). <paramref name="glide"/>: drawn moving there from where they were, not jumping (a test carrying them along a route a tick at a time).</summary>
+    public void PlaceOutside(N.Vector3 feet, N.Vector3 velocity = default, bool glide = false)
     {
         if (Seated != null) StandUp();
         if (OnBike != null) Dismount();
@@ -402,7 +411,8 @@ public sealed class Survivor
         ViewFrame = N.Quaternion.Identity;
         Body.OnFloor = false;
         _letGoOf = null;
-        Binding.Teleport();
+        if (glide) Binding.Glide();
+        else Binding.Teleport();
     }
 
     // ---- View ---------------------------------------------------------------------------------
@@ -410,7 +420,7 @@ public sealed class Survivor
     /// <summary>The eye, from interpolated transforms, standing on the eased view frame.</summary>
     public Transform3D Eye()
     {
-        var look = new Basis(Vector3.Up, Yaw) * new Basis(Vector3.Right, Pitch);
+        var look = new Basis(Vector3.Up, ViewYaw) * new Basis(Vector3.Right, ViewPitch);
         if (Seated is Vessel seat)
             return seat.DrawTransform * new Transform3D(seat.ChairBasis * look, seat.Eye.ToGodot());
         Vector3 feet = Node.GetGlobalTransformInterpolated().Origin;

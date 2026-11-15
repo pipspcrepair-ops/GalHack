@@ -48,14 +48,23 @@ public sealed partial class PlanetTerrainSource
         return _mouths.GetOrAdd((long)wx << 32 | (uint)wz, static (k, self) => new Lazy<CaveMouth>(() => self.FindMouth((int)(k >> 32), (int)(k & 0xFFFFFFFF))), this).Value;
     }
 
-    /// <summary>The mouths whose passages can touch a chunk column, or null.</summary>
+    /// <summary>The mouths whose passages can touch a chunk column, or null. Asked for every cell sampled, so kept a column at a time (nothing made per ask).</summary>
     List<CaveMouth> MouthsNear(int ox, int oz)
     {
-        List<CaveMouth> list = null;
-        foreach (CaveMouth m in CaveMouths(ox - MouthReach, oz - MouthReach, ox + S + MouthReach, oz + S + MouthReach))
-            (list ??= new List<CaveMouth>()).Add(m);
-        return list;
+        if (Stamps.Count == 0) return null; // the bare land: no caves yet, and nothing kept from it
+        long key = (long)ox << 32 | (uint)oz;
+        if (_mouthsNear.TryGetValue(key, out List<CaveMouth> near)) return near;
+        int cx0 = (int)Math.Floor((ox - MouthReach) / MouthCell), cx1 = (int)Math.Floor((ox + S + MouthReach) / MouthCell);
+        int cz0 = (int)Math.Floor((oz - MouthReach) / MouthCell), cz1 = (int)Math.Floor((oz + S + MouthReach) / MouthCell);
+        for (int z = cz0; z <= cz1; z++)
+        for (int x = cx0; x <= cx1; x++)
+            if (MouthIn(x, z) is { } m) (near ??= new List<CaveMouth>()).Add(m);
+        if (_mouthsNear.Count > 1 << 16) _mouthsNear.Clear(); // the columns walked away from
+        _mouthsNear[key] = near;
+        return near;
     }
+
+    readonly ConcurrentDictionary<long, List<CaveMouth>> _mouthsNear = new();
 
     /// <summary>A cell's spot of land, a cell at a time: the land there tells whether a mouth belongs in it, and which way it goes in.</summary>
     CaveMouth FindMouth(int cx, int cz)
