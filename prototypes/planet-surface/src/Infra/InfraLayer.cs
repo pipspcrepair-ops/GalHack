@@ -142,14 +142,14 @@ public partial class InfraLayer : Node3D
         var tile = new Tile { Ix = ix, Iz = iz };
         double ox = ix * TileSize, oz = iz * TileSize;
         PlanetWorld world = _world;
-        tile.Building = Task.Run(() =>
+        tile.Building = Task.Run(() => GalHack.Testing.AllocMeter.Measure("roads and ruins", () =>
         {
             var b = new TileBuilder(world, ox, oz);
             foreach (Piece p in list) p.Emit(b);
             // What the tile lays on what (markings on roads, plates on pads) stands off it: no two faces fight.
             GalHack.Deco.DecoStandoff.Apply(b.Mesh, new GalHack.Deco.DecoStandoff.Parts(b.Mesh), null, floor: false);
             return b;
-        });
+        }));
         return tile;
     }
 

@@ -261,7 +261,7 @@ public sealed partial class Town
         }
         if (!_searches.TryGetValue((from, spot), out var search))
         {
-            _searches[(from, spot)] = System.Threading.Tasks.Task.Run(() => Route(from, spot));
+            _searches[(from, spot)] = System.Threading.Tasks.Task.Run(() => GalHack.Testing.AllocMeter.Measure("town routes", () => Route(from, spot)));
             return false;
         }
         if (!search.IsCompleted) return false;
@@ -305,11 +305,11 @@ public sealed partial class Town
         if (People.Count > 0 && People[0].Looks == null && _rolling == null)
         {
             WorldLife life = places.Zone.Wildlife.Life;
-            _rolling = System.Threading.Tasks.Task.Run(() =>
+            _rolling = System.Threading.Tasks.Task.Run(() => GalHack.Testing.AllocMeter.Measure("town roll", () =>
             {
                 RollPeople(life);
                 foreach (Person p in People) p.Ready = PersonView.Prepare(p.Rig);
-            });
+            }));
         }
         WildlifePatch patch = places.Zone.Wildlife;
         Register(patch.Sim, null, Vector3.Zero);

@@ -228,12 +228,12 @@ public partial class PoiPlaces : Node3D
     {
         Decor decor = Decor.Shared; // loaded on the main thread the first time
         PlaceFauna.Deep deep = Fauna;
-        return Task.Run(() =>
+        return Task.Run(() => GalHack.Testing.AllocMeter.Measure("place build", () =>
         {
             Prepare(memory, decor, deep);
             BlockGrid g = memory.Inst.Blocks;
             return Mesher.Build(g, memory.Inst.Layout.Occupied, Place.Solid(g.Min));
-        });
+        }));
     }
 
     void Begin(PoiSite site)
@@ -256,7 +256,10 @@ public partial class PoiPlaces : Node3D
         // Every look its rooms are dressed with, as far as a worker can take it: on the main thread a piece is only handed over.
         if (decor?.Meshes is { } meshes)
             foreach (PlaceRoom room in memory.Rooms.Values)
+            {
                 foreach (GalHack.Deco.DecoPlacement pl in room.Plan.Placements) meshes.Prepare(pl.Look);
+                room.Wires = Place.WiresOf(room, null);
+            }
         if (deep != null) memory.Fauna = PlaceFauna.Plan(memory, deep);
         memory.Fauna?.Populate(memory, deep);
         memory.Town = Town.For(memory, deep?.Planet);

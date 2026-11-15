@@ -557,15 +557,9 @@ public partial class Place
         DecoNode.CollisionLayer = Layers.World;
         if (room.Plan.Cables.Count > 0)
         {
-            // The wires strung between pieces, hung by the library's cable helper (anchored at both ends).
-            var mesh = new DecoMeshData();
-            foreach (DecoPlanCable c in room.Plan.Cables)
-            {
-                if (taken != null && (taken.Contains(c.From) || taken.Contains(c.To))) continue;
-                DecoCable cable = c.AsCable();
-                foreach (DecoPart part in DecoCables.Tubes(DecoCables.Path(cable), cable.Radius, cable.Slot))
-                    DecoEmit.Part(mesh, part, (_, _, _) => DecoRgb.Hex("1e2024"), _ => DecoSurface.Matte);
-            }
+            // The wires strung between pieces: made on the place's worker, made again here only when a piece they hang from was taken.
+            bool cut = taken != null && room.Plan.Cables.Any(c => taken.Contains(c.From) || taken.Contains(c.To));
+            DecoMeshData mesh = cut || room.Wires == null ? WiresOf(room, taken) : room.Wires;
             d.Node.AddChild(new MeshInstance3D { Name = "Wires", Mesh = DecoGodot.ToMesh(mesh, decor.Meshes.Materials) });
         }
         PlanetSurface.Fx.PopLog.Note("props", "room dressed", Away(room, FromWorld(Places.EyeAt())), 1.2f, 1f / (60f * DressBlendSeconds));
@@ -574,6 +568,21 @@ public partial class Place
         PlanetSurface.Fx.Fade.Set(d.Node, 0f, 0f);
         _dressFading.Add(d);
         yield return 0;
+    }
+
+    /// <summary>A room's wires strung between its pieces, hung by the library's cable helper (anchored at both ends), but those to a taken piece; null with no cables.</summary>
+    internal static DecoMeshData WiresOf(PlaceRoom room, HashSet<int> taken)
+    {
+        if (room.Plan.Cables.Count == 0) return null;
+        var mesh = new DecoMeshData();
+        foreach (DecoPlanCable c in room.Plan.Cables)
+        {
+            if (taken != null && (taken.Contains(c.From) || taken.Contains(c.To))) continue;
+            DecoCable cable = c.AsCable();
+            foreach (DecoPart part in DecoCables.Tubes(DecoCables.Path(cable), cable.Radius, cable.Slot))
+                DecoEmit.Part(mesh, part, (_, _, _) => DecoRgb.Hex("1e2024"), _ => DecoSurface.Matte);
+        }
+        return mesh;
     }
 
     /// <summary>Rooms dressed now, and pieces standing in them (tests).</summary>

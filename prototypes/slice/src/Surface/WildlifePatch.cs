@@ -523,7 +523,7 @@ public partial class WildlifePatch : Node3D
         PlanetWorld planet = _planet;
         Vector3 next = Snapped(at);
         _bakingFrom = at;
-        _baking = Task.Run(() => Bake(planet, next, half));
+        _baking = Task.Run(() => GalHack.Testing.AllocMeter.Measure("wildlife bake", () => Bake(planet, next, half)));
     }
 
     /// <summary>Waits for a patch being baked and swaps it in now (tests).</summary>

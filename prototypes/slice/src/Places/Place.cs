@@ -329,12 +329,12 @@ public partial class Place : Node3D
         _meshing++;
         bool merge = !g.Modified && MergeCubes;
         g.Merging = null;
-        g.Meshing = Task.Run(() =>
+        g.Meshing = Task.Run(() => GalHack.Testing.AllocMeter.Measure("place cubes", () =>
         {
             List<ChunkMesh> built = Mesher.Build(new ChunkWindow(blocks, min, GroupSize), occupied, Options(min, collision: false));
             if (merge) g.Merging = MeshBuild.Merge(built);
             return built;
-        });
+        }));
     }
 
     /// <summary>A cube's full detail as one mesh, from its chunks merged on the worker.</summary>

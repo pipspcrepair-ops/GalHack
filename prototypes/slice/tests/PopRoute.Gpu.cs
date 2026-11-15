@@ -70,7 +70,7 @@ public partial class PopRoute
             views.Add(("low over the city", mid - way * (radius + 150f), 40f, -10f));
         }
         var cases = GpuLayers.Select(l => "-" + l.Name).Prepend("all").Concat(new[] { "-shadows", "flat sky", "-glow", "-msaa" })
-            .Concat(Parts.Keys.SelectMany(k => new[] { $"-{k} shadows", $"-{k} drawn" })).Append("all again").ToList();
+            .Concat(Parts.Keys.SelectMany(k => new[] { $"-{k} shadows", $"-{k} drawn" })).Concat(new[] { "-sky glow", "-cumulus", "-clouds" }).Append("all again").ToList();
         foreach (var (view, at, up, pitch) in views)
         {
             Vector3 eye = Lift(at, up);
@@ -87,6 +87,10 @@ public partial class PopRoute
             var parts = Kinds();
             Viewport.Msaa msaa = GetViewport().Msaa3D;
             bool glow = env.GlowEnabled;
+            var sky = env.Sky?.SkyMaterial as ShaderMaterial;
+            int glows = sky?.GetShaderParameter("glow_count").AsInt32() ?? 0, cumuli = sky?.GetShaderParameter("cumulus_count").AsInt32() ?? 0;
+            float cover = sky?.GetShaderParameter("cloud_cover").AsSingle() ?? 0f;
+            GD.Print(string.Create(CultureInfo.InvariantCulture, $"ROUTE gpu {view}: time of day {zone.Sky.TimeOfDay:F2}, sky glows {glows}, cumulus {cumuli}, cloud cover {cover:F2}"));
             var cost = new Dictionary<string, double>();
             var renderCpu = new Dictionary<string, double>();
             var drawCalls = new Dictionary<string, double>();
@@ -97,6 +101,13 @@ public partial class PopRoute
                 env.BackgroundMode = c == "flat sky" ? Godot.Environment.BGMode.Color : Godot.Environment.BGMode.Sky;
                 env.GlowEnabled = c != "-glow" && glow;
                 GetViewport().Msaa3D = c == "-msaa" ? Viewport.Msaa.Disabled : msaa;
+                // The sky's own parts: the lit places' glow on the cloud, the heaped cumulus, all cloud (each set back after).
+                if (sky != null)
+                {
+                    sky.SetShaderParameter("glow_count", c == "-sky glow" ? 0 : glows);
+                    sky.SetShaderParameter("cumulus_count", c == "-cumulus" ? 0 : cumuli);
+                    sky.SetShaderParameter("cloud_cover", c == "-clouds" ? 0f : cover);
+                }
                 foreach (var (kind, list) in parts)
                     foreach (var (g, cast, shown) in list)
                     {
