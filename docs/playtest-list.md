@@ -752,6 +752,10 @@ Design clarified: small vessels never auto-hover; only Hover Mode holds a craft 
 
 ## Tests and gate fixes
 
+- [ ] PoiTest PlainRuins fails two checks on the build before the ruins look as well as after, so they're older (15 Nov A/B on fresh worlds):
+  - "every face is drawn": 32,665 faces missing before against 24,496 after, the first always a plain concrete wall's north face [running: facepaint agent];
+  - "dug into the ground": 36 before and after (first: Warning Post goes below ground) [not started] [normal].
+  A full PoiTest under the busy queue hits its 35-minute watchdog, with 11 failures (collision merging, architect layouts, a missing hull-plate loot id, food in old caches); untested before and after [normal]
 - [ ] FloraTest fails three plant-mesh checks on some fresh worlds (15 Nov, test build folder):
   - 18 of 14,939 mesh points outside their colliders;
   - 1 of 540 meshes with a part adrift;
