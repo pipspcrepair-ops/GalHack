@@ -31,6 +31,10 @@ public abstract class Rig
 
     // Intentions from the brain, smoothed so poses never snap.
     protected float Crouch, Hidden, Graze, Rearing, Lunging, Bracing, Aiming, Dead;
+    /// <summary>How wide the mouth is now (<see cref="Creature.Gape"/>): opens quickly, snaps shut faster.</summary>
+    public float Gaping { get; private set; }
+    /// <summary>Each moving jaw and the head it hangs from.</summary>
+    readonly (int jaw, int head)[] _jaws;
     protected float LookYaw;
     float _prevYaw;
     protected float YawRate;
@@ -44,6 +48,13 @@ public abstract class Rig
         Layout = Layouts.GetValue(species, s => Mutation.Decorate(Coats.Decorate(Tack.Decorate(build(s), s), s), s));
         Pose = new Transform3D[Layout.Pieces.Count];
         for (int i = 0; i < Pose.Length; i++) Pose[i] = Transform3D.Identity;
+        var jaws = new System.Collections.Generic.List<(int, int)>();
+        for (int i = 0, head = -1; i < Layout.Pieces.Count; i++)
+        {
+            if (Layout.Pieces[i].Name == "head") head = i;
+            else if (Layout.Pieces[i].Name == "jaw" && head >= 0) jaws.Add((i, head));
+        }
+        _jaws = jaws.ToArray();
     }
 
     public static Rig Create(Species s, Creature c) => s.Rig switch
@@ -73,7 +84,36 @@ public abstract class Rig
     /// <summary>Snap to a resting pose at the creature's spawn point (feet planted, chains laid out).</summary>
     public abstract void Reset(WildSim w, Creature c);
 
-    public abstract void Update(WildSim w, Creature c, float dt);
+    /// <summary>Poses the body for this step, then its jaws on its heads.</summary>
+    public void Update(WildSim w, Creature c, float dt)
+    {
+        Animate(w, c, dt);
+        Gaping = Geo.Smooth(Gaping, c.Gape, c.Gape < Gaping ? 45f : 14f, dt);
+        foreach ((int jaw, int head) in _jaws) Pose[jaw] = Pose[head] * Layout.Pieces[jaw].Mouth.Pose(Gaping);
+    }
+
+    protected abstract void Animate(WildSim w, Creature c, float dt);
+
+    /// <summary>
+    /// The part a strike is made with, as a sphere (xyz centre, w radius) in the world: by default
+    /// whatever of the body is nearest where the strike goes (<see cref="Creature.StrikeAt"/>): the
+    /// part a body with no jaws attacks with. 0 radius: none.
+    /// </summary>
+    public virtual Vector4 Striker(Creature c)
+    {
+        Vector4 best = default;
+        float least = float.MaxValue;
+        for (int i = 0; i < HitCount; i++)
+        {
+            Vector4 s = Hits[i];
+            float d = (new Vector3(s.X, s.Y, s.Z) - c.StrikeAt).Length() - s.W;
+            if (d < least) { least = d; best = s; }
+        }
+        return best;
+    }
+
+    /// <summary>How far ahead of its middle its striking part can reach, for a strike at this height: by default its jaws as it stands, thrown forward.</summary>
+    public virtual float Reach(Creature c, float y) => Attacks.Jaws(c) + Attacks.Stretch(c);
 
     // ---- Feet, for the contact test ---------------------------------------------------
 
@@ -91,7 +131,7 @@ public abstract class Rig
         Graze = Geo.Smooth(Graze, c.WantGraze, 2.5f, dt);
         Rearing = Geo.Smooth(Rearing, c.Rear, 10f, dt);
         Lunging = Geo.Smooth(Lunging, c.Lunge, 14f, dt);
-        Bracing = Geo.Smooth(Bracing, c.Brace, 6f, dt);
+        Bracing = Geo.Smooth(Bracing, c.Brace, c.Brace < Bracing ? 16f : 6f, dt); // a lowered head comes up into the blow at once
         Aiming = Geo.Smooth(Aiming, c.WantAim, 4f, dt);
         Dead = Mathf.MoveToward(Dead, c.Dead ? 1f : 0f, dt * 1.4f);
 

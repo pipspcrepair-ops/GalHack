@@ -415,6 +415,18 @@ public sealed class Survivor
         Binding.Teleport();
     }
 
+    /// <summary>
+    /// A blow throws the survivor (m/s, zone frame), on foot only: off their feet, so the legs don't
+    /// simply stand against it, and down again where it carries them.
+    /// </summary>
+    public void Knock(Vector3 push)
+    {
+        if (Seated != null || OnBike != null || push.LengthSquared() < 1e-4f) return;
+        float lift = Math.Clamp(push.Length() * 0.35f, 1.5f, 4f);
+        Body.Velocity += (push + Vector3.Up * MathF.Max(0f, lift - push.Y)).ToNumerics();
+        Body.OnFloor = false;
+    }
+
     /// <summary>Puts the survivor in the zone's world, upright (respawns, tests, screenshots). <paramref name="glide"/>: drawn moving there from where they were, not jumping (a test carrying them along a route a tick at a time).</summary>
     public void PlaceOutside(N.Vector3 feet, N.Vector3 velocity = default, bool glide = false)
     {

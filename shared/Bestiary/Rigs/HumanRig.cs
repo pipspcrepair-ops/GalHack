@@ -158,7 +158,7 @@ public sealed partial class HumanRig : Rig
 
     public override void Reset(WildSim w, Creature c) => Update(w, c, 0f);
 
-    public override void Update(WildSim w, Creature c, float dt)
+    protected override void Animate(WildSim w, Creature c, float dt)
     {
         SmoothIntents(c, dt);
         _world = w;
@@ -244,6 +244,13 @@ public sealed partial class HumanRig : Rig
         SetHit(3, (Pose[_legU[1]].Origin + _drawn[1]) * 0.5f, 0.2f);
         SetHit(4, Pose[_body].Origin + Pose[_body].Basis.Y * _f.Torso * 0.2f, 0.26f);
         SetBounds(chest, _f.Height * 0.65f);
+    }
+
+    /// <summary>A person strikes with the fist of their leading arm, or the blade or club swung in it.</summary>
+    public override Vector4 Striker(Creature c)
+    {
+        Vector3 fist = FistOf(1);
+        return new Vector4(fist.X, fist.Y, fist.Z, BlowOf(Species) == StrikeKind.Swat ? 0.22f : 0.08f);
     }
 
     /// <summary>The way the last hit went (world), for what a blast does with the body.</summary>

@@ -991,7 +991,7 @@ public static class FaunaQuality
         }
         if (s.Colors.Pattern == Pattern.Veins && !s.Corrupted && !t.Patterns.Exists(x => x.Id == Pattern.Veins)) problems.Add("veins without the Bloom");
         if (!t.Patterns.Exists(x => x.Id == s.Colors.Pattern) && !s.Corrupted) problems.Add($"pattern {s.Colors.Pattern} is not in the data");
-        if (s.Stats.Damage > 0f && (s.Attack == null || s.Attack.Name == "" || s.Attack.Telegraph < 0.6f)) problems.Add("an attacker without a signature attack");
+        if (s.Stats.Damage > 0f && (s.Attack == null || s.Attack.Name == "" || s.Attack.Telegraph <= 0f)) problems.Add("an attacker without a signature attack");
         return problems;
     }
 }

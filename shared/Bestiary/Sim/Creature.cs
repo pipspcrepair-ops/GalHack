@@ -8,6 +8,9 @@ public enum CState { Idle, Wander, Graze, Flee, Stalk, Chase, Hidden, Lurk, Warn
 /// <summary>Every attack runs wind-up, lunge, recover. The wind-up is the telegraph.</summary>
 public enum AttackPhase { None, Windup, Lunge, Recover, Hold }
 
+/// <summary>What a strike is made with (<see cref="Strikes"/>): the jaws or head, a charge on the horns, a foot brought down, the tail swept round.</summary>
+public enum AttackMove { Bite, Charge, Stomp, Swipe }
+
 /// <summary>How a body ends: it falls (and ragdolls), it is blown apart into pieces of itself, or it is burned away to ash.</summary>
 public enum BodyEnd { Fall, Gib, Vaporise }
 
@@ -138,6 +141,24 @@ public sealed class Creature
     public float JawsAtRest;
     /// <summary>Where its jaws end up when the lunge lands.</summary>
     public Vector3 StrikePoint;
+    /// <summary>
+    /// This strike: what it's made with, which leg stomps (or which side a tail sweeps to, -1 or 1),
+    /// whether it has landed, and where on the victim the striking part goes for (the rig drives it there).
+    /// </summary>
+    public AttackMove Move;
+    public int StrikeLimb;
+    public bool StrikeLanded;
+    public Vector3 StrikeAt;
+    /// <summary>The striking part's centre last step, so a fast sweep can't pass through someone between steps.</summary>
+    public Vector3 StrikerWas;
+    /// <summary>Its rig's footfalls already counted (a charge pounds the ground with each), and the way it faced as a swipe began.</summary>
+    public int StrikeSteps;
+    public float StrikeYaw;
+    public bool StrikerWasOn;
+    /// <summary>How wide its mouth goes: 0 as built, 1 gaping for the bite, -1 snapped shut. Set by the strike, smoothed by the rig.</summary>
+    public float Gape;
+    /// <summary>A tail swept to a side, -1..1 and past (the rig bends the tail round by it).</summary>
+    public float Swipe;
     readonly Dictionary<ITarget, float> _lastAttack = new();
 
     // Pose intentions, 0..1, smoothed by the rig. Brace is a charge's wind-up: head down,

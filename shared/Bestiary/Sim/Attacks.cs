@@ -11,10 +11,15 @@ namespace Wildlife;
 ///   telegraph from data; later ones use the short normal wind-up.
 /// - Part way through the wind-up it commits to where you are standing. The lunge then flies
 ///   at that spot, not at you, so stepping aside after the commit dodges it.
-/// - Contact is judged where the lunge lands. Damage is dealt in full; nothing is capped.
+/// - A blow lands only when the striking part meets the victim's body (<see cref="Strikes"/>):
+///   the jaws or head, a stomping foot, a swept tail, a fist. Miss that and nothing is dealt, however
+///   close the pose looked. Damage is dealt in full; nothing is capped.
+/// - The tell is short and readable (a posture snap, a lowered head, a lifted foot, a sound; 0.4 to
+///   0.8 s by weight), the strike fast and committed: jaws open in the lunge and snap shut on contact,
+///   or at its end.
 /// - Each species attacks in its behaviour's signature style: a pounce crouches low, a charge
-///   lowers its head and paws, a giant rears. The style changes the look and sound only; the
-///   timing rules are the same for all.
+///   lowers its head and paws, a giant drops its head to come down on you. The style changes the
+///   look and sound only; the timing rules are the same for all.
 /// - It bites with its head, not from inside you: the body stops so the jaws meet yours at your
 ///   skin (<see cref="BodyRadius"/>), however long its neck, and nothing passes through you
 ///   (<see cref="Locomotion.KeepOff"/>). A lunge from your blind side swings round, as far as it can,
@@ -55,11 +60,11 @@ public static class Attacks
     /// <summary>How close it has to be to start a bite that will reach: no nearer than its jaws let it.</summary>
     public static float Range(Creature c) => Spitting.Can(c) ? Spitting.ReachOf(c.Species) : MathF.Max(c.Stats.AttackRange, Jaws(c) + Stretch(c) + BodyRadius + 0.2f);
 
-    /// <summary>The same for one target: someone with a gun (rounds and a clear line, <see cref="Arming"/>) shoots from as far as it reaches.</summary>
-    public static float Range(Creature c, ITarget t)
+    /// <summary>The same for one target: someone with a gun (rounds and a clear line, <see cref="Arming"/>) shoots from as far as it reaches; a horned giant charges from far off, a heavy tail swipes at someone behind.</summary>
+    public static float Range(WildSim w, Creature c, ITarget t)
     {
-        float shoot = Arming.ShootReach(c, t);
-        return shoot > 0f ? MathF.Max(shoot, Range(c)) : Range(c);
+        float shoot = Arming.ShootReach(c, t), near = Strikes.Reach(w, c, t, Range(c));
+        return shoot > 0f ? MathF.Max(shoot, near) : near;
     }
 
     /// <summary>Whether this attack is a shot: it carries a gun that reaches, and the target isn't already within its blow.</summary>
@@ -70,7 +75,7 @@ public static class Attacks
 
     /// <summary>
     /// Which way from its aim point a lunge ends: back the way it came, unless that is behind the
-    /// victim, when it swings round toward their front.
+    /// victim, when it swings round toward their front (not the opener, which comes straight).
     /// </summary>
     public static Vector3 Approach(Creature c, ITarget t, Vector3 from, Vector3 aim)
     {
@@ -80,7 +85,7 @@ public static class Attacks
         if (t is CreatureTarget || front.LengthSquared() < 1e-4f) return side;
         front = front.Normalized();
         float angle = MathF.Atan2(front.Cross(side).Y, front.Dot(side));
-        if (MathF.Abs(angle) <= Front) return side;
+        if (MathF.Abs(angle) <= Front || c.FirstAttack) return side; // the telegraphed opener comes straight, so stepping aside dodges it
         return side.Rotated(Vector3.Up, -MathF.Sign(angle) * MathF.Min(MathF.Abs(angle) - Front, Swing));
     }
 
@@ -91,7 +96,7 @@ public static class Attacks
         if (c.Dead || c.Attacking || !c.Shown || target == null || !target.Attackable || c.Stats.Damage <= 0f) return false;
         CombatRules r = w.Combat;
         bool first = c.MustTelegraph(target, w.Time, r);
-        float windup = first ? c.Species.TelegraphWindup(r) : r.NormalWindup;
+        float windup = c.Species.Windup(r, first);
         if (c.Species.Flight == FlightKind.Glide) windup = MathF.Max(windup, Swoop.LeastTell(c.Species));
         if (c.Pack is { } pack)
         {
@@ -108,6 +113,14 @@ public static class Attacks
         c.Committed = false;
         c.AttackTarget = target;
         c.AimPoint = target.Position;
+        c.Move = Strikes.Choose(w, c, target);
+        Strikes.Local(c, target.Position, out _, out float side);
+        c.StrikeLimb = side < 0f ? -1 : 1;
+        c.StrikeYaw = c.Yaw;
+        c.StrikeAt = target.Position + Vector3.Up;
+        c.StrikeLanded = false;
+        c.StrikerWasOn = false;
+        c.Swipe = 0f;
         w.RaiseTelegraph(new AttackEvent { Creature = c, Target = target, First = first, Windup = c.WindupLength, Time = w.Time });
         return true;
     }
@@ -118,6 +131,8 @@ public static class Attacks
         c.ThinkEvery = 0f;
         c.Rear = 0f;
         c.Brace = 0f;
+        c.Gape = 0f;
+        c.Swipe = 0f;
         c.AirAimOn = false;
     }
 
@@ -137,6 +152,7 @@ public static class Attacks
             if (c.State != CState.Warn) c.Rear = Mathf.MoveToward(c.Rear, 0f, dt * 3f); // a giant's warning display rears too
             c.Lunge = Mathf.MoveToward(c.Lunge, 0f, dt * 4f);
             c.Brace = Mathf.MoveToward(c.Brace, 0f, dt * 3f);
+            c.Gape = Mathf.MoveToward(c.Gape, 0f, dt * 4f);
             return;
         }
 
@@ -165,6 +181,7 @@ public static class Attacks
                 if (!c.Committed) c.AimPoint = t.Position;
                 c.FacePoint = c.AimPoint;
                 WindupPose(c, Math.Clamp(c.PhaseTime / c.PhaseLength, 0f, 1f));
+                if (c.Move == AttackMove.Swipe) Sweep(c, -0.3f * Math.Clamp(c.PhaseTime / c.PhaseLength * 2f, 0f, 1f)); // it turns a little away: the tail cocks
                 CommitIfDue(w, c, t);
                 if (c.PhaseTime >= c.PhaseLength)
                 {
@@ -193,13 +210,40 @@ public static class Attacks
                 break;
 
             case AttackPhase.Lunge:
-                c.Lunge = 1f;
+                c.Lunge = c.Move is AttackMove.Bite or AttackMove.Charge ? 1f : 0f;
                 c.Desired = Vector3.Zero;
-                if (c.PhaseTime >= c.PhaseLength) Land(w, c, t);
+                c.LookAt = c.StrikeAt;
+                float k = Math.Clamp(c.PhaseTime / c.PhaseLength, 0f, 1f);
+                if (c.Move == AttackMove.Swipe) Sweep(c, Mathf.Lerp(-0.3f, 1.25f, k * k * (3f - 2f * k)));
+                if (c.Move == AttackMove.Charge && c.Rig.Steps != c.StrikeSteps)
+                {
+                    c.StrikeSteps = c.Rig.Steps; // the ground pounds under a heavy charge
+                    Strikes.Quake(w, c, c.Position, false, false, w.Combat.Strikes.QuakeFootfall);
+                }
+                float gap = float.NaN;
+                if (c.Space != null || c.Species.Rig == RigKind.Swarm)
+                {
+                    if (c.PhaseTime >= c.PhaseLength) Land(w, c, t, LandingHit(w, c, t), gap);
+                }
+                else if (Strikes.Touch(w, c, t, out gap)) Land(w, c, t, true, gap);
+                else if (c.Move is AttackMove.Bite or AttackMove.Charge && (c.LungeTo - c.LungeFrom).Dot(t.Position - c.Position) > 0f && Strikes.Bumped(c, t))
+                    c.LungeFrom = c.LungeTo = c.Position; // its body met them first: it stops there (nothing passes through anyone), and its head still comes on
+                if (c.Phase != AttackPhase.Lunge || c.Space != null || c.Species.Rig == RigKind.Swarm) break;
+                if (c.Move == AttackMove.Charge && c.PhaseTime < c.PhaseLength * 0.9f && c.LungeTo == c.Position && c.LungeFrom != c.LungeTo && c.PhaseTime > 0.05f)
+                {
+                    // Ran into something solid: it stops hard and stands dazed.
+                    Strikes.Quake(w, c, c.Position, false, false);
+                    Land(w, c, t, false, gap);
+                    c.PhaseLength = w.Combat.Strikes.ChargeDazed;
+                    c.Rear = 0.5f;
+                }
+                else if (c.PhaseTime >= c.PhaseLength + r.FollowThrough) Land(w, c, t, false, gap);
                 break;
 
             case AttackPhase.Recover:
-                c.Lunge = Mathf.MoveToward(c.Lunge, 0f, dt * 3f);
+                c.Lunge = Mathf.MoveToward(c.Lunge, 0f, dt * (c.StrikeLanded ? 8f : 3f)); // a blow that met someone rebounds off them
+                c.Swipe = Mathf.MoveToward(c.Swipe, 0f, dt * 2f);
+                if (c.PhaseTime > 0.15f) c.Gape = Mathf.MoveToward(c.Gape, 0f, dt * 4f);
                 c.Desired = c.PhaseTime < 0.5f ? -c.Forward * c.Stats.WalkSpeed * 0.6f : Vector3.Zero;
                 if (c.PhaseTime >= c.PhaseLength)
                 {
@@ -211,20 +255,37 @@ public static class Attacks
     }
 
     /// <summary>
-    /// What the wind-up looks like, by style; k runs 0 to 1 over it. The brain clears the pose
-    /// intentions every step before this runs, so they hold only while winding up.
+    /// What the wind-up looks like, by move and style; k runs 0 to 1 over it. A tell is a snap
+    /// into a posture, held, not a slow lift: it's there by a third of the way. The brain clears
+    /// the pose intentions every step before this runs, so they hold only while winding up.
     /// </summary>
     static void WindupPose(Creature c, float k)
     {
+        float snap = MathF.Min(1f, k * 3f);
+        switch (c.Move)
+        {
+            case AttackMove.Charge:
+                c.Brace = snap; // head down, a foot pawing, a snort
+                return;
+            case AttackMove.Stomp:
+                c.Rear = 0.35f * snap; // the forequarters come up off the stomping foot
+                return;
+            case AttackMove.Swipe:
+                return;
+        }
+        if (Mouthed(c)) c.Gape = c.Committed ? 1f : 0.3f * snap; // lips back, then wide as it commits
         switch (c.Species.Attack.Style)
         {
             case AttackStyle.Pounce:
-                // Down low and coiled, a slight lift of the head at the very end.
-                c.WantCrouch = 1f;
-                c.Rear = 0.25f * k * k;
+                // Down low and coiled.
+                c.WantCrouch = snap;
+                c.Rear = 0.15f * snap;
                 break;
             case AttackStyle.Charge:
-                c.Brace = MathF.Min(1f, k * 1.6f);
+            case AttackStyle.Rear:
+                // The head drops to lead the blow: a giant brings it down on you, never up and back.
+                c.Brace = (c.Species.Attack.Style == AttackStyle.Rear ? 0.5f : 1f) * snap;
+                c.WantCrouch = 0.4f * snap;
                 c.Rear = 0f;
                 break;
             case AttackStyle.Drop:
@@ -238,9 +299,22 @@ public static class Attacks
                 c.Stir = 1f;
                 break;
             default:
-                c.Rear = k;
+                // A quick coil: drawn in and low, ready to throw itself.
+                c.Rear = 0.2f * snap;
+                c.WantCrouch = 0.5f * snap;
                 break;
         }
+    }
+
+    /// <summary>Whether it bites with a mouth of some kind (jaws, beak, pincers, a round maw), not only a head.</summary>
+    static bool Mouthed(Creature c) => c.Species.Part("head") != "none" && c.Species.Figure == null;
+
+    /// <summary>A swipe's sweep, -1..1 and past: the body turns into it and the tail goes round to the victim's side.</summary>
+    static void Sweep(Creature c, float amount)
+    {
+        c.Swipe = amount * c.StrikeLimb;
+        c.Yaw = c.StrikeYaw + 0.55f * c.Swipe;
+        c.FacePoint = c.Position + Geo.Forward(c.Yaw, 0f) * 10f;
     }
 
     /// <summary>Launches at the committed aim point, stopping with the jaws on it.</summary>
@@ -251,13 +325,54 @@ public static class Attacks
         if (c.Space != null)
         {
             Crawl.Launch(w, c);
+            c.StrikerWasOn = false;
+            if (Mouthed(c)) c.Gape = 1f;
             return;
         }
         CombatRules r = w.Combat;
         AttackDef a = c.Species.Attack;
         Vector3 aim = c.AimPoint;
-        // It stops with its jaws on the aim point, at the skin of whoever stands there.
-        float stop = Jaws(c) + Stretch(c) + (c.AttackTarget is CreatureTarget ? 0f : BodyRadius);
+        c.Phase = AttackPhase.Lunge;
+        c.PhaseTime = 0f;
+        c.Rear = 0f;
+        c.Brace = 0f;
+        c.LungeFrom = c.LungeTo = c.Position;
+        c.StrikeSteps = c.Rig.Steps;
+        // Where on the victim the striking part goes: the nearest of their body to it (a giant's head comes down to the chest, a small hunter's goes for the legs).
+        Vector4 part = c.Rig.Striker(c);
+        // ...at their skin, on the side it comes from, so it drives up to them and not through.
+        Vector3 back = WildSim.Flat(c.Position - aim);
+        c.StrikeAt = aim + Vector3.Up * Math.Clamp(part.Y - aim.Y, 0.5f, c.AttackTarget.Crouched ? 0.9f : 1.3f)
+                     + (back.LengthSquared() > 1e-4f && c.AttackTarget is not CreatureTarget ? back.Normalized() * BodyRadius : Vector3.Zero);
+        switch (c.Move)
+        {
+            case AttackMove.Stomp:
+                // It stands and brings the lifted foot down where they are.
+                c.StrikePoint = c.StrikeAt = new Vector3(aim.X, w.Terrain.Height(aim.X, aim.Z), aim.Z);
+                c.PhaseLength = r.Strikes.StompDown;
+                return;
+            case AttackMove.Swipe:
+                c.PhaseLength = r.Strikes.SwipeTime;
+                return;
+            case AttackMove.Charge:
+            {
+                // Straight at them and on past, horns down, as fast as its weight lets it; they can step out of the line.
+                Vector3 run = WildSim.Flat(aim - c.Position);
+                float d0 = run.Length();
+                Vector3 line = d0 > 0.01f ? run / d0 : c.Forward;
+                float carry = d0 + c.Species.Body.Size * r.Strikes.ChargeOvershoot;
+                c.LungeTo = c.Position + line * carry;
+                c.StrikePoint = aim;
+                c.Yaw = MathF.Atan2(-line.X, -line.Z);
+                c.PhaseLength = carry / MathF.Max(2f, c.Stats.RunSpeed * r.Strikes.ChargeSpeed);
+                c.Gape = 0.4f;
+                return;
+            }
+        }
+        if (Mouthed(c)) c.Gape = 1f; // jaws wide for the bite
+        // It drives its jaws into the aim point, so they meet whoever stands there; contact stops it (a body
+        // that strikes with whatever part is nearest can go deeper: that part meets them first).
+        float stop = c.Rig.Reach(c, c.StrikeAt.Y) + (c.AttackTarget is CreatureTarget ? 0f : BodyRadius) - (c.Species.Rig == RigKind.Legged ? 0.65f : 1f);
         Vector3 go = WildSim.Flat(aim + Approach(c, c.AttackTarget, c.Position, aim) * stop - c.Position);
         float d = go.Length();
         Vector3 along = d > 0.01f ? go / d : c.Forward;
@@ -266,37 +381,37 @@ public static class Attacks
         c.LungeTo = c.Position + along * travel;
         Vector3 at = WildSim.Flat(aim - c.LungeTo);
         Vector3 dir = at.LengthSquared() > 1e-4f ? at.Normalized() : c.Forward;
-        c.StrikePoint = c.LungeTo + dir * MathF.Min(stop, at.Length()); // someone already inside its reach is bitten where they stand
+        c.StrikePoint = c.LungeTo + dir * Math.Clamp(stop, 0f, at.Length()); // someone already inside its reach is bitten where they stand
         c.Yaw = MathF.Atan2(-dir.X, -dir.Z);
-        c.Phase = AttackPhase.Lunge;
-        c.PhaseTime = 0f;
         c.PhaseLength = MathF.Max(a.Lunge > 0f ? a.Lunge : r.LungeSeconds, travel / (c.Species.Flight == FlightKind.Hover ? MostLungeSpeed : MathF.Min(MostLungeSpeed, c.Species.Body.LegLength * 3.5f + 2f)));
-        c.Rear = 0f;
-        c.Brace = 0f;
     }
 
-    static void Land(WildSim w, Creature c, ITarget t)
+    /// <summary>
+    /// Judged where the lunge ends, for what has no one striking part: a swarm stings wherever its
+    /// cloud comes down, and in a cave or a place the lunge is a flight through the open (the rigs
+    /// there don't all pose on the place's floor yet, so their drawn parts can't be the judge).
+    /// </summary>
+    static bool LandingHit(WildSim w, Creature c, ITarget t)
+    {
+        Vector3 end = c.StrikePoint;
+        float rise = end.Y - t.Position.Y, near = w.Combat.ContactRadius + c.Radius * 0.4f;
+        if (c.Space == null) return t.Attackable && WildSim.Flat(t.Position - end).Length() <= near && t.Position.Y - w.Terrain.Height(end.X, end.Z) < 2.2f;
+        return t.Attackable
+               && WildSim.Flat(t.Position - end).Length() <= near
+               && rise > -0.8f && rise < 2.3f
+               && SpaceMath.Clear(c.Space, end, t.Position + Vector3.Up * (BodyHeight * 0.5f)); // never through a wall, floor or ceiling
+    }
+
+    /// <summary>The strike is over: it met the victim (the moment its part touched them) or it didn't, and the jaws snap shut either way.</summary>
+    static void Land(WildSim w, Creature c, ITarget t, bool hit, float gap)
     {
         CombatRules r = w.Combat;
-        bool hit;
-        if (c.Space != null)
+        c.StrikeLanded = hit;
+        if (Mouthed(c) && c.Move is AttackMove.Bite or AttackMove.Charge) c.Gape = -1f;
+        if (c.Move == AttackMove.Stomp)
         {
-            // In a cave or a place the lunge is a flight through the open: judged where it ends.
-            Vector3 end = c.StrikePoint;
-            float rise = end.Y - t.Position.Y;
-            hit = t.Attackable
-                  && WildSim.Flat(t.Position - end).Length() <= r.ContactRadius + c.Radius * 0.4f
-                  && rise > -0.8f && rise < 2.3f
-                  && SpaceMath.Clear(c.Space, end, t.Position + Vector3.Up * (BodyHeight * 0.5f)); // never through a wall, floor or ceiling
-        }
-        else
-        {
-            Vector3 strike = c.StrikePoint;
-            float groundAtStrike = w.Terrain.Height(strike.X, strike.Z);
-            Vector3 off = t.Position - strike;
-            hit = t.Attackable
-                  && WildSim.Flat(off).Length() <= r.ContactRadius + c.Radius * 0.4f
-                  && t.Position.Y - groundAtStrike < 2.2f; // a jump at the right moment clears a low lunge
+            Vector4 foot = c.Rig.Striker(c);
+            Strikes.Quake(w, c, new Vector3(foot.X, 0f, foot.Z), true, hit); // hit or miss, the ground takes it: a thud, a shake, dust
         }
         // A seize needs room where it lands, as it did when it set off; without it, it's a blow.
         if (hit && c.Seizing && Seizing.Free(w, t) && Seizing.CanReach(w, c, t))
@@ -305,7 +420,7 @@ public static class Attacks
             Seizing.Begin(w, c, t);
             return;
         }
-        Deliver(w, c, t, hit);
+        Deliver(w, c, t, hit, gap);
         if (c.Species.Flight == FlightKind.Hover) c.Velocity = Vector3.Zero; // a sting stops dead at the skin: what carried it in doesn't carry it through
         if (c.Space != null)
         {
@@ -319,31 +434,33 @@ public static class Attacks
         }
         c.Phase = AttackPhase.Recover;
         c.PhaseTime = 0f;
-        c.PhaseLength = r.AttackCooldown;
+        // A charge that missed has to pull up and come round, slowly for a big body: an opening.
+        c.PhaseLength = r.AttackCooldown + (c.Move == AttackMove.Charge && !hit ? c.Species.Body.Size * 0.25f : 0f);
     }
 
     /// <summary>What its blow deals: its hand weapon's (or bare hands') where it's a person or machine that carries one, else its body's own.</summary>
     public static float BlowOf(Creature c) => Arming.BlowDamage?.Invoke(c) is float b && b >= 0f ? b : c.Stats.Damage;
 
     /// <summary>A blow lands or doesn't: the damage, and everyone told. What the body does next is its own business.</summary>
-    internal static void Deliver(WildSim w, Creature c, ITarget t, bool hit)
+    internal static void Deliver(WildSim w, Creature c, ITarget t, bool hit, float gap = float.NaN)
     {
-        float dealt = 0f;
+        float dealt = 0f, blow = BlowOf(c) * Strikes.DamageShare(w, c);
         if (hit)
         {
             // Another creature takes its wounds through the sim (it may die and be eaten).
             if (t is CreatureTarget prey)
             {
                 float before = prey.Creature.Health;
-                w.Damage(prey.Creature, BlowOf(c), c.AsTarget);
+                w.Damage(prey.Creature, blow, c.AsTarget);
                 dealt = before - MathF.Max(0f, prey.Creature.Health);
             }
-            else dealt = t.Health.Apply(BlowOf(c));
+            else dealt = t.Health.Apply(blow);
         }
         c.RememberAttack(t, w.Time);
         w.RaiseAttacked(new AttackEvent
         {
             Creature = c, Target = t, First = c.FirstAttack, Windup = c.WindupLength, Hit = hit, Damage = dealt, Time = w.Time,
+            Move = c.Move, Gap = gap, Push = hit ? Strikes.Push(w, c, t) : Vector3.Zero,
         });
     }
 }
