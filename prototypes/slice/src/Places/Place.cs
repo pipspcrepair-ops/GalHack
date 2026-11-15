@@ -548,6 +548,7 @@ public partial class Place : Node3D
     {
         // The water it holds by design (a channel, a basin): a surface over the floor, never a block.
         if (PoiGenerator.MeshBuild.Water(Inst) is { } water) AddChild(water);
+        yield return 0;
         foreach (int x in BuildDoors()) yield return x;
         BuildLifts();
         yield return 0;

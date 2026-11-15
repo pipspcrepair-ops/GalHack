@@ -282,9 +282,10 @@ public partial class PoiPlaces : Node3D
         {
             var step = Stopwatch.StartNew();
             int collections = GC.CollectionCount(0);
-            string stage = j.Stage;
             bool more = Step(j);
             double ms = step.Elapsed.TotalMilliseconds;
+            // Named by where the step ended: a stage's first piece runs in the step that leaves the one before.
+            string stage = j.Stage;
             if (ms > 3.0) SlowSteps.Add((j.Place.Site.Name, stage, ms, GC.CollectionCount(0) > collections));
             // A garbage collection landing in a step is the runtime's, not the build's: counted apart.
             if (GC.CollectionCount(0) > collections) { frame.Restart(); continue; }
