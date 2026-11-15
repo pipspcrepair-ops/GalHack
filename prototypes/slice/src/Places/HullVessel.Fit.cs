@@ -382,7 +382,7 @@ public sealed partial class HullVessel
         // The lift engines first, where the holds' cargo would stand: what is still to come (the cargo, the generators, the
         // containers) is allowed for in their sum.
         Lift();
-        foreach (Space s in Live.Where(s => s.Hall && s.Purpose is "hold" or "ore-hold")) Cargo(s);
+        foreach (Space s in Live.Where(s => s.Purpose is "hold" or "ore-hold")) Cargo(s);
         foreach (Space s in Live.Where(s => s.Purpose == "engine-room")) EngineRoom(s);
         foreach (Space s in Live.Where(s => s.Purpose == "bridge")) Bridge(s);
         foreach (Space s in Live.Where(s => s.Purpose == "workshop"))
@@ -400,6 +400,15 @@ public sealed partial class HullVessel
             var mid = core.Floor.OrderBy(c => Math.Abs(c.U - (core.U0 + core.U1) / 2.0) + Math.Abs(c.V - (core.V0 + core.V1) / 2.0)).First();
             Out.CoreSlot = At(mid.U, core.Y, mid.V);
             core.Taken.Add(mid);
+            // An engineer's chair at its wall: the piece the core claims can be flown from it whichever piece the bridge came down in.
+            BlockType chair = Cat.Type("command-chair");
+            int rot = Turn(Dir.PosY, Dir.NegZ);
+            foreach (var (u, v) in WallCells(core, 1))
+                if (Fits(chair, At(u, core.Y, v), rot, (x, y, vv) => !S.Has(new Int3(x, y, vv - Pc.V0)) && core.Floor.Contains((x, vv)) && !core.Taken.Contains((x, vv))))
+                {
+                    Device(chair, u, core.Y, v, rot, core);
+                    break;
+                }
         }
         Turrets();
         Power();
@@ -411,6 +420,7 @@ public sealed partial class HullVessel
     {
         string[] colours = { "orange", "teal", "hazard", "blue", "red", "hull" };
         int r = hold.Floor.Max(c => Math.Abs(c.U));
+        var doorways = new HashSet<(int, int)>(hold.Doors.SelectMany(d => Around(d.Inside, 2)));
         foreach (int side in new[] { -1, 1 })
             for (int row = 2; row + 2 <= r - 2; row += 5)
             {
@@ -419,9 +429,10 @@ public sealed partial class HullVessel
                 {
                     bool clear = true;
                     for (int dv = 0; dv < 6 && clear; dv++)
-                        for (int du = 0; du < 3 && clear; du++) clear = hold.Floor.Contains((u0 + du, v + dv)) && !hold.Taken.Contains((u0 + du, v + dv));
+                        for (int du = 0; du < 3 && clear; du++) clear = hold.Floor.Contains((u0 + du, v + dv)) && !hold.Taken.Contains((u0 + du, v + dv)) && !doorways.Contains((u0 + du, v + dv));
                     if (!clear) continue;
-                    int high = Rng.Next(2, 4) * 2 + (hold.Purpose == "ore-hold" ? -2 : 0);
+                    // Two or three containers high in a hall, one under a 4 m deck.
+                    int high = hold.Hall ? Rng.Next(2, 4) * 2 + (hold.Purpose == "ore-hold" ? -2 : 0) : 3;
                     ushort paint = Paint[colours[Rng.Next(colours.Length)]];
                     for (int dv = 0; dv < 6; dv++)
                         for (int du = 0; du < 3; du++)

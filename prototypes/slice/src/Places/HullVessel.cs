@@ -63,7 +63,7 @@ public sealed partial class HullVessel
         public readonly List<Dressing> Decor = new();
         /// <summary>The hull door from outside (its anchor), the empty seat for a core.</summary>
         public Int3? Door, CoreSlot;
-        /// <summary>Where the plan crushed the top deck (structure cells at its walking level).</summary>
+        /// <summary>Where the crash crushed the top deck or tore the decks (structure cells at their walking levels).</summary>
         public readonly HashSet<Int3> Crushed = new();
         public Piece Piece;
         public Plan Plan;
@@ -291,9 +291,6 @@ public sealed partial class HullVessel
                     if (Interior(u, y, v)) Solid(u, y, v, Paint["deck"]);
                 }
     }
-
-    /// <summary>The walking levels the hull has at (u, v): the main decks, and the tower's over the roof.</summary>
-    int DeckCount(int u, int v) => InTower(u, v) ? H.Decks + Plan.TowerDecks : H.Decks;
 
     /// <summary>A column of a deck all inside the shell from its floor to its ceiling.</summary>
     bool Open(int u, int d, int v)

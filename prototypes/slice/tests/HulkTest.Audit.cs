@@ -18,7 +18,7 @@ public sealed class WreckAudit
     public List<int> Levels = new();
     /// <summary>The walkable cells under 4 m of headroom (structure cells).</summary>
     public readonly HashSet<Int3> LowCells = new();
-    public readonly HashSet<Int3> FloorCells = new();
+    public readonly HashSet<Int3> FloorCells = new(), CorridorCells = new();
 
     public float CorridorShare => Floor == 0 ? 0 : Corridor / (float)Floor;
     public float MachinesPer100 => Floor == 0 ? 0 : Machines * 100f / Floor;
@@ -35,6 +35,20 @@ public sealed class WreckAudit
         a.Height = hi.Y - lo.Y + 1;
         bool Empty(Int3 p) => !s.TryGet(p, out Block b) || s.TypeOf(b).Collide == Collide.None;
         bool Door(Int3 p) => s.TryGet(p, out Block b) && s.TypeOf(b).IsDoor;
+        bool Solid(Int3 p) => s.TryGet(p, out Block b) && s.TypeOf(b).Collide != Collide.None;
+        // Inside the hull: a wall met every way across (a ledge on the outside under the flank's overhang is not a deck).
+        bool Enclosed(Int3 p)
+        {
+            foreach (Int3 d in new[] { Int3.UnitX, -Int3.UnitX, Int3.UnitZ, -Int3.UnitZ })
+            {
+                Int3 q = p + d;
+                while (q.X >= lo.X && q.X <= hi.X && q.Z >= lo.Z && q.Z <= hi.Z && !Solid(q)) q += d;
+                if (q.X < lo.X || q.X > hi.X || q.Z < lo.Z || q.Z > hi.Z) return false;
+            }
+            return true;
+        }
+        // A doorway: walled either side, under its lintel (a door the years took, a landing's opening), lower than a deck by its nature.
+        bool Doorway(Int3 p) => Solid(p + Int3.UnitX) && Solid(p - Int3.UnitX) || Solid(p + Int3.UnitZ) && Solid(p - Int3.UnitZ);
         var candidates = new Dictionary<Int3, int>();
         var doors = new HashSet<Int3>();
         foreach (var (p, b) in s.Blocks())
@@ -54,7 +68,7 @@ public sealed class WreckAudit
             if (!Empty(up)) continue;
             int h = 0;
             while (h < 11 && Empty(up + Int3.UnitY * h)) h++;
-            if (h >= 2 && h < 11) candidates[up] = h;
+            if (h >= 2 && h < 11 && Enclosed(up)) candidates[up] = h;
         }
         // Walkable floor is what joins up into a deck's worth (through its doorways): a cargo stack's top or a cranny is not.
         var seen = new HashSet<Int3>();
@@ -76,7 +90,7 @@ public sealed class WreckAudit
             foreach (Int3 c in part)
             {
                 a.FloorCells.Add(c);
-                if (candidates[c] >= 4) a.Clear4++;
+                if (candidates[c] >= 4 || Doorway(c)) a.Clear4++;
                 else a.LowCells.Add(c);
             }
         }
@@ -92,8 +106,9 @@ public sealed class WreckAudit
         foreach (Int3 p in a.FloorCells)
         {
             int x = Run(p, Int3.UnitX), z = Run(p, Int3.UnitZ);
-            if (Math.Min(x, z) <= 3 && Math.Max(x, z) >= 4) a.Corridor++;
+            if (Math.Min(x, z) <= 3 && Math.Max(x, z) >= 4) a.CorridorCells.Add(p);
         }
+        a.Corridor = a.CorridorCells.Count;
         a.Levels = a.FloorCells.GroupBy(p => p.Y).Where(g => g.Count() >= 50).Select(g => g.Key).OrderBy(y => y).ToList();
         return a;
     }

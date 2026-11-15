@@ -44,6 +44,7 @@ public partial class HulkTest
         var shapes = new List<string>();
         float floor = 0, corridor = 0, machines = 0, clear4 = 0, lowLoose = 0, rooms = 0, dressed = 0, lit = 0, litRooms = 0, pieces = 0;
         double slowest = 0;
+        var byPurpose = new Dictionary<string, (int Floor, int Corridor)>();
         foreach (var (site, spec) in specs)
         {
             ulong seed = (ulong)Random.Shared.NextInt64();
@@ -97,6 +98,12 @@ public partial class HulkTest
                     if (floorCells.Any(cells.Contains) || s.Hall) dressed++;
                 }
                 pieces += r.Decor.Count;
+                foreach (HullVessel.Space s in r.Spaces)
+                {
+                    var on = s.Floor.Select(f => new Int3(f.U, s.Y, f.V - r.Piece.V0)).Where(a.FloorCells.Contains).ToList();
+                    var k = byPurpose.GetValueOrDefault(s.Purpose);
+                    byPurpose[s.Purpose] = (k.Floor + on.Count, k.Corridor + on.Count(a.CorridorCells.Contains));
+                }
             }
             // Every room lit as it was built (the years since broke some of the lamps).
             foreach (HullVessel.Result r in intact)
@@ -123,6 +130,7 @@ public partial class HulkTest
         Check(shapes.Distinct().Count() == shapes.Count, $"each hull its own: {shapes.Distinct().Count()} different plans of {shapes.Count}");
         Check(rooms > 0 && dressed >= rooms * 0.9f && lit >= litRooms, $"rooms dressed and lit for their purpose: {dressed} of {rooms} dressed ({pieces} pieces), {lit} of {litRooms} lit as built");
         float share = corridor / Math.Max(1f, floor), per100 = machines * 100f / Math.Max(1f, floor);
+        GD.Print($"      floor by purpose (corridor share): {string.Join(", ", byPurpose.OrderByDescending(kv => kv.Value.Floor).Select(kv => $"{kv.Key} {kv.Value.Floor} m² ({kv.Value.Corridor * 100 / Math.Max(1, kv.Value.Floor)}%)"))}");
         Check(share is >= 0.5f and <= 0.7f, $"corridors {share:P0} of {floor:F0} m² of floor (Empyrion's derelicts 59%)");
         Check(per100 is >= 2.2f and <= 3.3f, $"{per100:F2} machines and containers per 100 m² of floor (Empyrion's wrecks 2.7)");
         Check(clear4 >= floor * 0.9f && lowLoose <= floor * 0.02f, $"4 m decks: {clear4 / Math.Max(1f, floor):P0} of the floor 4 m clear; under that only where crushed or on the stairs but {lowLoose:F0} m²");

@@ -55,6 +55,11 @@ public sealed partial class HullVessel
         foreach (var (p, _) in S.Blocks().ToList())
             if (H.Torn(p.X, p.Y, p.Z + Pc.V0)) S.Clear(p);
         int top = H.Decks - 1;
+        // The decks by the tears are the crash's too: what stands of them is ragged, low and open to the sky.
+        for (int v = Pc.V0; v < Math.Min(VEnd, H.L); v++)
+            if (H.Break >= 0 && Math.Abs(v - H.Break) < 9 || H.Cut >= 0 && v >= H.Cut - 6 && v < H.Cut + 8)
+                for (int d = 0; d < H.Decks; d++)
+                    for (int u = -H.Half; u <= H.Half; u++) Out.Crushed.Add(At(u, Plan.Walk(d), v));
         for (int v = Pc.V0; v < Math.Min(VEnd, H.L); v++)
         {
             if (H.Crushed(v) == 0) continue;

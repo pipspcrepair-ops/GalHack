@@ -73,12 +73,7 @@ public static class CapitalHull
         public bool Last;
         /// <summary>Where its structure's cell 0, 0, 0 (the hull's cell 0, 0, V0) lies, metres in the place's frame, and its turn.</summary>
         public NV3 Origin;
-        public NQ Rotation = NQ.Identity;
-        /// <summary>Its pitch (radians, bow up positive) as it lies.</summary>
-        public float Pitch;
-
-        public bool Holds(int v) => v >= V0 && (v < V1 || Last);
-    }
+        public NQ Rotation = NQ.Identity;    }
 
     /// <summary>A bay of the hull, stem to stern: what it is for (bow, crew, hold, hangar, power, engine...) and its cells along v.</summary>
     public sealed record Bay(string Kind, int V0, int V1)
@@ -125,8 +120,6 @@ public static class CapitalHull
         public readonly Dictionary<string, Rgb> Paints = new();
         /// <summary>Where the crash struck hardest (v), and how far the crushing reaches from it: the top deck there is 2 m clear.</summary>
         public int Impact = -1, Crush;
-
-        public Bay BayAt(int v) => Bays.FirstOrDefault(b => v >= b.V0 && v < b.V1) ?? Bays[^1];
 
         float Taper(float v)
         {
@@ -194,9 +187,6 @@ public static class CapitalHull
 
         /// <summary>How far the roof is crushed down into the top deck at v (cells): 2 near where it struck, nothing elsewhere.</summary>
         public int Crushed(int v) => Impact >= 0 && Math.Abs(v - Impact) < Crush ? 2 : 0;
-
-        /// <summary>The piece a cell of the hull belongs to.</summary>
-        public HullPiece? PieceOf(int v) => Pieces.FirstOrDefault(p => v >= p.V0 && v < p.V1) ?? (v >= L ? Pieces[^1] : null);
     }
 
     static readonly System.Runtime.CompilerServices.ConditionalWeakTable<LayoutExtras, HullPlan> Plans = new();
@@ -455,7 +445,7 @@ sealed class Hulk
             var piece = new CapitalHull.HullPiece
             {
                 Name = Poses.Count == 1 ? "" : p == Poses[0] ? " (fore)" : " (aft)",
-                V0 = p.V0, V1 = p.V1, Last = p == Poses[^1], Pitch = p.Pitch,
+                V0 = p.V0, V1 = p.V1, Last = p == Poses[^1],
             };
             // Where it lies: its structure's origin (the middle of the hull's cell 0, 0, V0) and its turn, in the place's frame.
             NV3 plot = ToPlot(p, new NV3(0, 0, p.V0));
@@ -558,6 +548,8 @@ sealed class Hulk
                     {
                         int y = walk + i;
                         plot.Put(u, y, v, new Block(BlockType.Ramp, Material.Rock, new Rgb(0x5a, 0x52, 0x48), Role.Floor, s > 0 ? Dir.East : Dir.West));
+                        // A bank of rock under it, down through the room the hull was given to level in.
+                        for (int fy = y - 1; fy >= y - 12; fy--) plot.Put(u, fy, v, new Block(BlockType.Cube, Material.Rock, new Rgb(0x5a, 0x52, 0x48), Role.Wall));
                         cells.Add((u, y, v));
                         for (int up = y + 1; up < Math.Max(0, y + 4); up++) { if (up < 0) plot.Air(u, up, v); cells.Add((u, up, v)); }
                     }

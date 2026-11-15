@@ -88,7 +88,7 @@ public sealed partial class HullVessel
                     for (int u = -r; u <= r; u++)
                     {
                         if (ZoneAt(d, u, v) != Fill) continue;
-                        bool spine = Math.Abs(u) <= 1 && !hall, side = b.Kind != "bow" && !hall && r >= 9 && Math.Abs(u) >= r - 1;
+                        bool spine = Math.Abs(u) <= 1 && !hall, side = b.Kind != "bow" && !hall && r >= 10 && Math.Abs(u) >= r - 2;
                         if (cross || spine || side) SetZone(d, u, v, corridor);
                     }
                 }
@@ -171,7 +171,7 @@ public sealed partial class HullVessel
 
     /// <summary>
     /// A bay's rooms on a deck: each side's band between the spine and the flank passage, split along the bay into rooms
-    /// of up to about 12 m with a passage between each two (walled both sides), as a ship's transverse passages join its
+    /// of up to about 10 m with a passage between each two (walled both sides), as a ship's transverse passages join its
     /// spine to its flanks.
     /// </summary>
     void Rooms(Bay b, int d, int corridor)
@@ -193,14 +193,14 @@ public sealed partial class HullVessel
                 if (Band("core-room", d, side, c1 - 6, c1, passages) is int vault) _vault = vault;
                 continue;
             }
-            int total = c1 - from + 1, n = Math.Max(n0, (int)MathF.Round((total + 4) / 16f));
+            int total = c1 - from + 1, n = Math.Max(n0, (int)MathF.Round((total + 4) / 14f));
             int len = (total - 4 * (n - 1)) / n;
             if (len < 6) { n = 1; len = total; }
             for (int i = 0; i < n; i++)
             {
                 int a = from + i * (len + 4), z = i == n - 1 ? c1 : a + len - 1;
                 // A deep band (12 m or more) takes a passage down its middle, a room either side of it.
-                int outer = Reach(d, (a + z) / 2) - (passages ? 3 : 0), m = (3 + outer) / 2 - 1;
+                int outer = Reach(d, (a + z) / 2) - (passages ? 4 : 0), m = (3 + outer) / 2 - 1;
                 if (passages && outer - 2 >= 12)
                 {
                     Band(purpose, d, side, a, z, passages, 3, m - 2);
@@ -227,7 +227,7 @@ public sealed partial class HullVessel
         var cells = new List<(int, int)>();
         for (int v = v0; v <= v1; v++)
         {
-            int r = Reach(d, v), outer = Math.Min(limit, r >= 9 && passages ? r - 3 : r);
+            int r = Reach(d, v), outer = Math.Min(limit, r >= 10 && passages ? r - 4 : r);
             for (int a = inner; a <= outer; a++)
                 if (ZoneAt(d, side * a, v) == Fill && !InCore(side * a, v, 1)) cells.Add((side * a, v));
         }
