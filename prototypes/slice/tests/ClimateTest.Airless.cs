@@ -28,8 +28,9 @@ public partial class ClimateTest
     IEnumerable<int> Airless()
     {
         GD.Print($"-- an airless world, started on: {Zone.Planet.Spec} --");
-        Check(Zone.Planet.Spec.Airless && Zone.Planet.Sky.Density < SurfaceWeather.NoAir && Zone.Weather.Sim == null,
-            $"its sky has no air (density {Zone.Planet.Sky.Density:F2}) and no weather, as its moons' do");
+        Check(Zone.Planet.Spec.Airless && Zone.Planet.Sky.Density < SurfaceWeather.NoAir && Zone.Weather.Sim == null && Zone.Wildlife.Sim == null,
+            $"its sky has no air (density {Zone.Planet.Sky.Density:F2}), no weather and no life, as its moons' do");
+        Check(_game.Underworld != null && _game.Tool.Places != null && _game.Places.Fauna == null, "the start finished setting up all the same: places, caves and the underworld, with no creatures in them");
         foreach (int x in OnOpenGround(Me.WorldFeet)) yield return x;
         if (!_game.Suit.Sim.Player.Gear.HelmetOn) _game.Suit.Sim.ToggleHelmet();
         foreach (int x in _drive.Wait(10)) yield return x;
