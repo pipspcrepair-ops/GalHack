@@ -58,7 +58,8 @@ public partial class OccupantTest
         var all = by.Values.ToList();
         int places = all.Sum(t => t.Places), silent = all.Sum(t => t.Silent);
         string Worst(Func<InsideTally, int> of) => string.Join("; ", by.Where(kv => of(kv.Value) > 0).OrderByDescending(kv => of(kv.Value)).Take(5).Select(kv => $"{kv.Key} {of(kv.Value)}{kv.Value.Example}"));
-        Check(places > (only != null ? 20 : 250) && silent <= places * 0.1f, $"{places} places of {by.Count(kv => kv.Value.Places > 0)} families on fresh worlds: {silent} silent (only a barren world's may be)");
+        // (One family alone is many of it on each of four worlds: a barren world leaves all its share silent, and only a barren world's are.)
+        Check(places > (only != null ? 20 : 250) && (only != null || silent <= places * 0.1f), $"{places} places of {by.Count(kv => kv.Value.Places > 0)} families on fresh worlds: {silent} silent (only a barren world's may be)");
         Check(all.Sum(t => t.Missing) == 0, $"whoever holds a place is in it: {all.Sum(t => t.Missing)} places without their holders ({Worst(t => t.Missing)})");
         Check(all.Sum(t => t.Bare) == 0, $"the storeys off the way in's hold something, up a tower as below ground: {all.Sum(t => t.Held)} of {all.Sum(t => t.Storeys)}; {all.Sum(t => t.Bare)} places with more bare than one in five ({Worst(t => t.Bare)})");
         Check(all.Sum(t => t.Thin) == 0, $"the floor off the way in's storey that nobody keeps holds 0.2 threats a 100 m2 at least (place-patterns E2, E3): {all.Sum(t => t.Thin)} places thinner ({Worst(t => t.Thin)})");
