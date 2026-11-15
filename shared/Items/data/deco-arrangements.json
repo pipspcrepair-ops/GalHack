@@ -1,4 +1,4 @@
-﻿// How decorations are arranged: templates of pieces placed as they were used (chairs round a table,
+// How decorations are arranged: templates of pieces placed as they were used (chairs round a table,
 // desks facing screens, beds in rows), each theme set's mix of templates, outdoor sites, the
 // disorder each POI state leaves, and how the POI generator's rooms and generic props map onto it.
 //
@@ -36,7 +36,7 @@
   "templates": {
     "table-group":   { "kind": "around",  "where": "island", "anchor": ["table"], "members": ["chair", "bench-seat", "stool"], "count": [2, 6], "top": ["tray"], "topChance": 0.7, "gap": 0.04 },
     "cafe-pair":     { "kind": "around",  "where": "island", "anchor": ["table-small"], "members": ["chair", "stool"], "count": [2, 3], "gap": 0.04 },
-    "lounge":        { "kind": "around",  "where": "island", "anchor": ["table-low"], "members": ["sofa", "chair"], "count": [2, 3], "gap": 0.25, "under": ["rug"] },
+    "lounge":        { "kind": "around",  "where": "island", "anchor": ["table-low"], "members": ["sofa"], "count": [2, 3], "gap": 0.25, "under": ["rug"] },
     "desk-bank":     { "kind": "line",    "where": "island", "anchor": ["desk"], "front": ["chair"], "top": ["monitor"], "topChance": 0.6, "count": [2, 3], "double": true },
     "range":         { "kind": "row",     "where": "island", "anchor": ["shelf", "books", "cabinet"], "count": [2, 3], "spacing": 0.0, "double": true },
     "basin-line":    { "kind": "line",    "where": "island", "anchor": ["basin"], "count": [2, 3], "double": true },
@@ -83,7 +83,7 @@
     "rock-heap":     { "kind": "cluster", "where": "wall", "anchor": ["rock"], "count": [1, 3] },
     "kitchen-run":   { "kind": "line", "where": "wall", "anchor": ["counter"], "middle": ["sink"], "ends": ["stove"], "count": [0, 4], "max": 1 },
     "kitchen-table": { "kind": "around", "where": "island", "anchor": ["dining-table"], "members": ["dining-chair"], "count": [2, 4], "gap": 0.06, "max": 1, "under": ["rug"] },
-    "hearth-wall":   { "kind": "single", "where": "wall", "anchor": ["hearth", "screen"], "max": 1 },
+    "fire-wall":     { "kind": "single", "where": "wall", "anchor": ["hearth"], "max": 1 },
     "bed-bay":       { "kind": "bay", "where": "wall", "anchor": ["double-bed"], "beside": ["nightstand"], "max": 1 },
     "single-bay":    { "kind": "bay", "where": "wall", "anchor": ["single-bed"], "beside": ["nightstand"], "max": 1 },
     "wardrobe-row":  { "kind": "row", "where": "wall", "anchor": ["wardrobe"], "count": [1, 2], "spacing": 0.02, "max": 1 },
@@ -130,11 +130,11 @@
     "hangar":      { "set": "aviation", "wall": { "workbench-station": 3, "rack-row": 2, "tank-row": 1, "racking-aisle": 0.5 }, "island": { "engine-bay": 2, "tug-bay": 1.5 }, "fill": ["barrel", "cylinders", "crate", "toolrack"] },
     "aircraft-cabin": { "set": "aviation", "wall": { "galley-line": 1 }, "island": { "cabin-rows": 4 }, "fill": ["luggage"] },
     // A home's rooms, each arranged round what it is for (see "focus"): the worktop run with its sink and cooker and a
-    // table to eat at; a hearth or screen with the seats round a low table; the bed's head to a wall, a wardrobe; a bath,
+    // table to eat at; a hearth (only at a chimney breast) or a screen, the sofas round a low table; the bed's head to a wall, a wardrobe; a bath,
     // a basin and a WC; a console and a coat stand by the door; a desk and books; shelves and boxes; a workbench.
     // A big room (24 mÂ² and up) gets a second zone in its far half: a living room's dining table, a kitchen-diner's sofa end.
     "kitchen":     { "set": "residential", "wall": { "kitchen-run": 6 }, "island": { "kitchen-table": 3 }, "zone": { "lounge": 2, "cafe-pair": 1 }, "fill": ["sideboard", "bin", "plant"], "light": ["ceiling-light"] },
-    "living-room": { "set": "residential", "wall": { "hearth-wall": 5, "book-row": 2 }, "island": { "lounge": 4 }, "zone": { "kitchen-table": 3, "cafe-pair": 1 }, "divider": ["sideboard"], "fill": ["lamp", "plant", "rug", "sideboard"], "light": ["ceiling-light"] },
+    "living-room": { "set": "residential", "wall": { "fire-wall": 5, "screen-wall": 3, "book-row": 2 }, "island": { "lounge": 4 }, "zone": { "kitchen-table": 3, "cafe-pair": 1 }, "divider": ["sideboard"], "fill": ["lamp", "plant", "rug", "sideboard"], "light": ["ceiling-light"] },
     "bedroom":     { "set": "residential", "wall": { "bed-bay": 6, "single-bay": 2, "wardrobe-row": 3 }, "island": {}, "zone": { "lounge": 2, "cafe-pair": 1 }, "fill": ["nightstand", "lamp", "rug", "chest", "plant"], "light": ["ceiling-light"] },
     "bathroom":    { "set": "residential", "wall": { "bath-bay": 4, "basin-wall": 4, "wc-wall": 4 }, "island": {}, "zone": { "basin-line": 1 }, "fill": ["bin", "plant"], "light": ["ceiling-light"] },
     "hall":        { "set": "residential", "wall": { "console-wall": 4, "coat-wall": 2 }, "island": {}, "zone": { "lounge": 1 }, "fill": ["coat-stand", "plant", "rug"], "light": ["ceiling-light"] },

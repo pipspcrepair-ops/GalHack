@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using GalHack.Deco;
@@ -22,6 +22,10 @@ public partial class PoiTest
         public int Narrow, Doorless;
         /// <summary>Ruined: what it was arranged round is down or gone; its middle has more of the fallen in it than its edges; most of it is open to the sky.</summary>
         public bool FocalDown, MidDebris, Sky;
+        /// <summary>The room's rules (DecoRules): pieces taller than a sill before a window, fires off a chimney breast and fires lit at all,
+        /// what it is arranged round against an opening, pieces whose use side no one walks to, a narrow room off its one wall, over half the floor stood on.</summary>
+        public int Window, OffFlue, Fires, Unreached;
+        public bool FocalWall, OffWall, Crowded;
     }
 
     /// <summary>The places checked: the one a sleeper walks into most early, then the next most visited, each by its families and spawns a run.</summary>
@@ -56,6 +60,7 @@ public partial class PoiTest
         {
             int places = 0, rooms = 0, empty = 0, lined = 0, inLine = 0, unlit = 0, lamps = 0, unfocused = 0, alike = 0, oneMaterial = 0;
             int big = 0, sparse = 0, narrow = 0, doorless = 0, flat = 0, oneCeiling = 0, ruined = 0, focalDown = 0, midDebris = 0, sky = 0;
+            int window = 0, offFlue = 0, fires = 0, focalWall = 0, unreached = 0, lining = 0, crowded = 0;
             var firsts = new Dictionary<string, string>();
             void Note(string kind, string what) => firsts.TryAdd(kind, what);
             var weak = new Dictionary<string, int>();
@@ -91,6 +96,13 @@ public partial class PoiTest
                     doorless += r.Doorless;
                     if (r.Doorless > 0) Note("door", $"{at}: {r.Doorless} of {r.Narrow} ways a door's width with no door");
                     if (r.Flat) flat++;
+                    window += r.Window; offFlue += r.OffFlue; fires += r.Fires; unreached += r.Unreached;
+                    if (r.Window > 0) Note("window", $"{at} ({r.Signature})");
+                    if (r.OffFlue > 0) Note("flue", at);
+                    if (r.FocalWall) { focalWall++; Note("focal wall", at); }
+                    if (r.Unreached > 0) Note("reach", $"{at} ({r.Signature})");
+                    if (r.OffWall) { lining++; Note("narrow", $"{at} ({r.Signature})"); }
+                    if (r.Crowded) { crowded++; Note("crowded", $"{at} ({r.Signature})"); }
                     if (state == PoiState.Ruined)
                     {
                         ruined++;
@@ -119,7 +131,7 @@ public partial class PoiTest
             string First(string kind) => firsts.TryGetValue(kind, out string s) ? $" (first: {s})" : "";
             string T(string what) => $"Interiors, {type}: {what}";
             System.Console.WriteLine($"Interiors, {type}: {places} places, {rooms} rooms; {lamps} with a lamp burning; big rooms {big}, bare middle {sparse}; narrow ways {narrow}, no door {doorless}; flat ceilings {flat} of {rooms}, places one ceiling all through {oneCeiling}; "
-                + $"ruined rooms {ruined}: focal down {focalDown}, fallen across the middle {midDebris}, mostly sky {sky}; weakest: {string.Join(", ", weak.OrderByDescending(k => k.Value).Take(6).Select(k => $"{k.Key} {k.Value}"))}");
+                + $"ruined rooms {ruined}: focal down {focalDown}, fallen across the middle {midDebris}, mostly sky {sky}; before a window {window}, fires {fires} ({offFlue} off a breast), focal on an opening {focalWall}, cut off {unreached}, narrow off one wall {lining}, over half the floor {crowded}; weakest: {string.Join(", ", weak.OrderByDescending(k => k.Value).Take(6).Select(k => $"{k.Key} {k.Value}"))}");
             Check(empty == 0, T($"no empty rooms ({empty} of {rooms}){First("empty")}"));
             Check(inLine == 0, T($"nothing stands in the walking line between a room's ways in ({inLine} of {lined} rooms with two or more ways in){First("line")}"));
             Check(oneMaterial == 0, T($"no place one material wall to wall ({oneMaterial} of {places}){First("material")}"));
@@ -129,6 +141,12 @@ public partial class PoiTest
             Check(sparse == 0, T($"no big room with a bare middle ({sparse} of {big} big rooms){First("sparse")}"));
             Check(doorless == 0, T($"a door in every door-sized way between rooms ({doorless} of {narrow} without){First("door")}"));
             Check(oneCeiling == 0, T($"no place one ceiling all through ({oneCeiling} of {places}){First("ceiling")}"));
+            Check(window == 0, T($"nothing taller than a sill stands before a window ({window} pieces){First("window")}"));
+            Check(offFlue == 0, T($"a fire only at a chimney breast, never by a window ({offFlue} of {fires} fires){First("flue")}"));
+            Check(focalWall == 0, T($"what a room is arranged round stands on a solid wall ({focalWall} with a window or door behind){First("focal wall")}"));
+            Check(unreached == 0, T($"a clear walk a metre wide from the doors to every piece's use side, drawers out ({unreached} pieces cut off){First("reach")}"));
+            Check(lining == 0, T($"a room under {DecoRules.Narrow} m across lined along one wall ({lining} with furniture off it){First("narrow")}"));
+            Check(crowded == 0, T($"furniture on no more than half a room's floor ({crowded} rooms over){First("crowded")}"));
             Check(focalDown == 0 && midDebris == 0 && sky * 4 <= ruined, T($"ruined rooms read as rooms: focal point standing ({focalDown} down), the fallen against the walls ({midDebris} across the middle), at most a quarter mostly sky ({sky} of {ruined}){First("down")}{First("debris")}{First("sky")}"));
         }
         System.Console.WriteLine($"Interiors: {sw.Elapsed.TotalSeconds:0.0} s");
@@ -157,7 +175,8 @@ public partial class PoiTest
             var kinds = new List<string>();
             string[] focus = decor.Arrangements.Focus.GetValueOrDefault(m.Purpose);
             bool focal = m.Kind == ModuleKind.Hall && floor.Any(c => Dirs.Horizontal.Any(h => g.Get(c + h.Vec()).Type == BlockType.Stair));
-            bool sparse = false, focalDown = false;
+            bool sparse = false, focalDown = false, focalWall = false, narrowOff = false, crowdedRoom = false;
+            int windowed = 0, offFlue = 0, fires = 0, cut = 0;
             bool Focus(DecoPlacement p) => focus != null ? focus.Contains(p.Role) || decor.Forge.Catalogue.Piece(p.Piece).Roles.Any(focus.Contains)
                 : p.Support < 0 && decor.Forge.Catalogue.Piece(p.Piece) is { } piece && piece.Width * piece.Depth >= 1f;
             if (dressed.TryGetValue(m.Index, out RoomDecor.Dressable d))
@@ -174,6 +193,14 @@ public partial class PoiTest
                 int x0 = d.Corner.X, z0 = d.Corner.Z, x1 = x0 + (int)d.Room.Width - 1, z1 = z0 + (int)d.Room.Depth - 1;
                 var doors = ways.Select(w => RoomDecor.Door(w.Cells, x0, x1, z0, z1)).OfType<DecoDoor>().ToList();
                 if (doors.Count >= 2) detour = Detour(d.Room, doors, used.Placements.Where(p => DecoLayout.Blocks(decor.Forge, p)).Select(p => DecoLayout.Footprint(decor.Forge, p)));
+                var forge = decor.Forge;
+                windowed = used.Placements.Count(p => DecoRules.BeforeWindow(forge, d.Room, p));
+                fires = used.Placements.Count(p => p.Support < 0 && forge.Catalogue.Piece(p.Piece).Has("hearth"));
+                offFlue = used.Placements.Count(p => DecoRules.OffFlue(forge, d.Room, p));
+                focalWall = used.Placements.Any(p => p.Group == used.FocalGroup && used.FocalGroup >= 0 && p.Support < 0 && DecoLayout.Blocks(forge, p) && DecoRules.OpeningBehind(d.Room, DecoLayout.Footprint(forge, p)));
+                cut = DecoRules.Unreached(forge, d.Room, used.Placements).Count;
+                narrowOff = DecoRules.OffLining(forge, d.Room, used.Placements);
+                crowdedRoom = DecoRules.Share(forge, d.Room, used.Placements) > DecoRules.MostFloor;
                 sparse = d.Room.Width * d.Room.Depth >= BigRoom && MathF.Min(d.Room.Width, d.Room.Depth) >= 4 && Bare(d.Room, found.Placements.Where(p => p.Support < 0 && decor.Forge.Catalogue.Piece(p.Piece).Mount != DecoMount.Ceiling).Select(p => DecoLayout.Footprint(decor.Forge, p)).ToList());
             }
             else
@@ -214,6 +241,7 @@ public partial class PoiTest
                 Big = Math.Min(w0, d0) >= 4 && floor.Count >= BigRoom, Sparse = sparse, Ceiling = ceiling, Flat = flatCeiling,
                 Narrow = toRooms.Count, Doorless = toRooms.Count(w => !Doored(w.Cells)),
                 FocalDown = focalDown, MidDebris = midShare > 0.1f && midShare > edgeShare, Sky = open * 2 > floor.Count,
+                Window = windowed, OffFlue = offFlue, Fires = fires, Unreached = cut, FocalWall = focalWall, OffWall = narrowOff, Crowded = crowdedRoom,
             });
         }
         return looks;

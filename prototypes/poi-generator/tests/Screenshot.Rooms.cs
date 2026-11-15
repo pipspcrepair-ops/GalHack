@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -26,61 +26,65 @@ public partial class Screenshot
         FamilyDef f = lib.Families.First(x => x.Id == a[1]);
         PoiState state = Enum.Parse<PoiState>(a[2], true);
         if (OS.GetCmdlineUserArgs().Contains("--undressed")) PoiView.Dressed = false;
-        var rng = new Rng(_seed);
-        int variant = rng.Range(0, f.Variants.Count);
-        TechLevel? tech = f.Variants[variant].Tech switch { "low" => TechLevel.Low, "mid" => TechLevel.Mid, "high" => TechLevel.High, _ => null };
-        HomeHints home = f.Tags.Contains("house") ? new HomeHints(rng.Range(0, 1 << 16), (Climate)rng.Range(0, 4), rng.Float()) : null;
-        Layout layout = PoiFactory.SpawnLayout(lib, f, variant, f.Rarity, rng.NextU64(), new LayoutHints(Dir.North, tech, Home: home), out string why);
-        if (layout == null) { GD.PrintErr($"no layout: {why}"); GalHack.Testing.Backstop.Quit(this, 1); return; }
-        PoiInstance poi = PoiFactory.Spawn(lib, layout, state, rng.NextU64());
-        _main.Show(poi);
-        _main.HideHud(true);
-        _main.Player.Lamp.Visible = false;
-        GD.Print($"rooms: {f.Id} seed {_seed}, {layout.Name}, {state}, tech {tech?.ToString() ?? "any"}{(layout.Extras.Homes.FirstOrDefault() is { } h ? $", {h.Family} {h.Silhouette}" : "")}");
-
-        // How deep each module lies from the way in, by the links: a room is shown from the door you come to it by.
-        var depth = new Dictionary<int, int> { [layout.EntranceModule] = 0 };
-        var queue = new Queue<int>(new[] { layout.EntranceModule });
-        while (queue.Count > 0)
-        {
-            int at = queue.Dequeue();
-            foreach (Link k in layout.Links)
-                if ((k.A == at ? k.B : k.B == at ? k.A : -1) is int next and >= 0 && depth.TryAdd(next, depth[at] + 1)) queue.Enqueue(next);
-        }
-        var rooms = layout.Modules.Where(m => m.Kind is ModuleKind.Room or ModuleKind.Hall && m.Cells.Count(c => c.Y == m.Min.Y) >= 2)
-            .OrderBy(m => m.Storey).ThenBy(m => depth.GetValueOrDefault(m.Index, 99)).ToList();
-        // --rooms=N: at most N tiles, every purpose once before any twice (a tower's twenty floors on one sheet).
-        if (OS.GetCmdlineUserArgs().FirstOrDefault(x => x.StartsWith("--rooms=")) is { } cap)
-            rooms = rooms.Select((m, k) => (m, k, n: rooms.Take(k).Count(o => o.Purpose == m.Purpose))).OrderBy(t => t.n).ThenBy(t => t.k)
-                .Take(int.Parse(cap["--rooms=".Length..])).OrderBy(t => t.k).Select(t => t.m).ToList();
+        // --purpose=X: that room of eight places from the seed on (the same rooms before and after a change), else every room of one.
+        string purpose = OS.GetCmdlineUserArgs().FirstOrDefault(x => x.StartsWith("--purpose="))?["--purpose=".Length..];
         var tiles = new List<(Image Img, string Label)>();
         string stem = Path.Combine(Path.GetDirectoryName(sheetPath) ?? ".", Path.GetFileNameWithoutExtension(sheetPath));
         var fill = new OmniLight3D { LightColor = new Color("fff0dc"), LightEnergy = 0.6f, OmniRange = 22f, OmniAttenuation = 1.2f, ShadowEnabled = false };
         _main.Camera.AddChild(fill);
         int stray = 0;
         string firstStray = "";
-        foreach (PlacedModule m in rooms)
+        for (ulong place = 0; place < (purpose != null ? 8UL : 1UL); place++)
         {
-            var floor = m.Cells.Where(c => c.Y == m.Min.Y).ToList();
-            // (A floor come up to by its stair has no doorway: from the corner of it nearest the stair's.)
-            var door = DoorwayInto(poi, m, depth);
-            if ((door ?? Corner(poi, m, floor)) is not var (centre, inward)) continue;
-            // Just over the threshold, clear of the door's leaf, as a person stands coming in; looking at the room's middle (from a stair's corner, down the floor).
-            Vector3 eye = centre + inward * 0.75f + Vector3.Up * EyeHeight;
-            Vector3 mid = door != null ? new((float)floor.Average(c => c.X) + 0.5f, m.Min.Y + 1.1f, (float)floor.Average(c => c.Z) + 0.5f) : eye + inward * 8f + Vector3.Down * 0.8f;
-            _main.Camera.GlobalTransform = new Transform3D(Basis.Identity, _main.Stage.ToGlobal(eye)).LookingAt(_main.Stage.ToGlobal(mid), Vector3.Up);
-            _main.Camera.Fov = 75f;
-            _main.FreezeCamera = true;
-            await Frames(45);
-            int w = floor.Max(c => c.X) - floor.Min(c => c.X) + 1, d = floor.Max(c => c.Z) - floor.Min(c => c.Z) + 1;
-            string label = $"{m.Purpose} {Math.Min(w, d)}x{Math.Max(w, d)} m, {(m.Storey == 0 ? "ground" : $"storey {m.Storey}")}";
-            Image img = await Grab();
-            img.SavePng($"{stem}-{tiles.Count:00}-{m.Purpose}.png");
-            tiles.Add((img, label));
-            stray += Check(ref firstStray);
-        }
-        GD.Print($"rooms: {tiles.Count} rooms shown; geometry check {stray} stray{firstStray}");
-        Sheet(tiles, $"{f.Name}, {state.ToString().ToLowerInvariant()}, seed {_seed}: every room from its doorway at eye height{(PoiView.Dressed ? "" : " (undressed)")}");
+            var rng = new Rng(_seed + place);
+            int variant = rng.Range(0, f.Variants.Count);
+            TechLevel? tech = f.Variants[variant].Tech switch { "low" => TechLevel.Low, "mid" => TechLevel.Mid, "high" => TechLevel.High, _ => null };
+            HomeHints home = f.Tags.Contains("house") ? new HomeHints(rng.Range(0, 1 << 16), (Climate)rng.Range(0, 4), rng.Float()) : null;
+            Layout layout = PoiFactory.SpawnLayout(lib, f, variant, f.Rarity, rng.NextU64(), new LayoutHints(Dir.North, tech, Home: home), out string why);
+            if (layout == null) { GD.PrintErr($"no layout: {why}"); continue; }
+            PoiInstance poi = PoiFactory.Spawn(lib, layout, state, rng.NextU64());
+            _main.Show(poi);
+            _main.HideHud(true);
+            _main.Player.Lamp.Visible = false;
+            GD.Print($"rooms: {f.Id} seed {_seed + place}, {layout.Name}, {state}, tech {tech?.ToString() ?? "any"}{(layout.Extras.Homes.FirstOrDefault() is { } h ? $", {h.Family} {h.Silhouette}" : "")}");
+
+            // How deep each module lies from the way in, by the links: a room is shown from the door you come to it by.
+            var depth = new Dictionary<int, int> { [layout.EntranceModule] = 0 };
+            var queue = new Queue<int>(new[] { layout.EntranceModule });
+            while (queue.Count > 0)
+            {
+                int at = queue.Dequeue();
+                foreach (Link k in layout.Links)
+                    if ((k.A == at ? k.B : k.B == at ? k.A : -1) is int next and >= 0 && depth.TryAdd(next, depth[at] + 1)) queue.Enqueue(next);
+            }
+            var rooms = layout.Modules.Where(m => m.Kind is ModuleKind.Room or ModuleKind.Hall && m.Cells.Count(c => c.Y == m.Min.Y) >= 2 && (purpose == null || m.Purpose == purpose))
+                .OrderBy(m => m.Storey).ThenBy(m => depth.GetValueOrDefault(m.Index, 99)).Take(purpose != null ? 1 : int.MaxValue).ToList();
+            // --rooms=N: at most N tiles, every purpose once before any twice (a tower's twenty floors on one sheet).
+            if (OS.GetCmdlineUserArgs().FirstOrDefault(x => x.StartsWith("--rooms=")) is { } cap)
+                rooms = rooms.Select((m, k) => (m, k, n: rooms.Take(k).Count(o => o.Purpose == m.Purpose))).OrderBy(t => t.n).ThenBy(t => t.k)
+                    .Take(int.Parse(cap["--rooms=".Length..])).OrderBy(t => t.k).Select(t => t.m).ToList();
+            foreach (PlacedModule m in rooms)
+            {
+                var floor = m.Cells.Where(c => c.Y == m.Min.Y).ToList();
+                // (A floor come up to by its stair has no doorway: from the corner of it nearest the stair's.)
+                var door = DoorwayInto(poi, m, depth);
+                if ((door ?? Corner(poi, m, floor)) is not var (centre, inward)) continue;
+                // Just over the threshold, clear of the door's leaf, as a person stands coming in; looking at the room's middle (from a stair's corner, down the floor).
+                Vector3 eye = centre + inward * 0.75f + Vector3.Up * EyeHeight;
+                Vector3 mid = door != null ? new((float)floor.Average(c => c.X) + 0.5f, m.Min.Y + 1.1f, (float)floor.Average(c => c.Z) + 0.5f) : eye + inward * 8f + Vector3.Down * 0.8f;
+                _main.Camera.GlobalTransform = new Transform3D(Basis.Identity, _main.Stage.ToGlobal(eye)).LookingAt(_main.Stage.ToGlobal(mid), Vector3.Up);
+                _main.Camera.Fov = 75f;
+                _main.FreezeCamera = true;
+                await Frames(45);
+                int w = floor.Max(c => c.X) - floor.Min(c => c.X) + 1, d = floor.Max(c => c.Z) - floor.Min(c => c.Z) + 1;
+                string label = $"{m.Purpose} {Math.Min(w, d)}x{Math.Max(w, d)} m, {(m.Storey == 0 ? "ground" : $"storey {m.Storey}")}{(purpose != null ? $", seed {_seed + place}" : "")}";
+                Image img = await Grab();
+                img.SavePng($"{stem}-{tiles.Count:00}-{m.Purpose}.png");
+                tiles.Add((img, label));
+                stray += Check(ref firstStray);
+            }
+        }        GD.Print($"rooms: {tiles.Count} rooms shown; geometry check {stray} stray{firstStray}");
+        Sheet(tiles, $"{f.Name}, {state.ToString().ToLowerInvariant()}, seed {_seed}: {(purpose != null ? $"the {purpose} of eight places" : "every room")} from its doorway at eye height{(PoiView.Dressed ? "" : " (undressed)")}");
         await Frames(4);
         await ToSignal(RenderingServer.Singleton, "frame_post_draw");
         Error result = GetViewport().GetTexture().GetImage().SavePng(sheetPath);

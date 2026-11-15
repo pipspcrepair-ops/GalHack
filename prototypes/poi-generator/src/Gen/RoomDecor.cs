@@ -44,7 +44,7 @@ public static class RoomDecor
         int w = x1 - x0 + 1, d = z1 - z0 + 1;
         // Far from a rectangle (what isn't its floor is kept clear below), or no more than a cupboard: the generator's props stay.
         // A big room of an odd shape is still dressed where it has floor (an L of a day room, a hall round a stair).
-        if (open < MinCells || open < w * d * (open >= 60 ? 0.35f : 0.6f) || height < 2) return null;
+        if (open < MinCells || open < w * d * (open >= 60 ? 0.35f : 0.5f) || height < 2) return null;
         bool alien = (inst.Family.Style ?? "").StartsWith("alien_", StringComparison.Ordinal);
         var room = new DecoRoom
         {
@@ -60,6 +60,7 @@ public static class RoomDecor
         // Every way in is a door to keep clear, recorded or not (a house's inner doors are gaps in its walls).
         foreach (var (cells, _) in Ways(inst, m, y))
             if (Door(cells, x0, x1, z0, z1) is { } door) room.Doors.Add(door);
+        Openings(inst, room, y, x0, x1, z0, z1, floor);
         // What the room's floor can't take, the library keeps clear from the start (the game's checks after are the last word):
         // another room's floor inside its box among it.
         var own = new HashSet<Int3>(m.Cells.Where(c => c.Y == y));
@@ -67,11 +68,48 @@ public static class RoomDecor
             for (int x = x0; x <= x1; x++)
             {
                 var c = new Int3(x, y, z);
-                bool free = own.Contains(c) && FloorAt(inst, nav, c) is float f && MathF.Abs(f - floor) < 0.01f && !reserved.Contains(c) && !reserved.Contains(c + Int3.Up)
+                bool floored = own.Contains(c) && FloorAt(inst, nav, c) is float f && MathF.Abs(f - floor) < 0.01f
                     && (Clearable(inst.Blocks.Get(c + Int3.Up)) || inst.Blocks.Get(c + Int3.Up).Type is BlockType.Sign or BlockType.Cable or BlockType.Vine);
-                if (!free) room.Blocked.Add(new DecoRect(new NV2(x - x0 + 0.5f, z - z0 + 0.5f), new NV2(0.5f, 0), new NV2(0, 0.5f)));
+                var cell = new DecoRect(new NV2(x - x0 + 0.5f, z - z0 + 0.5f), new NV2(0.5f, 0), new NV2(0, 0.5f));
+                // (Floor a way through keeps clear is walked on; what isn't floor is walked round.)
+                if (!floored) room.Blocked.Add(cell);
+                else if (reserved.Contains(c) || reserved.Contains(c + Int3.Up)) room.Kept.Add(cell);
             }
         return new Dressable(m, room, new Int3(x0, y, z0), floor, own);
+    }
+
+    /// <summary>
+    /// A room's windows and chimney breasts, wall by wall along its box: a window's sill is the lowest glass in the wall over
+    /// the floor; a breast is the place's chimney stack (<see cref="LayoutExtras.Lasting"/>) standing in the wall.
+    /// </summary>
+    static void Openings(PoiInstance inst, DecoRoom room, int y, int x0, int x1, int z0, int z1, float floor)
+    {
+        BlockGrid g = inst.Blocks;
+        foreach (DecoWall wall in new[] { DecoWall.North, DecoWall.South, DecoWall.West, DecoWall.East })
+        {
+            bool ns = wall is DecoWall.North or DecoWall.South;
+            int a0 = ns ? x0 : z0, a1 = ns ? x1 : z1;
+            Int3 At(int a) => wall switch { DecoWall.North => new Int3(a, y, z0 - 1), DecoWall.South => new Int3(a, y, z1 + 1), DecoWall.West => new Int3(x0 - 1, y, a), _ => new Int3(x1 + 1, y, a) };
+            float? Sill(int a) => Enumerable.Range(0, 4).Where(k => g.Get(At(a) + Int3.Up * k).Role == Role.Window).Select(k => (float?)MathF.Max(0f, k - floor)).FirstOrDefault();
+            bool Flue(int a) => inst.Layout.Extras.Lasting.Contains(At(a) + Int3.Up) && g.Get(At(a) + Int3.Up).Role == Role.Decor;
+            // Each run of window columns as one window, at its lowest sill; each run of stack columns as one breast.
+            for (int a = a0; a <= a1; a++)
+                if (Sill(a) is float sill)
+                {
+                    int b = a;
+                    while (b + 1 <= a1 && Sill(b + 1) is float next) { sill = MathF.Min(sill, next); b++; }
+                    room.Windows.Add((new DecoDoor(wall, a - a0 + (b - a + 1) / 2f, b - a + 1), sill));
+                    a = b;
+                }
+            for (int a = a0; a <= a1; a++)
+                if (Flue(a))
+                {
+                    int b = a;
+                    while (b + 1 <= a1 && Flue(b + 1)) b++;
+                    room.Flues.Add(new DecoDoor(wall, a - a0 + (b - a + 1) / 2f, b - a + 1));
+                    a = b;
+                }
+        }
     }
 
     /// <summary>An opening's cells at a room's floor as the library's door on the wall of the room's box (x0..x1, z0..z1) it stands in (null if none).</summary>

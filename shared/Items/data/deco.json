@@ -1,4 +1,4 @@
-﻿// Decorations: themed deco blocks that dress POIs and that players unlock and build with. As in
+// Decorations: themed deco blocks that dress POIs and that players unlock and build with. As in
 // Empyrion, a deco piece is a block in the shared block catalogue, grouped into families (here,
 // theme sets) that each furnish one kind of room. The broken, burnt, overgrown and knocked-over
 // states are POI and Creative blocks; only the intact piece is built in survival.
