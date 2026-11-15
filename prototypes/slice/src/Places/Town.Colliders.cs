@@ -161,11 +161,13 @@ public sealed partial class Town
             if (!v.IsBase && !v.IsWreck && v.Body.Velocity.LengthSquared() > 4f) Strike(v);
     }
 
-    /// <summary>All capsules back (the place stands down).</summary>
+    /// <summary>The place stands down: every capsule, in use or pooled, goes with its nodes, so none is kept to be taken again.</summary>
     void DropSolids()
     {
-        foreach (var (_, s) in _solids) GiveSolid(s);
+        foreach (Solid s in _solids.Values) WorldRay.Ignored.Remove(s.Body.GetRid());
+        foreach (Solid s in _solidFree) WorldRay.Ignored.Remove(s.Body.GetRid());
         _solids.Clear();
+        _solidFree.Clear();
     }
 
     /// <summary>A moving vessel against the town's people: the one impact rule, with the reduced mass. They're thrown aside and hurt; the vessel loses what it gave.</summary>

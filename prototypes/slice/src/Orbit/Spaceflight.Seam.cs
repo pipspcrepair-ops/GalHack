@@ -85,8 +85,9 @@ public partial class Spaceflight
     /// </summary>
     float Height(Vector3 world) => Here.Height(world);
 
-    /// <summary>The most a frame has spent on the seam and the skies, and on the skies alone, ms (tests read these, and reset them).</summary>
-    public double WorstSeamMs, WorstSkyMs;
+    /// <summary>The most a frame has spent on the seam and the skies, and on the skies alone, and all the skies' time over <see cref="SkyFrames"/>, ms (tests read these, and reset them).</summary>
+    public double WorstSeamMs, WorstSkyMs, SkyMs;
+    public int SkyFrames;
 
     /// <summary>Screenshots of other bodies: the sky as seen from here, in the globe's frame, m.</summary>
     public PlanetSurface.Skies.D3? ViewFrom;
@@ -133,10 +134,12 @@ public partial class Spaceflight
             Below.Sky.RunClock(delta);
             KeepOneClock();
             MoonComing();
+            Lap("a moon arriving");
             long started = System.Diagnostics.Stopwatch.GetTimestamp();
             TrackSky();
-            Lap("skies");
-            WorstSkyMs = Math.Max(WorstSkyMs, System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+            Lap("the orbit's sky");
+            double sky = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            (WorstSkyMs, SkyMs, SkyFrames) = (Math.Max(WorstSkyMs, sky), SkyMs + sky, SkyFrames + 1);
             PlaceSeam();
         }
         else
@@ -163,6 +166,7 @@ public partial class Spaceflight
         {
             s.Sky.Stand(c.Turn.ToBasis().Transposed(), inHere);
             s.Sky.Track();
+            Lap("the sky below");
         }
         o.Space.Track(Game.Surface.Planet.StarSystem, s.Sky.Days, o.Home.Turn.ToBasis(), inHome, eye, Height(eye) < BandTop ? 38000f : 0f);
     }
@@ -355,7 +359,7 @@ public partial class Spaceflight
     }
 
     /// <summary>The world's share of the shroud by how much air it has: thick air closes in, thin air hardly at all.</summary>
-    float AirShare => 1f - MathF.Exp(-2.5f * MathF.Max(Below.Planet?.Sky.Density ?? 0f, 0f));
+    float AirShare => Globe.AirShare(Below.Planet?.Sky.Density ?? 0f);
 
     /// <summary>The shroud's thickness where you are (tests read this).</summary>
     public float Shrouded { get; private set; }
@@ -373,7 +377,7 @@ public partial class Spaceflight
         if (!s.Arrived)
         {
             // Its surface hasn't arrived yet (it does while you are still far over it): the whole globe, where it is.
-            DrawFar(o, eye);
+            DrawFar(o, eye, o.IsHome ? 1f : 1f - Orbit.Space.FadeOf(o.Body)); // its air shared with the far look as DrawOthers fades it
             return;
         }
         float cap = Ceiling, R = o.GlobeRadius;

@@ -31,7 +31,7 @@ From the repo root, in PowerShell:
 | Left click | Place (the ghost turns amber before a CPU tier is crossed) | Spray the face (hold to sweep, Shift for the whole block) |
 | Right click | Remove; materials go to the inventory (click again to cut a section loose) | Strip back to bare metal |
 | Middle click | Pick the block you're looking at | Pick its paint |
-| 1–9 | Block slot; press again for its variants (glass/concrete, thruster/generator/fuel tank…) | Colour (Shift: accent colour) |
+| 1–9 | Block slot; press again for its variants (glass/concrete, thruster/generator…) | Colour (Shift: accent colour) |
 | Wheel / Tab | Shape: cube, slope, corner, inverted corner, wedge, half block, thin plate, cylinder | Pattern: none, stripes, chevrons, checkerboard, hazard |
 | R / T / Y | Rotate about Y / X / Z (Shift: back) | R: texture (panel, smooth, plates, ribbed) |
 | [ / ] , - / = | | Stencil digit, grime level |
@@ -74,7 +74,7 @@ block -4 0 -9..-4 steel slope rot=-y-x paint=hull  # rot = where up and forward 
 block -4 1 -3 door rot=+y-x open
 ```
 
-- `block <x> <y> <z> <type> [shape] [rot=<up><forward>] [paint=…] [+x=…] [hp=<n>] [open] [off]`. The type is a material (`steel`, `hardened`, `combat`, `glass`, `concrete`) or a component (`core`, `cockpit`, `thruster`, `generator`, `fueltank`, `container`, `door`, `light`, `turret`, `cpuext`, `ladder`).
+- `block <x> <y> <z> <type> [shape] [rot=<up><forward>] [paint=…] [+x=…] [hp=<n>] [open] [off]`. The type is a material (`steel`, `hardened`, `combat`, `glass`, `concrete`) or a component (`core`, `cockpit`, `thruster`, `generator`, `container`, `door`, `light`, `turret`, `cpuext`, `ladder`).
 - `paint=<name>` paints all six faces and `paint=a,b,c,d,e,f` paints them in the order +x -x +y -y +z -z (`-` is bare metal). `+x=<name>` and its siblings override one face (write them after `paint=`).
 - A paint has `base` and optional `accent` colours (rrggbb), `pattern` (stripes, chevrons, checker, hazard), `texture` (panel, smooth, plates, ribbed), `stencil` (a digit) and `grime` (0–3).
 - Saving writes the canonical form (paints in use, blocks sorted by y, z, x, runs along x merged, defaults left out), so save → load → save is byte-identical.

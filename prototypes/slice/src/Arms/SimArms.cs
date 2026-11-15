@@ -42,6 +42,8 @@ public sealed class SimArms
         public Node3D On;
         public bool Mounted;
         public Rng Rng;
+        /// <summary>How long the next round has waited for the weapon to come onto its mark, and how far off the mark the last round left, degrees.</summary>
+        public float Held, LastOff;
     }
 
     /// <summary>Shots fired and blows struck by the sims' people and machines (tests).</summary>
@@ -96,7 +98,7 @@ public sealed class SimArms
         {
             k.LookedAt = Now;
             Vector3 from = Muzzle(c, k, origin);
-            var q = PhysicsRayQueryParameters3D.Create(from, aim, Layers.World | Layers.Hull);
+            var q = PhysicsRayQueryParameters3D.Create(from, aim, Layers.World | Layers.Hull | Layers.Flora); // (what stops a shot: a trunk it took cover by too)
             k.Clear = _host.GetWorld3D().DirectSpaceState.IntersectRay(q).Count == 0;
         }
         return k.Clear ? range : 0f;
@@ -134,6 +136,8 @@ public sealed class SimArms
     public Vector3 Muzzle(Creature c, Kit k, Vector3 origin)
     {
         if (k.Model != null && GodotObject.IsInstanceValid(k.Model.Muzzle) && k.Model.Muzzle.IsInsideTree()) return k.Model.Muzzle.GlobalPosition;
+        // A bow (the body's own): from the bow hand, along the arrow.
+        if (c.Rig is HumanRig hr && hr.WeaponLine.LengthSquared() > 0.5f) return hr.WeaponGrip + hr.WeaponLine * 0.1f + origin;
         float h = c.Species.Figure?.Height ?? c.Species.BodyHeight;
         return c.Position + origin + Vector3.Up * h * 0.75f + c.Forward * 0.5f;
     }
@@ -147,16 +151,27 @@ public sealed class SimArms
             var (c, k) = _firing[i];
             if (c.Dead || c.Removed || k.Pending <= 0 || k.Target == null || !k.Target.Attackable) { k.Pending = 0; _firing.RemoveAt(i); continue; }
             if ((k.Next -= dt) > 0f) continue;
+            // Not until the weapon is on them: the round leaves along the barrel (or the arrow's line).
+            Vector3 mark = k.Target.Position + Vector3.Up * 1.15f;
+            float off = c.Rig is HumanRig hr ? hr.AimError(mark) : 0f;
+            if (off > HumanRig.OnMark)
+            {
+                // Still coming round: it waits; never on (turned away, on the move): the rest of the burst isn't fired.
+                if ((k.Held += dt) >= HumanRig.AimWait) { k.Pending = 0; k.Held = 0f; }
+                continue;
+            }
+            k.Held = 0f;
+            k.LastOff = off;
             k.Next = k.Clip.Def.SecondsPerShot;
             if (!k.Clip.Shot()) { k.Pending = 0; continue; }
             k.Pending--;
             Vector3 origin;
             Vector3 body = WorldOf(c, out origin);
             Vector3 muzzle = Muzzle(c, k, origin);
-            Vector3 aim = k.Target.Position + origin + Vector3.Up * 1.15f;
+            Vector3 aim = mark + origin;
             // A person's hands aren't a mount: a little less steady, and less again on the move.
             float unsteady = (k.Mounted ? 0.8f : 1.6f) + (c.Velocity.Length() > 0.8f ? 1.5f : 0f);
-            _host.FireFrom(k.Clip.Def, muzzle, aim - muzzle, unsteady, c);
+            _host.FireFrom(k.Clip.Def, muzzle, aim - muzzle, unsteady, c, model: k.Model);
             Shots++;
         }
         if ((_drawIn -= dt) > 0f) return;

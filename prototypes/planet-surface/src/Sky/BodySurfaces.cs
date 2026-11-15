@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using Godot;
 using Planets.Gen;
@@ -53,22 +54,24 @@ public sealed class BodySurfaces
         Texture = new Texture2DArray();
         Texture.CreateFromImages(images);
 
-        var order = new List<Sighting>();
+        var seen = new List<Sighting>();
         foreach (Orbiter b in model.Bodies)
-            if (b.Spec != null && b != model.Home || b.Kind == OrbiterKind.GasGiant) order.Add(model.See(b, 0.0, from));
-        order.Sort((x, y) => y.Angular.CompareTo(x.Angular));
-        if (order.Count > Layers) order.RemoveRange(Layers, order.Count - Layers);
+            if (b.Spec != null && b != model.Home || b.Kind == OrbiterKind.GasGiant) seen.Add(model.See(b, 0.0, from));
+        seen.Sort((x, y) => y.Angular.CompareTo(x.Angular));
+        var order = seen.Take(Layers - 1).Select(x => x.Body).ToList();
+        // The world itself last: its moons' skies see it, and they share these.
+        if (model.Home.Spec != null) order.Add(model.Home);
         Wanted = order.Count;
         new Thread(() => Work(order)) { IsBackground = true, Name = "Body surfaces", Priority = ThreadPriority.BelowNormal }.Start();
     }
 
-    void Work(List<Sighting> order)
+    void Work(List<Orbiter> order)
     {
         for (int i = 0; i < order.Count; i++)
         {
             long started = Stopwatch.GetTimestamp();
-            Image image = Paint(order[i].Body);
-            _painted.Enqueue((order[i].Body, i, image, Stopwatch.GetElapsedTime(started).TotalMilliseconds));
+            Image image = Paint(order[i]);
+            _painted.Enqueue((order[i], i, image, Stopwatch.GetElapsedTime(started).TotalMilliseconds));
         }
     }
 
@@ -98,12 +101,18 @@ public sealed class BodySurfaces
     /// <summary>A coarse run of the world's own generator: one map cell to a pixel, from the spec it will be visited with.</summary>
     public static WorldMap Coarse(PlanetSpec spec) => PlanetGenerator.Generate(spec, (float)(spec.WidthMeters / Width));
 
+    /// <summary>
+    /// The land in the colours its own globe and ground are painted in up close (its ground palette's far ground, a
+    /// world with no reading of its own taken as its globe takes it), so the far look and the globe that takes over
+    /// from it agree; clouds only over a world with air.
+    /// </summary>
     static byte[] World(PlanetSpec spec)
     {
         WorldMap map = Coarse(spec);
         ArchetypeLook look = ArchetypeLook.For(spec);
-        ColorMap colors = ColorMap.Build(map, look, Width);
-        byte[] clouds = CloudMap.Build(spec, look, Width, out _);
+        var palette = new Terrain.GroundPalette(map, Terrain.PlanetFlora.For(map, SkySystem.For(spec)));
+        ColorMap colors = ColorMap.Build(map, look, Width, (x, z) => palette.FarGround(x, z, 64f));
+        byte[] clouds = spec.Airless ? new byte[Width * Height * 4] : CloudMap.Build(spec, look, Width, out _);
         var pixels = new byte[Width * Height * 4];
         for (int k = 0; k < Width * Height; k++)
         {

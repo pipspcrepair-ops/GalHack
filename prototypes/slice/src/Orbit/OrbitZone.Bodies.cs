@@ -12,7 +12,7 @@ using N = System.Numerics;
 namespace Slice.Orbit;
 
 /// <summary>
-/// The bodies with ground in the orbit zone: the start world and its thruster moon, each where the
+/// The bodies with ground in the orbit zone: the start world and the moons you can fly to, each where the
 /// system has it this moment, from the one model on the one clock (nothing is placed by a crossing).
 /// One of them is the anchor everything flies in; the other moves round it, and what is near it is
 /// carried along with it, so a ship waiting by the moon stays by the moon.
@@ -31,16 +31,16 @@ public partial class OrbitZone
     }
 
     /// <summary>
-    /// Adds a moon of the start world, its surface being made (<paramref name="surface"/>, parked): its
-    /// globe is painted from that surface's own map once it is there, and set up a piece a frame.
+    /// Adds a moon you can fly to (the first is the thruster moon), its surface made or to be made
+    /// (<paramref name="surface"/>, parked): its globe is painted from that surface's own map once it
+    /// is there, and set up a piece a frame.
     /// </summary>
     public Celestial AddMoon(Orbiter body, SurfaceZone surface, float ceiling)
     {
-        if (Moon != null) return Moon;
         var c = new Celestial(body, home: false) { Surface = surface, Seen = Home.Seen.SeenFrom(body) };
         Size(c, body.Spec.WidthMeters, body.Spec.HeightMeters, ceiling);
         if (!body.Spec.Airless) c.AtmosphereRadius = c.GlobeRadius * (1f + (float)Rules.Globe.Atmosphere);
-        Moon = c;
+        Moon ??= c;
         Bodies.Add(c);
         if (IsInsideTree()) Hang(c);
         Move();
@@ -75,7 +75,7 @@ public partial class OrbitZone
 
     /// <summary>
     /// The bodies whose orbits come within sight of the start world (<see cref="OrbitRules.SpaceRules.CameraFar"/>) with no
-    /// ground here: its other moons, the giant it circles and that giant's other moons. Solid at their true radius all the same.
+    /// ground here (the giant it circles). Solid at their true radius all the same.
     /// </summary>
     readonly List<(Orbiter Body, Node3D Shell)> _solids = new();
     public IReadOnlyList<(Orbiter Body, Node3D Shell)> OtherSolids => _solids;
@@ -87,38 +87,37 @@ public partial class OrbitZone
         foreach (Orbiter b in model.Bodies)
         {
             double closest = b.Parent == home ? b.Orbit : host == null ? double.MaxValue : b == host ? home.Orbit : b.Parent == host ? Math.Abs(b.Orbit - home.Orbit) : double.MaxValue;
-            if (closest - b.Radius > Rules.Space.CameraFar || b == home || b == model.FuelMoon || b.Radius <= 0.0) continue;
+            if (closest - b.Radius > Rules.Space.CameraFar || b == home || b.Radius <= 0.0 || Bodies.Exists(c => c.Body == b)) continue;
             StaticBody3D shell = Shell((float)b.Radius);
             AddChild(shell);
             _solids.Add((b, shell));
         }
     }
 
-    Task<GlobePaint> _moonPaint;
-    IEnumerator<int> _moonSetup;
-
-    /// <summary>One piece of the moon's globe a frame: painted off the main thread from its own map, then uploaded.</summary>
+    /// <summary>One piece of a moon's globe a frame: painted off the main thread from its own map, then uploaded (one moon at a time).</summary>
     void MoonStep()
     {
-        Celestial c = Moon;
-        if (c == null || c.Ready) return;
-        Hang(c);
-        if (_moonPaint == null)
+        foreach (Celestial c in Moons)
         {
-            if (c.Surface?.Made is not PlanetWorld w) return;
-            c.World = w;
-            var rules = Rules.Globe;
-            bool clear = w.Sky.Density < SurfaceWeather.NoAir;
-            _moonPaint = Task.Run(() => GlobePaint.Make(w.Spec, w.Map, rules, clear ? (_, _) => 0f : null, (x, z) => w.Palette.FarGround(x, z, 64f)));
+            if (c.Ready) continue;
+            if (c.Painting == null)
+            {
+                if (c.Surface?.Made is not PlanetWorld w) continue;
+                c.World = w;
+                var rules = Rules.Globe;
+                bool clear = w.Sky.Density < SurfaceWeather.NoAir;
+                c.Painting = Task.Run(() => GlobePaint.Make(w.Spec, w.Map, rules, clear ? (_, _) => 0f : null, (x, z) => w.Palette.FarGround(x, z, 64f)));
+                continue;
+            }
+            if (!c.Painting.IsCompleted) continue;
+            if (c.Painting.IsFaulted) throw new InvalidOperationException($"{c.Name}'s globe failed to paint", c.Painting.Exception);
+            c.SettingUp ??= c.Globe.Setup(c.Painting.Result, c.GlobeRadius, c.AtmosphereRadius, Rules.Globe, new Vector2((float)c.Map.Width, (float)c.Map.Height)).GetEnumerator();
+            if (!c.SettingUp.MoveNext())
+            {
+                c.Ready = true;
+                c.SettingUp = null;
+            }
             return;
-        }
-        if (!_moonPaint.IsCompleted) return;
-        if (_moonPaint.IsFaulted) throw new InvalidOperationException("the moon's globe failed to paint", _moonPaint.Exception);
-        _moonSetup ??= c.Globe.Setup(_moonPaint.Result, c.GlobeRadius, c.AtmosphereRadius, Rules.Globe, new Vector2((float)c.Map.Width, (float)c.Map.Height)).GetEnumerator();
-        if (!_moonSetup.MoveNext())
-        {
-            c.Ready = true;
-            _moonSetup = null;
         }
     }
 

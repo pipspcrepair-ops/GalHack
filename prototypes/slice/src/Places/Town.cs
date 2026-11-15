@@ -86,6 +86,8 @@ public sealed partial class Town
         /// <summary>Who they are, how they stand, and what draws them (once near enough to have been built).</summary>
         public Species Looks;
         public HumanRig Rig;
+        /// <summary>How long the next round has waited for the weapon to come onto its mark, and how far off the mark the last round left, degrees.</summary>
+        public float AimHeld, LastOff;
         public PersonView View;
         public Figure Figure => Looks.Figure;
         /// <summary>How far over they have gone (the dead), how far their rifle is up, how far bent to work.</summary>
@@ -339,7 +341,8 @@ public sealed partial class Town
         }
         _animals.Clear();
         DropSolids();
-        foreach (Person p in People) p.View = null;
+        // (Their bodies went with the place's nodes: the gun hung in each hand went with them.)
+        foreach (Person p in People) (p.View, p.Holder, p.Model) = (null, null, null);
         _view = null;
         _place = null;
     }
@@ -1454,6 +1457,13 @@ public sealed partial class Town
         return shows;
     }
 
+    /// <summary>What someone's raised weapon is aimed at, in the place's frame: a stray they're seeing off, else you once they're in a fight; null otherwise.</summary>
+    Vector3? AimedAt(Person p)
+    {
+        if (p.Threat is { Dead: false, Removed: false } c) return _place.FromWorld(_places.Zone.Wildlife.WorldOf(c) + Vector3.Up * 0.6f);
+        return p.Engaged ? _place.FromWorld(_places.Zone.Wildlife.PlayerWorld()) + Vector3.Up * 1.15f : null;
+    }
+
     void PoseBody(Person p, int who, float dt)
     {
         p.View.SyncFar(p.Pos, p.Yaw);
@@ -1464,7 +1474,7 @@ public sealed partial class Town
         p.Slept = Mathf.MoveToward(p.Slept, p.Asleep ? 1f : 0f, 1.2f * dt);
         if (p.Asleep && p.Home < _lie.Count && _lie[p.Home] is Vector3 lie) p.Pos = p.Pos.MoveToward(lie, 1.5f * dt);
         p.Bent = Mathf.MoveToward(p.Bent, !moving && p.Working && !p.Sitting ? (p.Job == PersonRole.Medic ? 0.6f : 1f) : 0f, 2f * dt);
-        p.Raised = Mathf.MoveToward(p.Raised, p.Aim >= 0f || p.Holding ? 1f : 0f, 3f * dt);
+        p.Raised = Mathf.MoveToward(p.Raised, p.Aim >= 0f || p.Holding || p.Pending > 0 ? 1f : 0f, 3f * dt); // (up through the burst too)
         // Looks at you if you're close and in front of them; otherwise glances about now and then.
         float look = MathF.Sin(t * 0.31f) > 0.55f ? MathF.Sin(t * 1.1f) * 0.9f : 0f;
         Vector3 toPlayer = _place.FromWorld(_places.Zone.Wildlife.PlayerWorld()) - p.Pos;
@@ -1483,6 +1493,7 @@ public sealed partial class Town
             Sit = p.Seated,
             Work = p.Bent,
             Aim = p.Raised,
+            AimAt = p.Raised > 0.05f ? AimedAt(p) : null,
             Look = p.HeadYaw,
             Down = MathF.Max(p.Down, p.Slept),
             Dead = p.Dead,

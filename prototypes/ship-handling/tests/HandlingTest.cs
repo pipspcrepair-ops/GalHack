@@ -238,6 +238,99 @@ public partial class HandlingTest : Node
             $"in air and in space, hands off or on the autopilot: worst drift {drift:F4}° ({worstCase})");
 
         CheckJink(fighter, f, air);
+        CheckAssistOff(fighter, air, space);
+    }
+
+    /// <summary>
+    /// Flight assist off: a push in space carries on with no thrust between inputs; on a planet it falls; a spin
+    /// carries on; cruise and the autopilot still hold; top speed still caps; on again, it eases to a hold.
+    /// </summary>
+    void CheckAssistOff(VesselLoadout fighter, FlightConditions air, FlightConditions space)
+    {
+        HandlingStats sp = HandlingModel.Compute(fighter, space, _t), a = HandlingModel.Compute(fighter, air, _t);
+        var coast = FlightState.At(Basis.Identity);
+        FlightModel.ToggleAssist(ref coast);
+        for (int i = 0; i < 30; i++) FlightModel.Step(ref coast, PilotInput.Hands(new Vector3(0.3f, 0f, -1f)), sp, space, _t, Dt);
+        Vector3 pushed = coast.Velocity;
+        float burnt = 0f;
+        for (int i = 0; i < 600; i++)
+        {
+            FlightModel.Step(ref coast, PilotInput.LetGo, sp, space, _t, Dt);
+            burnt = Mathf.Max(burnt, coast.ThrustLocal.Length());
+        }
+        Check(pushed.Length() > 5f && coast.Velocity.IsEqualApprox(pushed) && burnt == 0f,
+            $"assist off in space: pushed to {pushed.Length():F1} m/s, let go for 10 s it still flies at {coast.Velocity.Length():F1} m/s, no thrust between inputs (most {burnt:F3} m/s²)");
+
+        var fall = FlightState.At(Basis.Identity);
+        FlightModel.ToggleAssist(ref fall);
+        for (int i = 0; i < 60; i++) FlightModel.Step(ref fall, PilotInput.LetGo, a, air, _t, Dt);
+        var climb = fall;
+        for (int i = 0; i < 60; i++) FlightModel.Step(ref climb, PilotInput.Hands(Vector3.Up), a, air, _t, Dt);
+        float upAccel = (climb.Velocity.Y - fall.Velocity.Y) / 1f, net = a.Accel(Direction.Up) - air.Gravity;
+        Check(Mathf.Abs(fall.Velocity.Y + air.Gravity) < 0.01f && fall.ThrustLocal == Vector3.Zero && Mathf.Abs(upAccel - net) < 0.05f,
+            $"assist off on a planet: let go it falls ({fall.Velocity.Y:F2} m/s after 1 s at {air.Gravity} m/s²); full up climbs at thrust less weight ({upAccel:F2} m/s², expected {net:F2})");
+        var drop = fall;
+        for (int i = 0; i < 60 * 120; i++) FlightModel.Step(ref drop, PilotInput.LetGo, a, air, _t, Dt);
+        var top = FlightState.At(Basis.Identity);
+        FlightModel.ToggleAssist(ref top);
+        float fastest = 0f;
+        for (int i = 0; i < 60 * 60; i++)
+        {
+            FlightModel.Step(ref top, PilotInput.Hands(Vector3.Forward, boost: true), sp, space, _t, Dt);
+            fastest = Mathf.Max(fastest, top.Velocity.Length());
+        }
+        Check(drop.Velocity.Length() <= a.TopSpeed + 1e-3f && fastest <= sp.TopSpeed + 1e-3f && fastest > sp.TopSpeed - 0.1f,
+            $"assist off, top speed still caps: a 2 min fall ends at {drop.Velocity.Length():F1} m/s (top {a.TopSpeed:F0}), full throttle and boost in space at {fastest:F1} (top {sp.TopSpeed:F0})");
+
+        var spin = FlightState.At(Basis.Identity);
+        FlightModel.ToggleAssist(ref spin);
+        for (int i = 0; i < 20; i++) FlightModel.Step(ref spin, PilotInput.Hands(Vector3.Zero, new Vector3(0f, 1f, 0.5f)), sp, space, _t, Dt);
+        Vector3 rate = spin.AngularVelocity;
+        Basis was = spin.Orientation;
+        for (int i = 0; i < 180; i++) FlightModel.Step(ref spin, PilotInput.LetGo, sp, space, _t, Dt);
+        var bank = FlightState.At(new Basis(Vector3.Back, Mathf.DegToRad(40f)));
+        FlightModel.ToggleAssist(ref bank);
+        for (int i = 0; i < 600; i++) FlightModel.Step(ref bank, PilotInput.LetGo, sp, space, _t, Dt);
+        Check(rate.Y > 0.1f && spin.AngularVelocity == rate && !spin.Orientation.IsEqualApprox(was) && bank.Orientation.IsEqualApprox(new Basis(Vector3.Back, Mathf.DegToRad(40f))),
+            $"assist off, attitude: a yaw and roll left spinning spins on at {Mathf.RadToDeg(rate.Y):F1}°/s for 3 s; a 40° bank left alone stays there");
+
+        // On again: it eases to a hold, from a coast and a spin at once.
+        var back = spin;
+        back.Velocity = pushed;
+        FlightModel.ToggleAssist(ref back);
+        float time = 0f, last = back.Velocity.Length();
+        bool monotonic = true;
+        while ((back.Velocity.Length() > 1e-5f || back.AngularVelocity != Vector3.Zero) && time < 30f) // turned, the frame leaves roundoff
+        {
+            FlightModel.Step(ref back, PilotInput.LetGo, sp, space, _t, Dt);
+            time += Dt;
+            monotonic &= back.Velocity.Length() <= last + 1e-5f;
+            last = back.Velocity.Length();
+        }
+        var held = fall;
+        FlightModel.ToggleAssist(ref held);
+        for (int i = 0; i < 600; i++) FlightModel.Step(ref held, PilotInput.LetGo, a, air, _t, Dt);
+        Check(!back.AssistOff && back.AngularVelocity == Vector3.Zero && monotonic && time < 10f && held.Velocity.Length() < 1e-5f,
+            $"assist on again: the coast and the spin ease to a hold in {time:F2} s, never speeding up; a falling ship stops and holds");
+
+        // Cruise still holds its speed, the autopilot its course, and hover plates hold a hover vessel, assist off or not.
+        var cruise = FlightState.At(Basis.Identity);
+        FlightModel.ToggleAssist(ref cruise);
+        cruise.Velocity = new Vector3(0f, 0f, -45f);
+        FlightModel.ToggleCruise(ref cruise);
+        for (int i = 0; i < 30; i++) FlightModel.Step(ref cruise, PilotInput.Hands(Vector3.Back), sp, space, _t, Dt);
+        for (int i = 0; i < 300; i++) FlightModel.Step(ref cruise, PilotInput.LetGo, sp, space, _t, Dt);
+        var auto = FlightState.At(Basis.Identity);
+        FlightModel.ToggleAssist(ref auto);
+        auto.Velocity = new Vector3(3f, 0f, -40f);
+        for (int i = 0; i < 180; i++) FlightModel.Step(ref auto, PilotInput.Autopilot, a, air, _t, Dt);
+        HandlingStats rover = HandlingModel.Compute(VesselDesigns.Rover(_t), air, _t);
+        var ride = FlightState.At(Basis.Identity);
+        FlightModel.ToggleAssist(ref ride);
+        ride.Velocity = new Vector3(0f, 0f, -10f);
+        for (int i = 0; i < 600; i++) FlightModel.Step(ref ride, PilotInput.LetGo, rover, air, _t, Dt);
+        Check(cruise.CruiseSpeed < 45f && Mathf.Abs(cruise.Velocity.Z + cruise.CruiseSpeed) < 1e-3f && auto.Velocity.IsEqualApprox(new Vector3(3f, 0f, -40f)) && ride.Velocity == Vector3.Zero,
+            $"assist off: cruise trims and holds ({-cruise.Velocity.Z:F1} m/s after half a second of S), the autopilot holds course on a planet, a hover vessel still brakes on its plates");
     }
 
     /// <summary>Average acceleration over the first 0.25 s from rest along one direction.</summary>

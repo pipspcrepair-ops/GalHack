@@ -19,6 +19,9 @@ public sealed class GlobePaint
     public Image Glow { get; private init; }
     public Image Clouds { get; private init; }
 
+    /// <summary>The night side's lights: each lived-in place a warm speck, a town's glow a smudge (FarLights' clusters, the ground's own).</summary>
+    public Image Lights { get; private init; }
+
     /// <summary>The ground's height over the sea, m, on the map's own grid: the sheet's relief.</summary>
     public Image Relief { get; private init; }
 
@@ -26,7 +29,9 @@ public sealed class GlobePaint
 
     /// <param name="coverage">The sky's own clouds over a map point (u, v, 0 to 1), so these are the clouds you fly through; null: the generator's.</param>
     /// <param name="land">The ground's colour at a map point, m, so the far land is the colour of the land it joins; null: the biomes'.</param>
-    public static GlobePaint Make(PlanetSpec spec, WorldMap map, OrbitRules.GlobeRules rules, Func<float, float, float> coverage = null, Func<double, double, Rgb> land = null)
+    /// <param name="sites">The world's places, for its night lights (null: none).</param>
+    public static GlobePaint Make(PlanetSpec spec, WorldMap map, OrbitRules.GlobeRules rules, Func<float, float, float> coverage = null, Func<double, double, Rgb> land = null,
+        IReadOnlyList<PlanetSurface.Poi.PoiSite> sites = null)
     {
         ArchetypeLook look = ArchetypeLook.For(spec);
         ColorMap colors = ColorMap.Build(map, look, rules.TextureWidth, land);
@@ -53,7 +58,48 @@ public sealed class GlobePaint
             Glow = Mipmapped(colors.Width, colors.Height, Image.Format.Rgb8, colors.Glow),
             Clouds = Mipmapped(rules.CloudWidth, cloudHeight, Image.Format.Rgba8, clouds),
             Relief = ReliefOf(map),
+            Lights = LightsOf(sites, map.WidthMeters, map.HeightMeters),
         };
+    }
+
+    /// <summary>The night lights map: a soft splat for each lived-in place by its lamps, and a wider one for each town's glow.</summary>
+    static Image LightsOf(IReadOnlyList<PlanetSurface.Poi.PoiSite> sites, double width, double height)
+    {
+        const int w = 1024;
+        int h = Math.Max(1, (int)(w * height / width));
+        var sum = new float[w * h];
+        double perPixel = width / w;
+        void Splat(double x, double z, double radius, float amount)
+        {
+            double r = Math.Max(radius / perPixel, 0.8);
+            int cx = (int)(x / perPixel), cz = (int)(z / perPixel), reach = (int)Math.Ceiling(r * 2.5);
+            for (int dz = -reach; dz <= reach; dz++)
+            for (int dx = -reach; dx <= reach; dx++)
+            {
+                float f = (float)Math.Exp(-(dx * dx + dz * dz) / (r * r));
+                if (f < 0.01f) continue;
+                int px = ((cx + dx) % w + w) % w, pz = ((cz + dz) % h + h) % h; // the map wraps both ways
+                sum[pz * w + px] += amount * f;
+            }
+        }
+        if (sites != null)
+        {
+            foreach (PlanetSurface.Poi.PoiSite s in sites)
+            {
+                float lamps = PlanetSurface.Poi.FarLights.Lamps(s);
+                if (lamps > 0f) Splat((s.Footprint.Min.X + s.Footprint.Max.X + 1) * 0.5, (s.Footprint.Min.Z + s.Footprint.Max.Z + 1) * 0.5, 40.0, 0.08f * MathF.Sqrt(lamps));
+            }
+            foreach (PlanetSurface.Poi.FarLights.Glow g in PlanetSurface.Poi.FarLights.Clusters(sites, width, height)) Splat(g.X, g.Z, g.Radius * 0.8, 0.6f * g.Strength);
+        }
+        var bytes = new byte[w * h * 3];
+        for (int i = 0; i < sum.Length; i++)
+        {
+            float v = Math.Min(sum[i], 1f);
+            bytes[i * 3] = (byte)(255f * v);
+            bytes[i * 3 + 1] = (byte)(255f * v * 0.7f);
+            bytes[i * 3 + 2] = (byte)(255f * v * 0.42f);
+        }
+        return Mipmapped(w, h, Image.Format.Rgb8, bytes);
     }
 
     static Image ReliefOf(WorldMap map)
@@ -325,6 +371,8 @@ public partial class Globe : Node3D
         render_mode world_vertex_coords, blend_mix, depth_draw_always, cull_back, diffuse_burley, specular_schlick_ggx, shadows_disabled;
         uniform sampler2D albedo_map : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
         uniform sampler2D glow_map : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+        uniform sampler2D lights_map : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+        uniform float lights_gain = 3.0;
         uniform sampler2D relief_map : filter_linear_mipmap, repeat_enable;
         uniform vec3 sun_dir = vec3(0.0, 1.0, 0.0);
         uniform float day_glow = 0.6;
@@ -376,6 +424,8 @@ public partial class Globe : Node3D
             SPECULAR = mix(0.1, 0.45, a.a);
             float night = smoothstep(0.15, -0.25, dot(normalize(round_normal), sun_dir));
             EMISSION = paint(glow_map, m).rgb * (day_glow + night * night_glow);
+            // The places' lights, only after dark: the same towns' glow seen from the ground.
+            EMISSION += paint(lights_map, m).rgb * smoothstep(0.05, -0.2, dot(normalize(round_normal), sun_dir)) * lights_gain;
             ALPHA = mix(over_land, 1.0, smoothstep(4800.0, 5800.0, max(abs(offset.x), abs(offset.y))));
             FOG = vec4(fog_color, 1.0 - exp(-fog_density * distance));
             float hit = true_depth > 0.5 ? sphere_hit(CAMERA_POSITION_WORLD, normalize(mat3(INV_VIEW_MATRIX) * VERTEX), radius) : -1.0;
@@ -629,14 +679,18 @@ public partial class Globe : Node3D
             float hit = true_depth > 0.5 ? sphere_hit(CAMERA_POSITION_WORLD, r, air_radius) : -1.0;
             DEPTH = hit > 0.0 ? depth_of(CAMERA_POSITION_WORLD + r * hit, VIEW_MATRIX, PROJECTION_MATRIX) : FRAGCOORD.z;
             vec3 eye = eye_up * (ground + eye_height);
-            vec3 low = eye + r * max(-dot(eye, r), 0.0);
+            float along = max(-dot(eye, r), 0.0);
+            vec3 low = eye + r * along;
             float lowest = length(low);
             float h = (lowest - ground) / thickness;
             // Past the limb it thins away with height; over the ground, with how steeply the ray goes down through the air.
             float x = lowest / ground;
             float graze = sqrt(2.0 * thickness / ground) / max(sqrt(max(1.0 - x * x, 0.0)), 0.0001);
             float thick = h >= 0.0 ? exp(-4.5 * h) * clamp(1.0 - h, 0.0, 1.0) : min(graze * graze, 1.0) * x * x;
-            float day = smoothstep(-0.3, 0.35, dot(low / lowest, sun_dir));
+            // Lit as the ground is where the ray meets it (the point it passes lowest is inside the world, and its light
+            // there would end at a straight line across the disc); past the limb, where it passes lowest.
+            vec3 lit = h >= 0.0 ? low : eye + r * (along - sqrt(max(ground * ground - lowest * lowest, 0.0)));
+            float day = smoothstep(-0.3, 0.35, dot(normalize(lit), sun_dir));
             ALBEDO = color * thick * day * strength;
         }
         """;
@@ -777,6 +831,7 @@ public partial class Globe : Node3D
         yield return 0;
         _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("glow_map"), ImageTexture.CreateFromImage(paint.Glow));
         _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("relief_map"), ImageTexture.CreateFromImage(paint.Relief));
+        _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("lights_map"), ImageTexture.CreateFromImage(paint.Lights));
         _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("day_glow"), look.LiquidGlow > 0 ? 0.9f : 0.5f);
         _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("night_glow"), look.GlowingNights ? 2.5f : 1.4f);
         _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("radius"), radius);
@@ -791,15 +846,12 @@ public partial class Globe : Node3D
         Weather.Bind(_clouds, C(look.CloudColor));
         AddChild(Instance("Clouds", grid, _clouds));
         yield return 0;
-        var shell = new SphereMesh { Radius = 1f, Height = 2f, RadialSegments = 48, Rings = 24, CustomAabb = Everywhere };
-        _air = new ShaderMaterial { Shader = new Shader { Code = AirSource } };
-        _air.SetShaderParameter(PlanetSurface.Fx.Names.Of("color"), C(look.Atmosphere));
+        (_airMesh, _air) = AirMesh(C(look.Atmosphere));
         _air.SetShaderParameter(PlanetSurface.Fx.Names.Of("shell"), AirShell);
-        _airMesh = Instance("Atmosphere", shell, _air);
         AddChild(_airMesh);
         _shroud = new ShaderMaterial { Shader = new Shader { Code = ShroudSource }, RenderPriority = 100 };
         _shroud.SetShaderParameter(PlanetSurface.Fx.Names.Of("shell"), ShroudShell);
-        _shroudMesh = Instance("Shroud", shell, _shroud);
+        _shroudMesh = Instance("Shroud", Shell, _shroud);
         _shroudMesh.Visible = false;
         AddChild(_shroudMesh);
         _ringMaterial = new ShaderMaterial { Shader = new Shader { Code = RingSource }, RenderPriority = 5 }; // nearer than anything else up there
@@ -872,7 +924,6 @@ public partial class Globe : Node3D
         }
         _clouds.SetShaderParameter(PlanetSurface.Fx.Names.Of("cloud_lift"), v.CloudLift);
         _clouds.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_dir"), v.ToSun);
-        _air.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_dir"), v.ToSun);
         _ring.Visible = _hasRing && v.RingShown > 0.002f;
         if (_ring.Visible)
         {
@@ -897,13 +948,39 @@ public partial class Globe : Node3D
             m.SetShaderParameter(PlanetSurface.Fx.Names.Of("globe_centre"), v.TrueCentre);
         }
         _air.SetShaderParameter(PlanetSurface.Fx.Names.Of("air_radius"), Radius + _airThickness);
-        _air.SetShaderParameter(PlanetSurface.Fx.Names.Of("eye_up"), v.Up);
-        _air.SetShaderParameter(PlanetSurface.Fx.Names.Of("ground"), rho);
-        _air.SetShaderParameter(PlanetSurface.Fx.Names.Of("thickness"), _airThickness);
-        _air.SetShaderParameter(PlanetSurface.Fx.Names.Of("eye_height"), v.Height);
-        _air.SetShaderParameter(PlanetSurface.Fx.Names.Of("strength"), AirStrength * v.Rim);
-        _airMesh.Visible = v.Rim > 0.002f;
+        _airMesh.Visible = Air(_air, v.Up, rho, _airThickness, v.Height, v.Rim, v.ToSun);
     }
+
+    static readonly SphereMesh Shell = new() { Radius = 1f, Height = 2f, RadialSegments = 48, Rings = 24, CustomAabb = Everywhere };
+    static Shader _airShader;
+
+    /// <summary>A world's air seen from outside, over its disc and round its limb, in its colour: a shell round the eye, drawn by every look of a world with air (its globe and space's far look of it).</summary>
+    public static (MeshInstance3D Mesh, ShaderMaterial Material) AirMesh(Color color)
+    {
+        var m = new ShaderMaterial { Shader = _airShader ??= new Shader { Code = AirSource } };
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("color"), color);
+        return (Instance("Atmosphere", Shell, m), m);
+    }
+
+    /// <summary>
+    /// Lays an air shell out for this frame: the world's centre down <paramref name="up"/> from the eye, its ground's radius and its air's
+    /// thickness (any one unit), the eye's height over the ground, how much of it shows (<paramref name="rim"/>), the way to the sun.
+    /// Whether it draws at all.
+    /// </summary>
+    public static bool Air(ShaderMaterial m, Vector3 up, float ground, float thickness, float height, float rim, Vector3 toSun)
+    {
+        if (rim <= 0.002f) return false;
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("eye_up"), up);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("ground"), ground);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("thickness"), thickness);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("eye_height"), height);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("strength"), AirStrength * rim);
+        m.SetShaderParameter(PlanetSurface.Fx.Names.Of("sun_dir"), toSun);
+        return true;
+    }
+
+    /// <summary>How much of a world's air shows from outside, 0 to 1, by its sky's density: thin air hardly at all.</summary>
+    public static float AirShare(float density) => 1f - MathF.Exp(-2.5f * MathF.Max(density, 0f));
 
     /// <summary>The shroud over everything past the vessel: how thick (0 to 1), the air's colour low in the view and overhead, and its glow toward the sun.</summary>
     public void Shroud(float amount, Color low, Color high, Color glow, Vector3 toSun)

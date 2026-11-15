@@ -9,7 +9,9 @@
 //   tags       fire, bio, shock, gas, rad, force (fire, gas and rad go past a personal shield)
 //   damage     per bolt, pellet, sting or cone tick. Never scaled down by range or target.
 //   rpm, magazine, reload (seconds; reloadEach: one round per reload), speed (m/s: every shot
-//   travels at a speed you can see), life (seconds), spread and spreadMoving (degrees), recoil
+//   travels at a speed you can see: a hand weapon's at most 120, so it takes a quarter of a second
+//   or more over 30 m; a structure's guns are in mounted.json, slower than real too),
+//   life (seconds), spread and spreadMoving (degrees), recoil
 //   (degrees of camera kick), noise (metres creatures hear it), blocks (multiplier on blocks:
 //   0 leaves them unharmed), gravity (share of the planet's: lobbed shots arc)
 //   ammo       { item, perItem }: rounds one item gives (else the ammo item's own count). Ammo
@@ -39,7 +41,7 @@
     // ---- SA2: the first crafted gun. Proves hand weapons, magazine and reload. ----
     { "id": "tack-pistol", "code": "SA2", "name": "Tack Pistol",
       "trigger": "semi", "delivery": "bolt", "class": "kin",
-      "damage": 22, "rpm": 320, "magazine": 12, "reload": 1.2, "speed": 220, "life": 1.4,
+      "damage": 22, "rpm": 320, "magazine": 12, "reload": 1.2, "speed": 90, "life": 3.4,
       "spread": 0.35, "spreadMoving": 1.1, "recoil": 0.9, "noise": 35, "blocks": 1.0,
       "ammo": { "item": "pistol-rounds" },
       "feel": "pistol", "tracer": { "colour": "ffd98a", "width": 0.011, "length": 1.0, "body": "tracer" },
@@ -48,7 +50,7 @@
     // ---- RF2: the yardstick. Fire modes. ----
     { "id": "line-rifle", "code": "RF2", "name": "Line Rifle",
       "trigger": "auto", "delivery": "bolt", "class": "kin",
-      "damage": 26, "rpm": 600, "magazine": 30, "reload": 1.8, "speed": 300, "life": 1.5,
+      "damage": 26, "rpm": 600, "magazine": 30, "reload": 1.8, "speed": 110, "life": 4.1,
       "spread": 0.25, "spreadMoving": 1.4, "recoil": 0.6, "noise": 55, "blocks": 1.0,
       "ammo": { "item": "rifle-rounds" },
       "modes": [ { "name": "AUTO", "trigger": "auto" }, { "name": "BURST", "trigger": "burst", "burst": 3, "rpm": 780 }, { "name": "SINGLE", "trigger": "semi", "spread": 0.15 } ],
@@ -58,12 +60,12 @@
     // ---- SG2: the staple. Pellets, and shell types as data. ----
     { "id": "pump-scattergun", "code": "SG2", "name": "Pump Scattergun",
       "trigger": "pump", "pump": 0.55, "delivery": "pellets", "class": "kin",
-      "damage": 9, "rpm": 70, "magazine": 6, "reload": 0.45, "reloadEach": true, "speed": 200, "life": 0.5,
+      "damage": 9, "rpm": 70, "magazine": 6, "reload": 0.45, "reloadEach": true, "speed": 80, "life": 1.25,
       "spread": 0.5, "spreadMoving": 1.5, "recoil": 3.2, "noise": 60, "blocks": 0.6,
       "ammo": { "item": "buck-shells" }, "pellets": { "count": 8, "spread": 4.5 },
       "modes": [
         { "name": "BUCKSHOT" },
-        { "name": "SLUG", "ammo": { "item": "slug-shells" }, "pellets": { "count": 1, "spread": 0.3 }, "damage": 64, "life": 1.0, "blocks": 1.2 }
+        { "name": "SLUG", "ammo": { "item": "slug-shells" }, "pellets": { "count": 1, "spread": 0.3 }, "damage": 64, "life": 2.5, "blocks": 1.2 }
       ],
       "feel": "shotgun", "tracer": { "colour": "ffd070", "width": 0.008, "length": 0.7, "body": "tracer" },
       "look": { "band": "mid", "calibre": 0.6, "barrel": 0.3, "body": 0.24, "stock": "solid", "mag": "tube", "sight": "post", "accent": "6a5a44" } },
@@ -101,17 +103,17 @@
     // ---- AC3: the accelerator. Charge stages, each adding speed and pierce. ----
     { "id": "stage-rifle", "code": "AC3", "name": "Stage Rifle",
       "trigger": "charge", "delivery": "bolt", "class": "kin",
-      "damage": 20, "rpm": 90, "magazine": 8, "reload": 2.0, "speed": 160, "life": 2,
+      "damage": 20, "rpm": 90, "magazine": 8, "reload": 2.0, "speed": 70, "life": 4,
       "spread": 0.1, "spreadMoving": 0.8, "recoil": 1.6, "noise": 45, "blocks": 1.4,
       "ammo": { "item": "rail-slugs" }, "pierce": { "count": 0 },
-      "charge": { "stages": 4, "seconds": 0.35, "speed": 90, "pierce": 1, "damage": 16 },
+      "charge": { "stages": 4, "seconds": 0.35, "speed": 12, "pierce": 1, "damage": 16 },
       "feel": "rail", "tracer": { "colour": "8fe6ff", "width": 0.016, "length": 2.4, "body": "slug", "light": true },
       "look": { "band": "high", "calibre": 0.38, "barrel": 0.42, "body": 0.3, "stock": "skeleton", "mag": "cell", "sight": "scope", "emitter": "rings", "vents": 3, "accent": "5ad8ff" } },
 
     // ---- LT3: the owner's lightning. Arc: a target search and a lightning look. ----
     { "id": "fork-gun", "code": "LT3", "name": "Fork Gun",
       "trigger": "semi", "delivery": "arc", "class": "en", "tags": [ "shock" ],
-      "damage": 20, "rpm": 150, "magazine": 16, "reload": 1.6, "speed": 300, "life": 0.4,
+      "damage": 20, "rpm": 150, "magazine": 16, "reload": 1.6, "speed": 120, "life": 1.0,
       "spread": 0.2, "spreadMoving": 0.8, "recoil": 0.8, "noise": 50, "blocks": 1.2,
       "ammo": { "item": "energy-cell", "perItem": 8 },
       "arc": { "jumps": 3, "range": 7, "damage": 14, "wetReach": 0.6 },
@@ -143,7 +145,7 @@
     // ---- SK1: the owner's homing bullets. Homing on a plain gun. ----
     { "id": "bend-rounds", "code": "SK1", "name": "Bend Rounds",
       "trigger": "auto", "delivery": "bolt", "class": "kin",
-      "damage": 15, "rpm": 540, "magazine": 24, "reload": 1.7, "speed": 140, "life": 1.6,
+      "damage": 15, "rpm": 540, "magazine": 24, "reload": 1.7, "speed": 100, "life": 2.24,
       "spread": 0.6, "spreadMoving": 1.4, "recoil": 0.5, "noise": 40, "blocks": 0.8,
       "ammo": { "item": "smart-rounds" },
       "homing": { "seek": "aim", "cone": 14, "turnPerMetre": 0.03, "range": 70 },
@@ -166,7 +168,7 @@
     // and dropped with its ammo where they fall. Found, never made. ----
     { "id": "ball-musket", "code": "PM1", "name": "Ball Musket",
       "trigger": "semi", "delivery": "bolt", "class": "kin",
-      "damage": 34, "rpm": 30, "magazine": 1, "reload": 3.2, "speed": 170, "life": 1.6, "gravity": 0.25,
+      "damage": 34, "rpm": 30, "magazine": 1, "reload": 3.2, "speed": 85, "life": 3.2, "gravity": 0.25,
       "spread": 1.1, "spreadMoving": 3.0, "recoil": 2.0, "noise": 60, "blocks": 0.8,
       "ammo": { "item": "musket-balls" },
       "feel": "shotgun", "tracer": { "colour": "d8d0c0", "width": 0.016, "length": 0.5, "body": "ball" },
@@ -176,7 +178,7 @@
       "trigger": "semi", "delivery": "bolt", "class": "kin",
       "damage": 30, "rpm": 40, "magazine": 1, "reload": 2.2, "speed": 70, "life": 2.5, "gravity": 0.5,
       "spread": 0.4, "spreadMoving": 1.6, "recoil": 0.4, "noise": 12, "blocks": 0.3,
-      "ammo": { "item": "crossbow-bolts" },
+      "ammo": { "item": "crossbow-bolts" }, "stick": { "seconds": 8 },
       "feel": "throw", "tracer": { "colour": "8a6a44", "width": 0.012, "length": 0.45, "body": "slug" },
       "look": { "band": "low", "calibre": 0.3, "barrel": 0.24, "body": 0.24, "stock": "solid", "mag": "none", "sight": "post", "fins": 2, "accent": "5a3e26" } },
 
@@ -184,13 +186,13 @@
       "trigger": "semi", "delivery": "bolt", "class": "kin",
       "damage": 20, "rpm": 50, "magazine": 1, "reload": 0.9, "speed": 55, "life": 3, "gravity": 0.6,
       "spread": 0.7, "spreadMoving": 2.2, "recoil": 0.2, "noise": 8, "blocks": 0.2,
-      "ammo": { "item": "arrows" },
+      "ammo": { "item": "arrows" }, "stick": { "seconds": 8 },
       "feel": "throw", "tracer": { "colour": "8a6a44", "width": 0.01, "length": 0.7, "body": "slug" },
       "look": { "band": "low", "calibre": 0.2, "barrel": 0.1, "body": 0.12, "stock": "none", "mag": "none", "sight": "none", "accent": "5a3e26" } },
 
     { "id": "beam-rifle", "code": "PL3", "name": "Beam Rifle",
       "trigger": "semi", "delivery": "bolt", "class": "en",
-      "damage": 24, "rpm": 240, "magazine": 20, "reload": 1.8, "speed": 420, "life": 0.8,
+      "damage": 24, "rpm": 240, "magazine": 20, "reload": 1.8, "speed": 120, "life": 2.8,
       "spread": 0.15, "spreadMoving": 0.9, "recoil": 0.3, "noise": 45, "blocks": 1.0,
       "ammo": { "item": "energy-cell", "perItem": 20 },
       "feel": "laser", "tracer": { "colour": "ff5040", "width": 0.014, "length": 3.0, "body": "tracer", "light": true },
@@ -198,7 +200,7 @@
 
     { "id": "beam-pistol", "code": "PL2", "name": "Beam Pistol",
       "trigger": "semi", "delivery": "bolt", "class": "en",
-      "damage": 16, "rpm": 300, "magazine": 12, "reload": 1.3, "speed": 400, "life": 0.6,
+      "damage": 16, "rpm": 300, "magazine": 12, "reload": 1.3, "speed": 110, "life": 2.2,
       "spread": 0.4, "spreadMoving": 1.2, "recoil": 0.3, "noise": 35, "blocks": 0.8,
       "ammo": { "item": "energy-cell", "perItem": 12 },
       "feel": "laser", "tracer": { "colour": "ff5040", "width": 0.012, "length": 2.2, "body": "tracer", "light": true },

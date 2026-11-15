@@ -25,11 +25,14 @@ public sealed class RockLook
 
     public readonly Rgb Base, Pale, Dark, Mineral, Mineral2, Soil, Varnish, Life;
     public readonly float LifeAmount;
-    public readonly ImageTexture Style, Beds;
+
+    /// <summary>Its style and beds maps (<see cref="Textures"/>): made on any thread, uploaded on the main one as a material first takes them.</summary>
+    readonly Image _styleMap, _bedsMap;
+    ImageTexture _style, _beds;
 
     static readonly ConditionalWeakTable<PlanetWorld, RockLook> Made = new();
 
-    /// <summary>The world's rock look, made once.</summary>
+    /// <summary>The world's rock look, made once, on any thread (a moon's is made with its world, off the frame it arrives on).</summary>
     public static RockLook Of(PlanetWorld world) => Made.GetValue(world, w => new RockLook(w));
 
     /// <summary>Sets a terrain material's rock uniforms. <paramref name="cliffInfo"/>: its meshes' UV2 is the cliff (voxels, far rings).</summary>
@@ -46,8 +49,8 @@ public sealed class RockLook
         m.SetShaderParameter("rock_varnish", C(r.Varnish));
         m.SetShaderParameter("rock_life", C(r.Life));
         m.SetShaderParameter("rock_life_amount", r.LifeAmount);
-        m.SetShaderParameter("rock_style", r.Style);
-        m.SetShaderParameter("rock_beds", r.Beds);
+        m.SetShaderParameter("rock_style", r._style ??= ImageTexture.CreateFromImage(r._styleMap));
+        m.SetShaderParameter("rock_beds", r._beds ??= ImageTexture.CreateFromImage(r._bedsMap));
         m.SetShaderParameter("rock_style_on", 1f);
         m.SetShaderParameter("rock_uv2", cliffInfo ? 1f : 0f);
     }
@@ -99,7 +102,7 @@ public sealed class RockLook
         Rgb wet = Rgb.Lerp(Base * 0.42f, Life * 0.35f, LifeAmount);
         Varnish = Rgb.Lerp(dry, wet, Math.Clamp((humid - 0.3f) * 2f, 0f, 1f));
 
-        (Style, Beds) = Textures(world, pal.Strata);
+        (_styleMap, _bedsMap) = Textures(world, pal.Strata);
     }
 
     /// <summary>A landform's faces (strata, flutes, joints, caprock) and the thickness of its beds, m.</summary>
@@ -134,7 +137,7 @@ public sealed class RockLook
     /// planet/256, from the blend of landforms there. The world's rock bands more or less by its kind
     /// (<paramref name="strata"/>, the palette's): a desert's sandstone more than a temperate world's.
     /// </summary>
-    static (ImageTexture style, ImageTexture beds) Textures(PlanetWorld world, float strata)
+    static (Image style, Image beds) Textures(PlanetWorld world, float strata)
     {
         WorldMap map = world.Map;
         var style = new byte[TexWidth * TexHeight * 4];
@@ -172,7 +175,6 @@ public sealed class RockLook
                 beds[q + 1] = Rgb.Byte((thick - 0.5f) / 3.5f);
             }
         });
-        return (ImageTexture.CreateFromImage(Image.CreateFromData(TexWidth, TexHeight, false, Image.Format.Rgba8, style)),
-            ImageTexture.CreateFromImage(Image.CreateFromData(TexWidth, TexHeight, false, Image.Format.Rg8, beds)));
+        return (Image.CreateFromData(TexWidth, TexHeight, false, Image.Format.Rgba8, style), Image.CreateFromData(TexWidth, TexHeight, false, Image.Format.Rg8, beds));
     }
 }

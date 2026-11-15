@@ -234,5 +234,5 @@ public partial class MachineScreens : Node3D
     string MachineState(Constructor c) =>
         c == null ? "" : $"{c.Status}|{c.Version}|{c.Current?.Item.Id}|{(int)((c.Current?.Progress ?? 0) * 40)}|{c.Storage.Version}|{Game.Progress.Points}|{Game.Progress.State.Unlocked.Count}|{ItemIcons.Shared?.Count}";
 
-    static string StructureState(Vessel v) => $"{v.PowerOn}|{v.LightsOn}|{v.Home}|{v.AutoTransmit}|{v.Powered}|{v.Structure.Count}|{v.Storage.Version}";
+    static string StructureState(Vessel v) => $"{v.PowerOn}|{v.LightsOn}|{v.Home}|{v.AutoTransmit}|{v.Powered}|{(int)v.Power.ChargeMJ}|{(int)(v.Power.DrawMW * 1000)}|{v.Structure.Count}|{v.Storage.Version}";
 }

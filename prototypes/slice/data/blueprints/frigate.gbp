@@ -192,9 +192,10 @@ block 1 1 -7 iron-plated paint=inner
 block 6 1 -7 gyro-t2
 block 7 1 -7 iron-plated paint=hull
 block -8 1 -6 iron-plated paint=hull
-block -7 1 -6 fuel-tank-t2
+block -7 1 -6 container-t1
 block 7 1 -6 iron-plated paint=hull,inner,hull,hull,hull,hull
 block -8 1 -5 iron-plated paint=hull
+block -7 1 -5 container-t1
 block 7 1 -5 iron-plated paint=hull,inner,hull,hull,hull,hull
 block -8..-7 1 -4 iron-plated paint=hull
 block -6 1 -4 iron-plated paint=hull,hull,hull,hull,hull,inner
@@ -337,9 +338,10 @@ block -3 2 -7 iron-plated paint=inner
 block 1 2 -7 iron-plated paint=inner
 block 7 2 -7 iron-plated paint=hull,inner,hull,hull,hull,hull
 block -8 2 -6 iron-plated paint=hull
-block -7 2 -6 fuel-tank-t2
+block -7 2 -6 container-t1
 block 7 2 -6 iron-plated paint=hull,inner,hull,hull,hull,hull
 block -8 2 -5 iron-plated paint=hull
+block -7 2 -5 container-t1
 block 7 2 -5 iron-plated paint=hull,inner,hull,hull,hull,hull
 block -8..-7 2 -4 iron-plated paint=hull
 block -6 2 -4 iron-plated paint=hull,hull,hull,hull,hull,inner

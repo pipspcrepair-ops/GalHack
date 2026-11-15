@@ -84,12 +84,8 @@ public partial class Game
         }
         if (Zone.Devices.FirstOrDefault(d => d.Collider == look.Collider) is Device device)
         {
-            if (device.Constructor != null)
-            {
-                Menu.OpenCore(device); // the full panel: hopper beside the recipes and queue
-                return;
-            }
-            Open(new OpenContainer { Title = $"{device.Label} hopper", Grid = device.Grid, Device = device, Where = () => device.GlobalPosition });
+            // The full panel: hopper beside the recipes and queue. A climate node has neither: it runs on its structure's power.
+            if (device.Constructor != null) Menu.OpenCore(device);
             return;
         }
         if (look.Vessel is Vessel v && v.Structure.TryGet(look.Cell, out Block b))
@@ -139,7 +135,8 @@ public partial class Game
         if (Bunker?.SealedAlong(eye, dir, (hit ? look.Distance : UseReach) + 0.3f) is Slice.Start.BunkerLocker sealedOne) return $"LOCKER {sealedOne.Number} · SEALED";
         if (PlacePrompt(eye, dir, hit, look) is { Length: > 0 } place) return place;
         if (!hit) return "";
-        if (Zone.Devices.FirstOrDefault(d => d.Collider == look.Collider) is Device device) return $"E  Open {device.Label.ToLowerInvariant()}";
+        if (Zone.Devices.FirstOrDefault(d => d.Collider == look.Collider) is Device device)
+            return device.Grid == null ? $"{device.Label.ToUpperInvariant()} · {(device.Running ? "ON" : "NO POWER")}" : $"E  Open {device.Label.ToLowerInvariant()}";
         if (look.Vessel is Vessel v && v.Structure.TryGet(look.Cell, out Block b))
         {
             BlockType type = v.Structure.TypeOf(b);
@@ -354,7 +351,7 @@ public partial class Game
         {
             if (d.Constructor == null)
             {
-                d.Tick(dt); // a climate node burns in real time, whatever crafting's test scale
+                d.Tick(dt); // a climate node draws in real time, whatever crafting's test scale
                 continue;
             }
             Snapshot(d.Constructor);
@@ -367,6 +364,7 @@ public partial class Game
             if (v.Stand != null && Survivor.Seated == v) v.Stand = null;
             v.HoldOnStand();
             v.TickMode();
+            v.TickPower(dt, Mode == GameMode.Creative || FreePower); // in real time: what its devices drew this tick, the climate nodes by it too
             if (v.Machines.Count == 0) continue;
             foreach (Constructor c in v.Machines.Values) Snapshot(c);
             v.TickMachines(t);
@@ -381,7 +379,7 @@ public partial class Game
             Pack.Grid.Reconcile();
             SetDown(over, Survivor.WorldFeet);
         }
-        foreach (Device d in Zone.Devices) d.Grid.Reconcile();
+        foreach (Device d in Zone.Devices) d.Grid?.Reconcile();
         AutoTransmit(dt);
         Zone.Loot.Tick();
         // A structure's storage stays open while you are in its area; anything else within a few steps.

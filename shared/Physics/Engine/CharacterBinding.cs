@@ -309,12 +309,17 @@ public sealed class CharacterBinding : BodyBinding
         return false;
     }
 
-    public override void Teleport()
+    public override void Teleport() => Place(true);
+
+    /// <summary>Puts the character where its body was set this tick, drawn moving there from where it was (a script carrying it along a path).</summary>
+    public void Glide() => Place(false);
+
+    void Place(bool jump)
     {
         Align();
         Character.GlobalPosition = Body.Position.ToGodot();
         Character.Velocity = Body.Velocity.ToGodot();
-        Character.ResetPhysicsInterpolation();
+        if (jump) Character.ResetPhysicsInterpolation();
         _touched.Clear();
     }
 }

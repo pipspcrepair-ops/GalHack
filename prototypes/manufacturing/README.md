@@ -27,7 +27,7 @@ Proves GalHack's manufacturing loop on top of [`shared/Items`](../../shared/Item
 .\tools\godot.ps1 -Project prototypes/manufacturing -Play
 ```
 
-You stand on the workshop floor. The back wall holds, from the left: a generator, the **small constructor**, a container with the **storage** screen, the **base console**, the **deconstructor**, a container, the **blueprint factory** and a fuel tank. Two turrets stand on the containers; a gatling and a rocket pod point out of the back. The wreck is on the red pad to the left; built blueprints land on the yellow pad to the right.
+You stand on the workshop floor. The back wall holds, from the left: a generator, the **small constructor**, a container with the **storage** screen, the **base console**, the **deconstructor**, a container, the **blueprint factory** and a container. Two turrets stand on the containers; a gatling and a rocket pod point out of the back. The wreck is on the red pad to the left; built blueprints land on the yellow pad to the right.
 
 | Key | Action |
 | --- | --- |

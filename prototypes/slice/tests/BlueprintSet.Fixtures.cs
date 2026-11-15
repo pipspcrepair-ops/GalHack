@@ -42,8 +42,10 @@ public static partial class BlueprintSet
         for (int z = -4; z <= 2; z++) d.Put("container-t4", P(-5, 1, z));
         d.Put("generator-t2", P(4, 1, -4));
         d.Put("generator-t2", P(4, 1, -3));
-        d.Put("fuel-tank-t2", P(4, 1, -2));
-        d.Put("fuel-tank-t2", P(4, 1, 0));
+        d.Put("container-t1", P(4, 1, -2));
+        d.Put("container-t1", P(4, 1, -1));
+        d.Put("container-t1", P(4, 1, 0));
+        d.Put("container-t1", P(4, 1, 1));
         d.Put("gyro-t2", P(4, 1, 2));
         d.Put("gyro-t2", P(4, 1, 3));
         // Nacelles either side of the hall, the mains in their tails; lift jets and pads in the keel.
@@ -85,7 +87,7 @@ pad 12 x 14 m for a small vessel. Nacelles on the flanks; Thruster T3s; six pads
             for (int z = 1; z <= 4; z++) d.Put("container-t1", P(x, 1, z));
         d.Put("generator-t1", P(-1, 0, 2));
         d.Put("gyro-t1", P(0, 0, 2));
-        d.Put("fuel-tank-t1", P(1, 0, 2));
+        d.Put("container-t1", P(1, 0, 2));
         d.Thruster("thruster-t1", P(-1, 0, 5), Dir.NegZ);
         d.Thruster("thruster-t1", P(1, 0, 5), Dir.NegZ);
         d.Thruster("thruster-t1", P(-3, 0, -4), Dir.PosZ);
@@ -129,8 +131,8 @@ two lift jets, a down jet and three pads.");
         d.Put("container-t1", P(-1, 1, -4));
         d.Put("container-t1", P(0, 1, -4));
         d.Put("factory", P(1, 1, -4));
-        d.Put("fuel-tank-t1", P(2, 1, -4));
-        d.Put("fuel-tank-t1", P(3, 1, -4));
+        d.Put("container-t1", P(2, 1, -4));
+        d.Put("container-t1", P(3, 1, -4));
         foreach (int x in new[] { -4, 4 })
             foreach (int z in new[] { -2, 2 }) d.Mount("light", P(x, 4, z), Dir.PosY);
         // Two turrets on the roof, a gatling and a rocket pod out of the back wall.
@@ -188,8 +190,8 @@ for the deconstructor to break down.");
         d.Put("core", P(0, -1, 2));
         d.Put("generator-t1", P(-1, -1, 2));
         d.Put("gyro-t1", P(1, -1, 2));
-        d.Put("fuel-tank-t1", P(-2, -1, 2));
-        d.Put("fuel-tank-t1", P(-2, -1, 1));
+        d.Put("container-t1", P(-2, -1, 2));
+        d.Put("container-t1", P(-2, -1, 1));
         // A stair up the port side from the ground to the deck, 2 m.
         d.Stairs(P(-6, -1, -1), Dir.PosX, hull);
         d.Fill(P(-5, -1, -1), P(-5, -1, -1), "iron-plated", hull);
@@ -231,7 +233,8 @@ deck, thrusters all round it, four pads.");
         d.Fill(P(-1, 1, -16), P(1, 1, -16), "iron-plated", hull).Fill(P(-1, 2, -16), P(1, 2, -16), "glass-plated", 0, "slope");
         d.Put("core", P(0, -1, 0));
         d.Put("generator-t2", P(-2, -1, -2));
-        d.Put("fuel-tank-t2", P(1, -1, -2));
+        d.Put("container-t1", P(1, -1, -2));
+        d.Put("container-t1", P(1, -1, -1));
         d.Put("gyro-t2", P(-1, -1, 2));
         d.Put("gyro-t2", P(0, -1, 2));
         foreach (int x in new[] { -4, 3 })
@@ -299,8 +302,8 @@ the wind.");
         for (int x = -2; x <= 1; x++) d.Put("container-t1", P(x, 0, 3));
         d.Put("generator-t1", P(-2, 0, 4));
         d.Put("generator-t1", P(1, 0, 4));
-        d.Put("fuel-tank-t1", P(-1, 0, 4));
-        d.Put("fuel-tank-t1", P(0, 0, 4));
+        d.Put("container-t1", P(-1, 0, 4));
+        d.Put("container-t1", P(0, 0, 4));
         foreach (int x in new[] { -2, 0, 1 }) d.Thruster("thruster-t1", P(x, 1, 7), Dir.NegZ);
         d.Thruster("thruster-t1", P(-5, 1, -6), Dir.PosZ);
         d.Thruster("thruster-t1", P(4, 1, -6), Dir.PosZ);

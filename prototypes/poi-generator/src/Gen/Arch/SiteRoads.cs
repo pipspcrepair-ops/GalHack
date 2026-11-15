@@ -123,6 +123,8 @@ public static class SiteRoads
             Cracks = tech switch { TechLevel.Low => 0.3f, TechLevel.Mid => 0.16f, _ => 0.06f },
         };
         c.X.Roads = x.Plan;
+        // Nothing to serve (a lone post, a marker): no road in at all, not even the stub at the gate.
+        if (wants.Count == 0 && runways.Count == 0 && doors.Count == 0) return x.Plan;
         var all = wants.ToList();
         foreach (Runway r in runways) LayRunway(x, r, all);
         // A building's main door wants a forecourt: somewhere in front of it a road can come to and turn.

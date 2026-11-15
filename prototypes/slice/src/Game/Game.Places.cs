@@ -44,7 +44,7 @@ public partial class Game
         {
             Name = "Places", Zone = Zone, Focus = Focus,
             BuildRadius = rules.BuildRadius, DropRadius = rules.DropRadius, BudgetMs = rules.BudgetMs, AheadSeconds = rules.AheadSeconds,
-            Fauna = new PlaceFauna.Deep(Zone.Wildlife.Life, Zone.Planet, Zone.Wildlife.Livable),
+            Fauna = Zone.Wildlife.Life == null ? null : new PlaceFauna.Deep(Zone.Wildlife.Life, Zone.Planet, Zone.Wildlife.Livable), // none on an airless world
         };
         Zone.AddChild(Places);
         Zone.Infra.WreckStood += Places.WreckStood;
@@ -126,9 +126,15 @@ public partial class Game
             Alerts.Attack("hostile", from);
             Zone.Sfx?.Play(PlanetSurface.Fx.Sfx.Sound.Ping, from, 0.5f, -4f);
         };
-        t.ShotAway += (from, to) => Shots.Fire(from, to, default, null);
+        // Seeing off a stray: their own gun's shot, flash and report (a rifle's if theirs isn't one), harming nothing.
+        t.ShotAway += (who, from, to) =>
+        {
+            GalHack.Arms.WeaponDef d = Zone.Data.Arms.OfItem(Wildlife.Weapons.ItemOf(who.Figure.Prop));
+            if (d == null || d.Delivery == GalHack.Arms.Delivery.Strike) d = Zone.Data.Arms.OfItem("line-rifle");
+            Arms?.FireFrom(d, from, to - from, 0.3f, who, model: who.Model, look: true);
+        };
         // Their own weapon, fired (or swung) from their own hands: the same shots and blows as the player's.
-        t.ShotFired += (who, def, muzzle, dir, unsteady) => Arms?.FireFrom(def, muzzle, dir, unsteady, who, who.Now > 0.6f);
+        t.ShotFired += (who, def, muzzle, dir, unsteady) => Arms?.FireFrom(def, muzzle, dir, unsteady, who, who.Now > 0.6f, who.Model);
         // Where one falls, what they carried: their weapon and what's left of its ammo, and a little besides.
         t.Fell += who => PersonFell(t, who);
     }

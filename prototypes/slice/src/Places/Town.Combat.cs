@@ -112,6 +112,12 @@ public sealed partial class Town
     {
         if (p.Dead) return;
         p.Health.Current -= damage;
+        // They cry out (once for a shot's pellets, always as they go down).
+        if (p.Looks != null && (p.Dead || p.Hurt <= 0.4f - Slice.Game.Game.CryEvery))
+        {
+            Vector3 at = World(p.Pos + Vector3.Up * Height(p) * 0.9f);
+            _places.Zone.Wildlife.Sound(Vector3.Zero, a => a.Cry(p.Looks, at));
+        }
         p.Hurt = 0.4f;
         p.LastHarm = harm;
         if (byPlayer)
@@ -358,6 +364,16 @@ public sealed partial class Town
         p.Now = 0f;
         if (p.Path != null && p.Step < p.Path.Count) { p.Path = null; p.Step = 0; } // they stand to fire
         if ((p.NextRound -= dt) > 0f) return;
+        // Not until the weapon is on you: the round leaves along the barrel (or the arrow's line).
+        float off = p.View is { Visible: true } ? p.Rig?.AimError(player + Vector3.Up * 1.15f) ?? 0f : 0f;
+        if (off > HumanRig.OnMark)
+        {
+            // Still coming round: they wait; never on: they take aim again.
+            if ((p.AimHeld += dt) >= HumanRig.AimWait) { p.AimHeld = 0f; p.Pending = 0; p.Aim = -1f; }
+            return;
+        }
+        p.AimHeld = 0f;
+        p.LastOff = off;
         p.NextRound = d.SecondsPerShot;
         if (!p.Kit.Shot()) { p.Pending = 0; return; }
         p.Pending--;
@@ -445,6 +461,8 @@ public sealed partial class Town
     public Vector3 Muzzle(Person p)
     {
         if (p.Model?.Muzzle != null && GodotObject.IsInstanceValid(p.Model.Muzzle) && p.Model.Muzzle.IsInsideTree() && p.View is { Visible: true }) return p.Model.Muzzle.GlobalPosition;
+        // A bow (the body's own), or a gun not drawn: from the hand, along the weapon's line.
+        if (p.Rig is { } r && r.WeaponLine.LengthSquared() > 0.5f) return World(r.WeaponGrip + r.WeaponLine * 0.1f);
         return World(p.Pos + Vector3.Up * Height(p) * 0.78f + p.Forward * 0.55f);
     }
 

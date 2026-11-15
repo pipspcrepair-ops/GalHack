@@ -250,6 +250,13 @@ public partial class Visor
             case "place": // a roofline
                 _hud.DrawPolyline(new[] { P(-0.9f, 0.8f), P(-0.9f, -0.1f), P(0f, -0.85f), P(0.9f, -0.1f), P(0.9f, 0.8f), P(-0.9f, 0.8f) }, tone, w);
                 break;
+            case "ruin": // a roofline broken open
+                _hud.DrawPolyline(new[] { P(0.15f, -0.7f), P(0f, -0.85f), P(-0.9f, -0.1f), P(-0.9f, 0.8f), P(0.9f, 0.8f), P(0.9f, 0.1f), P(0.45f, -0.15f), P(0.35f, -0.45f) }, tone, w);
+                break;
+            case "wreck": // a craft broken in two
+                _hud.DrawColoredPolygon(new[] { P(-0.1f, -0.95f), P(0.35f, -0.1f), P(-0.45f, 0.1f), P(-0.7f, -0.2f) }, tone);
+                _hud.DrawColoredPolygon(new[] { P(0.15f, 0.25f), P(0.8f, 0.05f), P(0.75f, 0.85f), P(0.05f, 0.6f) }, tone);
+                break;
             case "deposit": // a crystal
                 _hud.DrawColoredPolygon(new[] { P(0f, -0.95f), P(0.7f, -0.2f), P(0f, 0.95f), P(-0.7f, -0.2f) }, tone);
                 break;

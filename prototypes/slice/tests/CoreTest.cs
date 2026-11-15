@@ -78,7 +78,8 @@ public partial class CoreTest : Node
         GD.Print("-- old ids and old blueprints load --");
         OldData();
 
-        _game = new Game.Game { Interactive = false, SkipIntro = true, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), WorldChoice.Tested) };
+        // TEST SHORTCUT: generators burn no fuel; this tests flight and handling, not fuel (PowerTest does).
+        _game = new Game.Game { FreePower = true, Interactive = false, SkipIntro = true, World = WorldChoice.FromArgs(OS.GetCmdlineUserArgs(), WorldChoice.Tested) };
         AddChild(_game);
         _drive = new Driver(_game);
         _play = new Playthrough(_game);
@@ -92,6 +93,7 @@ public partial class CoreTest : Node
         foreach (int x in _drive.Wait(90)) yield return x;
 
         foreach (int x in Craft()) yield return x;
+        foreach (int x in Assist()) yield return x;
         foreach (int x in Base()) yield return x;
         foreach (int x in AllModes()) yield return x;
         foreach (int x in LargeHover()) yield return x;
@@ -300,7 +302,7 @@ public partial class CoreTest : Node
         foreach (int x in _drive.Wait(5)) yield return x;
         // A kilometre's fall would break it over whatever comes next: a craft set down there was crushed by its wreckage.
         _game.Survivor.PlaceOutside((_site + Vector3.Up).ToNumerics());
-        Playthrough.TakeAway(_game.Zone, v);
+        _game.Zone.Remove(v);
     }
 
     IEnumerable<int> Base()
