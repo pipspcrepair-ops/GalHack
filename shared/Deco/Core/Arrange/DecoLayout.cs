@@ -84,6 +84,11 @@ public sealed class DecoRaster
     public readonly float Cell;
     public readonly int Nx, Nz;
     readonly int[] _count;
+    // What Fits and Reach work in, kept for this raster's next call: a room is arranged by trying thousands of placements, each
+    // asking these again. What they return is good until the raster's next Fits or Reach.
+    int[] _sum;
+    bool[] _fit, _seen;
+    Queue<int> _queue;
 
     public DecoRaster(float width, float depth, float cell)
     {
@@ -91,6 +96,18 @@ public sealed class DecoRaster
         Nx = Math.Max(1, (int)MathF.Floor(width / cell + 1e-4f));
         Nz = Math.Max(1, (int)MathF.Floor(depth / cell + 1e-4f));
         _count = new int[Nx * Nz];
+    }
+
+    [ThreadStatic] static DecoRaster _scratch;
+
+    /// <summary>An empty raster of a room's size for a question asked and answered at once (each worker's own, reused).</summary>
+    public static DecoRaster Scratch(float width, float depth, float cell)
+    {
+        DecoRaster r = _scratch;
+        int nx = Math.Max(1, (int)MathF.Floor(width / cell + 1e-4f)), nz = Math.Max(1, (int)MathF.Floor(depth / cell + 1e-4f));
+        if (r == null || r.Nx != nx || r.Nz != nz || r.Cell != cell) return _scratch = new DecoRaster(width, depth, cell);
+        Array.Clear(r._count);
+        return r;
     }
 
     public bool Blocked(int i, int j) => _count[j * Nx + i] > 0;
@@ -115,11 +132,12 @@ public sealed class DecoRaster
     /// <summary>Where a k-by-k agent fits (its low corner cell), from a prefix sum of blocked cells.</summary>
     public bool[] Fits(int k)
     {
-        var sum = new int[(Nx + 1) * (Nz + 1)];
+        var sum = _sum ??= new int[(Nx + 1) * (Nz + 1)]; // every entry is written below, the first row and column left at nought
         for (int j = 0; j < Nz; j++)
             for (int i = 0; i < Nx; i++)
                 sum[(j + 1) * (Nx + 1) + i + 1] = (Blocked(i, j) ? 1 : 0) + sum[j * (Nx + 1) + i + 1] + sum[(j + 1) * (Nx + 1) + i] - sum[j * (Nx + 1) + i];
-        var fit = new bool[Nx * Nz];
+        var fit = _fit ??= new bool[Nx * Nz];
+        Array.Clear(fit);
         for (int j = 0; j + k <= Nz; j++)
             for (int i = 0; i + k <= Nx; i++)
             {
@@ -152,8 +170,10 @@ public sealed class DecoRaster
     public bool[] Reach(IEnumerable<int> starts, int k, bool[] fit = null)
     {
         fit ??= Fits(k);
-        var seen = new bool[Nx * Nz];
-        var q = new Queue<int>();
+        var seen = _seen ??= new bool[Nx * Nz];
+        Array.Clear(seen);
+        var q = _queue ??= new Queue<int>();
+        q.Clear();
         foreach (int s in starts)
             if (s >= 0 && s < fit.Length && fit[s] && !seen[s]) { seen[s] = true; q.Enqueue(s); }
         while (q.Count > 0)

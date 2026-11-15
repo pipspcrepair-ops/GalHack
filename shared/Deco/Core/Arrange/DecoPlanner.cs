@@ -395,7 +395,9 @@ public sealed class DecoPlanner
         return true;
     }
 
-    // TryPlace's lists, kept between tries (never held past one).
+    // TryPlace's lists, and Routes' distances and queue, kept between tries (never held past one).
+    int[] _dist;
+    Queue<int> _routeQueue;
     readonly List<DecoPlacement> _added = new(), _all = new();
     readonly List<DecoRect> _blocking = new();
 
@@ -813,18 +815,25 @@ public sealed class DecoPlanner
         if (n < 2) return null;
         bool[] fit = _walk.Fits(Walker);
         var routes = new int[n, n];
+        var dist = _dist ??= new int[fit.Length];
+        var q = _routeQueue ??= new Queue<int>();
         for (int a = 0; a < n; a++)
         {
-            var dist = new int[fit.Length];
             Array.Fill(dist, -1);
-            var q = new Queue<int>();
+            q.Clear();
             foreach (int s in _walk.DoorStarts(_room, _room.Doors[a], Walker))
                 if (s >= 0 && s < fit.Length && fit[s] && dist[s] < 0) { dist[s] = 0; q.Enqueue(s); }
             while (q.Count > 0)
             {
                 int c = q.Dequeue(), i = c % _walk.Nx, j = c / _walk.Nx;
-                foreach (int nb in new[] { i + 1 < _walk.Nx ? c + 1 : -1, i > 0 ? c - 1 : -1, j + 1 < _walk.Nz ? c + _walk.Nx : -1, j > 0 ? c - _walk.Nx : -1 })
-                    if (nb >= 0 && fit[nb] && dist[nb] < 0) { dist[nb] = dist[c] + 1; q.Enqueue(nb); }
+                if (i + 1 < _walk.Nx) Step(c + 1);
+                if (i > 0) Step(c - 1);
+                if (j + 1 < _walk.Nz) Step(c + _walk.Nx);
+                if (j > 0) Step(c - _walk.Nx);
+                void Step(int nb)
+                {
+                    if (fit[nb] && dist[nb] < 0) { dist[nb] = dist[c] + 1; q.Enqueue(nb); }
+                }
             }
             for (int b = 0; b < n; b++)
                 routes[a, b] = _walk.DoorStarts(_room, _room.Doors[b], Walker).Where(s => s >= 0 && s < fit.Length && dist[s] >= 0).Select(s => dist[s]).DefaultIfEmpty(-1).Min();

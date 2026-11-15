@@ -46,7 +46,7 @@ public static class DecoRules
     public static List<DecoPlacement> Unreached(DecoForge forge, DecoRoom room, IEnumerable<DecoPlacement> placements)
     {
         var standing = Standing(forge, placements).ToList();
-        var r = new DecoRaster(room.Width, room.Depth, DecoPlanner.Cell);
+        var r = DecoRaster.Scratch(room.Width, room.Depth, DecoPlanner.Cell);
         foreach (DecoRect b in room.Blocked) r.Add(b, 1);
         foreach (DecoPlacement pl in standing.Where(pl => !Seat(forge.Catalogue.Piece(pl.Piece)))) r.Add(Open(forge, pl), 1);
         bool[] fit = r.Fits(Walker);
