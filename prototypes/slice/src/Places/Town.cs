@@ -966,8 +966,8 @@ public sealed partial class Town
         d.Y = 0f;
         float gap = d.Length(), want = Culture.Trait("chat", 1.1f), r = BodyRadius(p), h = Height(p);
         if (MathF.Abs(gap - want) < 0.05f || gap > want + 2f) { p.ChatAt = null; return; }
-        // (A stand must be clear of the furniture; a step toward it, from a spot at a counter or a bench, only no deeper in than they are.)
-        float here = _parts == null ? 0f : MathF.Min(0f, _parts.Gap(p.Pos, r, h)) - 1e-3f;
+        // (A stand must be clear of the furniture; a step toward it, from a spot at a counter or a bench, clear or at least further out than they are.)
+        float here = _parts == null ? 0f : MathF.Min(0f, _parts.Gap(p.Pos, r, h) + 0.005f);
         // (And always a floor under them at the height they stand: never off a ledge or a landing.)
         bool Floor(Vector3 at) => Open(at) && Ground(at) is float g && MathF.Abs(g - p.Pos.Y) < 0.1f;
         bool Clear(Vector3 at) => Floor(at) && (_parts == null || _parts.Gap(at, r, h) >= 0f);
