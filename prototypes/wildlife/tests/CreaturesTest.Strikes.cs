@@ -85,14 +85,11 @@ public partial class CreaturesTest
     /// <summary>A copy made a hunter of this size.</summary>
     internal static Species Hunter(Species model, float size)
     {
-        Species s = model.Copy();
+        Species s = model.Resized(size);
         s.Stats.Damage = 1f;
         s.Stats.Hunts = true;
         s.Behaviour = Behaviour.Predator;
         s.Temperament = Temperament.Aggressive;
-        float k = size / s.Body.Size;
-        s.Body.Size *= k; s.Body.Width *= k; s.Body.Height *= k; s.Body.LegLength *= k; s.Body.NeckLength *= k; s.Body.HeadSize *= k; s.Body.TailLength *= k; s.Body.LegThickness *= k;
-        s.Stats.Radius *= k;
         return s;
     }
 

@@ -66,7 +66,7 @@ public partial class Screenshot
             if (_tick >= startAt && tellAt < 0 && Attacks.Start(m.Sim, c, p.Target))
             {
                 tellAt = _tick + (int)(c.WindupLength * 0.6f * 60f);
-                GD.Print($"strike: {c.Move} by a {b.Size:F1} m {s.CommonName}, wind-up {c.WindupLength:F2} s");
+                GD.Print($"strike: {c.Move} by a {b.Size:F1} m {s.CommonName} (tail {s.Part("tail")}, tendrils {s.Part("tendrils")}), wind-up {c.WindupLength:F2} s");
             }
             if (_tick == startAt + 120 && tellAt < 0) GD.Print($"strike: not started (shown {c.Shown}, phase {c.Phase}, state {c.State})");
             if (tellAt >= 0 && landedAt < 0 && c.Phase == AttackPhase.Lunge && struckAt < 0) struckAt = _tick;

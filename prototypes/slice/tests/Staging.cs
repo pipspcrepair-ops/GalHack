@@ -161,6 +161,7 @@ public sealed partial class Staging
             "approach" => ApproachView(),
             "popin" => PopInView(),
             "husk-grab" => HuskGrab(),
+            "stomp" => StompView(),
             "newgame" => NewGameShots(),
             "galaxy-depth" => GalaxyDepth(),
             "husk-den" => HuskDen(),

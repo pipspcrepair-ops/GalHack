@@ -187,6 +187,17 @@ public sealed class Species
 
     static T Shallow<T>(T o) where T : class => (T)Clone.Invoke(o, null);
 
+    /// <summary>A copy grown or shrunk to this body length, every measure with it (tests and staging).</summary>
+    public Species Resized(float size)
+    {
+        Species s = Copy();
+        float k = size / Body.Size;
+        Proportions b = s.Body;
+        b.Size *= k; b.Width *= k; b.Height *= k; b.LegLength *= k; b.NeckLength *= k; b.HeadSize *= k; b.TailLength *= k; b.LegThickness *= k;
+        s.Stats.Radius *= k;
+        return s;
+    }
+
     public string Part(string slot) => Parts.TryGetValue(slot, out var id) ? id : "none";
     public bool Has(string slot) => Part(slot) != "none";
 
