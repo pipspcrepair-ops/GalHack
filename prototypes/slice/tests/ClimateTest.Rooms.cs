@@ -65,7 +65,8 @@ public partial class ClimateTest
         // The door into the east wall at its foot (the building rules: a wall block out, the door in).
         var doorCell = new Int3(5, 1, 0);
         Building.Remove(s, doorCell, null);
-        Orientations.TryParse("+y-x", out int rot);
+        Building.Remove(s, doorCell + Int3.UnitY, null); // the door is two cells tall on the 1 m grid
+        int rot = Orientations.Find(new Mat3(new Int3(0, 0, -1), Int3.UnitY, Int3.UnitX)); // its leaf across the wall, its face east
         PlaceError placed = Building.Place(s, doorCell, Building.Make(s, s.Catalogue.Type("door"), null, rot));
         room.ApplyEdits();
         Me.PlaceAboard(room, new N.Vector3(-2f * s.Grid.CellSize, s.Grid.CellSize * 0.5f + 0.05f, 0f));
