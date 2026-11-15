@@ -253,8 +253,14 @@ public static partial class PoiFauna
                 Join(pop, PopulateOne(Part(poi, false), fauna, rules));
             }
             if (poi.Holder != PlaceHolder.Machines || pop.Spawns.Exists(s => s.Species.Mechanical)) return pop;
-            // Machines that fit no beat and no post here leave it nobody's, as holders with nobody to be do.
-            (poi.Holder, poi.Kept) = (PlaceHolder.Empty, null);
+            // Machines that fit no beat and no post on their storeys walk the whole place; fitting nowhere, they leave it nobody's.
+            if (poi.Kept != null)
+            {
+                poi.Kept = null;
+                pop = PopulateOne(poi, fauna, rules);
+                if (pop.Spawns.Exists(s => s.Species.Mechanical)) return pop;
+            }
+            poi.Holder = PlaceHolder.Empty;
             return PopulateOne(poi, fauna, rules);
         }
         finally { fauna.Variant = 0; }

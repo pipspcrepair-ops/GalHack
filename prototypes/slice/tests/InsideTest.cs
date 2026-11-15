@@ -116,24 +116,35 @@ public partial class InsideTest : Node
         double max = game.Suit.Sim.Data.Vitals.Health.Max;
         var best = (Seen: -1, Where: "");
         int bare = 0, hidden = 0, shot = 0;
+        bool torch = false;
         foreach (PoiRoom r in stops)
         {
             Int3 goal = new((int)r.FloorCenter.X, (int)MathF.Floor(r.Min.Y), (int)r.FloorCenter.Z);
             for (int k = 0; k < 9 && !nav.Standable(goal); k++) goal = new Int3(goal.X + (k % 3) - 1, goal.Y, goal.Z + (k / 3) - 1);
             bool ok = false;
             foreach (int x in walk.To(place, goal, v => ok = v)) { game.Suit.Vitals.Health = max; yield return x; }
-            for (int i = 0; i < 90; i++) { game.Suit.Vitals.Health = max; yield return 0; }
+            // The place's sim step over the wait: its mean and its worst tick.
+            double sum = 0, worst = 0;
+            for (int i = 0; i < 90; i++)
+            {
+                game.Suit.Vitals.Health = max;
+                yield return 0;
+                double ms = fauna?.Site?.LastStepMs ?? 0;
+                (sum, worst) = (sum + ms, Math.Max(worst, ms));
+            }
             int storey = modules[r.Index].Storey - entry;
             var (line, there, seen, missed) = Count(game, place, r);
-            GD.Print($"  {(ok ? "at" : "short of")} the {r.Purpose} on storey {storey} ({hops[r.Index]} doors in): {line}");
+            GD.Print($"  {(ok ? "at" : "short of")} the {r.Purpose} on storey {storey} ({hops[r.Index]} doors in): {line}; its sim step {sum / 90:F2} ms on average, {worst:F2} at worst");
             if (storey != 0 && there == 0 && !theirs.Any(s => Math.Abs(s - modules[r.Index].Storey) <= 1)) bare++;
             hidden += missed;
             if (seen > best.Seen) best = (seen, $"{r.Purpose} on storey {storey}");
-            // The picture: at the stop with the most drawn, facing the nearest in a clear line from the eye.
-            if (Arg("shots") is { } dir && seen > shot && Nearest(place, r, place.FromWorld(game.Zone.Camera.GlobalPosition)) is Vector3 t)
+            // The picture: at the stop with the most drawn, a few metres from the nearest in a clear line from the eye, the torch on.
+            if (Arg("shots") is { } dir && seen > shot && Nearest(place, r, place.FromWorld(game.Zone.Camera.GlobalPosition)) is { } target)
             {
                 shot = seen;
-                foreach (int x in drive.LookAt(place.ToWorld(t + Vector3.Up * 0.7f), 40)) { game.Suit.Vitals.Health = max; yield return x; }
+                foreach (int x in drive.WalkTo(place.ToWorld(target()), 3.5f, 6f, sprint: false, dig: false, hop: false)) { game.Suit.Vitals.Health = max; yield return x; }
+                if (!torch) { torch = true; foreach (int x in drive.Tap(Key.L)) yield return x; }
+                for (int i = 0; i < 40; i++) { game.Suit.Vitals.Health = max; drive.Face(place.ToWorld(target() + Vector3.Up * 0.6f)); yield return 0; }
                 string file = System.IO.Path.Combine(dir, $"inside-{family}-{occ}.png");
                 GetViewport().GetTexture().GetImage().SavePng(file);
                 GD.Print($"  (shot: {file}, storey {storey})");
@@ -159,18 +170,17 @@ public partial class InsideTest : Node
         int missed = all.Count(c => Slice.Surface.DeepSite.MustDraw(c, WildSim.Flat(c.Position - eye).Length() + MathF.Abs(c.Position.Y - eye.Y) * 0.5f) && !c.Shown);
         var people = place.Memory.Town?.People.Where(p => !p.Dead && !p.Gone && (p.Pos - feet).Length() < 30f && OnStorey(p.Pos)).ToList() ?? new List<Town.Person>();
         int seen = threats.Count(c => c.Shown) + people.Count(p => p.View is { Visible: true });
-        double step = place.Memory.Fauna?.Site?.LastStepMs ?? 0;
         return ($"{all.Count} creatures in the place, {near.Count} within 30 m, {near.Count(c => !c.Dormant)} stepped, {near.Count(c => c.Shown)} drawn; on this storey {threats.Count} threats ({threats.Count(c => c.Shown)} drawn) "
-            + $"and {people.Count} people ({people.Count(p => p.View is { Visible: true })} drawn); {all.Count(c => !c.Dormant)} of the place's stepped, its sim step {step:F2} ms", threats.Count + people.Count, seen, missed);
+            + $"and {people.Count} people ({people.Count(p => p.View is { Visible: true })} drawn); {all.Count(c => !c.Dormant)} of the place's stepped", threats.Count + people.Count, seen, missed);
     }
 
-    /// <summary>The nearest drawn threat or person on a room's storey in a clear line from the eye, local; null if none is.</summary>
-    static Vector3? Nearest(Place place, PoiRoom room, Vector3 eye)
+    /// <summary>Where the nearest drawn threat or person on a room's storey in a clear line from the eye is, as it moves (local); null if none is.</summary>
+    static Func<Vector3> Nearest(Place place, PoiRoom room, Vector3 eye)
     {
         bool OnStorey(Vector3 p) => p.Y > room.Min.Y - 1f && p.Y < room.Max.Y;
         BlockSpace space = PlaceFauna.SpaceOf(place.Memory);
-        var points = (place.Memory.Fauna?.Sim?.Creatures.Where(c => c.Shown && !c.Removed && c.Species.Importance != Importance.Ambient).Select(c => c.Position) ?? Enumerable.Empty<Vector3>())
-            .Concat(place.Memory.Town?.People.Where(p => p.View is { Visible: true }).Select(p => p.Pos) ?? Enumerable.Empty<Vector3>());
-        return points.Where(p => OnStorey(p) && SpaceMath.Clear(space, eye, p + Vector3.Up * 0.8f, 0f)).OrderBy(p => (p - eye).Length()).Cast<Vector3?>().FirstOrDefault();
+        var points = (place.Memory.Fauna?.Sim?.Creatures.Where(c => c.Shown && !c.Removed && c.Species.Importance != Importance.Ambient).Select(c => (Func<Vector3>)(() => c.Position)) ?? Enumerable.Empty<Func<Vector3>>())
+            .Concat(place.Memory.Town?.People.Where(p => p.View is { Visible: true }).Select(p => (Func<Vector3>)(() => p.Pos)) ?? Enumerable.Empty<Func<Vector3>>());
+        return points.Where(p => OnStorey(p()) && SpaceMath.Clear(space, eye, p() + Vector3.Up * 0.8f, 0f)).OrderBy(p => (p() - eye).Length()).FirstOrDefault();
     }
 }

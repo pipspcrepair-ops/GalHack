@@ -15,7 +15,7 @@ namespace Slice.Tests;
 /// blocks as the game fills it (those where no open air reaches taken out). Then:
 /// - whoever the roll says holds it is there (its people where it has rooms for them, or what lives in it), unless a
 ///   barren world left it silent;
-/// - the storeys off the way in's, below ground or up a tower, have something on them (a threat or a person), or are
+/// - the storeys off the way in's with a dark room, below ground or up a tower, have something on them (a threat or a person), or are
 ///   the storeys its keepers live on (theirs and one either side); one in five may be quiet (place-patterns E3, E7);
 /// - that floor, where nobody keeps it, holds at least the easiest places' density less the quiet rooms (E2's 0.3 threats a
 ///   100 m2, a third of the rooms quiet at most by E3: 0.2).
@@ -36,7 +36,7 @@ public partial class OccupantTest
     {
         GD.Print("-- inside every place --");
         var livable = Slice.Game.GameData.Shared.Rules.Wildlife.Livable;
-        var families = _lib.Families.Where(f => !WorldProfile.Unbuilt(f) && f.Types.Count == 0 && f.StateWeights.Any(w => w > 0f)).ToList();
+        var families = _lib.Families.Where(f => f.Types.Count == 0 && !f.Space && f.StateWeights.Any(w => w > 0f)).ToList();
         var by = families.ToDictionary(f => f.Id, _ => new InsideTally());
         for (int w = 0; w < 4; w++)
         {
@@ -127,7 +127,8 @@ public partial class OccupantTest
         bool keepers = plan.Holder is PlaceHolder.People or PlaceHolder.Machines || inst.State == PoiState.Active;
         int storeys = 0, held = 0, farThreats = 0;
         float far = 0f;
-        foreach (var storey in walkable.GroupBy(r => modules[r.Index].Storey).Where(g => g.Key != entry && g.Any(r => r.Kind is not (RoomKind.Corridor or RoomKind.Entrance or RoomKind.Descent))))
+        // (A storey whose rooms all have a working light may be quiet: the worst of the dark keep out of it.)
+        foreach (var storey in walkable.GroupBy(r => modules[r.Index].Storey).Where(g => g.Key != entry && g.Any(r => !r.Lit && r.Kind is not (RoomKind.Corridor or RoomKind.Entrance or RoomKind.Descent))))
         {
             storeys++;
             bool kept = keepers && (theirs.Count == 0 || theirs.Any(s => Math.Abs(s - storey.Key) <= 1));
