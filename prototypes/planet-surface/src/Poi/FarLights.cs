@@ -56,12 +56,12 @@ public partial class FarLights : Node3D
     {
         if (!Lived(s)) return 0f;
         float area = (s.Footprint.Max.X - s.Footprint.Min.X + 1f) * (s.Footprint.Max.Z - s.Footprint.Min.Z + 1f);
-        float lamps = Math.Clamp(area / 150f, 1f, 60f) * (s.State == PoiState.Active ? 1f : 0.6f);
+        float lamps = Math.Clamp(area / 300f, 1f, 60f) * (s.State == PoiState.Active ? 1f : 0.6f);
         return s.Primary ? lamps * 2f : lamps;
     }
 
     /// <summary>Lamps in a cluster before the air over it glows: a town or a port, never a lone farm.</summary>
-    public const float GlowFrom = 24f;
+    public const float GlowFrom = 30f;
 
     /// <summary>
     /// The lived-in places gathered into clusters (any within <see cref="Gather"/> of a cluster's middle joins it),
@@ -175,21 +175,28 @@ public partial class FarLights : Node3D
         if (_points == null || Of.ContainsKey(site)) return;
         bool lived = Lived(site);
         int first = PointCount, count = 0;
+        int inner = 0;
         foreach (LightSpot spot in inst.Lights)
         {
-            if (!Outward(inst, spot)) continue;
+            // A lamp inside shows from far off as its lit window does: past the hand-off, drawn a few metres toward the eye,
+            // so the ones by an outer wall show through it. A few a place, so a city block isn't a sheet of them.
+            bool outward = Outward(inst, spot);
+            if (!outward && (spot.Cell.Y < 0 || spot.Mode == LightMode.Dead || ++inner > MostInner)) continue;
             Color c = spot.Style is { } style ? PoiLitFaces.At(style, spot.Energy, 0.0).Item2 : new Color(spot.Color.R / 255f, spot.Color.G / 255f, spot.Color.B / 255f);
             float mode = spot.Mode switch { LightMode.Beacon => 2f, LightMode.Flicker => 1f, LightMode.Pulse or LightMode.Bloom => 3f, _ => 0f };
             float size = spot.Mode == LightMode.Beacon ? 4f : 1.75f; // half the old halo's width
             float bright = Math.Clamp(spot.Energy / 1.4f, 0.5f, 3f);
             float phase = (float)(Hash.Cell(spot.Cell, 7) % 1000) / 160f;
             float x = site.Origin.X + spot.Cell.X + 0.5f, y = site.Origin.Y + spot.Cell.Y + 0.5f, z = site.Origin.Z + spot.Cell.Z + 0.5f;
-            _pointData.AddRange(new[] { size, 0f, 0f, x, 0f, size, 0f, y, 0f, 0f, size, z, c.R, c.G, c.B, bright, mode, phase, lived ? 1f : 0f, 0f });
+            _pointData.AddRange(new[] { size, 0f, 0f, x, 0f, size, 0f, y, 0f, 0f, size, z, c.R, c.G, c.B, bright, mode, phase, lived ? 1f : 0f, outward ? 0f : 1f });
             count++;
         }
         Of[site] = (first, count, lived);
         _dirty |= count > 0;
     }
+
+    /// <summary>The most lamps inside one place that show from far off.</summary>
+    const int MostInner = 12;
 
     public override void _Process(double delta)
     {
@@ -246,7 +253,8 @@ public partial class FarLights : Node3D
             at.y -= d * d / (2.0 * round.y);
             return at;
         }
-        float haze(float d) { return exp(-fog_density * d * 0.7); }
+        // A lamp is brighter than what it lights: it shows through more of the haze than the ground does.
+        float haze(float d) { return exp(-fog_density * d * 0.3); }
         """;
 
     const string PointSource = $$"""
@@ -264,7 +272,8 @@ public partial class FarLights : Node3D
             float pixel = d * 2.0 / (PROJECTION_MATRIX[1][1] * VIEWPORT_SIZE.y);
             float size = max(world, pixel * 2.2);
             vec3 view = (VIEW_MATRIX * vec4(at, 1.0)).xyz;
-            view += normalize(-view) * min(0.8, d * 0.5); // in front of its own lamp's block
+            float inner = INSTANCE_CUSTOM.w;
+            view += normalize(-view) * min(mix(0.8, 8.0, inner), d * 0.5); // in front of its own lamp's block (a lamp inside: through its wall)
             POSITION = PROJECTION_MATRIX * vec4(view + vec3(VERTEX.xy * size, 0.0), 1.0);
             float mode = INSTANCE_CUSTOM.x, s = clock + INSTANCE_CUSTOM.y;
             float wave = mode > 1.5 && mode < 2.5 ? (mod(s, 1.6) < 0.25 ? 1.0 : 0.05)
@@ -272,7 +281,7 @@ public partial class FarLights : Node3D
                 : mode > 2.5 ? 0.6 + 0.4 * sin(s * 0.9) : 1.0;
             // The old halo's 40 to 120 m fade near; full past the hand-off, where it is all that is left of the lamp.
             float far = smoothstep(hand_off.x, hand_off.x + hand_off.y, d);
-            float a = smoothstep(40.0, 120.0, d) * mix(0.55, 1.0, far);
+            float a = smoothstep(40.0, 120.0, d) * mix(0.55, 1.0, far) * mix(1.0, far * 0.6, inner);
             // Nobody lives there: its lamps go out with its real lights.
             a *= mix(1.0 - far, 1.0, INSTANCE_CUSTOM.z);
             // By day a near halo shows faintly, as it did; far off only after dark.
@@ -296,11 +305,13 @@ public partial class FarLights : Node3D
         uniform vec2 cloud = vec2(2000.0, 0.0);
         varying vec3 centre;
         varying float radius;
+        varying float strength;
         varying vec3 world;
         void vertex() {
             vec3 eye = INV_VIEW_MATRIX[3].xyz;
             centre = near_copy(MODEL_MATRIX[3].xyz, eye);
             radius = length(MODEL_MATRIX[0].xyz);
+            strength = INSTANCE_CUSTOM.x;
             world = centre + VERTEX * radius;
             POSITION = PROJECTION_MATRIX * VIEW_MATRIX * vec4(world, 1.0);
         }
@@ -308,8 +319,8 @@ public partial class FarLights : Node3D
         float lit(vec3 p) {
             vec3 o = (p - centre) / radius;
             float h = max(o.y, 0.0);
-            float air = max(1.0 - dot(o, o), 0.0) * exp(-h * 3.0);
-            float deck = cloud.y * exp(-pow((p.y - cloud.x) / (radius * 0.12), 2.0));
+            float air = pow(max(1.0 - dot(o, o), 0.0), 1.5) * exp(-h * 2.0);
+            float deck = cloud.y * exp(-pow((p.y - cloud.x) / (radius * 0.15), 2.0));
             return air * (1.0 + 4.0 * deck);
         }
         void fragment() {
@@ -330,7 +341,7 @@ public partial class FarLights : Node3D
             for (int i = 0; i < 4; i++) sum += lit(eye + ray * mix(t0, t1, (float(i) + 0.5) / 4.0));
             float along = (t1 - t0) / radius * sum / 4.0;
             float d = length(centre - eye);
-            ALBEDO = COLOR.rgb * along * INSTANCE_CUSTOM.x * 0.09 * night * haze(max(d - radius, 0.0));
+            ALBEDO = COLOR.rgb * along * strength * 0.06 * night * haze(max(d - radius, 0.0));
             ALPHA = 1.0;
         }
         """;

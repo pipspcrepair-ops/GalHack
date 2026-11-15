@@ -371,7 +371,7 @@ public partial class Globe : Node3D
         render_mode world_vertex_coords, blend_mix, depth_draw_always, cull_back, diffuse_burley, specular_schlick_ggx, shadows_disabled;
         uniform sampler2D albedo_map : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
         uniform sampler2D glow_map : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
-        uniform sampler2D lights_map : source_color, hint_default_black, filter_linear_mipmap, repeat_enable;
+        uniform sampler2D lights_map : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
         uniform float lights_gain = 1.6;
         uniform sampler2D relief_map : filter_linear_mipmap, repeat_enable;
         uniform vec3 sun_dir = vec3(0.0, 1.0, 0.0);
