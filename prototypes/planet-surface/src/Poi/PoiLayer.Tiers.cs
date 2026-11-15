@@ -125,13 +125,8 @@ public partial class PoiLayer
             PoiInstance inst = p.Site.Instance;
             p.Node = new Node3D { Name = p.Site.Family.Id };
             AddLights(p.Node, inst, CityLights);
-            foreach (Node n in p.Node.GetChildren())
-                if (n is OmniLight3D l)
-                {
-                    l.DistanceFadeEnabled = true;
-                    l.DistanceFadeBegin = 500f;
-                    l.DistanceFadeLength = 120f;
-                }
+            HandOff(p.Node);
+            Far?.Add(p.Site, inst);
             // (No smoke: a city fell long ago, and nothing in it still burns.)
 
             DressFromDecoLibrary(p.Node, inst);
@@ -163,16 +158,18 @@ public partial class PoiLayer
         node.AddChild(p.Low);
         p.LowMesh = null;
         AddLights(node, inst);
-        foreach (Node n in node.GetChildren())
-            if (n is OmniLight3D l)
-            {
-                l.DistanceFadeEnabled = true;
-                l.DistanceFadeBegin = 500f;
-                l.DistanceFadeLength = 120f;
-            }
+        HandOff(node);
+        Far?.Add(p.Site, inst);
         AddSmoke(node, inst);
         DressFromDecoLibrary(node, inst);
         return node;
+    }
+
+    /// <summary>A far drawing's real lights fade out where its far points take over (FarLights: the one hand-off).</summary>
+    static void HandOff(Node3D node)
+    {
+        foreach (Node n in node.GetChildren())
+            if (n is Light3D l) FarLights.HandOff(l);
     }
 
     float Away(Place p, Vector3 camera)

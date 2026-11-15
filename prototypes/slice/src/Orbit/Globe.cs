@@ -19,6 +19,9 @@ public sealed class GlobePaint
     public Image Glow { get; private init; }
     public Image Clouds { get; private init; }
 
+    /// <summary>The night side's lights: each lived-in place a warm speck, a town's glow a smudge (FarLights' clusters, the ground's own).</summary>
+    public Image Lights { get; private init; }
+
     /// <summary>The ground's height over the sea, m, on the map's own grid: the sheet's relief.</summary>
     public Image Relief { get; private init; }
 
@@ -26,7 +29,9 @@ public sealed class GlobePaint
 
     /// <param name="coverage">The sky's own clouds over a map point (u, v, 0 to 1), so these are the clouds you fly through; null: the generator's.</param>
     /// <param name="land">The ground's colour at a map point, m, so the far land is the colour of the land it joins; null: the biomes'.</param>
-    public static GlobePaint Make(PlanetSpec spec, WorldMap map, OrbitRules.GlobeRules rules, Func<float, float, float> coverage = null, Func<double, double, Rgb> land = null)
+    /// <param name="sites">The world's places, for its night lights (null: none).</param>
+    public static GlobePaint Make(PlanetSpec spec, WorldMap map, OrbitRules.GlobeRules rules, Func<float, float, float> coverage = null, Func<double, double, Rgb> land = null,
+        IReadOnlyList<PlanetSurface.Poi.PoiSite> sites = null)
     {
         ArchetypeLook look = ArchetypeLook.For(spec);
         ColorMap colors = ColorMap.Build(map, look, rules.TextureWidth, land);
@@ -53,7 +58,48 @@ public sealed class GlobePaint
             Glow = Mipmapped(colors.Width, colors.Height, Image.Format.Rgb8, colors.Glow),
             Clouds = Mipmapped(rules.CloudWidth, cloudHeight, Image.Format.Rgba8, clouds),
             Relief = ReliefOf(map),
+            Lights = LightsOf(sites, map.WidthMeters, map.HeightMeters),
         };
+    }
+
+    /// <summary>The night lights map: a soft splat for each lived-in place by its lamps, and a wider one for each town's glow.</summary>
+    static Image LightsOf(IReadOnlyList<PlanetSurface.Poi.PoiSite> sites, double width, double height)
+    {
+        const int w = 1024;
+        int h = Math.Max(1, (int)(w * height / width));
+        var sum = new float[w * h];
+        double perPixel = width / w;
+        void Splat(double x, double z, double radius, float amount)
+        {
+            double r = Math.Max(radius / perPixel, 0.8);
+            int cx = (int)(x / perPixel), cz = (int)(z / perPixel), reach = (int)Math.Ceiling(r * 2.5);
+            for (int dz = -reach; dz <= reach; dz++)
+            for (int dx = -reach; dx <= reach; dx++)
+            {
+                float f = (float)Math.Exp(-(dx * dx + dz * dz) / (r * r));
+                if (f < 0.01f) continue;
+                int px = ((cx + dx) % w + w) % w, pz = ((cz + dz) % h + h) % h; // the map wraps both ways
+                sum[pz * w + px] += amount * f;
+            }
+        }
+        if (sites != null)
+        {
+            foreach (PlanetSurface.Poi.PoiSite s in sites)
+            {
+                float lamps = PlanetSurface.Poi.FarLights.Lamps(s);
+                if (lamps > 0f) Splat((s.Footprint.Min.X + s.Footprint.Max.X + 1) * 0.5, (s.Footprint.Min.Z + s.Footprint.Max.Z + 1) * 0.5, 40.0, 0.04f * MathF.Sqrt(lamps));
+            }
+            foreach (PlanetSurface.Poi.FarLights.Glow g in PlanetSurface.Poi.FarLights.Clusters(sites, width, height)) Splat(g.X, g.Z, g.Radius * 0.8, 0.35f * g.Strength);
+        }
+        var bytes = new byte[w * h * 3];
+        for (int i = 0; i < sum.Length; i++)
+        {
+            float v = Math.Min(sum[i], 1f);
+            bytes[i * 3] = (byte)(255f * v);
+            bytes[i * 3 + 1] = (byte)(255f * v * 0.7f);
+            bytes[i * 3 + 2] = (byte)(255f * v * 0.42f);
+        }
+        return Mipmapped(w, h, Image.Format.Rgb8, bytes);
     }
 
     static Image ReliefOf(WorldMap map)
@@ -325,6 +371,8 @@ public partial class Globe : Node3D
         render_mode world_vertex_coords, blend_mix, depth_draw_always, cull_back, diffuse_burley, specular_schlick_ggx, shadows_disabled;
         uniform sampler2D albedo_map : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
         uniform sampler2D glow_map : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+        uniform sampler2D lights_map : source_color, hint_default_black, filter_linear_mipmap, repeat_enable;
+        uniform float lights_gain = 1.6;
         uniform sampler2D relief_map : filter_linear_mipmap, repeat_enable;
         uniform vec3 sun_dir = vec3(0.0, 1.0, 0.0);
         uniform float day_glow = 0.6;
@@ -376,6 +424,8 @@ public partial class Globe : Node3D
             SPECULAR = mix(0.1, 0.45, a.a);
             float night = smoothstep(0.15, -0.25, dot(normalize(round_normal), sun_dir));
             EMISSION = paint(glow_map, m).rgb * (day_glow + night * night_glow);
+            // The places' lights, only after dark: the same towns' glow seen from the ground.
+            EMISSION += paint(lights_map, m).rgb * smoothstep(0.05, -0.2, dot(normalize(round_normal), sun_dir)) * lights_gain;
             ALPHA = mix(over_land, 1.0, smoothstep(4800.0, 5800.0, max(abs(offset.x), abs(offset.y))));
             FOG = vec4(fog_color, 1.0 - exp(-fog_density * distance));
             float hit = true_depth > 0.5 ? sphere_hit(CAMERA_POSITION_WORLD, normalize(mat3(INV_VIEW_MATRIX) * VERTEX), radius) : -1.0;
@@ -777,6 +827,7 @@ public partial class Globe : Node3D
         yield return 0;
         _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("glow_map"), ImageTexture.CreateFromImage(paint.Glow));
         _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("relief_map"), ImageTexture.CreateFromImage(paint.Relief));
+        _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("lights_map"), ImageTexture.CreateFromImage(paint.Lights));
         _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("day_glow"), look.LiquidGlow > 0 ? 0.9f : 0.5f);
         _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("night_glow"), look.GlowingNights ? 2.5f : 1.4f);
         _ground.SetShaderParameter(PlanetSurface.Fx.Names.Of("radius"), radius);

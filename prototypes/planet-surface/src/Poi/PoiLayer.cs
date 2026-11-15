@@ -45,9 +45,16 @@ public partial class PoiLayer : Node3D
 
     readonly List<Place> _places = new();
     readonly List<Task<(Place, List<ChunkMesh>)>> _building = new();
-    readonly List<(OmniLight3D Light, float Energy, LightMode Mode, float Phase, MeshInstance3D Glow)> _animated = new();
-    /// <summary>Lamps with a colour and an animation of their own (PoiLights): their light and glow follow it.</summary>
-    readonly List<(OmniLight3D Light, float Energy, GalHack.Structures.LightSettings Style, MeshInstance3D Glow)> _styled = new();
+    readonly List<(OmniLight3D Light, float Energy, LightMode Mode, float Phase)> _animated = new();
+    /// <summary>Lamps with a colour and an animation of their own (PoiLights): their light follows it.</summary>
+    readonly List<(OmniLight3D Light, float Energy, GalHack.Structures.LightSettings Style)> _styled = new();
+
+    /// <summary>The lights that carry at night: every place's outward lamps as far points, the glow over towns, the beams.</summary>
+    public FarLights Far { get; private set; }
+
+    /// <summary>The sky the far lights read night and haze from (the game sets it).</summary>
+    public PlanetSurface.Skies.SkyRig Sky { set { if (Far != null) Far.Sky = value; _sky = value; } }
+    PlanetSurface.Skies.SkyRig _sky;
     double _time;
     PlanetWorld _world;
 
@@ -77,6 +84,9 @@ public partial class PoiLayer : Node3D
         _world = world;
         Builds = new PoiBuilds(world.Pois, world.Map.WidthMeters, world.Map.HeightMeters, world.Landing.X, world.Landing.Y);
         _focus = new Vector3((float)world.Landing.X, 0f, (float)world.Landing.Y);
+        if (Far == null) AddChild(Far = new FarLights { Name = "Far lights" });
+        Far.Sky = _sky;
+        Far.Bind(world);
         // Every place state's block materials, and their fade copies, made now rather than at a first fade.
         foreach (float glow in new[] { 2.4f, 2.0f, 1.6f })
         {
@@ -151,6 +161,8 @@ public partial class PoiLayer : Node3D
         }
         if (MeshBuild.Water(inst) is { } water) node.AddChild(water);
         AddLights(node, inst);
+        HandOff(node);
+        Far?.Add(site, inst);
         // A city fell long ago: nothing in it still burns (its smoke stood as bright threads over the skyline).
         if (site.Siting != "city") AddSmoke(node, inst);
         DressFromDecoLibrary(node, inst);
@@ -179,10 +191,10 @@ public partial class PoiLayer : Node3D
                 Position = new Vector3(spot.Cell.X + 0.5f, spot.Cell.Y + 0.5f, spot.Cell.Z + 0.5f),
             };
             node.AddChild(light);
-            MeshInstance3D glow = Glow(node, inst, spot);
-            if (spot.Style is { } style) _styled.Add((light, spot.Energy, style, glow));
+            // (Its glow seen from off is its far point: FarLights.)
+            if (spot.Style is { } style) _styled.Add((light, spot.Energy, style));
             else if (spot.Mode is LightMode.Flicker or LightMode.Beacon or LightMode.Pulse or LightMode.Bloom)
-                _animated.Add((light, spot.Energy, spot.Mode, (float)(Hash.Cell(spot.Cell, 7) % 1000) / 160f, glow));
+                _animated.Add((light, spot.Energy, spot.Mode, (float)(Hash.Cell(spot.Cell, 7) % 1000) / 160f));
         }
         // Glowing paint: strips and panels that only glow.
         PoiLitFaces.Build(node, inst);
@@ -253,60 +265,6 @@ public partial class PoiLayer : Node3D
     /// <summary>How far crops reach from the eye, m.</summary>
     const float CropReach = 420f;
 
-    /// <summary>
-    /// A glow you can see from far off: beacons, lit windows and lamps out in the open get a soft
-    /// additive halo a few metres across that fades in past 40 m (up close the light itself does).
-    /// Lights inside rooms get none, so nothing glows through a roof.
-    /// </summary>
-    static MeshInstance3D Glow(Node3D node, PoiInstance inst, LightSpot spot)
-    {
-        if (spot.Cell.Y < 0) return null;
-        Block b = inst.Blocks.Get(spot.Cell);
-        bool beacon = spot.Mode == LightMode.Beacon;
-        bool outward = b.Material == PoiGenerator.Gen.Material.Lumen && (b.Role is Role.Window or Role.Light);
-        if (!beacon && !outward && !(spot.Range >= 10f && !inst.Layout.Occupied[spot.Cell])) return null;
-        var c = new Color(spot.Color.R / 255f, spot.Color.G / 255f, spot.Color.B / 255f);
-        float size = beacon ? 8f : 3.5f;
-        var glow = new MeshInstance3D
-        {
-            Name = "Glow",
-            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
-            Mesh = new QuadMesh
-            {
-                Size = new Vector2(size, size),
-                Material = new StandardMaterial3D
-                {
-                    ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
-                    BillboardMode = BaseMaterial3D.BillboardModeEnum.Enabled,
-                    Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
-                    BlendMode = BaseMaterial3D.BlendModeEnum.Add,
-                    AlbedoColor = new Color(c, 0.55f),
-                    AlbedoTexture = GlowTexture,
-                    DistanceFadeMode = BaseMaterial3D.DistanceFadeModeEnum.PixelAlpha,
-                    DistanceFadeMinDistance = 40f, DistanceFadeMaxDistance = 120f,
-                },
-            },
-            Position = new Vector3(spot.Cell.X + 0.5f, spot.Cell.Y + 0.5f, spot.Cell.Z + 0.5f),
-        };
-        node.AddChild(glow);
-        return glow;
-    }
-
-    static Texture2D _glowTexture;
-    /// <summary>A soft round falloff, made once.</summary>
-    static Texture2D GlowTexture
-    {
-        get
-        {
-            if (_glowTexture != null) return _glowTexture;
-            var g = new Gradient();
-            g.SetColor(0, new Color(1, 1, 1, 1));
-            g.SetColor(1, new Color(1, 1, 1, 0));
-            _glowTexture = new GradientTexture2D { Gradient = g, Fill = GradientTexture2D.FillEnum.Radial, FillFrom = new Vector2(0.5f, 0.5f), FillTo = new Vector2(1f, 0.5f), Width = 64, Height = 64 };
-            return _glowTexture;
-        }
-    }
-
     static Texture2D _puff;
 
     /// <summary>A soft round puff, dense at the middle and gone by the rim, so smoke never shows a quad's square edge.</summary>
@@ -371,7 +329,7 @@ public partial class PoiLayer : Node3D
     /// <summary>Flickering lamps, blinking beacons and the Bloom's slow pulse.</summary>
     void Animate(double t)
     {
-        foreach (var (light, energy, mode, phase, glow) in _animated)
+        foreach (var (light, energy, mode, phase) in _animated)
         {
             if (!IsInstanceValid(light)) continue;
             float s = (float)t + phase;
@@ -381,13 +339,11 @@ public partial class PoiLayer : Node3D
                 LightMode.Flicker => energy * (Mathf.Sin(s * 23f) * Mathf.Sin(s * 7.3f) > 0.55f ? 0.15f : 0.85f + 0.15f * Mathf.Sin(s * 41f)),
                 _ => energy * (0.6f + 0.4f * Mathf.Sin(s * 0.9f)),
             };
-            if (glow != null && IsInstanceValid(glow)) glow.Visible = light.LightEnergy > energy * 0.3f;
         }
-        foreach (var (light, energy, style, glow) in _styled)
+        foreach (var (light, energy, style) in _styled)
         {
             if (!IsInstanceValid(light)) continue;
             (light.LightEnergy, light.LightColor) = PoiLitFaces.At(style, energy, t);
-            if (glow != null && IsInstanceValid(glow)) glow.Visible = light.LightEnergy > energy * 0.3f;
         }
     }
 
@@ -401,6 +357,7 @@ public partial class PoiLayer : Node3D
         _building.Clear();
         _animated.Clear();
         _styled.Clear();
+        Far?.Clear();
         _midJobs.Clear();
         _blending.Clear();
         _tilesBlending.Clear();
