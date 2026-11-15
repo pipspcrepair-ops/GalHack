@@ -67,15 +67,15 @@ public sealed class Decor
         PoiInstance inst = memory.Inst;
         Layout layout = inst.Layout;
         var rooms = new Dictionary<int, PlaceRoom>();
-        var openings = RoomDecor.Openings(inst).ToList();
-        var reserved = RoomDecor.Reserved(inst, openings);
-        NavGrid nav = inst.Nav();
+        var openings = GalHack.Testing.AllocMeter.Measure("    openings", () => RoomDecor.Openings(inst).ToList());
+        var reserved = GalHack.Testing.AllocMeter.Measure("    reserved", () => RoomDecor.Reserved(inst, openings));
+        NavGrid nav = GalHack.Testing.AllocMeter.Measure("    nav", () => inst.Nav());
         foreach (PlacedModule m in layout.Modules)
         {
-            if (RoomDecor.Room(inst, m, nav, reserved) is not { } dressable) continue;
+            if (GalHack.Testing.AllocMeter.Measure("    room shape", () => RoomDecor.Room(inst, m, nav, reserved)) is not { } dressable) continue;
             var (_, room, corner, floor, own) = dressable;
             DecoPlan plan;
-            try { plan = Poi.Dress(room, inst.Kit?.Id); }
+            try { plan = GalHack.Testing.AllocMeter.Measure("    planner", () => Poi.Dress(room, inst.Kit?.Id)); }
             catch (Exception) { continue; }
             var placeRoom = new PlaceRoom { Module = m.Index, Corner = corner, Floor = floor, Room = room, Plan = plan };
             // Pieces on a reserved cell (or standing on one that is), or not standing as they're drawn, are left out.
@@ -120,7 +120,7 @@ public sealed class Decor
                         if (!inst.Blocks.Get(c).IsAir && Clearable(inst.Blocks.Get(c))) inst.Blocks.Set(c, Block.Air);
             rooms[m.Index] = placeRoom;
         }
-        KeepWaysOpen(memory, rooms, openings);
+        GalHack.Testing.AllocMeter.Measure("    ways kept open", () => KeepWaysOpen(memory, rooms, openings));
         return rooms;
     }
 

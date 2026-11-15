@@ -25,6 +25,8 @@ public partial class PopRoute
     void SplitStart()
     {
         if (!_args.ContainsKey("split")) return;
+        Array.Clear(Slice.Places.Place.PartMs);
+        Array.Clear(Slice.Places.Place.PartWorst);
         _frameSplit ??= new FrameSplit(GetTree().Root, GetViewport().GetViewportRid());
         if (_args.TryGetValue("hitch", out string hitch)) _frameSplit.HitchMs = double.Parse(hitch, CultureInfo.InvariantCulture);
         // --deeper=1: each place split into its children by class too (heavy: a marker a child).
@@ -149,6 +151,9 @@ public partial class PopRoute
         GD.Print($"SPLIT {name} by system (cpu ms a frame): {_systemSplit.Report(18)}");
         GD.Print($"SPLIT {name} drawn at the end: {DrawnCensus()}");
         if (_allocTypes != null) GD.Print($"SPLIT {name} {(_allocTypes.MainOnly ? "the main thread" : "every thread")} allocated, by type: {_allocTypes.Take(24)}");
+        GD.Print($"SPLIT {name} places' frame work, ms a frame (worst one): {string.Join(", ", Slice.Places.Place.PartNames.Select((p, i) => string.Create(CultureInfo.InvariantCulture, $"{p} {Slice.Places.Place.PartMs[i] / Math.Max(1, _frameSplit.Frames.Count):F2} ({Slice.Places.Place.PartWorst[i]:F1})")))}");
+        Array.Clear(Slice.Places.Place.PartMs);
+        Array.Clear(Slice.Places.Place.PartWorst);
         if (GalHack.Testing.AllocMeter.On) GD.Print($"SPLIT {name} workers allocated, MB a second by job: {GalHack.Testing.AllocMeter.Take(_allocClock.Elapsed.TotalSeconds)}");
         GD.Print(string.Create(CultureInfo.InvariantCulture,
             $"SPLIT {name} live (means): creatures in the patch {_creatures / n:F0}, stepped {_stepped / n:F0}, drawn {_creaturesDrawn / n:F0}; in {w.Sites.Count} places and caves {_siteCreatures / n:F0}, stepped {_siteStepped / n:F0}, drawn {_siteDrawn / n:F0}; " +

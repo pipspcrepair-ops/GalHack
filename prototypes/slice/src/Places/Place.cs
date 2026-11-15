@@ -541,12 +541,30 @@ public partial class Place : Node3D
     public override void _Process(double delta)
     {
         if (!Ready) return;
+        long t = System.Diagnostics.Stopwatch.GetTimestamp();
         TickTiers();
+        t = Part(0, t);
         StepFades((float)delta);
         StepDressFades((float)delta);
+        t = Part(1, t);
         if (Dormant) return;
         TickLights((float)delta);
+        t = Part(2, t);
         TickDress();
+        Part(3, t);
+    }
+
+    /// <summary>Every standing place's frame work by part (cubes in and out, dissolves, lamps, rooms dressed), ms in all and the worst one call (checks read and clear them).</summary>
+    public static readonly string[] PartNames = { "cubes", "dissolves", "lamps", "dressing" };
+    public static readonly double[] PartMs = new double[4], PartWorst = new double[4];
+
+    static long Part(int i, long from)
+    {
+        long now = System.Diagnostics.Stopwatch.GetTimestamp();
+        double ms = (now - from) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+        PartMs[i] += ms;
+        if (ms > PartWorst[i]) PartWorst[i] = ms;
+        return now;
     }
 }
 
