@@ -148,10 +148,11 @@ public partial class ShotFeelTest : Node
         game.Zone.Weather.Bridge.Calm = true;
         game.Zone.Weather.Sim.Snap(Weather.Model.WeatherKind.Clear);
         game.Zone.Sky.TimeOfDay = 0.4;
-        Rows(game.Zone.Data.Arms);
+        Rows(game.Zone.Data.Arms, game.Zone.Data.Mounts);
         foreach (int x in Open(game)) yield return x;
         foreach (int x in Shot(game, drive)) yield return x;
         if (_shots != null) foreach (int x in Pictures(game, drive)) yield return x;
+        foreach (int x in Mounted(game)) yield return x;
         foreach (int x in Hits(game, drive)) yield return x;
         foreach (int x in Arrow(game, drive)) yield return x;
         foreach (int x in Swings(game, drive)) yield return x;
@@ -160,18 +161,17 @@ public partial class ShotFeelTest : Node
     }
 
     /// <summary>The rows, offline: speeds you can see, gunshots that carry.</summary>
-    void Rows(Armoury table)
+    void Rows(Armoury table, Armoury mounts)
     {
         GD.Print("-- the rows --");
-        var hand = table.All.Where(d => d.Delivery is Delivery.Bolt or Delivery.Pellets or Delivery.Arc && !d.Mount).ToList();
+        var hand = table.All.Where(d => d.Delivery is Delivery.Bolt or Delivery.Pellets or Delivery.Arc).ToList();
         string Speeds(IEnumerable<WeaponDef> rows) => string.Join(", ", rows.Select(d => $"{d.Id} {Fastest(d):F0} m/s, 30 m in {30f / Fastest(d):F2} s"));
         var fast = hand.Where(d => 30f / Fastest(d) < 0.25f).ToList();
         Check(fast.Count == 0, $"every hand weapon's shot takes a quarter of a second or more over 30 m: {Speeds(hand)}{(fast.Count > 0 ? $"; too fast: {string.Join(", ", fast.Select(d => d.Id))}" : "")}");
         var carried = Carried.Select(p => table.OfItem(Weapons.ItemOf(p))).ToList();
         Check(carried.All(d => d != null && hand.Contains(d)), $"people carry those same rows ({string.Join(", ", carried.Select(d => d?.Id))})");
-        WeaponDef craft = table.Get("craft-gatling"), turret = table.Get("plasma-turret");
-        Check(craft.Speed is >= 550f and <= 650f && turret.Speed is >= 250f and <= 350f && turret.Speed < craft.Speed,
-            $"vessel guns are slower than real: a small craft's {craft.Speed:F0} m/s, a capital turret's {turret.Speed:F0} m/s (the slowest)");
+        Check(mounts.All.Count > 0 && mounts.All.All(d => d.Speed is >= 250f and <= 650f) && mounts.All.All(d => GunVoice.Gunshot(d)),
+            $"a structure's guns are slower than real and loud: {string.Join(", ", mounts.All.Select(d => $"{d.Id} {d.Speed:F0} m/s"))}");
         var guns = carried.Where(GunVoice.Gunshot).ToList();
         Check(guns.Count >= 6 && guns.All(d => GunSounds.ReportDbAt(d, 30f) >= 0f && GunSounds.ReportDbAt(d, 120f) >= -10f && GunSounds.ReportDbAt(d, 500f) > float.NegativeInfinity),
             $"every gunshot is loud and carries: {string.Join(", ", guns.Select(d => d.Id))} at {GunSounds.ReportDbAt(guns[0], 30f):F1} dB at 30 m, {GunSounds.ReportDbAt(guns[0], 120f):F1} at 120 m, heard to {GunSounds.LoudReach:F0} m");
@@ -331,6 +331,32 @@ public partial class ShotFeelTest : Node
         for (int i = 0; i < 60 && arms.PlayerHits == hits; i++) { game.Suit.Vitals.Health = max; yield return 0; }
         Vector3 local = game.Camera.GlobalBasis.Inverse() * (behind - game.Camera.GlobalPosition);
         Check(arms.PlayerHits > hits && game.Visor.HurtShowing && local.Z > 0f, $"hit from behind, off screen, the visor's edge marks where it came from ({(arms.PlayerHits > hits ? "hit" : "missed")}, edge {(game.Visor.HurtShowing ? "showing" : "not showing")}, from {(local.Z > 0f ? "behind" : "ahead")})");
+    }
+
+    /// <summary>A structure's gun (fired as from the pilot's toolbar): its shot is drawn bright, with its hot head, a few pixels wide at least, every frame it flies.</summary>
+    IEnumerable<int> Mounted(Game.Game game)
+    {
+        GD.Print("-- a structure's gun --");
+        ArmsHost arms = game.Arms;
+        WeaponDef gatling = game.Zone.Data.Mounts.All.First(d => d.Tracer.Body == GalHack.Arms.Body.Tracer);
+        Vector3 eye = game.Survivor.WorldEye();
+        Vector3 dir = (game.Survivor.WorldLook() + Vector3.Up * 0.3f).Normalized(); // up and away, into the sky
+        int reports = arms.Sounds.Played[(int)VoiceKind.Report];
+        arms.FireMounted(gatling, eye + dir * 3f + Vector3.Down * 0.5f, dir, Vector3.Zero, null);
+        int slot = Array.FindIndex(arms.Pool.Shots, s => s.Live && s.Def == gatling);
+        int frames = 0, drawn = 0;
+        float thinnest = 99f;
+        for (int i = 0; i < 30 && slot >= 0 && arms.Pool.Shots[slot].Live && arms.Pool.Shots[slot].Def == gatling; i++)
+        {
+            yield return 0;
+            if (!arms.Pool.Shots[slot].Live) break;
+            frames++;
+            if (arms.Fx.Showing(slot) && arms.Fx.HeadShowing(slot)) drawn++;
+            float far = arms.Pool.Shots[slot].Pos.ToGodot().DistanceTo(game.Camera.GlobalPosition);
+            thinnest = MathF.Min(thinnest, arms.Fx.WidthOf(slot) / MathF.Max(1e-4f, far * arms.Fx.Pixel));
+        }
+        Check(slot >= 0 && frames >= 10 && drawn == frames && thinnest >= ArmsFx.MinPixels * 0.95f && arms.Sounds.Played[(int)VoiceKind.Report] > reports && arms.Sounds.LastLoud != null,
+            $"{gatling.Id}: drawn with its hot head every frame ({drawn}/{frames}), never thinner than {thinnest:F1} px, its report loud");
     }
 
     /// <summary>(--shots) A raider close by on open ground: its muzzle flash, and a bolt of its going past you, mid-flight.</summary>

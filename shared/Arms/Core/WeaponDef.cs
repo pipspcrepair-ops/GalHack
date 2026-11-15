@@ -118,8 +118,6 @@ public sealed class WeaponDef
     public float Gravity { get; init; }
     /// <summary>A strike's reach from the shoulder, m (0 for anything that flies).</summary>
     public float Reach { get; init; }
-    /// <summary>A vessel gun: mounted on a structure, never carried, so no item of its own (its ammo comes from the structure).</summary>
-    public bool Mount { get; init; }
 
     public string Ammo { get; init; } = "";
     /// <summary>Rounds one ammo item gives (0: the item's own round count, or 1).</summary>
@@ -280,7 +278,6 @@ public sealed class Armoury
             Blocks = Num(e, "blocks", 1f),
             Gravity = Num(e, "gravity", 0f),
             Reach = Num(e, "reach", 0f),
-            Mount = Bool(e, "mount", false),
             Ammo = e["ammo"] is JsonObject am ? Str(am, "item", "") : "",
             PerItem = e["ammo"] is JsonObject ap ? (int)Num(ap, "perItem", 0) : 0,
             Charge = e["charge"] is JsonObject c ? new ChargePart(Math.Max(1, (int)Num(c, "stages", 4)), Num(c, "seconds", 0.4f), Num(c, "speed", 0f), (int)Num(c, "pierce", 0), Num(c, "damage", 0f)) : null,
